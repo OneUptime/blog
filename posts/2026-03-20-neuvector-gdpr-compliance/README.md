@@ -66,7 +66,7 @@ GDPR requires protecting personal data from unauthorized disclosure:
 ```bash
 # Create comprehensive GDPR personal data DLP sensor
 curl -sk -X POST \
-  "https://neuvector-manager:8443/v1/dpi/dlp/sensor" \
+  "https://neuvector-manager:8443/v1/dlp/sensor" \
   -H "Content-Type: application/json" \
   -H "X-Auth-Token: ${TOKEN}" \
   -d '{
@@ -128,12 +128,14 @@ curl -sk -X POST \
 
 # Apply GDPR DLP sensor to personal data workloads
 curl -sk -X PATCH \
-  "https://neuvector-manager:8443/v1/group/gdpr-personal-data" \
+  "https://neuvector-manager:8443/v1/dlp/group/gdpr-personal-data" \
   -H "Content-Type: application/json" \
   -H "X-Auth-Token: ${TOKEN}" \
   -d '{
     "config": {
-      "dlp_sensors": [
+      "name": "gdpr-personal-data",
+      "status": true,
+      "sensors": [
         {"name": "gdpr-personal-data", "action": "alert"}
       ]
     }
@@ -153,25 +155,27 @@ curl -sk -X POST \
   -H "X-Auth-Token: ${TOKEN}" \
   -d '{
     "config": {
+      "category": "Kubernetes",
       "comment": "GDPR Art.25: No privileged containers in data processing namespaces",
       "criteria": [
-        {"name": "privileged", "op": "=", "value": "true"},
+        {"name": "runAsPrivileged", "op": "=", "value": "true"},
         {"name": "namespace", "op": "containsAny", "value": "user-data, customer-data, analytics"}
       ],
       "rule_type": "deny"
     }
   }'
 
-# Require resource limits (prevent resource exhaustion affecting availability)
+# Block containers running as root in data processing namespaces
 curl -sk -X POST \
   "https://neuvector-manager:8443/v1/admission/rule" \
   -H "Content-Type: application/json" \
   -H "X-Auth-Token: ${TOKEN}" \
   -d '{
     "config": {
-      "comment": "GDPR Art.25: Require resource limits on data processing workloads",
+      "category": "Kubernetes",
+      "comment": "GDPR Art.25: Block root containers in data processing namespaces",
       "criteria": [
-        {"name": "noRequestLimit", "op": "=", "value": "true"},
+        {"name": "runAsRoot", "op": "=", "value": "true"},
         {"name": "namespace", "op": "containsAny", "value": "user-data, customer-data"}
       ],
       "rule_type": "deny"
@@ -185,9 +189,10 @@ curl -sk -X POST \
   -H "X-Auth-Token: ${TOKEN}" \
   -d '{
     "config": {
+      "category": "Kubernetes",
       "comment": "GDPR Art.32: Block vulnerable images in data processing",
       "criteria": [
-        {"name": "cveCriticalCount", "op": "biggerEqualThan", "value": "1"},
+        {"name": "cveCriticalCount", "op": ">=", "value": "1"},
         {"name": "namespace", "op": "containsAny", "value": "user-data, customer-data"}
       ],
       "rule_type": "deny"
@@ -213,24 +218,31 @@ curl -sk -X PATCH \
       "syslog_level": "Info",
       "syslog_status": true,
       "syslog_in_json": true,
-      "syslog_categories": ["event", "security-event", "audit", "incident", "violation"]
+      "syslog_categories": ["event", "security-event", "audit"]
     }
   }'
 
 # Create response rules for immediate notification on data breach indicators
-curl -sk -X POST \
+# Rules are created via PATCH /v1/response/rule with an "insert" action
+curl -sk -X PATCH \
   "https://neuvector-manager:8443/v1/response/rule" \
   -H "Content-Type: application/json" \
   -H "X-Auth-Token: ${TOKEN}" \
   -d '{
-    "config": {
-      "event": "security-event",
-      "comment": "GDPR Art.33: Immediate alert on potential data breach",
-      "group": "gdpr-personal-data",
-      "conditions": [{"type": "level", "value": "critical"}],
-      "actions": ["webhook", "quarantine"],
-      "webhooks": ["dpo-emergency-notify", "security-team-pagerduty"],
-      "disable": false
+    "insert": {
+      "rules": [
+        {
+          "id": 0,
+          "event": "security-event",
+          "comment": "GDPR Art.33: Immediate alert on potential data breach",
+          "group": "gdpr-personal-data",
+          "conditions": [{"type": "level", "value": "critical"}],
+          "actions": ["webhook", "quarantine"],
+          "webhooks": ["dpo-emergency-notify", "security-team-pagerduty"],
+          "disable": false,
+          "cfg_type": "user_created"
+        }
+      ]
     }
   }'
 ```
@@ -250,29 +262,45 @@ spec:
   target:
     policymode: Protect
     selector:
-      matchLabels:
-        gdpr-scope: "true"
+      name: gdpr-personal-data
+      criteria:
+        - key: label
+          op: "="
+          value: "gdpr-scope=true"
   egress:
     # Allow connections to EU-based services only
     - action: allow
       name: allow-eu-cloud-services
+      applications:
+        - any
+      ports: tcp/443
       selector:
-        matchLabels:
-          region: eu-west
-      ports:
-        - protocol: TCP
-          port: 443
+        name: eu-cloud-services
+        criteria:
+          - key: label
+            op: "="
+            value: "region=eu-west"
     # Allow internal cluster traffic
     - action: allow
       name: allow-internal
+      applications:
+        - any
+      ports: any
       selector:
-        matchLabels:
-          network: internal
+        name: internal-services
+        criteria:
+          - key: label
+            op: "="
+            value: "network=internal"
     # Block connections to non-EU external IPs by default
+    # "external" is a NeuVector built-in reserved group representing external endpoints
     - action: deny
       name: default-deny-non-eu
-      selector: {}
-      comment: "GDPR: Default deny to prevent unauthorized data transfers"
+      applications:
+        - any
+      ports: any
+      selector:
+        name: external
 ```
 
 ## Step 6: Generate GDPR Compliance Documentation
@@ -289,10 +317,10 @@ echo "" >> gdpr-controls.md
 echo "## Article 32: Security Measures" >> gdpr-controls.md
 echo "" >> gdpr-controls.md
 
-# Vulnerability status
+# Vulnerability status (RESTScanBrief exposes critical, high, medium counts under scan_summary)
 CRITICAL=$(curl -sk \
-  "https://neuvector-manager:8443/v1/scan/workload?start=0&limit=1000" \
-  -H "X-Auth-Token: ${TOKEN}" | jq '[.workloads[].critical] | add')
+  "https://neuvector-manager:8443/v1/workload" \
+  -H "X-Auth-Token: ${TOKEN}" | jq '[.workloads[].scan_summary.critical] | add')
 
 echo "- Active vulnerability scanning: Enabled" >> gdpr-controls.md
 echo "- Critical CVEs in production: ${CRITICAL}" >> gdpr-controls.md
