@@ -52,15 +52,17 @@ echo $TOKEN
 
 ## Step 2: Export the Full Configuration
 
+The `/v1/file/config` endpoint returns the configuration as a YAML file:
+
 ```bash
 # Export all policies and configuration
 curl -sk \
   -H "X-Auth-Token: $TOKEN" \
   https://localhost:10443/v1/file/config \
-  -o neuvector-backup-$(date +%Y%m%d).json
+  -o neuvector-backup-$(date +%Y%m%d).yaml
 
-# Verify the export
-jq '.policies | keys' neuvector-backup-$(date +%Y%m%d).json
+# Verify the export (lists the top-level sections)
+yq 'keys' neuvector-backup-$(date +%Y%m%d).yaml
 ```
 
 ---
@@ -118,11 +120,11 @@ spec:
                     -d "{\"username\":\"$NEUVECTOR_USER\",\"password\":\"$NEUVECTOR_PASSWORD\"}" \
                     | grep -o '"token":"[^"]*"' | cut -d'"' -f4)
 
-                  # Export config
+                  # Export config (returned as YAML)
                   curl -sk \
                     -H "X-Auth-Token: $TOKEN" \
                     https://neuvector-svc-controller:10443/v1/file/config \
-                    -o /backup/neuvector-$(date +%Y%m%d-%H%M%S).json
+                    -o /backup/neuvector-$(date +%Y%m%d-%H%M%S).yaml
 
                   # Logout
                   curl -sk -X DELETE \
@@ -153,13 +155,14 @@ spec:
 
 ## Step 5: Restore from Backup
 
+The import endpoint expects `multipart/form-data` with the YAML file in a form field named `configuration`:
+
 ```bash
 # Import configuration from a backup file
 curl -sk -X POST \
   -H "X-Auth-Token: $TOKEN" \
-  -H "Content-Type: application/json" \
-  https://localhost:10443/v1/file/config \
-  -d @neuvector-backup-20260320.json
+  -F "configuration=@neuvector-backup-20260320.yaml" \
+  "https://localhost:10443/v1/file/config"
 
 # Verify the restore
 curl -sk \
@@ -168,9 +171,13 @@ curl -sk \
   | jq '.rules | length'
 ```
 
+Note: a full import overwrites everything in the target cluster, including the admin login credential. Also back up the `neuvector-store-secret` (the Key Encryption Key) alongside your configuration - it is required to decrypt sensitive fields after a restore.
+
 ---
 
 ## Step 6: Migrate Configuration to Another Cluster
+
+The official NeuVector docs warn that backups are intended for restore on the same cluster they were exported from - importing to a different cluster may produce unpredictable behavior. If you do need to seed a new cluster, the same import API is used:
 
 ```bash
 # Export from source cluster
@@ -192,9 +199,8 @@ DEST_TOKEN=$(curl -sk -X POST \
 # Import
 curl -sk -X POST \
   -H "X-Auth-Token: $DEST_TOKEN" \
-  -H "Content-Type: application/json" \
-  https://localhost:10444/v1/file/config \
-  -d @neuvector-backup-20260320.json
+  -F "configuration=@neuvector-backup-20260320.yaml" \
+  "https://localhost:10444/v1/file/config"
 ```
 
 ---
