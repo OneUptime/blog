@@ -30,17 +30,21 @@ tofu plan -generate-config-out=generated.tf
 # Single identifier
 tofu import aws_s3_bucket.data "my-bucket-name"
 tofu import aws_iam_role.app "MyRoleName"
-tofu import aws_ec2_instance.web "i-0abc123456def"
+tofu import aws_instance.web "i-0abc123456def"
 tofu import aws_vpc.main "vpc-0abc123456"
 tofu import aws_subnet.public "subnet-0abc123456"
 tofu import aws_security_group.web "sg-0abc123456"
 
 # Composite with slash
-tofu import aws_iam_role_policy.app "RoleName/PolicyName"
-tofu import aws_s3_bucket_acl.data "bucket-name,private"
+tofu import aws_ecs_service.web "cluster-name/service-name"
 
 # Composite with colon
-tofu import aws_ecs_service.web "cluster-name/service-name"
+tofu import aws_iam_role_policy.app "RoleName:PolicyName"
+
+# Composite with comma
+tofu import aws_s3_bucket_acl.data "bucket-name,private"
+
+# Full ARN
 tofu import aws_alb_listener_rule.app "arn:aws:elasticloadbalancing:us-east-1:123456:listener/app/my-alb/.../rule/..."
 ```
 
@@ -85,7 +89,8 @@ import {
 |---|---|
 | Name only | `aws_iam_role`, `aws_s3_bucket` |
 | Cloud ID | `aws_instance` (`i-...`), `aws_vpc` (`vpc-...`) |
-| `parent/child` | `aws_iam_role_policy`, `aws_ecs_service` |
+| `parent/child` | `aws_ecs_service` |
+| `parent:child` | `aws_iam_role_policy` |
 | `project/resource` | GCP resources |
 | Full resource path | Azure resources |
 | ARN | Some AWS resources |
@@ -112,7 +117,7 @@ az resource list --query '[].id' -o tsv
 # Test the ID format by trying a plan first
 import {
   to = aws_iam_role_policy.app
-  id = "MyRole/MyPolicy"  # Testing this format
+  id = "MyRole:MyPolicy"  # Testing this format
 }
 ```
 
@@ -121,7 +126,7 @@ tofu plan
 
 # If wrong format, you get an error at plan time:
 # Error: Cannot import non-existent remote object
-# The import ID "MyRole/MyPolicy" was not found.
+# The import ID "MyRole:MyPolicy" was not found.
 # Verify the ID format in the provider documentation.
 ```
 
