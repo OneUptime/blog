@@ -44,10 +44,9 @@ exports.handler = async (event, context) => {
 import type { Context } from "@netlify/edge-functions";
 
 export default async (request: Request, context: Context) => {
-  const clientIp =
-    request.headers.get("x-nf-client-connection-ip") ??
-    request.headers.get("x-forwarded-for")?.split(",")[0]?.trim() ??
-    "unknown";
+  // In Edge Functions, use context.ip (the x-nf-client-connection-ip
+  // header is no longer exposed to edge handlers).
+  const clientIp = context.ip ?? "unknown";
 
   const isIPv6 = clientIp.includes(":");
 
@@ -95,8 +94,7 @@ function getRateLimitKey(ip: string): string {
 }
 
 export default async (request: Request, context: Context) => {
-  const clientIp =
-    request.headers.get("x-nf-client-connection-ip") ?? "unknown";
+  const clientIp = context.ip ?? "unknown";
   const key = getRateLimitKey(clientIp);
 
   const current = requestCounts.get(key) ?? 0;
@@ -161,4 +159,4 @@ exports.handler = async (event) => {
 
 ## Conclusion
 
-Netlify's platform handles IPv6 transparently at the CDN layer. Functions receive client IPs via `x-nf-client-connection-ip` (most reliable) or `x-forwarded-for`. Edge Functions provide low-latency IPv6-aware processing with access to geo context. Implement /64-based rate limiting to handle IPv6's large allocations. Monitor Netlify function invocation rates and errors with OneUptime.
+Netlify's platform handles IPv6 transparently at the CDN layer. Lambda-style Functions receive client IPs via `x-nf-client-connection-ip` (most reliable) or `x-forwarded-for`, while Edge Functions expose them via `context.ip`. Edge Functions provide low-latency IPv6-aware processing with access to geo context. Implement /64-based rate limiting to handle IPv6's large allocations. Monitor Netlify function invocation rates and errors with OneUptime.
