@@ -65,7 +65,7 @@ For more control, switch to **Manual Outbound NAT**:
 4. Check **Add associated filter rule** to auto-create a firewall rule
 5. Click **Save** and **Apply Changes**
 
-### pfSense Port Forward CLI (using php)
+### pfSense Port Forward via Config
 
 ```bash
 # Edit config via SSH on pfSense
@@ -94,7 +94,7 @@ When using 1:1 NAT, you need to exclude the host from outbound NAT:
 ## Verifying NAT on pfSense
 
 - **Diagnostics → States** - view active connection state table
-- **Status → Firewall Logs** - see blocked or passed connections
+- **Status → System Logs → Firewall** - see blocked or passed connections
 - **Diagnostics → Packet Capture** - capture traffic on any interface
 
 ### pfSense States Table
@@ -102,8 +102,8 @@ When using 1:1 NAT, you need to exclude the host from outbound NAT:
 Under **Diagnostics → States**, filter by IP to see NAT translations:
 
 ```text
-Proto  SrcIP:SrcPort          DestIP:DestPort         State
-TCP    192.168.1.10:54321  →  203.0.113.1:80   →  8.8.8.8:80  ESTABLISHED
+Proto  Source (translated)                       Destination       State
+TCP    203.0.113.1:54321 (192.168.1.10:54321) →  8.8.8.8:80        ESTABLISHED
 ```
 
 ## Common pfSense NAT Issues
