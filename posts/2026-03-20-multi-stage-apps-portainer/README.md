@@ -49,11 +49,10 @@ x-common-resources: &common-resources
         memory: 128M
 
 x-common-healthcheck: &common-healthcheck
-  healthcheck:
-    interval: 30s
-    timeout: 10s
-    retries: 3
-    start_period: 60s
+  interval: 30s
+  timeout: 10s
+  retries: 3
+  start_period: 60s
 
 services:
   # Frontend service
