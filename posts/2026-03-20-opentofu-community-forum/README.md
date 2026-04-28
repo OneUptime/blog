@@ -62,7 +62,7 @@ Use for: Bug reports and confirmed feature requests
 
 When asking for help in Slack or Discussions:
 
-```markdown
+````markdown
 ## What I'm trying to do
 [One sentence description of the goal]
 
@@ -75,7 +75,7 @@ resource "aws_s3_bucket" "example" {
 ```
 
 ## The error or behavior I see
-```hcl
+```text
 Error: Error creating S3 bucket: BucketAlreadyExists
 │   on main.tf line 1, in resource "aws_s3_bucket" "example":
 │    1: resource "aws_s3_bucket" "example" {
@@ -89,7 +89,7 @@ Error: Error creating S3 bucket: BucketAlreadyExists
 - OpenTofu: 1.9.0
 - AWS Provider: 5.31.0
 - OS: macOS 14.3
-```text
+````
 
 ## Giving Back to the Community
 
