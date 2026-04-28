@@ -26,7 +26,6 @@ Response flows back reversed.
 
 ```python
 import ipaddress
-import socket
 
 def synthesize_nat64_address(ipv4: str,
                               prefix: str = "64:ff9b::/96") -> str:
@@ -58,12 +57,17 @@ DNS64 synthesizes AAAA records for IPv4-only domains using the NAT64 prefix.
 
 ```bash
 # /etc/bind/named.conf.options - DNS64 configuration
+
+# Define an ACL for RFC1918 IPv4 space; rfc1918 is NOT a BIND built-in.
+acl rfc1918 { 10/8; 172.16/12; 192.168/16; };
+
 options {
     # DNS64 prefix
     dns64 64:ff9b::/96 {
-        # Only synthesize for these clients
+        # Only synthesize AAAA for these client source addresses
         clients { any; };
-        # Exclude actual IPv6 addresses from synthesis
+        # Filter which IPv4 A-record addresses are eligible for synthesis;
+        # exclude RFC1918 private addresses, allow everything else.
         mapped { !rfc1918; any; };
     };
 };
@@ -71,7 +75,7 @@ options {
 
 ```bash
 # Test DNS64: query for IPv4-only domain from IPv6-only host
-dig AAAA ipv4only.example.com @[::1]
+dig AAAA ipv4only.example.com @::1
 # Should return: 64:ff9b::93.184.216.34
 
 # Verify NAT64 translation is working
@@ -84,19 +88,20 @@ curl -6 http://[64:ff9b::5db8:d822]/
 # Install Jool NAT64 kernel module
 sudo apt-get install jool-dkms jool-tools
 
-# Load the Jool module
+# Load the stateful NAT64 module
 sudo modprobe jool
 
-# Configure Jool with the well-known prefix
-sudo jool global update pool6 64:ff9b::/96
+# Create a NAT64 instance with the well-known prefix.
+# In Jool 4.x, pool6 is set at instance creation, not via `global update`.
+sudo jool instance add "default" --netfilter --pool6 64:ff9b::/96
 
 # Add IPv4 pool (public IPs for translation)
-sudo jool pool4 add --tcp 203.0.113.1 1-65535
-sudo jool pool4 add --udp 203.0.113.1 1-65535
-sudo jool pool4 add --icmp 203.0.113.1
+sudo jool -i "default" pool4 add --tcp 203.0.113.1 1-65535
+sudo jool -i "default" pool4 add --udp 203.0.113.1 1-65535
+sudo jool -i "default" pool4 add --icmp 203.0.113.1 1-65535
 
 # Verify configuration
-sudo jool global display
+sudo jool -i "default" global display
 ```
 
 ## Filtering Considerations
@@ -104,15 +109,15 @@ sudo jool global display
 The `64:ff9b::/96` prefix should NOT appear on the public internet.
 
 ```bash
-# Block 64:ff9b::/96 at internet boundaries
+# Block 64:ff9b::/96 at internet boundaries (eth0 is the external interface)
 ip6tables -A FORWARD \
   -s 64:ff9b::/96 \
-  -i eth0 \          # External interface
+  -i eth0 \
   -j DROP
 
 ip6tables -A FORWARD \
   -d 64:ff9b::/96 \
-  -o eth0 \          # External interface
+  -o eth0 \
   -j DROP
 ```
 
