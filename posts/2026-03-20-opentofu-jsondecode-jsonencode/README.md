@@ -29,8 +29,8 @@ output "encoded" {
 }
 
 output "decoded" {
-  value = jsondecode('{"name":"example","count":3}')
-  # Returns: {name = "example", count = 3}
+  value = jsondecode("{\"name\":\"example\",\"count\":3}")
+  # Returns: { name = "example", count = 3 }
 }
 ```
 
