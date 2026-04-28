@@ -31,8 +31,8 @@ Via API:
 # List available WAF sensors
 
 curl -sk \
-  "https://neuvector-manager:8443/v1/dpi/waf/sensor" \
-  -H "X-Auth-Token: ${TOKEN}" | jq '.waf_sensors[].name'
+  "https://neuvector-manager:8443/v1/waf/sensor" \
+  -H "X-Auth-Token: ${TOKEN}" | jq '.sensors[].name'
 ```
 
 ## Step 2: Create a Custom WAF Sensor
@@ -42,7 +42,7 @@ Define custom WAF rules for your application:
 ```bash
 # Create a WAF sensor with SQL injection detection
 curl -sk -X POST \
-  "https://neuvector-manager:8443/v1/dpi/waf/sensor" \
+  "https://neuvector-manager:8443/v1/waf/sensor" \
   -H "Content-Type: application/json" \
   -H "X-Auth-Token: ${TOKEN}" \
   -d '{
@@ -54,18 +54,16 @@ curl -sk -X POST \
           "name": "sql-injection",
           "patterns": [
             {
-              "key": "request",
+              "key": "pattern",
               "op": "regex",
               "value": "(?i)(\\bselect\\b.+\\bfrom\\b|\\bunion\\b.+\\bselect\\b|\\bdrop\\b.+\\btable\\b|\\binsert\\b.+\\binto\\b)",
-              "context": "uri",
-              "name": "sql-inject-uri"
+              "context": "url"
             },
             {
-              "key": "request",
+              "key": "pattern",
               "op": "regex",
               "value": "(?i)(\\bselect\\b.+\\bfrom\\b|\\bunion\\b.+\\bselect\\b|\\bdrop\\b.+\\btable\\b)",
-              "context": "body",
-              "name": "sql-inject-body"
+              "context": "body"
             }
           ]
         },
@@ -73,18 +71,16 @@ curl -sk -X POST \
           "name": "xss-detection",
           "patterns": [
             {
-              "key": "request",
+              "key": "pattern",
               "op": "regex",
               "value": "(?i)<script[^>]*>[\\s\\S]*?</script>|javascript:|on\\w+\\s*=",
-              "context": "uri",
-              "name": "xss-uri"
+              "context": "url"
             },
             {
-              "key": "request",
+              "key": "pattern",
               "op": "regex",
               "value": "(?i)<script[^>]*>[\\s\\S]*?</script>",
-              "context": "body",
-              "name": "xss-body"
+              "context": "body"
             }
           ]
         },
@@ -92,11 +88,10 @@ curl -sk -X POST \
           "name": "path-traversal",
           "patterns": [
             {
-              "key": "request",
+              "key": "pattern",
               "op": "regex",
               "value": "\\.\\./|\\.\\.",
-              "context": "uri",
-              "name": "path-traversal-pattern"
+              "context": "url"
             }
           ]
         },
@@ -104,11 +99,10 @@ curl -sk -X POST \
           "name": "command-injection",
           "patterns": [
             {
-              "key": "request",
+              "key": "pattern",
               "op": "regex",
               "value": "(?i)(;\\s*\\w+|\\|\\s*\\w+|`[^`]*`|\\$\\([^)]*\\))",
-              "context": "uri",
-              "name": "cmd-inject-pattern"
+              "context": "url"
             }
           ]
         }
@@ -124,7 +118,7 @@ Add additional sensors for other OWASP threats:
 ```bash
 # Log4Shell detection
 curl -sk -X POST \
-  "https://neuvector-manager:8443/v1/dpi/waf/sensor" \
+  "https://neuvector-manager:8443/v1/waf/sensor" \
   -H "Content-Type: application/json" \
   -H "X-Auth-Token: ${TOKEN}" \
   -d '{
@@ -136,18 +130,16 @@ curl -sk -X POST \
           "name": "log4shell-jndi",
           "patterns": [
             {
-              "key": "request",
+              "key": "pattern",
               "op": "regex",
               "value": "\\$\\{jndi:",
-              "context": "header",
-              "name": "log4shell-header"
+              "context": "header"
             },
             {
-              "key": "request",
+              "key": "pattern",
               "op": "regex",
               "value": "\\$\\{jndi:",
-              "context": "uri",
-              "name": "log4shell-uri"
+              "context": "url"
             }
           ]
         }
@@ -163,14 +155,16 @@ Attach your WAF sensors to specific workload groups:
 ```bash
 # Apply WAF sensor to a group
 curl -sk -X PATCH \
-  "https://neuvector-manager:8443/v1/group/nv.webapp.default" \
+  "https://neuvector-manager:8443/v1/waf/group/nv.webapp.default" \
   -H "Content-Type: application/json" \
   -H "X-Auth-Token: ${TOKEN}" \
   -d '{
     "config": {
-      "waf_sensors": [
-        {"name": "owasp-top10", "action": "block"},
-        {"name": "log4shell", "action": "block"}
+      "name": "nv.webapp.default",
+      "status": true,
+      "sensors": [
+        {"name": "owasp-top10", "action": "deny"},
+        {"name": "log4shell", "action": "deny"}
       ]
     }
   }'
@@ -181,24 +175,26 @@ In the UI:
 2. Select a group
 3. Click the **WAF** tab
 4. Click **Add Sensor**
-5. Select the sensor and choose **Alert** or **Block** action
+5. Select the sensor and choose **Alert** or **Deny** action
 
 ## Step 5: Monitor WAF Events
 
 Review WAF-generated security events:
 
 ```bash
-# Get WAF security events
+# Get WAF security threats (WAF detections are reported as threats)
 curl -sk \
-  "https://neuvector-manager:8443/v1/event?type=waf&start=0&limit=50" \
-  -H "X-Auth-Token: ${TOKEN}" | jq '.events[] | {
-    container: .workload_name,
-    sensor: .sensor_name,
-    pattern: .rule_name,
+  "https://neuvector-manager:8443/v1/log/threat" \
+  -H "X-Auth-Token: ${TOKEN}" | jq '.threats[] | {
+    name: .name,
+    server: .server_workload_name,
+    client: .client_workload_name,
     source_ip: .client_ip,
-    uri: .raw_uri,
+    sensor: .sensor,
+    group: .group,
     action: .action,
-    timestamp: .at
+    severity: .severity,
+    timestamp: .reported_at
   }'
 ```
 
@@ -226,15 +222,18 @@ spec:
   target:
     policymode: Protect
     selector:
-      matchLabels:
-        app: webapp
+      name: nv.webapp.default
+      criteria:
+        - key: service
+          op: =
+          value: webapp.default
   waf:
     status: true
-    waf:
+    settings:
       - name: owasp-top10
-        action: block
+        action: deny
       - name: log4shell
-        action: block
+        action: deny
 ```
 
 ```bash
