@@ -91,79 +91,96 @@ tofu apply tfplan
 
 ## Step 4: Set Up Automation
 
+Create an Azure DevOps environment named `production` (Pipelines > Environments > Create environment) and add the required approvers under **Approvals and checks**. The `Apply` stage below targets that environment, so Azure DevOps will pause and wait for an approver before running `tofu apply`.
+
+Store your cloud credentials as secret pipeline variables (for example `AWS_ACCESS_KEY_ID` and `AWS_SECRET_ACCESS_KEY`) or use a service connection.
+
 ```yaml
-# .github/workflows/infrastructure.yml
-name: Infrastructure Deployment
+# azure-pipelines.yml
+trigger:
+  branches:
+    include:
+      - main
 
-on:
-  push:
-    branches: [main]
-  pull_request:
-    branches: [main]
+pr:
+  branches:
+    include:
+      - main
 
-permissions:
-  id-token: write
-  contents: read
-  pull-requests: write
+variables:
+  TOFU_VERSION: "1.7.0"
+  AWS_DEFAULT_REGION: us-east-1
 
-jobs:
-  plan:
-    runs-on: ubuntu-latest
-    steps:
-      - uses: actions/checkout@v4
+stages:
+  - stage: Plan
+    displayName: OpenTofu Plan
+    jobs:
+      - job: Plan
+        pool:
+          vmImage: ubuntu-latest
+        steps:
+          - checkout: self
 
-      - name: Setup OpenTofu
-        uses: opentofu/setup-opentofu@v1
-        with:
-          tofu_version: "1.7.0"
+          - script: |
+              curl -fsSL https://get.opentofu.org/install-opentofu.sh -o install-opentofu.sh
+              chmod +x install-opentofu.sh
+              ./install-opentofu.sh --install-method standalone --opentofu-version $(TOFU_VERSION) --skip-verify
+              rm install-opentofu.sh
+            displayName: Install OpenTofu
 
-      - name: Configure AWS Credentials
-        uses: aws-actions/configure-aws-credentials@v4
-        with:
-          role-to-assume: ${{ secrets.AWS_ROLE_ARN }}
-          aws-region: us-east-1
+          - script: tofu init
+            displayName: OpenTofu Init
+            env:
+              AWS_ACCESS_KEY_ID: $(AWS_ACCESS_KEY_ID)
+              AWS_SECRET_ACCESS_KEY: $(AWS_SECRET_ACCESS_KEY)
 
-      - name: OpenTofu Init
-        run: tofu init
+          - script: tofu plan -no-color -out=tfplan
+            displayName: OpenTofu Plan
+            env:
+              AWS_ACCESS_KEY_ID: $(AWS_ACCESS_KEY_ID)
+              AWS_SECRET_ACCESS_KEY: $(AWS_SECRET_ACCESS_KEY)
 
-      - name: OpenTofu Plan
-        run: tofu plan -no-color -out=tfplan
+          - publish: tfplan
+            artifact: tfplan
+            displayName: Publish Plan Artifact
 
-      - name: Upload Plan
-        uses: actions/upload-artifact@v3
-        with:
-          name: tfplan
-          path: tfplan
+  - stage: Apply
+    displayName: OpenTofu Apply
+    dependsOn: Plan
+    condition: and(succeeded(), eq(variables['Build.SourceBranch'], 'refs/heads/main'))
+    jobs:
+      - deployment: Apply
+        pool:
+          vmImage: ubuntu-latest
+        environment: production
+        strategy:
+          runOnce:
+            deploy:
+              steps:
+                - checkout: self
 
-  apply:
-    needs: plan
-    runs-on: ubuntu-latest
-    environment: production
-    if: github.ref == 'refs/heads/main'
-    steps:
-      - uses: actions/checkout@v4
+                - script: |
+                    curl -fsSL https://get.opentofu.org/install-opentofu.sh -o install-opentofu.sh
+                    chmod +x install-opentofu.sh
+                    ./install-opentofu.sh --install-method standalone --opentofu-version $(TOFU_VERSION) --skip-verify
+                    rm install-opentofu.sh
+                  displayName: Install OpenTofu
 
-      - name: Setup OpenTofu
-        uses: opentofu/setup-opentofu@v1
-        with:
-          tofu_version: "1.7.0"
+                - download: current
+                  artifact: tfplan
+                  displayName: Download Plan Artifact
 
-      - name: Configure AWS Credentials
-        uses: aws-actions/configure-aws-credentials@v4
-        with:
-          role-to-assume: ${{ secrets.AWS_ROLE_ARN }}
-          aws-region: us-east-1
+                - script: tofu init
+                  displayName: OpenTofu Init
+                  env:
+                    AWS_ACCESS_KEY_ID: $(AWS_ACCESS_KEY_ID)
+                    AWS_SECRET_ACCESS_KEY: $(AWS_SECRET_ACCESS_KEY)
 
-      - name: Download Plan
-        uses: actions/download-artifact@v3
-        with:
-          name: tfplan
-
-      - name: OpenTofu Init
-        run: tofu init
-
-      - name: OpenTofu Apply
-        run: tofu apply -auto-approve tfplan
+                - script: tofu apply -auto-approve $(Pipeline.Workspace)/tfplan/tfplan
+                  displayName: OpenTofu Apply
+                  env:
+                    AWS_ACCESS_KEY_ID: $(AWS_ACCESS_KEY_ID)
+                    AWS_SECRET_ACCESS_KEY: $(AWS_SECRET_ACCESS_KEY)
 ```
 
 ## Step 5: Monitor and Verify
