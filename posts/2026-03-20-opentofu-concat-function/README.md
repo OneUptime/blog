@@ -52,10 +52,10 @@ variable "additional_security_groups" {
 }
 
 resource "aws_instance" "app" {
-  ami             = data.aws_ami.ubuntu.id
-  instance_type   = "t3.medium"
-  # Combine base and additional security groups
-  security_groups = concat(var.default_security_groups, var.additional_security_groups)
+  ami           = data.aws_ami.ubuntu.id
+  instance_type = "t3.medium"
+  # Combine base and additional security groups (use vpc_security_group_ids for VPC instances)
+  vpc_security_group_ids = concat(var.default_security_groups, var.additional_security_groups)
 
   tags = {
     Name = "app-server"
@@ -165,9 +165,23 @@ resource "aws_subnet" "public" {
   }
 }
 
+resource "aws_subnet" "private" {
+  for_each          = toset(["a", "b", "c"])
+  vpc_id            = aws_vpc.main.id
+  cidr_block        = "10.0.${index(["a", "b", "c"], each.key) + 10}.0/24"
+  availability_zone = "us-east-1${each.key}"
+
+  tags = {
+    Name = "private-${each.key}"
+  }
+}
+
 locals {
-  # Collect all subnet IDs into a single list
-  all_subnet_ids = concat(values(aws_subnet.public)[*].id)
+  # Combine subnet IDs from both for_each-created resource sets into a single list
+  all_subnet_ids = concat(
+    values(aws_subnet.public)[*].id,
+    values(aws_subnet.private)[*].id,
+  )
 }
 ```
 
