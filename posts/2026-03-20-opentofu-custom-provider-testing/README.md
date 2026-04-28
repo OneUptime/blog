@@ -29,6 +29,7 @@ package provider_test
 import (
     "testing"
     "github.com/hashicorp/terraform-plugin-framework/providerserver"
+    "github.com/hashicorp/terraform-plugin-go/tfprotov6"
     "github.com/hashicorp/terraform-plugin-testing/helper/resource"
     
     "terraform-provider-petstore/internal/provider"
@@ -195,9 +196,12 @@ package provider_test
 
 import (
     "encoding/json"
+    "fmt"
     "net/http"
     "net/http/httptest"
     "testing"
+
+    "github.com/hashicorp/terraform-plugin-testing/helper/resource"
 )
 
 func newMockPetstoreServer() *httptest.Server {
