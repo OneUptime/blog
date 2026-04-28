@@ -53,12 +53,12 @@ curl -sk \
 
 # Export process profiles
 curl -sk \
-  "${SOURCE_URL}/v1/process/profile?start=0&limit=500" \
+  "${SOURCE_URL}/v1/process_profile?start=0&limit=500" \
   -H "X-Auth-Token: ${SOURCE_TOKEN}" > process-profiles.json
 
 # Export admission control rules
 curl -sk \
-  "${SOURCE_URL}/v1/admission/rule?start=0&limit=500" \
+  "${SOURCE_URL}/v1/admission/rules?start=0&limit=500" \
   -H "X-Auth-Token: ${SOURCE_TOKEN}" > admission-rules.json
 
 echo "Export complete"
@@ -159,8 +159,8 @@ DEST_TOKEN=$(curl -sk -X POST \
   | jq -r '.token.token')
 
 # Import network rules
-cat policy-rules.json | jq '.rules[]' | while read -r rule; do
-  curl -sk -X POST \
+cat policy-rules.json | jq -c '.rules[]' | while read -r rule; do
+  curl -sk -X PATCH \
     "${DEST_URL}/v1/policy/rule" \
     -H "Content-Type: application/json" \
     -H "X-Auth-Token: ${DEST_TOKEN}" \
@@ -198,6 +198,7 @@ Use GitOps to manage NeuVector policies:
 # Initialize a policies repository
 mkdir neuvector-policies && cd neuvector-policies
 git init
+mkdir policies
 
 # Export all policies to the repo
 kubectl get nvsecurityrules -A -o yaml > policies/security-rules.yaml
