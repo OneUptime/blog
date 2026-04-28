@@ -51,10 +51,10 @@ sudo netstat -ulnp
 sudo netstat -tulnp
 
 # This is the most common command for "what's running on this machine":
-# Proto  Recv-Q Send-Q Local Address    State   PID/Program
-# tcp         0      0 0.0.0.0:22       LISTEN  1234/sshd
-# tcp         0      0 0.0.0.0:80       LISTEN  5678/nginx
-# udp         0      0 0.0.0.0:53       -       1100/resolved
+# Proto  Recv-Q Send-Q Local Address    Foreign Address  State   PID/Program
+# tcp         0      0 0.0.0.0:22       0.0.0.0:*        LISTEN  1234/sshd
+# tcp         0      0 0.0.0.0:80       0.0.0.0:*        LISTEN  5678/nginx
+# udp         0      0 0.0.0.0:53       0.0.0.0:*        -       1100/resolved
 ```
 
 ## Filter IPv4 vs IPv6
