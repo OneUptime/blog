@@ -16,11 +16,11 @@ Reference a module stored in an OCI registry using the `oci://` scheme.
 
 ```hcl
 module "vpc" {
-  source  = "oci://ghcr.io/my-org/opentofu-modules/vpc:v1.2.0"
+  source  = "oci://ghcr.io/my-org/opentofu-modules/vpc?tag=v1.2.0"
 }
 
 module "eks" {
-  source  = "oci://123456789012.dkr.ecr.us-east-1.amazonaws.com/opentofu-modules/eks:v2.0.1"
+  source  = "oci://123456789012.dkr.ecr.us-east-1.amazonaws.com/opentofu-modules/eks?tag=v2.0.1"
 }
 ```
 
@@ -33,19 +33,19 @@ Package your module as an OCI artifact and push it to a registry.
 
 brew install oras
 
-# Package module files as an OCI artifact
-tar -czf vpc-module.tar.gz -C ./modules/vpc .
+# Package module files as an OCI artifact (a zip archive is required)
+cd ./modules/vpc && zip -r ../../vpc-module.zip . && cd -
 
 # Push to GitHub Container Registry
 oras push ghcr.io/my-org/opentofu-modules/vpc:v1.2.0 \
-  --artifact-type application/vnd.opentofu.module.v1+tar+gzip \
-  vpc-module.tar.gz
+  --artifact-type application/vnd.opentofu.modulepkg \
+  vpc-module.zip:archive/zip
 
 # Push to AWS ECR
 aws ecr create-repository --repository-name opentofu-modules/vpc
 oras push 123456789012.dkr.ecr.us-east-1.amazonaws.com/opentofu-modules/vpc:v1.2.0 \
-  --artifact-type application/vnd.opentofu.module.v1+tar+gzip \
-  vpc-module.tar.gz
+  --artifact-type application/vnd.opentofu.modulepkg \
+  vpc-module.zip:archive/zip
 ```
 
 ## Authentication for Private OCI Registries
@@ -102,12 +102,12 @@ Pin to a specific digest for reproducible builds.
 ```hcl
 # Pin to a specific tag
 module "vpc" {
-  source = "oci://ghcr.io/my-org/opentofu-modules/vpc:v1.2.0"
+  source = "oci://ghcr.io/my-org/opentofu-modules/vpc?tag=v1.2.0"
 }
 
 # Pin to an immutable digest for maximum reproducibility
 module "vpc" {
-  source = "oci://ghcr.io/my-org/opentofu-modules/vpc@sha256:abc123def456..."
+  source = "oci://ghcr.io/my-org/opentofu-modules/vpc?digest=sha256:abc123def456..."
 }
 ```
 
@@ -117,7 +117,7 @@ OCI registries offer several advantages for module distribution.
 
 ```text
 Git source:     git::https://github.com/org/module.git?ref=v1.2.0
-OCI source:     oci://ghcr.io/org/modules/vpc:v1.2.0
+OCI source:     oci://ghcr.io/org/modules/vpc?tag=v1.2.0
 
 Benefits of OCI:
 - Built-in versioning and tagging
