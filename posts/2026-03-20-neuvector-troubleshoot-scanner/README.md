@@ -214,7 +214,7 @@ curl -sk \
 # scanning - scan in progress
 # finished - scan complete
 # failed - scan failed
-# not_supported - image format not supported
+# unsupported - image format not supported
 ```
 
 ## Step 7: Fix Network Policy Blocking Scanner Access
@@ -232,7 +232,7 @@ curl -sk \
   jq '.rules[] | select(.from | contains("scanner"))'
 
 # Add a rule to allow scanner to reach external registries
-curl -sk -X POST \
+curl -sk -X PATCH \
   "https://neuvector-manager:8443/v1/policy/rule" \
   -H "Content-Type: application/json" \
   -H "X-Auth-Token: ${TOKEN}" \
@@ -243,7 +243,7 @@ curl -sk -X POST \
         {
           "comment": "Allow scanner to reach external registries",
           "from": "nv.neuvector-scanner-pod.neuvector",
-          "to": "nv.ip.internet",
+          "to": "external",
           "ports": "tcp/443",
           "action": "allow"
         }
