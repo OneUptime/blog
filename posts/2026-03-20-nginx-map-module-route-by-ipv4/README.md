@@ -39,7 +39,7 @@ http {
     # Map IP to upstream pool name
     map $remote_addr $upstream_pool {
         default        "prod_backends";
-        10.0.0.0/8     "internal_backends";   # Note: CIDR requires geo module
+        ~^10\.         "internal_backends";   # Regex prefix; for CIDR see geo module section
         203.0.113.5    "qa_backends";
         203.0.113.6    "qa_backends";
     }
