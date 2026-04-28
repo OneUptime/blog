@@ -79,6 +79,10 @@ func (p *PetstoreProvider) Schema(_ context.Context, _ provider.SchemaRequest, r
     }
 }
 
+func (p *PetstoreProvider) Configure(_ context.Context, _ provider.ConfigureRequest, _ *provider.ConfigureResponse) {
+    // Read provider config and initialize an API client here.
+}
+
 func (p *PetstoreProvider) Resources(_ context.Context) []func() resource.Resource {
     return []func() resource.Resource{
         NewPetResource,
@@ -205,9 +209,10 @@ output "pet_id" {
 
 go build -o terraform-provider-petstore
 
-# Install locally for testing
-mkdir -p ~/.terraform.d/plugins/registry.terraform.io/myorg/petstore/1.0.0/linux_amd64/
-cp terraform-provider-petstore ~/.terraform.d/plugins/registry.terraform.io/myorg/petstore/1.0.0/linux_amd64/
+# Install locally for testing (OpenTofu resolves bare source addresses
+# under registry.opentofu.org by default)
+mkdir -p ~/.terraform.d/plugins/registry.opentofu.org/myorg/petstore/1.0.0/linux_amd64/
+cp terraform-provider-petstore ~/.terraform.d/plugins/registry.opentofu.org/myorg/petstore/1.0.0/linux_amd64/
 
 # Or use dev_overrides
 cat > ~/.tofurc << 'EOF'
