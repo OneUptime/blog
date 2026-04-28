@@ -66,9 +66,9 @@ locals {
   # Divide each region /16 into /20 for environments
   env_cidrs = {
     for region, cidr in local.region_cidrs : region => {
-      production    = cidrsubnet(cidr, 4, 1)   # .1.0/20
-      staging       = cidrsubnet(cidr, 4, 2)   # .2.0/20
-      development   = cidrsubnet(cidr, 4, 3)   # .3.0/20
+      production    = cidrsubnet(cidr, 4, 1)   # 10.X.16.0/20
+      staging       = cidrsubnet(cidr, 4, 2)   # 10.X.32.0/20
+      development   = cidrsubnet(cidr, 4, 3)   # 10.X.48.0/20
     }
   }
 }
