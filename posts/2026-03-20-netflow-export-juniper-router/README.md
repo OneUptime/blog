@@ -8,39 +8,44 @@ Description: Learn how to configure active flow monitoring and NetFlow/IPFIX exp
 
 ## Juniper Flow Monitoring Architecture
 
-Juniper Junos uses a different configuration model from Cisco IOS. Flow monitoring is configured under `forwarding-options` as a "sampling" or "flow-server" configuration. Juniper supports sampling-based flow export (similar to sFlow sampling) and inline monitoring.
+Juniper Junos uses a different configuration model from Cisco IOS. Flow templates are configured under `[edit services flow-monitoring]`, while sampling instances and the flow-server (collector) are configured under `[edit forwarding-options sampling]`. Juniper supports sampling-based flow export and inline active flow monitoring (Inline J-Flow).
 
-## Step 1: Configure a Flow Server (Collector Destination)
+## Step 1: Define the NetFlow v9 Template
 
-Define the NetFlow collector:
+Templates live under `services flow-monitoring` and define timeouts, refresh rates, and the record type (IPv4, IPv6, or MPLS):
 
 ```bash
 # Junos configuration hierarchy
 
-set forwarding-options flow-monitoring version9 template IPV4_TEMPLATE ip-headers
-set forwarding-options flow-monitoring version9 template IPV4_TEMPLATE transport-ports
-set forwarding-options flow-monitoring version9 template IPV4_TEMPLATE protocol
-set forwarding-options flow-monitoring version9 template IPV4_TEMPLATE counter
-
-# Define the flow export destination
-set forwarding-options flow-monitoring version9 flow-export-destination NETFLOW_COLLECTOR
-set forwarding-options flow-monitoring version9 flow-export-destination NETFLOW_COLLECTOR version version9
-set forwarding-options flow-monitoring version9 flow-export-destination NETFLOW_COLLECTOR template IPV4_TEMPLATE
-set forwarding-options flow-monitoring version9 flow-export-destination NETFLOW_COLLECTOR remote-address 192.168.1.200
-set forwarding-options flow-monitoring version9 flow-export-destination NETFLOW_COLLECTOR remote-port 2055
-set forwarding-options flow-monitoring version9 flow-export-destination NETFLOW_COLLECTOR source-address 10.0.0.1
+set services flow-monitoring version9 template IPV4_TEMPLATE flow-active-timeout 60
+set services flow-monitoring version9 template IPV4_TEMPLATE flow-inactive-timeout 30
+set services flow-monitoring version9 template IPV4_TEMPLATE template-refresh-rate packets 1000
+set services flow-monitoring version9 template IPV4_TEMPLATE option-refresh-rate packets 1000
+set services flow-monitoring version9 template IPV4_TEMPLATE ipv4-template
 ```
 
-## Step 2: Configure Sampling
+## Step 2: Configure the Sampling Instance and Flow Server
 
-Define the sampling policy-how many packets to sample:
+The collector destination is configured inside the sampling instance via `output flow-server`. There is no separate `flow-export-destination` stanza in Junos:
 
 ```text
 # Configure 1-in-1000 packet sampling
 set forwarding-options sampling instance NETFLOW_SAMPLE input rate 1000
 set forwarding-options sampling instance NETFLOW_SAMPLE input run-length 0
-set forwarding-options sampling instance NETFLOW_SAMPLE family inet output flow-server NETFLOW_COLLECTOR
+
+# Define the collector and bind the v9 template
+set forwarding-options sampling instance NETFLOW_SAMPLE family inet output flow-server 192.168.1.200 port 2055
+set forwarding-options sampling instance NETFLOW_SAMPLE family inet output flow-server 192.168.1.200 version9 template IPV4_TEMPLATE
+
+# Inline J-Flow source address (used for export packets)
 set forwarding-options sampling instance NETFLOW_SAMPLE family inet output inline-jflow source-address 10.0.0.1
+```
+
+On platforms that use Inline J-Flow (MX, EX9200, etc.), bind the sampling instance to the FPC and reserve flow-table memory:
+
+```text
+set chassis fpc 0 sampling-instance NETFLOW_SAMPLE
+set chassis fpc 0 inline-services flow-table-size ipv4-flow-table-size 7
 ```
 
 ## Step 3: Apply Sampling to Interfaces
@@ -54,12 +59,12 @@ set interfaces ge-0/0/0 unit 0 family inet sampling output
 set interfaces ge-0/0/1 unit 0 family inet sampling input
 ```
 
-## Step 4: Alternative - Configure Using Firewall Filter (for Full Flow Export)
+## Step 4: Alternative - Selective Sampling Using a Firewall Filter
 
-For complete NetFlow (not sampled), use a firewall filter with syslog action:
+To restrict which traffic is fed into the sampling instance, use a firewall filter with the `sample` action. The configured sampling rate still applies; the filter just controls which packets are eligible:
 
 ```bash
-# Create a filter that matches all traffic and samples it
+# Match selected protocols and mark them for sampling
 set firewall family inet filter NETFLOW_EXPORT term all-traffic from protocol [ tcp udp icmp ]
 set firewall family inet filter NETFLOW_EXPORT term all-traffic then sample
 set firewall family inet filter NETFLOW_EXPORT term all-traffic then accept
@@ -71,34 +76,34 @@ set interfaces ge-0/0/0 unit 0 family inet filter input NETFLOW_EXPORT
 set interfaces ge-0/0/0 unit 0 family inet filter output NETFLOW_EXPORT
 ```
 
-## Step 5: Configure IPFIX Export (v9 Compatible)
+## Step 5: Configure IPFIX Export
 
-To export using IPFIX format instead of NetFlow v9:
+To export using IPFIX (NetFlow v10) format, define a `version-ipfix` template and reference it from the sampling instance flow-server:
 
 ```text
-# Use IPFIX protocol
-set forwarding-options flow-monitoring version-ipfix template IPV4_IPFIX ip-headers
-set forwarding-options flow-monitoring version-ipfix template IPV4_IPFIX transport-ports
-set forwarding-options flow-monitoring version-ipfix flow-export-destination IPFIX_COLLECTOR
-set forwarding-options flow-monitoring version-ipfix flow-export-destination IPFIX_COLLECTOR version ipfix
-set forwarding-options flow-monitoring version-ipfix flow-export-destination IPFIX_COLLECTOR template IPV4_IPFIX
-set forwarding-options flow-monitoring version-ipfix flow-export-destination IPFIX_COLLECTOR remote-address 192.168.1.200
-set forwarding-options flow-monitoring version-ipfix flow-export-destination IPFIX_COLLECTOR remote-port 4739
+# Define an IPFIX template
+set services flow-monitoring version-ipfix template IPV4_IPFIX flow-active-timeout 60
+set services flow-monitoring version-ipfix template IPV4_IPFIX flow-inactive-timeout 30
+set services flow-monitoring version-ipfix template IPV4_IPFIX template-refresh-rate packets 1000
+set services flow-monitoring version-ipfix template IPV4_IPFIX ipv4-template
+
+# Point the sampling instance at an IPFIX collector
+set forwarding-options sampling instance NETFLOW_SAMPLE family inet output flow-server 192.168.1.200 port 4739
+set forwarding-options sampling instance NETFLOW_SAMPLE family inet output flow-server 192.168.1.200 version-ipfix template IPV4_IPFIX
 ```
 
 ## Step 6: Verify Flow Export
 
 ```bash
-# Show active sampling configuration
-show class-of-service interface ge-0/0/0
+# Show inline J-Flow status and statistics for the FPC
+show services accounting status inline-jflow fpc-slot 0
+show services accounting flow inline-jflow fpc-slot 0
+show services accounting errors inline-jflow fpc-slot 0
 
-# Show flow monitoring statistics
-show services flow-monitoring statistics
+# Show the configured sampling instance
+show forwarding-options sampling instance NETFLOW_SAMPLE
 
-# Check for exported flows
-show services flow-monitoring flow-table
-
-# Verify on the collector
+# Verify on the collector side
 sudo tcpdump -i any udp port 2055 -n -c 5
 ```
 
@@ -107,18 +112,18 @@ sudo tcpdump -i any udp port 2055 -n -c 5
 ```text
 # Show complete flow monitoring configuration
 show configuration forwarding-options sampling
-show configuration forwarding-options flow-monitoring
+show configuration services flow-monitoring
 ```
 
 ## Juniper vs Cisco NetFlow Configuration Comparison
 
 | Aspect | Cisco IOS | Juniper Junos |
 |---|---|---|
-| Enable on interface | `ip flow ingress` | `sampling input` |
-| Export destination | `ip flow-export destination X` | Under `flow-monitoring` |
-| Version | `ip flow-export version 9` | Template-based |
-| Sampling rate | `ip flow-cache` | `sampling rate 1000` |
+| Enable on interface | `ip flow ingress` | `family inet sampling input` |
+| Export destination | `ip flow-export destination X` | `forwarding-options sampling instance ... output flow-server` |
+| Version | `ip flow-export version 9` | `version9` / `version-ipfix` template |
+| Sampling rate | `ip flow-sampler-map` | `sampling instance ... input rate 1000` |
 
 ## Conclusion
 
-NetFlow export on Juniper Junos uses the `forwarding-options flow-monitoring` and `forwarding-options sampling` hierarchy. Define the flow template fields, the collector destination, and the sampling rate, then apply sampling to interfaces using `family inet sampling input/output`. Verify export with `show services flow-monitoring statistics` and confirm the collector is receiving data.
+NetFlow export on Juniper Junos uses the `services flow-monitoring` hierarchy for templates and the `forwarding-options sampling` hierarchy for the sampling instance and collector. Define the v9 or IPFIX template, configure the sampling instance with `output flow-server`, then apply sampling to interfaces using `family inet sampling input/output`. Verify inline J-Flow operation with `show services accounting status inline-jflow fpc-slot <n>` and confirm the collector is receiving data.
