@@ -24,6 +24,8 @@ services:
     restart: unless-stopped
     ports:
       - "9090:9090"
+    extra_hosts:
+      - "host.docker.internal:host-gateway"
     volumes:
       - prometheus_data:/prometheus
       - ./prometheus.yml:/etc/prometheus/prometheus.yml:ro
@@ -91,7 +93,7 @@ global:
 scrape_configs:
   - job_name: 'node-exporter'
     static_configs:
-      - targets: ['localhost:9100']
+      - targets: ['host.docker.internal:9100']
         labels:
           host: 'portainer-host'
 
@@ -108,7 +110,7 @@ scrape_configs:
 
 1. Open Grafana at `http://your-server:3000`.
 2. Log in with admin / your configured password.
-3. Go to **Configuration** > **Data Sources** > **Add data source**.
+3. Go to **Connections** > **Data sources** > **Add data source**.
 4. Select **Prometheus**.
 5. Set URL to `http://prometheus:9090`.
 6. Click **Save & Test**.
