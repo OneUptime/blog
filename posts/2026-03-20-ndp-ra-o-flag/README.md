@@ -65,7 +65,7 @@ dhcp-option=option6:dns-server,[2001:db8::1],[2001:db8::2]
 dhcp-option=option6:domain-search,example.com,corp.example.com
 
 # Provide NTP server
-dhcp-option=option6:ntp-server,[2001:db8::ntp]
+dhcp-option=option6:ntp-server,[2001:db8::123]
 EOF
 
 sudo systemctl restart dnsmasq
