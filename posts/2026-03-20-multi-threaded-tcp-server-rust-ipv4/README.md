@@ -150,6 +150,7 @@ fn main() -> std::io::Result<()> {
 use std::sync::atomic::{AtomicBool, Ordering};
 use std::sync::Arc;
 use std::net::TcpListener;
+use std::thread;
 use std::time::Duration;
 
 fn main() -> std::io::Result<()> {
@@ -167,7 +168,7 @@ fn main() -> std::io::Result<()> {
 
     while running.load(Ordering::SeqCst) {
         match listener.accept() {
-            Ok((stream, _)) => { thread::spawn(|| handle_stream(stream)); }
+            Ok((stream, _)) => { thread::spawn(move || handle_stream(stream)); }
             Err(e) if e.kind() == std::io::ErrorKind::WouldBlock => {
                 std::thread::sleep(Duration::from_millis(10));
             }
