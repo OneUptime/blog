@@ -46,14 +46,10 @@ source ~/.zshrc
 
 ## Method 3: Using Oh My Zsh
 
-If you use Oh My Zsh, add the terraform plugin which also works for OpenTofu:
+Oh My Zsh ships a `terraform` plugin, but it adds completion and aliases for the `terraform` binary only — it does not complete `tofu`. To get completion for OpenTofu under Oh My Zsh, create a small custom plugin:
 
 ```bash
-# Edit ~/.zshrc
-# Add 'terraform' to the plugins list
-plugins=(... terraform)
-
-# Or create a custom plugin for OpenTofu
+# Create a custom plugin for OpenTofu
 mkdir -p ~/.oh-my-zsh/custom/plugins/opentofu
 
 cat > ~/.oh-my-zsh/custom/plugins/opentofu/opentofu.plugin.zsh <<'EOF'
@@ -84,7 +80,7 @@ source ~/.zshrc
 tofu <TAB>
 
 # Available completions:
-# apply       -- Build or change infrastructure
+# apply       -- Create or update infrastructure
 # console     -- Interactive console for testing expressions
 # destroy     -- Destroy previously-created infrastructure
 # fmt         -- Reformat configuration in the standard style
@@ -130,12 +126,13 @@ source ~/.zshrc
 
 ## Integration with Powerlevel10k (p10k)
 
-If you use Powerlevel10k, you can add an OpenTofu version indicator:
+If you use Powerlevel10k, you can add Terraform/OpenTofu prompt segments:
 
 ```bash
 # Add to ~/.p10k.zsh
 # In the POWERLEVEL9K_LEFT_PROMPT_ELEMENTS or RIGHT_PROMPT_ELEMENTS array:
-# terraform  # This shows OpenTofu version when in a tofu directory
+# terraform          # current Terraform/OpenTofu workspace
+# terraform_version  # current Terraform/OpenTofu version
 ```
 
 ## Removing Autocompletion
