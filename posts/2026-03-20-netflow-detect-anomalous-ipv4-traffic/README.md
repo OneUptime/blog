@@ -23,29 +23,34 @@ NetFlow provides flow-level visibility without requiring full packet capture. A 
 
 ## Step 1: Detect Port Scans with nfdump
 
-A port scan creates many flows with small packet counts to different destination ports:
+A port scan creates many flows with small packet counts to different destination ports.
+
+The nfdump filter expression is passed as the **last positional argument** (there is no `-filter` flag), and `-t` accepts only absolute timestamps in `YYYY/MM/dd.hh:mm:ss` format, so we compute the window with `date`:
 
 ```bash
-# Detect horizontal scan: one source to many destinations on same port
+# Compute time window for the last 5 minutes (nfdump requires absolute timestamps)
+TIME_RANGE="$(date -u -d '5 minutes ago' '+%Y/%m/%d.%H:%M:%S')-$(date -u '+%Y/%m/%d.%H:%M:%S')"
 
+# Detect horizontal scan: one source to many destinations on same port
 nfdump -R /var/log/netflow/ \
-  -filter "proto tcp and flags S and not flags A" \
+  -t "$TIME_RANGE" \
   -A srcip,dstport \
   -s record/flows \
   -n 20 \
-  -t "last 5 minutes"
+  'proto tcp and flags S and not flags AFRPU'
 
 # Detect vertical scan: one source scanning many ports on one destination
 nfdump -R /var/log/netflow/ \
-  -filter "proto tcp and flags S" \
+  -t "$TIME_RANGE" \
   -A srcip,dstip \
   -s dstport/flows \
-  -n 20
+  -n 20 \
+  'proto tcp and flags S'
 ```
 
 Flag combinations to watch:
-- SYN only (flags S, not A): connection initiation
-- SYN-ACK (flags SA): response-useful to find victims, not scanners
+- SYN only (`flags S and not flags AFRPU`): pure connection initiation, the canonical SYN-scan signature
+- SYN-ACK (`flags SA`): response — useful to find victims, not scanners
 
 ## Step 2: Detect DDoS Attacks
 
@@ -54,22 +59,23 @@ A volumetric DDoS shows abnormally high traffic volume toward one destination:
 ```bash
 # Find top destinations by packet rate (potential DDoS targets)
 nfdump -R /var/log/netflow/ \
-  -t "last 5 minutes" \
+  -t "$TIME_RANGE" \
   -s dstip/packets \
   -n 10 \
   -o "fmt:%da %pkt %byt %fl"
 
 # Find sources sending unusually high traffic (potential bots)
 nfdump -R /var/log/netflow/ \
+  -t "$TIME_RANGE" \
   -s srcip/bytes \
-  -n 10 \
-  -t "last 5 minutes"
-
-# UDP flood detection (high pps, small packets)
-nfdump -R /var/log/netflow/ \
-  -filter "proto udp and bytes < 100" \
-  -s dstip/packets \
   -n 10
+
+# UDP flood detection (small packets means low bytes-per-packet)
+nfdump -R /var/log/netflow/ \
+  -t "$TIME_RANGE" \
+  -s dstip/packets \
+  -n 10 \
+  'proto udp and bpp < 100'
 ```
 
 ## Step 3: Detect Data Exfiltration
@@ -79,15 +85,15 @@ Exfiltration typically shows large outbound byte volumes to external IPs:
 ```bash
 # Find large outbound transfers (>100MB in session)
 nfdump -R /var/log/netflow/ \
-  -filter "src net 10.0.0.0/8 and not dst net 10.0.0.0/8 and bytes > 100000000" \
   -s srcip/bytes \
-  -n 10
+  -n 10 \
+  'src net 10.0.0.0/8 and not dst net 10.0.0.0/8 and bytes > 100000000'
 
-# Find connections to unusual ports (not 80/443/22/25)
+# Find connections to unusual ports (not 80/443/22/25/53/123)
 nfdump -R /var/log/netflow/ \
-  -filter "src net 10.0.0.0/8 and not dst port in [80 443 22 25 53 123]" \
   -s dstport/flows \
-  -n 20
+  -n 20 \
+  'src net 10.0.0.0/8 and not dst port in [80 443 22 25 53 123]'
 ```
 
 ## Step 4: Python Script for Automated Anomaly Detection
@@ -100,7 +106,7 @@ Analyzes nfdump output for anomalous patterns
 """
 import subprocess
 import json
-from datetime import datetime
+from datetime import datetime, timedelta, timezone
 
 NETFLOW_DIR = '/var/log/netflow/'
 ALERT_THRESHOLDS = {
@@ -109,21 +115,27 @@ ALERT_THRESHOLDS = {
     'exfil_bytes': 500_000_000, # > 500MB outbound = potential exfil
 }
 
-def run_nfdump(args):
-    """Run nfdump and parse output."""
-    cmd = ['nfdump', '-R', NETFLOW_DIR, '-t', 'last 5 minutes'] + args
+def time_window(minutes=5):
+    """Build an absolute time-window string for nfdump's -t option."""
+    fmt = '%Y/%m/%d.%H:%M:%S'
+    end = datetime.now(timezone.utc)
+    start = end - timedelta(minutes=minutes)
+    return f'{start.strftime(fmt)}-{end.strftime(fmt)}'
+
+def run_nfdump(args, filter_expr=None):
+    """Run nfdump and return its stdout. The filter expression is positional."""
+    cmd = ['nfdump', '-R', NETFLOW_DIR, '-t', time_window()] + args
+    if filter_expr:
+        cmd.append(filter_expr)
     result = subprocess.run(cmd, capture_output=True, text=True)
     return result.stdout
 
 def detect_port_scans():
     """Detect hosts performing port scans."""
-    output = run_nfdump([
-        '-filter', 'proto tcp and flags S and not flags A',
-        '-A', 'srcip',
-        '-s', 'record/flows',
-        '-n', '20',
-        '-o', 'csv'
-    ])
+    output = run_nfdump(
+        ['-A', 'srcip', '-s', 'record/flows', '-n', '20', '-o', 'csv'],
+        filter_expr='proto tcp and flags S and not flags AFRPU',
+    )
     alerts = []
     for line in output.strip().split('\n')[1:]:  # Skip header
         parts = line.split(',')
@@ -140,12 +152,10 @@ def detect_port_scans():
 
 def detect_large_transfers():
     """Detect large outbound data transfers."""
-    output = run_nfdump([
-        '-filter', 'src net 10.0.0.0/8 and not dst net 10.0.0.0/8',
-        '-s', 'srcip/bytes',
-        '-n', '10',
-        '-o', 'csv'
-    ])
+    output = run_nfdump(
+        ['-s', 'srcip/bytes', '-n', '10', '-o', 'csv'],
+        filter_expr='src net 10.0.0.0/8 and not dst net 10.0.0.0/8',
+    )
     alerts = []
     for line in output.strip().split('\n')[1:]:
         parts = line.split(',')
