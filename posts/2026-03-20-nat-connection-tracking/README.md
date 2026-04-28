@@ -27,8 +27,8 @@ conntrack -L
 conntrack -L | grep ESTABLISHED
 
 # Show only NAT'd connections
-conntrack -L | grep SNAT
-conntrack -L | grep DNAT
+conntrack -L --src-nat
+conntrack -L --dst-nat
 
 # Count active connections
 conntrack -L | wc -l
@@ -37,7 +37,7 @@ conntrack -L | wc -l
 Sample output:
 
 ```text
-tcp  6  86400  ESTABLISHED  src=192.168.1.10 dst=8.8.8.8 sport=54321 dport=80 
+tcp  6  432000  ESTABLISHED  src=192.168.1.10 dst=8.8.8.8 sport=54321 dport=80 
      src=8.8.8.8 dst=203.0.113.1 sport=80 dport=54321 [ASSURED] mark=0 use=1
 ```
 
@@ -52,7 +52,7 @@ The two tuples represent:
 conntrack -E
 
 # Watch only new TCP connections
-conntrack -E -p tcp --state NEW
+conntrack -E -e NEW -p tcp
 
 # Watch for connections to a specific host
 conntrack -E | grep 192.168.1.10
@@ -95,7 +95,7 @@ conntrack -D -p tcp --dport 80
 # Delete all connections for a specific host
 conntrack -D --src 192.168.1.10
 
-# Delete all SNAT connections
+# Delete all connections from a source subnet (e.g., LAN clients)
 conntrack -D -s 192.168.1.0/24
 
 # Flush all tracked connections
