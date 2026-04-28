@@ -127,19 +127,19 @@ tofu plan
 
 ```hcl
 # Discover existing resources dynamically
-data "aws_s3_buckets" "existing" {}
+data "aws_iam_roles" "existing" {}
 
-# Import all discovered buckets that match a pattern
+# Import all discovered roles that match a pattern
 locals {
-  target_buckets = {
-    for name in data.aws_s3_buckets.existing.names :
-    name => name if startswith(name, "acme-")
+  target_roles = {
+    for name in data.aws_iam_roles.existing.names :
+    name => name if startswith(name, "Acme")
   }
 }
 
 import {
-  for_each = local.target_buckets
-  to       = aws_s3_bucket.managed[each.key]
+  for_each = local.target_roles
+  to       = aws_iam_role.managed[each.key]
   id       = each.value
 }
 ```
