@@ -81,7 +81,7 @@ Enable **NAT Reflection**:
 
 ### Cisco IOS
 
-Cisco IOS typically handles hairpin NAT automatically when `ip nat inside` is configured on the LAN interface and the NAT translation table has the mapping.
+Traditional Cisco IOS NAT using `ip nat inside`/`ip nat outside` does **not** support hairpinning, because the inside-to-outside NAT pipeline only triggers when traffic crosses between the two domains. To enable hairpin NAT, use the NAT Virtual Interface (NVI) feature with `ip nat enable` on each interface (instead of the inside/outside commands), or implement NAT-on-a-stick using policy-based routing through a loopback marked `ip nat outside`.
 
 ## Testing Hairpin NAT
 
