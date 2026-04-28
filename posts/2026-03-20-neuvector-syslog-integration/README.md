@@ -8,7 +8,7 @@ Description: Configure NeuVector to forward security events to a syslog server o
 
 ## Introduction
 
-Integrating NeuVector with your syslog infrastructure enables centralized log collection and SIEM (Security Information and Event Management) analysis. NeuVector can forward all security events, audit logs, and compliance findings to a syslog destination in CEF (Common Event Format) or standard syslog format. This guide covers configuration for various syslog targets including Splunk, Elastic Stack, and standard syslog servers.
+Integrating NeuVector with your syslog infrastructure enables centralized log collection and SIEM (Security Information and Event Management) analysis. NeuVector can forward security events, audit logs, and runtime findings to a syslog destination in JSON or plain-text syslog format. This guide covers configuration for various syslog targets including Splunk, Elastic Stack, and standard syslog servers.
 
 ## Prerequisites
 
@@ -29,7 +29,7 @@ curl -sk -X PATCH \
   -d '{
     "config": {
       "syslog_ip": "syslog.company.com",
-      "syslog_ip_proto": "udp",
+      "syslog_ip_proto": 17,
       "syslog_port": 514,
       "syslog_level": "Warning",
       "syslog_status": true,
@@ -39,6 +39,8 @@ curl -sk -X PATCH \
     }
   }'
 ```
+
+`syslog_ip_proto` is the IP protocol number: `17` for UDP, `6` for TCP, and `66` for TCP with TLS.
 
 ### Use TCP for Reliable Delivery
 
@@ -51,7 +53,7 @@ curl -sk -X PATCH \
   -d '{
     "config": {
       "syslog_ip": "syslog.company.com",
-      "syslog_ip_proto": "tcp",
+      "syslog_ip_proto": 6,
       "syslog_port": 1514,
       "syslog_level": "Info",
       "syslog_status": true,
@@ -71,11 +73,11 @@ curl -sk -X PATCH \
   -d '{
     "config": {
       "syslog_ip": "syslog.company.com",
-      "syslog_ip_proto": "tcp",
+      "syslog_ip_proto": 66,
       "syslog_port": 6514,
       "syslog_level": "Info",
       "syslog_status": true,
-      "syslog_tls_verify": true
+      "syslog_server_cert": "-----BEGIN CERTIFICATE-----\n...\n-----END CERTIFICATE-----"
     }
   }'
 ```
@@ -98,7 +100,7 @@ curl -sk -X PATCH \
 Control which events are forwarded to syslog:
 
 ```bash
-# Forward all security events and audit logs
+# Forward all events, runtime security events, and audit logs
 curl -sk -X PATCH \
   "https://neuvector-manager:8443/v1/system/config" \
   -H "Content-Type: application/json" \
@@ -108,9 +110,7 @@ curl -sk -X PATCH \
       "syslog_categories": [
         "event",
         "security-event",
-        "audit",
-        "incident",
-        "violation"
+        "audit"
       ]
     }
   }'
@@ -118,21 +118,15 @@ curl -sk -X PATCH \
 
 Available categories:
 - `event` - System and operational events
-- `security-event` - Security violations and threats
-- `audit` - User actions and configuration changes
-- `incident` - Correlated security incidents
-- `violation` - Policy violation details
+- `security-event` - Runtime security events (threats, violations, and incidents)
+- `audit` - User actions, scan results, and configuration changes
 
 ## Step 4: Configure for Splunk
 
-Configure a Splunk HTTP Event Collector (HEC) receiver to accept NeuVector logs:
+Configure a Splunk TCP/syslog input to accept NeuVector logs (Splunk Web > Settings > Data Inputs > TCP > New). Then point NeuVector at that listener:
 
 ```bash
-# In Splunk: Create an HEC token
-# Settings > Data Inputs > HTTP Event Collector > New Token
-# Note: Enable a standard syslog listener if using native syslog
-
-# Configure NeuVector to send to Splunk Universal Forwarder syslog port
+# Configure NeuVector to send to a Splunk TCP/syslog input
 curl -sk -X PATCH \
   "https://neuvector-manager:8443/v1/system/config" \
   -H "Content-Type: application/json" \
@@ -141,7 +135,7 @@ curl -sk -X PATCH \
     "config": {
       "syslog_ip": "splunk-indexer.company.com",
       "syslog_port": 1514,
-      "syslog_ip_proto": "tcp",
+      "syslog_ip_proto": 6,
       "syslog_level": "Info",
       "syslog_status": true,
       "syslog_in_json": true
