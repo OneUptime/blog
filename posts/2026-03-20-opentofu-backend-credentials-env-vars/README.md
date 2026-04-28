@@ -8,7 +8,7 @@ Description: Learn how to pass backend credentials to OpenTofu using environment
 
 ## Introduction
 
-Hardcoding credentials in backend configuration is a security risk. OpenTofu backends respect standard cloud provider environment variables and the `TF_BACKEND_CONFIG_*` pattern, allowing secrets to be injected at runtime from CI/CD systems, secrets managers, or shell profiles.
+Hardcoding credentials in backend configuration is a security risk. OpenTofu backends respect standard cloud provider environment variables (such as `AWS_*`, `ARM_*`, `GOOGLE_APPLICATION_CREDENTIALS`, and `TF_HTTP_*`), allowing secrets to be injected at runtime from CI/CD systems, secrets managers, or shell profiles.
 
 ## S3 Backend: AWS Credentials
 
