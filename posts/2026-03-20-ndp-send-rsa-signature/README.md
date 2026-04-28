@@ -36,7 +36,9 @@ Fields:
   Type:    8 bits = 12 (RSA Signature)
   Length:  8 bits = total option length in units of 8 bytes
   Reserved: 16 bits = 0
-  Key Hash: 128-bit (16-byte) SHA-1 hash of the public key
+  Key Hash: 128 most significant (leftmost) bits of a SHA-1 hash
+           of the public key (SHA-1 produces 160 bits; only the
+           leftmost 128 are placed here)
            Used to identify which public key signed this message
   Digital Signature: RSA signature (variable, depends on key size)
            For 1024-bit RSA: 128 bytes
@@ -52,20 +54,25 @@ The RSA signature covers specific fields of the NDP message to prevent tampering
 Signed Data for RSA Signature Computation (RFC 3971 Section 5.2):
 
 signed_data =
-  source_IPv6_address (16 bytes)       ← from IPv6 header
-  + destination_IPv6_address (16 bytes) ← from IPv6 header
-  + Message Type (8 bits = ICMPv6 type) ← from ICMPv6 header
-  + Reserved (24 bits = 0)
-  + ICMPv6 message body
-    (excluding the RSA Signature option itself)
-  + CGA Parameters Data Structure
-    (the CGA Parameters, not the CGA option)
-  + Nonce option data (if present)
-  + Timestamp option data (if present)
+  CGA Message Type tag for SEND (16 bytes)
+    = 0x086FCA5E10B200C99C8CE00164277C08
+  + source_IPv6_address (16 bytes)         ← from IPv6 header
+  + destination_IPv6_address (16 bytes)    ← from IPv6 header
+  + ICMPv6 Type (8 bits)
+  + ICMPv6 Code (8 bits)
+  + ICMPv6 Checksum (16 bits)
+  + NDP message header
+    (octets after the ICMP Checksum field, up to but
+     not including the NDP options)
+  + All NDP options preceding the RSA Signature option
+    (this includes the CGA option, Timestamp option,
+     and Nonce option when present, in their on-the-wire
+     order — the CGA Parameters travel inside the CGA option)
 
-The RSA Signature option itself is excluded from the signed data.
-The Key Hash in the RSA Signature option identifies which public
-key to use for verification.
+The RSA Signature option itself, and any options following
+it, are excluded from the signed data. The Key Hash in the
+RSA Signature option identifies which public key to use for
+verification.
 
 Signature algorithm: RSA with SHA-1 (RSASSA-PKCS1-v1_5-SHA1)
 ```
@@ -115,42 +122,45 @@ Step 7: Accept message
 This example shows the verification logic at a conceptual level.
 
 ```python
-import hashlib
 import struct
 from cryptography.hazmat.primitives import hashes, serialization
 from cryptography.hazmat.primitives.asymmetric import padding
 from cryptography.hazmat.backends import default_backend
 
+# RFC 3971 Section 5.2.1: CGA Message Type tag value for SEND
+SEND_CGA_MESSAGE_TYPE_TAG = bytes.fromhex(
+    "086FCA5E10B200C99C8CE00164277C08"
+)
+
 def verify_send_rsa_signature(
-    src_addr: bytes,      # 16-byte IPv6 source address
-    dst_addr: bytes,      # 16-byte IPv6 destination address
-    icmpv6_type: int,     # ICMPv6 message type (133-137)
-    icmpv6_body: bytes,   # ICMPv6 body without RSA signature option
-    cga_params: bytes,    # CGA Parameters Data Structure
-    timestamp_data: bytes, # Timestamp option data
-    nonce_data: bytes,    # Nonce option data (may be empty)
-    public_key_der: bytes, # DER-encoded RSA public key from CGA option
-    signature: bytes,      # RSA signature from signature option
+    src_addr: bytes,         # 16-byte IPv6 source address
+    dst_addr: bytes,         # 16-byte IPv6 destination address
+    icmpv6_type: int,        # ICMPv6 type (133-137)
+    icmpv6_code: int,        # ICMPv6 code
+    icmpv6_checksum: int,    # ICMPv6 checksum
+    ndp_msg_header: bytes,   # NDP header after the ICMP checksum,
+                             # up to (not including) the NDP options
+    preceding_options: bytes, # all NDP options preceding the RSA
+                              # Signature option, in wire order
+    public_key_der: bytes,   # DER-encoded RSA public key (from CGA option)
+    signature: bytes,        # RSA signature from RSA Signature option
 ) -> bool:
     """
     Verify SEND RSA Signature per RFC 3971 Section 5.2.
     Returns True if signature is valid.
     """
-    # Construct signed data
-    # Type byte + 3 reserved bytes
-    type_reserved = bytes([icmpv6_type, 0, 0, 0])
+    # ICMPv6 Type + Code + Checksum, network byte order
+    icmp_fields = struct.pack("!BBH", icmpv6_type, icmpv6_code, icmpv6_checksum)
 
     signed_data = (
+        SEND_CGA_MESSAGE_TYPE_TAG +
         src_addr +
         dst_addr +
-        type_reserved +
-        icmpv6_body +
-        cga_params +
-        timestamp_data +
-        nonce_data
+        icmp_fields +
+        ndp_msg_header +
+        preceding_options
     )
 
-    # Load public key
     public_key = serialization.load_der_public_key(
         public_key_der, backend=default_backend()
     )
@@ -178,20 +188,29 @@ Timestamp Option (Type 13):
  0                   1                   2                   3
  0 1 2 3 4 5 6 7 8 9 0 1 2 3 4 5 6 7 8 9 0 1 2 3 4 5 6 7 8 9 0 1
 +-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+
-|     Type=13   |    Length=2   |         Reserved              |
+|     Type=13   |    Length=2   |           Reserved            |
 +-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+
-|               Timestamp (64-bit NTP timestamp)                |
+|                                                               |
++                          Reserved                             +
+|                                                               |
++-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+
+|                                                               |
++                          Timestamp                            +
 |                                                               |
 +-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+
 
-Timestamp: 64-bit NTP timestamp (seconds since Jan 1, 1900)
-  Top 32 bits: seconds
-  Bottom 32 bits: fractional seconds
+Length:    2 (in units of 8 octets, total option size = 16 bytes)
+Reserved:  48-bit field (16 bits in row 1 + 32 bits in row 2),
+           MUST be zero on send, ignored on receive
+Timestamp: 64-bit fixed-point unsigned integer
+           First 48 bits: integer seconds since Jan 1, 1970, 00:00 UTC
+           Last  16 bits: fractional seconds in units of 1/65536 sec
+           (Note: this is the Unix epoch, not the NTP 1900 epoch)
 
 Verification:
   Receiver accepts if: |current_time - timestamp| < delta_time
   Default delta_time: 300 seconds (configurable)
-  Requires: time synchronization between sender and receiver (NTP)
+  Requires loose time synchronization between sender and receiver
 ```
 
 ## Nonce Option (Type 14) Format
