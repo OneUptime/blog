@@ -126,14 +126,17 @@ all_ips = flatten([for server in var.servers : server.ip_addresses])
 ## Splat Expressions
 
 ```hcl
-# Legacy splat (*) - for count-based resources
+# Splat expression ([*]) - extract attributes from list of resources
 all_ids   = aws_instance.web[*].id
 all_arns  = aws_instance.web[*].arn
 
-# Full splat ([*]) - for any list
-first_az  = aws_subnet.private[*].availability_zone[0]
+# Splat applied to any list of objects
+all_azs   = aws_subnet.private[*].availability_zone
 
-# for expression (more flexible)
+# Legacy attribute-only splat (.*) - older, less flexible form
+legacy_arns = aws_instance.web.*.arn
+
+# for expression (more flexible alternative)
 all_ids   = [for i in aws_instance.web : i.id]
 ```
 
@@ -146,15 +149,15 @@ is_valid = can(regex("^\\d{12}$", var.account_id))
 # try() - return first non-error value
 value = try(var.map["key"], "default_value")
 
-# one() - expect exactly one element
-single_id = one(aws_subnet.private[*].id)  # errors if != 1 element
+# one() - expect at most one element
+single_id = one(aws_subnet.private[*].id)  # null if 0, errors if > 1
 ```
 
 ## Template Directives
 
 ```hcl
-# if directive in template strings
-message = "%{ if var.environment == "prod" }PRODUCTION%{ else }NON-PROD%{ endif }"
+# if directive in template strings (escape inner quotes)
+message = "%{ if var.environment == \"prod\" }PRODUCTION%{ else }NON-PROD%{ endif }"
 
 # for directive in template strings
 names = "%{~ for name in var.names ~}${name},%{~ endfor ~}"
