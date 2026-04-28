@@ -129,7 +129,7 @@ services:
       - MYSQL_PORT=3306
       - MYSQL_USER=root
       - MYSQL_PASSWORD=root_secure_password
-      - MYSQL_INNODB_CLUSTER_MEMBER=mysql1,mysql2,mysql3
+      - MYSQL_INNODB_CLUSTER_MEMBERS=3
     networks:
       - mysql_cluster_net
     depends_on:
