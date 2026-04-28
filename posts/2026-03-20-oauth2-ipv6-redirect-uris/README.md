@@ -63,7 +63,7 @@ const { Issuer, generators } = require('openid-client');
 
 async function setupOAuth2Client() {
     // Discover OAuth2/OIDC provider (can be over IPv6)
-    const issuer = await Issuer.discover('https://[2001:db8:auth::1]:8080/realms/myrealm');
+    const issuer = await Issuer.discover('https://[2001:db8::1]:8080/realms/myrealm');
 
     const client = new issuer.Client({
         client_id: 'myapp',
@@ -115,8 +115,8 @@ oauth.register(
     client_id='myapp',
     client_secret='secret',
     # Provider endpoint over IPv6
-    access_token_url='https://[2001:db8:auth::1]:8080/token',
-    authorize_url='https://[2001:db8:auth::1]:8080/authorize',
+    access_token_url='https://[2001:db8::1]:8080/token',
+    authorize_url='https://[2001:db8::1]:8080/authorize',
     # Redirect URI with IPv6
     redirect_uri='http://[::1]:5000/callback',
     client_kwargs={'scope': 'openid profile email'},
