@@ -8,12 +8,13 @@ Description: Learn how to configure the MySQL provider in OpenTofu to manage dat
 
 ## Introduction
 
-This guide covers How to Configure the MySQL Provider in OpenTofu using OpenTofu with practical examples and production-ready configurations.
+This guide covers how to configure the MySQL provider in OpenTofu with practical examples and production-ready configurations. The actively maintained community provider is `petoju/mysql` (the original `hashicorp/mysql` provider was archived). It connects to a running MySQL server and manages databases, users, grants, and roles as code.
 
 ## Prerequisites
 
 - OpenTofu v1.6+
-- API credentials for the relevant service
+- A reachable MySQL 5.7 or 8.0 server (or a compatible fork like MariaDB)
+- A MySQL account with sufficient privileges to create databases and users (typically `CREATE USER`, `GRANT OPTION`, and the privileges you intend to grant)
 - Basic understanding of OpenTofu concepts
 
 ## Step 1: Install and Configure the Provider
@@ -22,114 +23,123 @@ This guide covers How to Configure the MySQL Provider in OpenTofu using OpenTofu
 terraform {
   required_version = ">= 1.6.0"
   required_providers {
-    # Provider configuration depends on the specific service
-    # Replace with the actual provider source and version
-    example = {
-      source  = "hashicorp/example"
-      version = "~> 1.0"
+    mysql = {
+      source  = "petoju/mysql"
+      version = "~> 3.0"
     }
   }
 }
 
-# Configure the provider with credentials
+# Configure the provider against a running MySQL server.
+# Prefer environment variables (MYSQL_ENDPOINT, MYSQL_USERNAME,
+# MYSQL_PASSWORD) over hard-coded credentials.
 
-provider "example" {
-  # Use environment variables for credentials
-  # EXAMPLE_API_KEY, EXAMPLE_TOKEN, etc.
-  
-  # Or specify directly (not recommended for secrets)
-  # api_key = var.api_key
+provider "mysql" {
+  endpoint = var.mysql_endpoint            # e.g. "db.internal:3306"
+  username = var.mysql_username            # admin user
+  password = var.mysql_password            # mark variable as sensitive
 }
 ```
 
 ## Step 2: Set Up Authentication
 
 ```bash
-# Use environment variables for authentication
-export PROVIDER_API_KEY="your-api-key"
-export PROVIDER_TOKEN="your-token"
-export PROVIDER_ORG="your-organization"
+# The provider reads these environment variables by default
+export MYSQL_ENDPOINT="db.internal:3306"
+export MYSQL_USERNAME="tofu_admin"
+export MYSQL_PASSWORD="change-me"
+
+# Optional: enable TLS to the server
+export MYSQL_TLS_CONFIG="true"
+export MYSQL_TLS_CA_CERT="/etc/mysql/ca.pem"
 ```
 
 ```hcl
-variable "api_key" {
-  description = "API key for authentication"
+variable "mysql_endpoint" {
+  description = "MySQL server host:port"
   type        = string
-  sensitive   = true
 }
 
-variable "organization" {
-  description = "Organization name or ID"
+variable "mysql_username" {
+  description = "Admin user the provider authenticates as"
   type        = string
+}
+
+variable "mysql_password" {
+  description = "Password for the admin user"
+  type        = string
+  sensitive   = true
 }
 ```
 
 ## Step 3: Create Basic Resources
 
 ```hcl
-# Example resource creation
-# Replace with actual resource types for the provider
-
-resource "example_project" "main" {
-  name        = "${var.environment}-project"
-  description = "Managed by OpenTofu"
-
-  tags = {
-    environment = var.environment
-    managed_by  = "opentofu"
-  }
+# Create a database
+resource "mysql_database" "app" {
+  name                  = "app_production"
+  default_character_set = "utf8mb4"
+  default_collation     = "utf8mb4_unicode_ci"
 }
 
-# Configure access control
-resource "example_team" "developers" {
-  name    = "developers"
-  project = example_project.main.id
-  role    = "contributor"
+# Create an application user
+resource "mysql_user" "app" {
+  user               = "app_user"
+  host               = "10.0.%.%"          # restrict to a subnet
+  plaintext_password = var.app_user_password
+  tls_option         = "NONE"              # set to "SSL" to require TLS
 }
 ```
 
 ## Step 4: Configure Advanced Settings
 
 ```hcl
-# Monitoring and alerting configuration
-resource "example_alert" "main" {
-  name      = "critical-alert"
-  project   = example_project.main.id
-  severity  = "critical"
-  threshold = 90
-
-  notification {
-    channel = var.notification_channel
-  }
+# Grant the user full access to its database
+resource "mysql_grant" "app" {
+  user       = mysql_user.app.user
+  host       = mysql_user.app.host
+  database   = mysql_database.app.name
+  privileges = ["SELECT", "INSERT", "UPDATE", "DELETE", "EXECUTE"]
 }
 
-# Backup and retention policies
-resource "example_backup_policy" "main" {
-  name              = "daily-backup"
-  project           = example_project.main.id
-  retention_days    = 30
-  schedule          = "0 2 * * *"  # Daily at 2 AM
+# A role-based pattern: grant a role, then assign the role to the user.
+# Roles require MySQL 8.0+.
+resource "mysql_role" "readonly" {
+  name = "readonly"
+}
+
+resource "mysql_grant" "readonly_select" {
+  role       = mysql_role.readonly.name
+  database   = mysql_database.app.name
+  privileges = ["SELECT"]
+}
+
+resource "mysql_grant" "app_role" {
+  user     = mysql_user.app.user
+  host     = mysql_user.app.host
+  database = mysql_database.app.name
+  roles    = [mysql_role.readonly.name]
 }
 ```
 
 ## Step 5: Define Outputs
 
 ```hcl
-output "project_id" {
-  description = "The ID of the created project"
-  value       = example_project.main.id
+output "database_name" {
+  description = "The name of the created database"
+  value       = mysql_database.app.name
 }
 
-output "project_name" {
-  description = "The name of the created project"
-  value       = example_project.main.name
+output "app_user" {
+  description = "The application user identity (user@host)"
+  value       = "${mysql_user.app.user}@${mysql_user.app.host}"
 }
 ```
 
 ## Step 6: Deploy
 
 ```bash
-# Initialize OpenTofu and download provider
+# Initialize OpenTofu and download the provider
 tofu init
 
 # Validate configuration syntax
@@ -145,14 +155,14 @@ tofu apply
 ## Common Issues and Solutions
 
 ### Authentication Errors
-Verify API keys are valid and have the required permissions. Check for typos in environment variable names.
+Confirm the admin user has `CREATE USER` and `GRANT OPTION` privileges, and that `MYSQL_ENDPOINT` includes the port (`host:3306`). For MySQL 8.0, the default `caching_sha2_password` plugin can fail over plain TCP — set `auth_plugin = "mysql_native_password"` on `mysql_user` or enable TLS.
 
-### Rate Limiting
-Add `depends_on` to serialize resource creation and avoid hitting API rate limits.
+### Connection Errors From CI
+The provider opens a TCP connection during `tofu plan` and `tofu apply`. Make sure the runner can reach the database (security groups, VPN, bastion). For MySQL servers behind a private network, consider running OpenTofu from a runner inside that network.
 
 ### Provider Version Conflicts
-Pin to a specific provider version range to ensure reproducible deployments.
+Pin to a specific provider version range with `version = "~> 3.0"` so that future major releases of `petoju/mysql` do not change behavior unexpectedly. Run `tofu init -upgrade` only when intentionally bumping the version.
 
 ## Conclusion
 
-You have successfully configured How to Configure the MySQL Provider in OpenTofu using OpenTofu. This provider enables you to manage all aspects of the service as code, ensuring consistency and enabling GitOps workflows. Always use environment variables or secure secret stores for sensitive credentials.
+You have successfully configured the MySQL provider in OpenTofu. The `petoju/mysql` provider lets you manage databases, users, grants, and roles as code, ensuring consistency and enabling GitOps workflows. Always source credentials from environment variables or a secret store, mark password variables `sensitive = true`, and prefer TLS connections (`MYSQL_TLS_CONFIG=true`) when the database is reached over an untrusted network.
