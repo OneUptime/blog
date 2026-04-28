@@ -6,7 +6,7 @@ Tags: OpenTofu, NIST 800-53, Compliance, Security Controls, Infrastructure as Co
 
 Description: Learn how to implement key NIST SP 800-53 security control families with OpenTofu to support federal compliance requirements on AWS.
 
-NIST SP 800-53 defines security and privacy controls for federal information systems. OpenTofu lets you codify the most infrastructure-relevant control families - access control, audit logging, system integrity, and media protection - as verifiable, version-controlled resources.
+NIST SP 800-53 defines security and privacy controls for federal information systems. OpenTofu lets you codify the most infrastructure-relevant control families - access control, audit logging, system integrity, and system and communications protection - as verifiable, version-controlled resources.
 
 ## AC - Access Control
 
@@ -83,7 +83,7 @@ resource "aws_cloudtrail" "nist_encrypted" {
 # AU-11: Audit Record Retention - 7-year log retention
 resource "aws_cloudwatch_log_group" "audit" {
   name              = "/aws/cloudtrail/nist"
-  retention_in_days = 2555  # 7 years
+  retention_in_days = 2557  # 7 years
 }
 ```
 
@@ -100,7 +100,7 @@ resource "aws_ssm_patch_baseline" "nist" {
 
     patch_filter {
       key    = "CLASSIFICATION"
-      values = ["Security", "Bugfix", "Critical"]
+      values = ["Security", "Bugfix"]
     }
     patch_filter {
       key    = "SEVERITY"
