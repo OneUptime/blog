@@ -37,13 +37,14 @@ curl -sk -X POST \
   -d '{
     "config": {
       "name": "docker-hub-org",
+      "registry_type": "Docker Registry",
       "registry": "https://registry-1.docker.io",
       "username": "myorg",
       "password": "dckr_pat_xxxxxxxxxxxx",
       "filters": ["myorg/*"],
       "scan_layers": true,
       "rescan_after_db_update": true,
-      "schedule": {"schedule": "daily"}
+      "schedule": {"schedule": "periodical", "interval": 86400}
     }
   }'
 
@@ -68,6 +69,7 @@ curl -sk -X POST \
   -d '{
     "config": {
       "name": "harbor-production",
+      "registry_type": "Harbor Registry",
       "registry": "https://harbor.company.com",
       "username": "robot$nv-scanner",
       "password": "robot-secret-token",
@@ -78,8 +80,8 @@ curl -sk -X POST \
       "scan_layers": true,
       "rescan_after_db_update": true,
       "schedule": {
-        "schedule": "daily",
-        "interval": 0
+        "schedule": "periodical",
+        "interval": 86400
       }
     }
   }'
@@ -107,11 +109,14 @@ curl -sk -X POST \
   -d '{
     "config": {
       "name": "aws-ecr-us-east-1",
+      "registry_type": "Amazon ECR Registry",
       "registry": "https://123456789012.dkr.ecr.us-east-1.amazonaws.com",
-      "auth_with_key": true,
-      "access_key_id": "AKIAIOSFODNN7EXAMPLE",
-      "secret_access_key": "wJalrXUtnFEMI/K7MDENG/bPxRfiCYEXAMPLEKEY",
-      "aws_region": "us-east-1",
+      "aws_key": {
+        "id": "123456789012",
+        "access_key_id": "AKIAIOSFODNN7EXAMPLE",
+        "secret_access_key": "wJalrXUtnFEMI/K7MDENG/bPxRfiCYEXAMPLEKEY",
+        "region": "us-east-1"
+      },
       "filters": ["*:latest", "*:stable"],
       "scan_layers": true,
       "rescan_after_db_update": true
@@ -145,13 +150,14 @@ curl -sk -X POST \
   -d '{
     "config": {
       "name": "azure-acr",
+      "registry_type": "Azure Container Registry",
       "registry": "https://mycompany.azurecr.io",
       "username": "<service-principal-app-id>",
       "password": "<service-principal-password>",
       "filters": ["production/*"],
       "scan_layers": true,
       "rescan_after_db_update": true,
-      "schedule": {"schedule": "daily"}
+      "schedule": {"schedule": "periodical", "interval": 86400}
     }
   }'
 ```
@@ -172,7 +178,9 @@ gcloud projects add-iam-policy-binding my-project \
 gcloud iam service-accounts keys create nv-scanner-key.json \
   --iam-account=nv-scanner@my-project.iam.gserviceaccount.com
 
-# Add to NeuVector (use _json_key as username)
+# Add to NeuVector (pass the JSON key contents in gcr_key.json_key)
+JSON_KEY=$(jq -Rs . < nv-scanner-key.json)
+
 curl -sk -X POST \
   "https://neuvector-manager:8443/v1/scan/registry" \
   -H "Content-Type: application/json" \
@@ -180,9 +188,11 @@ curl -sk -X POST \
   -d "{
     \"config\": {
       \"name\": \"google-gar\",
+      \"registry_type\": \"Google Container Registry\",
       \"registry\": \"https://us-central1-docker.pkg.dev\",
-      \"username\": \"_json_key\",
-      \"password\": $(cat nv-scanner-key.json | jq -c . | jq -sR .),
+      \"gcr_key\": {
+        \"json_key\": ${JSON_KEY}
+      },
       \"filters\": [\"my-project/production/*\"],
       \"scan_layers\": true,
       \"rescan_after_db_update\": true
