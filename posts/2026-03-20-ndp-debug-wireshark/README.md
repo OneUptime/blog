@@ -108,9 +108,9 @@ tshark -r capture.pcap -Y "icmpv6.type == 135 or icmpv6.type == 136" \
 
 # Find DAD conflicts
 tshark -r capture.pcap \
-    -Y "icmpv6.type == 136 and icmpv6.nd.na.flag.s == 0 and not (ipv6.dst == 'ff02::1')" \
+    -Y "icmpv6.type == 136 and icmpv6.nd.na.flag.s == 0 and ipv6.dst == ff02::1" \
     -T fields -e ipv6.src -e ipv6.dst -e icmpv6.nd.na.target_address
-# These unsolicited NAs may be DAD conflict responses
+# These unsolicited NAs to all-nodes (ff02::1) may be DAD conflict responses
 ```
 
 ## Conclusion
