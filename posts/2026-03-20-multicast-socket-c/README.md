@@ -13,8 +13,8 @@ Multicast addresses occupy the Class D range: `224.0.0.0` – `239.255.255.255`.
 | Range | Scope |
 |-------|-------|
 | 224.0.0.0 – 224.0.0.255 | Link-local (TTL 1, not routed) |
-| 239.0.0.0 – 239.255.255.255 | Site-local (administratively scoped) |
-| 224.0.1.0 – 238.255.255.255 | Globally routable |
+| 239.0.0.0 – 239.255.255.255 | Administratively scoped (RFC 2365) |
+| 224.0.1.0 – 238.255.255.255 | Globally scoped |
 
 ## Multicast Sender
 
