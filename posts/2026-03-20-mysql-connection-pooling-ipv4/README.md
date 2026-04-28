@@ -15,8 +15,8 @@ MySQL has a connection limit and each connection consumes memory. ProxySQL acts 
 ```bash
 # Debian/Ubuntu
 
-curl -O https://github.com/sysown/proxysql/releases/download/v2.5.5/proxysql_2.5.5-debian-bullseye_amd64.deb
-sudo dpkg -i proxysql_2.5.5-debian-bullseye_amd64.deb
+curl -LO https://github.com/sysown/proxysql/releases/download/v2.5.5/proxysql_2.5.5-debian11_amd64.deb
+sudo dpkg -i proxysql_2.5.5-debian11_amd64.deb
 
 # RHEL/CentOS
 sudo yum install proxysql
@@ -87,16 +87,17 @@ SAVE MYSQL QUERY RULES TO DISK;
 -- ProxySQL by default listens on 0.0.0.0:6033 for MySQL clients
 -- Restrict to specific IPv4:
 -- /etc/proxysql.cnf
--- mysql_ifaces="10.0.0.5:6033"
+-- mysql_variables = { interfaces="10.0.0.5:6033" }
 
 -- Check current interfaces
 SELECT * FROM global_variables WHERE variable_name LIKE 'mysql-interfaces';
 
--- Update if needed
+-- Update if needed (mysql-interfaces cannot be changed at runtime;
+-- save to disk and restart ProxySQL for the change to take effect)
 UPDATE global_variables SET variable_value='10.0.0.5:6033'
 WHERE variable_name='mysql-interfaces';
-LOAD MYSQL VARIABLES TO RUNTIME;
 SAVE MYSQL VARIABLES TO DISK;
+-- sudo systemctl restart proxysql
 ```
 
 ## Connecting Through ProxySQL
