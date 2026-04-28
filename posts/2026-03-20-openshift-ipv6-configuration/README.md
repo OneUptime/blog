@@ -6,7 +6,7 @@ Tags: OpenShift, IPv6, Dual-Stack, OVNKubernetes, Kubernetes, Red Hat
 
 Description: A guide to deploying OpenShift with IPv6 and dual-stack networking using OVN-Kubernetes, covering installation configuration, network operator settings, and workload verification.
 
-OpenShift 4.6+ supports dual-stack (IPv4 + IPv6) networking using OVN-Kubernetes as the network plugin. Single-stack IPv6 requires OpenShift 4.12+. This guide covers setting up dual-stack OpenShift clusters.
+OpenShift 4.8+ supports dual-stack (IPv4 + IPv6) networking using OVN-Kubernetes as the network plugin (initially on bare metal IPI; broader platform support was added in later releases). Single-stack IPv6 requires OpenShift 4.12+. This guide covers setting up dual-stack OpenShift clusters.
 
 ## Installation Configuration for Dual-Stack
 
