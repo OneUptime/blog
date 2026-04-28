@@ -30,24 +30,24 @@ kubectl exec -it test-pod -- curl -s ifconfig.me
 ## Step 2: Configure Dedicated Egress IP with Calico
 
 ```yaml
-# egress-ip.yaml - Assign a specific IP for all pods in a namespace
+# egress-pool.yaml - Reserve a pool of public IPs for the egress gateway
 apiVersion: projectcalico.org/v3
 kind: IPPool
 metadata:
   name: egress-pool
 spec:
-  cidr: 203.0.113.0/29    # Public IPs allocated for egress
+  cidr: 203.0.113.0/29     # Public IPs allocated for egress
   ipipMode: Never
   vxlanMode: Never
   natOutgoing: false       # Don't SNAT (use the actual pool IP)
   disabled: false
----
-apiVersion: projectcalico.org/v3
-kind: EgressIPSet
-metadata:
-  name: payments-egress
-spec:
-  cidr: 203.0.113.1/32    # Specific IP for payments namespace
+  nodeSelector: "!all()"   # Only used by pods that explicitly opt in
+```
+
+```bash
+# Annotate the namespace whose pods should egress through the gateway
+kubectl annotate ns payments \
+  egress.projectcalico.org/selector="egress-code == 'red'"
 ```
 
 ## Step 3: Configure Egress Gateway
@@ -61,16 +61,25 @@ kind: Deployment
 metadata:
   name: egress-gateway
   namespace: production
+  labels:
+    egress-code: red
 spec:
   replicas: 2
+  selector:
+    matchLabels:
+      egress-code: red
   template:
     metadata:
       annotations:
-        cni.projectcalico.org/ipAddrs: '["203.0.113.1"]'
+        cni.projectcalico.org/ipv4pools: '["egress-pool"]'
+      labels:
+        egress-code: red
     spec:
+      imagePullSecrets:
+        - name: tigera-pull-secret
       containers:
         - name: egress
-          image: calico/egress-gateway:latest
+          image: quay.io/tigera/egress-gateway:v3.28.0
 ```
 
 ## Step 4: Disable SNAT for Specific Pods
