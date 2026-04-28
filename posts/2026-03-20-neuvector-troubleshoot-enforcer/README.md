@@ -140,22 +140,22 @@ If protect mode is blocking legitimate application traffic:
 ```bash
 # Identify which violations are blocking the application
 curl -sk \
-  "https://neuvector-manager:8443/v1/event?type=security&start=0&limit=50" \
+  "https://neuvector-manager:8443/v1/log/violation?start=0&limit=50" \
   -H "X-Auth-Token: ${TOKEN}" | \
-  jq '.events[] | select(.action == "deny") | {
-    time: .at,
-    container: .workload_name,
-    type: .type,
-    name: .name,
+  jq '.violations[] | {
+    time: .reported_at,
+    client: .client_name,
+    server: .server_name,
+    application: .applications,
     detail: .message
   }'
 
-# Quick fix: Move the affected group to Monitor mode
+# Quick fix: Move the affected service to Monitor mode
 curl -sk -X PATCH \
-  "https://neuvector-manager:8443/v1/group/nv.myapp.production" \
+  "https://neuvector-manager:8443/v1/service/config" \
   -H "Content-Type: application/json" \
   -H "X-Auth-Token: ${TOKEN}" \
-  -d '{"config": {"mode": "Monitor"}}'
+  -d '{"config": {"services": ["myapp.production"], "policy_mode": "Monitor"}}'
 
 echo "Group moved to Monitor mode. Application should recover."
 echo "Review the violations and update policies, then switch back to Protect."
@@ -186,12 +186,12 @@ Potential causes and solutions:
 # Solution: Reduce process monitoring scope
 
 # Cause 2: DPI on high-traffic services
-# Solution: Disable DPI for low-risk, high-traffic groups
+# Solution: Move low-risk, high-traffic services to Discover mode
 curl -sk -X PATCH \
-  "https://neuvector-manager:8443/v1/group/nv.batch-processor.default" \
+  "https://neuvector-manager:8443/v1/service/config" \
   -H "Content-Type: application/json" \
   -H "X-Auth-Token: ${TOKEN}" \
-  -d '{"config": {"mode": "Discover"}}'
+  -d '{"config": {"services": ["batch-processor.default"], "policy_mode": "Discover"}}'
 ```
 
 ## Step 6: Verify Enforcer on All Nodes
