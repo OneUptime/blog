@@ -37,7 +37,7 @@ def analyze_address(cidr: str):
     """
     interface = ipaddress.IPv4Interface(cidr)
     network = interface.network
-    host_int = int(interface.ip) & int(~interface.network.netmask)
+    host_int = int(interface.ip) & int(network.hostmask)
 
     print(f"IP Address    : {interface.ip}")
     print(f"Subnet Mask   : {interface.netmask}")
