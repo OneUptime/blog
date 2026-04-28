@@ -131,7 +131,7 @@ tofu init
 tofu state mv \
   -state=../full-state.json \
   -state-out=terraform.tfstate \
-  module.vpc
+  module.vpc module.vpc
 
 # Verify networking state
 tofu state list
