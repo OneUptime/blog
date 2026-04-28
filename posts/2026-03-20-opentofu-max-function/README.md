@@ -16,7 +16,7 @@ The `max` function in OpenTofu returns the greatest value from a list of one or 
 max(number, number, ...)
 ```
 
-- Accepts two or more numeric arguments.
+- Accepts one or more numeric arguments.
 - Returns the largest among them.
 - Also works with a list using the splat operator: `max(list...)`
 
