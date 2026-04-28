@@ -48,19 +48,17 @@ nmap -6 -iL ipv6-targets.txt
 Scanning large IPv6 subnets is impractical (/64 = 18.4 quintillion addresses). Only scan small custom ranges:
 
 ```bash
-# Scan the first 256 addresses of a /64 (custom range notation)
-# nmap does not support CIDR for IPv6 in the same way as IPv4
-# Use a Python script to enumerate addresses:
+# Scan the first 256 addresses of a /64 using CIDR notation
+# nmap supports CIDR for IPv6, but octet ranges (e.g. [1-254]) are not supported
+nmap -6 2001:db8::/120 -sV -T4  # /120 = 256 addresses
 
+# Or use a Python script to enumerate addresses (useful for non-contiguous ranges):
 python3 -c "
 import ipaddress
 net = ipaddress.IPv6Network('2001:db8::/120')  # /120 = 256 addresses
 for ip in net.hosts():
     print(ip)
 " | nmap -6 -iL - -sV -T4
-
-# Or manually specify a small range
-nmap -6 2001:db8::[1-254]
 ```
 
 ## IPv6 Host Discovery Techniques
@@ -69,8 +67,9 @@ nmap -6 2001:db8::[1-254]
 # Use ping6 to find live hosts on the local segment
 ping6 -c 3 ff02::1%eth0  # Ping all-nodes multicast (link-local)
 
-# Use nmap with link-local multicast
-nmap -6 -sn ff02::1%eth0  # Discover local IPv6 hosts
+# Use nmap NSE script for link-local multicast host discovery
+# (sends ICMPv6 echo to ff02::1 and adds responders as targets)
+sudo nmap -6 -sn -e eth0 --script targets-ipv6-multicast-echo --script-args newtargets
 
 # Use nmap with ICMPv6 echo request
 nmap -6 -sn --send-ip 2001:db8::10
