@@ -76,8 +76,8 @@ resource "aws_s3_object" "app_config" {
   key    = "app.json"
   source = "${path.module}/config/app.json"
 
-  # S3 uses Base64-encoded MD5 for integrity verification
-  content_md5 = filemd5("${path.module}/config/app.json")
+  # ETag triggers re-upload when the file content changes
+  etag = filemd5("${path.module}/config/app.json")
 }
 ```
 
@@ -146,7 +146,7 @@ resource "aws_launch_template" "app" {
 1. Identify the file whose hash you need.
 2. Choose the appropriate hash function based on the target API's requirements:
    - AWS Lambda `source_code_hash`: `filebase64sha256`
-   - S3 `content_md5`: `filemd5`
+   - S3 object `etag`: `filemd5`
    - Custom change tracking: `filesha256`
 3. Use the hash in `source_code_hash`, `triggers`, or tags.
 
@@ -162,14 +162,14 @@ tofu console
 ## Why Use File Functions vs file() + hash()
 
 ```hcl
-# Preferred - more efficient:
+# Preferred - reads raw bytes, works for any file:
 filesha256("path/to/file.zip")
 
-# Equivalent but loads file into string first:
-sha256(file("path/to/file.zip"))
+# Only works if the file is valid UTF-8 text - fails on binary files:
+sha256(file("path/to/file.txt"))
 ```
 
-The file hash functions are more memory-efficient for large files.
+The file hash functions read the file as raw bytes, so they work with any file (including binary files like ZIP archives). The `file()` function requires the file to be valid UTF-8 text, so it cannot be used with binary content.
 
 ## Conclusion
 
