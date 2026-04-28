@@ -8,127 +8,132 @@ Description: Configure Netlify Functions to handle IPv6 client requests and inte
 
 ## Introduction
 
-Netlify Functions IPv6 enables serverless workloads to operate in IPv6 and dual-stack environments. The configuration varies by platform but involves enabling IPv6 on the underlying network, configuring function runtime environment, and validating IPv6 client connectivity.
+Netlify Functions run on a dual-stack platform, so client requests can arrive over either IPv4 or IPv6. This guide covers reading IPv6 client addresses from Netlify's request headers, calling IPv6 backends from a function, and validating IPv6 client connectivity to your site. Netlify Functions support JavaScript/TypeScript (Node.js) and Go runtimes, so the examples below use Node.js.
 
 ## Step 1: Enable IPv6 on the Platform
 
 ```bash
-# Platform-specific IPv6 enablement
+# Netlify's CDN and edge network is dual-stack by default,
+# so deployed sites and functions are reachable over IPv6
+# without per-site configuration.
 
-# Most serverless platforms use the underlying cloud provider's network
+# Check that your Netlify site's public endpoint has IPv6
+dig AAAA your-site.netlify.app
 
-# Check if the platform's public endpoint has IPv6
-dig AAAA your-function-url.example.com
-
-# For VPC-integrated functions, ensure VPC subnet has IPv6
-# (refer to platform documentation)
+# Check that a function endpoint resolves over IPv6
+dig AAAA your-site.netlify.app
+# Functions are exposed at https://your-site.netlify.app/.netlify/functions/<name>
 ```
 
 ## Step 2: Handle IPv6 Client Addresses in Functions
 
-```python
-# Python serverless handler example
-import ipaddress
+```javascript
+// netlify/functions/client-info.js
+// Netlify Functions v1 (Lambda-compatible) handler
+exports.handler = async (event, context) => {
+  // Extract client IP from Netlify-provided headers.
+  // x-nf-client-connection-ip is Netlify's most reliable source.
+  const rawIp =
+    event.headers["x-nf-client-connection-ip"] ??
+    event.headers["x-forwarded-for"]?.split(",")[0]?.trim() ??
+    "unknown";
 
-def handler(event, context):
-    # Extract client IP (varies by platform)
-    client_ip = (
-        event.get("requestContext", {})
-             .get("identity", {})
-             .get("sourceIp")
-        or event.get("headers", {}).get("X-Forwarded-For", "").split(",")[0].strip()
-        or "unknown"
-    )
+  // Normalize IPv4-mapped IPv6 addresses (e.g. ::ffff:1.2.3.4 -> 1.2.3.4)
+  const mapped = rawIp.match(/^::ffff:(\d+\.\d+\.\d+\.\d+)$/i);
+  const clientIp = mapped ? mapped[1] : rawIp;
+  const isIPv6 = !mapped && clientIp.includes(":");
 
-    # Normalize IPv4-mapped IPv6
-    try:
-        addr = ipaddress.ip_address(client_ip)
-        if isinstance(addr, ipaddress.IPv6Address) and addr.ipv4_mapped:
-            client_ip = str(addr.ipv4_mapped)
-        is_ipv6 = isinstance(addr, ipaddress.IPv6Address) and not addr.ipv4_mapped
-    except ValueError:
-        is_ipv6 = False
-
-    return {
-        "statusCode": 200,
-        "body": f"Client IP: {client_ip}, IPv6: {is_ipv6}"
-    }
+  return {
+    statusCode: 200,
+    body: `Client IP: ${clientIp}, IPv6: ${isIPv6}`,
+  };
+};
 ```
 
 ## Step 3: Make Outbound IPv6 Requests
 
-```python
-import urllib.request
+```javascript
+// Make HTTP request to an IPv6 endpoint from a Netlify Function.
+// Node.js 18+ (Netlify's default runtime) ships fetch and AbortSignal.timeout.
+async function callIpv6Endpoint() {
+  // URL with bracketed IPv6 address (RFC 3986)
+  const url = "http://[2001:db8::1]/api/health";
 
-def call_ipv6_endpoint():
-    """Make HTTP request to an IPv6 endpoint from serverless."""
-    # URL with bracketed IPv6 address
-    url = "http://[2001:db8::1]/api/health"
+  try {
+    const response = await fetch(url, {
+      signal: AbortSignal.timeout(10_000),
+    });
+    return await response.text();
+  } catch (e) {
+    return `Error: ${e.message}`;
+  }
+}
 
-    try:
-        with urllib.request.urlopen(url, timeout=10) as response:
-            return response.read().decode()
-    except Exception as e:
-        return f"Error: {e}"
-
-# Or with requests library
-import requests
-
-def call_ipv6_with_requests():
-    response = requests.get("http://[2001:db8::1]/api", timeout=10)
-    return response.json()
+// Returning JSON from the same endpoint
+async function callIpv6Json() {
+  const response = await fetch("http://[2001:db8::1]/api", {
+    signal: AbortSignal.timeout(10_000),
+  });
+  return await response.json();
+}
 ```
 
 ## Step 4: Test IPv6 Connectivity
 
 ```bash
-# Test that your serverless endpoint accepts IPv6
-curl -6 https://your-function-url.example.com/
+# Test that your Netlify site/function accepts IPv6
+curl -6 https://your-site.netlify.app/.netlify/functions/client-info
 
-# Test with explicit IPv6 address
-curl --resolve "your-function-url.example.com:443:2001:db8::1"     https://your-function-url.example.com/
+# Test with explicit IPv6 address (note brackets around the IPv6 address)
+curl --resolve "your-site.netlify.app:443:[2001:db8::1]" \
+    https://your-site.netlify.app/.netlify/functions/client-info
 
 # Check IPv6 DNS
-dig AAAA your-function-url.example.com
+dig AAAA your-site.netlify.app
 ```
 
 ## Step 5: Environment Variable Configuration
 
-```bash
-# Set environment variables for IPv6 endpoints
-# (Platform-specific - shown as generic examples)
+```toml
+# netlify.toml - build-time environment variables
+# For secrets, prefer setting variables in the Netlify UI
+# (Site configuration -> Environment variables) or via
+# `netlify env:set KEY value` so they are not committed to git.
 
-BACKEND_URL="http://[2001:db8::backend]/api"
-DATABASE_HOST="2001:db8::db"
+[build.environment]
+  BACKEND_URL = "http://[2001:db8::backend]/api"
+  DATABASE_HOST = "2001:db8::db"
+```
 
-# In your function code
-import os
-backend_url = os.environ.get("BACKEND_URL", "http://[::1]/api")
+```javascript
+// In your function code
+const backendUrl = process.env.BACKEND_URL ?? "http://[::1]/api";
 ```
 
 ## Step 6: Monitoring and Logging
 
-```python
-import logging
-import ipaddress
+```javascript
+// netlify/functions/log-metrics.js
+function logIpv6Metrics(clientIp) {
+  if (!clientIp || clientIp === "unknown") {
+    console.warn(`Invalid IP address: ${clientIp}`);
+    return;
+  }
 
-logger = logging.getLogger()
-logger.setLevel(logging.INFO)
+  const isIPv6 = clientIp.includes(":");
 
-def log_ipv6_metrics(client_ip: str):
-    """Log IPv6 client metrics for observability."""
-    try:
-        addr = ipaddress.ip_address(client_ip)
-        logger.info({
-            "event": "request",
-            "client_ip": client_ip,
-            "ip_version": addr.version,
-            "is_private": addr.is_private,
-        })
-    except ValueError:
-        logger.warning(f"Invalid IP address: {client_ip}")
+  // Netlify captures stdout/stderr from functions and exposes it
+  // via the function logs UI. JSON-formatted lines parse cleanly.
+  console.log(
+    JSON.stringify({
+      event: "request",
+      client_ip: clientIp,
+      ip_version: isIPv6 ? 6 : 4,
+    }),
+  );
+}
 ```
 
 ## Conclusion
 
-Netlify Functions IPv6 works best when the underlying network has IPv6 enabled at the VPC/subnet level. Extract client IPv6 addresses from platform-specific request contexts, normalize IPv4-mapped addresses, and use bracket notation for IPv6 URLs in outbound requests. Monitor serverless function invocations from IPv6 clients with OneUptime to track adoption and error rates.
+Netlify's edge handles IPv6 transparently, so most of the work is on the function side: read the client IP from `x-nf-client-connection-ip` (falling back to `x-forwarded-for`), normalize IPv4-mapped IPv6 addresses, and use bracket notation for IPv6 URLs in outbound requests. Monitor function invocations from IPv6 clients with OneUptime to track adoption and error rates.
