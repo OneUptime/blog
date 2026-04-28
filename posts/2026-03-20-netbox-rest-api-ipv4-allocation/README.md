@@ -13,7 +13,7 @@ NetBox's REST API makes it possible to integrate IPAM into provisioning automati
 ```bash
 # Generate an API token via the web UI:
 
-# Admin → API Tokens → + Add Token
+# Click your username (top-right) → API Tokens → + Add Token
 
 # Test authentication
 curl -H "Authorization: Token <YOUR_TOKEN>" \
@@ -102,7 +102,7 @@ def provision_server(hostname, role, site_name, prefix_cidr):
     # 2. Create the device record
     device = nb.dcim.devices.create(
         name=hostname,
-        device_role=device_role.id,
+        role=device_role.id,
         site=site.id,
         device_type=device_type.id,
         status="active"
