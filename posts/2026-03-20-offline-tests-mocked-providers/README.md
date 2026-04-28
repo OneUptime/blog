@@ -154,8 +154,7 @@ run "large_instance_type" {
   override_resource {
     target = aws_instance.web
     values = {
-      instance_type = "m5.large"
-      id            = "i-prod-mock"
+      id = "i-prod-mock"
     }
   }
 
