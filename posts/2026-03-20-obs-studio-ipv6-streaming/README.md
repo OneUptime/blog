@@ -63,11 +63,11 @@ Note: OBS 27+ has native SRT support
 
 # For headless/server OBS:
 
-# Start OBS in virtual camera mode (Linux)
+# Start OBS with replay buffer enabled (Linux)
 obs --startreplaybuffer --minimize-to-tray
 
 # Script to change stream URL dynamically
-obs-cmd --websocket localhost:4444 \
+obs-cmd --websocket localhost:4455 \
   config stream server "rtmp://[2001:db8::server]/live"
 ```
 
