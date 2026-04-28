@@ -159,4 +159,4 @@ sudo nginx -t && sudo nginx -s reload
 
 ## Conclusion
 
-Nginx's `allow` and `deny` directives provide a fast, kernel-level access control layer for IPv4 addresses. Always place specific rules before broad ones, end every whitelist with `deny all`, and reload Nginx to apply changes. For dynamic whitelists that update frequently without reloads, consider combining with the `geo` module or an external WAF.
+Nginx's `allow` and `deny` directives provide a fast, request-level access control layer for IPv4 addresses. Always place specific rules before broad ones, end every whitelist with `deny all`, and reload Nginx to apply changes. For dynamic whitelists that update frequently without reloads, consider combining with the `geo` module or an external WAF.
