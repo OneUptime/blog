@@ -54,7 +54,7 @@ keys({a=1, b=2})                           # → ["a","b"]
 values({a=1, b=2})                         # → [1,2]
 merge({a=1}, {b=2})                        # → {a=1, b=2}
 lookup({a=1, b=2}, "a", 0)                # → 1 (0 is default)
-contains({a=1, b=2}, "a")                 # → true (checks key)
+contains(keys({a=1, b=2}), "a")           # → true (checks key)
 zipmap(["a","b"], [1,2])                   # → {a=1, b=2}
 ```
 
