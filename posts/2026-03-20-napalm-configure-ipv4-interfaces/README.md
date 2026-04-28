@@ -9,7 +9,7 @@ Description: Learn how to use NAPALM's configuration management capabilities to 
 ## NAPALM's Declarative Configuration Model
 
 NAPALM supports two configuration approaches:
-- **merge_candidate()** - merges new config with running config
+- **load_merge_candidate()** - merges new config with running config
 - **load_replace_candidate()** - replaces entire config with the candidate
 
 Both methods support:
