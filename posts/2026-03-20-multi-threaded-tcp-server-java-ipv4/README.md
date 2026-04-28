@@ -24,9 +24,10 @@ public class MultiThreadedTcpServer {
     private final AtomicInteger activeConnections = new AtomicInteger(0);
 
     public MultiThreadedTcpServer(int port) throws IOException {
-        serverSocket = new ServerSocket(port, 100,
-            InetAddress.getByName("0.0.0.0"));
+        serverSocket = new ServerSocket();
         serverSocket.setReuseAddress(true);
+        serverSocket.bind(
+            new InetSocketAddress(InetAddress.getByName("0.0.0.0"), port), 100);
 
         // Fixed thread pool limits max concurrent handlers
         executor = Executors.newFixedThreadPool(MAX_THREADS,
@@ -128,8 +129,9 @@ import java.util.concurrent.*;
 
 public class VirtualThreadServer {
     public static void main(String[] args) throws IOException {
-        ServerSocket serverSocket = new ServerSocket(9000);
+        ServerSocket serverSocket = new ServerSocket();
         serverSocket.setReuseAddress(true);
+        serverSocket.bind(new InetSocketAddress(9000));
 
         // Virtual thread executor - can handle millions of concurrent connections
         try (ExecutorService executor =
