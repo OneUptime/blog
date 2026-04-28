@@ -57,7 +57,7 @@ A=0, L=1 (DHCPv6 deployment with on-link prefix):
 
 A=1, L=0 (unusual):
   Hosts form SLAAC addresses
-  Prefix is NOT on-link (routes go through default GW)
+  No on-link statement (RA makes no claim about on/off-link)
   Rarely used; can cause asymmetric routing issues
 
 A=0, L=0:
@@ -113,7 +113,7 @@ sudo tcpdump -i eth0 -vv "icmp6 and ip6[40] == 134"
 #   ↑ "auto" = A=1 (Autonomous)
 #   ↑ "onlink" = L=1 (On-Link)
 
-# With A=0, O=0, L=1:
+# With A=0, L=1:
 # prefix info option (3), length 32 (4): 2001:db8::/64, Flags [onlink]
 #   ↑ No "auto" = A=0
 
