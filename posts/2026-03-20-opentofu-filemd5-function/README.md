@@ -11,8 +11,7 @@ Learn how to use the filemd5() function in OpenTofu to compute MD5 hashes of fil
 ## Syntax
 
 ```hcl
-# See OpenTofu documentation for full syntax
-
+filemd5(path)
 ```
 
 ## Basic Example
