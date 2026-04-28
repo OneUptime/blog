@@ -122,12 +122,11 @@ def get_available_64s(parent_prefix: str, count: int = 5) -> list:
         raise ValueError(f"Prefix {parent_prefix} not found in NetBox")
 
     # NetBox API: get available child prefixes
-    available = nb.ipam.prefixes.available_prefixes.list(parent.id)
+    available = parent.available_prefixes.list()
     results = []
     for avail in available:
         # Request a /64 from the available block
-        new_prefix = nb.ipam.prefixes.available_prefixes.create(
-            parent.id,
+        new_prefix = parent.available_prefixes.create(
             {"prefix_length": 64, "description": "Auto-allocated"}
         )
         results.append(new_prefix.prefix)
@@ -154,9 +153,9 @@ site_ips = nb.ipam.ip_addresses.filter(
 
 # Find unallocated /64s in a /48
 parent = nb.ipam.prefixes.get(prefix="2001:db8:0001::/48")
-available = nb.ipam.prefixes.available_prefixes.list(parent.id)
+available = parent.available_prefixes.list()
 for block in available:
-    print(f"Available block: {block['prefix']}")
+    print(f"Available block: {block.prefix}")
 ```
 
 ## Step 6: Custom Fields for IPv6 Metadata
@@ -166,7 +165,7 @@ Add custom fields in NetBox UI or API for IPv6-specific tracking:
 ```python
 # Create custom field for delegation source
 nb.extras.custom_fields.create({
-    "content_types": ["ipam.prefix"],
+    "object_types": ["ipam.prefix"],
     "name": "delegation_source",
     "label": "Delegation Source",
     "type": "text",
@@ -174,7 +173,7 @@ nb.extras.custom_fields.create({
 })
 
 nb.extras.custom_fields.create({
-    "content_types": ["ipam.prefix"],
+    "object_types": ["ipam.prefix"],
     "name": "slaac_enabled",
     "label": "SLAAC Enabled",
     "type": "boolean",
