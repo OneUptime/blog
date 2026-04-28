@@ -57,7 +57,6 @@ vlc --miface eth0 udp://@239.255.0.1:5004
 vlc udp://@239.255.0.1:5004 \
   --sout file/ts:/tmp/recorded.ts \
   --run-time=60 \
-  --stop-after-time=60 \
   vlc://quit
 
 # With buffering to handle network jitter:
@@ -109,9 +108,9 @@ vlc /path/to/video.mp4 \
   --sout '#rtp{dst=239.255.0.1,port=5004,mux=ts,ttl=16}' \
   --loop
 
-# Bind sender to specific interface:
-vlc /path/to/video.mp4 \
-  --sout '#rtp{dst=239.255.0.1,port=5004,mux=ts,bind=192.168.1.10}' \
+# Bind sender to a specific multicast output interface:
+vlc --miface eth0 /path/to/video.mp4 \
+  --sout '#rtp{dst=239.255.0.1,port=5004,mux=ts}' \
   --loop
 
 # Receiver on specific interface:
