@@ -42,8 +42,8 @@ spec:
         "type": "static",
         "addresses": [
           {
-            "address": "2001:db8:net2::10/64",
-            "gateway": "2001:db8:net2::1"
+            "address": "2001:db8:2::10/64",
+            "gateway": "2001:db8:2::1"
           }
         ],
         "routes": [
@@ -135,7 +135,7 @@ metadata:
           "name": "ipv6-macvlan",
           "namespace": "default",
           "interface": "net1",
-          "ips": ["2001:db8:net2::42/64"]
+          "ips": ["2001:db8:2::42/64"]
         }
       ]
 spec:
@@ -154,11 +154,11 @@ kubectl get pod multi-ipv6-pod -o jsonpath='{.metadata.annotations.k8s\.v1\.cni\
 # [{
 #   "name": "", "interface": "eth0", "ips": ["10.244.0.5", "fd00:10:244::5"]
 # }, {
-#   "name": "default/ipv6-macvlan", "interface": "net1", "ips": ["2001:db8:net2::10"]
+#   "name": "default/ipv6-macvlan", "interface": "net1", "ips": ["2001:db8:2::10"]
 # }]
 
 # Test connectivity on each interface
-kubectl exec multi-ipv6-pod -- ping6 -I net1 2001:db8:net2::1
+kubectl exec multi-ipv6-pod -- ping6 -I net1 2001:db8:2::1
 kubectl exec multi-ipv6-pod -- ping6 -I eth0 fd00:10:244::1
 ```
 
