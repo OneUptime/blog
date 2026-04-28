@@ -97,25 +97,27 @@ NDPMon provides comprehensive NDP traffic analysis with alerting.
 sudo apt-get install ndpmon   # Debian/Ubuntu
 # or build from source: https://ndpmon.sourceforge.net/
 
-# Configure NDPMon (/etc/ndpmon/ndpmon.xml)
-# Specify known routers, expected prefixes, and alert thresholds
+# Configure NDPMon (/etc/ndpmon/config_ndpmon.xml)
+# Specify known routers, expected prefixes, and alert thresholds.
+# See ndpmon's sample config for the full schema.
 
-# Key NDPMon configuration:
-# <routers>
-#   <router>
-#     <mac>00:11:22:33:44:55</mac>
-#     <lla>fe80::1</lla>
-#     <prefix_list>
-#       <prefix>2001:db8::/64</prefix>
-#     </prefix_list>
-#     <param name="curlft" value="2592000"/>
-#   </router>
-# </routers>
-# <plugins>
-#   <plugin name="syslog">
-#     <param name="facility" value="daemon"/>
-#   </plugin>
-# </plugins>
+# Key NDPMon configuration (excerpt from config_ndpmon.xml):
+# <config_ndpmon>
+#   <routers>
+#     <router>
+#       <mac>00:11:22:33:44:55</mac>
+#       <lla>fe80::1</lla>
+#       <param name="router_lifetime" value="1800"/>
+#       <prefixes>
+#         <prefix>
+#           <address>2001:db8::</address>
+#           <mask>64</mask>
+#           <param name="param_curlft" value="2592000"/>
+#         </prefix>
+#       </prefixes>
+#     </router>
+#   </routers>
+# </config_ndpmon>
 
 # Start NDPMon
 sudo ndpmon
@@ -135,7 +137,12 @@ Use Wireshark's statistics features for traffic analysis.
 ```text
 Wireshark NDP Monitoring:
 
-Capture Filter (for live capture):
+Capture Filter (BPF/libpcap syntax, for live capture):
+  icmp6 and (ip6[40] == 133 or ip6[40] == 134 or
+             ip6[40] == 135 or ip6[40] == 136 or
+             ip6[40] == 137)
+
+Display Filter (Wireshark dfilter syntax, for analysis):
   icmp6.type == 133 or icmp6.type == 134 or
   icmp6.type == 135 or icmp6.type == 136 or
   icmp6.type == 137
@@ -169,9 +176,12 @@ watch -n 5 'ip -6 neigh show | wc -l'
 ip -6 neigh show | grep FAILED | wc -l
 # High FAILED count = NDP exhaustion attack or network issue
 
-# Monitor neighbor cache statistics
+# Monitor neighbor cache statistics (values printed in hex)
 cat /proc/net/stat/ndisc_cache
-# Columns: interval, total_entries, ...
+# Columns: entries, allocs, destroys, hash_grows, lookups, hits,
+#          res_failed, rcv_probes_mcast, rcv_probes_ucast,
+#          periodic_gc_runs, forced_gc_runs, unresolved_discards,
+#          table_fulls (one row per CPU)
 
 # Check for rapid changes (poll every 10 seconds)
 while true; do
@@ -190,11 +200,12 @@ done
 ```bash
 For enterprise monitoring systems (SNMP/IPFIX):
 
-SNMP OIDs for IPv6 NDP:
+SNMP OIDs for IPv6 NDP (per RFC 2466 IPV6-ICMP-MIB,
+appended with ifIndex to identify a specific interface):
   ipv6IfIcmpInMsgs:           1.3.6.1.2.1.56.1.1.1.1  (incoming ICMPv6)
-  ipv6IfIcmpOutMsgs:          1.3.6.1.2.1.56.1.1.1.2  (outgoing ICMPv6)
-  ipv6IfIcmpInRouterAdvertisements: 1.3.6.1.2.1.56.1.1.1.10 (RA count)
-  ipv6IfIcmpInNeighborAdvertisements: 1.3.6.1.2.1.56.1.1.1.16
+  ipv6IfIcmpOutMsgs:          1.3.6.1.2.1.56.1.1.1.18 (outgoing ICMPv6)
+  ipv6IfIcmpInRouterAdvertisements: 1.3.6.1.2.1.56.1.1.1.11 (RA count)
+  ipv6IfIcmpInNeighborAdvertisements: 1.3.6.1.2.1.56.1.1.1.13
 
 Alerting thresholds:
   ipv6IfIcmpInRouterAdvertisements: > 5/min = ALERT
