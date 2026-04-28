@@ -96,28 +96,30 @@ GitHub Actions signing example:
 
 ## Step 4: Configure NeuVector Signature Verification
 
-Add the public key to NeuVector for verification:
+Create a sigstore root of trust in NeuVector, then add the public key as a verifier under it:
 
 ```bash
-# Configure signature verification in NeuVector
+# Create a sigstore root of trust (public root, key-pair only)
 curl -sk -X POST \
-  "https://neuvector-manager:8443/v1/scan/sigstore_root_of_trust" \
+  "https://neuvector-manager:8443/v1/scan/sigstore/root_of_trust" \
   -H "Content-Type: application/json" \
   -H "X-Auth-Token: ${TOKEN}" \
   -d '{
-    "config": {
-      "name": "company-signing-key",
-      "comment": "Company production image signing key",
-      "rootkeys": [
-        {
-          "name": "prod-signing-key",
-          "comment": "Production CI/CD signing key",
-          "root_of_trust_type": "cosign",
-          "public_key": "-----BEGIN PUBLIC KEY-----\nMFkwEwYHKoZIzj0CAQYIKoZIzj0DAQcDQgAE...\n-----END PUBLIC KEY-----"
-        }
-      ],
-      "cfg_type": "user"
-    }
+    "name": "company-signing-key",
+    "rootless_keypairs_only": true,
+    "comment": "Company production image signing key"
+  }'
+
+# Add a keypair verifier under the root of trust
+curl -sk -X POST \
+  "https://neuvector-manager:8443/v1/scan/sigstore/root_of_trust/company-signing-key/verifier" \
+  -H "Content-Type: application/json" \
+  -H "X-Auth-Token: ${TOKEN}" \
+  -d '{
+    "name": "prod-signing-key",
+    "verifier_type": "keypair",
+    "public_key": "-----BEGIN PUBLIC KEY-----\nMFkwEwYHKoZIzj0CAQYIKoZIzj0DAQcDQgAE...\n-----END PUBLIC KEY-----",
+    "comment": "Production CI/CD signing key"
   }'
 ```
 
@@ -139,42 +141,31 @@ curl -sk -X POST \
         {
           "name": "imageSigned",
           "op": "=",
-          "value": "false",
-          "type": "imageSigned"
+          "value": "false"
         }
       ],
       "rule_type": "deny",
-      "cfg_type": "user"
+      "cfg_type": "user_created"
     }
   }'
 ```
 
-## Step 6: Configure Registry-Specific Signature Verification
+## Step 6: Add a Keyless Verifier for Workflow-Signed Images
 
-Set up verification for specific registries:
+Add a keyless verifier under the same root of trust to also accept signatures from a specific OIDC identity (for example, a GitHub Actions workflow):
 
 ```bash
-# Configure per-registry signature requirements
-curl -sk -X PATCH \
-  "https://neuvector-manager:8443/v1/scan/sigstore_root_of_trust/company-signing-key" \
+# Add a keyless verifier (e.g., GitHub Actions OIDC identity)
+curl -sk -X POST \
+  "https://neuvector-manager:8443/v1/scan/sigstore/root_of_trust/company-signing-key/verifier" \
   -H "Content-Type: application/json" \
   -H "X-Auth-Token: ${TOKEN}" \
   -d '{
-    "config": {
-      "rootkeys": [
-        {
-          "name": "registry-specific-key",
-          "root_of_trust_type": "cosign",
-          "public_key": "-----BEGIN PUBLIC KEY-----\n...\n-----END PUBLIC KEY-----",
-          "verifier": {
-            "name": "registry-policy",
-            "comment": "Only verify images from company registry",
-            "type": "keylessKeyPair",
-            "public_key": "-----BEGIN PUBLIC KEY-----\n...\n-----END PUBLIC KEY-----"
-          }
-        }
-      ]
-    }
+    "name": "github-actions-verifier",
+    "verifier_type": "keyless",
+    "cert_issuer": "https://token.actions.githubusercontent.com",
+    "cert_subject": "https://github.com/company/repo/.github/workflows/sign-image.yml@refs/heads/main",
+    "comment": "Verify keyless signatures from company GitHub Actions workflow"
   }'
 ```
 
@@ -200,7 +191,7 @@ curl -sk -X POST \
         }
       ],
       "rule_type": "exception",
-      "cfg_type": "user"
+      "cfg_type": "user_created"
     }
   }'
 ```
