@@ -22,31 +22,35 @@ Integrating NeuVector with LDAP (Lightweight Directory Access Protocol) or Micro
 Before configuring NeuVector, collect these details from your LDAP/AD administrator:
 
 ```text
-Server:           ldap.company.com or ad.company.com
-Port:             389 (LDAP) or 636 (LDAPS)
-Base DN:          DC=company,DC=com
-Bind DN:          CN=neuvector-bind,OU=Service Accounts,DC=company,DC=com
-Bind Password:    (service account password)
-User Filter:      (sAMAccountName={0}) for AD
-                  (uid={0}) for OpenLDAP
-Group Filter:     (member={0}) or (memberOf={0})
-Group DN:         OU=Security Groups,DC=company,DC=com
+Server:                ldap.company.com or ad.company.com
+Port:                  389 (LDAP) or 636 (LDAPS)
+Base DN:               DC=company,DC=com
+Bind DN:               CN=neuvector-bind,OU=Service Accounts,DC=company,DC=com
+Bind Password:         (service account password)
+Username Attribute:    sAMAccountName for AD
+                       uid for OpenLDAP
+Group Member Attr:     member for AD
+                       memberUid for OpenLDAP
+Group DN:              OU=Security Groups,DC=company,DC=com
 ```
 
 ## Step 2: Configure LDAP in NeuVector
 
+Create an LDAP server entry. The default server name is `ldap1`:
+
 ```bash
 # Configure LDAP/AD integration
 
-curl -sk -X PATCH \
-  "https://neuvector-manager:8443/v1/system/config" \
+curl -sk -X POST \
+  "https://neuvector-manager:8443/v1/server" \
   -H "Content-Type: application/json" \
   -H "X-Auth-Token: ${TOKEN}" \
   -d '{
-    "config": {
-      "auth_order": ["ldap", "local"],
-      "ldap_config": {
-        "directory_type": "MicrosoftAD",
+    "server": {
+      "server_name": "ldap1",
+      "server_type": "ldap",
+      "ldap": {
+        "directory": "MicrosoftAD",
         "hostname": "ad.company.com",
         "port": 636,
         "ssl": true,
@@ -54,8 +58,9 @@ curl -sk -X PATCH \
         "bind_dn": "CN=neuvector-bind,OU=Service Accounts,DC=company,DC=com",
         "bind_password": "ServiceAccountPassword123!",
         "username_attr": "sAMAccountName",
-        "fn_get_user_groups": "memberOf",
-        "enable": true
+        "group_member_attr": "member",
+        "enable": true,
+        "default_role": ""
       }
     }
   }'
@@ -64,14 +69,16 @@ curl -sk -X PATCH \
 For OpenLDAP:
 
 ```bash
-curl -sk -X PATCH \
-  "https://neuvector-manager:8443/v1/system/config" \
+curl -sk -X POST \
+  "https://neuvector-manager:8443/v1/server" \
   -H "Content-Type: application/json" \
   -H "X-Auth-Token: ${TOKEN}" \
   -d '{
-    "config": {
-      "ldap_config": {
-        "directory_type": "OpenLDAP",
+    "server": {
+      "server_name": "ldap1",
+      "server_type": "ldap",
+      "ldap": {
+        "directory": "OpenLDAP",
         "hostname": "ldap.company.com",
         "port": 389,
         "ssl": false,
@@ -79,12 +86,17 @@ curl -sk -X PATCH \
         "bind_dn": "CN=neuvector,OU=Service Accounts,DC=company,DC=com",
         "bind_password": "password",
         "username_attr": "uid",
-        "fn_get_user_groups": "memberOf",
-        "enable": true
+        "group_member_attr": "memberUid",
+        "enable": true,
+        "default_role": ""
       }
     }
   }'
 ```
+
+To update an existing LDAP server, PATCH `/v1/server/ldap1` with the same
+`ldap` block wrapped under a `config` object that also includes the
+server `name`.
 
 ## Step 3: Configure LDAP via the UI
 
@@ -108,30 +120,31 @@ Username Attribute: sAMAccountName
 
 ## Step 4: Map LDAP Groups to NeuVector Roles
 
-Configure group-to-role mappings:
+Configure group-to-role mappings on the LDAP server entry:
 
 ```bash
-# Map an AD security group to NeuVector admin role
+# Map AD security groups to NeuVector roles
 curl -sk -X PATCH \
-  "https://neuvector-manager:8443/v1/system/config" \
+  "https://neuvector-manager:8443/v1/server/ldap1" \
   -H "Content-Type: application/json" \
   -H "X-Auth-Token: ${TOKEN}" \
   -d '{
     "config": {
-      "ldap_config": {
+      "name": "ldap1",
+      "ldap": {
         "group_mapped_roles": [
           {
-            "group": "CN=NeuVector-Admins,OU=Security Groups,DC=company,DC=com",
+            "group": "NeuVector-Admins",
             "global_role": "admin",
             "role_domains": {}
           },
           {
-            "group": "CN=NeuVector-SecurityTeam,OU=Security Groups,DC=company,DC=com",
+            "group": "NeuVector-SecurityTeam",
             "global_role": "reader",
             "role_domains": {}
           },
           {
-            "group": "CN=NeuVector-DevTeam,OU=Security Groups,DC=company,DC=com",
+            "group": "NeuVector-DevTeam",
             "global_role": "",
             "role_domains": {
               "reader": ["development", "staging"]
@@ -143,11 +156,14 @@ curl -sk -X PATCH \
   }'
 ```
 
+The `group` value is matched against the group's common name (CN) as
+returned by the LDAP server, not the full DN.
+
 In the UI:
 1. Go to **Settings** > **LDAP/AD**
 2. Scroll to **Group/Role Mappings**
 3. Click **Add**
-4. Enter the full DN of the LDAP group
+4. Enter the LDAP group name (CN)
 5. Select the NeuVector role to assign
 
 ## Step 5: Test LDAP Authentication
@@ -201,27 +217,27 @@ curl -sk -X PATCH \
   -H "X-Auth-Token: ${TOKEN}" \
   -d '{
     "config": {
-      "auth_order": ["ldap", "local"]
+      "auth_order": ["ldap1", "local"]
     }
   }'
 ```
 
 This means:
-1. NeuVector first tries to authenticate against LDAP
+1. NeuVector first tries to authenticate against the LDAP server named `ldap1`
 2. If LDAP authentication fails, it falls back to the local user database
 3. The local `admin` account always works for emergency access
 
 ## Step 8: Monitor Authentication Events
 
 ```bash
-# View authentication audit events
+# View authentication events from the event log
 curl -sk \
-  "https://neuvector-manager:8443/v1/audit?type=login&start=0&limit=50" \
-  -H "X-Auth-Token: ${TOKEN}" | jq '.audits[] | {
+  "https://neuvector-manager:8443/v1/log/event?start=0&limit=50" \
+  -H "X-Auth-Token: ${TOKEN}" | jq '.events[] | {
     user: .user,
-    action: .action,
-    result: .result,
-    remote_ip: .remote_ip,
+    name: .name,
+    msg: .msg,
+    host: .host_name,
     timestamp: .reported_timestamp
   }'
 ```
