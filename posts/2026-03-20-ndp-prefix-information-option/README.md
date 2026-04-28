@@ -52,7 +52,7 @@ A flag (Autonomous, 1 bit):
   0 = Do not form SLAAC address (use DHCPv6 if M=1 in RA)
 
 R flag (Router Address, 1 bit):
-  Used in Mobile IPv6 (RFC 3775)
+  Used in Mobile IPv6 (RFC 6275, which obsoleted RFC 3775)
   1 = Prefix contains a complete router address in the Prefix field
   Generally 0 for non-Mobile-IPv6 deployments
 
