@@ -18,7 +18,7 @@ The biggest single improvement is usually increasing `rsize` and `wsize` from th
 # Optimized NFSv4 mount for low-latency LAN
 
 sudo mount -t nfs4 \
-  -o rsize=1048576,wsize=1048576,timeo=14,retrans=3,hard,intr,noatime,nconnect=4 \
+  -o rsize=1048576,wsize=1048576,timeo=14,retrans=3,hard,noatime,nconnect=4 \
   10.0.0.1:/exports/data /mnt/data
 ```
 
@@ -29,7 +29,6 @@ sudo mount -t nfs4 \
 | `timeo=14` | 1.4 seconds | RPC timeout (not too low for busy servers) |
 | `retrans=3` | 3 | Retransmissions before error |
 | `hard` | - | Retry forever (safe for LAN) |
-| `intr` | - | Allow interrupt of hung mount |
 | `noatime` | - | Skip access time updates (reduces write amplification) |
 | `nconnect=4` | 4 | Use 4 TCP connections (Linux 5.3+, increases throughput) |
 
@@ -37,7 +36,7 @@ sudo mount -t nfs4 \
 
 ```text
 # /etc/fstab
-10.0.0.1:/exports/data  /mnt/data  nfs4  rsize=1048576,wsize=1048576,timeo=14,retrans=3,hard,intr,noatime,nconnect=4,_netdev  0  0
+10.0.0.1:/exports/data  /mnt/data  nfs4  rsize=1048576,wsize=1048576,timeo=14,retrans=3,hard,noatime,nconnect=4,_netdev  0  0
 ```
 
 ## Server-Side Export Options
@@ -94,9 +93,7 @@ echo "options sunrpc tcp_slot_table_entries=128" | sudo tee /etc/modprobe.d/sunr
 # Server-side: check current slot count
 cat /proc/net/rpc/nfsd
 
-# Increase number of NFS server threads
-sudo sysctl -w fs.nfs.nlm_timeout=10
-# Or directly:
+# Increase number of NFS server threads (default is 8)
 echo 32 | sudo tee /proc/fs/nfsd/threads
 ```
 
@@ -129,8 +126,9 @@ mount | grep nfs
 # - Delegation allows client-side caching
 # - No portmapper needed (single port 2049)
 
-# Check delegation is working:
-cat /proc/fs/nfsfs/volumes   # shows delegations in use
+# Check delegation activity (look for delegation counters):
+nfsstat -c
+grep -i delegation /proc/self/mountstats
 ```
 
 ## Jumbo Frames (if supported)
