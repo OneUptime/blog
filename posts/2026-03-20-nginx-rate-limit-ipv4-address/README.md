@@ -48,7 +48,7 @@ server {
         proxy_pass http://api_backend;
     }
 
-    # Login endpoint: 1 req/s, no burst tolerance
+    # Login endpoint: 1 req/s, small burst queued (delayed)
     location /auth/login {
         limit_req zone=login_limit burst=5;
         limit_req_status 429;
@@ -102,14 +102,21 @@ server {
 
 ## Whitelisting Internal IPv4 Addresses
 
-Use a `geo` block to exempt trusted IPs from rate limiting:
+Use a `geo` block to flag trusted IPs and a `map` to translate the flag into the rate limit key (`geo` values are literal strings, so a `map` is needed to substitute `$binary_remote_addr`):
 
 ```nginx
 http {
-    geo $remote_addr $limit_key {
-        default         $binary_remote_addr;  # External: apply limit
-        10.0.0.0/8      "";                  # Internal: no limit
-        192.168.0.0/16  "";
+    # Flag trusted networks with 0, everything else with 1
+    geo $limit {
+        default         1;
+        10.0.0.0/8      0;
+        192.168.0.0/16  0;
+    }
+
+    # Translate the flag into the rate limit key
+    map $limit $limit_key {
+        0 "";                    # Internal: empty key disables the limit
+        1 $binary_remote_addr;   # External: limit per IPv4 address
     }
 
     # Empty key disables the zone for that request
