@@ -33,13 +33,13 @@ Enable federation on the master cluster:
 ```bash
 # In the master cluster - expose the federation API
 
-kubectl patch svc neuvector-service-federation-master \
+kubectl patch svc neuvector-svc-controller-fed-master \
   -n neuvector \
   --type merge \
   -p '{"spec":{"type":"LoadBalancer"}}'
 
 # Get the master cluster's federation service IP
-MASTER_IP=$(kubectl get svc neuvector-service-federation-master \
+MASTER_IP=$(kubectl get svc neuvector-svc-controller-fed-master \
   -n neuvector \
   -o jsonpath='{.status.loadBalancer.ingress[0].ip}')
 echo "Master IP: ${MASTER_IP}"
@@ -66,11 +66,14 @@ curl -sk -X POST \
   -H "Content-Type: application/json" \
   -H "X-Auth-Token: ${MASTER_TOKEN}" \
   -d '{
+    "name": "primary-cluster",
+    "ping_interval": 5,
+    "poll_interval": 60,
     "master_rest_info": {
       "server": "neuvector-master.company.com",
       "port": 11443
     },
-    "use_proxy": false
+    "use_proxy": ""
   }'
 ```
 
@@ -103,16 +106,15 @@ curl -sk -X POST \
   -H "Content-Type: application/json" \
   -H "X-Auth-Token: ${MEMBER_TOKEN}" \
   -d '{
+    "name": "production-us-east-1",
+    "server": "neuvector-master.company.com",
+    "port": 11443,
     "join_token": "your-join-token-here",
-    "master_rest_info": {
-      "server": "neuvector-master.company.com",
-      "port": 11443
-    },
-    "cluster_name": "production-us-east-1",
-    "local_rest_info": {
+    "joint_rest_info": {
       "server": "neuvector-member1.company.com",
-      "port": 11443
-    }
+      "port": 10443
+    },
+    "use_proxy": ""
   }'
 ```
 
@@ -128,8 +130,8 @@ Federated policies apply to all member clusters:
 
 ```bash
 # Create a federated network rule (applies to all clusters)
-curl -sk -X POST \
-  "${MASTER_URL}/v1/fed/policy/rule" \
+curl -sk -X PATCH \
+  "${MASTER_URL}/v1/policy/rule?scope=fed" \
   -H "Content-Type: application/json" \
   -H "X-Auth-Token: ${MASTER_TOKEN}" \
   -d '{
@@ -156,7 +158,7 @@ Federated policies are identified by `cfg_type: "federal"` and cannot be modifie
 ```bash
 # Create a federated group (applies to all clusters)
 curl -sk -X POST \
-  "${MASTER_URL}/v1/fed/group" \
+  "${MASTER_URL}/v1/group" \
   -H "Content-Type: application/json" \
   -H "X-Auth-Token: ${MASTER_TOKEN}" \
   -d '{
@@ -189,22 +191,21 @@ The master cluster UI shows all member clusters:
 ```bash
 # Check federation status from master
 curl -sk \
-  "${MASTER_URL}/v1/fed/cluster" \
-  -H "X-Auth-Token: ${MASTER_TOKEN}" | jq '.fed_clusters[] | {
+  "${MASTER_URL}/v1/fed/member" \
+  -H "X-Auth-Token: ${MASTER_TOKEN}" | jq '.joint_clusters[] | {
     name: .name,
     id: .id,
-    status: .connection_status,
-    api_server: .api_server
+    status: .status,
+    rest_info: .rest_info
   }'
 
 # Check for sync issues
 curl -sk \
-  "${MASTER_URL}/v1/fed/cluster" \
-  -H "X-Auth-Token: ${MASTER_TOKEN}" | jq '.fed_clusters[] |
-    select(.connection_status != "connected") | {
+  "${MASTER_URL}/v1/fed/member" \
+  -H "X-Auth-Token: ${MASTER_TOKEN}" | jq '.joint_clusters[] |
+    select(.status != "synced" and .status != "connected") | {
     name: .name,
-    status: .connection_status,
-    error: .disconnected_at
+    status: .status
   }'
 ```
 
