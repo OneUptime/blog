@@ -66,8 +66,9 @@ sudo sysctl -w net.ipv6.neigh.default.gc_thresh3=4096
 # Default retransmit attempts = 3 (about 3 seconds per entry)
 sudo sysctl -w net.ipv6.neigh.eth0.retrans_time_ms=500
 
-# Reduce base_reachable_time (faster eviction of stale entries)
-sudo sysctl -w net.ipv6.neigh.default.base_reachable_time_ms=30000
+# Reduce base_reachable_time (entries become STALE sooner, then collected)
+# Default: 30000ms (30 sec)
+sudo sysctl -w net.ipv6.neigh.default.base_reachable_time_ms=15000
 
 # Reduce gc_interval (run garbage collection more often)
 # Default: 30000ms
@@ -83,7 +84,7 @@ sudo sysctl -w net.ipv6.neigh.default.gc_stale_time=30
 Limit the rate at which the router generates Neighbor Solicitations.
 
 ```bash
-# Rate limit outbound Neighbor Solicitations to 100/sec per source
+# Rate limit outbound Neighbor Solicitations to 100/sec per destination
 sudo ip6tables -A OUTPUT -p icmpv6 --icmpv6-type neighbor-solicitation \
     -m hashlimit \
     --hashlimit-above 100/sec \
@@ -99,7 +100,7 @@ sudo ip6tables -A OUTPUT -p icmpv6 --icmpv6-type neighbor-solicitation \
     --hashlimit-above 50/sec \
     --hashlimit-burst 100 \
     --hashlimit-mode dstip \
-    --hashlimit-srcmask 64 \
+    --hashlimit-dstmask 64 \
     --hashlimit-name NS_SUBNET \
     -j LOG --log-prefix "NDP-EXHAUSTION: "
 
@@ -109,7 +110,7 @@ sudo ip6tables -A OUTPUT -p icmpv6 --icmpv6-type neighbor-solicitation \
     --hashlimit-above 50/sec \
     --hashlimit-burst 100 \
     --hashlimit-mode dstip \
-    --hashlimit-srcmask 64 \
+    --hashlimit-dstmask 64 \
     --hashlimit-name NS_SUBNET2 \
     -j DROP
 ```
@@ -151,7 +152,7 @@ ipv6 nd cache interface-limit 512
 ! Limit per-interface NS rate
 interface GigabitEthernet0/0
  ipv6 nd cache expire 30 refresh   ← 30 sec expiry, refresh on use
- ipv6 nd nud retry 2 1000 3        ← 2 retries, 1000ms interval, 3 max
+ ipv6 nd nud retry 2 1000 3        ← backoff base 2, 1000ms interval, 3 max attempts
 
 ! Monitor NDP table
 show ipv6 neighbors
