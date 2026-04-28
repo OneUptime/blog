@@ -111,7 +111,7 @@ SHOW REPLICA STATUS\G
 
 -- On the primary: verify the replication thread uses SSL
 SELECT user, host, ssl_type FROM mysql.user WHERE user='repl';
--- ssl_type should be 'SSL'
+-- ssl_type should be 'ANY' (set by REQUIRE SSL)
 ```
 
 ## Key Takeaways
