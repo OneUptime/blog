@@ -36,7 +36,7 @@ NEVER COMMIT:
   *.tfstate.backup            → State backups
   *.tfvars                    → Variable files with real secrets
   crash.log                   → Provider crash logs
-  .terraform.tfstate          → Workspace state
+  terraform.tfstate.d/        → Workspace state directory (local backend)
   *.tfplan                    → Binary plan files
   override.tf                 → Local overrides
   *_override.tf               → Local overrides
