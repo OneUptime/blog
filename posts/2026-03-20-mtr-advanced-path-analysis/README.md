@@ -68,8 +68,8 @@ Fields:
 # Use TCP SYN probes (passes through most firewalls)
 mtr --tcp --port 443 --report 8.8.8.8
 
-# Use ICMP probes (shows different view than UDP)
-mtr --icmp --report 8.8.8.8
+# Use UDP probes (ICMP ECHO is the default; --udp can give a different view)
+mtr --udp --report 8.8.8.8
 
 # Set probe interval (default 1 second)
 mtr --interval 0.5 --report-cycles 100 8.8.8.8
