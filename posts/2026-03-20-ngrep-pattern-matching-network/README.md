@@ -80,7 +80,7 @@ sudo ngrep -q 'PASS ' port 21
 
 ```bash
 # Specify network interface
-sudo ngrep -i eth0 -q 'GET' port 80
+sudo ngrep -d eth0 -q 'GET' port 80
 
 # Filter by host
 sudo ngrep -q 'GET' host 192.168.1.50 and port 80
