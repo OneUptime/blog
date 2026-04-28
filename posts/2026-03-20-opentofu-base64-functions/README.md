@@ -47,14 +47,16 @@ locals {
     echo "Server: ${var.server_name}" > /var/www/html/index.html
   SCRIPT
 
-  # EC2 user_data must be base64 encoded
+  # Use user_data_base64 when passing pre-encoded content;
+  # the user_data argument accepts plaintext and the provider
+  # encodes it automatically.
   user_data_b64 = base64encode(local.user_data_script)
 }
 
 resource "aws_instance" "web" {
-  ami           = data.aws_ami.ubuntu.id
-  instance_type = "t3.medium"
-  user_data     = local.user_data_b64
+  ami              = data.aws_ami.ubuntu.id
+  instance_type    = "t3.medium"
+  user_data_base64 = local.user_data_b64
 
   tags = {
     Name = "web-server"
@@ -77,9 +79,11 @@ resource "kubernetes_secret" "db" {
   }
 
   data = {
-    # Kubernetes secrets are base64-encoded
-    password = base64encode(var.db_password)
-    username = base64encode("appuser")
+    # The kubernetes provider sends `data` values as StringData,
+    # which Kubernetes base64-encodes server-side. Pass plaintext
+    # here; use `binary_data` for already-base64-encoded values.
+    password = var.db_password
+    username = "appuser"
   }
 }
 ```
