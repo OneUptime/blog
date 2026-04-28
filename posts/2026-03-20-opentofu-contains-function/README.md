@@ -150,7 +150,7 @@ variable "ami_id" {
   type = string
 }
 
-data "aws_ami" "approved" {
+data "aws_ami_ids" "approved" {
   filter {
     name   = "name"
     values = ["approved-base-*"]
@@ -164,7 +164,7 @@ resource "aws_instance" "app" {
 
   lifecycle {
     precondition {
-      condition     = contains(data.aws_ami.approved.*.id, var.ami_id)
+      condition     = contains(data.aws_ami_ids.approved.ids, var.ami_id)
       error_message = "ami_id must be an approved AMI."
     }
   }
