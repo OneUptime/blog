@@ -151,7 +151,7 @@ LOCK   /state/lock   -> Acquire lock, return lock info JSON
 UNLOCK /state/lock   -> Release lock
 ```
 
-The POST request includes an `ID` query parameter with the lineage for conflict detection.
+When state locking is enabled, the POST request includes an `ID` query parameter containing the lock ID, so the server can verify the writer holds the current lock.
 
 ## Conclusion
 
