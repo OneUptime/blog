@@ -92,7 +92,7 @@ teamdctl team0 state
 teamdctl team0 state item get runner.active_port
 
 # JSON state
-teamdctl team0 state view -j
+teamdctl team0 state dump
 ```
 
 ## ARP-Based Link Watch
