@@ -41,7 +41,7 @@ def normalize_ipv6(raw: str) -> str | None:
     raw = raw.strip()
 
     try:
-        return str(ipaddress.ip_address(raw))
+        return str(ipaddress.IPv6Address(raw))
     except ValueError:
         return None
 
