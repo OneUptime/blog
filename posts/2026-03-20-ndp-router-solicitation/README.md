@@ -51,7 +51,7 @@ Process:
 3. Send RS to ff02::2
 4. Wait up to RTR_SOLICITATION_INTERVAL for RA reply
 5. If no reply: send another RS (up to MAX_RTR_SOLICITATIONS)
-6. If no RS received after all attempts: wait for periodic RA
+6. If no RA received after all attempts: wait for periodic RA
 ```
 
 ## Capturing and Analyzing RS Messages
@@ -63,7 +63,7 @@ sudo tcpdump -i eth0 -v "icmp6 and ip6[40] == 133"
 
 # Example verbose output:
 # 14:23:45.100 IP6 (hlim 255, next-header ICMPv6 (58) payload length: 16)
-#   fe80::a11:bbff:fecc:ddee > ff02::2: [icmp6 sum ok]
+#   fe80::a211:bbff:fecc:ddee > ff02::2: [icmp6 sum ok]
 #   ICMP6, router solicitation, length 16
 #     source link-address option (1), length 8 (1): a0:11:bb:cc:dd:ee
 
@@ -141,4 +141,4 @@ RS security issues:
 
 ## Conclusion
 
-Router Solicitation is the host's "hey, any routers out there?" message. It accelerates IPv6 address configuration by requesting an immediate RA rather than waiting up to 200 seconds for the router's periodic advertisement. The Hop Limit of 255 is a critical security feature that ensures RSs can only be from local link nodes. The Source Link-Layer Address option allows the router to update its neighbor cache, enabling immediate unicast replies. Understanding RS behavior is essential when troubleshooting slow IPv6 address assignment or verifying SLAAC operation.
+Router Solicitation is the host's "hey, any routers out there?" message. It accelerates IPv6 address configuration by requesting an immediate RA rather than waiting up to 600 seconds (the default MaxRtrAdvInterval per RFC 4861) for the router's periodic advertisement. The Hop Limit of 255 is a critical security feature that ensures RSs can only be from local link nodes. The Source Link-Layer Address option allows the router to update its neighbor cache, enabling immediate unicast replies. Understanding RS behavior is essential when troubleshooting slow IPv6 address assignment or verifying SLAAC operation.
