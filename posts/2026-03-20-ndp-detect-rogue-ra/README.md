@@ -36,7 +36,7 @@ Indicators of a Rogue Router Advertisement:
    Detection: Compare RA source MAC against known router MACs
 
 6. Frequency anomaly:
-   Routers send RA every 200 seconds (default)
+   Routers send RA every ~200-600 seconds (Cisco IOS default 200s, radvd default 600s)
    RA flood: hundreds of RAs per second
 ```
 
@@ -113,21 +113,26 @@ NDPMon is a dedicated daemon for monitoring NDP traffic and detecting anomalies.
 # Install ndpmon (available on Debian/Ubuntu)
 sudo apt-get install ndpmon
 
-# Configure known routers in /etc/ndpmon.xml
+# Configure known routers in /etc/ndpmon/config_ndpmon.xml
 # Example configuration:
-cat /etc/ndpmon.xml
-# <ndpmon>
+cat /etc/ndpmon/config_ndpmon.xml
+# <config_ndpmon>
 #   <routers>
 #     <router>
-#       <address>fe80::1</address>
 #       <mac>00:11:22:33:44:55</mac>
-#       <prefix>2001:db8::/64</prefix>
+#       <lla>fe80::1</lla>
+#       <prefixes>
+#         <prefix>
+#           <address>2001:db8::</address>
+#           <mask>64</mask>
+#         </prefix>
+#       </prefixes>
 #     </router>
 #   </routers>
-# </ndpmon>
+# </config_ndpmon>
 
 # Start ndpmon
-sudo ndpmon -i eth0 -c /etc/ndpmon.xml
+sudo ndpmon -i eth0 -c /etc/ndpmon/config_ndpmon.xml
 
 # NDPMon will alert on:
 # - RA from unknown source
