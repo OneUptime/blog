@@ -47,7 +47,7 @@ sudo yum install -y ntopng
 -d=/var/lib/ntopng
 
 # Dump flows to disk
---dump-flows=es  # or 'logstash', 'mysql', 'nindex'
+--dump-flows=es  # or 'syslog', 'clickhouse'
 
 # IPv6 specific: enable geolocation
 --geoip-dir=/usr/share/GeoIP
@@ -79,7 +79,7 @@ curl -s -u admin:admin "http://localhost:3000/lua/rest/v2/get/flow/active.lua" |
 
 # Get top IPv6 hosts by traffic
 curl -s -u admin:admin \
-    "http://localhost:3000/lua/rest/v2/get/host/top.lua?ifid=1&version=6" | \
+    "http://localhost:3000/lua/rest/v2/get/host/active.lua?ifid=1&version=6&sortColumn=traffic&sortOrder=desc" | \
     python3 -m json.tool
 
 # Get interface statistics including IPv6 breakdown
@@ -97,11 +97,10 @@ print(f'IPv6 bytes out: {stats.get(\"ipv6.bytes.rcvd\", 0):,}')
 ## Monitoring IPv6 with nProbe (Flow Export)
 
 ```bash
-# Export IPv6 flows from nProbe to ntopng
+# Export IPv6 flows from nProbe to ntopng (IPv6 capture is enabled by default)
 nprobe --zmq "tcp://*:5556" \
     -i eth0 \
-    --ipv4-only no \
-    --template "@NTOPNG"
+    -T "@NTOPNG@"
 
 # ntopng receives from nProbe via ZMQ
 ntopng --zmq "tcp://127.0.0.1:5556" -w 3000
@@ -121,8 +120,13 @@ AUTH = ("admin", "admin")
 
 def get_ipv6_top_hosts(interface_id=1, top_n=10):
     """Get top IPv6 hosts by traffic."""
-    url = f"{NTOPNG_URL}/lua/rest/v2/get/host/top.lua"
-    params = {"ifid": interface_id, "version": 6, "sortColumn": "column_bytes"}
+    url = f"{NTOPNG_URL}/lua/rest/v2/get/host/active.lua"
+    params = {
+        "ifid": interface_id,
+        "version": 6,
+        "sortColumn": "traffic",
+        "sortOrder": "desc",
+    }
 
     response = requests.get(url, params=params, auth=AUTH)
     data = response.json()
@@ -135,18 +139,18 @@ def get_ipv6_top_hosts(interface_id=1, top_n=10):
         print(f"  {i}. {ip}: {traffic:,} bytes")
 
 def get_ipv6_protocol_breakdown(interface_id=1):
-    """Get IPv6 protocol distribution."""
-    url = f"{NTOPNG_URL}/lua/rest/v2/get/interface/l4/protocols.lua"
+    """Get IPv6 protocol distribution from interface stats."""
+    url = f"{NTOPNG_URL}/lua/rest/v2/get/interface/data.lua"
     params = {"ifid": interface_id}
 
     response = requests.get(url, params=params, auth=AUTH)
     data = response.json()
 
     print("\nIPv6 Protocol Distribution:")
-    protocols = data.get("rsp", {})
-    for proto, stats in protocols.items():
-        if "ipv6" in str(stats).lower():
-            print(f"  {proto}: {stats}")
+    stats = data.get("rsp", {}).get("stats", {})
+    for key, value in stats.items():
+        if "ipv6" in key.lower():
+            print(f"  {key}: {value}")
 
 if __name__ == "__main__":
     get_ipv6_top_hosts()
