@@ -147,7 +147,7 @@ print_result(results)
 ```python
 from nornir import InitNornir
 from nornir.core.task import Task, Result
-from nornir_netmiko.tasks import netmiko_send_command, netmiko_send_config_set
+from nornir_netmiko.tasks import netmiko_send_command, netmiko_send_config
 
 def configure_interface_task(task: Task, interface: str, ip: str, mask: str, description: str) -> Result:
     """Configure an interface with IP and description."""
@@ -160,7 +160,7 @@ def configure_interface_task(task: Task, interface: str, ip: str, mask: str, des
 
     # Apply configuration
     result = task.run(
-        task=netmiko_send_config_set,
+        task=netmiko_send_config,
         config_commands=config_commands,
     )
 
