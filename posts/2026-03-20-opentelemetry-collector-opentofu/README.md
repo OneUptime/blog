@@ -87,16 +87,16 @@ resource "helm_release" "otel_daemonset" {
           # Add resource attributes
           resource = {
             attributes = [
-              { key = "deployment.environment", value = var.environment, action = "insert" }
-              { key = "k8s.cluster.name", value = var.cluster_name, action = "insert" }
+              { key = "deployment.environment", value = var.environment, action = "insert" },
+              { key = "k8s.cluster.name", value = var.cluster_name, action = "insert" },
             ]
           }
         }
 
         exporters = {
-          # Export traces to Jaeger
+          # Export traces to Jaeger via OTLP (Jaeger 1.35+ accepts OTLP on 4317)
           otlp = {
-            endpoint = "jaeger-collector.observability:14250"
+            endpoint = "jaeger-collector.observability:4317"
             tls = { insecure = true }
           }
 
@@ -105,8 +105,8 @@ resource "helm_release" "otel_daemonset" {
             endpoint = "http://kube-prometheus-stack-prometheus.monitoring:9090/api/v1/write"
           }
 
-          # Debug logging in dev
-          logging = {
+          # Debug output in dev
+          debug = {
             verbosity = var.environment == "dev" ? "detailed" : "basic"
           }
         }
@@ -179,13 +179,13 @@ resource "helm_release" "otel_gateway" {
           tail_sampling = {
             decision_wait = "10s"
             policies = [
-              { name = "errors-policy", type = "status_code", status_code = { status_codes = ["ERROR"] } }
-              { name = "slow-policy", type = "latency", latency = { threshold_ms = 1000 } }
+              { name = "errors-policy", type = "status_code", status_code = { status_codes = ["ERROR"] } },
+              { name = "slow-policy", type = "latency", latency = { threshold_ms = 1000 } },
             ]
           }
         }
         exporters = {
-          otlp = { endpoint = "jaeger-collector.observability:14250", tls = { insecure = true } }
+          otlp = { endpoint = "jaeger-collector.observability:4317", tls = { insecure = true } }
         }
         service = {
           pipelines = {
