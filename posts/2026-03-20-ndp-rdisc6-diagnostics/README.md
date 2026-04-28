@@ -33,7 +33,7 @@ sudo rdisc6 eth0
 #  Source link-layer address: 00:11:22:33:44:55
 #  Prefix                   : 2001:db8::/64
 #    On-link                :          Yes
-#    Autonomous address conf:          Yes
+#    Autonomous address conf.:         Yes
 #    Valid time             :30 days, (0x00278D00 seconds)
 #    Pref. time             :7 days, (0x000927C0 seconds)
 #  MTU                      :         1500 bytes
@@ -42,7 +42,7 @@ sudo rdisc6 eth0
 # Show multiple RS/RA exchanges (3 solicitations)
 sudo rdisc6 -r 3 eth0
 
-# Quiet mode: show only RA source address
+# Quiet mode: show only advertised IPv6 prefixes (useful in scripts)
 sudo rdisc6 -q eth0
 ```
 
