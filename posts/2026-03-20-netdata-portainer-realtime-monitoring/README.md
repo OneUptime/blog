@@ -141,37 +141,49 @@ lookup: average -5m unaligned of user,system,softirq,irq,guest
 
 ### Step 6: Set Up Email Notifications
 
+Netdata sends emails via the local `sendmail` command, so you need an MTA (such as `msmtp`, `ssmtp`, or `postfix`) installed inside the container — `health_alarm_notify.conf` has no built-in SMTP fields. Install an MTA at runtime by adding `NETDATA_EXTRA_DEB_PACKAGES` to the stack environment, then point `sendmail` at your relay.
+
 Edit the notification configuration:
 
 ```bash
 docker exec -it netdata bash
+cd /etc/netdata
 ./edit-config health_alarm_notify.conf
 ```
 
-Configure SMTP:
+Set the email-related options:
 
 ```bash
 # In health_alarm_notify.conf
 SEND_EMAIL="YES"
 EMAIL_SENDER="netdata@yourdomain.com"
 DEFAULT_RECIPIENT_EMAIL="admin@yourdomain.com"
-SMTP_SERVER="smtp.yourdomain.com"
-SMTP_PORT=587
-SMTP_USER="netdata@yourdomain.com"
-SMTP_PASSWORD="your_smtp_password"
-SMTP_STARTTLS="YES"
+# Optional: set the path to the sendmail binary if it's not auto-detected
+sendmail=""
 ```
+
+Configure your local MTA (for example `msmtp` via `/etc/msmtprc`) to forward mail through your SMTP relay.
 
 ## Monitoring Multiple Hosts
 
-Deploy the Netdata agent on each host and connect them all to Netdata Cloud for a unified view, or use Netdata's built-in streaming to a parent node:
+Deploy the Netdata agent on each host and connect them all to Netdata Cloud for a unified view, or use Netdata's built-in streaming to a parent node. Streaming is configured via `stream.conf`, not environment variables — exec into the child container and edit it:
 
-```yaml
-# On child nodes, add this to environment
-environment:
-  NETDATA_STREAM_DESTINATION: parent-ip:19999
-  NETDATA_STREAM_API_KEY: your-api-key-uuid
+```bash
+docker exec -it netdata bash
+cd /etc/netdata
+./edit-config stream.conf
 ```
+
+Set the destination and API key in the `[stream]` section:
+
+```ini
+[stream]
+    enabled = yes
+    destination = parent-ip:19999
+    api key = your-api-key-uuid
+```
+
+On the parent, enable the same API key under its own `[API_KEY]` section in `stream.conf`. Restart both containers for the changes to take effect.
 
 ## Conclusion
 
