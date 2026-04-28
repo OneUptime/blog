@@ -20,10 +20,11 @@ module "vpc" {
 }
 ```
 
-The path can be:
+A local path must begin with either `./` or `../` to distinguish it from a module registry address:
 - `./modules/vpc` - relative to the current configuration
 - `../shared/network` - parent directory
-- `/absolute/path/to/module` - absolute path (not portable!)
+
+Absolute paths (starting with `/` or a drive letter) are not considered local paths by OpenTofu - they are treated as packages and copied into the local module cache, similar to remote modules.
 
 ## Directory Structure
 
@@ -107,7 +108,7 @@ During development, use local module paths to test changes before pushing:
 # In development only - don't commit this!
 module "networking" {
   # source = "myorg/networking/aws"  # Production
-  source = "/Users/me/terraform-aws-networking"  # Local dev
+  source = "../terraform-aws-networking"  # Local dev
 }
 ```
 
