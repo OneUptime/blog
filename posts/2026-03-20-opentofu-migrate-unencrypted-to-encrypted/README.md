@@ -8,7 +8,7 @@ Description: Learn how to safely migrate existing unencrypted OpenTofu state to 
 
 ## Introduction
 
-Enabling state encryption on an existing configuration requires careful migration - you need to read the existing unencrypted state and write it back encrypted. OpenTofu supports this with the `enforced = false` setting, which allows reading unencrypted state during the transition period.
+Enabling state encryption on an existing configuration requires careful migration - you need to read the existing unencrypted state and write it back encrypted. OpenTofu supports this with a `fallback` block that references an `unencrypted` method, which allows reading unencrypted state during the transition period while writing it back encrypted with the primary method.
 
 ## Prerequisites
 
@@ -27,7 +27,7 @@ tofu state pull > state-backup-pre-encryption-$(date +%Y%m%d).json
 jq '.resources | length' state-backup-pre-encryption-*.json
 ```
 
-## Step 2: Add Encryption Configuration with enforced = false
+## Step 2: Add Encryption Configuration with a Fallback Method
 
 ```hcl
 # versions.tf
@@ -35,6 +35,8 @@ terraform {
   required_version = ">= 1.7"
 
   encryption {
+    method "unencrypted" "migrate" {}
+
     key_provider "aws_kms" "main" {
       kms_key_id = "arn:aws:kms:us-east-1:123456789012:key/abc-123"
       region     = "us-east-1"
@@ -45,8 +47,10 @@ terraform {
     }
 
     state {
-      method   = method.aes_gcm.main
-      enforced = false  # CRITICAL: allow reading unencrypted state during migration
+      method = method.aes_gcm.main
+      fallback {
+        method = method.unencrypted.migrate  # CRITICAL: allow reading unencrypted state during migration
+      }
     }
   }
 }
@@ -83,14 +87,14 @@ file /tmp/check-state
 tofu state list  # Should show all resources
 ```
 
-## Step 6: Enable enforced = true
+## Step 6: Remove the Fallback and Enforce Encryption
 
-Once you have confirmed encryption is working:
+Once you have confirmed encryption is working, remove the `fallback` block (and the `method "unencrypted" "migrate"` definition) and optionally add `enforced = true` to refuse reading unencrypted state going forward:
 
 ```hcl
 state {
   method   = method.aes_gcm.main
-  enforced = true  # Now refuse to read unencrypted state
+  enforced = true  # Now refuse to read unencrypted state under any circumstance
 }
 ```
 
@@ -102,6 +106,8 @@ tofu plan  # Should work normally
 
 ```hcl
 encryption {
+  method "unencrypted" "migrate" {}
+
   key_provider "pbkdf2" "main" {
     passphrase = var.state_passphrase
   }
@@ -111,8 +117,10 @@ encryption {
   }
 
   state {
-    method   = method.aes_gcm.main
-    enforced = false  # Allow reading unencrypted during migration
+    method = method.aes_gcm.main
+    fallback {
+      method = method.unencrypted.migrate  # Allow reading unencrypted during migration
+    }
   }
 }
 ```
@@ -132,4 +140,4 @@ tofu plan
 
 ## Conclusion
 
-Migrating to encrypted state is a safe two-step process: configure encryption with `enforced = false`, trigger a state rewrite with `tofu apply -refresh-only`, verify encryption, then set `enforced = true`. The backup created in Step 1 provides a rollback path if anything goes wrong. After successful migration, protect the state passphrase or KMS key ARN as carefully as the state file itself.
+Migrating to encrypted state is a safe two-step process: configure encryption with a `fallback` block referencing `method "unencrypted" "migrate"`, trigger a state rewrite with `tofu apply -refresh-only`, verify encryption, then remove the fallback (and optionally set `enforced = true`). The backup created in Step 1 provides a rollback path if anything goes wrong. After successful migration, protect the state passphrase or KMS key ARN as carefully as the state file itself.
