@@ -39,7 +39,7 @@ Prefix Discovery process:
 ip -6 route show
 
 # On-link routes are shown as:
-# 2001:db8::/64 dev eth0 proto kernel metric 256 expires 2591900sec
+# 2001:db8::/64 dev eth0 proto ra metric 100 expires 2591900sec
 # These come from Prefix Information options with L=1
 
 # View prefix information from received RA
@@ -47,8 +47,8 @@ ip -6 route show
 ip -6 route show proto ra
 
 # Check which prefixes are on-link
-ip -6 route show | grep "kernel"
-# 'kernel' source = added by NDP based on RA prefix information
+ip -6 route show | grep "proto ra"
+# 'proto ra' source = added by NDP based on RA prefix information (kernel >= 4.18)
 
 # List all addresses with their Valid and Preferred lifetimes
 ip -6 addr show dev eth0
