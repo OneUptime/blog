@@ -149,7 +149,7 @@ resource "kubernetes_config_map" "envoy_mtls" {
 # Istio enforces mTLS automatically with STRICT mode
 resource "kubernetes_manifest" "peer_auth_strict" {
   manifest = {
-    apiVersion = "security.istio.io/v1beta1"
+    apiVersion = "security.istio.io/v1"
     kind       = "PeerAuthentication"
     metadata = {
       name      = "default"
