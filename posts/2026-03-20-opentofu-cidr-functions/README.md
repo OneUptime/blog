@@ -96,7 +96,7 @@ Allocates multiple subnets of varying sizes from a CIDR block:
   "10.0.0.0/20",    # /16 + 4 bits = /20
   "10.0.16.0/20",
   "10.0.32.0/24",   # /16 + 8 bits = /24 (smaller subnet)
-  "10.0.33.0/20",   # continues after the /24
+  "10.0.48.0/20",   # next /20-aligned block after the /24
 ]
 ```
 
@@ -123,7 +123,7 @@ locals {
 
 ## cidrcontains()
 
-Checks whether one CIDR range contains another IP or CIDR range (OpenTofu 1.5+):
+Checks whether one CIDR range contains another IP or CIDR range (OpenTofu 1.7+):
 
 ```hcl
 > cidrcontains("10.0.0.0/8", "10.1.2.3")
