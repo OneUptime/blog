@@ -102,7 +102,7 @@ resource "aws_lb_target_group" "app" {
   port        = var.app_port
   protocol    = "TCP"          # NLB supports TCP, UDP, TLS, TCP_UDP
   vpc_id      = var.vpc_id
-  target_type = "instance"     # Can also be "ip" or "lambda"
+  target_type = "instance"     # Can also be "ip" or "alb" (NLB does not support "lambda")
 
   # Health check configuration
   health_check {
