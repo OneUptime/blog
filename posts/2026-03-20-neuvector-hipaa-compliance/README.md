@@ -74,9 +74,10 @@ curl -sk -X POST \
   -H "Content-Type: application/json" \
   -H "X-Auth-Token: ${TOKEN}" \
   -d '{
-    "config": {
+    "user": {
       "username": "healthcare-security-lead",
       "fullname": "Healthcare Security Lead",
+      "password": "ReplaceWithStrongInitialPassword!1",
       "email": "security@healthcare.com",
       "role": "",
       "role_domains": {
@@ -126,9 +127,7 @@ curl -sk -X PATCH \
       "syslog_categories": [
         "event",
         "security-event",
-        "audit",
-        "incident",
-        "violation"
+        "audit"
       ]
     }
   }'
@@ -141,7 +140,7 @@ Detect PHI data transmission:
 ```bash
 # Create DLP sensor for PHI detection
 curl -sk -X POST \
-  "https://neuvector-manager:8443/v1/dpi/dlp/sensor" \
+  "https://neuvector-manager:8443/v1/dlp/sensor" \
   -H "Content-Type: application/json" \
   -H "X-Auth-Token: ${TOKEN}" \
   -d '{
@@ -153,11 +152,10 @@ curl -sk -X POST \
           "name": "ssn-phi",
           "patterns": [
             {
-              "key": "packet",
+              "key": "pattern",
               "op": "regex",
               "value": "\\b(?!000|666|9\\d{2})\\d{3}-(?!00)\\d{2}-(?!0000)\\d{4}\\b",
-              "context": "packet",
-              "name": "ssn-pattern"
+              "context": "packet"
             }
           ]
         },
@@ -165,11 +163,10 @@ curl -sk -X POST \
           "name": "medical-record-numbers",
           "patterns": [
             {
-              "key": "packet",
+              "key": "pattern",
               "op": "regex",
               "value": "(?i)mrn[:\\s=]+[0-9]{6,10}|patient[\\s_-]?id[:\\s=]+[0-9]{6,12}",
-              "context": "packet",
-              "name": "mrn-pattern"
+              "context": "packet"
             }
           ]
         },
@@ -177,11 +174,10 @@ curl -sk -X POST \
           "name": "date-of-birth",
           "patterns": [
             {
-              "key": "packet",
+              "key": "pattern",
               "op": "regex",
               "value": "(?i)(dob|date[_-]?of[_-]?birth)[:\\s=]+[0-9]{1,2}[-/][0-9]{1,2}[-/][0-9]{2,4}",
-              "context": "packet",
-              "name": "dob-pattern"
+              "context": "packet"
             }
           ]
         }
@@ -191,13 +187,15 @@ curl -sk -X POST \
 
 # Apply PHI DLP to healthcare workloads
 curl -sk -X PATCH \
-  "https://neuvector-manager:8443/v1/group/phi-workloads" \
+  "https://neuvector-manager:8443/v1/dlp/group/phi-workloads" \
   -H "Content-Type: application/json" \
   -H "X-Auth-Token: ${TOKEN}" \
   -d '{
     "config": {
-      "dlp_sensors": [
-        {"name": "hipaa-phi-detector", "action": "alert"}
+      "name": "phi-workloads",
+      "status": true,
+      "replace": [
+        {"name": "hipaa-phi-detector", "action": "deny"}
       ]
     }
   }'
@@ -224,16 +222,16 @@ spec:
     # Monitor configuration files
     - filter: /app/config/
       recursive: true
-      behavior: monitor change
+      behavior: monitor_change
     # Monitor application binaries
     - filter: /app/bin/
       recursive: true
-      behavior: monitor change
+      behavior: monitor_change
     # Block writes to data directories from unexpected processes
     - filter: /app/data/phi/
       recursive: true
-      behavior: block access
-      applications:
+      behavior: block_access
+      app:
         - sh
         - bash
         - curl
@@ -296,18 +294,30 @@ cat > "${REPORT}" << EOF
 ## Executive Summary
 EOF
 
-# Run compliance checks
-curl -sk -X POST \
-  "https://neuvector-manager:8443/v1/bench/host/all" \
-  -H "X-Auth-Token: ${TOKEN}"
+# Run compliance checks per host
+# NeuVector exposes per-host benchmark endpoints; iterate over hosts.
+HOST_IDS=$(curl -sk "https://neuvector-manager:8443/v1/host" \
+  -H "X-Auth-Token: ${TOKEN}" | jq -r '.hosts[].id')
+
+for HOST_ID in ${HOST_IDS}; do
+  curl -sk -X POST \
+    "https://neuvector-manager:8443/v1/bench/host/${HOST_ID}/kubernetes" \
+    -H "X-Auth-Token: ${TOKEN}"
+done
 
 sleep 60  # Wait for scans
 
-# Get compliance results
-PASS=$(curl -sk "https://neuvector-manager:8443/v1/bench/host" \
-  -H "X-Auth-Token: ${TOKEN}" | jq '[.hosts[].passed] | add')
-FAIL=$(curl -sk "https://neuvector-manager:8443/v1/bench/host" \
-  -H "X-Auth-Token: ${TOKEN}" | jq '[.hosts[].failed] | add')
+# Aggregate compliance results across hosts
+PASS=0
+FAIL=0
+for HOST_ID in ${HOST_IDS}; do
+  HOST_PASS=$(curl -sk "https://neuvector-manager:8443/v1/bench/host/${HOST_ID}/kubernetes" \
+    -H "X-Auth-Token: ${TOKEN}" | jq '[.items[] | select(.level=="PASS")] | length')
+  HOST_FAIL=$(curl -sk "https://neuvector-manager:8443/v1/bench/host/${HOST_ID}/kubernetes" \
+    -H "X-Auth-Token: ${TOKEN}" | jq '[.items[] | select(.level=="WARN")] | length')
+  PASS=$((PASS + HOST_PASS))
+  FAIL=$((FAIL + HOST_FAIL))
+done
 
 cat >> "${REPORT}" << EOF
 
