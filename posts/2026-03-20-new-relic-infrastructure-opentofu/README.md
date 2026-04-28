@@ -62,7 +62,7 @@ resource "helm_release" "newrelic_bundle" {
         enabled = true
         kubelet = {
           config = {
-            timeout = 30
+            timeout = "30s"
           }
         }
       }
@@ -76,7 +76,6 @@ resource "helm_release" "newrelic_bundle" {
       nri-prometheus = {
         enabled = true
         config = {
-          cluster_name         = var.cluster_name
           audit                = false
           insecure_skip_verify = false
           require_scrape_enabled_label_for_nodes = true
