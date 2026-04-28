@@ -92,79 +92,60 @@ tofu apply tfplan
 ## Step 4: Set Up Automation
 
 ```yaml
-# .github/workflows/infrastructure.yml
-name: Infrastructure Deployment
+# .gitlab-ci.yml
+stages:
+  - validate
+  - plan
+  - apply
 
-on:
-  push:
-    branches: [main]
-  pull_request:
-    branches: [main]
+variables:
+  TF_ROOT: ${CI_PROJECT_DIR}
+  TF_LOG: INFO
+  TF_INPUT: "false"
+  TF_IN_AUTOMATION: "true"
 
-permissions:
-  id-token: write
-  contents: read
-  pull-requests: write
+default:
+  image:
+    name: ghcr.io/opentofu/opentofu:1.7.0
+    entrypoint: [""]
+  before_script:
+    - cd "${TF_ROOT}"
+    - tofu --version
+    - tofu init -input=false
 
-jobs:
-  plan:
-    runs-on: ubuntu-latest
-    steps:
-      - uses: actions/checkout@v4
+validate:
+  stage: validate
+  script:
+    - tofu fmt -check -recursive
+    - tofu validate
 
-      - name: Setup OpenTofu
-        uses: opentofu/setup-opentofu@v1
-        with:
-          tofu_version: "1.7.0"
+plan:
+  stage: plan
+  script:
+    - tofu plan -no-color -out=tfplan
+    - tofu show -no-color tfplan
+  artifacts:
+    paths:
+      - tfplan
+    expire_in: 1 week
+  rules:
+    - if: $CI_PIPELINE_SOURCE == "merge_request_event"
+    - if: $CI_COMMIT_BRANCH == $CI_DEFAULT_BRANCH
 
-      - name: Configure AWS Credentials
-        uses: aws-actions/configure-aws-credentials@v4
-        with:
-          role-to-assume: ${{ secrets.AWS_ROLE_ARN }}
-          aws-region: us-east-1
-
-      - name: OpenTofu Init
-        run: tofu init
-
-      - name: OpenTofu Plan
-        run: tofu plan -no-color -out=tfplan
-
-      - name: Upload Plan
-        uses: actions/upload-artifact@v3
-        with:
-          name: tfplan
-          path: tfplan
-
-  apply:
-    needs: plan
-    runs-on: ubuntu-latest
-    environment: production
-    if: github.ref == 'refs/heads/main'
-    steps:
-      - uses: actions/checkout@v4
-
-      - name: Setup OpenTofu
-        uses: opentofu/setup-opentofu@v1
-        with:
-          tofu_version: "1.7.0"
-
-      - name: Configure AWS Credentials
-        uses: aws-actions/configure-aws-credentials@v4
-        with:
-          role-to-assume: ${{ secrets.AWS_ROLE_ARN }}
-          aws-region: us-east-1
-
-      - name: Download Plan
-        uses: actions/download-artifact@v3
-        with:
-          name: tfplan
-
-      - name: OpenTofu Init
-        run: tofu init
-
-      - name: OpenTofu Apply
-        run: tofu apply -auto-approve tfplan
+apply:
+  stage: apply
+  script:
+    - tofu apply -auto-approve tfplan
+  dependencies:
+    - plan
+  environment:
+    name: production
+  rules:
+    - if: $CI_COMMIT_BRANCH == $CI_DEFAULT_BRANCH
+      when: manual
 ```
+
+Set cloud credentials (for example `AWS_ACCESS_KEY_ID`, `AWS_SECRET_ACCESS_KEY`, or an `AWS_ROLE_ARN` for OIDC) as masked CI/CD variables under **Settings > CI/CD > Variables** in your GitLab project. The `apply` job uses `when: manual` so a maintainer must click "Play" in the pipeline UI before infrastructure changes are applied.
 
 ## Step 5: Monitor and Verify
 
