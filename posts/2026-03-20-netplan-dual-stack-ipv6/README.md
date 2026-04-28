@@ -18,7 +18,7 @@ Configure both IPv4 and IPv6 simultaneously on Ubuntu/Debian interfaces using Ne
 
 ## Netplan File Location
 
-Netplan configuration files are in  with  extension. Files are processed in lexicographic order.
+Netplan configuration files are in `/etc/netplan/` with `.yaml` extension. Files are processed in lexicographic order.
 
 ```bash
 # List existing Netplan configs
@@ -39,6 +39,9 @@ network:
 
   ethernets:
     eth0:
+      # Enable DHCPv4
+      dhcp4: true
+
       # Enable DHCPv6
       dhcp6: true
 
@@ -141,4 +144,4 @@ Use [OneUptime](https://oneuptime.com) to monitor your server's IPv6 connectivit
 
 ## Conclusion
 
-How to Configure Dual-Stack with Netplan with Netplan uses clean YAML syntax. Key options are `dhcp6: true` for DHCPv6, `accept-ra: true` for SLAAC, `ipv6-privacy: true` for RFC 4941 temporary addresses, and static addresses in the `addresses` list. Always use `netplan try` before `netplan apply` to test changes safely.
+Configuring dual-stack with Netplan uses clean YAML syntax. Key options are `dhcp6: true` for DHCPv6, `accept-ra: true` for SLAAC, `ipv6-privacy: true` for RFC 4941 temporary addresses, and static addresses in the `addresses` list. Always use `netplan try` before `netplan apply` to test changes safely.
