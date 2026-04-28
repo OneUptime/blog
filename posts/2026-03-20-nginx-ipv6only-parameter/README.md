@@ -8,10 +8,10 @@ Description: A detailed explanation of the Nginx ipv6only listen parameter - wha
 
 ## What is ipv6only?
 
-The `ipv6only` parameter on a `listen [::]:PORT` directive controls whether the socket accepts only IPv6 connections or also IPv4-mapped IPv6 connections (which allow one socket to handle both protocols):
+The `ipv6only` parameter on a `listen [::]:PORT` directive controls whether the socket accepts only IPv6 connections or also IPv4-mapped IPv6 connections (which allow one socket to handle both protocols). Since nginx 1.3.4, `ipv6only=on` is the default:
 
 ```nginx
-# ipv6only=on: only accept pure IPv6 connections
+# ipv6only=on: only accept pure IPv6 connections (default since nginx 1.3.4)
 
 listen [::]:80 ipv6only=on;
 
@@ -28,10 +28,12 @@ listen [::]:80 ipv6only=off;
 # Check the system-wide default
 cat /proc/sys/net/ipv6/bindv6only
 
-# 0 = IPv6 sockets can receive IPv4 connections (IPv4-mapped)
+# 0 = IPv6 sockets can receive IPv4 connections (IPv4-mapped) - Linux default
 # 1 = IPv6 sockets are IPv6-only
 
-# If bindv6only=1, [::]:80 only accepts IPv6 regardless of ipv6only setting in nginx
+# Note: bindv6only is the kernel default for sockets that don't explicitly
+# set IPV6_V6ONLY. Nginx always sets this option per-socket via the ipv6only
+# parameter (default `on` since 1.3.4), so it overrides the kernel default.
 sysctl net.ipv6.bindv6only
 
 # Change system default
@@ -74,20 +76,21 @@ server {
 When using `ipv6only=off`:
 - IPv4 clients appear in logs as `::ffff:192.168.1.1` (IPv4-mapped)
 - Cannot also use a separate `listen 0.0.0.0:80`
-- Behavior depends on system `bindv6only` setting
+- Must be set explicitly, since `ipv6only=on` is the default in nginx 1.3.4+
 
 ## Common Error with ipv6only
 
 ```nginx
-# This causes "Address already in use" when bindv6only=0:
+# In nginx pre-1.3.4, or when ipv6only=off is set explicitly with bindv6only=0,
+# this causes "Address already in use":
 server {
-    listen 80;        # Binds to 0.0.0.0:80
-    listen [::]:80;   # Also tries to bind to *:80 (overlaps with 0.0.0.0)
+    listen 80;                  # Binds to 0.0.0.0:80
+    listen [::]:80 ipv6only=off; # Also binds to *:80 (overlaps with 0.0.0.0)
 
     server_name example.com;
 }
 
-# Fix: Add ipv6only=on
+# Fix: Use ipv6only=on (the default since nginx 1.3.4)
 server {
     listen 80;
     listen [::]:80 ipv6only=on;
@@ -104,11 +107,10 @@ nginx -t 2>&1 | grep -i 'already in use\|bind'
 
 | Scenario | Recommended Setting |
 |----------|---------------------|
-| Dual-stack (separate IPv4/IPv6) | `ipv6only=on` |
+| Dual-stack (separate IPv4/IPv6) | `ipv6only=on` (default) |
 | IPv6-only server | `ipv6only=on` (no IPv4 listen) |
-| Single-socket both versions | `ipv6only=off` |
-| bindv6only=1 on host | `ipv6only=on` (forced by OS) |
+| Single-socket both versions | `ipv6only=off` (must be explicit) |
 
 ## Summary
 
-The `ipv6only` parameter controls whether a `listen [::]:PORT` socket accepts only IPv6 or also IPv4-mapped connections. Use `ipv6only=on` for explicit dual-stack (with a separate `listen 0.0.0.0:PORT` for IPv4) - this is the recommended approach. It prevents the "Address already in use" error when combining IPv4 and IPv6 listeners. Check the system-level `net.ipv6.bindv6only` sysctl as it sets the default behavior when `ipv6only` is not specified.
+The `ipv6only` parameter controls whether a `listen [::]:PORT` socket accepts only IPv6 or also IPv4-mapped connections. Use `ipv6only=on` for explicit dual-stack (with a separate `listen 0.0.0.0:PORT` for IPv4) - this is the recommended approach and the default since nginx 1.3.4. Nginx sets the `IPV6_V6ONLY` socket option explicitly per-socket, so it overrides the kernel-level `net.ipv6.bindv6only` sysctl default.
