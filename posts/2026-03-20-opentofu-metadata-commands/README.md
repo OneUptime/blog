@@ -12,19 +12,12 @@ The `tofu metadata` command group provides utilities for accessing metadata abou
 
 ## tofu metadata functions
 
-`tofu metadata functions` lists all built-in functions with their signatures and descriptions.
+`tofu metadata functions` prints signatures for all built-in functions available in the current OpenTofu version. The `-json` flag is a required option, so the output is always machine-readable JSON.
 
 ```bash
+# Without -json, the command exits with an error
 tofu metadata functions
-
-# Output (excerpt):
-
-# abs(number) number
-# base64decode(str) string
-# base64encode(str) string
-# ceil(number) number
-# chomp(string) string
-# ...
+# Error: The -json flag is required for the metadata functions command.
 ```
 
 ## JSON Output for Tooling
