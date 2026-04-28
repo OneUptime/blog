@@ -9,10 +9,10 @@ Description: Learn how to use NAPALM's get_bgp_neighbors method to programmatica
 ## NAPALM BGP Monitoring Capabilities
 
 NAPALM's `get_bgp_neighbors()` returns a standardized dictionary of BGP peer information including:
-- Peer IP address and AS number
-- Session state (established, active, idle)
-- Received and advertised prefix counts
-- Whether the peer is up
+- Peer IP address and AS number (local_as, remote_as, remote_id)
+- Whether the peer is up and administratively enabled (is_up, is_enabled)
+- Received, accepted, and sent prefix counts per address family
+- Peer uptime and description
 
 ## Step 1: Get BGP Neighbors
 
@@ -154,6 +154,10 @@ from datetime import datetime
 
 BASELINE_FILE = '/tmp/bgp-baseline.json'
 
+DEVICES = [
+    {'host': '192.168.1.1', 'driver': 'ios', 'username': 'admin', 'password': 'pass'},
+]
+
 def get_current_prefixes(devices):
     current = {}
     for dev_info in devices:
@@ -174,14 +178,14 @@ def get_current_prefixes(devices):
 if os.path.exists(BASELINE_FILE):
     with open(BASELINE_FILE) as f:
         baseline = json.load(f)
-    current = get_current_prefixes([])
+    current = get_current_prefixes(DEVICES)
     for key, count in current.items():
         base_count = baseline.get(key, 0)
         if abs(count - base_count) > 1000:
             print(f"ALERT: {key}: prefix count changed from {base_count} to {count}")
 else:
     # Create baseline
-    current = get_current_prefixes([])
+    current = get_current_prefixes(DEVICES)
     with open(BASELINE_FILE, 'w') as f:
         json.dump(current, f)
     print("Baseline created.")
