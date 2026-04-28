@@ -23,8 +23,9 @@ DAD Process (RFC 4862):
    Target = the tentative address being checked
    Dest = solicited-node multicast of the tentative address
 4. Wait 1 second (DAD_TRANSMIT_COUNT × RETRANS_TIMER)
-5a. If NA received with S=0, O=0 from another node:
+5a. If NA received with Target Address matching the tentative address:
     Address conflict! Do NOT use this address.
+    (Per RFC 4862 §5.4.4, the flag values do not matter; only the target match.)
     Generate a new address (for SLAAC) or report to administrator
 5b. If no NA received:
     Address is unique! Promote from TENTATIVE to PREFERRED state
