@@ -97,16 +97,13 @@ locals {
   config_hash    = md5(local.config_content)
 }
 
-resource "aws_cloudfront_invalidation" "app" {
-  distribution_id = aws_cloudfront_distribution.app.id
+resource "null_resource" "invalidate_cache" {
+  triggers = {
+    config_hash = local.config_hash
+  }
 
-  invalidation_batch {
-    comment = "Config changed: ${local.config_hash}"
-
-    paths {
-      quantity = 1
-      items    = ["/*"]
-    }
+  provisioner "local-exec" {
+    command = "aws cloudfront create-invalidation --distribution-id ${aws_cloudfront_distribution.app.id} --paths '/*'"
   }
 }
 ```
@@ -148,7 +145,7 @@ tofu console
 > md5("hello")
 "5d41402abc4b2a76b9719d911017c592"
 > substr(md5("myproject"), 0, 8)
-"c55e0f9e"
+"4da39212"
 ```
 
 ## Security Note
