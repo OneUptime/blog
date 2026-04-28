@@ -20,9 +20,8 @@ Adding NFS mounts to `/etc/fstab` makes them mount automatically at boot. This r
 # Basic NFSv4 mount
 203.0.113.10:/srv/data  /mnt/nfs-data  nfs4  defaults  0  0
 
-# Recommended options for reliability:
-203.0.113.10:/srv/data  /mnt/nfs-data  nfs  \
-  rw,soft,intr,_netdev,nfsvers=4,rsize=65536,wsize=65536  0  0
+# Recommended options for reliability (must be on a single line):
+203.0.113.10:/srv/data  /mnt/nfs-data  nfs  rw,soft,_netdev,nfsvers=4,rsize=65536,wsize=65536  0  0
 ```
 
 ## Recommended fstab Options
@@ -31,7 +30,6 @@ Adding NFS mounts to `/etc/fstab` makes them mount automatically at boot. This r
 |---|---|
 | `_netdev` | Wait for network before mounting (essential!) |
 | `soft` | Return error if server unreachable (prevents boot hang) |
-| `intr` | Allow interrupting hung operations |
 | `nfsvers=4` | Explicit NFSv4 |
 | `rsize=65536` | Large read buffer |
 | `wsize=65536` | Large write buffer |
@@ -47,7 +45,7 @@ Adding NFS mounts to `/etc/fstab` makes them mount automatically at boot. This r
 203.0.113.10:/var/www/html  /var/www/html  nfs  ro,soft,_netdev,nfsvers=4  0  0
 
 # Shared data (read-write)
-203.0.113.10:/srv/data  /mnt/data  nfs  rw,soft,intr,_netdev,nfsvers=4,rsize=65536,wsize=65536  0  0
+203.0.113.10:/srv/data  /mnt/data  nfs  rw,soft,_netdev,nfsvers=4,rsize=65536,wsize=65536  0  0
 
 # Backup share (read-write, retry in background)
 203.0.113.10:/srv/backups  /mnt/backups  nfs  rw,bg,soft,_netdev  0  0
@@ -101,7 +99,8 @@ After=network-online.target
 
 [Automount]
 Where=/mnt/data
-TimeoutIdleSec=600   # Unmount after 10 minutes of inactivity
+# Unmount after 10 minutes of inactivity
+TimeoutIdleSec=600
 
 [Install]
 WantedBy=multi-user.target
