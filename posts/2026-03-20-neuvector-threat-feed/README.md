@@ -45,14 +45,13 @@ curl -sk -X PATCH \
   }'
 ```
 
-## Step 2: Use NeuVector's IP Threat Group
+## Step 2: Reference a Threat IP Group in Network Rules
 
-NeuVector maintains a threat IP group that you can reference in network rules:
+Once you have created a threat IP group (see Step 3 below), reference it in network rules to block traffic to and from those addresses. Note that the `nv.` prefix is reserved by NeuVector for auto-learned service groups, so user-defined threat groups must use a different name (for example, `threat-blocklist`):
 
 ```bash
-# Create a deny rule for known threat IPs
-# NeuVector maintains nv.ip.threat for known malicious IPs
-curl -sk -X POST \
+# Create deny rules referencing your user-defined threat IP group
+curl -sk -X PATCH \
   "https://neuvector-manager:8443/v1/policy/rule" \
   -H "Content-Type: application/json" \
   -H "X-Auth-Token: ${TOKEN}" \
@@ -63,18 +62,18 @@ curl -sk -X POST \
         {
           "comment": "Block connections to known threat IPs",
           "from": "any",
-          "to": "nv.ip.threat",
+          "to": "threat-blocklist",
           "ports": "any",
           "action": "deny",
-          "cfg_type": "user"
+          "cfg_type": "user_created"
         },
         {
           "comment": "Block connections from known threat IPs",
-          "from": "nv.ip.threat",
+          "from": "threat-blocklist",
           "to": "any",
           "ports": "any",
           "action": "deny",
-          "cfg_type": "user"
+          "cfg_type": "user_created"
         }
       ]
     }
@@ -111,7 +110,7 @@ curl -sk -X POST \
       \"name\": \"threat-intel-ips\",
       \"comment\": \"Known malicious IPs from threat feed - $(date +%Y-%m-%d)\",
       \"criteria\": ${CRITERIA_JSON},
-      \"cfg_type\": \"user\"
+      \"cfg_type\": \"user_created\"
     }
   }"
 
@@ -128,13 +127,14 @@ Use the AlienVault Open Threat Exchange feed:
 
 OTX_API_KEY="your-otx-api-key"
 
-# Fetch recent threat indicators from OTX
-curl -sk "https://otx.alienvault.com/api/v1/indicators/export?types=IPv4" \
+# Fetch recent threat pulses from OTX (modified since the given date)
+curl -sk "https://otx.alienvault.com/api/v1/pulses/subscribed?modified_since=2024-01-01" \
   -H "X-OTX-API-KEY: ${OTX_API_KEY}" \
-  -o /tmp/otx-threat-ips.json
+  -o /tmp/otx-pulses.json
 
-# Extract IP addresses
-jq -r '.results[].indicator' /tmp/otx-threat-ips.json | head -500 > /tmp/threat-ips.txt
+# Extract IPv4 indicators from pulses
+jq -r '.results[].indicators[] | select(.type=="IPv4") | .indicator' /tmp/otx-pulses.json \
+  | sort -u | head -500 > /tmp/threat-ips.txt
 
 echo "Downloaded $(wc -l < /tmp/threat-ips.txt) threat IPs from OTX"
 
@@ -241,7 +241,7 @@ Track when containers attempt to reach threat infrastructure:
 ```bash
 # View threat-related security events
 curl -sk \
-  "https://neuvector-manager:8443/v1/event?type=network&start=0&limit=100" \
+  "https://neuvector-manager:8443/v1/log/event?type=network&start=0&limit=100" \
   -H "X-Auth-Token: ${TOKEN}" | \
   jq '[.events[] | select(.remote_workload_name | contains("threat"))] | {
     threat_connection_attempts: length,
