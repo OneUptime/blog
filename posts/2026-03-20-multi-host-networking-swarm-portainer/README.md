@@ -81,7 +81,8 @@ networks:
   swarm-overlay:
     driver: overlay
     attachable: true
-    encrypted: true
+    driver_opts:
+      encrypted: "true"
 ```
 
 ## Step 3: Connect Services to Networks
@@ -129,10 +130,8 @@ Add network encryption and security settings:
 networks:
   secure-overlay:
     driver: overlay
-    # Encrypt all overlay network traffic
-    encrypted: true
     driver_opts:
-      # Use IPsec for encryption
+      # Use IPsec for encryption (encrypts all overlay traffic)
       encrypted: "true"
 ```
 
@@ -203,7 +202,7 @@ networks:
 networks:
   presentation: {}   # Web/UI layer
   business: {}       # API/Logic layer
-  data: {}           # DB layer (internal only)
+  data:              # DB layer (internal only)
     internal: true
 ```
 
