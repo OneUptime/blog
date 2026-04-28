@@ -12,7 +12,7 @@ Google Cloud Storage (GCS) provides a natural module distribution mechanism for 
 
 ```hcl
 module "gke" {
-  source = "gcs::https://www.googleapis.com/storage/v1/b/my-modules/o/gke-v1.5.0.zip"
+  source = "gcs::https://www.googleapis.com/storage/v1/my-modules/gke-v1.5.0.zip"
 
   project     = var.gcp_project
   cluster_name = "production"
@@ -23,10 +23,10 @@ module "gke" {
 ## Alternative URL Format
 
 ```hcl
-# Using gs:// notation (automatically converted)
+# Tar.gz archives and nested object paths are also supported
 
 module "gke" {
-  source = "gcs::https://storage.googleapis.com/my-modules/modules/gke-v1.5.0.tar.gz"
+  source = "gcs::https://www.googleapis.com/storage/v1/my-modules/modules/gke-v1.5.0.tar.gz"
 }
 ```
 
