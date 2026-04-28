@@ -199,6 +199,7 @@ resource "google_compute_backend_service" "main" {
     }
   }
 
+  enable_cdn = true
   cdn_policy {
     cache_mode = "CACHE_ALL_STATIC"
   }
