@@ -20,8 +20,6 @@ CGA Option (Type 11) Wire Format:
 +-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+
 |     Type=11   |    Length     |  Pad Length   |   Reserved    |
 +-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+
-|   Reserved    |                                               |
-+-+-+-+-+-+-+-+-+                                               +
 |                                                               |
 .              CGA Parameters Data Structure                    .
 |                                                               |
@@ -33,7 +31,7 @@ Fields:
   Type:       8 bits = 11 (CGA option)
   Length:     8 bits = total option length in units of 8 bytes
   Pad Length: 8 bits = number of padding bytes at end of option
-  Reserved:   24 bits = 0
+  Reserved:   8 bits = 0
 
 The CGA Parameters Data Structure is the core of the option.
 ```
@@ -79,7 +77,7 @@ Fields:
     Allows up to 3 attempts at finding a unique CGA
 
   Subject Public Key Info:
-    DER-encoded RSA or ECDSA public key
+    DER-encoded RSA public key (RFC 3972 mandates RSA)
     Format: X.509 SubjectPublicKeyInfo ASN.1 structure
     Used to verify address derivation and RSA signature
 
@@ -136,9 +134,8 @@ def compute_hash1(cga_params: bytes) -> bytes:
 def derive_interface_id(hash1: bytes, sec: int) -> bytes:
     """Derive CGA interface identifier from Hash1."""
     iid = bytearray(hash1[:8])
-    # Clear universal/group bits (bits 0-1) and sec bits (2-4)
+    # Clear universal/group bits (bits 0-1) and sec bit positions (5-7)
     iid[0] &= 0x1C   # Keep only bits 2-4 pattern from hash
-    iid[0] &= ~0xC0  # Clear bits 0-1 (u and g bits)
     iid[0] |= (sec << 5)  # Set Sec value in bits 5-7
     return bytes(iid)
 ```
@@ -187,7 +184,7 @@ SEND-enabled Neighbor Solicitation:
 
 IPv6 Header:
   src: 2001:db8::3a8f:29c0:1234:5678 (CGA address)
-  dst: ff02::1:ff34:5678 (solicited-node multicast)
+  dst: ff02::1:ff00:200 (solicited-node multicast for target)
 
 ICMPv6 Header: Type=135 (NS), Code=0
 
@@ -209,7 +206,7 @@ NDP Options:
     Signature: [RSA signature over message + CGA params]
 
   Option 4: Timestamp (Type 13)        ← Prevents replay
-    Timestamp: [current NTP time]
+    Timestamp: [seconds since 1970-01-01 UTC, 48.16 fixed-point]
 
   Option 5: Nonce (Type 14)            ← Prevents reflection
     Nonce: [8 random bytes]
