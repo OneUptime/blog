@@ -34,7 +34,7 @@ After the learning period, NeuVector builds a process whitelist automatically:
 # Get the process profile for a group
 
 curl -sk \
-  "https://neuvector-manager:8443/v1/process/profile/group/nv.nginx.default" \
+  "https://neuvector-manager:8443/v1/process_profile/nv.nginx.default" \
   -H "X-Auth-Token: ${TOKEN}" | jq '.process_profile.process_list[] | {
     name: .name,
     path: .path,
@@ -67,29 +67,39 @@ Fine-tune the process profile programmatically:
 
 ```bash
 # Add a specific process to the allow list
-curl -sk -X POST \
-  "https://neuvector-manager:8443/v1/process/profile/group/nv.nginx.default/process" \
+curl -sk -X PATCH \
+  "https://neuvector-manager:8443/v1/process_profile/nv.nginx.default" \
   -H "Content-Type: application/json" \
   -H "X-Auth-Token: ${TOKEN}" \
   -d '{
-    "process": {
-      "name": "nginx",
-      "path": "/usr/sbin/nginx",
-      "user": "nginx",
-      "action": "allow"
+    "process_profile_config": {
+      "group": "nv.nginx.default",
+      "process_change_list": [
+        {
+          "name": "nginx",
+          "path": "/usr/sbin/nginx",
+          "user": "nginx",
+          "action": "allow"
+        }
+      ]
     }
   }'
 
 # Explicitly deny shells
-curl -sk -X POST \
-  "https://neuvector-manager:8443/v1/process/profile/group/nv.nginx.default/process" \
+curl -sk -X PATCH \
+  "https://neuvector-manager:8443/v1/process_profile/nv.nginx.default" \
   -H "Content-Type: application/json" \
   -H "X-Auth-Token: ${TOKEN}" \
   -d '{
-    "process": {
-      "name": "sh",
-      "path": "/bin/sh",
-      "action": "deny"
+    "process_profile_config": {
+      "group": "nv.nginx.default",
+      "process_change_list": [
+        {
+          "name": "sh",
+          "path": "/bin/sh",
+          "action": "deny"
+        }
+      ]
     }
   }'
 ```
@@ -103,14 +113,20 @@ Manage process profiles declaratively:
 apiVersion: neuvector.com/v1
 kind: NvSecurityRule
 metadata:
-  name: nginx-process-profile
+  name: nv.nginx.default
   namespace: default
 spec:
   target:
     policymode: Protect
     selector:
-      matchLabels:
-        app: nginx
+      name: nv.nginx.default
+      criteria:
+        - key: service
+          op: "="
+          value: nginx.default
+        - key: domain
+          op: "="
+          value: default
   process:
     - name: nginx
       path: /usr/sbin/nginx
@@ -143,23 +159,29 @@ spec:
 kubectl apply -f process-profile-policy.yaml
 ```
 
-## Step 5: Handle Process Profile for Init Containers
+## Step 5: Handle Process Profile for Workloads with Startup Scripts
 
-Init containers may run different processes during startup. Configure them separately:
+Some workloads run additional processes during startup (init containers, migration scripts, entrypoint shells). Make sure these are included in the allow list so they aren't blocked in Protect mode:
 
 ```yaml
-# Allow different processes for init containers
+# Allow startup-time processes alongside the main application
 apiVersion: neuvector.com/v1
 kind: NvSecurityRule
 metadata:
-  name: app-with-init
+  name: nv.myapp.default
   namespace: default
 spec:
   target:
     policymode: Protect
     selector:
-      matchLabels:
-        app: myapp
+      name: nv.myapp.default
+      criteria:
+        - key: service
+          op: "="
+          value: myapp.default
+        - key: domain
+          op: "="
+          value: default
   process:
     # Main application process
     - name: myapp
@@ -169,7 +191,7 @@ spec:
     - name: migrate
       path: /app/scripts/migrate.sh
       action: allow
-    # Allow the shell only for init container context
+    # Allow the shell used by the entrypoint
     - name: sh
       path: /bin/sh
       action: allow
@@ -184,10 +206,10 @@ Validate that your process profile blocks unauthorized processes:
 kubectl exec -it <pod-name> -n default -- /bin/sh
 # Expected: Process terminated and security event generated
 
-# Check for generated security events
+# Check for generated security events (process violations are reported as incidents)
 curl -sk \
-  "https://neuvector-manager:8443/v1/event?type=process&start=0&limit=10" \
-  -H "X-Auth-Token: ${TOKEN}" | jq '.events[] | {
+  "https://neuvector-manager:8443/v1/log/incident" \
+  -H "X-Auth-Token: ${TOKEN}" | jq '.incidents[] | {
     container: .workload_name,
     process: .proc_name,
     path: .proc_path,
@@ -206,7 +228,7 @@ Set up alerting for process violations to detect breach attempts:
 
 # Export events for SIEM integration
 curl -sk \
-  "https://neuvector-manager:8443/v1/event?type=process&start=0&limit=100" \
+  "https://neuvector-manager:8443/v1/log/incident" \
   -H "X-Auth-Token: ${TOKEN}" > process-events.json
 ```
 
@@ -223,7 +245,7 @@ GROUP_NAME="nv.myapp.staging"
 
 # Export the learned process profile
 curl -sk \
-  "https://neuvector-staging:8443/v1/process/profile/group/${GROUP_NAME}" \
+  "https://neuvector-staging:8443/v1/process_profile/${GROUP_NAME}" \
   -H "X-Auth-Token: ${TOKEN}" | \
   jq '.process_profile' > profile-export.json
 
