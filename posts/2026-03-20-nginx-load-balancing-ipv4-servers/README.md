@@ -124,7 +124,14 @@ done
 # Output should show rotating backend IPs
 ```
 
-Check the Nginx access log to confirm distribution:
+Check the Nginx access log to confirm distribution. This requires a custom log format that ends with `$upstream_addr` (the default `combined` format does not include it):
+
+```nginx
+log_format upstream_log '$remote_addr - $remote_user [$time_local] '
+                        '"$request" $status $body_bytes_sent '
+                        '"$http_referer" "$http_user_agent" $upstream_addr';
+access_log /var/log/nginx/access.log upstream_log;
+```
 
 ```bash
 # Count requests per upstream server
