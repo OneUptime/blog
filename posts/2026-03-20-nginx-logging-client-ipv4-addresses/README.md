@@ -121,13 +121,13 @@ http {
 
 ```bash
 # Top 10 client IPs by request count
-awk '{print $1}' /var/log/nginx/access.log | sort | uniq -c | sort -rn | head 10
+awk '{print $1}' /var/log/nginx/access.log | sort | uniq -c | sort -rn | head -n 10
 
 # Find all requests from a specific IP
-grep '^203.0.113.50' /var/log/nginx/access.log
+grep '^203\.0\.113\.50 ' /var/log/nginx/access.log
 
 # Count 4xx/5xx errors per IP (security incident investigation)
-awk '$9 ~ /^[45]/ {print $1}' /var/log/nginx/access.log | sort | uniq -c | sort -rn | head 20
+awk '$9 ~ /^[45]/ {print $1}' /var/log/nginx/access.log | sort | uniq -c | sort -rn | head -n 20
 ```
 
 ## Conclusion
