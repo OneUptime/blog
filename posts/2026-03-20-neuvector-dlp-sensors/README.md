@@ -29,7 +29,7 @@ A DLP sensor consists of:
 # Create a DLP sensor for PII detection
 
 curl -sk -X POST \
-  "https://neuvector-manager:8443/v1/dpi/dlp/sensor" \
+  "https://neuvector-manager:10443/v1/dlp/sensor" \
   -H "Content-Type: application/json" \
   -H "X-Auth-Token: ${TOKEN}" \
   -d '{
@@ -41,11 +41,10 @@ curl -sk -X POST \
           "name": "ssn-detection",
           "patterns": [
             {
-              "key": "packet",
+              "key": "pattern",
               "op": "regex",
               "value": "\\b(?!000|666|9\\d{2})\\d{3}-(?!00)\\d{2}-(?!0000)\\d{4}\\b",
-              "context": "packet",
-              "name": "ssn-pattern"
+              "context": "packet"
             }
           ]
         },
@@ -53,11 +52,10 @@ curl -sk -X POST \
           "name": "credit-card-detection",
           "patterns": [
             {
-              "key": "packet",
+              "key": "pattern",
               "op": "regex",
               "value": "\\b4[0-9]{12}(?:[0-9]{3})?\\b|\\b5[1-5][0-9]{14}\\b|\\b3[47][0-9]{13}\\b",
-              "context": "packet",
-              "name": "credit-card-pattern"
+              "context": "packet"
             }
           ]
         },
@@ -65,11 +63,10 @@ curl -sk -X POST \
           "name": "email-detection",
           "patterns": [
             {
-              "key": "packet",
+              "key": "pattern",
               "op": "regex",
               "value": "[a-zA-Z0-9._%+-]+@[a-zA-Z0-9.-]+\\.[a-zA-Z]{2,}",
-              "context": "packet",
-              "name": "email-pattern"
+              "context": "body"
             }
           ]
         }
@@ -83,7 +80,7 @@ curl -sk -X POST \
 ```bash
 # Create sensor to detect leaked credentials
 curl -sk -X POST \
-  "https://neuvector-manager:8443/v1/dpi/dlp/sensor" \
+  "https://neuvector-manager:10443/v1/dlp/sensor" \
   -H "Content-Type: application/json" \
   -H "X-Auth-Token: ${TOKEN}" \
   -d '{
@@ -95,11 +92,10 @@ curl -sk -X POST \
           "name": "aws-access-key",
           "patterns": [
             {
-              "key": "packet",
+              "key": "pattern",
               "op": "regex",
               "value": "(?i)aws_access_key_id[\\s=:]+[A-Z0-9]{20}",
-              "context": "packet",
-              "name": "aws-key-pattern"
+              "context": "body"
             }
           ]
         },
@@ -107,11 +103,10 @@ curl -sk -X POST \
           "name": "generic-api-key",
           "patterns": [
             {
-              "key": "packet",
+              "key": "pattern",
               "op": "regex",
               "value": "(?i)(api[_-]?key|apikey|api[_-]?token)[\\s=:\"']+[a-zA-Z0-9_\\-]{20,}",
-              "context": "packet",
-              "name": "api-key-pattern"
+              "context": "body"
             }
           ]
         },
@@ -119,11 +114,10 @@ curl -sk -X POST \
           "name": "password-in-url",
           "patterns": [
             {
-              "key": "packet",
+              "key": "pattern",
               "op": "regex",
               "value": "(?i)password[=:][^&\\s]{8,}",
-              "context": "packet",
-              "name": "password-url-pattern"
+              "context": "url"
             }
           ]
         }
@@ -137,7 +131,7 @@ curl -sk -X POST \
 ```bash
 # Create sensor for HIPAA Protected Health Information
 curl -sk -X POST \
-  "https://neuvector-manager:8443/v1/dpi/dlp/sensor" \
+  "https://neuvector-manager:10443/v1/dlp/sensor" \
   -H "Content-Type: application/json" \
   -H "X-Auth-Token: ${TOKEN}" \
   -d '{
@@ -149,11 +143,10 @@ curl -sk -X POST \
           "name": "medical-record-number",
           "patterns": [
             {
-              "key": "packet",
+              "key": "pattern",
               "op": "regex",
               "value": "(?i)mrn[\\s:=]+[0-9]{6,10}",
-              "context": "packet",
-              "name": "mrn-pattern"
+              "context": "body"
             }
           ]
         },
@@ -161,11 +154,10 @@ curl -sk -X POST \
           "name": "npi-number",
           "patterns": [
             {
-              "key": "packet",
+              "key": "pattern",
               "op": "regex",
               "value": "(?i)npi[\\s:=]+[0-9]{10}",
-              "context": "packet",
-              "name": "npi-pattern"
+              "context": "body"
             }
           ]
         },
@@ -173,11 +165,10 @@ curl -sk -X POST \
           "name": "diagnosis-code",
           "patterns": [
             {
-              "key": "packet",
+              "key": "pattern",
               "op": "regex",
               "value": "(?i)(icd-?10|diagnosis)[\\s:=]+[A-Z][0-9]{2}\\.?[0-9A-Z]{0,4}",
-              "context": "packet",
-              "name": "diagnosis-pattern"
+              "context": "body"
             }
           ]
         }
@@ -193,26 +184,30 @@ Attach sensors to specific workload groups:
 ```bash
 # Apply DLP sensors to a group
 curl -sk -X PATCH \
-  "https://neuvector-manager:8443/v1/group/nv.payment-service.default" \
+  "https://neuvector-manager:10443/v1/dlp/group/nv.payment-service.default" \
   -H "Content-Type: application/json" \
   -H "X-Auth-Token: ${TOKEN}" \
   -d '{
     "config": {
-      "dlp_sensors": [
-        {"name": "pii-detection", "action": "block"},
-        {"name": "credential-leakage", "action": "block"},
-        {"name": "credit-card-detection", "action": "alert"}
+      "name": "nv.payment-service.default",
+      "status": true,
+      "replace": [
+        {"name": "pii-detection", "action": "deny"},
+        {"name": "credential-leakage", "action": "deny"},
+        {"name": "hipaa-phi", "action": "allow"}
       ]
     }
   }'
 ```
+
+The DLP sensor `action` is either `allow` (monitor only — log violations without dropping traffic) or `deny` (block matching packets). Whether `deny` actually drops traffic also depends on the group's policy mode (Discover/Monitor/Protect).
 
 In the NeuVector UI:
 1. Go to **Policy** > **Groups**
 2. Select the target group
 3. Click the **DLP** tab
 4. Click **Add Sensor**
-5. Choose **Alert** or **Block** action
+5. Choose **Allow** or **Deny** action
 
 ## Step 6: Apply DLP via CRD
 
@@ -231,11 +226,11 @@ spec:
         app: payment-service
   dlp:
     status: true
-    dlp:
+    settings:
       - name: pii-detection
-        action: block
+        action: deny
       - name: credential-leakage
-        action: block
+        action: deny
 ```
 
 ```bash
@@ -245,18 +240,22 @@ kubectl apply -f dlp-policy.yaml
 ## Step 7: Monitor DLP Events
 
 ```bash
-# View DLP security events
+# DLP detections are emitted as threats. Pull them from the threat log.
 curl -sk \
-  "https://neuvector-manager:8443/v1/event?type=dlp&start=0&limit=50" \
-  -H "X-Auth-Token: ${TOKEN}" | jq '.events[] | {
-    container: .workload_name,
-    sensor: .sensor_name,
-    rule: .rule_name,
-    direction: .network_direction,
+  "https://neuvector-manager:10443/v1/log/threat?start=0&limit=50" \
+  -H "X-Auth-Token: ${TOKEN}" | jq '.threats[] | select(.sensor != "") | {
+    name: .name,
+    sensor: .sensor,
+    group: .group,
+    severity: .severity,
     action: .action,
-    timestamp: .at
+    client: .client_workload_name,
+    server: .server_workload_name,
+    timestamp: .reported_at
   }'
 ```
+
+The `action` field on a threat uses the values `allow`, `alert`, `deny`, or `reset` (`alert` means logged in monitor mode without dropping the packet; `deny` means the packet was dropped).
 
 ## Step 8: Tune DLP Patterns to Reduce False Positives
 
@@ -265,21 +264,21 @@ Overly broad patterns generate false positives. Tune them:
 ```bash
 # Update a sensor to refine patterns
 curl -sk -X PATCH \
-  "https://neuvector-manager:8443/v1/dpi/dlp/sensor/pii-detection" \
+  "https://neuvector-manager:10443/v1/dlp/sensor/pii-detection" \
   -H "Content-Type: application/json" \
   -H "X-Auth-Token: ${TOKEN}" \
   -d '{
     "config": {
+      "name": "pii-detection",
       "rules": [
         {
           "name": "ssn-detection-refined",
           "patterns": [
             {
-              "key": "packet",
+              "key": "pattern",
               "op": "regex",
               "value": "\\b(?!000|666|9\\d{2})\\d{3}-(?!00)\\d{2}-(?!0000)\\d{4}\\b",
-              "context": "packet",
-              "name": "ssn-strict"
+              "context": "packet"
             }
           ]
         }
