@@ -60,7 +60,9 @@ variable "allowed_origins" {
   default = ["https://example.com", "https://app.example.com"]
 }
 
-resource "aws_api_gateway_resource" "api" {
+resource "aws_api_gateway_rest_api" "api" {
+  name = "my-api"
+
   # Some resources need comma-separated strings instead of lists
   tags = {
     AllowedOrigins = join(",", var.allowed_origins)
