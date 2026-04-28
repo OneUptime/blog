@@ -107,9 +107,10 @@ curl -sk \
 ## Step 5: Review Discovered Processes
 
 ```bash
-# Get all discovered processes for a group
+# Get all discovered processes for a group.
+# The process profile endpoint is /v1/process_profile/{group} (single segment, underscore).
 curl -sk \
-  "https://neuvector-manager:8443/v1/process/profile/group/nv.webapp.production" \
+  "https://neuvector-manager:8443/v1/process_profile/nv.webapp.production" \
   -H "X-Auth-Token: ${TOKEN}" | \
   jq '.process_profile.process_list[] | {
     name: .name,
@@ -138,17 +139,20 @@ The Network Map provides a visual representation of discovered connections:
 
 ## Step 7: Manually Add Discover Mode Groups
 
-Force-add a specific service to Discover mode if it was previously in Monitor or Protect:
+Force-add a specific service to Discover mode if it was previously in Monitor or Protect.
+Policy mode is set on services via `PATCH /v1/service/config` (the
+`RESTServiceBatchConfig` schema), not on the group config:
 
 ```bash
-# Move a group back to Discover mode for re-learning
+# Move a service back to Discover mode for re-learning
 curl -sk -X PATCH \
-  "https://neuvector-manager:8443/v1/group/nv.webapp.production" \
+  "https://neuvector-manager:8443/v1/service/config" \
   -H "Content-Type: application/json" \
   -H "X-Auth-Token: ${TOKEN}" \
   -d '{
     "config": {
-      "mode": "Discover"
+      "services": ["nv.webapp.production"],
+      "policy_mode": "Discover"
     }
   }'
 ```
@@ -164,27 +168,40 @@ Configure how long to stay in Discover mode before auto-promoting:
 
 ```bash
 # Note: NeuVector doesn't have built-in auto-promotion timing
-# Use a script to transition groups after a defined period
+# Use a script to transition services after a defined period
 
 #!/bin/bash
 # auto-promote.sh
 # Run this after 48+ hours in Discover mode
 
-GROUPS_TO_MONITOR=$(curl -sk \
-  "https://neuvector-manager:8443/v1/group?start=0&limit=100" \
+# Collect all service groups currently in Discover mode (auto-discovered groups
+# carry the "nv." prefix; "containers", "nodes", "external" etc. are reserved
+# groups that should not be promoted).
+SERVICES=$(curl -sk \
+  "https://neuvector-manager:8443/v1/group" \
   -H "X-Auth-Token: ${TOKEN}" | \
   jq -r '.groups[] | select(.policy_mode == "Discover" and (.name | startswith("nv."))) | .name')
 
-for GROUP in $GROUPS_TO_MONITOR; do
-  echo "Promoting ${GROUP} to Monitor mode..."
-  curl -sk -X PATCH \
-    "https://neuvector-manager:8443/v1/group/${GROUP}" \
-    -H "Content-Type: application/json" \
-    -H "X-Auth-Token: ${TOKEN}" \
-    -d '{"config": {"mode": "Monitor"}}'
-done
+if [ -z "${SERVICES}" ]; then
+  echo "No Discover-mode services to promote."
+  exit 0
+fi
 
-echo "All groups promoted to Monitor mode. Watch for alerts before switching to Protect."
+# Build a JSON array of service names and submit a single batched mode change.
+# Policy mode is set via PATCH /v1/service/config (RESTServiceBatchConfig).
+SERVICE_JSON=$(echo "${SERVICES}" | jq -R . | jq -s .)
+
+echo "Promoting the following services to Monitor mode:"
+echo "${SERVICES}"
+
+curl -sk -X PATCH \
+  "https://neuvector-manager:8443/v1/service/config" \
+  -H "Content-Type: application/json" \
+  -H "X-Auth-Token: ${TOKEN}" \
+  -d "$(jq -n --argjson services "${SERVICE_JSON}" \
+    '{config: {services: $services, policy_mode: "Monitor"}}')"
+
+echo "All services promoted to Monitor mode. Watch for alerts before switching to Protect."
 ```
 
 ## Conclusion
