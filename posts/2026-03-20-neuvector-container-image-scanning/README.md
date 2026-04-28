@@ -13,7 +13,7 @@ Container image scanning is one of NeuVector's core capabilities. It detects kno
 ## Prerequisites
 
 - NeuVector installed with Scanner component
-- Images in a accessible registry or running in the cluster
+- Images in an accessible registry or running in the cluster
 - NeuVector Manager access
 
 ## Understanding Scan Types
@@ -39,22 +39,22 @@ Scan containers already running in your cluster:
 Via REST API:
 
 ```bash
-# Get auth token
+# Get auth token (REST API runs on the Controller at port 10443)
 
 TOKEN=$(curl -sk -X POST \
-  "https://neuvector-manager:8443/v1/auth" \
+  "https://neuvector-svc-controller:10443/v1/auth" \
   -H "Content-Type: application/json" \
   -d '{"password":{"username":"admin","password":"yourpassword"}}' \
   | jq -r '.token.token')
 
 # List running workloads to get the container ID
-curl -sk "https://neuvector-manager:8443/v1/workload?brief=true" \
+curl -sk "https://neuvector-svc-controller:10443/v2/workload?brief=true" \
   -H "X-Auth-Token: ${TOKEN}" | jq '.workloads[].id'
 
 # Trigger a scan on a specific container
 CONTAINER_ID="abc123def456"
 curl -sk -X POST \
-  "https://neuvector-manager:8443/v1/scan/workload/${CONTAINER_ID}" \
+  "https://neuvector-svc-controller:10443/v1/scan/workload/${CONTAINER_ID}" \
   -H "X-Auth-Token: ${TOKEN}"
 ```
 
@@ -63,24 +63,22 @@ curl -sk -X POST \
 Scan a specific image before deploying it:
 
 ```bash
-# Scan an image directly
+# Scan an image directly. POST /v1/scan/repository is a long-poll request
+# that returns the scan report synchronously in the response body.
 curl -sk -X POST \
-  "https://neuvector-manager:8443/v1/scan/image" \
+  "https://neuvector-svc-controller:10443/v1/scan/repository" \
   -H "Content-Type: application/json" \
   -H "X-Auth-Token: ${TOKEN}" \
   -d '{
     "request": {
-      "tag": "nginx:1.24",
-      "registry": "https://registry-1.docker.io",
+      "registry": "https://registry-1.docker.io/",
+      "repository": "library/nginx",
+      "tag": "1.24",
       "username": "",
-      "password": ""
+      "password": "",
+      "scan_layers": true
     }
-  }'
-
-# Get scan results for the image
-curl -sk \
-  "https://neuvector-manager:8443/v1/scan/image/nginx%3A1.24" \
-  -H "X-Auth-Token: ${TOKEN}" | jq '.report'
+  }' | jq '.report'
 ```
 
 ## Step 3: Enable Auto-Scan for New Images
@@ -88,23 +86,23 @@ curl -sk \
 Configure NeuVector to automatically scan images when new containers start:
 
 ```bash
-# Enable auto-scan via API
+# Enable auto-scan via API. enable_auto_scan_workload and enable_auto_scan_host
+# replace the older unified auto_scan flag in NeuVector 5.4.3+.
 curl -sk -X PATCH \
-  "https://neuvector-manager:8443/v1/scan/config" \
+  "https://neuvector-svc-controller:10443/v1/scan/config" \
   -H "Content-Type: application/json" \
   -H "X-Auth-Token: ${TOKEN}" \
   -d '{
     "config": {
-      "auto_scan": true,
-      "scan_layers": true
+      "enable_auto_scan_workload": true,
+      "enable_auto_scan_host": true
     }
   }'
 ```
 
 In the UI:
 1. Go to **Configuration** > **Scanning**
-2. Enable **Auto-Scan** toggle
-3. Enable **Scan Layers** for detailed layer-by-layer analysis
+2. Enable **Auto-Scan** toggles for workloads and hosts
 
 ## Step 4: Interpret Scan Results
 
@@ -113,13 +111,13 @@ Understanding the scan report output:
 ```bash
 # Get detailed scan results
 curl -sk \
-  "https://neuvector-manager:8443/v1/scan/workload/${CONTAINER_ID}/report" \
+  "https://neuvector-svc-controller:10443/v1/scan/workload/${CONTAINER_ID}" \
   -H "X-Auth-Token: ${TOKEN}" | jq '{
-    total_vulns: .report.vulnerability | length,
-    critical: [.report.vulnerability[] | select(.severity == "Critical")] | length,
-    high: [.report.vulnerability[] | select(.severity == "High")] | length,
-    medium: [.report.vulnerability[] | select(.severity == "Medium")] | length,
-    low: [.report.vulnerability[] | select(.severity == "Low")] | length
+    total_vulns: .report.vulnerabilities | length,
+    critical: [.report.vulnerabilities[] | select(.severity == "Critical")] | length,
+    high: [.report.vulnerabilities[] | select(.severity == "High")] | length,
+    medium: [.report.vulnerabilities[] | select(.severity == "Medium")] | length,
+    low: [.report.vulnerabilities[] | select(.severity == "Low")] | length
   }'
 ```
 
@@ -130,11 +128,14 @@ A typical vulnerability entry looks like:
   "name": "CVE-2023-44487",
   "severity": "High",
   "score": 7.5,
+  "score_v3": 7.5,
   "vectors": "CVSS:3.1/AV:N/AC:L/PR:N/UI:N/S:U/C:N/I:N/A:H",
+  "vectors_v3": "CVSS:3.1/AV:N/AC:L/PR:N/UI:N/S:U/C:N/I:N/A:H",
   "package_name": "golang.org/x/net",
   "package_version": "0.8.0",
   "fixed_version": "0.17.0",
   "description": "HTTP/2 Rapid Reset Attack vulnerability",
+  "link": "https://nvd.nist.gov/vuln/detail/CVE-2023-44487",
   "published_timestamp": 1697414400,
   "last_modified_timestamp": 1697500800
 }
@@ -147,15 +148,15 @@ Filter scan results by severity or package:
 ```bash
 # Get only Critical and High vulnerabilities
 curl -sk \
-  "https://neuvector-manager:8443/v1/scan/workload/${CONTAINER_ID}/report" \
+  "https://neuvector-svc-controller:10443/v1/scan/workload/${CONTAINER_ID}" \
   -H "X-Auth-Token: ${TOKEN}" | \
-  jq '[.report.vulnerability[] | select(.severity == "Critical" or .severity == "High")]'
+  jq '[.report.vulnerabilities[] | select(.severity == "Critical" or .severity == "High")]'
 
 # Export as CSV
 curl -sk \
-  "https://neuvector-manager:8443/v1/scan/workload/${CONTAINER_ID}/report" \
+  "https://neuvector-svc-controller:10443/v1/scan/workload/${CONTAINER_ID}" \
   -H "X-Auth-Token: ${TOKEN}" | \
-  jq -r '.report.vulnerability[] | [.name, .severity, .score, .package_name, .fixed_version] | @csv' \
+  jq -r '.report.vulnerabilities[] | [.name, .severity, .score, .package_name, .fixed_version] | @csv' \
   > scan-results.csv
 ```
 
@@ -182,7 +183,7 @@ Configure alerts when scans find high-severity vulnerabilities:
 ```bash
 # Configure a webhook for scan alerts
 curl -sk -X POST \
-  "https://neuvector-manager:8443/v1/system/webhook" \
+  "https://neuvector-svc-controller:10443/v1/system/config/webhook" \
   -H "Content-Type: application/json" \
   -H "X-Auth-Token: ${TOKEN}" \
   -d '{
@@ -191,7 +192,7 @@ curl -sk -X POST \
       "url": "https://your-webhook.example.com/neuvector",
       "type": "Slack",
       "enable": true,
-      "cfg_type": "user"
+      "cfg_type": "user_created"
     }
   }'
 ```
