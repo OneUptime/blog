@@ -37,22 +37,23 @@ NeuVector covers these CIS Benchmark sections:
 
 ## Step 1: Run Docker CIS Benchmark
 
-```bash
-# Run Docker benchmark on all nodes
+The NeuVector benchmark API is keyed by host ID (not node name), so first list your hosts and grab the ID for the node you want to scan:
 
+```bash
+# List hosts to find the host ID for each node
+curl -sk \
+  "https://neuvector-manager:8443/v1/host" \
+  -H "X-Auth-Token: ${TOKEN}" | jq '.hosts[] | {name, id}'
+
+# Trigger the Docker benchmark on a specific host
+HOST_ID="<host-id-from-above>"
 curl -sk -X POST \
-  "https://neuvector-manager:8443/v1/bench/host/all" \
+  "https://neuvector-manager:8443/v1/bench/host/${HOST_ID}/docker" \
   -H "X-Auth-Token: ${TOKEN}"
 
-# Check scan status
+# Get Docker benchmark results for that host
 curl -sk \
-  "https://neuvector-manager:8443/v1/bench/host" \
-  -H "X-Auth-Token: ${TOKEN}" | jq '.hosts[].status'
-
-# Get Docker benchmark results for a specific node
-NODE_NAME="worker-node-1"
-curl -sk \
-  "https://neuvector-manager:8443/v1/bench/host/${NODE_NAME}/docker" \
+  "https://neuvector-manager:8443/v1/bench/host/${HOST_ID}/docker" \
   -H "X-Auth-Token: ${TOKEN}" | jq '.'
 ```
 
@@ -61,12 +62,12 @@ curl -sk \
 ```bash
 # Run Kubernetes benchmark
 curl -sk -X POST \
-  "https://neuvector-manager:8443/v1/bench/host/${NODE_NAME}/kubernetes" \
+  "https://neuvector-manager:8443/v1/bench/host/${HOST_ID}/kubernetes" \
   -H "X-Auth-Token: ${TOKEN}"
 
 # Get Kubernetes benchmark results
 curl -sk \
-  "https://neuvector-manager:8443/v1/bench/host/${NODE_NAME}/kubernetes" \
+  "https://neuvector-manager:8443/v1/bench/host/${HOST_ID}/kubernetes" \
   -H "X-Auth-Token: ${TOKEN}" | jq '.items[] | select(.level == "FAIL") | {
     id: .test_number,
     description: .description,
@@ -82,13 +83,13 @@ Analyze results programmatically:
 #!/bin/bash
 # parse-cis-results.sh
 
-NODE_NAME="$1"
+HOST_ID="$1"
 TOKEN="$2"
 
 # Get all failed checks
-echo "=== FAILED CIS Checks for ${NODE_NAME} ==="
+echo "=== FAILED CIS Checks for ${HOST_ID} ==="
 curl -sk \
-  "https://neuvector-manager:8443/v1/bench/host/${NODE_NAME}/docker" \
+  "https://neuvector-manager:8443/v1/bench/host/${HOST_ID}/docker" \
   -H "X-Auth-Token: ${TOKEN}" | \
   jq -r '.items[] | select(.level == "FAIL") |
     "[\(.test_number)] \(.description)\n  Remediation: \(.remediation)\n"'
@@ -96,7 +97,7 @@ curl -sk \
 # Count by level
 echo "=== Summary ==="
 curl -sk \
-  "https://neuvector-manager:8443/v1/bench/host/${NODE_NAME}/docker" \
+  "https://neuvector-manager:8443/v1/bench/host/${HOST_ID}/docker" \
   -H "X-Auth-Token: ${TOKEN}" | \
   jq '{
     passed: [.items[] | select(.level == "PASS")] | length,
@@ -107,7 +108,7 @@ curl -sk \
 
 ## Step 4: Common CIS Docker Findings and Remediation
 
-### Check 2.1: Enable Content Trust
+### Check 4.5: Enable Content Trust
 
 ```bash
 # Enable Docker Content Trust
@@ -117,7 +118,7 @@ export DOCKER_CONTENT_TRUST=1
 echo "DOCKER_CONTENT_TRUST=1" >> /etc/environment
 ```
 
-### Check 2.2: Enable User Namespace Support
+### Check 2.8: Enable User Namespace Support
 
 ```bash
 # Edit Docker daemon configuration
@@ -130,21 +131,19 @@ EOF
 systemctl restart docker
 ```
 
-### Check 2.14: Use PIDs Limit
+### Check 5.28: Use PIDs cgroup limit
+
+The PIDs cgroup limit is enforced by Docker's `--pids-limit` flag at container runtime, or by setting `default-pids-limit` in `daemon.json` (Docker 20.10+) so every container inherits a default cap. Note that this is distinct from check 2.8's `default-ulimits` (`nofile`/`nproc`), which sets per-user RLIMITs and does not satisfy 5.28.
 
 ```bash
-# Set PID limit in daemon.json
+# Set the default container PIDs cgroup limit in daemon.json
 cat >> /etc/docker/daemon.json << EOF
 {
-  "default-ulimits": {
-    "nproc": {
-      "Name": "nproc",
-      "Hard": 1024,
-      "Soft": 1024
-    }
-  }
+  "default-pids-limit": 1024
 }
 EOF
+
+systemctl restart docker
 ```
 
 ### Check 4.1: Create a non-root user in Dockerfile
@@ -224,20 +223,30 @@ Monitor improvement over time:
 # track-compliance.sh
 # Run before and after remediation to track progress
 
-for NODE in $(kubectl get nodes -o jsonpath='{.items[*].metadata.name}'); do
-  echo "Scanning ${NODE}..."
+# List NeuVector host IDs (the bench API is keyed by host ID, not node name)
+HOST_IDS=$(curl -sk \
+  "https://neuvector-manager:8443/v1/host" \
+  -H "X-Auth-Token: ${TOKEN}" | jq -r '.hosts[].id')
+
+for HOST_ID in $HOST_IDS; do
+  echo "Scanning ${HOST_ID}..."
   curl -sk -X POST \
-    "https://neuvector-manager:8443/v1/bench/host/${NODE}" \
+    "https://neuvector-manager:8443/v1/bench/host/${HOST_ID}/docker" \
+    -H "X-Auth-Token: ${TOKEN}"
+  curl -sk -X POST \
+    "https://neuvector-manager:8443/v1/bench/host/${HOST_ID}/kubernetes" \
     -H "X-Auth-Token: ${TOKEN}"
 done
 
 sleep 30  # Wait for scans to complete
 
-echo "=== Compliance Scores ==="
-curl -sk \
-  "https://neuvector-manager:8443/v1/bench/host" \
-  -H "X-Auth-Token: ${TOKEN}" | \
-  jq -r '.hosts[] | "\(.host): \(.passed)/\(.total) passed (\(.failed) failed)"'
+echo "=== Compliance Scores (Docker) ==="
+for HOST_ID in $HOST_IDS; do
+  curl -sk \
+    "https://neuvector-manager:8443/v1/bench/host/${HOST_ID}/docker" \
+    -H "X-Auth-Token: ${TOKEN}" | \
+    jq -r --arg id "$HOST_ID" '"\($id): \([.items[] | select(.level == "PASS")] | length)/\(.items | length) passed (\([.items[] | select(.level == "FAIL")] | length) failed)"'
+done
 ```
 
 ## Conclusion
