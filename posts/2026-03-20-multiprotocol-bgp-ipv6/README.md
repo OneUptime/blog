@@ -52,7 +52,7 @@ IPv6 BGP next hops can be either:
 - A **global unicast address** (2001:db8::1) for eBGP peering
 - A **link-local address** (fe80::1) for peers on the same link
 
-When using link-local addresses, the next hop must include both the link-local address and the interface identifier.
+Per RFC 2545, when a link-local address is used, the Next Hop field of MP_REACH_NLRI must contain both the global IPv6 address (first) and the link-local IPv6 address (32 bytes total).
 
 ## Capability Negotiation
 
@@ -74,15 +74,15 @@ In dual-stack deployments, a single BGP session can carry both IPv4 and IPv6 rou
 ```text
 # FRRouting configuration for dual-stack BGP
 router bgp 65001
- neighbor 2001:db8::peer remote-as 65002
+ neighbor 2001:db8::2 remote-as 65002
 
  address-family ipv4 unicast
-  neighbor 2001:db8::peer activate
+  neighbor 2001:db8::2 activate
  exit-address-family
 
  address-family ipv6 unicast
-  neighbor 2001:db8::peer activate
-  neighbor 2001:db8::peer route-map FILTER-IN in
+  neighbor 2001:db8::2 activate
+  neighbor 2001:db8::2 route-map FILTER-IN in
  exit-address-family
 ```
 
