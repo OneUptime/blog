@@ -28,7 +28,7 @@ output "log2_of_8" {
 }
 
 output "log10_of_1000" {
-  value = log(1000, 10)  # Returns 3
+  value = log(1000, 10)  # Returns 2.9999999999999996 (float imprecision; mathematically 3)
 }
 
 output "natural_log" {
@@ -138,7 +138,7 @@ locals {
 
 ## Common Pitfalls
 
-- `log(0, base)` is undefined and will return an error. Always ensure the input is positive.
+- `log(0, base)` returns `-Infinity` rather than an error. Always ensure the input is positive to avoid propagating non-finite values into downstream calculations.
 - `log(1, base)` returns `0` for any base - this is mathematically correct.
 - Floating-point precision may produce results like `9.999999` instead of `10`. Use `round` (via `floor(x + 0.5)`) if you need an exact integer.
 
