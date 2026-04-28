@@ -43,7 +43,7 @@ nft add rule inet filter input ip saddr @ssh_whitelist tcp dport 22 accept
 
 ## Sets with CIDR Subnets
 
-To use subnet prefixes in a set, declare it as a `prefix` type:
+To use subnet prefixes in a set, declare it with the `interval` flag:
 
 ```bash
 # Create a set for CIDR ranges
