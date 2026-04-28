@@ -152,9 +152,14 @@ spec:
     # Set policymode to Protect
     policymode: Protect
     selector:
-      matchLabels:
-        app: webapp
-        env: production
+      name: nv.webapp.production
+      criteria:
+        - key: service
+          op: =
+          value: webapp
+        - key: domain
+          op: =
+          value: production
   process:
     - name: node
       path: /usr/local/bin/node
@@ -167,28 +172,31 @@ spec:
     - action: allow
       name: allow-lb
       selector:
-        matchLabels:
-          app: ingress-nginx
-      ports:
-        - protocol: TCP
-          port: 3000
+        name: nv.ingress-nginx.ingress-nginx
+        criteria:
+          - key: service
+            op: =
+            value: ingress-nginx
+      ports: tcp/3000
   egress:
     - action: allow
       name: allow-api
       selector:
-        matchLabels:
-          tier: api
-      ports:
-        - protocol: TCP
-          port: 8080
+        name: nv.api.production
+        criteria:
+          - key: service
+            op: =
+            value: api
+      ports: tcp/8080
     - action: allow
       name: allow-dns
       selector:
-        matchLabels:
-          k8s-app: kube-dns
-      ports:
-        - protocol: UDP
-          port: 53
+        name: nv.kube-dns.kube-system
+        criteria:
+          - key: service
+            op: =
+            value: kube-dns
+      ports: udp/53
 ```
 
 ```bash
@@ -237,7 +245,7 @@ echo "Reverted to Monitor mode. Investigate and fix policy before re-enabling Pr
 ## Step 7: Set Default Mode for New Services
 
 ```bash
-# New services automatically start in Protect mode (advanced configuration)
+# Set the default mode for newly discovered services (Discover, Monitor, or Protect)
 curl -sk -X PATCH \
   "https://neuvector-manager:8443/v1/system/config" \
   -H "Content-Type: application/json" \
