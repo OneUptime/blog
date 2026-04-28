@@ -142,7 +142,7 @@ echo "Subnet CIDR: $CIDR"
 ```bash
 # Verify a complex CIDR calculation before applying
 > cidrsubnets("10.0.0.0/16", 4, 4, 4, 4)
-tofu.dev.one[
+[
   "10.0.0.0/20",
   "10.0.16.0/20",
   "10.0.32.0/20",
