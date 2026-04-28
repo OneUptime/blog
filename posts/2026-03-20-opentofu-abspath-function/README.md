@@ -126,14 +126,14 @@ tofu console
 ## path.module vs abspath
 
 ```hcl
-# path.module is already absolute - no need to wrap:
+# Functions like file() resolve module-relative paths correctly, so wrapping with abspath is usually unnecessary:
 
 file("${path.module}/config/app.json")  # Works directly
 
-# abspath is useful for paths that are NOT relative to path.module:
+# abspath is useful when passing paths to external tools or local-exec commands where the working directory may differ:
 abspath("../../shared/config")  # Resolves relative path from CWD
 ```
 
 ## Conclusion
 
-The `abspath` function ensures consistent, absolute path references in OpenTofu. It is most useful in provisioner commands and external tool invocations where the working directory may vary. For module-internal paths, `${path.module}/...` already provides absolute references.
+The `abspath` function ensures consistent, absolute path references in OpenTofu. It is most useful in provisioner commands and external tool invocations where the working directory may vary. For module-internal paths used with built-in functions like `file()` and `templatefile()`, `${path.module}/...` typically works directly without needing `abspath()`.
