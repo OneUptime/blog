@@ -112,12 +112,12 @@ gsutil ls gs://acme-terraform-modules/gke/
 ```yaml
 # cloudbuild.yaml
 steps:
-  - name: 'hashicorp/terraform:latest'
+  - name: 'ghcr.io/opentofu/opentofu:latest'
     entrypoint: tofu
     args: ['init']
     env:
       - 'GOOGLE_APPLICATION_CREDENTIALS=/workspace/sa-key.json'
-  - name: 'hashicorp/terraform:latest'
+  - name: 'ghcr.io/opentofu/opentofu:latest'
     entrypoint: tofu
     args: ['plan']
 ```
