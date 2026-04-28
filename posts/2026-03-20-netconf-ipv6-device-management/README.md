@@ -26,7 +26,7 @@ from ncclient import manager
 def netconf_connect(host: str):
     """Open a NETCONF session to a device."""
     return manager.connect(
-        host=host,                    # IPv6 address: "2001:db8::r1"
+        host=host,                    # IPv6 address: "2001:db8::1"
         port=830,                     # NETCONF port
         username="admin",
         password="secret",
@@ -36,7 +36,7 @@ def netconf_connect(host: str):
     )
 
 # Check server capabilities
-with netconf_connect("2001:db8::r1") as conn:
+with netconf_connect("2001:db8::1") as conn:
     for cap in conn.server_capabilities:
         if "ipv6" in cap.lower() or "ip" in cap.lower():
             print(cap)
@@ -69,7 +69,7 @@ def get_ipv6_config(host: str) -> dict:
 
     return xmltodict.parse(response.xml)
 
-config = get_ipv6_config("2001:db8::r1")
+config = get_ipv6_config("2001:db8::1")
 interfaces = (config.get("rpc-reply", {})
                     .get("data", {})
                     .get("interfaces", {})
