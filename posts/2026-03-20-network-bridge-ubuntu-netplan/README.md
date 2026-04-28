@@ -73,7 +73,7 @@ bridges:
       stp: true
       forward-delay: 4  # Seconds before entering forwarding state
       hello-time: 2
-      max-age: 12
+      max-age: 6
       priority: 32768
 ```
 
