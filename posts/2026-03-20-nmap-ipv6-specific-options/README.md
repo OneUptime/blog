@@ -41,7 +41,7 @@ sudo nmap -6 -sn ff02::2%eth0
 
 ```bash
 # Force nmap to use a specific IPv6 source address
-nmap -6 -S 2001:db8::scanner 2001:db8::target
+nmap -6 -S 2001:db8::1 2001:db8::10
 
 # Specify the interface to use
 nmap -6 -e eth0 2001:db8::10
@@ -58,9 +58,9 @@ nmap -6 --script ipv6-node-info 2001:db8::10
 # Enumerate multicast group memberships (MLD)
 nmap -6 --script ipv6-multicast-mld-list 2001:db8::10
 
-# Test for IPv6 Router Advertisement responses
-# (Use only in authorized lab environments)
-nmap -6 --script ipv6-ra-flood 2001:db8::router
+# Flood the link with Router Advertisements (DoS — dangerous)
+# (Use only in authorized lab environments; can crash hosts)
+nmap -6 --script ipv6-ra-flood
 
 # DNS brute force for IPv6 subdomains
 nmap -6 --script dns-brute example.com
@@ -114,8 +114,8 @@ nmap -6 2001:db8::1 2001:db8::2 2001:db8::3
 # Using DNS resolution (nmap resolves the AAAA record)
 nmap -6 ipv6.google.com
 
-# Exclude specific addresses
-nmap -6 2001:db8::1-100 --exclude 2001:db8::10
+# Exclude specific addresses (IPv6 supports CIDR notation, not octet ranges)
+nmap -6 2001:db8::/120 --exclude 2001:db8::10
 ```
 
 ## Debugging IPv6 Scan Issues
@@ -141,10 +141,10 @@ sudo nmap -6 -sS -d --packet-trace 2001:db8::10
 nmap -6 --randomize-hosts -iL ipv6-targets.txt
 
 # Spoof source IP (use with caution, for authorized testing only)
-sudo nmap -6 -S 2001:db8::spoof-src 2001:db8::target
+sudo nmap -6 -S 2001:db8::beef 2001:db8::10
 
 # Add decoys (send scan from fake source IPs)
-sudo nmap -6 -D 2001:db8::decoy1,2001:db8::decoy2 2001:db8::target
+sudo nmap -6 -D 2001:db8::a,2001:db8::b 2001:db8::10
 ```
 
 **Note**: All scanning techniques on this page should only be used on networks and systems you are authorized to test. Unauthorized scanning is illegal.
