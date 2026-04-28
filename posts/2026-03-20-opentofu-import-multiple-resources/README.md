@@ -84,18 +84,47 @@ resource "aws_s3_bucket" "managed" {
 
 ```hcl
 # networking-imports.tf
-import { to = aws_vpc.main                id = "vpc-0abc" }
-import { to = aws_internet_gateway.main   id = "igw-0abc" }
-import { to = aws_route_table.public      id = "rtb-0abc" }
+import {
+  to = aws_vpc.main
+  id = "vpc-0abc"
+}
+
+import {
+  to = aws_internet_gateway.main
+  id = "igw-0abc"
+}
+
+import {
+  to = aws_route_table.public
+  id = "rtb-0abc"
+}
 
 # compute-imports.tf
-import { to = aws_instance.web[0]   id = "i-0abc001" }
-import { to = aws_instance.web[1]   id = "i-0abc002" }
-import { to = aws_instance.web[2]   id = "i-0abc003" }
+import {
+  to = aws_instance.web[0]
+  id = "i-0abc001"
+}
+
+import {
+  to = aws_instance.web[1]
+  id = "i-0abc002"
+}
+
+import {
+  to = aws_instance.web[2]
+  id = "i-0abc003"
+}
 
 # iam-imports.tf
-import { to = aws_iam_role.app_server   id = "AppServerRole" }
-import { to = aws_iam_role.worker       id = "WorkerRole" }
+import {
+  to = aws_iam_role.app_server
+  id = "AppServerRole"
+}
+
+import {
+  to = aws_iam_role.worker
+  id = "WorkerRole"
+}
 ```
 
 ## Using a CSV or JSON Data Source for Import IDs
@@ -140,13 +169,13 @@ For very large imports, import in phases to manage risk:
 
 ```bash
 # Phase 1: networking (foundation)
-tofu apply -target-file=networking-import-targets.txt
+tofu apply -target=aws_vpc.main -target=aws_internet_gateway.main -target=aws_route_table.public
 
 # Phase 2: security groups (depend on networking)
-tofu apply -target-file=security-import-targets.txt
+tofu apply -target=aws_security_group.web -target=aws_security_group.db
 
 # Phase 3: compute (depend on networking + security)
-tofu apply -target-file=compute-import-targets.txt
+tofu apply -target=aws_instance.web -target=aws_instance.worker
 ```
 
 ## Verify Imports
