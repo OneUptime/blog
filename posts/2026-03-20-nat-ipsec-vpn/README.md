@@ -88,11 +88,11 @@ If both VPN endpoints use the same subnet (e.g., both use 192.168.1.0/24), use N
 ```bash
 # Translate local 192.168.1.0/24 to 10.100.1.0/24 before entering tunnel
 iptables -t nat -A POSTROUTING -s 192.168.1.0/24 -d 10.0.0.0/24 \
-    -j SNAT --to-source 10.100.1.10
+    -j NETMAP --to 10.100.1.0/24
 
 # Translate incoming 10.100.1.0/24 back to 192.168.1.0/24
 iptables -t nat -A PREROUTING -s 10.0.0.0/24 -d 10.100.1.0/24 \
-    -j DNAT --to-destination 192.168.1.0/24
+    -j NETMAP --to 192.168.1.0/24
 ```
 
 ## Allowing IPsec Through a Firewall
