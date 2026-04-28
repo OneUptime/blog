@@ -105,7 +105,7 @@ module "eks" {
 
 ## Changelog and Release Notes
 
-```markdown
+````markdown
 # CHANGELOG.md
 
 ## [3.0.0] - 2026-03-15
@@ -138,7 +138,7 @@ module "vpc" {
 ## [2.0.1] - 2026-01-15
 ### Fixed
 - Incorrect route table associations in multi-AZ deployments
-```hcl
+````
 
 ## Automating Releases with GitHub Actions
 
@@ -154,6 +154,8 @@ on:
 jobs:
   release:
     runs-on: ubuntu-latest
+    permissions:
+      contents: write
     steps:
       - uses: actions/checkout@v4
       
@@ -163,12 +165,10 @@ jobs:
           tofu validate
           
       - name: Create GitHub Release
-        uses: actions/create-release@v1
-        env:
-          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        uses: softprops/action-gh-release@v2
         with:
-          tag_name: ${{ github.ref }}
-          release_name: Release ${{ github.ref }}
+          tag_name: ${{ github.ref_name }}
+          name: Release ${{ github.ref_name }}
           draft: false
           prerelease: false
 ```
