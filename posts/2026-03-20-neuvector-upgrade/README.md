@@ -128,7 +128,7 @@ NEW_VERSION="5.3.2"
 
 # Apply updated CRDs
 kubectl apply -f \
-  "https://raw.githubusercontent.com/neuvector/manifests/main/kubernetes/5.x/crd-k8s-1.19.yaml"
+  "https://raw.githubusercontent.com/neuvector/manifests/main/kubernetes/crd-k8s-1.19.yaml"
 
 # Verify CRDs were updated
 kubectl get crd | grep neuvector
@@ -212,4 +212,4 @@ kubectl get pods -n neuvector
 
 ## Conclusion
 
-Regular NeuVector upgrades ensure you benefit from the latest CVE database updates, security fixes, and new capabilities. By following the Discover → Monitor → Protect upgrade workflow, taking backups before upgrading, and validating post-upgrade functionality, you can upgrade NeuVector with minimal risk. For production clusters, always test upgrades in a staging environment first and maintain rollback capability.
+Regular NeuVector upgrades ensure you benefit from the latest CVE database updates, security fixes, and new capabilities. By following the step-by-step upgrade workflow above, taking backups before upgrading, and validating post-upgrade functionality, you can upgrade NeuVector with minimal risk. For production clusters, always test upgrades in a staging environment first and maintain rollback capability.
