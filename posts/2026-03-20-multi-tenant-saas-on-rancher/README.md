@@ -214,9 +214,10 @@ offboard_tenant() {
 
   echo "Archiving tenant data..."
   # Archive data to S3 before deletion
+  # Velero --ttl uses Go duration format (h/m/s), so convert days to hours
   velero backup create "tenant-$tenant_id-final" \
     --include-namespaces "$NS" \
-    --ttl "${retention_days}h"
+    --ttl "$((retention_days * 24))h"
 
   echo "Suspending tenant (label for no traffic)..."
   kubectl label namespace "$NS" tenant-status=suspended
