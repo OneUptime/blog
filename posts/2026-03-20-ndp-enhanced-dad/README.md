@@ -33,15 +33,16 @@ sequenceDiagram
 ## Enabling Enhanced DAD on Linux
 
 ```bash
-# Enhanced DAD is controlled by the ndisc_notify setting
+# Enhanced DAD is controlled by the enhanced_dad sysctl (default: TRUE)
 
 # Linux kernel 4.10+ supports Enhanced DAD via RFC 7527
 
 # Check current DAD settings
 sysctl net.ipv6.conf.eth0.dad_transmits
 sysctl net.ipv6.conf.eth0.accept_dad
+sysctl net.ipv6.conf.eth0.enhanced_dad
 
-# Enhanced DAD is enabled when dad_transmits >= 1
+# Enhanced DAD is enabled when dad_transmits >= 1 and enhanced_dad = 1
 # The kernel automatically includes a nonce option in NS messages
 
 # Verify kernel supports Enhanced DAD
@@ -107,7 +108,7 @@ show ipv6 interface GigabitEthernet0/0 | include DAD
 
 ! Disable DAD (not recommended for production)
 interface GigabitEthernet0/0
- no ipv6 nd dad attempts
+ ipv6 nd dad attempts 0
 
 ! Juniper - Enhanced DAD supported in Junos 17.3+
 show ipv6 neighbors detail | match "DAD"
