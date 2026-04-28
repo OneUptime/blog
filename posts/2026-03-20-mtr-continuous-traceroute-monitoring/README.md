@@ -119,7 +119,7 @@ sudo mtr -s 1400 8.8.8.8
 sudo mtr -i 0.5 8.8.8.8
 
 # Set DSCP/TOS bits (test QoS handling)
-sudo mtr --tos 46 8.8.8.8    # EF (expedited forwarding) DSCP
+sudo mtr --tos 184 8.8.8.8   # TOS 0xB8 = DSCP EF (expedited forwarding)
 ```
 
 MTR is the single best tool for diagnosing intermittent network problems - by continuously measuring every hop simultaneously, it catches transient issues that a single traceroute would miss.
