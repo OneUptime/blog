@@ -8,11 +8,11 @@ Description: A detailed comparison of NeuVector and Aqua Security for container 
 
 ## Overview
 
-Container security is essential for any production Kubernetes deployment. NeuVector and Aqua Security are two leading container security platforms, offering runtime protection, vulnerability scanning, network security, and compliance features. NeuVector is an open-source, CNCF project acquired by SUSE Rancher, while Aqua Security is a commercial cloud-native security platform with broad integrations. This guide compares them across key dimensions.
+Container security is essential for any production Kubernetes deployment. NeuVector and Aqua Security are two leading container security platforms, offering runtime protection, vulnerability scanning, network security, and compliance features. NeuVector is an open-source platform owned by SUSE (which integrates it with Rancher), while Aqua Security is a commercial cloud-native security platform with broad integrations. This guide compares them across key dimensions.
 
 ## What Is NeuVector?
 
-NeuVector is a full-lifecycle container security platform developed by SUSE Rancher and donated to the CNCF. It provides zero-trust container network security, behavioral learning, runtime threat detection, vulnerability scanning, and compliance reporting. The core product is fully open source under the Apache 2.0 license.
+NeuVector is a full-lifecycle container security platform that was acquired by SUSE in 2021 and open-sourced in January 2022 under the Apache 2.0 license. It provides zero-trust container network security, behavioral learning, runtime threat detection, vulnerability scanning, and compliance reporting.
 
 ## What Is Aqua Security?
 
@@ -51,12 +51,14 @@ metadata:
   name: webapp-policy
   namespace: default
 spec:
-  selector:
-    name: webapp
-    criteria:
-      - key: service
-        value: webapp
-        op: "="
+  target:
+    policymode: Protect
+    selector:
+      name: webapp
+      criteria:
+        - key: service
+          value: webapp
+          op: "="
   egress:
     - selector:
         name: database
@@ -66,6 +68,7 @@ spec:
             op: "="
       ports: "tcp/5432"
       action: allow
+      name: webapp-to-db
 ```
 
 ## Runtime Threat Detection
@@ -75,11 +78,11 @@ spec:
 NeuVector detects process-level anomalies, file system violations, and network threats at runtime. It uses behavioral profiles to detect deviations from baseline behavior.
 
 ```bash
-# NeuVector CLI to check security events
+# NeuVector REST API authentication (returns a token used for subsequent calls)
 kubectl exec -n neuvector deployment/neuvector-manager-pod -- \
   curl -k -H "Content-Type: application/json" \
-  -d '{"username":"admin","password":"admin"}' \
-  https://localhost:10443/auth
+  -d '{"password":{"username":"admin","password":"admin"}}' \
+  https://localhost:10443/v1/auth
 ```
 
 ### Aqua Security
@@ -93,8 +96,8 @@ Both platforms provide image scanning integrated into CI/CD pipelines:
 ```yaml
 # Integrate NeuVector scanning in CI/CD
 # Using NeuVector REST API to scan an image
-curl -k -X POST https://neuvector-svc-controller-api:10443/v1/scan/image \
-  -H "Authorization: Bearer $TOKEN" \
+curl -k -X POST https://neuvector-svc-controller-api:10443/v1/scan/repository \
+  -H "X-Auth-Token: $TOKEN" \
   -H "Content-Type: application/json" \
   -d '{
     "request": {
@@ -131,7 +134,7 @@ helm install neuvector neuvector/core \
 - Cost is a key factor (fully open source)
 - You use Rancher and want native integration
 - Zero-trust network security with Layer 7 inspection is the priority
-- CNCF-aligned open-source tooling is preferred
+- Apache 2.0 licensed open-source tooling is preferred
 
 ## When to Choose Aqua Security
 
