@@ -25,9 +25,9 @@ With network mirror:
 The network mirror must serve files at these paths:
 
 ```text
-/{hostname}/{namespace}/{type}/index.json           - list versions
-/{hostname}/{namespace}/{type}/{version}.json       - per-version metadata
-/{hostname}/{namespace}/{type}/{version}/{filename} - provider binary
+/{hostname}/{namespace}/{type}/index.json     - list versions
+/{hostname}/{namespace}/{type}/{version}.json - per-version metadata
+/{hostname}/{namespace}/{type}/{filename}     - provider binary (URL is relative to the version JSON)
 ```
 
 Example for `registry.opentofu.org/hashicorp/aws`:
@@ -35,7 +35,7 @@ Example for `registry.opentofu.org/hashicorp/aws`:
 ```text
 /registry.opentofu.org/hashicorp/aws/index.json
 /registry.opentofu.org/hashicorp/aws/5.31.0.json
-/registry.opentofu.org/hashicorp/aws/5.31.0/terraform-provider-aws_5.31.0_linux_amd64.zip
+/registry.opentofu.org/hashicorp/aws/terraform-provider-aws_5.31.0_linux_amd64.zip
 ```
 
 ## index.json Format
@@ -92,7 +92,7 @@ tofu providers mirror \
 
 # The directory is now ready to be served as a network mirror
 ls /opt/tofu-provider-mirror/registry.opentofu.org/hashicorp/aws/
-# index.json  5.31.0.json  5.31.0/
+# index.json  5.31.0.json  terraform-provider-aws_5.31.0_linux_amd64.zip  terraform-provider-aws_5.31.0_linux_arm64.zip  terraform-provider-aws_5.31.0_darwin_arm64.zip
 ```
 
 ## Serving the Mirror with nginx
