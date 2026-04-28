@@ -27,8 +27,10 @@ output "b64sha256" {
 
 output "hex_vs_b64" {
   # These hash the same data but differ in encoding
-  value_hex = sha256("hello")         # 64 hex chars
-  value_b64 = base64sha256("hello")   # ~44 Base64 chars
+  value = {
+    hex = sha256("hello")         # 64 hex chars
+    b64 = base64sha256("hello")   # ~44 Base64 chars
+  }
 }
 ```
 
@@ -85,7 +87,7 @@ resource "aws_lambda_function" "processor" {
 }
 ```
 
-### API Gateway Request Signing
+### Custom API Payload Hashing
 
 ```hcl
 variable "request_body" {
@@ -94,7 +96,7 @@ variable "request_body" {
 }
 
 locals {
-  # AWS Signature Version 4 uses base64-encoded SHA-256
+  # Some custom APIs require a Base64-encoded SHA-256 of the request payload
   payload_hash = base64sha256(var.request_body)
 }
 ```
