@@ -94,9 +94,9 @@ Python STUN detection:
 
 ```python
 # pip install pynat
-import pynat
-nat_type, ext_ip, ext_port = pynat.get_nat_type()
-print(f"NAT Type: {nat_type}")
+from pynat import get_ip_info
+topology, ext_ip, ext_port = get_ip_info()
+print(f"NAT Type: {topology}")
 print(f"External IP: {ext_ip}:{ext_port}")
 ```
 
