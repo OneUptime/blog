@@ -179,6 +179,7 @@ client.on('error', (err) => console.error(`Client error: ${err.message}`));
 ```javascript
 const { Transform } = require('stream');
 const net = require('net');
+const fs = require('fs');
 
 class CsvToJsonTransform extends Transform {
   constructor() {
