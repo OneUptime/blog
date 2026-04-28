@@ -22,11 +22,13 @@ Supported operations:
 ```bash
 pip install napalm
 
-# Install specific driver dependencies
-
-pip install napalm[ios]    # Cisco IOS (uses Netmiko)
-pip install napalm[eos]    # Arista EOS (uses EAPI)
-pip install napalm[junos]  # Juniper JunOS (uses PyEZ)
+# A single `pip install napalm` installs all core drivers and their
+# transport dependencies:
+#   - Cisco IOS    (uses Netmiko)
+#   - Cisco NX-OS  (uses pynxos / Netmiko)
+#   - Cisco IOS-XR (uses pyIOSXR)
+#   - Arista EOS   (uses pyeapi)
+#   - Juniper JunOS (uses PyEZ / junos-eznc)
 
 # Verify
 python3 -c "import napalm; print(napalm.__version__)"
