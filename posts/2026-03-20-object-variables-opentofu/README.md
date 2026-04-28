@@ -39,7 +39,7 @@ variable "server_config" {
   }
 }
 
-# Object with optional attributes (OpenTofu 1.3+)
+# Object with optional attributes (supported in all OpenTofu versions)
 variable "vpc_config" {
   type = object({
     cidr_block           = string
