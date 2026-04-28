@@ -137,7 +137,7 @@ output "vpc_id_list" {
 
 ```hcl
 variable "team_specific_buckets" {
-  type    = map(object({ versioning = bool; public = bool }))
+  type    = map(object({ versioning = bool, public = bool }))
   default = {}
 }
 
