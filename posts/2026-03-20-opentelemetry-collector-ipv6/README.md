@@ -106,9 +106,10 @@ exporters:
   otlphttp:
     endpoint: "http://[2001:db8::20]:4318"
 
-  # Jaeger exporter over IPv6
-  jaeger:
-    endpoint: "[2001:db8::30]:14250"
+  # OTLP exporter to Jaeger over IPv6 (Jaeger v1.35+ accepts OTLP natively;
+  # the standalone jaeger exporter was removed from collector-contrib)
+  otlp/jaeger:
+    endpoint: "[2001:db8::30]:4317"
     tls:
       insecure: true
 
@@ -116,13 +117,10 @@ exporters:
   prometheus:
     endpoint: "[::]:8888"
 
-  # Loki exporter over IPv6
-  loki:
-    endpoint: "http://[2001:db8::40]:3100/loki/api/v1/push"
-    labels:
-      resource:
-        - service.name
-        - ip_version
+  # OTLP/HTTP to Loki over IPv6 (Loki v3+ accepts OTLP at /otlp;
+  # the standalone loki exporter is deprecated)
+  otlphttp/loki:
+    endpoint: "http://[2001:db8::40]:3100/otlp"
 
   # Elasticsearch exporter over IPv6
   elasticsearch:
@@ -138,7 +136,7 @@ service:
     traces:
       receivers: [otlp, jaeger]
       processors: [batch, transform/add_ip_version]
-      exporters: [otlp, jaeger]
+      exporters: [otlp, otlp/jaeger]
 
     metrics:
       receivers: [otlp, prometheus]
@@ -148,13 +146,18 @@ service:
     logs:
       receivers: [otlp, syslog]
       processors: [batch, transform/add_ip_version, resource]
-      exporters: [loki, elasticsearch]
+      exporters: [otlphttp/loki, elasticsearch]
 
   telemetry:
     logs:
       level: info
     metrics:
-      address: "[::]:8888"
+      readers:
+        - pull:
+            exporter:
+              prometheus:
+                host: "::"
+                port: 8888
 ```
 
 ## Step 5: Deploy as Docker Container with IPv6
