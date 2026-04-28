@@ -20,7 +20,9 @@ resource "aws_instance" "app" {
   instance_type = "m5.large"
 
   # Method 1: Inline script with base64encode
-  user_data = base64encode(<<-EOF
+  # Note: aws_instance uses user_data_base64 for pre-encoded data;
+  # the plain user_data argument expects UTF-8 text and is base64-encoded by the provider.
+  user_data_base64 = base64encode(<<-EOF
     #!/bin/bash
     yum update -y
     yum install -y nginx
@@ -46,8 +48,8 @@ resource "aws_launch_template" "app" {
 
 # Method 3: filebase64 - encode a file directly
 resource "aws_instance" "app_filebase64" {
-  ami       = data.aws_ami.app.id
-  user_data = filebase64("${path.module}/scripts/user-data.sh")
+  ami              = data.aws_ami.app.id
+  user_data_base64 = filebase64("${path.module}/scripts/user-data.sh")
 }
 ```
 
@@ -100,7 +102,7 @@ resource "kubernetes_secret" "app" {
   data = {
     "api-key"      = var.api_key
     "db-password"  = random_password.db.result
-    "tls.crt"      = base64decode(tls_self_signed_cert.app.cert_pem)
+    "tls.crt"      = tls_self_signed_cert.app.cert_pem
   }
 
   # Use binary_data for pre-encoded values
