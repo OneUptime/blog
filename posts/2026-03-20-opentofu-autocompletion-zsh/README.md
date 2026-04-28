@@ -44,8 +44,9 @@ For more control, add the completion manually to `~/.zshrc`.
 # Add these lines to ~/.zshrc
 
 # Enable bash compatibility for OpenTofu completion
-autoload -U +X bashcompinit && bashcompinit
+# compinit must be loaded before bashcompinit
 autoload -U +X compinit && compinit
+autoload -U +X bashcompinit && bashcompinit
 
 # Register OpenTofu completion
 complete -o nospace -C "$(which tofu)" tofu
@@ -59,19 +60,22 @@ source ~/.zshrc
 
 ## Option 3: Oh My Zsh with Terraform Plugin
 
-Oh My Zsh's `terraform` plugin is broadly compatible with OpenTofu since they share the same CLI interface.
+Oh My Zsh's `terraform` plugin registers completion and aliases (like `tf=terraform`) for the `terraform` command. It does not register completion for `tofu` directly, but since OpenTofu shares the same CLI interface you can combine it with Option 1 or Option 2 to get `tofu` completion as well.
 
 ```zsh
 # In ~/.zshrc, add terraform to your plugins list
 plugins=(
   git
   docker
-  terraform   # works with OpenTofu too
+  terraform   # provides completion/aliases for the terraform command
   kubectl
 )
 
-# Then add the OpenTofu-specific alias
+# Override the plugin's tf alias to point to tofu instead
 echo 'alias tf=tofu' >> ~/.zshrc
+
+# Register tofu completion separately (see Option 1 or 2)
+echo 'complete -o nospace -C "$(which tofu)" tofu' >> ~/.zshrc
 
 source ~/.zshrc
 ```
