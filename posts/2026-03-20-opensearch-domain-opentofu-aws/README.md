@@ -25,6 +25,8 @@ terraform {
 provider "aws" {
   region = var.aws_region
 }
+
+data "aws_caller_identity" "current" {}
 ```
 
 ## Step 2: Create the OpenSearch Domain
@@ -140,8 +142,8 @@ output "opensearch_endpoint" {
   value = aws_opensearch_domain.main.endpoint
 }
 
-output "opensearch_kibana_endpoint" {
-  value = aws_opensearch_domain.main.kibana_endpoint
+output "opensearch_dashboard_endpoint" {
+  value = aws_opensearch_domain.main.dashboard_endpoint
 }
 ```
 
