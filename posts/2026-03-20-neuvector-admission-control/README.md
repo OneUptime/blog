@@ -76,7 +76,7 @@ curl -sk -X POST \
       "criteria": [
         {
           "name": "cveHighCount",
-          "op": "biggerEqualThan",
+          "op": ">=",
           "value": "1",
           "type": "cveHighCount"
         }
@@ -101,10 +101,10 @@ curl -sk -X POST \
       "comment": "Block privileged containers",
       "criteria": [
         {
-          "name": "privileged",
+          "name": "runAsPrivileged",
           "op": "=",
           "value": "true",
-          "type": "privileged"
+          "type": "runAsPrivileged"
         }
       ],
       "rule_type": "deny",
@@ -127,7 +127,7 @@ curl -sk -X POST \
       "criteria": [
         {
           "name": "imageRegistry",
-          "op": "!containsAny",
+          "op": "notContainsAny",
           "value": "registry.company.com, gcr.io/my-project",
           "type": "imageRegistry"
         }
@@ -172,31 +172,29 @@ NeuVector supports many criteria types:
 
 ```text
 Image criteria:
+- image                - Image name (matches name and/or tag)
 - imageRegistry        - Registry hostname
-- imageTag             - Image tag (e.g., block "latest")
 - imageSigned          - Whether image has a valid signature
 
 Vulnerability criteria:
 - cveHighCount         - Number of high CVEs
 - cveCriticalCount     - Number of critical CVEs
 - cveScoreCount        - CVEs above a CVSS score threshold
-- allowedCves          - Specific CVE exceptions
+- cveNames             - Match specific CVE IDs
 
 Kubernetes spec criteria:
-- privileged           - Privileged container flag
+- runAsPrivileged      - Privileged container flag
 - runAsRoot            - Running as root user
-- shareIpcNamespace    - hostIPC: true
-- shareNetNamespace    - hostNetwork: true
-- sharePidNamespace    - hostPID: true
+- shareIpcWithHost     - hostIPC: true
+- shareNetWithHost     - hostNetwork: true
+- sharePidWithHost     - hostPID: true
 - allowPrivEscalation  - allowPrivilegeEscalation: true
 - namespace            - Target namespace
-- label                - Pod labels
+- labels               - Pod labels
 - annotations          - Pod annotations
 
 Resource criteria:
-- cpuLimit             - CPU limit set
-- memoryLimit          - Memory limit set
-- noRequestLimit       - No resource limits specified
+- resourceLimit        - CPU/memory limit and request configuration
 ```
 
 ## Step 6: Test Admission Control
