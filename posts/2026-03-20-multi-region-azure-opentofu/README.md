@@ -153,4 +153,4 @@ resource "azurerm_traffic_manager_azure_endpoint" "secondary" {
 
 ## Summary
 
-Azure multi-region architecture built with OpenTofu uses Traffic Manager to route users to the lowest-latency region with automatic failover when health checks fail. Cosmos DB multi-master writes allow both regions to accept writes simultaneously, with built-in conflict resolution. Deploying to Azure paired regions (like East US / West Europe) satisfies data residency requirements and ensures Azure-managed failover during planned maintenance events.
+Azure multi-region architecture built with OpenTofu uses Traffic Manager to route users to the lowest-latency region with automatic failover when health checks fail. Cosmos DB multi-master writes allow both regions to accept writes simultaneously, with built-in conflict resolution. Deploying across multiple Azure regions helps satisfy data residency requirements; choosing Azure paired regions (such as East US / West US, or North Europe / West Europe) additionally benefits from sequential platform maintenance so both regions are not updated simultaneously.
