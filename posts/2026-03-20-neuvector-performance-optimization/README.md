@@ -49,15 +49,13 @@ controller:
     enabled: true
     storageClass: "fast-ssd"
     capacity: 10Gi
-    storageAccessModes:
-      - ReadWriteOnce
+    accessModes:
+      - ReadWriteMany
 
-  # Tune controller JVM if applicable
+  # Persist controller configuration to the PVC
   env:
-    - name: CTRL_MAX_GOROUTINES
-      value: "4096"
-    - name: CTRL_SCAN_WORKERS
-      value: "8"
+    - name: CTRL_PERSIST_CONFIG
+      value: "1"
 ```
 
 Apply via Helm:
@@ -93,8 +91,8 @@ enforcer:
       requiredDuringSchedulingIgnoredDuringExecution:
         nodeSelectorTerms:
           - matchExpressions:
-              - key: node-role.kubernetes.io/worker
-                operator: Exists
+              - key: node-role.kubernetes.io/control-plane
+                operator: DoesNotExist
 ```
 
 ## Step 3: Scale Scanner Replicas
@@ -143,7 +141,7 @@ DPI adds significant overhead for high-traffic services. Selectively apply it:
 # Disable DPI for high-throughput, low-risk services
 # (Keep DPI for internet-facing and sensitive services)
 
-# Put batch processing services in Discover mode (no DPI enforcement)
+# Put batch processing services in Monitor mode (alerts only, no blocking)
 for GROUP in $(curl -sk \
   "https://neuvector-manager:8443/v1/group?start=0&limit=100" \
   -H "X-Auth-Token: ${TOKEN}" | \
