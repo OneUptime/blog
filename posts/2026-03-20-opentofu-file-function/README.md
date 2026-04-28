@@ -114,9 +114,9 @@ Use `file` for static content, `templatefile` for content with dynamic values.
 
 ## Common Pitfalls
 
-- File paths must be UTF-8 encoded; binary files should use `filebase64`.
-- File is read at plan time, not apply time.
-- Missing files cause an error at plan time (use `fileexists` to check first).
+- File contents must be valid UTF-8; binary files should use `filebase64`.
+- The file must already exist on disk at the beginning of an OpenTofu run; it cannot be used to read files generated during the run.
+- Missing files cause an error during evaluation (use `fileexists` to check first).
 
 ## Conclusion
 
