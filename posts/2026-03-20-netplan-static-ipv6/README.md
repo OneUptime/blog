@@ -34,12 +34,8 @@ network:
 
   ethernets:
     eth0:
-      # IPv4 configuration (optional, for dual-stack)
-      addresses:
-        - 192.168.1.100/24
-
-      # IPv6 static configuration
-      # Using YAML list - multiple IPv6 addresses are supported
+      # Combined IPv4 and IPv6 static configuration
+      # Using YAML list - multiple addresses are supported
       addresses:
         - 192.168.1.100/24        # IPv4
         - 2001:db8::100/64        # IPv6 global unicast
@@ -132,12 +128,12 @@ network:
       dhcp6: false
       addresses:
         - 203.0.113.10/24
-        - 2001:db8:server::10/64
+        - 2001:db8:abcd::10/64
       routes:
         - to: 0.0.0.0/0
           via: 203.0.113.1
         - to: "::/0"
-          via: "2001:db8:server::1"
+          via: "2001:db8:abcd::1"
       nameservers:
         addresses:
           - 8.8.8.8
