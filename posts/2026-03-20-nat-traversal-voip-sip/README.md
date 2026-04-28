@@ -33,13 +33,13 @@ Client uses 203.0.113.1:56789 in SIP headers
 ```
 
 ```bash
-# Test STUN from command line
+# Test STUN from command line (stuntman's stunclient: host port)
 
-stun stun.l.google.com:19302
+stunclient stun.l.google.com 19302
 
 # Python STUN check
 import pynat
-nat_type, ext_ip, ext_port = pynat.get_nat_type()
+nat_type, ext_ip, ext_port = pynat.get_ip_info()
 print(f"External IP: {ext_ip}, Port: {ext_port}")
 ```
 
