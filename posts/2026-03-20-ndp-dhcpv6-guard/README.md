@@ -47,18 +47,18 @@ Client-to-Server (allowed on all ports):
   Type 1: SOLICIT       ← Client asks for server
   Type 3: REQUEST       ← Client requests specific address
   Type 4: CONFIRM       ← Client confirms address after move
-  Type 6: RENEW         ← Client renews lease
-  Type 7: REBIND        ← Client rebinds (renew failed)
-  Type 9: RELEASE       ← Client releases address
-  Type 10: DECLINE      ← Client declines address (DAD failed)
+  Type 5: RENEW         ← Client renews lease
+  Type 6: REBIND        ← Client rebinds (renew failed)
+  Type 8: RELEASE       ← Client releases address
+  Type 9: DECLINE       ← Client declines address (DAD failed)
   Type 11: INFORMATION-REQUEST ← Client asks for config only
 
 Server-to-Client (BLOCKED by DHCPv6 Guard on host ports):
   Type 2: ADVERTISE     ← Server responds to SOLICIT
-  Type 5: REPLY         ← Server responds to REQUEST/RENEW/etc.
-  Type 8: RECONFIGURE   ← Server asks client to re-request
+  Type 7: REPLY         ← Server responds to REQUEST/RENEW/etc.
+  Type 10: RECONFIGURE  ← Server asks client to re-request
 
-DHCPv6 Guard drops Types 2, 5, 8 on untrusted ports.
+DHCPv6 Guard drops Types 2, 7, 10 on untrusted ports.
 Only the legitimate server port can send these messages.
 ```
 
@@ -116,8 +116,8 @@ The relay agent converts client messages to RELAY-FORW (Type 12)
 and server responses to RELAY-REPL (Type 13).
 
 DHCPv6 Guard with relays:
-  - Client port: block Types 2, 5, 8 (server messages)
-  - Relay/uplink port: must be trusted (allows Types 2, 5, 8, 12, 13)
+  - Client port: block Types 2, 7, 10 (server messages)
+  - Relay/uplink port: must be trusted (allows Types 2, 7, 10, 12, 13)
   - The relay agent's port is trusted; it forwards server responses to clients
 
 Configuration:
@@ -144,7 +144,7 @@ sudo ip6tables -A INPUT -p udp --dport 546 \
     -m mac --mac-source 00:11:22:33:44:55 -j ACCEPT
 
 # Block DHCPv6 server messages from unknown sources
-# (Types 2=ADVERTISE, 5=REPLY, 8=RECONFIGURE)
+# (Types 2=ADVERTISE, 7=REPLY, 10=RECONFIGURE)
 sudo ip6tables -A INPUT -p udp --dport 546 -j DROP
 
 # This is a host-level approximation; switch-level DHCPv6 Guard
