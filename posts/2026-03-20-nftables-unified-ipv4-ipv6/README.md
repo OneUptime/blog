@@ -40,7 +40,7 @@ table inet filter {
     set MGMT_NETS {
         type ipv6_addr
         flags interval
-        elements = { fd00:mgmt::/48, 2001:db8:admin::/64 }
+        elements = { fd12:3456:789a::/48, 2001:db8:1::/64 }
     }
 
     set MGMT_NETS4 {
@@ -203,10 +203,10 @@ table inet blocklist {
 }
 
 # Add an address to block
-nft add element inet blocklist bad-ipv6 { 2001:db8:attacker::1 }
+nft add element inet blocklist bad-ipv6 { 2001:db8:1::1 }
 
 # Remove an address
-nft delete element inet blocklist bad-ipv6 { 2001:db8:attacker::1 }
+nft delete element inet blocklist bad-ipv6 { 2001:db8:1::1 }
 ```
 
 ## Persistence
