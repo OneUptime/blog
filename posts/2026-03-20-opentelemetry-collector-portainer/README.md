@@ -42,7 +42,7 @@ services:
       - telemetry_net
     healthcheck:
       test:
-        ["CMD", "wget", "-q", "-O-", "http://localhost:13133/health/status"]
+        ["CMD", "wget", "-q", "-O-", "http://localhost:13133/"]
       interval: 30s
       timeout: 5s
       retries: 3
@@ -163,9 +163,9 @@ processors:
     sampling_percentage: 10
 
 exporters:
-  # Export traces to Jaeger
+  # Export traces to Jaeger (OTLP gRPC port; requires COLLECTOR_OTLP_ENABLED=true on Jaeger)
   otlp/jaeger:
-    endpoint: jaeger:14250
+    endpoint: jaeger:4317
     tls:
       insecure: true
 
