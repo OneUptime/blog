@@ -96,10 +96,10 @@ High connection counts require matching kernel TCP parameters.
 ```bash
 # /etc/sysctl.conf additions for high-traffic IPv4
 
-# Increase the maximum number of open sockets
+# Increase the listen() accept queue limit
 net.core.somaxconn = 65535
 
-# Larger TCP backlog
+# Larger SYN backlog for half-open connections
 net.ipv4.tcp_max_syn_backlog = 65535
 
 # Enable TCP Fast Open (reduces latency for repeat connections)
