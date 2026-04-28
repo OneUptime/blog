@@ -132,7 +132,7 @@ If a resource is being created/destroyed in the wrong order:
 During `tofu destroy`, the graph is reversed - resources are destroyed in the opposite order of creation:
 
 ```bash
-tofu graph -type=destroy-plan
+tofu graph -type=plan-destroy
 ```
 
 ## Example: Viewing Dependencies
