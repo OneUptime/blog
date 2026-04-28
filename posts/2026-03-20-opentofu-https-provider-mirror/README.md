@@ -6,7 +6,7 @@ Tags: OpenTofu, Terraform, IaC, Provider, Mirror, HTTPS
 
 Description: Learn how to set up a network provider mirror served over HTTPS for centralized provider distribution across your organization.
 
-An HTTPS network mirror serves provider packages over HTTP, allowing all workstations and CI/CD systems in your organization to install providers from a central location. This is ideal for large teams, controlled environments, and organizations with strict security requirements.
+An HTTPS network mirror serves provider packages over HTTPS, allowing all workstations and CI/CD systems in your organization to install providers from a central location. This is ideal for large teams, controlled environments, and organizations with strict security requirements.
 
 ## HTTPS Mirror vs Filesystem Mirror
 
@@ -109,7 +109,7 @@ tofu init
 tofu providers mirror /opt/terraform-mirror
 ```
 
-## Mirror with Basic Authentication
+## Mirror with Bearer Token Authentication
 
 ```hcl
 # ~/.tofurc
