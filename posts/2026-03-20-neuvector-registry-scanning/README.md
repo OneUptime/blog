@@ -46,8 +46,8 @@ curl -sk -X POST \
   -d '{
     "config": {
       "name": "dockerhub",
+      "registry_type": "Docker Registry",
       "registry": "https://registry-1.docker.io",
-      "auth_token": "",
       "username": "your-username",
       "password": "your-token",
       "scan_layers": true,
@@ -68,6 +68,7 @@ curl -sk -X POST \
   -d '{
     "config": {
       "name": "harbor-prod",
+      "registry_type": "Harbor Registry",
       "registry": "https://harbor.company.com",
       "username": "scan-robot",
       "password": "robot-token",
@@ -75,8 +76,8 @@ curl -sk -X POST \
       "scan_layers": true,
       "rescan_after_db_update": true,
       "schedule": {
-        "schedule": "daily",
-        "interval": 0
+        "schedule": "periodical",
+        "interval": 86400
       },
       "cfg_type": "user"
     }
@@ -86,7 +87,7 @@ curl -sk -X POST \
 ### Add Amazon ECR Registry
 
 ```bash
-# Add AWS ECR registry (uses IAM role or access keys)
+# Add AWS ECR registry (uses IAM access keys)
 curl -sk -X POST \
   "https://neuvector-manager:8443/v1/scan/registry" \
   -H "Content-Type: application/json" \
@@ -94,17 +95,21 @@ curl -sk -X POST \
   -d '{
     "config": {
       "name": "aws-ecr",
+      "registry_type": "Amazon ECR Registry",
       "registry": "https://123456789.dkr.ecr.us-east-1.amazonaws.com",
-      "auth_with_key": true,
-      "access_key_id": "AKIAIOSFODNN7EXAMPLE",
-      "secret_access_key": "wJalrXUtnFEMI/K7MDENG/bPxRfiCYEXAMPLEKEY",
-      "aws_region": "us-east-1",
+      "aws_key": {
+        "id": "ecr-scan",
+        "access_key_id": "AKIAIOSFODNN7EXAMPLE",
+        "secret_access_key": "wJalrXUtnFEMI/K7MDENG/bPxRfiCYEXAMPLEKEY",
+        "region": "us-east-1"
+      },
       "scan_layers": true,
       "rescan_after_db_update": true,
       "schedule": {
-        "schedule": "daily",
-        "interval": 0
-      }
+        "schedule": "periodical",
+        "interval": 86400
+      },
+      "cfg_type": "user"
     }
   }'
 ```
@@ -112,21 +117,25 @@ curl -sk -X POST \
 ### Add Google Artifact Registry
 
 ```bash
-# Add Google Artifact Registry
+# Add Google Artifact Registry (uses a service account JSON key)
 curl -sk -X POST \
   "https://neuvector-manager:8443/v1/scan/registry" \
   -H "Content-Type: application/json" \
   -H "X-Auth-Token: ${TOKEN}" \
-  -d '{
-    "config": {
-      "name": "google-gar",
-      "registry": "https://us-central1-docker.pkg.dev",
-      "auth_token": "$(gcloud auth print-access-token)",
-      "filters": ["my-project/production/*"],
-      "scan_layers": true,
-      "rescan_after_db_update": true
-    }
-  }'
+  -d "$(jq -n \
+        --arg key "$(cat /path/to/service-account.json)" \
+        '{
+          config: {
+            name: "google-gar",
+            registry_type: "Google Container Registry",
+            registry: "https://us-central1-docker.pkg.dev",
+            gcr_key: { json_key: $key },
+            filters: ["my-project/production/*"],
+            scan_layers: true,
+            rescan_after_db_update: true,
+            cfg_type: "user"
+          }
+        }')"
 ```
 
 ## Step 2: Configure Scan Filters
@@ -141,6 +150,8 @@ curl -sk -X PATCH \
   -H "X-Auth-Token: ${TOKEN}" \
   -d '{
     "config": {
+      "name": "harbor-prod",
+      "registry_type": "Harbor Registry",
       "filters": [
         "production/myapp:*",
         "production/nginx:*",
@@ -154,31 +165,37 @@ curl -sk -X PATCH \
 
 Configure scan schedules:
 
+The `schedule` field accepts `manual`, `auto` (scan every image as soon as it is detected), or `periodical` (rescan on a fixed interval). For `periodical`, `interval` is in seconds and must be between 300 (5 minutes) and 604800 (7 days).
+
 ```bash
-# Schedule daily scans at midnight
+# Schedule periodical scans every 24 hours
 curl -sk -X PATCH \
   "https://neuvector-manager:8443/v1/scan/registry/harbor-prod" \
   -H "Content-Type: application/json" \
   -H "X-Auth-Token: ${TOKEN}" \
   -d '{
     "config": {
+      "name": "harbor-prod",
+      "registry_type": "Harbor Registry",
       "schedule": {
-        "schedule": "daily",
-        "interval": 0
+        "schedule": "periodical",
+        "interval": 86400
       }
     }
   }'
 
-# Schedule weekly scans
+# Schedule periodical scans every 7 days
 curl -sk -X PATCH \
   "https://neuvector-manager:8443/v1/scan/registry/harbor-prod" \
   -H "Content-Type: application/json" \
   -H "X-Auth-Token: ${TOKEN}" \
   -d '{
     "config": {
+      "name": "harbor-prod",
+      "registry_type": "Harbor Registry",
       "schedule": {
-        "schedule": "weekly",
-        "interval": 0
+        "schedule": "periodical",
+        "interval": 604800
       }
     }
   }'
@@ -192,15 +209,16 @@ curl -sk -X POST \
   "https://neuvector-manager:8443/v1/scan/registry/harbor-prod/scan" \
   -H "X-Auth-Token: ${TOKEN}"
 
-# Check scan status
+# Check scan status (response is wrapped in a "summary" object)
 curl -sk \
   "https://neuvector-manager:8443/v1/scan/registry/harbor-prod" \
   -H "X-Auth-Token: ${TOKEN}" | jq '{
-    name: .config.name,
-    status: .status.status,
-    scanned: .status.scanned,
-    failed: .status.failed,
-    total: .status.total
+    name: .summary.name,
+    status: .summary.status,
+    scanned: .summary.scanned,
+    scheduled: .summary.scheduled,
+    scanning: .summary.scanning,
+    failed: .summary.failed
   }'
 ```
 
@@ -217,8 +235,7 @@ curl -sk \
     critical: .critical,
     high: .high,
     medium: .medium,
-    low: .low,
-    scan_date: .scanned_at
+    scanned_at: .scanned_at
   }'
 ```
 
@@ -253,6 +270,8 @@ curl -sk -X PATCH \
   -H "X-Auth-Token: ${TOKEN}" \
   -d '{
     "config": {
+      "name": "harbor-prod",
+      "registry_type": "Harbor Registry",
       "rescan_after_db_update": true
     }
   }'
