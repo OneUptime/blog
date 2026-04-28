@@ -29,6 +29,7 @@ terraform {
     key_provider "aws_kms" "main" {
       kms_key_id = "arn:aws:kms:us-east-1:123456789012:key/abc-123"
       region     = "us-east-1"
+      key_spec   = "AES_256"
     }
 
     method "aes_gcm" "main" {
@@ -128,11 +129,13 @@ You can use different key providers for state and plan files:
 key_provider "aws_kms" "state_key" {
   kms_key_id = "arn:aws:kms:us-east-1:123456789012:key/state-key"
   region     = "us-east-1"
+  key_spec   = "AES_256"
 }
 
 key_provider "aws_kms" "plan_key" {
   kms_key_id = "arn:aws:kms:us-east-1:123456789012:key/plan-key"
   region     = "us-east-1"
+  key_spec   = "AES_256"
 }
 
 method "aes_gcm" "for_state" {
