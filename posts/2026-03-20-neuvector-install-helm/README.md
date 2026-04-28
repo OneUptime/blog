@@ -54,10 +54,13 @@ Create a `custom-values.yaml` to override defaults for your environment:
 ```yaml
 # custom-values.yaml
 
-# Container runtime configuration
-k8s:
-  # Supported: docker, containerd, crio
-  platform: containerd
+# Container runtime configuration (containerd is the most common choice)
+containerd:
+  enabled: true
+  path: /var/run/containerd/containerd.sock
+
+# Bootstrap password for the default admin user (change this!)
+bootstrapPassword: "YourSecurePassword123!"
 
 # Controller configuration
 controller:
@@ -74,9 +77,13 @@ controller:
     limits:
       cpu: "2000m"
       memory: "2Gi"
-  # Enable persistent storage for controller config
-  configmap:
+  # Persistent storage for controller state
+  pvc:
     enabled: true
+    accessModes:
+      - ReadWriteMany
+    storageClass: "standard"
+    capacity: 1Gi
 
 # Enforcer configuration (runs as DaemonSet on all nodes)
 enforcer:
@@ -107,36 +114,28 @@ manager:
       cpu: "500m"
       memory: "512Mi"
 
-# Scanner configuration for vulnerability scanning
-scanner:
-  enabled: true
-  replicas: 2
-  image:
-    repository: neuvector/scanner
-    tag: latest
-  resources:
-    requests:
-      cpu: "100m"
-      memory: "256Mi"
-    limits:
-      cpu: "1000m"
-      memory: "1Gi"
+# Scanner and updater are nested under "cve"
+cve:
+  # Scanner for vulnerability scanning
+  scanner:
+    enabled: true
+    replicas: 2
+    image:
+      repository: neuvector/scanner
+      tag: latest
+    resources:
+      requests:
+        cpu: "100m"
+        memory: "256Mi"
+      limits:
+        cpu: "1000m"
+        memory: "1Gi"
 
-# Registry (updater) for vulnerability database
-updater:
-  enabled: true
-  # CronJob schedule for database updates
-  schedule: "0 0 * * *"
-
-# Admin credentials (change these!)
-admin:
-  password: "YourSecurePassword123!"
-
-# Storage for controller state
-persistence:
-  enabled: true
-  storageClass: "standard"
-  size: 1Gi
+  # Updater for the vulnerability database
+  updater:
+    enabled: true
+    # CronJob schedule for database updates
+    schedule: "0 0 * * *"
 ```
 
 ## Step 5: Install NeuVector
@@ -216,17 +215,24 @@ kubectl get crd | grep neuvector | awk '{print $1}' | xargs kubectl delete crd
 NeuVector supports multiple container runtimes. Update your values file accordingly:
 
 ```yaml
-# For Docker
-k8s:
-  platform: docker
+# For Docker (set the socket path if it's not at the default location)
+docker:
+  path: /var/run/docker.sock
 
 # For containerd
-k8s:
-  platform: containerd
+containerd:
+  enabled: true
+  path: /var/run/containerd/containerd.sock
 
 # For CRI-O
-k8s:
-  platform: crio
+crio:
+  enabled: true
+  path: /var/run/crio/crio.sock
+
+# For k3s
+k3s:
+  enabled: true
+  runtimePath: /run/k3s/containerd/containerd.sock
 ```
 
 ## Conclusion
