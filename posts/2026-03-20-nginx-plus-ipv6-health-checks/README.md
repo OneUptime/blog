@@ -55,9 +55,9 @@ http {
                          uri=/health match=ipv6_backend_health;
         }
 
-        # NGINX Plus status dashboard
+        # NGINX Plus status dashboard (via API module)
         location /nginx_status {
-            status;
+            api;
             allow 2001:db8:mgmt::/48;
             allow 10.0.0.0/8;
             deny all;
