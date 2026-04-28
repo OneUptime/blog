@@ -11,7 +11,7 @@ The routing table tells the kernel where to send packets for each destination. D
 ## Display the Routing Table
 
 ```bash
-# Show kernel routing table (same as route -n)
+# Show kernel routing table (same output format as route -e)
 
 netstat -r
 
@@ -70,10 +70,10 @@ netstat -rn | grep "10.50.0"
 netstat -rn | grep "192.168.1"
 # Should show U (not UG) - directly connected
 
-# Check for metric (lower = preferred)
-netstat -rn
-# Multiple default routes → look at Flags and Iface
+# Check for multiple default routes
+netstat -rn | grep '^0.0.0.0'
 # Two default routes both showing UG → may cause routing issues
+# Use 'route -n' or 'ip route' to compare metric values (lower = preferred)
 ```
 
 ## Comparing with Modern ip Route
