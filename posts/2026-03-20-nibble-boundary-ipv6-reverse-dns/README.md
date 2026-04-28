@@ -38,7 +38,7 @@ With dots between each nibble and `.ip6.arpa.` appended:
 |---|---|---|
 | /32 | 8 nibbles | `8.b.d.0.1.0.0.2.ip6.arpa` (for 2001:db8::/32) |
 | /48 | 12 nibbles | `e.f.a.c.8.b.d.0.1.0.0.2.ip6.arpa` (for 2001:db8:cafe::/48) |
-| /56 | 14 nibbles | `0.b.a.e.f.a.c.8.b.d.0.1.0.0.2.ip6.arpa` (for 2001:db8:cafe:ab00::/56) |
+| /56 | 14 nibbles | `b.a.e.f.a.c.8.b.d.0.1.0.0.2.ip6.arpa` (for 2001:db8:cafe:ab00::/56) |
 | /64 | 16 nibbles | `d.c.b.a.e.f.a.c.8.b.d.0.1.0.0.2.ip6.arpa` (for 2001:db8:cafe:abcd::/64) |
 
 ## Non-Nibble-Boundary Delegation Problem
@@ -85,7 +85,7 @@ print(f"Zone file path suggestion: /var/named/{zone_name.replace('.', '-')}.rev"
 ```bash
 # Usage examples
 python3 ipv6-zone.py 2001:db8::/48
-# Zone name: 8.b.d.0.1.0.0.2.ip6.arpa
+# Zone name: 0.0.0.0.8.b.d.0.1.0.0.2.ip6.arpa
 
 python3 ipv6-zone.py 2001:db8:cafe::/48
 # Zone name: e.f.a.c.8.b.d.0.1.0.0.2.ip6.arpa
@@ -107,7 +107,7 @@ Organization /48:
 
 Site /56:
   Prefix: 2001:db8:cafe:ab00::/56
-  Zone:   0.b.a.e.f.a.c.8.b.d.0.1.0.0.2.ip6.arpa.
+  Zone:   b.a.e.f.a.c.8.b.d.0.1.0.0.2.ip6.arpa.
 
 Subnet /64:
   Prefix: 2001:db8:cafe:abcd::/64
