@@ -163,7 +163,9 @@ showmount -e [2001:db8::1]
 ip6tables -L INPUT -n | grep 2049
 
 # "RPC timeout" on NFSv3 - ensure rpcbind is running and accessible
-rpcinfo -p "[2001:db8::1]"
+# Use -T tcp6 because rpcinfo -p uses the v2 portmapper protocol which
+# does not support IPv6 netids
+rpcinfo -T tcp6 2001:db8::1 100000
 # If this fails, use NFSv4 instead
 ```
 
