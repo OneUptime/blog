@@ -83,7 +83,9 @@ resource "kubernetes_secret" "tls" {
     namespace = "default"
   }
 
-  data = {
+  # Use binary_data when passing already-Base64-encoded values from filebase64.
+  # The provider auto-encodes values in `data`, so using `data` here would double-encode.
+  binary_data = {
     "tls.crt" = filebase64("${path.module}/certs/tls.crt")
     "tls.key" = filebase64("${path.module}/certs/tls.key")
   }
