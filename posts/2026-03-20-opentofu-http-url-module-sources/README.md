@@ -45,15 +45,14 @@ module "vpc" {
 }
 ```
 
-## Adding Authentication with Headers
+## Adding Authentication
 
-Some artifact repositories require authentication. Configure credentials in `.terraformrc` / `.tofurc`:
+Some artifact repositories require authentication. For HTTP/HTTPS module sources, OpenTofu reads HTTP Basic credentials from a `.netrc` file in your home directory (override the location with the `NETRC` environment variable):
 
-```hcl
-# ~/.tofurc
-credentials "artifacts.acme-corp.com" {
-  token = "your-token-here"
-}
+```
+machine artifacts.acme-corp.com
+  login your-username
+  password your-token-here
 ```
 
 ## Using with JFrog Artifactory
@@ -86,7 +85,7 @@ module "network" {
 
 | Source Type | Authentication | Version Pinning | Use Case |
 |---|---|---|---|
-| HTTP/HTTPS | HTTP headers | URL-embedded version | Internal artifact servers |
+| HTTP/HTTPS | HTTP Basic via `.netrc` | URL-embedded version | Internal artifact servers |
 | Git | SSH/token | `?ref=tag` | Source code repositories |
 | Registry | Token | `version` attribute | Public/private registries |
 
@@ -101,7 +100,7 @@ HTTP sources are best for:
 ## Important Notes
 
 - The URL must serve an archive file. Plain directories served over HTTP are not supported.
-- OpenTofu re-downloads the archive on every `tofu init`. For stability, embed the version in the URL path.
+- OpenTofu caches downloaded modules under `.terraform/modules` and reuses them on subsequent `tofu init` runs. Use `tofu init -upgrade` to force a fresh download, and embed the version in the URL path so version changes are explicit.
 - HTTPS is strongly recommended over plain HTTP to prevent tampering.
 - If the archive contains multiple modules, use `//subdirectory` to point to the correct one.
 
