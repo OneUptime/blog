@@ -100,7 +100,7 @@ spec:
     hec_host: splunk.example.com
     hec_port: 8088
     insecure_ssl: false
-    token:
+    hec_token:
       valueFrom:
         secretKeyRef:
           name: splunk-token
