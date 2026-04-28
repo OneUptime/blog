@@ -98,9 +98,11 @@ dig AAAA your-function-url.example.com
 # Set environment variables for IPv6 endpoints
 # (Platform-specific - shown as generic examples)
 
-BACKEND_URL="http://[2001:db8::backend]/api"
+BACKEND_URL="http://[2001:db8::beef]/api"
 DATABASE_HOST="2001:db8::db"
+```
 
+```python
 # In your function code
 import os
 backend_url = os.environ.get("BACKEND_URL", "http://[::1]/api")
