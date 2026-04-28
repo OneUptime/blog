@@ -105,8 +105,8 @@ ip netns exec testns ping 10.100.0.1
 ip netns exec testns nft monitor trace
 
 # Count matched rules
-ip netns exec testns nft list ruleset -a   # -a shows handles
-ip netns exec testns nft -s list ruleset   # -s shows statistics
+ip netns exec testns nft -a list ruleset   # -a shows handles
+ip netns exec testns nft -s list ruleset   # -s omits stateful info (counters)
 ```
 
 ## Key Takeaways
