@@ -157,7 +157,7 @@ tofu console
 
 Both `keys` and `values` sort by key alphabetically. This means:
 - `keys(m)[i]` and `values(m)[i]` always correspond to the same map entry.
-- You can safely use `index`, `element`, and `zip` operations knowing the ordering is consistent.
+- You can safely use `index`, `element`, and `zipmap` operations knowing the ordering is consistent.
 
 ## Conclusion
 
