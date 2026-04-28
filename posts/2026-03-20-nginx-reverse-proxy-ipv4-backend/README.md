@@ -94,7 +94,7 @@ location / {
     # Timeout for establishing connection
     proxy_connect_timeout 10s;
 
-    # Timeout for reading response headers
+    # Timeout between successive reads from backend
     proxy_read_timeout 60s;
 
     # Timeout for sending request to backend
