@@ -121,7 +121,8 @@ containers:
     image: fluent/fluent-bit:2.2
     volumeMounts:
       - name: logs    # Shared volume - same logs directory
-        mountPath: /var/log/app:ro
+        mountPath: /var/log/app
+        readOnly: true
 ```
 
 ### 3. Health Check Proxy
