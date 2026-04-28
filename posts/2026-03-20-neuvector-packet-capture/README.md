@@ -31,8 +31,9 @@ NeuVector's packet capture feature allows you to record network packets from spe
 2. Click the container you want to capture
 3. Click **Packet Capture** tab
 4. Configure capture settings:
+   - **File Number**: Maximum number of rotation files (max 50)
    - **Duration**: How long to capture (seconds)
-   - **Size Limit**: Maximum capture file size (MB)
+   - **Filter**: Optional BPF filter expression
 5. Click **Start** to begin capture
 
 ## Step 2: Start Packet Capture via API
@@ -43,45 +44,64 @@ NeuVector's packet capture feature allows you to record network packets from spe
 WORKLOAD_ID="abc123def456"
 
 curl -sk -X POST \
-  "https://neuvector-manager:8443/v1/packet/workload/${WORKLOAD_ID}" \
+  "https://neuvector-manager:8443/v1/sniffer?f_workload=${WORKLOAD_ID}" \
   -H "Content-Type: application/json" \
   -H "X-Auth-Token: ${TOKEN}" \
   -d '{
-    "options": {
+    "sniffer": {
+      "file_number": 5,
       "duration": 60,
-      "snaplen": 65535
+      "filter": ""
     }
   }'
+
+# Response returns the sniffer ID:
+# {"result": {"id": "<sniffer_id>"}}
 ```
 
 ## Step 3: Check Capture Status
 
 ```bash
+# Use the sniffer ID returned from the start request
+SNIFFER_ID="<sniffer_id_from_start_response>"
+
 # Check if capture is running
 curl -sk \
-  "https://neuvector-manager:8443/v1/packet/workload/${WORKLOAD_ID}" \
-  -H "X-Auth-Token: ${TOKEN}" | jq '{
-    status: .capture_status,
-    file_size: .capture_file_size,
-    duration: .capture_duration
+  "https://neuvector-manager:8443/v1/sniffer/${SNIFFER_ID}" \
+  -H "X-Auth-Token: ${TOKEN}" | jq '.sniffer | {
+    id: .id,
+    status: .status,
+    size: .size,
+    start_time: .start_time,
+    stop_time: .stop_time
   }'
+
+# Or list all sniffers for a workload
+curl -sk \
+  "https://neuvector-manager:8443/v1/sniffer?f_workload=${WORKLOAD_ID}" \
+  -H "X-Auth-Token: ${TOKEN}" | jq '.sniffers'
 ```
 
 ## Step 4: Stop and Download the Capture
 
 ```bash
 # Stop an in-progress capture
-curl -sk -X DELETE \
-  "https://neuvector-manager:8443/v1/packet/workload/${WORKLOAD_ID}" \
+curl -sk -X PATCH \
+  "https://neuvector-manager:8443/v1/sniffer/stop/${SNIFFER_ID}" \
   -H "X-Auth-Token: ${TOKEN}"
 
 # Download the PCAP file
 curl -sk \
-  "https://neuvector-manager:8443/v1/packet/workload/${WORKLOAD_ID}/pcap" \
+  "https://neuvector-manager:8443/v1/sniffer/${SNIFFER_ID}/pcap" \
   -H "X-Auth-Token: ${TOKEN}" \
-  -o capture-${WORKLOAD_ID}.pcap
+  -o capture-${SNIFFER_ID}.pcap
 
-echo "Capture saved: capture-${WORKLOAD_ID}.pcap"
+echo "Capture saved: capture-${SNIFFER_ID}.pcap"
+
+# Optionally delete the sniffer record after downloading
+curl -sk -X DELETE \
+  "https://neuvector-manager:8443/v1/sniffer/${SNIFFER_ID}" \
+  -H "X-Auth-Token: ${TOKEN}"
 ```
 
 ## Step 5: Analyze the PCAP File
@@ -90,23 +110,23 @@ Analyze the captured traffic:
 
 ```bash
 # Basic analysis with tcpdump
-tcpdump -r capture-${WORKLOAD_ID}.pcap -nn -c 100
+tcpdump -r capture-${SNIFFER_ID}.pcap -nn -c 100
 
 # Show HTTP requests
-tcpdump -r capture-${WORKLOAD_ID}.pcap -nn -A 'tcp port 80 or tcp port 8080' | grep -E "GET|POST|HTTP"
+tcpdump -r capture-${SNIFFER_ID}.pcap -nn -A 'tcp port 80 or tcp port 8080' | grep -E "GET|POST|HTTP"
 
 # Show DNS queries
-tcpdump -r capture-${WORKLOAD_ID}.pcap -nn 'udp port 53'
+tcpdump -r capture-${SNIFFER_ID}.pcap -nn 'udp port 53'
 
 # Show external connections
-tcpdump -r capture-${WORKLOAD_ID}.pcap -nn 'not net 10.0.0.0/8 and not net 172.16.0.0/12 and not net 192.168.0.0/16'
+tcpdump -r capture-${SNIFFER_ID}.pcap -nn 'not net 10.0.0.0/8 and not net 172.16.0.0/12 and not net 192.168.0.0/16'
 
 # Extract unique destination IPs
-tcpdump -r capture-${WORKLOAD_ID}.pcap -nn 'tcp' | \
+tcpdump -r capture-${SNIFFER_ID}.pcap -nn 'tcp' | \
   awk '{print $5}' | cut -d. -f1-4 | sort -u
 
 # Analyze with tshark (Wireshark CLI)
-tshark -r capture-${WORKLOAD_ID}.pcap -T json | jq '.[] | .layers | {
+tshark -r capture-${SNIFFER_ID}.pcap -T json | jq '.[] | .layers | {
   src: .ip.ip_src,
   dst: .ip.ip_dst,
   protocol: .frame.frame_protocols
@@ -128,21 +148,22 @@ CAPTURE_DURATION=120  # 2 minutes
 
 echo "Starting packet capture for workload ${WORKLOAD_ID} due to: ${REASON}"
 
-# Start capture
-curl -sk -X POST \
-  "https://neuvector-manager:8443/v1/packet/workload/${WORKLOAD_ID}" \
+# Start capture and capture the returned sniffer ID
+SNIFFER_ID=$(curl -sk -X POST \
+  "https://neuvector-manager:8443/v1/sniffer?f_workload=${WORKLOAD_ID}" \
   -H "Content-Type: application/json" \
   -H "X-Auth-Token: ${TOKEN}" \
   -d "{
-    \"options\": {
+    \"sniffer\": {
+      \"file_number\": 5,
       \"duration\": ${CAPTURE_DURATION},
-      \"snaplen\": 65535
+      \"filter\": \"\"
     }
-  }"
+  }" | jq -r '.result.id')
 
-echo "Capture started. Will run for ${CAPTURE_DURATION} seconds."
+echo "Capture started with sniffer ID: ${SNIFFER_ID}. Will run for ${CAPTURE_DURATION} seconds."
 echo "Download capture after ${CAPTURE_DURATION} seconds using:"
-echo "GET /v1/packet/workload/${WORKLOAD_ID}/pcap"
+echo "GET /v1/sniffer/${SNIFFER_ID}/pcap"
 ```
 
 ## Step 7: Capture Network Traffic for Policy Development
@@ -151,18 +172,18 @@ Use captures to build accurate network rules:
 
 ```bash
 # Capture traffic during a known workflow
-# Start capture
-curl -sk -X POST \
-  "https://neuvector-manager:8443/v1/packet/workload/${WORKLOAD_ID}" \
+# Start capture and capture the returned sniffer ID
+SNIFFER_ID=$(curl -sk -X POST \
+  "https://neuvector-manager:8443/v1/sniffer?f_workload=${WORKLOAD_ID}" \
   -H "Content-Type: application/json" \
   -H "X-Auth-Token: ${TOKEN}" \
-  -d '{"options": {"duration": 300}}'
+  -d '{"sniffer": {"file_number": 10, "duration": 300}}' | jq -r '.result.id')
 
 # Exercise the application workflow (run your normal application operations)
 
 # Download the capture
 curl -sk \
-  "https://neuvector-manager:8443/v1/packet/workload/${WORKLOAD_ID}/pcap" \
+  "https://neuvector-manager:8443/v1/sniffer/${SNIFFER_ID}/pcap" \
   -H "X-Auth-Token: ${TOKEN}" \
   -o workflow-capture.pcap
 
@@ -197,25 +218,25 @@ echo "=== Incident Capture: ${INCIDENT_ID} ==="
 
 # Capture packets
 echo "Starting packet capture..."
-curl -sk -X POST \
-  "https://neuvector-manager:8443/v1/packet/workload/${WORKLOAD_ID}" \
+SNIFFER_ID=$(curl -sk -X POST \
+  "https://neuvector-manager:8443/v1/sniffer?f_workload=${WORKLOAD_ID}" \
   -H "Content-Type: application/json" \
   -H "X-Auth-Token: ${TOKEN}" \
-  -d '{"options": {"duration": 300}}'
+  -d '{"sniffer": {"file_number": 10, "duration": 300}}' | jq -r '.result.id')
 
-# Collect security events
+# Collect security events (incidents, threats and violations)
 echo "Collecting security events..."
 curl -sk \
-  "https://neuvector-manager:8443/v1/event?type=security&start=0&limit=100" \
+  "https://neuvector-manager:8443/v1/log/security?start=0&limit=100" \
   -H "X-Auth-Token: ${TOKEN}" | \
   jq --arg id "${WORKLOAD_ID}" \
-  '[.events[] | select(.workload_id == $id)]' \
+  '[(.threats // [])[], (.incidents // [])[], (.violations // [])[] | select(.workload_id == $id)]' \
   > "${CAPTURE_DIR}/security-events.json"
 
 # Collect vulnerability report
 echo "Collecting vulnerability report..."
 curl -sk \
-  "https://neuvector-manager:8443/v1/scan/workload/${WORKLOAD_ID}/report" \
+  "https://neuvector-manager:8443/v1/scan/workload/${WORKLOAD_ID}" \
   -H "X-Auth-Token: ${TOKEN}" \
   > "${CAPTURE_DIR}/vulnerability-report.json"
 
@@ -225,7 +246,7 @@ sleep 305
 # Download PCAP
 echo "Downloading packet capture..."
 curl -sk \
-  "https://neuvector-manager:8443/v1/packet/workload/${WORKLOAD_ID}/pcap" \
+  "https://neuvector-manager:8443/v1/sniffer/${SNIFFER_ID}/pcap" \
   -H "X-Auth-Token: ${TOKEN}" \
   -o "${CAPTURE_DIR}/network-capture.pcap"
 
