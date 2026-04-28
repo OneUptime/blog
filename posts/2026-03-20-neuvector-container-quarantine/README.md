@@ -111,7 +111,7 @@ After quarantine, investigate the container:
 ```bash
 # Get all security events for the quarantined container
 curl -sk \
-  "https://neuvector-manager:8443/v1/event?type=security&start=0&limit=100" \
+  "https://neuvector-manager:8443/v1/log/event?category=security&start=0&limit=100" \
   -H "X-Auth-Token: ${TOKEN}" | \
   jq --arg id "${WORKLOAD_ID}" \
   '[.events[] | select(.workload_id == $id)] | {
@@ -132,17 +132,19 @@ kubectl cp <namespace>/<pod-name>:/tmp/forensics.tar.gz ./forensics-$(date +%s).
 Alert your team when quarantine is triggered:
 
 ```bash
-# Configure Slack notification for quarantine events
+# Configure Slack notification for critical security events
+# (NeuVector does not emit a separate "quarantine" event, so notify on the
+# critical security events that quarantine rules typically match on)
 curl -sk -X POST \
   "https://neuvector-manager:8443/v1/response/rule" \
   -H "Content-Type: application/json" \
   -H "X-Auth-Token: ${TOKEN}" \
   -d '{
     "config": {
-      "event": "incident",
-      "comment": "Alert on any quarantine action",
+      "event": "security-event",
+      "comment": "Alert on critical security events (covers quarantine triggers)",
       "conditions": [
-        {"type": "name", "value": "quarantine"}
+        {"type": "level", "value": "critical"}
       ],
       "actions": ["webhook"],
       "webhooks": ["slack-security-oncall", "pagerduty-critical"],
