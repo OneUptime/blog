@@ -70,12 +70,12 @@ kubectl patch daemonset neuvector-enforcer-pod -n neuvector --type merge -p '{
 # Check controller pod is running
 kubectl get pods -n neuvector -l app=neuvector-controller-pod
 
-# Verify the controller service is accessible from the enforcer
-kubectl exec -n neuvector \
-  $(kubectl get pod -n neuvector -l app=neuvector-enforcer-pod -o jsonpath='{.items[0].metadata.name}') \
-  -- wget -qO- http://neuvector-svc-controller.neuvector.svc.cluster.local:10443 || true
+# Verify the controller service has ready endpoints. The enforcer connects to the
+# controller on TCP 18301 (cluster/Serf) and 18300 (RPC), not the REST API port 10443.
+kubectl get endpoints neuvector-svc-controller -n neuvector
+kubectl describe svc neuvector-svc-controller -n neuvector
 
-# Check NetworkPolicy - the enforcer needs TCP access to the controller
+# Check NetworkPolicy - the enforcer needs TCP access to the controller on 18300/18301
 kubectl get networkpolicy -n neuvector
 ```
 
@@ -91,7 +91,7 @@ kubectl logs -n neuvector \
   $(kubectl get pod -n neuvector -l app=neuvector-enforcer-pod -o jsonpath='{.items[0].metadata.name}') \
   | grep -i "ebpf\|probe\|module"
 
-# Verify kernel version (minimum 4.1)
+# Verify kernel version - confirm the node kernel is on a supported distro/version
 uname -r
 
 # Check if BPF filesystem is mounted
@@ -130,11 +130,11 @@ kubectl exec -n neuvector \
   $(kubectl get pod -n neuvector -l app=neuvector-enforcer-pod -o jsonpath='{.items[0].metadata.name}') \
   -- cat /proc/1/cmdline | tr '\0' ' '
 
-# Set debug level via NeuVector API (temporary)
+# Enable controller debug categories via NeuVector API (temporary)
 curl -sk -X PATCH \
   -H "X-Auth-Token: $TOKEN" \
-  https://neuvector.example.com/v1/debug \
-  -d '{"controllers":"debug","enforcers":"debug"}'
+  https://neuvector.example.com/v1/system/config \
+  -d '{"config":{"controller_debug":["cpath","conn"]}}'
 ```
 
 ---
@@ -142,5 +142,5 @@ curl -sk -X PATCH \
 ## Best Practices
 
 - Use `tolerations: [{operator: "Exists"}]` on the Enforcer DaemonSet to ensure it runs on all nodes including tainted ones.
-- Ensure kernel 4.1+ on all nodes - older kernels have limited eBPF support.
+- Run on a Linux distribution and kernel version listed in the NeuVector system requirements - older or unsupported kernels can limit network monitoring features.
 - Monitor Enforcer pod memory - on busy nodes with many containers, the Enforcer may need 512MB+.
