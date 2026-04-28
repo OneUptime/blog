@@ -97,7 +97,7 @@ curl -sk "${NV_URL}/v1/policy/rule?start=0&limit=1000" \
 echo "✓ Network policy rules backed up"
 
 # Process profiles
-curl -sk "${NV_URL}/v1/process/profile?start=0&limit=500" \
+curl -sk "${NV_URL}/v1/process_profile" \
   -H "X-Auth-Token: ${TOKEN}" > "${BACKUP_DIR}/process-profiles.json"
 echo "✓ Process profiles backed up"
 
@@ -112,12 +112,12 @@ curl -sk "${NV_URL}/v1/response/rule?start=0&limit=200" \
 echo "✓ Response rules backed up"
 
 # WAF sensors
-curl -sk "${NV_URL}/v1/dpi/waf/sensor" \
+curl -sk "${NV_URL}/v1/waf/sensor" \
   -H "X-Auth-Token: ${TOKEN}" > "${BACKUP_DIR}/waf-sensors.json"
 echo "✓ WAF sensors backed up"
 
 # DLP sensors
-curl -sk "${NV_URL}/v1/dpi/dlp/sensor" \
+curl -sk "${NV_URL}/v1/dlp/sensor" \
   -H "X-Auth-Token: ${TOKEN}" > "${BACKUP_DIR}/dlp-sensors.json"
 echo "✓ DLP sensors backed up"
 
@@ -128,9 +128,8 @@ curl -sk "${NV_URL}/v1/scan/registry" \
   > "${BACKUP_DIR}/registries.json"
 echo "✓ Registry configs backed up (passwords excluded)"
 
-# Webhooks (exclude URLs for security)
-curl -sk "${NV_URL}/v1/system/webhook" \
-  -H "X-Auth-Token: ${TOKEN}" > "${BACKUP_DIR}/webhooks.json"
+# Webhooks (extracted from the system config response)
+jq '.config.webhooks' "${BACKUP_DIR}/system-config.json" > "${BACKUP_DIR}/webhooks.json"
 echo "✓ Webhooks backed up"
 
 # Compliance custom checks
@@ -155,7 +154,7 @@ mkdir -p "${BACKUP_DIR}"
 # Export all NeuVector CRDs
 RESOURCES=(
   "nvsecurityrules"
-  "nvclusterSecurityrules"
+  "nvclustersecurityrules"
   "nvadmissioncontrolsecurityrules"
   "nvdlpsecurityrules"
   "nvwafsecurityrules"
@@ -201,7 +200,7 @@ spec:
 
                   # Export CRDs
                   kubectl get nvsecurityrules -A -o yaml > "${BACKUP_PATH}/security-rules.yaml"
-                  kubectl get nvclusterSecurityrules -o yaml > "${BACKUP_PATH}/cluster-rules.yaml"
+                  kubectl get nvclustersecurityrules -o yaml > "${BACKUP_PATH}/cluster-rules.yaml"
                   kubectl get nvadmissioncontrolsecurityrules -o yaml > "${BACKUP_PATH}/admission-rules.yaml"
 
                   # Compress backup
