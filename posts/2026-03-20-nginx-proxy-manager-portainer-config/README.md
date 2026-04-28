@@ -116,7 +116,7 @@ Restrict Portainer access by IP:
 
 ## Using Portainer HTTPS Backend
 
-If you run Portainer with HTTPS enabled (`-H tcp://...` with TLS):
+If you point NPM at Portainer's built-in HTTPS interface (enabled by default on port 9443 in Portainer CE 2.9+, with a self-signed certificate):
 
 ```text
 Scheme:               https
