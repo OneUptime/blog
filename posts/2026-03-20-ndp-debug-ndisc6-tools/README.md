@@ -43,14 +43,14 @@ sudo ndisc6 2001:db8::1 eth0
 # If no response (host down or NDP blocked):
 # ndisc6: no response from 2001:db8::1
 
-# Force unicast NS (send directly to address, not to multicast)
+# Wait for multiple responses (don't exit on first NA)
 sudo ndisc6 -m 2001:db8::1 eth0
 
-# Retry multiple times
+# Retry multiple times (default is 3 attempts)
 sudo ndisc6 -r 3 2001:db8::1 eth0
 
-# Set Hop Limit for the NS
-sudo ndisc6 -H 255 2001:db8::1 eth0
+# Set the wait timeout in milliseconds (default: 1000)
+sudo ndisc6 -w 2000 2001:db8::1 eth0
 
 # Test link-local address
 sudo ndisc6 fe80::1 eth0
@@ -84,7 +84,7 @@ python3 -c "
 import socket
 addr = '2001:db8::1'
 ab = socket.inet_pton(socket.AF_INET6, addr)
-snm = b'\\xff\\x02' + b'\\x00'*9 + b'\\xff' + ab[-3:]
+snm = b'\\xff\\x02' + b'\\x00'*9 + b'\\x01\\xff' + ab[-3:]
 print('Solicited-node multicast:', socket.inet_ntop(socket.AF_INET6, snm))
 "
 ```
