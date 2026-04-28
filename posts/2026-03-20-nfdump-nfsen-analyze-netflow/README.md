@@ -34,11 +34,11 @@ sudo mkdir -p /var/log/netflow/router1
 sudo chown www-data:www-data /var/log/netflow/router1
 
 # Start nfcapd to receive NetFlow on port 2055
-# -w: rotate files every 5 minutes
+# -t 300: rotate files every 300 seconds (5 minutes, the default)
 # -D: run as daemon
 # -l: storage directory
 # -p: listening port
-sudo nfcapd -w -D -l /var/log/netflow/router1 -p 2055 -b 0.0.0.0
+sudo nfcapd -t 300 -D -l /var/log/netflow/router1 -p 2055 -b 0.0.0.0
 
 # Verify it's running
 sudo netstat -lunp | grep 2055
@@ -47,13 +47,13 @@ sudo netstat -lunp | grep 2055
 Configure as a systemd service for persistence:
 
 ```bash
-cat > /etc/systemd/system/nfcapd.service << 'EOF'
+sudo tee /etc/systemd/system/nfcapd.service > /dev/null << 'EOF'
 [Unit]
 Description=NetFlow Capture Daemon
 After=network.target
 
 [Service]
-ExecStart=/usr/bin/nfcapd -w -l /var/log/netflow/router1 -p 2055 -b 0.0.0.0
+ExecStart=/usr/bin/nfcapd -t 300 -l /var/log/netflow/router1 -p 2055 -b 0.0.0.0
 Restart=on-failure
 
 [Install]
@@ -70,23 +70,26 @@ sudo systemctl start nfcapd
 nfdump queries stored flow files with a powerful filter syntax:
 
 ```bash
-# Show summary of the last 5 minutes
-nfdump -R /var/log/netflow/router1/ -t "now-300:now" -s record/bytes -n 10
+# Show summary of the last 5 minutes (nfdump -t requires absolute timestamps)
+nfdump -R /var/log/netflow/router1/ \
+  -t "$(date -d '5 minutes ago' +%Y/%m/%d.%H:%M:%S)-$(date +%Y/%m/%d.%H:%M:%S)" \
+  -s record/bytes -n 10
 
 # Top 10 source IPs by bytes in the last hour
 nfdump -R /var/log/netflow/router1/ \
-  -t "$(date -d '1 hour ago' +%Y/%m/%d.%H:%M):$(date +%Y/%m/%d.%H:%M)" \
+  -t "$(date -d '1 hour ago' +%Y/%m/%d.%H:%M:%S)-$(date +%Y/%m/%d.%H:%M:%S)" \
   -s srcip/bytes -n 10
 
 # Show specific protocol traffic (TCP port 80)
+# nfdump filters are passed as the trailing positional argument
 nfdump -R /var/log/netflow/router1/ \
-  -filter "proto tcp and dport 80" \
-  -s srcip/bytes -n 10
+  -s srcip/bytes -n 10 \
+  'proto tcp and dst port 80'
 
 # Show traffic to a specific destination
 nfdump -R /var/log/netflow/router1/ \
-  -filter "dst host 8.8.8.8" \
-  -o "fmt:%ts %sa %da %sp %dp %pkt %byt"
+  -o "fmt:%ts %sa %da %sp %dp %pkt %byt" \
+  'dst host 8.8.8.8'
 ```
 
 ## Step 4: nfdump Output Format Options
@@ -115,8 +118,8 @@ nfdump -R /var/log/netflow/router1/ -s proto/bytes
 
 # Port scan detection: hosts making many connections to different ports
 nfdump -R /var/log/netflow/router1/ \
-  -filter "proto tcp and flags S" \
-  -A srcip,dstport -s record/flows -n 20
+  -A srcip,dstport -s record/flows -n 20 \
+  'proto tcp and flags S'
 ```
 
 ## Step 6: Install nfsen Web Frontend
