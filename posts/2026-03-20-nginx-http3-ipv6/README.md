@@ -22,7 +22,7 @@ On Ubuntu 22.04+:
 sudo apt-get install nginx
 
 # Verify HTTP/3 QUIC support
-nginx -V 2>&1 | grep quic
+nginx -V 2>&1 | grep -E 'http_v3_module|quic'
 # Should show: --with-http_v3_module or similar
 ```
 
@@ -61,6 +61,7 @@ server {
     # HTTP/2 fallback (TCP)
     listen [::]:443 ssl;
     listen 0.0.0.0:443 ssl;
+    http2 on;
 
     server_name example.com;
 
@@ -81,8 +82,9 @@ server {
     location / {
         root /var/www/html;
         index index.html;
-        # Add header for 0-RTT requests (replay protection)
-        add_header Early-Data $ssl_early_data;
+        # When proxying to an upstream, forward the Early-Data request
+        # header per RFC 8470 so the backend can refuse replayable methods:
+        # proxy_set_header Early-Data $ssl_early_data;
     }
 }
 
@@ -107,7 +109,7 @@ sudo ufw allow 443/udp comment "HTTP/3 QUIC IPv6"
 sudo ip6tables -A INPUT -p udp --dport 443 -j ACCEPT
 
 # Save rules
-sudo ip6tables-save > /etc/ip6tables/rules.v6
+sudo ip6tables-save > /etc/iptables/rules.v6
 ```
 
 ## Step 4: Test the Configuration
