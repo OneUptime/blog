@@ -121,8 +121,8 @@ device = {
     'host': '192.168.1.1',
     'username': 'admin',
     'password': 'password',
-    'conn_timeout': 10,      # Connection timeout in seconds
-    'timeout': 30,           # Read timeout in seconds
+    'conn_timeout': 10,      # TCP connection timeout in seconds
+    'timeout': 30,           # SSH operation timeout in seconds
 }
 
 try:
