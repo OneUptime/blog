@@ -136,10 +136,10 @@ ngrep -v "GET /health" port 80
 | `-i` | Case-insensitive pattern matching |
 | `-v` | Invert match (show non-matching) |
 | `-W byline` | Print each header on its own line |
-| `-q` | Quiet mode (suppress packet count) |
+| `-q` | Quiet mode (suppress hash marks for non-matching packets) |
 | `-t` | Print timestamp |
-| `-A num` | Print `num` bytes after match |
-| `-n count` | Capture only `count` packets |
+| `-A num` | Dump `num` packets of trailing context after a match |
+| `-n count` | Examine only `count` packets, then exit |
 | `-O file` | Write raw packets to pcap file |
 | `-I file` | Read from a pcap file |
 
