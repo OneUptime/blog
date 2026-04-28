@@ -11,9 +11,11 @@ Learn how to use the base64gzip() function in OpenTofu to compress and Base64-en
 ## Syntax
 
 ```hcl
-# See OpenTofu documentation for full syntax
-
+base64gzip(str)
 ```
+
+- **str** - the UTF-8 string to compress and encode
+- Returns the base64-encoded representation of the gzip-compressed input
 
 ## Basic Example
 
