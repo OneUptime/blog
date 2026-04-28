@@ -108,7 +108,7 @@ EOF
 # Watch for RA messages (router discovery in action)
 sudo tcpdump -i eth0 -v "icmp6 and ip6[40] == 134"
 
-# Check Router Lifetime from received RA (byte at offset 50 of IPv6+ICMPv6)
+# Check Router Lifetime from received RA (bytes at offset 46-47 of IPv6+ICMPv6)
 # Router Lifetime is 2 bytes at offset 6 of the RA body (after Type+Code+Chk+HL)
 # Offsets in raw bytes: IPv6(40)+ICMPv6_type(1)+code(1)+chk(2)+HL(1)+flags(1)=46
 # Router Lifetime at bytes 46-47
