@@ -29,34 +29,40 @@ In Monitor mode, NeuVector:
 
 ## Step 1: Transition Groups to Monitor Mode
 
-Move groups from Discover to Monitor mode:
+Move services from Discover to Monitor mode. Policy mode is set on services
+via `PATCH /v1/service/config` (the `RESTServiceBatchConfig` schema), not on
+the group config:
 
 ```bash
-# Move a specific group to Monitor mode
+# Move a specific service to Monitor mode
 
 curl -sk -X PATCH \
-  "https://neuvector-manager:8443/v1/group/nv.webapp.production" \
+  "https://neuvector-manager:8443/v1/service/config" \
   -H "Content-Type: application/json" \
   -H "X-Auth-Token: ${TOKEN}" \
   -d '{
     "config": {
-      "mode": "Monitor"
+      "services": ["nv.webapp.production"],
+      "policy_mode": "Monitor"
     }
   }'
 
-# Move all production groups to Monitor mode
-curl -sk \
-  "https://neuvector-manager:8443/v1/group?start=0&limit=100" \
+# Move all services in the "production" namespace to Monitor mode in one batch.
+# Service groups expose a "domain" field that matches the Kubernetes namespace.
+SERVICES=$(curl -sk \
+  "https://neuvector-manager:8443/v1/group" \
   -H "X-Auth-Token: ${TOKEN}" | \
-  jq -r '.groups[] | select(.name | contains(".production")) | .name' | \
-while read GROUP; do
-  echo "Moving ${GROUP} to Monitor..."
-  curl -sk -X PATCH \
-    "https://neuvector-manager:8443/v1/group/${GROUP}" \
-    -H "Content-Type: application/json" \
-    -H "X-Auth-Token: ${TOKEN}" \
-    -d '{"config": {"mode": "Monitor"}}'
-done
+  jq -r '.groups[] | select(.domain == "production") | .name')
+
+SERVICE_JSON=$(echo "${SERVICES}" | jq -R . | jq -s .)
+
+echo "Moving services in production to Monitor..."
+curl -sk -X PATCH \
+  "https://neuvector-manager:8443/v1/service/config" \
+  -H "Content-Type: application/json" \
+  -H "X-Auth-Token: ${TOKEN}" \
+  -d "$(jq -n --argjson services "${SERVICE_JSON}" \
+    '{config: {services: $services, policy_mode: "Monitor"}}')"
 ```
 
 ## Step 2: Set Default Mode for New Services
@@ -81,15 +87,14 @@ curl -sk -X PATCH \
 With Monitor mode active, watch for generated events:
 
 ```bash
-# View security events from the last hour
+# View security events from the last hour - events are at /v1/log/event
 curl -sk \
-  "https://neuvector-manager:8443/v1/event?type=security&start=0&limit=100" \
+  "https://neuvector-manager:8443/v1/log/event?start=0&limit=100" \
   -H "X-Auth-Token: ${TOKEN}" | \
   jq '.events[] | {
     time: .at,
     container: .workload_name,
     namespace: .namespace,
-    type: .type,
     name: .name,
     action: .action,
     level: .level
@@ -108,26 +113,26 @@ Use Monitor mode data to understand your violation patterns:
 echo "=== Monitor Mode Violation Analysis ==="
 echo ""
 
-# Count violations by type
-echo "--- Violations by Type ---"
+# Count violations by event name
+echo "--- Violations by Name ---"
 curl -sk \
-  "https://neuvector-manager:8443/v1/event?type=security&start=0&limit=1000" \
+  "https://neuvector-manager:8443/v1/log/event?start=0&limit=1000" \
   -H "X-Auth-Token: ${TOKEN}" | \
-  jq '[.events[] | .type] | group_by(.) | map({type: .[0], count: length}) | sort_by(.count) | reverse'
+  jq '[.events[] | .name] | group_by(.) | map({name: .[0], count: length}) | sort_by(.count) | reverse'
 
 echo ""
 echo "--- Top Violating Containers ---"
 curl -sk \
-  "https://neuvector-manager:8443/v1/event?type=security&start=0&limit=1000" \
+  "https://neuvector-manager:8443/v1/log/event?start=0&limit=1000" \
   -H "X-Auth-Token: ${TOKEN}" | \
   jq '[.events[] | .workload_name] | group_by(.) | map({container: .[0], violations: length}) | sort_by(.violations) | reverse | .[0:10]'
 
 echo ""
 echo "--- Process Violations ---"
 curl -sk \
-  "https://neuvector-manager:8443/v1/event?type=security&start=0&limit=1000" \
+  "https://neuvector-manager:8443/v1/log/event?start=0&limit=1000" \
   -H "X-Auth-Token: ${TOKEN}" | \
-  jq '[.events[] | select(.type == "Process.Profile.Violation") | {
+  jq '[.events[] | select(.name == "Process.Profile.Violation") | {
     container: .workload_name,
     process: .proc_name,
     path: .proc_path
@@ -140,34 +145,41 @@ When Monitor mode reveals false positives, update your policies:
 
 ```bash
 # If a process violation is expected, add it to the allow list
-curl -sk -X POST \
-  "https://neuvector-manager:8443/v1/process/profile/group/nv.webapp.production/process" \
+curl -sk -X PATCH \
+  "https://neuvector-manager:8443/v1/process_profile/nv.webapp.production" \
   -H "Content-Type: application/json" \
   -H "X-Auth-Token: ${TOKEN}" \
   -d '{
-    "process": {
-      "name": "healthcheck.sh",
-      "path": "/app/scripts/healthcheck.sh",
-      "action": "allow"
+    "process_profile_config": {
+      "group": "nv.webapp.production",
+      "process_change_list": [
+        {
+          "name": "healthcheck.sh",
+          "path": "/app/scripts/healthcheck.sh",
+          "action": "allow"
+        }
+      ]
     }
   }'
 
-# If a network connection is expected, add it to the allow rules
-curl -sk -X POST \
+# If a network connection is expected, add it to the allow rules.
+# Network rules are created via PATCH on /v1/policy/rule with insert.rules.
+curl -sk -X PATCH \
   "https://neuvector-manager:8443/v1/policy/rule" \
   -H "Content-Type: application/json" \
   -H "X-Auth-Token: ${TOKEN}" \
   -d '{
     "insert": {
-      "after": 0,
       "rules": [
         {
+          "id": 0,
           "comment": "Allow health check from monitoring",
           "from": "nv.prometheus.monitoring",
           "to": "nv.webapp.production",
           "ports": "tcp/9090",
+          "applications": [],
           "action": "allow",
-          "cfg_type": "user"
+          "cfg_type": "user_created"
         }
       ]
     }
@@ -179,19 +191,27 @@ curl -sk -X POST \
 Ensure your team receives alerts during the validation period:
 
 ```bash
-# Create a response rule to notify on all Monitor mode violations
-curl -sk -X POST \
+# Create a response rule to notify on all Monitor mode violations.
+# Response rules are created via PATCH on /v1/response/rule with insert.rules.
+curl -sk -X PATCH \
   "https://neuvector-manager:8443/v1/response/rule" \
   -H "Content-Type: application/json" \
   -H "X-Auth-Token: ${TOKEN}" \
   -d '{
-    "config": {
-      "event": "security-event",
-      "comment": "Notify on all policy violations during validation",
-      "conditions": [{"type": "level", "value": "warning"}],
-      "actions": ["webhook"],
-      "webhooks": ["slack-security-validation"],
-      "disable": false
+    "insert": {
+      "rules": [
+        {
+          "id": 0,
+          "event": "security-event",
+          "comment": "Notify on all policy violations during validation",
+          "group": "containers",
+          "conditions": [{"name": "level", "value": "warning"}],
+          "actions": ["webhook"],
+          "webhooks": ["slack-security-validation"],
+          "disable": false,
+          "cfg_type": "user_created"
+        }
+      ]
     }
   }'
 ```
@@ -208,7 +228,7 @@ echo "Checking Monitor mode readiness for Protect mode transition..."
 
 # Check violation count over last 24h
 VIOLATION_COUNT=$(curl -sk \
-  "https://neuvector-manager:8443/v1/event?type=security&start=0&limit=1000" \
+  "https://neuvector-manager:8443/v1/log/event?start=0&limit=1000" \
   -H "X-Auth-Token: ${TOKEN}" | \
   jq '[.events[]] | length')
 
@@ -223,7 +243,7 @@ fi
 
 # Check for any critical violations
 CRITICAL=$(curl -sk \
-  "https://neuvector-manager:8443/v1/event?type=security&start=0&limit=1000" \
+  "https://neuvector-manager:8443/v1/log/event?start=0&limit=1000" \
   -H "X-Auth-Token: ${TOKEN}" | \
   jq '[.events[] | select(.level == "Critical")] | length')
 
