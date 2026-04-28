@@ -30,7 +30,7 @@ The TSC is responsible for:
 - Managing the project charter and licensing
 - Deciding on major architectural changes
 
-TSC members are elected by the OpenTofu community and include representatives from companies and individuals that have contributed significantly to the project.
+New TSC members are nominated by an existing TSC member and added by a supermajority (two-thirds) vote of the existing TSC. Candidates must have demonstrated significant contributions (code, documentation, community engagement, or technical leadership), and TSC membership includes representatives from multiple organizations and individuals.
 
 ## Core Maintainers
 
@@ -79,7 +79,7 @@ This is enforced through:
 - **License**: Mozilla Public License 2.0 (MPL-2.0)
 - **Trademark**: Managed by Linux Foundation
 - **Pledge**: OpenTofu will always remain open source
-- **Charter**: Published at opentofu.org/charter
+- **Charter**: Published at github.com/opentofu/org/blob/main/CHARTER.md
 
 ## Getting Involved in Governance
 
@@ -89,13 +89,13 @@ This is enforced through:
 # https://opentofu.org/slack
 
 # 2. Attend TSC meetings (public, recorded)
-# https://github.com/opentofu/opentofu/tree/main/tsc-meetings
+# https://github.com/opentofu/org/tree/main/TSC
 
 # 3. Participate in RFC discussions
 # https://github.com/opentofu/opentofu/pulls?q=label%3Arfc
 
-# 4. Nominate yourself for TSC when elections open
-# https://github.com/opentofu/opentofu/blob/main/GOVERNANCE.md
+# 4. Become a contributor; TSC members are nominated by existing TSC members
+# https://github.com/opentofu/org/blob/main/GOVERNANCE.md
 ```
 
 ## Summary
