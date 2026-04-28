@@ -14,11 +14,13 @@ NeuVector's Role-Based Access Control (RBAC) system provides fine-grained access
 
 | Role | Description |
 |---|---|
-| Admin | Full access to all features |
-| Reader | Read-only access to all features |
-| CI Ops | Access to vulnerability scan API for CI/CD integration |
-| Runtime Security | Manage policies, view events, no admin settings |
-| Compliance | View and run compliance scans |
+| admin | Full access to all features on the local cluster |
+| reader | Read-only access to all features on the local cluster |
+| ciops | CI integration role limited to image scanning and CI/CD scanning APIs |
+| fedAdmin | Multi-cluster admin on the primary (master) cluster in a federation |
+| fedReader | Multi-cluster read-only role in a federation |
+
+In addition to these preconfigured roles, you can define custom roles by combining individual read/write permissions (for example, runtime policy, compliance, admission control, or registry scan) under **Settings > Users, API Keys & Roles > Roles**.
 
 ## Prerequisites
 
@@ -28,18 +30,19 @@ NeuVector's Role-Based Access Control (RBAC) system provides fine-grained access
 
 ## Step 1: Create a User
 
+The NeuVector REST API runs on the controller (`neuvector-svc-controller-api` service in Kubernetes) on port `10443`. The user identifier in the API is the `fullname` field.
+
 ```bash
-# Create a new user with Reader role
+# Create a new user with the reader role
 
 curl -sk -X POST \
-  "https://neuvector-manager:8443/v1/user" \
+  "https://neuvector-svc-controller-api.neuvector:10443/v1/user" \
   -H "Content-Type: application/json" \
   -H "X-Auth-Token: ${TOKEN}" \
   -d '{
-    "config": {
-      "username": "security-engineer",
+    "user": {
+      "fullname": "security-engineer",
       "password": "SecurePass123!",
-      "fullname": "Jane Smith",
       "email": "jane.smith@company.com",
       "role": "reader",
       "timeout": 900,
@@ -50,32 +53,36 @@ curl -sk -X POST \
 ```
 
 In the UI:
-1. Go to **Settings** > **Users & Roles**
+1. Go to **Settings** > **Users, API Keys & Roles**
 2. Click **Add User**
-3. Fill in username, password, full name, email
+3. Fill in username (the user's `fullname`), password, email
 4. Select the global role
 
 ## Step 2: Assign Global Roles
 
+`PATCH /v1/user/{fullname}` updates a user. The body is wrapped in `config` and must include the user's `fullname`.
+
 ```bash
 # Assign admin role to a user
 curl -sk -X PATCH \
-  "https://neuvector-manager:8443/v1/user/security-engineer" \
+  "https://neuvector-svc-controller-api.neuvector:10443/v1/user/security-engineer" \
   -H "Content-Type: application/json" \
   -H "X-Auth-Token: ${TOKEN}" \
   -d '{
     "config": {
+      "fullname": "security-engineer",
       "role": "admin"
     }
   }'
 
 # Assign reader role
 curl -sk -X PATCH \
-  "https://neuvector-manager:8443/v1/user/dev-team-lead" \
+  "https://neuvector-svc-controller-api.neuvector:10443/v1/user/dev-team-lead" \
   -H "Content-Type: application/json" \
   -H "X-Auth-Token: ${TOKEN}" \
   -d '{
     "config": {
+      "fullname": "dev-team-lead",
       "role": "reader"
     }
   }'
@@ -83,16 +90,17 @@ curl -sk -X PATCH \
 
 ## Step 3: Configure Namespace-Scoped Roles
 
-Assign users different roles for specific namespaces:
+Assign users different roles for specific namespaces. `role_domains` is a map from a role name to the list of namespaces ("domains") in which the user holds that role.
 
 ```bash
 # Give user admin access only in the "staging" namespace
 curl -sk -X PATCH \
-  "https://neuvector-manager:8443/v1/user/staging-admin" \
+  "https://neuvector-svc-controller-api.neuvector:10443/v1/user/staging-admin" \
   -H "Content-Type: application/json" \
   -H "X-Auth-Token: ${TOKEN}" \
   -d '{
     "config": {
+      "fullname": "staging-admin",
       "role": "",
       "role_domains": {
         "admin": ["staging"],
@@ -109,19 +117,18 @@ This grants:
 
 ## Step 4: Configure CI/CD Service Account
 
-Create a dedicated account for CI/CD pipeline integration:
+Create a dedicated account for CI/CD pipeline integration. The `ciops` role is limited to image scanning and CI/CD scanning APIs; it cannot perform any other action in the console.
 
 ```bash
-# Create CI/CD service account with ciops role
+# Create CI/CD service account with the ciops role
 curl -sk -X POST \
-  "https://neuvector-manager:8443/v1/user" \
+  "https://neuvector-svc-controller-api.neuvector:10443/v1/user" \
   -H "Content-Type: application/json" \
   -H "X-Auth-Token: ${TOKEN}" \
   -d '{
-    "config": {
-      "username": "ci-scanner",
+    "user": {
+      "fullname": "ci-scanner",
       "password": "CIScannerSecurePass456!",
-      "fullname": "CI/CD Scanner",
       "email": "security-automation@company.com",
       "role": "ciops",
       "timeout": 300
@@ -134,78 +141,78 @@ curl -sk -X POST \
 ```bash
 # List all users
 curl -sk \
-  "https://neuvector-manager:8443/v1/user" \
+  "https://neuvector-svc-controller-api.neuvector:10443/v1/user" \
   -H "X-Auth-Token: ${TOKEN}" | jq '.users[] | {
-    username: .username,
     fullname: .fullname,
+    username: .username,
     role: .role,
     email: .email,
     blocked: .blocked_for_failed_login
   }'
 
-# Disable a user (without deleting)
-curl -sk -X PATCH \
-  "https://neuvector-manager:8443/v1/user/old-employee" \
+# Clear a user's failed-login block (re-enable login after lockout)
+curl -sk -X POST \
+  "https://neuvector-svc-controller-api.neuvector:10443/v1/user/old-employee/password" \
   -H "Content-Type: application/json" \
   -H "X-Auth-Token: ${TOKEN}" \
   -d '{
     "config": {
-      "blocked_for_failed_login": true
+      "fullname": "old-employee",
+      "clear_failed_login": true
     }
   }'
 
 # Delete a user
 curl -sk -X DELETE \
-  "https://neuvector-manager:8443/v1/user/old-employee" \
+  "https://neuvector-svc-controller-api.neuvector:10443/v1/user/old-employee" \
   -H "X-Auth-Token: ${TOKEN}"
 ```
 
+`blocked_for_failed_login` is a status field set by the controller after too many failed login attempts; it is not directly settable through the user config endpoint. To prevent a user from logging in without removing them, rotate the password to an unknown value or delete the account.
+
 ## Step 6: Configure Password Policy
 
-Set password requirements for all users:
+Password requirements live in a password profile, not in `/v1/system/config`. NeuVector currently supports a single profile named `default`. Update it via `PATCH /v1/password_profile/default`.
 
 ```bash
-# Configure password policy
+# Configure the default password profile
 curl -sk -X PATCH \
-  "https://neuvector-manager:8443/v1/system/config" \
+  "https://neuvector-svc-controller-api.neuvector:10443/v1/password_profile/default" \
   -H "Content-Type: application/json" \
   -H "X-Auth-Token: ${TOKEN}" \
   -d '{
     "config": {
-      "auth_order": ["local"],
-      "auth_by_platform": false,
-      "rancher_ep": "",
-      "password_policy": {
-        "enable_password_policy": true,
-        "min_len": 16,
-        "require_uppercase": true,
-        "require_lowercase": true,
-        "require_digit": true,
-        "require_special_character": true,
-        "password_expire_after_days": 90,
-        "password_keep_history": 5
-      }
+      "name": "default",
+      "min_len": 16,
+      "min_uppercase_count": 1,
+      "min_lowercase_count": 1,
+      "min_digit_count": 1,
+      "min_special_count": 1,
+      "enable_password_expiration": true,
+      "password_expire_after_days": 90,
+      "enable_password_history": true,
+      "password_keep_history_count": 5
     }
   }'
 ```
 
-## Step 7: Configure Session Settings
+## Step 7: Configure Session Timeout and Login Lockout
+
+The default password profile also holds the session timeout and the failed-login lockout settings.
 
 ```bash
-# Set idle timeout and maximum login attempts
+# Set idle session timeout and lockout after repeated failed logins
 curl -sk -X PATCH \
-  "https://neuvector-manager:8443/v1/system/config" \
+  "https://neuvector-svc-controller-api.neuvector:10443/v1/password_profile/default" \
   -H "Content-Type: application/json" \
   -H "X-Auth-Token: ${TOKEN}" \
   -d '{
     "config": {
-      "webhook_status": false,
-      "auth_by_platform": false,
-      "password_policy": {
-        "enable_password_policy": true,
-        "block_after_failed_login_count": 5,
-        "block_minutes": 30
-      }
+      "name": "default",
+      "session_timeout": 1800,
+      "enable_block_after_failed_login": true,
+      "block_after_failed_login_count": 5,
+      "block_minutes": 30
     }
   }'
 ```
@@ -222,7 +229,7 @@ metadata:
   name: neuvector-reader-role
 rules:
   - apiGroups: ["neuvector.com"]
-    resources: ["nvsecurityrules", "nvclusterSecurityrules"]
+    resources: ["nvsecurityrules", "nvclustersecurityrules"]
     verbs: ["get", "list", "watch"]
 ---
 apiVersion: rbac.authorization.k8s.io/v1
