@@ -21,7 +21,7 @@ upstream app_backends {
     server 192.168.1.10:8080 max_fails=3 fail_timeout=30s;
     server 192.168.1.11:8080 max_fails=3 fail_timeout=30s;
     server 192.168.1.12:8080 max_fails=3 fail_timeout=30s;
-    # max_fails=3: mark server down after 3 consecutive failures
+    # max_fails=3: mark server down after 3 failures within the fail_timeout window
     # fail_timeout=30s: keep it out of rotation for 30 seconds,
     #                   also the window in which failures are counted
 }
@@ -106,7 +106,7 @@ curl -sf http://192.168.1.10:8080/health && echo "UP" || echo "DOWN"
 
 ## Monitoring Backend Status
 
-View the current state of backends using the stub_status or Nginx Plus API:
+View the current state of backends using the Nginx Plus API (per-upstream server state is not exposed by the open-source `stub_status` module, which reports only aggregate connection and request stats):
 
 ```bash
 # Nginx Plus: list backend server states
