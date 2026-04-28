@@ -68,7 +68,8 @@ locals {
 resource "aws_instance" "app" {
   ami           = data.aws_ami.ubuntu.id
   instance_type = "t3.medium"
-  user_data     = local.user_data
+  # Use user_data_base64 because base64gzip output is already Base64-encoded
+  user_data_base64 = local.user_data
 
   tags = {
     Name = "app-server"
