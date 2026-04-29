@@ -12,9 +12,9 @@ K3s includes ServiceLB (also known as Klipper LoadBalancer), which provides Load
 
 ## What ServiceLB Does
 
-ServiceLB works by creating a DaemonSet for each LoadBalancer Service. Each DaemonSet pod binds to the host port on every node. This means:
-- The Service IP is actually one of the node IPs
-- Traffic is load balanced at the DaemonSet level
+ServiceLB works by creating a DaemonSet for each LoadBalancer Service. Each DaemonSet pod binds to the service port on each eligible node that has that port available. This means:
+- The Service's external address list is populated with node IPs
+- Traffic enters through those nodes and is forwarded to the Service's ClusterIP
 - It works without any external infrastructure
 
 ## When to Replace ServiceLB
@@ -28,6 +28,7 @@ ServiceLB works by creating a DaemonSet for each LoadBalancer Service. Each Daem
 ## Method 1: Disable Before Installation
 
 ```bash
+# Create the config on every K3s server node
 sudo mkdir -p /etc/rancher/k3s
 
 sudo tee /etc/rancher/k3s/config.yaml > /dev/null <<EOF
@@ -44,13 +45,15 @@ curl -sfL https://get.k3s.io | sudo sh -
 ## Method 2: Disable on an Existing Cluster
 
 ```bash
-# Add servicelb to the disable list
-sudo tee -a /etc/rancher/k3s/config.yaml > /dev/null <<EOF
-disable:
+# Run this on every K3s server node
+sudo mkdir -p /etc/rancher/k3s/config.yaml.d
+
+sudo tee /etc/rancher/k3s/config.yaml.d/10-disable-servicelb.yaml > /dev/null <<EOF
+disable+:
   - servicelb
 EOF
 
-# Restart K3s
+# Restart K3s on each server node
 sudo systemctl restart k3s
 
 # Verify ServiceLB pods are gone
@@ -64,9 +67,9 @@ kubectl get pods -n kube-system | grep svclb
 # Check no svclb DaemonSets exist
 kubectl get daemonsets -n kube-system | grep svclb
 
-# Check the HelmChart is removed
-kubectl get helmchart -n kube-system
-# servicelb should not appear
+# Before installing another load balancer, LoadBalancer Services should stay pending
+kubectl get svc -A
+# Any Service of type LoadBalancer should show EXTERNAL-IP as <pending>
 ```
 
 ## Installing MetalLB
@@ -77,7 +80,7 @@ MetalLB is the most popular bare-metal load balancer for Kubernetes:
 
 ```bash
 # Install MetalLB using the official manifests
-kubectl apply -f https://raw.githubusercontent.com/metallb/metallb/v0.14.3/config/manifests/metallb-native.yaml
+kubectl apply -f https://raw.githubusercontent.com/metallb/metallb/v0.15.3/config/manifests/metallb-native.yaml
 
 # Wait for MetalLB pods to be ready
 kubectl -n metallb-system rollout status deployment/controller
@@ -89,7 +92,7 @@ kubectl -n metallb-system get pods
 
 ### Configure Layer 2 Mode (Simple Setup)
 
-Layer 2 mode is the easiest to configure and works with any network:
+Layer 2 mode is the easiest to configure and works well on bare-metal Ethernet networks:
 
 ```yaml
 # metallb-config.yaml
@@ -119,6 +122,7 @@ spec:
 kubectl apply -f metallb-config.yaml
 
 # Wait a moment, then test a LoadBalancer service
+kubectl create deployment my-app --image=nginx
 kubectl expose deployment my-app --type=LoadBalancer --port=80
 
 # Check if MetalLB assigned an external IP
@@ -195,11 +199,11 @@ metadata:
   name: my-service
   annotations:
     # Use a specific IP address
-    metallb.universe.io/loadBalancerIPs: "192.168.1.200"
+    metallb.io/loadBalancerIPs: "192.168.1.200"
     # Use a specific address pool
-    metallb.universe.io/address-pool: production
+    metallb.io/address-pool: production
     # Enable IP sharing (for multiple services on the same IP, different ports)
-    metallb.universe.io/allow-shared-ip: "key-to-share"
+    metallb.io/allow-shared-ip: "key-to-share"
 spec:
   type: LoadBalancer
   selector:
@@ -215,10 +219,15 @@ If you're running K3s on a cloud provider, disable ServiceLB and use the cloud's
 
 ```bash
 # For AWS, install the AWS Load Balancer Controller
-# Disable ServiceLB first
-echo "  - servicelb" >> /etc/rancher/k3s/config.yaml
+# Disable ServiceLB first on every K3s server node
+sudo mkdir -p /etc/rancher/k3s/config.yaml.d
+sudo tee /etc/rancher/k3s/config.yaml.d/10-disable-servicelb.yaml > /dev/null <<EOF
+disable+:
+  - servicelb
+EOF
 sudo systemctl restart k3s
 
+# Prerequisites: attach the required IAM permissions and ensure subnets are tagged for auto-discovery
 # Then deploy your cloud LB controller
 helm repo add eks https://aws.github.io/eks-charts
 helm install aws-load-balancer-controller eks/aws-load-balancer-controller \
@@ -228,4 +237,4 @@ helm install aws-load-balancer-controller eks/aws-load-balancer-controller \
 
 ## Conclusion
 
-Disabling ServiceLB in K3s and replacing it with MetalLB gives you a production-grade load balancer that properly handles IP address assignment and ARP announcements. MetalLB's Layer 2 mode is straightforward to set up on any network, while BGP mode provides full integration with enterprise network fabrics. The transition is simple - disable ServiceLB in the K3s config, restart K3s, deploy MetalLB, and configure IP address pools. Existing LoadBalancer Services will automatically receive IPs from MetalLB's pool.
+Disabling ServiceLB in K3s and replacing it with MetalLB gives you a production-grade load balancer that properly handles IP address assignment and network announcements. MetalLB's Layer 2 mode is straightforward to set up on bare-metal Ethernet networks, while BGP mode provides full integration with enterprise network fabrics. The transition is simple - disable ServiceLB in the K3s config, restart K3s, deploy MetalLB, and configure IP address pools. Existing LoadBalancer Services will automatically receive IPs from MetalLB's pool.
