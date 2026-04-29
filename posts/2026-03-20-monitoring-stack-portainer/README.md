@@ -223,6 +223,11 @@ receivers:
       - api_url: 'https://hooks.slack.com/services/T.../B.../...'
         channel: '#alerts'
         send_resolved: true
+
+  - name: 'pagerduty'
+    pagerduty_configs:
+      - service_key: 'your-pagerduty-integration-key'
+        send_resolved: true
 ```
 
 ## Step 4: Create Alert Rules
@@ -254,7 +259,7 @@ groups:
 
       # Container restart
       - alert: ContainerRestarting
-        expr: rate(container_last_seen{name!=""}[15m]) > 1
+        expr: changes(container_start_time_seconds{name!=""}[15m]) > 0
         for: 5m
         labels:
           severity: warning
@@ -272,7 +277,6 @@ Import popular community dashboards:
 ```bash
 Dashboard IDs to import:
 - 1860  → Node Exporter Full (host metrics)
-- 14282 → Portainer Metrics
 - 893   → Docker and system monitoring
 - 11600 → Docker Container & Host Metrics
 ```
