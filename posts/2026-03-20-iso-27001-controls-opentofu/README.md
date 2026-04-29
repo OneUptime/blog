@@ -6,14 +6,14 @@ Tags: OpenTofu, ISO 27001, Compliance, Security, Infrastructure as Code
 
 Description: Learn how to implement ISO 27001 Annex A technical controls with OpenTofu for cloud infrastructure that supports information security certification.
 
-ISO 27001 Annex A defines 93 controls across 4 themes. The technical controls - access control, cryptography, physical security, operations, communications, supplier relationships, and incident management - have direct mappings to cloud infrastructure configurations that OpenTofu can codify.
+ISO 27001 Annex A defines 93 controls across 4 themes. Several Annex A organizational and technological controls have direct mappings to cloud infrastructure configurations that OpenTofu can codify.
 
 ## A.5 Organizational Controls
 
 ```hcl
-# A.5.14 - Information transfer: enforce HTTPS
+# A.5.14 - Information transfer: support secure transfer with HTTPS
 
-resource "aws_alb_listener" "http_redirect" {
+resource "aws_lb_listener" "http_redirect" {
   load_balancer_arn = aws_lb.main.arn
   port              = "80"
   protocol          = "HTTP"
@@ -52,9 +52,15 @@ resource "aws_cognito_user_pool" "main" {
   }
 }
 
-# A.8.7 - Protection against malware: GuardDuty
+# A.8.7 - Protection against malware: GuardDuty malware protection
 resource "aws_guardduty_detector" "iso27001" {
   enable = true
+}
+
+resource "aws_guardduty_detector_feature" "ebs_malware_protection" {
+  detector_id = aws_guardduty_detector.iso27001.id
+  name        = "EBS_MALWARE_PROTECTION"
+  status      = "ENABLED"
 }
 
 # A.8.8 - Management of technical vulnerabilities: Inspector
@@ -81,8 +87,8 @@ resource "aws_s3_bucket_server_side_encryption_configuration" "iso27001" {
   }
 }
 
-# A.8.25 - Secure development lifecycle: CodeGuru security scanning
-# (Integrated via CI/CD pipeline, not a direct Terraform resource)
+# A.8.25 - Secure development lifecycle: CI/CD-integrated security scanning
+# (Implemented through CI/CD tooling rather than a direct OpenTofu resource)
 ```
 
 ## A.8.15 - Logging
@@ -91,7 +97,7 @@ resource "aws_s3_bucket_server_side_encryption_configuration" "iso27001" {
 # Comprehensive logging for all critical services
 resource "aws_cloudwatch_log_group" "application" {
   name              = "/app/production"
-  retention_in_days = 365  # 1-year retention for ISO 27001
+  retention_in_days = 365  # Example retention period; align with policy requirements
   kms_key_id        = aws_kms_key.logs.arn
 }
 
@@ -100,12 +106,16 @@ resource "aws_cloudwatch_metric_alarm" "high_error_rate" {
   alarm_name          = "high-error-rate"
   comparison_operator = "GreaterThanThreshold"
   evaluation_periods  = 2
-  metric_name         = "5XXError"
+  metric_name         = "HTTPCode_ELB_5XX_Count"
   namespace           = "AWS/ApplicationELB"
   period              = 60
   statistic           = "Sum"
   threshold           = 10
   alarm_actions       = [aws_sns_topic.ops_alerts.arn]
+
+  dimensions = {
+    LoadBalancer = aws_lb.main.arn_suffix
+  }
 }
 ```
 
@@ -145,9 +155,28 @@ resource "aws_network_acl" "data_tier" {
     from_port  = 0
     to_port    = 0
   }
+
+  # Network ACLs are stateless, so allow return traffic to ephemeral ports
+  egress {
+    rule_no    = 100
+    protocol   = "tcp"
+    action     = "allow"
+    cidr_block = "10.0.1.0/24"
+    from_port  = 1024
+    to_port    = 65535
+  }
+
+  egress {
+    rule_no    = 32766
+    protocol   = "-1"
+    action     = "deny"
+    cidr_block = "0.0.0.0/0"
+    from_port  = 0
+    to_port    = 0
+  }
 }
 ```
 
 ## Conclusion
 
-ISO 27001 Annex A technical controls translate directly to cloud service configurations. Enforce encryption (A.8.24) through KMS and S3 SSE, implement malware protection (A.8.7) with GuardDuty, enforce MFA (A.8.5) via identity services, and maintain comprehensive logging (A.8.15) with appropriate retention periods. Use OpenTofu to make these controls auditable and drift-detectable.
+ISO 27001 Annex A controls translate directly to cloud service configurations. Support secure transfer (A.5.14) with HTTPS redirects, enforce encryption (A.8.24) through KMS and S3 SSE, implement malware protection (A.8.7) with GuardDuty features, enforce MFA (A.8.5) via identity services, and maintain comprehensive logging (A.8.15) with retention periods defined by policy. Use OpenTofu to make these controls auditable and drift-detectable.
