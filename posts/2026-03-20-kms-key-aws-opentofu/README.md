@@ -51,7 +51,7 @@ data "aws_iam_policy_document" "kms_policy" {
     resources = ["*"]
   }
 
-  # Allow specific IAM role to use the key for encryption/decryption
+  # Allow specific IAM role to use the key for common encryption workflows
   statement {
     sid    = "AllowAppKeyUsage"
     effect = "Allow"
@@ -60,11 +60,31 @@ data "aws_iam_policy_document" "kms_policy" {
       identifiers = [aws_iam_role.app.arn]
     }
     actions = [
+      "kms:Encrypt",
       "kms:Decrypt",
+      "kms:ReEncrypt*",
       "kms:GenerateDataKey",
+      "kms:GenerateDataKeyWithoutPlaintext",
       "kms:DescribeKey",
     ]
     resources = ["*"]
+  }
+
+  # Allow AWS services such as EBS to create grants on behalf of the role
+  statement {
+    sid    = "AllowAWSServiceGrants"
+    effect = "Allow"
+    principals {
+      type        = "AWS"
+      identifiers = [aws_iam_role.app.arn]
+    }
+    actions   = ["kms:CreateGrant"]
+    resources = ["*"]
+    condition {
+      test     = "Bool"
+      variable = "kms:GrantIsForAWSResource"
+      values   = ["true"]
+    }
   }
 
   # Allow CloudTrail to use the key for log delivery
@@ -87,6 +107,16 @@ data "aws_iam_policy_document" "kms_policy" {
 ## Multi-Region Key
 
 ```hcl
+provider "aws" {
+  alias  = "us_east"
+  region = "us-east-1"
+}
+
+provider "aws" {
+  alias  = "eu_west"
+  region = "eu-west-1"
+}
+
 # Primary key in us-east-1
 
 resource "aws_kms_key" "primary" {
@@ -142,4 +172,4 @@ output "kms_alias_arn" { value = aws_kms_alias.app.arn }
 
 ## Conclusion
 
-Always enable key rotation for KMS keys, set deletion windows of at least 30 days (to allow recovery from accidental deletion), and use the least-privilege key policy to restrict which principals can use each key. Reference keys by alias ARN in other resources for readability.
+For symmetric customer managed KMS keys, enable automatic rotation, use the maximum deletion window of 30 days to allow recovery from accidental deletion, and use the least-privilege key policy to restrict which principals can use each key. Reference keys consistently by ARN, or by alias where the target resource supports it.
