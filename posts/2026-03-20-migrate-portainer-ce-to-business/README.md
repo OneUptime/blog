@@ -17,11 +17,10 @@ Portainer Business Edition (BE) extends the Community Edition with features like
 | Environments | Unlimited | Unlimited |
 | Users | Unlimited | Unlimited |
 | Teams/RBAC | Basic | Advanced |
-| SSO (OAuth/LDAP) | No | Yes |
+| SSO (OAuth/LDAP) | Basic | Advanced (AD/OAuth templates, group-to-team sync) |
 | Edge Computing | Basic | Advanced |
 | Custom Roles | No | Yes |
 | Registry Management | Basic | Advanced |
-| Nomad support | No | Yes |
 | Priority Support | No | Yes |
 | Activity Logs | Basic | Full |
 
@@ -93,7 +92,7 @@ docker logs portainer -f
 curl -X POST \
   -H "X-API-Key: your-api-key" \
   -H "Content-Type: application/json" \
-  -d '{"licenseKey": "your-be-license-key"}' \
+  -d '{"licenseKeys": ["your-be-license-key"]}' \
   "https://portainer.example.com/api/licenses"
 ```
 
@@ -125,7 +124,7 @@ curl -X PUT \
       }]
     }
   }' \
-  "https://portainer.example.com/api/settings/authentication"
+  "https://portainer.example.com/api/settings"
 ```
 
 ### Configuring Custom Roles
