@@ -59,7 +59,7 @@ mongosh
 rs.initiate({
   _id: "rs0",
   members: [
-    { _id: 0, host: "10.0.0.1:27017", priority: 2 },   # Preferred primary
+    { _id: 0, host: "10.0.0.1:27017", priority: 2 },   // Preferred primary
     { _id: 1, host: "10.0.0.2:27017", priority: 1 },
     { _id: 2, host: "10.0.0.3:27017", priority: 1 }
   ]
@@ -97,7 +97,7 @@ rs.isMaster()
 
 # Check replication lag
 rs.printReplicationInfo()
-rs.printSlaveReplicationInfo()   # Older syntax
+rs.printSecondaryReplicationInfo()   # rs.printSlaveReplicationInfo() was removed in MongoDB 5.0
 ```
 
 ## Application Connection String
