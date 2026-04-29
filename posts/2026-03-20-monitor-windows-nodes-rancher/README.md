@@ -29,6 +29,11 @@ spec:
       labels:
         app: windows-exporter
     spec:
+      hostNetwork: true
+      securityContext:
+        windowsOptions:
+          hostProcess: true
+          runAsUserName: "NT AUTHORITY\\SYSTEM"
       nodeSelector:
         kubernetes.io/os: windows    # Only run on Windows nodes
       tolerations:
@@ -40,7 +45,7 @@ spec:
         - name: windows-exporter
           image: ghcr.io/prometheus-community/windows-exporter:latest
           args:
-            - --collectors.enabled=cpu,cs,logical_disk,memory,net,os,service,system
+            - --collectors.enabled=cpu,cpu_info,logical_disk,memory,net,os,service,system
           ports:
             - containerPort: 9182
               name: metrics
@@ -120,8 +125,8 @@ groups:
 
       - alert: WindowsNodeLowMemory
         expr: |
-          windows_os_physical_memory_free_bytes
-          / windows_cs_physical_memory_bytes * 100 < 10
+          windows_memory_available_bytes
+          / windows_memory_physical_total_bytes * 100 < 10
         for: 5m
         labels:
           severity: critical
@@ -129,7 +134,9 @@ groups:
           summary: "Windows node memory critically low"
 
       - alert: WindowsServiceDown
-        expr: windows_service_status{status="stopped", start_mode="auto"} == 1
+        expr: |
+          windows_service_state{state="stopped"} == 1
+          and on(instance, name) windows_service_start_mode{start_mode="auto"} == 1
         for: 2m
         labels:
           severity: warning
