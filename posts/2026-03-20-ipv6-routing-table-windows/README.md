@@ -40,13 +40,13 @@ route print -6
 :: Show IPv6 routing table via netsh
 netsh interface ipv6 show route
 
-:: Show routes for a specific interface (use interface index from route print)
-netsh interface ipv6 show route interface="Ethernet"
+:: Show routes from the persistent store
+netsh interface ipv6 show route store=persistent
 
 :: Show route details
-netsh interface ipv6 show route verbose=enabled
+netsh interface ipv6 show route level=verbose
 
-:: Find the best route to a specific destination
+:: Search displayed routes for a specific prefix
 netsh interface ipv6 show route | findstr "2001:db8"
 ```
 
@@ -71,8 +71,8 @@ Get-NetRoute -AddressFamily IPv6 -InterfaceAlias "Ethernet"
 # Show only default routes
 Get-NetRoute -AddressFamily IPv6 -DestinationPrefix "::/0"
 
-# Show routes learned from a specific source
-Get-NetRoute -AddressFamily IPv6 | Where-Object Protocol -eq "RouterDiscovery"
+# Show routes learned via ICMP
+Get-NetRoute -AddressFamily IPv6 -Protocol Icmp
 ```
 
 ## Understanding the Output Fields
@@ -83,7 +83,7 @@ Get-NetRoute -AddressFamily IPv6 | Where-Object Protocol -eq "RouterDiscovery"
 | **DestinationPrefix** | The IPv6 network this route covers |
 | **NextHop** | Next-hop router (`::` means on-link, no gateway needed) |
 | **RouteMetric** | Lower value is preferred when multiple routes exist |
-| **Protocol** | How the route was added (RouterDiscovery, NetMgmt, etc.) |
+| **Protocol** | How the route was learned (Icmp, Local, NetMgmt, etc.) |
 
 ## Finding Your Gateway
 
@@ -112,12 +112,9 @@ Test-NetConnection -ComputerName "ipv6.google.com" -TraceRoute
 # Show interface indices to correlate with routes
 Get-NetAdapter | Select-Object ifIndex, Name, Status
 
-# Map route ifIndex to interface name
+# Show route entries with interface names
 Get-NetRoute -AddressFamily IPv6 |
-  Join-Object -LeftJoinProperty ifIndex `
-              -RightData (Get-NetAdapter) `
-              -RightJoinProperty ifIndex `
-              -RightProperties Name
+  Select-Object ifIndex, InterfaceAlias, DestinationPrefix, NextHop
 ```
 
 ## Summary
