@@ -37,6 +37,11 @@ resource "aws_vpc" "ipv6" {
 ## Step 2: Create IPv6-Enabled Subnets
 
 ```hcl
+# Fetch available AZs for subnet placement
+data "aws_availability_zones" "available" {
+  state = "available"
+}
+
 # Assign a /64 IPv6 CIDR to each subnet from the VPC's /56 block
 resource "aws_subnet" "public_ipv6" {
   count  = 2
@@ -125,6 +130,18 @@ resource "aws_route_table" "private" {
   }
 
   tags = { Name = "ipv6-private-rt" }
+}
+
+resource "aws_route_table_association" "public" {
+  count          = 2
+  subnet_id      = aws_subnet.public_ipv6[count.index].id
+  route_table_id = aws_route_table.public.id
+}
+
+resource "aws_route_table_association" "private" {
+  count          = 2
+  subnet_id      = aws_subnet.private_ipv6[count.index].id
+  route_table_id = aws_route_table.private.id
 }
 ```
 
