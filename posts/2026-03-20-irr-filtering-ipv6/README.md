@@ -27,8 +27,6 @@ route6:     2001:db8::/32
 descr:      My IPv6 prefix
 origin:     AS64496
 mnt-by:     MY-MNT
-created:    2026-03-20T00:00:00Z
-last-modified: 2026-03-20T00:00:00Z
 source:     RIPE
 ```
 
@@ -41,24 +39,25 @@ BGPq4 queries IRR databases and generates router filter configurations:
 sudo apt-get install bgpq4
 
 # Or compile from source
-git clone https://github.com/bgpq4/bgpq4
-cd bgpq4 && ./configure && make && sudo make install
+git clone https://github.com/bgp/bgpq4.git
+cd bgpq4
+./bootstrap
+./configure
+make
+sudo make install
 ```
 
 ## Step 3: Generate IPv6 Prefix Filters
 
 ```bash
-# Generate FRRouting prefix-list for a peer's AS-SET
-bgpq4 -6 -F "ipv6 prefix-list PEER-AS65001 seq %n permit %p\n" AS-PEERONE
+# Generate FRRouting / Cisco IOS prefix-list for a peer's AS-SET
+bgpq4 -6 -l PEER-AS65001-IPV6-IN -s AS-PEERONE
 
-# Generate Cisco IOS format
-bgpq4 -6 -Z -F "ipv6 prefix-list PEER-AS65001 seq %n permit %p\n" AS-PEERONE
-
-# Generate BIRD2 format
-bgpq4 -6 -b -F "  %p,\n" AS-PEERONE
+# Generate BIRD format
+bgpq4 -6 -b -l PEER_AS65001_IPV6_IN AS-PEERONE
 
 # For a single ASN (not AS-SET)
-bgpq4 -6 -F "ipv6 prefix-list AS65001-IN seq %n permit %p\n" AS65001
+bgpq4 -6 -l PEER-AS65003-IPV6-IN -s AS65003
 ```
 
 ## Step 4: Apply Generated Filters to Routers
@@ -68,29 +67,28 @@ bgpq4 -6 -F "ipv6 prefix-list AS65001-IN seq %n permit %p\n" AS65001
 # irr-update.sh - Regenerate and apply IRR filters
 
 PEERS=(
-    "AS65001:AS-PEERONE"
-    "AS65002:AS-PEERTWO"
-    "AS65003:AS65003"  # Single ASN peer
+    "AS65001|AS-PEERONE|2001:db8:1::1"
+    "AS65002|AS-PEERTWO|2001:db8:2::1"
+    "AS65003|AS65003|2001:db8:3::1"  # Single ASN peer
 )
 
 for peer_entry in "${PEERS[@]}"; do
-    asn="${peer_entry%%:*}"
-    asset="${peer_entry##*:}"
+    IFS='|' read -r asn asset peer_addr <<< "$peer_entry"
     list_name="PEER-${asn}-IPV6-IN"
 
     echo "Generating filter for $asn ($asset)..."
 
     # Generate new prefix-list
-    bgpq4 -6 -F "ipv6 prefix-list ${list_name} seq %n permit %p\n" "$asset" > /tmp/${list_name}.conf
+    bgpq4 -6 -l "${list_name}" -s "$asset" > "/tmp/${list_name}.conf"
 
     # Apply to FRR
-    sudo vtysh -f /tmp/${list_name}.conf
+    sudo vtysh -f "/tmp/${list_name}.conf"
+
+    # Request a route refresh so the new filter is evaluated
+    sudo vtysh -c "clear bgp ipv6 unicast ${peer_addr} in"
 
     echo "Applied filter for $asn"
 done
-
-# Reload BGP to apply new filters
-sudo vtysh -c "clear bgp ipv6 unicast * soft in"
 ```
 
 ## Step 5: FRR Configuration with IRR Filters
@@ -100,15 +98,15 @@ sudo vtysh -c "clear bgp ipv6 unicast * soft in"
 router bgp 64496
   bgp router-id 192.0.2.1
 
-  neighbor 2001:db8:peer1::1 remote-as 65001
-  neighbor 2001:db8:peer1::1 description "Peer One"
+  neighbor 2001:db8:1::1 remote-as 65001
+  neighbor 2001:db8:1::1 description "Peer One"
 
   address-family ipv6 unicast
-    neighbor 2001:db8:peer1::1 activate
+    neighbor 2001:db8:1::1 activate
     # Apply IRR-generated prefix-list on import
-    neighbor 2001:db8:peer1::1 prefix-list PEER-AS65001-IPV6-IN in
+    neighbor 2001:db8:1::1 prefix-list PEER-AS65001-IPV6-IN in
     # Apply your own prefix-list on export
-    neighbor 2001:db8:peer1::1 prefix-list MY-IPV6-OUT out
+    neighbor 2001:db8:1::1 prefix-list MY-IPV6-OUT out
   exit-address-family
 ```
 
@@ -140,4 +138,4 @@ Use [OneUptime](https://oneuptime.com) to monitor the outcome of your IRR filter
 
 ## Conclusion
 
-IRR filtering for IPv6 requires registering route6 objects, using BGPq4 to generate prefix-lists, and automating regular updates. Combined with RPKI, IRR filtering provides comprehensive protection against unauthorized IPv6 route announcements.
+IRR filtering for IPv6 requires registering route6 objects, using BGPq4 to generate prefix-lists, and automating regular updates. Combined with RPKI, IRR filtering provides stronger protection against unauthorized IPv6 route-origin announcements.
