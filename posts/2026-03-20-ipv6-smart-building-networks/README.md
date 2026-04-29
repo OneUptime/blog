@@ -25,7 +25,7 @@ Enterprise /32
     ├── Security Cameras /64 (2001:db8:a:6::/64)
     ├── Building Management /64 (2001:db8:a:7::/64)
     ├── Guest IoT /64 (2001:db8:a:8::/64)
-    └── Reserved /56 (2001:db8:a:100::/56 - 2001:db8:a:1ff::/56)
+    └── Reserved /56 (2001:db8:a:100::/56)
 ```
 
 ## Example Addressing Plan
@@ -70,7 +70,7 @@ HVAC Subnet: 2001:db8:a:1::/64
 2001:db8:a:1::1      - HVAC controller (gateway)
 2001:db8:a:1::10-ff  - Floor controllers (1 per floor for 240 floors)
 2001:db8:a:1::100-1ff - Zone controllers
-2001:db8:a:1::1000-ffff - Sensors and actuators (SLAAC/DHCPv6)
+2001:db8:a:1::1000-ffff - Sensors and actuators (static/DHCPv6)
 ```
 
 ## DHCPv6 Configuration for Building Systems
@@ -88,12 +88,12 @@ HVAC Subnet: 2001:db8:a:1::/64
                 "reservations": [
                     {
                         "hw-address": "00:11:22:33:44:55",
-                        "ip-addresses": ["2001:db8:a:1::hvac-ctrl-1"],
+                        "ip-addresses": ["2001:db8:a:1::10"],
                         "hostname": "hvac-controller-floor-1.bms.example.com"
                     }
                 ],
                 "option-data": [
-                    {"name": "dns-servers", "data": "2001:db8:bms::53"}
+                    {"name": "dns-servers", "data": "2001:db8:a:7::53"}
                 ],
                 "user-context": {
                     "comment": "HVAC System - Building A"
