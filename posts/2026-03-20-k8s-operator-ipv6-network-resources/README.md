@@ -18,22 +18,31 @@ Reconcile custom IPv6 network resources in Kubernetes controllers including IP a
 
 ## Working with IPv6 in Kubernetes Operators
 
-### Checking IPv6 Support in the Cluster
+### Checking for IPv6 Node Addresses in the Cluster
 
 ```go
-// Check if cluster supports IPv6
-func isIPv6Enabled(config *rest.Config) bool {
-    client, _ := kubernetes.NewForConfig(config)
-    nodes, _ := client.CoreV1().Nodes().List(context.Background(), metav1.ListOptions{})
+// Check whether any Kubernetes node reports an IPv6 address
+func hasIPv6NodeAddress(config *rest.Config) (bool, error) {
+    clientset, err := kubernetes.NewForConfig(config)
+    if err != nil {
+        return false, err
+    }
+
+    nodes, err := clientset.CoreV1().Nodes().List(context.Background(), metav1.ListOptions{})
+    if err != nil {
+        return false, err
+    }
+
     for _, node := range nodes.Items {
         for _, addr := range node.Status.Addresses {
             ip := net.ParseIP(addr.Address)
             if ip != nil && ip.To4() == nil {
-                return true  // Found an IPv6 node address
+                return true, nil // Found an IPv6 node address
             }
         }
     }
-    return false
+
+    return false, nil
 }
 ```
 
@@ -110,9 +119,11 @@ EOF
 
 kind create cluster --config kind-dual-stack.yaml
 
-# Verify dual-stack is enabled
-kubectl get nodes -o wide
-kubectl get pods -n kube-system -o wide | grep "2001:"
+# Verify dual-stack node and Pod addressing
+kubectl get nodes
+kubectl get pods -n kube-system
+kubectl get node <node-name> -o go-template --template='{{range .status.addresses}}{{printf "%s: %s\n" .type .address}}{{end}}'
+kubectl get pod <pod-name> -n kube-system -o go-template --template='{{range .status.podIPs}}{{printf "%s\n" .ip}}{{end}}'
 ```
 
 ## Monitoring with OneUptime
@@ -121,4 +132,4 @@ Use [OneUptime](https://oneuptime.com) to monitor your operator's health endpoin
 
 ## Conclusion
 
-How to Reconcile IPv6 Network Resources in Custom Controllers involves using Go's `net` package for IPv6 validation, handling dual-stack service creation with `IPFamilyPolicy`, and testing against IPv6-enabled Kubernetes clusters. Always validate IPv6 addresses in CRD webhook validators to catch issues before reconciliation.
+How to Reconcile IPv6 Network Resources in Custom Controllers involves using Go's `net` package for IPv6 validation, reconciling resources that carry IPv6 addresses, and testing against IPv6-enabled Kubernetes clusters. Always validate IPv6 addresses in CRD webhook validators to catch issues before reconciliation.
