@@ -17,13 +17,13 @@ Many services are dual-stack but only monitored over IPv4. If an IPv6-specific i
 [OneUptime](https://oneuptime.com) supports IPv6 endpoint monitoring from multiple global probe locations:
 
 1. Log in to OneUptime
-2. Navigate to **Monitors → New Monitor**
-3. Select **Website Monitor** or **Ping Monitor**
-4. Enter the IPv6 endpoint URL: `http://[2001:db8::10]:80/`
+2. Navigate to **Monitors → Create Monitor**
+3. Select **Website Monitor** for HTTP/HTTPS checks, or **Ping Monitor** / **IP Monitor** for reachability checks
+4. For a Website Monitor, enter the IPv6 endpoint URL: `http://[2001:db8::10]:80/`
 5. Set check interval (e.g., every 1 minute)
 6. Configure alert notifications
 
-For DNS-based endpoints, OneUptime will use the first A or AAAA record returned. To force IPv6, use a URL with the literal IPv6 address.
+To verify IPv6 explicitly, use a URL with the literal IPv6 address or monitor the IPv6 address directly with a Ping or IP monitor.
 
 ## Method 2: Prometheus Blackbox Exporter
 
@@ -45,7 +45,7 @@ scrape_configs:
       - source_labels: [__param_target]
         target_label: instance
       - target_label: __address__
-        replacement: "[::1]:9115"
+        replacement: "127.0.0.1:9115"
 ```
 
 ```yaml
@@ -102,11 +102,12 @@ done
 exit $FAILURES
 ```
 
-## Method 4: Uptime Robot or Better Uptime (External)
+## Method 4: UptimeRobot or Better Stack (External)
 
-Configure external monitoring services to check IPv6 endpoints:
+Configure an external monitoring service that supports IPv6:
 - Enter the IPv6 URL: `http://[2001:db8::10]/`
-- Set monitoring interval: 1 minute
+- If the service offers an IP version setting, select IPv6
+- Choose the shortest interval your plan supports (for example, 1 minute)
 - Enable notifications for downtime
 
 ## Dual-Stack Comparison Monitoring
@@ -115,9 +116,9 @@ Monitor both IPv4 and IPv6 and compare:
 
 ```promql
 # Alert if IPv6 is down but IPv4 is up (address-family-specific failure)
-probe_success{job="ipv6-uptime", instance="www.example.com"} == 0
-AND
-probe_success{job="ipv4-uptime", instance="www.example.com"} == 1
+probe_success{job="ipv6-uptime", instance="https://www.example.com"} == 0
+and on(instance)
+probe_success{job="ipv4-uptime", instance="https://www.example.com"} == 1
 ```
 
 This pattern detects IPv6-specific outages that would be invisible to IPv4-only monitoring.
@@ -126,7 +127,7 @@ This pattern detects IPv6-specific outages that would be invisible to IPv4-only 
 
 | Layer | Tool | Purpose |
 |---|---|---|
-| External | OneUptime / Uptime Robot | Global IPv6 reachability from multiple regions |
+| External | OneUptime / UptimeRobot / Better Stack | Global IPv6 reachability from multiple regions |
 | Internal | Prometheus + Blackbox | Detailed metrics and alerting |
 | DNS | dig AAAA checks | Verify AAAA records are resolving |
 | Certificate | Blackbox SSL check | Expiry monitoring for IPv6 HTTPS endpoints |
