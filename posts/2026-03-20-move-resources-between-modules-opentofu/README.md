@@ -114,7 +114,7 @@ tofu plan
 Expected output for a successful move:
 
 ```text
-# module.networking.aws_security_group.web has moved to aws_security_group.web
+# aws_security_group.web has moved to module.networking.aws_security_group.web
 ```
 
 There should be no `+` (create) or `-` (destroy) lines for the moved resources - only a `moved` annotation.
