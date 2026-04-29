@@ -92,6 +92,12 @@ variable "regional_configs" {
   }
 }
 
+provider "aws" {
+  alias    = "regional"
+  for_each = var.regional_configs
+  region   = each.key
+}
+
 module "regional_deployment" {
   for_each = {
     # Only create module instances for enabled regions
