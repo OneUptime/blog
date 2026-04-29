@@ -8,32 +8,29 @@ Description: Configure durable message persistence for RabbitMQ and Kafka in Ran
 
 ## Introduction
 
-Message persistence ensures messages survive broker restarts and pod failures. Without persistence, a broker restart causes message loss. This guide covers persistence configuration for both RabbitMQ and Kafka on Rancher.
+Message persistence helps messages survive broker restarts and pod rescheduling when the broker uses persistent storage. Without persistence, a broker restart can cause message loss. This guide covers persistence configuration for both RabbitMQ and Kafka on Rancher.
 
 ## RabbitMQ Persistence
 
-RabbitMQ persistence operates at two levels: broker-level storage via PVCs, and queue-level durability via the `durable` flag.
+RabbitMQ persistence operates at two levels: broker-level storage via PVCs, and queue-level durability via durable queues and persistent messages.
 
 ### Broker Storage Configuration
 
 ```yaml
-# rabbitmq-values.yaml (persistence section)
+# rabbitmq-values.yaml (Bitnami chart persistence section)
 
 persistence:
   enabled: true                # Enable PVC creation
   storageClass: "longhorn"
+  accessModes:
+    - ReadWriteOnce
   size: 50Gi
-  accessMode: ReadWriteOnce
-
-# Important: Set the message store paths
-extraEnvVars:
-  - name: RABBITMQ_MNESIA_DIR
-    value: /bitnami/rabbitmq/mnesia   # Maps to the PVC mount
+  mountPath: /opt/bitnami/rabbitmq/.rabbitmq/mnesia
 ```
 
 ### Declare Durable Queues
 
-Queues must be declared as durable, and messages must be marked persistent:
+Queues must be declared as durable, messages must be marked persistent, and publishers should use confirms for stronger durability guarantees:
 
 ```python
 # Python example using pika library
@@ -49,6 +46,9 @@ channel.queue_declare(
     queue='orders',
     durable=True    # Queue survives broker restart
 )
+
+# Enable publisher confirms
+channel.confirm_delivery()
 
 # Publish a persistent message
 channel.basic_publish(
@@ -81,18 +81,29 @@ Kafka persists messages to disk automatically. Key settings control retention.
 ### Broker Storage Configuration
 
 ```yaml
-# kafka-values.yaml (persistence section)
-persistence:
-  enabled: true
-  storageClass: "longhorn"
-  size: 100Gi   # Kafka is very storage-intensive
+# kafka-values.yaml (Bitnami chart persistence sections)
+controller:
+  persistence:
+    enabled: true
+    storageClass: "longhorn"
+    accessModes:
+      - ReadWriteOnce
+    size: 100Gi   # Kafka is very storage-intensive
+
+broker:
+  persistence:
+    enabled: true
+    storageClass: "longhorn"
+    accessModes:
+      - ReadWriteOnce
+    size: 100Gi
 
 # Kafka log configuration
-config: |
-  log.retention.hours=168        # Keep messages for 7 days
-  log.retention.bytes=10737418240  # Keep up to 10GB per partition
-  log.segment.bytes=1073741824   # Roll segment files at 1GB
-  log.cleanup.policy=delete      # Delete old segments (vs compact)
+overrideConfiguration:
+  log.retention.hours: 168
+  log.retention.bytes: 10737418240  # Keep up to 10GB per partition
+  log.segment.bytes: 1073741824   # Roll segment files at 1GB
+  log.cleanup.policy: delete      # Delete old segments (vs compact)
 ```
 
 ### Topic-Level Retention Override
@@ -109,7 +120,7 @@ kafka-configs.sh \
 
 ### Replication Factor
 
-For production topics, always set replication factor to 3:
+For production topics on clusters with at least three brokers, set replication factor to 3 and use producers with `acks=all`:
 
 ```bash
 kafka-topics.sh \
@@ -123,4 +134,4 @@ kafka-topics.sh \
 
 ## Conclusion
 
-Message persistence in Rancher requires correctly configuring both the storage layer (PVCs with `Retain` policy) and the broker-level settings (durable queues, message persistence flags, replication). The combination ensures zero message loss even during pod restarts or node failures.
+Message persistence in Rancher requires correctly configuring both the storage layer (persistent volumes/claims and appropriate retention settings) and the broker-level settings (durable queues, persistent messages, publisher confirms, and replication). The combination greatly reduces message-loss risk during pod restarts or node failures, but end-to-end durability also depends on client settings such as RabbitMQ publisher confirms and Kafka producer `acks=all`.
