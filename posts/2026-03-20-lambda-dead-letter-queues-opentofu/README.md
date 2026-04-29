@@ -8,12 +8,12 @@ Description: Learn how to configure Dead Letter Queues (DLQ) for AWS Lambda func
 
 ## Introduction
 
-When a Lambda function invoked asynchronously fails after all retries, the event is discarded by default. Configuring a Dead Letter Queue sends these failed events to an SQS queue or SNS topic for analysis, reprocessing, or alerting. This is essential for production reliability.
+When a Lambda function invoked asynchronously fails after all retries or exceeds its maximum event age, the event is discarded by default. Configuring a Dead Letter Queue sends these discarded events to an SQS queue or SNS topic for analysis, reprocessing, or alerting. This is essential for production reliability.
 
 ## Prerequisites
 
 - OpenTofu v1.6+
-- AWS credentials with Lambda, SQS, and IAM permissions
+- AWS credentials with Lambda, SQS, CloudWatch, and IAM permissions
 
 ## Step 1: Create the Dead Letter Queue
 
@@ -33,26 +33,6 @@ resource "aws_sqs_queue" "lambda_dlq" {
     Function = var.function_name
     Purpose  = "DeadLetterQueue"
   }
-}
-
-# SQS Queue Policy allowing Lambda to send messages
-resource "aws_sqs_queue_policy" "lambda_dlq" {
-  queue_url = aws_sqs_queue.lambda_dlq.id
-
-  policy = jsonencode({
-    Version = "2012-10-17"
-    Statement = [{
-      Effect    = "Allow"
-      Principal = { Service = "lambda.amazonaws.com" }
-      Action    = "sqs:SendMessage"
-      Resource  = aws_sqs_queue.lambda_dlq.arn
-      Condition = {
-        ArnLike = {
-          "aws:SourceArn" = "arn:aws:lambda:${var.region}:${data.aws_caller_identity.current.account_id}:function:${var.function_name}"
-        }
-      }
-    }]
-  })
 }
 ```
 
@@ -95,7 +75,7 @@ resource "aws_lambda_function" "main" {
   source_code_hash = data.archive_file.zip.output_base64sha256
   timeout          = 30
 
-  # Configure DLQ - events that fail after all retries go here
+  # Configure DLQ - events that fail after all retries or expire go here
   dead_letter_config {
     target_arn = aws_sqs_queue.lambda_dlq.arn
   }
@@ -104,8 +84,8 @@ resource "aws_lambda_function" "main" {
 # Async invocation retry configuration (separate resource)
 resource "aws_lambda_function_event_invoke_config" "main" {
   function_name                = aws_lambda_function.main.function_name
-  maximum_retry_attempts       = 2       # Retry up to 2 times before DLQ
-  maximum_event_age_in_seconds = 3600    # Maximum age before discarding
+  maximum_retry_attempts       = 2       # Retry function errors up to 2 times before DLQ
+  maximum_event_age_in_seconds = 3600    # Maximum age before Lambda sends the event to the DLQ or discards it
 }
 ```
 
@@ -133,27 +113,14 @@ resource "aws_cloudwatch_metric_alarm" "dlq_messages" {
 }
 ```
 
-## Step 4: Create a DLQ Reprocessing Function
+## Step 4: Connect the DLQ to a Reprocessing Function
 
 ```hcl
-# Lambda function that retries messages from the DLQ
+# Event source mapping that sends DLQ messages to a reprocessing Lambda
 resource "aws_lambda_event_source_mapping" "dlq_reprocess" {
   event_source_arn = aws_sqs_queue.lambda_dlq.arn
   function_name    = aws_lambda_function.reprocessor.arn
   batch_size       = 1  # Process one at a time for careful retry
-
-  # Only trigger reprocessing during business hours via filtering
-  filter_criteria {
-    filter {
-      pattern = jsonencode({
-        body = {
-          requestContext = {
-            condition = ["RetriesExhausted"]
-          }
-        }
-      })
-    }
-  }
 }
 ```
 
