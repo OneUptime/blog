@@ -8,12 +8,12 @@ Description: Learn how to create Kubernetes Volume Snapshot Classes with OpenTof
 
 ## Overview
 
-Kubernetes Volume Snapshot Classes define the provisioner and deletion policy for volume snapshots, similar to how StorageClasses work for PVCs. OpenTofu manages VolumeSnapshotClasses and the snapshot lifecycle.
+Kubernetes Volume Snapshot Classes define the provisioner and deletion policy for volume snapshots, similar to how StorageClasses work for PVCs. OpenTofu can manage `VolumeSnapshotClass` and `VolumeSnapshot` resources, while the CSI snapshot controller handles snapshot creation and deletion.
 
-## Step 1: Install Volume Snapshot CRDs
+## Step 1: Install the Snapshot Controller and Volume Snapshot CRDs
 
 ```hcl
-# main.tf - Install VolumeSnapshot CRDs via Helm
+# main.tf - Install the snapshot controller and CRDs if your cluster doesn't already provide them
 
 resource "helm_release" "snapshot_controller" {
   name             = "snapshot-controller"
@@ -21,9 +21,11 @@ resource "helm_release" "snapshot_controller" {
   chart            = "snapshot-controller"
   namespace        = "kube-system"
   create_namespace = false
-  version          = "2.1.0"
+  version          = "5.0.3"
 }
 ```
+
+Apply this release first. The Kubernetes provider resolves custom resource schemas during planning, so the `VolumeSnapshot` CRDs must already exist before OpenTofu can plan `kubernetes_manifest` resources for `VolumeSnapshotClass` and `VolumeSnapshot`.
 
 ## Step 2: Create VolumeSnapshotClass for GKE (CSI Driver)
 
@@ -47,8 +49,6 @@ resource "kubernetes_manifest" "gke_snapshot_class" {
       "storage-locations" = "us-central1"
     }
   }
-
-  depends_on = [helm_release.snapshot_controller]
 }
 ```
 
@@ -62,6 +62,9 @@ resource "kubernetes_manifest" "ebs_snapshot_class" {
     kind       = "VolumeSnapshotClass"
     metadata = {
       name = "ebs-csi-snapshot-class"
+      annotations = {
+        "snapshot.storage.kubernetes.io/is-default-class" = "true"
+      }
     }
     driver         = "ebs.csi.aws.com"
     deletionPolicy = "Retain"  # Retain snapshots even when VolumeSnapshot object is deleted
@@ -76,7 +79,7 @@ resource "kubernetes_manifest" "ebs_snapshot_class" {
 ## Step 4: Create a Volume Snapshot
 
 ```hcl
-# Create an on-demand snapshot of a PVC
+# Create an on-demand snapshot of a PVC using the default VolumeSnapshotClass for its CSI driver
 resource "kubernetes_manifest" "database_snapshot" {
   manifest = {
     apiVersion = "snapshot.storage.k8s.io/v1"
@@ -86,7 +89,6 @@ resource "kubernetes_manifest" "database_snapshot" {
       namespace = "production"
     }
     spec = {
-      volumeSnapshotClassName = kubernetes_manifest.gke_snapshot_class.manifest.metadata.name
       source = {
         persistentVolumeClaimName = "postgres-data-postgres-0"  # PVC name
       }
@@ -99,28 +101,29 @@ resource "kubernetes_manifest" "database_snapshot" {
 
 ```hcl
 # Create a new PVC from a volume snapshot
-resource "kubernetes_persistent_volume_claim_v1" "restored_pvc" {
-  metadata {
-    name      = "postgres-data-restored"
-    namespace = "production"
-  }
-
-  spec {
-    access_modes = ["ReadWriteOnce"]
-
-    resources {
-      requests = {
-        storage = "50Gi"
-      }
+resource "kubernetes_manifest" "restored_pvc" {
+  manifest = {
+    apiVersion = "v1"
+    kind       = "PersistentVolumeClaim"
+    metadata = {
+      name      = "postgres-data-restored"
+      namespace = "production"
     }
+    spec = {
+      accessModes = ["ReadWriteOnce"]
+      resources = {
+        requests = {
+          storage = "50Gi"
+        }
+      }
 
-    storage_class_name = "premium-rwo"
+      storageClassName = "premium-rwo"  # Use a StorageClass backed by the same CSI driver as the snapshot source
 
-    # Restore from snapshot
-    data_source {
-      name      = kubernetes_manifest.database_snapshot.manifest.metadata.name
-      kind      = "VolumeSnapshot"
-      api_group = "snapshot.storage.k8s.io"
+      dataSource = {
+        name      = kubernetes_manifest.database_snapshot.manifest.metadata.name
+        kind      = "VolumeSnapshot"
+        apiGroup  = "snapshot.storage.k8s.io"
+      }
     }
   }
 }
