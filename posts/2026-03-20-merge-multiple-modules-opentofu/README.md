@@ -124,7 +124,7 @@ tofu apply
 rm -rf modules/security-groups
 ```
 
-Remove the `moved` blocks after confirming the apply succeeded - they are no longer needed once all states are updated.
+Keep the `moved` blocks if this configuration is shared, because removing them is generally a breaking change. Only remove them if you're certain every affected state has already applied the migration.
 
 ## Updating Module Outputs
 
