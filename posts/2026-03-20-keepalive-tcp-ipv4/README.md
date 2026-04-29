@@ -20,13 +20,14 @@ sequenceDiagram
     Note over A,B: Another 10s idle
     A->>B: TCP Keep-Alive probe
     B--xA: (no response - 6 retries)
-    A->>A: ECONNRESET / connection dead
+    A->>A: ETIMEDOUT / connection dead
 ```
 
 ## Enabling Keep-Alive in C
 
 ```c
 #include <sys/socket.h>
+#include <netinet/in.h>
 #include <netinet/tcp.h>
 
 /* Enable SO_KEEPALIVE and tune probe parameters (Linux-specific) */
@@ -73,8 +74,7 @@ def enable_keepalive(sock: socket.socket,
         sock.setsockopt(socket.IPPROTO_TCP, socket.TCP_KEEPCNT,   max_fails)
     elif sys.platform == "darwin":
         # macOS uses TCP_KEEPALIVE for the idle time
-        TCP_KEEPALIVE = 0x10
-        sock.setsockopt(socket.IPPROTO_TCP, TCP_KEEPALIVE, idle_sec)
+        sock.setsockopt(socket.IPPROTO_TCP, socket.TCP_KEEPALIVE, idle_sec)
 
 # Usage
 
@@ -89,9 +89,9 @@ enable_keepalive(s, idle_sec=30, interval_sec=5, max_fails=3)
 package main
 
 import (
+    "fmt"
     "net"
     "time"
-    "fmt"
 )
 
 func enableKeepalive(conn net.Conn, idleTime time.Duration, interval time.Duration, count int) error {
@@ -100,17 +100,12 @@ func enableKeepalive(conn net.Conn, idleTime time.Duration, interval time.Durati
         return fmt.Errorf("not a TCP connection")
     }
 
-    // Enable keepalive probes
-    if err := tc.SetKeepAlive(true); err != nil {
-        return err
-    }
-
-    // Set the idle time before the first probe
-    if err := tc.SetKeepAlivePeriod(idleTime); err != nil {
-        return err
-    }
-
-    return nil
+    return tc.SetKeepAliveConfig(net.KeepAliveConfig{
+        Enable:   true,
+        Idle:     idleTime,
+        Interval: interval,
+        Count:    count,
+    })
 }
 
 func main() {
@@ -120,7 +115,7 @@ func main() {
     }
     defer conn.Close()
 
-    // Start probing after 30s idle; probe every 5s
+    // Start probing after 30s idle; probe every 5s; stop after 3 failures
     if err := enableKeepalive(conn, 30*time.Second, 5*time.Second, 3); err != nil {
         fmt.Println("keepalive error:", err)
     }
@@ -134,7 +129,7 @@ func main() {
 |-----------|-------------|--------------------| ------------|
 | Idle time | `net.ipv4.tcp_keepalive_time` | `TCP_KEEPIDLE` | Seconds before first probe |
 | Probe interval | `net.ipv4.tcp_keepalive_intvl` | `TCP_KEEPINTVL` | Seconds between probes |
-| Probe count | `net.ipv4.tcp_keepalive_probes` | `TCP_KEEPCNT` | Failures before ECONNRESET |
+| Probe count | `net.ipv4.tcp_keepalive_probes` | `TCP_KEEPCNT` | Unanswered probes before dropping the connection |
 
 ```bash
 # View system defaults
@@ -157,4 +152,4 @@ sysctl -w net.ipv4.tcp_keepalive_time=60
 
 ## Conclusion
 
-Enable TCP keepalive with `SO_KEEPALIVE` on long-lived connections such as database links, message broker connections, and persistent client sessions. On Linux, tune `TCP_KEEPIDLE` (idle time before probing), `TCP_KEEPINTVL` (probe interval), and `TCP_KEEPCNT` (max failures) per socket using `setsockopt` - this overrides the system-wide defaults for that socket only. When a dead peer is detected, the next `recv()` or `send()` returns an error (`ECONNRESET` or `ETIMEDOUT`). For protocols that already implement heartbeats (WebSocket ping/pong, gRPC PING frames), TCP keepalive provides an additional lower-level safety net for infrastructure failures.
+Enable TCP keepalive with `SO_KEEPALIVE` on long-lived connections such as database links, message broker connections, and persistent client sessions. On Linux, tune `TCP_KEEPIDLE` (idle time before probing), `TCP_KEEPINTVL` (probe interval), and `TCP_KEEPCNT` (max failures) per socket using `setsockopt` - this overrides the system-wide defaults for that socket only. When a dead peer is detected, the next `recv()` or `send()` returns an error such as `ETIMEDOUT` or `ECONNRESET`. For protocols that already implement heartbeats (WebSocket ping/pong, gRPC PING frames), TCP keepalive provides an additional lower-level safety net for infrastructure failures.
