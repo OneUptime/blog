@@ -4,11 +4,11 @@ Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
 Tags: OpenTofu, Length, Function, HCL, Infrastructure as Code, DevOps
 
-Description: Learn how to use the length function in OpenTofu to count the number of elements in a list, map, or set, or the number of characters in a string.
+Description: Learn how to use the length function in OpenTofu to count the number of elements in a list, map, set, tuple, or object, or the number of characters in a string.
 
 ---
 
-`length()` returns the number of elements in a collection (list, map, or set) or the number of Unicode characters in a string. It's one of the most frequently used functions in OpenTofu.
+`length()` returns the number of elements in a collection or structural value (such as a list, map, set, tuple, or object) or the number of characters in a string. For strings, a "character" is a Unicode grapheme cluster. It's one of the most frequently used functions in OpenTofu.
 
 ---
 
@@ -155,4 +155,4 @@ output "allowed_ip_count" {
 
 ## Summary
 
-`length()` works on lists, maps, sets, and strings. For collections, it returns the number of elements. For strings, it returns the number of Unicode characters. Use it to dynamically set `count` values, enforce collection size constraints in variable validation blocks, check if a list is empty (`length(list) == 0`), and iterate with index-based access using `range(length(list))`.
+`length()` works on lists, maps, sets, tuples, objects, and strings. For collections and structural values, it returns the number of elements or attributes. For strings, it returns the number of characters (Unicode grapheme clusters). Use it to dynamically set `count` values, enforce collection size constraints in variable validation blocks, check if a list is empty (`length(list) == 0`), and iterate with index-based access using `range(length(list))`.
