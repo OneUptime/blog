@@ -15,10 +15,10 @@ Portainer 2.x introduced a redesigned architecture with a new data format, impro
 | Feature | 1.x | 2.x |
 |---------|-----|-----|
 | Multi-environment | Endpoints | Environments |
-| Agent port | 9000 | 9001 |
+| Default UI port | 9000 (HTTP) | 9443 (HTTPS, since 2.9) |
 | HTTPS default | No | Yes (9443) |
 | RBAC | Basic | Advanced (BE) |
-| Data format | SQLite | BoltDB (2.x format) |
+| Data format | BoltDB (1.x schema) | BoltDB (2.x schema) |
 
 ## Step 1: Document Your Existing Configuration
 
