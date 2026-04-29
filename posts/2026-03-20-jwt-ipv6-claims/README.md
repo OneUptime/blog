@@ -8,8 +8,8 @@ Description: Include, validate, and use IPv6 client addresses in JWT token claim
 
 ## Why Include IPv6 in JWT Claims?
 
-Including the client's IP address in JWT claims provides:
-- **IP binding**: Tokens can be invalidated if used from a different IP
+Including the client's IP address in JWT claims can support:
+- **IP binding**: Applications can invalidate tokens if they are used from a different IP
 - **Audit trail**: Track which IPv6 address was used during authentication
 - **Fraud detection**: Detect token theft by monitoring IP changes
 
@@ -19,6 +19,7 @@ Including the client's IP address in JWT claims provides:
 // jwt-utils.js
 const jwt = require('jsonwebtoken');
 const crypto = require('crypto');
+const net = require('node:net');
 
 const SECRET_KEY = process.env.JWT_SECRET || 'your-256-bit-secret';
 
@@ -32,9 +33,11 @@ function createToken(userId, clientIP) {
         exp: Math.floor(Date.now() / 1000) + 3600, // 1 hour
         // Custom claims
         client_ip: normalizedIP,
-        ip_version: normalizedIP.includes(':') ? 'ipv6' : 'ipv4',
+        ip_version: normalizedIP ? (normalizedIP.includes(':') ? 'ipv6' : 'ipv4') : undefined,
         // Hash of IP for privacy (optional)
-        ip_hash: crypto.createHash('sha256').update(normalizedIP).digest('hex').slice(0, 16),
+        ip_hash: normalizedIP
+            ? crypto.createHash('sha256').update(normalizedIP).digest('hex').slice(0, 16)
+            : undefined,
     };
 
     return jwt.sign(payload, SECRET_KEY, { algorithm: 'HS256' });
@@ -42,9 +45,18 @@ function createToken(userId, clientIP) {
 
 function normalizeIP(ip) {
     if (!ip) return null;
-    // Convert IPv4-mapped IPv6: ::ffff:192.168.1.1 → 192.168.1.1
-    const ipv4Mapped = ip.match(/^::ffff:(\d+\.\d+\.\d+\.\d+)$/);
-    return ipv4Mapped ? ipv4Mapped[1] : ip;
+    // Convert IPv4-mapped IPv6: ::ffff:192.168.1.1 -> 192.168.1.1
+    const ipv4Mapped = ip.match(/^::ffff:(\d+\.\d+\.\d+\.\d+)$/i);
+    if (ipv4Mapped) {
+        return ipv4Mapped[1];
+    }
+
+    // Canonicalize IPv6 so equivalent forms compare the same way
+    if (net.isIPv6(ip)) {
+        return new net.SocketAddress({ address: ip, family: 'ipv6', port: 0 }).address;
+    }
+
+    return net.isIPv4(ip) ? ip : null;
 }
 
 module.exports = { createToken, normalizeIP };
@@ -57,6 +69,8 @@ module.exports = { createToken, normalizeIP };
 const jwt = require('jsonwebtoken');
 const { normalizeIP } = require('./jwt-utils');
 
+const SECRET_KEY = process.env.JWT_SECRET || 'your-256-bit-secret';
+
 function validateTokenWithIPBinding(req, res, next) {
     const authHeader = req.headers.authorization;
     if (!authHeader?.startsWith('Bearer ')) {
@@ -67,7 +81,7 @@ function validateTokenWithIPBinding(req, res, next) {
     const clientIP = normalizeIP(req.socket.remoteAddress);
 
     try {
-        const decoded = jwt.verify(token, process.env.JWT_SECRET);
+        const decoded = jwt.verify(token, SECRET_KEY, { algorithms: ['HS256'] });
 
         // Check IP binding (optional but adds security)
         if (decoded.client_ip && decoded.client_ip !== clientIP) {
@@ -97,9 +111,8 @@ module.exports = { validateTokenWithIPBinding };
 # jwt_ipv6.py
 
 import jwt
-import hashlib
+import ipaddress
 import time
-from datetime import datetime, timezone
 
 SECRET_KEY = "your-256-bit-secret"
 
@@ -120,14 +133,11 @@ def create_token(user_id: str, client_ip: str) -> str:
     return jwt.encode(payload, SECRET_KEY, algorithm="HS256")
 
 def normalize_ip(ip: str) -> str:
-    """Remove IPv4-mapped prefix from IPv6 addresses."""
-    if ip.startswith("::ffff:"):
-        potential_ipv4 = ip[7:]
-        # Verify it looks like IPv4
-        parts = potential_ipv4.split(".")
-        if len(parts) == 4:
-            return potential_ipv4
-    return ip
+    """Canonicalize IPv6 and remove IPv4-mapped prefixes."""
+    parsed = ipaddress.ip_address(ip)
+    if isinstance(parsed, ipaddress.IPv6Address) and parsed.ipv4_mapped:
+        return str(parsed.ipv4_mapped)
+    return parsed.compressed
 
 def decode_and_validate(token: str, current_ip: str) -> dict:
     """Decode JWT and optionally validate IP."""
@@ -150,12 +160,22 @@ TOKEN=$(curl -6 -X POST http://[::1]:3000/auth/login \
   -H "Content-Type: application/json" \
   -d '{"username": "test", "password": "test"}' | jq -r '.token')
 
-# Decode and inspect the JWT (base64 decode the payload)
-echo $TOKEN | cut -d. -f2 | base64 -d 2>/dev/null | python3 -m json.tool
+# Decode and inspect the JWT payload (JWT uses base64url, not plain base64)
+python3 - <<'PY' "$TOKEN"
+import base64
+import json
+import sys
 
-# Test token from different IPv6 address
-curl -6 http://[2001:db8::1]:3000/api/profile \
+payload = sys.argv[1].split(".")[1]
+payload += "=" * (-len(payload) % 4)
+print(json.dumps(json.loads(base64.urlsafe_b64decode(payload)), indent=2))
+PY
+
+# Use the token on an IPv6 endpoint
+curl -6 http://[::1]:3000/api/profile \
   -H "Authorization: Bearer $TOKEN"
+
+# To test an IP mismatch, repeat the request from a different client network or host
 ```
 
 ## Monitoring with OneUptime
@@ -164,4 +184,4 @@ Use [OneUptime](https://oneuptime.com) to monitor authentication endpoints over 
 
 ## Conclusion
 
-Including IPv6 addresses in JWT claims enables IP-binding security and audit capabilities. Normalize IPv4-mapped IPv6 addresses before storing in claims. For strict security, validate that the requesting IP matches the token's `client_ip` claim, but consider logging rather than rejecting for users with dynamic IPv6 addresses.
+Including IPv6 addresses in JWT claims can support IP-binding checks and audit capabilities. Normalize IPv4-mapped IPv6 addresses before storing in claims, and canonicalize IPv6 so equivalent representations compare correctly. For strict security, validate that the requesting IP matches the token's `client_ip` claim, but consider logging rather than rejecting for users with dynamic IPv6 addresses.
