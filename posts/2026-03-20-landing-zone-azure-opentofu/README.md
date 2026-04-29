@@ -15,6 +15,12 @@ An Azure Landing Zone provides a governed multi-subscription environment with Ma
 ```hcl
 # main.tf - Azure Management Group structure
 
+data "azurerm_client_config" "current" {}
+
+data "azurerm_management_group" "root" {
+  name = data.azurerm_client_config.current.tenant_id
+}
+
 resource "azurerm_management_group" "platform" {
   display_name               = "Platform"
   parent_management_group_id = data.azurerm_management_group.root.id
@@ -44,12 +50,13 @@ resource "azurerm_management_group" "workloads_nonprod" {
 ## Step 2: Azure Policy Assignments
 
 ```hcl
-# Require specific tags on all resources
+# Require specific tags on taggable resources
 resource "azurerm_policy_definition" "require_tags" {
-  name         = "require-standard-tags"
-  policy_type  = "Custom"
-  mode         = "All"
-  display_name = "Require standard tags on resources"
+  name                = "require-standard-tags"
+  policy_type         = "Custom"
+  management_group_id = azurerm_management_group.workloads.id
+  mode                = "Indexed"
+  display_name        = "Require standard tags on resources"
 
   policy_rule = jsonencode({
     if = {
@@ -81,7 +88,7 @@ resource "azurerm_management_group_policy_assignment" "require_tags" {
   })
 }
 
-# Assign Azure Security Benchmark initiative
+# Assign the Microsoft cloud security benchmark initiative
 resource "azurerm_management_group_policy_assignment" "security_benchmark" {
   name                 = "azure-security-benchmark"
   management_group_id  = data.azurerm_management_group.root.id
@@ -120,7 +127,7 @@ resource "azurerm_virtual_network_peering" "hub_to_spoke" {
   resource_group_name       = azurerm_resource_group.connectivity.name
   virtual_network_name      = azurerm_virtual_network.hub.name
   remote_virtual_network_id = azurerm_virtual_network.spoke_prod.id
-  allow_gateway_transit     = true
+  allow_forwarded_traffic   = true
 }
 
 resource "azurerm_virtual_network_peering" "spoke_to_hub" {
@@ -128,7 +135,7 @@ resource "azurerm_virtual_network_peering" "spoke_to_hub" {
   resource_group_name       = azurerm_resource_group.workload_prod.name
   virtual_network_name      = azurerm_virtual_network.spoke_prod.name
   remote_virtual_network_id = azurerm_virtual_network.hub.id
-  use_remote_gateways       = true
+  allow_forwarded_traffic   = true
 }
 ```
 
@@ -144,7 +151,7 @@ resource "azurerm_log_analytics_workspace" "central" {
   retention_in_days   = 90
 }
 
-# Enable Microsoft Defender for Cloud across all subscriptions
+# Enable Microsoft Defender for Cloud plans in the current subscription
 resource "azurerm_security_center_subscription_pricing" "defender" {
   for_each = toset([
     "VirtualMachines", "SqlServers", "AppServices",
