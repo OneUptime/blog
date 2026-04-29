@@ -75,13 +75,18 @@ nfdump -R /var/cache/nfcapd -s record/bytes -n 20
 
 ## Using ntopng as the Collector
 
-```bash
-# Install ntopng with NetFlow support
-apt install ntopng -y
+ntopng does not collect NetFlow directly; it ingests flows from nProbe over ZMQ.
 
-# Configure ntopng to receive NetFlow on UDP 2055
+```bash
+# Install nProbe (NetFlow collector) and ntopng (visualizer)
+apt install nprobe ntopng -y
+
+# Run nProbe to collect NetFlow on UDP 2055 and forward to ntopng via ZMQ
+nprobe --zmq "tcp://*:5556" -i none -n none --collector-port 2055 &
+
+# Configure ntopng to receive flows from nProbe over ZMQ
 # /etc/ntopng/ntopng.conf
--i=netflow:2055
+-i=tcp://127.0.0.1:5556
 -w=3000
 ```
 
