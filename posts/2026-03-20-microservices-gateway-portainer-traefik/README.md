@@ -24,16 +24,14 @@ graph LR
 ## Compose Stack
 
 ```yaml
-version: "3.8"
-
 services:
   traefik:
-    image: traefik:v3.0
+    image: traefik:v3.6
     restart: unless-stopped
     command:
       - --api.dashboard=true
       - --providers.docker=true
-      - --providers.docker.network=gateway_net
+      - --providers.docker.network=gateway_network
       - --providers.docker.exposedByDefault=false
       - --entrypoints.web.address=:80
       - --entrypoints.websecure.address=:443
@@ -51,6 +49,8 @@ services:
     labels:
       - "traefik.enable=true"
       - "traefik.http.routers.dashboard.rule=Host(`traefik.example.com`)"
+      - "traefik.http.routers.dashboard.entrypoints=websecure"
+      - "traefik.http.routers.dashboard.tls.certresolver=le"
       - "traefik.http.routers.dashboard.service=api@internal"
     networks:
       - gateway_net
@@ -102,7 +102,9 @@ Adding a new microservice requires only Docker labels - no Traefik config change
       - gateway_net
     labels:
       - "traefik.enable=true"
-      - "traefik.http.routers.new.rule=PathPrefix(`/new`)"
+      - "traefik.http.routers.new.rule=Host(`api.example.com`) && PathPrefix(`/new`)"
+      - "traefik.http.routers.new.entrypoints=websecure"
+      - "traefik.http.routers.new.tls.certresolver=le"
       - "traefik.http.services.new.loadbalancer.server.port=3003"
 ```
 
