@@ -21,19 +21,28 @@ Debug network connectivity issues in Kubernetes operators related to IPv6, inclu
 ### Checking IPv6 Support in the Cluster
 
 ```go
-// Check if cluster supports IPv6
-func isIPv6Enabled(config *rest.Config) bool {
-    client, _ := kubernetes.NewForConfig(config)
-    nodes, _ := client.CoreV1().Nodes().List(context.Background(), metav1.ListOptions{})
+// Check if the cluster has IPv6 Pod CIDRs assigned
+func isIPv6Enabled(ctx context.Context, config *rest.Config) (bool, error) {
+    clientset, err := kubernetes.NewForConfig(config)
+    if err != nil {
+        return false, err
+    }
+
+    nodes, err := clientset.CoreV1().Nodes().List(ctx, metav1.ListOptions{})
+    if err != nil {
+        return false, err
+    }
+
     for _, node := range nodes.Items {
-        for _, addr := range node.Status.Addresses {
-            ip := net.ParseIP(addr.Address)
-            if ip != nil && ip.To4() == nil {
-                return true  // Found an IPv6 node address
+        for _, cidr := range node.Spec.PodCIDRs {
+            ip, _, err := net.ParseCIDR(cidr)
+            if err == nil && ip.To4() == nil {
+                return true, nil
             }
         }
     }
-    return false
+
+    return false, nil
 }
 ```
 
@@ -59,7 +68,7 @@ func IsValidIPv6CIDR(cidr string) bool {
     return ip.To4() == nil
 }
 
-// GetIPVersion returns "ipv4" or "ipv6"
+// GetIPVersion returns "ipv4", "ipv6", or "invalid"
 func GetIPVersion(addr string) string {
     ip := net.ParseIP(addr)
     if ip == nil {
@@ -110,15 +119,17 @@ EOF
 
 kind create cluster --config kind-dual-stack.yaml
 
-# Verify dual-stack is enabled
-kubectl get nodes -o wide
-kubectl get pods -n kube-system -o wide | grep "2001:"
+# Verify dual-stack is enabled by checking node Pod CIDRs
+kubectl get nodes <node-name> -o go-template --template='{{range .spec.podCIDRs}}{{printf "%s\n" .}}{{end}}'
+
+# Verify a Pod has both IPv4 and IPv6 addresses
+kubectl get pods -n kube-system <pod-name> -o go-template --template='{{range .status.podIPs}}{{printf "%s\n" .ip}}{{end}}'
 ```
 
 ## Monitoring with OneUptime
 
-Use [OneUptime](https://oneuptime.com) to monitor your operator's health endpoint over IPv6. Configure synthetic monitors that check the operator's metrics and health endpoints from IPv6 addresses.
+Use [OneUptime](https://oneuptime.com) to monitor your operator's health endpoint over IPv6. Configure IP or website monitors to check the operator's metrics and health endpoints over IPv6.
 
 ## Conclusion
 
-How to Debug Operator IPv6 Connectivity Issues involves using Go's `net` package for IPv6 validation, handling dual-stack service creation with `IPFamilyPolicy`, and testing against IPv6-enabled Kubernetes clusters. Always validate IPv6 addresses in CRD webhook validators to catch issues before reconciliation.
+How to Debug Operator IPv6 Connectivity Issues involves using Go's `net` package for IPv6 validation, checking node Pod CIDRs and Pod IP assignments, and testing against IPv6-enabled Kubernetes clusters. Always validate IPv6 addresses in CRD webhook validators to catch issues before reconciliation.
