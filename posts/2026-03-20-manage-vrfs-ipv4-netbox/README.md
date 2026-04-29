@@ -22,9 +22,9 @@ Via web UI: IPAM → VRFs → + Add
 ```bash
 # Create a VRF via API
 
-# "enforce_unique" prevents duplicate IPs within the VRF
+# "enforce_unique" prevents duplicate prefixes/IP addresses within the VRF
 curl -X POST \
-  -H "Authorization: Token <TOKEN>" \
+  -H "Authorization: Bearer <TOKEN>" \
   -H "Content-Type: application/json" \
   -d '{
     "name": "Production",
@@ -36,7 +36,7 @@ curl -X POST \
 
 # Create another VRF for a customer
 curl -X POST \
-  -H "Authorization: Token <TOKEN>" \
+  -H "Authorization: Bearer <TOKEN>" \
   -H "Content-Type: application/json" \
   -d '{
     "name": "Customer-A",
@@ -50,14 +50,14 @@ curl -X POST \
 ## Assigning Prefixes to a VRF
 
 ```bash
-# Get the VRF ID
-curl -H "Authorization: Token <TOKEN>" \
-  "http://localhost:8080/api/ipam/vrfs/?name=Production" \
-  | python3 -m json.tool | grep '"id"'
+# Get the VRF ID by its unique route distinguisher
+curl -H "Authorization: Bearer <TOKEN>" \
+  "http://localhost:8080/api/ipam/vrfs/?rd=65000:100" \
+  | python3 -c 'import json, sys; print(json.load(sys.stdin)["results"][0]["id"])'
 
 # Create a prefix within the VRF
 curl -X POST \
-  -H "Authorization: Token <TOKEN>" \
+  -H "Authorization: Bearer <TOKEN>" \
   -H "Content-Type: application/json" \
   -d '{
     "prefix": "10.0.0.0/24",
@@ -69,7 +69,7 @@ curl -X POST \
 
 # Create the same prefix in Customer-A VRF (allowed due to separate VRF)
 curl -X POST \
-  -H "Authorization: Token <TOKEN>" \
+  -H "Authorization: Bearer <TOKEN>" \
   -H "Content-Type: application/json" \
   -d '{
     "prefix": "10.0.0.0/24",
@@ -85,7 +85,7 @@ curl -X POST \
 ```bash
 # Create an IP in a specific VRF
 curl -X POST \
-  -H "Authorization: Token <TOKEN>" \
+  -H "Authorization: Bearer <TOKEN>" \
   -H "Content-Type: application/json" \
   -d '{
     "address": "10.0.0.5/24",
@@ -100,12 +100,12 @@ curl -X POST \
 
 ```bash
 # Get all IPs in a specific VRF
-curl -H "Authorization: Token <TOKEN>" \
+curl -H "Authorization: Bearer <TOKEN>" \
   "http://localhost:8080/api/ipam/ip-addresses/?vrf_id=<VRF_ID>" \
   | python3 -m json.tool
 
 # Get all prefixes in a VRF
-curl -H "Authorization: Token <TOKEN>" \
+curl -H "Authorization: Bearer <TOKEN>" \
   "http://localhost:8080/api/ipam/prefixes/?vrf_id=<VRF_ID>" \
   | python3 -m json.tool | grep '"prefix"'
 ```
@@ -116,8 +116,8 @@ NetBox has a special "global" routing table for IPs not in any VRF. Set `vrf: nu
 
 ```bash
 # Search global table (no VRF)
-curl -H "Authorization: Token <TOKEN>" \
-  "http://localhost:8080/api/ipam/ip-addresses/?vrf=null" \
+curl -H "Authorization: Bearer <TOKEN>" \
+  "http://localhost:8080/api/ipam/ip-addresses/?vrf_id=null" \
   | python3 -m json.tool
 ```
 
@@ -126,16 +126,16 @@ curl -H "Authorization: Token <TOKEN>" \
 ```bash
 # Create import/export route targets
 curl -X POST \
-  -H "Authorization: Token <TOKEN>" \
+  -H "Authorization: Bearer <TOKEN>" \
   -H "Content-Type: application/json" \
   -d '{"name": "65000:100"}' \
   http://localhost:8080/api/ipam/route-targets/
 
 # Assign to VRF
 curl -X PATCH \
-  -H "Authorization: Token <TOKEN>" \
+  -H "Authorization: Bearer <TOKEN>" \
   -H "Content-Type: application/json" \
-  -d '{"import_targets": [1], "export_targets": [1]}' \
+  -d '{"import_targets": [<ROUTE_TARGET_ID>], "export_targets": [<ROUTE_TARGET_ID>]}' \
   http://localhost:8080/api/ipam/vrfs/<VRF_ID>/
 ```
 
