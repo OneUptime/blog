@@ -17,7 +17,7 @@ K3s watches the manifests directory and:
 2. **While running**: Watches for changes and applies them automatically
 3. **On restart**: Re-applies all manifests (idempotent)
 
-The manifests are applied using an embedded `helm-controller` and AddOn controller.
+Manifest files are tracked and applied by the AddOn controller; if a manifest defines a `HelmChart`, the embedded `helm-controller` reconciles that chart.
 
 ## The Default Manifests
 
@@ -94,7 +94,7 @@ spec:
 
 ## Step 3: Deploy RBAC Resources
 
-Auto-deploy RBAC for all namespaces:
+Auto-deploy RBAC resources for the `production` namespace:
 
 ```yaml
 # /var/lib/rancher/k3s/server/manifests/rbac-setup.yaml
@@ -190,7 +190,7 @@ disable:
 Or using environment variables:
 
 ```bash
-# Install K3s without Traefik
+# Install K3s without Traefik or metrics-server
 curl -sfL https://get.k3s.io | \
   INSTALL_K3S_EXEC="--disable traefik --disable metrics-server" \
   sh -
@@ -215,7 +215,7 @@ kubectl get clusterroles | grep app-
 
 ## Step 8: Sync Manifests from Git
 
-Combine auto-deploy with a Git sync for basic GitOps:
+Combine auto-deploy with a Git sync for basic manifest synchronization:
 
 ```bash
 #!/bin/bash
@@ -238,10 +238,12 @@ Schedule with cron:
 
 ```bash
 # Sync every 5 minutes
-echo "*/5 * * * * root /usr/local/bin/sync-k3s-manifests.sh" \
+echo "*/5 * * * * root bash /usr/local/bin/sync-k3s-manifests.sh" \
   > /etc/cron.d/k3s-manifest-sync
 ```
 
+This pattern updates and adds manifests, but deleting a file from Git will not delete resources that were already applied to the cluster.
+
 ## Conclusion
 
-K3s's auto-deploying manifests feature provides a simple, zero-dependency way to bootstrap cluster infrastructure. For small teams and edge deployments, it's often sufficient without needing full GitOps tools. For more complex scenarios, combine it with Git synchronization or eventually graduate to dedicated GitOps tools like Flux or ArgoCD. The key advantage is that manifests are automatically re-applied on every K3s restart, making your cluster self-healing and declaratively configured.
+K3s's auto-deploying manifests feature provides a simple, zero-dependency way to bootstrap cluster infrastructure. For small teams and edge deployments, it's often sufficient without needing full GitOps tools. For more complex scenarios, combine it with Git synchronization or eventually graduate to dedicated GitOps tools like Flux or ArgoCD. The key advantage is that manifests are automatically re-applied on every K3s restart, helping keep bootstrap resources declaratively configured across restarts.
