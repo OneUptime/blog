@@ -8,7 +8,7 @@ Description: Configure libvirt virtual networks with IPv6 subnets, DHCPv6 for gu
 
 ## Introduction
 
-libvirt manages virtual networks for KVM/QEMU VMs through its network configuration XML format. IPv6 is supported in libvirt networks since version 0.9.4 and includes support for DHCPv6 address assignment, static IPv6 routes, and both isolated and routed/NAT network modes. The `virsh net-*` commands manage IPv6 networks alongside IPv4.
+libvirt manages virtual networks for KVM/QEMU VMs through its network configuration XML format. IPv6 addresses are supported in libvirt networks since version 0.8.7. DHCPv6 address assignment is supported since 1.0.1, static IPv6 routes since 1.0.6, and IPv6 NAT in `mode='nat'` requires libvirt 6.5.0 or later with `<nat ipv6='yes'>`. The `virsh net-*` commands manage IPv6 networks alongside IPv4.
 
 ## Create a libvirt Network with IPv6
 
@@ -17,7 +17,7 @@ libvirt manages virtual networks for KVM/QEMU VMs through its network configurat
 <network>
   <name>dual-stack</name>
   <forward mode='nat'>
-    <nat>
+    <nat ipv6='yes'>
       <port start='1024' end='65535'/>
     </nat>
   </forward>
@@ -32,9 +32,9 @@ libvirt manages virtual networks for KVM/QEMU VMs through its network configurat
   </ip>
 
   <!-- IPv6 ULA subnet with DHCPv6 -->
-  <ip family='ipv6' address='fd00:vm:net1::1' prefix='64'>
+  <ip family='ipv6' address='fd42:1234:5678:100::1' prefix='64'>
     <dhcp>
-      <range start='fd00:vm:net1::100' end='fd00:vm:net1::200'/>
+      <range start='fd42:1234:5678:100::100' end='fd42:1234:5678:100::200'/>
     </dhcp>
   </ip>
 </network>
@@ -61,11 +61,11 @@ virsh net-dumpxml dual-stack
   <!-- No forward element = isolated network -->
   <bridge name='virbr-ipv6' stp='on' delay='0'/>
 
-  <ip family='ipv6' address='2001:db8:vms::1' prefix='64'>
+  <ip family='ipv6' address='2001:db8:100:1::1' prefix='64'>
     <dhcp>
-      <range start='2001:db8:vms::100' end='2001:db8:vms::200'/>
+      <range start='2001:db8:100:1::100' end='2001:db8:100:1::200'/>
       <!-- Static host reservation -->
-      <host id='00:01:00:01:xx:xx:xx:xx' name='vm1' ip='2001:db8:vms::10'/>
+      <host id='00:03:00:01:52:54:00:11:22:33' name='vm1' ip='2001:db8:100:1::10'/>
     </dhcp>
   </ip>
 </network>
@@ -81,13 +81,12 @@ virsh net-dumpxml dual-stack
   <forward mode='route' dev='eth0'/>
   <bridge name='virbr-rt' stp='on' delay='0'/>
 
-  <ip family='ipv6' address='2001:db8:vms::1' prefix='64'>
-    <!-- VMs get SLAAC from libvirt's radvd -->
+  <ip family='ipv6' address='2001:db8:100:2::1' prefix='64'>
+    <!-- VMs can autoconfigure with SLAAC from the advertised prefix -->
     <!-- No dhcp element = SLAAC only -->
   </ip>
 
-  <!-- Static route on the host will be needed: -->
-  <!-- ip -6 route add 2001:db8:vms::/64 dev virbr-rt -->
+  <!-- The upstream router must have a route to 2001:db8:100:2::/64 via the host -->
 </network>
 ```
 
@@ -106,8 +105,8 @@ virsh net-dhcp-leases dual-stack
 
 # Add a DHCPv6 static reservation
 virsh net-update dual-stack add ip-dhcp-host \
-    '<host id="00:03:00:01:52:54:00:aa:bb:01" name="myvm" ip="fd00:vm:net1::50"/>' \
-    --live --config
+    '<host id="00:03:00:01:52:54:00:aa:bb:01" name="myvm" ip="fd42:1234:5678:100::50"/>' \
+    --parent-index 1 --live --config
 
 # Delete a network
 virsh net-destroy dual-stack && virsh net-undefine dual-stack
@@ -116,20 +115,17 @@ virsh net-destroy dual-stack && virsh net-undefine dual-stack
 ## Router Advertisement Configuration in libvirt
 
 ```bash
-# libvirt uses its built-in radvd to send Router Advertisements
-# for IPv6 networks. The bridge interface acts as the IPv6 gateway.
+# libvirt-managed networks advertise the IPv6 prefix to guests via
+# Router Advertisement. The bridge interface acts as the IPv6 gateway.
 
-# Check if radvd is running for the network
-ps aux | grep radvd
+# View the active network definition that controls the advertised prefix
+virsh net-dumpxml dual-stack
 
-# libvirt generates radvd.conf automatically from the network XML
-# View the generated radvd config
-cat /var/lib/libvirt/network/dual-stack.conf
-# or
-cat /run/libvirt/network/radvd-dual-stack.conf
+# Check the per-network dnsmasq process used by libvirt
+ps aux | grep '[d]nsmasq.*dual-stack'
 
-# The RA will advertise the IPv6 prefix to VMs
-# VMs generate SLAAC addresses from this prefix
+# The RA provides the IPv6 default route to VMs
+# With this network definition, VMs receive IPv6 addresses from DHCPv6
 ```
 
 ## VM Network Attachment with IPv6
@@ -148,11 +144,11 @@ cat /run/libvirt/network/radvd-dual-stack.conf
 virsh attach-interface myvm network dual-stack \
     --model virtio \
     --mac 52:54:00:11:22:33 \
-    --live --persistent
+    --persistent
 
-# Check VM's IP addresses (requires guest agent)
-virsh domifaddr myvm
-# Should show both IPv4 and IPv6 addresses
+# Check VM's IP addresses from DHCP lease data
+virsh domifaddr myvm --source lease
+# Should show both IPv4 and DHCPv6-leased IPv6 addresses
 
 # Check DHCP leases for the VM
 virsh net-dhcp-leases dual-stack | grep 52:54:00:11:22:33
@@ -163,9 +159,9 @@ virsh net-dhcp-leases dual-stack | grep 52:54:00:11:22:33
 ```bash
 # Check bridge has IPv6 address
 ip -6 addr show virbr-ds
-# Should show: fd00:vm:net1::1/64
+# Should show: fd42:1234:5678:100::1/64
 
-# Check radvd is sending RAs
+# Check Router Advertisements are being sent
 tcpdump -i virbr-ds -n "icmp6 and icmp6[0] == 134"
 # Type 134 = Router Advertisement
 
@@ -173,14 +169,14 @@ tcpdump -i virbr-ds -n "icmp6 and icmp6[0] == 134"
 tcpdump -i virbr-ds -n "udp and (port 546 or port 547)"
 # 546 = DHCPv6 client, 547 = DHCPv6 server
 
-# Restart libvirt network if radvd is not working
+# Restart libvirt network if IPv6 services are not working
 virsh net-destroy dual-stack
 virsh net-start dual-stack
 
 # Check libvirt logs
-journalctl -u libvirtd -n 100 | grep -i ipv6
+journalctl -u virtnetworkd -u libvirtd -n 100 | grep -i ipv6
 ```
 
 ## Conclusion
 
-libvirt networks support IPv6 via the `<ip family='ipv6'>` element in network XML, supporting DHCPv6 ranges, static host reservations by DUID/ID, and SLAAC via built-in radvd. Three forwarding modes work with IPv6: isolated (no forward element), routed (`mode='route'`), and NAT (`mode='nat'`). The `virsh net-dhcp-leases` command shows both IPv4 and IPv6 leases. VMs connect to IPv6 networks by being attached to a libvirt network with IPv6 configuration - the guest OS receives the IPv6 prefix via SLAAC or DHCPv6 from libvirt's built-in radvd and dnsmasq processes.
+libvirt networks support IPv6 via the `<ip family='ipv6'>` element in network XML, supporting DHCPv6 ranges, static host reservations by DUID/ID, and SLAAC when the IPv6 network omits a `<dhcp>` element. Three forwarding modes work with IPv6: isolated (no forward element), routed (`mode='route'`), and NAT (`mode='nat'` with `<nat ipv6='yes'>` when IPv6 NAT is desired). The `virsh net-dhcp-leases` command shows both IPv4 and IPv6 leases. VMs connect to IPv6 networks by being attached to a libvirt network with IPv6 configuration - the guest OS receives the IPv6 default route via Router Advertisement and, when configured, IPv6 addresses via DHCPv6.
