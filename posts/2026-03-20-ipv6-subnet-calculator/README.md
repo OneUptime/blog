@@ -26,9 +26,9 @@ sipcalc 2001:db8:1::/48
 # [IPV6 INFO]
 # Expanded Address        - 2001:0db8:0001:0000:0000:0000:0000:0000
 # Compressed address      - 2001:db8:1::
-# Subnet prefix (mask)    - ffff:ffff:ffff:0000:0000:0000:0000:0000
+# Subnet prefix           - 2001:0db8:0001:0000:0000:0000:0000:0000
 # Address ID              - 0000:0000:0000:0000:0000:0000:0000:0000
-# Prefix address          - 2001:0db8:0001:0000:0000:0000:0000:0000
+# Prefix address          - ffff:ffff:ffff:0000:0000:0000:0000:0000
 # Prefix length           - 48
 
 # Python ipaddress module (built-in)
@@ -68,7 +68,7 @@ class IPv6Calculator:
         print(f"Prefix length:     /{prefix_len}")
         print(f"Network mask:      {net.netmask}")
         print(f"Network address:   {net.network_address}")
-        print(f"Broadcast equiv:   {net.broadcast_address}")
+        print(f"Last address:      {net.broadcast_address}")
         print(f"Host bits:         {host_bits}")
         print(f"Total addresses:   2^{host_bits} = {2**host_bits:,}")
         print()
@@ -119,7 +119,7 @@ net = ipaddress.IPv6Network(prefix)
 # Get the nth subnet from a block
 parent = ipaddress.IPv6Network("2001:db8::/48")
 subnets = list(parent.subnets(new_prefix=64))
-print(f"Subnet 100: {subnets[100]}")    # 2001:db8::64:0/64
+print(f"Subnet 100: {subnets[100]}")    # 2001:db8:0:64::/64
 
 # Check if two networks overlap
 net1 = ipaddress.IPv6Network("2001:db8:1::/48")
@@ -129,15 +129,15 @@ print(net2.subnet_of(net1))  # True
 
 # Collapse a list of prefixes into summaries
 prefixes = [
+    "2001:db8:1::/64",
     "2001:db8:1:1::/64",
     "2001:db8:1:2::/64",
     "2001:db8:1:3::/64",
-    "2001:db8:1:4::/64",
 ]
 nets = [ipaddress.IPv6Network(p) for p in prefixes]
 collapsed = list(ipaddress.collapse_addresses(nets))
 print("Collapsed:", [str(n) for n in collapsed])
-# May return 2001:db8:1::/62 or individual prefixes depending on contiguity
+# Returns 2001:db8:1::/62
 ```
 
 ## Recommended Free Tools
@@ -148,8 +148,8 @@ print("Collapsed:", [str(n) for n in collapsed])
 | `ipv6calc` | CLI | Advanced conversions |
 | `Python ipaddress` | Library | Scripting and automation |
 | subnettingpractice.com | Web | Learning and practice |
-| network00.com | Web | Visual subnetting |
-| Hurricane Electric prefix tool | Web | Real prefix lookups |
+| network-calculator.com | Web | Visual subnetting |
+| Hurricane Electric BGP Toolkit | Web | Real prefix lookups |
 
 ## Conclusion
 
