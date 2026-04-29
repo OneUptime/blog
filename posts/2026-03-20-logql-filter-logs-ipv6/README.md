@@ -8,29 +8,31 @@ Description: Write LogQL queries to filter, extract, and aggregate log data by I
 
 ## Introduction
 
-LogQL is Grafana Loki's query language. It supports filtering log streams by label values and searching log line content with string and regex filters. IPv6 addresses can be matched in log labels (for stream selection) or within log line content (for content filtering). This guide covers common LogQL patterns for IPv6 log analysis.
+LogQL is Grafana Loki's query language. It supports filtering log streams by label values and searching log line content with string, regex, and IP filters. IPv6 addresses can be matched in log labels (for stream selection) or within log line content (for content filtering). This guide covers common LogQL patterns for IPv6 log analysis.
 
 ## IPv6 Log Line Filter Patterns
 
 ```logql
 # Exact IPv6 address match in log content
+{job="nginx"} |= ip("2001:db8::1")
 
-{job="nginx"} |= "2001:db8::1"
+# IPv6 subnet prefix match (documentation prefix 2001:db8::/32)
+{job="nginx"} |= ip("2001:db8::/32")
 
-# Any IPv6 address (contains at least two colons)
-{job="nginx"} |~ `[0-9a-fA-F]{1,4}:[0-9a-fA-F]{1,4}:[0-9a-fA-F:]*`
+# IPv6 address range
+{job="nginx"} |= ip("2001:db8::1-2001:db8::ffff")
 
 # IPv6 in bracket notation (URI format)
-{job="nginx"} |~ `\[[0-9a-fA-F:]+\]`
+{job="nginx"} |~ `\[[0-9A-Fa-f:.]+\]`
 
 # Loopback ::1
-{job="nginx"} |= "::1"
+{job="nginx"} |= ip("::1")
 
-# Link-local fe80::
-{job="nginx"} |~ "fe80::[0-9a-fA-F:%]+"
+# Link-local unicast (fe80::/10)
+{job="nginx"} |= ip("fe80::/10")
 
-# ULA (fc00::/7) - starts with fc or fd
-{job="app"} |~ `f[cd][0-9a-fA-F]{2}:`
+# Unique local unicast (fc00::/7)
+{job="app"} |= ip("fc00::/7")
 ```
 
 ## Label-Based IPv6 Stream Selection
@@ -42,25 +44,30 @@ LogQL is Grafana Loki's query language. It supports filtering log streams by lab
 # Combine stream selector with content filter
 {job="nginx", ip_version="ipv6"} |= "/api/"
 
-# All IPv6 streams with error status
-{job="nginx", ip_version="ipv6"} |~ '" 5[0-9][0-9] '
+# IPv6 log lines with 5xx status in nginx access logs
+{job="nginx", ip_version="ipv6"}
+| pattern `<remote_addr> - <_> [<_>] "<method> <path> <_>" <status> <bytes> <_>`
+| __error__ = ""
+| status =~ "5.."
 ```
 
 ## Extracting IPv6 Fields from Log Lines
 
 ```logql
 # Extract client_ip from JSON structured logs
-{job="app"} | json | client_ip =~ "2001:db8:.*"
+{job="app"} | json | __error__ = "" | client_ip = ip("2001:db8::/32")
 
 # Extract with pattern matching (nginx combined log format)
 {job="nginx"}
-| pattern `<remote_addr> - <user> [<_>] "<method> <path> <_>" <status> <bytes>`
-| remote_addr =~ "[0-9a-fA-F:]{2,39}"
+| pattern `<remote_addr> - <_> [<_>] "<method> <path> <_>" <status> <bytes> <_>`
+| __error__ = ""
+| remote_addr = ip("2001:db8::/32")
 
 # Regex extraction for IPv6
 {job="syslog"}
-| regexp `from (?P<src_ip>[0-9a-fA-F:]{3,39}) port (?P<src_port>\d+)`
-| src_ip =~ "2001:db8:.*"
+| regexp `from (?P<src_ip>[^ ]+) port (?P<src_port>\d+)`
+| __error__ = ""
+| src_ip = ip("2001:db8::/32")
 ```
 
 ## Aggregation Queries
@@ -69,23 +76,36 @@ LogQL is Grafana Loki's query language. It supports filtering log streams by lab
 # Count log lines per IPv6 source (last 1 hour)
 sum by (remote_addr) (
   count_over_time(
-    {job="nginx", ip_version="ipv6"}[1h]
+    {job="nginx", ip_version="ipv6"}
+    | pattern `<remote_addr> - <_> [<_>] "<method> <path> <_>" <status> <bytes> <_>`
+    | __error__ = ""
+    | remote_addr = ip("::/0") [1h]
   )
 )
 
 # Rate of IPv6 requests per second
-rate({job="nginx", ip_version="ipv6"}[5m])
+sum(rate({job="nginx", ip_version="ipv6"}[5m]))
 
 # Top 10 IPv6 sources by request count
 topk(10,
   sum by (remote_addr) (
-    count_over_time({job="nginx", ip_version="ipv6"}[1h])
+    count_over_time(
+      {job="nginx", ip_version="ipv6"}
+      | pattern `<remote_addr> - <_> [<_>] "<method> <path> <_>" <status> <bytes> <_>`
+      | __error__ = ""
+      | remote_addr = ip("::/0") [1h]
+    )
   )
 )
 
 # Error rate for IPv6 clients
 (
-  sum(rate({job="nginx", ip_version="ipv6"} |~ '" 5[0-9][0-9] '[5m]))
+  sum(rate(
+    {job="nginx", ip_version="ipv6"}
+    | pattern `<remote_addr> - <_> [<_>] "<method> <path> <_>" <status> <bytes> <_>`
+    | __error__ = ""
+    | status =~ "5.." [5m]
+  ))
 ) /
 (
   sum(rate({job="nginx", ip_version="ipv6"}[5m]))
@@ -104,7 +124,12 @@ groups:
       - alert: HighIPv6ErrorRate
         expr: |
           (
-            sum(rate({job="nginx", ip_version="ipv6"} |~ '" 5[0-9][0-9] '[5m]))
+            sum(rate(
+              {job="nginx", ip_version="ipv6"}
+              | pattern `<remote_addr> - <_> [<_>] "<method> <path> <_>" <status> <bytes> <_>`
+              | __error__ = ""
+              | status =~ "5.." [5m]
+            ))
             /
             sum(rate({job="nginx", ip_version="ipv6"}[5m]))
           ) > 0.05
@@ -118,7 +143,11 @@ groups:
         expr: |
           sum by (remote_addr) (
             count_over_time(
-              {job="nginx", ip_version="ipv6"} |~ '" 4[0-9][0-9] '[1m])
+              {job="nginx", ip_version="ipv6"}
+              | pattern `<remote_addr> - <_> [<_>] "<method> <path> <_>" <status> <bytes> <_>`
+              | __error__ = ""
+              | status =~ "4.." [1m]
+            )
           ) > 100
         for: 1m
         labels:
@@ -134,16 +163,24 @@ groups:
 {job="nginx", ip_version="ipv6"} |= "/login"
 
 # Find failed SSH logins from IPv6 addresses
-{job="syslog"} |~ "Failed password.*from [0-9a-fA-F:]{3,39}"
+{job="syslog"}
+| regexp `Failed password.*from (?P<src_ip>[^ ]+)`
+| __error__ = ""
+| src_ip = ip("::/0")
 
-# Find unique IPv6 sources per 5-minute window
-count by (remote_addr) (
-  last_over_time(
-    {job="nginx", ip_version="ipv6"} | pattern `<remote_addr> -`[5m]
+# Count unique IPv6 sources per 5-minute window
+count(
+  sum by (remote_addr) (
+    count_over_time(
+      {job="nginx", ip_version="ipv6"}
+      | pattern `<remote_addr> - <_> [<_>] "<method> <path> <_>" <status> <bytes> <_>`
+      | __error__ = ""
+      | remote_addr = ip("::/0") [5m]
+    )
   )
 )
 ```
 
 ## Conclusion
 
-LogQL provides flexible IPv6 filtering through both stream label selectors and line filter expressions. Assign `ip_version` as a Loki label during log collection to enable efficient stream selection - label-based filtering is faster than full-text search. For subnet-based analysis, extract the IPv6 field with `json`, `pattern`, or `regexp` parsers, then apply regex comparison operators. Use LogQL metric queries with `rate()` and `sum by()` to build IPv6 traffic dashboards in Grafana.
+LogQL provides flexible IPv6 filtering through both stream label selectors and line filter expressions. Assign `ip_version` as a Loki label during log collection to enable efficient stream selection - label-based filtering is faster than full-text search. For subnet-based analysis, extract the IPv6 field with `json`, `pattern`, or `regexp` parsers, then apply `ip()` or regex comparison operators. Use LogQL metric queries with `rate()` and `sum by()` to build IPv6 traffic dashboards in Grafana.
