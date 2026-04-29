@@ -8,7 +8,7 @@ Description: A practical guide to migrating your Kubernetes admission control po
 
 ## Introduction
 
-Kyverno and Kubewarden both provide Kubernetes admission control, but with different approaches. Kyverno uses YAML-based policy definitions with a Kubernetes-native DSL, while Kubewarden uses WebAssembly policies that offer full programming language flexibility. Organizations migrate to Kubewarden for more complex validation logic, better performance, or to leverage existing programming skills.
+Kyverno and Kubewarden both provide Kubernetes admission control, but with different approaches. Kyverno uses YAML-based policy definitions with pattern matching plus JMESPath/CEL expressions, while Kubewarden uses WebAssembly policies written in languages that compile to Wasm. Organizations migrate to Kubewarden when they need policy logic that is easier to express in a general-purpose language or when they want to standardize on Kubewarden's policy framework.
 
 This guide covers migrating from Kyverno to Kubewarden with a structured, low-risk approach.
 
@@ -23,10 +23,10 @@ This guide covers migrating from Kyverno to Kubewarden with a structured, low-ri
 
 | Feature | Kyverno | Kubewarden |
 |---------|---------|------------|
-| Policy definition | YAML/JMESPath | WebAssembly modules |
+| Policy definition | YAML policies with patterns/CEL/JMESPath | WebAssembly modules |
 | Mutation | Native YAML patches | JSON patches from code |
-| Generate | Yes (create resources) | No (validation/mutation only) |
-| Language | YAML/CEL/JMESPath | Rust, Go, Any Wasm |
+| Generate | Yes (create resources) | No direct equivalent |
+| Language | YAML/CEL/JMESPath | Rust, Go, and other Wasm targets |
 | Testing | Kyverno CLI | kwctl |
 | Context | Native K8s API lookups | Host capability calls |
 
@@ -35,18 +35,18 @@ This guide covers migrating from Kyverno to Kubewarden with a structured, low-ri
 ```bash
 # List all Kyverno policies
 
-kubectl get policies -A
-kubectl get clusterpolicies
+kubectl get policies.kyverno.io -A
+kubectl get clusterpolicies.kyverno.io
 
 # Export all cluster policies
-kubectl get clusterpolicies -o yaml > kyverno-clusterpolicies.yaml
+kubectl get clusterpolicies.kyverno.io -o yaml > kyverno-clusterpolicies.yaml
 
 # Export all namespace policies
-kubectl get policies -A -o yaml > kyverno-policies.yaml
+kubectl get policies.kyverno.io -A -o yaml > kyverno-policies.yaml
 
 # Get a count of each policy type
-echo "ClusterPolicies: $(kubectl get clusterpolicies --no-headers | wc -l)"
-echo "Namespace Policies: $(kubectl get policies -A --no-headers | wc -l)"
+echo "ClusterPolicies: $(kubectl get clusterpolicies.kyverno.io --no-headers | wc -l)"
+echo "Namespace Policies: $(kubectl get policies.kyverno.io -A --no-headers | wc -l)"
 ```
 
 ## Step 2: Map Kyverno Policies to Kubewarden
@@ -61,20 +61,26 @@ kind: ClusterPolicy
 metadata:
   name: disallow-privileged-containers
 spec:
-  validationFailureAction: Enforce
   rules:
-    - name: check-privileged
+    - name: privileged-containers
       match:
         any:
           - resources:
               kinds: [Pod]
       validate:
-        message: "Privileged mode is disallowed."
+        failureAction: Enforce
+        message: "Privileged mode is disallowed. The fields spec.containers[*].securityContext.privileged, spec.initContainers[*].securityContext.privileged, and spec.ephemeralContainers[*].securityContext.privileged must be unset or set to `false`."
         pattern:
           spec:
+            "=(ephemeralContainers)":
+              - "=(securityContext)":
+                  "=(privileged)": "false"
+            "=(initContainers)":
+              - "=(securityContext)":
+                  "=(privileged)": "false"
             containers:
-              - =(securityContext):
-                  =(privileged): "false"
+              - "=(securityContext)":
+                  "=(privileged)": "false"
 ```
 
 **Kubewarden equivalent:**
@@ -85,7 +91,7 @@ kind: ClusterAdmissionPolicy
 metadata:
   name: disallow-privileged-containers
 spec:
-  module: registry://ghcr.io/kubewarden/policies/pod-privileged:v0.2.0
+  module: registry://ghcr.io/kubewarden/policies/pod-privileged:v1.0.10
   rules:
     - apiGroups: [""]
       apiVersions: ["v1"]
@@ -104,7 +110,6 @@ kind: ClusterPolicy
 metadata:
   name: require-resources
 spec:
-  validationFailureAction: Enforce
   rules:
     - name: check-container-resources
       match:
@@ -112,6 +117,7 @@ spec:
           - resources:
               kinds: [Pod]
       validate:
+        failureAction: Enforce
         message: "CPU and memory limits are required."
         pattern:
           spec:
@@ -122,19 +128,18 @@ spec:
                     cpu: "?*"
 ```
 
-**Kubewarden equivalent:**
+**Kubewarden equivalent (using the CEL meta-policy):**
 ```yaml
 apiVersion: policies.kubewarden.io/v1
 kind: ClusterAdmissionPolicy
 metadata:
   name: require-resource-limits
 spec:
-  module: registry://ghcr.io/kubewarden/policies/require-resources:v0.1.0
+  module: registry://ghcr.io/kubewarden/policies/cel-policy:v1.6.0
   settings:
-    memory:
-      requireLimit: true
-    cpu:
-      requireLimit: true
+    validations:
+      - expression: "object.spec.containers.all(c, has(c.resources) && has(c.resources.limits) && 'cpu' in c.resources.limits && 'memory' in c.resources.limits)"
+        message: "CPU and memory limits are required."
   rules:
     - apiGroups: [""]
       apiVersions: ["v1"]
@@ -153,7 +158,6 @@ kind: ClusterPolicy
 metadata:
   name: require-labels
 spec:
-  validationFailureAction: Enforce
   rules:
     - name: check-for-labels
       match:
@@ -161,6 +165,7 @@ spec:
           - resources:
               kinds: [Pod]
       validate:
+        failureAction: Enforce
         message: "The label `app` is required."
         pattern:
           metadata:
@@ -175,7 +180,7 @@ kind: ClusterAdmissionPolicy
 metadata:
   name: require-app-label
 spec:
-  module: registry://ghcr.io/kubewarden/policies/k8s-objects:v1.3.0
+  module: registry://ghcr.io/kubewarden/policies/safe-labels:v1.0.9
   settings:
     mandatory_labels:
       - app
@@ -197,7 +202,6 @@ kind: ClusterPolicy
 metadata:
   name: restrict-image-registries
 spec:
-  validationFailureAction: Enforce
   rules:
     - name: validate-registries
       match:
@@ -205,9 +209,14 @@ spec:
           - resources:
               kinds: [Pod]
       validate:
+        failureAction: Enforce
         message: "Unknown image registry."
         pattern:
           spec:
+            "=(ephemeralContainers)":
+              - image: "registry.internal.example.com/* | gcr.io/my-org/*"
+            "=(initContainers)":
+              - image: "registry.internal.example.com/* | gcr.io/my-org/*"
             containers:
               - image: "registry.internal.example.com/* | gcr.io/my-org/*"
 ```
@@ -219,11 +228,12 @@ kind: ClusterAdmissionPolicy
 metadata:
   name: restrict-image-registries
 spec:
-  module: registry://ghcr.io/kubewarden/policies/allowed-image-repositories:v0.1.0
+  module: registry://ghcr.io/kubewarden/policies/trusted-repos:v2.1.0
   settings:
-    allowedRegistries:
-      - registry.internal.example.com
-      - gcr.io/my-org
+    images:
+      allow:
+        - registry.internal.example.com/*
+        - gcr.io/my-org/*
   rules:
     - apiGroups: [""]
       apiVersions: ["v1"]
@@ -235,7 +245,7 @@ spec:
 
 ## Step 3: Handle Kyverno Mutation Policies
 
-Kyverno's mutation policies need to be rewritten as Kubewarden mutation policies in Wasm:
+Kyverno's mutation policies that do not have a built-in Kubewarden equivalent need to be rewritten as Kubewarden mutation policies in Wasm:
 
 ```yaml
 # Kyverno mutation (adds default labels)
@@ -257,7 +267,7 @@ spec:
               managed-by: kubewarden
 ```
 
-For mutation policies, you need to write a Kubewarden Wasm policy. The migration approach:
+For mutation policies without a built-in Kubewarden equivalent, you need to write a Kubewarden Wasm policy. The migration approach:
 1. Check if the mutation is available on the Kubewarden Policy Hub
 2. Write a custom Wasm policy if not available
 3. Test extensively with `kwctl`
@@ -271,30 +281,27 @@ For mutation policies, you need to write a Kubewarden Wasm policy. The migration
 KYVERNO_POLICY="$1"
 KUBEWARDEN_POLICY="$2"
 
-# Step 1: Deploy Kubewarden policy in monitor mode
+# Step 1: Deploy the Kubewarden policy with spec.mode already set to monitor
 kubectl apply -f "${KUBEWARDEN_POLICY}"
-kubectl patch clusteradmissionpolicy \
-  $(grep "name:" "${KUBEWARDEN_POLICY}" | head -1 | awk '{print $2}') \
-  --type=merge \
-  -p '{"spec":{"mode":"monitor"}}'
 
 echo "Kubewarden policy deployed in monitor mode"
 
-# Step 2: Compare violations for 24 hours
-echo "Monitor for 24 hours and compare violations..."
+# Step 2: Compare results for 24 hours
+echo "Monitor for 24 hours and compare results..."
 
-# Check Kyverno violations
+# Check Kyverno admission violations
 echo "=== Kyverno Violations ==="
 kubectl get events -A \
   --field-selector reason=PolicyViolation \
-  | grep kyverno
+  | grep -F "${KYVERNO_POLICY}"
 
-# Check Kubewarden monitor events
-echo "=== Kubewarden Monitor Violations ==="
-kubectl get events -A \
-  --field-selector reason=PolicyViolation \
-  | grep kubewarden
+# Check Kubewarden audit reports (OpenReports is the default since Kubewarden 1.33)
+echo "=== Kubewarden Audit Reports ==="
+kubectl get report -A -o wide
+kubectl get clusterreport -o wide
 ```
+
+If your Kubewarden installation is still configured to use the deprecated PolicyReport CRDs, use `kubectl get policyreport -A -o wide` and `kubectl get clusterpolicyreport -o wide` instead.
 
 ## Step 5: Cut Over
 
@@ -312,15 +319,12 @@ kubectl patch clusteradmissionpolicy "${KUBEWARDEN_POLICY_NAME}" \
 
 echo "Kubewarden policy ${KUBEWARDEN_POLICY_NAME} is now enforcing"
 
-# Disable the Kyverno policy
-kubectl patch clusterpolicy "${KYVERNO_POLICY}" \
-  --type=merge \
-  -p '{"spec":{"validationFailureAction":"Audit"}}'
-
-echo "Kyverno policy ${KYVERNO_POLICY} switched to Audit mode"
+# If you want a grace period before removal, update the Kyverno manifest so each
+# validate rule uses failureAction: Audit, then re-apply it.
+# kubectl apply -f kyverno-policy-audit.yaml
 
 # After validation period, delete the Kyverno policy
-# kubectl delete clusterpolicy "${KYVERNO_POLICY}"
+# kubectl delete clusterpolicy.kyverno.io "${KYVERNO_POLICY}"
 ```
 
 ## Step 6: Final Kyverno Removal
@@ -329,12 +333,12 @@ After all policies are migrated:
 
 ```bash
 # Remove all Kyverno policies
-kubectl delete clusterpolicies --all
-kubectl delete policies -A --all
+kubectl delete clusterpolicies.kyverno.io --all
+kubectl delete policies.kyverno.io -A --all
 
 # Uninstall Kyverno
-helm uninstall kyverno -n kyverno
-kubectl delete namespace kyverno
+helm uninstall <kyverno-release-name> -n <kyverno-namespace>
+kubectl delete namespace <kyverno-namespace>
 
 echo "Kyverno removed. Migration to Kubewarden complete."
 ```
