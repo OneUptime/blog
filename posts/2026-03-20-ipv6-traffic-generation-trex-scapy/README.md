@@ -17,15 +17,16 @@ from scapy.layers.inet6 import *
 # Send a single ICMPv6 ping
 
 def send_icmpv6_ping(src, dst, count=3):
-    pkt = IPv6(src=src, dst=dst) / ICMPv6EchoRequest(id=0x1234, seq=1)
     responses = []
 
     for i in range(count):
-        pkt.seq = i + 1
+        pkt = IPv6(src=src, dst=dst) / ICMPv6EchoRequest(id=0x1234, seq=i + 1)
         resp = sr1(pkt, timeout=2, verbose=False)
-        if resp:
+        if resp and resp.haslayer(ICMPv6EchoReply):
             print(f"Reply from {resp[IPv6].src}: seq={i+1}")
             responses.append(resp)
+        elif resp:
+            print(f"Unexpected response: {resp.summary()}")
         else:
             print(f"Timeout: seq={i+1}")
 
@@ -34,34 +35,45 @@ def send_icmpv6_ping(src, dst, count=3):
 send_icmpv6_ping("2001:db8::1", "2001:db8::2")
 ```
 
-## High-Rate IPv6 Packet Generation with Scapy
+## Paced IPv6 Packet Generation with Scapy
 
 ```python
 from scapy.all import *
 from scapy.layers.inet6 import *
 import time
 
-def generate_ipv6_udp_flood(src_net, dst, port, pps, duration):
+def generate_ipv6_udp_flood(src_net, dst, port, pps, duration, iface="eth0"):
     """Generate UDP packets at a target packets-per-second rate"""
 
     import ipaddress
     network = ipaddress.IPv6Network(src_net)
-    hosts = list(network.hosts())
+    if pps <= 0:
+        raise ValueError("pps must be > 0")
+
+    dst_mac = getmacbyip6(dst)
+    if dst_mac is None:
+        raise RuntimeError(f"Could not resolve a next-hop MAC for {dst}")
 
     packet_count = 0
     start = time.time()
     interval = 1.0 / pps
 
-    print(f"Sending {pps} pkt/s to {dst}:{port} for {duration}s")
+    print(f"Sending {pps} pkt/s to [{dst}]:{port} on {iface} for {duration}s")
 
     while time.time() - start < duration:
-        # Rotate source address to simulate multiple clients
-        src = str(hosts[packet_count % len(hosts)])
-        pkt = (IPv6(src=src, dst=dst) /
+        # Rotate source address without materializing the whole subnet.
+        if network.prefixlen >= 127:
+            src = str(network.network_address + (packet_count % network.num_addresses))
+        else:
+            usable_hosts = network.num_addresses - 1
+            src = str(network.network_address + 1 + (packet_count % usable_hosts))
+
+        pkt = (Ether(dst=dst_mac) /
+               IPv6(src=src, dst=dst) /
                UDP(sport=RandShort(), dport=port) /
                Raw(b'X' * 64))
 
-        sendp(Ether() / pkt, iface="eth0", verbose=False)
+        sendp(pkt, iface=iface, verbose=False)
         packet_count += 1
         time.sleep(interval)
 
@@ -69,7 +81,7 @@ def generate_ipv6_udp_flood(src_net, dst, port, pps, duration):
     print(f"Sent {packet_count} packets in {elapsed:.1f}s ({packet_count/elapsed:.0f} pkt/s)")
 
 # Generate 1000 pkt/s for 10 seconds
-generate_ipv6_udp_flood("2001:db8::/64", "2001:db8::server", 9000, 1000, 10)
+generate_ipv6_udp_flood("2001:db8::/64", "2001:db8:2::1", 9000, 1000, 10)
 ```
 
 ## TRex IPv6 Traffic Profile
@@ -79,23 +91,22 @@ Cisco TRex is a stateless traffic generator capable of line-rate packet generati
 ```python
 # trex_ipv6_profile.py - TRex traffic profile for IPv6
 
-from trex_stl_lib.api import *
+from trex.stl.api import *
 
 class IPv6Profile:
     def get_streams(self, direction=0, **kwargs):
-        # IPv6 UDP stream
-        pkt = STLPktBuilder(pkt=
-            Ether() /
-            IPv6(src="2001:db8:1::1", dst="2001:db8:2::1") /
-            UDP(sport=1024, dport=5001) /
-            Raw(b'P' * 64)
+        # High-rate IPv6 UDP load stream
+        pkt = STLPktBuilder(
+            pkt=Ether() /
+                IPv6(src="2001:db8:1::1", dst="2001:db8:2::1") /
+                UDP(sport=1024, dport=5001) /
+                Raw(b'P' * 64)
         )
 
         return [
             STLStream(
                 packet=pkt,
                 mode=STLTXCont(pps=1_000_000),  # 1 Mpps
-                flow_stats=STLFlowLatencyStats(pg_id=0),
             )
         ]
 
@@ -105,16 +116,19 @@ def register():
 
 ```bash
 # Start TRex server
-trex-console
+sudo ./t-rex-64 -i
 
-# Load and start IPv6 profile
-tui> start -f trex_ipv6_profile.py -p 0 --force
+# In another shell, connect with the TRex console
+./trex-console
+
+# Load and start the IPv6 profile
+trex> start -f trex_ipv6_profile.py -p 0 --force
 
 # View statistics
-tui> stats
+trex> stats
 
 # Stop
-tui> stop -a
+trex> stop -a
 ```
 
 ## NDP Stress Testing with Scapy
@@ -122,18 +136,22 @@ tui> stop -a
 ```python
 from scapy.all import *
 from scapy.layers.inet6 import *
+import ipaddress
+import time
 
-def send_neighbor_solicitations(target_addr, iface, count=100):
+def send_neighbor_solicitations(src, target_addr, iface, count=100):
     """Send multiple NDP Neighbor Solicitations to stress-test NDP cache"""
 
-    # Build solicited-node multicast address
-    last24 = target_addr.replace(':', '')[-6:]
-    mcast = f"ff02::1:ff{last24[:2]}:{last24[2:]}"
+    target = ipaddress.IPv6Address(target_addr)
+    low24 = int(target) & 0xffffff
+    mcast = ipaddress.IPv6Address(int(ipaddress.IPv6Address("ff02::1:ff00:0")) | low24)
+    iface_mac = get_if_hwaddr(iface)
+    dst_mac = "33:33:%02x:%02x:%02x:%02x" % tuple(mcast.packed[-4:])
 
-    pkt = (Ether(dst="33:33:ff:00:00:01") /
-           IPv6(src="fe80::1", dst=mcast) /
+    pkt = (Ether(dst=dst_mac, src=iface_mac) /
+           IPv6(src=src, dst=str(mcast), hlim=255) /
            ICMPv6ND_NS(tgt=target_addr) /
-           ICMPv6NDOptSrcLLAddr(lladdr="52:54:00:11:22:33"))
+           ICMPv6NDOptSrcLLAddr(lladdr=iface_mac))
 
     print(f"Sending {count} NS to {target_addr}")
     for i in range(count):
@@ -142,7 +160,7 @@ def send_neighbor_solicitations(target_addr, iface, count=100):
 
     print("Done. Check NDP cache with: ip -6 neigh show")
 
-send_neighbor_solicitations("2001:db8::1", "eth0", 50)
+send_neighbor_solicitations("2001:db8::2", "2001:db8::1", "eth0", 50)
 ```
 
 ## TCP Connection Rate Tester
@@ -157,24 +175,26 @@ def tcp_connect_rate(host, port, duration, workers=50):
 
     connected = [0]
     failed = [0]
-    stop = [False]
+    stop = threading.Event()
+    lock = threading.Lock()
 
     def worker():
-        while not stop[0]:
+        while not stop.is_set():
             try:
-                s = socket.socket(socket.AF_INET6, socket.SOCK_STREAM)
-                s.settimeout(2)
-                s.connect((host, port, 0, 0))
-                s.close()
-                connected[0] += 1
+                with socket.socket(socket.AF_INET6, socket.SOCK_STREAM) as s:
+                    s.settimeout(2)
+                    s.connect((host, port, 0, 0))
+                with lock:
+                    connected[0] += 1
             except Exception:
-                failed[0] += 1
+                with lock:
+                    failed[0] += 1
 
     threads = [threading.Thread(target=worker) for _ in range(workers)]
     for t in threads: t.start()
 
     time.sleep(duration)
-    stop[0] = True
+    stop.set()
     for t in threads: t.join()
 
     total = connected[0] + failed[0]
@@ -187,4 +207,4 @@ tcp_connect_rate("2001:db8::1", 80, 10, workers=20)
 
 ## Conclusion
 
-Scapy is the most flexible tool for IPv6 traffic generation in test labs - it supports any packet structure at any rate up to ~100k pkt/s on a modern CPU. TRex enables line-rate (100 Gbps+) IPv6 testing for performance benchmarking and capacity planning. NDP stress tests using Scapy ICMPv6ND packets validate NDP cache behavior under load. TCP connection rate tests measure server IPv6 stack performance. Combine these tools with network namespace topologies for comprehensive IPv6 stack testing.
+Scapy is the most flexible tool for protocol-level IPv6 traffic generation in test labs, but it is not designed for line-rate throughput. TRex enables line-rate IPv6 testing for performance benchmarking and capacity planning. NDP stress tests using Scapy ICMPv6 ND packets validate neighbor discovery behavior under load. TCP connection rate tests measure server IPv6 stack performance. Combine these tools with network namespace topologies for comprehensive IPv6 stack testing.
