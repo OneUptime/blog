@@ -218,27 +218,29 @@ spec:
 ## Step 5: Trigger on New Data
 
 ```yaml
-# argo-event-trigger.yaml - Trigger pipeline when new data arrives in S3
+# argo-event-trigger.yaml - Trigger pipeline when new data arrives in S3-compatible storage
 apiVersion: argoproj.io/v1alpha1
 kind: EventSource
 metadata:
   name: s3-dataset-source
   namespace: argo
 spec:
-  s3:
+  minio:
     dataset-upload:
       bucket:
         name: ml-datasets
-      endpoint: s3.amazonaws.com
-      region: us-east-1
+      endpoint: minio-service.minio:9000
       events:
       - s3:ObjectCreated:*
       filter:
         prefix: "datasets/"
         suffix: ".csv"
-      credentials:
+      accessKey:
         name: s3-credentials
-        key: credentials
+        key: accesskey
+      secretKey:
+        name: s3-credentials
+        key: secretkey
 ```
 
 ## Monitoring Pipelines
