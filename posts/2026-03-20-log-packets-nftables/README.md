@@ -4,17 +4,19 @@ Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
 Tags: nftables, Linux, Firewall, Logging, Security, Networking, Monitoring
 
-Description: Configure nftables packet logging to capture firewall events in the kernel log and syslog for security auditing and troubleshooting.
+Description: Configure nftables packet logging to capture firewall events in the kernel log, journald, or syslog for security auditing and troubleshooting.
 
 ## Introduction
 
-Packet logging is essential for security auditing, debugging firewall rules, and detecting attacks. nftables provides a `log` statement that writes packet information to the kernel ring buffer (readable via `dmesg`) and optionally to syslog. You can log before accepting, dropping, or rejecting packets.
+Packet logging is essential for security auditing, debugging firewall rules, and detecting attacks. nftables provides a `log` statement that writes packet information to the kernel log, which you can read via `dmesg` or collect with journald or syslog. You can log before accepting, dropping, or rejecting packets.
 
 ## Prerequisites
 
-- nftables installed and running
+- nftables installed
 - Root access
 - Optional: `syslog` or `journald` for persistent log viewing
+
+These examples assume you already have an `inet filter` table with an `input` chain; the full configuration example below creates them from scratch.
 
 ## Basic Logging Before Drop
 
@@ -41,9 +43,9 @@ nft add rule inet filter input tcp dport 22 ct state new \
 The `log` statement supports flags to include extra packet details:
 
 ```bash
-# Log with TCP flags and IP options included
+# Log with TCP options and IP options included
 nft add rule inet filter input ct state invalid \
-    log prefix "INVALID packet: " flags tcp options,ip options drop
+    log prefix "INVALID packet: " flags tcp options flags ip options drop
 ```
 
 Available flags: `tcp sequence`, `tcp options`, `ip options`, `skuid`, `ether`, `all`
@@ -94,7 +96,7 @@ table inet filter {
 dmesg | grep "INPUT DROP"
 
 # View via journalctl (if using systemd)
-journalctl -k | grep "nft"
+journalctl -k | grep "INPUT DROP"
 
 # View syslog (Debian/Ubuntu)
 grep "INPUT DROP" /var/log/syslog
@@ -103,13 +105,13 @@ grep "INPUT DROP" /var/log/syslog
 journalctl -kf | grep -E "SSH|DROP"
 ```
 
-## Log to a Specific Syslog Group
+## Route Logs to a Specific Syslog File
 
-nftables supports logging to a specific `group` for routing to a dedicated log file:
+Use a distinct log prefix so syslog can route firewall messages to a dedicated log file:
 
 ```bash
-# Log to syslog group 0 (configure /etc/rsyslog.d/ to route it)
-nft add rule inet filter input drop log prefix "FW: " group 0
+# Use a unique prefix, then configure rsyslog to write matching messages to a file
+nft add rule inet filter input log prefix "FW: " level warn drop
 ```
 
 Then in `/etc/rsyslog.d/nftables.conf`:
