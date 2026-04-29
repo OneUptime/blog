@@ -29,19 +29,19 @@ cat /tmp/iptables-backup.txt
 
 ```bash
 # Translate individual rules
-iptables -A INPUT -p tcp --dport 22 -j ACCEPT
-# → nft add rule ip filter input tcp dport 22 counter accept
+iptables-translate -A INPUT -p tcp --dport 22 -j ACCEPT
+# Output: nft 'add rule ip filter INPUT tcp dport 22 counter accept'
 
 # Use iptables-translate for each rule
 iptables-translate -A INPUT -s 192.168.1.0/24 -p tcp --dport 443 -j ACCEPT
-# Output: nft add rule ip filter input ip saddr 192.168.1.0/24 tcp dport 443 counter accept
+# Output: nft 'add rule ip filter INPUT ip saddr 192.168.1.0/24 tcp dport 443 counter accept'
 ```
 
 ## Step 3: Bulk Translation with iptables-restore-translate
 
 ```bash
 # Translate the entire saved iptables config at once
-sudo iptables-save | iptables-restore-translate -f > /tmp/nftables-translated.nft
+iptables-restore-translate -f /tmp/iptables-backup.txt > /tmp/nftables-translated.nft
 
 # Review the translation
 cat /tmp/nftables-translated.nft
@@ -102,19 +102,17 @@ ssh <remote-host>  # Test SSH still works
 curl http://localhost  # Test HTTP if applicable
 ```
 
-## Step 5: Disable iptables and Enable nftables
+## Step 5: Enable nftables and Make the Rules Persistent
 
 ```bash
-# On Ubuntu 20.04+, switch to nftables
-sudo update-alternatives --set iptables /usr/sbin/iptables-nft
-sudo update-alternatives --set ip6tables /usr/sbin/ip6tables-nft
+# Save the translated ruleset in a reload-safe config file
+# This assumes nftables is the only service managing your ruleset.
+echo 'flush ruleset' | sudo tee /etc/nftables.conf > /dev/null
+cat /tmp/nftables-translated.nft | sudo tee -a /etc/nftables.conf > /dev/null
 
 # Ensure nftables service is enabled
-sudo systemctl enable nftables
-sudo systemctl start nftables
-
-# Save nftables rules
-sudo cp /tmp/nftables-translated.nft /etc/nftables.conf
+sudo systemctl enable nftables.service
+sudo systemctl restart nftables.service
 ```
 
 ## Step 6: Verify the Migration
@@ -123,8 +121,9 @@ sudo cp /tmp/nftables-translated.nft /etc/nftables.conf
 # Confirm nftables rules are active
 sudo nft list ruleset
 
-# Confirm iptables legacy is not running
-sudo iptables-legacy -L 2>/dev/null || echo "Legacy iptables not active"
+# Confirm the nftables service is enabled and running
+sudo systemctl is-enabled nftables.service
+sudo systemctl is-active nftables.service
 
 # Test all previously open services are still accessible
 nc -zv localhost 22
@@ -132,4 +131,4 @@ nc -zv localhost 80
 nc -zv localhost 443
 ```
 
-The automated `iptables-restore-translate` handles most standard rules correctly, but review the output for complex matches like `--state`, custom chains, and NAT rules which may need manual adjustment.
+The automated `iptables-restore-translate` handles most standard rules correctly, but review the output for custom chains, NAT rules, and any extensions that may need manual adjustment.
