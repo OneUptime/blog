@@ -13,12 +13,12 @@ IPv6 Router Advertisements contain three critical flags that control how clients
 ## The Three Flags
 
 ### M Flag (Managed Address Configuration)
-- **M=0**: Clients use SLAAC to configure addresses autonomously from the advertised prefix
-- **M=1**: Clients MUST use DHCPv6 to obtain addresses; SLAAC addresses may also be formed
+- **M=0**: Clients do not use DHCPv6 (stateful) to obtain addresses; whether a SLAAC address is formed depends on the per-prefix A flag
+- **M=1**: Indicates addresses are available via DHCPv6; clients should use DHCPv6 to obtain addresses, and SLAAC addresses may also be formed if the A flag is set on a prefix
 
 ### O Flag (Other Configuration)
-- **O=0**: Clients do not use DHCPv6 for anything
-- **O=1**: Clients use DHCPv6 for configuration options (DNS, NTP, etc.) but NOT for addresses
+- **O=0**: Clients do not use DHCPv6 for non-address configuration (DNS, NTP, etc.). The M flag separately controls whether DHCPv6 is used for addresses.
+- **O=1**: Clients use DHCPv6 for non-address configuration options (DNS, NTP, etc.)
 
 ### A Flag (Autonomous Address Configuration) - Per Prefix
 - **A=1** (AdvAutonomous on): Clients may form a SLAAC address from this prefix
@@ -117,7 +117,7 @@ interface eth1 {
 ```bash
 # View the flags set in the RA received by a client
 
-rdisc6 eth0 | grep -E "Stateful|Stateless|conf"
+rdisc6 eth0 | grep -E "Stateful|conf\."
 
 # Or from the kernel's accepted RA state
 cat /proc/net/if_inet6
