@@ -15,8 +15,8 @@ Running databases on Kubernetes with Longhorn storage requires careful configura
 | Requirement | Recommendation |
 |------------|----------------|
 | Durability | Synchronous replication with 3 replicas |
-| Latency | Best-effort or strict-local data locality |
-| Filesystem | XFS for databases like PostgreSQL, MongoDB |
+| Latency | Best-effort data locality for replicated volumes |
+| Filesystem | Use a supported filesystem such as XFS |
 | Backup | Automated recurring backups to external target |
 | IOPS | NVMe disks with dedicated storage class |
 | I/O Pattern | Random read/write - avoid HDD-backed storage |
@@ -40,13 +40,13 @@ volumeBindingMode: Immediate
 parameters:
   # Three replicas for durability
   numberOfReplicas: "3"
-  # Prefer local replica for read performance
+  # Keep a local replica when possible for lower-latency reads
   dataLocality: "best-effort"
-  # XFS for better database performance
+  # Use XFS for this storage class
   fsType: "xfs"
-  # Longer timeout for replica recovery (databases can take time to restart)
+  # Keep failed replicas around longer before cleanup
   staleReplicaTimeout: "60"
-  # Prefer disks tagged "ssd" or "nvme"
+  # Restrict replica placement to disks tagged "ssd"
   diskSelector: "ssd"
 # Optimize mount options for databases
 mountOptions:
@@ -98,6 +98,8 @@ spec:
                   key: password
             - name: PGDATA
               value: /var/lib/postgresql/data/pgdata
+            - name: POSTGRES_INITDB_WALDIR
+              value: /var/lib/postgresql/wal
           args:
             # PostgreSQL configuration for Kubernetes storage
             - -c
@@ -123,7 +125,7 @@ spec:
             - name: postgres-data
               mountPath: /var/lib/postgresql/data
             - name: postgres-wal
-              mountPath: /var/lib/postgresql/wal  # Separate WAL volume for performance
+              mountPath: /var/lib/postgresql/wal  # PostgreSQL uses this via POSTGRES_INITDB_WALDIR
           readinessProbe:
             exec:
               command: ["pg_isready", "-U", "app", "-d", "appdb"]
@@ -132,10 +134,12 @@ spec:
       initContainers:
         - name: init-permissions
           image: busybox
-          command: ["sh", "-c", "chown -R 999:999 /var/lib/postgresql"]
+          command: ["sh", "-c", "chown -R 999:999 /var/lib/postgresql/data /var/lib/postgresql/wal"]
           volumeMounts:
             - name: postgres-data
               mountPath: /var/lib/postgresql/data
+            - name: postgres-wal
+              mountPath: /var/lib/postgresql/wal
   volumeClaimTemplates:
     - metadata:
         name: postgres-data
@@ -226,6 +230,16 @@ spec:
             storage: 50Gi
 ```
 
+```bash
+# Create MySQL secret
+kubectl create secret generic mysql-secret \
+  -n databases \
+  --from-literal=root-password="$(openssl rand -base64 20)"
+
+kubectl apply -f mysql-statefulset.yaml
+kubectl get pods -n databases -w
+```
+
 ## Step 4: Configure Automated Database Backups
 
 ```yaml
@@ -258,15 +272,17 @@ spec:
 ```
 
 ```bash
+# Longhorn backups require a configured backup target.
 kubectl apply -f recurring-db-backup.yaml
 
-# Label database volumes for these recurring jobs
-for vol in $(kubectl get volumes.longhorn.io -n longhorn-system \
-  -o json | jq -r '.items[] | select(.metadata.labels["workload"] == "database") | .metadata.name'); do
-  kubectl label volumes.longhorn.io $vol \
-    -n longhorn-system \
-    "recurring-job.longhorn.io/database-hourly-backup=enabled" \
-    "recurring-job.longhorn.io/database-snapshot-frequent=enabled"
+# Apply recurring jobs to the database PVCs so Longhorn syncs the labels to the volumes
+for pvc in postgres-data-postgresql-0 postgres-wal-postgresql-0 mysql-data-mysql-0; do
+  kubectl label pvc "$pvc" \
+    -n databases \
+    recurring-job.longhorn.io/source=enabled \
+    recurring-job.longhorn.io/database-hourly-backup=enabled \
+    recurring-job.longhorn.io/database-snapshot-frequent=enabled \
+    --overwrite
 done
 ```
 
@@ -287,4 +303,4 @@ kubectl exec postgresql-0 -n databases -- df -h /var/lib/postgresql/data
 
 ## Conclusion
 
-Running databases on Longhorn requires attention to storage class design, filesystem choice, replication settings, and backup frequency. The key principles are: use `Retain` reclaim policy to prevent accidental data loss, configure frequent snapshots and backups for low RPO, use XFS for most relational databases, enable data locality for low-latency reads, and always test your recovery procedures. With these configurations in place, Longhorn provides a reliable and manageable storage platform for production database workloads.
+Running databases on Longhorn requires attention to storage class design, filesystem choice, replication settings, and backup frequency. The key principles are: use `Retain` reclaim policy to prevent accidental data loss, configure frequent snapshots and backups for low RPO, use a supported filesystem such as XFS, enable best-effort data locality for low-latency reads, and always test your recovery procedures. With these configurations in place, Longhorn provides a reliable and manageable storage platform for production database workloads.
