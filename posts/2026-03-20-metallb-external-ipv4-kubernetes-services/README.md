@@ -6,7 +6,7 @@ Tags: MetalLB, Kubernetes, IPv4, LoadBalancer, External IP, Networking
 
 Description: Use MetalLB annotations and IP pools to assign specific external IPv4 addresses to Kubernetes LoadBalancer services in a bare-metal cluster.
 
-Once MetalLB is installed with an IP pool, you can assign external IPs automatically from the pool or request specific addresses for services that need stable, well-known IPs.
+Once MetalLB is installed and configured with an IP pool and the appropriate L2/BGP advertisement, you can assign external IPs automatically from the pool or request specific addresses for services that need stable, well-known IPs.
 
 ## Automatic Assignment from a Pool
 
@@ -32,7 +32,7 @@ spec:
 ```bash
 kubectl apply -f auto-assign-service.yaml
 kubectl get svc my-app
-# EXTERNAL-IP: 192.168.1.200  (first available from pool)
+# EXTERNAL-IP: 192.168.1.200  (an address from the configured pool)
 ```
 
 ## Requesting a Specific External IP
@@ -46,7 +46,7 @@ metadata:
   namespace: default
   annotations:
     # Request a specific IP from MetalLB
-    metallb.universe.tf/loadBalancerIPs: "192.168.1.210"
+    metallb.io/loadBalancerIPs: "192.168.1.210"
 spec:
   type: LoadBalancer
   selector:
@@ -76,7 +76,7 @@ metadata:
   namespace: default
   annotations:
     # Specify which MetalLB pool to allocate from
-    metallb.universe.tf/address-pool: "internal-pool"
+    metallb.io/address-pool: "internal-pool"
 spec:
   type: LoadBalancer
   selector:
@@ -96,10 +96,12 @@ kind: Service
 metadata:
   name: http-service
   annotations:
-    metallb.universe.tf/allow-shared-ip: "shared-key-1"
+    metallb.io/allow-shared-ip: "shared-key-1"
+    metallb.io/loadBalancerIPs: "192.168.1.215"
 spec:
   type: LoadBalancer
-  loadBalancerIP: 192.168.1.215
+  selector:
+    app: shared-app
   ports:
   - port: 80
     targetPort: 8080
@@ -110,10 +112,12 @@ kind: Service
 metadata:
   name: https-service
   annotations:
-    metallb.universe.tf/allow-shared-ip: "shared-key-1"
+    metallb.io/allow-shared-ip: "shared-key-1"
+    metallb.io/loadBalancerIPs: "192.168.1.215"
 spec:
   type: LoadBalancer
-  loadBalancerIP: 192.168.1.215
+  selector:
+    app: shared-app
   ports:
   - port: 443
     targetPort: 8443
@@ -127,12 +131,12 @@ Both services share `192.168.1.215` but on different ports.
 # View all LoadBalancer services and their external IPs
 kubectl get svc --all-namespaces -o wide | grep LoadBalancer
 
-# Check MetalLB has allocated from the pool correctly
-kubectl describe ipaddresspool production-pool -n metallb-system
+# Check service events for MetalLB allocation details
+kubectl describe svc my-api
 
 # Test external connectivity
 curl http://192.168.1.200
-curl http://192.168.1.210:443
+curl -k https://192.168.1.210
 
 # Check MetalLB controller logs for allocation events
 kubectl logs -n metallb-system deploy/controller | grep "allocated"
