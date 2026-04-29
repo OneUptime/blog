@@ -4,7 +4,7 @@ Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
 Tags: Java, IPv6, Socket, Networking, ServerSocket, NIO, Socket Programming
 
-Description: Create IPv6 TCP and UDP sockets in Java using ServerSocket, Socket, DatagramSocket, and NIO channels for both synchronous and asynchronous IPv6 networking.
+Description: Create IPv6 TCP and UDP sockets in Java using ServerSocket, Socket, DatagramSocket, and NIO channels for both synchronous and non-blocking IPv6 networking.
 
 ## Introduction
 
@@ -126,6 +126,9 @@ public class IPv6UDP {
                 packet.getAddress(), packet.getPort()
             );
             server.send(response);
+
+            // Reset the receive length before reusing the packet.
+            packet.setLength(buf.length);
         }
     }
 
@@ -200,6 +203,7 @@ public class IPv6NIOServer {
 ## System Property for IPv6 Preference
 
 ```bash
+# These properties are checked at JVM startup.
 # Prefer IPv6 addresses when resolving hostnames
 
 java -Djava.net.preferIPv6Addresses=true YourApp
@@ -216,8 +220,7 @@ import java.util.*;
 
 public class IPv6Check {
     public static void main(String[] args) throws Exception {
-        // Check system supports IPv6
-        System.setProperty("java.net.preferIPv6Addresses", "true");
+        // List configured IPv6 addresses on local interfaces
 
         Enumeration<NetworkInterface> interfaces = NetworkInterface.getNetworkInterfaces();
         while (interfaces.hasMoreElements()) {
@@ -236,4 +239,4 @@ public class IPv6Check {
 
 ## Conclusion
 
-Java IPv6 sockets require binding to `InetAddress.getByName("::")` for wildcard IPv6 binding, and connections use `InetAddress.getByName(ipv6addr)` directly. Use `instanceof Inet6Address` to check if a connected client used IPv6. NIO channels also support IPv6 with `InetSocketAddress` constructed from a `Inet6Address`. Set `java.net.preferIPv6Addresses=true` to make the JVM prefer IPv6 DNS resolution.
+Java IPv6 sockets can explicitly bind to `InetAddress.getByName("::")` for IPv6 wildcard binding, and connections can use `InetAddress.getByName(ipv6addr)` directly. Use `instanceof Inet6Address` to check if a connected client used IPv6. NIO channels also support IPv6 with `InetSocketAddress` constructed from an `InetAddress`. Set `java.net.preferIPv6Addresses=true` at JVM startup to prefer IPv6 addresses when a hostname resolves to both IPv4 and IPv6.
