@@ -12,10 +12,10 @@ Excessive broadcast traffic degrades performance for every host on a segment, co
 
 ## Using Interface Counters
 
-The fastest check is reading broadcast counters from the interface statistics:
+The fastest check is reading multicast counters from the interface statistics. Linux does not track broadcast packets as a separate counter, but most NIC drivers include broadcast frames in the `mcast` counter (since the broadcast MAC ff:ff:ff:ff:ff:ff is a special multicast address at layer 2):
 
 ```bash
-# Show broadcast RX/TX counters for eth0
+# Show RX/TX counters for eth0 (the mcast column includes broadcast on most drivers)
 
 ip -s link show eth0
 
@@ -23,24 +23,22 @@ ip -s link show eth0
 watch -n 1 "ip -s link show eth0 | grep -A2 'RX\|TX'"
 ```
 
-The output includes `bcast:` counters showing total broadcast packets received and transmitted.
+The output includes a `mcast` column showing multicast (and typically broadcast) packets received.
 
 ## Calculating Broadcast Rate with awk
 
 ```bash
 #!/bin/bash
-# Calculate broadcast packets per second over 10 seconds
+# Calculate broadcast/multicast packets per second over 10 seconds
 
 IFACE="eth0"
-STAT_FILE="/sys/class/net/$IFACE/statistics"
 
-START=$(cat "$STAT_FILE/rx_frame_errors" 2>/dev/null || echo 0)
-# Use multicast as proxy for broadcast+multicast combined
-START_BC=$(ip -s link show "$IFACE" | awk '/RX:/{getline; print $4}')
+# The mcast counter is the 6th field on the data row under "RX:"
+START_BC=$(ip -s link show "$IFACE" | awk '/RX:/{getline; print $6}')
 
 sleep 10
 
-END_BC=$(ip -s link show "$IFACE" | awk '/RX:/{getline; print $4}')
+END_BC=$(ip -s link show "$IFACE" | awk '/RX:/{getline; print $6}')
 DIFF=$(( END_BC - START_BC ))
 echo "Broadcast/multicast packets in 10s: $DIFF ($(( DIFF / 10 )) pps)"
 ```
