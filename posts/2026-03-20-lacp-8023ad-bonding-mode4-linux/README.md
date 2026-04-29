@@ -26,7 +26,7 @@ modprobe bonding
 # Create bond in 802.3ad mode
 ip link add bond0 type bond mode 802.3ad
 
-# Set LACP rate (fast = 1s PDU, slow = 30s PDU)
+# Set LACP rate (request partner LACPDUs every 1s or 30s)
 ip link set bond0 type bond lacp_rate fast
 
 # Set hash policy for load distribution
@@ -68,13 +68,15 @@ The hash policy determines how traffic is distributed:
 |---|---|---|
 | `layer2` | Uses MAC addresses | General use |
 | `layer2+3` | MAC + IP addresses | Multi-server environments |
-| `layer3+4` | IP + port numbers | Mixed traffic types |
+| `layer3+4` | IP + port numbers | Multiple TCP/UDP flows |
 | `encap2+3` | Encapsulated packet L2+L3 | Overlay networks |
 
 ```bash
 # Change hash policy
 ip link set bond0 type bond xmit_hash_policy layer3+4
 ```
+
+`layer2` and `layer2+3` are 802.3ad-compliant policies. `layer3+4` can improve distribution for multiple TCP/UDP flows, but the Linux bonding documentation notes it is not fully 802.3ad compliant.
 
 ## Persistent Configuration with Netplan
 
@@ -111,14 +113,18 @@ nmcli connection add \
     type bond \
     con-name bond-lacp \
     ifname bond0 \
-    bond.options "mode=802.3ad,lacp_rate=fast,miimon=100,xmit_hash_policy=layer3+4"
+    ip4 192.168.1.100/24 \
+    gw4 192.168.1.1 \
+    -- \
+    bond.options "mode=802.3ad,lacp_rate=fast,miimon=100,xmit_hash_policy=layer3+4" \
+    connection.autoconnect-ports 1
 
-nmcli connection add type ethernet con-name bond-lacp-eth0 ifname eth0 master bond0
-nmcli connection add type ethernet con-name bond-lacp-eth1 ifname eth1 master bond0
+nmcli connection add type ethernet con-name bond-lacp-eth0 ifname eth0 controller bond-lacp port-type bond
+nmcli connection add type ethernet con-name bond-lacp-eth1 ifname eth1 controller bond-lacp port-type bond
 
 nmcli connection up bond-lacp
 ```
 
 ## Conclusion
 
-LACP bonding provides dynamic, standards-based link aggregation with both redundancy and bandwidth increase. The switch must have LACP configured on the port-channel connecting to your Linux host. Use `layer3+4` transmit hash policy for the best traffic distribution. Verify LACP is negotiating with `cat /proc/net/bonding/bond0` and look for the Aggregator ID being assigned.
+LACP bonding provides dynamic, standards-based link aggregation with both redundancy and bandwidth increase. The switch must have LACP configured on the port-channel connecting to your Linux host. Choose the transmit hash policy based on your traffic pattern: `layer2+3` is 802.3ad compliant, while `layer3+4` can improve distribution for multiple TCP/UDP flows but is not fully 802.3ad compliant. Verify LACP is negotiating with `cat /proc/net/bonding/bond0` and look for the Aggregator ID being assigned.
