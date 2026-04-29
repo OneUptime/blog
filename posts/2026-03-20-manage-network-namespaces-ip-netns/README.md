@@ -8,7 +8,7 @@ Description: Create, list, delete, and manage Linux network namespaces using ip 
 
 ## Introduction
 
-`ip netns` manages Linux network namespaces - isolated network stacks with their own interfaces, routing tables, iptables rules, and sockets. They are the foundation of container networking. Each namespace is independent; creating one gives you a blank network environment.
+`ip netns` manages Linux network namespaces - isolated network stacks with their own interfaces, routing tables, iptables rules, and sockets. They are the foundation of container networking. Each namespace is independent; creating one gives you a separate network environment, typically with only loopback until you add interfaces.
 
 ## Create a Network Namespace
 
@@ -76,7 +76,7 @@ curl http://10.0.0.2:8080
 ## List Processes in a Namespace
 
 ```bash
-# Show the namespace's file descriptor
+# Show the named namespace handles under /var/run/netns/
 ls -la /var/run/netns/
 
 # Find PIDs in a namespace
@@ -89,7 +89,8 @@ ip netns pids test
 # Delete the namespace
 ip netns del test
 
-# Any interfaces inside are moved back to root namespace or deleted
+# If no processes are still using it, the namespace is freed
+# Physical devices move back to the initial namespace; veth devices in it are destroyed
 ```
 
 ## Identify a Process's Namespace
@@ -98,7 +99,7 @@ ip netns del test
 # Check which namespace process 1234 is in
 readlink /proc/1234/ns/net
 
-# Compare to root namespace
+# Compare to PID 1's namespace (typically the initial namespace on a host)
 readlink /proc/1/ns/net
 ```
 
