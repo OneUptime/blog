@@ -14,8 +14,8 @@ K3s is a lightweight Kubernetes distribution that installs in seconds. Fedora's 
 
 ## Prerequisites
 
-- Fedora 38+ (K3s supports Fedora 36+)
-- Minimum 2 CPU cores, 2GB RAM
+- A recent Fedora release
+- Minimum 2 CPU cores, 2GB RAM for a server node
 - Root or sudo access
 
 ---
@@ -28,31 +28,22 @@ K3s is a lightweight Kubernetes distribution that installs in seconds. Fedora's 
 sudo dnf upgrade -y
 
 # Install required packages
-sudo dnf install -y container-selinux selinux-policy-base
-
-# Install K3s SELinux policy (required on Fedora with SELinux enforcing)
-sudo dnf install -y https://rpm.rancher.io/k3s/stable/common/centos/8/noarch/k3s-selinux-1.4.1-1.el8.noarch.rpm
+sudo dnf install -y container-selinux selinux-policy-base policycoreutils-python-utils
 ```
 
 ---
 
 ## Step 2: Configure the Firewall
 
-Open the ports K3s needs:
+If you keep `firewalld` enabled, add the default rules K3s requires. Additional ports may be needed for multi-node setups depending on your networking backend and services:
 
 ```bash
 # K3s API server
 sudo firewall-cmd --permanent --add-port=6443/tcp
 
-# Flannel VXLAN (if using default CNI)
-sudo firewall-cmd --permanent --add-port=8472/udp
-
-# Kubelet metrics
-sudo firewall-cmd --permanent --add-port=10250/tcp
-
-# NodePort range
-sudo firewall-cmd --permanent --add-port=30000-32767/tcp
-sudo firewall-cmd --permanent --add-port=30000-32767/udp
+# K3s default pod and service CIDRs
+sudo firewall-cmd --permanent --zone=trusted --add-source=10.42.0.0/16
+sudo firewall-cmd --permanent --zone=trusted --add-source=10.43.0.0/16
 
 # Apply changes
 sudo firewall-cmd --reload
@@ -63,8 +54,8 @@ sudo firewall-cmd --reload
 ## Step 3: Install K3s
 
 ```bash
-# Install K3s server (single-node or first node in HA)
-curl -sfL https://get.k3s.io | sh -
+# Install K3s server (single-node)
+curl -sfL https://get.k3s.io | sh -s - --selinux
 
 # Verify the service is running
 sudo systemctl status k3s
@@ -104,7 +95,7 @@ Get the server token and add worker nodes:
 sudo cat /var/lib/rancher/k3s/server/node-token
 
 # On each agent node - replace SERVER_IP and TOKEN
-curl -sfL https://get.k3s.io | K3S_URL=https://<SERVER_IP>:6443 K3S_TOKEN=<TOKEN> sh -
+curl -sfL https://get.k3s.io | K3S_URL=https://<SERVER_IP>:6443 K3S_TOKEN=<TOKEN> sh -s - --selinux
 ```
 
 ---
@@ -123,6 +114,6 @@ sudo setenforce 0
 
 ## Best Practices
 
-- Always install the `k3s-selinux` package before K3s on SELinux-enabled Fedora systems.
+- On SELinux-enforcing Fedora systems, install K3s with `--selinux` so containerd runs with K3s SELinux support enabled.
 - Use `cgroups v2` (default on Fedora 31+) - K3s fully supports it.
-- Configure `firewall-cmd --zone=trusted --add-interface=cni0` to allow pod-to-pod communication.
+- If you keep `firewalld` enabled, trust the default K3s pod and service CIDRs (`10.42.0.0/16` and `10.43.0.0/16`) instead of relying on the `cni0` interface name.
