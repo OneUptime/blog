@@ -14,11 +14,11 @@ IPv6 scanning differs fundamentally from IPv4 scanning:
 |---|---|---|
 | Subnet size | /24 = 256 hosts | /64 = 18 quintillion |
 | Sequential scan | Common | Impractical |
-| Multicast probing | Rare | All-nodes (ff02::1) is quick |
+| Multicast probing | Rare | On-link all-nodes (ff02::1) is quick |
 | Hitlist scanning | Less common | Primary method |
 | DNS enumeration | Secondary | Primary reconnaissance |
 
-Attackers targeting IPv6 use: all-nodes multicast ping, DNS zone transfer, search engines (Shodan), and addresses from leaked IPv6 logs.
+Attackers targeting IPv6 use: on-link all-nodes multicast ping, DNS zone transfer, search engines (Shodan), and addresses from leaked IPv6 logs.
 
 ## Detection Method 1: Firewall Drop Rate
 
@@ -46,33 +46,35 @@ index=firewall action=drop network_type=ipv6
 ## Detection Method 2: ICMPv6 Echo Probing
 
 ```bash
-# Suricata: detect ICMPv6 echo flood to multiple destinations
+# Suricata: detect ICMPv6 echo probing and TCP SYN scans
 # /etc/suricata/rules/ipv6-scan.rules
 
-# Detect ICMPv6 echo to all-nodes multicast
-alert icmp6 any any -> ff02::1 any (
+# Detect ICMPv6 echo to all-nodes multicast on the local link
+alert ip any any -> ff02::1 any (
     msg:"IPv6 All-Nodes Multicast Ping - Reconnaissance";
+    ip_proto:58;
     itype:128;
     threshold: type both, track by_src, count 5, seconds 10;
-    sid:9001001; rev:1;
+    sid:9001001; rev:2;
     classtype:network-scan;
 )
 
-# Detect high-rate ICMPv6 to unique /64 prefix
-alert icmp6 $EXTERNAL_NET any -> $HOME_NET any (
-    msg:"IPv6 Prefix Scanning via ICMPv6 Echo";
+# Detect high-rate ICMPv6 echo probing to IPv6 hosts
+alert ip $EXTERNAL_NET any -> $HOME_NET any (
+    msg:"High-Rate ICMPv6 Echo Probing";
+    ip_proto:58;
     itype:128;
     threshold: type threshold, track by_src, count 50, seconds 60;
-    sid:9001002; rev:1;
+    sid:9001002; rev:2;
     classtype:network-scan;
 )
 
-# Detect TCP SYN flood to IPv6 hosts (port scan)
+# Detect high-rate TCP SYN probing to IPv6 hosts
 alert tcp $EXTERNAL_NET any -> $HOME_NET any (
-    msg:"IPv6 TCP Port Scan";
-    flags:S,12;
+    msg:"IPv6 TCP SYN Probing";
+    tcp.flags:S,CE;
     threshold: type threshold, track by_src, count 30, seconds 30;
-    sid:9001003; rev:1;
+    sid:9001003; rev:2;
     classtype:network-scan;
 )
 ```
@@ -103,23 +105,21 @@ index=dns query_type=AXFR
 ## Detection Method 4: NDP-Based Host Discovery
 
 ```bash
-# Attackers send NS to solicited-node multicast for each /64 address
-# This generates INCOMPLETE entries and shows in NDP table
+# Attackers on the same L2 segment can send Neighbor Solicitations (NS)
+# to solicited-node multicast addresses to discover active IPv6 hosts.
+# On Linux, monitor inbound NS rate instead of relying on INCOMPLETE NDP entries.
 
-# Monitor NDP table growth rate
+# Monitor inbound Neighbor Solicitation rate
 #!/bin/bash
-PREV_COUNT=0
+PREV_COUNT=$(nstat -asz 2>/dev/null | awk '/Icmp6InNeighborSolicits/ {print $2; found=1} END {if (!found) print 0}')
 while true; do
-    CURRENT=$(ip -6 neigh show nud incomplete | wc -l)
+    CURRENT=$(nstat -asz 2>/dev/null | awk '/Icmp6InNeighborSolicits/ {print $2; found=1} END {if (!found) print 0}')
     DELTA=$((CURRENT - PREV_COUNT))
 
     if [ ${DELTA} -gt 50 ]; then
-        echo "$(date): ALERT: ${DELTA} new INCOMPLETE NDP entries in 30s"
-        echo "Total INCOMPLETE: ${CURRENT}"
-
-        # Log top sources from NDP scanning
-        ip -6 neigh show nud incomplete | \
-            awk '{print $3}' | sort | uniq -c | sort -rn | head -5
+        echo "$(date): ALERT: ${DELTA} inbound Neighbor Solicitations in 30s"
+        echo "Total inbound NS: ${CURRENT}"
+        echo "Use packet capture or firewall logs to identify source addresses"
     fi
 
     PREV_COUNT=${CURRENT}
@@ -130,10 +130,10 @@ done
 ## Sigma Rule: IPv6 Scanning
 
 ```yaml
-title: IPv6 Host Discovery Scan
-id: c3d4e5f6-a7b8-9012-cdef-123456789012
+title: IPv6 Probe Event
+name: ipv6_probe_event
 status: stable
-description: Detects potential IPv6 host discovery via multicast ping or high-rate unicast probes
+description: Detects IPv6 multicast ping or denied IPv6 probe events that can feed scan correlation
 author: Security Team
 date: 2026-03-20
 tags:
@@ -147,12 +147,34 @@ detection:
         dst_ip: 'ff02::1'
         protocol: icmpv6
         icmpv6_type: 128
-    unicast_scan:
+    denied_unicast_probe:
         ip_version: ipv6
         event.action: 'deny'
-    condition: multicast_probe or unicast_scan
-    timeframe: 1m
-    count(dst_ip) by src_ip > 30  # For unicast_scan
+    condition: multicast_probe or denied_unicast_probe
+falsepositives:
+    - Network management tools (Nagios, SNMP discovery)
+    - IPv6 reachability testing
+level: low
+---
+title: IPv6 Host Discovery Scan
+id: c3d4e5f6-a7b8-9012-cdef-123456789012
+status: stable
+description: Detects repeated denied IPv6 probes from one source to many destinations
+author: Security Team
+date: 2026-03-20
+tags:
+    - attack.reconnaissance
+    - attack.t1595.001
+correlation:
+    type: value_count
+    rules:
+        - ipv6_probe_event
+    group-by:
+        - src_ip
+    timespan: 1m
+    condition:
+        field: dst_ip
+        gt: 30
 falsepositives:
     - Network management tools (Nagios, SNMP discovery)
     - IPv6 reachability testing
@@ -165,30 +187,32 @@ level: medium
 #!/bin/bash
 # auto-block-ipv6-scanner.sh - Block detected scanners via ip6tables
 
-THRESHOLD=50     # unique destinations in 5 minutes
+THRESHOLD=50       # dropped packets from one source in today's log window
 CHECK_INTERVAL=60  # seconds
 
-# Requires: iptstate, ss, or firewall log parsing
+# Requires: ip6tables LOG output or equivalent firewall log parsing
 while true; do
-    # Get top IPv6 sources with drops in last 5m
-    # (Using log file - replace with live firewall query)
+    # Get top IPv6 sources with drops from today's log
+    # (Using a log file example - replace with live firewall query as needed)
     SCANNERS=$(grep -E "$(date '+%b %e')" /var/log/ip6tables.log | \
         grep " DROP " | \
-        awk '{print $11}' | sed 's/SRC=//' | \
+        grep -o 'SRC=[^ ]*' | sed 's/^SRC=//' | \
         sort | uniq -c | sort -rn | \
         awk -v threshold="${THRESHOLD}" '$1 > threshold {print $2}')
 
     for SCANNER in ${SCANNERS}; do
         # Check if already blocked
-        if ! ip6tables -L INPUT -n | grep -q "${SCANNER}"; then
+        if ! ip6tables -C INPUT -s "${SCANNER}" -j DROP 2>/dev/null; then
             echo "$(date): Blocking IPv6 scanner: ${SCANNER}"
             ip6tables -I INPUT -s "${SCANNER}" -j DROP
             ip6tables -I FORWARD -s "${SCANNER}" -j DROP
 
             # Auto-unblock after 1 hour
-            (sleep 3600 && \
-             ip6tables -D INPUT -s "${SCANNER}" -j DROP && \
-             ip6tables -D FORWARD -s "${SCANNER}" -j DROP) &
+            (
+                sleep 3600
+                ip6tables -D INPUT -s "${SCANNER}" -j DROP 2>/dev/null
+                ip6tables -D FORWARD -s "${SCANNER}" -j DROP 2>/dev/null
+            ) &
         fi
     done
 
@@ -198,4 +222,4 @@ done
 
 ## Conclusion
 
-IPv6 scanning detection requires different thresholds than IPv4 due to the vast address space. Key detection signals: drops to > 30 unique /128 destinations from one source in 5 minutes (host scan), > 20 unique ports to one destination (port scan), ICMPv6 echo to ff02::1 (multicast reconnaissance), DNS AAAA bulk queries > 100/minute (DNS enumeration). Suricata rules using `threshold: type threshold, track by_src` provide efficient kernel-level detection. Correlate NDP INCOMPLETE entry growth rate with SIEM events to detect NDP-based host discovery. Use /64 prefix grouping for attribution - IPv6 scanner may rotate between /128 addresses within a /64.
+IPv6 scanning detection requires different thresholds than IPv4 due to the vast address space. Key detection signals: drops to > 30 unique /128 destinations from one source in 5 minutes (host scan), > 20 unique ports to one destination (port scan), ICMPv6 echo to ff02::1 on the local link (multicast reconnaissance), DNS AAAA bulk queries > 100/minute (DNS enumeration). Suricata rules using `threshold: type threshold, track by_src` provide efficient IDS-side detection. Correlate bursts of inbound Neighbor Solicitations with SIEM events to detect NDP-based host discovery on local links. Use /64 prefix grouping for attribution - IPv6 scanner may rotate between /128 addresses within a /64.
