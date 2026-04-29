@@ -8,37 +8,35 @@ Description: Learn how to write custom Kubewarden admission control policies in 
 
 ## Introduction
 
-Swift's growing WebAssembly support makes it possible to write Kubewarden admission control policies for teams familiar with Apple's ecosystem and Swift programming language. The Swift WebAssembly toolchain can compile Swift code to WASI-compatible WebAssembly, which Kubewarden can then execute as policy.
+Swift's growing WebAssembly support makes it possible to write Kubewarden admission control policies for teams familiar with Apple's ecosystem and Swift programming language. Swift can compile code to WASI-compatible WebAssembly, and Kubewarden's Swift SDK uses the waPC guest interface expected by the Kubewarden policy server.
 
-This guide covers setting up the Swift Wasm toolchain and writing a functional Kubewarden policy in Swift.
+This guide covers setting up Swift's WebAssembly SDK and writing a functional Kubewarden policy in Swift.
 
 ## Prerequisites
 
-- Swift 5.9 or later with WebAssembly support
-- `carton` build tool (Swift Wasm build tool)
+- Swift 6.3.1 or later with the matching WebAssembly Swift SDK installed
 - `kwctl` CLI installed
 - Basic Swift programming knowledge
 
 ## Setting Up the Swift WebAssembly Environment
 
 ```bash
-# Install the Swift WebAssembly toolchain
+# macOS example from swift.org
+curl -O https://download.swift.org/swiftly/darwin/swiftly.pkg
+installer -pkg swiftly.pkg -target CurrentUserHomeDirectory
+~/.swiftly/bin/swiftly init --quiet-shell-followup
+. "${SWIFTLY_HOME_DIR:-$HOME/.swiftly}/env.sh"
+hash -r
 
-# Download from: https://github.com/swiftwasm/swift/releases
+# Install and select a matching Swift toolchain
+swiftly install 6.3.1
+swiftly use 6.3.1
 
-# macOS - install via swiftenv
-git clone https://github.com/kylef/swiftenv.git ~/.swiftenv
-echo 'export SWIFTENV_ROOT="$HOME/.swiftenv"' >> ~/.bashrc
-echo 'export PATH="$SWIFTENV_ROOT/bin:$PATH"' >> ~/.bashrc
-source ~/.bashrc
+# Install the WebAssembly Swift SDK
+swift sdk install https://download.swift.org/swift-6.3.1-release/wasm-sdk/swift-6.3.1-RELEASE/swift-6.3.1-RELEASE_wasm.artifactbundle.tar.gz --checksum bd47baa20771f366d8beed7970afaa30742b2210097afd15f85427226d8f4cf2
 
-# Install the SwiftWasm toolchain
-swiftenv install wasm-5.9.0-RELEASE
-
-# Install carton (Swift Wasm build tool)
-brew install carton
-
-# Verify installation
+# Verify installation and note the SDK ID from the output
+swift sdk list
 swift --version
 ```
 
@@ -63,24 +61,31 @@ import PackageDescription
 
 let package = Package(
     name: "MyKubewardenPolicy",
-    platforms: [
-        // WebAssembly target
-        .wasi(.v1)
-    ],
     dependencies: [
-        // Kubewarden Swift SDK
         .package(
+            name: "wapc",
+            url: "https://github.com/wapc/wapc-guest-swift.git",
+            from: "0.0.2"
+        ),
+        .package(
+            name: "kubewardenSdk",
             url: "https://github.com/kubewarden/policy-sdk-swift.git",
-            from: "0.1.0"
+            from: "0.1.6"
         ),
     ],
     targets: [
         .executableTarget(
             name: "MyKubewardenPolicy",
             dependencies: [
-                .product(name: "KubewardenSDK", package: "policy-sdk-swift")
+                "kubewardenSdk",
+                "wapc",
             ],
-            path: "Sources"
+            linkerSettings: [
+                .unsafeFlags([
+                    "-Xlinker",
+                    "--export=__guest_call",
+                ])
+            ]
         ),
     ]
 )
@@ -89,197 +94,186 @@ let package = Package(
 ## Writing the Policy
 
 ```swift
-// Sources/main.swift
-// Kubewarden policy written in Swift
-// Policy: Require all pods to have specific annotations
-
 import Foundation
-import KubewardenSDK
+import kubewardenSdk
+import wapc
 
-// Policy settings structure
-struct PolicySettings: Codable {
-    // Annotations that must be present on all pods
+// Sources/MyKubewardenPolicy/MyKubewardenPolicy.swift
+// Policy: require all Pods to have specific annotations
+
+struct PolicySettings: Codable, Validatable {
     let requiredAnnotations: [String]
 
-    // Default settings
-    init() {
-        requiredAnnotations = ["team", "app-version"]
+    enum CodingKeys: String, CodingKey {
+        case requiredAnnotations
     }
-}
 
-// Main entry point for the policy
-@_silgen_name("validate")
-func validate() {
-    do {
-        // Read the validation request from the Kubewarden host
-        let payload = try KubewardenHost.read()
-        let request = try JSONDecoder().decode(ValidationRequest.self, from: payload)
-
-        // Parse settings
-        let settings: PolicySettings
-        if let settingsData = request.settings {
-            settings = (try? JSONDecoder().decode(PolicySettings.self, from: settingsData))
-                ?? PolicySettings()
-        } else {
-            settings = PolicySettings()
-        }
-
-        // Extract the Kubernetes object
-        guard let objectData = try? JSONEncoder().encode(request.request.object) else {
-            KubewardenHost.acceptRequest()
-            return
-        }
-
-        // Parse the Pod
-        guard let pod = try? JSONDecoder().decode(Pod.self, from: objectData) else {
-            // Not a Pod, accept
-            KubewardenHost.acceptRequest()
-            return
-        }
-
-        // Check required annotations
-        let annotations = pod.metadata?.annotations ?? [:]
-
-        for required in settings.requiredAnnotations {
-            if annotations[required] == nil {
-                KubewardenHost.rejectRequest(
-                    message: "Pod is missing required annotation: '\(required)'",
-                    code: 403
-                )
-                return
-            }
-        }
-
-        KubewardenHost.acceptRequest()
-
-    } catch {
-        KubewardenHost.rejectRequest(
-            message: "Policy validation error: \(error)",
-            code: 500
-        )
+    init(requiredAnnotations: [String] = ["team", "app-version"]) {
+        self.requiredAnnotations = requiredAnnotations
     }
-}
 
-// Validate policy settings
-@_silgen_name("validate_settings")
-func validateSettings() {
-    do {
-        let payload = try KubewardenHost.read()
-        let settings = try JSONDecoder().decode(PolicySettings.self, from: payload)
+    init(from decoder: Decoder) throws {
+        let container = try decoder.container(keyedBy: CodingKeys.self)
+        requiredAnnotations =
+            try container.decodeIfPresent([String].self, forKey: .requiredAnnotations)
+            ?? ["team", "app-version"]
+    }
 
-        if settings.requiredAnnotations.isEmpty {
-            KubewardenHost.rejectSettings(
+    var debugDescription: String {
+        "\(self)"
+    }
+
+    func validate() throws {
+        if requiredAnnotations.isEmpty {
+            throw SettingsValidationError.validationFailure(
                 message: "requiredAnnotations cannot be empty"
             )
-            return
         }
-
-        KubewardenHost.acceptSettings()
-
-    } catch {
-        KubewardenHost.rejectSettings(message: "Invalid settings: \(error)")
     }
 }
 
-// Pod data structures (simplified)
+struct ValidationPayload<Resource: Codable>: Codable {
+    let request: AdmissionRequest<Resource>
+    let settings: PolicySettings?
+}
+
+struct AdmissionRequest<Resource: Codable>: Codable {
+    let object: Resource?
+}
+
 struct Pod: Codable {
     let metadata: PodMetadata?
-    let spec: PodSpec?
 }
 
 struct PodMetadata: Codable {
-    let name: String?
     let annotations: [String: String]?
-    let labels: [String: String]?
 }
 
-struct PodSpec: Codable {
-    let containers: [Container]
+func validate(payload: String) -> String {
+    do {
+        let validationRequest = try JSONDecoder().decode(
+            ValidationPayload<Pod>.self,
+            from: Data(payload.utf8)
+        )
+
+        let settings = validationRequest.settings ?? PolicySettings()
+        let annotations = validationRequest.request.object?.metadata?.annotations ?? [:]
+
+        for requiredAnnotation in settings.requiredAnnotations {
+            if annotations[requiredAnnotation] == nil {
+                return rejectRequest(
+                    message: "Pod is missing required annotation: '\(requiredAnnotation)'",
+                    code: 403
+                )
+            }
+        }
+
+        return acceptRequest()
+    } catch {
+        return rejectRequest(message: "Policy validation error: \(error)", code: 500)
+    }
 }
 
-struct Container: Codable {
-    let name: String
-    let image: String?
+@_cdecl("__guest_call")
+func __guest_call(operation_size: UInt, payload_size: UInt) -> Bool {
+    wapc.handleCall(operation_size: operation_size, payload_size: payload_size)
 }
+
+wapc.registerFunction(name: "validate", fn: validate)
+wapc.registerFunction(name: "protocol_version", fn: protocolVersionCallback)
+
+let settingsValidator = SettingsValidator<PolicySettings>()
+wapc.registerFunction(name: "validate_settings", fn: settingsValidator.validate)
 ```
 
 ## A More Practical Policy: Validate Security Context
 
 ```swift
-// Sources/security-context-policy.swift
-// Check that containers don't run as root
+// Replace the validate function and Pod model with the following
 
-@_silgen_name("validate")
-func validateSecurityContext() {
-    guard let payload = try? KubewardenHost.read(),
-          let request = try? JSONDecoder().decode(ValidationRequest.self, from: payload) else {
-        KubewardenHost.rejectRequest(message: "Cannot parse request", code: 400)
-        return
-    }
+struct Pod: Codable {
+    let spec: PodSpec?
+}
 
-    guard let objectData = try? JSONEncoder().encode(request.request.object),
-          let pod = try? JSONDecoder().decode(Pod.self, from: objectData) else {
-        KubewardenHost.acceptRequest()
-        return
-    }
+struct PodSpec: Codable {
+    let securityContext: PodSecurityContext?
+    let containers: [Container]?
+}
 
-    // Check pod-level security context
-    if let podSecCtx = pod.spec?.securityContext {
-        if let runAsRoot = podSecCtx.runAsNonRoot, !runAsRoot {
-            KubewardenHost.rejectRequest(
+struct PodSecurityContext: Codable {
+    let runAsNonRoot: Bool?
+}
+
+struct Container: Codable {
+    let name: String
+    let securityContext: ContainerSecurityContext?
+}
+
+struct ContainerSecurityContext: Codable {
+    let privileged: Bool?
+    let runAsUser: Int?
+}
+
+func validate(payload: String) -> String {
+    do {
+        let validationRequest = try JSONDecoder().decode(
+            ValidationPayload<Pod>.self,
+            from: Data(payload.utf8)
+        )
+
+        guard let pod = validationRequest.request.object else {
+            return acceptRequest()
+        }
+
+        if let podSecurityContext = pod.spec?.securityContext,
+           podSecurityContext.runAsNonRoot == false {
+            return rejectRequest(
                 message: "Pod security context explicitly allows running as root",
                 code: 403
             )
-            return
         }
-    }
 
-    // Check container-level security contexts
-    for container in pod.spec?.containers ?? [] {
-        if let secCtx = container.securityContext {
-            // Block explicitly privileged containers
-            if let privileged = secCtx.privileged, privileged {
-                KubewardenHost.rejectRequest(
-                    message: "Container '\(container.name)' is privileged",
-                    code: 403
-                )
-                return
-            }
+        for container in pod.spec?.containers ?? [] {
+            if let securityContext = container.securityContext {
+                if securityContext.privileged == true {
+                    return rejectRequest(
+                        message: "Container '\(container.name)' is privileged",
+                        code: 403
+                    )
+                }
 
-            // Block running as root (UID 0)
-            if let runAsUser = secCtx.runAsUser, runAsUser == 0 {
-                KubewardenHost.rejectRequest(
-                    message: "Container '\(container.name)' runs as root (UID 0)",
-                    code: 403
-                )
-                return
+                if securityContext.runAsUser == 0 {
+                    return rejectRequest(
+                        message: "Container '\(container.name)' runs as root (UID 0)",
+                        code: 403
+                    )
+                }
             }
         }
-    }
 
-    KubewardenHost.acceptRequest()
+        return acceptRequest()
+    } catch {
+        return rejectRequest(message: "Policy validation error: \(error)", code: 500)
+    }
 }
 ```
 
 ## Building the Policy
 
 ```bash
-# Build for WebAssembly using carton
-carton build --product MyKubewardenPolicy
-
-# Or use swift directly with wasm target
+# Build with the WebAssembly Swift SDK you installed from swift.org
 swift build \
-  --triple wasm32-unknown-wasi \
+  --swift-sdk swift-6.3.1-RELEASE_wasm \
   -c release
 
 # Locate the built Wasm file
-find .build -name "*.wasm"
+find .build -name "MyKubewardenPolicy.wasm"
 
 # Annotate with Kubewarden metadata
 kwctl annotate \
-  .build/release/MyKubewardenPolicy.wasm \
+  .build/wasm32-unknown-wasip1/release/MyKubewardenPolicy.wasm \
   --metadata-path metadata.yml \
-  --output annotated-policy.wasm
+  --output-path annotated-policy.wasm
 ```
 
 ## Policy Metadata
@@ -298,6 +292,7 @@ contextAware: false
 executionMode: kubewarden-wapc
 annotations:
   io.kubewarden.policy.title: require-pod-annotations
+  io.kubewarden.policy.version: 0.1.0
   io.kubewarden.policy.description: Require specific annotations on all pods
   io.kubewarden.policy.author: Platform Team
   io.kubewarden.policy.severity: low
@@ -324,4 +319,4 @@ kwctl push \
 
 ## Conclusion
 
-Writing Kubewarden policies in Swift enables Apple platform developers and Swift enthusiasts to contribute to Kubernetes security governance using their preferred language. While the Swift WebAssembly ecosystem is still maturing compared to Rust and Go, the combination of Swift's expressive syntax, type safety, and growing Wasm support makes it a viable option for teams invested in the Swift ecosystem. As Swift's WASI support continues to improve, writing Kubernetes admission policies in Swift will become increasingly straightforward.
+Writing Kubewarden policies in Swift enables Apple platform developers and Swift enthusiasts to contribute to Kubernetes security governance using their preferred language. Kubewarden's Swift SDK is still more experimental than the Rust and Go SDKs, but Swift's type safety and improving Wasm support make it an interesting option for teams already invested in the Swift ecosystem.
