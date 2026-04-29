@@ -13,10 +13,12 @@ Lambda Function URLs provide a dedicated HTTPS endpoint for a Lambda function wi
 ## Prerequisites
 
 - OpenTofu v1.6+
-- An existing Lambda function
-- AWS credentials with Lambda permissions
+- A Lambda function, or source code you can package into one
+- AWS credentials with permission to manage Lambda and IAM resources
 
 ## Step 1: Create a Lambda Function
+
+If you're starting from source, this example packages a local `src/` directory into a Lambda deployment archive. The archive must include an `index.js` file that exports `handler`.
 
 ```hcl
 resource "aws_iam_role" "lambda" {
@@ -39,14 +41,14 @@ resource "aws_iam_role_policy_attachment" "basic" {
 data "archive_file" "zip" {
   type        = "zip"
   source_dir  = "${path.module}/src"
-  output_path = "${path.module}/dist/function.zip"
+  output_path = "${path.module}/function.zip"
 }
 
 resource "aws_lambda_function" "api" {
   function_name    = "api-function"
   role             = aws_iam_role.lambda.arn
   handler          = "index.handler"
-  runtime          = "nodejs20.x"
+  runtime          = "nodejs22.x"
   filename         = data.archive_file.zip.output_path
   source_code_hash = data.archive_file.zip.output_base64sha256
 
@@ -73,13 +75,9 @@ resource "aws_lambda_function_url" "public" {
   }
 }
 
-# Allow public invocation of the function URL
-resource "aws_lambda_permission" "public_url" {
-  action                 = "lambda:InvokeFunctionUrl"
-  function_name          = aws_lambda_function.api.function_name
-  principal              = "*"
-  function_url_auth_type = "NONE"
-}
+# Current AWS provider versions automatically add the public
+# lambda:InvokeFunctionUrl and lambda:InvokeFunction permissions
+# for authorization_type = "NONE".
 ```
 
 ## Step 3: Create an IAM-Authenticated Function URL
@@ -88,7 +86,6 @@ resource "aws_lambda_permission" "public_url" {
 # IAM-authenticated URL - only callers with proper IAM permissions can invoke
 resource "aws_lambda_function_url" "private" {
   function_name      = aws_lambda_function.api.function_name
-  qualifier          = "LIVE"  # Invoke a specific alias
   authorization_type = "AWS_IAM"
 
   cors {
@@ -98,13 +95,21 @@ resource "aws_lambda_function_url" "private" {
   }
 }
 
-# Grant a specific IAM role permission to invoke via the URL
-resource "aws_lambda_permission" "allow_caller" {
+# Resource-based policy for a specific caller role. For callers in another
+# AWS account, the caller also needs an identity-based IAM policy that allows
+# both lambda:InvokeFunctionUrl and lambda:InvokeFunction.
+resource "aws_lambda_permission" "allow_caller_url" {
   action                 = "lambda:InvokeFunctionUrl"
   function_name          = aws_lambda_function.api.function_name
-  qualifier              = "LIVE"
   principal              = var.caller_role_arn
   function_url_auth_type = "AWS_IAM"
+}
+
+resource "aws_lambda_permission" "allow_caller_invoke" {
+  action                   = "lambda:InvokeFunction"
+  function_name            = aws_lambda_function.api.function_name
+  principal                = var.caller_role_arn
+  invoked_via_function_url = true
 }
 ```
 
