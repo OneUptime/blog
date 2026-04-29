@@ -15,7 +15,7 @@ terraform {
   required_providers {
     aws = {
       source  = "hashicorp/aws"
-      version = "~> 5.0"
+      version = "~> 6.0"
     }
   }
 }
@@ -30,8 +30,8 @@ provider "aws" {
 ```hcl
 resource "aws_msk_cluster" "main" {
   cluster_name           = "production-kafka"
-  kafka_version          = "3.5.1"
-  number_of_broker_nodes = 3  # Must be a multiple of AZs
+  kafka_version          = "3.9.x"
+  number_of_broker_nodes = 3  # Must be a multiple of the number of client subnets
 
   broker_node_group_info {
     instance_type   = "kafka.m5.large"
@@ -51,7 +51,7 @@ resource "aws_msk_cluster" "main" {
 
   encryption_info {
     encryption_in_transit {
-      client_broker = "TLS"          # TLS, TLS_PLAINTEXT, PLAINTEXT
+      client_broker = "TLS"          # With SASL/IAM, use TLS or TLS_PLAINTEXT
       in_cluster    = true
     }
     encryption_at_rest_kms_key_arn = aws_kms_key.kafka.arn
@@ -101,7 +101,7 @@ resource "aws_msk_cluster" "main" {
 ```hcl
 resource "aws_msk_configuration" "main" {
   name              = "production-kafka-config"
-  kafka_versions    = ["3.5.1"]
+  kafka_versions    = ["3.9.x"]
 
   server_properties = <<EOT
 auto.create.topics.enable=false
@@ -123,18 +123,18 @@ resource "aws_security_group" "kafka" {
   description = "Security group for MSK cluster"
   vpc_id      = aws_vpc.main.id
 
-  # Kafka TLS port
+  # Kafka SASL/IAM port
   ingress {
-    from_port       = 9094
-    to_port         = 9094
+    from_port       = 9098
+    to_port         = 9098
     protocol        = "tcp"
     security_groups = [aws_security_group.app.id]
   }
 
-  # Zookeeper (if needed for older clients)
+  # ZooKeeper TLS port for ZooKeeper-mode admin access, if needed
   ingress {
-    from_port       = 2181
-    to_port         = 2181
+    from_port       = 2182
+    to_port         = 2182
     protocol        = "tcp"
     security_groups = [aws_security_group.app.id]
   }
@@ -154,12 +154,19 @@ resource "aws_iam_role_policy" "kafka_producer" {
         Effect = "Allow"
         Action = [
           "kafka-cluster:Connect",
+        ]
+        Resource = [
+          aws_msk_cluster.main.arn,
+        ]
+      },
+      {
+        Effect = "Allow"
+        Action = [
           "kafka-cluster:DescribeTopic",
           "kafka-cluster:WriteData",
         ]
         Resource = [
-          aws_msk_cluster.main.arn,
-          "arn:aws:kafka:${var.region}:${data.aws_caller_identity.current.account_id}:topic/${aws_msk_cluster.main.cluster_name}/*",
+          format("%s/*", replace(aws_msk_cluster.main.arn, ":cluster/", ":topic/")),
         ]
       }
     ]
@@ -170,12 +177,12 @@ resource "aws_iam_role_policy" "kafka_producer" {
 ## Outputs
 
 ```hcl
-output "bootstrap_brokers_tls" {
-  value     = aws_msk_cluster.main.bootstrap_brokers_tls
+output "bootstrap_brokers_sasl_iam" {
+  value     = aws_msk_cluster.main.bootstrap_brokers_sasl_iam
   sensitive = true
 }
 ```
 
 ## Conclusion
 
-AWS MSK clusters in OpenTofu provide production-ready managed Kafka without operational overhead. Configure MSK with TLS-only client connections, IAM authentication, custom broker configuration for retention and replication, and enable Prometheus metrics and CloudWatch logging. Set min.insync.replicas=2 and default.replication.factor=3 for durability in a 3-broker cluster.
+AWS MSK clusters in OpenTofu provide production-ready managed Kafka without operational overhead. Configure MSK with TLS in transit, IAM authentication, custom broker configuration for retention and replication, and enable Prometheus metrics and CloudWatch logging. For IAM-authenticated clients, use the `bootstrap_brokers_sasl_iam` bootstrap brokers. Set min.insync.replicas=2 and default.replication.factor=3 for durability in a 3-broker cluster.
