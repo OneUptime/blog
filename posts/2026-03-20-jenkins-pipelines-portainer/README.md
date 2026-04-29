@@ -4,18 +4,16 @@ Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
 Tags: Portainer, Docker, Jenkins, CI/CD, DevOps, Automation, Pipeline
 
-Description: Configure Jenkins declarative pipelines to build Docker images and deploy stacks to Portainer using the Portainer API and webhooks.
+Description: Configure Jenkins declarative pipelines to build Docker images and deploy file-based stacks to Portainer using the Portainer API.
 
 ## Introduction
 
-Jenkins is the most widely deployed CI/CD automation server. This guide covers deploying Jenkins alongside Portainer, configuring pipelines that build Docker images, run tests, and deploy to Portainer environments - all from a single Jenkinsfile.
+Jenkins is the most widely deployed CI/CD automation server. This guide covers deploying Jenkins alongside Portainer, configuring pipelines that build Docker images, run tests, and deploy file-based stacks to Portainer environments - all from a single Jenkinsfile.
 
 ## Step 1: Deploy Jenkins with Docker Support
 
 ```yaml
 # docker-compose.yml - Jenkins for Docker builds
-
-version: "3.8"
 
 networks:
   jenkins_network:
@@ -27,7 +25,9 @@ volumes:
 
 services:
   jenkins:
-    image: jenkins/jenkins:lts-jdk21
+    build:
+      context: .
+    image: myjenkins:lts-jdk21
     container_name: jenkins
     restart: unless-stopped
     ports:
@@ -52,32 +52,23 @@ services:
 
 ## Step 2: Install Jenkins Docker Tools
 
-```groovy
-// bootstrap.groovy - Install plugins on first run
-// Place in /var/jenkins_home/init.groovy.d/
+```dockerfile
+# Dockerfile - Extend Jenkins with Docker CLI and required plugins
 
-import jenkins.model.Jenkins
+FROM jenkins/jenkins:lts-jdk21
 
-def plugins = [
-    "docker-plugin",
-    "docker-workflow",
-    "git",
-    "github",
-    "credentials-binding",
-    "pipeline-utility-steps",
-    "blueocean",
-    "email-ext",
-    "slack"
-]
+USER root
+RUN apt-get update && apt-get install -y ca-certificates curl git gnupg lsb-release python3 && \
+    install -m 0755 -d /etc/apt/keyrings && \
+    curl -fsSL https://download.docker.com/linux/debian/gpg -o /etc/apt/keyrings/docker.asc && \
+    chmod a+r /etc/apt/keyrings/docker.asc && \
+    echo "deb [arch=$(dpkg --print-architecture) signed-by=/etc/apt/keyrings/docker.asc] https://download.docker.com/linux/debian $(. /etc/os-release && echo \"$VERSION_CODENAME\") stable" \
+      > /etc/apt/sources.list.d/docker.list && \
+    apt-get update && apt-get install -y docker-ce-cli && \
+    apt-get clean && rm -rf /var/lib/apt/lists/*
 
-def pm = Jenkins.instance.pluginManager
-def uc = Jenkins.instance.updateCenter
-
-plugins.each { plugin ->
-    if (!pm.getPlugin(plugin)) {
-        uc.getPlugin(plugin).deploy()
-    }
-}
+USER jenkins
+RUN jenkins-plugin-cli --plugins "blueocean credentials-binding docker-workflow email-ext git github-branch-source job-dsl junit pipeline-utility-steps"
 ```
 
 ## Step 3: Configure Credentials in Jenkins
@@ -92,20 +83,16 @@ plugins.each { plugin ->
 | `portainer-url` | Secret text | `https://portainer.yourdomain.com` |
 
 Generate Portainer API key:
-1. Portainer > Account > Access Tokens > Add access token
-2. Copy the generated token
+1. Click your username in the top right, then select **My account**
+2. In **Access tokens**, click **Add access token**
+3. Copy the generated token
 
 ## Step 4: Complete Declarative Pipeline
 
 ```groovy
 // Jenkinsfile - Comprehensive deployment pipeline
 pipeline {
-    agent {
-        docker {
-            image 'docker:24-dind'
-            args '--privileged -v /var/run/docker.sock:/var/run/docker.sock'
-        }
-    }
+    agent any
 
     options {
         buildDiscarder(logRotator(numToKeepStr: '30'))
@@ -116,7 +103,7 @@ pipeline {
     parameters {
         choice(
             name: 'ENVIRONMENT',
-            choices: ['staging', 'production'],
+            choices: ['auto', 'staging', 'production'],
             description: 'Target deployment environment'
         )
         booleanParam(
@@ -132,9 +119,11 @@ pipeline {
         REGISTRY       = "registry.yourdomain.com"
         APP_NAME       = "myapp"
         IMAGE          = "${REGISTRY}/${APP_NAME}"
-        // Environment-specific stack IDs
-        STAGING_STACK_ID    = "1"
-        PRODUCTION_STACK_ID = "2"
+        // Environment-specific Portainer IDs
+        STAGING_ENDPOINT_ID   = "1"
+        PRODUCTION_ENDPOINT_ID = "2"
+        STAGING_STACK_ID      = "10"
+        PRODUCTION_STACK_ID   = "20"
     }
 
     stages {
@@ -142,10 +131,7 @@ pipeline {
             steps {
                 script {
                     // Compute image tag from git info
-                    env.GIT_SHORT = sh(
-                        script: 'git rev-parse --short HEAD',
-                        returnStdout: true
-                    ).trim()
+                    env.GIT_SHORT = env.GIT_COMMIT.take(7)
                     env.IMAGE_TAG = "${BUILD_NUMBER}-${env.GIT_SHORT}"
                     env.FULL_IMAGE = "${IMAGE}:${env.IMAGE_TAG}"
 
@@ -161,30 +147,30 @@ pipeline {
             parallel {
                 stage('Unit Tests') {
                     steps {
-                        sh '''
-                            docker run --rm \
-                                -v "$PWD:/app" \
-                                -w /app \
-                                python:3.12-slim \
-                                sh -c "
-                                    pip install -q -r requirements.txt &&
-                                    pip install -q pytest pytest-cov &&
+                        script {
+                            docker.image('python:3.12-slim').inside {
+                                sh '''
+                                    mkdir -p test-results
+                                    pip install -q -r requirements.txt
+                                    pip install -q pytest pytest-cov
                                     pytest tests/unit/ -v --junitxml=test-results/unit.xml
-                                "
-                        '''
+                                '''
+                            }
+                        }
                         junit 'test-results/*.xml'
                     }
                 }
 
                 stage('Linting') {
                     steps {
-                        sh '''
-                            docker run --rm \
-                                -v "$PWD:/app" \
-                                -w /app \
-                                python:3.12-slim \
-                                sh -c "pip install -q flake8 && flake8 src/"
-                        '''
+                        script {
+                            docker.image('python:3.12-slim').inside {
+                                sh '''
+                                    pip install -q flake8
+                                    flake8 src/
+                                '''
+                            }
+                        }
                     }
                 }
             }
@@ -197,23 +183,24 @@ pipeline {
                     usernameVariable: 'DOCKER_USER',
                     passwordVariable: 'DOCKER_PASS'
                 )]) {
-                    sh """
-                        docker login ${REGISTRY} -u ${DOCKER_USER} -p ${DOCKER_PASS}
+                    sh '''
+                        echo "$DOCKER_PASS" | docker login "$REGISTRY" -u "$DOCKER_USER" --password-stdin
 
                         # Build with cache from latest
+                        docker pull "$IMAGE:latest" || true
                         docker build \
-                            --cache-from ${IMAGE}:latest \
-                            --build-arg BUILD_NUMBER=${BUILD_NUMBER} \
-                            --build-arg GIT_COMMIT=${GIT_SHORT} \
-                            -t ${FULL_IMAGE} \
-                            -t ${IMAGE}:latest \
+                            --cache-from "$IMAGE:latest" \
+                            --build-arg BUILD_NUMBER="$BUILD_NUMBER" \
+                            --build-arg GIT_COMMIT="$GIT_SHORT" \
+                            -t "$FULL_IMAGE" \
+                            -t "$IMAGE:latest" \
                             .
 
-                        docker push ${FULL_IMAGE}
-                        docker push ${IMAGE}:latest
+                        docker push "$FULL_IMAGE"
+                        docker push "$IMAGE:latest"
 
-                        echo "Pushed: ${FULL_IMAGE}"
-                    """
+                        echo "Pushed: $FULL_IMAGE"
+                    '''
                 }
             }
         }
@@ -228,6 +215,7 @@ pipeline {
             steps {
                 script {
                     deployToPortainer(
+                        endpointId: STAGING_ENDPOINT_ID,
                         stackId: STAGING_STACK_ID,
                         imageTag: env.IMAGE_TAG
                     )
@@ -240,16 +228,12 @@ pipeline {
                 branch 'develop'
             }
             steps {
-                sh """
-                    # Wait for staging to be healthy
+                script {
                     sleep 30
-
-                    # Run integration tests against staging
-                    docker run --rm \
-                        -e TARGET_URL=https://staging.yourdomain.com \
-                        ${IMAGE}:${IMAGE_TAG} \
-                        python -m pytest tests/integration/ -v
-                """
+                    docker.image(env.FULL_IMAGE).inside('-e TARGET_URL=https://staging.yourdomain.com') {
+                        sh 'python -m pytest tests/integration/ -v'
+                    }
+                }
             }
         }
 
@@ -262,11 +246,12 @@ pipeline {
             }
             steps {
                 input(
-                    message: "Deploy ${IMAGE_TAG} to PRODUCTION?",
+                    message: "Deploy ${env.IMAGE_TAG} to PRODUCTION?",
                     ok: "Deploy"
                 )
                 script {
                     deployToPortainer(
+                        endpointId: PRODUCTION_ENDPOINT_ID,
                         stackId: PRODUCTION_STACK_ID,
                         imageTag: env.IMAGE_TAG
                     )
@@ -278,7 +263,7 @@ pipeline {
     post {
         always {
             sh 'docker logout ${REGISTRY} || true'
-            cleanWs()
+            deleteDir()
         }
         success {
             echo "Successfully deployed ${env.IMAGE_TAG}"
@@ -293,21 +278,31 @@ pipeline {
     }
 }
 
-// Helper function to deploy via Portainer API
+// Helper function to update a file-based stack via Portainer API.
+// Assumes your stack file uses ${IMAGE_TAG} in the image reference.
 def deployToPortainer(Map config) {
     sh """
-        # Update stack image tag via Portainer API
-        curl -s -X PUT \
-            -H "X-API-Key: ${PORTAINER_KEY}" \
+        python3 - <<'PY' > portainer-payload.json
+import json
+from pathlib import Path
+
+payload = {
+    "StackFileContent": Path("docker-compose.yml").read_text(),
+    "Env": [
+        {"name": "IMAGE_TAG", "value": "${config.imageTag}"}
+    ],
+    "Prune": False,
+    "RepullImageAndRedeploy": True
+}
+
+print(json.dumps(payload))
+PY
+
+        curl -fsS -X PUT \
+            -H "X-API-Key: $PORTAINER_KEY" \
             -H "Content-Type: application/json" \
-            "${PORTAINER_URL}/api/stacks/${config.stackId}?endpointId=1" \
-            -d '{
-                "stackFileContent": "$(cat docker-compose.yml | python3 -c "import sys,json; print(json.dumps(sys.stdin.read()))")",
-                "env": [
-                    {"name": "IMAGE_TAG", "value": "${config.imageTag}"}
-                ],
-                "prune": false
-            }' | python3 -c "
+            "$PORTAINER_URL/api/stacks/${config.stackId}?endpointId=${config.endpointId}" \
+            --data @portainer-payload.json | python3 -c "
 import json,sys
 r = json.load(sys.stdin)
 if 'Id' in r:
@@ -326,7 +321,7 @@ else:
 // Jenkins Job DSL - Create multibranch pipeline automatically
 multibranchPipelineJob('myapp-pipeline') {
     branchSources {
-        gitHub {
+        github {
             id('myapp-github')
             repoOwner('yourorg')
             repository('myapp')
@@ -339,11 +334,13 @@ multibranchPipelineJob('myapp-pipeline') {
         }
     }
     triggers {
-        periodic(5)  // Poll every 5 minutes
+        periodicFolderTrigger {
+            interval('5m')  // Fallback index scan every 5 minutes
+        }
     }
 }
 ```
 
 ## Conclusion
 
-Jenkins pipelines with Portainer deployments give you a powerful, self-hosted CI/CD system. The declarative pipeline syntax makes it readable and maintainable, parallel stages speed up the pipeline, and the Portainer API integration ensures deployments are atomic and trackable. Use Jenkins shared libraries to extract common pipeline steps (like `deployToPortainer`) into a reusable library across all your projects.
+Jenkins pipelines with Portainer deployments give you a powerful, self-hosted CI/CD system. The declarative pipeline syntax makes it readable and maintainable, parallel stages speed up the pipeline, and the Portainer API integration keeps deployments managed and trackable. Use Jenkins shared libraries to extract common pipeline steps (like `deployToPortainer`) into a reusable library across all your projects.
