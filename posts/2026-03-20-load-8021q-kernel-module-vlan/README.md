@@ -4,11 +4,11 @@ Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
 Tags: Linux, VLAN, 8021q, Kernel Modules, Networking, 802.1Q
 
-Description: Load and persist the 8021q kernel module on Linux to enable 802.1Q VLAN tagging support for VLAN subinterface creation.
+Description: Load and persist the 8021q kernel module on Linux when VLAN support is built as a module, to enable 802.1Q VLAN tagging support for VLAN subinterface creation.
 
 ## Introduction
 
-The `8021q` kernel module provides 802.1Q VLAN tagging support in the Linux kernel. Without this module, you cannot create VLAN subinterfaces. On most modern distributions, the module loads automatically when you create a VLAN interface, but it can also be loaded manually or configured to load at boot.
+The `8021q` kernel module provides 802.1Q VLAN tagging support in the Linux kernel when VLAN support is built as a loadable module. If VLAN support is built directly into the kernel, there is no module to load, but you can still create VLAN subinterfaces. On many modern distributions, the module loads automatically when you create a VLAN interface, but it can also be loaded manually or configured to load at boot.
 
 ## Check if 8021q is Already Loaded
 
@@ -22,7 +22,8 @@ lsmod | grep 8021q
 # garp                   16384  1 8021q
 # mrp                    20480  1 8021q
 
-# If no output, the module is not loaded
+# If no output, the module is not currently loaded.
+# VLAN support may still be built into the kernel instead of shipped as a module.
 ```
 
 ## Load the Module Manually
@@ -57,14 +58,12 @@ cat /etc/modules-load.d/8021q.conf
 echo "8021q" >> /etc/modules
 ```
 
-### Method 3: /etc/modprobe.d/ for Module Options
+### Method 3: /etc/modprobe.d/ for Module Options (Optional)
 
 ```bash
-# Create a modprobe configuration (useful for passing options)
-cat > /etc/modprobe.d/8021q.conf << 'EOF'
-# Load 8021q module for VLAN support
-options 8021q
-EOF
+# /etc/modprobe.d/*.conf is for module parameters or aliases.
+# It does not load 8021q by itself, and 8021q typically has no extra parameters.
+modinfo -p 8021q
 ```
 
 ## Verify the Module Loads at Boot
@@ -113,11 +112,10 @@ dmesg | grep 8021q
 # Check if module file exists
 find /lib/modules/$(uname -r) -name "8021q*"
 
-# If the module doesn't exist, install linux-modules
-# Ubuntu: sudo apt install linux-modules-$(uname -r)
-# RHEL: sudo yum install kernel-modules
+# If the module doesn't exist, VLAN support may be built into the kernel instead.
+# Otherwise, reinstall or verify the kernel modules package for your running kernel.
 ```
 
 ## Conclusion
 
-The `8021q` kernel module is required for VLAN support on Linux. Load it with `modprobe 8021q` and make it persistent by adding `8021q` to `/etc/modules-load.d/8021q.conf`. On modern distributions, the module often loads automatically when you first create a VLAN interface, but explicitly loading and persisting it ensures VLAN support is always available.
+The `8021q` kernel module is required for VLAN support on Linux only when VLAN support is built as a module. Load it with `modprobe 8021q` and make it persistent by adding `8021q` to `/etc/modules-load.d/8021q.conf`. On modern distributions, the module often loads automatically when you first create a VLAN interface, but explicitly loading and persisting it ensures VLAN support is always available when the feature is modular.
