@@ -28,6 +28,10 @@ terraform {
       source  = "hashicorp/aws"
       version = "~> 5.30"
     }
+    random = {
+      source  = "hashicorp/random"
+      version = "~> 3.8"
+    }
   }
 
   backend "s3" {
@@ -74,7 +78,7 @@ resource "aws_instance" "dev_server" {
 resource "aws_db_instance" "dev" {
   identifier        = "${local.env_prefix}-db"
   engine            = "postgres"
-  engine_version    = "15.4"
+  engine_version    = "15"
   instance_class    = "db.t3.micro"  # Not db.r5.large
   allocated_storage = 20
   db_name           = "appdev"
@@ -102,7 +106,7 @@ resource "random_password" "dev_db" {
 # auto_shutdown.tf
 # Stop dev instances outside business hours to save costs
 
-# EventBridge rule to stop instances at 7pm weekdays
+# EventBridge Scheduler schedule to stop instances at 7pm weekdays
 resource "aws_scheduler_schedule" "stop_dev_instances" {
   name       = "${local.env_prefix}-stop-schedule"
   group_name = "default"
@@ -124,7 +128,7 @@ resource "aws_scheduler_schedule" "stop_dev_instances" {
   }
 }
 
-# EventBridge rule to start instances at 8am weekdays
+# EventBridge Scheduler schedule to start instances at 8am weekdays
 resource "aws_scheduler_schedule" "start_dev_instances" {
   name       = "${local.env_prefix}-start-schedule"
   group_name = "default"
@@ -150,6 +154,9 @@ resource "aws_scheduler_schedule" "start_dev_instances" {
 ## Developer Workflow
 
 ```bash
+# Initialize providers and backend
+tofu init
+
 # Create your personal dev environment
 tofu workspace new alice
 tofu apply -var-file=dev.tfvars
@@ -159,14 +166,14 @@ tofu output dev_server_ip
 tofu output db_connection_string
 
 # Tear down at end of sprint (or let scheduler handle daily stop/start)
-tofu destroy
+tofu destroy -var-file=dev.tfvars
 tofu workspace select default
 tofu workspace delete alice
 ```
 
 ## Best Practices
 
-- Use `t3.micro`/`t3.small` for dev databases and servers - avoid the temptation to match production sizing.
+- Use smaller instance classes for dev servers and databases - for example, `t3.small`/`t3.medium` for EC2 and `db.t3.micro`/`db.t3.small` for RDS - avoid the temptation to match production sizing.
 - Enable auto-shutdown schedules - dev environments running 24/7 cost 3x more than those running only during business hours.
 - Use `skip_final_snapshot = true` and `backup_retention_period = 1` for dev databases - speed over durability.
 - Set spending alerts at the developer level using AWS Budgets with workspace-based tags.
