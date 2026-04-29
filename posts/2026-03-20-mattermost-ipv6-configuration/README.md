@@ -13,14 +13,11 @@ Mattermost is a self-hosted team messaging platform. Enabling IPv6 access involv
 ## Configuring Mattermost for IPv6
 
 ```json
-// /opt/mattermost/config/config.json
-
 {
   "ServiceSettings": {
     "SiteURL": "https://mattermost.example.com",
     "ListenAddress": ":8065",
     "ConnectionSecurity": "",
-    "EnableAPIv3": false,
     "EnableAPITeamDeletion": false,
 
     "WebsocketURL": "wss://mattermost.example.com",
@@ -34,11 +31,13 @@ Mattermost is a self-hosted team messaging platform. Enabling IPv6 access involv
 ```
 
 ```text
-Note: Mattermost's "ListenAddress": ":8065" binds to all interfaces
-including IPv6 (equivalent to [::]:8065 in Go)
+Note: Mattermost's "ListenAddress": ":8065" binds to all network
+interfaces.
 
-Go's net package listens on all IPv4 and IPv6 interfaces
-when binding to ":port" on dual-stack systems.
+On dual-stack hosts, Go's net package listens on all available
+unicast and anycast IP addresses of the local system when binding
+to ":port", so IPv6 is typically available as long as the host
+networking and firewall are configured for it.
 ```
 
 ## Nginx Reverse Proxy for Mattermost IPv6
@@ -59,9 +58,10 @@ server {
 }
 
 server {
-    listen 443 ssl http2;
-    listen [::]:443 ssl http2;
+    listen 443 ssl;
+    listen [::]:443 ssl;
     server_name mattermost.example.com;
+    http2 on;
 
     ssl_certificate /etc/ssl/certs/mattermost.crt;
     ssl_certificate_key /etc/ssl/private/mattermost.key;
@@ -85,6 +85,7 @@ server {
     # WebSocket support for real-time messaging
     location ~ /api/v[0-9]+/(users/)?websocket$ {
         proxy_pass http://mattermost;
+        proxy_http_version 1.1;
         proxy_set_header Upgrade $http_upgrade;
         proxy_set_header Connection "upgrade";
         proxy_set_header Host $host;
@@ -103,12 +104,10 @@ server {
 ## Mattermost Database over IPv6
 
 ```json
-// /opt/mattermost/config/config.json
-
 {
   "SqlSettings": {
     "DriverName": "postgres",
-    "DataSource": "postgres://mattermost:password@[2001:db8::postgres]:5432/mattermost?sslmode=disable",
+    "DataSource": "postgres://mattermost:password@[2001:db8::1]:5432/mattermost?sslmode=disable",
     "MaxIdleConns": 10,
     "MaxOpenConns": 300,
     "QueryTimeout": 30
@@ -147,9 +146,6 @@ curl -6 -I https://mattermost.example.com/
 
 # Test API
 curl -6 https://mattermost.example.com/api/v4/system/ping
-
-# Check logs for IPv6 connections
-sudo journalctl -u mattermost -f | grep "2001:"
 ```
 
-Mattermost's Go-based server naturally listens on both IPv4 and IPv6 when bound to `:8065`, making the IPv6 listener active by default on dual-stack systems, with Nginx's `listen [::]:443` being the only additional configuration needed for IPv6 access.
+Mattermost's Go-based server can listen on all interfaces when bound to `:8065`, which usually makes IPv6 available on dual-stack hosts. For external IPv6 access, you still need an IPv6-capable reverse proxy listener, AAAA DNS records, and firewall rules that allow IPv6 traffic.
