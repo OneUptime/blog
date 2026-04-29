@@ -11,7 +11,7 @@ Session persistence ensures that multiple requests from the same IPv6 client are
 ## IPv6 Session Persistence Challenges
 
 IPv6 presents unique challenges for source IP-based persistence:
-- Privacy extensions rotate temporary addresses every hour
+- Privacy extensions rotate temporary addresses over time
 - Users may have multiple IPv6 addresses (stable + temporary)
 - A single user may appear with different IPv6 addresses mid-session
 
@@ -36,20 +36,20 @@ backend ipv6_web
     # Insert a cookie that identifies which server the client was assigned
     cookie SERVER insert indirect nocache httponly secure
 
-    server web1 [2001:db8::web1]:8080 check cookie web1
-    server web2 [2001:db8::web2]:8080 check cookie web2
-    server web3 [2001:db8::web3]:8080 check cookie web3
+    server web1 [2001:db8::11]:8080 check cookie web1
+    server web2 [2001:db8::12]:8080 check cookie web2
+    server web3 [2001:db8::13]:8080 check cookie web3
 ```
 
-### nginx Sticky Sessions (requires nginx-extras)
+### nginx Sticky Sessions (nginx 1.29.6+ or NGINX Plus)
 
 ```nginx
 upstream ipv6_backends {
-    # Hash by cookie (requires lua or sticky module)
-    sticky cookie srv_id expires=1h domain=.example.com httponly secure;
+    # Issue a cookie to bind a client to the same upstream server
+    sticky cookie srv_id expires=1h domain=.example.com path=/ httponly secure;
 
-    server [2001:db8::server1]:8080;
-    server [2001:db8::server2]:8080;
+    server [2001:db8::11]:8080;
+    server [2001:db8::12]:8080;
 }
 ```
 
@@ -64,8 +64,8 @@ backend ipv6_web
     balance source
     hash-type consistent    # Consistent hashing
 
-    server web1 [2001:db8::web1]:8080 check
-    server web2 [2001:db8::web2]:8080 check
+    server web1 [2001:db8::11]:8080 check
+    server web2 [2001:db8::12]:8080 check
 ```
 
 ### IPVS Source IP Persistence
@@ -73,14 +73,14 @@ backend ipv6_web
 ```bash
 # Enable persistence with 5-minute timeout
 
-sudo ipvsadm -A -6 -t [2001:db8::vip]:443 -s sh -p 300
+sudo ipvsadm -A -t [2001:db8::100]:443 -s sh -p 300
 
 # -s sh = Source Hash scheduler
 # -p 300 = 300 second persistence timeout
 
 # All connections from same IPv6 source go to same server for 300s
-sudo ipvsadm -a -6 -t [2001:db8::vip]:443 -r [2001:db8::server1]:443 -m
-sudo ipvsadm -a -6 -t [2001:db8::vip]:443 -r [2001:db8::server2]:443 -m
+sudo ipvsadm -a -t [2001:db8::100]:443 -r [2001:db8::11]:443 -m
+sudo ipvsadm -a -t [2001:db8::100]:443 -r [2001:db8::12]:443 -m
 ```
 
 ### nginx ip_hash
@@ -89,8 +89,8 @@ sudo ipvsadm -a -6 -t [2001:db8::vip]:443 -r [2001:db8::server2]:443 -m
 upstream ipv6_backends {
     ip_hash;    # Uses first 3 octets of IPv4, or full IPv6 address
 
-    server [2001:db8::server1]:8080;
-    server [2001:db8::server2]:8080;
+    server [2001:db8::11]:8080;
+    server [2001:db8::12]:8080;
 }
 ```
 
@@ -105,26 +105,26 @@ backend ipv6_ssl
     stick-table type binary len 32 size 1m expire 1h
     stick on ssl_fc_session_id
 
-    server web1 [2001:db8::web1]:443 ssl check ca-file /etc/ssl/ca.pem
-    server web2 [2001:db8::web2]:443 ssl check ca-file /etc/ssl/ca.pem
+    server web1 [2001:db8::11]:443 ssl check ca-file /etc/ssl/ca.pem
+    server web2 [2001:db8::12]:443 ssl check ca-file /etc/ssl/ca.pem
 ```
 
 ## Handling IPv6 Address Rotation in Persistence
 
-IPv6 clients with privacy extensions change their temporary address every hour:
+IPv6 clients with privacy extensions can change their temporary address over time. If you still need source-IP affinity, you can mask to a /64 prefix, understanding that this groups every client on the same subnet together:
 
 ```text
-# HAProxy: Use /56 or /48 prefix for persistence (subnet-level)
-# This groups all addresses from the same /56 subnet together
+# HAProxy: Use /64 prefix for persistence (subnet-level)
+# This groups all addresses from the same /64 subnet together
 backend ipv6_prefix_persist
     balance roundrobin
 
     # Persist based on /64 prefix (first 64 bits)
     stick-table type ipv6 size 1m expire 30m
-    stick on src,ip_is_src,bytes(0,8)    # First 8 bytes = /64 prefix
+    stick on src,ipmask(24,64)    # Uses a /64 mask for IPv6
 
-    server web1 [2001:db8::web1]:8080 check
-    server web2 [2001:db8::web2]:8080 check
+    server web1 [2001:db8::11]:8080 check
+    server web2 [2001:db8::12]:8080 check
 ```
 
 ## Testing Session Persistence
@@ -135,18 +135,18 @@ for i in {1..5}; do
   curl -6 -s -c cookies.txt -b cookies.txt https://example.com/session-info
 done
 
-# With HAProxy stats: check same server gets repeat hits from same client
-curl -s http://localhost:8404/stats?csv | grep "server.*BACKEND" | awk -F',' '{print $2, $8}'
+# With HAProxy stats: compare server session counters before and after the test
+curl -s http://localhost:8404/stats?csv | awk -F',' 'NR > 1 && $2 != "BACKEND" {print $1, $2, $8}'
 
 # For IPVS: check connection table shows same backend
-sudo ipvsadm -Lnc | grep "2001:db8::client"
+sudo ipvsadm -Lnc | grep "2001:db8::1000"
 ```
 
 ## Best Practice for IPv6 Session Persistence
 
 1. **Prefer cookie-based persistence** - immune to IPv6 address rotation
-2. **For source IP persistence**, use prefix persistence (/48 or /64) rather than host persistence
-3. **Set appropriate timeouts** - IPv6 privacy addresses rotate hourly
+2. **For source IP persistence**, a /64 prefix can reduce breakage from temporary-address rotation, but it groups all hosts on the same subnet
+3. **Set appropriate timeouts** - temporary-address lifetimes vary by OS and configuration
 4. **Consider stateless applications** - design services to not require session affinity
 
-Cookie-based session persistence is the most reliable approach for IPv6 because it is unaffected by IPv6 privacy extension address rotation, which changes the client's IPv6 address hourly.
+Cookie-based session persistence is the most reliable approach for IPv6 because it is unaffected by temporary-address rotation and avoids the subnet-grouping tradeoffs of source-IP affinity.
