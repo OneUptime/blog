@@ -8,7 +8,7 @@ Description: Understand the IPv6 unspecified address ::/128, its role as a sourc
 
 ## Introduction
 
-The IPv6 unspecified address `::` (or `::/128`) serves as a placeholder when a device has no assigned IPv6 address yet. It is used as a source address during stateless address autoconfiguration (SLAAC) and DHCPv6 before a real address is available.
+The IPv6 unspecified address `::` (or `::/128`) serves as a placeholder when a device has no assigned IPv6 address yet. It can appear as a source address during early IPv6 initialization, most notably during Duplicate Address Detection (DAD), before a usable address is available.
 
 ## Key Properties
 
@@ -26,25 +26,25 @@ The IPv6 unspecified address `::` (or `::/128`) serves as a placeholder when a d
 
 ### 1. Neighbor Solicitation for DAD
 
-During Duplicate Address Detection, the MN uses `::` as the source before the address is confirmed.
+During Duplicate Address Detection, a node uses `::` as the source before the tentative address is confirmed.
 
 ```bash
 # Capture DAD Neighbor Solicitations (source = ::)
+sudo tcpdump -i eth0 -n "icmp6 and src host :: and dst net ff02::1:ff00:0/104"
 
-sudo tcpdump -i eth0 -n "icmp6 and ip6[8]=0"
-# ip6[8]=0 means IPv6 hop limit = 255, used for NDP
-# More specifically: src :: in DAD
-sudo tcpdump -i eth0 -n "icmp6 and ip6 src ::"
+# More general filter: any ICMPv6 packet sourced from ::
+sudo tcpdump -i eth0 -n "icmp6 and src host ::"
 ```
 
-### 2. DHCPv6 Initial Messages
+### 2. DHCPv6 Uses Link-Local, Not ::
 
-Clients without an IPv6 address use `::` as the source in initial DHCPv6 Solicit messages.
+Unlike DAD, DHCPv6 clients normally use a link-local source address in initial Solicit messages rather than `::`.
 
 ```bash
-# Capture initial DHCPv6 Solicit packets (source = ::)
-sudo tcpdump -i eth0 -n "udp port 546 or udp port 547" -v | \
-  grep ":: >"
+# Capture initial DHCPv6 Solicit packets
+# Source is typically link-local (fe80::/10), destination is ff02::1:2:547
+sudo tcpdump -i eth0 -n \
+  "udp src port 546 and udp dst port 547 and src net fe80::/10 and dst host ff02::1:2"
 ```
 
 ### 3. Wildcard Bind Address
@@ -63,8 +63,8 @@ server.bind(("::", 8080, 0, 0))
 server.listen(5)
 print("Listening on all IPv6 interfaces on port 8080")
 
-# Note: when IPV6_V6ONLY = 0, "::" also accepts IPv4 connections
-# via IPv4-mapped IPv6 addresses (::ffff:x.x.x.x)
+# Note: when IPV6_V6ONLY = 0 on a platform that supports dual-stack IPv6 sockets,
+# "::" also accepts IPv4 connections via IPv4-mapped IPv6 addresses (::ffff:x.x.x.x)
 ```
 
 ### IPv6-Only vs Dual-Stack Wildcard Bind
@@ -83,7 +83,7 @@ def create_server(port: int, ipv6_only: bool = True):
         # IPv6 only - :: only matches IPv6 connections
         server.setsockopt(socket.IPPROTO_IPV6, socket.IPV6_V6ONLY, 1)
     else:
-        # Dual-stack - :: also accepts IPv4 via IPv4-mapped
+        # Dual-stack where supported - :: also accepts IPv4 via IPv4-mapped
         server.setsockopt(socket.IPPROTO_IPV6, socket.IPV6_V6ONLY, 0)
 
     server.bind(("::", port, 0, 0))
@@ -99,10 +99,8 @@ def create_server(port: int, ipv6_only: bool = True):
 ip -6 route show default
 # default via fe80::1 dev eth0
 
-# ::/128 itself is never a routable destination
-# Attempts to route to :: will fail
-ip -6 route get ::
-# Error: Address not available
+# RFC 4291 forbids using :: as a destination address
+# ::/128 names the unspecified address; ::/0 is the default-route prefix
 ```
 
 ## Distinguishing :: from ::1 and ::/0
@@ -114,7 +112,7 @@ addr = ipaddress.IPv6Address("::")
 
 print(f"Is unspecified: {addr.is_unspecified}")  # True
 print(f"Is loopback:    {addr.is_loopback}")     # False
-print(f"Is private:     {addr.is_private}")       # False
+print(f"Is global:      {addr.is_global}")       # False
 
 # Default route prefix
 default_route = ipaddress.IPv6Network("::/0")
@@ -126,6 +124,8 @@ print(f"All addresses are in ::/0: "
 ## Application Validation
 
 ```python
+import ipaddress
+
 def is_valid_peer_address(addr: str) -> bool:
     """
     Return False if the address is the unspecified address
