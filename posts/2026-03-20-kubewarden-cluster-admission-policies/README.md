@@ -23,7 +23,7 @@ This guide covers creating, configuring, and managing ClusterAdmissionPolicies f
 ClusterAdmissionPolicies can:
 - Apply to resources in **all namespaces** simultaneously
 - Target **cluster-scoped resources** (Nodes, PVs, CRDs, etc.)
-- Use **namespace selectors** to limit scope
+- Use **namespace selectors** to limit scope for namespaced resources
 - Only be created/modified by cluster administrators
 
 ## Creating a Basic ClusterAdmissionPolicy
@@ -38,13 +38,13 @@ kind: ClusterAdmissionPolicy
 metadata:
   name: no-host-namespace
 spec:
-  module: registry://ghcr.io/kubewarden/policies/host-namespaces-psp:v0.1.1
+  module: registry://ghcr.io/kubewarden/policies/host-namespaces-psp:v1.1.6
 
   settings:
     # Block all host namespace sharing
-    hostPID: false
-    hostIPC: false
-    hostNetwork: false
+    allow_host_pid: false
+    allow_host_ipc: false
+    allow_host_network: false
 
   rules:
     - apiGroups: [""]
@@ -81,16 +81,17 @@ kind: ClusterAdmissionPolicy
 metadata:
   name: allowed-registries
 spec:
-  module: registry://ghcr.io/kubewarden/policies/allowed-image-repositories:v0.1.0
+  module: registry://ghcr.io/kubewarden/policies/trusted-repos-policy:v2.0.4
 
   settings:
     # Only allow images from these registries
-    allowedRegistries:
-      - "registry.internal.example.com"
-      - "gcr.io/my-org"
-      - "ghcr.io/my-org"
-      # Allow official Docker Hub images (no registry prefix)
-      - "docker.io/library"
+    registries:
+      allow:
+        - "registry.internal.example.com"
+        - "gcr.io/my-org"
+        - "ghcr.io/my-org"
+        # Allow Docker Hub images
+        - "docker.io"
 
   rules:
     - apiGroups: [""]
@@ -116,7 +117,7 @@ kind: ClusterAdmissionPolicy
 metadata:
   name: prod-strict-security
 spec:
-  module: registry://ghcr.io/kubewarden/policies/pod-privileged:v0.2.0
+  module: registry://ghcr.io/kubewarden/policies/pod-privileged:v1.0.8
 
   rules:
     - apiGroups: [""]
@@ -145,7 +146,7 @@ kind: ClusterAdmissionPolicy
 metadata:
   name: no-privileged-except-system
 spec:
-  module: registry://ghcr.io/kubewarden/policies/pod-privileged:v0.2.0
+  module: registry://ghcr.io/kubewarden/policies/pod-privileged:v1.0.8
 
   rules:
     - apiGroups: [""]
@@ -173,16 +174,21 @@ spec:
 
 ## Policies for Cluster-Scoped Resources
 
-ClusterAdmissionPolicies can target cluster-scoped resources:
+ClusterAdmissionPolicies can target cluster-scoped resources. `namespaceSelector` filters namespaced resources, but other cluster-scoped resources are always evaluated:
 
 ```yaml
 # cluster-policy-clusterroles.yaml
 apiVersion: policies.kubewarden.io/v1
 kind: ClusterAdmissionPolicy
 metadata:
-  name: restrict-clusterrole-wildcards
+  name: require-clusterrole-labels
 spec:
-  module: registry://ghcr.io/kubewarden/policies/clusterrole-bindingless-sa:v0.1.0
+  module: registry://ghcr.io/kubewarden/policies/safe-labels:v1.0.7
+
+  settings:
+    mandatory_labels:
+      - owner
+      - team
 
   rules:
     # Target ClusterRole resources (cluster-scoped)
@@ -200,7 +206,7 @@ spec:
 
 ## Enforcing Pod Security Standards
 
-A practical example enforcing the Pod Security Standards baseline profile:
+A practical example enforcing the Pod Security Standards baseline profile by ensuring namespaces carry the required PSA labels:
 
 ```yaml
 # cluster-policy-pod-security.yaml
@@ -209,27 +215,35 @@ kind: ClusterAdmissionPolicy
 metadata:
   name: pod-security-standards-baseline
 spec:
-  module: registry://ghcr.io/kubewarden/policies/pod-privileged:v0.2.0
+  module: registry://ghcr.io/kubewarden/policies/psa-label-enforcer:v1.0.8
+
+  settings:
+    modes:
+      enforce: "baseline"
+      enforce-version: "latest"
 
   rules:
     - apiGroups: [""]
       apiVersions: ["v1"]
-      resources: ["pods"]
+      resources: ["namespaces"]
       operations:
         - CREATE
         - UPDATE
 
-  mutating: false
+  mutating: true
   failurePolicy: Fail
   mode: protect
 
-  # Apply to all namespaces except exempt ones
+  # Apply to all namespaces except selected system namespaces
   namespaceSelector:
     matchExpressions:
-      - key: pod-security.kubernetes.io/exempt
+      - key: kubernetes.io/metadata.name
         operator: NotIn
         values:
-          - "true"
+          - kube-system
+          - kube-public
+          - kube-node-lease
+          - kubewarden
 ```
 
 ## Monitoring ClusterAdmissionPolicy Status
@@ -238,25 +252,24 @@ spec:
 # List all cluster admission policies
 kubectl get clusteradmissionpolicies
 
-# Get detailed status
+# Get detailed policy status
 kubectl describe clusteradmissionpolicy no-host-namespace
 
-# Check how many resources each policy has evaluated
-kubectl get clusteradmissionpolicy -o wide
+# Show the full resource, including status fields
+kubectl get clusteradmissionpolicy no-host-namespace -o yaml
 
-# View policy decisions in events
-kubectl get events -A \
-  --field-selector reason=PolicyViolation \
-  --sort-by='.lastTimestamp'
+# List Kubewarden validating webhooks
+kubectl get validatingwebhookconfigurations.admissionregistration.k8s.io -l kubewarden
 ```
 
 ## Disabling a Policy Temporarily
 
 ```bash
-# Switch to monitor mode to temporarily disable enforcement
-kubectl patch clusteradmissionpolicy no-host-namespace \
-  --type=merge \
-  -p '{"spec":{"mode":"monitor"}}'
+# Delete the protect-mode policy
+kubectl delete clusteradmissionpolicy no-host-namespace
+
+# Recreate it in monitor mode
+sed 's/mode: protect/mode: monitor/' cluster-policy-host-namespace.yaml | kubectl apply -f -
 
 # Re-enable enforcement
 kubectl patch clusteradmissionpolicy no-host-namespace \
