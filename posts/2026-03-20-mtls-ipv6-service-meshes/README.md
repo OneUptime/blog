@@ -35,7 +35,7 @@ DNS.1 = my-service.default.svc.cluster.local
 DNS.2 = my-service.default
 DNS.3 = my-service
 IP.1 = 10.96.0.50           # IPv4 ClusterIP
-IP.2 = fd00:svc::50         # IPv6 ClusterIP
+IP.2 = fd00:abcd::50        # IPv6 ClusterIP
 EOF
 
 openssl genrsa -out service.key 2048
@@ -82,7 +82,7 @@ kubectl run test-curl --image=curlimages/curl --restart=Never -- \
 # Verify SPIFFE identity in certificate
 kubectl exec <pod> -c istio-proxy -- \
   openssl s_client \
-  -connect [fd00::svc-ip]:80 \
+  -connect [fd00:abcd::50]:80 \
   -showcerts 2>&1 | grep -A 2 "Subject Alternative Name"
 ```
 
@@ -163,7 +163,7 @@ static_resources:
               match_typed_subject_alt_names:
                 - san_type: IP_ADDRESS
                   matcher:
-                    exact: "fd00::backend"
+                    exact: "fd00:abcd::100"
 ```
 
 ## Testing mTLS over IPv6
@@ -175,7 +175,7 @@ openssl s_client \
   -cert client.crt \
   -key client.key \
   -CAfile ca.crt \
-  -verify_hostname fd00::10 \
+  -verify_ip fd00::10 \
   -brief
 
 # Expected output: CONNECTION ESTABLISHED, Protocol: TLSv1.3
@@ -205,9 +205,10 @@ echo | openssl s_client -connect [fd00::10]:8443 2>&1 | \
 kubectl exec <pod> -c istio-proxy -- \
   openssl x509 -in /etc/certs/cert-chain.pem -noout -dates
 
-# Force certificate rotation in Istio
-kubectl delete secret istio.my-service-account -n default
-# Istiod will re-issue automatically
+# Force certificate rotation in Istio (modern Istio uses SDS, so workload
+# certs live in proxy memory rather than Kubernetes secrets — restart the
+# pod to make the proxy fetch a fresh cert from istiod)
+kubectl rollout restart deployment/my-service -n default
 
 # In Linkerd, cert rotation is automatic
 # Check CA cert expiry
