@@ -14,6 +14,7 @@ Leverage Linux network namespaces to create isolated IPv6 lab environments for s
 
 - Linux system with iproute2 tools
 - Root or sudo access
+- tcpdump (optional, for packet capture examples)
 - Basic understanding of IPv6 addressing
 
 ## Network Namespace IPv6 Fundamentals
@@ -44,16 +45,16 @@ sudo ip link add veth0 type veth peer name veth1
 sudo ip link set veth1 netns myns
 
 # Add IPv6 address
-sudo ip -6 addr add 2001:db8::1/64 dev veth0
-sudo ip netns exec myns ip -6 addr add 2001:db8::2/64 dev veth1
+sudo ip -6 addr add 2001:db8::1/64 dev veth0 nodad
+sudo ip netns exec myns ip -6 addr add 2001:db8::2/64 dev veth1 nodad
 
 # Enable interfaces
 sudo ip link set veth0 up
 sudo ip netns exec myns ip link set veth1 up
 
 # Test connectivity
-ping6 -c 3 2001:db8::2
-sudo ip netns exec myns ping6 -c 3 2001:db8::1
+ping -6 -c 3 2001:db8::2
+sudo ip netns exec myns ping -6 -c 3 2001:db8::1
 ```
 
 ## Full Setup Script
@@ -77,16 +78,16 @@ ip link set veth-${NS2} netns $NS2
 # Configure IPv6
 ip netns exec $NS1 ip link set lo up
 ip netns exec $NS1 ip link set veth-${NS1} up
-ip netns exec $NS1 ip -6 addr add 2001:db8::1/64 dev veth-${NS1}
+ip netns exec $NS1 ip -6 addr add 2001:db8::1/64 dev veth-${NS1} nodad
 
 ip netns exec $NS2 ip link set lo up
 ip netns exec $NS2 ip link set veth-${NS2} up
-ip netns exec $NS2 ip -6 addr add 2001:db8::2/64 dev veth-${NS2}
+ip netns exec $NS2 ip -6 addr add 2001:db8::2/64 dev veth-${NS2} nodad
 
 # Test connectivity
 echo "Testing connectivity..."
-ip netns exec $NS1 ping6 -c 3 2001:db8::2
-echo "Setup complete!"
+ip netns exec $NS1 ping -6 -c 3 2001:db8::2
+echo "Setup complete! Namespaces will be removed when the script exits."
 
 # Cleanup
 cleanup() {
@@ -114,8 +115,8 @@ sudo ip netns exec myns tcpdump -i veth1 ip6
 
 ## Monitoring with OneUptime
 
-Use [OneUptime](https://oneuptime.com) to monitor services running inside network namespaces. If running long-lived services in namespaces, configure monitors pointing to the IPv6 addresses assigned within those namespaces.
+Use [OneUptime](https://oneuptime.com) to monitor services running inside network namespaces. If running long-lived services in namespaces, configure monitors that have network reachability to the IPv6 addresses assigned within those namespaces, such as through the host-side veth interface, a bridge, or routed connectivity.
 
 ## Conclusion
 
-How to Use Network Namespaces for IPv6 Security Testing uses standard Linux  commands with the  subcommand. All IPv6 configuration tools work identically inside namespaces. Network namespaces are an excellent, zero-cost way to test IPv6 configurations before deploying to production.
+How to Use Network Namespaces for IPv6 Security Testing uses standard Linux `ip` commands with the `ip netns exec` subcommand. Standard Linux networking tools work inside namespaces when they are executed in the target namespace context. Network namespaces are an excellent, zero-cost way to test IPv6 configurations before deploying to production.
