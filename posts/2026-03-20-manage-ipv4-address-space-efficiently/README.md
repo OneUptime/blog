@@ -20,21 +20,21 @@ IPAM software centralizes address tracking:
 | Tool | License | Features |
 |------|---------|---------|
 | phpIPAM | Open source | Web UI, VLAN management, scanning |
-| Netbox | Open source | DCIM + IPAM, REST API |
+| NetBox | Open source | DCIM + IPAM, REST API |
 | Infoblox | Commercial | DNS/DHCP/IPAM integration |
 | SolarWinds IPAM | Commercial | Enterprise monitoring |
 
 ## 2. Right-Size Subnets with VLSM
 
-Instead of assigning a /24 (254 hosts) to a 10-host segment, use VLSM:
+Instead of assigning a /24 (254 hosts) to a 10-host segment, use VLSM for traditional LAN subnets:
 
 ```python
 import ipaddress
 import math
 
 def minimum_subnet(num_hosts: int) -> int:
-    """Return the smallest prefix length that fits num_hosts usable addresses."""
-    # Need num_hosts + 2 addresses (network + broadcast)
+    """Return the smallest prefix length for a traditional subnet with num_hosts usable addresses."""
+    # Traditional IPv4 subnets reserve network and broadcast addresses
     needed = num_hosts + 2
     host_bits = math.ceil(math.log2(needed))
     return 32 - host_bits
@@ -44,7 +44,7 @@ segments = [
     ("Office LAN",  80),
     ("VoIP VLAN",   30),
     ("Server Farm", 10),
-    ("P2P Link",    2),
+    ("Small LAN",   2),
 ]
 
 for name, hosts in segments:
@@ -52,6 +52,8 @@ for name, hosts in segments:
     net = ipaddress.IPv4Network(f"10.0.0.0/{pfx}")
     print(f"{name:15s}: /{pfx}  ({net.num_addresses - 2} usable hosts)")
 ```
+
+For true point-to-point IPv4 links, [RFC 3021](https://www.rfc-editor.org/info/rfc3021) allows `/31` prefixes when both endpoints support them.
 
 ## 3. Track Utilization
 
@@ -61,7 +63,7 @@ import ipaddress
 def subnet_utilization(subnet_cidr: str, assigned_hosts: list) -> float:
     """Return the percentage of usable addresses that are assigned."""
     net = ipaddress.IPv4Network(subnet_cidr)
-    usable = net.num_addresses - 2
+    usable = net.num_addresses if net.prefixlen >= 31 else net.num_addresses - 2
     return (len(assigned_hosts) / usable) * 100
 
 cidr = "10.1.0.0/24"
@@ -97,7 +99,7 @@ Hierarchical addressing enables route aggregation. Instead of 8 separate /24 rou
 
 ## Key Takeaways
 
-- Use IPAM software (Netbox, phpIPAM) to track all allocations centrally.
+- Use IPAM software (NetBox, phpIPAM) to track all allocations centrally.
 - Apply VLSM to right-size subnets - don't give a /24 to a 5-host segment.
 - Audit utilization regularly and reclaim stale allocations.
 - Hierarchical addressing enables route summarization, reducing routing table size.
