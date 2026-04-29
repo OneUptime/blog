@@ -10,7 +10,7 @@ keepalived implements VRRP (Virtual Router Redundancy Protocol) for high availab
 
 ## VRRPv3 for IPv6
 
-VRRPv3 is required for IPv6 (VRRPv2 only supports IPv4). keepalived supports VRRPv3 natively.
+VRRPv3 is required for IPv6 (VRRPv2 only supports IPv4). keepalived supports VRRPv3 natively. For IPv6, the first virtual address advertised by VRRP must be the virtual router's link-local address.
 
 ## Basic IPv6 VRRP Configuration
 
@@ -19,7 +19,7 @@ VRRPv3 is required for IPv6 (VRRPv2 only supports IPv4). keepalived supports VRR
 
 global_defs {
     router_id KEEPALIVED_MASTER
-    # Enable VRRPv3 for IPv6
+    # IPv6 instances use VRRPv3; setting it explicitly is optional
     vrrp_version 3
 }
 
@@ -36,17 +36,13 @@ vrrp_instance VI_IPV6 {
     # Advertisement interval (seconds)
     advert_int 1
 
-    # Authentication
-    authentication {
-        auth_type PASS
-        auth_pass ipv6vrrp
-    }
-
-    # IPv6 Virtual IP address
+    # VRRPv3 for IPv6 does not define authentication
+    # IPv6 Virtual IP addresses (link-local first for RFC compliance)
     virtual_ipaddress {
-        2001:db8::vip/64 dev eth0
+        fe80::51/64 dev eth0
+        2001:db8::100/64 dev eth0
         # Can add multiple VIPs:
-        # 2001:db8::vip2/64 dev eth0
+        # 2001:db8::101/64 dev eth0
     }
 }
 ```
@@ -66,13 +62,9 @@ vrrp_instance VI_IPV6 {
     priority 100    # Lower priority than MASTER
     advert_int 1
 
-    authentication {
-        auth_type PASS
-        auth_pass ipv6vrrp
-    }
-
     virtual_ipaddress {
-        2001:db8::vip/64 dev eth0
+        fe80::51/64 dev eth0
+        2001:db8::100/64 dev eth0
     }
 }
 ```
@@ -80,23 +72,29 @@ vrrp_instance VI_IPV6 {
 ## Dual-Stack VRRP (IPv4 and IPv6)
 
 ```nginx
-# VRRPv3 can carry both IPv4 and IPv6 virtual IPs
+# VRRPv3 supports both IPv4 and IPv6, but each address family uses its own VRRP instance
 
-vrrp_instance VI_DUAL_STACK {
+vrrp_instance VI_IPV4 {
     state MASTER
     interface eth0
     virtual_router_id 52
     priority 150
     advert_int 1
 
-    authentication {
-        auth_type PASS
-        auth_pass dualpass
-    }
-
-    # Both IPv4 and IPv6 VIPs in same VRRP instance
     virtual_ipaddress {
         192.168.1.100/24 dev eth0
+    }
+}
+
+vrrp_instance VI_IPV6 {
+    state MASTER
+    interface eth0
+    virtual_router_id 53
+    priority 150
+    advert_int 1
+
+    virtual_ipaddress {
+        fe80::52/64 dev eth0
         2001:db8::100/64 dev eth0
     }
 }
@@ -114,24 +112,25 @@ vrrp_instance VI_IPV6_LB {
     priority 150
 
     virtual_ipaddress {
-        2001:db8::vip/64 dev eth0
+        fe80::53/64 dev eth0
+        2001:db8::100/64 dev eth0
     }
 }
 
 # IPv6 virtual server definition
 
 virtual_server_group ipv6_group {
-    2001:db8::vip 80
+    2001:db8::100 80
 }
 
 virtual_server group ipv6_group {
     delay_loop 5
-    lb_algo rr
-    lb_kind NAT
+    lvs_sched rr
+    lvs_method NAT
     protocol TCP
 
     # IPv6 real server
-    real_server 2001:db8::server1 80 {
+    real_server 2001:db8:1::10 80 {
         weight 1
         HTTP_GET {
             url {
@@ -139,12 +138,12 @@ virtual_server group ipv6_group {
                 status_code 200
             }
             connect_timeout 5
-            nb_get_retry 3
+            retry 3
             delay_before_retry 3
         }
     }
 
-    real_server 2001:db8::server2 80 {
+    real_server 2001:db8:1::11 80 {
         weight 1
         HTTP_GET {
             url {
@@ -152,7 +151,7 @@ virtual_server group ipv6_group {
                 status_code 200
             }
             connect_timeout 5
-            nb_get_retry 3
+            retry 3
             delay_before_retry 3
         }
     }
@@ -178,7 +177,8 @@ vrrp_instance VI_IPV6 {
     priority 150
 
     virtual_ipaddress {
-        2001:db8::vip/64 dev eth0
+        fe80::51/64 dev eth0
+        2001:db8::100/64 dev eth0
     }
 
     track_script {
@@ -202,14 +202,14 @@ sudo systemctl enable keepalived
 sudo systemctl status keepalived
 
 # Verify VIP is on the correct node
-ip -6 addr show eth0 | grep "2001:db8::vip"
+ip -6 addr show dev eth0 | grep "2001:db8::100"
 
 # Tail logs
 sudo journalctl -u keepalived -f
 
 # Test failover: stop keepalived on MASTER
 sudo systemctl stop keepalived
-# VIP should move to BACKUP within 3 seconds
+# VIP should move to BACKUP in about 3.6 seconds with advert_int 1 and BACKUP priority 100
 ```
 
 keepalived's VRRPv3 support makes it the standard tool for providing IPv6 virtual IP high availability on Linux, combining seamlessly with IPVS for complete IPv6 load balancing with automatic failover.
