@@ -50,10 +50,10 @@ snmpwalk -v2c -c public udp6:[2001:db8::device]:161 ifOutErrors
 # Get IPv6 address table (ipAddressTable in IP-MIB)
 snmpwalk -v2c -c public udp6:[2001:db8::device]:161 IP-MIB::ipAddressTable
 
-# Get IPv6 address origin (manual, DHCP, SLAAC)
+# Get IPv6 address origin (manual, dhcp, linklayer for SLAAC, random for privacy extensions)
 snmpwalk -v2c -c public udp6:[2001:db8::device]:161 IP-MIB::ipAddressOrigin
 
-# Get IPv6 address prefix length
+# Get pointer to the address prefix entry in ipAddressPrefixTable
 snmpwalk -v2c -c public udp6:[2001:db8::device]:161 IP-MIB::ipAddressPrefix
 
 # Get interface IPv6 address status
