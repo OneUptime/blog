@@ -19,11 +19,11 @@ Let's Encrypt provides free, automated TLS certificates through the ACME protoco
 
 ## Architecture Overview
 
-Traefik acts as the entry point for all HTTP/HTTPS traffic. When a new service is discovered, Traefik automatically requests a certificate from Let's Encrypt using the ACME HTTP-01 or DNS-01 challenge.
+Traefik acts as the entry point for all HTTP/HTTPS traffic. When an HTTPS router is configured with a certificate resolver, Traefik automatically requests a certificate from Let's Encrypt using the ACME HTTP-01 or DNS-01 challenge.
 
 ## Step 1: Create the Traefik Configuration
 
-Create a `traefik.yml` static configuration file:
+Create a `traefik.yml` static configuration file on your Docker host, for example at `/opt/traefik/traefik.yml`:
 
 ```yaml
 entryPoints:
@@ -48,8 +48,6 @@ certificatesResolvers:
 providers:
   docker:
     exposedByDefault: false
-  file:
-    directory: /etc/traefik/dynamic
 
 api:
   dashboard: true
@@ -61,11 +59,9 @@ api:
 In Portainer, navigate to **Stacks** and create a new stack with the following `docker-compose.yml`:
 
 ```yaml
-version: "3.8"
-
 services:
   traefik:
-    image: traefik:v3.0
+    image: traefik:v3.5
     container_name: traefik
     restart: unless-stopped
     ports:
@@ -73,11 +69,11 @@ services:
       - "443:443"
     volumes:
       - /var/run/docker.sock:/var/run/docker.sock:ro
-      - ./traefik.yml:/etc/traefik/traefik.yml:ro
+      - /opt/traefik/traefik.yml:/etc/traefik/traefik.yml:ro
       - letsencrypt:/letsencrypt
     labels:
       - "traefik.enable=true"
-      - "traefik.http.routers.dashboard.rule=Host(`traefik.yourdomain.com`)"
+      - "traefik.http.routers.dashboard.rule=Host(`traefik.yourdomain.com`) && (PathPrefix(`/api`) || PathPrefix(`/dashboard`))"
       - "traefik.http.routers.dashboard.entrypoints=websecure"
       - "traefik.http.routers.dashboard.tls.certresolver=letsencrypt"
       - "traefik.http.routers.dashboard.service=api@internal"
@@ -104,16 +100,17 @@ Add any service to the same stack with Traefik labels:
 
 ## Step 4: Set File Permissions for acme.json
 
-The `acme.json` file must have strict permissions:
+If you bind-mount the Let's Encrypt directory from the host instead of using a named volume, the `acme.json` file must have strict permissions:
 
 ```bash
-touch acme.json
-chmod 600 acme.json
+mkdir -p /opt/traefik/letsencrypt
+touch /opt/traefik/letsencrypt/acme.json
+chmod 600 /opt/traefik/letsencrypt/acme.json
 ```
 
 ## Step 5: Verify Certificate Issuance
 
-After deploying, Traefik will automatically request certificates. Check the Traefik dashboard at `https://traefik.yourdomain.com` or view logs:
+After deploying, Traefik will automatically request certificates. Check the Traefik dashboard at `https://traefik.yourdomain.com/dashboard/` or view logs:
 
 ```bash
 docker logs traefik | grep -i acme
@@ -135,14 +132,21 @@ certificatesResolvers:
           - "1.1.1.1:53"
 ```
 
-Set your DNS provider API token as an environment variable in the Portainer stack editor.
+Set your DNS provider API token as an environment variable in the Portainer stack editor and pass it to the Traefik service. For example, with Cloudflare:
+
+```yaml
+services:
+  traefik:
+    environment:
+      CF_DNS_API_TOKEN: ${CF_DNS_API_TOKEN}
+```
 
 ## Best Practices
 
 - Always use a staging ACME server first to avoid rate limits: `caServer: https://acme-staging-v02.api.letsencrypt.org/directory`
 - Store `acme.json` in a named Docker volume for persistence across container restarts.
 - Enable HTTP to HTTPS redirection to ensure all traffic is encrypted.
-- Monitor certificate expiry using Portainer's container health checks.
+- Monitor certificate renewal in Traefik logs.
 
 ## Conclusion
 
