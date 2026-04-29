@@ -2,13 +2,13 @@
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
-Tags: AWS, Microservice, Architecture, OpenTofu, EKS, Service Mesh, API Gateway
+Tags: AWS, Microservice, Architecture, OpenTofu, EKS, API Gateway
 
-Description: Learn how to build a production-ready microservices architecture on AWS using OpenTofu with EKS, API Gateway, service discovery via AWS Cloud Map, and distributed tracing.
+Description: Learn how to build a production-ready microservices architecture on AWS using OpenTofu with EKS, API Gateway, service discovery primitives via AWS Cloud Map, IRSA, and SQS.
 
 ## Overview
 
-Microservices on AWS use EKS for container orchestration, API Gateway for external entry points, AWS Cloud Map for service discovery, and X-Ray for distributed tracing. OpenTofu provisions the full platform and demonstrates the core patterns.
+Microservices on AWS can use EKS for container orchestration, API Gateway for external entry points, AWS Cloud Map for service discovery primitives, and SQS for asynchronous communication. OpenTofu provisions the core platform and demonstrates the key patterns.
 
 ## Step 1: EKS Cluster for Microservices
 
@@ -20,7 +20,8 @@ module "eks" {
   version = "~> 20.0"
 
   cluster_name    = "microservices-cluster"
-  cluster_version = "1.29"
+  cluster_version = "1.35"
+  enable_irsa     = true
 
   vpc_id     = module.vpc.vpc_id
   subnet_ids = module.vpc.private_subnets
@@ -73,14 +74,27 @@ resource "aws_apigatewayv2_api" "microservices" {
   }
 }
 
-# VPC Link to reach private EKS services
+# VPC Link to reach a private load balancer fronting EKS services
 resource "aws_apigatewayv2_vpc_link" "eks" {
   name               = "eks-vpc-link"
   security_group_ids = [aws_security_group.vpc_link.id]
   subnet_ids         = module.vpc.private_subnets
 }
 
-# Route to order service
+# Deploy the HTTP API at its base URL
+resource "aws_apigatewayv2_stage" "default" {
+  api_id      = aws_apigatewayv2_api.microservices.id
+  name        = "$default"
+  auto_deploy = true
+}
+
+# Routes to the orders service
+resource "aws_apigatewayv2_route" "orders_root" {
+  api_id    = aws_apigatewayv2_api.microservices.id
+  route_key = "ANY /orders"
+  target    = "integrations/${aws_apigatewayv2_integration.orders.id}"
+}
+
 resource "aws_apigatewayv2_route" "orders" {
   api_id    = aws_apigatewayv2_api.microservices.id
   route_key = "ANY /orders/{proxy+}"
@@ -92,8 +106,9 @@ resource "aws_apigatewayv2_integration" "orders" {
   integration_type   = "HTTP_PROXY"
   connection_type    = "VPC_LINK"
   connection_id      = aws_apigatewayv2_vpc_link.eks.id
-  integration_uri    = aws_lb_listener.orders.arn
-  integration_method = "ANY"
+  integration_uri         = aws_lb_listener.orders.arn
+  integration_method      = "ANY"
+  payload_format_version = "1.0"
 }
 ```
 
@@ -106,7 +121,7 @@ resource "aws_service_discovery_private_dns_namespace" "microservices" {
   vpc  = module.vpc.vpc_id
 }
 
-# Register the order service
+# Define the orders service in Cloud Map; workloads still need to register instances
 resource "aws_service_discovery_service" "orders" {
   name = "orders"
 
@@ -130,7 +145,7 @@ resource "aws_service_discovery_service" "orders" {
 ## Step 4: Per-Service IAM Roles (IRSA)
 
 ```hcl
-# Each microservice gets its own IAM role
+# Each microservice gets its own IAM role; attach least-privilege policies per service
 locals {
   services = {
     orders   = { dynamodb_table = "orders" }
@@ -152,6 +167,7 @@ resource "aws_iam_role" "service" {
       Action    = "sts:AssumeRoleWithWebIdentity"
       Condition = {
         StringEquals = {
+          "${module.eks.oidc_provider}:aud" = "sts.amazonaws.com"
           "${module.eks.oidc_provider}:sub" = "system:serviceaccount:${each.key}:${each.key}"
         }
       }
@@ -183,4 +199,4 @@ resource "aws_sqs_queue" "order_events_dlq" {
 
 ## Summary
 
-Microservices on AWS built with OpenTofu use EKS for workload isolation, API Gateway with VPC Link for secure external access, and IRSA to give each service the minimum required AWS permissions. Asynchronous communication via SQS decouples services and provides resilience to downstream failures. Each service in its own Kubernetes namespace with dedicated IAM roles enforces the principle of least privilege at both the platform and cloud level.
+Microservices on AWS built with OpenTofu use EKS for workload isolation, API Gateway with VPC Link and an internal load balancer for secure external access, and IRSA to scope AWS permissions per service. Asynchronous communication via SQS decouples services and provides resilience to downstream failures. AWS Cloud Map provides the service discovery namespace and service definition, but workloads still need to register instances, and least-privilege access still depends on attaching narrow IAM policies to each service role.
