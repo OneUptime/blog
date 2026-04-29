@@ -16,50 +16,52 @@ Description: Learn strategies to extend the life of your IPv4 private address sp
 ## Step 1: Audit Current Usage
 
 ```python
-# Scan all subnets and measure actual utilization
+# Estimate subnet utilization from ICMP replies
 
 import subprocess
 from ipaddress import ip_network
 
 def measure_utilization(subnet_cidr):
     net = ip_network(subnet_cidr)
-    active = 0
+    responsive = 0
+    usable = 0
 
     for host in net.hosts():
+        usable += 1
         result = subprocess.run(
-            ['ping', '-c', '1', '-W', '1', str(host)],
+            ['ping', '-c', '1', '-W', '1', '-n', str(host)],
             capture_output=True
         )
         if result.returncode == 0:
-            active += 1
+            responsive += 1
 
-    utilization = active / net.num_addresses * 100
-    return {'subnet': subnet_cidr, 'active': active,
-            'total': net.num_addresses, 'utilization': f"{utilization:.1f}%"}
+    utilization = responsive / usable * 100 if usable else 0
+    return {'subnet': subnet_cidr, 'responsive': responsive,
+            'usable': usable, 'utilization': f"{utilization:.1f}%"}
 
 # Identify wasted space
 subnets = ['10.1.0.0/22', '10.1.4.0/22', '10.1.8.0/22']
 for subnet in subnets:
     info = measure_utilization(subnet)
-    print(f"{info['subnet']}: {info['active']}/{info['total']} ({info['utilization']})")
+    print(f"{info['subnet']}: {info['responsive']}/{info['usable']} ({info['utilization']})")
 ```
 
 ## Step 2: Right-Size Over-Allocated Subnets
 
-Many networks over-allocate out of caution, wasting 70-80% of space:
+Many networks over-allocate out of caution, wasting most of their usable space:
 
 ```text
 Before (over-allocated):
   Department A: 10.1.0.0/22 (1022 usable, 45 actual hosts)
   Department B: 10.1.4.0/22 (1022 usable, 12 actual hosts)
   Department C: 10.1.8.0/22 (1022 usable, 8 actual hosts)
-  Total wasted: ~2900 addresses
+  Total wasted: ~3000 addresses
 
 After (right-sized):
-  Department A: 10.1.0.0/26 (62 usable, 45 hosts - 20% headroom)
+  Department A: 10.1.0.0/26 (62 usable, 45 hosts - ~38% headroom)
   Department B: 10.1.0.64/27 (30 usable, 12 hosts - 150% headroom)
   Department C: 10.1.0.96/27 (30 usable, 8 hosts - 275% headroom)
-  Reclaimed: ~2850 addresses from just 3 subnets
+  Reclaimed: ~2940 addresses from just 3 subnets
 ```
 
 ## Step 3: Consolidate Fragmented Allocations
@@ -69,9 +71,9 @@ from ipaddress import ip_network, collapse_addresses
 
 # Fragmented allocations that can be consolidated
 fragmented = [
-    '10.5.1.0/24', '10.5.2.0/24',    # Could be one /23
+    '10.5.0.0/24', '10.5.1.0/24',    # Could be one /23
     '10.5.4.0/24', '10.5.5.0/24',    # Could be one /23
-    '10.5.6.0/24', '10.5.7.0/24',    # Could be one /23
+    '10.5.8.0/24', '10.5.9.0/24',    # Could be one /23
 ]
 
 # Find summary routes
@@ -83,12 +85,12 @@ print(f"After summarization: {len(summaries)} prefixes: {summaries}")
 
 ## Step 4: Reclaim Unused Private Space
 
-Instead of 10.0.0.0/8, consider 172.16.0.0/12 for small networks:
+Instead of defaulting to 10.0.0.0/8, consider 172.16.0.0/12 for small networks:
 
 ```text
 Available private space review:
   10.0.0.0/8 - Currently using 10.0.0.0-10.10.255.255 (11 /16s)
-  10.11.0.0/8 through 10.255.0.0/16 - completely unused!
+  10.11.0.0 - 10.255.255.255 - completely unused!
 
   Action: Audit and document the unused range, make it available for
   new projects instead of requesting public IP space.
@@ -116,36 +118,39 @@ cat /var/lib/misc/dnsmasq.leases | wc -l
 The long-term solution: adopt IPv6 for new deployments while maintaining IPv4 for existing:
 
 ```bash
-# Enable IPv6 on a Linux server (dual-stack)
+# Debian/ifupdown example for a dual-stack host
 # /etc/network/interfaces
 iface eth0 inet6 static
     address 2001:db8:1:1::10/64
     gateway 2001:db8:1:1::1
 
-# Configure applications to prefer IPv6
+# On glibc-based systems, native IPv6 already has higher precedence
+# than IPv4-mapped IPv6
 # /etc/gai.conf
 precedence ::1/128       50
 precedence ::/0          40
 precedence 2002::/16     30
 precedence ::/96         20
-precedence ::ffff:0:0/96 10   # Deprioritize IPv4-mapped IPv6
+precedence ::ffff:0:0/96 10   # IPv4-mapped IPv6 stays lower than native IPv6
 
 # For new microservices/containers, deploy IPv6-only internally
-# with 64NAT (NAT64) for IPv4 internet access
+# with NAT64/DNS64 for IPv4 internet access
 ```
 
 ## Step 7: Implement Larger NAT Pools
 
-If you must stay IPv4-only, use Carrier-Grade NAT (CGN):
+If you must stay IPv4-only, use Carrier-Grade NAT (CGN) carefully:
 
 ```text
 RFC 6598 shared address space: 100.64.0.0/10
-  Used between ISP and customer, or large internal NAT pools
-  4 million addresses: 100.64.0.0 - 100.127.255.255
+  Reserved for service-provider CGN use, and for translation-capable
+  routing equipment in managed NAT designs
+  4,194,304 addresses: 100.64.0.0 - 100.127.255.255
 
-This allows double-NAT without conflicting with typical RFC 1918 space.
+This can reduce overlap with typical RFC 1918 space in NAT environments,
+but it is not a general-purpose replacement for RFC 1918 on enterprise LANs.
 ```
 
 ## Conclusion
 
-IPv4 exhaustion is managed through a combination of: auditing actual utilization (typically 20-40% waste), right-sizing over-allocated subnets, reclaiming unused ranges, and implementing short DHCP leases for transient clients. These measures can extend private address space life by years. The long-term solution is IPv6 adoption for new workloads, reducing dependence on ever-larger RFC 1918 allocations.
+IPv4 exhaustion is managed through a combination of: auditing actual utilization, right-sizing over-allocated subnets, reclaiming unused ranges, and implementing short DHCP leases for transient clients. These measures can extend private address space life by years. The long-term solution is IPv6 adoption for new workloads, reducing dependence on ever-larger RFC 1918 allocations.
