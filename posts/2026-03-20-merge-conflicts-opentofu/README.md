@@ -28,7 +28,9 @@ graph TD
 # Enforce consistent formatting to reduce cosmetic conflicts
 
 tofu fmt -recursive .
+```
 
+```yaml
 # Pre-commit hook to auto-format before commit
 # .pre-commit-config.yaml
 repos:
@@ -44,7 +46,8 @@ repos:
 # .terraform.lock.hcl conflicts are common when two PRs update provider versions
 # DON'T manually edit lock files - regenerate them instead
 
-# 1. Accept one version of the conflict (either <<< or >>>)
+# 1. Accept one version of the conflict to clear the merge markers
+# During rebase, Git swaps the meaning of --ours and --theirs
 git checkout --ours .terraform.lock.hcl
 # OR
 git checkout --theirs .terraform.lock.hcl
@@ -60,7 +63,7 @@ tofu providers lock \
   -platform=darwin_amd64 \
   -platform=darwin_arm64
 
-# 4. Stage and continue
+# 4. Review the regenerated selections, stage, and continue
 git add .terraform.lock.hcl
 git rebase --continue
 ```
@@ -69,14 +72,11 @@ git rebase --continue
 
 ```hcl
 # Conflict example in variables.tf
+variable "instance_type" {
+  type    = string
 <<<<<<< HEAD
-variable "instance_type" {
-  type    = string
   default = "t3.medium"  # Team A wants t3.medium
-}
 =======
-variable "instance_type" {
-  type    = string
   default = "t3.large"   # Team B wants t3.large
 >>>>>>> feature/scale-up
 }
@@ -115,13 +115,14 @@ resource "aws_security_group_rule" "allow_https" {
 # After resolving conflicts and deploying, verify state is consistent
 tofu plan
 
-# If resources show as drifted, refresh state
-tofu refresh
+# If resources show as drifted, review and apply a refresh-only update
+tofu apply -refresh-only
 
 # If a resource exists in state but was deleted elsewhere
 tofu state rm 'aws_instance.web[0]'
 
-# If a resource exists in cloud but not in state, import it
+# If a resource exists in cloud but not in state, define the matching
+# resource block first and then import it
 tofu import aws_instance.web i-1234567890abcdef0
 ```
 
@@ -133,7 +134,9 @@ tofu import aws_instance.web i-1234567890abcdef0
 # Update from main frequently
 git fetch origin
 git rebase origin/main
+```
 
+```hcl
 # Use feature flags for long-running changes
 variable "enable_new_vpc_design" {
   type    = bool
