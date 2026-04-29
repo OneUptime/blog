@@ -8,7 +8,7 @@ Description: Learn how to deploy Istio service mesh on Kubernetes using OpenTofu
 
 ## Overview
 
-Istio provides a full-featured service mesh with automatic mTLS between services, fine-grained traffic control, distributed tracing, and access policies. OpenTofu deploys Istio using the official Helm charts in the recommended multi-chart approach.
+Istio provides a full-featured service mesh with automatic mTLS between workloads in the mesh, fine-grained traffic control, distributed tracing, and access policies. OpenTofu deploys Istio using the official Helm charts in the recommended multi-chart approach.
 
 ## Step 1: Deploy Istio Base and Istiod
 
@@ -19,50 +19,54 @@ resource "helm_release" "istio_base" {
   name             = "istio-base"
   repository       = "https://istio-release.storage.googleapis.com/charts"
   chart            = "base"
-  version          = "1.20.0"
+  version          = "1.29.2"
   namespace        = "istio-system"
   create_namespace = true
+
+  set {
+    name  = "defaultRevision"
+    value = "default"
+  }
 }
 
 resource "helm_release" "istiod" {
   name       = "istiod"
   repository = "https://istio-release.storage.googleapis.com/charts"
   chart      = "istiod"
-  version    = "1.20.0"
+  version    = "1.29.2"
   namespace  = "istio-system"
 
   depends_on = [helm_release.istio_base]
 
   values = [yamlencode({
-    pilot = {
-      resources = {
-        requests = { cpu = "200m", memory = "128Mi" }
-        limits   = { cpu = "500m", memory = "512Mi" }
-      }
+    autoscaleMin = 2
+    autoscaleMax = 5
 
-      autoscaleMin = 2
-      autoscaleMax = 5
+    resources = {
+      requests = { cpu = "200m", memory = "128Mi" }
+      limits   = { cpu = "500m", memory = "512Mi" }
     }
 
     meshConfig = {
       # Enable access logging
       accessLogFile = "/dev/stdout"
 
+      # Enable automatic mTLS between mesh workloads
+      enableAutoMtls = true
+
       # Enable distributed tracing
       enableTracing = true
       defaultConfig = {
-        tracing = {
-          sampling = 10  # 10% sampling rate
-          zipkin = {
-            address = "zipkin.istio-system:9411"
-          }
-        }
+        tracing = {}  # Use the Telemetry API for sampling and provider selection
       }
 
-      # Default mTLS mode
-      mtls = {
-        mode = "STRICT"
-      }
+      extensionProviders = [{
+        name = "zipkin"
+        zipkin = {
+          service = "zipkin.istio-system.svc.cluster.local"
+          port    = 9411
+        }
+      }]
     }
   })]
 }
@@ -72,7 +76,7 @@ resource "helm_release" "istio_ingress" {
   name       = "istio-ingressgateway"
   repository = "https://istio-release.storage.googleapis.com/charts"
   chart      = "gateway"
-  version    = "1.20.0"
+  version    = "1.29.2"
   namespace  = "istio-system"
 
   depends_on = [helm_release.istiod]
@@ -115,7 +119,7 @@ resource "kubernetes_namespace" "production" {
 # Istio Gateway resource for ingress traffic
 resource "kubernetes_manifest" "gateway" {
   manifest = {
-    apiVersion = "networking.istio.io/v1beta1"
+    apiVersion = "networking.istio.io/v1"
     kind       = "Gateway"
     metadata = {
       name      = "app-gateway"
@@ -144,7 +148,7 @@ resource "kubernetes_manifest" "gateway" {
 # VirtualService for traffic routing
 resource "kubernetes_manifest" "virtual_service" {
   manifest = {
-    apiVersion = "networking.istio.io/v1beta1"
+    apiVersion = "networking.istio.io/v1"
     kind       = "VirtualService"
     metadata = {
       name      = "app"
@@ -177,7 +181,7 @@ resource "kubernetes_manifest" "virtual_service" {
 # Enforce strict mTLS across the namespace
 resource "kubernetes_manifest" "peer_auth" {
   manifest = {
-    apiVersion = "security.istio.io/v1beta1"
+    apiVersion = "security.istio.io/v1"
     kind       = "PeerAuthentication"
     metadata = {
       name      = "default"
@@ -194,7 +198,7 @@ resource "kubernetes_manifest" "peer_auth" {
 # AuthorizationPolicy to restrict access
 resource "kubernetes_manifest" "authz_policy" {
   manifest = {
-    apiVersion = "security.istio.io/v1beta1"
+    apiVersion = "security.istio.io/v1"
     kind       = "AuthorizationPolicy"
     metadata = {
       name      = "api-access"
@@ -221,8 +225,28 @@ resource "kubernetes_manifest" "authz_policy" {
     }
   }
 }
+
+# Telemetry resource to enable Zipkin tracing mesh-wide
+resource "kubernetes_manifest" "mesh_tracing" {
+  manifest = {
+    apiVersion = "telemetry.istio.io/v1"
+    kind       = "Telemetry"
+    metadata = {
+      name      = "mesh-default"
+      namespace = "istio-system"
+    }
+    spec = {
+      tracing = [{
+        providers = [{
+          name = "zipkin"
+        }]
+        randomSamplingPercentage = 10.0  # 10% sampling rate
+      }]
+    }
+  }
+}
 ```
 
 ## Summary
 
-Istio deployed with OpenTofu provides comprehensive service mesh capabilities without application code changes. Automatic mTLS encrypts all service-to-service communication, VirtualService resources enable canary deployments with traffic splitting, and AuthorizationPolicies enforce zero-trust access control based on cryptographic service identity.
+Istio deployed with OpenTofu provides comprehensive service mesh capabilities without application code changes. Automatic mTLS encrypts service-to-service communication between workloads in the mesh, VirtualService resources enable canary deployments with traffic splitting, and AuthorizationPolicies enforce zero-trust access control based on cryptographic service identity.
