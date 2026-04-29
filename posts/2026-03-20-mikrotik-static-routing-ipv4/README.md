@@ -4,7 +4,7 @@ Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
 Tags: MikroTik, RouterOS, Static Routing, IPv4, Networking
 
-Description: Configure static IPv4 routes on MikroTik RouterOS including default gateway, specific network routes, floating static routes with distance, and recursive next-hops.
+Description: Configure static IPv4 routes on MikroTik RouterOS including default gateway, specific network routes, floating static routes with distance, check-gateway failover, and policy routing.
 
 ## Introduction
 
@@ -56,23 +56,23 @@ Static routing on MikroTik RouterOS is configured with `/ip route add`. Routes a
 
 ```mikrotik
 # Route specific source traffic through a different gateway
-# Step 1: Mangle - mark connection
-/ip firewall mangle add \
-  chain=prerouting \
-  src-address=192.168.2.0/24 \
-  action=mark-routing \
-  new-routing-mark=ISP2 \
-  passthrough=yes
+# Step 1: Create routing table (must exist before being referenced)
+/routing table add name=ISP2 fib
 
-# Step 2: Route table for marked traffic
+# Step 2: Add route into the new table
 /ip route add \
   dst-address=0.0.0.0/0 \
   gateway=198.51.100.1 \
   routing-table=ISP2 \
   comment="ISP2 for VLAN2 traffic"
 
-# Step 3: Create routing table
-/routing table add name=ISP2 fib
+# Step 3: Mangle - mark traffic with the routing mark
+/ip firewall mangle add \
+  chain=prerouting \
+  src-address=192.168.2.0/24 \
+  action=mark-routing \
+  new-routing-mark=ISP2 \
+  passthrough=yes
 ```
 
 ## Blackhole and Unreachable Routes
@@ -94,8 +94,8 @@ Static routing on MikroTik RouterOS is configured with `/ip route add`. Routes a
 # Show only active routes
 /ip route print where active=yes
 
-# Check which route is used for a destination
-/ip route check 8.8.8.8
+# Check which route would be used for a destination (RouterOS v7)
+/ip route print where 8.8.8.8 in dst-address active=yes
 
 # Show route details
 /ip route print detail
