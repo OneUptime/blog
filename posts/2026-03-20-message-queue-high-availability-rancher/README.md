@@ -8,18 +8,18 @@ Description: Learn how to configure high availability for message queue workload
 
 ## Introduction
 
-Message queues are critical infrastructure. A queue failure can cascade to application failures across your entire platform. Proper HA configuration in Rancher uses a combination of pod replicas, anti-affinity rules, pod disruption budgets, and persistent storage replication.
+Message queues are critical infrastructure. A queue failure can cascade to application failures across your entire platform. Proper HA configuration in Rancher uses a combination of broker-native replication, anti-affinity rules, pod disruption budgets, and persistent storage replication. These Kubernetes settings complement, but do not replace, features such as RabbitMQ quorum queues or Kafka topic replication.
 
 ## HA Architecture
 
 ```mermaid
 graph TD
-    A[Load Balancer] --> B[MQ Node 1 - Zone A]
+    A[Service / Load Balancer] --> B[MQ Node 1 - Zone A]
     A --> C[MQ Node 2 - Zone B]
     A --> D[MQ Node 3 - Zone C]
-    B <-->|Replication| C
-    C <-->|Replication| D
-    B <-->|Replication| D
+    B <-->|Cluster traffic| C
+    C <-->|Cluster traffic| D
+    B <-->|Cluster traffic| D
 ```
 
 ## Step 1: Pod Anti-Affinity Rules
@@ -30,36 +30,40 @@ Anti-affinity ensures message queue replicas are spread across different physica
 # Apply to any MQ StatefulSet
 
 spec:
-  affinity:
-    podAntiAffinity:
-      requiredDuringSchedulingIgnoredDuringExecution:
-        - labelSelector:
-            matchExpressions:
-              - key: app.kubernetes.io/name
-                operator: In
-                values:
-                  - rabbitmq    # Replace with your MQ label
-          topologyKey: kubernetes.io/hostname   # One pod per node
+  template:
+    spec:
+      affinity:
+        podAntiAffinity:
+          requiredDuringSchedulingIgnoredDuringExecution:
+            - labelSelector:
+                matchExpressions:
+                  - key: app.kubernetes.io/name
+                    operator: In
+                    values:
+                      - rabbitmq    # Replace with your MQ label
+              topologyKey: kubernetes.io/hostname   # One pod per node
 ```
 
 ## Step 2: Topology Spread Constraints
 
-For clusters with availability zones, spread pods across zones:
+For clusters with availability zones and nodes labeled with `topology.kubernetes.io/zone`, spread pods across zones:
 
 ```yaml
 spec:
-  topologySpreadConstraints:
-    - maxSkew: 1
-      topologyKey: topology.kubernetes.io/zone
-      whenUnsatisfiable: DoNotSchedule
-      labelSelector:
-        matchLabels:
-          app.kubernetes.io/name: rabbitmq
+  template:
+    spec:
+      topologySpreadConstraints:
+        - maxSkew: 1
+          topologyKey: topology.kubernetes.io/zone
+          whenUnsatisfiable: DoNotSchedule
+          labelSelector:
+            matchLabels:
+              app.kubernetes.io/name: rabbitmq    # Replace with your MQ label
 ```
 
 ## Step 3: Pod Disruption Budgets
 
-A PodDisruptionBudget prevents Kubernetes from taking down too many replicas during maintenance.
+A PodDisruptionBudget limits voluntary disruptions so Kubernetes does not evict too many replicas during maintenance.
 
 ```yaml
 # mq-pdb.yaml
@@ -72,7 +76,7 @@ spec:
   minAvailable: 2    # Always keep at least 2 replicas available
   selector:
     matchLabels:
-      app.kubernetes.io/name: rabbitmq
+      app.kubernetes.io/name: rabbitmq    # Replace with your MQ label
 ```
 
 ```bash
@@ -81,7 +85,7 @@ kubectl apply -f mq-pdb.yaml
 
 ## Step 4: Storage Replication
 
-Use a StorageClass with multiple replicas to protect message data:
+If your Rancher cluster uses Longhorn, use a StorageClass with multiple replicas to protect message data:
 
 ```yaml
 # ha-storage-class.yaml
@@ -93,48 +97,36 @@ provisioner: driver.longhorn.io
 parameters:
   numberOfReplicas: "3"    # Replicate data 3 ways
   dataLocality: "disabled" # Allow replicas on any node
-reclaimPolicy: Retain      # Preserve data on PVC deletion
+reclaimPolicy: Retain      # Retain the PV after PVC deletion
 ```
 
 ## Step 5: Resource Requests and Limits
 
-Ensure Kubernetes can always schedule MQ pods by setting accurate resource requests:
+Set realistic resource requests so the scheduler can place MQ pods predictably:
 
 ```yaml
 resources:
   requests:
-    memory: "512Mi"     # Guaranteed allocation
+    memory: "512Mi"     # Reserved for scheduling
     cpu: "250m"
   limits:
-    memory: "2Gi"
+    memory: "2Gi"       # Upper bound
     cpu: "2"
 ```
 
-## Step 6: Liveness and Readiness Probes
+## Step 6: Readiness Probes
 
-Configure probes so Kubernetes removes unhealthy pods from load balancing:
+For RabbitMQ on Kubernetes, prefer a TCP readiness probe and `podManagementPolicy: Parallel`; readiness removes unready pods from Service endpoints.
 
 ```yaml
-livenessProbe:
-  exec:
-    command:
-      - rabbitmq-diagnostics    # RabbitMQ health check
-      - -q
-      - ping
-  initialDelaySeconds: 60
-  periodSeconds: 30
-  timeoutSeconds: 15
-
 readinessProbe:
-  exec:
-    command:
-      - rabbitmq-diagnostics
-      - -q
-      - check_port_connectivity
+  tcpSocket:
+    port: 5672
   initialDelaySeconds: 20
   periodSeconds: 10
+  timeoutSeconds: 5
 ```
 
 ## Conclusion
 
-Message queue HA in Rancher requires coordination across multiple Kubernetes features. Anti-affinity and topology spread constraints handle node-level resilience, PodDisruptionBudgets protect during planned maintenance, and replicated storage protects against disk failures. Together these form a robust HA foundation.
+Message queue HA in Rancher requires coordination across multiple Kubernetes features and the broker's own replication settings. Anti-affinity and topology spread constraints handle node-level resilience, PodDisruptionBudgets reduce voluntary disruption risk during planned maintenance, and replicated storage protects against disk failures. Together these form a robust HA foundation.
