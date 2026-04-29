@@ -51,7 +51,7 @@ sudo certbot certonly \
 
 ```bash
 # Start Portainer using Let's Encrypt certificates
-# Mount the letsencrypt directory as read-only
+# Mount both the live and archive directories read-only
 docker run -d \
   -p 8000:8000 \
   -p 9443:9443 \
@@ -59,19 +59,17 @@ docker run -d \
   --restart=always \
   -v /var/run/docker.sock:/var/run/docker.sock \
   -v portainer_data:/data \
-  -v /etc/letsencrypt:/letsencrypt:ro \
+  -v /etc/letsencrypt/live/portainer.example.com:/certs/live/portainer.example.com:ro \
+  -v /etc/letsencrypt/archive/portainer.example.com:/certs/archive/portainer.example.com:ro \
   portainer/portainer-ce:latest \
-  --ssl \
-  --sslcert /letsencrypt/live/portainer.example.com/fullchain.pem \
-  --sslkey /letsencrypt/live/portainer.example.com/privkey.pem
+  --sslcert /certs/live/portainer.example.com/fullchain.pem \
+  --sslkey /certs/live/portainer.example.com/privkey.pem
 ```
 
 ## Docker Compose Example
 
 ```yaml
 # docker-compose.yml
-version: "3.8"
-
 services:
   portainer:
     image: portainer/portainer-ce:latest
@@ -83,14 +81,14 @@ services:
     volumes:
       - /var/run/docker.sock:/var/run/docker.sock
       - portainer_data:/data
-      # Mount Let's Encrypt directory read-only
-      - /etc/letsencrypt:/letsencrypt:ro
+      # Mount both live and archive because Certbot's live files are symlinks
+      - /etc/letsencrypt/live/portainer.example.com:/certs/live/portainer.example.com:ro
+      - /etc/letsencrypt/archive/portainer.example.com:/certs/archive/portainer.example.com:ro
     command:
-      - --ssl
       - --sslcert
-      - /letsencrypt/live/portainer.example.com/fullchain.pem
+      - /certs/live/portainer.example.com/fullchain.pem
       - --sslkey
-      - /letsencrypt/live/portainer.example.com/privkey.pem
+      - /certs/live/portainer.example.com/privkey.pem
 
 volumes:
   portainer_data:
@@ -98,22 +96,23 @@ volumes:
 
 ## Automate Certificate Renewal
 
-Let's Encrypt certificates expire every 90 days. Set up automatic renewal:
+Let's Encrypt certificates expire every 90 days. Certbot usually configures automatic renewal for you, but you can verify it and add a deploy hook for Portainer if needed:
 
 ```bash
 # Test renewal (dry run)
 sudo certbot renew --dry-run
 
-# Set up a cron job for automatic renewal and Portainer restart
+# If your Certbot installation does not already include automated renewal,
+# add a cron job that restarts Portainer only after a successful renewal
 # Edit crontab: sudo crontab -e
-0 3 * * * certbot renew --quiet && docker restart portainer >> /var/log/certbot-portainer.log 2>&1
+0 3 * * * certbot renew --quiet --deploy-hook "/usr/bin/docker restart portainer" >> /var/log/certbot-portainer.log 2>&1
 ```
 
 ## Verify the Certificate
 
 ```bash
 # Check the certificate served by Portainer
-openssl s_client -connect portainer.example.com:9443 </dev/null 2>/dev/null | \
+openssl s_client -connect portainer.example.com:9443 -servername portainer.example.com </dev/null 2>/dev/null | \
   openssl x509 -noout -subject -issuer -enddate
 
 # Or use curl
