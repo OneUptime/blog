@@ -33,9 +33,11 @@ kubectl describe node.longhorn.io <node-name> -n longhorn-system
 kubectl get node.longhorn.io <node-name> -n longhorn-system -o yaml \
   | grep -A 30 diskStatus
 
-# Key conditions to look for:
-# diskPressure: true - disk is too full
-# schedulable: false - disk is disabled or full
+# Key fields to look for:
+# conditions:
+#   Schedulable:
+#     status: "False" - disk cannot accept new replicas
+#     reason: DiskPressure - scheduling or free-space checks failed
 # storageAvailable: <bytes> - available space
 # storageScheduled: <bytes> - already allocated space
 ```
@@ -46,14 +48,14 @@ kubectl get node.longhorn.io <node-name> -n longhorn-system -o yaml \
 
 ```bash
 # Check actual disk usage on the node
-kubectl debug node/<node-name> -it --image=alpine -- \
-  df -h /var/lib/longhorn
+kubectl debug node/<node-name> -it --image=busybox -- \
+  chroot /host df -h /var/lib/longhorn
 
 # Check Longhorn's storage scheduling settings
 kubectl get setting -n longhorn-system \
   storage-over-provisioning-percentage -o yaml
 
-# By default, Longhorn allows 200% over-provisioning
+# By default, Longhorn allows 100% over-provisioning
 # If reduced, volumes may not schedule even with space available
 # Increase the over-provisioning percentage
 kubectl patch setting -n longhorn-system \
@@ -61,9 +63,9 @@ kubectl patch setting -n longhorn-system \
   --type merge \
   -p '{"value":"200"}'
 
-# Also check storage-minimum-device-size
+# Also check storage-minimal-available-percentage
 kubectl get setting -n longhorn-system \
-  storage-minimum-device-size-mb -o yaml
+  storage-minimal-available-percentage -o yaml
 ```
 
 ---
@@ -106,6 +108,8 @@ kubectl patch setting -n longhorn-system \
   -p '{"value":"dedicated=storage:NoSchedule"}'
 ```
 
+The `taint-toleration` setting only applies to Longhorn system-managed components such as instance managers and CSI pods. If `longhorn-manager` itself is not running on the tainted node, update the Helm values or deployment YAML for the user-deployed Longhorn components as well.
+
 ---
 
 ## Common Issue 4: Volume Tag Mismatch
@@ -113,13 +117,21 @@ kubectl patch setting -n longhorn-system \
 If volumes or StorageClass use node/disk tags, and nodes don't have matching tags, scheduling fails:
 
 ```bash
-# Check what tags a volume requires
+# Check what node tags a volume requires
 kubectl get volume -n longhorn-system <volume-name> \
   -o jsonpath='{.spec.nodeSelector}'
 
-# Check what tags a Longhorn node has
+# Check what disk tags a volume requires
+kubectl get volume -n longhorn-system <volume-name> \
+  -o jsonpath='{.spec.diskSelector}'
+
+# Check what node tags a Longhorn node has
 kubectl get node.longhorn.io <node-name> -n longhorn-system \
   -o jsonpath='{.spec.tags}'
+
+# Check what disk tags are configured on the node
+kubectl get node.longhorn.io <node-name> -n longhorn-system \
+  -o yaml | grep -A 20 'disks:'
 
 # Add the required tag to the node
 # Longhorn UI → Node → Edit → add tag "ssd" or "fast"
@@ -170,11 +182,14 @@ kubectl get node.longhorn.io <node-name> -n longhorn-system \
   -o yaml | grep allowScheduling
 
 # 3. Does the node have enough space?
-kubectl debug node/<node-name> -it --image=alpine -- df -h /var/lib/longhorn
+kubectl debug node/<node-name> -it --image=busybox -- \
+  chroot /host df -h /var/lib/longhorn
 
-# 4. Do node tags match the volume requirements?
+# 4. Do node and disk tags match the volume requirements?
 kubectl get volume -n longhorn-system <volume-name> \
   -o jsonpath='{.spec.nodeSelector}'
+kubectl get volume -n longhorn-system <volume-name> \
+  -o jsonpath='{.spec.diskSelector}'
 
 # 5. Is the instance manager running on this node?
 kubectl get pod -n longhorn-system \
