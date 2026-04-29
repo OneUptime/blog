@@ -17,12 +17,12 @@ The IPv6 header is not simply an IPv4 header with bigger addresses. It was redes
 | Version | 4 | Version | Same (value changes: 4 → 6) |
 | IHL (Header Length) | 4 | **Removed** | Fixed 40-byte header eliminates need |
 | Type of Service | 8 | Traffic Class | Renamed, same purpose |
-| Total Length | 16 | Payload Length | Renamed; excludes header in IPv6 |
-| Identification | 16 | **Removed** → Fragment Header | Moved to extension header |
-| Flags | 3 | **Removed** → Fragment Header | Moved to extension header |
+| Total Length | 16 | Payload Length | Renamed; excludes the 40-byte base header in IPv6 |
+| Identification | 16 | **Removed** → Fragment Header | Replaced by a 32-bit field in the Fragment Header |
+| Flags | 3 | **Removed** → Fragment Header | Only the M flag remains in the Fragment Header |
 | Fragment Offset | 13 | **Removed** → Fragment Header | Moved to extension header |
 | TTL | 8 | Hop Limit | Renamed; same decrement behavior |
-| Protocol | 8 | Next Header | Renamed; same purpose |
+| Protocol | 8 | Next Header | Renamed; also identifies extension headers |
 | Header Checksum | 16 | **Removed** | Eliminated for performance |
 | Source Address | 32 | Source Address | Expanded to 128 bits |
 | Destination Address | 32 | Destination Address | Expanded to 128 bits |
@@ -37,14 +37,14 @@ IPv4 headers are variable-length (20-60 bytes) due to options, requiring a lengt
 ### 2. Header Checksum
 The biggest removal and most controversial. IPv4 requires every router to verify and update the checksum (TTL decrement changes the checksum). This is CPU-intensive. IPv6 relies on:
 - Link-layer CRC (Ethernet FCS catches bit errors)
-- Transport-layer checksums (TCP/UDP verify end-to-end)
-- ICMPv6 checksums are mandatory (unlike ICMPv4 where they are optional)
+- Transport-layer checksums (TCP/UDP verify end-to-end; UDP checksums are mandatory in IPv6)
+- ICMPv6 checksums include an IPv6 pseudo-header (unlike ICMPv4)
 
 ### 3. Fragmentation Fields (Identification, Flags, Fragment Offset)
 In IPv4, any router can fragment a packet. In IPv6, only the source can fragment, and only using the Fragment Extension Header. This simplifies router processing.
 
 ### 4. Options
-IPv4 options made header parsing unpredictable. IPv6 moves all options to extension headers, which are processed only by endpoints (except Hop-by-Hop Options, which routers must process).
+IPv4 options made header parsing unpredictable. IPv6 moves all options to extension headers, which are generally processed only by endpoints. Hop-by-Hop Options are the exception: nodes along the path may examine them, but RFC 8200 expects them to do so only if explicitly configured.
 
 ## IPv6 New Field: Flow Label
 
@@ -52,8 +52,8 @@ IPv4 options made header parsing unpredictable. IPv6 moves all options to extens
 Flow Label (20 bits): identifies a flow for special handling
 
 Purpose:
+  - Flow classification using fixed-position IPv6 header fields
   - ECMP hashing without parsing upper-layer headers
-  - QoS identification without deep packet inspection
   - Stateless load balancing
 
 Values:
@@ -119,4 +119,4 @@ sudo tcpdump -i eth0 -v "(tcp port 80 or tcp port 443)" 2>/dev/null | \
 
 ## Conclusion
 
-The IPv6 header redesign removed fragmentation fields, the checksum, options, and the variable-length header in exchange for a simpler, faster-to-process 40-byte structure. The additions - Flow Label and expanded addresses - enable new capabilities. The result is a header that routers can process at wire speed without variable-length parsing, checksumming, or fragmentation decisions, which was not achievable with the IPv4 header design.
+The IPv6 header redesign removed fragmentation fields, the checksum, options, and the variable-length header in exchange for a simpler, faster-to-process 40-byte structure. The additions - Flow Label and expanded addresses - enable new capabilities. The result is a header that is simpler for routers to process in the common case, without variable-length parsing, per-hop checksum updates, or in-network fragmentation decisions.
