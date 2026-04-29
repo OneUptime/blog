@@ -15,12 +15,12 @@ Volume attachment failures are one of the most common Longhorn operational issue
 ## Step 1: Identify the Problem
 
 ```bash
-# Check which volumes are stuck
+# Check which volumes are stuck in Attaching or Detaching
 
-kubectl get lhvolume -n longhorn-system | grep -v healthy
+kubectl get volumes.longhorn.io -n longhorn-system | grep -Ei 'attaching|detaching'
 
 # Get detailed status of a specific volume
-kubectl describe lhvolume <volume-name> -n longhorn-system
+kubectl describe volumes.longhorn.io <volume-name> -n longhorn-system
 
 # Check the PVC binding status
 kubectl get pvc -A | grep -v Bound
@@ -30,20 +30,19 @@ kubectl get pvc -A | grep -v Bound
 
 ## Common Causes and Fixes
 
-### Cause 1: All Replicas Are on Unavailable Nodes
+### Cause 1: Replicas Are on Unavailable Nodes
 
 ```bash
 # Check replica status
-kubectl get lhreplica -n longhorn-system \
-  -l longhornvolume=<volume-name>
+kubectl get replicas.longhorn.io -n longhorn-system | grep <volume-name>
 
 # If replicas are on nodes that are NotReady
 kubectl get nodes
 
 # Option 1: Bring the node back online
-# Option 2: Wait for the node to be detected as offline and replicas to failover
-# Force detach and re-attach to trigger replica rebuild:
-kubectl patch lhvolume <volume-name> -n longhorn-system \
+# Option 2: Wait for Longhorn to detect the node as offline and rebuild replicas
+# Request a detach so Longhorn can reattach the volume elsewhere:
+kubectl patch volumes.longhorn.io <volume-name> -n longhorn-system \
   --type merge \
   -p '{"spec":{"nodeID":""}}'
 ```
@@ -56,11 +55,13 @@ kubectl patch lhvolume <volume-name> -n longhorn-system \
 # Check if open-iscsi is installed
 iscsiadm --version
 
-# Install if missing
+# Install on Debian/Ubuntu if missing
 sudo apt-get install -y open-iscsi
 sudo systemctl enable --now iscsid
 
-# For NVMe-oF based volumes (Longhorn v1.5+)
+# For V2 Data Engine volumes, load the required SPDK/NVMe-oF kernel modules
+sudo modprobe vfio_pci
+sudo modprobe uio_pci_generic
 sudo modprobe nvme-tcp
 ```
 
@@ -68,14 +69,14 @@ sudo modprobe nvme-tcp
 
 ### Cause 3: Volume Is Attached to a Different Node
 
-Longhorn RWO volumes can only be attached to one node at a time. If the node is gone but the attachment record remains:
+Longhorn RWO volumes can only be attached to one node at a time. If the original node is gone but the Longhorn attachment ticket remains:
 
 ```bash
-# List all volume attachments
-kubectl get volumeattachment
+# Inspect the Longhorn VolumeAttachment CR
+kubectl get volumeattachment.longhorn.io <volume-name> -n longhorn-system -o yaml
 
-# Delete the stale attachment
-kubectl delete volumeattachment <attachment-name>
+# If an invalid ticket is blocking reattachment, remove it carefully
+kubectl edit volumeattachment.longhorn.io <volume-name> -n longhorn-system
 ```
 
 ---
@@ -83,18 +84,14 @@ kubectl delete volumeattachment <attachment-name>
 ### Cause 4: Engine Process Crashed
 
 ```bash
-# Check Longhorn instance manager pods
-kubectl get pods -n longhorn-system -l longhorn.io/component=instance-manager
+# Check Longhorn instance manager pods and note the pod on the affected node
+kubectl get pods -n longhorn-system -l longhorn.io/component=instance-manager -o wide
 
-# Check engine manager logs on the node where the volume is hosted
-kubectl logs -n longhorn-system \
-  -l longhorn.io/component=instance-manager \
-  --tail=100
+# Check the instance manager logs for that node
+kubectl logs -n longhorn-system <instance-manager-pod> --tail=100
 
 # Restart the instance manager pod (it will respawn automatically)
-kubectl delete pod -n longhorn-system \
-  -l longhorn.io/component=instance-manager \
-  --field-selector spec.nodeName=<node-name>
+kubectl delete pod -n longhorn-system <instance-manager-pod>
 ```
 
 ---
@@ -103,10 +100,10 @@ kubectl delete pod -n longhorn-system \
 
 ```bash
 # Check node disk usage
-kubectl get lhnode -n longhorn-system -o wide
+kubectl get nodes.longhorn.io -n longhorn-system -o wide
 
 # Check Longhorn node storage
-kubectl get lhnode <node-name> -n longhorn-system \
+kubectl get nodes.longhorn.io <node-name> -n longhorn-system \
   -o jsonpath='{.status.diskStatus}'
 ```
 
@@ -123,7 +120,7 @@ LONGHORN_URL=http://longhorn-frontend.longhorn-system.svc.cluster.local
 curl -X POST \
   "${LONGHORN_URL}/v1/volumes/<volume-name>?action=detach" \
   -H "Content-Type: application/json" \
-  -d '{"hostId":""}'
+  -d '{"hostId":"","forceDetach":true}'
 ```
 
 ---
@@ -132,4 +129,4 @@ curl -X POST \
 
 - Install `open-iscsi` on all nodes **before** installing Longhorn - it is a hard requirement.
 - Use `PodDisruptionBudgets` to ensure pods using Longhorn volumes are drained safely during node maintenance.
-- Enable **Longhorn's automatic node draining** via the Longhorn settings to handle graceful pod migrations.
+- Configure **Longhorn's Node Drain Policy** via the Longhorn settings to match your maintenance workflow.
