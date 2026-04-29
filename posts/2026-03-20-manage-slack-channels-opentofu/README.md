@@ -23,7 +23,10 @@ terraform {
 }
 
 provider "slack" {
-  token = var.slack_bot_token  # Bot OAuth token with channels:write scope
+  # Bot OAuth token with scopes for conversations, users, and usergroups,
+  # such as channels:manage, groups:write, channels:read, groups:read,
+  # users:read, users:read.email, usergroups:read, and usergroups:write.
+  token = var.slack_bot_token
 }
 ```
 
@@ -106,7 +109,8 @@ resource "slack_usergroup" "platform_team" {
 ```hcl
 # Create alert channel and configure New Relic to send alerts there
 resource "slack_conversation" "alerts" {
-  name = "${var.service_name}-alerts"
+  name              = "${var.service_name}-alerts"
+  is_private        = false
   action_on_destroy = "archive"
 }
 
@@ -117,21 +121,15 @@ resource "aws_ssm_parameter" "slack_alert_channel" {
   value = slack_conversation.alerts.id
 }
 
-# New Relic notification destination pointing to this channel
-resource "newrelic_notification_destination" "slack" {
-  name = "${var.service_name}-slack"
-  type = "SLACK"
-
-  property {
-    key   = "url"
-    value = var.slack_webhook_url
-  }
+# Slack destinations must already exist in New Relic after OAuth setup in the UI.
+data "newrelic_notification_destination" "slack" {
+  exact_name = var.newrelic_slack_destination_name
 }
 
 resource "newrelic_notification_channel" "slack_alerts" {
   name           = "${var.service_name}-slack-alerts"
   type           = "SLACK"
-  destination_id = newrelic_notification_destination.slack.id
+  destination_id = data.newrelic_notification_destination.slack.id
   product        = "IINT"
 
   property {
@@ -150,11 +148,13 @@ variable "team_emails"  { type = list(string) }
 
 resource "slack_conversation" "alerts" {
   name              = "${var.project_name}-alerts"
+  is_private        = false
   action_on_destroy = "archive"
 }
 
 resource "slack_conversation" "deployments" {
   name              = "${var.project_name}-deploys"
+  is_private        = false
   action_on_destroy = "archive"
 }
 
@@ -164,4 +164,4 @@ output "deployment_channel_id" { value = slack_conversation.deployments.id }
 
 ## Conclusion
 
-Managing Slack channels with OpenTofu is most valuable when combined with monitoring tool configuration in the same apply - creating alert channels and configuring New Relic or PagerDuty to send to those channels in a single operation. Use the module pattern to create a standard set of channels for every new project, ensuring consistent naming conventions and descriptions across your workspace.
+Managing Slack channels with OpenTofu is most valuable when combined with monitoring tool configuration in the same apply - creating alert channels and wiring downstream tooling to those channel IDs in a single operation. With New Relic, the Slack destination itself must be authenticated in the UI first, then OpenTofu can attach a notification channel to the Slack channel ID you created. Use the module pattern to create a standard set of channels for every new project, ensuring consistent naming conventions and descriptions across your workspace.
