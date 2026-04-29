@@ -36,11 +36,11 @@ backend web_servers
     server web3 10.0.1.12:80 check
 ```
 
-With this config, all requests from `203.0.113.50` will always go to the same backend server for 30 minutes after the last request.
+With this config, requests from `203.0.113.50` will continue to go to the same available backend server while the stick-table entry remains active for 30 minutes after the last request.
 
-## IP-Based Persistence with Nginx (upstream_hash)
+## IP-Based Persistence with Nginx
 
-Nginx's `ip_hash` directive hashes the first three octets of the client IPv4:
+Nginx's `ip_hash` directive hashes the first three octets of the client IPv4 and keeps the same client on the same server unless that server becomes unavailable:
 
 ```nginx
 # /etc/nginx/nginx.conf
@@ -87,12 +87,15 @@ aws elbv2 modify-target-group-attributes \
     Key=stickiness.lb_cookie.duration_seconds,Value=86400
 ```
 
-For NLBs, source IP-based persistence is used automatically:
+For NLBs, source IP-based persistence is available by enabling target group stickiness:
 
 ```bash
-# NLB uses source IP hash by default - verify routing type
-aws elbv2 describe-target-group-attributes \
-  --target-group-arn arn:aws:elasticloadbalancing:...
+# Enable source IP stickiness on an NLB target group
+aws elbv2 modify-target-group-attributes \
+  --target-group-arn arn:aws:elasticloadbalancing:... \
+  --attributes \
+    Key=stickiness.enabled,Value=true \
+    Key=stickiness.type,Value=source_ip
 ```
 
 ## Considerations and Limitations
