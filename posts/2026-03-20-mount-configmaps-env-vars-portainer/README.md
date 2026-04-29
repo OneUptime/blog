@@ -23,8 +23,8 @@ spec:
         # All keys from app-config become environment variables
         - configMapRef:
             name: app-config
-            # Optional: add a prefix to all keys
-            # prefix: "APP_"
+          # Optional: add a prefix to all keys
+          # prefix: "APP_"
 ```
 
 With a ConfigMap containing `DB_HOST=postgres` and `LOG_LEVEL=info`, the container gets `DB_HOST` and `LOG_LEVEL` as env vars.
