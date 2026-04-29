@@ -9,34 +9,35 @@ Description: Learn how to view, inspect, cordon, drain, and manage Kubernetes no
 ## Accessing Nodes in Portainer
 
 1. Select your Kubernetes environment in Portainer.
-2. In the left sidebar, go to **Cluster > Nodes**.
-3. The node list shows all nodes with their status, roles, and resource usage.
+2. In the left sidebar, go to **Cluster > Details**.
+3. Scroll to the **Nodes** section. The node list shows all nodes with their status and role, and lets you inspect usage stats when the metrics API is enabled.
 
 ## Node Status Indicators
 
 | Status | Meaning |
 |--------|---------|
-| Ready | Node is healthy and can schedule pods |
-| NotReady | Node cannot schedule pods (check conditions) |
-| SchedulingDisabled | Node is cordoned |
+| Ready | Node is healthy and ready to accept pods |
+| NotReady | Node is not healthy and is not accepting pods |
+| SchedulingDisabled | Node is cordoned and unschedulable |
 
 ## Inspecting a Node
 
 Click a node name to view:
-- OS and container runtime details
-- CPU/memory capacity and allocatable resources
-- Node conditions (MemoryPressure, DiskPressure, PIDPressure)
-- Labels and annotations
-- Running pods and their resource consumption
+- Hostname, Kubernetes API endpoint, role, and kubelet version
+- Creation date, status, and availability
+- Resource reservation and usage (CPU/memory usage requires the metrics API)
+- Labels and taints
+- Node-related events
+- Applications running on the node
 
 ```bash
 # CLI equivalent
 
 kubectl describe node <node-name>
 
-# Get node conditions only
+# List node conditions only
 kubectl get node <node-name> \
-  -o jsonpath='{.status.conditions[*].type}={.status.conditions[*].status}'
+  -o jsonpath='{range .status.conditions[*]}{.type}={.status}{"\n"}{end}'
 ```
 
 ## Cordoning a Node (Disable Scheduling)
@@ -51,11 +52,11 @@ kubectl cordon <node-name>
 kubectl uncordon <node-name>
 ```
 
-In Portainer, click the node and look for the **Cordon** action button.
+In Portainer, open the node details page and use the **Availability** control: set it to **Pause** to stop scheduling new pods, or **Active** to allow scheduling again.
 
-## Draining a Node (Evict All Pods)
+## Draining a Node (Evict Workloads for Maintenance)
 
-Draining first cordons the node, then evicts all pods (except DaemonSets and local storage pods):
+Draining first cordons the node, then evicts pods so workloads can move elsewhere. It will not evict DaemonSet-managed pods, and `--delete-emptydir-data` allows the drain to continue when pods use `emptyDir` data:
 
 ```bash
 # Drain a node for maintenance
@@ -97,9 +98,11 @@ kubectl taint nodes <node-name> dedicated=gpu:NoSchedule-
 
 ## Checking Node Resource Pressure
 
+Resource usage output requires the Kubernetes Metrics API (for example, Metrics Server):
+
 ```bash
 # Check resource usage per node
-kubectl top nodes
+kubectl top node
 
 # Check if any nodes are under pressure
 kubectl get nodes -o custom-columns=\
