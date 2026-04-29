@@ -64,7 +64,7 @@ Title[router1_eth1]: Router1 eth1 Traffic
 # Custom SNMP OID over IPv6 (e.g., IPv6 packet counter)
 Target[ipv6_pkts]: `snmpget -v2c -c public udp6:[2001:db8::router1]:161 \
   1.3.6.1.2.1.4.31.1.1.3.2 | awk '{print $NF}'`:`snmpget -v2c -c public \
-  udp6:[2001:db8::router1]:161 1.3.6.1.2.1.4.31.1.1.4.2 | awk '{print $NF}'`
+  udp6:[2001:db8::router1]:161 1.3.6.1.2.1.4.31.1.1.30.2 | awk '{print $NF}'`
 MaxBytes[ipv6_pkts]: 10000000
 Title[ipv6_pkts]: IPv6 Packets In/Out
 ```
