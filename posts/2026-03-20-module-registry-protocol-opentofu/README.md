@@ -128,18 +128,14 @@ if __name__ == "__main__":
     HTTPServer(("0.0.0.0", 8080), RegistryHandler).serve_forever()
 ```
 
-Option 2: Use Gitea (supports Terraform Module Registry API):
+Option 2: Use GitLab (supports the Terraform Module Registry API):
 
 ```bash
-# Gitea has built-in Terraform module registry support
-docker run -d --name gitea \
-  -p 3000:3000 -p 2222:22 \
-  gitea/gitea:latest
-
-# Push a module
-curl -X POST "http://localhost:3000/api/packages/my-org/terraform/vpc/aws/1.0.0" \
-  -H "Authorization: token $GITEA_TOKEN" \
-  --form "module=@vpc-module.tar.gz"
+# GitLab has a built-in Terraform module registry per project.
+# Upload a module package to a project's registry:
+curl --header "PRIVATE-TOKEN: $GITLAB_TOKEN" \
+  --upload-file vpc-module.tar.gz \
+  "https://gitlab.example.com/api/v4/projects/<project_id>/packages/terraform/modules/vpc/aws/1.0.0/file"
 ```
 
 ## Using Private Registry in Configuration
@@ -169,4 +165,4 @@ module "vpc" {
 
 ## Conclusion
 
-The OpenTofu module registry protocol is a simple HTTP API: service discovery via `.well-known/terraform.json`, version listing via `/v1/modules/{namespace}/{name}/{provider}/versions`, and download via the `X-Terraform-Get` header redirect. You can implement a minimal private registry with any HTTP server or use platforms like Gitea or GitLab that implement the protocol natively. Understanding the protocol helps debug module download failures and set up air-gapped module distribution.
+The OpenTofu module registry protocol is a simple HTTP API: service discovery via `.well-known/terraform.json`, version listing via `/v1/modules/{namespace}/{name}/{provider}/versions`, and download via the `X-Terraform-Get` header redirect (or a `location` field in the JSON body). You can implement a minimal private registry with any HTTP server or use platforms like GitLab that implement the protocol natively. Understanding the protocol helps debug module download failures and set up air-gapped module distribution.
