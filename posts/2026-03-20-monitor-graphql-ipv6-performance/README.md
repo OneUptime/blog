@@ -21,9 +21,6 @@ Description: Monitor GraphQL server performance metrics over IPv6 using Apollo S
 ```javascript
 // server.js
 const { ApolloServer } = require('@apollo/server');
-const { makeExecutableSchema } = require('@graphql-tools/schema');
-const { ApolloServerPluginInlineTrace } = require('@apollo/server/plugin/inlineTrace');
-const { createPrometheusPlugin } = require('@apollo/server-plugin-operation-registry');
 
 // Custom Prometheus metrics plugin
 const prometheusPlugin = {
@@ -120,6 +117,9 @@ histogram_quantile(0.95,
 ## Apollo Studio Integration
 
 ```javascript
+const { ApolloServer } = require('@apollo/server');
+const { ApolloServerPluginUsageReporting } = require('@apollo/server/plugin/usageReporting');
+
 // Enable Apollo Studio performance monitoring
 const server = new ApolloServer({
     typeDefs,
