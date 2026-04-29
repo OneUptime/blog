@@ -43,8 +43,34 @@ resource "aws_dynamodb_table" "orders" {
 ## Step 2: Create Lambda with DynamoDB Stream Permissions
 
 ```hcl
-resource "aws_iam_role_policy" "dynamodb_streams" {
-  name = "dynamodb-streams-policy"
+data "archive_file" "zip" {
+  type        = "zip"
+  source_file = "${path.module}/index.py"
+  output_path = "${path.module}/index.zip"
+}
+
+resource "aws_iam_role" "lambda" {
+  name = "order-stream-handler-role"
+
+  assume_role_policy = jsonencode({
+    Version = "2012-10-17"
+    Statement = [{
+      Effect = "Allow"
+      Principal = {
+        Service = "lambda.amazonaws.com"
+      }
+      Action = "sts:AssumeRole"
+    }]
+  })
+}
+
+resource "aws_iam_role_policy_attachment" "dynamodb_streams" {
+  role       = aws_iam_role.lambda.name
+  policy_arn = "arn:aws:iam::aws:policy/service-role/AWSLambdaDynamoDBExecutionRole"
+}
+
+resource "aws_iam_role_policy" "dynamodb_dlq" {
+  name = "dynamodb-dlq-policy"
   role = aws_iam_role.lambda.id
 
   policy = jsonencode({
@@ -52,12 +78,9 @@ resource "aws_iam_role_policy" "dynamodb_streams" {
     Statement = [{
       Effect = "Allow"
       Action = [
-        "dynamodb:GetRecords",
-        "dynamodb:GetShardIterator",
-        "dynamodb:DescribeStream",
-        "dynamodb:ListStreams"
+        "sqs:SendMessage"
       ]
-      Resource = "${aws_dynamodb_table.orders.arn}/stream/*"
+      Resource = aws_sqs_queue.dynamodb_dlq.arn
     }]
   })
 }
@@ -77,13 +100,18 @@ resource "aws_lambda_function" "stream_handler" {
 ## Step 3: Create the Event Source Mapping
 
 ```hcl
-# SQS queue for unprocessable DynamoDB stream events
+# Standard SQS queue for discarded invocation records after retries are exhausted
 
 resource "aws_sqs_queue" "dynamodb_dlq" {
   name = "dynamodb-stream-failures"
 }
 
 resource "aws_lambda_event_source_mapping" "dynamodb" {
+  depends_on = [
+    aws_iam_role_policy_attachment.dynamodb_streams,
+    aws_iam_role_policy.dynamodb_dlq
+  ]
+
   event_source_arn  = aws_dynamodb_table.orders.stream_arn
   function_name     = aws_lambda_function.stream_handler.arn
 
@@ -98,17 +126,6 @@ resource "aws_lambda_event_source_mapping" "dynamodb" {
 
   # Retry failed batches up to 3 times
   maximum_retry_attempts = 3
-
-  # Discard records from DynamoDB TTL deletes to reduce noise
-  filter_criteria {
-    filter {
-      # Only process INSERT and MODIFY events, not REMOVE from TTL
-      pattern = jsonencode({
-        eventName = ["INSERT", "MODIFY", "REMOVE"]
-        userIdentity = null  # Exclude system (TTL) deletions
-      })
-    }
-  }
 
   destination_config {
     on_failure {
@@ -173,4 +190,4 @@ tofu apply
 
 ## Conclusion
 
-DynamoDB Streams with Lambda provide a powerful change data capture (CDC) pattern for building event-driven architectures. Use `NEW_AND_OLD_IMAGES` to compare states for change detection, and filter out TTL-initiated deletes to keep your processing logic clean. The 24-hour stream retention window gives you a recovery window if the Lambda function is temporarily unavailable.
+DynamoDB Streams with Lambda provide a powerful change data capture (CDC) pattern for building event-driven architectures. Use `NEW_AND_OLD_IMAGES` to compare states for change detection, and configure retry limits with an on-failure destination so discarded batches can be investigated. DynamoDB Streams retains records for up to 24 hours, which gives you a recovery window if the Lambda function is temporarily unavailable.
