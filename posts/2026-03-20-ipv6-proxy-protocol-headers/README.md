@@ -26,7 +26,7 @@ PROXY UNKNOWN\r\n
 
 ### Version 2 (Binary)
 
-PROXY Protocol v2 uses a 16-byte signature followed by address data in binary format, with separate address families for IPv4 (`0x11`) and IPv6 (`0x21`).
+PROXY Protocol v2 uses a fixed 16-byte header that starts with a 12-byte signature, followed by version/command, family/protocol, and length fields. For example, `0x11` denotes TCP over IPv4 and `0x21` denotes TCP over IPv6.
 
 ## HAProxy: Sending PROXY Protocol to Backend
 
@@ -67,13 +67,14 @@ Configure Nginx to accept PROXY Protocol v1/v2 and extract the real client IP:
 
 stream {
     server {
-        listen 8080 proxy_protocol;
+        # Use a different port from the HTTP example below.
+        listen 12345 proxy_protocol;
 
-        # Log real client IP from PROXY Protocol
+        # Trust HAProxy IPv4 and IPv6 addresses
         set_real_ip_from 10.0.0.0/8;    # Trust HAProxy IPv4
         set_real_ip_from 2001:db8::/32;  # Trust HAProxy IPv6
 
-        proxy_pass backend;
+        proxy_pass 10.0.0.10:9000;
     }
 }
 
@@ -83,13 +84,13 @@ http {
 
         # Trust the load balancer IPs
         set_real_ip_from 10.0.0.0/8;
-        set_real_ip_from 2001:db8:proxy::/48;
+        set_real_ip_from 2001:db8::/32;
         real_ip_header proxy_protocol;
 
         location / {
             # $proxy_protocol_addr contains the real client IP (IPv4 or IPv6)
             add_header X-Real-Client-IP $proxy_protocol_addr;
-            proxy_pass http://backend;
+            proxy_pass http://10.0.0.10:8081;
         }
     }
 }
@@ -112,6 +113,21 @@ class ProxyHeader:
     dst_port: int
     is_ipv6: bool
 
+MAX_PROXY_V1_HEADER = 107
+
+def _parse_port(value: str) -> int:
+    if not value.isdecimal():
+        raise ValueError("port must be numeric")
+
+    if len(value) > 1 and value.startswith('0'):
+        raise ValueError("leading zeroes are not allowed")
+
+    port = int(value)
+    if not 0 <= port <= 65535:
+        raise ValueError("port out of range")
+
+    return port
+
 def parse_proxy_protocol_v1(data: bytes) -> Optional[ProxyHeader]:
     """
     Parse a PROXY Protocol v1 header from raw bytes.
@@ -123,7 +139,7 @@ def parse_proxy_protocol_v1(data: bytes) -> Optional[ProxyHeader]:
     try:
         # Find the end of the header line
         crlf = data.find(b'\r\n')
-        if crlf == -1:
+        if crlf == -1 or crlf > MAX_PROXY_V1_HEADER - 2:
             return None
 
         header_line = data[:crlf].decode('ascii')
@@ -137,23 +153,25 @@ def parse_proxy_protocol_v1(data: bytes) -> Optional[ProxyHeader]:
         if protocol == 'UNKNOWN':
             return ProxyHeader('UNKNOWN', '', '', 0, 0, False)
 
-        if len(parts) != 6:
+        if len(parts) != 6 or protocol not in ('TCP4', 'TCP6'):
             return None
 
         _, proto, src_ip, dst_ip, src_port, dst_port = parts
         is_ipv6 = proto == 'TCP6'
 
-        # Validate IPv6 addresses
         if is_ipv6:
             ipaddress.IPv6Address(src_ip)
             ipaddress.IPv6Address(dst_ip)
+        else:
+            ipaddress.IPv4Address(src_ip)
+            ipaddress.IPv4Address(dst_ip)
 
         return ProxyHeader(
             protocol=proto,
             src_ip=src_ip,
             dst_ip=dst_ip,
-            src_port=int(src_port),
-            dst_port=int(dst_port),
+            src_port=_parse_port(src_port),
+            dst_port=_parse_port(dst_port),
             is_ipv6=is_ipv6
         )
     except (ValueError, IndexError):
@@ -178,8 +196,19 @@ def handle_proxy_protocol_connection(conn: socket.socket):
     # Read initial data (PROXY Protocol header + first chunk of app data)
     data = conn.recv(4096)
 
-    # Parse the PROXY Protocol header
-    header = parse_proxy_protocol_v1(data)
+    header = None
+    if data.startswith(b'PROXY '):
+        while b'\r\n' not in data and len(data) <= MAX_PROXY_V1_HEADER:
+            chunk = conn.recv(4096)
+            if not chunk:
+                break
+            data += chunk
+
+        header = parse_proxy_protocol_v1(data)
+        if header is None:
+            conn.close()
+            return
+
     if header:
         real_client_ip = header.src_ip
         # Strip the PROXY Protocol line from data
@@ -198,7 +227,7 @@ def handle_proxy_protocol_connection(conn: socket.socket):
 
 ```bash
 # Send a manual PROXY Protocol v1 header with IPv6
-echo -e "PROXY TCP6 2001:db8::1 2001:db8::10 54321 80\r\nGET / HTTP/1.0\r\nHost: example.com\r\n\r\n" | \
+printf 'PROXY TCP6 2001:db8::1 2001:db8::10 54321 80\r\nGET / HTTP/1.0\r\nHost: example.com\r\n\r\n' | \
     nc localhost 8080
 
 # Use haproxy-debugger or nc to simulate
