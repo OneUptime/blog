@@ -70,7 +70,7 @@ resource "kubernetes_job_v1" "db_migration" {
     }
   }
 
-  # Wait for the job to complete before terraform apply finishes
+  # Wait for the job to complete before tofu apply finishes
   wait_for_completion = true
 
   timeouts {
@@ -170,15 +170,7 @@ resource "kubernetes_job_v1" "parallel_processor" {
         container {
           name  = "processor"
           image = "myregistry/processor:latest"
-
-          env {
-            name = "JOB_COMPLETION_INDEX"
-            value_from {
-              field_ref {
-                field_path = "metadata.annotations['batch.kubernetes.io/job-completion-index']"
-              }
-            }
-          }
+          # Indexed Jobs automatically expose JOB_COMPLETION_INDEX
         }
       }
     }
