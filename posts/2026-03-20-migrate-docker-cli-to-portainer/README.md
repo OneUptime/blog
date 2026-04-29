@@ -8,7 +8,7 @@ Description: Learn how to transition from managing containers with the Docker CL
 
 ## Introduction
 
-The Docker CLI is powerful but requires remembering commands and offers limited visibility. Portainer provides a web-based GUI that exposes all Docker functionality visually while still allowing CLI access when needed. Migrating from Docker CLI to Portainer is non-disruptive-your existing containers keep running.
+The Docker CLI is powerful but requires remembering commands and offers limited visibility. Portainer provides a web-based GUI for common Docker management tasks while still allowing CLI access when needed. Installing Portainer alongside Docker is non-disruptive; your existing containers keep running.
 
 ## Installing Portainer Alongside Docker
 
@@ -25,7 +25,7 @@ docker run -d \
   -p 9443:9443 \
   -v /var/run/docker.sock:/var/run/docker.sock \
   -v portainer_data:/data \
-  portainer/portainer-ce:latest
+  portainer/portainer-ce:sts
 
 # Access Portainer at https://localhost:9443
 ```
@@ -34,8 +34,8 @@ docker run -d \
 
 | Docker CLI Command | Portainer Equivalent |
 |--------------------|----------------------|
-| `docker ps` | Home > Environments > Containers |
-| `docker ps -a` | Containers > Show stopped |
+| `docker ps` | Containers |
+| `docker ps -a` | Containers |
 | `docker run ...` | Containers > Add Container |
 | `docker stop <name>` | Containers > Select > Stop |
 | `docker logs <name>` | Containers > Select > Logs |
@@ -45,7 +45,7 @@ docker run -d \
 | `docker pull <image>` | Images > Pull Image |
 | `docker volume ls` | Volumes (left menu) |
 | `docker network ls` | Networks (left menu) |
-| `docker-compose up -d` | Stacks > Add Stack |
+| `docker compose up -d` | Stacks > Add Stack |
 
 ## Converting docker run to Portainer Container Settings
 
@@ -75,50 +75,51 @@ docker run -d \
 8. Resources: Memory limit `512MB`, CPU limit `0.5`
 9. Restart policy: `Unless stopped`
 
-## Converting docker-compose to Portainer Stacks
+## Converting Docker Compose to Portainer Stacks
 
-Your existing `docker-compose.yml` files work directly in Portainer:
+Your existing Compose files work directly in Portainer:
 
 ```bash
-# Before: Running with docker-compose
-docker-compose -f /opt/myapp/docker-compose.yml up -d
+# Before: Running with Docker Compose
+docker compose -f /opt/myapp/compose.yaml up -d
 
 # After: In Portainer
 # 1. Go to Stacks > Add Stack
 # 2. Name: myapp
 # 3. Select "Web editor" or "Git Repository"
-# 4. Paste your docker-compose.yml content
+# 4. Paste your Compose file content
 # 5. Click "Deploy the stack"
 ```
 
 ## Migrating Existing Containers to Stacks
 
-For containers already running via `docker run`, convert them to stacks for better management:
+For containers already running via `docker run`, inspect their current settings and recreate them as stacks for better management:
 
 ```bash
 # Get the current container configuration
 docker inspect my-app > my-app-inspect.json
 
-# Convert to docker-compose format (use composerize tool)
-docker run --rm -i ghcr.io/composerize/composerize \
-  docker run -d --name my-app -p 8080:80 -e ENV=prod nginx:latest
+# Convert the equivalent docker run command to Compose format (requires composerize)
+composerize docker run -d --name my-app -p 8080:80 -e ENV=prod nginx:latest > compose.yaml
 
-# Save as docker-compose.yml and import into Portainer as a stack
+# Import compose.yaml into Portainer as a stack
 ```
 
 ## Setting Up Users and Access Control
 
-Unlike the CLI (which is all-or-nothing), Portainer provides granular access:
+Unlike the CLI (which is typically all-or-nothing when users share Docker socket access), Portainer lets you manage access through users, teams, and environment permissions:
 
 ```bash
 # In Portainer UI:
-# Settings > Users > Add User
+# User-related > Users
 # - Create accounts for each team member
-# - Assign roles: Administrator, Standard User, Read-Only
+# - Mark only full administrators as Administrator
 
-# Settings > Teams
+# User-related > Teams
 # - Group users into teams
-# - Assign environments per team
+
+# Environment-related > Environments > Manage access
+# - Grant users or teams access to specific environments
 ```
 
 ## Keeping CLI Access
@@ -137,4 +138,4 @@ curl -H "X-API-Key: your-key" \
 
 ## Conclusion
 
-Migrating from Docker CLI to Portainer is a zero-downtime transition that adds visibility, collaboration, and access control to your container management. Your existing containers and configurations remain untouched, while Portainer provides a GUI layer on top. The CLI remains available for power users and automation, making this migration purely additive.
+Installing Portainer alongside Docker is a non-disruptive transition that adds visibility, collaboration, and access control to your container management. Your existing containers keep running while Portainer provides a GUI layer on top. The CLI remains available for power users and automation, making the initial migration additive. If you later convert existing containers into stacks, plan for a redeployment window.
