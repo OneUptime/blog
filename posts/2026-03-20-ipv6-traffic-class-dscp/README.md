@@ -33,7 +33,7 @@ Expedited Forwarding (EF, DSCP 46):
   → Typically: strict priority queue
 
 Assured Forwarding (AF, DSCP 10/12/14, 18/20/22, 26/28/30, 34/36/38):
-  → Guaranteed bandwidth with drop precedence
+  → Forwarding assurance with drop precedence
   → AF11-AF13: lower priority bulk data
   → AF21-AF23: medium priority business data
   → AF31-AF33: high-priority data
@@ -57,8 +57,8 @@ Best Effort (BE, DSCP 0):
 sudo ip6tables -t mangle -A OUTPUT -p udp --dport 5060 -j DSCP --set-dscp-class EF
 sudo ip6tables -t mangle -A OUTPUT -p udp --dport 16384:32767 -j DSCP --set-dscp-class EF
 
-# Mark video conferencing (Zoom, Teams) with AF41
-sudo ip6tables -t mangle -A OUTPUT -p udp --dport 8801:8802 -j DSCP --set-dscp 34
+# Mark Zoom media with AF41
+sudo ip6tables -t mangle -A OUTPUT -p udp --dport 8801:8803 -j DSCP --set-dscp 34
 
 # Mark web traffic with AF21
 sudo ip6tables -t mangle -A OUTPUT -p tcp --dport 443 -j DSCP --set-dscp 18
@@ -73,20 +73,18 @@ sudo ip6tables -t mangle -L -n -v
 ## Marking with tc (Traffic Control)
 
 ```bash
-# Using tc flower classifier for DSCP marking
-sudo tc qdisc add dev eth0 ingress handle ffff:
-
-# Mark all QUIC (UDP 443) traffic with AF41
-sudo tc filter add dev eth0 protocol ipv6 ingress prio 1 \
-    flower ip_proto udp dst_port 443 \
-    action skbedit dsfield 0x88  # AF41 = DSCP 34 = 0x88 Traffic Class
-
-# Apply priority queuing based on DSCP
+# Using a classful qdisc for egress DSCP marking and queuing
 sudo tc qdisc add dev eth0 root handle 1: prio bands 4 \
     priomap 2 3 3 3 2 3 1 1 2 2 2 2 2 2 2 2
 
+# Mark outbound QUIC (UDP 443) traffic with AF41 while preserving ECN bits
 sudo tc filter add dev eth0 protocol ipv6 parent 1: prio 1 \
-    u32 match ip6 dscp 0x2E 0x3F \
+    flower ip_proto udp dst_port 443 \
+    action pedit ex munge ip6 traffic_class set 0x88 retain 0xfc \
+    reclassify  # AF41 = DSCP 34 = 0x88 Traffic Class
+
+sudo tc filter add dev eth0 protocol ipv6 parent 1: prio 2 \
+    u32 match ip6 priority 0xb8 0xfc \
     flowid 1:1  # EF → highest priority band
 ```
 
@@ -108,15 +106,20 @@ class DSCP:
     CS6 = 48   # Network control
     CS7 = 56
 
-def set_dscp(sock: socket.socket, dscp: int, af_family=socket.AF_INET6):
+def set_dscp(sock: socket.socket, dscp: int):
     """Set DSCP marking on a socket for all outgoing packets."""
+    if not 0 <= dscp <= 63:
+        raise ValueError("DSCP must be between 0 and 63")
+
     # DSCP occupies bits 2-7; shift left by 2
     traffic_class = dscp << 2
 
-    if af_family == socket.AF_INET6:
+    if sock.family == socket.AF_INET6:
         sock.setsockopt(socket.IPPROTO_IPV6, socket.IPV6_TCLASS, traffic_class)
-    else:
+    elif sock.family == socket.AF_INET:
         sock.setsockopt(socket.IPPROTO_IP, socket.IP_TOS, traffic_class)
+    else:
+        raise ValueError("Socket must be AF_INET or AF_INET6")
 
 # VoIP socket with EF marking
 voip_sock = socket.socket(socket.AF_INET6, socket.SOCK_DGRAM)
@@ -130,7 +133,7 @@ print(f"Socket DSCP: {dscp_value} (TC byte: 0x{tos:02X})")
 
 ## Trust Boundary Considerations
 
-DSCP markings from untrusted sources (internet, customer networks) must be re-marked at the trust boundary:
+DSCP markings from untrusted sources (internet, customer networks) should be re-marked at the trust boundary:
 
 ```bash
 # Re-mark all incoming IPv6 traffic to Best Effort at the edge
@@ -143,4 +146,4 @@ sudo ip6tables -t mangle -A PREROUTING -i eth0 -p udp --dport 5060 \
 
 ## Conclusion
 
-DSCP marking in the IPv6 Traffic Class byte provides the same DiffServ QoS framework as IPv4. Use EF for real-time voice and video, AF classes for business applications with guaranteed minimum bandwidth, and CS0 (Best Effort) for everything else. Mark traffic as close to the source as possible (application sockets or access switches), re-mark at trust boundaries to enforce your QoS policy, and configure queuing schedulers on WAN interfaces to honor the markings.
+DSCP marking in the IPv6 Traffic Class byte provides the same DiffServ QoS framework as IPv4. Use EF for real-time voice, AF41 for interactive video, AF classes for business applications that need differentiated forwarding and drop precedence, and CS0 (Best Effort) for everything else. Mark traffic as close to the source as possible (application sockets or access switches), re-mark at trust boundaries to enforce your QoS policy, and configure queuing schedulers on WAN interfaces to honor the markings.
