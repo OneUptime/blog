@@ -18,10 +18,18 @@ Key providers are referenced using the pattern `key_provider.<type>.<alias>`:
 terraform {
   encryption {
     # key_provider "<type>" "<alias>" { ... }
-    key_provider "pbkdf2" "production"  { passphrase = "prod-pass" }
-    key_provider "pbkdf2" "staging"     { passphrase = "stage-pass" }
-    key_provider "aws_kms" "primary"    { kms_key_id = "alias/primary" }
-    key_provider "aws_kms" "secondary"  { kms_key_id = "alias/secondary" }
+    key_provider "pbkdf2" "production"  { passphrase = "prod-passphrase-1234" }
+    key_provider "pbkdf2" "staging"     { passphrase = "stage-passphrase-1234" }
+    key_provider "aws_kms" "primary" {
+      kms_key_id = "alias/primary"
+      region     = "us-east-1"
+      key_spec   = "AES_256"
+    }
+    key_provider "aws_kms" "secondary" {
+      kms_key_id = "alias/secondary"
+      region     = "us-east-1"
+      key_spec   = "AES_256"
+    }
   }
 }
 ```
@@ -34,30 +42,24 @@ Use aliased providers to configure different keys per environment:
 terraform {
   encryption {
     key_provider "aws_kms" "prod_key" {
-      kms_key_id = "arn:aws:kms:us-east-1:123:key/prod-key-id"
+      kms_key_id = "alias/terraform-prod-state"
       region     = "us-east-1"
+      key_spec   = "AES_256"
     }
 
     key_provider "aws_kms" "staging_key" {
-      kms_key_id = "arn:aws:kms:us-east-1:123:key/staging-key-id"
+      kms_key_id = "alias/terraform-staging-state"
       region     = "us-east-1"
+      key_spec   = "AES_256"
     }
 
-    method "aes_gcm" "prod_method" {
-      keys = key_provider.aws_kms.prod_key
+    # Choose the key provider in the method block
+    method "aes_gcm" "environment_method" {
+      keys = var.environment == "production" ? key_provider.aws_kms.prod_key : key_provider.aws_kms.staging_key
     }
 
-    method "aes_gcm" "staging_method" {
-      keys = key_provider.aws_kms.staging_key
-    }
-
-    # Choose based on workspace
     state {
-      method = terraform.workspace == "production" ? (
-        method.aes_gcm.prod_method
-      ) : (
-        method.aes_gcm.staging_method
-      )
+      method = method.aes_gcm.environment_method
     }
   }
 }
@@ -100,19 +102,23 @@ terraform {
 
 ## Pattern 3: Multi-Region Key Providers
 
-Use aliases to define key providers in multiple regions:
+Use aliases to define AWS KMS multi-Region replica keys in multiple regions:
 
 ```hcl
 terraform {
   encryption {
+    # Primary multi-Region KMS key
     key_provider "aws_kms" "us_east_1" {
       kms_key_id = "alias/terraform-state"
       region     = "us-east-1"
+      key_spec   = "AES_256"
     }
 
+    # Replica of the same multi-Region KMS key
     key_provider "aws_kms" "eu_west_1" {
       kms_key_id = "alias/terraform-state"
       region     = "eu-west-1"
+      key_spec   = "AES_256"
     }
 
     method "aes_gcm" "primary_region" {
@@ -143,11 +149,13 @@ terraform {
     key_provider "aws_kms" "state_key" {
       kms_key_id = "alias/terraform-state"
       region     = "us-east-1"
+      key_spec   = "AES_256"
     }
 
     key_provider "aws_kms" "plan_key" {
       kms_key_id = "alias/terraform-plans"
       region     = "us-east-1"
+      key_spec   = "AES_256"
     }
 
     method "aes_gcm" "for_state" {
@@ -182,6 +190,7 @@ terraform {
     key_provider "aws_kms" "production" {
       kms_key_id = "alias/terraform-prod"
       region     = "us-east-1"
+      key_spec   = "AES_256"
     }
 
     # PBKDF2 for development (no KMS cost)
@@ -189,20 +198,13 @@ terraform {
       passphrase = var.dev_passphrase
     }
 
-    method "aes_gcm" "prod_method" {
-      keys = key_provider.aws_kms.production
-    }
-
-    method "aes_gcm" "dev_method" {
-      keys = key_provider.pbkdf2.development
+    # Choose the key provider in the method block
+    method "aes_gcm" "environment_method" {
+      keys = var.environment == "production" ? key_provider.aws_kms.production : key_provider.pbkdf2.development
     }
 
     state {
-      method = var.environment == "production" ? (
-        method.aes_gcm.prod_method
-      ) : (
-        method.aes_gcm.dev_method
-      )
+      method = method.aes_gcm.environment_method
     }
   }
 }
@@ -210,4 +212,4 @@ terraform {
 
 ## Conclusion
 
-Key provider aliasing in OpenTofu gives you precise control over which encryption keys are used for different scenarios. This enables clean key rotation patterns using old/new aliases, per-environment key separation, multi-region disaster recovery, and mixing key provider types within a single configuration. Design your alias naming convention to be self-documenting - including the year, environment, or purpose in the alias name makes the configuration easy to understand and maintain.
+Key provider aliasing in OpenTofu gives you precise control over which encryption keys are used for different scenarios. This enables clean key rotation patterns using old/new aliases, per-environment key separation, multi-region disaster recovery with compatible multi-Region KMS keys, and mixing key provider types within a single configuration. Design your alias naming convention to be self-documenting - including the year, environment, or purpose in the alias name makes the configuration easy to understand and maintain.
