@@ -26,15 +26,18 @@ IoT gateways act as the bridge between IoT devices (sensors, actuators, cameras)
 # Update and install dependencies
 
 apt-get update && apt-get upgrade -y
+# mosquitto-clients is useful for testing MQTT locally
+# Ubuntu 22.04 on Raspberry Pi needs the extra vxlan module package for K3s networking
 apt-get install -y \
   curl \
   git \
   python3 \
-  mosquitto-clients  # MQTT client for testing
+  mosquitto-clients \
+  linux-modules-extra-raspi
 
 # Enable memory cgroups (required for K3s on Raspberry Pi)
 # Add to /boot/firmware/cmdline.txt (not /boot/cmdline.txt on Pi4)
-sed -i '$ s/$/ cgroup_memory=1 cgroup_enable=memory cgroup_enable=cpuset/' \
+sed -i '$ s/$/ cgroup_memory=1 cgroup_enable=memory/' \
   /boot/firmware/cmdline.txt
 
 # Reboot to apply cgroup changes
@@ -57,7 +60,6 @@ kubelet-arg:
   - "max-pods=20"  # IoT gateways run fewer, smaller workloads
   - "system-reserved=cpu=200m,memory=256Mi"
   - "kube-reserved=cpu=100m,memory=128Mi"
-  - "eviction-hard=memory.available<100Mi"
 
 # Node labels for IoT topology
 node-label:
@@ -74,6 +76,9 @@ curl -sfL https://get.k3s.io | sh -
 # Verify K3s is running
 systemctl status k3s
 kubectl get nodes
+
+# Create the namespace used by the workloads below
+kubectl create namespace iot
 ```
 
 ## Step 3: Deploy MQTT Broker for IoT Messaging
@@ -105,8 +110,6 @@ spec:
           image: eclipse-mosquitto:2.0
           ports:
             - containerPort: 1883   # MQTT
-            - containerPort: 8883   # MQTT over TLS
-            - containerPort: 9001   # WebSocket
           volumeMounts:
             - name: config
               mountPath: /mosquitto/config
@@ -230,12 +233,11 @@ metadata:
 spec:
   nodeSelector:
     role: iot-gateway
-  hostNetwork: true  # Access host network for direct device communication
   containers:
     - name: sensor-reader
       image: myregistry/sensor-reader:v1
       securityContext:
-        privileged: true  # Required for GPIO access
+        privileged: true  # Simplest option for direct host device access
       resources:
         requests:
           memory: 64Mi
@@ -255,12 +257,15 @@ spec:
     - name: gpio
       hostPath:
         path: /sys/class/gpio
+        type: Directory
     - name: serial
       hostPath:
         path: /dev/ttyUSB0
+        type: CharDevice
     - name: i2c
       hostPath:
         path: /dev/i2c-1
+        type: CharDevice
 ```
 
 ## Step 6: Deploy InfluxDB for Time-Series Data
@@ -270,12 +275,27 @@ IoT sensor data is naturally time-series:
 ```yaml
 # influxdb.yaml
 ---
+apiVersion: v1
+kind: Service
+metadata:
+  name: influxdb
+  namespace: iot
+spec:
+  clusterIP: None
+  selector:
+    app: influxdb
+  ports:
+    - name: http
+      port: 8086
+      targetPort: 8086
+---
 apiVersion: apps/v1
 kind: StatefulSet
 metadata:
   name: influxdb
   namespace: iot
 spec:
+  serviceName: influxdb
   replicas: 1
   selector:
     matchLabels:
@@ -320,25 +340,30 @@ spec:
 
 ## Step 7: OTA (Over-the-Air) Updates via K3s
 
-Use K3s's System Upgrade Controller for OTA updates:
+Use K3s's System Upgrade Controller for K3s node updates:
+
+```bash
+kubectl apply -f https://github.com/rancher/system-upgrade-controller/releases/latest/download/crd.yaml \
+  -f https://github.com/rancher/system-upgrade-controller/releases/latest/download/system-upgrade-controller.yaml
+```
 
 ```yaml
-# iot-app-update-plan.yaml
+# iot-gateway-k3s-update-plan.yaml
 apiVersion: upgrade.cattle.io/v1
 kind: Plan
 metadata:
-  name: iot-app-update
+  name: iot-gateway-k3s-update
   namespace: system-upgrade
 spec:
-  # Monitor for new versions from the local registry
-  channel: http://iot-update-server/api/latest-version
-  serviceAccountName: system-upgrade
   concurrency: 1
+  cordon: true
   nodeSelector:
     matchLabels:
       role: iot-gateway
+  serviceAccountName: system-upgrade
   upgrade:
-    image: myregistry/iot-updater
+    image: rancher/k3s-upgrade
+  channel: https://update.k3s.io/v1-release/channels/stable
 ```
 
 ## Conclusion
