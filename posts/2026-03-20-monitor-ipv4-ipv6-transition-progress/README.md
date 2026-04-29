@@ -17,7 +17,10 @@ Start by identifying which hosts in your network already have IPv6 addresses ass
 ```bash
 # Scan a subnet for hosts responding on both IPv4 and IPv6
 
-nmap -6 -sn fe80::/64 --interface eth0   # link-local discovery
+# Discover IPv6 hosts on the local link via ICMPv6 multicast (nmap cannot
+# enumerate a full /64 directly — use the NSE multicast discovery scripts)
+nmap -6 -sn -e eth0 --script targets-ipv6-multicast-echo,targets-ipv6-multicast-mld
+
 nmap -4 -sn 192.168.1.0/24               # baseline IPv4 count
 ```
 
@@ -88,7 +91,7 @@ Run this script weekly and store the CSV files to visualize your transition traj
 
 ## Step 5: Verify IPv6 Preference in DNS and Applications
 
-Even when both stacks are available, confirm that Happy Eyeballs (RFC 6555) is preferring IPv6:
+Even when both stacks are available, confirm that Happy Eyeballs v2 (RFC 8305, which obsoletes RFC 6555) is preferring IPv6:
 
 ```bash
 # Verify which address family is used for a connection
