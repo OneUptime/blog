@@ -42,10 +42,10 @@ tls-san:
   - k3s-cluster.example.com
   - k3s.local
 
-# Advertise the server's address to agents
+# Advertise the server's address to cluster members
 # advertise-address: "192.168.1.100"
 
-# Advertise port (default: 6443)
+# Advertise port (defaults to the HTTPS listen port)
 # advertise-port: 6443
 ```
 
@@ -64,10 +64,10 @@ cluster-dns: "10.43.0.10"
 # Cluster domain
 cluster-domain: "cluster.local"
 
-# CNI plugin selection
-# Options: flannel (default), calico, canal, cilium, none
+# Flannel backend selection
+# To use a custom CNI such as Calico, Canal, or Cilium, set this to "none"
 flannel-backend: "vxlan"
-# Options: vxlan (default), host-gw, wireguard, wireguard-native, ipsec, none
+# Options: vxlan (default), host-gw, wireguard-native, none
 ```
 
 ### Data and Storage
@@ -116,7 +116,7 @@ cluster-init: true
 datastore-endpoint: "mysql://k3s:k3spassword@tcp(mysql.example.com:3306)/k3s"
 
 # PostgreSQL external datastore
-datastore-endpoint: "postgres://k3s:k3spassword@postgres.example.com:5432/k3s"
+# datastore-endpoint: "postgres://k3s:k3spassword@postgres.example.com:5432/k3s"
 
 # etcd external datastore
 # datastore-endpoint: "https://etcd.example.com:2379"
@@ -141,11 +141,11 @@ disable:
 ### Helm Chart Customization
 
 ```yaml
-# Disable bundled Helm charts for specific add-ons
+# Disable the bundled Helm controller entirely
 disable-helm-controller: false  # Keep Helm controller enabled
 
-# Helm controller job image
-# helm-job-image: "rancher/klipper-helm:latest"
+# Image used for Helm jobs
+# helm-job-image: "rancher/klipper-helm:v0.3.0"
 ```
 
 ## Security Options
@@ -158,9 +158,10 @@ tls-san:
   - 192.168.1.100
   - myserver.example.com
 
-# Duration for CA certificate rotation warnings
-# tls-min-version: "VersionTLS12"
-# tls-cipher-suites: "TLS_ECDHE_RSA_WITH_AES_128_GCM_SHA256,..."
+# Extra TLS settings passed to kube-apiserver
+kube-apiserver-arg:
+  - "tls-min-version=VersionTLS12"
+  - "tls-cipher-suites=TLS_ECDHE_RSA_WITH_AES_128_GCM_SHA256,TLS_ECDHE_RSA_WITH_AES_256_GCM_SHA384"
 ```
 
 ### Secrets Encryption
@@ -192,7 +193,7 @@ kubelet-arg:
 
 # Arguments passed to kube-proxy
 kube-proxy-arg:
-  - "proxy-mode=ipvs"
+  - "proxy-mode=iptables"
 ```
 
 ## Node Configuration
@@ -201,10 +202,10 @@ kube-proxy-arg:
 # Node name (defaults to hostname)
 node-name: "k3s-server-01"
 
-# Additional IP address to add to nodes
+# IP address to advertise for the node
 # node-ip: "192.168.1.100"
 
-# External IP address for node
+# External IP address to advertise for the node
 # node-external-ip: "203.0.113.10"
 
 # Labels to apply to the server node
@@ -212,9 +213,9 @@ node-label:
   - "tier=control-plane"
   - "region=us-east"
 
-# Taints to apply to the server node
+# Taints to apply when the server node first registers
 node-taint:
-  - "node-role.kubernetes.io/master=:NoSchedule"
+  - "node-role.kubernetes.io/control-plane:NoSchedule"
 ```
 
 ## Egress Selector Mode
@@ -223,9 +224,9 @@ node-taint:
 # Configure how the apiserver connects to agents
 egress-selector-mode: "agent"
 # Options:
-# - agent: connections go through the agent tunnel
-# - cluster: use cluster network
-# - pod: route through pods
+# - agent: tunnel kubelet connections through agents
+# - cluster: tunnel kubelet and service endpoint traffic by watching Pods and Endpoints
+# - pod: tunnel kubelet and service endpoint traffic by watching Nodes and Endpoints
 # - disabled: no tunneling
 ```
 
@@ -243,7 +244,7 @@ tls-san:
   - 192.168.1.100   # Server IP
   - k3s.example.com
 
-# HA embedded etcd
+# HA embedded etcd (first server only)
 cluster-init: true
 
 # Networking
@@ -288,8 +289,8 @@ sudo systemctl restart k3s
 sudo journalctl -u k3s -n 50 --no-pager
 
 # Check the cluster is healthy
-kubectl get nodes
-kubectl get pods --all-namespaces
+kubectl --kubeconfig /etc/rancher/k3s/k3s.yaml get nodes
+kubectl --kubeconfig /etc/rancher/k3s/k3s.yaml get pods --all-namespaces
 ```
 
 ## Conclusion
