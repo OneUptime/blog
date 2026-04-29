@@ -32,7 +32,7 @@ kubectl describe pod <pod-name> -n <namespace>
 
 # Look for events like:
 # Warning  FailedMount    <time>   kubelet   Unable to attach or mount volumes
-# Warning  FailedAttachVolume  <time>  attachdetach  AttachVolume.Attach failed
+# Warning  FailedAttachVolume  <time>  attachdetach-controller  AttachVolume.Attach failed
 ```
 
 ---
@@ -61,13 +61,17 @@ kubectl get volume -n longhorn-system $VOLUME_NAME -o yaml
 
 ```bash
 # List Kubernetes VolumeAttachment objects
-kubectl get volumeattachment
+kubectl get volumeattachments
 
 # Describe the attachment
 kubectl describe volumeattachment <attachment-name>
 
-# If attachment is stuck, delete and let it recreate
-kubectl delete volumeattachment <attachment-name>
+# Compare it with Longhorn's attachment tickets
+kubectl get volumeattachment.longhorn.io -n longhorn-system $VOLUME_NAME -o yaml
+
+# If the volume is stuck in Attaching/Detaching, inspect spec.attachmentTickets
+# and remove only invalid stale tickets after verifying the workload is inactive
+kubectl edit volumeattachment.longhorn.io $VOLUME_NAME -n longhorn-system
 ```
 
 ---
@@ -79,10 +83,11 @@ kubectl delete volumeattachment <attachment-name>
 kubectl get pods -n longhorn-system | grep csi
 
 # Expected pods:
-# longhorn-csi-attacher       (handles volume attachment)
-# longhorn-csi-provisioner    (handles PVC provisioning)
-# longhorn-csi-resizer        (handles volume resize)
-# longhorn-csi-snapshotter    (handles snapshots)
+# csi-attacher               (handles volume attachment)
+# csi-provisioner            (handles PVC provisioning)
+# csi-resizer                (handles volume resize)
+# csi-snapshotter            (handles snapshots)
+# longhorn-csi-plugin        (node plugin)
 
 # Check CSI attacher logs for errors
 kubectl logs -n longhorn-system \
@@ -105,6 +110,7 @@ kubectl get pod -n longhorn-system \
 kubectl logs -n longhorn-system \
   $(kubectl get pod -n longhorn-system -l app=longhorn-manager \
     --field-selector spec.nodeName=$NODE -o name) \
+  -c longhorn-manager \
   | grep -i "error\|attach\|volume"
 
 # Check instance manager
@@ -121,31 +127,27 @@ If a volume is stuck in `Detaching` state (usually after a node crash):
 ```bash
 # In the Longhorn UI: Volumes → select volume → Detach
 
-# Or via kubectl - patch the volume to force detach
-kubectl patch volume $VOLUME_NAME \
-  -n longhorn-system \
-  --type merge \
-  -p '{"spec":{"nodeID":""}}'
+# If the volume is stuck because of a stale attachment ticket, inspect and edit
+# the Longhorn VolumeAttachment CR for this volume
+kubectl get volumeattachment.longhorn.io $VOLUME_NAME -n longhorn-system -o yaml
+kubectl edit volumeattachment.longhorn.io $VOLUME_NAME -n longhorn-system
 ```
 
 ---
 
 ## Step 7: Check iSCSI Connectivity
 
-Longhorn uses iSCSI for volume I/O. If iSCSI is blocked, volumes won't attach:
+Longhorn uses iSCSI for volume I/O. If `open-iscsi`/`iscsid` or the `iscsi_tcp` module is missing on the node, volumes won't attach:
 
 ```bash
-# Check if iscsid is running on the node
-kubectl debug node/<node-name> -it --image=alpine -- \
-  sh -c "apk add iproute2 && ss -tlnp | grep 3260"
+# On the node (via SSH or a privileged debug pod), verify iscsid is running
+systemctl status iscsid
 
 # Check if iscsi_tcp module is loaded
-kubectl debug node/<node-name> -it --image=alpine -- \
-  sh -c "cat /proc/modules | grep iscsi"
+lsmod | grep iscsi_tcp
 
 # Load the module if missing
-kubectl debug node/<node-name> -it --image=alpine -- \
-  modprobe iscsi_tcp
+modprobe iscsi_tcp
 ```
 
 ---
@@ -156,12 +158,12 @@ kubectl debug node/<node-name> -it --image=alpine -- \
 # Check if the node is allowed to schedule Longhorn volumes
 kubectl get node <node-name> -o yaml | grep -A 10 taints
 
-# Check if Longhorn node selector matches
-kubectl get setting -n longhorn-system \
-  default-longhorn-static-storage-class -o yaml
+# Check the StorageClass parameters used by the PVC
+SC_NAME=$(kubectl get pvc $PVC_NAME -n $NAMESPACE -o jsonpath='{.spec.storageClassName}')
+kubectl get sc $SC_NAME -o yaml
 
-# View node disk status in Longhorn
-kubectl get node.longhorn.io -n longhorn-system
+# View Longhorn node conditions and disk status
+kubectl get node.longhorn.io <node-name> -n longhorn-system -o yaml
 ```
 
 ---
@@ -169,5 +171,5 @@ kubectl get node.longhorn.io -n longhorn-system
 ## Best Practices
 
 - Check the Longhorn dashboard first - it shows volume state, replica health, and which node a volume is attached to at a glance.
-- If a node crashes with volumes attached, wait for the node to come back up before attempting manual detachment - Longhorn will auto-reattach when the node rejoins.
-- Ensure `iscsid` is running on all nodes and the `iscsi_tcp` kernel module is loaded - these are the most common causes of attachment failures on fresh nodes.
+- If a node crashes with volumes attached, wait for the node to recover before forcing manual cleanup when possible, and inspect Longhorn attachment tickets before detaching the volume manually.
+- Ensure `open-iscsi` is installed, `iscsid` is running on all nodes, and the `iscsi_tcp` kernel module is loaded - these are required for Longhorn volume attachment and are common causes of failures on freshly added nodes.
