@@ -110,7 +110,7 @@ db.updateUser("appuser", { pwd: "newpassword" })
 ```bash
 # Enable verbose logging temporarily
 mongosh "mongodb://admin:pass@127.0.0.1:27017/admin"
-db.adminCommand({ setParameter: 1, logLevel: 3 })
+db.adminCommand({ setParameter: 1, logComponentVerbosity: { verbosity: 3 } })
 
 # Watch logs
 sudo tail -f /var/log/mongodb/mongod.log | grep -E "connection|auth|NETWORK"
