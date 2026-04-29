@@ -17,30 +17,29 @@ From a machine with internet access, download all required files:
 ```bash
 # Set your target K3s version
 
-K3S_VERSION="v1.28.7+k3s1"
-ARCH="amd64"  # or arm64, arm
+K3S_VERSION="v1.33.3+k3s1"
 
 # Create a directory for the artifacts
 mkdir -p k3s-airgap && cd k3s-airgap
 
 # Download the K3s binary
-curl -LO "https://github.com/rancher/k3s/releases/download/${K3S_VERSION}/k3s"
+curl -LO "https://github.com/k3s-io/k3s/releases/download/${K3S_VERSION}/k3s"
 # For ARM64:
-# curl -LO "https://github.com/rancher/k3s/releases/download/${K3S_VERSION}/k3s-arm64"
+# curl -LO "https://github.com/k3s-io/k3s/releases/download/${K3S_VERSION}/k3s-arm64"
 # For ARMv7:
-# curl -LO "https://github.com/rancher/k3s/releases/download/${K3S_VERSION}/k3s-armhf"
+# curl -LO "https://github.com/k3s-io/k3s/releases/download/${K3S_VERSION}/k3s-armhf"
 
 # Download the install script
-curl -LO https://get.k3s.io/install.sh
+curl -Lo install.sh https://get.k3s.io
 chmod +x install.sh
 
-# Download the air-gap image archive (large file ~600MB)
-curl -LO "https://github.com/rancher/k3s/releases/download/${K3S_VERSION}/k3s-airgap-images-amd64.tar.zst"
+# Download the air-gap image archive
+curl -LO "https://github.com/k3s-io/k3s/releases/download/${K3S_VERSION}/k3s-airgap-images-amd64.tar.zst"
 # For ARM64:
-# curl -LO "https://github.com/rancher/k3s/releases/download/${K3S_VERSION}/k3s-airgap-images-arm64.tar.zst"
+# curl -LO "https://github.com/k3s-io/k3s/releases/download/${K3S_VERSION}/k3s-airgap-images-arm64.tar.zst"
 
 # Download the SHA256 checksum for verification
-curl -LO "https://github.com/rancher/k3s/releases/download/${K3S_VERSION}/sha256sum-amd64.txt"
+curl -LO "https://github.com/k3s-io/k3s/releases/download/${K3S_VERSION}/sha256sum-amd64.txt"
 
 # Verify the downloads
 sha256sum -c sha256sum-amd64.txt --ignore-missing
@@ -139,15 +138,23 @@ docker run -d \
     --name registry \
     --restart=always \
     -v /opt/registry:/var/lib/registry \
-    registry:2
+    registry:3
+
+# If registry.internal:5000 is plain HTTP, configure the Docker daemon on this
+# machine to treat it as an insecure registry before pushing to it.
+# Example /etc/docker/daemon.json:
+# {
+#   "insecure-registries": ["registry.internal:5000"]
+# }
+# Restart Docker after updating daemon.json.
 
 # Push images to the private registry
 docker pull nginx:alpine
-docker tag nginx:alpine registry.internal:5000/nginx:alpine
-docker push registry.internal:5000/nginx:alpine
+docker tag nginx:alpine registry.internal:5000/library/nginx:alpine
+docker push registry.internal:5000/library/nginx:alpine
 ```
 
-Configure K3s to use the private registry:
+Configure each K3s node to use the private registry:
 
 ```bash
 sudo tee /etc/rancher/k3s/registries.yaml > /dev/null <<EOF
@@ -155,24 +162,13 @@ mirrors:
   "docker.io":
     endpoint:
       - "http://registry.internal:5000"
-  "registry.k8s.io":
-    endpoint:
-      - "http://registry.internal:5000"
-  "ghcr.io":
-    endpoint:
-      - "http://registry.internal:5000"
-configs:
-  "registry.internal:5000":
-    tls:
-      insecure_skip_verify: false
-      ca_file: /etc/rancher/k3s/registry-ca.crt
-    auth:
-      username: admin
-      password: registry-password
 EOF
 
-# Restart K3s to apply registry settings
+# Restart K3s to apply registry settings on server nodes
 sudo systemctl restart k3s
+
+# Restart K3s to apply registry settings on worker nodes
+sudo systemctl restart k3s-agent
 ```
 
 ## Step 6: Pre-Loading Additional Images
@@ -182,7 +178,7 @@ For application images, pre-load them into the K3s image store:
 ```bash
 # On a connected machine, save images to tar files
 docker pull my-app:1.0
-docker save my-app:1.0 -o my-app-1.0.tar
+docker save -o my-app-1.0.tar my-app:1.0
 
 # Transfer to the air-gapped node
 scp my-app-1.0.tar user@airgap-node:/tmp/
@@ -208,31 +204,31 @@ kubectl get nodes
 # Check system pods (should start from pre-loaded images)
 kubectl get pods -n kube-system
 
-# Deploy a test workload using a pre-loaded image
+# Deploy a test workload using the mirrored image
 kubectl create deployment test --image=nginx:alpine
 kubectl rollout status deployment/test
 kubectl delete deployment test
 ```
 
-## Step 8: Automate Air-Gapped Updates
+## Step 8: Prepare Air-Gapped Update Bundles
 
-Create a script to manage updates in air-gapped environments:
+Create a script to prepare update bundles in air-gapped environments:
 
 ```bash
 #!/bin/bash
 # k3s-airgap-update.sh
 # Run on a connected machine to prepare update bundles
 
-NEW_VERSION="v1.29.1+k3s1"
+NEW_VERSION="v1.34.7+k3s1"
 OUTPUT_DIR="k3s-update-${NEW_VERSION}"
 mkdir -p "$OUTPUT_DIR"
 
 # Download new binary and images
-curl -L "https://github.com/rancher/k3s/releases/download/${NEW_VERSION}/k3s" \
+curl -L "https://github.com/k3s-io/k3s/releases/download/${NEW_VERSION}/k3s" \
     -o "${OUTPUT_DIR}/k3s"
-curl -L "https://github.com/rancher/k3s/releases/download/${NEW_VERSION}/k3s-airgap-images-amd64.tar.zst" \
+curl -L "https://github.com/k3s-io/k3s/releases/download/${NEW_VERSION}/k3s-airgap-images-amd64.tar.zst" \
     -o "${OUTPUT_DIR}/k3s-airgap-images-amd64.tar.zst"
-curl -L https://get.k3s.io/install.sh -o "${OUTPUT_DIR}/install.sh"
+curl -L https://get.k3s.io -o "${OUTPUT_DIR}/install.sh"
 
 chmod +x "${OUTPUT_DIR}/k3s" "${OUTPUT_DIR}/install.sh"
 
