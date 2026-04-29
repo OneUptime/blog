@@ -8,11 +8,11 @@ Description: Learn how to use OpenTofu's merge() function and related techniques
 
 ## Introduction
 
-In OpenTofu, the `merge()` function combines multiple maps into one, with later maps taking precedence for duplicate keys. This pattern is essential for building layered configurations where base defaults are overridden per environment, region, or application.
+In OpenTofu, the `merge()` function combines multiple maps or objects into one, with later arguments taking precedence for duplicate keys. This pattern is essential for building layered configurations where base defaults are overridden per environment, region, or application.
 
 ## Basic merge()
 
-The `merge()` function accepts any number of maps and returns a single merged map:
+The `merge()` function accepts any number of maps or objects and returns a single merged map or object:
 
 ```hcl
 locals {
@@ -152,9 +152,9 @@ resource "aws_ecs_task_definition" "app" {
 }
 ```
 
-## Deep Merging with for Expressions
+## Merging Nested Maps Explicitly
 
-`merge()` is shallow - it doesn't recursively merge nested maps. For deep merging, use a combination of `for` expressions:
+`merge()` is shallow - it doesn't recursively merge nested maps. For nested maps, merge at the nested level explicitly:
 
 ```hcl
 locals {
@@ -165,15 +165,16 @@ locals {
     }
   }
 
-  # For nested overrides, merge at the nested level explicitly
-  timeouts = merge(
-    local.base_config.timeouts,
-    { update = "15m" }
-  )
+  config = merge(local.base_config, {
+    # Merge the nested map explicitly because merge() is shallow
+    timeouts = merge(local.base_config.timeouts, {
+      update = "15m"
+    })
+  })
 }
 ```
 
-## Using merge() with for_each
+## Using merge() in a for Expression
 
 Combine a common base with per-resource settings:
 
@@ -205,7 +206,7 @@ locals {
 - Use `merge()` at the `locals` level to keep resource blocks clean.
 - Avoid deeply nested maps when possible; flatten config structures for easier merging.
 - Document which keys can be overridden via input variables.
-- Use `optional()` in object type constraints for nullable fields that fall back to defaults.
+- Use `optional()` in object type constraints for attributes callers may omit, and provide defaults where appropriate.
 
 ## Conclusion
 
