@@ -8,11 +8,11 @@ Description: Understand the IPv6 pseudo-header construction used in TCP, UDP, an
 
 ## Introduction
 
-Upper-layer protocols (TCP, UDP, ICMPv6) in IPv6 compute checksums over their own header/data plus a "pseudo-header" derived from the IPv6 header. This pseudo-header ensures that checksums detect IP-level misdeliveries (wrong source or destination address). The IPv6 pseudo-header differs from IPv4's in that it is 40 bytes (vs IPv4's 12 bytes) and includes the full 128-bit addresses.
+Upper-layer protocols such as TCP, UDP, and ICMPv6 in IPv6 compute checksums over their own header/data plus a "pseudo-header" derived from the IPv6 packet. This pseudo-header ensures that checksums detect IP-level misdeliveries (wrong source or destination address). The IPv6 pseudo-header differs from IPv4's in that it is 40 bytes (vs IPv4's 12 bytes) and includes the full 128-bit addresses.
 
 ## IPv6 Pseudo-Header Structure
 
-RFC 8200 defines the IPv6 pseudo-header as:
+RFC 8200 defines the IPv6 pseudo-header as (using the final destination address if a Routing header is present):
 
 ```text
  0                   1                   2                   3
@@ -38,7 +38,7 @@ Total: 16 + 16 + 4 + 4 = 40 bytes
 Key differences from IPv4 pseudo-header:
 - **128-bit addresses** (vs 32-bit in IPv4)
 - **32-bit upper-layer length** (vs 16-bit in IPv4, needed for jumbograms)
-- **Next Header** instead of Protocol (functionally equivalent)
+- **Upper-layer protocol Next Header value** instead of IPv4's Protocol field
 
 ## Computing the Checksum in Python
 
@@ -66,7 +66,7 @@ def ipv6_pseudo_header(src: str, dst: str,
 
     Args:
         src:          Source IPv6 address string
-        dst:          Destination IPv6 address string
+        dst:          Destination IPv6 address string (final destination if a Routing header is present)
         upper_length: Length of the upper-layer segment (bytes)
         next_header:  Next Header value (6=TCP, 17=UDP, 58=ICMPv6)
     """
@@ -97,7 +97,8 @@ def compute_udp_checksum(src: str, dst: str,
     pseudo = ipv6_pseudo_header(src, dst, udp_length, 17)  # 17 = UDP
     checksum_input = pseudo + udp_header + payload
 
-    return checksum(checksum_input)
+    csum = checksum(checksum_input)
+    return 0xFFFF if csum == 0 else csum
 
 # Example: compute checksum for a DNS query
 
@@ -153,11 +154,10 @@ Without pseudo-header in checksum:
 
 With pseudo-header:
   Checksum covers both addresses
-  Wrong delivery → addresses don't match → checksum fails
-  → Upper-layer discards the packet
-  → Connection reset or timeout, not silent misdelivery
+  If the receiver sees different source/destination addresses than the sender used, checksum fails
+  → Upper-layer discards the packet instead of accepting it as valid
 ```
 
 ## Conclusion
 
-The IPv6 pseudo-header is a 40-byte structure combining source address, destination address, upper-layer length, and Next Header type. It is included in checksum calculations for all IPv6 upper-layer protocols (TCP, UDP, ICMPv6) to ensure that checksum verification catches both data corruption and address misdelivery. The key practical difference from IPv4 is the use of 128-bit addresses and a 32-bit length field to support jumbograms.
+The IPv6 pseudo-header is a 40-byte structure combining source address, destination address, upper-layer length, and the upper-layer protocol's Next Header value. It is included in checksum calculations for protocols such as TCP, UDP, and ICMPv6 to ensure that checksum verification catches both data corruption and address misdelivery. The key practical difference from IPv4 is the use of 128-bit addresses and a 32-bit length field to support jumbograms.
