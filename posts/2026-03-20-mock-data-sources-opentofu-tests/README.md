@@ -110,7 +110,6 @@ mock_provider "aws" {
       id     = "arn:aws:acm:us-east-1:123456789012:certificate/mock-cert-id"
       arn    = "arn:aws:acm:us-east-1:123456789012:certificate/mock-cert-id"
       status = "ISSUED"
-      domain_name = "example.com"
     }
   }
 }
