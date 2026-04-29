@@ -8,7 +8,7 @@ Description: Learn how to configure Lambda functions with VPC access using OpenT
 
 ## Introduction
 
-By default, Lambda functions run in an AWS-managed VPC with internet access but cannot reach private resources in your VPC. Enabling VPC access places Lambda in your private subnets, allowing connectivity to databases, cache clusters, and other private services.
+By default, Lambda functions run in a Lambda-managed VPC with internet access but cannot reach private resources in your VPC. Attaching a function to your VPC through private subnets allows connectivity to databases, cache clusters, and other private services.
 
 ## Prerequisites
 
@@ -54,34 +54,37 @@ resource "aws_security_group" "lambda" {
   description = "Security group for Lambda VPC functions"
   vpc_id      = var.vpc_id
 
-  # Allow outbound to RDS on port 5432
-  egress {
-    from_port       = 5432
-    to_port         = 5432
-    protocol        = "tcp"
-    security_groups = [aws_security_group.rds.id]
-    description     = "PostgreSQL access"
-  }
-
-  # Allow outbound to Redis on port 6379
-  egress {
-    from_port       = 6379
-    to_port         = 6379
-    protocol        = "tcp"
-    security_groups = [aws_security_group.redis.id]
-    description     = "Redis access"
-  }
-
-  # Allow HTTPS outbound via NAT gateway for external APIs
-  egress {
-    from_port   = 443
-    to_port     = 443
-    protocol    = "tcp"
-    cidr_blocks = ["0.0.0.0/0"]
-    description = "HTTPS outbound"
-  }
-
   tags = { Name = "lambda-vpc-sg" }
+}
+
+# Allow outbound to RDS on port 5432
+resource "aws_vpc_security_group_egress_rule" "lambda_egress_rds" {
+  security_group_id            = aws_security_group.lambda.id
+  referenced_security_group_id = aws_security_group.rds.id
+  from_port                    = 5432
+  to_port                      = 5432
+  ip_protocol                  = "tcp"
+  description                  = "PostgreSQL access"
+}
+
+# Allow outbound to Redis on port 6379
+resource "aws_vpc_security_group_egress_rule" "lambda_egress_redis" {
+  security_group_id            = aws_security_group.lambda.id
+  referenced_security_group_id = aws_security_group.redis.id
+  from_port                    = 6379
+  to_port                      = 6379
+  ip_protocol                  = "tcp"
+  description                  = "Redis access"
+}
+
+# Allow HTTPS outbound via NAT gateway for external APIs
+resource "aws_vpc_security_group_egress_rule" "lambda_https_outbound" {
+  security_group_id = aws_security_group.lambda.id
+  cidr_ipv4         = "0.0.0.0/0"
+  from_port         = 443
+  to_port           = 443
+  ip_protocol       = "tcp"
+  description       = "HTTPS outbound"
 }
 ```
 
@@ -121,25 +124,23 @@ resource "aws_lambda_function" "db_processor" {
 
 ```hcl
 # Allow Lambda to connect to RDS
-resource "aws_security_group_rule" "lambda_to_rds" {
-  type                     = "ingress"
-  from_port                = 5432
-  to_port                  = 5432
-  protocol                 = "tcp"
-  security_group_id        = aws_security_group.rds.id
-  source_security_group_id = aws_security_group.lambda.id
-  description              = "Allow Lambda to connect to RDS"
+resource "aws_vpc_security_group_ingress_rule" "rds_from_lambda" {
+  security_group_id            = aws_security_group.rds.id
+  referenced_security_group_id = aws_security_group.lambda.id
+  from_port                    = 5432
+  to_port                      = 5432
+  ip_protocol                  = "tcp"
+  description                  = "Allow Lambda to connect to RDS"
 }
 
 # Allow Lambda to connect to ElastiCache Redis
-resource "aws_security_group_rule" "lambda_to_redis" {
-  type                     = "ingress"
-  from_port                = 6379
-  to_port                  = 6379
-  protocol                 = "tcp"
-  security_group_id        = aws_security_group.redis.id
-  source_security_group_id = aws_security_group.lambda.id
-  description              = "Allow Lambda to connect to Redis"
+resource "aws_vpc_security_group_ingress_rule" "redis_from_lambda" {
+  security_group_id            = aws_security_group.redis.id
+  referenced_security_group_id = aws_security_group.lambda.id
+  from_port                    = 6379
+  to_port                      = 6379
+  ip_protocol                  = "tcp"
+  description                  = "Allow Lambda to connect to Redis"
 }
 ```
 
@@ -153,4 +154,4 @@ tofu apply
 
 ## Conclusion
 
-VPC-enabled Lambda functions can access private resources like RDS, ElastiCache, and internal APIs. Place Lambda in private subnets with a NAT Gateway for outbound internet access. Be aware that VPC attachment adds 1-10 seconds to cold start time unless using provisioned concurrency, and Lambda may exhaust subnet IP addresses under high concurrency-use subnets with /24 or larger CIDR blocks.
+VPC-enabled Lambda functions can access private resources like RDS, ElastiCache, and internal APIs. Place Lambda in private subnets with a NAT Gateway for outbound internet access. Be aware that the first time Lambda uses a new subnet and security group combination, it creates a Hyperplane ENI and the function can remain in the Pending state for several minutes. Cold start latency varies by runtime and initialization work, and provisioned concurrency can reduce it.
