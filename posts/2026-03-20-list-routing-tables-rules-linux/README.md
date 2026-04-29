@@ -8,7 +8,7 @@ Description: List all routing tables and policy routing rules on Linux using ipr
 
 ## Introduction
 
-Linux uses multiple routing tables evaluated in priority order. The `ip rule` command shows the policy routing database (which table to use), while `ip route show table` shows routes in each table. Understanding these is essential for diagnosing complex routing issues.
+Linux can use multiple routing tables, with policy routing rules evaluated in priority order. The `ip rule` command shows the policy routing database (which table to use), while `ip route show table` shows routes in each table. Understanding these is essential for diagnosing complex routing issues.
 
 ## List All Routing Rules
 
@@ -51,7 +51,11 @@ ip route show table default
 
 ```bash
 # Show registered routing table names and IDs
-cat /etc/iproute2/rt_tables
+grep -Ehv '^[[:space:]]*(#|$)' \
+    /usr/share/iproute2/rt_tables \
+    /etc/iproute2/rt_tables \
+    /usr/share/iproute2/rt_tables.d/*.conf \
+    /etc/iproute2/rt_tables.d/*.conf 2>/dev/null | sort -u
 
 # Default output:
 # 255  local
@@ -64,11 +68,13 @@ cat /etc/iproute2/rt_tables
 ## Check Which Table a Packet Would Use
 
 ```bash
-# Trace which rule and table handles a packet from 10.0.0.5
-ip rule show | head -20
+# Inspect rule order (lower number = higher priority)
+ip rule show
 
 # Test actual routing decision for a destination
 ip route get 8.8.8.8
+
+# Include a source address assigned on the system
 ip route get 8.8.8.8 from 10.0.0.5
 ```
 
@@ -82,8 +88,10 @@ ip route show table main | wc -l
 ip route show table local | wc -l
 
 # Show route count for every non-empty table
-for table in $(ip route show table all | grep -oP 'table \K\S+' | sort -u); do
-    count=$(ip route show table $table 2>/dev/null | wc -l)
+for table in $(printf '%s\n' main local default \
+    $(ip route show table all | awk '{for (i=1; i<NF; i++) if ($i=="table") print $(i+1)}') | sort -u); do
+    count=$(ip route show table "$table" 2>/dev/null | wc -l)
+    [ "$count" -gt 0 ] || continue
     echo "Table $table: $count routes"
 done
 ```
@@ -100,8 +108,8 @@ ip route show type unreachable
 # Show only unicast routes
 ip route show type unicast
 
-# Show only multicast routes
-ip route show table local type multicast
+# Show only IPv6 multicast routes in the local table
+ip -6 route show table local type multicast
 ```
 
 ## View Detailed Rule Information
