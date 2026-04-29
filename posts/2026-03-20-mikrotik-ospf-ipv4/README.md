@@ -70,7 +70,7 @@ OSPF (Open Shortest Path First) is a link-state routing protocol that automatica
   interfaces=ether1 \
   area=backbone \
   auth=md5 \
-  auth-key=OSPFsecret123
+  authentication-key=OSPFsecret123
 ```
 
 ## Stub and NSSA Areas
