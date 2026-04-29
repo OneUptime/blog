@@ -23,14 +23,12 @@ terraform {
   required_providers {
     fastly = {
       source  = "fastly/fastly"
-      version = "~> 5.0"
+      version = ">= 9.1.1"
     }
   }
 }
 
-provider "fastly" {
-  api_key = var.fastly_api_key
-}
+provider "fastly" {}
 ```
 
 ```bash
@@ -99,24 +97,22 @@ resource "fastly_service_vcl" "app" {
     type     = "recv"
     priority = 100
     content  = <<-VCL
-      if (req.http.Fastly-SSL) {
-        # Already HTTPS, continue
-      } else {
-        error 801 "Force HTTPS";
+      if (!fastly_info.edge.is_tls) {
+        error 601 "Force HTTPS";
       }
     VCL
   }
 
   snippet {
-    name    = "handle-force-https"
-    type    = "error"
+    name     = "handle-force-https"
+    type     = "error"
     priority = 100
-    content = <<-VCL
-      if (obj.status == 801) {
+    content  = <<-VCL
+      if (obj.status == 601 && obj.response == "Force HTTPS") {
         set obj.status = 301;
         set obj.response = "Moved Permanently";
         set obj.http.Location = "https://" + req.http.host + req.url;
-        deliver;
+        return (deliver);
       }
     VCL
   }
@@ -157,6 +153,8 @@ output "validation_records" {
   value = fastly_tls_subscription.app.managed_dns_challenges
 }
 ```
+
+The output gives you the DNS challenge records you must create with your DNS provider before Fastly can issue the managed certificate.
 
 ## Activating a Service Version
 
