@@ -78,7 +78,7 @@ Count AAAA vs A query ratios in DNS resolver logs:
 # Assuming query logging is enabled in named.conf
 
 grep "query:" /var/log/named/queries.log | \
-  awk '{print $8}' | sort | uniq -c | sort -rn | head -20
+  grep -oE "IN [A-Z]+" | sort | uniq -c | sort -rn | head -20
 
 # Quick ratio check
 TOTAL=$(grep "query:" /var/log/named/queries.log | wc -l)
