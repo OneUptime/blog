@@ -59,7 +59,6 @@ Name=eth1
 
 [Network]
 Address=2001:db8:1::1/64
-IPv6Forwarding=yes
 IPv6AcceptRA=no
 ```
 
@@ -110,8 +109,9 @@ sudo radvd --configtest  # Verify config syntax
 ## Step 4: Configure Static Routes
 
 ```bash
-# Add a static route to a remote network via a neighbor router
-sudo ip -6 route add 2001:db8:10::/48 via fe80::neighbor dev eth0
+# Add a static route to a remote network via an upstream router's link-local address
+sudo ip -6 route add 2001:db8:10::/48 via fe80::1 dev eth0
+# Replace fe80::1 with the actual link-local address of the next-hop router
 
 # Verify
 ip -6 route show
@@ -130,10 +130,10 @@ ip -6 addr show dev eth0
 # Should show 2001:db8:1::<EUI-64 or random> scope global
 
 # Ping the router's LAN address from the client
-ping6 2001:db8:1::1
+ping -6 2001:db8:1::1
 
 # Ping a remote host through the router
-ping6 2001:4860:4860::8888
+ping -6 2001:4860:4860::8888
 ```
 
 ## Step 6: Firewall the Router
@@ -142,7 +142,7 @@ ping6 2001:4860:4860::8888
 # Basic ip6tables rules for the router
 
 # Allow established traffic
-ip6tables -A FORWARD -m state --state ESTABLISHED,RELATED -j ACCEPT
+ip6tables -A FORWARD -m conntrack --ctstate ESTABLISHED,RELATED -j ACCEPT
 
 # Allow LAN to reach the internet
 ip6tables -A FORWARD -i eth1 -o eth0 -j ACCEPT
