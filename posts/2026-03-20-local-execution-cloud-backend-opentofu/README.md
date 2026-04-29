@@ -17,6 +17,7 @@ Local execution mode with the cloud backend runs `tofu plan` and `tofu apply` on
 
 terraform {
   cloud {
+    hostname     = "app.terraform.io"
     organization = "my-company"
 
     workspaces {
@@ -68,9 +69,9 @@ tofu apply
 
 ## Use Cases for Local Execution
 
-```bash
-# 1. Access to local files not uploadable to Terraform Cloud
-#    (large binary files, local certificates, etc.)
+```text
+# 1. Access to local files that are not part of the uploaded configuration
+#    (local certificates, generated artifacts, etc.)
 tofu apply -var="cert_file=$(cat /etc/ssl/certs/custom.pem)"
 
 # 2. Access to internal networks from CI/CD runners
@@ -82,11 +83,11 @@ resource "null_resource" "db_migration" {
 }
 
 # 3. Custom provider binaries not in the public registry
-# Place the binary in .terraform/providers/ directory
-# Local execution uses the local binary
+# Use a local filesystem mirror configured in the OpenTofu CLI config
+# Local execution can use provider binaries already available on the machine
 
 # 4. Development and debugging
-# Faster iteration without upload overhead
+# Faster iteration without remote execution upload/queue overhead
 ```
 
 ## State Locking with Local Execution
@@ -97,14 +98,15 @@ resource "null_resource" "db_migration" {
 
 # Engineer A:
 tofu apply
-# Acquiring state lock... (succeeds)
-# Applying...
+# Holds the state lock while applying
 
 # Engineer B (at the same time):
 tofu apply
-# Acquiring state lock... (waiting)
 # Error: Error acquiring the state lock
-# State is locked by another process (timeout after 30s)
+# State is locked by another process
+
+# To wait before failing, set an explicit timeout:
+tofu apply -lock-timeout=30s
 ```
 
 ## Comparing Local vs Remote Execution
@@ -112,15 +114,15 @@ tofu apply
 ```bash
 # Local execution advantages:
 # + Access to local network resources
-# + No file upload size limits
-# + Use local provider binaries
+# + No HCP Terraform configuration upload step
+# + Use provider binaries from local mirrors
 # + Faster for small changes (no upload time)
 # + Local environment variables available
 
 # Remote execution advantages:
-# + Credentials never leave Terraform Cloud
+# + Provider credentials can stay in HCP Terraform workspace variables
 # + Consistent execution environment
-# + Plans visible in Terraform Cloud UI
+# + Plans visible in the HCP Terraform UI
 # + Policy enforcement (Sentinel/OPA)
 # + Run queue and concurrency controls
 ```
@@ -135,6 +137,7 @@ tofu apply
 # dev/main.tf
 terraform {
   cloud {
+    hostname     = "app.terraform.io"
     organization = "my-company"
     workspaces {
       name = "development-infrastructure"
@@ -145,6 +148,7 @@ terraform {
 # prod/main.tf
 terraform {
   cloud {
+    hostname     = "app.terraform.io"
     organization = "my-company"
     workspaces {
       name = "production-infrastructure"
@@ -179,14 +183,14 @@ jobs:
     steps:
       - uses: actions/checkout@v4
 
-      - uses: opentofu/setup-opentofu@v1
+      - uses: opentofu/setup-opentofu@v2
         with:
           cli_config_credentials_token: ${{ secrets.TF_API_TOKEN }}
 
       - name: Configure AWS credentials
         uses: aws-actions/configure-aws-credentials@v4
         with:
-          role-to-assume: arn:aws:iam::123456789:role/GitHubActionsRole
+          role-to-assume: arn:aws:iam::123456789012:role/GitHubActionsRole
           aws-region: us-east-1
 
       - name: OpenTofu Init
@@ -202,8 +206,8 @@ jobs:
 ## Viewing State in Terraform Cloud UI
 
 ```bash
-# Even with local execution, runs appear in Terraform Cloud
-# but as "local plan" and "local apply" entries
+# In local execution mode, HCP Terraform stores and versions state
+# rather than running plan/apply remotely
 
 # State versions are visible in:
 # Workspace → States → (list of state versions with timestamps)
