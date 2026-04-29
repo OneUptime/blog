@@ -40,11 +40,19 @@ resource "google_folder" "workloads_staging" {
   parent       = google_folder.workloads.name
 }
 
+# Shared services project under the platform folder
+resource "google_project" "connectivity" {
+  name            = "connectivity"
+  project_id      = "connectivity-${var.org_suffix}"
+  folder_id       = google_folder.platform.name
+  billing_account = var.billing_account_id
+}
+
 # Projects under production folder
 resource "google_project" "app_prod" {
-  name       = "app-production"
-  project_id = "app-production-${var.org_suffix}"
-  folder_id  = google_folder.workloads_production.name
+  name            = "app-production"
+  project_id      = "app-production-${var.org_suffix}"
+  folder_id       = google_folder.workloads_production.name
   billing_account = var.billing_account_id
 }
 ```
@@ -76,7 +84,7 @@ resource "google_org_policy_policy" "disable_sa_keys" {
 
   spec {
     rules {
-      enforce = true
+      enforce = "TRUE"
     }
   }
 }
@@ -88,7 +96,7 @@ resource "google_org_policy_policy" "require_os_login" {
 
   spec {
     rules {
-      enforce = true
+      enforce = "TRUE"
     }
   }
 }
@@ -100,7 +108,7 @@ resource "google_org_policy_policy" "sandbox_sa_keys" {
 
   spec {
     rules {
-      enforce = false  # Allow SA keys in sandbox
+      enforce = "FALSE"  # Allow SA keys in sandbox
     }
   }
 }
@@ -133,6 +141,13 @@ resource "google_compute_network" "shared_vpc" {
 ## Step 4: Centralized Logging and Security
 
 ```hcl
+resource "google_storage_bucket" "audit_logs" {
+  name                        = "org-audit-logs-${var.org_suffix}"
+  project                     = google_project.connectivity.project_id
+  location                    = "US"
+  uniform_bucket_level_access = true
+}
+
 # Organization-wide audit log sink to centralized bucket
 resource "google_logging_organization_sink" "audit_logs" {
   name             = "org-audit-logs"
@@ -151,7 +166,12 @@ resource "google_storage_bucket_iam_member" "sink_writer" {
   member = google_logging_organization_sink.audit_logs.writer_identity
 }
 
-# Enable Security Command Center
+# Security Command Center finding notifications
+resource "google_pubsub_topic" "security_findings" {
+  name    = "security-findings"
+  project = google_project.connectivity.project_id
+}
+
 resource "google_scc_notification_config" "threat_findings" {
   config_id    = "threat-notifications"
   organization = var.org_id
@@ -166,4 +186,4 @@ resource "google_scc_notification_config" "threat_findings" {
 
 ## Summary
 
-A GCP Landing Zone built with OpenTofu establishes folder hierarchy for policy inheritance and resource organization. Organization policies set guardrails that apply to all projects within a folder, with folder-level overrides allowing looser restrictions in sandbox environments. Shared VPC centralizes network management while service projects maintain independent IAM boundaries. Organization-wide log sinks with `include_children = true` capture audit logs from all projects into a central, tamper-resistant storage bucket.
+A GCP Landing Zone built with OpenTofu establishes folder hierarchy for policy inheritance and resource organization. Organization policies set guardrails that apply to all projects within a folder, with folder-level overrides allowing looser restrictions in sandbox environments. Shared VPC centralizes network management while service projects maintain independent IAM boundaries. Organization-wide log sinks with `include_children = true` capture audit logs from all projects into a central storage bucket.
