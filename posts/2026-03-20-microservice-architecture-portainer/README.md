@@ -85,7 +85,7 @@ networks:
 services:
   # API Gateway
   traefik:
-    image: traefik:v3.0
+    image: traefik:v3.6
     deploy:
       replicas: 1
       placement:
@@ -103,8 +103,8 @@ services:
       - services_network
     command:
       - "--api.insecure=true"
-      - "--providers.docker.swarmMode=true"
-      - "--providers.docker.exposedByDefault=false"
+      - "--providers.swarm.endpoint=unix:///var/run/docker.sock"
+      - "--providers.swarm.exposedByDefault=false"
       - "--entrypoints.web.address=:80"
       - "--entrypoints.websecure.address=:443"
 
@@ -190,7 +190,7 @@ services:
         - "traefik.enable=true"
         - "traefik.http.routers.auth.rule=PathPrefix(`/api/auth`)"
         - "traefik.http.services.auth.loadbalancer.server.port=8001"
-        - "traefik.docker.network=public_network"
+        - "traefik.swarm.network=public_network"
 ```
 
 ## Step 5: Deploy Business Services
@@ -232,6 +232,7 @@ services:
         - "traefik.enable=true"
         - "traefik.http.routers.users.rule=PathPrefix(`/api/users`)"
         - "traefik.http.services.users.loadbalancer.server.port=8002"
+        - "traefik.swarm.network=public_network"
 
   # Order Service
   order_service:
@@ -253,6 +254,27 @@ services:
         - "traefik.enable=true"
         - "traefik.http.routers.orders.rule=PathPrefix(`/api/orders`)"
         - "traefik.http.services.orders.loadbalancer.server.port=8004"
+        - "traefik.swarm.network=public_network"
+
+  # Product Service
+  product_service:
+    image: myrepo/product-service:latest
+    environment:
+      - DB_URL=postgresql://product:product_pass@product_db:5432/product_db
+      - REDIS_URL=redis://redis:6379/4
+      - RABBITMQ_URL=amqp://admin:rabbitmq_password@rabbitmq:5672
+      - PORT=8003
+    networks:
+      - public_network
+      - services_network
+      - db_network
+    deploy:
+      replicas: 2
+      labels:
+        - "traefik.enable=true"
+        - "traefik.http.routers.products.rule=PathPrefix(`/api/products`)"
+        - "traefik.http.services.products.loadbalancer.server.port=8003"
+        - "traefik.swarm.network=public_network"
 
   # Database for user service
   user_db:
@@ -281,6 +303,20 @@ services:
       - db_network
     deploy:
       replicas: 1
+
+  # Database for product service
+  product_db:
+    image: postgres:15-alpine
+    environment:
+      - POSTGRES_DB=product_db
+      - POSTGRES_USER=product
+      - POSTGRES_PASSWORD=product_pass
+    volumes:
+      - product_db:/var/lib/postgresql/data
+    networks:
+      - db_network
+    deploy:
+      replicas: 1
 ```
 
 ## Step 6: Deploy Stacks via Portainer
@@ -305,4 +341,4 @@ docker service scale myapp_order_service=5
 
 ## Conclusion
 
-You've deployed a complete microservice architecture using Docker Swarm and Portainer. Each service has its own database (Database per Service pattern), communicates via RabbitMQ for async events and direct HTTP for synchronous calls, and is independently scalable. Portainer's Services view shows you the health of all replicas, and the Stacks view organizes related services together. This architecture can scale from a single node in Portainer CE to hundreds of nodes in Portainer Business Edition.
+You've deployed a complete microservice architecture using Docker Swarm and Portainer. Each service has its own database (Database per Service pattern), communicates via RabbitMQ for async events and direct HTTP for synchronous calls, and is independently scalable. Portainer's Services view shows you the status of all replicas, and the Stacks view organizes related services together. This architecture can be managed in Portainer CE and extended to larger licensed Portainer Business Edition deployments.
