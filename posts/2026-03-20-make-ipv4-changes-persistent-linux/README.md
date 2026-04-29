@@ -30,12 +30,13 @@ network:
 ```
 
 ```bash
-sudo netplan apply
 # Test without committing (auto-reverts if you do not confirm within 120s)
 sudo netplan try
+# Or apply directly
+sudo netplan apply
 ```
 
-## Method 2: /etc/network/interfaces (Debian/Ubuntu)
+## Method 2: /etc/network/interfaces (Debian/Ubuntu systems using ifupdown)
 
 ```text
 # /etc/network/interfaces
@@ -44,9 +45,9 @@ iface lo inet loopback
 
 auto eth0
 iface eth0 inet static
-    address 192.168.1.100
-    netmask 255.255.255.0
+    address 192.168.1.100/24
     gateway 192.168.1.1
+    # Requires resolvconf or another ifupdown DNS hook
     dns-nameservers 8.8.8.8 1.1.1.1
 ```
 
@@ -70,7 +71,7 @@ nmcli con mod "Wired connection 1" \
 nmcli con up "Wired connection 1"
 ```
 
-The connection is stored in `/etc/NetworkManager/system-connections/`.
+By default, keyfile-based system connections are stored in `/etc/NetworkManager/system-connections/`.
 
 ## Method 4: systemd-networkd
 
@@ -87,26 +88,32 @@ DNS=1.1.1.1
 ```
 
 ```bash
-sudo systemctl enable --now systemd-networkd
+sudo systemctl enable --now systemd-networkd systemd-resolved
 sudo networkctl reload
 ```
 
-## Method 5: RHEL/CentOS /etc/sysconfig/network-scripts/
+The `DNS=` entries are read by `systemd-resolved`.
 
-```bash
+## Method 5: Legacy RHEL/CentOS ifcfg files
+
+```ini
 # /etc/sysconfig/network-scripts/ifcfg-eth0
+TYPE=Ethernet
+NAME=eth0
 DEVICE=eth0
-BOOTPROTO=static
+BOOTPROTO=none
 ONBOOT=yes
 IPADDR=192.168.1.100
 PREFIX=24
 GATEWAY=192.168.1.1
+PEERDNS=no
 DNS1=8.8.8.8
+DNS2=1.1.1.1
 ```
 
 ```bash
-sudo nmcli con reload
-sudo nmcli con up eth0
+sudo nmcli connection load /etc/sysconfig/network-scripts/ifcfg-eth0
+sudo nmcli connection up eth0
 ```
 
 ## Verifying Persistence After Reboot
@@ -121,4 +128,4 @@ ip route show default
 
 ## Conclusion
 
-Choose the persistence method that matches your distribution and network manager: Netplan for modern Ubuntu, `/etc/network/interfaces` for Debian/legacy Ubuntu, NetworkManager via `nmcli` for desktop systems, and systemd-networkd for server deployments. Always test with `netplan try` or a controlled reboot after making changes.
+Choose the persistence method that matches your distribution and network manager: Netplan for modern Ubuntu, `/etc/network/interfaces` for systems using ifupdown, NetworkManager via `nmcli` for NetworkManager-managed hosts, systemd-networkd for networkd-based deployments, and legacy `ifcfg` files on older RHEL/CentOS systems. Always test with `netplan try` or a controlled reboot after making changes.
