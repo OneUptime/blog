@@ -15,25 +15,26 @@ Environments in Portainer represent your Docker and Kubernetes targets. Managing
 ```hcl
 # docker-environments.tf
 
-# Local Docker socket environment
+# Docker host via local socket
 
 resource "portainer_environment" "local" {
-  name = "local-docker"
-  type = 1  # Docker standalone
-  url  = "unix:///var/run/docker.sock"
+  name                = "local-docker"
+  type                = 1  # Docker standalone
+  environment_address = "unix:///var/run/docker.sock"
 }
 
 # Remote Docker host via TLS
 resource "portainer_environment" "remote_docker" {
-  name = "prod-docker-host"
-  type = 1
-  url  = "tcp://192.168.1.100:2376"
+  name                = "prod-docker-host"
+  type                = 1
+  environment_address = "tcp://192.168.1.100:2376"
 
   # TLS configuration for secure connection
-  tls                = true
-  tls_ca_cert_file   = file("${path.module}/certs/ca.pem")
-  tls_cert_file      = file("${path.module}/certs/cert.pem")
-  tls_key_file       = file("${path.module}/certs/key.pem")
+  tls_enabled     = true
+  tls_skip_verify = false
+  tls_ca_cert     = file("${path.module}/certs/ca.pem")
+  tls_cert        = file("${path.module}/certs/cert.pem")
+  tls_key         = file("${path.module}/certs/key.pem")
 }
 ```
 
@@ -43,22 +44,27 @@ resource "portainer_environment" "remote_docker" {
 # swarm-environment.tf
 resource "portainer_environment" "swarm" {
   name = "production-swarm"
-  type = 2  # Docker standalone via Portainer agent
+  type = 2  # Agent-based environment
 
-  url = "tcp://swarm-manager.mycompany.com:9001"
+  environment_address = "tcp://swarm-manager.mycompany.com:9001"
 
   # Assign to a group for organization
-  group_id = portainer_environment_group.production.id
+  group_id = portainer_endpoint_group.production.id
 
   # Apply tags
   tag_ids = [
     portainer_tag.production.id,
     portainer_tag.swarm.id
   ]
+}
 
-  # Security settings
-  allow_bind_mounts    = false
-  allow_privileged     = false
+resource "portainer_endpoint_settings" "swarm_security" {
+  endpoint_id = portainer_environment.swarm.id
+
+  security_settings {
+    allow_bind_mounts     = false
+    allow_privileged_mode = false
+  }
 }
 ```
 
@@ -67,29 +73,21 @@ resource "portainer_environment" "swarm" {
 ```hcl
 # kubernetes-environment.tf
 
-# Kubernetes via kubeconfig
+# Kubernetes via Portainer agent
 resource "portainer_environment" "k8s_prod" {
-  name = "k8s-production"
-  type = 5  # Kubernetes via kubeconfig
-
-  kubernetes = {
-    kubeconfig = file("${path.module}/kubeconfig/prod-kubeconfig.yaml")
-  }
+  name                = "k8s-production"
+  type                = 6  # Kubernetes via agent
+  environment_address = "tcp://k8s-agent.prod.mycompany.com:9001"
 }
 
-# Kubernetes via Portainer agent
+# Kubernetes Edge Agent registration
 resource "portainer_environment" "k8s_staging" {
-  name = "k8s-staging"
-  type = 7  # Kubernetes via agent
-
-  url = "tcp://k8s-agent.staging.mycompany.com:9001"
-
-  kubernetes_configuration = {
-    use_load_balancer    = true
-    use_server_metrics   = true
-    storage_classes      = ["standard", "ssd"]
-    restrict_default_ns  = true
-  }
+  name                   = "k8s-staging"
+  type                   = 4  # Edge Agent registration
+  environment_address    = "https://portainer.mycompany.com:9443"
+  tls_enabled            = true
+  tls_skip_verify        = true
+  tls_skip_client_verify = true
 }
 ```
 
@@ -97,11 +95,11 @@ resource "portainer_environment" "k8s_staging" {
 
 ```hcl
 # organization.tf
-resource "portainer_environment_group" "production" {
+resource "portainer_endpoint_group" "production" {
   name = "Production"
 }
 
-resource "portainer_environment_group" "staging" {
+resource "portainer_endpoint_group" "staging" {
   name = "Staging"
 }
 
@@ -131,9 +129,9 @@ resource "hcloud_server" "docker_host" {
 
 # Register the new server as a Portainer environment
 resource "portainer_environment" "docker_prod_01" {
-  name = hcloud_server.docker_host.name
-  type = 2
-  url  = "tcp://${hcloud_server.docker_host.ipv4_address}:9001"
+  name                = hcloud_server.docker_host.name
+  type                = 2
+  environment_address = "tcp://${hcloud_server.docker_host.ipv4_address}:9001"
 
   depends_on = [hcloud_server.docker_host]
 }
@@ -143,7 +141,7 @@ resource "portainer_environment" "docker_prod_01" {
 
 ```bash
 # Remove an environment from Portainer (doesn't affect the server/cluster)
-terraform destroy -target=portainer_environment.staging_old
+terraform destroy -target=portainer_environment.k8s_staging
 ```
 
 ## Outputs for Downstream Use
