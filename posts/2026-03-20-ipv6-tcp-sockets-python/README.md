@@ -21,8 +21,8 @@ def create_ipv6_tcp_server(port: int = 8080):
     # Allow reuse of address after server restart
     server_sock.setsockopt(socket.SOL_SOCKET, socket.SO_REUSEADDR, 1)
 
-    # IPV6_V6ONLY=0 means dual-stack (handles both IPv4 and IPv6)
-    # IPV6_V6ONLY=1 means IPv6 only
+    # Request dual-stack on platforms that support dual-stack IPv6 sockets
+    # Set IPV6_V6ONLY=1 for an IPv6-only listener
     server_sock.setsockopt(socket.IPPROTO_IPV6, socket.IPV6_V6ONLY, 0)
 
     # Bind to :: (all IPv6 interfaces), port 8080
@@ -49,7 +49,7 @@ def create_ipv6_tcp_server(port: int = 8080):
 
 ## Creating an IPv6 TCP Client
 
-Connect to an IPv6 server using the bracket notation resolved via `getaddrinfo`:
+Connect to an IPv6 server using an IPv6 literal or a hostname resolved via `getaddrinfo`:
 
 ```python
 import socket
@@ -59,7 +59,7 @@ def ipv6_tcp_connect(host: str, port: int) -> bytes:
     Connect to an IPv6 server and receive a response.
     host can be an IPv6 address or a hostname.
     """
-    # Use getaddrinfo to handle both IPv4 and IPv6 hosts
+    # Use getaddrinfo to resolve an IPv6 literal or a hostname
     # and get the correct socket parameters
     addr_info = socket.getaddrinfo(
         host, port,
@@ -95,7 +95,7 @@ def ipv6_tcp_connect(host: str, port: int) -> bytes:
 
 ## Dual-Stack Server (IPv4 and IPv6)
 
-Handle both IPv4 and IPv6 clients on the same server:
+Handle both IPv4 and IPv6 clients on the same server when the platform supports dual-stack IPv6 sockets:
 
 ```python
 import socket
@@ -113,10 +113,12 @@ def handle_client(conn, addr):
 
 def dual_stack_server(port: int = 9000):
     """
-    Dual-stack TCP server: accepts both IPv4 and IPv6 connections.
-    On Linux, binding :: with IPV6_V6ONLY=0 handles both.
-    On macOS/Windows, you may need separate IPv4 and IPv6 sockets.
+    Dual-stack TCP server: accepts both IPv4 and IPv6 connections
+    on platforms that support dual-stack IPv6 sockets.
     """
+    if not socket.has_dualstack_ipv6():
+        raise OSError("Dual-stack IPv6 sockets are not supported on this platform")
+
     sock = socket.socket(socket.AF_INET6, socket.SOCK_STREAM)
     sock.setsockopt(socket.SOL_SOCKET, socket.SO_REUSEADDR, 1)
 
@@ -150,10 +152,9 @@ def connect_link_local(address: str, interface: str, port: int):
     scope_id = socket.if_nametoindex(interface)
 
     sock = socket.socket(socket.AF_INET6, socket.SOCK_STREAM)
-    # Link-local bind tuple: (address, port, flowinfo, scope_id)
-    sock.connect((address, port, 0, scope_id))
-
     try:
+        # Link-local connect tuple: (address, port, flowinfo, scope_id)
+        sock.connect((address, port, 0, scope_id))
         sock.sendall(b"Hello via link-local!")
         response = sock.recv(1024)
         print(f"Response: {response}")
@@ -168,6 +169,7 @@ def connect_link_local(address: str, interface: str, port: int):
 
 ```python
 import asyncio
+import socket
 
 async def ipv6_echo_client(host: str, port: int):
     """Async IPv6 TCP client."""
@@ -190,4 +192,4 @@ async def ipv6_echo_client(host: str, port: int):
 
 ## Conclusion
 
-Creating IPv6 TCP sockets in Python uses `socket.AF_INET6` instead of `socket.AF_INET`. The key differences are: bind tuples have 4 elements (host, port, flowinfo, scope_id), use `getaddrinfo` for hostname resolution, and set `IPV6_V6ONLY=0` for dual-stack support. Link-local addresses require the interface scope ID via `socket.if_nametoindex()`.
+Creating IPv6 TCP sockets in Python uses `socket.AF_INET6` instead of `socket.AF_INET`. The key differences are: IPv6 socket addresses use the tuple form `(host, port, flowinfo, scope_id)` (with `flowinfo` and `scope_id` often omitted unless needed), use `getaddrinfo` for hostname resolution, and set `IPV6_V6ONLY=0` for dual-stack support on platforms that provide dual-stack IPv6 sockets. Link-local addresses require the interface scope ID via `socket.if_nametoindex()`.
