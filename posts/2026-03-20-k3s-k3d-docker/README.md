@@ -25,15 +25,15 @@ curl -s https://raw.githubusercontent.com/k3d-io/k3d/main/install.sh | bash
 
 # Or install specific version
 curl -s https://raw.githubusercontent.com/k3d-io/k3d/main/install.sh | \
-  TAG=v5.6.0 bash
+  TAG=v5.8.3 bash
 
 # Verify installation
 k3d version
 
 # Install kubectl if not already installed
 curl -Lo kubectl \
-  "https://dl.k8s.io/release/$(curl -s https://dl.k8s.io/release/stable.txt)/bin/linux/amd64/kubectl"
-chmod +x kubectl && mv kubectl /usr/local/bin/
+  "https://dl.k8s.io/release/$(curl -L -s https://dl.k8s.io/release/stable.txt)/bin/linux/amd64/kubectl"
+sudo install -o root -g root -m 0755 kubectl /usr/local/bin/kubectl
 ```
 
 ## Step 2: Create a Basic Cluster
@@ -46,7 +46,7 @@ k3d cluster create my-cluster
 k3d cluster create my-cluster \
   --servers 1 \
   --agents 2 \
-  --image rancher/k3s:v1.29.3-k3s1
+  --image rancher/k3s:v1.35.4-k3s1
 
 # Verify the cluster is running
 kubectl get nodes
@@ -62,9 +62,9 @@ kubectl cluster-info
 k3d cluster create production-like \
   --servers 1 \
   --agents 3 \
-  --image rancher/k3s:v1.29.3-k3s1 \
-  --server-arg "--disable=traefik" \
-  --agent-arg "--kubelet-arg=max-pods=50" \
+  --image rancher/k3s:v1.35.4-k3s1 \
+  --k3s-arg "--disable=traefik@server:0" \
+  --k3s-arg "--kubelet-arg=max-pods=50@agent:*" \
   --timeout 60s
 
 # Verify all nodes are Ready
@@ -75,23 +75,24 @@ kubectl get nodes
 
 ```bash
 # Create cluster with host port mappings
-# Map host:80 to nginx-ingress port 80 inside cluster
+# Map host port 8080 to port 80 on the k3d load balancer
 k3d cluster create web-cluster \
   --servers 1 \
   --agents 2 \
+  --k3s-arg "--disable=traefik@server:0" \
   -p "8080:80@loadbalancer" \
   -p "8443:443@loadbalancer" \
-  --image rancher/k3s:v1.29.3-k3s1
+  --image rancher/k3s:v1.35.4-k3s1
 
 # Deploy NGINX Ingress
 kubectl apply -f \
-  https://raw.githubusercontent.com/kubernetes/ingress-nginx/main/deploy/static/provider/cloud/deploy.yaml
+  https://raw.githubusercontent.com/kubernetes/ingress-nginx/controller-v1.15.1/deploy/static/provider/cloud/deploy.yaml
 
 # Wait for NGINX to be ready
 kubectl wait --namespace ingress-nginx \
   --for=condition=ready pod \
   --selector=app.kubernetes.io/component=controller \
-  --timeout=90s
+  --timeout=120s
 
 # Deploy a test app
 kubectl create deployment test --image=nginx:alpine
@@ -103,9 +104,8 @@ apiVersion: networking.k8s.io/v1
 kind: Ingress
 metadata:
   name: test-ingress
-  annotations:
-    kubernetes.io/ingress.class: nginx
 spec:
+  ingressClassName: nginx
   rules:
     - host: test.local
       http:
@@ -138,7 +138,7 @@ metadata:
 servers: 1
 agents: 2
 
-image: rancher/k3s:v1.29.3-k3s1
+image: rancher/k3s:v1.35.4-k3s1
 
 ports:
   - port: 8080:80
