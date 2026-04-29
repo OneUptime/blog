@@ -64,7 +64,10 @@ on:
 
 jobs:
   plan-networking:
-    if: ${{ github.event.paths contains 'environments/prod/networking' }}
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      # ... opentofu init / plan steps
 ```
 
 ## Polyrepo Approach
