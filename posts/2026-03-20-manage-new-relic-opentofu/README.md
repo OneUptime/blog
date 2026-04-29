@@ -70,7 +70,7 @@ resource "newrelic_nrql_alert_condition" "error_rate" {
   aggregation_delay  = 120
 }
 
-# APM metric condition
+# NRQL alert condition for response time
 resource "newrelic_nrql_alert_condition" "response_time" {
   account_id = var.newrelic_account_id
   policy_id  = newrelic_alert_policy.app_policy.id
@@ -105,6 +105,17 @@ resource "newrelic_notification_channel" "pagerduty" {
     key   = "summary"
     value = "{{ issueTitle }}"
   }
+
+  property {
+    key   = "service"
+    label = "Platform Service"
+    value = "PTQK3FM"
+  }
+
+  property {
+    key   = "email"
+    value = "platform@example.com"
+  }
 }
 
 resource "newrelic_notification_destination" "pagerduty" {
@@ -123,13 +134,20 @@ resource "newrelic_notification_destination" "pagerduty" {
 }
 
 # Slack notification
-resource "newrelic_notification_destination" "slack" {
-  name = "Slack #alerts"
-  type = "SLACK"
+# Slack destinations are OAuth-based and must already exist in New Relic.
+data "newrelic_notification_destination" "slack" {
+  exact_name = "Slack Workspace"
+}
+
+resource "newrelic_notification_channel" "slack" {
+  name           = "Slack #alerts"
+  type           = "SLACK"
+  destination_id = data.newrelic_notification_destination.slack.id
+  product        = "IINT"
 
   property {
-    key   = "url"
-    value = var.slack_webhook_url
+    key   = "channelId"
+    value = "C01234567"
   }
 }
 ```
@@ -181,9 +199,9 @@ resource "newrelic_one_dashboard" "app_overview" {
 resource "newrelic_synthetics_monitor" "health_check" {
   name             = "App Health Check"
   type             = "SIMPLE"
-  frequency        = 5
+  period           = "EVERY_5_MINUTES"
   status           = "ENABLED"
-  locations_public = ["AWS_US_EAST_1", "AWS_US_WEST_2", "AWS_EU_WEST_1"]
+  locations_public = ["US_EAST_1", "US_WEST_2", "EU_WEST_1"]
   uri              = "https://app.example.com/health"
   validation_string = "\"status\":\"ok\""
 }
