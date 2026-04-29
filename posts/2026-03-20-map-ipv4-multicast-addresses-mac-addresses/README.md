@@ -8,7 +8,7 @@ Description: Understand and calculate the IEEE 802.3 Ethernet multicast MAC addr
 
 ## Introduction
 
-When an Ethernet switch forwards multicast frames, it uses a special destination MAC address rather than broadcasting. The mapping from IPv4 multicast address to Ethernet MAC address follows a deterministic formula defined by IANA and IEEE. Understanding this mapping helps diagnose switch flooding, IGMP snooping issues, and MAC-address filter configurations.
+On Ethernet, multicast frames use a special destination MAC address rather than the broadcast MAC address. The mapping from IPv4 multicast address to Ethernet MAC address follows a deterministic formula defined by IANA and IEEE. Understanding this mapping helps diagnose switch flooding, IGMP snooping issues, and MAC-address filter configurations.
 
 ## The Mapping Formula
 
@@ -31,9 +31,9 @@ IP in binary:
   2 = 0000 0010
   3 = 0000 0011
 
-Low 23 bits of the group portion (drop the high bit of each octet pair):
-Take bits from octets 2–4:
-  01 = 000 0001   (drop leading bit → 00 0001)
+Low 23 bits of the address:
+Take octets 2–4 and keep only the low 7 bits of octet 2:
+   1 = 0000 0001   (low 7 bits → 000 0001)
    2 = 0000 0010
    3 = 0000 0011
 
@@ -89,17 +89,18 @@ print('Joined 239.1.2.3')
 time.sleep(30)
 " &
 
-# Check the link-layer multicast addresses on the interface
-ip maddr show dev eth0
+# Check the link-layer multicast addresses
+ip maddr show
 ```
 
-The output will show both the inet group and the corresponding link-layer MAC (`01:00:5e:01:02:03`).
+The output will show the joined `inet` group and the corresponding link-layer MAC (`01:00:5e:01:02:03`) on the selected interface.
 
 ## Address Collision: 32-to-1 Ambiguity
 
 Because only 23 bits are used, every MAC maps to 32 IP addresses. For example, all of these map to `01:00:5e:01:02:03`:
 
 - `224.1.2.3`, `225.1.2.3`, `226.1.2.3` ... `239.1.2.3`
+- `224.129.2.3`, `225.129.2.3`, `226.129.2.3` ... `239.129.2.3`
 
 Switches using IGMP snooping may forward all 32 groups to a port that has only joined one, a potential source of unexpected traffic.
 
