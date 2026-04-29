@@ -4,11 +4,11 @@ Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
 Tags: IPv6, KVM, QEMU, Linux, Virtualization, Virtual Networking
 
-Description: Configure IPv6 networking in KVM/QEMU virtual machines using bridge, NAT, and macvtap network modes, with cloud-init and manual guest OS IPv6 configuration.
+Description: Configure IPv6 networking in KVM/QEMU virtual machines using bridge, libvirt virtual networks, and macvtap network modes, with cloud-init and manual guest OS IPv6 configuration.
 
 ## Introduction
 
-KVM/QEMU virtual machines access IPv6 networks through virtual networking modes: bridged (VM on same L2 as host), NAT (via virbr0 MASQUERADE with IPv6 prefix), and macvtap/SR-IOV for direct IPv6. Bridged networking is the simplest for IPv6 - VMs receive SLAAC addresses from the physical router just like physical machines.
+KVM/QEMU virtual machines access IPv6 networks through virtual networking modes: bridged (VM on same L2 as host), libvirt virtual networks that route or NAT through the host, and macvtap/SR-IOV for direct attachment. With libvirt `forward mode='nat'`, IPv4 is NATed by default; IPv6 is routed unless you explicitly set `<nat ipv6='yes'/>` (supported since libvirt 6.5.0). Bridged networking is the simplest for IPv6 - VMs receive SLAAC addresses from the physical router just like physical machines.
 
 ## Bridged Networking for IPv6
 
@@ -21,10 +21,10 @@ ip link add name br0 type bridge
 ip link set br0 up
 ip link set eth0 master br0
 
-# Move host IPv6 address from eth0 to bridge
-ip -6 addr flush dev eth0
+# Move a static host IPv6 address from eth0 to the bridge
+ip -6 addr del 2001:db8::10/64 dev eth0
 ip -6 addr add 2001:db8::10/64 dev br0
-ip -6 route add default via 2001:db8::1 dev br0
+ip -6 route replace default via 2001:db8::1 dev br0
 
 # Or using systemd-networkd (persistent)
 # /etc/systemd/network/br0.netdev
@@ -42,7 +42,7 @@ ip -6 route add default via 2001:db8::1 dev br0
 
 ```bash
 # Attach bridge network to VM
-virsh attach-interface myvm bridge br0 --model virtio --current --live
+virsh attach-interface myvm bridge br0 --model virtio --live --config
 # VM gets SLAAC IPv6 from physical network router
 ```
 
@@ -76,9 +76,8 @@ qemu-system-x86_64 \
 <network>
   <name>ipv6nat</name>
   <forward mode='nat'>
-    <nat>
-      <!-- IPv6 NAT (NPTv6 / masquerade) -->
-      <address start='2001:db8:nat::1' end='2001:db8:nat::ffff'/>
+    <nat ipv6='yes'>
+      <port start='1024' end='65535'/>
     </nat>
   </forward>
   <bridge name='virbr1' stp='on' delay='0'/>
@@ -87,9 +86,9 @@ qemu-system-x86_64 \
       <range start='192.168.200.100' end='192.168.200.200'/>
     </dhcp>
   </ip>
-  <ip family='ipv6' address='fd00:db8::1' prefix='64'>
+  <ip family='ipv6' address='fd12:3456:789a::1' prefix='64'>
     <dhcp>
-      <range start='fd00:db8::100' end='fd00:db8::200'/>
+      <range start='fd12:3456:789a::100' end='fd12:3456:789a::200'/>
     </dhcp>
   </ip>
 </network>
@@ -102,7 +101,7 @@ virsh net-start ipv6nat
 virsh net-autostart ipv6nat
 
 # Attach VM to this network
-virsh attach-interface myvm network ipv6nat --model virtio --current
+virsh attach-interface myvm network ipv6nat --model virtio --live --config
 ```
 
 ## Configure IPv6 in a KVM Guest (Linux)
@@ -122,7 +121,9 @@ network:
     ens3:
       addresses:
         - 2001:db8::100/64
-      gateway6: 2001:db8::1
+      routes:
+        - to: default
+          via: 2001:db8::1
       nameservers:
         addresses:
           - 2001:db8::53
@@ -136,24 +137,23 @@ ping6 2001:db8::1
 ## Cloud-init with IPv6 for KVM VMs
 
 ```yaml
-# user-data for cloud-init (NoCloud datasource)
-
-#cloud-config
-network:
-  version: 2
-  ethernets:
-    ens3:
-      dhcp4: true
-      dhcp6: true    # Enable DHCPv6
-      # Or static:
-      addresses:
-        - 2001:db8::100/64
-      gateway6: 2001:db8::1
+# network-config for cloud-init (NoCloud datasource)
+version: 2
+ethernets:
+  ens3:
+    dhcp4: true
+    dhcp6: true
+    # For static IPv6, disable DHCPv6 and use:
+    # addresses:
+    #   - 2001:db8::100/64
+    # routes:
+    #   - to: default
+    #     via: 2001:db8::1
 ```
 
 ```bash
 # Create cloud-init seed disk
-cloud-localds seed.img user-data meta-data
+cloud-localds --network-config=network-config seed.img user-data meta-data
 
 # Start VM with cloud-init
 qemu-system-x86_64 \
@@ -167,19 +167,20 @@ qemu-system-x86_64 \
 ## IPv6 Firewall for KVM Host
 
 ```bash
-# Allow IPv6 forwarding between VMs and physical network
+# Enable IPv6 forwarding when the host routes or NATs an IPv6 guest network
 echo "net.ipv6.conf.all.forwarding=1" >> /etc/sysctl.conf
 sysctl -p
 
 # For bridged VMs: IPv6 flows through the bridge without NAT
-# For NAT VMs: NPTv6 masquerade
-ip6tables -t nat -A POSTROUTING -s fd00:db8::/64 -o eth0 -j MASQUERADE
+# For libvirt-managed NAT networks, libvirt installs the needed firewall rules
+# For manually managed IPv6 NAT: stateful NAT66 masquerade
+ip6tables -t nat -A POSTROUTING -s fd12:3456:789a::/64 -o eth0 -j MASQUERADE
 
 # Allow established traffic back to VMs
-ip6tables -A FORWARD -m state --state ESTABLISHED,RELATED -j ACCEPT
-ip6tables -A FORWARD -s fd00:db8::/64 -j ACCEPT
+ip6tables -A FORWARD -m conntrack --ctstate ESTABLISHED,RELATED -j ACCEPT
+ip6tables -A FORWARD -s fd12:3456:789a::/64 -j ACCEPT
 ```
 
 ## Conclusion
 
-KVM/QEMU VMs access IPv6 most simply through bridged networking, where VMs appear directly on the physical IPv6 network and receive SLAAC addresses from the connected router. The libvirt XML format supports IPv6 subnets in the `<ip family='ipv6'>` element for NAT and isolated networks with DHCPv6. Inside the guest, IPv6 is configured identically to bare-metal systems using netplan, NetworkManager, or systemd-networkd. Enable `net.ipv6.conf.all.forwarding=1` on the KVM host for routing between VM networks and the physical network.
+KVM/QEMU VMs access IPv6 most simply through bridged networking, where VMs appear directly on the physical IPv6 network and receive SLAAC addresses from the connected router. The libvirt XML format supports IPv6 subnets in the `<ip family='ipv6'>` element for virtual networks, and `forward mode='nat'` can provide IPv6 NAT when `<nat ipv6='yes'/>` is set. Inside the guest, IPv6 is configured identically to bare-metal systems using netplan, NetworkManager, or systemd-networkd. Enable `net.ipv6.conf.all.forwarding=1` on the KVM host for routed or NATed IPv6 guest networks.
