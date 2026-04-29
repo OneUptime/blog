@@ -36,11 +36,11 @@ sudo tcpdump -i eth0 -nn ip6 and udp and portrange 10000-20000 \
 tshark -r /tmp/voip_ipv6.pcap -Y "rtcp" \
   -T fields \
   -e rtcp.pt \
-  -e rtcp.ssrc \
-  -e rtcp.fraction_lost \
-  -e rtcp.cum_nr_of_loss \
-  -e rtcp.inter_arriv_jitter \
-  -e rtcp.dlsr
+  -e rtcp.ssrc.identifier \
+  -e rtcp.ssrc.fraction \
+  -e rtcp.ssrc.cum_nr \
+  -e rtcp.ssrc.jitter \
+  -e rtcp.ssrc.dlsr
 
 # Show complete RTCP report
 tshark -r /tmp/voip_ipv6.pcap -Y "rtcp" -V | grep -A20 "Receiver Report"
@@ -176,7 +176,7 @@ sudo tail -f /var/log/asterisk/messages | grep -E "RTCP|quality|jitter|loss"
 asterisk -rx "pjsip show channels"
 
 # Check RTP statistics per call
-asterisk -rx "rtp show"
+asterisk -rx "rtp show settings"
 ```
 
 ## Prometheus + Grafana for VoIP IPv6 Monitoring
@@ -197,7 +197,7 @@ sip_latency = Gauge('voip_sip_latency_ms', 'SIP response latency ms', ['server']
 
 def probe_sip_latency(server_ipv6, port=5060):
     """Measure SIP OPTIONS round-trip time."""
-    cmd = ['sipsak', '-s', f'sip:[{server_ipv6}]:{port}', '-v', '-T']
+    cmd = ['sipsak', '-s', f'sip:[{server_ipv6}]:{port}', '-vv']
     try:
         result = subprocess.run(cmd, capture_output=True, text=True, timeout=5)
         # Parse timing from output
@@ -233,12 +233,11 @@ if __name__ == '__main__':
 # In /etc/asterisk/hep.conf:
 cat > /etc/asterisk/hep.conf << 'EOF'
 [general]
+enabled=yes
 capture_id=2001
-capture_address=2001:db8::homer
+capture_address=[2001:db8::homer]:9060
 capture_password=mypassword
-
-[capture_info]
-enable=yes
+uuid_type=call-id
 EOF
 
 # Homer dashboard shows:
