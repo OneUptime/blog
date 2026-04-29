@@ -8,48 +8,29 @@ Description: A step-by-step guide to installing Kubewarden on a Kubernetes clust
 
 ## Introduction
 
-Kubewarden is a Kubernetes admission controller that uses WebAssembly (Wasm) policies to validate and mutate Kubernetes resources. Unlike traditional admission controllers that require writing code in specific languages, Kubewarden supports policies written in Rust, Go, Python, Swift, and any language that compiles to WebAssembly.
+Kubewarden is a Kubernetes admission controller that uses WebAssembly (Wasm) policies to validate and mutate Kubernetes resources. Policies can be written in any language that compiles to WebAssembly, and Kubewarden also supports Rego-based policies.
 
 This guide covers the complete installation of Kubewarden on a Kubernetes cluster from scratch.
 
 ## Prerequisites
 
-- Kubernetes cluster v1.24 or later
-- Helm v3.8 or later
+- Kubernetes cluster v1.19 or later
+- Helm v3 or later
 - `kubectl` configured with cluster access
 - Cluster-admin permissions
-- Cert-manager (required for Kubewarden webhooks)
 
 ## Architecture Overview
 
 Kubewarden consists of:
-- **kubewarden-controller**: Manages PolicyServer and AdmissionPolicy lifecycle
+- **kubewarden-controller**: Manages PolicyServer, AdmissionPolicy, and ClusterAdmissionPolicy lifecycle
+- **audit-scanner**: Periodically scans existing cluster resources against installed policies
 - **PolicyServer**: Runs WebAssembly policies and acts as the webhook server
 - **AdmissionPolicy**: Namespace-scoped policy definitions
 - **ClusterAdmissionPolicy**: Cluster-scoped policy definitions
 
-## Step 1: Install Cert-Manager
+## Step 1: Confirm Prerequisites
 
-Kubewarden requires cert-manager for managing TLS certificates:
-
-```bash
-# Add the cert-manager Helm repository
-
-helm repo add jetstack https://charts.jetstack.io
-helm repo update
-
-# Install cert-manager with CRDs
-helm install cert-manager jetstack/cert-manager \
-  --namespace cert-manager \
-  --create-namespace \
-  --set installCRDs=true \
-  --version v1.14.0
-
-# Verify cert-manager is running
-kubectl get pods -n cert-manager
-```
-
-Wait until all cert-manager pods are in `Running` state before proceeding.
+Kubewarden v1.17.0 and later do not require cert-manager. The Helm installation bootstraps the initial certificates, and the Kubewarden controller rotates them automatically.
 
 ## Step 2: Add the Kubewarden Helm Repository
 
@@ -65,12 +46,10 @@ helm search repo kubewarden
 ## Step 3: Install Kubewarden CRDs
 
 ```bash
-# Create the kubewarden-system namespace
-kubectl create namespace kubewarden
-
 # Install Kubewarden Custom Resource Definitions
 helm install kubewarden-crds kubewarden/kubewarden-crds \
   --namespace kubewarden \
+  --create-namespace \
   --wait
 
 # Verify CRDs are installed
@@ -106,7 +85,7 @@ helm install kubewarden-defaults kubewarden/kubewarden-defaults \
 
 # Verify the policy server is running
 kubectl get pods -n kubewarden
-kubectl get policyserver
+kubectl get policyserver -n kubewarden
 ```
 
 Expected output:
@@ -122,27 +101,14 @@ default   1m
 kubectl get all -n kubewarden
 
 # Verify the policy server is active
-kubectl describe policyserver default
+kubectl describe policyserver default -n kubewarden
 
-# Check the webhook configuration
-kubectl get validatingwebhookconfigurations \
+# Check the Kubewarden webhook configurations
+kubectl get validatingwebhookconfigurations.admissionregistration.k8s.io \
   | grep kubewarden
 
-kubectl get mutatingwebhookconfigurations \
+kubectl get mutatingwebhookconfigurations.admissionregistration.k8s.io \
   | grep kubewarden
-
-# Run a test to ensure the admission webhook is working
-kubectl apply --dry-run=server -f - <<EOF
-apiVersion: v1
-kind: Pod
-metadata:
-  name: test-pod
-  namespace: default
-spec:
-  containers:
-    - name: test
-      image: nginx:latest
-EOF
 ```
 
 ## Installing with Custom Options
@@ -153,16 +119,20 @@ EOF
 # Install with production-ready resource settings
 helm install kubewarden-controller kubewarden/kubewarden-controller \
   --namespace kubewarden \
-  --set controller.resources.requests.cpu="100m" \
-  --set controller.resources.requests.memory="128Mi" \
-  --set controller.resources.limits.cpu="500m" \
-  --set controller.resources.limits.memory="512Mi" \
-  --set controller.replicaCount=2
+  --set resources.controller.requests.cpu="100m" \
+  --set resources.controller.requests.memory="128Mi" \
+  --set resources.controller.limits.cpu="500m" \
+  --set resources.controller.limits.memory="512Mi" \
+  --set replicas=2
 
 # Install policy server with HA
 helm install kubewarden-defaults kubewarden/kubewarden-defaults \
   --namespace kubewarden \
-  --set policyServer.replicaCount=3
+  --set policyServer.replicaCount=3 \
+  --set policyServer.requests.cpu="100m" \
+  --set policyServer.requests.memory="128Mi" \
+  --set policyServer.limits.cpu="500m" \
+  --set policyServer.limits.memory="512Mi"
 ```
 
 ### Air-Gapped Installation
@@ -171,15 +141,20 @@ For air-gapped environments, pre-pull all images:
 
 ```bash
 # Get the list of images needed
-helm template kubewarden-controller kubewarden/kubewarden-controller \
-  | grep "image:" \
-  | sort -u
+{
+  helm template kubewarden-controller kubewarden/kubewarden-controller
+  helm template kubewarden-defaults kubewarden/kubewarden-defaults
+} | grep "image:" | sort -u
 
 # Pull and push images to your private registry
 # Then install with custom image registry
 helm install kubewarden-controller kubewarden/kubewarden-controller \
   --namespace kubewarden \
-  --set global.imageRegistry=registry.internal.example.com
+  --set global.cattle.systemDefaultRegistry=registry.internal.example.com
+
+helm install kubewarden-defaults kubewarden/kubewarden-defaults \
+  --namespace kubewarden \
+  --set global.cattle.systemDefaultRegistry=registry.internal.example.com
 ```
 
 ## Upgrading Kubewarden
@@ -215,4 +190,4 @@ kubectl delete namespace kubewarden
 
 ## Conclusion
 
-Installing Kubewarden on Kubernetes sets up a powerful, WebAssembly-based admission control system. The three-step Helm installation - CRDs, controller, and policy server - provides a clean, upgradeable installation that integrates with cert-manager for automatic certificate management. With Kubewarden installed, you are ready to deploy admission policies that enforce security, compliance, and operational best practices across your cluster.
+Installing Kubewarden on Kubernetes sets up a powerful, WebAssembly-based admission control system. The three-step Helm installation - CRDs, controller, and policy server - provides a clean, upgradeable installation with built-in certificate management in current Kubewarden releases. With Kubewarden installed, you are ready to deploy admission policies that enforce security, compliance, and operational best practices across your cluster.
