@@ -23,20 +23,19 @@ from collections import Counter
 
 # Kea log format for address assignment
 
-# INFO  [kea-dhcp6.leases] ... LEASE6_ALLOC [hwtype=1 xx:xx:xx:xx:xx:xx], duid: [...], address: 2001:db8::1, valid-lft: 3600
+# INFO  [kea-dhcp6.leases] DHCP6_LEASE_ALLOC duid=[00:01:00:01:...], tid=0x123456: lease for address 2001:db8::1 and iaid=1 has been allocated for 3600 seconds
 LEASE_ALLOC_RE = re.compile(
-    r'LEASE6_ALLOC \[hwtype=\d+ (?P<mac>[0-9a-f:]+)\].*'
-    r'duid: \[(?P<duid>[^\]]+)\].*'
-    r'address: (?P<address>[0-9a-fA-F:]+).*'
-    r'valid-lft: (?P<lft>\d+)'
+    r'DHCP6_LEASE_ALLOC duid=\[(?P<duid>[^\]]+)\].*'
+    r'lease for address (?P<address>[0-9a-fA-F:]+) '
+    r'and iaid=(?P<iaid>\d+) has been allocated for (?P<lft>\d+) seconds'
 )
 
-LEASE_EXPIRE_RE = re.compile(
-    r'LEASE6_EXPIRE.*address: (?P<address>[0-9a-fA-F:]+)'
+LEASE_RECLAIM_RE = re.compile(
+    r'ALLOC_ENGINE_V6_LEASE_RECLAIMED.*address (?P<address>[0-9a-fA-F:]+)'
 )
 
 LEASE_RENEW_RE = re.compile(
-    r'LEASE6_RENEW.*address: (?P<address>[0-9a-fA-F:]+)'
+    r'DHCP6_LEASE_RENEW.*address (?P<address>[0-9a-fA-F:]+)'
 )
 
 def parse_kea_log(log_file: str) -> dict:
@@ -49,25 +48,25 @@ def parse_kea_log(log_file: str) -> dict:
 
     with open(log_file) as f:
         for line in f:
-            if "LEASE6_ALLOC" in line:
+            if "DHCP6_LEASE_ALLOC" in line:
                 m = LEASE_ALLOC_RE.search(line)
                 if m:
                     addr = m.group("address")
                     stats["allocations"][addr[:9]] += 1  # Group by /32 prefix
                     stats["active_leases"][addr] = {
-                        "mac": m.group("mac"),
                         "duid": m.group("duid"),
+                        "iaid": m.group("iaid"),
                         "lft": int(m.group("lft"))
                     }
 
-            elif "LEASE6_EXPIRE" in line:
-                m = LEASE_EXPIRE_RE.search(line)
+            elif "ALLOC_ENGINE_V6_LEASE_RECLAIMED" in line:
+                m = LEASE_RECLAIM_RE.search(line)
                 if m:
                     addr = m.group("address")
                     stats["expirations"] += 1
                     stats["active_leases"].pop(addr, None)
 
-            elif "LEASE6_RENEW" in line:
+            elif "DHCP6_LEASE_RENEW" in line:
                 stats["renewals"] += 1
 
     return stats
@@ -92,12 +91,12 @@ KEA_API="http://[::1]:8000"
 
 POOL_STATS=$(curl -s -X POST "$KEA_API" \
     -H "Content-Type: application/json" \
-    -d '{"command":"statistic-get","service":["dhcp6"],"arguments":{"name":"subnet[1].assigned-addresses"}}')
+    -d '{"command":"statistic-get","service":["dhcp6"],"arguments":{"name":"subnet[1].assigned-nas"}}')
 
 ASSIGNED=$(echo "$POOL_STATS" | python3 -c "
 import json,sys
 data = json.load(sys.stdin)
-print(data['arguments']['subnet[1].assigned-addresses'][0][0])
+print(data[0]['arguments']['subnet[1].assigned-nas'][0][0])
 ")
 
 TOTAL_POOL=1000  # Expected pool size
@@ -139,7 +138,7 @@ def collect_kea_stats():
 
     url = "http://[::1]:8000"
     data = json.dumps({
-        "command": "lease6-stats",
+        "command": "stat-lease6-get",
         "service": ["dhcp6"]
     }).encode()
 
@@ -147,11 +146,15 @@ def collect_kea_stats():
                                   headers={"Content-Type": "application/json"})
     try:
         with urllib.request.urlopen(req, timeout=5) as resp:
-            result = json.load(resp)
+            # Control Agent wraps per-service replies in a JSON list
+            result = json.load(resp)[0]
+            # Columns: subnet-id, total-nas, cumulative-assigned-nas,
+            # assigned-nas, declined-addresses, total-pds,
+            # cumulative-assigned-pds, assigned-pds
             for entry in result.get("arguments", {}).get("result-set", {}).get("rows", []):
                 subnet = entry[0]
-                assigned = entry[2]
                 total = entry[1]
+                assigned = entry[3]
                 ACTIVE_LEASES.labels(subnet=subnet).set(assigned)
                 if total > 0:
                     POOL_UTILIZATION.labels(subnet=subnet).set(assigned / total * 100)
@@ -175,9 +178,9 @@ if __name__ == "__main__":
 KNOWN_DEVICES_FILE="/etc/network/known_ipv6_devices.txt"
 
 # Extract DUIDs from today's Kea log
-NEW_DUIDS=$(grep "LEASE6_ALLOC" /var/log/kea/kea-dhcp6.log | \
+NEW_DUIDS=$(grep "DHCP6_LEASE_ALLOC" /var/log/kea/kea-dhcp6.log | \
     grep "$(date +%Y-%m-%d)" | \
-    grep -oP 'duid: \[\K[^\]]+' | sort -u)
+    grep -oP 'duid=\[\K[^\]]+' | sort -u)
 
 # Compare against known list
 while IFS= read -r duid; do
@@ -190,4 +193,4 @@ done <<< "$NEW_DUIDS"
 
 ## Conclusion
 
-IPv6 address allocation monitoring combines log parsing for DHCPv6 events (LEASE6_ALLOC, LEASE6_EXPIRE, LEASE6_RENEW) with REST API queries to the DHCP server for pool utilization metrics. Export these metrics to Prometheus and alert when pool utilization exceeds 80%. Track device DUIDs in allocation logs to detect new or unauthorized devices - unlike MAC-based tracking, DUIDs persist across network changes making them reliable device identifiers. Monitor prefix delegation logs separately to ensure customer/site prefixes are being correctly distributed.
+IPv6 address allocation monitoring combines log parsing for DHCPv6 events (DHCP6_LEASE_ALLOC, ALLOC_ENGINE_V6_LEASE_RECLAIMED, DHCP6_LEASE_RENEW) with REST API queries to the DHCP server for pool utilization metrics. Export these metrics to Prometheus and alert when pool utilization exceeds 80%. Track device DUIDs in allocation logs to detect new or unauthorized devices - unlike MAC-based tracking, DUIDs persist across network changes making them reliable device identifiers. Monitor prefix delegation logs separately to ensure customer/site prefixes are being correctly distributed.
