@@ -8,7 +8,7 @@ Description: Learn the different IPv6 tunneling mechanisms used to carry IPv6 tr
 
 ## Overview
 
-IPv6 tunneling carries IPv6 packets inside IPv4 packets, allowing IPv6 connectivity where native IPv6 is not available. Tunneling was critical during early IPv6 adoption but is now generally deprecated for production use in favor of native dual-stack. Understanding the mechanisms helps identify and disable tunnels that may create unintended connectivity or security risks.
+IPv6 tunneling carries IPv6 packets inside IPv4 packets, allowing IPv6 connectivity where native IPv6 is not available. Several automatic transition mechanisms were critical during early IPv6 adoption but are now deprecated in favor of native dual-stack. Understanding the mechanisms helps identify and disable tunnels that may create unintended connectivity or security risks.
 
 ## Tunneling Mechanisms at a Glance
 
@@ -77,7 +77,7 @@ Relay: anycast 192.88.99.1 (now deprecated - RFC 7526)
 
 Problems that led to deprecation:
 - Relay quality varies wildly - broken relays cause random failures
-- Anycast relay 192.88.99.1 was decommissioned (RFC 7526, 2015)
+- The 192.88.99.1 anycast relay mechanism was deprecated (RFC 7526, 2015)
 - Often results in worse performance than IPv4 alone
 - Security issues from uncontrolled relay network
 
@@ -87,8 +87,8 @@ ISP-controlled version of 6to4 with operator-owned relays:
 
 ```text
 ISP prefix: 2001:db8::/32
-IPv4: 192.168.1.10 (→ hex: c0a8:010a)
-6rd prefix for host: 2001:db8:c0a8:010a::/64
+CE IPv4: 192.168.1.10 (→ hex: c0a8:010a)
+6rd delegated prefix: 2001:db8:c0a8:010a::/64
 ```
 
 Better than 6to4 because ISP controls relay quality, but still requires tunneling infrastructure.
@@ -101,17 +101,15 @@ Encapsulates IPv6 in UDP/IPv4 for NAT traversal:
 Client (behind NAT)
   ↓
 [NAT device - IPv4 only]
-  ↓
-Teredo Server (2001::/32 → Teredo address space)
-  ↓
-Teredo Relay → IPv6 Internet
+  ├─ setup/qualification → Teredo Server
+  └─ data traffic → Teredo Relay → IPv6 Internet
 ```
 
-Teredo addresses use the `2001::/32` prefix. Communication goes through Teredo servers and relays. Deprecated in Windows 11 for direct use; still available but disabled by default.
+Teredo addresses use the `2001:0000::/32` prefix. Teredo servers help clients establish and maintain connectivity, while relays forward traffic between Teredo clients and the native IPv6 Internet. Microsoft lists Teredo among deprecated IPv4/6 transition technologies and notes it has been disabled since Windows 10 version 1803.
 
 ## ISATAP
 
-Intra-Site Automatic Tunnel Addressing Protocol - creates an IPv6 overlay on IPv4 enterprise LANs. Addresses embed the IPv4 address: `fe80::0:5efe:192.0.2.10`. Deprecated and removed from Windows Server 2022 and later.
+Intra-Site Automatic Tunnel Addressing Protocol - creates an IPv6 overlay on IPv4 enterprise LANs. Addresses embed the IPv4 address: `fe80::0:5efe:192.0.2.10`. Microsoft lists ISATAP among deprecated IPv4/6 transition technologies and notes it has been disabled by default since Windows 10 version 1703.
 
 ## GRE Tunnels
 
@@ -142,4 +140,4 @@ Best practice:
 
 ## Summary
 
-IPv6 tunneling mechanisms fall into two categories: operator-controlled (6in4 manual tunnels, 6rd, GRE) and automatic/client-side (6to4, Teredo, ISATAP). The automatic mechanisms are deprecated due to quality, security, and operational issues. Native dual-stack is preferred over all tunneling. For environments where tunneling is unavoidable (e.g., connecting to an IPv6 tunnel broker), use 6in4 (SIT) or GRE with explicit configuration. Block protocol 41 and UDP 3544 at network borders to prevent unauthorized tunneling.
+IPv6 tunneling mechanisms fall broadly into two categories: operator-controlled (6in4 manual tunnels, 6rd, GRE) and automatic/address-derived (6to4, Teredo, ISATAP). The automatic mechanisms are deprecated due to quality, security, and operational issues. Native dual-stack is preferred where available. For environments where tunneling is unavoidable (e.g., connecting to an IPv6 tunnel broker), use 6in4 (SIT) or GRE with explicit configuration. Block protocol 41, UDP 3544, and GRE at network borders unless those tunnels are explicitly authorized.
