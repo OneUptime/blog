@@ -4,11 +4,11 @@ Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
 Tags: Kubernetes, Operator, IPv6, Ingress, Nginx
 
-Description: Create and manage Kubernetes Ingress resources with IPv6 annotations and LoadBalancer IPs in custom Kubernetes operators.
+Description: Create and manage Kubernetes Ingress resources and their backing LoadBalancer Services with IPv6-aware configuration in custom Kubernetes operators.
 
 ## Overview
 
-Create and manage Kubernetes Ingress resources with IPv6 annotations and LoadBalancer IPs in custom Kubernetes operators.
+Create and manage Kubernetes Ingress resources and their backing LoadBalancer Services with IPv6-aware configuration in custom Kubernetes operators.
 
 ## Prerequisites
 
@@ -18,22 +18,32 @@ Create and manage Kubernetes Ingress resources with IPv6 annotations and LoadBal
 
 ## Working with IPv6 in Kubernetes Operators
 
-### Checking IPv6 Support in the Cluster
+### Checking for IPv6 Node Addresses in the Cluster
 
 ```go
-// Check if cluster supports IPv6
-func isIPv6Enabled(config *rest.Config) bool {
-    client, _ := kubernetes.NewForConfig(config)
-    nodes, _ := client.CoreV1().Nodes().List(context.Background(), metav1.ListOptions{})
+// hasIPv6NodeAddress checks whether any node reports an IPv6 address.
+// It does not, by itself, prove that the cluster is fully dual-stack capable.
+func hasIPv6NodeAddress(ctx context.Context, config *rest.Config) (bool, error) {
+    client, err := kubernetes.NewForConfig(config)
+    if err != nil {
+        return false, err
+    }
+
+    nodes, err := client.CoreV1().Nodes().List(ctx, metav1.ListOptions{})
+    if err != nil {
+        return false, err
+    }
+
     for _, node := range nodes.Items {
         for _, addr := range node.Status.Addresses {
             ip := net.ParseIP(addr.Address)
             if ip != nil && ip.To4() == nil {
-                return true  // Found an IPv6 node address
+                return true, nil // Found an IPv6 node address
             }
         }
     }
-    return false
+
+    return false, nil
 }
 ```
 
@@ -111,8 +121,8 @@ EOF
 kind create cluster --config kind-dual-stack.yaml
 
 # Verify dual-stack is enabled
-kubectl get nodes -o wide
-kubectl get pods -n kube-system -o wide | grep "2001:"
+kubectl get nodes -o go-template --template='{{range .items}}{{.metadata.name}}{{"\n"}}{{range .status.addresses}}{{printf "  %s: %s\n" .type .address}}{{end}}{{end}}'
+kubectl get pod -n kube-system "$(kubectl get pod -n kube-system -o jsonpath='{.items[0].metadata.name}')" -o go-template --template='{{range .status.podIPs}}{{printf "%s\n" .ip}}{{end}}'
 ```
 
 ## Monitoring with OneUptime
@@ -121,4 +131,4 @@ Use [OneUptime](https://oneuptime.com) to monitor your operator's health endpoin
 
 ## Conclusion
 
-How to Handle IPv6 in Operator-Managed Ingress Resources involves using Go's `net` package for IPv6 validation, handling dual-stack service creation with `IPFamilyPolicy`, and testing against IPv6-enabled Kubernetes clusters. Always validate IPv6 addresses in CRD webhook validators to catch issues before reconciliation.
+How to Handle IPv6 in Operator-Managed Ingress Resources involves using Go's `net` package for IPv6 validation, handling dual-stack backing Services with `.spec.ipFamilyPolicy`, and testing against IPv6-enabled Kubernetes clusters. Always validate IPv6 addresses in CRD webhook validators to catch issues before reconciliation.
