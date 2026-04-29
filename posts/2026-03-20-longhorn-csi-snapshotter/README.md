@@ -14,18 +14,17 @@ Longhorn integrates with the Kubernetes CSI snapshots API, allowing you to creat
 
 ## Step 1: Install CSI Snapshot Controller
 
-The CSI snapshot controller must be installed in the cluster before Longhorn can use the snapshot API:
+The CSI snapshot controller and snapshot CRDs must be available in the cluster before Longhorn can use the snapshot API. If your Kubernetes distribution does not already provide them, install the release documented for your Longhorn version. For Longhorn 1.11.1, use `external-snapshotter` `v8.5.0`:
 
 ```bash
-# Install the CSI snapshot CRDs
+git clone --branch v8.5.0 https://github.com/kubernetes-csi/external-snapshotter.git
+cd external-snapshotter
 
-kubectl apply -f https://raw.githubusercontent.com/kubernetes-csi/external-snapshotter/master/client/config/crd/snapshot.storage.k8s.io_volumesnapshotclasses.yaml
-kubectl apply -f https://raw.githubusercontent.com/kubernetes-csi/external-snapshotter/master/client/config/crd/snapshot.storage.k8s.io_volumesnapshots.yaml
-kubectl apply -f https://raw.githubusercontent.com/kubernetes-csi/external-snapshotter/master/client/config/crd/snapshot.storage.k8s.io_volumesnapshotcontents.yaml
+# Install the CSI snapshot CRDs
+kubectl create -k client/config/crd
 
 # Install the snapshot controller
-kubectl apply -f https://raw.githubusercontent.com/kubernetes-csi/external-snapshotter/master/deploy/kubernetes/snapshot-controller/rbac-snapshot-controller.yaml
-kubectl apply -f https://raw.githubusercontent.com/kubernetes-csi/external-snapshotter/master/deploy/kubernetes/snapshot-controller/setup-snapshot-controller.yaml
+kubectl create -k deploy/kubernetes/snapshot-controller
 ```
 
 ---
@@ -44,8 +43,8 @@ metadata:
 driver: driver.longhorn.io
 deletionPolicy: Delete
 parameters:
-  # Use "true" to create a backup (backed up to S3/NFS)
-  # Use "false" for a local Longhorn snapshot only
+  # Use `snap` for a local Longhorn snapshot
+  # Use `bak` for a Longhorn backup in the configured backup target
   type: snap
 ```
 
@@ -93,7 +92,7 @@ spec:
   storageClassName: longhorn
   resources:
     requests:
-      storage: 10Gi
+      storage: 10Gi # Must match the source volume size captured by the snapshot
   # Restore from the snapshot
   dataSource:
     name: myapp-data-snapshot-v1
@@ -109,7 +108,7 @@ spec:
 # List all snapshots
 kubectl get volumesnapshot -A
 
-# List snapshot contents (the underlying Longhorn resources)
+# List snapshot contents (the backing Kubernetes snapshot objects)
 kubectl get volumesnapshotcontent
 
 # Delete a snapshot
@@ -118,7 +117,9 @@ kubectl delete volumesnapshot myapp-data-snapshot-v1 -n my-app
 
 ---
 
-## Step 6: Automate Snapshots via Longhorn Recurring Jobs
+## Step 6: Automate Longhorn Snapshots via Longhorn Recurring Jobs
+
+The following `RecurringJob` automates Longhorn snapshots. After creating it, assign it to the PVC so Longhorn syncs the job to the backing volume:
 
 ```yaml
 # recurring-snapshot-job.yaml
@@ -136,10 +137,18 @@ spec:
   concurrency: 2
 ```
 
+```bash
+kubectl apply -f recurring-snapshot-job.yaml
+
+# Assign the recurring job to the PVC
+kubectl -n my-app label pvc/myapp-data recurring-job.longhorn.io/source=enabled
+kubectl -n my-app label pvc/myapp-data recurring-job.longhorn.io/daily-snapshot=enabled
+```
+
 ---
 
 ## Best Practices
 
-- Use `type: backup` in the VolumeSnapshotClass to create off-cluster backups (requires a Longhorn backup target).
-- Schedule CSI snapshots via Longhorn RecurringJobs for consistent, automated protection.
-- Test snapshot restore regularly - create a restore and verify data integrity before relying on snapshots for disaster recovery.
+- Use `type: bak` in the VolumeSnapshotClass to create off-cluster backups (requires a Longhorn backup target).
+- Use Longhorn RecurringJobs to automate Longhorn snapshots or backups; they do not create Kubernetes `VolumeSnapshot` objects.
+- Test snapshot restore regularly - create a restore and verify data integrity before relying on snapshots or backups for disaster recovery.
