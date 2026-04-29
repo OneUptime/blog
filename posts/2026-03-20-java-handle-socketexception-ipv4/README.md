@@ -4,22 +4,22 @@ Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
 Tags: Java, SocketException, Error Handling, IPv4, TCP, Networking, Resilience
 
-Description: Properly handle Java SocketException and its subclasses for IPv4 TCP connections, distinguishing between network errors, timeouts, and intentional closures.
+Description: Properly handle Java `SocketException`, its common subclasses, and related timeout exceptions for IPv4 TCP connections, distinguishing between network errors, timeouts, and intentional closures.
 
 ## Introduction
 
-`SocketException` is the most common exception in Java network programming. Understanding the different error codes and knowing which are recoverable versus fatal is essential for building resilient network applications.
+`SocketException` is a common exception in Java network programming. Understanding the different exception types and knowing which failures are often recoverable versus non-recoverable is essential for building resilient network applications.
 
 ## SocketException Hierarchy
 
 ```text
 IOException
-  └── SocketException
-        ├── BindException          - Cannot bind to local address/port
-        ├── ConnectException       - Connection refused or host unreachable
-        ├── NoRouteToHostException - No route to host
-        └── PortUnreachableException - Specific port unreachable
-  └── SocketTimeoutException (read/connect timeout)
+  ├── SocketException
+  │     ├── BindException            - Cannot bind to local address/port
+  │     ├── ConnectException         - Connection attempt failed, typically refused
+  │     ├── NoRouteToHostException   - Remote host cannot be reached
+  │     └── PortUnreachableException - Datagram-specific, not used for TCP sockets
+  └── SocketTimeoutException         - Read/connect/accept timeout
 ```
 
 ## Handling Common SocketException Scenarios
@@ -27,6 +27,7 @@ IOException
 ```java
 import java.net.*;
 import java.io.*;
+import java.nio.charset.StandardCharsets;
 
 public class RobustSocketHandler {
     
@@ -39,45 +40,42 @@ public class RobustSocketHandler {
             System.out.printf("Connection attempt %d/%d to %s:%d%n", attempt, MAX_RETRIES, host, port);
             
             try (Socket socket = new Socket()) {
-                socket.connect(new InetSocketAddress(host, port), 5000);
+                try {
+                    socket.connect(new InetSocketAddress(host, port), 5000);
+                } catch (SocketTimeoutException e) {
+                    System.err.println("Connect timeout for " + host + ":" + port);
+                    if (attempt < MAX_RETRIES) sleep(1000L << attempt); // Exponential backoff
+                    continue;
+                }
                 socket.setSoTimeout(30000);
                 
                 processConnection(socket);
                 return; // Success - exit retry loop
                 
             } catch (ConnectException e) {
-                // Connection refused - server is not listening or port is closed
-                System.err.printf("Connection refused: %s:%d - %s%n", host, port, e.getMessage());
-                if (attempt < MAX_RETRIES) sleep(2000 * attempt); // Exponential backoff
+                // Connection attempt failed, typically because no process is listening
+                System.err.printf("Connect error: %s:%d - %s%n", host, port, e.getMessage());
+                if (attempt < MAX_RETRIES) sleep(1000L << attempt); // Exponential backoff
                 
             } catch (NoRouteToHostException e) {
-                // Network unreachable - routing problem, no retry
+                // Remote host cannot be reached from the current network path
                 System.err.println("No route to host: " + host);
-                return; // Fatal - don't retry
+                return; // Usually requires network or configuration changes
                 
             } catch (BindException e) {
-                // Cannot bind local port - should not happen for outbound, but handle it
+                // Local bind failed - uncommon for outbound sockets, but still possible
                 System.err.println("Bind error: " + e.getMessage());
                 return;
                 
             } catch (SocketTimeoutException e) {
-                // Connection or read timed out
-                System.err.println("Timeout connecting to " + host + ":" + port);
+                // Read timed out after the connection was established
+                System.err.println("Read timeout while waiting for data from " + host + ":" + port);
                 if (attempt < MAX_RETRIES) sleep(1000);
                 
             } catch (SocketException e) {
-                // Generic socket error - parse the message for context
-                String msg = e.getMessage();
-                if (msg != null && (msg.contains("reset") || msg.contains("broken pipe"))) {
-                    System.err.println("Connection reset by peer");
-                    if (attempt < MAX_RETRIES) sleep(1000);
-                } else if (msg != null && msg.contains("closed")) {
-                    System.err.println("Socket was closed unexpectedly");
-                    return; // Usually not retryable
-                } else {
-                    System.err.println("Socket error: " + msg);
-                    return;
-                }
+                // Generic socket failures are implementation-specific; log the detail message
+                System.err.println("Socket error: " + e.getMessage());
+                return;
                 
             } catch (IOException e) {
                 System.err.println("I/O error: " + e.getMessage());
@@ -90,13 +88,19 @@ public class RobustSocketHandler {
     
     private static void processConnection(Socket socket) throws IOException {
         BufferedReader reader = new BufferedReader(
-            new InputStreamReader(socket.getInputStream()));
-        PrintWriter writer = new PrintWriter(socket.getOutputStream(), true);
+            new InputStreamReader(socket.getInputStream(), StandardCharsets.UTF_8));
+        BufferedWriter writer = new BufferedWriter(
+            new OutputStreamWriter(socket.getOutputStream(), StandardCharsets.UTF_8));
         
-        writer.println("HELLO");
+        writer.write("HELLO");
+        writer.newLine();
+        writer.flush();
         
         try {
             String response = reader.readLine();
+            if (response == null) {
+                throw new EOFException("Server closed the connection before sending a reply");
+            }
             System.out.println("Server response: " + response);
         } catch (SocketTimeoutException e) {
             System.err.println("Read timeout - server did not respond");
@@ -115,61 +119,62 @@ public class RobustSocketHandler {
 ```java
 import java.net.*;
 import java.io.*;
+import java.nio.charset.StandardCharsets;
 import java.util.concurrent.*;
 
 public class RobustServer {
     
     public static void main(String[] args) throws IOException {
-        ServerSocket server = new ServerSocket();
-        server.setReuseAddress(true);
-        server.bind(new InetSocketAddress(8080), 100);
-        
         ExecutorService pool = Executors.newCachedThreadPool();
-        System.out.println("Server listening on port 8080");
         
-        while (!server.isClosed()) {
-            try {
-                Socket client = server.accept();
-                pool.submit(() -> handleClientSafely(client));
-            } catch (SocketException e) {
-                if (server.isClosed()) {
-                    System.out.println("Server socket closed - shutting down");
-                    break;
+        try (ServerSocket server = new ServerSocket()) {
+            server.setReuseAddress(true);
+            server.bind(new InetSocketAddress(8080), 100);
+            System.out.println("Server listening on port 8080");
+            
+            while (!server.isClosed()) {
+                try {
+                    Socket client = server.accept();
+                    pool.submit(() -> handleClientSafely(client));
+                } catch (SocketException e) {
+                    if (server.isClosed()) {
+                        System.out.println("Server socket closed - shutting down");
+                        break;
+                    }
+                    System.err.println("Accept error: " + e.getMessage());
+                } catch (IOException e) {
+                    System.err.println("I/O error on accept: " + e.getMessage());
                 }
-                System.err.println("Accept error: " + e.getMessage());
-            } catch (IOException e) {
-                System.err.println("I/O error on accept: " + e.getMessage());
             }
+        } finally {
+            pool.shutdown();
         }
     }
     
     private static void handleClientSafely(Socket socket) {
-        String clientAddr = socket.getRemoteSocketAddress().toString();
+        String clientAddr = String.valueOf(socket.getRemoteSocketAddress());
         
         try (socket) {
             socket.setSoTimeout(60000);
             
             BufferedReader reader = new BufferedReader(
-                new InputStreamReader(socket.getInputStream()));
-            PrintWriter writer = new PrintWriter(socket.getOutputStream(), true);
+                new InputStreamReader(socket.getInputStream(), StandardCharsets.UTF_8));
+            BufferedWriter writer = new BufferedWriter(
+                new OutputStreamWriter(socket.getOutputStream(), StandardCharsets.UTF_8));
             
             String line;
             while ((line = reader.readLine()) != null) {
-                writer.println("Echo: " + line);
+                writer.write("Echo: " + line);
+                writer.newLine();
+                writer.flush();
             }
+            
+            System.out.println("Client " + clientAddr + " disconnected cleanly");
             
         } catch (SocketTimeoutException e) {
             System.out.println("Client " + clientAddr + " idle timeout");
         } catch (SocketException e) {
-            String msg = e.getMessage();
-            if (msg != null && msg.contains("reset")) {
-                // Client disconnected abruptly (e.g., browser closed tab)
-                System.out.println("Client " + clientAddr + " reset connection");
-            } else if (msg != null && msg.contains("closed")) {
-                // Our side closed - normal
-            } else {
-                System.err.println("Socket error for " + clientAddr + ": " + msg);
-            }
+            System.err.println("Socket error for " + clientAddr + ": " + e.getMessage());
         } catch (IOException e) {
             System.err.println("I/O error for " + clientAddr + ": " + e.getMessage());
         }
@@ -179,14 +184,16 @@ public class RobustServer {
 
 ## Key Error Messages and Their Meanings
 
+These detail messages are common on Unix-like systems, but exception text is implementation- and OS-specific, so prefer exception types for control flow and use message text for diagnostics.
+
 | Message | Cause | Action |
 |---------|-------|--------|
-| `Connection reset` | Remote closed abruptly | Log and close |
-| `Broken pipe` | Write to closed connection | Close cleanly |
+| `Connection reset` | Remote peer or network reset the TCP connection | Log and close; retry only if the operation is safe to repeat |
+| `Broken pipe` | Write attempted after the peer had already closed or reset the connection | Close and reconnect if appropriate |
 | `Connection refused` | Port not listening | Retry or fail |
-| `Socket closed` | Local close before operation | Logic bug |
+| `Socket closed` | Operation attempted after a local close or during shutdown | Treat as shutdown if intentional; otherwise fix socket lifecycle |
 | `Read timed out` | `setSoTimeout()` expired | Retry or close |
 
 ## Conclusion
 
-Robust Java network code must differentiate between fatal errors (no route to host, bind error) and transient errors (connection reset, timeout). Use exponential backoff for retries, log error messages for diagnostics, and always close sockets in `finally` blocks or try-with-resources.
+Robust Java network code must distinguish between errors that usually need configuration or network fixes (`BindException`, `NoRouteToHostException`) and failures that may be transient (`SocketTimeoutException`, some connection resets). Log `SocketException` detail messages for diagnostics, but prefer exception types over message text for control flow, and always close sockets in `finally` blocks or try-with-resources.
