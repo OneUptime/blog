@@ -35,33 +35,29 @@ uname -r
 Fedora uses firewalld by default. Open the ports K3s needs:
 
 ```bash
-# Open K3s API server port
+# Open K3s API server port on server nodes
 sudo firewall-cmd --permanent --add-port=6443/tcp
 
-# Open port for K3s agent registration
+# Allow pod and service traffic on the default K3s CIDRs
+sudo firewall-cmd --permanent --zone=trusted --add-source=10.42.0.0/16
+sudo firewall-cmd --permanent --zone=trusted --add-source=10.43.0.0/16
+
+# Open port for kubelet metrics/API if you use metrics-server
 sudo firewall-cmd --permanent --add-port=10250/tcp
 
-# Flannel VXLAN (if using Flannel backend)
+# Flannel VXLAN between nodes (default backend)
 sudo firewall-cmd --permanent --add-port=8472/udp
 
-# Flannel Wireguard (if using Wireguard backend)
+# Flannel WireGuard Native between nodes (if using that backend)
 sudo firewall-cmd --permanent --add-port=51820/udp
 sudo firewall-cmd --permanent --add-port=51821/udp
-
-# NodePort range
-sudo firewall-cmd --permanent --add-port=30000-32767/tcp
-sudo firewall-cmd --permanent --add-port=30000-32767/udp
-
-# Allow traffic through CNI bridge
-sudo firewall-cmd --permanent --add-masquerade
-sudo firewall-cmd --permanent --zone=trusted --add-interface=cni0
-sudo firewall-cmd --permanent --zone=trusted --add-interface=flannel.1
 
 # Reload firewalld
 sudo firewall-cmd --reload
 
 # Verify
 sudo firewall-cmd --list-all
+sudo firewall-cmd --zone=trusted --list-all
 ```
 
 ## Step 3: Configure SELinux
@@ -73,15 +69,18 @@ Fedora ships with SELinux in enforcing mode. K3s requires SELinux policies:
 getenforce
 # Output: Enforcing
 
-# Option 1: Install K3s SELinux policy (recommended)
+# Option 1: Install the dependencies required by the K3s SELinux policy
 sudo dnf install -y container-selinux selinux-policy-base
 
-# The K3s install script can also install the SELinux RPM automatically
-# (covered in Step 5)
+# Install the K3s SELinux policy
+sudo dnf install -y https://rpm.rancher.io/k3s/latest/common/centos/9/noarch/k3s-selinux-1.6-1.el9.noarch.rpm
+
+# The K3s install script can also install the K3s SELinux RPM automatically
+# if the node has Internet access (covered in Step 7)
 
 # Option 2: Set SELinux to permissive mode (not recommended for production)
 # sudo setenforce 0
-# sudo sed -i 's/^ENFORCING=enforcing$/ENFORCING=permissive/' /etc/selinux/config
+# sudo sed -i 's/^SELINUX=enforcing$/SELINUX=permissive/' /etc/selinux/config
 ```
 
 ## Step 4: Disable Swap
@@ -110,14 +109,14 @@ stat -fc %T /sys/fs/cgroup/
 # "cgroup2fs" = cgroup v2
 # "tmpfs" = cgroup v1
 
-# K3s v1.21+ supports cgroup v2 natively
-# If using an older K3s, enable hybrid mode or force cgroup v1
+# The K3s releases covered by this guide work with Fedora's default cgroup v2 layout
+# If you are using an older K3s release and hit cgroup issues, force cgroup v1
 
-# To force cgroup v1 (if needed for older K3s versions):
+# To force cgroup v1 (if needed for older K3s releases):
 # sudo grubby --update-kernel=ALL --args="systemd.unified_cgroup_hierarchy=0"
 # sudo reboot
 
-# For K3s v1.21+, cgroup v2 works out of the box
+# For the K3s versions covered here, cgroup v2 works out of the box
 ```
 
 ## Step 6: Configure sysctl Settings
@@ -149,6 +148,7 @@ sudo mkdir -p /etc/rancher/k3s
 # Create K3s configuration
 sudo tee /etc/rancher/k3s/config.yaml > /dev/null <<EOF
 token: "FedoraK3sToken"
+selinux: true
 tls-san:
   - $(hostname -I | awk '{print $1}')
   - $(hostname)
@@ -157,11 +157,9 @@ kubelet-arg:
   - "max-pods=110"
 EOF
 
-# Install K3s with SELinux support
-# The INSTALL_K3S_SELINUX_WARN=true flag ensures SELinux policy RPM is installed
-curl -sfL https://get.k3s.io | \
-    INSTALL_K3S_SELINUX_WARN=true \
-    sudo sh -
+# Install K3s
+# The installer can automatically install the k3s-selinux RPM if needed
+curl -sfL https://get.k3s.io | sudo sh -
 
 # Check service status
 sudo systemctl status k3s
@@ -184,16 +182,16 @@ kubectl get pods --all-namespaces
 
 ```bash
 # On the Fedora agent node, perform steps 1-6 first, then:
+sudo mkdir -p /etc/rancher/k3s
+
 sudo tee /etc/rancher/k3s/config.yaml > /dev/null <<EOF
 server: "https://SERVER_IP:6443"
 token: "FedoraK3sToken"
+selinux: true
 EOF
 
 # Install K3s agent with SELinux support
-curl -sfL https://get.k3s.io | \
-    INSTALL_K3S_EXEC="agent" \
-    INSTALL_K3S_SELINUX_WARN=true \
-    sudo sh -
+curl -sfL https://get.k3s.io | sudo env INSTALL_K3S_EXEC="agent" sh -
 
 sudo systemctl status k3s-agent
 ```
@@ -203,18 +201,20 @@ sudo systemctl status k3s-agent
 ```bash
 # Deploy a test workload
 kubectl create deployment test-nginx --image=nginx:alpine
+kubectl rollout status deployment/test-nginx
 kubectl expose deployment test-nginx --port=80 --type=NodePort
 
 # Get the NodePort
 kubectl get svc test-nginx
 NODE_PORT=$(kubectl get svc test-nginx -o jsonpath='{.spec.ports[0].nodePort}')
+NODE_IP=$(hostname -I | awk '{print $1}')
 
 # Allow the NodePort through firewall
 sudo firewall-cmd --permanent --add-port=${NODE_PORT}/tcp
 sudo firewall-cmd --reload
 
 # Test
-curl http://localhost:$NODE_PORT
+curl http://$NODE_IP:$NODE_PORT
 
 # Clean up
 kubectl delete deployment test-nginx
@@ -246,9 +246,9 @@ sudo firewall-cmd --reload
 ### cgroup v2 OOM Issues
 
 ```bash
-# If pods are getting OOM-killed unexpectedly, check cgroup memory limits
+# If pods are getting OOM-killed unexpectedly, inspect the cgroup hierarchy
 systemd-cgls
-# Look for memory.max settings
+# Then inspect the relevant memory.max files under /sys/fs/cgroup/
 ```
 
 ## Conclusion
