@@ -22,17 +22,17 @@ interface wlan0 {
     AdvDefaultLifetime 1800;
     AdvLinkMTU 1500;
 
-    # DNS Recursive Name Servers (RDNSS - RFC 6106)
+    # DNS Recursive Name Servers (RDNSS - RFC 8106)
     RDNSS 2001:4860:4860::8888 2001:4860:4860::8844 {
         AdvRDNSSLifetime 3600;
     };
 
-    # DNS Search List (DNSSL - RFC 6106)
+    # DNS Search List (DNSSL - RFC 8106)
     DNSSL example.com corp.example.com {
         AdvDNSSLLifetime 3600;
     };
 
-    prefix 2001:db8:wifi::/64 {
+    prefix 2001:db8:100::/64 {
         AdvOnLink on;
         AdvAutonomous on;         # Enable SLAAC
         AdvRouterAddr off;
@@ -47,7 +47,7 @@ interface wlan0 {
 
 sudo systemctl enable --now radvd
 
-# Verify RA is being sent
+# Inspect received RA messages
 sudo radvdump
 
 # Check radvd status
@@ -55,10 +55,10 @@ sudo systemctl status radvd
 sudo journalctl -u radvd -f
 ```
 
-## RA Flags Explained
+## RA and Prefix Flags Explained
 
 ```text
-RA Flag Reference:
+RA and Prefix Flag Reference:
 ┌─────┬───────────────────────────────────────────────────────────┐
 │ M   │ Managed Address Configuration: Use DHCPv6 for addresses   │
 │ O   │ Other Configuration: Use DHCPv6 for DNS/options only      │
@@ -80,7 +80,7 @@ interface wlan0 {
     AdvOtherConfigFlag on;   # O flag: Use DHCPv6 for options
     # AdvManagedFlag off;    # M flag: Don't use DHCPv6 for addresses
 
-    prefix 2001:db8:wifi::/64 {
+    prefix 2001:db8:100::/64 {
         AdvOnLink on;
         AdvAutonomous on;    # SLAAC enabled
     };
@@ -92,7 +92,7 @@ interface wlan0 {
     AdvManagedFlag on;    # M flag: Use DHCPv6 for addresses
     AdvOtherConfigFlag on; # O flag: Use DHCPv6 for options
 
-    prefix 2001:db8:wifi::/64 {
+    prefix 2001:db8:100::/64 {
         AdvOnLink on;
         AdvAutonomous off;   # Disable SLAAC
     };
@@ -104,15 +104,14 @@ interface wlan0 {
 ```bash
 # RA Guard prevents rogue RA from wireless clients
 
-# Linux: Use ip6tables to block RA from clients
-# Block ICMPv6 type 134 (Router Advertisement) from non-router sources
+# Linux host: block received RA from unauthorized source MAC
 sudo ip6tables -A INPUT -i wlan0 -p icmpv6 \
   --icmpv6-type router-advertisement \
   -m mac --mac-source ! 00:11:22:33:44:55 -j DROP
 
-# Or use ebtables on the bridge
-sudo ebtables -A FORWARD -p IPv6 --ip6-protocol icmpv6 \
-  --ip6-icmp-type router-advertisement -j DROP
+# On a Linux AP/bridge, drop RA arriving from the client-facing Wi-Fi interface
+sudo ebtables -A FORWARD -i wlan0 -p IPv6 --ip6-protocol ipv6-icmp \
+  --ip6-icmp-type 134 -j DROP
 
 # On managed switches: Enable IPv6 RA Guard
 # Cisco IOS:
@@ -121,10 +120,11 @@ sudo ebtables -A FORWARD -p IPv6 --ip6-protocol icmpv6 \
 # interface GigabitEthernet0/1
 #   ipv6 nd raguard attach-policy RA-GUARD
 
-# Linux firewall - only allow RA from authorized router MAC
-sudo ip6tables -I FORWARD -i wlan0 -p icmpv6 \
+# If bridge netfilter is enabled, log and drop forwarded RA
+# arriving from the client-facing Wi-Fi interface
+sudo ip6tables -I FORWARD 1 -i wlan0 -p icmpv6 \
   --icmpv6-type router-advertisement -j LOG --log-prefix "ROGUE-RA: "
-sudo ip6tables -I FORWARD -i wlan0 -p icmpv6 \
+sudo ip6tables -I FORWARD 2 -i wlan0 -p icmpv6 \
   --icmpv6-type router-advertisement -j DROP
 ```
 
@@ -143,7 +143,7 @@ ip -6 neigh show  # Check NDP/router entry
 
 # Check RA received by wireless client
 sysctl net.ipv6.conf.wlan0.accept_ra
-# Should be 1 (accept RA)
+# Should be 1 on a host, or 2 if forwarding is enabled and the client must still accept RA
 
 # Force RS (Router Solicitation) to trigger RA response
 rdisc6 wlan0
@@ -155,24 +155,22 @@ ip -6 addr show dev wlan0 | grep "scope global"
 ## Wireless RA Best Practices
 
 ```bash
-# Recommended RA intervals for Wi-Fi:
-# MaxRtrAdvInterval: 30s (default is 600s, too slow for mobile clients)
-# MinRtrAdvInterval: 10s
-# Router Lifetime: 1800s
+# Periodic multicast RA tuning for Wi-Fi:
+# Lower intervals propagate changes faster, but increase multicast traffic
+# and battery impact on phones and other sleeping clients (RFC 7772).
+# Keep Router Lifetime >= MaxRtrAdvInterval.
 
-# Send unsolicited RA more frequently for mobile devices
-cat >> /etc/radvd.conf << 'EOF'
+# Example: shorter intervals for faster propagation of configuration changes
 interface wlan0 {
     AdvSendAdvert on;
     MinRtrAdvInterval 10;
-    MaxRtrAdvInterval 30;    # Short for mobile client roaming
+    MaxRtrAdvInterval 30;
     AdvDefaultLifetime 1800;
     # ...
 };
-EOF
 
 # Trigger immediate RA (after config change)
 sudo kill -HUP $(pidof radvd)
 ```
 
-Proper Router Advertisement configuration over Wi-Fi requires short RA intervals (30 seconds) to support mobile clients roaming between APs, RDNSS options to deliver DNS resolver addresses via RA, and RA Guard policies on APs and switches to block rogue RA messages from potentially malicious wireless clients.
+Proper Router Advertisement configuration over Wi-Fi requires RA intervals chosen for the client and power profile, RDNSS options to deliver DNS resolver addresses via RA, and RA Guard policies on APs and switches to block rogue RA messages from potentially malicious wireless clients.
