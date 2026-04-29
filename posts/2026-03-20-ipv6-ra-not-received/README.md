@@ -4,11 +4,11 @@ Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
 Tags: IPv6, Router Advertisement, SLAAC, NDP, Troubleshooting, Network Diagnostics
 
-Description: Diagnose why IPv6 Router Advertisements are not being received, causing hosts to have no default route or global addresses via SLAAC.
+Description: Diagnose why IPv6 Router Advertisements are not being received, causing hosts to have no default route or no global addresses via SLAAC.
 
 ## Introduction
 
-Router Advertisements (RAs) are ICMPv6 messages sent by routers to announce IPv6 prefixes, default gateway information, and DHCPv6 flags. Hosts rely on RAs to configure SLAAC addresses and default routes. When RAs are not received, hosts get no global IPv6 addresses and no default route. This guide diagnoses RA reception failures.
+Router Advertisements (RAs) are ICMPv6 messages sent by routers to announce IPv6 prefixes, default gateway information, and DHCPv6 flags. Hosts rely on RAs to configure SLAAC addresses and default routes. When RAs are not received, hosts typically get no global IPv6 addresses via SLAAC and no default route. This guide diagnoses RA reception failures.
 
 ## Step 1: Actively Solicit a Router Advertisement
 
@@ -18,9 +18,9 @@ Router Advertisements (RAs) are ICMPv6 messages sent by routers to announce IPv6
 rdisc6 eth0
 
 # Wait longer (5 seconds) and try multiple times
-rdisc6 -m 3 -w 5000 eth0
+rdisc6 -r 3 -w 5000 eth0
 
-# If this returns nothing, no router is sending RAs
+# If no RA is received, the router may not be sending one or it may be filtered
 
 # Expected output when working:
 # Hop limit                 :   64
@@ -37,7 +37,7 @@ rdisc6 -m 3 -w 5000 eth0
 sudo tcpdump -i eth0 -v "ip6 proto 58 and ip6[40] == 134"
 
 # Wait up to 10 minutes for unsolicited RA
-# If nothing appears, the router is not sending RAs
+# If nothing appears, RAs are either not being sent or are being blocked before reaching this host
 
 # Also capture Router Solicitations (type 133)
 sudo tcpdump -i eth0 -v "ip6 proto 58 and (ip6[40] == 133 or ip6[40] == 134)"
@@ -49,10 +49,10 @@ sudo tcpdump -i eth0 -v "ip6 proto 58 and (ip6[40] == 133 or ip6[40] == 134)"
 # Check if kernel is configured to accept RAs
 cat /proc/sys/net/ipv6/conf/eth0/accept_ra
 # 0 = don't accept RAs
-# 1 = accept RAs (default)
-# 2 = accept RAs even when forwarding enabled
+# 1 = accept RAs if forwarding is disabled
+# 2 = accept RAs even when forwarding is enabled
 
-# If 0, enable RA acceptance
+# If 0, enable RA acceptance on a host
 sudo sysctl -w net.ipv6.conf.eth0.accept_ra=1
 
 # Check if forwarding is causing the issue
@@ -98,10 +98,10 @@ cat /etc/radvd.conf
 #     };
 # };
 
-# Restart radvd to send immediate RA
+# Restart radvd, then re-test with rdisc6
 sudo systemctl restart radvd
 
-# Check if kernel IPv6 router advertisement sending is enabled
+# Check if IPv6 forwarding is enabled on the router
 cat /proc/sys/net/ipv6/conf/eth0/forwarding  # should be 1 on router
 ```
 
@@ -111,7 +111,7 @@ RAs come from the router's link-local address (`fe80::/10`). If link-local commu
 
 ```bash
 # Find router's link-local address
-ip -6 neigh show dev eth0 | grep "router\|REACHABLE"
+ip -6 neigh show dev eth0 | grep "router"
 
 # Or check if any fe80:: addresses are in neighbor cache
 ip -6 neigh show | grep fe80
@@ -137,7 +137,7 @@ echo "1. accept_ra setting:"
 val=$(cat /proc/sys/net/ipv6/conf/$IFACE/accept_ra 2>/dev/null)
 case "$val" in
     0) echo "  [FAIL] accept_ra=0 - RAs will be ignored" ;;
-    1) echo "  [OK] accept_ra=1 - RAs will be processed" ;;
+    1) echo "  [OK] accept_ra=1 - RAs are processed only when forwarding=0" ;;
     2) echo "  [OK] accept_ra=2 - RAs processed even with forwarding" ;;
     *) echo "  [?] accept_ra=$val" ;;
 esac
@@ -150,13 +150,17 @@ echo "  forwarding=$fwd"
     echo "  [WARN] forwarding=1 but accept_ra=1 - set accept_ra=2"
 
 echo ""
-echo "3. Actively soliciting RA (3s timeout)..."
-result=$(timeout 5 rdisc6 -w 3000 "$IFACE" 2>/dev/null)
-if [ -n "$result" ]; then
-    echo "  [OK] RA received!"
-    echo "$result" | grep "Prefix\|Lifetime\|Stateful"
+echo "3. Actively soliciting RA (3s wait, 1 attempt)..."
+if command -v rdisc6 >/dev/null 2>&1; then
+    result=$(rdisc6 -r 1 -w 3000 "$IFACE" 2>/dev/null)
+    if [ -n "$result" ]; then
+        echo "  [OK] RA received!"
+        echo "$result" | grep -E "Prefix|Lifetime|Stateful"
+    else
+        echo "  [FAIL] No RA received"
+    fi
 else
-    echo "  [FAIL] No RA received"
+    echo "  [WARN] rdisc6 not installed"
 fi
 
 echo ""
@@ -166,4 +170,4 @@ ip -6 route show default 2>/dev/null || echo "  [FAIL] No default route"
 
 ## Conclusion
 
-Router Advertisement failures are typically caused by one of four issues: `accept_ra=0` on the receiving host, a firewall or RA Guard blocking ICMPv6 type 134, the router not configured to send RAs (check radvd), or IPv6 forwarding enabled on the host without setting `accept_ra=2`. Use `rdisc6` to actively solicit an RA and `tcpdump` to confirm whether RA packets are arriving on the interface. If RAs arrive but aren't processed, the issue is in kernel sysctl settings.
+Router Advertisement failures are typically caused by a few common issues: `accept_ra=0` on the receiving host, a firewall or RA Guard blocking ICMPv6 type 134, the router not configured to send RAs, or IPv6 forwarding enabled on the host without setting `accept_ra=2`. Use `rdisc6` to actively solicit an RA and `tcpdump` to confirm whether RA packets are arriving on the interface. If RAs arrive but are not applied, check Linux sysctl settings and whether the advertisements themselves are valid.
