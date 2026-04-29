@@ -8,7 +8,7 @@ Description: Learn how to disable K3s's built-in local path provisioner and repl
 
 ## Introduction
 
-K3s includes the Local Path Provisioner by default, which dynamically creates PersistentVolumes as directories on the local node's filesystem. While this is great for development, it has a critical limitation for production: data is node-local. If a pod is rescheduled to a different node, it loses access to its PersistentVolume. For production deployments, distributed storage solutions like Longhorn, NFS, or Rook/Ceph are required.
+K3s includes the Local Path Provisioner by default, which dynamically creates PersistentVolumes as directories on the local node's filesystem. While this is great for development, it has a critical limitation for production: data is node-local. Kubernetes keeps workloads using local persistent volumes tied to the node where the volume was provisioned, and if that node or disk becomes unavailable, the pod also becomes unavailable. For production deployments that need storage independent of a single node, shared or replicated storage solutions like Longhorn, NFS, or Rook/Ceph are required.
 
 ## Understanding Local Path Provisioner
 
@@ -20,8 +20,8 @@ The local path provisioner:
 
 ## When to Disable Local Storage
 
-- Production workloads that require data persistence across pod rescheduling
-- Multi-node clusters where pods can migrate
+- Production workloads that require storage availability independent of a single node
+- Multi-node clusters where workloads may need to move after node maintenance or failure
 - Stateful applications requiring replicated storage (databases, etc.)
 - When using an external storage solution (NFS, Longhorn, Ceph, etc.)
 
@@ -44,9 +44,13 @@ curl -sfL https://get.k3s.io | sudo sh -
 ### On an Existing Cluster
 
 ```bash
-# Add local-storage to the disable list
+# Add local-storage to the disable list without overwriting existing settings
+sudo mkdir -p /etc/rancher/k3s/config.yaml.d
 
-echo "  - local-storage" >> /etc/rancher/k3s/config.yaml
+sudo tee /etc/rancher/k3s/config.yaml.d/disable-local-storage.yaml > /dev/null <<EOF
+disable+:
+  - local-storage
+EOF
 
 # Restart K3s
 sudo systemctl restart k3s
@@ -57,6 +61,7 @@ kubectl get pods -n kube-system | grep local-path
 
 # Check that no local-path StorageClass exists
 kubectl get storageclass
+# local-path should no longer appear
 ```
 
 ## Option 1: Install Longhorn (Recommended for Production)
@@ -67,7 +72,7 @@ Longhorn provides replicated block storage with a web UI:
 
 ```bash
 # Install required packages on each node
-sudo apt-get install -y open-iscsi nfs-common util-linux
+sudo apt-get install -y open-iscsi nfs-common cryptsetup dmsetup
 
 # Enable open-iscsi
 sudo systemctl enable iscsid
@@ -91,8 +96,8 @@ helm install longhorn longhorn/longhorn \
     --set defaultSettings.storageMinimalAvailablePercentage=10 \
     --set persistence.defaultClassReplicaCount=2
 
-# Wait for all Longhorn pods to be ready
-kubectl -n longhorn-system rollout status deployment/longhorn-driver-deployer
+# Wait for Longhorn pods to be ready
+kubectl -n longhorn-system wait --for=condition=ready pod --all --timeout=10m
 kubectl -n longhorn-system get pods
 
 # Verify the Longhorn StorageClass is created
@@ -145,11 +150,12 @@ spec:
 
 ```bash
 kubectl apply -f longhorn-pvc-test.yaml
+kubectl wait --for=condition=Ready pod/longhorn-test --timeout=5m
 kubectl exec -it longhorn-test -- cat /data/test.txt
 kubectl delete pod longhorn-test
 ```
 
-## Option 2: Install NFS Storage Provisioner
+## Option 2: Install NFS CSI Driver
 
 For organizations with an existing NFS server:
 
@@ -178,6 +184,7 @@ parameters:
   share: /exports/k3s               # NFS export path
 reclaimPolicy: Delete
 volumeBindingMode: Immediate
+allowVolumeExpansion: true
 mountOptions:
   - hard
   - nfsvers=4.1
@@ -203,32 +210,26 @@ spec:
 
 ## Option 3: OpenEBS Local PV
 
-For a more advanced local storage solution with snapshot support:
+For a Kubernetes-native local storage option that still keeps data on a single node:
 
 ```bash
-# Install OpenEBS
-helm repo add openebs https://openebs.github.io/charts
+# Install OpenEBS Local PV Hostpath
+helm repo add openebs https://openebs.github.io/openebs
 helm repo update
 
 helm install openebs openebs/openebs \
     --namespace openebs \
     --create-namespace \
-    --set legacy.enabled=false \
-    --set localprovisioner.enabled=true \
-    --set ndm.enabled=false
+    --set alloy.enabled=false \
+    --set loki.enabled=false \
+    --set engines.local.lvm.enabled=false \
+    --set engines.local.zfs.enabled=false \
+    --set engines.local.rawfile.enabled=false \
+    --set engines.replicated.mayastor.enabled=false
 
-# Create a default StorageClass
-kubectl apply -f - <<EOF
-apiVersion: storage.k8s.io/v1
-kind: StorageClass
-metadata:
-  name: openebs-hostpath
-  annotations:
-    storageclass.kubernetes.io/is-default-class: "true"
-provisioner: openebs.io/local
-reclaimPolicy: Delete
-volumeBindingMode: WaitForFirstConsumer
-EOF
+# Verify the default OpenEBS Hostpath StorageClass is created
+kubectl get storageclass
+# openebs-hostpath should appear
 ```
 
 ## Setting a New Default StorageClass
@@ -251,4 +252,4 @@ kubectl patch storageclass local-path \
 
 ## Conclusion
 
-Disabling K3s's local storage provisioner is the first step toward production-grade persistent storage. Longhorn is the recommended replacement for K3s clusters, offering replicated block storage with excellent Kubernetes integration and a management UI. For organizations with existing NFS infrastructure, the NFS CSI driver provides a straightforward path to shared persistent volumes. Regardless of which storage solution you choose, ensure it provides data replication to prevent data loss when nodes fail.
+Disabling K3s's local storage provisioner is the first step toward production-grade persistent storage. Longhorn is the recommended replacement for K3s clusters, offering replicated block storage with excellent Kubernetes integration and a management UI. For organizations with existing NFS infrastructure, the NFS CSI driver provides a straightforward path to shared persistent volumes. Regardless of which storage solution you choose, ensure the underlying storage backend meets your availability and durability requirements.
