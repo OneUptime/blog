@@ -23,7 +23,7 @@ terraform {
   required_providers {
     akamai = {
       source  = "akamai/akamai"
-      version = "~> 6.0"
+      version = "~> 9.0"
     }
   }
 }
@@ -85,7 +85,7 @@ resource "akamai_edge_hostname" "app" {
   contract_id   = data.akamai_contract.main.id
   group_id      = data.akamai_group.main.id
   ip_behavior   = "IPV4"
-  edge_hostname = "app.example.com.edgekey.net"
+  edge_hostname = "app.example.com.edgesuite.net"
 }
 
 resource "akamai_property" "app" {
@@ -164,9 +164,9 @@ resource "akamai_appsec_configuration" "main" {
 
 - Always activate to staging before production.
 - Use property rule templates (JSON files) instead of inline rules for maintainability.
-- Tag all Akamai resources with environment and project labels.
+- Use consistent naming conventions to identify environment and project ownership.
 - Store `.edgerc` credentials in a secrets manager and inject at runtime.
-- Use separate OpenTofu workspaces for staging and production configurations.
+- Use separate OpenTofu workspaces or state only when staging and production are distinct Akamai configurations.
 
 ## Conclusion
 
