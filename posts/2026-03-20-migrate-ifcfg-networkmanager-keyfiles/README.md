@@ -40,17 +40,18 @@ autoconnect=true
 
 [ipv4]
 method=manual
-address1=10.0.0.5/24,10.0.0.1
+address1=10.0.0.5/24
+gateway=10.0.0.1
 dns=10.0.0.1;
 
 [ipv6]
 method=ignore
 ```
 
-## Automatic Migration with nm-migrate
+## Automatic Migration with nmcli
 
 ```bash
-# RHEL 9+: NetworkManager can auto-migrate ifcfg files
+# RHEL 9+: NetworkManager can migrate ifcfg profiles to keyfiles
 # Check if migration is needed
 ls /etc/sysconfig/network-scripts/ifcfg-*
 
@@ -58,37 +59,24 @@ ls /etc/sysconfig/network-scripts/ifcfg-*
 nmcli connection migrate
 
 # Output:
-# Connection 'eth0' was migrated: ...
-# Connection 'bond0' was migrated: ...
+# Connection 'eth0' (...) successfully migrated.
+# Connection 'bond0' (...) successfully migrated.
 
-# Verify new keyfiles
-ls /etc/NetworkManager/system-connections/
+# Verify migrated profiles are now stored as keyfiles
+nmcli -f TYPE,FILENAME,NAME connection
 ```
 
 ## Manual Migration Steps
 
 ```bash
-# Step 1: Export current connection config
+# Step 1: Show current connection config
 nmcli connection show eth0
 
-# Step 2: Create keyfile manually
-cat > /etc/NetworkManager/system-connections/eth0.nmconnection << 'EOF'
-[connection]
-id=eth0
-type=ethernet
-interface-name=eth0
-autoconnect=true
-
-[ethernet]
-
-[ipv4]
-method=manual
-address1=10.0.0.5/24,10.0.0.1
-dns=10.0.0.1;8.8.8.8;
-
-[ipv6]
-method=ignore
-EOF
+# Step 2: Generate a keyfile in offline mode
+nmcli --offline connection add type ethernet con-name eth0 ifname eth0 \
+  ipv4.method manual ipv4.addresses 10.0.0.5/24 ipv4.gateway 10.0.0.1 \
+  ipv4.dns "10.0.0.1 8.8.8.8" ipv6.method ignore \
+  > /etc/NetworkManager/system-connections/eth0.nmconnection
 
 # Step 3: Set correct permissions
 chmod 600 /etc/NetworkManager/system-connections/eth0.nmconnection
@@ -133,11 +121,11 @@ journalctl -u NetworkManager | grep -E "error|warn" | tail -20
 [main]
 plugins=ifcfg-rh,keyfile
 
-# Remove migrated keyfiles
-rm /etc/NetworkManager/system-connections/eth0.nmconnection
+# Restart NM after changing the plugin list
+systemctl restart NetworkManager
 
-# Reload
-nmcli connection reload
+# Migrate the profile back to ifcfg-rh format
+nmcli connection migrate --plugin ifcfg-rh eth0
 ```
 
 ## Key Takeaways
