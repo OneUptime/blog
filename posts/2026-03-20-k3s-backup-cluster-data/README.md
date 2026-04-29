@@ -8,15 +8,15 @@ Description: Learn how to back up K3s cluster data including etcd snapshots, SQL
 
 ## Introduction
 
-Data loss in a Kubernetes cluster can be catastrophic - losing cluster state means losing all deployed workloads, configurations, and secrets. K3s supports two datastore backends: **SQLite** (default for single-node) and **embedded etcd** (for HA clusters). Both require different backup strategies. This guide covers backing up all critical K3s data.
+Data loss in a Kubernetes cluster can be catastrophic - losing cluster state means losing all deployed workloads, configurations, and secrets. K3s can use **SQLite** (default for single-server clusters), **embedded etcd** (for HA clusters), or an **external datastore**. Each requires a different backup strategy. This guide covers backing up all critical K3s data.
 
 ## Understanding K3s Data Stores
 
-K3s stores cluster state in one of two ways:
+K3s stores cluster state in one of three ways:
 
-- **SQLite** (`/var/lib/rancher/k3s/server/db/state.db`): Default for single-server deployments
+- **SQLite** (`/var/lib/rancher/k3s/server/db/`): Default for single-server deployments
 - **Embedded etcd** (`/var/lib/rancher/k3s/server/db/etcd/`): Used for HA multi-server deployments
-- **External datastore**: PostgreSQL, MySQL, or etcd - managed externally
+- **External datastore**: PostgreSQL, MySQL, MariaDB, or etcd - backed up outside K3s
 
 ## Prerequisites
 
@@ -26,7 +26,7 @@ K3s stores cluster state in one of two ways:
 
 ## Step 1: Back Up SQLite Database
 
-For single-node K3s installations using the default SQLite datastore:
+For single-server K3s installations using the default SQLite datastore:
 
 ```bash
 # Stop K3s to ensure data consistency (optional but recommended)
@@ -37,11 +37,11 @@ systemctl stop k3s
 BACKUP_DIR="/backup/k3s/$(date +%Y%m%d-%H%M%S)"
 mkdir -p "$BACKUP_DIR"
 
-# Copy the SQLite database
-cp /var/lib/rancher/k3s/server/db/state.db "$BACKUP_DIR/state.db"
+# Copy the SQLite datastore
+cp -r /var/lib/rancher/k3s/server/db "$BACKUP_DIR/db"
 
-# Also back up the cred directory (tokens, certificates)
-cp -r /var/lib/rancher/k3s/server/cred "$BACKUP_DIR/cred"
+# Back up the server token required for restore
+cp /var/lib/rancher/k3s/server/token "$BACKUP_DIR/token"
 
 # Restart K3s
 systemctl start k3s
@@ -53,8 +53,13 @@ For a live backup without stopping K3s, use SQLite's `.backup` command:
 
 ```bash
 # Live backup using sqlite3
+BACKUP_DIR="/backup/k3s/$(date +%Y%m%d-%H%M%S)"
+mkdir -p "$BACKUP_DIR"
+
 sqlite3 /var/lib/rancher/k3s/server/db/state.db \
-  ".backup /backup/k3s/state-$(date +%Y%m%d).db"
+  ".backup $BACKUP_DIR/state.db"
+
+cp /var/lib/rancher/k3s/server/token "$BACKUP_DIR/token"
 ```
 
 ## Step 2: Back Up Embedded Etcd Using K3s Snapshots
@@ -111,8 +116,8 @@ cp /etc/rancher/k3s/config.yaml "$BACKUP_DIR/" 2>/dev/null || true
 # TLS certificates and keys
 cp -r /var/lib/rancher/k3s/server/tls "$BACKUP_DIR/tls"
 
-# Node token (needed to add new nodes)
-cp /var/lib/rancher/k3s/server/node-token "$BACKUP_DIR/node-token"
+# Server token (required for restore; also used to join nodes)
+cp /var/lib/rancher/k3s/server/token "$BACKUP_DIR/token"
 
 # Static manifests (auto-deployed resources)
 cp -r /var/lib/rancher/k3s/server/manifests "$BACKUP_DIR/manifests"
@@ -151,7 +156,7 @@ k3s etcd-snapshot save \
 
 ## Step 5: Automate Backups with Cron
 
-Create a comprehensive backup script and schedule it:
+For clusters using embedded etcd, create a backup script and schedule it:
 
 ```bash
 #!/bin/bash
@@ -162,21 +167,26 @@ set -euo pipefail
 BACKUP_ROOT="/backup/k3s"
 TIMESTAMP=$(date +%Y%m%d-%H%M%S)
 BACKUP_DIR="$BACKUP_ROOT/$TIMESTAMP"
+ETCD_SNAPSHOT_DIR="/var/lib/rancher/k3s/server/db/snapshots"
 
 mkdir -p "$BACKUP_DIR"
 
-# Take etcd snapshot
-k3s etcd-snapshot save --name "scheduled-$TIMESTAMP"
+# Take etcd snapshot with a stable prefix
+k3s etcd-snapshot save --name scheduled
 
-# Copy snapshot to backup dir
-cp /var/lib/rancher/k3s/server/db/snapshots/scheduled-"$TIMESTAMP"* "$BACKUP_DIR/"
+# Keep the 28 most recent on-demand snapshots created by this script
+k3s etcd-snapshot prune --name scheduled --snapshot-retention 28
+
+# Copy the newest snapshot to the backup dir
+LATEST_SNAPSHOT=$(ls -1t "$ETCD_SNAPSHOT_DIR"/scheduled-* | head -n 1)
+cp "$LATEST_SNAPSHOT" "$BACKUP_DIR/"
 
 # Back up config files
 cp /etc/rancher/k3s/config.yaml "$BACKUP_DIR/" 2>/dev/null || true
-cp /var/lib/rancher/k3s/server/node-token "$BACKUP_DIR/"
+cp /var/lib/rancher/k3s/server/token "$BACKUP_DIR/token"
 
 # Remove backups older than 7 days
-find "$BACKUP_ROOT" -maxdepth 1 -type d -mtime +7 -exec rm -rf {} \;
+find "$BACKUP_ROOT" -mindepth 1 -maxdepth 1 -type d -mtime +7 -exec rm -rf {} \;
 
 echo "Backup completed: $BACKUP_DIR"
 ```
@@ -191,4 +201,4 @@ echo "0 */6 * * * root /usr/local/bin/k3s-backup.sh >> /var/log/k3s-backup.log 2
 
 ## Conclusion
 
-A robust backup strategy for K3s should include both the datastore (SQLite or etcd snapshots) and critical configuration files like certificates and node tokens. Use K3s's built-in S3 snapshot support for off-site backups, and always test your restore procedure periodically to ensure backups are valid and recovery is possible.
+A robust backup strategy for K3s should include both the datastore (SQLite, embedded etcd snapshots, or your external datastore's native backups) and critical configuration files like certificates and the server token. Use K3s's built-in S3 snapshot support for off-site backups, and always test your restore procedure periodically to ensure backups are valid and recovery is possible.
