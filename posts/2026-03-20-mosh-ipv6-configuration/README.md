@@ -53,7 +53,7 @@ To connect using a full global unicast IPv6 address, wrap it in square brackets:
 
 ```bash
 # Connect to a server with a global IPv6 address
-mosh user@2001:db8::1
+mosh user@[2001:db8::1]
 
 # Mosh automatically resolves AAAA records if you use a hostname
 mosh user@ipv6.example.com
@@ -65,10 +65,10 @@ Link-local addresses require a scope ID (interface name). Use the `-6` flag and 
 
 ```bash
 # Connect to a link-local address on interface eth0
-mosh --ssh="ssh -6" user@fe80::1%eth0
+mosh --ssh="ssh -6" user@[fe80::1%eth0]
 
 # Alternatively, use the --server flag if the server binary is in a non-standard path
-mosh --ssh="ssh -6" --server=/usr/bin/mosh-server user@fe80::1%eth0
+mosh --ssh="ssh -6" --server=/usr/bin/mosh-server user@[fe80::1%eth0]
 ```
 
 ## Forcing IPv6 with Mosh
