@@ -101,9 +101,9 @@ Add a groups mapper to the Portainer client in Keycloak:
 3. Add a **Group Membership** mapper:
    - Token Claim Name: `groups`
    - Full group path: disabled
-4. This includes group names in the userinfo response
+4. This includes group names in the userinfo response for Portainer to consume
 
-Then in Portainer, team names matching the Keycloak group names will be auto-assigned on login.
+In Portainer Business Edition, enable **Automatic team membership** and set the **Claim name** to `groups`. Team names matching the Keycloak group names will then be auto-assigned on login. If your Keycloak group names and Portainer team names differ, use the **Statically assigned teams** mappings in Portainer.
 
 ---
 
