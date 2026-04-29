@@ -28,13 +28,13 @@ HashiCorp Nomad is a flexible workload orchestrator that supports containers, VM
 ```bash
 # List all jobs
 
-nomad job list
+nomad job status
 
-# Inspect a job
+# Inspect a job (JSON is the default output)
 nomad job inspect myapp > myapp-job.json
 
-# Or in HCL format
-nomad job inspect -t '{{printf "%s" .}}' myapp
+# Output the original HCL submitted with the job
+nomad job inspect -hcl myapp
 ```
 
 ## Step 2: Convert a Nomad Job to a Kubernetes Deployment
