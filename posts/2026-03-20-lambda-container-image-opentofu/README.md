@@ -8,13 +8,13 @@ Description: Learn how to deploy AWS Lambda functions using container images sto
 
 ## Introduction
 
-Lambda container image deployment allows functions up to 10 GB in size and supports any programming language or runtime via custom base images. This is ideal for ML model inference, complex dependencies, and standardized container-based deployments.
+Lambda container image deployment supports container images up to 10 GB in uncompressed size and supports custom runtimes or alternative base images that implement the Lambda Runtime API. This is ideal for ML model inference, complex dependencies, and standardized container-based deployments.
 
 ## Prerequisites
 
 - OpenTofu v1.6+
 - AWS credentials with Lambda, ECR, and IAM permissions
-- Docker installed for building images
+- Docker 25.0+ with the buildx plugin installed for building images
 
 ## Step 1: Create ECR Repository
 
@@ -35,7 +35,7 @@ resource "aws_ecr_repository" "lambda" {
   tags = { Name = "${var.function_name}-ecr" }
 }
 
-# Keep only the last 5 tagged images
+# Keep only the last 5 version-tagged images
 
 resource "aws_ecr_lifecycle_policy" "lambda" {
   repository = aws_ecr_repository.lambda.name
@@ -43,7 +43,7 @@ resource "aws_ecr_lifecycle_policy" "lambda" {
   policy = jsonencode({
     rules = [{
       rulePriority = 1
-      description  = "Keep last 5 images"
+      description  = "Keep last 5 version-tagged images"
       selection = {
         tagStatus   = "tagged"
         tagPrefixList = ["v"]
@@ -76,6 +76,11 @@ resource "aws_iam_role_policy_attachment" "lambda_basic" {
   role       = aws_iam_role.lambda_container.name
   policy_arn = "arn:aws:iam::aws:policy/service-role/AWSLambdaBasicExecutionRole"
 }
+
+resource "aws_iam_role_policy_attachment" "lambda_xray" {
+  role       = aws_iam_role.lambda_container.name
+  policy_arn = "arn:aws:iam::aws:policy/AWSXRayDaemonWriteAccess"
+}
 ```
 
 ## Step 3: Create Lambda Function from Container Image
@@ -88,6 +93,7 @@ resource "aws_lambda_function" "container" {
   # Use container image deployment
   package_type = "Image"
   image_uri    = "${aws_ecr_repository.lambda.repository_url}:${var.image_tag}"
+  architectures = ["x86_64"]
 
   # Override the CMD in the image if needed
   image_config {
@@ -96,7 +102,7 @@ resource "aws_lambda_function" "container" {
     working_directory = "/var/task"
   }
 
-  # Container functions can use up to 10,240 MB
+  # Adjust memory based on your workload
   memory_size = 2048
   timeout     = 120
 
@@ -143,8 +149,8 @@ aws ecr get-login-password --region us-east-1 | \
   docker login --username AWS --password-stdin \
   123456789012.dkr.ecr.us-east-1.amazonaws.com
 
-# Build the container image
-docker build -t my-lambda-function:v1.0.0 .
+# Build the container image for x86_64 Lambda
+docker buildx build --platform linux/amd64 --provenance=false -t my-lambda-function:v1.0.0 .
 
 # Tag and push to ECR
 docker tag my-lambda-function:v1.0.0 \
@@ -159,4 +165,4 @@ tofu apply -var="image_tag=v1.0.0"
 
 ## Conclusion
 
-Lambda container image deployment enables complex workloads like ML inference that require large dependencies or custom runtimes. Use ECR lifecycle policies to prevent image accumulation costs. For faster cold starts, pre-warm popular images using Lambda's SnapStart feature (available for Java runtimes) or provisioned concurrency.
+Lambda container image deployment enables complex workloads like ML inference that require large dependencies or custom runtimes. Use ECR lifecycle policies to prevent image accumulation costs. For faster cold starts with container image functions, use provisioned concurrency. Lambda SnapStart is not supported for container images.
