@@ -38,7 +38,7 @@ cat cdktf.out/stacks/my-stack/cdk.tf.json | jq '.resource'
 # Example synthesized resource
 # {
 #   "aws_s3_bucket": {
-#     "MyBucket": {
+#     "AppBucket": {
 #       "bucket": "my-app-bucket",
 #       "tags": {"Environment": "prod"}
 #     }
@@ -53,10 +53,11 @@ CDKTF uses standard Terraform state - you can read it directly.
 ```bash
 # List current state (from within the CDKTF stack directory)
 cd cdktf.out/stacks/my-stack
-terraform state list   # or tofu state list
+tofu init   # or terraform init
+tofu state list
 
 # Show a specific resource
-tofu state show aws_s3_bucket.MyBucket
+tofu state show aws_s3_bucket.AppBucket
 
 # Export state for reference
 tofu state pull > current-state.json
@@ -104,13 +105,13 @@ resource "aws_s3_bucket_versioning" "app" {
 
 ## Phase 4: Handle CDKTF State Addressing
 
-CDKTF uses different resource addresses than standard HCL. You need to handle this during migration.
+If your new HCL uses different local resource names than the synthesized CDKTF configuration, you need to handle that during migration.
 
 ```bash
-# CDKTF state addresses use the construct ID (capitalized)
+# The CDKTF address comes from the synthesized resource name / construct ID
 # aws_s3_bucket.AppBucket
 
-# Standard OpenTofu HCL addresses use snake_case
+# Your OpenTofu HCL can use a different local name, for example:
 # aws_s3_bucket.app
 
 # When importing, use the cloud resource ID (not the state address)
@@ -125,6 +126,11 @@ import {
 }
 
 import {
+  id = "my-app-bucket"  # S3 bucket versioning imports by bucket name
+  to = aws_s3_bucket_versioning.app
+}
+
+import {
   id = "vpc-0abc12345def67890"  # VPC ID from AWS
   to = aws_vpc.main
 }
@@ -135,19 +141,21 @@ import {
 Move from the CDKTF-managed state to a standard OpenTofu state.
 
 ```bash
-# Option 1: Create new OpenTofu root and import all resources
-# (recommended for clean migration)
+# Option 1: Create a new OpenTofu root and import all resources
+# (common for a clean migration)
 mkdir opentofu-migration
 cd opentofu-migration
 # Write your HCL config
-# Add import blocks
+# Add import blocks for every resource you want OpenTofu to manage
 tofu init
-tofu apply  # imports resources into new state
+tofu plan
+tofu apply  # imports resources into the new state
 
-# Option 2: Copy state and rename resources (advanced)
-# Copy the CDKTF state file to a new location
-cp cdktf.out/stacks/my-stack/terraform.tfstate ./
-# Use tofu state mv to rename addresses
+# Option 2: Reuse the existing state and rename resource addresses (advanced)
+# For the default CDKTF local backend, the state file is usually
+# terraform.my-stack.tfstate in the project root, not under cdktf.out/stacks/
+# Configure your new OpenTofu backend to use that state, then rename addresses
+tofu init
 tofu state mv 'aws_s3_bucket.AppBucket' 'aws_s3_bucket.app'
 ```
 
@@ -169,4 +177,4 @@ npm uninstall cdktf cdktf-cli
 
 ## Summary
 
-Migrating from CDKTF to OpenTofu HCL uses CDKTF's synthesized JSON as a translation reference. The key challenge is handling different resource address naming conventions between CDKTF (which uses TypeScript class names) and HCL (which uses snake_case). The safest approach is to import all resources fresh into a new OpenTofu state rather than trying to rename state addresses. After migration, you eliminate the synthesis build step and make your infrastructure configuration directly readable by the entire team.
+Migrating from CDKTF to OpenTofu HCL uses CDKTF's synthesized JSON as a translation reference. The main challenge is preserving state when your new HCL resource addresses differ from the synthesized CDKTF addresses. A common migration path is to import resources into a new OpenTofu state, or reuse the existing state and rename addresses with `tofu state mv`. After the new OpenTofu state is validated, stop using the old CDKTF state so the same resources are not managed from two places.
