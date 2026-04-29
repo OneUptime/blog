@@ -4,11 +4,11 @@ Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
 Tags: Kubernetes, PDB, Pod Disruption Budget, OpenTofu, High Availability, Infrastructure
 
-Description: Learn how to create Kubernetes Pod Disruption Budgets (PDB) with OpenTofu to ensure minimum availability during voluntary disruptions like node drains and cluster upgrades.
+Description: Learn how to create Kubernetes Pod Disruption Budgets (PDB) with OpenTofu to help maintain application availability during voluntary disruptions like node drains and cluster upgrades.
 
 ## Overview
 
-Pod Disruption Budgets (PDBs) limit the number of pods that can be voluntarily disrupted at a given time. They protect application availability during node maintenance, cluster upgrades, and scale-down operations. OpenTofu manages PDBs alongside deployments.
+Pod Disruption Budgets (PDBs) limit the number of pods that can be voluntarily disrupted at a given time. They help protect application availability during node maintenance, cluster upgrades, and node scale-down operations when those actions use the Eviction API. OpenTofu manages PDBs alongside deployments.
 
 ## Step 1: Create PDB with minAvailable
 
@@ -60,7 +60,7 @@ resource "kubernetes_pod_disruption_budget_v1" "api_pdb" {
 ## Step 3: PDB with maxUnavailable
 
 ```hcl
-# Allow at most 1 pod to be unavailable at a time
+# Allow at most 1 pod from a controller-managed workload to be unavailable at a time
 resource "kubernetes_pod_disruption_budget_v1" "database_pdb" {
   metadata {
     name      = "postgres-pdb"
@@ -83,7 +83,7 @@ resource "kubernetes_pod_disruption_budget_v1" "database_pdb" {
 ## Step 4: PDB for StatefulSet
 
 ```hcl
-# PDB for a 3-replica StatefulSet - keep quorum (minimum 2)
+# PDB for a 3-replica StatefulSet - keep 2 replicas available
 resource "kubernetes_pod_disruption_budget_v1" "redis_pdb" {
   metadata {
     name      = "redis-pdb"
@@ -91,7 +91,7 @@ resource "kubernetes_pod_disruption_budget_v1" "redis_pdb" {
   }
 
   spec {
-    min_available = 2  # Maintains quorum for 3-node cluster
+    min_available = 2  # Keep 2 replicas available during voluntary disruptions
 
     selector {
       match_labels = {
@@ -105,7 +105,7 @@ resource "kubernetes_pod_disruption_budget_v1" "redis_pdb" {
 ## Step 5: Combined with Deployment
 
 ```hcl
-# Deployment with matching PDB for end-to-end availability guarantee
+# Deployment with a matching PDB to limit voluntary evictions
 resource "kubernetes_deployment_v1" "web_app" {
   metadata {
     name      = "web-app"
@@ -138,7 +138,7 @@ resource "kubernetes_deployment_v1" "web_app" {
   }
 }
 
-# Matching PDB for the deployment
+# Matching PDB for the deployment's pods during voluntary evictions
 resource "kubernetes_pod_disruption_budget_v1" "web_app_pdb_v2" {
   metadata {
     name      = "web-app-pdb"
@@ -159,4 +159,4 @@ resource "kubernetes_pod_disruption_budget_v1" "web_app_pdb_v2" {
 
 ## Summary
 
-Kubernetes Pod Disruption Budgets with OpenTofu guarantee minimum application availability during voluntary cluster operations. Use `min_available` for absolute counts, percentages for proportional availability, and `max_unavailable` for more permissive budgets. PDBs are essential for high-availability applications in clusters that undergo frequent node maintenance or upgrades.
+Kubernetes Pod Disruption Budgets with OpenTofu help maintain application availability during voluntary evictions such as node drains and upgrades. Use `min_available` for absolute counts, percentages for proportional availability, and `max_unavailable` for more permissive budgets on controller-managed workloads. PDBs do not guarantee availability, and direct pod or deployment deletions plus workload rolling updates are not constrained by them.
