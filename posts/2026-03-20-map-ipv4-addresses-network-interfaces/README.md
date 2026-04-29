@@ -30,17 +30,13 @@ ipconfig /all
 
 ```python
 import socket
-import fcntl
-import struct
-import os
+import psutil
 
 def get_interfaces_and_ips() -> dict:
     """
     Return a dict of {interface_name: [ip_addresses]}.
-    Uses Python's socket module for cross-platform support.
+    Uses psutil's cross-platform network interface APIs.
     """
-    import psutil
-
     result = {}
     for iface, addrs in psutil.net_if_addrs().items():
         ips = []
@@ -55,7 +51,6 @@ def get_interfaces_and_ips() -> dict:
             result[iface] = ips
     return result
 
-import psutil
 ifaces = get_interfaces_and_ips()
 for iface, ips in ifaces.items():
     for ip_info in ips:
@@ -67,7 +62,7 @@ Install psutil: `pip install psutil`
 ## Adding a Secondary IP to an Interface
 
 ```bash
-# Add a second IP to eth0 (IP alias)
+# Add a second IP address to eth0
 sudo ip addr add 192.168.1.200/24 dev eth0
 
 # View both IPs on eth0
@@ -92,22 +87,22 @@ sudo ip addr add 172.16.100.10/24 dev eth1
 ip addr show lo  # 127.0.0.1/8
 ```
 
-## Binding a Service to a Specific Interface
+## Binding a Service to a Specific Local Address
 
 ```python
 import socket
 
-# Bind only to the internal interface IP
+# Bind only to the internal IP address
 server = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
 server.setsockopt(socket.SOL_SOCKET, socket.SO_REUSEADDR, 1)
-server.bind(("10.0.1.10", 8080))  # Only accessible via eth0
+server.bind(("10.0.1.10", 8080))  # Accepts connections addressed to 10.0.1.10
 server.listen(5)
-print("Listening only on 10.0.1.10:8080 (eth0)")
+print("Listening only on 10.0.1.10:8080")
 ```
 
 ## Key Takeaways
 
 - Use `ip addr show` (Linux) or `ipconfig /all` (Windows) to see the interface-to-IP mapping.
-- A single interface can have multiple IP addresses (aliases).
+- A single interface can have multiple IP addresses assigned to it.
 - A multi-homed host has interfaces on multiple subnets; routing decides which interface to use.
-- Bind services to specific interface IPs to control access from different network segments.
+- Bind services to specific local IPs to control access from different network segments.
