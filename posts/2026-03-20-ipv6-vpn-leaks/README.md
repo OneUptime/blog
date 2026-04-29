@@ -8,7 +8,7 @@ Description: Detect and fix IPv6 traffic leaks through VPNs that only tunnel IPv
 
 ## Introduction
 
-IPv6 VPN leaks occur when a VPN tunnels IPv4 traffic but leaves IPv6 traffic unprotected. Since most VPN clients were designed for IPv4, IPv6 traffic bypasses the tunnel and uses the native ISP connection, revealing the real IPv6 address and location. This is a significant privacy and security issue that is easy to diagnose and fix.
+IPv6 VPN leaks occur when a VPN tunnels IPv4 traffic but leaves IPv6 traffic unprotected. If the VPN client or server is only configured for IPv4, IPv6 traffic bypasses the tunnel and uses the native ISP connection, revealing the real IPv6 address and location. This is a significant privacy and security issue that is easy to diagnose and fix.
 
 ## Step 1: Check for IPv6 Leak
 
@@ -21,9 +21,10 @@ curl -6 -s --max-time 5 https://api6.my-ip.io/ip 2>/dev/null || \
 
 # Capture your IPv6 before connecting to VPN
 # Then connect to VPN and run again
-# If the IPv6 address doesn't change, you have a leak
+# If the IPv6 address doesn't change and still matches your ISP address,
+# you likely have a leak
 
-# Check if IPv6 DNS resolution leaks
+# Cross-check with another IPv6 echo service
 curl -6 -s --max-time 5 https://ipv6.icanhazip.com 2>/dev/null
 
 # Online tools for leak testing (run from browser):
@@ -40,14 +41,14 @@ curl -6 -s --max-time 5 https://ipv6.icanhazip.com 2>/dev/null
 ip -6 route show default
 
 # Expected VPN behavior:
-# ::/0 dev tun0  ← all IPv6 through VPN tunnel
-# ::/0 dev eth0  ← LEAK! IPv6 bypasses VPN
+# default dev tun0  ← all IPv6 through VPN tunnel
+# default via fe80::... dev eth0  ← LEAK! IPv6 bypasses VPN
 
 # Check all interfaces
 ip -6 addr show scope global
 
-# If eth0 has a global IPv6 address and the VPN interface (tun0)
-# doesn't have IPv6, traffic will use eth0 directly
+# If the default route still points to eth0 and the VPN interface (tun0)
+# has no IPv6 route, IPv6 traffic will bypass the tunnel
 ```
 
 ## Step 3: Fix Option 1 - Block IPv6 Traffic When on VPN
@@ -55,18 +56,16 @@ ip -6 addr show scope global
 For VPNs that don't support IPv6, block all IPv6 while connected:
 
 ```bash
-# Using ip6tables (adds rules when VPN connects)
-# Block all outbound IPv6 traffic (except to VPN interface)
-sudo ip6tables -A OUTPUT ! -o lo -j DROP
+# Replace tun0 with your VPN interface name.
+# Insert rules at the top so they take precedence over existing OUTPUT rules.
+sudo ip6tables -I OUTPUT 1 -j DROP
+sudo ip6tables -I OUTPUT 1 -o tun0 -j ACCEPT
+sudo ip6tables -I OUTPUT 1 -o lo -j ACCEPT
 
-# Or drop all IPv6 except loopback and link-local NDP
-sudo ip6tables -A OUTPUT -o lo -j ACCEPT
-sudo ip6tables -A OUTPUT -p icmpv6 --icmpv6-type 135 -j ACCEPT  # NS
-sudo ip6tables -A OUTPUT -p icmpv6 --icmpv6-type 136 -j ACCEPT  # NA
-sudo ip6tables -A OUTPUT -j DROP
-
-# Remove rules when VPN disconnects:
-sudo ip6tables -F OUTPUT
+# Remove only the rules you added when VPN disconnects:
+sudo ip6tables -D OUTPUT -o lo -j ACCEPT
+sudo ip6tables -D OUTPUT -o tun0 -j ACCEPT
+sudo ip6tables -D OUTPUT -j DROP
 ```
 
 ## Step 4: Fix Option 2 - Route IPv6 Through VPN
@@ -74,12 +73,11 @@ sudo ip6tables -F OUTPUT
 For OpenVPN with IPv6 support:
 
 ```ovpn
-# OpenVPN client config additions for IPv6:
-# Route all IPv6 through tunnel
-push "route-ipv6 ::/0"
-tun-ipv6
+# OpenVPN must actually provide IPv6 on the tunnel.
+# Server-side, push IPv6 redirection to clients:
+push "redirect-gateway ipv6"
 
-# Or in client config:
+# Or in client config, when the server supports IPv6:
 redirect-gateway ipv6
 ```
 
@@ -96,42 +94,47 @@ ip -6 route show default
 ## Step 5: Fix Option 3 - Disable IPv6 While on VPN
 
 ```bash
-# Create a script that VPN calls on connect/disconnect
-# /etc/vpn-up.sh
-cat << 'EOF' > /etc/openvpn/vpn-up.sh
+# Create scripts that OpenVPN calls on connect/disconnect
+# /etc/openvpn/vpn-up.sh
+sudo tee /etc/openvpn/vpn-up.sh > /dev/null << 'EOF'
 #!/bin/bash
 # Disable IPv6 when VPN connects
 sysctl -w net.ipv6.conf.all.disable_ipv6=1
 sysctl -w net.ipv6.conf.default.disable_ipv6=1
 echo "IPv6 disabled while VPN is active"
 EOF
-chmod +x /etc/openvpn/vpn-up.sh
+sudo chmod +x /etc/openvpn/vpn-up.sh
 
-# /etc/vpn-down.sh
-cat << 'EOF' > /etc/openvpn/vpn-down.sh
+# /etc/openvpn/vpn-down.sh
+sudo tee /etc/openvpn/vpn-down.sh > /dev/null << 'EOF'
 #!/bin/bash
 # Re-enable IPv6 when VPN disconnects
 sysctl -w net.ipv6.conf.all.disable_ipv6=0
 sysctl -w net.ipv6.conf.default.disable_ipv6=0
 echo "IPv6 re-enabled"
 EOF
-chmod +x /etc/openvpn/vpn-down.sh
+sudo chmod +x /etc/openvpn/vpn-down.sh
+
+# In the OpenVPN client config:
+# script-security 2
+# up /etc/openvpn/vpn-up.sh
+# down /etc/openvpn/vpn-down.sh
 ```
 
 ## Step 6: DNS Leak Check
 
 ```bash
 # DNS leaks over IPv6 can occur even if traffic is tunneled
-# Check which DNS server is being used
+# Check the public IP seen by a known resolver over IPv4 and IPv6 transport
 dig +short myip.opendns.com @resolver1.opendns.com
-dig +short AAAA myip.opendns.com @2620:119:35::35
+dig -6 +short AAAA myip.opendns.com @2620:119:35::35
 
-# Verify DNS queries go through VPN
+# Verify classic DNS queries go through VPN
 # Capture DNS traffic on the VPN interface
-sudo tcpdump -i tun0 "udp port 53"
+sudo tcpdump -i tun0 "port 53"
 
 # If DNS queries appear on eth0 instead of tun0: DNS leak
-sudo tcpdump -i eth0 "udp port 53"
+sudo tcpdump -i eth0 "port 53"
 ```
 
 ## Continuous Leak Monitoring Script
