@@ -4,11 +4,11 @@ Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
 Tags: OpenTofu, AWS, Lambda, Serverless, ZIP Deployment, Infrastructure as Code, Python
 
-Description: Learn how to create and deploy AWS Lambda functions using ZIP file deployment with OpenTofu, including IAM roles, environment variables, and VPC configuration.
+Description: Learn how to create and deploy AWS Lambda functions using ZIP file deployment with OpenTofu, including IAM roles, environment variables, tracing, and log retention.
 
 ## Introduction
 
-AWS Lambda executes code in response to events without managing servers. ZIP deployment is the simplest deployment method, packaging your function code and dependencies into a ZIP archive. This guide covers creating a Lambda function from a local ZIP file with all common configurations.
+AWS Lambda executes code in response to events without managing servers. ZIP deployment is the simplest deployment method, packaging your function code and dependencies into a ZIP archive. This guide covers creating a Lambda function from a local ZIP file with common configurations.
 
 ## Prerequisites
 
@@ -51,6 +51,12 @@ resource "aws_iam_role_policy_attachment" "lambda_basic" {
   policy_arn = "arn:aws:iam::aws:policy/service-role/AWSLambdaBasicExecutionRole"
 }
 
+# Required when Active X-Ray tracing is enabled
+resource "aws_iam_role_policy_attachment" "lambda_xray" {
+  role       = aws_iam_role.lambda.name
+  policy_arn = "arn:aws:iam::aws:policy/AWSXRayDaemonWriteAccess"
+}
+
 # Custom policy for application-specific permissions
 resource "aws_iam_role_policy" "lambda_app" {
   name = "lambda-app-policy"
@@ -68,7 +74,7 @@ resource "aws_iam_role_policy" "lambda_app" {
       ]
       Resource = [
         "arn:aws:s3:::${var.data_bucket}/*",
-        aws_dynamodb_table.main.arn
+        var.table_arn
       ]
     }]
   })
@@ -107,6 +113,8 @@ resource "aws_lambda_function" "main" {
     }
   }
 
+  depends_on = [aws_cloudwatch_log_group.lambda]
+
   tags = {
     Name        = var.function_name
     Environment = var.environment
@@ -120,7 +128,7 @@ resource "aws_lambda_function" "main" {
 ```hcl
 # Pre-create the log group with a retention policy
 resource "aws_cloudwatch_log_group" "lambda" {
-  name              = "/aws/lambda/${aws_lambda_function.main.function_name}"
+  name              = "/aws/lambda/${var.function_name}"
   retention_in_days = 14
 
   tags = { Function = var.function_name }
@@ -169,6 +177,7 @@ tofu apply
 # Test the function
 aws lambda invoke \
   --function-name my-function \
+  --cli-binary-format raw-in-base64-out \
   --payload '{"key": "value"}' \
   response.json
 ```
