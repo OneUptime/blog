@@ -16,7 +16,7 @@ IPv6 and IPv4 share the same fundamental forwarding concept but differ significa
 graph TD
     subgraph IPv4 Router Processing
         A1[Receive packet] --> B1[Verify Header Checksum]
-        B1 --> C1[Check TTL > 0]
+        B1 --> C1[Check TTL > 1]
         C1 --> D1[Decrement TTL]
         D1 --> E1[Recalculate checksum]
         E1 --> F1[Check for options]
@@ -25,9 +25,9 @@ graph TD
     end
 
     subgraph IPv6 Router Processing
-        A2[Receive packet] --> B2[Check Hop Limit > 0]
+        A2[Receive packet] --> B2[Check Hop Limit > 1]
         B2 --> C2[Decrement Hop Limit]
-        C2 --> D2[Check for Hop-by-Hop options]
+        C2 --> D2[May process Hop-by-Hop options if configured]
         D2 --> E2[Forward packet]
     end
 ```
@@ -37,14 +37,14 @@ graph TD
 ```text
 IPv4:
   - Any router on the path CAN fragment packets
-  - Fragmentation at intermediate hops is transparent to endpoints
-  - Source sets DF (Don't Fragment) bit to disable fragmentation
-  - Required for path MTU discovery to work
+  - Destination hosts reassemble fragments created at intermediate hops
+  - Source sets DF (Don't Fragment) bit to disable router fragmentation
+  - Classical path MTU discovery relies on DF=1 plus ICMP "Fragmentation Needed"
 
 IPv6:
   - ONLY the source can fragment packets
   - Routers that receive an oversized packet send "Packet Too Big" ICMPv6
-  - Source must discover path MTU before sending large packets
+  - Source adjusts packet size based on path MTU discovery
   - Fragmentation uses the Fragment Extension Header
   - No equivalent of IPv4's DF bit (fragmentation is always source-only)
 ```
@@ -102,13 +102,13 @@ IPv4 Options:
   - All routers must check for options (even if none present)
   - Some options require per-hop processing
   - Options make header length variable (20-60 bytes)
-  - Routers cannot easily skip options they don't understand
+  - Routers must at least parse the options area to determine how to handle it
 
 IPv6 Extension Headers:
-  - Most extension headers are processed only at endpoints
-  - Exception: Hop-by-Hop Options Header (must be processed by all routers)
+  - Most extension headers are not processed by transit routers
+  - Exception: Hop-by-Hop Options Header (on-path processing is only done when routers are configured for it)
   - Hop-by-Hop is optional and rarely used (not present in most packets)
-  - If Hop-by-Hop is present, it is FIRST in the chain
+  - If Hop-by-Hop is present, it must immediately follow the IPv6 header
 ```
 
 ## Comparison Table
@@ -117,13 +117,13 @@ IPv6 Extension Headers:
 |---|---|---|
 | Header checksum | Verified + recalculated per hop | None |
 | Fragmentation by routers | Allowed (when DF=0) | Never |
-| Options processing per hop | Required | Only Hop-by-Hop (rare) |
+| Options processing per hop | Required | Only Hop-by-Hop when configured |
 | Header size | Variable 20-60 bytes | Fixed 40 bytes |
-| Minimum MTU | 68 bytes (theoretical), 576 practical | 1280 bytes |
+| Minimum size rule | 68-byte forwardable datagram; hosts should accept 576-byte datagrams | 1280-byte minimum link MTU |
 | Multicast addresses | Optional (IPv4 optional) | Required for core protocols |
 | Broadcast | Exists | Eliminated (replaced by multicast) |
 | ARP/NDP | ARP | NDP (uses ICMPv6) |
-| DHCP required | Common | Optional (SLAAC available) |
+| DHCP for addressing | Common | Optional (SLAAC available) |
 
 ## Practical Performance Implications
 
@@ -134,14 +134,14 @@ IPv6 Extension Headers:
 #   - Fixed header → predictable cache access patterns
 #   - No fragmentation decisions
 
-# Check forwarding statistics on Linux
-ip -s -6 link show eth0
-# Shows forwarded packet counts
+# Check per-interface packet statistics on Linux
+ip -s link show dev eth0
+# Shows interface RX/TX counters
 
-# Examine forwarding performance
-cat /proc/net/snmp6 | grep -E "Ip6InDelivers|Ip6OutForwDatagrams"
+# Check IPv6 forwarding counters
+nstat -az Ip6OutForwDatagrams Ip6InHdrErrors
 ```
 
 ## Conclusion
 
-IPv6's packet handling is fundamentally simpler and more efficient than IPv4. Routers do less work per packet: no checksum operations, no fragmentation decisions, and no variable-length header parsing. The trade-off is that sources must do more work - they are responsible for all fragmentation and must maintain path MTU state. This architectural shift moves complexity to the network edges (endpoints) and simplifies the core network, enabling higher forwarding rates in modern hardware.
+IPv6's packet handling is fundamentally simpler and more efficient than IPv4. Routers do less work per packet: no checksum operations, no fragmentation decisions, and no IPv4-style variable-length base header parsing in the common case. The trade-off is that sources must do more work - they are responsible for all fragmentation and must maintain path MTU state. This architectural shift moves complexity to the network edges (endpoints) and simplifies the core network, enabling higher forwarding rates in modern hardware.
