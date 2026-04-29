@@ -19,7 +19,7 @@ terraform {
   required_providers {
     kubernetes = {
       source  = "hashicorp/kubernetes"
-      version = "~> 2.24"
+      version = "~> 3.0"
     }
   }
 }
@@ -36,7 +36,7 @@ provider "kubernetes" {
 ```hcl
 # storage_classes.tf
 # GP3 SSD storage - good default for most workloads
-resource "kubernetes_storage_class" "gp3" {
+resource "kubernetes_storage_class_v1" "gp3" {
   metadata {
     name = "gp3"
     annotations = {
@@ -65,7 +65,7 @@ resource "kubernetes_storage_class" "gp3" {
 }
 
 # High-performance IO2 storage for databases
-resource "kubernetes_storage_class" "io2_database" {
+resource "kubernetes_storage_class_v1" "io2_database" {
   metadata {
     name = "io2-database"
   }
@@ -88,7 +88,7 @@ resource "kubernetes_storage_class" "io2_database" {
 ```hcl
 # azure_storage.tf
 # Premium SSD for production workloads
-resource "kubernetes_storage_class" "azure_premium_ssd" {
+resource "kubernetes_storage_class_v1" "azure_premium_ssd" {
   metadata {
     name = "azure-premium-ssd"
     annotations = {
@@ -103,13 +103,13 @@ resource "kubernetes_storage_class" "azure_premium_ssd" {
 
   parameters = {
     skuName = "Premium_LRS"
-    # Enable host-based encryption
+    # Enable on-demand bursting for eligible Premium SSD disks
     enableBursting = "true"
   }
 }
 
 # Ultra Disk for extremely high IOPS requirements
-resource "kubernetes_storage_class" "azure_ultra_disk" {
+resource "kubernetes_storage_class_v1" "azure_ultra_disk" {
   metadata {
     name = "azure-ultra-disk"
   }
@@ -117,12 +117,13 @@ resource "kubernetes_storage_class" "azure_ultra_disk" {
   storage_provisioner    = "disk.csi.azure.com"
   reclaim_policy         = "Retain"
   volume_binding_mode    = "WaitForFirstConsumer"
-  allow_volume_expansion = false  # Ultra disks don't support online expansion
+  allow_volume_expansion = true
 
   parameters = {
-    skuName      = "UltraSSD_LRS"
-    diskIOPSReadWrite = "2000"
-    diskMBpsReadWrite = "200"
+    skuName           = "UltraSSD_LRS"
+    cachingMode       = "None"
+    diskIopsReadWrite = "2000"
+    diskMbpsReadWrite = "200"
   }
 }
 ```
@@ -132,7 +133,7 @@ resource "kubernetes_storage_class" "azure_ultra_disk" {
 ```hcl
 # gcp_storage.tf
 # Standard PD-SSD for most workloads
-resource "kubernetes_storage_class" "gcp_ssd" {
+resource "kubernetes_storage_class_v1" "gcp_ssd" {
   metadata {
     name = "pd-ssd"
     annotations = {
@@ -151,7 +152,7 @@ resource "kubernetes_storage_class" "gcp_ssd" {
 }
 
 # Regional PD for multi-zone HA
-resource "kubernetes_storage_class" "gcp_regional_ssd" {
+resource "kubernetes_storage_class_v1" "gcp_regional_ssd" {
   metadata {
     name = "pd-ssd-regional"
   }
@@ -162,10 +163,16 @@ resource "kubernetes_storage_class" "gcp_regional_ssd" {
   allow_volume_expansion = true
 
   parameters = {
-    type             = "pd-ssd"
-    replication-type = "regional-pd"
-    # Specify zones for regional replication
-    zones = "us-central1-a,us-central1-b"
+    type               = "pd-ssd"
+    "replication-type" = "regional-pd"
+  }
+
+  # Constrain which zones the regional persistent disk can be provisioned in
+  allowed_topologies {
+    match_label_expressions {
+      key    = "topology.gke.io/zone"
+      values = ["us-central1-a", "us-central1-b"]
+    }
   }
 }
 ```
@@ -174,6 +181,6 @@ resource "kubernetes_storage_class" "gcp_regional_ssd" {
 
 - Set `WaitForFirstConsumer` as the volume binding mode when using zone-aware storage to prevent pods from being scheduled in a different zone than their volume.
 - Use `Retain` reclaim policy for database storage to prevent accidental data loss when a PVC is deleted.
-- Enable volume expansion (`allow_volume_expansion = true`) so you can increase volume size without recreating the PVC.
-- Only mark one StorageClass as default - having multiple defaults causes unpredictable behavior.
+- Enable volume expansion (`allow_volume_expansion = true`) when the CSI driver and storage backend support it, so you can increase volume size without recreating the PVC.
+- Only mark one StorageClass as default during steady state - Kubernetes allows multiple defaults for migration, but a PVC without `storageClassName` uses the most recently created default.
 - Use encrypted volumes in production by setting the encryption parameter - many compliance frameworks require this.
