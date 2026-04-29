@@ -8,7 +8,7 @@ Description: Learn how to use K3s's built-in HelmChart CRD to automatically depl
 
 ## Introduction
 
-K3s includes a built-in Helm controller that enables deploying Helm charts declaratively using a custom resource called `HelmChart`. By placing `HelmChart` resources in K3s's auto-deploy manifests directory, you can have Helm charts automatically installed and upgraded without running `helm install` manually. This is K3s's native approach to Helm-based GitOps.
+K3s includes a built-in Helm controller that enables deploying Helm charts declaratively using a custom resource called `HelmChart`. By placing `HelmChart` resources in K3s's auto-deploy manifests directory, you can have Helm charts automatically installed and upgraded without running `helm install` manually. This is K3s's native, GitOps-friendly approach to Helm-based automation.
 
 ## Understanding the HelmChart CRD
 
@@ -147,21 +147,20 @@ metadata:
 spec:
   valuesContent: |-
     # Override default Traefik values
-    dashboard:
-      enabled: true
+    ingressRoute:
+      dashboard:
+        enabled: true
     logs:
       general:
         level: ERROR
-    metrics:
-      prometheus:
-        enabled: true
     ports:
       websecure:
-        tls:
-          enabled: true
+        http:
+          tls:
+            enabled: true
     service:
       annotations:
-        metallb.universe.tf/address-pool: default
+        metallb.io/address-pool: default
 ```
 
 ## Step 5: Using Private Helm Repositories
@@ -191,6 +190,7 @@ Create the credentials secret:
 ```bash
 kubectl create secret generic helm-repo-credentials \
   -n kube-system \
+  --type=kubernetes.io/basic-auth \
   --from-literal=username=myuser \
   --from-literal=password=mysecretpassword
 ```
@@ -225,13 +225,12 @@ kubectl describe helmchart cert-manager -n kube-system
 kubectl logs -n kube-system \
   -l app=helm-controller -f
 
-# Check the actual Helm releases
-# K3s deploys a Helm CLI pod to run installations
-kubectl get pods -n kube-system | grep helm
+# Check the Helm install/upgrade Jobs and pods
+# K3s creates Helm Jobs and pods to run installations and upgrades
+kubectl get jobs,pods -n kube-system | grep helm
 
 # Check Helm release status directly
-kubectl get helmreleases -n kube-system 2>/dev/null || \
-  helm list -n cert-manager
+helm --kubeconfig /etc/rancher/k3s/k3s.yaml ls -n cert-manager
 ```
 
 ## Step 8: Updating Chart Versions
@@ -242,7 +241,8 @@ To upgrade a Helm chart, simply update the version in the HelmChart resource:
 # Edit the HelmChart manifest
 vi /var/lib/rancher/k3s/server/manifests/cert-manager.yaml
 
-# Change version from v1.14.4 to v1.15.0
+# Change version from v1.14.4 to a newer chart release
+# If the new chart version changes its values schema, update the HelmChart values too
 # K3s will automatically trigger a Helm upgrade
 ```
 
