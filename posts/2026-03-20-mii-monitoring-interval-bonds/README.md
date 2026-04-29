@@ -14,7 +14,7 @@ The MII monitoring interval (`miimon`) determines how often the bonding driver c
 
 | Parameter | Description | Default |
 |---|---|---|
-| `miimon` | Link check interval in milliseconds | 0 (disabled) |
+| `miimon` | Link check interval in milliseconds | 100 (if `arp_interval` is unset; 0 disables) |
 | `updelay` | Time (ms) before marking a link as up | 0 |
 | `downdelay` | Time (ms) before marking a link as down | 0 |
 
@@ -106,9 +106,9 @@ Instead of MII monitoring, you can use ARP monitoring to detect link health base
 # Enable ARP monitoring (check connectivity to gateway every 1 second)
 echo 0 > /sys/class/net/bond0/bonding/miimon  # Disable MII first
 echo 1000 > /sys/class/net/bond0/bonding/arp_interval
-echo 192.168.1.1 > /sys/class/net/bond0/bonding/arp_ip_target
+echo +192.168.1.1 > /sys/class/net/bond0/bonding/arp_ip_target
 ```
 
 ## Conclusion
 
-Setting `miimon=100` is the standard starting point for bond link monitoring. Add `downdelay=200` and `updelay=200` to prevent flapping. All three values should be multiples of `miimon`. Without `miimon` set (default=0), the bonding driver cannot detect link failures and failover will not work.
+Setting `miimon=100` is the standard starting point for bond link monitoring (and is the kernel default when `arp_interval` is unset). Add `downdelay=200` and `updelay=200` to prevent flapping; both should be multiples of `miimon` (otherwise the kernel rounds them down to the nearest multiple). If `miimon` is set to 0, MII monitoring is disabled and the bonding driver cannot detect link failures via MII — you would need ARP monitoring instead.
