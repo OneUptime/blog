@@ -8,17 +8,16 @@ Description: Learn how to tune and optimize K3s to run efficiently on resource-c
 
 ## Introduction
 
-K3s was designed to run on hardware as small as a Raspberry Pi, but even K3s needs careful tuning to run efficiently on very resource-constrained systems. With the right configuration, K3s can run stable Kubernetes workloads on systems with as little as 512MB RAM and a single CPU core. This guide covers comprehensive optimization techniques for low-resource K3s deployments.
+K3s was designed to run on hardware as small as a Raspberry Pi, but even K3s needs careful tuning to run efficiently on very resource-constrained systems. The official K3s minimums are 2 CPU cores and 2GB RAM for server nodes, and 1 CPU core and 512MB RAM for agent nodes, before accounting for workload needs. This guide covers comprehensive optimization techniques for low-resource K3s deployments.
 
 ## Minimum Hardware Requirements
 
-| Component | Minimum | Recommended |
-|-----------|---------|-------------|
-| CPU | 1 core | 2 cores |
-| RAM (Server) | 512MB | 1GB |
-| RAM (Agent) | 256MB | 512MB |
-| Storage | 4GB | 16GB |
-| Architecture | ARM64/x86_64 | ARM64/x86_64 |
+| Node | CPU | RAM |
+|------|-----|-----|
+| Server | 2 cores | 2GB |
+| Agent | 1 core | 512MB |
+
+K3s supports `x86_64`, `armhf`, and `arm64/aarch64`, and SSD storage is recommended when possible. On Raspberry Pi and other ARM devices, an external SSD is recommended.
 
 ## Step 1: Disable Unnecessary K3s Components
 
@@ -29,8 +28,8 @@ The biggest wins come from disabling unused built-in components:
 
 # Disable all non-essential components
 disable:
-  - traefik         # ~50MB RAM savings
-  - metrics-server  # ~30MB RAM savings
+  - traefik
+  - metrics-server
   - coredns         # Only if you don't need DNS (very edge case)
   - local-storage   # If using external storage
 
@@ -40,33 +39,42 @@ disable:
 
 ## Step 2: Optimize Kubelet Settings
 
-Tune kubelet for resource-constrained environments:
+Tune kubelet for resource-constrained environments using a kubelet config drop-in:
 
 ```yaml
-# /etc/rancher/k3s/config.yaml
-kubelet-arg:
-  # Limit number of pods (default 110 is too high for edge)
-  - "max-pods=30"
+# /var/lib/rancher/k3s/agent/etc/kubelet.conf.d/10-low-resource.conf
+apiVersion: kubelet.config.k8s.io/v1beta1
+kind: KubeletConfiguration
 
-  # Reserve resources for the OS and K3s system processes
-  # Prevent pods from consuming all system resources
-  - "system-reserved=cpu=100m,memory=256Mi,ephemeral-storage=1Gi"
-  - "kube-reserved=cpu=100m,memory=256Mi,ephemeral-storage=512Mi"
+# Limit number of pods (default 110 is too high for edge)
+maxPods: 30
 
-  # Evict pods early to prevent OOM crashes
-  - "eviction-hard=memory.available<100Mi,nodefs.available<5%,nodefs.inodesFree<5%"
-  - "eviction-soft=memory.available<200Mi,nodefs.available<10%"
-  - "eviction-soft-grace-period=memory.available=1m30s,nodefs.available=1m30s"
+# Reserve resources for the OS and K3s system processes
+# Prevent pods from consuming all system resources
+systemReserved:
+  cpu: "100m"
+  memory: "256Mi"
+  ephemeral-storage: "1Gi"
+kubeReserved:
+  cpu: "100m"
+  memory: "256Mi"
+  ephemeral-storage: "512Mi"
 
-  # Reduce image GC thresholds to reclaim disk space
-  - "image-gc-low-threshold=50"
-  - "image-gc-high-threshold=70"
+# Evict pods early to prevent OOM crashes
+evictionHard:
+  memory.available: "100Mi"
+  nodefs.available: "5%"
+  nodefs.inodesFree: "5%"
+evictionSoft:
+  memory.available: "200Mi"
+  nodefs.available: "10%"
+evictionSoftGracePeriod:
+  memory.available: "1m30s"
+  nodefs.available: "1m30s"
 
-  # Less frequent node status updates to reduce CPU usage
-  - "node-status-update-frequency=10s"
-
-  # Reduce default CPU manager period
-  - "cpu-manager-reconcile-period=10s"
+# Reduce image GC thresholds to reclaim disk space
+imageGCLowThresholdPercent: 50
+imageGCHighThresholdPercent: 70
 ```
 
 ## Step 3: Optimize kube-apiserver
@@ -74,10 +82,7 @@ kubelet-arg:
 ```yaml
 # /etc/rancher/k3s/config.yaml
 kube-apiserver-arg:
-  # Reduce watch timeout to free connections faster
-  - "default-watch-cache-size=100"
-
-  # Limit request body size for resource protection
+  # Limit concurrent requests for resource protection
   - "max-requests-inflight=150"
   - "max-mutating-requests-inflight=50"
 
@@ -93,11 +98,17 @@ kube-controller-manager-arg:
 ## Step 4: Optimize containerd
 
 ```toml
-# /etc/rancher/k3s/config.toml (if using external containerd)
-# Or configure via K3s's embedded containerd
+# K3s renders the live containerd config to:
+# /var/lib/rancher/k3s/agent/etc/containerd/config.toml
+#
+# On current K3s releases, customize it with:
+# /var/lib/rancher/k3s/agent/etc/containerd/config-v3.toml.tmpl
+# For older containerd 1.7-based K3s releases, use config.toml.tmpl instead.
+
+{{ template "base" . }}
 
 # Reduce snapshot storage with overlayfs
-[plugins."io.containerd.grpc.v1.cri".containerd]
+[plugins.'io.containerd.cri.v1.images']
   snapshotter = "overlayfs"
   discard_unpacked_layers = true
 ```
@@ -120,8 +131,8 @@ ls /var/lib/rancher/k3s/server/db/
 For devices with very limited RAM:
 
 ```bash
-# Create swap file to prevent OOM kills
-# (Generally not recommended for Kubernetes, but useful for extreme edge)
+# Create swap file to reduce host-level memory pressure
+# (Adds latency and unpredictability, but can help on extreme edge systems)
 fallocate -l 1G /swapfile
 chmod 600 /swapfile
 mkswap /swapfile
@@ -133,16 +144,22 @@ echo 'vm.swappiness = 10' >> /etc/sysctl.conf
 echo 'vm.vfs_cache_pressure = 50' >> /etc/sysctl.conf
 sysctl -p
 
-# Note: K3s can work with swap, but Kubernetes normally requires
-# swap to be disabled. Use with caution.
-# To allow swap with K3s:
+# Note: Kubernetes on Linux can run with swap enabled, but the kubelet
+# must be configured explicitly. On current K3s releases, prefer a
+# kubelet config drop-in instead of deprecated kubelet CLI flags.
+# To let kubelet start on a swap-enabled node:
 ```
 
 ```yaml
-# /etc/rancher/k3s/config.yaml
-kubelet-arg:
-  # Allow swap (required if swap is enabled)
-  - "fail-swap-on=false"
+# /var/lib/rancher/k3s/agent/etc/kubelet.conf.d/20-swap.conf
+apiVersion: kubelet.config.k8s.io/v1beta1
+kind: KubeletConfiguration
+failSwapOn: false
+
+# Keep Pod swap disabled by default; use LimitedSwap if you
+# intentionally want Kubernetes workloads to consume swap.
+memorySwap:
+  swapBehavior: NoSwap
 ```
 
 ## Step 7: Optimize Container Images for Edge
@@ -174,7 +191,13 @@ metadata:
   name: edge-sensor-app
 spec:
   replicas: 1  # Only 1 replica on small edge nodes
+  selector:
+    matchLabels:
+      app: edge-sensor-app
   template:
+    metadata:
+      labels:
+        app: edge-sensor-app
     spec:
       containers:
         - name: sensor-app
@@ -245,4 +268,4 @@ du -sh /var/lib/rancher/k3s/
 
 ## Conclusion
 
-K3s excels in low-resource environments when properly tuned. The most impactful optimizations are disabling unused built-in components (Traefik, metrics-server), setting appropriate kubelet resource reservations to prevent OS starvation, using minimal container images, and always specifying resource requests/limits on workloads. For very constrained devices like Raspberry Pi 3, a single-server K3s deployment with 2-3 small workloads is achievable and production-viable.
+K3s excels in low-resource environments when properly tuned. The most impactful optimizations are disabling unused built-in components (Traefik, metrics-server), setting appropriate kubelet resource reservations to prevent OS starvation, using minimal container images, and always specifying resource requests/limits on workloads. On hardware that meets the documented minimums, a single-server K3s deployment running a few lightweight workloads can be practical and stable.
