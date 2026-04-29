@@ -8,7 +8,7 @@ Description: Enable TLS/SSL in MongoDB to encrypt connections between clients an
 
 ## Introduction
 
-MongoDB TLS/SSL encrypts all data in transit between clients and the server. For replica sets, TLS also encrypts inter-node communication. MongoDB 4.0+ uses `tls` settings (replacing the deprecated `ssl` settings) in `mongod.conf`.
+MongoDB TLS/SSL encrypts all data in transit between clients and the server. For replica sets, TLS also encrypts inter-node communication. MongoDB 4.2+ uses `tls` settings (replacing the deprecated `ssl` settings) in `mongod.conf`.
 
 ## Generating Certificates
 
