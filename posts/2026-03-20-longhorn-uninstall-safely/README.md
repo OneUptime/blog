@@ -23,19 +23,22 @@ Uninstalling Longhorn requires careful preparation to avoid data loss. You must 
 
 ## Step 1: Back Up All Data
 
-Before uninstalling, back up critical volumes:
+Before uninstalling, back up critical volumes. A backup target must already be configured:
 
-```bash
-# Trigger backup of all volumes to S3/NFS backup target
-
-# Via Longhorn UI: each volume > Create Backup
-# Or via API:
-for vol in $(kubectl get lhvolume -n longhorn-system -o name); do
-  name=$(echo $vol | cut -d/ -f2)
-  echo "Backing up $name..."
-  kubectl annotate lhvolume $name -n longhorn-system \
-    "recurring-jobs.longhorn.io/source=backup"
-done
+```yaml
+# Via Longhorn UI: Volume > Create Backup
+# Or create a Backup custom resource for an existing snapshot you want to preserve.
+# Find an existing snapshot name with: kubectl -n longhorn-system get snapshots.longhorn.io
+apiVersion: longhorn.io/v1beta2
+kind: Backup
+metadata:
+  name: backup-example
+  namespace: longhorn-system
+spec:
+  backupMode: incremental
+  snapshotName: snapshot-name-example
+  labels:
+    app: my-workload
 ```
 
 ---
@@ -43,18 +46,15 @@ done
 ## Step 2: Scale Down Workloads and Delete PVCs
 
 ```bash
-# Scale down all deployments using Longhorn PVCs
-kubectl get pvc -A | grep longhorn | while read ns name rest; do
-  # Find pods using this PVC
-  kubectl get pods -n $ns -o json | \
-    jq -r '.items[] | select(.spec.volumes[].persistentVolumeClaim.claimName == "'$name'") | .metadata.name'
-done
+# List PVCs backed by Longhorn's CSI driver
+kubectl get pv -o jsonpath='{range .items[?(@.spec.csi.driver=="driver.longhorn.io")]}{.spec.claimRef.namespace}{"\t"}{.spec.claimRef.name}{"\n"}{end}'
 
-# Scale down identified deployments
+# Scale down or delete the controllers that use those PVCs
 kubectl scale deployment <name> --replicas=0 -n <namespace>
+kubectl scale statefulset <name> --replicas=0 -n <namespace>
 
-# Delete PVCs after workloads are stopped
-kubectl delete pvc --all -n my-app
+# Delete each Longhorn-backed PVC after workloads are stopped
+kubectl delete pvc <pvc-name> -n <namespace>
 ```
 
 ---
@@ -64,10 +64,9 @@ kubectl delete pvc --all -n my-app
 Longhorn has a deletion confirmation mechanism. Set the uninstall flag:
 
 ```bash
-# Set the allow-node-drain-with-last-healthy-replica setting first
-kubectl patch setting.longhorn.io deleting-confirmation-flag \
-  -n longhorn-system \
-  --type merge \
+# Set Longhorn's deletion confirmation flag
+kubectl -n longhorn-system patch settings.longhorn.io/deleting-confirmation-flag \
+  --type=merge \
   -p '{"value":"true"}'
 ```
 
@@ -76,24 +75,26 @@ kubectl patch setting.longhorn.io deleting-confirmation-flag \
 ## Step 4: Uninstall Longhorn via Helm
 
 ```bash
+# If installed via Rancher, delete the Longhorn app from Rancher UI instead.
 # If installed via Helm
 helm uninstall longhorn -n longhorn-system
 
-# Wait for all Longhorn pods to terminate
-kubectl get pods -n longhorn-system -w
+# Watch the uninstall job created by the chart hooks
+kubectl get job/longhorn-uninstall -n longhorn-system -w
 ```
 
 ---
 
-## Step 5: Remove Longhorn CRDs
+## Step 5: Remove Remaining Longhorn Resources
 
 ```bash
-# Remove all Longhorn CRDs
-kubectl get crds | grep longhorn | awk '{print $1}' | \
-  xargs kubectl delete crd
+# If you installed Longhorn with kubectl, use the official uninstall manifest.
+# Replace <LONGHORN_VERSION> with the installed version, for example v1.11.1.
+kubectl create -f https://raw.githubusercontent.com/longhorn/longhorn/<LONGHORN_VERSION>/uninstall/uninstall.yaml
+kubectl get job/longhorn-uninstall -n longhorn-system -w
 
-# Remove the namespace
-kubectl delete namespace longhorn-system
+kubectl delete -f https://raw.githubusercontent.com/longhorn/longhorn/<LONGHORN_VERSION>/deploy/longhorn.yaml
+kubectl delete -f https://raw.githubusercontent.com/longhorn/longhorn/<LONGHORN_VERSION>/uninstall/uninstall.yaml
 ```
 
 ---
@@ -105,7 +106,7 @@ On each storage node, remove Longhorn data directories:
 ```bash
 #!/bin/bash
 # run on each node
-rm -rf /var/lib/longhorn
+sudo rm -rf /var/lib/longhorn
 # If using custom data path, adjust accordingly
 ```
 
@@ -113,13 +114,16 @@ rm -rf /var/lib/longhorn
 
 ## Troubleshooting Stuck Uninstall
 
-If CRDs are stuck in `Terminating`:
+If CRD instances or the CRDs are stuck in `Terminating`:
 
 ```bash
-# Remove finalizers from stuck Longhorn resources
-for crd in $(kubectl get crds -o name | grep longhorn); do
-  kubectl patch $crd --type json \
-    -p '[{"op":"remove","path":"/metadata/finalizers"}]'
+NAMESPACE=longhorn-system
+
+# Delete CRD finalizers, instances, and definitions
+for crd in $(kubectl get crd -o jsonpath='{.items[*].metadata.name}' | tr ' ' '\n' | grep longhorn.io); do
+  kubectl -n ${NAMESPACE} get $crd -o yaml | sed "s/\- longhorn.io//g" | kubectl apply -f -
+  kubectl -n ${NAMESPACE} delete $crd --all
+  kubectl delete crd/$crd
 done
 ```
 
