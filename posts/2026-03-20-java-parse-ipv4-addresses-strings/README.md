@@ -4,11 +4,11 @@ Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
 Tags: Java, IPv4, Parsing, InetAddress, String Processing, Networking
 
-Description: Parse IPv4 addresses from various string formats in Java including dotted-decimal, integer, CIDR notation, and URL hostnames using InetAddress and manual parsing.
+Description: Parse IPv4 addresses from various string formats in Java including dotted-decimal, packed integers, CIDR notation, and URL hosts using InetAddress, URI, and manual parsing.
 
 ## Introduction
 
-IPv4 addresses appear in many formats in real-world applications: dotted-decimal notation, CIDR blocks, packed integers, and embedded in URLs. Java provides `InetAddress` for standard parsing and requires manual handling for formats like CIDR or packed integers.
+IPv4 addresses appear in many formats in real-world applications: dotted-decimal notation, CIDR blocks, packed integers, and embedded in URLs. Java provides `InetAddress` for standard IPv4 parsing, `URI` for extracting hosts from URLs, and requires manual handling for formats like CIDR or packed integers.
 
 ## Parsing Standard Dotted-Decimal
 
@@ -22,14 +22,14 @@ public class IPv4Parser {
      * Returns the InetAddress or null if invalid.
      */
     public static InetAddress parseIPv4(String ipString) {
-        if (ipString == null) return null;
+        if (ipString == null ||
+            !ipString.matches("^(?:0|[1-9]\\d{0,2})(?:\\.(?:0|[1-9]\\d{0,2})){3}$")) {
+            return null;
+        }
         
         try {
             InetAddress addr = InetAddress.getByName(ipString);
-            // Ensure it's actually IPv4 (InetAddress.getByName resolves hostnames)
-            if (addr instanceof Inet4Address && addr.getHostAddress().equals(ipString)) {
-                return addr;
-            }
+            return addr instanceof Inet4Address ? addr : null;
         } catch (UnknownHostException e) {
             // Not a valid IP
         }
@@ -49,44 +49,56 @@ public class IPv4Parser {
 ## Converting Between Dotted-Decimal and Integer
 
 ```java
-/**
- * Convert a dotted-decimal IPv4 string to a 32-bit integer.
- * e.g., "192.168.1.1" -> 3232235777
- */
-public static long ipv4ToLong(String ipString) {
-    String[] parts = ipString.split("\\.");
-    if (parts.length != 4) {
-        throw new IllegalArgumentException("Invalid IPv4: " + ipString);
+public class IPv4Converter {
+    
+    /**
+     * Convert a dotted-decimal IPv4 string to a 32-bit integer.
+     * e.g., "192.168.1.1" -> 3232235777
+     */
+    public static long ipv4ToLong(String ipString) {
+        String[] parts = ipString.split("\\.", -1);
+        if (parts.length != 4) {
+            throw new IllegalArgumentException("Invalid IPv4: " + ipString);
+        }
+        
+        long result = 0;
+        for (String part : parts) {
+            if (!part.matches("\\d{1,3}")) {
+                throw new IllegalArgumentException("Invalid octet: " + part);
+            }
+            
+            int octet = Integer.parseInt(part);
+            if (octet < 0 || octet > 255) {
+                throw new IllegalArgumentException("Invalid octet: " + octet);
+            }
+            result = (result << 8) | octet;
+        }
+        return result;
     }
     
-    long result = 0;
-    for (int i = 0; i < 4; i++) {
-        int octet = Integer.parseInt(parts[i]);
-        if (octet < 0 || octet > 255) {
-            throw new IllegalArgumentException("Invalid octet: " + octet);
+    /**
+     * Convert a 32-bit integer to dotted-decimal IPv4 string.
+     * e.g., 3232235777 -> "192.168.1.1"
+     */
+    public static String longToIPv4(long ip) {
+        if (ip < 0 || ip > 0xFFFFFFFFL) {
+            throw new IllegalArgumentException("IPv4 integer out of range: " + ip);
         }
-        result = (result << 8) | octet;
+        
+        return String.format("%d.%d.%d.%d",
+            (ip >> 24) & 0xFF,
+            (ip >> 16) & 0xFF,
+            (ip >> 8) & 0xFF,
+            ip & 0xFF
+        );
     }
-    return result;
+    
+    public static void main(String[] args) {
+        long ipInt = ipv4ToLong("192.168.1.1");
+        System.out.println(ipInt);               // 3232235777
+        System.out.println(longToIPv4(ipInt));   // 192.168.1.1
+    }
 }
-
-/**
- * Convert a 32-bit integer to dotted-decimal IPv4 string.
- * e.g., 3232235777 -> "192.168.1.1"
- */
-public static String longToIPv4(long ip) {
-    return String.format("%d.%d.%d.%d",
-        (ip >> 24) & 0xFF,
-        (ip >> 16) & 0xFF,
-        (ip >> 8) & 0xFF,
-        ip & 0xFF
-    );
-}
-
-// Usage
-long ipInt = ipv4ToLong("192.168.1.1");
-System.out.println(ipInt);               // 3232235777
-System.out.println(longToIPv4(ipInt));   // 192.168.1.1
 ```
 
 ## Parsing CIDR Notation
@@ -94,7 +106,6 @@ System.out.println(longToIPv4(ipInt));   // 192.168.1.1
 ```java
 public class CIDRParser {
     
-    private final String network;
     private final int prefix;
     private final long networkAddress;
     private final long broadcastAddress;
@@ -105,14 +116,13 @@ public class CIDRParser {
             throw new IllegalArgumentException("Invalid CIDR: " + cidr);
         }
         
-        this.network = parts[0];
         this.prefix = Integer.parseInt(parts[1]);
         
         if (prefix < 0 || prefix > 32) {
             throw new IllegalArgumentException("Prefix length must be 0-32");
         }
         
-        long baseIP = ipv4ToLong(this.network);
+        long baseIP = ipv4ToLong(parts[0]);
         long mask = prefix == 0 ? 0L : (0xFFFFFFFFL << (32 - prefix)) & 0xFFFFFFFFL;
         
         this.networkAddress = baseIP & mask;
@@ -126,7 +136,47 @@ public class CIDRParser {
     
     public String getNetworkAddress() { return longToIPv4(networkAddress); }
     public String getBroadcastAddress() { return longToIPv4(broadcastAddress); }
-    public long getUsableHostCount() { return Math.max(0, broadcastAddress - networkAddress - 1); }
+    
+    public long getUsableHostCount() {
+        // /31 has two usable endpoints on point-to-point links (RFC 3021); /32 is a host route.
+        if (prefix == 31) return 2;
+        if (prefix == 32) return 1;
+        return broadcastAddress - networkAddress - 1;
+    }
+    
+    private static long ipv4ToLong(String ipString) {
+        String[] parts = ipString.split("\\.", -1);
+        if (parts.length != 4) {
+            throw new IllegalArgumentException("Invalid IPv4: " + ipString);
+        }
+        
+        long result = 0;
+        for (String part : parts) {
+            if (!part.matches("\\d{1,3}")) {
+                throw new IllegalArgumentException("Invalid octet: " + part);
+            }
+            
+            int octet = Integer.parseInt(part);
+            if (octet < 0 || octet > 255) {
+                throw new IllegalArgumentException("Invalid octet: " + octet);
+            }
+            result = (result << 8) | octet;
+        }
+        return result;
+    }
+    
+    private static String longToIPv4(long ip) {
+        if (ip < 0 || ip > 0xFFFFFFFFL) {
+            throw new IllegalArgumentException("IPv4 integer out of range: " + ip);
+        }
+        
+        return String.format("%d.%d.%d.%d",
+            (ip >> 24) & 0xFF,
+            (ip >> 16) & 0xFF,
+            (ip >> 8) & 0xFF,
+            ip & 0xFF
+        );
+    }
     
     public static void main(String[] args) {
         CIDRParser cidr = new CIDRParser("192.168.1.0/24");
@@ -147,24 +197,26 @@ import java.net.*;
 
 public class URLIPExtractor {
     
-    public static String extractIPFromURL(String urlString) throws Exception {
-        URL url = new URL(urlString);
-        String host = url.getHost();
+    public static String extractIPFromURL(String urlString) throws URISyntaxException {
+        URI uri = new URI(urlString).parseServerAuthority();
+        String host = uri.getHost();
         
-        // Check if host is already an IP address
-        try {
-            InetAddress addr = InetAddress.getByName(host);
-            if (addr instanceof Inet4Address && addr.getHostAddress().equals(host)) {
-                return host;  // Already a dotted-decimal IPv4
-            }
-        } catch (UnknownHostException e) {
-            // Host is not a valid IP - it's a hostname
+        if (host == null ||
+            !host.matches("^(?:0|[1-9]\\d{0,2})(?:\\.(?:0|[1-9]\\d{0,2})){3}$")) {
+            return null;
         }
         
-        return null;  // Host is a hostname, not a literal IP
+        try {
+            InetAddress addr = InetAddress.getByName(host);
+            return addr instanceof Inet4Address ? addr.getHostAddress() : null;
+        } catch (UnknownHostException e) {
+            // Host is not a valid IPv4 literal
+        }
+        
+        return null;
     }
     
-    public static void main(String[] args) throws Exception {
+    public static void main(String[] args) throws URISyntaxException {
         System.out.println(extractIPFromURL("http://192.168.1.1/admin"));   // 192.168.1.1
         System.out.println(extractIPFromURL("https://10.0.0.1:8080/api"));  // 10.0.0.1
         System.out.println(extractIPFromURL("https://google.com"));          // null (hostname)
@@ -203,4 +255,4 @@ public class LogIPExtractor {
 
 ## Conclusion
 
-Java provides robust IPv4 parsing through `InetAddress` for standard dotted-decimal notation. For CIDR parsing, integer conversion, and log extraction, build custom utilities using string manipulation and regex. Always validate bounds (0-255 per octet) to prevent `NumberFormatException` and injection attacks.
+Java provides robust IPv4 parsing through `InetAddress` for standard dotted-decimal notation. For CIDR parsing, integer conversion, and log extraction, build custom utilities using `URI`, string manipulation, and regex. Always validate bounds (0-255 per octet) to avoid malformed input and unexpected parsing behavior.
