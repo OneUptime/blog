@@ -8,7 +8,7 @@ Description: Learn how to configure Longhorn's built-in NFS share manager for Re
 
 ---
 
-Longhorn implements ReadWriteMany (RWX) volumes by running a dedicated NFS server pod (share manager) per RWX volume. This guide covers how to configure and tune the NFS share manager for production use.
+Longhorn implements ReadWriteMany (RWX) volumes by running a dedicated NFS server pod (share manager) per RWX volume that is actively in use. This guide covers how to configure and tune the NFS share manager for production use.
 
 ---
 
@@ -21,7 +21,7 @@ graph LR
     ShareMgr --> LHVol[Longhorn Block Volume]
 ```
 
-Each RWX PVC gets its own NFS share manager pod. The pod serves as an NFS 4.1 server backed by a standard Longhorn block volume.
+Each RWX volume that is actively in use gets its own NFS share manager pod and Service. The pod serves as an NFSv4.1 server backed by a standard Longhorn block volume.
 
 ---
 
@@ -39,9 +39,13 @@ sudo yum install -y nfs-utils
 lsmod | grep nfs
 ```
 
+Also ensure each node hostname is unique across the cluster so NFS lock recovery works correctly.
+
 ---
 
 ## Step 2: Configure NFS Options in StorageClass
+
+If you override `nfsOptions`, provide the full option set explicitly.
 
 ```yaml
 # storageclass-nfs.yaml
@@ -55,21 +59,23 @@ parameters:
   numberOfReplicas: "3"
   staleReplicaTimeout: "2880"
   # NFS version and options
-  nfsOptions: "vers=4.1,noresvport,hard,timeo=600,retrans=5"
+  nfsOptions: "vers=4.1,noresvport,softerr,timeo=600,retrans=5"
 ```
 
 ---
 
-## Step 3: Configure Share Manager Pod Resources
+## Step 3: Configure Share Manager Pod Scheduling
 
-Set resource limits for the NFS share manager pod to prevent it from consuming too many cluster resources:
+Use Longhorn's RWX StorageClass parameters to place share manager pods on the right nodes:
 
-```bash
-# Set share manager pod resources via Longhorn settings
-kubectl patch setting.longhorn.io guaranteed-instance-manager-cpu \
-  -n longhorn-system \
-  --type merge \
-  -p '{"value":"12"}'  # 12% of CPU (12m per CPU)
+```yaml
+# Add these parameters to the StorageClass above
+parameters:
+  numberOfReplicas: "3"
+  staleReplicaTimeout: "2880"
+  nfsOptions: "vers=4.1,noresvport,softerr,timeo=600,retrans=5"
+  shareManagerNodeSelector: "storage:fast"
+  shareManagerTolerations: "dedicated=storage:NoSchedule"
 ```
 
 ---
@@ -78,18 +84,25 @@ kubectl patch setting.longhorn.io guaranteed-instance-manager-cpu \
 
 Pin the share manager to a specific image version for reproducibility:
 
-```bash
-kubectl patch setting.longhorn.io share-manager-image \
-  -n longhorn-system \
-  --type merge \
-  -p '{"value":"longhornio/longhorn-share-manager:v1.6.2"}'
+```yaml
+# values.yaml
+image:
+  longhorn:
+    shareManager:
+      repository: longhornio/longhorn-share-manager
+      tag: <LONGHORN_VERSION>
 ```
+
+For attached RWX volumes, the updated image is applied after the volume detaches and the share manager pod is recreated.
 
 ---
 
 ## Step 5: Monitor Share Manager Health
 
 ```bash
+# List all share manager custom resources
+kubectl get sharemanagers.longhorn.io -n longhorn-system
+
 # List all share manager pods
 kubectl get pods -n longhorn-system \
   -l longhorn.io/component=share-manager
@@ -99,10 +112,10 @@ kubectl logs -n longhorn-system \
   -l longhorn.io/component=share-manager \
   --tail=100
 
-# Verify NFS exports from within the share manager
+# Inspect the NFS-Ganesha export config from within the share manager
 kubectl exec -n longhorn-system \
   <share-manager-pod-name> \
-  -- exportfs -v
+  -- cat /tmp/vfs.conf
 ```
 
 ---
@@ -112,14 +125,17 @@ kubectl exec -n longhorn-system \
 If pods cannot mount the RWX volume:
 
 ```bash
-# On the node where the pod is running, check NFS mounts
-showmount -e <share-manager-pod-IP>
+# Check share manager state
+kubectl get sharemanagers.longhorn.io -n longhorn-system
+
+# Inspect mount events on the workload pod
+kubectl describe pod <workload-pod-name>
 
 # Check for stale NFS file handle errors
 dmesg | grep nfs | tail -20
 
-# Force unmount and remount
-umount -f -l /var/lib/kubelet/pods/<pod-id>/volumes/...
+# On the node where the pod is running, inspect active NFS mounts
+findmnt -t nfs,nfs4
 ```
 
 ---
@@ -132,7 +148,7 @@ The `nfsOptions` in the StorageClass control how pods mount the NFS share:
 |---|---|
 | `vers=4.1` | Use NFS version 4.1 |
 | `noresvport` | Don't use reserved ports (needed in some firewalls) |
-| `hard` | Keep retrying on connection failure (recommended) |
+| `softerr` | Return an error after retries are exhausted instead of blocking indefinitely |
 | `timeo=600` | Timeout in tenths of a second |
 | `retrans=5` | Number of retries before giving up |
 
@@ -142,5 +158,5 @@ The `nfsOptions` in the StorageClass control how pods mount the NFS share:
 
 - Use `vers=4.1` not `vers=3` - NFS4 provides better locking semantics.
 - Run the share manager on nodes with SSD storage to minimize NFS server latency.
-- Set `hard` mount option for production - `soft` will silently lose writes on network issues.
-- Place the share manager pod on a node with reserved resources using Longhorn's node affinity settings.
+- Use Longhorn's default `softerr` behavior unless you have a specific reason to switch to `hard`; `hard` mounts can leave nodes unable to unmount or shut down cleanly if the NFS server does not recover.
+- Place the share manager pod on reserved nodes using `shareManagerNodeSelector`, `shareManagerTolerations`, or `allowedTopologies`.
