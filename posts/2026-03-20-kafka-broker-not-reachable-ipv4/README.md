@@ -4,11 +4,11 @@ Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
 Tags: Kafka, IPv4, Troubleshooting, Connection, Broker, Debug
 
-Description: Diagnose and fix Kafka broker connectivity issues on IPv4, including advertised.listeners misconfiguration, port blocks, ZooKeeper/KRaft registration failures, and consumer group errors.
+Description: Diagnose and fix Kafka broker connectivity issues on IPv4, including advertised.listeners misconfiguration, port blocks, legacy ZooKeeper registration failures, KRaft quorum issues, and consumer group errors.
 
 ## Introduction
 
-Kafka "broker not reachable" errors can stem from incorrect `advertised.listeners`, firewall blocks, ZooKeeper/KRaft connectivity issues, or broker startup failures. This guide provides a systematic diagnosis from basic connectivity through Kafka-specific configuration.
+Kafka "broker not reachable" errors can stem from incorrect `advertised.listeners`, firewall blocks, legacy ZooKeeper connectivity issues, KRaft controller connectivity issues, or broker startup failures. This guide provides a systematic diagnosis from basic connectivity through Kafka-specific configuration.
 
 ## Initial Connectivity Check
 
@@ -50,13 +50,13 @@ sudo systemctl restart kafka
 ## Firewall Blocking
 
 ```bash
-# Kafka requires specific ports open:
-# 9092 - default client port
-# 9091 - inter-broker (if configured)
-# 9093 - controller (KRaft) or SSL
+# Kafka uses the listener ports you configured:
+# 9092 - common broker/client listener
+# 9091 - example separate inter-broker listener
+# 9093 - common KRaft controller or alternate broker listener
 
 # Check iptables
-sudo iptables -L INPUT -n | grep -E "9092|9091"
+sudo iptables -L INPUT -n | grep -E "9091|9092|9093"
 
 # Test from client host
 nc -zv 10.0.0.1 9092
@@ -65,10 +65,11 @@ nc -zv 10.0.0.1 9092
 sudo ufw allow from 10.0.0.0/24 to any port 9092
 ```
 
-## ZooKeeper Connectivity (Classic Mode)
+## ZooKeeper Connectivity (Legacy Kafka 3.x / Classic Mode)
 
 ```bash
-# Kafka requires ZooKeeper to register as a broker
+# Only for legacy ZooKeeper-based Kafka clusters (Kafka 3.x and earlier)
+# ZooKeeper-based brokers must register in ZooKeeper
 # Check ZooKeeper connection
 grep zookeeper.connect /etc/kafka/server.properties
 # zookeeper.connect=10.0.0.1:2181,10.0.0.2:2181,10.0.0.3:2181
@@ -92,8 +93,8 @@ zookeeper-shell.sh 10.0.0.1:2181 get /brokers/ids/1
 # Check KRaft controller connectivity
 kafka-metadata-quorum.sh --bootstrap-server 10.0.0.1:9092 describe --status
 
-# Verify controller voters
-grep controller.quorum.voters /etc/kafka/server.properties
+# Verify KRaft quorum settings
+grep -E 'process.roles|controller.quorum.voters|controller.quorum.bootstrap.servers|controller.listener.names' /etc/kafka/server.properties
 
 # Check KRaft logs
 sudo grep -i "CONTROLLER\|raft\|leader" /var/log/kafka/server.log | tail -20
@@ -103,10 +104,15 @@ sudo grep -i "CONTROLLER\|raft\|leader" /var/log/kafka/server.log | tail -20
 
 ```bash
 # Enable Kafka debug logging
-# /etc/kafka/log4j.properties
-# log4j.logger.kafka.network=DEBUG
+# Kafka 4.x example config: /etc/kafka/log4j2.yaml
+# Set a relevant logger to DEBUG or TRACE, for example:
+# - name: kafka.network.Processor
+#   level: TRACE
 
 # Or set environment variable:
+# export KAFKA_LOG4J_OPTS="-Dlog4j2.configurationFile=/etc/kafka/log4j2.yaml"
+#
+# Kafka 3.x packages may still use /etc/kafka/log4j.properties with
 # export KAFKA_LOG4J_OPTS="-Dlog4j.configuration=file:/etc/kafka/log4j.properties"
 
 # Monitor specific consumer group
@@ -124,4 +130,4 @@ kafka-console-consumer.sh --bootstrap-server 10.0.0.1:9092 --topic debug-test \
 
 ## Conclusion
 
-Kafka connectivity issues are usually caused by misconfigured `advertised.listeners` (most common), firewall rules blocking ports, ZooKeeper/KRaft unavailability, or broker startup failures. Always diagnose in order: process running → port open → firewall → advertised.listeners → ZooKeeper/controller. The `kafka-broker-api-versions.sh` tool is the best way to verify a broker is reachable and responding to client requests.
+Kafka connectivity issues are usually caused by misconfigured `advertised.listeners` (most common), firewall rules blocking listener ports, legacy ZooKeeper outages, KRaft quorum issues, or broker startup failures. Always diagnose in order: process running → port open → firewall → advertised.listeners → ZooKeeper/controller. The `kafka-broker-api-versions.sh` tool is a useful way to verify a broker is reachable and responding to Kafka client requests.
