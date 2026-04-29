@@ -25,13 +25,13 @@ In practice, all deployed ULAs use the `fd00::/8` range. A ULA address has this 
 ```
 
 - **L bit = 1** (locally assigned) gives you `fd00::/8`
-- **Global ID**: 40 pseudo-random bits, making the prefix unique per organization
+- **Global ID**: 40 pseudo-random bits, making collisions with other organizations' prefixes highly unlikely
 - **Subnet ID**: 16 bits for subnetting within your organization
 - **Interface ID**: Standard 64-bit interface identifier
 
 ## Generating a ULA Prefix
 
-RFC 4193 defines an algorithm for generating a pseudo-random Global ID based on the current time and the EUI-64 of a router. You can generate one using standard tools:
+RFC 4193 includes a sample algorithm for generating a pseudo-random Global ID from the current time and a system-specific identifier such as an EUI-64. You can generate one using standard tools:
 
 ```bash
 # Generate a random ULA prefix using Python
@@ -45,7 +45,7 @@ global_id = os.urandom(5)
 hex_id = binascii.hexlify(global_id).decode()
 
 # Format as a ULA prefix
-# fd + first 2 bytes : next 2 bytes : last byte + 00 :: /48
+# fdXX:XXXX:XXXX::/48
 b = [hex_id[i:i+2] for i in range(0, 10, 2)]
 prefix = f'fd{b[0]}:{b[1]}{b[2]}:{b[3]}{b[4]}::/48'
 print(f'Your ULA prefix: {prefix}')
@@ -69,8 +69,8 @@ sudo ip -6 addr add fdb4:a3c1:82ef:0001::1/64 dev eth0
 # Verify the address was added
 ip -6 addr show dev eth0
 
-# Add a static route for the ULA prefix if needed
-sudo ip -6 route add fdb4:a3c1:82ef::/48 dev eth0
+# Add a static route for another ULA subnet if needed
+sudo ip -6 route add fdb4:a3c1:82ef:0002::/64 via fdb4:a3c1:82ef:0001::2 dev eth0
 ```
 
 ## ULA vs. GUA (Global Unicast Addresses)
@@ -78,9 +78,9 @@ sudo ip -6 route add fdb4:a3c1:82ef::/48 dev eth0
 | Property | ULA (fd00::/8) | GUA (2000::/3) |
 |---|---|---|
 | Routable on internet | No | Yes |
-| Globally unique | Probabilistically | Guaranteed by RIR |
+| Globally unique | High probability | Yes |
 | Stable without ISP | Yes | Depends on ISP |
-| Requires registration | No | Yes (via RIR) |
+| Requires registration | No | Yes (via ISP/RIR allocation) |
 
 ## Common Use Cases
 
@@ -97,7 +97,7 @@ Unlike IPv4 RFC 1918 addresses, ULAs are designed to be globally unique (with hi
 
 - No address conflicts when merging networks
 - No NAT required for communication between ULA networks that can reach each other
-- Each organization gets a unique /48 that is theirs to subnet freely
+- Each organization can self-assign a /48 that is theirs to subnet freely
 
 ## Configuring ULA in Router Advertisements
 
@@ -110,7 +110,6 @@ interface eth0 {
     prefix fdb4:a3c1:82ef:0001::/64 {
         AdvOnLink on;
         AdvAutonomous on;
-        # ULA prefix - never set AdvRouterAddr for ULA
         AdvPreferredLifetime 604800;   # 7 days
         AdvValidLifetime 2592000;       # 30 days
     };
@@ -119,4 +118,4 @@ interface eth0 {
 
 ## Conclusion
 
-IPv6 Unique Local Addresses provide stable, private addressing for internal networks without the complexity of NAT. The pseudo-random Global ID ensures that ULA prefixes from different organizations are unlikely to collide, making ULAs a reliable choice for internal infrastructure, VPNs, and environments where GUA availability cannot be guaranteed.
+IPv6 Unique Local Addresses provide stable, private addressing for internal networks without the complexity of NAT. The pseudo-random Global ID makes it highly unlikely that ULA prefixes from different organizations will collide, making ULAs a reliable choice for internal infrastructure, VPNs, and environments where GUA availability cannot be guaranteed.
