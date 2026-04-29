@@ -17,7 +17,7 @@ terraform {
   required_providers {
     fastly = {
       source  = "fastly/fastly"
-      version = "~> 5.0"
+      version = "~> 9.0"
     }
   }
 }
@@ -45,42 +45,59 @@ resource "fastly_service_vcl" "app" {
   }
 
   backend {
-    address           = "app.origin.example.com"
-    name              = "app-origin"
-    port              = 443
-    use_ssl           = true
-    ssl_cert_hostname = "app.origin.example.com"
-    ssl_sni_hostname  = "app.origin.example.com"
-    connect_timeout   = 5000
+    address               = "app.origin.example.com"
+    name                  = "app-origin"
+    port                  = 443
+    use_ssl               = true
+    auto_loadbalance      = true
+    healthcheck           = "app-origin-health"
+    ssl_cert_hostname     = "app.origin.example.com"
+    ssl_sni_hostname      = "app.origin.example.com"
+    connect_timeout       = 5000
     between_bytes_timeout = 10000
     first_byte_timeout    = 15000
-    max_connections       = 200
+    max_conn              = 200
     weight                = 100
   }
 
   backend {
-    address = "app-failover.origin.example.com"
-    name    = "app-failover"
-    port    = 443
-    use_ssl = true
-    weight  = 1  # Low weight = failover
+    address               = "app-secondary.origin.example.com"
+    name                  = "app-secondary"
+    port                  = 443
+    use_ssl               = true
+    auto_loadbalance      = true
+    healthcheck           = "app-secondary-health"
+    ssl_cert_hostname     = "app-secondary.origin.example.com"
+    ssl_sni_hostname      = "app-secondary.origin.example.com"
+    weight                = 1 # Smaller traffic share than primary
   }
 
-  # Health check
+  # Health checks
   healthcheck {
-    name       = "app-health"
-    host       = "app.origin.example.com"
-    path       = "/health"
-    method     = "GET"
+    name              = "app-origin-health"
+    host              = "app.origin.example.com"
+    path              = "/health"
+    method            = "GET"
     expected_response = 200
-    check_interval = 5000
-    timeout        = 2000
-    threshold      = 3
-    initial        = 3
-    window         = 5
+    check_interval    = 5000
+    timeout           = 2000
+    threshold         = 3
+    initial           = 3
+    window            = 5
   }
 
-  force_destroy = false
+  healthcheck {
+    name              = "app-secondary-health"
+    host              = "app-secondary.origin.example.com"
+    path              = "/health"
+    method            = "GET"
+    expected_response = 200
+    check_interval    = 5000
+    timeout           = 2000
+    threshold         = 3
+    initial           = 3
+    window            = 5
+  }
 }
 ```
 
@@ -92,44 +109,43 @@ resource "fastly_service_vcl" "app" {
 
   # Cache TTL settings
   cache_setting {
-    name          = "api-no-cache"
-    action        = "pass"
-    stale_ttl     = 0
-    ttl           = 0
+    name          = "default-cache"
+    action        = "cache"
+    stale_ttl     = 86400
+    ttl           = 3600
   }
 
-  # Custom response headers
-  header {
-    name              = "Remove Server Header"
-    action            = "delete"
-    type              = "response"
-    dst               = "http.Server"
-    ignore_if_set     = false
-    priority          = 100
+  # Bypass cache for API traffic
+  cache_setting {
+    name            = "api-cache-bypass"
+    action          = "pass"
+    cache_condition = "is-api-request"
   }
 
-  header {
-    name          = "Set HSTS"
-    action        = "set"
-    type          = "response"
-    dst           = "http.Strict-Transport-Security"
-    source        = "\"max-age=31536000; includeSubDomains\""
-    priority      = 100
-  }
-
-  # Request condition to identify API traffic
+  # Cache condition to identify API traffic
   condition {
     name      = "is-api-request"
-    type      = "REQUEST"
+    type      = "CACHE"
     statement = "req.url ~ \"^/api/\""
     priority  = 10
   }
 
-  # Apply no-cache to API requests
-  cache_setting {
-    name          = "api-cache-bypass"
-    action        = "pass"
-    cache_condition = "is-api-request"
+  # Custom response headers
+  header {
+    name        = "Remove Server Header"
+    action      = "delete"
+    type        = "response"
+    destination = "http.Server"
+    priority    = 100
+  }
+
+  header {
+    name        = "Set HSTS"
+    action      = "set"
+    type        = "response"
+    destination = "http.Strict-Transport-Security"
+    source      = "\"max-age=31536000; includeSubDomains\""
+    priority    = 100
   }
 }
 ```
@@ -168,6 +184,8 @@ VCL
 ```
 
 ## TLS Configuration
+
+Create the ACME challenge records returned by `fastly_tls_subscription.app.managed_dns_challenges` with your DNS provider before applying the validation resource.
 
 ```hcl
 resource "fastly_tls_subscription" "app" {
