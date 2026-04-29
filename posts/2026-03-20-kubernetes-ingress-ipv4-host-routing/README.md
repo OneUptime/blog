@@ -107,6 +107,16 @@ spec:
             name: app-service
             port:
               number: 80
+  - host: api.example.com
+    http:
+      paths:
+      - path: /
+        pathType: Prefix
+        backend:
+          service:
+            name: api-service
+            port:
+              number: 8080
 ```
 
 ## Testing Host-Based Routing
@@ -132,7 +142,7 @@ curl http://api.example.com
 ## Wildcard Host Matching
 
 ```yaml
-# Match all subdomains of example.com
+# Match a single subdomain label under example.com
 spec:
   rules:
   - host: "*.example.com"
@@ -146,6 +156,8 @@ spec:
             port:
               number: 80
 ```
+
+`*.example.com` matches hosts like `foo.example.com`, but not `example.com` or `bar.foo.example.com`.
 
 ## Checking Ingress Status
 
