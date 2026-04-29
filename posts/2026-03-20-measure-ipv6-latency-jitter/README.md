@@ -2,46 +2,53 @@
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
-Tags: IPv6, Latency, Jitter, Performance, Ping6, Hping3
+Tags: IPv6, Latency, Jitter, Performance, Ping, Fping
 
-Description: Measure IPv6 latency and jitter using ping6, hping3, and custom Python scripts to baseline network performance and detect degradation.
+Description: Measure IPv6 latency and jitter using ping, fping, and custom Python scripts to baseline network performance and detect degradation.
 
 ## Introduction
 
-Latency and jitter are fundamental metrics for any network. For IPv6, measuring them requires tools that explicitly use IPv6 transport. Baseline measurements before production deployment allow anomaly detection later.
+Latency and jitter are fundamental metrics for any network. For IPv6, measuring them requires tools that explicitly send IPv6 traffic. Baseline measurements before production deployment allow anomaly detection later.
 
-## Measuring Latency with ping6
+## Measuring Latency with ping
 
 ```bash
 # Basic RTT measurement
 
-ping6 -c 100 2001:4860:4860::8888
+ping -6 -c 100 2001:4860:4860::8888
 
 # Statistics output:
 # rtt min/avg/max/mdev = 10.234/11.456/15.678/1.234 ms
-# mdev = mean deviation (approximation of jitter)
+# mdev = population standard deviation of RTTs; useful for variability, but not a formal jitter metric
 
-# Flood ping (root required) for stress testing
-ping6 -f -c 10000 2001:db8::target
+# Flood ping a host you control (root or equivalent capability required)
+ping -6 -f -c 10000 2001:db8::1
 ```
 
-## Measuring Jitter with hping3
+## Measuring Jitter with fping
 
 ```bash
-# hping3 for precise jitter measurement
-# --ipv6: use IPv6, --icmp: ICMP mode, --flood: send without waiting
-hping3 --ipv6 --icmp -c 1000 --interval u10000 2001:db8::target
-# --interval u10000 = 10ms between packets
+# fping for repeated IPv6 RTT sampling
+# -6: IPv6, -C: collect RTTs, -p: period in ms, -q: quiet summary format
+fping -6 -C 100 -p 10 -q 2606:4700:4700::1111 2>&1
+# -p 10 = 10 ms between probes to the target
 
-# Output includes RTT per packet; pipe to awk for jitter calculation
-hping3 --ipv6 --icmp -c 100 2001:db8::target 2>&1 | \
-  awk '/rtt=/ {
-    split($0, a, "rtt="); split(a[2], b, " ");
-    rtt=b[1]+0;
-    if (prev > 0) jitter += (rtt - prev < 0 ? prev - rtt : rtt - prev);
-    prev = rtt; count++
+# Calculate jitter as the mean absolute delta between consecutive RTT samples
+fping -6 -C 100 -p 10 -q 2606:4700:4700::1111 2>&1 | \
+  awk -F' : ' '{
+    n = split($2, samples, " ");
+    for (i = 1; i <= n; i++) {
+      if (samples[i] != "-") {
+        rtt = samples[i] + 0;
+        if (seen > 0) jitter += (rtt > prev ? rtt - prev : prev - rtt);
+        prev = rtt; seen++
+      }
+    }
   }
-  END { printf "Avg jitter: %.3f ms\n", jitter/count }'
+  END {
+    if (seen > 1) printf "Avg jitter: %.3f ms\n", jitter / (seen - 1);
+    else print "Insufficient RTT samples"
+  }'
 ```
 
 ## Python Latency and Jitter Tool
@@ -57,7 +64,7 @@ def measure_ipv6_latency(target: str, count: int = 50) -> dict:
     Returns min, avg, max, stddev, and jitter.
     """
     result = subprocess.run(
-        ["ping6", "-c", str(count), target],
+        ["ping", "-6", "-c", str(count), target],
         capture_output=True, text=True
     )
 
@@ -80,7 +87,7 @@ def measure_ipv6_latency(target: str, count: int = 50) -> dict:
         "min_ms": min(rtts),
         "avg_ms": statistics.mean(rtts),
         "max_ms": max(rtts),
-        "stddev_ms": statistics.stdev(rtts) if len(rtts) > 1 else 0,
+        "stddev_ms": statistics.pstdev(rtts) if len(rtts) > 1 else 0,
         "jitter_ms": statistics.mean(jitter_values) if jitter_values else 0,
         "packet_loss": (count - len(rtts)) / count * 100,
     }
@@ -98,22 +105,26 @@ if __name__ == "__main__":
                 print(f"  {k}: {v:.3f}" if isinstance(v, float) else f"  {k}: {v}")
 ```
 
-## Continuous Monitoring with fping6
+## Continuous Monitoring with fping
 
 ```bash
-# fping6 for multi-target continuous measurement
-fping6 -l -p 1000 -q 2001:4860:4860::8888 2606:4700:4700::1111 2>&1 | \
-  ts '%Y-%m-%d %H:%M:%S' >> /var/log/ipv6_latency.log
-# -l: loop, -p: period in ms, -q: quiet (stats only)
+# fping for multi-target continuous measurement
+while true; do
+  fping -6 -C 1 -q 2001:4860:4860::8888 2606:4700:4700::1111 2>&1
+  sleep 1
+done >> /var/log/ipv6_latency.log
+# -C 1: one probe per cycle, -q: parseable per-target RTT output
 
-# Parse fping6 output for Prometheus
+# Parse fping output for Prometheus
 while read -r line; do
-  target=$(echo "$line" | awk '{print $1}')
-  rtt=$(echo "$line" | grep -oP 'avg=\K[\d.]+')
-  echo "ipv6_latency_ms{target=\"$target\"} $rtt"
+  target=$(echo "$line" | awk -F' : ' '{print $1}')
+  rtt=$(echo "$line" | awk -F' : ' '{print $2}')
+  if [ "$rtt" != "-" ]; then
+    echo "ipv6_latency_ms{target=\"$target\"} $rtt"
+  fi
 done < /var/log/ipv6_latency.log
 ```
 
 ## Conclusion
 
-Use `ping6` for quick RTT snapshots, `hping3` for controlled jitter measurement, and custom Python scripts for structured baseline collection. Feed results into OneUptime to trigger alerts when latency or jitter exceeds thresholds.
+Use `ping -6` for quick RTT snapshots, `fping -6` for repeated jitter measurement and multi-target collection, and custom Python scripts for structured baseline collection. Feed results into OneUptime to trigger alerts when latency or jitter exceeds thresholds.
