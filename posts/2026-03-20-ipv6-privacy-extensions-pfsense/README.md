@@ -4,11 +4,11 @@ Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
 Tags: IPv6, pfSense, Privacy, RFC4941, Firewall, Networking
 
-Description: Configure IPv6 privacy extensions on pfSense to generate temporary addresses for WAN interfaces and prevent persistent device tracking through stable EUI-64 identifiers.
+Description: Configure IPv6 privacy extensions on pfSense to generate temporary addresses for autoconfigured WAN interfaces and reduce long-term address correlation for traffic from the firewall itself.
 
 ## Introduction
 
-pfSense is a widely used open-source firewall and router platform based on FreeBSD. Enabling IPv6 privacy extensions on pfSense prevents your firewall's WAN IPv6 address from being a permanent identifier derived from its hardware MAC address.
+pfSense is a widely used open-source firewall and router platform based on FreeBSD. Enabling IPv6 privacy extensions on pfSense adds temporary IPv6 addresses for autoconfigured WAN interfaces so the firewall does not have to use the same long-lived SLAAC address for all outbound connections.
 
 ## Understanding FreeBSD IPv6 Privacy Extensions
 
@@ -16,23 +16,14 @@ pfSense is built on FreeBSD, which uses `net.inet6.ip6.use_tempaddr` and related
 
 | FreeBSD sysctl | Purpose |
 |---|---|
-| `net.inet6.ip6.use_tempaddr` | Enable temporary address generation (RFC 4941) |
-| `net.inet6.ip6.preferred_tempaddr` | Prefer temporary over permanent addresses |
+| `net.inet6.ip6.use_tempaddr` | Enable temporary address generation for autoconfigured addresses |
+| `net.inet6.ip6.prefer_tempaddr` | Prefer temporary addresses for source address selection |
 | `net.inet6.ip6.temppltime` | Preferred lifetime for temporary addresses |
-| `net.inet6.ip6.tempmaxlifetime` | Maximum valid lifetime for temporary addresses |
+| `net.inet6.ip6.tempvltime` | Maximum valid lifetime for temporary addresses |
 
 ## Enabling Privacy Extensions via pfSense GUI
 
-The simplest method is through the web interface:
-
-1. Navigate to **Interfaces > WAN**
-2. Scroll to the **IPv6 Configuration Type** section
-3. If using SLAAC or DHCPv6, look for the **Use Temporary Addresses** option
-4. Enable it and click **Save**, then **Apply Changes**
-
-For SLAAC-configured interfaces:
-- **Interfaces > [WAN interface] > IPv6 Configuration Type: SLAAC**
-- Check the **Use Privacy Extensions** checkbox
+Current pfSense documentation does not describe a dedicated per-interface **Use Temporary Addresses** or **Use Privacy Extensions** checkbox for WAN IPv6 settings. The documented GUI method is to add the relevant FreeBSD sysctls under **System > Advanced > System Tunables**, as shown below.
 
 ## Enabling via the Console or SSH
 
@@ -48,13 +39,13 @@ sysctl net.inet6.ip6.use_tempaddr
 sysctl net.inet6.ip6.use_tempaddr=1
 
 # Prefer temporary over permanent addresses
-sysctl net.inet6.ip6.preferred_tempaddr=1
+sysctl net.inet6.ip6.prefer_tempaddr=1
 
 # Set preferred lifetime to 24 hours (86400 seconds)
 sysctl net.inet6.ip6.temppltime=86400
 
 # Set maximum lifetime to 7 days
-sysctl net.inet6.ip6.tempmaxlifetime=604800
+sysctl net.inet6.ip6.tempvltime=604800
 ```
 
 ## Making Settings Persistent via System Tunables
@@ -67,8 +58,9 @@ To persist these settings across reboots in pfSense:
 | Tunable | Value | Description |
 |---|---|---|
 | `net.inet6.ip6.use_tempaddr` | `1` | Enable privacy extensions |
-| `net.inet6.ip6.preferred_tempaddr` | `1` | Prefer temporary addresses |
+| `net.inet6.ip6.prefer_tempaddr` | `1` | Prefer temporary addresses |
 | `net.inet6.ip6.temppltime` | `86400` | Preferred lifetime (24h) |
+| `net.inet6.ip6.tempvltime` | `604800` | Maximum valid lifetime (7d) |
 
 3. Click **Save** after adding each entry
 
@@ -82,7 +74,7 @@ ifconfig em0 inet6
 
 # Look for 'temporary' keyword in the output
 # Example:
-# inet6 2001:db8::a3b2:c4d5:e6f7:8901 prefixlen 64 temporary autoconf
+# inet6 2001:db8::a3b2:c4d5:e6f7:8901 prefixlen 64 autoconf temporary
 ```
 
 ## Checking the Preferred Outbound Address
@@ -97,14 +89,14 @@ curl -6 https://ifconfig.me
 fetch -6 -qo - https://ifconfig.me
 ```
 
-The returned address should be the temporary one, not the EUI-64 or stable permanent address.
+With `net.inet6.ip6.prefer_tempaddr=1`, the returned address should typically be the temporary address rather than the stable autoconfigured address.
 
 ## Important Notes for pfSense
 
 - Privacy extensions on pfSense apply to the **firewall itself**, not to LAN clients (who manage their own privacy settings)
-- If you are using **static IPv6 addressing** on WAN, privacy extensions do not apply - they are only relevant for SLAAC/autoconfigured addresses
-- After enabling, existing SLAAC addresses may not immediately change; consider clearing and re-acquiring the IPv6 address via **Interfaces > WAN > Release/Renew**
+- If you are using **static IPv6 addressing** on WAN, privacy extensions do not apply - they affect SLAAC/autoconfigured addresses. On a DHCPv6 WAN, they only matter if the interface also forms a SLAAC address from router advertisements
+- After enabling, existing SLAAC addresses may not immediately change; on DHCPv6 WANs, use **Status > Interfaces** to release/renew the lease, or otherwise reconfigure the interface so it can generate a fresh temporary address
 
 ## Conclusion
 
-Enabling IPv6 privacy extensions on pfSense is straightforward through either the GUI or sysctl settings. The System Tunables panel provides a persistent, reboot-safe configuration method. Once enabled, your pfSense WAN interface will use temporary, rotating IPv6 addresses that cannot be used to track your firewall across different network prefixes.
+Enabling IPv6 privacy extensions on pfSense is straightforward through FreeBSD sysctl settings, typically persisted with the System Tunables panel. Once enabled, autoconfigured WAN interfaces can generate temporary, rotating IPv6 addresses and, with `net.inet6.ip6.prefer_tempaddr=1`, the firewall will prefer them for new outbound connections. This reduces long-term address-based correlation for traffic from the firewall itself, but it does not make the firewall untrackable.
