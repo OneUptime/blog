@@ -36,16 +36,16 @@ Example: 2001:db8:router1:40::/64
          └──────────────┘└──┘
               Locator     Function
 
-Common SRv6 Functions:
+Common SRv6 Endpoint Behaviors (IANA codepoints, RFC 8986):
   End      = 1  → Endpoint (basic routing)
   End.X    = 5  → Endpoint with cross-connect (next-hop steering)
-  End.T    = 6  → Endpoint with specific table
-  End.DT4  = 19 → Decapsulate and route in IPv4 VRF
-  End.DT6  = 20 → Decapsulate and route in IPv6 VRF
-  End.DX4  = 21 → Decapsulate and forward to IPv4 nexthop
-  End.DX6  = 22 → Decapsulate and forward to IPv6 nexthop
+  End.T    = 9  → Endpoint with specific table
+  End.DX6  = 15 → Decapsulate and forward to IPv6 nexthop
+  End.DX4  = 16 → Decapsulate and forward to IPv4 nexthop
+  End.DT6  = 17 → Decapsulate and route in IPv6 VRF
+  End.DT4  = 18 → Decapsulate and route in IPv4 VRF
 
-SID Examples:
+SID Examples (function bits are operator-chosen):
   2001:db8:r1:1::    → End (Router 1 endpoint)
   2001:db8:r1:5::1   → End.X to nexthop 1
   2001:db8:r1:20::   → End.DT6 (IPv6 VRF decap)
@@ -88,7 +88,9 @@ show segment-routing srv6 forwarding
 ## Linux SRv6 Configuration
 
 ```bash
-# Linux kernel supports SRv6 natively (4.10+)
+# Linux kernel supports SRv6 source routing (4.10+);
+# seg6local actions (End, End.X) require 4.14+;
+# End.DT6 with vrftable requires 5.14+
 
 # Enable IPv6 forwarding
 
@@ -149,7 +151,7 @@ show segment-routing srv6 sid detail
 
 # Verify SRH insertion for traffic
 sudo tcpdump -i eth0 -nn ip6 proto 43
-# Proto 43 = IPv6 Routing Header (SRH)
+# Proto 43 = IPv6 Routing extension header (SRH is Routing Type 4, RFC 8754)
 
 # On Linux: verify SRv6 route
 ip -6 route show | grep seg6
@@ -158,8 +160,9 @@ ip -6 route show | grep seg6
 cat /proc/net/ipv6_route | grep -v "^fe80"
 ip -6 -s route show table all | grep srv6
 
-# Trace SRv6 path
-traceroute6 -A 2001:db8:destination::1  # -A shows SRH
+# Trace SRv6 path (use tcpdump above to see SRH; traceroute itself
+# does not display the SRH — inspect with tcpdump/wireshark)
+traceroute6 2001:db8:destination::1
 ```
 
 SRv6 migration from MPLS eliminates the need for LDP signaling and MPLS label management by encoding network instructions directly in IPv6 addresses, with End.DT6 SIDs replacing VPN labels for L3VPN, enabling a gradual migration where MPLS and SRv6 coexist during the transition period using binding SIDs for interworking.
