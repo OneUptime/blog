@@ -8,14 +8,15 @@ Description: Complete guide to installing and configuring KEDA (Kubernetes Event
 
 ## Introduction
 
-KEDA (Kubernetes Event-Driven Autoscaling) extends the Kubernetes Horizontal Pod Autoscaler to support scaling based on external event sources like Kafka, RabbitMQ, Prometheus metrics, and more. It enables scale-to-zero for event-driven workloads.
+KEDA (Kubernetes Event-Driven Autoscaling) works with the Kubernetes Horizontal Pod Autoscaler to support scaling based on external event sources like Kafka, RabbitMQ, Prometheus metrics, and more. It enables scale-to-zero for event-driven workloads.
 
 ## KEDA Architecture
 
-KEDA adds three components to Kubernetes:
+KEDA adds four core pieces to Kubernetes:
 1. **KEDA Operator**: Manages ScaledObjects and ScaledJobs
 2. **Metrics Server**: Exposes external metrics to Kubernetes HPA
-3. **Scalers**: Adapters for different event sources (50+ built-in)
+3. **Admission Webhooks**: Validate KEDA resources and prevent conflicting configurations
+4. **Scalers and CRDs**: Provide built-in event source integrations and the APIs that define scaling behavior
 
 ## Step 1: Install KEDA
 
@@ -29,7 +30,7 @@ helm repo update
 helm install keda kedacore/keda \
   --namespace keda \
   --create-namespace \
-  --version 2.12.0 \
+  --version 2.19.0 \
   --set operator.replicaCount=2 \
   --set metricsServer.replicaCount=2 \
   --set operator.affinity.podAntiAffinity.requiredDuringSchedulingIgnoredDuringExecution[0].labelSelector.matchExpressions[0].key=app \
@@ -84,7 +85,6 @@ spec:
   
   pollingInterval: 15          # Check metrics every 15 seconds
   cooldownPeriod: 300          # Wait 5 min before scaling down
-  idleReplicaCount: 0          # Scale to zero when idle
   minReplicaCount: 0
   maxReplicaCount: 50
   
@@ -97,6 +97,8 @@ spec:
       lagThreshold: "100"       # Scale up when lag > 100 per replica
       activationLagThreshold: "5"  # Activate (from 0) when lag > 5
       offsetResetPolicy: latest
+    authenticationRef:
+      name: kafka-trigger-auth
 ```
 
 ## Step 3: Scale with Prometheus Metrics
@@ -116,8 +118,7 @@ spec:
   triggers:
   - type: prometheus
     metadata:
-      serverAddress: http://prometheus.cattle-monitoring-system.svc.cluster.local:9090
-      metricName: http_requests_per_second
+      serverAddress: http://rancher-monitoring-prometheus.cattle-monitoring-system.svc:9090
       threshold: "100"          # 100 RPS per replica
       activationThreshold: "10" # Start scaling at 10 RPS
       query: |
@@ -159,9 +160,8 @@ spec:
   
   triggers:
   - type: rabbitmq
-    authenticationRef:
-      name: rabbitmq-trigger-auth
     metadata:
+      hostFromEnv: RABBITMQ_URL
       protocol: amqp
       queueName: image-processing-queue
       mode: QueueLength
@@ -179,6 +179,7 @@ metadata:
   name: kafka-credentials
   namespace: default
 data:
+  sasl: cGxhaW50ZXh0             # base64 encoded plaintext
   username: a2Fma2EtdXNlcg==     # base64 encoded
   password: c2VjcmV0cGFzcw==     # base64 encoded
 ---
@@ -189,6 +190,9 @@ metadata:
   namespace: default
 spec:
   secretTargetRef:
+  - parameter: sasl
+    name: kafka-credentials
+    key: sasl
   - parameter: username
     name: kafka-credentials
     key: username
@@ -244,4 +248,4 @@ kubectl describe scaledobject kafka-consumer-scaler -n default
 
 ## Conclusion
 
-KEDA transforms Rancher clusters into event-driven computing platforms where workloads automatically scale based on actual demand signals from Kafka, RabbitMQ, Prometheus, and 50+ other sources. Scale-to-zero reduces costs for variable workloads while instant scale-up ensures responsiveness. KEDA works alongside standard Kubernetes HPA for a complete autoscaling solution.
+KEDA transforms Rancher clusters into event-driven computing platforms where workloads automatically scale based on actual demand signals from Kafka, RabbitMQ, Prometheus, and 50+ other sources. Scale-to-zero reduces costs for variable workloads while instant scale-up ensures responsiveness. KEDA uses Kubernetes HPA under the hood while adding event-driven triggers for a complete autoscaling solution.
