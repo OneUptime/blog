@@ -8,7 +8,7 @@ Description: Learn how to use Longhorn's support bundle feature to collect compr
 
 ---
 
-Longhorn's support bundle feature collects all diagnostic information - pod logs, settings, volume status, node conditions, and Kubernetes events - into a single archive. This makes it easy to share relevant information with the Longhorn team or your support provider.
+Longhorn's support bundle feature collects Longhorn-related configuration and logs - pod logs, settings, volume status, node conditions, and Kubernetes events - into a single archive. This makes it easy to share relevant information with the Longhorn team or your support provider. Most Longhorn logs are included, but `dmesg` still needs to be retrieved from each node separately.
 
 ---
 
@@ -27,11 +27,11 @@ Longhorn's support bundle feature collects all diagnostic information - pod logs
 
 The simplest way is through the Longhorn UI:
 
-1. Navigate to **Support**
-2. Click **Generate Support Bundle**
+1. Open the Longhorn UI
+2. At the bottom of the Longhorn UI, click **Generate Support Bundle**
 3. Enter a description (e.g., "Volume XXX stuck in attaching state")
-4. Click **Generate** - the bundle is created as a zip archive
-5. Download the bundle
+4. Click **Generate**
+5. Download the generated zip archive
 
 ---
 
@@ -47,7 +47,6 @@ metadata:
   namespace: longhorn-system
 spec:
   description: "Volume pvc-xxxxx stuck in attaching state"
-  # Error logs only saves space; set to false for full logs
   issueURL: ""
 ```
 
@@ -55,12 +54,12 @@ spec:
 kubectl apply -f support-bundle.yaml
 
 # Watch the bundle generation progress
-kubectl get lhsupportbundle -n longhorn-system -w
+kubectl get supportbundle support-bundle-2026-03-20 -n longhorn-system -w
 
-# When status shows "ReadyForDownload", get the download URL
-kubectl get lhsupportbundle support-bundle-2026-03-20 \
+# When status shows "ReadyForDownload", get the owner node ID
+kubectl get supportbundle support-bundle-2026-03-20 \
   -n longhorn-system \
-  -o jsonpath='{.status.fileLocation}'
+  -o jsonpath='{.status.ownerID}'
 ```
 
 ---
@@ -68,13 +67,17 @@ kubectl get lhsupportbundle support-bundle-2026-03-20 \
 ## Step 3: Download the Support Bundle
 
 ```bash
-# Port-forward the Longhorn frontend
-kubectl port-forward -n longhorn-system svc/longhorn-frontend 8080:80
+# Port-forward the Longhorn backend API
+kubectl port-forward -n longhorn-system svc/longhorn-backend 9500:9500
 
 # Download the bundle
 BUNDLE_NAME="support-bundle-2026-03-20"
+NODE_ID=$(kubectl get supportbundle "${BUNDLE_NAME}" \
+  -n longhorn-system \
+  -o jsonpath='{.status.ownerID}')
+
 curl -o support-bundle.zip \
-  "http://localhost:8080/v1/supportbundles/${BUNDLE_NAME}/download"
+  "http://localhost:9500/v1/supportbundles/${NODE_ID}/${BUNDLE_NAME}/download"
 ```
 
 ---
@@ -86,13 +89,15 @@ curl -o support-bundle.zip \
 unzip support-bundle.zip -d support-bundle/
 
 # View the directory structure
-ls support-bundle/
+ls support-bundle/bundle/
 
 # Check manager logs for errors
-grep -i "error\|fatal\|panic" support-bundle/logs/longhorn-manager-*/
+grep -iE "error|fatal|panic" \
+  support-bundle/bundle/logs/longhorn-system/longhorn-manager-*/longhorn-manager-*.log
 
-# Check volume status at time of issue
-cat support-bundle/longhorn-crds/volumes.json | jq '.items[] | {name:.metadata.name, state:.status.state}'
+# Check the captured Longhorn volume CRs
+grep -n "name: pvc-xxxxx" -A 20 \
+  support-bundle/bundle/yamls/namespaced/longhorn-system/longhorn.io/v1beta2/volumes.yaml
 ```
 
 ---
@@ -100,10 +105,12 @@ cat support-bundle/longhorn-crds/volumes.json | jq '.items[] | {name:.metadata.n
 ## Step 5: Clean Up Old Support Bundles
 
 ```bash
-# Delete old support bundle resources
-kubectl delete lhsupportbundle support-bundle-2026-03-20 -n longhorn-system
+# Delete the SupportBundle resource if it still exists
+kubectl delete supportbundle support-bundle-2026-03-20 \
+  -n longhorn-system \
+  --ignore-not-found
 
-# The archive files are deleted automatically when the resource is deleted
+# A successful download through the Longhorn API already removes the SupportBundle resource
 ```
 
 ---
