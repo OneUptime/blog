@@ -8,21 +8,21 @@ Description: Learn how to configure K3s as a systemd service including startup o
 
 ---
 
-K3s installs as a systemd service by default. Understanding how to manage and customize the systemd unit files gives you full control over K3s startup, resource usage, and service dependencies.
+On systemd-based Linux distributions, K3s installs as a systemd service by default when you use the K3s install script. Understanding how to manage and customize the systemd unit files gives you full control over K3s startup, resource usage, and service dependencies.
 
 ---
 
 ## K3s Systemd Service Files
 
 ```bash
-# K3s server service
+# Default K3s server service
 
 /etc/systemd/system/k3s.service
 
-# K3s agent service (on worker nodes)
+# Default K3s agent service (on worker nodes)
 /etc/systemd/system/k3s-agent.service
 
-# Environment file (contains server URL and token for agents)
+# Default environment files created by the install script
 /etc/systemd/system/k3s.service.env
 /etc/systemd/system/k3s-agent.service.env
 ```
@@ -44,14 +44,19 @@ Documentation=https://k3s.io
 Wants=network-online.target
 After=network-online.target
 
+[Install]
+WantedBy=multi-user.target
+
 [Service]
 Type=notify
 EnvironmentFile=-/etc/default/%N
 EnvironmentFile=-/etc/sysconfig/%N
-EnvironmentFile=-/etc/systemd/system/%N.service.env
+EnvironmentFile=-/etc/systemd/system/k3s.service.env
 KillMode=process
 Delegate=yes
+User=root
 # Having non-zero Limit*s causes performance problems due to accounting overhead
+# in the kernel. We recommend using cgroups to do container-local accounting.
 LimitNOFILE=1048576
 LimitNPROC=infinity
 LimitCORE=infinity
@@ -59,13 +64,10 @@ TasksMax=infinity
 TimeoutStartSec=0
 Restart=always
 RestartSec=5s
-ExecStartPre=/bin/sh -xc '! /usr/bin/systemctl is-enabled --quiet nm-cloud-setup.service'
 ExecStartPre=-/sbin/modprobe br_netfilter
 ExecStartPre=-/sbin/modprobe overlay
-ExecStart=/usr/local/bin/k3s server
-
-[Install]
-WantedBy=multi-user.target
+ExecStart=/usr/local/bin/k3s \
+    server
 ```
 
 ---
@@ -92,7 +94,7 @@ ExecStart=/usr/local/bin/k3s server \
   --write-kubeconfig-mode 644
 
 # Set memory limit for K3s service
-MemoryLimit=2G
+MemoryMax=2G
 
 # Configure restart behavior
 RestartSec=10s
@@ -127,6 +129,8 @@ EOF
 systemctl daemon-reload
 systemctl restart k3s-agent
 ```
+
+Note: `--node-label` is only applied when the node first registers with the cluster. To change labels on an existing node, use `kubectl label node`.
 
 ---
 
@@ -175,16 +179,17 @@ Requires=vpn.service
 
 ## Step 6: Configure K3s to Start After a Network Interface
 
-```ini
-# /etc/systemd/system/k3s.service.d/network-wait.conf
-[Unit]
-After=network-online.target
-Wants=network-online.target
+K3s already starts after `network-online.target` by default. If you need that target to wait for a specific interface or connection manager, enable the matching wait-online service for your host:
 
-[Service]
-# Wait up to 60 seconds for network
-ExecStartPre=/bin/sh -c 'until ping -c1 8.8.8.8; do sleep 5; done'
-TimeoutStartSec=120
+```bash
+# systemd-networkd
+systemctl enable systemd-networkd-wait-online.service
+
+# Wait for a specific interface managed by systemd-networkd
+systemctl enable systemd-networkd-wait-online@eth0.service
+
+# NetworkManager
+systemctl enable NetworkManager-wait-online.service
 ```
 
 ---
@@ -194,20 +199,22 @@ TimeoutStartSec=120
 ```ini
 # /etc/systemd/system/k3s.service.d/resources.conf
 [Service]
-# Limit total memory (K3s + all containers = this total)
-MemoryLimit=4G
+# Limit memory available to the k3s.service cgroup
+MemoryMax=4G
 
 # Set CPU quota (200% = 2 full cores)
 CPUQuota=200%
 
-# Set IO weight
-IOWeight=100
+# Lower IO priority relative to the default weight of 100
+IOWeight=50
 ```
+
+After creating or changing a drop-in under `/etc/systemd/system/k3s.service.d/`, run `systemctl daemon-reload` and restart K3s.
 
 ---
 
 ## Best Practices
 
-- Always use systemd drop-in files (`/etc/systemd/system/k3s.service.d/`) for customizations rather than editing the base unit file - the base file is replaced on K3s upgrades.
+- Always use systemd drop-in files (`/etc/systemd/system/k3s.service.d/`) for customizations rather than editing the base unit file directly - the install script may recreate the base file during reinstall or upgrade workflows.
 - Use `journalctl -u k3s -f` for real-time log monitoring during startup and troubleshooting.
 - Set `Restart=always` and a reasonable `RestartSec` (5-10 seconds) to ensure K3s recovers automatically from transient failures, especially important on edge nodes with less stable hardware.
