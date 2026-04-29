@@ -8,7 +8,7 @@ Description: Transition from Cockpit's basic container management to Portainer f
 
 ## Introduction
 
-Cockpit is a Linux server management tool that includes basic container management via the `cockpit-podman` or `cockpit-docker` plugins. While useful for basic system administration, Cockpit's container management lacks stacks, advanced networking, team access control, and API access. Portainer fills these gaps.
+Cockpit is a Linux server management tool that includes basic container management via the `cockpit-podman` plugin. While useful for basic system administration, Cockpit's container management lacks stacks, advanced networking, team access control, and API access. Portainer fills many of these gaps, with some features such as advanced RBAC and activity logs available in Business Edition.
 
 ## What Cockpit Container Management Lacks
 
@@ -30,14 +30,23 @@ docker ps -a --format "{{.Names}}\t{{.Image}}\t{{.Status}}"
 podman ps -a --format "{{.Names}}\t{{.Image}}\t{{.Status}}"
 
 # Export container inspect data
-docker ps -aq | xargs docker inspect > container-configs.json
+docker ps -aq | xargs -r docker inspect > container-configs.json
+# or for Podman
+podman ps -aq | xargs -r podman inspect > podman-container-configs.json
 
-# Export volumes
-docker volume ls --format "{{.Name}}" | while read vol; do
+# Export Docker volumes
+mkdir -p vol-backups
+docker volume ls -q | while read -r vol; do
   docker run --rm \
-    -v $vol:/source \
-    -v $(pwd)/vol-backups:/backup \
+    -v "$vol":/source \
+    -v "$(pwd)/vol-backups:/backup" \
     alpine tar czf /backup/${vol}.tar.gz -C /source .
+  echo "Backed up: $vol"
+done
+
+# Export Podman volumes
+podman volume ls -q | while read -r vol; do
+  podman volume export "$vol" --output "vol-backups/${vol}.tar"
   echo "Backed up: $vol"
 done
 ```
@@ -53,16 +62,19 @@ docker run -d \
   -p 9443:9443 \
   -v /var/run/docker.sock:/var/run/docker.sock \
   -v portainer_data:/data \
-  portainer/portainer-ce:latest
+  portainer/portainer-ce:sts
 
-# Option 2: Podman (if using Podman instead of Docker)
+# Option 2: Podman (official support currently requires rootful Podman)
+sudo systemctl enable --now podman.socket
+podman volume create portainer_data
 podman run -d \
   --name portainer \
   --restart=always \
+  --privileged \
   -p 9443:9443 \
-  -v /run/user/$(id -u)/podman/podman.sock:/var/run/docker.sock:Z \
+  -v /run/podman/podman.sock:/var/run/docker.sock \
   -v portainer_data:/data \
-  portainer/portainer-ce:latest
+  portainer/portainer-ce:lts
 ```
 
 ## Converting Cockpit Containers to Portainer Stacks
@@ -73,7 +85,6 @@ Cockpit typically manages individual containers. Portainer encourages using stac
 # Convert individual containers to a compose stack
 # Example: Web app that was run separately via Cockpit
 
-version: '3.8'
 services:
   web:
     image: nginx:1.25
@@ -89,7 +100,7 @@ services:
     image: myapp:latest
     restart: unless-stopped
     environment:
-      - DATABASE_URL=postgresql://db:5432/appdb
+      - DATABASE_URL=postgresql://postgres:mysecretpassword@db:5432/appdb
     
   db:
     image: postgres:15
@@ -111,11 +122,11 @@ volumes:
 |---------|---------|-----------|
 | Basic container start/stop | Yes | Yes |
 | Docker Compose/Stacks | No | Yes |
-| Team access control | Limited | Full |
+| Team access control | No built-in container RBAC | Yes |
 | Kubernetes management | No | Yes |
 | Container templates | No | Yes |
-| REST API | No | Full |
-| Audit logging | No | Yes |
+| REST API | No supported REST API | Yes |
+| Audit logging | No | Business Edition |
 | System management (non-containers) | Yes | No |
 
 Note: Cockpit and Portainer can coexist since they serve different purposes. Cockpit for OS-level management, Portainer for container management.
@@ -124,15 +135,16 @@ Note: Cockpit and Portainer can coexist since they serve different purposes. Coc
 
 ```bash
 # Keep Cockpit for system management
-sudo systemctl status cockpit
+sudo systemctl status cockpit.socket
 
+# Cockpit typically uses port 9090, so Portainer can use 9443
 # Run Portainer on a different port
 docker run -d \
   --name portainer \
-  -p 9443:9443 \  # Cockpit typically uses port 9090
+  -p 9443:9443 \
   -v /var/run/docker.sock:/var/run/docker.sock \
   -v portainer_data:/data \
-  portainer/portainer-ce:latest
+  portainer/portainer-ce:sts
 
 # Cockpit: https://your-server:9090
 # Portainer: https://your-server:9443
