@@ -13,7 +13,7 @@ Lambda Destinations allow you to route the result of an asynchronous function in
 ## Prerequisites
 
 - OpenTofu v1.6+
-- AWS credentials with Lambda, SQS, and EventBridge permissions
+- AWS credentials with Lambda, SQS, SNS, and EventBridge permissions
 
 ## Step 1: Create Destination Queues and Topics
 
@@ -46,11 +46,40 @@ resource "aws_sns_topic_subscription" "email" {
   protocol  = "email"
   endpoint  = var.alert_email
 }
+
+variable "alert_email" {
+  description = "Email address to receive failure notifications"
+  type        = string
+}
 ```
 
 ## Step 2: Create the Lambda Function
 
 ```hcl
+data "aws_iam_policy_document" "lambda_assume_role" {
+  statement {
+    effect = "Allow"
+
+    principals {
+      type        = "Service"
+      identifiers = ["lambda.amazonaws.com"]
+    }
+
+    actions = ["sts:AssumeRole"]
+  }
+}
+
+resource "aws_iam_role" "lambda" {
+  name               = "async-processor-role"
+  assume_role_policy = data.aws_iam_policy_document.lambda_assume_role.json
+}
+
+data "archive_file" "zip" {
+  type        = "zip"
+  source_file = "${path.module}/index.py"
+  output_path = "${path.module}/processor.zip"
+}
+
 resource "aws_lambda_function" "processor" {
   function_name    = "async-processor"
   role             = aws_iam_role.lambda.arn
@@ -65,7 +94,7 @@ resource "aws_lambda_function" "processor" {
 # Configure retry behavior and destinations for async invocations
 resource "aws_lambda_function_event_invoke_config" "processor" {
   function_name                = aws_lambda_function.processor.function_name
-  maximum_event_age_in_seconds = 3600    # Retry for up to 1 hour
+  maximum_event_age_in_seconds = 3600    # Keep the async event for up to 1 hour
   maximum_retry_attempts       = 2       # Retry twice before failure destination
 
   destination_config {
@@ -83,23 +112,23 @@ resource "aws_lambda_function_event_invoke_config" "processor" {
 ## Step 3: Configure EventBridge Destination
 
 ```hcl
-# Route successful results to EventBridge for downstream processing
-resource "aws_lambda_function_event_invoke_config" "eventbridge_dest" {
-  function_name = aws_lambda_function.processor.function_name
-
-  maximum_event_age_in_seconds = 7200
-  maximum_retry_attempts       = 1
-
-  destination_config {
-    on_success {
-      destination = aws_cloudwatch_event_bus.results.arn  # EventBridge bus
-    }
-
-    on_failure {
-      destination = aws_sns_topic.failure_alerts.arn
-    }
-  }
+# EventBridge bus for downstream processing
+resource "aws_cloudwatch_event_bus" "results" {
+  name = "lambda-results"
 }
+
+# To route successful results to EventBridge instead of SQS, update the
+# on_success destination in aws_lambda_function_event_invoke_config.processor:
+#
+# on_success {
+#   destination = aws_cloudwatch_event_bus.results.arn
+# }
+#
+# You can also swap the failure destination to SNS:
+#
+# on_failure {
+#   destination = aws_sns_topic.failure_alerts.arn
+# }
 ```
 
 ## Step 4: Grant Lambda Permission to Write to Destinations
@@ -125,6 +154,11 @@ resource "aws_iam_role_policy" "destinations" {
         Effect   = "Allow"
         Action   = "sns:Publish"
         Resource = aws_sns_topic.failure_alerts.arn
+      },
+      {
+        Effect   = "Allow"
+        Action   = "events:PutEvents"
+        Resource = aws_cloudwatch_event_bus.results.arn
       }
     ]
   })
@@ -143,7 +177,7 @@ def process_result(event, context):
         message = json.loads(record['body'])
 
         # Extract the original function's response payload
-        response_payload = json.loads(message['responsePayload'])
+        response_payload = message['responsePayload']
 
         # Process the successful result
         print(f"Function: {message['requestContext']['functionArn']}")
