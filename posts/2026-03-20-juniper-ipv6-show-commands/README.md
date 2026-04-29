@@ -13,13 +13,14 @@ Use Juniper Junos show commands to verify IPv6 addresses, routing, NDP neighbors
 ## Prerequisites
 
 - Juniper device running Junos OS 12.1 or later
-- Appropriate access privileges (configure exclusive or shared)
+- Operational mode access with `view` privileges; `ping` requires `network` and `show log` requires `trace` privileges
+- Configuration mode access if you want to apply the example interface, routing, firewall, DHCPv6, or traceoptions changes
 
 ## Junos IPv6 Configuration Syntax
 
 Junos uses a hierarchical configuration syntax. IPv6 configuration lives primarily under:
 - `[edit interfaces]` for interface addressing
-- `[edit routing-options rib inet6.0]` for IPv6 routing
+- `[edit routing-options rib inet6.0]` for IPv6 static routing
 - `[edit firewall family inet6]` for IPv6 ACLs
 
 ## Configuration Examples
@@ -46,9 +47,9 @@ interfaces {
 ### IPv6 Static Route
 
 ```text
-set routing-options rib inet6.0 static route 2001:db8:remote::/48 next-hop 2001:db8:wan::254
+set routing-options rib inet6.0 static route 2001:db8:100::/48 next-hop 2001:db8::254
 
-# Discard route (black hole)
+# Reject route (drops traffic and sends ICMP unreachable)
 set routing-options rib inet6.0 static route ::/0 reject
 ```
 
@@ -67,7 +68,7 @@ firewall {
             }
             term allow-icmpv6 {
                 from {
-                    next-header icmpv6;
+                    next-header icmp6;
                 }
                 then accept;
             }
@@ -98,16 +99,14 @@ interfaces {
 
 ### DHCPv6 Server
 
-```nginx
+```text
 system {
     services {
         dhcp-local-server {
-            group dhcpv6-clients {
-                active-server-group dhcpv6-group;
-                overrides {
-                    server-identifier-override;
+            dhcpv6 {
+                group dhcpv6-clients {
+                    interface ge-0/0/1.0;
                 }
-                interface ge-0/0/1.0;
             }
         }
     }
@@ -117,16 +116,35 @@ access {
     address-assignment {
         pool dhcpv6-pool {
             family inet6 {
-                prefix 2001:db8:lan::/64;
+                prefix 2001:db8:3000:1::/64;
                 range clients {
-                    low 2001:db8:lan::100;
-                    high 2001:db8:lan::200;
+                    low 2001:db8:3000:1::100/64;
+                    high 2001:db8:3000:1::200/64;
                 }
                 dhcp-attributes {
-                    name-server [2001:4860:4860::8888];
-                    domain-name example.com;
+                    dns-server {
+                        2001:4860:4860::8888;
+                    }
                 }
             }
+        }
+    }
+}
+
+interfaces {
+    ge-0/0/1 {
+        unit 0 {
+            family inet6 {
+                address 2001:db8:3000:1::1/64;
+            }
+        }
+    }
+}
+
+protocols {
+    router-advertisement {
+        interface ge-0/0/1.0 {
+            prefix 2001:db8:3000:1::/64;
         }
     }
 }
@@ -144,17 +162,17 @@ show route table inet6.0
 # Show NDP neighbors
 show ipv6 neighbors
 
-# Show IPv6 neighbors via NDP
-show arp no-resolve table inet6
+# Show IPv6 router advertisements
+show ipv6 router-advertisement
 
 # Ping over IPv6
-ping inet6 2001:db8::1 routing-instance default count 5
+ping inet6 2001:db8::254 count 5
 ```
 
 ## Traceoptions Debugging
 
 ```text
-# Enable IPv6 routing debug
+# Enable IPv6 Neighbor Discovery debug
 set protocols router-advertisement traceoptions file ra-debug.log
 set protocols router-advertisement traceoptions flag all
 
