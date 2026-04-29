@@ -89,7 +89,7 @@ kubelet-arg:
   - "system-reserved=cpu=200m,memory=256Mi"
 
   # Hard eviction thresholds
-  - "eviction-hard=memory.available<100Mi,nodefs.available<10%,nodefs.inodesFree<5%"
+  - "eviction-hard=memory.available<100Mi,nodefs.available<10%,nodefs.inodesFree<5%,imagefs.available<15%,imagefs.inodesFree<5%"
 
   # Soft eviction thresholds with grace periods
   - "eviction-soft=memory.available<200Mi,nodefs.available<15%"
@@ -107,19 +107,21 @@ kubelet-arg:
   - "shutdown-grace-period=60s"
   - "shutdown-grace-period-critical-pods=20s"
 
-  # Health check timeouts
+  # Node status update frequency
   - "node-status-update-frequency=10s"
 ```
 
 ## Networking Options
 
 ```yaml
-# Network interface for node IP detection
+# Override default flannel interface
 # flannel-iface: "eth0"
 
-# CNI directory (where CNI binaries are installed)
-# cni-bin-dir: "/opt/cni/bin"
-# cni-conf-dir: "/etc/cni/net.d"
+# Override default flannel config file
+# flannel-conf: "/etc/rancher/k3s/flannel/net-conf.json"
+
+# Override default flannel CNI config file
+# flannel-cni-conf: "/etc/rancher/k3s/flannel/10-flannel.conflist"
 
 # Resolv.conf for pods
 resolv-conf: "/etc/resolv.conf"
@@ -136,7 +138,7 @@ data-dir: "/var/lib/rancher/k3s"
 ## Security Options
 
 ```yaml
-# Protect the kernel from being overwritten by pods
+# Error if kernel tunables differ from kubelet defaults
 protect-kernel-defaults: true
 
 # SELinux support
@@ -164,7 +166,7 @@ kubelet-arg:
   - "max-pods=110"
   - "kube-reserved=cpu=200m,memory=256Mi"
   - "system-reserved=cpu=200m,memory=256Mi"
-  - "eviction-hard=memory.available<100Mi,nodefs.available<10%"
+  - "eviction-hard=memory.available<100Mi,nodefs.available<10%,nodefs.inodesFree<5%,imagefs.available<15%,imagefs.inodesFree<5%"
   - "container-log-max-size=50Mi"
   - "container-log-max-files=5"
   - "shutdown-grace-period=60s"
@@ -195,7 +197,7 @@ kubelet-arg:
   - "max-pods=50"
   - "kube-reserved=cpu=500m,memory=1Gi"
   - "system-reserved=cpu=500m,memory=512Mi"
-  - "eviction-hard=memory.available<500Mi,nodefs.available<10%"
+  - "eviction-hard=memory.available<500Mi,nodefs.available<10%,nodefs.inodesFree<5%,imagefs.available<15%,imagefs.inodesFree<5%"
 ```
 
 ### High-Memory Worker Node
@@ -216,7 +218,7 @@ kubelet-arg:
   - "max-pods=250"
   - "kube-reserved=cpu=1,memory=2Gi"
   - "system-reserved=cpu=500m,memory=1Gi"
-  - "eviction-hard=memory.available<1Gi,nodefs.available<10%"
+  - "eviction-hard=memory.available<1Gi,nodefs.available<10%,nodefs.inodesFree<5%,imagefs.available<15%,imagefs.inodesFree<5%"
   - "image-gc-high-threshold=80"
   - "image-gc-low-threshold=60"
   - "shutdown-grace-period=120s"
@@ -242,7 +244,7 @@ kubelet-arg:
   - "max-pods=20"
   - "kube-reserved=cpu=100m,memory=128Mi"
   - "system-reserved=cpu=100m,memory=64Mi"
-  - "eviction-hard=memory.available<64Mi,nodefs.available<5%"
+  - "eviction-hard=memory.available<64Mi,nodefs.available<5%,nodefs.inodesFree<5%,imagefs.available<15%,imagefs.inodesFree<5%"
   - "container-log-max-size=10Mi"
   - "container-log-max-files=2"
   - "image-gc-high-threshold=90"
@@ -273,11 +275,11 @@ sudo systemctl status k3s-agent
 ## Verifying Agent Configuration
 
 ```bash
-# From the server, check the node's labels and annotations
+# From the server, check the node's labels
 kubectl get node worker-01 --show-labels
 
-# Check kubelet arguments
-ps aux | grep kubelet | tr ' ' '\n' | grep -E "max-pods|reserved|eviction"
+# Check kubelet arguments from the K3s agent logs
+sudo journalctl -u k3s-agent -b | grep "Running kubelet" | tail -n 1 | grep -E "max-pods|reserved|eviction"
 
 # Check node capacity and allocatable resources
 kubectl describe node worker-01 | grep -A 10 "Capacity:"
