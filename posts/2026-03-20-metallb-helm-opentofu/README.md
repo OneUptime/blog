@@ -19,7 +19,7 @@ resource "helm_release" "metallb" {
   name             = "metallb"
   repository       = "https://metallb.github.io/metallb"
   chart            = "metallb"
-  version          = "0.14.3"
+  version          = "0.15.3"
   namespace        = "metallb-system"
   create_namespace = true
 
@@ -37,21 +37,23 @@ resource "helm_release" "metallb" {
         requests = { cpu = "100m", memory = "100Mi" }
         limits   = { cpu = "300m", memory = "150Mi" }
       }
+    }
 
-      # Enable FRR (Free Range Routing) mode for BGP
-      frr = {
-        enabled = true
-      }
+    # Use the FRR backend for BGP mode
+    frr = {
+      enabled = true
     }
   })]
 }
 ```
 
+Apply this Helm release first before adding the `kubernetes_manifest` resources below. Then run `tofu apply` again, because the Kubernetes provider must see the MetalLB CRDs during planning.
+
 ## Step 2: Configure Layer 2 Mode (Simple Setup)
 
 ```hcl
-# Layer 2 mode - simplest setup, no BGP router required
-resource "kubernetes_manifest" "ip_pool_l2" {
+# Shared address pool plus Layer 2 advertisement - no BGP router required
+resource "kubernetes_manifest" "ip_pool" {
   depends_on = [helm_release.metallb]
 
   manifest = {
@@ -64,7 +66,7 @@ resource "kubernetes_manifest" "ip_pool_l2" {
     spec = {
       addresses = [
         "192.168.10.100-192.168.10.150",  # Available IP range
-        "192.168.10.200/28"               # CIDR notation
+        "192.168.10.208/28"               # CIDR notation
       ]
       autoAssign = true
     }
@@ -73,7 +75,7 @@ resource "kubernetes_manifest" "ip_pool_l2" {
 
 # Advertise IPs via Layer 2
 resource "kubernetes_manifest" "l2_advertisement" {
-  depends_on = [kubernetes_manifest.ip_pool_l2]
+  depends_on = [kubernetes_manifest.ip_pool]
 
   manifest = {
     apiVersion = "metallb.io/v1beta1"
@@ -84,10 +86,10 @@ resource "kubernetes_manifest" "l2_advertisement" {
     }
     spec = {
       ipAddressPools = ["production-pool"]
-      # Restrict to specific nodes
+      # Example: advertise only from a specific node
       nodeSelectors = [{
         matchLabels = {
-          "node-role.kubernetes.io/worker" = "true"
+          "kubernetes.io/hostname" = "worker-a"
         }
       }]
     }
@@ -120,6 +122,8 @@ resource "kubernetes_manifest" "bgp_peer" {
 
 # BGP advertisement
 resource "kubernetes_manifest" "bgp_advertisement" {
+  depends_on = [kubernetes_manifest.ip_pool, kubernetes_manifest.bgp_peer]
+
   manifest = {
     apiVersion = "metallb.io/v1beta1"
     kind       = "BGPAdvertisement"
@@ -132,9 +136,6 @@ resource "kubernetes_manifest" "bgp_advertisement" {
 
       # Advertise with communities for traffic engineering
       communities = ["64512:100"]
-
-      # Local preference for this cluster
-      localPref = 100
     }
   }
 }
@@ -153,7 +154,7 @@ resource "kubernetes_manifest" "ip_pool_reserved" {
       namespace = "metallb-system"
     }
     spec = {
-      addresses  = ["192.168.10.100/32"]  # Single IP for ingress
+      addresses  = ["192.168.10.160/32"]  # Single IP for ingress
       autoAssign = false  # Only assign when explicitly requested
     }
   }
@@ -161,12 +162,14 @@ resource "kubernetes_manifest" "ip_pool_reserved" {
 
 # Service requesting a specific IP from the reserved pool
 resource "kubernetes_service" "ingress_lb" {
+  depends_on = [kubernetes_manifest.ip_pool_reserved]
+
   metadata {
-    name      = "ingress-nginx-controller"
+    name      = "ingress-nginx-public"
     namespace = "ingress-nginx"
     annotations = {
-      "metallb.universe.tf/address-pool"  = "ingress-pool"
-      "metallb.universe.tf/loadBalancerIPs" = "192.168.10.100"
+      "metallb.io/address-pool"    = "ingress-pool"
+      "metallb.io/loadBalancerIPs" = "192.168.10.160"
     }
   }
 
@@ -189,4 +192,4 @@ resource "kubernetes_service" "ingress_lb" {
 
 ## Summary
 
-MetalLB deployed with OpenTofu brings cloud-like LoadBalancer functionality to bare metal and on-premises Kubernetes clusters. Layer 2 mode works with any network setup without BGP router configuration but is limited to single-node traffic routing. BGP mode provides true load distribution across nodes and integrates with enterprise network infrastructure for production deployments.
+MetalLB deployed with OpenTofu brings cloud-like LoadBalancer functionality to bare metal and on-premises Kubernetes clusters. Layer 2 mode works without BGP router configuration, but one node at a time attracts traffic for each service IP. BGP mode can distribute traffic across multiple nodes and integrates with enterprise network infrastructure for production deployments.
