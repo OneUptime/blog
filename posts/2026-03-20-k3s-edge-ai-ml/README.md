@@ -16,19 +16,19 @@ Edge AI/ML brings machine learning inference close to the data source, reducing 
 |--------|-----|------|-------|-----|
 | NVIDIA Jetson Nano | 128 CUDA cores | 0.5 | 5-10W | 4GB |
 | NVIDIA Jetson Xavier NX | 384 CUDA cores | 21 | 10-20W | 8GB |
-| NVIDIA Jetson AGX Orin | 2048 CUDA cores | 275 | 15-60W | 32GB |
+| NVIDIA Jetson AGX Orin 64GB | 2048 CUDA cores | 275 | 15-60W | 64GB |
 | Coral Dev Board | Google Edge TPU | 4 | 2-5W | 1GB |
 | Intel NUC + Iris Xe | Integrated GPU | - | 28-65W | 16GB |
 
 ## Step 1: Set Up K3s on NVIDIA Jetson
 
 ```bash
-# On NVIDIA Jetson Xavier NX (JetPack 5.1+)
+# On NVIDIA Jetson Xavier NX
 
 # Verify CUDA is available
 
 nvcc --version
-nvidia-smi  # Note: jetson-stats for Jetson
+tegrastats --interval 1000  # Ctrl+C to stop
 
 # Install jetson-stats for monitoring
 pip3 install -U jetson-stats
@@ -50,23 +50,15 @@ curl -sfL https://get.k3s.io | \
 Enable GPU access from Kubernetes pods:
 
 ```bash
-# Install NVIDIA container toolkit on the Jetson
-# (Usually pre-installed with JetPack)
-dpkg -l | grep nvidia-container
+# Confirm NVIDIA container runtime packages are present
+# (these are typically installed with JetPack)
+dpkg -l | grep -E 'nvidia-container|libnvidia-container'
 
-# Create containerd config for NVIDIA runtime
-cat > /etc/rancher/k3s/config.toml.tmpl << 'EOF'
-[plugins."io.containerd.grpc.v1.cri".containerd]
-  default_runtime_name = "nvidia"
-
-[plugins."io.containerd.grpc.v1.cri".containerd.runtimes.nvidia]
-  runtime_type = "io.containerd.runc.v2"
-  [plugins."io.containerd.grpc.v1.cri".containerd.runtimes.nvidia.options]
-    BinaryName = "/usr/bin/nvidia-container-runtime"
-EOF
-
-# Restart K3s to apply
+# Restart K3s so it re-detects available runtimes
 systemctl restart k3s
+
+# Verify the NVIDIA runtime was added to containerd
+grep nvidia /var/lib/rancher/k3s/agent/etc/containerd/config.toml
 ```
 
 Deploy the NVIDIA device plugin:
@@ -87,6 +79,7 @@ spec:
       labels:
         name: nvidia-device-plugin-ds
     spec:
+      runtimeClassName: nvidia
       tolerations:
         - key: CriticalAddonsOnly
           operator: Exists
@@ -94,7 +87,7 @@ spec:
       nodeSelector:
         ai-capable: "true"
       containers:
-        - image: nvcr.io/nvidia/k8s-device-plugin:v0.14.3
+        - image: nvcr.io/nvidia/k8s-device-plugin:v0.17.1
           name: nvidia-device-plugin-ctr
           securityContext:
             allowPrivilegeEscalation: false
@@ -109,8 +102,15 @@ spec:
 
 ## Step 3: Deploy TensorFlow Serving for Model Inference
 
+The official TensorFlow Serving GPU image targets x86_64 nodes with NVIDIA GPUs. On Jetson, use Triton in Step 4 for TensorFlow models instead.
+
 ```yaml
 # tf-serving.yaml
+---
+apiVersion: v1
+kind: Namespace
+metadata:
+  name: ai-edge
 ---
 apiVersion: v1
 kind: ConfigMap
@@ -147,11 +147,12 @@ spec:
       labels:
         app: tf-serving
     spec:
+      runtimeClassName: nvidia
       nodeSelector:
-        ai-capable: "true"
+        kubernetes.io/arch: amd64
       containers:
         - name: tf-serving
-          image: nvcr.io/nvidia/tensorflow:23.10-tf2-py3
+          image: tensorflow/serving:2.19.1-gpu
           imagePullPolicy: IfNotPresent
           args:
             - "--port=8500"
@@ -165,6 +166,7 @@ spec:
               nvidia.com/gpu: 1
               memory: 4Gi
             requests:
+              nvidia.com/gpu: 1
               memory: 2Gi
           volumeMounts:
             - name: models
@@ -199,7 +201,7 @@ spec:
 
 ## Step 4: Deploy Triton Inference Server
 
-NVIDIA Triton provides a universal model serving framework:
+NVIDIA Triton provides a universal model serving framework. On Jetson, use a JetPack-compatible Triton image. NVIDIA publishes `-igpu` container tags for JetPack 6.0 and later; if you are on JetPack 5.1.2, use the Jetson build based on `r23.06-update-1-jp` instead.
 
 ```yaml
 # triton-server.yaml
@@ -218,11 +220,12 @@ spec:
       labels:
         app: triton
     spec:
+      runtimeClassName: nvidia
       nodeSelector:
-        hardware: nvidia-xavier
+        ai-capable: "true"
       containers:
         - name: triton
-          image: nvcr.io/nvidia/tritonserver:23.10-py3
+          image: nvcr.io/nvidia/tritonserver:23.12-py3-igpu
           imagePullPolicy: IfNotPresent
           command:
             - tritonserver
@@ -242,6 +245,7 @@ spec:
               nvidia.com/gpu: 1
               memory: 6Gi
             requests:
+              nvidia.com/gpu: 1
               memory: 3Gi
           livenessProbe:
             httpGet:
@@ -256,6 +260,25 @@ spec:
           hostPath:
             path: /data/triton-models
             type: DirectoryOrCreate
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: triton-svc
+  namespace: ai-edge
+spec:
+  selector:
+    app: triton
+  ports:
+    - name: http
+      port: 8000
+      targetPort: 8000
+    - name: grpc
+      port: 8001
+      targetPort: 8001
+    - name: metrics
+      port: 8002
+      targetPort: 8002
 ```
 
 ## Step 5: Automated Model Updates
@@ -312,7 +335,13 @@ metadata:
   namespace: ai-edge
 spec:
   replicas: 1
+  selector:
+    matchLabels:
+      app: video-capture
   template:
+    metadata:
+      labels:
+        app: video-capture
     spec:
       nodeSelector:
         ai-capable: "true"
@@ -336,6 +365,7 @@ spec:
         - name: video-device
           hostPath:
             path: /dev/video0
+            type: CharDevice
 ```
 
 ## Step 7: Monitor Inference Performance
@@ -343,16 +373,23 @@ spec:
 ```bash
 # Check GPU utilization on Jetson
 jtop
+tegrastats --interval 1000
+
+# In another shell, port-forward TensorFlow Serving
+sudo k3s kubectl -n ai-edge port-forward svc/tf-serving-svc 8501:8501
 
 # Check model inference latency
 curl -X POST \
-  http://localhost:8501/v1/models/object-detector:predict \
+  http://127.0.0.1:8501/v1/models/object-detector:predict \
   -H "Content-Type: application/json" \
   -d '{"instances": [[...image data...]]}' \
   -w "\nTime: %{time_total}s\n"
 
+# In another shell, port-forward Triton metrics
+sudo k3s kubectl -n ai-edge port-forward svc/triton-svc 8002:8002
+
 # View Triton metrics
-curl http://localhost:8002/metrics | grep nv_inference
+curl http://127.0.0.1:8002/metrics | grep nv_inference
 ```
 
 ## Conclusion
