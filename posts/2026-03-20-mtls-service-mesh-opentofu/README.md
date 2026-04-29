@@ -167,7 +167,7 @@ resource "kubernetes_manifest" "server_policy" {
 
 resource "kubernetes_manifest" "server_authorization" {
   manifest = {
-    apiVersion = "policy.linkerd.io/v1beta3"
+    apiVersion = "policy.linkerd.io/v1beta1"
     kind       = "ServerAuthorization"
     metadata = {
       name      = "allow-frontend"
@@ -191,7 +191,7 @@ resource "kubernetes_manifest" "server_authorization" {
 
 ```bash
 # Verify mTLS is active between services in Istio
-istioctl authn tls-check api-service.apps.svc.cluster.local
+istioctl x describe pod <pod-name> -n apps
 
 # Check Linkerd mTLS status
 linkerd viz edges deployment -n secure-apps
