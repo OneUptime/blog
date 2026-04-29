@@ -15,7 +15,7 @@ IPv6 scope IDs are interface identifiers required when using link-local addresse
 | Address Type | Scope ID Required? |
 |-------------|-------------------|
 | Global unicast (2000::/3) | No (scope_id = 0) |
-| Unique local (fd00::/8) | No (scope_id = 0) |
+| Unique local (fc00::/7) | No (scope_id = 0) |
 | Link-local (fe80::/10) | **Yes** |
 | Loopback (::1) | No (scope_id = 0) |
 | Multicast (ff02::/16 link scope) | **Yes** |
@@ -23,7 +23,7 @@ IPv6 scope IDs are interface identifiers required when using link-local addresse
 ## Scope ID Representations
 
 ```text
-Text format:    fe80::1%eth0         (interface name)
+Text format:    fe80::1%eth0         (interface name, common on Unix-like systems)
 Text format:    fe80::1%2            (interface index)
 Numeric:        scope_id = 2         (in struct sockaddr_in6)
 ```
@@ -70,6 +70,9 @@ int main(void) {
 #include <arpa/inet.h>
 #include <net/if.h>
 #include <unistd.h>
+#include <errno.h>
+#include <limits.h>
+#include <stdlib.h>
 #include <string.h>
 #include <stdio.h>
 
@@ -89,7 +92,12 @@ int connect_link_local(const char *addr_str, const char *interface, int port) {
     if (pct != NULL) {
         /* Address has embedded zone ID, extract just the address part */
         size_t addr_len = pct - addr_str;
-        strncpy(addr_buf, addr_str, addr_len);
+        if (addr_len >= sizeof(addr_buf)) {
+            fprintf(stderr, "IPv6 address is too long: %s\n", addr_str);
+            close(sockfd);
+            return -1;
+        }
+        memcpy(addr_buf, addr_str, addr_len);
         addr_buf[addr_len] = '\0';
         clean_addr = addr_buf;
         /* Use the interface from the zone ID if none provided */
@@ -104,14 +112,31 @@ int connect_link_local(const char *addr_str, const char *interface, int port) {
         return -1;
     }
 
-    /* Set scope ID from interface name */
+    /* Set scope ID from interface name or numeric zone ID */
     if (interface != NULL) {
-        server.sin6_scope_id = if_nametoindex(interface);
+        char *end = NULL;
+        unsigned long zone = 0;
+
+        errno = 0;
+        zone = strtoul(interface, &end, 10);
+        if (interface[0] != '\0' && *end == '\0' &&
+            errno == 0 && zone <= UINT_MAX) {
+            server.sin6_scope_id = (unsigned int)zone;
+        } else {
+            server.sin6_scope_id = if_nametoindex(interface);
+        }
+
         if (server.sin6_scope_id == 0) {
-            fprintf(stderr, "Interface not found: %s\n", interface);
+            fprintf(stderr, "Invalid interface or zone ID: %s\n", interface);
             close(sockfd);
             return -1;
         }
+    }
+
+    if (IN6_IS_ADDR_LINKLOCAL(&server.sin6_addr) && server.sin6_scope_id == 0) {
+        fprintf(stderr, "Link-local address requires an interface or zone ID\n");
+        close(sockfd);
+        return -1;
     }
 
     printf("Connecting to [%s%%%s]:%d (scope_id=%u)\n",
@@ -151,24 +176,48 @@ int main(void) {
 ```c
 int bind_link_local_server(const char *addr_str, const char *interface, int port) {
     int sockfd = socket(AF_INET6, SOCK_STREAM, 0);
+    if (sockfd < 0) { perror("socket"); return -1; }
+
+    if (interface == NULL) {
+        fprintf(stderr, "Interface is required for link-local bind\n");
+        close(sockfd);
+        return -1;
+    }
 
     struct sockaddr_in6 addr;
     memset(&addr, 0, sizeof(addr));
     addr.sin6_family   = AF_INET6;
     addr.sin6_port     = htons(port);
     addr.sin6_scope_id = if_nametoindex(interface);  /* Required for link-local */
+    if (addr.sin6_scope_id == 0) {
+        fprintf(stderr, "Interface not found: %s\n", interface);
+        close(sockfd);
+        return -1;
+    }
 
-    inet_pton(AF_INET6, addr_str, &addr.sin6_addr);
+    if (inet_pton(AF_INET6, addr_str, &addr.sin6_addr) != 1) {
+        fprintf(stderr, "Invalid IPv6 address: %s\n", addr_str);
+        close(sockfd);
+        return -1;
+    }
 
     int reuse = 1;
-    setsockopt(sockfd, SOL_SOCKET, SO_REUSEADDR, &reuse, sizeof(reuse));
+    if (setsockopt(sockfd, SOL_SOCKET, SO_REUSEADDR, &reuse, sizeof(reuse)) < 0) {
+        perror("setsockopt");
+        close(sockfd);
+        return -1;
+    }
 
     if (bind(sockfd, (struct sockaddr *)&addr, sizeof(addr)) < 0) {
         perror("bind");
         close(sockfd);
         return -1;
     }
-    listen(sockfd, 5);
+    if (listen(sockfd, 5) < 0) {
+        perror("listen");
+        close(sockfd);
+        return -1;
+    }
     printf("Server bound to [%s%%%s]:%d\n", addr_str, interface, port);
     return sockfd;
 }
@@ -179,7 +228,7 @@ int bind_link_local_server(const char *addr_str, const char *interface, int port
 ```python
 import socket
 
-# Connect to link-local with scope ID using %interface notation
+# Connect to link-local with a numeric scope ID
 
 def connect_link_local(addr: str, interface: str, port: int):
     # Get interface index
@@ -203,4 +252,4 @@ except OSError as e:
 
 ## Conclusion
 
-IPv6 scope IDs are essential for link-local address communication. Use `if_nametoindex()` to convert interface names to scope ID integers, then set `sockaddr_in6.sin6_scope_id` before calling `connect()` or `bind()`. In string notation, zone IDs appear after `%` (e.g., `fe80::1%eth0`). For link-local multicast, the same scope ID requirement applies.
+IPv6 scope IDs are essential for link-local address communication. Use `if_nametoindex()` to convert interface names to scope ID integers, then set `sockaddr_in6.sin6_scope_id` before calling `connect()` or `bind()`. In string notation, zone IDs appear after `%` (e.g., `fe80::1%2` or, on many systems, `fe80::1%eth0`). For link-local multicast, the same scope ID requirement applies.
