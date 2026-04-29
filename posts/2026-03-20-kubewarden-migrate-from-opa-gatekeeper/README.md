@@ -8,7 +8,7 @@ Description: A step-by-step guide to migrating your Kubernetes admission control
 
 ## Introduction
 
-OPA Gatekeeper and Kubewarden both provide Kubernetes admission control, but they take different approaches: Gatekeeper uses Rego policies and the Open Policy Agent engine, while Kubewarden uses WebAssembly policies that can be written in any language. Organizations migrating to Kubewarden benefit from language flexibility, better performance through Wasm execution, and a simpler configuration model.
+OPA Gatekeeper and Kubewarden both provide Kubernetes admission control, but they take different approaches: Gatekeeper uses Rego policies and the Open Policy Agent engine, while Kubewarden uses WebAssembly policies that can be written in any language. Organizations migrating to Kubewarden benefit from language flexibility, WebAssembly-based policy distribution, and the ability to reuse existing Gatekeeper Rego policies or adopt SDK-based policies.
 
 This guide covers migrating from Gatekeeper to Kubewarden with minimal disruption.
 
@@ -23,12 +23,12 @@ This guide covers migrating from Gatekeeper to Kubewarden with minimal disruptio
 
 | Feature | OPA Gatekeeper | Kubewarden |
 |---------|----------------|------------|
-| Policy language | Rego | Any language (Rust, Go, AssemblyScript) |
-| Policy format | ConfigMap/CRD | WebAssembly modules (OCI) |
-| Mutation support | Limited | Full |
-| Testing | OPA CLI | kwctl |
-| Context-aware | Via sync config | Native host calls |
-| Performance | Rego interpretation | Wasm near-native |
+| Policy language | Rego | Any language that compiles to WebAssembly |
+| Policy format | ConstraintTemplate + Constraint CRDs | WebAssembly modules distributed as OCI artifacts |
+| Mutation support | Mutation CRDs | Mutating policies |
+| Testing | gator / OPA tooling | kwctl |
+| Context-aware | Via replicated data (`sync`) | Via context-aware policy capabilities |
+| Execution model | Rego evaluation in the admission controller | Wasm evaluation in the policy-server |
 
 ## Step 1: Inventory Your Gatekeeper Policies
 
@@ -38,19 +38,13 @@ This guide covers migrating from Gatekeeper to Kubewarden with minimal disruptio
 kubectl get constrainttemplates
 
 # List all Gatekeeper constraints (instances)
-kubectl get constraints -A 2>/dev/null || \
-  kubectl get $(kubectl get constrainttemplates \
-    -o jsonpath='{.items[*].metadata.name}' | tr ' ' ',') -A 2>/dev/null
+kubectl get constraints
 
 # Export all constraint templates
 kubectl get constrainttemplates -o yaml > gatekeeper-templates.yaml
 
 # Export all constraints
-for template in $(kubectl get constrainttemplates \
-  -o jsonpath='{.items[*].metadata.name}'); do
-  kubectl get "$template" -A -o yaml >> gatekeeper-constraints.yaml
-  echo "---" >> gatekeeper-constraints.yaml
-done
+kubectl get constraints -o yaml > gatekeeper-constraints.yaml
 ```
 
 ## Step 2: Map Gatekeeper Policies to Kubewarden Equivalents
@@ -81,7 +75,8 @@ kind: ClusterAdmissionPolicy
 metadata:
   name: no-privileged-containers
 spec:
-  module: registry://ghcr.io/kubewarden/policies/pod-privileged:v0.2.0
+  module: registry://ghcr.io/kubewarden/policies/pod-privileged:latest
+  settings: {}
   rules:
     - apiGroups: [""]
       apiVersions: ["v1"]
@@ -91,7 +86,7 @@ spec:
   mode: protect
 ```
 
-### Allowed Registries
+### Allowed Repositories
 
 **Gatekeeper version:**
 ```yaml
@@ -106,8 +101,8 @@ spec:
         kinds: ["Pod"]
   parameters:
     repos:
-      - "registry.internal.example.com"
-      - "gcr.io/my-project"
+      - "registry.internal.example.com/"
+      - "gcr.io/my-project/"
 ```
 
 **Kubewarden equivalent:**
@@ -115,13 +110,14 @@ spec:
 apiVersion: policies.kubewarden.io/v1
 kind: ClusterAdmissionPolicy
 metadata:
-  name: allowed-registries
+  name: allowed-repositories
 spec:
-  module: registry://ghcr.io/kubewarden/policies/allowed-image-repositories:v0.1.0
+  module: registry://ghcr.io/kubewarden/policies/trusted-repos-policy:latest
   settings:
-    allowedRegistries:
-      - "registry.internal.example.com"
-      - "gcr.io/my-project"
+    images:
+      allow:
+        - "registry.internal.example.com/"
+        - "gcr.io/my-project/"
   rules:
     - apiGroups: [""]
       apiVersions: ["v1"]
@@ -156,7 +152,7 @@ kind: ClusterAdmissionPolicy
 metadata:
   name: require-team-label
 spec:
-  module: registry://ghcr.io/kubewarden/policies/k8s-objects:v1.3.0
+  module: registry://ghcr.io/kubewarden/policies/safe-labels:latest
   settings:
     mandatory_labels:
       - team
@@ -183,16 +179,13 @@ for policy_file in kubewarden-policies/*.yaml; do
     kubectl apply -f -
 done
 
-# Phase 2: Compare violations between the two systems
-echo "=== Gatekeeper violations ==="
-kubectl get events -A \
-  --field-selector reason=FailedCreate \
-  | grep "admission webhook" \
-  | grep gatekeeper
+# Phase 2: Compare Gatekeeper audit output with Kubewarden audit data
+echo "=== Gatekeeper constraint status ==="
+kubectl get constraints -o yaml
 
-echo "=== Kubewarden monitor violations ==="
-kubectl get events -A \
-  --field-selector reason=PolicyViolation
+echo "=== Kubewarden audit reports (if audit scanner is enabled) ==="
+kubectl get report -A
+kubectl get clusterreport
 ```
 
 ## Step 4: Gradual Transition
@@ -207,7 +200,7 @@ GATEKEEPER_CONSTRAINT="$2"
 echo "Transitioning: ${GATEKEEPER_CONSTRAINT} -> ${POLICY_NAME}"
 
 # Step 1: Enable Kubewarden policy in protect mode
-kubectl patch clusteradmissionpolicy "${POLICY_NAME}" \
+kubectl patch clusteradmissionpolicies "${POLICY_NAME}" \
   --type=merge \
   -p '{"spec":{"mode":"protect"}}'
 
@@ -216,13 +209,15 @@ echo "Kubewarden policy ${POLICY_NAME} now in PROTECT mode"
 # Step 2: Test that the Kubewarden policy works
 # (run your workload tests here)
 
-# Step 3: Disable the Gatekeeper constraint
-kubectl annotate constraint "${GATEKEEPER_CONSTRAINT}" \
-  "gatekeeper.sh/disable=true" \
-  --overwrite
+# Step 3: Move the Gatekeeper constraint to DRYRUN mode
+# Example value for GATEKEEPER_CONSTRAINT:
+# k8sallowedrepos.constraints.gatekeeper.sh/repo-is-allowed
+kubectl patch "${GATEKEEPER_CONSTRAINT}" \
+  --type=merge \
+  -p '{"spec":{"enforcementAction":"dryrun"}}'
 
-echo "Gatekeeper constraint ${GATEKEEPER_CONSTRAINT} disabled"
-echo "Transition complete. Monitor for 24h before removing Gatekeeper constraint"
+echo "Gatekeeper constraint ${GATEKEEPER_CONSTRAINT} now in DRYRUN mode"
+echo "Transition complete. Monitor for 24h before removing the Gatekeeper constraint"
 ```
 
 ## Step 5: Remove Gatekeeper
@@ -231,7 +226,7 @@ After all policies are migrated and validated:
 
 ```bash
 # Remove all Gatekeeper constraints
-kubectl delete constraints -A --all 2>/dev/null || true
+kubectl delete constraints --all 2>/dev/null || true
 
 # Remove all constraint templates
 kubectl delete constrainttemplates --all
@@ -247,20 +242,20 @@ echo "Gatekeeper removed. Kubewarden is now your sole admission controller."
 
 ## Handling Custom Rego Policies
 
-For custom Rego policies without Kubewarden equivalents, you need to rewrite them in Rust, Go, or AssemblyScript. Use this approach:
+For custom Gatekeeper validation policies without Kubewarden library equivalents, you can usually port the existing Rego directly to Kubewarden. Gatekeeper mutators still need to be reimplemented as Kubewarden mutating policies. Use this approach:
 
 ```bash
 # Export the Rego policy for reference
 kubectl get constrainttemplate my-custom-policy \
   -o jsonpath='{.spec.targets[0].rego}'
 
-# Create a new Kubewarden policy project
-cargo generate \
-  --git https://github.com/kubewarden/rust-policy-template \
-  --name my-custom-policy
+# Create a new Kubewarden policy project from the Gatekeeper template
+git clone https://github.com/kubewarden/gatekeeper-policy-template my-custom-policy
+cd my-custom-policy
 
-# Translate the Rego logic to Rust/Go
-# (Refer to Kubewarden documentation for translation patterns)
+# Copy the exported Rego into policy.rego, update the package name to `policy`,
+# then build the Wasm module. For older Gatekeeper policies using Rego v0 syntax:
+OPA_V0_COMPATIBLE=true make
 ```
 
 ## Validating the Migration
@@ -269,10 +264,9 @@ cargo generate \
 # Run your full test suite against the cluster
 # with only Kubewarden active
 
-# Check for any unexpected denials in the last 24h
+# Check recent Kubernetes events for any unexpected denials
 kubectl get events -A \
-  --field-selector reason=PolicyViolation \
-  --sort-by='.lastTimestamp' \
+  --sort-by='.metadata.creationTimestamp' \
   | tail -50
 
 # Verify all workloads are running
@@ -281,4 +275,4 @@ kubectl get pods -A | grep -v Running | grep -v Completed
 
 ## Conclusion
 
-Migrating from OPA Gatekeeper to Kubewarden requires careful planning but the benefits - language flexibility, WebAssembly performance, and simpler configuration - are significant. The side-by-side migration approach minimizes risk by running both systems simultaneously in monitor vs. enforce mode, giving you confidence in the Kubewarden policies before removing Gatekeeper. For common policies, the Kubewarden Policy Hub provides ready-to-use replacements, while custom Rego policies require a rewrite but gain the benefits of type safety and better tooling.
+Migrating from OPA Gatekeeper to Kubewarden requires careful planning but the benefits - language flexibility, WebAssembly-based distribution, and a broad policy ecosystem - are significant. The side-by-side migration approach minimizes risk by running both systems simultaneously in monitor vs. enforce mode, giving you confidence in the Kubewarden policies before removing Gatekeeper. For common policies, the Kubewarden Policy Hub provides ready-to-use replacements, while custom Gatekeeper Rego policies can often be ported directly with Kubewarden's Gatekeeper policy template instead of being rewritten from scratch.
