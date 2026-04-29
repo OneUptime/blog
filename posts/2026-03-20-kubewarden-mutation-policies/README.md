@@ -16,11 +16,12 @@ This guide covers creating, deploying, and testing Kubewarden mutation policies.
 
 - Kubewarden installed on your cluster
 - `kubectl` access with cluster-admin permissions
-- Basic understanding of Kubernetes JSON patches
+- `kwctl` installed locally for testing policies outside the cluster
+- Basic understanding of Kubernetes admission requests and JSON patches
 
 ## Understanding Mutation Policies
 
-Mutation policies return a JSON patch that modifies the resource before it is persisted. The key setting is `mutating: true` in the policy definition.
+Kubewarden mutating policies accept a request and return an accepted response containing a `mutated_object`. When the policy is enforced through Kubernetes admission, Kubewarden turns that mutation into the JSON patch Kubernetes expects. The policy must support mutation, and the policy definition must set `mutating: true`.
 
 Common mutation use cases:
 - Inject security context defaults
@@ -33,7 +34,7 @@ Common mutation use cases:
 
 ### Auto-Inject Security Context
 
-The `pod-runtime-class` policy mutates pods to add security context defaults:
+The `user-group-psp` policy can mutate pods to require non-root execution by setting `runAsNonRoot` when it is missing:
 
 ```yaml
 # mutation-security-context.yaml
@@ -43,10 +44,18 @@ kind: ClusterAdmissionPolicy
 metadata:
   name: mutate-add-security-context
 spec:
-  module: registry://ghcr.io/kubewarden/policies/pod-privileged:v0.2.0
+  module: registry://ghcr.io/kubewarden/policies/user-group-psp:v1.1.3
 
   # CRITICAL: Set mutating to true for mutation policies
   mutating: true
+
+  settings:
+    run_as_user:
+      rule: MustRunAsNonRoot
+    run_as_group:
+      rule: RunAsAny
+    supplemental_groups:
+      rule: RunAsAny
 
   rules:
     - apiGroups: [""]
@@ -54,30 +63,32 @@ spec:
       resources: ["pods"]
       operations:
         - CREATE
+        - UPDATE
   mode: protect
 ```
 
-### Auto-Add Labels Policy
+### Auto-Adjust StorageClass Policy
 
 ```yaml
-# mutation-add-labels.yaml
+# mutation-pvc-storageclass.yaml
 apiVersion: policies.kubewarden.io/v1
 kind: ClusterAdmissionPolicy
 metadata:
-  name: mutate-add-labels
+  name: mutate-pvc-storageclass
 spec:
-  module: registry://ghcr.io/kubewarden/policies/safe-labels:v0.1.0
+  module: registry://ghcr.io/kubewarden/policies/persistentvolumeclaim-storageclass-policy:v1.1.1
 
   mutating: true
 
   settings:
-    mandatory_labels:
-      "managed-by": "kubewarden"
+    deniedStorageClasses:
+      - fast
+    fallbackStorageClass: standard
 
   rules:
     - apiGroups: [""]
       apiVersions: ["v1"]
-      resources: ["pods"]
+      resources: ["persistentvolumeclaims"]
       operations: ["CREATE"]
   mode: protect
 ```
@@ -87,15 +98,12 @@ spec:
 ```rust
 // src/lib.rs - Mutation policy that adds security context defaults
 
-use anyhow::{anyhow, Result};
 use guest::prelude::*;
-use kubewarden_policy_sdk::wapc_guest as guest;
-
 use k8s_openapi::api::core::v1 as apicore;
+use kubewarden_policy_sdk::wapc_guest as guest;
 
 extern crate kubewarden_policy_sdk as kubewarden;
 use kubewarden::{
-    mutation_response,
     protocol_version_guest,
     request::ValidationRequest,
     validate_settings,
@@ -112,23 +120,20 @@ pub extern "C" fn wapc_init() {
 }
 
 fn validate(payload: &[u8]) -> CallResult {
-    let validation_request: ValidationRequest<Settings> =
-        serde_json::from_slice(payload).map_err(|e| {
-            anyhow!("Cannot parse payload: {}", e)
-        })?;
+    let validation_request: ValidationRequest<Settings> = ValidationRequest::new(payload)?;
 
     // Parse the Pod
-    let mut pod: apicore::Pod =
-        serde_json::from_value(validation_request.request.object.clone())
-        .map_err(|_| anyhow!("Cannot parse Pod"))?;
+    let mut pod: apicore::Pod = match serde_json::from_value(validation_request.request.object) {
+        Ok(pod) => pod,
+        Err(_) => return kubewarden::accept_request(),
+    };
 
     // Apply mutations to add security defaults
     let mutated = apply_security_defaults(&mut pod);
 
     if mutated {
         // Return a mutation response with the modified pod
-        let mutated_pod_json = serde_json::to_value(&pod)
-            .map_err(|e| anyhow!("Cannot serialize mutated pod: {}", e))?;
+        let mutated_pod_json = serde_json::to_value(pod)?;
 
         return kubewarden::mutate_request(mutated_pod_json);
     }
@@ -176,29 +181,42 @@ fn apply_security_defaults(pod: &mut apicore::Pod) -> bool {
 ## Testing Mutation Policies
 
 ```bash
-# Create a test pod without security context
+# Create a simplified AdmissionRequest for a pod without security context
 cat > test-mutation.json <<'EOF'
 {
-  "request": {
-    "uid": "mutation-test-001",
-    "kind": {"group": "", "version": "v1", "kind": "Pod"},
-    "operation": "CREATE",
-    "object": {
-      "apiVersion": "v1",
-      "kind": "Pod",
-      "metadata": {"name": "test-pod"},
-      "spec": {
-        "containers": [
-          {"name": "app", "image": "nginx:1.25.0"}
-        ]
-      }
+  "uid": "mutation-test-001",
+  "kind": {"group": "", "version": "v1", "kind": "Pod"},
+  "resource": {"group": "", "version": "v1", "resource": "pods"},
+  "requestKind": {"group": "", "version": "v1", "kind": "Pod"},
+  "requestResource": {"group": "", "version": "v1", "resource": "pods"},
+  "name": "test-pod",
+  "namespace": "default",
+  "operation": "CREATE",
+  "userInfo": {
+    "username": "alice",
+    "groups": ["system:authenticated"]
+  },
+  "object": {
+    "apiVersion": "v1",
+    "kind": "Pod",
+    "metadata": {"name": "test-pod", "namespace": "default"},
+    "spec": {
+      "containers": [
+        {"name": "app", "image": "nginx:1.25.0"}
+      ]
     }
+  },
+  "oldObject": null,
+  "dryRun": false,
+  "options": {
+    "kind": "CreateOptions",
+    "apiVersion": "meta.k8s.io/v1"
   }
 }
 EOF
 
 # Run the mutation policy
-kwctl run ./build/mutation-policy.wasm --request-path test-mutation.json
+kwctl run --request-path test-mutation.json ./policy.wasm
 
 # The response should contain a JSON patch
 # showing the added security context fields
@@ -230,29 +248,44 @@ This allows you to:
 - Validate that standards are met (after mutation)
 
 ```yaml
-# First: mutate to add security defaults
+# First: mutate pods to add runAsNonRoot when needed
 apiVersion: policies.kubewarden.io/v1
 kind: ClusterAdmissionPolicy
 metadata:
   name: mutate-add-security-defaults
 spec:
-  module: registry://example.com/policies/add-security-context:v0.1.0
+  module: registry://ghcr.io/kubewarden/policies/user-group-psp:v1.1.3
   mutating: true
+  settings:
+    run_as_user:
+      rule: MustRunAsNonRoot
+    run_as_group:
+      rule: RunAsAny
+    supplemental_groups:
+      rule: RunAsAny
   rules:
     - apiGroups: [""]
       apiVersions: ["v1"]
       resources: ["pods"]
-      operations: ["CREATE"]
+      operations: ["CREATE", "UPDATE"]
   mode: protect
 ---
-# Then: validate the security context is present
+# Then: validate the same rule without mutating
 apiVersion: policies.kubewarden.io/v1
 kind: ClusterAdmissionPolicy
 metadata:
   name: validate-security-context
 spec:
-  module: registry://example.com/policies/require-security-context:v0.1.0
+  module: registry://ghcr.io/kubewarden/policies/user-group-psp:v1.1.3
   mutating: false
+  settings:
+    validate_only: true
+    run_as_user:
+      rule: MustRunAsNonRoot
+    run_as_group:
+      rule: RunAsAny
+    supplemental_groups:
+      rule: RunAsAny
   rules:
     - apiGroups: [""]
       apiVersions: ["v1"]
