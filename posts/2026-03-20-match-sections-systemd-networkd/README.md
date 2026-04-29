@@ -4,11 +4,11 @@ Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
 Tags: systemd-networkd, Match Section, Interface Selection, Linux, .network, .link, Networking
 
-Description: Learn how to use [Match] sections in systemd-networkd .network and .link files to precisely target specific network interfaces using name, MAC address, driver, and other properties.
+Description: Learn how to use [Match] sections in `.network` and `.link` files to precisely target specific network interfaces using name, MAC address, driver, and other properties.
 
 ---
 
-The `[Match]` section determines which interfaces a `.network` or `.link` file applies to. Precise matching prevents configurations from applying to unintended interfaces.
+The `[Match]` section determines which interfaces a `.network` or `.link` file applies to. In `.network` files, match interface names with `Name=`. In `.link` files, use `OriginalName=` because matching happens before any userspace rename. Precise matching prevents configurations from applying to unintended interfaces.
 
 ## Match by Interface Name
 
@@ -25,6 +25,10 @@ Name=eth*          # Match eth0, eth1, eth2...
 # Multiple names
 [Match]
 Name=eth0 eth1     # Match eth0 or eth1
+
+# .link files use OriginalName=
+[Match]
+OriginalName=eth0  # Exact original interface name match
 ```
 
 ## Match by MAC Address
@@ -62,12 +66,16 @@ Path=pci-0000:02:00.0   # Specific PCI slot
 Type=ether          # All Ethernet interfaces
 
 [Match]
-Type=vlan           # All VLAN interfaces
+Type=wlan           # All wireless interfaces
 
 [Match]
-Type=bond           # All bond interfaces
+Kind=vlan           # All VLAN interfaces
 
-# Types: ether, wlan, loopback, vlan, bond, bridge, tun, tap, dummy, ...
+[Match]
+Kind=bond           # All bond interfaces
+
+# Type examples: ether, wlan, loopback, wwan, ...
+# Kind examples: vlan, bond, bridge, tun, dummy, ...
 ```
 
 ## Match by Virtualization
@@ -93,7 +101,7 @@ Host=webserver-01   # Only on this specific hostname
 [Match]
 Name=eth*
 Driver=igb
-MACAddress=aa:bb:cc:*:*:*
+MACAddress=aa:bb:cc:dd:ee:ff
 ```
 
 ## Match Precedence
@@ -101,8 +109,8 @@ MACAddress=aa:bb:cc:*:*:*
 ```text
 Files are processed in lexicographic order (10- before 20- before 99-)
 More specific files should have lower numbers to be processed first
-The FIRST matching file wins (for .link files)
-For .network files, all matching files are merged
+The FIRST matching file wins (for both .link and .network files)
+Drop-in .d/*.conf files are merged into the matched main file
 ```
 
 ## Example: Different Config for Physical vs. Virtual
@@ -129,17 +137,18 @@ Gateway=10.0.0.1
 ## Checking Which File Matched
 
 ```bash
-# Show which network file is applied to an interface
-networkctl status eth0 | grep "Network File"
-# Network File: /etc/systemd/network/10-eth0.network
+# Show which .link and .network files are applied to an interface
+networkctl status eth0 | grep -E "Link File|Network File"
+# Link File: /etc/systemd/network/10-eth0.link
+# Network File: /etc/systemd/network/20-eth0.network
 
-# Test match without applying
-networkd-manager --test-match=eth0
+# Debug .link matching without applying changes
+sudo SYSTEMD_LOG_LEVEL=debug udevadm test-builtin net_setup_link /sys/class/net/eth0
 ```
 
 ## Key Takeaways
 
 - `[Match]` sections use AND logic: all specified criteria must match.
-- Match by `MACAddress` for hardware-specific configs; by `Name=*` glob for categories of interfaces.
-- Files are processed lexicographically; lower-numbered files take precedence.
-- Use `networkctl status <iface>` to confirm which `.network` file was applied to an interface.
+- Use `Name=` in `.network` files, `OriginalName=` in `.link` files, and `MACAddress=` for hardware-specific configs.
+- Files are processed lexicographically; lower-numbered files take precedence, and the first matching `.network` or `.link` file wins.
+- Use `networkctl status <iface>` to confirm which `.network` and `.link` files were applied to an interface.
