@@ -36,26 +36,30 @@ resource "aws_kinesis_stream" "events" {
 ## Step 2: Create Lambda with Kinesis Permissions
 
 ```hcl
-resource "aws_iam_role_policy" "kinesis_policy" {
-  name = "kinesis-consumer-policy"
-  role = aws_iam_role.lambda.id
+resource "aws_iam_role" "lambda" {
+  name = "kinesis-stream-processor-role"
 
-  policy = jsonencode({
+  assume_role_policy = jsonencode({
     Version = "2012-10-17"
     Statement = [{
       Effect = "Allow"
-      Action = [
-        "kinesis:GetShardIterator",
-        "kinesis:GetRecords",
-        "kinesis:DescribeStream",
-        "kinesis:DescribeStreamSummary",
-        "kinesis:ListShards",
-        "kinesis:ListStreams",
-        "kinesis:SubscribeToShard"
-      ]
-      Resource = aws_kinesis_stream.events.arn
+      Principal = {
+        Service = "lambda.amazonaws.com"
+      }
+      Action = "sts:AssumeRole"
     }]
   })
+}
+
+resource "aws_iam_role_policy_attachment" "lambda_kinesis_execution" {
+  role       = aws_iam_role.lambda.name
+  policy_arn = "arn:aws:iam::aws:policy/service-role/AWSLambdaKinesisExecutionRole"
+}
+
+data "archive_file" "stream_processor" {
+  type        = "zip"
+  source_file = "${path.module}/index.py"
+  output_path = "${path.module}/stream_processor.zip"
 }
 
 resource "aws_lambda_function" "stream_processor" {
@@ -63,8 +67,8 @@ resource "aws_lambda_function" "stream_processor" {
   role             = aws_iam_role.lambda.arn
   handler          = "index.handler"
   runtime          = "python3.12"
-  filename         = data.archive_file.zip.output_path
-  source_code_hash = data.archive_file.zip.output_base64sha256
+  filename         = data.archive_file.stream_processor.output_path
+  source_code_hash = data.archive_file.stream_processor.output_base64sha256
   timeout          = 60
   memory_size      = 512
 }
@@ -73,10 +77,24 @@ resource "aws_lambda_function" "stream_processor" {
 ## Step 3: Create the Event Source Mapping
 
 ```hcl
-# SQS queue for failed Kinesis record batches
+# SQS queue for discarded invocation records
 
 resource "aws_sqs_queue" "kinesis_failures" {
   name = "kinesis-processing-failures"
+}
+
+resource "aws_iam_role_policy" "kinesis_failure_destination" {
+  name = "kinesis-failure-destination"
+  role = aws_iam_role.lambda.name
+
+  policy = jsonencode({
+    Version = "2012-10-17"
+    Statement = [{
+      Effect = "Allow"
+      Action   = ["sqs:SendMessage"]
+      Resource = aws_sqs_queue.kinesis_failures.arn
+    }]
+  })
 }
 
 resource "aws_lambda_event_source_mapping" "kinesis" {
@@ -86,13 +104,13 @@ resource "aws_lambda_event_source_mapping" "kinesis" {
   # Start processing from the latest records in the stream
   starting_position = "LATEST"
   # Use TRIM_HORIZON to start from oldest available records
-  # Use AT_TIMESTAMP for a specific point in time
+  # Use AT_TIMESTAMP with starting_position_timestamp for a specific point in time
 
   # Process up to 1000 records per batch
   batch_size = 1000
 
-  # Parallelize processing within a shard
-  # Up to 10 concurrent invocations per shard
+  # Process up to 5 batches from each shard concurrently
+  # Maximum parallelization factor is 10
   parallelization_factor = 5
 
   # Maximum time to wait to build a full batch (0-300 seconds)
@@ -105,12 +123,17 @@ resource "aws_lambda_event_source_mapping" "kinesis" {
   # Maximum age of records to process
   maximum_record_age_in_seconds = 3600  # Discard records older than 1 hour
 
-  # Send failed batches to SQS DLQ
+  # Send discarded invocation records to SQS after retries or age limits are exhausted
   destination_config {
     on_failure {
       destination_arn = aws_sqs_queue.kinesis_failures.arn
     }
   }
+
+  depends_on = [
+    aws_iam_role_policy_attachment.lambda_kinesis_execution,
+    aws_iam_role_policy.kinesis_failure_destination
+  ]
 }
 ```
 
@@ -135,10 +158,11 @@ def handler(event, context):
         data = json.loads(payload)
 
         # Access stream metadata
-        shard_id = record['eventSourceARN'].split('/')[-1]
+        stream_name = record['eventSourceARN'].split('/')[-1]
+        shard_id = record['eventID'].split(':')[0]
         sequence_number = record['kinesis']['sequenceNumber']
 
-        logger.info(f"Shard: {shard_id}, Seq: {sequence_number}")
+        logger.info(f"Stream: {stream_name}, Shard: {shard_id}, Seq: {sequence_number}")
         process_event(data)
 
 def process_event(data):
@@ -157,4 +181,4 @@ tofu apply
 
 ## Conclusion
 
-Lambda Kinesis event source mappings with parallelization factors enable high-throughput stream processing while maintaining shard-level ordering. Use `bisect_batch_on_function_error` to isolate bad records and `maximum_record_age_in_seconds` to discard stale data. Monitor the `IteratorAge` metric in CloudWatch to detect processing lag-growing iterator age indicates the consumer is falling behind the stream.
+Lambda Kinesis event source mappings with parallelization factors enable high-throughput stream processing while maintaining partition-key-level ordering. Use `bisect_batch_on_function_error` to isolate bad records and `maximum_record_age_in_seconds` to discard stale data. Monitor the `IteratorAge` metric in CloudWatch to detect processing lag. A growing iterator age indicates the consumer is falling behind the stream.
