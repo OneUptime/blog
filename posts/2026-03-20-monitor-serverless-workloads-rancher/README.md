@@ -65,11 +65,11 @@ sum by (function_name) (
 
 # Average function duration
 sum by (function_name) (
-  rate(gateway_function_duration_seconds_sum[5m])
+  rate(gateway_functions_seconds_sum[5m])
 )
 /
 sum by (function_name) (
-  rate(gateway_function_duration_seconds_count[5m])
+  rate(gateway_functions_seconds_count[5m])
 )
 ```
 
@@ -77,15 +77,15 @@ sum by (function_name) (
 
 ```promql
 # Current desired replicas for Knative services
-knative_serving_autoscaler_desired_pods
+desired_pods
 
 # Observed concurrency vs target
-knative_serving_autoscaler_observed_stable_concurrency
+stable_request_concurrency
 /
-knative_serving_autoscaler_target_concurrency_per_pod
+target_concurrency_per_pod
 
 # Scale-from-zero events
-increase(knative_serving_autoscaler_not_ready_pod_count[5m]) > 0
+increase(not_ready_pods[5m]) > 0
 ```
 
 ## Step 4: Monitor KEDA ScaledObjects
@@ -95,7 +95,7 @@ increase(knative_serving_autoscaler_not_ready_pod_count[5m]) > 0
 keda_scaler_active{namespace="production"}
 
 # KEDA scaling events
-increase(keda_scaler_errors_total[5m]) > 0
+increase(keda_scaler_detail_errors_total[5m]) > 0
 ```
 
 ## Step 5: Alert on Serverless Anomalies
@@ -118,13 +118,13 @@ groups:
 
       - alert: FunctionAtMaxScale
         expr: |
-          kube_deployment_spec_replicas{namespace="openfaas-fn"}
-          == kube_deployment_metadata_generation{namespace="openfaas-fn"}
+          kube_horizontalpodautoscaler_status_current_replicas{namespace="openfaas-fn"}
+          >= kube_horizontalpodautoscaler_spec_max_replicas{namespace="openfaas-fn"}
         for: 10m
         labels:
           severity: warning
         annotations:
-          summary: "Function {{ $labels.deployment }} is at max replicas"
+          summary: "Function {{ $labels.horizontalpodautoscaler }} is at max replicas"
 ```
 
 ## Conclusion
