@@ -8,22 +8,23 @@ Description: Learn how to configure a custom K3s data directory to separate clus
 
 ## Introduction
 
-By default, K3s stores all its data - container images, etcd snapshots, certificates, and volumes - in `/var/lib/rancher/k3s/`. This location can fill up the root partition on disk-constrained systems. Configuring a custom data directory allows you to mount a dedicated disk for K3s data, improving both performance (SSD vs. HDD) and system stability (preventing root partition exhaustion).
+By default, K3s stores its state, container images, certificates, snapshots, and local volumes in `/var/lib/rancher/k3s/`. This location can fill up the root partition on disk-constrained systems. Configuring a custom data directory allows you to mount a dedicated disk for K3s data, improving both performance (SSD vs. HDD) and system stability (preventing root partition exhaustion).
 
 ## What's Stored in the K3s Data Directory
 
 ```text
 /var/lib/rancher/k3s/
 ├── agent/
-│   ├── containerd/    # Container image layers
+│   ├── containerd/    # Containerd state and image layers
 │   ├── images/        # Pre-loaded air-gap image archives
 │   ├── etc/           # containerd and CNI configuration
 │   └── pods/          # Pod volume data
+├── data/              # Extracted K3s runtime binaries
 ├── server/
-│   ├── db/            # etcd database
+│   ├── db/            # SQLite or embedded etcd datastore
 │   ├── tls/           # TLS certificates
 │   ├── manifests/     # Auto-deployed manifests
-│   └── static/        # Static pods
+│   └── static/        # Static files served by the Kubernetes API server
 └── storage/           # Local path provisioner volumes (PVs)
 ```
 
@@ -103,8 +104,9 @@ du -sh /opt/k3s-data/
 ### Step 4: Update the Configuration
 
 ```bash
-# Update K3s config to use the new data directory
-sudo tee -a /etc/rancher/k3s/config.yaml > /dev/null <<EOF
+# Add a config drop-in to use the new data directory
+sudo mkdir -p /etc/rancher/k3s/config.yaml.d
+sudo tee /etc/rancher/k3s/config.yaml.d/data-dir.yaml > /dev/null <<EOF
 data-dir: "/opt/k3s-data"
 EOF
 ```
@@ -119,8 +121,8 @@ sudo systemctl start k3s
 sudo journalctl -u k3s -f
 
 # Verify the cluster is healthy
-kubectl get nodes
-kubectl get pods --all-namespaces
+sudo k3s kubectl get nodes
+sudo k3s kubectl get pods --all-namespaces
 
 # Once verified, optionally remove the old data directory
 # sudo rm -rf /var/lib/rancher/k3s/
@@ -175,31 +177,23 @@ sudo du -sh /opt/k3s-data/
 
 # Break down by component
 sudo du -sh /opt/k3s-data/agent/containerd/    # Container images
-sudo du -sh /opt/k3s-data/server/db/           # etcd database
+sudo du -sh /opt/k3s-data/server/db/           # SQLite or etcd datastore
 sudo du -sh /opt/k3s-data/storage/             # PersistentVolumes
 
 # Monitor disk usage
 df -h /opt/k3s-data
 
-# Set up a monitoring alert when disk usage exceeds 80%
-cat /opt/k3s-data/.diskspace-monitor 2>/dev/null
+# Check whether disk usage exceeds 80%
+df -P /opt/k3s-data | awk 'NR==2 {gsub(/%/, "", $5); if ($5 > 80) print "ALERT: disk usage above 80%"; else print "OK: disk usage is " $5 "%"}'
 ```
 
 ## Configuring the Local Path Provisioner Data Directory
 
-The local path provisioner also has its own storage path:
+The local path provisioner also has its own storage path, configurable via the K3s server setting `default-local-storage-path`:
 
 ```yaml
 # Override the local-path-provisioner storage location
-apiVersion: helm.cattle.io/v1
-kind: HelmChartConfig
-metadata:
-  name: local-path
-  namespace: kube-system
-spec:
-  valuesContent: |-
-    storageClass:
-      defaultPath: /opt/k3s-data/local-storage
+default-local-storage-path: "/opt/k3s-data/local-storage"
 ```
 
 ## Conclusion
