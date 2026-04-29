@@ -34,7 +34,7 @@ def after(response):
     elapsed = (time.monotonic() - g.start) * 1000
     log.info(
         "ip=%s method=%s path=%s status=%d ms=%.1f req_id=%s",
-        request.remote_addr,   # real IP after ProxyFix
+        request.remote_addr,   # client IP after ProxyFix when one proxy is trusted
         request.method,
         request.path,
         response.status_code,
@@ -58,8 +58,8 @@ log = logging.getLogger("api")
 @app.middleware("http")
 async def log_requests(request: Request, call_next):
     req_id = str(uuid.uuid4())[:8]
-    xff    = request.headers.get("x-forwarded-for")
-    ip     = xff.split(",")[0].strip() if xff else (request.client.host or "unknown")
+    client = request.client  # with trusted proxy headers configured in Uvicorn/FastAPI
+    ip     = client.host if client else "unknown"
 
     start    = time.monotonic()
     response = await call_next(request)
@@ -79,7 +79,7 @@ async def log_requests(request: Request, call_next):
 ```javascript
 const express = require("express");
 const app = express();
-app.set("trust proxy", 1);
+app.set("trust proxy", 1); // trust one reverse-proxy hop
 
 // Minimal structured logger middleware
 app.use((req, res, next) => {
@@ -122,7 +122,9 @@ app.listen(3000);
 }
 ```
 
-## Anonymising IPs for GDPR Compliance
+## Masking IPv4 Addresses for Privacy
+
+Masking the last octet can reduce identifiability in logs, but by itself it is not guaranteed to fully anonymize the data for GDPR purposes.
 
 ```python
 import ipaddress
@@ -143,4 +145,4 @@ print(anonymize_ipv4("10.20.30.40"))   # 10.20.30.0
 
 ## Conclusion
 
-Log client IPs in middleware rather than in individual route handlers to ensure uniform coverage. Use structured (JSON) logging to make logs queryable with tools like Elasticsearch or CloudWatch. Include a request ID to correlate logs across microservices. When GDPR compliance is required, anonymize the last octet before logging. Always extract the real client IP using proxy-aware logic (ProxyFix, `trust proxy`) before logging - logging the proxy's address is unhelpful for security investigation.
+Log client IPs in middleware rather than in individual route handlers to ensure uniform coverage. Use structured (JSON) logging to make logs queryable with tools like Elasticsearch or CloudWatch. Include a request ID to correlate logs across microservices. When privacy requirements apply, masking the last octet can reduce identifiability before logging, but whether that is sufficient for GDPR purposes depends on your context. Always extract the client IP using correctly configured, proxy-aware logic (ProxyFix, trusted proxy headers in Uvicorn/FastAPI, `trust proxy`) before logging - logging the proxy's address is unhelpful for security investigation.
