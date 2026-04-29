@@ -60,7 +60,7 @@ A well-formed Flannel configuration looks like:
 
 ## Checking the Allocated IPv4 Subnet
 
-Flannel stores node subnet assignments in etcd. Check them via:
+Flannel writes the current node subnet assignment to `/run/flannel/subnet.env`. Depending on how Flannel is deployed, the backing store may be the Kubernetes API or etcd:
 
 ```bash
 # View the subnet allocated to a node (Flannel)
@@ -68,7 +68,7 @@ cat /run/flannel/subnet.env
 
 # Expected output:
 # FLANNEL_NETWORK=10.244.0.0/16
-# FLANNEL_SUBNET=10.244.1.0/24
+# FLANNEL_SUBNET=10.244.1.1/24
 # FLANNEL_MTU=1450
 # FLANNEL_IPMASQ=true
 ```
@@ -104,9 +104,9 @@ export CNI_PATH=/opt/cni/bin
 # Invoke the bridge plugin
 echo '{
   "cniVersion": "0.3.1",
-  "name": "test",
+  "name": "test-cni",
   "type": "bridge",
-  "bridge": "cni0",
+  "bridge": "cni-test0",
   "isGateway": true,
   "ipMasq": true,
   "ipam": {
@@ -116,19 +116,35 @@ echo '{
   }
 }' | sudo /opt/cni/bin/bridge
 
-# Clean up the test namespace
+# Release the allocation and clean up the interface
+export CNI_COMMAND=DEL
+echo '{
+  "cniVersion": "0.3.1",
+  "name": "test-cni",
+  "type": "bridge",
+  "bridge": "cni-test0",
+  "isGateway": true,
+  "ipMasq": true,
+  "ipam": {
+    "type": "host-local",
+    "subnet": "10.50.0.0/24",
+    "routes": [{"dst": "0.0.0.0/0"}]
+  }
+}' | sudo /opt/cni/bin/bridge
+
+# Remove the test namespace
 sudo ip netns del test-ns
 ```
 
 ## Diagnosing Pod Network Issues
 
 ```bash
-# Check if pods are getting IPv4 addresses
-kubectl get pods -o wide --all-namespaces | grep -v Running
+# Check pod IP assignment and status
+kubectl get pods -o wide --all-namespaces
 
 # Describe a failing pod for CNI errors
 kubectl describe pod <pod-name> -n <namespace>
-# Look for: "network: failed to set up sandbox container"
+# Look for sandbox or CNI setup errors in the pod events
 
 # Check kubelet logs for CNI errors
 sudo journalctl -u kubelet -n 100 | grep -i cni
@@ -142,7 +158,7 @@ ls /opt/cni/bin/
 | Symptom | Likely Cause | Fix |
 |---------|-------------|-----|
 | Pods stuck in ContainerCreating | CNI binary missing | Install CNI plugins package |
-| Pods get no IP address | CNI config has wrong subnet | Fix subnet in conflist and restart kubelet |
+| Pods get no IP address | CNI/IPAM network settings do not match the cluster pod network | Correct the IP pool or pod CIDR configuration, then restart the affected networking components if required |
 | Pod-to-pod connectivity fails | Flannel subnet mismatch | Check `/run/flannel/subnet.env` matches expected range |
 | DNS resolution fails in pods | CoreDNS unreachable | Verify CNI allows traffic to CoreDNS pod IPs |
 
