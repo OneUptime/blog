@@ -38,7 +38,7 @@ sudo wg show wg0 dump
 
 while true; do
     TIMESTAMP=$(date -u +"%Y-%m-%dT%H:%M:%SZ")
-    sudo wg show all dump | while IFS=$'\t' read -r iface pubkey psk endpoint ips keepalive rx tx handshake; do
+    sudo wg show all dump | while IFS=$'\t' read -r iface pubkey psk endpoint ips handshake rx tx keepalive; do
         # Skip the interface line (it has different field count)
         if [ "$endpoint" != "(none)" ]; then
             echo "$TIMESTAMP peer=$pubkey endpoint=$endpoint rx_bytes=$rx tx_bytes=$tx"
@@ -98,8 +98,8 @@ sudo iftop -i wg0 -n -f "ip"
 # Run the wireguard-exporter for Prometheus metrics
 docker run -d \
   --name wg-exporter \
+  --net=host \
   --cap-add=NET_ADMIN \
-  -p 9586:9586 \
   mindflavor/prometheus-wireguard-exporter
 
 # Scrape configuration for Prometheus
