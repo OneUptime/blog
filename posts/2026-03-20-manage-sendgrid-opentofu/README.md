@@ -16,8 +16,8 @@ The SendGrid provider for OpenTofu manages API keys, domain authentication, IP p
 terraform {
   required_providers {
     sendgrid = {
-      source  = "davidji99/sendgrid"
-      version = "~> 0.2"
+      source  = "kenzo0107/sendgrid"
+      version = "~> 2.8"
     }
   }
 }
@@ -37,8 +37,6 @@ resource "sendgrid_api_key" "app_transactional" {
 
   scopes = [
     "mail.send",
-    "suppressions.read",
-    "suppression_groups.read",
   ]
 }
 
@@ -47,9 +45,14 @@ resource "sendgrid_api_key" "template_manager" {
   name = "template-manager-cicd"
 
   scopes = [
-    "templates.read",
-    "templates.write",
+    "templates.create",
     "templates.delete",
+    "templates.read",
+    "templates.update",
+    "templates.versions.create",
+    "templates.versions.delete",
+    "templates.versions.read",
+    "templates.versions.update",
   ]
 }
 
@@ -67,47 +70,63 @@ resource "aws_secretsmanager_secret_version" "sendgrid_api_key" {
 ## Domain Authentication
 
 ```hcl
-resource "sendgrid_domain_authentication" "main" {
-  domain            = "mail.example.com"
-  subdomain         = "em"
-  is_default        = true
-  automatic_security = true
+resource "sendgrid_sender_authentication" "main" {
+  domain    = "example.com"
+  subdomain = "em"
+  default   = true
+}
+
+locals {
+  sendgrid_sender_authentication_dns = {
+    dkim1 = one([
+      for record in sendgrid_sender_authentication.main.dns : record
+      if startswith(record.host, "s1._domainkey.")
+    ])
+    dkim2 = one([
+      for record in sendgrid_sender_authentication.main.dns : record
+      if startswith(record.host, "s2._domainkey.")
+    ])
+    mail_cname = one([
+      for record in sendgrid_sender_authentication.main.dns : record
+      if !startswith(record.host, "s1._domainkey.") && !startswith(record.host, "s2._domainkey.")
+    ])
+  }
 }
 
 # Create the required DNS records via OpenTofu
-# sendgrid_domain_authentication outputs the DNS records to create
+# sendgrid_sender_authentication outputs the DNS records to create
 resource "aws_route53_record" "sendgrid_dkim1" {
   zone_id = data.aws_route53_zone.main.zone_id
-  name    = sendgrid_domain_authentication.main.dns[0].host
-  type    = "CNAME"
+  name    = local.sendgrid_sender_authentication_dns.dkim1.host
+  type    = upper(local.sendgrid_sender_authentication_dns.dkim1.type)
   ttl     = 300
-  records = [sendgrid_domain_authentication.main.dns[0].data]
+  records = [local.sendgrid_sender_authentication_dns.dkim1.data]
 }
 
 resource "aws_route53_record" "sendgrid_dkim2" {
   zone_id = data.aws_route53_zone.main.zone_id
-  name    = sendgrid_domain_authentication.main.dns[1].host
-  type    = "CNAME"
+  name    = local.sendgrid_sender_authentication_dns.dkim2.host
+  type    = upper(local.sendgrid_sender_authentication_dns.dkim2.type)
   ttl     = 300
-  records = [sendgrid_domain_authentication.main.dns[1].data]
+  records = [local.sendgrid_sender_authentication_dns.dkim2.data]
 }
 
 resource "aws_route53_record" "sendgrid_mail_cname" {
   zone_id = data.aws_route53_zone.main.zone_id
-  name    = sendgrid_domain_authentication.main.dns[2].host
-  type    = "CNAME"
+  name    = local.sendgrid_sender_authentication_dns.mail_cname.host
+  type    = upper(local.sendgrid_sender_authentication_dns.mail_cname.type)
   ttl     = 300
-  records = [sendgrid_domain_authentication.main.dns[2].data]
+  records = [local.sendgrid_sender_authentication_dns.mail_cname.data]
 }
 ```
 
-## Sender Authentication
+## Link Branding
 
 ```hcl
 resource "sendgrid_link_branding" "main" {
-  domain    = "click.example.com"
-  subdomain = "email"
-  is_default = true
+  domain    = "example.com"
+  subdomain = "click"
+  default   = true
 }
 ```
 
@@ -116,10 +135,12 @@ resource "sendgrid_link_branding" "main" {
 ```hcl
 resource "sendgrid_ip_pool" "transactional" {
   name = "transactional"
+  ips  = var.transactional_ips
 }
 
 resource "sendgrid_ip_pool" "marketing" {
   name = "marketing"
+  ips  = var.marketing_ips
 }
 ```
 
@@ -143,7 +164,7 @@ resource "sendgrid_unsubscribe_group" "product_updates" {
 
 ```hcl
 output "sendgrid_domain_authenticated" {
-  value = sendgrid_domain_authentication.main.valid
+  value = sendgrid_sender_authentication.main.valid
 }
 
 output "transactional_api_key_name" {
