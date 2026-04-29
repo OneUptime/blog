@@ -29,8 +29,6 @@ terraform {
 }
 
 provider "confluent" {
-  cloud_api_key    = var.confluent_cloud_api_key
-  cloud_api_secret = var.confluent_cloud_api_secret
 }
 ```
 
@@ -48,12 +46,12 @@ resource "confluent_environment" "staging" {
   display_name = "staging"
 }
 
-resource "confluent_kafka_cluster" "basic" {
+resource "confluent_kafka_cluster" "standard" {
   display_name = "app-kafka-cluster"
   availability = "SINGLE_ZONE"
   cloud        = "AWS"
   region       = "us-east-1"
-  basic {}
+  standard {}
 
   environment {
     id = confluent_environment.staging.id
@@ -64,6 +62,10 @@ resource "confluent_kafka_cluster" "basic" {
 For a dedicated cluster with higher throughput:
 
 ```hcl
+resource "confluent_environment" "production" {
+  display_name = "production"
+}
+
 resource "confluent_kafka_cluster" "dedicated" {
   display_name = "prod-kafka-cluster"
   availability = "MULTI_ZONE"
@@ -85,17 +87,16 @@ resource "confluent_kafka_cluster" "dedicated" {
 ```hcl
 resource "confluent_kafka_topic" "orders" {
   kafka_cluster {
-    id = confluent_kafka_cluster.basic.id
+    id = confluent_kafka_cluster.standard.id
   }
 
   topic_name       = "orders"
-  rest_endpoint    = confluent_kafka_cluster.basic.rest_endpoint
+  rest_endpoint    = confluent_kafka_cluster.standard.rest_endpoint
   partitions_count = 6
 
   config = {
-    "cleanup.policy"  = "delete"
-    "retention.ms"    = "604800000"  # 7 days
-    "compression.type" = "lz4"
+    "cleanup.policy" = "delete"
+    "retention.ms"   = "604800000" # 7 days
   }
 
   credentials {
@@ -108,6 +109,36 @@ resource "confluent_kafka_topic" "orders" {
 ## Service Accounts and API Keys
 
 ```hcl
+resource "confluent_service_account" "app_manager" {
+  display_name = "app-manager"
+  description  = "Service account for managing Kafka topics"
+}
+
+resource "confluent_api_key" "app_manager" {
+  display_name = "app-manager-kafka-api-key"
+  description  = "Kafka API Key for app-manager service account"
+
+  owner {
+    id          = confluent_service_account.app_manager.id
+    api_version = confluent_service_account.app_manager.api_version
+    kind        = confluent_service_account.app_manager.kind
+  }
+
+  managed_resource {
+    id          = confluent_kafka_cluster.standard.id
+    api_version = confluent_kafka_cluster.standard.api_version
+    kind        = confluent_kafka_cluster.standard.kind
+
+    environment {
+      id = confluent_environment.staging.id
+    }
+  }
+
+  depends_on = [
+    confluent_role_binding.app_manager_cluster_admin
+  ]
+}
+
 resource "confluent_service_account" "app_producer" {
   display_name = "app-producer"
   description  = "Service account for the orders producer application"
@@ -124,9 +155,9 @@ resource "confluent_api_key" "app_producer" {
   }
 
   managed_resource {
-    id          = confluent_kafka_cluster.basic.id
-    api_version = confluent_kafka_cluster.basic.api_version
-    kind        = confluent_kafka_cluster.basic.kind
+    id          = confluent_kafka_cluster.standard.id
+    api_version = confluent_kafka_cluster.standard.api_version
+    kind        = confluent_kafka_cluster.standard.kind
 
     environment {
       id = confluent_environment.staging.id
@@ -137,29 +168,33 @@ resource "confluent_api_key" "app_producer" {
 
 ## Role Bindings and ACLs
 
-Grant a service account producer access to a specific topic:
+Grant one service account cluster-admin access for topic management and another producer access to a specific topic:
 
 ```hcl
+resource "confluent_role_binding" "app_manager_cluster_admin" {
+  principal   = "User:${confluent_service_account.app_manager.id}"
+  role_name   = "CloudClusterAdmin"
+  crn_pattern = confluent_kafka_cluster.standard.rbac_crn
+}
+
 resource "confluent_role_binding" "app_producer_write" {
   principal   = "User:${confluent_service_account.app_producer.id}"
   role_name   = "DeveloperWrite"
-  crn_pattern = "${confluent_kafka_cluster.basic.rbac_crn}/kafka=${confluent_kafka_cluster.basic.id}/topic=${confluent_kafka_topic.orders.topic_name}"
+  crn_pattern = "${confluent_kafka_cluster.standard.rbac_crn}/kafka=${confluent_kafka_cluster.standard.id}/topic=${confluent_kafka_topic.orders.topic_name}"
 }
 ```
 
 ## Schema Registry
 
 ```hcl
-resource "confluent_schema_registry_cluster" "essentials" {
-  package = "ESSENTIALS"
-
+data "confluent_schema_registry_cluster" "essentials" {
   environment {
     id = confluent_environment.staging.id
   }
 
-  region {
-    id = data.confluent_schema_registry_region.us_east.id
-  }
+  depends_on = [
+    confluent_kafka_cluster.standard
+  ]
 }
 ```
 
@@ -167,7 +202,7 @@ resource "confluent_schema_registry_cluster" "essentials" {
 
 ```hcl
 output "kafka_bootstrap_endpoint" {
-  value = confluent_kafka_cluster.basic.bootstrap_endpoint
+  value = confluent_kafka_cluster.standard.bootstrap_endpoint
 }
 
 output "producer_api_key" {
@@ -186,9 +221,9 @@ output "producer_api_secret" {
 - Use separate Confluent environments for dev, staging, and production.
 - Mark API secrets as sensitive outputs and store them in a secrets manager.
 - Set topic retention policies based on your data lifecycle requirements.
-- Use dedicated clusters for production workloads requiring SLA guarantees.
+- Use dedicated clusters for critical production workloads with higher throughput or private networking requirements.
 - Assign fine-grained role bindings rather than broad admin access.
 
 ## Conclusion
 
-The Confluent OpenTofu provider enables full lifecycle management of Kafka infrastructure as code. From cluster creation to topic configuration and access control, you can manage your entire event streaming platform with the same workflows used for the rest of your infrastructure.
+The official Confluent provider works with OpenTofu to enable full lifecycle management of Kafka infrastructure as code. From cluster creation to topic configuration and access control, you can manage your entire event streaming platform with the same workflows used for the rest of your infrastructure.
