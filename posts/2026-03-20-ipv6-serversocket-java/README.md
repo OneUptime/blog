@@ -15,7 +15,7 @@ import java.net.*;
 public class IPv6TCPServer {
 
     public static void main(String[] args) throws IOException {
-        // Bind to [::]:8080 - accepts both IPv4 and IPv6 on dual-stack
+        // Bind to [::]:8080 - on dual-stack systems this can accept both IPv4 and IPv6
         InetAddress bindAddr = InetAddress.getByName("::");
         ServerSocket server = new ServerSocket(8080, 50, bindAddr);
 
@@ -49,82 +49,55 @@ public class IPv6TCPServer {
 
 ## IPv6-Only Server (Disable Dual-Stack)
 
-On some systems, `ServerSocket` on `[::]` also accepts IPv4. To force IPv6-only, use `ServerSocketChannel` and set `IPV6_V6ONLY`:
+On dual-stack systems, binding to `[::]` may also accept IPv4. Java SE does not currently expose `IPV6_V6ONLY`, so the portable way to avoid dual-stack wildcard behavior is to bind to a specific IPv6 address instead of `::`:
 
 ```java
 import java.io.IOException;
 import java.net.*;
-import java.nio.channels.*;
 
 public class IPv6OnlyServer {
 
     public static void main(String[] args) throws IOException {
-        ServerSocketChannel channel = ServerSocketChannel.open();
+        // Replace ::1 with your server's assigned IPv6 address for a non-loopback server
+        InetAddress bindAddr = InetAddress.getByName("::1");
+        ServerSocket server = new ServerSocket(8080, 50, bindAddr);
 
-        // Set IPV6_V6ONLY socket option
-        channel.setOption(StandardSocketOptions.IP_MULTICAST_IF,
-            NetworkInterface.getByIndex(0));
-        // For IPV6_V6ONLY, use the extended socket options API (Java 17+)
-
-        channel.bind(new InetSocketAddress("::", 8080));
-        channel.configureBlocking(true);
-
-        System.out.println("IPv6 server on " + channel.getLocalAddress());
+        System.out.println("IPv6 server on " + server.getLocalSocketAddress());
 
         while (true) {
-            SocketChannel client = channel.accept();
-            InetSocketAddress peer = (InetSocketAddress) client.getRemoteAddress();
-            System.out.println("Client: " + peer.getAddress().getHostAddress());
+            Socket client = server.accept();
+            System.out.println("Client: " + client.getInetAddress().getHostAddress());
             client.close();
         }
     }
 }
 ```
 
-## Extracting Real Client IPv6 from Dual-Stack
+## Getting the Client IP on Dual-Stack
 
-When a dual-stack server receives an IPv4 connection, Java presents it as an IPv4-mapped IPv6 address:
+At the native socket layer, dual-stack sockets may use IPv4-mapped IPv6 addresses internally. Java does not return those mapped addresses to application code, so `socket.getInetAddress()` is usually the value you want to log directly:
 
 ```java
 import java.net.*;
 
 public class ClientIPExtractor {
 
-    public static InetAddress getRealClientIP(Socket socket) {
-        InetAddress addr = socket.getInetAddress();
-
-        // IPv4-mapped IPv6: ::ffff:x.x.x.x
-        if (addr instanceof Inet6Address) {
-            byte[] b = addr.getAddress();
-            // Check if this is an IPv4-mapped address (bytes 0-9 are 0, 10-11 are 0xff)
-            boolean mapped = true;
-            for (int i = 0; i < 10; i++) {
-                if (b[i] != 0) { mapped = false; break; }
-            }
-            if (mapped && b[10] == (byte)0xff && b[11] == (byte)0xff) {
-                // Extract IPv4
-                byte[] ipv4 = new byte[]{b[12], b[13], b[14], b[15]};
-                try {
-                    return InetAddress.getByAddress(ipv4);
-                } catch (UnknownHostException e) {
-                    // fallthrough
-                }
-            }
-        }
-
-        return addr;
+    public static InetAddress getClientIP(Socket socket) {
+        return socket.getInetAddress();
     }
 
     public static void main(String[] args) throws Exception {
-        // Simulate: a Socket with address ::ffff:192.168.1.1
-        InetAddress mapped = InetAddress.getByName("::ffff:192.168.1.1");
-        System.out.println("Mapped: " + mapped.getHostAddress());
-        // getRealClientIP would return 192.168.1.1
+        InetAddress addr = InetAddress.getByName("::ffff:192.168.1.1");
+        System.out.println(addr.getClass().getSimpleName());
+        System.out.println(addr.getHostAddress());
+        // Prints Inet4Address and 192.168.1.1
     }
 }
 ```
 
 ## NIO Non-Blocking IPv6 Server
+
+This uses the same binding behavior as `ServerSocket`: on a dual-stack system, binding to `::` may also accept IPv4 clients.
 
 ```java
 import java.io.IOException;
@@ -180,4 +153,4 @@ public class NIOIPv6Server {
 
 ## Conclusion
 
-Java's `ServerSocket` supports IPv6 by binding to `InetAddress.getByName("::")`. For IPv6-only sockets, use `ServerSocketChannel` with NIO and configure `IPV6_V6ONLY`. Dual-stack connections present IPv4 clients as IPv4-mapped `::ffff:x.x.x.x` - detect and unwrap these for accurate client IP logging. NIO's `Selector` provides event-driven I/O for high-concurrency IPv6 servers without one thread per connection.
+Java's `ServerSocket` supports IPv6 by binding to `InetAddress.getByName("::")`. On dual-stack systems, that wildcard bind can also accept IPv4 unless you bind to a specific IPv6 address or change socket behavior outside the Java SE API. Java also normalizes IPv4-mapped addresses before returning them to application code, so `socket.getInetAddress()` is usually the correct client IP to log. NIO's `Selector` provides event-driven I/O for high-concurrency IPv6 servers without one thread per connection.
