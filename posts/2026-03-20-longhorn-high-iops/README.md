@@ -29,13 +29,17 @@ Add the NVMe disk to Longhorn via the UI or:
 
 ```yaml
 # Add a disk to the Longhorn node
-kubectl patch lhnode <node-name> -n longhorn-system --type merge -p '{
+kubectl patch node.longhorn.io <node-name> -n longhorn-system --type merge -p '{
   "spec": {
     "disks": {
       "nvme-disk": {
         "path": "/var/lib/longhorn-nvme",
         "allowScheduling": true,
-        "storageReserved": 10737418240
+        "diskType": "filesystem",
+        "diskDriver": "",
+        "evictionRequested": false,
+        "storageReserved": 10737418240,
+        "tags": []
       }
     }
   }
@@ -46,7 +50,7 @@ kubectl patch lhnode <node-name> -n longhorn-system --type merge -p '{
 
 ## Step 2: Enable Data Locality
 
-Data locality ensures the volume's primary replica is on the same node as the pod. This eliminates cross-node network overhead for reads:
+With `best-effort`, Longhorn tries to keep a replica on the same node as the pod. When a local replica is available, reads avoid cross-node network hops:
 
 ```yaml
 # storageclass-high-iops.yaml
@@ -58,7 +62,7 @@ provisioner: driver.longhorn.io
 parameters:
   numberOfReplicas: "2"   # Reduce from 3 to 2 for higher performance
   staleReplicaTimeout: "2880"
-  # "best-effort" places the primary replica on the same node as the pod
+  # "best-effort" tries to co-locate a replica with the pod
   dataLocality: "best-effort"
   # Disable revision counter for slightly better write performance
   disableRevisionCounter: "true"
@@ -66,27 +70,21 @@ parameters:
 
 ---
 
-## Step 3: Optimize Longhorn Settings for IOPS
+## Step 3: Adjust Longhorn Capacity Settings
 
 ```bash
 # Set storage over-provisioning to match your workload
-kubectl patch setting.longhorn.io storage-over-provisioning-percentage \
+kubectl patch settings.longhorn.io storage-over-provisioning-percentage \
   -n longhorn-system \
   --type merge \
   -p '{"value":"100"}'
-
-# Enable I/O metrics for monitoring
-kubectl patch setting.longhorn.io allow-collecting-longhorn-usage-metrics \
-  -n longhorn-system \
-  --type merge \
-  -p '{"value":"true"}'
 ```
 
 ---
 
-## Step 4: Configure Pod Affinity for Data Locality
+## Step 4: Configure Node Affinity to Prefer Storage Nodes
 
-For guaranteed co-location of pod and primary replica, use pod affinity:
+Node affinity complements Longhorn data locality by steering the workload toward nodes labeled for storage:
 
 ```yaml
 spec:
@@ -104,12 +102,12 @@ spec:
 
 ---
 
-## Step 5: Use Volume LiveMigration for StatefulSets
+## Step 5: Use a Dedicated StorageClass for StatefulSets
 
 For StatefulSets using Longhorn, configure a dedicated StorageClass:
 
 ```yaml
-# StatefulSet with high-IOPS storage
+# StatefulSet excerpt using high-IOPS storage
 apiVersion: apps/v1
 kind: StatefulSet
 metadata:
@@ -143,5 +141,4 @@ kubectl run fio-test \
 ## Best Practices
 
 - Use a replica count of 2 instead of 3 for write-heavy workloads where IOPS matters more than maximum redundancy.
-- Enable `dataLocality: strict` for databases - this forces the primary replica to the pod's node.
-- Pre-warm volumes before benchmarking - Longhorn caches improve IOPS over time.
+- Use `dataLocality: best-effort` for replicated database volumes. Reserve `strict-local` for workloads that can run with `numberOfReplicas: "1"`.
