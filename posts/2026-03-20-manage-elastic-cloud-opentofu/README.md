@@ -8,7 +8,7 @@ Description: Learn how to manage Elastic Cloud deployments, Elasticsearch cluste
 
 ## Introduction
 
-The Elastic Cloud provider for OpenTofu manages Elastic Cloud deployments including Elasticsearch clusters, Kibana instances, APM servers, and enterprise search. This enables treating your search and observability infrastructure as code.
+The Elastic Cloud provider for OpenTofu manages Elastic Cloud deployments including Elasticsearch clusters, Kibana instances, Integrations Server, and Enterprise Search. This enables treating your search and observability infrastructure as code.
 
 ## Provider Configuration
 
@@ -17,11 +17,11 @@ terraform {
   required_providers {
     ec = {
       source  = "elastic/ec"
-      version = "~> 0.9"
+      version = "~> 0.12"
     }
     elasticstack = {
       source  = "elastic/elasticstack"
-      version = "~> 0.11"
+      version = "~> 0.14"
     }
   }
 }
@@ -34,44 +34,37 @@ provider "ec" {
 ## Creating an Elastic Cloud Deployment
 
 ```hcl
-# Get the latest deployment template for AWS
-
-data "ec_deployment_template" "aws" {
-  id     = "aws-storage-optimized"
+# Get the latest supported Elastic Stack version for AWS us-east-1
+data "ec_stack" "latest" {
+  version_regex = "latest"
   region = "us-east-1"
 }
 
 resource "ec_deployment" "main" {
   name                   = "prod-search"
   region                 = "us-east-1"
-  version                = "8.12.0"
-  deployment_template_id = data.ec_deployment_template.aws.id
+  version                = data.ec_stack.latest.version
+  deployment_template_id = "aws-io-optimized-v2"
 
-  elasticsearch {
-    hot {
-      autoscaling {}
+  elasticsearch = {
+    hot = {
+      autoscaling = {}
       size        = "4g"
       zone_count  = 2
     }
-    warm {
-      autoscaling {}
-      size       = "2g"
+    warm = {
+      autoscaling = {}
+      size        = "2g"
       zone_count = 2
-    }
-    config {
-      plugins = []
     }
   }
 
-  kibana {
+  kibana = {
     size       = "1g"
     zone_count = 1
   }
 
-  apm {
-    size       = "0.5g"
-    zone_count = 1
-  }
+  integrations_server = {}
 
   tags = {
     Environment = "production"
@@ -80,11 +73,11 @@ resource "ec_deployment" "main" {
 }
 
 output "elasticsearch_endpoint" {
-  value = ec_deployment.main.elasticsearch[0].https_endpoint
+  value = ec_deployment.main.elasticsearch.https_endpoint
 }
 
 output "kibana_endpoint" {
-  value = ec_deployment.main.kibana[0].https_endpoint
+  value = ec_deployment.main.kibana.https_endpoint
 }
 ```
 
@@ -93,9 +86,15 @@ output "kibana_endpoint" {
 ```hcl
 provider "elasticstack" {
   elasticsearch {
-    endpoints = [ec_deployment.main.elasticsearch[0].https_endpoint]
-    username  = ec_deployment.main.elasticsearch[0].username
-    password  = ec_deployment.main.elasticsearch[0].password
+    endpoints = [ec_deployment.main.elasticsearch.https_endpoint]
+    username  = ec_deployment.main.elasticsearch_username
+    password  = ec_deployment.main.elasticsearch_password
+  }
+
+  kibana {
+    endpoints = [ec_deployment.main.kibana.https_endpoint]
+    username  = ec_deployment.main.elasticsearch_username
+    password  = ec_deployment.main.elasticsearch_password
   }
 }
 
@@ -106,10 +105,9 @@ resource "elasticstack_elasticsearch_index_template" "logs" {
 
   template {
     settings = jsonencode({
-      number_of_shards   = 1
+      number_of_shards   = 2
       number_of_replicas = 1
-      "index.lifecycle.name"      = "logs-policy"
-      "index.lifecycle.rollover_alias" = "app-logs"
+      "index.lifecycle.name" = "logs-policy"
     })
 
     mappings = jsonencode({
@@ -138,10 +136,6 @@ resource "elasticstack_elasticsearch_index_lifecycle" "logs" {
     min_age = "0ms"
     set_priority {
       priority = 100
-    }
-    rollover {
-      max_age             = "7d"
-      max_primary_shard_size = "50gb"
     }
   }
 
@@ -179,7 +173,7 @@ resource "elasticstack_kibana_space" "engineering" {
   space_id         = "engineering"
   name             = "Engineering"
   description      = "Engineering team workspace"
-  disabled_features = ["ml", "canvas"]
+  disabled_features = ["discover", "apm"]
 }
 ```
 
