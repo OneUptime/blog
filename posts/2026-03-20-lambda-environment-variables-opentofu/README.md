@@ -63,10 +63,10 @@ resource "aws_lambda_function" "app" {
       CACHE_TTL_SECONDS    = "300"
 
       # References to secrets - store actual secret in Secrets Manager
-      # Lambda fetches the secret at runtime using this ARN
+      # Your function code fetches the secret at runtime using this ARN
       SECRET_ARN           = aws_secretsmanager_secret.app.arn
 
-      # SSM Parameter paths - Lambda fetches values at runtime
+      # SSM Parameter paths - your function code fetches values at runtime
       DB_CONFIG_PATH       = "/app/${var.environment}/database/config"
       API_KEY_PATH         = "/app/${var.environment}/api/key"
 
@@ -100,6 +100,8 @@ resource "aws_secretsmanager_secret" "app" {
 
 resource "aws_secretsmanager_secret_version" "app" {
   secret_id = aws_secretsmanager_secret.app.id
+  # Values passed via secret_string are stored in OpenTofu state,
+  # so protect your state backend and state access.
   secret_string = jsonencode({
     db_password  = var.db_password
     api_key      = var.api_key
@@ -168,4 +170,4 @@ tofu apply
 
 ## Conclusion
 
-Never store actual secret values directly in Lambda environment variables-they are visible in the AWS console and logs. Instead, store sensitive values in Secrets Manager or SSM Parameter Store and pass only the ARN or path as environment variables. Fetch secrets at cold start and cache them in memory to minimize Secrets Manager API calls and latency on subsequent invocations.
+Never store actual secret values directly in Lambda environment variables-they can be viewed by users who have permission to read function configuration in the AWS console. Instead, store sensitive values in Secrets Manager or SSM Parameter Store and pass only the ARN or path as environment variables. If you provision secret values with `secret_string`, remember that OpenTofu stores resource attributes in state, so protect your state backend appropriately. Fetch secrets at cold start and cache them in memory to minimize Secrets Manager API calls and latency on subsequent invocations.
