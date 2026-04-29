@@ -21,8 +21,8 @@ broker.id=1
 
 listeners=CLIENT://10.0.0.1:9092,BROKER://10.0.0.1:9091
 
-# What clients see
-advertised.listeners=CLIENT://10.0.0.1:9092
+# Advertise both endpoints; clients use CLIENT, brokers use BROKER
+advertised.listeners=CLIENT://10.0.0.1:9092,BROKER://10.0.0.1:9091
 
 # Map listener names to security protocols
 listener.security.protocol.map=CLIENT:PLAINTEXT,BROKER:PLAINTEXT
@@ -35,7 +35,7 @@ inter.broker.listener.name=BROKER
 # Broker 2: 10.0.0.2
 broker.id=2
 listeners=CLIENT://10.0.0.2:9092,BROKER://10.0.0.2:9091
-advertised.listeners=CLIENT://10.0.0.2:9092
+advertised.listeners=CLIENT://10.0.0.2:9092,BROKER://10.0.0.2:9091
 listener.security.protocol.map=CLIENT:PLAINTEXT,BROKER:PLAINTEXT
 inter.broker.listener.name=BROKER
 ```
@@ -43,12 +43,13 @@ inter.broker.listener.name=BROKER
 ## Zookeeper or KRaft for Controller
 
 ```properties
-# KRaft mode (Kafka 3.3+) - no Zookeeper needed
+# KRaft mode with a static controller quorum - no ZooKeeper needed
 # Controller communication uses a dedicated port too
 process.roles=broker,controller
 node.id=1
 
 listeners=CLIENT://10.0.0.1:9092,BROKER://10.0.0.1:9091,CONTROLLER://10.0.0.1:9093
+advertised.listeners=CLIENT://10.0.0.1:9092,BROKER://10.0.0.1:9091
 
 listener.security.protocol.map=CLIENT:PLAINTEXT,BROKER:PLAINTEXT,CONTROLLER:PLAINTEXT
 
@@ -92,7 +93,7 @@ kafka-topics.sh --bootstrap-server 10.0.0.1:9092 --describe --topic my-topic
 # Check broker connectivity
 kafka-broker-api-versions.sh --bootstrap-server 10.0.0.1:9091
 
-# Monitor replication lag
+# Check consumer lag separately
 kafka-consumer-groups.sh --bootstrap-server 10.0.0.1:9092 \
   --describe --group my-group
 
@@ -102,4 +103,4 @@ sudo grep -i "replica\|fetch\|leader" /var/log/kafka/server.log | tail -20
 
 ## Conclusion
 
-Separate Kafka client and inter-broker traffic using dedicated listeners (e.g., CLIENT on port 9092, BROKER on port 9091). Set `inter.broker.listener.name=BROKER` so broker-to-broker replication uses the internal listener. Apply firewall rules to allow port 9091 only between broker IPs and block it from client networks. In KRaft mode, add a CONTROLLER listener for the metadata quorum traffic.
+Separate Kafka client and inter-broker traffic using dedicated listeners (e.g., CLIENT on port 9092, BROKER on port 9091), and advertise both listeners so clients use CLIENT while brokers use BROKER. Set `inter.broker.listener.name=BROKER` so broker-to-broker replication uses the internal listener. Apply firewall rules to allow port 9091 only between broker IPs and block it from client networks. In KRaft mode, add a CONTROLLER listener for the metadata quorum traffic.
