@@ -17,8 +17,8 @@ Mobile IPv6 introduces a set of specialized terms that differ from standard IPv6
 The Home Address is the permanent, topologically fixed IPv6 address assigned to the Mobile Node. It belongs to the home network prefix.
 
 ```text
-Home Network Prefix: 2001:db8:home::/64
-Mobile Node HoA:     2001:db8:home::100
+Home Network Prefix: 2001:db8:1::/64
+Mobile Node HoA:     2001:db8:1::100
 ```
 
 - Applications always use the HoA
@@ -30,8 +30,8 @@ Mobile Node HoA:     2001:db8:home::100
 The Care-of Address is the temporary address the Mobile Node acquires at its current point of attachment (the foreign network).
 
 ```text
-Foreign Network Prefix: 2001:db8:foreign::/64
-Mobile Node CoA:        2001:db8:foreign::50 (assigned via SLAAC/DHCPv6)
+Foreign Network Prefix: 2001:db8:2::/64
+Mobile Node CoA:        2001:db8:2::50 (assigned via SLAAC/DHCPv6)
 ```
 
 There are two types:
@@ -71,8 +71,8 @@ A binding is a mapping between a Mobile Node's HoA and its current CoA, along wi
 
 ```text
 Binding Entry Example:
-  HoA:       2001:db8:home::100
-  CoA:       2001:db8:foreign::50
+  HoA:       2001:db8:1::100
+  CoA:       2001:db8:2::50
   Lifetime:  600 seconds
   Sequence:  47
 ```
@@ -85,9 +85,9 @@ Sent by the MN to the HA (and optionally to CNs) to register a new CoA.
 BU Message Fields:
   Sequence Number: monotonically increasing (replay protection)
   Lifetime:        registration lifetime in 4-second units
-  K flag:          request BA
+  A flag:          acknowledge requested (BA expected)
   H flag:          sent to Home Agent (not CN)
-  A flag:          acknowledge requested
+  K flag:          Key Management Mobility Capability
 ```
 
 ### Binding Acknowledgement (BA)
@@ -120,7 +120,7 @@ class MobileIPv6:
             coa=care_of_address,
             lifetime=lifetime,
             h_flag=True,  # Home registration
-            k_flag=True,  # Request acknowledgement
+            a_flag=True,  # Request acknowledgement
         )
         self.send_to_home_agent(bu)
 
