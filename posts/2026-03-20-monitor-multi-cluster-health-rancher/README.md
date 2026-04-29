@@ -76,11 +76,17 @@ sum(increase(kube_pod_container_status_restarts_total[1h])) by (cluster, namespa
 
 ## Step 3: Set Up a Central Grafana Multi-Cluster Dashboard
 
-Import a pre-built multi-cluster overview dashboard or create one with:
+Import a pre-built multi-cluster overview dashboard from Grafana.com (e.g. dashboard ID 15757) by using the Grafana UI (Dashboards → New → Import) or the HTTP API:
 
 ```bash
-# Import from Grafana dashboard ID 15757
-grafana-cli dashboards import 15757
+# Download the dashboard JSON from grafana.com and POST it to your Grafana instance
+DASHBOARD_JSON=$(curl -s https://grafana.com/api/dashboards/15757/revisions/1/download)
+
+curl -X POST \
+  -H "Authorization: Bearer $GRAFANA_API_KEY" \
+  -H "Content-Type: application/json" \
+  -d "{\"dashboard\": $DASHBOARD_JSON, \"overwrite\": true}" \
+  https://grafana.example.com/api/dashboards/db
 ```
 
 Add a `cluster` variable to all panels:
@@ -142,9 +148,11 @@ spec:
 Monitor Fleet bundle sync status to know if configuration drift has occurred:
 
 ```bash
-# Clusters with unhealthy bundle deployments
-kubectl get bundledeployment -n fleet-default \
-  -o jsonpath='{range .items[?(@.status.ready==false)]}{.metadata.name}{"\n"}{end}'
+# Clusters with unhealthy bundle deployments.
+# BundleDeployments live in per-cluster registration namespaces
+# (cluster-${namespace}-${cluster}-${random}), so query across all namespaces.
+kubectl get bundledeployment -A \
+  -o jsonpath='{range .items[?(@.status.ready==false)]}{.metadata.namespace}/{.metadata.name}{"\n"}{end}'
 ```
 
 ---
