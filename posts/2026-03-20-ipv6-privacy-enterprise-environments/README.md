@@ -29,18 +29,21 @@ The goal is a policy that provides privacy against external observers while pres
 For employee devices, the primary concern is tracking by external websites and services, not internal network visibility.
 
 **Recommended approach:**
-- Enable RFC 7217 stable-privacy addresses (stable within the enterprise network, different on external networks)
+- Enable RFC 7217 stable-privacy addresses (stable within a given network, different across different networks)
 - Maintain internal DNS records mapped to the stable address
-- Allow IPAM/DHCP to record the stable IID for asset management
+- Allow IPAM to record the stable address for asset management
 
 ```bash
-# On enterprise workstations: use stable-privacy (not rotating temp addresses)
+# On enterprise workstations: keep a stable RFC 7217 address for manageability
+# and prefer temporary addresses for outbound client traffic
 
-# addr_gen_mode=2 gives a stable-but-opaque IID that cannot be reverse-engineered
-# from the MAC address, yet is stable enough for IPAM and incident response
+# addr_gen_mode=2 uses RFC 7217 stable IIDs; this relies on a host-specific
+# stable_secret that should be provisioned during OS installation/imaging
 
 sudo sysctl -w net.ipv6.conf.default.addr_gen_mode=2
 sudo sysctl -w net.ipv6.conf.all.addr_gen_mode=2
+sudo sysctl -w net.ipv6.conf.default.use_tempaddr=2
+sudo sysctl -w net.ipv6.conf.all.use_tempaddr=2
 ```
 
 ## Use Case 2: Servers and Infrastructure
@@ -52,7 +55,7 @@ Servers should NOT use privacy extensions - they need stable, predictable addres
 # Use static addressing or DHCPv6 with stable assignments
 sudo sysctl -w net.ipv6.conf.default.use_tempaddr=0
 sudo sysctl -w net.ipv6.conf.all.use_tempaddr=0
-# addr_gen_mode=2 is still fine for static-privacy, just disable temp addresses
+# If a server still uses SLAAC, addr_gen_mode=2 avoids MAC-derived IIDs
 ```
 
 ## Use Case 3: Guest Networks and BYOD
@@ -61,13 +64,14 @@ Guest Wi-Fi and BYOD networks benefit most from strong privacy:
 
 ```ini
 # radvd configuration for guest network
-# Encourage clients to use short-lived addresses
+# Short prefix lifetimes cause SLAAC addresses from this prefix to deprecate sooner
 interface guest0 {
     AdvSendAdvert on;
-    prefix 2001:db8:guest::/64 {
+    prefix 2001:db8:100::/64 {
         AdvOnLink on;
         AdvAutonomous on;
-        # Short preferred lifetime encourages faster address rotation
+        # Short preferred lifetime makes addresses from this prefix become
+        # deprecated sooner on clients
         AdvPreferredLifetime 3600;
         AdvValidLifetime 14400;
     };
@@ -96,12 +100,12 @@ ip -6 neigh show | grep "2001:db8:"
 
 | Regulation | Relevance to IPv6 Privacy |
 |---|---|
-| GDPR | IPv6 addresses are personal data if they can identify an individual |
-| CCPA | Similar to GDPR for California |
-| HIPAA | Requires controlling access to patient systems - stable IIDs aid audit trails |
-| PCI DSS | Stable addressing required for cardholder data environment systems |
+| GDPR | IPv6 addresses can be personal data if they can identify an individual |
+| CCPA | Internet Protocol addresses are explicitly listed as personal information |
+| HIPAA | Audit controls and access controls matter more than the specific IID scheme |
+| PCI DSS | Logging, inventory, and segmentation matter more than the specific IID scheme |
 
-For GDPR, EUI-64 addresses constitute personal data because they directly encode hardware identifiers. RFC 7217 addresses are pseudonymous - they can be de-anonymized internally but not externally.
+For GDPR, IPv6 addresses can be personal data when they are linkable to an identifiable person. Modified EUI-64 IIDs are more directly linkable because they derive from hardware identifiers; RFC 7217 addresses reduce external linkability because the IID is opaque and prefix-specific.
 
 ## Recommended Enterprise IPv6 Privacy Policy
 
@@ -114,4 +118,4 @@ For GDPR, EUI-64 addresses constitute personal data because they directly encode
 
 ## Conclusion
 
-IPv6 privacy in the enterprise is not binary. A tiered policy that applies different settings to different network segments achieves both compliance with privacy regulations and the operational visibility needed for security monitoring. The key insight is that RFC 7217 stable-privacy addresses provide external privacy (cross-network non-traceability) while remaining internally consistent enough for asset management and incident response.
+IPv6 privacy in the enterprise is not binary. A tiered policy that applies different settings to different network segments achieves both compliance with privacy regulations and the operational visibility needed for security monitoring. The key insight is that RFC 7217 stable-privacy addresses reduce MAC-derived and cross-network linkability, while temporary addresses reduce tracking of outbound client traffic, letting enterprises preserve enough consistency for asset management and incident response.
