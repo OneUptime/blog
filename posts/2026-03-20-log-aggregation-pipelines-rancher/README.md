@@ -62,13 +62,13 @@ config:
         Match         *
         Host          fluentd.observability.svc.cluster.local
         Port          24224
-        Shared_Key    changeme
 ```
 
 ```bash
 helm repo add fluent https://fluent.github.io/helm-charts
 helm install fluent-bit fluent/fluent-bit \
   --namespace observability \
+  --create-namespace \
   --values fluent-bit-values.yaml
 ```
 
@@ -78,14 +78,23 @@ Fluentd handles parsing, enrichment, and routing to multiple outputs.
 
 ```yaml
 # fluentd-values.yaml
+kind: Deployment
 replicaCount: 2
+
+service:
+  ports:
+    - name: forwarder
+      protocol: TCP
+      containerPort: 24224
+
+plugins:
+  - fluent-plugin-grafana-loki
 
 fileConfigs:
   01_sources.conf: |
     <source>
       @type forward
       port 24224
-      shared_key changeme
     </source>
 
   02_filters.conf: |
@@ -98,17 +107,6 @@ fileConfigs:
       </record>
     </filter>
 
-    <filter kube.**>
-      @type parser
-      key_name log
-      reserve_data true
-      <parse>
-        @type json
-        time_key timestamp
-        time_format %Y-%m-%dT%H:%M:%S.%NZ
-      </parse>
-    </filter>
-
   03_outputs.conf: |
     <match kube.**>
       @type loki
@@ -118,23 +116,26 @@ fileConfigs:
         app $.kubernetes.labels.app
         pod $.kubernetes.pod_name
       </label>
-      flush_interval 5s
+      <buffer>
+        flush_interval 5s
+      </buffer>
     </match>
 ```
 
 ```bash
 helm install fluentd fluent/fluentd \
   --namespace observability \
+  --create-namespace \
   --values fluentd-values.yaml
 ```
 
-## Step 3: Configure Rancher Logging via UI
+## Step 3: Manage Logging via Rancher UI
 
-Rancher provides a built-in Logging integration. Navigate to your cluster in the Rancher UI, go to **Cluster > Logging**, and configure:
+Rancher's Logging app manages logging through `Flows`, `ClusterFlows`, `Outputs`, and `ClusterOutputs`. If you want Rancher to manage the routing layer instead of the direct Helm configuration above, install the Logging app from **Apps**, then open **Cluster Management > Explore > Logging** and configure:
 
-1. Enable cluster logging
-2. Set the output to your Fluentd endpoint
-3. Configure namespace-level log filters
+1. Install the Logging app in the cluster
+2. Create an `Output` or `ClusterOutput` that points to your Fluentd or Loki endpoint
+3. Create a `Flow` or `ClusterFlow` to select which namespaces and workloads should be routed
 
 ## Step 4: Verify the Pipeline
 
@@ -146,7 +147,7 @@ kubectl logs -n observability daemonset/fluent-bit | grep "flush"
 kubectl logs -n observability deployment/fluentd | grep "chunk"
 
 # Query logs in Loki via Grafana
-# {app="myapp", namespace="production"} | json | level="error"
+# {app="myapp", namespace="my-namespace"} | json | level="error"
 ```
 
 ## Conclusion
