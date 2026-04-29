@@ -8,53 +8,46 @@ Description: Learn how to rotate TLS certificates in K3s to maintain security co
 
 ## Introduction
 
-K3s automatically generates TLS certificates during installation that expire after one year (or 90 days if they will expire within 90 days on the next restart). Certificate rotation is a critical security practice that prevents unexpected cluster outages caused by expired certificates. This guide covers both automatic and manual certificate rotation in K3s.
+K3s automatically generates TLS certificates during startup. Client and server certificates are valid for 365 days and are automatically renewed on restart if they are expired or within 120 days of expiring. Certificate rotation is a critical security practice that prevents unexpected cluster outages caused by expired certificates. This guide covers both automatic and manual certificate rotation in K3s.
 
 ## Understanding K3s Certificates
 
-K3s generates several certificates stored in `/var/lib/rancher/k3s/server/tls/`:
+On server nodes, K3s stores several control-plane and CA certificates in `/var/lib/rancher/k3s/server/tls/`:
 
 - **CA certificates**: Root of trust for the cluster
 - **API server certificates**: Secures the kube-apiserver
 - **Controller manager certificates**: For the controller-manager component
 - **Scheduler certificates**: For the kube-scheduler
 - **etcd certificates**: Secures etcd communication
-- **Kubelet certificates**: For each node's kubelet
+- **Kubelet certificates**: For the server node's kubelet
 
 ## Check Certificate Expiration
 
 Before rotating, check when your certificates expire:
 
 ```bash
-# Check all K3s certificate expiration dates
-
-for cert in /var/lib/rancher/k3s/server/tls/*.crt; do
-  echo "=== $cert ==="
-  openssl x509 -in "$cert" -noout -dates 2>/dev/null || true
-done
+# Check all node certificate expiration dates
+k3s certificate check --output table
 
 # Check specific certificate
 openssl x509 -in /var/lib/rancher/k3s/server/tls/server-ca.crt \
   -noout -text | grep -A 2 "Validity"
 
-# Quick expiry check (shows days until expiry)
+# Quick expiry check for the API server certificate
 openssl x509 -in /var/lib/rancher/k3s/server/tls/serving-kube-apiserver.crt \
   -noout -enddate
 ```
 
 ## Automatic Certificate Rotation
 
-K3s automatically rotates certificates when it restarts if they will expire within **90 days**. Simply restarting K3s triggers this:
+K3s automatically renews certificates when it restarts if they are expired or will expire within **120 days**. Simply restarting K3s triggers this:
 
 ```bash
-# Check if certificates need rotation (expiring within 90 days)
+# Restart K3s to trigger automatic renewal for certificates expiring within 120 days
 systemctl restart k3s
 
-# K3s will automatically rotate certs that expire within 90 days
-# Verify new expiration dates
-for cert in /var/lib/rancher/k3s/server/tls/*.crt; do
-  echo "$cert: $(openssl x509 -in $cert -noout -enddate 2>/dev/null)"
-done
+# Verify the updated expiration dates
+k3s certificate check --output table
 ```
 
 ## Manual Certificate Rotation
@@ -66,7 +59,7 @@ To force certificate rotation regardless of expiration:
 systemctl stop k3s
 
 # Step 2: Run certificate rotation
-# This regenerates all certificates
+# This regenerates client and server certificates
 k3s certificate rotate
 
 # Step 3: Start K3s
@@ -85,19 +78,14 @@ You can also rotate only specific certificates:
 systemctl stop k3s
 
 # Rotate only the API server certificate
-k3s certificate rotate --service kube-apiserver
+k3s certificate rotate --service api-server
 
 # Rotate etcd certificates
 k3s certificate rotate --service etcd
 
-# Rotate all certificates explicitly
+# Rotate multiple certificates explicitly
 k3s certificate rotate \
-  --service kube-apiserver \
-  --service kube-scheduler \
-  --service kube-controller-manager \
-  --service k3s-controller \
-  --service k3s-server \
-  --service admin
+  --service api-server,scheduler,controller-manager,k3s-controller,k3s-server,admin
 
 # Start K3s
 systemctl start k3s
@@ -105,39 +93,33 @@ systemctl start k3s
 
 ## Rotating CA Certificates
 
-CA rotation is more involved since all leaf certificates must be re-issued. K3s does not automatically rotate CA certificates - they have a 10-year validity period. If you need to rotate CAs:
+CA rotation is more involved since all leaf certificates must be re-issued. K3s does not automatically rotate CA certificates - they have a 10-year validity period. If you need to rotate the default K3s-generated self-signed CAs:
 
 ```bash
-# Step 1: Stop K3s on ALL nodes (servers and agents)
-systemctl stop k3s        # On server nodes
-systemctl stop k3s-agent  # On agent nodes
-
-# Step 2: Back up existing TLS directory
+# Step 1: Back up the existing TLS directory
 cp -r /var/lib/rancher/k3s/server/tls /var/lib/rancher/k3s/server/tls.backup
 
-# Step 3: Remove certificate directory to force regeneration
-rm -rf /var/lib/rancher/k3s/server/tls
+# Step 2: Create updated CA certs and keys, cross-signed by the current CAs
+# This script creates /var/lib/rancher/k3s/server/rotate-ca and prints updated token values
+curl -sL https://github.com/k3s-io/k3s/raw/main/contrib/util/rotate-default-ca-certs.sh | bash -
 
-# Step 4: Start K3s server - it will regenerate all CAs and certs
-systemctl start k3s
+# Step 3: Load the updated CA certs into the datastore
+k3s certificate rotate-ca --path=/var/lib/rancher/k3s/server/rotate-ca
 
-# Step 5: Retrieve the new node token (changed after CA rotation)
-cat /var/lib/rancher/k3s/server/node-token
+# Step 4: Update secure tokens on any joined servers and agents before restart
+# The token may be stored in a .env file, systemd unit, or config.yaml
 
-# Step 6: Re-join agent nodes with the new token
-# On each agent node:
-systemctl stop k3s-agent
+# Step 5: Restart K3s on all nodes, servers first, then agents
+systemctl restart k3s        # On server nodes
+systemctl restart k3s-agent  # On agent nodes
 
-# Update the token in the agent config
-echo "K3S_TOKEN=<new-token>" > /etc/systemd/system/k3s-agent.service.env
-
-systemctl daemon-reload
-systemctl start k3s-agent
+# Step 6: Verify the cluster is healthy
+kubectl get nodes
 ```
 
 ## Update kubeconfig After Rotation
 
-After rotating certificates, update your local kubeconfig:
+After rotating certificates, refresh any copied kubeconfig files:
 
 ```bash
 # Copy the new kubeconfig from the server
@@ -181,4 +163,4 @@ fi
 
 ## Conclusion
 
-Regular certificate rotation is a critical security hygiene practice. K3s makes it straightforward with built-in `certificate rotate` commands. For most clusters, the automatic rotation on restart is sufficient - but for production environments, implement proactive rotation checks and alerting before certificates approach expiration to avoid unexpected outages.
+Regular certificate rotation is a critical security hygiene practice. K3s makes it straightforward with built-in `certificate rotate` commands. For most clusters, the automatic renewal on restart is sufficient - but for production environments, implement proactive rotation checks and alerting before certificates approach expiration to avoid unexpected outages.
