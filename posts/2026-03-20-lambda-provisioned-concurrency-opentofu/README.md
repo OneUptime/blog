@@ -4,11 +4,11 @@ Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
 Tags: OpenTofu, AWS, Lambda, Provisioned Concurrency, Cold Start, Performance, Infrastructure as Code
 
-Description: Learn how to configure Lambda Provisioned Concurrency using OpenTofu to eliminate cold starts and ensure consistent low-latency response times for latency-sensitive functions.
+Description: Learn how to configure Lambda Provisioned Concurrency using OpenTofu to reduce cold starts and improve low-latency response consistency for latency-sensitive functions.
 
 ## Introduction
 
-Lambda cold starts occur when a new execution environment is initialized for a function invocation. Provisioned Concurrency pre-initializes a specified number of execution environments, ensuring they are ready to respond immediately without the initialization delay. This is critical for latency-sensitive APIs.
+Lambda cold starts occur when a new execution environment is initialized for a function invocation. Provisioned Concurrency pre-initializes a specified number of execution environments, ensuring that level of concurrency is ready to respond immediately without the initialization delay. This is critical for latency-sensitive APIs.
 
 ## Prerequisites
 
@@ -60,9 +60,14 @@ resource "aws_lambda_alias" "live" {
 ```hcl
 # Pre-initialize 10 execution environments for the live alias
 resource "aws_lambda_provisioned_concurrency_config" "live" {
-  function_name                  = aws_lambda_function.api.function_name
-  qualifier                      = aws_lambda_alias.live.name
+  function_name                     = aws_lambda_function.api.function_name
+  qualifier                         = aws_lambda_alias.live.name
   provisioned_concurrent_executions = 10
+
+  # Application Auto Scaling will adjust this value after the initial setup
+  lifecycle {
+    ignore_changes = [provisioned_concurrent_executions]
+  }
 
   # Wait for provisioned concurrency to be fully ready before apply completes
   # This can take several minutes for large numbers of executions
@@ -83,6 +88,9 @@ resource "aws_appautoscaling_target" "lambda" {
   resource_id        = "function:${aws_lambda_function.api.function_name}:${aws_lambda_alias.live.name}"
   scalable_dimension = "lambda:function:ProvisionedConcurrency"
   service_namespace  = "lambda"
+
+  # Lambda requires an initial provisioned concurrency value before auto scaling
+  depends_on = [aws_lambda_provisioned_concurrency_config.live]
 }
 
 # Scale provisioned concurrency based on utilization
@@ -144,4 +152,4 @@ tofu apply
 
 ## Conclusion
 
-Provisioned Concurrency eliminates cold starts for latency-sensitive Lambda functions by pre-warming execution environments. Configure auto-scaling to adjust the count based on utilization, and use scheduled scaling to reduce costs during off-peak hours. Note that provisioned concurrency is billed per execution-hour even when idle, so balance cold start requirements against cost using the auto-scaling target tracking policy.
+Provisioned Concurrency helps avoid cold starts for the configured concurrency level by pre-warming execution environments. Configure auto-scaling to adjust the count based on utilization, and use scheduled scaling to reduce costs during off-peak hours. If traffic exceeds the provisioned amount, Lambda uses on-demand environments for the excess. Note that provisioned concurrency is billed per execution-hour even when idle, so balance cold start requirements against cost using the auto-scaling target tracking policy.
