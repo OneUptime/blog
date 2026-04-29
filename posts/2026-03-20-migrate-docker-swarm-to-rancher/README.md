@@ -14,23 +14,23 @@ Docker Swarm provides basic container orchestration, but Rancher with Kubernetes
 
 | Docker Swarm | Kubernetes (Rancher) |
 |---|---|
-| Stack | Namespace + Deployments |
-| Service | Deployment + Service |
+| Stack | Namespace + related resources |
+| Service | Deployment/StatefulSet/DaemonSet + Service |
 | Task | Pod |
 | Secret | Secret |
 | Config | ConfigMap |
-| Overlay network | NetworkPolicy |
-| Ingress routing mesh | Ingress + LoadBalancer |
+| Overlay network | Pod network (CNI) + optional NetworkPolicy |
+| Ingress routing mesh | Service (`LoadBalancer` or `NodePort`) + optional Ingress |
 
-## Step 1: Export Swarm Stack Configuration
+## Step 1: Inspect Swarm Stack Configuration
 
 ```bash
 docker stack ls
 docker stack services myapp
-docker service inspect myapp_web --pretty
+docker service inspect myapp_web
 ```
 
-Note the image, replica counts, environment variables, volume mounts, and published ports.
+Inspect the service output to capture the image, replica counts, environment variables, volume mounts, secrets, and published ports.
 
 ## Step 2: Convert Swarm Compose to Kubernetes Manifests
 
@@ -70,7 +70,7 @@ networks:
     driver: overlay
 ```
 
-The equivalent Kubernetes Deployment:
+A Kubernetes Deployment for the same workload might look like:
 
 ```yaml
 apiVersion: apps/v1
@@ -101,36 +101,35 @@ spec:
           resources:
             requests:
               memory: "256Mi"
-              cpu: "100m"
             limits:
               memory: "512Mi"
-              cpu: "500m"
-          env:
-            - name: DB_PASSWORD
-              valueFrom:
-                secretKeyRef:
-                  name: app-secrets
-                  key: db_password
+          volumeMounts:
+            - name: app-secrets
+              mountPath: /run/secrets
+              readOnly: true
           readinessProbe:
             httpGet:
               path: /health
               port: 8080
             initialDelaySeconds: 15
             periodSeconds: 10
+      volumes:
+        - name: app-secrets
+          secret:
+            secretName: app-secrets
 ```
 
 ## Step 3: Migrate Secrets
 
-In Swarm, secrets are mounted as files. In Kubernetes, use Secrets:
+In Swarm, secrets are mounted as files. In Kubernetes, use Secrets. Docker Swarm does not let you read an existing secret's value back through the CLI, so recreate it from the original source of truth:
 
 ```bash
-# Get the secret value from Swarm (if accessible)
+# Verify the secret exists in Swarm
+docker secret ls
 
-docker secret inspect db_password
-
-# Create the Kubernetes Secret
+# Create the Kubernetes Secret from the original secret file or value source
 kubectl create secret generic app-secrets \
-  --from-literal=db_password="$(cat swarm-secret.txt)" \
+  --from-file=db_password=./secrets/db_password.txt \
   -n myapp
 ```
 
@@ -159,7 +158,7 @@ volumeMounts:
 
 ## Step 5: Create Services and Ingress
 
-Replace Swarm's routing mesh with a Kubernetes Service and Ingress:
+Replace Swarm's published ports and routing mesh with a Kubernetes Service and, for HTTP routing, an Ingress:
 
 ```yaml
 apiVersion: v1
@@ -195,16 +194,16 @@ spec:
 
 ## Step 6: Deploy via Rancher
 
-1. In Rancher, navigate to your cluster > **Import YAML**.
+1. In Rancher, open your cluster and use the YAML import editor.
 2. Apply the namespace first, then secrets, then deployments and services.
-3. Monitor the rollout in **Workloads** > **Deployments**.
+3. Monitor the rollout in the cluster's **Workloads** or **Deployments** view.
 
 ## Step 7: Decommission Swarm
 
 After verifying the Kubernetes deployment:
 
 ```bash
-# Drain Swarm nodes
+# Optionally drain Swarm nodes
 docker node update --availability drain <node-id>
 
 # Remove the Swarm stack
@@ -214,7 +213,7 @@ docker stack rm myapp
 ## Best Practices
 
 - Migrate one service at a time, validating each before moving to the next.
-- Use Rancher's built-in monitoring to compare performance metrics during cutover.
+- Use Rancher monitoring or your existing observability stack to compare performance metrics during cutover.
 - Keep DNS TTLs low during migration to enable quick rollback.
 - Use Rancher namespaces to mirror Swarm stack separation.
 - Test in a non-production Kubernetes cluster before the production migration.
