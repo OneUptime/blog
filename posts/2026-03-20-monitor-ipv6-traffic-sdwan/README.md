@@ -21,28 +21,28 @@ Monitoring IPv6 in SD-WAN requires flow telemetry (IPFIX/NetFlow v9 with IPv6 ex
 apt install nprobe -y
 
 # /etc/nprobe/nprobe.conf - Collect IPv6 flows
+# nProbe uses short-form flags; long-form aliases are not all supported.
 cat > /etc/nprobe/nprobe.conf << 'EOF'
---interface=eth0
+# Capture interface
+-i eth0
+
+# Listen for incoming flows on this port (when acting as a collector)
 --collector-port=2055
---export-interval=60
---export-direction=both
 
-# Enable IPv6 templates
---ipv6-only=0    # 0 = both IPv4 and IPv6
+# IPFIX export (NetFlow version 10 = IPFIX)
+-V 10
 
-# IPFIX export (includes IPv6 fields)
---template-id=256
---netflow-version=10   # IPFIX
---dump-format=binary
+# Custom template ID (default is 257)
+-U 257
 
-# Export to flow collector
+# Export to flow collector at host:port
 -n 127.0.0.1:9995
 
-# IPv6 specific elements:
+# IPv6 specific information elements (IANA IPFIX registry):
 # sourceIPv6Address (27)
 # destinationIPv6Address (28)
-# nextHopIPv6Address (62)
-# bgpNexthopIPv6Address (63)
+# ipNextHopIPv6Address (62)
+# bgpNextHopIPv6Address (63)
 EOF
 
 systemctl enable --now nprobe
@@ -71,7 +71,7 @@ IPFIX_BYTES = 1
 IPFIX_PACKETS = 2
 IPFIX_SRC_PORT = 7
 IPFIX_DST_PORT = 11
-IPFIX_DSCP = 195  # ipClassOfService
+IPFIX_DSCP = 195  # ipDiffServCodePoint
 
 def parse_ipv6_address(data, offset):
     """Parse 16-byte IPv6 address from IPFIX record."""
@@ -125,7 +125,7 @@ class IPFixIPv6Monitor:
         src_ipv6, off = parse_ipv6_address(data, 0)
         dst_ipv6, off = parse_ipv6_address(data, off)
 
-        if off + 12 <= len(data):
+        if off + 20 <= len(data):
             bytes_count, packets, src_port, dst_port = struct.unpack(
                 '!QQHH', data[off:off+20]
             )
@@ -200,7 +200,7 @@ def collect_interface_stats():
 
 def probe_path_quality(dest_ipv6, path_name):
     result = subprocess.run(
-        ['ping6', '-c', '10', '-i', '0.1', dest_ipv6],
+        ['ping', '-6', '-c', '10', '-i', '0.2', dest_ipv6],
         capture_output=True, text=True
     )
     if result.returncode == 0:
@@ -226,9 +226,9 @@ if __name__ == '__main__':
 # Dashboard > Monitor > Real Time > IP Route Table
 # Filter: Family=IPv6
 
-# FortiGate SD-WAN - IPv6 flow logs
-diagnose sys sdwan health-check status | grep ipv6
-get system sdwan-monitor | grep ipv6
+# FortiGate SD-WAN - IPv6 health check / member status
+diagnose sys sdwan health-check | grep -i ipv6
+diagnose sys sdwan member
 
 # Silver Peak Orchestrator - IPv6 visibility
 # Monitor > Flows > IP Version: IPv6 > Top Applications
