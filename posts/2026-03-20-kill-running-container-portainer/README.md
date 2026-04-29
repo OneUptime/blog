@@ -42,7 +42,8 @@ import sys, json
 containers = json.load(sys.stdin)
 for c in containers:
     if '/my-container' in c.get('Names', []):
-        print(c['Id'][:12])
+        print(c['Id'])
+        break
 ")
 echo "Container ID: $CONTAINER_ID"
 
@@ -85,16 +86,10 @@ curl -s "https://localhost:9443/api/endpoints/1/docker/containers/${CONTAINER_ID
 
 ## Duplicate a Container
 
-```bash
-# Inspect the existing container to get its configuration
-docker inspect my-container --format '{{json .Config}}' | python3 -m json.tool
+Portainer supports duplicating a container from the UI:
 
-# Create a duplicate with a new name
-docker run -d \
-  --name my-container-copy \
-  # ... same flags as original ...
-  myimage:latest
-```
+- From **Containers**, select the container you want to duplicate then click **Duplicate/Edit**
+- Make the required changes to the configuration, making sure you enter a new container name, then click **Deploy the container**
 
 ---
 
