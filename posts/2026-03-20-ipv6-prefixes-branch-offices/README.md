@@ -13,21 +13,21 @@ Assigning IPv6 prefixes to branch offices requires a systematic approach that en
 ## Branch Allocation Strategy
 
 ```text
-Organization /40: 2001:db8:corp::/40 (from ISP /32)
+Organization /40: 2001:db8:1000::/40 (from ISP /32)
 
-Branch range: 2001:db8:corp:1000::/44 (256 possible /56 branches)
+Branch range: 2001:db8:1010::/48 (256 possible /56 branches)
 
 Each branch gets a /56:
-  Branch 001: 2001:db8:corp:1100::/56  (256 /64 subnets)
-  Branch 002: 2001:db8:corp:1200::/56
-  Branch 003: 2001:db8:corp:1300::/56
+  Branch 001: 2001:db8:1010:100::/56  (256 /64 subnets)
+  Branch 002: 2001:db8:1010:200::/56
+  Branch 003: 2001:db8:1010:300::/56
   ...
-  Branch 255: 2001:db8:corp:1ff00::/56
+  Branch 255: 2001:db8:1010:ff00::/56
 
-Encoding: Branch number in the 3rd octet hex value
-  Branch 001 → 0x01 → 1100::/56
-  Branch 010 → 0x0a → 1a00::/56
-  Branch 255 → 0xff → 1ff00::/56
+Encoding: Branch number in the high-order byte of the 4th hextet
+  Branch 001 → 0x01 → 1010:100::/56
+  Branch 010 → 0x0a → 1010:a00::/56
+  Branch 255 → 0xff → 1010:ff00::/56
 ```
 
 ## Python: Branch Prefix Allocator
@@ -36,11 +36,12 @@ Encoding: Branch number in the 3rd octet hex value
 import ipaddress
 
 class BranchAllocator:
-    """Allocate /56 prefixes to branch offices from a /44 block."""
+    """Allocate /56 prefixes to branch offices from a /48 block."""
 
     def __init__(self, branch_block: str):
         self.block = ipaddress.IPv6Network(branch_block)
-        assert self.block.prefixlen == 44
+        if self.block.prefixlen != 48:
+            raise ValueError("Branch block must be a /48")
         self._branches = {}
 
     def allocate_branch(self, branch_id: int, branch_name: str) -> ipaddress.IPv6Network:
@@ -78,7 +79,7 @@ class BranchAllocator:
 
 # Usage
 
-allocator = BranchAllocator("2001:db8:corp:1000::/44")
+allocator = BranchAllocator("2001:db8:1010::/48")
 allocator.allocate_branch(1, "New York")
 allocator.allocate_branch(2, "Chicago")
 allocator.allocate_branch(3, "London")
@@ -114,7 +115,7 @@ id-assoc pd 1 {
         sla-len 8;
         ifid 1;
     };
-    # Management VLAN gets subnet ID 0
+    # Management VLAN (VLAN 100) gets subnet ID 100
     prefix-interface vlan100 {
         sla-id 100;
         sla-len 8;
@@ -129,11 +130,11 @@ The branch prefix must be routable from HQ:
 
 ```bash
 # HQ router: static route pointing to branch WAN link
-sudo ip -6 route add 2001:db8:corp:1100::/56 via 2001:db8:corp:f001::1
+sudo ip -6 route add 2001:db8:1010:100::/56 via 2001:db8:10f0:1::1
 
 # Or better: run OSPFv3 / BGP between HQ and branch
 # Branch router advertises its /56 into the routing protocol
-# HQ router summarizes all branches as 2001:db8:corp:1000::/44
+# HQ router summarizes all branches as 2001:db8:1010::/48
 ```
 
 ## Branch Firewall Policy Template
@@ -141,16 +142,16 @@ sudo ip -6 route add 2001:db8:corp:1100::/56 via 2001:db8:corp:f001::1
 ```bash
 # All branches share the same policy (using prefix math):
 # Block branch-to-branch traffic (each branch is isolated)
-ip6tables -A FORWARD -s 2001:db8:corp:1000::/44 \
-                     -d 2001:db8:corp:1000::/44 -j DROP
+ip6tables -A FORWARD -s 2001:db8:1010::/48 \
+                     -d 2001:db8:1010::/48 -j DROP
 
 # Allow branches to reach HQ servers
-ip6tables -A FORWARD -s 2001:db8:corp:1000::/44 \
-                     -d 2001:db8:corp:20::/64 -j ACCEPT
+ip6tables -A FORWARD -s 2001:db8:1010::/48 \
+                     -d 2001:db8:1020::/64 -j ACCEPT
 
 # Allow HQ management to reach branch management subnets
-ip6tables -A FORWARD -s 2001:db8:corp:1::/64 \
-                     -d 2001:db8:corp:1000::/44 -j ACCEPT
+ip6tables -A FORWARD -s 2001:db8:1001::/64 \
+                     -d 2001:db8:1010::/48 -j ACCEPT
 ```
 
 ## Conclusion
