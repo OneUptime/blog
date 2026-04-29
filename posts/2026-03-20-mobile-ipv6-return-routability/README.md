@@ -50,7 +50,7 @@ sequenceDiagram
 
 ### Home Test Init (HoTI) - MH Type 1
 
-Sent from CoA to CN (via HA tunnel), initiating the home-side test.
+Sent with source address HoA to CN, reverse-tunneled through the HA, initiating the home-side test.
 
 ```text
 MH Type: 1 (HoTI)
