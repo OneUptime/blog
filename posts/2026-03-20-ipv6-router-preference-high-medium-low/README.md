@@ -89,10 +89,10 @@ Router-Backup(config-if)# ipv6 nd router-preference Low
 ```text
 # Primary router
 
-set protocols router-advertisement interface ge-0/0/1.0 default-preference high
+set protocols router-advertisement interface ge-0/0/1.0 preference high
 
 # Backup router
-set protocols router-advertisement interface ge-0/0/1.0 default-preference low
+set protocols router-advertisement interface ge-0/0/1.0 preference low
 ```
 
 ## Verifying Router Preference on Clients
@@ -105,7 +105,7 @@ ip -6 route show default
 # default via fe80::1 dev eth0 proto ra metric 100 pref high
 # default via fe80::2 dev eth0 proto ra metric 100 pref low
 
-# The kernel selects the route with lowest metric (highest preference)
+# The pref field shows the RFC 4191 router preference advertised by each router
 ```
 
 ## Dynamic Preference Change (Failover)
@@ -117,10 +117,10 @@ One pattern for active failover is to dynamically lower the primary router's pre
 # failover_ra.sh
 # Change RA preference based on WAN link health
 
-WAN_GW="2001:db8:isp::1"
+WAN_GW="2001:db8:100::1"
 RADVD_CONF="/etc/radvd.conf"
 
-if ping6 -c 3 -W 2 "$WAN_GW" > /dev/null 2>&1; then
+if ping -6 -c 3 -W 2 "$WAN_GW" > /dev/null 2>&1; then
     # WAN is up - use High preference
     sed -i 's/AdvDefaultPreference.*/AdvDefaultPreference high;/' "$RADVD_CONF"
 else
@@ -128,8 +128,8 @@ else
     sed -i 's/AdvDefaultPreference.*/AdvDefaultPreference low;/' "$RADVD_CONF"
 fi
 
-# Reload radvd to send updated preference
-kill -HUP $(cat /var/run/radvd/radvd.pid) 2>/dev/null
+# Reload radvd to apply the updated preference
+pkill -HUP radvd 2>/dev/null
 ```
 
 ## Limitations of Router Preference
