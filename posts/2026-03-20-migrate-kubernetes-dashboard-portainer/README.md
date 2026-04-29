@@ -4,20 +4,20 @@ Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
 Tags: Portainer, Kubernetes, Migration, Dashboard, DevOps
 
-Description: Migrate your Kubernetes workload management from the default Kubernetes Dashboard to Portainer for enhanced RBAC and multi-cluster support.
+Description: Migrate your Kubernetes workload management from Kubernetes Dashboard to Portainer for multi-environment support and, in Portainer Business Edition, enhanced RBAC.
 
 ## Introduction
 
-The Kubernetes Dashboard is the default web UI for Kubernetes clusters, but it has significant limitations: basic RBAC, no multi-cluster support, and limited deployment tools. Portainer provides a superior Kubernetes management experience with team access control, GitOps integration, and Helm support.
+Kubernetes Dashboard is Kubernetes' official web UI, but it is not deployed by default and the project is now deprecated and unmaintained. It also has significant limitations: Bearer Token login only, no multi-cluster support, and limited deployment workflows. Portainer provides a broader Kubernetes management experience with multi-environment management, GitOps workflows, and Helm support. Advanced RBAC and team access control are available in Portainer Business Edition.
 
 ## Limitations of Kubernetes Dashboard
 
+- Deprecated and unmaintained
 - No multi-cluster management from a single interface
-- Limited user authentication (token-based only)
-- No built-in team/role management
-- No Helm chart deployment support
-- No container template library
-- No audit logging
+- Bearer Token login only
+- No built-in team/role management in the UI
+- No Helm chart deployment workflow
+- No Git-based deployment workflow
 
 ## Deploying Portainer for Kubernetes
 
@@ -28,18 +28,21 @@ helm repo add portainer https://portainer.github.io/k8s/
 helm repo update
 
 # Install in the portainer namespace
-helm install portainer portainer/portainer \
+helm upgrade --install portainer portainer/portainer \
   --namespace portainer \
   --create-namespace \
   --set service.type=LoadBalancer \
-  --set tls.force=true
+  --set tls.force=true \
+  --set image.tag=lts
 
 # Or with NodePort for on-premise clusters
-helm install portainer portainer/portainer \
+helm upgrade --install portainer portainer/portainer \
   --namespace portainer \
   --create-namespace \
   --set service.type=NodePort \
-  --set service.nodePort.https=30779
+  --set tls.force=true \
+  --set service.httpsNodePort=30779 \
+  --set image.tag=lts
 
 # Check deployment status
 kubectl -n portainer get pods
@@ -48,87 +51,79 @@ kubectl -n portainer get svc
 
 ## Connecting Portainer to Your Existing Cluster
 
-If running Portainer outside the cluster:
+If you want to import an existing cluster with a kubeconfig in Portainer Business Edition:
 
 ```bash
-# Get the cluster's kubeconfig
-cat ~/.kube/config
+# Generate a self-contained kubeconfig for the current context
+kubectl config view --flatten=true --minify=true > kubeconfig.yml
 
-# In Portainer: Home > Add Environment > Kubernetes via kubeconfig
-# Upload the kubeconfig file
+# In Portainer:
+# Environment-related > Environments > Add environment
+# Kubernetes > Start Wizard > More options > Import
+# Upload kubeconfig.yml
 ```
 
-For clusters with kubeconfig:
-
-```bash
-# Import the cluster kubeconfig via Portainer API
-curl -X POST \
-  -H "X-API-Key: your-api-key" \
-  -F "KubeconfigFile=@/path/to/kubeconfig" \
-  "https://portainer.example.com/api/endpoints/create/kubeconfig?name=my-cluster"
-```
+This import path is a legacy feature that requires a load balancer, a kubeconfig with `current-context`, and cluster-admin credentials.
 
 ## Mapping Kubernetes Dashboard Features to Portainer
 
 | Kubernetes Dashboard | Portainer Equivalent |
 |---------------------|---------------------|
-| Workloads > Deployments | Kubernetes > Applications |
-| Services | Kubernetes > Services |
-| Config Maps | Kubernetes > ConfigMaps |
-| Secrets | Kubernetes > Secrets |
-| Persistent Volume Claims | Kubernetes > Volumes |
-| Namespaces | Kubernetes > Namespaces |
-| Nodes | Kubernetes > Cluster > Nodes |
-| Pod Logs | Applications > Pod > Logs |
-| Pod Exec (Shell) | Applications > Pod > Console |
-| Resource YAML edit | Applications > Edit YAML |
+| Workloads > Deployments | Applications |
+| Services | Networking > Services |
+| Config Maps | ConfigMaps & Secrets > ConfigMaps |
+| Secrets | ConfigMaps & Secrets > Secrets |
+| Persistent Volume Claims | Volumes |
+| Namespaces | Namespaces |
+| Nodes | Cluster > Details |
+| Pod Logs | Applications > select application > pod logs |
+| Pod Exec (Shell) | Applications > select application > pod console |
+| Resource YAML edit | Applications > select application > YAML (Business Edition) |
 
 ## Setting Up Namespace-Based Access Control
 
-Portainer's team access is more powerful than the Dashboard's:
+Portainer Business Edition's team access is more powerful than the Dashboard's:
 
 ```bash
 # In Portainer UI:
-# 1. Settings > Users > Create users for your team
-# 2. Settings > Teams > Create teams (e.g., "backend-team", "frontend-team")
-# 3. Environments > Your Cluster > Namespaces
-# 4. Assign team access to specific namespaces
+# 1. User-related > Users > Create users for your team
+# 2. User-related > Teams > Create teams (e.g., "backend-team", "frontend-team")
+# 3. Namespaces > Manage access on the namespace you want to control
+# 4. Assign the users/teams that should have access
 ```
 
 ## Migrating RBAC Configurations
 
-```yaml
+```bash
 # Export existing ClusterRoleBindings and RoleBindings
 kubectl get rolebindings,clusterrolebindings -A -o yaml > rbac-backup.yaml
 
-# In Portainer, RBAC is managed at:
-# - Environment level: read-only vs. read-write access
-# - Namespace level: team-specific namespace access
-# These replace the need for complex Kubernetes RBAC in many cases
+# In Portainer Business Edition, Kubernetes RBAC remains required.
+# Portainer layers environment-level and namespace-level access on top of Kubernetes RBAC.
+# - Environment level: Environments > Manage access
+# - Namespace level: Namespaces > Manage access
 ```
 
 ## Using Helm in Portainer (Not Available in Dashboard)
 
 ```bash
-# Add Helm repositories in Portainer
-# Kubernetes > Helm Repositories > Add
-
-# Deploy a Helm chart
-# Kubernetes > Helm Charts > Browse > Deploy
-# Configure values and deploy without CLI access
+# Deploy a Helm chart in Portainer
+# Applications > Create from code > Helm chart
+# Choose Helm repository as the deployment source
+# Configure the release name, namespace, chart version, and values, then deploy
 ```
 
 ## Removing Kubernetes Dashboard After Migration
 
 ```bash
 # Remove Kubernetes Dashboard after verifying Portainer works
+helm uninstall kubernetes-dashboard -n kubernetes-dashboard
+
+# Optionally remove the namespace if you no longer need it
 kubectl delete namespace kubernetes-dashboard
 
-# Or if installed via manifest
-kubectl delete -f https://raw.githubusercontent.com/kubernetes/dashboard/v2.7.0/aio/deploy/recommended.yaml
-
-# Verify removal
-kubectl get pods -n kubernetes-dashboard
+# Verify removal (`NotFound` is expected if you deleted the namespace)
+kubectl get namespace kubernetes-dashboard
 ```
 
 ## Accessing Multiple Clusters
@@ -137,15 +132,15 @@ One of Portainer's key advantages over the Dashboard:
 
 ```bash
 # Add multiple clusters to Portainer
-# Home > Add Environment (repeat for each cluster)
-# Supported types:
+# Environment-related > Environments > Add environment (repeat for each cluster)
+# Supported connection methods:
 # - Kubernetes via Agent
-# - Kubernetes via kubeconfig
-# - EKS, AKS, GKE via cloud
+# - Kubernetes via Edge Agent
+# - Kubernetes via kubeconfig import (legacy, Business Edition only)
 
-# Switch between clusters via the Portainer home screen
+# Switch between environments from the Portainer Home page
 ```
 
 ## Conclusion
 
-Migrating from the Kubernetes Dashboard to Portainer provides multi-cluster management, proper team RBAC, Helm chart deployment, and GitOps integration-features absent from the default Dashboard. The migration is non-disruptive: Portainer sits alongside your existing cluster without changing workload configurations, making it a safe, incremental upgrade.
+Migrating from Kubernetes Dashboard to Portainer provides multi-cluster management, Helm chart deployment, and GitOps workflows that Dashboard does not provide. If you need team-based RBAC and namespace-scoped access, use Portainer Business Edition. The migration is non-disruptive: Portainer sits alongside your existing cluster without changing workload configurations, making it a safe, incremental upgrade.
