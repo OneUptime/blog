@@ -8,7 +8,7 @@ Description: Learn how to use local-only data sources in OpenTofu that compute v
 
 ---
 
-Local-only data sources compute their values entirely within OpenTofu - they don't make network calls or query provider APIs. These are useful for reading local files, rendering templates, computing checksums, and listing file sets, all within your configuration.
+Local-only data sources and filesystem functions compute values from files on the machine running OpenTofu - they don't make network calls or query remote service APIs. These are useful for reading local files, rendering templates, computing checksums, and listing file sets, all within your configuration.
 
 ---
 
@@ -29,7 +29,7 @@ resource "aws_key_pair" "deploy" {
 }
 ```
 
-Attributes available on `local_file`:
+Commonly used attributes on `local_file` include:
 - `content` - the file contents as a string
 - `content_base64` - base64-encoded contents
 - `content_md5` - MD5 hash of the contents
@@ -38,7 +38,7 @@ Attributes available on `local_file`:
 
 ## The local_sensitive_file Data Source
 
-Same as `local_file` but marks the content as sensitive, suppressing it from logs and plan output:
+Same as `local_file` but marks the content as sensitive, so it is redacted in normal plan and apply output:
 
 ```hcl
 data "local_sensitive_file" "tls_key" {
@@ -55,12 +55,12 @@ resource "aws_secretsmanager_secret_version" "tls" {
 
 ## Using path Variables with Local Data Sources
 
-OpenTofu provides path variables to build absolute paths relative to your configuration:
+OpenTofu provides path values to build filesystem paths relative to your configuration:
 
 ```hcl
 # path.module - the directory containing the current .tf file
 # path.root - the directory of the root module
-# path.cwd - the working directory where tofu is being run
+# path.cwd - the original working directory where tofu was invoked
 
 data "local_file" "config" {
   filename = "${path.module}/config/app.json"
@@ -162,4 +162,4 @@ resource "aws_autoscaling_group" "app" {
 
 ## Summary
 
-Local-only data sources and functions - `local_file`, `local_sensitive_file`, `templatefile()`, `fileset()`, and file hash functions - compute values from the local filesystem without making API calls. Use them to read SSH keys, render templates, upload static assets, detect file changes, and load configuration from JSON files. These run deterministically at plan time, making plans faster and more predictable.
+Local-only data sources and functions - `local_file`, `local_sensitive_file`, `templatefile()`, `fileset()`, and file hash functions - compute values from the local filesystem without network calls. Use them to read SSH keys, render templates, upload static assets, detect file changes, and load configuration from JSON files. Filesystem functions work with files already on disk, while `local_file` and `local_sensitive_file` can also respect dependencies when you need to read a file created during a run.
