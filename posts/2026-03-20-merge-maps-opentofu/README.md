@@ -134,11 +134,20 @@ locals {
 ## Conditional Merge
 
 ```hcl
-variable "enable_cost_allocation" { default = false }
-variable "cost_center"            { default = null }
+variable "enable_cost_allocation" {
+  type    = bool
+  default = false
+}
+
+variable "cost_center" {
+  type    = string
+  default = null
+}
 
 locals {
-  cost_tags = var.enable_cost_allocation ? { CostCenter = var.cost_center } : {}
+  cost_tags = var.enable_cost_allocation && var.cost_center != null ? {
+    CostCenter = var.cost_center
+  } : {}
 
   resource_tags = merge(
     local.common_tags,
