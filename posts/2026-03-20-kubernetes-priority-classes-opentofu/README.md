@@ -13,18 +13,18 @@ Kubernetes Priority Classes define the priority of pods relative to other pods d
 ## Step 1: Create a Priority Class Hierarchy
 
 ```hcl
-# main.tf - Critical system components priority
+# main.tf - Critical platform components priority
 
-resource "kubernetes_priority_class_v1" "system_critical" {
+resource "kubernetes_priority_class_v1" "platform_critical" {
   metadata {
-    name = "system-critical"
+    name = "platform-critical"
   }
 
   value          = 1000000
   global_default = false
-  description    = "Critical system components that should never be preempted"
+  description    = "Critical platform components that should be scheduled ahead of standard workloads"
 
-  # "Never" prevents these pods from being preempted
+  # "Never" prevents these pods from preempting lower-priority pods
   preemption_policy = "Never"
 }
 
@@ -143,4 +143,4 @@ resource "kubernetes_cron_job_v1" "low_priority_report" {
 
 ## Summary
 
-Kubernetes Priority Classes with OpenTofu create a workload hierarchy that ensures critical services get resources during capacity constraints. Set `global_default = true` on a mid-tier priority class so unclassified workloads get reasonable priority. Use `preemption_policy = "Never"` for critical system components that should never be evicted regardless of cluster pressure.
+Kubernetes Priority Classes with OpenTofu create a workload hierarchy that helps critical services receive scheduling preference during capacity constraints. Set `global_default = true` on a mid-tier priority class so unclassified workloads get reasonable priority. Use `preemption_policy = "Never"` for workloads that should wait for free capacity instead of preempting lower-priority pods.
