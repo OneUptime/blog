@@ -4,11 +4,11 @@ Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
 Tags: Portainer, Terraform, Docker, Infrastructure as Code, Automation
 
-Description: Learn how to manage Docker containers, networks, and volumes in Portainer environments using the Terraform provider.
+Description: Learn how to manage Docker networks and volumes in Portainer environments using the Terraform provider, and deploy container workloads with stacks.
 
 ## Overview
 
-Beyond stacks and environments, the Portainer Terraform provider supports managing individual Docker resources - giving you fine-grained control over standalone containers, custom networks, and named volumes as code.
+Beyond stacks and environments, the Portainer Terraform provider supports managing individual Docker resources such as custom networks and named volumes as code. For container workloads, use `portainer_stack` for Compose-based deployments and supporting resources like `portainer_deploy` or `portainer_container_exec` for rollout and operational tasks.
 
 ## Managing Docker Networks
 
@@ -23,12 +23,10 @@ resource "portainer_docker_network" "app_network" {
   name   = "app-network"
   driver = "bridge"
 
-  ipam_config = [
-    {
-      subnet  = "172.20.0.0/16"
-      gateway = "172.20.0.1"
-    }
-  ]
+  ipam_config {
+    subnet  = "172.20.0.0/16"
+    gateway = "172.20.0.1"
+  }
 
   options = {
     "com.docker.network.bridge.name" = "app-br0"
@@ -41,9 +39,10 @@ resource "portainer_docker_network" "swarm_overlay" {
 
   name       = "swarm-overlay"
   driver     = "overlay"
+  scope      = "swarm"
   attachable = true
 
-  driver_options = {
+  options = {
     "com.docker.network.driver.mtu" = "1450"
   }
 }
@@ -60,7 +59,7 @@ resource "portainer_docker_volume" "postgres_data" {
   name   = "postgres-data"
   driver = "local"
 
-  driver_options = {
+  driver_opts = {
     type   = "none"
     device = "/mnt/fast-disk/postgres"
     o      = "bind"
@@ -81,52 +80,59 @@ resource "portainer_docker_volume" "uploads" {
 
 ## Managing Standalone Containers
 
+The current Portainer Terraform provider does not expose a `portainer_container` resource. To manage container workloads in Portainer, deploy them as a `portainer_stack` and use supporting resources such as `portainer_container_exec` or `portainer_deploy` when needed.
+
 ```hcl
 # containers.tf
 
-resource "portainer_container" "redis" {
-  endpoint_id = portainer_environment.production.id
-  name        = "redis"
+# Deploy a single-container workload as a standalone stack
+resource "portainer_stack" "redis" {
+  name            = "redis"
+  deployment_type = "standalone"
+  method          = "string"
+  endpoint_id     = portainer_environment.production.id
 
-  image           = "redis:7-alpine"
-  restart_policy  = "unless-stopped"
+  stack_file_content = <<-EOT
+    services:
+      redis:
+        image: redis:7-alpine
+        command:
+          - redis-server
+          - --requirepass
+          - "$${REDIS_PASSWORD}"
+        restart: unless-stopped
+        ports:
+          - "6379:6379"
+        volumes:
+          - redis-data:/data
+        networks:
+          - app-network
 
-  # Port bindings
-  port_bindings = [
-    {
-      host_port      = "6379"
-      container_port = "6379"
-      protocol       = "tcp"
-    }
-  ]
+    volumes:
+      redis-data: {}
 
-  # Volume mounts
-  volumes = [
-    {
-      volume_name    = portainer_docker_volume.redis_data.name
-      container_path = "/data"
-    }
-  ]
+    networks:
+      app-network:
+        external: true
+        name: "$${APP_NETWORK_NAME}"
+  EOT
 
-  # Environment variables
-  env = [
-    "REDIS_PASSWORD=${var.redis_password}"
-  ]
+  env {
+    name  = "REDIS_PASSWORD"
+    value = var.redis_password
+  }
 
-  # Network configuration
-  network_mode = "bridge"
-  networks = [portainer_docker_network.app_network.name]
-
-  # Resource limits
-  memory_limit = 512  # MB
-  cpu_limit    = 0.5
+  env {
+    name  = "APP_NETWORK_NAME"
+    value = portainer_docker_network.app_network.name
+  }
 }
 ```
 
-## Complete Application Stack with Individual Resources
+## Complete Application Stack with Docker Resources and a Stack
 
 ```hcl
-# main.tf - Deploy app components as individual Terraform resources
+# main.tf - Create network and volume resources, then deploy containers as a stack
 
 # Step 1: Create the network
 resource "portainer_docker_network" "myapp" {
@@ -141,45 +147,70 @@ resource "portainer_docker_volume" "db_data" {
   name        = "myapp-db-data"
 }
 
-# Step 3: Deploy database container
-resource "portainer_container" "postgres" {
-  endpoint_id = portainer_environment.production.id
-  name        = "myapp-postgres"
-  image       = "postgres:15-alpine"
+# Step 3: Deploy the containers as a standalone stack
+resource "portainer_stack" "myapp" {
+  name            = "myapp"
+  deployment_type = "standalone"
+  method          = "string"
+  endpoint_id     = portainer_environment.production.id
 
-  env = [
-    "POSTGRES_DB=myapp",
-    "POSTGRES_PASSWORD=${var.db_password}"
-  ]
+  stack_file_content = <<-EOT
+    services:
+      postgres:
+        image: postgres:15-alpine
+        restart: unless-stopped
+        environment:
+          POSTGRES_DB: myapp
+          POSTGRES_PASSWORD: "$${DB_PASSWORD}"
+        volumes:
+          - db-data:/var/lib/postgresql/data
+        networks:
+          - myapp-net
 
-  volumes = [{
-    volume_name    = portainer_docker_volume.db_data.name
-    container_path = "/var/lib/postgresql/data"
-  }]
+      app:
+        image: "registry.mycompany.com/myapp:$${IMAGE_TAG}"
+        restart: unless-stopped
+        environment:
+          DB_HOST: postgres
+          DB_PASSWORD: "$${DB_PASSWORD}"
+        ports:
+          - "8080:8080"
+        networks:
+          - myapp-net
 
-  networks       = [portainer_docker_network.myapp.name]
-  restart_policy = "unless-stopped"
-}
+    volumes:
+      db-data:
+        external: true
+        name: "$${DB_VOLUME_NAME}"
 
-# Step 4: Deploy the application container
-resource "portainer_container" "app" {
-  endpoint_id = portainer_environment.production.id
-  name        = "myapp-web"
-  image       = "registry.mycompany.com/myapp:${var.image_tag}"
+    networks:
+      myapp-net:
+        external: true
+        name: "$${APP_NETWORK_NAME}"
+  EOT
 
-  env = [
-    "DB_HOST=myapp-postgres",
-    "DB_PASSWORD=${var.db_password}"
-  ]
+  env {
+    name  = "DB_PASSWORD"
+    value = var.db_password
+  }
 
-  port_bindings = [{ host_port = "8080", container_port = "8080" }]
-  networks      = [portainer_docker_network.myapp.name]
-  restart_policy = "unless-stopped"
+  env {
+    name  = "IMAGE_TAG"
+    value = var.image_tag
+  }
 
-  depends_on = [portainer_container.postgres]
+  env {
+    name  = "DB_VOLUME_NAME"
+    value = portainer_docker_volume.db_data.name
+  }
+
+  env {
+    name  = "APP_NETWORK_NAME"
+    value = portainer_docker_network.myapp.name
+  }
 }
 ```
 
 ## Conclusion
 
-The Portainer Terraform provider's Docker resource management capabilities let you define your entire containerized infrastructure as code. For complex multi-container applications, consider using `portainer_stack` (Compose-based) for simpler management, and individual container resources for standalone services with specific configurations.
+The Portainer Terraform provider lets you manage Docker networks and volumes directly, while container lifecycle management is handled through `portainer_stack` for Compose deployments and helper resources such as `portainer_deploy` and `portainer_container_exec`. For complex multi-container applications, `portainer_stack` remains the simplest way to manage services in Portainer.
