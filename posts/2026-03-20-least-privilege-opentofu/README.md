@@ -36,7 +36,7 @@ resource "aws_iam_policy" "app_s3_policy" {
     Version = "2012-10-17"
     Statement = [
       {
-        # Only allow read access to the app's own bucket
+        # Only allow object access to the app's own bucket prefix
         Effect = "Allow"
         Action = [
           "s3:GetObject",
@@ -75,7 +75,7 @@ resource "azurerm_role_assignment" "app_kv_access" {
   principal_id         = azurerm_linux_web_app.app.identity[0].principal_id
 }
 
-# Storage Blob Data Reader instead of Storage Account Contributor
+# Storage Blob Data Contributor instead of Storage Account Contributor
 resource "azurerm_role_assignment" "app_storage_access" {
   scope                = "${azurerm_storage_account.app.id}/blobServices/default/containers/${azurerm_storage_container.uploads.name}"
   role_definition_name = "Storage Blob Data Contributor"
@@ -141,9 +141,12 @@ variable "iam_policy_json" {
   type        = string
 
   validation {
-    # Reject policies that use wildcard resources with write actions
-    condition = !can(regex("\"Resource\":\\s*\"\\*\"", var.iam_policy_json)) || !can(regex("\"(Put|Delete|Create|Update|Write)", var.iam_policy_json))
-    error_message = "Write actions must not use wildcard (*) resources. Scope the policy to specific resources."
+    # Reject policies that use wildcard resources with common write actions
+    condition = (
+      length(regexall("\"Resource\"\\s*:\\s*(\"\\*\"|\\[[^\\]]*\"\\*\"[^\\]]*\\])", var.iam_policy_json)) == 0 ||
+      length(regexall("\"[^\"]*:(Put|Delete|Create|Update|Write)[^\"]*\"", var.iam_policy_json)) == 0
+    )
+    error_message = "Policies with wildcard (*) resources must not include common write actions such as Put*, Delete*, Create*, Update*, or Write*."
   }
 }
 ```
