@@ -43,21 +43,15 @@ Always set resource limits to prevent one server from starving others:
 ```yaml
 # minecraft-with-limits.yml
 
-version: "3.8"
-
 services:
   minecraft:
     image: itzg/minecraft-server:latest
     environment:
       - EULA=TRUE
       - MEMORY=3G
-    deploy:
-      resources:
-        limits:
-          memory: 4G       # Hard memory limit
-          cpus: "2.0"      # Max 2 CPU cores
-        reservations:
-          memory: 2G       # Guaranteed minimum
+    cpus: 2.0             # Max 2 CPU cores
+    mem_limit: 4G         # Hard memory limit
+    mem_reservation: 2G   # Soft reservation
     volumes:
       - minecraft-data:/data
     ports:
@@ -82,27 +76,22 @@ Add a reverse proxy for web management interfaces:
 
 ```yaml
 # nginx-proxy-stack.yml
-version: "3.8"
 
 services:
-  nginx:
-    image: nginx:1.25-alpine
-    volumes:
-      - /opt/nginx/conf.d:/etc/nginx/conf.d:ro
-    ports:
-      - "80:80"
-      - "443:443"
-    restart: unless-stopped
-
-  # Auto-configure Nginx from container labels
   nginx-proxy-manager:
     image: jc21/nginx-proxy-manager:latest
+    ports:
+      - "80:80"
+      - "81:81"    # NPM admin interface
+      - "443:443"
     volumes:
       - npm-data:/data
       - npm-letsencrypt:/etc/letsencrypt
-    ports:
-      - "81:81"    # NPM admin interface
     restart: unless-stopped
+
+volumes:
+  npm-data:
+  npm-letsencrypt:
 ```
 
 ## Step 4: Shared Monitoring Stack
@@ -111,7 +100,6 @@ Deploy a single monitoring stack that covers all game servers:
 
 ```yaml
 # monitoring-stack.yml
-version: "3.8"
 
 services:
   prometheus:
@@ -132,29 +120,38 @@ services:
       - GF_SECURITY_ADMIN_PASSWORD=admin
 
   node-exporter:
-    image: prom/node-exporter:latest
+    image: quay.io/prometheus/node-exporter:latest
+    command:
+      - '--path.rootfs=/host'
     pid: host
     network_mode: host
     volumes:
-      - /proc:/host/proc:ro
-      - /sys:/host/sys:ro
+      - /:/host:ro,rslave
+
+volumes:
+  prometheus-data:
+  grafana-data:
 ```
 
 ## Step 5: Schedule Restarts and Maintenance
 
-Use Portainer's scheduled jobs (or Watchtower) to restart game servers during off-peak hours:
+Use Portainer Edge Jobs on Edge Agent environments, or a host cron job, to restart game servers during off-peak hours:
 
 ```bash
 #!/bin/bash
 # restart-all-servers.sh
-# Run via Portainer scheduled job at 4 AM server time
+# Run via a Portainer Edge Job or host cron at 4 AM host time
 
-SERVERS=("minecraft_minecraft_1" "valheim_valheim_1" "factorio_factorio_1")
+STACKS=("minecraft" "valheim" "rust" "factorio")
 
-for server in "${SERVERS[@]}"; do
-    echo "Restarting $server..."
-    docker restart "$server"
-    sleep 30    # Wait for server to come up before restarting the next
+for stack in "${STACKS[@]}"; do
+    echo "Restarting stack: $stack..."
+    mapfile -t containers < <(docker ps -q --filter "label=com.docker.compose.project=$stack")
+
+    if [ "${#containers[@]}" -gt 0 ]; then
+        docker restart "${containers[@]}"
+        sleep 30    # Wait before restarting the next stack
+    fi
 done
 ```
 
