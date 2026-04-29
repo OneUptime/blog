@@ -64,17 +64,17 @@ echo "show servers state" | socat stdio /var/run/haproxy/admin.sock
 echo "show stat" | socat stdio /var/run/haproxy/admin.sock | \
     awk -F',' '
         NR==1 { for(i=1;i<=NF;i++) header[i]=$i }
-        NR>1 && $1 == "BACKEND" {
-            print "Backend:", $2,
+        NR>1 && $2 == "BACKEND" {
+            print "Backend:", $1,
                   "Current sessions:", $5,
-                  "Total requests:", $48,
-                  "Errors:", $18
+                  "Total requests:", $49,
+                  "Request errors:", $13
         }
     '
 
-# Monitor IPv6 connection rate
+# Monitor IPv6 connection rate (sessions per second)
 watch -n 1 'echo "show stat" | socat stdio /var/run/haproxy/admin.sock | \
-    cut -d"," -f1,2,48 | grep -v "^#"'
+    cut -d"," -f1,2,5,34 | grep -v "^#"'
 ```
 
 ## Prometheus Metrics for IPv6
@@ -113,16 +113,17 @@ defaults
     log global
     option httplog
 
-    # Custom log format showing client IPv6 address
+    # Custom log format showing client address (IPv4 or IPv6)
     log-format "%ci:%cp [%t] %ft %b/%s %Tq/%Tw/%Tc/%Tr/%Tt %ST %B %tsc %ac/%fc/%bc/%sc/%rc %{+Q}r"
-    # %ci = client IPv6 address
+    # %ci = client IP address (IPv4 or IPv6)
     # %cp = client port
 ```
 
 ```bash
-# Analyze IPv6 traffic from logs
-grep ':' /var/log/haproxy.log | \
-    awk '{print $6}' | cut -d: -f1 | sort | uniq -c | sort -rn | head -20
+# Analyze IPv6 traffic from logs (extract IPv6 client addresses, strip port)
+awk '{print $6}' /var/log/haproxy.log | \
+    grep -E '([0-9a-f]+:){2,}' | \
+    sed 's/:[0-9]\+$//' | sort | uniq -c | sort -rn | head -20
 ```
 
 ## Real-Time Monitoring Commands
@@ -138,7 +139,7 @@ echo "show sess" | socat stdio /var/run/haproxy/admin.sock | \
 
 # Count active IPv6 sessions
 echo "show sess" | socat stdio /var/run/haproxy/admin.sock | \
-    grep ':' | wc -l
+    grep -E '([0-9a-f]+:){2,}' | wc -l
 ```
 
 ## Summary
