@@ -22,8 +22,8 @@ Mobile IPv4 (MIPv4, RFC 5944) and Mobile IPv6 (MIPv6, RFC 6275) solve the same p
 | Return Routability | Not present | Built-in for RO with CNs |
 | Header Overhead | Higher (IP-in-IP + inner IP) | Lower (fixed IPv6 header) |
 | NAT compatibility | Poor (needs NAT traversal) | No NAT in native IPv6 |
-| Co-located CoA | Supported (but requires NAT) | Default operation |
-| Dynamic HA Discovery | DHAAD (RFC 3775) | DHAAD (RFC 4067) |
+| Co-located CoA | Supported (DHCP on visited network) | Default operation |
+| Dynamic HA Discovery | RFC 5944 Section 4.6 | DHAAD (RFC 6275 Section 11.4.1) |
 
 ## Architecture Differences
 
