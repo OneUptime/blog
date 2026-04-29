@@ -13,7 +13,7 @@ This guide covers How to Configure the MongoDB Atlas Provider in OpenTofu using 
 ## Prerequisites
 
 - OpenTofu v1.6+
-- API credentials for the relevant service
+- A MongoDB Atlas account with an organization and an API key (public/private) with sufficient permissions
 - Basic understanding of OpenTofu concepts
 
 ## Step 1: Install and Configure the Provider
@@ -22,23 +22,22 @@ This guide covers How to Configure the MongoDB Atlas Provider in OpenTofu using 
 terraform {
   required_version = ">= 1.6.0"
   required_providers {
-    # Provider configuration depends on the specific service
-    # Replace with the actual provider source and version
-    example = {
-      source  = "hashicorp/example"
-      version = "~> 1.0"
+    mongodbatlas = {
+      source  = "mongodb/mongodbatlas"
+      version = "~> 1.24"
     }
   }
 }
 
 # Configure the provider with credentials
 
-provider "example" {
-  # Use environment variables for credentials
-  # EXAMPLE_API_KEY, EXAMPLE_TOKEN, etc.
-  
+provider "mongodbatlas" {
+  # Use environment variables for credentials:
+  # MONGODB_ATLAS_PUBLIC_KEY and MONGODB_ATLAS_PRIVATE_KEY
+
   # Or specify directly (not recommended for secrets)
-  # api_key = var.api_key
+  # public_key  = var.public_key
+  # private_key = var.private_key
 }
 ```
 
@@ -46,20 +45,25 @@ provider "example" {
 
 ```bash
 # Use environment variables for authentication
-export PROVIDER_API_KEY="your-api-key"
-export PROVIDER_TOKEN="your-token"
-export PROVIDER_ORG="your-organization"
+export MONGODB_ATLAS_PUBLIC_KEY="your-public-key"
+export MONGODB_ATLAS_PRIVATE_KEY="your-private-key"
 ```
 
 ```hcl
-variable "api_key" {
-  description = "API key for authentication"
+variable "public_key" {
+  description = "MongoDB Atlas API public key"
   type        = string
   sensitive   = true
 }
 
-variable "organization" {
-  description = "Organization name or ID"
+variable "private_key" {
+  description = "MongoDB Atlas API private key"
+  type        = string
+  sensitive   = true
+}
+
+variable "org_id" {
+  description = "MongoDB Atlas organization ID"
   type        = string
 }
 ```
@@ -67,12 +71,10 @@ variable "organization" {
 ## Step 3: Create Basic Resources
 
 ```hcl
-# Example resource creation
-# Replace with actual resource types for the provider
-
-resource "example_project" "main" {
-  name        = "${var.environment}-project"
-  description = "Managed by OpenTofu"
+# Create an Atlas project within the organization
+resource "mongodbatlas_project" "main" {
+  name   = "${var.environment}-project"
+  org_id = var.org_id
 
   tags = {
     environment = var.environment
@@ -80,11 +82,17 @@ resource "example_project" "main" {
   }
 }
 
-# Configure access control
-resource "example_team" "developers" {
-  name    = "developers"
-  project = example_project.main.id
-  role    = "contributor"
+# Create a team in the organization, then assign it to the project
+resource "mongodbatlas_team" "developers" {
+  name      = "developers"
+  org_id    = var.org_id
+  usernames = ["developer@example.com"]
+}
+
+resource "mongodbatlas_project_team" "developers" {
+  project_id = mongodbatlas_project.main.id
+  team_id    = mongodbatlas_team.developers.team_id
+  role_names = ["GROUP_READ_WRITE"]
 }
 ```
 
@@ -92,23 +100,39 @@ resource "example_team" "developers" {
 
 ```hcl
 # Monitoring and alerting configuration
-resource "example_alert" "main" {
-  name      = "critical-alert"
-  project   = example_project.main.id
-  severity  = "critical"
-  threshold = 90
+resource "mongodbatlas_alert_configuration" "main" {
+  project_id = mongodbatlas_project.main.id
+  event_type = "OUTSIDE_METRIC_THRESHOLD"
+  enabled    = true
 
   notification {
-    channel = var.notification_channel
+    type_name     = "EMAIL"
+    email_address = var.notification_email
+    delay_min     = 0
+  }
+
+  metric_threshold_config {
+    metric_name = "DISK_PARTITION_SPACE_USED_DATA"
+    operator    = "GREATER_THAN"
+    threshold   = 90
+    units       = "PERCENT"
+    mode        = "AVERAGE"
   }
 }
 
-# Backup and retention policies
-resource "example_backup_policy" "main" {
-  name              = "daily-backup"
-  project           = example_project.main.id
-  retention_days    = 30
-  schedule          = "0 2 * * *"  # Daily at 2 AM
+# Backup and retention policies (per cluster)
+resource "mongodbatlas_cloud_backup_schedule" "main" {
+  project_id   = mongodbatlas_project.main.id
+  cluster_name = "your-cluster-name"
+
+  reference_hour_of_day    = 2  # Daily at 2 AM UTC
+  reference_minute_of_hour = 0
+
+  policy_item_daily {
+    frequency_interval = 1
+    retention_unit     = "days"
+    retention_value    = 30
+  }
 }
 ```
 
@@ -117,12 +141,12 @@ resource "example_backup_policy" "main" {
 ```hcl
 output "project_id" {
   description = "The ID of the created project"
-  value       = example_project.main.id
+  value       = mongodbatlas_project.main.id
 }
 
 output "project_name" {
   description = "The name of the created project"
-  value       = example_project.main.name
+  value       = mongodbatlas_project.main.name
 }
 ```
 
