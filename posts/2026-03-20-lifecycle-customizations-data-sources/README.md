@@ -8,7 +8,7 @@ Description: Learn how to use lifecycle customizations with data sources in Open
 
 ---
 
-Data sources support a subset of lifecycle customizations available to resources. While they don't support `create_before_destroy` or `prevent_destroy`, they do support `precondition` and `postcondition` blocks for validating the data they return.
+Data sources support a subset of lifecycle customizations available to resources. While they don't support `create_before_destroy`, `prevent_destroy`, `ignore_changes`, or `replace_triggered_by`, they do support `enabled`, `precondition`, and `postcondition` for controlling whether a query runs and validating the data it returns.
 
 ---
 
@@ -59,7 +59,7 @@ data "aws_vpc" "production" {
 
     postcondition {
       # The VPC CIDR must be in the expected range
-      condition     = startswith(self.cidr_block, "10.0.")
+      condition     = startswith(self.cidr_block, "10.")
       error_message = "Production VPC must use 10.0.0.0/8 CIDR space."
     }
   }
@@ -126,8 +126,8 @@ data "aws_db_instance" "main" {
 
   lifecycle {
     postcondition {
-      condition     = self.db_instance_status == "available"
-      error_message = "The production database must be in 'available' state before deploying."
+      condition     = self.storage_encrypted == true
+      error_message = "Production database must have storage encryption enabled."
     }
 
     postcondition {
@@ -147,9 +147,11 @@ Data sources do NOT support:
 - `create_before_destroy` - data sources are read-only, they have no creation lifecycle
 - `prevent_destroy` - same reason
 - `ignore_changes` - not applicable to data sources
+- `replace_triggered_by` - data sources are re-read rather than replaced
 
 Data sources DO support:
 
+- `enabled` - conditionally include or skip the data source read
 - `precondition` - validate before the query
 - `postcondition` - validate the query result
 
@@ -157,4 +159,4 @@ Data sources DO support:
 
 ## Summary
 
-Use `precondition` blocks on data sources to validate input variables before querying, and `postcondition` blocks to validate that the discovered infrastructure meets your requirements. This surfaces misconfigurations early - at plan time - before any changes are applied. Use `self` inside `postcondition` to reference the data source's attributes.
+Use `precondition` blocks on data sources to validate input variables before querying, and `postcondition` blocks to validate that the discovered infrastructure meets your requirements. This surfaces misconfigurations as early as possible, often during planning, though conditions that depend on unknown values can be deferred until apply. Use `self` inside `postcondition` to reference the data source's attributes.
