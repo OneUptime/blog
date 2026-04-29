@@ -88,12 +88,12 @@ sudo nano /etc/postgresql/*/main/pg_hba.conf
 Add these lines:
 
 ```text
-# K3s server nodes - allow MD5 authentication
-host    k3s    k3suser    192.168.1.100/32    md5
-host    k3s    k3suser    192.168.1.101/32    md5
-host    k3s    k3suser    192.168.1.102/32    md5
+# K3s server nodes - allow SCRAM authentication
+host    k3s    k3suser    192.168.1.100/32    scram-sha-256
+host    k3s    k3suser    192.168.1.101/32    scram-sha-256
+host    k3s    k3suser    192.168.1.102/32    scram-sha-256
 # Or allow all from the cluster subnet
-# host    k3s    k3suser    192.168.1.0/24    md5
+# host    k3s    k3suser    192.168.1.0/24    scram-sha-256
 ```
 
 ```bash
@@ -158,15 +158,19 @@ sudo journalctl -u k3s -f
 
 ```bash
 # On server nodes 2 and 3
+sudo mkdir -p /etc/rancher/k3s
+
 sudo tee /etc/rancher/k3s/config.yaml > /dev/null <<EOF
 token: "K3sPostgresToken"
 datastore-endpoint: "postgres://k3suser:K3sPostgresPassword123!@192.168.1.200:5432/k3s?sslmode=disable"
 tls-san:
   - 192.168.1.99
-  - 192.168.1.101   # This server's IP
+  - 192.168.1.101   # Replace with this server's IP on each node
   - k3s.example.com
 kubelet-arg:
   - "max-pods=110"
+disable:
+  - servicelb
 EOF
 
 curl -sfL https://get.k3s.io | sudo sh -
@@ -177,26 +181,37 @@ curl -sfL https://get.k3s.io | sudo sh -
 For production, enable SSL between K3s and PostgreSQL:
 
 ```bash
-# Generate SSL certificates for PostgreSQL
+# Generate a self-signed server certificate in the PostgreSQL data directory
 sudo -i -u postgres
-cd /var/lib/postgresql/
-openssl req -new -text -passout pass:abcd -subj /CN=DBServerCert -out server.req
-openssl rsa -in privkey.pem -passout pass:abcd -out server.key
-openssl req -x509 -in server.req -text -key server.key -out server.crt
+cd /var/lib/postgresql/*/main
+openssl req -new -x509 -days 365 -nodes -text -out server.crt \
+  -keyout server.key -subj "/CN=db.example.internal"
 chmod og-rwx server.key
+exit
 ```
 
-Configure K3s to use SSL:
+Enable SSL in PostgreSQL and configure K3s to verify the server certificate:
+
+```ini
+# /etc/postgresql/<version>/main/postgresql.conf
+ssl = on
+ssl_cert_file = 'server.crt'
+ssl_key_file = 'server.key'
+```
+
+```bash
+sudo systemctl restart postgresql
+```
 
 ```yaml
 # /etc/rancher/k3s/config.yaml
-datastore-endpoint: "postgres://k3suser:password@192.168.1.200:5432/k3s?sslmode=require"
+datastore-endpoint: "postgres://k3suser:password@db.example.internal:5432/k3s?sslmode=verify-full"
 
-# SSL certificates
+# Copy the certificate used to trust the PostgreSQL server certificate to each K3s server and reference it here
 datastore-cafile: "/etc/rancher/k3s/pg-ca.crt"
-datastore-certfile: "/etc/rancher/k3s/pg-client.crt"
-datastore-keyfile: "/etc/rancher/k3s/pg-client.key"
 ```
+
+Only add `datastore-certfile` and `datastore-keyfile` if PostgreSQL is configured to require client certificate authentication.
 
 ## Step 7: Using Managed PostgreSQL (AWS RDS)
 
@@ -205,7 +220,7 @@ K3s works with managed PostgreSQL services:
 ```yaml
 # /etc/rancher/k3s/config.yaml
 # AWS RDS PostgreSQL connection
-datastore-endpoint: "postgres://k3suser:password@mydb.cluster-xxx.us-east-1.rds.amazonaws.com:5432/k3s?sslmode=require"
+datastore-endpoint: "postgres://k3suser:password@mydb.123456789012.us-east-1.rds.amazonaws.com:5432/k3s?sslmode=verify-full"
 
 # RDS CA bundle
 datastore-cafile: "/etc/rancher/k3s/rds-ca-bundle.pem"
@@ -220,6 +235,8 @@ curl -o /etc/rancher/k3s/rds-ca-bundle.pem \
 ## Step 8: Add Agent Nodes
 
 ```bash
+sudo mkdir -p /etc/rancher/k3s
+
 sudo tee /etc/rancher/k3s/config.yaml > /dev/null <<EOF
 server: "https://192.168.1.99:6443"
 token: "K3sPostgresToken"
@@ -267,6 +284,7 @@ FROM pg_tables
 WHERE schemaname = 'public';
 
 -- Check slow queries
+-- Requires pg_stat_statements to be enabled
 SELECT query, mean_exec_time, calls
 FROM pg_stat_statements
 ORDER BY mean_exec_time DESC
@@ -276,12 +294,12 @@ LIMIT 10;
 ## PostgreSQL Backup for K3s Data
 
 ```bash
-# Backup the K3s PostgreSQL database
-pg_dump -h 192.168.1.200 -U k3suser k3s | \
+# Run on the PostgreSQL host
+sudo -u postgres pg_dump k3s | \
     gzip > k3s-postgres-backup-$(date +%Y%m%d).sql.gz
 
 # Schedule automatic backups
-echo "0 */6 * * * postgres pg_dump -h 192.168.1.200 -U k3suser k3s | gzip > /backups/k3s-$(date +\%Y\%m\%d-\%H\%M).sql.gz" | \
+echo '0 */6 * * * postgres pg_dump k3s | gzip > /backups/k3s-$(date +\%Y\%m\%d-\%H\%M).sql.gz' | \
     sudo tee /etc/cron.d/k3s-backup
 ```
 
