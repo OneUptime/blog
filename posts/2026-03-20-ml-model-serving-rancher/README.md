@@ -168,12 +168,9 @@ metadata:
   namespace: ml-serving
 spec:
   predictor:
-    canaryTrafficPercent: 20       # 20% to canary
+    canaryTrafficPercent: 20       # 20% to canary (new revision)
     sklearn:
       storageUri: s3://ml-models/v2.0
-    containers:
-    - name: canary-model
-      image: registry.example.com/ml/model:canary
 ```
 
 ## Step 7: Test Model Endpoint
