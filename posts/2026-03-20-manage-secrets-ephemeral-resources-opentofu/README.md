@@ -8,7 +8,7 @@ Description: A guide to best practices for managing secrets safely in OpenTofu u
 
 ## Introduction
 
-Managing secrets in infrastructure code is one of the most critical security challenges. OpenTofu's ephemeral resources provide a way to use secrets during deployments without persisting them to state files. This guide covers patterns for safely handling passwords, API keys, certificates, and other sensitive values.
+Managing secrets in infrastructure code is one of the most critical security challenges. OpenTofu 1.11 introduced ephemeral resources and write-only attributes, which provide a way to use secrets during deployments without persisting them to state files. This guide covers patterns for safely handling passwords, API keys, certificates, and other sensitive values.
 
 ## The Problem with Regular Data Sources
 
@@ -36,14 +36,10 @@ ephemeral "aws_secretsmanager_secret_version" "db_pass" {
 }
 
 resource "aws_db_instance" "main" {
-  password = jsondecode(
+  password_wo = jsondecode(
     ephemeral.aws_secretsmanager_secret_version.db_pass.secret_string
   ).password
-
-  lifecycle {
-    # Don't track password changes in state
-    ignore_changes = [password]
-  }
+  password_wo_version = 1
 }
 ```
 
@@ -67,12 +63,9 @@ resource "aws_db_instance" "main" {
   instance_class    = var.db_instance_class
   allocated_storage = var.db_storage
   db_name           = var.db_name
-  username          = local.db_creds.username
-  password          = local.db_creds.password  # Not in state
-
-  lifecycle {
-    ignore_changes = [username, password]
-  }
+  username          = var.db_username
+  password_wo       = local.db_creds.password
+  password_wo_version = var.db_password_version
 }
 ```
 
@@ -95,14 +88,17 @@ provider "datadog" {
 }
 
 resource "aws_ssm_parameter" "stripe_key" {
-  name  = "/myapp/${var.environment}/stripe-api-key"
-  type  = "SecureString"
-  value = local.keys.stripe_api_key  # Stored encrypted in SSM
-  # The original plaintext is ephemeral
+  name             = "/myapp/${var.environment}/stripe-api-key"
+  type             = "SecureString"
+  value_wo         = local.keys.stripe_api_key
+  value_wo_version = var.stripe_key_version
+  # Stored encrypted in SSM without persisting plaintext in state
 }
 ```
 
 ## Pattern 3: TLS Certificates
+
+Use ephemeral TLS keys only with write-only consumers; one common pattern is to write the key directly to a secret store.
 
 ```hcl
 # Generate certificate private key ephemerally
@@ -111,61 +107,49 @@ ephemeral "tls_private_key" "app_cert" {
   ecdsa_curve = "P256"
 }
 
-resource "tls_self_signed_cert" "app" {
-  private_key_pem = ephemeral.tls_private_key.app_cert.private_key_pem
-
-  subject {
-    common_name  = "app.${var.domain}"
-    organization = var.organization
-  }
-
-  validity_period_hours = 8760  # 1 year
-
-  allowed_uses = [
-    "key_encipherment",
-    "digital_signature",
-    "server_auth",
-  ]
+resource "aws_secretsmanager_secret" "app_cert_key" {
+  name = "myapp/${var.environment}/tls/private-key"
 }
 
-# Store private key securely - NOT in state
 resource "aws_secretsmanager_secret_version" "app_cert_key" {
-  secret_id = aws_secretsmanager_secret.app_cert_key.id
-  secret_string = jsonencode({
+  secret_id        = aws_secretsmanager_secret.app_cert_key.id
+  secret_string_wo = jsonencode({
     private_key = ephemeral.tls_private_key.app_cert.private_key_pem
   })
+  secret_string_wo_version = 1
 }
 ```
 
 ## Pattern 4: Secrets Rotation
 
+When a secret rotates, OpenTofu can read the current `AWSCURRENT` version on each run. If you later pass that secret into a write-only attribute, you still need a separate non-ephemeral version field to trigger updates.
+
 ```hcl
-# Always fetch the current version - works with rotation
+# Always fetch the current version labeled AWSCURRENT
 data "aws_secretsmanager_secret" "app" {
   name = "myapp/${var.environment}/config"
 }
 
 ephemeral "aws_secretsmanager_secret_version" "app" {
   secret_id = data.aws_secretsmanager_secret.app.id
-  # No version_id = always gets the latest (rotated) version
+  # No version_stage specified = defaults to AWSCURRENT
 }
 
-# Each apply uses the current secret value
-# If secrets manager rotates it between applies, new value is used
-resource "aws_ecs_task_definition" "app" {
-  family = "myapp"
+locals {
+  app_config = jsondecode(
+    ephemeral.aws_secretsmanager_secret_version.app.secret_string
+  )
+}
 
-  container_definitions = jsonencode([{
-    name = "app"
-    environment = [{
-      name  = "CONFIG"
-      value = ephemeral.aws_secretsmanager_secret_version.app.secret_string
-    }]
-  }])
+provider "datadog" {
+  api_key = local.app_config.datadog_api_key
+  app_key = local.app_config.datadog_app_key
 }
 ```
 
 ## Pattern 5: Vault Dynamic Secrets
+
+Vault dynamic credentials are a good fit for apply-time operations such as migrations, not long-lived resource arguments.
 
 ```hcl
 # Vault generates unique, time-limited credentials
@@ -173,16 +157,20 @@ ephemeral "vault_database_secret" "app" {
   mount = "database"
   name  = "myapp-role"
   # Vault creates a new credential each time
-  # Automatically expires after lease duration
+  # Automatically expires after the lease duration
 }
 
-resource "aws_db_instance" "app_replica" {
-  # Use dynamically generated credentials
-  username = ephemeral.vault_database_secret.app.username
-  password = ephemeral.vault_database_secret.app.password
+resource "terraform_data" "run_migrations" {
+  triggers_replace = [var.migration_revision]
 
-  lifecycle {
-    ignore_changes = [username, password]
+  provisioner "local-exec" {
+    command = "./scripts/run-migrations.sh"
+
+    environment = {
+      PGHOST     = var.db_host
+      PGUSER     = ephemeral.vault_database_secret.app.username
+      PGPASSWORD = ephemeral.vault_database_secret.app.password
+    }
   }
 }
 ```
@@ -198,7 +186,8 @@ aws cloudtrail lookup-events \
   --lookup-attributes AttributeKey=EventName,AttributeValue=GetSecretValue
 
 # Vault audit logs:
-vault audit list
+vault audit list -detailed
+# If you're using a file audit device, inspect the configured log file:
 cat /var/log/vault/audit.log | jq '.request.path'
 ```
 
@@ -208,16 +197,18 @@ cat /var/log/vault/audit.log | jq '.request.path'
 # After migration to ephemeral resources:
 
 # 1. Rotate all secrets that were previously in state
+#    (for Secrets Manager secrets that already have rotation configured)
 aws secretsmanager rotate-secret --secret-id myapp/db-password
 
 # 2. Verify new state doesn't contain sensitive data
 tofu state pull | grep -i "password\|secret\|key\|token"
-# Should return no matches
+# Inspect any matches carefully; secret names and metadata can create false positives
 
-# 3. Enable state encryption (OpenTofu 1.7+)
-# In tofu configuration:
+# 3. Enable state encryption (OpenTofu 1.8+ for variable-based config)
+# In tofu configuration for an existing state file:
 # terraform {
 #   encryption {
+#     method "unencrypted" "migrate" {}
 #     key_provider "pbkdf2" "main" {
 #       passphrase = var.state_passphrase
 #     }
@@ -226,11 +217,15 @@ tofu state pull | grep -i "password\|secret\|key\|token"
 #     }
 #     state {
 #       method = method.aes_gcm.main
+#       fallback {
+#         method = method.unencrypted.migrate
+#       }
 #     }
 #   }
 # }
+# Run `tofu apply`, then remove the fallback block after migration.
 ```
 
 ## Conclusion
 
-Ephemeral resources represent a paradigm shift in secrets management for infrastructure as code. By using ephemeral resources for all sensitive values, you eliminate the risk of secrets appearing in state files while maintaining the declarative, idempotent nature of OpenTofu. Combine ephemeral resources with write-only attributes (for resources that support them), secret rotation, and state encryption for a comprehensive secrets management strategy. The small additional complexity of using ephemeral resources is well worth the significant security improvement they provide.
+Ephemeral resources represent a major improvement in secrets management for infrastructure as code, but they are not a drop-in replacement for every data source or resource argument. They work best when the provider also offers write-only attributes or another supported ephemeral context such as provider configuration or provisioners. Combine ephemeral resources with write-only attributes, secret rotation, and state encryption for a comprehensive secrets management strategy. The small additional complexity of using ephemeral resources is well worth the significant security improvement they provide.
