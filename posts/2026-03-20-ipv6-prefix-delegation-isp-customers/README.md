@@ -8,15 +8,15 @@ Description: Configure DHCPv6 Prefix Delegation (PD) to automatically assign IPv
 
 ## What is DHCPv6 Prefix Delegation?
 
-DHCPv6 Prefix Delegation (RFC 3633) allows an ISP to automatically delegate a block of IPv6 addresses to a customer's router (CPE). The CPE then sub-divides that prefix to assign addresses to internal devices.
+DHCPv6 Prefix Delegation (originally specified in RFC 3633 and incorporated into RFC 8415) allows an ISP to automatically delegate a block of IPv6 addresses to a customer's router (CPE). The CPE then sub-divides that prefix to assign addresses to internal devices.
 
 ```mermaid
 sequenceDiagram
     CPE->>ISP_DHCP: Solicit (with IA_PD option)
-    ISP_DHCP->>CPE: Advertise (prefix 2001:db8:cust1::/56)
+    ISP_DHCP->>CPE: Advertise (prefix 2001:db8:100:100::/56)
     CPE->>ISP_DHCP: Request (confirm prefix)
     ISP_DHCP->>CPE: Reply (lease confirmed)
-    CPE->>LAN: RA with 2001:db8:cust1:1::/64
+    CPE->>LAN: RA with 2001:db8:100:101::/64
 ```
 
 ## ISC Kea DHCPv6 Server Configuration
@@ -42,15 +42,13 @@ Configure Kea to delegate /56 prefixes to residential customers:
           {
             "prefix": "2001:db8:0100::",
             "prefix-len": 40,
-            "delegated-len": 56,
-            "excluded-prefix": "2001:db8:0100::",
-            "excluded-prefix-len": 48
+            "delegated-len": 56
           }
         ],
         "option-data": [
           {
             "name": "dns-servers",
-            "data": "2001:db8:dns::1, 2001:db8:dns::2"
+            "data": "2001:db8:53::1,2001:db8:53::2"
           }
         ]
       }
@@ -67,30 +65,26 @@ For ISCs older dhcpd, configure PD like this:
 # dhcpd6.conf
 
 subnet6 2001:db8:0100::/40 {
-    prefix6 2001:db8:0100:: 2001:db8:01ff:: /56;
+    prefix6 2001:db8:0100:: 2001:db8:01ff:ff00:: /56;
 
-    option dhcp6.name-servers 2001:db8:dns::1;
+    option dhcp6.name-servers 2001:db8:53::1;
 }
 ```
 
-## CPE Configuration (Linux/OpenWRT)
+## CPE Configuration (Linux/OpenWrt)
 
-The CPE router requests a prefix using DHCPv6-PD. On Linux with `dhclient`:
+The CPE router requests a prefix using DHCPv6-PD. On Linux with `dhclient`, request PD on the WAN interface:
 
 ```bash
-# /etc/dhcp/dhclient6.conf
-interface "eth0" {
-    send dhcp6.ia-pd 1;   # Request prefix delegation
-    request dhcp6.name-servers, dhcp6.domain-search;
-}
+dhclient -6 -P --prefix-len-hint 56 -v eth0
 ```
 
-On OpenWRT (typical residential router):
+On OpenWrt (typical residential router):
 
 ```text
 # /etc/config/network
 config interface 'wan6'
-    option ifname  'eth0.2'
+    option device  'eth0.2'
     option proto   'dhcpv6'
     option reqprefix '56'    # Request a /56 from ISP
 
@@ -104,25 +98,24 @@ config interface 'lan'
 Check that the CPE received and is using the delegated prefix:
 
 ```bash
-# On Linux CPE: check received prefix
-journalctl -u dhclient6 | grep "prefix"
+# Check that IPv6 routes and delegated prefixes are installed
+ip -6 route show
 
-# Check that the delegated prefix is assigned to LAN interface
+# On OpenWrt, check that the delegated prefix is assigned to the LAN interface
 ip -6 addr show dev br-lan
 
 # Verify RA is advertising the prefix to LAN clients
 radvdump
 ```
 
-## Radius-Based Prefix Assignment
+## RADIUS-Based Prefix Assignment
 
 For ISPs managing prefix delegation centrally via RADIUS:
 
 ```text
 # FreeRADIUS users file - assign specific prefix per customer
 customer@isp.com Cleartext-Password := "password"
-    Framed-IPv6-Prefix = "2001:db8:cust1::/56",
-    Delegated-IPv6-Prefix = "2001:db8:cust1::/56"
+    Delegated-IPv6-Prefix = "2001:db8:100:100::/56"
 ```
 
 ## Conclusion
