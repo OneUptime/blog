@@ -15,14 +15,14 @@ Writing Kubewarden policies in Go uses the familiar Go ecosystem and the Kubewar
 ## Prerequisites
 
 ```bash
-# Install Go 1.21+
+# Install Go 1.25.x
 
-curl -Lo go.tar.gz https://go.dev/dl/go1.21.5.linux-amd64.tar.gz
+curl -Lo go.tar.gz https://go.dev/dl/go1.25.9.linux-amd64.tar.gz
 sudo tar -C /usr/local -xzf go.tar.gz
 export PATH=$PATH:/usr/local/go/bin
 
 # Install TinyGo (required for WASM compilation)
-curl -Lo tinygo.tar.gz https://github.com/tinygo-org/tinygo/releases/download/v0.31.0/tinygo0.31.0.linux-amd64.tar.gz
+curl -Lo tinygo.tar.gz https://github.com/tinygo-org/tinygo/releases/download/v0.39.0/tinygo0.39.0.linux-amd64.tar.gz
 sudo tar -C /usr/local -xzf tinygo.tar.gz
 export PATH=$PATH:/usr/local/tinygo/bin
 
@@ -36,9 +36,6 @@ chmod +x kwctl && sudo mv kwctl /usr/local/bin/
 ## Step 1: Create a New Policy Project
 
 ```bash
-# Use the Go policy template
-go install github.com/nicholasgasior/gsfmt@latest
-
 # Initialize the project
 mkdir disallow-latest-tag && cd disallow-latest-tag
 go mod init github.com/my-org/disallow-latest-tag
@@ -60,11 +57,13 @@ import (
     "fmt"
     "strings"
 
-    mapset "github.com/deckarep/golang-set/v2"
+    corev1 "github.com/kubewarden/k8s-objects/api/core/v1"
     kubewarden "github.com/kubewarden/policy-sdk-go"
     kubewarden_protocol "github.com/kubewarden/policy-sdk-go/protocol"
-    corev1 "github.com/kubewarden/k8s-objects/api/core/v1"
+    wapc "github.com/wapc/wapc-guest-tinygo"
 )
+
+const httpBadRequestStatusCode = 400
 
 func validate(payload []byte) ([]byte, error) {
     // Unmarshal the admission request
@@ -72,40 +71,71 @@ func validate(payload []byte) ([]byte, error) {
     if err := json.Unmarshal(payload, &validationRequest); err != nil {
         return kubewarden.RejectRequest(
             kubewarden.Message(fmt.Sprintf("Cannot unmarshal request: %v", err)),
-            kubewarden.Code(400),
+            kubewarden.Code(httpBadRequestStatusCode),
         )
     }
 
     // Get the pod object
     pod := &corev1.Pod{}
-    if err := json.Unmarshal(validationRequest.Request.Object.Raw, pod); err != nil {
+    if err := json.Unmarshal(validationRequest.Request.Object, pod); err != nil {
         return kubewarden.RejectRequest(
-            kubewarden.Message("Cannot unmarshal Pod object"),
-            kubewarden.Code(400),
+            kubewarden.Message(fmt.Sprintf("Cannot unmarshal Pod object: %v", err)),
+            kubewarden.Code(httpBadRequestStatusCode),
         )
     }
 
-    // Check all containers for the :latest tag
+    // Check all pod container types for the :latest tag or a missing tag
     violations := []string{}
-    for _, container := range pod.Spec.Containers {
-        if strings.HasSuffix(container.Image, ":latest") || !strings.Contains(container.Image, ":") {
+    for _, container := range pod.Spec.InitContainers {
+        if usesLatestOrNoTag(container.Image) {
             violations = append(violations,
-                fmt.Sprintf("Container '%s' uses the :latest tag or has no tag - use a specific version", container.Name))
+                fmt.Sprintf("Init container '%s' uses the :latest tag or has no tag - use a specific version or digest", container.Name))
+        }
+    }
+    for _, container := range pod.Spec.Containers {
+        if usesLatestOrNoTag(container.Image) {
+            violations = append(violations,
+                fmt.Sprintf("Container '%s' uses the :latest tag or has no tag - use a specific version or digest", container.Name))
+        }
+    }
+    for _, container := range pod.Spec.EphemeralContainers {
+        if usesLatestOrNoTag(container.Image) {
+            violations = append(violations,
+                fmt.Sprintf("Ephemeral container '%s' uses the :latest tag or has no tag - use a specific version or digest", container.Name))
         }
     }
 
     if len(violations) > 0 {
         return kubewarden.RejectRequest(
             kubewarden.Message(strings.Join(violations, "; ")),
-            kubewarden.Code(400),
+            kubewarden.NoCode,
         )
     }
 
     return kubewarden.AcceptRequest()
 }
 
-// main is the entry point for the WASM module
-func main() {}
+func validateSettings(payload []byte) ([]byte, error) {
+    return kubewarden.AcceptSettings()
+}
+
+func usesLatestOrNoTag(image string) bool {
+    if strings.Contains(image, "@") {
+        return false
+    }
+
+    lastSlash := strings.LastIndex(image, "/")
+    lastColon := strings.LastIndex(image, ":")
+
+    return strings.HasSuffix(image, ":latest") || lastColon <= lastSlash
+}
+
+func main() {
+    wapc.RegisterFunctions(wapc.Functions{
+        "validate":          validate,
+        "validate_settings": validateSettings,
+    })
+}
 ```
 
 ---
@@ -113,6 +143,9 @@ func main() {}
 ## Step 3: Build the WASM Policy
 
 ```bash
+# Sync module dependencies
+go mod tidy
+
 # Compile to WASM using TinyGo
 tinygo build \
   -o disallow-latest-tag.wasm \
@@ -143,7 +176,7 @@ cat > test-latest.json << EOF
 }
 EOF
 
-kwctl run disallow-latest-tag.wasm --request-path test-latest.json
+kwctl run --request-path test-latest.json disallow-latest-tag.wasm
 ```
 
 ---
@@ -151,10 +184,36 @@ kwctl run disallow-latest-tag.wasm --request-path test-latest.json
 ## Step 5: Deploy the Policy
 
 ```bash
+# Create policy metadata
+cat > metadata.yaml << EOF
+rules:
+  - apiGroups: [""]
+    apiVersions: ["v1"]
+    resources: ["pods"]
+    operations: ["CREATE", "UPDATE"]
+mutating: false
+contextAwareResources: []
+executionMode: kubewarden-wapc
+policyType: kubernetes
+backgroundAudit: true
+annotations:
+  io.kubewarden.policy.title: disallow-latest-tag
+  io.kubewarden.policy.version: v0.1.0
+  io.kubewarden.policy.description: Reject Pods that use the latest tag or omit an image tag
+  io.kubewarden.policy.author: my-org
+  io.kubewarden.policy.url: https://github.com/my-org/disallow-latest-tag
+  io.kubewarden.policy.source: https://github.com/my-org/disallow-latest-tag
+  io.kubewarden.policy.license: Apache-2.0
+  io.kubewarden.policy.severity: medium
+  io.kubewarden.policy.category: Resource validation
+  io.kubewarden.policy.ociUrl: ghcr.io/my-org/disallow-latest-tag
+EOF
+
 # Annotate the policy with metadata
-kwctl annotate disallow-latest-tag.wasm \
+kwctl annotate \
   --metadata-path metadata.yaml \
-  --output annotated-policy.wasm
+  --output-path annotated-policy.wasm \
+  disallow-latest-tag.wasm
 
 # Push to OCI registry
 kwctl push annotated-policy.wasm \
@@ -167,7 +226,7 @@ kind: ClusterAdmissionPolicy
 metadata:
   name: disallow-latest-tag
 spec:
-  module: ghcr.io/my-org/disallow-latest-tag:v0.1.0
+  module: registry://ghcr.io/my-org/disallow-latest-tag:v0.1.0
   rules:
     - apiGroups: [""]
       apiVersions: ["v1"]
