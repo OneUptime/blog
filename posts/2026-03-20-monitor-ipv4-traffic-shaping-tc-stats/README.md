@@ -102,7 +102,7 @@ watch -n 2 "sudo tc -s class show dev eth0"
 # Statistics are cumulative since the qdisc was added
 # To reset, delete and re-add the qdisc
 sudo tc qdisc del dev eth0 root
-sudo tc qdisc add dev eth0 root tbf rate 10mbit burst 32kbit latency 400ms
+sudo tc qdisc add dev eth0 root tbf rate 10mbit burst 32kb latency 400ms
 ```
 
 ## Checking for Excessive Drops
