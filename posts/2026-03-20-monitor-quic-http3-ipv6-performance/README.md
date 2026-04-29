@@ -173,7 +173,7 @@ sudo tcpdump -i eth0 -n "ip6 and udp port 443" 2>/dev/null | \
   awk '{print $1}' | cut -d. -f1 | uniq -c
 
 # Monitor with nload for bandwidth
-nload -u Mbit eth0
+nload -u m eth0
 ```
 
 ## Monitoring with OneUptime
