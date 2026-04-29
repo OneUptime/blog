@@ -8,23 +8,24 @@ Description: Configure IPv6 Router Advertisements on MikroTik RouterOS to enable
 
 ## Introduction
 
-MikroTik RouterOS manages IPv6 Router Advertisements through the `/ipv6 nd` menu. The interface is straightforward but has some RouterOS-specific naming conventions to be aware of. This guide covers both CLI (using the RouterOS command line) and equivalent steps for Winbox.
+MikroTik RouterOS manages IPv6 Router Advertisements through the `/ipv6 nd` menu. The interface is straightforward but has some RouterOS-specific naming conventions to be aware of. This guide focuses on the RouterOS CLI; the same settings are available in Winbox.
 
 ## Prerequisites
 
-- MikroTik router with RouterOS 6.x or 7.x
-- IPv6 package enabled (`/system package` - verify `ipv6` is installed)
+- MikroTik router with IPv6 support enabled
+- On older RouterOS 6 builds, verify the `ipv6` package is installed and enabled with `/system package print`
 - IPv6 address assigned to the LAN interface
 
-## Checking IPv6 Package Status
+## Checking IPv6 Status
 
 ```bash
-# Via RouterOS CLI
-
+# On older RouterOS 6 builds, verify the "ipv6" package is installed
 /system package print
-# Verify "ipv6" package is installed and running
 
-# Enable IPv6 forwarding
+# Verify IPv6 is enabled system-wide
+/ipv6 settings print
+
+# Enable IPv6 forwarding if this device will route IPv6
 /ipv6 settings set forward=yes
 ```
 
@@ -43,9 +44,8 @@ The `advertise=yes` flag tells RouterOS to include this prefix in Router Adverti
 ## Configuring Router Advertisement Settings
 
 ```bash
-# Set RA parameters for the bridge1 interface
-/ipv6 nd set [find interface=bridge1] \
-    interface=bridge1 \
+# Add an ND entry for the bridge1 interface and set RA parameters
+/ipv6 nd add interface=bridge1 \
     ra-interval=30s-100s \
     ra-lifetime=30m \
     managed-address-configuration=no \
@@ -62,23 +62,25 @@ The `advertise=yes` flag tells RouterOS to include this prefix in Router Adverti
 MikroTik can advertise DNS servers in Router Advertisements:
 
 ```bash
-# Add a DNS server to advertise in RA
-/ipv6 nd prefix
-# DNS is controlled separately via the dns-server setting
+# Advertise specific IPv6 DNS servers via RDNSS
+/ipv6 nd set [find interface=bridge1] \
+    advertise-dns=yes \
+    dns-servers=2001:db8:1:1::53,2606:4700:4700::1111
 
-# RouterOS 7.x: Set the DNS to advertise via RA
-/ipv6 nd set [find interface=bridge1] dns=2001:db8:1:1::53
-
-# For multiple DNS servers, RouterOS uses the system DNS by default
-# when advertise-dns=yes
+# Or advertise the DNS servers configured on the router itself
 /ip dns set servers=2001:db8:1:1::53,2606:4700:4700::1111
+/ipv6 nd set [find interface=bridge1] advertise-dns=yes
 ```
 
 ## Configuring RA Prefix Details
 
 ```bash
-# Configure prefix options for RA (these are auto-derived from /ipv6 address)
-# To customize:
+# Prefix options are auto-derived from /ipv6 address when advertise=yes.
+# If you want manual control of lifetimes and flags, disable automatic
+# prefix advertisement on the address first:
+/ipv6 address set [find address="2001:db8:1:1::1/64" interface=bridge1] advertise=no
+
+# Then add the prefix to advertise:
 /ipv6 nd prefix add prefix=2001:db8:1:1::/64 \
     interface=bridge1 \
     valid-lifetime=1d \
@@ -89,15 +91,17 @@ MikroTik can advertise DNS servers in Router Advertisements:
 
 ## Setting M/O Flags for DHCPv6
 
-If you want clients to use DHCPv6 for addresses:
+If you want Router Advertisements to tell clients that DHCPv6 is available for addresses:
 
 ```bash
-# M flag = 1: clients use DHCPv6 for addresses
+# M flag = 1: advertise that DHCPv6-managed addresses are available
 /ipv6 nd set [find interface=bridge1] managed-address-configuration=yes
 
-# O flag = 1: clients use DHCPv6 for DNS and other config only
+# O flag = 1: advertise that DHCPv6 provides other configuration
 /ipv6 nd set [find interface=bridge1] other-configuration=yes
 ```
+
+The M flag advertises stateful addressing via DHCPv6. If the RA still includes an autonomous prefix (for example from an `advertise=yes` IPv6 address), many clients will use both SLAAC and DHCPv6. For DHCPv6-only addressing, do not advertise the prefix for autonomous configuration.
 
 ## Disabling RA on WAN Interfaces
 
@@ -114,10 +118,10 @@ If you want clients to use DHCPv6 for addresses:
 # Show current ND/RA configuration
 /ipv6 nd print detail
 
-# Show neighbor table (clients that responded to RA)
+# Show the IPv6 neighbor table
 /ipv6 neighbor print
 
-# Monitor RA traffic with packet sniffer
+# Monitor ICMPv6 traffic, including RAs
 /tool sniffer quick interface=bridge1 ip-protocol=icmpv6
 ```
 
@@ -133,7 +137,7 @@ If you want clients to use DHCPv6 for addresses:
 /ip dns set servers=2001:db8:1:1::53,2001:4860:4860::8888
 
 # 3. Configure RA for the LAN
-/ipv6 nd set [find interface=bridge1] \
+/ipv6 nd add interface=bridge1 \
     ra-interval=30s-100s \
     ra-lifetime=30m \
     managed-address-configuration=no \
@@ -147,4 +151,4 @@ If you want clients to use DHCPv6 for addresses:
 
 ## Conclusion
 
-MikroTik RouterOS provides a concise CLI for configuring IPv6 Router Advertisements through the `/ipv6 nd` menu. Setting `advertise=yes` on the address and `advertise-dns=yes` on the ND profile covers most deployment needs. For DHCPv6 integrated deployments, set the M and O flags appropriately and configure a DHCPv6 server to complement the RA.
+MikroTik RouterOS provides a concise CLI for configuring IPv6 Router Advertisements through the `/ipv6 nd` menu. Setting `advertise=yes` on the address and `advertise-dns=yes` on the ND profile covers most deployment needs. For DHCPv6 integrated deployments, set the M and O flags appropriately, configure a DHCPv6 server to complement the RA, and avoid advertising an autonomous prefix if you want DHCPv6-only addressing.
