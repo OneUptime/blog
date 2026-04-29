@@ -8,7 +8,7 @@ Description: Learn how to calculate and allocate IPv6 subnets from a /48 prefix 
 
 ## Introduction
 
-A /48 prefix is the standard IPv6 allocation given to organizations by their ISP or Regional Internet Registry (RIR). From a /48, you have 16 bits of subnet space (bits 49-64) to allocate subnets, yielding 65,536 individual /64 subnets. This guide shows you how to calculate, plan, and number those subnets.
+A /48 prefix is a common IPv6 allocation given to organizations by their ISP or Regional Internet Registry (RIR). From a /48, you have 16 bits of subnet space (bits 49-64) to allocate subnets, yielding 65,536 individual /64 subnets. This guide shows you how to calculate, plan, and number those subnets.
 
 ## The Math
 
@@ -147,8 +147,8 @@ allocate_56_from_48("2001:db8:acad::/48")
 | /56 subnets | 256 |
 | /60 subnets | 4,096 |
 | /64 subnets | 65,536 |
-| Hosts per /64 | 2^64 ≈ 18.4 quintillion |
+| Addresses per /64 | 2^64 ≈ 18.4 quintillion |
 
 ## Conclusion
 
-A /48 provides more than enough address space for any organization, with 65,536 /64 subnets available. The key decisions are how to number your subnet IDs (bits 49-64) to make your addressing scheme readable, hierarchical, and easy to summarize in routing. Plan your subnet numbering scheme before deployment - changing it later requires renumbering.
+A /48 provides a very large amount of address space, with 65,536 /64 subnets available. The key decisions are how to number your subnet IDs (bits 49-64) to make your addressing scheme readable, hierarchical, and easy to summarize in routing. Plan your subnet numbering scheme before deployment - changing it later requires renumbering.
