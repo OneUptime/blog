@@ -8,7 +8,7 @@ Description: Learn how to create Kubernetes ClusterRoles and ClusterRoleBindings
 
 ## Overview
 
-Kubernetes RBAC controls access to API resources through Roles and ClusterRoles. ClusterRoles grant permissions across all namespaces, while ClusterRoleBindings assign those roles to subjects. OpenTofu manages the full RBAC hierarchy.
+Kubernetes RBAC controls access to API resources through Roles and ClusterRoles. Roles are namespaced, while ClusterRoles are cluster-scoped and can be bound within a namespace or across all namespaces. ClusterRoleBindings assign those roles cluster-wide to subjects, while RoleBindings can scope a ClusterRole to a single namespace. OpenTofu manages the full RBAC hierarchy.
 
 ## Step 1: Create a Read-Only ClusterRole
 
@@ -52,7 +52,7 @@ resource "kubernetes_cluster_role_v1" "app_operator" {
     name = "app-operator"
   }
 
-  # Allow managing ConfigMaps in all namespaces
+  # Allow managing ConfigMaps when this ClusterRole is bound
   rule {
     api_groups = [""]
     resources  = ["configmaps"]
@@ -111,7 +111,7 @@ resource "kubernetes_cluster_role_binding_v1" "devops_binding" {
 
   subject {
     kind      = "Group"
-    name      = "system:masters"
+    name      = "devops-team"
     api_group = "rbac.authorization.k8s.io"
   }
 }
