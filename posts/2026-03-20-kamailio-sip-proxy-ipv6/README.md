@@ -18,6 +18,9 @@ Kamailio is a high-performance SIP server used as a proxy, registrar, and load b
 # Basic parameters
 
 #!define DBURL "mysql://kamailio:password@localhost/kamailio"
+# TLS listener requires tls.so and enable_tls=yes
+loadmodule "tls.so"
+enable_tls=yes
 
 # Listen on IPv6 (UDP and TCP)
 listen=udp:[::]:5060
@@ -29,10 +32,10 @@ listen=udp:0.0.0.0:5060
 listen=tcp:0.0.0.0:5060
 
 # Define aliases for this host
-alias=sip.example.com
+alias=sip.example.com:5060
 
 # IPv6 address definition
-#!define MY_IPV6_ADDR "2001:db8::kamailio"
+#!define MY_IPV6_ADDR "2001:db8::10"
 ```
 
 ## Kamailio Routing for IPv6
@@ -62,10 +65,9 @@ route[REGISTRAR] {
 }
 
 route[IPV6_ROUTING] {
-    # Fix the contact header for IPv6 clients
+    # Add Record-Route on dialog-forming requests
     if (is_method("INVITE")) {
-        # Add Record-Route with IPv6 address
-        record_route_preset("[MY_IPV6_ADDR]:5060;transport=udp");
+        record_route();
     }
 
     # Lookup in location database
@@ -92,22 +94,25 @@ route[IPV4_ROUTING] {
 
 ```bash
 # Handle calls between IPv4 and IPv6 clients
-# Kamailio acts as B2BUA or uses RTPEngine for media
+# Kamailio can use B2B modules for application logic or RTPEngine for media relay
 
 # Load B2B User Agent module
 loadmodule "b2b_entities.so"
 loadmodule "b2b_logic.so"
 
-# Or use RTPEngine for IPv6-IPv4 media transcoding
+# Or use RTPEngine for IPv6/IPv4 SDP and media bridging
 loadmodule "rtpengine.so"
-modparam("rtpengine", "rtpengine_sock", "udp:[2001:db8::rtpengine]:22222")
+modparam("rtpengine", "rtpengine_sock", "udp6:rtpengine.example.com:22222")
 
 request_route {
-    if (src_ip == "0.0.0.0" && af == INET) {
-        # IPv4 source calling IPv6 destination
-        rtpengine_offer("force-relay");
-    } else if (af == INET6) {
-        rtpengine_offer("force-relay");
+    if (is_method("INVITE")) {
+        if (af == INET) {
+            # Example: IPv4 caller going to an IPv6-only media endpoint
+            rtpengine_offer("replace-origin replace-session-connection address-family=IP6");
+        } else if (af == INET6) {
+            # Example: IPv6 caller going to an IPv4-only media endpoint
+            rtpengine_offer("replace-origin replace-session-connection address-family=IP4");
+        }
     }
 }
 ```
@@ -115,7 +120,8 @@ request_route {
 ## Kamailio IPv6 Registration Handling
 
 ```bash
-# usrloc module for IPv6 registrations
+# registrar/usrloc modules for IPv6 registrations
+loadmodule "registrar.so"
 loadmodule "usrloc.so"
 modparam("usrloc", "db_mode", 2)
 modparam("usrloc", "use_domain", 1)
@@ -136,10 +142,11 @@ route[REGISTRAR] {
 # Lookup including IPv6 contacts
 route[INVITE] {
     if (!lookup("location")) {
-        # Try IPv6 alternative
         sl_send_reply("404", "Not Found");
         exit;
     }
+    t_relay();
+    exit;
 }
 ```
 
@@ -154,27 +161,27 @@ sudo ip6tables -A INPUT -p tcp --dport 5061 -j ACCEPT  # TLS
 # If using RTPEngine
 sudo ip6tables -A INPUT -p udp --dport 10000:60000 -j ACCEPT
 
-sudo ip6tables-save > /etc/ip6tables/rules.v6
+sudo ip6tables-save | sudo tee /etc/ip6tables/rules.v6 > /dev/null
 ```
 
 ## Testing Kamailio IPv6
 
 ```bash
-# Check Kamailio is listening on IPv6
-sudo kamailio -f /etc/kamailio/kamailio.cfg -l
+# Check Kamailio config syntax
+sudo kamailio -f /etc/kamailio/kamailio.cfg -c
 
 # Verify listeners
-kamcmd> cfg.get_list | grep listen
+kamcmd core.sockets_list
 
 # Test with SIPp
 sudo apt install sipp -y
 
 # Send OPTIONS over IPv6
-sipp [2001:db8::kamailio]:5060 \
-  -sf OPTIONS.xml \
-  -i [2001:db8::test-client] \
+sipp -sf OPTIONS.xml \
+  -i [2001:db8::20] \
   -t un \
-  -m 1
+  -m 1 \
+  [2001:db8::10]:5060
 
 # Check Kamailio stats
 kamctl stats
@@ -183,7 +190,7 @@ kamctl stats
 kamctl ul show | grep "2001:"
 
 # Debug SIP over IPv6
-kamailio -E -l [::]:5060
+kamailio -DD -E -f /etc/kamailio/kamailio.cfg
 ```
 
-Kamailio's `listen=udp:[::]:5060` configuration enables IPv6 SIP proxy operation, with the `af == INET6` condition in routing scripts enabling IPv6-specific logic for record-routing, NAT handling, and media relay decisions for calls between IPv6 and IPv4 SIP clients.
+Kamailio's `listen=udp:[::]:5060` configuration enables IPv6 SIP proxy operation, with the `af == INET6` condition in routing scripts enabling IPv6-specific logic and, with RTPEngine, SDP/media handling for calls between IPv6 and IPv4 SIP clients.
