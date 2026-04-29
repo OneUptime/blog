@@ -18,20 +18,19 @@ SendGrid is a cloud-based email delivery platform used for transactional and mar
 
 ## Provider Configuration
 
-The community SendGrid provider:
+The current community SendGrid provider on the Terraform Registry:
 
 ```hcl
 terraform {
   required_providers {
     sendgrid = {
-      source  = "Trois-Six/sendgrid"
-      version = "~> 0.2"
+      source  = "registry.terraform.io/kenzo0107/sendgrid"
+      version = "~> 2.8"
     }
   }
 }
 
 provider "sendgrid" {
-  api_key = var.sendgrid_api_key
 }
 ```
 
@@ -49,18 +48,15 @@ resource "sendgrid_api_key" "transactional" {
   scopes = [
     "mail.send",
     "templates.read",
-    "suppressions.read",
-    "suppressions.write"
+    "suppression.read",
+    "suppression.update"
   ]
 }
 
 resource "sendgrid_api_key" "marketing" {
   name = "marketing-campaigns"
   scopes = [
-    "marketing.read",
-    "marketing.write",
-    "contacts.read",
-    "contacts.write"
+    "marketing.read"
   ]
 }
 
@@ -70,20 +66,19 @@ output "transactional_api_key" {
 }
 ```
 
-## Sender Authentication (Domain Whitelabel)
+## Sender Authentication (Domain Authentication)
 
 Authenticate your sending domain to improve deliverability:
 
 ```hcl
-resource "sendgrid_domain_authentication" "main" {
-  domain              = "mail.example.com"
-  subdomain           = "em"
-  is_default          = true
-  automatic_security  = true
+resource "sendgrid_sender_authentication" "main" {
+  domain    = "example.com"
+  subdomain = "em"
+  default   = true
 }
 
 output "dns_records_to_add" {
-  value = sendgrid_domain_authentication.main.dns
+  value = sendgrid_sender_authentication.main.dns
 }
 ```
 
@@ -96,10 +91,12 @@ Organize sending IPs into pools for different email streams:
 ```hcl
 resource "sendgrid_ip_pool" "transactional" {
   name = "transactional"
+  ips  = ["192.0.2.10"]
 }
 
 resource "sendgrid_ip_pool" "marketing" {
   name = "marketing"
+  ips  = ["192.0.2.11"]
 }
 ```
 
@@ -151,14 +148,14 @@ resource "sendgrid_unsubscribe_group" "product_updates" {
 }
 ```
 
-## Using API Gateway for Webhook Events
+## Using Inbound Parse Webhooks
 
 Configure inbound parse for incoming email processing:
 
 ```hcl
-resource "sendgrid_parse_webhook" "inbound" {
-  hostname  = "inbound.example.com"
-  url       = "https://api.example.com/email/inbound"
+resource "sendgrid_inbound_parse_webhook" "inbound" {
+  hostname   = "inbound.example.com"
+  url        = "https://api.example.com/email/inbound"
   spam_check = true
   send_raw   = false
 }
@@ -166,7 +163,7 @@ resource "sendgrid_parse_webhook" "inbound" {
 
 ## Storing API Keys Securely
 
-After creating API keys, store them in AWS Secrets Manager:
+After creating API keys, store them in AWS Secrets Manager and protect your OpenTofu state accordingly:
 
 ```hcl
 resource "aws_secretsmanager_secret" "sendgrid_transactional" {
@@ -185,7 +182,7 @@ resource "aws_secretsmanager_secret_version" "sendgrid_transactional" {
 - Create separate API keys with minimal required scopes for each application.
 - Complete domain authentication before sending production emails.
 - Use separate IP pools for transactional and marketing email to protect sender reputation.
-- Store all API key outputs as sensitive and immediately write them to a secrets manager.
+- Store API key outputs as sensitive, immediately write them to a secrets manager, and protect or encrypt your OpenTofu state.
 - Use template versioning and always point to specific active versions.
 
 ## Conclusion
