@@ -25,7 +25,7 @@ alerting:
   alertmanagers:
     - static_configs:
         - targets:
-            - '[2001:db8::alertmanager]:9093'
+            - '[2001:db8::a]:9093'
 
 # Rules files
 rule_files:
@@ -62,14 +62,14 @@ scrape_configs:
   - job_name: 'kafka'
     static_configs:
       - targets:
-          - '[2001:db8::kafka1]:9308'
-          - '[2001:db8::kafka2]:9308'
+          - '[2001:db8::b1]:9308'
+          - '[2001:db8::b2]:9308'
 
   # Redis over IPv6
   - job_name: 'redis'
     static_configs:
       - targets:
-          - '[2001:db8::redis]:9121'
+          - '[2001:db8::c]:9121'
 ```
 
 ## Alertmanager with IPv6
@@ -91,7 +91,7 @@ receivers:
   - name: 'default'
     webhook_configs:
       # Webhook to IPv6 endpoint
-      - url: 'http://[2001:db8::notifications]:8080/webhook'
+      - url: 'http://[2001:db8::d]:8080/webhook'
         send_resolved: true
 ```
 
@@ -110,10 +110,10 @@ import time
 
 class HealthChecker:
     SERVICES = {
-        'kafka': ('2001:db8::kafka', 9092),
-        'redis': ('2001:db8::redis', 6379),
-        'etcd': ('2001:db8::etcd', 2379),
-        'consul': ('2001:db8::consul', 8500),
+        'kafka': ('2001:db8::b', 9092),
+        'redis': ('2001:db8::c', 6379),
+        'etcd': ('2001:db8::e', 2379),
+        'consul': ('2001:db8::f', 8500),
     }
 
     def check_tcp(self, host: str, port: int, timeout: float = 3.0) -> dict:
