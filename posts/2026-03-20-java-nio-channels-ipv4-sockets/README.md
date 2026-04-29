@@ -8,7 +8,7 @@ Description: Learn how to use Java NIO's ServerSocketChannel and SocketChannel f
 
 ## Why Java NIO?
 
-Traditional `java.net` sockets are blocking-each connection needs its own thread. Java NIO (Non-blocking I/O) channels allow a single thread to handle thousands of connections using a `Selector`, similar to `epoll` on Linux.
+Traditional `java.net` sockets are typically used in blocking mode-each active connection often needs its own thread. Java NIO (New I/O) channels allow a single thread to handle thousands of connections using a `Selector`, similar to `epoll` on Linux.
 
 ## Basic NIO TCP Server
 
@@ -25,9 +25,9 @@ public class NioTcpServer {
     public static void main(String[] args) throws IOException {
         // Open a non-blocking server socket channel
         ServerSocketChannel serverChannel = ServerSocketChannel.open();
+        serverChannel.setOption(StandardSocketOptions.SO_REUSEADDR, true);
         serverChannel.configureBlocking(false);
         serverChannel.bind(new InetSocketAddress("0.0.0.0", PORT));
-        serverChannel.setOption(StandardSocketOptions.SO_REUSEADDR, true);
 
         // Create a Selector to monitor multiple channels
         Selector selector = Selector.open();
@@ -36,8 +36,6 @@ public class NioTcpServer {
         serverChannel.register(selector, SelectionKey.OP_ACCEPT);
 
         System.out.println("NIO server listening on port " + PORT);
-
-        ByteBuffer buffer = ByteBuffer.allocate(4096);
 
         while (true) {
             // Block until at least one channel is ready
@@ -50,16 +48,25 @@ public class NioTcpServer {
                 SelectionKey key = iter.next();
                 iter.remove();
 
+                if (!key.isValid()) {
+                    continue;
+                }
+
                 if (key.isAcceptable()) {
                     // Accept new connection
-                    SocketChannel client = serverChannel.accept();
+                    ServerSocketChannel server = (ServerSocketChannel) key.channel();
+                    SocketChannel client = server.accept();
+                    if (client == null) {
+                        continue;
+                    }
                     client.configureBlocking(false);
-                    client.register(selector, SelectionKey.OP_READ);
+                    client.register(selector, SelectionKey.OP_READ, ByteBuffer.allocate(4096));
                     System.out.println("Accepted: " + client.getRemoteAddress());
 
                 } else if (key.isReadable()) {
                     // Read data from client
                     SocketChannel client = (SocketChannel) key.channel();
+                    ByteBuffer buffer = (ByteBuffer) key.attachment();
                     buffer.clear();
                     int bytesRead = client.read(buffer);
 
@@ -68,10 +75,19 @@ public class NioTcpServer {
                         System.out.println("Client disconnected: " + client.getRemoteAddress());
                         key.cancel();
                         client.close();
-                    } else {
+                    } else if (bytesRead > 0) {
                         // Echo back: flip switches buffer from write to read mode
                         buffer.flip();
-                        client.write(buffer);
+                        key.interestOps(SelectionKey.OP_WRITE);
+                    }
+                } else if (key.isWritable()) {
+                    SocketChannel client = (SocketChannel) key.channel();
+                    ByteBuffer buffer = (ByteBuffer) key.attachment();
+                    client.write(buffer);
+
+                    if (!buffer.hasRemaining()) {
+                        buffer.clear();
+                        key.interestOps(SelectionKey.OP_READ);
                     }
                 }
             }
@@ -96,24 +112,32 @@ public class NioTcpClient {
         channel.configureBlocking(true);  // Blocking mode for simple client
 
         // Connect to server
-        boolean connected = channel.connect(new InetSocketAddress("127.0.0.1", 9000));
-        if (!connected) {
-            channel.finishConnect();
-        }
+        channel.connect(new InetSocketAddress("127.0.0.1", 9000));
         System.out.println("Connected: " + channel.getRemoteAddress());
 
         // Send message
         String message = "Hello from NIO client!\n";
         ByteBuffer writeBuffer = ByteBuffer.wrap(message.getBytes(StandardCharsets.UTF_8));
-        channel.write(writeBuffer);
+        while (writeBuffer.hasRemaining()) {
+            channel.write(writeBuffer);
+        }
 
         // Read response
         ByteBuffer readBuffer = ByteBuffer.allocate(1024);
-        int bytesRead = channel.read(readBuffer);
-        readBuffer.flip();
+        StringBuilder response = new StringBuilder();
 
-        String response = StandardCharsets.UTF_8.decode(readBuffer).toString();
-        System.out.println("Response: " + response.trim());
+        while (response.indexOf("\n") == -1) {
+            int bytesRead = channel.read(readBuffer);
+            if (bytesRead == -1) {
+                throw new EOFException("Server closed connection");
+            }
+
+            readBuffer.flip();
+            response.append(StandardCharsets.UTF_8.decode(readBuffer));
+            readBuffer.clear();
+        }
+
+        System.out.println("Response: " + response.toString().trim());
 
         channel.close();
     }
@@ -123,7 +147,7 @@ public class NioTcpClient {
 ## Reading and Writing with Buffers
 
 ```java
-// Write a string to a channel
+// Write a string to a blocking channel
 public static void writeString(SocketChannel ch, String msg) throws IOException {
     ByteBuffer buf = ByteBuffer.wrap(msg.getBytes(StandardCharsets.UTF_8));
     while (buf.hasRemaining()) {
@@ -131,7 +155,7 @@ public static void writeString(SocketChannel ch, String msg) throws IOException 
     }
 }
 
-// Read a specific number of bytes from a channel
+// Read a specific number of bytes from a blocking channel
 public static byte[] readBytes(SocketChannel ch, int count) throws IOException {
     ByteBuffer buf = ByteBuffer.allocate(count);
     while (buf.hasRemaining()) {
@@ -149,7 +173,11 @@ ServerSocketChannel server = ServerSocketChannel.open();
 
 // Java NIO socket options
 server.setOption(StandardSocketOptions.SO_REUSEADDR, true);
-server.setOption(StandardSocketOptions.SO_REUSEPORT, true);
+if (server.supportedOptions().contains(StandardSocketOptions.SO_REUSEPORT)) {
+    server.setOption(StandardSocketOptions.SO_REUSEPORT, true);
+}
+
+server.bind(new InetSocketAddress("0.0.0.0", 9000));
 
 SocketChannel client = server.accept();
 client.setOption(StandardSocketOptions.TCP_NODELAY, true);    // Disable Nagle
