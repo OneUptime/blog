@@ -19,11 +19,9 @@ Docker Compose is excellent for local development and simple deployments, but as
 
 ## Step 1: Audit Your Compose File
 
-Review your `docker-compose.yml` to identify components that need special handling:
+Review your `docker-compose.yml` to identify components that need special handling, especially `depends_on` and internal-only services that still need `expose` or `ports`, because Kompose does not translate every Compose feature 1:1 to Kubernetes:
 
 ```yaml
-version: "3.8"
-
 services:
   web:
     image: nginx:alpine
@@ -44,6 +42,8 @@ services:
 
   db:
     image: postgres:15
+    expose:
+      - "5432"
     volumes:
       - db_data:/var/lib/postgresql/data
     environment:
@@ -65,10 +65,10 @@ curl -L https://github.com/kubernetes/kompose/releases/latest/download/kompose-l
   -o kompose && chmod +x kompose
 
 # Convert
-kompose convert -f docker-compose.yml -o k8s-manifests/
+./kompose convert -f docker-compose.yml -o k8s-manifests/
 ```
 
-This generates Deployments, Services, and PersistentVolumeClaims.
+This typically generates Deployments, Services, PersistentVolumeClaims, and ConfigMaps for supported file mounts.
 
 ## Step 3: Review and Adjust Generated Manifests
 
@@ -135,16 +135,16 @@ env:
         key: SECRET_KEY
 ```
 
-In Rancher, navigate to **Secrets** to manage these through the UI.
+In Rancher, navigate to **Storage** > **Secrets** or **More Resources** > **Core** > **Secrets** to manage these through the UI.
 
 ## Step 5: Deploy via Rancher
 
-### Option A: Import Manifests via Rancher UI
+### Option A: Apply Manifests via Rancher UI
 
-1. In Rancher, select your cluster.
-2. Navigate to **Workloads** > **Import YAML**.
-3. Paste or upload your manifest files.
-4. Click **Import**.
+1. In Rancher, select your cluster and click **Explore**.
+2. Use **Create** > **Create from YAML**.
+3. Paste your manifest files or use **Read from File**.
+4. Click **Create**.
 
 ### Option B: Deploy via kubectl
 
@@ -154,7 +154,7 @@ kubectl apply -f k8s-manifests/ -n production
 
 ### Option C: Use Rancher Fleet for GitOps
 
-Add your manifests to a Git repository and configure Fleet:
+Add your manifests or Helm chart to a Git repository and configure Fleet. If you're deploying a Helm chart, a `fleet.yaml` can look like this:
 
 ```yaml
 # fleet.yaml
@@ -194,7 +194,7 @@ spec:
 
 ## Best Practices
 
-- Always add resource requests and limits - absent in Docker Compose, required in Kubernetes.
+- Add resource requests and limits - absent in Docker Compose, but strongly recommended in Kubernetes and sometimes enforced by namespace policies.
 - Replace hardcoded secrets with Kubernetes Secrets or an external vault.
 - Add health check probes (`readinessProbe`, `livenessProbe`) to all containers.
 - Use namespaces to separate environments.
