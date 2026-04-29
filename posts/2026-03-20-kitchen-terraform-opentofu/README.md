@@ -4,36 +4,38 @@ Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
 Tags: OpenTofu, Kitchen-Terraform, Testing, Infrastructure as Code, IaC, Test-Driven Infrastructure
 
-Description: Learn how to use Kitchen-Terraform to test OpenTofu configurations with multiple testing frameworks.
+Description: Learn how to use Kitchen-Terraform to test OpenTofu configurations with Test Kitchen and InSpec.
 
 ## Introduction
 
-Learn how to use Kitchen-Terraform to test OpenTofu configurations with multiple testing frameworks. This guide provides step-by-step instructions with practical examples to help you implement this in your infrastructure workflow.
+Kitchen-Terraform was built for Terraform and is now archived, but it can still be used with OpenTofu in existing Test Kitchen workflows. Kitchen-Terraform shells out to a configurable CLI client, so you can point the transport at the `tofu` binary and use InSpec to verify your OpenTofu configuration.
 
 ## Prerequisites
 
 - OpenTofu v1.6+ installed
+- Ruby 3.x and Bundler installed
 - Basic knowledge of OpenTofu concepts
-- Relevant cloud credentials configured
+- Relevant provider credentials configured if your module uses a cloud provider
 
 ## Step 1: Set Up the Environment
 
+```ruby
+# Gemfile
+source "https://rubygems.org"
+
+gem "kitchen-terraform", "~> 7.0"
+```
+
 ```bash
 # Verify OpenTofu installation
-
 tofu version
 
-# Set up required environment variables
-export TF_LOG=INFO  # Enable logging
-export TF_INPUT=false  # Disable interactive input
+# Verify Ruby and Bundler
+ruby --version
+bundle --version
 
-# Configure cloud credentials
-# AWS
-export AWS_PROFILE=your-profile
-# Azure
-export ARM_SUBSCRIPTION_ID=your-subscription-id
-# GCP
-export GOOGLE_APPLICATION_CREDENTIALS=/path/to/service-account.json
+# Install Kitchen-Terraform and its dependencies
+bundle install
 ```
 
 ## Step 2: Configure Your OpenTofu Project
@@ -44,56 +46,84 @@ terraform {
   required_version = ">= 1.6.0"
 
   required_providers {
-    aws = {
-      source  = "hashicorp/aws"
-      version = "~> 5.0"
+    random = {
+      source  = "hashicorp/random"
+      version = "~> 3.6"
     }
-  }
-
-  # Remote state backend for team collaboration
-  backend "s3" {
-    bucket         = "my-opentofu-state"
-    key            = "production/terraform.tfstate"
-    region         = "us-east-1"
-    dynamodb_table = "terraform-locks"
-    encrypt        = true
   }
 }
 
-provider "aws" {
-  region = var.aws_region
+resource "random_pet" "name" {
+  length = 2
+}
 
-  default_tags {
-    tags = {
-      ManagedBy   = "OpenTofu"
-      Environment = var.environment
-      Repository  = var.repository_url
-    }
-  }
+output "pet_name" {
+  value = random_pet.name.id
 }
 ```
 
 ## Step 3: Implement the Core Feature
 
+```yaml
+# kitchen.yml
+driver:
+  name: terraform
+
+transport:
+  name: terraform
+  client: tofu
+  root_module_directory: .
+
+provisioner:
+  name: terraform
+
+verifier:
+  name: terraform
+  systems:
+    - name: local
+      backend: local
+      attrs_outputs:
+        generated_name: pet_name
+      controls:
+        - generated_name
+
+platforms:
+  - name: local
+
+suites:
+  - name: default
+```
+
+```yaml
+# test/integration/default/inspec.yml
+name: default
+inputs:
+  - name: generated_name
+    type: String
+    required: true
+```
+
+```ruby
+# test/integration/default/controls/generated_name.rb
+control "generated_name" do
+  title "The OpenTofu output is available to InSpec"
+
+  describe input("generated_name") do
+    it { should match(/^[a-z]+-[a-z]+$/) }
+  end
+end
+```
+
 ```bash
-# Initialize the project
-tofu init -backend-config=backend.tfvars
-
-# Create a plan and save it
-tofu plan -out=tfplan -var-file=production.tfvars
-
-# Review the plan
-tofu show tfplan
-
-# Apply the saved plan
-tofu apply tfplan
+# Run the full Test Kitchen lifecycle
+bundle exec kitchen test
 ```
 
 ## Step 4: Set Up Automation
 
 ```yaml
 # .github/workflows/infrastructure.yml
-name: Infrastructure Deployment
+name: Kitchen-Terraform
 
 on:
   push:
@@ -102,109 +132,63 @@ on:
     branches: [main]
 
 permissions:
-  id-token: write
   contents: read
-  pull-requests: write
 
 jobs:
-  plan:
+  test:
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v6
+
+      - name: Setup Ruby
+        uses: ruby/setup-ruby@v1
+        with:
+          bundler-cache: true
 
       - name: Setup OpenTofu
-        uses: opentofu/setup-opentofu@v1
+        uses: opentofu/setup-opentofu@v2
         with:
-          tofu_version: "1.7.0"
+          tofu_wrapper: false
 
-      - name: Configure AWS Credentials
-        uses: aws-actions/configure-aws-credentials@v4
-        with:
-          role-to-assume: ${{ secrets.AWS_ROLE_ARN }}
-          aws-region: us-east-1
-
-      - name: OpenTofu Init
-        run: tofu init
-
-      - name: OpenTofu Plan
-        run: tofu plan -no-color -out=tfplan
-
-      - name: Upload Plan
-        uses: actions/upload-artifact@v3
-        with:
-          name: tfplan
-          path: tfplan
-
-  apply:
-    needs: plan
-    runs-on: ubuntu-latest
-    environment: production
-    if: github.ref == 'refs/heads/main'
-    steps:
-      - uses: actions/checkout@v4
-
-      - name: Setup OpenTofu
-        uses: opentofu/setup-opentofu@v1
-        with:
-          tofu_version: "1.7.0"
-
-      - name: Configure AWS Credentials
-        uses: aws-actions/configure-aws-credentials@v4
-        with:
-          role-to-assume: ${{ secrets.AWS_ROLE_ARN }}
-          aws-region: us-east-1
-
-      - name: Download Plan
-        uses: actions/download-artifact@v3
-        with:
-          name: tfplan
-
-      - name: OpenTofu Init
-        run: tofu init
-
-      - name: OpenTofu Apply
-        run: tofu apply -auto-approve tfplan
+      - name: Run Kitchen-Terraform
+        run: bundle exec kitchen test
 ```
 
 ## Step 5: Monitor and Verify
 
 ```bash
-# Check current state
-tofu show
+# List all configured instances
+bundle exec kitchen list
 
-# List all managed resources
-tofu state list
+# Create and converge the instance without destroying it
+bundle exec kitchen converge default-local
 
-# Verify resource configuration
-tofu state show aws_instance.main
+# Re-run the InSpec profile
+bundle exec kitchen verify default-local
 
-# Check for drift
-tofu plan -refresh-only
+# Inspect the merged Kitchen configuration
+bundle exec kitchen diagnose default-local
+
+# Destroy the test workspace when you are done
+bundle exec kitchen destroy default-local
 ```
 
 ## Step 6: Implement Best Practices
 
 ```hcl
-# Use locals for computed values
-locals {
-  name_prefix = "${var.project}-${var.environment}"
-  common_tags = {
-    Project     = var.project
-    Environment = var.environment
-    ManagedBy   = "OpenTofu"
-    Owner       = var.team_email
+variable "name_length" {
+  description = "Number of words in the generated name"
+  type        = number
+  default     = 2
+
+  validation {
+    condition     = var.name_length >= 2
+    error_message = "name_length must be at least 2."
   }
 }
 
-# Use validation for variables
-variable "environment" {
-  description = "Deployment environment"
-  type        = string
-
-  validation {
-    condition     = contains(["dev", "staging", "production"], var.environment)
-    error_message = "Environment must be dev, staging, or production."
-  }
+resource "random_pet" "name" {
+  length = var.name_length
 }
 ```
 
@@ -212,11 +196,11 @@ variable "environment" {
 
 If you encounter issues:
 
-1. Enable debug logging: `export TF_LOG=DEBUG`
-2. Check provider credentials: Verify environment variables
-3. Review state consistency: Run `tofu refresh` then `tofu plan`
-4. Consult provider documentation for service-specific errors
+1. Enable Test Kitchen debug logging: `bundle exec kitchen test -l debug`
+2. Check the configured client: Verify that `transport.client` points to the `tofu` executable
+3. Review the merged Kitchen configuration: Run `bundle exec kitchen diagnose default-local`
+4. Verify provider credentials and backend access if your module provisions cloud resources
 
 ## Conclusion
 
-You have successfully implemented How to Use Kitchen-Terraform with OpenTofu. This approach provides a repeatable, auditable, and collaborative infrastructure management workflow. Combine with code review processes, automated testing, and proper access controls for a production-ready setup.
+You have successfully implemented Kitchen-Terraform with OpenTofu by configuring Test Kitchen to use the `tofu` CLI and verifying the resulting state with InSpec. Because Kitchen-Terraform is archived, this approach is best suited for existing Test Kitchen workflows; for new OpenTofu projects, consider the native `tofu test` command.
