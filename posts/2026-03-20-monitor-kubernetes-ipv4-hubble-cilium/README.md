@@ -54,15 +54,15 @@ hubble observe --follow
 hubble observe --namespace production --follow
 
 # Filter to show only IPv4 traffic
-hubble observe --follow -t l3-l4 | grep "IPv4"
+hubble observe --ipv4 --follow
 
 # Show only flows to/from a specific pod
 hubble observe --from-pod production/my-api --follow
 hubble observe --to-pod production/database --follow
 
 # Filter by IPv4 address
-hubble observe --ip-src 10.244.1.5 --follow
-hubble observe --ip-dst 10.96.45.123 --follow
+hubble observe --from-ip 10.244.1.5 --follow
+hubble observe --to-ip 10.96.45.123 --follow
 ```
 
 ## Monitoring Dropped Traffic
@@ -95,7 +95,7 @@ hubble observe --from-service production/api --to-service production/database --
 
 ```bash
 # Enable HTTP-level visibility (requires Cilium L7 proxy)
-hubble observe --protocol HTTP --follow
+hubble observe --protocol http --follow
 
 # Example output:
 # production/api → production/frontend
@@ -120,12 +120,12 @@ kubectl port-forward -n kube-system svc/hubble-ui 12000:80 &
 ```bash
 # View flow statistics for the last hour
 hubble observe --since 1h --output json | \
-  jq '.flow | select(.verdict == "FORWARDED") | .Source.namespace' | \
+  jq '.flow | select(.verdict == "FORWARDED") | .source.namespace' | \
   sort | uniq -c | sort -rn
 
 # Count drops per namespace
 hubble observe --since 1h --verdict DROPPED --output json | \
-  jq -r '.flow.Source.namespace' | sort | uniq -c | sort -rn
+  jq -r '.flow.source.namespace' | sort | uniq -c | sort -rn
 ```
 
 Hubble transforms Kubernetes network debugging from educated guesswork into evidence-based investigation with full IPv4 flow context.
