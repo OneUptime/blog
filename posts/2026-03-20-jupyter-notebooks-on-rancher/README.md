@@ -19,40 +19,41 @@ helm repo update
 # Create values file
 
 cat > jupyterhub-values.yaml << 'EOF'
-proxy:
-  secretToken: "$(openssl rand -hex 32)"  # Required - run command and paste output
-
 hub:
   config:
     JupyterHub:
-      authenticator_class: "oauthenticator.github.GitHubOAuthenticator"
+      authenticator_class: "github"
     GitHubOAuthenticator:
       oauth_callback_url: "https://jupyter.example.com/hub/oauth_callback"
       client_id: "YOUR_GITHUB_CLIENT_ID"
       client_secret: "YOUR_GITHUB_CLIENT_SECRET"
       allowed_organizations:
         - your-github-org
+      scope:
+        - read:org
 
 singleuser:
+  cmd: null           # Use the Docker Stacks startup command
   defaultUrl: "/lab"    # Use JupyterLab instead of classic Jupyter
   storage:
     capacity: 10Gi
-    storageClassName: longhorn   # Persistent storage per user
+    dynamic:
+      storageClass: longhorn   # Persistent storage per user
   profileList:
     - display_name: "Standard Environment"
       description: "Python 3 with common data science libraries"
       kubespawner_override:
-        image: jupyter/datascience-notebook:latest
+        image: quay.io/jupyter/datascience-notebook:latest
         cpu_limit: 2
         mem_limit: "4G"
     - display_name: "GPU Environment (TensorFlow)"
       description: "TensorFlow with GPU support"
       kubespawner_override:
-        image: jupyter/tensorflow-notebook:cuda11.3-tensorflow-2.11.0
+        image: quay.io/jupyter/tensorflow-notebook:cuda-latest
         cpu_limit: 4
         mem_limit: "16G"
         extra_resource_limits:
-          nvidia.com/gpu: "1"    # Request one GPU
+          nvidia.com/gpu: "1"    # Requires GPU nodes and the NVIDIA device plugin
 
 cull:
   enabled: true
@@ -102,15 +103,14 @@ spec:
 
 ```dockerfile
 # custom-notebook/Dockerfile
-FROM jupyter/datascience-notebook:latest
+FROM quay.io/jupyter/datascience-notebook:latest
 
-USER $NB_UID
 RUN pip install --no-cache-dir \
-    mlflow==2.12.0 \
-    pandas==2.2.0 \
-    scikit-learn==1.4.0 \
-    tensorflow==2.15.0 \
-    torch==2.2.0
+    mlflow \
+    pandas \
+    scikit-learn && \
+    fix-permissions "${CONDA_DIR}" && \
+    fix-permissions "/home/${NB_USER}"
 
 # Pre-configure MLflow tracking URI
 ENV MLFLOW_TRACKING_URI=https://mlflow.example.com
@@ -130,7 +130,7 @@ spec:
   hard:
     requests.cpu: "40"        # Max 40 CPUs total
     requests.memory: "80Gi"   # Max 80GB total
-    nvidia.com/gpu: "4"       # Max 4 GPUs total
+    requests.nvidia.com/gpu: "4"   # Max 4 GPUs total
 EOF
 ```
 
