@@ -4,11 +4,11 @@ Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
 Tags: Multicast, IGMP, Linux, Socket, Networking, UDP
 
-Description: Join IPv4 multicast groups on Linux using socket options, the ip command, and programming interfaces, and verify group membership with system commands.
+Description: Join IPv4 multicast groups on Linux using socket options and programming interfaces, and verify group membership with system commands.
 
 ## Introduction
 
-Joining a multicast group on Linux instructs the network stack to accept packets sent to a multicast group address and optionally triggers IGMP membership reports to inform the local router. This is done through socket options (`IP_ADD_MEMBERSHIP`), the `ip maddr` command, or by applications that call the appropriate system calls. Understanding how to join groups is essential for deploying multicast applications and troubleshooting multicast connectivity.
+Joining a multicast group on Linux instructs the network stack to accept packets sent to a multicast group address and optionally triggers IGMP membership reports to inform the local router. This is done through socket options (`IP_ADD_MEMBERSHIP`) or by applications that call the same setsockopt-based API. Commands such as `ip maddr show` and files such as `/proc/net/igmp` help inspect the resulting multicast state. Understanding how to join groups is essential for deploying multicast applications and troubleshooting multicast connectivity.
 
 ## Join Multicast Group via Socket Options
 
@@ -33,13 +33,13 @@ sock.setsockopt(socket.SOL_SOCKET, socket.SO_REUSEPORT, 1)
 # Bind to multicast port:
 sock.bind(('', MCAST_PORT))
 
-# Join multicast group (on any interface):
+# Join multicast group (kernel-selected interface):
 mreq = struct.pack('4s4s',
     socket.inet_aton(MCAST_GRP),
-    socket.inet_aton('0.0.0.0'))  # 0.0.0.0 = INADDR_ANY (default interface)
+    socket.inet_aton('0.0.0.0'))  # 0.0.0.0 = INADDR_ANY (kernel-selected interface)
 sock.setsockopt(socket.IPPROTO_IP, socket.IP_ADD_MEMBERSHIP, mreq)
 
-print(f"Joined {MCAST_GRP} on all interfaces, listening on port {MCAST_PORT}")
+print(f"Joined {MCAST_GRP}, listening on port {MCAST_PORT}")
 
 try:
     while True:
@@ -69,8 +69,8 @@ IFACE_IP = '192.168.1.10'  # IP address of the interface to join on
 sock = socket.socket(socket.AF_INET, socket.SOCK_DGRAM)
 sock.setsockopt(socket.SOL_SOCKET, socket.SO_REUSEADDR, 1)
 
-# Bind to the specific interface:
-sock.bind((IFACE_IP, MCAST_PORT))
+# Bind to the port; the membership request selects the interface:
+sock.bind(('', MCAST_PORT))
 
 # Join on specific interface using its IP:
 mreq = struct.pack('4s4s',
@@ -98,33 +98,28 @@ sock2.setsockopt(socket.IPPROTO_IP, socket.IP_ADD_MEMBERSHIP,
                   bytes(mreqn))
 ```
 
-## Join Multicast Group via ip Command
+## Inspect Multicast Group State via ip Command
 
 ```bash
-# Add static multicast group membership (no socket needed):
-ip maddr add 239.255.0.1 dev eth0
-# This makes the interface accept multicast for this group
-# But does NOT send IGMP reports (no daemon involved)
-
 # View multicast groups on interface:
-ip maddr show eth0
+ip maddr show dev eth0
 # Or all interfaces:
 ip maddr show
 
+# Note: `ip maddr add/del` manages static link-layer multicast filter entries.
+# It does not perform an IPv4 IGMP join; use `IP_ADD_MEMBERSHIP` for that.
+
 # Example output:
 # 2:   eth0
-#     link  01:00:5e:7f:00:01 static
 #     inet  239.255.0.1
 #     inet  224.0.0.1
 
-# Remove static multicast group:
-ip maddr del 239.255.0.1 dev eth0
-
 # Check kernel's view of IGMP memberships:
 cat /proc/net/igmp
-# Format: Idx DevName Count Querier Group(hex) Users Timer Reporter
-# Example: 2 eth0 2 V3 EF000001 1 0:00000000 0
-#           Group EF000001 = 239.0.0.1 in little-endian hex
+# Example:
+# 2  eth0 : 2 V3
+#               010000EF     1 0:00000000 0
+# Group 010000EF = 239.0.0.1 in little-endian hex
 ```
 
 ## Source-Specific Multicast (SSM) with IGMPv3
@@ -150,7 +145,7 @@ sock.bind(('', MCAST_PORT))
 # struct: group (4 bytes) + interface (4 bytes) + source (4 bytes)
 mreq_source = struct.pack('4s4s4s',
     socket.inet_aton(MCAST_GRP),
-    socket.inet_aton('0.0.0.0'),   # Any interface
+    socket.inet_aton('0.0.0.0'),   # Kernel-selected interface
     socket.inet_aton(MCAST_SRC))
 
 sock.setsockopt(socket.IPPROTO_IP,
@@ -173,19 +168,22 @@ cat /proc/net/igmp
 # Parse in human-readable form:
 python3 << 'EOF'
 with open('/proc/net/igmp') as f:
-    lines = f.readlines()
+    current_iface = None
+    for line in f.readlines()[1:]:  # Skip header
+        parts = line.split()
+        if not parts:
+            continue
 
-for line in lines[1:]:  # Skip header
-    parts = line.split()
-    if len(parts) >= 5:
-        iface = parts[1] if len(parts[1]) > 1 else None
-        group_hex = parts[3] if len(parts) > 3 else parts[-1]
-        if group_hex.strip() not in ('0', 'Querier'):
+        if len(parts) >= 5 and parts[2] == ':':
+            current_iface = parts[1]
+            continue
+
+        if len(parts) >= 4 and current_iface:
             try:
                 # Convert little-endian hex to IP:
-                g = int(group_hex, 16)
+                g = int(parts[0], 16)
                 ip = f"{g & 0xff}.{(g >> 8) & 0xff}.{(g >> 16) & 0xff}.{(g >> 24) & 0xff}"
-                print(f"  {ip}")
+                print(f"{current_iface}: {ip}")
             except ValueError:
                 pass
 EOF
@@ -194,10 +192,10 @@ EOF
 tcpdump -i eth0 -n 'igmp'
 # Shows IGMP membership reports, queries, and leaves
 
-# Check interface-level multicast groups:
+# Legacy alternative from net-tools:
 netstat -g
 ```
 
 ## Conclusion
 
-Joining a multicast group on Linux is done via `IP_ADD_MEMBERSHIP` socket option, specifying the group address and interface (use 0.0.0.0 for any interface). The kernel sends an IGMP membership report to inform the local router and switch. Use `ip maddr show` to see current group memberships and `cat /proc/net/igmp` for kernel-level IGMP state. For Source-Specific Multicast (SSM), use `IP_ADD_SOURCE_MEMBERSHIP` to join a `(source, group)` pair - more efficient than ASM as it eliminates unnecessary traffic from other sources. Always call `IP_DROP_MEMBERSHIP` when your application exits to send IGMP leave messages.
+Joining a multicast group on Linux is done via `IP_ADD_MEMBERSHIP` socket option, specifying the group address and interface (use `0.0.0.0` to let the kernel choose the interface). The kernel may send IGMP membership reports to inform the local multicast router. Use `ip maddr show` to inspect multicast addresses on interfaces and `cat /proc/net/igmp` for kernel-level IGMP state. For Source-Specific Multicast (SSM), use `IP_ADD_SOURCE_MEMBERSHIP` to join a `(source, group)` pair - more efficient than ASM as it eliminates unnecessary traffic from other sources. Always call `IP_DROP_MEMBERSHIP` when your application exits to drop the socket's membership cleanly.
