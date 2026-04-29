@@ -34,7 +34,7 @@ graph TD
 sudo tcpdump -i eth0 -n "icmp6 and ip6[40] == 136"
 # Type 136 = Neighbor Advertisement
 
-# Mitigation: RA-Guard and Dynamic IPv6 Source Guard on switches
+# Mitigation: IPv6 Source Guard on switches, or SEND where supported
 ```
 
 ## 2. Rogue Router Attacks
@@ -58,18 +58,20 @@ IPv6 extension headers can be used to evade security devices:
 |--------|-------------|
 | Header chain manipulation | Craft headers that confuse firewalls into skipping payload inspection |
 | Fragment + extension header | Split payload across fragments to bypass signature detection |
-| Hop-by-hop header DoS | Force all routers to process HbH headers - CPU exhaustion |
+| Hop-by-hop header DoS | Push devices that inspect HbH headers onto slower processing paths - CPU exhaustion |
 
 ## 4. Fragmentation Attacks
 
 IPv6 allows hosts (not routers) to fragment. Attackers exploit this:
 
 ```text
-# Atomic fragment attack (RFC 6946)
-# Send a tiny fragment that matches no real fragment - forces reassembly buffer consumption
+# Atomic fragment issue (RFC 6946)
+# A packet can carry a Fragment header with offset 0 and M=0; receivers should
+# process it independently so it does not interfere with queued fragments
 
 # Overlapping fragment attack
-# Send fragments that overlap to confuse reassembly and evade IDS
+# Historically used for evasion, but RFC 5722 requires overlapping fragments
+# to be dropped during reassembly
 ```
 
 ## 5. Tunneling Attacks
@@ -80,8 +82,7 @@ IPv6-in-IPv4 tunnels can bypass security controls:
 # Teredo, 6in4, ISATAP can carry IPv6 traffic through IPv4-only firewalls
 # If not needed, block these protocols:
 
-# Block 6in4 tunnels (protocol 41)
-sudo ip6tables -A INPUT -p 41 -j DROP
+# Block 6in4 / ISATAP tunnels carried in IPv4 (protocol 41)
 sudo iptables  -A INPUT -p 41 -j DROP
 
 # Block Teredo (UDP 3544)
@@ -90,15 +91,15 @@ sudo iptables -A INPUT -p udp --dport 3544 -j DROP
 
 ## 6. Reconnaissance
 
-IPv6's large address space (2^64 per subnet) prevents traditional subnet scanning:
+IPv6's large address space (2^64 per subnet) makes exhaustive subnet scanning far less feasible:
 
 ```bash
 # A /64 subnet has 18,446,744,073,709,551,616 addresses
-# Traditional sequential scan is impossible
+# Traditional sequential scan is operationally infeasible
 
 # But attackers use:
 # - DNS brute force for AAAA records
-# - NDP cache inspection (show neighbor table)
+# - Local-link NDP cache inspection (show neighbor table)
 # - Traffic monitoring for active addresses
 # - Multicast group membership disclosure
 
@@ -112,21 +113,21 @@ IPv6 multicast can amplify attacks:
 
 ```bash
 # An attacker sends ICMPv6 echo request to all-nodes multicast
-ping6 -I eth0 ff02::1   # All nodes on the link respond
+ping -6 -I eth0 ff02::1   # All nodes on the link respond
 
-# Mitigation: Filter ICMPv6 echo requests to multicast on perimeter
-ip6tables -A INPUT -p icmpv6 --icmpv6-type echo-request -d ff02::1 -j DROP
+# Mitigation: Filter ICMPv6 echo requests to ff02::1 on local hosts or links
+sudo ip6tables -A INPUT -p icmpv6 --icmpv6-type echo-request -d ff02::1 -j DROP
 ```
 
 ## Common Mitigation Controls
 
 | Threat | Mitigation |
 |--------|-----------|
-| NDP spoofing | Dynamic IPv6 Source Guard, SEcure Neighbor Discovery (SEND) |
-| Rogue RA | RA-Guard (RFC 6105), radvd monitoring |
+| NDP spoofing | Dynamic IPv6 Source Guard, Secure Neighbor Discovery (SEND) |
+| Rogue RA | RA-Guard (RFC 6105; see RFC 7113), monitor for unauthorized RAs |
 | Extension header abuse | Drop unknown extension headers at perimeter |
-| Fragmentation | Drop fragments at perimeter (except internally) |
-| Tunneling | Block protocol 41 and UDP 3544 on untrusted links |
+| Fragmentation | Enforce RFC 5722-compliant handling and filter suspicious fragments |
+| Tunneling | Block IPv4 protocol 41 and UDP 3544 on untrusted links |
 | Recon | Use random IIDs (RFC 7217), privacy extensions |
 
 ## Summary
