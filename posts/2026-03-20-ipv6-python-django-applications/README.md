@@ -18,9 +18,9 @@ Configure Django's `settings.py` to allow IPv6 hosts:
 ALLOWED_HOSTS = [
     "localhost",
     "127.0.0.1",
-    "::1",                          # IPv6 localhost
-    "2001:db8::app",                # Your app's IPv6 address
-    "myapp.example.com",            # Domain name (resolves to IPv6)
+    "[::1]",                        # IPv6 localhost literal
+    "[2001:db8::1]",                # Your app's IPv6 literal address
+    "myapp.example.com",            # Hostname served by Django
 ]
 
 # Use IPv6 in database connection (PostgreSQL)
@@ -58,14 +58,14 @@ from django.http import HttpRequest
 
 def get_client_ip(request: HttpRequest) -> str:
     """
-    Extract real client IP from Django request.
+    Extract client IP from Django request.
     Handles:
-    - X-Forwarded-For (behind proxy/load balancer)
-    - X-Real-IP
+    - X-Forwarded-For (when set by a trusted proxy/load balancer)
+    - X-Real-IP (when set by a trusted proxy)
     - Direct connections (REMOTE_ADDR)
     - IPv4-mapped IPv6 addresses
     """
-    # Check common proxy headers
+    # Check common trusted-proxy headers first.
     for header in ["HTTP_X_FORWARDED_FOR", "HTTP_X_REAL_IP"]:
         ip_str = request.META.get(header)
         if ip_str:
@@ -77,22 +77,28 @@ def get_client_ip(request: HttpRequest) -> str:
 
     # Normalize IPv4-mapped IPv6
     try:
-        ip = ipaddress.IPv6Address(ip_str)
-        if ip.ipv4_mapped:
+        ip = ipaddress.ip_address(ip_str)
+        if getattr(ip, "ipv4_mapped", None):
             return str(ip.ipv4_mapped)
         return str(ip)
     except ValueError:
         return ip_str
 
 # views.py
+import ipaddress
 from django.http import JsonResponse
 from utils.ip import get_client_ip
 
 def client_info(request):
     ip = get_client_ip(request)
+    try:
+        version = ipaddress.ip_address(ip).version
+    except ValueError:
+        version = None
+
     return JsonResponse({
         "ip": ip,
-        "version": 6 if ":" in ip else 4
+        "version": version
     })
 ```
 
@@ -103,6 +109,7 @@ def client_info(request):
 import ipaddress
 from django.db import models
 from django.core.exceptions import ValidationError
+from django.core.validators import MaxValueValidator, MinValueValidator
 
 def validate_ipv6_address(value: str):
     """Django validator for IPv6 addresses."""
@@ -113,22 +120,26 @@ def validate_ipv6_address(value: str):
 
 class NetworkDevice(models.Model):
     name = models.CharField(max_length=100)
-    # Store IPv6 address as string (max 45 chars for full IPv6 with scope ID)
+    # Store IPv6 address as text.
     ipv6_address = models.CharField(
         max_length=45,
         validators=[validate_ipv6_address],
         help_text="IPv6 address in any valid notation"
     )
-    prefix_length = models.IntegerField(default=128)
+    prefix_length = models.IntegerField(
+        default=128,
+        validators=[MinValueValidator(0), MaxValueValidator(128)],
+    )
 
-    def clean(self):
-        """Normalize IPv6 address to compressed form on save."""
+    def save(self, *args, **kwargs):
+        """Normalize IPv6 address to compressed form before saving."""
         if self.ipv6_address:
             try:
-                addr = ipaddress.IPv6Address(self.ipv6_address)
-                self.ipv6_address = str(addr.compressed)
+                self.ipv6_address = str(ipaddress.IPv6Address(self.ipv6_address))
             except ValueError:
                 pass  # Validator will catch this
+
+        super().save(*args, **kwargs)
 
     def __str__(self):
         return f"{self.name} [{self.ipv6_address}/{self.prefix_length}]"
@@ -167,8 +178,9 @@ class DeviceSerializer(serializers.Serializer):
 # middleware.py
 import ipaddress
 import logging
+from utils.ip import get_client_ip
 
-logger = logging.getLogger("django.security")
+logger = logging.getLogger(__name__)
 
 class IPv6LoggingMiddleware:
     """Log all requests with IPv6 address information."""
@@ -177,8 +189,11 @@ class IPv6LoggingMiddleware:
         self.get_response = get_response
 
     def __call__(self, request):
-        ip = request.META.get("REMOTE_ADDR", "")
-        version = "IPv6" if ":" in ip else "IPv4"
+        ip = get_client_ip(request)
+        try:
+            version = f"IPv{ipaddress.ip_address(ip).version}"
+        except ValueError:
+            version = "Unknown"
 
         response = self.get_response(request)
 
@@ -192,4 +207,4 @@ class IPv6LoggingMiddleware:
 
 ## Conclusion
 
-Django handles IPv6 natively when configured correctly. Key steps are adding IPv6 addresses to `ALLOWED_HOSTS`, running the dev/production server bound to `::`, and normalizing IPv4-mapped addresses in client IP extraction. Custom model fields and DRF serializers handle IPv6 address validation and storage cleanly.
+Django handles IPv6 natively when configured correctly. Key steps are adding IPv6 host literals to `ALLOWED_HOSTS`, running the server bound to an IPv6 address such as `::`, and normalizing IPv4-mapped addresses in client IP extraction. Model validation and DRF serializers handle IPv6 address validation and storage cleanly.
