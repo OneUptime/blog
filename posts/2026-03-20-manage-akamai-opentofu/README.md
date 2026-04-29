@@ -43,10 +43,10 @@ data "akamai_group" "main" {
 }
 
 resource "akamai_edge_hostname" "app" {
-  product_id    = "prd_Fresca"  # Ion Premier
+  product_id    = "prd_Fresca"  # Ion Standard
   contract_id   = data.akamai_contract.main.id
   group_id      = data.akamai_group.main.id
-  ip_behavior   = "IPV6_COMPLIANCE"
+  ip_behavior   = "IPV6_PERFORMANCE"
   edge_hostname = "www.example.com.edgekey.net"
 
   certificate = 12345  # Certificate enrollment ID
@@ -77,8 +77,8 @@ resource "akamai_property" "app" {
 
 data "akamai_property_rules_builder" "app_rules" {
   rules_v2024_01_09 {
-    name  = "default"
-    comment = "Default rule"
+    name     = "default"
+    comments = "Default rule"
 
     behavior {
       origin {
@@ -90,32 +90,25 @@ data "akamai_property_rules_builder" "app_rules" {
         enable_true_client_ip   = true
         https_port              = 443
         http_port               = 80
-        minhttpversion          = "HTTP2"
       }
     }
 
     behavior {
-      cpcode {
+      cp_code {
         value {
-          id          = 123456
-          name        = "www.example.com"
-          products    = ["Fresca"]
+          id   = 123456
+          name = "www.example.com"
         }
       }
     }
 
     behavior {
       caching {
-        behavior = "MAX_AGE"
+        behavior        = "MAX_AGE"
         must_revalidate = false
-        ttl     = "7d"
+        ttl             = "7d"
       }
     }
-
-    children = [
-      data.akamai_property_rules_builder.static_content.json,
-      data.akamai_property_rules_builder.api_passthrough.json,
-    ]
   }
 }
 ```
@@ -133,17 +126,17 @@ resource "akamai_appsec_configuration" "app" {
 }
 
 resource "akamai_appsec_security_policy" "main" {
-  config_id          = akamai_appsec_configuration.app.config_id
-  default_settings   = true
-  security_policy_name = "Default Policy"
+  config_id              = akamai_appsec_configuration.app.config_id
+  default_settings       = true
+  security_policy_name   = "Default Policy"
   security_policy_prefix = "AA00"
 }
 
-# Enable Kona Site Defender
+# Set how Kona Rule Set updates are applied for the policy
 resource "akamai_appsec_waf_mode" "main" {
   config_id          = akamai_appsec_configuration.app.config_id
   security_policy_id = akamai_appsec_security_policy.main.security_policy_id
-  mode               = "ASE_AUTO"  # Adaptive Security Engine
+  mode               = "ASE_AUTO"  # Adaptive Security Engine automatic updates
 }
 ```
 
@@ -169,4 +162,4 @@ resource "akamai_property_activation" "production" {
 
 ## Conclusion
 
-Akamai's complex property and security configurations benefit significantly from infrastructure-as-code management. Changes to WAF rules, caching behavior, and origin configuration go through pull request review and automated testing against staging before production deployment. The two-stage activation (staging then production) provides a safe deployment pattern that mirrors Akamai's own recommended workflow.
+Akamai's complex property and security configurations benefit significantly from infrastructure-as-code management. Changes to WAF rules, caching behavior, and origin configuration go through pull request review and automated testing against staging before production deployment. The two-stage property activation (staging then production) provides a safe deployment pattern that mirrors Akamai's recommended workflow.
