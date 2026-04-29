@@ -116,7 +116,7 @@ jobs:
       - uses: actions/checkout@v4
       - name: Update version
         run: |
-          sed -i "s/${module_name} = \".*\"/${module_name} = \"${{ inputs.version }}\"/" \
+          sed -i "s/${{ inputs.module_name }} = \".*\"/${{ inputs.module_name }} = \"${{ inputs.version }}\"/" \
             ${{ inputs.target_env }}/versions.tf
       - name: Create PR
         uses: peter-evans/create-pull-request@v5
