@@ -16,6 +16,7 @@ Jira runs on Apache Tomcat which supports IPv6. Configuring Jira for IPv6 access
 <!-- /opt/atlassian/jira/conf/server.xml -->
 
 <!-- Connector listening on all interfaces including IPv6 -->
+<!-- If Jira is behind an HTTPS reverse proxy, also set proxyName/proxyPort/scheme/secure -->
 <Connector port="8080"
            relaxedPathChars="[]|"
            relaxedQueryChars="[]|{}^&#x5c;&#x60;&quot;&lt;&gt;"
@@ -30,6 +31,10 @@ Jira runs on Apache Tomcat which supports IPv6. Configuring Jira for IPv6 access
            acceptCount="100"
            disableUploadTimeout="true"
            address="::"
+           scheme="https"
+           secure="true"
+           proxyName="jira.example.com"
+           proxyPort="443"
            URIEncoding="UTF-8"/>
 
 <!-- HTTPS connector on IPv6 -->
@@ -43,8 +48,8 @@ Jira runs on Apache Tomcat which supports IPv6. Configuring Jira for IPv6 access
 
 ```bash
 # Restart Jira after configuration change
-
-sudo systemctl restart jira
+sudo /etc/init.d/jira stop
+sudo /etc/init.d/jira start
 
 # Verify Jira is listening on IPv6
 ss -6 -tlnp | grep 8080
@@ -57,8 +62,9 @@ ss -6 -tlnp | grep 8080
 server {
     listen 80;
     listen [::]:80;
-    listen 443 ssl http2;
-    listen [::]:443 ssl http2;
+    listen 443 ssl;
+    listen [::]:443 ssl;
+    http2 on;
     server_name jira.example.com;
 
     ssl_certificate /etc/ssl/certs/jira.crt;
@@ -80,7 +86,7 @@ server {
 Jira Administration > System > General Configuration
 
 Base URL: https://jira.example.com
-(Use FQDN with AAAA record, not raw IPv6 address)
+(Prefer an FQDN with an AAAA record, and keep it identical to the URL users access)
 
 This ensures:
 - Correct links in emails and webhooks
@@ -95,9 +101,11 @@ This ensures:
 
 <jira-database-config>
   <name>defaultDS</name>
+  <delegator-name>default</delegator-name>
   <database-type>postgres72</database-type>
+  <schema-name>public</schema-name>
   <jdbc-datasource>
-    <url>jdbc:postgresql://[2001:db8::postgres]:5432/jiradb</url>
+    <url>jdbc:postgresql://[2001:db8::10]:5432/jiradb</url>
     <driver-class>org.postgresql.Driver</driver-class>
     <username>jira</username>
     <password>dbpassword</password>
@@ -112,14 +120,13 @@ This ensures:
 ```bash
 # /opt/atlassian/jira/bin/setenv.sh
 
-# Force Jira/JVM to prefer IPv6
-export JAVA_OPTS="$JAVA_OPTS -Djava.net.preferIPv6Addresses=true"
+# Prefer IPv6 addresses when a hostname resolves to both IPv4 and IPv6
+JVM_SUPPORT_RECOMMENDED_ARGS="$JVM_SUPPORT_RECOMMENDED_ARGS -Djava.net.preferIPv6Addresses=true"
 
-# Or prefer IPv4 stack (default JVM behavior)
-# export JAVA_OPTS="$JAVA_OPTS -Djava.net.preferIPv4Stack=true"
+# Force IPv4-only sockets if you need to disable IPv6
+# JVM_SUPPORT_RECOMMENDED_ARGS="$JVM_SUPPORT_RECOMMENDED_ARGS -Djava.net.preferIPv4Stack=true"
 
-# For IPv6-only environments
-export JAVA_OPTS="$JAVA_OPTS -Djava.net.preferIPv6Addresses=true -Djava.net.preferIPv4Stack=false"
+# The JVM already uses IPv6-capable sockets by default when IPv6 is available.
 ```
 
 ## Firewall for Jira IPv6
@@ -129,13 +136,13 @@ export JAVA_OPTS="$JAVA_OPTS -Djava.net.preferIPv6Addresses=true -Djava.net.pref
 sudo ip6tables -A INPUT -p tcp --dport 8080 -j ACCEPT
 sudo ip6tables -A INPUT -p tcp --dport 443 -j ACCEPT
 
-# If behind Nginx reverse proxy, only allow from localhost
+# If behind Nginx reverse proxy, only allow from localhost or a trusted internal subnet
 sudo ip6tables -A INPUT -p tcp -s ::1 --dport 8080 -j ACCEPT
 sudo ip6tables -A INPUT -p tcp \
-  -s 2001:db8:internal::/48 \
+  -s 2001:db8:1000::/48 \
   --dport 8080 -j ACCEPT
 
-sudo ip6tables-save > /etc/ip6tables/rules.v6
+sudo ip6tables-save | sudo tee /etc/ip6tables/rules.v6 > /dev/null
 ```
 
 ## Testing Jira IPv6 Access
@@ -145,7 +152,7 @@ sudo ip6tables-save > /etc/ip6tables/rules.v6
 ss -6 -tlnp | grep 8080
 
 # Test HTTP access over IPv6
-curl -6 -L http://[2001:db8::jira]:8080/jira/
+curl -6 -L http://[2001:db8::10]:8080/
 
 # Test via proxy
 curl -6 https://jira.example.com/ -I
@@ -154,4 +161,4 @@ curl -6 https://jira.example.com/ -I
 sudo tail -f /opt/atlassian/jira/logs/atlassian-jira.log | grep "2001:"
 ```
 
-Jira's Tomcat-based architecture enables IPv6 support through the `address="::"` attribute in server.xml, with most deployments accessing Jira via a reverse proxy like Nginx that can independently handle IPv6 listener configuration.
+Jira's Tomcat-based architecture can bind a connector to IPv6 with `address="::"` in `server.xml`, while a reverse proxy like Nginx can independently expose IPv6 listeners to clients.
