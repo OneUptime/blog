@@ -8,7 +8,7 @@ Description: Step-by-step guide to splitting an IPv6 /48 prefix into /64 subnets
 
 ## Introduction
 
-Splitting a /48 into /64 subnets is the most common IPv6 subnetting task. Your ISP gives you a /48; you divide the 16-bit subnet field (bits 49-64) into logical groups for VLANs, departments, and sites. This guide walks through the process with practical tools and numbering strategies.
+Splitting a /48 into /64 subnets is a common IPv6 subnetting task. If your ISP or upstream assigns you a /48, you divide the 16-bit subnet field (bits 49-64) into logical groups for VLANs, departments, and sites. This guide walks through the process with practical tools and numbering strategies.
 
 ## Understanding the Split
 
@@ -32,7 +32,8 @@ class IPv6SubnetPlanner:
 
     def __init__(self, prefix_48: str):
         self.network = ipaddress.IPv6Network(prefix_48)
-        assert self.network.prefixlen == 48, "Must be a /48 prefix"
+        if self.network.prefixlen != 48:
+            raise ValueError("Must be a /48 prefix")
         self._subnets = None
 
     @property
@@ -67,7 +68,7 @@ planner = IPv6SubnetPlanner("2001:db8:abcd::/48")
 planner.summary()
 
 # Get specific subnets by number
-print(planner.get_subnet(0))      # 2001:db8:abcd::/64     (VLAN 0)
+print(planner.get_subnet(0))      # 2001:db8:abcd::/64     (Reserved / infrastructure)
 print(planner.get_subnet(1))      # 2001:db8:abcd:1::/64   (VLAN 1)
 print(planner.get_subnet(256))    # 2001:db8:abcd:100::/64 (Site 1 start)
 print(planner.get_subnet_by_hex("0101"))  # Site 01, VLAN 01
@@ -122,15 +123,17 @@ Format: SSNN (2 hex digits site, 2 hex digits VLAN)
 
 ```bash
 # Assign a /64 subnet to an interface
-sudo ip -6 addr add 2001:db8:abcd:0001::1/64 dev eth0
+sudo ip -6 addr add 2001:db8:abcd:0000::1/64 dev eth0
 
 # Configure multiple subnets for VLANs
 # VLAN 1
 sudo ip link add link eth0 name eth0.1 type vlan id 1
+sudo ip link set dev eth0.1 up
 sudo ip -6 addr add 2001:db8:abcd:0001::1/64 dev eth0.1
 
 # VLAN 2
 sudo ip link add link eth0 name eth0.2 type vlan id 2
+sudo ip link set dev eth0.2 up
 sudo ip -6 addr add 2001:db8:abcd:0002::1/64 dev eth0.2
 
 # Verify routing
