@@ -8,12 +8,12 @@ Description: Configure a Linux bridge for KVM virtual machines so that VMs get d
 
 ## Introduction
 
-By default, KVM uses NAT networking (virbr0) which isolates VMs from the physical network. For production environments where VMs need to be directly accessible on the network - with their own IP addresses - a bridge interface connects VM tap interfaces directly to the physical network.
+By default, libvirt commonly uses a NAT-based virtual network (virbr0) which isolates VMs from the physical network. For production environments where VMs need to be directly accessible on the network - with their own IP addresses - a bridge interface connects VM tap interfaces directly to the physical network.
 
 ## Prerequisites
 
 - KVM/QEMU and libvirt installed
-- Physical interface connected to the network
+- Wired Ethernet interface connected to the network
 - Root access
 
 ## Step 1: Create the Bridge Interface
@@ -26,7 +26,6 @@ ip addr flush dev eth0
 # Create bridge
 ip link add br0 type bridge
 ip link set br0 type bridge stp_state 0
-ip link set br0 type bridge forward_delay 0
 
 # Add eth0 to bridge
 ip link set eth0 master br0
@@ -35,10 +34,10 @@ ip link set br0 up
 
 # Assign host IP to bridge
 ip addr add 192.168.1.50/24 dev br0
-ip route add default via 192.168.1.1
+ip route replace default via 192.168.1.1 dev br0
 ```
 
-## Step 2: Define the Bridge Network in libvirt
+## Step 2: Optionally Define the Bridge Network in libvirt
 
 ```xml
 <!-- /tmp/br0-network.xml -->
@@ -63,7 +62,7 @@ When creating a new VM with virt-install:
 ```bash
 virt-install \
     --name myvm \
-    --ram 2048 \
+    --memory 2048 \
     --vcpus 2 \
     --disk path=/var/lib/libvirt/images/myvm.qcow2,size=20 \
     --os-variant ubuntu22.04 \
@@ -80,10 +79,12 @@ virsh edit myvm
 # Change:
 # <interface type='network'>
 #   <source network='default'/>
+# </interface>
 # To:
 # <interface type='bridge'>
 #   <source bridge='br0'/>
 #   <model type='virtio'/>
+# </interface>
 ```
 
 ## Persistent Bridge with Netplan (Ubuntu)
@@ -107,7 +108,6 @@ network:
         addresses: [8.8.8.8]
       parameters:
         stp: false
-        forward-delay: 0
 ```
 
 ## Verify VM Connectivity
@@ -118,6 +118,7 @@ bridge link show
 
 # From inside a VM, verify it got a network IP
 # VM should receive DHCP from the physical network or be configured statically
+# If the guest has a serial console configured:
 virsh console myvm
 # ip addr show
 ```
