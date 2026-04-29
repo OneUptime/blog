@@ -2,13 +2,13 @@
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
-Tags: IPv6, Window, Static Routes, Netsh, PowerShell
+Tags: IPv6, Windows, Static Routes, Netsh, PowerShell
 
 Description: Learn how to add, verify, and persist IPv6 static routes on Windows using netsh and PowerShell New-NetRoute cmdlet.
 
 ## Overview
 
-Windows provides two main approaches for managing IPv6 static routes: the classic `netsh` command and the modern PowerShell `New-NetRoute` cmdlet. Both create persistent routes that survive reboots.
+Windows provides two main approaches for managing IPv6 static routes: the classic `netsh` command and the modern PowerShell `New-NetRoute` cmdlet. By default, `netsh` writes routes to the persistent store, and `New-NetRoute` saves routes in both the active and persistent stores, so the routes survive reboots.
 
 ## Adding Routes with netsh
 
@@ -101,7 +101,7 @@ Get-NetRoute -InterfaceIndex 12 -AddressFamily IPv6 | Remove-NetRoute -Confirm:$
 
 ## Route Persistence
 
-Unlike Linux where `ip route add` is temporary, Windows routes added via `netsh` or `New-NetRoute` are persistent by default. To add a non-persistent (session-only) route:
+Unlike Linux where `ip route add` is temporary, Windows routes added via `netsh` or `New-NetRoute` are persistent by default. To add a non-persistent (session-only) route with PowerShell:
 
 ```powershell
 # Add a route that is removed on reboot
@@ -109,7 +109,7 @@ New-NetRoute -DestinationPrefix "2001:db8:1::/48" `
              -InterfaceIndex 12 `
              -NextHop "2001:db8::1" `
              -PolicyStore ActiveStore
-# ActiveStore = non-persistent; PersistentStore = default (survives reboot)
+# ActiveStore = non-persistent; omitting -PolicyStore saves the route in both ActiveStore and PersistentStore by default
 ```
 
 ## Scripting Multiple Routes
@@ -133,4 +133,4 @@ foreach ($route in $routes) {
 
 ## Summary
 
-Windows IPv6 static routes can be added with `netsh interface ipv6 add route` or the PowerShell `New-NetRoute` cmdlet. Routes are persistent by default. Always identify the correct interface name or index before adding routes, and verify with `route print -6` or `Get-NetRoute`.
+Windows IPv6 static routes can be added with `netsh interface ipv6 add route` or the PowerShell `New-NetRoute` cmdlet. By default, `netsh` uses the persistent store and `New-NetRoute` saves to both the active and persistent stores. Always identify the correct interface name or index before adding routes, and verify with `route print -6` or `Get-NetRoute`.
