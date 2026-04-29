@@ -15,29 +15,29 @@ When a Longhorn replica fails or a new replica is added, Longhorn starts a rebui
 ## Step 1: Identify Replica Rebuild Status
 
 ```bash
-# Check volume robustness - "degraded" means a replica is missing or rebuilding
+# Check volume robustness - "degraded" means one or more replicas are missing or rebuilding
 
-kubectl get lhvolume -n longhorn-system \
-  -o custom-columns='NAME:.metadata.name,STATE:.status.state,ROBUSTNESS:.status.robustness,REPLICAS:.status.currentNodeID'
+kubectl get volumes.longhorn.io -n longhorn-system \
+  -o custom-columns='NAME:.metadata.name,STATE:.status.state,ROBUSTNESS:.status.robustness,NODE:.status.currentNodeID'
 
 # Get detailed replica status for a specific volume
-kubectl get lhreplica -n longhorn-system \
+kubectl get replicas.longhorn.io -n longhorn-system \
   -l longhornvolume=<volume-name> \
   -o wide
 ```
 
 ---
 
-## Issue 1: Replica Stuck in "WaitForCleaning" State
+## Issue 1: Replica Shows "RebuildFailed" Condition
 
-This occurs when a failed replica process is not cleaning up properly.
+This usually means the failed replica should be removed so Longhorn can create a replacement.
 
 ```bash
 # Check replica status
-kubectl describe lhreplica <replica-name> -n longhorn-system
+kubectl describe replicas.longhorn.io <replica-name> -n longhorn-system
 
-# Force delete the stuck replica
-kubectl delete lhreplica <stuck-replica-name> -n longhorn-system --force
+# Delete the failed replica
+kubectl delete replicas.longhorn.io <failed-replica-name> -n longhorn-system
 
 # Longhorn will schedule a new replica automatically
 ```
@@ -46,17 +46,17 @@ kubectl delete lhreplica <stuck-replica-name> -n longhorn-system --force
 
 ## Issue 2: Rebuild Not Starting Due to Scheduling Constraints
 
-Longhorn cannot schedule a new replica if all suitable nodes are full or tainted.
+Longhorn cannot schedule a new replica if no eligible node or disk meets its scheduling requirements.
 
 ```bash
 # Check node scheduling status
-kubectl get lhnode -n longhorn-system
+kubectl get nodes.longhorn.io -n longhorn-system
 
 # Check node conditions
-kubectl get lhnode <node-name> -n longhorn-system -o yaml | grep -A 10 conditions
+kubectl get nodes.longhorn.io <node-name> -n longhorn-system -o yaml | grep -A 10 conditions
 
-# If a node shows "Unschedulable: true", check its disk status
-kubectl describe lhnode <node-name> -n longhorn-system
+# If a node shows "Schedulable: False" or "AllowScheduling: false", check its disk status
+kubectl describe nodes.longhorn.io <node-name> -n longhorn-system
 ```
 
 Fix: Free up disk space or add a new node with available storage.
@@ -72,14 +72,16 @@ Long rebuild times cause volumes to remain degraded longer, increasing risk:
 # Or check via the instance manager log:
 kubectl logs -n longhorn-system \
   -l longhorn.io/component=instance-manager \
-  --tail=200 | grep -i "rebuild\|sync"
+  --tail=200 | grep -Ei "rebuild|sync"
 ```
 
-To speed up rebuilds, increase rebuild concurrency in Longhorn settings:
+To speed up rebuilds on Longhorn v1.11 and later, increase scale rebuild concurrency in Longhorn settings:
 
-```yaml
-# Longhorn settings (via UI: Settings > Storage > Replica Rebuild Concurrent Limit)
-concurrent-volume-backup-restore-per-node-limit: 2
+```bash
+# Equivalent UI path: Settings > Danger Zone > Replica Rebuild Concurrent Sync Limit
+kubectl patch settings.longhorn.io replica-rebuild-concurrent-sync-limit -n longhorn-system \
+  --type merge \
+  -p '{"value":"{\"v1\":\"2\"}"}'
 ```
 
 ---
@@ -88,13 +90,13 @@ concurrent-volume-backup-restore-per-node-limit: 2
 
 ```bash
 # Check dmesg for disk errors on the node
-ssh <node> dmesg | grep -i "error\|I/O\|failed" | tail -20
+ssh <node> sudo dmesg | grep -Ei "error|I/O|failed" | tail -20
 
 # Check SMART status of the disk
-smartctl -a /dev/sda
+sudo smartctl -a /dev/sda
 
 # If the disk is failing, evacuate volumes from that node
-kubectl patch lhnode <node-name> -n longhorn-system \
+kubectl patch nodes.longhorn.io <node-name> -n longhorn-system \
   --type merge \
   -p '{"spec":{"allowScheduling":false,"evictionRequested":true}}'
 ```
@@ -104,11 +106,13 @@ kubectl patch lhnode <node-name> -n longhorn-system \
 ## Issue 5: Too Many Concurrent Rebuilds Impacting Performance
 
 ```bash
-# Check how many rebuilds are happening simultaneously
-kubectl get lhreplica -n longhorn-system | grep RB | wc -l
+# Check the current per-node rebuild limit
+kubectl get settings.longhorn.io concurrent-replica-rebuild-per-node-limit \
+  -n longhorn-system -o yaml
 
-# Limit concurrent rebuilds in Longhorn settings via UI:
-# Settings > Storage > Concurrent Replica Rebuild Per Node Limit = 2
+# Limit concurrent rebuilds in Longhorn settings:
+kubectl patch settings.longhorn.io concurrent-replica-rebuild-per-node-limit \
+  -n longhorn-system --type merge -p '{"value":"2"}'
 ```
 
 ---
@@ -117,5 +121,5 @@ kubectl get lhreplica -n longhorn-system | grep RB | wc -l
 
 - Set **replica count to 3** for production volumes - this gives you one failure tolerance while a rebuild completes.
 - Monitor rebuild duration and alert if a rebuild takes longer than 2 hours.
-- After adding new nodes, verify Longhorn can schedule replicas by running **Replica Auto Balance**.
-- Keep node disk usage below 80% to ensure Longhorn always has space to schedule new replicas.
+- After adding new nodes, verify Longhorn can schedule replicas and, if **Replica Auto Balance** is enabled, that replicas are redistributed.
+- Keep enough free space to satisfy Longhorn's **Storage Minimal Available Percentage** setting, which is **25% free by default**.
