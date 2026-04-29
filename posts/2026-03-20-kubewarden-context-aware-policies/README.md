@@ -18,7 +18,7 @@ This enables sophisticated policies like:
 
 ## Prerequisites
 
-- Kubewarden installed (v1.0+ for context-aware support)
+- Kubewarden installed (v1.6+ for context-aware support)
 - `kubectl` with cluster-admin access
 - Kubewarden Rust or Go SDK
 
@@ -26,9 +26,9 @@ This enables sophisticated policies like:
 
 Context-aware policies require special configuration because they need additional RBAC permissions to query the Kubernetes API. This is handled by:
 
-1. Setting `contextAware: true` in the policy metadata
-2. Providing a list of Kubernetes resources the policy needs to query
-3. Kubewarden automatically creates a ServiceAccount and RBAC rules
+1. Declaring `contextAwareResources` in the policy metadata
+2. Providing the same Kubernetes resources in the deployed `ClusterAdmissionPolicy`
+3. Kubewarden grants that access through the PolicyServer ServiceAccount and RBAC rules
 
 ## Enabling Context-Aware in Policy Metadata
 
@@ -43,8 +43,6 @@ rules:
       - CREATE
       - UPDATE
 mutating: false
-# IMPORTANT: Mark this policy as context-aware
-contextAware: true
 executionMode: kubewarden-wapc
 # Declare which Kubernetes resources the policy will query
 contextAwareResources:
@@ -54,6 +52,9 @@ contextAwareResources:
     kind: "ConfigMap"
   - apiVersion: "apps/v1"
     kind: "Deployment"
+# Self-report the host capability calls used by the policy
+hostCapabilities:
+  - kubernetes/get_resource
 ```
 
 ## Writing a Context-Aware Policy in Rust
@@ -62,20 +63,19 @@ This example policy checks that a ConfigMap referenced in a pod's envFrom actual
 
 ```rust
 // src/lib.rs - Context-aware policy that validates ConfigMap references
-use anyhow::{anyhow, Result};
 use guest::prelude::*;
 use kubewarden_policy_sdk::wapc_guest as guest;
 
 extern crate kubewarden_policy_sdk as kubewarden;
 use kubewarden::{
-    host_capabilities::kubernetes::get_resource,
+    host_capabilities::kubernetes::{get_resource, GetResourceRequest},
     protocol_version_guest,
     request::ValidationRequest,
     validate_settings,
 };
 
 use k8s_openapi::api::core::v1 as apicore;
-use serde_json::Value;
+use k8s_openapi::Resource;
 
 mod settings;
 use settings::Settings;
@@ -88,17 +88,18 @@ pub extern "C" fn wapc_init() {
 }
 
 fn validate(payload: &[u8]) -> CallResult {
-    let validation_request: ValidationRequest<Settings> =
-        serde_json::from_slice(payload)
-        .map_err(|e| anyhow!("Cannot parse payload: {}", e))?;
+    let validation_request: ValidationRequest<Settings> = ValidationRequest::new(payload)?;
 
-    let pod: apicore::Pod =
-        serde_json::from_value(validation_request.request.object.clone())
-        .map_err(|_| return kubewarden::accept_request())?;
+    if validation_request.request.kind.kind != apicore::Pod::KIND {
+        return kubewarden::accept_request();
+    }
 
-    let namespace = validation_request.request.namespace
-        .as_deref()
-        .unwrap_or("default");
+    let pod: apicore::Pod = match serde_json::from_value(validation_request.request.object.clone()) {
+        Ok(pod) => pod,
+        Err(_) => return kubewarden::accept_request(),
+    };
+
+    let namespace = validation_request.request.namespace.as_str();
 
     // Check each container's envFrom references
     if let Some(spec) = &pod.spec {
@@ -133,23 +134,25 @@ fn validate(payload: &[u8]) -> CallResult {
 }
 
 /// Query the Kubernetes API to check if a ConfigMap exists
-fn configmap_exists(namespace: &str, name: &str) -> Result<bool> {
+fn configmap_exists(namespace: &str, name: &str) -> kubewarden::Result<bool> {
     // Use the Kubewarden host capability to query K8s API
-    let result = get_resource(
-        "v1",
-        "ConfigMap",
-        Some(namespace),
-        name,
-    );
+    let request = GetResourceRequest {
+        api_version: "v1".to_owned(),
+        kind: "ConfigMap".to_owned(),
+        namespace: Some(namespace.to_owned()),
+        name: name.to_owned(),
+        disable_cache: false,
+        field_masks: None,
+    };
 
-    match result {
+    match get_resource::<apicore::ConfigMap>(&request) {
         Ok(_) => Ok(true),
         Err(e) => {
             // 404 means it doesn't exist, other errors are real errors
             if e.to_string().contains("404") || e.to_string().contains("not found") {
                 Ok(false)
             } else {
-                Err(anyhow!("Error querying ConfigMap: {}", e))
+                Err(e)
             }
         }
     }
@@ -203,11 +206,11 @@ kubectl describe clusteradmissionpolicy validate-configmap-refs
 Context-aware policies need a running Kubernetes API to test. Use kwctl with a context:
 
 ```bash
-# kwctl needs the kubeconfig when testing context-aware policies
+# kwctl needs the current kubeconfig context and explicit context-aware access
 kwctl run \
+  --allow-context-aware \
   registry://registry.example.com/policies/validate-configmap-refs:v0.1.0 \
-  --request-path test-request.json \
-  --kubernetes-namespace default
+  --request-path test-request.json
 
 # The policy will query the actual cluster state during testing
 ```
@@ -218,28 +221,30 @@ A context-aware policy that checks the namespace labels before allowing a resour
 
 ```rust
 // Check namespace labels before allowing pod creation
-fn validate_namespace_labels(namespace: &str, settings: &Settings) -> Result<()> {
+fn validate_namespace_labels(namespace: &str, settings: &Settings) -> kubewarden::Result<()> {
     // Query the namespace from the Kubernetes API
-    let namespace_json = get_resource(
-        "v1",
-        "Namespace",
-        None,  // Namespaces are cluster-scoped
-        namespace,
-    )?;
-
-    // Parse the namespace
-    let ns: serde_json::Value = serde_json::from_str(&namespace_json)?;
+    let ns: k8s_openapi::api::core::v1::Namespace = get_resource(&GetResourceRequest {
+        api_version: "v1".to_owned(),
+        kind: "Namespace".to_owned(),
+        namespace: None, // Namespaces are cluster-scoped
+        name: namespace.to_owned(),
+        disable_cache: false,
+        field_masks: None,
+    })?;
 
     // Check if required labels are present
-    let labels = ns["metadata"]["labels"].as_object()
-        .ok_or_else(|| anyhow!("Namespace has no labels"))?;
+    let labels = ns
+        .metadata
+        .labels
+        .as_ref()
+        .ok_or_else(|| kubewarden::Error::Validation("Namespace has no labels".to_owned()))?;
 
     for required_label in &settings.required_namespace_labels {
         if !labels.contains_key(required_label.as_str()) {
-            return Err(anyhow!(
+            return Err(kubewarden::Error::Validation(format!(
                 "Namespace '{}' is missing required label '{}'",
                 namespace, required_label
-            ));
+            )));
         }
     }
 
@@ -249,20 +254,19 @@ fn validate_namespace_labels(namespace: &str, settings: &Settings) -> Result<()>
 
 ## Performance Considerations
 
-Context-aware policies make API calls during admission, which adds latency:
+Context-aware policies make API calls during admission, which adds latency. Watch the PolicyServer while testing and increase the timeouts if needed:
 
 ```bash
-# Monitor context-aware policy evaluation time
+# Inspect PolicyServer logs while testing a context-aware policy
 kubectl logs -n kubewarden \
-  -l app=kubewarden-policy-server-default \
-  | grep -i "context_aware\|api_call\|latency"
+  -l app=kubewarden-policy-server-default
 
-# Set appropriate webhook timeouts for context-aware policies
-# (default is 10s, but context-aware policies may need more)
-kubectl annotate clusteradmissionpolicy validate-configmap-refs \
-  kubewarden.io/policy-timeout-seconds="20"
+# Increase the policy evaluation and webhook timeouts if the defaults are too low
+kubectl patch clusteradmissionpolicy validate-configmap-refs \
+  --type merge \
+  -p '{"spec":{"timeoutEvalSeconds":10,"timeoutSeconds":20}}'
 ```
 
 ## Conclusion
 
-Context-aware policies unlock a whole class of Kubewarden use cases that are impossible with stateless validation - checking referenced resources exist, validating cross-resource relationships, and enforcing namespace-level requirements. The key is declaring the Kubernetes resources your policy needs access to, which allows Kubewarden to set up the appropriate RBAC permissions automatically. While context-aware policies add some admission latency due to API calls, for many use cases the additional validation capability is worth the tradeoff.
+Context-aware policies unlock a whole class of Kubewarden use cases that are impossible with stateless validation - checking referenced resources exist, validating cross-resource relationships, and enforcing namespace-level requirements. The key is declaring the Kubernetes resources your policy needs access to, which allows Kubewarden to reconcile the appropriate RBAC permissions on the PolicyServer ServiceAccount automatically. While context-aware policies add some admission latency due to API calls, for many use cases the additional validation capability is worth the tradeoff.
