@@ -19,8 +19,8 @@ Before publishing, compile your policy:
 ```bash
 # Rust policy
 
-cargo build --target wasm32-wasi --release
-cp target/wasm32-wasi/release/my-policy.wasm .
+cargo build --target wasm32-wasip1 --release
+cp target/wasm32-wasip1/release/my-policy.wasm .
 
 # Go policy (TinyGo)
 tinygo build -o my-policy.wasm -target wasi -no-debug .
@@ -47,6 +47,7 @@ rules:
 mutating: false
 
 contextAwareResources: []
+executionMode: kubewarden-wapc
 
 annotations:
   io.kubewarden.policy.title: "Disallow Latest Tag"
@@ -70,7 +71,7 @@ The `kwctl annotate` command embeds the metadata into the WASM binary:
 # Annotate the policy
 kwctl annotate my-policy.wasm \
   --metadata-path metadata.yaml \
-  --output annotated-policy.wasm
+  --output-path annotated-policy.wasm
 
 # Inspect the annotated policy
 kwctl inspect annotated-policy.wasm
@@ -140,12 +141,12 @@ cosign verify --key cosign.pub \
 ## Step 7: Verify Before Deploying
 
 ```bash
-# Pull and verify the published policy locally
+# Pull the published policy locally
 kwctl pull registry://ghcr.io/my-org/disallow-latest-tag:v0.1.0
 
 # Verify the policy signature (if signed)
 kwctl verify \
-  --github-owner my-org \
+  --verification-key cosign.pub \
   registry://ghcr.io/my-org/disallow-latest-tag:v0.1.0
 
 # Run a quick test against the pulled policy
@@ -188,7 +189,7 @@ kubectl apply -f cluster-admission-policy.yaml
   run: |
     kwctl annotate my-policy.wasm \
       --metadata-path metadata.yaml \
-      --output annotated-policy.wasm
+      --output-path annotated-policy.wasm
 
     kwctl push annotated-policy.wasm \
       ghcr.io/${{ github.repository_owner }}/my-policy:${{ github.ref_name }}
@@ -197,6 +198,7 @@ kubectl apply -f cluster-admission-policy.yaml
       ghcr.io/${{ github.repository_owner }}/my-policy:${{ github.ref_name }}
   env:
     COSIGN_PRIVATE_KEY: ${{ secrets.COSIGN_PRIVATE_KEY }}
+    COSIGN_PASSWORD: ${{ secrets.COSIGN_PASSWORD }}
 ```
 
 ---
