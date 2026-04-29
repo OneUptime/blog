@@ -20,7 +20,7 @@ Characteristics:
 - Used by DHCP Discover, BOOTP
 - Reaches every host on the directly-connected segment
 
-Example: a newly-booted host has no IP address yet. It cannot send to its subnet broadcast because it does not know its subnet. It uses `255.255.255.255` to reach the local DHCP server.
+Example: a newly-booted host has no IP address yet. It cannot send to its subnet broadcast because it does not know its subnet. It uses `255.255.255.255` to reach a local DHCP server or relay agent.
 
 ```bash
 # Capture limited broadcast packets on a segment
@@ -84,7 +84,7 @@ Output:
 
 ## Security Implications
 
-Directed broadcasts enabled on a router are the basis of the **Smurf attack**: an attacker sends an ICMP echo request to a directed broadcast address with a spoofed source. Every host on the subnet replies to the spoofed victim, amplifying traffic by the host count.
+Directed broadcasts enabled on a router are the basis of the **Smurf attack**: an attacker sends an ICMP echo request to a directed broadcast address with a spoofed source. Hosts on the subnet that answer the broadcast reply to the spoofed victim, amplifying traffic by the number of responders.
 
 **Always disable directed broadcasts on router interfaces:**
 
@@ -96,4 +96,4 @@ interface GigabitEthernet0/1
 
 ## Conclusion
 
-Use `255.255.255.255` for link-local broadcasts that must never leave the segment (like DHCP). Directed broadcasts target a specific remote subnet and should remain disabled on routers to prevent amplification attacks. Understanding the distinction is fundamental to both network design and security hardening.
+Use `255.255.255.255` for link-local broadcasts that must never leave the segment (like DHCP). Directed broadcasts target a specific subnet and may be routed to a remote subnet if routers permit it, so they should remain disabled on routers to prevent amplification attacks. Understanding the distinction is fundamental to both network design and security hardening.
