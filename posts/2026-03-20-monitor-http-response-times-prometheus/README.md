@@ -122,7 +122,8 @@ scrape_configs:
 
 ```promql
 # P95 response time over last 5 minutes
-histogram_quantile(0.95, rate(probe_duration_seconds_bucket[5m]))
+# probe_duration_seconds is a gauge, so use quantile_over_time (not histogram_quantile)
+quantile_over_time(0.95, probe_duration_seconds[5m])
 
 # Alert if any endpoint has TTFB > 1 second
 probe_http_duration_seconds{phase="processing"} > 1
