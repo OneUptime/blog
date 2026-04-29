@@ -8,7 +8,7 @@ Description: Learn how to transition from the standalone Kubernetes Dashboard to
 
 ## Introduction
 
-The Kubernetes Dashboard provides a basic web UI for cluster management. Rancher extends this significantly with multi-cluster support, RBAC management, application catalogs, monitoring integration, and a far richer user experience. Migrating to Rancher as your primary management plane requires minimal disruption to running workloads.
+The Kubernetes Dashboard provides a basic web UI for single-cluster management, but it is deprecated and unmaintained. Rancher extends this significantly with multi-cluster support, RBAC management, application catalogs, monitoring integration, and a far richer user experience. Migrating to Rancher as your primary management plane requires minimal disruption to running workloads.
 
 ## Why Migrate from Kubernetes Dashboard to Rancher
 
@@ -17,27 +17,31 @@ The Kubernetes Dashboard provides a basic web UI for cluster management. Rancher
 | Multi-cluster management | No | Yes |
 | RBAC management UI | Basic | Advanced |
 | App catalog / Helm | No | Yes |
-| Monitoring integration | No | Prometheus + Grafana |
+| Monitoring integration | Basic metrics view | Prometheus + Grafana |
 | GitOps (Fleet) | No | Yes |
-| Cost visibility | No | Yes |
+| Cost visibility | No | Via add-ons |
 | Alerting | No | Yes |
 
 ## Step 1: Install Rancher
 
-Deploy Rancher using Helm on an existing cluster:
+Deploy Rancher using Helm on an existing cluster. If you use Rancher-generated or Let's Encrypt certificates, install cert-manager first:
 
 ```bash
 helm repo add rancher-stable https://releases.rancher.com/server-charts/stable
+helm repo add jetstack https://charts.jetstack.io
 helm repo update
 
 kubectl create namespace cattle-system
 
+helm install cert-manager jetstack/cert-manager \
+  --namespace cert-manager \
+  --create-namespace \
+  --set crds.enabled=true
+
 helm install rancher rancher-stable/rancher \
   --namespace cattle-system \
   --set hostname=rancher.example.com \
-  --set bootstrapPassword=admin \
-  --set ingress.tls.source=letsEncrypt \
-  --set letsEncrypt.email=admin@example.com
+  --set bootstrapPassword=admin
 ```
 
 ## Step 2: Import Your Existing Cluster
@@ -46,7 +50,7 @@ If Rancher is installed on a separate cluster, import your target cluster:
 
 1. In Rancher, navigate to **Cluster Management** > **Import Existing**.
 2. Select **Generic** and provide a name.
-3. Copy the kubectl command shown and run it against your cluster:
+3. Copy the kubectl command shown and run it against your cluster using a kubeconfig context with cluster-admin privileges:
 
 ```bash
 kubectl apply -f https://rancher.example.com/v3/import/xxxxx.yaml
@@ -82,36 +86,36 @@ Rancher provides an inline YAML editor for all resources:
 
 ## Step 4: Recreate Dashboard RBAC in Rancher
 
-If you used Kubernetes Dashboard with kubeconfig authentication, migrate users to Rancher's RBAC:
+If you used Kubernetes Dashboard with bearer-token access, migrate users to Rancher's RBAC:
 
 ```yaml
-# In Rancher: Cluster > Members > Add Member
+# In Rancher: Cluster > Cluster Members > Add
 
 # Or use the Rancher API:
 apiVersion: management.cattle.io/v3
 kind: ClusterRoleTemplateBinding
 metadata:
   name: developer-view
-spec:
-  clusterName: c-xxxxx
-  roleTemplateName: view
-  userPrincipalName: "local://user-xxxxx"
+  namespace: c-m-xxxxx
+clusterName: c-m-xxxxx
+roleTemplateName: cluster-member
+userPrincipalName: "local://u-xxxxx"
 ```
 
-Rancher provides predefined roles: Owner, Member, View-Only, and custom roles.
+Rancher provides predefined cluster roles such as Owner and Member, plus custom roles.
 
 ## Step 5: Disable the Kubernetes Dashboard
 
 Once Rancher is your primary UI, remove the Kubernetes Dashboard to reduce attack surface:
 
 ```bash
-kubectl delete namespace kubernetes-dashboard
+helm uninstall kubernetes-dashboard -n kubernetes-dashboard
 ```
 
-Or, if installed via Helm:
+If you need to remove the namespace afterward:
 
 ```bash
-helm uninstall kubernetes-dashboard -n kubernetes-dashboard
+kubectl delete namespace kubernetes-dashboard
 ```
 
 ## Step 6: Set Up Monitoring (Optional but Recommended)
@@ -133,4 +137,4 @@ This deploys Prometheus + Grafana with pre-built Kubernetes dashboards.
 
 ## Conclusion
 
-Migrating from the Kubernetes Dashboard to Rancher upgrades your cluster management experience from a basic view-only UI to a comprehensive multi-cluster management platform. The transition is non-disruptive to running workloads and provides immediate benefits in visibility, security, and operational capability.
+Migrating from the Kubernetes Dashboard to Rancher upgrades your cluster management experience from a basic single-cluster UI to a comprehensive multi-cluster management platform. The transition is non-disruptive to running workloads and provides immediate benefits in visibility, security, and operational capability.
