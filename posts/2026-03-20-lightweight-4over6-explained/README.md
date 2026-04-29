@@ -22,14 +22,14 @@ In standard DS-Lite, the AFTR maintains a NAT44 session table for every active c
 
 In lw4o6:
 - The **CPE (lwB4)** performs the NAT44 locally, using only its assigned port range
-- The **AFTR (lwAFTR)** decapsulates IPv6 tunnels and forwards IPv4 - with no NAT state
+- The **AFTR (lwAFTR)** encapsulates/decapsulates IPv6 tunnels and forwards IPv4 - with no NAT state
 - The AFTR only needs to know which IPv4 address and port range each CPE is assigned
 
 ```mermaid
 graph LR
     A[Subscriber Device] -->|IPv4| B[lwB4 CPE<br/>Port-restricted NAT44<br/>+ IPv4-in-IPv6 tunnel]
     B -->|IPv6 softwire| C[IPv6 Network]
-    C -->|IPv6| D[lwAFTR<br/>Stateless decapsulation<br/>No NAT state!]
+    C -->|IPv6| D[lwAFTR<br/>Binding lookup + encap/decap<br/>No NAT state]
     D -->|IPv4| E[IPv4 Internet]
 ```
 
@@ -57,7 +57,7 @@ Example binding table:
 2001:db8:cpe:3::1  → 203.0.113.5, ports 3072-4095
 ```
 
-When an IPv4 packet arrives at the lwAFTR with source `203.0.113.5:1500`, the lwAFTR looks up the binding table to find which CPE's IPv6 tunnel to encapsulate the return traffic in.
+When an inbound IPv4 packet arrives at the lwAFTR with destination `203.0.113.5:1500`, the lwAFTR looks up the binding table to find which CPE's IPv6 tunnel to encapsulate the return traffic in.
 
 ## The lwB4 (CPE) Operation
 
@@ -68,20 +68,19 @@ The lwB4 CPE must:
 3. Decapsulate incoming IPv6 packets from the lwAFTR to extract IPv4 responses
 
 ```bash
-# On lwB4 (CPE): Configure port-restricted NAT
+# On lwB4 (CPE): Configure port-restricted NAT for TCP/UDP
 
-# Subscriber is assigned IPv4 203.0.113.5, ports 1024-2047 (PSID 0, ratio 64)
+# Subscriber is assigned IPv4 203.0.113.5, ports 1024-2047 (example contiguous port set)
 iptables -t nat -A POSTROUTING -o eth0.pppoe -p tcp \
     -j SNAT --to-source 203.0.113.5:1024-2047
 
 iptables -t nat -A POSTROUTING -o eth0.pppoe -p udp \
     -j SNAT --to-source 203.0.113.5:1024-2047
 
-iptables -t nat -A POSTROUTING -o eth0.pppoe -p icmp \
-    -j SNAT --to-source 203.0.113.5
+# Production lwB4 implementations also need RFC 7596 / RFC 5508 ICMP handling.
 
 # Create IPv4-in-IPv6 tunnel to lwAFTR
-ip tunnel add lw4o6-0 mode ip4ip6 \
+ip -6 tunnel add lw4o6-0 mode ipip6 \
     local 2001:db8:cpe:1::1 \
     remote 2001:db8::aftr \
     encaplimit none
@@ -96,11 +95,10 @@ ip route add default dev lw4o6-0
 The lwB4 receives its IPv4 address and port set via DHCPv6:
 
 ```text
-DHCPv6 options sent by ISP to lwB4:
-- Option 5: IPv4 address (203.0.113.5/32)
-- Option 22: Excluded ports (0-1023 reserved)
-- AFTR address: via Option 64 (AFTR-Name)
-- Port set: via vendor options (ISP-specific)
+DHCPv6 options sent by ISP to lwB4 (inside OPTION_S46_CONT_LW):
+- OPTION_S46_BR (90): lwAFTR / BR IPv6 address
+- OPTION_S46_V4V6BIND (92): shared IPv4 address and CE IPv6 binding prefix
+- OPTION_S46_PORTPARAMS (93): optional PSID / port-set parameters
 ```
 
 ## Configuring the lwAFTR on Linux
@@ -108,23 +106,17 @@ DHCPv6 options sent by ISP to lwB4:
 The lwAFTR only needs to maintain the binding table and perform encap/decap:
 
 ```bash
-# Create the lwAFTR tunnel interface (accepts from any CPE)
-ip tunnel add lwaftr0 mode ip6ip6 \
+# iproute2 can build static IPv4-in-IPv6 lab tunnels,
+# but lw4o6 binding-table and port-set validation need dedicated lwAFTR software.
+ip -6 tunnel add cpe1 mode ipip6 \
     local 2001:db8::aftr \
-    remote any
-
-ip link set lwaftr0 up
-
-# The binding table is managed by lwAFTR software
-# For simple test setups, static tunnels per CPE can be used:
-ip tunnel add cpe1 mode ip4ip6 \
-    local 2001:db8::aftr \
-    remote 2001:db8:cpe:1::1
+    remote 2001:db8:cpe:1::1 \
+    encaplimit none
 
 ip link set cpe1 up
 
 # Forward decapsulated IPv4 to the internet
-ip route add 0.0.0.0/0 via <ISP-IPv4-gateway> dev eth0
+ip route add default via 198.51.100.1 dev eth0
 ```
 
 ## Scalability Advantage
