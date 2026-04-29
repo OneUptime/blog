@@ -100,8 +100,8 @@ resource "aws_lambda_function" "auth_check" {
 
   source_code_hash = data.archive_file.auth_check.output_base64sha256
 
-  # Lambda@Edge has stricter limits
-  timeout     = 5   # max 5 seconds for viewer events; 30 for origin events
+  # Keep auth checks fast; Lambda@Edge function timeout can be up to 30 seconds
+  timeout     = 5
   memory_size = 128
 }
 ```
@@ -133,7 +133,7 @@ resource "aws_cloudfront_distribution" "api" {
 
     forwarded_values {
       query_string = true
-      headers      = ["Authorization", "Host"]
+      headers      = ["Authorization"]
       cookies { forward = "none" }
     }
 
@@ -150,7 +150,7 @@ resource "aws_cloudfront_distribution" "api" {
   }
 
   viewer_certificate {
-    acm_certificate_arn      = var.acm_certificate_arn
+    acm_certificate_arn      = var.acm_certificate_arn  # ACM certificate must be in us-east-1 for CloudFront
     ssl_support_method       = "sni-only"
     minimum_protocol_version = "TLSv1.2_2021"
   }
