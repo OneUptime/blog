@@ -10,7 +10,7 @@ Description: Learn how to configure Kubewarden validation policies to enforce se
 
 Validation policies are the most common type of Kubewarden policy. They evaluate incoming Kubernetes admission requests and either allow or deny them based on configurable rules. Unlike mutation policies that modify resources, validation policies are read-only - they simply approve or reject the admission request.
 
-This guide covers creating comprehensive validation policies using both hub policies and custom implementations.
+This guide covers creating comprehensive validation policies using Kubewarden hub policies for both cluster-wide and namespace-scoped enforcement.
 
 ## Prerequisites
 
@@ -51,7 +51,7 @@ metadata:
     description: "Blocks pods with privileged containers"
     severity: "critical"
 spec:
-  module: registry://ghcr.io/kubewarden/policies/pod-privileged:v0.2.0
+  module: registry://ghcr.io/kubewarden/policies/pod-privileged:v1.0.8
   rules:
     - apiGroups: [""]
       apiVersions: ["v1"]
@@ -71,7 +71,7 @@ kind: ClusterAdmissionPolicy
 metadata:
   name: require-non-root
 spec:
-  module: registry://ghcr.io/kubewarden/policies/user-group-psp:v0.4.0
+  module: registry://ghcr.io/kubewarden/policies/user-group-psp:v1.1.3
   settings:
     run_as_user:
       rule: "MustRunAsNonRoot"
@@ -99,7 +99,7 @@ kind: ClusterAdmissionPolicy
 metadata:
   name: no-host-path-volumes
 spec:
-  module: registry://ghcr.io/kubewarden/policies/volumes-psp:v0.2.0
+  module: registry://ghcr.io/kubewarden/policies/volumes-psp:v1.1.5
   settings:
     allowedTypes:
       - configMap
@@ -127,7 +127,7 @@ kind: ClusterAdmissionPolicy
 metadata:
   name: require-readonly-rootfs
 spec:
-  module: registry://ghcr.io/kubewarden/policies/readonly-root-filesystem-psp:v0.2.0
+  module: registry://ghcr.io/kubewarden/policies/readonly-root-filesystem-psp:v1.0.8
   rules:
     - apiGroups: [""]
       apiVersions: ["v1"]
@@ -147,7 +147,7 @@ kind: ClusterAdmissionPolicy
 metadata:
   name: restrict-capabilities
 spec:
-  module: registry://ghcr.io/kubewarden/policies/capabilities-psp:v0.2.0
+  module: registry://ghcr.io/kubewarden/policies/capabilities-psp:v1.0.8
   settings:
     allowed_capabilities: []   # No additional capabilities
     required_drop_capabilities:
@@ -171,15 +171,14 @@ kind: ClusterAdmissionPolicy
 metadata:
   name: ingress-must-have-tls
 spec:
-  module: registry://ghcr.io/kubewarden/policies/ingress-policy:v0.1.0
+  module: registry://ghcr.io/kubewarden/policies/ingress:v1.0.5
 
   settings:
     # Require all ingresses to have TLS configured
     requireTLS: true
-    # Allow only specific ingress classes
-    allowedIngressClasses:
-      - nginx
-      - traefik
+    # Deny cleartext HTTP backends
+    denyPorts:
+      - 80
 
   rules:
     - apiGroups: ["networking.k8s.io"]
@@ -203,11 +202,12 @@ metadata:
   name: backend-image-policy
   namespace: backend
 spec:
-  module: registry://ghcr.io/kubewarden/policies/allowed-image-repositories:v0.1.0
+  module: registry://ghcr.io/kubewarden/policies/trusted-repos:v2.0.4
 
   settings:
-    allowedRegistries:
-      - registry.internal.example.com/backend
+    images:
+      allow:
+        - registry.internal.example.com/backend
 
   rules:
     - apiGroups: [""]
@@ -225,40 +225,46 @@ Best practice is to apply policies in monitor mode first:
 
 ```bash
 # Step 1: Apply all policies in monitor mode
-find policies/ -name "*.yaml" -exec \
-  sed 's/mode: protect/mode: monitor/' {} | \
-  kubectl apply -f - \;
+find policies/ -name "*.yaml" -print0 | while IFS= read -r -d '' file; do
+  sed 's/mode: protect/mode: monitor/' "$file" | kubectl apply -f -
+done
 
-# Step 2: Monitor violations for a week
-kubectl get events -A \
-  --field-selector reason=PolicyViolation \
-  --sort-by='.lastTimestamp' \
-  -w
+# Step 2: Monitor audit scanner reports for a week
+kubectl get report -A -w
 
 # Step 3: Fix non-compliant workloads
 
-# Step 4: Switch to protect mode
+# Step 4: Switch cluster-wide policies to protect mode
 kubectl get clusteradmissionpolicies \
   -o jsonpath='{.items[*].metadata.name}' | \
   tr ' ' '\n' | \
   xargs -I{} kubectl patch clusteradmissionpolicy {} \
     --type=merge \
     -p '{"spec":{"mode":"protect"}}'
+
+# Step 5: Switch namespace-scoped policies to protect mode
+kubectl get admissionpolicies -A \
+  -o jsonpath='{range .items[*]}{.metadata.namespace}{" "}{.metadata.name}{"\n"}{end}' | \
+  while read -r namespace name; do
+    kubectl patch admissionpolicy "$name" -n "$namespace" \
+      --type=merge \
+      -p '{"spec":{"mode":"protect"}}'
+  done
 ```
 
 ## Verifying Policy Coverage
 
 ```bash
-# List all active validation policies
+# List cluster-scoped validation policies
 kubectl get clusteradmissionpolicies -o wide
 
-# Check which resources each policy covers
+# Check which resources each cluster policy covers
 kubectl get clusteradmissionpolicies \
   -o jsonpath='{range .items[*]}{.metadata.name}: {.spec.rules[0].resources}{"\n"}{end}'
 
-# Check for policy activation status
+# Check policy reconciliation status
 kubectl get clusteradmissionpolicies \
-  -o jsonpath='{range .items[*]}{.metadata.name}: {.status.conditions[?(@.type=="PolicyActive")].status}{"\n"}{end}'
+  -o jsonpath='{range .items[*]}{.metadata.name}: {.status.policyStatus}{"\n"}{end}'
 ```
 
 ## Conclusion
