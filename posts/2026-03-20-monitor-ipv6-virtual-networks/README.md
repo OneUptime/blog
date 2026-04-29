@@ -23,14 +23,14 @@ import time
 
 # Metrics
 
-ipv6_rx_bytes = Gauge('vnet_ipv6_rx_bytes_total', 'IPv6 bytes received', ['interface', 'vm'])
-ipv6_tx_bytes = Gauge('vnet_ipv6_tx_bytes_total', 'IPv6 bytes sent', ['interface', 'vm'])
+ipv6_rx_bytes = Gauge('vnet_ipv6_rx_bytes', 'IPv6 bytes received', ['interface', 'vm'])
+ipv6_tx_bytes = Gauge('vnet_ipv6_tx_bytes', 'IPv6 bytes sent', ['interface', 'vm'])
 ndp_neighbors = Gauge('ipv6_ndp_neighbors', 'NDP neighbor table entries', ['state'])
 dhcpv6_leases = Gauge('dhcpv6_active_leases', 'Active DHCPv6 leases')
 
 def collect_interface_stats():
     """Collect IPv6 stats from virtual TAP/bridge interfaces."""
-    result = subprocess.run(['ip', '-s', '-6', 'link', 'show'], capture_output=True, text=True)
+    result = subprocess.run(['ip', '-s', 'link', 'show'], capture_output=True, text=True)
     # Parse interface statistics
     current_iface = None
     for line in result.stdout.splitlines():
@@ -58,7 +58,7 @@ def collect_dhcpv6_leases():
     """Count active DHCPv6 leases from Kea."""
     try:
         import requests
-        r = requests.post("http://localhost:8080/",
+        r = requests.post("http://localhost:8000/",
             json={"command": "lease6-get-all", "service": ["dhcp6"]})
         data = r.json()
         leases = data[0].get("arguments", {}).get("leases", [])
@@ -105,17 +105,17 @@ ovs-ofctl dump-ports ovs-br0
 # Watch IPv6 flows in real time
 watch -n2 "ovs-ofctl dump-flows ovs-br0 | grep ipv6 | head -20"
 
-# OVS sFlow for IPv6 traffic export
+# OVS sFlow export (sampled IPv6 flows are included in the export)
 ovs-vsctl -- --id=@sflow create sflow \
     agent=eth0 \
-    target='"[2001:db8::monitor]:6343"' \
+    target='"10.0.0.10:6343"' \
     sampling=64 \
     polling=10 \
     -- set bridge ovs-br0 sflow=@sflow
 
-# OVS NetFlow export for IPv6
+# OVS NetFlow export (IPv6 flows are included)
 ovs-vsctl set Bridge ovs-br0 netflow=@nf -- \
-    --id=@nf create NetFlow targets='"[2001:db8::collector]:2055"' \
+    --id=@nf create NetFlow targets='"10.0.0.20:2055"' \
     active-timeout=60
 
 # Check OVS sFlow configuration
@@ -181,7 +181,7 @@ groups:
 
       # Alert if IPv6 traffic drops significantly
       - alert: VMIPv6TrafficDrop
-        expr: rate(vnet_ipv6_rx_bytes_total[5m]) == 0
+        expr: delta(vnet_ipv6_rx_bytes[5m]) == 0
         for: 10m
         labels:
           severity: warning
@@ -195,7 +195,7 @@ groups:
 # Key panels for a virtual network IPv6 Grafana dashboard:
 
 # 1. IPv6 throughput per VM (from vnet interface stats)
-# Query: rate(vnet_ipv6_rx_bytes_total[5m]) * 8
+# Query: rate(vnet_ipv6_rx_bytes[5m]) * 8
 # Visualization: Time series with VM labels
 
 # 2. NDP neighbor table size by state
@@ -207,7 +207,7 @@ groups:
 # Visualization: Gauge with thresholds
 
 # 4. IPv6 vs IPv4 traffic ratio
-# Query: sum(rate(vnet_ipv6_rx_bytes_total[5m])) / sum(rate(vnet_rx_bytes_total[5m]))
+# Query: sum(rate(vnet_ipv6_rx_bytes[5m])) / sum(rate(vnet_rx_bytes[5m]))
 # Visualization: Gauge (target: >50% IPv6)
 ```
 
