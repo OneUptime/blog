@@ -9,18 +9,22 @@ Description: Learn how to create Kubernetes Vertical Pod Autoscalers (VPA) with 
 ## Overview
 
 Kubernetes Vertical Pod Autoscaler automatically adjusts CPU and memory requests for containers based on historical usage patterns. VPA eliminates the need to manually tune resource requests and helps prevent OOMKilled pods. OpenTofu manages VPA objects with different update modes.
+VPA requires a metrics source such as Metrics Server, and the VPA CRD must exist before OpenTofu can plan `kubernetes_manifest` resources for `VerticalPodAutoscaler` objects.
 
-## Step 1: Install VPA CRDs
+## Step 1: Install VPA
 
 ```hcl
-# main.tf - Deploy VPA using Helm (requires VPA admission webhook)
+# main.tf - Deploy VPA with Helm first.
+# Apply this first in a separate configuration or workspace so the
+# VerticalPodAutoscaler CRD exists before planning kubernetes_manifest
+# resources for VPA objects.
 
 resource "helm_release" "vpa" {
   name       = "vpa"
   repository = "https://charts.fairwinds.com/stable"
   chart      = "vpa"
   namespace  = "kube-system"
-  version    = "4.4.6"
+  version    = "4.11.0"
 
   set {
     name  = "admissionController.enabled"
@@ -68,16 +72,14 @@ resource "kubernetes_manifest" "web_app_vpa_off" {
       }
     }
   }
-
-  depends_on = [helm_release.vpa]
 }
 ```
 
-## Step 3: VPA in Auto Mode (Applies Recommendations)
+## Step 3: VPA in Recreate Mode (Applies Recommendations)
 
 ```hcl
-# VPA in "Auto" mode - updates pods with new resource requests
-resource "kubernetes_manifest" "api_vpa_auto" {
+# VPA in "Recreate" mode - evicts pods and recreates them with updated requests
+resource "kubernetes_manifest" "api_vpa_recreate" {
   manifest = {
     apiVersion = "autoscaling.k8s.io/v1"
     kind       = "VerticalPodAutoscaler"
@@ -92,8 +94,8 @@ resource "kubernetes_manifest" "api_vpa_auto" {
         name       = "api-service"
       }
       updatePolicy = {
-        # "Auto" - evicts pods and restarts with updated resource requests
-        updateMode = "Auto"
+        # "Recreate" - evicts pods and restarts them with updated requests
+        updateMode = "Recreate"
       }
       resourcePolicy = {
         containerPolicies = [
@@ -117,10 +119,10 @@ resource "kubernetes_manifest" "api_vpa_auto" {
 }
 ```
 
-## Step 4: VPA for InitContainers
+## Step 4: VPA in Initial Mode with a Wildcard Policy
 
 ```hcl
-# VPA managing both init containers and main containers
+# VPA applying the same bounds to all regular containers without explicit policies
 resource "kubernetes_manifest" "full_vpa" {
   manifest = {
     apiVersion = "autoscaling.k8s.io/v1"
@@ -141,7 +143,7 @@ resource "kubernetes_manifest" "full_vpa" {
       resourcePolicy = {
         containerPolicies = [
           {
-            containerName = "*"  # Apply to all containers
+            containerName = "*"  # Apply to all regular containers without an explicit policy
             minAllowed = { cpu = "50m", memory = "64Mi" }
             maxAllowed  = { cpu = "4", memory = "8Gi" }
           }
@@ -154,4 +156,4 @@ resource "kubernetes_manifest" "full_vpa" {
 
 ## Summary
 
-Kubernetes VPA with OpenTofu automates resource request optimization. Start in "Off" mode to collect recommendations without disrupting workloads, then gradually move to "Initial" (apply at pod creation only) and "Auto" (actively right-size running pods). VPA and HPA can work together-use VPA for right-sizing and HPA for scaling.
+Kubernetes VPA with OpenTofu automates resource request optimization. Start in "Off" mode to collect recommendations without disrupting workloads, then gradually move to "Initial" (apply at pod creation only) and "Recreate" (evict and recreate pods with updated resources). VPA and HPA can work together as long as they do not manage the same resource metric, such as VPA on memory with HPA on CPU, or HPA on custom or external metrics.
