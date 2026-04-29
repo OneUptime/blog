@@ -17,8 +17,10 @@ Terraform and OpenTofu share the same state file format (JSON). Migrating state 
 
 brew install opentofu
 
-# Linux
-curl -fsSL https://get.opentofu.org/install-opentofu.sh | sh
+# Linux (standalone install - the script requires --install-method)
+curl --proto '=https' --tlsv1.2 -fsSL https://get.opentofu.org/install-opentofu.sh -o install-opentofu.sh
+chmod +x install-opentofu.sh
+./install-opentofu.sh --install-method standalone
 
 # Verify both tools are available
 terraform --version   # Keep Terraform available during migration
@@ -132,8 +134,8 @@ tofu apply
 # After apply, verify state is consistent
 tofu plan  # Should show no changes again
 
-# Check state version
-cat .terraform/terraform.tfstate | jq '.version'
+# Check state version (pull from remote backend, then inspect)
+tofu state pull | jq '.version'
 # OpenTofu writes format version 4 - same as Terraform
 ```
 
