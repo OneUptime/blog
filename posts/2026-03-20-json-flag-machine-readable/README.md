@@ -8,45 +8,40 @@ Description: Learn how to use the -json flag with various OpenTofu commands to g
 
 ## Introduction
 
-The `-json` flag is available on many OpenTofu commands and outputs results in JSON format instead of human-readable text. This is essential for CI/CD pipelines, automated parsing, and building tooling around OpenTofu.
+The `-json` flag is available on many OpenTofu commands and outputs results in JSON format instead of human-readable text. Some commands return a single JSON document, while long-running commands like `tofu plan -json` emit a stream of JSON UI messages, one per line. This is essential for CI/CD pipelines, automated parsing, and building tooling around OpenTofu.
 
 ## Commands Supporting -json
 
 ### tofu plan -json
 
 ```bash
-# Generate a JSON-formatted plan
+# Generate machine-readable JSON UI output
 
 tofu plan -json
 
-# Or save a JSON plan
-tofu plan -json -out=plan.json
+# Or save a binary plan file for later inspection
+tofu plan -json -out=plan.tfplan
 
-# Parse with jq
-tofu plan -json | jq '.resource_changes[] | {address: .address, action: .change.actions}'
+# Parse planned-change messages with jq
+tofu plan -json | jq 'select(.type == "planned_change") | {address: .change.resource.addr, action: .change.action}'
 ```
 
-JSON plan structure:
+Sample planned-change message:
 ```json
 {
-  "format_version": "1.2",
-  "terraform_version": "1.8.0",
-  "resource_changes": [
-    {
-      "address": "aws_instance.web",
-      "mode": "managed",
-      "type": "aws_instance",
-      "name": "web",
-      "change": {
-        "actions": ["create"],
-        "before": null,
-        "after": {
-          "ami": "ami-0c55b159cbfafe1f0",
-          "instance_type": "t3.micro"
-        }
-      }
-    }
-  ]
+  "@level": "info",
+  "@message": "aws_instance.web: Plan to create",
+  "@module": "tofu.ui",
+  "@timestamp": "2026-03-20T12:00:01Z",
+  "change": {
+    "resource": {
+      "addr": "aws_instance.web",
+      "resource_type": "aws_instance",
+      "resource_name": "web"
+    },
+    "action": "create"
+  },
+  "type": "planned_change"
 }
 ```
 
@@ -57,7 +52,7 @@ JSON plan structure:
 tofu show -json
 
 # Saved plan as JSON
-tofu show -json plan.tfplan
+tofu show -json -plan=plan.tfplan
 
 # Extract resource IDs
 tofu show -json | jq '.values.root_module.resources[] | {address: .address, id: .values.id}'
@@ -107,7 +102,7 @@ tofu providers schema -json
 
 # Get resource attributes
 tofu providers schema -json | jq \
-  '.provider_schemas["registry.opentofu.org/hashicorp/aws"].resource_schemas["aws_instance"].attributes | keys'
+  '.provider_schemas["aws"].resource_schemas["aws_instance"].block.attributes | keys'
 ```
 
 ## CI/CD Integration Patterns
@@ -118,19 +113,20 @@ tofu providers schema -json | jq \
 #!/bin/bash
 # check-changes.sh
 
-tofu plan -json -out=plan.tfplan > plan_output.json
+tofu plan -out=plan.tfplan
+tofu show -json -plan=plan.tfplan > plan_output.json
 
 CHANGES=$(jq '.resource_changes | length' plan_output.json)
-CREATES=$(jq '[.resource_changes[] | select(.change.actions[] == "create")] | length' plan_output.json)
-UPDATES=$(jq '[.resource_changes[] | select(.change.actions[] == "update")] | length' plan_output.json)
-DESTROYS=$(jq '[.resource_changes[] | select(.change.actions[] == "delete")] | length' plan_output.json)
+CREATES=$(jq '[.resource_changes[] | select(.change.actions | index("create"))] | length' plan_output.json)
+UPDATES=$(jq '[.resource_changes[] | select(.change.actions | index("update"))] | length' plan_output.json)
+DESTROYS=$(jq '[.resource_changes[] | select(.change.actions | index("delete"))] | length' plan_output.json)
 
 echo "Total changes: $CHANGES"
 echo "Creates: $CREATES, Updates: $UPDATES, Destroys: $DESTROYS"
 
 if [ "$DESTROYS" -gt 0 ]; then
   echo "WARNING: $DESTROYS resources will be destroyed"
-  jq '.resource_changes[] | select(.change.actions[] == "delete") | .address' plan_output.json
+  jq -r '.resource_changes[] | select(.change.actions | index("delete")) | .address' plan_output.json
 fi
 ```
 
@@ -138,13 +134,13 @@ fi
 
 ```bash
 # Generate human-friendly summary from JSON plan
-tofu show -json plan.tfplan | jq -r '
+tofu show -json -plan=plan.tfplan | jq -r '
   "## OpenTofu Plan Summary\n" +
   "| Action | Count |\n" +
   "|--------|-------|\n" +
-  "| Create | \([.resource_changes[] | select(.change.actions[] == "create")] | length) |\n" +
-  "| Update | \([.resource_changes[] | select(.change.actions[] == "update")] | length) |\n" +
-  "| Delete | \([.resource_changes[] | select(.change.actions[] == "delete")] | length) |"
+  "| Create | \([.resource_changes[] | select(.change.actions | index("create"))] | length) |\n" +
+  "| Update | \([.resource_changes[] | select(.change.actions | index("update"))] | length) |\n" +
+  "| Delete | \([.resource_changes[] | select(.change.actions | index("delete"))] | length) |"
 '
 ```
 
