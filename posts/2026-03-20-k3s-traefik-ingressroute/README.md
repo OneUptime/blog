@@ -28,9 +28,9 @@ kubectl get svc -n kube-system | grep traefik
 kubectl get crd | grep traefik
 
 # Expected CRDs:
-# ingressroutes.traefik.containo.us
-# middlewares.traefik.containo.us
-# traefikservices.traefik.containo.us
+# ingressroutes.traefik.io
+# middlewares.traefik.io
+# traefikservices.traefik.io
 # ...
 ```
 
@@ -40,7 +40,7 @@ A simple IngressRoute for HTTP routing:
 
 ```yaml
 # basic-ingressroute.yaml
-apiVersion: traefik.containo.us/v1alpha1
+apiVersion: traefik.io/v1alpha1
 kind: IngressRoute
 metadata:
   name: my-app-route
@@ -74,7 +74,7 @@ data:
   tls.key: <base64-encoded-key>
 ---
 # HTTPS IngressRoute
-apiVersion: traefik.containo.us/v1alpha1
+apiVersion: traefik.io/v1alpha1
 kind: IngressRoute
 metadata:
   name: my-app-https-route
@@ -98,7 +98,7 @@ Route different paths to different services:
 
 ```yaml
 # path-routing.yaml
-apiVersion: traefik.containo.us/v1alpha1
+apiVersion: traefik.io/v1alpha1
 kind: IngressRoute
 metadata:
   name: multi-service-route
@@ -142,7 +142,7 @@ Traefik Middleware objects can be chained onto routes:
 # middleware-examples.yaml
 ---
 # Rate limiting middleware
-apiVersion: traefik.containo.us/v1alpha1
+apiVersion: traefik.io/v1alpha1
 kind: Middleware
 metadata:
   name: rate-limit
@@ -155,7 +155,7 @@ spec:
 
 ---
 # Basic authentication middleware
-apiVersion: traefik.containo.us/v1alpha1
+apiVersion: traefik.io/v1alpha1
 kind: Middleware
 metadata:
   name: basic-auth
@@ -166,7 +166,7 @@ spec:
 
 ---
 # HTTPS redirect middleware
-apiVersion: traefik.containo.us/v1alpha1
+apiVersion: traefik.io/v1alpha1
 kind: Middleware
 metadata:
   name: https-redirect
@@ -178,7 +178,7 @@ spec:
 
 ---
 # Strip prefix middleware
-apiVersion: traefik.containo.us/v1alpha1
+apiVersion: traefik.io/v1alpha1
 kind: Middleware
 metadata:
   name: strip-api-prefix
@@ -190,7 +190,7 @@ spec:
 
 ---
 # Add security headers
-apiVersion: traefik.containo.us/v1alpha1
+apiVersion: traefik.io/v1alpha1
 kind: Middleware
 metadata:
   name: security-headers
@@ -201,14 +201,13 @@ spec:
       X-Frame-Options: "SAMEORIGIN"
       X-Content-Type-Options: "nosniff"
       X-XSS-Protection: "1; mode=block"
-    sslRedirect: true
 ```
 
 ## Step 5: Apply Middleware to Routes
 
 ```yaml
 # route-with-middleware.yaml
-apiVersion: traefik.containo.us/v1alpha1
+apiVersion: traefik.io/v1alpha1
 kind: IngressRoute
 metadata:
   name: secure-api-route
@@ -228,14 +227,34 @@ spec:
         - name: api-service
           port: 8080
   tls:
-    certResolver: letsencrypt  # Use ACME/Let's Encrypt
+    certResolver: letsencrypt  # Use a certResolver already configured in Traefik
 ```
 
 ## Step 6: Load Balancing with Weighted Services
 
 ```yaml
 # weighted-routing.yaml
-apiVersion: traefik.containo.us/v1alpha1
+---
+apiVersion: traefik.io/v1alpha1
+kind: TraefikService
+metadata:
+  name: app-canary-wrr
+  namespace: default
+spec:
+  weighted:
+    services:
+      # 90% traffic to stable version
+      - name: app-stable
+        kind: Service
+        port: 80
+        weight: 90
+      # 10% traffic to canary version (blue-green/canary)
+      - name: app-canary
+        kind: Service
+        port: 80
+        weight: 10
+---
+apiVersion: traefik.io/v1alpha1
 kind: IngressRoute
 metadata:
   name: canary-route
@@ -247,14 +266,8 @@ spec:
     - match: Host(`app.example.com`)
       kind: Rule
       services:
-        # 90% traffic to stable version
-        - name: app-stable
-          port: 80
-          weight: 90
-        # 10% traffic to canary version (blue-green/canary)
-        - name: app-canary
-          port: 80
-          weight: 10
+        - name: app-canary-wrr
+          kind: TraefikService
   tls:
     secretName: app-tls-cert
 ```
@@ -263,7 +276,7 @@ spec:
 
 ```yaml
 # grpc-route.yaml
-apiVersion: traefik.containo.us/v1alpha1
+apiVersion: traefik.io/v1alpha1
 kind: IngressRoute
 metadata:
   name: grpc-service-route
@@ -289,14 +302,14 @@ Traefik also supports TCP routing for databases and other protocols:
 
 ```yaml
 # tcp-route.yaml
-apiVersion: traefik.containo.us/v1alpha1
+apiVersion: traefik.io/v1alpha1
 kind: IngressRouteTCP
 metadata:
   name: postgres-route
   namespace: default
 spec:
   entryPoints:
-    - postgres  # Custom entrypoint configured in Traefik
+    - postgres  # Custom entrypoint configured and exposed by Traefik
   routes:
     - match: HostSNI(`db.example.com`)
       services:
