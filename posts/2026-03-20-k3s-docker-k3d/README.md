@@ -22,8 +22,9 @@ curl -s https://raw.githubusercontent.com/k3d-io/k3d/main/install.sh | bash
 # Verify installation
 k3d version
 
-# Prerequisites: Docker must be running
+# Prerequisites: Docker must be running and kubectl should be installed
 docker version
+kubectl version --client
 ```
 
 ---
@@ -31,10 +32,7 @@ docker version
 ## Step 2: Create a Basic Cluster
 
 ```bash
-# Create a single-node cluster
-k3d cluster create mycluster
-
-# Create and set kubeconfig automatically
+# Create a single-node cluster and set kubeconfig automatically
 k3d cluster create mycluster --kubeconfig-update-default
 
 # Verify the cluster is running
@@ -48,10 +46,11 @@ kubectl get nodes
 
 ```bash
 # Create a cluster with 1 server node + 3 agent nodes
+# Map host ports 8080 and 8443 to the cluster ingress load balancer
 k3d cluster create production \
   --servers 1 \
   --agents 3 \
-  --port "8080:80@loadbalancer" \    # Map host port 8080 to cluster ingress
+  --port "8080:80@loadbalancer" \
   --port "8443:443@loadbalancer"
 
 # Verify all nodes
@@ -78,8 +77,6 @@ apiVersion: networking.k8s.io/v1
 kind: Ingress
 metadata:
   name: nginx
-  annotations:
-    nginx.ingress.kubernetes.io/rewrite-target: /
 spec:
   rules:
     - host: nginx.localhost
@@ -108,7 +105,7 @@ K3d can create a local registry container for faster image iteration:
 # Create a cluster with a local registry
 k3d registry create myregistry.localhost --port 5000
 
-k3d cluster create dev \
+k3d cluster create registry-demo \
   --registry-use k3d-myregistry.localhost:5000 \
   --port "8080:80@loadbalancer"
 
