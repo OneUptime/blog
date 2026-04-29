@@ -19,11 +19,11 @@ ss -tin state established | grep cwnd
 
 # Example output:
 # tcp ESTAB ... cubic wscale:7,7 rto:204 rtt:1.5/0.3 ato:40 mss:1460
-#   rcv_space:87380 rcv_ssthresh:87380 minrtt:1.2
-#   snd_wnd:65536 rcvmsg_size:87380 snd_cwnd:10 bytes_acked:14600 bytes_received:0
+#   rcvmss:1460 advmss:1460 cwnd:10 bytes_acked:14600 bytes_received:0
+#   rcv_space:87380 rcv_ssthresh:87380 minrtt:1.2 snd_wnd:65536
 
-# snd_cwnd: current congestion window in MSS units
-# snd_cwnd=10 means 10×1460 = 14,600 bytes can be in flight
+# cwnd: current congestion window in MSS units
+# cwnd=10 means 10×1460 = 14,600 bytes can be in flight
 ```
 
 ## Real-Time CWND Monitoring Script
@@ -37,10 +37,10 @@ TARGET="10.20.0.5"
 echo "time_s,cwnd_mss,cwnd_bytes,rtt_ms"
 while true; do
     DATA=$(ss -tin state established "( dst $TARGET )" 2>/dev/null | \
-           awk '/snd_cwnd/{
-             match($0, /snd_cwnd:([0-9]+)/, cwnd)
+           awk '/cwnd:/{
+             match($0, /[[:space:]]cwnd:([0-9]+)/, cwnd)
              match($0, /rtt:([0-9.]+)/, rtt)
-             match($0, /mss:([0-9]+)/, mss)
+             match($0, /[[:space:]]mss:([0-9]+)/, mss)
              if(cwnd[1] && mss[1])
                print cwnd[1], cwnd[1]*mss[1], rtt[1]
            }')
@@ -60,20 +60,20 @@ iperf3 -c 10.20.0.5 -t 60 &
 
 # Watch CWND grow in real time (every 200ms)
 watch -n 0.2 "ss -tin state established '( dst 10.20.0.5 )' | \
-  grep -oP 'snd_cwnd:\K[0-9]+'"
+  grep -oP '(?<=[[:space:]])cwnd:\K[0-9]+'"
 
-# Expected during slow start:
-# 2, 4, 8, 16, 32, 64... (doubling each RTT until ssthresh)
-# Then linear growth: 64, 65, 66... (congestion avoidance phase)
+# Expected during slow start (Linux default initial CWND is 10, per RFC 6928):
+# 10, 20, 40, 80, 160... (doubling each RTT until ssthresh)
+# Then linear growth: 160, 161, 162... (congestion avoidance phase)
 ```
 
 ## CWND via /proc (Alternative Method)
 
 ```bash
-# Some kernel versions expose CWND in /proc
-# This is not universally available but useful when it works
-cat /proc/net/tcp | awk 'NR>1{print $6}' | head -10
-# Column 6 = connection state; detailed info requires parsing
+# /proc/net/tcp does not expose CWND directly (only basic socket state)
+# Detailed CWND info is only available via netlink (which ss uses)
+cat /proc/net/tcp | awk 'NR>1{print $4}' | head -10
+# Column 4 = connection state in hex (e.g. 01=ESTABLISHED, 0A=LISTEN)
 
 # More portable: use nstat for aggregate statistics
 nstat | grep TcpExt | grep -i cwnd
