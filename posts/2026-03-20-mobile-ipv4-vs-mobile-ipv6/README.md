@@ -17,7 +17,7 @@ Mobile IPv4 (MIPv4, RFC 5944) and Mobile IPv6 (MIPv6, RFC 6275) both allow nodes
 | Defining RFC | RFC 5944 | RFC 6275 |
 | Foreign Agent | Required for many deployments | Not required (CoA assigned directly) |
 | Triangle Routing | Always present | Present, but route optimization available |
-| Route Optimization | Optional (RFC 4651) | Built-in via Return Routability |
+| Route Optimization | Not standardized (expired drafts) | Built-in via Return Routability (RFC 4651 surveys enhancements) |
 | IPsec requirement | Optional | Mandatory for BU to HA (RFC 3776) |
 | NAT traversal | Requires UDP encapsulation | Less common due to IPv6 deployment |
 | Header overhead | IP-in-IP tunnel | Type 2 Routing Header (RO mode) |
@@ -25,10 +25,10 @@ Mobile IPv4 (MIPv4, RFC 5944) and Mobile IPv6 (MIPv6, RFC 6275) both allow nodes
 ## Triangle Routing Problem
 
 ```javascript
-Mobile IPv4 (always triangular):
-  MN (at foreign network) ------> HA ------> CN
-  MN <------ HA <------ CN
-  (all packets transit HA)
+Mobile IPv4 (triangular by default):
+  CN ------> HA ------> MN  (downstream tunneled via HA)
+  MN ------------------> CN (upstream direct, unless reverse-tunneled)
+  (asymmetric paths form the "triangle")
 
 Mobile IPv6 with Route Optimization:
   MN <===================> CN  (direct path after RO)
@@ -88,9 +88,10 @@ for i, step in enumerate(steps, 1):
 
 ```text
 Mobile IPv4:
-  - BU authenticated via IPsec AH/ESP (optional in practice)
-  - Foreign Agent authenticated via mobility extension
-  - Replay protection via nonces
+  - Registration Request authenticated via Mobile-Home Authentication Extension (HMAC-MD5 by default)
+  - MN-FA and FA-HA authentication via additional mobility extensions
+  - Replay protection via Identification field (timestamp or nonce)
+  - IPsec optional (RFC 4877)
 
 Mobile IPv6:
   - BU to HA: MUST use IPsec ESP (RFC 3776)
