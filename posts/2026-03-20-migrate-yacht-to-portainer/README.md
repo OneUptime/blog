@@ -31,6 +31,7 @@ docker run --rm \
 docker ps -a --format "table {{.Names}}\t{{.Image}}\t{{.Status}}\t{{.Ports}}"
 
 # Export all container configurations
+mkdir -p /tmp/container-configs
 docker ps -aq | while read id; do
   name=$(docker inspect --format='{{.Name}}' $id | tr -d '/')
   docker inspect $id > "/tmp/container-configs/$name.json"
