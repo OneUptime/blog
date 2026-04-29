@@ -13,47 +13,47 @@ Portainer exposes cluster-level security settings that restrict what non-admin u
 ## Accessing Cluster Security Settings
 
 1. In Portainer, select your Kubernetes environment.
-2. Go to **Cluster > Setup** or **Cluster > Security**.
-3. Configure the available security options.
+2. Go to **Cluster > Setup** for environment guardrails such as load balancers, ingresses, and default namespace access.
+3. Go to **Cluster > Security constraints** for workload-level pod restrictions.
 
 ## Available Security Settings
 
-### Allow Users to Use the Load Balancer Feature
+### Allow Users to Use External Load Balancer
 
-Disabling this prevents regular users from creating LoadBalancer services, which could incur unexpected cloud costs.
+This controls whether users can expose applications over an external load balancer from their cloud provider, which could incur unexpected cloud costs.
 
-### Allow Users to Use External IPs for Services
+### Only Allow Admins to Deploy Ingresses
 
-Restricts users from specifying `externalIPs` in service definitions, which can cause security issues.
+Restricts ingress creation to Portainer administrators, reducing the risk of users exposing applications through ingress resources.
 
-### Restrict Default Namespace Usage
+### Restrict Access to the Default Namespace
 
-Prevents workloads from being deployed to the `default` namespace, enforcing namespace isolation.
+Limits deployments in the `default` namespace to Portainer administrators, helping enforce namespace isolation.
 
-### Enable Node Selector for Workloads
+### Restrict Secret Contents Access for Non-Admins (UI Only)
 
-Forces users to specify a node selector for all workloads, ensuring proper placement.
+Prevents non-admin users from viewing and editing Kubernetes secrets in the Portainer UI. This does not block access through the Kubernetes API or CLI.
 
 ## Configuring Pod Security Standards
 
-Kubernetes v1.25+ uses Pod Security Standards (PSS) instead of Pod Security Policies. Configure them via namespace labels:
+Portainer's **Cluster > Security constraints** page uses OPA Gatekeeper for workload-level constraints. Separately, Kubernetes v1.25+ removes PodSecurityPolicy and uses Pod Security Admission to enforce Pod Security Standards (PSS) via namespace labels:
 
 ```bash
 # Apply the "restricted" security standard to a namespace
 
-kubectl label namespace my-namespace \
+kubectl label --overwrite namespace my-restricted-namespace \
   pod-security.kubernetes.io/enforce=restricted \
   pod-security.kubernetes.io/audit=restricted \
   pod-security.kubernetes.io/warn=restricted
 
 # Apply "baseline" policy (less strict)
-kubectl label namespace my-namespace \
+kubectl label --overwrite namespace my-baseline-namespace \
   pod-security.kubernetes.io/enforce=baseline
 ```
 
 ## Configuring RBAC for Portainer Users
 
-Create custom Kubernetes roles for Portainer-managed teams:
+If Kubernetes RBAC is enabled, Portainer namespace access can build on standard Kubernetes roles and bindings. For example:
 
 ```yaml
 # developer-role.yaml - Read-only access for developers
@@ -87,7 +87,7 @@ roleRef:
 
 ## Restricting Privileged Containers
 
-Prevent privileged containers via a NetworkPolicy or OPA/Gatekeeper constraint:
+Prevent privileged containers via Pod Security Admission or an OPA/Gatekeeper constraint. If you apply Gatekeeper directly, install the matching `ConstraintTemplate` before the `Constraint`:
 
 ```yaml
 # OPA Gatekeeper constraint to block privileged containers
