@@ -8,11 +8,11 @@ Description: A detailed comparison of Kubewarden and Kyverno for Kubernetes poli
 
 ## Overview
 
-Kyverno and Kubewarden are modern Kubernetes policy engines that take different approaches to policy authoring. Kyverno uses YAML-native policies that are easy to read and write without learning a new language. Kubewarden uses WebAssembly modules that can be written in any compiled language. This comparison helps teams choose the right policy engine for their Kubernetes governance needs.
+Kyverno and Kubewarden are modern Kubernetes policy engines that take different approaches to policy authoring. Kyverno defines policies as Kubernetes-style YAML resources and now includes CEL-based policy types. Kubewarden uses WebAssembly modules that can be written in languages that compile to Wasm. This comparison helps teams choose the right policy engine for their Kubernetes governance needs.
 
 ## What Is Kyverno?
 
-Kyverno is a CNCF-graduated Kubernetes-native policy engine that uses YAML policies without requiring a separate policy language. It supports validation, mutation, generation, and cleanup of Kubernetes resources. Its policies are easy to read and can be applied directly with kubectl.
+Kyverno is a CNCF-graduated Kubernetes-native policy engine that defines policies as Kubernetes resources. It supports validation, mutation, generation, and cleanup of Kubernetes resources. Its policies can be applied directly with kubectl.
 
 ## What Is Kubewarden?
 
@@ -22,18 +22,18 @@ Kubewarden is a CNCF Sandbox policy engine from SUSE Rancher that uses WebAssemb
 
 | Feature | Kubewarden | Kyverno |
 |---|---|---|
-| Policy Language | Any (Wasm) | YAML-native |
+| Policy Language | Languages that compile to Wasm | YAML + CEL |
 | Validation Policies | Yes | Yes |
 | Mutation Policies | Yes | Yes |
 | Generate Policies | No | Yes |
 | Cleanup Policies | No | Yes |
-| CEL Support | No | Yes (v1.10+) |
+| CEL Support | Yes (via `cel-policy`) | Yes (v1.11+; CEL-based policy types stable in v1.17) |
 | Context-Aware | Yes | Yes |
 | Policy Testing | kwctl | kyverno test |
-| Policy Library | ArtifactHub | Kyverno policies (GitHub) |
+| Policy Library | Official policy library / ArtifactHub | kyverno.io/policies |
 | CNCF Status | Sandbox | Graduated |
 | Rancher Integration | Native | Via kubectl |
-| Learning Curve | Medium (Wasm toolchain) | Low (YAML) |
+| Learning Curve | Medium (Wasm toolchain) | Low to Medium (YAML/CEL) |
 | Community | Growing | Large |
 | Background Scans | Yes | Yes |
 
@@ -42,43 +42,42 @@ Kubewarden is a CNCF Sandbox policy engine from SUSE Rancher that uses WebAssemb
 ### Kyverno Validation Policy
 
 ```yaml
-# Kyverno: Require resource limits on all containers
+# Kyverno: Require resource limits on all Pod containers
 
-apiVersion: kyverno.io/v1
-kind: ClusterPolicy
+apiVersion: policies.kyverno.io/v1
+kind: ValidatingPolicy
 metadata:
   name: require-limits
 spec:
-  validationFailureAction: enforce
-  rules:
-    - name: check-container-limits
-      match:
-        any:
-          - resources:
-              kinds:
-                - Pod
-      validate:
-        message: "Resource limits are required for all containers."
-        pattern:
-          spec:
-            containers:
-              - (name): "?*"
-                resources:
-                  limits:
-                    memory: "?*"
-                    cpu: "?*"
+  validationActions:
+    - Deny
+  matchConstraints:
+    resourceRules:
+      - apiGroups: [""]
+        apiVersions: ["v1"]
+        operations: ["CREATE", "UPDATE"]
+        resources: ["pods"]
+  validations:
+    - expression: >-
+        object.spec.containers.all(container,
+          has(container.resources) &&
+          has(container.resources.limits) &&
+          has(container.resources.limits.cpu) &&
+          has(container.resources.limits.memory)
+        )
+      message: Resource limits are required for all Pod containers.
 ```
 
 ### Kubewarden Equivalent (using pre-built policy)
 
 ```yaml
-# Kubewarden: Require resource limits using ArtifactHub policy
+# Kubewarden: Require resource limits using the official container-resources policy
 apiVersion: policies.kubewarden.io/v1
 kind: ClusterAdmissionPolicy
 metadata:
   name: require-resource-limits
 spec:
-  module: registry://ghcr.io/kubewarden/policies/resource-limits:v0.1.0
+  module: registry://ghcr.io/kubewarden/policies/container-resources:latest
   rules:
     - apiGroups: [""]
       apiVersions: ["v1"]
@@ -86,8 +85,10 @@ spec:
       operations: ["CREATE", "UPDATE"]
   mutating: false
   settings:
-    cpu_limit_required: true
-    memory_limit_required: true
+    cpu:
+      defaultLimit: "500m"
+    memory:
+      defaultLimit: "256Mi"
 ```
 
 ## Mutation Policies
@@ -96,27 +97,42 @@ spec:
 
 ```yaml
 # Kyverno: Auto-add resource limits if missing
-apiVersion: kyverno.io/v1
-kind: ClusterPolicy
+apiVersion: policies.kyverno.io/v1
+kind: MutatingPolicy
 metadata:
   name: add-default-limits
 spec:
-  rules:
-    - name: add-memory-limit
-      match:
-        any:
-          - resources:
-              kinds:
-                - Pod
-      mutate:
-        patchStrategicMerge:
-          spec:
-            containers:
-              - (name): "?*"
-                resources:
-                  limits:
-                    +(memory): "256Mi"
-                    +(cpu): "500m"
+  matchConstraints:
+    resourceRules:
+      - apiGroups: [""]
+        apiVersions: ["v1"]
+        operations: ["CREATE"]
+        resources: ["pods"]
+  mutations:
+    - patchType: ApplyConfiguration
+      applyConfiguration:
+        expression: >
+          Object{
+            spec: Object.spec{
+              containers: object.spec.containers.map(container, Object.spec.containers{
+                name: container.name,
+                resources: Object.spec.containers.resources{
+                  limits: Object.spec.containers.resources.limits{
+                    memory: has(container.resources) &&
+                            has(container.resources.limits) &&
+                            has(container.resources.limits.memory) ?
+                            container.resources.limits.memory :
+                            "256Mi",
+                    cpu: has(container.resources) &&
+                         has(container.resources.limits) &&
+                         has(container.resources.limits.cpu) ?
+                         container.resources.limits.cpu :
+                         "500m"
+                  }
+                }
+              })
+            }
+          }
 ```
 
 ### Kubewarden Mutation
@@ -128,7 +144,7 @@ kind: ClusterAdmissionPolicy
 metadata:
   name: add-default-limits
 spec:
-  module: registry://ghcr.io/kubewarden/policies/add-default-limits:v0.1.0
+  module: registry://ghcr.io/kubewarden/policies/container-resources:latest
   rules:
     - apiGroups: [""]
       apiVersions: ["v1"]
@@ -136,8 +152,10 @@ spec:
       operations: ["CREATE"]
   mutating: true
   settings:
-    default_memory_limit: "256Mi"
-    default_cpu_limit: "500m"
+    cpu:
+      defaultLimit: "500m"
+    memory:
+      defaultLimit: "256Mi"
 ```
 
 Resource Generation (Kyverno Exclusive)
@@ -146,29 +164,37 @@ Kyverno can generate new Kubernetes resources in response to events. This is a u
 
 ```yaml
 # Kyverno: Auto-create NetworkPolicy when a Namespace is created
-apiVersion: kyverno.io/v1
-kind: ClusterPolicy
+apiVersion: policies.kyverno.io/v1
+kind: GeneratingPolicy
 metadata:
   name: generate-networkpolicy
 spec:
-  rules:
-    - name: create-default-deny
-      match:
-        any:
-          - resources:
-              kinds:
-                - Namespace
-      generate:
-        apiVersion: networking.k8s.io/v1
-        kind: NetworkPolicy
-        name: default-deny-all
-        namespace: "{{request.object.metadata.name}}"
-        data:
-          spec:
-            podSelector: {}
-            policyTypes:
-              - Ingress
-              - Egress
+  matchConstraints:
+    resourceRules:
+      - apiGroups: [""]
+        apiVersions: ["v1"]
+        operations: ["CREATE"]
+        resources: ["namespaces"]
+  variables:
+    - name: targetNs
+      expression: "object.metadata.name"
+    - name: downstream
+      expression: >-
+        [
+          {
+            "kind": dyn("NetworkPolicy"),
+            "apiVersion": dyn("networking.k8s.io/v1"),
+            "metadata": dyn({
+              "name": "default-deny-all"
+            }),
+            "spec": dyn({
+              "podSelector": dyn({}),
+              "policyTypes": dyn(["Ingress", "Egress"])
+            })
+          }
+        ]
+  generate:
+    - expression: generator.Apply(variables.targetNs, variables.downstream)
 ```
 
 ## Policy Testing
@@ -189,20 +215,20 @@ kyverno apply require-limits.yaml \
 ### Kubewarden kwctl
 
 ```bash
-# Test Kubewarden policies
-kwctl run registry://ghcr.io/kubewarden/policies/require-labels:v0.2.0 \
-  --settings-json '{"mandatory_labels": ["app"]}' \
-  --request-path test-pod.json
+# Test Kubewarden policies against an AdmissionReview request JSON
+kwctl run registry://ghcr.io/kubewarden/policies/container-resources:latest \
+  --settings-json '{"cpu":{"defaultLimit":"500m"},"memory":{"defaultLimit":"256Mi"}}' \
+  --request-path test-request.json
 
 # Scaffold a new policy
 kwctl scaffold manifest \
   --type ClusterAdmissionPolicy \
-  registry://ghcr.io/kubewarden/policies/require-labels:v0.2.0
+  registry://ghcr.io/kubewarden/policies/container-resources:latest
 ```
 
 ## When to Choose Kyverno
 
-- Your team wants YAML-native policies without learning a new language
+- Your team wants policies defined as Kubernetes resources rather than a Wasm toolchain
 - Policy generation (creating new resources) is needed
 - CEL expressions for policy logic are preferred
 - You want a CNCF-graduated tool with a large community
@@ -210,11 +236,11 @@ kwctl scaffold manifest \
 
 ## When to Choose Kubewarden
 
-- Your team writes policies in Go, Rust, or another compiled language
+- Your team wants to write or reuse policies in Go, Rust, Rego, CEL, or another Wasm-capable option
 - Policy distribution via OCI registries is preferred
 - Native Rancher UI integration is important
-- You want maximum performance from compiled Wasm modules
+- You want Wasm-based policy distribution and execution
 
 ## Conclusion
 
-Kyverno and Kubewarden both provide excellent Kubernetes policy enforcement. Kyverno's key advantage is its low barrier to entry - YAML-native policies require no additional toolchain. Kubewarden's key advantage is flexibility - any language that compiles to Wasm can be used to write policies, which is powerful for complex validation logic. Teams new to policy management should start with Kyverno for its simplicity. Teams with experienced engineers who want language flexibility should consider Kubewarden, especially in Rancher environments.
+Kyverno and Kubewarden both provide excellent Kubernetes policy enforcement. Kyverno's key advantage is its lower barrier to entry - policies are defined as Kubernetes resources and do not require a Wasm toolchain. Kubewarden's key advantage is flexibility - policies are packaged as Wasm modules and can be authored or reused across multiple languages and policy styles. Teams new to policy management should start with Kyverno for its simplicity. Teams with experienced engineers who want language flexibility should consider Kubewarden, especially in Rancher environments.
