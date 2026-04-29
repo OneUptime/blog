@@ -63,7 +63,7 @@ db.createUser({
 })
 
 # Exit and restart with auth
-mongod --shutdown
+mongod --shutdown --dbpath /var/lib/mongodb
 sudo systemctl start mongod
 ```
 
