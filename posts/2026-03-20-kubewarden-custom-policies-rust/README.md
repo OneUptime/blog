@@ -8,14 +8,14 @@ Description: A comprehensive guide to writing custom Kubewarden admission contro
 
 ## Introduction
 
-Rust is the primary language for writing Kubewarden policies due to its excellent WebAssembly support, performance characteristics, and memory safety guarantees. Kubewarden provides a Rust SDK that simplifies the boilerplate and lets you focus on your policy logic.
+Rust is a popular language for writing Kubewarden policies due to its excellent WebAssembly support, performance characteristics, and memory safety guarantees. Kubewarden provides a Rust SDK that simplifies the boilerplate and lets you focus on your policy logic.
 
 This guide walks through creating a complete Rust-based Kubewarden policy from scratch.
 
 ## Prerequisites
 
 - Rust toolchain (rustup, cargo) installed
-- WebAssembly target: `wasm32-wasi`
+- WebAssembly target: `wasm32-wasip1`
 - `kwctl` CLI tool installed
 - Docker (optional, for building)
 - Basic Rust programming knowledge
@@ -29,16 +29,17 @@ curl --proto '=https' --tlsv1.2 -sSf https://sh.rustup.rs | sh
 source ~/.cargo/env
 
 # Add WebAssembly target
-rustup target add wasm32-wasi
+rustup target add wasm32-wasip1
 
-# Install kwctl (Kubewarden CLI)
-# https://github.com/kubewarden/kwctl/releases
-curl -LO https://github.com/kubewarden/kwctl/releases/latest/download/kwctl-linux-amd64
-chmod +x kwctl-linux-amd64
-sudo mv kwctl-linux-amd64 /usr/local/bin/kwctl
+# Install kwctl (Kubewarden CLI) on Linux x86_64
+# https://docs.kubewarden.io/howtos/install-kwctl
+curl -LO https://github.com/kubewarden/kwctl/releases/latest/download/kwctl-linux-x86_64.zip
+unzip kwctl-linux-x86_64.zip
+chmod +x kwctl-linux-x86_64
+sudo mv kwctl-linux-x86_64 /usr/local/bin/kwctl
 
 # Install the policy scaffold tool
-cargo install --git https://github.com/kubewarden/cargo-generate-kubewarden
+cargo install cargo-generate
 ```
 
 ## Creating a New Policy Project
@@ -47,6 +48,7 @@ cargo install --git https://github.com/kubewarden/cargo-generate-kubewarden
 # Generate a new policy from template
 cargo generate \
   --git https://github.com/kubewarden/rust-policy-template \
+  --branch main \
   --name my-custom-policy
 
 cd my-custom-policy
@@ -62,11 +64,10 @@ my-custom-policy/
 ├── src/
 │   ├── lib.rs         # Main policy code
 │   └── settings.rs    # Policy settings validation
-└── tests/
-    ├── data/
-    │   ├── valid_request.json
-    │   └── invalid_request.json
-    └── integration_test.rs
+└── test_data/
+    ├── ingress_creation.json
+    ├── pod_creation.json
+    └── pod_creation_invalid_name.json
 ```
 
 ## Writing the Policy Logic
@@ -75,33 +76,26 @@ my-custom-policy/
 
 ```rust
 // src/lib.rs - Main policy file
-use kubewarden_policy_sdk::prelude::*;
+use guest::prelude::*;
+use kubewarden_policy_sdk::wapc_guest as guest;
 
-// The validate function is called for each admission request
+extern crate kubewarden_policy_sdk as kubewarden;
+
+use kubewarden::{protocol_version_guest, validate_settings};
+
+mod settings;
+use settings::Settings;
+
 #[no_mangle]
-pub extern "C" fn validate(payload: *const u8, payload_len: usize) -> i32 {
-    let validation_request: ValidationRequest<Settings> =
-        match serde_json::from_slice(unsafe {
-            std::slice::from_raw_parts(payload, payload_len)
-        }) {
-            Ok(r) => r,
-            Err(e) => return kubewarden::reject_request(
-                Some(format!("Cannot decode payload: {e}")),
-                None,
-                None,
-                None,
-            ),
-        };
+pub extern "C" fn wapc_init() {
+    register_function("validate", validate);
+    register_function("validate_settings", validate_settings::<Settings>);
+    register_function("protocol_version", protocol_version_guest);
+}
 
-    match do_validate(validation_request) {
-        Ok(response) => kubewarden::accept_request(),
-        Err(e) => kubewarden::reject_request(
-            Some(e.to_string()),
-            None,
-            None,
-            None,
-        ),
-    }
+// Kubewarden calls the function registered as "validate"
+fn validate(payload: &[u8]) -> CallResult {
+    kubewarden::accept_request()
 }
 ```
 
@@ -109,11 +103,11 @@ pub extern "C" fn validate(payload: *const u8, payload_len: usize) -> i32 {
 
 ```rust
 // src/lib.rs - Complete policy to block "latest" image tags
-use anyhow::{anyhow, Result};
 use guest::prelude::*;
 use kubewarden_policy_sdk::wapc_guest as guest;
 
 use k8s_openapi::api::core::v1 as apicore;
+use k8s_openapi::Resource;
 
 extern crate kubewarden_policy_sdk as kubewarden;
 
@@ -131,10 +125,11 @@ pub extern "C" fn wapc_init() {
 
 fn validate(payload: &[u8]) -> CallResult {
     // Parse the incoming validation request
-    let validation_request: ValidationRequest<Settings> =
-        serde_json::from_slice(payload).map_err(|e| {
-            anyhow!("Failed to parse validation request: {}", e)
-        })?;
+    let validation_request: ValidationRequest<Settings> = ValidationRequest::new(payload)?;
+
+    if validation_request.request.kind.kind != apicore::Pod::KIND {
+        return kubewarden::accept_request();
+    }
 
     // Extract the Pod object from the request
     let pod = match serde_json::from_value::<apicore::Pod>(
@@ -144,18 +139,29 @@ fn validate(payload: &[u8]) -> CallResult {
         Err(_) => return kubewarden::accept_request(),
     };
 
-    // Check all containers for "latest" tag
-    let containers = pod.spec
-        .as_ref()
-        .map(|s| s.containers.clone())
-        .unwrap_or_default();
+    if validation_request
+        .settings
+        .allowed_namespaces
+        .iter()
+        .any(|ns| ns == &validation_request.request.namespace)
+    {
+        return kubewarden::accept_request();
+    }
 
-    for container in &containers {
+    // Check containers and init containers for "latest" tag
+    let spec = match pod.spec {
+        Some(spec) => spec,
+        None => return kubewarden::accept_request(),
+    };
+
+    let mut containers = spec.containers;
+    containers.extend(spec.init_containers.unwrap_or_default());
+
+    for container in containers {
         if is_using_latest_tag(&container.image) {
             return kubewarden::reject_request(
                 Some(format!(
-                    "Container '{}' uses the 'latest' tag. \
-                     Specify an explicit version tag instead.",
+                    "Container '{}' uses the 'latest' tag. Specify an explicit version tag instead.",
                     container.name
                 )),
                 None,
@@ -169,19 +175,24 @@ fn validate(payload: &[u8]) -> CallResult {
 }
 
 fn is_using_latest_tag(image: &Option<String>) -> bool {
-    match image {
-        None => false,
-        Some(img) => {
-            // Images without a tag default to "latest"
-            if !img.contains(':') {
-                return true;
-            }
-            // Check for explicit "latest" tag
-            if img.ends_with(":latest") {
-                return true;
-            }
-            false
-        }
+    let Some(img) = image.as_deref() else {
+        return false;
+    };
+
+    if img.contains('@') {
+        return false;
+    }
+
+    if img.ends_with(":latest") {
+        return true;
+    }
+
+    // If the last ':' appears before the last '/', it belongs to a registry port,
+    // which means the image has no explicit tag and therefore defaults to "latest".
+    match (img.rfind('/'), img.rfind(':')) {
+        (_, None) => true,
+        (Some(slash), Some(colon)) if colon < slash => true,
+        _ => false,
     }
 }
 ```
@@ -193,6 +204,7 @@ fn is_using_latest_tag(image: &Option<String>) -> bool {
 use serde::{Deserialize, Serialize};
 
 #[derive(Serialize, Deserialize, Default, Debug)]
+#[serde(default)]
 pub struct Settings {
     // Allow specific namespaces to use latest (e.g., development)
     pub allowed_namespaces: Vec<String>,
@@ -210,16 +222,16 @@ impl kubewarden_policy_sdk::settings::Validatable for Settings {
 
 ```bash
 # Build the Wasm binary
-cargo build --target wasm32-wasi --release
+make policy.wasm
 
 # The output is at:
-# target/wasm32-wasi/release/my_custom_policy.wasm
+# policy.wasm
 
 # Annotate the policy with metadata
 kwctl annotate \
-  target/wasm32-wasi/release/my_custom_policy.wasm \
+  policy.wasm \
   --metadata-path metadata.yml \
-  --output annotated-policy.wasm
+  --output-path annotated-policy.wasm
 ```
 
 ## Testing the Policy
@@ -238,6 +250,8 @@ mod tests {
         assert!(is_using_latest_tag(&Some("nginx:latest".to_string())));
         // Should detect missing tag (defaults to latest)
         assert!(is_using_latest_tag(&Some("nginx".to_string())));
+        // Should detect missing tag even when the registry includes a port
+        assert!(is_using_latest_tag(&Some("registry.example.com:5000/nginx".to_string())));
         // Should allow specific versions
         assert!(!is_using_latest_tag(&Some("nginx:1.25.0".to_string())));
         // Should allow digest-based references
@@ -255,19 +269,26 @@ cargo test
 
 ```bash
 # Create a test request (invalid - uses latest)
-cat > tests/data/pod-with-latest.json <<EOF
+cat > test_data/pod-with-latest.json <<EOF
 {
-  "request": {
-    "uid": "test-123",
-    "kind": {"group": "", "version": "v1", "kind": "Pod"},
-    "operation": "CREATE",
-    "object": {
-      "apiVersion": "v1",
-      "kind": "Pod",
-      "metadata": {"name": "test-pod"},
-      "spec": {
-        "containers": [{"name": "app", "image": "nginx:latest"}]
-      }
+  "uid": "test-123",
+  "kind": {"group": "", "version": "v1", "kind": "Pod"},
+  "resource": {"group": "", "version": "v1", "resource": "pods"},
+  "requestKind": {"group": "", "version": "v1", "kind": "Pod"},
+  "requestResource": {"group": "", "version": "v1", "resource": "pods"},
+  "name": "test-pod",
+  "namespace": "default",
+  "operation": "CREATE",
+  "userInfo": {
+    "username": "kubectl-user",
+    "groups": ["system:authenticated"]
+  },
+  "object": {
+    "apiVersion": "v1",
+    "kind": "Pod",
+    "metadata": {"name": "test-pod", "namespace": "default"},
+    "spec": {
+      "containers": [{"name": "app", "image": "nginx:latest"}]
     }
   }
 }
@@ -275,8 +296,8 @@ EOF
 
 # Test with kwctl
 kwctl run \
-  annotated-policy.wasm \
-  --request-path tests/data/pod-with-latest.json
+  --request-path test_data/pod-with-latest.json \
+  annotated-policy.wasm
 
 # Expected: request rejected
 ```
@@ -287,7 +308,7 @@ kwctl run \
 # Push to an OCI registry
 kwctl push \
   annotated-policy.wasm \
-  registry.example.com/kubewarden-policies/no-latest-tag:v0.1.0
+  registry://registry.example.com/kubewarden-policies/no-latest-tag:v0.1.0
 
 # Verify the push
 kwctl pull \
