@@ -4,7 +4,7 @@ Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
 Tags: Rust, IPv6, Actix-web, HTTP, Web Framework, Networking
 
-Description: Build IPv6-capable web applications with Rust's Actix-Web framework including binding, client IP extraction, and rate limiting by IPv6 prefix.
+Description: Build IPv6-capable web applications with Rust's Actix-Web framework including binding, client IP extraction, request logging, shared state, and TLS.
 
 ## Binding Actix-Web to IPv6
 
@@ -13,6 +13,7 @@ Description: Build IPv6-capable web applications with Rust's Actix-Web framework
 
 [dependencies]
 actix-web = "4"
+futures-util = "0.3"
 tokio = { version = "1", features = ["full"] }
 ```
 
@@ -26,7 +27,7 @@ async fn index() -> impl Responder {
 
 #[actix_web::main]
 async fn main() -> std::io::Result<()> {
-    // [::] listens on all IPv6 interfaces (dual-stack on Linux)
+    // [::] listens on all IPv6 interfaces; IPv4 dual-stack behavior depends on OS/socket settings
     HttpServer::new(|| App::new().service(index))
         .bind("[::]:8080")?
         .run()
@@ -48,21 +49,27 @@ HttpServer::new(|| App::new().service(index))
 
 ```rust
 use actix_web::{get, HttpRequest, HttpResponse};
-use std::net::IpAddr;
+use std::net::{IpAddr, SocketAddr};
+
+fn parse_ip(addr: &str) -> Option<IpAddr> {
+    let addr = addr.trim_matches('"');
+
+    addr.parse::<IpAddr>()
+        .ok()
+        .or_else(|| addr.parse::<SocketAddr>().ok().map(|a| a.ip()))
+        .or_else(|| {
+            addr.strip_prefix('[')
+                .and_then(|a| a.strip_suffix(']'))
+                .and_then(|a| a.parse::<IpAddr>().ok())
+        })
+}
 
 fn get_client_ip(req: &HttpRequest) -> Option<IpAddr> {
-    // Check X-Forwarded-For first (when behind a proxy)
-    if let Some(forwarded) = req.headers().get("X-Forwarded-For") {
-        if let Ok(val) = forwarded.to_str() {
-            // Take the first (leftmost) address
-            if let Ok(ip) = val.split(',').next()?.trim().parse() {
-                return Some(ip);
-            }
-        }
-    }
-
-    // Fall back to direct connection address
-    req.peer_addr().map(|a| a.ip())
+    // Uses Forwarded/X-Forwarded-For when present; only trust these behind a proxy you control.
+    req.connection_info()
+        .realip_remote_addr()
+        .and_then(parse_ip)
+        .or_else(|| req.peer_addr().map(|a| a.ip()))
 }
 
 #[get("/info")]
@@ -149,20 +156,20 @@ use std::net::Ipv6Addr;
 use std::sync::Mutex;
 
 struct AppState {
-    allowed_prefixes: Mutex<Vec<Ipv6Addr>>,
+    allowed_addresses: Mutex<Vec<Ipv6Addr>>,
 }
 
 #[get("/allowed")]
 async fn list_allowed(data: web::Data<AppState>) -> HttpResponse {
-    let prefixes = data.allowed_prefixes.lock().unwrap();
-    let list: Vec<String> = prefixes.iter().map(|a| a.to_string()).collect();
+    let addresses = data.allowed_addresses.lock().unwrap();
+    let list: Vec<String> = addresses.iter().map(|a| a.to_string()).collect();
     HttpResponse::Ok().json(list)
 }
 
 #[actix_web::main]
 async fn main() -> std::io::Result<()> {
     let state = web::Data::new(AppState {
-        allowed_prefixes: Mutex::new(vec![
+        allowed_addresses: Mutex::new(vec![
             "2001:db8::1".parse().unwrap(),
             "2001:db8::2".parse().unwrap(),
         ]),
@@ -225,4 +232,4 @@ async fn main() -> std::io::Result<()> {
 
 ## Conclusion
 
-Actix-Web supports IPv6 by binding to `[::]:port` or specific IPv6 addresses. Use `req.peer_addr()` to get the client's socket address, checking `X-Forwarded-For` for proxied environments. Middleware provides per-request IPv6 logging and access control. TLS over IPv6 uses `bind_rustls` with a standard Rustls config. Actix-Web's dual-stack support means a single bind to `[::]:port` serves both IPv4 and IPv6 clients on Linux.
+Actix-Web supports IPv6 by binding to `[::]:port` or specific IPv6 addresses. Use `req.connection_info().realip_remote_addr()` in proxied environments and `req.peer_addr()` for the directly connected socket. Middleware provides per-request IPv6 logging, and shared state can store IPv6 allowlists. TLS over IPv6 uses `bind_rustls_0_23` with a standard Rustls config. On Linux, a single bind to `[::]:port` can also accept IPv4 connections when `IPV6_V6ONLY` is disabled, but that behavior is OS- and socket-configuration dependent.
