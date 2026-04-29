@@ -62,6 +62,7 @@ resource "google_compute_instance_template" "app" {
     systemctl enable nginx
     systemctl start nginx
     echo "Instance: $(hostname)" > /var/www/html/index.html
+    echo "ok" > /var/www/html/health
   EOF
 
   service_account {
@@ -84,7 +85,6 @@ resource "google_compute_region_instance_group_manager" "app" {
   name               = "app-mig"
   region             = var.region
   base_instance_name = "app"
-  target_size        = 2
 
   version {
     instance_template = google_compute_instance_template.app.id
