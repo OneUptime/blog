@@ -60,7 +60,7 @@ resource "aws_route53_record" "blog" {
 }
 ```
 
-### Alias Record (for AWS resources)
+### Alias Record (for supported AWS resources)
 
 ```hcl
 resource "aws_route53_record" "app" {
@@ -136,7 +136,7 @@ resource "aws_route53_record" "app_canary" {
 
 ```hcl
 resource "aws_route53_health_check" "primary" {
-  fqdn              = "primary.example.com"
+  fqdn              = aws_lb.primary.dns_name
   port              = 443
   type              = "HTTPS"
   resource_path     = "/health"
@@ -162,6 +162,23 @@ resource "aws_route53_record" "failover_primary" {
     evaluate_target_health = true
   }
 }
+
+resource "aws_route53_record" "failover_secondary" {
+  zone_id        = aws_route53_zone.primary.zone_id
+  name           = "app.example.com"
+  type           = "A"
+  set_identifier = "secondary"
+
+  failover_routing_policy {
+    type = "SECONDARY"
+  }
+
+  alias {
+    name                   = aws_lb.secondary.dns_name
+    zone_id                = aws_lb.secondary.zone_id
+    evaluate_target_health = true
+  }
+}
 ```
 
 ## Private Hosted Zones
@@ -182,9 +199,9 @@ resource "aws_route53_zone" "private" {
 
 ## Best Practices
 
-- Use alias records instead of CNAME for AWS resources - they resolve faster and are free.
+- Use alias records instead of CNAME for supported AWS resources when possible - they can be used at the zone apex, and Route 53 does not charge for alias queries to AWS resources.
 - Set appropriate TTLs: low TTLs for records that change frequently, high TTLs for stable records.
-- Use health checks with failover routing for high availability.
+- Use health checks with failover routing for non-alias targets. For alias records that point to supported AWS resources, use `evaluate_target_health`, and add Route 53 health checks only when you need extra endpoint-level checks.
 - Import existing Route 53 resources before managing them with OpenTofu.
 - Use `for_each` to manage large sets of DNS records from a map variable.
 
