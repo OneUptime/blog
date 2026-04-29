@@ -8,7 +8,7 @@ Description: Configure IPvlan L3 mode for Layer 3 routing between container netw
 
 ## Introduction
 
-IPvlan L3 mode operates at Layer 3 (network layer), meaning the host acts as a router between container networks. Unlike L2, containers in L3 mode are in completely separate broadcast domains - they communicate via routing, not bridging. This is ideal for creating isolated network segments with routing control. This guide covers IPvlan L3 configuration via Portainer.
+IPvlan L3 mode operates at Layer 3 (network layer), meaning the host acts as a router between container networks. Unlike L2, containers in L3 mode are in completely separate broadcast domains - they communicate via routing, not bridging. This is ideal for creating isolated network segments with routing control. This guide covers IPvlan L3 configuration with Docker networks that Portainer can deploy and monitor.
 
 ## L2 vs L3 Key Differences
 
@@ -16,7 +16,7 @@ IPvlan L3 mode operates at Layer 3 (network layer), meaning the host acts as a r
 |--------|-----------|-----------|
 | Layer | Layer 2 (bridging) | Layer 3 (routing) |
 | Broadcast domain | Same as parent | Separate |
-| Container gateway | Router | Host interface |
+| Container gateway | Router | Default route on container interface |
 | ARP requests | Broadcast to LAN | No ARP on LAN |
 | External routing | Via LAN gateway | Must be configured |
 | Isolation | LAN-level | Full network isolation |
@@ -34,7 +34,7 @@ docker network create \
   --subnet=10.100.0.0/24 \
   --opt ipvlan_mode=l3 \
   --opt parent=eth0 \
-  ipvlan_l3_net1
+  frontend_l3
 
 # Create second IPvlan L3 network (isolated from net1)
 docker network create \
@@ -42,9 +42,10 @@ docker network create \
   --subnet=10.101.0.0/24 \
   --opt ipvlan_mode=l3 \
   --opt parent=eth0 \
-  ipvlan_l3_net2
+  backend_l3
 
-# Note: No gateway specified - the host IS the gateway
+# Note: No gateway specified - Docker ignores `--gateway` in L3 mode and
+# containers use a default route on `eth0`
 ```
 
 ## Step 2: Enable IP Forwarding on Host
@@ -63,8 +64,6 @@ cat /proc/sys/net/ipv4/ip_forward
 
 ```yaml
 # docker-compose.yml - IPvlan L3 deployment
-version: "3.8"
-
 networks:
   # L3 networks - host routes between them
   frontend_l3:
@@ -83,7 +82,7 @@ services:
         ipv4_address: 10.100.0.10
     # Cannot directly reach 10.101.0.0/24 without routing rules
 
-  # API on both networks (bridges frontend and backend)
+  # API attached to both networks
   api:
     image: myapp/api:latest
     container_name: api_l3
@@ -110,17 +109,17 @@ services:
 
 ## Step 4: Configure Host Routing
 
-For containers to reach the internet or other networks, configure routing:
+For containers to reach the internet or other networks, configure routing. For direct routed access from outside the host, upstream routers also need routes for these subnets via the Docker host IP.
 
 ```bash
-# Add routes on the host for container networks
-# (Containers use host as gateway in L3 mode)
+# Ensure host routes exist for the container networks
+# (In L3 mode, containers use a default route on their interface, not a gateway IP)
 
 # Route for frontend L3 network
-ip route add 10.100.0.0/24 dev eth0
+ip route replace 10.100.0.0/24 dev eth0
 
 # Route for backend L3 network
-ip route add 10.101.0.0/24 dev eth0
+ip route replace 10.101.0.0/24 dev eth0
 
 # Allow containers to reach the internet via NAT
 iptables -t nat -A POSTROUTING -s 10.100.0.0/24 -j MASQUERADE
@@ -169,7 +168,7 @@ docker exec api_l3 ping 10.101.0.20
 
 # Check routing table in container
 docker exec api_l3 ip route
-# Should show host (10.100.0.1 or eth0 IP) as gateway
+# Should show a default route on the container interface (for example, `default dev eth0`)
 
 # Verify host is routing
 ip route show
@@ -179,11 +178,12 @@ ip route show
 
 ```bash
 # Block routing between networks for complete isolation
-iptables -A FORWARD -s 10.100.0.0/24 -d 10.101.0.0/24 -j DROP
-iptables -A FORWARD -s 10.101.0.0/24 -d 10.100.0.0/24 -j DROP
+# Insert DROP rules before any existing ACCEPT rules
+iptables -I FORWARD 1 -s 10.100.0.0/24 -d 10.101.0.0/24 -j DROP
+iptables -I FORWARD 1 -s 10.101.0.0/24 -d 10.100.0.0/24 -j DROP
 
-# Now frontend cannot reach backend (and vice versa)
-# Only the api container (with both IPs) can bridge them
+# Now frontend cannot reach backend directly (and vice versa)
+# The api container can still communicate on both networks because it has an interface on each one
 ```
 
 ## Monitoring in Portainer
