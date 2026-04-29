@@ -37,7 +37,7 @@ fn main() -> std::io::Result<()> {
     // Bind to ephemeral port on any IPv6 interface
     let socket = UdpSocket::bind("[::]:0")?;
 
-    let server = "[2001:db8::1]:9000";
+    let server = "[::1]:9000";
     let msg = b"Hello over IPv6 UDP";
 
     socket.send_to(msg, server)?;
@@ -75,26 +75,31 @@ fn main() -> std::io::Result<()> {
 }
 ```
 
-To send multicast, set the outgoing interface:
+To send link-local multicast, specify the outgoing interface with the destination scope ID:
 
 ```rust
-use std::net::UdpSocket;
+use std::net::{Ipv6Addr, SocketAddrV6, UdpSocket};
 
 fn send_multicast(message: &[u8], iface_index: u32) -> std::io::Result<()> {
     let socket = UdpSocket::bind("[::]:0")?;
 
-    // Set outgoing multicast interface
-    socket.set_multicast_if_v6(iface_index)?;
+    // Use the scope ID to choose the outgoing interface
+    let multicast_addr = SocketAddrV6::new(
+        "ff02::1".parse::<Ipv6Addr>().unwrap(),
+        5000,
+        0,
+        iface_index,
+    );
 
-    // Send to all-nodes on link scope
-    socket.send_to(message, "[ff02::1]:5000")?;
-    println!("Sent {} bytes to ff02::1", message.len());
+    socket.send_to(message, multicast_addr)?;
+    println!("Sent {} bytes to {}", message.len(), multicast_addr);
 
     Ok(())
 }
 
 fn main() -> std::io::Result<()> {
-    send_multicast(b"announcement", 1) // interface index 1 = typically eth0
+    send_multicast(b"announcement", 1)?; // replace 1 with your interface index
+    Ok(())
 }
 ```
 
@@ -137,27 +142,20 @@ use tokio::net::UdpSocket;
 async fn main() -> tokio::io::Result<()> {
     let socket = Arc::new(UdpSocket::bind("[::]:9000").await?);
 
-    // Receiver task
-    let recv_sock = socket.clone();
-    let send_sock = socket.clone();
+    let targets = ["[::1]:9001", "[::1]:9002"];
+    let mut handles = Vec::new();
 
-    let recv_handle = tokio::spawn(async move {
-        let mut buf = vec![0u8; 4096];
-        loop {
-            let (len, src) = recv_sock.recv_from(&mut buf).await.unwrap();
-            println!("Received {} bytes from {}", len, src);
-        }
-    });
-
-    // Sender task
-    let send_handle = tokio::spawn(async move {
-        let targets = ["[2001:db8::1]:9001", "[2001:db8::2]:9001"];
-        for target in targets {
+    for target in targets {
+        let send_sock = socket.clone();
+        handles.push(tokio::spawn(async move {
             send_sock.send_to(b"ping", target).await.unwrap();
-        }
-    });
+        }));
+    }
 
-    tokio::try_join!(recv_handle, send_handle).unwrap();
+    for handle in handles {
+        handle.await.unwrap();
+    }
+
     Ok(())
 }
 ```
@@ -175,11 +173,8 @@ fn configured_udp_socket() -> std::io::Result<UdpSocket> {
     socket.set_read_timeout(Some(Duration::from_secs(5)))?;
     socket.set_write_timeout(Some(Duration::from_secs(5)))?;
 
-    // Allow multiple sockets on the same port
-    socket.set_reuse_address(true)?;
-
-    // Set TTL / hop limit for outgoing packets
-    socket.set_multicast_ttl_v6(16)?;  // max 16 hops for multicast
+    // Control whether this socket receives the IPv6 multicast packets it sends
+    socket.set_multicast_loop_v6(true)?;
 
     Ok(socket)
 }
