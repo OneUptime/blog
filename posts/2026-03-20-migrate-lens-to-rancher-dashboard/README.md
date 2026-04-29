@@ -88,9 +88,11 @@ In Rancher: Workloads > Pods > Click pod name > **Execute Shell**
 Lens has built-in port forwarding. In Rancher, use the Rancher CLI:
 
 ```bash
-# Install Rancher CLI
-curl -LO https://github.com/rancher/cli/releases/latest/download/rancher-linux-amd64
-chmod +x rancher-linux-amd64 && mv rancher-linux-amd64 /usr/local/bin/rancher
+# Install Rancher CLI (replace version as needed)
+RANCHER_CLI_VERSION=v2.14.0
+curl -LO https://github.com/rancher/cli/releases/download/${RANCHER_CLI_VERSION}/rancher-linux-amd64-${RANCHER_CLI_VERSION}.tar.gz
+tar -xzf rancher-linux-amd64-${RANCHER_CLI_VERSION}.tar.gz
+sudo mv rancher-${RANCHER_CLI_VERSION}/rancher /usr/local/bin/rancher
 
 # Login
 rancher login https://rancher.yourdomain.com --token your-api-token
