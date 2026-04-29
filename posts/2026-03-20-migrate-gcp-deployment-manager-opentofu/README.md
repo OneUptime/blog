@@ -8,7 +8,7 @@ Description: Learn how to migrate GCP infrastructure managed by Deployment Manag
 
 ## Introduction
 
-Google Cloud Deployment Manager uses YAML or Python templates to define GCP resources. It has limited community ecosystem support and lacks many features that OpenTofu provides. Migrating to OpenTofu with the google provider gives you a richer HCL syntax, better module reuse, and multi-cloud capability. Migration imports existing resources without downtime.
+Google Cloud Deployment Manager used YAML or Python templates to define GCP resources and reached end of support on March 31, 2026. It had limited community ecosystem support and lacked many features that OpenTofu provides. Migrating to OpenTofu with the google provider gives you a richer HCL syntax, better module reuse, and multi-cloud capability. Importing existing resources into state does not recreate them, so the cutover can avoid resource replacement when the translated configuration matches the live infrastructure.
 
 ## Phase 1: Audit Deployment Manager Deployments
 
@@ -26,9 +26,10 @@ gcloud deployment-manager deployments describe my-app-deployment
 gcloud deployment-manager resources list \
   --deployment my-app-deployment
 
-# Export the deployment manifest for reference
-gcloud deployment-manager deployments describe my-app-deployment \
-  --format yaml > my-app-deployment.yaml
+# Export the latest deployment manifest for reference
+gcloud deployment-manager manifests describe \
+  --deployment my-app-deployment \
+  --format yaml > my-app-deployment-manifest.yaml
 ```
 
 ## Phase 2: Translate Deployment Manager to HCL
@@ -63,7 +64,7 @@ resource "google_storage_bucket" "app" {
 
 ## Common Resource Type Translations
 
-```hcl
+```text
 Deployment Manager Type              → OpenTofu Resource
 ----------------------------------------------------------
 compute.v1.instance                  → google_compute_instance
@@ -79,13 +80,13 @@ pubsub.v1.topic                     → google_pubsub_topic
 
 ## Phase 3: Import Existing Resources
 
-Use import blocks to bring GCP resources into OpenTofu state.
+Define matching `resource` blocks first, then use import blocks to bring GCP resources into OpenTofu state.
 
 ```hcl
 # imports.tf
 
 import {
-  id = "my-project/US/my-app-bucket"
+  id = "my-project/my-app-bucket"
   to = google_storage_bucket.app
 }
 
@@ -95,15 +96,15 @@ import {
 }
 
 import {
-  id = "my-project/my-app-network"
+  id = "projects/my-project/global/networks/my-app-network"
   to = google_compute_network.main
 }
 ```
 
 ```bash
-# Initialize and import
+# Initialize and review the import plan
 tofu init
-tofu plan    # verify no unexpected changes
+tofu plan    # preview import actions and any drift
 tofu apply   # import resources into state
 ```
 
@@ -169,9 +170,9 @@ tofu plan  # should show: No changes
 gcloud deployment-manager deployments delete my-app-deployment \
   --delete-policy abandon
 
-# Resources now exist only in OpenTofu state
+# Resources remain in GCP and are now managed through OpenTofu state
 ```
 
 ## Summary
 
-Migrating from Deployment Manager to OpenTofu requires translating YAML/Python templates to HCL, importing existing resources using their GCP resource paths, and abandoning the Deployment Manager deployment with `--delete-policy abandon`. The abandon flag is critical - it removes Deployment Manager's tracking of the resources without deleting them. After migration, manage all GCP resources through OpenTofu for better tooling, testing, and potential multi-cloud expansion.
+Migrating from Deployment Manager to OpenTofu requires translating YAML/Python templates to HCL, defining matching OpenTofu resource blocks, importing existing resources using each resource's provider-specific import ID, and abandoning the Deployment Manager deployment with `--delete-policy abandon`. The abandon flag is critical - it removes Deployment Manager's tracking of the resources without deleting them. After migration, the resources remain in GCP and are managed through OpenTofu for better tooling, testing, and potential multi-cloud expansion.
