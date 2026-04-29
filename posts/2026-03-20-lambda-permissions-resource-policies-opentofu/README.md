@@ -27,7 +27,8 @@ resource "aws_lambda_permission" "api_gateway" {
   function_name = aws_lambda_function.api.function_name
   principal     = "apigateway.amazonaws.com"
 
-  # Restrict to a specific API and stage
+  # Restrict to a specific API; narrow the suffix further if you want to
+  # limit invocation to particular stages, methods, or resources
   # Format: arn:aws:execute-api:region:account-id:api-id/stage/method/resource
   source_arn = "${aws_api_gateway_rest_api.main.execution_arn}/*/*"
 }
@@ -107,18 +108,7 @@ resource "aws_lambda_permission" "org_invoke" {
 
 ## Step 6: View and Manage the Resource Policy
 
-```hcl
-# Retrieve the current function policy for auditing
-data "aws_lambda_function" "policy_check" {
-  function_name = aws_lambda_function.api.function_name
-}
-
-output "function_policy" {
-  description = "Lambda resource-based policy"
-  value       = data.aws_lambda_function.policy_check.policy
-  sensitive   = false
-}
-```
+The AWS provider's `aws_lambda_function` data source does not expose the full Lambda resource-based policy, so use the AWS CLI to retrieve it:
 
 ```bash
 # Retrieve the function policy via AWS CLI
@@ -137,4 +127,4 @@ tofu apply
 
 ## Conclusion
 
-Lambda resource-based policies enable fine-grained control over who can invoke your functions. Always use `source_arn` when granting S3 or EventBridge permissions to prevent confused deputy attacks where one service impersonates another. For cross-account access, resource policies must be combined with identity policies in the calling account-both must allow the invocation.
+Lambda resource-based policies enable fine-grained control over who can invoke your functions. Always use `source_arn` when granting S3 or EventBridge permissions to prevent confused deputy attacks where one service impersonates another. For cross-account access, resource policies must be combined with identity policies in the calling account; both must allow the invocation.
