@@ -49,14 +49,14 @@ tcpdump -i br-vxlan tcp port 80 -n
 
 ## Decode VXLAN Frames
 
-tcpdump with `vxlan` filter decodes the inner frames:
+tcpdump automatically decodes VXLAN inner frames when capturing on UDP port 4789:
 
 ```bash
-# Show inner Ethernet headers
+# Show outer Ethernet headers (inner frame is decoded by the VXLAN dissector)
 tcpdump -i eth0 udp port 4789 -e -n
 
 # Sample output:
-# 14:30:45 IP 10.0.0.1.12345 > 10.0.0.2.4789: OTV, Flags [I], VNID 100
+# 14:30:45 IP 10.0.0.1.12345 > 10.0.0.2.4789: VXLAN, flags [I] (0x08), vni 100
 #     IP 10.200.0.1 > 10.200.0.2: ICMP echo request
 ```
 
