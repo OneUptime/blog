@@ -46,8 +46,8 @@ tcpdump -i eth0 -n -v 'udp port 5000'
 # 10:23:45.123456 IP 10.20.0.1.54321 > 10.20.0.5.5000: UDP, length 12
 #     Source: 10.20.0.1:54321
 #     Dest:   10.20.0.5:5000
-#     UDP length: 12 bytes (4 header + 8 payload... wait, length includes header)
-#     Actual payload: length - 8 bytes
+#     UDP payload length: 12 bytes (tcpdump's "length" reports the UDP data size, not including the 8-byte UDP header)
+#     Total UDP datagram on the wire: payload + 8 bytes UDP header
 ```
 
 ## Monitoring UDP Packet Rates
@@ -74,7 +74,7 @@ iftop -i eth0 -f 'udp port 5004'
 # DNS queries (UDP port 53)
 tcpdump -i eth0 -n 'udp port 53'
 # With DNS-specific display (use -v for more detail):
-tcpdump -i eth0 -n -v 'udp port 53' 2>/dev/null | grep -E "A\?|AAAA\|response"
+tcpdump -i eth0 -n -v 'udp port 53' 2>/dev/null | grep -E "A\?|AAAA|response"
 
 # DHCP traffic (broadcast)
 tcpdump -i eth0 -n 'udp port 67 or udp port 68'
