@@ -73,20 +73,22 @@ func (lb *LoadBalancer) ServeHTTP(w http.ResponseWriter, r *http.Request) {
         return
     }
 
-    // Add X-Forwarded-For
-    if clientIP, _, err := net.SplitHostPort(r.RemoteAddr); err == nil {
-        r.Header.Set("X-Forwarded-For", clientIP)
-    }
-
     backend.Proxy.ServeHTTP(w, r)
 }
 
 // HealthCheck periodically checks if backends are alive
 func (lb *LoadBalancer) HealthCheck(interval time.Duration) {
     ticker := time.NewTicker(interval)
+    defer ticker.Stop()
+
+    client := &http.Client{Timeout: 2 * time.Second}
     for range ticker.C {
         for _, b := range lb.backends {
-            resp, err := http.Get(b.URL.String() + "/health")
+            resp, err := client.Get(b.URL.String() + "/health")
+            if resp != nil {
+                resp.Body.Close()
+            }
+
             if err != nil || resp.StatusCode != http.StatusOK {
                 if b.Alive.Load() {
                     log.Printf("Backend %s is DOWN", b.URL)
@@ -97,7 +99,6 @@ func (lb *LoadBalancer) HealthCheck(interval time.Duration) {
                     log.Printf("Backend %s is UP", b.URL)
                 }
                 b.Alive.Store(true)
-                resp.Body.Close()
             }
         }
     }
@@ -116,8 +117,13 @@ func main() {
     // Start health checks every 10 seconds
     go lb.HealthCheck(10 * time.Second)
 
+    ln, err := net.Listen("tcp4", ":8080")
+    if err != nil {
+        log.Fatal(err)
+    }
+
     log.Println("Load balancer on :8080")
-    log.Fatal(http.ListenAndServe(":8080", lb))
+    log.Fatal(http.Serve(ln, lb))
 }
 ```
 
@@ -145,8 +151,21 @@ func nextBackend() string {
     return backends[idx]
 }
 
+func proxyTCP(dst, src *net.TCPConn, done chan<- struct{}) {
+    defer func() { done <- struct{}{} }()
+    io.Copy(dst, src)
+    dst.CloseWrite()
+}
+
 func handleTCP(client net.Conn) {
-    defer client.Close()
+    clientTCP, ok := client.(*net.TCPConn)
+    if !ok {
+        client.Close()
+        log.Printf("Unexpected client connection type %T", client)
+        return
+    }
+    defer clientTCP.Close()
+
     target := nextBackend()
 
     backend, err := net.Dial("tcp4", target)
@@ -154,14 +173,21 @@ func handleTCP(client net.Conn) {
         log.Printf("Failed to connect to backend %s: %v", target, err)
         return
     }
-    defer backend.Close()
+    backendTCP, ok := backend.(*net.TCPConn)
+    if !ok {
+        backend.Close()
+        log.Printf("Unexpected backend connection type %T", backend)
+        return
+    }
+    defer backendTCP.Close()
 
     log.Printf("Proxying %s -> %s", client.RemoteAddr(), target)
 
     // Bidirectional copy
     done := make(chan struct{}, 2)
-    go func() { io.Copy(backend, client); done <- struct{}{} }()
-    go func() { io.Copy(client, backend); done <- struct{}{} }()
+    go proxyTCP(backendTCP, clientTCP, done)
+    go proxyTCP(clientTCP, backendTCP, done)
+    <-done
     <-done
 }
 
