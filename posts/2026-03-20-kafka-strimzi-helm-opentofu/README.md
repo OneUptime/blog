@@ -4,11 +4,11 @@ Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
 Tags: Kubernetes, Kafka, Strimzi, OpenTofu, Helm, Streaming, Message Queue
 
-Description: Learn how to deploy Apache Kafka on Kubernetes using Strimzi Operator and OpenTofu for production-grade event streaming with KRaft mode, TLS, and automatic topic management.
+Description: Learn how to deploy Apache Kafka on Kubernetes using Strimzi Operator and OpenTofu with feature-gated KRaft mode, TLS, and automatic topic management.
 
 ## Overview
 
-Strimzi simplifies running Apache Kafka on Kubernetes by providing Kubernetes operators that manage Kafka clusters through custom resources. OpenTofu deploys the Strimzi operator via Helm and then creates Kafka clusters, topics, and users declaratively.
+Strimzi simplifies running Apache Kafka on Kubernetes by providing Kubernetes operators that manage Kafka clusters through custom resources. OpenTofu deploys the Strimzi operator via Helm and then, after the Strimzi CRDs are installed, creates Kafka clusters, topics, and users declaratively.
 
 ## Step 1: Deploy Strimzi Operator with Helm
 
@@ -31,8 +31,12 @@ resource "helm_release" "strimzi" {
       limits   = { memory = "512Mi", cpu = "500m" }
     }
 
-    # Watch all namespaces or specific ones
-    watchNamespaces = ["kafka", "production"]
+    # Watch only the release namespace. To watch additional namespaces,
+    # list existing namespaces here and omit the release namespace itself.
+    watchNamespaces = []
+
+    # Required for KRaft in Strimzi 0.39
+    featureGates = "+UseKRaft"
 
     logLevel = "INFO"
   })]
@@ -42,9 +46,42 @@ resource "helm_release" "strimzi" {
 ## Step 2: Create a Kafka Cluster (KRaft Mode)
 
 ```hcl
-# Kafka cluster using KRaft (no ZooKeeper required)
-resource "kubernetes_manifest" "kafka_cluster" {
+# Apply the Helm release first so the Strimzi CRDs exist before planning
+# these custom resources with kubernetes_manifest.
+resource "kubernetes_manifest" "kafka_node_pool" {
   depends_on = [helm_release.strimzi]
+
+  manifest = {
+    apiVersion = "kafka.strimzi.io/v1beta2"
+    kind       = "KafkaNodePool"
+    metadata = {
+      name      = "dual-role"
+      namespace = "kafka"
+      labels = {
+        "strimzi.io/cluster" = "production-kafka"
+      }
+    }
+    spec = {
+      replicas = 3
+      roles    = ["controller", "broker"]
+
+      storage = {
+        type = "jbod"
+        volumes = [{
+          id          = 0
+          type        = "persistent-claim"
+          size        = "100Gi"
+          class       = "gp3"
+          deleteClaim = false
+        }]
+      }
+    }
+  }
+}
+
+# Kafka cluster using KRaft (ZooKeeper is not used at runtime)
+resource "kubernetes_manifest" "kafka_cluster" {
+  depends_on = [kubernetes_manifest.kafka_node_pool]
 
   manifest = {
     apiVersion = "kafka.strimzi.io/v1beta2"
@@ -52,10 +89,17 @@ resource "kubernetes_manifest" "kafka_cluster" {
     metadata = {
       name      = "production-kafka"
       namespace = "kafka"
+      annotations = {
+        "strimzi.io/node-pools" = "enabled"
+        "strimzi.io/kraft"      = "enabled"
+      }
     }
     spec = {
       kafka = {
-        version  = "3.6.1"
+        version         = "3.6.1"
+        metadataVersion = "3.6-IV2"
+
+        # Required by the 0.39 CRD schema and ignored when node pools are used
         replicas = 3
 
         listeners = [
@@ -70,14 +114,24 @@ resource "kubernetes_manifest" "kafka_cluster" {
             port = 9093
             type = "internal"
             tls  = true
+            authentication = {
+              type = "tls"
+            }
           },
           {
             name = "external"
             port = 9094
             type = "loadbalancer"
             tls  = true
+            authentication = {
+              type = "tls"
+            }
           }
         ]
+
+        authorization = {
+          type = "simple"
+        }
 
         config = {
           "offsets.topic.replication.factor"         = 3
@@ -90,6 +144,7 @@ resource "kubernetes_manifest" "kafka_cluster" {
           "log.segment.bytes"                        = 1073741824
         }
 
+        # Required by the 0.39 CRD schema and ignored when node pools are used
         storage = {
           type = "jbod"
           volumes = [{
@@ -111,15 +166,16 @@ resource "kubernetes_manifest" "kafka_cluster" {
           "-Xms" = "1g"
           "-Xmx" = "2g"
         }
+      }
 
-        metricsConfig = {
-          type = "jmxPrometheusExporter"
-          valueFrom = {
-            configMapKeyRef = {
-              name = "kafka-metrics"
-              key  = "kafka-metrics-config.yml"
-            }
-          }
+      # Required by the 0.39 CRD schema and ignored in KRaft mode
+      zookeeper = {
+        replicas = 3
+        storage = {
+          type        = "persistent-claim"
+          size        = "100Gi"
+          class       = "gp3"
+          deleteClaim = false
         }
       }
 
@@ -168,6 +224,8 @@ resource "kubernetes_manifest" "kafka_topic_orders" {
 ```hcl
 # Create a Kafka user with specific permissions
 resource "kubernetes_manifest" "kafka_user_producer" {
+  depends_on = [kubernetes_manifest.kafka_cluster]
+
   manifest = {
     apiVersion = "kafka.strimzi.io/v1beta2"
     kind       = "KafkaUser"
@@ -191,16 +249,15 @@ resource "kubernetes_manifest" "kafka_user_producer" {
               name        = "orders"
               patternType = "literal"
             }
-            operation = "Write"
-            host      = "*"
+            operations = ["Write", "Describe"]
+            host       = "*"
           },
           {
             resource = {
               type = "cluster"
-              name = "kafka-cluster"
             }
-            operation = "IdempotentWrite"
-            host      = "*"
+            operations = ["IdempotentWrite"]
+            host       = "*"
           }
         ]
       }
@@ -211,4 +268,4 @@ resource "kubernetes_manifest" "kafka_user_producer" {
 
 ## Summary
 
-Strimzi operator deployed with OpenTofu manages Kafka clusters on Kubernetes as native Kubernetes resources. KRaft mode eliminates ZooKeeper dependency, simplifying the architecture. The entity operator automatically manages Kafka topics and users from KafkaTopic and KafkaUser custom resources, enabling GitOps workflows where topic configuration lives in version control alongside application code.
+Strimzi operator deployed with OpenTofu manages Kafka clusters on Kubernetes as native Kubernetes resources. In Strimzi 0.39, KRaft requires the `UseKRaft` feature gate and `KafkaNodePool` resources, and the `Kafka` resource still includes schema-placeholder fields such as `zookeeper` even though ZooKeeper is not used at runtime. The entity operator manages Kafka users, and the default unidirectional topic operator in Strimzi 0.39 lets you manage `KafkaTopic` resources declaratively for GitOps workflows.
