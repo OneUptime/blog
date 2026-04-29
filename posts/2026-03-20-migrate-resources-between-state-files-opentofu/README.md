@@ -17,14 +17,14 @@ The `state mv` command moves a resource from one state file to another.
 ```bash
 # Step 1: Identify the source resource address
 
-tofu -chdir=old-stack state list
+tofu -chdir=environments/prod state list
 # aws_vpc.main
 # aws_subnet.private[0]
 # aws_subnet.private[1]
 # aws_subnet.public[0]
 
-# Step 2: Pull the source state (makes a backup and enables manipulation)
-tofu -chdir=old-stack state pull > /tmp/old-state.tfstate
+# Step 2: Pull the source state to keep a backup before manipulating it
+tofu -chdir=environments/prod state pull > /tmp/old-state.tfstate
 
 # Step 3: Move resources to the new state file
 # Format: tofu state mv -state=SOURCE -state-out=DESTINATION RESOURCE NEW_ADDRESS
@@ -120,9 +120,9 @@ tofu -chdir=environments/prod state list | grep aws_vpc
 2. [ ] Verify the new HCL configuration is correct before migrating state
 3. [ ] Run state mv in a dry-run by checking with state list first
 4. [ ] After migration, run tofu plan on BOTH stacks
-5. [ ] Verify the source stack plan shows destroy for migrated resources
-6. [ ] Remove migrated resource definitions from the source HCL
-7. [ ] Apply the source stack to confirm clean state
+5. [ ] Verify the destination stack plan shows "No changes" (resources migrated successfully)
+6. [ ] Remove migrated resource definitions from the source HCL before applying (otherwise the source plan will show those resources as needing to be created, which would duplicate real infrastructure)
+7. [ ] Run tofu plan on the source stack and confirm "No changes", then apply if needed
 ```
 
 ## Conclusion
