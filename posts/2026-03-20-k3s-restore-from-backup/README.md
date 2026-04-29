@@ -12,7 +12,7 @@ When disaster strikes - whether from accidental deletion, data corruption, or a 
 
 ## Prerequisites
 
-- A valid backup snapshot or SQLite database backup
+- A valid etcd snapshot or a backup of the K3s SQLite `server/db` directory and server token
 - Root/sudo access to all K3s nodes
 - `kubectl` access (or ability to re-establish it post-restore)
 - All K3s services stopped during the restore process
@@ -26,32 +26,38 @@ For single-server K3s deployments using the default SQLite backend:
 
 systemctl stop k3s
 
-# Step 2: Verify the backup file exists
-ls -lh /backup/k3s/20240315-120000/state.db
+# Step 2: Verify the backup exists
+ls -lh /backup/k3s/20240315-120000/db
+ls -lh /backup/k3s/20240315-120000/token
 
-# Step 3: Move the corrupted database aside
-mv /var/lib/rancher/k3s/server/db/state.db \
-   /var/lib/rancher/k3s/server/db/state.db.corrupted
+# Step 3: Move the corrupted database directory aside
+mv /var/lib/rancher/k3s/server/db \
+   /var/lib/rancher/k3s/server/db.corrupted
 
-# Step 4: Copy the backup database into place
-cp /backup/k3s/20240315-120000/state.db \
-   /var/lib/rancher/k3s/server/db/state.db
+# Step 4: Copy the backup database directory into place
+cp -a /backup/k3s/20240315-120000/db \
+      /var/lib/rancher/k3s/server/
 
-# Step 5: Set proper permissions
-chown root:root /var/lib/rancher/k3s/server/db/state.db
-chmod 600 /var/lib/rancher/k3s/server/db/state.db
+# Step 5: Restore the server token
+cp /backup/k3s/20240315-120000/token \
+   /var/lib/rancher/k3s/server/token
 
-# Step 6: Start K3s
+# Step 6: Set proper permissions
+chown -R root:root /var/lib/rancher/k3s/server/db
+chown root:root /var/lib/rancher/k3s/server/token
+chmod 600 /var/lib/rancher/k3s/server/token
+
+# Step 7: Start K3s
 systemctl start k3s
 
-# Step 7: Verify restoration
+# Step 8: Verify restoration
 kubectl get nodes
 kubectl get pods -A
 ```
 
 ## Scenario 2: Restore Embedded Etcd Snapshot (Single Server)
 
-K3s has a built-in `etcd-snapshot restore` command:
+K3s restores embedded etcd snapshots by starting `k3s server` with `--cluster-reset` and `--cluster-reset-restore-path`:
 
 ```bash
 # Step 1: Stop K3s on the server node
@@ -62,9 +68,11 @@ k3s etcd-snapshot list
 
 # Step 3: Restore from a local snapshot
 # The --cluster-reset flag resets etcd to a single-member cluster
+# --etcd-s3=false ensures K3s uses the local file even if S3 snapshot settings exist
 k3s server \
   --cluster-reset \
-  --cluster-reset-restore-path=/var/lib/rancher/k3s/server/db/snapshots/my-cluster-backup
+  --cluster-reset-restore-path=/var/lib/rancher/k3s/server/db/snapshots/my-cluster-backup \
+  --etcd-s3=false
 
 # Wait for the reset to complete (process will exit when done)
 ```
@@ -89,14 +97,16 @@ If your snapshots are stored in S3:
 systemctl stop k3s
 
 # Step 2: List snapshots in S3
-k3s etcd-snapshot list \
+k3s etcd-snapshot \
   --s3 \
   --s3-bucket=my-k3s-backups \
   --s3-region=us-east-1 \
   --s3-access-key=AKIAIOSFODNN7EXAMPLE \
-  --s3-secret-key=wJalrXUtnFEMI/K7MDENG/bPxRfiCYEXAMPLEKEY
+  --s3-secret-key=wJalrXUtnFEMI/K7MDENG/bPxRfiCYEXAMPLEKEY \
+  ls
 
 # Step 3: Restore from S3
+# Use the snapshot filename returned by `ls`, not a local filesystem path
 k3s server \
   --cluster-reset \
   --cluster-reset-restore-path=<snapshot-name> \
@@ -120,9 +130,11 @@ For an HA cluster with multiple server nodes, the restore process requires coord
 systemctl stop k3s
 
 # On the FIRST server node only, perform the restore
+# --etcd-s3=false ensures K3s uses the local file even if S3 snapshot settings exist
 k3s server \
   --cluster-reset \
-  --cluster-reset-restore-path=/var/lib/rancher/k3s/server/db/snapshots/my-cluster-backup
+  --cluster-reset-restore-path=/var/lib/rancher/k3s/server/db/snapshots/my-cluster-backup \
+  --etcd-s3=false
 
 # Wait for completion, then start K3s on the first server
 systemctl start k3s
@@ -130,9 +142,9 @@ systemctl start k3s
 # Verify server1 is healthy
 kubectl get nodes
 
-# On OTHER server nodes, delete the old etcd data directory
+# On OTHER server nodes, delete the old database directory
 # and re-join the cluster
-rm -rf /var/lib/rancher/k3s/server/db/etcd
+rm -rf /var/lib/rancher/k3s/server/db
 
 # Restart K3s on other servers
 # They will re-join and sync from the restored leader
@@ -141,23 +153,19 @@ systemctl start k3s
 
 ## Step 5: Restore Configuration Files
 
-If certificates or tokens were also lost, restore them from backup:
+If the K3s token or configuration file were also lost, restore them from backup. For embedded etcd snapshot restores, K3s rewrites the certificate material from the datastore during the restore:
 
 ```bash
-# Restore TLS certificates
-cp -r /backup/k3s/config-20240315/tls/* \
-       /var/lib/rancher/k3s/server/tls/
-
-# Restore node token
-cp /backup/k3s/config-20240315/node-token \
-   /var/lib/rancher/k3s/server/node-token
+# Restore the server token
+cp /backup/k3s/config-20240315/token \
+   /var/lib/rancher/k3s/server/token
 
 # Restore K3s configuration
 cp /backup/k3s/config-20240315/config.yaml \
    /etc/rancher/k3s/config.yaml
 
 # Fix permissions
-chmod 600 /var/lib/rancher/k3s/server/node-token
+chmod 600 /var/lib/rancher/k3s/server/token
 ```
 
 ## Step 6: Reconnect Agent Nodes
