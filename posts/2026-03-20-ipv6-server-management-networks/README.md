@@ -15,17 +15,17 @@ Server management networks provide out-of-band access to server operating system
 ```text
 Server Management IPv6 Architecture:
 
-Management Network: 2001:db8:mgmt::/48
-  In-Band Management VLAN: 2001:db8:mgmt:0010::/64
-  Out-of-Band (OOB):        2001:db8:mgmt:0020::/64
-  IPMI/BMC:                 2001:db8:mgmt:0030::/64
+Management Network: 2001:db8:1000::/48
+  In-Band Management VLAN: 2001:db8:1000:0010::/64
+  Out-of-Band (OOB):        2001:db8:1000:0020::/64
+  IPMI/BMC:                 2001:db8:1000:0030::/64
 
 Server Management Addressing:
-  Server-01 eth0 (OS): 2001:db8:mgmt:10::101/64
-  Server-01 IPMI/BMC:  2001:db8:mgmt:30::101/64
-  Server-01 OOB NIC:   2001:db8:mgmt:20::101/64
+  Server-01 eth0 (OS): 2001:db8:1000:10::101/64
+  Server-01 IPMI/BMC:  2001:db8:1000:30::101/64
+  Server-01 OOB NIC:   2001:db8:1000:20::101/64
 
-Encoding: .:VVVV::NNNN where VVVV=VLAN, NNNN=server number
+Encoding: 2001:db8:1000:VVVV::NNNN where VVVV=VLAN, NNNN=server number
 ```
 
 ## Configure IPv6 on Linux Management Interface
@@ -36,16 +36,19 @@ Encoding: .:VVVV::NNNN where VVVV=VLAN, NNNN=server number
 # Ubuntu/Debian - /etc/netplan/01-mgmt.yaml
 
 network:
+  version: 2
   ethernets:
     eth0:
       dhcp4: false
       dhcp6: false
       addresses:
         - "192.168.10.101/24"
-        - "2001:db8:mgmt:10::101/64"
-      gateway6: "2001:db8:mgmt:10::1"
+        - "2001:db8:1000:10::101/64"
+      routes:
+        - to: default
+          via: "2001:db8:1000:10::1"
       nameservers:
-        addresses: [2001:4860:4860::8888, 8.8.8.8]
+        addresses: ["2001:4860:4860::8888", 8.8.8.8]
 
 # Apply
 sudo netplan apply
@@ -54,30 +57,32 @@ sudo netplan apply
 ip -6 addr show eth0
 ip -6 route show default
 
-# RHEL/CentOS - /etc/sysconfig/network-scripts/ifcfg-eth0
-# IPV6INIT=yes
-# IPV6ADDR=2001:db8:mgmt:10::101/64
-# IPV6_DEFAULTGW=2001:db8:mgmt:10::1
+# RHEL/CentOS - NetworkManager
+sudo nmcli connection modify <connection_name> \
+    ipv6.method manual \
+    ipv6.addresses "2001:db8:1000:10::101/64" \
+    ipv6.gateway "2001:db8:1000:10::1"
+sudo nmcli connection up <connection_name>
 ```
 
 ## SSH via IPv6 Management
 
 ```bash
 # /etc/ssh/sshd_config - Allow SSH on IPv6 management address
-ListenAddress 2001:db8:mgmt:10::101
+ListenAddress 2001:db8:1000:10::101
 ListenAddress 192.168.10.101
 # Or listen on all:
 # ListenAddress ::
 
 # Restrict SSH to management subnet only
-AllowUsers admin@2001:db8:mgmt::/48
+AllowUsers admin@192.168.10.0/24 admin@2001:db8:1000::/48
 PermitRootLogin no
 
 # Restart SSH
-sudo systemctl restart sshd
+sudo systemctl restart ssh || sudo systemctl restart sshd
 
 # Test SSH via IPv6
-ssh -6 admin@2001:db8:mgmt:10::101
+ssh -6 admin@2001:db8:1000:10::101
 # Or via hostname (with AAAA DNS record)
 ssh admin@server-01.mgmt.example.com
 ```
@@ -88,9 +93,9 @@ ssh admin@server-01.mgmt.example.com
 #!/bin/bash
 # ipv6-mgmt-firewall.sh - Secure management network
 
-MGMT_NETWORK="2001:db8:mgmt::/48"
+MGMT_NETWORK="2001:db8:1000::/48"
 MGMT_IFACE="eth0"
-ALLOW_MANAGEMENT_HOSTS="2001:db8:mgmt:10::10"  # Jump server
+ALLOW_MANAGEMENT_HOSTS="2001:db8:1000:10::10"  # Jump server
 
 # Flush existing
 ip6tables -F INPUT
@@ -117,7 +122,7 @@ ip6tables -A INPUT -p tcp --dport 22 \
 
 # Allow SNMP from monitoring server
 ip6tables -A INPUT -p udp --dport 161 \
-    -s 2001:db8:mgmt:10::50 -j ACCEPT
+    -s 2001:db8:1000:10::50 -j ACCEPT
 
 # Allow HTTPS management (web UI)
 ip6tables -A INPUT -p tcp --dport 443 \
@@ -137,15 +142,16 @@ echo "Management IPv6 firewall configured"
 ```bash
 # /etc/snmp/snmpd.conf - SNMP listening on IPv6
 
-agentAddress udp6:[2001:db8:mgmt:10::101]:161
-agentAddress udp:[0.0.0.0]:161
+agentaddress udp6:[2001:db8:1000:10::101]:161,udp:161
 
-# SNMPv3 user for monitoring
+# SNMPv3 user for monitoring (/var/net-snmp/snmpd.conf)
 createUser MONITOR SHA "authpass123" AES "privpass456"
+
+# Access control and notifications (/etc/snmp/snmpd.conf)
 rouser MONITOR priv
 
 # Trap destination (IPv6 monitoring server)
-trap6sink 2001:db8:mgmt:10::50 MONITOR 162
+trapsess -v 3 -l authPriv -u MONITOR -a SHA -A authpass123 -x AES -X privpass456 udp6:[2001:db8:1000:10::50]:162
 
 # System info
 sysLocation "DC1-Rack1-U10"
@@ -155,17 +161,17 @@ sysName "server-01.dc1.example.com"
 
 ## Centralized Management via IPv6
 
-```yaml
+```ini
 # Ansible inventory with IPv6 management addresses
 # /etc/ansible/hosts
 
 [servers]
-server-01 ansible_host=2001:db8:mgmt:10::101 ansible_user=admin
-server-02 ansible_host=2001:db8:mgmt:10::102 ansible_user=admin
+server-01 ansible_host='2001:db8:1000:10::101' ansible_user=admin
+server-02 ansible_host='2001:db8:1000:10::102' ansible_user=admin
 
 [all:vars]
 ansible_python_interpreter=/usr/bin/python3
-ansible_ssh_extra_args='-6'
+ansible_ssh_extra_args=-6
 ```
 
 ```bash
@@ -195,14 +201,14 @@ ansible-playbook -i /etc/ansible/hosts /tmp/ipv6-mgmt-test.yaml
 ```bash
 # /etc/bind/zones/mgmt.db - AAAA records for management hosts
 $ORIGIN mgmt.example.com.
-server-01  IN  AAAA  2001:db8:mgmt:10::101
-server-02  IN  AAAA  2001:db8:mgmt:10::102
-gateway    IN  AAAA  2001:db8:mgmt:10::1
-monitor    IN  AAAA  2001:db8:mgmt:10::50
+server-01  IN  AAAA  2001:db8:1000:10::101
+server-02  IN  AAAA  2001:db8:1000:10::102
+gateway    IN  AAAA  2001:db8:1000:10::1
+monitor    IN  AAAA  2001:db8:1000:10::50
 
 # Reverse DNS (/etc/bind/zones/ipv6-mgmt.rev)
-# 1.0.1.0.0.0.0.0.0.1.0.t.g.m.8.b.d.0.1.0.0.2.ip6.arpa.
-# → server-01.mgmt.example.com.
+# Zone: 0.1.0.0.0.0.0.1.8.b.d.0.1.0.0.2.ip6.arpa.
+# 1.0.1.0.0.0.0.0.0.0.0.0.0.0.0.0  IN  PTR  server-01.mgmt.example.com.
 ```
 
 IPv6 server management networks benefit from structured addressing that embeds server numbers into the IPv6 address for predictability, strict firewall rules allowing SSH and SNMP only from authorized jump hosts and monitoring systems, and DNS AAAA records for all management interfaces to enable hostname-based access and monitoring tool configuration.
