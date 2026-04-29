@@ -8,6 +8,8 @@ Description: A guide to creating meaningful IPv6 traffic alerts in Prometheus an
 
 Effective IPv6 alerting requires monitoring for both failures (endpoint down, routing issues) and anomalies (traffic spikes, sudden drops, latency increases). This guide covers practical alert rules for IPv6 environments.
 
+These examples assume the blackbox exporter modules used for IPv6 checks set `preferred_ip_protocol: ip6` and `ip_protocol_fallback: false`, so probes do not silently fall back to IPv4.
+
 ## Alert Category 1: IPv6 Endpoint Availability
 
 ```yaml
@@ -27,7 +29,7 @@ groups:
           summary: "IPv6 HTTP endpoint {{ $labels.instance }} is DOWN"
           runbook: "https://wiki.example.com/runbooks/ipv6-endpoint-down"
 
-      # ICMP unreachable over IPv6
+      # ICMP probe failing over IPv6
       - alert: IPv6PingFailing
         expr: probe_success{job="blackbox-icmp-ipv6"} == 0
         for: 3m
@@ -39,6 +41,8 @@ groups:
 
 ## Alert Category 2: IPv6 Routing Issues
 
+The following host-side rules assume `node_exporter`'s `netstat` collector is configured to expose the `Ip6_*` counters used here via `--collector.netstat.fields`.
+
 ```yaml
       # No-route errors indicate IPv6 routing failures
       - alert: IPv6NoRouteErrors
@@ -46,17 +50,19 @@ groups:
         for: 5m
         labels:
           severity: warning
+          category: routing
         annotations:
           summary: "IPv6 routing failures on {{ $labels.instance }}"
 
-      # IPv6 fragmentation needed (PMTUD issues)
-      - alert: IPv6PMTUDFailures
+      # IPv6 source fragmentation failures can indicate MTU-related issues
+      - alert: IPv6FragmentationFailures
         expr: rate(node_netstat_Ip6_FragFails[5m]) > 10
         for: 5m
         labels:
           severity: warning
+          category: routing
         annotations:
-          summary: "IPv6 fragmentation failures on {{ $labels.instance }}"
+          summary: "IPv6 source fragmentation failures on {{ $labels.instance }}"
 ```
 
 ## Alert Category 3: IPv6 Traffic Anomalies
@@ -66,11 +72,11 @@ groups:
       - alert: IPv6TrafficDrop
         expr: >
           (
-            rate(node_netstat_Ip6_InReceives[5m]) <
-            rate(node_netstat_Ip6_InReceives[1h] offset 1h) * 0.1
+            rate(node_netstat_Ip6_InOctets[5m]) <
+            rate(node_netstat_Ip6_InOctets[1h] offset 1h) * 0.1
           )
-          AND
-          rate(node_netstat_Ip6_InReceives[1h] offset 1h) > 100
+          and
+          rate(node_netstat_Ip6_InOctets[1h] offset 1h) > 100
         for: 10m
         labels:
           severity: warning
@@ -80,8 +86,8 @@ groups:
       # IPv6 traffic spike (possible DDoS or misconfiguration)
       - alert: IPv6TrafficSpike
         expr: >
-          rate(node_netstat_Ip6_InReceives[5m]) >
-          rate(node_netstat_Ip6_InReceives[1h] offset 1h) * 5
+          rate(node_netstat_Ip6_InOctets[5m]) >
+          rate(node_netstat_Ip6_InOctets[1h] offset 1h) * 5
         for: 5m
         labels:
           severity: warning
@@ -91,53 +97,60 @@ groups:
 
 ## Alert Category 4: IPv6 BGP Session Alerts
 
+The following examples use Calico's documented BGP metrics.
+
 ```yaml
-      # BGP session not established
+      # IPv6 BGP peers are down
       - alert: IPv6BGPSessionDown
-        expr: bgp_session_state{peer=~".*:.*"} != 6
+        expr: bgp_peers{status="Down", ip_version="IPv6"} > 0
         for: 2m
         labels:
           severity: critical
         annotations:
-          summary: "IPv6 BGP session to {{ $labels.peer }} is DOWN (state={{ $value }})"
+          summary: "IPv6 BGP peers down on {{ $labels.instance }} (count={{ $value }})"
 
-      # BGP prefix count dropped significantly
-      - alert: IPv6BGPPrefixCountDrop
+      # Imported IPv6 route count dropped significantly
+      - alert: IPv6BGPRouteCountDrop
         expr: >
-          bgp_prefixes_received_count{afi="ipv6"} <
-          bgp_prefixes_received_count{afi="ipv6"} offset 30m * 0.8
+          bgp_routes_imported{ip_version="IPv6"} <
+          bgp_routes_imported{ip_version="IPv6"} offset 30m * 0.8
         for: 5m
         labels:
           severity: warning
         annotations:
-          summary: "IPv6 BGP prefix count dropped on {{ $labels.peer }}"
+          summary: "IPv6 BGP route count dropped on {{ $labels.instance }}"
 ```
 
-## Alert Category 5: IPv6 Adoption Regression
+## Alert Category 5: IPv6 Reachability Regression
 
 ```yaml
-      # IPv6 adoption drops (could indicate dual-stack misconfiguration)
-      - alert: IPv6AdoptionRegression
+      # IPv6 reachability drops relative to IPv4 for the same target set
+      - alert: IPv6ReachabilityRegression
         expr: >
-          sum(probe_success{job="blackbox-http-ipv6"}) /
-          sum(probe_success{job="blackbox-http-ipv4"}) < 0.95
+          (
+            sum(probe_success{job="blackbox-http-ipv6"}) /
+            sum(probe_success{job="blackbox-http-ipv4"})
+          ) < 0.95
+          and
+          sum(probe_success{job="blackbox-http-ipv4"}) > 0
         for: 15m
         labels:
           severity: warning
         annotations:
-          summary: "IPv6 endpoint availability is lower than IPv4 (possible regression)"
+          summary: "IPv6 endpoint reachability is lower than IPv4 (possible regression)"
 ```
 
 ## Grafana Alert Rules (UI)
 
-In Grafana Alerting → Alert Rules → Create:
+In Grafana Alerts & IRM → Alert rules → + New alert rule:
 
 ```text
 Alert name: IPv6 Endpoint Latency High
-Condition: avg over last 5m of probe_duration_seconds{job="blackbox-http-ipv6"} > 2
+Query: avg_over_time(probe_duration_seconds{job="blackbox-http-ipv6"}[5m])
+Condition: is above 2
 For: 5 minutes
 Labels: severity=warning, category=latency
-Notifications: ops-slack-channel
+Contact point: ops-slack-channel
 ```
 
 ## Alert Delivery Configuration
@@ -145,18 +158,21 @@ Notifications: ops-slack-channel
 ```yaml
 # alertmanager.yml - Route IPv6 alerts to appropriate channels
 route:
+  receiver: default-receiver
   group_by: ['alertname', 'instance']
   routes:
-    - match:
-        category: availability
-        severity: critical
-      receiver: pagerduty-critical
-    - match:
-        category: routing
-      receiver: netops-slack
-    - match_re:
-        alertname: "IPv6.*"
-      receiver: ipv6-team-slack
+    - receiver: pagerduty-critical
+      continue: true
+      matchers:
+        - category="availability"
+        - severity="critical"
+    - receiver: netops-slack
+      continue: true
+      matchers:
+        - category="routing"
+    - receiver: ipv6-team-slack
+      matchers:
+        - alertname=~"^IPv6.*"
 ```
 
 Well-structured IPv6 traffic alerts with clear severity levels and runbook links enable rapid incident response for IPv6-specific issues before they affect a significant portion of users.
