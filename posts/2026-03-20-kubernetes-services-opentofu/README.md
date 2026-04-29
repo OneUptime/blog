@@ -8,11 +8,19 @@ Description: Learn how to manage Kubernetes services with OpenTofu for declarati
 
 ## Introduction
 
-Managing Kubernetes resources with OpenTofu lets you declare them in HCL alongside your cloud infrastructure. This guide covers the complete configuration for this Kubernetes resource type.
+Managing Kubernetes Services with OpenTofu lets you declare them in HCL alongside your cloud infrastructure. This guide covers a complete configuration for exposing an application with a Kubernetes Service.
 
 ## Provider Setup
 
 ```hcl
+terraform {
+  required_providers {
+    kubernetes = {
+      source = "hashicorp/kubernetes"
+    }
+  }
+}
+
 provider "kubernetes" {
   config_path    = "~/.kube/config"
   config_context = var.kube_context
@@ -34,7 +42,7 @@ resource "kubernetes_namespace" "app" {
   }
 }
 
-# Example Kubernetes resource for this topic
+# Example Kubernetes resources for this topic
 
 resource "kubernetes_deployment" "app" {
   metadata {
@@ -82,6 +90,26 @@ resource "kubernetes_deployment" "app" {
     }
   }
 }
+
+resource "kubernetes_service" "app" {
+  metadata {
+    name      = var.app_name
+    namespace = kubernetes_namespace.app.metadata[0].name
+  }
+
+  spec {
+    selector = {
+      app = var.app_name
+    }
+
+    port {
+      port        = var.service_port
+      target_port = var.container_port
+    }
+
+    type = "ClusterIP"
+  }
+}
 ```
 
 ## Variables
@@ -90,10 +118,11 @@ resource "kubernetes_deployment" "app" {
 variable "namespace"          { type = string }
 variable "app_name"           { type = string }
 variable "environment"        { type = string }
-variable "kube_context"       { type = string; default = "default" }
+variable "kube_context"       { type = string }
 variable "replica_count"      { type = number; default = 2 }
 variable "image_repository"   { type = string }
 variable "image_tag"          { type = string; default = "latest" }
+variable "service_port"       { type = number; default = 80 }
 variable "container_port"     { type = number; default = 8080 }
 variable "cpu_request"        { type = string; default = "100m" }
 variable "memory_request"     { type = string; default = "128Mi" }
@@ -103,4 +132,4 @@ variable "memory_limit"       { type = string; default = "512Mi" }
 
 ## Conclusion
 
-Kubernetes resources managed with OpenTofu benefit from the same plan/apply workflow as cloud infrastructure. Always set resource requests and limits, use namespaces for isolation, and leverage OpenTofu's ability to reference Kubernetes outputs in subsequent cloud resource configurations.
+Kubernetes Services managed with OpenTofu benefit from the same plan/apply workflow as cloud infrastructure. Always set resource requests and limits, use namespaces for isolation, and leverage OpenTofu's ability to reference Kubernetes resource attributes in subsequent cloud resource configurations.
