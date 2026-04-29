@@ -29,11 +29,11 @@ ip6tables -A INPUT -p tcp --dport 22 -j LOG --log-prefix "IPv6-SSH-ACCESS: " --l
 ```bash
 # Log options:
 # --log-prefix "prefix: "   Text prefix for log entries (up to 29 chars)
-# --log-level <level>       syslog level: 0=emerg, 1=alert, 2=crit, 3=err, 4=warn, 5=notice, 6=info, 7=debug
-# --log-ip-options          Log IPv6 extension header info (useful for ext header attacks)
+# --log-level <level>       syslog level: 0=emerg, 1=alert, 2=crit, 3=error, 4=warning, 5=notice, 6=info, 7=debug
+# --log-ip-options          Log IP/IPv6 header options and extension-header details
 # --log-tcp-options         Log TCP flags and options
 # --log-tcp-sequence        Log TCP sequence numbers (security sensitive)
-# --log-uid                 Log UID of sending process
+# --log-uid                 Log UID of the local process/socket when available
 
 # Full example with options
 ip6tables -A INPUT -p tcp --dport 22 \
@@ -47,8 +47,8 @@ ip6tables -A INPUT -p tcp --dport 22 \
 
 ```text
 Mar 20 14:23:01 host kernel: [12345.678901] IPv6-IN-DROP: IN=eth0 OUT= MAC=...
-  SRC=2001:db8:1::100 DST=2001:db8:server::1
-  LEN=60 TC=0 HOPLIMIT=64 FLOWLBL=0 NEXTHDR=TCP URGP=0
+  SRC=2001:db8:1::100 DST=2001:db8:1::1
+  LEN=60 TC=0 HOPLIMIT=64 FLOWLBL=0
   PROTO=TCP SPT=52341 DPT=22 WINDOW=65535 RES=0x00 SYN URGP=0
 
 Fields:
@@ -59,8 +59,7 @@ Fields:
   TC=            Traffic Class (DSCP/ECN)
   HOPLIMIT=      IPv6 Hop Limit (TTL equivalent)
   FLOWLBL=       Flow Label
-  NEXTHDR=       Next Header protocol (TCP/UDP/ICMPv6/ESP/AH)
-  PROTO=TCP      Protocol
+  PROTO=TCP      Upper-layer protocol
   SPT=           Source port
   DPT=           Destination port
   SYN            TCP SYN flag set
@@ -94,24 +93,25 @@ ip6tables -A INPUT \
   -j LOG --log-prefix "IPv6-IN-DROP: "
 ```
 
-## Structured Logging with ULOG/NFLOG
+## Structured Logging with NFLOG
 
 For better log processing, use NFLOG which sends to userspace:
 
 ```bash
 # Install
-apt install ulogd2
+apt install ulogd2 ulogd2-json
 
 # Use NFLOG target
 ip6tables -A INPUT -j NFLOG --nflog-prefix "IPv6-DROP" --nflog-group 1
 
-# Configure ulogd2 to write to file
-# /etc/ulogd.conf:
-# [NFLOG1]
+# Configure ulogd2 to write JSON to file
+# /etc/ulogd.conf (uncomment/add):
+# stack=log2:NFLOG,base1:BASE,ifi1:IFINDEX,ip2str1:IP2STR,mac2str1:HWHDR,json1:JSON
+# [log2]
 # group=1
-# [JSON1]
+# [json1]
 # sync=1
-# file=/var/log/ipv6-firewall.json
+# file="/var/log/ulog/ipv6-firewall.json"
 ```
 
 ## Parsing IPv6 Logs
@@ -142,14 +142,14 @@ ip6tables -A INPUT -m rt --rt-type 0 \
   -j LOG --log-prefix "IPv6-RH0-ATTACK: " --log-level 3
 ip6tables -A INPUT -m rt --rt-type 0 -j DROP
 
-# Log NDP from non-link-local (rogue RA detection)
+# Log Router Advertisements from non-link-local sources (rogue RA detection)
 ip6tables -A INPUT ! -s fe80::/10 -p icmpv6 --icmpv6-type 134 \
   -j LOG --log-prefix "ROGUE-RA: " --log-level 3
 
-# Log bogon sources
+# Log unexpected ULA sources on internet-facing interfaces
 ip6tables -A INPUT -s fc00::/7 \
   -m limit --limit 10/min \
-  -j LOG --log-prefix "IPv6-BOGON-ULA: " --log-level 4
+  -j LOG --log-prefix "IPv6-ULA-SRC: " --log-level 4
 
 # Log drops with rate limiting
 ip6tables -A INPUT \
@@ -163,12 +163,11 @@ ip6tables -A INPUT \
 # Configure rsyslog to forward kernel firewall logs
 # /etc/rsyslog.d/ipv6-fw.conf
 :msg, contains, "IPv6" @siem.example.com:514
-:msg, contains, "IPv6" @siem.example.com:514
 
-# Use TCP for reliable delivery
+# Use TCP for more reliable delivery
 :msg, contains, "IPv6" @@siem.example.com:514
 ```
 
 ## Summary
 
-ip6tables LOG target writes IPv6 firewall events to the kernel log with configurable prefix and syslog level. Always add rate limiting (`-m limit --limit 5/min`) to LOG rules to prevent log flooding during attacks. Place LOG rules BEFORE the final DROP rule. For IPv6-specific monitoring, log: RH0 packets (`-m rt --rt-type 0`), Router Advertisements from non-link-local sources (rogue RA detection), and bogon source addresses. Forward logs to a SIEM with rsyslog for centralized analysis and alerting.
+ip6tables LOG target writes IPv6 firewall events to the kernel log with configurable prefix and syslog level. Always add rate limiting (`-m limit --limit 5/min`) to LOG rules to prevent log flooding during attacks. Place LOG rules BEFORE the final DROP rule. For IPv6-specific monitoring, log: RH0 packets (`-m rt --rt-type 0`), Router Advertisements from non-link-local sources (rogue RA detection), and unexpected ULA source addresses (`fc00::/7`) on internet-facing interfaces. Forward logs to a SIEM with rsyslog for centralized analysis and alerting.
