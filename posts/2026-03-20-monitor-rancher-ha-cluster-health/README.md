@@ -124,8 +124,8 @@ For HAProxy, export stats to Prometheus:
 # Install haproxy_exporter
 docker run -d \
   --net=host \
-  -e HAPROXY_SCRAPE_URI="http://admin:password@localhost:8080/stats;csv" \
-  prom/haproxy-exporter
+  prom/haproxy-exporter \
+  --haproxy.scrape-uri="http://admin:password@localhost:8080/stats;csv"
 
 # Alert on backend down
 # haproxy_backend_up{backend="rancher_https_backend"} == 0
