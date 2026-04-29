@@ -32,57 +32,73 @@ Fleet is a GitOps fleet management tool from Rancher designed specifically for m
 ### Step 1: Install Fleet on HQ Cluster
 
 ```bash
-# Add Fleet Helm repository
+# For standalone multi-cluster Fleet, set the HQ API server URL and CA
+CLUSTER_NAME="<hq-cluster-name-in-kubeconfig>"
+API_SERVER_URL=$(kubectl config view -o json --raw | \
+  jq -r --arg CLUSTER "$CLUSTER_NAME" \
+  '.clusters[] | select(.name==$CLUSTER).cluster["server"]')
+kubectl config view -o json --raw | \
+  jq -r --arg CLUSTER "$CLUSTER_NAME" \
+  '.clusters[] | select(.name==$CLUSTER).cluster["certificate-authority-data"]' | \
+  base64 -d > ca.pem
 
+# Add Fleet Helm repository
 helm repo add fleet https://rancher.github.io/fleet-helm-charts/
 helm repo update
 
 # Install Fleet CRDs
-helm install -n cattle-fleet-system \
-  --create-namespace \
+helm -n cattle-fleet-system install --create-namespace --wait \
   fleet-crd fleet/fleet-crd
 
 # Install Fleet
-helm install -n cattle-fleet-system \
+helm -n cattle-fleet-system install --create-namespace --wait \
+  --set apiServerURL="$API_SERVER_URL" \
+  --set-file apiServerCA=ca.pem \
   fleet fleet/fleet
 
 # Verify Fleet is running
-kubectl get pods -n cattle-fleet-system
+kubectl -n cattle-fleet-system get pods -l app=fleet-controller
 ```
 
 ### Step 2: Register Edge Clusters with Fleet
 
-Generate a registration token for edge clusters:
+For manager-initiated registration, create a cluster group for edge sites and
+register each cluster with a kubeconfig secret. This flow requires the HQ Fleet
+manager to reach the edge cluster API during registration.
 
 ```bash
+# Create a namespace for registered downstream clusters and GitRepos
+kubectl create namespace clusters --dry-run=client -o yaml | kubectl apply -f -
+
 # On the HQ cluster, create a cluster group for edge sites
 cat <<'EOF' | kubectl apply -f -
 apiVersion: fleet.cattle.io/v1alpha1
 kind: ClusterGroup
 metadata:
   name: edge-stores
-  namespace: fleet-default
+  namespace: clusters
 spec:
   selector:
     matchLabels:
       role: edge-store
 EOF
-
-# Get the Fleet API server URL and CA cert
-FLEET_API_SERVER=$(kubectl get service -n cattle-fleet-system \
-  fleet-controller -o jsonpath='{.status.loadBalancer.ingress[0].ip}')
 ```
 
 Register an edge K3s cluster:
 
 ```bash
-# On the HQ cluster, generate registration YAML for the edge cluster
+# Create the kubeconfig secret from the edge cluster's kubeconfig
+kubectl create secret generic edge-store-101-kubeconfig \
+  --from-file=value=/path/to/edge-store-101.kubeconfig \
+  -n clusters
+
+# Create the Fleet Cluster resource
 kubectl apply -f - <<EOF
 apiVersion: fleet.cattle.io/v1alpha1
 kind: Cluster
 metadata:
   name: edge-store-101
-  namespace: fleet-default
+  namespace: clusters
   labels:
     role: edge-store
     location: northeast
@@ -90,11 +106,6 @@ metadata:
 spec:
   kubeConfigSecret: edge-store-101-kubeconfig
 EOF
-
-# Create the kubeconfig secret from the edge cluster's kubeconfig
-kubectl create secret generic edge-store-101-kubeconfig \
-  --from-file=value=/path/to/edge-store-101.kubeconfig \
-  -n fleet-default
 ```
 
 ### Step 3: Create a GitRepo for Edge Deployments
@@ -105,7 +116,7 @@ apiVersion: fleet.cattle.io/v1alpha1
 kind: GitRepo
 metadata:
   name: edge-applications
-  namespace: fleet-default
+  namespace: clusters
 spec:
   # Git repository containing edge app configurations
   repo: https://github.com/your-org/edge-deployments.git
@@ -198,13 +209,14 @@ Rancher provides a comprehensive UI for managing multiple K3s clusters:
 # Install Rancher on the HQ cluster
 helm repo add rancher-stable \
   https://releases.rancher.com/server-charts/stable
+helm repo add jetstack https://charts.jetstack.io
 helm repo update
 
 # Install cert-manager first
 helm install cert-manager jetstack/cert-manager \
   --namespace cert-manager \
   --create-namespace \
-  --set installCRDs=true
+  --set crds.enabled=true
 
 # Install Rancher
 helm install rancher rancher-stable/rancher \
@@ -214,15 +226,16 @@ helm install rancher rancher-stable/rancher \
   --set bootstrapPassword=admin
 ```
 
-Import edge K3s clusters into Rancher:
+Register edge K3s clusters in Rancher:
 
 ```bash
 # In the Rancher UI:
 # 1. Go to Cluster Management > Import Existing
 # 2. Name the cluster (e.g., "edge-store-101")
 # 3. Rancher provides a kubectl command to run on the edge cluster
-# 4. Run on the edge cluster:
-kubectl apply -f https://rancher.hq.example.com/v3/import/<token>.yaml
+# 4. Verify your kubeconfig points to the edge cluster
+kubectl get nodes
+# 5. Run the exact registration command Rancher shows for that cluster
 ```
 
 ## Method 5: Automated Cluster Registration Script
@@ -230,34 +243,30 @@ kubectl apply -f https://rancher.hq.example.com/v3/import/<token>.yaml
 ```bash
 #!/bin/bash
 # register-edge-cluster.sh
-# Run on new edge clusters to register with HQ
+# Run on a new edge cluster after creating the cluster entry in Rancher
+
+set -euo pipefail
 
 HQ_RANCHER_URL="https://rancher.hq.example.com"
 HQ_API_TOKEN="token-xxxxx:yyyyyy"
-CLUSTER_NAME="${1:-edge-$(hostname)}"
+CLUSTER_ID="${1:?Usage: $0 <cluster-id>}"
+COMMAND_FIELD="${COMMAND_FIELD:-command}"
 
-echo "Registering cluster: $CLUSTER_NAME with Rancher"
+echo "Retrieving registration command for cluster ID: $CLUSTER_ID"
 
-# Create cluster in Rancher via API
-CLUSTER_ID=$(curl -s -X POST \
-  -H "Authorization: Bearer $HQ_API_TOKEN" \
-  -H "Content-Type: application/json" \
-  "$HQ_RANCHER_URL/v3/clusters" \
-  -d "{
-    \"name\": \"$CLUSTER_NAME\",
-    \"labels\": {
-      \"role\": \"edge-store\",
-      \"site\": \"$CLUSTER_NAME\"
-    }
-  }" | jq -r '.id')
-
-# Get the registration manifest
-curl -s \
-  -H "Authorization: Bearer $HQ_API_TOKEN" \
+REGISTRATION_COMMAND=$(curl -sfL -u "$HQ_API_TOKEN" \
   "$HQ_RANCHER_URL/v3/clusterregistrationtokens?clusterId=$CLUSTER_ID" | \
-  jq -r '.data[0].command' | bash
+  jq -r --arg FIELD "$COMMAND_FIELD" '.data[0][$FIELD]')
 
-echo "Cluster $CLUSTER_NAME registered with ID: $CLUSTER_ID"
+if [ -z "$REGISTRATION_COMMAND" ] || [ "$REGISTRATION_COMMAND" = "null" ]; then
+  echo "No registration command found for cluster ID: $CLUSTER_ID"
+  exit 1
+fi
+
+# Set COMMAND_FIELD=insecureCommand if Rancher uses a private CA.
+eval "$REGISTRATION_COMMAND"
+
+echo "Cluster $CLUSTER_ID registered with Rancher"
 ```
 
 ## Monitoring All Edge Clusters
