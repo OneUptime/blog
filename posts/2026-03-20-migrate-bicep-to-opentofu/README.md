@@ -8,7 +8,7 @@ Description: Learn how to migrate Azure infrastructure managed by Bicep files in
 
 ## Introduction
 
-Bicep is Azure's domain-specific language that compiles to ARM templates. While Bicep is more readable than raw ARM JSON, it remains Azure-only. Migrating to OpenTofu gives your team a multi-cloud capable IaC tool with richer module ecosystems, testing frameworks, and community tooling. The migration imports existing resources without disruption.
+Bicep is Azure's domain-specific language that compiles to ARM templates. While Bicep is more readable than raw ARM JSON, it remains Azure-only. Migrating to OpenTofu gives your team a multi-cloud capable IaC tool with richer module ecosystems, testing frameworks, and community tooling. The migration can import existing resources without recreating them, as long as the OpenTofu configuration matches what is already deployed.
 
 ## Phase 1: Understand Your Bicep Deployment
 
@@ -33,7 +33,7 @@ az resource list \
 
 ## Phase 2: Translate Bicep to HCL
 
-Map Bicep syntax to OpenTofu HCL. The azurerm provider covers all the same resources.
+Map Bicep syntax to OpenTofu HCL. The azurerm provider covers many common Azure resources, and the AzAPI provider can fill gaps for unsupported or preview resource types.
 
 ```bicep
 // Bicep (original)
@@ -57,9 +57,12 @@ resource storageAccount 'Microsoft.Storage/storageAccounts@2023-01-01' = {
 
 ```hcl
 # OpenTofu equivalent
+variable "resource_group_name" {
+  type = string
+}
+
 variable "location" {
-  type    = string
-  default = "eastus"
+  type = string
 }
 
 variable "storage_account_name" {
@@ -67,15 +70,15 @@ variable "storage_account_name" {
 }
 
 resource "azurerm_storage_account" "main" {
-  name                     = var.storage_account_name
-  resource_group_name      = azurerm_resource_group.main.name
-  location                 = var.location
-  account_tier             = "Standard"
-  account_replication_type = "LRS"
-  account_kind             = "StorageV2"
-  access_tier              = "Hot"
+  name                       = var.storage_account_name
+  resource_group_name        = var.resource_group_name
+  location                   = var.location
+  account_tier               = "Standard"
+  account_replication_type   = "LRS"
+  account_kind               = "StorageV2"
+  access_tier                = "Hot"
   https_traffic_only_enabled = true
-  min_tls_version          = "TLS1_2"
+  min_tls_version            = "TLS1_2"
 }
 ```
 
@@ -91,7 +94,7 @@ resource declaration     → resource block
 module (Bicep)           → module block
 dependsOn               → depends_on
 resourceGroup().location → var.location (pass as variable)
-existing resource        → data source
+existing resource        → data source or imported resource
 @secure() decorator     → sensitive = true on variable
 ```
 
@@ -126,7 +129,7 @@ az storage account show \
   --query id -o tsv
 
 tofu init
-tofu plan    # should show no destructive changes
+tofu plan    # review the import actions and verify there are no destructive changes
 tofu apply   # import resources into state
 ```
 
@@ -156,13 +159,13 @@ module "storage" {
 
 ## Phase 5: Validate and Clean Up
 
-Verify the migration and remove Bicep deployments.
+Verify the migration and remove Bicep deployment history entries.
 
 ```bash
 # Plan should show no changes if config matches reality
 tofu plan
 
-# Delete the deployment record (resources are retained)
+# Delete the deployment history entry (resources are retained)
 az deployment group delete \
   --resource-group myapp-prod-rg \
   --name myapp-bicep-deployment
