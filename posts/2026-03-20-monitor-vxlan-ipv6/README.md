@@ -106,8 +106,8 @@ TEXTFILE_DIR="/var/lib/node_exporter/textfile_collector"
 
     # FRRouting vtysh
     if command -v vtysh &>/dev/null; then
-        MAC_IP=$(vtysh -c "show bgp l2vpn evpn route type mac-ip" 2>/dev/null | grep -c "Network")
-        IP_PREFIX=$(vtysh -c "show bgp l2vpn evpn route type ip-prefix" 2>/dev/null | grep -c "Network")
+        MAC_IP=$(vtysh -c "show bgp l2vpn evpn route type macip" 2>/dev/null | grep -c "Network")
+        IP_PREFIX=$(vtysh -c "show bgp l2vpn evpn route type prefix" 2>/dev/null | grep -c "Network")
         echo "bgp_evpn_routes_total{type=\"mac_ip\"} ${MAC_IP:-0}"
         echo "bgp_evpn_routes_total{type=\"ip_prefix\"} ${IP_PREFIX:-0}"
     fi
