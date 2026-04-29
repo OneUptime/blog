@@ -42,10 +42,10 @@ flow monitor IPv6-MONITOR
   record IPv6-RECORD
   exporter COLLECTOR
 
-! Apply to interfaces
+! Apply to interfaces (egress NetFlow on Nexus does not support IPv6,
+! so attach IPv6 flow monitors in the input direction only)
 interface Ethernet1/1
-  ip flow monitor IPv6-MONITOR input
-  ip flow monitor IPv6-MONITOR output
+  ipv6 flow monitor IPv6-MONITOR input
 ```
 
 ## pmacct as a Flow Collector
@@ -67,7 +67,7 @@ pgsql_table: ipv6_flows
 pgsql_user: pmacct
 pgsql_passwd: secret
 
-aggregate: src_host,dst_host,src_port,dst_port,proto,bytes,packets
+aggregate: src_host,dst_host,src_port,dst_port,proto
 ```
 
 ## Grafana Dashboard for IPv6 Flows
@@ -94,7 +94,8 @@ For detailed per-flow monitoring on Linux hosts, use eBPF with bpftrace:
 # Count IPv6 TCP flows by destination port in real-time
 bpftrace -e '
 kprobe:tcp_v6_connect {
-    @dest_port[args->uaddr->sin6_port] = count();
+    $sa = (struct sockaddr_in6 *)arg1;
+    @dest_port[bswap($sa->sin6_port)] = count();
 }
 interval:s:5 {
     print(@dest_port);
