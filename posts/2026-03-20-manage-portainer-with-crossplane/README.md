@@ -4,17 +4,17 @@ Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
 Tags: Portainer, Crossplane, Kubernetes, Infrastructure as Code, GitOps
 
-Description: Use Crossplane to manage Portainer environments and configurations as Kubernetes custom resources, enabling GitOps workflows for your container management platform.
+Description: Use Crossplane to manage Portainer environments and stacks as Kubernetes custom resources, enabling GitOps workflows for your container management platform.
 
 ## Introduction
 
-Crossplane is a Kubernetes add-on that enables you to manage any infrastructure as Kubernetes custom resources. By building a Crossplane provider for Portainer, you can manage Portainer environments, stacks, and configurations using familiar kubectl commands and GitOps workflows. This is particularly powerful for platform engineering teams who want a single Kubernetes-native control plane.
+Crossplane is a Kubernetes add-on that enables you to manage infrastructure as Kubernetes custom resources. By composing Crossplane with the Portainer API, you can manage Portainer environments and stacks using familiar kubectl commands and GitOps workflows. This is particularly powerful for platform engineering teams who want a single Kubernetes-native control plane.
 
 ## Prerequisites
 
 - Kubernetes cluster with kubectl access
 - Portainer installed and accessible
-- Crossplane installed in your cluster
+- Permissions to install Crossplane packages in your cluster
 - Helm 3 installed
 
 ## Step 1: Install Crossplane
@@ -36,24 +36,32 @@ kubectl get pods -n crossplane-system
 kubectl get crds | grep crossplane
 ```
 
-## Step 2: Create a Portainer Crossplane Provider
+## Step 2: Install the HTTP Provider and Composition Function
 
 Since there isn't an official Portainer provider, we'll use Crossplane's provider-http to interact with the Portainer API:
 
 ```bash
 # Install the HTTP provider for Portainer API calls
+# and the patch-and-transform function for modern Compositions
 kubectl apply -f - <<'EOF'
 apiVersion: pkg.crossplane.io/v1
 kind: Provider
 metadata:
   name: provider-http
 spec:
-  package: xpkg.upbound.io/upbound/provider-http:v0.3.0
+  package: xpkg.upbound.io/crossplane-contrib/provider-http:v1.0.13
+---
+apiVersion: pkg.crossplane.io/v1
+kind: Function
+metadata:
+  name: function-patch-and-transform
+spec:
+  package: xpkg.crossplane.io/crossplane-contrib/function-patch-and-transform:v0.8.2
 EOF
 
-# Wait for provider to be ready
-kubectl wait --for=condition=Installed provider/provider-http --timeout=120s
-kubectl wait --for=condition=Healthy provider/provider-http --timeout=120s
+# Wait for both packages to be ready
+kubectl wait --for=condition=Healthy provider/provider-http --timeout=300s
+kubectl wait --for=condition=Healthy function/function-patch-and-transform --timeout=300s
 ```
 
 ## Step 3: Configure Portainer Connection Credentials
@@ -67,25 +75,17 @@ metadata:
   namespace: crossplane-system
 type: Opaque
 stringData:
-  # Portainer API token (generate via Settings > Users > API key)
-  token: "your-portainer-api-token"
-  baseUrl: "https://portainer.example.com:9443/api"
+  # Portainer access token (generate via My account > Access tokens)
+  token: "your-portainer-access-token"
 ---
 # ProviderConfig for Portainer HTTP API
-apiVersion: http.upbound.io/v1alpha1
+apiVersion: http.crossplane.io/v1alpha1
 kind: ProviderConfig
 metadata:
   name: portainer-http
 spec:
   credentials:
-    source: Secret
-    secretRef:
-      namespace: crossplane-system
-      name: portainer-credentials
-      key: token
-  headers:
-    Content-Type: "application/json"
-    X-API-Key: "{{ .credentials }}"
+    source: None
 ```
 
 ## Step 4: Define Composite Resources for Portainer
@@ -99,6 +99,8 @@ kind: CompositeResourceDefinition
 metadata:
   name: xportainerenvironments.platform.example.com
 spec:
+  defaultCompositionRef:
+    name: portainer-environment
   group: platform.example.com
   names:
     kind: XPortainerEnvironment
@@ -116,6 +118,8 @@ spec:
         properties:
           spec:
             type: object
+            required:
+              - parameters
             properties:
               parameters:
                 type: object
@@ -128,18 +132,16 @@ spec:
                     description: Name of the Portainer environment
                   dockerUrl:
                     type: string
-                    description: Docker socket or TCP URL
-                  environmentType:
+                    description: Docker socket or TCP URL for the target environment
+                  endpointCreationType:
                     type: integer
                     default: 1
-                    description: "1=Docker, 2=Swarm, 6=Kubernetes"
-                  tags:
-                    type: array
-                    items:
-                      type: string
+                    description: Portainer endpoint creation type. This example uses 1 for Docker environments.
 ```
 
 ## Step 5: Create Composition for Portainer Environments
+
+This minimal composition uses create, observe, and delete operations against Portainer's `/api/endpoints` API for Docker environments. You can extend it with additional Portainer API mappings if you want in-place updates or other environment types.
 
 ```yaml
 # portainer-environment-composition.yaml
@@ -147,44 +149,72 @@ apiVersion: apiextensions.crossplane.io/v1
 kind: Composition
 metadata:
   name: portainer-environment
-  labels:
-    crossplane.io/xrd: xportainerenvironments.platform.example.com
 spec:
   compositeTypeRef:
     apiVersion: platform.example.com/v1alpha1
     kind: XPortainerEnvironment
-  
-  resources:
-  - name: portainer-environment-api-call
-    base:
-      apiVersion: http.upbound.io/v1alpha1
-      kind: Request
-      spec:
-        providerConfigRef:
-          name: portainer-http
-        forProvider:
-          url: "https://portainer.example.com:9443/api/endpoints"
-          method: POST
-          body: ""
-          headers:
-            Content-Type:
-              - "application/json"
-    
-    patches:
-    # Patch the request body with environment parameters
-    - type: CombineFromComposite
-      combine:
-        variables:
-        - fromFieldPath: spec.parameters.name
-        - fromFieldPath: spec.parameters.dockerUrl
-        - fromFieldPath: spec.parameters.environmentType
-        strategy: string
-        string:
-          fmt: '{"Name":"%s","URL":"%s","EndpointCreationType":%d}'
-      toFieldPath: spec.forProvider.body
+  mode: Pipeline
+  pipeline:
+  - step: patch-and-transform
+    functionRef:
+      name: function-patch-and-transform
+    input:
+      apiVersion: pt.fn.crossplane.io/v1beta1
+      kind: Resources
+      resources:
+      - name: portainer-environment-request
+        base:
+          apiVersion: http.crossplane.io/v1alpha2
+          kind: Request
+          spec:
+            managementPolicies:
+              - Observe
+              - Create
+              - Delete
+            providerConfigRef:
+              name: portainer-http
+            forProvider:
+              headers:
+                X-API-Key:
+                  - "{{ portainer-credentials:crossplane-system:token }}"
+              payload:
+                baseUrl: "https://portainer.example.com:9443/api/endpoints"
+                body: |
+                  {
+                    "name": "placeholder",
+                    "url": "tcp://placeholder:2376",
+                    "endpointCreationType": 1
+                  }
+              mappings:
+              - action: CREATE
+                url: .payload.baseUrl
+                headers:
+                  Content-Type:
+                    - "multipart/form-data; boundary=portainer-boundary"
+                  X-API-Key:
+                    - "{{ portainer-credentials:crossplane-system:token }}"
+                body: |
+                  "--portainer-boundary\r\nContent-Disposition: form-data; name=\"Name\"\r\n\r\n\(.payload.body.name)\r\n--portainer-boundary\r\nContent-Disposition: form-data; name=\"EndpointCreationType\"\r\n\r\n\(.payload.body.endpointCreationType | tostring)\r\n--portainer-boundary\r\nContent-Disposition: form-data; name=\"URL\"\r\n\r\n\(.payload.body.url)\r\n--portainer-boundary--\r\n"
+              - action: OBSERVE
+                url: .payload.baseUrl + "/" + (.response.body.Id | tostring)
+              - action: REMOVE
+                url: .payload.baseUrl + "/" + (.response.body.Id | tostring)
+        patches:
+        - type: CombineFromComposite
+          combine:
+            strategy: string
+            variables:
+            - fromFieldPath: spec.parameters.name
+            - fromFieldPath: spec.parameters.dockerUrl
+            - fromFieldPath: spec.parameters.endpointCreationType
+            string:
+              fmt: '{"name":"%s","url":"%s","endpointCreationType":%d}'
+          toFieldPath: spec.forProvider.payload.body
 ```
 
 ## Step 6: Create Portainer Stack Custom Resource
+
+The following example targets Portainer's standalone Docker stack endpoint. Swarm and Kubernetes stacks use different Portainer API paths.
 
 ```yaml
 # portainer-stack-xrd.yaml
@@ -193,6 +223,8 @@ kind: CompositeResourceDefinition
 metadata:
   name: xportainerstacks.platform.example.com
 spec:
+  defaultCompositionRef:
+    name: portainer-stack
   group: platform.example.com
   names:
     kind: XPortainerStack
@@ -210,6 +242,8 @@ spec:
         properties:
           spec:
             type: object
+            required:
+              - parameters
             properties:
               parameters:
                 type: object
@@ -233,9 +267,92 @@ spec:
                       composeFilePath:
                         type: string
                         default: docker-compose.yml
+---
+# portainer-stack-composition.yaml
+apiVersion: apiextensions.crossplane.io/v1
+kind: Composition
+metadata:
+  name: portainer-stack
+spec:
+  compositeTypeRef:
+    apiVersion: platform.example.com/v1alpha1
+    kind: XPortainerStack
+  mode: Pipeline
+  pipeline:
+  - step: patch-and-transform
+    functionRef:
+      name: function-patch-and-transform
+    input:
+      apiVersion: pt.fn.crossplane.io/v1beta1
+      kind: Resources
+      resources:
+      - name: portainer-stack-request
+        base:
+          apiVersion: http.crossplane.io/v1alpha2
+          kind: Request
+          spec:
+            managementPolicies:
+              - Observe
+              - Create
+              - Delete
+            providerConfigRef:
+              name: portainer-http
+            forProvider:
+              headers:
+                Content-Type:
+                  - application/json
+                X-API-Key:
+                  - "{{ portainer-credentials:crossplane-system:token }}"
+              payload:
+                baseUrl: "https://portainer.example.com:9443/api/stacks"
+                body: |
+                  {
+                    "name": "placeholder",
+                    "environmentId": 1,
+                    "repositoryUrl": "https://github.com/my-org/my-app",
+                    "repositoryReferenceName": "refs/heads/main",
+                    "composeFile": "docker-compose.yml"
+                  }
+              mappings:
+              - action: CREATE
+                url: .payload.baseUrl + "/create/standalone/repository?endpointId=" + (.payload.body.environmentId | tostring)
+                body: |
+                  {
+                    Name: .payload.body.name,
+                    RepositoryURL: .payload.body.repositoryUrl,
+                    RepositoryReferenceName: .payload.body.repositoryReferenceName,
+                    ComposeFile: .payload.body.composeFile
+                  }
+              - action: OBSERVE
+                url: .payload.baseUrl + "/" + (.response.body.Id | tostring)
+              - action: REMOVE
+                url: .payload.baseUrl + "/" + (.response.body.Id | tostring) + "?endpointId=" + (.payload.body.environmentId | tostring)
+        patches:
+        - type: CombineFromComposite
+          combine:
+            strategy: string
+            variables:
+            - fromFieldPath: spec.parameters.name
+            - fromFieldPath: spec.parameters.environmentId
+            - fromFieldPath: spec.parameters.gitRepository.url
+            - fromFieldPath: spec.parameters.gitRepository.branch
+            - fromFieldPath: spec.parameters.gitRepository.composeFilePath
+            string:
+              fmt: '{"name":"%s","environmentId":%d,"repositoryUrl":"%s","repositoryReferenceName":"refs/heads/%s","composeFile":"%s"}'
+          toFieldPath: spec.forProvider.payload.body
 ```
 
 ## Step 7: Deploy Resources Using Crossplane Claims
+
+Apply the definitions and compositions before creating claims:
+
+```bash
+kubectl apply -f portainer-credentials.yaml
+kubectl apply -f portainer-environment-xrd.yaml
+kubectl apply -f portainer-environment-composition.yaml
+kubectl apply -f portainer-stack-xrd.yaml
+kubectl apply -f portainer-stack-composition.yaml
+```
 
 ```yaml
 # my-app-environment.yaml
@@ -248,10 +365,7 @@ spec:
   parameters:
     name: "Production Docker"
     dockerUrl: "tcp://prod-host:2376"
-    environmentType: 1
-    tags:
-      - production
-      - docker
+    endpointCreationType: 1
 ---
 # my-app-stack.yaml
 apiVersion: platform.example.com/v1alpha1
