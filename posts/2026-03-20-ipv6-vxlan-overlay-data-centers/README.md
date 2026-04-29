@@ -24,11 +24,11 @@ Overlay (VXLAN encapsulation):
   VNI 10200 → VLAN 200 (Tenant B workloads)
 
 Host addressing (inside VXLAN overlay):
-  VLAN 100: 2001:db8:tenant-a::/64
-  VLAN 200: 2001:db8:tenant-b::/64
+  VLAN 100: 2001:db8:100::/64
+  VLAN 200: 2001:db8:200::/64
 
 VXLAN Packet Structure:
-[IPv6 Outer Header][UDP 4789][VXLAN Header][Inner Ethernet][IPv6 Payload]
+[Outer IP Header (IPv4 or IPv6)][UDP 4789][VXLAN Header][Inner Ethernet][IPv6 Payload]
  ← Underlay: Leaf loopbacks → ←  Overlay: Host IPv6 addresses →
 ```
 
@@ -45,12 +45,22 @@ auto lo
 iface lo inet loopback
   address 10.0.1.101/32
   # Also configure IPv6 loopback for underlay
-  address6 2001:db8:dc1:200::101/128
+  address 2001:db8:dc1:200::101/128
+
+auto swp5
+iface swp5
+  bridge-access 100
+
+auto swp6
+iface swp6
+  bridge-access 100
 
 # VXLAN interface (carries IPv6 host traffic)
 auto vxlan100
 iface vxlan100
-  vxlan-id 100
+  bridge-access 100
+  bridge-learning off
+  vxlan-id 10100
   vxlan-local-tunnelip 10.0.1.101  # Use IPv4 loopback for VTEP
   # Or for IPv6 underlay:
   # vxlan-local-tunnelip 2001:db8:dc1:200::101
@@ -58,13 +68,14 @@ iface vxlan100
 auto bridge
 iface bridge
   bridge-ports swp5 swp6 vxlan100  # Server ports + VXLAN
+  bridge-vlan-aware yes
   bridge-vids 100
 
-# SVI for IPv6 routing in VXLAN segment
+# SVI with anycast gateway for IPv6 hosts
 auto vlan100
 iface vlan100
-  address 2001:db8:tenant-a::1/64
-  address-virtual 00:00:5e:00:01:01 2001:db8:tenant-a::1/64
+  address 2001:db8:100::2/64
+  address-virtual 00:00:5e:00:01:01 2001:db8:100::1/64
   vlan-raw-device bridge
   vlan-id 100
 ```
@@ -88,11 +99,11 @@ router bgp 65101
     neighbor SPINES activate
     advertise-all-vni
     !
-    ! Advertise IPv6 host routes (Type 2 MAC/IP routes)
-    advertise ipv6 unicast
+    ! Advertise the local SVI MAC/IP binding as an EVPN Type 2 route
+    advertise-svi-ip
   exit-address-family
 
-  ! IPv6 global routing
+  ! IPv6 underlay reachability, if you peer over IPv6
   address-family ipv6 unicast
     neighbor SPINES activate
     redistribute connected
@@ -103,6 +114,9 @@ router bgp 65101
 
 ```text
 ! Arista EOS - VXLAN with IPv6 hosts
+
+! Anycast gateway MAC for ipv6 virtual-router
+ip virtual-router mac-address 00:00:5e:00:01:01
 
 ! VTEP source interface
 interface Loopback0
@@ -117,25 +131,31 @@ interface Vxlan1
 
 ! SVI with anycast gateway for IPv6 hosts
 interface Vlan100
-   ipv6 address 2001:db8:tenant-a::1/64
-   ip virtual-router address ipv6 2001:db8:tenant-a::1
+   ipv6 address 2001:db8:100::2/64
+   ipv6 virtual-router address 2001:db8:100::1
 
 ! BGP EVPN
 router bgp 65101
+   neighbor SPINE peer group
+   neighbor SPINE remote-as external
+   neighbor SPINE update-source Loopback0
+   !
+   vlan 100
+      rd 10.0.1.101:10100
+      route-target both 65101:10100
+      redistribute learned
+   !
+   vlan 200
+      rd 10.0.1.101:10200
+      route-target both 65101:10200
+      redistribute learned
    !
    address-family evpn
       neighbor SPINE activate
-      !
-   address-family ipv6
-      redistribute connected
 
 ! Verify EVPN routes
 show bgp evpn route-type mac-ip
-! Should show: IPv6 addresses bound to MAC addresses
-! Type 2 routes: MAC + IPv6 host /128
-
-show bgp evpn route-type prefix
-! IPv6 prefix routes for L3 routing
+! Should show: IPv6 addresses bound to MAC addresses in Type 2 routes
 ```
 
 ## IPv6 Host Mobility in VXLAN
@@ -144,44 +164,38 @@ show bgp evpn route-type prefix
 # When VM migrates from Leaf-1 to Leaf-2:
 
 # Old VTEP (Leaf-1) withdraws MAC/IP:
-# EVPN Type 2: withdraw 2001:db8:tenant-a::100, MAC aa:bb:cc:dd:ee:ff, VNI 10100
+# EVPN Type 2: withdraw 2001:db8:100::100, MAC aa:bb:cc:dd:ee:ff, VNI 10100
 
 # New VTEP (Leaf-2) advertises:
-# EVPN Type 2: announce 2001:db8:tenant-a::100, MAC aa:bb:cc:dd:ee:ff, VNI 10100
+# EVPN Type 2: announce 2001:db8:100::100, MAC aa:bb:cc:dd:ee:ff, VNI 10100
 
 # All VTEPs update their MAC tables automatically via BGP EVPN
 # IPv6 traffic redirects to new VTEP within BGP convergence time
 
-# Monitor EVPN updates
-show bgp evpn neighbor <spine-ip> routes
-# Watch for Type 2 route withdrawals/advertisements
+# Monitor EVPN Type 2 routes
+show bgp evpn route-type mac-ip 2001:db8:100::100
+# Or on FRR/Cumulus:
+show bgp l2vpn evpn route detail
 
 # Check local MAC/IP binding
 show mac address-table
-show bgp evpn route-type mac-ip detail | grep 2001:db8:tenant-a
+show ipv6 neighbors
 ```
 
 ## NDP Suppression for IPv6 VXLAN
 
-```bash
-# EVPN NDP suppression: Leaves answer IPv6 NDP (neighbor discovery)
-# locally instead of flooding to all VTEPs
+```text
+# EVPN reduces IPv6 ND flooding by learning MAC/IP bindings from Type 2 routes.
+# Behavior differs by platform.
 
-# Arista EOS:
-router bgp 65101
-   address-family evpn
-      neighbor SPINE activate
-      route-type mac-ip advertise
+# Arista EOS - flood filtering for EVPN VXLAN
+router l2-vpn
+   flooding default disabled
 
-! Configure NDP suppression on SVI
-interface Vlan100
-   ipv6 nd ra suppress all   ! Suppress RA flooding in VXLAN
-   ! EVPN handles RA proxy instead
+show vxlan counters software
 
-# FRR/Cumulus - NDP suppression
-# bridge parameter neigh-suppress yes
-ip link set vxlan100 type bridge_slave neigh_suppress on
-bridge link show vxlan100
+# FRR/Cumulus - ARP/ND suppression is enabled on VNIs by default.
+# Keep the SVI present so EVPN can answer for known remote IPv6 neighbors.
 ```
 
-IPv6 VXLAN overlays provide L2 extension for IPv6 workloads across data center fabrics, with BGP EVPN Type-2 (MAC/IP) routes distributing IPv6 host bindings to all VTEPs, NDP suppression eliminating multicast flooding for neighbor discovery, and anycast gateway ensuring optimal L3 forwarding regardless of which leaf a workload is attached to.
+IPv6 VXLAN overlays provide L2 extension for IPv6 workloads across data center fabrics, with BGP EVPN Type-2 (MAC/IP) routes distributing IPv6 host bindings to all VTEPs, ND suppression reducing multicast flooding for known neighbors, and anycast gateway providing a consistent first-hop gateway across leaf switches.
