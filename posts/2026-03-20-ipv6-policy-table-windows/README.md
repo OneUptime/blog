@@ -8,16 +8,16 @@ Description: Configure the IPv6 address selection policy table on Windows using 
 
 ## Windows IPv6 Policy Table
 
-Windows implements RFC 6724 address selection with a configurable policy table managed through `netsh` and PowerShell. The table controls both source address selection and destination address sorting in `getaddrinfo()`.
+Windows uses a configurable prefix policy table managed through `netsh` and PowerShell. The table influences both source address selection and destination address sorting.
 
 ## Viewing the Current Policy Table
 
 ```powershell
-# PowerShell: view the address selection policy table
+# PowerShell (Windows 8 / Windows Server 2012+): view the prefix policy table
 
-Get-NetIPv6Protocol | Select-Object -Property *
+Get-NetPrefixPolicy
 
-# View current prefix policies (Windows Server 2012+)
+# View current prefix policies with netsh
 netsh interface ipv6 show prefixpolicies
 
 # Output example:
@@ -38,19 +38,22 @@ netsh interface ipv6 show prefixpolicies
 ## Adding and Modifying Policy Entries
 
 ```powershell
-# Add a prefix policy entry
-# netsh interface ipv6 add prefixpolicy <prefix> <precedence> <label>
+# Add a new prefix policy entry
+# netsh interface ipv6 add prefixpolicy [prefix=]<prefix> [precedence=]<precedence> [label=]<label>
 
-# Example: prefer IPv4 over IPv6 (raise IPv4-mapped precedence)
-netsh interface ipv6 add prefixpolicy ::ffff:0:0/96 precedence=100 label=4
+# Example: add a custom prefix policy entry
+netsh interface ipv6 add prefixpolicy 2001:db8:ffff::/48 precedence=45 label=1
+
+# Example: prefer IPv4 over IPv6 (modify the built-in IPv4-mapped entry)
+netsh interface ipv6 set prefixpolicy ::ffff:0:0/96 precedence=100 label=4
 
 # Verify the change
 netsh interface ipv6 show prefixpolicies
 
-# Delete a custom entry (revert to default)
-netsh interface ipv6 delete prefixpolicy ::ffff:0:0/96
+# Delete the custom entry
+netsh interface ipv6 delete prefixpolicy 2001:db8:ffff::/48
 
-# Reset all prefix policies to RFC 6724 defaults
+# Reset all user-configured IPv6 settings (broader than prefix policies; restart required)
 netsh interface ipv6 reset
 ```
 
@@ -58,13 +61,13 @@ netsh interface ipv6 reset
 
 ```powershell
 # Method 1: Raise IPv4-mapped precedence via netsh
-netsh interface ipv6 add prefixpolicy ::ffff:0:0/96 precedence=100 label=4
+netsh interface ipv6 set prefixpolicy ::ffff:0:0/96 precedence=100 label=4
 
 # Method 2: Disable IPv6 on specific adapters
 # (nuclear option - removes IPv6 entirely from adapter)
 Disable-NetAdapterBinding -Name "Ethernet" -ComponentID ms_tcpip6
 
-# Method 3: Prefer IPv4 via registry (legacy)
+# Method 3: Prefer IPv4 via registry
 # HKLM\SYSTEM\CurrentControlSet\Services\Tcpip6\Parameters
 # DisabledComponents = 0x20 (prefer IPv4 over IPv6)
 Set-ItemProperty -Path "HKLM:\SYSTEM\CurrentControlSet\Services\Tcpip6\Parameters" `
@@ -78,18 +81,18 @@ Set-ItemProperty -Path "HKLM:\SYSTEM\CurrentControlSet\Services\Tcpip6\Parameter
 ## Preferring IPv6 (Restoring Defaults)
 
 ```powershell
-# Remove any IPv4 preference override
-netsh interface ipv6 delete prefixpolicy ::ffff:0:0/96
+# Restore the built-in IPv4-mapped entry to its default values
+netsh interface ipv6 set prefixpolicy ::ffff:0:0/96 precedence=35 label=4
 
-# Or reset all policies to defaults
+# Or reset all user-configured IPv6 settings (broader; requires restart)
 netsh interface ipv6 reset
 
-# Verify IPv6 is now preferred
-# Test: does getaddrinfo return IPv6 first for dual-stack host?
+# Quick resolver-order check for a dual-stack host
+# Replace example.com with a dual-stack host in your environment
 [System.Net.Dns]::GetHostAddresses("example.com") | ForEach-Object {
     Write-Host "$($_.AddressFamily): $($_.IPAddressToString)"
 }
-# Expected: InterNetworkV6 entries appear before InterNetwork (IPv4)
+# If IPv6 is preferred and usable, IPv6 addresses commonly appear first
 ```
 
 ## ULA Address Handling
@@ -108,8 +111,8 @@ netsh interface ipv6 add prefixpolicy fc00::/7 precedence=3 label=13
 ## Scripting Policy Management
 
 ```powershell
-# PowerShell script to apply RFC 6724 defaults
-# Useful after reset or on new deployments
+# PowerShell script to reapply the default prefix-policy values shown above
+# Useful after you modify built-in entries
 
 function Set-IPv6DefaultPolicies {
     $policies = @(
@@ -125,10 +128,18 @@ function Set-IPv6DefaultPolicies {
     )
 
     foreach ($p in $policies) {
-        netsh interface ipv6 add prefixpolicy `
-            "$($p.Prefix)" `
-            "precedence=$($p.Precedence)" `
-            "label=$($p.Label)" | Out-Null
+        if (Get-NetPrefixPolicy -Prefix $p.Prefix -ErrorAction SilentlyContinue) {
+            netsh interface ipv6 set prefixpolicy `
+                "$($p.Prefix)" `
+                "precedence=$($p.Precedence)" `
+                "label=$($p.Label)" | Out-Null
+        }
+        else {
+            netsh interface ipv6 add prefixpolicy `
+                "$($p.Prefix)" `
+                "precedence=$($p.Precedence)" `
+                "label=$($p.Label)" | Out-Null
+        }
         Write-Host "Set: $($p.Prefix) precedence=$($p.Precedence) label=$($p.Label)"
     }
 }
@@ -139,20 +150,13 @@ Set-IPv6DefaultPolicies
 ## Testing Address Selection on Windows
 
 ```powershell
-# Test which source address Windows would use
-# PowerShell: connect a UDP socket (no actual traffic sent)
-$socket = New-Object System.Net.Sockets.Socket(
-    [System.Net.Sockets.AddressFamily]::InterNetworkV6,
-    [System.Net.Sockets.SocketType]::Dgram,
-    [System.Net.Sockets.ProtocolType]::Udp
-)
-$remote = [System.Net.IPEndPoint]::new([System.Net.IPAddress]::Parse("2001:db8::1"), 80)
-$socket.Connect($remote)
-Write-Host "Selected source: $($socket.LocalEndPoint)"
-$socket.Close()
+# Test which local source address Windows selects for a destination
+# The first returned object is the selected local IP address; the second is the route
+Find-NetRoute -RemoteIPAddress "2001:db8::1"
 
-# Check destination sort order
-[System.Net.Dns]::GetHostEntry("dual-stack-host.example.com").AddressList | ForEach-Object {
+# Quick resolver-order check for a dual-stack host
+# Replace example.com with a dual-stack host in your environment
+[System.Net.Dns]::GetHostAddresses("example.com") | ForEach-Object {
     Write-Host "$($_.AddressFamily): $($_.IPAddressToString)"
 }
 ```
@@ -163,11 +167,8 @@ $socket.Close()
 # Apply IPv6 policy settings via Group Policy (GPO)
 # Path: Computer Configuration > Windows Settings > Scripts (Startup)
 
-# Startup script content (deploy via GPO):
-$script = @'
-netsh interface ipv6 add prefixpolicy ::ffff:0:0/96 precedence=100 label=4
-'@
-# Save to SYSVOL and reference in GPO startup scripts
+# Startup script content (save as a .ps1 file and deploy via GPO):
+netsh interface ipv6 set prefixpolicy ::ffff:0:0/96 precedence=100 label=4
 
 # Alternatively, use GPO Registry settings:
 # HKLM\SYSTEM\CurrentControlSet\Services\Tcpip6\Parameters
@@ -180,4 +181,4 @@ netsh interface ipv6 add prefixpolicy ::ffff:0:0/96 precedence=100 label=4
 
 ## Conclusion
 
-Windows IPv6 policy table management uses `netsh interface ipv6 add prefixpolicy` to set precedence and label values. To prefer IPv4, raise `::ffff:0:0/96` precedence above 40 (the default IPv6 global precedence). To restore RFC 6724 defaults, use `netsh interface ipv6 reset` or re-add the standard entries. Enterprise environments can distribute policy via Group Policy startup scripts or the `DisabledComponents` registry value. Test changes using PowerShell's `System.Net.Sockets.Socket.Connect()` to observe source address selection without sending traffic.
+Windows IPv6 policy table management uses `netsh interface ipv6 set prefixpolicy` to modify built-in entries and `netsh interface ipv6 add prefixpolicy` for new prefixes. To prefer IPv4, raise `::ffff:0:0/96` precedence above 40 (the default `::/0` precedence). To restore the built-in IPv4-mapped entry, set it back to `precedence=35 label=4`; `netsh interface ipv6 reset` is broader and resets all user-configured IPv6 settings after restart. Enterprise environments can distribute policy via Group Policy startup scripts or the `DisabledComponents` registry value. Test changes with `Find-NetRoute -RemoteIPAddress ...` to inspect the selected local address.
