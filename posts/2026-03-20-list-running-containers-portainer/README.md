@@ -4,16 +4,16 @@ Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
 Tags: Portainer, Docker, Container, Management, DevOps
 
-Description: View and filter all running containers across multiple environments and Docker hosts from Portainer's central interface.
+Description: View and filter running containers in connected Docker, Swarm, or Podman environments from Portainer's central interface.
 
 ## Introduction
 
-View and filter all running containers across multiple environments and Docker hosts from Portainer's central interface. This guide walks you through the process step by step with practical examples.
+Portainer lets you manage multiple environments from one central interface. To list running containers, select the environment you want to inspect and use the **Containers** view to search and filter the results. This guide walks you through the process step by step with practical examples.
 
 ## Prerequisites
 
 - Portainer installed (CE or BE)
-- At least one Docker or Kubernetes environment connected
+- At least one Docker Standalone, Docker Swarm, or Podman environment connected
 - Basic familiarity with Docker concepts
 
 ## Using the Portainer UI
@@ -21,8 +21,8 @@ View and filter all running containers across multiple environments and Docker h
 ### Step 1: Navigate to the Relevant Section
 
 1. Log in to your Portainer instance
-2. Select your environment from the home screen
-3. Navigate to **Containers** (or **Stacks** for compose-based tasks)
+2. Select the environment you want to inspect from the home screen
+3. Navigate to **Containers**
 
 ### Step 2: Locate Your Container
 
@@ -30,7 +30,7 @@ Use the search and filter options in Portainer:
 
 1. Click the **Containers** menu item
 2. Use the search box to find your container
-3. Filter by status (running, stopped, unhealthy)
+3. Confirm you found the correct container in the list
 4. Click on the container name for details
 
 ## Step-by-Step Instructions
@@ -52,7 +52,6 @@ docker inspect container-name | jq '.[0].Config'
 
 ```yaml
 # docker-compose.yml example
-version: "3.8"
 
 services:
   app:
@@ -115,11 +114,11 @@ docker cp container-name:/container/path /host/path
 
 Portainer provides several UI conveniences for this task:
 
-1. **Visual Stats Dashboard**: Click any container > Stats for real-time graphs
-2. **Log Streaming**: Click Logs for real-time log output with search
-3. **Container Console**: Click Console for direct shell access
-4. **Quick Actions**: Stop, restart, kill from the container list
-5. **Inspect View**: Formatted JSON view of container configuration
+1. **Visual Stats Dashboard**: Click any container > Stats to view CPU, memory, network, and I/O usage
+2. **Log View**: Click Logs for searchable logs with auto refresh
+3. **Container Console**: Click Console for shell access when the image includes a shell
+4. **Quick Actions**: Start, stop, restart, and remove actions are available from the container view
+5. **Inspect View**: Tree and raw JSON views of container configuration
 
 ## Troubleshooting Common Issues
 
@@ -128,8 +127,7 @@ Portainer provides several UI conveniences for this task:
 # Check all containers including stopped ones
 docker ps -a
 
-# Refresh Portainer's environment
-# Settings > Environments > Re-sync
+# In Portainer, confirm you selected the correct environment from the Home page
 ```
 
 **Issue: Permission denied errors**
@@ -152,18 +150,15 @@ docker inspect container-name | jq '.[0].HostConfig | {Memory, CpuShares, CpuQuo
 Automate this task via the Portainer API:
 
 ```bash
-# Authenticate and get JWT token
-TOKEN=$(curl -s -X POST \
-  "https://portainer.example.com/api/auth" \
-  -H "Content-Type: application/json" \
-  -d '{"Username":"admin","Password":"password"}' | jq -r .jwt)
+# Use a Portainer access token from My account > Access tokens
+PORTAINER_API_KEY="your_access_token"
 
-# List containers
+# List running containers in environment 1
 curl -s -X GET \
   "https://portainer.example.com/api/endpoints/1/docker/containers/json" \
-  -H "Authorization: Bearer $TOKEN" | jq '.[] | {Names, Status, Image}'
+  -H "X-API-Key: $PORTAINER_API_KEY" | jq '.[] | {Names, State, Status, Image}'
 ```
 
 ## Conclusion
 
-Understanding how to List All Running Containers Across Environments in Portainer gives you greater control over your containerized infrastructure. Portainer's visual interface makes these operations accessible to team members who may not be comfortable with the Docker CLI, while also providing quick access to underlying Docker capabilities. Regular use of these features helps maintain healthy, well-monitored container environments.
+Understanding how to list running containers in your Portainer-managed environments gives you greater control over your containerized infrastructure. Portainer's visual interface makes these operations accessible to team members who may not be comfortable with the Docker CLI, while also providing quick access to underlying Docker capabilities. Regular use of these features helps maintain healthy, well-monitored container environments.
