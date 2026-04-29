@@ -83,7 +83,7 @@ resource "aws_kms_key" "kinesis" {
 # iam.tf
 # Producer policy - allows writing to the stream
 resource "aws_iam_policy" "kinesis_producer" {
-  name        = "KinesisProducerPolicy"
+  name        = "${var.environment}-KinesisProducerPolicy"
   description = "Allows writing records to Kinesis streams"
 
   policy = jsonencode({
@@ -105,7 +105,7 @@ resource "aws_iam_policy" "kinesis_producer" {
 
 # Consumer policy - allows reading from the stream
 resource "aws_iam_policy" "kinesis_consumer" {
-  name        = "KinesisConsumerPolicy"
+  name        = "${var.environment}-KinesisConsumerPolicy"
   description = "Allows reading records from Kinesis streams"
 
   policy = jsonencode({
@@ -118,11 +118,23 @@ resource "aws_iam_policy" "kinesis_consumer" {
           "kinesis:GetShardIterator",
           "kinesis:DescribeStream",
           "kinesis:DescribeStreamSummary",
-          "kinesis:ListStreams",
           "kinesis:ListShards",
-          "kinesis:SubscribeToShard",
         ]
         Resource = aws_kinesis_stream.events.arn
+      },
+      {
+        Effect = "Allow"
+        Action = [
+          "kinesis:ListStreams",
+        ]
+        Resource = "*"
+      },
+      {
+        Effect = "Allow"
+        Action = [
+          "kinesis:SubscribeToShard",
+        ]
+        Resource = aws_kinesis_stream_consumer.analytics.arn
       }
     ]
   })
@@ -148,7 +160,7 @@ resource "aws_lambda_event_source_mapping" "kinesis_trigger" {
   starting_position             = "LATEST"
   batch_size                    = 100
   parallelization_factor        = 2  # Process 2 batches per shard concurrently
-  bisect_batch_on_function_error = true  # Retry individual records on failure
+  bisect_batch_on_function_error = true  # Split failed batches in half during retries
 
   filter_criteria {
     filter {
@@ -164,19 +176,20 @@ resource "aws_lambda_event_source_mapping" "kinesis_trigger" {
 
 ```hcl
 # monitoring.tf
-# Alert when records are delayed (iterator age growing)
+# Alert when an enhanced fan-out consumer falls behind
 resource "aws_cloudwatch_metric_alarm" "iterator_age" {
   alarm_name          = "${var.environment}-kinesis-iterator-age-high"
   comparison_operator = "GreaterThanOrEqualToThreshold"
   evaluation_periods  = 2
-  metric_name         = "GetRecords.IteratorAgeMilliseconds"
+  metric_name         = "SubscribeToShardEvent.MillisBehindLatest"
   namespace           = "AWS/Kinesis"
   period              = 60
   statistic           = "Maximum"
   threshold           = 60000  # 1 minute behind
 
   dimensions = {
-    StreamName = aws_kinesis_stream.events.name
+    StreamName   = aws_kinesis_stream.events.name
+    ConsumerName = aws_kinesis_stream_consumer.analytics.name
   }
 
   alarm_actions = [var.alert_sns_topic_arn]
@@ -187,6 +200,6 @@ resource "aws_cloudwatch_metric_alarm" "iterator_age" {
 
 - Use on-demand mode for variable or unpredictable traffic patterns - it eliminates the need to pre-provision shards.
 - Enable enhanced fan-out for consumers that need low latency - shared throughput consumers share 2MB/s per shard across all consumers.
-- Monitor `GetRecords.IteratorAgeMilliseconds` to detect when consumers are falling behind producers.
+- Monitor consumer lag with the metric that matches your read model - use `GetRecords.IteratorAgeMilliseconds` for shared-throughput consumers and `SubscribeToShardEvent.MillisBehindLatest` for enhanced fan-out consumers.
 - Set retention to at least 24 hours (default) and consider 7 days for analytics workloads to allow for reprocessing.
 - Use KMS encryption for streams containing PII or sensitive business data.
