@@ -15,10 +15,16 @@ Kubernetes Mutating Admission Webhooks intercept API requests before objects are
 ```hcl
 # main.tf - Deploy the mutating webhook server
 
+resource "kubernetes_namespace_v1" "webhook_system" {
+  metadata {
+    name = "webhook-system"
+  }
+}
+
 resource "kubernetes_deployment_v1" "webhook_server" {
   metadata {
     name      = "mutating-webhook-server"
-    namespace = "webhook-system"
+    namespace = kubernetes_namespace_v1.webhook_system.metadata[0].name
   }
 
   spec {
@@ -61,7 +67,7 @@ resource "kubernetes_deployment_v1" "webhook_server" {
 resource "kubernetes_service_v1" "webhook_service" {
   metadata {
     name      = "webhook-service"
-    namespace = "webhook-system"
+    namespace = kubernetes_namespace_v1.webhook_system.metadata[0].name
   }
 
   spec {
@@ -95,24 +101,24 @@ resource "kubernetes_mutating_webhook_configuration_v1" "sidecar_injector" {
 
     client_config {
       service {
-        namespace = "webhook-system"
+        namespace = kubernetes_namespace_v1.webhook_system.metadata[0].name
         name      = kubernetes_service_v1.webhook_service.metadata[0].name
         path      = "/mutate-pod"
         port      = 443
       }
 
-      # CA bundle for TLS verification of the webhook server
-      ca_bundle = base64encode(file("${path.module}/certs/ca.crt"))
+      # PEM-encoded CA bundle for TLS verification of the webhook server
+      ca_bundle = file("${path.module}/certs/ca.crt")
     }
 
-    # Only intercept pods with this annotation
+    # Only intercept pods with this label
     object_selector {
       match_labels = {
         "sidecar-injection" = "enabled"
       }
     }
 
-    # Apply to all namespaces except kube-system
+    # Apply to all namespaces except kube-system and kube-public
     namespace_selector {
       match_expressions {
         key      = "kubernetes.io/metadata.name"
@@ -134,7 +140,7 @@ resource "kubernetes_mutating_webhook_configuration_v1" "sidecar_injector" {
 ## Step 3: Label Defaulting Webhook
 
 ```hcl
-# Webhook that adds default labels to all pods
+# Webhook that adds default labels to pods and deployments
 resource "kubernetes_mutating_webhook_configuration_v1" "label_defaulter" {
   metadata {
     name = "default-label-injector"
@@ -149,18 +155,25 @@ resource "kubernetes_mutating_webhook_configuration_v1" "label_defaulter" {
 
     client_config {
       service {
-        namespace = "webhook-system"
-        name      = "webhook-service"
+        namespace = kubernetes_namespace_v1.webhook_system.metadata[0].name
+        name      = kubernetes_service_v1.webhook_service.metadata[0].name
         path      = "/mutate-labels"
       }
-      ca_bundle = base64encode(file("${path.module}/certs/ca.crt"))
+      ca_bundle = file("${path.module}/certs/ca.crt")
     }
 
     rule {
-      api_groups   = ["", "apps"]
+      api_groups   = [""]
       api_versions = ["v1"]
       operations   = ["CREATE", "UPDATE"]
-      resources    = ["pods", "deployments"]
+      resources    = ["pods"]
+    }
+
+    rule {
+      api_groups   = ["apps"]
+      api_versions = ["v1"]
+      operations   = ["CREATE", "UPDATE"]
+      resources    = ["deployments"]
     }
   }
 }
@@ -168,4 +181,4 @@ resource "kubernetes_mutating_webhook_configuration_v1" "label_defaulter" {
 
 ## Summary
 
-Kubernetes Mutating Webhooks with OpenTofu enable automated pod modifications at admission time. Use `failure_policy = "Ignore"` for optional mutations like label defaulting to avoid blocking pod creation on webhook failures. For critical mutations like sidecar injection, use `failure_policy = "Fail"` to ensure the webhook is always applied.
+Kubernetes Mutating Webhooks with OpenTofu enable automated pod modifications at admission time. Use `failure_policy = "Ignore"` for optional mutations like label defaulting to avoid blocking admission requests when the webhook fails. For critical mutations like sidecar injection, use `failure_policy = "Fail"` so requests are rejected if the webhook cannot be called successfully.
