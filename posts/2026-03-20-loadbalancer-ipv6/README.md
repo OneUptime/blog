@@ -8,7 +8,7 @@ Description: Configure Kubernetes LoadBalancer Services to receive IPv6 external
 
 ## Introduction
 
-Kubernetes LoadBalancer Services provision external load balancers through the cloud controller manager. In dual-stack clusters, LoadBalancer Services can receive both IPv4 and IPv6 external IPs. Cloud-specific annotations control whether the provisioned load balancer supports IPv6. The `status.loadBalancer.ingress` field shows all assigned external IPs including IPv6 addresses.
+Kubernetes LoadBalancer Services provision external load balancers through the cloud provider integration. In clusters that support dual-stack Services, LoadBalancer Services can receive both IPv4 and IPv6 external endpoints. Cloud-specific settings control whether the provisioned load balancer supports IPv6. The `status.loadBalancer.ingress` field shows the published load balancer endpoints, which can be IP addresses or hostnames depending on the provider.
 
 ## Create Dual-Stack LoadBalancer Service
 
@@ -19,12 +19,6 @@ apiVersion: v1
 kind: Service
 metadata:
   name: web-lb
-  annotations:
-    # AWS: dual-stack NLB
-    service.beta.kubernetes.io/aws-load-balancer-type: "nlb"
-    service.beta.kubernetes.io/aws-load-balancer-ip-address-type: "dualstack"
-    # GCP: (no annotation needed, uses ipFamilyPolicy)
-    # Azure: (no annotation needed, uses Standard SKU)
 spec:
   selector:
     app: web
@@ -40,21 +34,23 @@ spec:
   type: LoadBalancer
 ```
 
+If your cloud provider requires additional annotations, add the provider-specific settings from the sections below before applying the Service.
+
 ```bash
 kubectl apply -f lb-dual-stack.yaml
 
 # Wait for external IP assignment
 kubectl get svc web-lb -w
 
-# Check for IPv6 external IP
-kubectl get svc web-lb -o jsonpath='{.status.loadBalancer.ingress}'
-# [{"ip":"34.x.x.x"},{"ip":"2600:1900:..."}]
+# Check the published external endpoint(s)
+# Some providers return IP addresses, while others return a hostname
+kubectl get svc web-lb -o jsonpath='{range .status.loadBalancer.ingress[*]}{.ip}{" "}{.hostname}{"\n"}{end}'
 ```
 
 ## AWS EKS with IPv6 Load Balancer
 
 ```yaml
-# EKS: Use AWS Load Balancer Controller for dual-stack NLB
+# EKS: IPv6 Service behind a dual-stack NLB
 apiVersion: v1
 kind: Service
 metadata:
@@ -70,15 +66,15 @@ spec:
   ports:
     - port: 80
       targetPort: 8080
-  ipFamilyPolicy: PreferDualStack
-  ipFamilies: [IPv4, IPv6]
+  ipFamilyPolicy: SingleStack
+  ipFamilies: [IPv6]
   type: LoadBalancer
 ```
 
 ## GCP GKE with IPv6 Load Balancer
 
 ```yaml
-# GKE: dual-stack with external IPv6
+# GKE: new 1.29+ clusters support dual-stack LoadBalancer Services
 apiVersion: v1
 kind: Service
 metadata:
@@ -100,7 +96,7 @@ spec:
 ## Azure AKS with IPv6 Load Balancer
 
 ```yaml
-# AKS: dual-stack LoadBalancer (requires dual-stack cluster)
+# AKS 1.27+: dual-stack LoadBalancer (requires dual-stack cluster)
 apiVersion: v1
 kind: Service
 metadata:
@@ -119,10 +115,10 @@ spec:
 ## Test External IPv6 Connectivity
 
 ```bash
-# Get LoadBalancer external IPs
-kubectl get svc web-lb -o jsonpath='{.status.loadBalancer.ingress[*].ip}'
+# Show provider-published endpoints
+kubectl get svc web-lb -o jsonpath='{range .status.loadBalancer.ingress[*]}{.ip}{" "}{.hostname}{"\n"}{end}'
 
-# Find IPv6 external IP
+# For providers that publish IPs in Service status, find the IPv6 external IP
 LB_IPV6=$(kubectl get svc web-lb \
     -o jsonpath='{range .status.loadBalancer.ingress[*]}{.ip}{"\n"}{end}' | \
     grep ":")
@@ -135,9 +131,15 @@ curl -6 "http://[$LB_IPV6]/"
 # Test HTTPS over IPv6
 curl -6 "https://[$LB_IPV6]/" --insecure
 
+# On AWS/EKS, Service status typically contains a load balancer hostname
+LB_HOSTNAME=$(kubectl get svc web-lb-aws -o jsonpath='{.status.loadBalancer.ingress[0].hostname}')
+
+# Test the AWS load balancer over IPv6
+curl -6 "http://$LB_HOSTNAME/"
+
 # Add DNS records for your domain
-# A record -> IPv4 LB IP
-# AAAA record -> IPv6 LB IP
+# GKE/AKS: A record -> IPv4 LB IP, AAAA record -> IPv6 LB IP
+# AWS: create alias records that point at the load balancer hostname
 
 # Test via DNS
 curl -6 https://example.com/
@@ -149,13 +151,12 @@ curl -6 https://example.com/
 # Check events for LB provisioning errors
 kubectl describe svc web-lb | grep -A20 Events
 
-# Check cloud controller manager logs
-kubectl -n kube-system logs daemonset/cloud-controller-manager 2>/dev/null | \
-    grep -i "loadbalancer\|ipv6"
+# Inspect the load balancer status reported on the Service
+kubectl get svc web-lb -o yaml | grep -A20 "status:"
 
 # For EKS, check AWS LB Controller
 kubectl -n kube-system logs deployment/aws-load-balancer-controller | \
-    grep -i "dualstack\|ipv6"
+    grep -E -i "dualstack|ipv6"
 
 # Verify service spec
 kubectl get svc web-lb -o yaml | grep -A10 "ipFamily"
@@ -163,4 +164,4 @@ kubectl get svc web-lb -o yaml | grep -A10 "ipFamily"
 
 ## Conclusion
 
-Kubernetes LoadBalancer Services receive external IPv6 IPs when the cloud provider supports dual-stack load balancers and the service uses `ipFamilyPolicy: PreferDualStack`. On AWS, use the AWS Load Balancer Controller with `aws-load-balancer-ip-address-type: dualstack` annotation. On GCP GKE, dual-stack is controlled by `ipFamilyPolicy`. On Azure AKS, dual-stack clusters automatically provision dual-stack Standard Load Balancers. Check `status.loadBalancer.ingress` for external IPv6 IPs and add AAAA DNS records pointing to the IPv6 load balancer IP for full IPv6 accessibility.
+Kubernetes LoadBalancer Services can receive external IPv6 endpoints when the cluster and cloud provider support them. `ipFamilyPolicy: PreferDualStack` requests both IPv4 and IPv6 on platforms that support dual-stack Services, but it can fall back to single-stack behavior when dual-stack is unavailable. On AWS EKS, use the AWS Load Balancer Controller with `aws-load-balancer-ip-address-type: dualstack`, but note that EKS IPv6 clusters use single-stack IPv6 Services behind a dual-stack load balancer rather than Kubernetes dual-stack Services. On GCP GKE, dual-stack `LoadBalancer` Services require an `ipv4-ipv6` cluster, the `cloud.google.com/l4-rbs: "enabled"` annotation, and a new GKE cluster running version 1.29 or later. On Azure AKS, one Service gets both public IPv4 and IPv6 addresses starting in AKS 1.27. Check `status.loadBalancer.ingress` for the provider-published endpoint and add the corresponding A, AAAA, or alias DNS records for full IPv6 accessibility.
