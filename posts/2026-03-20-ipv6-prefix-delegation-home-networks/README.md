@@ -17,24 +17,24 @@ This is what DHCPv6 Prefix Delegation (PD) does - it delegates a block of IPv6 a
 ```mermaid
 sequenceDiagram
     Router->>ISP_DHCP: Solicit (request IA_PD)
-    ISP_DHCP->>Router: Advertise (offer 2001:db8:home::/56)
-    Router->>ISP_DHCP: Request (confirm 2001:db8:home::/56)
-    ISP_DHCP->>Router: Reply (lease granted, valid 7 days)
-    Router->>LAN_Devices: RA: "use prefix 2001:db8:home:1::/64"
-    LAN_Devices->>LAN_Devices: Self-assign 2001:db8:home:1::<EUI-64>
+    ISP_DHCP->>Router: Advertise (offer 2001:db8:100::/56)
+    Router->>ISP_DHCP: Request (request 2001:db8:100::/56)
+    ISP_DHCP->>Router: Reply (prefix and lifetimes granted)
+    Router->>LAN_Devices: RA: "use prefix 2001:db8:100:1::/64"
+    LAN_Devices->>LAN_Devices: Self-assign 2001:db8:100:1::<IID>
 ```
 
 ## What You Get
 
-A typical ISP delegates a `/56` prefix to residential customers. This gives your router:
+A common residential delegation is a `/56` prefix, though some ISPs assign different sizes. This gives your router:
 - 256 individual `/64` subnets (one per VLAN or network segment)
-- Each `/64` supports trillions of device addresses
+- Each `/64` supports about 18 quintillion addresses
 
 ```text
-ISP delegates: 2001:db8:home::/56
-Your router uses for LAN: 2001:db8:home:1::/64
-Your router uses for IoT VLAN: 2001:db8:home:10::/64
-Your router uses for Guest: 2001:db8:home:20::/64
+ISP delegates: 2001:db8:100::/56
+Your router uses for LAN: 2001:db8:100:1::/64
+Your router uses for IoT VLAN: 2001:db8:100:10::/64
+Your router uses for Guest: 2001:db8:100:20::/64
 ```
 
 ## How Devices Get IPv6 Addresses
@@ -43,7 +43,7 @@ Once the router has a `/64` subnet, it sends Router Advertisement (RA) messages:
 
 ```text
 Router Advertisement (sent by your router):
-  - Prefix: 2001:db8:home:1::/64
+  - Prefix: 2001:db8:100:1::/64
   - Valid lifetime: 30 days
   - Preferred lifetime: 7 days
   - M flag: 0 (use SLAAC, not DHCPv6)
@@ -52,27 +52,27 @@ Router Advertisement (sent by your router):
 
 Each device that receives this RA:
 1. Takes the `/64` prefix from the RA
-2. Generates an Interface ID (either EUI-64 from MAC, or a random privacy address)
+2. Generates an Interface ID (either a modified EUI-64 derived from the MAC, or a randomized value for a temporary privacy address)
 3. Combines them to form a full `/128` address
 4. Verifies the address is unique using DAD (Duplicate Address Detection)
 
 ## Understanding the /64 Requirement
 
-IPv6 SLAAC requires a `/64` subnet on every link. This is why ISPs delegate at least a `/60` (16 subnets) or `/56` (256 subnets) - to ensure the router has enough room to assign a full `/64` to each interface.
+IPv6 SLAAC requires a `/64` subnet on Ethernet and Wi-Fi links. This is why home routers work best when the ISP delegates more than a single `/64`, commonly a `/60` (16 subnets) or `/56` (256 subnets), so the router has enough room to assign a full `/64` to each interface.
 
-You cannot use a `/65` or larger for SLAAC - it won't work.
+You cannot use a `/65` or longer prefix for standard SLAAC - hosts ignore it for autonomous address configuration.
 
 ## Checking Your Delegated Prefix
 
-From your router:
+From your router, check the LAN sub-prefix in use:
 
 ```bash
-# On OpenWRT: check delegated prefix
+# Check the global IPv6 address on the LAN interface
 
-ip -6 addr show dev br-lan | grep "scope global"
+ip -6 addr show dev br-lan scope global
 
-# Expected: 2001:db8:home:1::1/64
-# The /64 here is a sub-prefix of the /56 delegated by ISP
+# Expected: inet6 2001:db8:100:1::1/64 ...
+# The /64 here is a LAN sub-prefix of the delegated /56
 ```
 
 From a device on your network:
@@ -80,20 +80,21 @@ From a device on your network:
 ```bash
 # Shows the full IPv6 address your device auto-configured
 ip -6 addr show scope global
-# or on Mac/Windows: ifconfig en0 / ipconfig
+# On macOS: ifconfig
+# On Windows: ipconfig
 ```
 
 ## Prefix Delegation Renewal
 
 Prefixes have a lifetime. Your router renews the delegation before expiry:
-- **Preferred Lifetime**: After this, new connections prefer other addresses
+- **Preferred Lifetime**: After this, the address becomes deprecated, and new connections should use another preferred address if available
 - **Valid Lifetime**: After this, the address is no longer usable
 
-Most ISPs set valid lifetimes of 7-30 days with preferred lifetimes slightly shorter. Your router renews automatically.
+The exact lifetimes come from the ISP, and your router renews the delegation automatically before expiry.
 
 ## What If the ISP Changes Your Prefix?
 
-If the ISP reassigns you a different `/56` (after a modem replacement or reconfiguration), all devices update automatically within minutes via new RA messages.
+If the ISP reassigns you a different `/56` (after a modem replacement or reconfiguration), devices can autoconfigure new addresses after updated RA messages. Older addresses are deprecated first and remain usable until their valid lifetimes expire.
 
 ## Conclusion
 
