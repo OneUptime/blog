@@ -45,7 +45,7 @@ kubectl set env deployment/cattle-cluster-agent \
   -n cattle-system \
   HTTP_PROXY=http://proxy.site.local:3128 \
   HTTPS_PROXY=http://proxy.site.local:3128 \
-  NO_PROXY=10.0.0.0/8,127.0.0.0/8
+  NO_PROXY=127.0.0.0/8,10.0.0.0/8,172.16.0.0/12,192.168.0.0/16,.svc,.cluster.local
 ```
 
 ---
@@ -86,15 +86,16 @@ spec:
       imagePullPolicy: IfNotPresent
 ```
 
-For K3s itself, configure reconnect tolerances:
+For K3s itself, there is no Rancher-specific reconnect setting to tune. If you need better image availability during outages, use the embedded registry mirror:
 
 ```yaml
-# /etc/rancher/k3s/config.yaml on edge nodes
-# Allow the cluster to operate independently for 30 days
-cluster-reset: false
-# Increase tolerations for cloud connectivity loss
-kubelet-arg:
-  - "node-status-update-frequency=10s"
+# /etc/rancher/k3s/config.yaml on server nodes
+embedded-registry: true
+
+# /etc/rancher/k3s/registries.yaml on all nodes
+mirrors:
+  docker.io:
+  registry.k8s.io:
 ```
 
 ---
@@ -105,26 +106,26 @@ Rancher provides a kubectl proxy that works through the Rancher API - no direct 
 
 ```bash
 # Download cluster-specific kubeconfig from Rancher UI
-# Or use the Rancher CLI
-rancher login https://rancher.example.com --token <api-token>
-rancher cluster ls
-rancher kubectl --cluster edge-site-001 get pods -A
+kubectl config get-contexts --kubeconfig /path/to/edge-site-001.yaml
+kubectl --kubeconfig /path/to/edge-site-001.yaml \
+  --context edge-site-001 get pods -A
 ```
 
 ---
 
 ## Step 5: Bulk Operations Across Edge Sites
 
-Use Fleet's `ClusterGroup` to run operations across all sites simultaneously:
+Use Fleet's GitOps flow to roll out changes across all matching sites automatically:
 
 ```bash
-# Trigger a configmap update across all retail clusters
-kubectl apply -f store-config.yaml --context rancher-fleet-default
+# Update manifests in the Git repository watched by Fleet, then push the change
+git add .
+git commit -m "Update store configuration"
+git push origin main
 
-# Check sync status across all edge clusters
-kubectl get bundledeployment -n fleet-default \
-  -l fleet.cattle.io/cluster-group=retail-sites \
-  -o wide
+# Check rollout status for the GitRepo
+kubectl get gitrepo edge-applications -n fleet-default
+kubectl describe gitrepo edge-applications -n fleet-default
 ```
 
 ---
