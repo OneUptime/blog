@@ -13,163 +13,132 @@ This guide covers How to Create RBAC Roles and Bindings with OpenTofu on Kuberne
 ## Prerequisites
 
 - OpenTofu v1.6+
-- Access to a Kubernetes cluster or Docker daemon
-- Relevant provider configured
+- Access to a Kubernetes cluster and a kubeconfig file with permission to manage RBAC resources
+- HashiCorp Kubernetes provider
 
 ## Step 1: Configure the Provider
 
 ```hcl
 terraform {
   required_version = ">= 1.6.0"
+
   required_providers {
     kubernetes = {
       source  = "hashicorp/kubernetes"
-      version = "~> 2.0"
+      version = "~> 3.0"
     }
   }
 }
 
 provider "kubernetes" {
-  config_path    = "~/.kube/config"
-  config_context = var.kube_context
+  config_path = "~/.kube/config"
 }
 ```
 
 ## Step 2: Define Variables
 
 ```hcl
-variable "kube_context" {
-  description = "Kubernetes context to use"
-  type        = string
-  default     = "default"
-}
-
 variable "namespace" {
-  description = "Kubernetes namespace"
+  description = "Namespace for namespaced RBAC resources"
   type        = string
-  default     = "default"
+  default     = "rbac-demo"
 }
 
-variable "environment" {
-  description = "Deployment environment"
+variable "service_account_name" {
+  description = "Service account to bind RBAC permissions to"
   type        = string
-  default     = "production"
+  default     = "app-reader"
 }
 ```
 
 ## Step 3: Create Core Kubernetes Resources
 
 ```hcl
-# Create namespace
-
-resource "kubernetes_namespace" "app" {
+# Create a namespace for namespaced RBAC objects
+resource "kubernetes_namespace_v1" "app" {
   metadata {
     name = var.namespace
     labels = {
-      environment = var.environment
-      managed-by  = "opentofu"
+      managed-by = "opentofu"
     }
   }
 }
 
-# Resource quota to limit namespace resources
-resource "kubernetes_resource_quota" "app" {
+# Create the service account that will receive the RBAC permissions
+resource "kubernetes_service_account_v1" "app" {
   metadata {
-    name      = "app-quota"
-    namespace = kubernetes_namespace.app.metadata[0].name
-  }
-  spec {
-    hard = {
-      pods               = "20"
-      requests_cpu       = "4"
-      requests_memory    = "8Gi"
-      limits_cpu         = "8"
-      limits_memory      = "16Gi"
-    }
+    name      = var.service_account_name
+    namespace = kubernetes_namespace_v1.app.metadata[0].name
   }
 }
 ```
 
-## Step 4: Deploy Workloads
+## Step 4: Create RBAC Roles
 
 ```hcl
-resource "kubernetes_deployment" "app" {
+resource "kubernetes_role_v1" "pod_reader" {
   metadata {
-    name      = "app"
-    namespace = kubernetes_namespace.app.metadata[0].name
-    labels = {
-      app         = "my-app"
-      environment = var.environment
-    }
+    name      = "${var.namespace}-pod-reader"
+    namespace = kubernetes_namespace_v1.app.metadata[0].name
   }
 
-  spec {
-    replicas = 3
+  rule {
+    api_groups = [""]
+    resources  = ["pods"]
+    verbs      = ["get", "list", "watch"]
+  }
+}
 
-    selector {
-      match_labels = {
-        app = "my-app"
-      }
-    }
+resource "kubernetes_cluster_role_v1" "namespace_reader" {
+  metadata {
+    name = "${var.namespace}-namespace-reader"
+  }
 
-    template {
-      metadata {
-        labels = {
-          app = "my-app"
-        }
-      }
-
-      spec {
-        container {
-          name  = "app"
-          image = var.container_image
-
-          resources {
-            requests = {
-              cpu    = "100m"
-              memory = "128Mi"
-            }
-            limits = {
-              cpu    = "500m"
-              memory = "512Mi"
-            }
-          }
-
-          liveness_probe {
-            http_get {
-              path = "/health"
-              port = 8080
-            }
-            initial_delay_seconds = 30
-            period_seconds        = 10
-          }
-        }
-      }
-    }
+  rule {
+    api_groups = [""]
+    resources  = ["namespaces"]
+    verbs      = ["get", "list", "watch"]
   }
 }
 ```
 
-## Step 5: Expose the Workload
+## Step 5: Create RBAC Bindings
 
 ```hcl
-resource "kubernetes_service" "app" {
+resource "kubernetes_role_binding_v1" "pod_reader" {
   metadata {
-    name      = "app-service"
-    namespace = kubernetes_namespace.app.metadata[0].name
+    name      = "${var.namespace}-pod-reader-binding"
+    namespace = kubernetes_namespace_v1.app.metadata[0].name
   }
 
-  spec {
-    selector = {
-      app = "my-app"
-    }
+  role_ref {
+    api_group = "rbac.authorization.k8s.io"
+    kind      = "Role"
+    name      = kubernetes_role_v1.pod_reader.metadata[0].name
+  }
 
-    port {
-      port        = 80
-      target_port = 8080
-    }
+  subject {
+    kind      = "ServiceAccount"
+    name      = kubernetes_service_account_v1.app.metadata[0].name
+    namespace = kubernetes_namespace_v1.app.metadata[0].name
+  }
+}
 
-    type = "ClusterIP"
+resource "kubernetes_cluster_role_binding_v1" "namespace_reader" {
+  metadata {
+    name = "${var.namespace}-namespace-reader-binding"
+  }
+
+  role_ref {
+    api_group = "rbac.authorization.k8s.io"
+    kind      = "ClusterRole"
+    name      = kubernetes_cluster_role_v1.namespace_reader.metadata[0].name
+  }
+
+  subject {
+    kind      = "ServiceAccount"
+    name      = kubernetes_service_account_v1.app.metadata[0].name
+    namespace = kubernetes_namespace_v1.app.metadata[0].name
   }
 }
 ```
@@ -178,11 +147,19 @@ resource "kubernetes_service" "app" {
 
 ```hcl
 output "namespace" {
-  value = kubernetes_namespace.app.metadata[0].name
+  value = kubernetes_namespace_v1.app.metadata[0].name
 }
 
-output "service_cluster_ip" {
-  value = kubernetes_service.app.spec[0].cluster_ip
+output "service_account" {
+  value = kubernetes_service_account_v1.app.metadata[0].name
+}
+
+output "role_binding" {
+  value = kubernetes_role_binding_v1.pod_reader.metadata[0].name
+}
+
+output "cluster_role_binding" {
+  value = kubernetes_cluster_role_binding_v1.namespace_reader.metadata[0].name
 }
 ```
 
@@ -196,12 +173,12 @@ tofu apply
 
 ## Best Practices
 
-- Always specify resource requests and limits for all containers
-- Use namespaces to isolate workloads and apply resource quotas
-- Label all resources for easy selection and management
-- Use liveness and readiness probes to ensure workload health
-- Never run containers as root; use security contexts
+- Follow least privilege and grant only the verbs and resources a workload needs
+- Prefer namespace-scoped Roles and RoleBindings unless cluster-wide access is required
+- Bind permissions to ServiceAccounts used by workloads instead of broad user or group subjects
+- Reuse ClusterRoles for common permission sets and bind them only where needed
+- Remember that Kubernetes RBAC permissions are additive and do not support deny rules
 
 ## Conclusion
 
-You have successfully configured How to Create RBAC Roles and Bindings with OpenTofu on Kubernetes using OpenTofu. This approach enables GitOps-style management of Kubernetes resources alongside your infrastructure code. Combine OpenTofu Kubernetes resources with Helm releases for a complete infrastructure-as-code solution.
+You have successfully configured RBAC Roles, ClusterRoles, and bindings on Kubernetes using OpenTofu. This approach lets you manage Kubernetes access control as code and keep permission changes reviewable alongside the rest of your infrastructure. Combine these RBAC resources with your application and cluster modules for a complete infrastructure-as-code workflow.
