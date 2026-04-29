@@ -8,12 +8,14 @@ Description: Configure Grafana Loki to accept logs from IPv6 sources, bind its H
 
 ## Introduction
 
-Grafana Loki indexes log metadata as labels and stores log content as compressed chunks. IPv6 addresses can appear as labels (for routing) or as text within log lines (for content search). Configuring Loki for IPv6 involves binding Loki's server to `::`, sending logs with IPv6 labels, and querying with LogQL.
+Grafana Loki indexes log metadata as labels and stores log content as compressed chunks. Low-cardinality IPv6 metadata such as `ip_version` can be stored as a label, while full IPv6 addresses are better kept in log content or structured metadata. Configuring Loki for IPv6 involves binding Loki's server to `::`, sending logs with IPv6-aware metadata, and querying with LogQL.
 
 ## Step 1: Configure Loki to Listen on IPv6
 
 ```yaml
 # /etc/loki/loki-config.yaml
+
+auth_enabled: false
 
 server:
   http_listen_address: "::"     # Bind to all IPv6 interfaces
@@ -30,6 +32,9 @@ common:
       chunks_directory: /var/loki/chunks
       rules_directory: /var/loki/rules
   replication_factor: 1
+  ring:
+    kvstore:
+      store: inmemory
 
 schema_config:
   configs:
@@ -64,6 +69,8 @@ ss -tlnp | grep 3100
 
 ## Step 3: Send Logs with IPv6 Labels
 
+Promtail is end-of-life as of March 2, 2026. Grafana recommends Grafana Alloy for new deployments, but the example below remains useful for existing Promtail installations.
+
 ```yaml
 # Promtail configuration sending to Loki over IPv6
 # /etc/promtail/promtail-config.yaml
@@ -88,11 +95,10 @@ scrape_configs:
       - regex:
           expression: '^(?P<remote_addr>\S+) - (?P<user>\S+) \[(?P<time>[^\]]+)\] "(?P<method>\S+) (?P<path>\S+)'
       - labels:
-          remote_addr:
           method:
       - template:
           source: ip_version
-          template: '{{ if contains .remote_addr ":" }}ipv6{{ else }}ipv4{{ end }}'
+          template: '{{ if contains ":" .remote_addr }}ipv6{{ else }}ipv4{{ end }}'
       - labels:
           ip_version:
 ```
@@ -104,24 +110,28 @@ scrape_configs:
 {job="nginx", ip_version="ipv6"}
 
 # Search for a specific IPv6 address in log content
-{job="nginx"} |= "2001:db8::1"
+{job="nginx"} |= ip("2001:db8::1")
 
-# Regex filter for any IPv6 address pattern
-{job="nginx"} |~ `[0-9a-fA-F:]{3,39}:[0-9a-fA-F]{0,4}`
+# Match an IPv6 CIDR range in log content
+{job="nginx"} |= ip("2001:db8::/32")
 
-# Count requests by IPv6 source (with label value extraction)
+# Count requests by IPv6 source (with query-time field extraction)
 sum by (remote_addr) (
-  count_over_time({job="nginx", ip_version="ipv6"}[5m])
+  count_over_time(
+    {job="nginx", ip_version="ipv6"}
+    | regexp "^(?P<remote_addr>\\S+) - "
+    [5m]
+  )
 )
 
-# Rate of IPv6 requests per minute
+# Rate of IPv6 requests per second
 rate({job="nginx", ip_version="ipv6"}[1m])
 
 # Error responses from IPv6 clients
-{job="nginx", ip_version="ipv6"} |= "\" 5"
+{job="nginx", ip_version="ipv6"} |~ `" 5[0-9][0-9] `
 
 # Parse JSON logs and filter by IPv6 client
-{job="app"} | json | client_ip =~ "2001:db8:.*"
+{job="app"} | json | client_ip = ip("2001:db8::/32")
 ```
 
 ## Step 5: Grafana Dashboard for IPv6 Loki Queries
@@ -136,17 +146,21 @@ rate({job="nginx", ip_version="ipv6"}[5m])
 **Panel 2: Top IPv6 Sources (Table)**
 ```logql
 topk(20, sum by (remote_addr) (
-  count_over_time({job="nginx", ip_version="ipv6"}[1h])
+  count_over_time(
+    {job="nginx", ip_version="ipv6"}
+    | regexp "^(?P<remote_addr>\\S+) - "
+    [1h]
+  )
 ))
 ```
 
 **Panel 3: IPv6 Error Rate**
 ```logql
-sum(rate({job="nginx", ip_version="ipv6"} |~ "\" 5[0-9][0-9] " [5m]))
+sum(rate({job="nginx", ip_version="ipv6"} |~ `" 5[0-9][0-9] ` [5m]))
 /
 sum(rate({job="nginx", ip_version="ipv6"}[5m]))
 ```
 
 ## Conclusion
 
-Loki supports IPv6 by binding its HTTP and gRPC listeners to `::`. Use Promtail pipeline stages to extract IPv6-related labels (such as `ip_version` or `remote_addr`) for efficient LogQL stream selectors. For ad-hoc IPv6 address searches in log content, LogQL line filters (`|=`, `|~`) search the full log text. Combine stream selectors and content filters for efficient queries on high-volume log data.
+Loki supports IPv6 by binding its HTTP and gRPC listeners to `::`. Use Promtail pipeline stages to extract low-cardinality IPv6-related labels such as `ip_version` for efficient LogQL stream selectors. Parse high-cardinality fields like `remote_addr` at query time instead of storing them as labels. For ad-hoc IPv6 address searches in log content, use LogQL IP filters or line filters as appropriate. Combine stream selectors and content filters for efficient queries on high-volume log data.
