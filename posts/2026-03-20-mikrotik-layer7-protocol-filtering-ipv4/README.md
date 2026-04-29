@@ -8,7 +8,7 @@ Description: Configure MikroTik RouterOS Layer 7 protocol matching to identify a
 
 ## Introduction
 
-MikroTik Layer 7 protocol matching uses regular expressions to inspect the first 10 packets of a TCP/UDP connection, identifying application protocols by payload patterns. It enables application-aware filtering without a separate DPI appliance.
+MikroTik Layer 7 protocol matching uses regular expressions to inspect the first 10 packets (or first 2KB) of a TCP/UDP connection - whichever limit is reached first - identifying application protocols by payload patterns. It enables application-aware filtering without a separate DPI appliance.
 
 ## Define Layer 7 Protocols
 
