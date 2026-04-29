@@ -8,7 +8,7 @@ Description: Configure a Linux IPv6 router with stateful DHCPv6 address assignme
 
 ## Introduction
 
-A stateful IPv6 router uses DHCPv6 to assign addresses to clients, similar to DHCP in IPv4. The router sends Router Advertisements with M=1 (Managed flag), instructing clients to use DHCPv6 for their addresses. This approach provides central control over address assignments and lease tracking.
+A stateful IPv6 router uses DHCPv6 to assign addresses to clients, similar to DHCP in IPv4. The router sends Router Advertisements with M=1 (Managed flag), indicating that addresses are available via DHCPv6. This approach provides central control over address assignments and lease tracking.
 
 ## When to Use Stateful vs. Stateless
 
@@ -22,7 +22,7 @@ A stateful IPv6 router uses DHCPv6 to assign addresses to clients, similar to DH
 
 ## Components Required
 
-1. **radvd** - sends RA with M=1 to tell clients to use DHCPv6
+1. **radvd** - sends RA with M=1 to indicate DHCPv6 address assignment is available
 2. **isc-dhcp-server** or **kea** - the DHCPv6 server that assigns addresses
 
 ## Step 1: Enable IPv6 Forwarding
@@ -40,10 +40,10 @@ echo "net.ipv6.conf.all.forwarding = 1" | sudo tee /etc/sysctl.d/50-ipv6-forward
 interface eth1 {
     AdvSendAdvert on;
 
-    # M=1: clients MUST use DHCPv6 for address assignment
+    # M=1: indicate that addresses are available via DHCPv6
     AdvManagedFlag on;
 
-    # O=1: clients use DHCPv6 for DNS and other options
+    # O=1: advertise DHCPv6 for DNS and other options
     AdvOtherConfigFlag on;
 
     MinRtrAdvInterval 30;
@@ -51,10 +51,10 @@ interface eth1 {
     AdvDefaultLifetime 1800;
 
     # Still advertise the prefix for on-link determination
-    # but AdvAutonomous off so clients don't do SLAAC
+    # but AdvAutonomous off so hosts don't form SLAAC addresses from it
     prefix 2001:db8:1:1::/64 {
         AdvOnLink on;
-        AdvAutonomous off;    # No SLAAC - use DHCPv6
+        AdvAutonomous off;    # Disable SLAAC for this prefix
         AdvValidLifetime 86400;
         AdvPreferredLifetime 14400;
     };
@@ -74,10 +74,10 @@ sudo apt-get install isc-dhcp-server
 
 default-lease-time 86400;
 preferred-lifetime 14400;
-option dhcp-renewal-time 43200;
-option dhcp-rebinding-time 75600;
+option dhcp-renewal-time 7200;
+option dhcp-rebinding-time 10800;
 
-# Authoritative for this subnet
+# Global authoritative setting for this server
 authoritative;
 
 # DHCPv6 subnet
@@ -90,7 +90,7 @@ subnet6 2001:db8:1:1::/64 {
     option dhcp6.domain-search "example.com", "internal.example.com";
 
     # NTP server
-    option dhcp6.sntp-servers 2001:db8:1:1::ntp;
+    option dhcp6.sntp-servers 2001:db8:1:1::123;
 }
 ```
 
@@ -101,9 +101,9 @@ subnet6 2001:db8:1:1::/64 {
 
 # Reserve a specific address for a known client
 host webserver {
-    # DUID-LL type: match client's link-layer address
+    # Match the client's DHCPv6 DUID (example shown is a DUID-LL)
     host-identifier option dhcp6.client-id 00:03:00:01:00:11:22:33:44:55;
-    fixed-address6 2001:db8:1:1::web;
+    fixed-address6 2001:db8:1:1::10;
 }
 ```
 
@@ -162,4 +162,4 @@ Kea is the modern replacement for ISC DHCP:
 
 ## Conclusion
 
-A stateful DHCPv6 router on Linux combines radvd (with M=1) and a DHCPv6 server (ISC or Kea) to provide centrally managed IPv6 address assignment. The RA's M flag signals clients to use DHCPv6, the DHCPv6 server assigns addresses from a pool and maintains lease records, and static reservations allow fixed assignment for servers and critical devices. This approach provides the audit trail and address control that enterprise environments require.
+A stateful DHCPv6 router on Linux combines radvd (with M=1) and a DHCPv6 server (ISC or Kea) to provide centrally managed IPv6 address assignment. The RA's M flag signals that DHCPv6 address assignment is available, the DHCPv6 server assigns addresses from a pool and maintains lease records, and static reservations allow fixed assignment for servers and critical devices. This approach provides the audit trail and address control that enterprise environments require.
