@@ -12,7 +12,7 @@ Persistent storage is one of the most critical components of a production Kubern
 
 ## What Is Longhorn?
 
-Longhorn is a cloud-native distributed block storage system for Kubernetes, developed by SUSE Rancher and donated to the CNCF. It provides persistent volumes with cross-node replication, snapshots, backups to S3-compatible storage, and a web-based management UI. It is designed to be operationally simple.
+Longhorn is a cloud-native distributed block storage system for Kubernetes, originally developed by Rancher and now developed as a CNCF incubating project. It provides persistent volumes with cross-node replication, snapshots, backups to S3-compatible storage, and a web-based management UI. It is designed to be operationally simple.
 
 ## What Is Rook-Ceph?
 
@@ -22,11 +22,11 @@ Rook is a CNCF-graduated storage orchestrator for Kubernetes that automates the 
 
 | Feature | Longhorn | Rook-Ceph |
 |---|---|---|
-| Storage Types | Block (RWO) | Block (RWO), Filesystem (RWX), Object (S3) |
-| ReadWriteMany (RWX) | No (block only) | Yes (CephFS) |
+| Storage Types | Block (RWO), RWX via NFS | Block (RWO), Filesystem (RWX), Object (S3) |
+| ReadWriteMany (RWX) | Yes (via share-manager/NFS) | Yes (CephFS) |
 | Object Storage | No | Yes (RadosGW) |
 | Snapshots | Yes | Yes |
-| Backups to S3 | Yes | Yes (via Velero) |
+| Backups to S3 | Yes | Via external tooling |
 | Volume Expansion | Yes | Yes |
 | Replication | Yes (configurable) | Yes (configurable) |
 | Disaster Recovery | Yes | Yes |
@@ -34,10 +34,10 @@ Rook is a CNCF-graduated storage orchestrator for Kubernetes that automates the 
 | CNCF Status | Incubating | Graduated |
 | Installation Complexity | Low | High |
 | Operational Complexity | Low | High |
-| Minimum Nodes | 1 | 3 |
+| Minimum Nodes | 1 | 3 for standard production deployments |
 | Memory Footprint | Low | High |
 | Performance | Good | Excellent (configurable) |
-| Rancher Integration | Native | Via StorageClass |
+| Rancher Integration | Native | Standard Kubernetes integration |
 
 ## Installation
 
@@ -105,6 +105,13 @@ parameters:
   imageFeatures: layering
   csi.storage.k8s.io/provisioner-secret-name: rook-csi-rbd-provisioner
   csi.storage.k8s.io/provisioner-secret-namespace: rook-ceph
+  csi.storage.k8s.io/controller-expand-secret-name: rook-csi-rbd-provisioner
+  csi.storage.k8s.io/controller-expand-secret-namespace: rook-ceph
+  csi.storage.k8s.io/controller-publish-secret-name: rook-csi-rbd-provisioner
+  csi.storage.k8s.io/controller-publish-secret-namespace: rook-ceph
+  csi.storage.k8s.io/node-stage-secret-name: rook-csi-rbd-node
+  csi.storage.k8s.io/node-stage-secret-namespace: rook-ceph
+  csi.storage.k8s.io/fstype: ext4
 reclaimPolicy: Delete
 allowVolumeExpansion: true
 ```
@@ -113,11 +120,11 @@ allowVolumeExpansion: true
 
 Longhorn uses a replica-based approach where each volume replica is an independent storage node process. Performance is good for general-purpose workloads but is not optimized for high-throughput or IOPS-intensive applications.
 
-Rook-Ceph, backed by Ceph's mature RADOS engine, provides tunable performance with support for SSD caching, tiered storage, and dedicated OSD configurations. For database workloads requiring maximum IOPS, Rook-Ceph is the stronger choice.
+Rook-Ceph, backed by Ceph's mature RADOS engine, provides tunable performance with dedicated OSD configurations, CRUSH-based placement, and other Ceph tuning options. For database workloads requiring maximum IOPS, Rook-Ceph is often the stronger choice.
 
 ## Backup and Disaster Recovery
 
-Both systems support snapshot and backup capabilities:
+Both systems support snapshots, but their backup and disaster recovery workflows differ:
 
 ```yaml
 # Longhorn RecurringJob for scheduled backups
@@ -139,9 +146,9 @@ spec:
 ## When to Choose Longhorn
 
 - You want simple installation and operations
-- Block storage (RWO) is sufficient for your workloads
+- Block storage is your primary requirement
 - You are already using Rancher
-- Node count is limited (works with 1-3 nodes)
+- You run a smaller cluster; production best practices still recommend 3 nodes
 - You need native Rancher UI integration
 
 ## When to Choose Rook-Ceph
@@ -149,7 +156,7 @@ spec:
 - You need ReadWriteMany (RWX) shared filesystem volumes
 - Object storage (S3-compatible) is required
 - High performance tuning is necessary
-- You have 3+ dedicated storage nodes
+- You have 3+ worker nodes and suitable devices for a standard production deployment
 - You need enterprise-grade Ceph features
 
 ## Conclusion
