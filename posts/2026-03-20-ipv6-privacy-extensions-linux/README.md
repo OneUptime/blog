@@ -6,7 +6,7 @@ Tags: IPv6, Privacy Extensions, Linux, SLAAC, Sysctl, NetworkManager
 
 Description: A guide to enabling and configuring IPv6 privacy extensions (RFC 8981) on Linux to use temporary random interface IDs for outbound connections, protecting user privacy.
 
-IPv6 privacy extensions (RFC 8981, formerly RFC 4941) generate temporary, randomly generated interface IDs that expire periodically. This prevents tracking a device across networks based on its IPv6 address. This guide covers enabling privacy extensions via sysctl, NetworkManager, and systemd-networkd.
+IPv6 privacy extensions (RFC 8981, formerly RFC 4941) generate temporary, randomly generated interface IDs that expire periodically. This makes it harder to track a device across networks or over time based solely on its IPv6 address. This guide covers enabling privacy extensions via sysctl, NetworkManager, and systemd-networkd.
 
 ## sysctl Configuration
 
@@ -33,9 +33,11 @@ net.ipv6.conf.default.use_tempaddr = 2
 # Temporary address lifetime settings
 # How long temporary address is preferred (seconds)
 net.ipv6.conf.all.temp_prefered_lft = 86400    # 24 hours
+net.ipv6.conf.default.temp_prefered_lft = 86400
 
 # How long temporary address remains valid
 net.ipv6.conf.all.temp_valid_lft = 604800      # 7 days
+net.ipv6.conf.default.temp_valid_lft = 604800
 EOF
 
 sysctl --system
@@ -93,28 +95,21 @@ Name=eth0
 [Network]
 DHCP=yes
 IPv6AcceptRA=yes
+IPv6PrivacyExtensions=yes
 
 [IPv6AcceptRA]
 UseAutonomousPrefix=yes
 
-[IPv6]
-# Privacy=yes enables use_tempaddr=2 (prefer temporary)
-Privacy=yes
-
-# Address generation mode
-# stable-privacy = RFC 7217 (stable but not EUI-64)
-# eui64 = traditional EUI-64 (not private)
-# random = fully random (maximum privacy)
-AddressGenerationMode=stable-privacy
+# Optional: use RFC 7217 for the stable SLAAC address instead of EUI-64
+Token=prefixstable
 ```
 
 ```bash
 # Apply networkd config
 systemctl restart systemd-networkd
-networkctl reload
 
 # Verify
-networkctl status eth0 | grep -i "privacy\|temporary"
+ip -6 addr show dev eth0
 ```
 
 ## Address Lifetime Tuning
@@ -129,15 +124,17 @@ cat > /etc/sysctl.d/99-ipv6-privacy-tuned.conf << 'EOF'
 net.ipv6.conf.all.use_tempaddr = 2
 net.ipv6.conf.default.use_tempaddr = 2
 net.ipv6.conf.all.temp_prefered_lft = 21600     # 6 hours preferred
+net.ipv6.conf.default.temp_prefered_lft = 21600
 net.ipv6.conf.all.temp_valid_lft = 86400        # 24 hours valid
+net.ipv6.conf.default.temp_valid_lft = 86400
 EOF
 
 sysctl --system
 
 # After applying, regenerate addresses
 ip -6 addr flush dev eth0 dynamic
-# The network interface will request new SLAAC addresses
-# (or wait for RA retransmit)
+# The addresses are recreated after the next Router Advertisement
+# or after reconnecting/reconfiguring the interface
 ```
 
 ## Checking Which Address Is Used
@@ -149,9 +146,9 @@ ip -6 route get 2001:4860:4860::8888
 # Output includes src field showing which address is used:
 # 2001:4860:4860::8888 from :: via fe80::1 dev eth0 src 2001:db8::TEMP proto ra metric 100
 
-# Verify in a real connection
-traceroute6 ipv6.google.com | head -2
-# First hop shows your source address - should be the temporary one
+# Verify in a real connection and print the local source address curl chose
+curl -6 --write-out 'source=%{local_ip}\n' https://ipv6.icanhazip.com -o /dev/null -s
+# The reported source address should match the temporary address
 
 # Use ss to see connections and their source addresses
 ss -6 -t | grep ESTAB
