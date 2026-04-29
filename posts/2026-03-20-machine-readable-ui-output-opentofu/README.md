@@ -12,23 +12,29 @@ OpenTofu supports a machine-readable output mode that formats CLI output as JSON
 
 ## Enabling Machine-Readable Output
 
-Pass the `-json` flag to produce structured JSON output:
+Pass the `-json` flag on long-running commands such as `plan` and `apply` to produce a stream of structured JSON UI messages:
 
 ```bash
 tofu plan -json
-tofu apply -json
-tofu show -json
+tofu apply -json -auto-approve
 ```
 
-You can also redirect output to a file for post-processing:
+If you want the machine-readable JSON representation of a saved plan or the current state snapshot instead, use `tofu show -json`:
 
 ```bash
-tofu plan -json > plan_output.json
+tofu show -json -plan=tfplan
+tofu show -json -state
+```
+
+You can also redirect the JSONL output to a file for post-processing:
+
+```bash
+tofu plan -json > plan_output.jsonl
 ```
 
 ## Understanding JSON Output Structure
 
-Each line of JSON output represents a message object with a consistent structure:
+For `tofu plan -json` and `tofu apply -json`, each line of output is a separate JSON message object with a consistent structure:
 
 ```json
 {
@@ -36,10 +42,9 @@ Each line of JSON output represents a message object with a consistent structure
   "@message": "OpenTofu 1.6.0",
   "@module": "tofu.ui",
   "@timestamp": "2026-03-20T10:00:00.000000Z",
+  "tofu": "1.6.0",
   "type": "version",
-  "ui": "1.2",
-  "terraform": "1.6.0",
-  "provider_selections": {}
+  "ui": "1.0"
 }
 ```
 
@@ -53,26 +58,29 @@ Key fields:
 Filter specific message types to extract planned changes:
 
 ```bash
-tofu plan -json 2>&1 | jq 'select(.type == "planned_change")'
+tofu plan -json | jq 'select(.type == "planned_change")'
 ```
 
 Extract the count of resources to be created:
 
 ```bash
-tofu plan -json 2>&1 | \
+tofu plan -json | \
   jq 'select(.type == "change_summary") | .changes.add'
 ```
 
 ## Parsing Apply Output
 
-Monitor resource creation in real time:
+Monitor apply progress in real time:
 
 ```bash
-tofu apply -json -auto-approve 2>&1 | while IFS= read -r line; do
+set -o pipefail
+
+tofu apply -json -auto-approve | while IFS= read -r line; do
   type=$(echo "$line" | jq -r '.type // empty')
   if [ "$type" = "apply_complete" ]; then
+    action=$(echo "$line" | jq -r '.hook.action')
     resource=$(echo "$line" | jq -r '.hook.resource.addr')
-    echo "Created: $resource"
+    echo "Completed ($action): $resource"
   fi
 done
 ```
@@ -124,21 +132,23 @@ tofu output -json | jq '{
 Post a summary to a webhook after apply:
 
 ```bash
-SUMMARY=$(tofu apply -json -auto-approve 2>&1 | \
-  jq -s 'map(select(.type == "change_summary")) | last')
+set -o pipefail
+
+SUMMARY=$(tofu apply -json -auto-approve | \
+  jq -c -s 'map(select(.type == "change_summary")) | last')
 
 curl -X POST https://hooks.example.com/notify \
   -H "Content-Type: application/json" \
-  -d "{\"text\": \"Deploy complete: $SUMMARY\"}"
+  -d "$(jq -n --argjson summary "$SUMMARY" \
+    '{text: ("Deploy complete: " + ($summary | tostring))}')"
 ```
 
 ## Best Practices
 
-- Always redirect stderr with `2>&1` when capturing JSON output, as some messages go to stderr.
 - Process output line by line - each line is an independent JSON object (JSONL format).
 - Use `jq -s` to collect all lines into an array for summary processing.
 - Store raw JSON output as CI artifacts for audit purposes.
-- Filter on `@level: "error"` to detect failures programmatically.
+- Watch for `apply_errored` messages and `diagnostic` messages with `@level` set to `error` to detect failures programmatically.
 
 ## Conclusion
 
