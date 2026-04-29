@@ -121,10 +121,10 @@ Device configuration file:
 # /etc/iot/devices.yaml
 devices:
   - name: temperature-sensor-1
-    ipv6_address: "2001:db8:mesh:1::sensor1"
+    ipv6_address: "2001:db8:1::1"
     location: "building-a-floor-2"
   - name: door-sensor-lobby
-    ipv6_address: "2001:db8:mesh:1::door1"
+    ipv6_address: "2001:db8:1::a1"
     location: "building-a-lobby"
 ```
 
@@ -167,8 +167,8 @@ async def check_coap_device(addr: str, resource: str = "/.well-known/core") -> d
 
 async def main():
     devices = [
-        ("2001:db8:mesh:1::sensor1", "/sensor/temperature"),
-        ("2001:db8:mesh:1::sensor2", "/sensor/humidity"),
+        ("2001:db8:1::1", "/sensor/temperature"),
+        ("2001:db8:1::2", "/sensor/humidity"),
     ]
 
     for addr, resource in devices:
