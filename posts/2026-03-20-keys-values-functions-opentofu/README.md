@@ -8,7 +8,7 @@ Description: Learn how to use the keys and values functions in OpenTofu to extra
 
 ---
 
-`keys()` returns a sorted list of all keys in a map, and `values()` returns a sorted (by key) list of all values. Both return lists in alphabetical key order.
+`keys()` returns a sorted list of all keys in a map, and `values()` returns a sorted (by key) list of all values. Both return lists in lexicographical key order.
 
 ---
 
@@ -55,7 +55,7 @@ variable "environments" {
 
 output "environment_names" {
   value = keys(var.environments)
-  # ["dev", "production", "staging"] (alphabetically sorted)
+  # ["dev", "production", "staging"] (lexicographically sorted)
 }
 ```
 
@@ -147,4 +147,4 @@ locals {
 
 ## Summary
 
-`keys(map)` returns an alphabetically sorted list of all map keys. `values(map)` returns a list of map values in the same sorted-by-key order. Use `keys()` to get environment names, feature flags, or resource names from a map variable. Use `values()` when you need list access to `for_each` resource results (maps). Both functions always return sorted lists, ensuring consistent ordering across runs.
+`keys(map)` returns a lexicographically sorted list of all map keys. `values(map)` returns a list of map values in the same sorted-by-key order. Use `keys()` to get environment names, feature flags, or resource names from a map variable. Use `values()` when you need list access to `for_each` resource results (maps). Both functions always return sorted lists, ensuring consistent ordering across runs.
