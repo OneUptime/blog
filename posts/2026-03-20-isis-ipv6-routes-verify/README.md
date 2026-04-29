@@ -4,12 +4,12 @@ Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
 Tags: IS-IS, IPv6, Routing Table, Verification, Networking
 
-Description: Learn how to verify IS-IS IPv6 route installation on Cisco IOS, Juniper JunOS, and FRRouting, and interpret the routing table output.
+Description: Learn how to verify IS-IS IPv6 route installation on Cisco IOS, Juniper Junos OS, and FRRouting, and interpret the routing table output.
 
 ## Cisco IOS Verification
 
 ```text
-! Show all IPv6 routes from IS-IS
+! Show installed IPv6 routes from IS-IS
 Router# show ipv6 route isis
 
 IPv6 Routing Table - default - 8 entries
@@ -25,7 +25,7 @@ I2  2001:db8:3::/48 [115/30]
 ! Route code meanings:
 ! I1 = IS-IS Level-1 route (intra-area)
 ! I2 = IS-IS Level-2 route (inter-area / backbone)
-! IA = IS-IS interarea (L1 router using L2 default)
+! IA = IS-IS interarea route
 ! [115/20] = [AD/metric]
 ```
 
@@ -42,7 +42,7 @@ Routing entry for 2001:DB8:2::/64
       Last updated 00:45:12 ago
 ```
 
-## Juniper JunOS Verification
+## Juniper Junos OS Verification
 
 ```text
 # Show IS-IS IPv6 routes
@@ -75,22 +75,23 @@ vtysh -c "show ipv6 route isis"
 ip -6 route show proto isis
 
 # 2001:db8:2::/64 via fe80::2 dev eth0 proto isis metric 20
-# 2001:db8:3::/48 via fe80::2 dev eth0 proto isis metric 30
+# 2001:db8:3::/48 via fe80::2 dev eth0 proto isis metric 20
+# Note: The Linux kernel metric is not the IS-IS SPF cost shown in FRR.
 ```
 
 ## Checking IS-IS Topology
 
 ```text
-! Cisco: Show the IS-IS IPv6 topology (all paths, not just best)
-Router# show isis topology ipv6
+! Cisco: Show the IS-IS IPv6 topology
+Router# show isis ipv6 topology
 ```
 
 ```bash
-# FRRouting: Show IS-IS IPv6 topology
-vtysh -c "show isis topology ipv6-unicast"
+# FRRouting: Show the IS-IS topology
+vtysh -c "show isis topology"
 
 # Juniper
-show isis topology
+show isis spf results topology ipv6-unicast
 ```
 
 ## Checking IS-IS Database for IPv6 Entries
@@ -100,8 +101,9 @@ show isis topology
 Router# show isis database detail | include IPv6
 
 ! Output:
-! MT IPv6 Reachability: 2001:db8:2::/64 Metric: 20
-! IPv6 Interface Address: 2001:db8:1::2
+! Topology: IPv4 (0x0) IPv6 (0x2)
+! IPv6 Address: 2001:db8:1::2
+! Metric: 20   IPv6 (MT-IPv6) 2001:db8:2::/64
 ```
 
 ## Administrative Distance Comparison
@@ -109,9 +111,9 @@ Router# show isis database detail | include IPv6
 | Platform | IS-IS IPv6 AD |
 |----------|--------------|
 | Cisco | 115 |
-| Juniper | 18 (L2) |
+| Juniper | 15 (L1), 18 (L2) |
 | FRRouting | 115 |
 
 ## Summary
 
-IS-IS IPv6 routes show as `I1`/`I2`/`IA` on Cisco (AD=115), `IS-IS/18` on Juniper, and `I` with `>*` on FRRouting. Always check both the FRR routing table and the Linux kernel (`ip -6 route show proto isis`) to confirm full installation. Use `show isis database detail` to inspect the IPv6 reachability TLVs being advertised across the network.
+IS-IS IPv6 routes show as `I1`/`I2`/`IA` on Cisco (AD=115), `IS-IS/15` or `IS-IS/18` on Juniper, and `I` with `>*` on FRRouting. Always check both the FRR routing table and the Linux kernel (`ip -6 route show proto isis`) to confirm full installation. Use `show isis database detail` to inspect the IPv6 reachability TLVs being advertised across the network.
