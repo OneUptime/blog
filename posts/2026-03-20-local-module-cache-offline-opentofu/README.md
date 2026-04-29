@@ -8,7 +8,7 @@ Description: Learn how to create and use a local module cache for offline OpenTo
 
 ## Introduction
 
-OpenTofu modules can come from the public registry, Git repositories, or HTTP URLs - all of which require internet access. For air-gapped environments, you need to pre-download modules and make them available locally. This guide covers strategies for caching public registry modules, Git modules, and hosting an internal module registry.
+OpenTofu modules can come from the public registry, remote Git repositories, or HTTP URLs - all of which require network access to their source location. For air-gapped environments, you need to pre-download modules and make them available locally. This guide covers strategies for caching public registry modules, Git modules, and hosting internal module sources.
 
 ## Understanding How OpenTofu Caches Modules
 
@@ -39,6 +39,7 @@ cat .terraform/modules/modules.json
 # On internet-connected machine: download and bundle modules
 
 mkdir -p /tmp/module-cache
+mkdir -p /tmp/module-download
 
 # Create a configuration listing all needed modules
 cat > /tmp/module-download/main.tf << 'EOF'
@@ -71,16 +72,17 @@ tofu init
 
 # Modules are now in .terraform/modules/
 # Copy to shared cache
-cp -r .terraform/modules /tmp/module-cache/
+cp -r .terraform/modules/* /tmp/module-cache/
 ```
 
-## Using Local Module Paths
+## Using Local Filesystem Module Copies
 
 ```hcl
-# In your configuration: use local paths instead of registry
+# In your configuration: use a local filesystem copy instead of the registry
 
 module "vpc" {
   # Instead of: source = "terraform-aws-modules/vpc/aws"
+  # Absolute paths work, but OpenTofu will copy them into .terraform/modules/
   source = "/opt/opentofu/modules/terraform-aws-vpc"
 
   name = "production"
@@ -109,6 +111,9 @@ module "vpc" {
 git clone --mirror https://github.com/terraform-aws-modules/terraform-aws-vpc.git \
   /opt/git-mirror/terraform-aws-vpc.git
 
+# Optional: create a non-bare working tree clone from the mirror
+git clone /opt/git-mirror/terraform-aws-vpc.git /opt/git-checkout/terraform-aws-vpc
+
 # Update the mirror periodically
 git -C /opt/git-mirror/terraform-aws-vpc.git remote update
 
@@ -121,9 +126,9 @@ module "vpc" {
   source = "git::file:///opt/git-mirror/terraform-aws-vpc.git?ref=v5.0.0"
 }
 
-# Or use the local clone directly
+# Or use the non-bare local clone directly
 module "vpc" {
-  source = "/opt/git-mirror/terraform-aws-vpc"
+  source = "/opt/git-checkout/terraform-aws-vpc"
 }
 ```
 
@@ -175,6 +180,7 @@ echo "Module cache populated at $CACHE_DIR"
 
 ```bash
 # Set the plugin cache dir for providers (different from module cache)
+mkdir -p /opt/opentofu/provider-cache
 export TF_PLUGIN_CACHE_DIR=/opt/opentofu/provider-cache
 
 # For modules: set up the .terraform/modules directory before init
@@ -183,25 +189,25 @@ export TF_PLUGIN_CACHE_DIR=/opt/opentofu/provider-cache
 mkdir -p .terraform/modules
 cp -r /opt/opentofu/module-cache/* .terraform/modules/
 
-# Now init will find modules locally and skip downloading
-tofu init -get=false  # Don't re-download modules
+# Because the module tree is already present, init can skip child module installation
+tofu init -get=false
 ```
 
-## Internal Module Registry (Gitea/GitLab)
+## Internal Git Hosting (Gitea) and GitLab Module Registry
 
 ```bash
-# Set up Gitea as an internal module registry
+# Host the module in an internal Gitea Git repository
 
 # Push module to internal Gitea
 git clone https://github.com/terraform-aws-modules/terraform-aws-vpc.git
 cd terraform-aws-vpc
 git remote add internal https://gitea.internal.company.com/terraform-modules/terraform-aws-vpc.git
 git push internal --tags
-git push internal main
+git push internal HEAD
 ```
 
 ```hcl
-# Reference internal Gitea module
+# Reference the module from an internal Gitea Git repository
 module "vpc" {
   source = "git::https://gitea.internal.company.com/terraform-modules/terraform-aws-vpc.git?ref=v5.0.0"
 }
@@ -237,4 +243,4 @@ module "vpc" {
 
 ## Conclusion
 
-For air-gapped module access, the simplest approach is converting registry sources to local path references. For teams, hosting an internal Git mirror (Gitea, GitLab) and referencing modules via `git::` URLs provides version control and sharing without modifying module source references. Pre-populating the `.terraform/modules` directory before `tofu init` skips module downloads entirely when running `tofu init -get=false`.
+For air-gapped module access, the simplest approach is converting registry sources to local filesystem copies. For teams, hosting modules in internal Git repositories (for example, Gitea) or a private module registry (for example, GitLab's Terraform Module Registry) provides versioning and sharing. Pre-populating the `.terraform/modules` directory before `tofu init` can avoid re-installing child modules when running `tofu init -get=false`, as long as the working directory already has the matching module tree in place.
