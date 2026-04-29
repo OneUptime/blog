@@ -28,28 +28,28 @@ table ip6 mangle {
         # Mark SIP signaling - CS5 (DSCP 40)
         meta l4proto { tcp, udp } th dport 5060 ip6 dscp set cs5
 
-        # Mark video streaming - AF41 (DSCP 34)
-        meta l4proto tcp tcp dport { 1935, 8554 } ip6 dscp set af41
+        # Mark video streaming - AF31 (DSCP 26)
+        meta l4proto tcp tcp dport { 1935, 8554 } ip6 dscp set af31
 
-        # Mark interactive SSH - AF31 (DSCP 26)
-        meta l4proto tcp tcp dport 22 ip6 dscp set af31
+        # Mark interactive SSH - AF21 (DSCP 18)
+        meta l4proto tcp tcp dport 22 ip6 dscp set af21
 
-        # Mark DNS - CS6 (DSCP 48) - network control
-        meta l4proto { tcp, udp } th dport 53 ip6 dscp set cs6
+        # Keep DNS at default best effort - CS0 (DSCP 0)
+        meta l4proto { tcp, udp } th dport 53 ip6 dscp set cs0
 
         # Mark bulk transfers - AF11 (DSCP 10)
         meta l4proto tcp tcp dport 8080-8090 ip6 dscp set af11
 
         # Default - best effort CS0 for unmatched
-        ip6 dscp != { ef, cs5, af41, af31, cs6, af11 } ip6 dscp set cs0
+        ip6 dscp != { ef, cs5, af31, af21, cs0, af11 } ip6 dscp set cs0
     }
 
     chain postrouting {
         type filter hook postrouting priority mangle; policy accept;
 
-        # Trust EF/CS5 from internal networks
-        # Remark all from external to default
-        ip6 saddr != 2001:db8:internal::/48 ip6 dscp set cs0
+        # Trust DSCP markings from internal networks
+        # Remark all external traffic to default
+        ip6 saddr != 2001:db8:100::/48 ip6 dscp set cs0
     }
 
 }
@@ -79,17 +79,17 @@ table ip6 mangle {
         type filter hook prerouting priority mangle; policy accept;
 
         # Mark traffic from VoIP phones subnet
-        ip6 saddr 2001:db8:voip::/64 ip6 dscp set ef
+        ip6 saddr 2001:db8:10::/64 ip6 dscp set ef
 
         # Mark traffic from video conferencing systems
-        ip6 saddr 2001:db8:video::/64 ip6 dscp set af41
+        ip6 saddr 2001:db8:20::/64 ip6 dscp set af41
 
         # Mark traffic from server farm (low priority outbound)
-        ip6 saddr 2001:db8:servers::/48 meta l4proto tcp \
-          tcp dport != 443 ip6 dscp set af21
+        ip6 saddr 2001:db8:30::/48 meta l4proto tcp \
+          tcp dport != 443 ip6 dscp set cs1
 
-        # Mark ICMP6 traffic (essential - network control)
-        ip6 nexthdr icmpv6 ip6 dscp set cs7
+        # Mark ICMP6 Neighbor Discovery and router advertisements - CS6
+        icmpv6 type { nd-neighbor-solicit, nd-neighbor-advert, nd-router-solicit, nd-router-advert } ip6 dscp set cs6
     }
 
 }
@@ -105,19 +105,20 @@ table ip6 mangle {
     chain prerouting {
         type filter hook prerouting priority mangle; policy accept;
 
-        # Mark VoIP connection and all related packets
-        meta l4proto udp udp dport 5060 ct state new \
-          ip6 dscp set cs5 \
-          ct mark set 1  # Mark connection
+        # Mark new SSH connections and store class in conntrack
+        meta l4proto tcp tcp dport 22 ct state new \
+          ip6 dscp set af21 \
+          ct mark set 1
 
-        # Apply marking to all packets in VoIP connections
-        ct mark 1 ip6 dscp set ef
+        # Apply marking to later packets in SSH connections
+        ct mark 1 ip6 dscp set af21
 
-        # Video connections
-        meta l4proto tcp tcp dport 443 ct state new \
+        # Mark new VoIP RTP flows and store class in conntrack
+        meta l4proto udp udp dport 10000-20000 ct state new \
+          ip6 dscp set ef \
           ct mark set 2
 
-        ct mark 2 ip6 dscp set af41
+        ct mark 2 ip6 dscp set ef
     }
 
 }
@@ -136,7 +137,7 @@ table ip6 mangle {
         elements = {
             5060 : cs5,
             5061 : cs5,
-            22   : af31,
+            22   : af21,
             80   : cs0,
             443  : cs0,
             8080 : af11,
@@ -166,11 +167,11 @@ table ip6 mangle {
 # Check current DSCP marking rules
 sudo nft list table ip6 mangle
 
-# Add counters to rules for monitoring
+# Add a named counter for monitoring
 sudo nft add counter ip6 mangle voip_counter
 
-# Update rule to use counter
-sudo nft replace rule ip6 mangle prerouting \
+# Add a monitored rule
+sudo nft add rule ip6 mangle prerouting \
   meta l4proto udp udp dport 10000-20000 \
   counter name voip_counter \
   ip6 dscp set ef
@@ -180,11 +181,11 @@ sudo nft list counters | grep "voip"
 
 # Trace packets for debugging
 sudo nft add table ip6 trace
-sudo nft add chain ip6 trace output { type filter hook output priority 0; }
+sudo nft 'add chain ip6 trace output { type filter hook output priority 0; }'
 sudo nft add rule ip6 trace output \
-  ip6 saddr 2001:db8::client \
+  ip6 saddr 2001:db8:100::10 \
   meta nftrace set 1
-sudo nft monitor trace | head -50
+sudo nft monitor trace | head -n 50
 
 # Cleanup trace when done
 sudo nft delete table ip6 trace
