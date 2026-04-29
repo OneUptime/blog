@@ -8,7 +8,7 @@ Description: Learn how to configure Kafka Connect distributed workers to bind th
 
 ---
 
-Kafka Connect provides a REST API for managing connectors. By default it listens on `localhost:8083`. Configuring it to bind to a specific IPv4 address allows remote management of connectors in a distributed Connect cluster.
+Kafka Connect provides a REST API for managing connectors. By default it listens on port `8083` over HTTP. Configuring it to bind to a specific IPv4 address allows remote management of connectors in a distributed Connect cluster.
 
 ## Worker Configuration (connect-distributed.properties)
 
@@ -21,18 +21,19 @@ bootstrap.servers=10.0.0.10:9092,10.0.0.11:9092,10.0.0.12:9092
 
 # --- REST API binding ---
 # Bind the REST API to the worker's IPv4 address
-rest.host.name=10.0.0.20
-rest.port=8083
+listeners=http://10.0.0.20:8083
 
-# The REST API endpoint that this worker advertises to other workers
-# Must be reachable from other Connect workers
-rest.advertised.host.name=10.0.0.20
-rest.advertised.port=8083
+# If other workers must reach this node via a different host, port, or protocol,
+# advertise that endpoint explicitly
+# rest.advertised.host.name=10.0.0.20
+# rest.advertised.port=8083
+# rest.advertised.listener=http
 
 # --- Worker identity ---
-group.id=connect-cluster-1    # All workers sharing this ID form a cluster
+# All workers sharing this ID form a cluster
+group.id=connect-cluster-1
 
-# --- Storage topics (create these before starting workers) ---
+# --- Storage topics (recommended to create these before starting workers) ---
 config.storage.topic=connect-configs
 offset.storage.topic=connect-offsets
 status.storage.topic=connect-status
@@ -48,6 +49,7 @@ key.converter.schemas.enable=false
 value.converter.schemas.enable=false
 
 # --- Plugin path ---
+# If you use the FileStreamSource example below, ensure the connect-file plugin is available here
 plugin.path=/usr/share/java/kafka-connect-plugins
 ```
 
@@ -68,7 +70,7 @@ curl -s http://10.0.0.20:8083/ | python3 -m json.tool
 # List all connectors
 curl -s http://10.0.0.20:8083/connectors | python3 -m json.tool
 
-# Deploy a new connector (example: File Source Connector)
+# Deploy a new connector (example: File Source Connector; requires the connect-file plugin)
 curl -X POST http://10.0.0.20:8083/connectors \
   -H "Content-Type: application/json" \
   -d '{
@@ -97,18 +99,19 @@ For a 3-worker Connect cluster:
 
 ```bash
 # Each worker on its own IPv4 address, same group.id
-# Worker 1: rest.host.name=10.0.0.20, rest.advertised.host.name=10.0.0.20
-# Worker 2: rest.host.name=10.0.0.21, rest.advertised.host.name=10.0.0.21
-# Worker 3: rest.host.name=10.0.0.22, rest.advertised.host.name=10.0.0.22
+# Worker 1: listeners=http://10.0.0.20:8083
+# Worker 2: listeners=http://10.0.0.21:8083
+# Worker 3: listeners=http://10.0.0.22:8083
+# Add rest.advertised.* only if workers must reach a different host, port, or protocol
 
 # You can send REST requests to ANY worker in the cluster
-# Workers coordinate and route to the correct owner
+# In distributed mode, follower workers can forward requests to the leader
 curl -s http://10.0.0.21:8083/connectors  # Works from any worker
 ```
 
 ## Key Takeaways
 
-- `rest.host.name` binds the REST API to a specific IPv4 address; set `rest.advertised.host.name` to the same IP for correct cluster coordination.
+- Use `listeners=http://<ipv4>:8083` to bind the REST API to a specific IPv4 address; use `rest.advertised.*` only when other workers must reach a different host, port, or protocol.
 - All workers in the same Connect cluster must share the same `group.id` and storage topic names.
-- REST requests can be sent to any worker; the cluster handles routing internally.
+- REST requests can be sent to any worker; in distributed mode, follower workers can forward requests to the leader.
 - Protect the REST API with a reverse proxy (Nginx/HAProxy) and TLS for production deployments.
