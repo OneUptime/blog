@@ -36,18 +36,26 @@ resource "aws_security_group" "msk" {
   description = "Security group for MSK broker nodes"
   vpc_id      = var.vpc_id
 
-  # Allow Kafka client connections (port 9092 for plaintext, 9094 for TLS)
+  # Allow TLS client connections
   ingress {
-    from_port       = 9092
+    from_port       = 9094
     to_port         = 9094
     protocol        = "tcp"
     security_groups = [aws_security_group.msk_client.id]
   }
 
-  # Allow ZooKeeper connections (MSK manages ZK internally but Kafka clients may need it)
+  # Allow IAM-authenticated client connections
   ingress {
-    from_port       = 2181
-    to_port         = 2181
+    from_port       = 9098
+    to_port         = 9098
+    protocol        = "tcp"
+    security_groups = [aws_security_group.msk_client.id]
+  }
+
+  # Allow TLS ZooKeeper connections for legacy admin tooling on ZooKeeper-based clusters
+  ingress {
+    from_port       = 2182
+    to_port         = 2182
     protocol        = "tcp"
     security_groups = [aws_security_group.msk_client.id]
   }
@@ -85,15 +93,15 @@ resource "aws_msk_cluster" "main" {
   number_of_broker_nodes = 3  # One per AZ for high availability
 
   broker_node_group_info {
-    instance_type   = var.broker_instance_type  # kafka.m5.large recommended
+    instance_type   = var.broker_instance_type  # kafka.m5.4xlarge or larger if using provisioned throughput below
     client_subnets  = var.private_subnet_ids    # One subnet per broker
     security_groups = [aws_security_group.msk.id]
 
     storage_info {
       ebs_storage_info {
-        volume_size = var.broker_storage_gb  # GB per broker
+        volume_size = var.broker_storage_gb  # GB per broker; 10+ required with provisioned throughput
 
-        # Enable automatic storage scaling when usage reaches 80%
+        # Optional: increase EBS throughput for higher-throughput workloads
         provisioned_throughput {
           enabled           = true
           volume_throughput = 250  # MiB/s
@@ -119,9 +127,7 @@ resource "aws_msk_cluster" "main" {
       client_broker = "TLS"         # Enforce TLS for client connections
       in_cluster    = true          # Encrypt broker-to-broker traffic
     }
-    encryption_at_rest {
-      data_volume_kms_key_id = var.kms_key_arn
-    }
+    encryption_at_rest_kms_key_arn = var.kms_key_arn
   }
 
   configuration_info {
@@ -129,11 +135,13 @@ resource "aws_msk_cluster" "main" {
     revision = aws_msk_configuration.main.latest_revision
   }
 
-  # Enable CloudWatch monitoring
-  broker_logs {
-    cloudwatch_logs {
-      enabled   = true
-      log_group = aws_cloudwatch_log_group.msk.name
+  # Stream broker logs to CloudWatch Logs
+  logging_info {
+    broker_logs {
+      cloudwatch_logs {
+        enabled   = true
+        log_group = aws_cloudwatch_log_group.msk.name
+      }
     }
   }
 
@@ -187,9 +195,9 @@ output "bootstrap_brokers_sasl_iam" {
   value       = aws_msk_cluster.main.bootstrap_brokers_sasl_iam
 }
 
-output "zookeeper_connect_string" {
-  description = "ZooKeeper connection string"
-  value       = aws_msk_cluster.main.zookeeper_connect_string
+output "zookeeper_connect_string_tls" {
+  description = "TLS-enabled ZooKeeper connection string for legacy admin tooling"
+  value       = aws_msk_cluster.main.zookeeper_connect_string_tls
 }
 ```
 
@@ -198,5 +206,5 @@ output "zookeeper_connect_string" {
 - Use `min.insync.replicas=2` and `replication.factor=3` to ensure data durability even during broker failures.
 - Enable IAM authentication - it eliminates the need to manage Kafka user credentials and integrates with AWS IAM policies.
 - Disable `auto.create.topics.enable` in production - create topics explicitly to maintain control over partition counts and replication factors.
-- Enable automatic storage scaling to prevent broker disk full incidents during traffic spikes.
+- Configure automatic storage scaling separately after cluster creation to prevent broker disk full incidents during traffic spikes.
 - Deploy brokers across 3 AZs by providing 3 private subnets for high availability.
