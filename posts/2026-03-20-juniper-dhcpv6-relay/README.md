@@ -4,22 +4,23 @@ Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
 Tags: Juniper, DHCPv6, Relay, Junos, DHCP
 
-Description: Set up DHCPv6 relay on Juniper devices to forward DHCPv6 requests from clients to a remote DHCPv6 server.
+Description: Set up DHCPv6 relay on supported Junos devices to forward DHCPv6 requests from clients to a remote DHCPv6 server.
 
 ## Overview
 
-Set up DHCPv6 relay on Juniper devices to forward DHCPv6 requests from clients to a remote DHCPv6 server.
+Set up DHCPv6 relay on supported Junos devices to forward DHCPv6 requests from clients to a remote DHCPv6 server.
 
 ## Prerequisites
 
-- Juniper device running Junos OS 12.1 or later
+- Supported Junos device running Junos OS 11.4 or later
 - Appropriate access privileges (configure exclusive or shared)
 
 ## Junos IPv6 Configuration Syntax
 
-Junos uses a hierarchical configuration syntax. IPv6 configuration lives primarily under:
+Junos uses a hierarchical configuration syntax. DHCPv6 relay and related IPv6 configuration lives primarily under:
 - `[edit interfaces]` for interface addressing
 - `[edit routing-options rib inet6.0]` for IPv6 routing
+- `[edit forwarding-options dhcp-relay dhcpv6]` for DHCPv6 relay
 - `[edit firewall family inet6]` for IPv6 ACLs
 
 ## Configuration Examples
@@ -29,14 +30,14 @@ Junos uses a hierarchical configuration syntax. IPv6 configuration lives primari
 ```text
 # Junos configuration hierarchy
 
-set interfaces ge-0/0/0 unit 0 family inet6 address 2001:db8::1/64
+set interfaces ge-0/0/1 unit 0 family inet6 address 2001:db8:1::1/64
 
 # Or in curly-brace syntax:
 interfaces {
-    ge-0/0/0 {
+    ge-0/0/1 {
         unit 0 {
             family inet6 {
-                address 2001:db8::1/64;
+                address 2001:db8:1::1/64;
             }
         }
     }
@@ -46,7 +47,7 @@ interfaces {
 ### IPv6 Static Route
 
 ```text
-set routing-options rib inet6.0 static route 2001:db8:remote::/48 next-hop 2001:db8:wan::254
+set routing-options rib inet6.0 static route 2001:db8:200::/64 next-hop 2001:db8:0:1::2
 
 # Discard route (black hole)
 set routing-options rib inet6.0 static route ::/0 reject
@@ -58,16 +59,17 @@ set routing-options rib inet6.0 static route ::/0 reject
 firewall {
     family inet6 {
         filter IPV6-INGRESS {
-            term allow-established {
+            term allow-dhcpv6-client {
                 from {
-                    next-header tcp;
-                    tcp-established;
+                    protocol udp;
+                    source-port 546;
+                    destination-port 547;
                 }
                 then accept;
             }
             term allow-icmpv6 {
                 from {
-                    next-header icmpv6;
+                    protocol icmp6;
                 }
                 then accept;
             }
@@ -83,49 +85,36 @@ firewall {
 
 # Apply to interface
 interfaces {
-    ge-0/0/0 {
+    ge-0/0/1 {
         unit 0 {
             family inet6 {
                 filter {
                     input IPV6-INGRESS;
                 }
-                address 2001:db8::1/64;
+                address 2001:db8:1::1/64;
             }
         }
     }
 }
 ```
 
-### DHCPv6 Server
+### DHCPv6 Relay
 
-```nginx
-system {
-    services {
-        dhcp-local-server {
-            group dhcpv6-clients {
-                active-server-group dhcpv6-group;
-                overrides {
-                    server-identifier-override;
-                }
-                interface ge-0/0/1.0;
+```text
+set forwarding-options dhcp-relay dhcpv6 server-group dhcpv6-servers 2001:db8:200::10
+set forwarding-options dhcp-relay dhcpv6 active-server-group dhcpv6-servers
+set forwarding-options dhcp-relay dhcpv6 group access-links interface ge-0/0/1.0
+
+# Or in curly-brace syntax:
+forwarding-options {
+    dhcp-relay {
+        dhcpv6 {
+            server-group dhcpv6-servers {
+                2001:db8:200::10;
             }
-        }
-    }
-}
-
-access {
-    address-assignment {
-        pool dhcpv6-pool {
-            family inet6 {
-                prefix 2001:db8:lan::/64;
-                range clients {
-                    low 2001:db8:lan::100;
-                    high 2001:db8:lan::200;
-                }
-                dhcp-attributes {
-                    name-server [2001:4860:4860::8888];
-                    domain-name example.com;
-                }
+            active-server-group dhcpv6-servers;
+            group access-links {
+                interface ge-0/0/1.0;
             }
         }
     }
@@ -135,8 +124,11 @@ access {
 ## Verification Commands
 
 ```text
-# Show IPv6 addresses
-show interfaces ge-0/0/0 detail | match "IPv6|inet6"
+# Show DHCPv6 relay bindings
+show dhcpv6 relay binding
+
+# Show DHCPv6 relay statistics
+show dhcpv6 relay statistics
 
 # Show IPv6 routing table
 show route table inet6.0
@@ -144,22 +136,21 @@ show route table inet6.0
 # Show NDP neighbors
 show ipv6 neighbors
 
-# Show IPv6 neighbors via NDP
-show arp no-resolve table inet6
-
-# Ping over IPv6
-ping inet6 2001:db8::1 routing-instance default count 5
+# Ping the remote DHCPv6 server over IPv6
+ping inet6 2001:db8:200::10 count 5
 ```
 
 ## Traceoptions Debugging
 
 ```text
-# Enable IPv6 routing debug
-set protocols router-advertisement traceoptions file ra-debug.log
-set protocols router-advertisement traceoptions flag all
+# Enable DHCP relay tracing
+set system processes dhcp-service traceoptions file dhcpv6-relay.log size 1m files 3
+set system processes dhcp-service traceoptions level verbose
+set system processes dhcp-service traceoptions flag packet
+set system processes dhcp-service traceoptions flag interface
 
 # View trace output
-show log ra-debug.log | last 50
+show log dhcpv6-relay.log
 ```
 
 ## Monitoring with OneUptime
