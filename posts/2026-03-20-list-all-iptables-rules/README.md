@@ -32,30 +32,29 @@ sudo iptables -L INPUT -n
 sudo iptables -L -n -v
 
 # Output format:
-# Chain INPUT (policy DROP)
-# target  prot  opt  in   out  source       destination
-# ACCEPT  tcp   --   *    *    0.0.0.0/0    0.0.0.0/0    tcp dpt:22
-# ACCEPT  tcp   --   *    *    0.0.0.0/0    0.0.0.0/0    tcp dpt:80
-# DROP    all   --   *    *    1.2.3.4      0.0.0.0/0
+# Chain INPUT (policy DROP 5 packets, 340 bytes)
+# pkts bytes target  prot opt in  out source       destination
+# 12   960   ACCEPT  tcp  --  *   *   0.0.0.0/0    0.0.0.0/0    tcp dpt:22
+# 34   2040  ACCEPT  tcp  --  *   *   0.0.0.0/0    0.0.0.0/0    tcp dpt:80
+# 0    0     DROP    all  --  *   *   1.2.3.4      0.0.0.0/0
 
 # pkts and bytes columns show how many packets have matched each rule
-# Zero counters = rule was never matched
+# Zero counters mean the rule has not matched since the counters were last reset or the rule was added
 ```
 
 ## Show Line Numbers
 
 ```bash
-# Line numbers are required to delete specific rules
+# Line numbers are useful when deleting rules by number
 sudo iptables -L INPUT -n --line-numbers
 
 # Output:
-# Chain INPUT (policy DROP 5 packets, 340 bytes)
+# Chain INPUT (policy DROP)
 # num  target  prot  opt  source       destination
 # 1    ACCEPT  all   --   0.0.0.0/0    0.0.0.0/0    state ESTABLISHED,RELATED
-# 2    ACCEPT  all   --   0.0.0.0/0    0.0.0.0/0    (loopback)
-# 3    ACCEPT  tcp   --   0.0.0.0/0    0.0.0.0/0    tcp dpt:22
-# 4    ACCEPT  tcp   --   0.0.0.0/0    0.0.0.0/0    tcp dpt:80
-# 5    DROP    all   --   0.0.0.0/0    0.0.0.0/0
+# 2    ACCEPT  tcp   --   0.0.0.0/0    0.0.0.0/0    tcp dpt:22
+# 3    ACCEPT  tcp   --   0.0.0.0/0    0.0.0.0/0    tcp dpt:80
+# 4    DROP    all   --   0.0.0.0/0    0.0.0.0/0
 
 # Combine all useful flags
 sudo iptables -L INPUT -n -v --line-numbers
@@ -63,7 +62,7 @@ sudo iptables -L INPUT -n -v --line-numbers
 
 ## List Rules from All Tables
 
-iptables has multiple tables. Default listing only shows the `filter` table:
+iptables has multiple tables. Default listing only shows the `filter` table, and which tables are available depends on your kernel configuration and loaded modules:
 
 ```bash
 # Filter table (default)
@@ -78,10 +77,13 @@ sudo iptables -t mangle -L -n -v
 # Raw table (connection tracking bypass)
 sudo iptables -t raw -L -n -v
 
+# Security table (SELinux/MAC rules)
+sudo iptables -t security -L -n -v
+
 # List ALL tables at once
-for table in filter nat mangle raw; do
+for table in filter nat mangle raw security; do
     echo "=== Table: $table ==="
-    sudo iptables -t $table -L -n -v
+    sudo iptables -t "$table" -L -n -v
 done
 ```
 
@@ -92,13 +94,13 @@ done
 sudo iptables-save
 
 # Save to a file
-sudo iptables-save > /etc/iptables/rules.v4
+sudo iptables-save -f /etc/iptables/rules.v4
 
 # Save specific table only
-sudo iptables-save -t nat > /tmp/nat-rules.txt
+sudo iptables-save -t nat -f /tmp/nat-rules.txt
 
 # View saved rules
-cat /etc/iptables/rules.v4
+sudo cat /etc/iptables/rules.v4
 # Output format:
 # *filter
 # :INPUT DROP [0:0]
