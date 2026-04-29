@@ -13,9 +13,9 @@ RFC 8501, "Reverse DNS in IPv6 for Internet Service Providers," provides operati
 ## ISP Reverse DNS Responsibilities
 
 At ISP scale, the ISP must:
-1. Manage the parent `ip6.arpa` zone for their assigned /32 block
+1. Manage the `ip6.arpa` reverse zone corresponding to their assigned /32 block
 2. Delegate sub-zones to customers who want to manage their own rDNS
-3. Provide PTR records for customers who don't manage their own rDNS
+3. Choose an operational model for non-delegated space (for example wildcard PTRs, DDNS, on-demand generation, or NXDOMAIN)
 4. Handle the operational scale of potentially millions of addresses
 
 ## Setting Up the ISP's Parent Zone
@@ -35,27 +35,32 @@ zone "8.b.d.0.1.0.0.2.ip6.arpa" IN {
 
 ## Customer Delegation Management
 
-RFC 8501 recommends automating customer delegations. When a customer is assigned a prefix, automatically add NS delegation records:
+At ISP scale, customer delegations are typically automated. When a customer is assigned a prefix, add NS delegation records for the corresponding nibble-aligned reverse zone:
 
 ```bash
 #!/bin/bash
 # Script to add delegation for a new customer prefix
 
-# Usage: ./add-rDNS-delegation.sh 2001:db8:cafe::/48 ns1.customer.com ns2.customer.com
+# Usage: ./add-rDNS-delegation.sh 2001:db8:cafe::/48 ns1.customer.com. ns2.customer.com.
 
 PREFIX=$1
-NS1=$2
-NS2=$3
+NS1=${2%.}.
+NS2=${3%.}.
 
-# Calculate zone name from prefix
-ZONE=$(python3 -c "
+# Calculate zone name from a nibble-aligned IPv6 prefix
+ZONE=$(python3 - "$PREFIX" <<'PY'
 import ipaddress
-n = ipaddress.ip_network('$PREFIX', strict=False)
+import sys
+
+n = ipaddress.ip_network(sys.argv[1], strict=False)
+if n.version != 6 or n.prefixlen % 4 != 0:
+    raise ValueError('prefix must be an IPv6 prefix on a nibble boundary')
 full = n.network_address.exploded.replace(':','')
-nibbles = list(full[:${#PREFIX}//4*4//4])
+nibbles = list(full[: n.prefixlen // 4])
 nibbles.reverse()
 print('.'.join(nibbles) + '.ip6.arpa')
-")
+PY
+)
 
 echo "Adding delegation for $ZONE to $NS1 and $NS2"
 
@@ -71,44 +76,38 @@ EOF
 echo "Delegation added successfully"
 ```
 
-## Default PTR Records for Un-Delegated Customers
+## Handling Un-Delegated Customer Space
 
-RFC 8501 recommends that ISPs provide default PTR records for customers who haven't set up their own rDNS. Common patterns:
+RFC 8501 discusses several valid approaches for customer space that is not delegated, including returning NXDOMAIN, using wildcard PTRs, or generating records on demand. One common pattern is a wildcard PTR per customer prefix:
 
-```dns
-; Generic PTR record patterns for un-delegated customer addresses
-; Using $GENERATE directive in BIND for automated record creation
-
-; Generate PTR records for all addresses in a /64
-; 2001:db8:0:1::/64 → customer1.dynamic.isp.example.com
-$GENERATE 0-65535 ${0,4,x}.0.0.0.0.0.0.0.0.0.0.0.0.0.0.0.1.0.0.0.8.b.d.0.1.0.0.2.ip6.arpa. PTR customer-addr.dynamic.isp.example.com.
-```
-
-In practice, ISPs often use a catch-all or wildcard pattern:
+In practice, that usually means serving a wildcard zone for each non-delegated customer prefix:
 
 ```named
-// In named.conf: wildcard for non-delegated space
-zone "8.b.d.0.1.0.0.2.ip6.arpa" {
+// In named.conf: wildcard zone for an undelegated customer /48
+zone "0.0.f.0.8.b.d.0.1.0.0.2.ip6.arpa" {
     type master;
-    file "/var/named/ip6-catch-all.zone";
+    file "/var/named/customer-f00-reverse.zone";
 };
 ```
 
 ```dns
-; Wildcard PTR for any undelegated address in the /32
-; /var/named/ip6-catch-all.zone
+; Wildcard PTR for an undelegated customer /48
+; 2001:db8:f00::/48 -> customer-prefix.dynamic.isp.example.com.
+; /var/named/customer-f00-reverse.zone
 $TTL 3600
 @ IN SOA ns1.isp.example.com. noc.isp.example.com. (...)
 @ IN NS ns1.isp.example.com.
 @ IN NS ns2.isp.example.com.
 
-; Wildcard covers all non-explicitly-delegated addresses
-* IN PTR noptr.isp.example.com.
+; Wildcard covers addresses within this customer prefix
+* IN PTR customer-prefix.dynamic.isp.example.com.
 ```
+
+This scales well, but because the same PTR name is returned for the whole prefix, forward and reverse DNS will not uniquely match for individual addresses.
 
 ## IPAM Integration for Automated PTR Management
 
-Large ISPs use IPAM systems (Infoblox, NetBox, BlueCat) to manage PTR records automatically. When an IPv6 address is assigned to a customer, the IPAM triggers a DNS update:
+Large ISPs often integrate IPAM or DDI systems (for example Infoblox or BlueCat, or a source-of-truth such as NetBox feeding DNS automation) to manage PTR records. When an IPv6 address is assigned to a customer, the automation can trigger a DNS update:
 
 ```python
 # Python example: auto-create PTR when assigning IPv6 address
@@ -118,16 +117,20 @@ import subprocess
 def create_ptr_record(ipv6_address, hostname):
     """Create a PTR record for an IPv6 address"""
     addr = ipaddress.ip_address(ipv6_address)
+    if addr.version != 6:
+        raise ValueError('expected an IPv6 address')
+    if addr not in ipaddress.ip_network('2001:db8::/32'):
+        raise ValueError("address is outside the ISP's delegated reverse zone")
+    hostname = hostname.rstrip('.') + '.'
 
     # Generate the PTR record name
-    full_hex = addr.exploded.replace(':', '')
-    ptr_name = '.'.join(reversed(full_hex)) + '.ip6.arpa.'
+    ptr_name = addr.reverse_pointer + '.'
 
     # Add via nsupdate
     update_cmd = f"""
 server 127.0.0.1
 zone 8.b.d.0.1.0.0.2.ip6.arpa.
-update add {ptr_name} 3600 IN PTR {hostname}.
+update add {ptr_name} 3600 IN PTR {hostname}
 send
 """
     result = subprocess.run(['nsupdate', '-k', '/etc/named/update.key'],
@@ -135,28 +138,38 @@ send
     return result.returncode == 0
 ```
 
-## RFC 8501 Key Recommendations Summary
+## RFC 8501 Operational Summary
 
-1. **Delegate where possible**: Allow customers to manage their own rDNS
-2. **Default records**: Provide generic PTR records for un-delegated space
-3. **Automation**: Use dynamic DNS updates (nsupdate, APIs) rather than manual zone file edits
-4. **Consistent naming**: Use predictable PTR name formats for automated records
-5. **Documentation**: Publish how customers can request rDNS delegation
+1. **Delegate where possible**: If customers can run authoritative DNS, the ISP can delegate the corresponding `ip6.arpa` zone
+2. **Non-delegated space has multiple valid models**: RFC 8501 discusses wildcard PTRs, DDNS, on-demand generation, and valid negative responses such as NXDOMAIN
+3. **Automation matters at scale**: Manual reverse-zone management does not scale for large residential IPv6 deployments
+4. **Forward and reverse consistency should be considered**: Wildcard PTRs do not provide unique per-address names or matching forward DNS
+5. **Privacy matters**: Default PTR names should avoid exposing subscriber identity, location, or connectivity details
 
 ## Verifying ISP Delegation at Scale
 
 ```bash
 # Check delegation health for a customer prefix
-dig NS e.f.a.c.8.b.d.0.1.0.0.2.ip6.arpa @isp-ns1.example.com
+dig NS e.f.a.c.8.b.d.0.1.0.0.2.ip6.arpa. @isp-ns1.example.com +short
 
 # Bulk check delegations
-while read PREFIX; do
-    ZONE=$(./calc-zone.sh $PREFIX)
-    RESULT=$(dig NS $ZONE @127.0.0.1 +short)
+while read -r PREFIX; do
+    ZONE=$(python3 - "$PREFIX" <<'PY'
+import ipaddress
+import sys
+
+n = ipaddress.ip_network(sys.argv[1], strict=False)
+if n.version != 6 or n.prefixlen % 4 != 0:
+    raise ValueError('expected a nibble-aligned IPv6 prefix')
+full = n.network_address.exploded.replace(':', '')
+print('.'.join(reversed(full[: n.prefixlen // 4])) + '.ip6.arpa.')
+PY
+)
+    RESULT=$(dig NS "$ZONE" @127.0.0.1 +short)
     echo "$PREFIX: $RESULT"
 done < customer-prefixes.txt
 ```
 
 ## Summary
 
-RFC 8501 guides ISPs to automate IPv6 rDNS management: maintain a parent ip6.arpa zone, delegate sub-zones to customers via NS records, provide default PTR records for un-delegated space, and integrate with IPAM systems for automated record creation. Automation is essential at ISP scale where manual zone file management is impractical.
+RFC 8501 describes several workable IPv6 rDNS models for ISPs: maintain the appropriate `ip6.arpa` reverse zone, delegate customer sub-zones where possible, and otherwise choose between wildcard PTRs, DDNS, on-demand generation, or valid negative responses for non-delegated space. Automation is essential at ISP scale, but wildcard PTRs trade simplicity for less accurate per-address naming.
