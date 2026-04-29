@@ -49,21 +49,20 @@ kubectl get node worker-01
 
 ## Step 3: Drain the Node
 
-Draining evicts all running pods from the node, triggering Kubernetes to reschedule them on other nodes:
+Draining evicts the node's workload pods, allowing controller-managed workloads to reschedule on other nodes:
 
 ```bash
 # Drain all pods from the node
 kubectl drain worker-01 \
   --ignore-daemonsets \
   --delete-emptydir-data \
-  --force \
   --timeout=120s
 
 # Flags explained:
 # --ignore-daemonsets: Skip DaemonSet-managed pods (they run on every node)
-# --delete-emptydir-data: Delete pods using emptyDir volumes
-# --force: Remove pods not managed by a controller
-# --timeout: Time to wait for pod eviction
+# --delete-emptydir-data: Continue even if pods use emptyDir volumes
+# --timeout: Time to wait before giving up on the drain
+# If drain reports unmanaged pods that you intend to delete, rerun with --force
 ```
 
 ### Handling Drain Failures
@@ -74,19 +73,20 @@ If drain fails due to PodDisruptionBudgets:
 # Check for PodDisruptionBudgets blocking the drain
 kubectl get pdb -A
 
-# Temporarily disable a PDB if safe to do so
-kubectl patch pdb <pdb-name> -n <namespace> \
-  -p '{"spec":{"minAvailable":0}}'
+# Review the blocking PDB before changing it
+kubectl describe pdb <pdb-name> -n <namespace>
+
+# If it is safe for the workload, temporarily relax the PDB
+kubectl edit pdb <pdb-name> -n <namespace>
 
 # Retry the drain
 kubectl drain worker-01 \
   --ignore-daemonsets \
   --delete-emptydir-data \
-  --force
+  --timeout=120s
 
-# Restore the PDB afterwards
-kubectl patch pdb <pdb-name> -n <namespace> \
-  -p '{"spec":{"minAvailable":1}}'
+# Restore the original PDB setting afterwards
+kubectl edit pdb <pdb-name> -n <namespace>
 ```
 
 ## Step 4: Verify Pods Have Been Rescheduled
@@ -94,12 +94,11 @@ kubectl patch pdb <pdb-name> -n <namespace> \
 Ensure critical workloads are running on other nodes:
 
 ```bash
-# Check that the target node has no non-DaemonSet pods
-kubectl get pods -A --field-selector spec.nodeName=worker-01 \
-  | grep -v DaemonSet
+# After a successful drain, only DaemonSet or static pods should remain on the node
+kubectl get pods -A -o wide --field-selector spec.nodeName=worker-01
 
-# Verify pods are running on other nodes
-kubectl get pods -A -o wide | grep -v worker-01
+# Verify replacement pods are running on other nodes by checking the NODE column
+kubectl get pods -A -o wide
 ```
 
 ## Step 5: Delete the Node from Kubernetes
@@ -137,45 +136,43 @@ rm -f /etc/systemd/system/k3s-agent.service
 rm -f /etc/systemd/system/k3s-agent.service.env
 systemctl daemon-reload
 
-# Remove binary and data
+# Remove binaries, symlinks, and data
 rm -f /usr/local/bin/k3s
+rm -f /usr/local/bin/kubectl /usr/local/bin/crictl /usr/local/bin/ctr
+rm -f /usr/local/bin/k3s-killall.sh
 rm -rf /var/lib/rancher/k3s
 rm -rf /etc/rancher/k3s
 rm -rf /run/k3s
+rm -rf /run/flannel
 rm -rf /var/lib/kubelet
-rm -rf /etc/cni/net.d
 rm -rf /var/lib/cni
 ```
 
 ## Step 7: Clean Up Network Artifacts
 
-Remove network interfaces created by K3s on the removed node:
+If you used `k3s-agent-uninstall.sh`, it already removes K3s-created interfaces and network rules. For manual cleanup, remove any remaining artifacts:
 
 ```bash
-# Remove flannel and bridge interfaces
+# Remove remaining K3s-created interfaces
 ip link delete flannel.1 2>/dev/null || true
+ip link delete flannel-v6.1 2>/dev/null || true
 ip link delete cni0 2>/dev/null || true
+ip link delete kube-ipvs0 2>/dev/null || true
+ip link delete flannel-wg 2>/dev/null || true
+ip link delete flannel-wg-v6 2>/dev/null || true
 
-# Flush iptables rules
-iptables -F && iptables -X
-iptables -t nat -F && iptables -t nat -X
-iptables -t mangle -F && iptables -t mangle -X
-iptables -P INPUT ACCEPT
-iptables -P FORWARD ACCEPT
-iptables -P OUTPUT ACCEPT
+# Remove K3s-created iptables rules without flushing unrelated rules
+iptables-save | grep -v KUBE- | grep -v CNI- | grep -iv flannel | iptables-restore
+ip6tables-save | grep -v KUBE- | grep -v CNI- | grep -iv flannel | ip6tables-restore
 ```
 
 ## Step 8: Remove Node Password Entry on Server
 
-K3s stores per-node passwords on the server. Clean these up:
+K3s stores per-node passwords as Kubernetes secrets. Deleting the node in Step 5 removes the matching secret automatically. You can verify it is gone:
 
 ```bash
-# On the K3s server
-# Remove the node password file for the removed node
-rm -f /var/lib/rancher/k3s/server/cred/node-passwd
-
-# Or selectively remove the entry for the specific node
-# The password file maps node names to hashed passwords
+# No output means the node password secret has already been removed
+kubectl -n kube-system get secrets | grep 'worker-01.node-password.k3s'
 ```
 
 ## Step 9: Verify Cluster Health
@@ -188,10 +185,11 @@ kubectl get nodes
 
 # Ensure all critical workloads are running
 kubectl get deployments -A
-kubectl get pods -A | grep -v Running | grep -v Completed
+kubectl get pods -A --field-selector=status.phase!=Running,status.phase!=Succeeded
 
 # Check cluster has enough capacity for workloads
-kubectl top nodes
+# Requires Metrics Server
+kubectl top node
 kubectl describe nodes | grep -A 4 "Allocated resources"
 ```
 
@@ -214,7 +212,6 @@ kubectl cordon "$NODE_NAME"
 kubectl drain "$NODE_NAME" \
   --ignore-daemonsets \
   --delete-emptydir-data \
-  --force \
   --timeout=120s
 
 # Delete from Kubernetes
