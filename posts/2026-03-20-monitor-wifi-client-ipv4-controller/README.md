@@ -61,10 +61,17 @@ done
 scrape_configs:
   - job_name: wifi_controller
     static_configs:
-      - targets: ['controller.example.com:161']
+      - targets: ['controller.example.com']
     metrics_path: /snmp
     params:
       module: [ubiquiti_unifi]
+    relabel_configs:
+      - source_labels: [__address__]
+        target_label: __param_target
+      - source_labels: [__param_target]
+        target_label: instance
+      - target_label: __address__
+        replacement: snmp_exporter:9116
 ```
 
 ## Detecting Unauthorized Clients
