@@ -17,7 +17,7 @@ Air-gapped K3s installations are required in secure government, financial, and i
 Download all required files on a machine with internet access:
 
 ```bash
-K3S_VERSION="v1.30.2+k3s1"
+K3S_VERSION="v1.34.7+k3s1"
 
 # Download the K3s binary
 
@@ -58,19 +58,20 @@ mkdir -p /var/lib/rancher/k3s/agent/images/
 cp /tmp/k3s-airgap-images-amd64.tar.gz \
    /var/lib/rancher/k3s/agent/images/
 
-# Run the install script in air-gapped mode (INSTALL_K3S_SKIP_DOWNLOAD=true)
-INSTALL_K3S_SKIP_DOWNLOAD=true /tmp/install.sh
+# If SELinux is enabled, install the matching k3s-selinux RPM before running install.sh
 
-# Verify K3s started
-systemctl status k3s
-kubectl get nodes
+# Install K3s, but do not start it until registries.yaml is in place
+INSTALL_K3S_SKIP_DOWNLOAD=true \
+  INSTALL_K3S_SKIP_START=true \
+  INSTALL_K3S_EXEC='server --disable-default-registry-endpoint' \
+  /tmp/install.sh
 ```
 
 ---
 
 ## Step 4: Configure a Private Registry
 
-In an air-gapped environment, all images must come from an internal registry. Create the registry configuration file before starting K3s:
+If you are using a private registry in an air-gapped environment, mirror the images you need into it first, then create the registry configuration file on every node before starting K3s. The install commands in this guide disable fallback to upstream registries for the registries configured below:
 
 ```yaml
 # /etc/rancher/k3s/registries.yaml
@@ -95,11 +96,17 @@ configs:
       ca_file: /etc/ssl/certs/internal-ca.crt
 ```
 
-Restart K3s after creating this file:
+Start K3s after creating this file on the server:
 
 ```bash
-systemctl restart k3s
+systemctl start k3s
+
+# Verify K3s started
+systemctl status k3s
+kubectl get nodes
 ```
+
+Create the same `/etc/rancher/k3s/registries.yaml` file on each agent node before running the agent install script.
 
 ---
 
@@ -113,10 +120,12 @@ cat /var/lib/rancher/k3s/server/node-token
 
 # On the agent node
 cp /tmp/k3s /usr/local/bin/
+chmod +x /usr/local/bin/k3s
 mkdir -p /var/lib/rancher/k3s/agent/images/
 cp /tmp/k3s-airgap-images-amd64.tar.gz /var/lib/rancher/k3s/agent/images/
 
 INSTALL_K3S_SKIP_DOWNLOAD=true \
+  INSTALL_K3S_EXEC='agent --disable-default-registry-endpoint' \
   K3S_URL=https://<SERVER_IP>:6443 \
   K3S_TOKEN=<TOKEN> \
   /tmp/install.sh
