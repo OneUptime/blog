@@ -26,30 +26,30 @@ ECN bits  [1:0]: 4 possible values (00, 01, 10, 11)
 
 | DSCP Value | Name | Priority | Use Case |
 |---|---|---|---|
-| 0 (0x00) | BE (Best Effort) | Default | Regular traffic |
-| 8 (0x08) | CS1 | Low | Background traffic |
-| 10 (0x0A) | AF11 | Low+ | Bulk data |
-| 16 (0x10) | CS2 | Medium | Video streaming |
-| 18 (0x12) | AF21 | Medium | Important data |
-| 26 (0x1A) | AF31 | High | Interactive video |
-| 34 (0x22) | AF41 | High+ | High-priority video |
-| 40 (0x28) | CS5 | Very high | Voice |
-| 46 (0x2E) | EF (Expedited Fwd) | Highest | VoIP, interactive |
+| 0 (0x00) | BE/DF (Best Effort) | Default | Undifferentiated traffic |
+| 8 (0x08) | CS1 | Low | Low-priority/background data |
+| 10 (0x0A) | AF11 | Low+ | High-throughput or bulk data |
+| 16 (0x10) | CS2 | Medium | OAM / management traffic |
+| 18 (0x12) | AF21 | Medium | Low-latency data / client-server transactions |
+| 26 (0x1A) | AF31 | High | Streaming audio/video |
+| 34 (0x22) | AF41 | High+ | Adaptive video conferencing |
+| 40 (0x28) | CS5 | Very high | Signaling and session control |
+| 46 (0x2E) | EF (Expedited Fwd) | Highest | IP telephony / interactive voice |
 | 48 (0x30) | CS6 | Network control | Routing protocols |
-| 56 (0x38) | CS7 | Max | Network management |
+| 56 (0x38) | CS7 | Reserved | Internal/reserved use; often not forwarded |
 
 ## Setting DSCP on Outgoing Packets
 
 ```bash
-# Linux: set DSCP/ToS on outgoing packets using tc (traffic control)
+# Linux: set the IPv6 Traffic Class on outgoing packets using tc (traffic control)
 
-# Mark all TCP traffic on port 5060 (SIP/VoIP) with EF (DSCP 46)
+# Mark outbound RTP over UDP port 5004 with EF (DSCP 46)
 
-# EF DSCP value = 46 = 0x2E, shifted: 0x2E << 2 = 0xB8
-sudo tc qdisc add dev eth0 root handle 1: prio
-sudo tc filter add dev eth0 protocol ipv6 parent 1:0 prio 1 \
-    u32 match ip6 dport 5060 0xffff \
-    action skbedit priority 0 mark 0xB8
+# Traffic Class value = 0xB8 when DSCP = 46 and ECN = 00
+sudo tc qdisc add dev eth0 handle ffff: clsact
+sudo tc filter add dev eth0 egress protocol ipv6 flower \
+    ip_proto udp dst_port 5004 \
+    action pedit ex munge ip6 traffic_class set 0xB8
 
 # Using iptables to set DSCP on IPv6 packets (requires ip6tables)
 # Mark VoIP (RTP) traffic with EF
@@ -60,8 +60,8 @@ sudo ip6tables -t mangle -A OUTPUT -p udp --dport 5004 \
 sudo ip6tables -t mangle -A OUTPUT -p tcp --dport 22 \
     -j DSCP --set-dscp 18
 
-# Check if ip6tables DSCP target is available
-sudo ip6tables -t mangle -L -n
+# Verify the installed IPv6 mangle rules
+sudo ip6tables -t mangle -S OUTPUT
 ```
 
 ## Setting DSCP in Application Code
@@ -76,6 +76,9 @@ def create_ipv6_socket_with_dscp(dscp_value: int) -> socket.socket:
     Args:
         dscp_value: DSCP value (0-63)
     """
+    if not 0 <= dscp_value <= 63:
+        raise ValueError("DSCP value must be in the range 0-63")
+
     # DSCP occupies bits 2-7 of the Traffic Class byte
     tos_value = dscp_value << 2  # Shift left by 2 to leave room for ECN bits
 
@@ -86,9 +89,9 @@ def create_ipv6_socket_with_dscp(dscp_value: int) -> socket.socket:
 
     return sock
 
-# Example: VoIP socket with Expedited Forwarding
+# Example: priority TCP socket with Expedited Forwarding
 dscp_ef = 46  # Expedited Forwarding
-voip_socket = create_ipv6_socket_with_dscp(dscp_ef)
+priority_socket = create_ipv6_socket_with_dscp(dscp_ef)
 print(f"DSCP {dscp_ef} (EF) → Traffic Class byte: 0x{dscp_ef << 2:02X}")
 
 # Example: background file transfer with CS1
@@ -128,17 +131,17 @@ bg_socket = create_ipv6_socket_with_dscp(dscp_cs1)
 
 ```bash
 # Capture and display DSCP values for IPv6 packets
-# The Traffic Class is in the second nibble of the first two bytes
+# The Traffic Class spans the low nibble of the first byte
+# and the high nibble of the second byte
 sudo tcpdump -i eth0 -vv ip6 | grep "class"
 
-# Capture only EF-marked packets (DSCP 46 = 0x2E)
-# Traffic Class = DSCP << 2 = 0xB8
-sudo tcpdump -i eth0 "ip6 and ip6[1] = 0xB8"
+# Capture only EF-marked packets (DSCP 46), regardless of ECN
+sudo tcpdump -i eth0 'ip6 and (ip6[0] & 0x0f) = 0x0b and (ip6[1] & 0xc0) = 0x80'
 
 # Capture any non-zero Traffic Class packets
-sudo tcpdump -i eth0 "ip6 and ip6[1] != 0x00"
+sudo tcpdump -i eth0 'ip6 and ((ip6[0] & 0x0f) != 0 or (ip6[1] & 0xf0) != 0)'
 ```
 
 ## Conclusion
 
-The IPv6 Traffic Class field provides the same DSCP-based QoS capabilities as IPv4's TOS byte. Using the 6-bit DSCP field, network administrators can mark packets with standardized priority codes (EF for VoIP, AF classes for video, CS classes for bulk traffic) and configure routers to queue and forward traffic accordingly. The 2-bit ECN field enables congestion notification without packet drops for TCP traffic that supports it.
+The IPv6 Traffic Class field provides the same DSCP-based QoS capabilities as IPv4's TOS byte. Using the 6-bit DSCP field, network administrators can mark packets with standardized codepoints such as EF for voice, AF classes for assured forwarding, and CS values for signaling or network-control traffic, then configure routers to queue and forward traffic accordingly. The 2-bit ECN field enables congestion notification without packet drops for TCP traffic that supports it.
