@@ -25,7 +25,7 @@ Managing K3s clusters at the edge requires secure remote access, centralized con
 │       │               │            │
 └───────┼───────────────┼────────────┘
         │               │
-   Secure Tunnel   Git Sync
+   Secure Tunnel  Bundle Sync
         │               │
 ┌───────┼───────────────┼────────────┐
 │       │   Edge Site   │            │
@@ -40,7 +40,7 @@ Managing K3s clusters at the edge requires secure remote access, centralized con
 
 ## Step 1: Register Edge K3s Clusters with Rancher
 
-On the Rancher management server, create an import command for the edge cluster:
+In Rancher, create an import command for the edge cluster:
 
 ```bash
 # In Rancher UI: Cluster Management → Import Existing → Generic
@@ -49,28 +49,28 @@ On the Rancher management server, create an import command for the edge cluster:
 
 kubectl apply -f https://rancher.example.com/v3/import/<token>.yaml
 
-# Verify the cluster appears in Rancher
-kubectl get cluster -n fleet-default
+# Verify the cluster becomes Active in Rancher
+# Or, from the Rancher management cluster:
+kubectl get clusters.management.cattle.io
 ```
 
 ---
 
 ## Step 2: Deploy Fleet Agent for GitOps
 
-Fleet agents handle GitOps-based workload deployment even when the connection to Rancher is intermittent:
+Imported downstream clusters are automatically registered with Fleet, and the Fleet agent is deployed on the downstream cluster:
 
 ```bash
-# The Fleet agent is automatically installed when you import a cluster into Rancher
-# Verify it's running
-kubectl get pods -n cattle-fleet-system
+# On the edge cluster, verify the Fleet agent is running
+kubectl get pods -n cattle-fleet-system -l app=fleet-agent
 
-# Check Fleet agent status
-kubectl describe bundle -n fleet-local
+# On the Rancher management cluster, verify the downstream cluster has checked in
+kubectl get clusters.fleet.cattle.io -n fleet-default
 ```
 
 ---
 
-## Step 3: Deploy Workloads via Fleet (Works Offline)
+## Step 3: Deploy Workloads via Fleet
 
 ```yaml
 # gitrepo-edge.yaml (applied on the Rancher management cluster)
@@ -93,7 +93,7 @@ spec:
           cluster-type: edge
 ```
 
-Fleet agents pull updates from Git periodically, so deployments work even when the edge cluster temporarily loses connectivity to Rancher.
+Fleet polls the Git repository from the management cluster and creates BundleDeployments for matching downstream clusters. If an edge cluster disconnects, the last applied workloads continue running, and pending changes are applied after the cluster reconnects.
 
 ---
 
@@ -101,10 +101,13 @@ Fleet agents pull updates from Git periodically, so deployments work even when t
 
 ```bash
 # Download the edge cluster kubeconfig from Rancher
-# Rancher UI → Cluster → Download KubeConfig
+# Rancher UI → Cluster Management → ⋮ → Download KubeConfig
 
-# Or use the Rancher CLI
-rancher context switch edge-cluster-1
+# Use kubectl with the downloaded kubeconfig
+kubectl --kubeconfig /path/to/edge-cluster-kubeconfig get pods -A
+
+# Or use the Rancher CLI after logging in and selecting a context
+rancher context switch
 rancher kubectl get pods -A
 ```
 
@@ -113,33 +116,34 @@ rancher kubectl get pods -A
 ## Step 5: Set Up Automated Health Monitoring
 
 ```yaml
-# Edge clusters report health metrics back to Rancher
-# Configure alerts for offline clusters in Rancher:
+# Enable rancher-monitoring on the edge cluster first
+# Rancher UI → Apps → Monitoring
 
-# monitoring-alert.yaml (alertmanager rule)
-- alert: EdgeClusterOffline
-  expr: rancher_cluster_condition_ready{condition="Ready"} == 0
-  for: 5m
-  labels:
-    severity: critical
-  annotations:
-    summary: "Edge cluster {{ $labels.cluster_name }} is offline"
+# Then create alerting rules
+# Rancher UI → Monitoring → Advanced → Prometheus Rules
+
+# Example alert expression for a node that stays NotReady for 5 minutes
+# alert: EdgeNodeNotReady
+# expr: kube_node_status_condition{condition="Ready",status="true"} == 0
+# for: 5m
+# labels:
+#   severity: critical
+# annotations:
+#   summary: "Edge node {{ $labels.node }} is not Ready"
 ```
 
 ---
 
 ## Step 6: Configure Automatic Reconnection
 
-K3s agents are configured to automatically reconnect to the server. Ensure the agent service is configured for resilience:
+When installed via the official script, the K3s service is configured to restart automatically after node reboots or if the process crashes. If connectivity to Rancher is interrupted, cluster management resumes after the cluster reconnects.
 
 ```bash
-# On the edge K3s node
-cat /etc/systemd/system/k3s-agent.service.d/override.conf
+# On a K3s agent node, confirm the service is running
+sudo systemctl status k3s-agent
 
-# Ensure Restart=always and a retry delay
-[Service]
-Restart=always
-RestartSec=10s
+# View recent logs if the agent is reconnecting
+sudo journalctl -u k3s-agent -n 50 --no-pager
 ```
 
 ---
@@ -147,25 +151,13 @@ RestartSec=10s
 ## Step 7: Manage Edge Cluster Updates
 
 ```bash
-# Update K3s version on edge clusters using Fleet
-# fleet.yaml in the edge manifests repo
+# If version management is enabled for an imported K3s cluster,
+# upgrade it from Rancher:
+# Cluster Management → <cluster> → ⋮ → Edit Config → Kubernetes Version → Save
 
-# Or use Rancher's automated upgrade controller
-kubectl apply -f - <<EOF
-apiVersion: upgrade.cattle.io/v1
-kind: Plan
-metadata:
-  name: k3s-server-upgrade
-  namespace: system-upgrade
-spec:
-  concurrency: 1
-  channel: https://update.k3s.io/v1-release/channels/stable
-  nodeSelector:
-    matchLabels:
-      node-role.kubernetes.io/control-plane: "true"
-  upgrade:
-    image: rancher/k3s-upgrade
-EOF
+# If version management is disabled, Rancher removes the
+# system-upgrade-controller resources and you must manage
+# K3s upgrades independently.
 ```
 
 ---
@@ -174,18 +166,20 @@ EOF
 
 ```bash
 # Check Fleet status across all edge clusters
-kubectl get gitrepo -n fleet-default
+kubectl get gitrepos.fleet.cattle.io -n fleet-default
+kubectl get bundles.fleet.cattle.io -A
 
-# Force resync if drift is detected
-kubectl patch gitrepo edge-apps -n fleet-default \
+# Force a redeploy by incrementing forceSyncGeneration
+# Increase the integer each time you want to force a sync
+kubectl patch gitrepos.fleet.cattle.io edge-apps -n fleet-default \
   --type merge \
-  -p '{"spec":{"forceSyncGeneration":1}}'
+  -p '{"spec":{"forceSyncGeneration":2}}'
 ```
 
 ---
 
 ## Best Practices
 
-- Use Fleet for workload deployment to edge clusters - it works asynchronously and tolerates intermittent connectivity better than direct kubectl applies.
+- Use Fleet for workload deployment to edge clusters - it centralizes desired state, and the last applied workloads keep running if a cluster temporarily disconnects.
 - Label edge clusters consistently (`cluster-type: edge`, `region: store-42`) to enable precise Fleet targeting without hardcoding cluster names.
-- Store kubeconfigs for edge clusters in a secure vault - if Rancher is unavailable, you can still access edge clusters directly using the kubeconfig.
+- Store Rancher-generated kubeconfigs in a secure vault, and enable an Authorized Cluster Endpoint (ACE) or retain the cluster's native K3s kubeconfig if you need direct access while Rancher is unavailable.
