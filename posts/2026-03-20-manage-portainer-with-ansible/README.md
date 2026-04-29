@@ -14,19 +14,14 @@ Ansible is a powerful automation tool that can orchestrate your entire Portainer
 
 - Ansible 2.12+ installed on your control machine
 - Portainer instance accessible via HTTP/HTTPS API
-- Python 3.8+ with `requests` library
+- Python 3.8+ available on the managed hosts
 - Portainer admin credentials
 
-## Step 1: Install Required Ansible Collections
+## Step 1: Verify Your Ansible Installation
 
 ```bash
-# Install required collections
-
-ansible-galaxy collection install community.docker
-ansible-galaxy collection install ansible.builtin
-
-# Install Python dependencies
-pip install requests urllib3
+# The playbooks below use modules that ship with ansible-core.
+ansible-playbook --version
 ```
 
 ## Step 2: Set Up Inventory and Variables
@@ -52,15 +47,18 @@ portainer_admin_user: admin
 portainer_admin_password: "{{ vault_portainer_password }}"
 portainer_url: "{{ portainer_protocol }}://{{ ansible_host }}:{{ portainer_port }}"
 portainer_api_url: "{{ portainer_url }}/api"
-
-# Stack settings
-default_stack_prune: true
-default_pull_image: true
+target_environment_name: "Production Docker"
 ```
 
 ```yaml
 # group_vars/vault.yml (encrypt with ansible-vault)
 vault_portainer_password: "your-secure-password"
+vault_grafana_password: "your-grafana-password"
+vault_db_password: "your-database-password"
+vault_app_secret: "your-application-secret"
+vault_user_passwords:
+  john_doe: "johns-secure-password"
+  jane_smith: "janes-secure-password"
 ```
 
 ## Step 3: Create Portainer Authentication Module
@@ -102,13 +100,9 @@ Write a reusable task file for Portainer authentication:
   vars:
     docker_environments:
       - name: "Production Docker"
-        url: "tcp://prod-docker.example.com:2376"
-        type: 1  # 1=Docker, 2=Swarm, 3=Azure, 6=Kubernetes
-        tls: true
+        url: "tcp://prod-docker.example.com:2375"
       - name: "Staging Docker"
-        url: "tcp://staging-docker.example.com:2376"
-        type: 1
-        tls: false
+        url: "tcp://staging-docker.example.com:2375"
 
   tasks:
     - name: Include authentication tasks
@@ -129,13 +123,11 @@ Write a reusable task file for Portainer authentication:
         method: POST
         headers:
           Authorization: "Bearer {{ portainer_token }}"
-          Content-Type: "application/json"
-        body_format: json
+        body_format: form-multipart
         body:
           Name: "{{ item.name }}"
           EndpointCreationType: 1
           URL: "{{ item.url }}"
-          TLS: "{{ item.tls | default(false) }}"
         validate_certs: false
         status_code: 200
       loop: "{{ docker_environments }}"
@@ -143,7 +135,7 @@ Write a reusable task file for Portainer authentication:
       register: env_creation_results
 ```
 
-## Step 5: Deploy and Manage Stacks
+## Step 5: Deploy Stacks
 
 ```yaml
 # playbooks/deploy_stacks.yml
@@ -180,39 +172,37 @@ Write a reusable task file for Portainer authentication:
 
     - name: Set environment ID
       set_fact:
-        env_id: "{{ portainer_environments.json[0].Id }}"
+        env_id: "{{ portainer_environments.json | selectattr('Name', 'equalto', target_environment_name) | map(attribute='Id') | first }}"
 
-    - name: Read stack compose file
-      slurp:
-        src: "{{ item.compose_file }}"
-      loop: "{{ stacks }}"
-      register: compose_files
+    - name: Check if target environment exists
+      assert:
+        that:
+          - env_id is defined
+        fail_msg: "Environment {{ target_environment_name }} was not found in Portainer."
 
-    - name: Check if stack exists
+    - name: Check if stacks exist in the target environment
       uri:
-        url: "{{ portainer_api_url }}/stacks"
+        url: "{{ portainer_api_url }}/stacks?filters={{ {'EndpointID': env_id | string} | to_json | urlencode }}"
         method: GET
         headers:
           Authorization: "Bearer {{ portainer_token }}"
         validate_certs: false
+        status_code: [200, 204]
       register: existing_stacks
 
-    - name: Deploy or update stacks
+    - name: Deploy stacks
       uri:
         url: "{{ portainer_api_url }}/stacks/create/standalone/string?endpointId={{ env_id }}"
         method: POST
         headers:
           Authorization: "Bearer {{ portainer_token }}"
-          Content-Type: "application/json"
         body_format: json
-        body:
-          Name: "{{ item.item.name }}"
-          StackFileContent: "{{ item.content | b64decode }}"
-          Env: "{{ item.item.env_vars | dict2items | map('combine', {'name': omit, 'value': omit}) | list }}"
+        body: "{{ {'Name': item.name, 'StackFileContent': lookup('file', playbook_dir + '/' + item.compose_file), 'Env': item.env_vars | dict2items(key_name='name', value_name='value')} | to_json }}"
         validate_certs: false
-        status_code: [200, 201]
-      loop: "{{ compose_files.results }}"
-      when: item.item.name not in (existing_stacks.json | map(attribute='Name') | list)
+        status_code: 200
+      loop: "{{ stacks }}"
+      when: item.name not in ((existing_stacks.json | default([])) | map(attribute='Name') | list)
+      no_log: true
 ```
 
 ## Step 6: Manage Users and Teams
@@ -233,15 +223,22 @@ Write a reusable task file for Portainer authentication:
       - username: "john.doe"
         password: "{{ vault_user_passwords.john_doe }}"
         role: 2  # 1=admin, 2=standard user
-        teams: ["DevOps"]
       - username: "jane.smith"
         password: "{{ vault_user_passwords.jane_smith }}"
         role: 2
-        teams: ["Developers"]
 
   tasks:
     - name: Include authentication tasks
       include_tasks: ../tasks/portainer_auth.yml
+
+    - name: Get existing teams
+      uri:
+        url: "{{ portainer_api_url }}/teams"
+        method: GET
+        headers:
+          Authorization: "Bearer {{ portainer_token }}"
+        validate_certs: false
+      register: existing_teams
 
     - name: Create teams
       uri:
@@ -250,11 +247,20 @@ Write a reusable task file for Portainer authentication:
         headers:
           Authorization: "Bearer {{ portainer_token }}"
         body_format: json
-        body:
-          Name: "{{ item.name }}"
+        body: "{{ {'Name': item.name} | to_json }}"
         validate_certs: false
-        status_code: [200, 201, 409]  # 409 = already exists
+        status_code: 200
       loop: "{{ teams }}"
+      when: item.name not in (existing_teams.json | map(attribute='Name') | list)
+
+    - name: Get existing users
+      uri:
+        url: "{{ portainer_api_url }}/users"
+        method: GET
+        headers:
+          Authorization: "Bearer {{ portainer_token }}"
+        validate_certs: false
+      register: existing_users
 
     - name: Create users
       uri:
@@ -263,14 +269,12 @@ Write a reusable task file for Portainer authentication:
         headers:
           Authorization: "Bearer {{ portainer_token }}"
         body_format: json
-        body:
-          Username: "{{ item.username }}"
-          Password: "{{ item.password }}"
-          Role: "{{ item.role }}"
+        body: "{{ {'Username': item.username, 'Password': item.password, 'Role': item.role | int} | to_json }}"
         validate_certs: false
-        status_code: [200, 201, 409]
+        status_code: 200
         no_log: true
       loop: "{{ users }}"
+      when: item.username not in (existing_users.json | map(attribute='Username') | list)
 ```
 
 ## Step 7: Run the Playbooks
@@ -290,9 +294,6 @@ ansible-playbook -i inventory/hosts playbooks/deploy_stacks.yml \
 # Manage users
 ansible-playbook -i inventory/hosts playbooks/manage_users.yml \
   --ask-vault-pass -v
-
-# Run all playbooks
-ansible-playbook -i inventory/hosts site.yml --ask-vault-pass
 ```
 
 ## Conclusion
