@@ -27,8 +27,7 @@ Prevent K3s from deploying Traefik at installation or by modifying the config:
 # Install K3s without Traefik
 
 curl -sfL https://get.k3s.io | \
-  INSTALL_K3S_EXEC="--disable traefik" \
-  sh -
+  sh -s - --disable=traefik
 ```
 
 ### On an Existing Cluster
@@ -39,14 +38,10 @@ disable:
   - traefik
 ```
 
-Then restart K3s:
+On multi-server clusters, apply this setting to every server node. Then restart K3s:
 
 ```bash
 systemctl restart k3s
-
-# Remove the Traefik HelmChart resource
-kubectl delete helmchart traefik -n kube-system
-kubectl delete helmchart traefik-crd -n kube-system
 
 # Verify Traefik pods are gone
 kubectl get pods -n kube-system | grep traefik
@@ -69,8 +64,8 @@ helm install ingress-nginx ingress-nginx/ingress-nginx \
   --set controller.replicaCount=2 \
   --set controller.service.type=LoadBalancer \
   --set controller.metrics.enabled=true \
-  --set controller.podAnnotations."prometheus\.io/scrape"=true \
-  --set controller.podAnnotations."prometheus\.io/port"=10254
+  --set-string controller.podAnnotations."prometheus\.io/scrape"="true" \
+  --set-string controller.podAnnotations."prometheus\.io/port"="10254"
 
 # Verify installation
 kubectl get pods -n ingress-nginx
@@ -91,7 +86,7 @@ metadata:
 spec:
   repo: https://kubernetes.github.io/ingress-nginx
   chart: ingress-nginx
-  version: "4.9.1"
+  version: "4.15.1"
   targetNamespace: ingress-nginx
   createNamespace: true
   valuesContent: |-
@@ -123,10 +118,8 @@ kubectl get pods -n ingress-nginx
 # Get the external IP/NodePort
 kubectl get svc -n ingress-nginx ingress-nginx-controller
 
-# Test NGINX is responding
-NGINX_IP=$(kubectl get svc -n ingress-nginx ingress-nginx-controller \
-  -o jsonpath='{.status.loadBalancer.ingress[0].ip}')
-curl -k https://$NGINX_IP/healthz
+# Wait for the controller deployment to become ready
+kubectl rollout status deployment/ingress-nginx-controller -n ingress-nginx
 ```
 
 ## Step 4: Create an Ingress Resource
@@ -174,11 +167,6 @@ kind: Ingress
 metadata:
   name: hello-ingress
   namespace: default
-  annotations:
-    # Specify NGINX as the ingress class
-    kubernetes.io/ingress.class: "nginx"
-    # Enable HTTPS redirect
-    nginx.ingress.kubernetes.io/ssl-redirect: "true"
 spec:
   ingressClassName: nginx
   rules:
@@ -207,6 +195,8 @@ curl -H "Host: hello.example.com" http://$NGINX_IP/
 
 ## Step 5: Configure TLS with cert-manager
 
+Assuming cert-manager is installed and a `ClusterIssuer` named `letsencrypt-prod` already exists:
+
 ```yaml
 # ingress-with-tls.yaml
 apiVersion: networking.k8s.io/v1
@@ -215,7 +205,6 @@ metadata:
   name: hello-tls-ingress
   namespace: default
   annotations:
-    kubernetes.io/ingress.class: "nginx"
     # Automatically provision Let's Encrypt certificate
     cert-manager.io/cluster-issuer: "letsencrypt-prod"
 spec:
@@ -256,7 +245,8 @@ metadata:
     # Body size
     nginx.ingress.kubernetes.io/proxy-body-size: "10m"
 
-    # Rewrite
+    # Rewrite (when using regex paths with capture groups)
+    nginx.ingress.kubernetes.io/use-regex: "true"
     nginx.ingress.kubernetes.io/rewrite-target: "/$2"
 
     # Basic auth
