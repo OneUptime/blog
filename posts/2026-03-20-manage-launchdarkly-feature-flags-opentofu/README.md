@@ -13,7 +13,7 @@ LaunchDarkly is a feature management platform that enables teams to safely deplo
 ## Prerequisites
 
 - OpenTofu installed (v1.6+)
-- A LaunchDarkly account
+- A LaunchDarkly account on a plan that includes the Terraform provider
 - A LaunchDarkly access token with write permissions
 
 ## Provider Configuration
@@ -29,7 +29,6 @@ terraform {
 }
 
 provider "launchdarkly" {
-  access_token = var.launchdarkly_access_token
 }
 ```
 
@@ -82,12 +81,12 @@ resource "launchdarkly_feature_flag" "new_checkout" {
   variation_type = "boolean"
 
   variations {
-    value = "true"
+    value = true
     name  = "Enabled"
   }
 
   variations {
-    value = "false"
+    value = false
     name  = "Disabled"
   }
 
