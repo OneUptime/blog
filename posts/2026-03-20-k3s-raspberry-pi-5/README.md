@@ -8,7 +8,7 @@ Description: Complete guide to setting up K3s on the Raspberry Pi 5, taking adva
 
 ## Introduction
 
-The Raspberry Pi 5 is a significant upgrade over its predecessor, featuring a quad-core Cortex-A76 CPU (approximately 3x faster than Pi 4), up to 8GB of RAM, PCIe 2.0 interface (for NVMe SSDs), and a dedicated power management IC. These improvements make the Pi 5 a serious platform for K3s deployments that require real performance.
+The Raspberry Pi 5 is a significant upgrade over its predecessor, featuring a quad-core Cortex-A76 CPU (approximately 3x faster than Pi 4), up to 16GB of RAM, PCIe 2.0 interface (for NVMe SSDs), and a dedicated power management IC. These improvements make the Pi 5 a serious platform for K3s deployments that require real performance.
 
 ## Pi 5 Key Improvements Over Pi 4
 
@@ -16,7 +16,7 @@ The Raspberry Pi 5 is a significant upgrade over its predecessor, featuring a qu
 |---------|------|------|
 | CPU | Cortex-A72 (1.8GHz) | Cortex-A76 (2.4GHz) |
 | PCIe | None | PCIe 2.0 x1 |
-| Storage | USB 3.0 SSD | NVMe via M.2 HAT |
+| Storage | USB 3.0 SSD | NVMe via M.2 HAT+ |
 | Power | 5V/3A | 5V/5A |
 | GPU | VideoCore VI | VideoCore VII |
 
@@ -27,21 +27,21 @@ Use the official 64-bit Raspberry Pi OS Lite for the Pi 5:
 1. Open Raspberry Pi Imager
 2. Select "Raspberry Pi 5" as the device
 3. Select "Raspberry Pi OS Lite (64-bit)" as the OS
-4. Configure hostname, SSH, and WiFi in advanced settings
-5. Flash to MicroSD or (preferably) an NVMe SSD via a Pi 5 M.2 HAT
+4. Configure hostname, username/password, SSH, and WiFi in advanced settings
+5. Flash to MicroSD or (preferably) an NVMe SSD via a Pi 5 M.2 HAT+
 
 ## Step 2: Initial Configuration
 
 ```bash
 # SSH into the Pi 5
 
-ssh pi@raspberrypi5.local
+ssh <your-username>@<your-hostname>.local
 
 # Update the system
 sudo apt-get update && sudo apt-get full-upgrade -y
 
 # Install useful utilities
-sudo apt-get install -y htop iotop vim git
+sudo apt-get install -y htop iotop vim git parted
 
 # Confirm ARM64
 uname -m
@@ -50,7 +50,7 @@ uname -m
 
 ## Step 3: Enable cgroup Memory
 
-The Pi 5 uses a new boot system (`/boot/firmware/` instead of `/boot/`):
+Current Raspberry Pi OS releases on Pi 5 use `/boot/firmware/` instead of `/boot/`:
 
 ```bash
 # Pi 5 uses a different config location
@@ -61,7 +61,7 @@ ls /boot/firmware/cmdline.txt || ls /boot/cmdline.txt
 sudo nano /boot/firmware/cmdline.txt
 
 # Add to the END of the single line:
-# cgroup_enable=cpuset cgroup_memory=1 cgroup_enable=memory
+# cgroup_memory=1 cgroup_enable=memory
 
 # Reboot
 sudo reboot
@@ -84,7 +84,7 @@ free -h
 # Disable swap file
 sudo dphys-swapfile swapoff
 sudo dphys-swapfile uninstall
-sudo update-rc.d dphys-swapfile remove
+sudo update-rc.d dphys-swapfile disable
 
 # Verify swap is disabled
 free -h
@@ -92,14 +92,16 @@ free -h
 
 ## Step 5: Configure NVMe Storage (Pi 5 Feature)
 
-If you have the Raspberry Pi M.2 HAT with an NVMe SSD:
+If you have the Raspberry Pi M.2 HAT+ with a secondary NVMe SSD and Raspberry Pi OS is booting from MicroSD:
 
 ```bash
 # Verify the NVMe drive is detected
 lsblk
 # Should show: nvme0n1
 
-# Format and mount (if not done during OS setup)
+# Create a dedicated partition, then format and mount it
+sudo parted -s /dev/nvme0n1 mklabel gpt
+sudo parted -s /dev/nvme0n1 mkpart primary ext4 1MiB 100%
 sudo mkfs.ext4 /dev/nvme0n1p1
 sudo mkdir -p /var/lib/rancher
 echo "/dev/nvme0n1p1  /var/lib/rancher  ext4  defaults,noatime  0  2" | sudo tee -a /etc/fstab
@@ -163,7 +165,7 @@ kubectl get pods --all-namespaces
 
 ## Step 8: Configure Power Supply
 
-The Pi 5 requires a 5V/5A (27W) power supply for full performance. The official Raspberry Pi 5 power adapter is required to unlock full CPU frequency:
+The Pi 5 can boot from a good-quality 5V/3A USB-C power supply, but Raspberry Pi recommends the official 27W USB-C Power Supply for peak workloads and high-power peripherals:
 
 ```bash
 # Check power supply status
@@ -172,7 +174,7 @@ vcgencmd get_throttled
 
 # Check CPU frequency
 vcgencmd measure_clock arm
-# At full speed: ~2400000000 (2.4GHz)
+# Under load at full speed: ~2400000000 (2.4GHz)
 
 # Enable performance CPU governor
 echo performance | sudo tee /sys/devices/system/cpu/cpu*/cpufreq/scaling_governor
@@ -190,7 +192,7 @@ sysbench cpu --cpu-max-prime=20000 run
 # Memory benchmark
 sysbench memory --memory-total-size=1G run
 
-# The Pi 5 should show ~3x improvement in CPU benchmarks vs Pi 4
+# Expect a significant uplift vs Pi 4; official Raspberry Pi figures describe Pi 5 as up to 3x faster depending on the workload
 ```
 
 ## Step 10: Deploy a Workload
@@ -231,16 +233,16 @@ spec:
 ## Comparing Pi 4 and Pi 5 for K3s
 
 ```bash
-# Check your node's CPU performance
+# Check your node's CPU performance with a simple hashing workload
 kubectl run cpu-test \
     --image=busybox \
     --restart=Never \
     --overrides='{"spec":{"nodeSelector":{"device-type":"raspberry-pi-5"}}}' \
-    -- sh -c "time echo 'scale=5000;4*a(1)' | bc -l"
+    -- sh -c 'start=$(date +%s); dd if=/dev/zero bs=1M count=512 2>/dev/null | md5sum; end=$(date +%s); echo "elapsed=$((end-start))s"'
 
 kubectl logs cpu-test
 ```
 
 ## Conclusion
 
-The Raspberry Pi 5 is a compelling upgrade for K3s deployments. Its faster CPU, PCIe/NVMe storage capability, and improved power management make it suitable for production edge workloads that would overwhelm a Pi 4. The key setup steps are the same as Pi 4 - enable cgroup memory, disable swap, and configure appropriate resource limits - but you'll find the Pi 5 handles Kubernetes workloads with much more headroom. Paired with an NVMe SSD via the M.2 HAT, it becomes a genuine small-form-factor Kubernetes server.
+The Raspberry Pi 5 is a compelling upgrade for K3s deployments. Its faster CPU, PCIe/NVMe storage capability, and improved power management make it suitable for production edge workloads that would overwhelm a Pi 4. The key setup steps are the same as Pi 4 - enable cgroup memory, disable swap, and configure appropriate resource limits - but you'll find the Pi 5 handles Kubernetes workloads with much more headroom. Paired with an NVMe SSD via the M.2 HAT+, it becomes a genuine small-form-factor Kubernetes server.
