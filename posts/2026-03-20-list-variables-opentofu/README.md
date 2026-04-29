@@ -15,7 +15,7 @@ List variables in OpenTofu hold ordered sequences of values of the same type. Th
 ```hcl
 # List of strings
 
-variable "availability_zones" {
+variable "instance_ids" {
   type = list(string)
 }
 
@@ -121,7 +121,7 @@ variable "subnet_ids" {
   default = ["subnet-1", "subnet-2", "subnet-3"]
 }
 
-resource "aws_alb" "main" {
+resource "aws_lb" "main" {
   name               = "main-alb"
   internal           = false
   load_balancer_type = "application"
@@ -139,7 +139,7 @@ variable "instance_names" {
   default = ["web-1", "web-2", "web-3"]
 }
 
-# Convert to set for for_each (for_each requires a set or map)
+# Convert to set for for_each (for_each requires a map or set of strings)
 resource "aws_instance" "web" {
   for_each = toset(var.instance_names)
 
@@ -154,4 +154,4 @@ resource "aws_instance" "web" {
 
 ## Conclusion
 
-List variables are essential for working with multiple related resources in OpenTofu. The `count` meta-argument with list indexing and `for_each` with `toset()` conversion are the primary patterns for creating multiple similar resources from a list. Always validate minimum list lengths when your infrastructure requires redundancy, such as requiring at least 2 availability zones for high availability.
+List variables are essential for working with multiple related resources in OpenTofu. The `count` meta-argument with list indexing and `for_each` with `toset()` conversion are common patterns for creating multiple similar resources from a list. Use `count` when the instances are interchangeable, and prefer `for_each` when each list value should define a stable instance identity. Always validate minimum list lengths when your infrastructure requires redundancy, such as requiring at least 2 availability zones for high availability.
