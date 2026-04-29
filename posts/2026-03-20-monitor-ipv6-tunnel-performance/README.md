@@ -38,10 +38,10 @@ Use `ping6` to continuously measure round-trip time to the remote tunnel endpoin
 ```bash
 # Send continuous pings to the remote IPv6 tunnel endpoint
 # -i 1: interval 1 second, -c 100: send 100 pings
-ping6 -i 1 -c 100 2001:db8:tunnel::2
+ping6 -i 1 -c 100 2001:db8:1::2
 
 # For flood ping (requires root), measure high-rate packet loss
-ping6 -f -c 10000 2001:db8:tunnel::2
+ping6 -f -c 10000 2001:db8:1::2
 ```
 
 ## Using iperf3 for Throughput Testing
@@ -54,10 +54,10 @@ iperf3 -s -6
 
 # On the local end (client side), connect to the remote IPv6 address
 # -t 30: run for 30 seconds, -P 4: use 4 parallel streams
-iperf3 -6 -c 2001:db8:tunnel::2 -t 30 -P 4
+iperf3 -6 -c 2001:db8:1::2 -t 30 -P 4
 
 # Reverse test: server sends, client receives
-iperf3 -6 -c 2001:db8:tunnel::2 -R -t 30
+iperf3 -6 -c 2001:db8:1::2 -R -t 30
 ```
 
 ## Monitoring with vnstat for Long-Term Trends
@@ -65,8 +65,8 @@ iperf3 -6 -c 2001:db8:tunnel::2 -R -t 30
 `vnstat` tracks bandwidth usage per interface over time, useful for trend analysis:
 
 ```bash
-# Initialize monitoring on the tunnel interface
-vnstat -i sit1
+# Add the tunnel interface to vnstat's database
+vnstat --add -i sit1
 
 # Show hourly statistics
 vnstat -i sit1 -h
@@ -99,7 +99,7 @@ To get continuous latency and availability data for your tunnel endpoint, set up
 
 1. Navigate to **Monitors** and create a new monitor.
 2. Select **Ping Monitor** (ICMP).
-3. Enter the remote tunnel endpoint's IPv6 address (e.g., `2001:db8:tunnel::2`).
+3. Enter the remote tunnel endpoint's IPv6 address (e.g., `2001:db8:1::2`).
 4. Set check interval to 1 minute.
 5. Configure an alert if latency exceeds 50ms or packet loss exceeds 1%.
 
@@ -109,7 +109,7 @@ This gives you historical latency graphs and instant alerting when the tunnel de
 
 ```mermaid
 graph TD
-    A[Linux Host] -->|sits1 tunnel| B[Remote Endpoint]
+    A[Linux Host] -->|sit1 tunnel| B[Remote Endpoint]
     A -->|Prometheus scrape| C[Prometheus Server]
     C -->|metrics query| D[Grafana Dashboard]
     D -->|alert rules| E[PagerDuty / OneUptime]
