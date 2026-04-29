@@ -8,7 +8,7 @@ Description: Learn how to configure iSCSI block storage and use it as persistent
 
 ---
 
-iSCSI (Internet Small Computer System Interface) lets you attach block storage devices over a TCP/IP network. For Portainer-managed containers, iSCSI provides high-performance block storage that appears as a local disk on each Docker host - ideal for databases and workloads requiring fast I/O.
+iSCSI (Internet Small Computer System Interface) lets you attach block storage devices over a TCP/IP network. For Portainer-managed containers, iSCSI provides high-performance block storage that appears as a local disk on the Docker host where you mount it - ideal for databases and workloads requiring fast I/O.
 
 ---
 
@@ -27,6 +27,9 @@ iSCSI (Internet Small Computer System Interface) lets you attach block storage d
 # Install targetcli on your storage server (Ubuntu/Debian)
 
 sudo apt update && sudo apt install -y targetcli-fb
+
+# Create the directory for the backing file
+sudo mkdir -p /var/lib/iscsi-store
 
 # Start targetcli interactive shell
 sudo targetcli
@@ -60,8 +63,8 @@ sudo apt update && sudo apt install -y open-iscsi
 # Edit the initiator name to match the ACL you created
 sudo bash -c 'echo "InitiatorName=iqn.2026-03.com.example:docker-host-01" > /etc/iscsi/initiatorname.iscsi'
 
-# Start iscsid
-sudo systemctl enable --now iscsid
+# Restart iscsid so it picks up the new initiator IQN
+sudo systemctl restart iscsid
 
 # Discover targets on the storage server
 sudo iscsiadm -m discovery -t sendtargets -p 192.168.1.50
@@ -71,6 +74,12 @@ sudo iscsiadm -m node \
   --targetname iqn.2026-03.com.example:portainer-storage \
   --portal 192.168.1.50:3260 \
   --login
+
+# Configure the node for automatic login on boot
+sudo iscsiadm -m node \
+  --targetname iqn.2026-03.com.example:portainer-storage \
+  --portal 192.168.1.50:3260 \
+  --op update -n node.startup -v automatic
 
 # Verify the new block device appeared
 lsblk | grep sd
@@ -116,6 +125,8 @@ services:
       POSTGRES_DB: appdb
       POSTGRES_USER: appuser
       POSTGRES_PASSWORD_FILE: /run/secrets/db_password
+    secrets:
+      - db_password
     volumes:
       # Bind mount to iSCSI-backed storage for best I/O performance
       - /mnt/iscsi-portainer/postgres/data:/var/lib/postgresql/data
@@ -131,9 +142,12 @@ secrets:
 
 ## Step 5: Create a Docker Volume Backed by iSCSI
 
-For a more portable configuration:
+For a cleaner stack definition:
 
 ```bash
+# Create the source directory for the bind-backed volume
+sudo mkdir -p /mnt/iscsi-portainer/myapp
+
 # Create a Docker named volume pointing to the iSCSI mount
 docker volume create \
   --driver local \
@@ -149,4 +163,4 @@ docker volume create \
 
 ## Summary
 
-iSCSI storage for Portainer requires configuring a target server, connecting the Docker host as an initiator, and mounting the resulting block device. Once mounted, the iSCSI volume appears as a local directory and can be used as a bind mount in any Portainer stack. For database workloads, iSCSI delivers near-local disk I/O performance over the network.
+iSCSI storage for Portainer requires configuring a target server, connecting the Docker host as an initiator, and mounting the resulting block device. Once mounted, the iSCSI volume appears as a local directory on that host and can be used as a bind mount in Portainer stacks scheduled there. For database workloads, iSCSI can provide strong block-storage performance over the network, depending on your network and storage backend.
