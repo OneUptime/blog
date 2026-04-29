@@ -8,7 +8,7 @@ Description: Learn how to create, manage, and organize HashiCorp Vault ACL polic
 
 ## Introduction
 
-Vault policies use HCL syntax to define which paths a token can access and with what capabilities. Managing these policies with OpenTofu ensures they are version-controlled, consistently applied, and can be reviewed through pull requests before taking effect.
+Vault policies use HCL or JSON syntax to define which paths a token can access and with what capabilities. Managing these policies with OpenTofu ensures they are version-controlled, consistently applied, and can be reviewed through pull requests before taking effect.
 
 ## Basic Policy Management
 
@@ -21,7 +21,12 @@ resource "vault_policy" "app_readonly" {
   policy = <<EOT
 # Read application-specific secrets
 path "secret/data/prod/app/*" {
-  capabilities = ["read", "list"]
+  capabilities = ["read"]
+}
+
+# List application-specific secrets
+path "secret/metadata/prod/app/*" {
+  capabilities = ["list"]
 }
 
 # Read database credentials
@@ -59,9 +64,14 @@ resource "vault_policy" "dev_team" {
 
 ```hcl
 # policies/platform-team.hcl
-# Full access to infrastructure secrets
+# Manage infrastructure secrets in KV v2
 path "secret/data/infra/*" {
-  capabilities = ["create", "read", "update", "delete", "list"]
+  capabilities = ["create", "read", "update", "delete"]
+}
+
+# List infrastructure secrets in KV v2
+path "secret/metadata/infra/*" {
+  capabilities = ["list"]
 }
 
 # Manage PKI certificates
@@ -69,14 +79,29 @@ path "pki/*" {
   capabilities = ["create", "read", "update", "delete", "list"]
 }
 
-# Manage all auth methods
+# Manage auth method endpoints
 path "auth/*" {
-  capabilities = ["create", "read", "update", "delete", "list"]
+  capabilities = ["create", "read", "update", "delete", "list", "sudo"]
 }
 
-# Manage policies themselves
-path "sys/policies/*" {
-  capabilities = ["create", "read", "update", "delete", "list"]
+# Enable, disable, and tune auth methods
+path "sys/auth/*" {
+  capabilities = ["create", "update", "delete", "sudo"]
+}
+
+# List enabled auth methods
+path "sys/auth" {
+  capabilities = ["read"]
+}
+
+# List existing ACL policies
+path "sys/policies/acl" {
+  capabilities = ["list"]
+}
+
+# Manage ACL policies
+path "sys/policies/acl/*" {
+  capabilities = ["create", "read", "update", "delete", "list", "sudo"]
 }
 ```
 
@@ -96,7 +121,11 @@ resource "vault_policy" "app_policy" {
 # ${each.key} environment application policy
 
 path "secret/data/${each.key}/app/*" {
-  capabilities = ["read", "list"]
+  capabilities = ["read"]
+}
+
+path "secret/metadata/${each.key}/app/*" {
+  capabilities = ["list"]
 }
 
 path "database/creds/${each.key}-app" {
@@ -130,7 +159,11 @@ resource "vault_policy" "service_policy" {
 ```hcl
 # templates/service-policy.hcl.tpl
 path "secret/data/${environment}/${service_name}/*" {
-  capabilities = ["read", "list"]
+  capabilities = ["read"]
+}
+
+path "secret/metadata/${environment}/${service_name}/*" {
+  capabilities = ["list"]
 }
 
 path "database/creds/${db_role}" {
