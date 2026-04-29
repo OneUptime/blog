@@ -8,7 +8,7 @@ Description: Learn how to migrate your Kubernetes management workflow from the n
 
 ---
 
-Kubernetes Dashboard is minimal by design - it gives you visibility but not much control. Portainer goes further: stack deployments, registry management, role-based access, and a consistent UI across Docker and Kubernetes environments. This guide walks you through migrating from one to the other.
+Kubernetes Dashboard is now deprecated and unmaintained. It still provides a web UI for common cluster tasks, but Portainer goes further with multi-environment management, registry integration, Helm-based application deployment, and a consistent UI across Docker and Kubernetes environments. This guide walks you through migrating from one to the other.
 
 ---
 
@@ -16,11 +16,11 @@ Kubernetes Dashboard is minimal by design - it gives you visibility but not much
 
 | Feature | Kubernetes Dashboard | Portainer |
 |---|---|---|
-| Stack/Compose support | No | Yes |
+| Unified Docker + Kubernetes UI | No | Yes |
 | Registry management | No | Yes |
-| RBAC | Basic | Advanced |
-| Multi-environment | No | Yes |
-| Helm charts | No | Yes (BE) |
+| Access control | Kubernetes RBAC | Admin/User in CE, granular roles in BE |
+| Multi-environment management | No | Yes |
+| Helm chart deployment | No | Yes |
 
 ---
 
@@ -29,9 +29,8 @@ Kubernetes Dashboard is minimal by design - it gives you visibility but not much
 If you no longer want the old dashboard running, remove it cleanly before proceeding.
 
 ```bash
-# Delete the Kubernetes Dashboard deployment and associated resources
-
-kubectl delete -f https://raw.githubusercontent.com/kubernetes/dashboard/v2.7.0/aio/deploy/recommended.yaml
+# Remove a Helm-based Kubernetes Dashboard installation
+helm uninstall kubernetes-dashboard -n kubernetes-dashboard
 
 # Confirm all dashboard resources are removed
 kubectl get all -n kubernetes-dashboard
@@ -39,13 +38,13 @@ kubectl get all -n kubernetes-dashboard
 
 ---
 
-## Step 2: Deploy Portainer Agent on Your Cluster
+## Step 2: Deploy Portainer Agent on Your Cluster (If Portainer Server Runs Elsewhere)
 
-Portainer uses an agent to communicate with your Kubernetes cluster. Deploy it using the official manifest.
+If you already run a Portainer server outside the cluster, deploy the agent so that server can manage this Kubernetes environment.
 
 ```bash
-# Apply the Portainer Agent manifest for Kubernetes
-kubectl apply -n portainer -f https://downloads.portainer.io/ce2-21/portainer-agent-k8s-lb.yaml
+# Apply the Portainer Agent load balancer manifest for Kubernetes
+kubectl apply -n portainer -f https://downloads.portainer.io/ce-lts/portainer-agent-k8s-lb.yaml
 
 # Verify the agent pod is running
 kubectl get pods -n portainer
@@ -55,14 +54,11 @@ kubectl get pods -n portainer
 
 ## Step 3: Install Portainer Server (If Not Already Running)
 
-If you don't have a Portainer server running elsewhere, deploy it into the same cluster.
+If you don't have a Portainer server running elsewhere, deploy it into the same cluster instead of Step 2. This install expects a default StorageClass for Portainer's persistent data.
 
 ```bash
-# Create the portainer namespace
-kubectl create namespace portainer
-
 # Deploy Portainer CE using the NodePort manifest
-kubectl apply -n portainer -f https://downloads.portainer.io/ce2-21/portainer.yaml
+kubectl apply -n portainer -f https://downloads.portainer.io/ce-lts/portainer.yaml
 
 # Get the service and find the NodePort
 kubectl get svc -n portainer
@@ -72,27 +68,29 @@ kubectl get svc -n portainer
 
 ## Step 4: Connect Your Cluster in Portainer
 
-Once Portainer is running, add your Kubernetes environment via the UI or via the Portainer API.
+If you deployed only the agent in Step 2, add your Kubernetes environment in the Portainer UI. If you installed Portainer server in Step 3, use the local environment created during setup.
 
 ```bash
-# Get the agent service endpoint (use this URL in Portainer's "Add Environment" wizard)
-kubectl get svc portainer-agent -n portainer -o jsonpath='{.status.loadBalancer.ingress[0].ip}'
+# Check the agent service and note the EXTERNAL-IP for port 9001
+kubectl get svc portainer-agent -n portainer
 ```
 
 In the Portainer UI:
-1. Navigate to **Settings > Environments > Add Environment**
-2. Choose **Kubernetes via Agent**
-3. Paste the agent endpoint URL
-4. Click **Connect**
+1. Navigate to **Environments**
+2. Click **Add environment**
+3. Choose **Kubernetes** and click **Start Wizard**
+4. Under **More options**, select **Agent**, then **Kubernetes via load balancer**
+5. Enter the agent service's external IP or DNS name with port `9001` in **Environment URL**. Do not include `https://`
+6. Click **Connect**
 
 ---
 
-## Step 5: Recreate Your Workloads as Stacks
+## Step 5: Recreate Your Workloads from Manifests
 
-Portainer's stack feature lets you manage workloads using familiar YAML manifests - a big step up from the Kubernetes Dashboard.
+Portainer lets you deploy Kubernetes manifests as applications from the UI.
 
 ```yaml
-# example-stack.yaml - deploy an Nginx workload as a Portainer stack
+# example-app.yaml - deploy an Nginx workload from a Kubernetes manifest
 apiVersion: apps/v1
 kind: Deployment
 metadata:
@@ -115,17 +113,17 @@ spec:
             - containerPort: 80
 ```
 
-In Portainer, go to **Stacks > Add Stack**, paste this YAML, and deploy.
+In Portainer, go to **Applications > Create from code**, choose **Manifest**, paste this YAML, and deploy.
 
 ---
 
 ## Step 6: Set Up Access Control
 
-Portainer's RBAC model mirrors what Kubernetes offers but through a friendlier interface. Create teams and assign environment-level permissions.
+Portainer CE on Kubernetes provides `Admin` and `User` roles. If you need more granular roles such as `Operator` or `Helpdesk`, use Portainer Business Edition.
 
-1. Go to **Settings > Users** to create user accounts
-2. Go to **Settings > Teams** to group users
-3. In **Environments**, assign teams with specific roles (Operator, Helpdesk, etc.)
+1. Go to **Users** to create user accounts
+2. In Portainer CE, the built-in roles for Kubernetes access are **Admin** and **User**
+3. If you need environment-level roles such as **Operator** or **Helpdesk**, use Portainer BE and assign users or teams to roles for the environment
 
 ---
 
@@ -137,4 +135,4 @@ Once Portainer is managing your workloads, integrate OneUptime to monitor servic
 
 ## Summary
 
-Migrating from Kubernetes Dashboard to Portainer takes about 15 minutes and gives you a dramatically richer management experience. You gain stack deployments, registry management, and multi-environment support without losing any visibility the old dashboard provided.
+Migrating from Kubernetes Dashboard to Portainer takes about 15 minutes and gives you a dramatically richer management experience. You gain manifest and Helm-based application deployment, registry management, and multi-environment support without losing any visibility the old dashboard provided.
