@@ -94,16 +94,16 @@ nc -6 -w 5 fd00:vpn-internal::server 443 && echo "TCP OK" || echo "TCP FAILED"
 ```
 
 ```bash
-# Install wireguard-exporter
-go install github.com/MindFlavor/prometheus_wireguard_exporter@latest
+# Install wireguard-exporter (Rust toolchain required)
+cargo install --git https://github.com/MindFlavor/prometheus_wireguard_exporter
 
 # Run exporter
-sudo prometheus_wireguard_exporter -n wg0
+sudo prometheus_wireguard_exporter -n /etc/wireguard/wg0.conf
 
 # Key metrics:
-# wireguard_peer_last_handshake_seconds - alert if > 180 seconds
-# wireguard_peer_receive_bytes_total
-# wireguard_peer_transmit_bytes_total
+# wireguard_latest_handshake_seconds - Unix timestamp of last handshake
+# wireguard_received_bytes_total
+# wireguard_sent_bytes_total
 ```
 
 ## Grafana Alert Rules for VPN IPv6
@@ -111,7 +111,7 @@ sudo prometheus_wireguard_exporter -n wg0
 ```yaml
 # Alert when WireGuard peer hasn't had a handshake in 5 minutes
 - alert: WireGuardPeerDown
-  expr: (time() - wireguard_peer_last_handshake_seconds) > 300
+  expr: (time() - wireguard_latest_handshake_seconds) > 300
   for: 1m
   labels:
     severity: warning
@@ -120,7 +120,7 @@ sudo prometheus_wireguard_exporter -n wg0
 
 # Alert when no IPv6 traffic on tunnel
 - alert: VPNNoIPv6Traffic
-  expr: rate(wireguard_peer_receive_bytes_total[5m]) == 0
+  expr: rate(wireguard_received_bytes_total[5m]) == 0
   for: 10m
   labels:
     severity: info
