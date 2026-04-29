@@ -8,7 +8,7 @@ Description: Step-by-step guide to migrating from ip6tables to nftables, using a
 
 ## Overview
 
-ip6tables is deprecated on modern Linux distributions in favor of nftables. The `ip6tables-translate` and `iptables-restore-translate` tools can automatically convert most ip6tables rules to nftables syntax. This guide covers the conversion process, common translation issues, and how to verify the migrated rules work correctly.
+The xtables-based ip6tables workflow is considered legacy on modern Linux systems, and nftables is its successor. The `ip6tables-translate` and `ip6tables-restore-translate` tools can automatically convert many ip6tables rules to nftables syntax. This guide covers the conversion process, common translation issues, and how to verify the migrated rules work correctly.
 
 ## Prerequisites
 
@@ -22,7 +22,7 @@ ip6tables-translate --version
 # Part of iptables package on Debian/Ubuntu
 
 # Install if missing
-apt install iptables   # Includes translation tools on Debian 10+
+apt install nftables iptables   # nft comes from nftables; translation tools come from iptables
 ```
 
 ## Step 1: Export Current ip6tables Rules
@@ -41,7 +41,7 @@ cat /tmp/ip6tables-backup.rules
 
 ```bash
 # Translate the entire ip6tables ruleset to nftables
-iptables-restore-translate -6 -f /tmp/ip6tables-backup.rules > /tmp/nftables-translated.nft
+ip6tables-restore-translate -f /tmp/ip6tables-backup.rules > /tmp/nftables-translated.nft
 
 # Review the translated file
 cat /tmp/nftables-translated.nft
@@ -52,10 +52,10 @@ cat /tmp/nftables-translated.nft
 ```bash
 # Translate a single ip6tables rule
 ip6tables-translate -A INPUT -p tcp --dport 22 -j ACCEPT
-# Output: nft add rule ip6 filter input tcp dport 22 counter accept
+# Output: nft 'add rule ip6 filter INPUT tcp dport 22 counter accept'
 
 ip6tables-translate -A INPUT -s fe80::/10 -p icmpv6 --icmpv6-type 134 -j ACCEPT
-# Output: nft add rule ip6 filter input ip6 saddr fe80::/10 icmpv6 type nd-router-advert counter accept
+# Output: nft 'add rule ip6 filter INPUT meta l4proto ipv6-icmp ip6 saddr fe80::/10 icmpv6 type nd-router-advert counter accept'
 ```
 
 ## Step 3: Review Translation
@@ -73,28 +73,29 @@ Common translation issues to check:
 # ip6tables: -m limit --limit 10/s
 # nftables:  limit rate 10/second
 
-# ip6tables -m recent → nftables sets (manual conversion required)
+# ip6tables -m recent → no automatic translation
 # ip6tables: -m recent --name SSH --rcheck --seconds 60 --hitcount 4
-# nftables:  meters or sets with timeout (needs manual rewrite)
+# nftables:  meters or dynamic sets can be used, but this needs a manual rewrite
 ```
 
 ### Things Not Automatically Converted
 
 ```bash
-# Connection limiting per-IP (recent module)
+# Per-source SSH rate limiting (recent module)
 # ip6tables:
 ip6tables -A INPUT -p tcp --dport 22 -m recent --name SSH --rcheck --seconds 60 --hitcount 4 -j DROP
 ip6tables -A INPUT -p tcp --dport 22 -m recent --name SSH --set -j ACCEPT
 
-# nftables equivalent (manual):
+# nftables example (manual rewrite):
 # table ip6 filter {
 #     set SSH_TRACK {
 #         type ipv6_addr
-#         flags dynamic, timeout
 #         timeout 60s
+#         flags dynamic
 #     }
 #     chain input {
-#         tcp dport 22 add @SSH_TRACK { ip6 saddr ct count over 4 } drop
+#         type filter hook input priority 0; policy accept;
+#         ct state new tcp dport 22 update @SSH_TRACK { ip6 saddr limit rate over 3/minute } drop
 #         tcp dport 22 accept
 #     }
 # }
@@ -105,7 +106,7 @@ ip6tables -A INPUT -p tcp --dport 22 -m recent --name SSH --set -j ACCEPT
 After translating ip6tables rules, consider upgrading to unified inet format:
 
 ```bash
-# ip6 family (translated) → inet family (better)
+# ip6 family (translated) → inet family (review each rule carefully)
 # Replace:
 #   table ip6 filter { ... }
 # With:
@@ -114,7 +115,10 @@ After translating ip6tables rules, consider upgrading to unified inet format:
 # Example: Translated ip6-only rule
 # nft add rule ip6 filter input tcp dport 22 counter accept
 
-# Unified inet equivalent:
+# In an inet table, keep an IPv6-only rule scoped to IPv6:
+# nft add rule inet filter input meta nfproto ipv6 tcp dport 22 counter accept
+
+# Omit the family qualifier only if you intentionally want one rule to match both IPv4 and IPv6:
 # nft add rule inet filter input tcp dport 22 counter accept
 ```
 
@@ -125,14 +129,14 @@ After translating ip6tables rules, consider upgrading to unified inet format:
 ip6tables-save > /tmp/ip6tables-backup.rules
 
 # 2. Safety timer - auto-reverts if testing fails
-at now + 5 minutes << 'EOF'
+at_job=$(at now + 5 minutes << 'EOF' 2>&1 | awk '/^job / { print $2 }')
 nft flush ruleset
 ip6tables-restore < /tmp/ip6tables-backup.rules
 EOF
 
-# 3. Stop ip6tables
+# 3. Stop old persistence service if present
 systemctl stop netfilter-persistent 2>/dev/null
-# or: ip6tables -F; ip6tables -P INPUT ACCEPT
+# Also remove the active legacy ruleset before testing so it does not run alongside nftables.
 
 # 4. Apply translated nftables rules
 nft -f /tmp/nftables-translated.nft
@@ -142,15 +146,15 @@ ping6 -c 3 2001:4860:4860::8888
 ssh user@your-server.com -p 22
 
 # 6. If everything works, cancel the safety timer
-atrm $(atq | tail -1 | awk '{print $1}')
+atrm "$at_job"
 ```
 
 ## Step 6: Disable ip6tables, Enable nftables
 
 ```bash
 # Disable old ip6tables persistence
-systemctl disable netfilter-persistent
-systemctl disable ip6tables
+systemctl disable netfilter-persistent 2>/dev/null || true
+systemctl disable ip6tables 2>/dev/null || true
 
 # Save new nftables ruleset
 nft list ruleset > /etc/nftables.conf
@@ -192,4 +196,4 @@ table ip6 filter {
 
 ## Summary
 
-Migrate ip6tables to nftables using `iptables-restore-translate -6 -f rules.file > nftables.nft` for bulk conversion, and `ip6tables-translate` for individual rules. Review the output for module-specific issues (`-m recent` needs manual rewriting). Use a safety timer (`at now + 5 minutes`) that auto-reverts if you lose access. After successful testing, disable `netfilter-persistent` and enable `nftables` with `systemctl enable nftables`. Consider upgrading from `ip6` to `inet` family tables to handle both IPv4 and IPv6 in a unified ruleset.
+Migrate ip6tables to nftables using `ip6tables-restore-translate -f rules.file > nftables.nft` for bulk conversion, and `ip6tables-translate` for individual rules. Review the output for module-specific issues (`-m recent` needs manual rewriting). Use a safety timer (`at now + 5 minutes`) that auto-reverts if you lose access. After successful testing, disable any old ip6tables persistence service and enable `nftables` with `systemctl enable --now nftables`. Consider upgrading from `ip6` to `inet` family tables to handle both IPv4 and IPv6 in a unified ruleset, but review each rule so you do not accidentally broaden an IPv6-only rule to IPv4.
