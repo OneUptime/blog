@@ -49,10 +49,10 @@ tail -f /var/log/vsftpd.log
 
 ```bash
 # Top 10 client IPs by number of transfers
-awk '{print $8}' /var/log/vsftpd.log | sort | uniq -c | sort -rn | head -10
+awk '{print $7}' /var/log/vsftpd.log | sort | uniq -c | sort -rn | head -10
 
 # Top 10 clients by bytes transferred
-awk '{sum[$8]+=$7} END {for (ip in sum) print sum[ip], ip}' /var/log/vsftpd.log | \
+awk '{sum[$7]+=$8} END {for (ip in sum) print sum[ip], ip}' /var/log/vsftpd.log | \
   sort -rn | head -10 | awk '{printf "%s MB from %s\n", $1/1048576, $2}'
 ```
 
@@ -107,6 +107,6 @@ fail2ban-client status vsftpd
 ## Key Takeaways
 
 - `ss -tnp | grep :21` shows active FTP control connections with remote IPv4 addresses in real time.
-- vsftpd's `xferlog` records every file transfer; the 8th field is the client IP.
+- vsftpd's `xferlog` records every file transfer; with awk's default field split, `$7` is the client IP and `$8` is the byte count (the date occupies `$1`–`$5`).
 - Enable `log_ftp_protocol=YES` for verbose per-command logging including the client IP.
 - Use fail2ban with the vsftpd log to automatically ban IPs that fail authentication repeatedly.
