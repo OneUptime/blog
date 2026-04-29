@@ -4,7 +4,7 @@ Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
 Tags: Rancher, KEDA, Autoscaling, Kubernetes, Event-Driven, Scale-to-Zero
 
-Description: Install KEDA in Rancher and configure event-driven autoscaling for Deployments and Jobs using Kafka, RabbitMQ, Redis, and custom metric scalers.
+Description: Install KEDA in Rancher and configure event-driven autoscaling for Deployments and Jobs using Kafka, RabbitMQ, Prometheus metrics, and ScaledJobs.
 
 ## Introduction
 
@@ -37,7 +37,7 @@ metadata:
 spec:
   scaleTargetRef:
     name: order-processor
-  minReplicaCount: 0       # Scale to zero when no lag
+  minReplicaCount: 0       # Allows scale-to-zero after lag returns to 0
   maxReplicaCount: 30
   pollingInterval: 10
   cooldownPeriod: 60
@@ -49,7 +49,7 @@ spec:
         consumerGroup: order-processors
         topic: orders
         lagThreshold: "100"       # One pod per 100 messages of lag
-        offsetResetPolicy: latest
+        offsetResetPolicy: latest # New consumer groups stay active until an offset is committed
 ```
 
 ## Step 3: Scale on RabbitMQ Queue Depth
