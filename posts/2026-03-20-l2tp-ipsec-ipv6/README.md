@@ -6,15 +6,15 @@ Tags: L2TP, IPsec, IPv6, VPN, Xl2tpd, Tunneling
 
 Description: A guide to configuring L2TP/IPsec VPN with IPv6 support using xl2tpd and strongSwan/Libreswan on Linux.
 
-L2TP (Layer 2 Tunneling Protocol) over IPsec is a common VPN protocol supported natively by Windows, macOS, iOS, and Android clients without additional software. While L2TP/IPsec has limitations compared to modern alternatives, IPv6 support can be layered on top using the IPsec transport for IPv6 traffic.
+L2TP (Layer 2 Tunneling Protocol) over IPsec is a common VPN protocol supported natively by Windows, macOS, iOS, and Android clients without additional software. While L2TP/IPsec has limitations compared to modern alternatives, PPP inside the L2TP session can negotiate IPv6, although routable IPv6 requires additional routing or prefix configuration.
 
 ## Architecture
 
 ```text
-Client → IPsec (transport mode, IPv4) → L2TP tunnel → IPv4/IPv6 assigned addresses
+Client → IPsec (transport mode over IPv4) → L2TP tunnel → PPP session carrying IPv4 and optional IPv6
 ```
 
-L2TP/IPsec typically runs over IPv4 for the control channel but can assign IPv6 addresses inside the L2TP tunnel.
+L2TP/IPsec typically runs over IPv4 for the outer transport, while PPP inside the L2TP session can negotiate IPv6. Without additional routing or prefix delegation, this usually results in IPv6CP link-local connectivity rather than routed global IPv6 addresses.
 
 ## Installing Components
 
@@ -27,7 +27,7 @@ sudo apt-get install xl2tpd strongswan
 sudo dnf install xl2tpd libreswan
 ```
 
-## IPsec Configuration (strongSwan)
+## IPsec Configuration (strongSwan legacy `ipsec.conf` backend)
 
 ```conf
 # /etc/ipsec.conf
@@ -60,7 +60,6 @@ conn L2TP-PSK
 # /etc/xl2tpd/xl2tpd.conf
 
 [global]
-ipsec saref = yes
 listen-addr = 0.0.0.0
 
 [lns default]
@@ -83,16 +82,17 @@ refuse-pap
 refuse-chap
 refuse-mschap
 require-mschap-v2
+name xl2tpd
 
 # IPv4 settings
 ms-dns 8.8.8.8
 ms-dns 8.8.4.4
 
-# Enable IPv6 in PPP
+# Enable IPv6CP in PPP
 +ipv6
 
 # IPv6 DNS
-# ms-dns6 2001:4860:4860::8888   # Not standard in xl2tpd
+# ms-dns6 2001:4860:4860::8888   # pppd does not provide an ms-dns6 option
 
 mtu 1280
 mru 1280
@@ -115,8 +115,11 @@ client2  xl2tpd  "password456"  *
 
 ```bash
 # Start IPsec
-sudo systemctl start strongswan    # or ipsec
-sudo systemctl enable strongswan
+sudo systemctl start strongswan-starter    # Debian/Ubuntu strongSwan ipsec.conf backend
+sudo systemctl enable strongswan-starter
+# On Libreswan-based systems:
+# sudo systemctl start ipsec
+# sudo systemctl enable ipsec
 
 # Start L2TP daemon
 sudo systemctl start xl2tpd
@@ -124,7 +127,7 @@ sudo systemctl enable xl2tpd
 
 # Verify both are running
 sudo ipsec status
-sudo service xl2tpd status
+sudo systemctl status xl2tpd
 ```
 
 ## Firewall Rules
@@ -144,7 +147,7 @@ sudo ip6tables -A FORWARD -o ppp+ -j ACCEPT
 ## IPv6 Limitations with L2TP/IPsec
 
 L2TP/IPsec was designed primarily for IPv4. IPv6 support depends on:
-- PPP's `+ipv6` option (assigns link-local addresses to PPP interfaces)
+- PPP's `+ipv6` option (enables IPv6CP; by itself this typically only gives link-local IPv6)
 - The client's ability to accept IPv6 over PPP
 - Configuration management being more complex than modern VPNs
 
