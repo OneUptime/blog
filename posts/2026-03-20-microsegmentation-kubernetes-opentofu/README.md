@@ -8,7 +8,7 @@ Description: Learn how to implement Kubernetes microsegmentation using OpenTofu 
 
 ## Overview
 
-Kubernetes microsegmentation uses Network Policies to control traffic between pods at Layer 3/4. By default, all pods can communicate freely. OpenTofu provisions Network Policies with a default-deny stance and explicit allow rules per service.
+Kubernetes microsegmentation uses Network Policies to control traffic between pods at Layer 3/4. By default, all pods can communicate freely. OpenTofu provisions Network Policies with a default-deny stance and explicit allow rules on both source egress and destination ingress per service.
 
 ## Step 1: Default Deny All (Namespace-Level)
 
@@ -26,12 +26,12 @@ resource "kubernetes_network_policy" "default_deny" {
   spec {
     pod_selector {}  # Applies to all pods
 
-    # Empty policy types mean deny all
+    # No ingress or egress rules plus both policy types creates default deny
     policy_types = ["Ingress", "Egress"]
   }
 }
 
-# Allow DNS egress (required for all pods)
+# Allow DNS egress (commonly required for service discovery)
 resource "kubernetes_network_policy" "allow_dns" {
   for_each = toset(["production", "staging", "database"])
 
@@ -74,6 +74,39 @@ resource "kubernetes_network_policy" "allow_dns" {
 
 ```hcl
 # Allow frontend to call API
+resource "kubernetes_network_policy" "frontend_allow_api" {
+  metadata {
+    name      = "frontend-allow-api"
+    namespace = "production"
+  }
+
+  spec {
+    pod_selector {
+      match_labels = { app = "frontend" }
+    }
+
+    policy_types = ["Egress"]
+
+    egress {
+      to {
+        namespace_selector {
+          match_labels = {
+            "kubernetes.io/metadata.name" = "production"
+          }
+        }
+        pod_selector {
+          match_labels = { app = "api" }
+        }
+      }
+
+      ports {
+        port     = "8080"
+        protocol = "TCP"
+      }
+    }
+  }
+}
+
 resource "kubernetes_network_policy" "api_allow_frontend" {
   metadata {
     name      = "api-allow-frontend"
@@ -108,6 +141,39 @@ resource "kubernetes_network_policy" "api_allow_frontend" {
 }
 
 # Allow API to access database
+resource "kubernetes_network_policy" "api_allow_db" {
+  metadata {
+    name      = "api-allow-db"
+    namespace = "production"
+  }
+
+  spec {
+    pod_selector {
+      match_labels = { app = "api" }
+    }
+
+    policy_types = ["Egress"]
+
+    egress {
+      to {
+        namespace_selector {
+          match_labels = {
+            "kubernetes.io/metadata.name" = "database"
+          }
+        }
+        pod_selector {
+          match_labels = { app = "postgresql" }
+        }
+      }
+
+      ports {
+        port     = "5432"
+        protocol = "TCP"
+      }
+    }
+  }
+}
+
 resource "kubernetes_network_policy" "db_allow_api" {
   metadata {
     name      = "db-allow-api"
@@ -145,7 +211,7 @@ resource "kubernetes_network_policy" "db_allow_api" {
 ## Step 3: Monitoring Access (Cross-Namespace)
 
 ```hcl
-# Allow Prometheus to scrape metrics from all namespaces
+# Allow Prometheus to scrape workloads exposing metrics on TCP/9090 in selected namespaces
 resource "kubernetes_network_policy" "allow_prometheus_scrape" {
   for_each = toset(["production", "staging"])
 
@@ -155,7 +221,7 @@ resource "kubernetes_network_policy" "allow_prometheus_scrape" {
   }
 
   spec {
-    pod_selector {}  # All pods in namespace
+    pod_selector {}  # Pods in the namespace that listen on 9090
 
     policy_types = ["Ingress"]
 
@@ -185,7 +251,7 @@ resource "kubernetes_network_policy" "allow_prometheus_scrape" {
 ## Step 4: Cilium Network Policy (Extended Layer 7)
 
 ```hcl
-# Cilium L7 policy for HTTP method-level control
+# Cilium L7 policy for HTTP method and path control
 resource "kubernetes_manifest" "cilium_l7_policy" {
   manifest = {
     apiVersion = "cilium.io/v2"
@@ -207,7 +273,7 @@ resource "kubernetes_manifest" "cilium_l7_policy" {
           rules = {
             http = [
               { method = "GET", path = "/api/.*" },
-              { method = "POST", path = "/api/orders" }
+              { method = "POST", path = "/api/orders$" }
             ]
           }
         }]
@@ -219,4 +285,4 @@ resource "kubernetes_manifest" "cilium_l7_policy" {
 
 ## Summary
 
-Kubernetes microsegmentation with OpenTofu starts from a default-deny stance and adds explicit allow policies per service. This ensures newly deployed pods are isolated until a Network Policy explicitly allows their traffic. Cilium extends Layer 3/4 Network Policies to Layer 7, enabling HTTP method and path-based controls for API access within the cluster, providing the granularity needed for true zero trust within Kubernetes.
+Kubernetes microsegmentation with OpenTofu starts from a default-deny stance and adds explicit allow policies per service. This ensures newly deployed pods are isolated until a Network Policy explicitly allows their traffic. Cilium extends Layer 3/4 Network Policies to Layer 7, enabling HTTP method and path-based controls for API access within the cluster and supporting a stronger zero-trust posture within Kubernetes.
