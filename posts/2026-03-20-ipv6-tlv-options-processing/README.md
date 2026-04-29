@@ -36,14 +36,14 @@ Special: Pad1 option (type = 0x00):
 Bit 7-6: Action when unrecognized:
   00 = skip option, continue processing
   01 = discard packet silently
-  10 = discard packet + send ICMPv6 Parameter Problem to source
-  11 = discard packet + send ICMPv6 even to multicast destination
+  10 = discard packet + send ICMPv6 Parameter Problem, even for multicast destinations
+  11 = discard packet + send ICMPv6 only if the destination was not multicast
 
 Bit 5: Change flag:
   0 = option data unchanged in transit
   1 = option data may change in transit (affects AH authentication)
 
-Bits 4-0: 5-bit option identifier
+Bits 4-0: low 5 bits of the full 8-bit Option Type value
 ```
 
 ## Complete TLV Parser
@@ -58,7 +58,7 @@ KNOWN_OPTIONS = {
     0x04: "Tunnel Encapsulation Limit",
     0x05: "Router Alert",
     0x07: "CALIPSO",
-    0x26: "SMF_DPD",
+    0x08: "SMF_DPD",
     0xC2: "Jumbo Payload",
     0xC9: "Home Address",
 }
@@ -77,8 +77,8 @@ class TLVOption:
         actions = {
             0: "skip and continue",
             1: "discard silently",
-            2: "discard + ICMP to source",
-            3: "discard + ICMP always",
+            2: "discard + ICMP, even for multicast dst",
+            3: "discard + ICMP if dst is not multicast",
         }
         return actions[self.action_bits]
 
@@ -112,9 +112,11 @@ def parse_tlv_options(options_bytes: bytes) -> list[TLVOption]:
             continue
 
         if offset + 1 >= len(options_bytes):
-            break  # Truncated option
+            raise ValueError("Truncated option: missing Opt Data Len")
 
         opt_len = options_bytes[offset + 1]
+        if offset + 2 + opt_len > len(options_bytes):
+            raise ValueError("Truncated option: option data exceeds available bytes")
         opt_data = options_bytes[offset + 2: offset + 2 + opt_len]
 
         action_bits = (opt_type >> 6) & 0x3
@@ -134,7 +136,7 @@ def parse_tlv_options(options_bytes: bytes) -> list[TLVOption]:
 
     return options
 
-def handle_unknown_option(opt: TLVOption):
+def handle_unknown_option(opt: TLVOption, destination_is_multicast: bool):
     """Process an unknown option according to its action bits."""
     if opt.action_bits == 0:
         print(f"  Unknown option 0x{opt.option_type:02X}: skip and continue")
@@ -142,11 +144,14 @@ def handle_unknown_option(opt: TLVOption):
         print(f"  Unknown option 0x{opt.option_type:02X}: discard packet (silent)")
         raise StopIteration("Discard packet")
     elif opt.action_bits == 2:
-        print(f"  Unknown option 0x{opt.option_type:02X}: discard + ICMPv6")
+        print(f"  Unknown option 0x{opt.option_type:02X}: discard + ICMPv6 (even multicast)")
         raise StopIteration("Send ICMPv6 Parameter Problem")
     elif opt.action_bits == 3:
-        print(f"  Unknown option 0x{opt.option_type:02X}: discard + ICMPv6 (even multicast)")
-        raise StopIteration("Send ICMPv6 Parameter Problem to all")
+        if destination_is_multicast:
+            print(f"  Unknown option 0x{opt.option_type:02X}: discard packet (no ICMPv6 for multicast)")
+            raise StopIteration("Discard packet")
+        print(f"  Unknown option 0x{opt.option_type:02X}: discard + ICMPv6")
+        raise StopIteration("Send ICMPv6 Parameter Problem")
 
 # Example: parse a Hop-by-Hop header with Router Alert + PadN
 
@@ -167,7 +172,7 @@ for opt in options:
 
 ## Alignment Requirements
 
-TLV options must be aligned to their natural boundary within the header:
+Individual TLV options may have specific alignment requirements within the header:
 
 ```text
 Option alignment: xn+y means the option starts at an offset
