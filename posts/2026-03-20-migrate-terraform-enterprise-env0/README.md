@@ -48,7 +48,7 @@ resource "env0_template" "app_infra" {
 
   repository   = "https://github.com/my-org/infrastructure"
   path         = "environments/"
-  terraform_version = "1.9.0"
+  opentofu_version  = "1.10.0"
   type         = "opentofu"  # Use OpenTofu engine
 
   # Require plan approval before apply
@@ -78,9 +78,9 @@ resource "env0_environment" "app_prod" {
   }
 
   configuration {
-    name      = "AWS_ACCESS_KEY_ID"
-    value     = var.aws_access_key_id
-    is_secret = true
+    name         = "AWS_ACCESS_KEY_ID"
+    value        = var.aws_access_key_id
+    is_sensitive = true
   }
 
   # Set workspace-specific path
@@ -93,11 +93,17 @@ resource "env0_environment" "app_prod" {
 Download state from TFE and configure a remote backend for env0.
 
 ```bash
-# Download state from TFE workspace
+# Download state from TFE workspace (two-step flow)
 WORKSPACE_ID="ws-xxxxxxxxxxxxx"
-curl -s -H "Authorization: Bearer $TFE_TOKEN" \
-  "https://app.terraform.io/api/v2/workspaces/$WORKSPACE_ID/current-state-version/download" \
-  -o terraform.tfstate
+
+# 1. Fetch the current state version metadata and extract the hosted download URL
+DOWNLOAD_URL=$(curl -s -H "Authorization: Bearer $TFE_TOKEN" \
+  -H "Content-Type: application/vnd.api+json" \
+  "https://app.terraform.io/api/v2/workspaces/$WORKSPACE_ID/current-state-version" | \
+  jq -r '.data.attributes."hosted-state-download-url"')
+
+# 2. Download the raw state from the archivist URL
+curl -s -H "Authorization: Bearer $TFE_TOKEN" "$DOWNLOAD_URL" -o terraform.tfstate
 
 # Verify the state file
 tofu state list -state=terraform.tfstate
@@ -126,15 +132,18 @@ tofu init -migrate-state
 Set up approval policies in env0 to replace TFE run approvals.
 
 ```hcl
+# env0 approval policies are OPA policies stored in a Git repository.
+# The resource references the repo + path; rules live in the policy file there.
 resource "env0_approval_policy" "prod_approval" {
-  name           = "Production Approval Required"
-  requires_approval_default = true
+  name       = "Production Approval Required"
+  repository = "https://github.com/my-org/env0-policies"
+  path       = "approval/production"
 }
 
 resource "env0_approval_policy_assignment" "prod" {
-  scope            = "ENVIRONMENT"
-  scope_id         = env0_environment.app_prod.id
-  approval_policy_id = env0_approval_policy.prod_approval.id
+  scope        = "PROJECT"
+  scope_id     = env0_project.app.id
+  blueprint_id = env0_approval_policy.prod_approval.id
 }
 ```
 
