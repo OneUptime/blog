@@ -31,14 +31,14 @@ get_ndp_stats() {
         IP_CMD="ip -6 neigh show dev ${IFACE}"
     fi
 
-    # Count by state
-    REACHABLE=$(${IP_CMD} | awk '$5=="REACHABLE"' | wc -l)
-    STALE=$(${IP_CMD} | awk '$5=="STALE"' | wc -l)
-    DELAY=$(${IP_CMD} | awk '$5=="DELAY"' | wc -l)
-    PROBE=$(${IP_CMD} | awk '$5=="PROBE"' | wc -l)
-    FAILED=$(${IP_CMD} | awk '$5=="FAILED"' | wc -l)
-    INCOMPLETE=$(${IP_CMD} | awk '$5=="INCOMPLETE"' | wc -l)
-    PERMANENT=$(${IP_CMD} | awk '$5=="PERMANENT"' | wc -l)
+    # Count by state (state is always the last field)
+    REACHABLE=$(${IP_CMD} | awk '$NF=="REACHABLE"' | wc -l)
+    STALE=$(${IP_CMD} | awk '$NF=="STALE"' | wc -l)
+    DELAY=$(${IP_CMD} | awk '$NF=="DELAY"' | wc -l)
+    PROBE=$(${IP_CMD} | awk '$NF=="PROBE"' | wc -l)
+    FAILED=$(${IP_CMD} | awk '$NF=="FAILED"' | wc -l)
+    INCOMPLETE=$(${IP_CMD} | awk '$NF=="INCOMPLETE"' | wc -l)
+    PERMANENT=$(${IP_CMD} | awk '$NF=="PERMANENT"' | wc -l)
     TOTAL=$((REACHABLE + STALE + DELAY + PROBE + FAILED + INCOMPLETE + PERMANENT))
 
     echo "ndp_cache_total{iface=\"${IFACE}\"} ${TOTAL}"
@@ -100,12 +100,12 @@ echo "Monitoring NDP rates on ${IFACE} (${INTERVAL}s window)"
 echo "Time | NS/s | NA/s | RA/s | RS/s"
 
 while true; do
-    COUNTS=$(tcpdump -i ${IFACE} -n -c 1000 'icmp6' -q 2>/dev/null | \
+    COUNTS=$(tcpdump -i ${IFACE} -n -c 1000 'icmp6' 2>/dev/null | \
         awk '
-            /neighbor-solicit/ {ns++}
-            /neighbor-advert/ {na++}
-            /router-advert/ {ra++}
-            /router-solicit/ {rs++}
+            /neighbor solicitation/ {ns++}
+            /neighbor advertisement/ {na++}
+            /router advertisement/ {ra++}
+            /router solicitation/ {rs++}
             END {print ns+0, na+0, ra+0, rs+0}
         ')
 
