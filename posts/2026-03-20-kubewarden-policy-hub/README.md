@@ -1,16 +1,16 @@
-# How to Use Kubewarden Policy Hub
+# How to Use Kubewarden Policies on Artifact Hub
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
-Tags: Kubewarden, Kubernetes, Policy, PolicyHub, Security
+Tags: Kubewarden, Kubernetes, Policy, ArtifactHub, Security
 
-Description: Learn how to discover, evaluate, and deploy pre-built policies from the Kubewarden Policy Hub to accelerate your cluster security implementation.
+Description: Learn how to discover, evaluate, and deploy pre-built Kubewarden policies from Artifact Hub to accelerate your cluster security implementation.
 
 ## Introduction
 
-The Kubewarden Policy Hub (https://hub.kubewarden.io) is a community registry of pre-built, ready-to-use admission policies. Instead of writing policies from scratch, you can search the hub for policies that address your specific needs - from pod security to resource quotas, network policies, and more - and deploy them directly to your cluster.
+The Kubewarden Policy Hub at https://hub.kubewarden.io has been retired. Kubewarden policies are now discovered on Artifact Hub (https://artifacthub.io/packages/search?kind=13), while the policies themselves are distributed as OCI artifacts. Instead of writing policies from scratch, you can browse Artifact Hub for policies that address your specific needs - from pod security to image restrictions, policy validation, and more - and then deploy them to your cluster with Kubewarden.
 
-This guide covers how to discover policies on the hub, evaluate them with `kwctl`, and deploy them to your Kubernetes cluster.
+This guide covers how to discover policies on Artifact Hub, evaluate them with `kwctl`, and deploy them to your Kubernetes cluster.
 
 ## Prerequisites
 
@@ -18,86 +18,83 @@ This guide covers how to discover policies on the hub, evaluate them with `kwctl
 - `kwctl` CLI installed
 - `kubectl` access to your cluster
 
-## Accessing the Policy Hub
+## Accessing Policies on Artifact Hub
 
 ### Via Web Browser
 
-Visit https://hub.kubewarden.io to browse policies:
-- Search by keyword (e.g., "privileged", "resources", "image")
-- Filter by category (Security, Best Practices, Custom)
-- View policy documentation and settings
+Visit https://artifacthub.io/packages/search?kind=13 to browse Kubewarden policies:
+- Search by keyword (e.g., "privileged", "image", "network")
+- Use the Kubewarden policy package filter
+- View policy documentation, settings, versions, and install instructions
 
-### Via kwctl CLI
+### Via kwctl CLI After Discovery
 
 ```bash
-# Search for policies in the hub
+# Inspect a policy once you have its OCI URI
+kwctl inspect \
+  registry://ghcr.io/kubewarden/policies/pod-privileged:v1.0.8
 
-kwctl search pod-security
+# Download the policy locally
+kwctl pull \
+  registry://ghcr.io/kubewarden/policies/pod-privileged:v1.0.8
 
-# Search for privileged-related policies
-kwctl search privileged
-
-# Browse all available policies (paginated)
-kwctl search --display-all
+# List downloaded policies
+kwctl policies
 ```
 
 ## Discovering Policies
 
 ### Searching for Common Security Policies
 
-```bash
-# Find pod security policies
-kwctl search "pod security"
-
-# Find image-related policies
-kwctl search image
-
-# Find network-related policies
-kwctl search network
-
-# Find resource limit policies
-kwctl search resource
-```
+Use Artifact Hub search terms such as:
+- `privileged` for pod privilege controls
+- `image` for image provenance, registry, and tag restrictions
+- `network` for host networking and namespace controls
+- `resource` for resource validation policies
 
 ### Getting Policy Details
 
 ```bash
 # Get metadata about a specific policy
 kwctl inspect \
-  registry://ghcr.io/kubewarden/policies/pod-privileged:v0.2.0
+  registry://ghcr.io/kubewarden/policies/pod-privileged:v1.0.8
 
-# View the full policy documentation
+# Output the policy metadata in YAML
 kwctl inspect \
-  registry://ghcr.io/kubewarden/policies/pod-privileged:v0.2.0 \
-  --detailed
+  registry://ghcr.io/kubewarden/policies/pod-privileged:v1.0.8 \
+  -o yaml
 ```
 
 ## Evaluating Policies Before Deploying
 
-Before deploying a policy, test it against your existing resources:
+Before deploying a policy, test it against a representative admission request:
 
 ```bash
 # Download the policy locally
 kwctl pull \
-  registry://ghcr.io/kubewarden/policies/pod-privileged:v0.2.0
+  registry://ghcr.io/kubewarden/policies/pod-privileged:v1.0.8
 
 # List downloaded policies
-kwctl policies list
+kwctl policies
 
-# Test the policy against a manifest
-kubectl get pod my-app -n production -o json | \
-  kwctl run \
-    registry://ghcr.io/kubewarden/policies/pod-privileged:v0.2.0 \
-    --request-path /dev/stdin
+# Create an AdmissionReview request from a pod manifest
+kwctl scaffold admission-request \
+  --operation CREATE \
+  --object my-pod.json > my-pod-request.json
 
-# Test with specific settings
+# Test the policy against the admission request
 kwctl run \
-  registry://ghcr.io/kubewarden/policies/pod-privileged:v0.2.0 \
-  --request-path my-pod.json \
-  --settings-json '{}'
+  --request-path my-pod-request.json \
+  registry://ghcr.io/kubewarden/policies/pod-privileged:v1.0.8
+
+# Test with explicit settings
+kwctl run \
+  --request-path my-pod-request.json \
+  --settings-json '{}' \
+  registry://ghcr.io/kubewarden/policies/pod-privileged:v1.0.8
 ```
 
-## Popular Hub Policies
+## Popular Policies
 
 ### Pod Privileged Policy
 
@@ -110,7 +107,7 @@ kind: ClusterAdmissionPolicy
 metadata:
   name: no-privileged-pods
 spec:
-  module: registry://ghcr.io/kubewarden/policies/pod-privileged:v0.2.0
+  module: registry://ghcr.io/kubewarden/policies/pod-privileged:v1.0.8
   rules:
     - apiGroups: [""]
       apiVersions: ["v1"]
@@ -131,11 +128,11 @@ kind: ClusterAdmissionPolicy
 metadata:
   name: no-host-namespaces
 spec:
-  module: registry://ghcr.io/kubewarden/policies/host-namespaces-psp:v0.1.1
+  module: registry://ghcr.io/kubewarden/policies/host-namespaces-psp:v1.1.6
   settings:
-    hostPID: false
-    hostIPC: false
-    hostNetwork: false
+    allow_host_pid: false
+    allow_host_ipc: false
+    allow_host_network: false
   rules:
     - apiGroups: [""]
       apiVersions: ["v1"]
@@ -145,23 +142,24 @@ spec:
   mode: protect
 ```
 
-### Allowed Image Repositories Policy
+### Trusted Repositories Policy
 
 Restricts images to approved registries:
 
 ```yaml
-# deploy-allowed-registries.yaml
+# deploy-trusted-repos.yaml
 apiVersion: policies.kubewarden.io/v1
 kind: ClusterAdmissionPolicy
 metadata:
-  name: allowed-registries
+  name: trusted-registries
 spec:
-  module: registry://ghcr.io/kubewarden/policies/allowed-image-repositories:v0.1.0
+  module: registry://ghcr.io/kubewarden/policies/trusted-repos:v2.0.4
   settings:
-    allowedRegistries:
-      - registry.internal.example.com
-      - gcr.io/my-org
-      - docker.io/library
+    registries:
+      allow:
+        - registry.internal.example.com
+        - gcr.io
+        - docker.io
   rules:
     - apiGroups: [""]
       apiVersions: ["v1"]
@@ -173,7 +171,7 @@ spec:
 
 ### Safe Annotations Policy
 
-Prevents modification of system annotations:
+Rejects resources that use annotations on a deny list:
 
 ```yaml
 # deploy-safe-annotations.yaml
@@ -182,15 +180,15 @@ kind: ClusterAdmissionPolicy
 metadata:
   name: safe-annotations
 spec:
-  module: registry://ghcr.io/kubewarden/policies/safe-annotations:v0.2.0
+  module: registry://ghcr.io/kubewarden/policies/safe-annotations:v1.0.2
   settings:
-    deniedAnnotations:
+    denied_annotations:
       - "kubernetes.io/cluster-service"
       - "scheduler.alpha.kubernetes.io/critical-pod"
   rules:
-    - apiGroups: [""]
-      apiVersions: ["v1"]
-      resources: ["pods"]
+    - apiGroups: ["*"]
+      apiVersions: ["*"]
+      resources: ["*"]
       operations: ["CREATE", "UPDATE"]
   mutating: false
   mode: protect
@@ -201,9 +199,7 @@ spec:
 ```bash
 #!/bin/bash
 # deploy-security-baseline.sh
-# Deploys a baseline set of security policies from the hub
-
-NAMESPACE="kubewarden"
+# Deploys a baseline set of security policies discovered on Artifact Hub
 
 echo "Deploying Kubewarden security baseline policies..."
 
@@ -215,7 +211,7 @@ kind: ClusterAdmissionPolicy
 metadata:
   name: baseline-no-privileged
 spec:
-  module: registry://ghcr.io/kubewarden/policies/pod-privileged:v0.2.0
+  module: registry://ghcr.io/kubewarden/policies/pod-privileged:v1.0.8
   rules:
     - apiGroups: [""]
       apiVersions: ["v1"]
@@ -229,11 +225,11 @@ kind: ClusterAdmissionPolicy
 metadata:
   name: baseline-no-host-namespaces
 spec:
-  module: registry://ghcr.io/kubewarden/policies/host-namespaces-psp:v0.1.1
+  module: registry://ghcr.io/kubewarden/policies/host-namespaces-psp:v1.1.6
   settings:
-    hostPID: false
-    hostIPC: false
-    hostNetwork: false
+    allow_host_pid: false
+    allow_host_ipc: false
+    allow_host_network: false
   rules:
     - apiGroups: [""]
       apiVersions: ["v1"]
@@ -248,20 +244,21 @@ echo "Policies deployed in monitor mode. Review violations before switching to p
 
 ## Checking Policy Versions
 
+Artifact Hub shows the available versions of each policy. After choosing a version, you can inspect or pull it with `kwctl`:
+
 ```bash
-# List all available versions of a policy
-kwctl pull \
-  --list-tags \
-  registry://ghcr.io/kubewarden/policies/pod-privileged
+# Inspect a specific version
+kwctl inspect \
+  registry://ghcr.io/kubewarden/policies/pod-privileged:v1.0.8
 
 # Pull a specific version
 kwctl pull \
-  registry://ghcr.io/kubewarden/policies/pod-privileged:v0.2.0
+  registry://ghcr.io/kubewarden/policies/pod-privileged:v1.0.8
 
-# Check for policy updates
-kwctl policies list
+# Check which policies are already downloaded locally
+kwctl policies
 ```
 
 ## Conclusion
 
-The Kubewarden Policy Hub dramatically accelerates your security implementation by providing production-ready, community-tested policies that you can deploy immediately. By starting policies in monitor mode, you can see what would be blocked before enabling enforcement, giving you confidence in deploying new policies without disrupting existing workloads. The combination of the hub's policy library and `kwctl`'s testing capabilities provides a complete workflow for discovering, evaluating, and safely deploying admission policies.
+Artifact Hub accelerates your Kubewarden policy discovery process by providing a searchable catalog of community-published policies, while `kwctl` gives you the tools to inspect, test, and pull the exact OCI artifacts you want to enforce. By starting policies in monitor mode, you can see what would be blocked before enabling enforcement, giving you confidence in deploying new policies without disrupting existing workloads. The combination of Artifact Hub's policy catalog and `kwctl`'s testing capabilities provides a complete workflow for discovering, evaluating, and safely deploying admission policies.
