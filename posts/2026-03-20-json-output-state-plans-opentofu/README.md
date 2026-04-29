@@ -22,8 +22,8 @@ OpenTofu's state and plan files contain rich information about infrastructure re
 
 tofu show -json
 
-# Show state for a specific resource
-tofu show -json aws_vpc.main
+# Extract a specific resource from state JSON
+tofu show -json | jq '.values.root_module | recurse(.child_modules[]?) | .resources[]? | select(.address == "aws_vpc.main")'
 
 # Save state JSON to file
 tofu show -json > state.json
@@ -58,16 +58,16 @@ tofu show -json > state.json
 
 ```bash
 # List all resource addresses
-tofu show -json | jq '[.values.root_module.resources[].address]'
+tofu show -json | jq '[.values.root_module | recurse(.child_modules[]?) | .resources[]?.address]'
 
 # Find resources by type
-tofu show -json | jq '[.values.root_module.resources[] | select(.type == "aws_instance")]'
+tofu show -json | jq '[.values.root_module | recurse(.child_modules[]?) | .resources[]? | select(.type == "aws_instance")]'
 
 # Get all VPC IDs
-tofu show -json | jq '[.values.root_module.resources[] | select(.type == "aws_vpc") | .values.id]'
+tofu show -json | jq '[.values.root_module | recurse(.child_modules[]?) | .resources[]? | select(.type == "aws_vpc") | .values.id]'
 
 # Get specific attribute
-tofu show -json | jq '.values.root_module.resources[] | select(.address == "aws_vpc.main") | .values.cidr_block'
+tofu show -json | jq '.values.root_module | recurse(.child_modules[]?) | .resources[]? | select(.address == "aws_vpc.main") | .values.cidr_block'
 ```
 
 ## Plan JSON Output
@@ -77,14 +77,14 @@ tofu show -json | jq '.values.root_module.resources[] | select(.address == "aws_
 tofu plan -out=tfplan
 
 # Convert plan to JSON
-tofu show -json tfplan > plan.json
+tofu show -plan=tfplan -json > plan.json
 ```
 
 ## Plan JSON Structure
 
 ```json
 {
-  "format_version": "1.1",
+  "format_version": "1.0",
   "resource_changes": [
     {
       "address": "aws_instance.web",
@@ -112,7 +112,10 @@ cat plan.json | jq '[.resource_changes[] | select(.change.actions[] == "create")
 cat plan.json | jq '[.resource_changes[] | select(.change.actions[] == "delete") | .address]'
 
 # Check if plan is empty (no changes)
-cat plan.json | jq '.resource_changes | length == 0'
+cat plan.json | jq '
+  ([.resource_changes[]? | select(.change.actions != ["no-op"])] | length == 0) and
+  (((.output_changes // {}) | length) == 0)
+'
 ```
 
 ## Policy Gate in CI/CD
@@ -120,7 +123,7 @@ cat plan.json | jq '.resource_changes | length == 0'
 ```bash
 #!/bin/bash
 tofu plan -out=tfplan
-tofu show -json tfplan > plan.json
+tofu show -plan=tfplan -json > plan.json
 
 DELETES=$(jq '[.resource_changes[] | select(.change.actions[] == "delete")] | length' plan.json)
 
@@ -140,14 +143,14 @@ tofu apply tfplan
 tofu state list
 
 # List as JSON via show
-tofu show -json | jq '[.values.root_module.resources[].address]'
+tofu show -json | jq '[.values.root_module | recurse(.child_modules[]?) | .resources[]?.address]'
 ```
 
 ## Exporting State for External Inventory
 
 ```bash
 tofu show -json | jq '
-  [.values.root_module.resources[] | {
+  [.values.root_module | recurse(.child_modules[]?) | .resources[]? | {
     address: .address,
     type: .type,
     region: .values.tags.Region,
