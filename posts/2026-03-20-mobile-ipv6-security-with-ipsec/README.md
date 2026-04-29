@@ -70,7 +70,7 @@ ip xfrm state add \
 strongSwan is the recommended IKEv2 implementation for MIPv6.
 
 ```text
-# /etc/strongswan.conf - MIPv6 Home Agent configuration
+# /etc/swanctl/swanctl.conf - MIPv6 Home Agent configuration
 
 connections {
     mipv6-ha {
@@ -103,7 +103,7 @@ connections {
 ```
 
 ```text
-# /etc/strongswan.conf - Mobile Node configuration
+# /etc/swanctl/swanctl.conf - Mobile Node configuration
 
 connections {
     mipv6-mn {
@@ -149,7 +149,7 @@ sudo swanctl --list-sas
 sudo ip xfrm policy show | grep 135
 
 # Test: send a BU and verify it's encrypted
-sudo tcpdump -i eth0 -n "proto esp and ip6"
+sudo tcpdump -i eth0 -n 'ip6 and esp'
 # Should see ESP-encrypted traffic between MN and HA
 ```
 
