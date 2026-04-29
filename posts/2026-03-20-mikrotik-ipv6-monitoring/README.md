@@ -108,14 +108,14 @@ For GUI configuration:
 
 ```text
 # Real-time traffic monitoring (Torch)
-/tool torch interface=ether1 ip-protocol=ipv6
+/tool torch interface=ether1 src-address6=::/0
 
 # Interface statistics
 /ipv6 address print
 /interface print stats
 
-# Connection tracking
-/ipv6 firewall connection print
+# Connection tracking (IPv4 and IPv6 share the same table)
+/ip firewall connection print
 ```
 
 ## Monitoring with OneUptime
