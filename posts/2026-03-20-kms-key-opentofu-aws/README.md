@@ -4,11 +4,11 @@ Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
 Tags: OpenTofu, AWS, Infrastructure as Code, IaC, KMS, Security, Encryption
 
-Description: Learn how to create and manage AWS KMS customer-managed keys (CMKs) with key policies, aliases, and grants using OpenTofu for encryption across AWS services.
+Description: Learn how to create and manage AWS KMS customer-managed keys with key policies, aliases, and grants using OpenTofu for encryption across AWS services.
 
 ## Introduction
 
-AWS Key Management Service (KMS) enables you to create and manage cryptographic keys for data encryption. Customer-managed keys (CMKs) give you full control over key rotation, access policies, and lifecycle management. This guide covers KMS key creation using OpenTofu.
+AWS Key Management Service (KMS) enables you to create and manage cryptographic keys for data encryption. Customer-managed keys give you full control over key rotation, access policies, and lifecycle management. This guide covers KMS key creation using OpenTofu.
 
 ## Prerequisites
 
@@ -38,13 +38,13 @@ data "aws_caller_identity" "current" {}
 
 ```hcl
 resource "aws_kms_key" "main" {
-  description             = "CMK for encrypting application data"
+  description             = "KMS key for encrypting application data"
   deletion_window_in_days = 30  # 7-30 days before deletion
 
   # Enable automatic key rotation (annual)
   enable_key_rotation = true
 
-  # Multi-region key for cross-region use
+  # Keep this as a single-Region key
   multi_region = false
 
   # Key policy
@@ -52,8 +52,8 @@ resource "aws_kms_key" "main" {
     Version = "2012-10-17"
     Statement = [
       {
-        # Root account has full access
-        Sid    = "EnableRootAccess"
+        # Allow the AWS account to manage the key and delegate access via IAM
+        Sid    = "EnableIAMUserPermissions"
         Effect = "Allow"
         Principal = {
           AWS = "arn:aws:iam::${data.aws_caller_identity.current.account_id}:root"
@@ -78,7 +78,7 @@ resource "aws_kms_key" "main" {
         Resource = "*"
       },
       {
-        # Allow CloudWatch to use the key for log encryption
+        # Allow CloudWatch Logs to use the key for log encryption
         Sid    = "AllowCloudWatchLogs"
         Effect = "Allow"
         Principal = {
@@ -118,9 +118,9 @@ resource "aws_kms_alias" "main" {
 
 ```hcl
 resource "aws_kms_key" "signing" {
-  description  = "Asymmetric CMK for digital signatures"
+  description  = "Asymmetric KMS key for digital signatures"
   key_usage    = "SIGN_VERIFY"
-  key_spec     = "RSA_4096"  # RSA 4096-bit for signing
+  customer_master_key_spec = "RSA_4096"  # RSA 4096-bit for signing
 
   enable_key_rotation = false  # Not supported for asymmetric keys
 
@@ -138,7 +138,7 @@ resource "aws_kms_alias" "signing" {
 ## Step 5: Create a Key Grant
 
 ```hcl
-# Grant temporary access to a role
+# Grant scoped access to a role
 resource "aws_kms_grant" "lambda_access" {
   name              = "lambda-decrypt-grant"
   key_id            = aws_kms_key.main.key_id
@@ -149,7 +149,7 @@ resource "aws_kms_grant" "lambda_access" {
     "DescribeKey"
   ]
 
-  # Constraint - only allow use if encryption context matches
+  # Constraint - cryptographic operations such as Decrypt require a matching encryption context
   constraints {
     encryption_context_equals = {
       service = "my-lambda-function"
@@ -180,4 +180,4 @@ tofu apply
 
 ## Conclusion
 
-You have successfully created AWS KMS customer-managed keys using OpenTofu with key rotation, comprehensive key policies, and key grants. Always use CMKs for sensitive data encryption to maintain full control over key access. Use key grants for time-limited access delegation and encryption context for additional authorization controls.
+You have successfully created AWS KMS customer-managed keys using OpenTofu with key rotation, key policies, and key grants. Use customer-managed keys when you need full control over key access and lifecycle. Use key grants for scoped access delegation, and use encryption context for additional authorization controls on supported cryptographic operations.
