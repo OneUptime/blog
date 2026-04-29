@@ -12,7 +12,7 @@ Description: Migrating a DHCP server involves exporting the configuration and le
 flowchart LR
     A[Export config\n+ leases from old] --> B[Install DHCP\non new server]
     B --> C[Import config\n+ leases]
-    C --> D[Test new server\nin parallel]
+    C --> D[Test new server\non isolated subnet]
     D --> E[Switch clients\nto new server]
     E --> F[Decommission\nold server]
 ```
@@ -29,10 +29,10 @@ sudo cp /etc/dhcp/dhcpd.conf /tmp/dhcpd.conf.backup
 sudo cp /var/lib/dhcp/dhcpd.leases /tmp/dhcpd.leases.backup
 
 # Create a single archive
-sudo tar czf /tmp/dhcp-migration.tar.gz \
-  /etc/dhcp/dhcpd.conf \
-  /etc/default/isc-dhcp-server \
-  /var/lib/dhcp/dhcpd.leases
+sudo tar czf /tmp/dhcp-migration.tar.gz -C / \
+  etc/dhcp/dhcpd.conf \
+  etc/default/isc-dhcp-server \
+  var/lib/dhcp/dhcpd.leases
 
 # Transfer to new server
 scp /tmp/dhcp-migration.tar.gz admin@new-server:/tmp/
@@ -44,14 +44,14 @@ scp /tmp/dhcp-migration.tar.gz admin@new-server:/tmp/
 # On the new server
 sudo apt install isc-dhcp-server
 
-# Extract the backup
-cd /tmp
-sudo tar xzf dhcp-migration.tar.gz
+# Extract the backup to a staging directory
+sudo mkdir -p /tmp/dhcp-migration
+sudo tar xzf /tmp/dhcp-migration.tar.gz -C /tmp/dhcp-migration
 
 # Copy configuration
-sudo cp tmp/etc/dhcp/dhcpd.conf /etc/dhcp/dhcpd.conf
-sudo cp tmp/etc/default/isc-dhcp-server /etc/default/isc-dhcp-server
-sudo cp tmp/var/lib/dhcp/dhcpd.leases /var/lib/dhcp/dhcpd.leases
+sudo cp /tmp/dhcp-migration/etc/dhcp/dhcpd.conf /etc/dhcp/dhcpd.conf
+sudo cp /tmp/dhcp-migration/etc/default/isc-dhcp-server /etc/default/isc-dhcp-server
+sudo cp /tmp/dhcp-migration/var/lib/dhcp/dhcpd.leases /var/lib/dhcp/dhcpd.leases
 
 # Update interface binding if the interface name changed
 sudo sed -i 's/eth0/enp3s0/' /etc/default/isc-dhcp-server
@@ -67,14 +67,14 @@ sudo dhcpd -t -cf /etc/dhcp/dhcpd.conf
 echo "Configuration test: $?"
 ```
 
-## Step 4: Parallel Testing
+## Step 4: Testing Before Cutover
 
-Run the new server alongside the old one (using a test subnet or lower priority):
+Test the new server on an isolated test subnet or as part of a configured failover pair. Do not run two independent DHCP servers for the same production scope at the same time:
 
 ```bash
 # Start new server and watch logs
 sudo systemctl start isc-dhcp-server
-journalctl -u isc-dhcp-server -f
+sudo journalctl -u isc-dhcp-server -f
 ```
 
 ## Step 5: Cutover
@@ -89,7 +89,7 @@ sudo systemctl disable isc-dhcp-server
 # 3. New server is now primary
 
 # Verify clients are getting leases from new server
-journalctl -u isc-dhcp-server -n 20 | grep DHCPACK
+sudo journalctl -u isc-dhcp-server -n 20 | grep DHCPACK
 ```
 
 ## Windows Server Export/Import
@@ -102,7 +102,7 @@ Export-DhcpServer -File "C:\dhcp-export.xml" -Leases
 Import-DhcpServer -File "C:\dhcp-export.xml" `
   -BackupPath "C:\dhcp-backup" -Leases -Force
 
-# Re-authorize in AD
+# If the DHCP server is domain joined, authorize it in AD
 Add-DhcpServerInDC -DnsName "new-dhcp.example.local" -IPAddress 192.168.1.11
 ```
 
@@ -110,5 +110,5 @@ Add-DhcpServerInDC -DnsName "new-dhcp.example.local" -IPAddress 192.168.1.11
 
 - Always backup both config and leases together for a complete migration.
 - Test the new server's configuration with `dhcpd -t` before starting the service.
-- Run servers in parallel briefly to verify operation before switching off the old server.
+- Test the new server on an isolated subnet or as a configured failover partner before switching off the old server.
 - Update DHCP relay agent (`ip helper-address`) references if the server IP changes.
