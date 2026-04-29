@@ -8,7 +8,7 @@ Description: Build a simple TCP proxy server in Java that forwards IPv4 connecti
 
 ## Introduction
 
-A TCP proxy server accepts client connections on one address and forwards the traffic to a backend server, acting as a transparent intermediary. This is useful for traffic logging, protocol inspection, load balancing, SSL termination, and access control. This Java implementation demonstrates bidirectional TCP proxying over IPv4.
+A TCP proxy server accepts client connections on one address and forwards the traffic to a backend server, acting as an intermediary. This is useful for traffic logging, protocol inspection, load balancing, SSL termination, and access control. This Java implementation demonstrates bidirectional TCP proxying over IPv4.
 
 ## Simple TCP Proxy Server
 
@@ -61,9 +61,8 @@ public class TCPProxy {
         String clientAddr = clientSocket.getRemoteSocketAddress().toString();
         logger.info("New connection from: " + clientAddr);
         
-        try (clientSocket) {
+        try (clientSocket; Socket backendSocket = new Socket()) {
             // Connect to the backend
-            Socket backendSocket = new Socket();
             backendSocket.connect(new InetSocketAddress(backendHost, backendPort), 5000);
             
             clientSocket.setSoTimeout(300000); // 5-minute timeout
@@ -82,7 +81,6 @@ public class TCPProxy {
             clientToBackend.join();
             backendToClient.join();
             
-            backendSocket.close();
             logger.info("Connection closed: " + clientAddr);
             
         } catch (ConnectException e) {
@@ -101,8 +99,9 @@ public class TCPProxy {
         byte[] buffer = new byte[8192];
         long totalBytes = 0;
         
-        try (InputStream in = from.getInputStream();
-             OutputStream out = to.getOutputStream()) {
+        try {
+            InputStream in = from.getInputStream();
+            OutputStream out = to.getOutputStream();
             
             int bytesRead;
             while ((bytesRead = in.read(buffer)) != -1) {
@@ -113,6 +112,9 @@ public class TCPProxy {
                 // Optional: intercept/log data here
                 // logData(direction, buffer, bytesRead);
             }
+
+            // Preserve the opposite direction by half-closing only the write side.
+            to.shutdownOutput();
             
         } catch (SocketException e) {
             // Connection closed - normal
@@ -141,7 +143,7 @@ public class TCPProxy {
 
 ## Adding HTTP Request Logging
 
-Extend the `pipe` method to log HTTP traffic:
+Extend the `pipe` method to log basic HTTP traffic:
 
 ```java
 private void logData(String direction, byte[] data, int length) {
@@ -152,7 +154,7 @@ private void logData(String direction, byte[] data, int length) {
         return;
     }
     
-    // Only log HTTP request/response lines
+    // Only log some common HTTP request/response lines
     if (text.startsWith("GET ") || text.startsWith("POST ") || 
         text.startsWith("HTTP/") || text.startsWith("PUT ")) {
         String firstLine = text.split("\r\n")[0];
@@ -172,9 +174,9 @@ javac TCPProxy.java
 java TCPProxy 8888 10.0.0.5 80
 
 # Test with curl
-curl http://localhost:8888/api/endpoint
+curl http://127.0.0.1:8888/api/endpoint
 ```
 
 ## Conclusion
 
-This bidirectional TCP proxy demonstrates Java's socket-level networking. The key pattern is spawning two goroutine-equivalent threads - one for each direction - and using `InputStream.read()` loops to move data. Add SSL termination by wrapping sockets in `SSLSocket` for HTTPS proxying.
+This bidirectional TCP proxy demonstrates Java's socket-level networking. The key pattern is spawning two goroutine-equivalent threads - one for each direction - and using `InputStream.read()` loops to move data. Add TLS termination by accepting client connections with `SSLServerSocket`; use `SSLSocket` when the backend also expects TLS.
