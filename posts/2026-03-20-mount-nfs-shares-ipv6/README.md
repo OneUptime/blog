@@ -173,7 +173,7 @@ nc -6 -zv 2001:db8::1 2049
 # Should show: Connection succeeded
 
 # Check RPC services (NFSv3)
-rpcinfo -p "[2001:db8::1]"
+rpcinfo -s 2001:db8::1
 
 # Check mount errors in system log
 journalctl -u mnt-data.mount -n 50
