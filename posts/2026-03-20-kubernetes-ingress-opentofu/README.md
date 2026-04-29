@@ -13,8 +13,9 @@ This guide covers How to Create Ingress Resources with OpenTofu on Kubernetes us
 ## Prerequisites
 
 - OpenTofu v1.6+
-- Access to a Kubernetes cluster or Docker daemon
-- Relevant provider configured
+- Access to a Kubernetes cluster with an installed Ingress controller such as ingress-nginx
+- A configured kubeconfig context for the target cluster
+- An existing TLS secret in the target namespace, or cert-manager managing it
 
 ## Step 1: Configure the Provider
 
@@ -24,7 +25,7 @@ terraform {
   required_providers {
     kubernetes = {
       source  = "hashicorp/kubernetes"
-      version = "~> 2.0"
+      version = "~> 3.0"
     }
   }
 }
@@ -39,21 +40,45 @@ provider "kubernetes" {
 
 ```hcl
 variable "kube_context" {
-  description = "Kubernetes context to use"
+  description = "Optional Kubernetes context to use"
   type        = string
-  default     = "default"
+  default     = null
+  nullable    = true
 }
 
 variable "namespace" {
   description = "Kubernetes namespace"
   type        = string
-  default     = "default"
+  default     = "ingress-demo"
 }
 
 variable "environment" {
   description = "Deployment environment"
   type        = string
   default     = "production"
+}
+
+variable "container_image" {
+  description = "Container image that serves HTTP on port 8080 and exposes /health"
+  type        = string
+}
+
+variable "ingress_class_name" {
+  description = "IngressClass name handled by your ingress controller"
+  type        = string
+  default     = "nginx"
+}
+
+variable "ingress_host" {
+  description = "DNS host name to route with the ingress resource"
+  type        = string
+  default     = "app.example.com"
+}
+
+variable "tls_secret_name" {
+  description = "Existing TLS secret used by the ingress resource"
+  type        = string
+  default     = "app-tls"
 }
 ```
 
@@ -62,7 +87,7 @@ variable "environment" {
 ```hcl
 # Create namespace
 
-resource "kubernetes_namespace" "app" {
+resource "kubernetes_namespace_v1" "app" {
   metadata {
     name = var.namespace
     labels = {
@@ -73,18 +98,18 @@ resource "kubernetes_namespace" "app" {
 }
 
 # Resource quota to limit namespace resources
-resource "kubernetes_resource_quota" "app" {
+resource "kubernetes_resource_quota_v1" "app" {
   metadata {
     name      = "app-quota"
-    namespace = kubernetes_namespace.app.metadata[0].name
+    namespace = kubernetes_namespace_v1.app.metadata[0].name
   }
   spec {
     hard = {
-      pods               = "20"
-      requests_cpu       = "4"
-      requests_memory    = "8Gi"
-      limits_cpu         = "8"
-      limits_memory      = "16Gi"
+      "pods"            = "20"
+      "requests.cpu"    = "4"
+      "requests.memory" = "8Gi"
+      "limits.cpu"      = "8"
+      "limits.memory"   = "16Gi"
     }
   }
 }
@@ -93,10 +118,10 @@ resource "kubernetes_resource_quota" "app" {
 ## Step 4: Deploy Workloads
 
 ```hcl
-resource "kubernetes_deployment" "app" {
+resource "kubernetes_deployment_v1" "app" {
   metadata {
     name      = "app"
-    namespace = kubernetes_namespace.app.metadata[0].name
+    namespace = kubernetes_namespace_v1.app.metadata[0].name
     labels = {
       app         = "my-app"
       environment = var.environment
@@ -143,6 +168,15 @@ resource "kubernetes_deployment" "app" {
             initial_delay_seconds = 30
             period_seconds        = 10
           }
+
+          readiness_probe {
+            http_get {
+              path = "/health"
+              port = 8080
+            }
+            initial_delay_seconds = 5
+            period_seconds        = 10
+          }
         }
       }
     }
@@ -153,10 +187,10 @@ resource "kubernetes_deployment" "app" {
 ## Step 5: Expose the Workload
 
 ```hcl
-resource "kubernetes_service" "app" {
+resource "kubernetes_service_v1" "app" {
   metadata {
     name      = "app-service"
-    namespace = kubernetes_namespace.app.metadata[0].name
+    namespace = kubernetes_namespace_v1.app.metadata[0].name
   }
 
   spec {
@@ -172,17 +206,82 @@ resource "kubernetes_service" "app" {
     type = "ClusterIP"
   }
 }
+
+resource "kubernetes_ingress_v1" "app" {
+  metadata {
+    name      = "app-ingress"
+    namespace = kubernetes_namespace_v1.app.metadata[0].name
+    annotations = {
+      "nginx.ingress.kubernetes.io/ssl-redirect" = "true"
+    }
+  }
+
+  spec {
+    ingress_class_name = var.ingress_class_name
+
+    tls {
+      hosts       = [var.ingress_host]
+      secret_name = var.tls_secret_name
+    }
+
+    rule {
+      host = var.ingress_host
+
+      http {
+        path {
+          path      = "/"
+          path_type = "Prefix"
+
+          backend {
+            service {
+              name = kubernetes_service_v1.app.metadata[0].name
+              port {
+                number = 80
+              }
+            }
+          }
+        }
+
+        path {
+          path      = "/health"
+          path_type = "Prefix"
+
+          backend {
+            service {
+              name = kubernetes_service_v1.app.metadata[0].name
+              port {
+                number = 80
+              }
+            }
+          }
+        }
+      }
+    }
+  }
+}
 ```
 
 ## Step 6: Define Outputs
 
 ```hcl
 output "namespace" {
-  value = kubernetes_namespace.app.metadata[0].name
+  value = kubernetes_namespace_v1.app.metadata[0].name
 }
 
 output "service_cluster_ip" {
-  value = kubernetes_service.app.spec[0].cluster_ip
+  value = kubernetes_service_v1.app.spec[0].cluster_ip
+}
+
+output "ingress_name" {
+  value = kubernetes_ingress_v1.app.metadata[0].name
+}
+
+output "ingress_endpoint" {
+  value = try(
+    kubernetes_ingress_v1.app.status[0].load_balancer[0].ingress[0].hostname,
+    kubernetes_ingress_v1.app.status[0].load_balancer[0].ingress[0].ip,
+    null
+  )
 }
 ```
 
