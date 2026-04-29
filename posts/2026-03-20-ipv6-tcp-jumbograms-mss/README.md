@@ -4,26 +4,27 @@ Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
 Tags: IPv6, TCP, Jumbograms, MSS, Maximum Segment Size
 
-Description: Understand how TCP Maximum Segment Size interacts with IPv6 jumbograms, how TCP can send segments larger than 65495 bytes, and the practical limits of TCP over jumbogram paths.
+Description: Understand how TCP Maximum Segment Size interacts with IPv6 jumbograms, how TCP can send segments larger than 65515 bytes, and the practical limits of TCP over jumbogram paths.
 
 ## Introduction
 
-TCP's Maximum Segment Size (MSS) is negotiated during the SYN handshake and defines the maximum amount of data per TCP segment. On standard paths, MSS is capped at 65495 bytes by the 16-bit IPv6 Payload Length field (65535 - 40 IPv6 header). On jumbogram-capable paths where the link MTU exceeds 65535 bytes, TCP can theoretically use larger MSS values, allowing a single TCP segment to carry more than 65535 bytes of application data.
+TCP's Maximum Segment Size (MSS) is advertised during the SYN handshake and defines the maximum amount of TCP data each side is willing to receive in a segment. On standard IPv6 packets, MSS is capped at 65515 bytes by the 16-bit IPv6 Payload Length field, because the 65535-byte payload limit includes the TCP header but not the 40-byte IPv6 header. On jumbogram-capable paths where the link MTU exceeds 65575 bytes, TCP can send segments larger than 65535 bytes of application data by advertising an MSS of 65535, which RFC 2675 defines as "infinity" for IPv6 jumbograms.
 
 ## TCP MSS Standard Limits
 
 ```text
-Standard TCP MSS calculation:
+Standard TCP MSS calculation (no IPv6 extension headers):
 
 IPv6 payload length limit: 65535 bytes (16-bit field)
   TCP header: minimum 20 bytes
-  TCP MSS max: 65535 - 20 = 65515 bytes per segment
+  Maximum TCP data in one packet: 65535 - 20 = 65515 bytes
 
-With TCP options (12 bytes of options):
-  TCP MSS max: 65535 - 32 = 65503 bytes
+If a packet carries 12 bytes of TCP options:
+  Advertised MSS is still 65515 bytes
+  Actual TCP data in that packet: 65535 - 32 = 65503 bytes
 
 IPv6 header is NOT counted in IPv6 Payload Length:
-  So TCP MSS = 65535 - TCP_header_size (not - 40)
+  So the TCP data limit is 65535 - TCP_header_size (not - 40)
 
 In practice, standard Ethernet limits MSS to:
   1500 - 40 (IPv6) - 20 (TCP) = 1440 bytes
@@ -34,22 +35,22 @@ In practice, standard Ethernet limits MSS to:
 ```text
 Jumbogram TCP MSS:
 
-On a jumbogram path (link MTU > 65535):
+On a jumbogram path (link MTU > 65575):
   IPv6 Payload Length = 0 (jumbogram indicator)
-  Actual length in Jumbo Payload Hop-by-Hop option (32 bits)
-  Maximum TCP segment: up to ~4 GB theoretically
+  Actual length is carried in the Jumbo Payload Hop-by-Hop option (32 bits)
+  Maximum TCP payload: up to ~4 GB theoretically
 
 TCP sequence number space:
-  TCP uses 32-bit sequence numbers
-  Max unacknowledged data: ~4 GB (before wrap-around)
+  TCP uses 32-bit byte sequence numbers
+  A single jumbogram-sized segment still fits within that space
   SACK allows efficient handling of out-of-order segments
-  No change to TCP protocol needed for jumbogram support
+  RFC 2675 adds special handling for MSS and the Urgent Pointer
 
 MSS negotiation for jumbograms:
   MSS is a 16-bit field in TCP options
-  Maximum advertised MSS: 65535 bytes
-  For larger segments on jumbogram paths: MSS option value wraps or
-  implementations use other mechanisms (implementation-specific)
+  If interface MTU - 60 is >= 65535, advertise MSS = 65535
+  A received MSS of 65535 means "infinity" for IPv6 jumbograms
+  Actual send MSS is determined by Path MTU Discovery
 ```
 
 ## TCP Performance on Jumbogram Paths
@@ -59,7 +60,7 @@ def estimate_tcp_performance(mtu: int, rtt_ms: float,
                               bandwidth_gbps: float) -> dict:
     """
     Estimate TCP throughput for a given MTU, RTT, and link bandwidth.
-    Demonstrates the efficiency improvement of jumbograms.
+    Demonstrates the efficiency improvement of larger MTUs.
     """
     tcp_header = 20
     ipv6_header = 40
@@ -88,12 +89,12 @@ def estimate_tcp_performance(mtu: int, rtt_ms: float,
         "header_overhead_percent": round(overhead_percent, 2),
     }
 
-# Compare standard MTU vs jumbo frames vs theoretical jumbogram
+# Compare standard MTU vs jumbo frames vs maximum non-jumbogram IPv6 packet
 
 scenarios = [
     (1500,  0.1, 10),   # Standard Ethernet, 0.1ms RTT, 10 Gbps
     (9000,  0.1, 10),   # Jumbo frames, 0.1ms RTT, 10 Gbps
-    (65535, 0.1, 100),  # Maximum standard, 0.1ms RTT, 100 Gbps (HPC)
+    (65575, 0.1, 100),  # Maximum non-jumbogram IPv6 packet, 0.1ms RTT, 100 Gbps (HPC)
 ]
 
 print(f"{'MTU':<8} {'MSS':<8} {'Overhead%':<12} {'Segments for BDP'}")
@@ -124,7 +125,7 @@ sudo ethtool -K eth0 gso on   # Re-enable
 
 # Check TCP congestion control (important for large BDP paths)
 cat /proc/sys/net/ipv4/tcp_congestion_control
-# BBR or CUBIC are recommended for high-BDP paths
+# Example: switch to BBR if it is available on the host
 sudo sysctl -w net.ipv4.tcp_congestion_control=bbr
 ```
 
@@ -141,13 +142,13 @@ sudo sysctl -w net.ipv4.tcp_wmem="4096 65536 67108864"
 # Enable TCP window scaling (required for BDP > 65535 bytes)
 sudo sysctl -w net.ipv4.tcp_window_scaling=1
 
-# Set congestion control to BBR for HPC
+# Example: set congestion control to BBR if it is available on the host
 sudo sysctl -w net.ipv4.tcp_congestion_control=bbr
 
-# Persist changes
+# After adding these settings to /etc/sysctl.conf, reload them
 sudo sysctl -p
 ```
 
 ## Conclusion
 
-TCP handles jumbogram paths naturally because its sequence number space (32-bit) is already large enough for any payload size. The 16-bit MSS field in TCP options limits the negotiated per-segment size to 65535 bytes, but on jumbogram paths, TCP implementations can send larger segments when the path allows it. The primary benefit in practice comes from jumbo frames (9000-byte MTU) rather than true jumbograms, as 9000-byte frames are readily available on modern data center hardware and reduce TCP/IP processing overhead significantly for bulk transfers.
+TCP can operate over IPv6 jumbogram paths, but RFC 2675 defines special handling for the MSS option and Urgent Pointer to make that work correctly. The 16-bit MSS field does not wrap; instead, an advertised MSS of 65535 is treated as "infinity", and the actual send MSS is derived from Path MTU Discovery. The primary benefit in practice comes from jumbo frames (9000-byte MTU) rather than true jumbograms, as 9000-byte frames are readily available on modern data center hardware and reduce TCP/IP processing overhead significantly for bulk transfers.
