@@ -19,7 +19,7 @@ terraform {
   required_providers {
     azurerm = {
       source  = "hashicorp/azurerm"
-      version = "~> 3.0"
+      version = "~> 4.0"
     }
   }
 }
@@ -113,11 +113,12 @@ export ARM_CLIENT_SECRET="client-secret"
 ## Using Azure Managed Identity in CI
 
 ```hcl
-# Use managed identity instead of service principal for Azure DevOps agents
+# Use managed identity on a self-hosted agent running on an Azure VM
 provider "azurerm" {
   features {}
   subscription_id = var.subscription_id
-  # use_oidc = true   # For GitHub Actions with Azure OIDC
+  tenant_id       = var.tenant_id
+  use_msi         = true
 }
 ```
 
