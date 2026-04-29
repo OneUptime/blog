@@ -71,7 +71,6 @@ Flag meanings:
 
 ```python
 from scapy.all import *
-from scapy.contrib.mobileipv6 import *
 
 # Craft a Binding Update packet
 
@@ -82,7 +81,7 @@ bu_packet = (
         flags="AH",      # Acknowledge + Home Registration
         mhtime=150,      # Lifetime = 150 * 4 = 600 seconds
     ) /
-    MIP6OptAlternateCoA(addr="2001:db8:foreign::50")
+    MIP6OptAltCoA(acoa="2001:db8:foreign::50")
 )
 
 # Show the packet structure
