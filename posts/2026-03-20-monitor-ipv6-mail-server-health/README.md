@@ -57,9 +57,10 @@ Monitor the mail queue for signs of delivery problems:
 #!/bin/bash
 # queue-monitor.sh - Monitor Postfix queue depth
 
-# Count messages in queue
-TOTAL=$(postqueue -p 2>/dev/null | grep -c "^[0-9A-F]" || echo 0)
-DEFERRED=$(postqueue -p 2>/dev/null | grep "Deferred" | wc -l || echo 0)
+# Count messages in queue (matches both short and long Postfix queue IDs)
+TOTAL=$(postqueue -p 2>/dev/null | grep -c "^[A-Za-z0-9]" || echo 0)
+# Count deferred messages by inspecting the deferred queue spool
+DEFERRED=$(sudo find /var/spool/postfix/deferred -type f 2>/dev/null | wc -l)
 
 echo "Total queued: $TOTAL"
 echo "Deferred: $DEFERRED"
@@ -108,9 +109,10 @@ echo "Sent via IPv4: $ipv4_sent"
 Use the official Postfix Prometheus exporter:
 
 ```bash
-# Install postfix_exporter
-wget https://github.com/kumina/postfix_exporter/releases/download/v0.3.0/postfix_exporter_0.3.0_linux_amd64.tar.gz
-tar xzf postfix_exporter_0.3.0_linux_amd64.tar.gz
+# Build postfix_exporter from source (requires Go)
+git clone https://github.com/kumina/postfix_exporter.git
+cd postfix_exporter
+go build -o postfix_exporter .
 sudo mv postfix_exporter /usr/local/bin/
 
 # Create systemd unit
@@ -122,7 +124,7 @@ After=network.target
 [Service]
 ExecStart=/usr/local/bin/postfix_exporter \
     --web.listen-address="[::]:9154" \
-    --postfix.logfile-path=/var/log/mail.log
+    --postfix.logfile_path=/var/log/mail.log
 Restart=always
 
 [Install]
