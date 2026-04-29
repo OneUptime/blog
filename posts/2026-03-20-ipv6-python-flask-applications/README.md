@@ -8,7 +8,7 @@ Description: Configure Flask applications to handle IPv6 connections, extract cl
 
 ## Running Flask on IPv6
 
-By default, Flask listens on `0.0.0.0` (IPv4 only). To enable IPv6:
+By default, Flask's development server listens on `127.0.0.1`. To enable IPv6:
 
 ```python
 from flask import Flask
@@ -20,7 +20,7 @@ def index():
     return "Hello from Flask over IPv6!"
 
 if __name__ == "__main__":
-    # Listen on all IPv4 and IPv6 interfaces
+    # Listen on all IPv6 interfaces
     app.run(
         host="::",         # :: binds to all IPv6 interfaces
         port=5000,
@@ -33,7 +33,7 @@ Run with:
 python app.py
 # Access via: http://[::1]:5000  (localhost IPv6)
 
-# Or: http://[2001:db8::1]:5000  (global IPv6)
+# Or: http://[your-server-ipv6]:5000  (replace with your global IPv6)
 ```
 
 ## Getting Client IPv6 Address
@@ -41,48 +41,45 @@ python app.py
 ```python
 from flask import Flask, request, jsonify
 import ipaddress
+from werkzeug.middleware.proxy_fix import ProxyFix
 
 app = Flask(__name__)
+app.wsgi_app = ProxyFix(app.wsgi_app, x_for=1)
 
 def get_client_ip() -> str:
     """
-    Get the real client IP address, handling:
-    - Direct IPv6 connections
-    - Proxied connections (X-Forwarded-For)
-    - IPv4-mapped IPv6 addresses (::ffff:x.x.x.x)
+    Get the client IP address, handling direct connections and
+    IPv4-mapped IPv6 addresses (::ffff:x.x.x.x).
+
+    If the app is behind a trusted proxy, ProxyFix makes
+    request.remote_addr reflect X-Forwarded-For safely.
     """
-    # Check for proxy header first
-    forwarded_for = request.headers.get("X-Forwarded-For")
-    if forwarded_for:
-        # Take the first IP in the chain (original client)
-        ip_str = forwarded_for.split(",")[0].strip()
-    else:
-        ip_str = request.remote_addr
+    ip_str = request.remote_addr or ""
 
     # Normalize IPv4-mapped IPv6 addresses
     try:
-        ip = ipaddress.IPv6Address(ip_str)
-        if ip.ipv4_mapped:
+        ip = ipaddress.ip_address(ip_str)
+        if isinstance(ip, ipaddress.IPv6Address) and ip.ipv4_mapped:
             return str(ip.ipv4_mapped)
         return str(ip)
     except ValueError:
-        return ip_str  # Return as-is for IPv4
+        return ip_str  # Return as-is if parsing fails
 
 @app.route("/api/whoami")
 def whoami():
     client_ip = get_client_ip()
     return jsonify({
         "ip": client_ip,
-        "version": 6 if ":" in client_ip else 4
+        "version": ipaddress.ip_address(client_ip).version if client_ip else None
     })
 ```
 
 ## Rate Limiting with IPv6
 
-Rate limiting by IPv6 address requires handling /64 prefixes (one user may have many /128 addresses):
+Rate limiting by IPv6 address often uses /64 prefixes (one user may have many /128 addresses):
 
 ```python
-from flask import Flask, request
+from flask import Flask, jsonify, request
 from flask_limiter import Limiter
 import ipaddress
 
@@ -93,13 +90,14 @@ def get_ipv6_rate_limit_key():
     Use /64 prefix as rate limit key for IPv6 (privacy extensions
     mean one user can have many different /128 addresses).
     For IPv4, use the full address.
+    If the app is behind a trusted proxy, configure ProxyFix first.
     """
-    ip = request.remote_addr
+    ip = request.remote_addr or ""
     try:
-        addr = ipaddress.IPv6Address(ip)
-        if not addr.is_private and not addr.is_link_local:
+        addr = ipaddress.ip_address(ip)
+        if isinstance(addr, ipaddress.IPv6Address) and addr.is_global:
             # Use /64 prefix as key for global IPv6
-            net = ipaddress.IPv6Network(f"{ip}/64", strict=False)
+            net = ipaddress.IPv6Network(f"{addr}/64", strict=False)
             return str(net)
     except ValueError:
         pass
@@ -128,8 +126,8 @@ app = Flask(__name__)
 @app.route("/api/device/<address>")
 def get_device(address: str):
     """
-    Route that accepts an IPv6 address parameter.
-    Flask routes don't handle IPv6 directly in URL params.
+    Route that accepts an IPv6 address as a normal path string.
+    Validate it explicitly before using it.
     """
     # Validate the IPv6 address
     try:
@@ -139,7 +137,7 @@ def get_device(address: str):
 
     return jsonify({
         "address": str(addr.compressed),
-        "type": "link_local" if addr.is_link_local else "global",
+        "type": "link_local" if addr.is_link_local else "global" if addr.is_global else "other",
         "expanded": addr.exploded
     })
 
@@ -199,4 +197,4 @@ server {
 
 ## Conclusion
 
-Flask handles IPv6 by binding to `::` instead of `0.0.0.0`. Client IPv6 address extraction requires normalizing IPv4-mapped addresses and handling privacy extensions for rate limiting. For production deployments, Gunicorn with `[::]:port` binding and Nginx fronting provides a robust IPv6-capable web service stack.
+Flask's development server can listen on IPv6 by binding to `::`. Client IPv6 address extraction should normalize IPv4-mapped addresses, and apps behind a reverse proxy should use `ProxyFix` so `request.remote_addr` reflects trusted `X-Forwarded-For` values. For rate limiting, grouping global IPv6 addresses by /64 is a common strategy when privacy extensions are in use. For production deployments, Gunicorn with `[::]:port` binding and Nginx fronting provides a robust IPv6-capable web service stack.
