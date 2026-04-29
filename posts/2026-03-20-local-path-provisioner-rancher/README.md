@@ -8,7 +8,7 @@ Description: Configure the Local Path Provisioner in Rancher for development clu
 
 ## Introduction
 
-The Local Path Provisioner provides a lightweight dynamic provisioner for development and test environments where cloud storage is unavailable or overkill. It automatically creates hostPath PersistentVolumes on the node where the pod is scheduled-ideal for K3s-based development clusters.
+The Local Path Provisioner provides a lightweight dynamic provisioner for development and test environments where cloud storage is unavailable or overkill. It automatically creates local or hostPath-backed PersistentVolumes on the node selected for the workload-ideal for K3s-based development clusters.
 
 ## When to Use Local Path Provisioner
 
@@ -23,7 +23,7 @@ The Local Path Provisioner provides a lightweight dynamic provisioner for develo
 K3s includes Local Path Provisioner by default. For other clusters, install it manually:
 
 ```bash
-kubectl apply -f https://raw.githubusercontent.com/rancher/local-path-provisioner/v0.0.26/deploy/local-path-storage.yaml
+kubectl apply -f https://raw.githubusercontent.com/rancher/local-path-provisioner/v0.0.35/deploy/local-path-storage.yaml
 ```
 
 ## Step 2: Verify Installation
@@ -31,7 +31,7 @@ kubectl apply -f https://raw.githubusercontent.com/rancher/local-path-provisione
 ```bash
 # Check the provisioner pod is running
 
-kubectl get pods -n local-path-storage
+kubectl get pods -A -l app=local-path-provisioner
 
 # Verify the StorageClass was created
 kubectl get storageclass local-path
@@ -39,15 +39,19 @@ kubectl get storageclass local-path
 
 ## Step 3: Set as Default StorageClass
 
+In K3s, `local-path` is already the default StorageClass. If another StorageClass is currently the default, mark it non-default first, then mark `local-path` as default:
+
 ```bash
-# Make local-path the default StorageClass for development
+kubectl patch storageclass <current-default> \
+  -p '{"metadata": {"annotations":{"storageclass.kubernetes.io/is-default-class":"false"}}}'
+
 kubectl patch storageclass local-path \
   -p '{"metadata": {"annotations":{"storageclass.kubernetes.io/is-default-class":"true"}}}'
 ```
 
 ## Step 4: Test with a PVC
 
-Create a PVC and verify it is automatically bound:
+Create a PVC and a Pod that uses it, then verify the claim is automatically bound:
 
 ```yaml
 # test-pvc.yaml
@@ -62,16 +66,34 @@ spec:
   resources:
     requests:
       storage: 1Gi
+
+---
+apiVersion: v1
+kind: Pod
+metadata:
+  name: test-pvc-pod
+spec:
+  containers:
+    - name: volume-test
+      image: nginx:stable-alpine
+      volumeMounts:
+        - mountPath: /data
+          name: test-volume
+  volumes:
+    - name: test-volume
+      persistentVolumeClaim:
+        claimName: test-pvc
 ```
 
 ```bash
 kubectl apply -f test-pvc.yaml
-kubectl get pvc test-pvc    # Should show STATUS: Bound
+kubectl get pvc test-pvc        # Should show STATUS: Bound after the Pod is scheduled
+kubectl get pod test-pvc-pod
 ```
 
 ## Step 5: Configure Storage Path
 
-By default, data is stored at `/opt/local-path-provisioner`. Customize this via a ConfigMap:
+For the upstream manifest, data is stored at `/opt/local-path-provisioner` by default. In K3s, the bundled addon uses the server's default local storage path. Customize this via a ConfigMap:
 
 ```yaml
 # local-path-config.yaml
@@ -79,34 +101,54 @@ apiVersion: v1
 kind: ConfigMap
 metadata:
   name: local-path-config
-  namespace: local-path-storage
+  namespace: kube-system # Use local-path-storage if you installed the upstream manifest manually
 data:
   config.json: |
     {
       "nodePathMap": [
         {
           "node": "DEFAULT_PATH_FOR_NON_LISTED_NODES",
-          "paths": ["/data/local-path-provisioner"]   # Custom storage path
+          "paths": ["/data/local-path-provisioner"]
         }
       ]
     }
+```
+
+```bash
+kubectl apply -f local-path-config.yaml
 ```
 
 ## Step 6: Use in Development Deployments
 
 ```yaml
 # dev-deployment.yaml
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: postgres
 spec:
-  containers:
-    - name: postgres
-      image: postgres:16
-      volumeMounts:
-        - mountPath: /var/lib/postgresql/data
-          name: db-data
-  volumes:
-    - name: db-data
-      persistentVolumeClaim:
-        claimName: postgres-data
+  replicas: 1
+  selector:
+    matchLabels:
+      app: postgres
+  template:
+    metadata:
+      labels:
+        app: postgres
+    spec:
+      containers:
+        - name: postgres
+          image: postgres:16
+          env:
+            - name: POSTGRES_PASSWORD
+              value: devpassword
+          volumeMounts:
+            - mountPath: /var/lib/postgresql/data
+              name: db-data
+      volumes:
+        - name: db-data
+          persistentVolumeClaim:
+            claimName: postgres-data
 
 ---
 apiVersion: v1
