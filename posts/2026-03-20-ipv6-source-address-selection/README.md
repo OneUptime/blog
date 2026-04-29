@@ -18,10 +18,11 @@ RFC 6724 Selection Rules (applied in order):
 2. Prefer appropriate scope (link-local for link-local, etc.)
 3. Avoid deprecated addresses
 4. Prefer home addresses (Mobile IPv6)
-5. Prefer outgoing interface address
-6. Prefer matching label (from gai.conf)
-7. Prefer temporary over public (RFC 4941) if configured
-8. Prefer longer matching prefix
+5. Prefer outgoing interface
+5.5 Prefer addresses in a prefix advertised by the next-hop
+6. Prefer matching label
+7. Prefer temporary addresses (RFC 4941) unless policy says otherwise
+8. Use longest matching prefix
 ```
 
 ## Step 1: Check What Source Address is Selected
@@ -29,10 +30,10 @@ RFC 6724 Selection Rules (applied in order):
 ```bash
 # Check which source address would be used for a destination
 
-ip -6 route get 2001:db8::destination
+ip -6 route get 2001:db8::1
 
 # Example output:
-# 2001:db8::destination from :: via fe80::1 dev eth0 src 2001:db8:a::100
+# 2001:db8::1 from :: via fe80::1 dev eth0 src 2001:db8:a::100
 
 # The "src" field shows the selected source address
 
@@ -61,42 +62,41 @@ ip -6 addr show scope global
 ## Step 3: Configure Source Address with Routes
 
 ```bash
-# Force a specific source address for a destination
+# Prefer a specific source address for a destination
 sudo ip -6 route add 2001:db8::/32 \
-    via fe80::gw dev eth0 src 2001:db8:a::100
+    via fe80::1 dev eth0 src 2001:db8:a::100
 
-# Force source address for all traffic on an interface
-# Add a rule that uses a specific source
-sudo ip -6 rule add from 2001:db8:a::100 table 100
+# Use a dedicated routing table whose routes prefer a specific source
+# The rule picks the table; the route's "src" sets the preferred source
+sudo ip -6 route add default \
+    via fe80::1 dev eth0 src 2001:db8:a::100 table 100
+sudo ip -6 rule add to 2001:db8::/32 table 100 priority 1000
 
 # Bind an application to a specific source address
 curl --interface 2001:db8:a::100 -6 https://example.com
-ssh -b 2001:db8:a::100 user@remote.example.com
+ssh -6 -b 2001:db8:a::100 user@remote.example.com
 ```
 
 ## Step 4: Configure /etc/gai.conf
 
 ```bash
-# /etc/gai.conf controls getaddrinfo() behavior
-# This affects source address selection for applications
+# /etc/gai.conf controls getaddrinfo() destination sorting
+# It does not directly configure the kernel's source-address algorithm
 
 # View current configuration
 cat /etc/gai.conf
 
+# On Linux, kernel address labels used for source selection are separate
+ip addrlabel list
+
 # Common configurations:
 
-# Prefer IPv4 over IPv6 (useful when IPv6 is broken)
+# Prefer IPv4 destinations over IPv6 when both are returned
 # Add to /etc/gai.conf:
 # precedence ::ffff:0:0/96  100
 
-# Prefer IPv6 always (default on most systems)
-# precedence 2001:0::/32     5
-# precedence ::/96           1
-# precedence ::ffff:0:0/96  40
-# precedence ::/0           10
-
-# Prefer temporary addresses (RFC 4941 privacy)
-# temporaryaddress yes
+# If you add any "precedence" or "label" lines, you replace the default table
+# so keep the defaults you still want.
 
 # Show what getaddrinfo returns for a host
 python3 -c "
@@ -122,10 +122,10 @@ cat /proc/sys/net/ipv6/conf/eth0/use_tempaddr
 # Enable privacy addresses
 sudo sysctl -w net.ipv6.conf.eth0.use_tempaddr=2
 
-# Disable and use stable addresses only
+# Disable temporary addresses and use non-temporary addresses only
 sudo sysctl -w net.ipv6.conf.eth0.use_tempaddr=0
 
-# RFC 7217 stable privacy addresses (unpredictable but stable)
+# RFC 7217 stable addresses for link-local and SLAAC/autoconf addresses
 sudo sysctl -w net.ipv6.conf.eth0.addr_gen_mode=3
 ```
 
@@ -135,8 +135,6 @@ sudo sysctl -w net.ipv6.conf.eth0.addr_gen_mode=3
 #!/usr/bin/env python3
 """Debug IPv6 source address selection."""
 
-import socket
-import struct
 import subprocess
 
 def get_source_for_destination(dest_addr):
@@ -145,10 +143,10 @@ def get_source_for_destination(dest_addr):
         ['ip', '-6', 'route', 'get', dest_addr],
         capture_output=True, text=True
     )
-    for part in result.stdout.split():
-        if part.startswith('src'):
-            parts = result.stdout.split()
-            src_idx = parts.index('src')
+    parts = result.stdout.split()
+    if 'src' in parts:
+        src_idx = parts.index('src')
+        if src_idx + 1 < len(parts):
             return parts[src_idx + 1]
     return None
 
@@ -168,4 +166,4 @@ for dest in destinations:
 
 ## Conclusion
 
-IPv6 source address selection follows RFC 6724 rules, with the kernel choosing based on address scope, matching prefix length, and stability. Use `ip -6 route get <dest>` to see which source address would be selected for any destination. Control selection with `ip -6 route add ... src <addr>` for specific destinations, or configure `/etc/gai.conf` for application-level selection preferences. Privacy extensions (use_tempaddr=2) cause temporary addresses to be preferred for outbound connections - useful for privacy but can cause issues if upstream filters block non-registered source addresses.
+IPv6 source address selection follows RFC 6724 rules, with the kernel choosing based on address scope, labels, prefix matching, and stability. Use `ip -6 route get <dest>` to see which source address would be selected for any destination. Control selection with `ip -6 route add ... src <addr>` for route-based preferences, use `/etc/gai.conf` to adjust destination ordering returned by `getaddrinfo()`, and use `ip addrlabel` on Linux for address-label policy. Privacy extensions (use_tempaddr=2) cause temporary addresses to be preferred for outbound connections - useful for privacy but can cause issues if upstream filters block non-registered source addresses.
