@@ -142,7 +142,7 @@ securityContext:
 
 Configure Rancher authentication with your identity provider:
 
-1. In Rancher, navigate to **Global Settings** > **Authentication**.
+1. In Rancher, click ☰ and navigate to **Users & Authentication** > **Auth Provider**.
 2. Choose LDAP, Active Directory, GitHub, or OIDC.
 3. Configure the provider details and test the connection.
 
