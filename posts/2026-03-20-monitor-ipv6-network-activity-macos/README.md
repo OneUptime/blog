@@ -22,8 +22,8 @@ netstat -anf inet6 | grep ESTABLISHED
 # Show listening IPv6 ports
 netstat -anf inet6 | grep LISTEN
 
-# Show with process names (requires sudo)
-sudo netstat -anpf inet6
+# macOS netstat does not show process names (BSD netstat has no -p for processes)
+# Use lsof or nettop to map IPv6 sockets to processes (see below)
 ```
 
 ## Understanding netstat IPv6 Output on macOS
@@ -103,8 +103,9 @@ lsof -i 6 -p $(pgrep nginx)
 # Shows per-process network usage including IPv6
 nettop
 
-# Filter to show IPv6 connections only
-nettop -t wifi -p IPv6
+# Show wifi traffic only (nettop has no built-in IP-version filter;
+# pipe through grep to narrow to IPv6 addresses)
+nettop -t wifi
 
 # Use Activity Monitor (GUI)
 # Open Activity Monitor → Network tab
@@ -117,8 +118,8 @@ nettop -t wifi -p IPv6
 # Show NDP neighbor cache (IPv6 equivalent of ARP)
 ndp -an
 
-# Show neighbors on specific interface
-ndp -i en0 -a
+# Filter the cache to a specific interface (ndp -a dumps the whole cache)
+ndp -an | grep en0
 
 # Show NDP router entries
 ndp -rn
