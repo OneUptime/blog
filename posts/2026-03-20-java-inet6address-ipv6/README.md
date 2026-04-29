@@ -19,7 +19,7 @@ public class IPv6Basics {
     public static void main(String[] args) throws UnknownHostException {
         // Parse IPv6 address
         InetAddress addr = InetAddress.getByName("2001:db8::1");
-        System.out.println(addr.getHostAddress());  // 2001:db8::1
+        System.out.println(addr.getHostAddress());  // 2001:db8:0:0:0:0:0:1
 
         // Check if it's IPv6
         if (addr instanceof Inet6Address) {
@@ -53,25 +53,30 @@ import java.net.UnknownHostException;
 
 public class IPv6Classifier {
 
+    private static boolean isUniqueLocal(Inet6Address addr) {
+        return (addr.getAddress()[0] & 0xfe) == 0xfc;
+    }
+
     public static String classify(String addrStr) throws UnknownHostException {
         InetAddress addr = InetAddress.getByName(addrStr);
 
-        if (addr.isLoopbackAddress())       return "loopback";
-        if (addr.isAnyLocalAddress())        return "unspecified";
-        if (addr.isMulticastAddress())       return "multicast";
-        if (addr.isLinkLocalAddress())       return "link-local";
-        if (addr.isSiteLocalAddress())       return "site-local (ULA)";
+        if (!(addr instanceof Inet6Address)) return "IPv4";
 
-        if (addr instanceof Inet6Address) {
-            // Check documentation prefix 2001:db8::/32
-            byte[] b = addr.getAddress();
-            if (b[0] == 0x20 && b[1] == 0x01 && b[2] == 0x0d && b[3] == (byte)0xb8) {
-                return "documentation";
-            }
-            return "global unicast";
+        Inet6Address v6 = (Inet6Address) addr;
+
+        if (v6.isLoopbackAddress())         return "loopback";
+        if (v6.isAnyLocalAddress())         return "unspecified";
+        if (v6.isMulticastAddress())        return "multicast";
+        if (v6.isLinkLocalAddress())        return "link-local";
+        if (v6.isSiteLocalAddress())        return "site-local (deprecated)";
+        if (isUniqueLocal(v6))              return "unique-local (ULA)";
+
+        // Check documentation prefix 2001:db8::/32
+        byte[] b = v6.getAddress();
+        if (b[0] == 0x20 && b[1] == 0x01 && b[2] == 0x0d && b[3] == (byte)0xb8) {
+            return "documentation";
         }
-
-        return "IPv4";
+        return "global unicast";
     }
 
     public static void main(String[] args) throws UnknownHostException {
@@ -133,6 +138,10 @@ import java.util.*;
 
 public class LocalIPv6Addresses {
 
+    private static boolean isUniqueLocal(Inet6Address addr) {
+        return (addr.getAddress()[0] & 0xfe) == 0xfc;
+    }
+
     public static void listIPv6() throws SocketException {
         Enumeration<NetworkInterface> interfaces = NetworkInterface.getNetworkInterfaces();
 
@@ -147,6 +156,8 @@ public class LocalIPv6Addresses {
                     Inet6Address v6 = (Inet6Address) addr;
                     String type = v6.isLinkLocalAddress() ? "link-local"
                                 : v6.isLoopbackAddress() ? "loopback"
+                                : v6.isSiteLocalAddress() ? "site-local (deprecated)"
+                                : isUniqueLocal(v6) ? "unique-local (ULA)"
                                 : "global";
                     System.out.printf("%-15s %s (%s)%n",
                         iface.getName(), v6.getHostAddress(), type);
@@ -163,4 +174,4 @@ public class LocalIPv6Addresses {
 
 ## Conclusion
 
-Java's `Inet6Address` provides the foundation for IPv6 operations. Use `InetAddress.getByName()` for parsing - it accepts both compressed and full notation. Classification uses `isLoopbackAddress()`, `isMulticastAddress()`, `isLinkLocalAddress()`, and `isSiteLocalAddress()`. For DNS, `InetAddress.getAllByName()` returns all A and AAAA records; filter for `instanceof Inet6Address` to get only IPv6 results. The 16-byte array from `getAddress()` enables bit-level manipulation and custom prefix matching.
+Java's `Inet6Address` provides the foundation for IPv6 operations. Use `InetAddress.getByName()` for parsing - it accepts both compressed and full notation, while `getHostAddress()` returns the full textual form for IPv6 output. Classification uses `isLoopbackAddress()`, `isMulticastAddress()`, `isLinkLocalAddress()`, and `isSiteLocalAddress()` for deprecated site-local addresses; ULA (`fc00::/7`) and documentation (`2001:db8::/32`) ranges need prefix checks. For DNS, `InetAddress.getAllByName()` returns all A and AAAA records; filter for `instanceof Inet6Address` to get only IPv6 results. The 16-byte array from `getAddress()` enables bit-level manipulation and custom prefix matching.
