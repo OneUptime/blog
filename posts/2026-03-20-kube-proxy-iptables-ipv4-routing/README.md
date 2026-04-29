@@ -6,7 +6,7 @@ Tags: Kubernetes, Kube-proxy, iptables, IPv4, Service Routing, Networking
 
 Description: Configure and understand kube-proxy's iptables mode for IPv4 Kubernetes service routing, including how to tune it for performance and debug rule issues.
 
-kube-proxy in iptables mode is the default service proxy in Kubernetes. It programs iptables DNAT rules to intercept ClusterIP traffic and forward it to pod endpoints.
+On Linux, kube-proxy defaults to iptables mode when `mode` is unspecified. It programs iptables DNAT rules to intercept ClusterIP traffic and forward it to pod endpoints.
 
 ## How iptables Mode Works
 
@@ -23,13 +23,12 @@ Pod sends to ClusterIP 10.96.45.123:80
 ```bash
 # Check kube-proxy configuration
 
-kubectl get configmap kube-proxy -n kube-system -o yaml | grep mode
-# Expected: mode: "iptables" (or empty, which defaults to iptables)
+kubectl get configmap kube-proxy -n kube-system -o jsonpath='{.data.config\.conf}' | grep '^mode:'
+# Expected: mode: "iptables" (or mode: "", which defaults to iptables on Linux)
 
-# Or check the running proxy mode
-kubectl logs -n kube-system $(kubectl get pods -n kube-system -l k8s-app=kube-proxy -o name | head -1) \
-  | grep -i "using.*mode\|proxy mode"
-# Expected: "Using iptables Proxier"
+# Or check the running proxy mode from a node shell
+curl http://localhost:10249/proxyMode
+# Expected: iptables
 ```
 
 ## Configuring iptables Mode Explicitly
@@ -41,20 +40,20 @@ kind: KubeProxyConfiguration
 mode: "iptables"
 # Sync interval for iptables rules
 iptables:
-  # Minimum interval between syncs (default: 30s)
-  minSyncPeriod: 10s
-  # Maximum interval between syncs
-  syncPeriod: 60s
-  # Mask for iptables masquerade rules
+  # Minimum interval between syncs (default: 1s)
+  minSyncPeriod: 1s
+  # Periodic resync and cleanup interval (default: 30s)
+  syncPeriod: 30s
+  # FWMark bit kube-proxy uses for SNAT
   masqueradeBit: 14
   masqueradeAll: false
 ```
 
-Apply as a ConfigMap:
+On kubeadm-managed clusters, edit the ConfigMap:
 
 ```bash
 kubectl edit configmap kube-proxy -n kube-system
-# Update mode and iptables settings, then restart kube-proxy
+# Update the data.config.conf block, then restart kube-proxy
 kubectl rollout restart daemonset/kube-proxy -n kube-system
 ```
 
@@ -70,7 +69,7 @@ sudo iptables -t nat -L KUBE-SVC-XXXXXXXXXXXX -n
 # View endpoint chains (DNAT rules)
 sudo iptables -t nat -L KUBE-SEP-XXXXXXXXXXXX -n
 
-# Count all kube-proxy rules
+# Count all iptables rules on the node
 sudo iptables-save | grep -c "^-"
 
 # View statistics on a rule (how many packets matched)
@@ -79,24 +78,23 @@ sudo iptables -t nat -L KUBE-SERVICES -n -v
 
 ## Performance Considerations
 
-In large clusters (>1000 services), iptables mode has scalability limits:
+In very large clusters with tens of thousands of Services or endpoints, iptables mode has scalability limits:
 
 ```bash
-# Check how many iptables rules exist (warning: >10K can cause latency)
-sudo iptables -t nat -L | wc -l
+# Check how many iptables rules exist on the node
+sudo iptables-save | grep -c "^-A"
 
-# Check kube-proxy sync time
-kubectl logs -n kube-system <kube-proxy-pod> | grep -i "sync\|latency"
+# On a node, inspect kube-proxy rule sync duration metrics
+curl -s http://127.0.0.1:10249/metrics | grep sync_proxy_rules_duration_seconds
 ```
 
 ## Tuning iptables Synchronization
 
 ```yaml
-# In kube-proxy ConfigMap, reduce sync frequency for large clusters
+# In very large clusters, only raise minSyncPeriod if metrics show slow rule syncs
 iptables:
-  # Reduce to decrease CPU overhead of frequent syncs
-  syncPeriod: 120s
-  minSyncPeriod: 30s
+  minSyncPeriod: 5s
+  syncPeriod: 30s
 ```
 
 ## Cleaning Up Stale Rules
@@ -106,8 +104,8 @@ iptables:
 # To force a full resync:
 kubectl rollout restart daemonset/kube-proxy -n kube-system
 
-# If kube-proxy is broken and you need emergency cleanup (DESTRUCTIVE):
-# sudo iptables-restore < /dev/null  # DO NOT do this in production
+# If kube-proxy is broken and you need emergency cleanup, run this on the node:
+# kube-proxy --cleanup
 ```
 
-For clusters with more than 1000 services or pods, consider migrating to IPVS mode for better performance.
+For very large Linux clusters, consider `nftables` mode on kernels 5.13+ instead; IPVS mode is deprecated in current Kubernetes releases.
