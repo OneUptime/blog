@@ -15,7 +15,7 @@ PostgreSQL is a popular alternative to MySQL for K3s's external datastore. It su
 ## Step 1: Set Up PostgreSQL
 
 ```bash
-# Install PostgreSQL 14+
+# Install PostgreSQL and contrib packages
 
 sudo apt-get install -y postgresql postgresql-contrib
 
@@ -34,13 +34,13 @@ GRANT ALL PRIVILEGES ON DATABASE k3s TO k3suser;
 Allow remote connections in `pg_hba.conf`:
 
 ```bash
-# Add this line to /etc/postgresql/14/main/pg_hba.conf
+# Add this line to your pg_hba.conf
+# On Ubuntu/Debian, this is typically /etc/postgresql/<major>/main/pg_hba.conf
 # TYPE  DATABASE  USER      ADDRESS         METHOD
 host    k3s       k3suser   192.168.1.0/24  scram-sha-256
 
-# Update postgresql.conf to listen on all interfaces
-sudo sed -i "s/#listen_addresses = 'localhost'/listen_addresses = '*'/" \
-  /etc/postgresql/14/main/postgresql.conf
+# Configure PostgreSQL to listen on all interfaces
+sudo -u postgres psql -c "ALTER SYSTEM SET listen_addresses = '*';"
 
 sudo systemctl restart postgresql
 ```
@@ -53,7 +53,7 @@ sudo systemctl restart postgresql
 # PostgreSQL DSN format:
 # postgres://user:password@host:port/database?sslmode=disable
 curl -sfL https://get.k3s.io | sh -s - server \
-  --datastore-endpoint="postgres://k3suser:strongpassword123@192.168.1.50:5432/k3s?sslmode=verify-full&sslrootcert=/etc/ssl/certs/pg-ca.crt" \
+  --datastore-endpoint="postgres://k3suser:strongpassword123@192.168.1.50:5432/k3s?sslmode=disable" \
   --tls-san="k3s-lb.example.com"
 ```
 
@@ -75,14 +75,15 @@ For production, always use SSL. Generate or obtain a certificate for the Postgre
 
 ```bash
 # Reference SSL in the DSN
---datastore-endpoint="postgres://k3suser:pass@192.168.1.50:5432/k3s?sslmode=verify-full&sslrootcert=/path/to/ca.crt"
+# The hostname in the DSN must match the PostgreSQL server certificate
+--datastore-endpoint="postgres://k3suser:pass@db.example.com:5432/k3s?sslmode=verify-full&sslrootcert=/path/to/ca.crt"
 ```
 
 ---
 
 ## Step 4: Add Additional Server Nodes
 
-Each additional K3s server node uses the same datastore endpoint:
+Each additional K3s server node uses the same datastore endpoint, token, and any other critical server configuration values:
 
 ```yaml
 # /etc/rancher/k3s/config.yaml (on server-2 and server-3)
@@ -122,6 +123,6 @@ psql -h 192.168.1.50 -U k3suser k3s < k3s-backup-20260320.sql
 
 ## Best Practices
 
-- Enable PostgreSQL connection pooling (PgBouncer) between K3s servers and the database to reduce connection overhead.
+- If you place PgBouncer between K3s servers and PostgreSQL, configure it for prepared statement support, because K3s requires prepared statements.
 - Use `sslmode=verify-full` in production - never `sslmode=disable` on untrusted networks.
 - Monitor PostgreSQL table bloat in the `k3s` database - kine can accumulate rows that need periodic vacuuming.
