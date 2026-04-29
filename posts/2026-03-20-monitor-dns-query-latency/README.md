@@ -70,7 +70,7 @@ github.com A
 stackoverflow.com A
 EOF
 
-# Run performance test (1000 queries, 10 concurrent):
+# Run performance test (run through 5-query file 1000 times = 5000 queries, act as 10 clients):
 dnsperf -s 8.8.8.8 -d /tmp/dns_queries.txt \
   -n 1000 -c 10 -t 30
 # Output: queries/sec, latency percentiles, loss rate
@@ -122,11 +122,11 @@ scrape_configs:
 # Average DNS latency by resolver:
 # avg(probe_duration_seconds{job="dns"}) by (instance)
 
-# DNS failure rate:
-# rate(probe_success{job="dns"}[5m]) < 1
+# DNS failure rate (probe_success is a gauge — average over a window):
+# avg_over_time(probe_success{job="dns"}[5m]) < 1
 
-# P99 DNS latency:
-# histogram_quantile(0.99, rate(probe_dns_lookup_time_seconds_bucket[5m]))
+# P99 DNS latency (blackbox metrics are gauges, so use quantile_over_time):
+# quantile_over_time(0.99, probe_duration_seconds{job="dns"}[5m])
 ```
 
 ## DNS Latency Benchmarking
