@@ -82,11 +82,6 @@ resource "launchdarkly_feature_flag" "new_checkout" {
   }
 
   tags = ["checkout", "ux", "q1-2025"]
-
-  lifecycle {
-    # Don't change variation values - create a new flag instead
-    prevent_destroy = false
-  }
 }
 ```
 
@@ -101,14 +96,7 @@ resource "launchdarkly_feature_flag_environment" "new_checkout_prod" {
   on          = true
 
   fallthrough {
-    rollout {
-      variation_id = 0  # "true" variation
-      weight       = 20000  # 20% (out of 100000)
-    }
-    rollout {
-      variation_id = 1  # "false" variation
-      weight       = 80000  # 80%
-    }
+    rollout_weights = [20000, 80000]  # 20% "true", 80% "false"
   }
 
   off_variation = 1  # Return "false" when flag is off
