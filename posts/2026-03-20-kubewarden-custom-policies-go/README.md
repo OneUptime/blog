@@ -12,8 +12,8 @@ Go is a popular choice for writing Kubewarden policies, especially for teams alr
 
 ## Prerequisites
 
-- Go 1.21 or later
-- TinyGo 0.30 or later (for Wasm compilation)
+- Go 1.25 or later
+- TinyGo 0.40.1 or later (for Wasm compilation)
 - `kwctl` CLI installed
 - Basic Go programming knowledge
 
@@ -26,30 +26,30 @@ Go is a popular choice for writing Kubewarden policies, especially for teams alr
 brew tap tinygo-org/tools
 brew install tinygo
 
-# Linux (download from releases)
-curl -LO https://github.com/tinygo-org/tinygo/releases/download/v0.30.0/tinygo0.30.0.linux-amd64.tar.gz
-tar -xzf tinygo0.30.0.linux-amd64.tar.gz
-sudo mv tinygo /usr/local/tinygo
-export PATH=$PATH:/usr/local/tinygo/bin
+# Linux (Ubuntu/Debian)
+wget https://github.com/tinygo-org/tinygo/releases/download/v0.40.1/tinygo_0.40.1_amd64.deb
+sudo dpkg -i tinygo_0.40.1_amd64.deb
 
 # Verify TinyGo installation
 tinygo version
 
-# Install the Go policy template
-go install github.com/kubewarden/kubewarden-controller/tools/create-policy@latest
+# Verify kwctl installation
+kwctl --version
 ```
 
 ## Creating a New Go Policy
 
 ```bash
-# Create a new policy from template
+# Create a new policy
 mkdir my-go-policy && cd my-go-policy
 
 # Initialize the Go module
 go mod init github.com/my-org/my-go-policy
 
-# Install the Kubewarden Go SDK
-go get github.com/kubewarden/policy-sdk-go
+# Install the Kubewarden Go SDK and TinyGo-compatible dependencies
+go get github.com/kubewarden/policy-sdk-go@latest \
+  github.com/kubewarden/k8s-objects/api/core/v1 \
+  github.com/wapc/wapc-guest-tinygo
 ```
 
 ## Project Structure
@@ -58,8 +58,7 @@ go get github.com/kubewarden/policy-sdk-go
 my-go-policy/
 ├── go.mod
 ├── go.sum
-├── main.go             # Main policy logic
-├── settings.go         # Policy settings
+├── main.go             # Policy entrypoints and validation logic
 ├── metadata.yml        # Policy metadata
 └── Makefile
 ```
@@ -73,152 +72,189 @@ my-go-policy/
 package main
 
 import (
-    "encoding/json"
-    "fmt"
+	"encoding/json"
+	"fmt"
+	"strings"
 
-    corev1 "github.com/kubewarden/k8s-objects/api/core/v1"
-    kubewarden "github.com/kubewarden/policy-sdk-go"
-    kubewarden_protocol "github.com/kubewarden/policy-sdk-go/protocol"
+	corev1 "github.com/kubewarden/k8s-objects/api/core/v1"
+	kubewarden "github.com/kubewarden/policy-sdk-go"
+	kubewarden_protocol "github.com/kubewarden/policy-sdk-go/protocol"
+	wapc "github.com/wapc/wapc-guest-tinygo"
 )
 
-// Settings holds the policy configuration
+const httpBadRequestStatusCode = 400
+
+// Settings holds the policy configuration.
 type Settings struct {
-    // Minimum number of replicas required
-    MinReplicas int32 `json:"minReplicas"`
-    // Maximum number of replicas allowed
-    MaxReplicas int32 `json:"maxReplicas"`
+	ExemptImages []string `json:"exemptImages"`
 }
 
 func (s *Settings) Valid() (bool, error) {
-    if s.MinReplicas < 1 {
-        return false, fmt.Errorf("minReplicas must be at least 1")
-    }
-    if s.MaxReplicas < s.MinReplicas {
-        return false, fmt.Errorf("maxReplicas must be >= minReplicas")
-    }
-    return true, nil
+	for _, image := range s.ExemptImages {
+		if image == "" {
+			return false, fmt.Errorf("exemptImages entries must not be empty")
+		}
+	}
+
+	return true, nil
 }
 
-// main is required for TinyGo compilation but never called
-func main() {}
+func (s *Settings) IsExempt(image string) bool {
+	for _, exemptImage := range s.ExemptImages {
+		if exemptImage == image {
+			return true
+		}
+	}
 
-// validate is the entry point called by the Kubewarden host
-//
-//export validate
-func validate() {
-    // Read the validation request payload
-    payload, err := kubewarden.Host.Read()
-    if err != nil {
-        kubewarden.RejectRequest(
-            kubewarden.Message(fmt.Sprintf("Cannot read payload: %v", err)),
-            kubewarden.Code(400))
-        return
-    }
-
-    // Parse the validation request
-    validationRequest := kubewarden_protocol.ValidationRequest{}
-    if err = json.Unmarshal(payload, &validationRequest); err != nil {
-        kubewarden.RejectRequest(
-            kubewarden.Message(fmt.Sprintf("Cannot parse request: %v", err)),
-            kubewarden.Code(400))
-        return
-    }
-
-    // Parse policy settings
-    settings := Settings{}
-    if err = json.Unmarshal(validationRequest.Settings, &settings); err != nil {
-        kubewarden.RejectRequest(
-            kubewarden.Message(fmt.Sprintf("Cannot parse settings: %v", err)),
-            kubewarden.Code(400))
-        return
-    }
-
-    // Validate the Deployment object
-    deployment := &corev1.Pod{}
-    if err = json.Unmarshal(validationRequest.Request.Object, deployment); err != nil {
-        // Not a Pod, accept the request
-        kubewarden.AcceptRequest()
-        return
-    }
-
-    // Apply policy logic
-    if err = validateDeployment(deployment, &settings); err != nil {
-        kubewarden.RejectRequest(
-            kubewarden.Message(err.Error()),
-            kubewarden.NoCode)
-        return
-    }
-
-    kubewarden.AcceptRequest()
+	return false
 }
 
-// validateDeployment checks the replica count constraints
-func validateDeployment(pod *corev1.Pod, settings *Settings) error {
-    // Policy logic goes here
-    // This example checks container image tags
-    for _, container := range pod.Spec.Containers {
-        if container.Image == nil {
-            continue
-        }
-        image := *container.Image
-        if isLatestTag(image) {
-            return fmt.Errorf(
-                "container %q uses 'latest' tag. Use a specific version tag",
-                container.Name)
-        }
-    }
-    return nil
+// main registers the waPC entrypoints used by Kubewarden.
+func main() {
+	wapc.RegisterFunctions(wapc.Functions{
+		"validate":          validate,
+		"validate_settings": validateSettings,
+	})
+}
+
+func validate(payload []byte) ([]byte, error) {
+	validationRequest := kubewarden_protocol.ValidationRequest{}
+	if err := json.Unmarshal(payload, &validationRequest); err != nil {
+		return kubewarden.RejectRequest(
+			kubewarden.Message(fmt.Sprintf("Cannot parse request: %v", err)),
+			kubewarden.Code(httpBadRequestStatusCode))
+	}
+
+	settings, err := newSettings(validationRequest.Settings)
+	if err != nil {
+		return kubewarden.RejectRequest(
+			kubewarden.Message(fmt.Sprintf("Cannot parse settings: %v", err)),
+			kubewarden.Code(httpBadRequestStatusCode))
+	}
+
+	pod := &corev1.Pod{}
+	if err := json.Unmarshal(validationRequest.Request.Object, pod); err != nil {
+		return kubewarden.RejectRequest(
+			kubewarden.Message(fmt.Sprintf("Cannot decode Pod object: %v", err)),
+			kubewarden.Code(httpBadRequestStatusCode))
+	}
+
+	if err := validatePod(pod, settings); err != nil {
+		return kubewarden.RejectRequest(
+			kubewarden.Message(err.Error()),
+			kubewarden.NoCode)
+	}
+
+	return kubewarden.AcceptRequest()
+}
+
+func validatePod(pod *corev1.Pod, settings Settings) error {
+	if pod.Spec == nil {
+		return nil
+	}
+
+	if err := validateContainers(pod.Spec.Containers, settings, "container"); err != nil {
+		return err
+	}
+
+	if err := validateContainers(pod.Spec.InitContainers, settings, "init container"); err != nil {
+		return err
+	}
+
+	return validateEphemeralContainers(pod.Spec.EphemeralContainers, settings)
+}
+
+func validateContainers(containers []*corev1.Container, settings Settings, containerType string) error {
+	for _, container := range containers {
+		if container == nil || settings.IsExempt(container.Image) {
+			continue
+		}
+
+		if isLatestTag(container.Image) {
+			return fmt.Errorf(
+				"%s %q uses the 'latest' tag. Use a specific version tag",
+				containerType,
+				stringValue(container.Name, "unnamed"))
+		}
+	}
+
+	return nil
+}
+
+func validateEphemeralContainers(containers []*corev1.EphemeralContainer, settings Settings) error {
+	for _, container := range containers {
+		if container == nil || settings.IsExempt(container.Image) {
+			continue
+		}
+
+		if isLatestTag(container.Image) {
+			return fmt.Errorf(
+				"ephemeral container %q uses the 'latest' tag. Use a specific version tag",
+				stringValue(container.Name, "unnamed"))
+		}
+	}
+
+	return nil
 }
 
 func isLatestTag(image string) bool {
-    // No tag specified defaults to latest
-    if !containsColon(image) {
-        return true
-    }
-    // Check for explicit latest tag
-    return hasSuffix(image, ":latest")
+	imageWithoutDigest := image
+	hasDigest := false
+
+	if at := strings.Index(image, "@"); at != -1 {
+		imageWithoutDigest = image[:at]
+		hasDigest = true
+	}
+
+	lastSlash := strings.LastIndex(imageWithoutDigest, "/")
+	lastColon := strings.LastIndex(imageWithoutDigest, ":")
+
+	if lastColon > lastSlash {
+		return strings.HasSuffix(imageWithoutDigest, ":latest")
+	}
+
+	return !hasDigest
 }
 
-func containsColon(s string) bool {
-    for _, c := range s {
-        if c == ':' {
-            return true
-        }
-    }
-    return false
+func stringValue(value *string, fallback string) string {
+	if value == nil {
+		return fallback
+	}
+
+	return *value
 }
 
-func hasSuffix(s, suffix string) bool {
-    if len(s) < len(suffix) {
-        return false
-    }
-    return s[len(s)-len(suffix):] == suffix
+func newSettings(payload []byte) (Settings, error) {
+	settings := Settings{}
+
+	if len(payload) == 0 || string(payload) == "null" {
+		return settings, nil
+	}
+
+	if err := json.Unmarshal(payload, &settings); err != nil {
+		return Settings{}, err
+	}
+
+	return settings, nil
 }
 
-// validate_settings is called to validate policy settings
-//
-//export validate_settings
-func validateSettings() {
-    payload, err := kubewarden.Host.Read()
-    if err != nil {
-        kubewarden.RejectSettings(
-            kubewarden.Message(fmt.Sprintf("Cannot read settings: %v", err)))
-        return
-    }
+func validateSettings(payload []byte) ([]byte, error) {
+	settings, err := newSettings(payload)
+	if err != nil {
+		return kubewarden.RejectSettings(
+			kubewarden.Message(fmt.Sprintf("Cannot parse settings: %v", err)))
+	}
 
-    settings := Settings{}
-    if err = json.Unmarshal(payload, &settings); err != nil {
-        kubewarden.RejectSettings(
-            kubewarden.Message(fmt.Sprintf("Cannot parse settings: %v", err)))
-        return
-    }
+	valid, err := settings.Valid()
+	if err != nil {
+		return kubewarden.RejectSettings(kubewarden.Message(err.Error()))
+	}
+	if !valid {
+		return kubewarden.RejectSettings(
+			kubewarden.Message("Provided settings are not valid"))
+	}
 
-    if valid, err := settings.Valid(); !valid {
-        kubewarden.RejectSettings(kubewarden.Message(err.Error()))
-        return
-    }
-
-    kubewarden.AcceptSettings()
+	return kubewarden.AcceptSettings()
 }
 ```
 
@@ -233,16 +269,16 @@ CLUSTER_POLICY_MODULE=policy.wasm
 build:
 	tinygo build \
 		-target wasi \
-		-gc=leaking \
+		-no-debug \
 		-o $(CLUSTER_POLICY_MODULE) \
 		.
 
 .PHONY: annotate
 annotate: build
 	kwctl annotate \
-		$(CLUSTER_POLICY_MODULE) \
 		--metadata-path metadata.yml \
-		--output annotated-$(CLUSTER_POLICY_MODULE)
+		--output-path annotated-$(CLUSTER_POLICY_MODULE) \
+		$(CLUSTER_POLICY_MODULE)
 
 .PHONY: test
 test:
@@ -272,45 +308,54 @@ rules:
       - CREATE
       - UPDATE
 mutating: false
-contextAware: false
+contextAwareResources: []
 executionMode: kubewarden-wapc
+policyType: kubernetes
+backgroundAudit: true
 annotations:
   io.kubewarden.policy.title: no-latest-tag
+  io.kubewarden.policy.version: v0.1.0
   io.kubewarden.policy.description: Reject pods using 'latest' image tag
   io.kubewarden.policy.author: My Team
   io.kubewarden.policy.url: https://github.com/my-org/my-go-policy
-  io.kubewarden.policy.category: Best practices
+  io.kubewarden.policy.source: https://github.com/my-org/my-go-policy
+  io.kubewarden.policy.license: Apache-2.0
+  io.kubewarden.policy.category: Resource validation
   io.kubewarden.policy.severity: medium
 ```
 
 ## Testing with kwctl
 
 ```bash
-# Create a test request payload
-cat > test-request.json <<EOF
+# Create policy settings
+cat > settings.json <<EOF
 {
-  "settings": {
-    "minReplicas": 1,
-    "maxReplicas": 10
-  },
-  "request": {
-    "uid": "test-001",
-    "kind": {"group": "", "version": "v1", "kind": "Pod"},
-    "operation": "CREATE",
-    "object": {
-      "apiVersion": "v1",
-      "kind": "Pod",
-      "metadata": {"name": "test"},
-      "spec": {
-        "containers": [{"name": "app", "image": "nginx:latest"}]
-      }
-    }
+  "exemptImages": []
+}
+EOF
+
+# Create a Pod manifest to test
+cat > test-pod.json <<EOF
+{
+  "apiVersion": "v1",
+  "kind": "Pod",
+  "metadata": {"name": "test"},
+  "spec": {
+    "containers": [{"name": "app", "image": "nginx:latest"}]
   }
 }
 EOF
 
+# Turn the Pod manifest into an AdmissionRequest
+kwctl scaffold admission-request \
+  --operation CREATE \
+  --object test-pod.json > test-request.json
+
 # Test the policy
-kwctl run annotated-policy.wasm --request-path test-request.json
+kwctl run \
+  --settings-path settings.json \
+  --request-path test-request.json \
+  annotated-policy.wasm
 ```
 
 ## Deploying the Go Policy
@@ -319,7 +364,7 @@ kwctl run annotated-policy.wasm --request-path test-request.json
 # Push to OCI registry
 kwctl push \
   annotated-policy.wasm \
-  registry.example.com/kubewarden/no-latest-tag:v0.1.0
+  registry://registry.example.com/kubewarden/no-latest-tag:v0.1.0
 ```
 
 ```yaml
@@ -331,8 +376,7 @@ metadata:
 spec:
   module: registry://registry.example.com/kubewarden/no-latest-tag:v0.1.0
   settings:
-    minReplicas: 1
-    maxReplicas: 10
+    exemptImages: []
   rules:
     - apiGroups: [""]
       apiVersions: ["v1"]
