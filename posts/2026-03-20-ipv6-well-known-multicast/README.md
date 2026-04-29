@@ -14,8 +14,8 @@ IPv6 relies heavily on multicast for its core protocols. Unlike IPv4 where broad
 
 | Address | Scope | Protocol | Purpose |
 |---|---|---|---|
-| ff01::1 | Interface-local | NDP | All nodes (loopback only) |
-| ff01::2 | Interface-local | NDP | All routers (loopback only) |
+| ff01::1 | Interface-local | NDP | All nodes on the interface |
+| ff01::2 | Interface-local | NDP | All routers on the interface |
 | ff02::1 | Link-local | NDP | All nodes on the link |
 | ff02::2 | Link-local | NDP/RA | All routers on the link |
 | ff02::4 | Link-local | DVMRP | Distance Vector Multicast |
@@ -25,8 +25,8 @@ IPv6 relies heavily on multicast for its core protocols. Unlike IPv4 where broad
 | ff02::a | Link-local | EIGRP | All EIGRP routers |
 | ff02::d | Link-local | PIM | All PIM routers |
 | ff02::16 | Link-local | MLD | All MLDv2-capable routers |
-| ff02::1:2 | Link-local | DHCPv6 | All DHCP agents (servers+relays) |
-| ff02::1:3 | Link-local | DHCPv6 | All DHCP servers only |
+| ff02::1:2 | Link-local | DHCPv6 | All DHCP relay agents and servers |
+| ff02::1:3 | Link-local | LLMNR | Link-local Multicast Name Resolution |
 | ff02::1:ff00:0/104 | Link-local | NDP | Solicited-node multicast |
 | ff05::1:3 | Site-local | DHCPv6 | All DHCP servers (site scope) |
 | ff0e::101 | Global | NTP | Network Time Protocol |
@@ -51,7 +51,7 @@ ping6 -I eth0 ff02::1
 Hosts send Router Solicitation messages to this address to discover routers:
 
 ```bash
-# Listen for Router Advertisements (sent from ff02::2 members)
+# Listen for Router Advertisements sent by routers
 sudo tcpdump -i eth0 -vv "icmp6 and ip6[40] == 134"
 
 # Send an RS to request immediate RA
@@ -83,12 +83,12 @@ print(solicited_node_multicast("2001:db8::1234:5678"))
 # Output: ff02::1:ff34:5678
 ```
 
-### ff02::1:2 - DHCPv6 All DHCP Agents
+### ff02::1:2 - DHCPv6 All DHCP Relay Agents and Servers
 
 DHCPv6 clients send Solicit messages to this address. Both servers and relay agents listen on it:
 
 ```bash
-# Capture DHCPv6 Solicit messages from clients
+# Capture DHCPv6 client/server traffic
 sudo tcpdump -i eth0 -vv "udp port 546 or udp port 547"
 
 # DHCPv6 uses:
@@ -105,14 +105,14 @@ ip -6 maddr show
 # Show group membership for a specific interface
 ip -6 maddr show dev eth0
 
-# With MLD version info
-ip -6 maddr show dev eth0 -d
+# Show detailed multicast address information
+ip -d -6 maddr show dev eth0
 
 # Check which groups are solicited-node groups
 ip -6 maddr show | grep "ff02::1:ff"
 
-# Use ss to see socket-level multicast subscriptions
-ss -6 -n -l | grep ff02
+# Inspect IPv6 UDP listeners that may receive multicast traffic
+ss -u -6 -n -l
 ```
 
 ## Capturing Specific Multicast Traffic
@@ -121,11 +121,11 @@ ss -6 -n -l | grep ff02
 # Capture all link-local multicast
 sudo tcpdump -i eth0 "ip6 dst net ff02::/16"
 
-# Capture NDP traffic only (ff02::1 and ff02::2)
-sudo tcpdump -i eth0 "ip6 dst ff02::1 or ip6 dst ff02::2"
+# Capture Router Solicitation and Router Advertisement traffic
+sudo tcpdump -i eth0 "icmp6 and (ip6[40] == 133 or ip6[40] == 134)"
 
-# Capture DHCPv6 traffic
-sudo tcpdump -i eth0 "ip6 dst ff02::1:2 or ip6 dst ff02::1:3"
+# Capture DHCPv6 multicast traffic
+sudo tcpdump -i eth0 "ip6 dst ff02::1:2 or ip6 dst ff05::1:3"
 
 # Capture OSPFv3 hellos
 sudo tcpdump -i eth0 "ip6 dst ff02::5 or ip6 dst ff02::6"
@@ -139,11 +139,13 @@ sudo ip6tables -A INPUT -d ff02::1 -p ipv6-icmp -j ACCEPT
 sudo ip6tables -A INPUT -d ff02::2 -p ipv6-icmp -j ACCEPT
 sudo ip6tables -A INPUT -d ff02::1:ff00:0/104 -p ipv6-icmp -j ACCEPT
 
-# Allow DHCPv6 (if using DHCPv6)
+# Allow DHCPv6 multicast to servers and relays (if using DHCPv6)
 sudo ip6tables -A INPUT -d ff02::1:2 -p udp --dport 547 -j ACCEPT
+sudo ip6tables -A INPUT -d ff05::1:3 -p udp --dport 547 -j ACCEPT
 
-# Optionally allow routing protocol multicast
-sudo ip6tables -A INPUT -d ff02::5 -p ospf -j ACCEPT  # OSPFv3
+# Optionally allow OSPFv3 multicast
+sudo ip6tables -A INPUT -d ff02::5 -p ospf -j ACCEPT  # All OSPFv3 routers
+sudo ip6tables -A INPUT -d ff02::6 -p ospf -j ACCEPT  # OSPFv3 DR/BDR routers
 ```
 
 ## Conclusion
