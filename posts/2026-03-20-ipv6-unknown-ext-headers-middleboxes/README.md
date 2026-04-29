@@ -8,7 +8,7 @@ Description: Understand how middleboxes should handle unknown IPv6 extension hea
 
 ## Introduction
 
-A "middlebox" is any network device between two communicating endpoints that is not the final destination - firewalls, load balancers, deep packet inspection systems, and network address translators. The handling of unknown IPv6 extension headers by middleboxes is a major source of connectivity problems in IPv6 networks. RFC 7045 defines clear rules for how middleboxes MUST handle extension headers.
+A "middlebox" is any network device between two communicating endpoints that is not the final destination - firewalls, load balancers, deep packet inspection systems, and network address translators. The handling of unknown IPv6 extension headers by middleboxes is a major source of connectivity problems in IPv6 networks. RFC 7045 defines clear rules for how forwarding nodes that inspect IPv6 headers MUST handle extension headers.
 
 ## The Problem: Middlebox Drop Behavior
 
@@ -22,33 +22,32 @@ Many IPv6 deployments suffer from "extension header filtering" where middleboxes
 Research has shown that a significant fraction of internet paths drop packets with extension headers:
 
 ```text
-Measured extension header drop rates (circa 2015-2020 studies):
-  Fragment Header (44): 30-50% of paths drop these packets
-  Routing Header (43):  40-60% of paths drop these packets
-  Hop-by-Hop (0):      50-70% of paths drop these packets
-  AH (51):             40-50% of paths drop these packets
+Measured extension header drop rates from RFC 7872 (Alexa Top 1M dataset):
+  Destination Options header (8 bytes):                 10.91% drop rate
+  Fragmented packets (roughly two 512-byte fragments): 28.26% drop rate
+  Hop-by-Hop Options header (8 bytes):                 45.45% drop rate
 ```
 
 ## RFC 7045: Extension Header Transmission Rules
 
-RFC 7045 defines what middleboxes MUST and MUST NOT do:
+RFC 7045 defines what middleboxes MUST and SHOULD do:
 
 ```text
-MUST forward (cannot drop based on extension header type alone):
-  - Fragment Header (44): Required for fragmentation to work
-  - Authentication Header (51): Required for IPsec
-  - ESP Header (50): Required for IPsec
-  - Destination Options (60): Common for IPv6 features
-  - Hop-by-Hop Options (0): Required for MLD and other protocols
+Forwarding nodes that inspect extension headers:
+  - MUST recognize and deal appropriately with all standard IPv6 extension header types
+  - SHOULD recognize and deal appropriately with experimental extension header types
+  - MUST make discard policy individually configurable for each standard extension header type
+  - SHOULD allow all standard extension headers by default
 
-MAY drop based on policy (if explicit operator policy):
-  - Routing Header Type 0 (deprecated, security risk)
-  - Unknown extension headers only if operator policy requires it
-  - Must log the drops and ideally send ICMPv6 back
+Unrecognized or experimental extension headers:
+  - Intermediate forwarding nodes SHOULD NOT drop a packet only because the header is unrecognized
+  - Forwarding nodes MUST be configurable to allow unrecognized extension headers
+  - Default configuration MAY drop unrecognized extension headers
+  - Experimental extension headers SHOULD have individually configurable policy, and defaults MAY drop them
 
-MUST NOT silently drop:
-  - Packets with ANY extension header without explicit policy reason
-  - Packets with only because of an unknown extension header type
+Routing Header special case:
+  - Routing Header Type 0 is deprecated by RFC 5095
+  - This does NOT justify dropping all Routing Headers by default
 ```
 
 ## Testing Extension Header Passthrough
@@ -56,21 +55,21 @@ MUST NOT silently drop:
 ```bash
 # Test if a path passes Fragment Headers
 
-# Create a fragmented ping6 (forces use of Fragment Header)
-ping6 -s 1280 -M want 2001:db8::target  # Force fragmentation
+# A large ping may trigger local fragmentation when the outgoing MTU requires it.
+# Verify on the wire; this does not guarantee a Fragment Header on every path.
+ping -6 -s 2000 -M want 2001:db8::target
 
 # Test with specific extension headers using scapy
 python3 << 'EOF'
 from scapy.all import *
 
-# Test Fragment Header passthrough
-pkt = IPv6(dst="2001:db8::target") / \
-      IPv6ExtHdrFragment(id=0x1234, m=0, offset=0) / \
-      UDP(sport=12345, dport=53) / DNS(qd=DNSQR(qname="test.example.com"))
+# Build and send an actually fragmented ICMPv6 Echo Request
+base = IPv6(dst="2001:db8::target") / ICMPv6EchoRequest(data=b"A" * 2000)
+frags = fragment6(base, 512)
 
 # Send and see if we get a response
-resp = sr1(pkt, timeout=2, verbose=0)
-if resp:
+ans, unans = sr(frags, timeout=2, verbose=0)
+if ans:
     print("Fragment Header: PASSED")
 else:
     print("Fragment Header: DROPPED (or no route)")
@@ -94,22 +93,20 @@ EOF
 ```bash
 # ip6tables: allow essential extension headers
 
-# Allow fragmented packets (Fragment Header)
-sudo ip6tables -A FORWARD -m frag --fragmore -j ACCEPT
-sudo ip6tables -A FORWARD -m frag --fraglast -j ACCEPT
-sudo ip6tables -A FORWARD -m frag --fragfirst -j ACCEPT
+# Allow packets that contain a Fragment Header
+sudo ip6tables -A FORWARD -m ipv6header --soft --header frag -j ACCEPT
 
 # Allow IPsec (AH and ESP)
-sudo ip6tables -A FORWARD -p ah -j ACCEPT
-sudo ip6tables -A FORWARD -p esp -j ACCEPT
+sudo ip6tables -A FORWARD -m ipv6header --soft --header auth -j ACCEPT
+sudo ip6tables -A FORWARD -m ipv6header --soft --header esp -j ACCEPT
 
-# Allow Hop-by-Hop options (needed for MLD)
-sudo ip6tables -A FORWARD -m ipv6header --header hop -j ACCEPT
+# Allow forwarded packets that carry Hop-by-Hop options
+sudo ip6tables -A FORWARD -m ipv6header --soft --header hop -j ACCEPT
 
 # Allow Destination Options
-sudo ip6tables -A FORWARD -m ipv6header --header dst -j ACCEPT
+sudo ip6tables -A FORWARD -m ipv6header --soft --header dst -j ACCEPT
 
-# Log but do NOT drop Routing Headers (except RH0)
+# Drop only deprecated RH0; do not drop all Routing Headers
 sudo ip6tables -A FORWARD -m rt --rt-type 0 -j LOG --log-prefix "RH0-DROP: "
 sudo ip6tables -A FORWARD -m rt --rt-type 0 -j DROP  # Only RH0 is dangerous
 ```
@@ -118,28 +115,24 @@ sudo ip6tables -A FORWARD -m rt --rt-type 0 -j DROP  # Only RH0 is dangerous
 
 ```text
 # /etc/nftables.conf - extension header handling
-table inet filter {
+table ip6 filter {
     chain forward {
         type filter hook forward priority 0; policy drop;
 
         # Allow established/related
         ct state established,related accept
 
-        # Allow fragment headers (required for IPv6 fragmentation)
-        ip6 nexthdr 44 accept
+        # Match specific extension headers with parser-aware expressions
+        exthdr frag exists accept
+        exthdr hbh exists accept
+        exthdr dst exists accept
+        exthdr mh exists accept
+        meta l4proto { esp, ah } accept
 
-        # Allow IPsec
-        ip6 nexthdr 50 accept  # ESP
-        ip6 nexthdr 51 accept  # AH
+        # Drop deprecated RH0 explicitly; do not drop all Routing Headers
+        rt type 0 log prefix "RH0-DROP: " drop
 
-        # Allow Hop-by-Hop (required for MLD)
-        ip6 nexthdr 0 accept
-
-        # Drop deprecated RH0 (security risk)
-        ip6 nexthdr 43 ip6 rt type 0 drop
-
-        # Log unknown extension headers but forward
-        ip6 nexthdr != { 6, 17, 58, 44, 50, 51, 0, 43, 60, 135 } log prefix "Unknown EH: "
+        # In this minimal example, permit the rest of the forwarded traffic
         accept
     }
 }
@@ -147,4 +140,4 @@ table inet filter {
 
 ## Conclusion
 
-Middleboxes that indiscriminately drop IPv6 packets containing unknown extension headers are a significant barrier to IPv6 adoption and feature development. RFC 7045 provides clear guidance: forward extension headers you don't understand unless you have an explicit policy reason to drop them, and log drops with details. The only unambiguously safe drop policy is for Routing Header Type 0 (deprecated for security). Properly configured firewalls allow fragmentation, IPsec, and Hop-by-Hop options while blocking only demonstrably dangerous extension header types.
+Middleboxes that indiscriminately drop IPv6 packets containing extension headers are a significant barrier to IPv6 adoption and feature development. RFC 7045 requires forwarding nodes that inspect IPv6 headers to understand standard extension headers, make discard policy explicit and configurable, and be configurable to allow unrecognized extension headers. Routing Header Type 0 remains a special case because RFC 5095 deprecates it, but that is not a blanket justification for dropping all Routing Headers or all unfamiliar extension headers.
