@@ -53,12 +53,26 @@ resource "azurerm_resource_group" "staging" {
   location = "East US"
 }
 
+resource "azurerm_resource_group" "shared" {
+  provider = azurerm.shared
+  name     = "rg-shared-eastus"
+  location = "East US"
+}
+
 resource "azurerm_virtual_network" "production" {
   provider            = azurerm.production
   name                = "vnet-production"
   resource_group_name = azurerm_resource_group.production.name
   location            = azurerm_resource_group.production.location
   address_space       = ["10.1.0.0/16"]
+}
+
+resource "azurerm_virtual_network" "shared" {
+  provider            = azurerm.shared
+  name                = "vnet-shared"
+  resource_group_name = azurerm_resource_group.shared.name
+  location            = azurerm_resource_group.shared.location
+  address_space       = ["10.3.0.0/16"]
 }
 ```
 
@@ -117,9 +131,8 @@ module "staging_baseline" {
 terraform {
   required_providers {
     azurerm = {
-      source                = "hashicorp/azurerm"
-      version               = "~> 4.0"
-      configuration_aliases = [azurerm]
+      source  = "hashicorp/azurerm"
+      version = "~> 4.0"
     }
   }
 }
