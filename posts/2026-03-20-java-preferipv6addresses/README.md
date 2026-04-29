@@ -12,13 +12,15 @@ Java provides two key system properties for controlling IP version preference:
 
 | Property | Values | Effect |
 |---|---|---|
-| `java.net.preferIPv4Stack` | `true` / `false` (default) | `true` forces IPv4-only, disables IPv6 entirely |
-| `java.net.preferIPv6Addresses` | `true` / `false` (default) / `system` | Controls address selection order |
+| `java.net.preferIPv4Stack` | `true` / `false` (default) | `true` forces IPv4-only sockets; the application cannot communicate with IPv6-only hosts |
+| `java.net.preferIPv6Addresses` | `true` / `false` (default) / `system` | Controls address ordering when a host has both IPv4 and IPv6 addresses |
 
 The `preferIPv6Addresses` values:
-- `false` (default): prefer IPv4 addresses in DNS results
-- `true`: prefer IPv6 addresses in DNS results
-- `system`: use OS address selection order (RFC 6724)
+- `false` (default): prefer IPv4 addresses when a host has both IPv4 and IPv6 addresses
+- `true`: prefer IPv6 addresses when a host has both IPv4 and IPv6 addresses
+- `system`: preserve the order returned by the system resolver
+
+Both properties are checked only once at JVM startup, so set them with `-D...` when launching the JVM.
 
 ## Setting Properties from Command Line
 
@@ -27,44 +29,31 @@ The `preferIPv6Addresses` values:
 
 java -Djava.net.preferIPv6Addresses=true -jar app.jar
 
-# Force IPv4 only (disables IPv6 entirely)
+# Force IPv4-only sockets
 java -Djava.net.preferIPv4Stack=true -jar app.jar
 
-# Use OS address selection (RFC 6724 compliant)
+# Preserve resolver order returned by the system
 java -Djava.net.preferIPv6Addresses=system -jar app.jar
 ```
 
-## Setting Properties in Code
+## Checking Properties in Code
+
+These properties are checked only once at JVM startup, so inspect them in code but set them on the `java` command line.
 
 ```java
 import java.net.InetAddress;
 
 public class IPv6Preference {
 
-    public static void setIPv6Preference(boolean preferV6) {
-        if (preferV6) {
-            System.setProperty("java.net.preferIPv6Addresses", "true");
-        } else {
-            System.setProperty("java.net.preferIPv6Addresses", "false");
-        }
-    }
-
     public static void demonstratePreference() throws Exception {
-        // Without preference (defaults to IPv4 first)
-        System.clearProperty("java.net.preferIPv6Addresses");
+        System.out.println("preferIPv6Addresses=" +
+            System.getProperty("java.net.preferIPv6Addresses", "false"));
+
         InetAddress[] addrs = InetAddress.getAllByName("example.com");
-        System.out.println("Default order:");
+        System.out.println("Resolved order:");
         for (InetAddress a : addrs) {
             System.out.println("  " + a.getHostAddress() + " (" +
                 (a instanceof java.net.Inet6Address ? "IPv6" : "IPv4") + ")");
-        }
-
-        // With IPv6 preference
-        System.setProperty("java.net.preferIPv6Addresses", "true");
-        addrs = InetAddress.getAllByName("example.com");
-        System.out.println("With preferIPv6Addresses=true:");
-        for (InetAddress a : addrs) {
-            System.out.println("  " + a.getHostAddress());
         }
     }
 
@@ -76,6 +65,8 @@ public class IPv6Preference {
 
 ## Effect on InetAddress.getByName()
 
+Run this class with different `-Djava.net.preferIPv6Addresses=...` values to see which address `getByName()` returns for the current JVM configuration.
+
 ```java
 import java.net.*;
 
@@ -85,22 +76,13 @@ public class PreferenceEffect {
         InetAddress primary = InetAddress.getByName(hostname);
         System.out.printf("getByName(%s) with preferIPv6Addresses=%s → %s (%s)%n",
             hostname,
-            System.getProperty("java.net.preferIPv6Addresses", "not set"),
+            System.getProperty("java.net.preferIPv6Addresses", "false"),
             primary.getHostAddress(),
             primary instanceof Inet6Address ? "IPv6" : "IPv4"
         );
     }
 
     public static void main(String[] args) throws Exception {
-        // Default: prefers IPv4
-        checkPreference("example.com");
-
-        // Set IPv6 preference
-        System.setProperty("java.net.preferIPv6Addresses", "true");
-        checkPreference("example.com");
-
-        // System: let OS decide
-        System.setProperty("java.net.preferIPv6Addresses", "system");
         checkPreference("example.com");
     }
 }
@@ -108,7 +90,7 @@ public class PreferenceEffect {
 
 ## Spring Boot Configuration
 
-In Spring Boot, configure IPv6 preference in `application.properties` and via JVM args:
+In Spring Boot, use `application.properties` for IPv6 server binding and JVM args for `java.net.preferIPv6Addresses`:
 
 ```properties
 # application.properties - for server binding
@@ -123,7 +105,7 @@ java $JAVA_OPTS -jar app.jar
 ```
 
 ```java
-// Programmatic check for IPv6 availability
+// Programmatic check of the active setting
 import org.springframework.boot.SpringApplication;
 import org.springframework.boot.autoconfigure.SpringBootApplication;
 
@@ -131,8 +113,8 @@ import org.springframework.boot.autoconfigure.SpringBootApplication;
 public class Application {
 
     public static void main(String[] args) {
-        // Set IPv6 preference before Spring context starts
-        System.setProperty("java.net.preferIPv6Addresses", "true");
+        System.out.println("java.net.preferIPv6Addresses=" +
+            System.getProperty("java.net.preferIPv6Addresses", "false"));
         SpringApplication.run(Application.class, args);
     }
 }
@@ -145,29 +127,31 @@ import java.net.*;
 
 public class CheckEffectivePreference {
 
-    public static void printNetworkInfo() throws Exception {
+    public static void printNetworkInfo(String hostname) throws Exception {
         System.out.println("java.net.preferIPv4Stack: " +
             System.getProperty("java.net.preferIPv4Stack", "false"));
         System.out.println("java.net.preferIPv6Addresses: " +
             System.getProperty("java.net.preferIPv6Addresses", "false"));
 
-        // Check what localhost resolves to
+        InetAddress[] resolved = InetAddress.getAllByName(hostname);
+        System.out.println("Resolved addresses for " + hostname + ":");
+        for (InetAddress addr : resolved) {
+            System.out.println("  " + addr.getHostAddress() + " (" +
+                (addr instanceof Inet6Address ? "IPv6" : "IPv4") + ")");
+        }
+
+        // Check the loopback address type
         InetAddress loopback = InetAddress.getLoopbackAddress();
         System.out.println("Loopback address: " + loopback.getHostAddress() +
             " (" + (loopback instanceof Inet6Address ? "IPv6" : "IPv4") + ")");
-
-        // Check the default address for socket binding
-        ServerSocket test = new ServerSocket(0);
-        System.out.println("Default bind: " + test.getLocalSocketAddress());
-        test.close();
     }
 
     public static void main(String[] args) throws Exception {
-        printNetworkInfo();
+        printNetworkInfo("example.com");
     }
 }
 ```
 
 ## Conclusion
 
-`java.net.preferIPv6Addresses` controls DNS resolution order in Java applications. Set it to `true` to prefer IPv6 when both A and AAAA records exist. The `system` value defers to OS-level RFC 6724 address selection, which is the most standards-compliant option. `java.net.preferIPv4Stack=true` is the nuclear option - it completely disables IPv6 at the JVM level. For containerized applications, pass these as JVM system properties via `JAVA_OPTS` or `JAVA_TOOL_OPTIONS` environment variables.
+`java.net.preferIPv6Addresses` controls address ordering when Java resolves a host with both IPv4 and IPv6 addresses. Set it to `true` to prefer IPv6 when both address families are available. The `system` value preserves the order returned by the system resolver. `java.net.preferIPv4Stack=true` switches Java to IPv4-only sockets, which means the application cannot communicate with IPv6-only hosts. Because both properties are checked once at JVM startup, pass them as JVM system properties via `-D...` or `JAVA_TOOL_OPTIONS`.
