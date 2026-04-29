@@ -19,7 +19,7 @@ terraform {
   required_providers {
     google = {
       source  = "hashicorp/google"
-      version = "~> 5.0"
+      version = "~> 7.0"
     }
   }
 }
@@ -91,11 +91,14 @@ resource "google_compute_shared_vpc_service_project" "prod" {
 ## Authentication
 
 ```bash
-# Service account key (basic approach)
-export GOOGLE_APPLICATION_CREDENTIALS="/path/to/service-account.json"
+# Application Default Credentials (recommended locally)
+gcloud auth application-default login
 
-# Workload Identity (preferred for GKE)
-# No explicit credentials needed - uses Workload Identity Federation
+# Service account key or external credential configuration file
+export GOOGLE_APPLICATION_CREDENTIALS="/path/to/credentials.json"
+
+# Workload Identity Federation for GKE (preferred for GKE)
+# No explicit credential file needed - ADC uses the GKE metadata server
 
 # For GitHub Actions
 # Use Workload Identity Federation instead of service account keys
