@@ -4,11 +4,11 @@ Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
 Tags: OpenTofu, Confluent Cloud, Kafka, Streaming, Infrastructure as Code, Data Engineering, Managed Service
 
-Description: Learn how to provision Confluent Cloud Kafka clusters, topics, service accounts, and API keys using OpenTofu for fully managed, serverless Kafka deployments.
+Description: Learn how to provision Confluent Cloud Kafka clusters, topics, service accounts, and API keys using OpenTofu for fully managed Kafka deployments.
 
 ---
 
-Confluent Cloud is the fully managed Kafka service that handles all operational complexity. With OpenTofu's Confluent provider, you can define clusters, topics, ACLs, and service accounts as code - making your streaming infrastructure as reproducible as your application infrastructure.
+Confluent Cloud is the fully managed Kafka service that handles all operational complexity. With the Confluent provider in OpenTofu, you can define clusters, topics, ACLs, and service accounts as code - making your streaming infrastructure as reproducible as your application infrastructure.
 
 ## Provider Configuration
 
@@ -19,7 +19,7 @@ terraform {
   required_providers {
     confluent = {
       source  = "confluentinc/confluent"
-      version = "~> 1.76"
+      version = "~> 2.70.0"
     }
   }
 }
@@ -46,14 +46,14 @@ resource "confluent_environment" "production" {
 # Create a Kafka cluster
 resource "confluent_kafka_cluster" "main" {
   display_name = "production-kafka"
-  availability = "MULTI_ZONE"  # Multi-zone for HA
+  availability = "SINGLE_ZONE"  # Standard cluster example from the official provider docs
   cloud        = var.cloud_provider  # AWS, GCP, or AZURE
   region       = var.cloud_region
 
-  # Choose cluster type based on your throughput needs
-  # basic {} for development/testing
-  # standard {} for production
-  # dedicated { cku = 2 } for high-throughput production
+  # Choose cluster type based on your workload and availability needs
+  # basic {} for lower-throughput or development workloads
+  # standard {} for elastic production workloads
+  # dedicated { cku = 2 } for multi-zone or higher-throughput workloads
   standard {}
 
   environment {
@@ -93,6 +93,11 @@ resource "confluent_api_key" "topic_admin" {
       id = confluent_environment.production.id
     }
   }
+
+  # Ensure the admin role is granted before this key is used to manage topics and ACLs.
+  depends_on = [
+    confluent_role_binding.topic_admin
+  ]
 }
 
 # Create application topics
@@ -191,8 +196,8 @@ resource "confluent_kafka_acl" "orders_producer_write" {
 
 ## Best Practices
 
-- Use `MULTI_ZONE` availability for production clusters to ensure broker failures don't cause downtime.
+- Use the highest availability mode supported by your cluster type for production. Dedicated clusters use `MULTI_ZONE`, while newer elastic clusters use `LOW` or `HIGH` instead of the legacy `SINGLE_ZONE`/`MULTI_ZONE` labels.
 - Use service accounts and API keys per application rather than sharing credentials - this enables per-application ACL management.
 - Set `min.insync.replicas=2` on all topics to prevent data loss during broker failures.
 - Use topic naming conventions (`<domain>.<entity>.<event>`) to make schemas self-documenting.
-- Enable Schema Registry to enforce Avro/Protobuf schemas and prevent incompatible producer changes from breaking consumers.
+- Provision a Schema Registry cluster in the environment if you want Avro/Protobuf schema management and compatibility checks; broker-side schema validation requires a Dedicated Kafka cluster.
