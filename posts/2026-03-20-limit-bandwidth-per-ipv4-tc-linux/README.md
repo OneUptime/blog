@@ -10,7 +10,7 @@ Limiting bandwidth per IPv4 address is useful for ISPs, shared hosting environme
 
 ## Method 1: Explicit Per-IP Classes with u32 Filters
 
-For a small number of IPs, create an HTB class for each and filter by source/destination IP:
+For a small number of IPs, create an HTB class for each and filter by IP. Because HTB shapes egress traffic, use `src` when limiting traffic sent by local hosts, or `dst` when limiting traffic being sent to those hosts:
 
 ```bash
 # Create root HTB qdisc
@@ -41,39 +41,52 @@ sudo tc filter add dev eth0 protocol ip parent 1:0 prio 1 u32 \
 
 ## Method 2: Hash Table Filters for Many IPs
 
-For large numbers of IPs, use a hash table to avoid linear filter scanning:
+For large numbers of IPs, use a u32 hash table to avoid linear filter scanning. The hash table speeds up classification, but you still create a class for each IP (or group of IPs) you want to limit:
 
 ```bash
 # Create root HTB
 sudo tc qdisc add dev eth0 root handle 1: htb default 30
 
-# Per-IP limit class template (reused via hash)
+# Root and catch-all classes
 sudo tc class add dev eth0 parent 1: classid 1:1 htb rate 100mbit
+sudo tc class add dev eth0 parent 1:1 classid 1:30 htb rate 100mbit ceil 100mbit
+
+# Per-IP limit classes
 sudo tc class add dev eth0 parent 1:1 classid 1:10 htb rate 5mbit ceil 5mbit
+sudo tc class add dev eth0 parent 1:1 classid 1:11 htb rate 5mbit ceil 5mbit
 
 # Create a hash filter table
 sudo tc filter add dev eth0 parent 1: prio 5 handle 1: protocol ip u32 divisor 256
 
-# Add an entry in the hash table for a specific IP
-# The hash key is derived from the last octet of the IP
+# Dispatch traffic into the hash table using the last octet of the source IP
+sudo tc filter add dev eth0 parent 1: prio 1 protocol ip u32 \
+  link 1: hashkey mask 0x000000ff at 12 \
+  match ip src 10.0.0.0/24
+
+# Add entries in the hash table for specific IPs
 sudo tc filter add dev eth0 parent 1: prio 5 protocol ip u32 \
-  ht 1:0a: \
-  match ip dst 10.0.0.10/32 \
-  flowid 1:10
+  ht 1: sample u32 0x0000000a 0x000000ff at 12 \
+  match ip src 10.0.0.10/32 \
+  classid 1:10
+
+sudo tc filter add dev eth0 parent 1: prio 5 protocol ip u32 \
+  ht 1: sample u32 0x0000000b 0x000000ff at 12 \
+  match ip src 10.0.0.11/32 \
+  classid 1:11
 ```
 
 ## Method 3: Using iptables MARK + tc
 
-Mark packets in iptables, then filter by mark in tc - this is more maintainable:
+Mark packets in iptables, then filter by mark in tc using the same HTB tree as Method 1 - this is more maintainable:
 
 ```bash
 # Mark packets from specific IPs in iptables
-sudo iptables -t mangle -A POSTROUTING -s 192.168.1.10 -j MARK --set-mark 10
-sudo iptables -t mangle -A POSTROUTING -s 192.168.1.11 -j MARK --set-mark 11
+sudo iptables -t mangle -A POSTROUTING -o eth0 -s 192.168.1.10 -j MARK --set-mark 10
+sudo iptables -t mangle -A POSTROUTING -o eth0 -s 192.168.1.11 -j MARK --set-mark 11
 
 # In tc, filter by the mark
-sudo tc filter add dev eth0 protocol ip parent 1:0 handle 10 fw flowid 1:100
-sudo tc filter add dev eth0 protocol ip parent 1:0 handle 11 fw flowid 1:101
+sudo tc filter add dev eth0 protocol ip parent 1:0 handle 10 fw classid 1:100
+sudo tc filter add dev eth0 protocol ip parent 1:0 handle 11 fw classid 1:101
 ```
 
 ## Automation Script: Apply Limits for All IPs in a Subnet
