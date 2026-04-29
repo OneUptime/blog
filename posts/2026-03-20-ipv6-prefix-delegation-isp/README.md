@@ -8,7 +8,7 @@ Description: Understand how ISPs deliver IPv6 prefixes to customer routers using
 
 ## Introduction
 
-IPv6 Prefix Delegation (DHCPv6-PD, RFC 3633) is the mechanism ISPs use to deliver a routable IPv6 prefix to a customer's CPE router automatically. The CPE uses the delegated prefix to configure its internal LAN subnets, enabling all devices behind it to receive globally routable IPv6 addresses without any manual intervention.
+IPv6 Prefix Delegation (DHCPv6-PD, originally specified in RFC 3633 and now incorporated into RFC 9915) is the mechanism ISPs use to deliver a routable IPv6 prefix to a customer's CPE router automatically. The CPE uses the delegated prefix to configure its internal LAN subnets, enabling all devices behind it to receive globally routable IPv6 addresses without any manual intervention.
 
 ## How Prefix Delegation Works
 
@@ -21,7 +21,7 @@ sequenceDiagram
     CPE->>ISP: Solicit (want IA_PD prefix, hint: /56)
     ISP->>CPE: Advertise (offering 2001:db8:1100::/56)
     CPE->>ISP: Request (confirm: 2001:db8:1100::/56)
-    ISP->>CPE: Reply (lease granted, T1=3600s, T2=5400s)
+    ISP->>CPE: Reply (lease granted, T1=3600s, T2=5760s)
     Note over CPE: CPE splits /56 into /64 subnets
     CPE->>H: Router Advertisement (prefix: 2001:db8:1100:1::/64)
     H->>H: SLAAC: generate 2001:db8:1100:1::xxxx/64
@@ -31,7 +31,7 @@ sequenceDiagram
 
 The PD process uses the standard DHCPv6 four-message exchange:
 
-1. **Solicit**: CPE broadcasts to `ff02::1:2` requesting IA_PD with optional prefix hint
+1. **Solicit**: CPE multicasts to `ff02::1:2` requesting IA_PD with optional prefix hint
 2. **Advertise**: ISP server responds with available prefix offer
 3. **Request**: CPE confirms acceptance of the offered prefix
 4. **Reply**: ISP confirms the lease with T1, T2, preferred, and valid lifetimes
@@ -40,14 +40,14 @@ The PD process uses the standard DHCPv6 four-message exchange:
 
 ```text
 T1 (Renew time):      When CPE sends Renew to the same server
-T2 (Rebind time):     When CPE broadcasts Rebind to any server
+T2 (Rebind time):     When CPE sends Rebind to any available server
 Preferred lifetime:   When the prefix becomes deprecated (but still valid)
 Valid lifetime:       When the prefix expires (hard limit)
 
-Typical values:
-T1 = valid_lifetime × 0.5
-T2 = valid_lifetime × 0.8
-Valid lifetime = 7 days (604800 seconds)
+Recommended relationship:
+T1 = preferred_lifetime × 0.5
+T2 = preferred_lifetime × 0.8
+Actual lifetimes vary by ISP
 ```
 
 ## Verifying Prefix Delegation on Linux CPE
@@ -55,13 +55,13 @@ Valid lifetime = 7 days (604800 seconds)
 ```bash
 # Check if a prefix was delegated (using dhclient)
 
-sudo dhclient -6 -P -v eth0
+sudo dhclient -6 -P -v -lf /tmp/dhclient6.leases eth0
 # -6 = IPv6 mode
 # -P = request prefix delegation
 # -v = verbose
 
 # View the delegated prefix
-cat /var/lib/dhclient/dhclient6.leases
+cat /tmp/dhclient6.leases
 
 # Example lease entry:
 # lease6 {
@@ -69,13 +69,11 @@ cat /var/lib/dhclient/dhclient6.leases
 #   ia-pd <IAID> {
 #     starts 1742000000;
 #     renew 3600;
-#     rebind 5400;
-#     expires 604800;
-#     iaprefix {
+#     rebind 5760;
+#     iaprefix 2001:db8:1100::/56 {
 #       starts 1742000000;
 #       preferred-life 7200;
 #       max-life 14400;
-#       prefix 2001:db8:1100::/56;
 #     }
 #   }
 # }
@@ -92,13 +90,15 @@ ip -6 addr show  # Check LAN interface for delegated /64
 
 # Residential customer pool
 subnet6 2001:db8:1000::/36 {
-  # Delegation pool: hand out /56 prefixes
-  prefix6 2001:db8:1000:: 2001:db8:1fff:: /56;
+  pool6 {
+    # Delegation pool: hand out /56 prefixes
+    prefix6 2001:db8:1000:: 2001:db8:1fff:: /56;
 
-  # Lease timers
-  preferred-lifetime 7200;
-  default-lease-time 14400;
-  max-lease-time 86400;
+    # Lease timers
+    preferred-lifetime 7200;
+    default-lease-time 14400;
+    max-lease-time 86400;
+  }
 
   # Options to push to customer CPE
   option dhcp6.name-servers 2001:db8:0::53, 2001:db8:0::54;
@@ -110,7 +110,7 @@ subnet6 2001:db8:1000::/36 {
 
 ```bash
 # /etc/wide-dhcpv6/dhcp6c.conf
-# Receives /56 on WAN (eth0), delegates /64 to LAN (eth1)
+# Receives /56 on WAN (eth0), delegates /64s to LANs (eth1, eth2)
 
 interface eth0 {
     send ia-pd 1;       # Request prefix delegation
@@ -119,12 +119,12 @@ interface eth0 {
 
 id-assoc pd 1 {
     prefix-interface eth1 {
-        sla-id 1;    # Use subnet :01xx::/64
+        sla-id 1;    # Use subnet 2001:db8:1100:1::/64
         sla-len 8;   # /56 + 8 = /64
         ifid 1;      # Gateway = ::1 on the LAN
     };
     prefix-interface eth2 {
-        sla-id 2;    # Use subnet :02xx::/64
+        sla-id 2;    # Use subnet 2001:db8:1100:2::/64
         sla-len 8;
         ifid 1;
     };
@@ -134,7 +134,8 @@ id-assoc pd 1 {
 ## Troubleshooting PD Issues
 
 ```bash
-# Check if WAN interface received a /56 or /48
+# Check if WAN interface has a global IPv6 address
+# (the delegated prefix itself is usually in the DHCPv6 lease/state, not on eth0)
 ip -6 addr show dev eth0
 
 # Check if LAN interface got a /64 configured
