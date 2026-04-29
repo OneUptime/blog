@@ -22,11 +22,11 @@ Vagrant.configure("2") do |config|
   config.vm.provision "shell", inline: <<-SHELL
     # Enable IPv6 routing
     sysctl -w net.ipv6.conf.all.forwarding=1
-    echo "net.ipv6.conf.all.forwarding=1" >> /etc/sysctl.d/99-ipv6.conf
+    printf '%s\n' 'net.ipv6.conf.all.forwarding=1' > /etc/sysctl.d/99-ipv6.conf
 
-    # Verify IPv6 address
+    # Verify IPv6 configuration
     ip -6 addr show
-    ping6 -c 2 2001:db8:1::1 || echo "Gateway not reachable"
+    ip -6 route show
   SHELL
 end
 ```
@@ -50,12 +50,16 @@ Vagrant.configure("2") do |config|
 
     # Loopback range
     r1.vm.provision "shell", inline: <<-SHELL
-      ip -6 addr add 2001:db8:1::1/128 dev lo
+      ip -6 addr add 2001:db8:1::1/128 dev lo 2>/dev/null || true
       sysctl -w net.ipv6.conf.all.forwarding=1
+      printf '%s\n' 'net.ipv6.conf.all.forwarding=1' > /etc/sysctl.d/99-ipv6.conf
 
-      # Install FRR
-      curl -s https://deb.frrouting.org/frr/keys.gpg | apt-key add -
-      echo "deb https://deb.frrouting.org/frr $(lsb_release -s -c) frr-stable" > /etc/apt/sources.list.d/frr.list
+      apt-get update -q
+      apt-get install -y -q curl ca-certificates lsb-release
+
+      # Install FRR for later routing experiments
+      curl -fsSL https://deb.frrouting.org/frr/keys.gpg > /usr/share/keyrings/frrouting.gpg
+      echo "deb [signed-by=/usr/share/keyrings/frrouting.gpg] https://deb.frrouting.org/frr $(lsb_release -s -c) frr-stable" > /etc/apt/sources.list.d/frr.list
       apt-get update -q && apt-get install -y -q frr
     SHELL
   end
@@ -76,8 +80,9 @@ Vagrant.configure("2") do |config|
       netmask: "64"
 
     r2.vm.provision "shell", inline: <<-SHELL
-      ip -6 addr add 2001:db8:2::1/128 dev lo
+      ip -6 addr add 2001:db8:2::1/128 dev lo 2>/dev/null || true
       sysctl -w net.ipv6.conf.all.forwarding=1
+      printf '%s\n' 'net.ipv6.conf.all.forwarding=1' > /etc/sysctl.d/99-ipv6.conf
     SHELL
   end
 
@@ -92,8 +97,9 @@ Vagrant.configure("2") do |config|
       netmask: "64"
 
     r3.vm.provision "shell", inline: <<-SHELL
-      ip -6 addr add 2001:db8:3::1/128 dev lo
+      ip -6 addr add 2001:db8:3::1/128 dev lo 2>/dev/null || true
       sysctl -w net.ipv6.conf.all.forwarding=1
+      printf '%s\n' 'net.ipv6.conf.all.forwarding=1' > /etc/sysctl.d/99-ipv6.conf
     SHELL
   end
 end
@@ -112,10 +118,11 @@ LOOPBACK_ADDR=$1  # e.g., "2001:db8:1::1"
 NEIGHBORS=$2       # e.g., "2001:db8:12::2,2001:db8:13::2"
 
 # Assign loopback
-ip -6 addr add ${LOOPBACK_ADDR}/128 dev lo 2>/dev/null || true
+ip -6 addr add "${LOOPBACK_ADDR}/128" dev lo 2>/dev/null || true
 
 # Enable forwarding
 sysctl -w net.ipv6.conf.all.forwarding=1
+printf '%s\n' 'net.ipv6.conf.all.forwarding=1' > /etc/sysctl.d/99-ipv6.conf
 
 # Wait for link-local addresses
 sleep 2
@@ -123,7 +130,7 @@ sleep 2
 # Test IPv6 connectivity to neighbors
 IFS=',' read -ra NEIGH_LIST <<< "$NEIGHBORS"
 for NEIGH in "${NEIGH_LIST[@]}"; do
-    if ping6 -c 2 -W 3 ${NEIGH} &>/dev/null; then
+    if ping -6 -c 2 -W 3 "${NEIGH}" >/dev/null 2>&1; then
         echo "Neighbor ${NEIGH}: reachable"
     else
         echo "Neighbor ${NEIGH}: UNREACHABLE"
@@ -153,7 +160,7 @@ vagrant ssh r1
 # Run provisioner again (without restart)
 vagrant provision r1
 
-# Suspend/resume (saves RAM)
+# Suspend/resume (preserves VM state and frees host RAM)
 vagrant suspend
 vagrant resume
 
@@ -167,16 +174,16 @@ vagrant destroy -f
 ## Testing IPv6 Connectivity Between VMs
 
 ```bash
-# From r1, test reachability to r3
-vagrant ssh r1 -c "ping6 -c 3 2001:db8:3::1"
+# From r1, test reachability to r2
+vagrant ssh r1 -c "ping -6 -c 3 2001:db8:12::2"
 
-# Run OSPFv3 verification
-vagrant ssh r2 -c "vtysh -c 'show ipv6 ospf6 neighbor'"
+# From r2, test reachability to r3
+vagrant ssh r2 -c "ping -6 -c 3 2001:db8:23::2"
 
-# Capture traffic on r2
-vagrant ssh r2 -c "tcpdump -i eth1 -n 'ip6 and (ospf6 or icmp6)' -c 20"
+# Inspect IPv6 routes on r2
+vagrant ssh r2 -c "ip -6 route show"
 ```
 
 ## Conclusion
 
-Vagrant enables reproducible IPv6 test environments that can be version-controlled alongside application code. The `private_network` with `virtualbox__intnet` creates isolated internal networks for multi-VM topologies. Shell provisioners handle IPv6 configuration including address assignment, forwarding, and FRR installation. The `vagrant up/destroy` lifecycle makes environments disposable - spin up a fresh IPv6 lab in minutes, destroy it when done. For Windows hosts, ensure VirtualBox supports IPv6 host-only adapters.
+Vagrant enables reproducible IPv6 test environments that can be version-controlled alongside application code. The `private_network` with `virtualbox__intnet` creates isolated internal networks for multi-VM topologies. Shell provisioners handle IPv6 configuration including address assignment, forwarding, and optional FRR installation. The `vagrant up/destroy` lifecycle makes environments disposable - spin up a fresh IPv6 lab in minutes, destroy it when done. Because these examples use `virtualbox__intnet`, the inter-VM links stay on VirtualBox internal networks rather than host-only adapters.
