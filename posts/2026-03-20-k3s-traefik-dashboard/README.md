@@ -8,7 +8,7 @@ Description: Learn how to enable, secure, and access the Traefik dashboard in K3
 
 ## Introduction
 
-The Traefik dashboard provides a real-time web UI showing all configured routers, services, middlewares, and their health status. While Traefik ships with K3s, its dashboard is not enabled by default for security reasons. This guide covers enabling the dashboard, securing it with authentication, and exposing it via an IngressRoute.
+The Traefik dashboard provides a real-time web UI showing all configured routers, services, middlewares, and their health status. While Traefik ships with K3s, its dashboard is not exposed by default for security reasons. This guide covers enabling dashboard access, securing it with authentication, and exposing it via an IngressRoute.
 
 ## Prerequisites
 
@@ -16,7 +16,7 @@ The Traefik dashboard provides a real-time web UI showing all configured routers
 - `kubectl` configured
 - Basic understanding of Traefik
 
-## Step 1: Enable the Traefik Dashboard via HelmChartConfig
+## Step 1: Ensure the Traefik API and Dashboard Are Enabled via HelmChartConfig
 
 Use K3s's `HelmChartConfig` CRD to customize Traefik without overriding the entire chart:
 
@@ -30,8 +30,6 @@ metadata:
   namespace: kube-system
 spec:
   valuesContent: |-
-    dashboard:
-      enabled: true
     # Enable the Traefik API (required for dashboard)
     api:
       dashboard: true
@@ -40,9 +38,6 @@ spec:
       general:
         level: ERROR
       access:
-        enabled: true
-    metrics:
-      prometheus:
         enabled: true
 ```
 
@@ -66,7 +61,7 @@ Never expose the dashboard without authentication:
 apt-get install -y apache2-utils
 
 # Create a secure password (replace 'admin' and 'securepassword')
-htpasswd -nb admin 'S3cur3P@ssw0rd!' > /tmp/dashboard-auth.txt
+htpasswd -nbB admin 'S3cur3P@ssw0rd!' > /tmp/dashboard-auth.txt
 
 # View the generated hash
 cat /tmp/dashboard-auth.txt
@@ -87,7 +82,7 @@ rm /tmp/dashboard-auth.txt
 # /var/lib/rancher/k3s/server/manifests/traefik-dashboard-middleware.yaml
 ---
 # Basic authentication middleware for the dashboard
-apiVersion: traefik.containo.us/v1alpha1
+apiVersion: traefik.io/v1alpha1
 kind: Middleware
 metadata:
   name: dashboard-auth
@@ -97,14 +92,14 @@ spec:
     secret: traefik-dashboard-auth
     removeHeader: true   # Remove auth header before forwarding to backend
 ---
-# IP whitelist middleware (restrict to internal network)
-apiVersion: traefik.containo.us/v1alpha1
+# IP allowlist middleware (restrict to internal network)
+apiVersion: traefik.io/v1alpha1
 kind: Middleware
 metadata:
-  name: dashboard-ip-whitelist
+  name: dashboard-ip-allowlist
   namespace: kube-system
 spec:
-  ipWhiteList:
+  ipAllowList:
     sourceRange:
       - "10.0.0.0/8"
       - "172.16.0.0/12"
@@ -118,7 +113,7 @@ spec:
 # /var/lib/rancher/k3s/server/manifests/traefik-dashboard-route.yaml
 ---
 # HTTP route that redirects to HTTPS
-apiVersion: traefik.containo.us/v1alpha1
+apiVersion: traefik.io/v1alpha1
 kind: IngressRoute
 metadata:
   name: traefik-dashboard-http
@@ -137,7 +132,7 @@ spec:
           kind: TraefikService
 ---
 # HTTPS route with authentication
-apiVersion: traefik.containo.us/v1alpha1
+apiVersion: traefik.io/v1alpha1
 kind: IngressRoute
 metadata:
   name: traefik-dashboard-https
@@ -151,14 +146,14 @@ spec:
       middlewares:
         - name: dashboard-auth
           namespace: kube-system
-        - name: dashboard-ip-whitelist
+        - name: dashboard-ip-allowlist
           namespace: kube-system
       services:
         # api@internal is Traefik's internal API service
         - name: api@internal
           kind: TraefikService
   tls:
-    secretName: traefik-dashboard-tls
+    secretName: traefik-dashboard-tls  # Create this TLS secret in kube-system first
 ```
 
 ## Step 5: Option B - Access Dashboard via Port-Forward
@@ -166,27 +161,23 @@ spec:
 For quick access without exposing the dashboard publicly:
 
 ```bash
-# Port-forward to the Traefik service
-kubectl port-forward -n kube-system \
-  service/traefik 9000:9000 &
+# Forward the Traefik HTTPS service locally
+kubectl port-forward -n kube-system service/traefik 8443:443 &
 
-# Access the dashboard at:
-# http://localhost:9000/dashboard/
+# Access the dashboard through the forwarded HTTPS port
+curl -u admin:S3cur3P@ssw0rd! \
+  --resolve traefik.example.com:8443:127.0.0.1 \
+  -k https://traefik.example.com:8443/dashboard/
 
-# Or forward to the pod directly
-TRAEFIK_POD=$(kubectl get pods -n kube-system -l app.kubernetes.io/name=traefik \
-  -o jsonpath='{.items[0].metadata.name}')
-
-kubectl port-forward -n kube-system pod/$TRAEFIK_POD 9000:9000
-
-# Visit http://localhost:9000/dashboard/
+# For browser access, temporarily map traefik.example.com to 127.0.0.1
+# and then visit https://traefik.example.com:8443/dashboard/
 ```
 
 ## Step 6: Add HTTPS Redirect Middleware
 
 ```yaml
 # /var/lib/rancher/k3s/server/manifests/https-redirect-middleware.yaml
-apiVersion: traefik.containo.us/v1alpha1
+apiVersion: traefik.io/v1alpha1
 kind: Middleware
 metadata:
   name: https-redirect
@@ -240,4 +231,4 @@ Dashboard Sections:
 
 ## Conclusion
 
-The Traefik dashboard provides invaluable visibility into your K3s cluster's ingress routing. Enable it with HelmChartConfig for proper integration with K3s's Helm management, and always secure it with at least basic authentication and IP whitelisting. For production environments, restrict dashboard access to your internal network or VPN, and consider adding additional security layers like Traefik's forward authentication middleware for SSO integration.
+The Traefik dashboard provides invaluable visibility into your K3s cluster's ingress routing. Use HelmChartConfig for proper integration with K3s's Helm management, and always secure dashboard access with at least basic authentication and IP allowlisting. For production environments, restrict dashboard access to your internal network or VPN, and consider adding additional security layers like Traefik's forward authentication middleware for SSO integration.
