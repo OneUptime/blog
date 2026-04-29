@@ -30,42 +30,44 @@ graph TD
 
 ## MPD Using ICMPv6 Messages
 
-MPD reuses ICMPv6 Router Solicitation and Advertisement messages. The MN sends a Router Solicitation directly to the HA, which responds with a Router Advertisement containing the home prefix.
+MPD uses dedicated ICMPv6 messages defined by RFC 6275: Mobile Prefix Solicitation (Type 144) and Mobile Prefix Advertisement (Type 145). The MN sends an MPS directly to the HA, which responds with an MPA containing the home prefix.
 
 ### Mobile Prefix Solicitation (MPS)
 
-The MN sends an ICMPv6 Router Solicitation to the HA's address (not multicast), with a Mobility Header option indicating it is a Mobile Prefix Solicitation.
+The MN sends an MPS to the HA's address (unicast, not multicast).
 
 ```text
 IPv6 Header:
-  Source: CoA (or link-local)
+  Source: CoA
   Destination: HA address (unicast)
 
-ICMPv6 Type 133 (Router Solicitation)
-  Options:
-    Source Link-Layer Address
-    Mobile Node Identifier (MNID) option
+ICMPv6 Type 144 (Mobile Prefix Solicitation)
+  Identifier: (echoed back in MPA)
+  Mobility options:
+    (e.g., Mobility Message Authentication Option, RFC 4285)
 ```
 
 ### Mobile Prefix Advertisement (MPA)
 
-The HA responds with a Router Advertisement containing the home prefix.
+The HA responds with an MPA containing the home prefix.
 
 ```text
 IPv6 Header:
   Source: HA address
-  Destination: CoA
+  Destination: MN home address (typically tunneled to CoA)
 
-ICMPv6 Type 134 (Router Advertisement)
-  Flags: managed flag if DHCPv6 needed
-  Options:
+ICMPv6 Type 145 (Mobile Prefix Advertisement)
+  Identifier: (matches MPS)
+  Flags:
+    M (Managed Address Config) - set if DHCPv6 needed
+    O (Other Stateful Config)
+  Mobility options:
     Prefix Information Option:
-      Prefix: 2001:db8:home::/64
+      Prefix: 2001:db8:1::/64
       L flag: 1 (on-link)
       A flag: 1 (autonomous address config)
       Valid Lifetime: 2592000
       Preferred Lifetime: 604800
-    Acknowledgement ID: (matches MPS)
 ```
 
 ## Deriving the Home Address from the Prefix
@@ -89,10 +91,10 @@ def derive_home_address(home_prefix: str, use_eui64: bool = False,
     if use_eui64 and interface_mac:
         # EUI-64 interface identifier from MAC address
         mac_bytes = bytes.fromhex(interface_mac.replace(":", ""))
-        # Insert 0xFFFE in middle and flip universal/local bit
+        # Flip universal/local bit on first byte, insert 0xFFFE in middle
         eui64 = (
-            mac_bytes[:3] +
-            bytes([mac_bytes[0] ^ 0x02]) +  # Flip U/L bit (wrong position)
+            bytes([mac_bytes[0] ^ 0x02]) +
+            mac_bytes[1:3] +
             b"\xff\xfe" +
             mac_bytes[3:]
         )
@@ -108,7 +110,7 @@ def derive_home_address(home_prefix: str, use_eui64: bool = False,
 
 # Example
 
-home_prefix = "2001:db8:home::/64"
+home_prefix = "2001:db8:1::/64"
 hoa = derive_home_address(home_prefix)
 print(f"Home Address: {hoa}")
 ```
@@ -122,16 +124,16 @@ NodeConfig MN;
 Interface "eth0" {
     MnIfPreference 1;
 }
-HomeAgent 2001:db8:home::1;
+HomeAgent 2001:db8:1::1;
 # Explicitly configured home prefix + address
-Home 2001:db8:home::100/64;
+Home 2001:db8:1::100/64;
 
 # Method 2: Dynamic discovery (no Home line)
 NodeConfig MN;
 Interface "eth0" {
     MnIfPreference 1;
 }
-HomeAgent 2001:db8:home::1;
+HomeAgent 2001:db8:1::1;
 # No Home line - UMIP will perform MPD to discover prefix
 # and auto-configure the HoA
 ```
@@ -147,7 +149,7 @@ ip -6 addr show dev lo | grep 2001:db8:home
 
 # Capture MPD exchange
 tcpdump -i eth0 -n \
-  "(icmp6[0] == 133 or icmp6[0] == 134) and ip6 dst 2001:db8:home::1"
+  "(icmp6[0] == 144 or icmp6[0] == 145) and ip6 dst 2001:db8:1::1"
 ```
 
 ## Conclusion
