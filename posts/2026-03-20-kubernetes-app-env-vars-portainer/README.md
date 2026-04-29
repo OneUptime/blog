@@ -8,7 +8,7 @@ Description: Learn how to add and manage environment variables for Kubernetes ap
 
 ## Overview
 
-Environment variables are the standard way to configure containerized applications. In Kubernetes, they can come from direct values, ConfigMaps, or Secrets. Portainer's application form makes it easy to configure all three methods.
+Environment variables are the standard way to configure containerized applications. In Kubernetes, they can come from direct values, ConfigMaps, or Secrets. Portainer's application form supports direct values and lets you attach ConfigMaps and Secrets, which Portainer exposes as environment variables by default.
 
 ## Method 1: Direct Value Environment Variables
 
@@ -28,7 +28,7 @@ env:
 
 ## Method 2: From ConfigMap
 
-Reference keys from an existing ConfigMap:
+In Kubernetes YAML, you can reference a single key from an existing ConfigMap or load all keys with `envFrom`. In Portainer, selecting a ConfigMap exposes all of its keys as environment variables by default:
 
 ```yaml
 # Load specific keys from a ConfigMap
@@ -47,7 +47,7 @@ envFrom:
 
 ## Method 3: From Secret
 
-Reference sensitive values from a Kubernetes Secret:
+In Kubernetes YAML, you can reference a single key from a Secret or load all keys with `envFrom`. In Portainer, selecting a Secret exposes all of its keys as environment variables by default:
 
 ```yaml
 # Load a specific key from a Secret
@@ -86,13 +86,10 @@ kubectl create secret generic app-secrets \
 
 In the Portainer application form:
 
-1. Go to **Applications > Add application**.
-2. Scroll to **Environment variables**.
-3. Choose the type:
-   - **Simple value**: Enter key and value directly.
-   - **From ConfigMap**: Select the ConfigMap and key.
-   - **From Secret**: Select the Secret and key.
-4. Click **Add environment variable** for each one.
+1. Go to **Applications**, then click **Add with form**.
+2. In **Environment variables**, add any direct key-value pairs you need.
+3. In **ConfigMaps**, select any existing ConfigMaps you want Portainer to expose as environment variables.
+4. In **Secrets**, select any existing Secrets you want Portainer to expose as environment variables.
 
 ## Combining Multiple Sources
 
@@ -119,4 +116,4 @@ spec:
 
 ## Conclusion
 
-Portainer simplifies environment variable management for Kubernetes apps by providing a form interface for all three injection methods. Always use Secrets for sensitive values rather than direct string values, and use ConfigMaps for non-sensitive configuration.
+Portainer simplifies environment variable management for Kubernetes apps by providing a form interface for direct values and for exposing ConfigMaps and Secrets as environment variables. Always use Secrets for sensitive values rather than direct string values, and use ConfigMaps for non-sensitive configuration.
