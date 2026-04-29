@@ -4,7 +4,7 @@ Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
 Tags: Portainer, Pulumi, Infrastructure as Code, DevOps, Automation
 
-Description: Use Pulumi's infrastructure as code platform to automate Portainer deployments, environment management, and stack configurations using TypeScript or Python.
+Description: Use Pulumi's infrastructure as code platform to automate Portainer deployments, environment management, and stack configurations using TypeScript.
 
 ## Introduction
 
@@ -13,7 +13,7 @@ Pulumi is a modern infrastructure as code platform that lets you use familiar pr
 ## Prerequisites
 
 - Pulumi CLI installed: `curl -fsSL https://get.pulumi.com | sh`
-- Node.js 16+ (for TypeScript) or Python 3.9+
+- A supported Node.js LTS release
 - Portainer instance running and accessible
 - Portainer API access token
 
@@ -25,15 +25,10 @@ Pulumi is a modern infrastructure as code platform that lets you use familiar pr
 mkdir portainer-pulumi && cd portainer-pulumi
 pulumi new typescript
 
-# Or for Python
-pulumi new python
-
 # Install dependencies
-npm install @pulumi/pulumi @pulumi/docker axios
+npm install @pulumi/pulumi axios
 
-# Set Portainer configuration
-pulumi config set portainerUrl https://portainer.example.com:9443
-pulumi config set --secret portainerPassword your-secure-password
+# Stack configuration is set per environment in Step 5
 ```
 
 ## Step 2: Create Portainer Provider Helper
@@ -42,32 +37,23 @@ Since Pulumi doesn't have a native Portainer provider, we'll create a custom res
 
 ```typescript
 // portainerProvider.ts
-import * as pulumi from "@pulumi/pulumi";
 import axios, { AxiosInstance } from "axios";
 
 export class PortainerClient {
   private client: AxiosInstance;
-  private token: string = "";
   
   constructor(
-    private baseUrl: string,
-    private username: string,
-    private password: string
+    baseUrl: string,
+    apiKey: string
   ) {
     this.client = axios.create({
       baseURL: `${baseUrl}/api`,
+      headers: {
+        "X-API-KEY": apiKey,
+      },
       // Skip TLS verification for self-signed certs in dev
       httpsAgent: new (require("https").Agent)({ rejectUnauthorized: false }),
     });
-  }
-
-  async authenticate(): Promise<void> {
-    const response = await this.client.post("/auth", {
-      Username: this.username,
-      Password: this.password,
-    });
-    this.token = response.data.jwt;
-    this.client.defaults.headers.common["Authorization"] = `Bearer ${this.token}`;
   }
 
   async getEnvironments(): Promise<any[]> {
@@ -97,8 +83,29 @@ export class PortainerClient {
     return response.data;
   }
 
-  async deleteStack(stackId: number): Promise<void> {
-    await this.client.delete(`/stacks/${stackId}`);
+  async updateStack(
+    stackId: number,
+    envId: number,
+    composeContent: string,
+    envVars: Record<string, string> = {}
+  ): Promise<any> {
+    const env = Object.entries(envVars).map(([name, value]) => ({
+      name,
+      value,
+    }));
+
+    const response = await this.client.put(
+      `/stacks/${stackId}?endpointId=${envId}`,
+      {
+        StackFileContent: composeContent,
+        Env: env,
+      }
+    );
+    return response.data;
+  }
+
+  async deleteStack(stackId: number, envId: number): Promise<void> {
+    await this.client.delete(`/stacks/${stackId}?endpointId=${envId}`);
   }
 }
 ```
@@ -110,12 +117,113 @@ export class PortainerClient {
 import * as pulumi from "@pulumi/pulumi";
 import { PortainerClient } from "./portainerProvider";
 
+type PortainerEnvVars = Record<string, pulumi.Input<string>>;
+
 interface PortainerStackArgs {
+  portainerUrl: pulumi.Input<string>;
+  portainerApiKey: pulumi.Input<string>;
   name: pulumi.Input<string>;
   environmentId: pulumi.Input<number>;
   composeContent: pulumi.Input<string>;
-  envVars?: pulumi.Input<Record<string, string>>;
+  envVars?: pulumi.Input<PortainerEnvVars>;
 }
+
+interface PortainerStackInputs {
+  portainerUrl: string;
+  portainerApiKey: string;
+  name: string;
+  environmentId: number;
+  composeContent: string;
+  envVars?: Record<string, string>;
+}
+
+interface PortainerStackOutputs extends PortainerStackInputs {
+  stackId: number;
+  stackName: string;
+}
+
+const portainerProvider: pulumi.dynamic.ResourceProvider<
+  PortainerStackInputs,
+  PortainerStackOutputs
+> = {
+  async create(inputs) {
+    const client = new PortainerClient(
+      inputs.portainerUrl,
+      inputs.portainerApiKey
+    );
+
+    const result = await client.createStack(
+      inputs.environmentId,
+      inputs.name,
+      inputs.composeContent,
+      inputs.envVars || {}
+    );
+
+    return {
+      id: String(result.Id),
+      outs: {
+        ...inputs,
+        stackId: result.Id,
+        stackName: result.Name,
+      },
+    };
+  },
+
+  async diff(id, olds, news) {
+    const replaces: string[] = [];
+
+    if (olds.name !== news.name) {
+      replaces.push("name");
+    }
+
+    if (olds.environmentId !== news.environmentId) {
+      replaces.push("environmentId");
+    }
+
+    if (olds.portainerUrl !== news.portainerUrl) {
+      replaces.push("portainerUrl");
+    }
+
+    const changes =
+      replaces.length > 0 ||
+      olds.portainerApiKey !== news.portainerApiKey ||
+      olds.composeContent !== news.composeContent ||
+      JSON.stringify(olds.envVars || {}) !== JSON.stringify(news.envVars || {});
+
+    return { changes, replaces };
+  },
+
+  async update(id, olds, news) {
+    const client = new PortainerClient(
+      news.portainerUrl,
+      news.portainerApiKey
+    );
+
+    const result = await client.updateStack(
+      parseInt(id, 10),
+      news.environmentId,
+      news.composeContent,
+      news.envVars || {}
+    );
+
+    return {
+      outs: {
+        ...news,
+        stackId: result.Id,
+        stackName: result.Name,
+      },
+    };
+  },
+
+  async delete(id, props) {
+    const client = new PortainerClient(
+      props.portainerUrl,
+      props.portainerApiKey
+    );
+
+    await client.deleteStack(parseInt(id, 10), props.environmentId);
+  },
+};
 
 export class PortainerStack extends pulumi.dynamic.Resource {
   public readonly stackId!: pulumi.Output<number>;
@@ -126,57 +234,7 @@ export class PortainerStack extends pulumi.dynamic.Resource {
     args: PortainerStackArgs,
     opts?: pulumi.CustomResourceOptions
   ) {
-    super(
-      {
-        // Create the stack in Portainer
-        async create(inputs: any): Promise<pulumi.dynamic.CreateResult> {
-          const config = new pulumi.Config();
-          const client = new PortainerClient(
-            config.require("portainerUrl"),
-            "admin",
-            config.requireSecret("portainerPassword")
-          );
-          
-          await client.authenticate();
-          
-          const result = await client.createStack(
-            inputs.environmentId,
-            inputs.name,
-            inputs.composeContent,
-            inputs.envVars || {}
-          );
-          
-          return {
-            id: String(result.Id),
-            outs: {
-              stackId: result.Id,
-              stackName: result.Name,
-              ...inputs,
-            },
-          };
-        },
-        
-        // Delete the stack from Portainer
-        async delete(id: pulumi.ID, inputs: any): Promise<void> {
-          const config = new pulumi.Config();
-          const client = new PortainerClient(
-            config.require("portainerUrl"),
-            "admin",
-            config.requireSecret("portainerPassword")
-          );
-          
-          await client.authenticate();
-          await client.deleteStack(parseInt(id));
-        },
-      },
-      name,
-      {
-        stackId: undefined,
-        stackName: undefined,
-        ...args,
-      },
-      opts
-    );
+    super(portainerProvider, name, args, opts);
   }
 }
 ```
@@ -186,12 +244,13 @@ export class PortainerStack extends pulumi.dynamic.Resource {
 ```typescript
 // index.ts
 import * as pulumi from "@pulumi/pulumi";
-import * as docker from "@pulumi/docker";
 import { PortainerStack } from "./portainerStack";
+import { getEnvironmentConfig } from "./environments";
 import * as fs from "fs";
 
 const config = new pulumi.Config();
 const environment = pulumi.getStack(); // dev, staging, prod
+const envConfig = getEnvironmentConfig(environment);
 
 // Deploy monitoring stack
 const monitoringComposeContent = `
@@ -225,8 +284,10 @@ volumes:
 `;
 
 const monitoringStack = new PortainerStack("monitoring", {
+  portainerUrl: config.require("portainerUrl"),
+  portainerApiKey: config.requireSecret("portainerApiKey"),
   name: `monitoring-${environment}`,
-  environmentId: 1, // Portainer environment ID
+  environmentId: envConfig.portainerEnvId,
   composeContent: monitoringComposeContent,
   envVars: {
     GRAFANA_PASSWORD: config.requireSecret("grafanaPassword"),
@@ -240,8 +301,10 @@ const appComposeContent = fs.readFileSync(
 );
 
 const appStack = new PortainerStack("web-app", {
+  portainerUrl: config.require("portainerUrl"),
+  portainerApiKey: config.requireSecret("portainerApiKey"),
   name: `web-app-${environment}`,
-  environmentId: 1,
+  environmentId: envConfig.portainerEnvId,
   composeContent: appComposeContent,
   envVars: {
     DB_PASSWORD: config.requireSecret("dbPassword"),
@@ -264,19 +327,30 @@ pulumi login --local
 # Or use Pulumi Cloud
 pulumi login
 
-# Set secrets
+# Create and configure the development stack
+pulumi stack select dev --create
+pulumi config set portainerUrl https://portainer.example.com:9443
+pulumi config set --secret portainerApiKey your-portainer-api-key
 pulumi config set --secret grafanaPassword your-grafana-password
 pulumi config set --secret dbPassword your-db-password
+pulumi config set --secret appSecret your-app-secret
 
 # Preview changes
 pulumi preview
 
 # Deploy to development
-pulumi stack select dev
 pulumi up --yes
 
-# Deploy to production
-pulumi stack select prod
+# Create and configure the production stack
+pulumi stack select prod --create
+pulumi config set portainerUrl https://portainer.example.com:9443
+pulumi config set --secret portainerApiKey your-portainer-api-key
+pulumi config set --secret grafanaPassword your-production-grafana-password
+pulumi config set --secret dbPassword your-production-db-password
+pulumi config set --secret appSecret your-production-app-secret
+
+# Preview and deploy to production
+pulumi preview
 pulumi up --yes
 
 # View deployed resources
@@ -290,8 +364,6 @@ pulumi destroy --yes
 
 ```typescript
 // environments.ts
-import * as pulumi from "@pulumi/pulumi";
-
 interface EnvironmentConfig {
   portainerEnvId: number;
   replicas: number;
