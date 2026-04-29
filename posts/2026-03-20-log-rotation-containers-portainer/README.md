@@ -12,14 +12,15 @@ Without log rotation, container log files grow indefinitely until they fill the 
 
 ## Step 1: Configure Global Log Rotation
 
+Update `/etc/docker/daemon.json` with valid JSON:
+
 ```json
-// /etc/docker/daemon.json - Apply log rotation to all containers
 {
   "log-driver": "json-file",
   "log-opts": {
-    "max-size": "10m",    // Max size per log file
-    "max-file": "3",      // Keep 3 rotated files (30MB total per container)
-    "compress": "true"    // Compress rotated files with gzip
+    "max-size": "10m",
+    "max-file": "3",
+    "compress": "true"
   }
 }
 ```
@@ -29,12 +30,14 @@ Without log rotation, container log files grow indefinitely until they fill the 
 
 sudo systemctl restart docker
 
-# Verify default log options
-docker info | grep -A 5 "Logging Driver"
+# Verify the default logging driver
+docker info --format '{{.LoggingDriver}}'
 
 # IMPORTANT: This only affects NEW containers
 # Existing containers keep their current log configuration
 # Recreate containers to apply the new settings
+# Then inspect a recreated container to confirm its log config
+docker inspect --format '{{json .HostConfig.LogConfig}}' <container>
 ```
 
 ## Step 2: Configure Log Rotation Per Service
@@ -54,10 +57,7 @@ services:
       options:
         max-size: "20m"     # 20MB per file
         max-file: "5"       # Keep 5 files = 100MB max
-        compress: "true"    # Gzip rotated files (saves ~70% space)
-        # Add container labels to log metadata
-        labels: "service,environment"
-        env: "NODE_ENV"
+        compress: "true"    # Compress rotated files with gzip
 
   # Database: verbose but important logs
   postgres:
@@ -96,10 +96,10 @@ services:
 # Check current log sizes to understand your baseline
 du -sh /var/lib/docker/containers/*/
 # or summarized:
-du -sh /var/lib/docker/containers/*/*.log | sort -h | tail -20
+du -sh /var/lib/docker/containers/*/*-json.log* | sort -h | tail -20
 
-# Check total Docker log disk usage
-docker system df -v | grep "CONTAINER\|LOG SIZE"
+# Check total Docker json-file log disk usage
+find /var/lib/docker/containers -name '*-json.log*' -type f -exec du -ch {} + | tail -1
 
 # Calculate log growth rate
 CONTAINER_ID=$(docker ps -q --filter name=api)
@@ -138,29 +138,22 @@ docker ps -q | while read id; do
   fi
 done
 
-# Check total Docker disk usage
-TOTAL=$(du -sh /var/lib/docker/containers/ | cut -f1)
+# Check total Docker log disk usage
+TOTAL=$(find /var/lib/docker/containers -name '*-json.log*' -type f -exec du -ch {} + | tail -1 | cut -f1)
 echo "Total container log storage: $TOTAL"
 ```
 
 ## Step 5: Truncate Logs Without Restarting Containers
 
-For emergency disk recovery without stopping containers:
+For emergency disk recovery without stopping containers, prefer built-in rotation first. Docker warns against managing `json-file` logs with external tools, so treat this as a last-resort host operation and truncate in place rather than replacing the file:
 
 ```bash
-# SAFE: Truncate a specific container's log (Docker reopens the file)
+# Emergency-only: truncate a specific container log in place
 CONTAINER_ID=$(docker ps -q --filter name=api)
 LOG_PATH="/var/lib/docker/containers/$CONTAINER_ID/$CONTAINER_ID-json.log"
 
 # Truncate to 0 bytes (container keeps running, just loses old logs)
 truncate -s 0 "$LOG_PATH"
-
-# Or truncate to keep only last 1000 lines
-LOG_LINES=$(wc -l < "$LOG_PATH")
-KEEP_LINES=1000
-if [ $LOG_LINES -gt $KEEP_LINES ]; then
-  tail -n $KEEP_LINES "$LOG_PATH" > /tmp/log.tmp && mv /tmp/log.tmp "$LOG_PATH"
-fi
 
 # For all containers at once (emergency disk recovery)
 for id in $(docker ps -q); do
@@ -175,38 +168,10 @@ for id in $(docker ps -q); do
 done
 ```
 
-## Step 6: Logrotate for Additional Control
+## Step 6: Avoid logrotate for json-file Logs
 
-```bash
-# /etc/logrotate.d/docker-containers
-# Additional logrotate config for Docker container logs
-
-/var/lib/docker/containers/**/*-json.log {
-  rotate 5
-  daily
-  compress
-  delaycompress
-  missingok
-  notifempty
-  sharedscripts
-  copytruncate  # Truncate in-place so Docker doesn't lose file handle
-  size 50M      # Rotate when file exceeds 50MB (in addition to daily)
-  postrotate
-    # Optional: Signal Docker to reopen log files
-    # docker ps -q | xargs -I{} docker kill --signal SIGHUP {}
-  endscript
-}
-```
-
-```bash
-# Test logrotate configuration
-sudo logrotate -d /etc/logrotate.d/docker-containers
-# -d = dry run (shows what would happen)
-
-# Force rotation now
-sudo logrotate -f /etc/logrotate.d/docker-containers
-```
+Docker's documentation recommends avoiding external tools such as `logrotate` for `json-file` logs, because those files are meant to be managed by the Docker daemon. If you need different retention limits, update `daemon.json` or the service-level `logging` settings and recreate the containers. If you do not need `json-file` compatibility, Docker recommends the `local` logging driver because it rotates logs by default.
 
 ## Conclusion
 
-Log rotation is essential disk management for containerized environments. Docker's built-in `max-size` and `max-file` options in the json-file driver are the simplest approach - no external tools needed. Set them globally in `daemon.json` for consistent behavior, then override per-service for high-volume containers. The `compress: "true"` option is often overlooked but typically saves 60-80% of log storage for text-based logs. Monitor log sizes regularly and tune the rotation thresholds based on observed growth rates. Portainer's compose YAML makes it straightforward to apply different log retention policies to different services based on their criticality and volume.
+Log rotation is essential disk management for containerized environments. Docker's built-in `max-size` and `max-file` options in the json-file driver are the simplest approach - no external tools needed. Set them globally in `daemon.json` for consistent behavior, then override per-service for high-volume containers. The `compress: "true"` option is often overlooked but can significantly reduce log storage for text-based logs. Monitor log sizes regularly and tune the rotation thresholds based on observed growth rates. Portainer's compose YAML makes it straightforward to apply different log retention policies to different services based on their criticality and volume.
