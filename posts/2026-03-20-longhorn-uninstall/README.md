@@ -21,17 +21,18 @@ Uninstalling Longhorn without following the correct procedure can leave orphaned
 
 ---
 
-## Step 1: Scale Down All Workloads
+## Step 1: Scale Down or Stop All Workloads
 
 ```bash
-# Find all workloads using Longhorn PVCs
-
-kubectl get pvc -A -o json | \
-  jq -r '.items[] | select(.spec.storageClassName | startswith("longhorn")) | "\(.metadata.namespace)/\(.metadata.name)"'
+# Find all PVCs backed by the Longhorn CSI driver
+kubectl get pv -o json | \
+  jq -r '.items[] | select((.spec.csi.driver // "") == "driver.longhorn.io" and .spec.claimRef != null) | "\(.spec.claimRef.namespace)/\(.spec.claimRef.name)"'
 
 # Scale down each deployment/statefulset using Longhorn volumes
 kubectl scale deployment <name> -n <namespace> --replicas=0
 kubectl scale statefulset <name> -n <namespace> --replicas=0
+
+# Suspend or delete other workload types as needed (for example CronJobs, Jobs, DaemonSets, or standalone Pods)
 ```
 
 ---
@@ -39,14 +40,23 @@ kubectl scale statefulset <name> -n <namespace> --replicas=0
 ## Step 2: Delete All PVCs and PVs
 
 ```bash
-# Delete PVCs using Longhorn storage classes
-kubectl get pvc -A | grep longhorn
+# List PVCs backed by the Longhorn CSI driver
+kubectl get pv -o json | \
+  jq -r '.items[] | select((.spec.csi.driver // "") == "driver.longhorn.io" and .spec.claimRef != null) | "\(.spec.claimRef.namespace)/\(.spec.claimRef.name)"'
 
-# Delete each PVC (this also deletes the underlying Longhorn volume)
+# Delete each PVC
+# This removes the Longhorn volume automatically only when the PV reclaim policy is Delete
 kubectl delete pvc <pvc-name> -n <namespace>
 
+# If the PV reclaim policy is Retain, delete the PV after the PVC is removed
+kubectl get pv -o json | \
+  jq -r '.items[] | select((.spec.csi.driver // "") == "driver.longhorn.io") | .metadata.name'
+kubectl delete pv <pv-name>
+
 # Verify no Longhorn volumes remain
-kubectl get volume -n longhorn-system
+kubectl get volumes.longhorn.io -n longhorn-system
+
+# If any volumes remain, delete them from the Longhorn UI before uninstalling
 ```
 
 ---
@@ -56,11 +66,11 @@ kubectl get volume -n longhorn-system
 Longhorn requires you to explicitly allow uninstallation to prevent accidental removal:
 
 ```bash
-# Enable the allow-recurring-job-while-volume-detached setting
-kubectl -n longhorn-system patch -p '{"value": "true"}' \
-  --type=merge lhs deleting-confirmation-flag
+# Enable the deleting-confirmation-flag setting
+kubectl -n longhorn-system patch settings.longhorn.io deleting-confirmation-flag \
+  --type=merge -p '{"value": "true"}'
 
-# Or via Longhorn UI: Settings → General → Deleting Confirmation Flag → true
+# Or via Longhorn UI: Settings → Deleting Confirmation Flag → true
 ```
 
 ---
@@ -79,9 +89,9 @@ kubectl get pods -n longhorn-system -w
 
 ## Step 5: Uninstall Longhorn via Rancher UI
 
-If Longhorn was installed through Rancher Apps & Marketplace:
+If Longhorn was installed through Rancher Apps:
 
-1. Navigate to **Apps & Marketplace** → **Installed Apps**
+1. Navigate to **Apps** → **Installed Apps**
 2. Select **Longhorn**
 3. Click **Delete**
 4. Wait for all Longhorn pods to terminate
@@ -90,14 +100,21 @@ If Longhorn was installed through Rancher Apps & Marketplace:
 
 ## Step 6: Remove the Longhorn Namespace
 
-After the Helm uninstall, verify the namespace is clean:
+After uninstalling Longhorn, verify the namespace is clean:
 
 ```bash
+# If resources are not disappearing cleanly, inspect the uninstall job
+kubectl get job/longhorn-uninstall -n longhorn-system
+kubectl logs -n longhorn-system job/longhorn-uninstall
+
 # Check if any resources remain
 kubectl get all -n longhorn-system
 kubectl get crd | grep longhorn
 
-# If the namespace is stuck in Terminating state, finalize it
+# Delete the namespace after Longhorn resources are gone
+kubectl delete namespace longhorn-system
+
+# If the namespace is still stuck in Terminating after Step 7, finalize it
 kubectl get namespace longhorn-system -o json | \
   jq '.spec.finalizers = []' | \
   kubectl replace --raw /api/v1/namespaces/longhorn-system/finalize -f -
@@ -111,8 +128,14 @@ kubectl get namespace longhorn-system -o json | \
 # List all Longhorn CRDs
 kubectl get crd | grep longhorn
 
-# Delete all Longhorn CRDs
-kubectl get crd | grep longhorn | awk '{print $1}' | xargs kubectl delete crd
+# If CRDs remain after uninstall, delete them
+kubectl get crd -o name | grep longhorn.io | while read -r crd; do
+  kubectl delete "$crd"
+done
+
+# If CRD deletion is blocked by leftover admission webhooks, remove them and retry
+kubectl delete validatingwebhookconfiguration longhorn-webhook-validator --ignore-not-found
+kubectl delete mutatingwebhookconfiguration longhorn-webhook-mutator --ignore-not-found
 ```
 
 ---
@@ -131,17 +154,18 @@ rm -rf /var/lib/longhorn/
 
 ---
 
-## Step 9: Remove Longhorn's Device Mapper Devices
+## Step 9: Clean Up Leftover Encrypted Devices or iSCSI Sessions
 
 ```bash
-# On each node, check for leftover device mapper devices
-ls /dev/mapper/ | grep longhorn
+# For encrypted Longhorn volumes only, check for leftover device mapper entries
+ls /dev/mapper/ | grep <longhorn-volume-name>
 
-# Remove them
-dmsetup remove /dev/mapper/<longhorn-device-name>
+# Remove only the specific leftover mapping
+dmsetup remove /dev/mapper/<longhorn-volume-name>
 
-# Also remove any leftover iSCSI sessions
-iscsiadm --mode node --logout
+# If a stale Longhorn iSCSI session remains, log out of that specific target
+iscsiadm -m node show | grep iqn.2019-10.io.longhorn
+iscsiadm -m node -T <target-iqn> -p <portal-ip> --logout
 ```
 
 ---
@@ -159,7 +183,8 @@ kubectl get crd | grep longhorn
 kubectl get namespace longhorn-system
 
 # Verify PVs are gone
-kubectl get pv | grep longhorn
+kubectl get pv -o json | \
+  jq -r '.items[] | select((.spec.csi.driver // "") == "driver.longhorn.io") | .metadata.name'
 ```
 
 ---
