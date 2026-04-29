@@ -89,7 +89,7 @@ ip xfrm policy add \
 ## IKEv2 with strongSwan for MIPv6
 
 ```ini
-# /etc/strongswan.d/mip6.conf
+# /etc/swanctl/conf.d/mip6.conf
 connections {
   mip6-ha {
     version = 2
@@ -110,7 +110,7 @@ connections {
         # Protect Mobility Header traffic (proto 135)
         local_ts  = 2001:db8:home::mn/128[135]
         remote_ts = 2001:db8:home::ha/128[135]
-        esp_proposals = aes256gcm128-prfsha384-ecp384
+        esp_proposals = aes256gcm128-ecp384
         mode = transport
       }
     }
