@@ -15,9 +15,9 @@ Schema Registry stores and manages Avro, JSON Schema, and Protobuf schemas for K
 ```bash
 # Add Confluent repository
 
-curl -O https://packages.confluent.io/deb/7.5/archive.key
-apt-key add archive.key
-add-apt-repository "deb https://packages.confluent.io/deb/7.5 stable main"
+mkdir -p /etc/apt/keyrings
+wget -qO - https://packages.confluent.io/deb/8.2/archive.key | gpg --dearmor > /etc/apt/keyrings/confluent.gpg
+echo "deb [arch=$(dpkg --print-architecture) signed-by=/etc/apt/keyrings/confluent.gpg] https://packages.confluent.io/deb/8.2 stable main" > /etc/apt/sources.list.d/confluent-platform.list
 apt update && apt install confluent-schema-registry -y
 ```
 
@@ -31,14 +31,14 @@ apt update && apt install confluent-schema-registry -y
 listeners=http://10.0.0.15:8081
 
 # --- Kafka cluster connection ---
-kafkastore.bootstrap.servers=10.0.0.10:9092,10.0.0.11:9092
+kafkastore.bootstrap.servers=PLAINTEXT://10.0.0.10:9092,PLAINTEXT://10.0.0.11:9092
 
 # --- Internal Kafka topic for schema storage ---
 kafkastore.topic=_schemas
 kafkastore.topic.replication.factor=3
 
-# --- Schema compatibility (BACKWARD, FORWARD, FULL, NONE) ---
-schema.compatibility.level=BACKWARD
+# --- Schema compatibility (backward, forward, full, none, *_transitive) ---
+schema.compatibility.level=backward
 
 # --- Security (if Kafka uses SASL) ---
 # kafkastore.security.protocol=SASL_PLAINTEXT
@@ -53,7 +53,7 @@ systemctl enable --now confluent-schema-registry
 
 # Verify it's listening
 ss -tlnp | grep :8081
-curl -s http://10.0.0.15:8081/ | python3 -m json.tool
+curl -s http://10.0.0.15:8081/subjects | python3 -m json.tool
 ```
 
 ## Using the Schema Registry API
@@ -95,5 +95,5 @@ props.put("schema.registry.url", "http://10.0.0.15:8081");
 
 - `listeners=http://ip:8081` restricts Schema Registry to a specific IPv4 address.
 - Schemas are stored in the `_schemas` Kafka topic with the replication factor set by `kafkastore.topic.replication.factor`.
-- The `BACKWARD` compatibility mode allows adding new fields with defaults without breaking existing consumers.
+- The `backward` compatibility mode allows adding new fields with defaults without breaking existing consumers.
 - Protect the Schema Registry API with authentication in production (use the Confluent Platform security features).
