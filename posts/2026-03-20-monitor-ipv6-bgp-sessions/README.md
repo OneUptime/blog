@@ -38,15 +38,16 @@ Prometheus SNMP Exporter configuration for BGP:
 modules:
   bgp_ipv6:
     walk:
-      - 1.3.6.1.3.5.1.1.2   # bgp4V2PeerState
-      - 1.3.6.1.3.5.1.1.3   # bgp4V2PeerAdminStatus
-      - 1.3.6.1.3.5.1.1.10  # bgp4V2PeerInUpdates
-      - 1.3.6.1.3.5.1.1.11  # bgp4V2PeerOutUpdates
+      - 1.3.6.1.3.5.1.1.2   # bgp4V2PeerTable (peer state, admin status)
     metrics:
       - name: bgp4v2_peer_state
-        oid: 1.3.6.1.3.5.1.1.2
+        oid: 1.3.6.1.3.5.1.1.2.1.13
         type: gauge
         help: "BGP session state (1=idle,2=connect,3=active,4=opensent,5=openconfirm,6=established)"
+      - name: bgp4v2_peer_admin_status
+        oid: 1.3.6.1.3.5.1.1.2.1.12
+        type: gauge
+        help: "BGP peer admin status (1=halted, 2=running)"
 ```
 
 ## Method 2: FRR/BIRD Prometheus Exporter
