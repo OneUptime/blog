@@ -8,12 +8,13 @@ Description: Learn how to configure the OpenTofu Kubernetes provider with variou
 
 ## Introduction
 
-The OpenTofu Kubernetes provider allows you to manage Kubernetes resources declaratively. This guide covers provider configuration with different authentication methods including kubeconfig, cluster credentials, and in-cluster configuration.
+The Kubernetes provider in OpenTofu allows you to manage Kubernetes resources declaratively. This guide covers provider configuration with different authentication methods including kubeconfig and managed cluster credentials.
 
 ## Prerequisites
 
 - OpenTofu v1.6+
 - Access to a Kubernetes cluster
+- Cloud provider credentials configured for AWS, Google Cloud, or Azure if you use the EKS, GKE, or AKS examples
 
 ## Step 1: Configure Provider with Kubeconfig
 
@@ -22,7 +23,7 @@ terraform {
   required_providers {
     kubernetes = {
       source  = "hashicorp/kubernetes"
-      version = "~> 2.0"
+      version = "~> 3.0"
     }
   }
 }
@@ -78,10 +79,10 @@ data "azurerm_kubernetes_cluster" "main" {
 }
 
 provider "kubernetes" {
-  host                   = data.azurerm_kubernetes_cluster.main.kube_config.0.host
-  client_certificate     = base64decode(data.azurerm_kubernetes_cluster.main.kube_config.0.client_certificate)
-  client_key             = base64decode(data.azurerm_kubernetes_cluster.main.kube_config.0.client_key)
-  cluster_ca_certificate = base64decode(data.azurerm_kubernetes_cluster.main.kube_config.0.cluster_ca_certificate)
+  host                   = data.azurerm_kubernetes_cluster.main.kube_config[0].host
+  client_certificate     = base64decode(data.azurerm_kubernetes_cluster.main.kube_config[0].client_certificate)
+  client_key             = base64decode(data.azurerm_kubernetes_cluster.main.kube_config[0].client_key)
+  cluster_ca_certificate = base64decode(data.azurerm_kubernetes_cluster.main.kube_config[0].cluster_ca_certificate)
 }
 ```
 
@@ -120,4 +121,4 @@ tofu apply
 
 ## Conclusion
 
-You have successfully configured the Kubernetes provider for OpenTofu. Dynamic configuration using cloud provider data sources is the recommended approach for managed Kubernetes services, as it eliminates the need to manually manage kubeconfig files and ensures credentials are always up-to-date.
+You have successfully configured the Kubernetes provider for OpenTofu. Dynamic configuration using cloud provider data sources can simplify provider setup for existing managed Kubernetes services by eliminating the need to manually manage kubeconfig files. When you rely on short-lived cloud credentials, prefer cloud-specific authentication methods supported by the provider, such as exec-based plugins, so credentials are refreshed as needed.
