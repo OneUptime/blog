@@ -22,10 +22,10 @@ Longhorn exposes metrics at the `/metrics` endpoint. Key metric categories inclu
 
 | Metric Category | Examples |
 |----------------|---------|
-| Volume | `longhorn_volume_actual_size_bytes`, `longhorn_volume_state` |
-| Node | `longhorn_node_status`, `longhorn_node_count_total` |
-| Disk | `longhorn_disk_capacity_bytes`, `longhorn_disk_usage_bytes` |
-| Manager | `longhorn_manager_volume_count`, `longhorn_manager_backup_count` |
+| Volume | `longhorn_volume_actual_size_bytes`, `longhorn_volume_state`, `longhorn_volume_robustness` |
+| Node | `longhorn_node_status`, `longhorn_node_count_total`, `longhorn_node_storage_capacity_bytes` |
+| Disk | `longhorn_disk_capacity_bytes`, `longhorn_disk_usage_bytes`, `longhorn_disk_reservation_bytes` |
+| Manager | `longhorn_manager_cpu_usage_millicpu`, `longhorn_manager_memory_usage_bytes` |
 | Instance Manager | `longhorn_instance_manager_cpu_usage_millicpu` |
 
 ## Method 1: Using ServiceMonitor (Prometheus Operator)
@@ -122,27 +122,27 @@ longhorn_volume_robustness == 3   # 3 = faulted
 longhorn_volume_robustness == 2   # 2 = degraded
 
 # Total number of volumes
-longhorn_manager_volume_count_total
+count(longhorn_volume_state)
 ```
 
 ### Disk Capacity
 
 ```promql
-# Available disk space per node (bytes)
-longhorn_disk_storage_available_bytes
+# Available disk space per disk (bytes)
+longhorn_disk_capacity_bytes - longhorn_disk_usage_bytes
 
 # Disk usage percentage
-(1 - longhorn_disk_storage_available_bytes / longhorn_disk_storage_maximum_bytes) * 100
+(longhorn_disk_usage_bytes / longhorn_disk_capacity_bytes) * 100
 
 # Disks with less than 20% available
-longhorn_disk_storage_available_bytes / longhorn_disk_storage_maximum_bytes < 0.20
+(longhorn_disk_capacity_bytes - longhorn_disk_usage_bytes) / longhorn_disk_capacity_bytes < 0.20
 ```
 
 ### Node Status
 
 ```promql
 # Nodes that are not schedulable
-longhorn_node_status{condition="Schedulable"} == 0
+longhorn_node_status{condition="schedulable"} == 0
 
 # Node count
 longhorn_node_count_total
@@ -187,7 +187,7 @@ spec:
         # Alert when disk is almost full
         - alert: LonghornDiskStorageLow
           expr: |
-            longhorn_disk_storage_available_bytes / longhorn_disk_storage_maximum_bytes < 0.20
+            (longhorn_disk_capacity_bytes - longhorn_disk_usage_bytes) / longhorn_disk_capacity_bytes < 0.20
           for: 5m
           labels:
             severity: warning
@@ -198,7 +198,7 @@ spec:
         # Alert when disk is critically full
         - alert: LonghornDiskStorageCritical
           expr: |
-            longhorn_disk_storage_available_bytes / longhorn_disk_storage_maximum_bytes < 0.10
+            (longhorn_disk_capacity_bytes - longhorn_disk_usage_bytes) / longhorn_disk_capacity_bytes < 0.10
           for: 2m
           labels:
             severity: critical
@@ -208,7 +208,7 @@ spec:
 
         # Alert when a node is not schedulable
         - alert: LonghornNodeNotSchedulable
-          expr: longhorn_node_status{condition="Schedulable"} == 0
+          expr: longhorn_node_status{condition="schedulable"} == 0
           for: 10m
           labels:
             severity: warning
