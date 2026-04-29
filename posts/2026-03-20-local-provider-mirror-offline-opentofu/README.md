@@ -8,13 +8,14 @@ Description: Learn how to create and maintain a local provider mirror for OpenTo
 
 ## Introduction
 
-A local provider mirror is a directory (or web server) that contains provider plugin archives in the format OpenTofu expects. It lets teams install providers without internet access, pin exact provider versions, and reduce download times in CI/CD pipelines.
+A local provider mirror is a directory (or web server) that contains provider plugin archives in the format OpenTofu expects. It lets teams install providers without internet access, control which provider versions are available, and reduce download times in CI/CD pipelines.
 
 ## Creating a Mirror with tofu providers mirror
 
 ```bash
 # Create a configuration that lists all needed providers
 
+mkdir -p /tmp/mirror-setup
 cat > /tmp/mirror-setup/main.tf << 'EOF'
 terraform {
   required_providers {
@@ -57,12 +58,15 @@ tofu providers mirror /opt/provider-mirror/
 └── registry.opentofu.org/
     └── hashicorp/
         ├── aws/
-        │   ├── 5.20.1.json          # Version metadata
+        │   ├── index.json           # Versions available for a network mirror
+        │   ├── 5.20.1.json          # Per-version metadata for a network mirror
         │   └── terraform-provider-aws_5.20.1_linux_amd64.zip
         ├── kubernetes/
+        │   ├── index.json
         │   ├── 2.23.0.json
         │   └── terraform-provider-kubernetes_2.23.0_linux_amd64.zip
         └── random/
+            ├── index.json
             ├── 3.5.1.json
             └── terraform-provider-random_3.5.1_linux_amd64.zip
 ```
@@ -76,7 +80,7 @@ find /opt/provider-mirror -name "*.zip" | wc -l
 ## Configuring OpenTofu to Use the Mirror
 
 ```hcl
-# ~/.terraform.rc (or set TF_CLI_CONFIG_FILE to this file's path)
+# ~/.tofurc (or set TF_CLI_CONFIG_FILE to this file's path)
 
 provider_installation {
   filesystem_mirror {
@@ -89,7 +93,9 @@ provider_installation {
   direct {
     exclude = [
       "registry.opentofu.org/hashicorp/aws",
-      "registry.opentofu.org/hashicorp/kubernetes"
+      "registry.opentofu.org/hashicorp/kubernetes",
+      "registry.opentofu.org/hashicorp/helm",
+      "registry.opentofu.org/hashicorp/random"
     ]
   }
 }
@@ -97,8 +103,8 @@ provider_installation {
 
 ```bash
 # Test the mirror configuration
-export TF_CLI_CONFIG_FILE=/etc/opentofu/terraform.rc
-tofu init  # Should use mirror, no internet access needed
+export TF_CLI_CONFIG_FILE=/etc/opentofu/provider-mirror.tfrc
+tofu init  # With only the providers listed above, no internet access is needed
 ```
 
 ## Multiple Platform Support
@@ -107,14 +113,11 @@ tofu init  # Should use mirror, no internet access needed
 # Mirror providers for multiple operating systems
 # Useful when your team uses both macOS and Linux
 
-# Linux amd64 (CI/CD servers)
-GOOS=linux GOARCH=amd64 tofu providers mirror /opt/provider-mirror/
-
-# macOS arm64 (Apple Silicon developers)
-GOOS=darwin GOARCH=arm64 tofu providers mirror /opt/provider-mirror/
-
-# Windows amd64
-GOOS=windows GOARCH=amd64 tofu providers mirror /opt/provider-mirror/
+tofu providers mirror \
+  -platform=linux_amd64 \
+  -platform=darwin_arm64 \
+  -platform=windows_amd64 \
+  /opt/provider-mirror/
 
 # All platforms in one directory is fine - OpenTofu selects the right zip
 ```
@@ -137,7 +140,11 @@ cd "$(dirname "$PROVIDERS_CONFIG")"
 tofu init -upgrade
 
 # Update the mirror with new versions
-tofu providers mirror "$MIRROR_DIR"
+tofu providers mirror \
+  -platform=linux_amd64 \
+  -platform=darwin_arm64 \
+  -platform=windows_amd64 \
+  "$MIRROR_DIR"
 
 echo "Mirror update complete"
 ls -la "$MIRROR_DIR/registry.opentofu.org/hashicorp/"
@@ -153,7 +160,8 @@ ls -la "$MIRROR_DIR/registry.opentofu.org/hashicorp/"
 ```nginx
 # /etc/nginx/sites-enabled/provider-mirror
 server {
-    listen 443 ssl http2;
+    listen 443 ssl;
+    http2 on;
     server_name provider-mirror.internal.company.com;
 
     ssl_certificate     /etc/ssl/certs/mirror.crt;
@@ -161,15 +169,15 @@ server {
 
     root /opt/provider-mirror;
 
-    # Required: serve JSON metadata with correct content type
+    # Required: serve JSON metadata with the correct content type
     location ~* \.json$ {
-        add_header Content-Type "application/json";
+        types { application/json json; }
         add_header Cache-Control "max-age=3600";
     }
 
     # Provider zip files
     location ~* \.zip$ {
-        add_header Content-Type "application/zip";
+        types { application/zip zip; }
     }
 
     location / {
@@ -182,7 +190,7 @@ server {
 ```
 
 ```hcl
-# Use network mirror in terraform.rc
+# Use network mirror in .tofurc
 provider_installation {
   network_mirror {
     url     = "https://provider-mirror.internal.company.com/"
@@ -194,8 +202,9 @@ provider_installation {
 ## Version Locking in the Mirror
 
 ```bash
-# Lock to exact versions (don't use ~> constraints for mirrors)
-cat > /tmp/mirror-setup/versions.tf << 'EOF'
+# Use exact version constraints when you want a reproducible mirror
+mkdir -p /tmp/mirror-locked
+cat > /tmp/mirror-locked/main.tf << 'EOF'
 terraform {
   required_providers {
     aws = {
@@ -213,7 +222,8 @@ EOF
 # Third-party providers follow the same pattern
 # Example: DataDog provider
 
-cat > /tmp/mirror-setup/main.tf << 'EOF'
+mkdir -p /tmp/mirror-third-party
+cat > /tmp/mirror-third-party/main.tf << 'EOF'
 terraform {
   required_providers {
     datadog = {
@@ -224,11 +234,12 @@ terraform {
 }
 EOF
 
+cd /tmp/mirror-third-party
 tofu init
 tofu providers mirror /opt/provider-mirror/
-# Creates: /opt/provider-mirror/registry.opentofu.org/datadog/datadog/3.30.0.json
+# Creates the same registry/namespace/type structure under /opt/provider-mirror/
 ```
 
 ## Conclusion
 
-The `tofu providers mirror` command downloads providers into the exact directory structure OpenTofu expects. The `filesystem_mirror` configuration in `.terraform.rc` redirects all provider downloads to that local directory. For teams, host the mirror directory via nginx to give everyone access without copying files manually. Update the mirror periodically by re-running `tofu providers mirror` against a configuration file that lists all needed provider versions.
+The `tofu providers mirror` command downloads providers into the exact directory structure OpenTofu expects. The `filesystem_mirror` configuration in `.tofurc` redirects all provider downloads to that local directory. For teams, host the mirror directory via nginx to give everyone access without copying files manually. Update the mirror periodically by re-running `tofu providers mirror` against a configuration file that lists all needed provider versions.
