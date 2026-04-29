@@ -4,7 +4,7 @@ Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
 Tags: OpenTofu, Auth0, Identity, Authentication, Authorization
 
-Description: Learn how to manage Auth0 applications, APIs, connections, rules, and tenant settings using OpenTofu for reproducible identity management across environments.
+Description: Learn how to manage Auth0 applications, APIs, connections, actions, and tenant settings using OpenTofu for reproducible identity management across environments.
 
 ## Introduction
 
@@ -38,10 +38,10 @@ resource "auth0_client" "spa" {
   app_type        = "spa"
   oidc_conformant = true
 
-  allowed_callback_urls    = ["https://app.example.com/callback"]
-  allowed_logout_urls      = ["https://app.example.com"]
-  allowed_web_origins      = ["https://app.example.com"]
-  allowed_origins_cors     = ["https://app.example.com"]
+  callbacks           = ["https://app.example.com/callback"]
+  allowed_logout_urls = ["https://app.example.com"]
+  web_origins         = ["https://app.example.com"]
+  allowed_origins     = ["https://app.example.com"]
 
   jwt_configuration {
     alg = "RS256"
@@ -80,19 +80,26 @@ resource "auth0_resource_server" "api" {
   token_lifetime                = 86400
   token_lifetime_for_web        = 7200
   skip_consent_for_verifiable_first_party_clients = true
+}
+
+# Define API scopes
+resource "auth0_resource_server_scopes" "api_scopes" {
+  resource_server_identifier = auth0_resource_server.api.identifier
 
   scopes {
-    value       = "read:users"
+    name        = "read:users"
     description = "Read user profiles"
   }
   scopes {
-    value       = "write:users"
+    name        = "write:users"
     description = "Create and update users"
   }
 }
 
 # Grant M2M client access to the API
 resource "auth0_client_grant" "api_grant" {
+  depends_on = [auth0_resource_server_scopes.api_scopes]
+
   client_id = auth0_client.api_client.id
   audience  = auth0_resource_server.api.identifier
   scopes    = ["read:users", "write:users"]
@@ -149,7 +156,7 @@ resource "auth0_connection" "google" {
 # Enable connection for the SPA
 resource "auth0_connection_clients" "google_spa" {
   connection_id  = auth0_connection.google.id
-  enabled_clients = [auth0_client.spa.client_id]
+  enabled_clients = [auth0_client.spa.id]
 }
 ```
 
@@ -175,8 +182,13 @@ resource "auth0_action" "add_roles_to_token" {
     };
   EOT
 }
+
+resource "auth0_trigger_action" "add_roles_to_token_binding" {
+  trigger   = "post-login"
+  action_id = auth0_action.add_roles_to_token.id
+}
 ```
 
 ## Conclusion
 
-Auth0 managed with OpenTofu enables consistent authentication configuration across dev, staging, and production tenants. Use separate tenant per environment and use OpenTofu workspaces or separate configurations to deploy the same auth configuration to each. Actions and Rules can be version-controlled and deployed through the same CI/CD pipeline as your application code, ensuring auth logic changes are reviewed and audited.
+Auth0 managed with OpenTofu enables consistent authentication configuration across dev, staging, and production tenants. Use separate tenant per environment and use OpenTofu workspaces or separate configurations to deploy the same auth configuration to each. Actions can be version-controlled and deployed through the same CI/CD pipeline as your application code, ensuring auth logic changes are reviewed and audited.
