@@ -20,11 +20,11 @@ Classic PMTU black hole symptoms:
 3. SSH connects but becomes unresponsive after login
 4. File downloads start at a few KB then stall
 5. Large DNS responses (DNSSEC) fail; small ones succeed
-6. Ping6 works; curl/wget hangs after sending HTTP request
-7. Symmetric failure: only affects traffic in one direction
+6. Small ping -6 probes work; curl/wget hangs after sending HTTP request
+7. Asymmetric failure: may only affect traffic in one direction
 
-Key test: ping6 -s 1452 destination
-  → Success: PMTU is fine for 1500-byte packets
+Key test: ping -6 -M do -s 1452 destination
+  → Success: the path supports a 1500-byte IPv6 packet
   → "Message too long" or no reply: PMTU issue
 ```
 
@@ -33,27 +33,28 @@ Key test: ping6 -s 1452 destination
 ```bash
 # Step 1: Verify the connection works with small packets
 
-ping6 -s 8 2001:db8::server   # 8-byte payload (tiny packet)
+ping -6 -s 8 2001:db8::1   # 8-byte payload (tiny packet)
 # Should succeed
 
 # Step 2: Test with full-size packet
-ping6 -M do -s 1452 2001:db8::server  # 1500-byte packet
-# If this fails while small packets work: PMTU black hole
+ping -6 -M do -s 1452 2001:db8::1  # 1500-byte IPv6 packet
+# If this fails while small packets work: PMTU issue; if no PTB is returned, suspect a black hole
 
 # Step 3: Check if ICMPv6 PTB messages are being received
-sudo tcpdump -i eth0 -n "icmp6 and ip6[40] == 2" -v
+sudo tcpdump -i eth0 -n "icmp6 and icmp6[icmp6type] == icmp6-packettoobig" -v
 # Watch for: "packet too big" messages from intermediate routers
 
-# Step 4: Check PMTU cache
-ip -6 route show cache | grep mtu
-# If empty: no PTB messages received (or PMTUD not working)
+# Step 4: Check the route for an MTU limit
+ip -6 route get 2001:db8::1
+# If the output includes "mtu N", Linux is applying an MTU limit on the route to this destination
 
 # Step 5: Tracepath to discover path MTUs along the route
-tracepath6 2001:db8::server
-# Shows MTU at each hop - identifies the bottleneck
+tracepath -6 2001:db8::1
+# Discovers the path MTU and often shows where the PMTU drops along the route
 
-# Step 6: Use mtr for continuous path analysis
-mtr -6 --report 2001:db8::server
+# Step 6: Use mtr for additional path analysis
+mtr -6 --report 2001:db8::1
+# Useful for latency/loss analysis; not PMTU-specific
 ```
 
 ## Identifying Where ICMPv6 Is Being Blocked
@@ -66,13 +67,14 @@ sudo ip6tables -L -v -n | grep -E "icmpv6|icmp6"
 sudo ip6tables -L OUTPUT -v -n | grep -E "icmpv6|icmp6|DROP|REJECT"
 
 # Capture on all interfaces to see if PTB arrives but gets dropped
-sudo tcpdump -i any -n "icmp6 and ip6[40] == 2" 2>/dev/null
+sudo tcpdump -i any -n "icmp6 and icmp6[icmp6type] == icmp6-packettoobig" 2>/dev/null
 
 # Check nftables ruleset
 sudo nft list ruleset | grep -A2 "icmpv6"
 
 # Check firewalld (if used)
-sudo firewall-cmd --list-rich-rules | grep icmpv6
+sudo firewall-cmd --list-all
+# Inspect icmp-blocks and rich rules in the active zone
 ```
 
 ## Fixing PMTU Black Holes
@@ -86,7 +88,7 @@ sudo ip6tables -I OUTPUT 1 -p icmpv6 --icmpv6-type packet-too-big -j ACCEPT
 sudo ip6tables -I FORWARD 1 -p icmpv6 --icmpv6-type packet-too-big -j ACCEPT
 
 # Fix 2: If fixing the firewall is not possible, clamp TCP MSS
-# This prevents large TCP segments without relying on PMTUD
+# This helps TCP avoid advertising segments that exceed the path MTU
 sudo ip6tables -t mangle -A FORWARD \
     -p tcp --tcp-flags SYN,RST SYN \
     -j TCPMSS --clamp-mss-to-pmtu
@@ -105,9 +107,8 @@ sudo ip link set tun0 mtu 1280
 
 ```python
 import subprocess
-import sys
 
-def test_pmtu(destination: str, interface: str = "eth0") -> dict:
+def test_pmtu(destination: str) -> dict:
     """
     Test for PMTU black holes to a destination.
     Returns assessment of PMTU health.
@@ -116,35 +117,39 @@ def test_pmtu(destination: str, interface: str = "eth0") -> dict:
 
     # Test small packet
     small = subprocess.run(
-        ["ping6", "-c", "3", "-s", "8", "-q", destination],
+        ["ping", "-6", "-c", "3", "-s", "8", "-q", destination],
         capture_output=True, text=True
     )
     results["small_packet_ok"] = small.returncode == 0
 
     # Test full-size packet (no fragmentation)
     large = subprocess.run(
-        ["ping6", "-c", "3", "-M", "do", "-s", "1452", "-q", destination],
+        ["ping", "-6", "-c", "3", "-M", "do", "-s", "1452", "-q", destination],
         capture_output=True, text=True
     )
     results["large_packet_ok"] = large.returncode == 0
 
-    # Check PMTU cache
+    # Check for an MTU limit on the route
     route = subprocess.run(
         ["ip", "-6", "route", "get", destination],
         capture_output=True, text=True
     )
-    results["pmtu_cached"] = "mtu" in route.stdout
+    results["route_mtu_limited"] = "mtu" in route.stdout
 
     # Diagnose
     if results["small_packet_ok"] and not results["large_packet_ok"]:
-        results["diagnosis"] = "PMTU BLACK HOLE DETECTED"
-        results["recommendation"] = "Allow ICMPv6 type 2 through all firewalls, or enable MSS clamping"
+        if results["route_mtu_limited"]:
+            results["diagnosis"] = "Path MTU below 1500 or route MTU already constrained"
+            results["recommendation"] = "Adjust the sender MTU/MSS to fit the route's MTU limit"
+        else:
+            results["diagnosis"] = "PMTU black hole suspected"
+            results["recommendation"] = "Allow ICMPv6 type 2 through firewalls and verify PTB messages reach the source host"
     elif results["small_packet_ok"] and results["large_packet_ok"]:
         results["diagnosis"] = "PMTU appears healthy"
         results["recommendation"] = "No action required"
     else:
-        results["diagnosis"] = "Destination unreachable"
-        results["recommendation"] = "Check basic IPv6 connectivity first"
+        results["diagnosis"] = "Basic IPv6 connectivity problem"
+        results["recommendation"] = "Check routing, filtering, and whether ICMPv6 Echo Request/Reply is permitted"
 
     return results
 
@@ -155,4 +160,4 @@ for key, value in result.items():
 
 ## Conclusion
 
-IPv6 PMTU failures manifest as connections that work for small data but fail for large transfers. The root cause is almost always ICMPv6 Packet Too Big messages being blocked by a firewall. The fix is to allow ICMPv6 type 2 messages through all firewalls. When changing firewall rules is not feasible, TCP MSS clamping provides a workaround that prevents the problem at the TCP layer. Always use `tracepath6` as the first diagnostic tool - it reveals the MTU at each hop and immediately shows where the path bottleneck exists.
+IPv6 PMTU failures manifest as connections that work for small data but fail for large transfers. A common cause is ICMPv6 Packet Too Big messages being blocked or not delivered. The fix is to ensure ICMPv6 type 2 messages can reach the source host. When changing firewall rules is not feasible, TCP MSS clamping provides a TCP-only workaround that reduces advertised segment sizes. Start with `tracepath -6` - it discovers the path MTU and often shows where the PMTU drops along the route.
