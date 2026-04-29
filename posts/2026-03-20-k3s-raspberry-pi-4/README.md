@@ -27,6 +27,7 @@ Using the 64-bit OS is strongly recommended for K3s on Pi 4:
 2. Select "Raspberry Pi OS Lite (64-bit)"
 3. In advanced settings, configure:
    - Hostname (e.g., `pi4-k3s-01`)
+   - Username and password (e.g., `k3sadmin`)
    - SSH enabled
    - WiFi credentials (or use Ethernet)
 4. Flash to MicroSD card or USB SSD
@@ -38,7 +39,7 @@ Using the 64-bit OS is strongly recommended for K3s on Pi 4:
 ```bash
 # SSH into the Pi 4
 
-ssh pi@pi4-k3s-01.local
+ssh k3sadmin@pi4-k3s-01.local
 
 # Update the system
 sudo apt-get update && sudo apt-get full-upgrade -y
@@ -52,13 +53,15 @@ uname -m
 
 ```bash
 # Edit the boot command line
-sudo nano /boot/cmdline.txt
+sudo nano /boot/firmware/cmdline.txt
 
 # Add to the end of the SINGLE line:
-# cgroup_enable=cpuset cgroup_memory=1 cgroup_enable=memory
+# cgroup_memory=1 cgroup_enable=memory
 
 # Example final line:
-# console=serial0,115200 console=tty1 root=PARTUUID=xxx rootfstype=ext4 fsck.repair=yes rootwait cgroup_enable=cpuset cgroup_memory=1 cgroup_enable=memory
+# console=serial0,115200 console=tty1 root=PARTUUID=xxx rootfstype=ext4 fsck.repair=yes rootwait cgroup_memory=1 cgroup_enable=memory
+
+# On older Debian 11 / Raspberry Pi OS releases, the file is /boot/cmdline.txt
 
 # Reboot
 sudo reboot
@@ -145,8 +148,7 @@ kubectl get pods --all-namespaces
 ## Step 8: Adding Additional Pi 4 Nodes
 
 ```bash
-# Get the server token
-SERVER_TOKEN=$(sudo cat /var/lib/rancher/k3s/server/node-token)
+# Reuse the same token configured on the server
 SERVER_IP="192.168.1.100"
 
 # On each additional Pi 4 agent node, configure and install
@@ -164,17 +166,15 @@ node-label:
 EOF
 
 # Install K3s agent
-curl -sfL https://get.k3s.io | \
-    INSTALL_K3S_EXEC="agent" \
-    sudo sh -
+curl -sfL https://get.k3s.io | sudo sh -s - agent
 ```
 
 ## Step 9: Enable GPU Access (Raspberry Pi 4 VideoCore)
 
 ```bash
 # For workloads that need GPU/VideoCore access
-# Add the pi user to the video group
-sudo usermod -aG video pi
+# Add your login user to the video group
+sudo usermod -aG video k3sadmin
 
 # Mount the GPU device in pods
 # Add device plugin or use privileged containers for GPU access
@@ -184,6 +184,7 @@ sudo usermod -aG video pi
 
 ```yaml
 # home-lab-app.yaml
+# Requires an existing PersistentVolumeClaim named pihole-data
 apiVersion: apps/v1
 kind: Deployment
 metadata:
