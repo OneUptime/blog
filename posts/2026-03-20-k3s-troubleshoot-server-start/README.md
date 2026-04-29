@@ -52,15 +52,18 @@ K3s requires specific ports to be available:
 # Check which ports K3s needs
 # Server ports:
 # 6443 - Kubernetes API server
-# 2379-2380 - etcd (HA mode)
-# 10250 - Kubelet metrics
-# 10251 - kube-scheduler
-# 10252 - kube-controller-manager
+# 6444 - local kube-apiserver access / supervisor client load-balancer
+# 2379-2380 - embedded etcd (HA mode)
+# 10250 - Kubelet metrics and API
+# 10257 - kube-controller-manager metrics
+# 10259 - kube-scheduler metrics
+# 8472/udp - Flannel VXLAN backend
+# 51820-51821/udp - Flannel WireGuard backend
 
 # Check for port conflicts
-ss -tlnp | grep -E "6443|2379|2380|10250|10251|10252"
+ss -ltnup | grep -E "6443|6444|2379|2380|10250|10257|10259|8472|51820|51821"
 # or
-netstat -tlnp | grep -E "6443|2379|2380|10250"
+netstat -ltnup | grep -E "6443|6444|2379|2380|10250|10257|10259|8472|51820|51821"
 
 # Find which process is using port 6443
 lsof -i :6443
@@ -79,7 +82,7 @@ df -h
 
 # Check K3s data directory specifically
 du -sh /var/lib/rancher/k3s/
-du -sh /var/lib/containerd/
+du -sh /var/lib/rancher/k3s/agent/containerd/
 
 # Check for large log files consuming space
 du -sh /var/log/
@@ -88,54 +91,57 @@ du -sh /var/log/
 k3s crictl rmi --prune
 
 # Clean up stopped containers
-k3s crictl rm $(k3s crictl ps -a -q)
+k3s crictl ps -a -q | xargs -r k3s crictl rm
 ```
 
-## Step 5: Check for Corrupted etcd Data
+## Step 5: Check for Corrupted Datastore Data
 
-Corrupted etcd data prevents K3s from starting:
+Corrupted datastore data prevents K3s from starting:
 
 ```bash
-# Check etcd data directory
+# Check the K3s datastore directory
 ls -la /var/lib/rancher/k3s/server/db/
 
 # Look for corruption indicators in logs
-journalctl -u k3s | grep -iE "corrupt|wal|etcd|database"
+journalctl -u k3s | grep -iE "corrupt|wal|etcd|database|sqlite"
 
 # If using SQLite, check database integrity
 sqlite3 /var/lib/rancher/k3s/server/db/state.db \
   "PRAGMA integrity_check;"
 # Should output: ok
 
-# If corrupted, restore from backup
+# If using SQLite and restore is required, restore the db directory and token from backup
 systemctl stop k3s
-cp /backup/k3s/state.db /var/lib/rancher/k3s/server/db/state.db
+cp -a /backup/k3s/db/. /var/lib/rancher/k3s/server/db/
+cp /backup/k3s/token /var/lib/rancher/k3s/server/token
 systemctl start k3s
+
+# If using embedded etcd instead of SQLite, restore from an etcd snapshot:
+# systemctl stop k3s
+# k3s server \
+#   --cluster-reset \
+#   --cluster-reset-restore-path=<PATH-TO-SNAPSHOT>
+# systemctl start k3s
 ```
 
 ## Step 6: Certificate Issues
 
-Expired or corrupted certificates prevent K3s from starting:
+Certificate problems can prevent K3s from starting:
 
 ```bash
 # Check certificate expiration
-for cert in /var/lib/rancher/k3s/server/tls/*.crt; do
-  EXPIRY=$(openssl x509 -in "$cert" -noout -enddate 2>/dev/null | cut -d= -f2)
-  echo "$cert: $EXPIRY"
-done
+k3s certificate check --output table
 
 # Look for certificate errors in logs
 journalctl -u k3s | grep -iE "certificate|tls|x509|verify"
 
-# If certificates are expired or corrupted, rotate them
+# If leaf certificates are expired or corrupted, rotate them
 systemctl stop k3s
 k3s certificate rotate
 systemctl start k3s
 
-# If rotation fails, remove TLS directory to force regeneration
-# WARNING: This invalidates all existing kubeconfigs
-rm -rf /var/lib/rancher/k3s/server/tls
-systemctl start k3s
+# For CA certificate problems, use the documented k3s certificate rotate-ca workflow.
+# Do not delete /var/lib/rancher/k3s/server/tls while K3s is in use.
 ```
 
 ## Step 7: Check System Resource Constraints
@@ -151,7 +157,7 @@ dmesg | grep -i "oom\|out of memory"
 uptime
 
 # Check for resource limits preventing K3s start
-# K3s requires at least 512MB RAM
+# K3s server nodes require at least 2 GB RAM; agents require 512 MB
 cat /proc/meminfo | grep MemAvailable
 
 # Check for file descriptor limits
@@ -170,7 +176,10 @@ sysctl -p
 ## Step 8: Check Kernel Modules and iptables
 
 ```bash
-# K3s requires certain kernel modules
+# Run K3s's built-in kernel and cgroup checks
+k3s check-config
+
+# Check common kernel modules used by K3s
 # Check if required modules are loaded
 lsmod | grep -E "br_netfilter|overlay|nf_conntrack"
 
@@ -190,8 +199,9 @@ EOF
 # K3s needs iptables or nftables with iptables compatibility
 iptables --version
 
-# Some systems use nftables; ensure iptables-legacy is available
+# If your distro/version is affected by known iptables issues, switch both IPv4 and IPv6 to legacy mode
 update-alternatives --set iptables /usr/sbin/iptables-legacy
+update-alternatives --set ip6tables /usr/sbin/ip6tables-legacy
 ```
 
 ## Step 9: Network Interface Issues
@@ -200,8 +210,8 @@ update-alternatives --set iptables /usr/sbin/iptables-legacy
 # Check network interfaces
 ip link show
 
-# Ensure eth0 or the primary interface is up
-ip link set eth0 up
+# Ensure the interface K3s should use is up
+ip link set <primary-interface> up
 
 # Check for IP address
 ip addr show
@@ -213,7 +223,7 @@ ip route show
 ip link delete flannel.1 2>/dev/null || true
 ip link delete cni0 2>/dev/null || true
 
-# Restart network after cleanup
+# If your distribution uses NetworkManager, restart it after intentional cleanup
 systemctl restart NetworkManager
 ```
 
@@ -225,20 +235,22 @@ systemctl restart NetworkManager
 lsof -i :6443 && kill -9 <PID>
 
 # Error: "failed to find memory cgroup"
-# Solution: Enable cgroup v2 or configure cgroup driver
+# Solution: Ensure the required cgroup mounts are available
 cat /proc/cmdline | grep cgroup
-# Add 'cgroup_memory=1 cgroup_enable=memory' to kernel cmdline
+# On Raspberry Pi OS, add 'cgroup_memory=1 cgroup_enable=memory' to kernel cmdline
 
 # Error: "failed to connect to etcd"
 # Check etcd process and ports
 journalctl -u k3s | grep etcd
 
 # Error: "node password rejected"
-# Delete the node password file to reset
-rm /var/lib/rancher/k3s/server/cred/node-passwd
+# Delete the existing Node object so the node-password secret is removed
+kubectl delete node <node-name>
+# If you are reprovisioning the host, also remove the cached local node password
+rm -rf /etc/rancher/node
 
 # Error: "x509: certificate signed by unknown authority"
-# Regenerate certificates
+# Rotate leaf certificates if they are expired; CA issues require the documented rotate-ca workflow
 systemctl stop k3s
 k3s certificate rotate
 systemctl start k3s
@@ -264,18 +276,19 @@ df -h > "$DIAG_DIR/disk.txt"
 # K3s logs
 journalctl -u k3s -n 500 > "$DIAG_DIR/k3s-logs.txt" 2>&1
 
+# K3s config checks
+k3s check-config > "$DIAG_DIR/k3s-check-config.txt" 2>&1
+
 # Network state
 ip link show > "$DIAG_DIR/ip-link.txt"
-ss -tlnp > "$DIAG_DIR/ports.txt"
+ss -ltnup > "$DIAG_DIR/ports.txt"
 iptables -L > "$DIAG_DIR/iptables.txt" 2>&1
 
 # K3s status
 systemctl status k3s > "$DIAG_DIR/k3s-status.txt" 2>&1
 
 # Certificate status
-for cert in /var/lib/rancher/k3s/server/tls/*.crt; do
-  openssl x509 -in "$cert" -noout -dates 2>/dev/null
-done > "$DIAG_DIR/cert-expiry.txt"
+k3s certificate check --output table > "$DIAG_DIR/cert-expiry.txt" 2>&1
 
 tar -czf "${DIAG_DIR}.tar.gz" "$DIAG_DIR"
 echo "Diagnostics collected: ${DIAG_DIR}.tar.gz"
@@ -283,4 +296,4 @@ echo "Diagnostics collected: ${DIAG_DIR}.tar.gz"
 
 ## Conclusion
 
-K3s server startup failures are almost always diagnosable through log analysis. Start with `journalctl -u k3s -f` to see real-time errors, then systematically check ports, disk space, certificates, and system resources. Most failures fall into a small set of common categories: port conflicts, corrupted data, expired certificates, or insufficient system resources. The foreground debug mode (`k3s server --debug`) provides the most verbose output for complex issues.
+K3s server startup failures are almost always diagnosable through log analysis. Start with `journalctl -u k3s -f` to see real-time errors, then systematically check ports, disk space, certificates, and system resources. Most failures fall into a small set of common categories: port conflicts, corrupted data, certificate problems, or insufficient system resources. The foreground debug mode (`k3s server --debug`) provides the most verbose output for complex issues.
