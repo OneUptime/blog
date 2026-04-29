@@ -4,7 +4,7 @@ Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
 Tags: Longhorn, Kubernetes, Disaster Recovery, Multi-Cluster, Storage
 
-Description: A comprehensive guide for configuring cross-cluster disaster recovery using Longhorn, enabling automatic data synchronization and failover between primary and secondary Kubernetes clusters.
+Description: A comprehensive guide for configuring cross-cluster disaster recovery using Longhorn, enabling automatic data synchronization and manual failover between primary and secondary Kubernetes clusters.
 
 ## Introduction
 
@@ -124,14 +124,19 @@ ks patch settings.longhorn.io backup-target-credential-secret \
 
 ### Step 2: Create DR Volumes on Secondary
 
-Once the secondary cluster can see the backups, create DR volumes:
+Once the secondary cluster can see the backups, identify the latest backups and create DR volumes:
 
 ```bash
 # List available backup volumes from the shared target
 ks get backupvolumes.longhorn.io -n longhorn-system
+
+# List available backups, then capture the exact backup URL and size
+ks get backups.longhorn.io -n longhorn-system
+ks get backup.longhorn.io <BACKUP-NAME> -n longhorn-system -o jsonpath='{.status.url}{"\n"}'
+ks get backup.longhorn.io <BACKUP-NAME> -n longhorn-system -o jsonpath='{.status.volumeSize}{"\n"}'
 ```
 
-Create DR volumes for each critical volume:
+Create DR volumes for each critical volume using the exact backup URL and volume size:
 
 ```yaml
 # dr-volumes.yaml - DR volumes on the secondary cluster
@@ -141,10 +146,10 @@ metadata:
   name: dr-my-app-data
   namespace: longhorn-system
 spec:
-  size: "21474836480"   # 20 GiB - match primary volume size
+  size: "21474836480"   # Must exactly match .status.volumeSize for the selected backup
   numberOfReplicas: 2
-  fromBackup: "s3://shared-backup-bucket@us-east-1/?volume=my-app-data"
-  standby: true         # This is a DR/standby volume
+  fromBackup: "s3://shared-backup-bucket@us-east-1/?backup=backup-1234567890abcdef&volume=my-app-data"
+  Standby: true         # This creates the volume as a DR/standby volume
   accessMode: rwo
 ---
 apiVersion: longhorn.io/v1beta2
@@ -153,10 +158,10 @@ metadata:
   name: dr-database-data
   namespace: longhorn-system
 spec:
-  size: "107374182400"  # 100 GiB
+  size: "107374182400"  # Must exactly match .status.volumeSize for the selected backup
   numberOfReplicas: 2
-  fromBackup: "s3://shared-backup-bucket@us-east-1/?volume=database-data"
-  standby: true
+  fromBackup: "s3://shared-backup-bucket@us-east-1/?backup=backup-fedcba0987654321&volume=database-data"
+  Standby: true
   accessMode: rwo
 ```
 
@@ -178,7 +183,7 @@ cat << 'EOF' > check-dr-status.sh
 echo "=== DR Volume Status ==="
 kubectl --context=secondary-cluster get volumes.longhorn.io \
   -n longhorn-system \
-  -o custom-columns="NAME:.metadata.name,STANDBY:.spec.standby,LAST_BACKUP:.status.lastBackup,STATE:.status.state" | \
+  -o custom-columns="NAME:.metadata.name,STANDBY:.spec.Standby,LAST_BACKUP:.status.lastBackup,STATE:.status.state" | \
   grep true
 EOF
 chmod +x check-dr-status.sh
@@ -201,12 +206,12 @@ kp get nodes || echo "Primary cluster unreachable"
 ```bash
 # Activate all DR volumes on secondary cluster
 for vol in $(ks get volumes.longhorn.io -n longhorn-system \
-  -o jsonpath='{.items[?(@.spec.standby==true)].metadata.name}'); do
+  -o jsonpath='{.items[?(@.spec.Standby==true)].metadata.name}'); do
   echo "Activating DR volume: $vol"
   ks patch volumes.longhorn.io $vol \
     -n longhorn-system \
     --type merge \
-    -p '{"spec": {"standby": false}}'
+    -p '{"spec": {"Standby": false, "frontend": "blockdev"}}'
 done
 
 # Wait for volumes to become ready
@@ -216,6 +221,10 @@ ks get volumes.longhorn.io -n longhorn-system -w
 ### Step 3: Deploy Workloads on Secondary
 
 ```bash
+# Create PV/PVC bindings that point to the activated Longhorn volumes
+# Make sure each PV csi.volumeHandle matches the activated DR volume name
+ks apply -f dr-pvs-and-pvcs.yaml
+
 # Apply your application manifests on the secondary cluster
 ks apply -f app-deployments.yaml
 ks apply -f app-services.yaml
@@ -231,7 +240,7 @@ When the primary cluster is recovered:
 
 # Step 2: Create backups of DR volumes on secondary
 for vol in $(ks get volumes.longhorn.io -n longhorn-system \
-  -o jsonpath='{.items[?(@.spec.standby==false)].metadata.name}'); do
+  -o jsonpath='{.items[?(@.spec.Standby==false)].metadata.name}'); do
   echo "Creating backup for failback: $vol"
   # Trigger backup via Longhorn UI or API
 done
@@ -239,8 +248,10 @@ done
 # Step 3: Scale down workloads on secondary
 ks scale deployments --all --replicas=0 -n default
 
-# Step 4: Restore volumes on primary from the secondary's backups
+# Step 4: Restore volumes on primary from the secondary's backup URLs
+# and recreate the PV/PVC bindings to point workloads back at the restored volumes
 # Step 5: Scale up workloads on primary
+kp apply -f primary-pvs-and-pvcs.yaml
 kp apply -f app-deployments.yaml
 ```
 
