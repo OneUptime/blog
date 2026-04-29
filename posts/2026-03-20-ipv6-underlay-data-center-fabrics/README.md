@@ -19,7 +19,7 @@ eliminating the need to allocate IPv4 or IPv6 P2P addresses.
 Benefits:
 - No address allocation for fabric links
 - Auto-discovery of peers via IPv6 RA
-- Works for both IPv4 and IPv6 underlay
+- Can carry IPv4 and IPv6 reachability over IPv6 link-local peering
 
 Configuration (Cumulus Linux / FRR):
 ```
@@ -69,23 +69,21 @@ router bgp 65101
 
 interface lo
  ipv6 address 2001:db8:dc1:200::101/128
- ip router isis DC-FABRIC
+ ipv6 router isis DC-FABRIC
  isis passive
 
 interface swp1
  ipv6 address 2001:db8:dc1:300:1:101::1/127
- ip router isis DC-FABRIC
+ ipv6 router isis DC-FABRIC
  isis network point-to-point
 
 router isis DC-FABRIC
- net 49.0001.0000.0101.0001.00   ! NET address (includes router ID)
+ net 49.0001.0000.0101.0001.00   ! NET address (includes system ID)
  is-type level-2-only
  metric-style wide
 
- ! IPv6 in IS-IS
- address-family ipv6
-  multi-topology
- exit-address-family
+ ! Enable the IPv6 unicast topology
+ topology ipv6-unicast
 
  log-adjacency-changes
 ```
@@ -98,15 +96,14 @@ router isis DC-UNDERLAY
   net 49.0001.0000.0001.0001.00
   is-type level-2
   address-family ipv6 unicast
-    multi-topology
     maximum-paths 64
 
 interface Ethernet1/1
   description Spine-1
+  no switchport
   ipv6 address 2001:db8:dc1:300:1:101::1/127
   isis network point-to-point
   isis circuit-type level-2
-  ip router isis DC-UNDERLAY
   ipv6 router isis DC-UNDERLAY
   no shutdown
 ```
@@ -114,7 +111,7 @@ interface Ethernet1/1
 ## OSPFv3 IPv6 Underlay
 
 ```bash
-# OSPFv3 for smaller fabrics (up to ~50 nodes)
+# OSPFv3 for smaller fabrics
 # Cisco Nexus OSPFv3
 
 feature ospfv3
@@ -129,14 +126,15 @@ interface loopback0
 
 interface Ethernet1/1
   description Spine-1
+  no switchport
   ipv6 address 2001:db8:dc1:300:1:101::1/127
   ospfv3 network point-to-point
   ipv6 router ospfv3 DC-UNDERLAY area 0.0.0.0
 
 ! Verify
-show ospfv3 neighbor
-show ospfv3 database
-show ipv6 route ospfv3
+show ipv6 ospfv3 neighbors
+show ipv6 ospfv3 database
+show ipv6 route
 ```
 
 ## VXLAN over IPv6 Underlay
@@ -147,23 +145,27 @@ show ipv6 route ospfv3
 # Cumulus Linux - VXLAN with IPv6 underlay
 # /etc/network/interfaces
 
+auto lo
+iface lo inet loopback
+  address 2001:db8:dc1:200::101/128
+  vxlan-local-tunnelip 2001:db8:dc1:200::101
+
 auto vxlan10
 iface vxlan10
   vxlan-id 10
-  vxlan-local-tunnelip 2001:db8:dc1:200::101  # IPv6 VTEP
   bridge-access 100
 
 # For Arista EOS - VXLAN over IPv6 underlay
 interface Vxlan1
    description VXLAN-IPv6-Underlay
    vxlan source-interface Loopback0  ! IPv6 loopback as VTEP
+   vxlan encapsulation ipv6
    vxlan vlan 100 vni 10100
 
-# BGP EVPN over IPv6 underlay
+# BGP EVPN over the existing IPv6 underlay sessions
 router bgp 65101
-   neighbor 2001:db8:dc1:200::1 remote-as 65001  ! Spine-1 IPv6 loopback
    address-family l2vpn evpn
-      neighbor 2001:db8:dc1:200::1 activate
+      neighbor fabric activate
       advertise-all-vni
 ```
 
@@ -184,11 +186,11 @@ ping6 2001:db8:dc1:200::102  # Leaf-2 loopback via IPv6 fabric
 
 # Check VXLAN tunnels use IPv6 src/dst
 show vxlan address-table
-show vxlan vni 10100 vtep
+show vxlan vtep
 
 # Verify ECMP is working for underlay
 traceroute6 2001:db8:dc1:200::102
-# Should show all paths through spines
+# Should traverse the spine layer; repeated probes can sample ECMP paths
 ```
 
-IPv6 underlay in data center fabrics eliminates IPv4 dependency for fabric routing, with BGP unnumbered being the preferred approach as it uses IPv6 link-local addressing for peer discovery eliminating address allocation overhead, while IS-IS and OSPFv3 provide alternatives that converge faster and with less operational complexity for smaller fabrics.
+IPv6 underlay in data center fabrics eliminates IPv4 dependency for fabric routing. BGP unnumbered removes per-link address allocation by using IPv6 link-local addressing, while IS-IS and OSPFv3 remain viable alternatives with different operational trade-offs depending on fabric size and platform support.
