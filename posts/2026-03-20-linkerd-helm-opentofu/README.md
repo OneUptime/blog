@@ -8,7 +8,7 @@ Description: Learn how to deploy Linkerd service mesh on Kubernetes using OpenTo
 
 ## Overview
 
-Linkerd is a lightweight, security-first service mesh for Kubernetes. It automatically encrypts traffic with mTLS, provides golden metrics (success rate, latency, throughput), and adds traffic splitting with minimal overhead. OpenTofu deploys Linkerd using the official CRD and control plane charts.
+Linkerd is a lightweight, security-first service mesh for Kubernetes. It automatically encrypts meshed pod-to-pod traffic with mTLS, provides golden metrics (success rate, latency, throughput), and adds traffic routing with minimal overhead. OpenTofu deploys Linkerd using the official CRD and control plane charts.
 
 ## Step 1: Generate and Store Linkerd Certificates
 
@@ -57,22 +57,25 @@ resource "tls_locally_signed_cert" "issuer" {
 ## Step 2: Deploy Linkerd CRDs and Control Plane
 
 ```hcl
-# Install Linkerd CRDs first
+# Install Linkerd CRDs and Gateway API first
 resource "helm_release" "linkerd_crds" {
   name             = "linkerd-crds"
-  repository       = "https://helm.linkerd.io/stable"
+  repository       = "https://helm.linkerd.io/edge"
   chart            = "linkerd-crds"
-  version          = "1.8.0"
   namespace        = "linkerd"
   create_namespace = true
+
+  set {
+    name  = "installGatewayAPI"
+    value = "true"
+  }
 }
 
 # Deploy Linkerd control plane
 resource "helm_release" "linkerd_control_plane" {
   name       = "linkerd-control-plane"
-  repository = "https://helm.linkerd.io/stable"
+  repository = "https://helm.linkerd.io/edge"
   chart      = "linkerd-control-plane"
-  version    = "1.16.0"
   namespace  = "linkerd"
 
   depends_on = [helm_release.linkerd_crds]
@@ -112,11 +115,11 @@ resource "helm_release" "linkerd_control_plane" {
 
 # Deploy Linkerd Viz (observability)
 resource "helm_release" "linkerd_viz" {
-  name       = "linkerd-viz"
-  repository = "https://helm.linkerd.io/stable"
-  chart      = "linkerd-viz"
-  version    = "30.12.0"
-  namespace  = "linkerd-viz"
+  name             = "linkerd-viz"
+  repository       = "https://helm.linkerd.io/edge"
+  chart            = "linkerd-viz"
+  namespace        = "linkerd-viz"
+  create_namespace = true
 
   depends_on = [helm_release.linkerd_control_plane]
 
@@ -145,67 +148,82 @@ resource "kubernetes_namespace" "production" {
 }
 ```
 
-## Step 4: Traffic Splitting for Canary Deployments
+## Step 4: HTTPRoute for Canary Deployments
 
 ```hcl
-# Linkerd SMI TrafficSplit for canary deployments
-resource "kubernetes_manifest" "traffic_split" {
+# Linkerd HTTPRoute for weighted canary traffic
+resource "kubernetes_manifest" "canary_route" {
   depends_on = [helm_release.linkerd_control_plane]
 
   manifest = {
-    apiVersion = "split.smi-spec.io/v1alpha1"
-    kind       = "TrafficSplit"
+    apiVersion = "gateway.networking.k8s.io/v1"
+    kind       = "HTTPRoute"
     metadata = {
       name      = "app-split"
       namespace = "production"
     }
     spec = {
-      service = "app"
-      backends = [
-        {
-          service = "app-stable"
-          weight  = 90
-        },
-        {
-          service = "app-canary"
-          weight  = 10
-        }
-      ]
+      parentRefs = [{
+        name  = "app"
+        kind  = "Service"
+        group = "core"
+        port  = 80
+      }]
+      rules = [{
+        backendRefs = [
+          {
+            name   = "app-stable"
+            port   = 80
+            weight = 90
+          },
+          {
+            name   = "app-canary"
+            port   = 80
+            weight = 10
+          }
+        ]
+      }]
     }
   }
 }
 ```
 
-## Step 5: ServiceProfile for Retries and Timeouts
+## Step 5: HTTPRoute for Retries and Timeouts
 
 ```hcl
 # Define per-route policies for the API service
-resource "kubernetes_manifest" "service_profile" {
+resource "kubernetes_manifest" "api_route_policy" {
+  depends_on = [helm_release.linkerd_control_plane]
+
   manifest = {
-    apiVersion = "linkerd.io/v1alpha2"
-    kind       = "ServiceProfile"
+    apiVersion = "gateway.networking.k8s.io/v1"
+    kind       = "HTTPRoute"
     metadata = {
-      name      = "api.production.svc.cluster.local"
+      name      = "api-orders-route"
       namespace = "production"
+      annotations = {
+        "retry.linkerd.io/http"      = "5xx"
+        "retry.linkerd.io/limit"     = "2"
+        "retry.linkerd.io/timeout"   = "1s"
+        "timeout.linkerd.io/request" = "5s"
+      }
     }
     spec = {
-      routes = [
-        {
-          name = "GET /api/orders"
-          condition = {
-            method    = "GET"
-            pathRegex = "/api/orders"
+      parentRefs = [{
+        name  = "api"
+        kind  = "Service"
+        group = "core"
+        port  = 80
+      }]
+      rules = [{
+        matches = [{
+          method = "GET"
+          path = {
+            type  = "Exact"
+            value = "/api/orders"
           }
-          timeout  = "5s"
-          isRetryable = true
-          responseClasses = [{
-            condition = {
-              status = { min = 500, max = 599 }
-            }
-            isFailure = true
-          }]
-        }
-      ]
+        }]
+      }]
     }
   }
 }
@@ -213,4 +231,4 @@ resource "kubernetes_manifest" "service_profile" {
 
 ## Summary
 
-Linkerd deployed with OpenTofu provides a lightweight service mesh with zero-configuration mTLS using the proxy injection model. The Viz extension delivers golden metrics - success rate, requests per second, and latency percentiles - for every meshed service. ServiceProfiles add per-route timeout and retry logic, and TrafficSplit enables progressive delivery without application changes.
+Linkerd deployed with OpenTofu provides a lightweight service mesh with zero-configuration mTLS for meshed workloads using the proxy injection model. The Viz extension delivers golden metrics - success rate, requests per second, and latency percentiles - for every meshed service. HTTPRoutes add per-route timeout and retry policies, and weighted HTTPRoute backends enable progressive delivery without application changes.
