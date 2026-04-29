@@ -76,20 +76,21 @@ check_auth_query
 
 ## Prometheus LDAP Exporter
 
-The `ldap_exporter` exposes LDAP metrics for Prometheus:
+The `openldap_exporter` exposes LDAP metrics for Prometheus:
 
 ```bash
-# Install ldap_exporter
-wget https://github.com/titanous/ldap_exporter/releases/latest/download/ldap_exporter_linux_amd64
-chmod +x ldap_exporter_linux_amd64
-sudo mv ldap_exporter_linux_amd64 /usr/local/bin/ldap_exporter
+# Install openldap_exporter
+wget https://github.com/tomcz/openldap_exporter/releases/latest/download/openldap_exporter-linux-amd64.gz
+gunzip openldap_exporter-linux-amd64.gz
+chmod +x openldap_exporter-linux-amd64
+sudo mv openldap_exporter-linux-amd64 /usr/local/bin/openldap_exporter
 
 # Run with IPv6 LDAP server
-ldap_exporter \
-  --web.listen-address="[::]:9384" \
-  --ldap.addr="ldap://[2001:db8::1]:389" \
-  --ldap.user="cn=admin,dc=example,dc=com" \
-  --ldap.pass="adminpassword"
+openldap_exporter \
+  --promAddr="[::]:9330" \
+  --ldapAddr="[2001:db8::1]:389" \
+  --ldapUser="cn=admin,dc=example,dc=com" \
+  --ldapPass="adminpassword"
 ```
 
 Configure Prometheus:
@@ -100,8 +101,8 @@ scrape_configs:
   - job_name: 'ldap_servers'
     static_configs:
       - targets:
-          - '[2001:db8::1]:9384'
-          - '[2001:db8::2]:9384'
+          - '[2001:db8::1]:9330'
+          - '[2001:db8::2]:9330'
 ```
 
 ## OpenLDAP Monitor Backend
@@ -111,9 +112,10 @@ OpenLDAP has a built-in monitoring database:
 ```bash
 # Enable the monitor backend
 cat > /tmp/monitor.ldif << 'EOF'
-dn: cn=Monitor,cn=config
+dn: olcDatabase=monitor,cn=config
 changetype: add
 objectClass: olcDatabaseConfig
+objectClass: olcMonitorConfig
 olcDatabase: monitor
 olcAccess: {0}to * by dn.exact="cn=admin,dc=example,dc=com" read by * none
 EOF
