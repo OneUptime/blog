@@ -8,7 +8,7 @@ Description: Configure QoS policies for video streaming traffic over IPv6 to ens
 
 ---
 
-Video streaming over IPv6 benefits from QoS policies that guarantee minimum bandwidth, manage buffer sizes, and use appropriate DSCP marking. Unlike VoIP's strict low-latency requirements, video streaming prioritizes consistent throughput with some tolerance for latency.
+Video streaming over IPv6 benefits from QoS policies that reserve minimum bandwidth, manage buffer sizes, and use appropriate DSCP marking. Unlike VoIP's strict low-latency requirements, video streaming prioritizes consistent throughput with some tolerance for latency.
 
 ## Video Streaming QoS Requirements
 
@@ -19,41 +19,38 @@ Live Streaming (RTMP/HLS):
 - Bandwidth: Variable (720p: ~3Mbps, 1080p: ~5-8Mbps, 4K: ~15-25Mbps)
 - Latency: 2-30 seconds (adaptive bitrate handles variations)
 - Jitter tolerance: High (HLS buffers multiple segments)
-- DSCP: AF41 (Assured Forwarding, class 4, low drop precedence)
+- DSCP: AF31 (Assured Forwarding, class 3, low drop precedence)
 
 Video Conferencing (WebRTC):
 - Bandwidth: 500kbps-4Mbps per stream
 - Latency: < 200ms end-to-end
 - Jitter: < 100ms
-- DSCP: AF41 or EF (higher priority than streaming)
+- DSCP: AF41 (higher priority than streaming)
 ```
 
 ## DSCP Marking for Video over IPv6
 
 ```bash
-# /etc/nftables.conf - Video QoS for IPv6
+# /etc/nftables.conf - Video QoS for IPv6 egress traffic
 
 table ip6 mangle {
-    chain prerouting {
-        type filter hook prerouting priority mangle; policy accept;
+    chain postrouting {
+        type filter hook postrouting priority mangle; policy accept;
 
-        # RTMP streaming - AF41
-        meta l4proto tcp tcp dport 1935 ip6 dscp set af41
+        # RTMP streaming - AF31
+        meta l4proto tcp tcp sport 1935 ip6 dscp set af31
 
-        # HLS (HTTP-based) - AF31
-        meta l4proto tcp tcp dport { 80, 443 } ip6 dscp set af31
+        # HLS from dedicated origin servers - AF31
+        ip6 saddr 2001:db8:100::/64 tcp sport { 80, 443 } ip6 dscp set af31
 
-        # SRT streaming - AF41
-        meta l4proto udp udp dport 9000-9010 ip6 dscp set af41
+        # SRT streaming - AF31
+        meta l4proto udp udp sport 9000-9010 ip6 dscp set af31
 
-        # RTSP - AF41
-        meta l4proto { tcp, udp } th dport 554 ip6 dscp set af41
+        # RTSP - AF31
+        meta l4proto { tcp, udp } th sport 554 ip6 dscp set af31
 
-        # RTP video streams
-        meta l4proto udp udp dport 20000-30000 ip6 dscp set af41
-
-        # Video from specific streaming server subnets
-        ip6 saddr 2001:db8:streaming::/64 ip6 dscp set af41
+        # RTP interactive video streams - AF41
+        meta l4proto udp udp sport 20000-30000 ip6 dscp set af41
     }
 }
 ```
@@ -88,7 +85,7 @@ sudo tc class add dev $IFACE parent 1:1 classid 1:20 \
 sudo tc qdisc add dev $IFACE parent 1:20 fq_codel \
   target 20ms interval 100ms
 
-# Interactive video (conferencing)
+# Interactive video (conferencing, AF41)
 sudo tc class add dev $IFACE parent 1:1 classid 1:30 \
   htb rate 200mbit ceil 400mbit prio 2
 
@@ -96,10 +93,16 @@ sudo tc class add dev $IFACE parent 1:1 classid 1:30 \
 sudo tc class add dev $IFACE parent 1:1 classid 1:40 \
   htb rate 200mbit prio 4
 
-# Filter: IPv6 AF41 -> video streaming class
-# AF41 = DSCP 34 = 0x22, TC byte value: 34 << 2 = 0x88
+# Filter: IPv6 AF41 -> interactive video class
+# AF41 = DSCP 34 = 0x22, Traffic Class value: 34 << 2 = 0x88
+sudo tc filter add dev $IFACE protocol ipv6 parent 1:0 prio 1 \
+  u32 match ip6 priority 0x88 0xfc \
+  flowid 1:30
+
+# Filter: IPv6 AF31 -> video streaming class
+# AF31 = DSCP 26 = 0x1a, Traffic Class value: 26 << 2 = 0x68
 sudo tc filter add dev $IFACE protocol ipv6 parent 1:0 prio 2 \
-  u32 match u8 0x88 0xfc at 1 \
+  u32 match ip6 priority 0x68 0xfc \
   flowid 1:20
 
 echo "Video streaming IPv6 QoS configured"
@@ -115,7 +118,8 @@ http {
     limit_req_zone $binary_remote_addr zone=video_ipv6:10m rate=10r/s;
 
     server {
-        listen [::]:443 ssl http2;
+        listen [::]:443 ssl;
+        http2 on;
 
         location /hls/ {
             # Rate limit segment requests
@@ -141,20 +145,20 @@ http {
 
 ```bash
 # Test 1: Measure available bandwidth to IPv6 streaming server
-iperf3 -6 -c 2001:db8::video-server -t 30 -P 4
+iperf3 -6 -c 2001:db8:100::10 -t 30 -P 4
 
 # Test 2: Simulate HLS segment download over IPv6
 for i in {1..5}; do
   time curl -6 -o /dev/null \
-    "http://[2001:db8::server]/hls/segment_${i}.ts"
+    "http://[2001:db8:100::10]/hls/segment_${i}.ts"
 done
 
 # Test 3: Verify DSCP marking on video packets
-sudo tcpdump -i eth0 -nn ip6 \
-  and "tcp port 1935" -v | grep "class 0x88\|dscp af41"
+sudo tcpdump -i eth0 -nn -v -l 'ip6 and tcp port 1935' \
+  | grep 'class 0x68\|dscp af31'
 
-# Test 4: Continuous bandwidth monitoring
-watch -n 1 'cat /proc/net/if_inet6 | awk "{print $5, $6}"'
+# Test 4: Monitor interface counters during streaming
+watch -n 1 'ip -s link show dev eth0'
 
 # Test 5: Check queue drops during video streaming
 sudo tc -s class show dev eth0 | grep -A5 "1:20"
@@ -165,21 +169,18 @@ sudo tc -s class show dev eth0 | grep -A5 "1:20"
 ```bash
 # IPv6 multicast for efficient video distribution
 
-# Join multicast group (receiver)
-ip -6 maddr add ff3e::100 dev eth0
-
 # Send multicast video (sender)
 ffmpeg -re -i input.mp4 \
   -c:v libx264 -b:v 3000k \
   -c:a aac -b:a 128k \
   -f mpegts \
-  "udp://[ff3e::100]:1234?localaddr=2001:db8::source"
+  "udp://[ff3e::100]:1234?localaddr=2001:db8:300::10"
 
-# Receive multicast
-ffplay "udp://[ff3e::100]:1234"
+# Receive multicast (ffplay joins the group on the specified interface)
+ffplay "udp://[ff3e::100]:1234?localaddr=2001:db8:300::20"
 
 # Firewall - allow multicast
-sudo ip6tables -A INPUT -d ff3e::/16 -p udp -j ACCEPT
+sudo ip6tables -A INPUT -d ff3e::100 -p udp --dport 1234 -j ACCEPT
 ```
 
-Video streaming QoS over IPv6 uses AF41 DSCP marking to provide adequate throughput guarantees without the strict latency requirements of VoIP, with HTB queuing ensuring streaming bandwidth is preserved during peak usage and FQ-CoDel preventing bufferbloat that would cause adaptive bitrate algorithms to unnecessarily reduce quality.
+Video streaming QoS over IPv6 commonly uses AF31 DSCP marking for streaming traffic, while AF41 remains appropriate for interactive video, with HTB queuing ensuring streaming bandwidth is preserved during peak usage and FQ-CoDel preventing bufferbloat that would cause adaptive bitrate algorithms to unnecessarily reduce quality.
