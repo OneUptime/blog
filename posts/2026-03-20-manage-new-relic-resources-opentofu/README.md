@@ -14,7 +14,7 @@ New Relic is a comprehensive observability platform covering APM, infrastructure
 
 - OpenTofu installed (v1.6+)
 - A New Relic account
-- New Relic API key (User key or Admin API key)
+- New Relic User API key (also called a personal API key)
 - Your New Relic Account ID
 
 ## Provider Configuration
@@ -32,7 +32,7 @@ terraform {
 provider "newrelic" {
   account_id = var.newrelic_account_id
   api_key    = var.newrelic_api_key
-  region     = "US"  # or "EU"
+  region     = "US"  # Valid values: "US", "EU", or "JP"
 }
 ```
 
@@ -76,26 +76,22 @@ resource "newrelic_nrql_alert_condition" "high_error_rate" {
 
 ## Notification Channels
 
+Create the Slack destination in New Relic first, then reference it from OpenTofu because Slack destinations cannot be created by the provider.
+
 ```hcl
+data "newrelic_notification_destination" "slack" {
+  exact_name = "Slack Workspace"
+}
+
 resource "newrelic_notification_channel" "slack" {
   name           = "Ops Slack Channel"
   type           = "SLACK"
-  destination_id = newrelic_notification_destination.slack.id
+  destination_id = data.newrelic_notification_destination.slack.id
   product        = "IINT"
 
   property {
     key   = "channelId"
     value = "C0123456789"
-  }
-}
-
-resource "newrelic_notification_destination" "slack" {
-  name = "Slack Workspace"
-  type = "SLACK"
-
-  property {
-    key   = "url"
-    value = var.slack_webhook_url
   }
 }
 
@@ -193,7 +189,7 @@ resource "newrelic_synthetics_monitor" "uptime" {
 - Store the New Relic API key in a secrets manager and inject via environment variable.
 - Template dashboards as reusable modules to standardize observability across services.
 - Set both warning and critical thresholds to allow gradual escalation.
-- Use `newrelic_entity_tags` to label all managed resources for easy filtering.
+- Use `newrelic_entity_tags` to label managed entities that expose a GUID for easy filtering.
 
 ## Conclusion
 
