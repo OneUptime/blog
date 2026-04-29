@@ -53,7 +53,7 @@ func handleConnection(conn net.Conn) {
 }
 ```
 
-## Dual-Stack TCP Listener (IPv4 + IPv6)
+## Dual-Stack TCP Listener (IPv4 + IPv6, Where Supported)
 
 ```go
 package main
@@ -65,8 +65,10 @@ import (
 )
 
 func dualStackListen(port int) (net.Listener, error) {
-    // "tcp" (not "tcp6") listens on both IPv4 and IPv6 on most systems
-    // On Linux with net.ipv6bindv6only=0, :: accepts IPv4-mapped connections
+    // "tcp" on an unspecified address may accept both IPv4 and IPv6
+    // on platforms that support IPv4-mapped IPv6 addresses.
+    // On Linux, net.ipv6.bindv6only=0 allows IPv4-mapped connections.
+    // Some systems, such as OpenBSD and DragonFly BSD, require separate listeners.
     addr := fmt.Sprintf("[::]:%d", port)
     return net.Listen("tcp", addr)
 }
@@ -77,7 +79,7 @@ func main() {
         log.Fatal(err)
     }
     defer ln.Close()
-    fmt.Println("Dual-stack listener on :9000")
+    fmt.Println("TCP listener on [::]:9000")
 
     for {
         conn, err := ln.Accept()
@@ -101,6 +103,7 @@ package main
 
 import (
     "fmt"
+    "io"
     "net"
     "log"
 )
@@ -125,7 +128,7 @@ func listenOnIPv6Addresses(addresses []string, port int) []net.Listener {
 func main() {
     addresses := []string{
         "::1",              // Loopback
-        "2001:db8::1",      // Specific global address
+        "2001:db8::1",      // Documentation example; replace with an address assigned to this host
     }
 
     listeners := listenOnIPv6Addresses(addresses, 8080)
@@ -143,6 +146,11 @@ func main() {
 
     // Block forever
     select {}
+}
+
+func handleConnection(conn net.Conn) {
+    defer conn.Close()
+    io.Copy(conn, conn)
 }
 ```
 
@@ -199,6 +207,7 @@ package main
 import (
     "context"
     "fmt"
+    "io"
     "net"
     "os/signal"
     "sync"
@@ -246,6 +255,10 @@ func (s *IPv6Server) Wait() {
     s.wg.Wait()
 }
 
+func handleConnection(conn net.Conn) {
+    io.Copy(conn, conn)
+}
+
 func main() {
     server, err := NewIPv6Server(8080)
     if err != nil {
@@ -264,4 +277,4 @@ func main() {
 
 ## Conclusion
 
-Creating IPv6 TCP listeners in Go is straightforward: use `net.Listen("tcp6", "[::]:port")` for IPv6-only or `net.Listen("tcp", "[::]:port")` for dual-stack. The `net.TCPAddr` type provides the client's IPv6 address and port. Use `net/netip` for modern, efficient address handling and `context.Context` for graceful shutdown.
+Creating IPv6 TCP listeners in Go is straightforward: use `net.Listen("tcp6", "[::]:port")` for IPv6-only. A `net.Listen("tcp", "[::]:port")` listener on an unspecified address may accept both IPv4 and IPv6 on platforms that support IPv4-mapped IPv6 addresses; otherwise, use separate listeners. The `net.TCPAddr` type provides the client's IP address, port, and zone when applicable. Use `net/netip` for modern, efficient address handling and `context.Context` for graceful shutdown.
