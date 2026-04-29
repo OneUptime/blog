@@ -23,10 +23,15 @@ sudo apt-get install prometheus-node-exporter
 curl http://localhost:9100/metrics | grep -E "node_network.*ipv6|node_netstat_Ip6"
 
 # Key IPv6 metrics available:
-# node_netstat_Ip6_InReceives - incoming IPv6 packets/sec
-# node_netstat_Ip6_OutRequests - outgoing IPv6 packets/sec
-# node_netstat_Ip6_InDiscards - dropped incoming packets
-# node_netstat_TcpExt_TCPSynRetrans - TCP SYN retransmissions
+# node_netstat_Ip6_InOctets - incoming IPv6 bytes (default-exposed)
+# node_netstat_Ip6_OutOctets - outgoing IPv6 bytes (default-exposed)
+# node_netstat_Tcp_RetransSegs - total TCP segments retransmitted (default-exposed)
+# node_netstat_TcpExt_TCPSynRetrans - TCP SYN retransmissions (default-exposed)
+
+# Additional /proc/net/snmp6 counters such as Ip6_InReceives, Ip6_OutRequests,
+# and Ip6_InDiscards exist but are filtered out by node_exporter's default regex.
+# To expose them, override the netstat fields filter, e.g.:
+# node_exporter --collector.netstat.fields='^(.*_(InErrors|InErrs)|Ip6_(InReceives|OutRequests|InDiscards|InOctets|OutOctets)|...)$'
 ```
 
 ## Step 2: Custom IPv6 Latency Exporter
@@ -129,9 +134,10 @@ scrape_configs:
 
 ```promql
 # Panel 1: IPv6 incoming traffic rate (Mbps)
-rate(node_network_receive_bytes_total{device="eth0"}[5m]) * 8 / 1e6
+rate(node_netstat_Ip6_InOctets[5m]) * 8 / 1e6
 
 # Panel 2: IPv6 packet drop rate
+# (requires Ip6_InDiscards to be enabled via --collector.netstat.fields)
 rate(node_netstat_Ip6_InDiscards[5m])
 
 # Panel 3: IPv6 ping latency to Google DNS
@@ -141,7 +147,7 @@ ipv6_ping_rtt_avg_ms{target="2001:4860:4860::8888"}
 ipv6_ping_packet_loss_percent
 
 # Panel 5: TCP retransmission rate
-rate(node_netstat_TcpExt_TCPRetransFail[5m])
+rate(node_netstat_Tcp_RetransSegs[5m])
 ```
 
 ## Step 5: Alerting Rules
