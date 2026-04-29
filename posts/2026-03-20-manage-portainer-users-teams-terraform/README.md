@@ -87,22 +87,26 @@ resource "portainer_team_membership" "memberships" {
 
 ```hcl
 # environment_access.tf
-resource "portainer_environment_access" "backend_staging" {
-  environment_id = portainer_environment.staging.id
+data "portainer_role" "standard_user" {
+  name = "Standard User"
+}
 
-  team_accesses = [
-    {
-      team_id = portainer_team.teams["backend"].id
-      role_id = 2  # Standard user access
-    }
-  ]
+data "portainer_role" "environment_admin" {
+  name = "Environment administrator"
+}
 
-  user_accesses = [
-    {
-      user_id = portainer_user.team["carol"].id
-      role_id = 1  # Admin access for Carol in this environment
-    }
-  ]
+resource "portainer_environment" "staging" {
+  name                = "staging"
+  environment_address = "tcp://staging.example.com:9001"
+  type                = 2
+
+  team_access_policies = {
+    (portainer_team.teams["backend"].id) = data.portainer_role.standard_user.roles[0].id
+  }
+
+  user_access_policies = {
+    (portainer_user.team["carol"].id) = data.portainer_role.environment_admin.roles[0].id
+  }
 }
 ```
 
@@ -141,12 +145,12 @@ output "team_memberships" {
 # Apply the Terraform configuration
 terraform apply
 
-# Add a new team member by updating variables
-# Edit variables.tf to add the new member, then:
+# Add a new team member by updating the team_members map
+# Edit the team_members map, then:
 terraform apply  # Only creates/modifies changed resources
 
 # Remove a user (will delete from Portainer)
-# Remove from team_members map in variables.tf, then:
+# Remove the user from the team_members map, then:
 terraform apply
 ```
 
