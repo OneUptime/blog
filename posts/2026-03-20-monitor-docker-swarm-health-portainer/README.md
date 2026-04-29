@@ -61,6 +61,9 @@ services:
 
   node-exporter:
     image: prom/node-exporter:latest
+    command:
+      - '--path.procfs=/host/proc'
+      - '--path.sysfs=/host/sys'
     deploy:
       mode: global        # Run on every node
     ports:
@@ -95,7 +98,8 @@ Use Portainer's API to check service health programmatically:
 
 ```bash
 # Get all services and their replica counts
-curl -s https://portainer:9443/api/endpoints/1/docker/services \
+# Note: ?status=true is required for the Docker API to populate ServiceStatus
+curl -s "https://portainer:9443/api/endpoints/1/docker/services?status=true" \
   -H "Authorization: Bearer $TOKEN" | \
   jq '.[] | {name: .Spec.Name, running: .ServiceStatus.RunningTasks, desired: .ServiceStatus.DesiredTasks}'
 ```
