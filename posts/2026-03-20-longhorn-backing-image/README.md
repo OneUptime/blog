@@ -14,7 +14,7 @@ Longhorn backing images allow you to create volumes pre-populated with a base im
 
 ## What Is a Backing Image?
 
-A Longhorn backing image is an immutable base image stored as a set of replicas in the cluster. When a volume is created with a backing image, it uses copy-on-write semantics - the base image is shared, and only changes are stored per-volume.
+A Longhorn backing image is an immutable base image stored on Longhorn disks in the cluster. When a volume is created with a backing image, the backing image becomes the initial snapshot, and only changes are stored per-volume.
 
 ---
 
@@ -32,7 +32,7 @@ spec:
   sourceType: download
   sourceParameters:
     url: "https://cloud-images.ubuntu.com/jammy/current/jammy-server-cloudimg-amd64.img"
-  checksum: "sha512:abc123..."  # Optional but recommended
+  checksum: "<sha512-hex>"  # Optional but recommended
   minNumberOfCopies: 2
   diskSelector: []
   nodeSelector: []
@@ -41,30 +41,20 @@ spec:
 ```bash
 kubectl apply -f backing-image-ubuntu.yaml
 
-# Monitor download progress
-kubectl get lhbackingimage ubuntu-22-04 -n longhorn-system -w
+# Inspect per-disk download state
+kubectl describe backingimage ubuntu-22-04 -n longhorn-system
 ```
 
 ---
 
 ## Step 2: Create a Backing Image from a Local File
 
-Upload an image directly from a node:
+Upload an image from your local machine:
 
 ```bash
-# Via the Longhorn UI: Backing Image > Create > Upload
-# The UI supports uploading .img, .qcow2, .iso files
-
-# Or via API
-LONGHORN_URL=http://longhorn-frontend.longhorn-system.svc.cluster.local
-curl -X POST \
-  ${LONGHORN_URL}/v1/backingimages \
-  -H "Content-Type: application/json" \
-  -d '{
-    "name": "my-db-seed",
-    "expectedChecksum": "",
-    "sourceType": "upload"
-  }'
+# Via the Longhorn UI: Advanced > Backing Images > Create > Upload
+# Longhorn backing images support RAW and QCOW2 images (for example, .img or .qcow2).
+# For API-driven uploads, create the BackingImage first and then upload the file in a second HTTP request.
 ```
 
 ---
@@ -72,7 +62,7 @@ curl -X POST \
 ## Step 3: Create a Volume Using a Backing Image
 
 ```yaml
-# StorageClass with backing image reference
+# StorageClass using an existing backing image
 apiVersion: storage.k8s.io/v1
 kind: StorageClass
 metadata:
@@ -81,8 +71,6 @@ provisioner: driver.longhorn.io
 parameters:
   numberOfReplicas: "2"
   backingImage: ubuntu-22-04
-  backingImageURL: ""  # Leave empty when using name reference
-  backingImageChecksum: ""
 ```
 
 ```yaml
@@ -103,22 +91,22 @@ spec:
 
 ---
 
-## Step 4: Manage Backing Image Replicas
+## Step 4: Manage Backing Image Copies
 
 ```bash
-# Check how many copies are ready
-kubectl get lhbackingimage ubuntu-22-04 -n longhorn-system \
+# Inspect per-disk backing image status
+kubectl get backingimage ubuntu-22-04 -n longhorn-system \
   -o jsonpath='{.status.diskFileStatusMap}'
 
 # Delete a backing image (only if no volumes are using it)
-kubectl delete lhbackingimage ubuntu-22-04 -n longhorn-system
+kubectl delete backingimage ubuntu-22-04 -n longhorn-system
 ```
 
 ---
 
 ## Step 5: Backing Image in Harvester
 
-Harvester (Rancher's HCI platform) uses Longhorn backing images for VM disk templates. Import images through the Harvester UI under **Images > Import**. Harvester handles the BackingImage creation automatically.
+Harvester (Rancher's HCI platform) uses Longhorn backing images behind the scenes for imported VM images. Import images on the Harvester **Images** page, and Harvester handles the BackingImage creation automatically.
 
 ---
 
