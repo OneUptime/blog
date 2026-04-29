@@ -60,8 +60,8 @@ All matches for 10.1.1.1:
   /32  10.1.1.1/32
   /24  10.1.1.0/24
   /16  10.1.0.0/16
-   /8  10.0.0.0/8
-   /0  0.0.0.0/0
+  / 8  10.0.0.0/8
+  / 0  0.0.0.0/0
 
 Best match: 10.1.1.1/32
 ```
@@ -73,7 +73,7 @@ Best match: 10.1.1.1/32
 ISPs aggregate many small prefixes into one larger announcement to reduce routing table size. LPM ensures more-specific routes still work:
 
 ```text
-BGP global table might have:
+A BGP table might have:
   10.0.0.0/8    via AS100 (aggregate)
   10.1.1.0/24   via AS200 (more specific - AS200's actual prefix)
 
@@ -104,7 +104,7 @@ Real routers implement LPM in hardware using:
 - **TCAM** (Ternary Content-Addressable Memory) - parallel lookup
 - **Trie structures** - tree-based prefix matching
 
-Linux uses a hash table + LPC-trie for software routing.
+Linux uses an LC-trie for IPv4 software routing lookups.
 
 ## Verification Example
 
@@ -113,16 +113,16 @@ Linux uses a hash table + LPC-trie for software routing.
 ip route show
 # default via 192.168.1.1 dev eth0
 # 192.168.1.0/24 dev eth0 scope link
-# 10.0.0.0/8 via 10.1.1.1 dev eth1
+# 10.0.0.0/8 via 192.168.1.2 dev eth0
 
 ip route get 10.1.1.50
-# 10.1.1.50 via 10.1.1.1 dev eth1   ← /8 route used (only match)
+# 10.1.1.50 via 192.168.1.2 dev eth0   ← /8 route used (longest match)
 
 # Add more specific route
-ip route add 10.1.1.0/24 via 10.1.1.2
+ip route add 10.1.1.0/24 via 192.168.1.3 dev eth0
 
 ip route get 10.1.1.50
-# 10.1.1.50 via 10.1.1.2 dev eth1   ← /24 route now wins (LPM)
+# 10.1.1.50 via 192.168.1.3 dev eth0   ← /24 route now wins (LPM)
 ```
 
 ## Key Takeaways
