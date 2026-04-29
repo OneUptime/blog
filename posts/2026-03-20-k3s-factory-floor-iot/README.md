@@ -39,8 +39,8 @@ Industrial environments have unique requirements:
 # Check real-time kernel capability
 uname -r | grep -i rt || echo "Standard kernel (RT kernel recommended for control workloads)"
 
-# For Debian/Ubuntu, install real-time kernel
-apt-get install linux-image-rt-amd64  # For x86
+# On Debian x86_64, install the PREEMPT_RT kernel metapackage
+apt-get install linux-image-rt-amd64
 ```
 
 ## Step 2: Configure K3s for Industrial Environment
@@ -91,6 +91,7 @@ spec:
       nodeSelector:
         opc-ua-gateway: "true"
       hostNetwork: true  # Direct access to OT network
+      dnsPolicy: ClusterFirstWithHostNet  # Preserve cluster DNS with host networking
       containers:
         - name: opcua-gateway
           image: myregistry/opcua-gateway:v2.0
@@ -131,7 +132,13 @@ metadata:
   namespace: industrial
 spec:
   replicas: 1
+  selector:
+    matchLabels:
+      app: modbus-bridge
   template:
+    metadata:
+      labels:
+        app: modbus-bridge
     spec:
       nodeSelector:
         plant: plant-a
@@ -161,6 +168,7 @@ spec:
         - name: serial-port
           hostPath:
             path: /dev/ttyS0
+            type: CharDevice
 ```
 
 ## Step 5: Deploy Time-Series Database for Machine Data
@@ -168,17 +176,35 @@ spec:
 ```yaml
 # timescaledb-industrial.yaml
 ---
+apiVersion: v1
+kind: Service
+metadata:
+  name: timescaledb
+  namespace: industrial
+spec:
+  clusterIP: None
+  selector:
+    app: timescaledb
+  ports:
+    - name: postgres
+      port: 5432
+      targetPort: 5432
+---
 apiVersion: apps/v1
 kind: StatefulSet
 metadata:
   name: timescaledb
   namespace: industrial
 spec:
+  serviceName: timescaledb
   replicas: 1
   selector:
     matchLabels:
       app: timescaledb
   template:
+    metadata:
+      labels:
+        app: timescaledb
     spec:
       nodeSelector:
         plant: plant-a
@@ -220,7 +246,13 @@ metadata:
   namespace: industrial
 spec:
   replicas: 1
+  selector:
+    matchLabels:
+      app: predictive-maintenance
   template:
+    metadata:
+      labels:
+        app: predictive-maintenance
     spec:
       nodeSelector:
         plant: plant-a
@@ -327,7 +359,13 @@ metadata:
   namespace: industrial
 spec:
   replicas: 1
+  selector:
+    matchLabels:
+      app: quality-inspection
   template:
+    metadata:
+      labels:
+        app: quality-inspection
     spec:
       nodeSelector:
         plant: plant-a
