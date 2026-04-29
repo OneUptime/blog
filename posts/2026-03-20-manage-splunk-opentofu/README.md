@@ -8,7 +8,7 @@ Description: Learn how to manage Splunk indexes, saved searches, alerts, and dat
 
 ## Introduction
 
-The Splunk provider for OpenTofu manages Splunk configuration including indexes, saved searches, alerts, dashboards, and inputs. Managing Splunk as code prevents configuration drift across clustered environments and enables change management for security-critical SIEM configurations.
+The Splunk provider for OpenTofu manages Splunk Enterprise configuration including indexes, saved searches, alerts, dashboards, and inputs. Managing Splunk Enterprise as code prevents configuration drift across clustered environments and enables change management for security-critical SIEM configurations.
 
 ## Provider Configuration
 
@@ -17,7 +17,7 @@ terraform {
   required_providers {
     splunk = {
       source  = "splunk/splunk"
-      version = "~> 1.4"
+      version = "~> 1.5"
     }
   }
 }
@@ -72,15 +72,14 @@ resource "splunk_saved_searches" "high_error_rate" {
   alert_type         = "number of events"
   alert_comparator   = "greater than"
   alert_threshold    = "0"
-  alert_severity     = "3"  # High
+  alert_severity     = "3"  # WARN
 
   # Actions
-  action_email        = true
   action_email_to     = "platform-team@example.com"
   action_email_subject = "HIGH: Application Error Rate Alert"
 
   # Webhook action
-  action_webhook_enable_allowlist = false
+  action_webhook_param_url = "https://hooks.example.com/splunk-alerts"
   actions = "email,webhook"
 
   dispatch_earliest_time = "rt-5m"
@@ -130,7 +129,7 @@ resource "splunk_admin_saml_groups" "engineering_saml" {
 }
 ```
 
-## Data Input from S3
+## File Monitoring Input
 
 ```hcl
 resource "splunk_inputs_monitor" "app_log_file" {
