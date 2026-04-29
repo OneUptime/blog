@@ -24,7 +24,7 @@ graph TB
     end
 ```
 
-With RO, the CN sends traffic directly to the MN's CoA, using the Home Address Destination Option to embed the HoA in the packet for application transparency.
+With RO, the CN sends traffic directly to the MN's CoA, using the Type 2 Routing Header to embed the HoA in the packet for application transparency.
 
 ## Route Optimization Packet Format
 
@@ -34,14 +34,12 @@ With RO, the CN sends traffic directly to the MN's CoA, using the Home Address D
 IPv6 Header:
   Source:      2001:db8:cn::200 (CN)
   Destination: 2001:db8:foreign::50 (CoA - direct routing!)
-  Next Header: 60 (Destination Options)
+  Next Header: 43 (Routing Header Type 2)
 
-Destination Options Header:
-  Home Address Option:
-    Type:    201 (Home Address Destination Option)
-    Length:  16
-    Value:   2001:db8:home::100 (HoA)
-  Next Header: 6 (TCP)
+Routing Header Type 2:
+  Segments Left: 1
+  Home Address:  2001:db8:home::100 (HoA)
+  Next Header:   6 (TCP)
 
 TCP Payload
 ```
@@ -54,12 +52,14 @@ The MN's kernel replaces the CoA destination with HoA before delivering to the a
 IPv6 Header:
   Source:      2001:db8:foreign::50 (CoA)
   Destination: 2001:db8:cn::200 (CN - direct!)
-  Next Header: 43 (Routing Header Type 2)
+  Next Header: 60 (Destination Options)
 
-Routing Header Type 2:
-  Segments Left: 1
-  Home Address:  2001:db8:home::100 (HoA)
-  Next Header:   6 (TCP)
+Destination Options Header:
+  Home Address Option:
+    Type:    201 (Home Address Destination Option)
+    Length:  16
+    Value:   2001:db8:home::100 (HoA)
+  Next Header: 6 (TCP)
 
 TCP Payload
 ```
@@ -87,8 +87,8 @@ sequenceDiagram
     CN->>MN: Binding Acknowledgement
 
     Note over MN,CN: Step 3: Direct Communication
-    MN->>CN: Packets direct (CoA src, RH2 header)
-    CN->>MN: Packets direct (CoA dst, HAO header)
+    MN->>CN: Packets direct (CoA src, HAO header)
+    CN->>MN: Packets direct (CoA dst, RH2 header)
 ```
 
 ## Enabling Route Optimization
@@ -104,14 +104,17 @@ Interface "eth0" {
     MnIfPreference 1;
 }
 
-HomeAgent 2001:db8:home::1;
-Home 2001:db8:home::100/64;
+MnHomeLink "eth0" {
+    HomeAgentAddress 2001:db8:home::1;
+    HomeAddress 2001:db8:home::100/64;
+}
 
 # Enable Route Optimization
-RouteOptimization enabled;
+DoRouteOptimizationMN enabled;
+DoRouteOptimizationCN enabled;
 
 # Security policies (needed for CN-bound BUs)
-KeyMgmtMobCapability enabled;
+KeyMngMobCapability enabled;
 ```
 
 ```bash
