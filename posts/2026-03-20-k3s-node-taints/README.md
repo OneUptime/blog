@@ -8,7 +8,7 @@ Description: Learn how to configure node taints in K3s to repel workloads from s
 
 ## Introduction
 
-While node labels attract workloads via `nodeSelector` and `nodeAffinity`, **taints** work the opposite way - they repel pods from nodes. A node with a taint will reject all pods that don't explicitly **tolerate** that taint. This is useful for dedicating nodes to specific workloads, protecting control plane nodes, or isolating nodes with special hardware.
+While node labels attract workloads via `nodeSelector` and `nodeAffinity`, **taints** work the opposite way - they repel pods from nodes. A node with a taint will block or discourage pods that don't explicitly **tolerate** that taint, depending on the taint effect. This is useful for dedicating nodes to specific workloads, protecting control plane nodes, or isolating nodes with special hardware.
 
 ## Understanding Taints and Tolerations
 
@@ -18,7 +18,7 @@ A taint has three components:
 - **Effect**: What happens to intolerant pods:
   - `NoSchedule`: Pod won't be scheduled on this node
   - `PreferNoSchedule`: Scheduler tries to avoid the node
-  - `NoExecute`: Pod won't be scheduled AND existing pods are evicted
+  - `NoExecute`: Pod won't be scheduled, and existing non-tolerant pods are evicted
 
 ## Setting Taints at Agent Installation
 
@@ -60,7 +60,7 @@ kubectl taint node worker-01 maintenance=true:NoExecute
 kubectl taint node worker-01 role=batch-processing:PreferNoSchedule
 
 # Remove a taint (append - to the end)
-kubectl taint node worker-01 dedicated=gpu:NoSchedule-
+kubectl taint node worker-01 dedicated:NoSchedule-
 
 # Remove a taint by key only (removes all effects for that key)
 kubectl taint node worker-01 dedicated-
@@ -71,28 +71,30 @@ kubectl describe node worker-01 | grep -A 5 Taints
 
 ## Control Plane Node Taints
 
-K3s server nodes automatically get a taint to prevent workload scheduling by default:
+K3s server nodes are schedulable by default. If you want to keep regular workloads off server nodes, add a taint yourself:
 
 ```bash
-# Check the default server taint
+# Check current taints on the server node
 kubectl describe node <server-node> | grep Taints
 
-# Default taint: node-role.kubernetes.io/control-plane:NoSchedule
+# Add a control-plane taint to keep regular workloads off the server
+kubectl taint node <server-node> node-role.kubernetes.io/control-plane:NoSchedule
 
-# To REMOVE the default control-plane taint (allow workloads on server)
+# Remove the control-plane taint later if needed
 kubectl taint node <server-node> node-role.kubernetes.io/control-plane:NoSchedule-
 ```
 
-Alternatively, configure K3s server to not add the taint:
+Alternatively, add the taint when starting the K3s server:
 
 ```yaml
 # /etc/rancher/k3s/config.yaml on server
-node-taint: []
+node-taint:
+  - "node-role.kubernetes.io/control-plane:NoSchedule"
 ```
 
 ## Adding Tolerations to Pods
 
-Pods must have matching tolerations to be scheduled on tainted nodes:
+For `NoSchedule` and `NoExecute` taints, pods need matching tolerations to land on the node. With `PreferNoSchedule`, tolerations remove the scheduler's preference against that node:
 
 ```yaml
 # pod-with-toleration.yaml
@@ -146,6 +148,7 @@ kind: StatefulSet
 metadata:
   name: postgres
 spec:
+  serviceName: postgres # matching headless Service must already exist
   replicas: 2
   selector:
     matchLabels:
@@ -170,13 +173,13 @@ spec:
 ### Maintenance Mode
 
 ```bash
-# Put a node into maintenance mode (evict all pods)
+# Put a node into maintenance mode (evict non-tolerant pods)
 kubectl taint node worker-01 maintenance=in-progress:NoExecute
 
 # Perform maintenance...
 
 # Remove maintenance taint when done
-kubectl taint node worker-01 maintenance=in-progress:NoExecute-
+kubectl taint node worker-01 maintenance:NoExecute-
 ```
 
 ### Edge Site Isolation
