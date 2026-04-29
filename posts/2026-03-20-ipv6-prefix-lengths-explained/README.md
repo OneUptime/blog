@@ -14,18 +14,18 @@ IPv6 prefix lengths specify how many bits of an address identify the network. Un
 
 ```mermaid
 graph TD
-    IANA["IANA - /23<br/>Allocates to RIRs"] --> RIR["RIR (ARIN, RIPE, etc.) - /24<br/>Allocates to ISPs"]
-    RIR --> ISP["ISP - /32<br/>Minimum ISP allocation"]
-    ISP --> ORG["Organization - /48<br/>Standard enterprise allocation"]
+    IANA["IANA<br/>Allocates large blocks to RIRs"] --> RIR["RIR (ARIN, RIPE, etc.)<br/>Allocates provider and end-site space"]
+    RIR --> ISP["ISP - /32<br/>Common provider allocation"]
+    ISP --> ORG["Organization - /48<br/>Common enterprise allocation"]
     ISP --> CUST["Residential - /56 or /60<br/>Home customer allocation"]
-    ORG --> SITE["Site - /56<br/>Branch delegation"]
+    ORG --> SITE["Site - /56<br/>Possible branch delegation"]
     SITE --> SUBNET["/64 Subnet<br/>Individual LAN segment"]
     SUBNET --> HOST["/128 Host<br/>Single interface"]
 ```
 
 ## /32 - ISP Allocation
 
-A /32 is the minimum allocation given to an ISP or large organization by a Regional Internet Registry (RIR):
+A /32 is a common allocation size for ISPs and other very large networks:
 
 ```text
 Example: 2001:db8::/32
@@ -41,7 +41,7 @@ Typical users:
 
 ## /48 - Enterprise Organization
 
-The standard allocation for a single organization or campus:
+A common end-site allocation for a single organization or campus:
 
 ```text
 Example: 2001:db8:acad::/48
@@ -58,7 +58,7 @@ Typical users:
 
 ## /56 - Residential / Branch
 
-Given to residential customers or delegated to branch offices:
+A common size for residential customers or branch delegation:
 
 ```text
 Example: 2001:db8:1100::/56
@@ -89,7 +89,7 @@ Typical users:
 
 ## /64 - Individual Subnet
 
-The standard prefix for a single network segment. Every subnet that hosts end devices should be a /64:
+The standard prefix for a single network segment. A /64 is required for subnets using SLAAC and is the default choice for most LANs:
 
 ```text
 Example: 2001:db8:acad:1::/64
@@ -97,20 +97,19 @@ Example: 2001:db8:acad:1::/64
 Addresses: 2^64 ≈ 18.4 quintillion
 Interface IDs: 64 bits
 
-Required for:
-- All subnets using SLAAC
+Common uses:
 - VLANs
 - Wi-Fi networks
-- VPC subnets in cloud
+- Many VPC subnets in cloud platforms
 
-Exceptions (do NOT use /64):
-- Point-to-point links (use /127)
-- Loopback addresses (use /128)
+Common exceptions:
+- Router-to-router point-to-point links often use /127
+- Loopback addresses use /128
 ```
 
 ## /127 - Point-to-Point Links
 
-RFC 6164 recommends /127 for router-to-router links:
+RFC 6164 recommends /127 on inter-router point-to-point links:
 
 ```text
 Example:
@@ -118,9 +117,9 @@ Example:
   Router B: 2001:db8:ffff::1/127 (host bit = 1)
 
 Benefits:
-- Prevents subnet-router anycast attacks
-- Conserves address space on links
-- Matches IPv4 /30 or /31 usage
+- Mitigates neighbor-cache exhaustion on ND links
+- Avoids Subnet-Router anycast conflicts
+- Parallels IPv4 /30 or /31 operational practice
 ```
 
 ## /128 - Single Host
@@ -131,13 +130,12 @@ A /128 identifies exactly one IPv6 address:
 Examples:
   ::1/128              → Loopback
   2001:db8::1/128      → Router loopback
-  2001:db8::ff/128     → Anycast address
+  2001:db8::ff/128     → Anycast service address
 
 Used for:
 - Loopback interfaces on routers
 - Host routes in routing tables
 - Anycast service addresses
-- Static assignments to individual servers
 ```
 
 ## Quick Reference
@@ -169,16 +167,16 @@ for name, prefix_len, use_case in reference:
 
 Output:
 ```text
-/32   →       4,294,967,296 /64 subnets  (ISP allocation)
-/40   →          16,777,216 /64 subnets  (ISP to enterprise)
-/48   →              65,536 /64 subnets  (Enterprise org)
-/56   →                 256 /64 subnets  (Residential / branch)
-/60   →                  16 /64 subnets  (Small residential)
-/64   →                   1 /64 subnets  (Individual subnet)
-/127  →                   2 host(s)      (Point-to-point link)
-/128  →                   1 host(s)      (Single host / loopback)
+/32    →   4,294,967,296 /64 subnets  (ISP allocation)
+/40    →      16,777,216 /64 subnets  (ISP to enterprise)
+/48    →          65,536 /64 subnets  (Enterprise org)
+/56    →             256 /64 subnets  (Residential / branch)
+/60    →              16 /64 subnets  (Small residential)
+/64    →               1 /64 subnets  (Individual subnet)
+/127   →               2 host(s)        (Point-to-point link)
+/128   →               1 host(s)        (Single host / loopback)
 ```
 
 ## Conclusion
 
-IPv6 prefix lengths follow a clear hierarchy aligned with who receives the allocation and what they use it for. The /64 boundary is sacrosanct for subnets requiring SLAAC. Point-to-point links use /127 for security reasons. Knowing these conventions makes reading routing tables, firewall logs, and network documentation intuitive once the pattern becomes familiar.
+IPv6 prefix lengths follow common operational conventions aligned with typical use cases. The /64 boundary is sacrosanct for subnets requiring SLAAC. Inter-router point-to-point links often use /127 for operational and security reasons. Knowing these conventions makes reading routing tables, firewall logs, and network documentation intuitive once the pattern becomes familiar.
