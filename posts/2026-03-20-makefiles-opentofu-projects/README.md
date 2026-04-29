@@ -38,7 +38,7 @@ help: ## Show this help message
 
 # ─── Setup ────────────────────────────────────────────────────────────────────
 .PHONY: init
-init: ## Initialize OpenTofu with environment-specific backend
+init: ## Initialize OpenTofu with environment-specific S3 backend settings
 	tofu init \
 	  -backend-config="bucket=my-state-$(ENVIRONMENT)" \
 	  -backend-config="key=$(ENVIRONMENT)/terraform.tfstate" \
@@ -46,7 +46,7 @@ init: ## Initialize OpenTofu with environment-specific backend
 	  -upgrade
 
 .PHONY: init-reconfigure
-init-reconfigure: ## Re-initialize and reconfigure backend
+init-reconfigure: ## Re-initialize and reconfigure S3 backend settings
 	tofu init -reconfigure \
 	  -backend-config="bucket=my-state-$(ENVIRONMENT)" \
 	  -backend-config="key=$(ENVIRONMENT)/terraform.tfstate" \
@@ -54,7 +54,7 @@ init-reconfigure: ## Re-initialize and reconfigure backend
 
 # ─── Core Workflow ────────────────────────────────────────────────────────────
 .PHONY: validate
-validate: ## Validate configuration syntax
+validate: ## Validate configuration syntax and internal consistency
 	tofu validate
 
 .PHONY: fmt
@@ -69,8 +69,7 @@ fmt-check: ## Check formatting without making changes (for CI)
 plan: validate ## Run OpenTofu plan and save to file
 	tofu plan \
 	  -var-file=$(VARS_FILE) \
-	  -out=$(PLAN_FILE) \
-	  -detailed-exitcode
+	  -out=$(PLAN_FILE)
 
 .PHONY: apply
 apply: ## Apply the saved plan
@@ -115,7 +114,6 @@ docs: ## Generate terraform-docs documentation
 clean: ## Remove local plan files and .terraform directories
 	find . -name "*.tfplan" -delete
 	find . -name ".terraform" -type d -exec rm -rf {} + 2>/dev/null || true
-	find . -name ".terraform.lock.hcl" -delete
 ```
 
 ## Running Makefile Targets
@@ -147,6 +145,9 @@ make help
 
 - name: OpenTofu Apply
   run: make apply ENVIRONMENT=staging
+  env:
+    AWS_ACCESS_KEY_ID: ${{ secrets.AWS_ACCESS_KEY_ID }}
+    AWS_SECRET_ACCESS_KEY: ${{ secrets.AWS_SECRET_ACCESS_KEY }}
 ```
 
 ## Summary
