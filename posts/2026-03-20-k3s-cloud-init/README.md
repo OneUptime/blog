@@ -43,6 +43,7 @@ write_files:
     permissions: '0644'
     content: |
       write-kubeconfig-mode: "0644"
+      token: "your-secure-token-here"
       disable:
         - traefik
       kubelet-arg:
@@ -51,13 +52,6 @@ write_files:
       node-label:
         - "provisioned-by=cloud-init"
         - "environment=production"
-
-  # K3s service environment file
-  - path: /etc/systemd/system/k3s.service.env
-    permissions: '0600'
-    content: |
-      # K3s token for node authentication
-      K3S_TOKEN=your-secure-token-here
 
   # Install script
   - path: /usr/local/bin/install-k3s.sh
@@ -68,7 +62,7 @@ write_files:
 
       # Install K3s server
       curl -sfL https://get.k3s.io | \
-        INSTALL_K3S_VERSION=v1.29.3+k3s1 \
+        INSTALL_K3S_CHANNEL=stable \
         sh -
 
       # Wait for K3s to be ready
@@ -88,7 +82,7 @@ runcmd:
   # Install K3s
   - /usr/local/bin/install-k3s.sh
 
-  # Copy kubeconfig for ubuntu user
+  # Copy kubeconfig for the ubuntu user on Ubuntu cloud images
   - mkdir -p /home/ubuntu/.kube
   - cp /etc/rancher/k3s/k3s.yaml /home/ubuntu/.kube/config
   - chown -R ubuntu:ubuntu /home/ubuntu/.kube
@@ -97,7 +91,7 @@ runcmd:
   - echo "K3s server initialization complete" | logger -t cloud-init
 
 # Send notification when done
-final_message: "K3s server initialization complete after $UPTIME seconds"
+final_message: "K3s server initialization complete after $uptime seconds"
 ```
 
 ## Step 2: K3s Agent Node cloud-init
@@ -133,29 +127,24 @@ write_files:
       #!/bin/bash
       set -euo pipefail
 
-      # Wait for the server to be available
-      until curl -sk https://k3s-server-01.example.com:6443/healthz; do
-        echo "Waiting for K3s server..."
-        sleep 10
-      done
-
       # Install K3s agent
       curl -sfL https://get.k3s.io | \
-        INSTALL_K3S_VERSION=v1.29.3+k3s1 \
+        INSTALL_K3S_CHANNEL=stable \
+        INSTALL_K3S_EXEC="agent" \
         sh -
 
-      echo "K3s agent installed and connected!"
+      echo "K3s agent installed and service started!"
 
 runcmd:
   - hostnamectl set-hostname k3s-agent-01
   - /usr/local/bin/install-k3s-agent.sh
 
-final_message: "K3s agent initialization complete after $UPTIME seconds"
+final_message: "K3s agent initialization complete after $uptime seconds"
 ```
 
-## Step 3: Multi-Part cloud-init with Heredoc
+## Step 3: Generate cloud-init with a Heredoc
 
-For more complex setups, use multi-part MIME:
+For more complex setups, you can generate cloud-init from a shell script:
 
 ```bash
 #!/bin/bash
@@ -183,7 +172,7 @@ write_files:
       etcd-snapshot-retention: 5
 
 runcmd:
-  - curl -sfL https://get.k3s.io | INSTALL_K3S_VERSION=v1.29.3+k3s1 sh -
+  - curl -sfL https://get.k3s.io | INSTALL_K3S_CHANNEL=stable sh -
   - systemctl enable k3s
 
 EOF
@@ -197,14 +186,22 @@ Use cloud-init in Terraform:
 
 ```hcl
 # main.tf
+data "aws_ssm_parameter" "ubuntu_2204_ami" {
+  name = "/aws/service/canonical/ubuntu/server/22.04/stable/current/amd64/hvm/ebs-gp2/ami-id"
+}
+
+resource "random_password" "k3s_token" {
+  length  = 48
+  special = false
+}
+
 resource "aws_instance" "k3s_server" {
-  ami           = "ami-0c55b159cbfafe1f0"  # Ubuntu 22.04
+  ami           = data.aws_ssm_parameter.ubuntu_2204_ami.value
   instance_type = "t3.medium"
 
   user_data = templatefile("cloud-init-server.yaml.tpl", {
-    k3s_version  = "v1.29.3+k3s1"
-    k3s_token    = random_password.k3s_token.result
-    cluster_name = "production-k3s"
+    k3s_channel = "stable"
+    k3s_token   = random_password.k3s_token.result
   })
 
   tags = {
@@ -215,12 +212,12 @@ resource "aws_instance" "k3s_server" {
 
 resource "aws_instance" "k3s_agent" {
   count         = 3
-  ami           = "ami-0c55b159cbfafe1f0"
+  ami           = data.aws_ssm_parameter.ubuntu_2204_ami.value
   instance_type = "t3.small"
   depends_on    = [aws_instance.k3s_server]
 
   user_data = templatefile("cloud-init-agent.yaml.tpl", {
-    k3s_version = "v1.29.3+k3s1"
+    k3s_channel = "stable"
     k3s_token   = random_password.k3s_token.result
     server_ip   = aws_instance.k3s_server.private_ip
   })
@@ -237,7 +234,7 @@ write_files:
       cluster-init: true
 
 runcmd:
-  - curl -sfL https://get.k3s.io | INSTALL_K3S_VERSION=${k3s_version} sh -
+  - curl -sfL https://get.k3s.io | INSTALL_K3S_CHANNEL=${k3s_channel} sh -
 ```
 
 ## Step 5: Post-Installation Setup in cloud-init
@@ -248,7 +245,7 @@ runcmd:
 
 runcmd:
   # Install K3s
-  - curl -sfL https://get.k3s.io | INSTALL_K3S_VERSION=v1.29.3+k3s1 sh -
+  - curl -sfL https://get.k3s.io | INSTALL_K3S_CHANNEL=stable sh -
 
   # Wait for K3s to be ready
   - |
@@ -258,20 +255,20 @@ runcmd:
     done
 
   # Install Helm
-  - curl https://raw.githubusercontent.com/helm/helm/main/scripts/get-helm-3 | bash
+  - curl -fsSL https://raw.githubusercontent.com/helm/helm/main/scripts/get-helm-3 | bash
 
   # Install cert-manager
   - |
-    helm repo add jetstack https://charts.jetstack.io
+    helm repo add jetstack https://charts.jetstack.io --force-update
     helm install cert-manager jetstack/cert-manager \
       --namespace cert-manager \
       --create-namespace \
-      --set installCRDs=true
+      --set crds.enabled=true
 
   # Deploy application from Git
   - kubectl apply -k https://github.com/your-org/k3s-apps//overlays/production
 
-  # Export kubeconfig
+  # Export kubeconfig for the ubuntu user on Ubuntu cloud images
   - |
     mkdir -p /home/ubuntu/.kube
     cp /etc/rancher/k3s/k3s.yaml /home/ubuntu/.kube/config
@@ -293,7 +290,7 @@ cat /var/log/cloud-init-output.log
 cloud-init status --wait
 echo "Exit code: $?"
 
-# View all modules that ran
+# View the cloud-init execution timeline
 cloud-init analyze show
 ```
 
