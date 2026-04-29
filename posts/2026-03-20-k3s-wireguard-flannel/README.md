@@ -21,33 +21,29 @@ By default, K3s uses Flannel with VXLAN backend for pod networking, which provid
 WireGuard support is required on all nodes:
 
 ```bash
-# Check if WireGuard is available (kernel 5.6+)
-
-modinfo wireguard 2>/dev/null && echo "WireGuard module available"
-
 # Check kernel version
 uname -r
 
-# For older kernels, install WireGuard
-# Ubuntu 18.04/20.04
-apt-get update && apt-get install -y wireguard wireguard-tools
+# Verify WireGuard support is available
+ip link add dev wg-test type wireguard && ip link delete wg-test
 
-# RHEL/CentOS 8
-dnf install -y elrepo-release
-dnf install -y kmod-wireguard wireguard-tools
+# For older kernels or if WireGuard is not available, install it
+# Ubuntu/Debian
+apt-get update && apt-get install -y wireguard
 
-# Raspberry Pi (Raspbian)
+# RHEL 8
+yum install -y \
+  https://dl.fedoraproject.org/pub/epel/epel-release-latest-8.noarch.rpm \
+  https://www.elrepo.org/elrepo-release-8.el8.elrepo.noarch.rpm
+yum install -y kmod-wireguard wireguard-tools
+
+# CentOS 8
+yum install -y elrepo-release epel-release
+yum install -y kmod-wireguard wireguard-tools
+
+# Raspberry Pi OS / Debian-based systems
 apt-get install -y raspberrypi-kernel-headers
 apt-get install -y wireguard
-
-# Load the WireGuard kernel module
-modprobe wireguard
-
-# Verify the module is loaded
-lsmod | grep wireguard
-
-# Make it persistent
-echo "wireguard" >> /etc/modules-load.d/wireguard.conf
 ```
 
 ## Step 2: Install K3s with WireGuard Backend
@@ -55,14 +51,9 @@ echo "wireguard" >> /etc/modules-load.d/wireguard.conf
 ### Fresh Installation
 
 ```bash
-# Install K3s server with WireGuard Flannel backend
+# Install K3s server with the supported WireGuard Flannel backend
 curl -sfL https://get.k3s.io | \
   INSTALL_K3S_EXEC="--flannel-backend=wireguard-native" \
-  sh -
-
-# For WireGuard with kernel module (older WireGuard versions)
-curl -sfL https://get.k3s.io | \
-  INSTALL_K3S_EXEC="--flannel-backend=wireguard" \
   sh -
 ```
 
@@ -101,13 +92,12 @@ curl -sfL https://get.k3s.io | \
 After installation, verify WireGuard interfaces are created:
 
 ```bash
-# List network interfaces
-ip link show | grep flannel-wg
-# or
-ip link show | grep wireguard
+# List WireGuard interfaces
+wg show interfaces
 
 # View WireGuard interface details
 ip link show flannel-wg
+# For dual-stack or IPv6 clusters, you may also see flannel-wg-v6
 
 # Check WireGuard status (requires wireguard-tools)
 wg show
@@ -135,6 +125,9 @@ kubectl run pod-b --image=busybox --restart=Never \
   --overrides='{"spec":{"nodeName":"node2"}}' \
   -- sleep 3600
 
+# Wait for both Pods to be running
+kubectl wait --for=condition=Ready pod/pod-a pod/pod-b --timeout=120s
+
 # Get Pod A's IP
 POD_A_IP=$(kubectl get pod pod-a -o jsonpath='{.status.podIP}')
 
@@ -142,11 +135,11 @@ POD_A_IP=$(kubectl get pod pod-a -o jsonpath='{.status.podIP}')
 kubectl exec pod-b -- ping -c 4 $POD_A_IP
 
 # Verify WireGuard is encrypting traffic
-# On the host, you should see WireGuard traffic on UDP 51820
-# but NOT plaintext pod traffic
+# On the host's external interface, you should see WireGuard traffic on UDP 51820
+# but not plaintext pod traffic crossing between nodes
 
 # tcpdump to verify
-tcpdump -i eth0 -n port 51820 | head -20
+tcpdump -i any -n udp port 51820 -c 20
 # Should show UDP traffic on 51820 (WireGuard encrypted)
 
 # Clean up
@@ -155,36 +148,36 @@ kubectl delete pod pod-a pod-b
 
 ## Step 6: Configure WireGuard Port (Optional)
 
-The default WireGuard port is 51820. If you need to change it:
+The default Flannel WireGuard port is 51820/UDP for IPv4 and 51821/UDP for IPv6. If you need to change it, use a custom Flannel config file via `--flannel-conf` because K3s does not expose a dedicated flag just for WireGuard listen ports:
 
 ```bash
-# Check current K3s WireGuard port
-ss -ulnp | grep 51820
+# Check current WireGuard listen ports
+ss -ulnp | grep -E '51820|51821'
 
-# K3s doesn't directly expose WireGuard port configuration
-# via config flags - the port is determined by Flannel
+# K3s can override the Flannel config file with --flannel-conf
+# Flannel's wireguard backend supports ListenPort and ListenPortV6
 
 # Ensure port 51820/UDP is open in your firewall
 # UFW
 ufw allow 51820/udp
+# If using IPv6, also open 51821/udp
 
 # firewalld
 firewall-cmd --permanent --add-port=51820/udp
+# If using IPv6, also open 51821/udp
 firewall-cmd --reload
 
 # iptables
 iptables -A INPUT -p udp --dport 51820 -j ACCEPT
 ```
 
-## Step 7: WireGuard NXT (WireGuard Native with Native Routes)
+## Step 7: WireGuard Native
 
-K3s 1.26+ supports `wireguard-native` which uses the kernel's native WireGuard implementation for better performance:
+Current K3s releases use `wireguard-native`. The legacy `wireguard` backend is deprecated and is not available in K3s v1.26 and higher:
 
 ```yaml
 # /etc/rancher/k3s/config.yaml
 flannel-backend: wireguard-native
-# Enable native WireGuard
-flannel-ipv6-masq: false  # If not using IPv6
 ```
 
 ```bash
@@ -203,7 +196,7 @@ wg show all dump
 watch -n 2 'wg show all'
 
 # Check K3s logs for WireGuard-related events
-journalctl -u k3s | grep -i wireguard
+journalctl -u k3s -u k3s-agent | grep -i wireguard
 
 # Check WireGuard peer connections
 wg show all peers
@@ -213,10 +206,11 @@ wg show all peers
 
 **WireGuard interface not created:**
 ```bash
-# Check if WireGuard module is loaded
-lsmod | grep wireguard
-# If missing:
-modprobe wireguard
+# Verify the kernel can create a WireGuard interface
+ip link add dev wg-test type wireguard && ip link delete wg-test
+
+# Check K3s and agent logs
+journalctl -u k3s -u k3s-agent | grep -i wireguard
 ```
 
 **Pods can't communicate across nodes:**
@@ -225,8 +219,11 @@ modprobe wireguard
 wg show
 # 'latest handshake' should be recent
 
-# Check if port 51820 is accessible between nodes
-nc -uzv <other-node-ip> 51820
+# Check that the expected UDP ports are listening
+ss -ulnp | grep -E '51820|51821'
+
+# While generating cross-node traffic, verify encrypted UDP packets are present
+tcpdump -ni any 'udp port 51820 or udp port 51821'
 ```
 
 **Poor performance:**
