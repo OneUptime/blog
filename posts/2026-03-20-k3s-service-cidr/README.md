@@ -8,7 +8,7 @@ Description: Learn how to configure the K3s service CIDR to define the IP range 
 
 ## Introduction
 
-The service CIDR in K3s defines the IP address range assigned to Kubernetes Services of type ClusterIP. Every Service you create in the cluster receives a virtual IP from this range. This IP is not tied to any physical network interface - it's a virtual address managed by kube-proxy (or eBPF in newer K3s). Understanding and correctly configuring the service CIDR is essential for building clusters that integrate cleanly with your existing network.
+The service CIDR in K3s defines the IP address range assigned to Kubernetes Services that receive a ClusterIP. Most Service types build on ClusterIP, but headless Services (`clusterIP: None`) and `ExternalName` Services do not receive one. This IP is not tied to any physical network interface - it's a virtual address implemented by Kubernetes Service networking, typically via kube-proxy in K3s. Understanding and correctly configuring the service CIDR is essential for building clusters that integrate cleanly with your existing network.
 
 ## Default Service CIDR
 
@@ -34,7 +34,7 @@ All `CLUSTER-IP` values come from the service CIDR.
 
 ## Setting a Custom Service CIDR
 
-Must be configured before the first server starts:
+If you want a custom default service CIDR, configure it before the first server starts:
 
 ```bash
 sudo mkdir -p /etc/rancher/k3s
@@ -46,10 +46,10 @@ token: "ClusterToken"
 cluster-cidr: "10.42.0.0/16"
 
 # Service network (different from cluster-cidr)
-service-cidr: "10.43.0.0/16"
+service-cidr: "172.21.0.0/16"
 
 # CoreDNS IP (must be in service-cidr)
-cluster-dns: "10.43.0.10"
+cluster-dns: "172.21.0.10"
 EOF
 
 curl -sfL https://get.k3s.io | sudo sh -
@@ -99,11 +99,9 @@ kubectl get svc kube-dns -n kube-system
 ## Verifying Service CIDR Configuration
 
 ```bash
-# Check the service CIDR from the cluster info
-kubectl cluster-info dump | grep service-cluster-ip-range
-
-# Check kube-controller-manager flags
-ps aux | grep kube-controller | tr ' ' '\n' | grep service
+# On Kubernetes v1.33+, inspect the ServiceCIDR object created from the apiserver setting
+kubectl get servicecidr
+kubectl get servicecidr kubernetes -o yaml
 
 # Verify Services are getting IPs from the expected range
 kubectl get svc --all-namespaces -o json | \
@@ -124,8 +122,7 @@ service-cidr: "10.43.0.0/16"
 cluster-dns: "10.43.0.10"
 
 # Customize NodePort range (default: 30000-32767)
-kube-apiserver-arg:
-  - "service-node-port-range=20000-32767"
+service-node-port-range: "20000-32767"
 ```
 
 ## Service CIDR with ExternalIPs
@@ -154,7 +151,7 @@ spec:
 
 ## Service CIDR Impact on kube-proxy
 
-kube-proxy (or eBPF in newer versions) uses the service CIDR to program iptables rules:
+In clusters using kube-proxy, the service CIDR is used when programming packet-forwarding rules:
 
 ```bash
 # Check iptables rules created for Services
@@ -166,29 +163,28 @@ sudo ipvsadm -L -n | head -20
 
 ## Changing Service CIDR After Installation
 
-Like cluster CIDR, service CIDR cannot be changed on a running cluster. To change it, you must rebuild:
+Changing the primary service CIDR after installation is a disruptive cluster reconfiguration. On Kubernetes v1.33 and later, you can extend the available Service ranges without rebuilding by creating additional `ServiceCIDR` objects:
 
 ```bash
-# Backup workloads (NOT Services - they'll be recreated)
-kubectl get deployments,configmaps,secrets,ingress --all-namespaces -o yaml > workload-backup.yaml
+# Show the current ServiceCIDRs
+kubectl get servicecidr
 
-# Uninstall K3s
-sudo /usr/local/bin/k3s-uninstall.sh
-sudo rm -rf /var/lib/rancher/k3s/
-
-# Reinstall with new service CIDR
-sudo tee /etc/rancher/k3s/config.yaml > /dev/null <<EOF
-cluster-cidr: "10.42.0.0/16"
-service-cidr: "172.21.0.0/16"   # New service CIDR
-cluster-dns: "172.21.0.10"       # Updated to match new service CIDR
-token: "ClusterToken"
+# Add an additional ServiceCIDR
+cat <<EOF | kubectl apply -f -
+apiVersion: networking.k8s.io/v1
+kind: ServiceCIDR
+metadata:
+  name: extra-service-range
+spec:
+  cidrs:
+    - 172.21.0.0/24
 EOF
 
-curl -sfL https://get.k3s.io | sudo sh -
-
-# Re-apply workloads
-kubectl apply -f workload-backup.yaml
+# New Services can now be allocated from the added range
+kubectl get servicecidr extra-service-range
 ```
+
+Completely replacing the primary service CIDR is still a complex manual operation. It requires updating the API server configuration and renumbering existing Services, so for small K3s clusters a rebuild is often simpler.
 
 ## Service CIDR in Multi-Cluster Environments
 
@@ -212,4 +208,4 @@ This ensures that if clusters are ever connected (e.g., via a service mesh), the
 
 ## Conclusion
 
-The K3s service CIDR defines the virtual IP address space for all Kubernetes Services. The default `10.43.0.0/16` is suitable for most deployments, but should be changed if it conflicts with physical network addresses or if you need to integrate multiple K3s clusters. Always configure the `cluster-dns` IP to fall within the service CIDR, and plan the service CIDR alongside the cluster CIDR to ensure all ranges are non-overlapping. Like the cluster CIDR, this setting must be configured before cluster initialization.
+The K3s service CIDR defines the virtual IP address space for Kubernetes Services that use ClusterIP. The default `10.43.0.0/16` is suitable for most deployments, but should be changed if it conflicts with physical network addresses or if you need to integrate multiple K3s clusters. Always configure the `cluster-dns` IP to fall within the service CIDR, and plan the service CIDR alongside the cluster CIDR to ensure all ranges are non-overlapping. Plan the primary service CIDR before cluster initialization, because replacing it later is disruptive.
