@@ -29,7 +29,7 @@ The zone ID is appended to an IPv6 address using the `%` character:
 
 fe80::1%eth0          # Linux/macOS: interface name
 fe80::1%2             # Windows: interface index number
-2001:db8::1%eth0      # Zone IDs can technically be on any address (rare)
+ff02::1%eth0          # Scoped multicast addresses can also use zone IDs
 ```
 
 ## Using Zone IDs in Commands
@@ -56,9 +56,9 @@ curl -6 "http://[fe80::1%25eth0]:8080/"
 scp -6 file.txt user@"[fe80::1%eth0]":/remote/path/
 ```
 
-## Zone IDs in URLs (RFC 6874)
+## Zone IDs in URLs
 
-When embedding a link-local address in a URL, the `%` must be percent-encoded as `%25`:
+When a tool or API accepts a zone ID inside a bracketed IPv6 literal URL, it typically expects the `%` to be percent-encoded as `%25`. This RFC 6874-style syntax remains common in tools, but RFC 6874 was obsoleted by RFC 9844 in 2025, so support is not universal:
 
 ```text
 # Correct URL format with zone ID
@@ -75,7 +75,8 @@ import urllib.parse
 
 def ipv6_url_with_zone(address, zone_id, port=None, path="/"):
     # Zone ID % must be encoded as %25 in URL
-    encoded_addr = f"{address}%25{zone_id}"
+    encoded_zone = urllib.parse.quote(zone_id, safe="")
+    encoded_addr = f"{address}%25{encoded_zone}"
     if port:
         host = f"[{encoded_addr}]:{port}"
     else:
@@ -95,14 +96,13 @@ ip -6 addr show
 # macOS: list interfaces
 ifconfig | grep -E "^[a-z]|inet6"
 
-# Show only link-local addresses with their zones
-ip -6 addr show | grep "scope link"
+# Show only link-local addresses with their interfaces
+ip -o -6 addr show scope link
 # Output example:
-# inet6 fe80::a00:27ff:fe4e:66a1/64 scope link
-#    valid_lft forever preferred_lft forever
+# 2: eth0    inet6 fe80::a00:27ff:fe4e:66a1/64 scope link
 
-# Get the interface name for a link-local address
-ip -6 addr show | grep "fe80::" | awk '{print $NF, $2}'
+# Get interface names with link-local addresses
+ip -o -6 addr show scope link | awk '{print $2, $4}'
 ```
 
 ## Zone IDs in Application Code
@@ -128,7 +128,7 @@ sock.connect((addr, 80, 0, scope_id))
 
 ## Common Pitfalls
 
-1. **Forgetting the zone ID for link-local**: `ping6 fe80::1` without a zone ID will fail with "No route to host" if multiple interfaces exist.
+1. **Forgetting the zone ID for link-local**: `ping6 fe80::1` without a zone ID will typically fail or be ambiguous when the interface is not otherwise implied.
 2. **Using % directly in URLs**: Always encode as `%25` in URL contexts.
 3. **Windows vs Linux**: Windows uses numeric interface indices; Linux and macOS use interface names.
 
