@@ -4,11 +4,11 @@ Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
 Tags: IPv4, Networking, Loopback, Localhost, Network Diagnostics
 
-Description: The loopback address 127.0.0.1 is a virtual interface that allows a host to communicate with itself without sending traffic onto any physical network, used extensively for local service testing...
+Description: The loopback address 127.0.0.1 is assigned to the loopback interface, a virtual interface that allows a host to communicate with itself without sending traffic onto any physical network, used extensively for local service testing...
 
 ## What Is the Loopback Interface?
 
-The entire `127.0.0.0/8` block is reserved for loopback. On Linux and macOS the loopback interface is named `lo`; on Windows it is the Microsoft Loopback Adapter. The most commonly used address is `127.0.0.1`, also known as `localhost`.
+The entire `127.0.0.0/8` block is reserved for loopback. On Linux the loopback interface is named `lo`; on macOS it is `lo0`. The most commonly used address is `127.0.0.1`, and the hostname `localhost` typically resolves to it.
 
 ```bash
 # View the loopback interface on Linux
@@ -28,7 +28,7 @@ flowchart LR
     A[Application sends to 127.0.0.1] --> B[Kernel IP stack]
     B --> C[lo virtual interface]
     C --> B
-    B --> D[Same Application receives data]
+    B --> D[Local process receives data]
 ```
 
 ## Using Loopback for Local Service Testing
@@ -63,7 +63,7 @@ client.close()
 
 ## Loopback in /etc/hosts
 
-By convention, `localhost` maps to `127.0.0.1`:
+By convention, `localhost` maps to loopback addresses such as `127.0.0.1` and `::1`:
 
 ```text
 # /etc/hosts
@@ -91,5 +91,5 @@ Services bound to loopback are not reachable from other hosts. However, processe
 
 - `127.0.0.0/8` is the loopback range; `127.0.0.1` is the standard address.
 - Loopback traffic never leaves the kernel; no physical transmission occurs.
-- Use loopback to test services locally without firewall or routing concerns.
+- Use loopback to test services locally without involving any physical network.
 - Binding services to `127.0.0.1` (not `0.0.0.0`) limits access to the local machine.
