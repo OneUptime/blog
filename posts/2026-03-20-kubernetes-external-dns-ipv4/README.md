@@ -4,17 +4,17 @@ Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
 Tags: Kubernetes, ExternalDNS, DNS, IPv4, Route53, Cloud, Automation
 
-Description: Deploy ExternalDNS in Kubernetes to automatically create and manage DNS A records for LoadBalancer and Ingress Services based on IPv4 addresses.
+Description: Deploy ExternalDNS in Kubernetes to automatically create and manage Route 53 DNS records for LoadBalancer Services and Ingresses based on their published external targets.
 
 ## Introduction
 
-ExternalDNS is a Kubernetes controller that watches Services and Ingresses and automatically creates DNS records in external DNS providers (Route 53, Cloudflare, Google Cloud DNS, etc.). Instead of manually creating DNS A records when you deploy an app, ExternalDNS handles it automatically based on annotations.
+ExternalDNS is a Kubernetes controller that watches Services and Ingresses and automatically creates DNS records in external DNS providers (Route 53, Cloudflare, Google Cloud DNS, etc.). Instead of manually creating DNS records when you deploy an app, ExternalDNS handles it automatically based on Service annotations, Ingress hostnames, and the resources' published external targets.
 
 ## How ExternalDNS Works
 
-1. You annotate a Service or Ingress with a hostname
-2. ExternalDNS sees the annotation and the Service's external IPv4 address
-3. ExternalDNS creates an A record in your DNS provider
+1. You define a hostname on a Service or Ingress
+2. ExternalDNS sees the hostname and the resource's published external target (for example, a load balancer IP or hostname)
+3. ExternalDNS creates the corresponding DNS record in your DNS provider
 
 ## Deploying ExternalDNS with Route 53
 
@@ -35,7 +35,8 @@ ExternalDNS is a Kubernetes controller that watches Services and Ingresses and a
       "Effect": "Allow",
       "Action": [
         "route53:ListHostedZones",
-        "route53:ListResourceRecordSets"
+        "route53:ListResourceRecordSets",
+        "route53:ListTagsForResource"
       ],
       "Resource": "*"
     }
@@ -100,12 +101,25 @@ rules:
     verbs: ["get", "watch", "list"]
   - apiGroups: [""]
     resources: ["nodes"]
-    verbs: ["list", "watch"]
+    verbs: ["get", "list", "watch"]
+---
+apiVersion: rbac.authorization.k8s.io/v1
+kind: ClusterRoleBinding
+metadata:
+  name: external-dns-viewer
+roleRef:
+  apiGroup: rbac.authorization.k8s.io
+  kind: ClusterRole
+  name: external-dns
+subjects:
+  - kind: ServiceAccount
+    name: external-dns
+    namespace: kube-system
 ```
 
 ## Creating DNS Records via Service Annotations
 
-Annotate a LoadBalancer Service to automatically create a DNS A record:
+Annotate a LoadBalancer Service to automatically create a DNS record in Route 53:
 
 ```yaml
 apiVersion: v1
@@ -113,7 +127,7 @@ kind: Service
 metadata:
   name: web-app
   annotations:
-    # ExternalDNS will create an A record: web.example.com → LB IPv4
+    # On Route 53, ExternalDNS will typically create an A ALIAS for web.example.com
     external-dns.alpha.kubernetes.io/hostname: web.example.com
     external-dns.alpha.kubernetes.io/ttl: "300"
 spec:
@@ -126,6 +140,8 @@ spec:
 ```
 
 ## Creating DNS Records via Ingress Annotations
+
+This requires an ingress controller to populate `status.loadBalancer.ingress`. If your cluster does not define a default `IngressClass`, also set `spec.ingressClassName` for your controller.
 
 ```yaml
 apiVersion: networking.k8s.io/v1
@@ -157,7 +173,7 @@ kubectl logs -n kube-system deployment/external-dns
 # Verify the DNS record was created in Route 53
 aws route53 list-resource-record-sets \
   --hosted-zone-id Z1234567890 \
-  --query "ResourceRecordSets[?Name=='web.example.com.']"
+  --query "ResourceRecordSets[?Name == 'web.example.com.']|[?Type == 'A']"
 
 # Test DNS resolution
 nslookup web.example.com
