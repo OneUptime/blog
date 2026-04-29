@@ -12,11 +12,11 @@ K3s is a lightweight, certified Kubernetes distribution from Rancher designed fo
 
 ## System Requirements
 
-- **OS**: Linux (Ubuntu 20.04+, Debian 11+, CentOS 7+, RHEL 7+)
-- **CPU**: 1 vCPU minimum (2+ recommended)
-- **RAM**: 512 MB minimum (1 GB+ recommended)
-- **Disk**: 1 GB minimum for K3s components
-- **Architecture**: x86_64, ARM64, or ARMv7
+- **OS**: Most modern Linux distributions
+- **CPU**: 2 CPU cores minimum for a server node
+- **RAM**: 2 GB minimum for a server node
+- **Disk**: SSD recommended; space requirements depend on your workloads and datastore size
+- **Architecture**: x86_64, arm64/aarch64, or armhf
 
 ## Step 1: Run the K3s Install Script
 
@@ -39,7 +39,7 @@ curl -sfL https://get.k3s.io | sudo sh -
 ```bash
 # Install a specific K3s version
 curl -sfL https://get.k3s.io | \
-    INSTALL_K3S_VERSION="v1.28.7+k3s1" \
+    INSTALL_K3S_VERSION="v1.35.4+k3s1" \
     sudo sh -
 ```
 
@@ -116,9 +116,10 @@ kubectl expose deployment nginx --port=80 --type=NodePort
 # Get the assigned NodePort
 kubectl get svc nginx
 
-# Test the application
+# Test the application via NodeIP:NodePort
 NODE_PORT=$(kubectl get svc nginx -o jsonpath='{.spec.ports[0].nodePort}')
-curl http://localhost:$NODE_PORT
+NODE_IP=$(kubectl get node -o jsonpath='{.items[0].status.addresses[?(@.type=="InternalIP")].address}')
+curl http://$NODE_IP:$NODE_PORT
 ```
 
 ## Step 6: Deploy with an Ingress
@@ -151,7 +152,8 @@ spec:
 kubectl apply -f nginx-ingress.yaml
 
 # Access via the hostname (add to /etc/hosts if testing locally)
-echo "127.0.0.1 nginx.example.com" | sudo tee -a /etc/hosts
+NODE_IP=$(kubectl get node -o jsonpath='{.items[0].status.addresses[?(@.type=="InternalIP")].address}')
+echo "$NODE_IP nginx.example.com" | sudo tee -a /etc/hosts
 curl http://nginx.example.com
 ```
 
@@ -160,10 +162,11 @@ curl http://nginx.example.com
 ### Configure a Custom CIDR
 
 ```bash
-# Install K3s with a custom pod CIDR
+# Install K3s with custom pod and service CIDRs
 curl -sfL https://get.k3s.io | sudo sh -s - \
     --cluster-cidr=10.244.0.0/16 \
-    --service-cidr=10.245.0.0/16
+    --service-cidr=10.245.0.0/16 \
+    --cluster-dns=10.245.0.10
 ```
 
 ### Configure with a Config File
@@ -187,17 +190,54 @@ EOF
 curl -sfL https://get.k3s.io | sudo sh -
 ```
 
-## Accessing the K3s Dashboard
+## Accessing the Kubernetes Dashboard
 
 ```bash
-# Deploy the Kubernetes Dashboard
-kubectl apply -f https://raw.githubusercontent.com/kubernetes/dashboard/v2.7.0/aio/deploy/recommended.yaml
+# Create the dashboard namespace
+kubectl create namespace kubernetes-dashboard --dry-run=client -o yaml | kubectl apply -f -
+
+# Deploy the Kubernetes Dashboard with K3s's Helm controller
+kubectl apply -f - <<'EOF'
+apiVersion: helm.cattle.io/v1
+kind: HelmChart
+metadata:
+  name: kubernetes-dashboard
+  namespace: kube-system
+spec:
+  repo: https://kubernetes.github.io/dashboard/
+  chart: kubernetes-dashboard
+  targetNamespace: kubernetes-dashboard
+  createNamespace: true
+EOF
+
+# Create an admin ServiceAccount and ClusterRoleBinding
+kubectl apply -f - <<'EOF'
+apiVersion: v1
+kind: ServiceAccount
+metadata:
+  name: admin-user
+  namespace: kubernetes-dashboard
+---
+apiVersion: rbac.authorization.k8s.io/v1
+kind: ClusterRoleBinding
+metadata:
+  name: admin-user
+roleRef:
+  apiGroup: rbac.authorization.k8s.io
+  kind: ClusterRole
+  name: cluster-admin
+subjects:
+  - kind: ServiceAccount
+    name: admin-user
+    namespace: kubernetes-dashboard
+EOF
 
 # Create an admin token
 kubectl -n kubernetes-dashboard create token admin-user
 
 # Port-forward to the dashboard
-kubectl -n kubernetes-dashboard port-forward svc/kubernetes-dashboard 8443:443 &
+until kubectl -n kubernetes-dashboard get svc kubernetes-dashboard-kong-proxy >/dev/null 2>&1; do sleep 2; done
+kubectl -n kubernetes-dashboard port-forward svc/kubernetes-dashboard-kong-proxy 8443:443 &
 
 # Open: https://localhost:8443
 ```
