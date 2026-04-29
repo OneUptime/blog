@@ -99,9 +99,9 @@ Set up IPv6 transition tunnels including 6to4 and 6in4 on MikroTik RouterOS for 
 ## Winbox GUI Path
 
 For GUI configuration:
-- IPv6 Addresses: **IP → IPv6 Addresses**
-- IPv6 Routes: **IP → IPv6 Routes**  
-- IPv6 Firewall: **IP → Firewall → IPv6** (or **IPv6 → Firewall**)
+- IPv6 Addresses: **IPv6 → Addresses**
+- IPv6 Routes: **IPv6 → Routes**
+- IPv6 Firewall: **IPv6 → Firewall**
 - ND Settings: **IPv6 → ND**
 
 ## Monitoring Traffic
