@@ -26,20 +26,17 @@ etcd uses Raft internally. The peer URLs must use IPv6 bracket notation:
 
 ```bash
 # Start etcd with IPv6 Raft peers
+# Peer URLs are where other Raft members connect to this node.
+# Client URLs are where clients connect to this node.
 
 etcd \
-  --name node1 \
-  # Peer URLs - where other Raft members connect to this node
-  --listen-peer-urls "https://[2001:db8::1]:2380" \
-  --initial-advertise-peer-urls "https://[2001:db8::1]:2380" \
-  # Client URLs
-  --listen-client-urls "https://[2001:db8::1]:2379" \
-  --advertise-client-urls "https://[2001:db8::1]:2379" \
-  # Initial cluster configuration
-  --initial-cluster "node1=https://[2001:db8::1]:2380,\
-                     node2=https://[2001:db8::2]:2380,\
-                     node3=https://[2001:db8::3]:2380" \
-  --initial-cluster-state new \
+  --name=node1 \
+  --listen-peer-urls="https://[2001:db8::1]:2380" \
+  --initial-advertise-peer-urls="https://[2001:db8::1]:2380" \
+  --listen-client-urls="https://[2001:db8::1]:2379" \
+  --advertise-client-urls="https://[2001:db8::1]:2379" \
+  --initial-cluster="node1=https://[2001:db8::1]:2380,node2=https://[2001:db8::2]:2380,node3=https://[2001:db8::3]:2380" \
+  --initial-cluster-state=new \
   --cert-file=/etc/etcd/server.crt \
   --key-file=/etc/etcd/server.key \
   --peer-cert-file=/etc/etcd/peer.crt \
@@ -68,7 +65,14 @@ storage "raft" {
   }
 }
 
-# Cluster address for Raft replication traffic
+listener "tcp" {
+  address         = "[2001:db8::1]:8200"
+  cluster_address = "[2001:db8::1]:8201"
+  tls_cert_file   = "/etc/vault.d/certs/server.crt"
+  tls_key_file    = "/etc/vault.d/certs/server.key"
+}
+
+api_addr     = "https://[2001:db8::1]:8200"
 cluster_addr = "https://[2001:db8::1]:8201"
 ```
 
@@ -81,12 +85,34 @@ package main
 
 import (
     "fmt"
+    "io"
     "net"
     "time"
 
     "github.com/hashicorp/raft"
-    raftboltdb "github.com/hashicorp/raft-boltdb"
+    raftboltdb "github.com/hashicorp/raft-boltdb/v2"
 )
+
+type fsm struct{}
+
+func (f *fsm) Apply(*raft.Log) interface{} { return nil }
+
+func (f *fsm) Snapshot() (raft.FSMSnapshot, error) {
+    return &fsmSnapshot{}, nil
+}
+
+func (f *fsm) Restore(snapshot io.ReadCloser) error {
+    defer snapshot.Close()
+    return nil
+}
+
+type fsmSnapshot struct{}
+
+func (s *fsmSnapshot) Persist(sink raft.SnapshotSink) error {
+    return sink.Close()
+}
+
+func (s *fsmSnapshot) Release() {}
 
 func setupRaftNode(nodeAddr string, peers []string) (*raft.Raft, error) {
     // Configuration
@@ -95,8 +121,7 @@ func setupRaftNode(nodeAddr string, peers []string) (*raft.Raft, error) {
     config.HeartbeatTimeout = 500 * time.Millisecond
     config.ElectionTimeout = 500 * time.Millisecond
 
-    // Create TCP transport with IPv6 address
-    // ParseAddr handles both IPv4 and IPv6 properly
+    // ResolveTCPAddr handles bracketed IPv6 host:port values correctly.
     addr, err := net.ResolveTCPAddr("tcp6", nodeAddr)
     if err != nil {
         return nil, fmt.Errorf("failed to resolve %s: %w", nodeAddr, err)
@@ -130,7 +155,7 @@ func setupRaftNode(nodeAddr string, peers []string) (*raft.Raft, error) {
         return nil, err
     }
 
-    // Bootstrap cluster with IPv6 peer addresses
+    // Bootstrap new nodes with the full voter configuration.
     configuration := raft.Configuration{
         Servers: make([]raft.Server, len(peers)),
     }
@@ -140,7 +165,9 @@ func setupRaftNode(nodeAddr string, peers []string) (*raft.Raft, error) {
             Address: raft.ServerAddress(peer),
         }
     }
-    r.BootstrapCluster(configuration)
+    if err := r.BootstrapCluster(configuration).Error(); err != nil && err != raft.ErrCantBootstrap {
+        return nil, err
+    }
 
     return r, nil
 }
@@ -161,10 +188,11 @@ cockroach start \
   --listen-addr=[2001:db8::1]:26257 \
   --join=[2001:db8::1]:26257,[2001:db8::2]:26257,[2001:db8::3]:26257
 
-# Check Raft status for a range
-cockroach debug raft-log \
+# Inspect range replicas and leaseholders
+cockroach sql \
   --host=[2001:db8::1]:26257 \
-  --insecure
+  --insecure \
+  --execute="SHOW RANGES FROM DATABASE system WITH DETAILS;"
 ```
 
 ## Monitoring Raft Health over IPv6
@@ -172,17 +200,24 @@ cockroach debug raft-log \
 ```bash
 # etcd Raft status
 etcdctl --endpoints="https://[2001:db8::1]:2379" \
+  --cacert=/etc/etcd/ca.crt \
   endpoint status --write-out=table
 
-# Check Raft leader
+# Check endpoint health
 etcdctl --endpoints="https://[2001:db8::1]:2379" \
-  endpoint status | grep "is leader"
+  --cacert=/etc/etcd/ca.crt \
+  endpoint health
 
 # Vault Raft status
+VAULT_ADDR="https://[2001:db8::1]:8200" \
+VAULT_CACERT="/etc/vault.d/certs/ca.crt" \
 vault operator raft list-peers
 
-# CockroachDB Raft status
-curl -6 http://[2001:db8::1]:8080/_status/raft | python3 -m json.tool
+# CockroachDB node and range status
+cockroach node status 1 \
+  --host=[2001:db8::1]:26257 \
+  --insecure \
+  --ranges
 ```
 
-Raft consensus communication over IPv6 is fully supported by major distributed systems; the key requirement is using bracket notation for IPv6 addresses in peer URLs and ensuring TLS certificates include IPv6 SANs for encrypted peer communication.
+Raft consensus communication over IPv6 is fully supported by major distributed systems; the key requirement is using bracket notation for IPv6 addresses in peer URLs and ensuring TLS certificates include the IPv6 addresses in their IP SANs for encrypted peer communication.
