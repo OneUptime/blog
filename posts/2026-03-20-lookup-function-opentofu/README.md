@@ -18,7 +18,7 @@ Description: Learn how to use the lookup function in OpenTofu to retrieve values
 lookup(map, key, default)
 ```
 
-If `key` exists in `map`, its value is returned. If not, `default` is returned. (The default argument was optional in Terraform but is required in the latest versions - always provide it.)
+If `key` exists in `map`, its value is returned. If not, `default` is returned. (For historical reasons, the `default` argument is optional, but omitting it is deprecated, so you should provide it.)
 
 ---
 
@@ -128,14 +128,16 @@ variable "config" {
   default = { key1 = "value1" }
 }
 
-# Direct access - errors if key missing
+locals {
+  # Direct access - errors if key missing
 
-value1 = var.config["key1"]     # "value1"
-# var.config["key2"]            # Error: key not found
+  value1 = var.config["key1"]     # "value1"
+  # value2 = var.config["key2"]   # Error: key not found
 
-# lookup - returns default if key missing
-value1 = lookup(var.config, "key1", "default")  # "value1"
-value2 = lookup(var.config, "key2", "default")  # "default" (no error)
+  # lookup - returns default if key missing
+  value1_lookup = lookup(var.config, "key1", "default")  # "value1"
+  value2_lookup = lookup(var.config, "key2", "default")  # "default" (no error)
+}
 ```
 
 ---
