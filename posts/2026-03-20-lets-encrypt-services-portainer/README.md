@@ -17,7 +17,6 @@ Traefik is the most popular automatic certificate manager for Docker:
 ```yaml
 # traefik-letsencrypt-stack.yml
 
-version: "3.8"
 services:
   traefik:
     image: traefik:v3.0
@@ -73,7 +72,6 @@ Nginx Proxy Manager provides a web UI for managing certificates and proxy rules:
 
 ```yaml
 # nginx-proxy-manager-stack.yml
-version: "3.8"
 services:
   npm:
     image: jc21/nginx-proxy-manager:latest
@@ -93,14 +91,14 @@ volumes:
 
 After deploying:
 1. Access NPM at `http://host:81`
-2. Default credentials: `admin@example.com` / `changeme`
+2. Complete the initial admin user setup in the web UI
 3. Add a **Proxy Host** for each service
-4. Enable **SSL Certificate** → **Request a new SSL Certificate**
+4. In the **SSL** tab, select **Request a new SSL Certificate**
 5. Enable **Force SSL** to redirect HTTP to HTTPS
 
 ## Method 3: Certbot with Nginx
 
-For manual certificate management:
+For manual certificate management after the initial certificate has been issued:
 
 ```yaml
 services:
@@ -119,13 +117,15 @@ services:
     volumes:
       - certbot-certs:/etc/letsencrypt
       - certbot-www:/var/www/certbot
-    # Renew certificates on container startup
+    # Periodically renew previously-issued certificates
     entrypoint: "/bin/sh -c 'trap exit TERM; while :; do certbot renew; sleep 12h & wait $${!}; done;'"
 
 volumes:
   certbot-certs:
   certbot-www:
 ```
+
+Before the renewal loop can work, obtain the first certificate with `certbot certonly --webroot -w /var/www/certbot -d example.com` and configure Nginx to serve `/.well-known/acme-challenge/` from `/var/www/certbot`.
 
 ## DNS Challenge for Wildcard Certificates
 
