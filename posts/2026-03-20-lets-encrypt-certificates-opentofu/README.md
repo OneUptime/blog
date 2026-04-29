@@ -18,7 +18,7 @@ graph LR
     B --> C[DNS-01 Challenge<br/>Create TXT record]
     C --> D[Let's Encrypt Validates]
     D --> E[Certificate Issued<br/>90-day validity]
-    E --> F[Auto-renew<br/>30 days before expiry]
+    E --> F[Renew on Next Apply<br/>within 30 days of expiry]
 ```
 
 ## ACME Provider Setup
@@ -76,7 +76,7 @@ resource "acme_certificate" "main" {
     provider = "route53"
     config = {
       AWS_HOSTED_ZONE_ID = aws_route53_zone.main.zone_id
-      # Uses default AWS credentials from provider
+      # Uses AWS SDK credentials (env vars, profile, or IAM role)
     }
   }
 
@@ -99,7 +99,7 @@ resource "acme_certificate" "cloudflare" {
   dns_challenge {
     provider = "cloudflare"
     config = {
-      CF_API_TOKEN = var.cloudflare_api_token
+      CF_DNS_API_TOKEN = var.cloudflare_api_token
     }
   }
 
@@ -127,7 +127,7 @@ resource "aws_secretsmanager_secret_version" "cert" {
 
 # Import into ACM for ALB use
 resource "aws_acm_certificate" "imported" {
-  certificate       = acme_certificate.main.certificate_pem
+  certificate_body  = acme_certificate.main.certificate_pem
   private_key       = acme_certificate.main.private_key_pem
   certificate_chain = acme_certificate.main.issuer_pem
 
@@ -180,5 +180,5 @@ output "certificate_expiry" {
 - Always test with the Let's Encrypt staging server (`acme-staging-v02`) before switching to production - staging has much higher rate limits and prevents hitting production rate limits during development.
 - Use wildcard certificates (`*.example.com`) to cover all subdomains with a single certificate - wildcard certs require DNS-01 challenge (not HTTP-01), which is why the DNS integration is important.
 - Set `min_days_remaining = 30` - Let's Encrypt certificates are valid for 90 days, so renewing at 30 days gives a comfortable buffer.
-- Store the full chain (`certificate_pem + issuer_pem`) when importing to ACM or Kubernetes - incomplete chains cause TLS warnings in some clients.
+- Store the full chain (`certificate_pem + issuer_pem`) for Kubernetes or PEM bundles, but import into ACM using `certificate_body = certificate_pem` and `certificate_chain = issuer_pem`.
 - Run `tofu apply` on a schedule (e.g., weekly via CI/CD) so certificate renewal is detected and applied automatically before expiry.
