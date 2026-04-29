@@ -8,7 +8,7 @@ Description: Create IPv6 TCP and UDP sockets in Node.js using the net and dgram 
 
 ## Introduction
 
-Node.js supports IPv6 sockets through the built-in `net` module (TCP) and `dgram` module (UDP). IPv6 sockets are created by specifying `'::'` as the bind address or `'udp6'`/`'tcp6'` type strings. This guide covers creating IPv6-specific and dual-stack network servers and clients.
+Node.js supports IPv6 sockets through the built-in `net` module (TCP) and `dgram` module (UDP). IPv6 sockets are created by specifying `'::'` as the bind address, using `'udp6'` for UDP sockets, or setting `family: 6` for TCP client connections. This guide covers creating IPv6-specific and dual-stack network servers and clients.
 
 ## IPv6 TCP Server
 
@@ -40,8 +40,8 @@ const server = net.createServer((socket) => {
 });
 
 // Listen on IPv6 wildcard address '::' port 8080
-// Node.js will use IPV6_V6ONLY=false by default on some systems,
-// allowing IPv4 connections as IPv4-mapped IPv6
+// By default, ipv6Only is false, so on platforms with dual-stack support
+// IPv4 clients can appear as IPv4-mapped IPv6 addresses
 server.listen(8080, '::', () => {
   const addr = server.address();
   console.log(`IPv6 TCP server on [${addr.address}]:${addr.port}`);
@@ -126,7 +126,7 @@ server.on('listening', () => {
 });
 
 // Bind to IPv6 wildcard
-server.bind(5353, '::');
+server.bind(41234, '::');
 ```
 
 ## IPv6 UDP Client
@@ -138,9 +138,14 @@ function sendUDPv6(message, host, port) {
   return new Promise((resolve, reject) => {
     const client = dgram.createSocket('udp6');
     const buf = Buffer.from(message);
+    const timeout = setTimeout(() => {
+      client.close();
+      reject(new Error('UDP timeout'));
+    }, 5000);
 
     client.send(buf, port, host, (err) => {
       if (err) {
+        clearTimeout(timeout);
         client.close();
         reject(err);
         return;
@@ -148,22 +153,23 @@ function sendUDPv6(message, host, port) {
       console.log(`Sent "${message}" to [${host}]:${port}`);
     });
 
+    client.on('error', (err) => {
+      clearTimeout(timeout);
+      client.close();
+      reject(err);
+    });
+
     client.on('message', (reply, rinfo) => {
+      clearTimeout(timeout);
       console.log(`Reply from [${rinfo.address}]: ${reply}`);
       client.close();
       resolve(reply.toString());
     });
-
-    // Timeout
-    setTimeout(() => {
-      client.close();
-      reject(new Error('UDP timeout'));
-    }, 5000);
   });
 }
 
 // Send UDP datagram to IPv6 server
-sendUDPv6('Hello UDP IPv6', '::1', 5353)
+sendUDPv6('Hello UDP IPv6', '::1', 41234)
   .then(reply => console.log('Got:', reply))
   .catch(err => console.error('Error:', err.message));
 ```
@@ -174,7 +180,7 @@ sendUDPv6('Hello UDP IPv6', '::1', 5353)
 const net = require('net');
 
 // Creates a server that accepts both IPv4 and IPv6
-// Behavior depends on OS ipv6only socket option
+// when the OS supports dual-stack sockets
 const server = net.createServer((socket) => {
   let clientIP = socket.remoteAddress;
   const family = socket.remoteFamily;
@@ -189,8 +195,7 @@ const server = net.createServer((socket) => {
   socket.end();
 });
 
-// On Linux, [::]:port with default settings accepts both IPv4 and IPv6
-// (IPV6_V6ONLY is 0 by default)
+// With ipv6Only: false, binding to :: keeps dual-stack support enabled
 server.listen({ port: 8080, host: '::', ipv6Only: false }, () => {
   console.log('Dual-stack server on [::]:8080');
 });
