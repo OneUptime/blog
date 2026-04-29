@@ -4,36 +4,30 @@ Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
 Tags: OpenTofu, KICS, Security Scanning, Infrastructure as Code, IaC, DevSecOps
 
-Description: Learn how to use KICS to perform comprehensive security scans of OpenTofu configurations.
+Description: Learn how to use KICS to perform comprehensive security scans of OpenTofu configurations stored as `.tf` files or exported as plan JSON.
 
 ## Introduction
 
-Learn how to use KICS to perform comprehensive security scans of OpenTofu configurations. This guide provides step-by-step instructions with practical examples to help you implement this in your infrastructure workflow.
+Learn how to use KICS to perform comprehensive security scans of OpenTofu configurations. KICS scans Terraform-compatible HCL directly, so this workflow applies to OpenTofu configurations stored in `.tf` files and to OpenTofu plan files exported to JSON. This guide provides step-by-step instructions with practical examples to help you implement this in your infrastructure workflow.
 
 ## Prerequisites
 
-- OpenTofu v1.6+ installed
+- KICS installed or available through Docker
+- OpenTofu v1.6+ installed if you want to generate an OpenTofu plan JSON
 - Basic knowledge of OpenTofu concepts
-- Relevant cloud credentials configured
+- Cloud credentials configured if you want to generate a real OpenTofu plan before scanning
 
 ## Step 1: Set Up the Environment
 
 ```bash
-# Verify OpenTofu installation
-
+# Verify OpenTofu installation if you plan to generate a plan JSON
 tofu version
 
-# Set up required environment variables
-export TF_LOG=INFO  # Enable logging
-export TF_INPUT=false  # Disable interactive input
+# Pull the latest KICS image
+docker pull checkmarx/kics:latest
 
-# Configure cloud credentials
-# AWS
-export AWS_PROFILE=your-profile
-# Azure
-export ARM_SUBSCRIPTION_ID=your-subscription-id
-# GCP
-export GOOGLE_APPLICATION_CREDENTIALS=/path/to/service-account.json
+# Create a directory for scan reports
+mkdir -p results
 ```
 
 ## Step 2: Configure Your OpenTofu Project
@@ -49,15 +43,11 @@ terraform {
       version = "~> 5.0"
     }
   }
+}
 
-  # Remote state backend for team collaboration
-  backend "s3" {
-    bucket         = "my-opentofu-state"
-    key            = "production/terraform.tfstate"
-    region         = "us-east-1"
-    dynamodb_table = "terraform-locks"
-    encrypt        = true
-  }
+variable "aws_region" {
+  type    = string
+  default = "us-east-1"
 }
 
 provider "aws" {
@@ -66,9 +56,21 @@ provider "aws" {
   default_tags {
     tags = {
       ManagedBy   = "OpenTofu"
-      Environment = var.environment
-      Repository  = var.repository_url
+      Environment = "production"
     }
+  }
+}
+
+resource "aws_security_group" "web" {
+  name        = "web-sg"
+  description = "Example security group"
+
+  ingress {
+    description = "SSH from anywhere"
+    from_port   = 22
+    to_port     = 22
+    protocol    = "tcp"
+    cidr_blocks = ["0.0.0.0/0"]
   }
 }
 ```
@@ -76,24 +78,31 @@ provider "aws" {
 ## Step 3: Implement the Core Feature
 
 ```bash
-# Initialize the project
-tofu init -backend-config=backend.tfvars
+# Scan OpenTofu source files stored as .tf
+docker run -t -v "$PWD":/path checkmarx/kics:latest scan \
+  -p /path \
+  -t Terraform \
+  --report-formats json \
+  -o /path/results
 
-# Create a plan and save it
-tofu plan -out=tfplan -var-file=production.tfvars
+# Optional: generate an OpenTofu plan and scan its JSON representation
+tofu init
+tofu plan -out=tfplan
 
-# Review the plan
-tofu show tfplan
+# Note: tofu show -json includes sensitive values in plain text
+tofu show -json -plan=tfplan > tfplan.json
 
-# Apply the saved plan
-tofu apply tfplan
+docker run -t -v "$PWD":/path checkmarx/kics:latest scan \
+  -p /path/tfplan.json \
+  --report-formats json \
+  -o /path/results
 ```
 
 ## Step 4: Set Up Automation
 
 ```yaml
-# .github/workflows/infrastructure.yml
-name: Infrastructure Deployment
+# .github/workflows/kics-scan.yml
+name: KICS Scan
 
 on:
   push:
@@ -102,121 +111,68 @@ on:
     branches: [main]
 
 permissions:
-  id-token: write
+  actions: read
   contents: read
-  pull-requests: write
+  security-events: write
 
 jobs:
-  plan:
+  kics:
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v6
 
-      - name: Setup OpenTofu
-        uses: opentofu/setup-opentofu@v1
+      - name: Run KICS Scan
+        uses: checkmarx/kics-github-action@v2.1.20
         with:
-          tofu_version: "1.7.0"
+          path: "."
+          platform_type: terraform
+          output_path: results-dir
+          output_formats: "json,sarif"
+          ignore_on_exit: results
 
-      - name: Configure AWS Credentials
-        uses: aws-actions/configure-aws-credentials@v4
+      - name: Upload SARIF file
+        uses: github/codeql-action/upload-sarif@v4
         with:
-          role-to-assume: ${{ secrets.AWS_ROLE_ARN }}
-          aws-region: us-east-1
-
-      - name: OpenTofu Init
-        run: tofu init
-
-      - name: OpenTofu Plan
-        run: tofu plan -no-color -out=tfplan
-
-      - name: Upload Plan
-        uses: actions/upload-artifact@v3
-        with:
-          name: tfplan
-          path: tfplan
-
-  apply:
-    needs: plan
-    runs-on: ubuntu-latest
-    environment: production
-    if: github.ref == 'refs/heads/main'
-    steps:
-      - uses: actions/checkout@v4
-
-      - name: Setup OpenTofu
-        uses: opentofu/setup-opentofu@v1
-        with:
-          tofu_version: "1.7.0"
-
-      - name: Configure AWS Credentials
-        uses: aws-actions/configure-aws-credentials@v4
-        with:
-          role-to-assume: ${{ secrets.AWS_ROLE_ARN }}
-          aws-region: us-east-1
-
-      - name: Download Plan
-        uses: actions/download-artifact@v3
-        with:
-          name: tfplan
-
-      - name: OpenTofu Init
-        run: tofu init
-
-      - name: OpenTofu Apply
-        run: tofu apply -auto-approve tfplan
+          sarif_file: results-dir/results.sarif
 ```
 
 ## Step 5: Monitor and Verify
 
 ```bash
-# Check current state
-tofu show
+# Review the JSON report generated by KICS
+cat results/results.json
 
-# List all managed resources
-tofu state list
+# Generate a SARIF report for code scanning integrations
+docker run -t -v "$PWD":/path checkmarx/kics:latest scan \
+  -p /path \
+  -t Terraform \
+  --report-formats "json,sarif" \
+  -o /path/results
 
-# Verify resource configuration
-tofu state show aws_instance.main
-
-# Check for drift
-tofu plan -refresh-only
+# Review the SARIF report
+cat results/results.sarif
 ```
 
 ## Step 6: Implement Best Practices
 
 ```hcl
-# Use locals for computed values
-locals {
-  name_prefix = "${var.project}-${var.environment}"
-  common_tags = {
-    Project     = var.project
-    Environment = var.environment
-    ManagedBy   = "OpenTofu"
-    Owner       = var.team_email
-  }
-}
-
-# Use validation for variables
-variable "environment" {
-  description = "Deployment environment"
-  type        = string
-
-  validation {
-    condition     = contains(["dev", "staging", "production"], var.environment)
-    error_message = "Environment must be dev, staging, or production."
-  }
-}
+# kics.config
+"path" = "."
+"type" = "Terraform"
+"exclude-paths" = ["results"]
+"report-formats" = "json,sarif"
+"output-path" = "results"
 ```
 
 ## Troubleshooting
 
 If you encounter issues:
 
-1. Enable debug logging: `export TF_LOG=DEBUG`
-2. Check provider credentials: Verify environment variables
-3. Review state consistency: Run `tofu refresh` then `tofu plan`
-4. Consult provider documentation for service-specific errors
+1. If you are scanning source files directly, use `.tf` files. For `.tofu` files, export an OpenTofu plan to JSON and scan that file instead.
+2. If KICS cannot resolve variables, keep `terraform.tfvars` or `*.auto.tfvars` beside your `.tf` files, or pass `--terraform-vars-path`.
+3. For CI-friendly output, use `--report-formats "json,sarif"` with `-o` so you can review both human and machine-readable reports.
+4. Review KICS exit codes: `0` means no results, `20` info, `30` low, `40` medium, `50` high, `60` critical, and `126` indicates an engine error.
 
 ## Conclusion
 
-You have successfully implemented How to Use KICS for OpenTofu Security Scanning. This approach provides a repeatable, auditable, and collaborative infrastructure management workflow. Combine with code review processes, automated testing, and proper access controls for a production-ready setup.
+You have successfully implemented KICS scanning for OpenTofu configurations. Use direct scans for `.tf` source files and plan JSON scans when you need to assess the evaluated OpenTofu plan. Combine this with code review processes and CI automation for a repeatable security workflow.
