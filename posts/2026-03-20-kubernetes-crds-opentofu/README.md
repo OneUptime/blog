@@ -4,17 +4,17 @@ Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
 Tags: OpenTofu, Kubernetes, Infrastructure as Code, IaC, CRD, Custom Resources
 
-Description: Learn how to install and manage Kubernetes Custom Resource Definitions with OpenTofu for operator-managed resources.
+Description: Learn how to install and manage Kubernetes Custom Resource Definitions and custom resources with OpenTofu.
 
 ## Introduction
 
-This guide covers How to Manage CRDs with OpenTofu on Kubernetes using OpenTofu with production-ready configurations, best practices, and practical examples.
+This guide covers How to Manage CRDs with OpenTofu on Kubernetes using OpenTofu with practical examples for defining a CRD and then managing an instance of that custom resource. The same workflow applies to operator-managed resources after their CRDs are installed in the cluster.
 
 ## Prerequisites
 
 - OpenTofu v1.6+
-- Access to a Kubernetes cluster or Docker daemon
-- Relevant provider configured
+- Access to a Kubernetes cluster and a kubeconfig entry for it
+- HashiCorp Kubernetes provider configured
 
 ## Step 1: Configure the Provider
 
@@ -24,7 +24,7 @@ terraform {
   required_providers {
     kubernetes = {
       source  = "hashicorp/kubernetes"
-      version = "~> 2.0"
+      version = "~> 3.0"
     }
   }
 }
@@ -39,150 +39,156 @@ provider "kubernetes" {
 
 ```hcl
 variable "kube_context" {
-  description = "Kubernetes context to use"
+  description = "Kubernetes context to use from kubeconfig. Leave null to use the current context."
   type        = string
-  default     = "default"
+  default     = null
 }
 
 variable "namespace" {
-  description = "Kubernetes namespace"
+  description = "Namespace for namespaced custom resources"
   type        = string
   default     = "default"
 }
 
-variable "environment" {
-  description = "Deployment environment"
+variable "crontab_name" {
+  description = "Name of the sample custom resource"
   type        = string
-  default     = "production"
+  default     = "my-new-cron-object"
+}
+
+variable "cron_image" {
+  description = "Image value stored in the sample custom resource"
+  type        = string
+  default     = "busybox:1.36"
 }
 ```
 
-## Step 3: Create Core Kubernetes Resources
+## Step 3: Create the Namespace and CRD
 
 ```hcl
-# Create namespace
-
-resource "kubernetes_namespace" "app" {
+# Namespace for namespaced custom resources
+resource "kubernetes_namespace_v1" "app" {
   metadata {
     name = var.namespace
     labels = {
-      environment = var.environment
-      managed-by  = "opentofu"
+      "managed-by" = "opentofu"
     }
   }
 }
 
-# Resource quota to limit namespace resources
-resource "kubernetes_resource_quota" "app" {
-  metadata {
-    name      = "app-quota"
-    namespace = kubernetes_namespace.app.metadata[0].name
-  }
-  spec {
-    hard = {
-      pods               = "20"
-      requests_cpu       = "4"
-      requests_memory    = "8Gi"
-      limits_cpu         = "8"
-      limits_memory      = "16Gi"
-    }
-  }
-}
-```
+resource "kubernetes_manifest" "crontab_crd" {
+  manifest = {
+    apiVersion = "apiextensions.k8s.io/v1"
+    kind       = "CustomResourceDefinition"
 
-## Step 4: Deploy Workloads
-
-```hcl
-resource "kubernetes_deployment" "app" {
-  metadata {
-    name      = "app"
-    namespace = kubernetes_namespace.app.metadata[0].name
-    labels = {
-      app         = "my-app"
-      environment = var.environment
-    }
-  }
-
-  spec {
-    replicas = 3
-
-    selector {
-      match_labels = {
-        app = "my-app"
-      }
+    metadata = {
+      name = "crontabs.stable.example.com"
     }
 
-    template {
-      metadata {
-        labels = {
-          app = "my-app"
-        }
+    spec = {
+      group = "stable.example.com"
+      scope = "Namespaced"
+
+      names = {
+        plural     = "crontabs"
+        singular   = "crontab"
+        kind       = "CronTab"
+        shortNames = ["ct"]
       }
 
-      spec {
-        container {
-          name  = "app"
-          image = var.container_image
+      versions = [{
+        name    = "v1"
+        served  = true
+        storage = true
 
-          resources {
-            requests = {
-              cpu    = "100m"
-              memory = "128Mi"
-            }
-            limits = {
-              cpu    = "500m"
-              memory = "512Mi"
+        schema = {
+          openAPIV3Schema = {
+            type = "object"
+
+            properties = {
+              spec = {
+                type = "object"
+
+                properties = {
+                  cronSpec = {
+                    type = "string"
+                  }
+                  image = {
+                    type = "string"
+                  }
+                  replicas = {
+                    type    = "integer"
+                    minimum = 1
+                    maximum = 10
+                  }
+                }
+
+                required = ["cronSpec", "image"]
+              }
             }
           }
-
-          liveness_probe {
-            http_get {
-              path = "/health"
-              port = 8080
-            }
-            initial_delay_seconds = 30
-            period_seconds        = 10
-          }
         }
-      }
+      }]
+    }
+  }
+
+  wait {
+    condition {
+      type   = "Established"
+      status = "True"
     }
   }
 }
 ```
 
-## Step 5: Expose the Workload
+## Step 4: Create a Custom Resource
 
 ```hcl
-resource "kubernetes_service" "app" {
-  metadata {
-    name      = "app-service"
-    namespace = kubernetes_namespace.app.metadata[0].name
-  }
+# OpenTofu can only plan this resource after the CRD exists in the cluster.
+resource "kubernetes_manifest" "my_crontab" {
+  manifest = {
+    apiVersion = "stable.example.com/v1"
+    kind       = "CronTab"
 
-  spec {
-    selector = {
-      app = "my-app"
+    metadata = {
+      name      = var.crontab_name
+      namespace = var.namespace
+      labels = {
+        "managed-by" = "opentofu"
+      }
     }
 
-    port {
-      port        = 80
-      target_port = 8080
+    spec = {
+      cronSpec = "*/5 * * * *"
+      image    = var.cron_image
+      replicas = 1
     }
-
-    type = "ClusterIP"
   }
+
+  depends_on = [
+    kubernetes_namespace_v1.app,
+    kubernetes_manifest.crontab_crd,
+  ]
 }
 ```
+
+## Step 5: Manage the Apply Order
+
+`depends_on` controls the apply order, but `kubernetes_manifest` also validates custom resources against the live Kubernetes API during planning. Because of that, the CRD must already exist before OpenTofu can plan the `CronTab` resource.
 
 ## Step 6: Define Outputs
 
 ```hcl
 output "namespace" {
-  value = kubernetes_namespace.app.metadata[0].name
+  value = kubernetes_namespace_v1.app.metadata[0].name
 }
 
-output "service_cluster_ip" {
-  value = kubernetes_service.app.spec[0].cluster_ip
+output "crd_name" {
+  value = kubernetes_manifest.crontab_crd.object.metadata.name
+}
+
+output "custom_resource_name" {
+  value = kubernetes_manifest.my_crontab.object.metadata.name
 }
 ```
 
@@ -190,18 +196,19 @@ output "service_cluster_ip" {
 
 ```bash
 tofu init
+tofu apply -target=kubernetes_manifest.crontab_crd
 tofu plan
 tofu apply
 ```
 
 ## Best Practices
 
-- Always specify resource requests and limits for all containers
-- Use namespaces to isolate workloads and apply resource quotas
-- Label all resources for easy selection and management
-- Use liveness and readiness probes to ensure workload health
-- Never run containers as root; use security contexts
+- Apply CRDs before custom resources because `kubernetes_manifest` validates against the live Kubernetes API during planning
+- Use `apiextensions.k8s.io/v1` with a structural `openAPIV3Schema` for CRD definitions
+- Wait for the CRD `Established` condition before creating instances of that custom resource
+- Keep cluster creation separate from the OpenTofu configuration that uses `kubernetes_manifest`, because the provider needs API access during planning
+- Remember that a CRD only defines the API; a controller or operator is still required if the custom resource should reconcile into running workloads
 
 ## Conclusion
 
-You have successfully configured How to Manage CRDs with OpenTofu on Kubernetes using OpenTofu. This approach enables GitOps-style management of Kubernetes resources alongside your infrastructure code. Combine OpenTofu Kubernetes resources with Helm releases for a complete infrastructure-as-code solution.
+You have successfully configured How to Manage CRDs with OpenTofu on Kubernetes using OpenTofu. This approach lets you manage cluster extensions alongside your infrastructure code. For operator-managed resources, install the CRDs first and then manage the custom resources with `kubernetes_manifest`.
