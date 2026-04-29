@@ -4,17 +4,17 @@ Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
 Tags: OpenTofu, Splunk, SIEM, Log Management, Infrastructure as Code
 
-Description: Learn how to manage Splunk indexes, saved searches, dashboards, and data inputs using OpenTofu and the official Splunk provider.
+Description: Learn how to manage Splunk indexes, saved searches, dashboards, and data inputs using OpenTofu and the official Splunk Enterprise provider.
 
 ## Introduction
 
-Splunk is a powerful platform for searching, monitoring, and analyzing machine-generated data. Managing Splunk configurations with OpenTofu enables consistent, version-controlled deployments of indexes, alerts, and dashboards across Splunk environments.
+Splunk is a powerful platform for searching, monitoring, and analyzing machine-generated data. Managing Splunk Enterprise configurations with OpenTofu enables consistent, version-controlled deployments of indexes, alerts, and dashboards across Splunk environments.
 
 ## Prerequisites
 
 - OpenTofu installed (v1.6+)
-- Access to a Splunk Enterprise or Splunk Cloud instance
-- Splunk admin credentials or API token
+- Access to a Splunk Enterprise instance
+- Splunk admin credentials, or an auth token if your deployment supports token-based authentication
 
 ## Provider Configuration
 
@@ -23,7 +23,7 @@ terraform {
   required_providers {
     splunk = {
       source  = "splunk/splunk"
-      version = "~> 1.4"
+      version = "~> 1.5"
     }
   }
 }
@@ -42,7 +42,7 @@ provider "splunk" {
 resource "splunk_indexes" "app_logs" {
   name                   = "app-logs"
   max_hot_buckets        = 10
-  max_data_size          = 0
+  max_data_size          = "auto"
   frozen_time_period_in_secs = 7776000  # 90 days
   home_path              = "$SPLUNK_DB/app-logs/db"
   cold_path              = "$SPLUNK_DB/app-logs/colddb"
@@ -82,7 +82,7 @@ resource "splunk_saved_searches" "high_error_rate" {
   actions = "email"
   action_email_to         = "ops-team@example.com"
   action_email_subject    = "High Error Rate Detected"
-  action_email_message    = "High error rate detected on $result.host$"
+  action_email_message_alert = "High error rate detected on $result.host$"
 
   acl {
     app   = "search"
@@ -95,6 +95,12 @@ resource "splunk_saved_searches" "high_error_rate" {
 ## HTTP Event Collector (HEC) Tokens
 
 ```hcl
+resource "splunk_global_http_event_collector" "http" {
+  disabled   = false
+  enable_ssl = true
+  port       = 8088
+}
+
 resource "splunk_inputs_http_event_collector" "app" {
   name     = "app-hec-token"
   index    = splunk_indexes.app_logs.name
@@ -108,6 +114,10 @@ resource "splunk_inputs_http_event_collector" "app" {
     owner   = "admin"
     sharing = "global"
   }
+
+  depends_on = [
+    splunk_global_http_event_collector.http
+  ]
 }
 
 output "hec_token" {
@@ -162,4 +172,4 @@ resource "splunk_admin_saml_groups" "ops" {
 
 ## Conclusion
 
-OpenTofu enables systematic management of Splunk configurations including indexes, alerts, and data inputs. By treating your Splunk setup as infrastructure code, you can maintain consistency across environments, review changes through pull requests, and quickly recover from misconfigurations.
+OpenTofu enables systematic management of Splunk Enterprise configurations including indexes, alerts, and data inputs. By treating your Splunk setup as infrastructure code, you can maintain consistency across environments, review changes through pull requests, and quickly recover from misconfigurations.
