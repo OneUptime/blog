@@ -4,19 +4,19 @@ Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
 Tags: OpenTofu, Linkerd, Service Mesh, Kubernetes, mTLS, Helm, Infrastructure as Code
 
-Description: Learn how to deploy Linkerd service mesh on Kubernetes using OpenTofu with automatic mTLS, load balancing, and observability for microservices without sidecar resource overhead.
+Description: Learn how to deploy Linkerd service mesh on Kubernetes using OpenTofu with automatic mTLS, load balancing, and observability for microservices with lower sidecar resource overhead than heavier meshes.
 
 ---
 
-Linkerd is a lightweight service mesh focused on simplicity and low resource overhead. It provides automatic mTLS, latency-aware load balancing, and Prometheus-compatible metrics with smaller CPU and memory footprint than Istio. OpenTofu deploys Linkerd using its official Helm charts.
+Linkerd is a lightweight service mesh focused on simplicity and low resource overhead. It provides automatic mTLS, latency-aware load balancing, and Prometheus-compatible metrics with a smaller footprint than heavier meshes such as Istio. OpenTofu can manage Linkerd using its official Helm charts.
 
 ## Linkerd vs Istio Resource Comparison
 
 ```mermaid
 graph LR
-    A[Linkerd Proxy] --> B[~10MB RAM<br/>~10m CPU per pod]
-    C[Istio Envoy] --> D[~40MB RAM<br/>~50m CPU per pod]
-    E[Common Features] --> F[mTLS, metrics,<br/>traffic splitting]
+    A[Linkerd Proxy] --> B[Lower data-plane<br/>resource footprint]
+    C[Istio Envoy] --> D[Higher data-plane<br/>resource footprint]
+    E[Common Features] --> F[mTLS, metrics,<br/>traffic management]
 ```
 
 ## Linkerd CRDs and Control Plane
@@ -28,9 +28,9 @@ graph LR
 
 resource "helm_release" "linkerd_crds" {
   name             = "linkerd-crds"
-  repository       = "https://helm.linkerd.io/stable"
+  repository       = "https://helm.linkerd.io/edge"
   chart            = "linkerd-crds"
-  version          = "1.8.0"
+  version          = "2026.4.4"
   namespace        = "linkerd"
   create_namespace = true
 }
@@ -38,9 +38,9 @@ resource "helm_release" "linkerd_crds" {
 # Step 2: Control plane
 resource "helm_release" "linkerd_control_plane" {
   name       = "linkerd-control-plane"
-  repository = "https://helm.linkerd.io/stable"
+  repository = "https://helm.linkerd.io/edge"
   chart      = "linkerd-control-plane"
-  version    = "1.16.11"
+  version    = "2026.4.4"
   namespace  = "linkerd"
 
   values = [
@@ -102,9 +102,9 @@ step certificate create identity.linkerd.cluster.local issuer.crt issuer.key \
 ```hcl
 resource "helm_release" "linkerd_viz" {
   name       = "linkerd-viz"
-  repository = "https://helm.linkerd.io/stable"
+  repository = "https://helm.linkerd.io/edge"
   chart      = "linkerd-viz"
-  version    = "30.12.11"
+  version    = "2026.4.4"
   namespace  = "linkerd-viz"
 
   create_namespace = true
@@ -116,7 +116,10 @@ resource "helm_release" "linkerd_viz" {
         enforcedHostRegexp = ".*"  # Restrict to specific hosts in production
       }
 
-      # Prometheus integration
+      # Use an existing Prometheus instance
+      prometheus = {
+        enabled = false
+      }
       prometheusUrl = "http://kube-prometheus-stack-prometheus.monitoring:9090"
     })
   ]
@@ -138,26 +141,41 @@ resource "kubernetes_namespace" "apps" {
 }
 ```
 
-## Traffic Splitting with SMI
+## Traffic Splitting with HTTPRoute
+
+Current Linkerd releases use `HTTPRoute` for weighted traffic routing; the older SMI `TrafficSplit` API is deprecated.
 
 ```hcl
-# Canary deployment using Linkerd traffic split
+# Canary deployment using Linkerd HTTPRoute weighted routing
 resource "kubernetes_manifest" "traffic_split" {
   manifest = {
-    apiVersion = "split.smi-spec.io/v1alpha2"
-    kind       = "TrafficSplit"
+    apiVersion = "policy.linkerd.io/v1beta2"
+    kind       = "HTTPRoute"
     metadata = {
       name      = "app-canary"
       namespace = "apps"
     }
     spec = {
-      service = "app-service"
-      backends = [
-        { service = "app-stable", weight = "90" }
-        { service = "app-canary", weight = "10" }
+      parentRefs = [
+        {
+          name  = "app-service"
+          kind  = "Service"
+          group = "core"
+          port  = 80
+        }
+      ]
+      rules = [
+        {
+          backendRefs = [
+            { name = "app-stable", port = 80, weight = 90 }
+            { name = "app-canary", port = 80, weight = 10 }
+          ]
+        }
       ]
     }
   }
+
+  depends_on = [helm_release.linkerd_control_plane, kubernetes_namespace.apps]
 }
 ```
 
@@ -165,6 +183,6 @@ resource "kubernetes_manifest" "traffic_split" {
 
 - Generate Linkerd certificates with `step` CLI and store them as Kubernetes Secrets - never commit certificate keys to git.
 - Rotate issuer certificates before they expire - set up a reminder 30 days before the `not-after` date in your certificates.
-- Use Linkerd's built-in Prometheus metrics with the viz extension rather than adding a separate Prometheus deployment.
+- If you point Linkerd Viz at an existing Prometheus with `prometheusUrl`, also set `prometheus.enabled: false` so Helm does not deploy an unused bundled Prometheus.
 - Annotate namespaces for injection at the namespace level (`linkerd.io/inject: enabled`) rather than individual pods.
-- Linkerd's proxy resource footprint is much lower than Istio - this makes it suitable for cost-sensitive environments or clusters with many small services.
+- Linkerd's proxy footprint is generally lower than heavier meshes such as Istio, but exact CPU and memory usage depends on workload patterns and configuration.
