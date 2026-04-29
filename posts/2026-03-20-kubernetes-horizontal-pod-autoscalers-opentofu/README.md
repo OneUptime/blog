@@ -4,11 +4,11 @@ Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
 Tags: Kubernetes, HPA, Autoscaling, OpenTofu, Infrastructure, Performance
 
-Description: Learn how to create Kubernetes Horizontal Pod Autoscalers (HPA) with OpenTofu using CPU, memory, and custom metrics to automatically scale deployments.
+Description: Learn how to create Kubernetes Horizontal Pod Autoscalers (HPA) with OpenTofu using CPU, memory, and external metrics to automatically scale deployments.
 
 ## Overview
 
-Kubernetes Horizontal Pod Autoscalers automatically scale the number of pod replicas based on observed metrics. OpenTofu manages HPA v2 resources with CPU, memory, and custom metrics scaling policies.
+Kubernetes Horizontal Pod Autoscalers automatically scale the number of pod replicas based on observed metrics. OpenTofu manages HPA v2 resources with CPU, memory, and external metrics scaling policies.
 
 ## Step 1: CPU-Based HPA
 
@@ -118,10 +118,10 @@ resource "kubernetes_horizontal_pod_autoscaler_v2" "api_hpa" {
 }
 ```
 
-## Step 3: Custom Metrics HPA
+## Step 3: External Metrics HPA
 
 ```hcl
-# HPA scaling on custom metrics from Prometheus Adapter
+# HPA scaling on external metrics from Prometheus Adapter
 resource "kubernetes_horizontal_pod_autoscaler_v2" "queue_consumer_hpa" {
   metadata {
     name      = "queue-consumer-hpa"
@@ -138,7 +138,7 @@ resource "kubernetes_horizontal_pod_autoscaler_v2" "queue_consumer_hpa" {
     min_replicas = 1
     max_replicas = 100
 
-    # Custom metric from Prometheus: queue depth
+    # External metric from Prometheus Adapter: queue depth
     metric {
       type = "External"
 
