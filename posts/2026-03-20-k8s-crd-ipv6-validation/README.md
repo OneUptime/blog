@@ -4,36 +4,31 @@ Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
 Tags: Kubernetes, CRD, IPv6, Validation, CEL
 
-Description: Add CEL validation rules and webhook validators to Kubernetes CRDs to enforce IPv6 address format and CIDR constraints.
+Description: Add CEL validation rules and validating webhooks to Kubernetes CRDs to enforce IPv6 address and CIDR format.
 
 ## Overview
 
-Add CEL validation rules and webhook validators to Kubernetes CRDs to enforce IPv6 address format and CIDR constraints.
+Add CEL validation rules and validating webhooks to Kubernetes CRDs to enforce IPv6 address and CIDR format. The CEL examples in this post use the Kubernetes 1.31+ IP and CIDR libraries.
 
 ## Prerequisites
 
-- Kubernetes cluster with dual-stack or IPv6 support
+- Kubernetes 1.31+ cluster for the CEL IP/CIDR functions shown here, or a validating webhook for older clusters
+- Kubernetes cluster with dual-stack or IPv6 support for end-to-end testing
 - Go development environment with controller-runtime
 - Basic understanding of Kubernetes operators
 
 ## Working with IPv6 in Kubernetes Operators
 
-### Checking IPv6 Support in the Cluster
+### CEL Validation in the CRD Schema
 
 ```go
-// Check if cluster supports IPv6
-func isIPv6Enabled(config *rest.Config) bool {
-    client, _ := kubernetes.NewForConfig(config)
-    nodes, _ := client.CoreV1().Nodes().List(context.Background(), metav1.ListOptions{})
-    for _, node := range nodes.Items {
-        for _, addr := range node.Status.Addresses {
-            ip := net.ParseIP(addr.Address)
-            if ip != nil && ip.To4() == nil {
-                return true  // Found an IPv6 node address
-            }
-        }
-    }
-    return false
+type MyResourceSpec struct {
+    // +kubebuilder:validation:MinItems=1
+    // +kubebuilder:validation:items:XValidation:rule="isIP(self) && ip(self).family() == 6",message="each entry must be a valid IPv6 address"
+    IPAddresses []string `json:"ipAddresses"`
+
+    // +kubebuilder:validation:XValidation:rule="isCIDR(self) && cidr(self).ip().family() == 6",message="must be a canonical IPv6 CIDR"
+    CIDR string `json:"cidr,omitempty"`
 }
 ```
 
@@ -50,16 +45,16 @@ func IsValidIPv6(addr string) bool {
     return ip != nil && ip.To4() == nil
 }
 
-// IsValidIPv6CIDR returns true if the string is a valid IPv6 CIDR
+// IsValidIPv6CIDR returns true if the string is a canonical IPv6 CIDR
 func IsValidIPv6CIDR(cidr string) bool {
-    ip, _, err := net.ParseCIDR(cidr)
+    ip, network, err := net.ParseCIDR(cidr)
     if err != nil {
         return false
     }
-    return ip.To4() == nil
+    return ip.To4() == nil && ip.Equal(network.IP)
 }
 
-// GetIPVersion returns "ipv4" or "ipv6"
+// GetIPVersion returns "ipv4", "ipv6", or "invalid"
 func GetIPVersion(addr string) string {
     ip := net.ParseIP(addr)
     if ip == nil {
@@ -72,27 +67,53 @@ func GetIPVersion(addr string) string {
 }
 ```
 
-### Reconciler Logic for IPv6 Resources
+### Validating Webhook Logic
 
 ```go
-func (r *Reconciler) Reconcile(ctx context.Context, req ctrl.Request) (ctrl.Result, error) {
-    log := log.FromContext(ctx)
+type MyResourceCustomValidator struct{}
 
-    // Fetch the custom resource
-    var resource myv1.MyResource
-    if err := r.Get(ctx, req.NamespacedName, &resource); err != nil {
-        return ctrl.Result{}, client.IgnoreNotFound(err)
-    }
+func (v *MyResourceCustomValidator) ValidateCreate(_ context.Context, obj *myv1.MyResource) (admission.Warnings, error) {
+    return nil, validateMyResource(obj)
+}
 
-    // Check for IPv6 addresses in spec
-    for _, addr := range resource.Spec.IPAddresses {
-        if iputil.IsValidIPv6(addr) {
-            log.Info("Processing IPv6 address", "address", addr)
-            // Handle IPv6-specific logic here
+func (v *MyResourceCustomValidator) ValidateUpdate(_ context.Context, _, newObj *myv1.MyResource) (admission.Warnings, error) {
+    return nil, validateMyResource(newObj)
+}
+
+func (v *MyResourceCustomValidator) ValidateDelete(_ context.Context, _ *myv1.MyResource) (admission.Warnings, error) {
+    return nil, nil
+}
+
+func validateMyResource(resource *myv1.MyResource) error {
+    var allErrs field.ErrorList
+
+    for i, addr := range resource.Spec.IPAddresses {
+        if !iputil.IsValidIPv6(addr) {
+            allErrs = append(allErrs, field.Invalid(
+                field.NewPath("spec").Child("ipAddresses").Index(i),
+                addr,
+                "must be a valid IPv6 address",
+            ))
         }
     }
 
-    return ctrl.Result{}, nil
+    if resource.Spec.CIDR != "" && !iputil.IsValidIPv6CIDR(resource.Spec.CIDR) {
+        allErrs = append(allErrs, field.Invalid(
+            field.NewPath("spec").Child("cidr"),
+            resource.Spec.CIDR,
+            "must be a canonical IPv6 CIDR",
+        ))
+    }
+
+    if len(allErrs) == 0 {
+        return nil
+    }
+
+    return apierrors.NewInvalid(
+        schema.GroupKind{Group: myv1.GroupVersion.Group, Kind: "MyResource"},
+        resource.Name,
+        allErrs,
+    )
 }
 ```
 
@@ -112,7 +133,7 @@ kind create cluster --config kind-dual-stack.yaml
 
 # Verify dual-stack is enabled
 kubectl get nodes -o wide
-kubectl get pods -n kube-system -o wide | grep "2001:"
+kubectl get nodes <node-name> -o go-template --template='{{range .spec.podCIDRs}}{{printf "%s\n" .}}{{end}}'
 ```
 
 ## Monitoring with OneUptime
@@ -121,4 +142,4 @@ Use [OneUptime](https://oneuptime.com) to monitor your operator's health endpoin
 
 ## Conclusion
 
-How to Validate IPv6 Addresses in Custom Resource Definitions involves using Go's `net` package for IPv6 validation, handling dual-stack service creation with `IPFamilyPolicy`, and testing against IPv6-enabled Kubernetes clusters. Always validate IPv6 addresses in CRD webhook validators to catch issues before reconciliation.
+How to Validate IPv6 Addresses in Custom Resource Definitions involves using Kubernetes CEL validation in the CRD schema, backing it up with Go-based validating webhooks for more complex checks, and testing against IPv6-enabled Kubernetes clusters. Always validate IPv6 addresses during admission to catch issues before reconciliation.
