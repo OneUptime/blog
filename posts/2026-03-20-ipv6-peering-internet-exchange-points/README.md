@@ -17,10 +17,10 @@ Major IXPs with IPv6 support include DE-CIX, AMS-IX, LINX, Equinix, and BCIX.
 IXPs assign IPv6 addresses from their own peering LAN prefix. Example:
 
 ```text
-IXP Peering LAN: 2001:7f8:4::/64 (DE-CIX example range)
+Example IXP Peering LAN: 2001:db8:100::/64
 
-Your Router port: 2001:7f8:4::1234/64
-IXP Route Server: 2001:7f8:4::1 (RS1), 2001:7f8:4::2 (RS2)
+Your router port: 2001:db8:100::1234/64
+IXP Route Server: 2001:db8:100::1 (RS1), 2001:db8:100::2 (RS2)
 ```
 
 ## BGP Configuration for IXP Peering
@@ -28,25 +28,28 @@ IXP Route Server: 2001:7f8:4::1 (RS1), 2001:7f8:4::2 (RS2)
 Configure your border router with IPv6 BGP sessions to peering partners and the route server:
 
 ```text
-# Cisco IOS-XE - IPv6 BGP peering at IXP
+# Cisco IOS-XE - IPv6 BGP peering at an IXP
 
-router bgp 65001
+router bgp 64496
+
+ ! Required for route-server sessions that preserve the original AS_PATH
+ no bgp enforce-first-as
 
  ! Session to IXP Route Server 1
- neighbor 2001:7f8:4::1 remote-as 6695
- neighbor 2001:7f8:4::1 description DE-CIX Route Server 1
+ neighbor 2001:db8:100::1 remote-as 64497
+ neighbor 2001:db8:100::1 description IXP Route Server 1
 
  ! Session to a direct peer
- neighbor 2001:7f8:4::5678 remote-as 13335
- neighbor 2001:7f8:4::5678 description Cloudflare
+ neighbor 2001:db8:100::5678 remote-as 64498
+ neighbor 2001:db8:100::5678 description Example Direct Peer
 
  address-family ipv6 unicast
-  ! Activate route server sessions
-  neighbor 2001:7f8:4::1 activate
-  neighbor 2001:7f8:4::1 soft-reconfiguration inbound
+  ! Activate route server session
+  neighbor 2001:db8:100::1 activate
+  neighbor 2001:db8:100::1 soft-reconfiguration inbound
 
   ! Activate direct peer
-  neighbor 2001:7f8:4::5678 activate
+  neighbor 2001:db8:100::5678 activate
 
   ! Advertise your prefixes
   network 2001:db8::/32
@@ -55,7 +58,7 @@ router bgp 65001
 
 ## Route Filtering at IXP
 
-Always filter routes at IXP connections. Accept only specific prefixes from peers, not defaults:
+Always filter routes at IXP connections. At minimum, reject default routes and obviously invalid space:
 
 ```text
 # IPv6 prefix-list to accept only valid prefixes from peers
@@ -66,52 +69,53 @@ ipv6 prefix-list PEER-IN-FILTER seq 30 deny 2001:db8::/32           le 128 ! Blo
 ipv6 prefix-list PEER-IN-FILTER seq 100 permit ::/0                 le 48  ! Allow /8 through /48
 
 # Apply to peer
-router bgp 65001
- address-family ipv6
-  neighbor 2001:7f8:4::5678 prefix-list PEER-IN-FILTER in
+router bgp 64496
+ address-family ipv6 unicast
+  neighbor 2001:db8:100::5678 prefix-list PEER-IN-FILTER in
 ```
 
 ## BGP Community Tagging
 
-Tag routes received at IXP with a community for traffic engineering:
+Tag routes received from the route server with a local community for traffic engineering:
 
 ```text
-# Tag all routes received from IXP with community 65001:200
+# Tag all routes received from the IXP route server with community 64496:200
 route-map IXP-IN permit 10
- set community 65001:200 additive
+ set community 64496:200 additive
 
-router bgp 65001
- address-family ipv6
-  neighbor 2001:7f8:4::1 route-map IXP-IN in
+router bgp 64496
+ address-family ipv6 unicast
+  neighbor 2001:db8:100::1 route-map IXP-IN in
 ```
 
 ## RPKI Validation at IXP
 
-Enable RPKI route origin validation to reject hijacked routes at the IXP:
+Enable RPKI route origin validation to reject routes with an invalid origin-validation state at the IXP:
 
 ```text
 ! Configure RPKI validator connection
-router bgp 65001
- bgp rpki server tcp 2001:db8:rpki::10 port 3323 refresh 600
+router bgp 64496
+ bgp rpki server tcp 2001:db8:200::10 port 3323 refresh 600
 
 ! Create route-map to reject INVALID routes
 route-map RPKI-CHECK deny 10
  match rpki invalid
 route-map RPKI-CHECK permit 20
 
-! Apply to IXP sessions
-address-family ipv6
- neighbor 2001:7f8:4::1 route-map RPKI-CHECK in
+! Apply to IXP session
+router bgp 64496
+ address-family ipv6 unicast
+  neighbor 2001:db8:100::1 route-map RPKI-CHECK in
 ```
 
 ## Verifying Peering Sessions
 
-```bash
+```text
 # Check BGP session status
 show bgp ipv6 unicast summary
 
 # View routes received from route server
-show bgp ipv6 unicast neighbors 2001:7f8:4::1 received-routes | head -30
+show bgp ipv6 unicast neighbors 2001:db8:100::1 received-routes
 
 # Verify your prefix is advertised
 show bgp ipv6 unicast 2001:db8::/32
