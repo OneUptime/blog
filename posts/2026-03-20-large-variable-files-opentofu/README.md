@@ -99,7 +99,7 @@ tofu apply \
 ## Default and Override Pattern
 
 ```hcl
-# defaults.tfvars – sensible defaults for all environments
+# defaults.auto.tfvars – sensible defaults for all environments
 database = {
   instance_class     = "db.t3.medium"
   allocated_storage  = 20
@@ -110,10 +110,10 @@ database = {
 }
 ```
 
-Later files override defaults:
+Later files override defaults, but map and object variables are replaced as whole values rather than merged attribute by attribute:
 
 ```hcl
-# environments/prod/database.tfvars – override only what differs
+# environments/prod/database.tfvars – restate the full object with production values
 database = {
   instance_class     = "db.r6g.xlarge"
   allocated_storage  = 500
@@ -155,7 +155,7 @@ locals {
   # Compute environment-specific names from base variables
   db_identifier    = "${var.app_name}-db-${var.environment}"
   cluster_name     = "${var.app_name}-cluster-${var.environment}"
-  bucket_prefix    = "${var.app_name}-${var.environment}-${data.aws_caller_identity.current.account_id}"
+  bucket_prefix    = "${var.app_name}-${var.environment}"
 
   # Derive bool flags from environment name
   is_production    = var.environment == "prod"
