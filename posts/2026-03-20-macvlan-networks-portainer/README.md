@@ -21,17 +21,12 @@ Use Macvlan when you need:
 
 ## Prerequisites
 
+Macvlan works on Linux hosts and is not supported on Docker Desktop for Mac or Windows, on Docker Engine for Windows, or with rootless Docker. Your network equipment or virtualization layer must allow multiple MAC addresses on the parent interface.
+
 ```bash
-# Check if your network interface supports promiscuous mode
-
-ip link show eth0
-
-# Enable promiscuous mode (required for Macvlan)
-sudo ip link set eth0 promisc on
-
-# Make it persistent
-echo 'SUBSYSTEM=="net", ACTION=="add", KERNEL=="eth0", RUN+="/sbin/ip link set eth0 promisc on"' | \
-  sudo tee /etc/udev/rules.d/99-macvlan.rules
+# Identify the network interface connected to your LAN
+# Common names include eth0, eno1, or enp3s0
+ip -br link
 ```
 
 ## Step 1: Create Macvlan Network
@@ -48,6 +43,7 @@ docker network create \
   --subnet=192.168.1.0/24 \
   --gateway=192.168.1.1 \
   --ip-range=192.168.1.240/28 \
+  --aux-address="host=192.168.1.241" \
   --opt parent=eth0 \
   lan_macvlan
 ```
@@ -56,7 +52,8 @@ docker network create \
 - Your LAN: `192.168.1.0/24` (typical home network)
 - Your router: `192.168.1.1`
 - DHCP range: `192.168.1.2 - 192.168.1.239` (configured on router)
-- Docker Macvlan range: `192.168.1.240 - 192.168.1.254` (excluded from DHCP)
+- Host Macvlan IP: `192.168.1.241` (reserved for host-to-container communication)
+- Docker Macvlan container range: `192.168.1.242 - 192.168.1.254` (excluded from DHCP)
 
 ## Step 2: Create Macvlan in Portainer
 
@@ -67,13 +64,12 @@ In Portainer: **Networks** > **Add network**
 - Subnet: `192.168.1.0/24`
 - Gateway: `192.168.1.1`
 - IP Range: `192.168.1.240/28`
+- Excluded IP: `192.168.1.241`
 
 ## Step 3: Deploy Containers on Macvlan
 
 ```yaml
 # docker-compose.yml - Containers on LAN with direct IPs
-version: "3.8"
-
 networks:
   # Reference the pre-created Macvlan network
   lan_macvlan:
@@ -89,8 +85,8 @@ services:
       lan_macvlan:
         ipv4_address: 192.168.1.250   # Static IP on your LAN!
     environment:
-      - WEBPASSWORD=your_admin_password
-      - PIHOLE_DNS_=1.1.1.1;9.9.9.9
+      - FTLCONF_webserver_api_password=your_admin_password
+      - FTLCONF_dns_upstreams=1.1.1.1;9.9.9.9
       - TZ=America/New_York
     volumes:
       - /opt/pihole/etc:/etc/pihole
@@ -119,22 +115,22 @@ With Macvlan, the Docker host CANNOT communicate with Macvlan containers by defa
 
 ```bash
 # Create a Macvlan sub-interface on the host
-ip link add macvlan0 link eth0 type macvlan mode bridge
-ip addr add 192.168.1.241/32 dev macvlan0  # Host's IP in Macvlan range
-ip link set macvlan0 up
+sudo ip link add macvlan0 link eth0 type macvlan mode bridge
+sudo ip addr add 192.168.1.241/32 dev macvlan0  # Host's reserved IP in the Macvlan range
+sudo ip link set macvlan0 up
 
 # Add route so host can reach Macvlan containers
-ip route add 192.168.1.240/28 dev macvlan0
+sudo ip route add 192.168.1.240/28 dev macvlan0
 
-# Make persistent (Ubuntu/Debian - add to /etc/networkd-dispatcher/routable.d/)
-cat > /etc/networkd-dispatcher/routable.d/50-macvlan << 'EOF'
+# Make persistent (one option on Ubuntu/Debian systems using networkd-dispatcher)
+sudo tee /etc/networkd-dispatcher/routable.d/50-macvlan > /dev/null << 'EOF'
 #!/bin/sh
-ip link add macvlan0 link eth0 type macvlan mode bridge
-ip addr add 192.168.1.241/32 dev macvlan0
+ip link show macvlan0 >/dev/null 2>&1 || ip link add macvlan0 link eth0 type macvlan mode bridge
+ip addr replace 192.168.1.241/32 dev macvlan0
 ip link set macvlan0 up
-ip route add 192.168.1.240/28 dev macvlan0
+ip route replace 192.168.1.240/28 dev macvlan0
 EOF
-chmod +x /etc/networkd-dispatcher/routable.d/50-macvlan
+sudo chmod +x /etc/networkd-dispatcher/routable.d/50-macvlan
 ```
 
 ## Step 5: Mixed Network (Macvlan + Internal)
@@ -143,8 +139,6 @@ For containers that need both LAN access and internal Docker communication:
 
 ```yaml
 # docker-compose.yml - Container with both Macvlan and bridge network
-version: "3.8"
-
 networks:
   lan_macvlan:
     external: true
