@@ -20,7 +20,7 @@ Correlation is most valuable for detecting multi-stage attacks that evade single
 
 ```text
 Attack chain:
-1. Attacker scans IPv6 /64 prefix (many ICMP probe failures)
+1. Attacker probes multiple IPv6 addresses within a target /64 (many ICMP probe failures)
 2. Finds active host (ICMP reply)
 3. Attempts SSH login (multiple failures)
 4. Successful login
@@ -29,45 +29,35 @@ Correlation: Events 1-4 from same /64 source prefix within 30 minutes
 ```
 
 ```text
-# Splunk correlation: detect scan-then-exploit from same /64
-
 | tstats count as events
-    where index=firewall OR index=auth
-    by _time span=30m, source_prefix64, event_type
-| eval src_prefix64=replace(src_ip, ":[0-9a-f:]+$", "::")
+    where (index=firewall OR index=auth)
+    by _time, src_prefix64, event_type span=30m
 | stats
-    values(event_type) as event_types,
-    count(eval(event_type="icmp_drop")) as scan_events,
-    count(eval(event_type="ssh_fail")) as ssh_fails,
-    count(eval(event_type="ssh_success")) as ssh_success
+    sum(eval(if(event_type="icmp_drop", events, 0))) as scan_events,
+    sum(eval(if(event_type="icmp_reply", events, 0))) as live_hosts,
+    sum(eval(if(event_type="ssh_fail", events, 0))) as ssh_fails,
+    sum(eval(if(event_type="ssh_success", events, 0))) as ssh_success
     by src_prefix64, _time
-| where scan_events > 20 AND ssh_fails > 3 AND ssh_success > 0
+| where scan_events > 20 AND live_hosts > 0 AND ssh_fails > 3 AND ssh_success > 0
 | eval threat="IPv6_Recon_To_Exploit"
 ```
 
 ## Correlation Scenario 2: IPv6 Lateral Movement
 
 ```text
-# Elastic EQL: detect lateral movement pattern
-# Source /64 accesses multiple internal /64 subnets in sequence
-
 sequence by source.prefix64 with maxspan=10m
   [network where network.type == "ipv6" and event.action == "allowed"
-   and destination.ip : "2001:db8:host1::/64"
-   and source.ip : "2001:db8:external::/48"]
+   and cidrMatch(source.ip, "2001:db8:100:10::/64")
+   and cidrMatch(destination.ip, "2001:db8:10::/64")]
   [network where network.type == "ipv6" and event.action == "allowed"
-   and destination.ip : "2001:db8:host2::/64"
-   and source.ip : "2001:db8:host1::/64"]
+   and cidrMatch(destination.ip, "2001:db8:20::/64")]
   [network where network.type == "ipv6" and event.action == "allowed"
-   and destination.ip : "2001:db8:host3::/64"
-   and source.ip : "2001:db8:host2::/64"]
+   and cidrMatch(destination.ip, "2001:db8:30::/64")]
 ```
 
 ## Correlation Scenario 3: IPv6 Data Exfiltration
 
 ```text
-# Splunk: detect unusually large outbound IPv6 transfers
-
 index=netflow network_type=ipv6
 | stats
     sum(bytes_out) as total_bytes_out,
@@ -75,11 +65,11 @@ index=netflow network_type=ipv6
     earliest(_time) as first_seen,
     latest(_time) as last_seen
     by src_ip
-| where total_bytes_out > 1073741824  # 1GB
-| eval gb_out = round(total_bytes_out / 1073741824, 2)
+| where total_bytes_out > 1000000000
+| eval gb_out = round(total_bytes_out / 1000000000, 2)
 | eval duration_min = round((last_seen - first_seen) / 60, 1)
-| eval mbps = round(total_bytes_out * 8 / (last_seen - first_seen + 1) / 1048576, 2)
-| where NOT cidrmatch("2001:db8:backup::/48", src_ip)
+| eval mbps = round(total_bytes_out * 8 / (last_seen - first_seen + 1) / 1000000, 2)
+| where NOT cidrmatch("2001:db8:ffff::/48", src_ip)
 | eval threat="IPv6_Data_Exfiltration_Suspect"
 | table src_ip, gb_out, unique_destinations, duration_min, mbps
 | sort -gb_out
@@ -106,8 +96,9 @@ def get_prefix64(ip_str: str) -> str:
     return ip_str
 
 # In Logstash/Elasticsearch ingest pipeline:
-# Add prefix64 as a derived field at ingestion time
-# Reduces correlation complexity - group by prefix64 instead of full /128
+# Add prefix64 as a derived field at ingestion time for datasets where /64
+# is the right correlation boundary, such as client subnets using temporary addresses
+# Reduces correlation complexity and avoids on-the-fly parsing in queries
 
 # Example: compute_prefix64 ingest processor
 ingest_pipeline = {
@@ -116,11 +107,21 @@ ingest_pipeline = {
             "script": {
                 "lang": "painless",
                 "source": """
-                    if (ctx?.source?.ip != null && ctx.source.ip.contains(":")) {
-                        // IPv6: extract first 64 bits
-                        String[] parts = ctx.source.ip.split(":");
-                        if (parts.length >= 4) {
-                            ctx.source.prefix64 = parts[0] + ":" + parts[1] + ":" + parts[2] + ":" + parts[3] + "::";
+                    if (ctx.containsKey("source") && ctx.source != null && ctx.source.ip != null) {
+                        try {
+                            String sourceIp = ctx.source.ip.toString();
+                            java.net.InetAddress addr = java.net.InetAddress.getByName(sourceIp);
+                            if (addr instanceof java.net.Inet6Address) {
+                                byte[] bytes = addr.getAddress();
+                                ctx.source.prefix64 = String.format(
+                                    "%02x%02x:%02x%02x:%02x%02x:%02x%02x::",
+                                    bytes[0] & 0xff, bytes[1] & 0xff,
+                                    bytes[2] & 0xff, bytes[3] & 0xff,
+                                    bytes[4] & 0xff, bytes[5] & 0xff,
+                                    bytes[6] & 0xff, bytes[7] & 0xff
+                                );
+                            }
+                        } catch (Exception ignored) {
                         }
                     }
                 """
@@ -133,20 +134,24 @@ ingest_pipeline = {
 ## Baseline Deviation Correlation
 
 ```text
-# Splunk: detect unusual new IPv6 /64 prefixes
-
 | tstats count as current_count
     where index=firewall earliest=-1h latest=now
     by src_prefix64
 
 | join type=left src_prefix64 [
-    | tstats avg(count) as avg_count stdev(count) as stdev_count
+    | tstats count as historical_count
         where index=firewall earliest=-7d latest=-1h
-        by src_prefix64
+        by _time, src_prefix64 span=1h
+    | stats avg(historical_count) as avg_count stdev(historical_count) as stdev_count by src_prefix64
 ]
 
-| eval z_score = if(isnotnull(avg_count),
-    (current_count - avg_count) / (stdev_count + 1), 99)
+| eval z_score = case(
+    isnull(avg_count), 99,
+    stdev_count > 0, (current_count - avg_count) / stdev_count,
+    current_count > avg_count, 99,
+    current_count < avg_count, -99,
+    true(), 0
+)
 | eval status = case(
     isnull(avg_count), "new_source",
     z_score > 3, "anomalous_spike",
@@ -182,4 +187,4 @@ Rule: IPv6_Reconnaissance_Attack_Chain
 
 ## Conclusion
 
-IPv6 SIEM correlation rules are most effective when they track attack chains across multiple log sources and time windows. Key design principles: use /64 prefix as the correlation key (not individual /128 addresses, which change due to privacy extensions), set appropriate time windows (30 minutes for recon-to-exploit), and chain building blocks (scan → auth failure → auth success). Extract and index `source.prefix64` at ingestion time to avoid expensive on-the-fly regex in correlation queries. Baseline deviation detection - comparing current /64 activity to 7-day historical averages using Z-score - catches novel sources that single-event rules miss.
+IPv6 SIEM correlation rules are most effective when they track attack chains across multiple log sources and time windows. Key design principles: when your addressing plan uses /64 client subnets and temporary IPv6 addresses, a derived /64 prefix can be a useful correlation key alongside individual /128 addresses; set appropriate time windows (30 minutes for recon-to-exploit), and chain building blocks (scan → auth failure → auth success). Extract and index a derived prefix field at ingestion time to avoid expensive on-the-fly parsing in correlation queries. Baseline deviation detection - comparing current /64 activity to 7-day historical averages using Z-score - catches novel sources that single-event rules miss.
