@@ -68,17 +68,20 @@ spec:
     matchLabels:
       app: pos-service
   template:
+    metadata:
+      labels:
+        app: pos-service
     spec:
       containers:
         - name: pos
-          image: registry.local:5000/pos-service:v2.1
+          image: 10.0.0.10:30500/pos-service:v2.1
           # Use local cache - do not pull from internet
           imagePullPolicy: IfNotPresent
           env:
             - name: OFFLINE_MODE
               value: "auto"
             - name: LOCAL_DB_URL
-              value: "postgresql://localhost:5432/pos"
+              value: "postgresql://pos-db.retail.svc.cluster.local:5432/pos"
           # Store receipts and transactions locally
           volumeMounts:
             - name: transaction-store
@@ -87,16 +90,18 @@ spec:
         - name: transaction-store
           hostPath:
             path: /data/pos/transactions
+            type: DirectoryOrCreate
 ```
 
 ---
 
 ## Step 3: Set Up a Local Container Registry
 
-Pre-pull all required images to a local registry on the edge node:
+Expose a local registry endpoint for store images and point K3s at that registry:
 
 ```bash
-# Install a simple registry on the edge node
+# Replace 10.0.0.10 with a node IP or DNS name that all store nodes can reach.
+# Install a simple registry in the cluster and expose it on a fixed NodePort.
 kubectl apply -f - <<EOF
 apiVersion: apps/v1
 kind: Deployment
@@ -125,7 +130,34 @@ spec:
         - name: registry-data
           hostPath:
             path: /data/registry
+            type: DirectoryOrCreate
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: local-registry
+  namespace: kube-system
+spec:
+  type: NodePort
+  selector:
+    app: local-registry
+  ports:
+    - port: 5000
+      targetPort: 5000
+      nodePort: 30500
 EOF
+
+sudo mkdir -p /etc/rancher/k3s
+sudo tee /etc/rancher/k3s/registries.yaml >/dev/null <<'EOF'
+mirrors:
+  "10.0.0.10:30500":
+    endpoint:
+      - "http://10.0.0.10:30500"
+EOF
+
+# Push your POS and sync images to 10.0.0.10:30500 before deploying workloads.
+# Run the registries.yaml step on every node that will pull images, then restart K3s.
+sudo systemctl restart k3s   # use k3s-agent on agent-only nodes
 ```
 
 ---
@@ -140,7 +172,7 @@ spec:
   containers:
     - name: pos
       securityContext:
-        privileged: false
+        privileged: true
       volumeMounts:
         - name: pos-device
           mountPath: /dev/ttyUSB0
@@ -172,7 +204,7 @@ spec:
         spec:
           containers:
             - name: sync
-              image: registry.local:5000/sync-agent:v1
+              image: 10.0.0.10:30500/sync-agent:v1
               env:
                 - name: HQ_ENDPOINT
                   value: "https://hq.example.com/api/sync"
