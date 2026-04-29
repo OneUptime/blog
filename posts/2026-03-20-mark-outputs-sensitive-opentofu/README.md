@@ -8,7 +8,7 @@ Description: Learn how to mark OpenTofu output values as sensitive to prevent se
 
 ---
 
-Output values marked as `sensitive = true` are redacted in the terminal and CI/CD logs, showing `(sensitive value)` instead of the actual value. This prevents connection strings, passwords, and private keys from appearing in output where they could be captured or logged.
+Output values marked as `sensitive = true` are redacted in default CLI output and CI/CD logs. In the `Outputs:` section and `tofu output`, OpenTofu shows `<sensitive>`, while other plan/apply UI may show `(sensitive value)` instead of the actual value. This prevents connection strings, passwords, and private keys from appearing in output where they could be captured or logged.
 
 ---
 
@@ -53,8 +53,8 @@ tofu apply
 # s3_bucket_name = "my-data-bucket"
 
 # Sensitive output:
-# database_connection_string = (sensitive value)
-# private_key_pem = (sensitive value)
+# database_connection_string = <sensitive>
+# private_key_pem = <sensitive>
 ```
 
 ---
@@ -62,9 +62,9 @@ tofu apply
 ## Accessing Sensitive Output Values
 
 ```bash
-# View sensitive output value explicitly
+# By default, the sensitive output stays redacted
 tofu output database_connection_string
-# (sensitive value)
+# database_connection_string = <sensitive>
 
 # Access the raw value
 tofu output -raw database_connection_string
