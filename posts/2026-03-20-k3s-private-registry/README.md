@@ -21,7 +21,7 @@ sudo tee /etc/rancher/k3s/registries.yaml > /dev/null <<EOF
 # registries.yaml - K3s private registry configuration
 
 mirrors:
-  # Override docker.io pulls to use your private registry
+  # Try your private mirror first for docker.io pulls
   "docker.io":
     endpoint:
       - "https://registry.example.com"
@@ -47,9 +47,9 @@ sudo systemctl restart k3s-agent  # On agent nodes
 
 ## Mirror Configuration
 
-Mirrors redirect pulls from one registry to another. This is useful for:
+Mirrors tell containerd which endpoints to try first for a given registry. Unless the node is started with `--disable-default-registry-endpoint`, containerd still tries the registry's default endpoint as a last resort. This is useful for:
 - Replacing Docker Hub with a local cache
-- Pointing to an air-gapped registry
+- Pointing to an air-gapped registry when combined with `--disable-default-registry-endpoint`
 - Using a pull-through cache
 
 ### Mirroring Multiple Registries
@@ -62,7 +62,6 @@ mirrors:
   "docker.io":
     endpoint:
       - "https://docker-cache.example.com"
-      - "https://docker.io"  # Fallback to original if mirror fails
 
   # k8s.io image mirror
   "registry.k8s.io":
@@ -102,7 +101,7 @@ configs:
       password: "dckr_pat_xxxxxxxxxxxx"  # Docker Hub Personal Access Token
 ```
 
-### Using htpasswd-style Authentication
+### Using Base64-Encoded Basic Auth
 
 ```yaml
 configs:
@@ -158,11 +157,10 @@ configs:
 # /etc/rancher/k3s/registries.yaml - Production configuration
 
 mirrors:
-  # All docker.io pulls go through internal mirror first
+  # Try the internal mirror first for docker.io pulls
   "docker.io":
     endpoint:
       - "https://docker-mirror.internal.example.com"
-      - "https://registry-1.docker.io"  # Original as fallback
 
   # Internal registry for company images
   "registry.internal.example.com":
@@ -195,10 +193,9 @@ Deploy a registry with a pull-through cache on your internal network:
 
 ```yaml
 # docker-compose.yml for a pull-through cache
-version: '3'
 services:
   docker-cache:
-    image: registry:2
+    image: registry:3
     ports:
       - "5000:5000"
     environment:
@@ -255,11 +252,12 @@ spec:
 # Verify the registries.yaml is present and correct
 sudo cat /etc/rancher/k3s/registries.yaml
 
-# Check if K3s loaded the config
-sudo journalctl -u k3s | grep -i registry
+# Check containerd's registry log on the node that pulled the image
+sudo tail -n 100 /var/lib/rancher/k3s/agent/containerd/containerd.log
 
 # Restart K3s to reload registry config
-sudo systemctl restart k3s
+sudo systemctl restart k3s        # On server nodes
+sudo systemctl restart k3s-agent  # On agent nodes
 ```
 
 ### TLS Certificate Error
@@ -286,4 +284,4 @@ kubectl get pod <pod-name> -o jsonpath='{.status.containerStatuses[0].imageID}'
 
 ## Conclusion
 
-K3s's `registries.yaml` configuration provides a flexible way to configure private registries, mirrors, and authentication across all cluster nodes. By configuring mirrors, you can route all image pulls through internal caches to improve performance and reduce external bandwidth. TLS and authentication options ensure that registry access is secure. Remember to deploy the `registries.yaml` to every node and restart the K3s service after changes.
+K3s's `registries.yaml` configuration provides a flexible way to configure private registries, mirrors, and authentication across all cluster nodes. By configuring mirrors, you can try internal caches before the default upstream fallback to improve performance and reduce external bandwidth. TLS and authentication options ensure that registry access is secure. Remember to deploy the `registries.yaml` to every node and restart the K3s service after changes.
