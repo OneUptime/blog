@@ -8,109 +8,101 @@ Description: Enable IPv6 on TP-Link Archer and Deco series routers, configure DH
 
 ## Supported TP-Link Models
 
-Most TP-Link Archer series (C6, AX20, AX50, AX73, AX6000) and Deco mesh systems support IPv6. Check: Advanced → IPv6 in the Tether app or web GUI.
+Most TP-Link Archer series (C6, AX20, AX50, AX73, AX6000) and Deco mesh systems support IPv6. Check Advanced → IPv6 in the Archer web GUI, or More → Internet Connection → IPv6 in the Deco app.
 
 ## GUI Configuration (Archer Series)
 
-Access the router web interface at `192.168.0.1` or `tplinkwifi.net`.
+Access the router web interface at `tplinkwifi.net` or your router's LAN IP.
 
 ```text
 Path: Advanced → IPv6
 
-WAN IPv6 Connection Type: DHCPv6
-  (Most ISPs - automatically requests address and prefix)
+IPv6: Enable
 
-Alternatively for SLAAC ISPs:
-  WAN Type: SLAAC
-  DNS Server: Get IPv6 DNS from ISP (enabled)
+WAN IPv6 Connection Type: Dynamic IP (SLAAC/DHCPv6)
+  (Most ISPs - automatically requests address and prefix)
+  Advanced Settings:
+    Get IPv6 Connection: Auto
+    Prefix Delegation: Enable
+    DNS Server: Get IPv6 DNS from ISP (enabled)
+
+If your ISP specifically requires SLAAC:
+  WAN IPv6 Connection Type: Dynamic IP (SLAAC/DHCPv6)
+  Advanced Settings:
+    Get IPv6 Connection: SLAAC+Stateless DHCP
+    DNS Server: Get IPv6 DNS from ISP (enabled)
   or Manual DNS:
     Primary: 2606:4700:4700::1111
     Secondary: 2001:4860:4860::8888
 
 LAN settings:
-  Assign IPv6 address: Enable
-  IPv6 Prefix: (auto-filled from delegated prefix)
-  IPv6 Prefix Length: 64
-  DHCPv6 Server: Enable (stateless - SLAAC + DNS via RA)
+  Address Type: DHCPv6 or SLAAC+Stateless DHCP
+  Address Prefix: (prefix provided by your ISP)
 
-Enable IPv6 Firewall: Yes (recommended)
+Firewall Rules:
+  Leave default IPv6 protection enabled
+  Add rules only if you need inbound IPv6 access
 ```
 
 ## TP-Link Deco (Mesh) IPv6
 
-Deco systems configure IPv6 through the Tether mobile app.
+Deco systems configure IPv6 through the Deco mobile app.
 
-```sql
-Tether App → Select Deco network → More → Advanced → IPv6
+```text
+Deco App → Select Deco network → More → Internet Connection → IPv6
 
 IPv6 Status: Enable
 
 Internet Connection:
-  Type: DHCPv6 (recommended for most ISPs)
+  Type: Dynamic IP (recommended for most ISPs)
 
 LAN:
-  IPv6 Address Assignment: Enabled
+  Address Prefix: (shown after the WAN connection is established)
   DNS: Automatic (from ISP) or Manual
 
-Note: Deco mesh nodes relay IPv6 from the main node.
-All nodes share the same /64 prefix for the LAN.
+Note: Deco mesh nodes bridge IPv6 from the main node.
 ```
 
-## Verify via Router Admin CLI
+## Verify via Router Admin UI
 
-TP-Link OpenWrt-based routers support SSH for advanced verification.
+Use the router's supported status pages instead of assuming SSH access is available on stock firmware.
 
-```bash
-# Enable SSH: Advanced → System → Remote Management → SSH
+```text
+Archer web GUI:
+  Advanced → IPv6
+  Confirm WAN IPv6 shows a global address
+  Confirm Prefix Delegation / Address Prefix is populated
+  Confirm the selected LAN Address Type matches your clients
 
-# or via Telnet on older models
-
-# Connect to router
-ssh root@192.168.0.1
-
-# Check WAN IPv6
-ip -6 addr show dev pppoe-wan 2>/dev/null || ip -6 addr show dev eth0.2
-
-# Check delegated prefix routing
-ip -6 route show
-
-# Check LAN RA is running
-ps | grep radvd
-
-# View RA config
-cat /tmp/radvd.conf
+Deco app:
+  More → Internet Connection → IPv6
+  Confirm WAN IPv6 shows a global address
+  Confirm an Address Prefix is shown for the LAN
+  Review Firewall Rules only if you need inbound IPv6 access
 ```
 
 ## Troubleshooting TP-Link IPv6
 
 Common issues and quick fixes.
 
-```bash
-# Issue 1: Router shows IPv6 address but devices don't get one
-# Fix: Ensure RA is enabled and LAN assignment is on
-# Check radvd is running:
-ps | grep radvd
-# Restart if missing:
-/etc/init.d/radvd restart
+```text
+# Issue 1: Router shows an IPv6 address but devices do not get one
+# Fix: On Archer, confirm Prefix Delegation is enabled and LAN Address Type is
+# DHCPv6 or SLAAC+Stateless DHCP. On Deco, confirm IPv6 is enabled in
+# More → Internet Connection → IPv6. Then reconnect the client.
 
 # Issue 2: IPv6 intermittently drops
-# Often DHCPv6 lease renewal failure
-# Force DHCPv6 renew from WAN interface:
-ip -6 addr flush dev eth0.2
-udhcpc6 -i eth0.2 -P 60 &
+# Verify the WAN IPv6 connection type matches your ISP (Dynamic IP or PPPoE).
+# If PPPoE is used, keep "Share the same PPPoE session with IPv4" enabled
+# unless the ISP provided separate IPv6 credentials.
 
-# Issue 3: Some sites unreachable over IPv6 (MTU issue)
-# TP-Link PPPoE MTU default is 1480
-# Check:
-ip link show dev pppoe-wan | grep mtu
-# Reduce if needed:
-ip link set dev pppoe-wan mtu 1452
+# Issue 3: Some sites are unreachable over IPv6
+# MTU problems can occur on PPPoE links. Check the WAN MTU in the router UI and
+# use the value recommended by your ISP instead of assuming a fixed 1452.
 
-# Issue 4: IPv6 firewall blocking too aggressively
-# Review firewall rules:
-ip6tables -L -n -v
-# Temporarily disable to test:
-ip6tables -P FORWARD ACCEPT
+# Issue 4: Inbound IPv6 access is blocked
+# Review IPv6 Firewall Rules in the router UI and add only the specific rule you
+# need. Do not disable the firewall globally just to test connectivity.
 ```
 
 ## Test IPv6 From LAN Device
@@ -124,10 +116,10 @@ After configuring the router, verify from a device on the network.
 ip -6 addr show | grep "scope global"
 
 # Ping router's LAN IPv6
-ping6 2001:db8:home:1::1    # substitute actual router LAN IPv6
+ping -6 2001:db8:1:1::1    # substitute actual router LAN IPv6
 
 # Ping internet
-ping6 2606:4700:4700::1111
+ping -6 2606:4700:4700::1111
 
 # Check DNS works over IPv6
 dig AAAA example.com @2606:4700:4700::1111
@@ -138,4 +130,4 @@ curl -6 https://ifconfig.co
 
 ## Conclusion
 
-TP-Link Archer and Deco series routers configure IPv6 under Advanced → IPv6 in the web GUI or Tether app. Select DHCPv6 for the WAN connection type; the router will negotiate a prefix delegation from the ISP and automatically configure radvd to distribute /64 prefixes to LAN devices. Set the IPv6 firewall to enabled to block unsolicited inbound connections. If devices on the LAN do not receive IPv6 addresses, confirm that DHCPv6 LAN assignment is enabled and that radvd is running on the router. MTU issues are common on PPPoE - set the WAN MTU to 1452 if large IPv6 packets fail.
+TP-Link Archer and Deco series routers configure IPv6 under Advanced → IPv6 in the Archer web GUI or More → Internet Connection → IPv6 in the Deco app. Select Dynamic IP (SLAAC/DHCPv6) for most ISPs, or PPPoE if your ISP requires it. On Archer models, enable Prefix Delegation and choose a LAN address type such as DHCPv6 or SLAAC+Stateless DHCP. Keep the default IPv6 firewall protection in place and add explicit firewall rules only when you need inbound IPv6 access. If devices on the LAN do not receive IPv6 addresses, confirm that the WAN connection type matches your ISP and that a delegated prefix or address prefix is present. MTU issues can happen on PPPoE links, so use the MTU recommended by your ISP rather than assuming one fixed value.
