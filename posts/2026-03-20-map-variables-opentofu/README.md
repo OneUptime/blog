@@ -75,10 +75,10 @@ variable "instance_type_map" {
 resource "aws_instance" "web" {
   ami = "ami-0c55b159cbfafe1f0"
 
-  # Lookup instance type based on environment
-  instance_type = var.instance_type_map[var.environment]
+  # Direct index lookup works when the key is guaranteed to exist:
+  # instance_type = var.instance_type_map[var.environment]
 
-  # Or use lookup() with a default fallback
+  # Use lookup() with a default fallback
   instance_type = lookup(var.instance_type_map, var.environment, "t3.micro")
 }
 ```
@@ -174,6 +174,11 @@ variable "security_groups" {
       cidr_blocks = ["0.0.0.0/0"]
     }
   }
+}
+
+resource "aws_security_group" "main" {
+  name   = "example-sg"
+  vpc_id = aws_vpc.main.id
 }
 
 resource "aws_security_group_rule" "ingress" {
