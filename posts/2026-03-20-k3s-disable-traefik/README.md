@@ -8,11 +8,11 @@ Description: Learn how to disable the default Traefik ingress controller in K3s 
 
 ## Introduction
 
-K3s ships with Traefik v2 as its default ingress controller. While Traefik is an excellent ingress solution, many teams prefer NGINX Ingress Controller for its compatibility, community support, and familiarity. Others may use Istio, Kong, or another ingress solution that conflicts with Traefik. This guide shows how to cleanly disable Traefik and deploy a replacement.
+K3s ships with Traefik as its default ingress controller. K3s 1.32 and later include Traefik v3, while K3s 1.21 through 1.31 included Traefik v2. While Traefik is an excellent ingress solution, many teams prefer NGINX Ingress Controller for its compatibility and familiarity. If you choose NGINX Ingress Controller, note that the project entered retirement in March 2026. Others may use Istio, Kong, or another ingress solution that conflicts with Traefik. This guide shows how to cleanly disable Traefik and deploy a replacement.
 
 ## Method 1: Disable Traefik Before Installation
 
-The cleanest approach is to disable Traefik before K3s is installed:
+On each K3s server node, the cleanest approach is to disable Traefik before K3s is installed:
 
 ```bash
 sudo mkdir -p /etc/rancher/k3s
@@ -35,11 +35,13 @@ kubectl get pods -n kube-system | grep traefik
 
 ## Method 2: Disable Traefik on an Existing K3s Cluster
 
-If K3s is already running with Traefik:
+If K3s is already running with Traefik, add a config drop-in on each K3s server node:
 
 ```bash
-# Add traefik to the disable list
-sudo tee -a /etc/rancher/k3s/config.yaml > /dev/null <<EOF
+# Add traefik to the disable list without modifying the main config file
+sudo mkdir -p /etc/rancher/k3s/config.yaml.d
+
+sudo tee /etc/rancher/k3s/config.yaml.d/disable-traefik.yaml > /dev/null <<EOF
 disable:
   - traefik
 EOF
@@ -49,7 +51,7 @@ sudo systemctl restart k3s
 
 # K3s will automatically delete the Traefik Helm chart
 # Monitor the deletion
-kubectl -n kube-system get pods -w | grep traefik
+kubectl get pods -n kube-system -w
 ```
 
 ## Verifying Traefik is Disabled
@@ -62,7 +64,7 @@ kubectl get pods -n kube-system | grep traefik
 kubectl get svc -n kube-system | grep traefik
 
 # Check no Traefik HelmChart resource exists
-kubectl get helmchart -n kube-system
+kubectl get helmcharts.helm.cattle.io -n kube-system
 # traefik should not appear in the list
 ```
 
@@ -78,8 +80,7 @@ helm repo update
 # Install NGINX Ingress Controller
 helm install ingress-nginx ingress-nginx/ingress-nginx \
     --namespace ingress-nginx \
-    --create-namespace \
-    --version 4.9.1
+    --create-namespace
 
 # Wait for it to be ready
 kubectl -n ingress-nginx rollout status deployment/ingress-nginx-controller
@@ -87,7 +88,7 @@ kubectl -n ingress-nginx rollout status deployment/ingress-nginx-controller
 
 ### Configuring NGINX with ServiceLB (K3s Default LB)
 
-If you're keeping ServiceLB, NGINX will get a LoadBalancer IP automatically:
+If you're keeping ServiceLB, and ports 80 and 443 are available on eligible nodes, NGINX will get a LoadBalancer IP automatically:
 
 ```bash
 # Check the assigned external IP
@@ -102,24 +103,25 @@ kubectl -n ingress-nginx get svc ingress-nginx-controller
 
 ```bash
 # Install with NodePort for bare metal environments
+# NodePort values must be within the cluster's NodePort range
 helm install ingress-nginx ingress-nginx/ingress-nginx \
     --namespace ingress-nginx \
     --create-namespace \
     --set controller.service.type=NodePort \
-    --set controller.service.nodePorts.http=80 \
-    --set controller.service.nodePorts.https=443 \
-    --set controller.hostPort.enabled=true
+    --set controller.service.nodePorts.http=30080 \
+    --set controller.service.nodePorts.https=30443
 ```
 
 ### Configuring NGINX with MetalLB
 
 ```bash
+# MetalLB requires ServiceLB to be disabled in K3s
 # Install with LoadBalancer type (MetalLB provides the IP)
 helm install ingress-nginx ingress-nginx/ingress-nginx \
     --namespace ingress-nginx \
     --create-namespace \
     --set controller.service.type=LoadBalancer \
-    --set controller.service.annotations."metallb\.universe\.tf/address-pool"=production
+    --set controller.service.annotations."metallb\.io/address-pool"=production
 ```
 
 ## Migrating Traefik IngressRoutes to Kubernetes Ingress
@@ -130,7 +132,7 @@ If you had Traefik-specific `IngressRoute` objects, migrate them to standard `In
 
 ```yaml
 # Traefik-specific IngressRoute (not usable with NGINX)
-apiVersion: traefik.containo.us/v1alpha1
+apiVersion: traefik.io/v1alpha1
 kind: IngressRoute
 metadata:
   name: myapp
@@ -201,16 +203,15 @@ spec:
                   number: 80
 ```
 
-## Customizing NGINX Ingress with HelmChartConfig
+## Customizing NGINX Ingress with Helm
 
 You can also customize the NGINX deployment via Helm values after installation:
 
 ```bash
 # Customize NGINX with specific annotations and settings
-helm upgrade ingress-nginx ingress-nginx/ingress-nginx \
+helm upgrade --reuse-values ingress-nginx ingress-nginx/ingress-nginx \
     --namespace ingress-nginx \
     --set controller.metrics.enabled=true \
-    --set controller.metrics.serviceMonitor.enabled=true \
     --set controller.config.proxy-body-size="100m" \
     --set controller.config.proxy-read-timeout="300" \
     --set controller.replicaCount=2
@@ -244,13 +245,16 @@ spec:
                   number: 80
 EOF
 
-# Add hosts entry for local testing
+# For LoadBalancer-based setups, add a hosts entry for local testing
 echo "$(kubectl -n ingress-nginx get svc ingress-nginx-controller -o jsonpath='{.status.loadBalancer.ingress[0].ip}') test.example.com" | sudo tee -a /etc/hosts
 
 # Test
 curl http://test.example.com
+
+# For NodePort-based setups, send the Host header to a node IP instead:
+# curl -H 'Host: test.example.com' http://<node-ip>:30080
 ```
 
 ## Conclusion
 
-Disabling Traefik in K3s is a one-line configuration change. Once disabled, K3s automatically removes the Traefik Helm chart and all associated resources. Replacing it with NGINX Ingress Controller is straightforward with Helm. The key is to ensure you convert any Traefik-specific `IngressRoute` resources to standard Kubernetes `Ingress` objects, which are compatible with NGINX and any other standards-compliant ingress controller.
+Disabling Traefik in K3s is a one-line configuration change on each server node. Once disabled, K3s automatically removes the Traefik Helm chart and all associated resources. Replacing it with NGINX Ingress Controller is straightforward with Helm. The key is to ensure you convert any Traefik-specific `IngressRoute` resources to standard Kubernetes `Ingress` objects, which are compatible with NGINX and any other standards-compliant ingress controller.
