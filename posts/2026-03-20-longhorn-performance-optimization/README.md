@@ -22,6 +22,8 @@ Before tuning, establish a baseline:
 kubectl run fio-test --image=xridge/fio:latest --restart=Never \
   --overrides='{"spec":{"volumes":[{"name":"test","persistentVolumeClaim":{"claimName":"test-pvc"}}],"containers":[{"name":"fio","image":"xridge/fio:latest","command":["sleep","infinity"],"volumeMounts":[{"name":"test","mountPath":"/data"}]}]}}'
 
+kubectl wait --for=condition=Ready pod/fio-test --timeout=120s
+
 # Run sequential write test
 kubectl exec fio-test -- fio \
   --name=seq-write \
@@ -30,7 +32,9 @@ kubectl exec fio-test -- fio \
   --size=4G \
   --numjobs=4 \
   --ioengine=libaio \
+  --direct=1 \
   --iodepth=32 \
+  --time_based \
   --runtime=60 \
   --filename=/data/test \
   --output-format=json
@@ -43,7 +47,9 @@ kubectl exec fio-test -- fio \
   --size=1G \
   --numjobs=4 \
   --ioengine=libaio \
+  --direct=1 \
   --iodepth=64 \
+  --time_based \
   --runtime=60 \
   --filename=/data/test
 ```
@@ -62,7 +68,7 @@ provisioner: driver.longhorn.io
 parameters:
   numberOfReplicas: "2"          # Reduce from 3 - less write amplification
   staleReplicaTimeout: "20"
-  dataLocality: "best-effort"    # Prefer local replica reads
+  dataLocality: "best-effort"    # Try to keep one replica local to the workload
   diskSelector: ""
   nodeSelector: ""
 ```
@@ -71,17 +77,17 @@ parameters:
 
 ## Optimization 2: Enable Data Locality
 
-Data locality reduces latency by ensuring at least one replica is on the same node as the workload:
+Data locality can reduce latency by trying to keep a replica on the same node as the workload:
 
 ```bash
-# Set global data locality to "best-effort"
-kubectl patch setting -n longhorn-system \
+# Set the global default for volumes created in the Longhorn UI
+kubectl patch settings.longhorn.io -n longhorn-system \
   default-data-locality \
   --type merge \
   -p '{"value":"best-effort"}'
 
-# Or configure per volume in StorageClass
-# dataLocality: "strict-local"   # Always use local replica (fastest)
+# Or configure Kubernetes volumes in StorageClass
+# dataLocality: "strict-local"   # Requires numberOfReplicas: "1"
 # dataLocality: "best-effort"    # Prefer local, fall back to remote
 # dataLocality: "disabled"       # Default - no preference
 ```
@@ -91,7 +97,7 @@ kubectl patch setting -n longhorn-system \
 ## Optimization 3: Use Dedicated Disks for Longhorn
 
 ```bash
-# In the Longhorn UI: Node → Edit → Add a dedicated disk
+# In the Longhorn UI: Node → Edit Disks → Add a dedicated disk
 # Set the disk path to a dedicated SSD mount point
 
 # On the node, mount a dedicated disk:
@@ -104,49 +110,51 @@ kubectl patch setting -n longhorn-system \
 
 ---
 
-## Optimization 4: Tune CPU Resources for Instance Managers
+## Optimization 4: Tune CPU Resources for V1 Instance Managers
 
 ```bash
-# Set CPU and memory requests for instance manager pods
-kubectl patch setting -n longhorn-system \
+# Reserve CPU for V1 instance manager pods
+kubectl patch settings.longhorn.io -n longhorn-system \
   guaranteed-instance-manager-cpu \
   --type merge \
-  -p '{"value":"250"}'    # 250m = 0.25 CPU cores per instance manager
+  -p '{"value":"15"}'     # 15 = 15% of allocatable CPU per instance manager pod
 
 # For high-I/O workloads, increase this value
-kubectl patch setting -n longhorn-system \
+kubectl patch settings.longhorn.io -n longhorn-system \
   guaranteed-instance-manager-cpu \
   --type merge \
-  -p '{"value":"500"}'
+  -p '{"value":"25"}'
 ```
+
+If you're using the V2 data engine, tune the separate `Guaranteed Instance Manager CPU for V2 Data Engine` setting instead.
 
 ---
 
 ## Optimization 5: Configure Replica Auto-Balance
 
 ```bash
-# Enable replica auto-balance to keep replicas evenly distributed
-kubectl patch setting -n longhorn-system \
+# Enable replica auto-balance to keep minimal redundancy across nodes
+kubectl patch settings.longhorn.io -n longhorn-system \
   replica-auto-balance \
   --type merge \
-  -p '{"value":"best-effort"}'
+  -p '{"value":"least-effort"}'
 ```
 
 ---
 
-## Optimization 6: Disable Revision Counter for Read-Heavy Workloads
+## Optimization 6: Keep Revision Counter Disabled for Performance-Sensitive Workloads
 
-The revision counter writes metadata on every I/O operation. Disabling it reduces write amplification:
+The revision counter updates metadata on every write. Keeping it disabled reduces write-path overhead:
 
 ```bash
-# Disable revision counter
-kubectl patch setting -n longhorn-system \
+# Keep revision counter disabled
+kubectl patch settings.longhorn.io -n longhorn-system \
   disable-revision-counter \
   --type merge \
   -p '{"value":"true"}'
 ```
 
-Note: Disabling revision counter means Longhorn cannot detect dirty replicas after an unclean shutdown - enable only for workloads with application-level consistency guarantees.
+Note: Current Longhorn releases disable the revision counter by default. When it is disabled, Longhorn skips revision-counter checks at startup and auto-salvage falls back to replica head-file metadata.
 
 ---
 
@@ -170,14 +178,14 @@ sysctl -w net.ipv4.tcp_wmem="4096 65536 268435456"
 |---|---|---|
 | Replica count | 3 | 2 (non-critical data) |
 | Data locality | disabled | best-effort |
-| Instance manager CPU | 12m | 250-500m |
-| Revision counter | enabled | disabled (with caution) |
-| Replica auto-balance | disabled | best-effort |
+| Instance manager CPU (V1) | 12% | 15-25% |
+| Revision counter | disabled | disabled (keep default) |
+| Replica auto-balance | disabled | least-effort |
 
 ---
 
 ## Best Practices
 
-- Apply `dataLocality: strict-local` only for stateful workloads with node affinity - otherwise pod migrations will cause remote I/O.
+- Apply `dataLocality: strict-local` only when the workload can use a single Longhorn replica and the StorageClass sets `numberOfReplicas: "1"` - otherwise volume creation will fail.
 - Benchmark after each change to verify the improvement - not all optimizations help equally for all workload patterns.
 - Use dedicated SSDs for Longhorn data directories on database nodes and keep spinning disks for backup or archival volumes.
