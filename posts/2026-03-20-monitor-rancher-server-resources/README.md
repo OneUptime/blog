@@ -118,7 +118,7 @@ spec:
 
 ## Step 4: Grafana Dashboard
 
-Import the official Rancher monitoring dashboard from grafana.com (Dashboard ID: `2728`) for a pre-built Rancher Server overview.
+Install the `rancher-monitoring` chart (Cluster Tools → Monitoring) to get the pre-built Grafana dashboards bundled with Rancher, including Cluster, Workload, and etcd overviews.
 
 Key panels to add:
 - Rancher Server pod resource usage
