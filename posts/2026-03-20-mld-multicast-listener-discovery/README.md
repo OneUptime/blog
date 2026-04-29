@@ -60,8 +60,10 @@ Sent by routers to `ff02::1` to discover all group memberships:
 
 ```bash
 # Capture general MLD queries
+# Note: MLD packets carry an 8-byte Hop-by-Hop (Router Alert) header before
+# the ICMPv6 header, so the ICMPv6 Type byte is at IPv6 offset 48, not 40.
 
-tcpdump -i eth0 -n 'icmp6 and ip6[40] == 130'
+tcpdump -i eth0 -n 'ip6[6] == 0 and ip6[40] == 58 and ip6[48] == 130'
 
 # Typical output:
 # <router-ip> > ff02::1: HBH icmp6: multicast listener query v2 [max resp delay 10000]
@@ -69,20 +71,20 @@ tcpdump -i eth0 -n 'icmp6 and ip6[40] == 130'
 
 ### Multicast Listener Report
 
-Hosts send reports to the specific multicast group address (to reduce report suppression needs):
+In MLDv1, hosts send reports to the multicast group address being reported (and report suppression cancels duplicate reports from peers). In MLDv2, hosts send reports to `ff02::16` (all-MLDv2-routers) and report suppression has been removed so each host can independently advertise its per-source filter state:
 
 ```bash
-# Capture MLD reports from hosts
-tcpdump -i eth0 -n 'icmp6 and (ip6[40] == 131 or ip6[40] == 143)'
+# Capture MLD reports from hosts (v1 type 131 and v2 type 143)
+tcpdump -i eth0 -n 'ip6[6] == 0 and ip6[40] == 58 and (ip6[48] == 131 or ip6[48] == 143)'
 ```
 
 ### Done Message
 
-Sent when a host leaves a group. Sent to `ff02::2` (all routers):
+Sent when a host leaves a group. Sent to `ff02::2` (all routers). Done is an MLDv1 mechanism; MLDv2 conveys leaves through state-change records inside a Type 143 Report instead:
 
 ```bash
 # Capture MLD Done messages
-tcpdump -i eth0 -n 'icmp6 and ip6[40] == 132'
+tcpdump -i eth0 -n 'ip6[6] == 0 and ip6[40] == 58 and ip6[48] == 132'
 ```
 
 ## MLD Timers
