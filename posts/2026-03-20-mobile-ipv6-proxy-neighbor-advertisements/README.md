@@ -30,7 +30,7 @@ Home Router receives packet and needs to forward it:
 
 ## How Proxy Neighbor Advertisements Work
 
-The Home Agent solicits on behalf of (proxies for) each registered Mobile Node.
+The Home Agent answers Neighbor Solicitations on behalf of (proxies for) each registered Mobile Node.
 
 ```mermaid
 sequenceDiagram
@@ -102,8 +102,9 @@ def send_proxy_neighbor_advertisement(
     This is sent in response to a Neighbor Solicitation.
     """
     # Build the Neighbor Advertisement
+    # 33:33:00:00:00:01 is the Ethernet multicast MAC for ff02::1 (RFC 2464)
     na = (
-        Ether(src=ha_mac, dst="ff:ff:ff:ff:ff:ff") /
+        Ether(src=ha_mac, dst="33:33:00:00:00:01") /
         IPv6(src=ha_lladdr, dst="ff02::1") /
         ICMPv6ND_NA(
             tgt=hoa,     # Target = MN's HoA
@@ -125,8 +126,8 @@ When a new binding is registered, the HA sends an unsolicited Proxy NA to update
 ```bash
 # Monitor proxy NA traffic on the home network
 sudo tcpdump -i eth0 -n \
-  "icmp6 and ip6[40] == 136 and ip6[41] & 0x20 != 0"
-# Type 136 = NA, O flag (override) set = proxy NA
+  "icmp6 and ip6[40] == 136 and ip6[44] & 0x20 != 0"
+# Type 136 = NA, byte 44 holds the R/S/O flags; O bit (0x20) set = override
 
 # Expected: HA sends NA saying HoA is reachable at HA's MAC
 ```
