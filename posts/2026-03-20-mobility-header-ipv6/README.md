@@ -33,7 +33,7 @@ The Mobility Header is an IPv6 extension header (Next Header value 135) defined 
 
 | MH Type | Name | Direction |
 |---|---|---|
-| 0 | Binding Refresh Request | HA → MN |
+| 0 | Binding Refresh Request | CN → MN |
 | 1 | Home Test Init (HoTI) | MN → CN |
 | 2 | Care-of Test Init (CoTI) | MN → CN |
 | 3 | Home Test (HoT) | CN → MN |
@@ -71,10 +71,6 @@ tcpdump -i eth0 -n "ip6 proto 135" -v
 # With Wireshark display filter
 # ipv6.nxt == 135
 # mip6.mhtype == 5  (Binding Update only)
-
-# Decode MH Type field in tcpdump
-tcpdump -i eth0 -n -X "ip6 proto 135" | \
-  awk '/0x0010:/ {mh_type=substr($0,30,2); print "MH Type:", mh_type}'
 ```
 
 ## Parsing the Mobility Header in Python
@@ -102,7 +98,7 @@ def parse_mobility_header(data: bytes) -> dict:
     if len(data) < 8:
         return {"error": "Too short"}
 
-    next_header, hdr_len, mh_type, reserved, checksum = struct.unpack_from("!BBBHH", data)
+    next_header, hdr_len, mh_type, reserved, checksum = struct.unpack_from("!BBBBH", data)
 
     return {
         "next_header": next_header,
