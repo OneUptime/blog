@@ -33,7 +33,7 @@ docker run --rm \
 echo "Backup created: $(ls -lh /tmp/portainer-backup/)"
 ```
 
-## Step 2: Create a ConfigMap with the Backup
+## Step 2: Create a PVC for the Backup
 
 ```bash
 # Transfer the backup to the Kubernetes cluster node
@@ -161,10 +161,10 @@ helm upgrade portainer portainer/portainer \
 ```bash
 # Check pod status
 kubectl -n portainer get pods
-kubectl -n portainer describe pod portainer-0
+kubectl -n portainer describe deployment portainer
 
 # Check logs
-kubectl -n portainer logs portainer-0
+kubectl -n portainer logs deployment/portainer
 
 # Get external access URL
 kubectl -n portainer get svc portainer
