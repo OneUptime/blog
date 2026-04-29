@@ -51,16 +51,18 @@ services:
   traefik:
     image: traefik:v3.0
     command:
-      - --providers.docker=true
-      - --providers.docker.swarmMode=true
+      - --providers.swarm.endpoint=unix:///var/run/docker.sock
       - --entrypoints.web.address=:80
       - --entrypoints.websecure.address=:443
+      - --api.insecure=true
       - --certificatesresolvers.letsencrypt.acme.httpchallenge=true
       - --certificatesresolvers.letsencrypt.acme.email=admin@example.com
+      - --certificatesresolvers.letsencrypt.acme.storage=/letsencrypt/acme.json
+      - --certificatesresolvers.letsencrypt.acme.httpchallenge.entrypoint=web
     ports:
       - "80:80"
       - "443:443"
-      - "8080:8080"    # Traefik dashboard
+      - "8080:8080"    # Traefik dashboard (development only)
     volumes:
       - /var/run/docker.sock:/var/run/docker.sock:ro
       - traefik-certs:/letsencrypt
