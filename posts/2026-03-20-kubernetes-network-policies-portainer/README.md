@@ -8,7 +8,7 @@ Description: Learn how to define and manage Kubernetes Network Policies using Po
 
 ## Introduction
 
-Kubernetes Network Policies allow you to control traffic flow at the IP address or port level between pods, namespaces, and external endpoints. Managing these policies through Portainer's intuitive interface simplifies what can otherwise be complex YAML configurations.
+Kubernetes Network Policies allow you to control traffic flow at the IP address or port level between pods, namespaces, and external endpoints. Managing these policies through Portainer's web interface gives you a convenient way to deploy and organize the YAML manifests without working entirely from the command line.
 
 ## Prerequisites
 
@@ -31,8 +31,8 @@ A Network Policy consists of:
 ### Step 1: Navigate to Your Cluster
 
 1. Log into Portainer and select your Kubernetes environment.
-2. In the left sidebar, go to **Cluster** > **Networking**.
-3. Select **Network Policies**.
+2. In the left sidebar, go to **Applications** and click **Create from code**.
+3. Select **Manifest**.
 
 ### Step 2: Create a Default Deny Policy
 
@@ -51,7 +51,7 @@ spec:
     - Egress
 ```
 
-In Portainer, click **Add Network Policy**, paste this YAML, and click **Deploy**.
+In Portainer, choose the `production` namespace in the deploy options (or enable **Use namespace(s) specified from manifest**), paste this YAML into the web editor, and click **Deploy**.
 
 ### Step 3: Allow Specific Traffic
 
@@ -71,7 +71,7 @@ spec:
     - from:
         - namespaceSelector:
             matchLabels:
-              name: frontend
+              kubernetes.io/metadata.name: frontend
       ports:
         - protocol: TCP
           port: 8080
@@ -79,7 +79,7 @@ spec:
 
 ### Step 4: Allow DNS Egress
 
-Pods often need DNS resolution. Ensure you allow egress to the kube-dns service:
+Pods often need DNS resolution. Ensure you allow egress for DNS resolution:
 
 ```yaml
 apiVersion: networking.k8s.io/v1
@@ -101,12 +101,12 @@ spec:
 
 ## Verifying Network Policies
 
-Use Portainer's built-in terminal or kubectl to test connectivity:
+Use Portainer's `kubectl shell` or `kubectl` to test connectivity:
 
 ```bash
 # Test connectivity between pods
 
-kubectl exec -it frontend-pod -- curl http://backend-service:8080
+kubectl exec -it frontend-pod -n frontend -- curl http://backend-service.production.svc:8080
 
 # List all network policies in a namespace
 kubectl get networkpolicies -n production
@@ -114,7 +114,7 @@ kubectl get networkpolicies -n production
 
 ## Monitoring Policy Effectiveness
 
-Portainer provides a visual overview of applied policies. Navigate to **Cluster** > **Networking** > **Network Policies** to see all active policies and their selectors.
+Portainer's `kubectl shell` lets you inspect the applied policies without leaving the UI.
 
 For deeper inspection, use:
 
@@ -128,7 +128,7 @@ kubectl describe networkpolicy allow-frontend-to-backend -n production
 - Label namespaces consistently to simplify namespace selectors.
 - Document each policy with annotations explaining its purpose.
 - Regularly audit policies to remove stale rules.
-- Use Portainer's RBAC features to control who can modify network policies.
+- Use Portainer's RBAC features in Business Edition to control who can modify network policies.
 
 ## Conclusion
 
