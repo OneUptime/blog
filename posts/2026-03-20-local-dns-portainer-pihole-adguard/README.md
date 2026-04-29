@@ -8,7 +8,7 @@ Description: Learn how to set up local DNS resolution for Portainer and its mana
 
 ---
 
-Instead of accessing your Portainer services via IP addresses and port numbers, you can give them proper domain names like `portainer.home.lab` using a local DNS server. Pi-hole and AdGuard Home are the most popular choices for self-hosted environments. This guide shows how to deploy them via Portainer and configure DNS rewrites for all your services.
+Instead of accessing your Portainer services via IP addresses, you can give them proper domain names like `portainer.home.lab` using a local DNS server. If you are not using a reverse proxy yet, local DNS still gives you stable hostnames, but you will keep the original service ports (for example, `https://portainer.home.lab:9443`). Pi-hole and AdGuard Home are the most popular choices for self-hosted environments. This guide shows how to deploy them via Portainer and configure DNS rewrites for all your services.
 
 ---
 
@@ -19,9 +19,11 @@ Without local DNS:
 - Multiple services on different ports - confusing
 
 With local DNS:
-- `https://portainer.home.lab` - clean, memorable
-- `https://grafana.home.lab`
-- `https://whoami.home.lab`
+- `https://portainer.home.lab:9443` - clean, memorable hostname
+- `http://grafana.home.lab:3000`
+- `http://app1.home.lab:8080`
+
+Add a reverse proxy later if you also want to remove the port numbers entirely.
 
 ---
 
@@ -45,13 +47,15 @@ services:
       - "8080:80/tcp"      # Pi-hole web UI (use port 8080 to avoid conflicts)
     environment:
       TZ: "America/New_York"
-      WEBPASSWORD: "your-secure-password"
-      PIHOLE_DNS_: "1.1.1.1;8.8.8.8"   # upstream DNS servers
+      FTLCONF_webserver_api_password: "your-secure-password"
+      FTLCONF_dns_upstreams: "1.1.1.1;8.8.8.8"   # upstream DNS servers
+      FTLCONF_dns_listeningMode: "ALL"           # recommended for Docker bridge networking
+      FTLCONF_misc_etc_dnsmasq_d: "true"         # allow custom files in /etc/dnsmasq.d
     volumes:
       - pihole_etc:/etc/pihole
       - pihole_dnsmasq:/etc/dnsmasq.d
     cap_add:
-      - NET_ADMIN
+      - NET_ADMIN   # required only if you enable Pi-hole DHCP
 
 volumes:
   pihole_etc:
@@ -110,7 +114,7 @@ After Pi-hole is running, add local DNS entries via the admin UI or by editing d
 
 ```bash
 # Exec into the Pi-hole container to add a custom dnsmasq conf
-docker exec -it pihole bash
+docker exec -it pihole sh
 
 # Create a custom DNS entries file
 cat > /etc/dnsmasq.d/02-local-hosts.conf << 'EOF'
@@ -119,8 +123,10 @@ address=/grafana.home.lab/192.168.1.100
 address=/app1.home.lab/192.168.1.100
 EOF
 
-# Restart DNS service inside Pi-hole
-pihole restartdns
+exit
+
+# Restart the container so Pi-hole re-reads dnsmasq config files
+docker restart pihole
 ```
 
 ---
@@ -155,9 +161,15 @@ curl -k https://portainer.home.lab:9443
 For a cleaner setup, use a wildcard DNS entry to route all `.home.lab` subdomains to your server.
 
 ```bash
+# Exec into the Pi-hole container
+docker exec -it pihole sh
+
 # In Pi-hole custom dnsmasq config
 echo "address=/.home.lab/192.168.1.100" > /etc/dnsmasq.d/03-wildcard.conf
-pihole restartdns
+exit
+
+# Restart the container so Pi-hole re-reads dnsmasq config files
+docker restart pihole
 ```
 
 Then configure your reverse proxy (Nginx, Traefik) to handle subdomain routing to the correct containers.
@@ -166,4 +178,4 @@ Then configure your reverse proxy (Nginx, Traefik) to handle subdomain routing t
 
 ## Summary
 
-Deploying Pi-hole or AdGuard Home via Portainer and adding DNS rewrites gives all your Portainer-managed services clean, memorable hostnames. Set your router DHCP to point to the DNS container IP, and every device on your network will resolve `portainer.home.lab` and similar names automatically.
+Deploying Pi-hole or AdGuard Home via Portainer and adding DNS rewrites gives all your Portainer-managed services clean, memorable hostnames. Set your router DHCP to point to the DNS container IP, and every device on your network will resolve `portainer.home.lab` and similar names automatically. If you also want to remove per-service port numbers, put a reverse proxy in front of those services.
