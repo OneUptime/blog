@@ -8,14 +8,13 @@ Description: Configure Docker device mappings in Portainer to pass USB devices, 
 
 ---
 
-Many IoT, industrial, and hardware projects require containers to access physical devices - USB scanners, serial sensors, GPS receivers, HART multiplexers, and more. Docker's device mapping feature makes this possible, and Portainer makes it configurable through the stack editor.
+Many IoT, industrial, and hardware projects require containers running on a Linux Docker Engine host to access physical devices - USB scanners, serial sensors, GPS receivers, HART multiplexers, and more. Docker's device mapping feature makes this possible, and Portainer makes it configurable through the stack editor.
 
 ## Device Mapping in Portainer Stacks
 
 Use the `devices` key in your service definition:
 
 ```yaml
-version: "3.8"
 services:
   serial-reader:
     image: myapp/sensor-reader:1.2.3
@@ -36,7 +35,7 @@ services:
 Identify the correct device path on the host before mapping:
 
 ```bash
-# List all connected serial/USB devices
+# Inspect candidate serial device nodes
 
 ls -la /dev/tty*
 ls -la /dev/ttyUSB*
@@ -46,7 +45,7 @@ ls -la /dev/ttyACM*
 lsusb
 
 # Check udev events when plugging in a device
-udevadm monitor --environment --udev | grep -A 5 "DEVNAME"
+udevadm monitor --property --udev | grep -A 5 "DEVNAME"
 
 # Get device details
 udevadm info --query=all --name=/dev/ttyUSB0
@@ -96,7 +95,7 @@ devices:
 
 ## Persistent Device Names with udev Rules
 
-Device names like `/dev/ttyUSB0` can change when devices are reconnected. Create udev rules for stable names:
+Device names like `/dev/ttyUSB0` can change when devices are reconnected. Create udev rules for stable names, but note that unplugging and recreating a device can still require restarting the container so Docker remaps it:
 
 ```bash
 # /etc/udev/rules.d/99-serial-devices.rules
@@ -104,7 +103,7 @@ Device names like `/dev/ttyUSB0` can change when devices are reconnected. Create
 # Rule for a specific USB serial device (by Vendor ID and Product ID)
 # ATTRS{idVendor}=="0403" is FTDI, ATTRS{idProduct}=="6001" is FT232
 SUBSYSTEM=="tty", ATTRS{idVendor}=="0403", ATTRS{idProduct}=="6001", \
-  ATTRS{serial}=="A12345", SYMLINK+="sensor-gateway", MODE="0666"
+  ATTRS{serial}=="A12345", SYMLINK+="sensor-gateway", GROUP="dialout", MODE="0660"
 ```
 
 Now map the stable symlink:
@@ -123,14 +122,14 @@ services:
   device-app:
     devices:
       - /dev/ttyUSB0:/dev/ttyUSB0
-    # Option 1: Add dialout group for serial port access
+    # Option 1: Add the device's group for serial port access
     group_add:
       - dialout
     # Option 2: Use privileged mode (less secure, broader access)
     # privileged: true
 ```
 
-Add the `dialout` group to your container to allow serial port access without full `privileged` mode.
+Add the device's group to your container to allow serial port access without full `privileged` mode. On many Linux distributions that is `dialout` for serial ports, but the group name or GID must match what owns the device on the host.
 
 ## Verify Device Access in Container
 
@@ -142,9 +141,9 @@ ls -la /dev/ttyUSB0
 # crw-rw---- 1 root dialout 188, 0 Mar 20 10:00 /dev/ttyUSB0
 
 # Read from the device (for serial devices)
-cat /dev/ttyUSB0   # Will show raw data from the serial device
+cat /dev/ttyUSB0   # May show raw bytes if the port is configured and the device is sending data
 ```
 
 ## Summary
 
-Device mapping in Portainer stacks gives containers access to physical hardware without needing privileged mode for most use cases. Use udev rules for stable device names, add the appropriate group (`dialout` for serial ports), and pin your device paths to prevent mapping the wrong device after a system reboot.
+On Linux Docker Engine hosts, device mapping in Portainer stacks gives containers access to physical hardware without needing privileged mode for most use cases. Use udev rules for stable device names, add the appropriate device group (often `dialout` for serial ports), and remember that reconnecting a device may still require restarting the container.
