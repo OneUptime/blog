@@ -33,7 +33,7 @@ fn handle_client(mut stream: TcpStream) {
 }
 
 fn main() -> std::io::Result<()> {
-    // [::] listens on all IPv6 interfaces (and IPv4 on dual-stack systems)
+    // [::] listens on all IPv6 interfaces and may also accept IPv4 on dual-stack systems
     let listener = TcpListener::bind("[::]:8080")?;
     println!("Listening on {}", listener.local_addr()?);
 
@@ -52,38 +52,28 @@ fn main() -> std::io::Result<()> {
 
 ## IPv6-Only Listener
 
-To bind exclusively to IPv6 (disabling dual-stack), use `SocketAddrV6` and set `IPV6_V6ONLY`:
+To bind exclusively to IPv6 (disabling dual-stack), create the socket first and set `IPV6_V6ONLY` before binding:
+
+```toml
+# Cargo.toml
+
+[dependencies]
+socket2 = "0.6"
+```
 
 ```rust
-use std::net::{Ipv6Addr, SocketAddrV6, TcpListener};
-
-#[cfg(unix)]
-fn set_ipv6only(listener: &TcpListener) -> std::io::Result<()> {
-    use std::os::unix::io::AsRawFd;
-    let fd = listener.as_raw_fd();
-    let one: libc::c_int = 1;
-    unsafe {
-        let ret = libc::setsockopt(
-            fd,
-            libc::IPPROTO_IPV6,
-            libc::IPV6_V6ONLY,
-            &one as *const _ as *const libc::c_void,
-            std::mem::size_of::<libc::c_int>() as libc::socklen_t,
-        );
-        if ret != 0 {
-            return Err(std::io::Error::last_os_error());
-        }
-    }
-    Ok(())
-}
+use socket2::{Domain, Socket, Type};
+use std::net::{Ipv6Addr, SocketAddr, SocketAddrV6, TcpListener};
 
 fn main() -> std::io::Result<()> {
-    let addr = SocketAddrV6::new(Ipv6Addr::UNSPECIFIED, 8080, 0, 0);
-    let listener = TcpListener::bind(addr)?;
+    let socket = Socket::new(Domain::IPV6, Type::STREAM, None)?;
+    socket.set_only_v6(true)?;
 
-    #[cfg(unix)]
-    set_ipv6only(&listener)?;
+    let addr = SocketAddr::V6(SocketAddrV6::new(Ipv6Addr::UNSPECIFIED, 8080, 0, 0));
+    socket.bind(&addr.into())?;
+    socket.listen(128)?;
 
+    let listener: TcpListener = socket.into();
     println!("IPv6-only listener on {}", listener.local_addr()?);
     Ok(())
 }
@@ -133,7 +123,7 @@ async fn main() -> tokio::io::Result<()> {
 
 ## Dual-Stack Listener Handling
 
-When `[::]:port` accepts both IPv4 and IPv6 connections, the IPv4 addresses appear as IPv4-mapped IPv6 addresses:
+When `[::]:port` accepts both IPv4 and IPv6 connections, IPv4 peers are typically reported as IPv4-mapped IPv6 addresses:
 
 ```rust
 use std::net::IpAddr;
@@ -149,8 +139,8 @@ async fn main() -> tokio::io::Result<()> {
 
         let client_ip = match addr.ip() {
             IpAddr::V6(v6) => {
-                // Convert IPv4-mapped to real IPv4
-                v6.to_ipv4().map(IpAddr::V4).unwrap_or(IpAddr::V6(v6))
+                // Convert only IPv4-mapped addresses back to real IPv4
+                v6.to_ipv4_mapped().map(IpAddr::V4).unwrap_or(IpAddr::V6(v6))
             }
             v4 => v4,
         };
@@ -165,11 +155,12 @@ async fn main() -> tokio::io::Result<()> {
 
 ```rust
 use tokio::net::TcpListener;
-use tokio::signal;
+use tokio::{signal, task::JoinSet};
 
 #[tokio::main]
 async fn main() -> tokio::io::Result<()> {
     let listener = TcpListener::bind("[::]:8080").await?;
+    let mut tasks = JoinSet::new();
     println!("Server on {}", listener.local_addr()?);
 
     loop {
@@ -178,7 +169,7 @@ async fn main() -> tokio::io::Result<()> {
                 match result {
                     Ok((socket, addr)) => {
                         println!("Accepted from {}", addr);
-                        tokio::spawn(async move {
+                        tasks.spawn(async move {
                             drop(socket); // handle connection here
                         });
                     }
@@ -192,10 +183,16 @@ async fn main() -> tokio::io::Result<()> {
         }
     }
 
+    while let Some(result) = tasks.join_next().await {
+        if let Err(e) = result {
+            eprintln!("Connection task failed: {}", e);
+        }
+    }
+
     Ok(())
 }
 ```
 
 ## Conclusion
 
-Rust makes IPv6 TCP servers straightforward. Binding to `[::]:port` creates a dual-stack listener on most platforms. For async servers, Tokio's `TcpListener` mirrors the synchronous API. Spawning each connection into its own task provides high concurrency without blocking. Use `peer_addr()` to identify clients and handle IPv4-mapped addresses when running in dual-stack mode.
+Rust makes IPv6 TCP servers straightforward. Binding to `[::]:port` creates an IPv6 listener and can also create a dual-stack listener, depending on platform defaults and `IPV6_V6ONLY`. For async servers, Tokio's `TcpListener` mirrors the synchronous API. Spawning each connection into its own task provides high concurrency without blocking. Use `peer_addr()` to identify clients and handle IPv4-mapped addresses when running in dual-stack mode.
