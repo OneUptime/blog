@@ -8,7 +8,7 @@ Description: Learn how to migrate RDS databases between AWS regions using snapsh
 
 ## Introduction
 
-Migrating a database to a different region requires careful planning to minimize downtime and ensure data consistency. OpenTofu orchestrates the creation of cross-region snapshots, replica instances, and the final cutover.
+Migrating a database to a different region requires careful planning to minimize downtime and ensure data consistency. OpenTofu orchestrates the creation of cross-region snapshot copies, replica instances, and the final cutover.
 
 ## Strategy 1: Cross-Region Snapshot Copy
 
@@ -30,14 +30,13 @@ provider "aws" {
 resource "aws_db_snapshot" "migration_snapshot" {
   provider               = aws.source
   db_instance_identifier = var.source_db_identifier
-  db_snapshot_identifier = "${var.app_name}-migration-${formatdate("YYYYMMDDhhmmss", timestamp())}"
+  db_snapshot_identifier = "${var.app_name}-migration-source"
 }
 
 # Copy snapshot to the target region
 resource "aws_db_snapshot_copy" "to_target_region" {
   provider               = aws.target
   source_db_snapshot_identifier = aws_db_snapshot.migration_snapshot.db_snapshot_arn
-  source_region          = "us-east-1"
   target_db_snapshot_identifier = "${var.app_name}-migration-target"
 
   # Encrypt in target region with target region KMS key
@@ -63,10 +62,6 @@ resource "aws_db_instance" "migrated" {
   db_subnet_group_name   = aws_db_subnet_group.target.name
   vpc_security_group_ids = [aws_security_group.db_target.id]
 
-  # Override encryption with target region key
-  storage_encrypted  = true
-  kms_key_id         = aws_kms_key.target_db.arn
-
   apply_immediately   = true
   skip_final_snapshot = false
   final_snapshot_identifier = "${var.app_name}-db-final"
@@ -80,10 +75,10 @@ resource "aws_db_instance" "migrated" {
 
 ## Strategy 2: Cross-Region Read Replica
 
-For lower RPO/RTO, promote a cross-region read replica.
+For lower RPO/RTO, use a cross-region read replica if your RDS engine supports cross-Region replicas and automated backups are enabled on the source instance.
 
 ```hcl
-# Create a cross-region read replica for near-zero RPO
+# Create a cross-region read replica for lower RPO/RTO
 resource "aws_db_instance" "cross_region_replica" {
   provider = aws.target
 
@@ -94,7 +89,7 @@ resource "aws_db_instance" "cross_region_replica" {
   db_subnet_group_name   = aws_db_subnet_group.target.name
   vpc_security_group_ids = [aws_security_group.db_target.id]
 
-  # Replicas inherit encryption from source; specify target key
+  # Cross-region encrypted replicas require a target-region KMS key
   kms_key_id = aws_kms_key.target_db.arn
 
   backup_retention_period = 0  # disable backups on replica
@@ -116,8 +111,7 @@ aws rds promote-read-replica \
   --db-instance-identifier "${APP_NAME}-db-replica-${TARGET_ENV}" \
   --region eu-west-1
 
-# Update application connection strings to point to new DB
-tofu apply -var="db_endpoint=${NEW_DB_ENDPOINT}"
+# Update application connection strings to point to the new DB
 ```
 
 ## Target Region Networking
@@ -145,4 +139,4 @@ tofu apply tfplan
 
 ## Summary
 
-Database region migration requires a choice between snapshot-based migration (higher RPO) and cross-region read replica promotion (near-zero RPO). OpenTofu manages snapshot copies, restored instances, cross-region replicas, and target networking - providing a reproducible migration process with minimal manual steps.
+Database region migration requires a choice between snapshot-based migration (higher RPO) and cross-region read replica promotion for engines that support it (lower RPO/RTO). OpenTofu manages snapshot copies, restored instances, cross-region replicas, and target networking - providing a reproducible migration process with minimal manual steps.
