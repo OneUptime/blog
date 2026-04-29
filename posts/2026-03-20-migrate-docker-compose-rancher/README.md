@@ -49,7 +49,7 @@ echo "Services/Applications:"
 # docker service ls --format "table {{.Name}}\t{{.Image}}\t{{.Replicas}}"
 
 # Docker Compose example:
-# docker-compose ps
+# docker compose ps
 
 # ECS example:
 # aws ecs list-services --cluster your-cluster
@@ -64,6 +64,10 @@ echo "Networks:"
 
 echo ""
 echo "Secrets/Configs:"
+# Docker Compose example:
+# docker compose config
+
+# Docker Swarm example:
 # docker secret ls
 # docker config ls
 ```
@@ -73,20 +77,100 @@ echo "Secrets/Configs:"
 ```python
 #!/usr/bin/env python3
 # convert-to-kubernetes.py
-# Example: Convert Docker Compose to Kubernetes manifests
+# Example: Convert Docker Compose services to Kubernetes Deployment and Service manifests
 
+import json
+import os
 import yaml
 import subprocess
 
-def convert_service_to_deployment(service_name, service_config):
-    """Convert a Docker service definition to a Kubernetes Deployment"""
-    
+def normalize_environment(environment):
+    if not environment:
+        return []
+
+    if isinstance(environment, dict):
+        items = environment.items()
+    else:
+        items = []
+        for entry in environment:
+            if "=" in entry:
+                key, value = entry.split("=", 1)
+                items.append((key, value))
+            else:
+                items.append((entry, ""))
+
+    return [
+        {"name": str(key), "value": "" if value is None else str(value)}
+        for key, value in items
+    ]
+
+def normalize_ports(ports):
+    normalized = []
+
+    for port in ports or []:
+        if isinstance(port, dict):
+            target = port.get("target")
+            protocol = str(port.get("protocol", "tcp")).upper()
+        else:
+            value = str(port)
+            target = value.split("/", 1)[0].rsplit(":", 1)[-1]
+            protocol = "TCP"
+
+        if not target:
+            continue
+
+        container_port = int(str(target).split("-", 1)[0])
+        normalized.append(
+            {
+                "name": f"port-{container_port}",
+                "port": container_port,
+                "targetPort": container_port,
+                "containerPort": container_port,
+                "protocol": protocol,
+            }
+        )
+
+    unique_ports = []
+    seen = set()
+    for port in normalized:
+        key = (port["containerPort"], port["protocol"])
+        if key not in seen:
+            unique_ports.append(port)
+            seen.add(key)
+
+    return unique_ports
+
+def convert_service_to_manifests(service_name, service_config):
+    image = service_config.get("image")
+    if not image:
+        raise ValueError(f"Service '{service_name}' must define an image before conversion")
+
+    environment = normalize_environment(service_config.get("environment"))
+    ports = normalize_ports(service_config.get("ports"))
+
+    container = {
+        "name": service_name,
+        "image": image,
+    }
+
+    if environment:
+        container["env"] = environment
+
+    if ports:
+        container["ports"] = [
+            {
+                "containerPort": port["containerPort"],
+                "protocol": port["protocol"],
+            }
+            for port in ports
+        ]
+
     deployment = {
         "apiVersion": "apps/v1",
         "kind": "Deployment",
         "metadata": {
             "name": service_name,
-            "labels": {"app": service_name}
+            "labels": {"app": service_name},
         },
         "spec": {
             "replicas": service_config.get("deploy", {}).get("replicas", 1),
@@ -94,46 +178,64 @@ def convert_service_to_deployment(service_name, service_config):
             "template": {
                 "metadata": {"labels": {"app": service_name}},
                 "spec": {
-                    "containers": [{
-                        "name": service_name,
-                        "image": service_config["image"],
-                        "env": [
-                            {"name": k, "value": str(v)}
-                            for k, v in service_config.get("environment", {}).items()
-                        ],
-                        "ports": [
-                            {"containerPort": int(p.split(":")[1] if ":" in str(p) else p)}
-                            for p in service_config.get("ports", [])
-                        ]
-                    }]
-                }
-            }
-        }
+                    "containers": [container],
+                },
+            },
+        },
     }
-    
-    return deployment
 
-# Read docker-compose.yml
-with open("docker-compose.yml") as f:
-    compose = yaml.safe_load(f)
+    manifests = [deployment]
+
+    if ports:
+        service = {
+            "apiVersion": "v1",
+            "kind": "Service",
+            "metadata": {
+                "name": service_name,
+                "labels": {"app": service_name},
+            },
+            "spec": {
+                "selector": {"app": service_name},
+                "ports": [
+                    {
+                        "name": port["name"],
+                        "port": port["port"],
+                        "targetPort": port["targetPort"],
+                        "protocol": port["protocol"],
+                    }
+                    for port in ports
+                ],
+            },
+        }
+        manifests.append(service)
+
+    return manifests
+
+compose_output = subprocess.check_output(
+    ["docker", "compose", "config", "--format", "json"],
+    text=True,
+)
+compose = json.loads(compose_output)
+
+os.makedirs("k8s", exist_ok=True)
 
 # Convert each service
 for service_name, service_config in compose.get("services", {}).items():
-    k8s_deployment = convert_service_to_deployment(service_name, service_config)
-    
-    output_file = f"k8s/{service_name}-deployment.yaml"
-    with open(output_file, "w") as f:
-        yaml.dump(k8s_deployment, f)
-    
-    print(f"Converted: {service_name} -> {output_file}")
+    for manifest in convert_service_to_manifests(service_name, service_config):
+        kind = manifest["kind"].lower()
+        output_file = f"k8s/{service_name}-{kind}.yaml"
+        with open(output_file, "w") as f:
+            yaml.safe_dump(manifest, f, sort_keys=False)
+
+        print(f"Converted: {service_name} -> {output_file}")
 ```
 
 ## Step 3: Alternative - Use kompose Tool
 
 ```bash
 # Install kompose (Docker Compose to Kubernetes converter)
-curl -L https://github.com/kubernetes/kompose/releases/download/v1.31.0/kompose-linux-amd64   -o kompose
-chmod +x kompose && sudo mv kompose /usr/local/bin/
+curl -L https://github.com/kubernetes/kompose/releases/download/v1.38.0/kompose-linux-amd64   -o kompose
+chmod +x kompose && sudo mv ./kompose /usr/local/bin/kompose
 
 # Convert docker-compose.yml to Kubernetes manifests
 kompose convert -f docker-compose.yml
@@ -152,6 +254,10 @@ kubectl apply -f ./kubernetes/
 NAMESPACE="my-app"
 PVC_NAME="app-data"
 DATA_DIR="/data"
+STORAGE_CLASS="YOUR_STORAGE_CLASS"
+
+# Create namespace if it does not exist
+kubectl create namespace "$NAMESPACE" --dry-run=client -o yaml | kubectl apply -f -
 
 # Create PVC on new cluster
 kubectl apply -f - << PVCEOF
@@ -166,7 +272,7 @@ spec:
   resources:
     requests:
       storage: 20Gi
-  storageClassName: longhorn
+  storageClassName: $STORAGE_CLASS
 PVCEOF
 
 # Copy data using a migration pod
@@ -186,7 +292,7 @@ spec:
     - -c
     - |
       # Download from S3 backup
-      aws s3 sync s3://migration-backup/$DATA_DIR /mnt/data/
+      aws s3 sync "s3://migration-backup${DATA_DIR}" /mnt/data/
     volumeMounts:
     - name: data
       mountPath: /mnt/data
@@ -196,12 +302,15 @@ spec:
       claimName: $PVC_NAME
 PODEOF
 
-kubectl wait pod/data-migrator -n $NAMESPACE   --for=condition=Succeeded --timeout=3600s
+kubectl wait --for=jsonpath='{.status.phase}'=Succeeded pod/data-migrator -n "$NAMESPACE"   --timeout=3600s
 ```
 
 ## Step 5: Deploy to Rancher
 
 ```bash
+# Create namespace if it does not exist
+kubectl create namespace my-app --dry-run=client -o yaml | kubectl apply -f -
+
 # Apply converted manifests to Rancher cluster
 kubectl apply -f ./kubernetes/ --namespace my-app
 
