@@ -59,10 +59,10 @@ node-label:
   - "app-role=backend"
 ```
 
-Then install K3s (it will auto-detect the config):
+Then install the agent (it will load `/etc/rancher/k3s/config.yaml` automatically):
 
 ```bash
-curl -sfL https://get.k3s.io | sh - agent
+curl -sfL https://get.k3s.io | INSTALL_K3S_EXEC="agent" sh -s -
 ```
 
 ## Method 2: Set Labels on Existing Nodes with kubectl
@@ -216,16 +216,16 @@ For managing labels across many nodes:
 
 ## Well-Known Labels
 
-K3s automatically adds these standard labels to nodes:
+Kubernetes nodes come pre-populated with a standard set of labels. Common preset labels include:
 
 ```bash
-# Standard Kubernetes labels automatically set
+# Common preset labels
 kubernetes.io/hostname=<node-name>
-kubernetes.io/os=linux
-kubernetes.io/arch=amd64
-
-# K3s-specific
-node.kubernetes.io/instance-type=k3s
+kubernetes.io/os=<node-os>
+kubernetes.io/arch=<node-architecture>
+node.kubernetes.io/instance-type=<instance-type>
+topology.kubernetes.io/region=<region>
+topology.kubernetes.io/zone=<zone>
 ```
 
 ## Conclusion
