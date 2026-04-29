@@ -4,7 +4,7 @@ Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
 Tags: Python, IPv6, UDP, Socket, Multicast, Programming
 
-Description: Create IPv6 UDP sockets in Python for unicast and multicast communication, including NDP multicast group membership.
+Description: Create IPv6 UDP sockets in Python for unicast and multicast communication, including multicast group membership.
 
 ## Basic IPv6 UDP Server
 
@@ -16,8 +16,11 @@ def ipv6_udp_server(port: int = 5005):
     # AF_INET6 = IPv6, SOCK_DGRAM = UDP
     sock = socket.socket(socket.AF_INET6, socket.SOCK_DGRAM)
 
-    # Allow dual-stack (IPv4 and IPv6 on same socket)
-    sock.setsockopt(socket.IPPROTO_IPV6, socket.IPV6_V6ONLY, 0)
+    # Optional: some platforms let one IPv6 socket receive IPv4-mapped traffic too
+    try:
+        sock.setsockopt(socket.IPPROTO_IPV6, socket.IPV6_V6ONLY, 0)
+    except OSError:
+        pass
 
     # Bind to all interfaces on the specified port
     sock.bind(('::', port))
@@ -71,8 +74,13 @@ ALL_NODES_MULTICAST = "ff02::1"
 # IPv6 all-routers multicast
 ALL_ROUTERS_MULTICAST = "ff02::2"
 
-def send_ipv6_multicast(interface: str, message: bytes):
-    """Send a UDP datagram to the IPv6 all-nodes multicast group."""
+def send_ipv6_multicast(
+    interface: str,
+    message: bytes,
+    group: str = ALL_NODES_MULTICAST,
+    port: int = 5006,
+):
+    """Send a UDP datagram to an IPv6 multicast group."""
     sock = socket.socket(socket.AF_INET6, socket.SOCK_DGRAM)
 
     # Set multicast hop limit (TTL equivalent for IPv6)
@@ -88,10 +96,10 @@ def send_ipv6_multicast(interface: str, message: bytes):
     )
 
     # Send to multicast group
-    dest = (ALL_NODES_MULTICAST, 5006, 0, if_index)
+    dest = (group, port, 0, if_index)
     sock.sendto(message, dest)
     sock.close()
-    print(f"Sent to {ALL_NODES_MULTICAST}")
+    print(f"Sent to [{group}]:{port}")
 
 
 def join_ipv6_multicast_group(group: str, interface: str, port: int):
@@ -158,15 +166,15 @@ def udp_send_auto(host: str, port: int, data: bytes):
 
 ## Custom IPv6 Service Discovery (Simple mDNS-like)
 
-Send a discovery broadcast and collect responses:
+Send a discovery query via multicast and collect responses:
 
 ```python
 import socket
+import struct
 import threading
-import time
 
-DISCOVERY_GROUP = "ff02::fb"  # Similar to mDNS multicast
-DISCOVERY_PORT = 5353
+DISCOVERY_GROUP = "ff12::1234"  # Example application-specific link-local multicast group
+DISCOVERY_PORT = 9999
 
 def discover_ipv6_services(interface: str, timeout: int = 3) -> list[str]:
     """Simple IPv6 service discovery via multicast."""
@@ -183,14 +191,24 @@ def discover_ipv6_services(interface: str, timeout: int = 3) -> list[str]:
             pass
 
     sock = socket.socket(socket.AF_INET6, socket.SOCK_DGRAM)
+    sock.setsockopt(socket.SOL_SOCKET, socket.SO_REUSEADDR, 1)
     if_index = socket.if_nametoindex(interface)
     sock.bind(('::', DISCOVERY_PORT))
+
+    group_bytes = socket.inet_pton(socket.AF_INET6, DISCOVERY_GROUP)
+    mreq = group_bytes + struct.pack("I", if_index)
+    sock.setsockopt(socket.IPPROTO_IPV6, socket.IPV6_JOIN_GROUP, mreq)
 
     recv_thread = threading.Thread(target=receive_responses, args=(sock,))
     recv_thread.start()
 
     # Send discovery query
-    send_ipv6_multicast(interface, b"DISCOVER_v1")
+    send_ipv6_multicast(
+        interface,
+        b"DISCOVER_v1",
+        group=DISCOVERY_GROUP,
+        port=DISCOVERY_PORT,
+    )
     recv_thread.join()
     sock.close()
 
@@ -199,4 +217,4 @@ def discover_ipv6_services(interface: str, timeout: int = 3) -> list[str]:
 
 ## Conclusion
 
-IPv6 UDP sockets in Python use `socket.AF_INET6` and require 4-element address tuples `(host, port, flowinfo, scope_id)`. Multicast requires joining the appropriate group with `IPV6_JOIN_GROUP` and setting the outgoing interface with `IPV6_MULTICAST_IF`. Using `getaddrinfo` handles IPv4/IPv6 selection transparently for portable code.
+IPv6 UDP sockets in Python use `socket.AF_INET6` and typically use 4-element address tuples `(host, port, flowinfo, scope_id)`. For `socket` module methods, `flowinfo` and `scope_id` can be omitted, but `scope_id` matters for scoped addresses such as link-local and multicast. To receive multicast, join the appropriate group with `IPV6_JOIN_GROUP` and bind the UDP port; set `IPV6_MULTICAST_IF` when you need to choose the outgoing interface. Using `getaddrinfo` handles IPv4/IPv6 selection transparently for portable code.
