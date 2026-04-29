@@ -43,29 +43,30 @@ Update DNS/load balancers, decommission old environment.
 
 echo "=== Workload Inventory ==="
 echo ""
-echo "Services/Applications:"
-# Docker Swarm example:
+echo "Jobs/Applications:"
+# List all Nomad jobs:
+# nomad job status
 
-# docker service ls --format "table {{.Name}}\t{{.Image}}\t{{.Replicas}}"
+# Inspect a specific job spec (HCL/JSON):
+# nomad job inspect <job-name>
 
-# Docker Compose example:
-# docker-compose ps
-
-# ECS example:
-# aws ecs list-services --cluster your-cluster
+# List nodes/clients in the cluster:
+# nomad node status
 
 echo ""
 echo "Volumes/Data:"
-# docker volume ls
+# nomad volume status
 
 echo ""
 echo "Networks:"
-# docker network ls
+# Networking is configured per-job in network blocks; review job specs.
 
 echo ""
 echo "Secrets/Configs:"
-# docker secret ls
-# docker config ls
+# Nomad Variables (1.4+):
+# nomad var list
+# Or list Vault secrets if using the Vault integration:
+# vault kv list secret/
 ```
 
 ## Step 2: Convert Workload Definitions
@@ -196,7 +197,7 @@ spec:
       claimName: $PVC_NAME
 PODEOF
 
-kubectl wait pod/data-migrator -n $NAMESPACE   --for=condition=Succeeded --timeout=3600s
+kubectl wait pod/data-migrator -n $NAMESPACE   --for=jsonpath='{.status.phase}'=Succeeded --timeout=3600s
 ```
 
 ## Step 5: Deploy to Rancher
