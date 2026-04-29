@@ -8,16 +8,16 @@ Description: Learn how to configure nftables logging for IPv6 firewall events us
 
 ## Overview
 
-nftables provides a `log` statement for firewall event logging. Compared to ip6tables LOG target, nftables logging has a cleaner syntax, supports JSON format output, and integrates well with systemd-journald. This guide covers nftables log configuration for IPv6 security monitoring.
+nftables provides a `log` statement for firewall event logging. Compared to ip6tables LOG target, nftables logging has a cleaner syntax and integrates well with systemd-journald. The `nft` CLI can export rulesets in JSON, and NFLOG consumers such as ulogd2 can write packet logs in JSON format. This guide covers nftables log configuration for IPv6 security monitoring.
 
 ## Basic nftables Log Statement
 
 ```bash
-# Syntax: log [prefix "text"] [level <syslog-level>] [flags <flag>]
+# Syntax: log [prefix "text"] [level <syslog-level>] [flags <flag[,flag...]>]
 
 # Log before dropping
 
-nft add rule ip6 filter input drop log prefix "IPv6-DROP: "
+nft add rule ip6 filter input log prefix "IPv6-DROP: " drop
 # NOTE: log statement must come BEFORE the terminal action
 
 # Correct order (log THEN drop):
@@ -25,7 +25,7 @@ table ip6 filter {
     chain input {
         type filter hook input priority 0; policy drop;
         ...
-        log prefix "IPv6-IN-DROP: " level warn
+        log prefix "IPv6-IN-DROP: " level warn drop
     }
 }
 ```
@@ -36,7 +36,10 @@ table ip6 filter {
 # Level options (syslog severity):
 # emerg, alert, crit, err, warn (default), notice, info, debug
 
-# Flags:
+# Common flags:
+# tcp sequence  - Log TCP sequence numbers
+# tcp options   - Log TCP options
+# ip options    - Log IPv4/IPv6 header options
 # skuid         - Log UID of sending process
 # ether         - Log Ethernet frame header
 # all           - Log all flags
@@ -60,22 +63,21 @@ table ip6 filter {
         ct state invalid drop
 
         # Log and drop: Routing Header Type 0 (deprecated)
-        # Note: nftables checks extension headers differently
-        # Use exthdr match for IPv6 extension headers
-        ip6 nexthdr 43 log prefix "IPv6-RH-HDR: " level crit drop
+        # Use extension-header matching for IPv6 extension headers
+        rt type 0 log prefix "IPv6-RH0: " level crit drop
 
-        # Log and drop: bogon sources
+        # Log and drop: example special-use sources on an Internet-facing interface
         ip6 saddr { ::/128, 2001:db8::/32, fc00::/7 } \
             log prefix "IPv6-BOGON: " level warn drop
 
         # Log rogue RA from non-link-local
-        ip6 saddr != fe80::/10 ip6 nexthdr icmpv6 icmpv6 type nd-router-advert \
+        ip6 saddr != fe80::/10 icmpv6 type nd-router-advert \
             log prefix "ROGUE-RA: " level crit drop
 
         # Essential ICMPv6
-        ip6 nexthdr icmpv6 icmpv6 type packet-too-big accept
-        ip6 nexthdr icmpv6 icmpv6 type { destination-unreachable, time-exceeded, parameter-problem } accept
-        ip6 saddr fe80::/10 ip6 nexthdr icmpv6 icmpv6 type { nd-router-solicit, nd-router-advert, nd-neighbor-solicit, nd-neighbor-advert } accept
+        icmpv6 type packet-too-big accept
+        icmpv6 type { destination-unreachable, time-exceeded, parameter-problem } accept
+        icmpv6 type { nd-router-solicit, nd-router-advert, nd-neighbor-solicit, nd-neighbor-advert } accept
 
         # Log access to sensitive services
         tcp dport 22 log prefix "IPv6-SSH: " level info accept
@@ -96,15 +98,21 @@ table ip6 filter {
 # Method 1: limit before log+drop action
 nft add rule ip6 filter input \
   limit rate 5/minute burst 10 packets \
-  log prefix "IPv6-DROP: " level warn
+  log prefix "IPv6-DROP: " level warn drop
 
-# Method 2: Per-source rate limiting using meters
+# Method 2: Per-source rate limiting using a dynamic set
 table ip6 log-control {
+    set log_limit {
+        type ipv6_addr
+        timeout 1m
+        flags dynamic
+    }
+
     chain input {
         type filter hook input priority 1;
 
         # Log max 1 per second per source address
-        meter log-limit { ip6 saddr limit rate 1/second } \
+        update @log_limit { ip6 saddr limit rate 1/second } \
             log prefix "IPv6-DROP-RATE: " level warn
     }
 }
@@ -113,7 +121,7 @@ table ip6 log-control {
 ## NFLOG: Send to Userspace
 
 ```bash
-# NFLOG sends logs to userspace daemon (ulogd2, conntrackd, etc.)
+# NFLOG sends logs to a userspace consumer such as ulogd2
 # Better for high-volume logging - doesn't fill kernel log
 
 nft add rule ip6 filter input \
@@ -121,10 +129,14 @@ nft add rule ip6 filter input \
 
 # Configure ulogd2 to receive group 1
 # /etc/ulogd.conf:
-# stack=log1:NFLOG,base1:BASE,ifi1:IFINDEX,ip2str1:IP2STR,json1:JSON,of1:OFILE
+# stack=log1:NFLOG,base1:BASE,ifi1:IFINDEX,ip2str1:IP2STR,mac2str1:HWHDR,json1:JSON
+# [log1]
+# group=1
+# [json1]
+# file="/var/log/ulogd.json"
 
 # View JSON-formatted logs
-tail -f /var/log/ulogd.json | python3 -m json.tool
+tail -f /var/log/ulogd.json
 ```
 
 ## JSON Logging Format
@@ -139,7 +151,7 @@ nft -j list ruleset   # List ruleset in JSON
   "timestamp": "2026-03-20T14:23:01+0000",
   "oob.prefix": "IPv6-IN-DROP: ",
   "orig.ip6.saddr": "2001:db8:1::100",
-  "orig.ip6.daddr": "2001:db8:server::1",
+  "orig.ip6.daddr": "2001:db8:1::1",
   "orig.ip6.protocol": 6,
   "orig.l4.sport": 52341,
   "orig.l4.dport": 22
@@ -168,8 +180,8 @@ journalctl -k -f | grep --line-buffered "IPv6"
 ```bash
 # rsyslog: Forward kernel IPv6 firewall logs
 # /etc/rsyslog.d/30-ipv6-fw.conf
-:msg, contains, "IPv6" @@siem.internal:514   # TCP syslog
-:msg, contains, "IPv6" :omfile:/var/log/ipv6-fw.log
+:msg, contains, "IPv6" action(type="omfwd" target="siem.internal" port="514" protocol="tcp")
+:msg, contains, "IPv6" action(type="omfile" file="/var/log/ipv6-fw.log")
 
 # Reload rsyslog
 systemctl restart rsyslog
@@ -177,4 +189,4 @@ systemctl restart rsyslog
 
 ## Summary
 
-nftables log statement syntax: `log [prefix "..."] [level <syslog>] [flags <flag>]`. Place `log` BEFORE the terminal action (accept/drop). Use `limit rate 5/minute` before `log` to prevent flooding during attacks. For high-volume logging, use `log group N` (NFLOG) with ulogd2 to capture logs in userspace, optionally in JSON format. Log IPv6-specific threats: rogue RA (`ip6 saddr != fe80::/10 icmpv6 type nd-router-advert`), Routing Header packets (`ip6 nexthdr 43`), and bogon sources. Forward logs to SIEM via rsyslog TCP syslog for centralized analysis.
+nftables log statement syntax: `log [prefix "..."] [level <syslog>] [flags <flag[,flag...]>]`. Place `log` BEFORE the terminal action (accept/drop). Use `limit rate 5/minute` before `log` to prevent flooding during attacks. For high-volume logging, use `log group N` (NFLOG) with ulogd2 to capture logs in userspace, optionally in JSON format. Log IPv6-specific threats: rogue RA (`ip6 saddr != fe80::/10 icmpv6 type nd-router-advert`), Routing Header Type 0 packets (`rt type 0`), and special-use sources where appropriate for your interface. Forward logs to SIEM via rsyslog TCP syslog for centralized analysis.
