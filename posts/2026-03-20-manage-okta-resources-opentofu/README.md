@@ -17,15 +17,15 @@ terraform {
   required_providers {
     okta = {
       source  = "okta/okta"
-      version = "~> 4.0"
+      version = "~> 6.0"
     }
   }
 }
 
 provider "okta" {
-  org_name  = var.okta_org_name   # e.g., "mycompany"
-  base_url  = "okta.com"
-  api_token = var.okta_api_token  # From OKTA_API_TOKEN env var
+  org_name  = var.okta_org_name   # e.g., "dev-123456"
+  base_url  = var.okta_base_url   # "okta.com" or "oktapreview.com"
+  api_token = var.okta_api_token  # Or omit this and use OKTA_API_TOKEN
 }
 ```
 
@@ -64,10 +64,7 @@ resource "okta_app_oauth" "internal_app" {
   post_logout_redirect_uris = ["https://app.example.com/logout"]
   response_types            = ["code"]
   token_endpoint_auth_method = "client_secret_basic"
-
-  lifecycle {
-    ignore_changes = [client_secret]
-  }
+  omit_secret               = true
 }
 
 # Assign groups to the application
@@ -88,25 +85,19 @@ resource "okta_app_group_assignments" "internal_app" {
 
 ```hcl
 resource "okta_app_saml" "aws_sso" {
+  preconfigured_app = "amazon_aws"
   label             = "AWS SSO"
-  sso_url           = "https://signin.aws.amazon.com/saml"
-  recipient         = "https://signin.aws.amazon.com/saml"
-  destination       = "https://signin.aws.amazon.com/saml"
-  audience          = "https://signin.aws.amazon.com/saml"
-  subject_name_id_template = "$${user.login}"
-  subject_name_id_format   = "urn:oasis:names:tc:SAML:1.1:nameid-format:emailAddress"
-  response_signed   = true
-  signature_algorithm = "RSA_SHA256"
-  digest_algorithm  = "SHA256"
-  honor_force_authn = false
-  authn_context_class_ref = "urn:oasis:names:tc:SAML:2.0:ac:classes:PasswordProtectedTransport"
 
-  attribute_statements {
-    name      = "https://aws.amazon.com/SAML/Attributes/Role"
-    namespace = "urn:oasis:names:tc:SAML:2.0:attrname-format:uri"
-    type      = "EXPRESSION"
-    values    = ["appuser.awsRole"]
-  }
+  app_settings_json = jsonencode({
+    appFilter          = "okta"
+    awsEnvironmentType = "aws.amazon"
+    groupFilter        = "aws_(?{{accountid}}\\d+)_(?{{role}}[a-zA-Z0-9+=,.@\\-_]+)"
+    joinAllRoles       = false
+    loginURL           = "https://console.aws.amazon.com/ec2/home"
+    roleValuePattern   = "arn:aws:iam::$${accountid}:saml-provider/OKTA,arn:aws:iam::$${accountid}:role/$${role}"
+    sessionDuration    = 3600
+    useGroupMapping    = false
+  })
 }
 ```
 
@@ -140,14 +131,15 @@ resource "okta_policy_mfa" "required_mfa" {
   name     = "Require MFA for Engineering"
   status   = "ACTIVE"
   priority = 1
+  is_oie   = true
 
   groups_included = [okta_group.engineering.id]
 
-  okta_totp {
+  okta_verify = {
     enroll = "REQUIRED"
   }
 
-  fido_webauthn {
+  fido_webauthn = {
     enroll = "OPTIONAL"
   }
 }
@@ -162,7 +154,7 @@ output "app_client_id" {
 }
 
 output "okta_issuer_url" {
-  value = "https://${var.okta_org_name}.okta.com/oauth2/default"
+  value = "https://${var.okta_org_name}.${var.okta_base_url}"
 }
 ```
 
