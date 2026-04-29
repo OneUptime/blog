@@ -4,102 +4,63 @@ Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
 Tags: Keycloak, IPv6, OAuth2, SSO, Authentication
 
-Description: Configure Keycloak identity server to listen on IPv6, connect to PostgreSQL over IPv6, and handle IPv6 client addresses in tokens.
+Description: Configure Keycloak for dual-stack or IPv6-preferred networking, connect to PostgreSQL over IPv6, and preserve IPv6 client addresses through trusted proxy headers.
 
 ## Overview
 
-Configure Keycloak identity server to listen on IPv6, connect to PostgreSQL over IPv6, and handle IPv6 client addresses in tokens.
+Configure Keycloak for dual-stack or IPv6-preferred networking, connect to PostgreSQL over IPv6, and preserve IPv6 client addresses through trusted proxy headers.
 
 ## Key Considerations for IPv6
 
-When working with IPv6 addresses in security contexts:
-- IPv6 addresses contain colons and may include brackets in URLs
-- IPv4-mapped IPv6 addresses (`::ffff:x.x.x.x`) must be normalized
-- IPv6 CIDR notation uses a slash: `2001:db8::/32`
-- A /64 IPv6 subnet contains trillions of addresses - rate limit at /64 level
+When working with IPv6 addresses in Keycloak deployments:
+- Keycloak is accessible over IPv4 and IPv6 by default; use JVM network properties only if you need to prefer one address family
+- IPv6 literals in HTTPS URLs and PostgreSQL JDBC URLs must be enclosed in square brackets
+- If Keycloak is behind a reverse proxy, set `proxy-headers` and limit `proxy-trusted-addresses` to the IPv6 addresses or CIDRs of proxies you trust
+- Keycloak publishes OIDC metadata from the configured `hostname`, so use a stable DNS name instead of a raw IP literal when possible
 
 ## Configuration Example
 
-### Checking if an IP is IPv6
+### Keycloak server settings
 
-```python
-import ipaddress
+```bash
+# Optional: prefer IPv6 addresses when the JVM resolves hostnames
+export JAVA_OPTS_APPEND="-Djava.net.preferIPv4Stack=false -Djava.net.preferIPv6Addresses=true"
 
-def normalize_ip(ip_str: str) -> str:
-    """Normalize IP address, converting IPv4-mapped IPv6 to IPv4."""
-    try:
-        addr = ipaddress.ip_address(ip_str)
-        # Convert IPv4-mapped IPv6 to plain IPv4
-        if isinstance(addr, ipaddress.IPv6Address) and addr.ipv4_mapped:
-            return str(addr.ipv4_mapped)
-        return str(addr)
-    except ValueError:
-        return ip_str
-
-def is_in_network(ip_str: str, network_str: str) -> bool:
-    """Check if an IP is within a network (supports IPv6 CIDR)."""
-    try:
-        ip = ipaddress.ip_address(normalize_ip(ip_str))
-        network = ipaddress.ip_network(network_str, strict=False)
-        return ip in network
-    except ValueError:
-        return False
-
-# Examples:
-
-print(normalize_ip("::ffff:192.168.1.1"))  # → 192.168.1.1
-print(normalize_ip("2001:db8::1"))          # → 2001:db8::1
-print(is_in_network("2001:db8::1", "2001:db8::/32"))  # → True
+bin/kc.sh start \
+  --hostname=https://sso.example.com \
+  --http-enabled=true \
+  --proxy-headers=xforwarded \
+  --proxy-trusted-addresses=2001:db8:100::/64 \
+  --db=postgres \
+  --db-url=jdbc:postgresql://[2001:db8:200::25]:5432/keycloak \
+  --db-username=keycloak \
+  --db-password=change_me
 ```
 
-### IPv6-Aware Rate Limiting
+### What this config does
 
-```python
-import ipaddress
-import redis
-
-r = redis.Redis(host='localhost', port=6379, db=0)
-
-def get_rate_limit_key(client_ip: str) -> str:
-    """Return rate limit key, grouping /64 subnets for IPv6."""
-    try:
-        addr = ipaddress.ip_address(client_ip)
-        if isinstance(addr, ipaddress.IPv6Address):
-            # Group entire /64 subnet under one rate limit key
-            # This prevents bypassing rate limits by using different addresses in same /64
-            network = ipaddress.ip_network(f"{client_ip}/64", strict=False)
-            return f"ratelimit:ipv6:{network.network_address}"
-        else:
-            return f"ratelimit:ipv4:{client_ip}"
-    except ValueError:
-        return f"ratelimit:unknown:{client_ip}"
-
-def check_rate_limit(client_ip: str, max_requests: int = 100, window: int = 60) -> bool:
-    """Return True if within rate limit, False if exceeded."""
-    key = get_rate_limit_key(client_ip)
-    pipe = r.pipeline()
-    pipe.incr(key)
-    pipe.expire(key, window)
-    count, _ = pipe.execute()
-    return count <= max_requests
+```text
+- `--hostname` sets the public base URL Keycloak publishes in its OIDC metadata
+- `--http-enabled=true` is required only when TLS is terminated at the reverse proxy
+- `--proxy-headers=xforwarded` tells Keycloak to parse `X-Forwarded-*` headers from the proxy
+- `--proxy-trusted-addresses` limits trusted proxy headers to the listed IPv6 address or CIDR range
+- `--db-url` uses a PostgreSQL JDBC URL with the IPv6 literal enclosed in square brackets
 ```
 
 ## Testing
 
 ```bash
-# Test with IPv6 client address
-curl -6 -X POST https://[2001:db8::1]:443/auth/login   -H "Content-Type: application/json"   -d '{"username": "test", "password": "test"}'
+# Fetch the OpenID Connect discovery document over IPv6
+curl -6 https://sso.example.com/realms/master/.well-known/openid-configuration
 
-# Simulate multiple requests to test rate limiting
-for i in $(seq 1 20); do
-  curl -6 -s -o /dev/null -w "%{http_code}\n"     -X POST https://[::1]:443/auth/login     -H "Content-Type: application/json"     -d '{"username": "test", "password": "wrong"}'
-done
+# Fetch the realm public keys over IPv6
+curl -6 https://sso.example.com/realms/master/protocol/openid-connect/certs
 ```
 
 ## Monitoring with OneUptime
 
-Use [OneUptime](https://oneuptime.com) to monitor authentication endpoint availability over IPv6 and track response times. Set up alerts for unusually high error rates which may indicate brute force attacks against your IPv6 endpoints.
+Use [OneUptime](https://oneuptime.com) to monitor Keycloak's OpenID Connect discovery document or JWKs endpoints over IPv6 and track response times. Set up alerts for elevated error rates or latency spikes on your public `realms` endpoints.
 
 ## Conclusion
 
-How to Configure Keycloak with IPv6 requires understanding IPv6 address formats, normalizing IPv4-mapped addresses, and applying security policies at the /64 subnet level for IPv6 since individual users may have trillions of addresses within their prefix.
+How to Configure Keycloak with IPv6 requires using a stable public hostname, enabling the correct proxy header handling, enclosing IPv6 literals in PostgreSQL connection URLs, and validating the published OIDC endpoints over IPv6.
