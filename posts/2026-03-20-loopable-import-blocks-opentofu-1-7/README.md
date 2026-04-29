@@ -8,9 +8,9 @@ Description: Learn how to use loopable import blocks introduced in OpenTofu 1.7 
 
 ## Introduction
 
-OpenTofu 1.7 extended import blocks (introduced in 1.5) to support `for_each`, enabling bulk imports of multiple existing resources without writing one import block per resource. This dramatically simplifies importing large numbers of existing cloud resources.
+OpenTofu 1.7 extended existing import blocks to support `for_each`, enabling bulk imports of multiple existing resources without writing one import block per resource. This dramatically simplifies importing large numbers of existing cloud resources.
 
-## Basic Import Block (OpenTofu 1.5)
+## Basic Import Block
 
 ```hcl
 # Single import – one block per resource
@@ -68,18 +68,17 @@ resource "aws_iam_role" "existing" {
   for_each = local.existing_roles
   name     = each.value
 
-  # This will be populated from state after import
-  # You can also run: tofu plan -generate-config-out=generated.tf
-  assume_role_policy = "{}"  # placeholder – update after import
+  # This argument is required in configuration
+  assume_role_policy = "{}"  # placeholder – replace with the real trust policy after import
 }
 ```
 
 ## Generating Configuration Automatically
 
-OpenTofu can generate the resource configuration for you.
+OpenTofu can generate the resource configuration for you for non-loopable import blocks, but this is not currently supported when `for_each` is used on an `import` block.
 
 ```bash
-# First, define only the import blocks
+# For single import blocks, define only the import blocks
 # Then run plan with -generate-config-out to create resource blocks
 
 tofu plan -generate-config-out=imported_resources.tf
@@ -88,6 +87,7 @@ tofu plan -generate-config-out=imported_resources.tf
 cat imported_resources.tf
 
 # Then apply to import the resources
+# For loopable import blocks, write the resource blocks manually instead
 tofu apply
 ```
 
@@ -135,8 +135,8 @@ import {
 ## Removing Import Blocks After Import
 
 ```bash
-# After successfully importing, remove the import blocks
-# They are only needed for the initial import operation
+# After successfully importing, you can remove the import blocks
+# Or keep them as a record of the resource's origin
 
 # Verify the import succeeded
 tofu plan  # should show no changes after removing import blocks
@@ -146,18 +146,20 @@ tofu plan  # should show no changes after removing import blocks
 
 ```bash
 # 1. Write import blocks with for_each
-# 2. Generate resource config (optional)
-tofu plan -generate-config-out=generated.tf
+# 2. Write the matching resource blocks manually
+#    (OpenTofu cannot currently generate config for import blocks that use for_each)
 
-# 3. Review and customize generated config
+# 3. Run plan to review the imports
+tofu plan
+
 # 4. Apply to import
 tofu apply
 
-# 5. Remove import blocks
+# 5. Optionally remove import blocks
 # 6. Run plan to verify no changes
 tofu plan
 ```
 
 ## Summary
 
-Loopable import blocks in OpenTofu 1.7 make bulk resource imports practical for large-scale brownfield migrations. Combined with `tofu plan -generate-config-out`, you can import hundreds of existing resources into state and generate their HCL configuration in a single workflow, dramatically reducing the manual work of adopting OpenTofu for existing infrastructure.
+Loopable import blocks in OpenTofu 1.7 make bulk resource imports practical for large-scale brownfield migrations. They let you import many existing resources into state from a single `import` block, dramatically reducing the manual work of adopting OpenTofu for existing infrastructure. When you use `for_each` on an `import` block, you must currently write the matching resource configuration manually rather than relying on `tofu plan -generate-config-out`.
