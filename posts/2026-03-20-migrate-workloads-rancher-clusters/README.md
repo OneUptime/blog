@@ -70,11 +70,14 @@ helm repo add vmware-tanzu https://vmware-tanzu.github.io/helm-charts
 helm install velero vmware-tanzu/velero \
   --namespace velero \
   --create-namespace \
-  --set configuration.provider=aws \
-  --set configuration.backupStorageLocation.bucket=my-velero-bucket \
-  --set configuration.backupStorageLocation.config.region=us-east-1 \
+  --set configuration.backupStorageLocation[0].name=default \
+  --set configuration.backupStorageLocation[0].provider=aws \
+  --set configuration.backupStorageLocation[0].bucket=my-velero-bucket \
+  --set configuration.backupStorageLocation[0].config.region=us-east-1 \
   --set initContainers[0].name=velero-plugin-for-aws \
-  --set initContainers[0].image=velero/velero-plugin-for-aws:v1.7.0
+  --set initContainers[0].image=velero/velero-plugin-for-aws:v1.14.1 \
+  --set initContainers[0].volumeMounts[0].mountPath=/target \
+  --set initContainers[0].volumeMounts[0].name=plugins
 
 # Create backup of source namespace
 velero backup create production-migration \
