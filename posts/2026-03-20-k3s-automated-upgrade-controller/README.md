@@ -12,7 +12,7 @@ Keeping your K3s cluster up to date is critical for security patches, bug fixes,
 
 ## Prerequisites
 
-- A running K3s cluster (single-node or multi-node)
+- A running K3s cluster (single-node or multi-node). If the cluster is managed by Rancher, use Rancher's upgrade workflow instead of these steps unless version management has been disabled.
 - `kubectl` configured to communicate with your cluster
 - Sufficient permissions to deploy cluster-scoped resources
 
@@ -21,9 +21,10 @@ Keeping your K3s cluster up to date is critical for security patches, bug fixes,
 Deploy the System Upgrade Controller into your cluster using the official manifest:
 
 ```bash
-# Apply the System Upgrade Controller manifest
-
-kubectl apply -f https://github.com/rancher/system-upgrade-controller/releases/latest/download/system-upgrade-controller.yaml
+# Apply the System Upgrade Controller CRD and controller manifest
+kubectl apply \
+  -f https://github.com/rancher/system-upgrade-controller/releases/latest/download/crd.yaml \
+  -f https://github.com/rancher/system-upgrade-controller/releases/latest/download/system-upgrade-controller.yaml
 
 # Verify the controller pod is running
 kubectl get pods -n system-upgrade
@@ -31,24 +32,20 @@ kubectl get pods -n system-upgrade
 
 Wait until the `system-upgrade-controller` pod is in the `Running` state before proceeding.
 
-## Step 2: Label Your Nodes
+## Step 2: Verify Your Node Labels
 
-The upgrade plans use node selectors to target specific node roles. Label your nodes appropriately:
+The upgrade plans use node selectors to target specific node roles. In a standard K3s server/agent cluster, control-plane nodes already have the `node-role.kubernetes.io/control-plane=true` label, and agent nodes can be targeted by matching nodes where that label does not exist:
 
 ```bash
-# Label server (control plane) nodes
-kubectl label node <server-node-name> node-role.kubernetes.io/control-plane=true
-
-# Label agent (worker) nodes
-kubectl label node <agent-node-name> node-role.kubernetes.io/worker=true
-
-# Verify labels
-kubectl get nodes --show-labels
+# Verify control-plane labels
+kubectl get nodes -L node-role.kubernetes.io/control-plane
 ```
 
 ## Step 3: Create an Upgrade Plan for Server Nodes
 
 Create a `Plan` resource targeting your K3s server nodes:
+
+Choose a supported target version for your cluster, and do not skip intermediate Kubernetes minor versions.
 
 ```yaml
 # server-upgrade-plan.yaml
@@ -58,23 +55,21 @@ metadata:
   name: k3s-server-upgrade
   namespace: system-upgrade
 spec:
-  # Target K3s version to upgrade to
-  version: v1.29.3+k3s1
+  # Replace with the next supported K3s version for your cluster
+  version: v1.35.4+k3s1
   serviceAccountName: system-upgrade
   # Number of nodes to upgrade concurrently
   concurrency: 1
-  # Only upgrade nodes with this label
+  # Only upgrade control-plane nodes
   nodeSelector:
     matchExpressions:
       - key: node-role.kubernetes.io/control-plane
         operator: In
         values:
           - "true"
-  # Cordon node before upgrading, drain afterwards
-  cordon: true
   upgrade:
     image: rancher/k3s-upgrade
-  # Drain options
+  # Drain the node before upgrading; drain also cordons it
   drain:
     force: true
     skipWaitForDeleteTimeout: 60
@@ -88,7 +83,7 @@ kubectl apply -f server-upgrade-plan.yaml
 
 ## Step 4: Create an Upgrade Plan for Agent Nodes
 
-After servers are upgraded, upgrade agent nodes:
+After the server plan is in place, create an agent plan that waits for the server upgrades to complete:
 
 ```yaml
 # agent-upgrade-plan.yaml
@@ -98,17 +93,20 @@ metadata:
   name: k3s-agent-upgrade
   namespace: system-upgrade
 spec:
-  version: v1.29.3+k3s1
+  version: v1.35.4+k3s1
   serviceAccountName: system-upgrade
   # Allow 2 agents to upgrade concurrently
   concurrency: 2
   nodeSelector:
     matchExpressions:
-      - key: node-role.kubernetes.io/worker
-        operator: In
-        values:
-          - "true"
-  cordon: true
+      - key: node-role.kubernetes.io/control-plane
+        operator: DoesNotExist
+  # Wait for the server plan to complete before upgrading agents
+  prepare:
+    image: rancher/k3s-upgrade
+    args:
+      - prepare
+      - k3s-server-upgrade
   upgrade:
     image: rancher/k3s-upgrade
   drain:
@@ -181,7 +179,7 @@ spec:
 
 **Node not draining:**
 - Check for pods with strict PodDisruptionBudgets
-- Use `--force` and `--ignore-daemonsets` flags in drain spec
+- Use `force: true` and `ignoreDaemonSets: true` in the plan's `drain` section
 
 ## Conclusion
 
