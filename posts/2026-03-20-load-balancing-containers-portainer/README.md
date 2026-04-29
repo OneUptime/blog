@@ -1,19 +1,20 @@
-# How to Set Up Load Balancing Across Containers in Portainer - A Practical Guide
+# How to Configure Container Networking in Portainer - A Practical Guide
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
-Tags: Portainer, Load Balancing, Nginx, Traefik, Docker
+Tags: Portainer, Networking, Nginx, Traefik, Docker
 
-Description: Configure load balancing across multiple container replicas in Portainer for high availability and performance.
+Description: Configure container networks in Portainer for reverse proxies, isolation, and secure service-to-service communication.
 
 ## Introduction
 
-Configure load balancing across multiple container replicas in Portainer for high availability and performance. Network configuration is a critical aspect of containerized infrastructure, and getting it right ensures your services are secure, performant, and reliable.
+Configure container networks in Portainer for reverse proxies, isolation, and secure service-to-service communication. Network configuration is a critical aspect of containerized infrastructure, and getting it right ensures your services are secure, performant, and reliable.
 
 ## Prerequisites
 
 - Portainer CE or BE installed
-- Docker or Kubernetes environment connected
+- Docker environment connected
+- Docker Swarm initialized if you plan to use overlay networks
 - Basic understanding of networking concepts (subnets, DNS, TLS)
 
 ## Docker Network Types Overview
@@ -44,12 +45,10 @@ Internet
 
 ## Step 2: Create Networks via Portainer
 
-Navigate to **Networks** > **Add Network**:
+Navigate to **Stacks** when defining networks in a stack, or **Networks** > **Add Network** when creating them individually:
 
 ```yaml
 # Define networks in your stack
-
-version: "3.8"
 
 networks:
   # DMZ network - connected to reverse proxy
@@ -77,11 +76,12 @@ networks:
       config:
         - subnet: 172.21.0.0/24
 
-  # External overlay network (for Swarm)
+  # Attachable overlay network (Swarm only)
   swarm-overlay:
     driver: overlay
     attachable: true
-    encrypted: true
+    driver_opts:
+      encrypted: "true"
 ```
 
 ## Step 3: Connect Services to Networks
@@ -102,7 +102,7 @@ services:
       - "80:80"
       - "443:443"
   
-  # API - connected to frontend and backend
+  # API - connected to frontend, backend, and db-net
   api:
     image: my-api:latest
     networks:
@@ -123,31 +123,32 @@ services:
 
 ## Step 4: Configure Network Security
 
-Add network encryption and security settings:
+Add Swarm overlay encryption and host firewall settings:
 
 ```yaml
 networks:
   secure-overlay:
     driver: overlay
-    # Encrypt all overlay network traffic
-    encrypted: true
+    attachable: true
     driver_opts:
       # Use IPsec for encryption
       encrypted: "true"
 ```
 
-Firewall rules via Portainer host access:
+Firewall rules on the Docker host:
 
 ```bash
-# Configure UFW for container networks
-ufw allow from 172.20.0.0/24 to any port 80
-ufw allow from 172.20.0.0/24 to any port 443
-ufw deny from 172.21.0.0/24 to any  # Isolate DB network
+# Allow established connections first
+iptables -I DOCKER-USER -m state --state RELATED,ESTABLISHED -j ACCEPT
+
+# Only allow trusted clients to reach published ports
+# Replace eth0 and 192.0.2.0/24 with your external interface and trusted subnet
+iptables -I DOCKER-USER -i eth0 ! -s 192.0.2.0/24 -j DROP
 ```
 
 ## Step 5: Troubleshoot Network Issues
 
-Debug container networking from Portainer's console:
+Debug container networking from the Docker host:
 
 ```bash
 # Test DNS resolution between containers
@@ -155,7 +156,7 @@ docker exec api-container nslookup postgres
 
 # Test connectivity
 docker exec api-container ping postgres
-docker exec api-container curl -I http://frontend:3000
+docker exec api-container curl -I http://nginx
 
 # Inspect network configuration
 docker network inspect stack-name_backend
@@ -163,8 +164,8 @@ docker network inspect stack-name_backend
 # View connected containers
 docker network inspect stack-name_backend | jq '.[0].Containers'
 
-# Check iptables rules (on host)
-iptables -L -n -v | grep DOCKER
+# Check host firewall rules
+iptables -L DOCKER-USER -n -v
 ```
 
 ## Step 6: Monitor Network Traffic
@@ -176,14 +177,12 @@ services:
   # Network traffic monitoring
   ntopng:
     image: ntop/ntopng:latest
-    ports:
-      - "3000:3000"
     volumes:
       - ntopng-data:/var/lib/ntopng
     cap_add:
       - NET_ADMIN
       - NET_RAW
-    network_mode: host  # Required for traffic inspection
+    network_mode: host  # Use host networking when inspecting host interfaces
 ```
 
 ## Common Network Patterns
@@ -203,8 +202,8 @@ networks:
 networks:
   presentation: {}   # Web/UI layer
   business: {}       # API/Logic layer
-  data: {}           # DB layer (internal only)
-    internal: true
+  data:
+    internal: true   # DB layer (internal only)
 ```
 
 ## Conclusion
