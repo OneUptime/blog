@@ -10,10 +10,12 @@ On cloud providers, `LoadBalancer` services automatically get external IPs. On b
 
 ## Step 1: Install MetalLB
 
+If your cluster uses `kube-proxy` in IPVS mode, enable `strictARP: true` in the `kube-proxy` configuration before installing MetalLB. Also ensure TCP and UDP port `7946` are allowed between cluster nodes for MetalLB's memberlist traffic.
+
 ```bash
 # Install MetalLB using the official manifest
 
-kubectl apply -f https://raw.githubusercontent.com/metallb/metallb/v0.14.5/config/manifests/metallb-native.yaml
+kubectl apply -f https://raw.githubusercontent.com/metallb/metallb/v0.15.3/config/manifests/metallb-native.yaml
 
 # Wait for MetalLB pods to be ready
 kubectl wait --namespace metallb-system \
@@ -42,13 +44,13 @@ metadata:
 spec:
   addresses:
   # Range of IPs MetalLB can assign to LoadBalancer services
-  # These must be IPs your router can reach (not in use by other hosts)
+  # These must be usable on your local network and not already in use
   - 192.168.1.200-192.168.1.250
 
-  # Alternatively, specify a CIDR:
-  # - 192.168.1.200/28
+  # Alternatively, specify a CIDR-aligned subnet:
+  # - 192.168.1.240/28
 
-  # Prevent automatic assignment (require annotation)
+  # Allow automatic assignment from this pool
   autoAssign: true
 ```
 
@@ -84,6 +86,8 @@ kubectl apply -f metallb-l2-advertisement.yaml
 
 ## Step 4: Create a LoadBalancer Service
 
+This example assumes Pods labeled `app: my-web-app` are already running and listening on port `8080`.
+
 ```yaml
 # my-service.yaml
 apiVersion: v1
@@ -116,12 +120,16 @@ kubectl get svc my-web-service -w
 # Check the external IP is reachable
 curl http://192.168.1.200
 
-# Verify the ARP entry exists on the local network
-arp -n 192.168.1.200
-# Should show the MAC address of a Kubernetes node
+# Verify MetalLB is announcing the service
+kubectl describe svc my-web-service
+# Events should show which node is announcing the IP
 
-# Check MetalLB speaker logs for ARP announcements
-kubectl logs -n metallb-system -l component=speaker | tail -20
+# Verify the IP answers ARP requests on the local network
+arping -I <interface> 192.168.1.200
+# Should return replies with the MAC address of a Kubernetes node
+
+# Check recent MetalLB speaker logs if you need to troubleshoot further
+kubectl logs -n metallb-system -l component=speaker --tail=20
 ```
 
-In L2 mode, one node acts as the "speaker" and handles all ARP responses for each external IP. If that node fails, MetalLB automatically moves the IP to another node.
+In L2 mode, one node announces each external IP and answers ARP requests for it. If that node fails, MetalLB automatically moves the IP to another node.
