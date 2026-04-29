@@ -16,6 +16,7 @@ Measuring IPv6 migration progress requires quantitative metrics that track actua
 
 ```python
 #!/usr/bin/env python3
+# Requires: pip install dnspython
 # measure_aaaa_coverage.py
 
 import dns.resolver
@@ -63,14 +64,14 @@ for r in results:
 ### 2. IPv6 Traffic Percentage
 
 ```promql
-# Prometheus query: IPv6 traffic as % of total
+# Example Prometheus query if your request metric includes an ip_version label
 sum(rate(http_requests_total{ip_version="ipv6"}[1h]))
 /
 sum(rate(http_requests_total[1h]))
 * 100
 ```
 
-Track this metric weekly and trend toward the goal of 40%+ within 6 months of full AAAA publication.
+Track this metric weekly and trend toward a target based on your user base after full AAAA publication.
 
 ### 3. Infrastructure IPv6 Readiness
 
@@ -92,14 +93,14 @@ done < <(kubectl get nodes -o name | sed 's/node\///')
 
 echo "Kubernetes nodes with IPv6: $IPV6_READY/$TOTAL"
 
-# Check services with dual-stack
+# Check services actually assigned dual-stack
 TOTAL_SVC=$(kubectl get services --all-namespaces --no-headers | wc -l)
 DUAL_STACK=$(kubectl get services --all-namespaces -o json | \
     python3 -c "
 import json, sys
 data = json.load(sys.stdin)
 count = sum(1 for svc in data['items']
-            if svc['spec'].get('ipFamilyPolicy') in ('PreferDualStack', 'RequireDualStack'))
+            if len(svc['spec'].get('clusterIPs', [])) > 1)
 print(count)
 ")
 echo "Dual-stack Kubernetes services: $DUAL_STACK/$TOTAL_SVC"
@@ -134,43 +135,51 @@ def check_repo(repo_path: str) -> dict:
     else:
         issues.append(f"Hardcoded IPv4 addresses: {ipv4_count}")
 
-    # Check 2: Uses :: binding (not 0.0.0.0) (20 points)
+    # Check 2: No obvious IPv4-only bind addresses (20 points)
     result = subprocess.run(
-        ["grep", "-r", "0.0.0.0", "--include=*.py", "--include=*.go",
+        ["grep", "-r", "-E", r"\b0\.0\.0\.0\b", "--include=*.py", "--include=*.go",
          "--include=*.yaml", "--include=*.env", repo_path],
         capture_output=True, text=True
     )
     if len(result.stdout.splitlines()) == 0:
         score += 20
     else:
-        issues.append(f"Found 0.0.0.0 bindings")
+        issues.append("Explicit 0.0.0.0 bind address found; verify an IPv6 listener or dual-stack socket")
 
     # Check 3: Tests exist for IPv6 (20 points)
-    has_ipv6_tests = any(
-        "ipv6" in f.read_text().lower()
-        for f in Path(repo_path).rglob("test_*.py")
-        if f.stat().st_size < 100000  # Skip large files
-    )
+    has_ipv6_tests = False
+    for pattern in ("test_*.py", "*_test.py", "*_test.go", "*.test.js", "*.spec.js"):
+        for f in Path(repo_path).rglob(pattern):
+            if f.stat().st_size >= 100000:
+                continue
+            if "ipv6" in f.read_text(encoding="utf-8", errors="ignore").lower():
+                has_ipv6_tests = True
+                break
+        if has_ipv6_tests:
+            break
     if has_ipv6_tests:
         score += 20
     else:
         issues.append("No IPv6 tests found")
 
-    # Check 4: No AF_INET without AF_INET6 option (20 points)
-    result = subprocess.run(
-        ["grep", "-r", r"AF_INET\b", "--include=*.py", repo_path],
-        capture_output=True, text=True
-    )
-    if len(result.stdout.splitlines()) == 0:
+    # Check 4: No obvious IPv4-only socket families (20 points)
+    ipv4_only_socket_files = 0
+    for f in Path(repo_path).rglob("*.py"):
+        if f.stat().st_size >= 100000:
+            continue
+        content = f.read_text(encoding="utf-8", errors="ignore")
+        if "AF_INET" in content and "AF_INET6" not in content and "AF_UNSPEC" not in content:
+            ipv4_only_socket_files += 1
+    if ipv4_only_socket_files == 0:
         score += 20
     else:
-        issues.append("AF_INET (non-IPv6 socket) found")
+        issues.append(f"Possible IPv4-only socket usage: {ipv4_only_socket_files} file(s)")
 
-    # Check 5: Docker/K8s config uses :: (20 points)
+    # Check 5: Container/K8s config references IPv6 (20 points)
     for fname in ["docker-compose.yml", "Dockerfile", "values.yaml"]:
         fpath = os.path.join(repo_path, fname)
         if os.path.exists(fpath):
-            content = open(fpath).read()
+            content = Path(fpath).read_text(encoding="utf-8", errors="ignore")
             if "::" in content or "ipv6" in content.lower():
                 score += 20
                 break
@@ -199,4 +208,4 @@ if result['issues']:
 
 ## Conclusion
 
-IPv6 migration progress measurement uses four primary metrics: AAAA DNS record coverage (percentage of services reachable via IPv6), production IPv6 traffic percentage (business outcome metric), infrastructure readiness (devices and services with IPv6 configured), and application readiness score (code quality metric). Report these weekly during the migration phase in a simple dashboard. The IPv6 traffic percentage is the most meaningful outcome metric - it directly reflects how many real users benefit from IPv6 enablement.
+IPv6 migration progress measurement uses four primary metrics: AAAA DNS record coverage (percentage of services publishing AAAA records), production IPv6 traffic percentage (business outcome metric), infrastructure readiness (devices and services with IPv6 configured), and application readiness score (code quality metric). Report these weekly during the migration phase in a simple dashboard. The IPv6 traffic percentage is the most meaningful outcome metric - it directly reflects how many real users reach you over IPv6.
