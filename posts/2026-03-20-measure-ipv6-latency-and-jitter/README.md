@@ -4,40 +4,40 @@ Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
 Tags: IPv6, Latency, Jitter, Monitoring, Ping, iperf3, Networking
 
-Description: Measure IPv6 network latency and jitter using ping6, iperf3 UDP mode, and custom Python scripts to establish baselines and detect degradation over time.
+Description: Measure IPv6 network latency and jitter using `ping -6`, iperf3 UDP mode, and custom Python scripts to establish baselines and detect degradation over time.
 
 ## Introduction
 
 Latency (round-trip time) and jitter (variation in latency) are critical quality metrics for IPv6 networks, especially for real-time applications like VoIP and video. This guide covers practical measurement techniques using standard tools and custom monitoring.
 
-## Step 1: Basic Latency Measurement with ping6
+## Step 1: Basic Latency Measurement with ping -6
 
 ```bash
 # Standard latency measurement - 100 packets
 
-ping6 -c 100 2001:db8::1
+ping -6 -c 100 2001:db8::1
 
 # High-frequency measurement - 1000 packets at 10 pps
-ping6 -c 1000 -i 0.1 2001:db8::1
+ping -6 -c 1000 -i 0.1 2001:db8::1
 
 # Flood ping (requires root) - maximum rate
-sudo ping6 -f -c 10000 2001:db8::1
+sudo ping -6 -f -c 10000 2001:db8::1
 
-# Specify packet size to test path fragmentation behavior
-ping6 -c 100 -s 1400 2001:db8::1   # 1400-byte payload
-ping6 -c 100 -s 8972 2001:db8::1   # Jumbo frame test
+# Specify packet size to test path MTU behavior
+ping -6 -c 100 -s 1400 2001:db8::1   # 1400-byte payload
+ping -6 -c 100 -s 8952 2001:db8::1   # ~9000-byte IPv6 packet
 ```
 
 Output parsing:
 ```text
 # Key output line:
 # rtt min/avg/max/mdev = 0.451/0.612/1.203/0.087 ms
-# mdev = mean deviation ≈ jitter
+# mdev = RTT variability (population standard deviation), often used as a jitter proxy
 ```
 
 ## Step 2: Jitter Measurement with iperf3 UDP
 
-iperf3's UDP mode reports jitter directly.
+iperf3's UDP mode reports receiver-side interarrival jitter directly.
 
 ```bash
 # Start server on remote host
@@ -56,8 +56,11 @@ iperf3 -6 -c 2001:db8::1 \
   -i 1 \
   --format m
 
-# Save results as JSON for analysis
-iperf3 -6 -c 2001:db8::1 -u -b 1M -t 60 -J > jitter_test.json
+# For interval jitter JSON, restart the server in JSON mode and
+# have the client capture the receiver-side results.
+# Remote server:
+# iperf3 -s -6 -1 -J
+iperf3 -6 -c 2001:db8::1 -u -b 1M -t 60 -i 1 -J --get-server-output > jitter_test.json
 ```
 
 ## Step 3: Parse iperf3 Jitter Results
@@ -71,8 +74,11 @@ import statistics
 with open("jitter_test.json") as f:
     data = json.load(f)
 
-# Extract per-interval jitter values
-intervals = data["intervals"]
+# Extract receiver-side per-interval jitter values. When the client uses
+# --get-server-output against a server started with -J, the server JSON is
+# nested under server_output_json.
+interval_source = data.get("server_output_json", data)
+intervals = interval_source.get("intervals", [])
 jitter_values = [
     iv["sum"]["jitter_ms"]
     for iv in intervals
@@ -80,15 +86,19 @@ jitter_values = [
 ]
 
 if jitter_values:
+    avg_jitter = statistics.mean(jitter_values)
     print(f"Samples:  {len(jitter_values)}")
     print(f"Min jitter: {min(jitter_values):.3f} ms")
     print(f"Max jitter: {max(jitter_values):.3f} ms")
-    print(f"Avg jitter: {statistics.mean(jitter_values):.3f} ms")
-    print(f"StdDev:     {statistics.stdev(jitter_values):.3f} ms")
+    print(f"Avg jitter: {avg_jitter:.3f} ms")
+    if len(jitter_values) > 1:
+        print(f"StdDev:     {statistics.stdev(jitter_values):.3f} ms")
+    else:
+        print("StdDev:     N/A (need at least two samples)")
 
     # Alert if average jitter exceeds threshold
     JITTER_THRESHOLD_MS = 5.0
-    if statistics.mean(jitter_values) > JITTER_THRESHOLD_MS:
+    if avg_jitter > JITTER_THRESHOLD_MS:
         print(f"WARNING: Average jitter exceeds {JITTER_THRESHOLD_MS}ms")
 ```
 
@@ -109,7 +119,7 @@ while true; do
     TIMESTAMP=$(date -u +%Y-%m-%dT%H:%M:%SZ)
 
     # Run ping and capture statistics
-    RESULT=$(ping6 -c 20 -i 0.1 -q "$TARGET" 2>&1)
+    RESULT=$(ping -6 -c 20 -i 0.1 -q "$TARGET" 2>&1)
 
     # Parse RTT line: rtt min/avg/max/mdev = X/X/X/X ms
     RTT=$(echo "$RESULT" | grep -oP 'rtt min/avg/max/mdev = \K[0-9./]+')
@@ -129,7 +139,7 @@ done
 
 ## Step 5: Visualize Latency Trends
 
-Import the CSV into Grafana via a file datasource, or use Python:
+Import the CSV into Grafana using a CSV-capable datasource plugin, or use Python:
 
 ```python
 import pandas as pd
@@ -148,4 +158,4 @@ plt.savefig("ipv6_latency.png")
 
 ## Conclusion
 
-Measuring IPv6 latency and jitter requires both point-in-time snapshots and continuous monitoring. The `ping6` `mdev` value gives a good approximation of jitter, while iperf3 UDP mode provides precise per-second measurements. Feed these metrics into OneUptime to alert on regressions and track trends over time.
+Measuring IPv6 latency and jitter requires both point-in-time snapshots and continuous monitoring. The `ping -6` `mdev` value is a useful proxy for RTT variation, while iperf3 UDP mode provides receiver-side per-second jitter measurements. Feed these metrics into OneUptime to alert on regressions and track trends over time.
