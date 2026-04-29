@@ -8,11 +8,19 @@ Description: Learn how to manage Kubernetes provider kubeconfig with OpenTofu fo
 
 ## Introduction
 
-Managing Kubernetes resources with OpenTofu lets you declare them in HCL alongside your cloud infrastructure. This guide covers the complete configuration for this Kubernetes resource type.
+Managing Kubernetes resources with OpenTofu lets you declare them in HCL alongside your cloud infrastructure. This guide covers the provider configuration and a working example of Kubernetes resources managed by OpenTofu.
 
 ## Provider Setup
 
 ```hcl
+terraform {
+  required_providers {
+    kubernetes = {
+      source = "hashicorp/kubernetes"
+    }
+  }
+}
+
 provider "kubernetes" {
   config_path    = "~/.kube/config"
   config_context = var.kube_context
@@ -90,7 +98,7 @@ resource "kubernetes_deployment" "app" {
 variable "namespace"          { type = string }
 variable "app_name"           { type = string }
 variable "environment"        { type = string }
-variable "kube_context"       { type = string; default = "default" }
+variable "kube_context"       { type = string }
 variable "replica_count"      { type = number; default = 2 }
 variable "image_repository"   { type = string }
 variable "image_tag"          { type = string; default = "latest" }
