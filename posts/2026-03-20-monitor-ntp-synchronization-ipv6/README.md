@@ -39,10 +39,11 @@ chronyc sourcestats
 The `ntpmon` or `chrony_exporter` provides Prometheus metrics for NTP:
 
 ```bash
-# Install chrony_exporter
-wget https://github.com/SuperQ/chrony_exporter/releases/latest/download/chrony_exporter_linux_amd64.tar.gz
-tar xvf chrony_exporter_linux_amd64.tar.gz
-sudo mv chrony_exporter /usr/local/bin/
+# Install chrony_exporter (check latest version at https://github.com/SuperQ/chrony_exporter/releases)
+VERSION="0.13.3"
+wget https://github.com/SuperQ/chrony_exporter/releases/download/v${VERSION}/chrony_exporter-${VERSION}.linux-amd64.tar.gz
+tar xvf chrony_exporter-${VERSION}.linux-amd64.tar.gz
+sudo mv chrony_exporter-${VERSION}.linux-amd64/chrony_exporter /usr/local/bin/
 
 # Create systemd service
 cat > /etc/systemd/system/chrony_exporter.service << 'EOF'
@@ -85,16 +86,16 @@ scrape_configs:
 chrony_tracking_last_offset_seconds
 
 # Frequency error in ppm
-chrony_tracking_frequency_error_ppm
+chrony_tracking_frequency_ppms
 
 # NTP source reachability (1 = reachable, 0 = unreachable)
-chrony_source_reachability_ratio
+chrony_sources_reachability_ratio
 
 # Root dispersion - should be very small
 chrony_tracking_root_dispersion_seconds
 
 # Number of sources online
-count(chrony_source_reachability_ratio == 1) by (job)
+count(chrony_sources_reachability_ratio == 1) by (job)
 ```
 
 ## Prometheus Alerting Rules for NTP
@@ -114,7 +115,7 @@ groups:
           description: "NTP offset is {{ $value }}s (threshold: 0.1s)"
 
       - alert: NTPSourceUnreachable
-        expr: chrony_source_reachability_ratio == 0
+        expr: chrony_sources_reachability_ratio == 0
         for: 10m
         labels:
           severity: warning
@@ -186,10 +187,10 @@ done
 chrony_tracking_last_offset_seconds{job="ntp_chrony"}
 
 # Source availability over time
-avg_over_time(chrony_source_reachability_ratio[5m])
+avg_over_time(chrony_sources_reachability_ratio[5m])
 
 # Frequency error trend
-chrony_tracking_frequency_error_ppm
+chrony_tracking_frequency_ppms
 ```
 
 Regular NTP monitoring over IPv6 catches synchronization drift early, preventing the cascading failures that result from significant time differences between distributed systems.
