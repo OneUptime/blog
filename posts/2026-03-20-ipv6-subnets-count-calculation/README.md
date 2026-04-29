@@ -14,7 +14,7 @@ Calculating the number of IPv6 subnets within an allocation involves simple powe
 
 ```text
 Number of /Y subnets within /X = 2^(Y - X)
-  where Y > X (the desired subnet must be smaller)
+  where Y >= X (if Y = X, the count is 1)
 
 Example:
   /48 → /64 subnets: 2^(64-48) = 2^16 = 65,536
@@ -29,8 +29,8 @@ Example:
 
 def subnet_count(prefix_len, target_len):
     """Calculate number of /target subnets within /prefix."""
-    if target_len <= prefix_len:
-        return "N/A (target must be larger)"
+    if target_len < prefix_len:
+        return "N/A (target prefix must be >= source prefix)"
     return 2 ** (target_len - prefix_len)
 
 # Common combinations
@@ -83,18 +83,24 @@ def subnet_analysis(prefix: str, target_prefix_len: int):
     net = ipaddress.IPv6Network(prefix)
     prefix_len = net.prefixlen
 
-    if target_prefix_len <= prefix_len:
-        print(f"Error: target /{target_prefix_len} must be larger than /{prefix_len}")
+    if target_prefix_len < prefix_len:
+        print(f"Error: target /{target_prefix_len} must be /{prefix_len} or larger")
         return
 
     bits = target_prefix_len - prefix_len
     count = 2 ** bits
+    subnet_size = 1 << (net.max_prefixlen - target_prefix_len)
+    first_subnet = ipaddress.IPv6Network((net.network_address, target_prefix_len))
+    last_network_address = ipaddress.IPv6Address(
+        int(net.network_address) + (count - 1) * subnet_size
+    )
+    last_subnet = ipaddress.IPv6Network((last_network_address, target_prefix_len))
 
     print(f"Prefix: {prefix}")
     print(f"Target: /{target_prefix_len}")
     print(f"Available subnets: 2^{bits} = {count:,}")
-    print(f"First subnet: {list(net.subnets(new_prefix=target_prefix_len))[0]}")
-    print(f"Last subnet:  {list(net.subnets(new_prefix=target_prefix_len))[-1]}")
+    print(f"First subnet: {first_subnet}")
+    print(f"Last subnet:  {last_subnet}")
 
 # Examples
 subnet_analysis("2001:db8::/48", 64)   # 65,536 /64s from /48
@@ -117,8 +123,8 @@ subnet_analysis("2001:db8::/32", 48)   # 65,536 /48s from /32
 **Q: I need 1,000 subnets. What allocation size do I need?**
 ```text
 Need 2^N ≥ 1000, so N ≥ 10 (2^10 = 1024)
-From a /64 subnet: need at most a /(64-10) = /54 prefix minimum
-Standard: get a /48 (65,536 subnets) for comfortable headroom
+For 1,000 /64 subnets: need a /(64-10) = /54 prefix minimum
+A /54 is the mathematical minimum; a larger allocation such as a /48 adds headroom
 ```
 
 **Q: How many /56 allocations can an ISP give from a /32?**
@@ -141,4 +147,4 @@ Standard: get a /48 (65,536 subnets) for comfortable headroom
 
 ## Conclusion
 
-IPv6 subnet counting is purely powers of two: `2^(target - prefix)`. There are no subnet waste concerns like in IPv4 (no need to subtract 2 for network and broadcast). Every address in a /64 is potentially usable. This simplicity means IPv6 address planning focuses on structural decisions rather than tedious arithmetic - use the formula, use a calculator, and focus on designing a logical, scalable hierarchy.
+IPv6 subnet counting is purely powers of two: `2^(target - prefix)`. There are no IPv4-style network and broadcast reservations to subtract, though IPv6 still has special-purpose addresses such as the Subnet-Router anycast address. This simplicity means IPv6 address planning focuses on structural decisions rather than tedious arithmetic - use the formula, use a calculator, and focus on designing a logical, scalable hierarchy.
