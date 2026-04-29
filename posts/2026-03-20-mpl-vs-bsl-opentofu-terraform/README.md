@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
-Tags: OpenTofu, Terraform, Licensing, MPLS, BSL, Open Source
+Tags: OpenTofu, Terraform, Licensing, MPL, BSL, Open Source
 
 Description: Understand the license change that triggered the OpenTofu fork - the difference between Mozilla Public License 2.0 and Business Source License 1.1 - and what it means for infrastructure teams...
 
@@ -84,10 +84,10 @@ The OpenTofu fork was initiated by a coalition of companies (Gruntwork, Spacelif
 ```hcl
 Timeline:
 Aug 10, 2023  - HashiCorp announces BSL license change
-Aug 14, 2023  - OpenTF Manifesto published, calls for MPL restoration
+Aug 15, 2023  - OpenTF Manifesto published, calls for MPL restoration
 Sep 20, 2023  - OpenTofu joins Linux Foundation
-Nov 13, 2023  - OpenTofu 1.6.0 alpha released
-Jan 11, 2024  - OpenTofu 1.6.0 stable released
+Oct 04, 2023  - OpenTofu 1.6.0 alpha released
+Jan 10, 2024  - OpenTofu 1.6.0 stable released
 Ongoing       - OpenTofu adds features not available in Terraform
 ```
 
