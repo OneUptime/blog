@@ -72,6 +72,10 @@ resource "google_compute_region_instance_group_manager" "app" {
 
   target_size = var.instance_count
 
+  lifecycle {
+    ignore_changes = [target_size] # Let the autoscaler manage steady-state size
+  }
+
   named_port {
     name = "http"
     port = 8080
@@ -88,11 +92,6 @@ resource "google_compute_region_instance_group_manager" "app" {
     max_surge_fixed              = 3
     max_unavailable_fixed        = 0
     replacement_method           = "SUBSTITUTE"
-  }
-
-  stateful_disk {
-    device_name = "/dev/sdb"
-    delete_rule = "ON_PERMANENT_INSTANCE_DELETION"
   }
 }
 ```
@@ -131,12 +130,11 @@ resource "google_compute_region_autoscaler" "app" {
       target = 0.6  # 60% CPU target
     }
 
-    # Scale on custom Cloud Monitoring metric
+    # Scale on a per-group custom Cloud Monitoring metric
     metric {
-      name   = "custom.googleapis.com/app/queue_depth"
-      type   = "GAUGE"
-      target = 10.0
-      filter = "resource.type = \"global\""
+      name                       = "custom.googleapis.com/app/queue_depth"
+      single_instance_assignment = 10
+      filter                     = "metric.labels.group_name = \"${var.environment}-app-mig\" AND resource.type = \"global\""
     }
 
     scale_in_control {
@@ -200,14 +198,14 @@ resource "google_compute_instance_template" "app_canary" {
   }
 }
 
-# MIG with canary traffic split
+# MIG with a canary instance rollout
 
 resource "google_compute_region_instance_group_manager" "app_with_canary" {
   name               = "${var.environment}-app-mig-canary"
   base_instance_name = "${var.environment}-app"
   region             = var.region
 
-  # Stable version - 90% of instances
+  # Stable version - remaining instances
   version {
     name              = "stable"
     instance_template = google_compute_instance_template.app.id
@@ -217,6 +215,7 @@ resource "google_compute_region_instance_group_manager" "app_with_canary" {
   version {
     name              = "canary"
     instance_template = google_compute_instance_template.app_canary.id
+    # Percentage target sizes require a MIG with at least 10 instances.
     target_size {
       percent = 10
     }
@@ -226,4 +225,4 @@ resource "google_compute_region_instance_group_manager" "app_with_canary" {
 
 ## Conclusion
 
-GCP Managed Instance Groups with OpenTofu provide regional compute fleets with built-in autohealing and autoscaling. Use `auto_healing_policies` with a health check so GCP automatically replaces unhealthy instances. The `update_policy` with `max_surge_fixed` and `max_unavailable_fixed = 0` enables zero-downtime rolling updates. Use two `version` blocks for canary deployments that split traffic by percentage before promoting the new version to 100%.
+GCP Managed Instance Groups with OpenTofu provide regional compute fleets with built-in autohealing and autoscaling. Use `auto_healing_policies` with a health check so GCP automatically replaces unhealthy instances. When you attach an autoscaler, let it own the steady-state size of the group instead of reconciling `target_size` on every apply. The `update_policy` with `max_surge_fixed` and `max_unavailable_fixed = 0` supports rolling replacements without reducing the intended group size during the rollout. Use two `version` blocks for canary deployments that roll out the new template to a percentage of instances before promoting it to 100%.
