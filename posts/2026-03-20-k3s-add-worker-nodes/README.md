@@ -49,17 +49,23 @@ sed -i '/swap/d' /etc/fstab
 
 # Ensure required ports are open in firewall
 # K3s agent needs outbound access to server:6443
-# Also needs VXLAN/flannel: UDP 8472
+# If you keep a host firewall enabled, allow the default K3s pod/service CIDRs
+# and allow node-to-node traffic for Flannel VXLAN (UDP 8472) and kubelet
+# metrics/API (TCP 10250) only from trusted node networks
 
-# For UFW
+# For UFW (replace <node-subnet> if your nodes are on a different network)
 ufw allow 6443/tcp
-ufw allow 8472/udp
-ufw allow 10250/tcp
+ufw allow from 10.42.0.0/16 to any
+ufw allow from 10.43.0.0/16 to any
+ufw allow proto udp from <node-subnet> to any port 8472
+ufw allow proto tcp from <node-subnet> to any port 10250
 
-# For firewalld
+# For firewalld (replace <node-subnet> if your nodes are on a different network)
 firewall-cmd --permanent --add-port=6443/tcp
-firewall-cmd --permanent --add-port=8472/udp
-firewall-cmd --permanent --add-port=10250/tcp
+firewall-cmd --permanent --zone=trusted --add-source=10.42.0.0/16
+firewall-cmd --permanent --zone=trusted --add-source=10.43.0.0/16
+firewall-cmd --permanent --add-rich-rule='rule family="ipv4" source address="<node-subnet>" port port="8472" protocol="udp" accept'
+firewall-cmd --permanent --add-rich-rule='rule family="ipv4" source address="<node-subnet>" port port="10250" protocol="tcp" accept'
 firewall-cmd --reload
 ```
 
@@ -86,11 +92,11 @@ To pin the agent to the same version as your server:
 
 ```bash
 # Check the server version first
-kubectl version --short
+kubectl version
 
 # Install matching version on agent
 curl -sfL https://get.k3s.io | \
-  INSTALL_K3S_VERSION=v1.29.3+k3s1 \
+  INSTALL_K3S_VERSION=vX.Y.Z+k3s1 \
   K3S_URL=https://<server-ip>:6443 \
   K3S_TOKEN=<node-token> \
   sh -
@@ -117,7 +123,7 @@ node-label:
 EOF
 
 # Install K3s as agent (config file is auto-detected)
-curl -sfL https://get.k3s.io | sh - agent
+curl -sfL https://get.k3s.io | sh -s - agent
 ```
 
 ## Step 4: Verify the Node Joined
@@ -130,8 +136,8 @@ kubectl get nodes -w
 
 # The new node should appear as Ready within 30-60 seconds
 # NAME         STATUS   ROLES    AGE   VERSION
-# k3s-server   Ready    master   10d   v1.29.3+k3s1
-# worker-01    Ready    <none>   30s   v1.29.3+k3s1
+# k3s-server   Ready    control-plane,master   10d   vX.Y.Z+k3s1
+# worker-01    Ready    <none>                  30s   vX.Y.Z+k3s1
 
 # Check node details
 kubectl describe node worker-01
@@ -167,8 +173,8 @@ For adding many nodes efficiently, use Ansible:
   become: true
   vars:
     k3s_server_url: "https://192.168.1.10:6443"
-    k3s_token: "{{ lookup('file', '/var/lib/rancher/k3s/server/node-token') }}"
-    k3s_version: "v1.29.3+k3s1"
+    k3s_token: "<node-token>"
+    k3s_version: "vX.Y.Z+k3s1"
 
   tasks:
     - name: Disable swap
@@ -217,7 +223,7 @@ journalctl -u k3s-agent -f
 systemctl status k3s-agent
 
 # Check server connectivity
-curl -k https://<server-ip>:6443/healthz
+curl -k https://<server-ip>:6443/readyz
 ```
 
 ## Conclusion
