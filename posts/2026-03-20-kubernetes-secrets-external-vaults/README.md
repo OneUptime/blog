@@ -8,7 +8,7 @@ Description: Configure Kubernetes secrets management using external vaults in Ra
 
 ## Introduction
 
-Kubernetes native Secrets are base64-encoded, not encrypted at rest by default, and lack rotation, auditing, and access control capabilities that production security requires. External vault solutions like HashiCorp Vault provide encryption, dynamic secrets, audit logging, and fine-grained access policies. This guide covers integrating external vaults with Kubernetes clusters managed by Rancher.
+Kubernetes native Secrets are base64-encoded and are stored unencrypted in etcd unless you enable encryption at rest. They also do not provide built-in secret rotation or centralized secret management features. External vault solutions like HashiCorp Vault provide encryption, dynamic secrets, audit logging, and fine-grained access policies. This guide covers integrating external vaults with Kubernetes clusters managed by Rancher.
 
 ## Architecture Overview
 
@@ -44,7 +44,8 @@ helm install external-secrets \
   external-secrets/external-secrets \
   --namespace external-secrets \
   --create-namespace \
-  --set installCRDs=true
+  --set installCRDs=true \
+  --set metrics.service.enabled=true
 ```
 
 ### Configure Vault Authentication
@@ -53,6 +54,11 @@ helm install external-secrets \
 # Enable Kubernetes auth in Vault
 
 vault auth enable kubernetes
+
+# Grant the Vault service account permission to call the TokenReview API
+kubectl create clusterrolebinding vault-tokenreview-binding \
+  --clusterrole=system:auth-delegator \
+  --serviceaccount=<vault-namespace>:<vault-service-account>
 
 # Configure the Kubernetes auth method
 vault write auth/kubernetes/config \
@@ -72,6 +78,7 @@ vault write auth/kubernetes/role/myapp \
   bound_service_account_names=myapp-sa \
   bound_service_account_namespaces=production \
   policies=app-secrets \
+  audience=vault \
   ttl=1h
 ```
 
@@ -79,7 +86,7 @@ vault write auth/kubernetes/role/myapp \
 
 ```yaml
 # secretstore.yaml
-apiVersion: external-secrets.io/v1beta1
+apiVersion: external-secrets.io/v1
 kind: SecretStore
 metadata:
   name: vault-backend
@@ -96,13 +103,15 @@ spec:
           role: "myapp"
           serviceAccountRef:
             name: "myapp-sa"
+            audiences:
+              - "vault"
 ```
 
 ### Create ExternalSecret
 
 ```yaml
 # externalsecret.yaml
-apiVersion: external-secrets.io/v1beta1
+apiVersion: external-secrets.io/v1
 kind: ExternalSecret
 metadata:
   name: myapp-secrets
@@ -118,11 +127,11 @@ spec:
   data:
     - secretKey: database-password
       remoteRef:
-        key: secret/data/myapp/database
+        key: myapp/database
         property: password
     - secretKey: api-key
       remoteRef:
-        key: secret/data/myapp/api
+        key: myapp/api
         property: key
 ```
 
@@ -151,16 +160,16 @@ spec:
   containers:
     - name: app
       image: myregistry/myapp:latest
-      command: ["/bin/sh", "-c", "source /vault/secrets/config && ./start.sh"]
+      command: ["/bin/sh", "-c", ". /vault/secrets/config && ./start.sh"]
 ```
 
-## Option 3: AWS Secrets Manager via ESO
+## Option 3: AWS Secrets Manager via ESO on Amazon EKS
 
-For clusters running on AWS:
+For Amazon EKS clusters with IRSA already configured:
 
 ```yaml
 # ClusterSecretStore for AWS Secrets Manager
-apiVersion: external-secrets.io/v1beta1
+apiVersion: external-secrets.io/v1
 kind: ClusterSecretStore
 metadata:
   name: aws-secrets-manager
@@ -176,9 +185,9 @@ spec:
             namespace: external-secrets
 ```
 
-## Step 4: Enable Secret Rotation
+## Step 4: Sync Rotated Secrets
 
-Configure automatic rotation by setting a short refresh interval:
+Configure automatic refresh by setting a short refresh interval:
 
 ```yaml
 spec:
@@ -210,4 +219,4 @@ kubectl port-forward svc/external-secrets-metrics 8080:8080 -n external-secrets
 
 ## Conclusion
 
-External vaults combined with the External Secrets Operator provide enterprise-grade secret management for Rancher-managed Kubernetes clusters. Secrets are centrally managed in Vault with full audit trails, access policies, and automatic rotation, while Kubernetes applications consume them transparently as native Secrets. This approach satisfies compliance requirements for PCI-DSS, SOC 2, and HIPAA.
+External vaults combined with the External Secrets Operator provide enterprise-grade secret management for Rancher-managed Kubernetes clusters. Secrets are centrally managed in Vault with audit trails and access policies, while Kubernetes applications consume them as synced native Secrets or injected files. This approach can support compliance controls for frameworks such as PCI-DSS, SOC 2, and HIPAA when it is implemented alongside the required platform and organizational controls.
