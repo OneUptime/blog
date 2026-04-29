@@ -15,8 +15,6 @@ An API gateway is the single entry point for all client requests to a microservi
 ```yaml
 # docker-compose.yml - Traefik API Gateway
 
-version: "3.8"
-
 networks:
   gateway:
     external: true  # All services connect to this
@@ -77,8 +75,12 @@ entryPoints:
   websecure:
     address: ":443"
     http:
+      middlewares:
+        - global-ratelimit@file
       tls:
         certResolver: letsencrypt
+  traefik:
+    address: ":8080"
 
 certificatesResolvers:
   letsencrypt:
@@ -93,18 +95,13 @@ providers:
     watch: true
     network: gateway
     exposedByDefault: false
-    swarmMode: false
   file:
     directory: /etc/traefik/dynamic
     watch: true
 
-# Global rate limiting
-http:
-  middlewares:
-    global-ratelimit:
-      rateLimit:
-        average: 100
-        burst: 50
+metrics:
+  prometheus:
+    manualRouting: true
 ```
 
 ## Step 3: Dynamic Middleware Configuration
@@ -112,14 +109,43 @@ http:
 ```yaml
 # /opt/traefik/dynamic/middlewares.yml - Reusable middlewares
 http:
+  routers:
+    dashboard:
+      rule: "PathPrefix(`/api`) || PathPrefix(`/dashboard`)"
+      entryPoints:
+        - traefik
+      service: api@internal
+      middlewares:
+        - dashboard-auth
+
+    metrics:
+      rule: "Path(`/metrics`)"
+      entryPoints:
+        - traefik
+      service: prometheus@internal
+      middlewares:
+        - dashboard-auth
+
   middlewares:
-    # API Key authentication
-    api-auth:
+    # Protect the Traefik dashboard, API, and metrics
+    dashboard-auth:
+      basicAuth:
+        users:
+          - "admin:$apr1$MthlZm2K$7MIZ7VW4cBiEGizKNnVJL0"
+
+    # Shared gateway headers
+    gateway-headers:
       headers:
         customRequestHeaders:
           X-Verified: "true"
         customResponseHeaders:
           X-Gateway: "traefik"
+
+    # Global rate limiting
+    global-ratelimit:
+      rateLimit:
+        average: 100
+        burst: 50
 
     # JWT authentication via ForwardAuth
     jwt-auth:
@@ -199,7 +225,7 @@ services:
       - "traefik.http.routers.users.tls=true"
 
       # Apply middlewares
-      - "traefik.http.routers.users.middlewares=jwt-auth,rate-limit,security-headers,cors"
+      - "traefik.http.routers.users.middlewares=jwt-auth@file,rate-limit@file,security-headers@file,cors@file"
 
       # Load balancer configuration
       - "traefik.http.services.users.loadbalancer.server.port=8002"
@@ -219,7 +245,7 @@ services:
       - "traefik.http.routers.orders.rule=Host(`api.yourdomain.com`) && PathPrefix(`/api/v1/orders`)"
       - "traefik.http.routers.orders.entrypoints=websecure"
       - "traefik.http.routers.orders.tls=true"
-      - "traefik.http.routers.orders.middlewares=jwt-auth,rate-limit,request-limit"
+      - "traefik.http.routers.orders.middlewares=jwt-auth@file,rate-limit@file,request-limit@file"
       - "traefik.http.services.orders.loadbalancer.server.port=8003"
 ```
 
@@ -230,11 +256,15 @@ services:
 labels:
   # Version 1
   - "traefik.http.routers.users-v1.rule=Host(`api.yourdomain.com`) && PathPrefix(`/api/v1/users`)"
+  - "traefik.http.routers.users-v1.entrypoints=websecure"
+  - "traefik.http.routers.users-v1.tls=true"
   - "traefik.http.routers.users-v1.service=users-v1"
   - "traefik.http.services.users-v1.loadbalancer.server.port=8002"
 
   # Version 2 (different container)
   - "traefik.http.routers.users-v2.rule=Host(`api.yourdomain.com`) && PathPrefix(`/api/v2/users`)"
+  - "traefik.http.routers.users-v2.entrypoints=websecure"
+  - "traefik.http.routers.users-v2.tls=true"
   - "traefik.http.routers.users-v2.service=users-v2"
   - "traefik.http.services.users-v2.loadbalancer.server.port=8012"
 ```
@@ -246,13 +276,13 @@ labels:
 # Containers > traefik > Logs
 
 # View metrics
-curl http://localhost:8080/metrics
+curl -u admin:change-me http://localhost:8080/metrics
 
 # Check router status via Traefik API
-curl http://localhost:8080/api/http/routers | jq '.[].name'
+curl -u admin:change-me http://localhost:8080/api/http/routers | jq '.[].name'
 
 # Check service health
-curl http://localhost:8080/api/http/services | jq '.[].serverStatus'
+curl -u admin:change-me http://localhost:8080/api/rawdata | jq '.services'
 ```
 
 ## Conclusion
