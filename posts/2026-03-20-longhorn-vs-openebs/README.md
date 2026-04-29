@@ -8,7 +8,7 @@ Description: A detailed comparison of Longhorn and OpenEBS for Kubernetes persis
 
 ## Overview
 
-Longhorn and OpenEBS are both cloud-native, CNCF-affiliated Kubernetes storage solutions. Longhorn is developed by SUSE Rancher with a focus on simplicity and Rancher integration. OpenEBS is developed by MayaData (now DataStax) with a modular architecture supporting multiple storage engines. This guide provides a detailed comparison to help you choose the right solution for your environment.
+Longhorn and OpenEBS are both cloud-native, CNCF-affiliated Kubernetes storage solutions. Longhorn is developed by SUSE Rancher with a focus on simplicity and Rancher integration. OpenEBS was originally built by MayaData and donated to CNCF, with a modular architecture supporting multiple storage engines. This guide provides a detailed comparison to help you choose the right solution for your environment.
 
 ## What Is Longhorn?
 
@@ -16,26 +16,26 @@ Longhorn is a distributed block storage system for Kubernetes that provides high
 
 ## What Is OpenEBS?
 
-OpenEBS is a modular storage platform for Kubernetes that supports multiple storage engines: Mayastor (high-performance NVMe), Jiva (lightweight replica-based), LVM LocalPV, ZFS LocalPV, and Hostpath. This modularity allows OpenEBS to serve a wide range of workloads from high-performance databases to simple local storage.
+OpenEBS is a modular storage platform for Kubernetes that supports multiple storage engines, with current OpenEBS 4.x focusing on Replicated PV Mayastor for replicated storage and Local PV Hostpath, LVM, and ZFS for local storage. This modularity allows OpenEBS to serve a wide range of workloads from high-performance databases to simple local storage.
 
 ## Feature Comparison
 
 | Feature | Longhorn | OpenEBS |
 |---|---|---|
-| Storage Engines | Single (replica-based) | Multiple (Mayastor, Jiva, LVM, ZFS, Hostpath) |
-| NVMe/NVMe-oF Support | No | Yes (Mayastor) |
+| Storage Engines | Single (replica-based) | Multiple (Replicated PV Mayastor, Local PV Hostpath/LVM/ZFS) |
+| NVMe/NVMe-oF Support | Technical Preview (V2 data engine) | Yes (Replicated PV Mayastor) |
 | High Availability | Yes | Yes (engine-dependent) |
-| ReadWriteMany (RWX) | No | No (block only) |
-| Snapshots | Yes | Yes |
-| Backup to S3 | Yes | Yes (Velero plugin) |
-| Volume Expansion | Yes | Yes |
-| Web UI | Yes (built-in) | Yes (Director, optional) |
+| ReadWriteMany (RWX) | Yes (built-in via NFS share-manager) | Yes (via NFS on top of Replicated PV Mayastor) |
+| Snapshots | Yes | Yes (engine-dependent) |
+| Backup to S3 | Yes | Yes (via Velero/CSI integration) |
+| Volume Expansion | Yes | Yes (engine-dependent) |
+| Web UI | Yes (built-in) | No built-in UI |
 | CNCF Status | Incubating | Sandbox |
 | Installation Complexity | Low | Medium (engine choice) |
 | Performance (high-end) | Good | Excellent (Mayastor) |
-| Rancher Integration | Native | StorageClass-based |
+| Rancher Integration | Native | Standard Kubernetes integration |
 | Local Storage | No | Yes (LVM, ZFS, Hostpath) |
-| Minimum Nodes | 1 | 1 |
+| Minimum Nodes | 1 (non-HA) | 1 (local or single-replica) |
 
 ## Architecture
 
@@ -47,8 +47,8 @@ Each Longhorn volume consists of one frontend (exposed to workloads) and multipl
 
 OpenEBS uses a modular approach with data plane (storage engines) and control plane components:
 
-- **Mayastor**: Uses NVMe-oF, SPDK, and io_uring for ultra-low latency
-- **Jiva**: Uses iSCSI with replica-based HA, similar to Longhorn
+- **Replicated PV Mayastor**: Uses NVMe-oF semantics and SPDK for high-performance replicated block storage
+- **Hostpath LocalPV**: Uses a host filesystem path for lightweight local storage
 - **LVM LocalPV**: Uses Linux LVM for fast local storage
 - **ZFS LocalPV**: Leverages ZFS for advanced local storage with snapshots
 
@@ -60,6 +60,7 @@ OpenEBS uses a modular approach with data plane (storage engines) and control pl
 # Simple Helm install
 
 helm repo add longhorn https://charts.longhorn.io
+helm repo update
 helm install longhorn longhorn/longhorn \
   --namespace longhorn-system \
   --create-namespace
@@ -68,20 +69,19 @@ helm install longhorn longhorn/longhorn \
 ### OpenEBS
 
 ```bash
-# Install OpenEBS with Helm (choose your engine)
+# Install OpenEBS with Helm
 helm repo add openebs https://openebs.github.io/openebs
+helm repo update
 
-# Install with Mayastor (high performance)
+# Default install: includes Local PV Hostpath, LVM, ZFS, and Replicated PV Mayastor
+helm install openebs openebs/openebs \
+  --namespace openebs \
+  --create-namespace
+
+# Install local storage engines only (disable Replicated PV Mayastor)
 helm install openebs openebs/openebs \
   --namespace openebs \
   --create-namespace \
-  --set engines.replicated.mayastor.enabled=true
-
-# Install with LVM LocalPV only (lightweight)
-helm install openebs openebs/openebs \
-  --namespace openebs \
-  --create-namespace \
-  --set engines.local.lvm.enabled=true \
   --set engines.replicated.mayastor.enabled=false
 ```
 
@@ -98,6 +98,7 @@ provisioner: driver.longhorn.io
 parameters:
   numberOfReplicas: "2"
   staleReplicaTimeout: "20"
+allowVolumeExpansion: true
 reclaimPolicy: Delete
 ```
 
@@ -111,7 +112,6 @@ metadata:
   name: mayastor-nvme
 provisioner: io.openebs.csi-mayastor
 parameters:
-  ioTimeout: "30"
   protocol: nvmf
   repl: "3"
 reclaimPolicy: Delete
@@ -130,18 +130,19 @@ provisioner: local.csi.openebs.io
 parameters:
   storage: "lvm"
   volgroup: "storage-vg"
+allowVolumeExpansion: true
 reclaimPolicy: Delete
 ```
 
 ## Performance Characteristics
 
-| Engine | IOPS | Latency | HA | Use Case |
+| Engine | Performance Profile | Latency Profile | HA | Use Case |
 |---|---|---|---|---|
-| Longhorn | Medium | ~1ms | Yes | General purpose |
-| Mayastor | Very High | ~0.1ms | Yes | Databases, high-perf |
-| Jiva | Medium | ~1ms | Yes | General purpose |
-| LVM LocalPV | High | ~0.2ms | No | Single-node, fast local |
-| ZFS LocalPV | High | ~0.3ms | No | Snapshots, local |
+| Longhorn | General-purpose replicated storage | Moderate | Yes | General-purpose stateful workloads |
+| Replicated PV Mayastor | High-performance replicated storage | Low | Yes | Databases, latency-sensitive workloads |
+| LVM LocalPV | Near-disk local storage | Low | No | Workloads that handle their own HA |
+| ZFS LocalPV | Local storage with filesystem features | Low to Moderate | No | Local storage with snapshots and compression |
+| Hostpath LocalPV | Lightweight local storage | Low | No | Development and testing |
 
 ## When to Choose Longhorn
 
@@ -159,4 +160,4 @@ reclaimPolicy: Delete
 
 ## Conclusion
 
-Both Longhorn and OpenEBS are capable cloud-native storage solutions. Longhorn's strength is simplicity - it does one thing (replicated block storage) very well with an excellent UI and native Rancher integration. OpenEBS's strength is flexibility - its modular engine architecture lets you match the storage technology to your workload's specific requirements. For organizations with diverse storage needs, OpenEBS's multi-engine approach provides greater architectural options.
+Both Longhorn and OpenEBS are capable cloud-native storage solutions. Longhorn's strength is simplicity - its core focus is replicated block storage, with an excellent UI and native Rancher integration. OpenEBS's strength is flexibility - its modular engine architecture lets you match the storage technology to your workload's specific requirements. For organizations with diverse storage needs, OpenEBS's multi-engine approach provides greater architectural options.
