@@ -139,7 +139,7 @@ Portainer users map to Rancher users with RBAC roles:
 |---|---|
 | Administrator | Cluster Owner |
 | Standard User | Cluster Member |
-| Read-Only | View-Only |
+| Read-Only | Read-only (project-level) |
 | Operator | Custom Role |
 
 In Rancher, navigate to **Users & Authentication** and add users, or configure an identity provider.
