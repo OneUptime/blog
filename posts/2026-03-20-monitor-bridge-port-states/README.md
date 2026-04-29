@@ -74,11 +74,11 @@ brctl showstp br0 | grep "topology change"
 # Increasing count indicates STP is reconverging (possible flapping)
 ```
 
-## Monitoring Port State Changes with inotify
+## Monitoring Port State Changes
 
 ```bash
-# Watch for STP state changes via sysfs
-inotifywait -m /sys/class/net/br0/brif/eth0/state
+# Watch for bridge link state changes via netlink
+bridge monitor link
 
 # Or use udev rules for bridge port state change events
 ```
