@@ -19,9 +19,9 @@ Each entry in the IPv6 routing table contains the following fields:
 | **Destination** | The IPv6 prefix this route matches (e.g., `2001:db8::/32`) |
 | **Next Hop** | The next-hop router address to forward packets to |
 | **Interface** | The outgoing network interface |
-| **Metric** | Route cost - lower is preferred |
-| **Protocol** | How the route was learned (kernel, static, ospf, bgp, etc.) |
-| **Flags** | U=Up, G=Gateway, H=Host route, etc. |
+| **Metric** | Route cost - lower is preferred when comparing otherwise similar routes |
+| **Protocol** | How the route was installed (`kernel`, `static`, `ra`, or a routing daemon tag) |
+| **Scope / Preference** | Linux may also show route scope (`link`, `host`, `global`) and IPv6 route preference (`low`, `medium`, `high`) |
 
 ## Viewing the IPv6 Routing Table on Linux
 
@@ -30,41 +30,41 @@ Each entry in the IPv6 routing table contains the following fields:
 
 ip -6 route show
 
-# Show with more detail including protocol and metric
+# Show all IPv6 tables, including the local table
 ip -6 route show table all
 
 # Example output:
-# 2001:db8::/32 dev eth0 proto kernel scope link src 2001:db8::1 metric 256
-# ::/0 via fe80::1 dev eth0 proto ra metric 1024 expires 1800sec
-# fe80::/64 dev eth0 proto kernel scope link src fe80::aabb:ccff:fedd:1234
-# ::1 dev lo proto kernel scope host
+# 2001:db8::/64 dev eth0 proto kernel metric 256
+# default via fe80::1 dev eth0 proto ra metric 1024 pref medium
+# local ::1 dev lo table local proto kernel metric 0 pref medium
+# multicast ff00::/8 dev eth0 table local proto kernel metric 256 pref medium
 ```
 
 ## Route Types in the IPv6 Table
 
 ```text
 # Connected route (directly attached subnet)
-2001:db8::/64 dev eth0 proto kernel scope link src 2001:db8::1
+2001:db8::/64 dev eth0 proto kernel metric 256
 
 # Static route (manually configured)
 2001:db8:1::/48 via 2001:db8::1 dev eth0 proto static metric 100
 
 # Default route via Router Advertisement
-::/0 via fe80::1 dev eth0 proto ra metric 1024
+default via fe80::1 dev eth0 proto ra metric 1024 pref medium
 
-# Loopback route
-::1 dev lo proto kernel scope host
+# Loopback route in the local table
+local ::1 dev lo table local proto kernel metric 0 pref medium
 ```
 
 ## Multiple Routing Tables
 
-Linux supports multiple routing tables (0–255). The main tables for IPv6 are:
+Linux supports multiple routing tables identified by name or numeric ID. Built-in tables commonly used with IPv6 are `local` (255), `main` (254), and `default` (253). `all` is a selector that shows routes from every table:
 
 ```bash
-# Show the main routing table (default)
+# Show the main routing table
 ip -6 route show table main
 
-# Show the local table (host routes and loopback)
+# Show the local table (local addresses, loopback, multicast)
 ip -6 route show table local
 
 # Show all tables
@@ -73,7 +73,7 @@ ip -6 route show table all
 
 ## Route Lookup Process
 
-When a packet arrives, the kernel uses **longest prefix match** to select the best route:
+When a packet arrives, Linux first applies routing policy rules to choose a table, then uses **longest prefix match** within that table to select the best route:
 
 ```mermaid
 graph TD
@@ -86,19 +86,19 @@ graph TD
     F -->|No| H[ICMP Destination Unreachable sent]
 ```
 
-## Route Flags Explained
+## Route Attributes Explained
 
 ```bash
-# Get route details with flags
-ip -6 route show detail
+# Get route details
+ip -d -6 route show table all
 
-# Key flags:
-# proto kernel = added by kernel for connected interfaces
+# Key attributes:
+# proto kernel = installed by the kernel
 # proto static = added manually with ip route add
-# proto ra     = learned from Router Advertisement
-# proto ospf   = learned from OSPFv3
-# scope link   = destination is on local link (no gateway needed)
-# scope global = destination requires gateway
+# proto ra     = installed by IPv6 Router Discovery / Router Advertisements
+# scope link   = route scope is limited to the local link
+# scope global = route is not limited to host or link scope
+# pref low|medium|high = IPv6 route preference defined by RFC 4191
 ```
 
 ## IPv6 vs IPv4 Routing Table Differences
@@ -107,10 +107,10 @@ ip -6 route show detail
 |---------|------|------|
 | Address size | 32-bit | 128-bit |
 | Default route | 0.0.0.0/0 | ::/0 |
-| Link-local routes | Rare | Always present (fe80::/64) |
+| Link-local routes | Rare | Common on IPv6-enabled interfaces (`fe80::/64`) |
 | Multicast routes | Optional | Built-in (ff00::/8) |
 | Loopback | 127.0.0.0/8 | ::1/128 |
 
 ## Summary
 
-The IPv6 routing table follows the same logical structure as IPv4 but with 128-bit addresses and additional mandatory entries for link-local and multicast prefixes. Use `ip -6 route show` to inspect routes, and understand that longest prefix match determines the forwarding path for every packet.
+The IPv6 routing table follows the same logical structure as IPv4 but with 128-bit addresses and additional common entries such as link-local and multicast prefixes on IPv6-enabled systems. Use `ip -6 route show` to inspect routes, and remember that on Linux, policy rules select a table before longest prefix match chooses the route within it.
