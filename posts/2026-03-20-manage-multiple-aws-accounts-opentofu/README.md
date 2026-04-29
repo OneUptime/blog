@@ -102,7 +102,6 @@ terraform {
     aws = {
       source  = "hashicorp/aws"
       version = "~> 5.0"
-      configuration_aliases = [aws]
     }
   }
 }
@@ -137,7 +136,7 @@ resource "aws_vpc_peering_connection_accepter" "staging_accept" {
 
 ## Dynamic Multi-Account Provider Generation
 
-For configurations targeting many accounts, use `for_each` on modules:
+For configurations targeting many accounts, use a shared account map with `for_each` on modules or aliased provider configurations:
 
 ```hcl
 locals {
@@ -149,7 +148,7 @@ locals {
 }
 ```
 
-Note: Dynamic provider creation from `for_each` is not natively supported - for many accounts, consider Terragrunt or separate workspace-per-account patterns.
+Note: OpenTofu supports `for_each` on aliased provider configurations. You still need to select individual provider instances explicitly when using them in resources or passing them to modules, and Terragrunt or separate workspace-per-account patterns can still help when orchestrating very large account fleets.
 
 ## Conclusion
 
