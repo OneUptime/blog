@@ -86,15 +86,15 @@ Last 5 subnets:
 With 256 subnets, a typical small office could use:
 
 ```text
-Subnet  0 (::00xx::):  WAN/uplink (sometimes /127 or /64)
-Subnet  1 (::0001::):  Primary LAN (user devices, SLAAC)
-Subnet  2 (::0002::):  IoT network (cameras, smart home)
-Subnet  3 (::0003::):  Guest WiFi
-Subnet  4 (::0004::):  Servers / DMZ
-Subnet  5 (::0005::):  Management (switches, APs)
-Subnet 10 (::000a::):  VoIP phones
-Subnet 20 (::0014::):  Printers and peripherals
-Subnet ff (::00ff::):  Reserved for future use
+Subnet  0 (2001:db8:1100:0::/64):   Transit/uplink (if routed internally; sometimes /127 or /64)
+Subnet  1 (2001:db8:1100:1::/64):   Primary LAN (user devices, SLAAC)
+Subnet  2 (2001:db8:1100:2::/64):   IoT network (cameras, smart home)
+Subnet  3 (2001:db8:1100:3::/64):   Guest WiFi
+Subnet  4 (2001:db8:1100:4::/64):   Servers / DMZ
+Subnet  5 (2001:db8:1100:5::/64):   Management (switches, APs)
+Subnet 10 (2001:db8:1100:a::/64):   VoIP phones
+Subnet 20 (2001:db8:1100:14::/64):  Printers and peripherals
+Subnet ff (2001:db8:1100:ff::/64):  Reserved for future use
 ```
 
 ## Router Configuration Example
@@ -111,7 +111,6 @@ interface eth1 {
     prefix 2001:db8:1100:1::/64 {
         AdvOnLink on;
         AdvAutonomous on;
-        AdvRouterAddr on;
     };
 };
 
@@ -137,9 +136,9 @@ interface eth1 {
 If you need more than 256 subnets from a /56:
 
 1. **Request a /48 from your ISP** - gives 65,536 /64 subnets
-2. **Use a /60 delegation** for sub-branches (only 16 subnets each, but allows delegation)
+2. **Use a /60 delegation** for downstream routers when you need hierarchy (16 /64 subnets each, but still within the same /56)
 3. **Combine multiple /56 allocations** if the ISP provides them
 
 ## Conclusion
 
-A /56 allocation provides 256 /64 subnets - ample for most home networks and small offices. The 8-bit subnet ID (0x00-0xFF) gives straightforward hexadecimal numbering. When designing your subnet plan, reserve low-numbered subnets for infrastructure and WAN links, use sequential numbers for VLANs, and leave some headroom for future growth.
+A /56 allocation provides 256 /64 subnets - ample for most home networks and small offices. The 8-bit subnet ID (0x00-0xFF) gives straightforward hexadecimal numbering. When designing your subnet plan, reserve low-numbered subnets for infrastructure and transit links, use sequential numbers for VLANs, and leave some headroom for future growth.
