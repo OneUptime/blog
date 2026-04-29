@@ -1,21 +1,21 @@
-# How to Deploy Mailtrap via Portainer
+# How to Deploy Mailpit via Portainer
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
 Tags: Portainer, Docker, Mailtrap, Email Testing, Self-Hosted, Development
 
-Description: Deploy a self-hosted Mailtrap-compatible SMTP testing server using Mailpit via Portainer for safe email testing in development and staging environments.
+Description: Deploy a self-hosted SMTP testing server using Mailpit via Portainer for safe email testing in development and staging environments.
 
 ## Introduction
 
-Mailtrap is a popular email testing service, but you can achieve the same functionality with Mailpit - a fast, open-source SMTP testing tool - running entirely on your own infrastructure. Deploying it via Portainer lets you manage it alongside your other containers with zero configuration drift.
+Mailtrap is a popular email testing service, but you can cover the same core SMTP testing workflow with Mailpit - a fast, open-source SMTP testing tool - running entirely on your own infrastructure. Deploying it via Portainer lets you manage it alongside your other containers with zero configuration drift.
 
 Mailpit provides an SMTP server that captures all outgoing emails and displays them in a web UI, preventing accidental sends to real users during development.
 
 ## Prerequisites
 
 - Portainer CE or BE installed and running
-- Docker Engine 20.10+
+- Docker Engine (use a version supported by your Portainer release)
 - An application (dev or staging) that sends email via SMTP
 
 ## Step 1: Create the Stack in Portainer
@@ -23,8 +23,6 @@ Mailpit provides an SMTP server that captures all outgoing emails and displays t
 Navigate to **Stacks** → **Add Stack** → **Web Editor** and paste:
 
 ```yaml
-version: "3.8"
-
 services:
   # Mailpit - self-hosted SMTP email testing tool
   mailpit:
@@ -40,16 +38,20 @@ services:
       # Optional: enable authentication for the web UI
       # MP_UI_AUTH: "admin:password"
 
-      # Optional: enable TLS for SMTP
+      # Optional: enable STARTTLS for SMTP
       # MP_SMTP_TLS_CERT: /certs/cert.pem
       # MP_SMTP_TLS_KEY: /certs/key.pem
 
       # Limit stored messages (default 500)
       MP_MAX_MESSAGES: "500"
 
-      # Optional: forward all emails to a real address (useful in staging)
-      # MP_SMTP_RELAY_HOST: smtp.sendgrid.net
-      # MP_SMTP_RELAY_PORT: "587"
+      # Store messages in the mounted volume
+      MP_DATABASE: /data/mailpit.db
+
+      # Optional: forward a copy of all emails to a real mailbox
+      # MP_SMTP_FORWARD_TO: qa@example.com
+      # MP_SMTP_FORWARD_HOST: smtp.sendgrid.net
+      # MP_SMTP_FORWARD_PORT: "587"
     volumes:
       # Persist captured emails across restarts
       - mailpit_data:/data
@@ -61,6 +63,7 @@ volumes:
 
 networks:
   mailpit-net:
+    name: mailpit-net
     driver: bridge
 ```
 
@@ -79,7 +82,7 @@ const nodemailer = require('nodemailer');
 
 // Point to your Mailpit SMTP server
 const transporter = nodemailer.createTransport({
-  host: 'your-host',  // or 'mailpit' if on the same Docker network
+  host: 'your-host',  // or 'mailpit' if your app is on the same Docker network
   port: 1025,
   secure: false,  // No TLS for dev
   ignoreTLS: true,
@@ -120,7 +123,7 @@ MAIL_HOST=your-host
 MAIL_PORT=1025
 MAIL_USERNAME=null
 MAIL_PASSWORD=null
-MAIL_ENCRYPTION=null
+MAIL_SCHEME=null
 MAIL_FROM_ADDRESS="hello@example.com"
 MAIL_FROM_NAME="${APP_NAME}"
 ```
@@ -134,21 +137,22 @@ services:
   myapp:
     image: myapp:latest
     environment:
-      SMTP_HOST: mailpit   # Container name as hostname
+      SMTP_HOST: mailpit   # Service name on the shared network
       SMTP_PORT: "1025"
     networks:
       - mailpit-net
 
 networks:
   mailpit-net:
-    external: true   # Reference the Mailpit network
+    external: true
+    name: mailpit-net   # Reference the existing Mailpit network
 ```
 
 ## Step 4: View Captured Emails
 
 1. Open `http://your-host:8025`
 2. All emails sent to your SMTP port appear in the inbox
-3. Click any email to view HTML rendering, headers, raw source, and spam score
+3. Click any email to view HTML rendering, headers, raw source, and, if SpamAssassin integration is enabled, spam analysis
 
 ## Step 5: Use Mailpit's API
 
@@ -162,7 +166,7 @@ curl http://your-host:8025/api/v1/messages
 curl -X DELETE http://your-host:8025/api/v1/messages
 
 # Get a specific message
-curl http://your-host:8025/api/v1/message/{messageID}
+curl http://your-host:8025/api/v1/message/{ID}
 ```
 
 ## Step 6: Enable Basic Auth for the UI
@@ -177,4 +181,4 @@ environment:
 
 ## Conclusion
 
-Mailpit deployed via Portainer gives your team a zero-configuration email testing environment that's identical to Mailtrap but fully self-hosted. Every email your application sends during development is captured and inspectable - no more accidentally emailing real users, and no cloud service dependency.
+Mailpit deployed via Portainer gives your team a self-hosted email testing environment for the same core SMTP capture workflow as Mailtrap. Every email your application sends during development is captured and inspectable - no more accidentally emailing real users, and no cloud service dependency.
