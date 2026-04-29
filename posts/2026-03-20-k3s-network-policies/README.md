@@ -8,37 +8,30 @@ Description: Learn how to implement Kubernetes Network Policies in K3s to contro
 
 ## Introduction
 
-By default, all pods in a Kubernetes cluster can communicate with each other freely. Network Policies provide a way to restrict this communication, implementing a form of zero-trust networking where you explicitly allow only the traffic you need. K3s's default Flannel CNI has limited Network Policy support, but full support is available via the Canal or Cilium CNI plugins. This guide covers setting up and using Network Policies effectively.
+By default, all pods in a Kubernetes cluster can communicate with each other freely. Network Policies provide a way to restrict this communication, implementing a form of zero-trust networking where you explicitly allow only the traffic you need. K3s includes a built-in Network Policy controller alongside the default Flannel CNI, and you can also use custom CNIs such as Canal or Cilium if you disable the built-in controller to avoid conflicts. This guide covers setting up and using Network Policies effectively.
 
 ## Understanding Network Policy Behavior
 
 **Without Network Policies**: All pods can communicate with all other pods across all namespaces.
 
-**With Network Policies**: Once you apply a NetworkPolicy that selects a pod, only explicitly allowed traffic is permitted. Pods without any NetworkPolicy selecting them remain fully accessible.
+**With Network Policies**: Once you apply a NetworkPolicy that selects a pod for ingress or egress, traffic in that direction is allowed only if a policy permits it. Pods without any NetworkPolicy selecting them for a given direction remain non-isolated in that direction.
 
 ## Step 1: Enable Network Policy Support in K3s
 
-K3s's default Flannel does not support Network Policies. Enable support by switching to Canal (Flannel + Calico policy engine):
+K3s already includes a Network Policy controller, so a default installation is enough to use standard Kubernetes `NetworkPolicy` resources:
 
 ```bash
-# Install K3s with Canal CNI for Network Policy support
+# Install K3s with the default Flannel CNI and built-in network policy controller
+curl -sfL https://get.k3s.io | sh -
+```
 
+If you prefer a custom CNI such as Canal or Cilium, disable Flannel and the built-in K3s controller first, then follow that CNI's official installation guide:
+
+```bash
+# Install K3s without Flannel, then install your CNI of choice
 curl -sfL https://get.k3s.io | \
   INSTALL_K3S_EXEC="--flannel-backend=none --disable-network-policy" \
   sh -
-
-# Then deploy Canal
-kubectl apply -f https://projectcalico.docs.tigera.io/manifests/canal.yaml
-
-# Or use Cilium for even richer network policy support
-# (covered in a separate guide)
-```
-
-Alternatively, for the simplest approach, use K3s with the bundled `--flannel-backend=vxlan` which works with basic policies via Canal:
-
-```bash
-# Use Canal (included in K3s multi-server mode)
-curl -sfL https://get.k3s.io | sh -
 ```
 
 ## Step 2: Default Deny All Policy
@@ -94,7 +87,7 @@ spec:
   policyTypes:
     - Egress
   egress:
-    # Allow DNS queries to CoreDNS in kube-system
+    # Allow DNS queries on port 53
     - ports:
         - port: 53
           protocol: UDP
@@ -104,10 +97,33 @@ spec:
 
 ## Step 4: Allow Specific Service Communication
 
+With a default-deny policy in place, you need matching egress and ingress rules for each allowed communication path:
+
 ```yaml
 # allow-frontend-to-backend.yaml
 ---
-# Allow the frontend to communicate with the backend
+# Allow frontend pods to send traffic to backend pods
+apiVersion: networking.k8s.io/v1
+kind: NetworkPolicy
+metadata:
+  name: allow-frontend-egress-to-backend
+  namespace: production
+spec:
+  podSelector:
+    matchLabels:
+      app: frontend
+  policyTypes:
+    - Egress
+  egress:
+    - to:
+        - podSelector:
+            matchLabels:
+              app: backend
+      ports:
+        - port: 8080
+          protocol: TCP
+---
+# Allow backend pods to receive traffic from frontend pods
 apiVersion: networking.k8s.io/v1
 kind: NetworkPolicy
 metadata:
@@ -130,7 +146,28 @@ spec:
         - port: 8080
           protocol: TCP
 ---
-# Allow backend to connect to the database
+# Allow backend pods to send traffic to database pods
+apiVersion: networking.k8s.io/v1
+kind: NetworkPolicy
+metadata:
+  name: allow-backend-egress-to-db
+  namespace: production
+spec:
+  podSelector:
+    matchLabels:
+      app: backend
+  policyTypes:
+    - Egress
+  egress:
+    - to:
+        - podSelector:
+            matchLabels:
+              app: database
+      ports:
+        - port: 5432
+          protocol: TCP
+---
+# Allow database pods to receive traffic from backend pods
 apiVersion: networking.k8s.io/v1
 kind: NetworkPolicy
 metadata:
@@ -297,6 +334,8 @@ spec:
     - ports:
         - port: 53
           protocol: UDP
+        - port: 53
+          protocol: TCP
 ---
 # Backend: accept from frontend, send to database
 apiVersion: networking.k8s.io/v1
@@ -328,30 +367,57 @@ spec:
     - ports:
         - port: 53
           protocol: UDP
+        - port: 53
+          protocol: TCP
+---
+# Database: accept only from backend
+apiVersion: networking.k8s.io/v1
+kind: NetworkPolicy
+metadata:
+  name: database-policy
+  namespace: production
+spec:
+  podSelector:
+    matchLabels:
+      tier: database
+  policyTypes:
+    - Ingress
+  ingress:
+    - from:
+        - podSelector:
+            matchLabels:
+              tier: backend
+      ports:
+        - port: 5432
 ```
 
 ## Step 9: Test Network Policies
 
 ```bash
-# Deploy test pods
-kubectl run client --image=busybox -n production --restart=Never -- sleep 3600
-kubectl run server --image=nginx -n production --restart=Never \
-  --labels="app=backend"
-kubectl expose pod server --port=80 -n production
+# Deploy test pods that match the example policies
+kubectl run client --image=busybox -n production --restart=Never \
+  --labels="tier=frontend" -- sleep 3600
+kubectl run server --image=python:3.12-alpine -n production --restart=Never \
+  --labels="tier=backend" --command -- python -m http.server 8080
+kubectl expose pod server --port=8080 --target-port=8080 -n production
 
-# Test connection (should work if allowed by policy)
-kubectl exec -n production client -- wget -O- http://server/ --timeout=5
+kubectl wait --for=condition=Ready pod/client pod/server -n production --timeout=60s
+
+# Test connection (should work if the frontend and backend policies are applied)
+kubectl exec -n production client -- wget -O- http://server:8080/ --timeout=5
 
 # Test blocked connection (should timeout)
 kubectl run blocked --image=busybox -n default --restart=Never -- sleep 3600
-kubectl exec -n default blocked -- wget -O- http://server.production/ --timeout=5
+kubectl wait --for=condition=Ready pod/blocked -n default --timeout=60s
+kubectl exec -n default blocked -- wget -O- http://server.production:8080/ --timeout=5
 # Should timeout (not allowed by policy)
 
 # Clean up
-kubectl delete pod client server blocked -n production
+kubectl delete pod client server -n production
+kubectl delete svc server -n production
 kubectl delete pod blocked -n default
 ```
 
 ## Conclusion
 
-Network Policies are essential for securing K3s clusters by implementing zero-trust networking between pods. The recommended approach is to start with default-deny policies per namespace, then explicitly allow only required communication paths. Always remember to allow DNS egress after applying default-deny, as pods need to resolve service names. Use a CNI plugin that fully supports Network Policies (Canal or Cilium) for reliable enforcement in K3s.
+Network Policies are essential for securing K3s clusters by implementing zero-trust networking between pods. The recommended approach is to start with default-deny policies per namespace, then explicitly allow only required communication paths. Always remember to allow DNS egress after applying default-deny, as pods need to resolve service names. K3s's built-in network policy controller works for standard Kubernetes `NetworkPolicy` resources, and if you switch to a custom CNI such as Canal or Cilium, disable the built-in controller to avoid conflicts.
