@@ -12,7 +12,7 @@ Istio is an open-source service mesh that provides traffic management, mutual TL
 
 ## Why Use OpenTofu for Istio?
 
-OpenTofu allows you to manage Istio installations and configurations as code - versioned, reproducible, and auditable. You can use the Helm provider for installation and the Kubernetes provider for Istio resources.
+OpenTofu allows you to manage Istio installations and configurations as code - versioned, reproducible, and auditable. You can use the Helm provider for installation and the Kubernetes provider for Istio resources. Because `kubernetes_manifest` validates resources against the live cluster API during planning, apply the Istio Helm charts first so the Istio CRDs exist before applying the Istio custom resources.
 
 ## Step 1: Install Istio with Helm
 
@@ -23,7 +23,7 @@ resource "helm_release" "istio_base" {
   chart            = "base"
   namespace        = "istio-system"
   create_namespace = true
-  version          = "1.21.0"
+  version          = "1.29.2"
 }
 
 resource "helm_release" "istiod" {
@@ -31,13 +31,18 @@ resource "helm_release" "istiod" {
   repository = "https://istio-release.storage.googleapis.com/charts"
   chart      = "istiod"
   namespace  = "istio-system"
-  version    = "1.21.0"
+  version    = "1.29.2"
 
   depends_on = [helm_release.istio_base]
 
   set {
-    name  = "pilot.traceSampling"
-    value = "100"
+    name  = "meshConfig.enableTracing"
+    value = "true"
+  }
+
+  set {
+    name  = "traceSampling"
+    value = "100.0"
   }
 }
 ```
@@ -63,7 +68,7 @@ resource "helm_release" "istio_ingress" {
   repository = "https://istio-release.storage.googleapis.com/charts"
   chart      = "gateway"
   namespace  = "istio-system"
-  version    = "1.21.0"
+  version    = "1.29.2"
 
   depends_on = [helm_release.istiod]
 }
@@ -71,10 +76,68 @@ resource "helm_release" "istio_ingress" {
 
 ## Step 4: Configure Traffic Management
 
+This example assumes a Kubernetes Service named `app` in the `production` namespace routes to workloads labeled `version: v1` and `version: v2`.
+
 ```hcl
+resource "kubernetes_manifest" "gateway" {
+  manifest = {
+    apiVersion = "networking.istio.io/v1"
+    kind       = "Gateway"
+    metadata = {
+      name      = "app-gateway"
+      namespace = "production"
+    }
+    spec = {
+      selector = {
+        istio = "ingress"
+      }
+      servers = [{
+        port = {
+          number   = 80
+          name     = "http"
+          protocol = "HTTP"
+        }
+        hosts = ["app.example.com"]
+      }]
+    }
+  }
+
+  depends_on = [helm_release.istio_ingress]
+}
+
+resource "kubernetes_manifest" "destination_rule" {
+  manifest = {
+    apiVersion = "networking.istio.io/v1"
+    kind       = "DestinationRule"
+    metadata = {
+      name      = "app-dr"
+      namespace = "production"
+    }
+    spec = {
+      host = "app.production.svc.cluster.local"
+      subsets = [
+        {
+          name = "v1"
+          labels = {
+            version = "v1"
+          }
+        },
+        {
+          name = "v2"
+          labels = {
+            version = "v2"
+          }
+        }
+      ]
+    }
+  }
+
+  depends_on = [helm_release.istiod]
+}
+
 resource "kubernetes_manifest" "virtual_service" {
   manifest = {
-    apiVersion = "networking.istio.io/v1alpha3"
+    apiVersion = "networking.istio.io/v1"
     kind       = "VirtualService"
     metadata = {
       name      = "app-vs"
@@ -87,14 +150,14 @@ resource "kubernetes_manifest" "virtual_service" {
         route = [
           {
             destination = {
-              host   = "app-v1"
+              host   = "app.production.svc.cluster.local"
               subset = "v1"
             }
             weight = 90
           },
           {
             destination = {
-              host   = "app-v1"
+              host   = "app.production.svc.cluster.local"
               subset = "v2"
             }
             weight = 10
@@ -103,6 +166,11 @@ resource "kubernetes_manifest" "virtual_service" {
       }]
     }
   }
+
+  depends_on = [
+    kubernetes_manifest.gateway,
+    kubernetes_manifest.destination_rule
+  ]
 }
 ```
 
@@ -111,7 +179,7 @@ resource "kubernetes_manifest" "virtual_service" {
 ```hcl
 resource "kubernetes_manifest" "peer_authentication" {
   manifest = {
-    apiVersion = "security.istio.io/v1beta1"
+    apiVersion = "security.istio.io/v1"
     kind       = "PeerAuthentication"
     metadata = {
       name      = "default"
@@ -123,10 +191,14 @@ resource "kubernetes_manifest" "peer_authentication" {
       }
     }
   }
+
+  depends_on = [helm_release.istiod]
 }
 ```
 
 ## Step 6: Install Observability Tools
+
+Kiali requires Prometheus to already be available in the cluster for mesh telemetry.
 
 ```hcl
 resource "helm_release" "kiali" {
@@ -135,7 +207,7 @@ resource "helm_release" "kiali" {
   chart            = "kiali-server"
   namespace        = "istio-system"
   create_namespace = false
-  version          = "1.82.0"
+  version          = "2.25.0"
 
   set {
     name  = "auth.strategy"
@@ -149,7 +221,7 @@ resource "helm_release" "kiali" {
 ```bash
 kubectl get pods -n istio-system
 istioctl verify-install
-istioctl analyze
+istioctl analyze --all-namespaces
 ```
 
 ## Best Practices
@@ -162,4 +234,4 @@ istioctl analyze
 
 ## Conclusion
 
-OpenTofu makes Istio deployments reproducible and configuration-driven. By combining Helm releases for installation with Kubernetes manifest resources for Istio CRDs, you get a fully declarative service mesh setup that integrates naturally with your infrastructure pipeline.
+OpenTofu makes Istio deployments reproducible and configuration-driven. By combining Helm releases for installation with Kubernetes manifest resources for Istio custom resources, you get a declarative service mesh setup that integrates naturally with your infrastructure pipeline. Apply the Helm releases first so the Istio CRDs exist before planning the custom resources.
