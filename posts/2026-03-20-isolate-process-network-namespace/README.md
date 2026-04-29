@@ -12,7 +12,7 @@ Running a process inside a network namespace restricts it to only the network in
 
 ## Prerequisites
 
-- Root access or sufficient capabilities (`CAP_SYS_ADMIN`)
+- Root access or sufficient capabilities (`CAP_SYS_ADMIN` and `CAP_NET_ADMIN`)
 - iproute2 installed
 - `unshare` from util-linux (usually pre-installed)
 
@@ -24,8 +24,8 @@ Running a process inside a network namespace restricts it to only the network in
 ip netns add isolated-ns
 ip netns exec isolated-ns ip link set lo up
 
-# Run a process inside the namespace
-ip netns exec isolated-ns bash -c "curl http://192.168.1.1"
+# Without adding an interface or route, external connections will fail
+ip netns exec isolated-ns bash -c "curl --connect-timeout 2 http://192.168.1.1 || echo 'No external interface configured yet'"
 
 # Start a long-running process in the namespace
 ip netns exec isolated-ns /usr/bin/python3 /opt/myapp/server.py &
@@ -51,7 +51,7 @@ ping 8.8.8.8
 # connect: Network is unreachable
 ```
 
-## Method 3: Move an Existing Process to a Namespace
+## Method 3: Enter an Existing Process's Namespace
 
 You cannot move a running process to a different network namespace directly, but you can use `nsenter` to run commands in the context of an existing process's namespace:
 
@@ -70,6 +70,7 @@ To completely block network access for a process:
 ```bash
 # Create a namespace with NO interfaces except loopback
 ip netns add no-net
+ip netns exec no-net ip link set lo up
 
 # Run a process with no network access
 ip netns exec no-net bash -c "
@@ -86,7 +87,6 @@ ip netns exec no-net bash -c "
 #!/bin/bash
 # run-isolated.sh: Run a command in a namespace with specific network access
 
-PROGRAM="$@"
 NS="sandbox-$$"  # Unique namespace name using PID
 
 # Create a fresh namespace
@@ -95,7 +95,7 @@ ip netns exec "$NS" ip link set lo up
 
 # Run the program in the namespace
 echo "Running in isolated namespace: $NS"
-ip netns exec "$NS" $PROGRAM
+ip netns exec "$NS" "$@"
 EXIT_CODE=$?
 
 # Clean up the namespace after the program exits
