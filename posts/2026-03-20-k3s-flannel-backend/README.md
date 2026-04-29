@@ -4,11 +4,11 @@ Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
 Tags: k3s, Kubernetes, Rancher, Flannel, Networking, CNI
 
-Description: Learn how to configure different Flannel backend modes in K3s including VXLAN, host-gw, WireGuard, and IPsec for optimal networking performance.
+Description: Learn how to configure different Flannel backend modes in K3s including VXLAN, host-gw, WireGuard, and legacy IPsec guidance for older clusters.
 
 ## Introduction
 
-K3s uses Flannel as its default CNI plugin. Flannel supports multiple backend modes that determine how pod network traffic is encapsulated and routed between nodes. Choosing the right backend for your environment can significantly impact network performance, security, and compatibility. This guide covers all available Flannel backends and when to use each.
+K3s uses Flannel as its default CNI plugin. Flannel supports multiple backend modes that determine how pod network traffic is encapsulated and routed between nodes. Choosing the right backend for your environment can significantly impact network performance, security, and compatibility. This guide covers the current Flannel backends available in K3s and notes the legacy IPsec backend for older clusters.
 
 ## Available Flannel Backends
 
@@ -16,11 +16,13 @@ K3s uses Flannel as its default CNI plugin. Flannel supports multiple backend mo
 |---------|-----------|-------------|-------------|
 | `vxlan` (default) | No | Good | None |
 | `host-gw` | No | Excellent | L2 network |
-| `wireguard-native` | Yes | Very Good | Kernel 5.6+ |
-| `ipsec` | Yes | Good | Strongswan |
+| `wireguard-native` | Yes | Very Good | WireGuard kernel modules |
+| `ipsec` (legacy, K3s < v1.27) | Yes | Good | strongSwan (`swanctl` + `charon`) |
 | `none` | N/A | N/A | Custom CNI |
 
 ## Configuring the Flannel Backend
+
+Set Flannel options on server nodes only, and use the same value on every server node in the cluster.
 
 ### VXLAN (Default)
 
@@ -34,9 +36,7 @@ flannel-backend: "vxlan"
 
 ```bash
 # Install K3s with explicit VXLAN backend
-curl -sfL https://get.k3s.io | \
-    INSTALL_K3S_EXEC="--flannel-backend=vxlan" \
-    sudo sh -
+curl -sfL https://get.k3s.io | sudo sh -s - --flannel-backend vxlan
 
 # Verify VXLAN interface was created
 ip link show flannel.1
@@ -57,9 +57,7 @@ flannel-backend: "host-gw"
 
 ```bash
 # Install with host-gw backend
-curl -sfL https://get.k3s.io | \
-    INSTALL_K3S_EXEC="--flannel-backend=host-gw" \
-    sudo sh -
+curl -sfL https://get.k3s.io | sudo sh -s - --flannel-backend host-gw
 
 # Verify routes were added
 ip route show | grep "via"
@@ -80,25 +78,22 @@ ip route show | grep "via"
 WireGuard provides modern, efficient encryption:
 
 ```yaml
-# Requires kernel 5.6+ (Ubuntu 20.04+, Fedora 32+, RHEL 8.3+)
+# Ensure the WireGuard kernel module is available on every node
 flannel-backend: "wireguard-native"
 ```
 
 ```bash
-# Check WireGuard support
-modinfo wireguard 2>/dev/null && echo "WireGuard supported" || echo "WireGuard not available"
-
-# On Ubuntu, install WireGuard if not built into kernel
+# On Ubuntu, install WireGuard if the module/tools are not already present
 sudo apt-get install -y wireguard
 
+# Ensure the WireGuard kernel module is available
+sudo modprobe wireguard && echo "WireGuard kernel module available"
+
 # Install K3s with WireGuard
-curl -sfL https://get.k3s.io | \
-    INSTALL_K3S_EXEC="--flannel-backend=wireguard-native" \
-    sudo sh -
+curl -sfL https://get.k3s.io | sudo sh -s - --flannel-backend wireguard-native
 
 # Verify WireGuard interface
 sudo wg show
-ip link show flannel-wg
 ```
 
 **When to use WireGuard:**
@@ -107,25 +102,18 @@ ip link show flannel-wg
 - Multi-cloud clusters
 - Any environment requiring encrypted pod traffic
 
-### IPsec (Legacy Encryption)
+### IPsec (Legacy Encryption, K3s < v1.27)
 
-IPsec provides strong encryption but requires strongSwan:
+IPsec was supported by older K3s releases via strongSwan, but it is not available in K3s v1.27 and higher:
 
-```bash
-# Install strongSwan on all nodes
-sudo apt-get install -y strongswan
-
-# Configure K3s with IPsec backend
-sudo tee /etc/rancher/k3s/config.yaml > /dev/null <<EOF
+```yaml
+# Legacy only: supported on K3s releases earlier than v1.27
 flannel-backend: "ipsec"
-EOF
-
-curl -sfL https://get.k3s.io | sudo sh -
 ```
 
 **When to use IPsec:**
-- Compliance requirements mandating IPsec specifically
-- Integration with existing IPsec infrastructure
+- Only when maintaining an older K3s cluster with a requirement for IPsec specifically
+- Integration with existing IPsec infrastructure on legacy clusters
 
 ### none (Bring Your Own CNI)
 
@@ -137,9 +125,7 @@ flannel-backend: "none"
 
 ```bash
 # Install K3s without CNI
-curl -sfL https://get.k3s.io | \
-    INSTALL_K3S_EXEC="--flannel-backend=none --disable-network-policy" \
-    sudo sh -
+curl -sfL https://get.k3s.io | sudo sh -s - --flannel-backend none --disable-network-policy
 
 # After K3s starts, install your CNI manually
 # Example: Cilium
@@ -151,28 +137,17 @@ helm install cilium cilium/cilium \
 
 ## Switching Backends on an Existing Cluster
 
-Changing the Flannel backend requires resetting the network:
+Changing the Flannel backend requires a short period of downtime. For the documented migration from legacy `wireguard` or `ipsec` to `wireguard-native`, update the setting on all server nodes, then reboot all nodes starting with the servers:
 
 ```bash
-# Stop K3s
-sudo systemctl stop k3s
-
-# Remove the Flannel database
-sudo rm -f /var/lib/rancher/k3s/agent/etc/cni/net.d/10-flannel.conflist
-sudo rm -rf /var/lib/rancher/k3s/agent/etc/cni/net.d/flannel.d/
-
-# Remove old Flannel interfaces
-sudo ip link delete flannel.1 2>/dev/null || true
-sudo ip link delete flannel-wg 2>/dev/null || true
-
-# Update config.yaml
+# Update config.yaml on every server node
 sudo sed -i 's/flannel-backend:.*/flannel-backend: "wireguard-native"/' /etc/rancher/k3s/config.yaml
 
-# Start K3s
-sudo systemctl start k3s
+# Reboot all nodes, starting with the servers
+sudo reboot
 
-# Verify new interface
-sudo journalctl -u k3s | grep -i flannel
+# After the node returns, verify Flannel started with the new backend
+sudo journalctl -u k3s -b | grep -i flannel
 ```
 
 ## Performance Comparison
@@ -182,12 +157,14 @@ sudo journalctl -u k3s | grep -i flannel
 sudo apt-get install -y iperf3
 
 # Run iperf3 server on one pod
-kubectl run iperf-server --image=networkstatic/iperf3 --restart=Never -- iperf3 -s
+kubectl run iperf-server --image=networkstatic/iperf3 --restart=Never --command -- iperf3 -s
+kubectl wait --for=condition=Ready pod/iperf-server --timeout=60s
 
 # Run iperf3 client from another pod
 IPERF_SERVER_IP=$(kubectl get pod iperf-server -o jsonpath='{.status.podIP}')
-kubectl run iperf-client --image=networkstatic/iperf3 --restart=Never -- \
-    iperf3 -c $IPERF_SERVER_IP -t 10
+kubectl run iperf-client --image=networkstatic/iperf3 --restart=Never --command -- \
+    iperf3 -c "$IPERF_SERVER_IP" -t 10
+kubectl wait --for=jsonpath='{.status.phase}'=Succeeded pod/iperf-client --timeout=60s
 
 # View results
 kubectl logs iperf-client
@@ -195,16 +172,10 @@ kubectl logs iperf-client
 
 ## Flannel VXLAN MTU Configuration
 
-VXLAN encapsulation reduces the effective MTU by 50 bytes:
+VXLAN encapsulation reduces the effective MTU. K3s and Flannel handle this automatically; you can inspect the value in use with:
 
-```yaml
-# For standard 1500 MTU physical NICs
-# VXLAN MTU should be 1450 (1500 - 50 overhead)
-
-# K3s sets this automatically, but you can configure it via:
-flannel-backend: "vxlan"
-kube-proxy-arg:
-  - "v=4"  # Increase verbosity to see MTU in use
+```bash
+grep FLANNEL_MTU /run/flannel/subnet.env
 ```
 
 Check the effective MTU:
@@ -214,11 +185,12 @@ Check the effective MTU:
 ip link show flannel.1 | grep mtu
 
 # Check pod network MTU
-kubectl run mtu-check --image=busybox --restart=Never -- \
+kubectl run mtu-check --image=busybox --restart=Never --command -- \
     sh -c "cat /sys/class/net/eth0/mtu"
+kubectl wait --for=jsonpath='{.status.phase}'=Succeeded pod/mtu-check --timeout=60s
 kubectl logs mtu-check
 ```
 
 ## Conclusion
 
-K3s's Flannel backend flexibility allows you to optimize the network for your specific environment. VXLAN is the safe default for cloud and multi-segment networks. Use `host-gw` for maximum performance when all nodes are on the same L2 network. Choose `wireguard-native` when you need encryption with modern performance - it's the best choice for multi-site or cloud deployments. For organizations with strict compliance requirements, `ipsec` is available. If you need a CNI feature not available in Flannel (like advanced network policies), use `none` and install Calico or Cilium.
+K3s's Flannel backend flexibility allows you to optimize the network for your specific environment. VXLAN is the safe default for cloud and multi-segment networks. Use `host-gw` for maximum performance when all nodes are on the same L2 network. Choose `wireguard-native` when you need encryption with modern performance - it's the best choice for multi-site or cloud deployments. For organizations maintaining older K3s clusters with strict compliance requirements, legacy `ipsec` may still be relevant, but current K3s releases use `wireguard-native` for encrypted Flannel networking. If you need a CNI feature not available in Flannel (like advanced network policies), use `none` and install Calico or Cilium.
