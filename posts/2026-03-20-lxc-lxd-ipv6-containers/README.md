@@ -19,7 +19,7 @@ lxc network list
 lxc network create lxdbr1 \
   ipv4.address=10.100.0.1/24 \
   ipv4.nat=true \
-  ipv6.address=fd00:lxd::/64 \
+  ipv6.address=fd42:100:100::1/64 \
   ipv6.nat=true
 
 # Inspect the network
@@ -30,14 +30,14 @@ lxc network show lxdbr1
 
 ```bash
 # Edit the default lxdbr0 network
-lxc network set lxdbr0 ipv6.address fd00:lxd:default::/64
-lxc network set lxdbr0 ipv6.nat true
+lxc network set lxdbr0 ipv6.address=fd42:100:101::1/64
+lxc network set lxdbr0 ipv6.nat=true
 
 # Verify
 lxc network show lxdbr0 | grep ipv6
 ```
 
-LXD automatically configures radvd or dnsmasq on the bridge to advertise the prefix via SLAAC, so containers receive IPv6 addresses without additional configuration.
+LXD automatically configures `dnsmasq` on the bridge to advertise the prefix for SLAAC and, when enabled, provide DHCPv6, so containers receive IPv6 addresses without additional configuration.
 
 ## Launching Containers with IPv6
 
@@ -49,23 +49,24 @@ lxc launch ubuntu:22.04 web1 --network lxdbr1
 lxc exec web1 -- ip -6 addr show
 
 # Or via lxc list
-lxc list web1 --format json | python3 -m json.tool | grep -A 5 \"IPv6\"
+lxc list web1 -c n6
 
-# Access container via IPv6
-lxc exec web1 -- curl -6 https://ipv6.google.com
+# Test IPv6 to the bridge gateway
+lxc exec web1 -- ping -6 -c 3 fd42:100:100::1
 ```
 
 ## Static IPv6 Address for a Container
 
 ```bash
-# Assign a static IPv6 address to a specific container
-lxc network attach lxdbr1 web1 eth0
+# Request a specific IPv6 address on the existing eth0 device
+# This requires stateful DHCPv6 on the bridge (see below)
+lxc config device set web1 eth0 ipv6.address=fd42:100:100::10
 
-# Set static IPv6 address via device configuration
-lxc config device set web1 eth0 ipv6.address fd00:lxd::10
+# Restart so the container renews its lease cleanly
+lxc restart web1
 
 # Verify
-lxc exec web1 -- ip -6 addr show eth0
+lxc exec web1 -- ip -6 addr show dev eth0
 ```
 
 ## LXD Profile with IPv6 Networking
@@ -79,10 +80,6 @@ devices:
     name: eth0
     network: lxdbr1
     type: nic
-  root:
-    path: /
-    pool: default
-    type: disk
 name: ipv6-profile
 ```
 
@@ -98,20 +95,20 @@ lxc launch ubuntu:22.04 app1 --profile default --profile ipv6-profile
 lxc config show app1 | grep profiles
 ```
 
-## LXD with Routed Networking (No NAT)
+## LXD Managed Bridge Without NAT
 
 For production environments where containers should have globally routable IPv6:
 
 ```bash
-# Configure a routed network (no NAT, containers get real prefixes)
-lxc network create lxdrouted \
+# Configure a bridge with a global IPv6 prefix (no NAT)
+lxc network create lxdbrpub \
   ipv4.address=none \
-  ipv6.address=2001:db8:lxd::/64 \
+  ipv6.address=2001:db8:100::1/64 \
   ipv6.nat=false
 
-# The host must have proper routing to forward to this prefix
+# The host must have proper routing to forward this prefix
 # Containers receive addresses via SLAAC from the advertised prefix
-lxc launch ubuntu:22.04 pub-web --network lxdrouted
+lxc launch ubuntu:22.04 pub-web --network lxdbrpub
 lxc exec pub-web -- ip -6 addr show
 ```
 
@@ -119,38 +116,39 @@ lxc exec pub-web -- ip -6 addr show
 
 ```bash
 # Enable stateful DHCPv6 (in addition to SLAAC)
-lxc network set lxdbr1 ipv6.dhcp true
-lxc network set lxdbr1 ipv6.dhcp.stateful true
+lxc network set lxdbr1 ipv6.dhcp=true
+lxc network set lxdbr1 ipv6.dhcp.stateful=true
 
-# Reserve a specific DHCPv6 address for a container
-# (Uses the container's DUID - check with lxc info <container>)
-lxc network set lxdbr1 ipv6.dhcp.ranges fd00:lxd::100-fd00:lxd::200
+# Limit the DHCPv6 pool used for dynamic assignments
+lxc network set lxdbr1 ipv6.dhcp.ranges=fd42:100:100::100-fd42:100:100::1ff
+
+# Inspect the resulting DHCP leases
+lxc network list-leases lxdbr1
 ```
 
 ## IPv6 Firewall Rules for LXD Containers
 
-LXD uses nftables to manage container traffic. Verify ICMPv6 is not blocked:
+LXD can use `nftables` or `xtables` depending on the host firewall backend. If you let LXD manage bridge firewall rules, verify the IPv6 bridge firewall is enabled and inspect the active ruleset:
 
 ```bash
-# Check nftables rules affecting lxdbr1
+# Verify LXD is managing IPv6 firewall rules for the bridge
+lxc network get lxdbr1 ipv6.firewall
+
+# Check nftables rules affecting lxdbr1 on nftables-based hosts
 nft list ruleset | grep -A 5 lxdbr1
 
-# Ensure ICMPv6 is allowed for NDP (essential for SLAAC)
-ip6tables -L FORWARD -n | grep icmpv6
-
-# Add ICMPv6 allow rule if missing
-ip6tables -A FORWARD -i lxdbr1 -p ipv6-icmp -j ACCEPT
-ip6tables -A FORWARD -o lxdbr1 -p ipv6-icmp -j ACCEPT
+# Or inspect the IPv6 forwarding chain on xtables-based hosts
+ip6tables -L FORWARD -n
 ```
 
 ## Verifying IPv6 Connectivity
 
 ```bash
 # Test IPv6 from container to internet
-lxc exec web1 -- ping6 -c 3 2001:4860:4860::8888
+lxc exec web1 -- ping -6 -c 3 2001:4860:4860::8888
 
 # Test container-to-container IPv6
-lxc exec web1 -- ping6 -c 3 fd00:lxd::app1-address
+lxc exec web1 -- ping -6 -c 3 <app1-ipv6-address>
 
 # Check SLAAC assignment worked
 lxc exec web1 -- ip -6 addr show | grep "scope global"
@@ -162,18 +160,18 @@ lxc exec web1 -- ip -6 route show default
 ## Troubleshooting LXD IPv6
 
 ```bash
-# If containers don't get IPv6 addresses, check radvd on host
+# If containers don't get IPv6 addresses, check the bridge IPv6 settings
 lxc network show lxdbr1 | grep ipv6
 
-# Restart the network
-lxc network edit lxdbr1   # confirm settings are correct
+# Check runtime information for the bridge
+lxc network info lxdbr1
 
-# Check dnsmasq log for IPv6 SLAAC/DHCPv6
-journalctl -u snap.lxd.daemon | grep -i "ipv6\|dhcp6\|radvd"
+# Watch LXD log messages while reproducing the issue
+lxc monitor --pretty --type=logging --loglevel=info
 
 # Verify kernel IPv6 forwarding is enabled
 sysctl net.ipv6.conf.all.forwarding
 # Should be 1
 ```
 
-LXD's managed networking makes IPv6 configuration straightforward: enable IPv6 on the bridge network and containers automatically receive SLAAC addresses. For production use, configure routed networking without NAT to give containers real globally routable IPv6 addresses.
+LXD's managed networking makes IPv6 configuration straightforward: enable IPv6 on the bridge network and containers automatically receive SLAAC addresses. For production use, configure a managed bridge without NAT to give containers real globally routable IPv6 addresses.
