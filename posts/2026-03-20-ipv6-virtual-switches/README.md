@@ -16,7 +16,7 @@ Virtual switches must handle IPv6-specific traffic types - NDP (Neighbor Discove
 IPv6 traffic through virtual switches:
 ┌─────────────────────────────────────────────────────┐
 │ Essential IPv6 multicast traffic:                    │
-│  ff02::1   All nodes (RA destination)               │
+│  ff02::1   All nodes (common RA destination)        │
 │  ff02::2   All routers (RS destination)             │
 │  ff02::1:ff xx:xxxx  Solicited-node (NDP)          │
 │                                                      │
@@ -26,7 +26,7 @@ IPv6 traffic through virtual switches:
 │  Type 135: Neighbor Solicitation                     │
 │  Type 136: Neighbor Advertisement                    │
 │  Type 2:   Packet Too Big (PMTUD)                   │
-│  Types 143,131,132: MLD (multicast)                 │
+│  Types 130,131,132,143: MLD (multicast)             │
 └─────────────────────────────────────────────────────┘
 ```
 
@@ -46,9 +46,9 @@ net.bridge.bridge-nf-call-iptables = 0
 EOF
 sysctl -p /etc/sysctl.d/99-bridge-ipv6.conf
 
-# If you must use bridge netfilter, allow ICMPv6 explicitly
-ip6tables -A FORWARD -i br0 -o br0 -p icmpv6 -j ACCEPT
-ip6tables -A FORWARD -i br0 -o br0 -m state --state ESTABLISHED,RELATED -j ACCEPT
+# If you must use bridge netfilter, allow bridged ICMPv6 explicitly
+ip6tables -A FORWARD -m physdev --physdev-is-bridged -p icmpv6 -j ACCEPT
+ip6tables -A FORWARD -m physdev --physdev-is-bridged -m conntrack --ctstate ESTABLISHED,RELATED -j ACCEPT
 ```
 
 ## Open vSwitch: IPv6 Flow Rules
@@ -56,25 +56,30 @@ ip6tables -A FORWARD -i br0 -o br0 -m state --state ESTABLISHED,RELATED -j ACCEP
 ```bash
 # OVS: ensure IPv6 and ICMPv6 traffic is forwarded
 
+# icmpv6_type matches require OpenFlow 1.2+; ovs-ofctl uses OpenFlow 1.0 by default
+ovs-vsctl set bridge ovs-br0 protocols=OpenFlow10,OpenFlow11,OpenFlow12,OpenFlow13
+
 # Check existing flows
-ovs-ofctl dump-flows ovs-br0 | grep -E "icmp6|ipv6"
+ovs-ofctl -O OpenFlow13 dump-flows ovs-br0 | grep -E "icmp6|ipv6"
 
 # Add explicit rules to allow IPv6 (if using deny-all default)
 # Allow ICMPv6 NDP (types 133-136)
-ovs-ofctl add-flow ovs-br0 "priority=200,icmp6,icmpv6_type=133,actions=normal"
-ovs-ofctl add-flow ovs-br0 "priority=200,icmp6,icmpv6_type=134,actions=normal"
-ovs-ofctl add-flow ovs-br0 "priority=200,icmp6,icmpv6_type=135,actions=normal"
-ovs-ofctl add-flow ovs-br0 "priority=200,icmp6,icmpv6_type=136,actions=normal"
+ovs-ofctl -O OpenFlow13 add-flow ovs-br0 "priority=200,icmp6,icmpv6_type=133,actions=normal"
+ovs-ofctl -O OpenFlow13 add-flow ovs-br0 "priority=200,icmp6,icmpv6_type=134,actions=normal"
+ovs-ofctl -O OpenFlow13 add-flow ovs-br0 "priority=200,icmp6,icmpv6_type=135,actions=normal"
+ovs-ofctl -O OpenFlow13 add-flow ovs-br0 "priority=200,icmp6,icmpv6_type=136,actions=normal"
 
 # Allow ICMPv6 Packet Too Big (PMTUD)
-ovs-ofctl add-flow ovs-br0 "priority=200,icmp6,icmpv6_type=2,actions=normal"
+ovs-ofctl -O OpenFlow13 add-flow ovs-br0 "priority=200,icmp6,icmpv6_type=2,actions=normal"
 
-# Allow MLD
-ovs-ofctl add-flow ovs-br0 "priority=200,icmp6,icmpv6_type=130,actions=normal"
-ovs-ofctl add-flow ovs-br0 "priority=200,icmp6,icmpv6_type=143,actions=normal"
+# Allow MLD (v1 and v2)
+ovs-ofctl -O OpenFlow13 add-flow ovs-br0 "priority=200,icmp6,icmpv6_type=130,actions=normal"
+ovs-ofctl -O OpenFlow13 add-flow ovs-br0 "priority=200,icmp6,icmpv6_type=131,actions=normal"
+ovs-ofctl -O OpenFlow13 add-flow ovs-br0 "priority=200,icmp6,icmpv6_type=132,actions=normal"
+ovs-ofctl -O OpenFlow13 add-flow ovs-br0 "priority=200,icmp6,icmpv6_type=143,actions=normal"
 
 # Allow all other IPv6
-ovs-ofctl add-flow ovs-br0 "priority=100,ipv6,actions=normal"
+ovs-ofctl -O OpenFlow13 add-flow ovs-br0 "priority=100,ipv6,actions=normal"
 ```
 
 ## VMware vSwitch: IPv6 Configuration
@@ -92,7 +97,8 @@ ovs-ofctl add-flow ovs-br0 "priority=100,ipv6,actions=normal"
 # 2. Forged Transmits - needed if VMs use MACs different from vNIC MAC
 #    e.g., when running network namespaces or nested virtualization
 
-# 3. MAC Address Changes - may affect NDP in some setups
+# 3. MAC Address Changes - may be needed if a guest changes its effective MAC
+#    and must receive traffic for that MAC
 
 # Check port group settings:
 # vSphere Client → vSwitch → Port Group → Edit Settings → Security
@@ -132,7 +138,7 @@ Set-VMNetworkAdapter -VMName "MyRouter" -RouterGuard Off
 ```bash
 # From inside a VM: test NDP is working
 ip -6 neigh show
-# Should show gateway's MAC address with REACHABLE state
+# Should show a neighbor entry for the router, often in REACHABLE or STALE state
 
 # Check Router Advertisements are reaching VMs
 tcpdump -i eth0 -n "icmp6 and icmp6[0] == 134"
@@ -140,13 +146,13 @@ tcpdump -i eth0 -n "icmp6 and icmp6[0] == 134"
 
 # Test MTU (check Packet Too Big messages work)
 ping6 -M do -s 1452 2001:4860:4860::8888
-# If this hangs, PMTUD is broken (ICMPv6 type 2 is blocked)
+# If this fails unexpectedly, verify ICMPv6 type 2 is not being blocked
 
 # From OVS: trace IPv6 packet path
 ovs-appctl ofproto/trace ovs-br0 \
-    "ipv6,in_port=1,ipv6_src=2001:db8::100,ipv6_dst=2001:db8::1,icmpv6,icmpv6_type=135"
+    "ipv6,in_port=1,ipv6_src=2001:db8::100,ipv6_dst=2001:db8::1,icmp6,icmpv6_type=135"
 ```
 
 ## Conclusion
 
-Virtual switches must forward ICMPv6 NDP messages (types 133-136), Packet Too Big (type 2), and MLD messages for IPv6 to function correctly. Linux bridges block these if `bridge-nf-call-ip6tables=1` and ip6tables has DROP defaults. Open vSwitch requires explicit OpenFlow rules for ICMPv6 types in custom table configurations. Hyper-V's Router Guard blocks Router Advertisements from VMs - disable it when a VM is legitimately running an IPv6 router. VMware vSwitches are transparent to IPv6 by default, but MAC Address Changes and Forged Transmit policies may need adjustment for nested virtualization scenarios. Always test NDP and PMTUD functionality after configuring virtual switches for IPv6.
+Virtual switches must forward ICMPv6 NDP messages (types 133-136), Packet Too Big (type 2), and MLD messages for IPv6 to function correctly. Linux bridges block these if `bridge-nf-call-ip6tables=1` and ip6tables has DROP defaults. Open vSwitch requires explicit OpenFlow rules for ICMPv6 types in custom table configurations, and matches on `icmpv6_type` require OpenFlow 1.2 or later. Hyper-V's Router Guard blocks Router Advertisements from VMs - disable it when a VM is legitimately running an IPv6 router. VMware vSwitches are transparent to IPv6 by default, but MAC Address Changes and Forged Transmit policies may need adjustment for nested virtualization or other workloads that use MACs different from the vNIC MAC. Always test NDP and PMTUD functionality after configuring virtual switches for IPv6.
