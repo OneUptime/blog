@@ -13,18 +13,17 @@ The `ss` command provides socket-level statistics for UDP in a way that `netstat
 ## Basic UDP Socket Listing
 
 ```bash
-# List all UDP sockets
-
-ss -un
+# List all UDP sockets (UNCONN listeners are filtered by default, so include -a)
+ss -uan
 
 # List with process info (requires root for other users' processes)
-ss -unp
+ss -uanp
 
 # List listening UDP sockets only
 ss -ulnp
 
-# List all UDP sockets (including non-listening)
-ss -una
+# List established (connected) UDP sockets only
+ss -un
 
 # Sample output:
 # State   Recv-Q  Send-Q  Local Address:Port  Peer Address:Port  Process
@@ -54,7 +53,8 @@ Send-Q: Bytes in send buffer waiting to be sent
 
 ```bash
 # Show memory usage (buffer info) for UDP sockets
-ss -umn
+# Use -a to include UNCONN listeners and -O to keep skmem on the same line
+ss -Ouamn
 
 # Output includes:
 # skmem:(r0,rb212992,t0,tb212992,f0,w0,o0,bl0,d0)
@@ -62,15 +62,15 @@ ss -umn
 # rb = receive buffer size
 # t = transmit bytes currently queued
 # tb = transmit buffer size
-# d = drops (packets dropped due to full buffer)
+# d = drops (packets dropped before being demultiplexed into the socket)
 
-# Filter for sockets with drops:
-ss -umn | grep -v 'd0'
+# Filter for sockets with drops (d0) marks the no-drop case at end of skmem):
+ss -Ouamn | grep -v 'd0)'
 # Shows sockets where d != 0 (drops occurred)
 
 # Monitor buffer fill level over time:
 while true; do
-    ss -umn sport = :5000 | grep -oP 'r\K[0-9]+(?=,)'
+    ss -uamn sport = :5000 | grep -oP 'r\K[0-9]+(?=,)'
     sleep 1
 done
 ```
@@ -78,20 +78,20 @@ done
 ## Filter UDP by Port and Address
 
 ```bash
-# Show UDP sockets on specific port
-ss -unp sport = :5000
+# Show UDP sockets on specific port (include -a to also match UNCONN listeners)
+ss -uanp sport = :5000
 
 # Show UDP sockets connected to specific destination
-ss -unp dst 10.20.0.5
+ss -uanp dst 10.20.0.5
 
 # Show UDP sockets from specific source
-ss -unp src 10.20.0.1
+ss -uanp src 10.20.0.1
 
 # Combine filters:
-ss -unp src 10.20.0.1 dst 10.20.0.5
+ss -uanp src 10.20.0.1 dst 10.20.0.5
 
 # Show UDP on a port range:
-ss -unp sport '>= :5000' sport '<= :5100'
+ss -uanp sport '>= :5000' sport '<= :5100'
 ```
 
 ## Check for High Receive Queue
@@ -101,14 +101,15 @@ ss -unp sport '>= :5000' sport '<= :5100'
 # If Recv-Q stays high: packets will soon be dropped (buffer full)
 
 # Watch Recv-Q in real-time:
-watch -n 0.5 "ss -unp sport = :5000 | grep 5000"
+watch -n 0.5 "ss -uanp sport = :5000 | grep 5000"
 
-# Check global UDP receive errors:
-nstat | grep UdpRcvbufErrors
+# Check global UDP receive errors (use -az so the counter is shown even if unchanged):
+nstat -az | grep UdpRcvbufErrors
 # Correlate with Recv-Q being high
 
 # Alert if any UDP socket has high receive queue:
-ss -umn | awk -F'[,(]' '/UNCONN/{
+# -O keeps skmem on the same line as the socket info so awk can parse both
+ss -Ouamn | awk -F'[,(]' '/UNCONN/{
     for(i=1;i<=NF;i++) {
         if ($i ~ /^r[0-9]+$/) {
             bytes = substr($i, 2)
@@ -122,11 +123,11 @@ ss -umn | awk -F'[,(]' '/UNCONN/{
 
 ```bash
 # netstat (older, slower, but familiar):
-netstat -un    # UDP sockets
+netstat -uan   # UDP sockets (use -a since listeners are filtered by default)
 netstat -su    # UDP statistics summary
 
 # ss (modern, faster, more detail):
-ss -un         # UDP sockets
+ss -uan        # UDP sockets (use -a since listeners are filtered by default)
 ss -s          # Summary including UDP stats
 
 # Summary statistics:
@@ -139,4 +140,4 @@ ss -s
 
 ## Conclusion
 
-`ss -umn` is the definitive command for UDP socket monitoring on Linux: it shows buffer usage, queue depths, and drop counts per socket. Watch `Recv-Q > 0` as an early warning that a UDP service is falling behind. The `d` counter in `skmem` shows socket-level drops. Combine with `nstat | grep Udp` for system-wide drop statistics. Together, these tools identify exactly which UDP socket is dropping packets and whether the cause is buffer size or application processing speed.
+`ss -Ouamn` is the definitive command for UDP socket monitoring on Linux: it shows buffer usage, queue depths, and drop counts per socket. Watch `Recv-Q > 0` as an early warning that a UDP service is falling behind. The `d` counter in `skmem` shows socket-level drops. Combine with `nstat -az | grep Udp` for system-wide drop statistics. Together, these tools identify exactly which UDP socket is dropping packets and whether the cause is buffer size or application processing speed.
