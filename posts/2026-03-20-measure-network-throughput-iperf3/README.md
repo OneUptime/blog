@@ -8,7 +8,7 @@ Description: Learn how to use iperf3 to accurately measure network throughput be
 
 ## What Is iperf3?
 
-iperf3 is the standard tool for measuring maximum TCP and UDP throughput between two endpoints. It runs a server on one host and a client on the other, sending data as fast as possible for a specified duration and reporting the achieved throughput.
+iperf3 is a standard tool for measuring TCP and UDP throughput between two endpoints. It runs a server on one host and a client on the other, sending data for a specified duration and reporting the achieved throughput. For UDP tests, the send rate is controlled with `-b`.
 
 ## Step 1: Install iperf3
 
@@ -48,9 +48,9 @@ iperf3 -c 192.168.1.100
 # Extended test - 60 seconds, 4 parallel TCP streams
 iperf3 -c 192.168.1.100 -t 60 -P 4
 
-# Output:
-# [  4] 0.00-60.00 sec  6.99 GBytes   1.00 Gbits/sec  sender
-# [  4] 0.00-60.00 sec  6.98 GBytes  1000 Mbits/sec   receiver
+# Output includes per-stream lines plus a total:
+# [SUM] 0.00-60.00 sec  27.9 GBytes   3.99 Gbits/sec  sender
+# [SUM] 0.00-60.00 sec  27.9 GBytes   3.99 Gbits/sec  receiver
 ```
 
 ## Step 3: Test Reverse Direction (Download)
@@ -73,35 +73,35 @@ UDP testing measures achievable throughput without TCP flow control, and also re
 # UDP test - target 1 Gbps, 30 seconds
 iperf3 -c 192.168.1.100 -u -b 1G -t 30
 
-# UDP test for 10G network
+# UDP test targeting 10 Gbps
 iperf3 -c 192.168.1.100 -u -b 10G -t 30
 
 # Output includes:
 # Transfer/Bandwidth + Jitter + Lost/Total Datagrams
-# 0.00-30.00 sec  3.44 GBytes  987 Mbits/sec  0.025 ms  0/2500 (0%) receiver
+# 0.00-30.00 sec  3.44 GBytes  987 Mbits/sec  0.025 ms  0/2535000 (0%) receiver
 ```
 
 ## Step 5: Use Multiple Streams for Maximum Throughput
 
-A single TCP stream rarely saturates a high-bandwidth link due to congestion window limits. Use parallel streams:
+A single TCP stream may not fully saturate a high-bandwidth link on its own. Use parallel streams:
 
 ```bash
-# 8 parallel streams (better for measuring link capacity)
+# 8 parallel streams (useful for testing aggregate throughput across multiple flows)
 iperf3 -c 192.168.1.100 -t 60 -P 8
 
 # The [SUM] line shows total across all streams:
 # [SUM] 0.00-60.00 sec  68.0 GBytes  9.75 Gbits/sec   sender
 ```
 
-## Step 6: Test with Specific Buffer Sizes
+## Step 6: Adjust Socket and Send Options
 
-Simulate different TCP buffer configurations:
+Adjust socket and send behavior for more targeted tests:
 
 ```bash
 # Set TCP socket buffer size explicitly
 iperf3 -c 192.168.1.100 -t 30 -w 64M
 
-# Test with specific MSS
+# Try setting a specific MSS
 iperf3 -c 192.168.1.100 -t 30 -M 1460
 
 # Zero-copy mode (uses sendfile() for efficiency)
@@ -138,4 +138,4 @@ jq '.end.sum_received.bits_per_second / 1e9' /tmp/iperf3-results.json
 
 ## Conclusion
 
-iperf3 is the definitive tool for measuring network throughput. Use `-P 4` or `-P 8` for parallel streams to saturate high-bandwidth links, `-R` for download tests, and `-u` for UDP with jitter and loss metrics. High retransmission counts indicate network issues; low throughput compared to link speed indicates buffer, congestion control, or offload problems. Run tests at least 30 seconds to average out startup transients.
+iperf3 is the definitive tool for measuring network throughput. Use `-P 4` or `-P 8` when testing whether multiple concurrent flows improve throughput on a high-bandwidth link, `-R` for download tests, and `-u` for UDP with jitter and loss metrics. High retransmission counts indicate network issues; low throughput compared to link speed indicates buffer, congestion control, or offload problems. Run tests at least 30 seconds to average out startup transients.
