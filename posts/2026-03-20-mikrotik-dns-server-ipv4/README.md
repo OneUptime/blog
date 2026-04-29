@@ -18,9 +18,8 @@ MikroTik includes a built-in DNS caching resolver. When enabled, it handles DNS 
 /ip dns set \
   servers=8.8.8.8,1.1.1.1 \
   allow-remote-requests=yes \
-  cache-size=4096KiB \
-  cache-max-ttl=1d \
-  comment="Enable DNS caching"
+  cache-size=4096 \
+  cache-max-ttl=1d
 
 # Verify
 /ip dns print
@@ -35,7 +34,7 @@ MikroTik includes a built-in DNS caching resolver. When enabled, it handles DNS 
 /ip dns static add name=printer.local address=192.168.1.60 ttl=1d
 
 # Wildcard entry (all subdomains of .corp → internal IP)
-/ip dns static add name=*.corp address=10.1.1.1 ttl=300
+/ip dns static add name=corp match-subdomain=yes address=10.1.1.1 ttl=300
 
 # List all static entries
 /ip dns static print
@@ -57,7 +56,7 @@ MikroTik includes a built-in DNS caching resolver. When enabled, it handles DNS 
   src-address=192.168.1.0/24 \
   protocol=udp \
   dst-port=53 \
-  !dst-address=192.168.1.1 \
+  dst-address=!192.168.1.1 \
   action=dst-nat \
   to-addresses=192.168.1.1 \
   to-ports=53 \
@@ -68,7 +67,7 @@ MikroTik includes a built-in DNS caching resolver. When enabled, it handles DNS 
   src-address=192.168.1.0/24 \
   protocol=tcp \
   dst-port=53 \
-  !dst-address=192.168.1.1 \
+  dst-address=!192.168.1.1 \
   action=dst-nat \
   to-addresses=192.168.1.1 \
   to-ports=53
