@@ -4,37 +4,39 @@ Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
 Tags: Portainer, Docker, Container Management, Multi-Environment, Operation, API
 
-Description: View and manage all running containers across multiple Docker and Kubernetes environments from Portainer's unified dashboard and API for efficient fleet-wide container visibility.
+Description: View environment status across multiple Portainer environments and use the API to inventory running containers across Docker-based environments for efficient fleet-wide visibility.
 
 ---
 
-When managing multiple Portainer environments, you need a cross-environment view of running containers to understand system-wide status. This guide covers the Portainer UI and API approaches for listing containers across all environments.
+When managing multiple Portainer environments, you need a cross-environment view of system-wide status. This guide covers the Portainer UI overview for all environments and the API approach for listing running containers across Docker-based environments.
 
 ## Portainer Home Dashboard
 
 The Portainer home screen (the first page after login) shows a summary of all environments:
 
 - Environment name and status (online/offline)
-- Container count (running/total) per environment
+- Environment-specific resource summaries, such as container counts for Docker-based environments or node counts for Kubernetes
 - CPU and memory usage summary
 
 This gives you a fleet-level overview without drilling into each environment.
 
 ## Portainer API for Cross-Environment Container Listing
 
-For automation or custom dashboards, use the Portainer API:
+For automation or custom dashboards across Docker-based environments, use the Portainer API:
 
 ```python
 #!/usr/bin/env python3
 # list-all-containers.py - fetch containers from all Portainer environments
 
 import requests
-import json
 
 PORTAINER_URL = "https://portainer.example.com"
 API_TOKEN = "your-api-token"  # From Account Settings > Access Tokens
 
 headers = {"X-API-Key": API_TOKEN}
+
+# Docker, agent-on-Docker, and edge-agent-on-Docker environments
+DOCKER_API_ENVIRONMENT_TYPES = {1, 2, 4}
 
 # Step 1: Get all environments
 
@@ -50,6 +52,8 @@ for env in environments:
     env_name = env["Name"]
     
     if env["Status"] != 1:  # Skip offline environments
+        continue
+    if env["Type"] not in DOCKER_API_ENVIRONMENT_TYPES:  # Skip Kubernetes and Azure environments
         continue
     
     # Fetch running containers for this environment
@@ -98,8 +102,8 @@ Filter the API results to find specific containers:
 target_image = "nginx"
 nginx_containers = [c for c in all_containers if target_image in c["image"]]
 
-# Find containers that have been restarting (status contains "Restarting")
-problem_containers = [c for c in all_containers if "Restarting" in c["status"]]
+# Find containers that are restarting
+problem_containers = [c for c in all_containers if c["state"] == "restarting"]
 if problem_containers:
     print("WARNING: Containers in restart loop:")
     for c in problem_containers:
@@ -110,11 +114,11 @@ if problem_containers:
 
 In Portainer, use the **Home** page environment cards to navigate between environments. Each environment card shows:
 
-- Container count with running/stopped breakdown
-- Quick link to the container list for that environment
+- Environment-specific summary information, such as container counts for Docker-based environments or node counts for Kubernetes
+- Quick actions to connect to or inspect that environment
 
 For more advanced cross-environment search, use the API approach above or integrate with an external monitoring tool like Prometheus with cAdvisor.
 
 ## Summary
 
-Portainer's home dashboard provides a quick multi-environment overview, while the API enables programmatic cross-environment container inventory and monitoring. Building a simple script around the API gives you fleet-wide visibility for reporting, alerting, and auditing.
+Portainer's home dashboard provides a quick multi-environment overview, while the API enables programmatic container inventory and monitoring across Docker-based environments. Building a simple script around the API gives you fleet-wide visibility for reporting, alerting, and auditing.
