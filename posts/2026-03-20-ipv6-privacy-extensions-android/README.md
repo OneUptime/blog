@@ -6,23 +6,23 @@ Tags: IPv6, Privacy Extensions, Android, Mobile, SLAAC, Security
 
 Description: A guide to understanding and verifying IPv6 privacy extensions on Android devices, including address generation behavior, per-network randomization, and privacy implications of Android's IPv6...
 
-Android has included IPv6 privacy extensions support since Android 4.0 (Ice Cream Sandwich). Modern Android (8.0+) generates a new random interface ID each time the device connects to a network, providing strong privacy protection against cross-network tracking.
+Android has included IPv6 privacy extensions support since Android 4.0 (Ice Cream Sandwich). Modern Android (8.0+) enables temporary IPv6 addresses and uses stable-privacy SLAAC for its non-temporary global address, providing strong privacy protection without exposing the hardware MAC address in global IPv6 interface IDs.
 
 ## Android's IPv6 Privacy Implementation
 
-Android uses a stricter privacy model than RFC 8981:
+Modern Android combines stable-privacy SLAAC with temporary addresses:
 
 ```text
 Android 7.0 and earlier:
-  - Enabled RFC 4941 privacy extensions
+  - Supported IPv6 privacy extensions
   - Generated temporary addresses that rotate periodically
-  - Used consistent EUI-64 or random address per network
+  - Non-temporary address generation depended more on kernel/device behavior
 
 Android 8.0 (Oreo) and later:
-  - New random interface ID generated on EACH network connection
-  - Even reconnecting to the same Wi-Fi generates a new address
-  - No persistent address across connections (maximum privacy)
-  - Each network gets a completely different random interface ID
+  - Enables IPv6 privacy extensions on network interfaces
+  - Uses RFC 7217 stable-privacy address generation for the non-temporary SLAAC address when supported
+  - Prefers temporary addresses for new outbound connections
+  - Reconnecting to the same Wi-Fi can recreate the temporary address, but the stable address for the same prefix can remain the same
 ```
 
 ## Checking IPv6 Addresses on Android
@@ -41,8 +41,8 @@ adb shell ip -6 addr show | grep "scope global"
 # inet6 2001:db8:a:b:1234:5678:9abc:def0/64 scope global dynamic
 #   valid_lft 2591985sec preferred_lft 604785sec
 
-# Note: No EUI-64 pattern (no ff:fe in the interface ID)
-# The address is random and will change on next network connection
+# Some devices/networks will also show a second `temporary` global address on the same interface
+# No `ff:fe` pattern means the address is not modified EUI-64, but that alone does not prove it is temporary
 ```
 
 ## Verifying Privacy on Android
@@ -60,23 +60,24 @@ sleep 15
 
 # Step 3: Check the new IPv6 address
 adb shell ip -6 addr show wlan0 | grep "scope global"
-# Should be a completely different address
+# You may see a new temporary address after reconnecting
+# The stable RFC 7217 address for the same prefix can remain the same
 
-# Verify with a public IPv6 check
+# Optional: compare the externally visible IPv6 address if the device shell includes `curl`
 adb shell curl -6 https://ipv6.icanhazip.com
 ```
 
 ## Android IPv6 Configuration Per Network
 
 ```bash
-# Each Wi-Fi SSID gets a different random interface ID
-# This prevents tracking across different networks
+# Different networks usually yield different IPv6 addresses because the advertised prefix changes
+# Wi-Fi MAC randomization can also change the link-local address between networks
 
 # Check current Wi-Fi connection
 adb shell dumpsys wifi | grep -i "current network\|SSID\|ipv6"
 
 # Check all interfaces
-adb shell ifconfig | grep -A 3 "wlan\|rmnet"
+adb shell ip addr show | grep -A 3 -E "wlan|rmnet"
 
 # Check routing table for IPv6
 adb shell ip -6 route show
@@ -87,43 +88,48 @@ adb shell ip -6 route show
 For Android app developers who work with IPv6:
 
 ```java
-// Java/Kotlin: Get device's current IPv6 address
-import java.net.NetworkInterface;
+// Java: Get the active network's current IPv6 address
+// Requires ACCESS_NETWORK_STATE
+import android.content.Context;
+import android.net.ConnectivityManager;
+import android.net.LinkAddress;
+import android.net.LinkProperties;
+import android.net.Network;
 import java.net.InetAddress;
 import java.net.Inet6Address;
-import java.util.Enumeration;
 
-public static String getIPv6Address() {
-    try {
-        Enumeration<NetworkInterface> interfaces = NetworkInterface.getNetworkInterfaces();
-        while (interfaces.hasMoreElements()) {
-            NetworkInterface iface = interfaces.nextElement();
-            if (!iface.getName().startsWith("wlan") && !iface.getName().startsWith("eth")) {
-                continue;
-            }
-            Enumeration<InetAddress> addresses = iface.getInetAddresses();
-            while (addresses.hasMoreElements()) {
-                InetAddress addr = addresses.nextElement();
-                if (addr instanceof Inet6Address && !addr.isLoopbackAddress()
-                        && !addr.isLinkLocalAddress()) {
-                    return addr.getHostAddress();
-                }
-            }
-        }
-    } catch (Exception e) {
-        e.printStackTrace();
+public static String getIPv6Address(Context context) {
+    ConnectivityManager cm = context.getSystemService(ConnectivityManager.class);
+    Network network = cm.getActiveNetwork();
+    if (network == null) {
+        return null;
     }
+
+    LinkProperties lp = cm.getLinkProperties(network);
+    if (lp == null) {
+        return null;
+    }
+
+    for (LinkAddress linkAddress : lp.getLinkAddresses()) {
+        InetAddress addr = linkAddress.getAddress();
+        if (addr instanceof Inet6Address
+                && !addr.isLoopbackAddress()
+                && !addr.isLinkLocalAddress()) {
+            return addr.getHostAddress();
+        }
+    }
+
     return null;
 }
 ```
 
 ```kotlin
-// Kotlin: Check if an address is a temporary privacy address
-fun isPrivacyAddress(address: Inet6Address): Boolean {
-    val bytes = address.address
-    // Check if interface ID matches EUI-64 pattern (ff:fe in bytes 11-12)
-    // If NOT EUI-64, likely a privacy address
-    return !(bytes[11] == 0xFF.toByte() && bytes[12] == 0xFE.toByte())
+// Kotlin: Check if a LinkAddress is a temporary privacy address
+import android.net.LinkAddress
+import android.system.OsConstants
+
+fun isTemporaryPrivacyAddress(linkAddress: LinkAddress): Boolean {
+    return (linkAddress.flags and OsConstants.IFA_F_TEMPORARY) != 0
 }
 ```
 
@@ -131,36 +137,31 @@ fun isPrivacyAddress(address: Inet6Address): Boolean {
 
 ```bash
 # On cellular connections, IPv6 address assignment varies by carrier:
-# - Many carriers use DHCPv6 Prefix Delegation
-# - The /64 prefix changes per session
-# - Interface ID may be random or device-specific
+# - Android supports IPv6 operation on cellular networks
+# - The network may expose a global IPv6 address on rmnet_data0 or another rmnet_data* interface
+# - Prefix and address stability are carrier-specific; do not assume they change every session
 
 # Check cellular interface
 adb shell ip -6 addr show rmnet_data0
 
-# Carrier-assigned prefix (will be different each time data session starts)
-# Example: 2600:1700:carrier::device-id/64
-
-# For cellular, the carrier assigns the full /64 per session,
-# so cross-session tracking is limited by the changing prefix
+# Some devices use a different rmnet_data* interface name
+# Verify the actual prefix and lifetime on the device you are testing
 ```
 
 ## Checking IPv6 Connectivity and Privacy
 
 ```bash
 # Full IPv6 connectivity test via ADB
-adb shell ping6 -c 3 2001:4860:4860::8888
+adb shell ping -6 -c 3 2001:4860:4860::8888
 
-# DNS AAAA record resolution
-adb shell nslookup -type=AAAA google.com
+# DNS AAAA resolution plus IPv6 reachability
+adb shell ping -6 -c 3 ipv6.google.com
 
-# Check if the device prefers IPv6 over IPv4 (Happy Eyeballs)
-adb shell ping6 -c 3 ipv6.google.com
-
-# Verify no EUI-64 address is present
+# Check for modified EUI-64 interface IDs
 # EUI-64 contains ff:fe in position 11-12 of the interface ID
 adb shell ip -6 addr show | grep "ff:fe"
-# This should return NOTHING on Android 8.0+
+# No output suggests the addresses shown are not modified EUI-64,
+# but that alone does not distinguish stable-privacy from temporary addresses
 ```
 
 ## Privacy Limitations on Android
@@ -169,15 +170,15 @@ adb shell ip -6 addr show | grep "ff:fe"
 # Known limitations:
 # 1. Some Android OEMs may modify IPv6 behavior
 # 2. VPN apps may use their own IPv6 assignment (potentially less private)
-# 3. On some carriers, IPv6 prefix is static per SIM/device
+# 3. Address stability on cellular networks is carrier-specific
 
 # Check if VPN is changing IPv6 behavior
 adb shell ip -6 addr show tun0   # OpenVPN
 adb shell ip -6 addr show wg0    # WireGuard
 # VPN interface IPv6 address may be stable (assigned by VPN server)
 
-# For enterprise Android (work profile), MDM may configure static IPv6
+# Enterprise or always-on VPN configurations can change the address visible to apps and services
 adb shell ip -6 addr show | grep -E "scope global"
 ```
 
-Android's strong IPv6 privacy model - generating a new random interface ID for each network connection - provides better privacy than the RFC 8981 temporary address model. Users do not need to configure anything; privacy is enabled by default from Android 8.0 onward. The address visible to websites and services changes with every Wi-Fi reconnection, making persistent cross-network tracking via IPv6 address infeasible.
+Android's IPv6 privacy model combines RFC 7217 stable-privacy addresses with temporary addresses. Users do not need to configure anything; privacy is enabled by default on modern Android. On a given network prefix, the stable address can remain the same while temporary addresses are recreated and rotated over time; across different networks, different prefixes help limit cross-network tracking via IPv6 addressing.
