@@ -14,8 +14,7 @@ Running GPU workloads on K3s requires configuring the NVIDIA Container Toolkit a
 
 - Linux host with NVIDIA GPU
 - NVIDIA drivers installed
-- Docker or containerd (K3s uses containerd by default)
-- K3s server node
+- K3s node (server or agent) with GPU access
 
 ## Step 1: Install NVIDIA Drivers
 
@@ -28,8 +27,6 @@ nvidia-smi
 apt-get update
 apt-get install -y ubuntu-drivers-common
 ubuntu-drivers autoinstall
-# or
-apt-get install -y nvidia-driver-535
 
 # Reboot and verify
 reboot
@@ -54,55 +51,32 @@ Expected output:
 
 ```bash
 # Add NVIDIA Container Toolkit repository
-distribution=$(. /etc/os-release;echo $ID$VERSION_ID)
 curl -fsSL https://nvidia.github.io/libnvidia-container/gpgkey | \
   gpg --dearmor -o /usr/share/keyrings/nvidia-container-toolkit-keyring.gpg
 
-curl -s -L https://nvidia.github.io/libnvidia-container/$distribution/libnvidia-container.list | \
+curl -s -L https://nvidia.github.io/libnvidia-container/stable/deb/nvidia-container-toolkit.list | \
   sed 's#deb https://#deb [signed-by=/usr/share/keyrings/nvidia-container-toolkit-keyring.gpg] https://#g' | \
   tee /etc/apt/sources.list.d/nvidia-container-toolkit.list
 
 apt-get update
 apt-get install -y nvidia-container-toolkit
 
-# Configure for containerd (K3s runtime)
-nvidia-ctk runtime configure --runtime=containerd
-
-# Restart containerd
-systemctl restart containerd
-
-# Verify configuration
-cat /etc/containerd/config.toml | grep -A 5 nvidia
+# Verify the NVIDIA runtime is on the host PATH for K3s
+which nvidia-container-runtime
 ```
 
 ## Step 3: Configure K3s to Use NVIDIA Runtime
 
 ```bash
-# Create K3s containerd configuration template
-mkdir -p /var/lib/rancher/k3s/agent/etc/containerd/
+# Install K3s with NVIDIA as the default runtime
+curl -sfL https://get.k3s.io | INSTALL_K3S_EXEC="--default-runtime nvidia" sh -s -
 
-cat > /var/lib/rancher/k3s/agent/etc/containerd/config.toml.tmpl << 'EOF'
-[plugins."io.containerd.grpc.v1.cri".containerd]
-  default_runtime_name = "nvidia"
-
-[plugins."io.containerd.grpc.v1.cri".containerd.runtimes.nvidia]
-  runtime_type = "io.containerd.runc.v2"
-
-[plugins."io.containerd.grpc.v1.cri".containerd.runtimes.nvidia.options]
-  BinaryName = "/usr/bin/nvidia-container-runtime"
-
-[plugins."io.containerd.grpc.v1.cri".containerd.runtimes.runc]
-  runtime_type = "io.containerd.runc.v2"
-
-[plugins."io.containerd.grpc.v1.cri".containerd.runtimes.runc.options]
-  SystemdCgroup = true
-EOF
-
-# Install K3s (if not already installed)
-curl -sfL https://get.k3s.io | sh -
-
-# Or restart K3s to pick up the containerd config
+# Or, on an existing cluster, add 'default-runtime: nvidia' to /etc/rancher/k3s/config.yaml
+# and restart K3s
 systemctl restart k3s
+
+# Verify that K3s detected the NVIDIA runtime
+grep nvidia /var/lib/rancher/k3s/agent/etc/containerd/config.toml
 ```
 
 ## Step 4: Deploy the NVIDIA Device Plugin
@@ -111,7 +85,7 @@ The device plugin advertises GPUs as Kubernetes resources:
 
 ```bash
 # Deploy NVIDIA device plugin via DaemonSet
-kubectl apply -f https://raw.githubusercontent.com/NVIDIA/k8s-device-plugin/v0.14.3/nvidia-device-plugin.yml
+kubectl apply -f https://raw.githubusercontent.com/NVIDIA/k8s-device-plugin/v0.19.0/deployments/static/nvidia-device-plugin.yml
 
 # Wait for device plugin to be ready
 kubectl rollout status daemonset/nvidia-device-plugin-daemonset -n kube-system
@@ -133,9 +107,10 @@ Capacity:
 ### Using k3d with GPU (for development)
 
 ```bash
-# Create k3d cluster with GPU support
+# k3d can pass GPUs through to node containers, but CUDA workloads require
+# a custom K3s image with the NVIDIA runtime installed.
 k3d cluster create gpu-cluster \
-  --image rancher/k3s:v1.29.3-k3s1 \
+  --image <your-custom-k3s-gpu-image> \
   --gpus all
 ```
 
@@ -174,7 +149,7 @@ kubectl get pods | grep cuda
 watch -n 1 nvidia-smi
 
 # Check output
-kubectl logs -l job-name=cuda-vector-add
+kubectl logs job/cuda-vector-add
 
 # Expected output:
 # [Vector addition of 50000 elements]
@@ -241,13 +216,41 @@ spec:
     matchLabels:
       app: pytorch-inference
   template:
+    metadata:
+      labels:
+        app: pytorch-inference
     spec:
       containers:
         - name: inference
           image: pytorch/pytorch:2.1.0-cuda11.8-cudnn8-runtime
           command:
             - python3
-            - /app/inference_server.py
+            - -c
+            - |
+              import json
+              import torch
+              from http.server import BaseHTTPRequestHandler, HTTPServer
+
+              device = "cuda" if torch.cuda.is_available() else "cpu"
+              model = torch.nn.Linear(4, 2).to(device)
+              model.eval()
+
+              class Handler(BaseHTTPRequestHandler):
+                  def do_GET(self):
+                      with torch.no_grad():
+                          output = model(torch.ones(1, 4, device=device))
+                      payload = {
+                          "cuda_available": torch.cuda.is_available(),
+                          "device": device,
+                          "gpu_count": torch.cuda.device_count(),
+                          "sample_prediction": output.detach().cpu().tolist(),
+                      }
+                      self.send_response(200)
+                      self.send_header("Content-Type", "application/json")
+                      self.end_headers()
+                      self.wfile.write(json.dumps(payload).encode())
+
+              HTTPServer(("0.0.0.0", 8080), Handler).serve_forever()
           resources:
             limits:
               nvidia.com/gpu: 1
@@ -256,14 +259,6 @@ spec:
               memory: 6Gi
           ports:
             - containerPort: 8080
-          volumeMounts:
-            - name: models
-              mountPath: /models
-      volumes:
-        - name: models
-          hostPath:
-            path: /data/pytorch-models
-            type: DirectoryOrCreate
 ```
 
 ## Step 8: GPU Resource Sharing with Time-Slicing
@@ -272,29 +267,29 @@ For sharing a single GPU across multiple pods:
 
 ```yaml
 # nvidia-time-slicing-config.yaml
-apiVersion: v1
-kind: ConfigMap
-metadata:
-  name: nvidia-device-plugin-config
-  namespace: kube-system
-data:
-  config.yaml: |
-    version: v1
-    flags:
-      migStrategy: none
-    sharing:
-      timeSlicing:
-        resources:
-          - name: nvidia.com/gpu
-            replicas: 4  # Share one GPU among 4 pods
+version: v1
+flags:
+  migStrategy: none
+sharing:
+  timeSlicing:
+    resources:
+      - name: nvidia.com/gpu
+        replicas: 4  # Share one GPU among 4 pods
 ```
 
 ```bash
-# Apply time-slicing config
-kubectl apply -f nvidia-time-slicing-config.yaml
+# Replace the static DaemonSet from Step 4 with the Helm deployment used for plugin config
+kubectl delete daemonset nvidia-device-plugin-daemonset -n kube-system
 
-# Restart device plugin to apply
-kubectl rollout restart daemonset/nvidia-device-plugin-daemonset -n kube-system
+helm repo add nvdp https://nvidia.github.io/k8s-device-plugin
+helm repo update
+
+helm upgrade -i nvdp nvdp/nvidia-device-plugin \
+  --namespace nvidia-device-plugin \
+  --create-namespace \
+  --set-file config.map.config=./nvidia-time-slicing-config.yaml
+
+kubectl rollout status daemonset/nvdp-nvidia-device-plugin -n nvidia-device-plugin
 
 # Now 4 pods can each claim 1 GPU (they share the physical GPU)
 kubectl describe node | grep "nvidia.com/gpu"
@@ -305,8 +300,8 @@ kubectl describe node | grep "nvidia.com/gpu"
 
 ```bash
 # Install dcgm-exporter for Prometheus metrics
-kubectl apply -f \
-  https://raw.githubusercontent.com/NVIDIA/dcgm-exporter/main/deployment/single-pod.yaml
+kubectl apply -n default -f \
+  https://raw.githubusercontent.com/NVIDIA/dcgm-exporter/main/dcgm-exporter.yaml
 
 # View GPU metrics
 kubectl port-forward -n default \
@@ -319,4 +314,4 @@ watch -n 1 nvidia-smi
 
 ## Conclusion
 
-K3s supports GPU workloads through the NVIDIA container toolkit and device plugin, making it viable for AI/ML workloads at the edge and in small clusters. The key steps are installing NVIDIA drivers, configuring containerd with the NVIDIA runtime, and deploying the device plugin to expose GPU resources to Kubernetes. Once configured, pods can request GPUs just like any other Kubernetes resource, enabling TensorFlow, PyTorch, and other GPU-accelerated workloads to run seamlessly on K3s.
+K3s supports GPU workloads through the NVIDIA container toolkit and device plugin, making it viable for AI/ML workloads at the edge and in small clusters. The key steps are installing NVIDIA drivers, installing the NVIDIA Container Toolkit, configuring K3s to use the NVIDIA runtime, and deploying the device plugin to expose GPU resources to Kubernetes. Once configured, pods can request GPUs just like any other Kubernetes resource, enabling TensorFlow, PyTorch, and other GPU-accelerated workloads to run seamlessly on K3s.
