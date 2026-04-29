@@ -27,7 +27,7 @@ Use Raspberry Pi OS Lite (32-bit) for the Pi Zero:
 
 1. Download Raspberry Pi Imager
 2. Select "Raspberry Pi OS Lite (32-bit)"
-3. Configure WiFi credentials and SSH in the advanced settings
+3. Configure a username, WiFi credentials, and SSH in the customisation settings
 4. Flash to a MicroSD card (use a high-endurance card like Samsung Endurance Pro)
 
 ## Step 2: First Boot Configuration
@@ -35,7 +35,7 @@ Use Raspberry Pi OS Lite (32-bit) for the Pi Zero:
 ```bash
 # SSH into the Pi Zero (may take 2-3 minutes to boot)
 
-ssh pi@raspberrypi.local
+ssh <your-username>@raspberrypi.local
 
 # Update the system
 sudo apt-get update && sudo apt-get upgrade -y
@@ -54,16 +54,17 @@ This is the most important step - without it, K3s will not start:
 
 ```bash
 # Edit the kernel boot parameters
-sudo nano /boot/cmdline.txt
+# On older Raspberry Pi OS releases, use /boot/cmdline.txt instead.
+sudo nano /boot/firmware/cmdline.txt
 
 # The current content looks like:
 # console=serial0,115200 console=tty1 root=PARTUUID=xxxx rootfstype=ext4 elevator=deadline fsck.repair=yes rootwait
 
 # Add the cgroup parameters at the END of the SAME LINE (no newline)
-# Add: cgroup_enable=cpuset cgroup_memory=1 cgroup_enable=memory
+# Add: cgroup_memory=1 cgroup_enable=memory
 
 # Final line should look like:
-# console=serial0,115200 console=tty1 root=PARTUUID=xxxx rootfstype=ext4 elevator=deadline fsck.repair=yes rootwait cgroup_enable=cpuset cgroup_memory=1 cgroup_enable=memory
+# console=serial0,115200 console=tty1 root=PARTUUID=xxxx rootfstype=ext4 elevator=deadline fsck.repair=yes rootwait cgroup_memory=1 cgroup_enable=memory
 ```
 
 ```bash
@@ -102,7 +103,7 @@ sudo mkdir -p /etc/rancher/k3s
 sudo tee /etc/rancher/k3s/config.yaml > /dev/null <<EOF
 # Connect to the K3s server
 server: "https://192.168.1.100:6443"
-token: "YourK3sClusterToken"
+token: "<contents of /var/lib/rancher/k3s/server/agent-token>"
 
 # Reduce node resource overhead
 kubelet-arg:
@@ -125,16 +126,16 @@ EOF
 ## Step 6: Install K3s as an Agent
 
 ```bash
-# Install K3s agent (ARMv6 binary will be auto-selected)
+# Install K3s agent (the ARM hard-float build will be auto-selected)
 curl -sfL https://get.k3s.io | \
     INSTALL_K3S_EXEC="agent" \
-    sudo sh -
+    sh -s -
 
 # Monitor the installation
 sudo journalctl -u k3s-agent -f
 ```
 
-The installation automatically downloads the `k3s-armv6l` binary for the Pi Zero's ARMv6 CPU.
+The installation automatically downloads the `k3s-armhf` binary for the Pi Zero's 32-bit ARM environment.
 
 ## Step 7: Verify the Agent Joined
 
@@ -147,7 +148,7 @@ kubectl get nodes -o wide
 
 # The Pi Zero should appear as a Ready node
 # NAME           STATUS   ROLES    AGE   VERSION        INTERNAL-IP
-# pi-zero-01     Ready    <none>   5m    v1.28.7+k3s1   192.168.1.50
+# pi-zero-01     Ready    <none>   5m    v1.35.4+k3s1   192.168.1.50
 ```
 
 ## Step 8: Deploy a Minimal Workload to the Pi Zero
