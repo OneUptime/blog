@@ -50,7 +50,7 @@ watch -n 2 'conntrack -L 2>/dev/null | awk "{print \$1}" | sort | uniq -c | sort
 
 ```bash
 # TCP connection states
-conntrack -L -p tcp 2>/dev/null | awk '{print $NF}' | sort | uniq -c | sort -rn
+conntrack -L -p tcp 2>/dev/null | awk '{print $4}' | sort | uniq -c | sort -rn
 
 # Expected output:
 # 15243 ESTABLISHED
