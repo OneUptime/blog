@@ -59,7 +59,7 @@ scrape_configs:
 
   - job_name: 'ipvs'
     static_configs:
-      - targets: ['[::1]:9090']    # Node exporter (includes IPVS metrics)
+      - targets: ['[::1]:9100']    # Node exporter (includes IPVS metrics)
 ```
 
 ### IPVS Metrics via Node Exporter
@@ -82,11 +82,11 @@ node_exporter --collector.ipvs
 #!/bin/bash
 # ipv6-lb-health.sh - Check IPv6 load balancer backend health
 
-LB_VIP="2001:db8::vip"
+LB_VIP="2001:db8::1"
 BACKENDS=(
-  "2001:db8::server1"
-  "2001:db8::server2"
-  "2001:db8::server3"
+  "2001:db8::a"
+  "2001:db8::b"
+  "2001:db8::c"
 )
 PORT=80
 HEALTH_PATH="/health"
@@ -129,12 +129,10 @@ echo "VIP: HTTP $status"
 haproxy_server_status{backend="web_servers"} == 1
 
 # IPVS: Active connections per backend
-node_ipvs_backend_connections_active{local_address="2001:db8::vip", local_port="443"}
+node_ipvs_backend_connections_active{local_address="2001:db8::1", local_port="443"}
 
-# Response time percentiles for IPv6 traffic
-histogram_quantile(0.95,
-  rate(haproxy_backend_response_time_average_seconds_bucket[5m])
-)
+# Average response time per backend for IPv6 traffic
+haproxy_backend_response_time_average_seconds{backend="web_servers"}
 
 # Error rate
 rate(haproxy_backend_http_responses_total{code="5xx"}[5m]) /
@@ -151,7 +149,7 @@ groups:
   rules:
   # Alert when a backend is down
   - alert: IPv6BackendDown
-    expr: haproxy_server_status{state="DOWN"} == 1
+    expr: haproxy_server_status == 0
     for: 1m
     labels:
       severity: critical
@@ -161,7 +159,7 @@ groups:
   # Alert when all backends in a pool are down
   - alert: IPv6AllBackendsDown
     expr: |
-      sum by (backend) (haproxy_server_status{state="UP"}) == 0
+      sum by (backend) (haproxy_server_status == bool 1) == 0
     for: 30s
     labels:
       severity: critical
@@ -183,13 +181,13 @@ groups:
 
 ```bash
 # Simulate a backend failure
-sudo ip -6 addr del 2001:db8::server1/64 dev eth0
+sudo ip -6 addr del 2001:db8::a/64 dev eth0
 
 # Verify monitoring detects it within health check interval
 watch -n 2 'curl -s http://[::1]:8404/stats?csv | grep server1'
 
 # Verify traffic shifted to remaining backends
-curl -6 -v http://[2001:db8::vip]/
+curl -6 -v http://[2001:db8::1]/
 ```
 
 Comprehensive IPv6 load balancer monitoring enables proactive detection of backend failures, traffic anomalies, and performance degradation before they impact users.
