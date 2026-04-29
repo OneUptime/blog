@@ -14,7 +14,7 @@ Many edge deployments operate in environments with unreliable connectivity - rem
 
 1. **Image pulls fail** when the registry is unreachable
 2. **Helm chart updates** can't be applied without connectivity
-3. **Certificate renewal** requires connectivity to some services
+3. **External certificate renewal** may require connectivity to upstream ACME or CA services
 4. **Central monitoring** loses visibility during outages
 5. **Configuration synchronization** must handle offline periods gracefully
 
@@ -55,17 +55,16 @@ spec:
   containers:
     - name: my-app
       image: nginx:1.25-alpine
-      # Never try to pull - use cached image
+      # Use the cached image when it is already present on the node
       imagePullPolicy: IfNotPresent
 ```
 
 ## Step 2: Deploy a Local Container Registry
 
-Host a local OCI registry at the edge site to serve images offline:
+For a single-node edge cluster, host a local OCI registry at the edge site to serve images you've already pushed there offline:
 
 ```yaml
 # local-registry.yaml
----
 apiVersion: apps/v1
 kind: Deployment
 metadata:
@@ -86,6 +85,7 @@ spec:
           image: registry:2
           ports:
             - containerPort: 5000
+              hostPort: 5000
           volumeMounts:
             - name: registry-data
               mountPath: /var/lib/registry
@@ -97,35 +97,17 @@ spec:
           hostPath:
             path: /data/registry
             type: DirectoryOrCreate
----
-apiVersion: v1
-kind: Service
-metadata:
-  name: local-registry-svc
-  namespace: kube-system
-spec:
-  selector:
-    app: local-registry
-  ports:
-    - port: 5000
-      targetPort: 5000
-      nodePort: 30500
-  type: NodePort
 ```
 
 Configure K3s to use the local registry:
 
 ```yaml
 # /etc/rancher/k3s/registries.yaml
+# Example assumes registry.edge.local resolves to the node running the registry
 mirrors:
-  # Mirror Docker Hub through local registry
-  "docker.io":
+  "registry.edge.local:5000":
     endpoint:
-      - "http://localhost:30500"
-  # Mirror your private registry
-  "myregistry.example.com":
-    endpoint:
-      - "http://localhost:30500"
+      - "http://registry.edge.local:5000"
 ```
 
 ## Step 3: Implement Offline-First Workload Design
@@ -139,11 +121,17 @@ kind: Deployment
 metadata:
   name: offline-first-app
 spec:
+  selector:
+    matchLabels:
+      app: offline-first-app
   template:
+    metadata:
+      labels:
+        app: offline-first-app
     spec:
       containers:
         - name: app
-          image: localhost:30500/my-app:v2.1
+          image: registry.edge.local:5000/my-app:v2.1
           imagePullPolicy: IfNotPresent
           env:
             # Use local services when available, fallback to cache
@@ -158,7 +146,7 @@ spec:
               value: "true"
             # Queue outbound requests when offline
             - name: MESSAGE_QUEUE_URL
-              value: "amqp://local-rabbitmq.default.svc.cluster.local"
+              value: "amqp://local-rabbitmq.default.svc.cluster.local:5672"
           livenessProbe:
             httpGet:
               path: /health/local  # Local health check, no network dependency
@@ -173,13 +161,32 @@ Buffer outbound data when connectivity is lost:
 
 ```yaml
 # local-rabbitmq.yaml
+apiVersion: v1
+kind: Service
+metadata:
+  name: local-rabbitmq
+spec:
+  clusterIP: None
+  selector:
+    app: local-rabbitmq
+  ports:
+    - port: 5672
+      targetPort: 5672
+---
 apiVersion: apps/v1
 kind: StatefulSet
 metadata:
   name: local-rabbitmq
 spec:
+  serviceName: local-rabbitmq
   replicas: 1
+  selector:
+    matchLabels:
+      app: local-rabbitmq
   template:
+    metadata:
+      labels:
+        app: local-rabbitmq
     spec:
       containers:
         - name: rabbitmq
@@ -225,7 +232,7 @@ spec:
     spec:
       containers:
         - name: sync-agent
-          image: localhost:30500/sync-agent:v1
+          image: registry.edge.local:5000/sync-agent:v1
           imagePullPolicy: IfNotPresent
           env:
             # Central HQ endpoint
@@ -248,58 +255,38 @@ spec:
 
 ## Step 6: Configure K3s Timeouts for Slow Networks
 
+In K3s v1.32 and later, use a kubelet config drop-in for lease tuning and `config.yaml` for controller-manager settings:
+
 ```yaml
 # /etc/rancher/k3s/config.yaml
-# Increase timeouts for slow/intermittent connections
-
-kubelet-arg:
-  # Increase node lease duration (how long before node is considered lost)
-  - "node-lease-duration-seconds=60"
-  # Wait longer before evicting pods on unreachable nodes
-  - "node-monitor-grace-period=60s"
-
 kube-controller-manager-arg:
-  # Longer pod eviction grace period for intermittent connections
+  # Wait longer before marking an intermittently disconnected node unhealthy
   - "node-monitor-grace-period=60s"
-  - "pod-eviction-timeout=300s"
+```
+
+```yaml
+# /var/lib/rancher/k3s/agent/etc/kubelet.conf.d/10-connectivity.conf
+apiVersion: kubelet.config.k8s.io/v1beta1
+kind: KubeletConfiguration
+# Extend the kubelet node lease for slower or bursty links
+nodeLeaseDurationSeconds: 60
 ```
 
 ## Step 7: Local DNS with Offline Fallback
 
 ```yaml
-# /var/lib/rancher/k3s/server/manifests/coredns-offline.yaml
+# /var/lib/rancher/k3s/server/manifests/coredns-custom.yaml
 apiVersion: v1
 kind: ConfigMap
 metadata:
-  name: coredns
+  name: coredns-custom
   namespace: kube-system
 data:
-  Corefile: |
-    .:53 {
-        errors
-        health
-        ready
-        kubernetes cluster.local in-addr.arpa ip6.arpa {
-          pods insecure
-          fallthrough in-addr.arpa ip6.arpa
-        }
-        # Cache DNS longer for offline resilience
-        cache 3600
-        # Fallback to local hosts file if upstream is unreachable
-        hosts {
-            # Local service overrides for offline operation
-            192.168.1.10 hq.example.com
-            fallthrough
-        }
-        forward . /etc/resolv.conf {
-            max_concurrent 1000
-            # Use local resolver with short timeout
-            expire 10s
-            health_check 5s
-        }
-        loop
-        reload
-        loadbalance
+  offline.override: |
+    hosts {
+        # Local service overrides for offline operation
+        192.168.1.10 hq.example.com
+        fallthrough
     }
 ```
 
@@ -314,7 +301,7 @@ HQ_ENDPOINT="https://hq.example.com/healthz"
 CONNECTIVITY_STATE_FILE="/tmp/k3s-connectivity-state"
 
 # Check connectivity
-if curl -s --connect-timeout 10 "$HQ_ENDPOINT" > /dev/null 2>&1; then
+if curl -fsS --connect-timeout 10 "$HQ_ENDPOINT" > /dev/null 2>&1; then
   CURRENT_STATE="online"
 else
   CURRENT_STATE="offline"
@@ -330,8 +317,8 @@ if [ "$CURRENT_STATE" != "$PREVIOUS_STATE" ]; then
 
   if [ "$CURRENT_STATE" = "online" ]; then
     # Trigger sync when connectivity is restored
-    kubectl annotate pods -n iot -l sync-enabled=true \
-      connectivity-restored="$(date -Iseconds)" --overwrite
+    k3s kubectl annotate pods -n iot -l sync-enabled=true \
+      edge.example.com/connectivity-restored="$(date -Iseconds)" --overwrite
     logger "Triggered sync for IoT pods"
   fi
 fi
