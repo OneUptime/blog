@@ -8,7 +8,7 @@ Description: Learn how to set up a highly available K3s cluster using embedded e
 
 ## Introduction
 
-K3s supports embedded etcd for high availability, allowing you to run multiple server nodes without an external database. This is the simplest HA approach for K3s - all you need are 3 server nodes and a load balancer. The embedded etcd forms a quorum, and the cluster can tolerate one server node failure at a time.
+K3s supports embedded etcd for high availability, allowing you to run multiple server nodes without an external database. This is a simple HA approach for K3s - 3 server nodes, with a load balancer or other fixed registration address recommended for node registration and API access. The embedded etcd forms a quorum, and the cluster can tolerate one server node failure at a time.
 
 ## Why Embedded etcd?
 
@@ -21,7 +21,7 @@ K3s supports embedded etcd for high availability, allowing you to run multiple s
 
 - Odd number of server nodes (3 or 5) for etcd quorum
 - Low-latency network between server nodes (< 10ms recommended)
-- A load balancer in front of server nodes (HAProxy, NGINX, or cloud LB)
+- A fixed registration address, typically a load balancer, in front of server nodes
 
 ## Etcd Quorum Reference
 
@@ -44,7 +44,10 @@ sudo sed -i '/ swap / s/^/#/' /etc/fstab
 
 # Enable kernel modules
 sudo modprobe br_netfilter overlay
-echo "br_netfilter" | sudo tee /etc/modules-load.d/k3s.conf
+sudo tee /etc/modules-load.d/k3s.conf > /dev/null <<EOF
+overlay
+br_netfilter
+EOF
 
 # Set sysctl settings
 sudo tee /etc/sysctl.d/k3s.conf > /dev/null <<EOF
@@ -170,7 +173,7 @@ defaults
     timeout client  30s
     timeout server  30s
 
-# K3s API Server load balancing
+# K3s supervisor and Kubernetes API load balancing
 frontend k3s_api
     bind *:6443
     default_backend k3s_servers
@@ -181,18 +184,6 @@ backend k3s_servers
     server k3s-server-01 192.168.1.101:6443 check
     server k3s-server-02 192.168.1.102:6443 check
     server k3s-server-03 192.168.1.103:6443 check
-
-# K3s Supervisor API (for agent registration)
-frontend k3s_supervisor
-    bind *:9345
-    default_backend k3s_supervisors
-
-backend k3s_supervisors
-    balance roundrobin
-    option tcp-check
-    server k3s-server-01 192.168.1.101:9345 check
-    server k3s-server-02 192.168.1.102:9345 check
-    server k3s-server-03 192.168.1.103:9345 check
 EOF
 
 sudo systemctl restart haproxy
@@ -203,6 +194,8 @@ sudo systemctl enable haproxy
 
 ```bash
 # On each agent node, connect through the load balancer
+sudo mkdir -p /etc/rancher/k3s
+
 sudo tee /etc/rancher/k3s/config.yaml > /dev/null <<EOF
 server: "https://192.168.1.100:6443"
 token: "HAClusterToken"
@@ -210,9 +203,7 @@ node-label:
   - "tier=worker"
 EOF
 
-curl -sfL https://get.k3s.io | \
-    INSTALL_K3S_EXEC="agent" \
-    sudo sh -
+curl -sfL https://get.k3s.io | sudo sh -s - agent
 ```
 
 ## Step 6: Verify the HA Cluster
@@ -229,12 +220,23 @@ sed -i 's/127.0.0.1/192.168.1.100/' ~/.kube/config
 # Check all nodes
 kubectl get nodes -o wide
 
-# Verify etcd cluster health
+# Verify snapshots are being created
 sudo k3s etcd-snapshot list
 
+# Install etcdctl if it is not already available
+ETCD_VERSION="v3.5.5"
+ETCD_URL="https://github.com/etcd-io/etcd/releases/download/${ETCD_VERSION}/etcd-${ETCD_VERSION}-linux-amd64.tar.gz"
+curl -sL ${ETCD_URL} | sudo tar -zxv --strip-components=1 -C /usr/local/bin
+
+# Check etcd endpoint health across the cluster
+sudo etcdctl --endpoints=https://127.0.0.1:2379 \
+    --cacert=/var/lib/rancher/k3s/server/tls/etcd/server-ca.crt \
+    --cert=/var/lib/rancher/k3s/server/tls/etcd/client.crt \
+    --key=/var/lib/rancher/k3s/server/tls/etcd/client.key \
+    endpoint health --cluster
+
 # Check etcd member count (should be 3)
-sudo k3s kubectl -n kube-system exec etcd-k3s-server-01 -- \
-    etcdctl --endpoints=https://127.0.0.1:2379 \
+sudo etcdctl --endpoints=https://127.0.0.1:2379 \
     --cacert=/var/lib/rancher/k3s/server/tls/etcd/server-ca.crt \
     --cert=/var/lib/rancher/k3s/server/tls/etcd/client.crt \
     --key=/var/lib/rancher/k3s/server/tls/etcd/client.key \
@@ -268,11 +270,25 @@ kubectl get nodes
 # List existing snapshots
 sudo k3s etcd-snapshot list
 
-# Create a manual snapshot
+# Create a manual snapshot (the final filename includes the node name and timestamp)
 sudo k3s etcd-snapshot save --name ha-cluster-backup
 
-# Restore from a snapshot (cluster must be stopped)
-sudo k3s server --cluster-reset --cluster-reset-restore-path=/var/lib/rancher/k3s/server/db/snapshots/ha-cluster-backup
+# Stop K3s on all server nodes before restoring
+sudo systemctl stop k3s
+ssh 192.168.1.102 "sudo systemctl stop k3s"
+ssh 192.168.1.103 "sudo systemctl stop k3s"
+
+# Restore the chosen snapshot file on the first server
+sudo k3s server \
+    --cluster-reset \
+    --cluster-reset-restore-path=/var/lib/rancher/k3s/server/db/snapshots/<snapshot-filename>
+
+# Restart the first server
+sudo systemctl start k3s
+
+# On the peer servers, remove the old database and rejoin
+ssh 192.168.1.102 "sudo rm -rf /var/lib/rancher/k3s/server/db && sudo systemctl start k3s"
+ssh 192.168.1.103 "sudo rm -rf /var/lib/rancher/k3s/server/db && sudo systemctl start k3s"
 ```
 
 ## Conclusion
