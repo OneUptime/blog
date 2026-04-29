@@ -4,11 +4,11 @@ Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
 Tags: Kubewarden, Kubernetes, Policy, Monitoring, Observability
 
-Description: Learn how to monitor Kubewarden policy decisions using OpenTelemetry, Prometheus metrics, and audit logging to gain visibility into your admission control activity.
+Description: Learn how to monitor Kubewarden policy decisions using OpenTelemetry, Prometheus metrics, and audit scanner reports to gain visibility into your admission control activity.
 
 ## Introduction
 
-Monitoring Kubewarden policy decisions is essential for understanding your security posture, identifying policy violations, debugging unexpected denials, and auditing compliance. Kubewarden provides multiple observability mechanisms: Prometheus metrics, OpenTelemetry tracing, and Kubernetes audit log integration.
+Monitoring Kubewarden policy decisions is essential for understanding your security posture, identifying policy violations, debugging unexpected denials, and auditing compliance. Kubewarden provides Prometheus metrics and OpenTelemetry tracing for admission decisions, and its audit scanner can continuously evaluate existing resources and store the results as reports.
 
 This guide covers setting up comprehensive monitoring for Kubewarden policy decisions.
 
@@ -16,35 +16,28 @@ This guide covers setting up comprehensive monitoring for Kubewarden policy deci
 
 - Kubewarden installed and running
 - Prometheus Operator or monitoring stack (optional)
-- OpenTelemetry collector (optional for tracing)
+- OpenTelemetry Operator (optional for metrics and tracing)
 - `kubectl` access to your cluster
 
 ## Kubewarden Observability Features
 
 Kubewarden exposes:
-1. **Prometheus metrics**: Counters for accepted/rejected requests per policy
+1. **Prometheus metrics**: Counters and latency histograms for policy evaluations
 2. **OpenTelemetry traces**: Distributed tracing for policy evaluation
-3. **Kubernetes events**: Policy violation events in the cluster event log
-4. **Audit log integration**: Via standard Kubernetes audit logging
+3. **Audit scanner reports**: `Report` and `ClusterReport` resources for background audits
 
 ## Configuring Prometheus Metrics
 
 ### Enabling Metrics on PolicyServer
 
 ```yaml
-# policyserver-with-metrics.yaml
-
-apiVersion: policies.kubewarden.io/v1
-kind: PolicyServer
-metadata:
-  name: default
-  namespace: kubewarden
-spec:
-  image: ghcr.io/kubewarden/policy-server:v1.10.0
-  replicas: 2
-
-  # Enable Prometheus metrics export
-  serviceAccountName: kubewarden-policy-server-default
+# kubewarden-values.yaml
+telemetry:
+  mode: sidecar
+  metrics: True
+  sidecar:
+    metrics:
+      port: 8080
 ```
 
 ### Creating a ServiceMonitor
@@ -62,7 +55,11 @@ metadata:
 spec:
   selector:
     matchLabels:
-      app: kubewarden-policy-server-default
+      app.kubernetes.io/instance: policy-server-default
+      app.kubernetes.io/component: policy-server
+  namespaceSelector:
+    matchNames:
+      - kubewarden
   endpoints:
     - port: metrics
       path: /metrics
@@ -75,112 +72,90 @@ spec:
 ```bash
 # View available Kubewarden metrics
 kubectl port-forward -n kubewarden \
-  $(kubectl get pods -n kubewarden -l app=kubewarden-policy-server-default \
-    -o jsonpath='{.items[0].metadata.name}') \
-  8080:3000
+  service/policy-server-default \
+  8080:8080
 
 # Access metrics endpoint
 curl http://localhost:8080/metrics | grep kubewarden
 ```
 
 Key metrics to monitor:
-- `kubewarden_policy_evaluations_total`: Total policy evaluations by policy and result
-- `kubewarden_policy_evaluation_duration_seconds`: Duration of policy evaluations
-- `kubewarden_policy_evaluations_reused_total`: Cache hit rate
-- `kubewarden_admission_webhook_latency_seconds`: End-to-end webhook latency
+- `kubewarden_policy_evaluations_total`: Total policy evaluations labeled by policy name, decision, mutation status, and request origin
+- `kubewarden_policy_evaluation_latency_milliseconds`: Histogram of policy evaluation latency
 
 ## Configuring OpenTelemetry Tracing
 
 ```yaml
-# policyserver-otel.yaml
-apiVersion: policies.kubewarden.io/v1
-kind: PolicyServer
-metadata:
-  name: default
-  namespace: kubewarden
-spec:
-  image: ghcr.io/kubewarden/policy-server:v1.10.0
-  replicas: 2
-  env:
-    # Enable OpenTelemetry tracing
-    - name: KUBEWARDEN_LOG_LEVEL
-      value: "info"
-    - name: KUBEWARDEN_LOG_FMT
-      value: "otlp"
-    # OTLP endpoint (OpenTelemetry collector)
-    - name: OTEL_EXPORTER_OTLP_ENDPOINT
-      value: "http://otel-collector.observability:4317"
-    - name: OTEL_SERVICE_NAME
-      value: "kubewarden-policy-server"
+# kubewarden-values.yaml
+telemetry:
+  mode: sidecar
+  metrics: True
+  tracing: True
+  sidecar:
+    metrics:
+      port: 8080
+    tracing:
+      jaeger:
+        endpoint: "my-open-telemetry-collector.jaeger.svc.cluster.local:4317"
+        tls:
+          insecure: true
 ```
 
 ### Installing OpenTelemetry Collector
 
+With `telemetry.mode: sidecar`, Kubewarden uses an `OpenTelemetryCollector` resource like the following:
+
 ```yaml
 # otel-collector.yaml
-apiVersion: opentelemetry.io/v1alpha1
+apiVersion: opentelemetry.io/v1beta1
 kind: OpenTelemetryCollector
 metadata:
   name: kubewarden
-  namespace: observability
+  namespace: kubewarden
 spec:
-  config: |
+  mode: sidecar
+  config:
     receivers:
       otlp:
         protocols:
-          grpc:
-            endpoint: "0.0.0.0:4317"
-          http:
-            endpoint: "0.0.0.0:4318"
+          grpc: {}
 
     processors:
-      batch:
-        timeout: 1s
+      batch: {}
 
     exporters:
-      # Export to Jaeger
-      jaeger:
-        endpoint: jaeger-collector:14250
+      prometheus:
+        endpoint: ":8080"
+      otlp/jaeger:
+        endpoint: my-open-telemetry-collector.jaeger.svc.cluster.local:4317
         tls:
           insecure: true
-      # Export to Zipkin
-      zipkin:
-        endpoint: http://zipkin:9411/api/v2/spans
-      # Log to stdout for debugging
-      logging:
-        verbosity: detailed
 
     service:
       pipelines:
+        metrics:
+          receivers: [otlp]
+          processors: []
+          exporters: [prometheus]
         traces:
           receivers: [otlp]
           processors: [batch]
-          exporters: [jaeger, logging]
+          exporters: [otlp/jaeger]
 ```
 
-## Monitoring Policy Violations via Kubernetes Events
+## Monitoring Background Audit Results
 
-Kubewarden records policy violations as Kubernetes events:
+In current Kubewarden releases, when the audit scanner is enabled, Kubewarden stores background audit results in OpenReports `Report` and `ClusterReport` resources:
 
 ```bash
-# Watch for policy violations in real-time
-kubectl get events -A \
-  --field-selector reason=PolicyViolation \
-  -w
+# List namespace-scoped audit reports
+kubectl get report -A -o wide
 
-# Get recent violations with details
-kubectl get events -A \
-  --field-selector reason=PolicyViolation \
-  --sort-by='.lastTimestamp' \
-  -o custom-columns=\
-'TIME:.lastTimestamp,\
-NAMESPACE:.metadata.namespace,\
-NAME:.involvedObject.name,\
-MESSAGE:.message'
+# List cluster-scoped audit reports
+kubectl get clusterreport -o wide
 
-# Get violations for a specific policy
-kubectl get events -A \
-  -o jsonpath='{range .items[?(@.reason=="PolicyViolation")]}{.lastTimestamp} {.involvedObject.name}: {.message}{"\n"}{end}'
+# Inspect the details of a specific report
+kubectl get report <report-name> -n <namespace> -o yaml
 ```
 
 ## Creating Prometheus Alerts for Policy Violations
@@ -202,20 +177,31 @@ spec:
         # Alert on high policy denial rate
         - alert: KubewardenHighDenialRate
           expr: |
-            rate(kubewarden_policy_evaluations_total{
-              accepted="false"
-            }[5m]) > 0.1
+            (
+              sum by (policy_name) (
+                rate(kubewarden_policy_evaluations_total{
+                  accepted="false",
+                  request_origin="validate"
+                }[5m])
+              )
+              /
+              sum by (policy_name) (
+                rate(kubewarden_policy_evaluations_total{
+                  request_origin="validate"
+                }[5m])
+              )
+            ) > 0.10
           for: 5m
           labels:
             severity: warning
           annotations:
             summary: "High policy denial rate detected"
-            description: "Policy {{ $labels.policy_name }} is denying more than 0.1 req/s"
+            description: "Policy {{ $labels.policy_name }} is denying more than 10% of admission requests"
 
         # Alert if PolicyServer is down
         - alert: KubewardenPolicyServerDown
           expr: |
-            up{job="kubewarden-policy-server"} == 0
+            up{namespace="kubewarden", service="policy-server-default", endpoint="metrics"} == 0
           for: 1m
           labels:
             severity: critical
@@ -226,8 +212,10 @@ spec:
         - alert: KubewardenSlowPolicyEvaluation
           expr: |
             histogram_quantile(0.99,
-              rate(kubewarden_policy_evaluation_duration_seconds_bucket[5m])
-            ) > 1.0
+              sum by (le, policy_name) (
+                rate(kubewarden_policy_evaluation_latency_milliseconds_bucket[5m])
+              )
+            ) > 1000
           for: 5m
           labels:
             severity: warning
@@ -255,12 +243,25 @@ MUTATING:.spec.mutating,\
 ACTIVE:.status.conditions[?(@.type=="PolicyActive")].status'
 
 echo ""
-echo "--- Recent Policy Violations (last 1 hour) ---"
-kubectl get events -A \
-  --field-selector reason=PolicyViolation \
-  --sort-by='.lastTimestamp' \
-  | awk -v cutoff="$(date -d '1 hour ago' '+%Y-%m-%dT%H:%M:%S')" \
-    '$1 > cutoff {print}'
+echo "--- Recent Audit Reports ---"
+kubectl get report -A \
+  --sort-by='.metadata.creationTimestamp' \
+  -o custom-columns=\
+'TIME:.metadata.creationTimestamp,\
+NAMESPACE:.metadata.namespace,\
+NAME:.metadata.name,\
+FAIL:.summary.fail,\
+PASS:.summary.pass'
+
+echo ""
+echo "--- Recent Cluster Audit Reports ---"
+kubectl get clusterreport \
+  --sort-by='.metadata.creationTimestamp' \
+  -o custom-columns=\
+'TIME:.metadata.creationTimestamp,\
+NAME:.metadata.name,\
+FAIL:.summary.fail,\
+PASS:.summary.pass'
 
 echo ""
 echo "--- Policies in Monitor Mode (review needed) ---"
@@ -270,4 +271,4 @@ kubectl get clusteradmissionpolicies \
 
 ## Conclusion
 
-Comprehensive monitoring of Kubewarden policy decisions transforms your admission control from a black box into a transparent, auditable security layer. By combining Prometheus metrics for trends, OpenTelemetry traces for debugging, Kubernetes events for real-time visibility, and automated alerts for anomalies, you maintain full visibility into how your policies are performing. This observability foundation is especially important during policy rollout phases when you need to understand the impact of new policies before enabling enforcement mode.
+Comprehensive monitoring of Kubewarden policy decisions transforms your admission control from a black box into a transparent, auditable security layer. By combining Prometheus metrics for trends, OpenTelemetry traces for debugging, audit scanner reports for background compliance checks, and automated alerts for anomalies, you maintain full visibility into how your policies are performing. This observability foundation is especially important during policy rollout phases when you need to understand the impact of new policies before enabling enforcement mode.
