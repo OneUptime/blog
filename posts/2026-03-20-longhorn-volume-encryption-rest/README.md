@@ -8,13 +8,13 @@ Description: Learn how to enable Longhorn volume encryption at rest using LUKS t
 
 ---
 
-Longhorn supports volume encryption at rest using LUKS (Linux Unified Key Setup). Encryption protects data stored on disk from physical access threats and meets compliance requirements for sensitive workloads.
+Longhorn supports volume encryption at rest using LUKS (Linux Unified Key Setup). Ensure the `dm_crypt` kernel module is loaded and `cryptsetup` is installed on worker nodes before using encrypted volumes. Encryption protects data stored on disk from physical access threats and meets compliance requirements for sensitive workloads.
 
 ---
 
 ## How Longhorn Encryption Works
 
-Longhorn uses the Linux kernel's `dm-crypt` module with LUKS to encrypt volume data at the block device level. Each encrypted volume gets a unique encryption key stored in a Kubernetes Secret.
+Longhorn uses the Linux kernel's `dm-crypt` module with LUKS to encrypt volume data at the block device level. Longhorn stores the passphrase in a Kubernetes Secret, which can be shared across volumes or specified per volume through StorageClass secret parameters.
 
 ---
 
@@ -29,13 +29,17 @@ metadata:
   name: longhorn-crypto
   namespace: longhorn-system
 stringData:
-  # Base64-encoded encryption key (at least 256 bits)
+  # Passphrase stored as string data; Base64 encoding is not required
   CRYPTO_KEY_VALUE: "this-is-a-very-long-random-secret-key-replace-this"
-  # Encryption algorithm (aes-xts-plain64 is FIPS-approved)
+  # Longhorn reads the passphrase from a Kubernetes Secret
+  CRYPTO_KEY_PROVIDER: "secret"
+  # Cipher specification used for LUKS
   CRYPTO_KEY_CIPHER: "aes-xts-plain64"
+  # Passphrase hash used for cryptsetup open
+  CRYPTO_KEY_HASH: "sha256"
   # Key size in bits
   CRYPTO_KEY_SIZE: "256"
-  # Hash function for PBKDF2
+  # PBKDF algorithm for the LUKS keyslot
   CRYPTO_PBKDF: "argon2i"
 ```
 
@@ -68,6 +72,8 @@ parameters:
   csi.storage.k8s.io/node-publish-secret-namespace: longhorn-system
   csi.storage.k8s.io/node-stage-secret-name: longhorn-crypto
   csi.storage.k8s.io/node-stage-secret-namespace: longhorn-system
+  csi.storage.k8s.io/node-expand-secret-name: longhorn-crypto
+  csi.storage.k8s.io/node-expand-secret-namespace: longhorn-system
 ```
 
 ```bash
@@ -101,29 +107,22 @@ spec:
 After the PVC is bound and mounted, confirm encryption is active:
 
 ```bash
-# Check the Longhorn volume status in the UI or via CLI
-kubectl get volume -n longhorn-system | grep encrypted
+# List Longhorn volumes
+kubectl get volumes.longhorn.io -n longhorn-system
 
-# On the node where the volume is mounted, verify LUKS is active
-lsblk | grep dm-crypt
+# Confirm the Longhorn volume is marked as encrypted
+kubectl get volumes.longhorn.io <volume-name> -n longhorn-system \
+  -o jsonpath='{.spec.encrypted}{"\n"}'
 
-# Check the Longhorn volume details
-kubectl get lhvolume <volume-name> -n longhorn-system -o yaml | grep encrypted
+# On the node where the volume is mounted, verify a crypt or LUKS device is present
+lsblk -o NAME,TYPE,FSTYPE,MOUNTPOINT | grep -E 'crypt|crypto_LUKS'
 ```
 
 ---
 
 ## Rotating Encryption Keys
 
-To rotate the encryption key, create a new Secret and trigger a key rotation:
-
-```bash
-# Update the secret with the new key
-kubectl patch secret longhorn-crypto \
-  -n longhorn-system \
-  --type merge \
-  -p '{"stringData":{"CRYPTO_KEY_VALUE":"new-super-secret-key"}}'
-```
+Longhorn's volume encryption documentation describes configuring a Secret and StorageClass for encrypted volumes, but it does not document in-place encryption key rotation for existing volumes. If you need a new key, create a new Secret and reference it from a StorageClass for newly provisioned volumes, then migrate data to a newly created encrypted volume instead of patching `CRYPTO_KEY_VALUE` in place.
 
 ---
 
@@ -132,4 +131,4 @@ kubectl patch secret longhorn-crypto \
 - Store encryption keys in an external secrets manager (HashiCorp Vault, AWS Secrets Manager) and use External Secrets Operator to sync them to Kubernetes.
 - Use different encryption keys per environment (dev, staging, production).
 - Test encrypted volume restore from backup before relying on it for production data.
-- Encryption has a small performance overhead (typically 5-10%) - benchmark your workload before production deployment.
+- Encryption adds performance overhead - benchmark your workload before production deployment.
