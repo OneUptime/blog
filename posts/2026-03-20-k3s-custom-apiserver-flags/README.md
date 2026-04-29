@@ -29,7 +29,7 @@ kube-apiserver-arg:
 ```bash
 curl -sfL https://get.k3s.io | \
   INSTALL_K3S_EXEC="server --kube-apiserver-arg flag-name=value" \
-  sh -
+  sh -s -
 ```
 
 ## Common kube-apiserver Customizations
@@ -43,33 +43,31 @@ kube-apiserver-arg:
   - "anonymous-auth=false"
 
   # Enable audit logging
-  - "audit-log-path=/var/log/k3s/audit.log"
+  - "audit-log-path=/var/lib/rancher/k3s/server/logs/audit.log"
   - "audit-log-maxage=30"
   - "audit-log-maxbackup=10"
   - "audit-log-maxsize=100"
-  - "audit-policy-file=/etc/rancher/k3s/audit-policy.yaml"
+  - "audit-policy-file=/var/lib/rancher/k3s/server/audit.yaml"
 
   # TLS security settings
   - "tls-min-version=VersionTLS12"
   - "tls-cipher-suites=TLS_ECDHE_ECDSA_WITH_AES_128_GCM_SHA256,TLS_ECDHE_RSA_WITH_AES_128_GCM_SHA256,TLS_ECDHE_ECDSA_WITH_AES_256_GCM_SHA384,TLS_ECDHE_RSA_WITH_AES_256_GCM_SHA384"
 
-  # Enable admission controllers
-  - "enable-admission-plugins=NodeRestriction,PodSecurityAdmission,AlwaysPullImages,DenyServiceExternalIPs"
+  # Enable non-default admission plugins
+  - "enable-admission-plugins=NodeRestriction,AlwaysPullImages,DenyServiceExternalIPs"
 
-  # Disable insecure port (default is disabled in K3s, verify with this)
-  - "insecure-port=0"
+  # Disable profiling endpoints
+  - "profiling=false"
 
-  # Enable secrets encryption (also available via --secrets-encryption flag)
+  # Use a custom encryption provider config
   - "encryption-provider-config=/etc/rancher/k3s/encryption-config.yaml"
 ```
 
 ### Add Custom TLS SANs
 
 ```yaml
-kube-apiserver-arg:
-  # Add additional SANs to the API server certificate
-  # (use tls-san in K3s config, not kube-apiserver-arg for this)
-# Top-level K3s config:
+# Add additional SANs to the API server certificate.
+# Use the top-level tls-san setting in K3s config, not kube-apiserver-arg.
 tls-san:
   - "k3s.example.com"
   - "192.168.1.10"
@@ -80,14 +78,15 @@ tls-san:
 
 ```yaml
 kube-apiserver-arg:
-  # Enable specific admission plugins
-  - "enable-admission-plugins=NodeRestriction,ResourceQuota,LimitRanger,PodSecurityAdmission"
+  # Enable non-default admission plugins
+  - "enable-admission-plugins=NodeRestriction,AlwaysPullImages,DenyServiceExternalIPs"
 
   # Disable specific admission plugins (if needed)
   - "disable-admission-plugins=DefaultStorageClass"
 
-  # AlwaysPullImages: force image pulls for security
-  - "enable-admission-plugins=AlwaysPullImages"
+  # PodSecurity is enabled by default in current Kubernetes releases
+  # Use an admission configuration file to tune enforcement levels
+  - "admission-control-config-file=/var/lib/rancher/k3s/server/psa.yaml"
 ```
 
 ### Configure Authorization
@@ -110,8 +109,8 @@ kube-apiserver-arg:
   - "max-requests-inflight=400"
   - "max-mutating-requests-inflight=200"
 
-  # Watch cache size
-  - "default-watch-cache-size=200"
+  # Disable watch caching for high-churn resources only when needed
+  - "watch-cache-sizes=events#0"
 
   # Event retention (reduce for resource-constrained nodes)
   - "event-ttl=1h"
@@ -119,21 +118,16 @@ kube-apiserver-arg:
   # Enable request timeout
   - "request-timeout=60s"
   - "min-request-timeout=300"
-
-  # Adjust rate limiting
-  - "api-burst=400"
-  - "api-qps=200"
 ```
 
 ### Feature Gates
 
 ```yaml
 kube-apiserver-arg:
-  # Enable specific feature gates
-  - "feature-gates=EphemeralContainers=true,ServerSideApply=true"
+  # Feature gates are version-specific; verify support with kube-apiserver -h
+  - "feature-gates=APIServingWithRoutine=true,ConcurrentWatchObjectDecode=true"
 
-  # For Kubernetes 1.29+, SidecarContainers is GA
-  # - "feature-gates=SidecarContainers=true"
+  # SidecarContainers is GA as of Kubernetes 1.33, so no feature gate is needed
 ```
 
 ### OIDC Authentication Integration
@@ -179,14 +173,14 @@ kube-apiserver-arg:
   - "tls-cipher-suites=TLS_ECDHE_ECDSA_WITH_AES_128_GCM_SHA256,TLS_ECDHE_RSA_WITH_AES_128_GCM_SHA256,TLS_ECDHE_ECDSA_WITH_AES_256_GCM_SHA384,TLS_ECDHE_RSA_WITH_AES_256_GCM_SHA384"
 
   # Admission control
-  - "enable-admission-plugins=NodeRestriction,PodSecurityAdmission,AlwaysPullImages"
+  - "enable-admission-plugins=NodeRestriction,AlwaysPullImages,DenyServiceExternalIPs"
 
   # Audit logging
-  - "audit-log-path=/var/log/k3s/audit.log"
+  - "audit-log-path=/var/lib/rancher/k3s/server/logs/audit.log"
   - "audit-log-maxage=30"
   - "audit-log-maxbackup=10"
   - "audit-log-maxsize=100"
-  - "audit-policy-file=/etc/rancher/k3s/audit-policy.yaml"
+  - "audit-policy-file=/var/lib/rancher/k3s/server/audit.yaml"
 
   # Performance
   - "max-requests-inflight=400"
@@ -194,7 +188,6 @@ kube-apiserver-arg:
   - "event-ttl=1h"
 
   # Security
-  - "insecure-port=0"
   - "profiling=false"
   - "service-account-lookup=true"
 
@@ -225,22 +218,22 @@ kubelet-arg:
 systemctl restart k3s
 
 # Verify kube-apiserver started with custom flags
-# Check the process arguments
-ps aux | grep kube-apiserver | tr ' ' '\n' | grep -E "tls-min|admission|anonymous"
+# Check the K3s startup log for the effective kube-apiserver flags
+journalctl -u k3s | grep 'Running kube-apiserver' | tail -n1 | grep -E "tls-min-version|enable-admission-plugins|anonymous-auth"
 
-# Or check via the component status
-kubectl get componentstatuses
+# Or check API server readiness
+kubectl get --raw='/readyz?verbose'
 
 # Verify audit logging is working
 kubectl get pods -A  # Trigger some API calls
-tail -f /var/log/k3s/audit.log | python3 -m json.tool
+tail -n 5 /var/lib/rancher/k3s/server/logs/audit.log
 
 # Verify TLS configuration
-openssl s_client -connect localhost:6443 2>&1 | grep -E "Protocol|Cipher"
+openssl s_client -connect 127.0.0.1:6444 2>&1 | grep -E "Protocol|Cipher"
 
 # Check admission webhooks
-kubectl get validatingadmissionwebhooks
-kubectl get mutatingadmissionwebhooks
+kubectl get validatingwebhookconfigurations
+kubectl get mutatingwebhookconfigurations
 ```
 
 ## Validate Security Settings with kube-bench
