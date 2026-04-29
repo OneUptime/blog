@@ -18,14 +18,9 @@ K3s embeds the kube-apiserver and other Kubernetes components. You can pass cust
 # /etc/rancher/k3s/config.yaml
 
 kube-apiserver-arg:
-  - "enable-admission-plugins=NodeRestriction,PodSecurity"
-  - "audit-log-path=/var/log/kubernetes/audit.log"
-  - "audit-log-maxage=30"
-  - "audit-log-maxbackup=10"
-  - "audit-log-maxsize=100"
-  - "feature-gates=EphemeralContainers=true"
   - "anonymous-auth=false"
   - "profiling=false"
+  - "request-timeout=300s"
 ```
 
 Restart K3s to apply:
@@ -36,15 +31,10 @@ systemctl restart k3s
 
 ---
 
-## Step 2: Enable Pod Security Admission
+## Step 2: Configure Pod Security Admission
 
 ```yaml
-# /etc/rancher/k3s/config.yaml
-kube-apiserver-arg:
-  - "enable-admission-plugins=NodeRestriction,PodSecurity"
-
-# Create the Pod Security configuration file
-# /etc/rancher/k3s/pod-security-admission.yaml
+# /var/lib/rancher/k3s/server/psa.yaml
 apiVersion: apiserver.config.k8s.io/v1
 kind: AdmissionConfiguration
 plugins:
@@ -56,8 +46,12 @@ plugins:
         enforce: "baseline"
         enforce-version: "latest"
         audit: "restricted"
+        audit-version: "latest"
         warn: "restricted"
+        warn-version: "latest"
       exemptions:
+        usernames: []
+        runtimeClasses: []
         namespaces:
           - kube-system
           - cattle-system
@@ -66,8 +60,7 @@ plugins:
 ```yaml
 # /etc/rancher/k3s/config.yaml - reference the config file
 kube-apiserver-arg:
-  - "admission-control-config-file=/etc/rancher/k3s/pod-security-admission.yaml"
-  - "enable-admission-plugins=NodeRestriction,PodSecurity"
+  - "admission-control-config-file=/var/lib/rancher/k3s/server/psa.yaml"
 ```
 
 ---
@@ -77,15 +70,15 @@ kube-apiserver-arg:
 ```yaml
 # /etc/rancher/k3s/config.yaml
 kube-apiserver-arg:
-  - "audit-log-path=/var/log/k3s/audit.log"
+  - "audit-log-path=/var/lib/rancher/k3s/server/logs/audit.log"
   - "audit-log-maxage=30"
   - "audit-log-maxbackup=5"
   - "audit-log-maxsize=100"
-  - "audit-policy-file=/etc/rancher/k3s/audit-policy.yaml"
+  - "audit-policy-file=/var/lib/rancher/k3s/server/audit.yaml"
 ```
 
 ```yaml
-# /etc/rancher/k3s/audit-policy.yaml
+# /var/lib/rancher/k3s/server/audit.yaml
 apiVersion: audit.k8s.io/v1
 kind: Policy
 rules:
@@ -103,6 +96,12 @@ rules:
     verbs: ["watch"]
 ```
 
+Create the log directory before restarting K3s:
+
+```bash
+mkdir -p -m 700 /var/lib/rancher/k3s/server/logs
+```
+
 ---
 
 ## Step 4: Enable Feature Gates
@@ -110,14 +109,11 @@ rules:
 ```yaml
 # /etc/rancher/k3s/config.yaml
 kube-apiserver-arg:
-  - "feature-gates=EphemeralContainers=true,ServerSideApply=true"
-
-kube-controller-manager-arg:
-  - "feature-gates=EphemeralContainers=true"
-
-kubelet-arg:
-  - "feature-gates=EphemeralContainers=true"
+  - "feature-gates=CoordinatedLeaderElection=true"
+  - "runtime-config=coordination.k8s.io/v1beta1=true"
 ```
+
+Feature gates are version-specific, so verify that the gate exists in the Kubernetes release bundled with your K3s version before enabling it.
 
 ---
 
@@ -130,10 +126,7 @@ kube-apiserver-arg:
   - "max-requests-inflight=800"
   - "max-mutating-requests-inflight=400"
 
-  # Increase watch cache size
-  - "watch-cache-sizes=pods#1000,nodes#100"
-
-  # Set API server priority and fairness
+  # API Priority and Fairness is enabled by default, but can be set explicitly
   - "enable-priority-and-fairness=true"
 ```
 
@@ -147,7 +140,6 @@ kube-apiserver-arg:
   - "oidc-issuer-url=https://accounts.google.com"
   - "oidc-client-id=my-k8s-client"
   - "oidc-username-claim=email"
-  - "oidc-groups-claim=groups"
 ```
 
 ---
@@ -155,14 +147,11 @@ kube-apiserver-arg:
 ## Step 7: Verify Applied Flags
 
 ```bash
-# Check the running kube-apiserver process arguments
-ps aux | grep kube-apiserver | tr ' ' '\n' | grep -E "^\-\-"
+# K3s logs the effective kube-apiserver command line at startup
+journalctl -u k3s | grep "Running kube-apiserver" | tail -n 1
 
-# Or check the API server pod (K3s embeds it, but you can see it via)
-kubectl get pod -n kube-system -l component=kube-apiserver -o yaml 2>/dev/null
-
-# For K3s, inspect the process directly
-cat /proc/$(pidof k3s server)/cmdline | tr '\0' '\n' | grep apiserver
+# Filter for a specific flag you configured
+journalctl -u k3s | grep "Running kube-apiserver" | tail -n 1 | grep audit-policy-file
 ```
 
 ---
@@ -182,5 +171,5 @@ cat /proc/$(pidof k3s server)/cmdline | tr '\0' '\n' | grep apiserver
 ## Best Practices
 
 - Pass all kube-apiserver customizations through `/etc/rancher/k3s/config.yaml` under `kube-apiserver-arg` - this is the supported way and survives K3s upgrades.
-- Enable audit logging (`--audit-log-path`) on any cluster used for production or compliance - it creates a record of all API server operations.
+- Enable audit logging with both `--audit-log-path` and `--audit-policy-file` on any cluster used for production or compliance - the audit policy controls which API server operations are recorded.
 - Test new kube-apiserver flags in a K3d local cluster before applying them to production - some flags can break API server startup if misconfigured.
