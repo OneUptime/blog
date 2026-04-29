@@ -31,9 +31,9 @@ Configure Postfix on the relay server to accept connections from IPv6 clients:
 inet_protocols = all
 
 # Accept relay from internal IPv6 networks
-mynetworks = 127.0.0.0/8 [::1]/128 [2001:db8::/32]
+mynetworks = 127.0.0.0/8 [::1]/128 [2001:db8::]/32
 
-# The relay host will route to the internet
+# Leave relayhost empty for direct delivery to recipient MX hosts
 relayhost =
 
 # Bind outbound to a specific IPv6 address
@@ -44,13 +44,13 @@ For relay via submission (port 587) with authentication:
 
 ```bash
 # /etc/postfix/master.cf - enable submission port
-sudo postconf -M 'submission/inet=submission inet n - y - - smtpd'
+sudo postconf -M 'submission/inet=submission inet n - n - - smtpd'
 sudo postconf -P 'submission/inet/syslog_name=postfix/submission'
 sudo postconf -P 'submission/inet/smtpd_tls_security_level=encrypt'
 sudo postconf -P 'submission/inet/smtpd_sasl_auth_enable=yes'
-sudo postconf -P 'submission/inet/smtpd_recipient_restrictions=permit_sasl_authenticated,reject'
+sudo postconf -P 'submission/inet/smtpd_relay_restrictions=permit_sasl_authenticated,reject'
 
-sudo systemctl reload postfix
+sudo systemctl restart postfix
 ```
 
 ## Configuring Clients to Relay via IPv6
@@ -68,10 +68,10 @@ sudo postconf -e 'smtp_tls_security_level = encrypt'
 
 # Create the SASL password file
 echo "[2001:db8::1]:587  mailrelay:password" | sudo tee /etc/postfix/sasl_passwd
-sudo postmap /etc/postfix/sasl_passwd
+sudo postmap hash:/etc/postfix/sasl_passwd
 sudo chmod 600 /etc/postfix/sasl_passwd
 
-sudo systemctl reload postfix
+sudo systemctl restart postfix
 ```
 
 ## Configuring Applications to Use the IPv6 Relay
@@ -90,11 +90,11 @@ def send_via_ipv6_relay(sender, recipient, subject, body):
     msg['From'] = sender
     msg['To'] = recipient
 
-    # Connect to relay using IPv6 address
-    # Python's smtplib handles IPv6 in brackets
+    # Pass the IPv6 literal directly; do not use SMTP-style [] brackets here
     with smtplib.SMTP('2001:db8::1', 587) as smtp:
         smtp.ehlo()
         smtp.starttls()
+        smtp.ehlo()
         smtp.login('mailrelay', 'password')
         smtp.sendmail(sender, [recipient], msg.as_string())
 
