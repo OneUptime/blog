@@ -8,12 +8,13 @@ Description: Learn how to build a production-ready microservices architecture on
 
 ## Overview
 
-Microservices on GCP use GKE for container orchestration, Cloud Endpoints or API Gateway for external access, Pub/Sub for event-driven communication, and Workload Identity to bind Kubernetes service accounts to GCP service accounts.
+Microservices on GCP use GKE for container orchestration, Cloud Endpoints or API Gateway for external access, Pub/Sub for event-driven communication, and Workload Identity Federation for GKE to grant Google Cloud access to Kubernetes workloads, either directly or by linking Kubernetes service accounts to IAM service accounts.
 
 ## Step 1: GKE Cluster
 
 ```hcl
 # main.tf - GKE cluster for microservices
+# Assumes an existing VPC and subnetwork with pod-range and service-range secondary ranges.
 
 resource "google_container_cluster" "microservices" {
   name     = "microservices-cluster"
@@ -29,9 +30,7 @@ resource "google_container_cluster" "microservices" {
     workload_pool = "${var.project_id}.svc.id.goog"
   }
 
-  networking_config {
-    enable_intranode_visibility = true
-  }
+  enable_intranode_visibility = true
 
   gateway_api_config {
     channel = "CHANNEL_STANDARD"
@@ -50,11 +49,11 @@ resource "google_container_cluster" "microservices" {
 resource "google_container_node_pool" "workloads" {
   name       = "workloads"
   cluster    = google_container_cluster.microservices.id
-  node_count = 3
+  initial_node_count = 1  # one node per zone in this regional cluster
 
   autoscaling {
-    min_node_count = 3
-    max_node_count = 20
+    total_min_node_count = 3
+    total_max_node_count = 20
   }
 
   node_config {
@@ -68,16 +67,16 @@ resource "google_container_node_pool" "workloads" {
 }
 ```
 
-## Step 2: Workload Identity for Each Service
+## Step 2: Link a Kubernetes ServiceAccount to an IAM Service Account
 
 ```hcl
-# GCP service account per microservice
+# IAM service account per microservice
 resource "google_service_account" "order_service" {
   account_id   = "order-service"
   display_name = "Order Service"
 }
 
-# Bind K8s service account to GCP service account
+# Bind K8s service account to IAM service account
 resource "google_service_account_iam_binding" "order_workload_identity" {
   service_account_id = google_service_account.order_service.name
   role               = "roles/iam.workloadIdentityUser"
@@ -109,6 +108,16 @@ resource "kubernetes_service_account" "order_service" {
 ## Step 3: Pub/Sub for Event-Driven Microservices
 
 ```hcl
+data "google_project" "current" {
+  project_id = var.project_id
+}
+
+# IAM service account for the payment service
+resource "google_service_account" "payment_service" {
+  account_id   = "payment-service"
+  display_name = "Payment Service"
+}
+
 # Pub/Sub topics for domain events
 resource "google_pubsub_topic" "order_events" {
   name = "order-events"
@@ -116,11 +125,20 @@ resource "google_pubsub_topic" "order_events" {
   message_retention_duration = "604800s"  # 7 days
 }
 
+resource "google_pubsub_topic" "dead_letter" {
+  name = "order-events-dlq"
+}
+
+resource "google_pubsub_subscription" "dead_letter" {
+  name  = "order-events-dlq-sub"
+  topic = google_pubsub_topic.dead_letter.id
+}
+
 resource "google_pubsub_subscription" "payment_service" {
   name  = "payment-service-orders"
   topic = google_pubsub_topic.order_events.id
 
-  ack_deadline_seconds    = 30
+  ack_deadline_seconds       = 30
   message_retention_duration = "604800s"
 
   retry_policy {
@@ -135,24 +153,38 @@ resource "google_pubsub_subscription" "payment_service" {
 }
 
 resource "google_pubsub_subscription_iam_member" "payment_consume" {
-  subscription = google_pubsub_subscription.payment_service.name
+  subscription = google_pubsub_subscription.payment_service.id
   role         = "roles/pubsub.subscriber"
   member       = "serviceAccount:${google_service_account.payment_service.email}"
 }
+
+resource "google_pubsub_topic_iam_member" "pubsub_dead_letter_publish" {
+  topic  = google_pubsub_topic.dead_letter.id
+  role   = "roles/pubsub.publisher"
+  member = "serviceAccount:service-${data.google_project.current.number}@gcp-sa-pubsub.iam.gserviceaccount.com"
+}
+
+resource "google_pubsub_subscription_iam_member" "pubsub_dead_letter_ack" {
+  subscription = google_pubsub_subscription.payment_service.id
+  role         = "roles/pubsub.subscriber"
+  member       = "serviceAccount:service-${data.google_project.current.number}@gcp-sa-pubsub.iam.gserviceaccount.com"
+}
 ```
 
-## Step 4: Cloud Endpoints for API Gateway
+## Step 4: Cloud Endpoints Service Configuration
 
 ```hcl
-# Cloud Endpoints service for external API access
+# Cloud Endpoints service configuration for ESPv2
 resource "google_endpoints_service" "api" {
-  service_name   = "api.endpoints.${var.project_id}.cloud.goog"
-  project        = var.project_id
-  grpc_config    = file("${path.module}/api-config.yaml")
+  service_name         = "api.endpoints.${var.project_id}.cloud.goog"
+  project              = var.project_id
+  grpc_config          = file("${path.module}/api-config.yaml")
   protoc_output_base64 = filebase64("${path.module}/api_descriptor.pb")
 }
 ```
 
+This resource deploys the Endpoints service configuration; you still run ESPv2 in front of your GKE service to expose the API externally.
+
 ## Summary
 
-Microservices on GCP built with OpenTofu use GKE Workload Identity to bind Kubernetes service accounts to GCP service accounts, enabling each microservice to access only its authorized GCP resources without static credentials. Pub/Sub provides durable event delivery with dead-letter queues for failed messages. The GKE Gateway API with standard channel provides Kubernetes-native traffic management aligned with the upstream Gateway API specification.
+Microservices on GCP built with OpenTofu can use Workload Identity Federation for GKE to grant Google Cloud access to Kubernetes workloads, including the option to link a Kubernetes service account to an IAM service account without static credentials. Pub/Sub provides durable event delivery, and dead-letter topics require IAM for the Pub/Sub service agent to publish failed messages. The GKE Gateway API standard channel enables the standard Gateway API CRDs and GKE Gateway controller for Kubernetes-native traffic management.
