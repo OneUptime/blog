@@ -58,7 +58,7 @@ sudo nft list chain inet nat prerouting
 
 ## List with Handles (Required for Deletion)
 
-Handles are the line numbers of nftables - you need them to delete specific rules:
+Handles are numeric identifiers for nftables objects and rules - you need the rule handle to delete a specific rule:
 
 ```bash
 # List rules with handles
@@ -95,24 +95,30 @@ sudo nft list tables
 
 ```bash
 # Export complete ruleset in restorable format
-sudo nft list ruleset > /etc/nftables.conf
+{
+    echo "flush ruleset"
+    sudo nft list ruleset
+} | sudo tee /etc/nftables.conf > /dev/null
 
-# The exported format begins with nft commands and can be applied with:
+# Restore the saved ruleset with:
 # sudo nft -f /etc/nftables.conf
 
 # Verify the export is complete
-wc -l /etc/nftables.conf
+sudo wc -l /etc/nftables.conf
 ```
 
 ## Show Counters and Byte Statistics
 
 ```bash
-# Show packet/byte counters for rules
-sudo nft list ruleset | grep -v "^#"
+# Rules show packet/byte counts if they include a counter statement
+sudo nft list ruleset
+
+# List named counters separately
+sudo nft list counters
 
 # Or add counters explicitly to rules:
 # tcp dport 22 counter accept
-# Then list shows: 45 packets, 2340 bytes tcp dport 22 counter packets 45 bytes 2340 accept
+# Then list shows: tcp dport 22 counter packets 45 bytes 2340 accept
 ```
 
 ## JSON Output for Parsing
@@ -122,7 +128,7 @@ sudo nft list ruleset | grep -v "^#"
 sudo nft -j list ruleset
 
 # Parse with jq
-sudo nft -j list ruleset | jq '.nftables[].rule | .chain, .expr'
+sudo nft -j list ruleset | jq '.nftables[] | select(.rule) | .rule | {family, table, chain, expr}'
 ```
 
 ## Filter Output
@@ -131,14 +137,14 @@ sudo nft -j list ruleset | jq '.nftables[].rule | .chain, .expr'
 # Find rules mentioning a specific port
 sudo nft list ruleset | grep "dport 22"
 
-# Find all drop/reject actions
+# Find lines mentioning drop or reject
 sudo nft list ruleset | grep -E "drop|reject"
 
-# Find all accept rules
+# Find lines mentioning accept
 sudo nft list ruleset | grep "accept"
 
 # Count total rules across all chains
-sudo nft list ruleset | grep -c "accept\|drop\|reject"
+sudo nft -j list ruleset | jq '[.nftables[] | select(.rule)] | length'
 ```
 
 Reading nftables output is significantly cleaner than iptables - the hierarchical table→chain→rule structure makes it easy to understand the overall policy at a glance.
