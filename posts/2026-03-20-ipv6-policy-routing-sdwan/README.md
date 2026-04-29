@@ -24,38 +24,37 @@ IPv6 policy-based routing (PBR) in SD-WAN directs IPv6 traffic based on policies
 
 # Add routes to each table
 # MPLS next-hop
-ip -6 route add default via 2001:db8:mpls::gateway dev eth0 table 200
+ip -6 route add default via 2001:db8:100::1 dev eth0 table 200
 # Broadband next-hop
-ip -6 route add default via 2001:db8:bb::gateway dev eth1 table 201
+ip -6 route add default via 2001:db8:201::1 dev eth1 table 201
 # LTE backup next-hop
-ip -6 route add default via 2001:db8:lte::gateway dev eth2 table 202
+ip -6 route add default via 2001:db8:202::1 dev eth2 table 202
 
 # Create IPv6 rules for policy routing
 
-# Rule 1: VoIP traffic (DSCP EF) → MPLS
+# Rule 1: VoIP traffic (traffic class 0xb8 = DSCP EF, ECN 00) → MPLS
 ip -6 rule add from ::/0 to ::/0 \
     tos 0xb8 \
     lookup 200 \
-    prio 100
+    pref 100
 
 # Rule 2: Traffic from VoIP VLAN → MPLS
-ip -6 rule add from 2001:db8:voip::/64 \
+ip -6 rule add from 2001:db8:10::/64 \
     lookup 200 \
-    prio 110
+    pref 110
 
-# Rule 3: Video traffic (DSCP AF41) → Broadband
+# Rule 3: Video traffic (traffic class 0x88 = DSCP AF41, ECN 00) → Broadband
 ip -6 rule add from ::/0 to ::/0 \
     tos 0x88 \
     lookup 201 \
-    prio 120
+    pref 120
 
 # Rule 4: Bulk/backup traffic → LTE
-ip -6 rule add from 2001:db8:bulk::/64 \
+ip -6 rule add from 2001:db8:20::/64 \
     lookup 202 \
-    prio 130
+    pref 130
 
-# Default: use main table
-ip -6 rule add prio 32766 lookup main
+# The kernel already provides the default main/default RPDB rules
 
 # Show all rules
 ip -6 rule show
@@ -72,18 +71,18 @@ table ip6 sd_wan_pbr {
         type filter hook prerouting priority mangle; policy accept;
 
         # Mark VoIP RTP for MPLS path (mark 200)
-        meta l4proto udp udp dport 10000-20000 meta mark set 0xc8 counter
+        udp dport 10000-20000 meta mark set 200 counter
 
         # Mark SIP signaling for MPLS path (mark 200)
-        meta l4proto udp udp dport 5060 meta mark set 0xc8 counter
-        meta l4proto tcp tcp dport 5060 meta mark set 0xc8 counter
+        udp dport 5060 meta mark set 200 counter
+        tcp dport 5060 meta mark set 200 counter
 
         # Mark video streaming for broadband (mark 201)
-        meta l4proto tcp tcp dport { 80, 443, 8080 } \
-            ip6 dscp af41 meta mark set 0xc9 counter
+        ip6 dscp af41 tcp dport { 80, 443, 8080 } \
+            meta mark set 201 counter
 
         # Mark bulk transfers for LTE backup (mark 202)
-        meta l4proto tcp tcp dport { 20, 21 } meta mark set 0xca counter
+        tcp dport { 20, 21 } meta mark set 202 counter
     }
 }
 ```
@@ -92,14 +91,10 @@ table ip6 sd_wan_pbr {
 # Load nftables and configure fwmark routing
 sudo nft -f /etc/nftables-pbr.conf
 
-# Add ip6tables rules to mark packets
-ip6tables -t mangle -A PREROUTING -p udp --dport 10000:20000 -j MARK --set-mark 200
-ip6tables -t mangle -A PREROUTING -p udp --dport 5060 -j MARK --set-mark 200
-
-# Add routing rules based on fwmark
-ip -6 rule add fwmark 200 lookup 200 prio 100
-ip -6 rule add fwmark 201 lookup 201 prio 110
-ip -6 rule add fwmark 202 lookup 202 prio 120
+# Add higher-priority routing rules based on the nftables marks
+ip -6 rule add fwmark 200 lookup 200 pref 90
+ip -6 rule add fwmark 201 lookup 201 pref 91
+ip -6 rule add fwmark 202 lookup 202 pref 92
 ```
 
 ## Cisco IOS XE IPv6 Policy Routing
@@ -107,38 +102,36 @@ ip -6 rule add fwmark 202 lookup 202 prio 120
 ```text
 ! Create IPv6 access-lists for classification
 ipv6 access-list VOIP-IPV6
- permit udp 2001:db8:lan::/64 any range 10000 20000 dscp ef
- permit udp 2001:db8:lan::/64 any eq 5060
+ permit udp 2001:db8:10::/64 any range 10000 20000 dscp ef
+ permit udp 2001:db8:10::/64 any eq 5060
 
 ipv6 access-list VIDEO-IPV6
- permit tcp 2001:db8:lan::/64 any dscp af41
+ permit tcp 2001:db8:10::/64 any dscp af41
 
 ipv6 access-list BULK-IPV6
- permit tcp 2001:db8:lan::/64 any eq 21
+ permit tcp 2001:db8:20::/64 any eq 21
 
 ! Route maps for policy routing
-route-map PBR-VOIP-IPV6 permit 10
+route-map PBR-IPV6 permit 10
  match ipv6 address VOIP-IPV6
- set ipv6 next-hop 2001:db8:mpls::gateway
+ set ipv6 next-hop 2001:db8:100::1
 
-route-map PBR-VIDEO-IPV6 permit 20
+route-map PBR-IPV6 permit 20
  match ipv6 address VIDEO-IPV6
- set ipv6 next-hop 2001:db8:broadband::gateway
+ set ipv6 next-hop 2001:db8:201::1
 
-route-map PBR-BULK-IPV6 permit 30
+route-map PBR-IPV6 permit 30
  match ipv6 address BULK-IPV6
- set ipv6 next-hop 2001:db8:lte::gateway
+ set ipv6 next-hop 2001:db8:202::1
 
 ! Apply to LAN interface
 interface GigabitEthernet0/1
- ipv6 address 2001:db8:lan::1/64
- ipv6 policy route-map PBR-VOIP-IPV6
- ipv6 policy route-map PBR-VIDEO-IPV6
- ipv6 policy route-map PBR-BULK-IPV6
+ ipv6 address 2001:db8:10::1/64
+ ipv6 policy route-map PBR-IPV6
 
 ! Verify
 show ipv6 policy
-show route-map PBR-VOIP-IPV6
+show route-map PBR-IPV6
 ```
 
 ## Juniper IPv6 Policy Routing
@@ -146,16 +139,22 @@ show route-map PBR-VOIP-IPV6
 ```text
 # Juniper firewall filter for IPv6 PBR
 set firewall family inet6 filter PBR-SD-WAN-IPV6 term VOIP-TRAFFIC from \
-    destination-port [5060 10000-20000] dscp ef
+    traffic-class ef
 
 set firewall family inet6 filter PBR-SD-WAN-IPV6 term VOIP-TRAFFIC then \
-    routing-instance MPLS-VRF
+    next-ip6 2001:db8:100::1
 
 set firewall family inet6 filter PBR-SD-WAN-IPV6 term VIDEO-TRAFFIC from \
-    dscp af41
+    traffic-class af41
 
 set firewall family inet6 filter PBR-SD-WAN-IPV6 term VIDEO-TRAFFIC then \
-    routing-instance BROADBAND-VRF
+    next-ip6 2001:db8:201::1
+
+set firewall family inet6 filter PBR-SD-WAN-IPV6 term BULK-TRAFFIC from \
+    source-address 2001:db8:20::/64
+
+set firewall family inet6 filter PBR-SD-WAN-IPV6 term BULK-TRAFFIC then \
+    next-ip6 2001:db8:202::1
 
 set firewall family inet6 filter PBR-SD-WAN-IPV6 term DEFAULT then accept
 
@@ -169,18 +168,18 @@ set interfaces ge-0/0/1 unit 0 family inet6 filter input PBR-SD-WAN-IPV6
 # Verify rules are being matched
 ip -6 rule show
 # Expected:
-# 100: from ::/0 to ::/0 tos 0xb8 lookup 200
-# 110: from 2001:db8:voip::/64 lookup 200
+# 90: from all fwmark 0xc8 lookup 200
+# 110: from 2001:db8:10::/64 lookup 200
 
-# Test routing decision for specific IPv6 source
-ip -6 route get 2001:db8:remote::1 from 2001:db8:voip::50
-# Should show: via MPLS gateway, dev eth0
+# Test routing decision for a marked IPv6 flow
+ip -6 route get 2001:db8:30::1 from 2001:db8:10::50 mark 200
+# Should show: via 2001:db8:100::1 dev eth0
 
 # Monitor policy route hits
-ip6tables -t mangle -L PREROUTING -n -v | grep -v "^0\s"
+nft list chain ip6 sd_wan_pbr prerouting
 
 # Trace packet path
-tcptraceroute6 2001:db8:remote::1 80 -s 2001:db8:voip::50
+tcptraceroute6 2001:db8:30::1 80 -s 2001:db8:10::50
 ```
 
-IPv6 policy-based routing in SD-WAN combines Linux routing tables with ip6tables fwmark rules or router PBR features to steer traffic by source prefix, DSCP marking, or destination service, enabling fine-grained path selection that aligns IPv6 traffic with appropriate WAN links based on cost, performance, and application requirements.
+IPv6 policy-based routing in SD-WAN combines Linux routing tables with nftables fwmark rules or router PBR features to steer traffic by source prefix, traffic class, or destination service, enabling fine-grained path selection that aligns IPv6 traffic with appropriate WAN links based on cost, performance, and application requirements.
