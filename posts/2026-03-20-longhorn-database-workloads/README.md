@@ -38,11 +38,11 @@ allowVolumeExpansion: true
 parameters:
   numberOfReplicas: "3"
   staleReplicaTimeout: "2880"
-  # Best-effort places primary replica on the same node as the DB pod
+  # Best-effort tries to place a replica on the same node as the DB pod
   dataLocality: "best-effort"
   # Disable revision counter to reduce write overhead
   disableRevisionCounter: "true"
-  # Use disk labeled "ssd" for better IOPS
+  # Use disks tagged "ssd" for better IOPS
   diskSelector: "ssd"
 reclaimPolicy: Retain
 volumeBindingMode: WaitForFirstConsumer
@@ -51,6 +51,8 @@ volumeBindingMode: WaitForFirstConsumer
 ---
 
 ## Step 2: Deploy PostgreSQL as a StatefulSet
+
+This example assumes the `databases` namespace, a headless `Service` named `postgres`, and the `postgres-secret` already exist.
 
 ```yaml
 # postgres-statefulset.yaml
@@ -118,24 +120,24 @@ spec:
   task: backup
   groups:
     - database
-  retain: 7         # 7 backups = 42 hours of history
+  retain: 7
   concurrency: 1
   labels:
     workload: database
 ```
 
-Label the database volumes to add them to the `database` group:
+Label the Longhorn volume to add it to the `database` group:
 
 ```bash
-kubectl patch lhvolume <postgres-pvc-volume-name> \
-  -n longhorn-system \
-  --type merge \
-  -p '{"spec":{"recurringJobSelector":[{"name":"db-backup-6h","isGroup":true}]}}'
+kubectl -n longhorn-system label volume/<postgres-pvc-volume-name> \
+  recurring-job-group.longhorn.io/database=enabled
 ```
 
 ---
 
 ## Step 4: Pre-Upgrade Snapshot Before Migrations
+
+This assumes CSI snapshot support is enabled and a `VolumeSnapshotClass` named `longhorn-snapshot-vsc` already exists.
 
 ```bash
 # Create a snapshot before running database migrations
@@ -157,6 +159,6 @@ EOF
 ## Best Practices
 
 - Use `reclaimPolicy: Retain` for database StorageClasses - never auto-delete database volumes.
-- Set `volumeBindingMode: WaitForFirstConsumer` to ensure the volume is created on the same node as the pod.
+- Set `volumeBindingMode: WaitForFirstConsumer` to delay provisioning until a pod is created so Kubernetes can consider scheduling constraints.
 - Schedule database-specific backups more frequently than general workloads.
 - Test backup restore on a staging database at least monthly to verify recovery capability.
