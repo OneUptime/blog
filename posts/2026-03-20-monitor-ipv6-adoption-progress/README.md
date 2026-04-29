@@ -26,7 +26,7 @@ Tracking IPv6 adoption progress helps organizations measure the effectiveness of
 (
   count(node_netstat_Ip6_InReceives > 0)
   /
-  count(node_netstat_InReceives)
+  count(node_netstat_Ip_InReceives)
 ) * 100
 ```
 
@@ -38,7 +38,7 @@ Tracking IPv6 adoption progress helps organizations measure the effectiveness of
   )
   /
   count by (environment) (
-    node_netstat_InReceives{environment=~".+"}
+    node_netstat_Ip_InReceives{environment=~".+"}
   )
 ) * 100
 ```
@@ -52,7 +52,7 @@ Tracking IPv6 adoption progress helps organizations measure the effectiveness of
   /
   (
     sum(rate(node_netstat_Ip6_InReceives[5m])) +
-    sum(rate(node_netstat_InReceives[5m]))
+    sum(rate(node_netstat_Ip_InReceives[5m]))
   )
 ) * 100
 ```
@@ -101,11 +101,10 @@ echo "AAAA Coverage: $WITH_AAAA / $TOTAL ($(( WITH_AAAA * 100 / TOTAL ))%)"
     - name: Query Prometheus for IPv6 metrics
       ansible.builtin.uri:
         url: "http://prometheus:9090/api/v1/query"
-        method: GET
-        url_username: ""
+        method: POST
         body_format: form-urlencoded
         body:
-          query: "count(node_netstat_Ip6_InReceives > 0) / count(node_netstat_InReceives) * 100"
+          query: "count(node_netstat_Ip6_InReceives > 0) / count(node_netstat_Ip_InReceives) * 100"
       register: adoption_rate
 
     - name: Generate HTML report
@@ -128,11 +127,11 @@ Key panels for the adoption dashboard:
 
 ```promql
 # Panel 1: IPv6 adoption rate over time (Stat/Gauge)
-(count(node_netstat_Ip6_InReceives > 0) / count(node_netstat_InReceives)) * 100
+(count(node_netstat_Ip6_InReceives > 0) / count(node_netstat_Ip_InReceives)) * 100
 
 # Panel 2: IPv6 vs IPv4 traffic share (Time series)
 rate(node_netstat_Ip6_InReceives[1h])
-rate(node_netstat_InReceives[1h])
+rate(node_netstat_Ip_InReceives[1h])
 
 # Panel 3: IPv6 endpoint uptime comparison (Bar gauge)
 avg(probe_success{job="blackbox-http-ipv6"}) * 100
