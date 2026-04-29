@@ -28,7 +28,7 @@ resource "aws_sqs_queue" "dlq" {
 # Main processing queue
 resource "aws_sqs_queue" "main" {
   name                      = var.queue_name
-  visibility_timeout_seconds = 180  # Must be 6x the Lambda timeout
+  visibility_timeout_seconds = 185  # 6x the 30-second Lambda timeout plus the 5-second batch window
 
   # Send failed messages to DLQ after 3 receive attempts
   redrive_policy = jsonencode({
@@ -69,7 +69,7 @@ resource "aws_lambda_function" "sqs_processor" {
   runtime          = "python3.12"
   filename         = data.archive_file.zip.output_path
   source_code_hash = data.archive_file.zip.output_base64sha256
-  timeout          = 30  # Queue visibility timeout must be 6x this value
+  timeout          = 30  # Queue visibility timeout should be at least 6x this value, plus any batch window
 }
 ```
 
@@ -95,7 +95,7 @@ resource "aws_lambda_event_source_mapping" "sqs" {
     maximum_concurrency = 5
   }
 
-  # Only process messages with specific attributes
+  # Only process messages with specific JSON body values
   filter_criteria {
     filter {
       pattern = jsonencode({
@@ -157,4 +157,4 @@ tofu apply
 
 ## Conclusion
 
-Lambda SQS event source mappings with `ReportBatchItemFailures` enable efficient message processing where only genuinely failed messages are retried rather than the entire batch. Set the SQS visibility timeout to at least 6 times the Lambda timeout to prevent messages from becoming visible again while processing. Use message filtering to route different event types to specialized Lambda functions.
+Lambda SQS event source mappings with `ReportBatchItemFailures` enable efficient message processing where only genuinely failed messages are retried rather than the entire batch. Set the SQS visibility timeout to at least 6 times the Lambda timeout, plus any batching window, to prevent messages from becoming visible again while processing. Use message filtering to ensure a Lambda only processes relevant JSON message bodies.
