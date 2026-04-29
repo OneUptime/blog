@@ -26,7 +26,7 @@ resource "azurerm_kubernetes_cluster" "aks" {
     vm_size             = "Standard_D4s_v3"
     node_count          = 3
     vnet_subnet_id      = azurerm_subnet.aks.id
-    enable_auto_scaling = true
+    auto_scaling_enabled = true
     min_count           = 3
     max_count           = 10
     os_disk_type        = "Ephemeral"
@@ -45,9 +45,8 @@ resource "azurerm_kubernetes_cluster" "aks" {
     load_balancer_sku = "standard"
   }
 
-  # Workload identity for pods to access Azure services
+  # Microsoft Entra integration for cluster user authentication
   azure_active_directory_role_based_access_control {
-    managed = true
   }
 
   key_vault_secrets_provider {
@@ -61,7 +60,7 @@ resource "azurerm_kubernetes_cluster_node_pool" "workloads" {
   kubernetes_cluster_id = azurerm_kubernetes_cluster.aks.id
   vm_size               = "Standard_D8s_v3"
   node_count            = 5
-  enable_auto_scaling   = true
+  auto_scaling_enabled  = true
   min_count             = 3
   max_count             = 20
 }
@@ -118,7 +117,7 @@ resource "azurerm_servicebus_namespace" "sb" {
   resource_group_name = azurerm_resource_group.rg.name
   sku                 = "Premium"
 
-  # Premium tier required for VNet integration and private endpoints
+  # Premium tier is required for private endpoints
   premium_messaging_partitions = 1
 }
 
@@ -127,12 +126,11 @@ resource "azurerm_servicebus_topic" "order_events" {
   name         = "order-events"
   namespace_id = azurerm_servicebus_namespace.sb.id
 
-  enable_partitioning    = true
   default_message_ttl    = "P7D"  # 7 days
   max_size_in_megabytes  = 5120
 }
 
-# Per-service subscriptions with filters
+# Per-service subscription
 resource "azurerm_servicebus_subscription" "payment_service" {
   name               = "payment-service"
   topic_id           = azurerm_servicebus_topic.order_events.id
@@ -156,12 +154,11 @@ resource "azurerm_user_assigned_identity" "order_service" {
 
 # Federated credential binding K8s service account to Azure identity
 resource "azurerm_federated_identity_credential" "order_service" {
-  name                = "order-service-federated"
-  resource_group_name = azurerm_resource_group.rg.name
-  parent_id           = azurerm_user_assigned_identity.order_service.id
-  audience            = ["api://AzureADTokenExchange"]
-  issuer              = azurerm_kubernetes_cluster.aks.oidc_issuer_url
-  subject             = "system:serviceaccount:orders:order-service"
+  name                      = "order-service-federated"
+  user_assigned_identity_id = azurerm_user_assigned_identity.order_service.id
+  audience                  = ["api://AzureADTokenExchange"]
+  issuer                    = azurerm_kubernetes_cluster.aks.oidc_issuer_url
+  subject                   = "system:serviceaccount:orders:order-service"
 }
 
 # Grant the identity access to Service Bus
@@ -174,4 +171,4 @@ resource "azurerm_role_assignment" "order_service_sb" {
 
 ## Summary
 
-Microservices on Azure built with OpenTofu use AKS Workload Identity to give each service its own Azure identity without storing credentials. Azure API Management provides rate limiting, caching, and API versioning at the gateway level. Service Bus Premium tier with private endpoints ensures messages never traverse the public internet, and the dead letter queue retains failed messages for debugging.
+Microservices on Azure built with OpenTofu use AKS Workload Identity to give each service its own Azure identity without storing credentials. Azure API Management provides rate limiting, caching, and API versioning at the gateway level. Service Bus Premium tier supports private endpoints, and dead-letter queues retain expired or repeatedly failed messages for debugging.
