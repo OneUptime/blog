@@ -13,7 +13,7 @@ Lambda versions are immutable snapshots of a function's code and configuration. 
 ## Prerequisites
 
 - OpenTofu v1.6+
-- An existing Lambda function with `publish = true`
+- AWS credentials configured for OpenTofu
 
 ## Step 1: Create a Lambda Function with Publishing Enabled
 
@@ -27,7 +27,8 @@ resource "aws_lambda_function" "app" {
   source_code_hash = data.archive_file.zip.output_base64sha256
   memory_size      = 512
 
-  # publish = true creates an immutable version on every change
+  # publish = true publishes a new immutable version when code or
+  # versioned configuration changes
   publish = true
 
   environment {
@@ -62,21 +63,13 @@ resource "aws_lambda_alias" "staging" {
 ## Step 3: Configure Traffic Shifting for Canary Deployments
 
 ```hcl
-# Canary deployment: route 10% to new version, 90% to old version
-resource "aws_lambda_alias" "canary" {
-  name             = "production"  # Update the existing production alias
-  function_name    = aws_lambda_function.app.function_name
-  function_version = var.stable_version
-
-  # Route 10% of traffic to the new version as a canary
-  routing_config {
-    additional_version_weights = {
-      "${var.new_version}" = 0.1  # 10% to new version
-    }
-    # The remaining 90% goes to function_version
+# Add this block inside aws_lambda_alias.production to route
+# 10% of traffic to the new published version
+routing_config {
+  additional_version_weights = {
+    "${var.new_version}" = 0.1  # 10% to new version
   }
-
-  description = "Canary deployment - 10% new version"
+  # The remaining 90% goes to function_version
 }
 ```
 
@@ -115,9 +108,9 @@ resource "aws_api_gateway_integration" "lambda" {
 ```hcl
 # Variable to control which version is "live"
 variable "production_version" {
-  description = "Lambda version to point production alias to"
+  description = "Published Lambda version to point production alias to"
   type        = string
-  default     = "$LATEST"
+  default     = "1"
 }
 
 # To promote a new version to production:
@@ -132,7 +125,7 @@ variable "production_version" {
 # Initial deployment
 tofu init && tofu apply
 
-# Deploy new version and test in staging first
+# Deploy updated code or versioned config and test in staging first
 tofu apply  # New version published, staging alias updates automatically
 
 # Promote to production after validation
