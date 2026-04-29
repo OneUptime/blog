@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
-Tags: IPv6, Privacy Extensions, Window, PowerShell, Netsh, Security
+Tags: IPv6, Privacy Extensions, Windows, PowerShell, Netsh, Security
 
 Description: A guide to enabling and configuring IPv6 privacy extensions on Windows 10 and Windows 11 using netsh, PowerShell, and Group Policy, to ensure temporary IPv6 addresses are used for outbound...
 
@@ -13,20 +13,12 @@ Windows enables IPv6 privacy extensions by default, but the configuration can be
 ```powershell
 # Check IPv6 privacy address settings via PowerShell
 
-Get-NetIPv6Protocol | Select-Object UseTemporaryAddresses, MaxTemporaryDadAttempts, RegenerateTime, MaxRandomTime, PrefixDelegationEnabled
+Get-NetIPv6Protocol | Select-Object UseTemporaryAddresses, MaxDadAttempts, MaxValidLifetime, MaxPreferredLifetime, RegenerateTime, MaxRandomTime
 
-# Check per-interface
-Get-NetAdapter | ForEach-Object {
-  $adapter = $_
-  $ipv6 = Get-NetIPv6Protocol -InterfaceAlias $_.Name -ErrorAction SilentlyContinue
-  if ($ipv6) {
-    [PSCustomObject]@{
-      Interface = $adapter.Name
-      UseTemporaryAddresses = $ipv6.UseTemporaryAddresses
-      RegenerateTime = $ipv6.RegenerateTime
-    }
-  }
-}
+# Inspect current SLAAC-derived IPv6 addresses per interface
+Get-NetIPAddress -AddressFamily IPv6 |
+  Where-Object { $_.PrefixOrigin -eq "RouterAdvertisement" } |
+  Select-Object InterfaceAlias, IPAddress, SuffixOrigin, AddressState, ValidLifetime, PreferredLifetime
 
 # Check via netsh
 netsh interface ipv6 show privacy
@@ -38,15 +30,12 @@ netsh interface ipv6 show privacy
 # Enable privacy extensions globally (affects all interfaces)
 Set-NetIPv6Protocol -UseTemporaryAddresses Enabled
 
-# Enable for a specific interface
-Set-NetIPv6Protocol -InterfaceAlias "Wi-Fi" -UseTemporaryAddresses Enabled
-Set-NetIPv6Protocol -InterfaceAlias "Ethernet" -UseTemporaryAddresses Enabled
+# Configure how long a temporary address remains preferred for new outbound connections
+# Default: 1 day. Lower = more frequent source-address rollover for new connections
+Set-NetIPv6Protocol -UseTemporaryAddresses Enabled `
+  -MaxTemporaryPreferredLifetime (New-TimeSpan -Hours 12)
 
-# Configure regeneration time (how often temp address is regenerated)
-# Default: 7200 seconds (2 hours). Lower = more frequent rotation
-Set-NetIPv6Protocol -UseTemporaryAddresses Enabled -RegenerateTime 3600
-
-# Check current addresses (temporary ones show "Temporary" type)
+# Check current addresses (temporary ones show SuffixOrigin "Random")
 Get-NetIPAddress -AddressFamily IPv6 | Where-Object { $_.PrefixOrigin -eq "RouterAdvertisement" } |
   Select-Object InterfaceAlias, IPAddress, SuffixOrigin, AddressState, ValidLifetime, PreferredLifetime
 ```
@@ -60,13 +49,13 @@ netsh interface ipv6 show privacy
 REM Enable privacy extensions
 netsh interface ipv6 set privacy state=enabled
 
-REM Enable for specific interface
-netsh interface ipv6 set privacy name="Wi-Fi" state=enabled
+REM Adjust how long a temporary address remains preferred for new connections
+netsh interface ipv6 set privacy maxpreferredlifetime=12h
 
-REM View assigned IPv6 addresses (temporary have a * prefix in some outputs)
-netsh interface ipv6 show addresses
+REM View assigned IPv6 addresses with full details
+netsh interface ipv6 show addresses level=verbose
 
-REM Check which address is used for outbound connections
+REM Inspect the IPv6 routes that influence outbound path selection
 netsh interface ipv6 show route
 ```
 
@@ -82,20 +71,19 @@ Get-NetIPAddress -AddressFamily IPv6 |
 
 # Test which address is used for outbound connections
 # (Check via a website that shows your IPv6)
-Invoke-WebRequest -Uri "https://ipv6.icanhazip.com" -UseBasicParsing |
-  Select-Object -ExpandProperty Content
-# Should show a random-looking temporary address
+(Invoke-RestMethod -Uri "https://ipv6.icanhazip.com").Trim()
+# If a temporary address was selected for that connection, it will match one of the Random addresses listed above
 ```
 
 ## Windows Address Types
 
 ```powershell
 # Windows IPv6 address SuffixOrigin values:
-# ManuallyConfigured = static
-# WellKnown = loopback/link-local prefix
-# OriginDhcp = DHCPv6 assigned
-# LinkLayerAddress = EUI-64 derived (old, less private)
-# Random = privacy extension temporary address (desired)
+# Manual = static
+# WellKnown = loopback or other well-known suffix
+# Dhcp = DHCPv6 assigned
+# Link = suffix derived from the link-layer address
+# Random = privacy extension temporary address
 
 # Count addresses by type
 Get-NetIPAddress -AddressFamily IPv6 -InterfaceAlias "Wi-Fi" |
@@ -105,26 +93,18 @@ Get-NetIPAddress -AddressFamily IPv6 -InterfaceAlias "Wi-Fi" |
 ## Group Policy for Enterprise Management
 
 ```powershell
-# Group Policy path:
-# Computer Configuration > Administrative Templates >
-# Network > TCPIP Settings > IPv6 Transition Technologies
+# There is no dedicated Administrative Template policy for IPv6 privacy extensions.
+# The "IPv6 Transition Technologies" policy area covers 6to4, ISATAP, and Teredo.
+# In managed environments, deploy a startup script or configuration-management task
+# that runs the supported PowerShell or netsh commands.
 
-# Via registry (for scripted deployment)
-# HKLM:\SYSTEM\CurrentControlSet\Services\Tcpip6\Parameters
-Set-ItemProperty -Path "HKLM:\SYSTEM\CurrentControlSet\Services\Tcpip6\Parameters" `
-  -Name "UseTemporaryAddresses" -Value 1 -Type DWord
+# PowerShell startup-script example
+Set-NetIPv6Protocol -UseTemporaryAddresses Enabled `
+  -MaxTemporaryPreferredLifetime (New-TimeSpan -Days 1)
 
-# Value meanings:
-# 0 = disabled
-# 1 = enabled (Windows default)
-# 2 = always prefer temporary
-
-# Also configure maximum lifetime via registry
-Set-ItemProperty -Path "HKLM:\SYSTEM\CurrentControlSet\Services\Tcpip6\Parameters" `
-  -Name "MaxTemporaryLifetime" -Value 604800 -Type DWord   # 7 days in seconds
-
-Set-ItemProperty -Path "HKLM:\SYSTEM\CurrentControlSet\Services\Tcpip6\Parameters" `
-  -Name "RegenerateTime" -Value 3600 -Type DWord   # Regenerate every hour
+# netsh alternative
+netsh interface ipv6 set privacy state=enabled store=persistent
+netsh interface ipv6 set privacy maxpreferredlifetime=1d store=persistent
 ```
 
 ## Disabling Privacy Extensions for Servers
@@ -137,33 +117,35 @@ Set-NetIPv6Protocol -UseTemporaryAddresses Disabled
 
 # Assign a static IPv6 address instead
 New-NetIPAddress -InterfaceAlias "Ethernet" `
-  -IPAddress "2001:db8::server1" `
+  -IPAddress "2001:db8::10" `
   -PrefixLength 64 `
   -DefaultGateway "2001:db8::1"
 
-# Verify only the static address is present (no temporary addresses)
+# Verify that no temporary (Random) addresses remain
 Get-NetIPAddress -InterfaceAlias "Ethernet" -AddressFamily IPv6 |
+  Where-Object { $_.SuffixOrigin -eq "Random" } |
   Select-Object IPAddress, SuffixOrigin, PrefixOrigin
 ```
 
 ## Troubleshooting Privacy Extensions on Windows
 
 ```powershell
-# If temporary addresses aren't being assigned, check RA receipt
-# Look for Router Advertisement received events
-Get-NetIPv6Protocol | Select-Object RouterDiscovery
+# Check whether IPv6 router discovery is enabled on the interface
+Get-NetIPInterface -AddressFamily IPv6 |
+  Select-Object InterfaceAlias, RouterDiscovery
 
-# Verify the router is advertising the M and A flags
-# (A flag = Autonomous address configuration = SLAAC with privacy)
-netsh interface ipv6 show interfaces
+# Temporary addresses are created only for SLAAC prefixes learned from router advertisements
+Get-NetIPAddress -AddressFamily IPv6 |
+  Where-Object { $_.PrefixOrigin -eq "RouterAdvertisement" } |
+  Select-Object InterfaceAlias, IPAddress, SuffixOrigin, AddressState
 
 # Reset IPv6 stack if privacy extensions stopped working
 netsh interface ipv6 reset
 # Then re-enable privacy extensions
 Set-NetIPv6Protocol -UseTemporaryAddresses Enabled
 
-# Check Windows Firewall isn't blocking IPv6 Neighbor Discovery
+# Inspect enabled ICMPv6-related firewall rules if local firewall policy is suspected
 Get-NetFirewallRule | Where-Object { $_.Enabled -eq "True" -and $_.DisplayName -like "*ICMPv6*" }
 ```
 
-Windows enables IPv6 privacy extensions by default, generating temporary addresses that rotate approximately every 24 hours. For enterprise environments, use Group Policy or registry settings to enforce privacy extension configuration across managed systems. Server systems that require stable addresses should explicitly disable privacy extensions and use statically configured IPv6 addresses instead.
+Windows enables IPv6 privacy extensions by default. By default, temporary addresses are preferred for up to 1 day and valid for up to 7 days, and Windows generates replacement temporary addresses before the preferred lifetime expires. For enterprise environments, use Group Policy startup scripts or other configuration management to run the supported PowerShell or netsh commands across managed systems. Server systems that require stable addresses should explicitly disable temporary addresses and use statically configured IPv6 addresses instead.
