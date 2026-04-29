@@ -8,7 +8,7 @@ Description: Learn best practices for managing secrets safely in OpenTofu using 
 
 ---
 
-State files are one of the biggest security risks in infrastructure as code. Any sensitive value that passes through a Terraform/OpenTofu resource gets written to state - even when marked `sensitive`. Ephemeral resources solve this problem by fetching secrets at runtime and discarding them without ever touching state.
+State files are one of the biggest security risks in infrastructure as code. Marking a value `sensitive` only redacts it from CLI output - it does not keep the value out of state. In OpenTofu 1.11+, ephemeral resources and write-only attributes solve this problem for providers that support them by fetching secrets at runtime and discarding them without ever touching state.
 
 ---
 
@@ -44,8 +44,9 @@ resource "aws_db_instance" "main" {
   identifier = "production-db"
   username   = "dbadmin"
 
-  # write_only attribute - uses ephemeral value, not stored in state
-  password = ephemeral.aws_secretsmanager_secret_version.db_password.secret_string
+  # write-only attribute - uses ephemeral value, not stored in state
+  password_wo         = ephemeral.aws_secretsmanager_secret_version.db_password.secret_string
+  password_wo_version = 1
 }
 ```
 
@@ -54,21 +55,18 @@ resource "aws_db_instance" "main" {
 ## Pattern 1: Database Passwords
 
 ```hcl
-ephemeral "aws_secretsmanager_secret_version" "rds_creds" {
-  secret_id = "${var.environment}/rds/admin"
-}
-
-locals {
-  rds_creds = jsondecode(ephemeral.aws_secretsmanager_secret_version.rds_creds.secret_string)
+ephemeral "aws_secretsmanager_secret_version" "rds_password" {
+  secret_id = "${var.environment}/rds/admin-password"
 }
 
 resource "aws_db_instance" "postgres" {
-  identifier     = "${var.environment}-postgres"
-  engine         = "postgres"
-  engine_version = "15.4"
-  instance_class = "db.t3.medium"
-  username       = local.rds_creds.username
-  password       = local.rds_creds.password
+  identifier          = "${var.environment}-postgres"
+  engine              = "postgres"
+  engine_version      = "15.4"
+  instance_class      = "db.t3.medium"
+  username            = "dbadmin"
+  password_wo         = ephemeral.aws_secretsmanager_secret_version.rds_password.secret_string
+  password_wo_version = 1
   # password never in state
 }
 ```
@@ -107,19 +105,19 @@ locals {
   app_secrets = jsondecode(ephemeral.aws_secretsmanager_secret_version.app_secrets.secret_string)
 }
 
-resource "kubernetes_secret" "app" {
+resource "kubernetes_secret_v1" "app" {
   metadata {
     name      = "app-secrets"
     namespace = var.namespace
   }
 
-  data = {
-    # Kubernetes base64-encodes these automatically
-    # The values are not stored in OpenTofu state
+  data_wo = {
+    # Passed via a write-only attribute, so not stored in OpenTofu state
     db_password = local.app_secrets.db_password
     api_key     = local.app_secrets.api_key
     jwt_secret  = local.app_secrets.jwt_secret
   }
+  data_wo_revision = 1
 
   type = "Opaque"
 }
@@ -127,7 +125,7 @@ resource "kubernetes_secret" "app" {
 
 ---
 
-## Pattern 4: TLS Certificate Provisioning
+## Pattern 4: TLS Key Generation
 
 ```hcl
 # Generate a TLS key ephemerally - never stored in state
@@ -136,17 +134,15 @@ ephemeral "tls_private_key" "server" {
   rsa_bits  = 4096
 }
 
-# Store only the public key in AWS (safe to persist)
-resource "aws_key_pair" "server" {
-  key_name   = "server-key"
-  public_key = ephemeral.tls_private_key.server.public_key_openssh
-}
-
-# Store the private key in Secrets Manager (where it belongs)
+# Store the keypair in Secrets Manager (where it belongs)
 resource "aws_secretsmanager_secret_version" "server_key" {
-  secret_id     = aws_secretsmanager_secret.server_key.id
-  secret_string = ephemeral.tls_private_key.server.private_key_pem
-  # Note: secret_string is a write-only attribute - not stored in state
+  secret_id = aws_secretsmanager_secret.server_key.id
+  secret_string_wo = jsonencode({
+    public_key_openssh = ephemeral.tls_private_key.server.public_key_openssh
+    private_key_pem    = ephemeral.tls_private_key.server.private_key_pem
+  })
+  secret_string_wo_version = 1
+  # Note: secret_string_wo is a write-only attribute - not stored in state
 }
 ```
 
@@ -183,8 +179,8 @@ resource "aws_instance" "app" {
 When managing secrets in OpenTofu:
 
 - Store secrets in AWS Secrets Manager, SSM Parameter Store, or HashiCorp Vault
-- Use `ephemeral` resources to fetch secrets at runtime
-- Never pass secrets directly as variable values via CLI or .tfvars
+- Use `ephemeral` resources together with write-only attributes when the provider supports them
+- Avoid passing secrets directly as variable values via CLI or `.tfvars`
 - Use write-only resource attributes when available
 - Avoid interpolating secrets into command strings (use environment variables)
 - Audit your state files for accidentally stored secrets
@@ -194,4 +190,4 @@ When managing secrets in OpenTofu:
 
 ## Summary
 
-Ephemeral resources eliminate the biggest security risk in infrastructure as code: secrets persisting in state files. Fetch database passwords, API keys, SSH keys, and provider credentials through ephemeral resources and use them in write-only attributes, provider configurations, connection blocks, and provisioner environment variables. This keeps sensitive values in your dedicated secrets store - where they belong - and out of state files and CI/CD logs.
+Ephemeral resources and write-only attributes remove one of the biggest security risks in infrastructure as code: secrets persisting in state files. In OpenTofu 1.11+ and with providers that support these features, fetch database passwords, API keys, SSH keys, and provider credentials through ephemeral resources and use them in write-only attributes, provider configurations, connection blocks, and provisioner environment variables. This keeps sensitive values in your dedicated secrets store - where they belong - and out of state files and CI/CD logs.
