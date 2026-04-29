@@ -4,11 +4,11 @@ Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
 Tags: Bridge, Port Isolation, Linux, Ebtables, Private VLAN, Networking, Security
 
-Description: Learn how to isolate Linux bridge ports from communicating with each other while still allowing all ports to reach the upstream gateway, using ebtables or VLAN-based private isolation.
+Description: Learn how to isolate Linux bridge ports from communicating with each other while still allowing all ports to reach a non-isolated uplink, using ebtables, nftables, or the bridge isolated port flag.
 
 ---
 
-Port isolation prevents direct VM-to-VM or host-to-host communication through the bridge, forcing all inter-host traffic to go through the router. This is common in hosting environments and guest networks.
+Port isolation prevents direct VM-to-VM or host-to-host communication between isolated bridge ports. In a topology where the only non-isolated path is the uplink/router, this forces inter-host traffic to go through the router. This is common in hosting environments and guest networks.
 
 ## Why Isolate Bridge Ports
 
@@ -23,9 +23,7 @@ Port isolation prevents direct VM-to-VM or host-to-host communication through th
 
 apt install ebtables -y
 
-# Drop all traffic between bridge ports (except from/to external)
-# Allow traffic only to/from the gateway MAC
-GATEWAY_MAC="aa:bb:cc:dd:ee:01"
+# Drop forwarding from isolated tap ports to any bridge port except the uplink
 
 # Block forwarding between bridge ports
 ebtables -A FORWARD --in-interface tap0 ! --out-interface eth0 -j DROP
@@ -53,7 +51,7 @@ table bridge filter {
 }
 ```
 
-## Method 3: ip link Isolated Port Flag (Kernel 5.10+)
+## Method 3: ip link Isolated Port Flag
 
 ```bash
 # Set isolated flag on ports that should not communicate with each other
@@ -77,7 +75,7 @@ bridge link show | grep isolated
 # Should FAIL with isolation enabled
 
 # From VM on tap0, try to ping gateway
-# Should SUCCEED (gateway is on eth0, which is not isolated)
+# Should SUCCEED (the gateway is reachable via eth0, which is not isolated)
 
 # Test with tcpdump on tap1 to verify no traffic arrives from tap0
 tcpdump -i tap1 -nn "host 192.168.1.11" &
@@ -100,7 +98,7 @@ ip link set br-vm1 up
 
 ## Key Takeaways
 
-- The `isolated` bridge slave flag (Linux 5.10+) is the simplest method: set on all tenant ports, leave uplinks non-isolated.
+- The `isolated` bridge slave flag is the simplest method: set on all tenant ports, leave uplinks non-isolated.
 - ebtables provides fine-grained Layer 2 filtering for older kernels.
 - Isolated ports can still reach the gateway/router; they only cannot communicate with each other through the bridge.
 - For complete isolation, give each VM its own bridge and route between them via an upstream router.
