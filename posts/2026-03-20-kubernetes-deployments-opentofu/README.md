@@ -13,6 +13,14 @@ Managing Kubernetes resources with OpenTofu lets you declare them in HCL alongsi
 ## Provider Setup
 
 ```hcl
+terraform {
+  required_providers {
+    kubernetes = {
+      source = "hashicorp/kubernetes"
+    }
+  }
+}
+
 provider "kubernetes" {
   config_path    = "~/.kube/config"
   config_context = var.kube_context
@@ -90,7 +98,7 @@ resource "kubernetes_deployment" "app" {
 variable "namespace"          { type = string }
 variable "app_name"           { type = string }
 variable "environment"        { type = string }
-variable "kube_context"       { type = string; default = "default" }
+variable "kube_context"       { type = string }
 variable "replica_count"      { type = number; default = 2 }
 variable "image_repository"   { type = string }
 variable "image_tag"          { type = string; default = "latest" }
@@ -103,4 +111,4 @@ variable "memory_limit"       { type = string; default = "512Mi" }
 
 ## Conclusion
 
-Kubernetes resources managed with OpenTofu benefit from the same plan/apply workflow as cloud infrastructure. Always set resource requests and limits, use namespaces for isolation, and leverage OpenTofu's ability to reference Kubernetes outputs in subsequent cloud resource configurations.
+Kubernetes resources managed with OpenTofu benefit from the same plan/apply workflow as cloud infrastructure. Set appropriate resource requests and limits, use namespaces for logical isolation and scoping, and leverage OpenTofu's ability to reference Kubernetes outputs in subsequent cloud resource configurations.
