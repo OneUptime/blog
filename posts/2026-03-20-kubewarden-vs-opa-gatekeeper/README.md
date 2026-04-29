@@ -8,31 +8,31 @@ Description: A comprehensive comparison of Kubewarden and OPA Gatekeeper for Kub
 
 ## Overview
 
-Kubernetes policy engines enforce governance, compliance, and security constraints on cluster resources. Kubewarden and OPA Gatekeeper are two leading policy engines with different approaches. OPA Gatekeeper uses the Rego policy language, while Kubewarden uses WebAssembly (Wasm) modules written in any supported language. This guide compares them to help you choose the right policy engine.
+Kubernetes policy engines enforce governance, compliance, and security constraints on cluster resources. Kubewarden and OPA Gatekeeper are two leading policy engines with different approaches. Gatekeeper has traditionally used Rego and now also supports CEL-based validation through Kubernetes ValidatingAdmissionPolicy integration, while Kubewarden uses WebAssembly (Wasm) modules and compatible policy SDKs. This guide compares them to help you choose the right policy engine.
 
 ## What Is OPA Gatekeeper?
 
-OPA Gatekeeper is a CNCF-graduated admission controller that uses Open Policy Agent (OPA) and the Rego policy language to enforce policies. It integrates with Kubernetes via webhooks and provides ConstraintTemplates (policy definitions) and Constraints (policy instances). It is widely adopted and has a large ecosystem of pre-built policies.
+OPA Gatekeeper is a policy controller built on Open Policy Agent (OPA). It integrates with Kubernetes via validating and mutating webhooks, provides ConstraintTemplates (policy definitions) and Constraints (policy instances), and supports audit. Current versions also integrate with Kubernetes ValidatingAdmissionPolicy/CEL alongside Rego-based policies. It is widely adopted and has a large ecosystem of pre-built policies.
 
 ## What Is Kubewarden?
 
-Kubewarden is a CNCF Sandbox policy engine from SUSE Rancher that uses WebAssembly (Wasm) modules for policies. Policies can be written in Go, Rust, Python, Swift, AssemblyScript, or any language that compiles to Wasm. Policies are distributed via OCI registries.
+Kubewarden is a CNCF Sandbox policy engine originally created by SUSE Rancher that uses WebAssembly (Wasm) modules for policies. Policies can be written in languages that compile to Wasm and have a compatible waPC guest SDK; Kubewarden provides SDKs and templates for Go, Rust, JavaScript/TypeScript, .NET, and Swift. OCI registries are the recommended distribution mechanism.
 
 ## Feature Comparison
 
 | Feature | Kubewarden | OPA Gatekeeper |
 |---|---|---|
-| Policy Language | Any (Wasm-compiled) | Rego only |
-| Policy Distribution | OCI registry | Inline (YAML) |
-| Policy Testing | Yes (kwctl tool) | Yes (opa test) |
+| Policy Language | Wasm-based policies (language/SDK dependent) | Rego, plus CEL via ValidatingAdmissionPolicy/K8sNativeValidation |
+| Policy Distribution | OCI registries (recommended) | Kubernetes resources (YAML manifests) |
+| Policy Testing | Yes (`kwctl run`) | Yes (`gator test` / `gator verify`; `opa test` for Rego unit tests) |
 | Audit Mode | Yes | Yes |
-| Mutation Policies | Yes | Yes (experimental) |
+| Mutation Policies | Yes | Yes |
 | Context-Aware Policies | Yes | Yes |
 | Policy Hub | Yes (ArtifactHub) | Yes (gatekeeper-library) |
-| CNCF Status | Sandbox | Graduated |
-| Rancher Integration | Native UI | Via kubectl |
-| Performance | High (Wasm) | Good (Rego) |
-| Learning Curve | Medium (learn Wasm toolchain) | Medium (learn Rego) |
+| Project Status | CNCF Sandbox | Part of the OPA ecosystem |
+| Rancher Integration | Native UI extension | Official Rancher app/integration available |
+| Performance | Depends on policy/runtime | Depends on policy/engine |
+| Learning Curve | Medium (learn Wasm toolchain/SDK) | Medium (learn Rego or CEL) |
 | Community Size | Growing | Large |
 
 ## Policy Definition Comparison
@@ -98,7 +98,7 @@ kind: ClusterAdmissionPolicy
 metadata:
   name: require-labels
 spec:
-  module: registry://ghcr.io/kubewarden/policies/require-labels:v0.2.0
+  module: registry://ghcr.io/kubewarden/policies/safe-labels:v1.0.7
   rules:
     - apiGroups: [""]
       apiVersions: ["v1"]
@@ -120,23 +120,24 @@ spec:
 package main
 
 import (
-    "github.com/kubewarden/k8s-objects/api/core/v1"
-    "github.com/kubewarden/policy-sdk-go"
+    "encoding/json"
+
+    kubewarden "github.com/kubewarden/policy-sdk-go"
+    kubewarden_protocol "github.com/kubewarden/policy-sdk-go/protocol"
 )
 
 func validate(payload []byte) ([]byte, error) {
-    // Parse the admission request
-    admissionRequest, err := kubewarden.UnmarshalAdmissionRequest(payload)
-    if err != nil {
+    validationRequest := kubewarden_protocol.ValidationRequest{}
+    if err := json.Unmarshal(payload, &validationRequest); err != nil {
         return kubewarden.RejectRequest(
-            kubewarden.Message(err.Error()), nil)
+            kubewarden.Message(err.Error()),
+            kubewarden.Code(400))
     }
-    // Custom validation logic here
-    return kubewarden.AcceptRequest()
-}
 
-func main() {
-    kubewarden.WasiEntryPoint(validate)
+    // Custom validation logic here
+    _ = validationRequest
+
+    return kubewarden.AcceptRequest()
 }
 ```
 
@@ -144,37 +145,37 @@ func main() {
 
 ```bash
 # Use kwctl to test policies locally
-kwctl run registry://ghcr.io/kubewarden/policies/require-labels:v0.2.0 \
-  --settings-json '{"mandatory_labels": ["team"]}' \
+kwctl run registry://ghcr.io/kubewarden/policies/safe-labels:v1.0.7 \
+  --settings-json '{"mandatory_labels":["team"]}' \
   --request-path test-request.json
 
 # Test with a failing request
 kwctl run annotated-policy.wasm \
-  --request-path test/namespace-no-label.json \
-  # Expected: REJECTED
+  --request-path test/namespace-no-label.json
+# Expected: REJECTED
 ```
 
 ## Audit Scanning
 
-Both engines support audit mode to identify existing violations:
+Both engines support audit mode to identify existing violations, but they expose results differently:
 
 ```bash
 # Gatekeeper audit results
-kubectl get constraints -A
+kubectl get constraints
 kubectl describe k8srequiredlabels require-team-label
-# Shows violations in .status.violations
+# Shows recent violations in .status.violations
 
 # Kubewarden audit scan
-kubectl get clusteradmissionpolicies
-kubectl describe clusteradmissionpolicy require-labels
-# Shows audit results in status
+kubectl get clusterreport -o wide
+kubectl get clusterreport <report-name> -o yaml
+# Kubewarden 1.33+ stores audit results in OpenReports Report/ClusterReport resources by default
 ```
 
 ## Performance
 
-Kubewarden's Wasm-based policies execute in an isolated sandbox. WebAssembly runtime overhead is minimal, and complex policies written in compiled languages (Rust, Go) can be very fast.
+Kubewarden policies run as Wasm modules inside the policy server. Performance depends on the policy implementation and whether the workload is paying cold-start costs.
 
-OPA Gatekeeper uses Rego, an interpreted language designed for policy evaluation. For most policies, performance is adequate. Very complex Rego policies with large data sets may be slower than equivalent Wasm policies.
+Gatekeeper performance also depends on policy design and execution engine. Current Gatekeeper releases can evaluate both Rego and CEL policies, and CEL-based validation can reduce admission latency for simple policies.
 
 ## When to Choose Kubewarden
 
@@ -185,11 +186,11 @@ OPA Gatekeeper uses Rego, an interpreted language designed for policy evaluation
 
 ## When to Choose OPA Gatekeeper
 
-- CNCF Graduated status and ecosystem maturity are priorities
-- You are already familiar with Rego
+- OPA ecosystem maturity and adoption are priorities
+- You are already familiar with Rego or want to use Gatekeeper's CEL integration
 - The gatekeeper-library provides ready-made policies you need
 - You want a large community and existing documentation
 
 ## Conclusion
 
-Both Kubewarden and OPA Gatekeeper are capable Kubernetes policy engines. Kubewarden's strength is its use of WebAssembly, allowing policies in any language with excellent performance and easy distribution via OCI registries. OPA Gatekeeper's strength is its maturity, large community, and the extensive Rego policy ecosystem. Teams using Rancher will benefit from Kubewarden's native integration, while teams with existing Rego expertise should consider sticking with OPA Gatekeeper.
+Both Kubewarden and OPA Gatekeeper are capable Kubernetes policy engines. Kubewarden's strength is its Wasm-based model, flexibility across supported SDK ecosystems, and easy distribution via OCI registries. OPA Gatekeeper's strength is its maturity, large community, and the extensive Rego ecosystem, with newer CEL-based enforcement options as well. Teams using Rancher will benefit from Kubewarden's native integration, while teams with existing Gatekeeper or OPA expertise should consider sticking with Gatekeeper.
