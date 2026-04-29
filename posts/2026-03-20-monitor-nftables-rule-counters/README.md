@@ -108,10 +108,10 @@ table inet filter {
 
 ```bash
 # Watch counter values update every 2 seconds
-watch -n 2 "nft list counters inet filter"
+watch -n 2 "nft list counters table inet filter"
 
 # List all named counters
-nft list counters inet filter
+nft list counters table inet filter
 
 # List a specific counter
 nft list counter inet filter ssh_counter
@@ -121,7 +121,7 @@ nft list counter inet filter ssh_counter
 
 ```bash
 # Reset all counters in a table
-nft reset counters inet filter
+nft reset counters table inet filter
 
 # Reset a specific named counter
 nft reset counter inet filter ssh_counter
@@ -136,7 +136,7 @@ You can pipe counter output to monitoring tools:
 # Script: export-nft-counters.sh
 # Exports counter data in a simple format for ingestion by monitoring tools
 
-nft list counters inet filter | while read line; do
+nft list counters table inet filter | while read line; do
     if [[ "$line" =~ "counter" ]]; then
         name=$(echo $line | awk '{print $2}')
         packets=$(echo $line | grep -oP 'packets \K[0-9]+')
