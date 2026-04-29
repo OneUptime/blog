@@ -8,40 +8,45 @@ Description: Learn how to configure Longhorn's V2 Data Engine based on SPDK to a
 
 ---
 
-Longhorn V2 Data Engine (introduced in Longhorn v1.5) uses SPDK (Storage Performance Development Kit) to deliver near-NVMe performance by bypassing the kernel's storage stack. This guide covers enabling and configuring V2.
+Longhorn V2 Data Engine (introduced experimentally in Longhorn v1.5) uses SPDK (Storage Performance Development Kit) to deliver near-NVMe performance by bypassing the kernel's storage stack. This guide covers enabling and configuring V2.
 
 ---
 
 ## Prerequisites
 
 - Longhorn v1.5.0+
-- Linux kernel 5.15+ on storage nodes
+- Linux kernel 5.19+ on Longhorn nodes (6.7+ recommended for stability)
 - NVMe SSDs strongly recommended
-- Hugepages support (2Mi hugepages)
-- `nvme-tcp` kernel module
+- Hugepages support (2 GiB of 2 MiB-sized pages per Longhorn node)
+- Longhorn `block-type` disks on nodes that will host V2 replicas
+- `vfio_pci`, `uio_pci_generic`, and `nvme-tcp` kernel modules
 
 ---
 
 ## Step 1: Prepare Nodes for V2 Data Engine
 
 ```bash
-# Install required kernel modules
+# Load required kernel modules
 
-modprobe nvme-tcp
-modprobe uio
+modprobe vfio_pci
 modprobe uio_pci_generic
+modprobe nvme-tcp
 
-# Make modules persistent
-echo "nvme-tcp" >> /etc/modules
-echo "uio" >> /etc/modules
+# Make modules persistent across reboots
+cat <<'EOF' > /etc/modules-load.d/longhorn-v2.conf
+vfio_pci
+uio_pci_generic
+nvme-tcp
+EOF
 
-# Enable hugepages (required by SPDK)
-# Add to /etc/sysctl.d/60-longhorn.conf
-echo "vm.nr_hugepages = 1024" >> /etc/sysctl.d/60-longhorn.conf
-sysctl -p /etc/sysctl.d/60-longhorn.conf
+# Allocate 1024 x 2Mi hugepages (2Gi total) for the current boot
+echo 1024 > /sys/kernel/mm/hugepages/hugepages-2048kB/nr_hugepages
 
 # Verify hugepages are allocated
-cat /proc/meminfo | grep HugePages
+grep Huge /proc/meminfo
+
+# Restart kubelet so Kubernetes reports the hugepages-2Mi resource
+systemctl restart kubelet
 ```
 
 ---
@@ -50,13 +55,13 @@ cat /proc/meminfo | grep HugePages
 
 ```bash
 # Enable V2 data engine globally
-kubectl patch setting.longhorn.io v2-data-engine \
+kubectl patch settings.longhorn.io v2-data-engine \
   -n longhorn-system \
   --type merge \
   -p '{"value":"true"}'
 
 # Verify the setting
-kubectl get setting.longhorn.io v2-data-engine \
+kubectl get settings.longhorn.io v2-data-engine \
   -n longhorn-system \
   -o jsonpath='{.value}'
 ```
@@ -65,28 +70,34 @@ kubectl get setting.longhorn.io v2-data-engine \
 
 ## Step 3: Configure Node Hugepages for SPDK
 
-Longhorn's SPDK needs hugepages on each node that will run V2 engine replicas:
+Longhorn's SPDK needs hugepages on each node that will run V2 engine replicas, and Kubernetes should report them as `hugepages-2Mi`:
+
+```bash
+# Recommended: make the hugepage allocation persistent via kernel boot parameters
+# Add to /etc/default/grub
+GRUB_CMDLINE_LINUX="hugepagesz=2M hugepages=1024"
+
+# Apply the GRUB changes using your distro's tooling, reboot, then verify Kubernetes sees the resource
+kubectl describe node storage-node-01 | grep -A2 hugepages-2Mi
+
+# If the device has an existing filesystem or partition table, clear it first
+wipefs -a /dev/nvme1n1
+
+# V2 replicas must be placed on Longhorn block-type disks
+kubectl -n longhorn-system edit node.longhorn.io storage-node-01
+```
 
 ```yaml
-# Annotate nodes to indicate V2 engine support
-kubectl annotate node storage-node-01 \
-  node.longhorn.io/hugepages=1024Gi
-
-# Or configure at the OS level with a systemd unit:
-cat > /etc/systemd/system/configure-hugepages.service <<EOF
-[Unit]
-Description=Configure Hugepages for Longhorn V2
-After=network.target
-
-[Service]
-Type=oneshot
-ExecStart=/bin/sh -c "echo 1024 > /proc/sys/vm/nr_hugepages"
-RemainAfterExit=yes
-
-[Install]
-WantedBy=multi-user.target
-EOF
-systemctl enable --now configure-hugepages.service
+spec:
+  disks:
+    nvme-disk:
+      allowScheduling: true
+      evictionRequested: false
+      path: /dev/nvme1n1
+      storageReserved: 0
+      tags:
+        - nvme
+      diskType: block
 ```
 
 ---
@@ -100,13 +111,13 @@ kind: StorageClass
 metadata:
   name: longhorn-v2
 provisioner: driver.longhorn.io
+allowVolumeExpansion: true
+reclaimPolicy: Delete
+volumeBindingMode: Immediate
 parameters:
   numberOfReplicas: "3"
-  # Select the V2 data engine
+  staleReplicaTimeout: "2880"
   dataEngine: "v2"
-  diskSelector: "nvme"
-  # V2 requires NVMe block devices
-  backendStoreDriver: "v2"
 ```
 
 ---
@@ -118,7 +129,6 @@ apiVersion: v1
 kind: PersistentVolumeClaim
 metadata:
   name: high-perf-data
-  namespace: database
 spec:
   accessModes:
     - ReadWriteOnce
@@ -134,21 +144,39 @@ spec:
 
 ```bash
 # Check that the volume is using V2 engine
-kubectl get lhvolume <volume-name> -n longhorn-system \
+kubectl get volume <volume-name> -n longhorn-system \
   -o jsonpath='{.spec.dataEngine}'
 
-# Run a quick IOPS benchmark
-kubectl run perf-test \
-  --image=nixery.dev/shell/fio \
-  --restart=Never \
-  -- fio --filename=/data/test --rw=randread --bs=4k --iodepth=32 \
-     --numjobs=8 --runtime=30 --name=v2-perf-test
+# Run a quick write-throughput check from a pod that mounts the PVC
+kubectl apply -f - <<'EOF'
+apiVersion: v1
+kind: Pod
+metadata:
+  name: perf-test
+spec:
+  restartPolicy: Never
+  containers:
+    - name: perf-test
+      image: debian:12-slim
+      command: ["/bin/sh", "-c"]
+      args:
+        - dd if=/dev/zero of=/data/test bs=1M count=1024 conv=fdatasync
+      volumeMounts:
+        - name: data
+          mountPath: /data
+  volumes:
+    - name: data
+      persistentVolumeClaim:
+        claimName: high-perf-data
+EOF
+
+kubectl logs -f pod/perf-test
 ```
 
 ---
 
 ## Best Practices
 
-- V2 Data Engine is still maturing - use V1 for critical production workloads and V2 for performance-sensitive new deployments.
-- Dedicate specific nodes to V2 storage using node labels and Longhorn's disk selector.
+- V2 Data Engine is still a Technical Preview feature - use V1 for critical production workloads unless you have validated V2 for your specific Longhorn release and feature requirements.
+- Dedicate specific nodes or Longhorn block disks to V2 storage using tags and selectors.
 - Monitor hugepage consumption - SPDK requires consistent hugepage availability to function.
