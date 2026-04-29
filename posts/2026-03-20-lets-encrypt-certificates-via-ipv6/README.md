@@ -12,18 +12,18 @@ Let's Encrypt fully supports IPv6 for certificate issuance. Their ACME servers c
 
 ## Prerequisites
 
-Before starting, verify your server has a public IPv6 address and DNS is configured:
+Before starting, verify your server has a public IPv6 address and that DNS is configured to send the ACME challenge to the right host:
 
 ```bash
 # Check your public IPv6 address
 
 curl -6 https://ifconfig.me/ip
 
-# Verify AAAA record exists for your domain
+# Verify the AAAA record exists for your domain and points to this server
 dig AAAA yourdomain.example.com
 
-# Confirm Let's Encrypt can reach your server over IPv6
-ping6 -c 3 acme-v02.api.letsencrypt.org
+# Optional: confirm outbound IPv6 connectivity to the ACME API
+curl -6 https://acme-v02.api.letsencrypt.org/directory
 ```
 
 ## Install certbot
@@ -72,7 +72,7 @@ sudo certbot certonly \
   --agree-tos \
   --non-interactive
 
-# certbot binds to [::]:80 by default, handling IPv6
+# The standalone server must be reachable on port 80 over IPv6
 ```
 
 ## Method 3: DNS-01 Challenge (IPv6-Only Servers)
@@ -94,11 +94,12 @@ sudo certbot certonly \
 
 ## Automating DNS-01 with a DNS Plugin
 
-Most DNS providers have a certbot plugin for automation:
+Most DNS providers have a Certbot plugin for automation. The exact install command depends on how you installed Certbot; here is a current snap-based example for Cloudflare:
 
 ```bash
-# Example: Cloudflare DNS plugin
-pip install certbot-dns-cloudflare
+# Example: Cloudflare DNS plugin for snap-installed certbot
+sudo snap install certbot-dns-cloudflare
+sudo snap set certbot trust-plugin-with-root=ok
 
 # Create credentials file
 cat > /etc/letsencrypt/cloudflare.ini << 'EOF'
@@ -122,8 +123,9 @@ Once the certificate is obtained, configure Nginx to serve HTTPS on IPv6:
 ```nginx
 server {
     # Listen on both IPv4 and IPv6 for HTTPS
-    listen 443 ssl http2;
-    listen [::]:443 ssl http2;
+    listen 443 ssl;
+    listen [::]:443 ssl;
+    http2 on;
 
     server_name yourdomain.example.com;
 
@@ -138,19 +140,19 @@ server {
 
 ## Setting Up Auto-Renewal
 
-Let's Encrypt certificates expire every 90 days. Configure automatic renewal:
+Let's Encrypt certificates expire every 90 days. Most Certbot installations already configure automatic renewal, but certificates obtained with `--manual` do not renew automatically unless you add hook scripts:
 
 ```bash
 # Test renewal in dry-run mode
 sudo certbot renew --dry-run
 
-# Add cron job for automatic renewal twice daily
-echo "0 0,12 * * * root certbot renew --quiet --post-hook 'systemctl reload nginx'" \
-  | sudo tee /etc/cron.d/certbot-renew
+# Check how your installation schedules renewals
+systemctl list-timers | grep certbot
+grep -R "certbot renew" /etc/crontab /etc/cron.* 2>/dev/null
 
-# Alternatively, enable the systemd timer
-sudo systemctl enable certbot.timer
-sudo systemctl start certbot.timer
+# If your installation did not create one, add a cron job for renewal twice daily
+echo "0 0,12 * * * root certbot renew --quiet --deploy-hook 'systemctl reload nginx'" \
+  | sudo tee /etc/cron.d/certbot-renew > /dev/null
 ```
 
 ## Verifying the Certificate
@@ -158,11 +160,12 @@ sudo systemctl start certbot.timer
 After installation, verify the certificate is valid and covers your domain:
 
 ```bash
-# Test SSL from an IPv6 address
-openssl s_client -connect [2001:db8::1]:443 -servername yourdomain.example.com < /dev/null
+# Test HTTPS over IPv6 using your domain name
+curl -6 -I https://yourdomain.example.com
 
 # Check certificate details
-curl -6 -v https://yourdomain.example.com 2>&1 | grep -E "subject|issuer|expire"
+openssl s_client -connect [2001:db8::1]:443 -servername yourdomain.example.com < /dev/null 2>/dev/null \
+  | openssl x509 -noout -subject -issuer -dates
 ```
 
 Let's Encrypt's support for IPv6 validation makes it straightforward to secure both dual-stack and IPv6-only servers with trusted, free TLS certificates.
