@@ -4,7 +4,7 @@ Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
 Tags: Rust, IPv6, Tokio, Async, Networking, TCP
 
-Description: Build async IPv6 network applications with Rust's Tokio runtime including TCP servers, clients, timeouts, and connection pooling.
+Description: Build async IPv6 network applications with Rust's Tokio runtime including TCP servers, clients, timeouts, and concurrent connections.
 
 ## Tokio IPv6 TCP Server
 
@@ -87,7 +87,7 @@ async fn main() -> tokio::io::Result<()> {
 
 ## Concurrent IPv6 Connections
 
-Spawn multiple concurrent outbound IPv6 connections using `tokio::join!` or `JoinSet`:
+Spawn multiple concurrent outbound IPv6 connections using `JoinSet`:
 
 ```rust
 use tokio::io::AsyncWriteExt;
