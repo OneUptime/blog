@@ -34,7 +34,7 @@ resource "kubernetes_secret" "mongodb_auth" {
   data = {
     mongodb-root-password     = random_password.mongodb_root.result
     mongodb-passwords         = random_password.mongodb_app.result
-    mongodb-replica-set-key   = base64encode(random_password.mongodb_root.result)
+    mongodb-replica-set-key   = random_password.mongodb_root.result
   }
 }
 
@@ -50,17 +50,14 @@ resource "helm_release" "mongodb" {
     architecture = "replicaset"  # standalone or replicaset
 
     auth = {
-      enabled      = true
-      rootUser     = "root"
-      usernames    = ["appuser"]
-      databases    = ["appdb"]
+      enabled        = true
+      rootUser       = "root"
+      usernames      = ["appuser"]
+      databases      = ["appdb"]
       existingSecret = kubernetes_secret.mongodb_auth.metadata[0].name
     }
 
-    replicaSet = {
-      name    = "rs0"
-      key     = ""  # Uses existing secret
-    }
+    replicaSetName = "rs0"  # Replica set name (replicaSetKey is read from existingSecret)
 
     replicaCount = 3  # 1 primary + 2 secondaries
 
