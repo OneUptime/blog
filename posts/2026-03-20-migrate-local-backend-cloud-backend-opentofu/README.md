@@ -160,9 +160,9 @@ terraform {
 }
 ```
 
-## Using OpenTofu Cloud / Terraform-compatible backends
+## Using the Cloud Backend Integration
 
-OpenTofu also supports the `cloud` backend for OpenTofu Cloud (or Spacelift, Scalr, env0):
+OpenTofu also supports the `cloud` block, which connects to TACOS (Terraform Automation and Collaboration Software) that implement the cloud backend protocol — including HCP Terraform (formerly Terraform Cloud) and Scalr:
 
 ```hcl
 terraform {
@@ -175,6 +175,8 @@ terraform {
   }
 }
 ```
+
+Other platforms manage state differently: Spacelift injects its own backend configuration into runs automatically, and env0 auto-configures its remote backend when stacks are deployed through env0 — neither requires a `cloud` block in your configuration.
 
 ## Best Practices
 
