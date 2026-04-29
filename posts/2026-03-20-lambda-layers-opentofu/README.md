@@ -8,7 +8,7 @@ Description: Learn how to create and manage AWS Lambda Layers with OpenTofu to s
 
 ## Introduction
 
-Lambda Layers let you package dependencies, libraries, and shared code separately from your function deployment package. A single layer can be attached to up to five functions, and each function can use up to five layers, reducing deployment package sizes and enabling shared dependency management.
+Lambda Layers let you package dependencies, libraries, and shared code separately from your function deployment package. A layer can be shared across multiple functions, and each function can use up to five layers, reducing deployment package sizes and enabling shared dependency management.
 
 ## Prerequisites
 
@@ -21,8 +21,8 @@ Lambda Layers let you package dependencies, libraries, and shared code separatel
 ```bash
 # Build Python dependencies for the Lambda layer
 
-mkdir -p layer/python
-pip install -r requirements.txt -t layer/python/ --platform manylinux2014_x86_64 --python-version 3.12
+mkdir -p dist layer/python
+python3.12 -m pip install -r requirements.txt --platform manylinux2014_x86_64 --only-binary=:all: -t layer/python/
 
 # Or for Node.js
 mkdir -p layer/nodejs
@@ -47,12 +47,12 @@ resource "aws_lambda_layer_version" "dependencies" {
   description         = "Common Python dependencies: boto3, requests, pydantic"
 
   # Supported runtimes for this layer
-  compatible_runtimes = ["python3.11", "python3.12"]
+  compatible_runtimes = ["python3.12"]
 
   # Specify the CPU architecture
   compatible_architectures = ["x86_64"]
 
-  # Prevent auto-deletion when a new version is published
+  # Retain the previous layer version when publishing a replacement
   skip_destroy = true
 }
 ```
@@ -61,6 +61,7 @@ resource "aws_lambda_layer_version" "dependencies" {
 
 ```hcl
 # Layer containing shared utility code
+# shared-utils/ should contain a top-level python/ directory
 data "archive_file" "utils_layer" {
   type        = "zip"
   source_dir  = "${path.module}/shared-utils"
@@ -81,6 +82,13 @@ resource "aws_lambda_layer_version" "utils" {
 ## Step 4: Attach Layers to Lambda Functions
 
 ```hcl
+# Package the Lambda function code
+data "archive_file" "function" {
+  type        = "zip"
+  source_dir  = "${path.module}/function"
+  output_path = "${path.module}/dist/function.zip"
+}
+
 # Lambda function using multiple layers
 resource "aws_lambda_function" "api" {
   function_name    = "api-function"
@@ -94,7 +102,7 @@ resource "aws_lambda_function" "api" {
   layers = [
     aws_lambda_layer_version.dependencies.arn,
     aws_lambda_layer_version.utils.arn,
-    var.aws_powertools_layer_arn,  # AWS Lambda Powertools
+    var.aws_powertools_layer_arn,  # Versioned public layer ARN, for example AWS Lambda Powertools
   ]
 }
 ```
@@ -115,9 +123,9 @@ resource "aws_lambda_layer_version_permission" "share" {
 ## Step 6: Use AWS-Managed Public Layers
 
 ```hcl
-# Reference a public AWS-managed layer (e.g., AWS Lambda Powertools)
+# Reference a public layer available in your region (for example, AWS Lambda Powertools)
 data "aws_lambda_layer_version" "powertools" {
-  layer_name = "arn:aws:lambda:us-east-1:017000801446:layer:AWSLambdaPowertoolsPythonV2"
+  layer_name = "AWSLambdaPowertoolsPythonV3-python312-x86_64"
 }
 
 resource "aws_lambda_function" "with_powertools" {
@@ -142,4 +150,4 @@ tofu apply
 
 ## Conclusion
 
-Lambda Layers reduce deployment package sizes and enable consistent dependency management across functions. Layer contents are available at `/opt` inside the Lambda execution environment-Python packages at `/opt/python/`, Node.js modules at `/opt/nodejs/node_modules/`. Use `skip_destroy = true` to preserve old layer versions when deploying updates, as functions referencing previous versions will continue to work.
+Lambda Layers reduce deployment package sizes and enable consistent dependency management across functions. Layer contents are available at `/opt` inside the Lambda execution environment, with Python packages at `/opt/python/` and Node.js modules at `/opt/nodejs/node_modules/`. Use `skip_destroy = true` if you want OpenTofu to retain previously published layer versions instead of deleting them during replacement or destroy operations.
