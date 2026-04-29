@@ -4,11 +4,11 @@ Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
 Tags: OpenTofu, Data Source, Lifecycle, Custom Conditions, Infrastructure as Code, DevOps
 
-Description: A guide to using lifecycle customizations with data sources in OpenTofu to add preconditions, postconditions, and control refresh behavior.
+Description: A guide to using data source lifecycle customizations in OpenTofu with preconditions and postconditions, plus controlling when data sources are read.
 
 ## Introduction
 
-Data sources in OpenTofu support lifecycle customizations including preconditions and postconditions. These allow you to validate assumptions about fetched data. Note that `ignore_changes` and `prevent_destroy` are not supported on data sources - only `precondition` and `postcondition` lifecycle blocks are available.
+Data sources in OpenTofu support lifecycle customizations such as `precondition` and `postcondition` blocks. These allow you to validate assumptions about both the query inputs and the fetched data. Note that `ignore_changes` and `prevent_destroy` are not supported on data sources. In current OpenTofu releases, data source lifecycle blocks support `enabled`, `precondition`, and `postcondition`.
 
 ## Preconditions on Data Sources
 
@@ -45,7 +45,7 @@ data "aws_vpc" "main" {
     }
 
     postcondition {
-      # Verify the VPC is in the expected CIDR range
+      # Verify the VPC CIDR block is valid
       condition     = can(cidrsubnet(self.cidr_block, 0, 0))
       error_message = "The VPC CIDR block is not valid: ${self.cidr_block}"
     }
@@ -68,7 +68,10 @@ data "aws_eks_cluster" "main" {
 
     postcondition {
       # Verify Kubernetes version meets minimum requirement
-      condition     = tonumber(split(".", self.version)[0]) >= 1 && tonumber(split(".", self.version)[1]) >= 28
+      condition = tonumber(split(".", self.version)[0]) > 1 || (
+        tonumber(split(".", self.version)[0]) == 1 &&
+        tonumber(split(".", self.version)[1]) >= 28
+      )
       error_message = "EKS cluster must run Kubernetes 1.28 or higher. Current version: ${self.version}"
     }
   }
@@ -83,7 +86,7 @@ data "aws_secretsmanager_secret_version" "app_config" {
 
   lifecycle {
     postcondition {
-      # Verify the secret is a valid JSON object
+      # Verify the secret contains valid JSON
       condition     = can(jsondecode(self.secret_string))
       error_message = "The secret myapp/config must contain valid JSON."
     }
@@ -112,7 +115,7 @@ data "aws_secretsmanager_secret_version" "db_creds" {
 ```hcl
 data "aws_ami" "app" {
   most_recent = true
-  owners      = [data.aws_caller_identity.current.account_id]
+  owners      = ["self"]
 
   filter {
     name   = "name"
@@ -127,7 +130,7 @@ data "aws_ami" "app" {
   lifecycle {
     postcondition {
       # Ensure AMI is not too old (30 days)
-      condition     = timecmp(self.creation_date, timeadd(timestamp(), "-720h")) > 0
+      condition     = timecmp(self.creation_date, timeadd(plantimestamp(), "-720h")) > 0
       error_message = "The selected AMI is more than 30 days old and may be outdated. Creation date: ${self.creation_date}"
     }
 
@@ -140,18 +143,20 @@ data "aws_ami" "app" {
 }
 ```
 
-## Controlling Refresh Behavior
+## Controlling When Data Sources Are Read
 
 ```hcl
-# By default, data sources are re-read every plan
+# OpenTofu reads data sources during planning when possible
 
-# Use depends_on to control when they're refreshed
+# Direct references already create dependencies. Use depends_on
+# when you need to defer a read because of a hidden dependency.
 
-data "aws_s3_bucket_objects" "configs" {
-  bucket = aws_s3_bucket.configs.id
+data "aws_s3_objects" "configs" {
+  bucket = var.config_bucket_name
   prefix = "configs/"
 
-  # This data source re-reads whenever the bucket changes
+  # If aws_s3_bucket.configs has planned changes, OpenTofu
+  # reads this data source after those changes are applied.
   depends_on = [aws_s3_bucket.configs]
 }
 ```
@@ -202,4 +207,4 @@ data "aws_subnets" "private" {
 
 ## Conclusion
 
-Lifecycle customizations on data sources provide validation at the data layer - before those values are used to configure resources. Preconditions validate inputs to data source queries (such as variable formats), while postconditions validate the data returned (such as ensuring a cluster is active or a secret contains required keys). This catches configuration mismatches early in the plan phase rather than at resource creation time. Use lifecycle customizations on data sources when working with data that must meet specific requirements for your infrastructure to function correctly.
+Lifecycle customizations on data sources provide validation at the data layer - before those values are used to configure resources. Preconditions validate inputs to data source queries (such as variable formats), while postconditions validate the data returned (such as ensuring a cluster is active or a secret contains required keys). OpenTofu evaluates these checks as early as it can: often during planning, and during apply when values are not yet known. Use lifecycle customizations on data sources when working with data that must meet specific requirements for your infrastructure to function correctly.
