@@ -4,135 +4,106 @@ Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
 Tags: Kubewarden, Rancher, Kubernetes, Policy, Security
 
-Description: Learn how to install and configure Kubewarden directly from the Rancher UI using the Rancher Apps catalog for simplified policy enforcement setup.
+Description: Learn how to install and configure Kubewarden directly from the Rancher UI using the Kubewarden Rancher extension and Apps workflow for simplified policy enforcement setup.
 
 ## Introduction
 
-Rancher provides a graphical way to install Kubewarden through its integrated app catalog. This approach simplifies the installation process significantly - you can deploy Kubewarden without writing any Helm commands, configure all options through forms, and manage updates through the Rancher interface.
+Rancher provides a graphical way to install Kubewarden through the Kubewarden Rancher extension and the Apps workflow. This approach simplifies the installation process significantly - you can deploy Kubewarden without writing any Helm commands, configure all options through forms, and manage updates through the Rancher interface.
 
 This guide covers the complete Kubewarden installation process using the Rancher UI, from prerequisites through policy server verification.
 
 ## Prerequisites
 
-- Rancher v2.7 or later
+- A Rancher Manager installation with access to **Extensions**
 - A Kubernetes cluster managed by Rancher
-- Cluster Admin role in Rancher
-- Internet access from the cluster nodes (or local charts configured)
+- Permissions to install Rancher extensions and cluster apps
+- Internet access from the Rancher server and cluster nodes (or mirrored repositories for air-gapped installations)
 
-## Step 1: Enable the Rancher Charts Repository
+## Step 1: Enable the Rancher Extensions Repository
 
-Kubewarden charts are available through the Rancher charts repository or Kubewarden's own Helm chart repository.
+Kubewarden's current Rancher UI installation flow starts from the Rancher Extensions Repository.
 
-### Adding Kubewarden to Rancher Charts
+### Adding the Extensions Repository
 
-1. In Rancher, navigate to the cluster where you want to install Kubewarden
-2. Click **Apps > Repositories** in the left sidebar
-3. Click **Create**
-4. Configure:
-   - **Name**: `kubewarden`
-   - **Target**: `https://charts.kubewarden.io`
-   - **Branch**: `main` (or leave as default)
-5. Click **Create**
+1. In Rancher, open **Extensions**
+2. Click **Enable**
+3. Choose the option to add the Rancher Extensions Repository
+4. Wait for the repository to become available
 
-Wait for the repository to sync (indicated by a green checkmark).
+After the repository is enabled, the **Kubewarden** extension appears automatically in the Extensions list.
 
-## Step 2: Install Cert-Manager (If Not Already Installed)
+## Step 2: Install the Kubewarden Rancher Extension
 
-Kubewarden requires cert-manager. Check if it's already installed:
+Current Kubewarden releases do not require cert-manager for the controller installation. Instead, install the Kubewarden Rancher extension first:
+
+1. Stay on the **Extensions** page
+2. Find **Kubewarden**
+3. Click **Install**
+4. Wait for the extension to become active
+
+## Step 3: Install Kubewarden into the Cluster
+
+1. Navigate to the cluster where you want to install Kubewarden
+2. Click **Kubewarden** in the cluster side menu
+3. Follow the dashboard wizard until you reach the app installation step
+4. Click **Install Kubewarden**
+5. Rancher installs `rancher-kubewarden-controller` and automatically installs the companion `rancher-kubewarden-crds` release in the `cattle-kubewarden-system` namespace
+
+If the **Install Kubewarden** button remains grayed out, refresh the page and return to the installation step.
+
+## Step 4: Customize the Kubewarden Controller
 
 1. Navigate to **Apps > Installed Apps**
-2. Search for "cert-manager"
-3. If not found, install it:
-   - Navigate to **Apps > Charts**
-   - Search for "cert-manager"
-   - Click **Install**
-   - Select namespace: `cert-manager`
-   - Check **Create Namespace**
-   - Enable **Install CRDs**
-   - Click **Next** then **Install**
-
-## Step 3: Install Kubewarden CRDs
-
-1. Navigate to **Apps > Charts**
-2. Search for "kubewarden-crds"
-3. Click on the `kubewarden-crds` chart
-4. Click **Install**
-5. Configure:
-   - **Namespace**: `kubewarden`
-   - Check **Create Namespace**
-6. Click **Next**
-7. Review the configuration (no required changes for defaults)
-8. Click **Install**
-
-Wait for the installation to complete (all resources show as active).
-
-## Step 4: Install the Kubewarden Controller
-
-1. Navigate to **Apps > Charts**
-2. Search for "kubewarden-controller"
-3. Click on the chart
-4. Click **Install**
-5. Configure:
-   - **Namespace**: `kubewarden` (same namespace as CRDs)
-   - **Chart Version**: Select the latest stable version
-6. Click **Next**
-7. In the values editor, you can customize:
+2. Find `rancher-kubewarden-controller`
+3. Click the three-dot menu
+4. Click **Edit/Upgrade**
+5. In the values editor, you can customize:
    ```yaml
-   # Optional: Enable HA for the controller
-   controller:
-     replicaCount: 2
+   # Optional: enable HA for the controller
+   replicas: 2
    ```
-8. Click **Install**
+6. Click **Upgrade**
 
 ## Step 5: Install Kubewarden Defaults (Policy Server)
 
-1. Navigate to **Apps > Charts**
-2. Search for "kubewarden-defaults"
-3. Click on the chart
-4. Click **Install**
-5. Configure:
-   - **Namespace**: `kubewarden`
-6. Click **Next**
-7. In the values editor, optionally configure:
+1. Navigate back to the cluster's **Kubewarden** dashboard
+2. Click **Install Chart** to install `kubewarden-defaults`
+3. Review the release settings. Rancher installs the chart in `cattle-kubewarden-system` by default
+4. In the values editor, optionally configure:
    ```yaml
-   # Policy server replica count for HA
    policyServer:
      replicaCount: 2
-
-   # Resource limits for the policy server
-   policyServer:
-     resources:
-       requests:
-         cpu: "200m"
-         memory: "256Mi"
-       limits:
-         cpu: "1"
-         memory: "1Gi"
+     requests:
+       cpu: "200m"
+       memory: "256Mi"
+     limits:
+       cpu: "1"
+       memory: "1Gi"
    ```
-8. Click **Install**
+5. Click **Install**
 
 ## Step 6: Verify the Installation
 
 ### Via Rancher UI
 
 1. Navigate to **Apps > Installed Apps**
-2. Verify all three Kubewarden apps show as **Deployed**:
-   - `kubewarden-crds`
-   - `kubewarden-controller`
-   - `kubewarden-defaults`
+2. Verify the Kubewarden apps show as **Deployed**:
+   - `rancher-kubewarden-controller`
+   - `rancher-kubewarden-defaults`
+   - the companion `rancher-kubewarden-crds` release
 
 ### Via kubectl
 
 ```bash
 # Check all Kubewarden pods
 
-kubectl get pods -n kubewarden
+kubectl get pods -n cattle-kubewarden-system
 
 # Verify the PolicyServer resource
-kubectl get policyserver
+kubectl get policyservers -n cattle-kubewarden-system
 
 # Check the ValidatingWebhookConfiguration
-kubectl get validatingwebhookconfigurations | grep kubewarden
+kubectl get validatingwebhookconfigurations.admissionregistration.k8s.io -l kubewarden
 ```
 
 ## Step 7: Apply Your First Policy via Rancher UI
@@ -140,8 +111,7 @@ kubectl get validatingwebhookconfigurations | grep kubewarden
 After installation, you can apply policies directly from the Rancher UI:
 
 1. Navigate to the cluster in Rancher
-2. Look for **Policy** or **Kubewarden** in the sidebar
-   (available if the Rancher Kubewarden extension is installed)
+2. Open **Kubewarden > Cluster Admission Policies** in the sidebar
 3. Or use **More Resources > policies.kubewarden.io > ClusterAdmissionPolicies**
 4. Click **Create**
 
@@ -155,7 +125,8 @@ kind: ClusterAdmissionPolicy
 metadata:
   name: no-privileged-pods
 spec:
-  module: registry://ghcr.io/kubewarden/policies/pod-privileged:v0.2.0
+  policyServer: default
+  module: registry://ghcr.io/kubewarden/policies/pod-privileged:v1.0.10
   rules:
     - apiGroups: [""]
       apiVersions: ["v1"]
@@ -167,7 +138,7 @@ spec:
 EOF
 
 # Check policy status
-kubectl get clusteradmissionpolicy no-privileged-pods
+kubectl get clusteradmissionpolicy.policies.kubewarden.io no-privileged-pods
 ```
 
 ## Upgrading Kubewarden from Rancher UI
@@ -180,18 +151,18 @@ kubectl get clusteradmissionpolicy no-privileged-pods
 6. Click **Upgrade**
 
 Upgrade in this order:
-1. `kubewarden-crds`
-2. `kubewarden-controller`
-3. `kubewarden-defaults`
+1. `rancher-kubewarden-crds`
+2. `rancher-kubewarden-controller`
+3. `rancher-kubewarden-defaults`
 
 ## Accessing Kubewarden Logs from Rancher
 
 1. Navigate to your cluster in Rancher
 2. Go to **Workloads > Pods**
-3. Select namespace: `kubewarden`
+3. Select namespace: `cattle-kubewarden-system`
 4. Click on the policy server pod
 5. Click **Logs** to view real-time logs
 
 ## Conclusion
 
-Installing Kubewarden through the Rancher UI provides a streamlined experience that eliminates the need to manage Helm commands directly. The multi-step installation process (CRDs → Controller → Defaults) ensures all components are installed in the correct order. Once installed, Kubewarden integrates naturally with Rancher's monitoring and logging capabilities, giving you a complete policy enforcement platform accessible through the familiar Rancher interface.
+Installing Kubewarden through the Rancher UI provides a streamlined experience that eliminates the need to manage Helm commands directly. The current Rancher-managed flow (Extension -> Controller/CRDs -> Defaults) ensures all components are installed in the correct order. Once installed, Kubewarden integrates naturally with Rancher's monitoring and logging capabilities, giving you a complete policy enforcement platform accessible through the familiar Rancher interface.
