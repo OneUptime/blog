@@ -23,7 +23,7 @@ IPv6 uses "hop limit" instead of IPv4's "TTL" to control how many hops a packet 
 | `IPV6_V6ONLY` | IPPROTO_IPV6 | IPv6 only (no IPv4-mapped) |
 | `IPV6_TCLASS` | IPPROTO_IPV6 | Traffic class (DSCP/ECN) |
 | `IPV6_RECVHOPLIMIT` | IPPROTO_IPV6 | Receive hop limit in ancillary data |
-| `IPV6_PKTINFO` | IPPROTO_IPV6 | Receive destination address info |
+| `IPV6_RECVPKTINFO` | IPPROTO_IPV6 | Receive destination address info in ancillary data |
 
 ## Setting IPV6_UNICAST_HOPS
 
@@ -43,9 +43,9 @@ int main(void) {
     getsockopt(sockfd, IPPROTO_IPV6, IPV6_UNICAST_HOPS,
                &current_hops, &optlen);
     printf("Default unicast hop limit: %d\n", current_hops);
-    /* -1 = use system default (usually 64) */
+    /* For setsockopt(), -1 = use the system default hop limit */
 
-    /* Set unicast hop limit to 64 (typical default) */
+    /* Set unicast hop limit to 64 */
     int hops = 64;
     if (setsockopt(sockfd, IPPROTO_IPV6, IPV6_UNICAST_HOPS,
                    &hops, sizeof(hops)) < 0) {
@@ -71,14 +71,15 @@ int main(void) {
 #include <unistd.h>
 
 void configure_multicast_socket(int sockfd) {
-    /* Hop limit values for multicast:
-     * 0 = Node-local (same host only)
-     * 1 = Link-local (same link/subnet, most common)
-     * 2-31 = Site-local
-     * 32-255 = Global
+    /* Multicast hop limit uses the same range as IPV6_UNICAST_HOPS:
+     * -1 = use system default
+     * 0-255 = explicit hop limit
+     *
+     * The destination multicast address carries the multicast scope.
+     * A hop limit of 1 is common for local-link multicast traffic.
      */
 
-    /* Link-local multicast (typical for local discovery) */
+    /* Hop limit 1 is common for local discovery */
     int hops = 1;
     if (setsockopt(sockfd, IPPROTO_IPV6, IPV6_MULTICAST_HOPS,
                    &hops, sizeof(hops)) < 0) {
@@ -90,7 +91,7 @@ void configure_multicast_socket(int sockfd) {
     setsockopt(sockfd, IPPROTO_IPV6, IPV6_MULTICAST_LOOP,
                &loop, sizeof(loop));
 
-    /* Disable loopback (don't receive own multicast) */
+    /* Or disable loopback instead */
     loop = 0;
     setsockopt(sockfd, IPPROTO_IPV6, IPV6_MULTICAST_LOOP,
                &loop, sizeof(loop));
@@ -100,19 +101,21 @@ void configure_multicast_socket(int sockfd) {
 ## Traffic Class (DSCP/ECN)
 
 ```c
+#include <sys/socket.h>
 #include <netinet/in.h>
+#include <stdio.h>
 
 void set_traffic_class(int sockfd) {
     /* Traffic class byte:
      * Bits 7-2: DSCP (6 bits)
      * Bits 1-0: ECN (2 bits)
      *
-     * Common DSCP values:
+     * Common traffic class byte values:
      * 0x00 = Default (best effort)
      * 0xB8 = EF (Expedited Forwarding) - for real-time traffic
      * 0x28 = AF11 (Assured Forwarding)
      */
-    int tclass = 0xB8;  /* EF - highest priority */
+    int tclass = 0xB8;  /* EF DSCP (Expedited Forwarding) */
     setsockopt(sockfd, IPPROTO_IPV6, IPV6_TCLASS, &tclass, sizeof(tclass));
 
     /* Read it back */
@@ -122,13 +125,15 @@ void set_traffic_class(int sockfd) {
 }
 ```
 
-## Receiving Ancillary Data (Hop Limit, Source Address)
+## Receiving Ancillary Data (Hop Limit, Destination Address)
 
 ```c
+#define _GNU_SOURCE
 #include <sys/socket.h>
 #include <netinet/in.h>
 #include <arpa/inet.h>
 #include <stdio.h>
+#include <string.h>
 
 void receive_with_ancillary(int sockfd) {
     /* Enable receiving hop limit in ancillary data */
@@ -176,7 +181,7 @@ void receive_with_ancillary(int sockfd) {
 }
 ```
 
-## Practical Example: Ping-Like Application
+## Practical Example: Traceroute-Like Probe
 
 ```c
 #include <sys/socket.h>
@@ -184,9 +189,10 @@ void receive_with_ancillary(int sockfd) {
 #include <arpa/inet.h>
 #include <net/if.h>
 #include <stdio.h>
+#include <string.h>
 #include <unistd.h>
 
-/* Send a probe with a specific hop limit to detect loop depth */
+/* Send a UDP probe with a specific hop limit for traceroute-style probing */
 void send_hop_probe(const char *dest_addr, int hop_limit) {
     int sockfd = socket(AF_INET6, SOCK_DGRAM, IPPROTO_UDP);
 
@@ -208,4 +214,4 @@ void send_hop_probe(const char *dest_addr, int hop_limit) {
 
 ## Conclusion
 
-IPv6 socket options use `IPPROTO_IPV6` as the level (not `IPPROTO_IP` as in IPv4). `IPV6_UNICAST_HOPS` controls the hop limit for point-to-point traffic (equivalent to IP_TTL in IPv4), while `IPV6_MULTICAST_HOPS` controls the scope of multicast packets. Use `-1` to restore system defaults. Enable `IPV6_RECVHOPLIMIT` and `IPV6_RECVPKTINFO` to receive routing information in ancillary data via `recvmsg()`.
+IPv6 socket options use `IPPROTO_IPV6` as the level (not `IPPROTO_IP` as in IPv4). `IPV6_UNICAST_HOPS` controls the hop limit for unicast traffic (equivalent to `IP_TTL` in IPv4), while `IPV6_MULTICAST_HOPS` controls the hop limit for multicast packets. The multicast address still determines multicast scope. Use `-1` to restore system defaults. Enable `IPV6_RECVHOPLIMIT` and `IPV6_RECVPKTINFO` to receive hop-limit and destination/interface information in ancillary data via `recvmsg()`.
