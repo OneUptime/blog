@@ -22,14 +22,13 @@ Adding `k3s.example.com` to the TLS SANs resolves this.
 
 ## Default TLS SANs in K3s
 
-K3s automatically includes these SANs by default:
+K3s automatically includes the standard Kubernetes service DNS names, plus local and server addresses that it associates with the API server. Typical defaults include:
 - `kubernetes`
 - `kubernetes.default`
 - `kubernetes.default.svc`
 - `kubernetes.default.svc.cluster.local`
-- `localhost`
-- `127.0.0.1`
-- The node's primary IP address
+- Local addresses such as `localhost` and `127.0.0.1`
+- The server node's own addresses/hostnames
 
 ## Adding Custom TLS SANs
 
@@ -59,9 +58,10 @@ curl -sfL https://get.k3s.io | sudo sh -
 Adding TLS SANs to an existing cluster requires rotating the certificates:
 
 ```bash
-# Add the new SANs to config.yaml
-sudo tee -a /etc/rancher/k3s/config.yaml > /dev/null <<EOF
-tls-san:
+# Add the new SANs without duplicating the tls-san key in config.yaml
+sudo mkdir -p /etc/rancher/k3s/config.yaml.d
+sudo tee /etc/rancher/k3s/config.yaml.d/tls-san.yaml > /dev/null <<EOF
+tls-san+:
   - 192.168.1.99
   - k3s.example.com
 EOF
@@ -69,18 +69,13 @@ EOF
 # Stop K3s
 sudo systemctl stop k3s
 
-# Remove the existing server TLS certificates
-# K3s will regenerate them with the new SANs
-sudo rm -f /var/lib/rancher/k3s/server/tls/server-ca.nochain.crt
-sudo rm -f /var/lib/rancher/k3s/server/tls/server-ca.crt
-sudo rm -f /var/lib/rancher/k3s/server/tls/server-ca.key
-sudo rm -rf /var/lib/rancher/k3s/server/tls/serving-kube-apiserver*
-sudo rm -rf /var/lib/rancher/k3s/server/tls/dynamic-cert.json
+# Rotate certificates so the new SANs are included
+sudo k3s certificate rotate
 
-# Start K3s (it will regenerate certificates with the new SANs)
+# Start K3s
 sudo systemctl start k3s
 
-# Monitor certificate regeneration
+# Monitor certificate rotation
 sudo journalctl -u k3s -f | grep -E "cert|tls|san"
 ```
 
@@ -88,7 +83,7 @@ sudo journalctl -u k3s -f | grep -E "cert|tls|san"
 
 ```bash
 # Check the certificate SANs of the running API server
-openssl s_client -connect 192.168.1.100:6443 2>/dev/null | \
+openssl s_client -connect 192.168.1.100:6443 </dev/null 2>/dev/null | \
     openssl x509 -noout -text | \
     grep -A 10 "Subject Alternative Name"
 
@@ -173,7 +168,7 @@ kubectl --insecure-skip-tls-verify=true get nodes
 # If this works, the issue is the TLS certificate
 
 # Verify what SANs are in the certificate
-openssl s_client -connect k3s.example.com:6443 2>/dev/null | \
+openssl s_client -connect k3s.example.com:6443 -servername k3s.example.com </dev/null 2>/dev/null | \
     openssl x509 -noout -text | grep -A 5 "Subject Alternative"
 
 # If your desired SAN is missing, add it to config.yaml and rotate certs
@@ -183,7 +178,8 @@ openssl s_client -connect k3s.example.com:6443 2>/dev/null | \
 
 ```bash
 # Copy the kubeconfig to your remote machine
-scp ubuntu@192.168.1.100:/etc/rancher/k3s/k3s.yaml ~/.kube/k3s-config
+# The admin kubeconfig is usually root-readable only
+ssh ubuntu@192.168.1.100 'sudo cat /etc/rancher/k3s/k3s.yaml' > ~/.kube/k3s-config
 
 # Update the server address to use an accessible IP or hostname
 sed -i 's/127.0.0.1/192.168.1.100/' ~/.kube/k3s-config
@@ -197,7 +193,7 @@ kubectl get nodes
 
 ```bash
 # Check when the certificate expires/was issued
-openssl s_client -connect 192.168.1.100:6443 2>/dev/null | \
+openssl s_client -connect 192.168.1.100:6443 </dev/null 2>/dev/null | \
     openssl x509 -noout -dates
 
 # If the certificate is old, check that K3s restarted properly
@@ -207,4 +203,4 @@ sudo journalctl -u k3s | grep "tls" | tail -20
 
 ## Conclusion
 
-TLS SANs in K3s control which IP addresses and hostnames are valid for API server connections. Always include your load balancer VIP and any DNS names used to access the cluster in the `tls-san` configuration. For existing clusters, adding new SANs requires stopping K3s, deleting the existing server certificates, and restarting - K3s will automatically regenerate certificates including the new SANs. This is a non-destructive operation that takes only a minute to complete.
+TLS SANs in K3s control which IP addresses and hostnames are valid for API server connections. Always include your load balancer VIP and any DNS names used to access the cluster in the `tls-san` configuration. For existing clusters, adding new SANs requires updating the K3s configuration, rotating the certificates, and restarting K3s so it issues certificates including the new SANs. This is a non-destructive operation that takes only a minute to complete.
