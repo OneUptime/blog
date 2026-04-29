@@ -14,7 +14,7 @@ Windows containers allow you to run Windows applications in isolated container e
 
 - Windows Server 2019/2022 or Windows 10/11 Pro/Enterprise with Hyper-V
 - Docker Desktop for Windows with Windows containers mode enabled, or Docker Engine on Windows Server
-- Portainer Agent or Portainer server installed
+- Portainer Server installed, or the ability to deploy it locally as shown below
 - Administrator privileges
 
 ## Enabling Windows Containers in Docker
@@ -27,8 +27,8 @@ On Windows 10/11:
 On Windows Server:
 
 ```powershell
-Install-Module -Name DockerMsftProvider -Repository PSGallery -Force
-Install-Package -Name docker -ProviderName DockerMsftProvider
+Invoke-WebRequest -UseBasicParsing "https://raw.githubusercontent.com/microsoft/Windows-Containers/Main/helpful_tools/Install-DockerCE/install-docker-ce.ps1" -o install-docker-ce.ps1
+.\install-docker-ce.ps1
 Restart-Computer -Force
 ```
 
@@ -46,7 +46,7 @@ docker run -d `
   --restart always `
   -v \\.\pipe\docker_engine:\\.\pipe\docker_engine `
   -v portainer_data:C:\data `
-  portainer/portainer-ce:latest
+  portainer/portainer-ce:lts
 ```
 
 Access Portainer at `https://localhost:9443`.
@@ -56,21 +56,19 @@ Access Portainer at `https://localhost:9443`.
 ### Using the GUI
 
 1. In Portainer, navigate to **Containers** > **Add container**.
-2. Set the image to `mcr.microsoft.com/windows/servercore/iis:latest`.
+2. Set the image to `mcr.microsoft.com/windows/servercore/iis:windowsservercore-ltsc2022` or the tag that matches your host OS version.
 3. Configure port mapping: Host `8080` → Container `80`.
 4. Set the restart policy to **Always**.
 5. Click **Deploy the container**.
 
 ### Using a Stack (Docker Compose)
 
-Navigate to **Stacks** > **Add stack** and use the following:
+Navigate to **Stacks** > **Add stack** and use an IIS image tag that matches your host OS version. For example:
 
 ```yaml
-version: "3.8"
-
 services:
   iis:
-    image: mcr.microsoft.com/windows/servercore/iis:latest
+    image: mcr.microsoft.com/windows/servercore/iis:windowsservercore-ltsc2022
     ports:
       - "8080:80"
     restart: unless-stopped
@@ -78,19 +76,6 @@ services:
       - type: bind
         source: C:\inetpub\wwwroot
         target: C:\inetpub\wwwroot
-
-  sql:
-    image: mcr.microsoft.com/mssql/server:2022-latest
-    environment:
-      SA_PASSWORD: "YourStrong!Passw0rd"
-      ACCEPT_EULA: "Y"
-    ports:
-      - "1433:1433"
-    volumes:
-      - sql_data:C:\data
-
-volumes:
-  sql_data:
 ```
 
 ## Windows-Specific Networking
@@ -112,27 +97,22 @@ In Portainer, navigate to **Networks** > **Add network** and select the **nat** 
 
 Windows supports two isolation modes:
 
-- **Process isolation** – Shares the host kernel; requires matching OS version.
-- **Hyper-V isolation** – Full VM-level isolation; works across OS versions.
+- **Process isolation** – Shares the host kernel and requires close host and container version compatibility.
+- **Hyper-V isolation** – Runs the container inside an optimized VM and offers broader host and container version compatibility.
 
 Set isolation mode in your container run configuration:
 
 ```powershell
-docker run --isolation hyperv mcr.microsoft.com/windows/servercore:ltsc2022
+docker run -it --isolation=hyperv mcr.microsoft.com/windows/servercore:ltsc2022 cmd.exe
 ```
-
-In Portainer's container creation form, add `--isolation=hyperv` under **Runtime & Resources** > **Runtime**.
 
 ## Monitoring Windows Containers
 
-Portainer provides container statistics including CPU, memory, and network I/O. For advanced metrics, deploy the Windows node exporter:
+Portainer provides container statistics including CPU, memory, and network I/O. For advanced metrics, install `windows_exporter` on the host:
 
 ```powershell
-docker run -d `
-  --name windows-node-exporter `
-  -p 9182:9182 `
-  -v C:\Windows\:C:\host\Windows:ro `
-  ghcr.io/prometheus-community/windows-exporter:latest
+Invoke-WebRequest -UseBasicParsing "https://github.com/prometheus-community/windows_exporter/releases/download/v0.31.6/windows_exporter-0.31.6-amd64.msi" -OutFile .\windows_exporter.msi
+msiexec /i .\windows_exporter.msi --% ADDLOCAL=FirewallException
 ```
 
 ## Best Practices
