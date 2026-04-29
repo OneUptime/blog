@@ -18,14 +18,16 @@ Virtual machines present unique challenges for IPv6: the hypervisor network stac
 cat << 'EOF' > /tmp/ipv6-network.xml
 <network>
   <name>ipv6-net</name>
-  <forward mode='nat'/>
+  <forward mode='nat'>
+    <nat ipv6='yes'/>
+  </forward>
   <bridge name='virbr1' stp='on' delay='0'/>
   <ip address='192.168.100.1' netmask='255.255.255.0'>
     <dhcp>
       <range start='192.168.100.2' end='192.168.100.254'/>
     </dhcp>
   </ip>
-  <ip family='ipv6' address='fd00:cafe::/64' prefix='64'>
+  <ip family='ipv6' address='fd00:cafe::1' prefix='64'>
     <dhcp>
       <range start='fd00:cafe::2' end='fd00:cafe::ff'/>
     </dhcp>
@@ -37,9 +39,8 @@ sudo virsh net-define /tmp/ipv6-network.xml
 sudo virsh net-start ipv6-net
 sudo virsh net-autostart ipv6-net
 
-# Enable IPv6 on the bridge interface
-sudo sysctl -w net.ipv6.conf.virbr1.disable_ipv6=0
-sudo ip -6 addr add fd00:cafe::1/64 dev virbr1
+# Verify the bridge address that libvirt assigned from the network XML
+ip -6 addr show dev virbr1
 ```
 
 ## KVM/QEMU Bridged Networking for IPv6
@@ -51,11 +52,15 @@ sudo ip -6 addr add fd00:cafe::1/64 dev virbr1
 # Create bridge
 sudo ip link add br0 type bridge
 sudo ip link set eth0 master br0
+sudo ip link set eth0 up
 sudo ip link set br0 up
 
-# Enable IPv6 on bridge
+# Move the host's IP configuration from eth0 to br0 using your distro's
+# persistent network configuration tooling before relying on the bridge.
 sudo sysctl -w net.ipv6.conf.br0.disable_ipv6=0
-sudo sysctl -w net.ipv6.conf.br0.accept_ra=1
+
+# If the host itself should accept RAs on br0 while IPv6 forwarding is enabled:
+sudo sysctl -w net.ipv6.conf.br0.accept_ra=2
 
 # Check if bridge passes NDP/RA
 sudo tcpdump -i br0 "ip6 proto 58" &
@@ -65,58 +70,57 @@ sudo tcpdump -i br0 "ip6 proto 58" &
 ## VirtualBox IPv6 Configuration
 
 ```bash
-# VirtualBox: Enable IPv6 on host-only adapter
-# GUI: File → Host Network Manager → IPv6 tab
+# VirtualBox: Enable IPv6 on a host-only network
+# GUI: Tools → Network → Host-Only Networks
 # Or use VBoxManage:
+
+# On Linux, macOS, and Solaris hosts, allow the IPv6 range first because
+# VirtualBox only permits link-local IPv6 on host-only adapters by default.
+sudo install -d /etc/vbox
+sudo tee /etc/vbox/networks.conf > /dev/null << 'EOF'
+* 192.168.56.0/21
+* fd56:1234:1::/64
+EOF
 
 # Create host-only network with IPv6
 VBoxManage hostonlyif create  # Creates vboxnet0
 VBoxManage hostonlyif ipconfig vboxnet0 \
-    --ip 192.168.56.1 --netmask 255.255.255.0
+    --ip=192.168.56.1 --netmask=255.255.255.0
 
 # Enable IPv6 on the host-only adapter
 VBoxManage hostonlyif ipconfig vboxnet0 \
-    --ipv6 fd56::1 --netmasklengthv6 64
+    --ipv6=fd56:1234:1::1 --netmasklengthv6=64
 
 # For NAT networks with IPv6:
 VBoxManage natnetwork add \
     --netname "NATNetworkv6" \
     --network "192.168.15.0/24" \
-    --enable --ipv6
+    --enable --ipv6=on
 
-# Enable IPv6 on the NAT network
+# Or enable IPv6 later on an existing NAT network
 VBoxManage natnetwork modify \
     --netname "NATNetworkv6" \
-    --ipv6 on
+    --ipv6=on
 ```
 
 ## VMware IPv6 Configuration
 
 ```bash
-# VMware Workstation/Fusion: IPv6 works by default in bridged mode
-# For NAT mode, configure vmnet8 for IPv6:
+# VMware Workstation/Fusion: bridged mode is the simplest way to use IPv6.
+# The guest receives Router Advertisements and DHCPv6 directly from the
+# upstream network, and VMware manages the default host-only (vmnet1)
+# and NAT (vmnet8) networks.
 
-# Linux host: edit /etc/vmware/vmnet8/dhcpd.conf
-# Add IPv6 subnet:
-# subnet6 fd00:vmware::/64 {
-#     range6 fd00:vmware::2 fd00:vmware::ff;
-# }
-
-# Enable IPv6 forwarding on VMware NAT interface
+# On Linux hosts, ensure IPv6 is enabled on the VMware host-side adapters
+sudo sysctl -w net.ipv6.conf.vmnet0.disable_ipv6=0
 sudo sysctl -w net.ipv6.conf.vmnet8.disable_ipv6=0
-sudo ip -6 addr add fd00:vmware::1/64 dev vmnet8
 
-# Add radvd configuration for VMware guests
-cat << 'EOF' | sudo tee /etc/radvd.conf
-interface vmnet8 {
-    AdvSendAdvert on;
-    prefix fd00:vmware::/64 {
-        AdvOnLink on;
-        AdvAutonomous on;
-    };
-};
-EOF
-sudo systemctl start radvd
+# On Linux hosts, capture Router Advertisements or other ICMPv6 traffic
+# on the bridged network
+sudo tcpdump -i vmnet0 "ip6 proto 58" -v
+
+# For vmnet1/vmnet8 subnet changes, use VMware's Network Editor/Preferences
+# instead of editing dhcpd.conf directly.
 ```
 
 ## In-VM IPv6 Troubleshooting
@@ -128,33 +132,35 @@ rdisc6 eth0
 
 # Check if hypervisor is blocking NDP
 # On the host, capture NDP traffic on the bridge/vmnet interface:
-sudo tcpdump -i virbr0 "ip6 proto 58" -v
+sudo tcpdump -i virbr1 "ip6 proto 58" -v
 
 # Ensure multicast works for NDP
-# Check if bridge filters multicast (common issue)
-cat /sys/class/net/virbr0/bridge/multicast_snooping
-# 0 = good (doesn't filter), 1 = may block NDP
+# On Linux bridges, 1 means snooping is enabled (the default), 0 means disabled
+cat /sys/class/net/virbr1/bridge/multicast_snooping
 
-# Disable multicast snooping if causing NDP issues
-echo 0 | sudo tee /sys/class/net/virbr0/bridge/multicast_snooping
+# Disable multicast snooping temporarily only as a diagnostic if multicast
+# forwarding for ICMPv6/NDP appears to be malfunctioning
+echo 0 | sudo tee /sys/class/net/virbr1/bridge/multicast_snooping
 ```
 
 ## Enabling IPv6 on VM Network Bridge (Linux)
 
 ```bash
-# Ensure kernel bridge settings allow IPv6 NDP
+# If the host is routing IPv6 between interfaces, enable forwarding
 sudo sysctl -w net.ipv6.conf.all.forwarding=1
-sudo sysctl -w net.ipv6.conf.all.proxy_ndp=1
+
+# Proxy NDP is only needed when the host must answer NDP on behalf of guests
+sudo sysctl net.ipv6.conf.all.proxy_ndp
 
 # If using ebtables, ensure IPv6/NDP is not filtered
 sudo ebtables -L | grep "ipv6\|ip6"
-# Should not have DROP rules for IPv6
+# Should not have DROP rules for IPv6 or ICMPv6/NDP
 
 # For LXC/LXD containers with IPv6:
-lxc network set lxdbr0 ipv6.address fd00:lxd::1/64
-lxc network set lxdbr0 ipv6.nat true
+lxc network set lxdbr0 ipv6.address=fd42:4242:4242::1/64
+lxc network set lxdbr0 ipv6.nat=true
 ```
 
 ## Conclusion
 
-IPv6 in VM environments requires IPv6 support at the hypervisor network layer, not just inside the VM. For bridged networking, IPv6 typically works automatically if the physical network provides RAs. For NAT/host-only networks, configure the virtual bridge with an IPv6 address and run `radvd` to advertise prefixes to VMs. Key troubleshooting steps: check `multicast_snooping` on bridges (disable if NDP fails), verify `accept_ra` inside VMs, and capture NDP traffic on the bridge interface to confirm RA packets are reaching the VMs.
+IPv6 in VM environments requires IPv6 support at the hypervisor network layer, not just inside the VM. For bridged networking, IPv6 typically works automatically if the physical network provides RAs. For NAT/host-only networks, use the hypervisor's built-in IPv6-aware network services when available, or run an RA/DHCPv6 service yourself when you are building a plain Linux bridge. Key troubleshooting steps: verify that RAs are reaching the guest, check bridge multicast behavior if ICMPv6 multicast forwarding looks wrong, and capture NDP traffic on the relevant bridge or vmnet interface.
