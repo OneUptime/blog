@@ -48,10 +48,10 @@ Configure DHCPv6 prefix delegation on MikroTik to receive a delegated IPv6 prefi
 
 ```text
 # Add IPv6 default route
-/ipv6 route add dst-address=::/0 gateway=2001:db8:wan::254
+/ipv6 route add dst-address=::/0 gateway=2001:db8:1::254
 
 # Add static route
-/ipv6 route add dst-address=2001:db8:remote::/48 gateway=2001:db8::254
+/ipv6 route add dst-address=2001:db8:2::/48 gateway=2001:db8::254
 
 # View IPv6 routing table
 /ipv6 route print
@@ -80,7 +80,7 @@ Configure DHCPv6 prefix delegation on MikroTik to receive a delegated IPv6 prefi
 /ipv6 dhcp-server add name=dhcpv6 interface=bridge address-pool=ipv6-pool
 
 # Create address pool
-/ipv6 pool add name=ipv6-pool prefix=2001:db8:lan::/64
+/ipv6 pool add name=ipv6-pool prefix=2001:db8:abcd::/64
 
 # View DHCP bindings
 /ipv6 dhcp-server binding print
@@ -90,7 +90,7 @@ Configure DHCPv6 prefix delegation on MikroTik to receive a delegated IPv6 prefi
 
 ```text
 # Configure RA for SLAAC
-/ipv6 nd add interface=bridge   advertise-dns=yes   dns=2001:4860:4860::8888   managed-address-configuration=no   other-configuration=no
+/ipv6 nd add interface=bridge advertise-dns=yes dns-servers=2001:4860:4860::8888 managed-address-configuration=no other-configuration=no
 
 # View ND settings
 /ipv6 nd print
@@ -108,7 +108,7 @@ For GUI configuration:
 
 ```text
 # Real-time traffic monitoring (Torch)
-/tool torch interface=ether1 ip-protocol=ipv6
+/tool torch interface=ether1 src-address6=::/0 ip-protocol=any
 
 # Interface statistics
 /ipv6 address print
