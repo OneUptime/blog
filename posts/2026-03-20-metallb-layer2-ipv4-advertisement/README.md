@@ -6,7 +6,7 @@ Tags: MetalLB, Kubernetes, IPv4, Layer 2, ARP, Networking
 
 Description: Configure MetalLB's Layer 2 mode to advertise IPv4 service addresses via ARP on bare-metal Kubernetes clusters without requiring BGP routing infrastructure.
 
-MetalLB Layer 2 mode is the simplest deployment model. One node responds to ARP requests for each external IP, acting as the service endpoint. This requires no special switch or router configuration.
+MetalLB Layer 2 mode is the simplest deployment model. One node responds to ARP requests for each external IP, acting as the network entry point for that IP. This requires no special switch or router configuration.
 
 ## How Layer 2 Mode Works
 
@@ -17,7 +17,7 @@ External Client → Sends traffic to that node
 Kubernetes → Forwards to service pods (any node)
 ```
 
-One node per IP is the "leader" for ARP. If that node fails, MetalLB elects a new leader and sends a gratuitous ARP to update switches.
+One node per IP is the "leader" for ARP. If that node fails, MetalLB chooses a new leader and sends unsolicited layer 2 packets so clients can update the MAC address associated with that IP.
 
 ## Prerequisites
 
@@ -41,7 +41,7 @@ metadata:
   namespace: metallb-system
 spec:
   addresses:
-  # Must be routable IPs on the same subnet as your nodes
+  # Must be routable IPs on the same L2 network as your nodes
   # Check your node IP range: kubectl get nodes -o wide
   - 192.168.1.200-192.168.1.250
 
@@ -85,34 +85,38 @@ kubectl apply -f metallb-l2advertisement.yaml
 
 ```bash
 # Create a test service
-kubectl create deployment test-app --image=nginx --replicas=2
-kubectl expose deployment test-app --type=LoadBalancer --port=80
+kubectl create deployment test-app --image=nginx --replicas=2 --port=80
+kubectl expose deployment test-app --type=LoadBalancer --port=80 --target-port=80
 
 # Wait for IP assignment
 kubectl get svc test-app -w
 # test-app   LoadBalancer   10.96.x.x   192.168.1.200   80:30xxx/TCP
 
 # Verify ARP works from a machine on the same network
-arp -d 192.168.1.200  # flush ARP cache
-ping 192.168.1.200
-arp -n 192.168.1.200
-# Should show a MAC address for your Kubernetes node
+arping -I <interface> 192.168.1.200
+# Should return unicast replies from the MAC address of the announcing node
+
+# Verify the service itself over TCP
+curl http://192.168.1.200
 ```
 
-## Monitoring L2 Leader Election
+## Monitoring L2 Advertisement
 
 ```bash
-# View which node is the L2 speaker/leader for each IP
-kubectl describe ipaddresspool l2-pool -n metallb-system
+# View which node is announcing each LoadBalancer service in L2 mode
+kubectl get servicel2statuses -n metallb-system
 
-# Check speaker logs for leader election events
-kubectl logs -n metallb-system -l component=speaker -f | grep -i "leader\|elected\|ARP"
+# Check the service events for the announcing node
+kubectl describe svc test-app
+
+# Check recent speaker logs
+kubectl logs -n metallb-system daemonset/speaker --all-pods=true --since=10m --prefix
 ```
 
 ## Limitations of L2 Mode
 
 - **Single point of ingress**: all external traffic for an IP enters via one node
-- **Same L2 network required**: the external IPs must be on the same subnet as nodes
-- **Failover takes 10-30 seconds**: the time for ARP cache to expire and re-elect
+- **Same L2 network required**: the external IPs must be on the same local network segment as the announcing nodes
+- **Failover depends on client ARP cache updates**: modern OSes usually converge within a few seconds, but buggy clients can take longer
 
 For production deployments with large traffic volumes or multi-subnet topologies, consider MetalLB BGP mode instead.
