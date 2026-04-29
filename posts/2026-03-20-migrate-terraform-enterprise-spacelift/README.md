@@ -57,7 +57,8 @@ resource "spacelift_stack" "app_prod" {
   project_root = "environments/prod"
 
   # Use OpenTofu instead of Terraform
-  opentofu_version = "1.9.0"
+  terraform_workflow_tool = "OPEN_TOFU"
+  terraform_version       = "1.10.0"
 
   # Equivalent to TFE auto-apply
   autodeploy = false  # require review first
@@ -99,9 +100,13 @@ resource "spacelift_environment_variable" "db_password" {
 Move state from TFE's managed backend to your own S3 backend.
 
 ```bash
-# Download state from TFE
-curl -s -H "Authorization: Bearer $TFE_TOKEN" \
-  "$TFE_URL/api/v2/workspaces/my-workspace-id/current-state-version/download" \
+# Download state from TFE - first fetch the state version metadata
+# to get the hosted download URL, then download the state file.
+STATE_URL=$(curl -s -H "Authorization: Bearer $TFE_TOKEN" \
+  "$TFE_URL/api/v2/workspaces/my-workspace-id/current-state-version" | \
+  jq -r '.data.attributes."hosted-state-download-url"')
+
+curl -s -H "Authorization: Bearer $TFE_TOKEN" "$STATE_URL" \
   -o terraform.tfstate
 
 # Update backend configuration to S3
