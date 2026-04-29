@@ -8,33 +8,34 @@ Description: Configure Apache Kafka listeners in server.properties to bind to sp
 
 ## Introduction
 
-Kafka brokers listen for client and inter-broker connections on addresses defined by the `listeners` property. By default, Kafka may bind to all interfaces. Specifying explicit IPv4 addresses limits exposure and ensures traffic flows through intended interfaces.
+Kafka brokers listen for client and inter-broker connections on addresses defined by the `listeners` property. Without an explicit host in `listeners`, Kafka does not bind to a specific IPv4 address. Specifying explicit IPv4 addresses limits exposure and ensures traffic flows through intended interfaces.
 
 ## Kafka Listeners Configuration
 
 ```properties
 # /etc/kafka/server.properties (or /opt/kafka/config/server.properties)
 
-# Unique broker ID
+# ZooKeeper mode broker ID (older clusters only)
 
 broker.id=1
 
 # Listeners: comma-separated list of name://host:port
-# Listener names: PLAINTEXT, SSL, SASL_PLAINTEXT, SASL_SSL
+# Listener names can be protocol names or custom names such as CONTROLLER
 listeners=PLAINTEXT://10.0.0.1:9092,CONTROLLER://10.0.0.1:9093
 
-# The address advertised to producers and consumers
+# The address advertised to clients and other brokers
 # Must be reachable by clients
 advertised.listeners=PLAINTEXT://10.0.0.1:9092
 
 # Map listener names to security protocols
 listener.security.protocol.map=PLAINTEXT:PLAINTEXT,CONTROLLER:PLAINTEXT
 
-# KRaft (KIP-500) or Zookeeper mode
+# Current Kafka releases use KRaft
 # KRaft:
 process.roles=broker,controller
 node.id=1
-controller.quorum.voters=1@10.0.0.1:9093,2@10.0.0.2:9093,3@10.0.0.3:9093
+controller.listener.names=CONTROLLER
+controller.quorum.bootstrap.servers=10.0.0.1:9093,10.0.0.2:9093,10.0.0.3:9093
 ```
 
 ## Multiple Listeners on Different IPs
@@ -62,7 +63,7 @@ sudo systemctl restart kafka
 
 # Verify Kafka is listening on expected addresses
 sudo ss -tlnp | grep java | grep -E "9092|9093"
-# Expected: 10.0.0.1:9092
+# Expected: 10.0.0.1:9092 and 10.0.0.1:9093
 
 # Check Kafka logs for binding confirmation
 sudo tail -30 /var/log/kafka/server.log | grep -i "listen\|bind"
@@ -79,9 +80,16 @@ sudo ufw allow from 10.0.0.1 to any port 9092
 sudo ufw allow from 10.0.0.2 to any port 9092
 sudo ufw allow from 10.0.0.3 to any port 9092
 
+# Allow KRaft controller quorum communication on 9093
+sudo ufw allow from 10.0.0.1 to any port 9093
+sudo ufw allow from 10.0.0.2 to any port 9093
+sudo ufw allow from 10.0.0.3 to any port 9093
+
 # iptables
 sudo iptables -A INPUT -p tcp --dport 9092 -s 10.0.0.0/24 -j ACCEPT
+sudo iptables -A INPUT -p tcp --dport 9093 -s 10.0.0.0/24 -j ACCEPT
 sudo iptables -A INPUT -p tcp --dport 9092 -j DROP
+sudo iptables -A INPUT -p tcp --dport 9093 -j DROP
 ```
 
 ## Testing the Listener
@@ -95,7 +103,7 @@ kafka-topics.sh --bootstrap-server 10.0.0.1:9092 --list
 
 # Produce a test message
 echo "test" | kafka-console-producer.sh \
-  --broker-list 10.0.0.1:9092 \
+  --bootstrap-server 10.0.0.1:9092 \
   --topic test-topic
 
 # Check broker metadata
@@ -104,4 +112,4 @@ kafka-broker-api-versions.sh --bootstrap-server 10.0.0.1:9092
 
 ## Conclusion
 
-Kafka `listeners` defines the actual binding addresses; `advertised.listeners` defines what clients are told to connect to. For a single-interface broker, both should specify the same IPv4. For multi-interface or NAT scenarios, `listeners` uses the internal IP while `advertised.listeners` uses the externally reachable IP. Always use named listener protocols (PLAINTEXT, SSL) and map them in `listener.security.protocol.map`.
+Kafka `listeners` defines the actual binding addresses; `advertised.listeners` defines what clients and other brokers are told to connect to. For a single-interface broker, both should specify the same IPv4. For multi-interface setups, each listener can bind to the interface it serves; for NAT scenarios, `advertised.listeners` may need an externally reachable IP that differs from `listeners`. Listener names can be protocol names or custom names, and custom names must be mapped in `listener.security.protocol.map`.
