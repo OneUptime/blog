@@ -33,14 +33,8 @@ MikroTik Queue Trees implement hierarchical token bucket (HTB) queuing. Combined
 
 ```mikrotik
 # Step 1: Mark traffic with mangle
-
-# Mark all download traffic
-/ip firewall mangle add \
-  chain=forward \
-  in-interface=ether1 \
-  action=mark-packet \
-  new-packet-mark=DOWNLOAD \
-  passthrough=no
+# Order matters: more specific rules (VoIP) must come before
+# the catch-all DOWNLOAD rule because passthrough=no stops processing.
 
 # Mark VoIP traffic with high priority
 /ip firewall mangle add \
@@ -51,15 +45,23 @@ MikroTik Queue Trees implement hierarchical token bucket (HTB) queuing. Combined
   new-packet-mark=VOIP \
   passthrough=no
 
-# Step 2: Create parent queue tree (total bandwidth)
+# Mark all remaining download traffic
+/ip firewall mangle add \
+  chain=forward \
+  in-interface=ether1 \
+  action=mark-packet \
+  new-packet-mark=DOWNLOAD \
+  passthrough=no
+
+# Step 2: Create parent queue tree (total bandwidth aggregator)
+# A parent without packet-mark sums the bandwidth of its children.
 /queue tree add \
   name=TOTAL-DOWNLOAD \
   parent=global \
-  packet-mark=DOWNLOAD \
   max-limit=100M \
   comment="100 Mbps total download"
 
-# Step 3: Create child queues
+# Step 3: Create child queues - each child must have its own packet-mark
 /queue tree add \
   name=VOIP-PRIORITY \
   parent=TOTAL-DOWNLOAD \
@@ -71,6 +73,7 @@ MikroTik Queue Trees implement hierarchical token bucket (HTB) queuing. Combined
 /queue tree add \
   name=GENERAL-DOWNLOAD \
   parent=TOTAL-DOWNLOAD \
+  packet-mark=DOWNLOAD \
   priority=8 \
   max-limit=100M \
   limit-at=50M \
