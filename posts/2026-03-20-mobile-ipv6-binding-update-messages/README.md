@@ -100,7 +100,8 @@ Status Codes:
   128 = Reason unspecified
   129 = Administratively prohibited
   130 = Insufficient resources
-  133 = Not home subnet
+  132 = Not home subnet
+  133 = Not home agent for this mobile node
   135 = Sequence number out of window
   136 = Expired home nonce index
   137 = Expired care-of nonce index
@@ -124,7 +125,7 @@ mip6d -n
 ```
 
 ```python
-# MN should refresh BU before lifetime/2 expires (RFC 6275 §9.5.1)
+# MN should refresh BU before lifetime/2 expires (RFC 6275 §11.7.1)
 import time
 
 def binding_refresh_loop(mn, refresh_interval_fraction=0.5):
