@@ -4,7 +4,7 @@ Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
 Tags: Rust, IPv6, Hyper, HTTP, Async, Tokio
 
-Description: Build low-level IPv6 HTTP servers with Rust's Hyper library, handle requests, extract client IPs, and serve TLS over IPv6.
+Description: Build low-level IPv6 HTTP servers with Rust's Hyper library, handle requests, extract client IPs, and serve cleartext HTTP/2 over IPv6.
 
 ## Basic Hyper IPv6 HTTP Server
 
@@ -59,7 +59,7 @@ async fn main() -> Result<(), Box<dyn std::error::Error + Send + Sync>> {
 }
 ```
 
-## Extracting Client IPv6 Address
+## Extracting Client IP Address
 
 Pass the peer address into the handler using a closure that captures it:
 
@@ -138,10 +138,13 @@ async fn router(req: Request<hyper::body::Incoming>) -> Result<Response<Full<Byt
 }
 ```
 
-## HTTP/2 over IPv6
+## Cleartext HTTP/2 over IPv6
 
 ```rust
+use bytes::Bytes;
+use http_body_util::Full;
 use hyper::server::conn::http2;
+use hyper::service::service_fn;
 use hyper_util::rt::{TokioExecutor, TokioIo};
 use tokio::net::TcpListener;
 
@@ -177,13 +180,27 @@ async fn handle(
 ## Graceful Shutdown
 
 ```rust
+use bytes::Bytes;
+use http_body_util::Full;
+use hyper::server::conn::http1;
+use hyper::service::service_fn;
+use hyper::{Request, Response};
+use hyper_util::rt::TokioIo;
 use hyper_util::server::graceful::GracefulShutdown;
 use tokio::net::TcpListener;
+
+async fn handle(
+    req: Request<hyper::body::Incoming>,
+) -> Result<Response<Full<Bytes>>, hyper::Error> {
+    println!("Request: {} {}", req.method(), req.uri());
+    Ok(Response::new(Full::new(Bytes::from("Hello from IPv6 Hyper!\n"))))
+}
 
 #[tokio::main]
 async fn main() -> Result<(), Box<dyn std::error::Error + Send + Sync>> {
     let listener = TcpListener::bind("[::]:8080").await?;
     let graceful = GracefulShutdown::new();
+    let mut signal = std::pin::pin!(tokio::signal::ctrl_c());
 
     loop {
         tokio::select! {
@@ -200,13 +217,15 @@ async fn main() -> Result<(), Box<dyn std::error::Error + Send + Sync>> {
                     }
                 });
             }
-            _ = tokio::signal::ctrl_c() => {
+            _ = &mut signal => {
                 println!("Shutting down...");
-                graceful.shutdown().await;
+                drop(listener);
                 break;
             }
         }
     }
+
+    graceful.shutdown().await;
 
     Ok(())
 }
