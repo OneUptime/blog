@@ -79,7 +79,7 @@ name = "${var.environment}"   # Unnecessary interpolation
 # PREFERRED: Direct reference
 name = var.environment
 
-# DEPRECATED: list() and map() functions
+# DEPRECATED: Interpolation inside list literals
 subnets = ["${aws_subnet.a.id}", "${aws_subnet.b.id}"]
 
 # PREFERRED: Direct list
@@ -97,24 +97,27 @@ user_data = templatefile("user-data.sh.tpl", { env = var.environment })
 
 ## Step 4: Adopt OpenTofu-Specific Features (Optional)
 
-OpenTofu 1.8+ features not in Terraform:
+Newer OpenTofu features worth considering after migration:
 
 ```hcl
-# OpenTofu 1.8+: Provider iteration (not available in Terraform)
+# OpenTofu 1.9+: Provider iteration (not available in Terraform)
 provider "aws" {
   for_each = toset(["us-east-1", "eu-west-1"])
   alias    = each.key
   region   = each.key
 }
 
-# OpenTofu 1.10+: Write-only attributes (passwords never stored in state)
+# OpenTofu 1.11+: Write-only attributes (values never stored in state)
+# The provider exposes a *_wo attribute (e.g. password_wo) with a paired
+# *_wo_version field used to trigger updates.
 resource "aws_db_instance" "postgres" {
   identifier     = "prod-postgres"
   engine         = "postgres"
   instance_class = "db.t3.medium"
+  username       = "admin"
 
-  # write_only = true means value never stored in state
-  password = var.db_password  # ephemeral, write-only
+  password_wo         = var.db_password
+  password_wo_version = 1
 }
 ```
 
