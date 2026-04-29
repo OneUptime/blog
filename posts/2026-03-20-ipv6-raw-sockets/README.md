@@ -18,11 +18,10 @@ IPv6 raw sockets allow applications to send and receive IPv6 packets with custom
 sudo ./rawsock
 
 # Option 2: Grant CAP_NET_RAW capability to the binary
-sudo setcap cap_net_raw+eip ./rawsock
+sudo setcap cap_net_raw=ep ./rawsock
 
-# Option 3: Check if you have the capability
-grep CapEff /proc/self/status | awk '{print $2}' | \
-    xargs printf "%d\n" | xargs -I{} python3 -c "print(bool({} & (1<<13)))"
+# Option 3: Verify the binary has the capability
+getcap ./rawsock
 ```
 
 ## Creating an ICMPv6 Raw Socket
@@ -39,9 +38,7 @@ grep CapEff /proc/self/status | awk '{print $2}' | \
 
 /* ICMPv6 Echo Request structure */
 struct icmp6_echo {
-    struct icmp6_hdr hdr;    /* type=128, code=0, checksum */
-    uint16_t id;             /* Identifier */
-    uint16_t seq;            /* Sequence number */
+    struct icmp6_hdr hdr;    /* type, code, checksum, id, seq */
     uint8_t  data[32];       /* Payload */
 };
 
@@ -64,7 +61,7 @@ int create_icmpv6_socket(void) {
     int hops = 64;
     setsockopt(sockfd, IPPROTO_IPV6, IPV6_UNICAST_HOPS, &hops, sizeof(hops));
 
-    /* Enable receiving source address and interface info */
+    /* Enable ancillary data for destination address, interface, and hop limit */
     int on = 1;
     setsockopt(sockfd, IPPROTO_IPV6, IPV6_RECVPKTINFO, &on, sizeof(on));
     setsockopt(sockfd, IPPROTO_IPV6, IPV6_RECVHOPLIMIT, &on, sizeof(on));
@@ -87,20 +84,13 @@ int create_icmpv6_socket(void) {
 
 int send_icmpv6_echo(int sockfd, const char *dest_addr, uint16_t seq) {
     /* Build ICMPv6 Echo Request */
-    struct {
-        uint8_t  type;       /* 128 = Echo Request */
-        uint8_t  code;       /* 0 */
-        uint16_t checksum;   /* Calculated by kernel */
-        uint16_t id;
-        uint16_t seq;
-        char     data[32];
-    } __attribute__((packed)) echo_req;
+    struct icmp6_echo echo_req;
 
     memset(&echo_req, 0, sizeof(echo_req));
-    echo_req.type = ICMP6_ECHO_REQUEST;  /* 128 */
-    echo_req.code = 0;
-    echo_req.id   = htons(getpid() & 0xFFFF);
-    echo_req.seq  = htons(seq);
+    echo_req.hdr.icmp6_type = ICMP6_ECHO_REQUEST;  /* 128 */
+    echo_req.hdr.icmp6_code = 0;
+    echo_req.hdr.icmp6_id   = htons(getpid() & 0xFFFF);
+    echo_req.hdr.icmp6_seq  = htons(seq);
 
     /* Fill payload with timestamp */
     struct timespec ts;
@@ -111,7 +101,10 @@ int send_icmpv6_echo(int sockfd, const char *dest_addr, uint16_t seq) {
     struct sockaddr_in6 dest;
     memset(&dest, 0, sizeof(dest));
     dest.sin6_family = AF_INET6;
-    inet_pton(AF_INET6, dest_addr, &dest.sin6_addr);
+    if (inet_pton(AF_INET6, dest_addr, &dest.sin6_addr) != 1) {
+        fprintf(stderr, "Invalid IPv6 address: %s\n", dest_addr);
+        return -1;
+    }
 
     ssize_t sent = sendto(sockfd, &echo_req, sizeof(echo_req), 0,
                           (struct sockaddr *)&dest, sizeof(dest));
@@ -133,20 +126,21 @@ int receive_icmpv6_echo_reply(int sockfd) {
                          (struct sockaddr *)&sender, &sender_len);
     if (n < 0) { perror("recvfrom"); return -1; }
 
-    /* The buffer contains the ICMPv6 message (kernel strips IPv6 header) */
+    /* The buffer contains the ICMPv6 message, not the IPv6 header */
     if (n < 8) return -1;  /* Too short */
 
-    uint8_t type = buf[0];
-    uint8_t code = buf[1];
+    struct icmp6_hdr reply;
+    memcpy(&reply, buf, sizeof(reply));
 
     char sender_ip[INET6_ADDRSTRLEN];
     inet_ntop(AF_INET6, &sender.sin6_addr, sender_ip, sizeof(sender_ip));
 
-    if (type == ICMP6_ECHO_REPLY) {  /* 129 */
-        uint16_t seq = ntohs(*(uint16_t *)(buf + 6));
+    if (reply.icmp6_type == ICMP6_ECHO_REPLY) {  /* 129 */
+        uint16_t seq = ntohs(reply.icmp6_seq);
         printf("ICMPv6 Echo Reply from [%s]: seq=%d\n", sender_ip, seq);
     } else {
-        printf("ICMPv6 type=%d code=%d from [%s]\n", type, code, sender_ip);
+        printf("ICMPv6 type=%d code=%d from [%s]\n",
+               reply.icmp6_type, reply.icmp6_code, sender_ip);
     }
 
     return 0;
@@ -158,7 +152,7 @@ int receive_icmpv6_echo_reply(int sockfd) {
 Use ICMPv6 socket filters to receive only specific message types:
 
 ```c
-#include <linux/filter.h>
+#include <string.h>
 #include <netinet/icmp6.h>
 
 void set_icmpv6_filter(int sockfd, int receive_echo_replies_only) {
@@ -185,7 +179,7 @@ void set_icmpv6_filter(int sockfd, int receive_echo_replies_only) {
 ```c
 int main(int argc, char *argv[]) {
     if (argc != 2) {
-        fprintf(stderr, "Usage: %s <ipv6-address>\n", argv[0]);
+        fprintf(stderr, "Usage: %s <numeric-ipv6-address>\n", argv[0]);
         return 1;
     }
 
@@ -216,13 +210,13 @@ int main(int argc, char *argv[]) {
 gcc -o ping6_example ping6_example.c -Wall
 
 # Grant raw socket capability
-sudo setcap cap_net_raw+eip ./ping6_example
+sudo setcap cap_net_raw=ep ./ping6_example
 
 # Test
 ./ping6_example ::1
-./ping6_example 2001:db8::1
+./ping6_example 2001:db8::1  # replace with a reachable IPv6 address
 ```
 
 ## Conclusion
 
-IPv6 raw sockets with `SOCK_RAW` and `IPPROTO_ICMPV6` allow applications to send and receive ICMPv6 messages at the packet level. The kernel handles IPv6 header construction and ICMPv6 checksum calculation. Use `ICMP6_FILTER` to efficiently filter incoming message types, and `IPV6_RECVPKTINFO` to receive destination address information in ancillary data. Raw sockets require `CAP_NET_RAW` capability.
+IPv6 raw sockets with `SOCK_RAW` and `IPPROTO_ICMPV6` allow applications to send and receive ICMPv6 messages at the packet level. The kernel handles IPv6 header construction and ICMPv6 checksum calculation. Use `ICMP6_FILTER` to efficiently filter incoming message types, and use `IPV6_RECVPKTINFO` with `recvmsg()` if you need destination address information in ancillary data. Raw sockets require `CAP_NET_RAW` capability.
