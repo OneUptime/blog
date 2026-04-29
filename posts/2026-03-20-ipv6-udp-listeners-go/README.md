@@ -76,7 +76,9 @@ func sendUDPv6(serverAddr string, message string) (string, error) {
     }
     defer conn.Close()
 
-    conn.SetDeadline(time.Now().Add(5 * time.Second))
+    if err := conn.SetDeadline(time.Now().Add(5 * time.Second)); err != nil {
+        return "", fmt.Errorf("deadline: %w", err)
+    }
 
     _, err = conn.Write([]byte(message))
     if err != nil {
@@ -109,9 +111,8 @@ package main
 
 import (
     "fmt"
-    "net"
     "log"
-    "golang.org/x/net/ipv6"
+    "net"
 )
 
 func joinIPv6Multicast(group string, ifName string, port int) {
@@ -150,8 +151,8 @@ func joinIPv6Multicast(group string, ifName string, port int) {
 }
 
 func main() {
-    // ff02::1 is the all-nodes multicast group
-    joinIPv6Multicast("ff02::1", "eth0", 5353)
+    // Use a sample link-local multicast group
+    joinIPv6Multicast("ff02::114", "eth0", 9999)
 }
 ```
 
@@ -182,18 +183,25 @@ func sendIPv6Multicast(group string, ifName string, port int, message string) er
 
     // Set the outgoing interface for multicast
     pc := ipv6.NewPacketConn(conn)
-    pc.SetMulticastInterface(iface)
-    pc.SetMulticastHopLimit(2)
+    if err := pc.SetMulticastInterface(iface); err != nil {
+        return fmt.Errorf("set multicast interface: %w", err)
+    }
+    if err := pc.SetMulticastHopLimit(1); err != nil {
+        return fmt.Errorf("set multicast hop limit: %w", err)
+    }
 
     // Send to multicast group
-    groupAddr, _ := net.ResolveUDPAddr("udp6",
+    groupAddr, err := net.ResolveUDPAddr("udp6",
         fmt.Sprintf("[%s]:%d", group, port))
+    if err != nil {
+        return fmt.Errorf("resolve group: %w", err)
+    }
     _, err = conn.WriteToUDP([]byte(message), groupAddr)
     return err
 }
 
 func main() {
-    err := sendIPv6Multicast("ff02::fb", "eth0", 5353, "DISCOVER_SERVICE")
+    err := sendIPv6Multicast("ff02::114", "eth0", 9999, "DISCOVER_SERVICE")
     if err != nil {
         fmt.Println("Error:", err)
     } else {
@@ -219,7 +227,10 @@ type UDPv6Server struct {
 }
 
 func NewUDPv6Server(port int, handler func([]byte, *net.UDPAddr) []byte) (*UDPv6Server, error) {
-    addr, _ := net.ResolveUDPAddr("udp6", fmt.Sprintf("[::]:%d", port))
+    addr, err := net.ResolveUDPAddr("udp6", fmt.Sprintf("[::]:%d", port))
+    if err != nil {
+        return nil, err
+    }
     conn, err := net.ListenUDP("udp6", addr)
     if err != nil {
         return nil, err
@@ -251,4 +262,4 @@ func (s *UDPv6Server) Serve(workers int) {
 
 ## Conclusion
 
-Go's `net.ListenUDP("udp6", ...)` creates IPv6 UDP listeners cleanly. For multicast, use `net.ListenMulticastUDP()` for receiving and `golang.org/x/net/ipv6` package for sending to multicast groups with proper interface selection. The `ReadFromUDP`/`WriteToUDP` pair provides the connectionless UDP semantics needed for broadcast-style IPv6 protocols.
+Go's `net.ListenUDP("udp6", ...)` creates IPv6 UDP listeners cleanly. For multicast, use `net.ListenMulticastUDP()` for receiving and `golang.org/x/net/ipv6` package for sending to multicast groups with proper interface selection. The `ReadFromUDP`/`WriteToUDP` pair provides the connectionless UDP semantics needed for multicast-style IPv6 protocols.
