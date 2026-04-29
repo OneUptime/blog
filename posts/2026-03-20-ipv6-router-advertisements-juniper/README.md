@@ -12,7 +12,7 @@ Juniper Junos handles IPv6 Router Advertisements through the `protocols router-a
 
 ## Prerequisites
 
-- Juniper device running Junos 10.0 or later
+- Juniper device running a Junos release that supports the options you plan to use (`dns-server-address` was introduced in Junos 14.1)
 - IPv6 forwarding enabled (default on most Junos platforms)
 - Interface with IPv6 address configured
 
@@ -41,11 +41,11 @@ set protocols router-advertisement interface ge-0/0/1.0 default-lifetime 1800
 set protocols router-advertisement interface ge-0/0/1.0 prefix 2001:db8:1:1::/64 valid-lifetime 86400
 set protocols router-advertisement interface ge-0/0/1.0 prefix 2001:db8:1:1::/64 preferred-lifetime 14400
 
-# Disable autonomous addressing (clients use DHCPv6 for addresses)
-set protocols router-advertisement interface ge-0/0/1.0 prefix 2001:db8:1:1::/64 no-autonomous-flag
+# Disable SLAAC for this prefix (pair this with the M flag and DHCPv6 if you want stateful IPv6 addresses)
+set protocols router-advertisement interface ge-0/0/1.0 prefix 2001:db8:1:1::/64 no-autonomous
 
-# Enable on-link flag (prefix is directly reachable without routing)
-set protocols router-advertisement interface ge-0/0/1.0 prefix 2001:db8:1:1::/64 onlink-flag
+# Explicitly advertise the prefix as on-link
+set protocols router-advertisement interface ge-0/0/1.0 prefix 2001:db8:1:1::/64 on-link
 ```
 
 ## Setting M and O Flags
@@ -60,14 +60,14 @@ set protocols router-advertisement interface ge-0/0/1.0 other-stateful-configura
 
 ## Configuring RDNSS (DNS via RA)
 
-Junos supports RFC 8106 RDNSS/DNSSL on modern versions:
+Junos supports RA-based DNS options (RDNSS/DNSSL) on releases that include the `dns-server-address` and `dns-search-list` statements:
 
 ```text
 # Advertise DNS server via Router Advertisement
 set protocols router-advertisement interface ge-0/0/1.0 dns-server-address 2001:db8:1:1::53
 
-# If your Junos version supports DNSSL (Junos 18.1+)
-# set protocols router-advertisement interface ge-0/0/1.0 dns-search-list corp.example.com
+# If your Junos release supports DNSSL, you can also advertise a search list
+# set protocols router-advertisement interface ge-0/0/1.0 dns-search-list corp.example.com lifetime 1800
 ```
 
 ## Full Configuration in Stanza Format
@@ -82,7 +82,7 @@ protocols {
             prefix 2001:db8:1:1::/64 {
                 valid-lifetime 86400;
                 preferred-lifetime 14400;
-                onlink-flag;
+                on-link;
             }
             dns-server-address 2001:db8:1:1::53;
         }
@@ -93,23 +93,24 @@ protocols {
 ## Suppressing RA on Specific Interfaces
 
 ```text
-# Suppress RAs on the WAN/uplink interface
-set protocols router-advertisement interface ge-0/0/0.0 no-advertisement
+# Junos sends RAs only on interfaces configured under protocols router-advertisement.
+# To stop advertising on the WAN/uplink interface, remove its RA stanza:
+delete protocols router-advertisement interface ge-0/0/0.0
 ```
 
 ## Verifying Router Advertisement Configuration
 
 ```text
 # Show RA configuration
-show protocols router-advertisement
+show configuration protocols router-advertisement
 
 # Show RA interface status and statistics
 show ipv6 router-advertisement
 
-# Show router advertisement statistics per interface
-show ipv6 router-advertisement interface ge-0/0/1.0 detail
+# Show router advertisement information for a specific interface
+show ipv6 router-advertisement interface ge-0/0/1.0
 
-# Verify IPv6 neighbors (clients that received the RA)
+# Verify IPv6 neighbors on the link
 show ipv6 neighbors
 ```
 
@@ -117,19 +118,23 @@ Sample output of `show ipv6 router-advertisement`:
 
 ```text
 Interface: ge-0/0/1.0
-  Advertisement interval: 30 - 100 seconds
-  Default lifetime: 1800 seconds
-  Reachable time: 0 ms
-  Retransmit timer: 0 ms
-  Hop count: 64
-  Managed config flag: No
-  Other config flag: No
-  Prefix: 2001:db8:1:1::/64
-    Valid lifetime: 86400 seconds
-    Preferred lifetime: 14400 seconds
-    On-link flag: Yes
-    Autonomous flag: Yes
-  DNS servers: 2001:db8:1:1::53
+  Advertisements sent: 37, last sent 00:01:41 ago
+  Solicits received: 0
+  Advertisements received: 38
+  Advertisement from fe80::200:5eff:fe00:53, heard 00:05:46 ago
+    Managed: 0
+    Other configuration: 0
+    Reachable time: 0 ms
+    Default lifetime: 1800 sec
+    Retransmit timer: 0 ms
+    Current hop limit: 64
+    RDNSS address: 2001:db8:1:1::53
+    Lifetime: 1800 sec
+    Prefix: 2001:db8:1:1::/64
+    Valid lifetime: 86400 sec
+    Preferred lifetime: 14400 sec
+    On link: 1
+    Autonomous: 1
 ```
 
 ## Conclusion
