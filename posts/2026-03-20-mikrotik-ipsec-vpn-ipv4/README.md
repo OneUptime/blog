@@ -8,26 +8,26 @@ Description: Configure a site-to-site IPsec VPN between two MikroTik routers for
 
 ## Introduction
 
-MikroTik RouterOS supports IPsec natively. A site-to-site IPsec VPN requires matching Phase 1 (IKE) proposals, Phase 2 (IPsec) profiles, and peer definitions on both endpoints.
+MikroTik RouterOS supports IPsec natively. A site-to-site IPsec VPN requires matching Phase 1 (IKE) profiles, Phase 2 (IPsec) proposals, and peer definitions on both endpoints.
 
 ## Router A Configuration (Site A: 192.168.1.0/24)
 
 ```mikrotik
-# IKE Phase 1 proposal
+# IKE Phase 1 profile
 
-/ip ipsec proposal add \
-  name=IKE-PROPOSAL \
-  auth-algorithms=sha256 \
-  enc-algorithms=aes-256-cbc \
-  pfs-group=modp2048
-
-# IPsec Phase 2 profile
 /ip ipsec profile add \
   name=IPSEC-PROFILE \
   hash-algorithm=sha256 \
   enc-algorithm=aes-256 \
   dh-group=modp2048 \
   lifetime=1h
+
+# IPsec Phase 2 proposal
+/ip ipsec proposal add \
+  name=IKE-PROPOSAL \
+  auth-algorithms=sha256 \
+  enc-algorithms=aes-256-cbc \
+  pfs-group=modp2048
 
 # Peer definition (Router B's public IP)
 /ip ipsec peer add \
@@ -44,6 +44,7 @@ MikroTik RouterOS supports IPsec natively. A site-to-site IPsec VPN requires mat
 
 # Policy - what traffic to encrypt
 /ip ipsec policy add \
+  peer=SITE-B \
   src-address=192.168.1.0/24 \
   dst-address=192.168.2.0/24 \
   sa-src-address=203.0.113.1 \
@@ -65,18 +66,18 @@ MikroTik RouterOS supports IPsec natively. A site-to-site IPsec VPN requires mat
 ## Router B Configuration (Site B: 192.168.2.0/24)
 
 ```mikrotik
-/ip ipsec proposal add \
-  name=IKE-PROPOSAL \
-  auth-algorithms=sha256 \
-  enc-algorithms=aes-256-cbc \
-  pfs-group=modp2048
-
 /ip ipsec profile add \
   name=IPSEC-PROFILE \
   hash-algorithm=sha256 \
   enc-algorithm=aes-256 \
   dh-group=modp2048 \
   lifetime=1h
+
+/ip ipsec proposal add \
+  name=IKE-PROPOSAL \
+  auth-algorithms=sha256 \
+  enc-algorithms=aes-256-cbc \
+  pfs-group=modp2048
 
 /ip ipsec peer add \
   name=SITE-A \
@@ -90,6 +91,7 @@ MikroTik RouterOS supports IPsec natively. A site-to-site IPsec VPN requires mat
   secret=IPsecSharedKey123
 
 /ip ipsec policy add \
+  peer=SITE-A \
   src-address=192.168.2.0/24 \
   dst-address=192.168.1.0/24 \
   sa-src-address=203.0.113.2 \
