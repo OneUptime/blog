@@ -13,13 +13,13 @@ ntopng is an open-source network traffic monitoring tool that provides a web-bas
 ## Step 1: Install ntopng on Ubuntu/Debian
 
 ```bash
-# Add ntop repository
+# Install prerequisites and the ntop repository package
+# (replace 22.04 with 20.04 or 24.04 as appropriate for your release)
+sudo apt-get install -y software-properties-common wget
+wget https://packages.ntop.org/apt-stable/22.04/all/apt-ntop-stable.deb
+sudo apt install -y ./apt-ntop-stable.deb
 
-sudo apt-get install -y software-properties-common curl
-curl https://packages.ntop.org/APT/ntop.key | sudo apt-key add -
-echo "deb http://packages.ntop.org/apt-stable/20.04/ x64/" | \
-  sudo tee /etc/apt/sources.list.d/ntop.list
-
+sudo apt-get clean all
 sudo apt-get update
 sudo apt-get install -y ntopng nprobe
 
@@ -30,18 +30,15 @@ sudo systemctl start ntopng
 
 ## Step 2: Configure ntopng to Receive NetFlow
 
-Create or edit the ntopng configuration:
+ntopng does not collect NetFlow directly. nProbe acts as the flow collector and forwards
+the data to ntopng over a ZMQ socket. Configure ntopng to consume that socket:
 
 ```bash
 # Edit /etc/ntopng/ntopng.conf
 cat > /etc/ntopng/ntopng.conf << 'EOF'
-# Network interfaces to monitor
-# For NetFlow: use the netflow protocol with port
--i=netflow:0.0.0.0:2055
-
-# For multiple sources (NetFlow + sFlow)
-# -i=netflow:0.0.0.0:2055
-# -i=sflow:0.0.0.0:6343
+# Consume flows from nProbe over ZMQ (probe mode: nProbe connects to ntopng).
+# The trailing 'c' tells ntopng to act as the ZMQ collector endpoint.
+-i=tcp://*:5556c
 
 # Web interface port
 -w=3000
@@ -52,26 +49,31 @@ cat > /etc/ntopng/ntopng.conf << 'EOF'
 # Enable community edition features
 --community
 
-# Set admin password
---auth-password=Ntopng@Adm1n!
-
 EOF
 
 sudo systemctl restart ntopng
 ```
 
-## Step 3: Configure ntopng for sFlow
-
-To receive sFlow instead of (or in addition to) NetFlow:
+Then run nProbe as a NetFlow collector that forwards flows to ntopng via ZMQ:
 
 ```bash
-# Add sFlow interface to ntopng configuration
-# In /etc/ntopng/ntopng.conf, add or change the -i line:
--i=sflow:0.0.0.0:6343
-
-# Or for both NetFlow and sFlow simultaneously:
--i=netflow:0.0.0.0:2055,sflow:0.0.0.0:6343
+# Listen for NetFlow v5/v9/IPFIX on UDP/2055 and forward to ntopng on tcp://*:5556
+sudo nprobe -i none -n none --collector-port 2055 --zmq tcp://127.0.0.1:5556
 ```
+
+## Step 3: Configure ntopng for sFlow
+
+To receive sFlow instead of (or in addition to) NetFlow, run a second nProbe instance
+that listens on the sFlow port (6343) and forwards to the same ntopng ZMQ endpoint:
+
+```bash
+# nProbe collecting sFlow on UDP/6343
+sudo nprobe -i none -n none --collector-port 6343 --zmq tcp://127.0.0.1:5556
+```
+
+Because ntopng is started with `-i=tcp://*:5556c` (probe/collector mode), multiple
+nProbe instances can connect to the same ntopng socket simultaneously, allowing both
+NetFlow and sFlow data to be ingested at once.
 
 ## Step 4: Configure Network Devices to Send Flows to ntopng
 
@@ -91,7 +93,7 @@ Router(config-if)# ip flow egress
 
 ## Step 5: Access the ntopng Dashboard
 
-Open your browser and navigate to `http://server-ip:3000`. Login with `admin` and the password you configured.
+Open your browser and navigate to `http://server-ip:3000`. Login with the default credentials `admin` / `admin`; ntopng will prompt you to change the password on first login.
 
 Key dashboard sections:
 - **Top Talkers:** Hosts generating the most traffic
@@ -101,33 +103,30 @@ Key dashboard sections:
 
 ## Step 6: Set Up Traffic Alerts
 
-Configure ntopng to alert on anomalous traffic via the web UI or configuration file:
+Configure ntopng to alert on anomalous traffic via the web UI:
 
-```bash
-# ntopng supports alert recipients via webhook, email, or syslog
-# Configure via the web UI under: Settings > Notifications > Alert Endpoints
+- **Notification endpoints** (webhook, email, syslog, Slack, etc.) are configured under
+  **Settings > Notifications > Endpoints** and bound to a recipient under
+  **Settings > Notifications > Recipients**.
+- **Behavioural checks** (host, flow, interface, network, system) are enabled and tuned
+  under **Settings > Checks**. For example, the per-host traffic threshold check fires
+  when a host exceeds a configurable byte rate.
 
-# Or via the ntopng scripting engine (Lua scripts in /usr/share/ntopng/scripts/)
-# Example: alert when a host exceeds 100 Mbps
-cat > /usr/share/ntopng/scripts/callbacks/host_callbacks.lua << 'EOF'
-function host.callbackHostTrafficAlert(host_info, flow_info)
-  local bytes_rx = host_info["bytes.rcvd"]
-  local bytes_tx = host_info["bytes.sent"]
-  local mbps = (bytes_rx + bytes_tx) * 8 / 1000000
-  if mbps > 100 then
-    ntop.sendNotification("High traffic alert: " .. host_info["name"] .. " - " .. mbps .. " Mbps")
-  end
-end
-EOF
-```
+For custom logic, ntopng exposes a Lua-based check API. User checks for hosts live in
+`/usr/share/ntopng/scripts/callbacks/checks/hosts/` and register hooks against the
+host object. See the official Lua API guide for the current function signatures and
+the `host.triggerAlert` / `alert_consts` helpers used to raise alerts.
 
 ## Step 7: Verify Data Is Flowing
 
 ```bash
-# Check ntopng is receiving data
-sudo netstat -lunp | grep ntopng
+# Confirm nProbe is listening on the NetFlow/sFlow UDP collector port
+sudo ss -lunp | grep -E '2055|6343'
 
-# Check for UDP traffic on port 2055
+# Confirm ntopng is listening on the ZMQ socket (TCP/5556)
+sudo ss -ltnp | grep 5556
+
+# Check for incoming NetFlow on UDP/2055
 sudo tcpdump -i any udp port 2055 -n -c 5
 
 # View ntopng logs
@@ -138,4 +137,4 @@ The ntopng dashboard should show active flows and top talkers within a few secon
 
 ## Conclusion
 
-ntopng provides a powerful, free web dashboard for IPv4 traffic monitoring using NetFlow and sFlow data. Install it, configure the appropriate interface mode (`netflow:` or `sflow:`), point your routers and switches to send flows to it, and use the web dashboard to analyze top talkers, protocols, and traffic trends. The community edition is free and sufficient for most monitoring needs.
+ntopng provides a powerful, free web dashboard for IPv4 traffic monitoring using NetFlow and sFlow data. Install ntopng and nProbe, run nProbe as the NetFlow/sFlow collector that forwards via ZMQ to ntopng, point your routers and switches at the nProbe collector ports, and use the web dashboard to analyze top talkers, protocols, and traffic trends. The community edition is free and sufficient for most monitoring needs.
