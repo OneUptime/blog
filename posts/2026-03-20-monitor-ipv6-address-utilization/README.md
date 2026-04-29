@@ -45,7 +45,7 @@ PREFIX_USED_ADDRESSES = Gauge(
 
 def collect_prefix_utilization():
     """Collect utilization for all IPv6 /64 prefixes."""
-    prefixes = nb.ipam.prefixes.filter(family=6, prefix_length=64)
+    prefixes = nb.ipam.prefixes.filter(family=6, mask_length=64)
 
     for prefix in prefixes:
         prefix_str = str(prefix.prefix)
@@ -87,6 +87,10 @@ def collect_dhcpv6_pool_utilization():
         with urllib.request.urlopen(req, timeout=5) as resp:
             stats = json.load(resp)
 
+        # Kea Control Agent always wraps responses in a JSON array
+        if isinstance(stats, list):
+            stats = stats[0] if stats else {}
+
         # Parse pool statistics from Kea response
         arguments = stats.get("arguments", {})
         for key, value in arguments.items():
@@ -122,6 +126,9 @@ echo "$STATS" | python3 << 'EOF'
 import json, sys
 
 data = json.load(sys.stdin)
+# Kea Control Agent always wraps responses in a JSON array
+if isinstance(data, list):
+    data = data[0] if data else {}
 args = data.get("arguments", {})
 
 print(f"{'Subnet':<15} {'Assigned':>10} {'Declined':>10} {'Total Pool':>12}")
@@ -190,7 +197,7 @@ print("=" * 70)
 # Check /48 prefix coverage (of the /32 organization block)
 org_prefix = nb.ipam.prefixes.get(prefix="2001:db8::/32")
 site_prefixes = list(nb.ipam.prefixes.filter(
-    within="2001:db8::/32", prefix_length=48))
+    within="2001:db8::/32", mask_length=48))
 
 max_48s = 2 ** (48 - 32)  # 65,536
 allocated = len(site_prefixes)
@@ -199,7 +206,7 @@ print(f"\n/48 Allocations: {allocated}/{max_48s} ({allocated/max_48s*100:.2f}%)"
 # Check /64 utilization per site
 for site_prefix in sorted(site_prefixes, key=lambda p: str(p.prefix)):
     vlans = list(nb.ipam.prefixes.filter(
-        within=str(site_prefix.prefix), prefix_length=64))
+        within=str(site_prefix.prefix), mask_length=64))
     max_64s = 2 ** (64 - 48)  # 65,536
     print(f"  {str(site_prefix.prefix):<35} /64s: {len(vlans):>5}/{max_64s} "
           f"({len(vlans)/max_64s*100:.3f}%)")
