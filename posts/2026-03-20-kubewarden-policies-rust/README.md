@@ -20,12 +20,16 @@ Kubewarden policies are WebAssembly modules. Writing them in Rust gives you type
 curl --proto '=https' --tlsv1.2 -sSf https://sh.rustup.rs | sh
 source ~/.cargo/env
 
-# Add the WASM target
-rustup target add wasm32-wasi
+# Install cargo-generate
+cargo install cargo-generate
+
+# Add the WASI target
+rustup target add wasm32-wasip1
 
 # Install kwctl (Kubewarden CLI)
-curl -Lo kwctl https://github.com/kubewarden/kwctl/releases/latest/download/kwctl-linux-amd64
-chmod +x kwctl && sudo mv kwctl /usr/local/bin/
+curl -LO https://github.com/kubewarden/kwctl/releases/latest/download/kwctl-linux-x86_64.zip
+unzip kwctl-linux-x86_64.zip
+chmod +x kwctl-linux-x86_64 && sudo mv kwctl-linux-x86_64 /usr/local/bin/kwctl
 ```
 
 ---
@@ -34,7 +38,8 @@ chmod +x kwctl && sudo mv kwctl /usr/local/bin/
 
 ```bash
 # Use the Kubewarden policy template
-cargo generate --git https://github.com/kubewarden/policy-rust-template \
+cargo generate --git https://github.com/kubewarden/rust-policy-template \
+  --branch main \
   --name require-resource-limits
 
 cd require-resource-limits
@@ -43,7 +48,7 @@ cd require-resource-limits
 The generated project includes:
 - `src/lib.rs` - policy logic
 - `src/settings.rs` - configurable policy settings
-- `metadata.yaml` - policy metadata
+- `metadata.yml` - policy metadata
 
 ---
 
@@ -51,48 +56,76 @@ The generated project includes:
 
 ```rust
 // src/lib.rs
-use kubewarden_policy_sdk::prelude::*;
+use lazy_static::lazy_static;
+use guest::prelude::*;
+use kubewarden_policy_sdk::wapc_guest as guest;
 use k8s_openapi::api::core::v1 as apicore;
+use k8s_openapi::Resource;
+extern crate kubewarden_policy_sdk as kubewarden;
+use kubewarden::{logging, protocol_version_guest, request::ValidationRequest, validate_settings};
+use slog::{info, o, warn, Logger};
 
-// Called by the policy SDK for each admission request
-#[kubewarden_sdk::policy_entrypoint]
-pub fn validate(payload: &[u8]) -> Result<ValidationResponse, ValidationError> {
-    // Deserialize the admission request
-    let request: ValidationRequest<apicore::Pod> = serde_json::from_slice(payload)?;
+mod settings;
+use settings::Settings;
 
-    // Get the pod from the request
-    let pod = match request.request.object {
-        Some(p) => p,
-        None => return Ok(ValidationResponse::accept()),
-    };
+lazy_static! {
+    static ref LOG_DRAIN: Logger = Logger::root(
+        logging::KubewardenDrain::new(),
+        o!("policy" => "require-resource-limits")
+    );
+}
 
-    // Check each container has resource limits
-    for container in pod.spec.unwrap_or_default().containers {
-        let resources = container.resources.unwrap_or_default();
-        let limits = resources.limits.unwrap_or_default();
+#[no_mangle]
+pub extern "C" fn wapc_init() {
+    register_function("validate", validate);
+    register_function("validate_settings", validate_settings::<Settings>);
+    register_function("protocol_version", protocol_version_guest);
+}
 
-        // Reject if CPU limit is missing
-        if !limits.contains_key("cpu") {
-            return Ok(ValidationResponse::reject(
-                format!(
-                    "Container '{}' must define a CPU limit",
-                    container.name
-                )
-            ));
-        }
+fn validate(payload: &[u8]) -> CallResult {
+    let validation_request: ValidationRequest<Settings> = ValidationRequest::new(payload)?;
 
-        // Reject if memory limit is missing
-        if !limits.contains_key("memory") {
-            return Ok(ValidationResponse::reject(
-                format!(
-                    "Container '{}' must define a memory limit",
-                    container.name
-                )
-            ));
-        }
+    info!(LOG_DRAIN, "starting validation");
+    if validation_request.request.kind.kind != apicore::Pod::KIND {
+        warn!(LOG_DRAIN, "Policy validates Pods only. Accepting resource"; "kind" => &validation_request.request.kind.kind);
+        return kubewarden::accept_request();
     }
 
-    Ok(ValidationResponse::accept())
+    match serde_json::from_value::<apicore::Pod>(validation_request.request.object) {
+        Ok(pod) => {
+            for container in pod.spec.unwrap_or_default().containers {
+                let resources = container.resources.unwrap_or_default();
+                let limits = resources.limits.unwrap_or_default();
+
+                if !limits.contains_key("cpu") {
+                    return kubewarden::reject_request(
+                        Some(format!("Container '{}' must define a CPU limit", container.name)),
+                        None,
+                        None,
+                        None,
+                    );
+                }
+
+                if !limits.contains_key("memory") {
+                    return kubewarden::reject_request(
+                        Some(format!(
+                            "Container '{}' must define a memory limit",
+                            container.name
+                        )),
+                        None,
+                        None,
+                        None,
+                    );
+                }
+            }
+
+            kubewarden::accept_request()
+        }
+        Err(_) => {
+            warn!(LOG_DRAIN, "cannot unmarshal resource: this policy does not know how to evaluate this resource; accept it");
+            kubewarden::accept_request()
+        }
+    }
 }
 ```
 
@@ -102,10 +135,10 @@ pub fn validate(payload: &[u8]) -> Result<ValidationResponse, ValidationError> {
 
 ```bash
 # Build the policy as a WASM module
-cargo build --target wasm32-wasi --release
+cargo build --target wasm32-wasip1 --release
 
 # The WASM file is at:
-ls target/wasm32-wasi/release/require_resource_limits.wasm
+ls target/wasm32-wasip1/release/require_resource_limits.wasm
 ```
 
 ---
@@ -116,18 +149,24 @@ ls target/wasm32-wasi/release/require_resource_limits.wasm
 # Create a test request for a pod without limits
 cat > test-pod-no-limits.json << EOF
 {
-  "apiVersion": "admission.k8s.io/v1",
-  "kind": "AdmissionReview",
-  "request": {
-    "uid": "test-123",
-    "kind": {"group":"","version":"v1","kind":"Pod"},
-    "operation": "CREATE",
-    "object": {
-      "apiVersion": "v1",
-      "kind": "Pod",
-      "spec": {
-        "containers": [{"name": "app", "image": "nginx"}]
-      }
+  "uid": "test-123",
+  "kind": {"group":"","version":"v1","kind":"Pod"},
+  "resource": {"group":"","version":"v1","resource":"pods"},
+  "requestKind": {"group":"","version":"v1","kind":"Pod"},
+  "requestResource": {"group":"","version":"v1","resource":"pods"},
+  "name": "app",
+  "namespace": "default",
+  "operation": "CREATE",
+  "userInfo": {
+    "username": "alice",
+    "groups": ["system:authenticated"]
+  },
+  "object": {
+    "apiVersion": "v1",
+    "kind": "Pod",
+    "metadata": {"name": "app"},
+    "spec": {
+      "containers": [{"name": "app", "image": "nginx"}]
     }
   }
 }
@@ -135,8 +174,9 @@ EOF
 
 # Run the policy against the test request
 kwctl run \
-  annotated-policy.wasm \
-  --request-path test-pod-no-limits.json
+  -e kubewarden \
+  --request-path test-pod-no-limits.json \
+  target/wasm32-wasip1/release/require_resource_limits.wasm
 
 # Expected: policy should REJECT (no limits defined)
 ```
@@ -148,14 +188,14 @@ kwctl run \
 ```bash
 # Annotate the WASM file with metadata
 kwctl annotate \
-  target/wasm32-wasi/release/require_resource_limits.wasm \
-  --metadata-path metadata.yaml \
-  --output annotated-policy.wasm
+  target/wasm32-wasip1/release/require_resource_limits.wasm \
+  --metadata-path metadata.yml \
+  --output-path annotated-policy.wasm
 
 # Push to an OCI registry
 kwctl push \
   annotated-policy.wasm \
-  ghcr.io/my-org/require-resource-limits:v0.1.0
+  registry://ghcr.io/my-org/require-resource-limits:v0.1.0
 ```
 
 ---
