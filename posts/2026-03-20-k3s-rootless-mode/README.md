@@ -16,61 +16,94 @@ In rootless mode:
 - K3s runs as a regular user (no root required after initial setup)
 - User namespaces isolate the K3s process from the root namespace
 - rootlesskit handles networking through user-space networking
-- Some features have limitations (no binding to ports < 1024 without special config)
+- Some features have limitations (for example, service ports below 1024 are exposed on the host with a `+10000` offset)
 
 ## Prerequisites
 
-- Linux kernel 5.11+ (for better cgroup v2 support)
+- Linux with pure cgroup v2 support (kernel 4.15+; 5.2+ recommended)
 - User namespaces enabled
 - `newuidmap` and `newgidmap` tools (`uidmap` package)
-- A non-root user account
-- systemd user session support (optional but recommended)
+- A non-root user account with `subuid` and `subgid` ranges configured
+- systemd user session support
 
 ## Step 1: Verify System Requirements
 
 ```bash
 # Check if user namespaces are enabled
+K3S_USER=k3s-user
+
+# Create the user first if it does not already exist
+id "${K3S_USER}" 2>/dev/null || sudo useradd -m -s /bin/bash "${K3S_USER}"
 
 cat /proc/sys/kernel/unprivileged_userns_clone
-# Should be 1
+# Should be 1 on most modern distributions
 
-# If 0, enable it
-echo 1 > /proc/sys/kernel/unprivileged_userns_clone
-echo "kernel.unprivileged_userns_clone=1" >> /etc/sysctl.conf
-sysctl -p
+# If you need to persist it, write a sysctl drop-in and reload
+echo "kernel.unprivileged_userns_clone=1" | sudo tee /etc/sysctl.d/99-rootless.conf
+sudo sysctl --system
 
 # Check for required tools
-which newuidmap newgidmap || apt-get install -y uidmap
+which newuidmap newgidmap || sudo apt-get install -y uidmap
 
-# Check if cgroup v2 is available (recommended)
+# Check for pure cgroup v2
 stat -fc %T /sys/fs/cgroup/
-# 'cgroup2fs' = v2 (good), 'tmpfs' = v1
+# Should print: cgroup2fs
+# Hybrid v1/v2 is not supported in rootless K3s
+
+# Delegate cgroup controllers to user sessions
+sudo mkdir -p /etc/systemd/system/user@.service.d
+cat <<'EOF' | sudo tee /etc/systemd/system/user@.service.d/delegate.conf
+[Service]
+Delegate=cpu cpuset io memory pids
+EOF
+sudo systemctl daemon-reload
+# Reboot or re-login after changing cgroup delegation
 
 # Verify user has a subuid/subgid range
-grep $USER /etc/subuid /etc/subgid
-# Should show: username:100000:65536
+grep "^${K3S_USER}:" /etc/subuid /etc/subgid
+# Should show: k3s-user:100000:65536
 # If missing:
-usermod --add-subuids 100000-165535 $USER
-usermod --add-subgids 100000-165535 $USER
+sudo usermod --add-subuids 100000-165535 "${K3S_USER}"
+sudo usermod --add-subgids 100000-165535 "${K3S_USER}"
 ```
 
 ## Step 2: Install K3s in Rootless Mode
 
-Switch to the non-root user you'll run K3s as:
+Install the K3s binary, then switch to the non-root user you'll run it as:
 
 ```bash
-# Create a dedicated user (or use existing non-root user)
-useradd -m -s /bin/bash k3s-user
-su - k3s-user
+# Install the K3s binary
+VERSION=$(curl -w '%{url_effective}' -L -s -S https://update.k3s.io/v1-release/channels/stable -o /dev/null | sed -e 's|.*/||')
+ARCH=$(uname -m)
+case "${ARCH}" in
+  x86_64) K3S_BIN=k3s ;;
+  aarch64|arm64) K3S_BIN=k3s-arm64 ;;
+  armv7l|armv6l|armhf) K3S_BIN=k3s-armhf ;;
+  s390x) K3S_BIN=k3s-s390x ;;
+  *) echo "Unsupported architecture: ${ARCH}" >&2; exit 1 ;;
+esac
+sudo curl -Lo /usr/local/bin/k3s "https://github.com/k3s-io/k3s/releases/download/${VERSION}/${K3S_BIN}"
+sudo chmod 0755 /usr/local/bin/k3s
 
-# Install K3s in rootless mode
-curl -sfL https://get.k3s.io | sh -s - server \
-  --rootless
+# On Ubuntu or other distributions with AppArmor support, allow K3s to run unconfined
+cat <<'EOF' | sudo tee "/etc/apparmor.d/usr.local.bin.k3s"
+abi <abi/4.0>,
+include <tunables/global>
 
-# Alternatively, with specific options
-curl -sfL https://get.k3s.io | sh -s - \
-  --rootless \
-  --disable traefik
+/usr/local/bin/k3s flags=(unconfined) {
+  userns,
+
+  include if exists <local/usr.local.bin.k3s>
+}
+EOF
+sudo systemctl restart apparmor.service
+
+# Allow the user service to run at boot
+sudo loginctl enable-linger k3s-user
+
+# Start a real login session as the non-root user so XDG_RUNTIME_DIR is set
+ssh k3s-user@localhost
+# Or, as root: machinectl shell k3s-user@
 ```
 
 ## Step 3: Configure systemd User Service
@@ -78,48 +111,45 @@ curl -sfL https://get.k3s.io | sh -s - \
 For rootless K3s to start automatically:
 
 ```bash
-# As the k3s-user, enable lingering (allows user systemd to run at boot)
-# Run this as root:
-loginctl enable-linger k3s-user
+# As k3s-user, confirm the user session is ready
+echo $XDG_RUNTIME_DIR
+# Should be: /run/user/<uid>
 
-# Switch back to k3s-user
-su - k3s-user
+# Install the rootless systemd unit
+VERSION=$(k3s --version | awk 'NR==1 {print $3}')
+mkdir -p ~/.config/systemd/user ~/.kube
+curl -Lo ~/.config/systemd/user/k3s-rootless.service \
+  "https://raw.githubusercontent.com/k3s-io/k3s/${VERSION}/k3s-rootless.service"
 
-# Check if user systemd service is installed
-systemctl --user status k3s
+# If k3s is not installed at /usr/local/bin/k3s, update the ExecStart path
+grep ExecStart ~/.config/systemd/user/k3s-rootless.service
 
-# Start K3s as user service
-systemctl --user start k3s
-
-# Enable auto-start
-systemctl --user enable k3s
+# Reload systemd and start rootless K3s
+systemctl --user daemon-reload
+systemctl --user enable --now k3s-rootless
 
 # Check status
-systemctl --user status k3s
+systemctl --user status k3s-rootless
 
 # View logs
-journalctl --user -u k3s -f
+journalctl --user -u k3s-rootless -f
 ```
 
 ## Step 4: Configure kubectl for Rootless K3s
 
 ```bash
-# As k3s-user, set the kubeconfig path
+# As k3s-user, set the kubeconfig path used by rootless K3s
 export KUBECONFIG=~/.kube/k3s.yaml
 
-# K3s rootless kubeconfig is at:
-ls ~/.kube/
-# k3s.yaml
-
-# Or use the XDG_RUNTIME_DIR path
-ls $XDG_RUNTIME_DIR/k3s/
+# The rootless kubeconfig is written here
+ls ~/.kube/k3s.yaml
 
 # Add to .bashrc for persistence
 echo 'export KUBECONFIG=~/.kube/k3s.yaml' >> ~/.bashrc
 source ~/.bashrc
 
 # Test
-kubectl get nodes
+k3s kubectl get nodes
 ```
 
 ## Step 5: Configure Networking for Rootless Mode
@@ -130,22 +160,11 @@ Rootless mode uses user-space networking with limitations:
 # Check rootlesskit is running
 ps aux | grep rootlesskit
 
-# Rootless K3s uses a different network port mapping approach
-# By default, pods can't bind to ports < 1024
-
-# For port access, use NodePort (>1024) or configure port forwarding:
-
-# Option 1: Use higher ports
-# NodePort services use ports 30000-32767 by default
-
-# Option 2: Allow binding to privileged ports via sysctl
-echo 0 > /proc/sys/net/ipv4/ip_unprivileged_port_start
-# Or:
-echo "net.ipv4.ip_unprivileged_port_start=0" >> /etc/sysctl.conf
-sysctl -p
-
-# Option 3: Use capabilities (as root, grant to rootlesskit)
-setcap 'cap_net_bind_service=+ep' /usr/local/bin/rootlesskit
+# Rootless K3s runs in a separate network namespace
+# The apiserver is automatically bound on host port 6443
+# LoadBalancer Services below 1024 are bound to the host with an offset of 10000
+# Example: a Service on port 80 becomes host port 10080
+# Only LoadBalancer Services are automatically bound
 ```
 
 ## Step 6: Verify Rootless Mode is Working
@@ -155,19 +174,21 @@ setcap 'cap_net_bind_service=+ep' /usr/local/bin/rootlesskit
 ps aux | grep k3s | head -5
 # The k3s process should show as k3s-user, not root
 
-# Verify no root processes
-pgrep -u root k3s || echo "No K3s root processes"
+# Verify there is no root-owned K3s server process
+pgrep -u root -a k3s || echo "No root-owned K3s process"
 
 # Check inside a container
-kubectl run whoami --image=busybox --restart=Never -- \
+k3s kubectl run whoami --image=busybox --restart=Never -- \
   sh -c 'id && cat /proc/self/status | grep -E "Uid|Gid|CapE"'
 
-kubectl logs whoami
-kubectl delete pod whoami
+k3s kubectl logs whoami
+k3s kubectl delete pod whoami
 
-# Verify namespaces
-kubectl run ns-check --image=busybox --restart=Never -- \
+# Verify pods start normally under the rootless server
+k3s kubectl run ns-check --image=busybox --restart=Never -- \
   sh -c 'ls /proc/1/ns/'
+k3s kubectl logs ns-check
+k3s kubectl delete pod ns-check
 ```
 
 ## Step 7: Storage Considerations
@@ -176,17 +197,15 @@ Rootless mode affects how volumes work:
 
 ```bash
 # Check K3s data directory in rootless mode
-ls -la ~/.local/share/rancher/k3s/
+ls -la ~/.rancher/k3s/
 # Data is stored in user home directory, not /var/lib/rancher/k3s/
 
-# Configure local-path-provisioner for rootless
-# The default storage path changes to ~/local-path-provisioner/
-kubectl get storageclass
-kubectl describe sc local-path | grep path
+# Inspect the effective local-path-provisioner configuration
+k3s kubectl -n kube-system get configmap local-path-config -o yaml
 
-# Custom storage path
-kubectl edit configmap local-path-config -n kube-system
-# Update helperPod.nodePathMap to use user-accessible path
+# To change the default storage path persistently, add
+# --default-local-storage-path=/home/k3s-user/storage
+# to the ExecStart line in ~/.config/systemd/user/k3s-rootless.service
 ```
 
 ## Step 8: Deploy a Test Workload
@@ -210,8 +229,6 @@ spec:
       # Rootless containers should not run as root
       securityContext:
         runAsNonRoot: true
-        runAsUser: 1000
-        fsGroup: 1000
       containers:
         - name: nginx
           # Use nginx-unprivileged which runs as non-root
@@ -220,16 +237,15 @@ spec:
             - containerPort: 8080  # Non-privileged port
           securityContext:
             allowPrivilegeEscalation: false
-            readOnlyRootFilesystem: true
             capabilities:
               drop:
                 - ALL
 ```
 
 ```bash
-kubectl apply -f rootless-test.yaml
-kubectl get pods
-kubectl port-forward deployment/rootless-nginx 8080:8080 &
+k3s kubectl apply -f rootless-test.yaml
+k3s kubectl get pods
+k3s kubectl port-forward deployment/rootless-nginx 8080:8080 &
 curl http://localhost:8080/
 ```
 
@@ -238,20 +254,19 @@ curl http://localhost:8080/
 Be aware of these limitations:
 
 ```bash
-# 1. No privileged containers (unless sysctl is configured)
-# 2. Port binding below 1024 requires extra config
-# 3. Some CNI features may not work
-# 4. Node exporter requires privileged for some metrics
+# 1. Rootless mode is experimental
+# 2. Only pure cgroup v2 is supported; cgroup v1 and hybrid v1/v2 are not
+# 3. Multi-node rootless clusters are not currently supported
+# 4. Multiple rootless K3s processes on the same node are not supported
+# 5. Only LoadBalancer Services are automatically bound to host ports
 
-# Check which K3s features are limited
-k3s server --rootless --help 2>&1 | grep -i warning
+# Check that the rootless flag is available
+k3s server --help | grep -A1 rootless
 
-# Some features that require root:
-# - hostNetwork: true with ports < 1024
-# - privileged: true containers
-# - Direct device access (/dev/*) without userspace mapping
+# Do not run `k3s server --rootless` directly in a terminal;
+# use the k3s-rootless user service instead
 ```
 
 ## Conclusion
 
-K3s rootless mode provides a significant security improvement by eliminating root privileges from the container orchestration stack. While it has some limitations around port binding and privileged containers, rootless mode is excellent for development environments, multi-tenant systems, or any deployment where security is paramount. As Linux kernel support for user namespaces continues to improve, rootless Kubernetes deployments will become more capable and widely adopted.
+K3s rootless mode provides a significant security improvement by eliminating root privileges from the container orchestration stack. While it has some limitations around networking, cgroup requirements, and multi-node support, rootless mode is excellent for development environments, multi-tenant systems, or any deployment where security is paramount. As Linux kernel support for user namespaces continues to improve, rootless Kubernetes deployments will become more capable and widely adopted.
