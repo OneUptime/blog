@@ -34,13 +34,13 @@ sequenceDiagram
 
 ```text
 Outer IPv6 Header:
-  Source:      2001:db8:foreign::50 (CoA)
-  Destination: 2001:db8:home::1 (HA)
+  Source:      2001:db8:2::50 (CoA)
+  Destination: 2001:db8:1::1 (HA)
   Next Header: 41 (IPv6 encapsulation)
 
 Inner IPv6 Header:
-  Source:      2001:db8:home::100 (HoA)
-  Destination: 2001:db8:cn::200 (CN)
+  Source:      2001:db8:1::100 (HoA)
+  Destination: 2001:db8:3::200 (CN)
   Next Header: 6 (TCP)
 
 TCP/Application Payload
@@ -50,13 +50,13 @@ TCP/Application Payload
 
 ```text
 Outer IPv6 Header:
-  Source:      2001:db8:home::1 (HA)
-  Destination: 2001:db8:foreign::50 (CoA)
+  Source:      2001:db8:1::1 (HA)
+  Destination: 2001:db8:2::50 (CoA)
   Next Header: 41 (IPv6 encapsulation)
 
 Inner IPv6 Header:
-  Source:      2001:db8:cn::200 (CN)
-  Destination: 2001:db8:home::100 (HoA)
+  Source:      2001:db8:3::200 (CN)
+  Destination: 2001:db8:1::100 (HoA)
   Next Header: 6 (TCP)
 
 TCP/Application Payload
@@ -73,11 +73,11 @@ The HA uses a ip6ip6 (IPv6-in-IPv6) tunnel interface.
 
 # Manual tunnel example
 sudo ip tunnel add ha-mip6 mode ip6ip6 \
-  local 2001:db8:home::1 \
-  remote 2001:db8:foreign::50
+  local 2001:db8:1::1 \
+  remote 2001:db8:2::50
 
 sudo ip link set ha-mip6 up
-sudo ip -6 route add 2001:db8:home::100/128 dev ha-mip6
+sudo ip -6 route add 2001:db8:1::100/128 dev ha-mip6
 
 # Verify tunnel
 ip tunnel show ha-mip6
@@ -89,11 +89,11 @@ On the Mobile Node:
 ```bash
 # Mobile Node creates a tunnel back to the HA
 sudo ip tunnel add mn-home mode ip6ip6 \
-  local 2001:db8:foreign::50 \
-  remote 2001:db8:home::1
+  local 2001:db8:2::50 \
+  remote 2001:db8:1::1
 
 sudo ip link set mn-home up
-sudo ip -6 addr add 2001:db8:home::100/128 dev mn-home
+sudo ip -6 addr add 2001:db8:1::100/128 dev mn-home
 
 # Route all traffic through the tunnel to the HA
 sudo ip -6 route add default dev mn-home
