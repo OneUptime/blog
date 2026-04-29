@@ -99,7 +99,7 @@ workflows:
 
 ```yaml
 # atlantis-server.yaml
-tofu-path: /usr/local/bin/tofu  # Path to OpenTofu binary
+default-tf-distribution: opentofu  # Tell Atlantis to use OpenTofu instead of Terraform
 ```
 
 ## Phase 3: Migrate State from Terraform Cloud
@@ -150,7 +150,7 @@ curl -s -X POST \
   "https://api.github.com/repos/my-org/infrastructure/hooks" \
   -d '{
     "name": "web",
-    "events": ["issue_comment", "pull_request", "pull_request_review"],
+    "events": ["push", "issue_comment", "pull_request", "pull_request_review"],
     "config": {
       "url": "https://atlantis.internal.example.com/events",
       "content_type": "json",
@@ -173,10 +173,9 @@ repos:
     apply_requirements:
       - approved
       - mergeable
-
-    # Require one approval from specific teams
-    required_approvers: ["my-org/infrastructure-team"]
 ```
+
+Atlantis only checks that *someone* has approved the PR. To require approval from a specific GitHub team (e.g. `my-org/infrastructure-team`), configure that in the repository's GitHub branch protection rules — Atlantis honors those rules through the `approved` requirement.
 
 ## Phase 6: Validate and Cut Over
 
