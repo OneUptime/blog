@@ -17,7 +17,8 @@ FRRouting's `isisd` daemon provides full IS-IS support for Linux, including IPv6
 
 sudo apt install frr
 
-# Enable isisd
+# Enable zebra and isisd
+sudo sed -i 's/^zebra=no/zebra=yes/' /etc/frr/daemons
 sudo sed -i 's/^isisd=no/isisd=yes/' /etc/frr/daemons
 
 # Restart FRR
@@ -49,15 +50,13 @@ router isis CORE
 interface eth0
  ip router isis CORE      ! IPv4 IS-IS
  ipv6 router isis CORE    ! IPv6 IS-IS
- isis metric 10           ! Default metric (IPv4)
- isis ipv6 metric 10      ! IPv6 metric (MT)
+ isis metric 10           ! Interface metric
  isis network point-to-point  ! If not a broadcast network
 
 interface eth1
  ip router isis CORE
  ipv6 router isis CORE
- isis metric 10
- isis ipv6 metric 20     ! Different metric for IPv6 traffic engineering
+ isis metric 20          ! Different interface metric
 
 interface lo
  ip router isis CORE
@@ -77,7 +76,7 @@ write memory
 # Example: 49.0001.0001.0001.0001.00
 
 # Or use the MAC address of the management interface:
-ip link show lo | grep "link/ether"
+ip link show eth0 | grep "link/ether"
 # aa:bb:cc:dd:ee:ff → aabb.ccdd.eeff
 # NET = 49.0001.aabb.ccdd.eeff.00
 ```
@@ -94,8 +93,8 @@ vtysh -c "show isis database"
 # Show IS-IS IPv6 routes
 vtysh -c "show ipv6 route isis"
 
-# Show IPv6 IS-IS topology
-vtysh -c "show isis topology ipv6-unicast"
+# Show IS-IS topology
+vtysh -c "show isis topology level-2"
 
 # Show IS-IS interface status
 vtysh -c "show isis interface"
@@ -126,9 +125,8 @@ vtysh
 configure terminal
 
 router isis CORE
- ! Redistribute connected IPv6 routes
- redistribute ipv6 connected
- redistribute ipv6 static
+ ! Redistribute IPv6 routes from the main Linux table into Level-2 IS-IS
+ redistribute ipv6 table 254 level-2
 
 end
 write memory
@@ -141,18 +139,17 @@ vtysh
 configure terminal
 
 router isis CORE
- ! Area authentication (Level 1 or Level 2)
+ ! Area/domain authentication
  area-password md5 MyAreaPassword    ! Level 1
  domain-password md5 MyDomainPassword  ! Level 2
 
 ! Or per-interface
 interface eth0
- isis authentication mode md5
- isis authentication key-chain ISIS_KEYS
+ isis password md5 MyInterfacePassword
 
 end
 ```
 
 ## Summary
 
-FRRouting IS-IS for IPv6 requires enabling `isisd`, configuring a NET address, and activating IS-IS on interfaces with both `ip router isis` and `ipv6 router isis`. Enable `topology ipv6-unicast` for multi-topology support. Verify with `show isis neighbor` and `show ipv6 route isis`. IS-IS on FRRouting is production-ready and commonly used in Linux-based network appliances.
+FRRouting IS-IS for IPv6 requires enabling `zebra` and `isisd`, configuring a NET address, and activating IS-IS on interfaces with `ipv6 router isis` (and `ip router isis` if you also want IPv4). Enable `topology ipv6-unicast` for multi-topology support. Verify with `show isis neighbor` and `show ipv6 route isis`. IS-IS on FRRouting is production-ready and commonly used in Linux-based network appliances.
