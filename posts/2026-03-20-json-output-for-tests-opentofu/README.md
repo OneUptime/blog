@@ -26,14 +26,19 @@ tofu test -json -verbose
 
 ## JSON Output Structure
 
-Each line of JSON output is a separate event object. The `type` field identifies the event kind. Key event types include:
+Each line of JSON output is a separate event object. The `type` field identifies the event kind. Key test-related event types include:
 
 | Type | Description |
 |---|---|
-| `test_run` | A `run` block started or completed |
-| `test_file` | A test file started or completed |
-| `test_suite` | Overall suite started or completed |
-| `diagnostic` | An error or warning message |
+| `test_abstract` | Discovered test files and `run` blocks at the start of execution |
+| `test_file` | A test file status update |
+| `test_run` | A `run` block status update |
+| `test_plan` | Plan output for a `run` block when `-verbose` is enabled |
+| `test_state` | State output for a `run` block when `-verbose` is enabled |
+| `test_summary` | Overall suite summary |
+| `test_cleanup` | Cleanup details when OpenTofu leaves resources behind |
+| `test_interrupt` | Interrupt and cleanup warning details |
+| `diagnostic` | An error or warning message associated with a file or `run` block |
 
 ### Example: Successful Run
 
@@ -41,9 +46,11 @@ Each line of JSON output is a separate event object. The `type` field identifies
 {
   "type": "test_run",
   "@level": "info",
-  "@message": "  run \"creates_bucket\"... pass",
+  "@message": "  \"creates_bucket\"... pass",
   "@module": "tofu.ui",
   "@timestamp": "2026-03-20T10:00:01.000000Z",
+  "@testfile": "tests/s3.tftest.hcl",
+  "@testrun": "creates_bucket",
   "test_run": {
     "path": "tests/s3.tftest.hcl",
     "run": "creates_bucket",
@@ -54,18 +61,17 @@ Each line of JSON output is a separate event object. The `type` field identifies
 
 ### Example: Failed Assertion
 
+When an assertion fails, OpenTofu emits a `test_run` event with `status` set to `fail` or `error`, followed by one or more `diagnostic` events with the details:
+
 ```json
 {
-  "type": "test_run",
+  "type": "diagnostic",
   "@level": "error",
-  "@message": "  run \"creates_bucket\"... fail",
+  "@message": "Error: Test assertion failed",
   "@module": "tofu.ui",
   "@timestamp": "2026-03-20T10:00:05.000000Z",
-  "test_run": {
-    "path": "tests/s3.tftest.hcl",
-    "run": "creates_bucket",
-    "status": "fail"
-  },
+  "@testfile": "tests/s3.tftest.hcl",
+  "@testrun": "creates_bucket",
   "diagnostic": {
     "severity": "error",
     "summary": "Test assertion failed",
@@ -82,20 +88,21 @@ Use `jq` to extract just the failures for a quick summary:
 #!/usr/bin/env bash
 # Extract failed test names from JSON output
 
-tofu test -json 2>&1 \
-  | jq -r 'select(.type == "test_run" and .test_run.status == "fail")
+tofu test -json \
+  | jq -r 'select(.type == "test_run" and (.test_run.status == "fail" or .test_run.status == "error"))
            | "\(.test_run.path)::\(.test_run.run)"'
 ```
 
-Count total passes and failures:
+Count total passes, failures, and errors:
 
 ```bash
-tofu test -json 2>&1 | jq -s '
-  [.[] | select(.type == "test_run")]
+tofu test -json | jq -s '
+  [.[] | select(.type == "test_run")] as $runs
   | {
-      total: length,
-      passed: [.[] | select(.test_run.status == "pass")] | length,
-      failed: [.[] | select(.test_run.status == "fail")] | length
+      total: ($runs | length),
+      passed: ($runs | map(select(.test_run.status == "pass")) | length),
+      failed: ($runs | map(select(.test_run.status == "fail")) | length),
+      errored: ($runs | map(select(.test_run.status == "error")) | length)
     }
 '
 ```
@@ -111,7 +118,9 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
-      - uses: opentofu/setup-opentofu@v1
+      - uses: opentofu/setup-opentofu@v2
+        with:
+          tofu_wrapper: false
 
       - name: Run tests with JSON output
         run: tofu test -json > test-results.json
@@ -119,7 +128,7 @@ jobs:
 
       - name: Convert to JUnit format
         run: |
-          # Use a converter tool such as tofu-test-to-junit (community script)
+          # Use a converter script or tool that transforms OpenTofu JSON events into JUnit XML
           cat test-results.json | python3 scripts/tofu_json_to_junit.py > junit.xml
 
       - name: Publish test results
@@ -136,11 +145,11 @@ A simple script that posts a Slack notification when tests fail:
 #!/usr/bin/env bash
 # notify-on-failure.sh
 
-RESULTS=$(tofu test -json 2>&1)
-FAILED=$(echo "$RESULTS" \
-  | jq -r 'select(.type == "test_run" and .test_run.status == "fail")
-           | .test_run.run' \
-  | tr '\n' ', ')
+RESULTS=$(tofu test -json || true)
+FAILED=$(printf '%s\n' "$RESULTS" \
+  | jq -rs 'map(select(.type == "test_run" and (.test_run.status == "fail" or .test_run.status == "error"))
+               | .test_run.run)
+              | join(", ")')
 
 if [ -n "$FAILED" ]; then
   curl -s -X POST "$SLACK_WEBHOOK_URL" \
