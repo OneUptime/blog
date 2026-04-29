@@ -20,9 +20,9 @@ graph TD
     D --> E["5. Receive BA from HA\n(binding confirmed)"]
     E --> F{"Route Optimization?"}
     F -- Yes --> G["6. Return Routability\nprocedure with CNs"]
-    G --> H["7. Send BU to CNs\n(direct path established)"]
+    G --> H["7. Send BU to CNs\n(direct MN–CN path established)"]
     F -- No --> I["Resume traffic\nvia HA tunnel"]
-    H --> I
+    H --> J["Resume traffic\ndirectly with CNs"]
 ```
 
 ## Phase 1: Movement Detection
@@ -52,8 +52,9 @@ ip -6 addr show scope global
 ip -6 monitor address
 
 # Wait for the new global address to appear
-# Check DAD status (should be TENTATIVE → then PREFERRED)
-ip -6 addr show scope global | grep -E "TENTATIVE|PREFERRED"
+# Check DAD status: the "tentative" flag is present during DAD
+# and is removed once DAD completes successfully
+ip -6 addr show scope global | grep -iE "tentative|deprecated"
 
 # New CoA should appear shortly after RA is received
 ip -6 addr show dev wlan0 scope global
