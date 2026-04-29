@@ -13,7 +13,7 @@ Kustomize is a Kubernetes-native configuration management tool that allows you t
 ## Prerequisites
 
 - K3s cluster with kubectl configured
-- kubectl version 1.14+ (Kustomize is built-in)
+- kubectl version 1.21+ (this guide uses modern Kustomize features built into kubectl)
 - Basic knowledge of Kubernetes YAML
 
 ## Understanding Kustomize Structure
@@ -101,9 +101,11 @@ resources:
   - service.yaml
 
 # Common labels applied to all resources
-commonLabels:
-  managed-by: kustomize
-  app.kubernetes.io/name: my-app
+labels:
+  - pairs:
+      managed-by: kustomize
+      app.kubernetes.io/name: my-app
+    includeTemplates: true
 ```
 
 ## Step 2: Create Development Overlay
@@ -121,7 +123,7 @@ kind: Kustomization
 resources:
   - ../../base
 
-# Add namespace prefix for all resources
+# Set the namespace for namespaced resources
 namespace: development
 
 # Name prefix for dev resources
@@ -133,8 +135,10 @@ images:
     newTag: "1.25-alpine"
 
 # Add dev-specific labels
-commonLabels:
-  environment: development
+labels:
+  - pairs:
+      environment: development
+    includeTemplates: true
 
 # ConfigMap generator for dev config
 configMapGenerator:
@@ -163,13 +167,13 @@ namespace: production
 
 images:
   - name: nginx
-    # Pin to specific image digest in production
-    newName: nginx
-    newTag: "1.25-alpine"
-    digest: "sha256:abc123..."
+    # Pin to a specific image digest in production
+    digest: "sha256:69fcc4e1cdddc63735fdd0ff4aea1d467120238a2e8d0767c596517664eac19e"
 
-commonLabels:
-  environment: production
+labels:
+  - pairs:
+      environment: production
+    includeTemplates: true
 
 # Apply patches to increase replicas and resources
 patches:
@@ -210,8 +214,12 @@ spec:
 ## Step 4: Apply Kustomize Configurations
 
 ```bash
-# Preview what will be applied (dry run)
+# Preview the rendered manifests
 kubectl kustomize k3s-apps/overlays/dev
+
+# Create the target namespaces
+kubectl create namespace development --dry-run=client -o yaml | kubectl apply -f -
+kubectl create namespace production --dry-run=client -o yaml | kubectl apply -f -
 
 # Apply development overlay
 kubectl apply -k k3s-apps/overlays/dev
@@ -228,7 +236,7 @@ kubectl delete -k k3s-apps/overlays/dev
 
 ## Step 5: Using Kustomize with K3s Auto-Deploy
 
-Combine Kustomize with K3s's manifest auto-deploy:
+Combine Kustomize with K3s's manifest auto-deploy on a server node. K3s will automatically apply updates when the file changes, but removing the file later will not delete the deployed resources.
 
 ```bash
 #!/bin/bash
@@ -236,14 +244,12 @@ Combine Kustomize with K3s's manifest auto-deploy:
 # Apply Kustomize overlay to K3s auto-deploy directory
 
 KUSTOMIZE_DIR="/home/admin/k3s-apps/overlays/production"
-TARGET_DIR="/var/lib/rancher/k3s/server/manifests/production"
-
-mkdir -p "$TARGET_DIR"
+TARGET_FILE="/var/lib/rancher/k3s/server/manifests/production-kustomize.yaml"
 
 # Generate and write the manifests
-kubectl kustomize "$KUSTOMIZE_DIR" > "$TARGET_DIR/all-resources.yaml"
+kubectl kustomize "$KUSTOMIZE_DIR" > "$TARGET_FILE"
 
-echo "Kustomize output applied to K3s auto-deploy directory"
+echo "Kustomize output written to $TARGET_FILE"
 ```
 
 ## Step 6: Managing Secrets with Kustomize
@@ -290,10 +296,10 @@ spec:
   value: 5
 
 - op: add
-  path: /spec/template/spec/containers/0/env/-
+  path: /spec/template/spec/containers/0/env
   value:
-    name: FEATURE_FLAG
-    value: "enabled"
+    - name: FEATURE_FLAG
+      value: "enabled"
 ```
 
 ```yaml
@@ -345,4 +351,4 @@ components:
 
 ## Conclusion
 
-Kustomize provides a clean, template-free way to manage K3s configurations across multiple environments. The base + overlay pattern eliminates YAML duplication while allowing environment-specific customizations. Combined with K3s's auto-deploy manifests directory, Kustomize output can be continuously applied as part of a GitOps workflow - making it easy to manage complex multi-environment K3s deployments from a single set of base manifests.
+Kustomize provides a clean, template-free way to manage K3s configurations across multiple environments. The base + overlay pattern eliminates YAML duplication while allowing environment-specific customizations. Combined with K3s's auto-deploy manifests directory, Kustomize output can be automatically reapplied when files change as part of a GitOps-style workflow - making it easy to manage complex multi-environment K3s deployments from a single set of base manifests.
