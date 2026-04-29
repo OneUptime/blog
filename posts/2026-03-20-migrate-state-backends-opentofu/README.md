@@ -56,10 +56,10 @@ terraform {
 
 ## Step 3: Run tofu init to Migrate
 
-Run `tofu init` - OpenTofu detects the backend change and offers to migrate:
+When the backend configuration has changed, `tofu init` requires you to explicitly pass either `-migrate-state` or `-reconfigure`. Use `-migrate-state` to copy state from the old backend to the new one:
 
 ```bash
-tofu init
+tofu init -migrate-state
 
 # Output:
 # Initializing the backend...
@@ -181,4 +181,4 @@ aws s3 mv \
 
 ## Conclusion
 
-Migrating OpenTofu state between backends is a well-supported operation that OpenTofu handles automatically during `tofu init`. The key steps are backing up first, updating the backend configuration, running `tofu init` and confirming the migration, then verifying with `tofu plan`. Following this process ensures zero data loss during backend transitions.
+Migrating OpenTofu state between backends is a well-supported operation that OpenTofu handles during `tofu init -migrate-state`. The key steps are backing up first, updating the backend configuration, running `tofu init -migrate-state` and confirming the migration, then verifying with `tofu plan`. Following this process ensures zero data loss during backend transitions.
