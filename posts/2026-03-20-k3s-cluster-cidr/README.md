@@ -23,7 +23,7 @@ The cluster CIDR defines the IP address range used for pod networking in K3s. Ev
 1. The cluster CIDR must NOT overlap with your physical network ranges
 2. The cluster CIDR and service CIDR must NOT overlap with each other
 3. The cluster DNS IP must be within the service CIDR range
-4. **Cannot be changed after cluster initialization** without rebuilding the cluster
+4. **Changing it after cluster initialization generally requires rebuilding the cluster**
 
 ## Checking for CIDR Conflicts
 
@@ -39,7 +39,7 @@ ip addr show
 
 # Common ranges to avoid:
 # 10.0.0.0/8    - Common corporate networks
-# 172.16.0.0/12 - Docker default bridge
+# 172.17.0.0/16 - Docker default bridge
 # 192.168.0.0/16 - Home/office networks
 ```
 
@@ -47,7 +47,7 @@ ip addr show
 
 ### Before Installation (Required)
 
-The cluster CIDR must be set before the first server starts. It cannot be changed afterward.
+The cluster CIDR should be planned before the first server starts. Changing it later generally requires rebuilding the cluster.
 
 ```bash
 sudo mkdir -p /etc/rancher/k3s
@@ -68,27 +68,31 @@ EOF
 # Install K3s
 curl -sfL https://get.k3s.io | sudo sh -
 
-# Verify the CIDR was applied
-kubectl cluster-info
-kubectl get nodes -o yaml | grep podCIDR
+# Verify the pod CIDRs assigned to nodes
+kubectl get nodes -o jsonpath='{range .items[*]}{.metadata.name}{"\t"}{.spec.podCIDRs}{"\n"}{end}'
+
+# Verify the CoreDNS service IP is in the service-cidr range
+kubectl -n kube-system get svc kube-dns
 ```
 
 ## CIDR Sizing Guide
 
-Choose the right CIDR size based on your expected pod count:
+Choose the right CIDR size based on your expected node count and pod density. The estimates below assume the default `/24` node CIDR allocation:
 
 | CIDR | Addresses | Node CIDRs (/24 each) | Max Nodes |
 |------|-----------|----------------------|-----------|
-| /16 | 65,536 | 256 | ~256 (with 256 pods/node) |
+| /16 | 65,536 | 256 | ~256 |
 | /17 | 32,768 | 128 | ~128 |
 | /20 | 4,096 | 16 | ~16 |
 | /24 | 256 | 1 | 1 (single node) |
 
+If you change the `cluster-cidr` mask, also adjust `node-cidr-mask-size-ipv4` (and `node-cidr-mask-size-ipv6` for dual-stack) to match your planned pods per node and total node count.
+
 ```bash
 # For a large cluster (1000+ nodes)
-cluster-cidr: "10.42.0.0/12"   # 1 million IP addresses
+cluster-cidr: "10.32.0.0/12"   # 1 million IP addresses
 
-# For a small cluster (< 32 nodes)
+# For a small cluster (< 16 nodes with default /24 node CIDRs)
 cluster-cidr: "10.42.0.0/20"   # 4096 IP addresses
 ```
 
@@ -143,28 +147,28 @@ K3s supports dual-stack (IPv4 + IPv6) configurations:
 
 ```yaml
 # /etc/rancher/k3s/config.yaml
-cluster-cidr: "10.42.0.0/16,fd42::/48"
+cluster-cidr: "10.42.0.0/16,fd42::/56"
 service-cidr: "10.43.0.0/16,fd43::/112"
 cluster-dns: "10.43.0.10"
 ```
 
 ```bash
 # Verify dual-stack is enabled
-kubectl get nodes -o yaml | grep podCIDR
-# Should show both IPv4 and IPv6 CIDRs
+kubectl get nodes -o jsonpath='{range .items[*]}{.metadata.name}{"\t"}{.spec.podCIDRs}{"\n"}{end}'
+# Should show both IPv4 and IPv6 CIDRs for each node
 ```
 
 ## Verifying CIDR Configuration
 
 ```bash
-# After installation, verify the cluster CIDR
-kubectl cluster-info dump | grep -m 5 "cluster-cidr"
+# Check the configured values in the K3s config file
+sudo grep -E 'cluster-cidr|service-cidr|cluster-dns' /etc/rancher/k3s/config.yaml
 
-# Or check the kube-controller-manager flags
-ps aux | grep controller | tr ' ' '\n' | grep cluster-cidr
+# Check the pod CIDRs assigned to nodes
+kubectl get nodes -o jsonpath='{range .items[*]}{.metadata.name}{"\t"}{.spec.podCIDRs}{"\n"}{end}'
 
 # Check pod IPs are within the expected range
-kubectl get pods --all-namespaces -o wide | awk '{print $7}' | sort -u
+kubectl get pods --all-namespaces -o wide | awk 'NR>1 {print $7}' | sort -u
 
 # Check that CoreDNS has the correct cluster IP
 kubectl -n kube-system get svc kube-dns
@@ -172,23 +176,16 @@ kubectl -n kube-system get svc kube-dns
 
 ## Changing the CIDR After Installation
 
-The cluster CIDR **cannot be changed** on a running cluster without rebuilding. If you need to change it:
+Changing the cluster CIDR on an existing cluster generally requires rebuilding it. If you need to change it:
 
 ```bash
-# Step 1: Export all workloads
-kubectl get all --all-namespaces -o yaml > workloads-backup.yaml
+# Step 1: Back up or export your workload manifests before uninstalling K3s
 
 # Step 2: Uninstall K3s
 sudo /usr/local/bin/k3s-uninstall.sh
 
-# Step 3: Clean up network interfaces
-sudo ip link delete flannel.1 2>/dev/null || true
-sudo ip link delete cni0 2>/dev/null || true
-
-# Step 4: Remove K3s data
-sudo rm -rf /var/lib/rancher/k3s/
-
-# Step 5: Reinstall with new CIDR
+# Step 3: Recreate the K3s config with the new CIDR
+sudo mkdir -p /etc/rancher/k3s
 sudo tee /etc/rancher/k3s/config.yaml > /dev/null <<EOF
 cluster-cidr: "172.20.0.0/16"
 service-cidr: "172.21.0.0/16"
@@ -196,12 +193,13 @@ cluster-dns: "172.21.0.10"
 token: "ClusterToken"
 EOF
 
+# Step 4: Reinstall K3s
 curl -sfL https://get.k3s.io | sudo sh -
 
-# Step 6: Re-apply workloads
-kubectl apply -f workloads-backup.yaml
+# Step 5: Restore your workloads from your backup or source control
+kubectl apply -f /path/to/your/manifests/
 ```
 
 ## Conclusion
 
-Configuring the K3s cluster CIDR requires careful planning before installation to avoid conflicts with your physical network. The default `10.42.0.0/16` works well for most environments but must be changed if it overlaps with existing infrastructure. Always document your CIDR choices and ensure they don't conflict across multiple clusters in the same environment. Since the cluster CIDR cannot be changed post-installation, getting this right from the start is critical.
+Configuring the K3s cluster CIDR requires careful planning before installation to avoid conflicts with your physical network. The default `10.42.0.0/16` works well for most environments but must be changed if it overlaps with existing infrastructure. Always document your CIDR choices and ensure they don't conflict across multiple clusters in the same environment. Since changing the cluster CIDR post-installation generally requires rebuilding the cluster, getting this right from the start is critical.
