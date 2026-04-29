@@ -8,7 +8,7 @@ Description: A guide to writing OpenTofu configurations using JSON syntax as an 
 
 ## Introduction
 
-OpenTofu supports two configuration file formats: HCL (with `.tf` extension) and JSON (with `.tf.json` extension). JSON syntax is useful when generating configurations programmatically or when integrating with tools that produce JSON output. This guide covers how to write valid OpenTofu configurations in JSON.
+OpenTofu supports two configuration syntaxes: its HCL-based native syntax in `.tf` and `.tofu` files, and JSON syntax in `.tf.json` and `.tofu.json` files. JSON syntax is useful when generating configurations programmatically or when integrating with tools that produce JSON output. This guide covers how to write valid OpenTofu configurations in JSON.
 
 ## JSON vs HCL
 
@@ -31,8 +31,8 @@ resource "aws_instance" "web" {
 ```
 
 ```json
-// JSON equivalent (main.tf.json)
 {
+  "//": "JSON equivalent (main.tf.json)",
   "variable": {
     "environment": {
       "type": "string",
@@ -200,7 +200,7 @@ print("Generated instances.tf.json")
 
 ## Mixing JSON and HCL
 
-You can mix `.tf` and `.tf.json` files in the same directory:
+You can mix native syntax and JSON files in the same directory, including `.tf`, `.tofu`, `.tf.json`, and `.tofu.json` files:
 
 ```bash
 # These can coexist in the same directory
