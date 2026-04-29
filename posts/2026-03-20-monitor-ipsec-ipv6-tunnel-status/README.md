@@ -8,7 +8,7 @@ Description: Learn how to monitor IPv6 IPsec tunnel status using command-line to
 
 ## Overview
 
-Monitoring IPv6 IPsec tunnels ensures you detect failures, track performance, and maintain audit records. strongSwan provides built-in monitoring via swanctl, SNMP MIBs, and a REST API. For production environments, integrate with Prometheus or Nagios for alerting and dashboards.
+Monitoring IPv6 IPsec tunnels ensures you detect failures, track performance, and maintain audit records. strongSwan exposes status and events through `swanctl` and the VICI (Versatile IKE Configuration Interface) socket. For production environments, integrate with Prometheus or Nagios for alerting and dashboards.
 
 ## Basic Monitoring Commands
 
@@ -96,28 +96,30 @@ check_tunnel() {
 if ! check_tunnel; then
     echo "Tunnel DOWN at $(date)" | mail -s "IPv6 VPN Alert" "$ALERT_EMAIL"
     # Attempt restart
-    swanctl --initiate child:$TUNNEL_NAME
+    swanctl --initiate --child "$TUNNEL_NAME"
 fi
 ```
 
 ## Prometheus Monitoring
 
-strongSwan exposes metrics via its VICI socket. Use `prometheus-ipsec-exporter`:
+strongSwan exposes status via its VICI socket. Use a community exporter such as `sergeymakinen/ipsec_exporter`, which subscribes to VICI and translates SA state into Prometheus metrics:
 
 ```bash
-# Install prometheus-ipsec-exporter
-pip install prometheus-ipsec-exporter
-# Or use the Docker image:
-docker run -d -p 9912:9912 -v /var/run/charon.vici:/var/run/charon.vici \
-  ghcr.io/dennisstritzke/ipsec-exporter
+# Build from source (Go)
+git clone https://github.com/sergeymakinen/ipsec_exporter
+cd ipsec_exporter && make
+./ipsec_exporter --collector.type=vici --vici.address=unix:///var/run/charon.vici
 
-# Metrics available:
-# ipsec_ikesa_established - Number of established IKE SAs
-# ipsec_childsa_installed - Number of installed CHILD SAs
-# ipsec_bytes_in_total  - Total bytes inbound per SA
-# ipsec_bytes_out_total - Total bytes outbound per SA
-# ipsec_packets_in_total
-# ipsec_packets_out_total
+# Metrics available (subset):
+# ipsec_up                       - 1 if the exporter could query strongSwan
+# ipsec_ike_sas                  - Number of currently registered IKE SAs
+# ipsec_ike_sa_state             - State of each IKE SA (per-tunnel labels)
+# ipsec_ike_sa_established_seconds - Seconds since the IKE SA was established
+# ipsec_child_sa_state           - State of each CHILD SA
+# ipsec_child_sa_bytes_in        - Bytes received on a CHILD SA
+# ipsec_child_sa_bytes_out       - Bytes sent on a CHILD SA
+# ipsec_child_sa_packets_in      - Packets received on a CHILD SA
+# ipsec_child_sa_packets_out     - Packets sent on a CHILD SA
 ```
 
 ### Prometheus Alert Rules
@@ -128,16 +130,16 @@ groups:
   - name: ipsec_ipv6
     rules:
       - alert: IPsecTunnelDown
-        expr: ipsec_ikesa_established == 0
+        expr: ipsec_ike_sas == 0
         for: 2m
         labels:
           severity: critical
         annotations:
           summary: "IPv6 IPsec tunnel is down"
-          description: "No IKE SA established for 2+ minutes"
+          description: "No IKE SA registered for 2+ minutes"
 
       - alert: IPsecNoTraffic
-        expr: rate(ipsec_bytes_out_total[5m]) == 0
+        expr: rate(ipsec_child_sa_bytes_out[5m]) == 0
         for: 10m
         labels:
           severity: warning
@@ -147,26 +149,26 @@ groups:
 
 ## SNMP Monitoring
 
-strongSwan supports SNMP via the ipsec-snmp plugin:
+strongSwan does not ship a native SNMP plugin and there is no standard IKEv2 MIB. The usual approach is to expose `swanctl` output through net-snmp's `extend` directive on the strongSwan host:
 
 ```bash
-# Install plugin
-apt install strongswan-plugin-ipseckey
+# Install net-snmp
+apt install snmpd snmp
 
-# Configure in /etc/strongswan.d/charon/ipsec-snmp.conf
-ipsec-snmp {
-    socket = udp:localhost:161
-    community = public
-}
+# Add an extend OID that returns the count of established IKE SAs
+# Append to /etc/snmp/snmpd.conf:
+extend ipsec-ikesas /bin/sh -c "swanctl --list-sas 2>/dev/null | grep -c ESTABLISHED"
+
+systemctl restart snmpd
 ```
 
 ```bash
-# Query via SNMP
-# IKEv2 SA table (IPsec MIB: IPSEC-ISAKMP-IKE-DOI-TC)
-snmpwalk -v2c -c public localhost .1.3.6.1.4.1.3317.1.2.7
+# Query via SNMP using the NET-SNMP-EXTEND-MIB
+snmpwalk -v2c -c public localhost 'NET-SNMP-EXTEND-MIB::nsExtendOutLine."ipsec-ikesas"'
 
-# Tunnel status
-snmpget -v2c -c public localhost IPSEC-MIB::ikeSaState.1
+# Or fetch the integer result directly
+snmpget -v2c -c public localhost \
+  'NET-SNMP-EXTEND-MIB::nsExtendOutputFull."ipsec-ikesas"'
 ```
 
 ## Nagios/Icinga Check
@@ -189,4 +191,4 @@ fi
 
 ## Summary
 
-Monitor IPv6 IPsec tunnels with `swanctl --list-sas` (connection state), `ip -s xfrm state list` (byte counters), and `ip xfrm monitor` (real-time events). For production, deploy `prometheus-ipsec-exporter` to expose strongSwan metrics and create Prometheus alerts for `ipsec_ikesa_established == 0`. Shell scripts can perform end-to-end verification by combining SA state checks with `ping6` tests. Always monitor both SA establishment (IKE layer) and traffic flow (IPsec layer) since an established IKE SA doesn't guarantee data is flowing.
+Monitor IPv6 IPsec tunnels with `swanctl --list-sas` (connection state), `ip -s xfrm state list` (byte counters), and `ip xfrm monitor` (real-time events). For production, deploy a VICI-based Prometheus exporter (e.g. `sergeymakinen/ipsec_exporter`) and alert on `ipsec_ike_sas == 0`. Shell scripts can perform end-to-end verification by combining SA state checks with `ping6` tests. Always monitor both SA establishment (IKE layer) and traffic flow (IPsec layer) since an established IKE SA doesn't guarantee data is flowing.
