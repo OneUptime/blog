@@ -4,48 +4,48 @@ Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
 Tags: Longhorn, Orphaned Replicas, Cleanup, Kubernetes, Storage, Disk Space, SUSE Rancher
 
-Description: Learn how to configure Longhorn's automatic orphaned replica cleanup to reclaim disk space consumed by replicas that are no longer associated with any volume.
+Description: Learn how to configure Longhorn's automatic orphaned replica cleanup to reclaim disk space consumed by replica directories that Longhorn no longer tracks.
 
 ---
 
-Orphaned replicas are Longhorn replica data directories on nodes that are no longer associated with any Longhorn volume. They accumulate over time from deleted volumes, failed replica scheduling, or cluster migrations and consume disk space unnecessarily.
+Orphaned replicas are Longhorn replica data directories on nodes that are no longer tracked by the Longhorn system. They can appear when a disk already contains replica directories from another Longhorn cluster or when Longhorn loses track of replica directories after a node or disk outage, and they consume disk space unnecessarily.
 
 ---
 
 ## What Creates Orphaned Replicas
 
-- Volume deleted without proper Longhorn cleanup
-- Node failure during replica scheduling
-- Manual deletion of Longhorn volume objects without deleting the PVC
-- Cluster restored from backup with stale replica directories
+- A disk added to a Longhorn node already contains replica directories from another Longhorn cluster
+- Replica CRs are removed while the node or disk is down
+- A volume is accidentally deleted without properly detaching the replica directories
 
 ---
 
 ## Step 1: Enable Automatic Orphaned Replica Cleanup
 
-Configure Longhorn to automatically detect and clean up orphaned replicas:
+Configure Longhorn to automatically detect and clean up orphaned replica directories:
 
 ```bash
-# Enable orphaned replica auto cleanup in Longhorn settings
+# Enable automatic cleanup of orphaned replica directories
 
-kubectl patch setting.longhorn.io orphan-auto-deletion \
+kubectl patch settings.longhorn.io orphan-resource-auto-deletion \
   -n longhorn-system \
   --type merge \
-  -p '{"value":"true"}'
+  -p '{"value":"replica-data"}'
 ```
 
 ---
 
 ## Step 2: Manually Identify Orphaned Data
 
-View orphaned data through the Longhorn UI or via kubectl:
+View orphaned replica directories through the Longhorn UI or via kubectl:
 
 ```bash
-# List detected orphaned resources
-kubectl get lhorphan -n longhorn-system
+# List detected orphaned replica directories
+kubectl get orphans.longhorn.io -n longhorn-system \
+  -l 'longhorn.io/orphan-type=replica'
 
-# Get details of a specific orphaned replica
-kubectl describe lhorphan <orphan-name> -n longhorn-system
+# Get YAML details of a specific orphan resource
+kubectl get orphans.longhorn.io <orphan-name> -n longhorn-system -o yaml
 ```
 
 ---
@@ -54,10 +54,11 @@ kubectl describe lhorphan <orphan-name> -n longhorn-system
 
 ```bash
 # Delete a specific orphaned replica directory
-kubectl delete lhorphan <orphan-name> -n longhorn-system
+kubectl delete orphans.longhorn.io <orphan-name> -n longhorn-system
 
-# Delete all orphaned replicas (use with caution!)
-kubectl delete lhorphan -n longhorn-system --all
+# Delete all detected orphaned replica directories (use with caution!)
+kubectl delete orphans.longhorn.io -n longhorn-system \
+  -l 'longhorn.io/orphan-type=replica'
 ```
 
 ---
@@ -67,11 +68,11 @@ kubectl delete lhorphan -n longhorn-system --all
 After cleanup, confirm disk space was recovered:
 
 ```bash
-# Check node disk usage before and after
-kubectl get lhnode -n longhorn-system \
-  -o custom-columns='NAME:.metadata.name,USED:.status.diskStatus'
+# Check Longhorn disk status before and after
+kubectl get nodes.longhorn.io -n longhorn-system \
+  -o custom-columns='NAME:.metadata.name,DISK_STATUS:.status.diskStatus'
 
-# On the node directly
+# On the node directly (replace with your Longhorn disk path if different)
 df -h /var/lib/longhorn
 ```
 
@@ -79,14 +80,14 @@ df -h /var/lib/longhorn
 
 ## Step 5: Prevent Orphaned Replica Accumulation
 
-Configure settings to automatically clean up replicas when volumes are deleted:
+Tune how quickly Longhorn removes detected orphan resources after automatic cleanup is enabled:
 
 ```bash
-# Auto-delete orphaned replicas after volumes are deleted
-kubectl patch setting.longhorn.io remove-snapshots-during-filesystem-trim \
+# Set the automatic orphan cleanup grace period in seconds
+kubectl patch settings.longhorn.io orphan-resource-auto-deletion-grace-period \
   -n longhorn-system \
   --type merge \
-  -p '{"value":"enabled"}'
+  -p '{"value":"300"}'
 ```
 
 ---
@@ -116,10 +117,10 @@ spec:
                 - sh
                 - -c
                 - |
-                  COUNT=$(kubectl get lhorphan -n longhorn-system --no-headers | wc -l)
-                  echo "Orphaned Longhorn replicas detected: $COUNT"
-                  if [ $COUNT -gt 0 ]; then
-                    kubectl get lhorphan -n longhorn-system
+                  COUNT=$(kubectl get orphans.longhorn.io -n longhorn-system -l 'longhorn.io/orphan-type=replica' -o name | wc -l)
+                  echo "Orphaned Longhorn replica directories detected: $COUNT"
+                  if [ "$COUNT" -gt 0 ]; then
+                    kubectl get orphans.longhorn.io -n longhorn-system -l 'longhorn.io/orphan-type=replica'
                   fi
           restartPolicy: OnFailure
 ```
@@ -128,7 +129,7 @@ spec:
 
 ## Best Practices
 
-- Enable `orphan-auto-deletion` on all production clusters to prevent disk space accumulation.
+- Enable `orphan-resource-auto-deletion` with `replica-data` included on production clusters to prevent disk space accumulation.
 - Review orphans before mass deletion - occasionally an orphan may be a recoverable replica from a volume that still has data you need.
-- Run orphan cleanup after any cluster restore operation to clear stale replica data.
-- Monitor disk usage trends - rapidly increasing orphan count can indicate a misconfigured or buggy workload deleting and recreating PVCs frequently.
+- Review orphan resources after node or disk recovery operations to clear replica directories that Longhorn no longer tracks.
+- Monitor disk usage trends - rapidly increasing orphan count can indicate node, disk, or workload lifecycle issues that warrant investigation.
