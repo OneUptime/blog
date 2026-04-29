@@ -8,7 +8,7 @@ Description: Configure IPv6 Router Advertisements with DNS information using RFC
 
 ## Introduction
 
-RFC 8106 (updated from RFC 6106) defines two ICMPv6 Router Advertisement options - RDNSS and DNSSL - that allow routers to deliver DNS configuration to clients without requiring a DHCPv6 server. This is essential for purely SLAAC-based IPv6 deployments.
+RFC 8106 (which updates RFC 6106) defines two ICMPv6 Router Advertisement options - RDNSS and DNSSL - that allow routers to deliver DNS configuration to clients without requiring a DHCPv6 server. This is essential for purely SLAAC-based IPv6 deployments.
 
 ## RFC 8106 Overview
 
@@ -36,7 +36,7 @@ interface eth1 {
     };
 
     # RFC 8106 RDNSS: Advertise two DNS resolvers
-    # Lifetime: must be >= MaxRtrAdvInterval * 2 to avoid DNS expiry between RAs
+    # RFC 8106 recommends a default lifetime of at least 3 * MaxRtrAdvInterval
     RDNSS 2001:db8:1:1::53 2001:4860:4860::8888 {
         AdvRDNSSLifetime 600;
     };
@@ -50,14 +50,13 @@ interface eth1 {
 
 ## Lifetime Calculation
 
-The RDNSS/DNSSL lifetime should be at least `2 * MaxRtrAdvInterval` to ensure clients do not lose DNS information between RAs:
+The RDNSS/DNSSL lifetime should generally be at least `3 * MaxRtrAdvInterval`, which matches RFC 8106's default guidance:
 
 ```bash
 # If MaxRtrAdvInterval = 100s:
 
-# MinRDNSSLifetime = 2 * 100 = 200s (minimum safe)
-# Recommended = 3 * 100 = 300s (safer)
-# Used in examples = 600s (very safe, 6x MaxRtrAdvInterval)
+# RFC 8106 default/recommended = 3 * 100 = 300s
+# Used in examples = 600s (conservative, 6x MaxRtrAdvInterval)
 ```
 
 ## Verifying RDNSS/DNSSL Delivery
@@ -79,7 +78,7 @@ rdisc6 eth0
 
 ```bash
 # On a Linux client with systemd-resolved:
-systemd-resolve --status | grep -A 10 "Link.*eth0"
+resolvectl status eth0
 # Look for "DNS Servers" and "DNS Domain" lines
 
 # Or check resolv.conf (on systems that write it)
@@ -93,24 +92,25 @@ scutil --dns | head -20
 
 | Platform | RDNSS | DNSSL | Notes |
 |---|---|---|---|
-| Linux (kernel 3.0+) | Yes | Yes | Via rdnssd or systemd-networkd |
-| Windows 10/11 | Yes | Yes | Full RFC 8106 support |
-| macOS 10.7+ | Yes | Yes | Full support |
-| Android 6+ | Yes | Partial | DNSSL support varies by version |
-| iOS 11+ | Yes | Yes | Full support |
-| FreeBSD 8+ | Yes | Yes | Via rtsold |
+| Linux | Yes | Yes | Support depends on user-space resolver integration such as systemd-resolved or rdnssd |
+| Windows 10 (Creators Update) | Yes | Yes | Microsoft documents RFC 6106 RA DNS option support in this release; verify behavior on newer builds |
+| macOS | Varies by release | Varies by release | Verify on the target release |
+| Android | Varies by release | Varies by release | Verify on the target release |
+| iOS | Varies by release | Varies by release | Verify on the target release |
+| FreeBSD | Yes | Yes | Via rtsold/rtadvd |
 
 ## Configuring on Cisco IOS-XE
 
 ```text
-! IOS-XE 16.6+ supports RFC 8106 RDNSS
+! Syntax varies by platform and IOS XE release; this example matches current Catalyst IOS XE guides
 Router(config)# interface GigabitEthernet0/0
-Router(config-if)# ipv6 nd ra dns server 2001:db8:1:1::53 infinite
-Router(config-if)# ipv6 nd ra dns server 2606:4700:4700::1111 infinite
-Router(config-if)# ipv6 nd ra dns search-list corp.example.com infinite
+Router(config-if)# ipv6 nd ra dns server 2001:db8:1:1::53 infinite sequence 1
+Router(config-if)# ipv6 nd ra dns server 2606:4700:4700::1111 infinite sequence 2
+Router(config-if)# ipv6 nd ra dns search-list corp.example.com infinite sequence 1
 
 ! Verify the configuration
-Router# show ipv6 interface GigabitEthernet0/0
+Router# show ipv6 nd ra dns server
+Router# show ipv6 nd ra dns search-list
 ```
 
 ## Using Infinite Lifetime
@@ -133,4 +133,4 @@ Note: `infinity` is `0xffffffff` in the wire format per RFC 8106.
 
 ## Conclusion
 
-RFC 8106 RDNSS and DNSSL options complete the stateless IPv6 client configuration picture: SLAAC provides the address, RA provides the default gateway, and RDNSS/DNSSL provide the DNS resolver and search domains. This eliminates the need for DHCPv6 in many environments. Configure the lifetime values to be at least twice the MaxRtrAdvInterval and verify delivery using `rdisc6` from a client on the same segment.
+RFC 8106 RDNSS and DNSSL options complete the stateless IPv6 client configuration picture: SLAAC provides the address, RA provides the default gateway, and RDNSS/DNSSL provide the DNS resolver and search domains. This eliminates the need for DHCPv6 in many environments. Configure the lifetime values to be at least `3 * MaxRtrAdvInterval` and verify delivery using `rdisc6` from a client on the same segment.
