@@ -8,7 +8,7 @@ Description: Learn how to view and interpret the IPv6 routing table on Linux usi
 
 ## Overview
 
-Linux provides multiple tools to view the IPv6 routing table. The modern approach uses the `ip` command from the `iproute2` package, but `netstat` and `route` are also available on older systems.
+Linux provides multiple tools to view the IPv6 routing table. The modern approach uses the `ip` command from the `iproute2` package, but legacy tools like `netstat` and `route` may still be available on systems with the `net-tools` package installed.
 
 ## Using the ip Command (Recommended)
 
@@ -18,7 +18,6 @@ Linux provides multiple tools to view the IPv6 routing table. The modern approac
 ip -6 route show
 
 # Sample output:
-# ::1 dev lo proto kernel scope host metric 256
 # 2001:db8::/64 dev eth0 proto kernel scope link src 2001:db8::1 metric 256
 # fe80::/64 dev eth0 proto kernel scope link metric 256
 # default via fe80::1 dev eth0 proto ra metric 1024 expires 1799sec
@@ -51,10 +50,10 @@ Linux supports policy-based routing with multiple tables:
 # Show routes from all tables
 ip -6 route show table all
 
-# Show the local table (loopback and host routes)
+# Show the local table managed by the kernel
 ip -6 route show table local
 
-# Show table 100 (custom policy routing table)
+# Show table 100 (if you use a custom policy routing table)
 ip -6 route show table 100
 ```
 
@@ -62,9 +61,9 @@ ip -6 route show table 100
 
 ```bash
 # Show routes with full details
-ip -6 route show detail
+ip -d -6 route show
 
-# Show routes including cache entries
+# Show cached IPv6 route entries, if any
 ip -6 route show cache
 
 # Show routes with protocol info
@@ -80,10 +79,11 @@ ip -6 route show proto kernel   # Only kernel-added routes
 netstat -6rn
 
 # Output format:
-# Destination      Gateway          Flags  Met  Ref  Use  Iface
-# ::/0             fe80::1          UG     1024  0    0    eth0
-# ::1/128          ::               U      256   0    0    lo
-# 2001:db8::/64    ::               U      256   0    0    eth0
+# Kernel IPv6 routing table
+# Destination                    Next Hop                   Flag Met Ref  Use If
+# ::/0                           fe80::1                    UG   1024 0      0 eth0
+# ::1/128                        ::                         Un   0   0      0 lo
+# 2001:db8::/64                  ::                         U    256 0      0 eth0
 ```
 
 ## Using route (Very Legacy)
@@ -117,11 +117,11 @@ ip -6 route show | grep "/64"
 # Monitor IPv6 routing table changes live
 ip -6 monitor route
 
-# Output shows additions (+) and deletions (-):
-# [ROUTE] 2001:db8:1::/64 dev eth0 proto ra
+# Output shows routes as they are added or deleted:
+# 2001:db8:1::/64 dev eth0 proto ra
 # Deleted 2001:db8:2::/64 dev eth1 proto ra
 ```
 
 ## Summary
 
-The `ip -6 route show` command is the primary way to view the IPv6 routing table on modern Linux systems. Use `ip -6 route get <address>` to simulate a route lookup, `show table all` to see all routing tables, and `ip -6 monitor route` to observe live changes. Legacy tools like `netstat -6rn` still work on older systems.
+The `ip -6 route show` command is the primary way to view the IPv6 routing table on modern Linux systems. Use `ip -6 route get <address>` to simulate a route lookup, `show table all` to see all routing tables, and `ip -6 monitor route` to observe live changes. Legacy tools like `netstat -6rn` and `route -6 -n` may still be available on systems with `net-tools` installed.
