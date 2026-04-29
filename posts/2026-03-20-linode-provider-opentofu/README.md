@@ -13,7 +13,7 @@ This guide covers How to Configure the Linode Provider in OpenTofu using OpenTof
 ## Prerequisites
 
 - OpenTofu v1.6+
-- API credentials for the relevant service
+- A Linode APIv4 personal access token
 - Basic understanding of OpenTofu concepts
 
 ## Step 1: Install and Configure the Provider
@@ -22,23 +22,15 @@ This guide covers How to Configure the Linode Provider in OpenTofu using OpenTof
 terraform {
   required_version = ">= 1.6.0"
   required_providers {
-    # Provider configuration depends on the specific service
-    # Replace with the actual provider source and version
-    example = {
-      source  = "hashicorp/example"
-      version = "~> 1.0"
+    linode = {
+      source  = "linode/linode"
+      version = "~> 3.0"
     }
   }
 }
 
-# Configure the provider with credentials
-
-provider "example" {
-  # Use environment variables for credentials
-  # EXAMPLE_API_KEY, EXAMPLE_TOKEN, etc.
-  
-  # Or specify directly (not recommended for secrets)
-  # api_key = var.api_key
+provider "linode" {
+  # The provider reads credentials from LINODE_TOKEN.
 }
 ```
 
@@ -46,83 +38,122 @@ provider "example" {
 
 ```bash
 # Use environment variables for authentication
-export PROVIDER_API_KEY="your-api-key"
-export PROVIDER_TOKEN="your-token"
-export PROVIDER_ORG="your-organization"
+export LINODE_TOKEN="your-linode-api-token"
 ```
 
 ```hcl
-variable "api_key" {
-  description = "API key for authentication"
+variable "environment" {
+  description = "Environment name"
+  type        = string
+  default     = "prod"
+}
+
+variable "region" {
+  description = "Linode region for resources"
+  type        = string
+  default     = "us-central"
+}
+
+variable "root_pass" {
+  description = "Root password for the compute instance"
   type        = string
   sensitive   = true
 }
 
-variable "organization" {
-  description = "Organization name or ID"
+variable "ssh_public_key" {
+  description = "SSH public key to add to the compute instance"
   type        = string
+}
+
+variable "k8s_version" {
+  description = "LKE Kubernetes version in major.minor format"
+  type        = string
+  default     = "1.32"
 }
 ```
 
 ## Step 3: Create Basic Resources
 
 ```hcl
-# Example resource creation
-# Replace with actual resource types for the provider
+resource "linode_instance" "web" {
+  label           = "${var.environment}-web"
+  image           = "linode/ubuntu22.04"
+  region          = var.region
+  type            = "g6-standard-1"
+  authorized_keys = [var.ssh_public_key]
+  root_pass       = var.root_pass
+  private_ip      = true
 
-resource "example_project" "main" {
-  name        = "${var.environment}-project"
-  description = "Managed by OpenTofu"
-
-  tags = {
-    environment = var.environment
-    managed_by  = "opentofu"
-  }
+  tags = [var.environment, "opentofu"]
 }
 
-# Configure access control
-resource "example_team" "developers" {
-  name    = "developers"
-  project = example_project.main.id
-  role    = "contributor"
+resource "linode_lke_cluster" "main" {
+  label       = "${var.environment}-lke"
+  k8s_version = var.k8s_version
+  region      = var.region
+  tags        = [var.environment, "opentofu"]
+
+  pool {
+    type  = "g6-standard-2"
+    count = 3
+  }
 }
 ```
 
 ## Step 4: Configure Advanced Settings
 
 ```hcl
-# Monitoring and alerting configuration
-resource "example_alert" "main" {
-  name      = "critical-alert"
-  project   = example_project.main.id
-  severity  = "critical"
-  threshold = 90
+resource "linode_instance" "web" {
+  label           = "${var.environment}-web"
+  image           = "linode/ubuntu22.04"
+  region          = var.region
+  type            = "g6-standard-1"
+  authorized_keys = [var.ssh_public_key]
+  root_pass       = var.root_pass
+  private_ip      = true
+  backups_enabled = true
 
-  notification {
-    channel = var.notification_channel
+  tags = [var.environment, "opentofu"]
+
+  alerts {
+    cpu            = 90
+    transfer_quota = 80
   }
 }
 
-# Backup and retention policies
-resource "example_backup_policy" "main" {
-  name              = "daily-backup"
-  project           = example_project.main.id
-  retention_days    = 30
-  schedule          = "0 2 * * *"  # Daily at 2 AM
+resource "linode_lke_cluster" "main" {
+  label       = "${var.environment}-lke"
+  k8s_version = var.k8s_version
+  region      = var.region
+  tags        = [var.environment, "opentofu"]
+
+  control_plane {
+    high_availability = true
+  }
+
+  pool {
+    type  = "g6-standard-2"
+    count = 3
+  }
 }
 ```
 
 ## Step 5: Define Outputs
 
 ```hcl
-output "project_id" {
-  description = "The ID of the created project"
-  value       = example_project.main.id
+output "instance_ip" {
+  description = "The public IPv4 address of the Linode instance"
+  value       = linode_instance.web.ip_address
 }
 
-output "project_name" {
-  description = "The name of the created project"
-  value       = example_project.main.name
+output "lke_cluster_id" {
+  description = "The ID of the created LKE cluster"
+  value       = linode_lke_cluster.main.id
+}
+
+output "lke_dashboard_url" {
+  description = "The dashboard URL for the created LKE cluster"
+  value       = linode_lke_cluster.main.dashboard_url
 }
 ```
 
@@ -145,14 +176,14 @@ tofu apply
 ## Common Issues and Solutions
 
 ### Authentication Errors
-Verify API keys are valid and have the required permissions. Check for typos in environment variable names.
+Verify `LINODE_TOKEN` is set correctly and that the token has permission to create the Linode resources in your configuration.
 
 ### Rate Limiting
-Add `depends_on` to serialize resource creation and avoid hitting API rate limits.
+If the Linode API rate-limits your run, lower concurrency with `tofu plan -parallelism=1` or `tofu apply -parallelism=1`.
 
 ### Provider Version Conflicts
-Pin to a specific provider version range to ensure reproducible deployments.
+Pin the `linode/linode` provider to a compatible version range to ensure reproducible deployments.
 
 ## Conclusion
 
-You have successfully configured How to Configure the Linode Provider in OpenTofu using OpenTofu. This provider enables you to manage all aspects of the service as code, ensuring consistency and enabling GitOps workflows. Always use environment variables or secure secret stores for sensitive credentials.
+You have successfully configured the Linode provider in OpenTofu. This provider enables you to manage compute instances and Kubernetes clusters as code, ensuring consistency and enabling GitOps workflows. Always use environment variables or secure secret stores for sensitive credentials.
