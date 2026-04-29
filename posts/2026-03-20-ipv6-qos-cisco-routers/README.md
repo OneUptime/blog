@@ -42,7 +42,7 @@ class-map match-any IPV6-VIDEO
 class-map match-any IPV6-CONTROL
  match dscp cs6
  match dscp cs7
- match protocol icmpv6
+ match protocol ipv6-icmp
 
 ! Match IPv6 bulk data (low priority)
 class-map match-any IPV6-BULK
@@ -63,8 +63,8 @@ class-map match-any IPV6-DEFAULT
 policy-map IPV6-WAN-EGRESS
  !
  class IPV6-VOIP-MEDIA
-  priority percent 30
-  police rate percent 30
+  priority percent 20
+  police cir percent 20
    conform-action transmit
    exceed-action drop
  !
@@ -73,7 +73,7 @@ policy-map IPV6-WAN-EGRESS
   queue-limit 32 packets
  !
  class IPV6-VIDEO
-  bandwidth percent 25
+  bandwidth percent 15
   fair-queue
  !
  class IPV6-INTERACTIVE
@@ -87,7 +87,7 @@ policy-map IPV6-WAN-EGRESS
   shape average 512000
  !
  class class-default
-  bandwidth percent 20
+  bandwidth percent 15
   fair-queue
 ```
 
@@ -111,7 +111,7 @@ policy-map IPV6-LAN-INGRESS
 
 interface GigabitEthernet0/1
  description "LAN Interface"
- ipv6 address 2001:db8:lan::1/64
+ ipv6 address 2001:db8:1:1::1/64
  service-policy input IPV6-LAN-INGRESS
 ```
 
@@ -132,7 +132,7 @@ policy-map IPV6-REMARK
 ! Apply on ingress from untrusted network
 interface GigabitEthernet0/2
  description "Internet Ingress"
- ipv6 address 2001:db8:wan::1/64
+ ipv6 address 2001:db8:1:2::1/64
  service-policy input IPV6-REMARK
 ```
 
@@ -148,18 +148,16 @@ show policy-map interface GigabitEthernet0/0
 ! - Queue drops
 ! - Police conform/exceed stats
 
-! Show IPv6 traffic by class
-show policy-map interface GigabitEthernet0/0 output class IPV6-VOIP-MEDIA
+! Show policy configuration for a specific class
+show policy-map IPV6-WAN-EGRESS class IPV6-VOIP-MEDIA
 
-! Check DSCP markings on IPv6 packets
-debug ipv6 policy
-no debug ipv6 policy  ! Turn off after testing
+! Check DSCP remarking statistics on ingress
+show policy-map interface GigabitEthernet0/2
 
-! Show IPv6 QoS statistics
-show ipv6 traffic | include DSCP
+! Show IPv6 protocol counters
+show ipv6 traffic
 
-! Monitor queue depths
-show queue GigabitEthernet0/0
+! Queue depth and drop counters are also visible in show policy-map interface output
 ```
 
 ## IPv6 LLQ (Low-Latency Queuing) for VoIP
@@ -169,16 +167,16 @@ show queue GigabitEthernet0/0
 
 policy-map IPV6-LLQ
  class IPV6-VOIP-MEDIA
-  priority 5000       ! 5 Mbps strict priority (LLQ)
+  priority 384        ! 384 kbps strict priority (LLQ)
  class IPV6-VIDEO
-  bandwidth 10000     ! 10 Mbps guaranteed bandwidth
+  bandwidth 768       ! 768 kbps guaranteed bandwidth
  class class-default
   fair-queue
 
 interface Serial0/1/0
  description "T1 WAN Link"
- ipv6 address 2001:db8:serial::1/64
+ ipv6 address 2001:db8:1:3::1/64
  service-policy output IPV6-LLQ
 ```
 
-Cisco's MQC framework applies uniformly to IPv6 QoS with the same `class-map`, `policy-map`, and `service-policy` commands, with DSCP-based classification working identically for IPv6 Traffic Class field matching as for IPv4 ToS field matching.
+Cisco's MQC framework applies uniformly to IPv6 QoS with the same `class-map`, `policy-map`, and `service-policy` commands, with DSCP-based classification working identically against the IPv6 Traffic Class field and the IPv4 DS field.
