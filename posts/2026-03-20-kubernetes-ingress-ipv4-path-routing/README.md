@@ -18,8 +18,6 @@ kind: Ingress
 metadata:
   name: path-routing-ingress
   namespace: default
-  annotations:
-    nginx.ingress.kubernetes.io/rewrite-target: /
 spec:
   ingressClassName: nginx
   rules:
@@ -70,6 +68,7 @@ kind: Ingress
 metadata:
   name: rewrite-ingress
   annotations:
+    nginx.ingress.kubernetes.io/use-regex: "true"
     # Capture group from path used in rewrite-target
     nginx.ingress.kubernetes.io/rewrite-target: /$2
 spec:
@@ -127,26 +126,25 @@ curl -H "Host: api.example.com" http://$INGRESS_IP/orders
 curl -H "Host: api.example.com" http://$INGRESS_IP/
 
 # Verify routing in Nginx config
-kubectl exec -n ingress-nginx \
-  $(kubectl get pods -n ingress-nginx -o name | head -1) \
-  -- nginx -T | grep -A5 "location /users"
+kubectl exec -n ingress-nginx deploy/ingress-nginx-controller \
+  -- nginx -T | grep -A20 "server_name api.example.com"
 ```
 
-## Nginx Ingress Rate Limiting per Path
+## Nginx Ingress Rate Limiting
 
 ```yaml
 metadata:
   annotations:
-    # Limit to 100 requests per minute for /api
+    # Limit to 100 requests per second and 20 connections for this Ingress
     nginx.ingress.kubernetes.io/limit-rps: "100"
     nginx.ingress.kubernetes.io/limit-connections: "20"
 ```
 
 ## Priority of Rules
 
-The Nginx Ingress Controller processes rules in this order:
-1. Exact path matches
-2. Longer prefix matches take priority over shorter ones
-3. For equal-length paths, the first rule wins
+When multiple paths match a request:
+1. The longest matching path takes priority
+2. If two matches are equally long, `Exact` takes priority over `Prefix`
+3. ingress-nginx orders paths by descending length before writing them to the NGINX configuration
 
 Path-based routing reduces infrastructure complexity by consolidating multiple services under a single external IPv4 address and hostname.
