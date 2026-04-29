@@ -9,6 +9,7 @@ Description: Guide to deploying JupyterHub on Rancher for collaborative data sci
 ## Introduction
 
 JupyterHub provides multi-user Jupyter notebook environments on Kubernetes (using Zero to JupyterHub). This guide covers deploying JupyterHub on Rancher for data science teams.
+This guide assumes a Rancher-managed Kubernetes cluster running Kubernetes 1.28 or later, which is required by the JupyterHub 4.x Helm chart.
 
 ## Step 1: Install JupyterHub with Helm
 
@@ -27,6 +28,7 @@ hub:
   config:
     JupyterHub:
       admin_access: true
+      authenticator_class: generic-oauth
     Authenticator:
       admin_users:
         - admin@example.com
@@ -34,24 +36,27 @@ hub:
       client_id: "your-oauth-client-id"
       client_secret: "your-oauth-client-secret"
       oauth_callback_url: "https://jupyter.example.com/hub/oauth_callback"
+      allow_all: true
+    GenericOAuthenticator:
+      login_service: "Corporate SSO"
+      authorize_url: "https://idp.example.com/oauth2/authorize"
+      token_url: "https://idp.example.com/oauth2/token"
+      userdata_url: "https://idp.example.com/oauth2/userinfo"
+      username_claim: email
   
   db:
     type: postgres
-    url: postgresql://jupyterhub:password@postgres:5432/jupyterhub
+    url: postgresql+psycopg2://jupyterhub:password@postgres:5432/jupyterhub
 
 proxy:
   service:
     type: ClusterIP
-  https:
-    enabled: true
-    type: letsencrypt
-    letsencrypt:
-      contactEmail: admin@example.com
 
 singleuser:
   image:
-    name: jupyter/datascience-notebook
-    tag: python-3.11
+    name: quay.io/jupyter/datascience-notebook
+    tag: 2026-03-23
+  cmd: null
   profileList:
   - display_name: "Small (2 CPU, 4GB RAM)"
     description: "For light data exploration"
@@ -74,8 +79,6 @@ singleuser:
         nvidia.com/gpu: "1"
       cpu_limit: 4
       mem_limit: "32G"
-      node_selector:
-        nvidia.com/gpu.present: "true"
       tolerations:
       - key: nvidia.com/gpu
         operator: Exists
@@ -107,14 +110,21 @@ cull:
 
 ```bash
 # Install JupyterHub
-helm upgrade --install jupyterhub jupyterhub/jupyterhub \
+helm upgrade --cleanup-on-fail --install jupyterhub jupyterhub/jupyterhub \
   --namespace jupyterhub \
   --create-namespace \
-  --version 3.2.1 \
+  --version 4.3.2 \
   --values jupyterhub-values.yaml
 
-kubectl wait pods --all \
-  --for=condition=Ready \
+kubectl rollout status deployment/hub \
+  --namespace jupyterhub \
+  --timeout=300s
+
+kubectl rollout status deployment/proxy \
+  --namespace jupyterhub \
+  --timeout=300s
+
+kubectl rollout status deployment/user-scheduler \
   --namespace jupyterhub \
   --timeout=300s
 ```
@@ -123,6 +133,7 @@ kubectl wait pods --all \
 
 ```yaml
 # jupyterhub-ingress.yaml
+# Requires an ingress controller such as ingress-nginx
 apiVersion: networking.k8s.io/v1
 kind: Ingress
 metadata:
@@ -132,6 +143,7 @@ metadata:
     nginx.ingress.kubernetes.io/proxy-read-timeout: "3600"
     nginx.ingress.kubernetes.io/proxy-send-timeout: "3600"
 spec:
+  ingressClassName: nginx
   rules:
   - host: jupyter.example.com
     http:
@@ -146,7 +158,7 @@ spec:
   tls:
   - hosts:
     - jupyter.example.com
-    secretName: jupyter-tls
+    secretName: jupyter-tls        # Pre-create this secret or manage it with cert-manager
 ```
 
 ## Step 4: Configure Shared Storage
@@ -181,7 +193,9 @@ singleuser:
       readOnly: true             # Read-only shared data
 ```
 
-## Step 5: Configure Resource Quotas per Team
+## Step 5: Configure a Namespace Resource Quota
+
+ResourceQuota is namespace-scoped, so this limits the entire `jupyterhub` namespace unless each team gets its own namespace.
 
 ```yaml
 # team-quota.yaml
@@ -204,15 +218,11 @@ spec:
 ## Monitoring JupyterHub
 
 ```bash
-# Check active users
-kubectl exec -n jupyterhub \
-  $(kubectl get pods -n jupyterhub -l component=hub -o name) \
-  -- jupyterhub --debug list-users
+# List hub and notebook pods
+kubectl get pods -n jupyterhub
 
 # View hub logs
-kubectl logs -n jupyterhub \
-  -l component=hub \
-  --follow
+kubectl logs -n jupyterhub deployment/hub --follow
 
 # Check resource usage
 kubectl top pods -n jupyterhub
