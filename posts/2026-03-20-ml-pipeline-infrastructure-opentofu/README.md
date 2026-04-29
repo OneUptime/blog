@@ -126,7 +126,7 @@ resource "aws_sfn_state_machine" "ml_pipeline" {
         Type     = "Task"
         Resource = "arn:aws:states:::sagemaker:createTrainingJob.sync"
         Parameters = {
-          TrainingJobName = "$.trainingJobName"
+          "TrainingJobName.$" = "$.trainingJobName"
           AlgorithmSpecification = {
             TrainingImage     = var.training_image_uri
             TrainingInputMode = "File"
@@ -196,7 +196,7 @@ resource "aws_cloudwatch_event_rule" "ml_pipeline" {
   description         = "Trigger ML retraining pipeline"
   schedule_expression = var.retraining_schedule  # e.g., "cron(0 2 * * ? *)" = 2 AM daily
 
-  is_enabled = var.environment == "production"
+  state = var.environment == "production" ? "ENABLED" : "DISABLED"
 }
 
 resource "aws_cloudwatch_event_target" "ml_pipeline" {
