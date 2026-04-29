@@ -49,7 +49,7 @@ conn L2TP-PSK
 # /etc/xl2tpd/xl2tpd.conf
 
 [global]
-ipsec saref = yes
+ipsec saref = no
 
 [lns default]
 ip range = 192.168.42.10-192.168.42.250
@@ -57,7 +57,7 @@ local ip = 192.168.42.1
 require chap = yes
 refuse pap = yes
 require authentication = yes
-name = L2TPVPN
+hostname = L2TPVPN
 pppoptfile = /etc/ppp/options.xl2tpd
 length bit = yes
 ```
@@ -71,6 +71,7 @@ ipcp-accept-local
 ipcp-accept-remote
 ms-dns 8.8.8.8
 ms-dns 8.8.4.4
+name L2TPVPN
 noccp
 auth
 crtscts
@@ -88,8 +89,8 @@ connect-delay 5000
 ```conf
 # /etc/ppp/chap-secrets
 # Username  Server  Password  IP
-alice    l2tpvpn  "password1"  *
-bob      l2tpvpn  "password2"  *
+alice    L2TPVPN  "password1"  *
+bob      L2TPVPN  "password2"  *
 ```
 
 ## Step 6: Enable NAT and Forwarding
@@ -105,14 +106,13 @@ sudo iptables -A INPUT -p udp --dport 500 -j ACCEPT
 sudo iptables -A INPUT -p udp --dport 4500 -j ACCEPT
 sudo iptables -A INPUT -p udp --dport 1701 -j ACCEPT
 sudo iptables -A INPUT -p esp -j ACCEPT
-sudo iptables -A INPUT -p ah -j ACCEPT
 ```
 
 ## Step 7: Start Services
 
 ```bash
-sudo systemctl restart strongswan
-sudo systemctl enable strongswan
+sudo systemctl restart strongswan-starter
+sudo systemctl enable strongswan-starter
 sudo systemctl restart xl2tpd
 sudo systemctl enable xl2tpd
 ```
@@ -124,4 +124,4 @@ sudo systemctl enable xl2tpd
 3. Enter the server IP and the PSK from `/etc/ipsec.secrets`
 4. Enter your username and password from `chap-secrets`
 
-Note: For IKEv2 support, consider migrating to pure StrongSwan IKEv2 which is more modern and secure.
+Note: L2TP/IPSec relies on IKEv1, which is now officially deprecated. For new deployments, prefer a pure StrongSwan IKEv2 setup, which is more modern and secure.
