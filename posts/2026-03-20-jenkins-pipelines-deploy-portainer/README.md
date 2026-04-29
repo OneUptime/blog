@@ -15,8 +15,6 @@ Jenkins can deploy to Portainer by calling the Portainer API or stack webhooks a
 Start Jenkins as a Portainer stack:
 
 ```yaml
-version: "3.8"
-
 services:
   jenkins:
     image: jenkins/jenkins:lts
@@ -40,11 +38,11 @@ networks:
     driver: bridge
 ```
 
-Mounting `docker.sock` allows Jenkins to build images directly on the host.
+Mounting `docker.sock` allows a Jenkins agent that also has the Docker CLI installed to build images directly on the host. The official `jenkins/jenkins` image does not include the Docker CLI, so install it in the image or run the pipeline on a Docker-capable agent.
 
 ## Declarative Jenkinsfile
 
-A complete pipeline that builds, pushes, and deploys via Portainer:
+A complete pipeline that builds, pushes, updates a file-based staging stack through the Portainer API, and triggers production through a Portainer stack webhook. The agent running this pipeline needs Docker, `curl`, and `jq` installed:
 
 ```groovy
 pipeline {
@@ -52,22 +50,25 @@ pipeline {
 
     environment {
         IMAGE_NAME    = 'myregistry.example.com/my-app'
-        IMAGE_TAG     = "${env.GIT_COMMIT[0..7]}"
+        IMAGE_TAG     = ''
         PORTAINER_URL = 'https://portainer.example.com'
-        STACK_NAME    = 'my-app'
+        STACK_NAME    = 'my-app-staging'
     }
 
     stages {
         stage('Checkout') {
             steps {
                 checkout scm
+                script {
+                    env.IMAGE_TAG = sh(script: 'git rev-parse --short=8 HEAD', returnStdout: true).trim()
+                }
             }
         }
 
         stage('Build') {
             steps {
-                sh "docker build -t ${IMAGE_NAME}:${IMAGE_TAG} ."
-                sh "docker tag ${IMAGE_NAME}:${IMAGE_TAG} ${IMAGE_NAME}:latest"
+                sh 'docker build -t $IMAGE_NAME:$IMAGE_TAG .'
+                sh 'docker tag $IMAGE_NAME:$IMAGE_TAG $IMAGE_NAME:latest'
             }
         }
 
@@ -78,46 +79,46 @@ pipeline {
                     usernameVariable: 'REGISTRY_USER',
                     passwordVariable: 'REGISTRY_PASS'
                 )]) {
-                    sh "echo $REGISTRY_PASS | docker login myregistry.example.com -u $REGISTRY_USER --password-stdin"
-                    sh "docker push ${IMAGE_NAME}:${IMAGE_TAG}"
-                    sh "docker push ${IMAGE_NAME}:latest"
+                    sh '''
+                        set +x
+                        echo "$REGISTRY_PASS" | docker login myregistry.example.com -u "$REGISTRY_USER" --password-stdin
+                        docker push "$IMAGE_NAME:$IMAGE_TAG"
+                        docker push "$IMAGE_NAME:latest"
+                    '''
                 }
             }
         }
 
         stage('Deploy to Staging') {
             steps {
-                withCredentials([usernamePassword(
-                    credentialsId: 'portainer-credentials',
-                    usernameVariable: 'PORTAINER_USER',
-                    passwordVariable: 'PORTAINER_PASS'
+                withCredentials([string(
+                    credentialsId: 'portainer-api-key',
+                    variable: 'PORTAINER_API_KEY'
                 )]) {
-                    script {
-                        def token = sh(
-                            script: """
-                                curl -s -X POST ${PORTAINER_URL}/api/auth \
-                                  -H 'Content-Type: application/json' \
-                                  -d '{"Username":"${PORTAINER_USER}","Password":"${PORTAINER_PASS}"}' \
-                                  | jq -r .jwt
-                            """,
-                            returnStdout: true
-                        ).trim()
+                    sh '''
+                        set +x
 
-                        def stackId = sh(
-                            script: """
-                                curl -s -H "Authorization: Bearer ${token}" \
-                                  ${PORTAINER_URL}/api/stacks | \
-                                  jq -r '.[] | select(.Name=="${STACK_NAME}-staging") | .Id'
-                            """,
-                            returnStdout: true
-                        ).trim()
+                        stack_json=$(curl -fsS \
+                          -H "X-API-Key: $PORTAINER_API_KEY" \
+                          "$PORTAINER_URL/api/stacks" | \
+                          jq -ce --arg stackName "$STACK_NAME" '.[] | select(.Name == $stackName)')
 
-                        sh """
-                            curl -s -X POST \
-                              -H "Authorization: Bearer ${token}" \
-                              "${PORTAINER_URL}/api/stacks/${stackId}/images/update?pullImage=true"
-                        """
-                    }
+                        stack_id=$(printf '%s' "$stack_json" | jq -r '.Id')
+                        endpoint_id=$(printf '%s' "$stack_json" | jq -r '.EndpointId')
+                        stack_file=$(curl -fsS \
+                          -H "X-API-Key: $PORTAINER_API_KEY" \
+                          "$PORTAINER_URL/api/stacks/$stack_id/file" | \
+                          jq -re '.StackFileContent')
+
+                        jq -nc \
+                          --arg stackFileContent "$stack_file" \
+                          '{StackFileContent: $stackFileContent, RepullImageAndRedeploy: true}' | \
+                          curl -fsS -X PUT \
+                            -H "X-API-Key: $PORTAINER_API_KEY" \
+                            -H 'Content-Type: application/json' \
+                            --data @- \
+                            "$PORTAINER_URL/api/stacks/$stack_id?endpointId=$endpoint_id"
+                    '''
                 }
             }
         }
@@ -134,7 +135,15 @@ pipeline {
             }
             steps {
                 input message: 'Deploy to production?', ok: 'Deploy'
-                sh "curl -X POST ${env.PORTAINER_PROD_WEBHOOK}"
+                withCredentials([string(
+                    credentialsId: 'portainer-prod-webhook',
+                    variable: 'PORTAINER_PROD_WEBHOOK'
+                )]) {
+                    sh '''
+                        set +x
+                        curl -fsS -X POST "$PORTAINER_PROD_WEBHOOK"
+                    '''
+                }
             }
         }
     }
@@ -151,11 +160,14 @@ pipeline {
 
 ## Storing Credentials Securely in Jenkins
 
-Never hardcode Portainer credentials in Jenkinsfiles. Use Jenkins Credential Store:
+Never hardcode registry credentials, Portainer API tokens, or webhook URLs in Jenkinsfiles. Use Jenkins Credentials:
 
-1. Go to **Manage Jenkins > Credentials > Global**.
-2. Add a **Username with password** credential with ID `portainer-credentials`.
-3. Reference it with `withCredentials` as shown in the pipeline above.
+1. Go to **Manage Jenkins > Credentials**.
+2. Under **System**, open **Global credentials (unrestricted)**.
+3. Add a **Username with password** credential with ID `registry-credentials`.
+4. Add a **Secret text** credential with ID `portainer-api-key`.
+5. Add a **Secret text** credential with ID `portainer-prod-webhook`.
+6. Reference them with `withCredentials` as shown in the pipeline above.
 
 ## Parallel Deployments
 
@@ -166,17 +178,17 @@ stage('Deploy Services') {
     parallel {
         stage('Deploy API') {
             steps {
-                sh "curl -X POST ${PORTAINER_WEBHOOK_API}"
+                sh 'curl -fsS -X POST "$PORTAINER_WEBHOOK_API"'
             }
         }
         stage('Deploy Worker') {
             steps {
-                sh "curl -X POST ${PORTAINER_WEBHOOK_WORKER}"
+                sh 'curl -fsS -X POST "$PORTAINER_WEBHOOK_WORKER"'
             }
         }
         stage('Deploy Frontend') {
             steps {
-                sh "curl -X POST ${PORTAINER_WEBHOOK_FRONTEND}"
+                sh 'curl -fsS -X POST "$PORTAINER_WEBHOOK_FRONTEND"'
             }
         }
     }
