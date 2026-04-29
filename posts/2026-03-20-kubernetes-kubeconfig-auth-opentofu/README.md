@@ -16,7 +16,7 @@ Kubeconfig is the standard way to store Kubernetes cluster credentials. OpenTofu
 provider "kubernetes" {
   config_path = pathexpand("~/.kube/config")
 
-  # Use default context if not specified
+  # Use the current context from the kubeconfig if not specified
   # config_context = "my-context"
 }
 ```
@@ -71,7 +71,7 @@ provider "kubernetes" {
   host = "https://k8s-api.example.com"
 
   exec {
-    api_version = "client.authentication.k8s.io/v1beta1"
+    api_version = "client.authentication.k8s.io/v1"
     command     = "kubectl"
     args        = ["oidc-login", "get-token",
       "--oidc-issuer-url=https://accounts.google.com",
@@ -89,7 +89,7 @@ provider "kubernetes" {
   cluster_ca_certificate = base64decode(var.cluster_ca_certificate)
 
   exec {
-    api_version = "client.authentication.k8s.io/v1beta1"
+    api_version = "client.authentication.k8s.io/v1"
     command     = "aws"
     args        = ["eks", "get-token", "--cluster-name", var.cluster_name]
     env = {
