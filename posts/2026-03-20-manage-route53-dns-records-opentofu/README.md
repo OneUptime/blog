@@ -83,7 +83,7 @@ resource "aws_route53_record" "mx" {
 
 ## Alias Record for AWS Resources
 
-Use alias records (not CNAME) for AWS resources like ALBs, CloudFront, and S3 websites:
+Use alias records for AWS resources like ALBs, CloudFront, and S3 websites. They're especially useful at the zone apex, where CNAME records aren't allowed:
 
 ```hcl
 resource "aws_route53_record" "alb" {
@@ -115,10 +115,9 @@ resource "aws_route53_record" "cloudfront" {
 
 ```hcl
 resource "aws_route53_health_check" "primary" {
-  fqdn              = "primary.${var.domain_name}"
+  fqdn              = aws_lb.primary.dns_name
   port              = 443
-  type              = "HTTPS"
-  resource_path     = "/health"
+  type              = "TCP"
   failure_threshold = 3
   request_interval  = 30
 
