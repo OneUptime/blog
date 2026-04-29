@@ -39,6 +39,9 @@ Pass sensitive values or dynamic data through environment variables:
 resource "aws_instance" "web" {
   ami           = var.ami_id
   instance_type = "t3.micro"
+  tags = {
+    Name = "web"
+  }
 
   provisioner "local-exec" {
     command = "python3 scripts/register_host.py"
@@ -69,10 +72,10 @@ resource "aws_instance" "web" {
 
 ## Specifying the Interpreter
 
-By default, `local-exec` uses `/bin/sh` on Unix and `cmd /C` on Windows. Specify a custom interpreter:
+By default, `local-exec` uses `/bin/sh -c` on Unix and `cmd /C` on Windows. Specify a custom interpreter:
 
 ```hcl
-resource "null_resource" "setup" {
+resource "terraform_data" "setup" {
   provisioner "local-exec" {
     interpreter = ["python3", "-c"]
     command     = "import boto3; print('Running setup')"
@@ -89,15 +92,13 @@ provisioner "local-exec" {
 }
 ```
 
-## Using null_resource with local-exec
+## Using terraform_data with local-exec
 
-When you need to run a local command that isn't tied to a specific resource lifecycle, use `null_resource`:
+When you need to run a local command that isn't tied to a specific resource lifecycle, use `terraform_data`:
 
 ```hcl
-resource "null_resource" "ansible_provisioner" {
-  triggers = {
-    instance_id = aws_instance.web.id
-  }
+resource "terraform_data" "ansible_provisioner" {
+  triggers_replace = [aws_instance.web.id]
 
   provisioner "local-exec" {
     command = <<-EOT
@@ -140,7 +141,7 @@ provisioner "local-exec" {
 - Prefer native OpenTofu resources over provisioners whenever possible.
 - Keep provisioner commands idempotent - they may run again if a resource is tainted.
 - Avoid hardcoding credentials in commands; use environment variables instead.
-- Use `triggers` in `null_resource` to control when provisioners re-run.
+- Use `triggers_replace` in `terraform_data` to control when provisioners re-run.
 - Log command output to a file for debugging: `command = "my_script.sh 2>&1 | tee /tmp/provision.log"`
 
 ## Conclusion
