@@ -6,7 +6,7 @@ Tags: IPv6, Linux, Use_tempaddr, Sysctl, Privacy Extensions, SLAAC
 
 Description: A deep dive into the Linux `use_tempaddr` sysctl parameter for IPv6 privacy extensions, covering all three values, address lifecycle management, preferred lifetime tuning, and per-interface...
 
-The `net.ipv6.conf.*.use_tempaddr` sysctl controls how Linux generates and uses temporary IPv6 addresses from SLAAC (Router Advertisement). This parameter implements RFC 8981 (formerly RFC 4941) privacy extensions on Linux.
+The `net.ipv6.conf.*.use_tempaddr` sysctl controls how Linux generates and uses temporary IPv6 addresses from SLAAC (Router Advertisement). This parameter controls the IPv6 privacy extensions described by RFC 8981, which obsoletes RFC 4941.
 
 ## Understanding use_tempaddr Values
 
@@ -25,9 +25,9 @@ sysctl net.ipv6.conf.eth0.use_tempaddr
 # - Temporary address is generated and kept
 # - BUT stable address is preferred for outgoing connections
 # - Temporary address still exists (visible on the interface)
-# - Rarely the right choice (temporary address is never used)
+# - Rarely the right choice (temporary address is not normally selected while a stable/public address is available)
 
-# Value 2: Generate and prefer temporary (RECOMMENDED for clients)
+# Value 2 (and any value >1): Generate and prefer temporary (RECOMMENDED for clients)
 # - Temporary address generated
 # - Temporary address is PREFERRED for outgoing connections
 # - Stable address still exists (for incoming connections)
@@ -51,7 +51,7 @@ rdisc6 eth0   # Requires rdisc6 tool (ndisc6 package)
 # Check addresses after RA received
 ip -6 addr show eth0
 
-# Expected output with two global addresses:
+# Expected output with two global addresses (exact lifetimes depend on the RA and your temp_* sysctls):
 # inet6 2001:db8:x:x:TEMP:TEMP:TEMP:TEMP/64 scope global temporary dynamic
 #   valid_lft 604794sec preferred_lft 86393sec
 # inet6 2001:db8:x:x:STABLE:STABLE:STABLE:STABLE/64 scope global dynamic mngtmpaddr
@@ -65,9 +65,9 @@ ip -6 addr show eth0
 # preferred_lft = how long this address is preferred for new connections
 # valid_lft = how long the address can still be used for existing connections
 
-# After preferred_lft expires:
-# 1. A new temporary address is generated
-# 2. Old temporary address enters "deprecated" state
+# As preferred_lft approaches expiry:
+# 1. Linux normally generates a new temporary address before the old one is deprecated
+# 2. The old temporary address enters "deprecated" state when preferred_lft reaches 0
 # 3. Existing connections using old address continue until valid_lft expires
 
 # Check address state
@@ -85,7 +85,7 @@ sysctl -a | grep "temp"
 
 # Key parameters:
 # net.ipv6.conf.*.temp_prefered_lft  - preferred lifetime for temp addresses (default: 86400 = 24h)
-# net.ipv6.conf.*.temp_valid_lft     - valid lifetime for temp addresses (default: 604800 = 7d)
+# net.ipv6.conf.*.temp_valid_lft     - valid lifetime for temp addresses (default: 172800 = 2d)
 # net.ipv6.conf.*.regen_max_retry    - max retries for generating non-conflicting temp address
 # net.ipv6.conf.*.max_desync_factor  - randomization factor subtracted from preferred_lft
 
@@ -97,7 +97,8 @@ net.ipv6.conf.default.use_tempaddr = 2
 # Rotate temporary address every 6 hours (preferred lifetime)
 net.ipv6.conf.all.temp_prefered_lft = 21600
 
-# Keep valid (for existing connections) for 24 hours after preferred expires
+# Keep the address valid for up to 24 hours total, so deprecated addresses
+# can continue serving existing connections after the 6-hour preferred lifetime ends
 net.ipv6.conf.all.temp_valid_lft = 86400
 
 # Randomization: subtract up to 600 seconds randomly from preferred_lft
@@ -139,7 +140,7 @@ ip -6 route get 2001:4860:4860::8888
 # Look for "src" field - should show temporary address
 
 # Confirm with an actual connection
-curl -6 --interface "" https://ipv6.icanhazip.com
+curl -6 https://ipv6.icanhazip.com
 # Or
 wget -6 -O- https://ipv6.icanhazip.com 2>/dev/null
 
@@ -152,14 +153,16 @@ strace -e connect curl -6 -s https://ipv6.icanhazip.com 2>&1 | grep "sin6_addr"
 ## Relationship with mngtmpaddr Flag
 
 ```bash
-# The "mngtmpaddr" flag on an address marks it as the stable address
+# The "mngtmpaddr" flag marks an address as the template
 # from which temporary addresses are generated
 ip -6 addr show eth0 | grep mngtmpaddr
 
 # If mngtmpaddr flag is missing, temporary addresses won't be generated
+# from that manually added address
 # This can happen after manually adding an address:
 ip -6 addr add 2001:db8::1/64 dev eth0
-# This doesn't get mngtmpaddr - temporary addresses still come from SLAAC
+# This doesn't get mngtmpaddr - temporary addresses can still come from SLAAC,
+# but not from this manual address
 
 # Stable SLAAC addresses have both "dynamic" and "mngtmpaddr" flags:
 # inet6 2001:db8::xxx/64 scope global dynamic mngtmpaddr
@@ -179,9 +182,10 @@ nmcli connection modify "My Connection" ipv6.ip6-privacy 2
 # Verify
 nmcli connection show "My Connection" | grep ip6-privacy
 
-# Check that NetworkManager writes the sysctl correctly
+# After reconnecting/activating the connection, check that NetworkManager
+# writes the sysctl correctly on the active interface
 sysctl net.ipv6.conf.eth0.use_tempaddr
 # Should be 2
 ```
 
-The `use_tempaddr = 2` sysctl is the correct setting for any Linux client system. Set it in `/etc/sysctl.d/` for persistence, configure per-interface overrides for server interfaces that need stable addresses, and tune `temp_prefered_lft` to control how frequently the system rotates to a new temporary address.
+The `use_tempaddr = 2` sysctl is usually the right setting for Linux client systems that use SLAAC temporary addresses. Set it in `/etc/sysctl.d/` for persistence, configure per-interface overrides for server interfaces that need stable addresses, and tune `temp_prefered_lft` to control how frequently the system rotates to a new temporary address.
