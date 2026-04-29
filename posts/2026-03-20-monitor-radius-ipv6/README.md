@@ -40,11 +40,15 @@ server status {
 echo "Message-Authenticator = 0x00, FreeRADIUS-Statistics-Type = 1" | \
     radclient -x [::1]:18121 status mysecret
 
-# FreeRADIUS-Statistics-Type values:
-# 1 = Authentication statistics
-# 2 = Accounting statistics
-# 4 = Proxy statistics
-# 8 = Client statistics
+# FreeRADIUS-Statistics-Type values (bitmask, add to combine):
+# 1   = Authentication statistics
+# 2   = Accounting statistics
+# 4   = Proxy authentication statistics
+# 8   = Proxy accounting statistics
+# 16  = Internal (queue lengths, thread info)
+# 32  = Client statistics
+# 64  = Server (listen socket) statistics
+# 128 = Home server statistics
 ```
 
 ## Prometheus: FreeRADIUS Exporter
@@ -52,18 +56,14 @@ echo "Message-Authenticator = 0x00, FreeRADIUS-Statistics-Type = 1" | \
 ```bash
 # Install freeradius_exporter (Prometheus metrics)
 # https://github.com/bvantagelimited/freeradius_exporter
+go install github.com/bvantagelimited/freeradius_exporter@latest
 
-cat > /etc/prometheus/freeradius-exporter.conf << 'EOF'
-listen_address: "[::]:9812"   # Listen on IPv6
-
-radius_status_server:
-  address: "[::1]:18121"
-  secret: "mysecret"
-  stats_type: 15              # All statistics
-EOF
-
-# Start exporter
-freeradius_exporter --config /etc/prometheus/freeradius-exporter.conf
+# Start exporter (configured via command-line flags, listening on IPv6)
+freeradius_exporter \
+    -web.listen-address "[::]:9812" \
+    -radius.address "[::1]:18121" \
+    -radius.secret "mysecret" \
+    -radius.timeout 5000
 
 # Prometheus scrape config
 cat >> /etc/prometheus/prometheus.yml << 'EOF'
