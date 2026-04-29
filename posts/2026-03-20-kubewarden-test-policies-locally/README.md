@@ -20,16 +20,15 @@ Testing Kubewarden policies before deploying them to your cluster is essential f
 ## Installing kwctl
 
 ```bash
-# Linux (amd64)
+# Linux (x86_64)
+curl -LO https://github.com/kubewarden/kwctl/releases/latest/download/kwctl-linux-x86_64.zip
+unzip kwctl-linux-x86_64.zip
+sudo install -m 755 kwctl-linux-x86_64 /usr/local/bin/kwctl
 
-curl -LO https://github.com/kubewarden/kwctl/releases/latest/download/kwctl-linux-amd64
-chmod +x kwctl-linux-amd64
-sudo mv kwctl-linux-amd64 /usr/local/bin/kwctl
-
-# macOS (arm64)
-curl -LO https://github.com/kubewarden/kwctl/releases/latest/download/kwctl-darwin-arm64
-chmod +x kwctl-darwin-arm64
-sudo mv kwctl-darwin-arm64 /usr/local/bin/kwctl
+# macOS (Apple Silicon / aarch64)
+curl -LO https://github.com/kubewarden/kwctl/releases/latest/download/kwctl-darwin-aarch64.zip
+unzip kwctl-darwin-aarch64.zip
+sudo install -m 755 kwctl-darwin-aarch64 /usr/local/bin/kwctl
 
 # Verify installation
 kwctl --version
@@ -37,92 +36,105 @@ kwctl --version
 
 ## Understanding kwctl Test Payloads
 
-A kwctl test payload is a JSON file that simulates a Kubernetes admission request. It contains:
-- `request.uid`: Unique request ID
-- `request.kind`: The resource type being admitted
-- `request.operation`: CREATE, UPDATE, DELETE, or CONNECT
-- `request.object`: The Kubernetes resource being validated
-- `request.oldObject`: The previous state (for UPDATE operations)
-- `settings`: Policy-specific configuration
+A kwctl test payload is a JSON file that contains a Kubernetes admission request object. `kwctl run` expects the admission request object itself, not a top-level `request` wrapper. It typically contains:
+- `uid`: Unique request ID
+- `kind`: The resource type being admitted
+- `resource`: The Kubernetes resource being admitted
+- `operation`: CREATE, UPDATE, DELETE, or CONNECT
+- `namespace`: The namespace of the resource being admitted
+- `userInfo`: Information about the user making the request
+- `object`: The Kubernetes resource being validated
+- `oldObject`: The previous state (for UPDATE operations)
+
+Policy-specific configuration is provided separately via `--settings-json` or `--settings-path`.
 
 ## Creating Test Payloads
 
 ### Manual Test Payload
 
+Create `tests/valid-pod.json` for a pod that should be allowed:
+
 ```json
-// tests/valid-pod.json - A pod that should be ALLOWED
 {
-  "request": {
-    "uid": "test-001",
-    "kind": {
-      "group": "",
-      "version": "v1",
-      "kind": "Pod"
-    },
-    "resource": {
-      "group": "",
-      "version": "v1",
-      "resource": "pods"
-    },
-    "operation": "CREATE",
-    "namespace": "production",
-    "object": {
-      "apiVersion": "v1",
-      "kind": "Pod",
-      "metadata": {
-        "name": "valid-pod",
-        "namespace": "production",
-        "labels": {
-          "app": "my-app",
-          "team": "backend"
-        }
-      },
-      "spec": {
-        "containers": [
-          {
-            "name": "app",
-            "image": "nginx:1.25.0",
-            "resources": {
-              "requests": {"cpu": "100m", "memory": "128Mi"},
-              "limits": {"cpu": "500m", "memory": "512Mi"}
-            },
-            "securityContext": {
-              "allowPrivilegeEscalation": false,
-              "readOnlyRootFilesystem": true,
-              "runAsNonRoot": true,
-              "runAsUser": 1000
-            }
-          }
-        ]
+  "uid": "test-001",
+  "kind": {
+    "group": "",
+    "version": "v1",
+    "kind": "Pod"
+  },
+  "resource": {
+    "group": "",
+    "version": "v1",
+    "resource": "pods"
+  },
+  "operation": "CREATE",
+  "namespace": "production",
+  "userInfo": {
+    "username": "alice",
+    "uid": "alice-uid",
+    "groups": ["system:authenticated"]
+  },
+  "object": {
+    "apiVersion": "v1",
+    "kind": "Pod",
+    "metadata": {
+      "name": "valid-pod",
+      "namespace": "production",
+      "labels": {
+        "app": "my-app",
+        "team": "backend"
       }
+    },
+    "spec": {
+      "containers": [
+        {
+          "name": "app",
+          "image": "nginx:1.25.0",
+          "resources": {
+            "requests": {"cpu": "100m", "memory": "128Mi"},
+            "limits": {"cpu": "500m", "memory": "512Mi"}
+          },
+          "securityContext": {
+            "allowPrivilegeEscalation": false,
+            "readOnlyRootFilesystem": true,
+            "runAsNonRoot": true,
+            "runAsUser": 1000
+          }
+        }
+      ]
     }
   }
 }
 ```
 
+Create `tests/invalid-pod.json` for a pod that should be denied:
+
 ```json
-// tests/invalid-pod.json - A pod that should be DENIED
 {
-  "request": {
-    "uid": "test-002",
-    "kind": {"group": "", "version": "v1", "kind": "Pod"},
-    "operation": "CREATE",
-    "namespace": "production",
-    "object": {
-      "apiVersion": "v1",
-      "kind": "Pod",
-      "metadata": {"name": "privileged-pod"},
-      "spec": {
-        "containers": [
-          {
-            "name": "app",
-            "image": "nginx:latest",
-            "securityContext": {
-              "privileged": true
-            }
+  "uid": "test-002",
+  "kind": {"group": "", "version": "v1", "kind": "Pod"},
+  "resource": {"group": "", "version": "v1", "resource": "pods"},
+  "operation": "CREATE",
+  "namespace": "production",
+  "userInfo": {
+    "username": "alice",
+    "uid": "alice-uid",
+    "groups": ["system:authenticated"]
+  },
+  "object": {
+    "apiVersion": "v1",
+    "kind": "Pod",
+    "metadata": {"name": "privileged-pod", "namespace": "production"},
+    "spec": {
+      "containers": [
+        {
+          "name": "app",
+          "image": "nginx:latest",
+          "securityContext": {
+            "privileged": true
           }
-        ]
-      }
+        }
+      ]
     }
   }
 }
@@ -134,16 +146,20 @@ A kwctl test payload is a JSON file that simulates a Kubernetes admission reques
 # Get an existing pod and format it as a test payload
 POD_JSON=$(kubectl get pod my-pod -n production -o json)
 
-# Create the admission request wrapper
+# Create the admission request object
 cat <<EOF > tests/existing-pod-request.json
 {
-  "request": {
-    "uid": "test-from-cluster",
-    "kind": {"group": "", "version": "v1", "kind": "Pod"},
-    "operation": "CREATE",
-    "namespace": "production",
-    "object": $(echo "$POD_JSON")
-  }
+  "uid": "test-from-cluster",
+  "kind": {"group": "", "version": "v1", "kind": "Pod"},
+  "resource": {"group": "", "version": "v1", "resource": "pods"},
+  "operation": "CREATE",
+  "namespace": "production",
+  "userInfo": {
+    "username": "alice",
+    "uid": "alice-uid",
+    "groups": ["system:authenticated"]
+  },
+  "object": $(echo "$POD_JSON")
 }
 EOF
 
@@ -157,7 +173,7 @@ echo "Test payload created: tests/existing-pod-request.json"
 ```bash
 # Test a policy from OCI registry against a request
 kwctl run \
-  registry://ghcr.io/kubewarden/policies/pod-privileged:v0.2.0 \
+  registry://ghcr.io/kubewarden/policies/pod-privileged:v0.3.1 \
   --request-path tests/invalid-pod.json
 
 # Test a local Wasm file
@@ -168,24 +184,26 @@ kwctl run \
 # Test with specific settings
 kwctl run \
   registry://ghcr.io/kubewarden/policies/host-namespaces-psp:v0.1.1 \
-  --request-path tests/pod.json \
-  --settings-json '{"hostPID": false, "hostIPC": false, "hostNetwork": false}'
+  --request-path tests/valid-pod.json \
+  --settings-json '{"allow_host_pid": false, "allow_host_ipc": false, "allow_host_network": false}'
 ```
 
 ### Testing Settings Validation
 
-```bash
-# Validate policy settings (separate from request validation)
-kwctl run \
-  --validate-settings \
-  registry://ghcr.io/kubewarden/policies/allowed-image-repositories:v0.1.0 \
-  --settings-json '{"allowedRegistries": ["registry.example.com"]}'
+When a policy implements settings validation, `kwctl run` validates the supplied settings before evaluating the admission request.
 
-# Test invalid settings
+```bash
+# Run a policy with valid settings
 kwctl run \
-  --validate-settings \
-  registry://ghcr.io/kubewarden/policies/allowed-image-repositories:v0.1.0 \
-  --settings-json '{}'  # Empty settings - should fail validation
+  registry://ghcr.io/kubewarden/policies/trusted-repos:v2.0.4 \
+  --request-path tests/valid-pod.json \
+  --settings-json '{"registries":{"allow":["docker.io"]}}'
+
+# Pass invalid settings to verify validation errors are caught
+kwctl run \
+  registry://ghcr.io/kubewarden/policies/trusted-repos:v2.0.4 \
+  --request-path tests/valid-pod.json \
+  --settings-json '{"registries":{"allow":["docker.io"],"reject":["ghcr.io"]}}'
 ```
 
 ## Batch Testing with a Test Suite
@@ -196,7 +214,7 @@ Create a comprehensive test suite:
 #!/bin/bash
 # test-policy.sh - Run all tests for a policy
 
-POLICY="registry://ghcr.io/kubewarden/policies/pod-privileged:v0.2.0"
+POLICY="registry://ghcr.io/kubewarden/policies/pod-privileged:v0.3.1"
 TESTS_PASS=0
 TESTS_FAIL=0
 
@@ -206,7 +224,7 @@ run_test() {
     local expected_accept="$3"  # true or false
 
     result=$(kwctl run "$POLICY" --request-path "$request_file" 2>&1)
-    accepted=$(echo "$result" | grep -q "allowed: true" && echo "true" || echo "false")
+    accepted=$(printf '%s\n' "$result" | grep -Eq '"allowed"[[:space:]]*:[[:space:]]*true' && echo "true" || echo "false")
 
     if [ "$accepted" = "$expected_accept" ]; then
         echo "PASS: $test_name"
@@ -223,8 +241,7 @@ echo "========================"
 
 # Test cases
 run_test "Allow normal pod" tests/valid-pod.json "true"
-run_test "Deny privileged pod" tests/privileged-pod.json "false"
-run_test "Allow pod without securityContext" tests/no-security-context.json "true"
+run_test "Deny privileged pod" tests/invalid-pod.json "false"
 
 echo "========================"
 echo "Results: ${TESTS_PASS} passed, ${TESTS_FAIL} failed"
@@ -236,27 +253,32 @@ exit $TESTS_FAIL
 
 For validating UPDATE behavior (existing resources being modified):
 
+Create `tests/update-request.json` for validating UPDATE behavior:
+
 ```json
-// tests/update-request.json
 {
-  "request": {
-    "uid": "update-test-001",
-    "kind": {"group": "", "version": "v1", "kind": "Pod"},
-    "operation": "UPDATE",
-    "namespace": "production",
-    "object": {
-      "spec": {
-        "containers": [
-          {"name": "app", "image": "nginx:1.26.0"}
-        ]
-      }
-    },
-    "oldObject": {
-      "spec": {
-        "containers": [
-          {"name": "app", "image": "nginx:1.25.0"}
-        ]
-      }
+  "uid": "update-test-001",
+  "kind": {"group": "", "version": "v1", "kind": "Pod"},
+  "resource": {"group": "", "version": "v1", "resource": "pods"},
+  "operation": "UPDATE",
+  "namespace": "production",
+  "userInfo": {
+    "username": "alice",
+    "uid": "alice-uid",
+    "groups": ["system:authenticated"]
+  },
+  "object": {
+    "spec": {
+      "containers": [
+        {"name": "app", "image": "nginx:1.26.0"}
+      ]
+    }
+  },
+  "oldObject": {
+    "spec": {
+      "containers": [
+        {"name": "app", "image": "nginx:1.25.0"}
+      ]
     }
   }
 }
@@ -274,12 +296,12 @@ kwctl run \
 ```bash
 # View policy metadata before deploying
 kwctl inspect \
-  registry://ghcr.io/kubewarden/policies/pod-privileged:v0.2.0
+  registry://ghcr.io/kubewarden/policies/pod-privileged:v0.3.1
 
-# Get the full policy manifest
-kwctl manifest \
-  registry://ghcr.io/kubewarden/policies/pod-privileged:v0.2.0 \
-  --type ClusterAdmissionPolicy
+# Generate a ClusterAdmissionPolicy manifest
+kwctl scaffold manifest \
+  --type ClusterAdmissionPolicy \
+  registry://ghcr.io/kubewarden/policies/pod-privileged:v0.3.1
 ```
 
 ## CI/CD Integration
@@ -298,9 +320,9 @@ jobs:
 
       - name: Install kwctl
         run: |
-          curl -LO https://github.com/kubewarden/kwctl/releases/latest/download/kwctl-linux-amd64
-          chmod +x kwctl-linux-amd64
-          sudo mv kwctl-linux-amd64 /usr/local/bin/kwctl
+          curl -LO https://github.com/kubewarden/kwctl/releases/latest/download/kwctl-linux-x86_64.zip
+          unzip kwctl-linux-x86_64.zip
+          sudo install -m 755 kwctl-linux-x86_64 /usr/local/bin/kwctl
 
       - name: Build policy
         run: make build
