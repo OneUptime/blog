@@ -21,8 +21,8 @@ docker swarm init --advertise-addr <manager-ip>
 docker swarm join --token <worker-token> <manager-ip>:2377
 
 # Deploy Portainer on Swarm
-curl -L https://downloads.portainer.io/ce2-21/portainer-agent-stack.yml -o portainer-stack.yml
-docker stack deploy -c portainer-stack.yml portainer
+curl -L https://downloads.portainer.io/ce-lts/portainer-agent-stack.yml -o portainer-agent-stack.yml
+docker stack deploy -c portainer-agent-stack.yml portainer
 ```
 
 ## Service Management Commands
@@ -48,13 +48,13 @@ docker service update \
   myapp
 
 # Roll back a service
-docker service rollback myapp
+docker service update --rollback myapp
 
 # View service tasks
 docker service ps myapp
 
 # View service logs
-docker service logs myapp --tail 100 -f
+docker service logs --tail 100 -f myapp
 ```
 
 ## Docker Configs and Secrets
@@ -64,7 +64,7 @@ docker service logs myapp --tail 100 -f
 echo "server { listen 80; }" | docker config create nginx-config -
 
 # Create a Docker secret
-echo "mysecretpassword" | docker secret create db-password -
+printf "mysecretpassword" | docker secret create db-password -
 
 # Use config and secret in a service
 docker service create \
@@ -90,7 +90,7 @@ docker node ls
 # Inspect a node
 docker node inspect --pretty <node-id>
 
-# View node resource usage
+# View tasks running on a node
 docker node ps <node-id>
 ```
 
@@ -101,8 +101,8 @@ docker node ps <node-id>
 docker service create \
   --name myapp \
   --replicas 3 \
-  --update-failure-action rollback \    # Auto-rollback on failure
-  --update-max-failure-ratio 0.25 \     # Allow 25% failure before rollback
+  --update-failure-action rollback \
+  --update-max-failure-ratio 0.25 \
   --rollback-parallelism 1 \
   --rollback-delay 5s \
   myapp:latest
