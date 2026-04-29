@@ -28,7 +28,7 @@ BGP (Border Gateway Protocol) is the routing protocol of the internet. MikroTik 
   remote.address=203.0.113.2 \
   remote.as=65000 \
   local.role=ebgp \
-  templates=default \
+  template=default \
   comment="ISP upstream peer"
 ```
 
@@ -51,13 +51,14 @@ BGP (Border Gateway Protocol) is the routing protocol of the internet. MikroTik 
 ## Advertise Specific Prefixes
 
 ```mikrotik
-# Add network to advertise via BGP
+# RouterOS v6 - add network to advertise via BGP
 /routing bgp network add \
   network=203.0.113.0/24 \
   comment="Advertise our prefix"
 
-# RouterOS v7 - use address-list for prefix advertisement
+# RouterOS v7 - use address-list and reference it from the connection
 /ip firewall address-list add list=BGP-PREFIXES address=203.0.113.0/24
+/routing bgp connection set ISP-PEER output.network=BGP-PREFIXES
 ```
 
 ## iBGP Between Internal Routers
@@ -69,7 +70,7 @@ BGP (Border Gateway Protocol) is the routing protocol of the internet. MikroTik 
   remote.address=10.255.0.2 \
   remote.as=65001 \
   local.role=ibgp \
-  templates=default
+  template=default
 ```
 
 ## Route Filtering with Prefix Lists
@@ -91,16 +92,16 @@ BGP (Border Gateway Protocol) is the routing protocol of the internet. MikroTik 
 /routing bgp peer print  (v6)
 /routing bgp connection print  (v7)
 
-# Show received BGP routes
+# Show outbound routes advertised to peers
 /routing bgp advertisements print
 
-# Show BGP routes in routing table
+# Show BGP routes in routing table (received and installed)
 /ip route print where bgp
 
-# Show BGP session details
+# Show BGP session state (v7)
 /routing bgp session print
 
-# Check advertised prefixes
+# Show detailed BGP session info (v7)
 /routing bgp session print detail
 ```
 
