@@ -49,6 +49,7 @@ void handle_client(int client_fd, const char *client_ip, uint16_t client_port) {
             sent += s;
         }
     }
+    if (n < 0) { perror("recv"); }
 
 done:
     printf("[-] %s:%d disconnected\n", client_ip, client_port);
@@ -154,10 +155,10 @@ if __name__ == "__main__":
 gcc -Wall -o iterative_server iterative_server.c
 ./iterative_server
 
-# Test: second connection waits in the backlog queue
+# Test: hold client 1 open so client 2 waits in the listen queue
 
-echo "client 1" | nc 127.0.0.1 9000 &
-echo "client 2" | nc 127.0.0.1 9000    # queued until client 1 disconnects
+sh -c 'printf "client 1\n"; sleep 5' | nc -N 127.0.0.1 9000 &
+echo "client 2" | nc -N 127.0.0.1 9000   # handled after client 1 disconnects
 ```
 
 ## When to Use an Iterative Server
@@ -169,4 +170,4 @@ echo "client 2" | nc 127.0.0.1 9000    # queued until client 1 disconnects
 
 ## Conclusion
 
-An iterative TCP server calls `accept()`, services the returned client socket completely inside a `handle_client()` function, closes the socket, and loops back to `accept()`. New connection attempts queue in the kernel backlog (controlled by the `backlog` argument to `listen()`) while the current client is being served. The backlog is not a hard concurrency limit - it is the queue depth before the kernel starts refusing connections. Iterative servers are simple, deterministic, and easy to debug, making them the best starting point for learning socket programming before moving on to threaded or event-driven designs.
+An iterative TCP server calls `accept()`, services the returned client socket completely inside a `handle_client()` function, closes the socket, and loops back to `accept()`. New connection attempts can wait in the kernel listen queue (bounded by the `backlog` argument to `listen()`) while the current client is being served. The backlog is not a hard concurrency limit - it is queue depth before the kernel starts refusing or delaying new connections. Iterative servers are simple, deterministic, and easy to debug, making them the best starting point for learning socket programming before moving on to threaded or event-driven designs.
