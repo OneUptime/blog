@@ -16,10 +16,10 @@ python manage.py runserver "[::]:8000"
 # IPv6 localhost only
 python manage.py runserver "[::1]:8000"
 
-# Dual-stack - bind to all interfaces IPv4 and IPv6
+# If you want separate IPv4 and IPv6 dev listeners, use different ports
 python manage.py runserver "0.0.0.0:8000"   # IPv4
 # Then separately:
-python manage.py runserver "[::]:8000"       # IPv6
+python manage.py runserver "[::]:8001"       # IPv6
 ```
 
 ## Django Settings for IPv6
@@ -27,11 +27,11 @@ python manage.py runserver "[::]:8000"       # IPv6
 ```python
 # settings.py
 
-# Allow requests from IPv6 clients
+# Allow the hostnames and IP literals your Django site serves
 ALLOWED_HOSTS = [
     "localhost",
-    "::1",                      # IPv6 loopback
-    "2001:db8::1",              # specific IPv6 host
+    "[::1]",                    # IPv6 loopback
+    "[2001:db8::1]",            # specific IPv6 host
     "example.com",
     ".example.com",             # all subdomains
 ]
@@ -39,8 +39,7 @@ ALLOWED_HOSTS = [
 # For development - allow all
 # ALLOWED_HOSTS = ["*"]
 
-# Use X-Forwarded-For from trusted proxy
-USE_X_FORWARDED_HOST = True
+# If you're behind a trusted proxy, trust its HTTPS indicator
 SECURE_PROXY_SSL_HEADER = ("HTTP_X_FORWARDED_PROTO", "https")
 ```
 
@@ -151,7 +150,7 @@ class IPv6LoggingMiddleware:
                     "IPv6 request: %s -> %s (%s)",
                     addr.compressed,
                     request.path,
-                    "global" if addr.is_global else "private",
+                    "global" if addr.is_global else "non-global",
                 )
         except ValueError:
             pass
@@ -160,6 +159,7 @@ class IPv6LoggingMiddleware:
         return response
 
     def _get_client_ip(self, request) -> str:
+        # Only trust X-Forwarded-For when your reverse proxy strips/sets it.
         xff = request.META.get("HTTP_X_FORWARDED_FOR")
         if xff:
             ip = xff.split(",")[0].strip()
@@ -186,7 +186,6 @@ class IPv6LoggingMiddleware:
 gunicorn \
     --bind "[::]:8000" \
     --workers 4 \
-    --worker-class gevent \
     "myproject.wsgi:application"
 ```
 
@@ -204,7 +203,7 @@ server {
     location / {
         proxy_pass http://[::1]:8000;
         proxy_set_header Host $host;
-        proxy_set_header X-Forwarded-For $proxy_add_x_forwarded_for;
+        proxy_set_header X-Forwarded-For $remote_addr;
         proxy_set_header X-Forwarded-Proto $scheme;
     }
 }
@@ -212,4 +211,4 @@ server {
 
 ## Conclusion
 
-Django supports IPv6 natively: `GenericIPAddressField(protocol="IPv6")` stores and validates IPv6 addresses in models; `forms.GenericIPAddressField(protocol="IPv6")` handles form validation. Run the development server on `[::]:8000` to accept IPv6 connections. List IPv6 addresses explicitly in `ALLOWED_HOSTS`. Use middleware to extract the real client IP from `X-Forwarded-For` and normalize IPv4-mapped IPv6 addresses (`::ffff:192.168.x.x`) back to IPv4 format. In production, deploy with Gunicorn `--bind "[::]:8000"` behind Nginx with `listen [::]:80` directives. Rate-limit by /64 prefix rather than individual IPv6 address to prevent trivial bypasses via address rotation within the /64.
+Django supports IPv6 natively: `GenericIPAddressField(protocol="IPv6")` stores and validates IPv6 addresses in models; `forms.GenericIPAddressField(protocol="IPv6")` handles form validation. Run the development server on `[::]:8000` to accept IPv6 connections. List bracketed IPv6 host literals explicitly in `ALLOWED_HOSTS`. Use middleware to extract the real client IP from `X-Forwarded-For` when a trusted proxy sets it, and normalize IPv4-mapped IPv6 addresses (`::ffff:192.168.x.x`) back to IPv4 format. In production, deploy with Gunicorn `--bind "[::]:8000"` behind Nginx with `listen [::]:80` directives. Rate-limit by /64 prefix rather than individual IPv6 address to prevent trivial bypasses via address rotation within the /64.
