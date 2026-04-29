@@ -81,8 +81,8 @@ srv := grpc.NewServer(
 )
 
 // Client
-conn, _ := grpc.Dial(
-    "ipv4:///192.168.1.10:50051",
+conn, _ := grpc.NewClient(
+    "192.168.1.10:50051",
     grpc.WithStatsHandler(otelgrpc.NewClientHandler()),
     grpc.WithTransportCredentials(insecure.NewCredentials()),
 )
