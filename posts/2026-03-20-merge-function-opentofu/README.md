@@ -4,18 +4,18 @@ Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
 Tags: OpenTofu, Merge, Map Function, HCL, Infrastructure as Code, DevOps
 
-Description: Learn how to use the merge function in OpenTofu to combine multiple maps into one, with later maps overriding keys from earlier ones.
+Description: Learn how to use the merge function in OpenTofu to combine multiple maps or objects into one, with later arguments overriding keys from earlier ones.
 
 ---
 
-`merge()` takes two or more maps and returns a single map containing all key-value pairs. If the same key appears in multiple maps, the value from the last map wins.
+`merge()` takes an arbitrary number of maps or objects and returns a single map or object containing all key-value pairs. If the same key appears in multiple arguments, the value from the last one wins.
 
 ---
 
 ## Syntax
 
 ```hcl
-merge(map1, map2, ...)
+merge(map_or_object1, map_or_object2, ...)
 ```
 
 ---
@@ -128,10 +128,10 @@ variable "services" {
 }
 
 locals {
-  # Create a map of service configs, then merge with defaults
+  # Create a list of one-key maps, then merge them into a single map
   service_configs = merge([
     for svc in var.services : {
-      "${svc}" = {
+      (svc) = {
         name    = svc
         enabled = true
       }
@@ -148,11 +148,11 @@ locals {
 
 | Function | For | Example |
 |---|---|---|
-| `merge(map1, map2)` | Maps | Combining tag maps |
+| `merge(map_or_object1, map_or_object2)` | Maps/Objects | Combining tag maps |
 | `concat(list1, list2)` | Lists | Combining subnet ID lists |
 
 ---
 
 ## Summary
 
-`merge()` combines multiple maps into one, with later maps taking precedence for duplicate keys. It's most commonly used for tag merging - combining default organization tags with resource-specific tags. The last map wins on key conflicts, making it ideal for the pattern of `merge(defaults, overrides)`. Use `concat()` for combining lists, and `merge()` for combining maps.
+`merge()` combines multiple maps or objects into one, with later arguments taking precedence for duplicate keys. It's most commonly used for tag merging - combining default organization tags with resource-specific tags. The last argument wins on key conflicts, making it ideal for the pattern of `merge(defaults, overrides)`. Use `concat()` for combining lists, and `merge()` for combining maps or objects.
