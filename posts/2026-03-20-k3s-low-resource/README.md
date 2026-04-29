@@ -8,7 +8,7 @@ Description: Learn how to configure K3s for low-resource environments like Raspb
 
 ---
 
-K3s was designed to run in resource-constrained environments. With the right configuration, it can run on devices with as little as 512 MB of RAM and 1 CPU core.
+K3s was designed to run in resource-constrained environments. Current K3s guidance lists 2 CPU cores and 2 GB of RAM for a server node, while agent nodes can run with 1 CPU core and 512 MB of RAM. Recent K3s resource profiling puts a single server with a simple workload at about 1.6 GB of RAM.
 
 ---
 
@@ -16,23 +16,26 @@ K3s was designed to run in resource-constrained environments. With the right con
 
 | Configuration | CPU | RAM | Storage |
 |---|---|---|---|
-| Single node (no workloads) | 1 core | 512 MB | 1 GB |
-| Single node (with workloads) | 1 core | 1 GB | 5 GB |
-| Recommended for production | 2 cores | 2 GB | 20 GB |
+| Server node | 2 cores | 2 GB | SSD recommended |
+| Agent node | 1 core | 512 MB | Workload-dependent |
+| Single server with a simple workload (baseline profile) | <1 core steady-state | ~1.6 GB | SSD recommended |
 
 ---
 
 ## Step 1: Disable Unnecessary Components
 
 ```bash
-# Install K3s with all non-essential components disabled
+# Install K3s with non-essential packaged components disabled
+# Only disable local-storage if you are using another storage provisioner.
+# Only disable metrics-server if you do not need `kubectl top` or autoscaling metrics.
+# Only disable CoreDNS if you install another cluster DNS provider.
 
 curl -sfL https://get.k3s.io | sh -s - \
-  --disable traefik \          # Remove if you don't need ingress
-  --disable servicelb \        # Remove if you use MetalLB or NodePort only
-  --disable local-storage \    # Remove if using external storage
-  --disable metrics-server \   # Remove if not monitoring
-  --disable coredns            # Only remove if using host DNS
+  --disable=traefik \
+  --disable=servicelb \
+  --disable=local-storage \
+  --disable=metrics-server \
+  --disable=coredns
 ```
 
 ---
@@ -43,31 +46,30 @@ curl -sfL https://get.k3s.io | sh -s - \
 # /etc/rancher/k3s/config.yaml
 kubelet-arg:
   - "max-pods=50"                          # Reduce from default 110
-  - "eviction-hard=memory.available<100Mi" # Evict pods early to avoid OOM
+  - "eviction-hard=memory.available<100Mi,nodefs.available<10%,imagefs.available<15%,nodefs.inodesFree<5%,imagefs.inodesFree<5%" # Specify all thresholds together
   - "system-reserved=cpu=200m,memory=200Mi" # Reserve resources for OS
-  - "kube-reserved=cpu=200m,memory=200Mi"   # Reserve resources for K3s
+  - "kube-reserved=cpu=200m,memory=200Mi"   # Reserve resources for Kubernetes system components
   - "image-gc-high-threshold=80"           # Start GC at 80% disk usage
   - "image-gc-low-threshold=70"            # GC until 70% disk usage
 
 kube-controller-manager-arg:
-  - "node-monitor-period=10s"              # Reduce monitoring frequency
-  - "node-monitor-grace-period=40s"
+  - "node-monitor-period=10s"              # Check node status less often than the 5s default
 
 kube-apiserver-arg:
-  - "default-watch-cache-size=0"           # Disable watch cache to save memory
+  - "watch-cache=false"                    # Reduce memory use on very small clusters
 ```
 
 ---
 
 ## Step 3: Use SQLite Instead of etcd
 
-K3s defaults to SQLite for single-node deployments - this is far more memory-efficient than etcd:
+K3s defaults to SQLite for single-server deployments when no other datastore is configured:
 
 ```bash
-# SQLite is used automatically for single-node clusters
+# SQLite is used automatically for single-server clusters
 # No extra configuration needed
 # Verify:
-ls /var/lib/rancher/k3s/server/db/state.db    # SQLite database file
+ls /var/lib/rancher/k3s/server/db/    # SQLite datastore directory
 ```
 
 For embedded HA with etcd, stick with 3 nodes minimum and adequate resources.
@@ -77,17 +79,14 @@ For embedded HA with etcd, stick with 3 nodes minimum and adequate resources.
 ## Step 4: Reduce containerd Memory Usage
 
 ```toml
-# /var/lib/rancher/k3s/agent/etc/containerd/config.toml.tmpl
-version = 2
+# /var/lib/rancher/k3s/agent/etc/containerd/config-v3.toml.tmpl
+{{ template "base" . }}
 
-[plugins."io.containerd.grpc.v1.cri"]
-  # Reduce max concurrent downloads
-  [plugins."io.containerd.grpc.v1.cri".containerd]
-    max_concurrent_downloads = 2         # Reduce from default 3
+[plugins.'io.containerd.transfer.v1.local']
+  max_concurrent_downloads = 2         # Reduce concurrent image downloads
 
-  # Disable unused runtimes
-  [plugins."io.containerd.grpc.v1.cri".containerd.runtimes.runc.options]
-    SystemdCgroup = true
+[plugins.'io.containerd.cri.v1.runtime'.containerd.runtimes.'runc'.options]
+  SystemdCgroup = true
 ```
 
 ---
@@ -125,14 +124,15 @@ kubectl apply -f limitrange.yaml
 
 ## Step 6: Enable Swap (for very memory-constrained devices)
 
-Kubernetes 1.28+ supports swap if the kubelet is configured to allow it:
+Kubernetes 1.28 introduced beta swap support, and it is GA in 1.34. On current K3s releases, configure the kubelet to allow it:
 
 ```yaml
-# /etc/rancher/k3s/config.yaml
-kubelet-arg:
-  - "feature-gates=NodeSwap=true"
-  - "fail-swap-on=false"
-  - "memory-swap=0"              # Unlimited swap (use with caution)
+# /var/lib/rancher/k3s/agent/etc/kubelet.conf.d/10-swap.conf
+apiVersion: kubelet.config.k8s.io/v1beta1
+kind: KubeletConfiguration
+failSwapOn: false
+memorySwap:
+  swapBehavior: LimitedSwap
 ```
 
 ```bash
@@ -152,10 +152,10 @@ echo '/swapfile none swap sw 0 0' >> /etc/fstab
 # Check K3s process memory usage
 ps aux | grep k3s
 
-# Check node resource usage
+# Check node resource usage (requires metrics-server)
 kubectl top nodes
 
-# Check pod resource usage
+# Check pod resource usage (requires metrics-server)
 kubectl top pods -A
 
 # Monitor with watch
@@ -168,4 +168,4 @@ watch -n 5 kubectl top nodes
 
 - Always disable `traefik` and `servicelb` on resource-constrained nodes unless you specifically need them - they consume significant memory.
 - Set `max-pods` to match the expected workload density rather than using the default 110 - this prevents K3s from accepting more pods than the node can handle.
-- For IoT devices with intermittent power, enable K3s auto-restart: the systemd service is configured to restart automatically after crashes by default.
+- For IoT devices with intermittent power, make sure the `k3s` systemd service is enabled so it starts on boot; the install script enables and starts the service by default.
