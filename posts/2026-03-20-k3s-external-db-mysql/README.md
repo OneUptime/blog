@@ -26,8 +26,8 @@ By default, K3s uses embedded SQLite for single-server deployments or embedded e
          └────────┼────────┘
                   │
          ┌────────┴────────┐
-         │   MySQL Cluster  │
-         │ (Primary/Replica)│
+         │ MySQL Primary/   │
+         │     Replica      │
          └─────────────────┘
 ```
 
@@ -36,7 +36,7 @@ By default, K3s uses embedded SQLite for single-server deployments or embedded e
 Install and configure MySQL on a dedicated server:
 
 ```bash
-# Install MySQL 8.0 on Ubuntu
+# Install MySQL on Ubuntu
 
 sudo apt-get update
 sudo apt-get install -y mysql-server
@@ -68,9 +68,6 @@ CREATE USER 'k3suser'@'%' IDENTIFIED BY 'K3sSecurePassword123!';
 -- Grant necessary privileges
 GRANT ALL PRIVILEGES ON k3s.* TO 'k3suser'@'%';
 
--- If using MySQL 8.0, also grant these
-GRANT SELECT ON performance_schema.* TO 'k3suser'@'%';
-
 -- Apply privilege changes
 FLUSH PRIVILEGES;
 
@@ -83,25 +80,25 @@ EXIT;
 
 ## Step 3: Configure MySQL for K3s
 
-K3s requires specific MySQL configuration for reliability:
+Configure MySQL for remote access and, if needed, replication:
 
 ```bash
 # Edit MySQL configuration
 sudo tee /etc/mysql/mysql.conf.d/k3s.cnf > /dev/null <<EOF
 [mysqld]
-# K3s required settings
+# Example settings for K3s connectivity
 max_allowed_packet = 32M
-innodb_log_file_size = 256M
+innodb_redo_log_capacity = 256M
 innodb_buffer_pool_size = 512M
 
-# Performance settings
+# Durability settings
 innodb_flush_log_at_trx_commit = 1
 sync_binlog = 1
 
 # Allow remote connections
 bind-address = 0.0.0.0
 
-# Enable binary logging for replication
+# Enable binary logging for replication (needed if you follow Step 9)
 server-id = 1
 log_bin = /var/log/mysql/mysql-bin.log
 binlog_expire_logs_seconds = 604800
@@ -167,6 +164,8 @@ sudo journalctl -u k3s -f
 
 ```bash
 # Configure and install additional server nodes
+sudo mkdir -p /etc/rancher/k3s
+
 sudo tee /etc/rancher/k3s/config.yaml > /dev/null <<EOF
 token: "K3sMySQLToken"
 datastore-endpoint: "mysql://k3suser:K3sSecurePassword123!@tcp(192.168.1.200:3306)/k3s"
@@ -185,14 +184,14 @@ curl -sfL https://get.k3s.io | sudo sh -
 
 ```bash
 # On each agent node
+sudo mkdir -p /etc/rancher/k3s
+
 sudo tee /etc/rancher/k3s/config.yaml > /dev/null <<EOF
 server: "https://192.168.1.99:6443"
 token: "K3sMySQLToken"
 EOF
 
-curl -sfL https://get.k3s.io | \
-    INSTALL_K3S_EXEC="agent" \
-    sudo sh -
+curl -sfL https://get.k3s.io | sudo sh -s - agent
 ```
 
 ## Step 8: Verify the Cluster
@@ -216,26 +215,29 @@ mysql -h 192.168.1.200 -u k3suser -p'K3sSecurePassword123!' k3s \
 
 ## Step 9: Set Up MySQL Replication (Recommended)
 
-For production, use MySQL replication for database HA:
+For production, use MySQL replication for database redundancy and pair it with a failover mechanism or managed HA service. Ensure the primary and each replica use unique `server-id` values:
 
 ```sql
 -- On the MySQL primary, create a replication user
 CREATE USER 'replicator'@'%' IDENTIFIED BY 'ReplicaPassword';
 GRANT REPLICATION SLAVE ON *.* TO 'replicator'@'%';
 FLUSH PRIVILEGES;
+-- Record the File and Position values from this command
+-- On MySQL 8.4, use SHOW BINARY LOG STATUS instead
 SHOW MASTER STATUS;
 ```
 
 ```sql
 -- On the MySQL replica
-CHANGE MASTER TO
-    MASTER_HOST='192.168.1.200',
-    MASTER_USER='replicator',
-    MASTER_PASSWORD='ReplicaPassword',
-    MASTER_LOG_FILE='mysql-bin.000001',
-    MASTER_LOG_POS=0;
-START SLAVE;
-SHOW SLAVE STATUS\G;
+-- Ensure this replica has a unique server-id before running these commands
+CHANGE REPLICATION SOURCE TO
+    SOURCE_HOST='192.168.1.200',
+    SOURCE_USER='replicator',
+    SOURCE_PASSWORD='ReplicaPassword',
+    SOURCE_LOG_FILE='<file-from-SHOW-MASTER-STATUS>',
+    SOURCE_LOG_POS=<position-from-SHOW-MASTER-STATUS>;
+START REPLICA;
+SHOW REPLICA STATUS\G;
 ```
 
 ## Step 10: Using SSL for MySQL Connection
@@ -256,7 +258,7 @@ datastore-cafile: "/etc/rancher/k3s/mysql-ca.crt"
 # Check MySQL connection from K3s
 sudo journalctl -u k3s | grep -E "database|mysql|datastore"
 
-# Check MySQL slow query log
+# If enabled, check the MySQL slow query log
 sudo tail -f /var/log/mysql/mysql-slow.log
 
 # Monitor MySQL connections
@@ -265,4 +267,4 @@ mysql -h 192.168.1.200 -u root -p -e "SHOW PROCESSLIST;"
 
 ## Conclusion
 
-Using MySQL as a K3s external datastore enables high availability across multiple server nodes without requiring etcd cluster management. The setup involves creating a dedicated MySQL database and user, configuring the `datastore-endpoint` in K3s's configuration, and deploying multiple server nodes pointing to the same database. For production deployments, combine MySQL primary-replica replication with SSL connections to ensure both HA and data security.
+Using MySQL as a K3s external datastore enables multiple K3s server nodes to share state through a managed database without requiring embedded etcd. The setup involves creating a dedicated MySQL database and user, configuring the `datastore-endpoint` in K3s's configuration, and deploying multiple server nodes pointing to the same database. For production deployments, make sure the external MySQL layer is also highly available by pairing replication with a failover mechanism or managed HA service, and use TLS connections to protect database traffic.
