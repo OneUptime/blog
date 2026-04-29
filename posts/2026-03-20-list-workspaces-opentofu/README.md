@@ -8,7 +8,7 @@ Description: Learn how to list all available OpenTofu workspaces and understand 
 
 ## Introduction
 
-The `tofu workspace list` command shows all workspaces in your current configuration's backend. Understanding this command helps you verify available environments, see which workspace is currently active, and audit your workspace setup.
+The `tofu workspace list` command shows all workspaces in your current configuration's backend when that backend supports multiple workspaces. Understanding this command helps you verify available environments, see which workspace is currently active, and audit your workspace setup.
 
 ## Basic Usage
 
@@ -37,7 +37,7 @@ tofu workspace list
   development
 ```
 
-Workspaces are listed alphabetically, with `default` always present.
+The `default` workspace is always present and cannot be deleted. The order of the remaining workspaces depends on the backend.
 
 ## After Creating Workspaces
 
@@ -53,8 +53,8 @@ tofu workspace new production
 # List again
 tofu workspace list
 #   default
-#   production
-# * staging
+# * production
+#   staging
 ```
 
 ## Checking the Current Workspace Programmatically
@@ -78,13 +78,13 @@ fi
 
 ```bash
 # Check if a workspace exists
-tofu workspace list | grep -q "production" && echo "Exists" || echo "Not found"
+tofu workspace list | sed 's/^[* ]*//' | grep -Fqx -- "production" && echo "Exists" || echo "Not found"
 
 # List all non-default workspaces
-tofu workspace list | grep -v "default" | tr -d '* '
+tofu workspace list | sed 's/^[* ]*//' | grep -Fvx -- "default"
 
 # Count workspaces
-tofu workspace list | wc -l
+tofu workspace list | sed 's/^[* ]*//' | grep -c .
 ```
 
 ## Verifying Workspace Count in a Pipeline
@@ -97,7 +97,7 @@ REQUIRED_WORKSPACES=("development" "staging" "production")
 
 echo "Checking required workspaces..."
 for ws in "${REQUIRED_WORKSPACES[@]}"; do
-  if tofu workspace list | grep -q "$ws"; then
+  if tofu workspace list | sed 's/^[* ]*//' | grep -Fqx -- "$ws"; then
     echo "  ✓ $ws exists"
   else
     echo "  ✗ $ws is MISSING"
@@ -116,27 +116,27 @@ Different backends store workspace state at different locations:
 
 ### S3 Backend
 ```bash
-# List workspace state files in S3
+# List non-default workspace state objects in S3
 aws s3 ls s3://my-terraform-state/env:/ --recursive
-# (or your custom workspace_key_prefix)
+# (or your custom workspace_key_prefix; the default workspace stays at the configured key)
 ```
 
 ### Local Backend
 ```bash
-# List workspace state files locally
-ls -la terraform.tfstate.d/
-# drwxr-xr-x  development/
-# drwxr-xr-x  production/
-# drwxr-xr-x  staging/
+# List non-default workspace state files locally
+find terraform.tfstate.d -maxdepth 2 -name terraform.tfstate -print
+# terraform.tfstate.d/development/terraform.tfstate
+# terraform.tfstate.d/production/terraform.tfstate
+# terraform.tfstate.d/staging/terraform.tfstate
 ```
 
 ### GCS Backend
 ```bash
-# List workspace state files in GCS
+# List workspace state files in GCS (if prefix = "prod/")
 gsutil ls gs://my-terraform-state-bucket/prod/
-# prod/default.tfstate
-# prod/production.tfstate
-# prod/staging.tfstate
+# gs://my-terraform-state-bucket/prod/default.tfstate
+# gs://my-terraform-state-bucket/prod/production.tfstate
+# gs://my-terraform-state-bucket/prod/staging.tfstate
 ```
 
 ## Cross-Configuration Workspace Audit
@@ -147,10 +147,10 @@ When multiple configurations share the same backend bucket, audit all workspaces
 #!/bin/bash
 # For S3 backend with workspace_key_prefix = "envs"
 aws s3 ls s3://my-state-bucket/envs/ \
-  --recursive | grep terraform.tfstate
+  --recursive
 
 # For local backend
-find . -path "*/terraform.tfstate.d/*/terraform.tfstate" -printf "%P\n"
+find . \( -path "*/terraform.tfstate" -o -path "*/terraform.tfstate.d/*/terraform.tfstate" \) -print
 ```
 
 ## Conclusion
