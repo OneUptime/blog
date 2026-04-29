@@ -82,11 +82,6 @@ resource "aws_launch_template" "app" {
     }
   }
 
-  # Suppress inherited ephemeral device
-  block_device_mappings {
-    device_name  = "/dev/xvdc"
-    no_device    = ""
-  }
 }
 ```
 
@@ -119,7 +114,7 @@ resource "aws_launch_template" "app" {
     enabled = true  # Detailed CloudWatch monitoring (1-minute intervals)
   }
 
-  # Enable instance hibernation
+  # Explicitly disable instance hibernation
   hibernation_options {
     configured = false
   }
@@ -132,9 +127,10 @@ resource "aws_launch_template" "app" {
 resource "aws_launch_template" "app" {
   name          = "${var.environment}-app-lt"
   image_id      = data.aws_ami.amazon_linux.id
-  instance_type = var.instance_type
+  instance_type = "t3.micro"
 
-  # Note: can't use both vpc_security_group_ids and network_interfaces
+  # Note: can't specify security groups in both
+  # vpc_security_group_ids and network_interfaces.security_groups
   network_interfaces {
     associate_public_ip_address = false
     delete_on_termination       = true
@@ -158,23 +154,20 @@ resource "aws_launch_template" "app" {
 
 ```hcl
 resource "aws_launch_template" "app" {
-  name          = "${var.environment}-app-lt"
-  image_id      = data.aws_ami.amazon_linux.id
-  instance_type = var.instance_type
-
-  lifecycle {
-    create_before_destroy = true
-  }
+  name                   = "${var.environment}-app-lt"
+  image_id               = data.aws_ami.amazon_linux.id
+  instance_type          = var.instance_type
+  update_default_version = true
 }
 
-# Pin ASG to a specific version for controlled rollouts
+# Have the ASG use the concrete version created by this apply
 
 resource "aws_autoscaling_group" "app" {
   name = "${var.environment}-app-asg"
 
   launch_template {
     id      = aws_launch_template.app.id
-    version = aws_launch_template.app.latest_version  # Or "$Latest" or "$Default"
+    version = aws_launch_template.app.latest_version  # Avoid runtime drift from "$Latest" or "$Default"
   }
 
   # ... other ASG config
@@ -222,4 +215,4 @@ resource "aws_launch_template" "app" {
 
 ## Conclusion
 
-EC2 Launch Templates with OpenTofu provide versioned, reusable instance configuration. Use `metadata_options` with `http_tokens = "required"` to enforce IMDSv2 on all instances. The `lifecycle { create_before_destroy = true }` block ensures a new template version exists before the old one is replaced, enabling zero-downtime ASG instance refreshes. Reference `aws_launch_template.app.latest_version` in your ASG to pin to a specific version rather than always using `$Latest`.
+EC2 Launch Templates with OpenTofu provide versioned, reusable instance configuration. Use `metadata_options` with `http_tokens = "required"` to enforce IMDSv2 on all instances. Launch template updates create new template versions automatically, and `update_default_version = true` promotes the newest version to the template default. Reference `aws_launch_template.app.latest_version` in your ASG when you want OpenTofu to pass a concrete version number instead of deferring resolution to `$Latest` or `$Default` at instance launch time.
