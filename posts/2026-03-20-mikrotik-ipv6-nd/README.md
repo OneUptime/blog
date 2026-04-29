@@ -90,7 +90,7 @@ Configure IPv6 Neighbor Discovery settings on MikroTik RouterOS including Router
 
 ```text
 # Configure RA for SLAAC
-/ipv6 nd add interface=bridge   advertise-dns=yes   dns=2001:4860:4860::8888   managed-address-configuration=no   other-configuration=no
+/ipv6 nd add interface=bridge   advertise-dns=yes   dns-servers=2001:4860:4860::8888   managed-address-configuration=no   other-configuration=no
 
 # View ND settings
 /ipv6 nd print
@@ -99,9 +99,9 @@ Configure IPv6 Neighbor Discovery settings on MikroTik RouterOS including Router
 ## Winbox GUI Path
 
 For GUI configuration:
-- IPv6 Addresses: **IP → IPv6 Addresses**
-- IPv6 Routes: **IP → IPv6 Routes**  
-- IPv6 Firewall: **IP → Firewall → IPv6** (or **IPv6 → Firewall**)
+- IPv6 Addresses: **IPv6 → Addresses**
+- IPv6 Routes: **IPv6 → Routes**  
+- IPv6 Firewall: **IPv6 → Firewall**
 - ND Settings: **IPv6 → ND**
 
 ## Monitoring Traffic
