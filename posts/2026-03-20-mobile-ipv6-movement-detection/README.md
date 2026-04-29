@@ -8,7 +8,7 @@ Description: Understand the mechanisms Mobile IPv6 uses to detect network moveme
 
 ## Introduction
 
-Movement detection is the process by which a Mobile Node determines it has moved to a new network. Fast and accurate detection minimizes handover latency, which directly impacts ongoing connections. RFC 6275 defines both eager cell-switching and lazy movement detection approaches.
+Movement detection is the process by which a Mobile Node determines it has moved to a new network. Fast and accurate detection minimizes handover latency, which directly impacts ongoing connections. RFC 6275 specifies a generic movement detection algorithm based on Router Discovery and Neighbor Unreachability Detection; implementations can supplement this with link-layer hints and faster probing strategies.
 
 ## Movement Detection Methods
 
@@ -80,7 +80,7 @@ ping6 -c 1 -I eth0 fe80::1%eth0
 # NUD threshold tuning for faster detection
 # Probe every 1 second, declare unreachable after 3 failures
 sysctl net.ipv6.neigh.eth0.ucast_solicit=3
-sysctl net.ipv6.neigh.eth0.delay_first_probe_time=1000  # 1 second
+sysctl net.ipv6.neigh.eth0.retrans_time_ms=1000  # 1 second between probes
 ```
 
 ### Method 3: Link-Layer Indications (Fastest)
@@ -139,14 +139,10 @@ Interface "eth0" {
     MnIfPreference 1;
 }
 
-# Trigger movement detection on link-layer events
-MnRouterProbeTimeout 1.0;   # Seconds before probing old router
+# Tune NUD-based router reachability probing for faster detection
+MnRouterProbes 3;           # Number of probes before declaring router unreachable
+MnRouterProbeTimeout 1.0;   # Seconds between probes of the old router
 MnMaxHaBindingLife 3600;    # Max HA binding lifetime
-
-# Movement detection mode:
-# 0 = RA-based (lazy, default)
-# 1 = NUD + RA-based (eager)
-MovementDetectionMode 1;
 ```
 
 ## Conclusion
