@@ -8,17 +8,17 @@ Description: A step-by-step guide to replacing K3s's default Flannel CNI with Ca
 
 ## Introduction
 
-K3s ships with Flannel as the default CNI, which handles basic pod networking. However, Flannel has significant limitations: it doesn't support Kubernetes NetworkPolicy resources (no network policy enforcement), and it lacks advanced features like BGP routing. Calico is a popular alternative that provides both pod networking and comprehensive NetworkPolicy enforcement, making it the preferred choice for security-conscious production deployments.
+K3s ships with Flannel as the default CNI, which handles basic pod networking. Flannel itself does not enforce Kubernetes NetworkPolicy resources, and K3s handles NetworkPolicy separately with its built-in controller. Calico is a popular alternative that provides both pod networking and its own comprehensive NetworkPolicy enforcement, plus advanced features like BGP routing, making it a strong choice for production deployments that need richer networking controls.
 
 ## Why Choose Calico over Flannel?
 
 | Feature | Flannel | Calico |
 |---------|---------|--------|
 | Pod networking | Yes | Yes |
-| NetworkPolicy | No | Yes (full) |
+| NetworkPolicy | Via separate controller in K3s | Yes (full) |
 | BGP routing | No | Yes |
 | IPAM | Basic | Advanced |
-| Encryption | WireGuard only | WireGuard + IPsec |
+| Encryption | WireGuard-native backend | WireGuard |
 | Global network policies | No | Yes (Calico CRDs) |
 | eBPF dataplane | No | Yes |
 
@@ -31,6 +31,7 @@ sudo mkdir -p /etc/rancher/k3s
 
 sudo tee /etc/rancher/k3s/config.yaml > /dev/null <<EOF
 token: "CalicoClusterToken"
+write-kubeconfig-mode: "0644"
 
 # Disable Flannel - we'll use Calico instead
 
@@ -65,8 +66,9 @@ kubectl get nodes
 ### Method A: Using the Calico Operator (Recommended)
 
 ```bash
-# Install Tigera Calico Operator
-kubectl create -f https://raw.githubusercontent.com/projectcalico/calico/v3.27.0/manifests/tigera-operator.yaml
+# Install Tigera Calico Operator and CRDs
+kubectl create -f https://raw.githubusercontent.com/projectcalico/calico/v3.31.5/manifests/operator-crds.yaml
+kubectl create -f https://raw.githubusercontent.com/projectcalico/calico/v3.31.5/manifests/tigera-operator.yaml
 
 # Wait for the operator to be ready
 kubectl -n tigera-operator rollout status deployment/tigera-operator
@@ -80,6 +82,8 @@ metadata:
 spec:
   # The CIDR must match K3s's cluster-cidr setting
   calicoNetwork:
+    # Required for K3s custom CNI installs
+    containerIPForwarding: Enabled
     ipPools:
       - blockSize: 26
         cidr: 192.168.0.0/16
@@ -89,8 +93,6 @@ spec:
   # Use Calico's CNI plugin
   cni:
     type: Calico
-  # Standard Kubernetes dataplane
-  typhaDeployment: {}
 EOF
 ```
 
@@ -98,12 +100,13 @@ EOF
 
 ```bash
 # Download the Calico manifest
-curl -LO https://raw.githubusercontent.com/projectcalico/calico/v3.27.0/manifests/calico.yaml
+curl -LO https://raw.githubusercontent.com/projectcalico/calico/v3.31.5/manifests/calico.yaml
 
 # Update the CIDR to match K3s's cluster-cidr
 # (Replace the default 192.168.0.0/16 if you used a different CIDR)
 sed -i 's/# - name: CALICO_IPV4POOL_CIDR/- name: CALICO_IPV4POOL_CIDR/' calico.yaml
 sed -i 's/#   value: "192.168.0.0\/16"/  value: "192.168.0.0\/16"/' calico.yaml
+sed -i '/"mtu": __CNI_MTU__,/a\          "container_settings": {"allow_ip_forwarding": true},' calico.yaml
 
 # Apply the manifest
 kubectl apply -f calico.yaml
@@ -123,12 +126,16 @@ kubectl -n calico-system get pods 2>/dev/null || \
     kubectl -n kube-system get pods -l k8s-app=calico-node
 
 # Install calicoctl for advanced management
-curl -LO https://github.com/projectcalico/calico/releases/latest/download/calicoctl-linux-amd64
-chmod +x calicoctl-linux-amd64
-sudo mv calicoctl-linux-amd64 /usr/local/bin/calicoctl
+curl -L https://github.com/projectcalico/calico/releases/download/v3.31.5/calicoctl-linux-amd64 -o calicoctl
+chmod +x calicoctl
+sudo mv calicoctl /usr/local/bin/calicoctl
+
+# Configure calicoctl to use the K3s kubeconfig
+export DATASTORE_TYPE=kubernetes
+export KUBECONFIG=/etc/rancher/k3s/k3s.yaml
 
 # Check Calico node status
-sudo calicoctl node status
+sudo DATASTORE_TYPE=$DATASTORE_TYPE KUBECONFIG=$KUBECONFIG calicoctl node status
 ```
 
 ## Step 4: Add Agent Nodes
@@ -138,8 +145,6 @@ sudo calicoctl node status
 sudo tee /etc/rancher/k3s/config.yaml > /dev/null <<EOF
 server: "https://SERVER_IP:6443"
 token: "CalicoClusterToken"
-# Disable Flannel on agents too (they inherit the server config)
-flannel-backend: "none"
 EOF
 
 curl -sfL https://get.k3s.io | \
@@ -152,7 +157,7 @@ curl -sfL https://get.k3s.io | \
 One of Calico's key advantages is powerful network policy support:
 
 ```yaml
-# default-deny.yaml - Deny all traffic by default in a namespace
+# default-deny.yaml - Deny all ingress traffic by default in a namespace
 apiVersion: networking.k8s.io/v1
 kind: NetworkPolicy
 metadata:
@@ -162,7 +167,6 @@ spec:
   podSelector: {}
   policyTypes:
     - Ingress
-    - Egress
 ```
 
 ```yaml
@@ -185,7 +189,7 @@ spec:
               app: frontend
       ports:
         - protocol: TCP
-          port: 8080
+          port: 80
 ```
 
 ```bash
@@ -222,6 +226,8 @@ calicoctl apply -f global-policy.yaml
 
 ## Step 7: Configure Calico with BGP (Optional)
 
+The operator example above uses VXLAN, which does not use BGP. If you want Calico BGP routing, use a BGP-capable underlay and configure the IP pool with `encapsulation: None` or `IPIPCrossSubnet` instead.
+
 For environments with BGP-capable network hardware:
 
 ```yaml
@@ -252,7 +258,7 @@ calicoctl apply -f bgp-config.yaml
 calicoctl apply -f bgp-peer.yaml
 
 # Check BGP status
-calicoctl node status
+sudo DATASTORE_TYPE=$DATASTORE_TYPE KUBECONFIG=$KUBECONFIG calicoctl node status
 ```
 
 ## Step 8: Enable Calico eBPF Dataplane (Optional)
@@ -263,34 +269,31 @@ For maximum performance, enable the eBPF dataplane:
 # Check kernel version (requires 5.10+)
 uname -r
 
-# Disable kube-proxy (Calico eBPF replaces it)
-kubectl -n kube-system patch ds kube-proxy \
-    -p '{"spec":{"template":{"spec":{"nodeSelector":{"non-existing":"true"}}}}}'
+# On K3s, disable kube-proxy in /etc/rancher/k3s/config.yaml and restart K3s first:
+# disable-kube-proxy: true
+# egress-selector-mode: "cluster"
 
-# Enable eBPF
-kubectl -n tigera-operator get installation default -o yaml | \
-    sed 's/typhaDeployment: {}/calicoNodeDaemonSet: {}\n  typhaDeployment: {}/' | \
-    kubectl apply -f -
-
-# Or patch the installation
-kubectl patch installation default --type=merge -p \
-    '{"spec":{"calicoNetwork":{"linuxDataplane":"BPF"}}}'
+# Then enable eBPF in Calico
+kubectl patch installation.operator.tigera.io default --type=merge -p \
+    '{"spec":{"calicoNetwork":{"linuxDataplane":"BPF","bpfNetworkBootstrap":"Enabled","hostPorts":null}}}'
 ```
 
 ## Verifying Network Policy Enforcement
 
 ```bash
 # Deploy test pods
-kubectl run frontend --image=nginx -l app=frontend -n production
-kubectl run backend --image=nginx -l app=backend -n production
+kubectl run frontend --image=busybox:1.36 --restart=Never -l app=frontend -n production --command -- sleep 3600
+kubectl run backend --image=nginx --restart=Never -l app=backend -n production
+kubectl expose pod backend --port=80 -n production
+kubectl wait --for=condition=Ready pod/frontend pod/backend -n production --timeout=120s
 
 # With default-deny policy, this should fail
-kubectl exec frontend -- wget -O- http://backend:80 --timeout=5
+kubectl exec -n production frontend -- wget -O- http://backend --timeout=5
 # Should timeout (policy blocks it)
 
 # After applying the allow policy, this should succeed
 kubectl apply -f allow-frontend-to-backend.yaml
-kubectl exec frontend -- wget -O- http://backend:80 --timeout=5
+kubectl exec -n production frontend -- wget -O- http://backend --timeout=5
 # Should succeed now
 ```
 
@@ -303,21 +306,29 @@ If you need to migrate an existing K3s cluster from Flannel to Calico:
 # Step 1: Drain all worker nodes (one at a time for HA)
 kubectl drain <node> --ignore-daemonsets --delete-emptydir-data
 
-# Step 2: Stop K3s on the server and uninstall Flannel data
-sudo systemctl stop k3s
+# Step 2: On each node, stop K3s and clean up Flannel and old network-policy state
+sudo systemctl stop k3s || sudo systemctl stop k3s-agent
+sudo /usr/local/bin/k3s-killall.sh
 sudo rm -f /var/lib/rancher/k3s/agent/etc/cni/net.d/10-flannel.conflist
 sudo ip link delete flannel.1 2>/dev/null
 
-# Step 3: Update config to disable Flannel
-echo "flannel-backend: none" | sudo tee -a /etc/rancher/k3s/config.yaml
-echo "disable-network-policy: true" | sudo tee -a /etc/rancher/k3s/config.yaml
+# Step 3: Update the server config to disable Flannel
+sudo sed -i '/^flannel-backend:/d;/^disable-network-policy:/d' /etc/rancher/k3s/config.yaml
+sudo tee -a /etc/rancher/k3s/config.yaml > /dev/null <<EOF
+flannel-backend: none
+disable-network-policy: true
+EOF
 
 # Step 4: Restart K3s and install Calico
 sudo systemctl start k3s
-kubectl create -f https://raw.githubusercontent.com/projectcalico/calico/v3.27.0/manifests/tigera-operator.yaml
+kubectl create -f https://raw.githubusercontent.com/projectcalico/calico/v3.31.5/manifests/operator-crds.yaml
+kubectl create -f https://raw.githubusercontent.com/projectcalico/calico/v3.31.5/manifests/tigera-operator.yaml
 # (Apply Installation CR as in Step 2 above)
 
-# Step 5: Uncordon nodes once Calico is ready
+# Step 5: Restart each agent node after Calico is ready
+sudo systemctl start k3s-agent
+
+# Step 6: Uncordon nodes once Calico is ready
 kubectl uncordon <node>
 ```
 
