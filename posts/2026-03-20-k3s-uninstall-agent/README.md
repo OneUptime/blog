@@ -53,7 +53,7 @@ kubectl get nodes
 
 ## Step 3: Run the K3s Agent Uninstall Script
 
-K3s installs an agent-specific uninstall script on agent nodes:
+If you installed K3s using the installation script, it generated an agent-specific uninstall script on the agent node:
 
 ```bash
 # SSH to the agent node
@@ -64,16 +64,16 @@ ssh user@<agent-node-ip>
 ```
 
 The script automatically:
-- Stops the `k3s-agent` systemd service
+- Stops the `k3s-agent` service
 - Disables the service from auto-starting
 - Removes the K3s binary and symlinks
-- Cleans up systemd service files
+- Cleans up service files
 - Removes network interfaces
 - Cleans up iptables rules
 
 ## Step 4: Manual Cleanup (If Script Is Missing)
 
-If the uninstall script is unavailable, perform manual cleanup:
+If the uninstall script is unavailable, perform manual cleanup on systemd-based installs:
 
 ```bash
 # Stop and disable the agent service
@@ -86,11 +86,12 @@ rm -f /etc/systemd/system/k3s-agent.service.env
 systemctl daemon-reload
 systemctl reset-failed
 
-# Remove K3s binary and symlinks
+# Remove K3s binary and K3s-managed CLI symlinks
 rm -f /usr/local/bin/k3s
-rm -f /usr/local/bin/kubectl
-rm -f /usr/local/bin/crictl
-rm -f /usr/local/bin/ctr
+rm -f /usr/local/bin/k3s-killall.sh
+for cmd in kubectl crictl ctr; do
+  [ -L "/usr/local/bin/$cmd" ] && rm -f "/usr/local/bin/$cmd"
+done
 
 # Remove uninstall scripts
 rm -f /usr/local/bin/k3s-agent-uninstall.sh
@@ -102,11 +103,24 @@ rm -f /usr/local/bin/k3s-uninstall.sh
 Clean up K3s agent data:
 
 ```bash
-# K3s runtime and agent data
+# Unmount K3s and kubelet mount points before removing directories
+while read -r _ path _; do
+  case "$path" in
+    /run/k3s*|/var/lib/kubelet/pods*|/var/lib/kubelet/plugins*|/run/netns/cni-*) echo "$path" ;;
+  esac
+done < /proc/self/mounts | sort -r | xargs -r -n 1 umount -f
+
+# Remove CNI namespaces
+ip netns show 2>/dev/null | grep '^cni-' | xargs -r -n 1 ip netns delete
+
+# K3s runtime and agent data (default data dir)
 rm -rf /var/lib/rancher/k3s
 
 # K3s configuration
 rm -rf /etc/rancher/k3s
+
+# Flannel runtime data
+rm -rf /run/flannel
 
 # Runtime socket directory
 rm -rf /run/k3s
@@ -114,13 +128,8 @@ rm -rf /run/k3s
 # Kubelet data (pod volumes, certs, etc.)
 rm -rf /var/lib/kubelet
 
-# Container images and runtime data
-rm -rf /var/lib/containerd
-
-# CNI network plugins and config
-rm -rf /etc/cni/net.d
+# CNI state
 rm -rf /var/lib/cni
-rm -rf /opt/cni/bin
 ```
 
 ## Step 6: Clean Up Network Interfaces
@@ -128,20 +137,22 @@ rm -rf /opt/cni/bin
 Remove network interfaces created by K3s:
 
 ```bash
-# Remove flannel interface
-ip link delete flannel.1 2>/dev/null || echo "flannel.1 not found"
-ip link delete flannel-wg 2>/dev/null || echo "flannel-wg not found"
-
-# Remove CNI bridge interface
-ip link delete cni0 2>/dev/null || echo "cni0 not found"
-
-# Remove veth pairs (usually auto-cleaned, but just in case)
-for iface in $(ip link show | grep -o 'veth[a-f0-9]*'); do
-  ip link delete "$iface" 2>/dev/null || true
+# Remove interfaces attached to cni0
+ip link show 2>/dev/null | grep 'master cni0' | while read -r _ iface _; do
+  iface=${iface%%@*}
+  [ -z "$iface" ] || ip link delete "$iface"
 done
 
+# Remove flannel/CNI interfaces
+ip link delete cni0 2>/dev/null || echo "cni0 not found"
+ip link delete flannel.1 2>/dev/null || echo "flannel.1 not found"
+ip link delete flannel-v6.1 2>/dev/null || echo "flannel-v6.1 not found"
+ip link delete kube-ipvs0 2>/dev/null || echo "kube-ipvs0 not found"
+ip link delete flannel-wg 2>/dev/null || echo "flannel-wg not found"
+ip link delete flannel-wg-v6 2>/dev/null || echo "flannel-wg-v6 not found"
+
 # Verify cleanup
-ip link show | grep -E "flannel|cni0" || echo "K3s interfaces removed"
+ip link show | grep -E "cni0|flannel|kube-ipvs0" || echo "K3s interfaces removed"
 ```
 
 ## Step 7: Clean Up iptables Rules
@@ -149,21 +160,9 @@ ip link show | grep -E "flannel|cni0" || echo "K3s interfaces removed"
 Remove K3s-created iptables rules:
 
 ```bash
-# Flush all chains
-iptables -F
-iptables -X
-iptables -t nat -F
-iptables -t nat -X
-iptables -t mangle -F
-iptables -t mangle -X
-
-# Reset default policies to ACCEPT
-iptables -P INPUT ACCEPT
-iptables -P FORWARD ACCEPT
-iptables -P OUTPUT ACCEPT
-
-# Save the clean rules
-iptables-save > /etc/iptables/rules.v4
+# Remove K3s-managed iptables rules without flushing unrelated firewall rules
+iptables-save | grep -v KUBE- | grep -v CNI- | grep -iv flannel | iptables-restore
+ip6tables-save | grep -v KUBE- | grep -v CNI- | grep -iv flannel | ip6tables-restore
 ```
 
 ## Step 8: Remove Host Entries (If Applicable)
@@ -190,10 +189,11 @@ which k3s 2>/dev/null || echo "k3s binary not found (expected)"
 systemctl status k3s-agent 2>/dev/null || echo "k3s-agent service not found (expected)"
 
 # No K3s data directories
-ls /var/lib/rancher 2>/dev/null || echo "No K3s data directories (expected)"
+test ! -d /var/lib/rancher/k3s || echo "/var/lib/rancher/k3s still exists"
+test ! -d /etc/rancher/k3s || echo "/etc/rancher/k3s still exists"
 
 # No K3s network interfaces
-ip link show | grep -E "flannel|cni0" || echo "No K3s network interfaces (expected)"
+ip link show | grep -E "cni0|flannel|kube-ipvs0" || echo "No K3s network interfaces (expected)"
 ```
 
 ## Reboot (Recommended)
