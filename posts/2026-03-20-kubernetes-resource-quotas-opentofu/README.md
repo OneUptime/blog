@@ -59,6 +59,7 @@ resource "kubernetes_resource_quota_v1" "team_a_quota" {
 ## Step 2: Priority Class-Scoped Quotas
 
 ```hcl
+# Assumes the production namespace and these PriorityClass objects already exist.
 # Separate quota for different priority classes
 resource "kubernetes_resource_quota_v1" "critical_quota" {
   metadata {
@@ -72,12 +73,12 @@ resource "kubernetes_resource_quota_v1" "critical_quota" {
       "requests.memory" = "40Gi"
     }
 
-    # Apply only to pods with this priority class
+    # Apply only to pods with these priority classes
     scope_selector {
       match_expression {
         scope_name = "PriorityClass"
         operator   = "In"
-        values     = ["production-high", "system-critical"]
+        values     = ["production-high", "production-critical"]
       }
     }
   }
@@ -138,12 +139,21 @@ variable "team_quotas" {
   }
 }
 
+# Create each team namespace before applying its quota
+resource "kubernetes_namespace_v1" "team_namespaces" {
+  for_each = var.team_quotas
+
+  metadata {
+    name = each.key
+  }
+}
+
 resource "kubernetes_resource_quota_v1" "team_quotas" {
   for_each = var.team_quotas
 
   metadata {
     name      = "${each.key}-quota"
-    namespace = each.key
+    namespace = kubernetes_namespace_v1.team_namespaces[each.key].metadata[0].name
   }
 
   spec {
