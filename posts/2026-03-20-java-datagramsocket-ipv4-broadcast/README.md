@@ -18,7 +18,7 @@ public class BroadcastSender {
 
     public static void main(String[] args) throws Exception {
         try (DatagramSocket socket = new DatagramSocket()) {
-            // setBroadcast(true) is required to send to broadcast addresses
+            // Explicitly enable broadcast before sending to a broadcast address
             socket.setBroadcast(true);
 
             InetAddress broadcastAddress = InetAddress.getByName(BROADCAST_ADDR);
@@ -96,6 +96,7 @@ public class BroadcastReceiver {
 
 ```java
 import java.net.*;
+import java.util.Collections;
 
 public class SubnetBroadcast {
     public static void main(String[] args) throws Exception {
@@ -147,4 +148,4 @@ String response = String.format(
 
 ## Conclusion
 
-Java UDP broadcast uses `DatagramSocket.setBroadcast(true)` before sending to `255.255.255.255` or a subnet broadcast address. Receivers bind to the broadcast port and also call `setBroadcast(true)`. Use `NetworkInterface.getNetworkInterfaces()` to discover subnet broadcast addresses for more targeted broadcasts. This pattern is the basis for local service discovery protocols.
+Java UDP broadcast commonly calls `DatagramSocket.setBroadcast(true)` before sending to `255.255.255.255` or a subnet broadcast address. Receivers bind to the broadcast port on the wildcard address; calling `setBroadcast(true)` there is optional. Use `NetworkInterface.getNetworkInterfaces()` to discover subnet broadcast addresses for more targeted broadcasts on local IPv4 networks. This pattern is the basis for local service discovery protocols.
