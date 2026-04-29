@@ -15,7 +15,7 @@ Complex expressions embedded directly in resource arguments are hard to read and
 ```hcl
 # HARD TO READ: Complex inline condition
 
-resource "aws_rds_cluster" "main" {
+resource "aws_db_instance" "main" {
   # What does this mean?
   backup_retention_period = var.environment == "prod" ? 30 : (var.environment == "staging" ? 14 : 1)
   deletion_protection     = var.environment == "prod" || (var.environment == "staging" && var.enable_protection)
@@ -33,7 +33,7 @@ locals {
   enable_multi_az     = local.is_production || var.force_multi_az
 }
 
-resource "aws_rds_cluster" "main" {
+resource "aws_db_instance" "main" {
   backup_retention_period = local.backup_days
   deletion_protection     = local.deletion_protection
   multi_az                = local.enable_multi_az
@@ -135,6 +135,9 @@ resource "aws_ecs_task_definition" "app" {
 
 # BETTER: Build the structure in locals
 locals {
+  is_production = var.environment == "prod"
+  name_prefix   = "${var.project}-${var.environment}"
+
   container_cpu    = local.is_production ? 512 : 256
   container_memory = local.is_production ? 1024 : 512
 
