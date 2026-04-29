@@ -12,7 +12,7 @@ K3s was designed with edge computing in mind - it's a lightweight Kubernetes dis
 
 ## What Makes K3s Ideal for Edge Computing
 
-- **Small footprint**: ~100MB binary, ~512MB RAM minimum
+- **Small footprint**: <100MB binary; agent nodes can run in 512MB RAM, while server nodes need about 2GB minimum
 - **Embedded components**: No need for separate etcd, CCM, or storage installations
 - **ARM support**: Runs on Raspberry Pi, NVIDIA Jetson, and other ARM devices
 - **Auto-startup**: systemd service survives reboots automatically
@@ -51,9 +51,10 @@ df -h            # Disk space
 nproc            # CPU cores
 uname -m         # Architecture (x86_64 or aarch64)
 
-# For Raspberry Pi, enable cgroups (required for K3s)
-# Add to /boot/cmdline.txt:
-# cgroup_memory=1 cgroup_enable=memory cgroup_enable=cpuset
+# For Raspberry Pi OS, enable cgroups (required for K3s)
+# Add to /boot/firmware/cmdline.txt:
+# cgroup_memory=1 cgroup_enable=memory
+# On Debian 11 and older Pi OS releases, use /boot/cmdline.txt instead.
 ```
 
 ## Step 2: Minimize K3s Footprint for Edge
@@ -83,7 +84,7 @@ kubelet-arg:
 # Use SQLite (lighter than etcd for single-node edge)
 # This is the default for single-server K3s
 
-# Bind to specific interface
+# 0.0.0.0 binds on all interfaces; replace this with a specific IP if needed
 bind-address: 0.0.0.0
 ```
 
@@ -120,6 +121,11 @@ done
 
 ```yaml
 # edge-workloads.yaml
+---
+apiVersion: v1
+kind: Namespace
+metadata:
+  name: edge-apps
 ---
 # Point-of-Sale application
 apiVersion: apps/v1
@@ -192,6 +198,18 @@ spec:
               memory: 64Mi
             limits:
               memory: 256Mi
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: local-cache
+  namespace: edge-apps
+spec:
+  selector:
+    app: redis-edge
+  ports:
+    - port: 6379
+      targetPort: 6379
 ```
 
 ## Step 5: Handle Intermittent Connectivity
@@ -207,12 +225,18 @@ metadata:
   namespace: edge-apps
 spec:
   replicas: 2  # Multiple replicas for local HA
+  selector:
+    matchLabels:
+      app: edge-app
   strategy:
     type: RollingUpdate
     rollingUpdate:
       maxUnavailable: 0  # Ensure always available
       maxSurge: 1
   template:
+    metadata:
+      labels:
+        app: edge-app
     spec:
       containers:
         - name: app
@@ -220,7 +244,7 @@ spec:
           env:
             # Point to local services, not central cluster
             - name: DATABASE_URL
-              value: "postgresql://localhost:5432/edgedb"
+              value: "postgresql://local-db:5432/edgedb"
             - name: REDIS_URL
               value: "redis://local-cache:6379"
             - name: OFFLINE_MODE_ENABLED
@@ -263,11 +287,11 @@ spec:
           memory: 512Mi
       persistentVolume:
         size: 5Gi
-    pushgateway:
+    prometheus-pushgateway:
       enabled: false
-    nodeExporter:
+    prometheus-node-exporter:
       enabled: true
-    kubeStateMetrics:
+    kube-state-metrics:
       enabled: true
 ```
 
@@ -296,16 +320,21 @@ Edge nodes need automatic recovery from failures:
 
 ```bash
 # Ensure K3s auto-starts on boot
-systemctl enable k3s
+systemctl enable k3s 2>/dev/null || systemctl enable k3s-agent
 
 # Create a watchdog script
 cat > /usr/local/bin/k3s-watchdog.sh << 'EOF'
 #!/bin/bash
-# Check if K3s is running, restart if not
-if ! systemctl is-active --quiet k3s; then
-  echo "K3s is not running, restarting..."
-  systemctl restart k3s
-  logger "K3s watchdog: restarted K3s service"
+# Check if the K3s service is running, restart if not
+SERVICE_NAME=k3s
+if systemctl cat k3s-agent >/dev/null 2>&1; then
+  SERVICE_NAME=k3s-agent
+fi
+
+if ! systemctl is-active --quiet "$SERVICE_NAME"; then
+  echo "$SERVICE_NAME is not running, restarting..."
+  systemctl restart "$SERVICE_NAME"
+  logger "K3s watchdog: restarted $SERVICE_NAME service"
 fi
 EOF
 chmod +x /usr/local/bin/k3s-watchdog.sh
