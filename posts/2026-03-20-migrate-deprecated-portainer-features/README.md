@@ -8,16 +8,16 @@ Description: A practical guide to migrating from deprecated Portainer features i
 
 ---
 
-As Portainer matures, features that didn't achieve wide adoption or that have better alternatives get deprecated and removed. This guide helps you plan migration paths away from removed features so your upgrade to current Portainer versions goes smoothly.
+As Portainer matures, features that didn't achieve wide adoption or that have better alternatives get deprecated and removed. This guide helps you plan migration paths away from deprecated and removed features so your upgrade to current Portainer versions goes smoothly.
 
-## Inventory of Removed Features
+## Inventory of Deprecated and Removed Features
 
-| Feature | Removed In | Alternative |
-|---------|-----------|-------------|
-| OpenAMT integration | 2.19 | IPMI/BMC tools, Pikvm |
-| Nomad support | 2.20 | Nomad UI, Levant |
-| Kompose deployments | 2.17 | Native K8s manifests, Helm |
-| KaaS cluster provisioning | 2.30 | eksctl, terraform, az aks |
+| Feature | Deprecated In | Removed In | Alternative |
+|---------|---------------|------------|-------------|
+| OpenAMT integration | 2.36 | TBD | IPMI/BMC tools, PiKVM |
+| Nomad support | 2.20 | 2.20 | Nomad UI, CLI, Levant |
+| Kompose deployments | 2.15 | 2.17 | Native K8s manifests, Helm |
+| KaaS cluster provisioning | 2.30 | TBD | eksctl, Terraform, Azure CLI, gcloud |
 
 ## Migration: From OpenAMT to IPMI/BMC
 
@@ -31,17 +31,18 @@ ipmitool -I lanplus -H 192.168.1.100 -U admin -P password chassis status
 # Power cycle a server
 ipmitool -I lanplus -H 192.168.1.100 -U admin -P password chassis power cycle
 
-# Open KVM console (requires Java-based KVM client)
+# Start a Serial-over-LAN console
 ipmitool -I lanplus -H 192.168.1.100 -U admin -P password sol activate
 
 # For modern servers, use Redfish API instead
 curl -k -u admin:password \
-  https://192.168.1.100/redfish/v1/Systems/1/Actions/ComputerSystem.Reset \
   -X POST \
+  -H 'Content-Type: application/json' \
+  https://192.168.1.100/redfish/v1/Systems/1/Actions/ComputerSystem.Reset \
   -d '{"ResetType": "GracefulRestart"}'
 ```
 
-## Migration: From Nomad to Nomad UI
+## Migration: From Portainer Nomad Support to Native Nomad Tooling
 
 If you used Portainer to manage Nomad clusters:
 
@@ -68,7 +69,7 @@ Replace Kompose-deployed workloads with proper Kubernetes resources:
 
 ```bash
 # Step 1: Use Kompose to generate a starting point (external tool)
-kompose convert -f docker-compose.yml -o ./k8s/
+kompose convert -f docker-compose.yml
 
 # Step 2: Add missing Kubernetes-native features to generated manifests
 # - Resource requests and limits
@@ -77,7 +78,9 @@ kompose convert -f docker-compose.yml -o ./k8s/
 # - PersistentVolumeClaims for volumes
 
 # Step 3: Deploy via Portainer's manifest feature
-# Stacks > Add Stack > Kubernetes > Upload manifest file
+# Applications > Create from code > Manifest
+# - Paste the manifest into the Web editor, or
+# - Deploy it from a Git repository or URL
 ```
 
 Example of improving a Kompose-generated Deployment:
@@ -85,33 +88,37 @@ Example of improving a Kompose-generated Deployment:
 ```yaml
 # Before (raw Kompose output):
 spec:
-  containers:
-    - name: webapp
-      image: myapp:latest
+  template:
+    spec:
+      containers:
+        - name: webapp
+          image: myapp:latest
 
 # After (production-ready):
 spec:
-  containers:
-    - name: webapp
-      image: myapp:1.2.3    # Pin version
-      resources:
-        requests:
-          memory: "128Mi"
-          cpu: "100m"
-        limits:
-          memory: "512Mi"
-          cpu: "500m"
-      livenessProbe:
-        httpGet:
-          path: /health
-          port: 8080
-        initialDelaySeconds: 15
-        periodSeconds: 10
-      readinessProbe:
-        httpGet:
-          path: /ready
-          port: 8080
-        initialDelaySeconds: 5
+  template:
+    spec:
+      containers:
+        - name: webapp
+          image: myapp:1.2.3    # Pin version
+          resources:
+            requests:
+              memory: "128Mi"
+              cpu: "100m"
+            limits:
+              memory: "512Mi"
+              cpu: "500m"
+          livenessProbe:
+            httpGet:
+              path: /health
+              port: 8080
+            initialDelaySeconds: 15
+            periodSeconds: 10
+          readinessProbe:
+            httpGet:
+              path: /ready
+              port: 8080
+            initialDelaySeconds: 5
 ```
 
 ## Migration: From KaaS Provisioning to CLI Tools
@@ -122,7 +129,7 @@ Replace Portainer KaaS provisioning with dedicated cluster creation tools:
 # Amazon EKS with eksctl
 eksctl create cluster \
   --name prod-cluster \
-  --region us-east-1 \
+  --region us-west-2 \
   --nodegroup-name workers \
   --node-type t3.medium \
   --nodes 3
@@ -131,24 +138,29 @@ eksctl create cluster \
 az aks create \
   --resource-group my-rg \
   --name prod-cluster \
-  --node-count 3
+  --node-count 3 \
+  --generate-ssh-keys
 
 # Google GKE with gcloud
 gcloud container clusters create prod-cluster \
-  --region us-central1 \
+  --location us-central1 \
   --num-nodes 3 \
   --machine-type e2-standard-2
 ```
 
 After provisioning, add the cluster to Portainer:
 
-1. Get the kubeconfig: `aws eks update-kubeconfig --name prod-cluster`
-2. In Portainer: **Settings > Environments > Add Environment > Kubernetes**
-3. Select **Import existing cluster** and paste the kubeconfig
+1. Configure `kubectl` access for your provider:
+   - AWS: `aws eks update-kubeconfig --region us-west-2 --name prod-cluster`
+   - Azure: `az aks get-credentials --resource-group my-rg --name prod-cluster`
+   - GKE: `gcloud container clusters get-credentials prod-cluster --location us-central1`
+2. In Portainer: **Environments > Add environment > Kubernetes**
+3. Select the **Agent** option and copy the generated install command
+4. Run that command from a shell with cluster-admin `kubectl` access to the cluster, then complete the environment details back in Portainer
 
 ## Pre-Upgrade Checklist
 
-Before upgrading Portainer across a major version boundary:
+Before upgrading Portainer to a release that deprecates or removes one of these features:
 
 - [ ] Document all environments using deprecated features
 - [ ] Test the migration path in a staging environment
