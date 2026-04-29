@@ -4,22 +4,23 @@ Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
 Tags: Longhorn, Kubernetes, Storage, Velero, Backup, Disaster Recovery
 
-Description: Configure Velero to use Longhorn's CSI snapshot capabilities for application-consistent Kubernetes backups including both application state and persistent volume data.
+Description: Configure Velero to use Longhorn's CSI snapshot capabilities for Kubernetes backups that capture both cluster resources and persistent volume data.
 
 ## Introduction
 
-Velero is a popular open-source tool for backing up and restoring Kubernetes cluster resources and persistent volumes. When combined with Longhorn's CSI snapshot support, Velero can create application-consistent backups that capture both Kubernetes resource definitions and the associated volume data. This guide covers the complete setup and usage of Velero with Longhorn.
+Velero is a popular open-source tool for backing up and restoring Kubernetes cluster resources and persistent volumes. When combined with Longhorn's CSI snapshot support, Velero can capture both Kubernetes resource definitions and the associated volume data. With backup hooks, you can also add workload-specific consistency steps before snapshotting. This guide covers the complete setup and usage of Velero with Longhorn.
 
 ## How Velero + Longhorn Works
 
-1. Velero triggers a Kubernetes VolumeSnapshot via the CSI plugin
-2. Longhorn creates a local snapshot of the volume
-3. Velero optionally uploads the snapshot to object storage
-4. For restore, Velero creates new PVCs from the VolumeSnapshot data
+1. Velero triggers a Kubernetes `VolumeSnapshot` through CSI
+2. Longhorn creates a snapshot and stores the volume data in its configured backup target
+3. Velero uploads Kubernetes backup metadata, including CSI snapshot objects, to object storage
+4. During restore, Velero recreates the snapshot objects and PVCs so Longhorn can provision volumes from the backup
 
 ## Prerequisites
 
-- Longhorn installed with CSI Snapshotter configured
+- Kubernetes 1.20 or later
+- Longhorn installed with CSI Snapshotter configured and a backup target set up
 - An S3-compatible object storage bucket for Velero metadata
 - `kubectl` and `velero` CLI installed
 
@@ -28,7 +29,7 @@ Velero is a popular open-source tool for backing up and restoring Kubernetes clu
 ```bash
 # Download Velero CLI (Linux)
 
-VERSION="v1.13.0"
+VERSION="v1.18.0"
 curl -LO https://github.com/vmware-tanzu/velero/releases/download/${VERSION}/velero-${VERSION}-linux-amd64.tar.gz
 tar -xvf velero-${VERSION}-linux-amd64.tar.gz
 mv velero-${VERSION}-linux-amd64/velero /usr/local/bin/
@@ -37,8 +38,10 @@ velero version --client-only
 
 ## Step 2: Create S3 Bucket and Credentials for Velero
 
+This bucket stores Velero backup metadata. Longhorn stores persistent volume data in its configured backup target. The commands below use AWS S3 as the object storage example.
+
 ```bash
-# Create S3 bucket for Velero
+# Create S3 bucket for Velero metadata (AWS S3 example)
 aws s3 mb s3://velero-cluster-backups --region us-east-1
 
 # Create Velero credentials file
@@ -49,18 +52,18 @@ aws_secret_access_key=wJalrXUtnFEMI/K7MDENG/bPxRfiCYEXAMPLEKEY
 EOF
 ```
 
-## Step 3: Install Velero with CSI Plugin
+## Step 3: Install Velero with CSI Support
 
 ```bash
 velero install \
   --provider aws \
-  --plugins velero/velero-plugin-for-aws:v1.9.0,velero/velero-plugin-for-csi:v0.7.0 \
+  --plugins velero/velero-plugin-for-aws:v1.14.0 \
   --bucket velero-cluster-backups \
   --backup-location-config region=us-east-1 \
   --snapshot-location-config region=us-east-1 \
-  --credentials-file ./velero-credentials \
+  --secret-file ./velero-credentials \
   --features=EnableCSI \
-  --use-node-agent
+  --wait
 
 # Verify Velero is running
 kubectl get pods -n velero
@@ -69,19 +72,21 @@ velero version
 
 ## Step 4: Configure Longhorn VolumeSnapshotClass for Velero
 
-Velero looks for a VolumeSnapshotClass with a specific label:
+Velero looks for a VolumeSnapshotClass with a specific label. To have Longhorn create backups in its configured backup target, use `type: bak`:
 
 ```yaml
 # longhorn-velero-snapshotclass.yaml - VolumeSnapshotClass for Velero
 apiVersion: snapshot.storage.k8s.io/v1
 kind: VolumeSnapshotClass
 metadata:
-  name: longhorn-snap-class
+  name: longhorn-backup-class
   labels:
     # Velero uses this label to find the right VolumeSnapshotClass
     velero.io/csi-volumesnapshot-class: "true"
 driver: driver.longhorn.io
-deletionPolicy: Retain  # Retain snapshots during Velero backup lifecycle
+deletionPolicy: Delete
+parameters:
+  type: bak
 ```
 
 ```bash
@@ -140,6 +145,8 @@ spec:
 ```bash
 kubectl apply -f test-app.yaml
 
+kubectl rollout status deployment/nginx-app -n test-app
+
 # Write test data
 kubectl exec -n test-app \
   $(kubectl get pod -n test-app -l app=nginx -o name) \
@@ -177,6 +184,7 @@ velero restore create test-app-restore \
 # Verify restoration
 kubectl get all -n test-app
 kubectl get pvc -n test-app
+kubectl rollout status deployment/nginx-app -n test-app
 kubectl exec -n test-app \
   $(kubectl get pod -n test-app -l app=nginx -o name) \
   -- cat /data/test.txt
@@ -206,7 +214,7 @@ velero schedule get
 
 ## Backup Hooks for Application Consistency
 
-For databases, use backup hooks to quiesce the application before snapshotting:
+For databases, use backup hooks to run workload-specific preparation commands before snapshotting:
 
 ```yaml
 # postgresql-with-hooks.yaml - Pre/post backup hooks for PostgreSQL
@@ -215,12 +223,26 @@ kind: Deployment
 metadata:
   name: postgresql
   namespace: databases
-  annotations:
-    # Pre-backup hook: checkpoint the database
-    pre.hook.backup.velero.io/command: '["/bin/bash", "-c", "psql -U postgres -c \"CHECKPOINT;\""]'
-    pre.hook.backup.velero.io/timeout: "60s"
-    # Post-backup hook: resume normal operation
-    post.hook.backup.velero.io/command: '["/bin/bash", "-c", "echo backup complete"]'
+spec:
+  selector:
+    matchLabels:
+      app: postgresql
+  template:
+    metadata:
+      labels:
+        app: postgresql
+      annotations:
+        # Pre-backup hook: flush dirty pages before snapshotting
+        pre.hook.backup.velero.io/command: '["/bin/sh", "-c", "psql -U postgres -c \"CHECKPOINT;\""]'
+        pre.hook.backup.velero.io/container: postgresql
+        pre.hook.backup.velero.io/timeout: "60s"
+        # Post-backup hook: run a post-backup command
+        post.hook.backup.velero.io/command: '["/bin/sh", "-c", "echo backup complete"]'
+        post.hook.backup.velero.io/container: postgresql
+    spec:
+      containers:
+        - name: postgresql
+          image: postgres:16
 ```
 
 ## Monitoring Velero Backups
@@ -242,4 +264,4 @@ curl http://localhost:8085/metrics | grep velero_backup
 
 ## Conclusion
 
-Velero combined with Longhorn's CSI snapshot capabilities creates a powerful, application-aware backup and restore solution for Kubernetes. The integration provides both cluster-level resource backups (YAML definitions) and volume data backups in a single operation, enabling complete disaster recovery for stateful applications. Regular backup testing through restore drills is essential to ensure your backup strategy works when it is needed most.
+Velero combined with Longhorn's CSI snapshot and backup capabilities creates a powerful backup and restore solution for Kubernetes. The integration provides both cluster-level resource backups (YAML definitions) and Longhorn-managed volume backups in a single operation, and backup hooks can add workload-specific consistency steps for stateful applications. Regular backup testing through restore drills is essential to ensure your backup strategy works when it is needed most.
