@@ -4,11 +4,11 @@ Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
 Tags: Kafka, SASL, Authentication, IPv4, Security, Configuration, Messaging
 
-Description: Learn how to configure Apache Kafka with SASL/PLAIN or SASL/SCRAM authentication over IPv4 to require client authentication before producing or consuming messages.
+Description: Learn how to configure Apache Kafka with SASL/SCRAM authentication over IPv4 to require client authentication before producing or consuming messages.
 
 ---
 
-Kafka without authentication allows any client on the network to produce or consume from any topic. SASL (Simple Authentication and Security Layer) adds username/password authentication to Kafka connections.
+Kafka without authentication allows any client on the network to produce or consume from any topic. SASL (Simple Authentication and Security Layer) adds authentication to Kafka connections.
 
 ## SASL Mechanisms
 
@@ -18,6 +18,7 @@ Kafka without authentication allows any client on the network to produce or cons
 | `SCRAM-SHA-256` | Salted challenge-response (more secure) |
 | `SCRAM-SHA-512` | Same as SCRAM-SHA-256 but with SHA-512 |
 | `GSSAPI` | Kerberos authentication |
+| `OAUTHBEARER` | OAuth 2.0 bearer token authentication |
 
 ## Step 1: Configure the Broker (server.properties)
 
@@ -47,12 +48,6 @@ KafkaServer {
     username="broker-admin"
     password="BrokerPassword123!";
 };
-
-KafkaClient {
-    org.apache.kafka.common.security.scram.ScramLoginModule required
-    username="broker-admin"
-    password="BrokerPassword123!";
-};
 ```
 
 ```bash
@@ -63,30 +58,49 @@ export KAFKA_OPTS="-Djava.security.auth.login.config=/etc/kafka/kafka_server_jaa
 ## Step 3: Create SCRAM Users
 
 ```bash
-# Create Kafka users with SCRAM credentials
-kafka-configs.sh --bootstrap-server 10.0.0.10:9092 \
-  --alter --add-config 'SCRAM-SHA-256=[password=BrokerPassword123!]' \
-  --entity-type users --entity-name broker-admin
+# When formatting broker storage for the first time, create the inter-broker SCRAM credential
+kafka-storage.sh format -t $(kafka-storage.sh random-uuid) \
+  -c /etc/kafka/server.properties \
+  --add-scram 'SCRAM-SHA-256=[name="broker-admin",password="BrokerPassword123!"]'
 
+# After the broker is running, create client users with an authenticated admin config
 kafka-configs.sh --bootstrap-server 10.0.0.10:9092 \
   --alter --add-config 'SCRAM-SHA-256=[password=ProducerPass456!]' \
-  --entity-type users --entity-name producer-user
+  --entity-type users --entity-name producer-user \
+  --command-config /etc/kafka/admin.properties
 
 kafka-configs.sh --bootstrap-server 10.0.0.10:9092 \
   --alter --add-config 'SCRAM-SHA-256=[password=ConsumerPass789!]' \
-  --entity-type users --entity-name consumer-user
+  --entity-type users --entity-name consumer-user \
+  --command-config /etc/kafka/admin.properties
 ```
 
 ## Step 4: Client Configuration
 
 ```properties
-# client.properties (for producers and consumers)
+# admin.properties (for kafka-configs.sh)
+bootstrap.servers=10.0.0.10:9092
+security.protocol=SASL_PLAINTEXT
+sasl.mechanism=SCRAM-SHA-256
+sasl.jaas.config=org.apache.kafka.common.security.scram.ScramLoginModule required \
+  username="broker-admin" \
+  password="BrokerPassword123!";
+
+# producer.properties
 bootstrap.servers=10.0.0.10:9092
 security.protocol=SASL_PLAINTEXT
 sasl.mechanism=SCRAM-SHA-256
 sasl.jaas.config=org.apache.kafka.common.security.scram.ScramLoginModule required \
   username="producer-user" \
   password="ProducerPass456!";
+
+# consumer.properties
+bootstrap.servers=10.0.0.10:9092
+security.protocol=SASL_PLAINTEXT
+sasl.mechanism=SCRAM-SHA-256
+sasl.jaas.config=org.apache.kafka.common.security.scram.ScramLoginModule required \
+  username="consumer-user" \
+  password="ConsumerPass789!";
 ```
 
 ## Step 5: Test Authentication
@@ -96,14 +110,14 @@ sasl.jaas.config=org.apache.kafka.common.security.scram.ScramLoginModule require
 kafka-console-producer.sh \
   --bootstrap-server 10.0.0.10:9092 \
   --topic my-topic \
-  --producer.config /etc/kafka/client.properties
+  --producer.config /etc/kafka/producer.properties
 
 # Test consuming with credentials
 kafka-console-consumer.sh \
   --bootstrap-server 10.0.0.10:9092 \
   --topic my-topic \
   --from-beginning \
-  --consumer.config /etc/kafka/client.properties
+  --consumer.config /etc/kafka/consumer.properties
 ```
 
 ## Key Takeaways
@@ -111,4 +125,4 @@ kafka-console-consumer.sh \
 - Use `SCRAM-SHA-256` over `PLAIN` for stronger security; `PLAIN` transmits passwords in cleartext.
 - For production, combine `SASL_SSL` instead of `SASL_PLAINTEXT` to encrypt the connection.
 - Inter-broker communication also uses SASL; set `sasl.mechanism.inter.broker.protocol`.
-- Create SCRAM credentials using `kafka-configs.sh` before starting brokers that use SCRAM.
+- Create inter-broker SCRAM credentials before starting brokers that use SCRAM; use `kafka-storage.sh` for the initial broker credential and `kafka-configs.sh` for client users after the broker is up.
