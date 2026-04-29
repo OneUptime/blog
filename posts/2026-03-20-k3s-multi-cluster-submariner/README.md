@@ -25,9 +25,9 @@ graph LR
 ## Prerequisites
 
 - Two or more K3s clusters with non-overlapping CIDR ranges
-- Network connectivity between cluster nodes (at least UDP port 4500 for IPsec)
+- A broker cluster whose Kubernetes API server is reachable from every participating cluster
+- Network connectivity between gateway nodes (UDP ports 4490 and 4500 by default), plus UDP port 4800 between cluster nodes and gateway nodes
 - `subctl` CLI tool installed
-- Helm installed
 
 ## Step 1: Plan Non-Overlapping CIDRs
 
@@ -71,15 +71,10 @@ curl -sfL https://get.k3s.io | \
 ```bash
 # Install subctl on your management machine
 curl -Ls https://get.submariner.io | bash
+export PATH=$PATH:~/.local/bin
 
-# Or download specific version
-VERSION=v0.16.2
-curl -Lo subctl \
-  "https://github.com/submariner-io/subctl/releases/download/$VERSION/subctl-${VERSION}-linux-amd64.tar.gz" | \
-  tar -xz
-
-chmod +x subctl
-mv subctl /usr/local/bin/
+# Or install a specific version
+curl -Ls https://get.submariner.io | VERSION=v0.23.1 bash
 
 # Verify installation
 subctl version
@@ -110,21 +105,18 @@ ls -la broker-info.subm
 export KUBECONFIG=/path/to/cluster1.yaml
 subctl join broker-info.subm \
   --clusterid cluster1 \
-  --natt=false \
   --cable-driver libreswan
 
 # Join Cluster 2
 export KUBECONFIG=/path/to/cluster2.yaml
 subctl join broker-info.subm \
   --clusterid cluster2 \
-  --natt=false \
   --cable-driver libreswan
 
 # Join Cluster 3
 export KUBECONFIG=/path/to/cluster3.yaml
 subctl join broker-info.subm \
   --clusterid cluster3 \
-  --natt=false \
   --cable-driver libreswan
 ```
 
@@ -148,9 +140,9 @@ subctl show connections
 # cluster3 <-> cluster1: connected
 
 # Detailed status
-kubectl get submariners -A
-kubectl get gateways -A
-kubectl get endpoints -A
+kubectl -n submariner-operator get submariners
+subctl show gateways
+subctl show endpoints
 ```
 
 ## Step 6: Test Cross-Cluster Pod Communication
@@ -167,15 +159,12 @@ kind: Service
 metadata:
   name: cross-cluster-test
   namespace: default
-  annotations:
-    # Export this service to other clusters
-    "submariner.io/export": "true"
 spec:
   selector:
     app: cross-cluster-test
   ports:
     - port: 80
-      targetPort: 8080
+      targetPort: 80
 ---
 apiVersion: apps/v1
 kind: Deployment
@@ -195,7 +184,7 @@ spec:
         - name: test
           image: nginx:alpine
           ports:
-            - containerPort: 8080
+            - containerPort: 80
 EOF
 
 # Export the service for cross-cluster discovery
@@ -226,13 +215,16 @@ kubectl delete pod test
 If your clusters have overlapping CIDRs, use Submariner's Globalnet:
 
 ```bash
-# Deploy broker with Globalnet enabled
+# If your clusters overlap, enable Globalnet when you deploy the broker
 subctl deploy-broker --globalnet
 
-# Join clusters with Globalnet CIDRs
+# Join clusters with unique Globalnet CIDRs
 subctl join broker-info.subm \
   --clusterid cluster1 \
-  --globalnet-cidr 242.0.0.0/8
+  --globalnet-cidr 242.1.0.0/16
+
+# Use a different Globalnet CIDR for each additional cluster,
+# or omit --globalnet-cidr to let Submariner allocate from the broker range.
 ```
 
 ## Step 8: Multi-Cluster DNS Resolution
@@ -243,15 +235,18 @@ Submariner provides DNS-based service discovery via the `clusterset.local` domai
 # Service access patterns:
 # Same cluster:         service.namespace.svc.cluster.local
 # Any cluster:          service.namespace.svc.clusterset.local
-# Specific cluster:     service.namespace.svc.cluster.id.clusterset.local
+# Specific cluster:     cluster-id.service.namespace.svc.clusterset.local
 
-# Configure CoreDNS to forward clusterset.local queries
-kubectl edit configmap coredns -n kube-system
+# On CoreDNS-based clusters such as K3s, subctl join configures this automatically.
+# Verify the generated CoreDNS forwarding rule:
+kubectl describe configmap coredns -n kube-system
 
-# Add this block:
+# Look for this block:
+# #lighthouse-start AUTO-GENERATED SECTION. DO NOT EDIT
 # clusterset.local:53 {
-#     forward . <submariner-lighthouse-dns-service-ip>
+#     forward . <submariner-lighthouse-coredns-service-ip>
 # }
+# #lighthouse-end
 ```
 
 ## Step 9: Monitor Cross-Cluster Traffic
@@ -265,9 +260,9 @@ kubectl exec -n submariner-operator \
 # Check active connections
 subctl show connections
 
-# View Submariner metrics (if Prometheus is installed)
+# View Submariner metrics directly
 kubectl port-forward -n submariner-operator \
-  service/submariner-gateway-metrics 9898:9898 &
+  service/submariner-gateway-metrics 9898:8080 &
 curl http://localhost:9898/metrics | grep submariner
 ```
 
