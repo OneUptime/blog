@@ -103,15 +103,20 @@ spec:
 Key Fleet metrics:
 
 ```text
-# GitRepo sync status (1=synced, 0=error)
-fleet_gitrepo_state{namespace="fleet-default", name="myapp"} 1
+# GitRepo cluster readiness (compare desired vs ready)
+fleet_gitrepo_desired_ready_clusters{namespace="fleet-default", name="myapp"} 3
+fleet_gitrepo_ready_clusters{namespace="fleet-default", name="myapp"} 3
+
+# GitRepo resource counts
+fleet_gitrepo_resources_desired_ready{namespace="fleet-default", name="myapp"} 12
+fleet_gitrepo_resources_ready{namespace="fleet-default", name="myapp"} 12
 
 # Bundle deployment counts
 fleet_bundle_desired_ready{namespace="fleet-default"} 5
 fleet_bundle_ready{namespace="fleet-default"} 5
 
-# BundleDeployment status
-fleet_bundledeployment_state{cluster="prod-cluster", bundle="myapp"} 1
+# BundleDeployment status (1 = currently in this state, 0 = not)
+fleet_bundledeployment_state{cluster_name="prod-cluster", bundle="myapp", state="Ready"} 1
 ```
 
 ## Step 5: Configure Alerts
@@ -129,36 +134,35 @@ spec:
       rules:
         - alert: FleetGitRepoNotReady
           expr: |
-            fleet_gitrepo_state == 0
+            fleet_gitrepo_desired_ready_clusters - fleet_gitrepo_ready_clusters > 0
           for: 5m
           annotations:
-            summary: "Fleet GitRepo {{ $labels.name }} is not ready"
-            description: "GitRepo has been in error state for 5 minutes"
+            summary: "Fleet GitRepo {{ $labels.name }} is not ready on all clusters"
+            description: "GitRepo has had fewer ready clusters than desired for 5 minutes"
           labels:
             severity: warning
 
         - alert: FleetBundleDeploymentFailed
           expr: |
-            fleet_bundledeployment_state == 0
+            fleet_bundledeployment_state{state="ErrApplied"} == 1
           for: 10m
           annotations:
-            summary: "Fleet bundle deployment failed on cluster {{ $labels.cluster }}"
+            summary: "Fleet bundle deployment failed on cluster {{ $labels.cluster_name }}"
           labels:
             severity: critical
 ```
 
-## Step 6: Fleet CLI for Automation
+## Step 6: Automation and Forced Re-sync
 
 ```bash
-# Install Fleet CLI (fleetcontrol)
-# Check deployment status across all clusters
-kubectl fleet status --namespace fleet-default
+# Roll up bundle deployment status across all clusters
+kubectl get bundledeployments -A \
+  -o custom-columns=CLUSTER:.metadata.labels.fleet\.cattle\.io/cluster,BUNDLE:.metadata.labels.fleet\.cattle\.io/bundle-name,READY:.status.ready,DEPLOYED:.status.appliedDeploymentID
 
-# Force re-sync of a GitRepo
-kubectl annotate gitrepo myapp-production \
-  fleet.cattle.io/force-update=$(date +%s) \
-  -n fleet-default \
-  --overwrite
+# Force re-sync of a GitRepo by bumping spec.forceSyncGeneration
+kubectl patch gitrepo myapp-production -n fleet-default \
+  --type=merge \
+  -p '{"spec":{"forceSyncGeneration":'$(date +%s)'}}'
 
 # View recent events for debugging
 kubectl get events -n fleet-default \
