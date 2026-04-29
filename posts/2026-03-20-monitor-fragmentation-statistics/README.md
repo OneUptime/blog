@@ -14,10 +14,10 @@ Linux kernel maintains detailed counters for all fragmentation and reassembly op
 
 ```bash
 # View all IP fragmentation and reassembly counters:
+nstat -az | grep -iE "frag|reasm"
 
-cat /proc/net/snmp | awk '/^Ip:/{getline; print $0}' | tr ' ' '\n' | \
-  grep -A1 'ReasmFails\|ReasmOKs\|ReasmTimeout\|FragCreates\|FragFails\|FragOKs' || \
-  nstat -a | grep -i "frag\|reasmb"
+# Or pair keys/values directly from /proc/net/snmp:
+awk '/^Ip:/{if(!h){h=$0;next} n=split(h,k); split($0,v); for(i=2;i<=n;i++) if(k[i]~/Frag|Reasm/) print k[i]"="v[i]}' /proc/net/snmp
 
 # Primary counters:
 # IpFragCreates:  Fragments created by this host (we're sending too-large packets)
@@ -36,20 +36,21 @@ cat /proc/net/snmp | awk '/^Ip:/{getline; print $0}' | tr ' ' '\n' | \
 # Watch fragmentation stats in real time:
 watch -n 2 "nstat -z | grep -E 'IpFrag|IpReasm'"
 
-# Monitor with rate of change (per-second rates):
-# nstat -d shows delta (change since last call):
-nstat -d | grep -E "IpFrag|IpReasm"
+# Monitor with rate of change (per-interval deltas):
+# Default nstat uses a per-user history file, so each invocation
+# prints the change since the previous call:
+nstat | grep -E "IpFrag|IpReasm"
 # Run every 10 seconds to get per-10-second rates:
 while true; do
-    echo "$(date +%H:%M:%S): $(nstat -d | awk '/IpFrag|IpReasm/{printf "%s=%s ", $1, $2}')"
+    echo "$(date +%H:%M:%S): $(nstat | awk '/IpFrag|IpReasm/{printf "%s=%s ", $1, $2}')"
     sleep 10
 done
 
-# Alert on reassembly failures:
+# Alert on reassembly failures (uses absolute counters with -az):
 #!/bin/bash
 PREV_FAIL=0
 while true; do
-    FAIL=$(nstat -z 2>/dev/null | awk '/IpReasmFails/{print $2+0}')
+    FAIL=$(nstat -az 2>/dev/null | awk '/IpReasmFails/{print $2+0}')
     if [ "$FAIL" -gt "$PREV_FAIL" ]; then
         echo "ALERT: IpReasmFails increased to $FAIL (was $PREV_FAIL)"
     fi
@@ -95,10 +96,10 @@ cat > /usr/local/bin/frag_exporter.sh << 'SCRIPT'
 #!/bin/bash
 # Simple Prometheus text format exporter
 
-FAIL=$(nstat -z 2>/dev/null | awk '/IpReasmFails/{print $2+0}')
-OK=$(nstat -z 2>/dev/null | awk '/IpReasmOKs/{print $2+0}')
-CREATES=$(nstat -z 2>/dev/null | awk '/IpFragCreates/{print $2+0}')
-REASM=$(nstat -z 2>/dev/null | awk '/IpReasmReqds/{print $2+0}')
+FAIL=$(nstat -az 2>/dev/null | awk '/IpReasmFails/{print $2+0}')
+OK=$(nstat -az 2>/dev/null | awk '/IpReasmOKs/{print $2+0}')
+CREATES=$(nstat -az 2>/dev/null | awk '/IpFragCreates/{print $2+0}')
+REASM=$(nstat -az 2>/dev/null | awk '/IpReasmReqds/{print $2+0}')
 
 echo "# HELP ip_reasm_fails IPv4 reassembly failures"
 echo "# TYPE ip_reasm_fails counter"
