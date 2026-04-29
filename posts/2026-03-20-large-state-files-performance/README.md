@@ -18,7 +18,7 @@ OpenTofu performs the following on every `plan` or `apply`:
 3. Build the dependency graph
 4. Compute the diff
 
-With 1,000+ resources, the refresh phase alone can take 10-20 minutes.
+With 1,000+ resources, the refresh phase alone can take many minutes.
 
 ## Strategy 1: Split the State File
 
@@ -47,7 +47,7 @@ tofu plan  # Refreshes 50 resources instead of 1000
 
 ## Strategy 2: Use -refresh=false
 
-Skip the refresh phase when you know infrastructure hasn't changed out-of-band:
+Skip the refresh phase when you know infrastructure hasn't changed out-of-band, understanding that external changes can make the resulting plan incomplete or incorrect:
 
 ```bash
 # Skip refresh for faster plans (use carefully)
@@ -58,7 +58,7 @@ tofu plan -refresh=false
 
 ## Strategy 3: Use -target for Specific Operations
 
-Limit the plan scope to specific resources:
+Limit the plan scope to specific resources in exceptional situations rather than as a routine workflow:
 
 ```bash
 # Only plan changes to a specific resource
@@ -67,6 +67,8 @@ tofu plan -target=aws_instance.web
 # Only plan a module
 tofu plan -target=module.compute
 ```
+
+Targeting is best reserved for recovery or workarounds. For routine performance issues, split large configurations instead.
 
 ## Strategy 4: Increase Parallelism
 
@@ -77,12 +79,12 @@ OpenTofu refreshes resources in parallel. The default is 10. Increase it for lar
 tofu plan -parallelism=50
 
 # Be careful with API rate limits
-# AWS default is 100 calls/second per service
+# Service quotas and throttling behavior vary by provider and API
 ```
 
 ## Strategy 5: Use Workspace-Based State Separation
 
-Use workspaces to keep per-environment states separate rather than managing all environments in one state:
+Use workspaces to keep per-environment states separate when those environments can share the same backend and credentials:
 
 ```bash
 # Separate state per environment
@@ -93,9 +95,11 @@ tofu workspace new development
 # Each workspace has its own state file
 ```
 
-## Strategy 6: Enable State Caching with Remote Backends
+Workspaces are not a substitute for separate backends or access controls.
 
-For S3, configure lifecycle rules to move old state versions to cheaper storage:
+## Strategy 6: Manage Versioned S3 State History
+
+For a versioned S3 backend, configure lifecycle rules to control the growth and cost of old state versions. This helps storage hygiene, not `plan` or `apply` performance:
 
 ```hcl
 resource "aws_s3_bucket_lifecycle_configuration" "state" {
@@ -117,21 +121,23 @@ resource "aws_s3_bucket_lifecycle_configuration" "state" {
 }
 ```
 
-## Strategy 7: Remove Orphaned Resources from State
+## Strategy 7: Remove Unneeded Bindings from State
 
-Over time, manually removed resources accumulate as orphans in state, slowing it down:
+If state still tracks resources you no longer want OpenTofu to manage, remove those bindings carefully to reduce state size:
 
 ```bash
 # List all resources
 tofu state list
 
-# Remove orphaned resources that no longer exist
+# Remove bindings for resources OpenTofu should stop tracking
 tofu state rm aws_instance.old_server
 tofu state rm aws_security_group.deprecated
 
 # Bulk remove by pattern using a script
 tofu state list | grep "deprecated" | xargs -I{} tofu state rm {}
 ```
+
+Remember that `tofu state rm` makes OpenTofu forget the object. If the resource is still declared in configuration, the next plan will propose recreating it.
 
 ## Strategy 8: Optimize Resource Counts
 
@@ -166,4 +172,4 @@ tofu state list | wc -l
 
 ## Conclusion
 
-Managing large OpenTofu state files for performance requires a combination of structural and operational changes. Splitting state files by component is the most effective long-term strategy. For immediate wins, using `-refresh=false` in appropriate contexts, increasing parallelism, and removing orphaned resources can significantly improve performance. Regular state hygiene prevents gradual performance degradation.
+Managing large OpenTofu state files for performance requires a combination of structural and operational changes. Splitting state files by component is the most effective long-term strategy. For immediate wins, using `-refresh=false` in appropriate contexts, increasing parallelism, and removing unneeded state bindings can significantly improve performance. Regular state hygiene prevents gradual performance degradation.
