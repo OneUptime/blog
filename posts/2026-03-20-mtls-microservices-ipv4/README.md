@@ -24,15 +24,17 @@ openssl req -x509 -newkey rsa:4096 -days 3650 -nodes \
     -keyout ca.key -out ca.crt \
     -subj "/CN=MyCA"
 
-# 2. Create server key and CSR
+# 2. Create server key and CSR (SAN is required so clients can
+#    verify the hostname/IP they connect to)
 openssl req -newkey rsa:4096 -nodes \
     -keyout server.key -out server.csr \
-    -subj "/CN=server.internal"
+    -subj "/CN=server.internal" \
+    -addext "subjectAltName=DNS:server.internal,IP:192.168.1.10"
 
-# 3. Sign server certificate with CA
+# 3. Sign server certificate with CA (copy SAN from the CSR)
 openssl x509 -req -days 365 -in server.csr \
     -CA ca.crt -CAkey ca.key -CAcreateserial \
-    -out server.crt
+    -out server.crt -copy_extensions copy
 
 # 4. Create client key and certificate (same process)
 openssl req -newkey rsa:4096 -nodes \
