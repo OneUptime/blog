@@ -75,9 +75,18 @@ resource "aws_s3_bucket" "production_data" {
   }
 }
 
-# Object lock for compliance - prevents deletion for 7 years
-resource "aws_s3_bucket_object_lock_configuration" "production" {
+# S3 Object Lock requires versioning to be enabled first
+resource "aws_s3_bucket_versioning" "production_data" {
   bucket = aws_s3_bucket.production_data.id
+
+  versioning_configuration {
+    status = "Enabled"
+  }
+}
+
+# Default object lock retention for new objects - retains object versions for 7 years
+resource "aws_s3_bucket_object_lock_configuration" "production" {
+  bucket = aws_s3_bucket_versioning.production_data.bucket
 
   rule {
     default_retention {
@@ -103,7 +112,7 @@ resource "aws_iam_role" "production_deploy" {
         # Allow OIDC-based CI/CD to assume without MFA
         Effect = "Allow"
         Principal = {
-          Federated = aws_iam_openid_connect_provider.github.arn
+          Federated = "arn:aws:iam::123456789012:oidc-provider/token.actions.githubusercontent.com"
         }
         Action = "sts:AssumeRoleWithWebIdentity"
         Condition = {
@@ -117,7 +126,7 @@ resource "aws_iam_role" "production_deploy" {
         # Require MFA for human operators
         Effect = "Allow"
         Principal = {
-          AWS = "arn:aws:iam::${data.aws_caller_identity.current.account_id}:root"
+          AWS = "arn:aws:iam::123456789012:root"
         }
         Action = "sts:AssumeRole"
         Condition = {
