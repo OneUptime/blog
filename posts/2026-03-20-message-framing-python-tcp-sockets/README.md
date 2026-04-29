@@ -30,9 +30,6 @@ def recv_msg(sock: socket.socket) -> bytes:
     """Receive a length-prefixed message."""
     # First, read the 4-byte header
     raw_header = _recvn(sock, 4)
-    if len(raw_header) < 4:
-        raise ConnectionError("Connection closed")
-
     msg_len = struct.unpack(">I", raw_header)[0]
 
     # Then read exactly msg_len bytes
@@ -40,12 +37,12 @@ def recv_msg(sock: socket.socket) -> bytes:
 
 
 def _recvn(sock: socket.socket, n: int) -> bytes:
-    """Read exactly n bytes, handling partial reads."""
+    """Read exactly n bytes, raising if the connection closes early."""
     buf = bytearray()
     while len(buf) < n:
         chunk = sock.recv(n - len(buf))
         if not chunk:
-            break
+            raise ConnectionError("Connection closed before message was complete")
         buf.extend(chunk)
     return bytes(buf)
 ```
@@ -57,9 +54,9 @@ Use a unique delimiter (e.g., newline `\n` or `\x00`) to separate messages. Work
 ```python
 def send_line(sock: socket.socket, message: str) -> None:
     """Send a newline-terminated message."""
-    # Ensure the message itself doesn't contain newlines
-    line = message.replace("\n", "\\n") + "\n"
-    sock.sendall(line.encode("utf-8"))
+    if "\n" in message:
+        raise ValueError("message must not contain newlines")
+    sock.sendall((message + "\n").encode("utf-8"))
 
 
 class LineReader:
@@ -103,7 +100,7 @@ def recv_fixed(sock: socket.socket) -> bytes:
 | Method | Best For | Overhead |
 |--------|---------|---------|
 | Length prefix | Binary protocols, variable-size messages | 4 bytes per message |
-| Delimiter | Text protocols (HTTP, SMTP, IRC) | 1 byte per message |
+| Delimiter | Text protocols (SMTP, IRC) | delimiter length per message |
 | Fixed size | Status updates, telemetry, high-frequency data | 0 bytes |
 
 ## Example: Length-Prefixed Server and Client
@@ -118,8 +115,6 @@ def handle(conn, addr):
         while True:
             try:
                 msg = recv_msg(conn)
-                if not msg:
-                    break
                 print(f"[{addr}] {msg}")
                 send_msg(conn, b"ACK: " + msg)
             except ConnectionError:
