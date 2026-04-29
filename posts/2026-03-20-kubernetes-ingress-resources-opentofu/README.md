@@ -14,15 +14,14 @@ Managing Kubernetes resources with OpenTofu lets you declare them in HCL alongsi
 
 ```hcl
 provider "kubernetes" {
-  config_path    = "~/.kube/config"
-  config_context = var.kube_context
+  config_path = "~/.kube/config"
 }
 ```
 
 Resource Configuration
 
 ```hcl
-resource "kubernetes_namespace" "app" {
+resource "kubernetes_namespace_v1" "app" {
   metadata {
     name = var.namespace
 
@@ -34,12 +33,12 @@ resource "kubernetes_namespace" "app" {
   }
 }
 
-# Example Kubernetes resource for this topic
+# Example Kubernetes resources for this topic
 
-resource "kubernetes_deployment" "app" {
+resource "kubernetes_deployment_v1" "app" {
   metadata {
     name      = var.app_name
-    namespace = kubernetes_namespace.app.metadata[0].name
+    namespace = kubernetes_namespace_v1.app.metadata[0].name
   }
 
   spec {
@@ -82,6 +81,56 @@ resource "kubernetes_deployment" "app" {
     }
   }
 }
+
+resource "kubernetes_service_v1" "app" {
+  metadata {
+    name      = "${var.app_name}-service"
+    namespace = kubernetes_namespace_v1.app.metadata[0].name
+  }
+
+  spec {
+    selector = {
+      app = var.app_name
+    }
+
+    port {
+      port        = var.service_port
+      target_port = var.container_port
+    }
+
+    type = "ClusterIP"
+  }
+}
+
+resource "kubernetes_ingress_v1" "app" {
+  metadata {
+    name      = "${var.app_name}-ingress"
+    namespace = kubernetes_namespace_v1.app.metadata[0].name
+  }
+
+  spec {
+    ingress_class_name = var.ingress_class_name
+
+    rule {
+      http {
+        path {
+          path      = "/"
+          path_type = "Prefix"
+
+          backend {
+            service {
+              name = kubernetes_service_v1.app.metadata[0].name
+
+              port {
+                number = var.service_port
+              }
+            }
+          }
+        }
+      }
+    }
+  }
+}
 ```
 
 ## Variables
@@ -90,11 +139,12 @@ resource "kubernetes_deployment" "app" {
 variable "namespace"          { type = string }
 variable "app_name"           { type = string }
 variable "environment"        { type = string }
-variable "kube_context"       { type = string; default = "default" }
+variable "ingress_class_name" { type = string }
 variable "replica_count"      { type = number; default = 2 }
 variable "image_repository"   { type = string }
 variable "image_tag"          { type = string; default = "latest" }
 variable "container_port"     { type = number; default = 8080 }
+variable "service_port"       { type = number; default = 80 }
 variable "cpu_request"        { type = string; default = "100m" }
 variable "memory_request"     { type = string; default = "128Mi" }
 variable "cpu_limit"          { type = string; default = "500m" }
@@ -103,4 +153,4 @@ variable "memory_limit"       { type = string; default = "512Mi" }
 
 ## Conclusion
 
-Kubernetes resources managed with OpenTofu benefit from the same plan/apply workflow as cloud infrastructure. Always set resource requests and limits, use namespaces for isolation, and leverage OpenTofu's ability to reference Kubernetes outputs in subsequent cloud resource configurations.
+Kubernetes ingress resources managed with OpenTofu benefit from the same plan/apply workflow as cloud infrastructure. Always ensure your ingress points to an existing Service in the same namespace, specify a `path_type` for each route, and set `ingress_class_name` when your cluster does not define a default IngressClass.
