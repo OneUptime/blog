@@ -32,13 +32,15 @@ frontend stats
 # Show all server states
 
 echo "show stat" | sudo socat stdio /run/haproxy/admin.sock | \
-  awk -F',' '{print $1,$2,$18,$19,$47}' | \
+  awk -F',' '{print $1,$2,$5,$18,$44}' | \
   column -t
 
-# Key fields:
-# $18 = status (UP/DOWN/DRAIN)
-# $19 = act (active sessions)
-# $47 = hrsp_5xx (5xx error count)
+# Key fields (1-indexed columns of the show stat CSV):
+# $1  = pxname (proxy name)
+# $2  = svname (service name)
+# $5  = scur (current sessions)
+# $18 = status (UP/DOWN/MAINT/DRAIN)
+# $44 = hrsp_5xx (5xx response count)
 
 # Current connection rate per second
 echo "show info" | sudo socat stdio /run/haproxy/admin.sock | grep ConnRate
@@ -130,12 +132,21 @@ aws cloudwatch get-metric-statistics \
 
 ## GCP Load Balancer Monitoring
 
+There is no `gcloud` subcommand that reads time-series values from Cloud Monitoring; query the Monitoring API directly:
+
 ```bash
-# Query LB request count via gcloud
-gcloud monitoring read \
-  'metric.type="loadbalancing.googleapis.com/https/request_count"' \
-  --project=my-project \
-  --freshness=1h
+# Query LB request count via the Cloud Monitoring API
+PROJECT=my-project
+START=$(date -u -d '1 hour ago' +%Y-%m-%dT%H:%M:%SZ)
+END=$(date -u +%Y-%m-%dT%H:%M:%SZ)
+FILTER='metric.type="loadbalancing.googleapis.com/https/request_count"'
+
+curl -s -G \
+  -H "Authorization: Bearer $(gcloud auth print-access-token)" \
+  --data-urlencode "filter=${FILTER}" \
+  --data-urlencode "interval.startTime=${START}" \
+  --data-urlencode "interval.endTime=${END}" \
+  "https://monitoring.googleapis.com/v3/projects/${PROJECT}/timeSeries"
 ```
 
 ## Setting Up Alerting
