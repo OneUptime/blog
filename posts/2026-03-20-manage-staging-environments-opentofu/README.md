@@ -82,7 +82,7 @@ module "database" {
 
   # Smaller instance but same engine version as production
   instance_class = "db.t3.medium"  # vs db.r5.large in production
-  engine_version = "15.4"          # Must match production exactly
+  engine_version = "15.17"         # Must match production exactly
 
   # No multi-AZ for staging (saves ~50% cost)
   multi_az                = false
@@ -106,14 +106,13 @@ resource "aws_ecs_service" "debug_proxy" {
 
 # Allow engineers to connect directly to staging DB for debugging
 # (In production, this access is removed)
-resource "aws_security_group_rule" "staging_db_access" {
+resource "aws_vpc_security_group_ingress_rule" "staging_db_access" {
   count = var.environment == "staging" ? 1 : 0
 
-  type              = "ingress"
   from_port         = 5432
   to_port           = 5432
-  protocol          = "tcp"
-  cidr_blocks       = [var.vpn_cidr]
+  ip_protocol       = "tcp"
+  cidr_ipv4         = var.vpn_cidr
   security_group_id = aws_security_group.database.id
   description       = "Allow VPN access to staging DB for debugging"
 }
@@ -134,17 +133,31 @@ resource "aws_lambda_function" "mask_staging_data" {
 
   environment {
     variables = {
-      DB_HOST     = module.database.endpoint
-      DB_PASSWORD = module.database.password_secret_arn
+      DB_ENDPOINT            = module.database.endpoint
+      DB_PASSWORD_SECRET_ARN = module.database.password_secret_arn
     }
   }
 }
 
-# Run the masking function after data refresh
+# Run the masking function on the daily staging refresh schedule
 resource "aws_cloudwatch_event_rule" "refresh_trigger" {
   name                = "staging-data-refresh"
-  description         = "Trigger data masking after staging DB refresh"
-  schedule_expression = "cron(0 2 * * ? *)"  # 2am daily
+  description         = "Trigger data masking on the daily staging refresh schedule"
+  schedule_expression = "cron(0 2 * * ? *)"  # 2am UTC daily
+}
+
+resource "aws_cloudwatch_event_target" "refresh_trigger_masker" {
+  rule      = aws_cloudwatch_event_rule.refresh_trigger.name
+  target_id = "MaskStagingData"
+  arn       = aws_lambda_function.mask_staging_data.arn
+}
+
+resource "aws_lambda_permission" "allow_refresh_trigger" {
+  statement_id  = "AllowExecutionFromEventBridge"
+  action        = "lambda:InvokeFunction"
+  function_name = aws_lambda_function.mask_staging_data.function_name
+  principal     = "events.amazonaws.com"
+  source_arn    = aws_cloudwatch_event_rule.refresh_trigger.arn
 }
 ```
 
