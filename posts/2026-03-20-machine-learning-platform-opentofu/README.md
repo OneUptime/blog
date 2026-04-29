@@ -34,6 +34,7 @@ resource "aws_sagemaker_domain" "ml_platform" {
   auth_mode   = "IAM"
   vpc_id      = module.vpc.vpc_id
   subnet_ids  = module.vpc.private_subnets
+  app_network_access_type = "VpcOnly"
 
   default_user_settings {
     execution_role = aws_iam_role.sagemaker_user.arn
@@ -155,6 +156,19 @@ resource "aws_sagemaker_pipeline" "training" {
             TrainingImage     = "${data.aws_caller_identity.current.account_id}.dkr.ecr.${var.region}.amazonaws.com/myapp-training:latest"
             TrainingInputMode = "File"
           }
+          InputDataConfig = [
+            {
+              ChannelName = "training"
+              ContentType = "text/csv"
+              DataSource = {
+                S3DataSource = {
+                  S3DataType             = "S3Prefix"
+                  S3Uri                  = "s3://${aws_s3_bucket.ml_data.bucket}/training/"
+                  S3DataDistributionType = "FullyReplicated"
+                }
+              }
+            }
+          ]
           OutputDataConfig = {
             S3OutputPath = "s3://${aws_s3_bucket.ml_artifacts.bucket}/training-output/"
           }
@@ -162,6 +176,10 @@ resource "aws_sagemaker_pipeline" "training" {
             InstanceType  = { Get = "Parameters.TrainingInstanceType" }
             InstanceCount = 1
             VolumeSizeInGB = 50
+          }
+          RoleArn = aws_iam_role.sagemaker_pipeline.arn
+          StoppingCondition = {
+            MaxRuntimeInSeconds = 3600
           }
         }
       }
@@ -172,4 +190,4 @@ resource "aws_sagemaker_pipeline" "training" {
 
 ## Summary
 
-A machine learning platform on AWS uses SageMaker Domain as the central workspace, separate S3 buckets for training data, artifacts, and model storage, SageMaker Feature Store for feature engineering, Model Package Groups for the model registry, and SageMaker Pipelines for automated training workflows. Enforce networking through private VPC configuration and security groups - SageMaker Studio kernels should not have direct internet access in production environments.
+A machine learning platform on AWS uses SageMaker Domain as the central workspace, separate S3 buckets for training data, artifacts, and model storage, SageMaker Feature Store for feature engineering, Model Package Groups for the model registry, and SageMaker Pipelines for automated training workflows. Enforce networking through private VPC configuration and security groups - in production, set the SageMaker Domain `app_network_access_type` to `VpcOnly` so Studio traffic stays in your VPC and provide the required VPC endpoints or NAT connectivity.
