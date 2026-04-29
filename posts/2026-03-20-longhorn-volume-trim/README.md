@@ -4,58 +4,23 @@ Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
 Tags: Longhorn, Volume Trim, Trim, Storage Optimization, Kubernetes, Disk Space, SUSE Rancher
 
-Description: Learn how to configure and use Longhorn volume trim to reclaim unused disk space by discard trimming file system blocks that have been freed, reducing storage costs.
+Description: Learn how to configure and use Longhorn volume trim to reclaim unused disk space by trimming freed filesystem blocks and reducing Longhorn actual storage usage.
 
 ---
 
-When you delete files from a Longhorn volume, the underlying disk space is not immediately reclaimed. Longhorn's volume trim (discard) feature propagates TRIM/UNMAP operations to the storage backend, recovering the unused space.
+When you delete files from a Longhorn volume, the underlying disk space is not immediately reclaimed. Longhorn's filesystem trim feature lets Longhorn reclaim space from discarded blocks once the volume is attached and mounted.
 
 ---
 
 ## How Volume Trim Works
 
-When a file is deleted inside a Longhorn volume, the filesystem marks those blocks as free. Without TRIM, Longhorn continues to replicate those "freed" blocks. With TRIM enabled, Longhorn receives discard commands and deallocates the underlying disk blocks, reducing actual storage usage.
+When a file is deleted inside a Longhorn volume, the filesystem marks those blocks as free. Without TRIM, Longhorn continues to count those blocks in the volume's actual size. With TRIM, Longhorn can unmap discarded blocks from the volume head and from continuous chains of removed or system snapshots, reducing actual storage usage. Valid snapshots remain immutable, so trim alone does not reclaim space from them.
 
 ---
 
-## Step 1: Enable Filesystem Trim in Your Workload
+## Step 1: Verify Filesystem Trim Prerequisites
 
-The filesystem inside the volume must be formatted with trim support and mounted with the `discard` option:
-
-```yaml
-# pod-with-trim.yaml
-
-spec:
-  containers:
-    - name: app
-      image: ubuntu:22.04
-      command:
-        - sh
-        - -c
-        - |
-          # Format with discard support and mount
-          # Note: this is for illustration - use initContainers for setup
-          mount | grep /data
-          fstrim /data   # manually trigger TRIM
-      volumeMounts:
-        - name: data
-          mountPath: /data
-```
-
-For ext4 or xfs volumes, use `discard` mount option in the pod or use periodic `fstrim`:
-
-```yaml
-# initContainer to enable periodic fstrim
-initContainers:
-  - name: setup-trim
-    image: ubuntu:22.04
-    command: ["sh", "-c", "echo '0 * * * * fstrim /data' | crontab -"]
-    securityContext:
-      privileged: true
-    volumeMounts:
-      - name: data
-        mountPath: /data
-```
+Longhorn `v1.4.0` or later is required. The volume must contain a trimmable filesystem such as `ext4` or `xfs`, and it must already be attached and mounted on a mount point before trimming.
 
 ---
 
@@ -64,30 +29,44 @@ initContainers:
 In the Longhorn UI:
 
 1. Navigate to **Volumes**
-2. Select the volume you want to trim
+2. Select the attached volume you want to trim
 3. Click **Trim Filesystem**
 
 ---
 
-## Step 3: Trigger Volume Trim via Longhorn API
+## Step 3: Trigger Volume Trim via Shell Command
+
+For RWO volumes, the mount point is either inside the workload pod or on the node where the volume is attached. For RWX volumes, use the share-manager pod for that volume.
 
 ```bash
-# Get the volume name
-kubectl get lhvolume -n longhorn-system | grep my-pvc
+# RWO volume: run fstrim at the mount point used by the workload
+kubectl exec -n <workload-namespace> <workload-pod> -- fstrim -v /data
 
-# Trigger trim via the Longhorn API
-LONGHORN_URL=http://longhorn-frontend.longhorn-system.svc.cluster.local
-
-curl -X POST \
-  ${LONGHORN_URL}/v1/volumes/<volume-name>?action=trimFilesystem \
-  -H "Content-Type: application/json"
+# RWX volume: run fstrim in the share-manager pod
+kubectl -n longhorn-system exec -it share-manager-<volume-name> -- bash
+mount | grep <volume-name>
+fstrim -v /export/<volume-name>
 ```
 
 ---
 
 ## Step 4: Enable Automatic Trim via StorageClass
 
-Configure volumes to automatically enable the discard mount option:
+Longhorn automatic trim is typically done with a `RecurringJob` whose task is `filesystem-trim`. By default, recurring jobs run while the volume is attached, and you can assign that recurring job to new volumes via `recurringJobSelector` in a StorageClass. The `unmapMarkSnapChainRemoved` parameter controls whether snapshots are automatically marked as removed during trim; it does not enable trim by itself.
+
+```yaml
+# recurringjob-filesystem-trim.yaml
+apiVersion: longhorn.io/v1beta2
+kind: RecurringJob
+metadata:
+  name: trim-daily
+  namespace: longhorn-system
+spec:
+  cron: "0 3 * * *"
+  task: "filesystem-trim"
+  retain: 1
+  concurrency: 1
+```
 
 ```yaml
 # storageclass-with-trim.yaml
@@ -98,8 +77,7 @@ metadata:
 provisioner: driver.longhorn.io
 parameters:
   numberOfReplicas: "3"
-  # Allow discard operations from the guest filesystem
-  disableRevisionCounter: "false"
+  recurringJobSelector: '[{"name":"trim-daily","isGroup":false}]'
   unmapMarkSnapChainRemoved: "enabled"
 ```
 
@@ -108,20 +86,21 @@ parameters:
 ## Step 5: Monitor Space Reclaimed
 
 ```bash
-# Before trim - check allocated size
-kubectl exec -n longhorn-system \
-  longhorn-manager-xxxxx -- \
-  longhorn-manager --volume-name <name> space-info
+# List Longhorn volumes
+kubectl -n longhorn-system get volumes.longhorn.io
 
-# After trim - compare actual vs allocated size
-kubectl get lhvolume <name> -n longhorn-system \
-  -o jsonpath='{.status.actualSize}'
+# Compare the volume's actual size before and after trim
+kubectl -n longhorn-system get volumes.longhorn.io <volume-name> \
+  -o jsonpath='{.status.actualSize}{"\n"}'
+
+# If you use Prometheus, compare:
+# longhorn_volume_actual_size_bytes{volume="<volume-name>"}
 ```
 
 ---
 
 ## Best Practices
 
-- Run `fstrim` on a schedule (daily or weekly) rather than continuously using the `discard` mount option - continuous discard has higher I/O overhead.
+- Run `fstrim` on a schedule (daily or weekly) rather than relying on continuous `discard`. If automatic snapshot removal during trim is enabled, use `discard` with caution because it can interrupt operations such as backup creation.
 - Trim is most impactful for volumes with high file churn (log volumes, cache directories).
-- After trimming, re-run Longhorn backups to capture the smaller effective data size.
+- If most of a volume's actual size is tied up in valid snapshots, trim alone will not reclaim much space.
