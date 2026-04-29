@@ -83,10 +83,10 @@ spec:
 import requests
 import numpy as np
 
-# KServe inference
+# KServe inference (V1 protocol)
 response = requests.post(
     "http://sklearn-iris.production.svc.cluster.local/v1/models/sklearn-iris:predict",
-    json={"inputs": [{"data": [[5.1, 3.5, 1.4, 0.2]]}]}
+    json={"instances": [[5.1, 3.5, 1.4, 0.2]]}
 )
 print(response.json())
 
