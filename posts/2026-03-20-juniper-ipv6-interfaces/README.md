@@ -4,15 +4,15 @@ Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
 Tags: Juniper, IPv6, Junos, Interface, Networking
 
-Description: Configure IPv6 addresses on Juniper Junos physical and logical interfaces with static, EUI-64, and link-local addressing.
+Description: Configure IPv6 addresses on Juniper Junos interfaces and verify routing, firewall filters, and DHCPv6 settings.
 
 ## Overview
 
-Configure IPv6 addresses on Juniper Junos physical and logical interfaces with static, EUI-64, and link-local addressing.
+Configure IPv6 addresses on Juniper Junos interfaces and verify routing, firewall filters, and DHCPv6 settings.
 
 ## Prerequisites
 
-- Juniper device running Junos OS 12.1 or later
+- Juniper device running Junos OS 13.3R6 or later
 - Appropriate access privileges (configure exclusive or shared)
 
 ## Junos IPv6 Configuration Syntax
@@ -20,7 +20,7 @@ Configure IPv6 addresses on Juniper Junos physical and logical interfaces with s
 Junos uses a hierarchical configuration syntax. IPv6 configuration lives primarily under:
 - `[edit interfaces]` for interface addressing
 - `[edit routing-options rib inet6.0]` for IPv6 routing
-- `[edit firewall family inet6]` for IPv6 ACLs
+- `[edit firewall family inet6]` for IPv6 firewall filters
 
 ## Configuration Examples
 
@@ -46,10 +46,10 @@ interfaces {
 ### IPv6 Static Route
 
 ```text
-set routing-options rib inet6.0 static route 2001:db8:remote::/48 next-hop 2001:db8:wan::254
+set routing-options rib inet6.0 static route 2001:db8:100::/48 next-hop 2001:db8:0:1::254
 
 # Discard route (black hole)
-set routing-options rib inet6.0 static route ::/0 reject
+set routing-options rib inet6.0 static route ::/0 discard
 ```
 
 ### IPv6 Firewall Filter
@@ -67,7 +67,7 @@ firewall {
             }
             term allow-icmpv6 {
                 from {
-                    next-header icmpv6;
+                    next-header icmp6;
                 }
                 then accept;
             }
@@ -102,13 +102,30 @@ interfaces {
 system {
     services {
         dhcp-local-server {
-            group dhcpv6-clients {
-                active-server-group dhcpv6-group;
-                overrides {
-                    server-identifier-override;
+            dhcpv6 {
+                group dhcpv6-clients {
+                    interface ge-0/0/1.0;
                 }
-                interface ge-0/0/1.0;
             }
+        }
+    }
+}
+
+interfaces {
+    ge-0/0/1 {
+        unit 0 {
+            family inet6 {
+                address 2001:db8:1:1::1/64;
+            }
+        }
+    }
+}
+
+protocols {
+    router-advertisement {
+        interface ge-0/0/1.0 {
+            managed-configuration;
+            prefix 2001:db8:1:1::/64;
         }
     }
 }
@@ -117,14 +134,13 @@ access {
     address-assignment {
         pool dhcpv6-pool {
             family inet6 {
-                prefix 2001:db8:lan::/64;
+                prefix 2001:db8:1:1::/64;
                 range clients {
-                    low 2001:db8:lan::100;
-                    high 2001:db8:lan::200;
+                    low 2001:db8:1:1::100/64;
+                    high 2001:db8:1:1::200/64;
                 }
                 dhcp-attributes {
-                    name-server [2001:4860:4860::8888];
-                    domain-name example.com;
+                    dns-server 2001:4860:4860::8888;
                 }
             }
         }
@@ -135,8 +151,8 @@ access {
 ## Verification Commands
 
 ```text
-# Show IPv6 addresses
-show interfaces ge-0/0/0 detail | match "IPv6|inet6"
+# Show interface IPv6 addresses
+show interfaces ge-0/0/0 terse
 
 # Show IPv6 routing table
 show route table inet6.0
@@ -144,18 +160,18 @@ show route table inet6.0
 # Show NDP neighbors
 show ipv6 neighbors
 
-# Show IPv6 neighbors via NDP
-show arp no-resolve table inet6
+# Show IPv6 neighbors on a specific interface
+show ipv6 neighbors interface ge-0/0/0.0
 
-# Ping over IPv6
-ping inet6 2001:db8::1 routing-instance default count 5
+# Ping an IPv6 next hop
+ping 2001:db8:0:1::254 inet6 count 5
 ```
 
 ## Traceoptions Debugging
 
 ```text
-# Enable IPv6 routing debug
-set protocols router-advertisement traceoptions file ra-debug.log
+# Enable IPv6 router advertisement debug
+set protocols router-advertisement traceoptions file "ra-debug.log"
 set protocols router-advertisement traceoptions flag all
 
 # View trace output
