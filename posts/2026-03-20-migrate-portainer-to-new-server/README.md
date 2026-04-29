@@ -161,20 +161,35 @@ echo "Old server cleaned up"
 
 ## Handling Edge Environments
 
-If you have Portainer Edge agents, update them after migration:
+If you have Portainer Edge agents, you need to consider how they reach the new Portainer server. The Portainer server URL is encoded inside the base64 `EDGE_KEY` (in the format `portainer_instance_url|tunnel_server_addr|tunnel_server_fingerprint|endpoint_ID`), so the agent will keep dialing whatever URL was baked into that key when the agent was first deployed.
+
+The simplest approach is to keep the same DNS hostname for Portainer and just point it at the new server — agents will reconnect automatically with no changes:
 
 ```bash
-# Edge agents need to know the new Portainer server address
-# The Edge ID and key stay the same if you restored the data volume
-
-# On each edge host, check/update the agent connection
+# On each edge host, inspect the current Edge configuration
 docker inspect portainer_edge_agent \
-  --format '{{.Config.Env}}' | tr ',' '\n' | grep EDGE_SERVER_HOST
+  --format '{{range .Config.Env}}{{println .}}{{end}}' | grep EDGE_
 
-# Update if needed
-docker service update \
-  --env-add EDGE_SERVER_HOST=new-portainer.example.com \
-  portainer_edge_agent
+# If you keep the same hostname, no change is needed on the agents.
+```
+
+If you cannot reuse the hostname, you must generate a new Edge key for each environment from the new Portainer instance and redeploy the agent with the updated `EDGE_KEY`:
+
+```bash
+# Stop and remove the existing agent, then redeploy with the new EDGE_KEY
+docker rm -f portainer_edge_agent
+
+docker run -d \
+  --name portainer_edge_agent \
+  --restart=always \
+  -v /var/run/docker.sock:/var/run/docker.sock \
+  -v /var/lib/docker/volumes:/var/lib/docker/volumes \
+  -v portainer_agent_data:/data \
+  -e EDGE=1 \
+  -e EDGE_ID=<existing-or-new-edge-id> \
+  -e EDGE_KEY=<new-base64-edge-key-from-new-server> \
+  -e EDGE_INSECURE_POLL=1 \
+  portainer/agent:2.19.4
 ```
 
 ## Conclusion
