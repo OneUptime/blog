@@ -35,21 +35,21 @@ Common autonomous vehicle compute platforms:
 ```bash
 # NVIDIA DRIVE AGX Orin (automotive-grade)
 
-# - 275 TOPS AI performance
-# - Up to 256GB RAM
-# - Automotive temperature rated (-40 to +105°C)
-# - ISO 26262 ASIL-B support
+# - Up to 254 INT8 TOPS
+# - 256GB UFS
+# - Built on production, auto-grade silicon
+# - Architected for safety and security
 
 # NVIDIA Jetson AGX Orin (development/lower-cost AVs)
-# - 275 TOPS
-# - 64GB LPDDR5
+# - Up to 275 TOPS
+# - Up to 64GB LPDDR5
 
-# Verify CUDA availability
-nvidia-smi
+# On Tegra-based systems, use tegrastats instead of nvidia-smi
+tegrastats --interval 1000
 nvcc --version
 
-# Check for automotive-specific drivers
-dpkg -l | grep nvidia-drive
+# Check for DRIVE OS or JetPack packages
+dpkg -l | grep -E 'nvidia-driveos|nvidia-l4t-cuda|tensorrt'
 ```
 
 ## Step 2: Install K3s with Real-Time Considerations
@@ -74,7 +74,7 @@ kubelet-arg:
   - "cpu-manager-policy=static"
   # NUMA-aware scheduling
   - "topology-manager-policy=best-effort"
-  # Enforce container memory limits strictly
+  # Keep pod usage within node allocatable
   - "enforce-node-allocatable=pods"
 
 node-label:
@@ -89,8 +89,19 @@ node-label:
 # Install K3s
 curl -sfL https://get.k3s.io | sh -
 
+# Create the application namespace
+kubectl create namespace av-stack
+
+# Install the NVIDIA device plugin with CPUManager compatibility
+helm repo add nvdp https://nvidia.github.io/k8s-device-plugin
+helm repo update
+helm upgrade -i nvdp nvdp/nvidia-device-plugin \
+  --namespace nvidia-device-plugin \
+  --create-namespace \
+  --set compatWithCPUManager=true
+
 # Verify GPU is accessible
-kubectl describe node | grep -A 10 "Capacity:"
+kubectl describe node | grep "nvidia.com/gpu"
 # Should show: nvidia.com/gpu: 1
 ```
 
@@ -167,7 +178,13 @@ metadata:
   namespace: av-stack
 spec:
   replicas: 1
+  selector:
+    matchLabels:
+      app: object-detection
   template:
+    metadata:
+      labels:
+        app: object-detection
     spec:
       nodeSelector:
         role: av-compute
@@ -214,7 +231,13 @@ metadata:
   namespace: av-stack
 spec:
   replicas: 1
+  selector:
+    matchLabels:
+      app: path-planner
   template:
+    metadata:
+      labels:
+        app: path-planner
     spec:
       nodeSelector:
         role: av-compute
@@ -249,6 +272,13 @@ spec:
 
 ## Step 6: OTA Update Management
 
+```bash
+# Install the System Upgrade Controller and its CRD
+kubectl apply \
+  -f https://github.com/rancher/system-upgrade-controller/releases/latest/download/crd.yaml \
+  -f https://github.com/rancher/system-upgrade-controller/releases/latest/download/system-upgrade-controller.yaml
+```
+
 ```yaml
 # ota-update-plan.yaml
 apiVersion: upgrade.cattle.io/v1
@@ -257,8 +287,8 @@ metadata:
   name: av-stack-update
   namespace: system-upgrade
 spec:
-  # Channel server for AV software updates
-  channel: https://ota.autonomy-corp.com/api/vehicle-updates
+  # Channel server for AV software updates; must resolve to a version tag
+  channel: https://ota.example.com/channels/stable
   serviceAccountName: system-upgrade
   # Upgrade one vehicle at a time (concurrency for fleet management)
   concurrency: 1
@@ -335,6 +365,9 @@ spec:
     matchLabels:
       app: telemetry
   template:
+    metadata:
+      labels:
+        app: telemetry
     spec:
       containers:
         - name: telemetry
@@ -347,7 +380,7 @@ spec:
                   name: vehicle-config
                   key: vehicle-id
             - name: FLEET_ENDPOINT
-              value: "https://fleet.autonomy-corp.com/api/telemetry"
+              value: "https://fleet.example.com/api/telemetry"
             - name: UPLOAD_INTERVAL_SECONDS
               value: "10"
             # Only upload when connected (cellular/WiFi)
