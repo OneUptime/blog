@@ -29,7 +29,7 @@ ip netns list
 # ns1 (id: 0)
 ```
 
-The ID shown is the kernel namespace identifier.
+If an `(id: N)` suffix is shown, it is the network namespace ID (nsid) relative to the current network namespace, not the kernel inode number.
 
 ## List Namespace Files Directly
 
@@ -37,23 +37,23 @@ The ID shown is the kernel namespace identifier.
 # List namespace files in the filesystem
 ls -la /var/run/netns/
 
-# Check with file type
+# Show a human-readable long listing
 ls -lh /var/run/netns/
 ```
 
 ## Get Detailed Namespace Info
 
 ```bash
-# Show namespace with its ID and interface count
-ip netns list -v 2>/dev/null || ip netns list
+# Show network namespace IDs (nsids) visible from the current namespace
+ip netns list-id
 ```
 
-## List ALL Namespaces (Including Container Namespaces)
+## List Active Namespaces (Including Container Namespaces)
 
-Containers (Docker, Kubernetes) create unnamed namespaces that do NOT appear in `ip netns list`. Use `lsns` to see all:
+Containers (Docker, Kubernetes) often create network namespaces that do NOT appear in `ip netns list` because they are not named under `/var/run/netns`. Use `lsns` to see active network namespaces that are visible through `/proc`:
 
 ```bash
-# List all network namespaces on the system (requires util-linux)
+# List active network namespaces on the system (requires util-linux)
 lsns -t net
 
 # Example output:
@@ -76,10 +76,12 @@ ls -la /proc/1234/ns/net
 
 ```bash
 # Show the current process's network namespace inode
-readlink /proc/self/ns/net
+stat -Lc '%i' /proc/self/ns/net
 
-# Compare with another namespace file
-readlink /var/run/netns/ns1
+# Compare with another named namespace file
+stat -Lc '%i' /var/run/netns/ns1
+
+# Matching inode numbers indicate the same network namespace
 ```
 
 ## List Interfaces Inside Each Namespace
@@ -95,22 +97,20 @@ done
 ## Associate Processes with Namespaces
 
 ```bash
-# Find all processes in a specific namespace (by inode)
-NS_INODE=$(readlink /var/run/netns/ns1 | tr -d 'net:[]')
-lsns -t net | grep "$NS_INODE"
+# Find all processes in a specific named namespace
+ip netns pids ns1
 ```
 
 ## Docker and Kubernetes Namespace Visibility
 
-Docker creates network namespaces but does not mount them in `/var/run/netns` by default. To make a Docker container's namespace visible to `ip netns`:
+Docker creates network namespaces but does not name them under `/var/run/netns` by default. To make a Docker container's namespace visible to `ip netns`:
 
 ```bash
 # Get the container's PID
 CONTAINER_PID=$(docker inspect --format '{{.State.Pid}}' my_container)
 
-# Create a bind-mount link in /var/run/netns
-mkdir -p /var/run/netns
-ln -sf /proc/$CONTAINER_PID/ns/net /var/run/netns/my_container
+# Attach the container's network namespace to a name
+ip netns attach my_container "$CONTAINER_PID"
 
 # Now the container appears in ip netns list
 ip netns list
@@ -119,4 +119,4 @@ ip netns exec my_container ip addr
 
 ## Conclusion
 
-`ip netns list` shows named namespaces created with iproute2, while `lsns -t net` reveals all network namespaces including those created by containers. For deep inspection, check `/proc/<pid>/ns/net` to find the namespace a specific process is running in. Docker containers require a manual bind-mount step to appear in `ip netns`.
+`ip netns list` shows named namespaces under `/var/run/netns`, while `lsns -t net` reveals active network namespaces with processes, including container namespaces. For deep inspection, check `/proc/<pid>/ns/net` to find the namespace a specific process is running in. Docker-created namespaces can be given a name with `ip netns attach` to make them appear in `ip netns`.
