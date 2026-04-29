@@ -51,49 +51,79 @@ sudo ip netns exec myns ip -6 addr add 2001:db8::2/64 dev veth1
 sudo ip link set veth0 up
 sudo ip netns exec myns ip link set veth1 up
 
+# Enable IPv6 forwarding in a router namespace
+sudo ip netns exec router sysctl -w net.ipv6.conf.all.forwarding=1
+
+# Add a static IPv6 route inside a namespace
+sudo ip netns exec myns ip -6 route add 2001:db8:1::/64 via 2001:db8::1 dev veth1
+
 # Test connectivity
-ping6 -c 3 2001:db8::2
-sudo ip netns exec myns ping6 -c 3 2001:db8::1
+ping -6 -c 3 2001:db8::2
+sudo ip netns exec myns ping -6 -c 3 2001:db8::1
 ```
 
 ## Full Setup Script
 
 ```bash
 #!/bin/bash
-# Setup IPv6 lab with two connected namespaces
+# Setup IPv6 lab with two namespaces routed through a central namespace
+
+set -e
 
 NS1="ns1"
+RTR="router"
 NS2="ns2"
-
-# Create namespaces
-ip netns add $NS1
-ip netns add $NS2
-
-# Create veth pair
-ip link add veth-${NS1} type veth peer name veth-${NS2}
-ip link set veth-${NS1} netns $NS1
-ip link set veth-${NS2} netns $NS2
-
-# Configure IPv6
-ip netns exec $NS1 ip link set lo up
-ip netns exec $NS1 ip link set veth-${NS1} up
-ip netns exec $NS1 ip -6 addr add 2001:db8::1/64 dev veth-${NS1}
-
-ip netns exec $NS2 ip link set lo up
-ip netns exec $NS2 ip link set veth-${NS2} up
-ip netns exec $NS2 ip -6 addr add 2001:db8::2/64 dev veth-${NS2}
-
-# Test connectivity
-echo "Testing connectivity..."
-ip netns exec $NS1 ping6 -c 3 2001:db8::2
-echo "Setup complete!"
 
 # Cleanup
 cleanup() {
-    ip netns del $NS1 2>/dev/null
-    ip netns del $NS2 2>/dev/null
+    ip netns del $NS1 2>/dev/null || true
+    ip netns del $RTR 2>/dev/null || true
+    ip netns del $NS2 2>/dev/null || true
 }
 trap cleanup EXIT
+
+# Create namespaces
+ip netns add $NS1
+ip netns add $RTR
+ip netns add $NS2
+
+# Create veth pairs
+ip link add veth-${NS1} type veth peer name veth-rtr1
+ip link add veth-${NS2} type veth peer name veth-rtr2
+
+# Move interfaces to namespaces
+ip link set veth-${NS1} netns $NS1
+ip link set veth-rtr1 netns $RTR
+ip link set veth-${NS2} netns $NS2
+ip link set veth-rtr2 netns $RTR
+
+# Configure loopback and links
+ip netns exec $NS1 ip link set lo up
+ip netns exec $RTR ip link set lo up
+ip netns exec $NS2 ip link set lo up
+
+ip netns exec $NS1 ip link set veth-${NS1} up
+ip netns exec $RTR ip link set veth-rtr1 up
+ip netns exec $RTR ip link set veth-rtr2 up
+ip netns exec $NS2 ip link set veth-${NS2} up
+
+# Configure IPv6 addresses on routed subnets
+ip netns exec $NS1 ip -6 addr add 2001:db8:1::2/64 dev veth-${NS1}
+ip netns exec $RTR ip -6 addr add 2001:db8:1::1/64 dev veth-rtr1
+ip netns exec $RTR ip -6 addr add 2001:db8:2::1/64 dev veth-rtr2
+ip netns exec $NS2 ip -6 addr add 2001:db8:2::2/64 dev veth-${NS2}
+
+# Enable IPv6 forwarding in the router namespace
+ip netns exec $RTR sysctl -w net.ipv6.conf.all.forwarding=1 >/dev/null
+
+# Add static routes
+ip netns exec $NS1 ip -6 route add 2001:db8:2::/64 via 2001:db8:1::1 dev veth-${NS1}
+ip netns exec $NS2 ip -6 route add 2001:db8:1::/64 via 2001:db8:2::1 dev veth-${NS2}
+
+# Test routed connectivity
+echo "Testing routed connectivity..."
+ip netns exec $NS1 ping -6 -c 3 2001:db8:2::2
+echo "Setup complete!"
 ```
 
 ## Verifying IPv6 Configuration
@@ -114,8 +144,8 @@ sudo ip netns exec myns tcpdump -i veth1 ip6
 
 ## Monitoring with OneUptime
 
-Use [OneUptime](https://oneuptime.com) to monitor services running inside network namespaces. If running long-lived services in namespaces, configure monitors pointing to the IPv6 addresses assigned within those namespaces.
+Use [OneUptime](https://oneuptime.com) to monitor services running inside network namespaces. If running long-lived services in namespaces, configure monitors from a network context that has routes to the namespaces' IPv6 addresses. In a real deployment, use routable IPv6 prefixes rather than the `2001:db8::/32` documentation prefix shown here.
 
 ## Conclusion
 
-How to Configure IPv6 Routing Between Network Namespaces uses standard Linux  commands with the  subcommand. All IPv6 configuration tools work identically inside namespaces. Network namespaces are an excellent, zero-cost way to test IPv6 configurations before deploying to production.
+How to Configure IPv6 Routing Between Network Namespaces uses standard Linux `ip` commands with the `netns` subcommand. The same `ip` and IPv6 troubleshooting commands work inside namespaces when run with `ip netns exec`. Network namespaces are an excellent, zero-cost way to test IPv6 configurations before deploying to production.
