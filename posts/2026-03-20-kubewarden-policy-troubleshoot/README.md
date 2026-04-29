@@ -28,16 +28,16 @@ Kubewarden policies can fail silently or produce unexpected results. This guide 
 ```bash
 # List all ClusterAdmissionPolicies
 
-kubectl get clusteradmissionpolicy -A
+kubectl get clusteradmissionpolicy
 
 # Check if a policy is active
 kubectl describe clusteradmissionpolicy disallow-latest-tag
 
 # Look for the Status field - it should be "active"
-# If it shows "pending" or "error", the policy server may not have loaded it
+# If it stays "scheduled" or "pending", the policy server may still be reconciling it
 ```
 
-A policy in `pending` state means the Policy Server is still pulling the WASM module from the registry. If it stays pending, check the Policy Server logs:
+A policy in `pending` state means Kubewarden is still reconciling the resources needed to serve it, such as rolling out the Policy Server, downloading the module, or validating settings. If it stays pending, check the Policy Server logs:
 
 ```bash
 kubectl logs -n kubewarden deployment/kubewarden-policy-server-default
@@ -66,7 +66,7 @@ kubectl logs -n kubewarden deployment/kubewarden-policy-server-default \
 
 ```bash
 # View events in the kubewarden namespace
-kubectl get events -n kubewarden --sort-by='.lastTimestamp'
+kubectl get events -n kubewarden --sort-by='.metadata.creationTimestamp'
 
 # Check events for a specific policy
 kubectl describe clusteradmissionpolicy disallow-latest-tag | grep -A 10 Events
@@ -81,49 +81,49 @@ The fastest way to debug a policy is to run it locally with a known request:
 ```bash
 # Run the policy against a test request
 kwctl run \
-  ghcr.io/my-org/disallow-latest-tag:v0.1.0 \
+  registry://ghcr.io/my-org/disallow-latest-tag:v0.1.0 \
   --request-path test-request.json \
   --settings-path settings.json
 
-# Enable verbose output for detailed evaluation trace
-kwctl run \
-  ghcr.io/my-org/disallow-latest-tag:v0.1.0 \
+# Increase kwctl verbosity for additional troubleshooting output
+kwctl -v run \
+  registry://ghcr.io/my-org/disallow-latest-tag:v0.1.0 \
   --request-path test-request.json \
-  --settings-path settings.json \
-  --verbose
+  --settings-path settings.json
 ```
 
 ---
 
 ## Step 5: Validate Policy Settings
 
-Invalid settings cause policies to reject all requests or fail to initialize:
+Invalid settings can prevent a policy from loading cleanly. `kwctl run` validates settings before evaluating the request:
 
 ```bash
-# Validate settings without running a full evaluation
+# Run the policy with the same settings you plan to deploy
 kwctl run my-policy.wasm \
-  --settings-path settings.json \
-  --validate-settings
+  --request-path test-request.json \
+  --settings-path settings.json
 
-# Example output for valid settings:
-# Settings validation passed
+# Example output for valid settings includes:
+# "valid": true
 
-# Example output for invalid settings:
-# Settings validation failed: required field 'maxReplicas' is missing
+# Example output for invalid settings includes:
+# "valid": false
+# "message": "required field 'maxReplicas' is missing"
 ```
 
 ---
 
 ## Step 6: Check Admission Webhook Configuration
 
-Kubewarden registers a ValidatingWebhookConfiguration. If this is misconfigured, policies either do not fire or block all traffic:
+Kubewarden creates a dedicated webhook configuration for each policy. Validating policies use a `ValidatingWebhookConfiguration`, while mutating policies use a `MutatingWebhookConfiguration`. If the webhook is misconfigured, the policy may not fire or it may block matching requests:
 
 ```bash
-# List webhook configurations
-kubectl get validatingwebhookconfigurations
+# List validating webhook configurations created by Kubewarden
+kubectl get validatingwebhookconfigurations -l kubewarden
 
-# Inspect the Kubewarden webhook
-kubectl describe validatingwebhookconfiguration kubewarden-policy-server-default
+# Inspect the webhook for this ClusterAdmissionPolicy
+kubectl describe validatingwebhookconfiguration clusterwide-disallow-latest-tag
 
 # Check the namespaceSelector and rules - misconfigured selectors mean
 # the webhook never fires for your target resources
@@ -145,7 +145,7 @@ kubectl apply --dry-run=server -f my-pod.yaml
 
 ## Step 8: Check Policy Rules Configuration
 
-```yaml
+```text
 # Verify the rules section matches your resource
 kubectl get clusteradmissionpolicy disallow-latest-tag -o yaml
 
@@ -176,7 +176,7 @@ kubectl logs -n kubewarden deployment/kubewarden-policy-server-default | tail -5
 kwctl run <policy> --request-path test.json
 
 # 5. Does the webhook configuration match your resource?
-kubectl describe validatingwebhookconfiguration kubewarden-policy-server-default
+kubectl describe validatingwebhookconfiguration clusterwide-disallow-latest-tag
 ```
 
 ---
