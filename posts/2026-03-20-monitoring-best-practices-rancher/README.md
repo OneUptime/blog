@@ -16,12 +16,17 @@ Monitoring in Rancher must cover multiple layers: the Rancher management plane, 
 # Enable from Rancher UI:
 
 # Cluster > Apps > Charts > Monitoring
-# Or install via Helm
+# Or install via Helm (CRDs must be installed first)
 
 helm repo add rancher-charts https://charts.rancher.io
+
+# Install the CRD chart first - rancher-monitoring depends on it
+helm install rancher-monitoring-crd rancher-charts/rancher-monitoring-crd \
+  --namespace cattle-monitoring-system \
+  --create-namespace
+
 helm install rancher-monitoring rancher-charts/rancher-monitoring \
   --namespace cattle-monitoring-system \
-  --create-namespace \
   --set prometheus.prometheusSpec.retentionSize=50GB \
   --set prometheus.prometheusSpec.retention=30d \
   --set grafana.persistence.enabled=true \
@@ -99,18 +104,23 @@ spec:
 
 ## Step 4: Essential Grafana Dashboards
 
-Import these dashboards from grafana.com:
-- **15661**: Kubernetes Cluster Overview
-- **15757**: Node Exporter Full
-- **13332**: Kubernetes API Server
-- **7249**: etcd by Prometheus
-- **315**: Kubernetes cluster monitoring
+Rancher Monitoring (kube-prometheus-stack) ships with built-in Grafana dashboards
+for cluster overview, API server, etcd, and kubelet. To supplement these, the
+following community dashboards are commonly imported from grafana.com:
+- **1860**: Node Exporter Full
+- **315**: Kubernetes cluster monitoring (via Prometheus)
 
 ```bash
-# Import dashboard via Grafana API
-curl -X POST http://grafana.company.com/api/dashboards/import \
+# Importing a community dashboard requires fetching the JSON model first,
+# then POSTing it to the /api/dashboards/db endpoint.
+curl -s https://grafana.com/api/dashboards/1860/revisions/latest/download \
+  > /tmp/dashboard.json
+
+curl -X POST http://grafana.company.com/api/dashboards/db \
   -H "Content-Type: application/json" \
-  -d '{"dashboard": {"id": 15661}, "folderId": 0, "overwrite": true}'
+  -H "Authorization: Bearer $GRAFANA_API_TOKEN" \
+  -d "$(jq -n --slurpfile d /tmp/dashboard.json \
+        '{dashboard: ($d[0] | .id = null), folderId: 0, overwrite: true}')"
 ```
 
 ## Step 5: Multi-Cluster Monitoring
@@ -147,10 +157,12 @@ route:
   group_interval: 5m
   repeat_interval: 4h
   routes:
-    - matchers: [severity="critical"]
+    - matchers:
+        - severity="critical"
       receiver: pagerduty-oncall
       continue: true
-    - matchers: [severity="warning"]
+    - matchers:
+        - severity="warning"
       receiver: slack-warnings
 
 receivers:
