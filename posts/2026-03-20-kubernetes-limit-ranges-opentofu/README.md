@@ -8,7 +8,7 @@ Description: Learn how to create Kubernetes Limit Ranges with OpenTofu to enforc
 
 ## Overview
 
-Kubernetes Limit Ranges set default resource requests/limits for containers that don't specify them, and enforce minimum/maximum bounds. Without LimitRanges, containers without resource specs can consume unlimited cluster resources. OpenTofu manages LimitRanges alongside Resource Quotas.
+Kubernetes Limit Ranges set default resource requests/limits for containers that don't specify them, and enforce minimum/maximum bounds. Without LimitRanges, containers without resource specs run with unbounded compute resources unless other policies, such as ResourceQuotas, constrain them. OpenTofu manages LimitRanges alongside Resource Quotas.
 
 ## Step 1: Create a LimitRange with Defaults
 
@@ -105,9 +105,9 @@ resource "kubernetes_limit_range_v1" "pod_limits" {
       }
     }
 
-    # Individual init container defaults
+    # Container-level defaults in this namespace
     limit {
-      type = "InitContainer"
+      type = "Container"
 
       default = {
         cpu    = "200m"
@@ -126,7 +126,9 @@ resource "kubernetes_limit_range_v1" "pod_limits" {
 ## Step 4: Environment-Specific LimitRanges
 
 ```hcl
-# Stricter limits for development environments
+# Alternative pattern: generate one container-default LimitRange per environment namespace.
+# Avoid defining multiple LimitRanges with container defaults in the same namespace,
+# because Kubernetes does not guarantee which default is applied.
 locals {
   namespace_limit_configs = {
     development = {
@@ -177,4 +179,4 @@ resource "kubernetes_limit_range_v1" "env_limits" {
 
 ## Summary
 
-Kubernetes Limit Ranges with OpenTofu prevent resource starvation by ensuring all containers have resource requests and limits. Default values eliminate the need for developers to specify resources on every container, while min/max bounds prevent abuse. Combine with Resource Quotas for complete namespace-level resource governance.
+Kubernetes Limit Ranges with OpenTofu help prevent a single workload from monopolizing namespace resources by applying default resource requests and limits when you configure them, and by enforcing min/max bounds. Default values reduce the need for developers to specify resources on every container, while min/max bounds prevent abuse. Combine with Resource Quotas for complete namespace-level resource governance.
