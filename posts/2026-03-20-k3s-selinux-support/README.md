@@ -12,7 +12,7 @@ SELinux (Security-Enhanced Linux) provides mandatory access control (MAC) at the
 
 ## Prerequisites
 
-- RHEL 8/9, CentOS 8/9, Rocky Linux, or AlmaLinux
+- RHEL 8/9, CentOS Stream 8/9, Rocky Linux, or AlmaLinux
 - SELinux installed and set to `enforcing` or `permissive` mode
 - Root/sudo access
 
@@ -33,14 +33,25 @@ cat /etc/selinux/config
 
 ## Step 2: Install the K3s SELinux Policy Package
 
-K3s requires a custom SELinux policy package:
+K3s requires the `k3s-selinux` policy package, along with the base container SELinux policy packages:
 
 ```bash
+# Install the base SELinux container policy packages
+dnf install -y container-selinux selinux-policy-base
+
+# Select the Rancher SELinux repo path for EL8 or EL9
+source /etc/os-release
+if [ "${VERSION_ID%%.*}" = "8" ]; then
+  RPM_PATH="centos/8"
+else
+  RPM_PATH="centos/9"
+fi
+
 # Add the Rancher K3s SELinux repository
-cat > /etc/yum.repos.d/rancher-k3s-common.repo << 'EOF'
+cat > /etc/yum.repos.d/rancher-k3s-common.repo << EOF
 [rancher-k3s-common-stable]
 name=Rancher K3s Common (stable)
-baseurl=https://rpm.rancher.io/k3s/stable/common/centos/8/noarch
+baseurl=https://rpm.rancher.io/k3s/stable/common/${RPM_PATH}/noarch
 enabled=1
 gpgcheck=1
 repo_gpgcheck=0
@@ -65,8 +76,9 @@ curl -sfL https://get.k3s.io | \
   INSTALL_K3S_EXEC="--selinux" \
   sh -
 
-# Verify K3s started with SELinux
-ps aux | grep k3s | grep selinux
+# Verify K3s is running
+systemctl is-active k3s
+# Output: active
 ```
 
 Or configure via config file:
@@ -78,22 +90,21 @@ selinux: true
 
 ## Step 4: Verify SELinux Contexts
 
-After installation, verify K3s processes have correct SELinux contexts:
+After installation, verify that the K3s binary and data directories have the expected SELinux labels:
 
 ```bash
-# Check K3s process context
-ps -eZ | grep k3s
+# Check K3s and containerd process contexts
+ps -eZ | grep -E "k3s|containerd"
 
-# Expected output should show: system_u:system_r:k3s_t:s0
+# Check the K3s binary label
+ls -Z "$(command -v k3s)"
 
-# Check containerd process context
-ps -eZ | grep containerd
+# Expected type for the K3s binary: container_runtime_exec_t
 
 # Check K3s data directory contexts
-ls -Z /var/lib/rancher/k3s/
+ls -dZ /var/lib/rancher/k3s /var/lib/rancher/k3s/data /var/lib/rancher/k3s/storage
 
-# Check running pod SELinux contexts
-ps -eZ | grep -E "pause|container"
+# Expected types include: container_var_lib_t, k3s_data_t, and container_file_t
 ```
 
 ## Step 5: Handle SELinux AVC Denials
@@ -101,6 +112,9 @@ ps -eZ | grep -E "pause|container"
 SELinux denials are logged to the audit log. Check and resolve them:
 
 ```bash
+# Install SELinux troubleshooting utilities if needed
+dnf install -y policycoreutils-python-utils
+
 # Check for SELinux denials related to K3s
 ausearch -m avc -ts recent | grep k3s
 
@@ -185,20 +199,17 @@ ls -Z /data/my-pv/
 
 ## Step 9: SELinux Boolean Settings for K3s
 
-Adjust SELinux booleans that may affect K3s behavior:
+Adjust SELinux booleans that may affect container workloads:
 
 ```bash
-# List K3s-related SELinux booleans
-getsebool -a | grep -E "container|k3s|kube"
+# List container-related SELinux booleans
+getsebool -a | grep container
 
-# Allow containers to connect to the network
-setsebool -P container_connect_any 1
-
-# Allow containers to use the GPU (if needed)
+# Allow containers to access host devices (if needed)
 setsebool -P container_use_devices 1
 
 # Verify boolean settings
-getsebool container_connect_any
+getsebool container_use_devices
 ```
 
 ## Step 10: Monitor SELinux Events in Production
@@ -212,15 +223,15 @@ dnf install -y setroubleshoot-server
 # View SELinux alerts
 sealert -a /var/log/audit/audit.log
 
-# Set up auditd to rotate logs
+# Add an audit rule to watch the K3s data directory
 cat > /etc/audit/rules.d/k3s-selinux.rules << 'EOF'
 -w /var/lib/rancher/k3s -p rwxa -k k3s-access
 EOF
 
-# Reload audit rules
-service auditd reload
+# Load the new audit rules
+augenrules --load
 ```
 
 ## Conclusion
 
-Running K3s with SELinux enforcing mode significantly enhances cluster security by restricting what processes can do at the OS level. The key requirements are installing the `k3s-selinux` policy package and enabling SELinux support in the K3s configuration. When encountering AVC denials, use `audit2allow` to generate custom policy modules rather than disabling SELinux entirely. For production deployments on RHEL/CentOS, SELinux enforcement should be considered a mandatory security control.
+Running K3s with SELinux enforcing mode significantly enhances cluster security by restricting what processes can do at the OS level. The key requirements are installing the `k3s-selinux` policy package and its base SELinux dependencies, then enabling SELinux support in the K3s configuration. When encountering AVC denials, use `audit2allow` to generate custom policy modules rather than disabling SELinux entirely. For production deployments on RHEL/CentOS, SELinux enforcement should be considered a mandatory security control.
