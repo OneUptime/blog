@@ -27,12 +27,12 @@ Before upgrading, verify your current cluster state:
 k3s --version
 
 # Check Kubernetes version from the API
-kubectl version --short
+kubectl version
 
 # List all nodes and their versions
 kubectl get nodes -o wide
 
-# Check available K3s versions (visit GitHub releases or use curl)
+# Check the latest K3s release (or browse GitHub releases for other versions)
 curl -s https://api.github.com/repos/k3s-io/k3s/releases/latest | grep tag_name
 ```
 
@@ -41,14 +41,17 @@ curl -s https://api.github.com/repos/k3s-io/k3s/releases/latest | grep tag_name
 Always back up before upgrading:
 
 ```bash
-# On the K3s server node, back up the etcd datastore (or SQLite)
-# For SQLite (default):
-cp /var/lib/rancher/k3s/server/db/state.db /var/lib/rancher/k3s/server/db/state.db.backup
+# On a K3s server node, back up the datastore and server token
+# For SQLite (default on single-server clusters), back up the entire DB directory:
+cp -a /var/lib/rancher/k3s/server/db /var/lib/rancher/k3s/server/db.backup
 
 # For embedded etcd:
 k3s etcd-snapshot save --name pre-upgrade-snapshot
 
-# Verify the snapshot was created
+# Back up the server token as well; it is required to restore from backup
+cp /var/lib/rancher/k3s/server/token /var/lib/rancher/k3s/server/token.backup
+
+# If you use embedded etcd, verify the snapshot was created
 k3s etcd-snapshot list
 ```
 
@@ -76,9 +79,13 @@ kubectl drain <server-node-name> \
 SSH into the server node and run the upgrade:
 
 ```bash
-# Download and install the specific K3s version
+# Re-run the installer with the same K3S_ variables and extra arguments
+# you originally used so your existing service configuration is preserved
 # Replace v1.29.3+k3s1 with your target version
-curl -sfL https://get.k3s.io | INSTALL_K3S_VERSION=v1.29.3+k3s1 sh -
+curl -sfL https://get.k3s.io | \
+  INSTALL_K3S_VERSION=v1.29.3+k3s1 \
+  <EXISTING_K3S_ENV> \
+  sh -s - <EXISTING_K3S_ARGS>
 
 # The installer will automatically:
 # 1. Download the new binary
@@ -133,12 +140,15 @@ kubectl drain <agent-node-name> \
 # SSH to the agent node and upgrade
 ssh user@<agent-node-ip>
 
-# Run the installer with the target version
+# Re-run the installer with the same K3S_URL, K3S_TOKEN, and any other
+# K3S_ variables or extra arguments you originally used
 curl -sfL https://get.k3s.io | \
   INSTALL_K3S_VERSION=v1.29.3+k3s1 \
-  K3S_URL=https://<server-ip>:6443 \
-  K3S_TOKEN=<node-token> \
-  sh - agent
+  <EXISTING_K3S_ENV> \
+  sh -s - <EXISTING_K3S_ARGS>
+
+# Back on the control plane, wait for the node to become Ready again
+kubectl wait --for=condition=Ready node/<agent-node-name> --timeout=120s
 
 # Back on the control plane, uncordon the agent
 kubectl uncordon <agent-node-name>
@@ -166,15 +176,24 @@ kubectl delete pod test-pod
 If something goes wrong, restore from backup and reinstall the previous version:
 
 ```bash
-# Reinstall the previous version on the affected node
-curl -sfL https://get.k3s.io | INSTALL_K3S_VERSION=v1.28.8+k3s1 sh -
+# Reinstall the previous version on the affected server node, but do not start it yet
+curl -sfL https://get.k3s.io | \
+  INSTALL_K3S_VERSION=v1.28.8+k3s1 \
+  INSTALL_K3S_SKIP_START=true \
+  <EXISTING_K3S_ENV> \
+  sh -s - <EXISTING_K3S_ARGS>
 
-# Restore SQLite backup if needed
+# For single-server clusters using SQLite, stop K3s and restore the DB directory and token
 systemctl stop k3s
-cp /var/lib/rancher/k3s/server/db/state.db.backup \
-   /var/lib/rancher/k3s/server/db/state.db
+rm -rf /var/lib/rancher/k3s/server/db
+cp -a /var/lib/rancher/k3s/server/db.backup \
+      /var/lib/rancher/k3s/server/db
+cp /var/lib/rancher/k3s/server/token.backup \
+   /var/lib/rancher/k3s/server/token
 systemctl start k3s
 ```
+
+For embedded etcd clusters, restore the snapshot with the documented `k3s server --cluster-reset --cluster-reset-restore-path=<snapshot-path>` procedure instead of copying SQLite files.
 
 ## Conclusion
 
