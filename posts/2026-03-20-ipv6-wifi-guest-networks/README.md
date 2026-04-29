@@ -4,22 +4,22 @@ Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
 Tags: IPv6, Wi-Fi, Guest Network, SSID, VLAN, Isolation, Firewall
 
-Description: Configure IPv6 for Wi-Fi guest networks with proper VLAN isolation, separate prefix delegation, guest-specific firewall policies, and DHCPv6 to prevent access to internal IPv6 resources.
+Description: Configure IPv6 for Wi-Fi guest networks with proper VLAN isolation, separate IPv6 prefixes, guest-specific firewall policies that prevent access to internal IPv6 resources, and DHCPv6 where required.
 
 ---
 
-Guest Wi-Fi networks need IPv6 internet access while being isolated from the corporate network. Each guest SSID should use a separate IPv6 prefix on a dedicated VLAN, with firewall rules preventing access to RFC 1918 and internal IPv6 ranges.
+Guest Wi-Fi networks need IPv6 internet access while being isolated from the corporate network. Each guest SSID should use a separate IPv6 prefix on a dedicated VLAN, with IPv6 firewall rules preventing access to internal IPv6 ranges.
 
 ## Guest Network Architecture
 
 ```text
 IPv6 Guest Network Architecture:
-Internet (2001:db8::/32 from ISP)
+Internet (example prefix: 2001:db8::/32)
          |
     [Router/Firewall]
     /               \
 [Corp VLAN 10]    [Guest VLAN 20]
-2001:db8:corp::/64  2001:db8:guest::/64
+2001:db8:10::/64    2001:db8:20::/64
 Corp Wi-Fi SSID     Guest Wi-Fi SSID
     |                    |
 [Corp clients]       [Guest clients]
@@ -38,12 +38,14 @@ interface vlan10 {
     AdvSendAdvert on;
     MinRtrAdvInterval 10;
     MaxRtrAdvInterval 30;
+    AdvManagedFlag on;
+    AdvOtherConfigFlag on;
 
-    RDNSS 2001:db8:corp::dns {
+    RDNSS 2001:db8:10::53 {
         AdvRDNSSLifetime 3600;
     };
 
-    prefix 2001:db8:corp::/64 {
+    prefix 2001:db8:10::/64 {
         AdvOnLink on;
         AdvAutonomous on;
     };
@@ -54,17 +56,19 @@ interface vlan20 {
     AdvSendAdvert on;
     MinRtrAdvInterval 10;
     MaxRtrAdvInterval 30;
+    AdvManagedFlag on;
+    AdvOtherConfigFlag on;
 
     # Use public DNS for guests
     RDNSS 2606:4700:4700::1111 2001:4860:4860::8888 {
         AdvRDNSSLifetime 3600;
     };
 
-    prefix 2001:db8:guest::/64 {
+    prefix 2001:db8:20::/64 {
         AdvOnLink on;
         AdvAutonomous on;
-        AdvValidLifetime 3600;      # Shorter lease for guests
-        AdvPreferredLifetime 1800;
+        AdvValidLifetime 7200;
+        AdvPreferredLifetime 3600;  # Shorter preferred lifetime for guests
     };
 };
 ```
@@ -79,58 +83,90 @@ CORP_VLAN="vlan10"
 GUEST_VLAN="vlan20"
 WAN_IFACE="eth0"
 
-CORP_PREFIX="2001:db8:corp::/64"
-GUEST_PREFIX="2001:db8:guest::/64"
-INTERNAL_RANGES="2001:db8::/32 fd00::/8 fc00::/7"
+CORP_PREFIX="2001:db8:10::/64"
+ULA_PREFIX="fc00::/7"
 
 # Allow established connections
-ip6tables -A FORWARD -m state --state ESTABLISHED,RELATED -j ACCEPT
+ip6tables -A FORWARD -m conntrack --ctstate ESTABLISHED,RELATED -j ACCEPT
 
-# Allow ICMPv6 everywhere (required for NDP/SLAAC)
-ip6tables -A FORWARD -p icmpv6 -j ACCEPT
+# Guest -> Corp / ULA: DENY
+ip6tables -A FORWARD -i $GUEST_VLAN -d $CORP_PREFIX -j DROP
+ip6tables -A FORWARD -i $GUEST_VLAN -d $ULA_PREFIX -j DROP
 
 # Guest -> Internet: ALLOW
 ip6tables -A FORWARD -i $GUEST_VLAN -o $WAN_IFACE -j ACCEPT
 
-# Guest -> Corp: DENY (IPv6 internal prefixes)
-for RANGE in $INTERNAL_RANGES; do
-    ip6tables -A FORWARD -i $GUEST_VLAN -d $RANGE -j DROP
-done
-
-# Guest -> Guest: DENY (client isolation)
-ip6tables -A FORWARD -i $GUEST_VLAN -o $GUEST_VLAN -j DROP
+# Same-SSID client isolation must be enforced on the AP or with bridge filtering;
+# traffic between clients on the same VLAN does not traverse the router's FORWARD chain.
 
 # Corp -> anywhere: ALLOW (with specific rules as needed)
 ip6tables -A FORWARD -i $CORP_VLAN -j ACCEPT
 
-# Save rules
+# Save rules (example path for iptables-persistent/netfilter-persistent)
 ip6tables-save > /etc/ip6tables/rules.v6
 echo "Guest IPv6 isolation rules applied"
 ```
 
-## DHCPv6 for Guest Network (ISC DHCP)
+## DHCPv6 for Guest Network (Kea DHCP)
 
-```bash
-# /etc/dhcp/dhcpd6.conf
+```json
+# /etc/kea/kea-dhcp6.conf
 
-# Corporate network - stateful DHCPv6 with internal DNS
-subnet6 2001:db8:corp::/64 {
-    range6 2001:db8:corp::100 2001:db8:corp::500;
-    option dhcp6.domain-search "corp.example.com";
-    option dhcp6.name-servers 2001:db8:corp::dns;
-    default-lease-time 86400;
-    max-lease-time 172800;
-}
-
-# Guest network - stateful DHCPv6 with public DNS
-subnet6 2001:db8:guest::/64 {
-    range6 2001:db8:guest::100 2001:db8:guest::500;
-    option dhcp6.domain-search "guest.example.com";
-    # Use public DNS, not internal
-    option dhcp6.name-servers 2606:4700:4700::1111 2001:4860:4860::8888;
-    # Shorter lease for guests
-    default-lease-time 3600;
-    max-lease-time 7200;
+{
+  "Dhcp6": {
+    "interfaces-config": {
+      "interfaces": [ "vlan10", "vlan20" ]
+    },
+    "lease-database": {
+      "type": "memfile",
+      "name": "/var/lib/kea/dhcp6.leases",
+      "persist": true
+    },
+    "subnet6": [
+      {
+        "id": 10,
+        "subnet": "2001:db8:10::/64",
+        "pools": [
+          { "pool": "2001:db8:10::100-2001:db8:10::500" }
+        ],
+        "valid-lifetime": 86400,
+        "preferred-lifetime": 43200,
+        "option-data": [
+          {
+            "name": "dns-servers",
+            "data": "2001:db8:10::53",
+            "always-send": true
+          },
+          {
+            "name": "domain-search",
+            "data": "corp.example.com",
+            "always-send": true
+          }
+        ]
+      },
+      {
+        "id": 20,
+        "subnet": "2001:db8:20::/64",
+        "pools": [
+          { "pool": "2001:db8:20::100-2001:db8:20::500" }
+        ],
+        "valid-lifetime": 7200,
+        "preferred-lifetime": 3600,
+        "option-data": [
+          {
+            "name": "dns-servers",
+            "data": "2606:4700:4700::1111, 2001:4860:4860::8888",
+            "always-send": true
+          },
+          {
+            "name": "domain-search",
+            "data": "guest.example.com",
+            "always-send": true
+          }
+        ]
+      }
+    ]
+  }
 }
 ```
 
@@ -147,18 +183,15 @@ table ip6 guest_isolation {
         # Allow established/related
         ct state established,related accept
 
-        # Allow ICMPv6
-        meta l4proto icmpv6 accept
-
-        # Guest -> Internal corporate: DROP
-        iifname "vlan20" ip6 daddr { 2001:db8:corp::/64, fd00::/8 } \
+        # Guest -> Internal corporate and ULA: DROP
+        iifname "vlan20" ip6 daddr { 2001:db8:10::/64, fc00::/7 } \
             log prefix "GUEST-BLOCK: " drop
-
-        # Guest -> Guest (client isolation): DROP
-        iifname "vlan20" oifname "vlan20" drop
 
         # Guest -> Internet: ALLOW
         iifname "vlan20" oifname "eth0" accept
+
+        # Same-SSID client isolation must be enforced on the AP or with a
+        # bridge-family ruleset; same-link traffic does not traverse this chain.
 
         # Log and drop unmatched guest traffic
         iifname "vlan20" log prefix "GUEST-DROP: " drop
@@ -171,22 +204,22 @@ table ip6 guest_isolation {
 ```bash
 # From a guest wireless client, verify:
 # 1. Gets global IPv6 address in guest prefix
-ip -6 addr show wlan0 | grep "2001:db8:guest"
+ip -6 addr show dev wlan0 | grep "2001:db8:20:"
 
 # 2. Can reach internet
-ping6 2606:4700:4700::1111
+ping -6 2606:4700:4700::1111
 
 # 3. Cannot reach corporate resources
-ping6 2001:db8:corp::10  # Should be unreachable
+ping -6 2001:db8:10::10  # Should be unreachable
 
-# 4. Cannot reach other guest clients
-ping6 2001:db8:guest::101  # Should be blocked
+# 4. If AP client isolation is enabled, cannot reach other guest clients
+ping -6 2001:db8:20::101  # Should be blocked by AP/bridge isolation
 
 # From the router/firewall, monitor guest traffic
-sudo ip6tables -L FORWARD -n -v | grep -E "DROP|guest"
+sudo ip6tables -L FORWARD -n -v | grep -E "DROP|vlan20"
 
-# Check guest DHCPv6 leases
-grep "2001:db8:guest" /var/lib/dhcpd/dhcpd6.leases
+# Check guest DHCPv6 leases (Kea memfile backend)
+grep "2001:db8:20:" /var/lib/kea/dhcp6.leases
 ```
 
-Guest IPv6 networks require a dedicated prefix separate from corporate ranges, with nftables or ip6tables rules blocking forwarding from the guest VLAN to any internal IPv6 prefixes while permitting outbound internet traffic, and DNSSL/RDNSS options in RA pointing guests to public resolvers rather than internal DNS servers.
+Guest IPv6 networks require a dedicated prefix separate from corporate ranges, with nftables or ip6tables rules blocking forwarding from the guest VLAN to internal IPv6 prefixes while permitting outbound internet traffic, and RDNSS in RA pointing guests to public resolvers rather than internal DNS servers.
