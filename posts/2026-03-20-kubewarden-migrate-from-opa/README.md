@@ -4,11 +4,11 @@ Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
 Tags: Kubewarden, OPA, Gatekeeper, Migration, Policy as Code, Kubernetes, Admission Control, SUSE Rancher
 
-Description: Learn how to migrate Kubernetes admission policies from OPA Gatekeeper to Kubewarden, including mapping ConstraintTemplates to ClusterAdmissionPolicies and translating Rego logic to supported...
+Description: Learn how to migrate Kubernetes admission policies from OPA Gatekeeper to Kubewarden, including mapping ConstraintTemplates to ClusterAdmissionPolicies and reusing or rewriting Rego logic for...
 
 ---
 
-Migrating from OPA Gatekeeper to Kubewarden involves three main steps: understanding the policy mapping, rewriting policy logic in a supported language (Rust, Go, or others), and deploying the new policies while removing old ones safely.
+Migrating from OPA Gatekeeper to Kubewarden involves three main steps: understanding the policy mapping, deciding whether to reuse existing Gatekeeper Rego or rewrite it for Kubewarden, and deploying the new policies while removing old ones safely.
 
 ---
 
@@ -16,11 +16,11 @@ Migrating from OPA Gatekeeper to Kubewarden involves three main steps: understan
 
 | Concept | OPA Gatekeeper | Kubewarden |
 |---|---|---|
-| Policy language | Rego | Rust, Go, AssemblyScript, Swift (WASM) |
-| Policy packaging | ConstraintTemplate CRD | OCI-packaged WASM module |
-| Policy instance | Constraint CRD | ClusterAdmissionPolicy / AdmissionPolicy |
-| Policy distribution | In-cluster | OCI registry |
-| Testing tool | conftest | kwctl |
+| Policy language | Rego | Rego, CEL, Go, Rust, ... |
+| Policy packaging | ConstraintTemplate CRD | OCI-packaged WASM module or embedded CEL |
+| Policy instance | Constraint custom resource | ClusterAdmissionPolicy / AdmissionPolicy |
+| Policy distribution | In-cluster | OCI registry or embedded in the policy CR (CEL) |
+| Testing tool | gator | kwctl |
 
 ---
 
@@ -28,22 +28,28 @@ Migrating from OPA Gatekeeper to Kubewarden involves three main steps: understan
 
 ```bash
 # List all ConstraintTemplates
-
-kubectl get constrainttemplate
+kubectl get constrainttemplates.templates.gatekeeper.sh
 
 # List all Constraint instances
-kubectl get constraints -A
+kubectl api-resources --api-group=constraints.gatekeeper.sh -o name | \
+  xargs -r -n 1 kubectl get
 
-# Export all constraints for review
-kubectl get constrainttemplate -o yaml > gatekeeper-templates.yaml
-kubectl get constraints -A -o yaml > gatekeeper-constraints.yaml
+# Export all ConstraintTemplates for review
+kubectl get constrainttemplates.templates.gatekeeper.sh -o yaml > gatekeeper-templates.yaml
+
+# Export all Constraint instances for review
+kubectl api-resources --api-group=constraints.gatekeeper.sh -o name | \
+  while read -r resource; do
+    kubectl get "$resource" -o yaml
+    echo "---"
+  done > gatekeeper-constraints.yaml
 ```
 
 ---
 
 ## Step 2: Map Rego Logic to a Kubewarden Policy
 
-Take a simple Gatekeeper ConstraintTemplate that requires resource limits and translate it:
+Take a simple Gatekeeper ConstraintTemplate that requires resource limits and package the same Rego policy for Kubewarden:
 
 **OPA Gatekeeper (Rego):**
 
@@ -57,47 +63,45 @@ violation[{"msg": msg}] {
 }
 ```
 
-**Kubewarden equivalent (Go):**
+**Kubewarden equivalent (reuse the Gatekeeper Rego as a Wasm policy):**
 
-```go
-// main.go
-func validate(payload []byte) ([]byte, error) {
-    var request kubewarden_protocol.ValidationRequest
-    json.Unmarshal(payload, &request)
+```yaml
+# metadata.yaml
+rules:
+  - apiGroups: [""]
+    apiVersions: ["v1"]
+    resources: ["pods"]
+    operations: ["CREATE", "UPDATE"]
+mutating: false
+contextAware: false
+executionMode: gatekeeper
+annotations:
+  io.kubewarden.policy.title: k8srequiredlimits
+  io.kubewarden.policy.version: 0.1.0
+  io.kubewarden.policy.description: Reject Pods whose containers are missing CPU limits
+  io.kubewarden.policy.author: Your team
+  io.kubewarden.policy.license: Apache-2.0
+```
 
-    pod := &corev1.Pod{}
-    json.Unmarshal(request.Request.Object.Raw, pod)
-
-    for _, container := range pod.Spec.Containers {
-        if container.Resources.Limits == nil ||
-           container.Resources.Limits.Cpu().IsZero() {
-            return kubewarden.RejectRequest(
-                kubewarden.Message(fmt.Sprintf(
-                    "Container '%s' is missing CPU limit", container.Name)),
-                kubewarden.Code(400),
-            )
-        }
-    }
-    return kubewarden.AcceptRequest()
-}
+```bash
+opa build -t wasm -e k8srequiredlimits/violation policy.rego
+tar -xf bundle.tar.gz /policy.wasm
+kwctl annotate policy.wasm --metadata-path metadata.yaml --output-path annotated-policy.wasm
 ```
 
 ---
 
-## Step 3: Check the Kubewarden Policy Hub First
+## Step 3: Check Artifact Hub First
 
-Before writing custom policies, check if an equivalent policy already exists:
+Before writing custom policies, check Artifact Hub to see if an equivalent policy already exists:
 
 ```bash
-# Search the Kubewarden Policy Hub
-kwctl search cpu-limits
-
 # Pull and inspect an existing policy
-kwctl pull registry://ghcr.io/kubewarden/policies/require-pod-resources:latest
-kwctl inspect registry://ghcr.io/kubewarden/policies/require-pod-resources:latest
+kwctl pull registry://ghcr.io/kubewarden/policies/pod-privileged:v0.1.9
+kwctl inspect registry://ghcr.io/kubewarden/policies/pod-privileged:v0.1.9
 ```
 
-Many common Gatekeeper policies (PSP replacements, label enforcement, image restrictions) already have Kubewarden equivalents in the Hub.
+Many common Gatekeeper policies (PSP replacements, label enforcement, image restrictions) already have Kubewarden equivalents published on Artifact Hub.
 
 ---
 
@@ -112,7 +116,7 @@ kind: ClusterAdmissionPolicy
 metadata:
   name: disallow-privileged
 spec:
-  module: ghcr.io/kubewarden/policies/pod-privileged:v0.2.5
+  module: registry://ghcr.io/kubewarden/policies/pod-privileged:v0.1.9
   mode: monitor    # Logs violations without blocking
   rules:
     - apiGroups: [""]
@@ -126,8 +130,7 @@ spec:
 kubectl apply -f disallow-privileged-kubewarden.yaml
 
 # Check policy logs in monitor mode
-kubectl logs -n kubewarden deployment/kubewarden-policy-server-default \
-  | grep "disallow-privileged"
+kubectl logs -n kubewarden -l kubewarden/policy-server=default --all-containers=true
 ```
 
 ---
@@ -136,11 +139,14 @@ kubectl logs -n kubewarden deployment/kubewarden-policy-server-default \
 
 ```bash
 # Check Kubewarden audit scan results
-kubectl get policyreport -A
+kubectl get report -A
+kubectl get clusterreport
 
 # Confirm all violations that Gatekeeper was catching
 # are now also caught by Kubewarden in monitor mode
-kubectl get policyreport -A -o json | \
+kubectl get report -A -o json | \
+  jq '.items[].results[] | select(.result == "fail") | .policy'
+kubectl get clusterreport -o json | \
   jq '.items[].results[] | select(.result == "fail") | .policy'
 ```
 
@@ -162,13 +168,19 @@ kubectl patch clusteradmissionpolicy disallow-privileged \
 
 ```bash
 # Delete all Constraints first (remove enforcement)
-kubectl delete constraints --all -A
+kubectl api-resources --api-group=constraints.gatekeeper.sh -o name | \
+  while read -r resource; do
+    kubectl delete "$resource" --all
+  done
 
 # Delete all ConstraintTemplates
-kubectl delete constrainttemplate --all
+kubectl delete constrainttemplates.templates.gatekeeper.sh --all
 
 # Uninstall Gatekeeper
 helm uninstall gatekeeper -n gatekeeper-system
+
+# Remove Gatekeeper CRDs
+kubectl delete crd -l gatekeeper.sh/system=yes
 
 # Remove the namespace
 kubectl delete namespace gatekeeper-system
@@ -179,8 +191,8 @@ kubectl delete namespace gatekeeper-system
 ## Migration Timeline
 
 ```text
-Week 1: Inventory Gatekeeper policies → identify Hub equivalents
-Week 2: Write custom policies for gaps → test with kwctl
+Week 1: Inventory Gatekeeper policies → identify Artifact Hub equivalents
+Week 2: Package existing Gatekeeper Rego or write custom policies for gaps → test with kwctl
 Week 3: Deploy Kubewarden in monitor mode alongside Gatekeeper
 Week 4: Validate coverage → switch to enforce → remove Gatekeeper
 ```
@@ -190,5 +202,5 @@ Week 4: Validate coverage → switch to enforce → remove Gatekeeper
 ## Best Practices
 
 - Always run Kubewarden in `monitor` mode before removing Gatekeeper - this ensures no coverage gap.
-- Use the Kubewarden Policy Hub to find ready-made replacements for common Gatekeeper policies.
-- Rewriting Rego in Go is usually the most straightforward migration path for teams familiar with Go.
+- Use Artifact Hub to find ready-made replacements for common Gatekeeper policies.
+- For validating policies, start by packaging existing Gatekeeper Rego for Kubewarden and rewrite only when you need a Kubewarden-specific policy implementation.
