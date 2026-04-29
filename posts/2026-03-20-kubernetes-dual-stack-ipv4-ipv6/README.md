@@ -11,25 +11,36 @@ Kubernetes dual-stack networking allows pods and services to simultaneously have
 ## Prerequisites
 
 ```bash
-# Requires Kubernetes 1.21+ (stable dual-stack)
+# Requires Kubernetes 1.20+; dual-stack is enabled by default starting in 1.21
 
 kubectl version
 
-# The CNI plugin must support dual-stack (Calico, Cilium, Flannel with vxlan)
+# The CNI plugin must support dual-stack (for example, Calico or Cilium)
 # Nodes must have both IPv4 and IPv6 addresses
 ip addr show
+
+# IPv4 and IPv6 forwarding should be enabled on each node
+sysctl net.ipv4.conf.all.forwarding
+sysctl net.ipv6.conf.all.forwarding
 ```
 
 ## Initializing a Dual-Stack Cluster with kubeadm
 
 ```yaml
 # kubeadm-dualstack.yaml
-apiVersion: kubeadm.k8s.io/v1beta3
+apiVersion: kubeadm.k8s.io/v1beta4
 kind: ClusterConfiguration
 networking:
   # IPv4 CIDR comes first (IPv4 is the primary stack)
   podSubnet: "10.244.0.0/16,fd00:10:244::/48"
   serviceSubnet: "10.96.0.0/12,fd00:10:96::/108"
+---
+apiVersion: kubeadm.k8s.io/v1beta4
+kind: InitConfiguration
+nodeRegistration:
+  kubeletExtraArgs:
+  - name: node-ip
+    value: "192.168.1.10,fd00::10"
 ```
 
 ```bash
@@ -39,7 +50,7 @@ sudo kubeadm init --config kubeadm-dualstack.yaml
 ## Installing Calico for Dual-Stack
 
 ```yaml
-# calico-dualstack.yaml - IPAddressPool for both families
+# calico-dualstack.yaml - Installation resource for an operator-managed dual-stack Calico install
 apiVersion: operator.tigera.io/v1
 kind: Installation
 metadata:
@@ -52,24 +63,33 @@ spec:
       cidr: 10.244.0.0/16
       encapsulation: VXLANCrossSubnet
       natOutgoing: Enabled
+      nodeSelector: all()
     # IPv6 pool
     - name: ipv6-pool
       cidr: fd00:10:244::/48
       encapsulation: None
       natOutgoing: Enabled
+      nodeSelector: all()
+```
+
+```bash
+# Apply this after installing the Tigera operator
+kubectl apply -f calico-dualstack.yaml
 ```
 
 ## Verifying Dual-Stack Node Configuration
 
 ```bash
 # Nodes should show both IPv4 and IPv6 addresses
-kubectl get nodes -o wide
-# INTERNAL-IP: 192.168.1.10,fd00::1  (both stacks)
+kubectl get nodes -o jsonpath='{range .items[*]}{.metadata.name}{": "}{range .status.addresses[?(@.type=="InternalIP")]}{.address}{" "}{end}{"\n"}{end}'
+# node-1: 192.168.1.10 fd00::10
 
 # Check controller-manager flags
 kubectl get pod -n kube-system kube-controller-manager-<node> -o yaml | \
-  grep cluster-cidr
-# Expected: --cluster-cidr=10.244.0.0/16,fd00:10:244::/48
+  grep -E 'cluster-cidr|service-cluster-ip-range'
+# Expected:
+# - --cluster-cidr=10.244.0.0/16,fd00:10:244::/48
+# - --service-cluster-ip-range=10.96.0.0/12,fd00:10:96::/108
 ```
 
 ## Creating a Dual-Stack Service
@@ -83,7 +103,7 @@ metadata:
 spec:
   selector:
     app: my-app
-  # Prefer IPv4 for traffic (IPv4 is primary)
+  # List IPv4 first so the legacy clusterIP field is IPv4
   ipFamilyPolicy: PreferDualStack
   # Or require both stacks:
   # ipFamilyPolicy: RequireDualStack
@@ -108,16 +128,18 @@ kubectl get svc my-dual-stack-service -o yaml | grep -A5 clusterIPs
 ## Testing Dual-Stack Pod Addresses
 
 ```bash
-# Deploy a pod and check both IP addresses
+# Deploy two pods and check both IP addresses
 kubectl run dualstack-test --image=alpine --restart=Never -- sleep 3600
-kubectl get pod dualstack-test -o yaml | grep -A5 podIPs
+kubectl run dualstack-test-2 --image=alpine --restart=Never -- sleep 3600
+kubectl wait --for=condition=Ready pod/dualstack-test pod/dualstack-test-2 --timeout=90s
+kubectl get pod dualstack-test-2 -o yaml | grep -A5 podIPs
 # podIPs:
-# - ip: 10.244.1.5     (IPv4)
-# - ip: fd00:10:244::5 (IPv6)
+# - ip: 10.244.1.6     (IPv4)
+# - ip: fd00:10:244::6 (IPv6)
 
-# Test connectivity both ways
-kubectl exec dualstack-test -- ping -c 2 10.96.45.123
-kubectl exec dualstack-test -- ping6 -c 2 fd00:10:96::abc
+# Test connectivity to the second pod over both families
+kubectl exec dualstack-test -- ping -c 2 10.244.1.6
+kubectl exec dualstack-test -- ping -6 -c 2 fd00:10:244::6
 ```
 
 ## ipFamilyPolicy Options
