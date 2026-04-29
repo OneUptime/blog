@@ -13,7 +13,7 @@ EventBridge (formerly CloudWatch Events) scheduled rules trigger Lambda function
 ## Prerequisites
 
 - OpenTofu v1.6+
-- AWS credentials with Lambda and EventBridge permissions
+- AWS credentials with IAM, Lambda, and EventBridge permissions
 
 ## Step 1: Create the Lambda Function
 
@@ -119,6 +119,18 @@ resource "aws_cloudwatch_event_target" "hourly_cleanup" {
     maxAgeDays = 30
   })
 }
+
+resource "aws_cloudwatch_event_target" "weekly_report" {
+  rule      = aws_cloudwatch_event_rule.weekly_report.name
+  target_id = "WeeklyReportLambda"
+  arn       = aws_lambda_function.daily_report.arn
+
+  input = jsonencode({
+    reportType     = "weekly"
+    format         = "pdf"
+    includeSummary = true
+  })
+}
 ```
 
 ## Step 4: Grant EventBridge Permission to Invoke Lambda
@@ -140,24 +152,48 @@ resource "aws_lambda_permission" "allow_hourly" {
   principal     = "events.amazonaws.com"
   source_arn    = aws_cloudwatch_event_rule.hourly_cleanup.arn
 }
+
+resource "aws_lambda_permission" "allow_weekly" {
+  statement_id  = "AllowWeeklyReportEventBridge"
+  action        = "lambda:InvokeFunction"
+  function_name = aws_lambda_function.daily_report.function_name
+  principal     = "events.amazonaws.com"
+  source_arn    = aws_cloudwatch_event_rule.weekly_report.arn
+}
 ```
 
 ## Step 5: Lambda Handler
 
 ```python
 # report.py - Scheduled Lambda handler
-import json
 import os
-import boto3
-from datetime import datetime
+from datetime import datetime, timezone
+
+def generate_daily_report(event):
+    print(
+        f"Generating daily report for {os.environ.get('RECIPIENTS', '')} "
+        f"and storing output in {os.environ.get('REPORT_BUCKET', '')}"
+    )
+
+def generate_weekly_report(event):
+    print(
+        f"Generating weekly report for {os.environ.get('RECIPIENTS', '')} "
+        f"and storing output in {os.environ.get('REPORT_BUCKET', '')}"
+    )
+
+def run_cleanup(event):
+    max_age_days = event.get('maxAgeDays', 30)
+    print(f"Cleaning up data older than {max_age_days} days")
 
 def handler(event, context):
     """Handle scheduled EventBridge invocations."""
     report_type = event.get('reportType', 'daily')
-    print(f"Running {report_type} job at {datetime.utcnow().isoformat()}")
+    print(f"Running {report_type} job at {datetime.now(timezone.utc).isoformat()}")
 
     if report_type == 'daily':
         generate_daily_report(event)
+    elif report_type == 'weekly':
+        generate_weekly_report(event)
     elif report_type == 'cleanup':
         run_cleanup(event)
 
@@ -174,4 +210,4 @@ tofu apply
 
 ## Conclusion
 
-EventBridge scheduled rules provide reliable, serverless cron job capabilities without any infrastructure to manage. Cron expressions use the format `cron(minutes hours day-of-month month day-of-week year)` with `?` for unused fields. Always pass structured input via the target's `input` parameter to make Lambda handlers reusable across multiple schedule triggers with different configurations.
+EventBridge scheduled rules provide reliable, serverless cron job capabilities without any infrastructure to manage. Cron expressions use the format `cron(minutes hours day-of-month month day-of-week year)` with `?` for unused fields. When reusing the same Lambda across multiple schedule triggers, pass structured input via the target's `input` parameter to make the handler reusable with different configurations.
