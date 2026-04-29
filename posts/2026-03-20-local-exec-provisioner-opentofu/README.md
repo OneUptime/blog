@@ -4,7 +4,7 @@ Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
 Tags: OpenTofu, Provisioner, local-exec, Infrastructure as Code, Automation
 
-Description: Learn how to use the `local-exec` provisioner in OpenTofu to run commands on the machine executing OpenTofu after a resource is created or destroyed.
+Description: Learn how to use the `local-exec` provisioner in OpenTofu to run commands on the machine executing OpenTofu after a resource is created, or before it is destroyed when `when = destroy` is set.
 
 ## Introduction
 
@@ -29,7 +29,7 @@ resource "aws_instance" "web" {
 
 ## Specifying the Interpreter
 
-By default, `local-exec` uses `/bin/sh` on Unix and `cmd` on Windows. Use `interpreter` to change this:
+By default, `local-exec` chooses sensible defaults based on the operating system. Use `interpreter` to change this:
 
 ```hcl
 provisioner "local-exec" {
@@ -68,7 +68,7 @@ Use `working_dir` to set the directory where the command executes:
 
 ```hcl
 provisioner "local-exec" {
-  # Run from the scripts directory relative to the OpenTofu root
+  # Run from the scripts directory in the current module
   working_dir = "${path.module}/scripts"
   command     = "./post-deploy.sh ${self.id} ${self.private_ip}"
 }
@@ -131,4 +131,4 @@ provisioner "local-exec" {
 
 ## Conclusion
 
-The `local-exec` provisioner bridges OpenTofu with external tooling by running local commands at resource creation or destruction time. Use it sparingly and prefer proper provider resources or cloud-init for configuration management tasks.
+The `local-exec` provisioner bridges OpenTofu with external tooling by running local commands after resource creation, or before destruction when `when = destroy` is set. Use it sparingly and prefer proper provider resources or cloud-init for configuration management tasks.
