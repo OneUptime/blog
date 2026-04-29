@@ -18,7 +18,7 @@ K3s comes with a curated set of built-in components that make it functional out 
 | `servicelb` | ServiceLB (Klipper) | MetalLB, cloud LB |
 | `metrics-server` | Kubernetes Metrics Server | Prometheus + adapter |
 | `local-storage` | Local path provisioner | Longhorn, Rook, NFS |
-| `coredns` | Cluster DNS | Custom CoreDNS config |
+| `coredns` | Cluster DNS | Your own CoreDNS deployment |
 
 ## Disabling Components at Installation
 
@@ -46,7 +46,7 @@ curl -sfL https://get.k3s.io | sudo sh -
 # Disable components at install time via environment variables
 curl -sfL https://get.k3s.io | \
     INSTALL_K3S_EXEC="--disable traefik --disable servicelb" \
-    sudo sh -
+    sh -s -
 ```
 
 ### Using Command Line Flags
@@ -64,17 +64,19 @@ curl -sfL https://get.k3s.io | \
 To disable a component that is already running:
 
 ```bash
-# Add to existing config.yaml
-sudo tee -a /etc/rancher/k3s/config.yaml > /dev/null <<EOF
-disable:
+# Create a config drop-in file
+sudo mkdir -p /etc/rancher/k3s/config.yaml.d
+
+sudo tee /etc/rancher/k3s/config.yaml.d/disable-components.yaml > /dev/null <<EOF
+disable+:
   - traefik
   - servicelb
 EOF
 
-# Restart K3s to apply changes
+# Restart K3s on each server to apply changes
 sudo systemctl restart k3s
 
-# K3s will delete the previously deployed Helm charts
+# K3s will uninstall the previously deployed packaged components
 # Monitor deletion
 kubectl get pods -n kube-system -w
 ```
@@ -95,24 +97,27 @@ EOF
 helm repo add ingress-nginx https://kubernetes.github.io/ingress-nginx
 helm repo update
 
-helm install ingress-nginx ingress-nginx/ingress-nginx \
+helm upgrade --install ingress-nginx ingress-nginx/ingress-nginx \
     --namespace ingress-nginx \
-    --create-namespace \
-    --set controller.service.type=NodePort \
-    --set controller.service.nodePorts.http=80 \
-    --set controller.service.nodePorts.https=443
+    --create-namespace
 ```
 
 ### Disable ServiceLB and Install MetalLB
 
 ```bash
 # Disable ServiceLB
-# Add to config.yaml
-echo "  - servicelb" >> /etc/rancher/k3s/config.yaml
+# Add to a config drop-in file
+sudo mkdir -p /etc/rancher/k3s/config.yaml.d
+sudo tee /etc/rancher/k3s/config.yaml.d/disable-servicelb.yaml > /dev/null <<EOF
+disable+:
+  - servicelb
+EOF
+
+# On multi-server clusters, apply the same setting on every server
 sudo systemctl restart k3s
 
 # Install MetalLB
-kubectl apply -f https://raw.githubusercontent.com/metallb/metallb/v0.14.3/config/manifests/metallb-native.yaml
+kubectl apply -f https://raw.githubusercontent.com/metallb/metallb/v0.15.3/config/manifests/metallb-native.yaml
 
 # Wait for MetalLB to be ready
 kubectl -n metallb-system wait --for=condition=Ready pod --all --timeout=120s
@@ -139,15 +144,19 @@ EOF
 ### Disable Metrics Server
 
 ```bash
-# Add to config.yaml
-cat >> /etc/rancher/k3s/config.yaml <<EOF
+# Add to a config drop-in file
+sudo mkdir -p /etc/rancher/k3s/config.yaml.d
+sudo tee /etc/rancher/k3s/config.yaml.d/disable-metrics-server.yaml > /dev/null <<EOF
+disable+:
   - metrics-server
 EOF
 sudo systemctl restart k3s
 
 # Install a custom metrics server with specific configuration
 helm repo add metrics-server https://kubernetes-sigs.github.io/metrics-server/
-helm install metrics-server metrics-server/metrics-server \
+helm repo update
+
+helm upgrade --install metrics-server metrics-server/metrics-server \
     --namespace kube-system \
     --set args[0]=--kubelet-insecure-tls  # Only for dev/testing
 ```
@@ -155,8 +164,13 @@ helm install metrics-server metrics-server/metrics-server \
 ### Disable Local Storage Provisioner
 
 ```bash
-# Add to config.yaml
-echo "  - local-storage" >> /etc/rancher/k3s/config.yaml
+# Add to a config drop-in file
+sudo mkdir -p /etc/rancher/k3s/config.yaml.d
+sudo tee /etc/rancher/k3s/config.yaml.d/disable-local-storage.yaml > /dev/null <<EOF
+disable+:
+  - local-storage
+EOF
+
 sudo systemctl restart k3s
 
 # Install Longhorn for production storage
@@ -183,9 +197,9 @@ kubectl get pods -n kube-system | grep traefik
 kubectl get pods -n kube-system | grep svclb
 # Should return empty
 
-# Check the K3s HelmChart resources
-kubectl get helmchart -n kube-system
-# Disabled components should not appear here
+# Check the K3s AddOn resources for packaged components
+kubectl get addons.k3s.cattle.io -n kube-system
+# Disabled packaged components should not appear here
 ```
 
 ## Re-Enabling a Component
@@ -194,13 +208,14 @@ To re-enable a component you previously disabled:
 
 ```bash
 # Remove the component from the disable list in config.yaml
+# or delete the relevant drop-in file under /etc/rancher/k3s/config.yaml.d/
 sudo nano /etc/rancher/k3s/config.yaml
 # Remove the relevant line from the disable section
 
 # Restart K3s
 sudo systemctl restart k3s
 
-# K3s will redeploy the component via its embedded Helm chart
+# K3s will redeploy the component from its packaged manifest or Helm chart
 kubectl get pods -n kube-system -w
 ```
 
@@ -239,6 +254,7 @@ token: "ClusterToken"
 
 # Disable all optional components for a barebones cluster
 disable:
+  - coredns
   - traefik
   - servicelb
   - metrics-server
@@ -246,6 +262,7 @@ disable:
 
 # Install only what you need
 # You are responsible for providing:
+# - A cluster DNS provider
 # - An ingress controller
 # - A load balancer solution
 # - A storage provisioner
