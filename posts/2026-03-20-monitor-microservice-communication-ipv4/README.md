@@ -74,12 +74,14 @@ async function callService(targetIp, port, path) {
 
 ```javascript
 const { NodeSDK } = require('@opentelemetry/sdk-node');
-const { JaegerExporter } = require('@opentelemetry/exporter-jaeger');
+const { OTLPTraceExporter } = require('@opentelemetry/exporter-trace-otlp-http');
 const { HttpInstrumentation } = require('@opentelemetry/instrumentation-http');
 
+// Jaeger accepts OTLP natively on port 4318 (HTTP) / 4317 (gRPC).
+// The legacy @opentelemetry/exporter-jaeger package was deprecated in 2024.
 const sdk = new NodeSDK({
-    traceExporter: new JaegerExporter({
-        endpoint: 'http://10.0.0.20:14268/api/traces',
+    traceExporter: new OTLPTraceExporter({
+        url: 'http://10.0.0.20:4318/v1/traces',
     }),
     instrumentations: [new HttpInstrumentation()],
 });
@@ -102,9 +104,9 @@ spec:
 ```
 
 ```bash
-# Query Istio metrics
+# Query Istio metrics (promtool query instant requires a server URL)
 kubectl exec -n istio-system deploy/prometheus -- \
-  promtool query instant \
+  promtool query instant http://localhost:9090 \
   'istio_request_duration_milliseconds_bucket{destination_workload="order-service"}'
 ```
 
