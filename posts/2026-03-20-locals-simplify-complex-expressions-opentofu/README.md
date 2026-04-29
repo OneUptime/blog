@@ -8,7 +8,7 @@ Description: Learn how to use local values to break down complex expressions, re
 
 ---
 
-Local values are named expressions defined in a `locals` block. They let you compute a value once and reference it multiple times - and more importantly, they let you break a complex expression into named, readable steps. This guide shows practical patterns for using locals to clarify configuration intent.
+Local values are named expressions defined in a `locals` block. They let you define an expression once and reference it multiple times - and more importantly, they let you break a complex expression into named, readable steps. This guide shows practical patterns for using locals to clarify configuration intent.
 
 ---
 
@@ -37,7 +37,7 @@ resource "aws_db_instance" "main" {
 ```hcl
 # AFTER: Locals capture reusable expressions
 locals {
-  # Compute once, reuse everywhere
+  # Define once, reuse everywhere
   name_prefix = "${var.project}-${var.environment}"
   common_tags = {
     Environment = var.environment
@@ -161,4 +161,4 @@ locals {
 
 ## Summary
 
-Use locals whenever an expression is repeated more than once, is too complex to read inline, or benefits from a descriptive name. They're not variables - callers can't override them - they're named computed values that exist only within the current module. A config with well-named locals reads almost like documentation.
+Use locals whenever an expression is repeated more than once, is too complex to read inline, or benefits from a descriptive name. They're not variables - callers can't override them - they're named expressions that exist only within the current module. A config with well-named locals reads almost like documentation.
