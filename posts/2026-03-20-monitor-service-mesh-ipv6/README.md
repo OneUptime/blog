@@ -48,33 +48,28 @@ sum(rate(istio_tcp_connections_opened_total[5m])) by (destination_service_name)
 
 ## Adding IPv6 Source Labels to Metrics
 
-To distinguish IPv6 from IPv4 traffic, you can add source IP labels using Envoy's custom stats configuration:
+To distinguish IPv6 from IPv4 traffic, you can add a source IP dimension to Istio's Prometheus metrics using the Telemetry API. Note that the new tag must also be allow-listed in the mesh config's `extraStatTags` before it appears in Prometheus, and high-cardinality labels like raw IPs should be used carefully:
 
 ```yaml
-# EnvoyFilter to add source IP to metrics
-apiVersion: networking.istio.io/v1alpha3
-kind: EnvoyFilter
+# Telemetry API to add source IP as a metric dimension
+apiVersion: telemetry.istio.io/v1
+kind: Telemetry
 metadata:
-  name: add-source-ip-label
+  name: add-source-ip-dimension
   namespace: default
 spec:
-  workloadSelector:
-    labels:
+  selector:
+    matchLabels:
       app: my-service
-  configPatches:
-    - applyTo: HTTP_FILTER
-      match:
-        context: SIDECAR_INBOUND
-        listener:
-          filterChain:
-            filter:
-              name: "envoy.filters.network.http_connection_manager"
-      patch:
-        operation: MERGE
-        value:
-          typed_config:
-            "@type": type.googleapis.com/envoy.extensions.filters.network.http_connection_manager.v3.HttpConnectionManager
-            generate_request_id: true
+  metrics:
+    - providers:
+        - name: prometheus
+      overrides:
+        - match:
+            metric: REQUEST_COUNT
+          tagOverrides:
+            source_ip:
+              value: "string(source.address)"
 ```
 
 ## Grafana Dashboard for Dual-Stack Service Mesh
@@ -123,8 +118,8 @@ linkerd viz edges deploy/my-app
 # Check if IPv6-sourced traffic appears
 linkerd viz top deploy/my-app
 
-# Tap specific IPv6 source
-linkerd viz tap deploy/my-app --from-ip "fd00::5"
+# Tap traffic from a specific source workload
+linkerd viz tap deploy/my-app --from deploy/client-app
 
 # Route-level metrics (HTTPRoute)
 linkerd viz stat httproutes -n default
