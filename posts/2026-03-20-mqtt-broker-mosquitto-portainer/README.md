@@ -20,9 +20,10 @@ Before creating the Portainer stack, prepare the Mosquitto configuration on the 
 mkdir -p /opt/mosquitto/{config,data,log,certs}
 
 # Create password file for authentication
-docker run --rm -it eclipse-mosquitto:2.0 \
+# Bind-mount the config directory so the password file is written to the host
+docker run --rm -it -v /opt/mosquitto/config:/mosquitto/config eclipse-mosquitto:2.0 \
   mosquitto_passwd -c /mosquitto/config/passwd iot-client
-# Enter the password when prompted, then copy the file to /opt/mosquitto/config/passwd
+# Enter the password when prompted; the file is created at /opt/mosquitto/config/passwd
 ```
 
 Create the main configuration file:
@@ -42,6 +43,10 @@ cafile /mosquitto/certs/ca.crt
 certfile /mosquitto/certs/server.crt
 keyfile /mosquitto/certs/server.key
 tls_version tlsv1.2
+
+# WebSocket listener
+listener 9001
+protocol websockets
 
 # Persistence settings - messages survive broker restart
 persistence true
@@ -112,18 +117,22 @@ MQTT supports three Quality of Service levels. Set the appropriate QoS in your p
 # Python MQTT publisher with QoS and retention
 import paho.mqtt.client as mqtt
 
-client = mqtt.Client()
+client = mqtt.Client(mqtt.CallbackAPIVersion.VERSION2)
 client.username_pw_set("iot-client", "your_password")
 client.connect("localhost", 1883)
+client.loop_start()
 
 # QoS 1 ensures at-least-once delivery
 # retain=True means new subscribers get the last value immediately
-client.publish(
+info = client.publish(
     "sensors/temperature/room1",
     payload='{"temp": 22.5}',
     qos=1,
     retain=True
 )
+info.wait_for_publish()
+client.loop_stop()
+client.disconnect()
 ```
 
 ## Monitoring Mosquitto
