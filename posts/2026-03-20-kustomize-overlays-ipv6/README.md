@@ -24,6 +24,7 @@ kubernetes/
     │   └── kustomization.yaml
     ├── staging/             # IPv6-only
     │   ├── kustomization.yaml
+    │   ├── cluster-info.yaml
     │   └── patches/
     │       ├── service-ipv6-only.yaml
     │       └── config-ipv6-addrs.yaml
@@ -47,7 +48,7 @@ resources:
 ```
 
 ```yaml
-# kubernetes/base/service.yaml - Default service (IPv4 only in base)
+# kubernetes/base/service.yaml - Default single-stack service in base
 apiVersion: v1
 kind: Service
 metadata:
@@ -58,7 +59,7 @@ spec:
   ports:
     - port: 8080
       targetPort: 8080
-  # No ipFamilyPolicy - defaults to SingleStack IPv4
+  # No ipFamilyPolicy - defaults to SingleStack in the cluster's primary service family
 ```
 
 ## IPv6-Only Overlay
@@ -69,7 +70,7 @@ spec:
 apiVersion: kustomize.config.k8s.io/v1beta1
 kind: Kustomization
 
-bases:
+resources:
   - ../../base
 
 # Apply patches for IPv6-only environment
@@ -106,10 +107,12 @@ patches:
       kind: Deployment
       name: myapp
 
-# CommonLabels for this environment
-commonLabels:
-  environment: staging
-  network: ipv6-only
+# Labels for this environment
+labels:
+  - pairs:
+      environment: staging
+      network: ipv6-only
+    includeSelectors: true
 
 # Namespace
 namespace: staging
@@ -137,10 +140,10 @@ kind: ConfigMap
 metadata:
   name: myapp-config
 data:
-  DATABASE_HOST: "[2001:db8:staging::db]:5432"
-  REDIS_URL: "redis://[2001:db8:staging::redis]:6379"
+  DATABASE_HOST: "[2001:db8:100::10]:5432"
+  REDIS_URL: "redis://[2001:db8:100::20]:6379"
   DNS_SERVER: "2001:db8::53"
-  TRUSTED_CIDRS: "2001:db8:staging::/48"
+  TRUSTED_CIDRS: "2001:db8:100::/48"
 ```
 
 ## Dual-Stack Overlay
@@ -151,7 +154,7 @@ data:
 apiVersion: kustomize.config.k8s.io/v1beta1
 kind: Kustomization
 
-bases:
+resources:
   - ../../base
 
 patches:
@@ -181,10 +184,8 @@ namespace: development
 apiVersion: kustomize.config.k8s.io/v1beta1
 kind: Kustomization
 
-bases:
-  - ../../base
-
 resources:
+  - ../../base
   # Additional resources only in production
   - hpa.yaml
   - pdb.yaml
@@ -197,6 +198,7 @@ patches:
       metadata:
         name: myapp
         annotations:
+          # AWS-specific: requires a dual-stack-capable LoadBalancer implementation
           service.beta.kubernetes.io/aws-load-balancer-ip-address-type: "dualstack"
       spec:
         type: LoadBalancer
@@ -215,9 +217,9 @@ patches:
       metadata:
         name: myapp-config
       data:
-        DATABASE_HOST: "[2001:db8:prod::db]:5432"
-        REDIS_URL: "redis://[2001:db8:prod::redis]:6379"
-        TRUSTED_CIDRS: "2001:db8:prod::/48,10.0.0.0/8"
+        DATABASE_HOST: "[2001:db8:200::10]:5432"
+        REDIS_URL: "redis://[2001:db8:200::20]:6379"
+        TRUSTED_CIDRS: "2001:db8:200::/48,10.0.0.0/8"
     target:
       kind: ConfigMap
       name: myapp-config
@@ -240,24 +242,28 @@ namespace: production
 ## Kustomize Variable Substitution for IPv6
 
 ```yaml
-# kubernetes/overlays/staging/kustomization.yaml (with vars)
+# kubernetes/overlays/staging/kustomization.yaml (excerpt using replacements)
 
 apiVersion: kustomize.config.k8s.io/v1beta1
 kind: Kustomization
 
-bases:
+resources:
   - ../../base
+  - cluster-info.yaml
 
-# Variable substitution (Kustomize vars)
-# Note: use Flux postBuild.substitute for more powerful substitution
-vars:
-  - name: IPV6_PREFIX
-    objref:
+# Structured value replacement
+# Note: use Flux postBuild.substitute for arbitrary string templating
+replacements:
+  - source:
       kind: ConfigMap
       name: cluster-info
-      apiVersion: v1
-    fieldref:
-      fieldpath: data.ipv6Prefix
+      fieldPath: data.trustedCidrs
+    targets:
+      - select:
+          kind: ConfigMap
+          name: myapp-config
+        fieldPaths:
+          - data.TRUSTED_CIDRS
 ```
 
 ## Build and Verify Overlays
@@ -265,11 +271,11 @@ vars:
 ```bash
 # Preview the rendered output for staging (IPv6-only)
 kustomize build kubernetes/overlays/staging | grep -A10 "ipFamilyPolicy"
-# Expected: ipFamilyPolicy: SingleStack + ipFamilies: [IPv6]
+# Expected: ipFamilyPolicy: SingleStack with ipFamilies containing IPv6
 
 # Preview production (dual-stack)
 kustomize build kubernetes/overlays/production | grep -A10 "ipFamilyPolicy"
-# Expected: ipFamilyPolicy: RequireDualStack + ipFamilies: [IPv4, IPv6]
+# Expected: ipFamilyPolicy: RequireDualStack with ipFamilies containing IPv4 then IPv6
 
 # Apply staging overlay
 kubectl apply -k kubernetes/overlays/staging
@@ -277,14 +283,14 @@ kubectl apply -k kubernetes/overlays/staging
 # Diff: what would change
 kubectl diff -k kubernetes/overlays/staging
 
-# Verify service got IPv6 cluster IP
-kubectl get svc myapp -n staging -o jsonpath='{.spec.clusterIPs}'
-# Expected: ["fd00::1"] (IPv6-only in staging)
+# Verify the service family and assigned cluster IPs
+kubectl get svc myapp -n staging -o yaml | grep -A6 "clusterIPs:"
+# Verify: spec.ipFamilies contains IPv6 and spec.clusterIPs contains a single IPv6 address
 
-kubectl get svc myapp -n production -o jsonpath='{.spec.clusterIPs}'
-# Expected: ["10.96.1.1", "fd00::2"] (dual-stack in production)
+kubectl get svc myapp -n production -o yaml | grep -A8 "clusterIPs:"
+# Verify: spec.ipFamilies contains IPv4 and IPv6, and spec.clusterIPs contains one address from each family
 ```
 
 ## Conclusion
 
-Kustomize overlays provide a clean way to manage IPv6 configuration differences between environments without duplicating manifests. Base manifests define IPv4-default services, and overlays apply strategic merge patches to change `ipFamilyPolicy` and `ipFamilies` per environment. ConfigMap patches update environment-specific IPv6 addresses for backends. Inline patches in the `kustomization.yaml` are useful for simple changes like updating `LISTEN_ADDR` to `[::]`. Use `kustomize build` to preview rendered output and verify IPv6 settings before applying. In GitOps workflows, ArgoCD or Flux reconcile the appropriate overlay path for each environment, ensuring consistent IPv6 configuration across the cluster lifecycle.
+Kustomize overlays provide a clean way to manage IPv6 configuration differences between environments without duplicating manifests. Base manifests define single-stack services, and overlays apply patches to change `ipFamilyPolicy` and `ipFamilies` per environment. ConfigMap patches update environment-specific IPv6 addresses for backends. Inline patches in the `kustomization.yaml` are useful for simple changes like updating `LISTEN_ADDR` to `[::]`. Use `kustomize build` to preview rendered output and verify IPv6 settings before applying. In GitOps workflows, ArgoCD or Flux reconcile the appropriate overlay path for each environment, ensuring consistent IPv6 configuration across the cluster lifecycle.
