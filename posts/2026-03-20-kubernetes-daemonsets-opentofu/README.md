@@ -39,19 +39,19 @@ resource "kubernetes_daemon_set_v1" "fluentd" {
       }
 
       spec {
-        service_account_name = kubernetes_service_account.fluentd_sa.metadata[0].name
-        # Allow scheduling on master nodes
+        # Allow scheduling on control plane nodes
         toleration {
           key    = "node-role.kubernetes.io/control-plane"
+          operator = "Exists"
           effect = "NoSchedule"
         }
 
         container {
           name  = "fluentd"
-          image = "fluent/fluentd-kubernetes-daemonset:v1.16-debian-cloudwatch-1"
+          image = "fluent/fluentd-kubernetes-daemonset:v1.19-debian-cloudwatch-1"
 
           env {
-            name = "NODE_NAME"
+            name = "K8S_NODE_NAME"
             value_from {
               field_ref {
                 field_path = "spec.nodeName"
@@ -77,8 +77,8 @@ resource "kubernetes_daemon_set_v1" "fluentd" {
           }
 
           volume_mount {
-            name       = "containers"
-            mount_path = "/var/lib/docker/containers"
+            name       = "pods"
+            mount_path = "/var/log/pods"
             read_only  = true
           }
         }
@@ -91,15 +91,15 @@ resource "kubernetes_daemon_set_v1" "fluentd" {
         }
 
         volume {
-          name = "containers"
+          name = "pods"
           host_path {
-            path = "/var/lib/docker/containers"
+            path = "/var/log/pods"
           }
         }
       }
     }
 
-    update_strategy {
+    strategy {
       type = "RollingUpdate"
       rolling_update {
         max_unavailable = "1"
@@ -134,7 +134,7 @@ resource "kubernetes_daemon_set_v1" "nvidia_plugin" {
       }
 
       spec {
-        # Only run on nodes with NVIDIA GPUs
+        # Only run on GKE nodes with NVIDIA T4 GPUs
         node_selector = {
           "cloud.google.com/gke-accelerator" = "nvidia-tesla-t4"
         }
@@ -147,13 +147,26 @@ resource "kubernetes_daemon_set_v1" "nvidia_plugin" {
 
         container {
           name  = "nvidia-device-plugin"
-          image = "nvcr.io/nvidia/k8s-device-plugin:v0.14.1"
+          image = "nvcr.io/nvidia/k8s-device-plugin:v0.19.0"
 
           security_context {
             allow_privilege_escalation = false
             capabilities {
               drop = ["ALL"]
             }
+          }
+
+          volume_mount {
+            name       = "kubelet-device-plugins-dir"
+            mount_path = "/var/lib/kubelet/device-plugins"
+          }
+        }
+
+        volume {
+          name = "kubelet-device-plugins-dir"
+          host_path {
+            path = "/var/lib/kubelet/device-plugins"
+            type = "Directory"
           }
         }
       }
@@ -164,4 +177,4 @@ resource "kubernetes_daemon_set_v1" "nvidia_plugin" {
 
 ## Summary
 
-Kubernetes DaemonSets with OpenTofu ensure critical node-level infrastructure runs on every node. Use tolerations to extend DaemonSets to control plane nodes, node selectors to limit them to specific node types, and rolling updates for zero-downtime deployments of monitoring agents and log collectors.
+Kubernetes DaemonSets with OpenTofu ensure critical node-level infrastructure runs on every node. Use tolerations to extend DaemonSets to control plane nodes, node selectors to limit them to specific node types, and rolling updates to limit disruption when updating monitoring agents and log collectors.
