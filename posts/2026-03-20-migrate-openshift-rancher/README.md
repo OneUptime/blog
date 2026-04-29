@@ -132,7 +132,7 @@ for service_name, service_config in compose.get("services", {}).items():
 
 ```bash
 # Install kompose (Docker Compose to Kubernetes converter)
-curl -L https://github.com/kubernetes/kompose/releases/download/v1.31.0/kompose-linux-amd64   -o kompose
+curl -L https://github.com/kubernetes/kompose/releases/download/v1.38.0/kompose-linux-amd64   -o kompose
 chmod +x kompose && sudo mv kompose /usr/local/bin/
 
 # Convert docker-compose.yml to Kubernetes manifests
@@ -196,7 +196,7 @@ spec:
       claimName: $PVC_NAME
 PODEOF
 
-kubectl wait pod/data-migrator -n $NAMESPACE   --for=condition=Succeeded --timeout=3600s
+kubectl wait pod/data-migrator -n $NAMESPACE   --for=jsonpath='{.status.phase}'=Succeeded --timeout=3600s
 ```
 
 ## Step 5: Deploy to Rancher
@@ -250,4 +250,4 @@ echo "[ ] Old environment decommissioned"
 
 ## Conclusion
 
-Migrating to Rancher from openshift requires careful planning but provides significant long-term benefits in manageability, scalability, and ecosystem access. Follow the phased approach, validate each step thoroughly, and maintain the ability to roll back during the transition period.
+Migrating to Rancher from OpenShift requires careful planning but provides significant long-term benefits in manageability, scalability, and ecosystem access. Follow the phased approach, validate each step thoroughly, and maintain the ability to roll back during the transition period.
