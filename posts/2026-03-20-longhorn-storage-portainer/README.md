@@ -24,7 +24,7 @@ Longhorn is a cloud-native distributed block storage system for Kubernetes that 
 
 ## Step 1: Verify Prerequisites on All Nodes
 
-Longhorn requires `open-iscsi` on every node.
+Longhorn 1.11.1 requires Kubernetes v1.25 or later, and `open-iscsi` on every node.
 
 ```bash
 # Run on every Kubernetes node
@@ -37,18 +37,21 @@ sudo systemctl enable --now iscsid
 # Verify
 sudo systemctl status iscsid
 
-# Check Longhorn readiness (run on any node with kubectl)
-curl -sSfL https://raw.githubusercontent.com/longhorn/longhorn/v1.6.0/scripts/environment_check.sh | bash
+# Check Longhorn readiness (run on any machine with kubectl access)
+# For ARM64, replace longhornctl-linux-amd64 with longhornctl-linux-arm64
+curl -sSfL -o longhornctl https://github.com/longhorn/cli/releases/download/v1.11.1/longhornctl-linux-amd64
+chmod +x longhornctl
+./longhornctl check preflight
 ```
 
 ---
 
 ## Step 2: Deploy Longhorn via Portainer
 
-In Portainer, navigate to your Kubernetes environment and deploy Longhorn as a stack.
+In Portainer, navigate to your Kubernetes environment and deploy Longhorn from a manifest.
 
 ```yaml
-# longhorn-namespace.yaml - create the namespace first
+# longhorn-namespace.yaml - optional: pre-create the namespace
 apiVersion: v1
 kind: Namespace
 metadata:
@@ -59,23 +62,25 @@ Then deploy Longhorn using the official manifest:
 
 ```bash
 # Apply the Longhorn manifest from within Portainer or via kubectl
-kubectl apply -f https://raw.githubusercontent.com/longhorn/longhorn/v1.6.0/deploy/longhorn.yaml
+kubectl apply -f https://raw.githubusercontent.com/longhorn/longhorn/v1.11.1/deploy/longhorn.yaml
 
 # Watch the deployment progress
 kubectl get pods -n longhorn-system -w
 ```
 
 Or in Portainer:
-1. Go to **Stacks > Add Stack**
-2. Select **URL** as the source
-3. Enter: `https://raw.githubusercontent.com/longhorn/longhorn/v1.6.0/deploy/longhorn.yaml`
-4. Click **Deploy the stack**
+1. Go to **Applications > Create from code**
+2. Select **Manifest**
+3. Select **URL** as the deployment method
+4. Leave **Namespace** as `default` and enable **Use namespace(s) specified from manifest**
+5. Enter: `https://raw.githubusercontent.com/longhorn/longhorn/v1.11.1/deploy/longhorn.yaml`
+6. Click **Deploy**
 
 ---
 
 ## Step 3: Expose the Longhorn UI via Portainer
 
-Create an ingress or port-forward to access the Longhorn UI.
+Create an ingress or port-forward to access the Longhorn UI. If you expose the UI externally, add authentication at the ingress layer because Longhorn does not enable it by default for manifest-based installs.
 
 ```yaml
 # longhorn-ingress.yaml - expose Longhorn UI
@@ -85,7 +90,7 @@ metadata:
   name: longhorn-ingress
   namespace: longhorn-system
   annotations:
-    nginx.ingress.kubernetes.io/proxy-body-size: "0"
+    nginx.ingress.kubernetes.io/proxy-body-size: "10000m"
 spec:
   ingressClassName: nginx
   rules:
@@ -103,15 +108,16 @@ spec:
 
 ---
 
-## Step 4: Set Longhorn as Default Storage Class
+## Step 4: Verify Longhorn as the Default Storage Class
 
 ```bash
-# Make Longhorn the default storage class
+# The official Longhorn manifest creates the longhorn StorageClass as default.
+# If longhorn is not marked as default in your cluster, set it explicitly.
 kubectl patch storageclass longhorn \
   -p '{"metadata": {"annotations": {"storageclass.kubernetes.io/is-default-class": "true"}}}'
 
 # Remove the default annotation from any other storage class
-kubectl patch storageclass local-path \
+kubectl patch storageclass <existing-default-storageclass> \
   -p '{"metadata": {"annotations": {"storageclass.kubernetes.io/is-default-class": "false"}}}'
 
 # Verify
@@ -125,7 +131,7 @@ kubectl get storageclass
 Now deploy an application through Portainer that uses Longhorn for persistent storage.
 
 ```yaml
-# app-with-longhorn-pvc.yaml - deploy via Portainer stack
+# app-with-longhorn-pvc.yaml - deploy via Portainer manifest
 apiVersion: v1
 kind: PersistentVolumeClaim
 metadata:
@@ -156,7 +162,10 @@ spec:
     spec:
       containers:
         - name: myapp
-          image: myapp:latest
+          image: busybox:1.36
+          command: ["/bin/sh", "-c"]
+          args:
+            - while true; do date >> /app/data/heartbeat.log; sleep 60; done
           volumeMounts:
             - name: data
               mountPath: /app/data
@@ -171,12 +180,12 @@ spec:
 ## Managing Longhorn via Portainer
 
 In Portainer's Kubernetes interface:
-- **Volumes** → shows all Longhorn PVCs
-- **Cluster > Storage** → shows storage classes and PVs
+- **Volumes** → shows Longhorn-backed Kubernetes volumes and which applications use them
+- **Volumes > Storage** → shows storage classes and the volumes in each class
 - The Longhorn UI provides deeper operations: snapshots, backups, replica management
 
 ---
 
 ## Summary
 
-Longhorn provides production-grade distributed storage for Kubernetes with minimal setup. Deploy it via Portainer's stack interface, set it as the default storage class, and all PVCs automatically use replicated Longhorn volumes. The Longhorn UI offers snapshot and backup management beyond what Portainer exposes natively.
+Longhorn provides production-grade distributed storage for Kubernetes with minimal setup. Deploy it via Portainer's manifest interface, verify it is the default storage class, and PVCs that do not set `storageClassName` explicitly will use Longhorn automatically. The Longhorn UI offers snapshot and backup management beyond what Portainer exposes natively.
