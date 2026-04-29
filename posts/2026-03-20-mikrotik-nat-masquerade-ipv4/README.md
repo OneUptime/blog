@@ -74,10 +74,11 @@ NAT masquerade on MikroTik dynamically translates private IPv4 source addresses 
 
 ```mikrotik
 # Allow LAN hosts to reach internal server via its public IP
+# In srcnat (postrouting) the dst-address is the post-dstnat internal IP
 /ip firewall nat add \
   chain=srcnat \
   src-address=192.168.1.0/24 \
-  dst-address=203.0.113.2 \
+  dst-address=192.168.1.100 \
   protocol=tcp \
   dst-port=80 \
   action=masquerade \
