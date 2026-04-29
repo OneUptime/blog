@@ -4,11 +4,11 @@ Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
 Tags: Kubernetes, Operator, IPv6, Dual-Stack, Controller-runtime
 
-Description: Manage Kubernetes services with both IPv4 and IPv6 endpoints in custom operators using controller-runtime and the Endpoints API.
+Description: Manage Kubernetes services with both IPv4 and IPv6 endpoints in custom operators using controller-runtime, dual-stack Service fields, and EndpointSlices.
 
 ## Overview
 
-Manage Kubernetes services with both IPv4 and IPv6 endpoints in custom operators using controller-runtime and the Endpoints API.
+Manage Kubernetes services with both IPv4 and IPv6 endpoints in custom operators using controller-runtime, dual-stack Service fields, and EndpointSlices instead of the deprecated Endpoints API.
 
 ## Prerequisites
 
@@ -18,22 +18,38 @@ Manage Kubernetes services with both IPv4 and IPv6 endpoints in custom operators
 
 ## Working with IPv6 in Kubernetes Operators
 
-### Checking IPv6 Support in the Cluster
+### Checking for IPv6 Node Networking
 
 ```go
-// Check if cluster supports IPv6
-func isIPv6Enabled(config *rest.Config) bool {
-    client, _ := kubernetes.NewForConfig(config)
-    nodes, _ := client.CoreV1().Nodes().List(context.Background(), metav1.ListOptions{})
+// Check whether any Node has an IPv6 Pod CIDR or node address.
+func hasIPv6NodeNetworking(ctx context.Context, config *rest.Config) (bool, error) {
+    kubeClient, err := kubernetes.NewForConfig(config)
+    if err != nil {
+        return false, err
+    }
+
+    nodes, err := kubeClient.CoreV1().Nodes().List(ctx, metav1.ListOptions{})
+    if err != nil {
+        return false, err
+    }
+
     for _, node := range nodes.Items {
+        for _, cidr := range node.Spec.PodCIDRs {
+            ip, _, err := net.ParseCIDR(cidr)
+            if err == nil && ip.To4() == nil {
+                return true, nil
+            }
+        }
+
         for _, addr := range node.Status.Addresses {
             ip := net.ParseIP(addr.Address)
             if ip != nil && ip.To4() == nil {
-                return true  // Found an IPv6 node address
+                return true, nil
             }
         }
     }
-    return false
+
+    return false, nil
 }
 ```
 
@@ -44,13 +60,13 @@ package iputil
 
 import "net"
 
-// IsValidIPv6 returns true if the string is a valid IPv6 address
+// IsValidIPv6 returns true if the string is a valid native IPv6 address
 func IsValidIPv6(addr string) bool {
     ip := net.ParseIP(addr)
     return ip != nil && ip.To4() == nil
 }
 
-// IsValidIPv6CIDR returns true if the string is a valid IPv6 CIDR
+// IsValidIPv6CIDR returns true if the string is a valid native IPv6 CIDR
 func IsValidIPv6CIDR(cidr string) bool {
     ip, _, err := net.ParseCIDR(cidr)
     if err != nil {
@@ -59,7 +75,7 @@ func IsValidIPv6CIDR(cidr string) bool {
     return ip.To4() == nil
 }
 
-// GetIPVersion returns "ipv4" or "ipv6"
+// GetIPVersion returns "ipv4", "ipv6", or "invalid"
 func GetIPVersion(addr string) string {
     ip := net.ParseIP(addr)
     if ip == nil {
@@ -110,15 +126,33 @@ EOF
 
 kind create cluster --config kind-dual-stack.yaml
 
-# Verify dual-stack is enabled
-kubectl get nodes -o wide
-kubectl get pods -n kube-system -o wide | grep "2001:"
+# Verify node Pod CIDRs include both IPv4 and IPv6 ranges
+NODE_NAME=$(kubectl get nodes -o jsonpath='{.items[0].metadata.name}')
+kubectl get node "$NODE_NAME" -o go-template='{{range .spec.podCIDRs}}{{printf "%s\n" .}}{{end}}'
+
+# Verify a Service receives both IPv4 and IPv6 cluster IPs
+cat > dual-stack-service.yaml << EOF
+apiVersion: v1
+kind: Service
+metadata:
+  name: dualstack-check
+spec:
+  ipFamilyPolicy: PreferDualStack
+  selector:
+    app: dualstack-check
+  ports:
+    - protocol: TCP
+      port: 80
+EOF
+
+kubectl apply -f dual-stack-service.yaml
+kubectl describe svc dualstack-check
 ```
 
 ## Monitoring with OneUptime
 
-Use [OneUptime](https://oneuptime.com) to monitor your operator's health endpoint over IPv6. Configure synthetic monitors that check the operator's metrics and health endpoints from IPv6 addresses.
+Use [OneUptime](https://oneuptime.com) to monitor your operator's health and metrics endpoints over IPv6. Configure monitors that target the operator's IPv6 address or AAAA-backed hostname.
 
 ## Conclusion
 
-How to Handle Dual-Stack Service Endpoints in Operators involves using Go's `net` package for IPv6 validation, handling dual-stack service creation with `IPFamilyPolicy`, and testing against IPv6-enabled Kubernetes clusters. Always validate IPv6 addresses in CRD webhook validators to catch issues before reconciliation.
+How to Handle Dual-Stack Service Endpoints in Operators involves using Go's `net` package for IPv6 validation, handling dual-stack Service creation with `.spec.ipFamilyPolicy`, and testing against IPv6-enabled Kubernetes clusters. If your operator needs backend endpoint data on dual-stack clusters, use the EndpointSlice API rather than the deprecated Endpoints API. Always validate IPv6 addresses in CRD webhook validators to catch issues before reconciliation.
