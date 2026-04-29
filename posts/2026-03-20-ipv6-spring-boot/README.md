@@ -22,9 +22,12 @@ server.address=2001:db8::1
 server.port=8080
 ```
 
-For both IPv4 and IPv6 simultaneously on Spring Boot 3.x, configure the embedded Tomcat:
+If you prefer Java configuration on Spring Boot 3.x, configure the embedded Tomcat:
 
 ```java
+import java.net.InetAddress;
+import java.net.UnknownHostException;
+
 import org.springframework.boot.web.embedded.tomcat.TomcatServletWebServerFactory;
 import org.springframework.boot.web.server.WebServerFactoryCustomizer;
 import org.springframework.context.annotation.Bean;
@@ -34,21 +37,23 @@ import org.springframework.context.annotation.Configuration;
 public class ServerConfig {
 
     @Bean
-    public WebServerFactoryCustomizer<TomcatServletWebServerFactory> ipv6Customizer() {
-        return factory -> {
-            // [::] accepts both IPv4 (as mapped) and IPv6
-            factory.setAddress(java.net.InetAddress.getByName("::"));
-        };
+    public WebServerFactoryCustomizer<TomcatServletWebServerFactory> ipv6Customizer()
+            throws UnknownHostException {
+        InetAddress ipv6AnyLocal = InetAddress.getByName("::");
+
+        return factory -> factory.setAddress(ipv6AnyLocal);
     }
 }
 ```
 
 ## Extracting Client IPv6 Address
 
+Use `request.getRemoteAddr()` for the address reported by the servlet container. If your app is behind a trusted proxy, either configure forwarded-header support or only trust headers that proxy sets.
+
 ```java
 import jakarta.servlet.http.HttpServletRequest;
-import org.springframework.web.bind.annotation.*;
-import java.net.*;
+import org.springframework.web.bind.annotation.GetMapping;
+import org.springframework.web.bind.annotation.RestController;
 
 @RestController
 public class ClientIPController {
@@ -60,30 +65,18 @@ public class ClientIPController {
     }
 
     private String getRemoteIP(HttpServletRequest request) {
-        // Check standard proxy headers
+        // Only trust these headers if they are added by a proxy you control.
         String forwarded = request.getHeader("X-Forwarded-For");
-        if (forwarded != null && !forwarded.isEmpty()) {
+        if (forwarded != null && !forwarded.isBlank()) {
             return forwarded.split(",")[0].trim();
         }
 
         String realIP = request.getHeader("X-Real-IP");
-        if (realIP != null && !realIP.isEmpty()) {
+        if (realIP != null && !realIP.isBlank()) {
             return realIP;
         }
 
-        String addr = request.getRemoteAddr();
-
-        // Unwrap IPv4-mapped addresses from dual-stack
-        try {
-            InetAddress inet = InetAddress.getByName(addr);
-            if (inet instanceof Inet6Address) {
-                Inet4Address v4 = (Inet4Address) inet.getClass()
-                    .getMethod("getIPv4Address").invoke(inet);
-                if (v4 != null) return v4.getHostAddress();
-            }
-        } catch (Exception ignored) {}
-
-        return addr;
+        return request.getRemoteAddr();
     }
 }
 ```
@@ -91,9 +84,11 @@ public class ClientIPController {
 ## IPv6 in Spring Security Allowed Addresses
 
 ```java
-import org.springframework.context.annotation.*;
+import org.springframework.context.annotation.Bean;
+import org.springframework.context.annotation.Configuration;
 import org.springframework.security.config.annotation.web.builders.HttpSecurity;
 import org.springframework.security.web.SecurityFilterChain;
+import org.springframework.security.web.access.expression.WebExpressionAuthorizationManager;
 
 @Configuration
 public class SecurityConfig {
@@ -101,14 +96,13 @@ public class SecurityConfig {
     @Bean
     public SecurityFilterChain filterChain(HttpSecurity http) throws Exception {
         http.authorizeHttpRequests(auth -> auth
-            // Allow health checks from IPv6 monitoring subnet
+            // Allow health checks from an IPv6 monitoring subnet
             .requestMatchers("/health").access(
-                new org.springframework.security.web.access.expression
-                    .DefaultHttpSecurityExpressionHandler()
-                    .createSecurityExpressionRoot(null, null))
-            // Restrict admin to loopback (IPv4 and IPv6)
-            .requestMatchers("/admin/**")
-                .hasIpAddress("127.0.0.1")
+                new WebExpressionAuthorizationManager("hasIpAddress('2001:db8::/64')"))
+            // Restrict admin to loopback (IPv4 or IPv6)
+            .requestMatchers("/admin/**").access(
+                new WebExpressionAuthorizationManager(
+                    "hasIpAddress('127.0.0.1') or hasIpAddress('::1')"))
             .anyRequest().authenticated()
         );
         return http.build();
@@ -121,6 +115,7 @@ public class SecurityConfig {
 Spring WebClient (reactive) connects to IPv6 backends using bracket notation in URLs:
 
 ```java
+import org.springframework.stereotype.Service;
 import org.springframework.web.reactive.function.client.WebClient;
 import reactor.core.publisher.Mono;
 
@@ -182,7 +177,7 @@ public class IPv6RestClient {
 }
 ```
 
-## Logging IPv6 Requests with Interceptor
+## Logging IPv6 Requests with Filter
 
 ```java
 import jakarta.servlet.*;
@@ -209,4 +204,4 @@ public class IPv6LoggingFilter implements Filter {
 
 ## Conclusion
 
-Spring Boot supports IPv6 through the `server.address=::` property, which binds Tomcat/Netty to all IPv6 interfaces. `request.getRemoteAddr()` returns the client's IPv6 address (or IPv4-mapped on dual-stack). For outbound connections, WebClient and RestTemplate both accept IPv6 URLs with brackets. Spring Security's `hasIpAddress()` works with both IPv4 and IPv6 CIDR notation for IP-based access control.
+Spring Boot accepts IPv6 bind addresses through the `server.address` property, including the any-local address `::`. On dual-stack JVM/OS setups, binding to `::` can accept both IPv6 and IPv4 traffic. `request.getRemoteAddr()` returns the remote address reported by the servlet container, and proxy headers should be trusted only when they come from a known proxy. For outbound connections, WebClient and RestTemplate both accept IPv6 URLs with brackets. Spring Security IP checks support both IPv4 and IPv6 addresses or ranges for IP-based access control.
