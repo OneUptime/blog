@@ -62,20 +62,23 @@ cat /proc/sys/net/ipv6/conf/all/forwarding
 # Should output: 1
 ```
 
+If your IPv6 default route is learned from router advertisements (RA), also set `net.ipv6.conf.all.accept_ra=2`; otherwise the node can drop the default route after it expires.
+
 ## Step 3: Install K3s with IPv6 Configuration
 
 ```bash
 # Plan your IPv6 subnets:
-# Cluster CIDR (pod IPs): fd42::/24
+# Cluster CIDR (pod IPs): fd42::/56
 # Service CIDR: fd43::/112
-# Node CIDR size: /80 per node
+# Node CIDR size: /64 per node (default)
 
 # Install K3s server with IPv6
 curl -sfL https://get.k3s.io | \
   INSTALL_K3S_EXEC="
-    --cluster-cidr=fd42::/24
+    --cluster-cidr=fd42::/56
     --service-cidr=fd43::/112
     --cluster-dns=fd43::10
+    --node-ip=<server-ipv6>
     --flannel-ipv6-masq=true
   " \
   sh -
@@ -86,9 +89,10 @@ Or using a config file:
 ```yaml
 # /etc/rancher/k3s/config.yaml
 # IPv6 single-stack configuration
-cluster-cidr: "fd42::/24"
+cluster-cidr: "fd42::/56"
 service-cidr: "fd43::/112"
 cluster-dns: "fd43::10"
+node-ip: "<server-ipv6>"
 
 # Flannel IPv6 settings
 flannel-ipv6-masq: true
@@ -104,6 +108,7 @@ flannel-backend: vxlan
 curl -sfL https://get.k3s.io | \
   K3S_URL=https://[<server-ipv6>]:6443 \
   K3S_TOKEN=<node-token> \
+  INSTALL_K3S_EXEC="agent --node-ip=<agent-ipv6>" \
   sh -
 
 # Note: IPv6 addresses in URLs must be enclosed in brackets
@@ -119,7 +124,7 @@ kubectl get nodes -o wide
 
 # Check pods have IPv6 IPs
 kubectl get pods -A -o wide
-# Pod IP should be from the fd42::/24 range
+# Pod IP should be from the fd42::/56 range
 
 # Check services have IPv6 cluster IPs
 kubectl get svc -A
@@ -127,6 +132,7 @@ kubectl get svc -A
 
 # Verify DNS is using IPv6
 kubectl run dns-test --image=busybox --restart=Never -- sleep 3600
+kubectl wait --for=condition=Ready pod/dns-test --timeout=120s
 kubectl exec dns-test -- nslookup kubernetes.default.svc.cluster.local
 # Should resolve to IPv6 address
 
@@ -142,6 +148,8 @@ apiVersion: v1
 kind: Pod
 metadata:
   name: ipv6-server
+  labels:
+    app: ipv6-server
 spec:
   containers:
     - name: server
@@ -155,19 +163,22 @@ metadata:
   name: ipv6-server-svc
 spec:
   selector:
-    name: ipv6-server  # Note: need proper label
+    app: ipv6-server
   ports:
     - port: 80
       targetPort: 80
   type: ClusterIP
 EOF
 
+kubectl wait --for=condition=Ready pod/ipv6-server --timeout=120s
+
 # Get the service ClusterIP (should be IPv6)
 kubectl get svc ipv6-server-svc
 
 # Test connectivity from another pod
-kubectl run test-client --image=curlimages/curl --restart=Never \
+kubectl run test-client --image=curlimages/curl --restart=Never --command \
   -- curl -v http://ipv6-server-svc/
+kubectl wait --for=jsonpath='{.status.phase}'=Succeeded pod/test-client --timeout=120s
 
 kubectl logs test-client
 
@@ -178,7 +189,7 @@ kubectl delete svc ipv6-server-svc
 
 ## Step 7: Configure IPv6-Aware Ingress
 
-For Traefik to listen on IPv6:
+If you want the packaged Traefik Service to be explicitly single-stack IPv6:
 
 ```yaml
 # /var/lib/rancher/k3s/server/manifests/traefik-ipv6.yaml
@@ -189,15 +200,11 @@ metadata:
   namespace: kube-system
 spec:
   valuesContent: |-
-    additionalArguments:
-      # Listen on all interfaces including IPv6
-      - "--entrypoints.web.address=:80"
-      - "--entrypoints.websecure.address=:443"
-    # Ensure Traefik binds to IPv6
     service:
-      ipFamilies:
-        - IPv6
-      ipFamilyPolicy: SingleStack
+      spec:
+        ipFamilies:
+          - IPv6
+        ipFamilyPolicy: SingleStack
 ```
 
 ## Step 8: CoreDNS IPv6 Configuration
@@ -206,14 +213,15 @@ Ensure CoreDNS is configured for IPv6:
 
 ```bash
 # Verify CoreDNS has IPv6 service IP
-kubectl get svc coredns -n kube-system
+kubectl get svc kube-dns -n kube-system
 
 # The cluster-dns flag should point to an IPv6 address
-# Default: fd43::10 (from service CIDR)
+# Example: fd43::10 (from service CIDR)
 
 # Verify DNS resolution works over IPv6
 kubectl run dns-test --image=busybox --restart=Never -- \
   nslookup kubernetes.default.svc.cluster.local fd43::10
+kubectl wait --for=jsonpath='{.status.phase}'=Succeeded pod/dns-test --timeout=120s
 
 kubectl logs dns-test
 kubectl delete pod dns-test
@@ -237,11 +245,11 @@ spec:
     - from:
         - ipBlock:
             # Allow from the pod CIDR
-            cidr: fd42::/24
+            cidr: fd42::/56
   egress:
     - to:
         - ipBlock:
-            cidr: fd42::/24
+            cidr: fd42::/56
     - ports:
         # Allow DNS over IPv6
         - port: 53
