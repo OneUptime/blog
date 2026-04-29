@@ -14,8 +14,12 @@ netstat -a
 
 :: Show all IPv6 connections specifically
 :: (netstat doesn't have a -6 flag like Linux ss)
-:: Filter with findstr for IPv6 addresses
-netstat -an | findstr "TCP.*\[.*\]\|UDP.*\[.*\]"
+:: Filter with findstr for IPv6 addresses (lines with brackets)
+netstat -an | findstr "\[.*\]"
+
+:: Or filter by IPv6 protocols directly
+netstat -an -p TCPv6
+netstat -an -p UDPv6
 
 :: Show connections with numeric addresses and ports (no DNS resolution)
 netstat -an
