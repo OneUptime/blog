@@ -43,6 +43,10 @@ data "aws_vpc" "default" {
   id = var.vpc_id
 }
 
+data "aws_subnet" "jenkins" {
+  id = var.subnet_id
+}
+
 # Security group for the Jenkins instance
 resource "aws_security_group" "jenkins" {
   name        = "jenkins-sg"
@@ -148,7 +152,7 @@ data "aws_ami" "amazon_linux_2023" {
 
 # EBS volume for Jenkins home directory (persists separately from instance)
 resource "aws_ebs_volume" "jenkins_home" {
-  availability_zone = var.availability_zone
+  availability_zone = data.aws_subnet.jenkins.availability_zone
   size              = 100  # GB
   type              = "gp3"
   encrypted         = true
@@ -171,19 +175,32 @@ resource "aws_instance" "jenkins" {
     #!/bin/bash
     set -e
 
-    # Install Java
-    dnf install -y java-17-amazon-corretto
+    # Install Java and Jenkins dependencies
+    dnf install -y fontconfig java-21-amazon-corretto
 
     # Add Jenkins repo and install
-    wget -O /etc/yum.repos.d/jenkins.repo https://pkg.jenkins.io/redhat-stable/jenkins.repo
-    rpm --import https://pkg.jenkins.io/redhat-stable/jenkins.io-2023.key
+    wget -O /etc/yum.repos.d/jenkins.repo https://pkg.jenkins.io/rpm-stable/jenkins.repo
+    rpm --import https://pkg.jenkins.io/rpm-stable/jenkins.io-2026.key
     dnf install -y jenkins
+    systemctl daemon-reload
 
-    # Mount the EBS volume for Jenkins home
-    mkfs -t xfs /dev/xvdf || true
+    # Wait for the attached EBS volume and mount it for Jenkins home
+    DEVICE="/dev/sdf"
+    for _ in $(seq 1 60); do
+      [ -b "$DEVICE" ] && break
+      sleep 2
+    done
+
+    [ -b "$DEVICE" ] || exit 1
+
+    if ! blkid "$DEVICE" >/dev/null 2>&1; then
+      mkfs -t xfs "$DEVICE"
+    fi
+
     mkdir -p /var/lib/jenkins
-    mount /dev/xvdf /var/lib/jenkins
-    echo "/dev/xvdf /var/lib/jenkins xfs defaults,nofail 0 2" >> /etc/fstab
+    UUID=$(blkid -s UUID -o value "$DEVICE")
+    grep -q " /var/lib/jenkins " /etc/fstab || echo "UUID=$UUID /var/lib/jenkins xfs defaults,nofail 0 2" >> /etc/fstab
+    mountpoint -q /var/lib/jenkins || mount /var/lib/jenkins
     chown jenkins:jenkins /var/lib/jenkins
 
     # Start Jenkins
@@ -197,7 +214,7 @@ resource "aws_instance" "jenkins" {
 }
 
 resource "aws_volume_attachment" "jenkins_home" {
-  device_name = "/dev/xvdf"
+  device_name = "/dev/sdf"
   volume_id   = aws_ebs_volume.jenkins_home.id
   instance_id = aws_instance.jenkins.id
 }
