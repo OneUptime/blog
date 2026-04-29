@@ -15,6 +15,7 @@ A MongoDB Replica Set maintains multiple copies of your data across multiple ser
 ```bash
 # Generate authentication key for replica set members
 
+mkdir -p /opt/mongodb
 openssl rand -base64 756 > /opt/mongodb/keyfile
 chmod 400 /opt/mongodb/keyfile
 chown 999:999 /opt/mongodb/keyfile  # MongoDB container user
@@ -249,7 +250,7 @@ docker pause mongo1
 docker exec mongo2 mongosh \
   -u admin -p admin_secure_password \
   --authenticationDatabase admin \
-  --eval "rs.isMaster()"
+  --eval "db.hello()"
 
 # Restore mongo1
 docker unpause mongo1
