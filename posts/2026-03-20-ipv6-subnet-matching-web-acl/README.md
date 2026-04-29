@@ -8,7 +8,7 @@ Description: Implement IPv6 subnet matching for web application access control l
 
 ## Introduction
 
-Web application ACLs often need to match IPv6 client addresses against allowed/denied subnets. IPv6 subnet matching is more complex than IPv4 because addresses can be represented in multiple equivalent forms, prefixes can be /64 for NDP but /128 for individual hosts, and IPv4-mapped addresses must be handled.
+Web application ACLs often need to match IPv6 client addresses against allowed/denied subnets. IPv6 subnet matching is more complex than IPv4 because addresses can be represented in multiple equivalent forms, subnets are often expressed as /64 while individual hosts use /128, and IPv4-mapped addresses must be handled.
 
 ## Python IPv6 Subnet Matcher
 
@@ -16,19 +16,25 @@ Web application ACLs often need to match IPv6 client addresses against allowed/d
 import ipaddress
 from typing import Union
 
+IPAddress = Union[ipaddress.IPv4Address, ipaddress.IPv6Address]
+
 class IPv6SubnetACL:
     """Access Control List supporting both IPv4 and IPv6 subnets."""
 
-    def __init__(self, allowed: list = None, denied: list = None):
+    def __init__(self, allowed: list = None, denied: list = None,
+                 rules: list = None, default_allow: bool = False):
         self.allowed = [ipaddress.ip_network(s, strict=False)
                         for s in (allowed or [])]
         self.denied = [ipaddress.ip_network(s, strict=False)
                        for s in (denied or [])]
+        self.rules = [(action, ipaddress.ip_network(subnet, strict=False))
+                      for action, subnet in (rules or [])]
+        self.default_allow = default_allow
 
-    def _normalize(self, addr_str: str) -> ipaddress.IPv6Address:
+    def _normalize(self, addr_str: str) -> IPAddress:
         """
-        Normalize a client address to IPv6.
-        Handles ::ffff:x.x.x.x (IPv4-mapped) by extracting IPv4.
+        Normalize a client address for ACL matching.
+        Converts ::ffff:x.x.x.x (IPv4-mapped) to pure IPv4.
         """
         # Strip brackets if present ([::1] → ::1)
         addr_str = addr_str.strip("[]")
@@ -47,6 +53,13 @@ class IPv6SubnetACL:
             addr = self._normalize(client_addr)
         except ValueError:
             return False
+
+        # Preserve first-match behavior for ordered rule sets such as nginx.
+        if self.rules:
+            for action, net in self.rules:
+                if addr in net:
+                    return action == "allow"
+            return self.default_allow
 
         # Check deny list first (deny overrides allow)
         for net in self.denied:
@@ -68,10 +81,10 @@ class IPv6SubnetACL:
 
 acl = IPv6SubnetACL(
     allowed=[
-        "2001:db8::/32",        # Internal IPv6 range
+        "2001:db8::/32",        # Example IPv6 documentation range
         "10.0.0.0/8",           # Internal IPv4 range
         "192.168.0.0/16",       # Home/office IPv4
-        "fd00::/8",             # ULA range
+        "fd00::/8",             # Locally assigned ULA range
     ],
     denied=[
         "2001:db8:dead::/48",   # Specific blocked subnet
@@ -115,10 +128,7 @@ class IPv6ACLMiddleware:
         return self.get_response(request)
 
     def _get_client_ip(self, request) -> str:
-        # Check X-Forwarded-For (only trust if behind known proxy)
-        xff = request.META.get("HTTP_X_FORWARDED_FOR")
-        if xff:
-            return xff.split(",")[0].strip()
+        # REMOTE_ADDR is set by the server or trusted proxy in front of Django.
         return request.META.get("REMOTE_ADDR", "")
 
     def _is_allowed(self, addr_str: str) -> bool:
@@ -136,40 +146,38 @@ class IPv6ACLMiddleware:
 ```python
 def parse_nginx_allow_deny(rules: list) -> IPv6SubnetACL:
     """
-    Parse nginx-style allow/deny rules into an ACL object.
-    rules: list of strings like "allow 2001:db8::/32", "deny all"
+    Parse simple nginx-style allow/deny rules into an ACL object.
+    rules: list of strings like "allow 2001:db8::/32;", "deny all;"
     """
-    allowed = []
-    denied = []
+    ordered_rules = []
 
     for rule in rules:
-        parts = rule.strip().split()
+        parts = rule.strip().rstrip(";").split()
         if len(parts) != 2:
             continue
-        action, subnet = parts[0].lower(), parts[1]
+        action, subnet = parts[0].lower(), parts[1].lower()
 
-        if subnet == "all":
-            if action == "deny":
-                denied.append("::/0")
-                denied.append("0.0.0.0/0")
+        if action not in {"allow", "deny"}:
             continue
 
-        if action == "allow":
-            allowed.append(subnet)
-        elif action == "deny":
-            denied.append(subnet)
+        if subnet == "all":
+            ordered_rules.append((action, "::/0"))
+            ordered_rules.append((action, "0.0.0.0/0"))
+            continue
 
-    return IPv6SubnetACL(allowed=allowed, denied=denied)
+        ordered_rules.append((action, subnet))
+
+    return IPv6SubnetACL(rules=ordered_rules, default_allow=True)
 
 # Parse nginx-style rules
 rules = [
-    "allow 2001:db8::/32",
-    "allow 10.0.0.0/8",
-    "deny all",
+    "allow 2001:db8::/32;",
+    "allow 10.0.0.0/8;",
+    "deny all;",
 ]
 acl = parse_nginx_allow_deny(rules)
 ```
 
 ## Conclusion
 
-IPv6 subnet matching in web ACLs requires normalization of IPv4-mapped addresses, handling multiple IPv6 representations, and clear ordering of allow/deny rules. The Python `ipaddress` module's `addr in network` operator handles all prefix length matching correctly. Use the `IPv6SubnetACL` class as a reusable component and integrate with OneUptime to monitor which IPs are accessing restricted endpoints.
+IPv6 subnet matching in web ACLs requires normalization of IPv4-mapped addresses, handling multiple IPv6 representations, and a clear policy for allow/deny precedence. The Python `ipaddress` module's `addr in network` operator handles prefix length matching correctly, and ordered rules are important when mirroring nginx's first-match access checks. Use the `IPv6SubnetACL` class as a reusable component and integrate with OneUptime to monitor which IPs are accessing restricted endpoints.
