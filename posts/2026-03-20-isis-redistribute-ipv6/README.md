@@ -4,34 +4,40 @@ Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
 Tags: IS-IS, IPv6, Route Redistribution, Routing, Networking
 
-Description: Learn how to redistribute IPv6 static, connected, OSPFv3, and BGP routes into IS-IS on Cisco, Juniper, and FRRouting.
+Description: Learn how to inject IPv6 routes into IS-IS on Cisco, Juniper, and FRRouting, including static, connected, OSPFv3, BGP, and table-based examples.
 
 ## Overview
 
-IS-IS route redistribution advertises routes from external sources as External routes in the IS-IS LSP database. These are marked as External Level-2 routes and have a higher administrative distance than internal IS-IS routes.
+IS-IS route redistribution advertises routes from other sources into the IS-IS link-state database. Operational output often distinguishes redistributed prefixes from internal IS-IS routes; on Cisco IOS XE, use `metric-type external` if you want redistributed IPv6 routes to use the external IS-IS metric type, because the default is `internal`.
 
 ## Cisco IOS Redistribution
 
 ```text
-! Redistribute static IPv6 routes into IS-IS
+! Enter IPv6 IS-IS address-family configuration
 Router(config)# router isis
-Router(config-router)# redistribute ipv6 static level-2   ! Inject into L2
+Router(config-router)# address-family ipv6
 
-! Redistribute connected IPv6 routes
-Router(config-router)# redistribute ipv6 connected level-2
+! Redistribute static IPv6 routes into IS-IS
+Router(config-router-af)# redistribute static metric 10 metric-type external
+
+! Connected IPv6 prefixes are advertised from IS-IS-enabled or passive interfaces.
+Router(config)# interface GigabitEthernet0/0
+Router(config-if)# ipv6 router isis
 
 ! Redistribute OSPFv3 routes
-Router(config-router)# redistribute ipv6 ospf 1 level-2 metric 20
+Router(config)# router isis
+Router(config-router)# address-family ipv6
+Router(config-router-af)# redistribute ospf 1 metric 20 metric-type external
 
 ! Redistribute BGP routes
-Router(config-router)# redistribute ipv6 bgp 65001 level-2 metric 30
+Router(config-router-af)# redistribute bgp 65001 metric 30 metric-type external
 ```
 
 ## Cisco: Using Route Maps for Selective Redistribution
 
 ```text
 ! Create prefix list for filtering
-Router(config)# ipv6 prefix-list ISIS_IMPORT seq 10 permit 2001:db8:branch::/48
+Router(config)# ipv6 prefix-list ISIS_IMPORT seq 10 permit 2001:db8:100::/48
 
 ! Create route map
 Router(config)# route-map TO_ISIS permit 10
@@ -40,10 +46,11 @@ Router(config-route-map)#  set metric 15
 
 ! Apply to redistribution
 Router(config)# router isis
-Router(config-router)# redistribute ipv6 static level-2 route-map TO_ISIS
+Router(config-router)# address-family ipv6
+Router(config-router-af)# redistribute static route-map TO_ISIS
 ```
 
-## Juniper JunOS Redistribution
+## Juniper Junos Redistribution
 
 ```bash
 # Redistribution uses export policies in Juniper
@@ -71,51 +78,47 @@ vtysh
 configure terminal
 
 router isis CORE
+ metric-style wide
 
- ! Redistribute connected routes
- redistribute ipv6 connected
- redistribute ipv6 static
-
- ! Redistribute OSPFv3 routes into IS-IS
- redistribute ipv6 ospf6
-
- ! Redistribute BGP routes
- redistribute ipv6 bgp
+ ! Current FRRouting IS-IS documentation uses table-based redistribution.
+ ! Redistribute IPv6 routes from Linux routing table 200 into IS-IS Level 2.
+ redistribute ipv6 table 200 level-2 metric 30
 
 end
 write memory
 ```
 
-## Setting Default Metric for Redistributed Routes
+## Advertising a Default IPv6 Route
 
 ```bash
 # FRRouting
 router isis CORE
- default-information originate ipv6 always metric 100   ! Advertise default route
- metric-style wide    ! Required for wide metrics
+ metric-style wide
+ default-information originate ipv6 level-2 always metric 100
 
 # Cisco
 Router(config)# router isis
-Router(config-router)# default-information originate ipv6 always
+Router(config-router)# address-family ipv6
+Router(config-router-af)# default-information originate
 ```
 
 ## Verifying Redistributed Routes
 
 ```text
-! Cisco: Check for external IS-IS routes on a neighbor
-Router-Neighbor# show ipv6 route isis
+! Cisco: Check the IPv6 IS-IS local RIB
+Router# show isis ipv6 rib
 
-I2 EX 2001:DB8:BRANCH::/48 [115/20]  ← External IS-IS route
-     via FE80::asbr, GigabitEthernet0/0
+* 2001:DB8:100::/48
+    via FE80::A8BB:CCFF:FE00:C800/Ethernet0/0, type L2  metric 15 tag 0 LSP [3/3]
 ```
 
 ```bash
-# FRRouting: Check external routes
-vtysh -c "show ipv6 route isis" | grep "EX\|extern"
+# FRRouting: Check the IS-IS route table
+vtysh -c "show isis route level-2"
 
 # Juniper
-show route protocol isis table inet6.0
-# External routes will show metric type: External
+show isis route inet6
+# External routes show Type ext
 ```
 
 ## Preventing Route Loops
@@ -137,4 +140,4 @@ Router(config)# route-map ISIS_TO_OSPF permit 10
 
 ## Summary
 
-IS-IS IPv6 redistribution is configured with `redistribute ipv6 <protocol> level-<n>` on Cisco, export policies on Juniper, and `redistribute ipv6 <protocol>` on FRRouting. External IS-IS routes appear with an external flag in the routing table. Always use route maps or policies for selective redistribution and prevent bidirectional redistribution loops using route tags.
+On Cisco IOS XE, configure IPv6 redistribution under `router isis` and `address-family ipv6` with `redistribute <protocol> ...`; connected IPv6 prefixes are advertised from IS-IS-enabled or passive interfaces instead of `redistribute connected`. On Junos, use export policies. Current FRRouting IS-IS documentation uses `redistribute ipv6 table <table-id> <level>` and `default-information originate ipv6 <level>` rather than per-protocol redistribution commands. Always use route maps or policies for selective redistribution and route tags to prevent bidirectional redistribution loops.
