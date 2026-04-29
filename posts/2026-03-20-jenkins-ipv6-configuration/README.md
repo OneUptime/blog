@@ -26,54 +26,47 @@ Environment="JAVA_OPTS=-Djava.net.preferIPv6Addresses=true -Djava.net.preferIPv4
 Environment="JENKINS_OPTS=--httpListenAddress=:: --httpPort=8080"
 ```
 
-Or edit `/etc/default/jenkins`:
-```bash
-# /etc/default/jenkins
-JAVA_OPTS="-Djava.net.preferIPv6Addresses=true -Djava.net.preferIPv4Stack=false"
-JENKINS_ARGS="--httpListenAddress=:: --httpPort=8080"
-```
+On older SysV-init-based Linux packages, set the equivalent JVM and Jenkins launcher arguments in the package environment file instead of a `systemd` drop-in.
 
 Restart Jenkins:
 ```bash
 sudo systemctl restart jenkins
 ```
 
+Also set the Jenkins URL in **Manage Jenkins** -> **System** to an IPv6-reachable URL. The listener address only changes what Jenkins binds to; it does not change the URL Jenkins advertises to agents and users.
+
 ## Step 2: Verify Jenkins Is Listening on IPv6
 
 ```bash
 # Check that Jenkins is listening on IPv6
 ss -6 -l -n | grep 8080
-# Expected: tcp6  0  0 :::8080  :::*  LISTEN
+# Expected: a LISTEN socket on [::]:8080 or :::8080
 
 # Or with netstat
 netstat -tlnp | grep 8080
-# Expected: tcp6  0  0 :::8080  :::*  LISTEN  <jenkins-pid>
+# Expected: a tcp6 LISTEN entry on :::8080
 
 # Test access via IPv6
 curl -6 http://[::1]:8080/login
 # Or from a remote host:
-curl -6 http://[2001:db8:1:1::jenkins]:8080/login
+curl -6 http://[2001:db8:1:1::10]:8080/login
 ```
 
 ## Step 3: Configure Jenkins Agent Communication via IPv6
 
-Jenkins agents connect to the master using the JNLP (Java Network Launch Protocol) over TCP:
+Inbound Jenkins agents (formerly called JNLP agents) connect to the controller using Jenkins Remoting, either over the dedicated TCP agent port or over WebSocket. To verify an IPv6-capable agent works, target it by label in Pipeline:
 
 ```groovy
-// Jenkinsfile - Explicitly specify IPv6 for agent communication
+// Jenkinsfile - Run the job on an IPv6-capable agent
 pipeline {
     agent {
         label 'ipv6-agent'
     }
-    environment {
-        // Force Java to use IPv6 for all network connections
-        JAVA_OPTS = '-Djava.net.preferIPv6Addresses=true'
-    }
     stages {
         stage('Test IPv6') {
             steps {
-                sh 'curl -6 https://ifconfig.me'
-                sh 'ping6 -c 3 2606:4700:4700::1111'
+                sh 'curl -6 https://ifconfig.me/ip'
+                sh 'ping -6 -c 3 2606:4700:4700::1111'
             }
         }
     }
@@ -88,27 +81,28 @@ java \
     -Djava.net.preferIPv6Addresses=true \
     -Djava.net.preferIPv4Stack=false \
     -jar agent.jar \
-    -url http://[2001:db8::jenkins]:8080 \
+    -url http://[2001:db8::10]:8080 \
     -secret <agent-secret> \
     -name ipv6-agent \
     -webSocket
 ```
 
-## Step 4: Docker Agent with IPv6
+When you use `-webSocket`, the agent connects over the Jenkins HTTP(S) port instead of the dedicated inbound TCP agent port.
 
-For containerized Jenkins agents, ensure the Docker network has IPv6 enabled:
+## Step 4: Dockerized Jenkins with IPv6
+
+For containerized Jenkins, ensure the Docker network has IPv6 enabled. Docker bridge-network IPv6 support is available on Linux hosts:
 
 ```yaml
-# docker-compose.yml - Jenkins with IPv6 support
-version: "3.8"
-
+# compose.yaml - Jenkins with IPv6 support
 services:
   jenkins:
-    image: jenkins/jenkins:lts-jdk17
+    image: jenkins/jenkins:lts-jdk21
     container_name: jenkins
     environment:
       # Enable IPv6 in the JVM
-      JAVA_OPTS: "-Djava.net.preferIPv6Addresses=true"
+      JAVA_OPTS: "-Djava.net.preferIPv6Addresses=true -Djava.net.preferIPv4Stack=false"
+      JENKINS_OPTS: "--httpListenAddress=:: --httpPort=8080"
     ports:
       - "[::]:8080:8080"
       - "[::]:50000:50000"
@@ -120,7 +114,7 @@ networks:
     enable_ipv6: true
     ipam:
       config:
-        - subnet: "2001:db8:jenkins::/64"
+        - subnet: "2001:db8:1::/64"
 ```
 
 ## Step 5: Test IPv6 in a Jenkins Pipeline
@@ -159,9 +153,8 @@ pipeline {
             steps {
                 sh '''
                     # Fetch dependencies over IPv6 if available
-                    curl -6 -O https://example.com/dependency.tar.gz || true
-                    # Fall back to IPv4 if IPv6 fails
-                    curl -O https://example.com/dependency.tar.gz
+                    curl -6 -O https://example.com/dependency.tar.gz || \
+                    curl -4 -O https://example.com/dependency.tar.gz
                 '''
             }
         }
@@ -174,7 +167,7 @@ pipeline {
 ```bash
 # If Jenkins fails to start with IPv6, check JVM IPv6 support
 java -version
-# Ensure you have JDK 11+ for best IPv6 support
+# Ensure the controller and agents use a Java version supported by your Jenkins release
 
 # Check if IPv6 is available on the system
 sysctl net.ipv6.conf.all.disable_ipv6
@@ -182,9 +175,9 @@ sysctl net.ipv6.conf.all.disable_ipv6
 
 # Test JVM IPv6 directly
 java -Djava.net.preferIPv6Addresses=true \
-     -cp . TestIPv6.class
+     -cp . TestIPv6
 ```
 
 ## Conclusion
 
-Jenkins runs on Java, which natively supports IPv6 through JVM flags. Setting `-Djava.net.preferIPv6Addresses=true` and configuring the listener address to `::` enables Jenkins to serve both IPv4 and IPv6 clients. Agents follow the same pattern - launch with IPv6 JVM flags and connect to the master's IPv6 address. Docker-based agents require IPv6-enabled Docker networks to function correctly in dual-stack or IPv6-only environments.
+Jenkins runs on Java, which natively supports IPv6 through JVM flags. Setting `-Djava.net.preferIPv6Addresses=true` and configuring the listener address to `::` lets Jenkins bind on IPv6-capable systems. Agents follow the same pattern - launch with IPv6 JVM flags and connect to the controller's IPv6-reachable URL. Dockerized Jenkins requires IPv6-enabled Docker networks to function correctly in dual-stack or IPv6-only environments.
