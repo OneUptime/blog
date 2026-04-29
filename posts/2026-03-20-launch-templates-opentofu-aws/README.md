@@ -14,11 +14,11 @@ AWS Launch Templates allow you to define reusable EC2 instance configurations, i
 
 - OpenTofu installed (v1.6+)
 - AWS CLI configured with appropriate credentials
-- An existing VPC and subnets in your AWS account
+- An existing VPC, subnets, security group, and IAM instance profile in your AWS account
 
 ## What Are Launch Templates?
 
-Launch Templates replace the older Launch Configurations and offer more flexibility. They support versioning, making it easy to roll back configurations, and can be used with Auto Scaling Groups, EC2 Fleet, and Spot Instances.
+Launch Templates are the recommended successor to the older Launch Configurations and offer more flexibility. They support versioning, making it easy to roll back configurations, and can be used with Auto Scaling Groups, EC2 Fleet, and Spot Instances.
 
 ## Defining a Launch Template in OpenTofu
 
@@ -43,6 +43,7 @@ provider "aws" {
 
 ```hcl
 variable "aws_region" {
+  type    = string
   default = "us-east-1"
 }
 
@@ -52,7 +53,23 @@ variable "ami_id" {
 }
 
 variable "instance_type" {
+  type    = string
   default = "t3.medium"
+}
+
+variable "security_group_ids" {
+  description = "Security group IDs for EC2 instances"
+  type        = list(string)
+}
+
+variable "iam_instance_profile_name" {
+  description = "IAM instance profile name for EC2 instances"
+  type        = string
+}
+
+variable "subnet_ids" {
+  description = "Subnet IDs for the Auto Scaling Group"
+  type        = list(string)
 }
 ```
 
@@ -64,10 +81,10 @@ resource "aws_launch_template" "app_server" {
   image_id      = var.ami_id
   instance_type = var.instance_type
 
-  vpc_security_group_ids = [aws_security_group.app.id]
+  vpc_security_group_ids = var.security_group_ids
 
   iam_instance_profile {
-    name = aws_iam_instance_profile.app_profile.name
+    name = var.iam_instance_profile_name
   }
 
   block_device_mappings {
@@ -82,10 +99,7 @@ resource "aws_launch_template" "app_server" {
 
   user_data = base64encode(<<-EOF
     #!/bin/bash
-    yum update -y
-    yum install -y amazon-cloudwatch-agent
-    /opt/aws/amazon-cloudwatch-agent/bin/amazon-cloudwatch-agent-ctl \
-      -a start
+    echo "Launch template bootstrap complete" > /var/log/launch-template-init.log
   EOF
   )
 
@@ -114,7 +128,7 @@ resource "aws_autoscaling_group" "app" {
 
   launch_template {
     id      = aws_launch_template.app_server.id
-    version = "$Latest"
+    version = aws_launch_template.app_server.latest_version
   }
 
   tag {
@@ -127,12 +141,12 @@ resource "aws_autoscaling_group" "app" {
 
 ## Versioning Launch Templates
 
-OpenTofu manages Launch Template versions automatically. Each `apply` that changes the template creates a new version. Reference a specific version:
+OpenTofu manages Launch Template versions automatically. Each `apply` that changes the template creates a new version. Pin a specific version in production:
 
 ```hcl
 launch_template {
   id      = aws_launch_template.app_server.id
-  version = aws_launch_template.app_server.latest_version
+  version = "3"
 }
 ```
 
@@ -140,8 +154,16 @@ launch_template {
 
 ```bash
 tofu init
-tofu plan -var="ami_id=ami-0abcdef1234567890"
-tofu apply -var="ami_id=ami-0abcdef1234567890"
+tofu plan \
+  -var="ami_id=ami-0abcdef1234567890" \
+  -var='security_group_ids=["sg-0123456789abcdef0"]' \
+  -var="iam_instance_profile_name=app-profile" \
+  -var='subnet_ids=["subnet-0123456789abcdef0","subnet-0fedcba9876543210"]'
+tofu apply \
+  -var="ami_id=ami-0abcdef1234567890" \
+  -var='security_group_ids=["sg-0123456789abcdef0"]' \
+  -var="iam_instance_profile_name=app-profile" \
+  -var='subnet_ids=["subnet-0123456789abcdef0","subnet-0fedcba9876543210"]'
 ```
 
 ## Best Practices
@@ -150,7 +172,7 @@ tofu apply -var="ami_id=ami-0abcdef1234567890"
 - Always encrypt EBS volumes by default.
 - Store sensitive user data in AWS Secrets Manager and reference it at runtime.
 - Pin Launch Template versions in production ASGs to prevent unexpected updates.
-- Use `lifecycle { create_before_destroy = true }` to avoid downtime during updates.
+- If you use `lifecycle { create_before_destroy = true }`, pair it with `name_prefix` to avoid name collisions during replacement.
 
 ## Conclusion
 
