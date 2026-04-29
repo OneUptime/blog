@@ -61,7 +61,7 @@ sudo ip -6 route del 2001:db8:1::/48 via 2001:db8::1
 # Delete the default route
 sudo ip -6 route del default
 
-# Delete all routes to a destination (regardless of next hop)
+# Delete a route by destination prefix when it is unambiguous
 sudo ip -6 route del 2001:db8:1::/48
 ```
 
@@ -74,19 +74,18 @@ Routes added with `ip route add` are lost on reboot. To persist them:
 ```bash
 # /etc/network/interfaces
 iface eth0 inet6 static
-    address 2001:db8::2
-    netmask 64
+    address 2001:db8::2/64
     gateway 2001:db8::1
     up ip -6 route add 2001:db8:1::/48 via 2001:db8::1
     down ip -6 route del 2001:db8:1::/48 via 2001:db8::1
 ```
 
-### On RHEL/CentOS/Fedora
+### On RHEL/CentOS systems using legacy network-scripts
 
 ```bash
 # /etc/sysconfig/network-scripts/route6-eth0
-2001:db8:1::/48 via 2001:db8::1
-2001:db8:2::/48 via 2001:db8::1 metric 200
+2001:db8:1::/48 via 2001:db8::1 dev eth0
+2001:db8:2::/48 via 2001:db8::1 dev eth0 metric 200
 ```
 
 ### Using systemd-networkd
@@ -115,14 +114,14 @@ nmcli connection up "Wired connection 1"
 ## Adding Multiple Routes at Once
 
 ```bash
-# Add multiple routes in a batch using ip route batch
-cat <<EOF | sudo ip -6 route batch
-add 2001:db8:1::/48 via 2001:db8::1
-add 2001:db8:2::/48 via 2001:db8::1 metric 200
-add 2001:db8:3::/48 via fe80::1 dev eth0
+# Add multiple routes in batch mode
+cat <<EOF | sudo ip -6 -batch -
+route add 2001:db8:1::/48 via 2001:db8::1
+route add 2001:db8:2::/48 via 2001:db8::1 metric 200
+route add 2001:db8:3::/48 via fe80::1 dev eth0
 EOF
 ```
 
 ## Summary
 
-IPv6 static routes are added with `ip -6 route add <prefix> via <gateway>`. Always include `dev` when using link-local next hops. For persistence, use systemd-networkd `.network` files, `route6-*` files on RHEL-based systems, or nmcli. Test routes with `ip -6 route get` before applying them in production.
+IPv6 static routes are added with `ip -6 route add <prefix> via <gateway>`. Always include `dev` when using link-local next hops. For persistence, use systemd-networkd `.network` files, NetworkManager, or `route6-*` files on systems that still use legacy network-scripts. Test routes with `ip -6 route get` before applying them in production.
