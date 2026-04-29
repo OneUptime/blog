@@ -4,11 +4,11 @@ Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
 Tags: OpenTofu, Security, Sensitive Variables, HCL, Secret, Infrastructure as Code
 
-Description: Learn how to mark OpenTofu variables as sensitive to prevent their values from appearing in plan output, apply output, and state file diffs.
+Description: Learn how to mark OpenTofu variables as sensitive to prevent their values from appearing in normal plan and apply output, and understand where those values are still stored.
 
 ---
 
-The `sensitive = true` attribute on an input variable tells OpenTofu to redact its value from all output. This prevents passwords, API keys, and tokens from appearing in terminal output, CI/CD logs, or plan files. This guide covers marking variables sensitive and understanding where the values are still stored.
+The `sensitive = true` attribute on an input variable tells OpenTofu to treat its value as sensitive in normal CLI output. This helps keep passwords, API keys, and tokens out of `plan` and `apply` output and many CI/CD logs, but it does not remove them from state or saved plan data. Commands such as `tofu output -raw`, `tofu output -json`, `tofu show -json`, or `-show-sensitive` can still reveal the value. This guide covers marking variables sensitive and understanding where the values are still stored.
 
 ---
 
@@ -20,7 +20,7 @@ The `sensitive = true` attribute on an input variable tells OpenTofu to redact i
 variable "database_password" {
   type        = string
   description = "PostgreSQL database password"
-  sensitive   = true   # ← redacts value from all output
+  sensitive   = true   # ← redacts value in normal CLI output
 }
 
 variable "api_key" {
@@ -72,23 +72,26 @@ resource "aws_db_instance" "main" {
 
 ---
 
-## Sensitive Values Are Still Stored in State
+## Sensitive Values Are Still Stored in State and Saved Plans
 
-Important: `sensitive = true` only affects **display**. The actual value is still stored in the state file.
+Important: `sensitive = true` only affects how OpenTofu displays values in normal CLI output. The actual value is still stored in the state file, and saved plan files can also contain it in cleartext.
 
 ```bash
-# The value IS in the state file (base64 or plain text depending on backend)
+# Sensitive values are still stored in state and saved plans
 
-# Always use a remote backend with encryption for sensitive state
+# Human-readable CLI output stays redacted unless you opt in
 tofu state show aws_db_instance.main
-# password = (sensitive value)  ← shown redacted in CLI output
 
-# But the raw state file contains the value
-# cat terraform.tfstate | python3 -c "import sys,json; print(json.load(sys.stdin))"
-# → contains actual password
+# But local state is plain-text JSON
+# cat terraform.tfstate
+# → contains the actual password
+
+# Saved plan files also contain cleartext sensitive values
+tofu plan -out=tfplan
+# Treat tfplan as sensitive data
 ```
 
-Always use an encrypted remote state backend (S3 with SSE, HCP Terraform, etc.) when your state contains sensitive values.
+Always use a remote backend with encryption at rest, such as S3 with `encrypt = true`, when your state contains sensitive values, and treat saved plan files as sensitive artifacts too.
 
 ---
 
@@ -104,9 +107,9 @@ output "db_connection_string" {
 ```
 
 ```bash
-# Outputs are shown as (sensitive value)
+# Outputs are shown as <sensitive> by default
 tofu output db_connection_string
-# (sensitive value)
+# db_connection_string = <sensitive>
 
 # Access the value explicitly
 tofu output -raw db_connection_string
@@ -133,4 +136,4 @@ tofu apply -var-file="secrets.tfvars"
 
 ## Summary
 
-Mark variables as `sensitive = true` to prevent values from appearing in terminal output and CI/CD logs. The sensitive marking propagates to any output or resource attribute that uses the variable. Remember: sensitive variables still appear in plaintext in the state file - always use an encrypted remote state backend. For passing sensitive values, prefer `TF_VAR_` environment variables over `-var` flags to keep values out of shell history.
+Mark variables as `sensitive = true` to redact values from normal terminal output and many CI/CD logs. The sensitive marking propagates automatically to expressions used in resources, but outputs that contain sensitive data must still be marked with `sensitive = true`. Remember: sensitive values still appear in plaintext in local state and saved plan files, and commands such as `tofu output -raw`, `tofu output -json`, `tofu show -json`, or `-show-sensitive` can reveal them. For passing sensitive values, prefer `TF_VAR_` environment variables or an uncommitted `.tfvars` file over `-var` flags when possible.
