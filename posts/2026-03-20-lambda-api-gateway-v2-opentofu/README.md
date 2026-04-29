@@ -62,7 +62,7 @@ resource "aws_lambda_function" "api_handler" {
   role             = aws_iam_role.lambda.arn
   handler          = "index.handler"
   runtime          = "nodejs20.x"
-  timeout          = 30
+  timeout          = 29
   memory_size      = 256
 
   environment {
@@ -96,6 +96,7 @@ resource "aws_apigatewayv2_api" "main" {
 resource "aws_apigatewayv2_integration" "lambda" {
   api_id             = aws_apigatewayv2_api.main.id
   integration_type   = "AWS_PROXY"
+  integration_method = "POST"
   integration_uri    = aws_lambda_function.api_handler.invoke_arn
   payload_format_version = "2.0"  # Use v2 format for simplified event structure
 }
@@ -117,12 +118,22 @@ resource "aws_apigatewayv2_route" "users" {
 # Deploy to a stage
 resource "aws_apigatewayv2_stage" "default" {
   api_id      = aws_apigatewayv2_api.main.id
-  name        = "$default"  # $default stage auto-deploys
+  name        = "$default"  # Serve requests from the API root URL
   auto_deploy = true
 
   # Enable access logging
   access_log_settings {
     destination_arn = aws_cloudwatch_log_group.api_logs.arn
+    format = jsonencode({
+      requestId      = "$context.requestId"
+      ip             = "$context.identity.sourceIp"
+      requestTime    = "$context.requestTime"
+      httpMethod     = "$context.httpMethod"
+      routeKey       = "$context.routeKey"
+      status         = "$context.status"
+      protocol       = "$context.protocol"
+      responseLength = "$context.responseLength"
+    })
   }
 }
 
@@ -168,5 +179,5 @@ output "function_name" {
 - Use payload format version 2.0 for Lambda integrations - it provides a cleaner event structure than v1.0.
 - Enable access logging to CloudWatch for debugging API Gateway routing issues.
 - Use `$default` stage with `auto_deploy = true` for simple deployments, or create named stages for promotion workflows.
-- Set Lambda timeout lower than API Gateway's maximum (29 seconds) to get meaningful error messages when functions time out.
+- Set Lambda timeout lower than API Gateway's maximum (30 seconds for HTTP APIs) to get meaningful error messages when functions time out.
 - Use Lambda function URLs as an alternative if you don't need API Gateway features like route-level authorizers or request validation.
