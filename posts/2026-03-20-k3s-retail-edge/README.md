@@ -47,9 +47,8 @@ node-label:
 # Install K3s
 curl -sfL https://get.k3s.io | sh -
 
-# Create retail namespace
+# Create application namespaces
 kubectl create namespace retail
-kubectl create namespace digital-signage
 kubectl create namespace analytics
 ```
 
@@ -57,6 +56,29 @@ kubectl create namespace analytics
 
 ```yaml
 # pos-system.yaml
+---
+apiVersion: v1
+kind: Secret
+metadata:
+  name: pos-db-secret
+  namespace: retail
+type: Opaque
+stringData:
+  password: "change-me"
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: pos-database
+  namespace: retail
+spec:
+  clusterIP: None
+  selector:
+    app: pos-database
+  ports:
+    - name: postgres
+      port: 5432
+      targetPort: 5432
 ---
 # Local PostgreSQL for offline transaction storage
 apiVersion: apps/v1
@@ -66,6 +88,7 @@ metadata:
   namespace: retail
 spec:
   replicas: 1
+  serviceName: pos-database
   selector:
     matchLabels:
       app: pos-database
@@ -90,6 +113,8 @@ spec:
                 secretKeyRef:
                   name: pos-db-secret
                   key: password
+          ports:
+            - containerPort: 5432
           resources:
             requests:
               memory: 256Mi
@@ -127,8 +152,13 @@ spec:
           image: myregistry/retail-pos:v3.2
           imagePullPolicy: IfNotPresent
           env:
+            - name: POS_DB_PASSWORD
+              valueFrom:
+                secretKeyRef:
+                  name: pos-db-secret
+                  key: password
             - name: DATABASE_URL
-              value: "postgresql://pos_user:$(POS_DB_PASSWORD)@pos-database-svc:5432/pos_db"
+              value: "postgresql://pos_user:$(POS_DB_PASSWORD)@pos-database:5432/pos_db"
             - name: STORE_ID
               valueFrom:
                 configMapKeyRef:
@@ -159,11 +189,65 @@ spec:
 ```yaml
 # digital-signage.yaml
 ---
+apiVersion: v1
+kind: Service
+metadata:
+  name: local-pricing-db
+  namespace: retail
+spec:
+  clusterIP: None
+  selector:
+    app: local-pricing-db
+  ports:
+    - name: postgres
+      port: 5432
+      targetPort: 5432
+---
+apiVersion: apps/v1
+kind: StatefulSet
+metadata:
+  name: local-pricing-db
+  namespace: retail
+spec:
+  replicas: 1
+  serviceName: local-pricing-db
+  selector:
+    matchLabels:
+      app: local-pricing-db
+  template:
+    metadata:
+      labels:
+        app: local-pricing-db
+    spec:
+      nodeSelector:
+        role: retail-edge
+      containers:
+        - name: postgres
+          image: postgres:15-alpine
+          imagePullPolicy: IfNotPresent
+          env:
+            - name: POSTGRES_DB
+              value: prices
+            - name: POSTGRES_USER
+              value: pricing_user
+            - name: POSTGRES_PASSWORD
+              value: password
+          ports:
+            - containerPort: 5432
+          volumeMounts:
+            - name: pricing-data
+              mountPath: /var/lib/postgresql/data
+      volumes:
+        - name: pricing-data
+          hostPath:
+            path: /data/pricing-database
+            type: DirectoryOrCreate
+---
 apiVersion: apps/v1
 kind: Deployment
 metadata:
   name: signage-controller
-  namespace: digital-signage
+  namespace: retail
 spec:
   replicas: 1
   selector:
@@ -188,7 +272,7 @@ spec:
                   key: store-id
             # Local price database updated from HQ
             - name: PRICE_DB_URL
-              value: "postgresql://signage_user:password@local-pricing-db:5432/prices"
+              value: "postgresql://pricing_user:password@local-pricing-db:5432/prices"
             # Display update interval
             - name: REFRESH_INTERVAL_SECONDS
               value: "300"
@@ -225,6 +309,9 @@ spec:
     matchLabels:
       app: inventory
   template:
+    metadata:
+      labels:
+        app: inventory
     spec:
       nodeSelector:
         role: retail-edge
@@ -251,6 +338,7 @@ spec:
         - name: scanner
           hostPath:
             path: /dev/ttyUSB0
+            type: CharDevice
 ```
 
 ## Step 5: Store Configuration via ConfigMap
@@ -286,6 +374,7 @@ metadata:
 spec:
   # Sync prices from HQ every 15 minutes during business hours
   schedule: "*/15 9-21 * * *"
+  timeZone: "America/New_York"
   jobTemplate:
     spec:
       template:
@@ -321,10 +410,13 @@ metadata:
 spec:
   # Run at 10 PM every night
   schedule: "0 22 * * *"
+  timeZone: "America/New_York"
   jobTemplate:
     spec:
       template:
         spec:
+          nodeSelector:
+            role: retail-edge
           containers:
             - name: eod-processor
               image: myregistry/eod-batch:v2
@@ -332,8 +424,13 @@ spec:
               env:
                 - name: BATCH_TYPE
                   value: "end-of-day"
+                - name: POS_DB_PASSWORD
+                  valueFrom:
+                    secretKeyRef:
+                      name: pos-db-secret
+                      key: password
                 - name: LOCAL_DB_URL
-                  value: "postgresql://eod_user:password@pos-database-svc:5432/pos_db"
+                  value: "postgresql://pos_user:$(POS_DB_PASSWORD)@pos-database:5432/pos_db"
                 - name: HQ_REPORTING_URL
                   value: "https://reporting.hq.retailcorp.com/api/eod"
           restartPolicy: OnFailure
