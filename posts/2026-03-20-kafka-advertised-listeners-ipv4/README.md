@@ -69,26 +69,27 @@ advertised.listeners=PLAINTEXT://ec2-203-0-113-10.compute-1.amazonaws.com:9092
 
 # Docker with host networking:
 advertised.listeners=PLAINTEXT://HOST_IP:9092
-# Set HOST_IP in environment:
-# ENV_VAR=$(curl -s http://169.254.169.254/latest/meta-data/public-ipv4)
+# Replace HOST_IP with the actual host IP or hostname reachable by clients
 
-# Kubernetes (with external LoadBalancer):
-advertised.listeners=PLAINTEXT://LOADBALANCER_IP:9092
+# Kubernetes (with a broker-specific external Service / LoadBalancer):
+advertised.listeners=PLAINTEXT://BROKER_EXTERNAL_IP:9092
 ```
 
 ## Verifying advertised.listeners
 
 ```bash
-# Check what metadata clients receive:
-kafka-metadata-shell.sh --bootstrap-server 10.0.0.1:9092
-# (KRaft mode)
+# For KRaft clusters, check metadata quorum health:
+kafka-metadata-quorum.sh --bootstrap-server 10.0.0.1:9092 describe --status
 
-# Or use the older tool:
+# Verify the broker is reachable from the client network:
 kafka-broker-api-versions.sh --bootstrap-server 203.0.113.10:9092
 
-# Check broker configuration
+# Check dynamic broker config overrides
 kafka-configs.sh --bootstrap-server 10.0.0.1:9092 \
-  --describe --broker 1 | grep advertised
+  --entity-type brokers --entity-name 1 --describe | grep advertised
+
+# Check the static broker config file
+grep '^advertised.listeners=' /etc/kafka/server.properties
 
 # Watch Kafka logs for listener registration
 sudo tail -30 /var/log/kafka/server.log | grep -i "advertised\|listener"
@@ -100,9 +101,9 @@ sudo tail -30 /var/log/kafka/server.log | grep -i "advertised\|listener"
 # From external host:
 kafka-topics.sh --bootstrap-server 203.0.113.10:9092 --list
 
-# If it fails with timeout → firewall issue
-# If it fails with connection refused → listeners issue
-# If it hangs after metadata → advertised.listeners returning wrong IP
+# If it fails with timeout → often firewall or routing issue
+# If it fails with connection refused → broker not listening on that address/port
+# If the initial connection works but metadata-based operations fail → advertised.listeners may be returning an unreachable address
 
 # Produce and consume to verify full path:
 kafka-console-producer.sh --bootstrap-server 203.0.113.10:9092 --topic test
