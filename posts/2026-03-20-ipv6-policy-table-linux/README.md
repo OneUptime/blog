@@ -15,7 +15,7 @@ Linux maintains two related but distinct policy tables:
 | Kernel addrlabel | `ip addrlabel` | Kernel (all processes) | Label assignment for source selection |
 | gai.conf | `/etc/gai.conf` | Userspace (getaddrinfo) | Precedence + label for destination sort |
 
-Most applications use `getaddrinfo()`, so `/etc/gai.conf` controls what they see. The kernel addrlabel table affects raw socket operations.
+Most applications use `getaddrinfo()`, so `/etc/gai.conf` controls what they see. The kernel addrlabel table affects kernel source selection when an application does not bind a source address explicitly.
 
 ## Viewing Current Policy State
 
@@ -27,19 +27,20 @@ ip addrlabel list
 # gai.conf (userspace destination selection)
 cat /etc/gai.conf
 
-# Effective behavior - trace getaddrinfo calls
-strace -e trace=socket,connect,sendto python3 -c "
+# Effective behavior - show getaddrinfo result order
+python3 -c "
 import socket
-socket.getaddrinfo('example.com', 80, type=socket.SOCK_STREAM)
-" 2>&1 | grep -E "AF_INET|connect"
+for r in socket.getaddrinfo('example.com', 80, type=socket.SOCK_STREAM):
+    print(r[0].name, r[4][0])
+"
 ```
 
 ## Configuring /etc/gai.conf
 
-The `gai.conf` file directly controls `getaddrinfo()` output ordering:
+The `gai.conf` file directly controls `getaddrinfo()` output ordering. If you add any `label` or `precedence` line, glibc stops using the built-in table for that category, so duplicate every entry you want to keep:
 
 ```bash
-# /etc/gai.conf - Full configuration with comments
+# /etc/gai.conf - Explicit RFC 6724-style configuration
 cat > /etc/gai.conf << 'EOF'
 # label <prefix> <label>
 # Addresses in the same label group prefer each other as source/destination
@@ -80,6 +81,9 @@ label ::ffff:0:0/96  4
 label 2002::/16      2
 label 2001::/32      5
 label fc00::/7       13
+label ::/96          3
+label fec0::/10      11
+label 3ffe::/16      12
 
 # Prefer IPv4: higher precedence for IPv4-mapped
 precedence ::1/128        50
@@ -88,12 +92,15 @@ precedence ::/0            40
 precedence 2002::/16       30
 precedence 2001::/32        5
 precedence fc00::/7         3
+precedence ::/96            1
+precedence fec0::/10        1
+precedence 3ffe::/16        1
 EOF
 
 # Verify: getaddrinfo now returns IPv4 first
 python3 -c "
 import socket
-for r in socket.getaddrinfo('example.com', 80):
+for r in socket.getaddrinfo('example.com', 80, type=socket.SOCK_STREAM):
     print(r[0].name, r[4][0])
 "
 ```
@@ -101,14 +108,16 @@ for r in socket.getaddrinfo('example.com', 80):
 ### Prefer ULA for Specific Destinations
 
 ```bash
-# Make connections to fd00::/8 prefer ULA source
-# by giving them the same label (13)
+# Make connections to locally assigned ULA destinations prefer ULA source
+# by giving fd00::/8 a matching custom label
 
 # Add custom label entry (kernel table)
-ip addrlabel add prefix fd00::/8 label 13
+ip addrlabel add prefix fd00::/8 label 99
 
-# gai.conf: also give fd00::/8 label 13
-# (already covered by fc00::/7 label 13)
+# gai.conf: also give fd00::/8 label 99
+cat >> /etc/gai.conf << 'EOF'
+label fd00::/8 99
+EOF
 
 # Verify ULA traffic stays on ULA path
 python3 -c "
@@ -131,7 +140,7 @@ print('Source:', s.getsockname()[0])
 # Prefer specific IPv6 prefix (e.g., for CDN nodes)
 cat >> /etc/gai.conf << 'EOF'
 # Prefer our CDN IPv6 prefix over IPv4
-precedence 2001:db8:cdn::/48  100
+precedence 2001:db8:100::/48  100
 EOF
 ```
 
@@ -144,11 +153,10 @@ ip addrlabel add prefix 2001:db8::/32 label 99
 # Delete an entry
 ip addrlabel del prefix 2001:db8::/32
 
-# Flush all custom entries (restore defaults)
+# Flush all address-label entries
 ip addrlabel flush
 
-# The kernel ships with default entries matching RFC 6724
-# Flushing restores them
+# Flush removes the current table; re-add any labels you still need
 ip addrlabel list
 ```
 
@@ -165,10 +173,10 @@ Address=2001:db8:1::10/64
 Gateway=2001:db8:1::1
 IPv6AcceptRA=yes
 
-# Route preference can influence source selection
-[IPv6RoutePrefix]
-Route=fd00::/7
-LifetimeSec=3600
+# Persist a custom kernel addrlabel entry
+[IPv6AddressLabel]
+Prefix=2001:db8::/32
+Label=99
 EOF
 
 systemctl restart systemd-networkd
@@ -213,4 +221,4 @@ for r in results[:3]:
 
 ## Conclusion
 
-Linux address selection is controlled by two tables: the kernel `ip addrlabel` table (used for source selection in raw/connected sockets) and `/etc/gai.conf` (used by `getaddrinfo()` for destination sorting). To prefer IPv4, increase the precedence of `::ffff:0:0/96` above 40. To keep ULA addresses local, ensure `fc00::/7` has label 13 (matching the typical ULA source label). Changes to `/etc/gai.conf` take effect immediately for new `getaddrinfo()` calls. Use the Python socket connect trick to verify which source address the kernel selects.
+Linux address selection is controlled by two tables: the kernel `ip addrlabel` table (used for source selection when the application leaves the source unspecified) and `/etc/gai.conf` (used by `getaddrinfo()` for destination sorting). To prefer IPv4, increase the precedence of `::ffff:0:0/96` above `::/0`. To keep locally assigned ULA addresses on a ULA path, give `fd00::/8` a matching custom label in both the kernel addrlabel table and `/etc/gai.conf`. New processes pick up `/etc/gai.conf` changes immediately, but long-running processes usually need a restart unless `reload yes` is enabled. Use the Python socket connect trick to verify which source address the kernel selects.
