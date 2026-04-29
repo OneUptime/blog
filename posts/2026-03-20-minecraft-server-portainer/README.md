@@ -51,7 +51,7 @@ services:
       
       # Server settings
       - DIFFICULTY=normal
-      - GAMEMODE=survival
+      - MODE=survival
       - MAX_PLAYERS=20
       - MAX_WORLD_SIZE=10000
       - ONLINE_MODE=true
@@ -163,9 +163,10 @@ For Paper/Spigot servers, add plugins:
 ```yaml
 # Additional environment variables for plugin management
 environment:
-  # Auto-download specific plugins (Bukkit/SpigotMC)
-  - PLUGINS=https://dev.bukkit.org/projects/essentialsx/files/latest/download,\
-             https://ci.lucko.me/job/LuckPerms/lastSuccessfulBuild/artifact/bukkit/loader/build/libs/LuckPerms-Bukkit.jar
+  # Auto-download specific plugins from direct JAR URLs
+  # Use YAML's literal block scalar (|) for newline-delimited URLs
+  PLUGINS: |
+    https://ci.lucko.me/job/LuckPerms/lastSuccessfulBuild/artifact/bukkit/loader/build/libs/LuckPerms-Bukkit.jar
 ```
 
 Or copy plugins via Portainer volumes:
