@@ -132,7 +132,7 @@ kubectl apply -f migration-pod.yaml
 kubectl logs -n default data-migrator -f
 
 # Wait for completion
-kubectl wait --for=condition=complete pod/data-migrator -n default --timeout=600s
+kubectl wait --for=jsonpath='{.status.phase}'=Succeeded pod/data-migrator -n default --timeout=600s
 ```
 
 ### Step 4: Update the Application to Use the New PVC
@@ -234,7 +234,7 @@ spec:
         claimName: data-my-app-longhorn-$i
 EOF
 
-  kubectl wait --for=condition=complete pod/migrate-replica-$i --timeout=600s
+  kubectl wait --for=jsonpath='{.status.phase}'=Succeeded pod/migrate-replica-$i --timeout=600s
   echo "Replica $i migrated"
 done
 ```
