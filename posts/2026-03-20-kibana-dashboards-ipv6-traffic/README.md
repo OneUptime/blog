@@ -8,7 +8,7 @@ Description: Build Kibana dashboards to visualize IPv6 traffic patterns, create 
 
 ## Introduction
 
-Kibana's Lens editor and aggregation-based visualizations support IPv6 traffic analysis out of the box when Elasticsearch indices use the `ip` field type. This guide walks through creating dashboards that show top IPv6 sources, traffic trends, and subnet-level breakdowns.
+Kibana's Lens editor and aggregation-based visualizations support IPv6 traffic analysis out of the box when Elasticsearch indices use the `ip` field type. This guide walks through creating dashboards that show top IPv6 sources, traffic trends, and CIDR-based address breakdowns.
 
 ## Prerequisites
 
@@ -36,48 +36,39 @@ In Kibana:
 
 ## Step 3: IPv6 vs IPv4 Traffic Split (TSVB)
 
-```json
-// KQL filter for IPv6-only traffic in Kibana search bar
-client_ip: "2001::/3" or client_ip: "fe80::/10" or client_ip: "::1"
+Use this KQL filter in the Kibana search bar to focus on IPv6 traffic:
+
+```kql
+client_ip: * AND NOT client_ip: "0.0.0.0/0"
 ```
 
 Create a TSVB time series with two series:
-- Series 1: Count with filter `client_ip: *:*` (contains colon = IPv6)
-- Series 2: Count with filter `NOT client_ip: *:*` (IPv4)
+- Series 1: Count with filter `client_ip: * AND NOT client_ip: "0.0.0.0/0"`
+- Series 2: Count with filter `client_ip: "0.0.0.0/0"`
 
 This gives a stacked area chart showing IPv6 vs IPv4 traffic over time.
 
-## Step 4: CIDR Subnet Filter Panel
+## Step 4: CIDR Filter Panel
 
-```ndjson
-// Saved search for RFC 4193 ULA traffic
-{
-  "query": {
-    "term": {
-      "client_ip": "fc00::/7"
-    }
-  }
-}
+Create one Discover session for RFC 4193 ULA traffic:
+
+```kql
+client_ip: "fc00::/7"
 ```
 
-```ndjson
-// Saved search for global unicast traffic
-{
-  "query": {
-    "term": {
-      "client_ip": "2000::/3"
-    }
-  }
-}
+Create another Discover session for global unicast traffic:
+
+```kql
+client_ip: "2000::/3"
 ```
 
-Add these saved searches as dashboard panels to segment traffic by address category.
+Save each Discover session and add those sessions as dashboard panels to segment traffic by address category.
 
 ## Step 5: Geolocation for IPv6 (if enriched)
 
 If log data includes GeoIP enrichment for IPv6 addresses (via the GeoIP processor):
 
-```json
+```http
 PUT _ingest/pipeline/geoip-ipv6
 {
   "processors": [
@@ -92,7 +83,7 @@ PUT _ingest/pipeline/geoip-ipv6
 }
 ```
 
-After applying this pipeline, add a **Maps** visualization using `geoip.location` as the geo_point field to plot IPv6 source locations on a world map.
+After applying this pipeline and mapping `geoip.location` as a `geo_point`, add a **Maps** visualization using `geoip.location` to plot IPv6 source locations on a world map.
 
 ## Step 6: Dashboard Layout
 
@@ -103,36 +94,30 @@ Assemble the following panels into a single dashboard:
 | IPv6 vs IPv4 traffic | TSVB time series | Traffic split over time |
 | Top 20 IPv6 sources | Lens bar chart | Source IP ranking |
 | Response codes by IP | Lens heatmap | Error distribution |
-| Global unicast traffic | Saved search | RFC 2000::/3 traffic |
-| ULA traffic | Saved search | Internal address traffic |
+| Global unicast traffic | Discover session | 2000::/3 traffic |
+| ULA traffic | Discover session | Internal address traffic |
 | Geographic distribution | Maps | Source locations |
-| Bytes by source subnet | Lens treemap | Bandwidth by /48 |
+| Bytes by address category | Lens treemap | Bandwidth by ULA vs global unicast |
 
 ## Step 7: Alerting on IPv6 Anomalies
 
-```json
-// Kibana Alerting rule: new IPv6 source not seen before (pseudo-config)
-POST kbn:/api/alerting/rule
+For example, an Elasticsearch query rule can alert when blocked IPv6 events appear in the last 5 minutes:
+
+```http
+POST kbn:/api/alerting/rule/blocked-ipv6-events
 {
-  "name": "New IPv6 Source Alert",
+  "name": "Blocked IPv6 Events",
   "rule_type_id": ".es-query",
   "consumer": "alerts",
   "schedule": {"interval": "5m"},
   "params": {
-    "index": ["network-logs-*"],
+    "searchType": "esqlQuery",
     "timeField": "@timestamp",
     "timeWindowSize": 5,
     "timeWindowUnit": "m",
-    "size": 100,
-    "esQuery": {
-      "query": {
-        "bool": {
-          "filter": [
-            {"term": {"client_ip": "2001:db8::/32"}},
-            {"term": {"action": "BLOCK"}}
-          ]
-        }
-      }
+    "size": 0,
+    "esqlQuery": {
+      "esql": "FROM network-logs-* | WHERE NOT CIDR_MATCH(client_ip, \"0.0.0.0/0\") AND action == \"BLOCK\" | STATS blocked_count = COUNT(*) | WHERE blocked_count > 0"
     },
     "thresholdComparator": ">",
     "threshold": [0]
@@ -142,4 +127,4 @@ POST kbn:/api/alerting/rule
 
 ## Conclusion
 
-Kibana dashboards for IPv6 traffic leverage Elasticsearch's native `ip` field type to enable subnet filtering with CIDR notation in KQL queries and saved searches. The combination of Lens visualizations for top sources, TSVB for traffic splits, and Maps for geolocation provides comprehensive visibility into IPv6 network activity. Apply GeoIP enrichment at ingest time via ingest pipelines to enable geographic dashboards for IPv6 sources.
+Kibana dashboards for IPv6 traffic leverage Elasticsearch's native `ip` field type to enable CIDR filtering in KQL queries and Discover sessions. The combination of Lens visualizations for top sources, TSVB for traffic splits, and Maps for geolocation provides comprehensive visibility into IPv6 network activity. Apply GeoIP enrichment at ingest time and map `geoip.location` as a `geo_point` to enable geographic dashboards for IPv6 sources.
