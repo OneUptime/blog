@@ -29,9 +29,6 @@ uname -r
 
 # Verify network interface
 ip link show
-
-# Enable promiscuous mode if needed
-sudo ip link set eth0 promisc on
 ```
 
 ## Step 1: Create IPvlan L2 Network
@@ -46,10 +43,10 @@ docker network create \
   --ip-range=192.168.1.192/27 \
   --opt ipvlan_mode=l2 \
   --opt parent=eth0 \
-  ipvlan_l2_network
+  ipvlan_l2
 
 # Verify network was created
-docker network inspect ipvlan_l2_network
+docker network inspect ipvlan_l2
 ```
 
 ## Step 2: Create in Portainer
@@ -68,8 +65,6 @@ In Portainer: **Networks** > **Add network**
 
 ```yaml
 # docker-compose.yml - IPvlan L2 deployment
-version: "3.8"
-
 networks:
   ipvlan_l2:
     external: true  # Created beforehand
@@ -84,8 +79,8 @@ services:
       ipvlan_l2:
         ipv4_address: 192.168.1.200  # Dedicated LAN IP
     environment:
-      - WEBPASSWORD=secure_password
-      - PIHOLE_DNS_=1.1.1.1;9.9.9.9
+      - FTLCONF_webserver_api_password=secure_password
+      - FTLCONF_dns_upstreams=1.1.1.1;9.9.9.9
     volumes:
       - /opt/pihole/etc:/etc/pihole
       - /opt/pihole/dnsmasq:/etc/dnsmasq.d
@@ -102,8 +97,6 @@ services:
         ipv4_address: 192.168.1.201  # NTP server IP
     environment:
       - NTP_SERVERS=pool.ntp.org
-    cap_add:
-      - SYS_TIME
 
   # MQTT broker on LAN (for IoT)
   mosquitto:
@@ -122,14 +115,13 @@ services:
 
 Exclude the IPvlan range from your router's DHCP server to prevent conflicts:
 
-```bash
+```text
 Router DHCP Configuration:
 - DHCP pool: 192.168.1.10 - 192.168.1.190
-- Reserved/excluded: 192.168.1.191 - 192.168.1.254
+- Keep outside the DHCP pool: 192.168.1.192 - 192.168.1.223
   - .1: Router
   - .192 - .222: Docker IPvlan containers
-  - .241: Host Macvlan interface
-  - .250: Pi-hole (Macvlan example)
+  - .223: Host IPvlan interface
 ```
 
 ## Step 5: Host-to-Container Communication
@@ -162,7 +154,12 @@ services:
       - "8080:80"   # Must expose port
     networks:
       - bridge_net
-# Access: http://HOST_IP:8080
+
+networks:
+  bridge_net:
+    driver: bridge
+
+---
 
 # Via IPvlan L2 (direct LAN IP)
 services:
@@ -172,8 +169,15 @@ services:
     networks:
       ipvlan_l2:
         ipv4_address: 192.168.1.205
-# Access: http://192.168.1.205:80 directly
+
+networks:
+  ipvlan_l2:
+    external: true
 ```
+
+Access via bridge: `http://HOST_IP:8080`
+
+Access via IPvlan L2: `http://192.168.1.205:80` directly
 
 ## Verify IPvlan Configuration
 
