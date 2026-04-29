@@ -27,7 +27,7 @@ IPv4 fragmentation problems:
        maintain fragment buffers
 
   4. Fragment attacks: Teardrop attack, overlapping fragments,
-     Fragrouter attacks - all exploited router fragmentation
+     Fragrouter attacks - all exploited fragmentation and reassembly behavior
 
   5. Poor path visibility: Source doesn't know the actual path MTU
      unless DF bit is set and ICMP "Fragmentation Needed" is returned
@@ -48,30 +48,30 @@ RFC 8200 rationale:
 
 3. Path MTU Discovery: By requiring ICMPv6 "Packet Too Big" instead
    of router fragmentation, the source learns the actual path MTU
-   and sends appropriately-sized packets forever after.
+   and sends appropriately-sized packets until the path MTU changes.
 
 4. Security: Eliminates an entire class of router-level attacks
    based on triggering fragmentation behavior in routers.
 
-5. Correctness: The source knows the full context of what it is
-   sending (protocol, upper-layer checksums, etc.) and can create
-   correct fragments. Routers lack this context.
+5. Architectural clarity: Fragmentation becomes an endpoint
+   responsibility. Routers either forward the packet or send
+   ICMPv6 Packet Too Big.
 ```
 
 ## The Trade-Off: Source Complexity
 
-The price for simpler routers is more complex sources:
+The price for simpler routers is that sources often need more logic:
 
 ```text
-IPv6 source requirements:
+IPv6 source responsibilities:
   1. Implement Path MTU Discovery (RFC 8201)
-  2. Cache PMTU per destination
+  2. Cache PMTU per path/destination
   3. Handle ICMPv6 "Packet Too Big" messages
   4. Create correct Fragment Headers when needed
-  5. Keep fragment Identification values unique per 5-tuple
+  5. Keep fragment Identification values unique per source/destination pair
 
 IPv4 sources (when DF=0):
-  1. Can just send packets any size
+  1. Can send packets larger than the path MTU
   2. Routers handle size mismatches transparently
   3. No PMTUD required (though recommended)
 ```
@@ -103,26 +103,27 @@ sequenceDiagram
 # Look for ICMPv6 Packet Too Big messages being received
 sudo tcpdump -i eth0 "icmp6 and ip6[40] == 2"
 
-# View the PMTU cache
-ip -6 route show cache
+# Inspect the route to a destination
+ip -6 route get 2001:db8::1
+# If PMTUD has lowered the path MTU, the route may show `mtu ...`
 
-# Check PMTU discovery setting
-cat /proc/sys/net/ipv6/conf/all/path_mtu_discovery
-# 1 = enabled (should always be enabled)
+# Check how long Linux keeps cached PMTU information
+cat /proc/sys/net/ipv6/route/mtu_expires
+# Seconds before cached PMTU information expires
 
-# Simulate what happens without PMTUD:
-# Set a small interface MTU (test only)
+# Test behavior with a smaller first-hop MTU
 sudo ip link set eth0 mtu 1280
-# Large packets to destinations will now trigger Packet Too Big
+# Traffic above 1280 bytes must now be reduced or fragmented at the source
 
-# View PMTU discovery statistics
-cat /proc/net/snmp6 | grep Pmtu
+# View Packet Too Big and fragmentation counters
+nstat -az | grep -E 'Icmp6(In|Out)PktTooBigs|Ip6Frag'
 ```
 
 ## When Source Fragmentation Is Used
 
 ```text
-Sources fragment when PMTUD is not used (e.g., UDP applications):
+Sources may fragment when an application needs to send a packet larger
+than the current path MTU (most commonly with UDP or other datagram traffic):
 
 Option 1: Keep packets ≤ 1280 bytes (minimum IPv6 MTU)
   → Works on all paths, no fragmentation needed
@@ -134,13 +135,13 @@ Option 2: Use Path MTU Discovery
 
 Option 3: Fragment at the source
   → Source creates fragments using Fragment Header
-  → Works but fragments may be dropped by middleboxes (30-50% drop rate)
+  → Works but fragments are often dropped by middleboxes
   → Should be last resort
 
-For TCP: MSS (Maximum Segment Size) handles this automatically
+For TCP: MSS (Maximum Segment Size) helps handle this automatically
   → TCP negotiates MSS during SYN exchange
-  → TCP sender never exceeds MSS
-  → PMTUD updates MSS dynamically during the connection
+  → TCP sender stays within the smaller of MSS and the PMTU-derived limit
+  → PMTUD changes the effective segment size during the connection
 ```
 
 ## Conclusion
