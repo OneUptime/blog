@@ -17,11 +17,12 @@ K3s uses containerd as its default container runtime. Understanding how to confi
 K3s manages its own containerd instance, separate from any system-wide containerd:
 
 ```text
-/var/lib/rancher/k3s/agent/etc/containerd/config.toml       # Active config (managed by K3s)
-/var/lib/rancher/k3s/agent/etc/containerd/config.toml.tmpl  # Template (edit this one)
+/var/lib/rancher/k3s/agent/etc/containerd/config.toml          # Active config (managed by K3s)
+/var/lib/rancher/k3s/agent/etc/containerd/config-v3.toml.tmpl  # Template for containerd 2.0
+/var/lib/rancher/k3s/agent/etc/containerd/config.toml.tmpl     # Template for containerd 1.7 and earlier
 ```
 
-To customize containerd, edit the `.tmpl` file - K3s uses it to regenerate `config.toml` on startup.
+To customize containerd on current K3s releases, edit `config-v3.toml.tmpl` - K3s uses the template to regenerate `config.toml` on startup.
 
 ---
 
@@ -44,10 +45,14 @@ configs:
       insecure_skip_verify: false      # Set true only for self-signed certs in dev
 ```
 
-Restart K3s to apply:
+Restart K3s on each node to apply:
 
 ```bash
+# On server nodes
 systemctl restart k3s
+
+# On agent nodes
+systemctl restart k3s-agent
 ```
 
 ---
@@ -60,61 +65,50 @@ mirrors:
   "docker.io":
     endpoint:
       - "https://mirror.example.com"
-      - "https://registry-1.docker.io"    # Fallback to Docker Hub
 
   "ghcr.io":
     endpoint:
       - "https://ghcr-mirror.example.com"
-      - "https://ghcr.io"
 ```
+
+containerd still tries each registry's default endpoint as a last resort unless K3s is started with `--disable-default-registry-endpoint`.
 
 ---
 
 ## Step 3: Customize the containerd Config Template
 
-For advanced settings, create a containerd config template:
+For advanced runtime settings, extend the base containerd template instead of copying a rendered `config.toml`:
 
 ```toml
-# /var/lib/rancher/k3s/agent/etc/containerd/config.toml.tmpl
-version = 2
+# /var/lib/rancher/k3s/agent/etc/containerd/config-v3.toml.tmpl
+{{ template "base" . }}
 
-[plugins."io.containerd.grpc.v1.cri"]
-  sandbox_image = "rancher/mirrored-pause:3.6"
+[plugins.'io.containerd.cri.v1.runtime'.containerd.runtimes.'custom']
+  runtime_type = "io.containerd.runc.v2"
 
-  [plugins."io.containerd.grpc.v1.cri".containerd]
-    snapshotter = "overlayfs"           # Default snapshotter
-    default_runtime_name = "runc"
-
-    [plugins."io.containerd.grpc.v1.cri".containerd.runtimes.runc]
-      runtime_type = "io.containerd.runc.v2"
-
-      [plugins."io.containerd.grpc.v1.cri".containerd.runtimes.runc.options]
-        SystemdCgroup = true            # Required for systemd cgroup driver
-
-  [plugins."io.containerd.grpc.v1.cri".registry]
-    [plugins."io.containerd.grpc.v1.cri".registry.mirrors]
-      [plugins."io.containerd.grpc.v1.cri".registry.mirrors."docker.io"]
-        endpoint = ["https://mirror.example.com"]
+[plugins.'io.containerd.cri.v1.runtime'.containerd.runtimes.'custom'.options]
+  BinaryName = "/usr/bin/custom-container-runtime"
+  SystemdCgroup = true
 ```
 
 ---
 
-## Step 4: Use nerdctl to Interact with containerd
+## Step 4: Use ctr to Interact with containerd
 
-K3s bundles `ctr` and the K3s CLI can also interact with containerd:
+K3s bundles `ctr` and the K3s CLI can interact with the embedded containerd:
 
 ```bash
-# List running containers (K3s uses a specific namespace)
-k3s ctr containers ls
+# List containers in the Kubernetes namespace
+k3s ctr -n k8s.io containers list
 
-# List images
-k3s ctr images ls
+# List images in the Kubernetes namespace
+k3s ctr -n k8s.io images list
 
 # Pull an image manually into K3s containerd
-k3s ctr images pull docker.io/library/nginx:1.24
+k3s ctr -n k8s.io images pull docker.io/library/nginx:1.24
 
-# Check containerd snapshotter
-k3s ctr snapshots ls
+# List containerd snapshots in the Kubernetes namespace
+k3s ctr -n k8s.io snapshots list
 
 # View containerd info
 k3s ctr info
@@ -128,31 +122,41 @@ k3s ctr info
 # Check containerd socket
 ls -la /run/k3s/containerd/containerd.sock
 
-# View containerd logs (K3s embeds containerd, logs go to journald)
-journalctl -u k3s | grep containerd
+# View K3s service logs on server nodes
+journalctl -u k3s
+
+# View K3s service logs on agent nodes
+journalctl -u k3s-agent
+
+# View containerd logs
+tail -f /var/lib/rancher/k3s/agent/containerd/containerd.log
 
 # Check the active containerd config
 cat /var/lib/rancher/k3s/agent/etc/containerd/config.toml
 
 # Check if a specific image was pulled
-k3s ctr images ls | grep nginx
+k3s ctr -n k8s.io images list | grep nginx
 
-# Check if a container failed to start
-k3s ctr tasks ls
+# List current tasks
+k3s ctr -n k8s.io tasks list
 ```
 
 ---
 
 ## Step 6: Configure containerd for GPU Support
 
-For GPU workloads, add the NVIDIA runtime to containerd:
+For GPU workloads, K3s automatically detects the NVIDIA container runtime if it is installed when K3s starts:
 
-```toml
-# Add to /var/lib/rancher/k3s/agent/etc/containerd/config.toml.tmpl
-[plugins."io.containerd.grpc.v1.cri".containerd.runtimes.nvidia]
-  runtime_type = "io.containerd.runc.v2"
-  [plugins."io.containerd.grpc.v1.cri".containerd.runtimes.nvidia.options]
-    BinaryName = "/usr/bin/nvidia-container-runtime"
+```bash
+# Restart K3s after installing nvidia-container-runtime on the node
+# Server nodes
+systemctl restart k3s
+
+# Agent nodes
+systemctl restart k3s-agent
+
+# Confirm that K3s added the NVIDIA runtime
+grep nvidia /var/lib/rancher/k3s/agent/etc/containerd/config.toml
 ```
 
 Then in your Pod spec, reference the runtime class:
@@ -167,5 +171,5 @@ spec:
 ## Best Practices
 
 - Always use `/etc/rancher/k3s/registries.yaml` for registry configuration instead of editing the containerd config directly - K3s reads registries.yaml and manages the containerd config automatically.
-- After any containerd configuration change, verify by pulling a test image: `k3s ctr images pull docker.io/library/hello-world:latest`.
-- Enable `SystemdCgroup = true` in the containerd runc options when running on systemd-based Linux distributions for correct cgroup management.
+- After any containerd configuration change, verify by pulling a test image: `k3s ctr -n k8s.io images pull docker.io/library/hello-world:latest`.
+- If you add custom runc-based runtimes, keep `SystemdCgroup` aligned with the node's cgroup driver.
