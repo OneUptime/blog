@@ -31,7 +31,7 @@ SQL Server Configuration Manager:
    TCP Port: 1433
 
 6. For specific IPv6 address, find the IPv6 entry:
-   IP Address: 2001:db8::sql-server
+   IP Address: 2001:db8::1
    TCP Port: 1433
    Enabled: Yes
 
@@ -82,7 +82,7 @@ netstat -an | Select-String "1433"
 ```csharp
 // C# - ADO.NET connection string with IPv6
 // Method 1: Direct IPv6 address (bracket notation)
-string connStr = "Server=tcp:[2001:db8::sql-server],1433;" +
+string connStr = "Server=tcp:[2001:db8::1],1433;" +
                  "Database=MyDatabase;" +
                  "User Id=sa;Password=SecurePass;";
 
@@ -92,7 +92,7 @@ string connStr2 = "Server=sqlserver.example.com,1433;" +
                   "User Id=sa;Password=SecurePass;";
 
 // Method 3: Full connection string
-string connStr3 = "Data Source=tcp:[2001:db8::sql-server],1433;" +
+string connStr3 = "Data Source=tcp:[2001:db8::1],1433;" +
                   "Initial Catalog=MyDatabase;" +
                   "Integrated Security=False;" +
                   "User ID=sa;Password=SecurePass;";
@@ -102,14 +102,14 @@ string connStr3 = "Data Source=tcp:[2001:db8::sql-server],1433;" +
 
 ```powershell
 # Test TCP connectivity to SQL Server over IPv6
-Test-NetConnection -ComputerName "2001:db8::sql-server" -Port 1433
+Test-NetConnection -ComputerName "2001:db8::1" -Port 1433
 
 # Connect using sqlcmd over IPv6
-sqlcmd -S "[2001:db8::sql-server],1433" -U sa -P password -Q "SELECT @@VERSION"
+sqlcmd -S "[2001:db8::1],1433" -U sa -P password -Q "SELECT @@VERSION"
 
 # Test with PowerShell
 $conn = New-Object System.Data.SqlClient.SqlConnection
-$conn.ConnectionString = "Server=tcp:[2001:db8::sql-server],1433;Database=master;User Id=sa;Password=pass;"
+$conn.ConnectionString = "Server=tcp:[2001:db8::1],1433;Database=master;User Id=sa;Password=pass;"
 $conn.Open()
 $conn.State  # Should show "Open"
 $conn.Close()
@@ -131,13 +131,13 @@ ss -6 -tlnp | grep 1433
 
 # Firewall for SQL Server on Linux
 sudo ip6tables -A INPUT -p tcp \
-  -s 2001:db8:clients::/48 \
+  -s 2001:db8:c0::/48 \
   --dport 1433 -j ACCEPT
 
-sudo ip6tables-save > /etc/ip6tables/rules.v6
+sudo ip6tables-save > /etc/iptables/rules.v6
 
 # Connect via sqlcmd on Linux over IPv6
-sqlcmd -S "tcp:[2001:db8::sql-server],1433" -U sa -P password
+sqlcmd -S "tcp:[2001:db8::1],1433" -U sa -P password
 ```
 
 ## Always On Availability Groups over IPv6
@@ -146,10 +146,10 @@ sqlcmd -S "tcp:[2001:db8::sql-server],1433" -U sa -P password
 For SQL Server Always On AG with IPv6:
 
 1. Listener DNS name must have AAAA record:
-   myag-listener.example.com IN AAAA 2001:db8::ag-listener
+   myag-listener.example.com IN AAAA 2001:db8::100
 
 2. Availability Group Listener:
-   Create Listener > IP Address > Add IPv6 address: 2001:db8::ag-listener
+   Create Listener > IP Address > Add IPv6 address: 2001:db8::100
 
 3. Clients connect via listener FQDN:
    Server=myag-listener.example.com,1433;
