@@ -21,8 +21,8 @@ A simple script to check certificate expiry on IPv6 endpoints:
 # Configuration
 
 ENDPOINTS=(
-  "2001:db8::1:443:example.com"
-  "2001:db8::2:8443:api.example.com"
+  "2001:db8::1|443|example.com"
+  "2001:db8::2|8443|api.example.com"
 )
 WARN_DAYS=30
 CRITICAL_DAYS=7
@@ -63,7 +63,7 @@ check_cert() {
 
 # Check all endpoints
 for endpoint in "${ENDPOINTS[@]}"; do
-  IFS=':' read -r ipv6 port hostname <<< "$endpoint"
+  IFS='|' read -r ipv6 port hostname <<< "$endpoint"
   check_cert "$ipv6" "$port" "$hostname"
 done
 ```
@@ -76,13 +76,13 @@ wget https://raw.githubusercontent.com/Matty9191/ssl-cert-check/master/ssl-cert-
   -O /usr/local/bin/ssl-cert-check
 chmod +x /usr/local/bin/ssl-cert-check
 
-# Check certificate on IPv6 endpoint
-ssl-cert-check -h 2001:db8::1 -p 443 -n example.com -q -x 30
+# Check certificate on IPv6 endpoint (-s = server, -p = port, -x = days, -q = quiet)
+ssl-cert-check -s 2001:db8::1 -p 443 -q -x 30
 
-# Check multiple hosts from a file
+# Check multiple hosts from a file (file format: "host port" per line)
 cat > /etc/ssl-cert-check/ipv6-hosts.txt << 'EOF'
-2001:db8::1 443 example.com
-2001:db8::2 8443 api.example.com
+2001:db8::1 443
+2001:db8::2 8443
 EOF
 
 ssl-cert-check -f /etc/ssl-cert-check/ipv6-hosts.txt -x 30
@@ -138,7 +138,7 @@ groups:
   - name: ssl_certificate_expiry
     rules:
       - alert: SSLCertificateExpirySoon
-        expr: ssl_verified_valid_at_unix_seconds{job="ssl_certificates_ipv6"} - time() < 86400 * 30
+        expr: ssl_cert_not_after{job="ssl_certificates_ipv6"} - time() < 86400 * 30
         for: 1h
         labels:
           severity: warning
@@ -147,7 +147,7 @@ groups:
           description: "Certificate on {{ $labels.instance }} expires soon"
 
       - alert: SSLCertificateExpiryImminent
-        expr: ssl_verified_valid_at_unix_seconds{job="ssl_certificates_ipv6"} - time() < 86400 * 7
+        expr: ssl_cert_not_after{job="ssl_certificates_ipv6"} - time() < 86400 * 7
         for: 1h
         labels:
           severity: critical
