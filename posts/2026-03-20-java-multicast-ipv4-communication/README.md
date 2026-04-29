@@ -25,6 +25,8 @@ Use addresses in the 239.0.0.0/8 range for your own applications.
 ```java
 import java.net.*;
 import java.io.*;
+import java.nio.charset.StandardCharsets;
+import java.util.Enumeration;
 
 public class MulticastReceiver {
     
@@ -38,7 +40,9 @@ public class MulticastReceiver {
         try {
             // Join the multicast group
             InetAddress group = InetAddress.getByName(MULTICAST_GROUP);
-            socket.joinGroup(group);
+            NetworkInterface networkInterface = findMulticastInterface();
+            SocketAddress groupAddress = new InetSocketAddress(group, PORT);
+            socket.joinGroup(groupAddress, networkInterface);
             System.out.println("Joined multicast group " + MULTICAST_GROUP + " on port " + PORT);
             
             byte[] buffer = new byte[1024];
@@ -49,7 +53,7 @@ public class MulticastReceiver {
                 // Block until a multicast packet arrives
                 socket.receive(packet);
                 
-                String message = new String(packet.getData(), 0, packet.getLength(), "UTF-8");
+                String message = new String(packet.getData(), 0, packet.getLength(), StandardCharsets.UTF_8);
                 System.out.printf("Received from %s:%d: %s%n",
                     packet.getAddress().getHostAddress(),
                     packet.getPort(),
@@ -60,6 +64,24 @@ public class MulticastReceiver {
             socket.close();
         }
     }
+
+    private static NetworkInterface findMulticastInterface() throws SocketException {
+        Enumeration<NetworkInterface> interfaces = NetworkInterface.getNetworkInterfaces();
+        if (interfaces == null) {
+            throw new SocketException("No network interfaces found");
+        }
+
+        while (interfaces.hasMoreElements()) {
+            NetworkInterface networkInterface = interfaces.nextElement();
+            if (networkInterface.isUp()
+                && networkInterface.supportsMulticast()
+                && !networkInterface.isLoopback()) {
+                return networkInterface;
+            }
+        }
+
+        throw new SocketException("No multicast-capable network interface found");
+    }
 }
 ```
 
@@ -68,6 +90,7 @@ public class MulticastReceiver {
 ```java
 import java.net.*;
 import java.io.*;
+import java.nio.charset.StandardCharsets;
 
 public class MulticastSender {
     
@@ -75,21 +98,19 @@ public class MulticastSender {
     private static final int PORT = 4446;
     
     public static void main(String[] args) throws IOException {
-        // Create a regular DatagramSocket for sending
-        DatagramSocket socket = new DatagramSocket();
+        // Create a MulticastSocket so multicast-specific options are available
+        MulticastSocket socket = new MulticastSocket();
         
         try {
             InetAddress group = InetAddress.getByName(MULTICAST_GROUP);
             
             // Set time-to-live (hop limit for the multicast packet)
             // 1 = local subnet only, 32 = site-wide, 128 = continent, 255 = global
-            if (socket instanceof MulticastSocket) {
-                ((MulticastSocket) socket).setTimeToLive(1);
-            }
+            socket.setTimeToLive(1);
             
             for (int i = 1; i <= 10; i++) {
                 String message = "Multicast message #" + i + " at " + System.currentTimeMillis();
-                byte[] data = message.getBytes("UTF-8");
+                byte[] data = message.getBytes(StandardCharsets.UTF_8);
                 
                 DatagramPacket packet = new DatagramPacket(data, data.length, group, PORT);
                 socket.send(packet);
@@ -133,6 +154,8 @@ A node can both send and receive on the same multicast group:
 
 ```java
 import java.net.*;
+import java.nio.charset.StandardCharsets;
+import java.util.Enumeration;
 import java.util.concurrent.*;
 
 public class MulticastNode {
@@ -143,7 +166,9 @@ public class MulticastNode {
     public static void main(String[] args) throws Exception {
         MulticastSocket socket = new MulticastSocket(PORT);
         InetAddress group = InetAddress.getByName(GROUP);
-        socket.joinGroup(group);
+        NetworkInterface networkInterface = findMulticastInterface();
+        socket.setNetworkInterface(networkInterface);
+        socket.joinGroup(new InetSocketAddress(group, PORT), networkInterface);
         socket.setTimeToLive(1);
         
         // Receiver thread
@@ -154,7 +179,7 @@ public class MulticastNode {
                 try {
                     DatagramPacket pkt = new DatagramPacket(buf, buf.length);
                     socket.receive(pkt);
-                    System.out.println("Got: " + new String(pkt.getData(), 0, pkt.getLength()));
+                    System.out.println("Got: " + new String(pkt.getData(), 0, pkt.getLength(), StandardCharsets.UTF_8));
                 } catch (Exception e) { break; }
             }
         });
@@ -163,7 +188,7 @@ public class MulticastNode {
         executor.submit(() -> {
             for (int i = 0; i < 5; i++) {
                 try {
-                    byte[] data = ("Hello #" + i).getBytes();
+                    byte[] data = ("Hello #" + i).getBytes(StandardCharsets.UTF_8);
                     socket.send(new DatagramPacket(data, data.length, group, PORT));
                     Thread.sleep(1000);
                 } catch (Exception e) { break; }
@@ -173,6 +198,24 @@ public class MulticastNode {
         
         executor.shutdown();
         executor.awaitTermination(30, TimeUnit.SECONDS);
+    }
+
+    private static NetworkInterface findMulticastInterface() throws SocketException {
+        Enumeration<NetworkInterface> interfaces = NetworkInterface.getNetworkInterfaces();
+        if (interfaces == null) {
+            throw new SocketException("No network interfaces found");
+        }
+
+        while (interfaces.hasMoreElements()) {
+            NetworkInterface networkInterface = interfaces.nextElement();
+            if (networkInterface.isUp()
+                && networkInterface.supportsMulticast()
+                && !networkInterface.isLoopback()) {
+                return networkInterface;
+            }
+        }
+
+        throw new SocketException("No multicast-capable network interface found");
     }
 }
 ```
