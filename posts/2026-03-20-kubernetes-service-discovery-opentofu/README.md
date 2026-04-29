@@ -4,11 +4,11 @@ Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
 Tags: OpenTofu, Kubernetes, Service Discovery, DNS, Microservice, Infrastructure as Code
 
-Description: Learn how to configure Kubernetes Services, Endpoints, and ExternalName resources for service discovery using OpenTofu's Kubernetes provider.
+Description: Learn how to configure Kubernetes Services, EndpointSlices, and ExternalName resources for service discovery using OpenTofu's Kubernetes provider.
 
 ## Introduction
 
-Kubernetes has built-in service discovery through Services and DNS. Every Service gets a DNS name following the pattern `service.namespace.svc.cluster.local`. OpenTofu manages Services, headless services, and ExternalName services as code for consistent multi-environment configurations.
+Kubernetes has built-in service discovery through Services and DNS. Service DNS names typically follow `service.namespace.svc.cluster.local`, where `cluster.local` is the default cluster domain. OpenTofu manages Services, headless services, ExternalName services, and EndpointSlices as code for consistent multi-environment configurations.
 
 ## Creating a ClusterIP Service
 
@@ -41,7 +41,7 @@ resource "kubernetes_service_v1" "payments" {
 
 ## Headless Service for StatefulSets
 
-Headless services allow direct DNS resolution to individual pod IPs.
+Headless services return the backing pod IPs through DNS, which StatefulSets use for stable network identities.
 
 ```hcl
 resource "kubernetes_service_v1" "postgres_headless" {
@@ -68,7 +68,7 @@ resource "kubernetes_service_v1" "postgres_headless" {
 
 ## ExternalName Service
 
-Route internal traffic to an external hostname (e.g., an RDS endpoint).
+Map an internal service name to an external hostname (e.g., an RDS endpoint) through DNS.
 
 ```hcl
 resource "kubernetes_service_v1" "database" {
@@ -84,7 +84,7 @@ resource "kubernetes_service_v1" "database" {
 }
 ```
 
-## Custom Endpoints
+## Custom EndpointSlices
 
 Register external services with custom IP addresses.
 
@@ -96,30 +96,47 @@ resource "kubernetes_service_v1" "legacy_api" {
   }
   spec {
     port {
-      port     = 80
-      protocol = "TCP"
+      name        = "http"
+      port        = 80
+      target_port = 8080
+      protocol    = "TCP"
     }
   }
 }
 
-resource "kubernetes_endpoints_v1" "legacy_api" {
+resource "kubernetes_endpoint_slice_v1" "legacy_api" {
   metadata {
-    name      = kubernetes_service_v1.legacy_api.metadata[0].name
+    name      = "legacy-api-1"
     namespace = kubernetes_namespace_v1.app.metadata[0].name
+    labels = {
+      "kubernetes.io/service-name"              = kubernetes_service_v1.legacy_api.metadata[0].name
+      "endpointslice.kubernetes.io/managed-by" = "opentofu"
+    }
   }
 
-  subset {
-    address {
-      ip = "192.168.1.100"
-    }
-    address {
-      ip = "192.168.1.101"
-    }
+  address_type = "IPv4"
 
-    port {
-      port     = 8080
-      protocol = "TCP"
+  endpoint {
+    addresses = ["192.168.1.100"]
+
+    condition {
+      ready = true
     }
+  }
+
+  endpoint {
+    addresses = ["192.168.1.101"]
+
+    condition {
+      ready = true
+    }
+  }
+
+  port {
+    name         = "http"
+    app_protocol = "http"
+    port         = "8080"
+    protocol     = "TCP"
   }
 }
 ```
@@ -138,9 +155,10 @@ resource "kubernetes_namespace_v1" "app" {
 
 Once created, services are accessible at these DNS names within the cluster:
 
-- Same namespace: `payments` or `payments.default`
-- Cross namespace: `payments.production.svc.cluster.local`
-- External via ExternalName: resolves to the RDS endpoint CNAME
+- Same namespace: `payments`
+- Cross namespace: `payments.<namespace>`
+- Fully qualified: `payments.<namespace>.svc.cluster.local` by default
+- External via ExternalName: `database.<namespace>.svc.cluster.local` resolves to the external hostname as a CNAME
 
 ## Deploying
 
@@ -152,4 +170,4 @@ tofu apply tfplan
 
 ## Summary
 
-Kubernetes service discovery relies on Services and DNS, both of which can be fully managed with OpenTofu. By using ClusterIP services for internal communication, headless services for StatefulSets, and ExternalName services for external resources, you create a consistent service discovery layer across all environments.
+Kubernetes service discovery relies on Services and DNS, both of which can be fully managed with OpenTofu. By using ClusterIP services for internal communication, headless services for StatefulSets, ExternalName services for external resources, and EndpointSlices for selectorless services, you create a consistent service discovery layer across all environments.
