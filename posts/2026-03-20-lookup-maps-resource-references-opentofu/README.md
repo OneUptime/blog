@@ -42,9 +42,18 @@ resource "aws_instance" "app" {
 Construct lookup maps dynamically from data source results rather than hard-coding values.
 
 ```hcl
-# Fetch all subnets with a specific tag
+variable "vpc_id" {
+  type = string
+}
+
+# Fetch all subnets with a specific tag in the target VPC
 data "aws_subnets" "by_tier" {
   for_each = toset(["public", "private", "database"])
+
+  filter {
+    name   = "vpc-id"
+    values = [var.vpc_id]
+  }
 
   filter {
     name   = "tag:Tier"
@@ -104,6 +113,10 @@ resource "aws_security_group" "app" {
 Different environments may require different instance sizes. A lookup map makes this clean.
 
 ```hcl
+variable "app_ami_id" {
+  type = string
+}
+
 locals {
   # Map environment names to instance configurations
   instance_config = {
@@ -127,7 +140,7 @@ locals {
 
 resource "aws_launch_template" "app" {
   name_prefix   = "app-${var.environment}-"
-  image_id      = data.aws_ami.app.id
+  image_id      = var.app_ami_id
   instance_type = local.env_config.instance_type
 
   block_device_mappings {
@@ -145,18 +158,18 @@ The `lookup` function provides a safe way to access map values with a fallback d
 
 ```hcl
 variable "feature_flags" {
-  type = map(string)
+  type = map(bool)
   default = {
-    "enable_waf"     = "true"
-    "enable_cdn"     = "false"
+    "enable_waf" = true
+    "enable_cdn" = false
   }
 }
 
 locals {
   # Safe lookups with defaults for missing keys
-  enable_waf       = lookup(var.feature_flags, "enable_waf", "false")
-  enable_cdn       = lookup(var.feature_flags, "enable_cdn", "false")
-  enable_firewall  = lookup(var.feature_flags, "enable_firewall", "false")
+  enable_waf      = lookup(var.feature_flags, "enable_waf", false)
+  enable_cdn      = lookup(var.feature_flags, "enable_cdn", false)
+  enable_firewall = lookup(var.feature_flags, "enable_firewall", false)
 }
 ```
 
