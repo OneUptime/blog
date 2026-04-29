@@ -68,11 +68,11 @@ sudo ip xfrm state get src 1.2.3.4 dst 5.6.7.8 proto esp spi 0xc1234567
 # Show XFRM statistics (byte/packet counters)
 sudo ip xfrm state list | grep -A5 "lifetime"
 
-# or using ss to see ESP socket state
-sudo ss -s
+# Show kernel XFRM error/drop counters
+cat /proc/net/xfrm_stat
 
-# Count ESP packets with tcpdump
-sudo tcpdump -i eth0 -c 100 -n proto 50 | wc -l
+# Count ESP packets with tcpdump (IP protocol 50)
+sudo tcpdump -i eth0 -c 100 -n ip proto 50 | wc -l
 ```
 
 ## Monitoring Script
@@ -115,14 +115,20 @@ fi
 ## Monitoring with Prometheus
 
 ```bash
-# strongSwan supports a prometheus output plugin via vici
-# Configure in strongswan.conf:
-# plugins {
-#   prometheus {
-#     load = yes
+# strongSwan does not ship a built-in Prometheus plugin.
+# Use a third-party exporter that connects to the vici socket, e.g.:
+#   - github.com/torilabs/ipsec-prometheus-exporter (default port 8079)
+#   - github.com/sergeymakinen/ipsec_exporter (supports strongSwan and libreswan)
+#
+# Ensure the vici plugin is loaded in strongswan.conf:
+# charon {
+#   plugins {
+#     vici {
+#       load = yes
+#     }
 #   }
 # }
-# Then scrape: http://localhost:9119/metrics
+# Then run the exporter and scrape, e.g.: http://localhost:8079/metrics
 ```
 
 Regular SA monitoring ensures you detect tunnel failures proactively rather than waiting for user complaints about connectivity issues.
