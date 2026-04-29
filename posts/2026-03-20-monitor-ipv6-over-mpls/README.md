@@ -66,10 +66,9 @@ show bfd neighbors
 
 ```bash
 # Configure SNMPv3 on PE routers
-snmp-server user MONITOR v3Engine v3 auth sha AuthPass123 priv aes PrivPass456
-snmp-server group MONITOR-GROUP v3 priv
-snmp-server group MONITOR-GROUP v3 priv read FULL-VIEW
 snmp-server view FULL-VIEW iso included
+snmp-server group MONITOR-GROUP v3 priv read FULL-VIEW
+snmp-server user MONITOR MONITOR-GROUP v3 auth sha AuthPass123 priv aes 128 PrivPass456
 
 # Query MPLS LSP statistics via SNMP
 # MPLS-LSR-STD-MIB: mplsInSegmentTable, mplsOutSegmentTable
@@ -86,10 +85,10 @@ snmpwalk -v3 -u MONITOR \
   MPLS-LSR-STD-MIB::mplsOutSegmentOctets
 
 # IPv6 VPN statistics (VPNv6)
-# BGP4-MIB or vendor-specific MIBs for VPN route counts
+# MPLS-L3VPN-STD-MIB (RFC 4382) for per-VRF route counts
 snmpwalk -v3 -u MONITOR \
   2001:db8::pe1 \
-  CISCO-IPSLA-MIB::cipslaMplsVpnBgpReach
+  MPLS-L3VPN-STD-MIB::mplsL3VpnVrfPerfCurrNumRoutes
 ```
 
 ## Prometheus Monitoring for IPv6/MPLS
@@ -124,16 +123,16 @@ def snmp_get(host, oid, community='public'):
 
 def check_mpls_lsp_health(pe_ip):
     """Check MPLS LSP status for IPv6 paths."""
-    # MPLS-TE MIB - tunnel state
-    # 1.3.6.1.2.1.10.166.3.2.2.1.16 = mplsTunnelOperStatus
-    # 2 = up, others = down
-    state_oid = '1.3.6.1.2.1.10.166.3.2.2.1.16.1.0.0.0'
+    # MPLS-TE-STD-MIB (RFC 3812) - tunnel state
+    # 1.3.6.1.2.1.10.166.3.2.2.1.35 = mplsTunnelOperStatus
+    # 1 = up, 2 = down, others = transitional/unavailable
+    state_oid = '1.3.6.1.2.1.10.166.3.2.2.1.35.1.0.0.0'
     state = snmp_get(pe_ip, state_oid)
     if state:
         mpls_lsp_status.labels(
             lsp_name='primary',
             dest=pe_ip
-        ).set(1 if int(state) == 2 else 0)
+        ).set(1 if int(state) == 1 else 0)
 
 def collect_metrics():
     pe_routers = ['10.0.0.1', '10.0.0.2']
@@ -162,7 +161,7 @@ show bgp ipv6 unicast | include 2001:db8
 # Look for: *>i prefix  next-hop  ... Label: XXXX
 
 # Check MPLS forwarding table for IPv6
-show mpls forwarding-table detail | grep -B2 -A2 "Tagger"
+show mpls forwarding-table detail | include 2001:db8
 
 # Monitor BGP prefix count per address family
 show bgp summary all | include ipv6
@@ -172,7 +171,7 @@ show bgp summary all | include ipv6
 show bgp ipv6 unicast flap-statistics
 
 # Monitor BFD for LSP health
-show bfd neighbors details | grep "IPv6\|State"
+show bfd neighbors details | include IPv6|State
 ```
 
 IPv6 over MPLS monitoring centers on three layers: MPLS LSP ping/traceroute to verify the label-switched path integrity, BFD sessions on BGP neighbors for sub-second failure detection, and SNMP queries to MPLS-LSR-STD-MIB for per-LSP byte/packet counters that feed capacity planning and SLA reporting.
