@@ -164,8 +164,8 @@ Binding lifetime negotiation:
   HA grants:    600 seconds (or less, based on policy)
   MN refreshes: at 300 seconds (half of granted lifetime)
 
-Maximum lifetime: 65528 seconds (≈ 18 hours)
-  (Limited by 16-bit field × 4-second units)
+Maximum lifetime: 262140 seconds (≈ 72.8 hours / ~3 days)
+  (Limited by 16-bit field × 4-second units: 65535 × 4)
 ```
 
 ## Conclusion
