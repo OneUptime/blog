@@ -8,15 +8,16 @@ Description: Deploy Mailcow, the full-featured self-hosted email server suite, u
 
 ## Introduction
 
-Mailcow is a Docker-based mail server suite that includes Postfix, Dovecot, SOGo webmail, antispam, and antivirus - all in one package. This guide shows you how to install Mailcow using its official installer and then import it into Portainer for ongoing management.
+Mailcow is a Docker-based mail server suite that includes Postfix, Dovecot, SOGo webmail, antispam, and antivirus - all in one package. This guide shows you how to install Mailcow using its official setup process and then import it into Portainer for ongoing management.
 
 ## Prerequisites
 
 - A fresh server with a public IP address
 - A fully qualified domain name (FQDN) like `mail.yourdomain.com`
-- Port 25, 80, 443, 465, 587, 993, 995, 4190 available
-- At least 3 GB RAM (6 GB recommended)
-- Portainer installed on the same host
+- Docker Engine 24+ with Docker Compose v2 on the host
+- Port 25, 80, 110, 143, 443, 465, 587, 993, 995, 4190 available
+- At least 6 GB RAM and 1 GB swap (8 GB RAM recommended for 5-10 users)
+- Portainer installed and connected to the same Docker host
 
 ## Step 1: Configure DNS Records
 
@@ -26,6 +27,10 @@ Before installing, set up these DNS records:
 # A record
 
 mail.yourdomain.com  A  your.server.ip
+
+# Client autoconfiguration
+autodiscover.yourdomain.com  CNAME  mail.yourdomain.com
+autoconfig.yourdomain.com  CNAME  mail.yourdomain.com
 
 # MX record
 yourdomain.com  MX  10  mail.yourdomain.com
@@ -42,7 +47,7 @@ _dmarc.yourdomain.com  TXT  "v=DMARC1; p=quarantine; rua=mailto:dmarc@yourdomain
 
 ## Step 2: Install Mailcow
 
-Mailcow provides an official installation script:
+Mailcow's official installation process is:
 
 ```bash
 # Clone the Mailcow repository
@@ -58,36 +63,36 @@ cd mailcow-dockerized
 
 This creates `/opt/mailcow-dockerized/mailcow.conf` with your configuration.
 
-## Step 3: Review Generated docker-compose.yml
+## Step 3: Review Mailcow's docker-compose.yml
 
-Mailcow generates a detailed compose file. Key services include:
+Mailcow ships with a detailed compose file, and `generate_config.sh` creates the `mailcow.conf` file it uses. Key services include:
 
 ```yaml
 # /opt/mailcow-dockerized/docker-compose.yml (excerpt)
 services:
   # SMTP server
   postfix-mailcow:
-    image: mailcow/postfix:1.71
+    image: ghcr.io/mailcow/postfix:3.7.11-2
     # ...
 
   # IMAP/POP3 server
   dovecot-mailcow:
-    image: mailcow/dovecot:1.8
+    image: ghcr.io/mailcow/dovecot:2.3.21.1-2
     # ...
 
-  # Webmail client
+  # Webmail/groupware
   sogo-mailcow:
-    image: mailcow/sogo:1.128
+    image: ghcr.io/mailcow/sogo:5.12.5-3
     # ...
 
   # Antispam
   rspamd-mailcow:
-    image: mailcow/rspamd:1.99
+    image: ghcr.io/mailcow/rspamd:3.14.3-1
     # ...
 
   # Database
   mysql-mailcow:
-    image: mariadb:10.5
+    image: mariadb:10.11
     # ...
 ```
 
@@ -108,17 +113,17 @@ docker compose ps
 
 To manage Mailcow from Portainer:
 
-1. Go to **Stacks** → **Add Stack** → **Repository**
-2. Enter the Git URL: `https://github.com/mailcow/mailcow-dockerized`
-3. Set the **Compose path**: `docker-compose.yml`
+1. Go to **Stacks** → **Add Stack**
+2. For an existing Mailcow installation, use **Web editor** or **Upload** and provide the local `docker-compose.yml` from `/opt/mailcow-dockerized/`
+3. Load the values from the generated `/opt/mailcow-dockerized/mailcow.conf` into Portainer's environment variables, or enter them manually
 
-Alternatively, use **Upload** and upload the generated compose file from `/opt/mailcow-dockerized/`.
+If you prefer **Git Repository**, you can use `https://github.com/mailcow/mailcow-dockerized` with `docker-compose.yml` as the **Compose path**, but you still need to provide the values from `mailcow.conf`; the upstream repository does not contain your generated hostname, passwords, or other local settings.
 
-> **Important**: Mailcow relies on environment variables from `mailcow.conf`. If using Portainer's stack import, you'll need to manually set those env vars in the Portainer stack editor.
+> **Important**: Mailcow's compose file reads its variables from `mailcow.conf` via the repo's `.env` symlink. Importing only `docker-compose.yml` is not enough.
 
 ## Step 6: Access the Mailcow Admin Panel
 
-1. Open `https://mail.yourdomain.com`
+1. Open `https://mail.yourdomain.com/admin`
 2. Log in with `admin` / `moohoo` (default credentials)
 3. **Immediately change the admin password**
 
@@ -132,8 +137,8 @@ In the Mailcow admin panel:
 
 ## Step 8: Get DKIM Keys
 
-1. In the admin panel, go to **Mail Setup** → **Configuration** → **ARC/DKIM Keys**
-2. Generate a new DKIM key for your domain
+1. In the admin panel, go to **Configuration** → **ARC/DKIM Keys**
+2. Copy the TXT record shown for your domain, or generate a key there if one does not already exist
 3. Add the displayed TXT record to your DNS
 
 ## Monitoring via Portainer
@@ -146,4 +151,4 @@ After setup, use Portainer to:
 
 ## Conclusion
 
-Mailcow provides a production-ready, self-hosted email platform and Portainer makes it easy to monitor and manage the ~15 containers it runs. With proper DNS configuration, you'll have a fully functional mail server that rivals hosted email services - all under your control.
+Mailcow provides a production-ready, self-hosted email platform and Portainer makes it easy to monitor and manage the ~18 containers in its default stack. With proper DNS configuration, you'll have a fully functional mail server that rivals hosted email services - all under your control.
