@@ -8,7 +8,7 @@ Description: Use Kubernetes Service externalIPs to bind a Service to one or more
 
 ## Introduction
 
-Kubernetes Services normally expose applications through NodePort, LoadBalancer, or ClusterIP. The `externalIPs` field is an alternative that binds the Service to one or more external IPv4 addresses assigned to cluster nodes. Traffic arriving on a node at the specified external IP and port is routed to the Service's pods.
+Kubernetes Services normally expose applications through NodePort, LoadBalancer, or ClusterIP. The `externalIPs` field is an alternative that exposes a Service on one or more external IPv4 addresses routed to cluster nodes. Traffic arriving on a node at the specified external IP and port is routed to the Service's pods. As of Kubernetes v1.36, `externalIPs` is deprecated, so prefer a load balancer controller or Gateway API when possible.
 
 ## When to Use externalIPs
 
@@ -36,7 +36,7 @@ spec:
       targetPort: 8080     # Pod port
       protocol: TCP
   externalIPs:
-    - 192.168.1.200        # External IPv4 address assigned to a cluster node
+    - 192.168.1.200        # External IPv4 address routed to one or more cluster nodes
     - 192.168.1.201        # Additional external IP (optional)
 ```
 
@@ -51,11 +51,11 @@ kubectl get service web-service
 
 ## How It Works
 
-The kube-proxy on each node installs iptables rules for the externalIPs. When a packet arrives at a node destined for `192.168.1.200:80`, kube-proxy intercepts it and load-balances it to one of the matching pods, regardless of which node the pod runs on.
+The kube-proxy on each node programs forwarding rules for Services based on its proxy mode. In `iptables` mode, for example, it installs rules for the externalIPs. When a packet arrives at a node destined for `192.168.1.200:80`, kube-proxy intercepts it and load-balances it to one of the matching pods, regardless of which node the pod runs on.
 
-## Assigning the External IP to a Node
+## Routing the External IP to the Cluster
 
-The external IP must be assigned to a network interface on at least one cluster node. On bare-metal:
+The external IP must be routed to one or more cluster nodes. On bare-metal, one common option is to assign a VIP to a network interface on a node:
 
 ```bash
 # Add the virtual IP to a node's interface
@@ -68,7 +68,7 @@ sudo ip addr add 192.168.1.200/24 dev eth0
 Using keepalived for HA (highly recommended for production):
 
 ```bash
-# keepalived moves the VIP to the active node automatically
+# keepalived can move the VIP to the active node automatically
 # Configure keepalived to manage 192.168.1.200
 ```
 
@@ -78,36 +78,28 @@ Using keepalived for HA (highly recommended for production):
 # From outside the cluster, test the external IP
 curl http://192.168.1.200/
 
-# Check iptables rules kube-proxy created
+# If kube-proxy is running in iptables mode, inspect the NAT rules
 sudo iptables -t nat -L -n | grep 192.168.1.200
 ```
 
 ## Security Consideration
 
-**externalIPs are not validated** by Kubernetes. A user with permission to create Services could specify any IP, potentially redirecting traffic from legitimate external services. Restrict who can create Services with externalIPs using admission webhooks or RBAC.
+**externalIPs require strict policy controls**. Because Kubernetes does not manage allocation of `externalIPs`, a user with permission to create or update Services could specify an IP they do not own and potentially redirect traffic. Restrict or block `externalIPs` with admission control. RBAC can limit who may create or update Services, but it cannot by itself enforce field-level restrictions on `spec.externalIPs`.
 
-```yaml
-# Example OPA/Gatekeeper constraint to block unauthorized externalIPs
-apiVersion: constraints.gatekeeper.sh/v1beta1
-kind: K8sNoExternalIPs
-metadata:
-  name: no-external-ips
-spec:
-  match:
-    kinds:
-      - apiGroups: [""]
-        kinds: ["Service"]
+```bash
+# Example: block new externalIPs usage cluster-wide
+kube-apiserver --enable-admission-plugins=DenyServiceExternalIPs
 ```
 
 ## MetalLB as an Alternative
 
-For production bare-metal clusters, MetalLB manages external IPs automatically using BGP or ARP announcements:
+For production bare-metal clusters, MetalLB manages external IPs automatically using layer 2 or BGP advertisements:
 
 ```bash
 # MetalLB is generally preferred over manual externalIPs for production
-kubectl apply -f https://raw.githubusercontent.com/metallb/metallb/v0.14.5/config/manifests/metallb-native.yaml
+kubectl apply -f https://raw.githubusercontent.com/metallb/metallb/v0.15.3/config/manifests/metallb-native.yaml
 ```
 
 ## Conclusion
 
-`externalIPs` provides a simple way to expose Kubernetes Services on specific IPv4 addresses without a cloud load balancer. For production bare-metal deployments, combine it with keepalived for VIP failover or migrate to MetalLB for automated IP management.
+`externalIPs` provides a simple way to expose Kubernetes Services on specific IPv4 addresses without a cloud load balancer, but the feature is deprecated as of Kubernetes v1.36. For production bare-metal deployments, if you must keep using it, combine it with keepalived for VIP failover or prefer MetalLB for automated IP management.
