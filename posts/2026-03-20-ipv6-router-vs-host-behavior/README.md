@@ -17,9 +17,9 @@ In IPv6, a node is either a **host** or a **router**. This distinction affects h
 | Forward packets between interfaces | No | Yes |
 | Send Router Advertisements (RA) | No | Yes |
 | Accept Router Advertisements | Yes | No (by default) |
-| Send Router Solicitations (RS) | Yes | No |
+| Send Router Solicitations (RS) | Yes | No (by default) |
 | Respond to all-nodes multicast (ff02::1) | Yes | Yes |
-| Set ip6_forwarding sysctl | 0 | 1 |
+| Set net.ipv6.conf.all.forwarding | 0 | 1 |
 
 ## Checking Node Behavior on Linux
 
@@ -40,14 +40,14 @@ sysctl net.ipv6.conf.eth0.accept_ra
 ## Host Behavior
 
 A host:
-1. Sends a **Router Solicitation** (RS) to `ff02::2` (all-routers) at startup
+1. May send a **Router Solicitation** (RS) to `ff02::2` (all-routers) when an interface becomes enabled
 2. Receives **Router Advertisements** (RA) and configures:
    - Default gateway (from RA source link-local address)
-   - Prefix for SLAAC address generation (if M=0, O=0 in RA)
-   - Managed flag (M=1 → use DHCPv6 for address)
-   - Other config flag (O=1 → use DHCPv6 for other settings like DNS)
+   - Prefix for SLAAC address generation (from Prefix Information options with the A flag set)
+   - Managed flag (M=1 → addresses available via DHCPv6)
+   - Other config flag (O=1 → other settings like DNS available via DHCPv6)
 3. Does NOT forward packets to other interfaces
-4. Drops packets not addressed to itself
+4. Does NOT forward packets not addressed to itself
 
 ```bash
 # On a host: show the default gateway learned from RA
@@ -59,7 +59,7 @@ ip -6 route show default
 
 A router:
 1. Periodically sends **Router Advertisements** to `ff02::1` (all-nodes)
-2. Does NOT process incoming RA for its own configuration (by default)
+2. Does NOT process incoming RA for its own configuration by default
 3. Forwards packets between interfaces (when `net.ipv6.conf.all.forwarding=1`)
 4. Responds to Neighbor Solicitations for all its addresses
 
@@ -94,7 +94,7 @@ interface eth1 {
 
 | ICMPv6 Message | Host Sends | Router Sends |
 |---------------|------------|--------------|
-| Router Solicitation (133) | Yes (at startup) | No |
+| Router Solicitation (133) | Yes (when an interface is enabled) | No (by default) |
 | Router Advertisement (134) | No | Yes (periodic + on RS) |
 | Neighbor Solicitation (135) | Yes | Yes |
 | Neighbor Advertisement (136) | Yes | Yes |
@@ -102,7 +102,7 @@ interface eth1 {
 
 ## Redirect Messages
 
-Routers send **ICMPv6 Redirect** messages to inform hosts that a better first-hop router exists:
+Routers send **ICMPv6 Redirect** messages to inform hosts that a better first-hop node exists, or that a destination is directly on-link:
 
 ```bash
 # Monitor for Redirect messages (type 137) on the network
@@ -129,4 +129,4 @@ net.ipv6.conf.eth0.accept_ra = 2
 
 ## Summary
 
-IPv6 hosts accept Router Advertisements and do not forward packets; routers send RAs and forward packets between interfaces. On Linux, the distinction is controlled by `net.ipv6.conf.all.forwarding` and `accept_ra` sysctl values. Understanding this distinction is critical for correct network configuration and security.
+IPv6 hosts accept Router Advertisements and do not forward packets; routers send RAs and forward packets between interfaces. On Linux, the distinction is controlled by `net.ipv6.conf.all.forwarding` and `accept_ra` sysctl values, with `accept_ra=2` allowing a forwarding node to still accept RAs on a specific interface. Understanding this distinction is critical for correct network configuration and security.
