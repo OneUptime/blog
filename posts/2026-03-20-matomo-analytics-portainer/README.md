@@ -14,7 +14,7 @@ Matomo (formerly Piwik) is the world's most popular self-hosted web analytics pl
 
 - Portainer CE or BE installed
 - Docker Engine 20.10+
-- A domain name (for HTTPS access)
+- A domain name and reverse proxy/TLS setup (optional, for HTTPS access)
 - SMTP server details (optional, for email reports)
 
 ## Step 1: Create Data Directories
@@ -36,28 +36,31 @@ version: "3.8"
 services:
   # MariaDB - Matomo's database
   matomo-db:
-    image: mariadb:10.11
+    image: mariadb:lts
     container_name: matomo-db
     restart: unless-stopped
     command: --max-allowed-packet=64MB
     environment:
-      MYSQL_ROOT_PASSWORD: rootpassword
-      MYSQL_DATABASE: matomo
-      MYSQL_USER: matomo
-      MYSQL_PASSWORD: matomopassword
+      MARIADB_AUTO_UPGRADE: "1"
+      MARIADB_DATABASE: matomo
+      MARIADB_DISABLE_UPGRADE_BACKUP: "1"
+      MARIADB_INITDB_SKIP_TZINFO: "1"
+      MARIADB_ROOT_PASSWORD: rootpassword
+      MARIADB_USER: matomo
+      MARIADB_PASSWORD: matomopassword
     volumes:
       - /opt/matomo/db:/var/lib/mysql
     networks:
       - matomo-net
     healthcheck:
-      test: ["CMD", "mysqladmin", "ping", "-h", "localhost"]
+      test: ["CMD", "healthcheck.sh", "--connect", "--innodb_initialized"]
       interval: 10s
       timeout: 5s
       retries: 5
 
   # Matomo Analytics application
   matomo:
-    image: matomo:5.1
+    image: matomo:5-apache
     container_name: matomo
     restart: unless-stopped
     depends_on:
@@ -67,33 +70,16 @@ services:
       - "8080:80"
     environment:
       # Database connection settings
+      MATOMO_DATABASE_ADAPTER: mysql
       MATOMO_DATABASE_HOST: matomo-db
-      MATOMO_DATABASE_PORT: "3306"
       MATOMO_DATABASE_USERNAME: matomo
       MATOMO_DATABASE_PASSWORD: matomopassword
       MATOMO_DATABASE_DBNAME: matomo
 
       # PHP settings for large traffic sites
       PHP_MEMORY_LIMIT: "512M"
-      PHP_MAX_EXECUTION_TIME: "300"
     volumes:
       - /opt/matomo/data:/var/www/html
-    networks:
-      - matomo-net
-
-  # Optional: Nginx reverse proxy for HTTPS
-  matomo-nginx:
-    image: nginx:alpine
-    container_name: matomo-nginx
-    restart: unless-stopped
-    depends_on:
-      - matomo
-    ports:
-      - "443:443"
-      - "80:80"
-    volumes:
-      - ./nginx.conf:/etc/nginx/conf.d/default.conf:ro
-      - /etc/ssl/certs:/etc/ssl/certs:ro
     networks:
       - matomo-net
 
@@ -143,21 +129,15 @@ For better performance, disable browser-triggered archiving and use a cron job:
 # On the host, add to crontab
 crontab -e
 
-# Run Matomo archiving every 5 minutes
-*/5 * * * * docker exec matomo php /var/www/html/console core:archive --url=https://matomo.yourdomain.com > /dev/null 2>&1
+# Run Matomo archiving every hour at 5 minutes past
+5 * * * * docker exec matomo php /var/www/html/console core:archive --matomo-domain=https://matomo.yourdomain.com > /dev/null 2>&1
 ```
 
-In Matomo admin: **System** → **General Settings** → disable **Browser Trigger Archiving**.
+In Matomo admin: **System** → **General Settings** → set **Archive reports when viewed from the browser** to **No** and **Archive reports at most every X seconds** to **3600**.
 
 ## Step 7: Enable GeoIP Location
 
-```bash
-# Inside the Matomo container, download GeoIP database
-docker exec -it matomo bash
-# Then download and configure in Admin > Geolocation
-```
-
-Or configure via the admin panel:
+Configure via the admin panel:
 1. **System** → **Geolocation**
 2. Enable **MaxMind GeoIP2** or **DB-IP**
 3. Follow the provider's setup instructions
