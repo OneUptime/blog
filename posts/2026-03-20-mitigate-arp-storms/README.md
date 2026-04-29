@@ -29,7 +29,7 @@ The most effective mitigation is reducing the broadcast domain size:
 
 ```text
 Before: One /16 with 65,534 hosts → massive ARP domain
-After:  128 /24 subnets with 254 hosts each → small ARP domains
+After:  256 /24 subnets with 254 hosts each → small ARP domains
 ```
 
 ```python
@@ -81,10 +81,7 @@ THRESHOLD=50  # ARP per 10 seconds
 WINDOW=10     # seconds
 
 sudo tcpdump -n arp -i eth0 2>/dev/null | \
-    awk '{print $4}' | \
-    while read sender; do
-        echo "$sender"
-    done | \
+    awk '/Request/ {gsub(",", "", $7); print $7}' | \
     sort | uniq -c | sort -rn | \
     awk -v thresh="$THRESHOLD" '$1 > thresh {print "High ARP rate from:", $2, "count:", $1}'
 ```
