@@ -39,10 +39,10 @@ tcpdump -i eth0 'icmp6 and (ip6[40] == 135 or ip6[40] == 136)' -l -n \
 ssh router "show ipv6 neighbors"
 
 # FRRouting
-vtysh -c "show ipv6 neighbors"
+vtysh -c "show ipv6 neighbor"
 
 # Check DNS for AAAA records
-dig AAAA @internal-dns example.internal
+dig @internal-dns example.internal AAAA
 # Compare with expected inventory
 ```
 
@@ -95,14 +95,18 @@ radvdump 2>/dev/null | head -50
 
 ```bash
 # Test Packet Too Big (must not be blocked - breaks PMTUD)
-# From external host, send a large packet and check if PTB is received
+# From external host, send an oversized probe and check that PTB is received
 
-# Test essential ICMPv6 types
-hping3 -6 --icmpv6 -C 128 <target>   # Echo request
-hping3 -6 --icmpv6 -C 2 <target>     # Packet Too Big
+# Test essential ICMPv6 behavior
+ping -6 -c 2 <target>             # Echo request/reply
+ping -6 -s 2000 -M do <target>    # Oversized probe to exercise PMTUD
+
+# Capture Packet Too Big while testing
+tcpdump -i eth0 'icmp6 and ip6[40] == 2' -n
 
 # Verify these are logged in firewall logs
-grep "ICMPv6" /var/log/syslog | head -20
+grep -Ei 'ICMPv6|icmp6|ip6tables' /var/log/syslog | head -20
+# Exact log pattern depends on your logging format
 ```
 
 ## Step 6: Check Extension Header Filtering
@@ -125,13 +129,15 @@ send(pkt)
 ip6tables -L INPUT -n | grep LOG
 # Should see LOG rules before DROP for auditing
 
-# Check that logs are forwarded to SIEM
-grep "IPv6" /var/log/syslog | wc -l
-# Should have non-zero count if IPv6 traffic exists
+# Check recent IPv6-related log entries locally
+grep -Ei 'ICMPv6|icmp6|ip6tables' /var/log/syslog | head -20
+# Exact log pattern depends on your logging format; verify the same events appear in SIEM
 
 # Verify NetFlow includes IPv6
-# On router:
-show ip flow export   # Cisco - should show IPv6 flows
+# On router (classic NetFlow):
+show ipv6 flow export
+# Flexible NetFlow platforms:
+show flow exporter <exporter-name>
 ```
 
 ## Audit Checklist
