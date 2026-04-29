@@ -145,6 +145,8 @@ ruler:
 
 ## Step 4: Configure Promtail
 
+Note: Promtail reached end of life on March 2, 2026. Grafana now recommends [Grafana Alloy](https://grafana.com/docs/alloy/latest/) as the replacement collector. The config below still works for existing Promtail deployments, but new installations should use Alloy.
+
 ```yaml
 # /opt/logging/promtail/config.yml
 server:
@@ -214,9 +216,9 @@ services:
         loki-url: "http://loki:3100/loki/api/v1/push"
         loki-batch-size: "400"
         loki-retries: "3"
-        loki-timeout: "1000"
-        loki-max-backoff: "1000"
-        loki-min-backoff: "100"
+        loki-timeout: "10s"
+        loki-max-backoff: "5s"
+        loki-min-backoff: "500ms"
         labels: "container_name,service_name"
         loki-external-labels: "job=user-service,env=production"
 
