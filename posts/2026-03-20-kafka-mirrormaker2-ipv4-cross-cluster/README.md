@@ -39,14 +39,15 @@ source->destination.enabled = true
 
 # --- Topic selection ---
 # Replicate all topics matching this pattern
-source->destination.topics = .*                   # All topics
-# source->destination.topics = orders.*, payments.*  # Specific topics
+source->destination.topics = .*
+# source->destination.topics = orders.*, payments.*
 
-# Exclude internal topics
-source->destination.topics.blacklist = .*\.internal, .*_replica
+# Exclude internal and replica topics
+source->destination.topics.exclude = mm2.*\\.internal, .*\\.replica, __.*, .*_replica
 
 # --- Consumer group offset replication ---
-source->destination.groups = .*                   # Replicate all consumer groups
+# Replicate all consumer groups
+source->destination.groups = .*
 source->destination.emit.checkpoints.enabled = true
 source->destination.sync.group.offsets.enabled = true
 
@@ -68,7 +69,7 @@ status.storage.replication.factor = 3
 
 ```bash
 # Start MM2 in dedicated mode
-connect-mirror-maker.sh /etc/kafka/mm2.properties &
+connect-mirror-maker.sh /etc/kafka/mm2.properties > /var/log/kafka/mirrormaker.log 2>&1 &
 
 # Check logs
 tail -f /var/log/kafka/mirrormaker.log
@@ -76,17 +77,11 @@ tail -f /var/log/kafka/mirrormaker.log
 
 ## Monitoring Replication Lag
 
-MirrorMaker 2 creates a heartbeat topic on the destination cluster. Measure lag by comparing offsets:
+MirrorMaker 2 emits heartbeats to the destination cluster. Use the Connect REST API to inspect the MM2 connectors, the heartbeat topic to verify the replication flow, and MM2 JMX metrics such as `replication-latency-ms` and `checkpoint-latency-ms` to measure lag:
 
 ```bash
-# Check replication status via the Connect REST API (if MM2 runs as Connect cluster)
+# Inspect the MM2 connectors via the Connect REST API
 curl -s http://10.0.0.20:8083/connectors | python3 -m json.tool
-
-# Check consumer group offsets for the MM2 consumer group
-kafka-consumer-groups.sh \
-  --bootstrap-server 10.0.0.10:9092 \
-  --describe \
-  --group source-destination
 
 # Monitor the heartbeat topic for replication health
 kafka-console-consumer.sh \
@@ -107,19 +102,18 @@ MM2 renames replicated topics on the destination with the source alias prefix:
 ## Failover: Using Replicated Offsets
 
 ```bash
-# After failover, translate consumer group offsets to the destination cluster
+# After failover, restart consumers against the destination cluster with the same group.id.
+# If MM2 has synced translated offsets, verify them on the destination cluster:
 kafka-consumer-groups.sh \
   --bootstrap-server 10.1.0.10:9092 \
   --command-config /etc/kafka/client.properties \
-  --execute \
-  --topic source.orders \
-  --group my-consumer-group \
-  --reset-offsets --to-latest
+  --describe \
+  --group my-consumer-group
 ```
 
 ## Key Takeaways
 
-- MM2 preserves consumer group offsets, enabling transparent failover to the destination cluster.
+- MM2 can sync translated consumer group offsets to the destination cluster to support failover.
 - Topics are renamed with the source alias prefix (e.g., `source.orders`) to avoid naming conflicts.
-- `source->destination.sync.group.offsets.enabled = true` continuously syncs consumer positions to the destination.
-- Run MM2 as a Kafka Connect cluster for HA; or use dedicated mode for simpler deployments.
+- `source->destination.sync.group.offsets.enabled = true` periodically writes translated offsets to the destination cluster while the group is inactive there.
+- Run multiple MM2 processes for HA; dedicated mode is simpler to operate.
