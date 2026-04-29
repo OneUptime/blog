@@ -17,7 +17,7 @@ Java's `Socket` and `ServerSocket` classes expose a range of socket options that
 | SO_TIMEOUT | `setSoTimeout(ms)` | Read timeout (0 = infinite) |
 | TCP_NODELAY | `setTcpNoDelay(true)` | Disable Nagle's algorithm |
 | SO_KEEPALIVE | `setKeepAlive(true)` | Enable TCP keepalive probes |
-| SO_REUSEADDR | `setReuseAddress(true)` | Allow port reuse after close |
+| SO_REUSEADDR | `setReuseAddress(true)` | Allow rebinding while a prior connection is in `TIME_WAIT` |
 | SO_RCVBUF | `setReceiveBufferSize(bytes)` | Receive buffer size |
 | SO_SNDBUF | `setSendBufferSize(bytes)` | Send buffer size |
 | SO_LINGER | `setSoLinger(true, secs)` | Wait on close for data send |
@@ -36,20 +36,21 @@ public class OptimizedSocketClient {
         
         // Set socket options BEFORE connecting for some options to take effect
         
-        // SO_REUSEADDR: allow reuse of local address (useful for reconnects)
+        // SO_REUSEADDR: relevant when you bind a specific local address/port
+        // and want to rebind while a previous connection is still in TIME_WAIT
         socket.setReuseAddress(true);
         
-        // Set receive buffer size (important for high-throughput connections)
-        // Larger buffer = better throughput on high-latency links
+        // Set buffer size hints before connect; larger receive windows must be
+        // requested before connect() if you want values above 64 KB
         socket.setReceiveBufferSize(256 * 1024);  // 256 KB
         socket.setSendBufferSize(256 * 1024);      // 256 KB
         
         // Connect with a 5-second timeout (instead of hanging forever)
         socket.connect(new InetSocketAddress(host, port), 5000);
         
-        // Set options AFTER connecting (some require an established connection)
+        // Set additional options on the connected socket before I/O begins
         
-        // SO_TIMEOUT: read timeout - throw SocketTimeoutException after 30s
+        // SO_TIMEOUT: blocking read timeout - throw SocketTimeoutException after 30s
         socket.setSoTimeout(30000);
         
         // TCP_NODELAY: disable Nagle's algorithm for low-latency sends
@@ -88,8 +89,8 @@ public class OptimizedServer {
     public static ServerSocket createOptimizedServer(int port) throws IOException {
         ServerSocket serverSocket = new ServerSocket();
         
-        // SO_REUSEADDR: allows binding to a port that was recently in use
-        // Essential to prevent "Address already in use" on server restart
+        // SO_REUSEADDR: allows rebinding while a prior connection is in TIME_WAIT
+        // Useful to avoid "Address already in use" on quick restarts
         serverSocket.setReuseAddress(true);
         
         // Set receive buffer size hint for accepted sockets
@@ -144,7 +145,8 @@ public class OptimizedServer {
 For IP-level socket options (e.g., IP_TOS for QoS marking):
 
 ```java
-// Set IP Type of Service (TOS) for QoS marking
+// Request IP Type of Service (TOS) for QoS marking.
+// Some platforms treat this as a hint and may ignore or cap the value.
 // 0x10 = Minimize Delay, 0x08 = Maximize Throughput
 socket.setTrafficClass(0x10);
 System.out.println("IP TOS set to: 0x" + Integer.toHexString(socket.getTrafficClass()));
@@ -156,12 +158,12 @@ For high-throughput file transfer or streaming:
 
 ```java
 // For a 100 Mbit/s link with 10ms RTT:
-// Bandwidth-Delay Product = 100Mbps * 0.01s = 1 Mbit = 128 KB
-// Set buffers to at least 128 KB to fully utilize the pipe
-socket.setReceiveBufferSize(1024 * 1024);   // 1 MB
-socket.setSendBufferSize(1024 * 1024);       // 1 MB
+// Bandwidth-Delay Product = 100,000,000 bits/s * 0.01s = 1,000,000 bits
+// ~= 125,000 bytes (~122 KiB), so start around that size or higher
+socket.setReceiveBufferSize(1024 * 1024);   // 1 MB hint
+socket.setSendBufferSize(1024 * 1024);      // 1 MB hint
 ```
 
 ## Conclusion
 
-Properly configured socket options are the difference between a performant and a mediocre network application. Always set `SO_REUSEADDR` on servers, `TCP_NODELAY` for interactive protocols, `SO_TIMEOUT` to prevent indefinite blocking, and tune buffer sizes for your expected throughput requirements.
+Properly configured socket options are the difference between a performant and a mediocre network application. Set `SO_REUSEADDR` on servers before binding when you want faster restarts, `TCP_NODELAY` for interactive protocols, `SO_TIMEOUT` to prevent indefinite blocking, and tune buffer sizes for your expected throughput requirements.
