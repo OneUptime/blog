@@ -88,12 +88,12 @@ The MikroTik mangle table pre-processes packets before routing and queuing decis
   passthrough=no \
   comment="Gaming traffic via ISP2"
 
-# Apply route table
+# Create routing table first, then add route to it
+/routing table add name=ISP2-ROUTE fib
 /ip route add \
   dst-address=0.0.0.0/0 \
   gateway=198.51.100.1 \
   routing-table=ISP2-ROUTE
-/routing table add name=ISP2-ROUTE fib
 ```
 
 ## Per-Host Download Marking
@@ -102,7 +102,7 @@ The MikroTik mangle table pre-processes packets before routing and queuing decis
 # Mark download traffic for a specific host
 /ip firewall mangle add \
   chain=forward \
-  src-address=192.168.1.100 \
+  dst-address=192.168.1.100 \
   in-interface=ether1 \
   action=mark-packet \
   new-packet-mark=HOST-100-DOWN \
