@@ -26,22 +26,25 @@ This guide provides a systematic approach to troubleshooting Kubewarden issues.
 kubectl get pods -n kubewarden
 
 # 2. Check PolicyServer status
-kubectl get policyserver
+kubectl get policyserver -n kubewarden
 
 # 3. Check all policy statuses
 kubectl get clusteradmissionpolicies
 kubectl get admissionpolicies -A
 
 # 4. Check recent policy events
-kubectl get events -A --field-selector reason=PolicyViolation
+kubectl get events -n kubewarden --sort-by='.lastTimestamp'
 
 # 5. Check Kubewarden logs
-kubectl logs -n kubewarden -l app=kubewarden-controller --tail=50
+kubectl logs -n kubewarden \
+  deployment/kubewarden-controller \
+  --all-pods=true \
+  --tail=50
 ```
 
 ## Troubleshooting Policy Activation Issues
 
-### Symptom: Policy Stuck in "PolicyActive: False"
+### Symptom: Policy Status Stuck in "pending"
 
 ```bash
 # Check the policy status conditions
@@ -49,8 +52,9 @@ kubectl describe clusteradmissionpolicy my-policy | grep -A 20 "Conditions:"
 
 # Look for error messages in controller logs
 kubectl logs -n kubewarden \
-  -l app=kubewarden-controller \
-  | grep -i "error\|failed\|policy-name"
+  deployment/kubewarden-controller \
+  --all-pods=true \
+  | grep -Ei "error|failed|my-policy"
 ```
 
 ### Common Causes of Activation Failure
@@ -58,27 +62,34 @@ kubectl logs -n kubewarden \
 **1. Policy Wasm module not accessible**
 
 ```bash
-# Check if the Wasm module URL is reachable
-# Test from within the policy server pod
-kubectl exec -n kubewarden \
-  $(kubectl get pods -n kubewarden \
-    -l app=kubewarden-policy-server-default \
-    -o jsonpath='{.items[0].metadata.name}') \
-  -- wget -q --spider \
-  ghcr.io/kubewarden/policies/pod-privileged:v0.2.0
+# Validate the module reference locally
+kwctl pull registry://ghcr.io/kubewarden/policies/pod-privileged:v0.2.0
 
-# Check for image pull errors
-kubectl describe policyserver default -n kubewarden \
-  | grep -A 10 "Events:"
+# Check policy server logs for module download or verification errors
+kubectl logs -n kubewarden \
+  -l kubewarden/policy-server=default \
+  --all-containers=true \
+  --tail=100 \
+  | grep -Ei "ghcr.io|error|failed|verify|pull"
 ```
 
 **2. Invalid policy settings**
 
 ```bash
+# Create a minimal admission request for local testing
+cat <<EOF > /tmp/pod.json
+{"apiVersion":"v1","kind":"Pod","metadata":{"name":"settings-check"},"spec":{"containers":[{"name":"pause","image":"registry.k8s.io/pause"}]}}
+EOF
+
+kwctl scaffold admission-request \
+  --operation CREATE \
+  --object /tmp/pod.json > /tmp/test-request.json
+
 # Validate the settings before deploying
-kwctl validate-settings \
-  registry://ghcr.io/kubewarden/policies/allowed-image-repositories:v0.1.0 \
-  --settings-json '{"allowedRegistries": []}'
+kwctl run \
+  registry://ghcr.io/kubewarden/policies/container-resources:latest \
+  --request-path /tmp/test-request.json \
+  --settings-json '{"memory":{"defaultRequest":"5G","maxLimit":"1G"}}'
 
 # Expected output for invalid settings: error message
 ```
@@ -87,16 +98,15 @@ kwctl validate-settings \
 
 ```bash
 # Check the PolicyServer referenced by the policy
-kubectl get policyserver default
+kubectl get policyserver default -n kubewarden
 
 # Check PolicyServer pods
 kubectl get pods -n kubewarden \
-  -l app=kubewarden-policy-server-default
+  -l kubewarden/policy-server=default
 
 # Restart the PolicyServer if needed
-kubectl rollout restart deployment \
-  kubewarden-policy-server-default \
-  -n kubewarden
+kubectl delete pods -n kubewarden \
+  -l kubewarden/policy-server=default
 ```
 
 ## Troubleshooting Unexpected Denials
@@ -118,37 +128,30 @@ kubectl apply -f my-pod.yaml 2>&1
 ```bash
 # Find which policy denied the request
 # Look at the webhook name in the error message
-# Format: <policy-name>.<namespace>.kubewarden.admission
+# For ClusterAdmissionPolicy objects, the webhook name is typically:
+# clusterwide-<policy-name>.kubewarden.admission
 
-# Get events for the denied resource
+# Check recent namespace events around the failed request
 kubectl get events -n my-namespace \
-  --field-selector involvedObject.name=my-pod \
   --sort-by='.lastTimestamp'
 
 # Check policy server logs for the denial
 kubectl logs -n kubewarden \
-  -l app=kubewarden-policy-server-default \
-  | grep -i "my-pod\|deny\|reject"
+  -l kubewarden/policy-server=default \
+  --all-containers=true \
+  --tail=100 \
+  | grep -Ei "my-pod|deny|reject"
 ```
 
 ### Testing a Specific Resource Against Policies
 
 ```bash
-# Get the resource as JSON and test it locally
-kubectl get pod existing-pod -n my-namespace -o json > /tmp/pod.json
+# Render the resource as JSON and wrap it in an admission request
+kubectl apply --dry-run=client -o json -f my-pod.yaml > /tmp/pod.json
 
-# Wrap it in an admission request format
-cat <<EOF > /tmp/test-request.json
-{
-  "request": {
-    "uid": "debug-test",
-    "kind": {"group": "", "version": "v1", "kind": "Pod"},
-    "operation": "CREATE",
-    "namespace": "my-namespace",
-    "object": $(cat /tmp/pod.json)
-  }
-}
-EOF
+kwctl scaffold admission-request \
+  --operation CREATE \
+  --object /tmp/pod.json > /tmp/test-request.json
 
 # Test against the denying policy
 kwctl run \
@@ -179,15 +182,15 @@ kubectl get clusteradmissionpolicy my-policy \
 
 ```bash
 # Check that the ValidatingWebhookConfiguration exists
-kubectl get validatingwebhookconfiguration | grep kubewarden
+kubectl get validatingwebhookconfigurations.admissionregistration.k8s.io -l kubewarden
 
 # Verify the webhook is targeting the correct resources
 kubectl describe validatingwebhookconfiguration \
-  clusterwide-my-policy.kubewarden.admission
+  clusterwide-my-policy
 
 # Check the webhook's namespace selector
 kubectl get validatingwebhookconfiguration \
-  clusterwide-my-policy.kubewarden.admission \
+  clusterwide-my-policy \
   -o jsonpath='{.webhooks[0].namespaceSelector}'
 ```
 
@@ -199,14 +202,15 @@ kubectl get validatingwebhookconfiguration \
 # Check PolicyServer resource usage
 kubectl top pods -n kubewarden
 
-# Check for OOM events
-kubectl get events -n kubewarden \
-  --field-selector reason=OOMKilled
+# Check PolicyServer Pods for OOMKilled restarts
+kubectl describe pods -n kubewarden \
+  -l kubewarden/policy-server=default \
+  | grep -A 5 -B 2 OOMKilled
 
 # Increase PolicyServer resources if needed
 kubectl patch policyserver default -n kubewarden \
   --type=merge \
-  -p '{"spec":{"resources":{"limits":{"memory":"2Gi","cpu":"2"}}}}'
+  -p '{"spec":{"limits":{"memory":"2Gi","cpu":"2"},"requests":{"memory":"2Gi","cpu":"2"}}}'
 ```
 
 ### Webhook Timeout Issues
@@ -214,7 +218,8 @@ kubectl patch policyserver default -n kubewarden \
 ```bash
 # Check the webhook timeout configuration
 kubectl get validatingwebhookconfiguration \
-  -o jsonpath='{range .items[?(@.metadata.labels.kubewarden)]}{.metadata.name}: timeout={.webhooks[0].timeoutSeconds}{"\n"}{end}'
+  -l kubewarden \
+  -o jsonpath='{range .items[*]}{.metadata.name}: timeout={.webhooks[0].timeoutSeconds}{"\n"}{end}'
 
 # Kubewarden uses 10 seconds by default
 # Increase if policies are too slow
@@ -225,21 +230,24 @@ kubectl get validatingwebhookconfiguration \
 If the PolicyServer crashes and blocks all admissions:
 
 ```bash
-# EMERGENCY: Delete the ValidatingWebhookConfiguration
-# This disables ALL Kubewarden policies temporarily
-# Only do this in a critical production incident
-
-kubectl delete validatingwebhookconfiguration \
-  $(kubectl get validatingwebhookconfiguration | grep kubewarden | awk '{print $1}')
-
-# Fix the issue, then recreate the PolicyServer
-kubectl rollout restart deployment \
-  kubewarden-policy-server-default \
+# EMERGENCY: Stop the controller first so it does not immediately recreate webhooks
+kubectl scale deployment kubewarden-controller \
+  --replicas=0 \
   -n kubewarden
 
-# Restart the controller to recreate webhooks
-kubectl rollout restart deployment \
+# Delete Kubewarden webhook configurations
+# This disables Kubewarden policies temporarily
+# Only do this in a critical production incident
+kubectl delete validatingwebhookconfigurations \
+  -l app.kubernetes.io/part-of=kubewarden
+
+kubectl delete mutatingwebhookconfigurations \
+  -l app.kubernetes.io/part-of=kubewarden
+
+# Fix the PolicyServer issue, then restore the controller
+kubectl scale deployment \
   kubewarden-controller \
+  --replicas=1 \
   -n kubewarden
 ```
 
@@ -253,9 +261,10 @@ kubectl patch policyserver default -n kubewarden \
 
 # View debug logs
 kubectl logs -n kubewarden \
-  -l app=kubewarden-policy-server-default \
+  -l kubewarden/policy-server=default \
+  --all-containers=true \
   --follow \
-  | grep -i "debug\|policy\|deny\|allow"
+  | grep -Ei "debug|policy|deny|allow"
 ```
 
 ## Conclusion
