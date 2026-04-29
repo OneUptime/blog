@@ -1,18 +1,26 @@
-# How to Manage Crds Kubernetes with OpenTofu on Kubernetes
+# How to Manage Kubernetes CRDs with OpenTofu
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
 Tags: OpenTofu, Kubernetes, Infrastructure as Code, K8s, Container Orchestration
 
-Description: Learn how to manage Kubernetes manage crds kubernetes with OpenTofu for declarative, version-controlled Kubernetes configuration.
+Description: Learn how to manage Kubernetes CustomResourceDefinitions (CRDs) with OpenTofu for declarative, version-controlled API extensions.
 
 ## Introduction
 
-Managing Kubernetes resources with OpenTofu lets you declare them in HCL alongside your cloud infrastructure. This guide covers the complete configuration for this Kubernetes resource type.
+CustomResourceDefinitions (CRDs) extend the Kubernetes API with new resource types. With OpenTofu, you can manage those definitions declaratively after your cluster is reachable. This guide covers a working configuration for managing CRDs with the Kubernetes provider.
 
 ## Provider Setup
 
 ```hcl
+terraform {
+  required_providers {
+    kubernetes = {
+      source = "hashicorp/kubernetes"
+    }
+  }
+}
+
 provider "kubernetes" {
   config_path    = "~/.kube/config"
   config_context = var.kube_context
@@ -22,63 +30,55 @@ provider "kubernetes" {
 Resource Configuration
 
 ```hcl
-resource "kubernetes_namespace" "app" {
-  metadata {
-    name = var.namespace
+resource "kubernetes_manifest" "crontab_crd" {
+  manifest = {
+    apiVersion = "apiextensions.k8s.io/v1"
+    kind       = "CustomResourceDefinition"
 
-    labels = {
-      app         = var.app_name
-      environment = var.environment
-      managed-by  = "opentofu"
-    }
-  }
-}
-
-# Example Kubernetes resource for this topic
-
-resource "kubernetes_deployment" "app" {
-  metadata {
-    name      = var.app_name
-    namespace = kubernetes_namespace.app.metadata[0].name
-  }
-
-  spec {
-    replicas = var.replica_count
-
-    selector {
-      match_labels = {
-        app = var.app_name
-      }
+    metadata = {
+      name = "${var.crd_plural}.${var.crd_group}"
     }
 
-    template {
-      metadata {
-        labels = {
-          app = var.app_name
-        }
+    spec = {
+      group = var.crd_group
+
+      names = {
+        kind       = var.crd_kind
+        plural     = var.crd_plural
+        singular   = var.crd_singular
+        shortNames = var.crd_short_names
       }
 
-      spec {
-        container {
-          name  = var.app_name
-          image = "${var.image_repository}:${var.image_tag}"
+      scope = var.crd_scope
 
-          port {
-            container_port = var.container_port
-          }
+      versions = [
+        {
+          name    = var.crd_version
+          served  = true
+          storage = true
 
-          resources {
-            requests = {
-              cpu    = var.cpu_request
-              memory = var.memory_request
-            }
-            limits = {
-              cpu    = var.cpu_limit
-              memory = var.memory_limit
+          schema = {
+            openAPIV3Schema = {
+              type = "object"
+
+              properties = {
+                spec = {
+                  type = "object"
+
+                  properties = {
+                    cronSpec = {
+                      type = "string"
+                    }
+                    image = {
+                      type = "string"
+                    }
+                  }
+                }
+              }
             }
           }
         }
-      }
+      ]
     }
   }
 }
@@ -87,20 +87,16 @@ resource "kubernetes_deployment" "app" {
 ## Variables
 
 ```hcl
-variable "namespace"          { type = string }
-variable "app_name"           { type = string }
-variable "environment"        { type = string }
-variable "kube_context"       { type = string; default = "default" }
-variable "replica_count"      { type = number; default = 2 }
-variable "image_repository"   { type = string }
-variable "image_tag"          { type = string; default = "latest" }
-variable "container_port"     { type = number; default = 8080 }
-variable "cpu_request"        { type = string; default = "100m" }
-variable "memory_request"     { type = string; default = "128Mi" }
-variable "cpu_limit"          { type = string; default = "500m" }
-variable "memory_limit"       { type = string; default = "512Mi" }
+variable "kube_context"    { type = string }
+variable "crd_group"       { type = string; default = "stable.example.com" }
+variable "crd_kind"        { type = string; default = "CronTab" }
+variable "crd_plural"      { type = string; default = "crontabs" }
+variable "crd_singular"    { type = string; default = "crontab" }
+variable "crd_short_names" { type = list(string); default = ["ct"] }
+variable "crd_scope"       { type = string; default = "Namespaced" }
+variable "crd_version"     { type = string; default = "v1" }
 ```
 
 ## Conclusion
 
-Kubernetes resources managed with OpenTofu benefit from the same plan/apply workflow as cloud infrastructure. Always set resource requests and limits, use namespaces for isolation, and leverage OpenTofu's ability to reference Kubernetes outputs in subsequent cloud resource configurations.
+CRDs managed with OpenTofu benefit from the same declarative workflow as other infrastructure code, but `kubernetes_manifest` validates against the live Kubernetes API during planning, so the cluster must already be reachable. Use `kubernetes_manifest` for CRDs and other resources not yet modeled by first-class provider resources, define a structural `openAPIV3Schema` for `apiextensions.k8s.io/v1`, and apply the CRD before creating custom resources that depend on it.
