@@ -14,20 +14,24 @@ Managing 100+ resources in OpenTofu without deliberate structure leads to fragil
 
 ```hcl
 # AVOID - count index-based naming causes resource churn when items are removed
+variable "ci_users_list" {
+  type    = list(string)
+  default = ["alice", "bob", "charlie"]
+}
 
-resource "aws_iam_user" "ci_users" {
-  count = length(var.ci_users)
-  name  = var.ci_users[count.index]
+resource "aws_iam_user" "ci_users_count" {
+  count = length(var.ci_users_list)
+  name  = var.ci_users_list[count.index]
 }
 
 # PREFER - for_each keys are stable; removing one user doesn't shift others
-variable "ci_users" {
+variable "ci_users_set" {
   type    = set(string)
   default = ["alice", "bob", "charlie"]
 }
 
-resource "aws_iam_user" "ci_users" {
-  for_each = var.ci_users
+resource "aws_iam_user" "ci_users_each" {
+  for_each = var.ci_users_set
   name     = each.key
 }
 ```
@@ -58,31 +62,40 @@ resource "aws_instance" "fleet" {
 }
 ```
 
-## Pattern 3: Targeted Operations for Rapid Iteration
+## Pattern 3: Use Targeted Operations Sparingly
 
 ```bash
-# Work on a subset of resources during development
-tofu plan -target=aws_instance.fleet["web-prod-1"]
-tofu apply -target=aws_instance.fleet["web-prod-1"]
+# Use targeting only for exceptional cases, such as troubleshooting or recovery
+tofu plan -target=aws_instance.fleet
+tofu apply -target=aws_instance.fleet
 
-# Apply a whole module
+# Apply a whole module when needed
 tofu apply -target=module.networking
 
-# Always run a full plan before merging
+# Always follow targeted operations with a full plan
 tofu plan   # No -target - full configuration
 ```
 
 ## Pattern 4: State Lists for Auditing
 
 ```bash
-# Count resources by type
-tofu state list | cut -d'.' -f1-2 | sort | uniq -c | sort -rn | head -20
+# Count resources by type, including resources inside modules
+tofu state list | awk -F. '{
+  i = 1
+  while ($i == "module") i += 2
+  if ($i == "data") i++
+  print $i
+}' | sort | uniq -c | sort -rn | head -20
 
-# Find all resources of a specific type
-tofu state list | grep "^aws_instance\."
+# Find all resources of a specific type, including resources inside modules
+tofu state list | awk -F. '{
+  i = 1
+  while ($i == "module") i += 2
+  if ($i == "aws_instance") print $0
+}'
 
 # Check a specific resource
-tofu state show aws_instance.fleet[\"web-prod-1\"]
+tofu state show 'aws_instance.fleet["web-prod-1"]'
 ```
 
 ## Pattern 5: Outputs for Cross-Configuration Sharing
@@ -122,11 +135,9 @@ resource "aws_instance" "fleet" {
   for_each = var.instances
 
   lifecycle {
-    # Prevent accidental destruction of instances
-    prevent_destroy = true
-    # Don't replace when AMI is updated - update in-place or via separate process
-    ignore_changes  = [ami]
-    # Create new instances before destroying old ones
+    # Ignore AMI changes in OpenTofu and handle image rollouts separately
+    ignore_changes = [ami]
+    # Create replacement instances before destroying old ones
     create_before_destroy = true
   }
 }
@@ -134,4 +145,4 @@ resource "aws_instance" "fleet" {
 
 ## Conclusion
 
-Managing hundreds of resources efficiently requires: stable `for_each` keys instead of positional `count`, centralized variable maps for resource definitions, modules for grouping related resources, and targeted operations for development speed. Regular `tofu state list` audits keep state clean and reveal opportunities to further split configurations.
+Managing hundreds of resources efficiently requires: stable `for_each` keys instead of positional `count`, centralized variable maps for resource definitions, modules for grouping related resources, and targeted operations reserved for exceptional cases. Regular `tofu state list` audits keep state clean and reveal opportunities to further split configurations.
