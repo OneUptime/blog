@@ -104,11 +104,11 @@ In the UI, select a namespace and filter traffic by address family. IPv6 flows a
 Cilium exposes Hubble flow metrics for Prometheus. To see IPv6-specific metrics:
 
 ```bash
-# Port-forward Cilium metrics endpoint
-kubectl port-forward -n kube-system daemonset/cilium 9962:9962 &
+# Port-forward the Hubble metrics endpoint
+kubectl port-forward -n kube-system daemonset/cilium 9965:9965 &
 
 # Check for IPv6-related metrics
-curl -s http://localhost:9962/metrics | grep -i "ipv6\|ip6"
+curl -s http://localhost:9965/metrics | grep -i "ipv6\|ip6"
 ```
 
 Hubble's per-flow visibility into IPv6 traffic makes it the most powerful tool available for understanding and debugging IPv6 connectivity in Cilium-based Kubernetes clusters.
