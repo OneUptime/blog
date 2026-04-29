@@ -14,13 +14,13 @@ Istio adds security, traffic management, and observability to Kubernetes service
 
 ```mermaid
 graph TB
-    A[Istio Ingress Gateway] --> B[East-West Traffic]
+    A[Istio Ingress Gateway] --> B[North-South Traffic]
     C[Istiod] --> D[Envoy Sidecar Config]
     D --> E[Service A<br/>+ Envoy]
     D --> F[Service B<br/>+ Envoy]
     E --> F
     G[Kiali] --> C
-    H[Jaeger] --> E
+    E --> H[Jaeger]
 ```
 
 ## Install Istio via Helm
@@ -62,7 +62,10 @@ resource "helm_release" "istiod" {
         accessLogFile = "/dev/stdout"
         enableTracing = true
         defaultConfig = {
-          tracing = { sampling = var.environment == "production" ? 1.0 : 100.0 }
+          tracing = {
+            sampling = var.environment == "production" ? 1.0 : 100.0
+            zipkin = { address = "jaeger-collector.observability:9411" }
+          }
         }
         outboundTrafficPolicy = {
           mode = "REGISTRY_ONLY"  # Block traffic to unregistered services
@@ -97,7 +100,11 @@ resource "helm_release" "istio_gateway" {
 
   values = [
     yamlencode({
-      replicaCount = var.environment == "production" ? 3 : 2
+      autoscaling = {
+        enabled     = true
+        minReplicas = var.environment == "production" ? 3 : 2
+        maxReplicas = 5
+      }
 
       service = {
         type = "LoadBalancer"
@@ -159,8 +166,13 @@ resource "helm_release" "kiali" {
   }
 
   set {
-    name  = "external_services.tracing.url"
-    value = "http://jaeger-query.observability:16686"
+    name  = "external_services.tracing.internal_url"
+    value = "http://jaeger-query.observability:16686/jaeger"
+  }
+
+  set {
+    name  = "external_services.tracing.use_grpc"
+    value = "false"
   }
 
   depends_on = [helm_release.istiod]
@@ -170,7 +182,7 @@ resource "helm_release" "kiali" {
 ## Best Practices
 
 - Install Istio in dependency order: base → istiod → gateways. Use `depends_on` in OpenTofu to enforce this.
-- Enable strict mTLS mode cluster-wide via `PeerAuthentication` - then all service-to-service communication is encrypted automatically.
+- Enable strict mTLS mode mesh-wide via `PeerAuthentication` in the root namespace - then all meshed service-to-service communication is encrypted automatically.
 - Set `outboundTrafficPolicy = REGISTRY_ONLY` to block traffic to external services not explicitly registered in ServiceEntry resources.
 - Configure sidecar proxy resource limits - unbounded proxies consume significant CPU and memory on high-traffic services.
 - Use Kiali for service mesh observability - it shows the dependency graph, traffic flow, and mTLS status in a visual interface.
