@@ -59,7 +59,7 @@ variable "allow_public_access" {
   description = "Allow public access (only for static website hosting)"
 }
 
-# Bucket always has encryption, versioning, and access logging
+# Bucket always has encryption, versioning, and public access blocking
 resource "aws_s3_bucket" "this" {
   bucket = "${var.environment}-${var.bucket_name}"
 
