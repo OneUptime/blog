@@ -16,16 +16,14 @@ Minikube supports dual-stack networking using the Calico CNI plugin. This allows
 
 ## Step 1: Start Minikube with Dual-Stack
 
-Minikube's dual-stack support requires specifying Calico as the CNI and passing the feature gate:
+Minikube's dual-stack support requires specifying Calico as the CNI and passing comma-separated IPv4/IPv6 CIDRs to kubeadm. Dual-stack networking has been GA in Kubernetes since v1.23, so no feature gate is needed:
 
 ```bash
 # Start a dual-stack Minikube cluster using the docker driver
 
 minikube start \
   --driver=docker \
-  --network-plugin=cni \
   --cni=calico \
-  --feature-gates="IPv6DualStack=true" \
   --extra-config=kubeadm.pod-network-cidr="10.244.0.0/16,fd00::/56" \
   --extra-config=kubeadm.service-cidr="10.96.0.0/12,fd00:1::/108"
 ```
@@ -36,8 +34,8 @@ minikube start \
 # Check that the cluster started successfully
 minikube status
 
-# Verify dual-stack feature gate is enabled on the API server
-minikube ssh -- cat /etc/kubernetes/manifests/kube-apiserver.yaml | grep dual
+# Verify the API server is configured with dual-stack service CIDRs
+minikube ssh -- cat /etc/kubernetes/manifests/kube-apiserver.yaml | grep service-cluster-ip-range
 ```
 
 ## Step 3: Install Calico for IPv6
@@ -45,8 +43,8 @@ minikube ssh -- cat /etc/kubernetes/manifests/kube-apiserver.yaml | grep dual
 If Calico was not auto-configured, install it manually:
 
 ```bash
-# Download the Calico manifest
-kubectl apply -f https://docs.projectcalico.org/manifests/calico.yaml
+# Download the Calico manifest (pin to a specific version)
+kubectl apply -f https://raw.githubusercontent.com/projectcalico/calico/v3.28.2/manifests/calico.yaml
 
 # Wait for Calico pods to be ready
 kubectl rollout status daemonset/calico-node -n kube-system
