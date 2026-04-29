@@ -10,7 +10,7 @@ Description: Build a realistic IPv6 test lab in GNS3 with router images, OSPFv3,
 
 GNS3 supports IPv6 natively through:
 - Router images (Cisco IOSv, IOSvL2, Arista vEOS, FRR containers)
-- Cloud/NAT nodes for internet IPv6 access
+- Cloud nodes for upstream IPv6 access and NAT nodes for simple internet access
 - Linux hosts for end-device simulation
 
 ## Installing GNS3 and FRR Appliance
@@ -22,12 +22,12 @@ sudo add-apt-repository ppa:gns3/ppa
 sudo apt update
 sudo apt install gns3-gui gns3-server
 
-# Pull FRR Docker image for GNS3
-docker pull frrouting/frr:latest
+# Pull a Debian-based FRR Docker image for GNS3
+docker pull frrouting/frr-debian:latest
 
 # Create a custom FRR image with tools
 cat > Dockerfile.frr-lab << 'EOF'
-FROM frrouting/frr:latest
+FROM frrouting/frr-debian:latest
 RUN apt-get update && apt-get install -y \
     iputils-ping \
     tcpdump \
@@ -58,9 +58,8 @@ interface eth1
 interface lo
  ipv6 address 2001:db8:1::1/128
 !
-ipv6 router ospf6
- router-id 1.1.1.1
- area 0.0.0.0 range 2001:db8:1::/48
+router ospf6
+ ospf6 router-id 1.1.1.1
 !
 interface eth0
  ipv6 ospf6 area 0.0.0.0
@@ -73,7 +72,7 @@ interface lo
  ipv6 ospf6 area 0.0.0.0
 !
 end
-write
+write file
 ```
 
 ## BGP IPv6 in GNS3
@@ -88,11 +87,11 @@ router bgp 65001
  !
  address-family ipv6 unicast
   neighbor 2001:db8:12::2 activate
-  network 2001:db8:1::/48
+  network 2001:db8:1::1/128
  exit-address-family
 !
 end
-write
+write file
 ```
 
 ## GNS3 Topology Script (Python GNS3 API)
@@ -101,7 +100,6 @@ Automate topology creation via the GNS3 API:
 
 ```python
 import requests
-import json
 
 GNS3_SERVER = "http://localhost:3080"
 PROJECT_NAME = "IPv6-Lab"
@@ -111,23 +109,26 @@ def create_project():
         f"{GNS3_SERVER}/v2/projects",
         json={"name": PROJECT_NAME},
     )
+    resp.raise_for_status()
     return resp.json()["project_id"]
 
 def add_node(project_id, name, template_name, x=0, y=0):
     # Get template ID
-    templates = requests.get(f"{GNS3_SERVER}/v2/templates").json()
+    templates_resp = requests.get(f"{GNS3_SERVER}/v2/templates")
+    templates_resp.raise_for_status()
+    templates = templates_resp.json()
     template = next((t for t in templates if t["name"] == template_name), None)
     if not template:
         raise ValueError(f"Template {template_name} not found")
 
     resp = requests.post(
-        f"{GNS3_SERVER}/v2/projects/{project_id}/nodes",
+        f"{GNS3_SERVER}/v2/projects/{project_id}/templates/{template['template_id']}",
         json={
             "name": name,
-            "template_id": template["template_id"],
             "x": x, "y": y,
         },
     )
+    resp.raise_for_status()
     return resp.json()["node_id"]
 
 def add_link(project_id, node1_id, port1, node2_id, port2):
@@ -140,15 +141,18 @@ def add_link(project_id, node1_id, port1, node2_id, port2):
             ]
         },
     )
+    resp.raise_for_status()
     return resp.json()
 
 def build_ipv6_lab():
     project_id = create_project()
     print(f"Created project: {project_id}")
 
-    r1 = add_node(project_id, "R1", "FRR", x=-100, y=0)
-    r2 = add_node(project_id, "R2", "FRR", x=100, y=0)
-    r3 = add_node(project_id, "R3", "FRR", x=0, y=100)
+    template_name = "FRR"  # Match this to the imported appliance name in GNS3.
+
+    r1 = add_node(project_id, "R1", template_name, x=-100, y=0)
+    r2 = add_node(project_id, "R2", template_name, x=100, y=0)
+    r3 = add_node(project_id, "R3", template_name, x=0, y=100)
 
     add_link(project_id, r1, 0, r2, 0)
     add_link(project_id, r2, 1, r3, 0)
@@ -172,12 +176,12 @@ show ipv6 ospf6 neighbor
 show bgp ipv6 unicast summary
 
 # End-to-end test
-ping 2001:db8:3::1 source 2001:db8:1::1
+ping ipv6 2001:db8:3::1 source 2001:db8:1::1
 
 # Traceroute
-traceroute6 2001:db8:3::1
+traceroute ipv6 2001:db8:3::1
 ```
 
 ## Conclusion
 
-GNS3 provides a GUI-based environment for realistic IPv6 lab scenarios. FRR Docker containers are the quickest way to get started without needing commercial router images. The GNS3 REST API enables topology automation via Python. For Cisco IOS-based labs, GNS3 requires IOS/IOS-XE images from a valid Cisco entitlement. FRR covers OSPFv3, BGP4+ with IPv6 AFI, IS-IS, and static routing - sufficient for most IPv6 learning and testing scenarios.
+GNS3 provides a GUI-based environment for realistic IPv6 lab scenarios. FRR Docker containers are the quickest way to get started without needing commercial router images. The GNS3 REST API enables topology automation via Python. For Cisco IOS-based labs, GNS3 requires IOS/IOS-XE images from a valid Cisco entitlement. FRR covers OSPFv3, BGP-4+ with IPv6 AFI, IS-IS, and static routing - sufficient for most IPv6 learning and testing scenarios.
