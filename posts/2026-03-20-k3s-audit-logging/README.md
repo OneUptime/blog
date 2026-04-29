@@ -33,13 +33,13 @@ The audit policy defines which requests to log and at what level:
 
 apiVersion: audit.k8s.io/v1
 kind: Policy
-# Don't log requests to certain non-sensitive endpoints
+# Omit the initial RequestReceived stage for all requests
 omitStages:
   - "RequestReceived"
 
 rules:
-  # Log secret access at RequestResponse level (security-sensitive)
-  - level: RequestResponse
+  # Log secret access at Metadata level to avoid recording secret contents
+  - level: Metadata
     resources:
       - group: ""
         resources: ["secrets"]
@@ -50,7 +50,7 @@ rules:
       - group: ""
         resources: ["pods/exec", "pods/portforward", "pods/attach"]
 
-  # Log all authentication requests
+  # Log API discovery and version requests
   - level: Metadata
     nonResourceURLs:
       - "/api*"
@@ -66,7 +66,7 @@ rules:
           - "roles"
           - "rolebindings"
 
-  # Log all namespace-scoped resource modifications
+  # Log common namespace-scoped core resource modifications
   - level: Request
     verbs: ["create", "update", "patch", "delete"]
     resources:
@@ -76,10 +76,6 @@ rules:
           - "pods"
           - "services"
           - "persistentvolumeclaims"
-
-  # Log metadata for read operations
-  - level: Metadata
-    verbs: ["get", "list", "watch"]
 
   # Skip logging for known system/health check paths
   - level: None
@@ -93,6 +89,10 @@ rules:
     users:
       - "system:kube-scheduler"
       - "system:kube-proxy"
+    verbs: ["get", "list", "watch"]
+
+  # Log metadata for read operations
+  - level: Metadata
     verbs: ["get", "list", "watch"]
 
   # Default: log everything else at Metadata level
@@ -136,15 +136,18 @@ systemctl restart k3s
 ls -la /var/log/k3s/audit.log
 
 # Make a test API call
-kubectl get pods -A
+k3s kubectl get pods -A
 
-# View the audit log entries (JSON format)
-tail -f /var/log/k3s/audit.log | python3 -m json.tool
+# View the audit log entries (JSON Lines format)
+tail -f /var/log/k3s/audit.log | \
+  python3 -c "import sys,json; [print(json.dumps(json.loads(l), indent=2))
+  for l in sys.stdin if l.strip()]"
 
 # Filter for specific user
 cat /var/log/k3s/audit.log | \
-  python3 -c "import sys,json; [print(json.dumps(json.loads(l), indent=2))
-  for l in sys.stdin if 'admin' in l]"
+  python3 -c "import sys,json; [print(json.dumps(e, indent=2))
+  for e in (json.loads(l) for l in sys.stdin if l.strip())
+  if e.get('user', {}).get('username') == 'admin']"
 ```
 
 ## Step 4: Parse Audit Log Entries
@@ -213,6 +216,32 @@ Forward audit logs to a central logging system:
 
 ```yaml
 # /var/lib/rancher/k3s/server/manifests/fluentd-audit.yaml
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: fluentd-audit-config
+  namespace: kube-system
+data:
+  audit.conf: |
+    <source>
+      @type tail
+      path /var/log/k3s/audit.log
+      pos_file /fluentd/state/audit.log.pos
+      read_from_head true
+      tag k3s.audit
+      <parse>
+        @type json
+      </parse>
+    </source>
+
+    <match k3s.audit>
+      @type elasticsearch
+      host "#{ENV['FLUENT_ELASTICSEARCH_HOST']}"
+      port "#{ENV['FLUENT_ELASTICSEARCH_PORT']}"
+      logstash_format true
+      logstash_prefix k3s-audit
+    </match>
+---
 apiVersion: apps/v1
 kind: DaemonSet
 metadata:
@@ -228,15 +257,29 @@ spec:
         app: fluentd-audit
     spec:
       # Only run on server nodes
-      nodeSelector:
-        node-role.kubernetes.io/control-plane: "true"
+      affinity:
+        nodeAffinity:
+          requiredDuringSchedulingIgnoredDuringExecution:
+            nodeSelectorTerms:
+              - matchExpressions:
+                  - key: node-role.kubernetes.io/master
+                    operator: Exists
+              - matchExpressions:
+                  - key: node-role.kubernetes.io/control-plane
+                    operator: Exists
       tolerations:
-        - key: node-role.kubernetes.io/control-plane
+        - operator: Exists
           effect: NoSchedule
+        - operator: Exists
+          effect: NoExecute
       containers:
         - name: fluentd
           image: fluent/fluentd-kubernetes-daemonset:v1-debian-elasticsearch
           env:
+            - name: FLUENT_UID
+              value: "0"
+            - name: FLUENT_CONF
+              value: "audit.conf"
             - name: FLUENT_ELASTICSEARCH_HOST
               value: "elasticsearch.monitoring.svc.cluster.local"
             - name: FLUENT_ELASTICSEARCH_PORT
@@ -245,33 +288,30 @@ spec:
             - name: audit-logs
               mountPath: /var/log/k3s
               readOnly: true
+            - name: fluentd-config
+              mountPath: /fluentd/etc/audit.conf
+              subPath: audit.conf
+              readOnly: true
+            - name: fluentd-state
+              mountPath: /fluentd/state
       volumes:
         - name: audit-logs
           hostPath:
             path: /var/log/k3s
             type: DirectoryOrCreate
+        - name: fluentd-config
+          configMap:
+            name: fluentd-audit-config
+        - name: fluentd-state
+          hostPath:
+            path: /var/lib/fluentd-audit
+            type: DirectoryOrCreate
 ```
 
 ## Step 7: Set Up Log Rotation
 
-```bash
-# Configure logrotate for K3s audit logs
-cat > /etc/logrotate.d/k3s-audit << 'EOF'
-/var/log/k3s/audit.log {
-    daily
-    rotate 30
-    compress
-    delaycompress
-    missingok
-    notifempty
-    create 0600 root root
-    postrotate
-        systemctl reload k3s 2>/dev/null || true
-    endscript
-}
-EOF
-```
+K3s uses the kube-apiserver audit rotation flags configured in Step 2 (`audit-log-maxage`, `audit-log-maxbackup`, and `audit-log-maxsize`) to rotate audit logs automatically. You do not need a separate `logrotate` rule unless you intentionally disable the API server's built-in audit log rotation.
 
 ## Conclusion
 
-Audit logging in K3s provides a complete record of all API server activity, which is essential for security investigations and compliance. Start with a policy that captures security-sensitive operations (secret access, RBAC changes, pod exec) at high verbosity and other operations at lower levels to balance completeness with storage costs. For production environments, always ship audit logs to a central SIEM for long-term retention, alerting, and forensic analysis.
+Audit logging in K3s provides a complete record of all API server activity, which is essential for security investigations and compliance. Start with a policy that captures security-sensitive operations (RBAC changes, pod exec) at high verbosity, keeps Secret access at metadata level to avoid logging sensitive values, and records other operations at lower levels to balance completeness with storage costs. For production environments, always ship audit logs to a central SIEM for long-term retention, alerting, and forensic analysis.
