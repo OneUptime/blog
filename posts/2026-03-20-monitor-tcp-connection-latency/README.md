@@ -59,9 +59,10 @@ tshark -r /tmp/tcp_timing.pcap -T fields \
   -Y "tcp.flags.syn==1 or (tcp.flags.syn==1 && tcp.flags.ack==1)"
 
 # Calculate handshake time: time(SYN-ACK) - time(SYN) per stream
-tshark -r /tmp/tcp_timing.pcap \
-  -Y "tcp.analysis.handshake_time" \
-  -T fields -e tcp.analysis.handshake_time
+# Note: tcp.analysis.initial_rtt requires tshark's 2-pass mode (-2)
+tshark -2 -r /tmp/tcp_timing.pcap \
+  -Y "tcp.analysis.initial_rtt" \
+  -T fields -e tcp.analysis.initial_rtt
 ```
 
 ## Linux ss Command for Connection Timing
