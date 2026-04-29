@@ -22,29 +22,32 @@ Description: Learn how to add, update, and manage container registries in Portai
 # List all configured registries
 
 curl -s "${PORTAINER_URL}/api/registries" \
-  -H "Authorization: Bearer ${API_TOKEN}" | \
+  -H "X-API-Key: ${API_TOKEN}" | \
   jq '[.[] | {id: .Id, name: .Name, url: .URL, type: .Type}]'
 ```
 
 Registry types:
-- **1** = Custom registry (generic)
-- **2** = Docker Hub
-- **3** = GitLab
-- **5** = AWS ECR
-- **6** = Docker Hub (authenticated)
-- **7** = GitHub Container Registry (GHCR)
+- **1** = Quay.io
+- **2** = Azure Container Registry
+- **3** = Custom registry
+- **4** = GitLab
+- **5** = ProGet
+- **6** = Docker Hub
+- **7** = AWS ECR
+- **8** = GitHub Container Registry (GHCR, Portainer Business Edition)
 
 ## Adding a Custom Registry
 
 ```bash
 # Add a private registry with authentication
 curl -X POST "${PORTAINER_URL}/api/registries" \
-  -H "Authorization: Bearer ${API_TOKEN}" \
+  -H "X-API-Key: ${API_TOKEN}" \
   -H "Content-Type: application/json" \
   -d '{
-    "Type": 1,
+    "Type": 3,
     "Name": "My Private Registry",
     "URL": "registry.mycompany.com",
+    "TLS": true,
     "Authentication": true,
     "Username": "myuser",
     "Password": "mypassword"
@@ -56,7 +59,7 @@ curl -X POST "${PORTAINER_URL}/api/registries" \
 ```bash
 # Add Docker Hub with credentials to avoid rate limiting
 curl -X POST "${PORTAINER_URL}/api/registries" \
-  -H "Authorization: Bearer ${API_TOKEN}" \
+  -H "X-API-Key: ${API_TOKEN}" \
   -H "Content-Type: application/json" \
   -d '{
     "Type": 6,
@@ -71,62 +74,52 @@ curl -X POST "${PORTAINER_URL}/api/registries" \
 ## Adding AWS ECR
 
 ```bash
-# Add Amazon ECR registry
+# Add Amazon ECR registry using IAM credentials
 curl -X POST "${PORTAINER_URL}/api/registries" \
-  -H "Authorization: Bearer ${API_TOKEN}" \
+  -H "X-API-Key: ${API_TOKEN}" \
   -H "Content-Type: application/json" \
   -d '{
-    "Type": 5,
+    "Type": 7,
     "Name": "AWS ECR Production",
     "URL": "123456789012.dkr.ecr.us-east-1.amazonaws.com",
     "Authentication": true,
-    "Username": "AWS",
-    "Password": "'"$(aws ecr get-login-password --region us-east-1)"'",
+    "Username": "AKIAIOSFODNN7EXAMPLE",
+    "Password": "wJalrXUtnFEMI/K7MDENG/bPxRfiCYEXAMPLEKEY",
     "Ecr": {
       "Region": "us-east-1"
     }
   }'
 ```
 
-## Refreshing ECR Token (Automated)
+## Updating AWS ECR Credentials
 
 ```bash
-#!/bin/bash
-# Refresh the ECR token in Portainer every 6 hours
-
-PORTAINER_URL="https://portainer.mycompany.com"
-API_TOKEN="${PORTAINER_API_TOKEN}"
-
-# Find the ECR registry ID
-ECR_REGISTRY_ID=$(curl -s "${PORTAINER_URL}/api/registries" \
-  -H "Authorization: Bearer ${API_TOKEN}" | \
-  jq '.[] | select(.Type == 5) | .Id')
-
-# Get fresh ECR token
-NEW_TOKEN=$(aws ecr get-login-password --region us-east-1)
-
-# Update the registry with the new token
+# Update the stored AWS credentials for an existing ECR registry
 curl -X PUT "${PORTAINER_URL}/api/registries/${ECR_REGISTRY_ID}" \
-  -H "Authorization: Bearer ${API_TOKEN}" \
+  -H "X-API-Key: ${API_TOKEN}" \
   -H "Content-Type: application/json" \
-  -d "{
-    \"Type\": 5,
-    \"Name\": \"AWS ECR Production\",
-    \"URL\": \"123456789012.dkr.ecr.us-east-1.amazonaws.com\",
-    \"Authentication\": true,
-    \"Username\": \"AWS\",
-    \"Password\": \"${NEW_TOKEN}\"
-  }"
-
-echo "ECR token refreshed at $(date)"
+  -d '{
+    "Name": "AWS ECR Production",
+    "URL": "123456789012.dkr.ecr.us-east-1.amazonaws.com",
+    "Authentication": true,
+    "Username": "AKIAIOSFODNN7EXAMPLE",
+    "Password": "wJalrXUtnFEMI/K7MDENG/bPxRfiCYEXAMPLEKEY",
+    "Ecr": {
+      "Region": "us-east-1"
+    }
+  }'
 ```
 
 ## Assigning a Registry to an Environment
 
 ```bash
-# Assign a registry to a specific environment
+# Kubernetes example: grant the "production" namespace access to a registry
 curl -X PUT "${PORTAINER_URL}/api/endpoints/${ENDPOINT_ID}/registries/${REGISTRY_ID}" \
-  -H "Authorization: Bearer ${API_TOKEN}"
+  -H "X-API-Key: ${API_TOKEN}" \
+  -H "Content-Type: application/json" \
+  -d '{
+    "Namespaces": ["production"]
+  }'
 ```
 
 ## Deleting a Registry
@@ -134,9 +127,9 @@ curl -X PUT "${PORTAINER_URL}/api/endpoints/${ENDPOINT_ID}/registries/${REGISTRY
 ```bash
 # Remove a registry from Portainer
 curl -X DELETE "${PORTAINER_URL}/api/registries/${REGISTRY_ID}" \
-  -H "Authorization: Bearer ${API_TOKEN}"
+  -H "X-API-Key: ${API_TOKEN}"
 ```
 
 ## Conclusion
 
-The Portainer registries API enables centralized registry management for multi-environment setups. Use it especially to automate ECR token rotation, which is essential since ECR tokens expire every 12 hours.
+The Portainer registries API enables centralized registry management for multi-environment setups. For AWS ECR, provide the AWS access key ID, secret access key, and region rather than the output of `aws ecr get-login-password`, since ECR authorization tokens expire every 12 hours.
