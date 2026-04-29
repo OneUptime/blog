@@ -4,27 +4,30 @@ Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
 Tags: Kubernetes, Kube-proxy, IPVS, IPv4, Service Routing, Performance
 
-Description: Switch kube-proxy from iptables to IPVS mode for improved IPv4 service routing performance in large Kubernetes clusters with many services.
+Description: Configure kube-proxy to use IPVS mode for IPv4 service routing on Linux nodes, while noting that Kubernetes now recommends nftables for new deployments.
 
-IPVS (IP Virtual Server) mode uses Linux's in-kernel load balancer instead of iptables chains. It provides O(1) lookup time (vs O(n) for iptables), supports more load balancing algorithms, and scales significantly better for large clusters.
+IPVS (IP Virtual Server) mode uses the kernel IPVS and iptables APIs rather than only iptables chains. It uses a hash table for service lookups, supports more load balancing algorithms, and historically offered better rule-synchronization performance than iptables in large clusters. As of Kubernetes v1.35, however, IPVS mode is deprecated and Kubernetes recommends nftables as the replacement proxy mode.
 
 ## Prerequisites
 
 ```bash
 # Load required kernel modules on all nodes
+# Add scheduler modules for the algorithms you plan to use.
 
 sudo modprobe ip_vs
 sudo modprobe ip_vs_rr
 sudo modprobe ip_vs_wrr
 sudo modprobe ip_vs_sh
+sudo modprobe ip_vs_lc
 sudo modprobe nf_conntrack
 
 # Make persistent
-cat >> /etc/modules << 'EOF'
+sudo tee -a /etc/modules >/dev/null << 'EOF'
 ip_vs
 ip_vs_rr
 ip_vs_wrr
 ip_vs_sh
+ip_vs_lc
 nf_conntrack
 EOF
 
@@ -42,19 +45,21 @@ sudo apt install ipvsadm -y
 kubectl edit configmap kube-proxy -n kube-system
 ```
 
-Change the mode field:
+Change the `mode` field under `data.config.conf`:
 
 ```yaml
-# In the kube-proxy ConfigMap
+# In the kube-proxy configuration stored in data.config.conf
 mode: "ipvs"
 ipvs:
-  # Load balancing algorithm (options: rr, lc, dh, sh, sed, nq)
+  # Load balancing algorithm (for example: rr, wrr, lc, wlc, lblc, lblcr, sh, dh, sed, nq, mh)
   scheduler: "rr"
   # Sync period
   syncPeriod: 30s
   minSyncPeriod: 10s
   # Timeout for IPVS TCP connections
   tcpTimeout: 0s
+  # Timeout for IPVS TCP connections after FIN
+  tcpFinTimeout: 0s
   # UDP timeout
   udpTimeout: 0s
 ```
@@ -63,16 +68,20 @@ ipvs:
 # Restart kube-proxy to apply the change
 kubectl rollout restart daemonset/kube-proxy -n kube-system
 
-# Verify the mode changed
-kubectl logs -n kube-system $(kubectl get pods -n kube-system -l k8s-app=kube-proxy -o name | head -1) \
-  | grep -i "mode\|ipvs"
-# Expected: "Using ipvs Proxier"
+# Verify the configured mode
+kubectl get configmap kube-proxy -n kube-system -o go-template='{{index .data "config.conf"}}' \
+  | grep 'mode:'
+# Expected: mode: "ipvs"
+
+# Verify the running proxy mode on a node
+curl http://localhost:10249/proxyMode
+# Expected: ipvs
 ```
 
 ## Verifying IPVS Rules
 
 ```bash
-# View all IPVS virtual services (each Kubernetes service)
+# View all IPVS virtual services (Service ports, NodePorts, external IPs, and load-balancer IPs)
 sudo ipvsadm -L -n
 
 # Example output:
@@ -89,15 +98,20 @@ sudo ipvsadm -L -n
 ## IPVS Load Balancing Algorithms
 
 ```bash
-# Available schedulers:
-# rr  - Round Robin (default)
-# lc  - Least Connection
-# dh  - Destination Hashing
-# sh  - Source Hashing (session persistence)
-# sed - Shortest Expected Delay
-# nq  - Never Queue
+# Available schedulers depend on which IPVS scheduler modules are available:
+# rr    - Round Robin (default)
+# wrr   - Weighted Round Robin
+# lc    - Least Connection
+# wlc   - Weighted Least Connection
+# lblc  - Locality-Based Least Connection
+# lblcr - Locality-Based Least Connection with Replication
+# sh    - Source Hashing
+# dh    - Destination Hashing
+# sed   - Shortest Expected Delay
+# nq    - Never Queue
+# mh    - Maglev Hashing
 
-# Change to Least Connection for better distribution under varying load
+# Example: change to Least Connection
 kubectl edit configmap kube-proxy -n kube-system
 # Set: scheduler: "lc"
 kubectl rollout restart daemonset/kube-proxy -n kube-system
@@ -105,26 +119,28 @@ kubectl rollout restart daemonset/kube-proxy -n kube-system
 
 ## Performance Comparison
 
-IPVS scales much better than iptables:
+Compared to kube-proxy in iptables mode, IPVS historically offered faster lookup and better rule-synchronization performance:
 
-| Metric | iptables (10K services) | IPVS (10K services) |
+| Metric | iptables | IPVS |
 |---|---|---|
 | Rule lookup time | O(n) linear | O(1) hash |
-| CPU on sync | High | Low |
-| Memory | Higher | Lower |
-| Connection tracking | iptables conntrack | IPVS internal |
+| Rule synchronization | Slower in large clusters | Better |
+| Traffic throughput | Lower | Higher |
+| Balancing options | Default random selection | Multiple schedulers |
+
+As of Kubernetes v1.35, however, IPVS proxy mode is deprecated and upstream recommends `nftables` as its replacement.
 
 ## Monitoring IPVS Connections
 
 ```bash
 # View active connections
-sudo ipvsadm -L -n --stats
+sudo ipvsadm -L -n -c
 
 # View connection rates per service
 sudo ipvsadm -L -n --rate
 
-# Check connection persistence entries
+# Check persistent connection counters
 sudo ipvsadm -L -n --persistent-conn
 ```
 
-For clusters with more than a few hundred services, IPVS mode is strongly recommended for its O(1) routing performance and lower CPU overhead.
+If you still need the IPVS backend, it can provide better rule-synchronization performance than iptables. However, as of Kubernetes v1.35, IPVS mode is deprecated and upstream recommends nftables for new deployments.
