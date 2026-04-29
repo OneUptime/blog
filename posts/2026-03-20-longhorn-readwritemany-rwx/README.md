@@ -17,20 +17,21 @@ Longhorn supports ReadWriteMany (RWX) access mode using a built-in NFS share man
 Longhorn creates a RWX volume by:
 1. Creating an NFS share manager pod on a node
 2. Mounting the Longhorn block volume to the share manager pod
-3. Exposing the volume as an NFS share
+3. Creating a Service and exposing the volume as an NFS share
 4. Mounting the NFS share to consumer pods
 
 ---
 
-## Step 1: Verify RWX Support is Enabled
+## Step 1: Verify RWX Prerequisites
 
 ```bash
-# Check if the share-manager image is available
+# Each node that will mount the RWX volume needs an NFSv4 client installed.
+# If RWX volumes are already in use, you should see share-manager pods here.
 
 kubectl get pods -n longhorn-system | grep share-manager
 
-# Check Longhorn settings for RWX
-kubectl get setting -n longhorn-system | grep rwx
+# Inspect Longhorn settings using the fully qualified CRD name
+kubectl get settings.longhorn.io -n longhorn-system
 ```
 
 ---
@@ -52,7 +53,7 @@ parameters:
   staleReplicaTimeout: "30"
   fromBackup: ""
   fsType: "ext4"
-  accessModeConversion: "false"
+  migratable: "false"
 ```
 
 ```bash
@@ -133,14 +134,14 @@ kubectl exec -it <pod-name> -- df -h /usr/share/nginx/html
 ## Step 5: Verify Cross-Node Sharing
 
 ```bash
-# Check which nodes the pods are scheduled on
+# Check which nodes the pods are scheduled on, then pick two pods on different nodes if available
 kubectl get pods -l app=web-server -o wide
 
 # Write a file from one pod
-kubectl exec web-servers-<pod1> -- sh -c "echo 'hello from pod1' > /usr/share/nginx/html/test.txt"
+kubectl exec <pod-on-node-a> -- sh -c "echo 'hello from pod1' > /usr/share/nginx/html/test.txt"
 
 # Read the file from another pod on a different node
-kubectl exec web-servers-<pod2> -- cat /usr/share/nginx/html/test.txt
+kubectl exec <pod-on-node-b> -- cat /usr/share/nginx/html/test.txt
 # Should output: hello from pod1
 ```
 
@@ -154,7 +155,7 @@ kubectl get pods -n longhorn-system | grep share-manager
 
 # View share manager logs
 kubectl logs -n longhorn-system \
-  $(kubectl get pods -n longhorn-system -l longhorn.io/component=share-manager -o name | head -1)
+  $(kubectl get pods -n longhorn-system -o name | grep share-manager | head -1)
 ```
 
 ---
@@ -164,15 +165,16 @@ kubectl logs -n longhorn-system \
 ```bash
 # PVC stuck in Pending state
 kubectl describe pvc shared-data
-# Check: Is there a share-manager pod for this volume?
+# Check the PVC events and StorageClass configuration.
+# A share-manager pod is created only after an RWX volume is attached for use.
 
 # Mount fails on pods
 kubectl describe pod <pod-name>
-# Check: Can the node reach the share-manager pod's NFS port (2049)?
+# Check: Can the node reach the share-manager Service or pod on NFS port (2049)?
 
 # Test NFS connectivity from a node
 kubectl debug node/<node-name> -it --image=busybox -- \
-  nc -zv <share-manager-pod-ip> 2049
+  nc -zv <share-manager-service-or-pod-ip> 2049
 ```
 
 ---
@@ -181,4 +183,4 @@ kubectl debug node/<node-name> -it --image=busybox -- \
 
 - Use RWX volumes for content that genuinely needs concurrent multi-pod access, such as shared web content, uploads, or log aggregation.
 - Note that RWX volumes have higher latency than RWO volumes due to the NFS layer - for performance-critical workloads, prefer RWO with appropriate application-level sharding.
-- Ensure your network allows NFS traffic (port 2049) between nodes and the share-manager pod - NetworkPolicy rules may block this if not explicitly allowed.
+- Ensure your network allows NFS traffic (port 2049) between nodes and the share-manager Service or pod - NetworkPolicy rules may block this if not explicitly allowed.
