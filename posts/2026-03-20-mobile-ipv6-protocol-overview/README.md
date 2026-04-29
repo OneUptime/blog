@@ -100,11 +100,11 @@ Interface "eth0" {
     MnIfPreference 1;
 }
 
-# Home Agent address
-HomeAgent 2001:db8:home::1;
-
-# Mobile Node's home address
-Home 2001:db8:home::100/64;
+# Mobile Node's home link (Home Agent + Home Address)
+MnHomeLink "eth0" {
+    HomeAgentAddress 2001:db8:home::1;
+    HomeAddress 2001:db8:home::100/64;
+}
 
 # IPsec for BU authentication
 UseMnHaIPsec enabled;
@@ -114,8 +114,9 @@ UseMnHaIPsec enabled;
 # Start the MIPv6 daemon
 sudo mip6d -c /etc/mip6d.conf -d 1
 
-# Check binding status
-sudo mip6d -n
+# Check binding cache via the daemon's local terminal interface
+# Connect to mip6d on TCP port 7777, then run "bc" at the prompt
+telnet localhost 7777
 ```
 
 ## RFC References
