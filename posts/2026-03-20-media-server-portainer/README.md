@@ -19,11 +19,13 @@ A self-hosted media server lets you stream your own movies, TV shows, and music 
 ## Architecture Overview
 
 ```text
-Internet → Downloads (qBittorrent)
+Users → Jellyseerr (Requests)
                 ↓
          Radarr/Sonarr (Automation)
                 ↓
          Prowlarr (Indexers)
+                ↓
+        qBittorrent (Downloads)
                 ↓
          Jellyfin (Streaming) → Users
 ```
@@ -33,11 +35,11 @@ Internet → Downloads (qBittorrent)
 ```bash
 # Create media directories on your host
 
-sudo mkdir -p /opt/media/{movies,tv,music,downloads/{complete,incomplete}}
+sudo mkdir -p /opt/media/{movies,tv,music,downloads/{complete,incomplete}} /opt/jellyseerr
 
 # Set proper permissions
-sudo chown -R 1000:1000 /opt/media
-sudo chmod -R 755 /opt/media
+sudo chown -R 1000:1000 /opt/media /opt/jellyseerr
+sudo chmod -R 755 /opt/media /opt/jellyseerr
 ```
 
 ## Step 2: Create the Media Stack in Portainer
@@ -46,8 +48,6 @@ In Portainer, go to **Stacks** > **Add stack** and use the following compose fil
 
 ```yaml
 # docker-compose.yml - Complete Media Server Stack
-version: "3.8"
-
 networks:
   media_network:
     driver: bridge
@@ -67,17 +67,18 @@ services:
     restart: unless-stopped
     ports:
       - "8096:8096"   # HTTP
-      - "8920:8920"   # HTTPS
+      - "8920:8920"   # Optional HTTPS if enabled and configured in Jellyfin
+    user: "1000:1000"
     environment:
-      - PUID=1000
-      - PGID=1000
       - TZ=America/New_York
     volumes:
       - jellyfin_config:/config
       - /opt/media/movies:/media/movies    # Movie library
       - /opt/media/tv:/media/tv            # TV show library
       - /opt/media/music:/media/music      # Music library
-    # Uncomment for hardware transcoding (Intel)
+    # Uncomment for Intel/AMD hardware transcoding on Linux
+    # group_add:
+    #   - "<render_gid>"
     # devices:
     #   - /dev/dri:/dev/dri
     networks:
@@ -151,7 +152,7 @@ services:
       - WEBUI_PORT=8080
     volumes:
       - qbittorrent_config:/config
-      - /opt/media/downloads:/downloads   # Download directory
+      - /opt/media/downloads:/downloads   # Set completed to /downloads/complete and incomplete to /downloads/incomplete
     networks:
       - media_network
 
@@ -176,17 +177,19 @@ For Intel Quick Sync or NVIDIA GPU transcoding:
 
 ```yaml
 # Add to jellyfin service for Intel iGPU
+group_add:
+  - "<render_gid>"  # Replace with: getent group render | cut -d: -f3
 devices:
   - /dev/dri:/dev/dri
-group_add:
-  - "109"  # render group
 
 # For NVIDIA, use nvidia-container-toolkit
 deploy:
   resources:
     reservations:
       devices:
-        - capabilities: [gpu]
+        - driver: nvidia
+          count: 1
+          capabilities: [gpu]
 ```
 
 ## Step 4: Post-Deployment Configuration
@@ -197,9 +200,10 @@ deploy:
 3. Under **Settings** > **Apps**, add Sonarr and Radarr with their API keys
 
 ### Configure Sonarr/Radarr
-1. Go to **Settings** > **Download Clients**
-2. Add qBittorrent: Host = `qbittorrent`, Port = `8080`
-3. Set root folders to `/tv` or `/movies`
+1. In qBittorrent, set the completed downloads path to `/downloads/complete` and the incomplete path to `/downloads/incomplete`
+2. Go to **Settings** > **Download Clients**
+3. Add qBittorrent: Host = `qbittorrent`, Port = `8080`
+4. Set root folders to `/tv` or `/movies`
 
 ### Configure Jellyfin
 1. Access at `http://server-ip:8096`
@@ -214,6 +218,7 @@ labels:
   - "traefik.enable=true"
   - "traefik.http.routers.jellyfin.rule=Host(`jellyfin.yourdomain.com`)"
   - "traefik.http.routers.jellyfin.entrypoints=websecure"
+  - "traefik.http.routers.jellyfin.tls=true"
   - "traefik.http.services.jellyfin.loadbalancer.server.port=8096"
 ```
 
@@ -221,7 +226,7 @@ labels:
 
 ```bash
 # Check all media stack containers
-docker ps --filter "network=media_network"
+docker ps --filter "network=<stack-name>_media_network"
 
 # View Jellyfin logs
 docker logs -f jellyfin
