@@ -14,7 +14,7 @@ A host with multiple IPv6 addresses (global, ULA, link-local, temporary) must pi
 - Privacy leaks (using permanent address instead of temporary)
 - Connectivity failures (using deprecated address)
 
-## The 8 Selection Rules in Detail
+## The RFC 6724 Rules in Detail
 
 RFC 6724 evaluates candidate source addresses against the destination using these rules in order:
 
@@ -23,7 +23,7 @@ Rule 1: Prefer same address
         If candidate == destination, it wins immediately
 
 Rule 2: Prefer appropriate scope
-        Source scope must be >= destination scope
+        Prefer the smallest source scope that is still >= destination scope
         Link-local source cannot reach global destination
 
 Rule 3: Avoid deprecated addresses
@@ -35,14 +35,18 @@ Rule 4: Prefer home address (Mobile IPv6)
 Rule 5: Prefer outgoing interface
         Prefer address assigned to the interface used to reach destination
 
+Rule 5.5: Prefer prefixes advertised by the selected next-hop
+          Only applies on implementations that track which router
+          advertised which prefix
+
 Rule 6: Prefer matching label
-        ip addrlabel label(source) == ip addrlabel label(destination)
+        Prefer source whose policy-table label matches the destination label
 
 Rule 7: Prefer temporary address (privacy extensions)
-        RFC 4941 temporary address preferred over permanent
+        Temporary address preferred over public/stable address
 
 Rule 8: Longest matching prefix
-        Most bits matching destination prefix wins
+        Longest common prefix with destination wins
 ```
 
 ## Setting Up a Test Environment
@@ -50,9 +54,9 @@ Rule 8: Longest matching prefix
 ```bash
 # Add multiple IPv6 addresses to test selection
 
-ip addr add 2001:db8:1::10/64 dev eth0   # Global static
-ip addr add fd00::10/64 dev eth0          # ULA
-ip addr add fe80::10/64 dev eth0          # Link-local (already present)
+ip addr add 2001:db8:1::10/64 dev eth0 mngtmpaddr   # Global static template for temporary addresses
+ip addr add fd00::10/64 dev eth0                    # ULA
+ip -6 addr show dev eth0 scope link                 # Link-local (already present)
 
 # Enable privacy extensions (temporary addresses)
 sysctl -w net.ipv6.conf.eth0.use_tempaddr=2
@@ -65,17 +69,14 @@ ip -6 addr show dev eth0
 
 ```bash
 # Rule 2: link-local source CANNOT be used for global destination
-# ping6 to a global address will NOT use fe80:: source
 
-# Verify: ping to global destination uses global source
-ping6 -I eth0 2001:db8::1 &>/dev/null &
-ss -6 -n state established sport 0
-# Source will be 2001:db8:1::10 or the temporary address - NOT fe80::
+# Verify: route lookup to a global destination uses a global source
+ip -6 route get 2001:db8::1
+# Output includes: src 2001:db8:1::10 or a temporary address - NOT fe80::...
 
-# ping to link-local destination uses link-local source
-ping6 fe80::1%eth0 &>/dev/null &
-ss -6 -n state established sport 0
-# Source will be fe80::10
+# Link-local destination requires link context and uses a link-local source
+ip -6 route get fe80::1 oif eth0
+# Output includes: src <eth0's link-local address>
 ```
 
 ## Rule 6: Label Matching
@@ -84,15 +85,15 @@ ss -6 -n state established sport 0
 # Show current policy table labels
 ip addrlabel list
 
-# IPv6 global (label 1) prefers global source over ULA (label 13)
-# when connecting to a global destination
+# A source whose label matches the destination label wins Rule 6
+# Inspect your current table first; default labels vary by system
 
-# Add custom label to prefer ULA source for a specific destination
-ip addrlabel add prefix fd00::/7 label 13
-ip addrlabel add prefix 2001:db8::/32 label 13  # Same label as ULA
+# Add custom labels to make this ULA prefix and destination prefix match
+ip addrlabel add prefix fd00::/64 label 42
+ip addrlabel add prefix 2001:db8::/32 label 42
 
-# Now connections to 2001:db8::/32 will prefer fd00:: source
-# because labels match
+# Now destinations in 2001:db8::/32 can prefer fd00::/64 sources
+# because the labels match
 ```
 
 ## Rule 7: Temporary Address Preference
@@ -105,20 +106,20 @@ ip -6 addr show dev eth0 | grep "scope global temporary"
 # inet6 2001:db8:1:0:a1b2:c3d4:e5f6:7890/64 scope global temporary dynamic
 
 # Verify outgoing connections use temporary address
-curl -6 https://ifconfig.co/ip
+curl -6 https://ifconfig.co
 # Returns: 2001:db8:1:0:a1b2:c3d4:... (temporary)
 
 # Force use of specific source address (override selection)
-curl -6 --interface 2001:db8:1::10 https://ifconfig.co/ip
+curl -6 --interface 2001:db8:1::10 https://ifconfig.co
 # Returns: 2001:db8:1::10 (static)
 ```
 
 ## Rule 8: Longest Prefix Match
 
 ```bash
-# When connecting to 2001:db8:1::200, which source is preferred?
-# Candidate A: 2001:db8:1::10   (same /64 prefix - 64 matching bits)
-# Candidate B: 2001:db8:2::10   (different /48 - 48 matching bits)
+# When connecting to 2001:db8:1:1::200, which source is preferred?
+# Candidate A: 2001:db8:1:1:8000::10   (64 matching bits)
+# Candidate B: 2001:db8:1:8000::10     (48 matching bits)
 
 # Rule 8 picks Candidate A (64 bits match > 48 bits match)
 
@@ -126,11 +127,11 @@ curl -6 --interface 2001:db8:1::10 https://ifconfig.co/ip
 python3 << 'EOF'
 import ipaddress
 
-destination = ipaddress.IPv6Address('2001:db8:1::200')
+destination = ipaddress.IPv6Address('2001:db8:1:1::200')
 candidates = [
-    ipaddress.IPv6Address('2001:db8:1::10'),   # same /64
-    ipaddress.IPv6Address('2001:db8:2::10'),   # different /48
-    ipaddress.IPv6Address('fd00::10'),          # ULA
+    ipaddress.IPv6Address('2001:db8:1:1:8000::10'),   # 64 matching bits
+    ipaddress.IPv6Address('2001:db8:1:8000::10'),     # 48 matching bits
+    ipaddress.IPv6Address('fd00::10'),                # 0 matching bits
 ]
 
 dest_int = int(destination)
@@ -174,7 +175,7 @@ echo "Available source candidates:"
 ip -6 addr show scope global | grep "inet6" | awk '{print $2}'
 echo ""
 
-# Open a connection and capture source
+# Ask the kernel to choose a route and capture the selected source
 python3 << PYEOF
 import socket
 dest = "${DESTINATION}"
@@ -198,8 +199,8 @@ Applications can bypass RFC 6724 by binding explicitly:
 python3 << 'EOF'
 import socket
 
-# Create IPv6 socket
-s = socket.socket(socket.AF_INET6, socket.SOCK_STREAM)
+# Create IPv6 UDP socket
+s = socket.socket(socket.AF_INET6, socket.SOCK_DGRAM)
 
 # Bind to specific source (overrides RFC 6724)
 s.bind(('2001:db8:1::10', 0))  # explicit source
@@ -213,4 +214,4 @@ EOF
 
 ## Conclusion
 
-RFC 6724 source address selection follows 8 rules in priority order. The most commonly triggered rules in practice are: Rule 2 (scope - link-local cannot reach global), Rule 5 (prefer interface address), Rule 6 (label matching - ULA stays local), Rule 7 (prefer temporary for privacy), and Rule 8 (longest prefix match). Use `ip addrlabel` to modify label assignments and redirect traffic to specific source prefixes. Debug selection with Python's `socket.connect()` trick - it reveals the OS-chosen source without sending actual traffic.
+RFC 6724 source address selection follows Rules 1-8, with an additional Rule 5.5 for implementations that track which next-hop advertised which prefix. The most commonly triggered rules in practice are: Rule 2 (scope - link-local cannot reach global), Rule 5 (prefer interface address), Rule 6 (label matching), Rule 7 (prefer temporary for privacy), and Rule 8 (longest prefix match). Use `ip addrlabel` to modify label assignments and influence which source prefixes win label matching. Debug selection with Python's UDP `socket.connect()` trick - it reveals the OS-chosen source without sending actual traffic.
