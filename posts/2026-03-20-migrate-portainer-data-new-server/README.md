@@ -126,9 +126,9 @@ docker run -d \
 
 After migration, agent-based environments will still point to old addresses. Update them in the Portainer UI.
 
-1. Go to **Settings > Environments**
+1. Go to **Environments** in the left sidebar
 2. Click the environment to edit
-3. Update the **URL** field to the new agent address
+3. Update the **Environment URL** field to the new agent address
 4. Click **Update environment**
 
 ---
