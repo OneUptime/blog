@@ -18,11 +18,11 @@ Longhorn exposes metrics at `http://longhorn-backend.longhorn-system.svc.cluster
 
 | Metric | Description |
 |---|---|
-| `longhorn_volume_state` | Volume attach state (0=detached, 1=attached) |
-| `longhorn_volume_robustness` | Volume health (0=unknown, 1=healthy, 2=degraded, 3=faulted) |
+| `longhorn_volume_state` | Volume state via the `state` label (`creating`, `attached`, `detached`, etc.); the current state is `1` and the others are `0` |
+| `longhorn_volume_robustness` | Volume health via the `state` label (`unknown`, `healthy`, `degraded`, `faulted`); the current state is `1` and the others are `0` |
 | `longhorn_node_storage_capacity_bytes` | Total storage per node |
 | `longhorn_node_storage_usage_bytes` | Used storage per node |
-| `longhorn_backup_state` | Backup job state |
+| `longhorn_backup_state` | Backup state (0=New, 1=Pending, 2=InProgress, 3=Completed, 4=Error, 5=Unknown) |
 
 ---
 
@@ -75,7 +75,7 @@ spec:
     - name: longhorn.health
       rules:
         - alert: LonghornVolumeDegraded
-          expr: longhorn_volume_robustness == 2
+          expr: longhorn_volume_robustness{state="degraded"} == 1
           for: 5m
           labels:
             severity: warning
@@ -84,7 +84,7 @@ spec:
             description: "Volume has fewer replicas than desired. Check replica health."
 
         - alert: LonghornVolumeFaulted
-          expr: longhorn_volume_robustness == 3
+          expr: longhorn_volume_robustness{state="faulted"} == 1
           for: 1m
           labels:
             severity: critical
@@ -123,15 +123,13 @@ Useful PromQL queries for investigating Longhorn health:
 
 ```promql
 # Volume capacity utilization
-sum by (volume) (longhorn_volume_usage_bytes) / sum by (volume) (longhorn_volume_capacity_bytes)
+sum by (volume) (longhorn_volume_actual_size_bytes) / sum by (volume) (longhorn_volume_capacity_bytes)
 
 # Number of degraded volumes
-count(longhorn_volume_robustness == 2)
+count(longhorn_volume_robustness{state="degraded"} == 1)
 
-# Backup success rate over the last 24 hours
-sum(increase(longhorn_backup_state{state="Completed"}[24h]))
-/
-sum(increase(longhorn_backup_state[24h]))
+# Volumes without a successful backup in the last 24 hours
+(time() - longhorn_volume_last_backup_at) > 24 * 60 * 60
 
 # Node storage trend (how fast is storage being consumed)
 deriv(longhorn_node_storage_usage_bytes[1h])
@@ -141,6 +139,6 @@ deriv(longhorn_node_storage_usage_bytes[1h])
 
 ## Best Practices
 
-- Alert on `longhorn_volume_robustness != 1` (not healthy) with a 5-minute buffer to avoid flapping.
+- Alert on `longhorn_volume_robustness{state!="healthy"} == 1` (not healthy) with a 5-minute buffer to avoid flapping.
 - Monitor `longhorn_node_storage_capacity_bytes - longhorn_node_storage_usage_bytes` to predict when to add nodes.
 - Set up a `dead man's switch` alert that fires if the Longhorn manager stops sending metrics.
