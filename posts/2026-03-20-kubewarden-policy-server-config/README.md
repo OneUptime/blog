@@ -63,13 +63,12 @@ spec:
   replicas: 3
 
   # Resource requests and limits
-  resources:
-    requests:
-      cpu: 500m
-      memory: 512Mi
-    limits:
-      cpu: 2000m
-      memory: 1Gi
+  requests:
+    cpu: 500m
+    memory: 512Mi
+  limits:
+    cpu: 2000m
+    memory: 1Gi
 
   # Pod anti-affinity for HA
   affinity:
@@ -77,11 +76,11 @@ spec:
       requiredDuringSchedulingIgnoredDuringExecution:
         - labelSelector:
             matchLabels:
-              app: kubewarden-policy-server
+              kubewarden/policy-server: default
           topologyKey: kubernetes.io/hostname
 
-  # Service account with minimal permissions
-  serviceAccountName: kubewarden-policy-server
+  # Service account used by this Policy Server
+  serviceAccountName: policy-server
 ```
 
 ```bash
@@ -107,13 +106,13 @@ spec:
     - name: KUBEWARDEN_LOG_LEVEL
       value: "debug"    # Options: trace, debug, info, warn, error
     - name: KUBEWARDEN_LOG_FMT
-      value: "json"     # Options: text, json
+      value: "json"     # Options: text, json, otlp
 ```
 
 ```bash
 # View Policy Server logs
 kubectl logs -n kubewarden \
-  $(kubectl get pod -n kubewarden -l app=kubewarden-policy-server -o name | head -1) \
+  $(kubectl get pod -n kubewarden -l kubewarden/policy-server=default -o name | head -1) \
   | jq .
 ```
 
@@ -133,10 +132,10 @@ spec:
 
   # OpenTelemetry configuration
   env:
+    - name: KUBEWARDEN_LOG_FMT
+      value: "otlp"
     - name: OTEL_EXPORTER_OTLP_ENDPOINT
       value: "http://otel-collector:4317"
-    - name: OTEL_SERVICE_NAME
-      value: "kubewarden-policy-server"
     - name: KUBEWARDEN_ENABLE_METRICS
       value: "true"
 ```
@@ -157,13 +156,12 @@ metadata:
 spec:
   image: ghcr.io/kubewarden/policy-server:latest
   replicas: 3
-  resources:
-    requests:
-      cpu: 1000m
-      memory: 1Gi
-    limits:
-      cpu: 4000m
-      memory: 2Gi
+  requests:
+    cpu: 1000m
+    memory: 1Gi
+  limits:
+    cpu: 4000m
+    memory: 2Gi
 
   # Tolerate taint for dedicated security nodes
   tolerations:
@@ -172,8 +170,15 @@ spec:
       value: "true"
       effect: "NoSchedule"
 
-  nodeSelector:
-    node-type: security
+  affinity:
+    nodeAffinity:
+      requiredDuringSchedulingIgnoredDuringExecution:
+        nodeSelectorTerms:
+          - matchExpressions:
+              - key: node-type
+                operator: In
+                values:
+                  - security
 ```
 
 Then assign policies to this policy server:
@@ -184,21 +189,23 @@ apiVersion: policies.kubewarden.io/v1
 kind: ClusterAdmissionPolicy
 metadata:
   name: require-labels
-  namespace: kubewarden
 spec:
   policyServer: security-policies    # Reference custom policy server
-  module: ghcr.io/kubewarden/policies/safe-labels:v0.1.0
+  module: registry://ghcr.io/kubewarden/policies/safe-labels:v1.0.9
   rules:
     - apiGroups: [""]
       apiVersions: ["v1"]
       resources: ["pods"]
       operations: ["CREATE"]
   mutating: false
+  settings:
+    mandatory_labels:
+      - cost-center
 ```
 
 ---
 
-## Step 6: Configure Private Registry for Policy Images
+## Step 6: Configure Private Registry Credentials for Policy Modules
 
 ```yaml
 apiVersion: policies.kubewarden.io/v1
@@ -210,7 +217,7 @@ spec:
   image: ghcr.io/kubewarden/policy-server:latest
   replicas: 2
 
-  # Pull secret for private registries
+  # Secret used when fetching policy modules from private OCI registries
   imagePullSecret: registry-credentials
 ```
 
@@ -233,14 +240,13 @@ spec:
 ```
 
 ```yaml
-# kubewarden-verification-config secret
+# kubewarden-verification-config ConfigMap
 apiVersion: v1
-kind: Secret
+kind: ConfigMap
 metadata:
   name: kubewarden-verification-config
   namespace: kubewarden
-type: Opaque
-stringData:
+data:
   verification-config: |
     apiVersion: v1
     allOf:
@@ -258,11 +264,11 @@ stringData:
 
 ```bash
 # Check Policy Server pod readiness
-kubectl get pods -n kubewarden -l app=kubewarden-policy-server
+kubectl get pods -n kubewarden -l kubewarden/policy-server=default
 
-# Check the metrics endpoint
+# If Kubewarden telemetry is enabled in sidecar mode, check the metrics endpoint
 kubectl port-forward -n kubewarden \
-  $(kubectl get pod -n kubewarden -l app=kubewarden-policy-server -o name | head -1) \
+  $(kubectl get pod -n kubewarden -l kubewarden/policy-server=default -o name | head -1) \
   8080:8080 &
 
 curl http://localhost:8080/metrics | grep kubewarden
