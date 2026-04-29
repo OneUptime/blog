@@ -4,7 +4,7 @@ Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
 Tags: Java, IPv4, InetAddress, Validation, Networking, Security
 
-Description: Validate IPv4 address strings in Java using InetAddress, regex, and Apache Commons Net, with methods to check format, reachability, and address type.
+Description: Validate IPv4 address strings in Java using InetAddress, regex, and Apache Commons Validator, with methods to check format, reachability, and address type.
 
 ## Introduction
 
@@ -21,7 +21,7 @@ public class IPv4Validator {
     
     /**
      * Validate an IPv4 address string using InetAddress.
-     * Returns true if the string is a valid dotted-decimal IPv4 address.
+     * Returns true if the string is a canonical dotted-quad IPv4 literal.
      */
     public static boolean isValidIPv4(String ipString) {
         if (ipString == null || ipString.isEmpty()) {
@@ -29,11 +29,12 @@ public class IPv4Validator {
         }
         
         try {
-            // getByName performs a DNS lookup for hostnames.
-            // To avoid that, check for literal IP format first.
+            // getByName can resolve hostnames via the system resolver.
+            // Compare the normalized address text back to the input so only
+            // canonical dotted-quad IPv4 literals are accepted.
             InetAddress addr = InetAddress.getByName(ipString);
             
-            // Ensure it's IPv4 (not IPv6) and that it's a literal IP (no DNS lookup)
+            // Ensure it's IPv4 (not IPv6) and in canonical dotted-quad form.
             return (addr instanceof Inet4Address) && 
                    addr.getHostAddress().equals(ipString);
         } catch (UnknownHostException e) {
@@ -128,11 +129,12 @@ public class IPv4Inspector {
                 return;
             }
             
-            System.out.printf("IP: %-20s Loopback: %-6b Private: %-6b Multicast: %b%n",
+            System.out.printf("IP: %-20s Loopback: %-6b Private: %-6b Multicast: %-6b Link-local: %b%n",
                 ip, 
                 addr.isLoopbackAddress(),
                 addr.isSiteLocalAddress(),
-                addr.isMulticastAddress()
+                addr.isMulticastAddress(),
+                addr.isLinkLocalAddress()
             );
         } catch (Exception e) {
             System.out.println(ip + " is invalid: " + e.getMessage());
@@ -157,8 +159,9 @@ import java.net.InetAddress;
 public class ReachabilityChecker {
     
     /**
-     * Check if an IPv4 host is reachable within a timeout.
-     * Uses ICMP ping (requires root on some systems) or TCP port 7.
+     * Check if a host is reachable within a timeout.
+     * Uses ICMP echo requests (requires elevated privileges on some systems)
+     * or TCP port 7.
      */
     public static boolean isReachable(String host, int timeoutMs) {
         try {
@@ -178,14 +181,14 @@ public class ReachabilityChecker {
 
 ## Using Apache Commons Validator
 
-For production code, Apache Commons provides well-tested validators:
+For production code, Apache Commons Validator provides well-tested validators:
 
 ```xml
 <!-- pom.xml -->
 <dependency>
     <groupId>commons-validator</groupId>
     <artifactId>commons-validator</artifactId>
-    <version>1.8.0</version>
+    <version>1.10.1</version>
 </dependency>
 ```
 
@@ -198,4 +201,4 @@ boolean valid = validator.isValidInet4Address("192.168.1.1");
 
 ## Conclusion
 
-Use regex validation for pure format checking (fastest, no exceptions), `InetAddress` for type checking (loopback, private, multicast), and Apache Commons Validator for production-grade validation with minimal code. Always validate IPv4 addresses from user input before using them in network operations.
+Use regex validation for pure format checking (fast, no exceptions), `InetAddress` when you need address parsing or type checking (loopback, private, multicast), and Apache Commons Validator for production-grade validation with minimal code. Always validate IPv4 addresses from user input before using them in network operations.
