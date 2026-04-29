@@ -196,7 +196,7 @@ spec:
       claimName: $PVC_NAME
 PODEOF
 
-kubectl wait pod/data-migrator -n $NAMESPACE   --for=condition=Succeeded --timeout=3600s
+kubectl wait pod/data-migrator -n $NAMESPACE   --for=jsonpath='{.status.phase}'=Succeeded --timeout=3600s
 ```
 
 ## Step 5: Deploy to Rancher
