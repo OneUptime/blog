@@ -26,10 +26,9 @@ bfd
 !
 
 # IS-IS with BFD enabled on SRv6-capable interfaces
-router isis CORE
-  interface eth0
-    bfd
-  !
+interface eth0
+  ipv6 router isis CORE
+  isis bfd
 !
 ```
 
@@ -41,7 +40,7 @@ router isis CORE
 import subprocess
 import json
 import time
-from datetime import datetime
+from datetime import datetime, timezone
 
 SIDS = [
     {"node": "R1", "sid": "5f00:1::"},
@@ -69,7 +68,7 @@ def monitor_loop(interval: int = 30):
         for entry in SIDS:
             probe = probe_sid(entry["sid"])
             results.append({
-                "timestamp": datetime.utcnow().isoformat(),
+                "timestamp": datetime.now(timezone.utc).isoformat(),
                 "node": entry["node"],
                 "sid": entry["sid"],
                 **probe
