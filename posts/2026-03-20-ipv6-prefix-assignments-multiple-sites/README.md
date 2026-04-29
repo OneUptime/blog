@@ -64,13 +64,10 @@ def get_vlan_prefix(site: str, vlan: str) -> str:
         raise ValueError(f"Unknown VLAN: {vlan}")
 
     site_prefix = ipaddress.ip_network(SITES[site])
-    # Replace the VLAN nibbles (bits 49-64)
-    site_addr = int(site_prefix.network_address)
+    # Set the 16-bit subnet ID (bits 49-64) within the site's /48
     vlan_offset = VLAN_TEMPLATE[vlan]
-    subnet_addr = (site_addr & 0xffffffffffff0000) | (vlan_offset << 0)
-    subnet = ipaddress.ip_network(
-        f"{ipaddress.ip_address(subnet_addr)}/64"
-    )
+    subnet_addr = int(site_prefix.network_address) + (vlan_offset << 64)
+    subnet = ipaddress.IPv6Network((subnet_addr, 64))
     return str(subnet)
 
 # Example usage
@@ -88,6 +85,7 @@ for site in ["hq-new-york", "office-london", "office-tokyo"]:
 # setup_multi_site_netbox.py
 
 import pynetbox
+import ipaddress
 
 nb = pynetbox.api("http://netbox.internal", token="your-token")
 
@@ -113,7 +111,7 @@ VLANS_CONFIG = [
     {"name": "servers",    "hex": "0001"},
     {"name": "management", "hex": "0002"},
     {"name": "dmz",        "hex": "0003"},
-    {"name": "wrkstns",    "hex": "0010"},
+    {"name": "workstations", "hex": "0010"},
 ]
 
 def provision_site(slug: str, config: dict):
@@ -125,31 +123,30 @@ def provision_site(slug: str, config: dict):
         return
 
     site_prefix_str = config["prefix"]
-    site_prefix_bits = int(site_prefix_str.split("/")[1])
+    site_prefix = ipaddress.ip_network(site_prefix_str)
 
     # Create site /48 prefix
-    nb.ipam.prefixes.create({
-        "prefix": site_prefix_str,
-        "site": site.id,
-        "description": f"{config['name']} site prefix",
-        "status": "active"
-    })
+    nb.ipam.prefixes.create(
+        prefix=site_prefix_str,
+        scope_type="dcim.site",
+        scope_id=site.id,
+        description=f"{config['name']} site prefix",
+        status="active"
+    )
 
     # Create VLAN /64 prefixes
-    site_base = site_prefix_str.rstrip(":/48").split("::")
-    # Build /64 subnets using VLAN hex codes
     for vlan in VLANS_CONFIG:
-        # Construct /64 by replacing last group with VLAN ID
-        parts = site_prefix_str.split("::")
-        base = parts[0]  # "2001:db8:0001"
-        subnet = f"{base}:{vlan['hex']}::/64"
+        subnet = ipaddress.IPv6Network(
+            (int(site_prefix.network_address) + (int(vlan["hex"], 16) << 64), 64)
+        )
 
-        nb.ipam.prefixes.create({
-            "prefix": subnet,
-            "site": site.id,
-            "description": f"{config['name']} {vlan['name']} VLAN",
-            "status": "active"
-        })
+        nb.ipam.prefixes.create(
+            prefix=str(subnet),
+            scope_type="dcim.site",
+            scope_id=site.id,
+            description=f"{config['name']} {vlan['name']} VLAN",
+            status="active"
+        )
         print(f"  Created: {subnet}")
 
 for slug, config in SITES_CONFIG.items():
@@ -173,4 +170,4 @@ router bgp 65001
 
 ## Conclusion
 
-Multi-site IPv6 management requires three levels of structure: regional blocks (/36) for BGP summarization, site prefixes (/48) for per-location allocation, and consistent VLAN-to-/64 mapping templates replicated across all sites. The VLAN template approach ensures that the "servers" prefix at any site always uses the same 4-bit VLAN code - administrators can predict any site's server subnet from the site prefix alone. NetBox multi-site setup enforces the plan by associating prefixes with site objects, providing clear ownership and filtering capabilities in the IPAM UI.
+Multi-site IPv6 management requires three levels of structure: regional blocks (/36) for BGP summarization, site prefixes (/48) for per-location allocation, and consistent VLAN-to-/64 mapping templates replicated across all sites. The VLAN template approach ensures that the "servers" prefix at any site always uses the same 16-bit subnet ID - administrators can predict any site's server subnet from the site prefix alone. NetBox multi-site setup enforces the plan by assigning prefixes to the appropriate site scope, providing clear ownership and filtering capabilities in the IPAM UI.
