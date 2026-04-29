@@ -27,8 +27,10 @@ graph LR
 ## Prerequisites
 
 - Longhorn v1.1+
-- The `nfs-common` package installed on all cluster nodes
-- `nfsd` kernel module available
+- An NFSv4 client installed on all cluster nodes
+- NFSv4.1 client support enabled in the kernel on each node
+- Unique hostnames for all nodes in the Kubernetes cluster
+- The `my-app` namespace created before applying the example manifests
 
 ```bash
 # Install NFS client on all nodes
@@ -52,8 +54,6 @@ allowVolumeExpansion: true
 parameters:
   numberOfReplicas: "3"
   staleReplicaTimeout: "2880"
-  # This enables NFS-based RWX
-  nfsOptions: "vers=4.1,noresvport"
 ```
 
 ---
@@ -93,6 +93,9 @@ spec:
     matchLabels:
       app: web-worker
   template:
+    metadata:
+      labels:
+        app: web-worker
     spec:
       containers:
         - name: worker
@@ -114,12 +117,13 @@ spec:
 # Check the share manager pod is running
 kubectl get pods -n longhorn-system -l longhorn.io/component=share-manager
 
-# Verify multiple pods are using the volume
+# Verify the PVC is bound and the workload pods are running
 kubectl get pvc shared-data -n my-app
+kubectl get pods -n my-app -l app=web-worker
 
 # Write from one pod and read from another
-kubectl exec deployment/web-workers -c worker -- sh -c "echo hello > /shared/test.txt"
-kubectl exec -it $(kubectl get pod -l app=web-worker -n my-app -o name | tail -1) \
+kubectl exec -n my-app deploy/web-workers -c worker -- sh -c "echo hello > /shared/test.txt"
+kubectl exec -n my-app $(kubectl get pod -n my-app -l app=web-worker -o name | tail -1) \
   -- cat /shared/test.txt
 ```
 
@@ -133,12 +137,12 @@ kubectl logs -n longhorn-system \
   -l longhorn.io/component=share-manager \
   --tail=100
 
-# Verify NFS client is installed on node
-kubectl get node -o wide
-# SSH to node and check: nfsstat -c
+# Identify the node running a workload pod, then verify the NFS mount from that node
+kubectl get pods -n my-app -l app=web-worker -o wide
+# SSH to the node and check: nfsstat -m
 
-# Check if the nfsd module is loaded
-lsmod | grep nfsd
+# Check if NFSv4.1 client support is enabled in the kernel
+cat /boot/config-$(uname -r) | grep CONFIG_NFS_V4_1
 ```
 
 ---
@@ -147,5 +151,5 @@ lsmod | grep nfsd
 
 - RWX volumes have higher latency than RWO volumes due to the NFS layer - avoid using them for databases.
 - Use RWX for shared configuration files, static assets, and log aggregation directories.
-- Set `nfsOptions: "vers=4.1"` - NFS v4.1 provides better performance than v3.
-- Monitor the share manager pod - if it crashes, all pods mounting the RWX volume will lose access until it recovers.
+- Longhorn uses NFS v4.1 for RWX volumes by default - if you override `nfsOptions`, specify the complete set of desired mount options.
+- Monitor the share manager pod - if it fails, client I/O is blocked until Longhorn recreates it and lock reclamation completes.
