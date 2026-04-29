@@ -106,7 +106,7 @@ if __name__ == '__main__':
 ```yaml
 # /etc/prometheus/prometheus.yml - node_exporter collects tc stats
 
-# node_exporter --collector.network_queue_statistics
+# node_exporter --collector.qdisc
 
 # Custom tc stats collector script
 # /usr/local/bin/tc_stats_collector.sh
@@ -119,7 +119,7 @@ echo "# TYPE tc_class_bytes_total counter"
 IFACE="eth0"
 sudo tc -s class show dev $IFACE | while read line; do
     if [[ $line =~ class\ [a-z]+\ ([0-9]+:[0-9]+) ]]; then
-        CLASS="${BASH_REMATCH[1]//:/underscore}"
+        CLASS="${BASH_REMATCH[1]//:/_}"
     fi
     if [[ $line =~ Sent\ ([0-9]+)\ bytes\ ([0-9]+)\ pkt.*dropped\ ([0-9]+) ]]; then
         BYTES="${BASH_REMATCH[1]}"
@@ -140,15 +140,15 @@ done
 # ping_monitor.sh
 
 TARGETS=(
-    "2001:db8::voip-server"
-    "2001:db8::video-server"
-    "2001:db8::web-server"
+    "2001:db8::1"
+    "2001:db8::2"
+    "2001:db8::3"
 )
 
 for target in "${TARGETS[@]}"; do
     result=$(ping6 -c 10 -q $target 2>/dev/null | tail -1)
     if [ -n "$result" ]; then
-        min=$(echo $result | awk -F/ '{print $4}')
+        min=$(echo $result | awk -F/ '{print $4}' | awk '{print $NF}')
         avg=$(echo $result | awk -F/ '{print $5}')
         max=$(echo $result | awk -F/ '{print $6}')
         mdev=$(echo $result | awk -F/ '{print $7}' | cut -d' ' -f1)
