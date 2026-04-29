@@ -4,7 +4,7 @@ Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
 Tags: Rust, IPv6, Socket, Networking, TcpListener, UdpSocket, Socket Programming
 
-Description: Create IPv6 TCP and UDP sockets in Rust using std::net and the socket2 crate for fine-grained socket control, including dual-stack configuration and link-local connections.
+Description: Create IPv6 TCP and UDP sockets in Rust using std::net and the socket2 crate for fine-grained socket control, including dual-stack configuration.
 
 ## Introduction
 
@@ -18,7 +18,7 @@ use std::io::{Read, Write};
 use std::thread;
 
 fn handle_client(mut stream: TcpStream) {
-    // Get remote address (IPv6 is displayed with brackets by default)
+    // Get remote address and print it in [addr]:port form
     let peer = stream.peer_addr().unwrap();
     let host = peer.ip();
     let port = peer.port();
@@ -88,11 +88,12 @@ fn main() {
 
 ```rust
 use std::net::UdpSocket;
+use std::time::Duration;
 
 fn ipv6_udp_server(port: u16) -> std::io::Result<()> {
     // Bind UDP socket to IPv6 wildcard
-    let socket = UdpSocket::bind(format!("[::]:{ }", port))?;
-    println!("UDP server on [::]:{ }", port);
+    let socket = UdpSocket::bind(format!("[::]:{}", port))?;
+    println!("UDP server on [::]:{}", port);
 
     let mut buf = [0u8; 4096];
     loop {
@@ -148,7 +149,7 @@ fn create_dual_stack_listener(port: u16) -> std::io::Result<std::net::TcpListene
     socket.set_reuse_address(true)?;
 
     // Bind to IPv6 wildcard
-    let addr: SocketAddr = format!("[::]:{ }", port).parse().unwrap();
+    let addr: SocketAddr = format!("[::]:{}", port).parse().unwrap();
     socket.bind(&addr.into())?;
     socket.listen(128)?;
 
@@ -171,6 +172,13 @@ fn main() -> std::io::Result<()> {
 ```
 
 ## Async IPv6 with Tokio
+
+```toml
+# Cargo.toml
+
+[dependencies]
+tokio = { version = "1", features = ["macros", "rt-multi-thread", "net", "io-util"] }
+```
 
 ```rust
 use tokio::net::{TcpListener, TcpStream, UdpSocket};
