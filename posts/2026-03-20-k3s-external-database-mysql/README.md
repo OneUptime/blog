@@ -14,7 +14,7 @@ By default K3s uses embedded SQLite which only supports a single server node. Sw
 
 ## Step 1: Set Up MySQL
 
-Install and configure MySQL 8.0+:
+Install and configure a K3s-supported MySQL release such as 8.0 or 8.4:
 
 ```bash
 # Install MySQL on a dedicated database node
@@ -83,6 +83,7 @@ Additional server nodes connect to the same MySQL database. K3s automatically co
 curl -sfL https://get.k3s.io | sh -s - server \
   --datastore-endpoint="mysql://k3suser:strongpassword123@tcp(192.168.1.50:3306)/k3s" \
   --tls-san="k3s-lb.example.com" \
+  --tls-san="192.168.1.10" \
   --token="<token-from-first-server>"
 ```
 
@@ -90,7 +91,7 @@ curl -sfL https://get.k3s.io | sh -s - server \
 
 ## Step 4: Add a Load Balancer
 
-Put a load balancer (HAProxy, Nginx, or cloud LB) in front of all server nodes on ports 6443 (API) and 6444 (supervisor):
+Put a load balancer (HAProxy, Nginx, or cloud LB) in front of all server nodes on port 6443 for the Kubernetes API and fixed registration address:
 
 ```text
 backend k3s-servers
@@ -123,11 +124,13 @@ mysqldump -h 192.168.1.50 -u k3suser -p k3s > k3s-backup-$(date +%Y%m%d).sql
 mysql -h 192.168.1.50 -u k3suser -p k3s < k3s-backup-20260320.sql
 ```
 
+Also back up `/var/lib/rancher/k3s/server/token` and restore the same token value, or pass it with `--token`, before starting K3s again after a restore.
+
 ---
 
 ## Best Practices
 
-- Use MySQL with read replicas and point K3s at the primary for writes.
-- Enable SSL/TLS for the MySQL connection: append `?tls=true` to the DSN.
-- Back up the MySQL database before every K3s upgrade.
-- Monitor MySQL replication lag - if the replica lags significantly, K3s HA may be affected during failover.
+- If you use MySQL replication for failover, point K3s at the writable primary or a failover endpoint that always routes to it.
+- Enable SSL/TLS for the MySQL connection with `--datastore-cafile`, `--datastore-certfile`, and `--datastore-keyfile` as needed.
+- Back up the MySQL database and the K3s server token before every K3s upgrade.
+- Monitor MySQL replication lag if you use primary/replica failover.
