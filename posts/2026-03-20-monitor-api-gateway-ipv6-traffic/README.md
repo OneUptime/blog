@@ -31,12 +31,11 @@ server {
 Parse and count IPv6 vs IPv4 requests:
 
 ```bash
-# Count IPv6 requests (addresses contain colons)
-
-grep -c ':' /var/log/nginx/api_access.log
+# Count IPv6 requests (client address - first field - contains a colon)
+awk '$1 ~ /:/' /var/log/nginx/api_access.log | wc -l
 
 # Count IPv4 requests
-grep -cE '^[0-9]+\.' /var/log/nginx/api_access.log
+awk '$1 ~ /^[0-9]+\./' /var/log/nginx/api_access.log | wc -l
 
 # Top 10 IPv6 client prefixes (/64)
 awk '{print $1}' /var/log/nginx/api_access.log | \
@@ -47,7 +46,7 @@ awk '{print $1}' /var/log/nginx/api_access.log | \
 
 ## Step 2: Expose Prometheus Metrics from Kong
 
-Kong's Prometheus plugin exposes per-route metrics including client IP family breakdowns.
+Kong's Prometheus plugin exposes per-route metrics for status codes, latency, and bandwidth. It does not natively label metrics by IP family, so we add that dimension via custom middleware in the next step.
 
 ```bash
 # Enable Prometheus plugin on Kong globally
@@ -79,6 +78,12 @@ request_counter = meter.create_counter(
     description="Total API requests by IP version"
 )
 
+request_latency = meter.create_histogram(
+    "api_request_latency_ms",
+    description="API request latency in milliseconds by IP version",
+    unit="ms"
+)
+
 def get_ip_version(ip: str) -> str:
     """Return 'ipv6' or 'ipv4' for a given address string."""
     try:
@@ -87,13 +92,15 @@ def get_ip_version(ip: str) -> str:
     except ValueError:
         return "unknown"
 
-def track_request(client_ip: str, route: str, status: int):
+def track_request(client_ip: str, route: str, status: int, latency_ms: float):
     ip_version = get_ip_version(client_ip)
-    request_counter.add(1, {
+    attrs = {
         "ip_version": ip_version,
         "route": route,
         "status": str(status)
-    })
+    }
+    request_counter.add(1, attrs)
+    request_latency.record(latency_ms, attrs)
 ```
 
 ## Step 4: Grafana Dashboard - IPv6 Traffic Panel
@@ -101,20 +108,20 @@ def track_request(client_ip: str, route: str, status: int):
 Create a Grafana dashboard panel using PromQL to visualize IPv6 traffic share.
 
 ```promql
-# Requests per second split by IP version (Kong Prometheus plugin)
-sum(rate(kong_http_requests_total[5m])) by (ip_version)
+# Requests per second split by IP version (custom OpenTelemetry metric)
+sum(rate(api_requests_total[5m])) by (ip_version)
 
 # IPv6 traffic percentage
 (
-  sum(rate(kong_http_requests_total{ip_version="ipv6"}[5m]))
+  sum(rate(api_requests_total{ip_version="ipv6"}[5m]))
   /
-  sum(rate(kong_http_requests_total[5m]))
+  sum(rate(api_requests_total[5m]))
 ) * 100
 
 # P99 latency for IPv6 requests
 histogram_quantile(0.99,
-  sum(rate(kong_request_latency_ms_bucket{ip_version="ipv6"}[5m]))
-  by (le, service)
+  sum(rate(api_request_latency_ms_bucket{ip_version="ipv6"}[5m]))
+  by (le, route)
 )
 ```
 
@@ -128,9 +135,9 @@ groups:
       - alert: IPv6ErrorRateHigh
         expr: |
           (
-            sum(rate(kong_http_requests_total{status=~"5..",ip_version="ipv6"}[5m]))
+            sum(rate(api_requests_total{status=~"5..",ip_version="ipv6"}[5m]))
             /
-            sum(rate(kong_http_requests_total{ip_version="ipv6"}[5m]))
+            sum(rate(api_requests_total{ip_version="ipv6"}[5m]))
           ) > 0.05
         for: 2m
         labels:
