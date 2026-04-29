@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
-Tags: IPv6, Window, Teredo, ISATAP, 6to4, Transition Technologies
+Tags: IPv6, Windows, Teredo, ISATAP, 6to4, Transition Technologies
 
 Description: An overview of the IPv6 transition technologies built into Windows - Teredo, ISATAP, and 6to4 - how they work, when they activate, and how to check their status.
 
@@ -42,8 +42,9 @@ netsh interface teredo set state type=disabled
 
 How Teredo works:
 ```text
-Host (behind NAT) ←UDP/3544→ Teredo Server ←→ IPv6 Internet
-    IPv4: 192.168.1.5                           IPv6 native
+Host (behind NAT) ←UDP/3544→ Teredo Server (setup/qualification)
+Host (behind NAT) ←UDP/3544→ Teredo Relay ←→ IPv6 Internet
+    IPv4: 192.168.1.5
     Teredo: 2001:0::/32 prefix
 ```
 
@@ -55,8 +56,8 @@ ISATAP tunnels IPv6 over IPv4 within an organization:
 # Check ISATAP state
 netsh interface isatap show state
 
-# Set ISATAP router (the IPv4 address of an ISATAP router)
-netsh interface isatap set router 192.168.1.1
+# Set ISATAP router name or IPv4 address
+netsh interface isatap set router name=192.168.1.1
 
 # Enable ISATAP
 netsh interface isatap set state enabled
@@ -77,13 +78,13 @@ Prefix: 2001:db8::/64
 
 ## 6to4
 
-6to4 creates automatic tunnels using public IPv4 addresses (obsolete, RFC 7526 deprecated it):
+6to4 creates automatic tunnels using public IPv4 addresses (largely obsolete; RFC 7526 deprecated the anycast relay mechanism and recommends 6to4 be disabled by default):
 
 ```powershell
 # Check 6to4 state
 netsh interface 6to4 show state
 
-# Enable 6to4 (not recommended, deprecated)
+# Enable 6to4 (not recommended, legacy use only)
 netsh interface 6to4 set state enabled
 
 # Disable 6to4
@@ -99,8 +100,8 @@ netsh interface 6to4 show relay
 # IP-HTTPS: IPv6 tunneled over HTTPS (used by DirectAccess)
 netsh interface httpstunnel show interfaces
 
-# View all tunnel interfaces
-Get-NetAdapter | Where-Object {$_.InterfaceDescription -match "Tunnel|Teredo|ISATAP|6TO4"}
+# View active IPv6 tunnel interfaces
+Get-NetIPInterface -AddressFamily IPv6 | Where-Object {$_.InterfaceAlias -match "Teredo|ISATAP|6to4|iphttps"}
 ```
 
 ## Recommended: Disable Legacy Transition Technologies
@@ -121,4 +122,4 @@ netsh interface isatap show state
 
 ## Summary
 
-Windows includes three IPv6 transition technologies: **Teredo** (IPv6 via UDP through NAT, useful for consumer machines), **ISATAP** (enterprise intranet tunneling using IPv4 infrastructure), and **6to4** (deprecated, automatic tunneling via public IPv4). On networks with native IPv6, disable all three with `netsh interface teredo/6to4/isatap set state disabled` to avoid unexpected tunnel traffic and potential security issues. Check status with `netsh interface <tech> show state`.
+Windows includes three IPv6 transition technologies: **Teredo** (IPv6 via UDP through NAT), **ISATAP** (enterprise intranet tunneling using IPv4 infrastructure), and **6to4** (legacy automatic tunneling via public IPv4). On networks with native IPv6, disable all three with `netsh interface teredo set state type=disabled`, `netsh interface 6to4 set state disabled`, and `netsh interface isatap set state disabled` to avoid unexpected tunnel traffic and potential security issues. Check status with `netsh interface <tech> show state`.
