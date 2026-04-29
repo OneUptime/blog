@@ -17,8 +17,8 @@ OpenWrt uses `odhcpd` (OpenWrt DHCP Daemon) as its default IPv6 Router Advertise
 
 /etc/init.d/odhcpd status
 
-# Check odhcpd version
-odhcpd --version
+# Check the installed odhcpd package version
+opkg list-installed | grep '^odhcpd' || apk list -I | grep '^odhcpd'
 ```
 
 ## Configuring RA via UCI
@@ -40,10 +40,10 @@ uci commit dhcp
 The `ra` option values:
 - `server` - send RAs from this router
 - `relay` - relay RAs from another router upstream
-- `hybrid` - server mode when no upstream RA is available, relay otherwise
+- `hybrid` - relay when a designated master interface is active, otherwise fall back to server mode
 - `disabled` - no RA
 
-## Configuring DNS via RA (RDNSS)
+## Configuring DNS via RA (RDNSS/DNSSL)
 
 ```bash
 # Advertise custom DNS servers in RA
@@ -88,23 +88,32 @@ config dhcp 'lan'
 When running DHCPv6 alongside RA:
 
 ```bash
-# Tell clients to use DHCPv6 for addresses (M flag)
-uci set dhcp.lan.ra_management=1
-# 0 = no DHCPv6, 1 = DHCPv6 for other info only (O flag)
-# 2 = DHCPv6 for addresses + other info (M flag)
+# Enable DHCPv6 service on LAN
+uci set dhcp.lan.dhcpv6=server
+
+# Advertise DHCPv6 for addresses + other configuration (M + O flags)
+uci -q delete dhcp.lan.ra_flags
+uci add_list dhcp.lan.ra_flags='managed-config'
+uci add_list dhcp.lan.ra_flags='other-config'
 
 uci commit dhcp
 /etc/init.d/odhcpd restart
 ```
 
+The `ra_flags` option values:
+- `other-config` - set the O flag so clients use DHCPv6 for additional information such as DNS
+- `managed-config` - set the M flag so clients use DHCPv6 for addresses
+- use `other-config` alone for SLAAC + DHCPv6 other information
+- use both `managed-config` and `other-config` for stateful DHCPv6 addressing
+
 ## Configuring via LuCI (Web Interface)
 
 1. Navigate to **Network > Interfaces > LAN > Edit**
-2. Click the **IPv6 Settings** or **DHCP Server** tab
+2. Click the **IPv6 Settings** tab
 3. Under **Router Advertisement-Service**, select **Server mode**
 4. Enable **Enable SLAAC**
 5. Set **RA Interval** and **RA Lifetime** as desired
-6. Add DNS servers under **Announced DNS servers**
+6. Add DNS servers under **Announce IPv4/6 DNS servers**
 7. Click **Save & Apply**
 
 ## Verifying RA on a Client
@@ -121,25 +130,25 @@ ip -6 route show default
 # Verify DNS was received
 cat /etc/resolv.conf
 # or
-systemd-resolve --status | grep "DNS Servers"
+resolvectl status | grep "DNS Servers"
 ```
 
 ## Debugging odhcpd
 
 ```bash
 # Enable verbose logging for odhcpd
-uci set system.@system[0].log_level=7
-uci commit system
-/etc/init.d/log restart
+uci set dhcp.odhcpd.loglevel=7
+uci commit dhcp
+/etc/init.d/odhcpd restart
 
 # View odhcpd logs
 logread | grep odhcpd
 
 # Or run odhcpd in foreground with debug output
 /etc/init.d/odhcpd stop
-odhcpd -v
+odhcpd -f -l 7
 ```
 
 ## Conclusion
 
-OpenWrt's `odhcpd` provides a unified solution for IPv6 Router Advertisements and DHCPv6, configured entirely through the UCI system. The `ra=server` and `ra_slaac=1` options enable the most common SLAAC deployment with minimal configuration. For enterprise-style deployments requiring DHCPv6 alongside RA, adjust the `ra_management` option to set the M/O flags appropriately.
+OpenWrt's `odhcpd` provides a unified solution for IPv6 Router Advertisements and DHCPv6, configured entirely through the UCI system. The `ra=server` and `ra_slaac=1` options enable the most common SLAAC deployment with minimal configuration. For enterprise-style deployments requiring DHCPv6 alongside RA, adjust the `ra_flags` option to set the M/O flags appropriately.
