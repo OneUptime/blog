@@ -39,6 +39,9 @@ kubectl drain <server-node-name> \
   --ignore-daemonsets \
   --delete-emptydir-data \
   --force
+
+# If you plan to reinstall or rejoin this server, delete its node object too
+kubectl delete node <server-node-name>
 ```
 
 ## Step 2: Use the Built-in Uninstall Script
@@ -55,11 +58,11 @@ K3s ships with an uninstall script that handles most of the cleanup:
 
 This script performs the following actions:
 - Stops and disables the `k3s` systemd service
-- Removes the K3s binary
+- Removes the K3s binary, generated scripts, and bundled CLI tool symlinks
 - Removes the systemd service files
 - Cleans up iptables rules
 - Removes network interfaces (flannel, cni0)
-- Deletes K3s data directories
+- Deletes the local cluster datastore, Local Storage PV data, and node configuration
 
 ## Step 3: Verify Service Removal
 
@@ -67,10 +70,10 @@ Confirm the K3s service is gone:
 
 ```bash
 # Should show no k3s service
-systemctl list-units | grep k3s
+systemctl list-units --all | grep k3s || echo "No k3s units found"
 
 # Verify no k3s processes are running
-ps aux | grep k3s
+ps aux | grep -v grep | grep k3s || echo "No K3s processes found"
 
 # Check if binary was removed
 which k3s || echo "k3s binary removed"
@@ -82,9 +85,15 @@ ls -la /usr/local/bin/k3s 2>/dev/null || echo "Binary not found"
 If the uninstall script is not available, perform manual cleanup:
 
 ```bash
+# If available, stop running pods/containers and clean up networking state
+if [ -x /usr/local/bin/k3s-killall.sh ]; then
+  /usr/local/bin/k3s-killall.sh
+fi
+
 # Stop and disable K3s service
 systemctl stop k3s
 systemctl disable k3s
+systemctl reset-failed k3s
 
 # Remove systemd service files
 rm -f /etc/systemd/system/k3s.service
@@ -94,22 +103,24 @@ systemctl daemon-reload
 # Remove the K3s binary
 rm -f /usr/local/bin/k3s
 
-# Remove kubectl, crictl, ctr symlinks
-rm -f /usr/local/bin/kubectl
-rm -f /usr/local/bin/crictl
-rm -f /usr/local/bin/ctr
+# Remove kubectl, crictl, ctr symlinks if they point to k3s
+for cmd in kubectl crictl ctr; do
+  [ -L /usr/local/bin/$cmd ] && rm -f /usr/local/bin/$cmd
+done
 
-# Remove the uninstall scripts
+# Remove the uninstall and killall scripts
 rm -f /usr/local/bin/k3s-uninstall.sh
 rm -f /usr/local/bin/k3s-agent-uninstall.sh
+rm -f /usr/local/bin/k3s-killall.sh
 ```
 
 ## Step 5: Remove Data Directories
 
-Remove all K3s data:
+Remove remaining K3s data:
 
 ```bash
-# Main K3s data directory (contains etcd/SQLite, certs, manifests)
+# Main K3s data directory (contains the local datastore, certs, manifests,
+# and bundled containerd/CNI state)
 rm -rf /var/lib/rancher/k3s
 
 # K3s configuration directory
@@ -118,44 +129,32 @@ rm -rf /etc/rancher/k3s
 # Runtime directory
 rm -rf /run/k3s
 
+# Flannel runtime directory
+rm -rf /run/flannel
+
 # Kubelet data
 rm -rf /var/lib/kubelet
 
-# Container runtime data
-rm -rf /var/lib/containerd
-
-# CNI configuration
-rm -rf /etc/cni/net.d
+# CNI state
 rm -rf /var/lib/cni
-rm -rf /opt/cni/bin
 ```
 
 ## Step 6: Remove Network Interfaces and iptables Rules
 
-K3s creates network interfaces and iptables rules that persist after service removal:
+If the uninstall script was unavailable or networking artifacts remain, clean them up manually:
 
 ```bash
-# Remove flannel network interface
+# Remove interfaces created by default Flannel/CNI networking
 ip link delete flannel.1 2>/dev/null || true
+ip link delete flannel-v6.1 2>/dev/null || true
 ip link delete flannel-wg 2>/dev/null || true
+ip link delete flannel-wg-v6 2>/dev/null || true
 ip link delete cni0 2>/dev/null || true
+ip link delete kube-ipvs0 2>/dev/null || true
 
-# Remove all K3s-related iptables rules
-iptables -F
-iptables -X
-iptables -t nat -F
-iptables -t nat -X
-iptables -t mangle -F
-iptables -t mangle -X
-
-# Restore default policies
-iptables -P INPUT ACCEPT
-iptables -P FORWARD ACCEPT
-iptables -P OUTPUT ACCEPT
-
-# For IPv6
-ip6tables -F
-ip6tables -t nat -F
+# Remove K3s-related iptables rules without flushing unrelated firewall rules
+iptables-save | grep -v KUBE- | grep -v CNI- | grep -iv flannel | iptables-restore
+ip6tables-save | grep -v KUBE- | grep -v CNI- | grep -iv flannel | ip6tables-restore
 ```
 
 ## Step 7: Remove kubeconfig
@@ -166,9 +165,11 @@ Clean up kubeconfig entries:
 # Remove K3s kubeconfig
 rm -f /etc/rancher/k3s/k3s.yaml
 
-# Remove from user's kubeconfig if merged
-kubectl config delete-cluster k3s-cluster 2>/dev/null || true
-kubectl config delete-context k3s-context 2>/dev/null || true
+# If you have a separate kubectl installed and merged the K3s kubeconfig,
+# remove the default K3s entries from ~/.kube/config
+kubectl config delete-cluster local 2>/dev/null || true
+kubectl config delete-context Default 2>/dev/null || true
+kubectl config delete-user user 2>/dev/null || true
 ```
 
 ## Step 8: Reboot (Recommended)
@@ -196,10 +197,10 @@ which k3s 2>/dev/null || echo "k3s not found (expected)"
 systemctl status k3s 2>/dev/null || echo "k3s service not found (expected)"
 
 # Check for data directories
-ls /var/lib/rancher 2>/dev/null || echo "Data directory removed (expected)"
+ls /var/lib/rancher/k3s 2>/dev/null || echo "K3s data directory removed (expected)"
 
 # Check for network interfaces
-ip link show | grep -E "flannel|cni0" || echo "No K3s interfaces (expected)"
+ip link show | grep -E "flannel|cni0|kube-ipvs0" || echo "No K3s interfaces (expected)"
 ```
 
 ## Conclusion
