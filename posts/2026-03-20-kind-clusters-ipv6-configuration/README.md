@@ -17,15 +17,12 @@ kind (Kubernetes in Docker) is the standard tool for running local Kubernetes cl
 
 ## Step 1: Enable IPv6 in Docker Daemon
 
-Docker must have IPv6 enabled before kind can use it.
+Docker must have IPv6 enabled before kind can use it. Edit `/etc/docker/daemon.json`:
 
 ```json
-// /etc/docker/daemon.json - enable IPv6 in Docker
 {
   "ipv6": true,
-  "fixed-cidr-v6": "2001:db8:1::/64",
-  "experimental": true,
-  "ip6tables": true
+  "fixed-cidr-v6": "fd00:1::/64"
 }
 ```
 
@@ -63,6 +60,7 @@ apiVersion: kind.x-k8s.io/v1alpha4
 networking:
   # IPv6-only cluster
   ipFamily: ipv6
+  apiServerAddress: 127.0.0.1
   podSubnet: "fd00:10:244::/56"
   serviceSubnet: "fd00:10:96::/112"
 nodes:
@@ -79,32 +77,37 @@ kind create cluster --config kind-dual-stack.yaml --name ipv6-test
 # Or create the IPv6-only cluster
 kind create cluster --config kind-ipv6-only.yaml --name ipv6-only
 
-# Set kubectl context
-kubectl cluster-info --context kind-ipv6-test
+# Set kubectl context to the dual-stack cluster
+kubectl config use-context kind-ipv6-test
+
+# Or set kubectl context to the IPv6-only cluster
+kubectl config use-context kind-ipv6-only
 ```
 
 ## Step 5: Verify Dual-Stack Configuration
 
 ```bash
-# Check node addresses - should include both IPv4 and IPv6
-kubectl get nodes -o wide
+# Pick a node and confirm it has both IPv4 and IPv6 Pod CIDRs
+NODE=$(kubectl get nodes -o jsonpath='{.items[0].metadata.name}')
+kubectl get node "$NODE" -o go-template='{{range .spec.podCIDRs}}{{printf "%s\n" .}}{{end}}'
 
-# Check the kube-dns service for dual ClusterIPs
-kubectl get svc kube-dns -n kube-system -o jsonpath='{.spec.clusterIPs}'
+# Check node addresses - should include both IPv4 and IPv6
+kubectl get node "$NODE" -o go-template='{{range .status.addresses}}{{printf "%s: %s\n" .type .address}}{{end}}'
 
 # Deploy a test pod and confirm dual IP assignment
-kubectl run test --image=busybox:1.36 -- sleep 3600
-kubectl get pod test -o jsonpath='{.status.podIPs}'
+kubectl run test --image=busybox:1.36 --restart=Never -- sleep 3600
+kubectl wait --for=condition=Ready pod/test --timeout=60s
+kubectl get pod test -o go-template='{{range .status.podIPs}}{{printf "%s\n" .ip}}{{end}}'
 ```
 
 ## Step 6: Test IPv6 Pod Connectivity
 
 ```bash
 # Get the IPv6 address of the test pod
-POD_IPV6=$(kubectl get pod test -o jsonpath='{.status.podIPs[1].ip}')
+POD_IPV6=$(kubectl get pod test -o go-template='{{range .status.podIPs}}{{printf "%s\n" .ip}}{{end}}' | grep ':')
 
 # From another pod, ping the IPv6 address
-kubectl run pinger --image=busybox:1.36 --restart=Never -- ping6 -c 3 $POD_IPV6
+kubectl run pinger --image=busybox:1.36 --restart=Never -- ping -6 -c 3 "$POD_IPV6"
 
 # Check the result
 kubectl logs pinger
@@ -113,23 +116,41 @@ kubectl logs pinger
 ## Step 7: Test IPv6 Service
 
 ```bash
-# Deploy nginx with a dual-stack service
+# Deploy nginx
 kubectl create deployment nginx --image=nginx
-kubectl expose deployment nginx --port=80
+kubectl rollout status deployment/nginx
 
-# Check the service for IPv6 ClusterIP
+# Create a dual-stack service
+kubectl apply -f - <<'EOF'
+apiVersion: v1
+kind: Service
+metadata:
+  name: nginx
+spec:
+  ipFamilyPolicy: PreferDualStack
+  selector:
+    app: nginx
+  ports:
+    - port: 80
+      targetPort: 80
+EOF
+
+# Check the service for both ClusterIPs
 kubectl get svc nginx -o jsonpath='{.spec.clusterIPs}'
 
 # Curl the IPv6 ClusterIP from a pod
-IPV6_SVC=$(kubectl get svc nginx -o jsonpath='{.spec.clusterIPs[1]}')
-kubectl exec -it test -- wget -O- "http://[$IPV6_SVC]/"
+IPV6_SVC=$(kubectl get svc nginx -o jsonpath='{range .spec.clusterIPs[*]}{.}{"\n"}{end}' | grep ':')
+kubectl exec test -- wget -O- "http://[$IPV6_SVC]/"
 ```
 
 ## Cleanup
 
 ```bash
-# Delete the kind cluster when done
+# Delete the dual-stack cluster
 kind delete cluster --name ipv6-test
+
+# Or delete the IPv6-only cluster
+kind delete cluster --name ipv6-only
 ```
 
 kind's native dual-stack support makes it an excellent tool for testing IPv6 application behavior before deploying to production Kubernetes clusters.
