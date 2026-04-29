@@ -45,23 +45,23 @@ df -h /var/lib/longhorn
 
 ```bash
 # Set concurrent rebuild limit per node (1-2 for production)
-kubectl patch setting.longhorn.io concurrent-replica-rebuild-per-node-limit \
+kubectl patch settings.longhorn.io concurrent-replica-rebuild-per-node-limit \
   -n longhorn-system --type merge -p '{"value":"2"}'
 
 # Configure storage over-provisioning
-kubectl patch setting.longhorn.io storage-over-provisioning-percentage \
+kubectl patch settings.longhorn.io storage-over-provisioning-percentage \
   -n longhorn-system --type merge -p '{"value":"100"}'
 
 # Set storage minimal available percentage to prevent disk exhaustion
-kubectl patch setting.longhorn.io storage-minimal-available-percentage \
+kubectl patch settings.longhorn.io storage-minimal-available-percentage \
   -n longhorn-system --type merge -p '{"value":"15"}'
 
-# Enable auto-cleanup for deleted volume data
-kubectl patch setting.longhorn.io orphan-auto-deletion \
-  -n longhorn-system --type merge -p '{"value":"true"}'
+# Enable orphaned replica data cleanup
+kubectl patch settings.longhorn.io orphan-resource-auto-deletion \
+  -n longhorn-system --type merge -p '{"value":"replica-data"}'
 
-# Set backup concurrency
-kubectl patch setting.longhorn.io backup-concurrent-limit \
+# Set worker concurrency per backup
+kubectl patch settings.longhorn.io backup-concurrent-limit \
   -n longhorn-system --type merge -p '{"value":"5"}'
 ```
 
@@ -72,9 +72,9 @@ kubectl patch setting.longhorn.io backup-concurrent-limit \
 ```bash
 # Verify Longhorn traffic does not saturate the management network
 # Use a dedicated network interface for storage traffic
-kubectl patch setting.longhorn.io storage-network \
+kubectl patch settings.longhorn.io storage-network \
   -n longhorn-system --type merge \
-  -p '{"value":"net-attach-def/storage-net"}'
+  -p '{"value":"longhorn-system/storage-net"}'
 ```
 
 Multus network attachment definition for dedicated storage NIC:
@@ -106,15 +106,15 @@ spec:
 ## Step 4: Priority Classes and Resource Limits
 
 ```bash
-# Create and apply priority class (see priority class guide)
-kubectl patch setting.longhorn.io priority-class \
+# Set Longhorn system-managed components to use the existing longhorn-critical PriorityClass
+kubectl patch settings.longhorn.io priority-class \
   -n longhorn-system --type merge \
   -p '{"value":"longhorn-critical"}'
 
-# Set guaranteed CPU for instance managers (12% per CPU = 12m)
-kubectl patch setting.longhorn.io guaranteed-instance-manager-cpu \
+# Reserve 12% of each node's allocatable CPU for every instance manager pod
+kubectl patch settings.longhorn.io guaranteed-instance-manager-cpu \
   -n longhorn-system --type merge \
-  -p '{"value":"12"}'
+  -p '{"value":"{\"v1\":\"12\",\"v2\":\"12\"}"}'
 ```
 
 ---
@@ -124,12 +124,12 @@ kubectl patch setting.longhorn.io guaranteed-instance-manager-cpu \
 Set up the following alerts for production Longhorn:
 
 ```yaml
-# Essential Longhorn production alerts
-- LonghornVolumeFaulted: volume has zero healthy replicas
-- LonghornVolumeActualSizeExceedsExpected: volume is unexpectedly large
-- LonghornNodeStorageHighUsage: node disk > 80%
-- LonghornBackupFailed: backup job failed
-- LonghornReplicaRebuildingTooLong: rebuild exceeds 2 hours
+# Example Longhorn production alerts from the official docs
+- LonghornVolumeStatusCritical: volume is faulted
+- LonghornVolumeStatusWarning: volume is degraded
+- LonghornNodeStorageWarning: node storage usage is high
+- LonghornDiskStorageWarning: disk storage usage is high
+- LonghornNodeDown: one or more Longhorn nodes are offline
 ```
 
 ---
