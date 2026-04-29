@@ -37,13 +37,13 @@ RATE="100mbit"  # Total interface bandwidth
 sudo tc qdisc del dev $IFACE root 2>/dev/null || true
 
 # Add root HTB qdisc
-sudo tc qdisc add dev $IFACE root handle 1: htb default 30
+sudo tc qdisc add dev $IFACE root handle 1: htb default 40
 
 # Root class - total bandwidth
 sudo tc class add dev $IFACE parent 1: classid 1:1 \
   htb rate $RATE burst 15k
 
-# Class for VoIP (30% guaranteed, strict priority)
+# Class for VoIP (30% guaranteed, highest HTB priority)
 sudo tc class add dev $IFACE parent 1:1 classid 1:10 \
   htb rate 30mbit ceil 30mbit burst 10k prio 1
 
@@ -71,27 +71,26 @@ echo "HTB classes configured for $IFACE"
 IFACE="eth0"
 
 # Match IPv6 EF (DSCP 46 = 0x2e) -> VoIP class 1:10
-# IPv6 Traffic Class field is at byte 1 (bits 4-11 of first 4 bytes)
-# DSCP in TC field: bits 0-5 of TC byte (byte 1)
-# EF = 46 in TC field = 0xb8 (46 << 2 = 0xb8, accounting for ECN bits)
+# tc's ip6 priority selector matches the IPv6 Traffic Class octet.
+# DSCP occupies the upper 6 bits, so mask with 0xfc to ignore ECN.
 
 sudo tc filter add dev $IFACE protocol ipv6 parent 1:0 prio 1 \
   u32 \
-  match u8 0xb8 0xfc at 1 \
+  match ip6 priority 0xb8 0xfc \
   flowid 1:10
 
 # Match IPv6 AF41 (DSCP 34 = 0x22) -> Video class 1:20
-# AF41 = 34 in TC = 0x88
+# AF41 = 34, so Traffic Class value is 0x88 when ECN bits are ignored
 sudo tc filter add dev $IFACE protocol ipv6 parent 1:0 prio 2 \
   u32 \
-  match u8 0x88 0xfc at 1 \
+  match ip6 priority 0x88 0xfc \
   flowid 1:20
 
 # Match IPv6 AF31 (DSCP 26) -> Interactive class 1:30
-# AF31 = 26 in TC = 0x68
+# AF31 = 26, so Traffic Class value is 0x68 when ECN bits are ignored
 sudo tc filter add dev $IFACE protocol ipv6 parent 1:0 prio 3 \
   u32 \
-  match u8 0x68 0xfc at 1 \
+  match ip6 priority 0x68 0xfc \
   flowid 1:30
 
 # Default - all other IPv6 -> bulk class 1:40
@@ -127,7 +126,7 @@ sudo tc qdisc add dev $IFACE parent 1:3 handle 30: fq_codel
 
 # Classify IPv6 EF to band 0 (high)
 sudo tc filter add dev $IFACE protocol ipv6 parent 1:0 prio 1 \
-  u32 match u8 0xb8 0xfc at 1 \
+  u32 match ip6 priority 0xb8 0xfc \
   flowid 1:1
 
 # Default to band 1
@@ -138,13 +137,15 @@ sudo tc filter add dev $IFACE protocol ipv6 parent 1:0 prio 1 \
 ```bash
 # Limit bandwidth of specific IPv6 traffic
 
-# Limit UDP video stream from specific IPv6 source
+IFACE="eth0"
+
+# Limit UDP traffic from a specific IPv6 source
 sudo tc filter add dev $IFACE protocol ipv6 parent 1:0 \
   u32 \
-  match ip6 src 2001:db8::video-server/128 \
-  match u8 0x11 0xff at 6 \
-  police rate 50mbit burst 500k \
-  flowid 1:20
+  match ip6 src 2001:db8::10/128 \
+  match ip6 protocol 17 0xff \
+  classid 1:20 \
+  action police rate 50mbit burst 500k conform-exceed drop/ok
 ```
 
 ## Monitoring IPv6 QoS
@@ -164,4 +165,4 @@ sudo tc -s qdisc show dev eth0 | grep -A2 "pkt"
 sudo tc -s class ls dev eth0 | grep "class\|Sent\|Dropped"
 ```
 
-Linux tc's u32 filter matching on IPv6 Traffic Class field bytes at offset 1 in the packet provides DSCP-based classification for IPv6 QoS, with HTB providing precise bandwidth guarantees and the FQ-CoDel qdisc at each class level preventing bufferbloat for optimal latency performance.
+Linux tc's u32 filter can match the IPv6 Traffic Class field directly with the `ip6 priority` selector for DSCP-based classification, with HTB providing bandwidth guarantees and FQ-CoDel at each class level helping reduce queueing delay and bufferbloat.
