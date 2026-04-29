@@ -11,12 +11,12 @@ The `iptables-translate` tool converts iptables rule syntax to equivalent nftabl
 ## Install Translation Tools
 
 ```bash
-# iptables-translate comes with iptables (usually pre-installed)
+# iptables-translate is part of the iptables userspace package
 
 which iptables-translate
-# /usr/sbin/iptables-translate
+# Example output: /usr/sbin/iptables-translate
 
-# Install if missing
+# Install if missing on Debian/Ubuntu
 sudo apt install iptables -y
 ```
 
@@ -25,16 +25,16 @@ sudo apt install iptables -y
 ```bash
 # Translate an iptables rule to nftables
 iptables-translate -A INPUT -p tcp --dport 22 -j ACCEPT
-# Output: nft add rule ip filter INPUT tcp dport 22 counter accept
+# Output: nft 'add rule ip filter INPUT tcp dport 22 counter accept'
 
 iptables-translate -A INPUT -s 192.168.1.0/24 -j ACCEPT
-# Output: nft add rule ip filter INPUT ip saddr 192.168.1.0/24 counter accept
+# Output: nft 'add rule ip filter INPUT ip saddr 192.168.1.0/24 counter accept'
 
 iptables-translate -A INPUT -m state --state ESTABLISHED,RELATED -j ACCEPT
-# Output: nft add rule ip filter INPUT ct state established,related counter accept
+# Output: nft 'add rule ip filter INPUT ct state related,established counter accept'
 
 iptables-translate -A INPUT -j DROP
-# Output: nft add rule ip filter INPUT counter drop
+# Output: nft 'add rule ip filter INPUT counter drop'
 ```
 
 ## Translate a Saved Ruleset
@@ -51,11 +51,11 @@ sudo iptables-restore-translate -f /tmp/iptables-backup.txt
 # Output (nftables syntax):
 # # Translated by iptables-restore-translate
 # add table ip filter
-# add chain ip filter INPUT { type filter hook input priority 0; }
-# add chain ip filter FORWARD { type filter hook forward priority 0; }
-# add chain ip filter OUTPUT { type filter hook output priority 0; }
+# add chain ip filter INPUT { type filter hook input priority 0; policy accept; }
+# add chain ip filter FORWARD { type filter hook forward priority 0; policy accept; }
+# add chain ip filter OUTPUT { type filter hook output priority 0; policy accept; }
 # add rule ip filter INPUT iifname "lo" counter accept
-# add rule ip filter INPUT ct state established,related counter accept
+# add rule ip filter INPUT ct state related,established counter accept
 # add rule ip filter INPUT tcp dport 22 counter accept
 ```
 
@@ -71,7 +71,7 @@ cat /tmp/nftables-translated.conf
 
 # Test without applying
 sudo nft -c -f /tmp/nftables-translated.conf
-# -c = check/dry run mode
+# -c = check without applying changes
 
 # Apply if test passes
 sudo nft -f /tmp/nftables-translated.conf
@@ -84,23 +84,23 @@ sudo nft -f /tmp/nftables-translated.conf
 
 # Block an IP
 iptables-translate -A INPUT -s 1.2.3.4 -j DROP
-# → nft add rule ip filter INPUT ip saddr 1.2.3.4 counter drop
+# → nft 'add rule ip filter INPUT ip saddr 1.2.3.4 counter drop'
 
 # Rate limiting
 iptables-translate -A INPUT -p tcp --dport 22 -m limit --limit 4/min -j ACCEPT
-# → nft add rule ip filter INPUT tcp dport 22 limit rate 4/minute counter accept
+# → nft 'add rule ip filter INPUT tcp dport 22 limit rate 4/minute burst 5 packets counter accept'
 
 # Conntrack state
 iptables-translate -A INPUT -m conntrack --ctstate NEW -j ACCEPT
-# → nft add rule ip filter INPUT ct state new counter accept
+# → nft 'add rule ip filter INPUT ct state new counter accept'
 
 # MASQUERADE
 iptables-translate -t nat -A POSTROUTING -o eth0 -j MASQUERADE
-# → nft add rule ip nat POSTROUTING oifname "eth0" counter masquerade
+# → nft 'add rule ip nat POSTROUTING oifname "eth0" counter masquerade'
 
 # LOG
 iptables-translate -A INPUT -p tcp --dport 22 -j LOG --log-prefix "SSH: "
-# → nft add rule ip filter INPUT tcp dport 22 counter log prefix "SSH: "
+# → nft 'add rule ip filter INPUT tcp dport 22 counter log prefix "SSH: "'
 ```
 
 ## Migration Strategy
@@ -121,17 +121,16 @@ sudo iptables-restore-translate -f /tmp/iptables-backup.txt \
 cat /etc/nftables-migrated.conf
 
 # Step 4: Test in isolation
-sudo nft -c -f /etc/nftables-migrated.conf  # Syntax check
+sudo nft -c -f /etc/nftables-migrated.conf  # Syntax and validity check
 
-# Step 5: Stop iptables, apply nftables
-sudo systemctl stop iptables
+# Step 5: Apply nftables
 sudo nft -f /etc/nftables-migrated.conf
 sudo nft list ruleset  # Verify
 
-# Step 6: Persist nftables
+# Step 6: Persist nftables using your distro's mechanism
+# Example for systems that load /etc/nftables.conf via nftables.service:
 sudo cp /etc/nftables-migrated.conf /etc/nftables.conf
 sudo systemctl enable nftables
-sudo systemctl disable iptables
 ```
 
 Note that `iptables-translate` doesn't always produce optimal nftables syntax - review the output and refactor using nftables-native features like sets and verdict maps where appropriate.
