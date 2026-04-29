@@ -8,11 +8,19 @@ Description: Learn how to manage Kubernetes network policies with OpenTofu for d
 
 ## Introduction
 
-Managing Kubernetes resources with OpenTofu lets you declare them in HCL alongside your cloud infrastructure. This guide covers the complete configuration for this Kubernetes resource type.
+Managing Kubernetes resources with OpenTofu lets you declare them in HCL alongside your cloud infrastructure. This guide covers a complete example configuration for a Kubernetes NetworkPolicy resource. NetworkPolicies are enforced only when your cluster uses a network plugin that supports them.
 
 ## Provider Setup
 
 ```hcl
+terraform {
+  required_providers {
+    kubernetes = {
+      source = "hashicorp/kubernetes"
+    }
+  }
+}
+
 provider "kubernetes" {
   config_path    = "~/.kube/config"
   config_context = var.kube_context
@@ -22,7 +30,7 @@ provider "kubernetes" {
 Resource Configuration
 
 ```hcl
-resource "kubernetes_namespace" "app" {
+resource "kubernetes_namespace_v1" "app" {
   metadata {
     name = var.namespace
 
@@ -34,52 +42,35 @@ resource "kubernetes_namespace" "app" {
   }
 }
 
-# Example Kubernetes resource for this topic
-
-resource "kubernetes_deployment" "app" {
+resource "kubernetes_network_policy_v1" "app" {
   metadata {
-    name      = var.app_name
-    namespace = kubernetes_namespace.app.metadata[0].name
+    name      = "${var.app_name}-ingress"
+    namespace = kubernetes_namespace_v1.app.metadata[0].name
   }
 
   spec {
-    replicas = var.replica_count
-
-    selector {
+    pod_selector {
       match_labels = {
         app = var.app_name
       }
     }
 
-    template {
-      metadata {
-        labels = {
-          app = var.app_name
+    ingress {
+      from {
+        namespace_selector {
+          match_labels = {
+            "kubernetes.io/metadata.name" = var.allowed_namespace
+          }
         }
       }
 
-      spec {
-        container {
-          name  = var.app_name
-          image = "${var.image_repository}:${var.image_tag}"
-
-          port {
-            container_port = var.container_port
-          }
-
-          resources {
-            requests = {
-              cpu    = var.cpu_request
-              memory = var.memory_request
-            }
-            limits = {
-              cpu    = var.cpu_limit
-              memory = var.memory_limit
-            }
-          }
-        }
+      ports {
+        port     = tostring(var.container_port)
+        protocol = "TCP"
       }
     }
+
+    policy_types = ["Ingress"]
   }
 }
 ```
@@ -91,16 +82,10 @@ variable "namespace"          { type = string }
 variable "app_name"           { type = string }
 variable "environment"        { type = string }
 variable "kube_context"       { type = string; default = "default" }
-variable "replica_count"      { type = number; default = 2 }
-variable "image_repository"   { type = string }
-variable "image_tag"          { type = string; default = "latest" }
+variable "allowed_namespace"  { type = string }
 variable "container_port"     { type = number; default = 8080 }
-variable "cpu_request"        { type = string; default = "100m" }
-variable "memory_request"     { type = string; default = "128Mi" }
-variable "cpu_limit"          { type = string; default = "500m" }
-variable "memory_limit"       { type = string; default = "512Mi" }
 ```
 
 ## Conclusion
 
-Kubernetes resources managed with OpenTofu benefit from the same plan/apply workflow as cloud infrastructure. Always set resource requests and limits, use namespaces for isolation, and leverage OpenTofu's ability to reference Kubernetes outputs in subsequent cloud resource configurations.
+Kubernetes NetworkPolicy resources managed with OpenTofu benefit from the same plan/apply workflow as cloud infrastructure. Use pod and namespace selectors to scope allowed traffic, and remember that the policy only takes effect when your cluster's network plugin supports NetworkPolicy enforcement.
