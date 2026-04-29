@@ -55,7 +55,7 @@ done
 # Check global addresses are not EUI-64
 for addr in $(ip -6 addr show scope global | awk '/inet6/ {print $2}' | cut -d/ -f1); do
     iid=$(echo "$addr" | awk -F: '{print $(NF-3)":"$(NF-2)":"$(NF-1)":"$NF}')
-    if echo "$iid" | grep -qiE "^[0-9a-f]{2}[0-9a-f]{2}:[0-9a-f]{2}ff:fe[0-9a-f]{2}:[0-9a-f]{4}$"; then
+    if echo "$iid" | grep -qiE "^[0-9a-f]{1,4}:[0-9a-f]{0,2}ff:fe[0-9a-f]{2}:[0-9a-f]{1,4}$"; then
         check "Address $addr is NOT EUI-64" 0
     else
         check "Address $addr is NOT EUI-64" 1
