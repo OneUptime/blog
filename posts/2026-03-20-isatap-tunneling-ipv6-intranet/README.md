@@ -8,19 +8,19 @@ Description: Configure ISATAP (Intra-Site Automatic Tunnel Addressing Protocol) 
 
 ## Introduction
 
-ISATAP (RFC 5214) allows IPv6 hosts to communicate over IPv4 intranets by embedding IPv4 addresses in the lower 32 bits of IPv6 addresses (prefix::0:5efe:a.b.c.d format). It requires an ISATAP router that has both IPv4 and IPv6 connectivity.
+ISATAP (RFC 5214) allows IPv6 hosts to communicate over IPv4 intranets by embedding an IPv4 address in the ISATAP interface identifier (for example, `prefix::0:5efe:a.b.c.d`). It requires an ISATAP router that has both IPv4 and IPv6 connectivity.
 
 ## ISATAP Address Format
 
 ```text
 ISATAP address: <64-bit prefix>::0:5efe:a.b.c.d
-                <64-bit prefix>::200:5efe:a.b.c.d  (globally unique)
+                <64-bit prefix>::200:5efe:a.b.c.d  (when the IPv4 address is globally unique)
                 <64-bit prefix>::0:5efe:10.0.0.5
 
 For host 10.0.0.5 with prefix 2001:db8::/64:
-IPv6 address: 2001:db8::0:5efe:a00:5
-(10.0.0.5 in hex = 0a.00.00.05 = a00:005 - wait: 10=0a, 0=00, 0=00, 5=05)
-Full: 2001:db8::5efe:a00:5
+IPv4 address in hex: 0a00:0005
+IPv6 address:        2001:db8::5efe:a00:5
+Expanded form:       2001:db8:0:0:0:5efe:0a00:0005
 ```
 
 ## Linux ISATAP Host Configuration
@@ -37,9 +37,9 @@ sudo ip link set isatap0 up
 # Using prefix 2001:db8::/64 and IPv4 10.0.0.5
 sudo ip address add 2001:db8::5efe:a00:5/64 dev isatap0
 
-# Add route to IPv6 network via ISATAP router
-# ISATAP router's IPv4 address: 10.0.0.1
-sudo ip -6 route add ::/0 via ::5efe:a00:1 dev isatap0
+# Add default route via the ISATAP router's link-local address
+# ISATAP router's IPv4 address: 10.0.0.1 -> fe80::5efe:a00:1
+sudo ip -6 route add default via fe80::5efe:a00:1 dev isatap0
 ```
 
 ## ISATAP Router Configuration
@@ -50,15 +50,12 @@ sudo ip -6 route add ::/0 via ::5efe:a00:1 dev isatap0
 # Create ISATAP tunnel (router-side)
 sudo ip tunnel add isatap-router mode isatap local 10.0.0.1 ttl 64
 sudo ip link set isatap-router up
-sudo ip address add 2001:db8::5efe:a00:1/64 dev isatap-router
+sudo ip -6 address add 2001:db8::5efe:a00:1/64 dev isatap-router
 
 # Enable forwarding
 sudo sysctl -w net.ipv6.conf.all.forwarding=1
 
-# Route ISATAP subnet to ISATAP interface
-sudo ip -6 route add 2001:db8::/64 dev isatap-router
-
-# The router must respond to Potential Router Solicitations
+# The router must respond to Router Solicitations from ISATAP hosts
 # Configure radvd to advertise on the ISATAP interface:
 ```
 
@@ -66,9 +63,10 @@ sudo ip -6 route add 2001:db8::/64 dev isatap-router
 # /etc/radvd.conf (on ISATAP router)
 interface isatap-router {
     AdvSendAdvert on;
+    UnicastOnly on;          # ISATAP is an NBMA link
     AdvDefaultLifetime 1800;
     prefix 2001:db8::/64 {
-        AdvOnLink off;          # Not on-link (ISATAP is host-to-router)
+        AdvOnLink off;       # Host-to-router model
         AdvAutonomous on;
     };
 };
@@ -83,6 +81,9 @@ interface isatap-router {
 # Windows ISATAP hosts automatically query DNS for "isatap.domain"
 # to find the ISATAP router
 
+# On Windows DNS servers, "isatap" is commonly blocked by the
+# global query block list by default; remove it there if needed.
+
 # Linux hosts need manual router configuration (above)
 ```
 
@@ -91,13 +92,15 @@ interface isatap-router {
 ```bash
 # /etc/network/interfaces (Debian)
 auto isatap0
-iface isatap0 inet6 tunnel
-    address 2001:db8::5efe:a00:5
-    netmask 64
-    endpoint any
-    local 10.0.0.5
-    mode isatap
-    gateway ::5efe:a00:1
+iface isatap0 inet6 manual
+    pre-up ip tunnel add isatap0 mode isatap local 10.0.0.5 ttl 64
+    up ip link set isatap0 up
+    up ip -6 address add 2001:db8::5efe:a00:5/64 dev isatap0
+    up ip -6 route add default via fe80::5efe:a00:1 dev isatap0
+    down ip -6 route del default via fe80::5efe:a00:1 dev isatap0
+    down ip -6 address del 2001:db8::5efe:a00:5/64 dev isatap0
+    post-down ip link set isatap0 down
+    post-down ip tunnel del isatap0
 ```
 
 ## Testing ISATAP
@@ -118,4 +121,4 @@ traceroute6 2001:db8::5efe:a00:1
 
 ## Conclusion
 
-ISATAP embeds IPv4 addresses into IPv6 addresses using the `::5efe:` marker, allowing IPv6 communication over IPv4 intranets. Configure an ISATAP router (a dual-stack host) that advertises the IPv6 prefix, and add ISATAP tunnel interfaces on each host. ISATAP is primarily used in enterprise intranet scenarios for gradual IPv6 deployment without replacing IPv4 infrastructure. For new deployments, native dual-stack is preferred.
+ISATAP embeds IPv4 addresses into the IPv6 interface identifier using the `::5efe:` pattern (or `::200:5efe:` when the IPv4 address is globally unique), allowing IPv6 communication over IPv4 intranets. Configure an ISATAP router (a dual-stack host) that advertises the IPv6 prefix, and add ISATAP tunnel interfaces on each host. ISATAP is primarily used in enterprise intranet scenarios for gradual IPv6 deployment without replacing IPv4 infrastructure. For new deployments, native dual-stack is preferred.
