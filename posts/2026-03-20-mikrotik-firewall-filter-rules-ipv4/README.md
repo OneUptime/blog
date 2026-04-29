@@ -93,18 +93,28 @@ MikroTik's firewall filter processes packets in three chains: `input` (to the ro
   place-before=0
 ```
 
-## Rate Limit with Connection Rate
+## Rate Limit New Connections
 
 ```mikrotik
 # Rate limit new SSH connections (anti-brute force)
+# Accept up to 3 new connections per minute per source IP
 /ip firewall filter add \
   chain=input \
   protocol=tcp \
   dst-port=22 \
   connection-state=new \
-  connection-rate=3/1m \
+  dst-limit=3/1m,3,src-address/1m \
+  action=accept \
+  comment="Allow SSH within rate limit"
+
+# Drop new SSH connections that exceed the rate limit
+/ip firewall filter add \
+  chain=input \
+  protocol=tcp \
+  dst-port=22 \
+  connection-state=new \
   action=drop \
-  comment="Brute force SSH limit"
+  comment="Drop excess SSH attempts"
 ```
 
 ## View and Manage Rules
