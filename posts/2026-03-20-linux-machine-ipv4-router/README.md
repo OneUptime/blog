@@ -18,7 +18,7 @@ A standard Linux machine can act as a router for IPv4 traffic with minimal confi
 
 ## Step 1: Enable IP Forwarding
 
-By default, the Linux kernel drops packets that arrive on one interface and are destined for another. Enable forwarding:
+By default, the Linux kernel does not forward packets that arrive on one interface and are destined for another. Enable forwarding:
 
 ```bash
 # Enable immediately (does not survive reboot)
@@ -63,9 +63,11 @@ ip route add default via 10.0.0.1
 ip route show
 ```
 
+If `10.0.0.1` is routing traffic onward to `172.16.0.0/24`, it also needs a route back to `192.168.1.0/24` via `10.0.0.2` unless you enable NAT in the next step.
+
 ## Step 4: Configure NAT (Optional)
 
-If the Linux router is the internet gateway for the LAN, enable masquerading:
+If the Linux router is the internet gateway for the LAN and the address on `eth1` may change, enable masquerading:
 
 ```bash
 # Masquerade all traffic leaving through eth1 (WAN interface)
@@ -73,12 +75,14 @@ iptables -t nat -A POSTROUTING -o eth1 -j MASQUERADE
 
 # Allow forwarded traffic
 iptables -A FORWARD -i eth0 -o eth1 -j ACCEPT
-iptables -A FORWARD -i eth1 -o eth0 -m state --state RELATED,ESTABLISHED -j ACCEPT
+iptables -A FORWARD -i eth1 -o eth0 -m conntrack --ctstate RELATED,ESTABLISHED -j ACCEPT
 
 # Save rules (Debian/Ubuntu)
 apt install iptables-persistent
 netfilter-persistent save
 ```
+
+If `eth1` has a static address, use `SNAT` instead of `MASQUERADE`.
 
 ## Step 5: Configure LAN Clients
 
@@ -88,7 +92,7 @@ Hosts on the 192.168.1.0/24 subnet should use the Linux router as their default 
 # On a LAN client, set default gateway to the router's IP
 ip route add default via 192.168.1.1
 
-# Or configure via DHCP (set option router = 192.168.1.1)
+# Or configure via DHCP by advertising 192.168.1.1 as the router/default gateway
 ```
 
 ## Verifying the Router
@@ -100,7 +104,7 @@ ping -c 4 172.16.0.1
 # From the router, check that packets are being forwarded
 watch -n 1 "ip -s link show eth0; ip -s link show eth1"
 
-# Check conntrack for active forwarded connections
+# Check conntrack for active forwarded connections (if the conntrack tool is installed)
 conntrack -L | head -20
 ```
 
