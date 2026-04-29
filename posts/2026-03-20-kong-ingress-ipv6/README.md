@@ -8,59 +8,56 @@ Description: Configure Kong Ingress Controller to accept IPv6 traffic, route to 
 
 ## Introduction
 
-Kong Ingress Controller (KIC) is a Kubernetes-native API gateway built on Kong Gateway. For IPv6, Kong must be configured to listen on IPv6 ports, and its Kubernetes service must expose IPv6 load balancer addresses. Kong plugins for rate limiting and IP restriction support IPv6 CIDR notation for proper IPv6 client IP handling.
+Kong Ingress Controller (KIC) is a Kubernetes-native API gateway built on Kong Gateway. For IPv6, Kong must be configured to listen on IPv6 ports, and its Kubernetes service must expose IPv6 load balancer addresses. Kong's IP restriction plugin supports IPv6 CIDR notation, and rate limiting can identify IPv6 clients by IP once real IP handling is configured correctly.
 
 ## Install Kong with IPv6 Service (Helm)
 
 ```yaml
-# kong-values.yaml - Helm values for Kong with IPv6
+# kong-values.yaml - Helm values for kong/ingress with IPv6
 
-proxy:
-  # Kong proxy service with dual-stack
-  type: LoadBalancer
-  annotations:
-    service.beta.kubernetes.io/aws-load-balancer-ip-address-type: "dualstack"
+gateway:
+  proxy:
+    # Kong proxy service with dual-stack
+    type: LoadBalancer
+    annotations:
+      service.beta.kubernetes.io/aws-load-balancer-ip-address-type: "dualstack"
 
-  ipFamilyPolicy: PreferDualStack
-  ipFamilies:
-    - IPv4
-    - IPv6
+    ipFamilyPolicy: PreferDualStack
+    ipFamilies:
+      - IPv4
+      - IPv6
 
-  # Proxy ports (Kong listens on all interfaces by default)
-  http:
+    http:
+      enabled: true
+      servicePort: 80
+      containerPort: 8000
+
+    tls:
+      enabled: true
+      servicePort: 443
+      containerPort: 8443
+
+  admin:
     enabled: true
-    servicePort: 80
-    containerPort: 8000
+    type: ClusterIP
+    clusterIP: None # Keep the Admin API internal for gateway discovery
 
-  tls:
-    enabled: true
-    servicePort: 443
-    containerPort: 8443
-
-admin:
-  type: ClusterIP
-  ipFamilyPolicy: SingleStack
-  ipFamilies: [IPv6]   # Admin only on IPv6 for security
-  http:
-    enabled: true
-    servicePort: 8001
-
-# Kong environment for IPv6
-
-env:
-  # Kong admin listen on all interfaces (IPv6 and IPv4)
-  admin_listen: "0.0.0.0:8001, [::]:8001"
-  proxy_listen: "0.0.0.0:8000, [::]:8000, 0.0.0.0:8443 ssl, [::]:8443 ssl"
+  env:
+    # Kong listens on both IPv4 and IPv6
+    admin_listen: "0.0.0.0:8444 ssl, [::]:8444 ssl"
+    proxy_listen: "0.0.0.0:8000, [::]:8000, 0.0.0.0:8443 ssl, [::]:8443 ssl"
 ```
 
 ```bash
 # Install Kong Ingress Controller
 helm repo add kong https://charts.konghq.com
+helm repo update
 helm install kong kong/ingress -n kong --create-namespace -f kong-values.yaml
 
 # Verify Kong service has IPv6
-kubectl get svc -n kong kong-proxy -o jsonpath='{.status.loadBalancer.ingress}'
-# Should show IPv6 address from cloud provider
+kubectl get svc -n kong kong-gateway-proxy \
+  -o jsonpath='{range .status.loadBalancer.ingress[0]}{@.ip}{@.hostname}{end}'
+# Depending on the cloud provider, this may show an IP or a hostname with AAAA records
 ```
 
 ## Standard Ingress with Kong
@@ -75,8 +72,10 @@ metadata:
   namespace: production
   annotations:
     # Kong-specific annotations
+    konghq.com/preserve-host: "true"
     konghq.com/strip-path: "false"
     konghq.com/protocols: "https"
+    konghq.com/https-redirect-status-code: "308"
     # Plugin for rate limiting (supports IPv6)
     konghq.com/plugins: rate-limit-ipv6,ip-restrict-ipv6
 spec:
@@ -110,13 +109,12 @@ metadata:
   namespace: production
 plugin: rate-limiting
 config:
-  # Rate limit by /48 prefix for IPv6 (Kong uses IP by default)
-  # For IPv6-aware rate limiting, use consumer or custom key
+  # Kong rate limits by the full client IP address when limit_by=ip
+  # For shared limits across multiple IPv6 addresses, use consumer or another custom key
   minute: 100
   hour: 1000
   policy: local
-  limit_by: ip   # Kong rate limits by IP (full address)
-  # Note: for prefix-based IPv6 rate limiting, use lua-resty-limit-traffic plugin
+  limit_by: ip
 ```
 
 ## Kong Plugin: IP Restriction for IPv6
@@ -135,90 +133,77 @@ config:
   allow:
     - "10.0.0.0/8"
     - "192.168.0.0/16"
-    - "fd00::/8"           # ULA internal
-    - "2001:db8:corp::/48" # Corporate IPv6
+    - "fd00::/8"            # ULA internal
+    - "2001:db8:100::/48"   # Corporate IPv6
   # Deny list (optional)
   deny:
-    - "2001:db8:malicious::/48"
+    - "2001:db8:bad::/48"
 ```
 
-## KongIngress for IPv6 Backend Configuration
+## KongUpstreamPolicy for IPv6 Backend Configuration
 
 ```yaml
-# kong-ingress-ipv6.yaml
+# service-kong-ipv6.yaml
 
+apiVersion: v1
+kind: Service
+metadata:
+  name: myapp
+  namespace: production
+  annotations:
+    # Service configuration
+    konghq.com/protocol: "http"
+    konghq.com/retries: "5"
+    konghq.com/connect-timeout: "5000"
+    konghq.com/write-timeout: "60000"
+    konghq.com/read-timeout: "60000"
+    konghq.com/upstream-policy: myapp-upstream-config
+spec:
+  selector:
+    app: myapp
+  ports:
+    - name: http
+      port: 8080
+      targetPort: 8080
+---
 # Configure upstream for IPv6 backends
-apiVersion: configuration.konghq.com/v1
-kind: KongIngress
+apiVersion: configuration.konghq.com/v1beta1
+kind: KongUpstreamPolicy
 metadata:
   name: myapp-upstream-config
   namespace: production
-upstream:
-  # Load balancing algorithm
+spec:
   algorithm: round-robin
-  # Health check for IPv6 backends
   healthchecks:
     active:
-      http_path: /health
+      type: http
+      httpPath: /health
       healthy:
         interval: 10
         successes: 2
       unhealthy:
         interval: 5
-        http_failures: 3
-
-# Route configuration
-route:
-  protocols:
-    - https
-  https_redirect_status_code: 308
-  preserve_host: true
-
-# Service configuration
-service:
-  protocol: http
-  port: 8080
-  retries: 5
-  connect_timeout: 5000
-  write_timeout: 60000
-  read_timeout: 60000
+        httpFailures: 3
 ```
 
 ## Kong Admin API Configuration via IPv6
 
 ```bash
-# Access Kong Admin API over IPv6
-curl -6 "http://[2001:db8::kong]:8001/services" | jq .
+# Access Kong Admin API over IPv6 (TLS is enabled by default in kong/ingress)
+curl -6 -k "https://[2001:db8::10]:8444/services" | jq .
 
-# Add a service with IPv6 backend via Admin API
-curl -6 -X POST "http://[2001:db8::kong]:8001/services" \
-    -H "Content-Type: application/json" \
-    -d '{
-        "name": "myapp",
-        "url": "http://[2001:db8::app]:8080"
-    }'
+# Inspect routes loaded by Kong
+curl -6 -k "https://[2001:db8::10]:8444/routes" | jq '.data[].hosts'
 
-# Add route
-curl -6 -X POST "http://[2001:db8::kong]:8001/services/myapp/routes" \
-    -H "Content-Type: application/json" \
-    -d '{
-        "hosts": ["api.example.com"],
-        "protocols": ["https"]
-    }'
-
-# Enable rate limiting plugin for IPv6
-curl -6 -X POST "http://[2001:db8::kong]:8001/services/myapp/plugins" \
-    -H "Content-Type: application/json" \
-    -d '{
-        "name": "rate-limiting",
-        "config": {"minute": 100, "policy": "local"}
-    }'
+# The default kong/ingress deployment runs Kong Gateway in DB-less mode.
+# Configure Services, Routes, and Plugins with Kubernetes resources instead
+# of POSTing to /services, /routes, or /plugins.
 ```
 
 ## Kong with IPv6 Real IP
 
 ```yaml
-# kong-real-ip-plugin.yaml - Configure trusted IPs for X-Forwarded-For
+# kong-real-ip-plugin.yaml - Optional custom header derived from the forwarded client IP
 
 apiVersion: configuration.konghq.com/v1
 kind: KongPlugin
@@ -227,42 +212,46 @@ metadata:
   namespace: production
 plugin: request-transformer
 config:
-  # Ensure X-Real-IP is passed to backends
+  # Optional: copy the forwarded client IP into a custom header for backends
   add:
     headers:
-      - "X-Real-IP:$(request.headers['x-forwarded-for'])"
+      - 'X-Client-IP:$(headers["x-forwarded-for"])'
 ```
 
 ```bash
 # Set trusted CIDRs in Kong (for real IP determination)
 # In kong.conf or via environment variable:
-# trusted_ips = 10.0.0.0/8, fd00::/8, 2001:db8:lb::/48
+# trusted_ips = 10.0.0.0/8, fd00::/8, 2001:db8:100::/48
+# real_ip_header = X-Forwarded-For
+# real_ip_recursive = on
 
 # Helm values equivalent:
-# env:
-#   trusted_ips: "10.0.0.0/8,fd00::/8,2001:db8:lb::/48"
-#   real_ip_header: "X-Forwarded-For"
+# gateway:
+#   env:
+#     trusted_ips: "10.0.0.0/8,fd00::/8,2001:db8:100::/48"
+#     real_ip_header: "X-Forwarded-For"
+#     real_ip_recursive: "on"
 ```
 
 ## Verify Kong IPv6 Operation
 
 ```bash
-# Check Kong proxy listens on IPv6
-kubectl exec -n kong deployment/kong -- \
-    ss -tlnp | grep -E ":8000|:8443"
-# Should show [::]:8000 and [::]:8443
+# Check Kong listen configuration
+kubectl exec -n kong deployment/kong-gateway -- \
+    printenv KONG_PROXY_LISTEN KONG_ADMIN_LISTEN
+# Should include [::]:8000, [::]:8443, and [::]:8444
 
 # Test Kong proxy over IPv6
-curl -6 -H "Host: api.example.com" "http://[2001:db8::kong-lb]:80/health"
+curl -6 -H "Host: api.example.com" "http://[2001:db8::100]:80/health"
 
 # Check Kong admin API
-curl -6 "http://[2001:db8::kong]:8001/status" | jq .server.connections_active
+curl -6 -k "https://[2001:db8::10]:8444/status" | jq .server.connections_active
 
 # View Kong routes
-kubectl exec -n kong deployment/kong -- \
-    curl -s http://localhost:8001/routes | jq '.data[].hosts'
+kubectl exec -n kong deployment/kong-gateway -- \
+    curl -sk https://localhost:8444/routes | jq '.data[].hosts'
 ```
 
 ## Conclusion
 
-Kong Ingress Controller supports IPv6 through `proxy_listen` and `admin_listen` configuration with `[::]:port` bindings. The Kubernetes service uses `ipFamilyPolicy: PreferDualStack` to obtain IPv6 load balancer addresses from the cloud provider. Standard Kubernetes Ingress resources and Kong's KongPlugin CRDs configure routing and plugins for IPv6 traffic. The `ip-restriction` plugin natively accepts IPv6 CIDR notation in allow/deny lists. Set `trusted_ips` in Kong's configuration to include IPv6 CIDR ranges for correct real IP extraction from `X-Forwarded-For` when Kong sits behind a load balancer.
+Kong Ingress Controller supports IPv6 through `proxy_listen` and `admin_listen` configuration with `[::]:port` bindings. When you install KIC with the `kong/ingress` chart, configure Kong Gateway settings under the `gateway` values block and use `ipFamilyPolicy: PreferDualStack` on the proxy Service to request dual-stack load balancer addresses from the cloud provider. Standard Kubernetes Ingress resources, Service annotations, and Kong's `KongPlugin` and `KongUpstreamPolicy` CRDs configure routing, timeouts, health checks, and plugins for IPv6 traffic. The `ip-restriction` plugin accepts IPv6 CIDR notation in allow/deny lists. Set `trusted_ips` and `real_ip_header` so Kong can correctly extract and forward client IP information when it sits behind a load balancer.
