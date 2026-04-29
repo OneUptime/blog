@@ -4,11 +4,11 @@ Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
 Tags: k3s, Kubernetes, Arch Linux, Linux, Installation
 
-Description: A guide to installing K3s on Arch Linux, covering the AUR package and manual installation approaches with systemd service configuration.
+Description: A guide to installing K3s on Arch Linux, covering the AUR package and official install script approaches with systemd service configuration.
 
 ## Introduction
 
-Arch Linux's rolling release model and minimal base make it an interesting platform for K3s. While not a typical enterprise choice, Arch is popular among developers and enthusiasts who want a fully controlled system. K3s can be installed on Arch via the AUR or directly from the official binary, with systemd handling service management.
+Arch Linux's rolling release model and minimal base make it an interesting platform for K3s. While not a typical enterprise choice, Arch is popular among developers and enthusiasts who want a fully controlled system. K3s can be installed on Arch via the AUR or via the official install script, with systemd handling service management.
 
 ## Step 1: Update the System
 
@@ -51,7 +51,7 @@ nf_conntrack
 EOF
 
 # Load them immediately
-sudo modprobe br_netfilter overlay ip_tables ip6_tables nf_conntrack
+sudo modprobe -a br_netfilter overlay ip_tables ip6_tables nf_conntrack
 
 # Configure sysctl
 sudo tee /etc/sysctl.d/99-k3s.conf > /dev/null <<EOF
@@ -70,14 +70,14 @@ sudo sysctl --system
 # Check and disable swap
 sudo swapoff -a
 
-# Disable zswap
+# Disable zram-backed swap if present
 sudo swapoff /dev/zram0 2>/dev/null || true
 
 # Comment out swap in /etc/fstab
 sudo sed -i '/ swap / s/^/#/' /etc/fstab
 
-# If using systemd-swap or zswap, disable the service
-sudo systemctl disable systemd-swap 2>/dev/null || true
+# If using systemd-swap, disable the service
+sudo systemctl disable --now systemd-swap 2>/dev/null || true
 
 # Verify
 free -h
@@ -91,12 +91,11 @@ Arch Linux typically uses cgroup v2 with recent kernels:
 # Check cgroup version
 cat /proc/cgroups | head -5
 stat -fc %T /sys/fs/cgroup/
-# "cgroup2fs" = v2 (K3s v1.21+ supported)
-
-# For kernels that need explicit cgroup v2 enabled
-# Edit /etc/default/grub and add to GRUB_CMDLINE_LINUX_DEFAULT:
-# "systemd.unified_cgroup_hierarchy=1"
-# Then: sudo grub-mkconfig -o /boot/grub/grub.cfg
+# "cgroup2fs" = v2
+#
+# Recent Arch systems use cgroup v2 by default, so no extra bootloader
+# setting is usually required. If this is not "cgroup2fs", check your
+# bootloader and kernel configuration before installing K3s.
 ```
 
 ## Step 6: Option A - Install via AUR
@@ -114,7 +113,7 @@ sudo systemctl start k3s
 sudo systemctl status k3s
 ```
 
-## Step 7: Option B - Manual Installation
+## Step 7: Option B - Install via the Official Script
 
 ```bash
 # Create K3s configuration
@@ -135,28 +134,22 @@ EOF
 curl -sfL https://get.k3s.io | sudo sh -
 
 # Verify systemd service was created
-systemctl status k3s
+sudo systemctl status k3s
 ```
 
-## Step 8: Install iptables-nft (if needed)
+## Step 8: Install iptables (if needed)
 
-Arch uses nftables by default. K3s may need iptables compatibility:
+Arch's `iptables` package uses the nft backend by default. K3s needs the iptables userspace tools available:
 
 ```bash
 # Check which iptables version is installed
 iptables --version
 
-# If using nftables and facing issues, install iptables-nft
-sudo pacman -S --needed iptables-nft
+# Install Arch's default iptables package if it is missing
+sudo pacman -S --needed iptables
 
-# Or install legacy iptables
-# sudo pacman -S iptables
-
-# Ensure iptables service is enabled
-sudo systemctl enable iptables
-sudo systemctl enable ip6tables
-sudo systemctl start iptables
-sudo systemctl start ip6tables
+# If you run into host iptables compatibility issues, K3s can use its
+# bundled iptables binaries with --prefer-bundled-bin
 ```
 
 ## Step 9: Configure kubectl
@@ -166,25 +159,27 @@ sudo systemctl start ip6tables
 mkdir -p ~/.kube
 sudo cp /etc/rancher/k3s/k3s.yaml ~/.kube/config
 sudo chown $(id -u):$(id -g) ~/.kube/config
+export KUBECONFIG=~/.kube/config
 
-# K3s installs kubectl as /usr/local/bin/kubectl
-kubectl get nodes
-kubectl get pods --all-namespaces
+# K3s always provides the embedded kubectl as "k3s kubectl".
+# The install script also creates a standalone kubectl symlink.
+k3s kubectl get nodes
+k3s kubectl get pods --all-namespaces
 ```
 
 ## Step 10: Verify Installation
 
 ```bash
 # Check all K3s components are running
-kubectl get pods -n kube-system
+k3s kubectl get pods -n kube-system
 
 # Check node status
-kubectl get nodes -o wide
+k3s kubectl get nodes -o wide
 
 # Run a test pod
-kubectl run arch-test --image=alpine --restart=Never -- sleep 30
-kubectl get pod arch-test -w
-kubectl delete pod arch-test
+k3s kubectl run arch-test --image=alpine --restart=Never -- sleep 30
+k3s kubectl get pod arch-test -w
+k3s kubectl delete pod arch-test
 ```
 
 ## Step 11: Adding an Agent Node on Arch Linux
@@ -195,15 +190,15 @@ On additional Arch Linux nodes:
 # Perform steps 1-5 on the agent node, then:
 sudo mkdir -p /etc/rancher/k3s
 
+# Use the token from /var/lib/rancher/k3s/server/node-token on the server node
 sudo tee /etc/rancher/k3s/config.yaml > /dev/null <<EOF
 server: "https://SERVER_IP:6443"
-token: "ArchK3sToken"
+token: "SERVER_NODE_TOKEN"
 EOF
 
 # Install K3s agent
 curl -sfL https://get.k3s.io | \
-    INSTALL_K3S_EXEC="agent" \
-    sudo sh -
+    sudo env INSTALL_K3S_EXEC="agent" sh -
 
 sudo systemctl status k3s-agent
 ```
@@ -214,12 +209,11 @@ Since Arch is a rolling release, keep K3s updated:
 
 ```bash
 # If using the AUR package
-yay -Su k3s-bin
+yay -Syu k3s-bin
 
-# If using the install script, re-run it with the new version
+# If using the install script, re-run it against the stable channel
 curl -sfL https://get.k3s.io | \
-    INSTALL_K3S_VERSION="v1.29.1+k3s1" \
-    sudo sh -
+    sudo env INSTALL_K3S_CHANNEL="stable" sh -
 ```
 
 ## Arch-Specific Troubleshooting
