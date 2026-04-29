@@ -8,15 +8,14 @@ Description: Learn how to install and configure K3s on ARM-based devices includi
 
 ## Introduction
 
-K3s was designed with ARM support from the beginning, making it the ideal Kubernetes distribution for ARM-based single-board computers (SBCs) and edge devices. K3s supports both ARM64 (AArch64) and ARMv7 (32-bit) architectures, enabling Kubernetes on devices as small as a Raspberry Pi Zero W.
+K3s was designed with ARM support from the beginning, making it the ideal Kubernetes distribution for ARM-based single-board computers (SBCs) and edge devices. K3s supports both ARM64 (AArch64) and ARMv7 (armhf) architectures, making it a strong fit for Raspberry Pi, Jetson, and other modern SBCs.
 
 ## Supported ARM Architectures
 
 | Architecture | Binary | Typical Devices |
 |---|---|---|
-| ARM64 (AArch64) | k3s-arm64 | Raspberry Pi 4/5, Jetson, M1 Mac |
-| ARMv7 (32-bit) | k3s-armhf | Raspberry Pi 2/3, older SBCs |
-| ARMv6 | k3s-armv6l | Raspberry Pi Zero, Pi 1 |
+| ARM64 (AArch64) | k3s-arm64 | Raspberry Pi 3/4/5 with a 64-bit OS, Jetson, newer SBCs |
+| ARMv7 (32-bit) | k3s-armhf | Raspberry Pi 2/3 with a 32-bit OS, older SBCs |
 
 ## Prerequisites
 
@@ -27,8 +26,8 @@ Regardless of the ARM device, these steps are universal:
 
 uname -m
 # aarch64 = ARM64
-# armv7l  = ARMv7
-# armv6l  = ARMv6
+# armv7l  = ARMv7/armhf
+# armv6l  = ARMv6 (not supported by current K3s releases)
 
 # Check available memory
 free -h
@@ -39,7 +38,7 @@ df -h /
 
 ## General ARM Installation
 
-The K3s install script auto-detects the ARM architecture:
+The K3s install script auto-detects the supported ARM architecture:
 
 ```bash
 # The script detects ARM and downloads the correct binary
@@ -63,13 +62,14 @@ K3s requires cgroup memory management to be enabled:
 cat /proc/cgroups | grep memory
 
 # Edit the boot command line
-sudo nano /boot/cmdline.txt
+sudo nano /boot/firmware/cmdline.txt
+# On Debian 11 and older Raspberry Pi OS releases, use /boot/cmdline.txt
 
 # Add these parameters to the END of the single line (don't create a new line)
-# cgroup_enable=cpuset cgroup_memory=1 cgroup_enable=memory
+# cgroup_memory=1 cgroup_enable=memory
 
 # The line should look like:
-# console=serial0,115200 console=tty1 root=PARTUUID=... ... cgroup_enable=cpuset cgroup_memory=1 cgroup_enable=memory
+# console=serial0,115200 console=tty1 root=PARTUUID=... ... cgroup_memory=1 cgroup_enable=memory
 
 # Reboot to apply
 sudo reboot
@@ -94,7 +94,8 @@ sudo systemctl disable dphys-swapfile.service
 sudo apt-get update && sudo apt-get upgrade -y
 
 # Enable 64-bit mode if not already enabled
-# Edit /boot/config.txt and add: arm_64bit=1
+# Edit /boot/firmware/config.txt and add: arm_64bit=1
+# On older Raspberry Pi OS releases, use /boot/config.txt
 # Then reboot
 
 # Verify ARM64
@@ -106,35 +107,22 @@ curl -sfL https://get.k3s.io | sudo sh -
 
 ## Raspberry Pi 3 (ARMv7 or ARM64)
 
-Pi 3 ships with a 32-bit OS by default. For better K3s performance, use the 64-bit Raspberry Pi OS:
+Pi 3 can run either a 32-bit or 64-bit OS. For better K3s performance, use the 64-bit Raspberry Pi OS:
 
 ```bash
 # If running 32-bit OS (armv7l), K3s will use the armhf binary
 curl -sfL https://get.k3s.io | sudo sh -
 
-# If you upgraded to 64-bit OS (aarch64)
+# If you are running a 64-bit OS (aarch64)
 # K3s will use the arm64 binary automatically
 curl -sfL https://get.k3s.io | sudo sh -
 ```
 
 ## Raspberry Pi Zero (ARMv6)
 
-The Pi Zero uses an ARMv6 CPU. K3s supports this architecture:
+The original Pi Zero, Zero W, and Pi 1 use an ARMv6 CPU. Current K3s releases do not provide ARMv6 binaries, so these models are not supported.
 
-```bash
-# Pi Zero has only 512MB RAM - use minimal configuration
-sudo tee /etc/rancher/k3s/config.yaml > /dev/null <<EOF
-# Run as agent only (don't run a server on Pi Zero)
-# The server should be on more capable hardware
-EOF
-
-# Install as an agent
-curl -sfL https://get.k3s.io | \
-    K3S_URL="https://192.168.1.100:6443" \
-    K3S_TOKEN="your-token" \
-    INSTALL_K3S_EXEC="agent" \
-    sudo sh -
-```
+If you need a Zero-class board, use a Raspberry Pi Zero 2 W and follow the Pi 3 instructions above.
 
 ## NVIDIA Jetson Devices
 
@@ -147,7 +135,7 @@ uname -m  # aarch64
 # The Jetson may use a different boot partition for kernel parameters
 sudo nano /boot/extlinux/extlinux.conf
 # Add cgroup parameters to the APPEND line:
-# APPEND root=... cgroup_enable=cpuset cgroup_memory=1 cgroup_enable=memory
+# APPEND root=... cgroup_memory=1 cgroup_enable=memory
 
 sudo reboot
 
@@ -163,9 +151,9 @@ curl -sfL https://get.k3s.io | sudo sh -
 # /etc/rancher/k3s/config.yaml
 # Disable components not needed to save memory
 disable:
-  - traefik          # ~50MB savings
-  - servicelb        # ~5MB savings
-  - metrics-server   # ~15MB savings
+  - traefik
+  - servicelb
+  - metrics-server
 
 # Reduce kubelet overhead
 kubelet-arg:
@@ -182,16 +170,19 @@ kubelet-arg:
 ARM SBCs often use SD cards which are slow and prone to wear:
 
 ```bash
-# Mount /var/lib/rancher on a USB SSD for better performance
-sudo mkdir -p /mnt/ssd/rancher
+# Mount a USB SSD for better performance
+sudo mkdir -p /mnt/ssd
 sudo tee -a /etc/fstab > /dev/null <<EOF
 /dev/sda1  /mnt/ssd  ext4  defaults,noatime  0  2
 EOF
 
+sudo mount -a
+sudo mkdir -p /mnt/ssd/k3s
+
 # Configure K3s to use the SSD
 sudo mkdir -p /etc/rancher/k3s
 sudo tee /etc/rancher/k3s/config.yaml > /dev/null <<EOF
-data-dir: /mnt/ssd/rancher/k3s
+data-dir: /mnt/ssd/k3s
 EOF
 ```
 
@@ -199,18 +190,20 @@ EOF
 
 ```bash
 # Check K3s is running
-sudo systemctl status k3s
+sudo systemctl status k3s        # server node
+sudo systemctl status k3s-agent  # agent node
 
-# View nodes and their architecture
+# On a server node, view nodes and their architecture
+sudo k3s kubectl get nodes
 sudo k3s kubectl get nodes -o custom-columns=\
-'NAME:.metadata.name,OS:.status.nodeInfo.operatingSystem,ARCH:.status.nodeInfo.architecture,STATUS:.status.conditions[-1].type'
+'NAME:.metadata.name,OS:.status.nodeInfo.operatingSystem,ARCH:.status.nodeInfo.architecture'
 
 # Verify K3s binary architecture
-file /usr/local/bin/k3s
+file "$(command -v k3s)"
 # For ARM64: ELF 64-bit LSB executable, ARM aarch64
 # For ARMv7: ELF 32-bit LSB executable, ARM, EABI5
 ```
 
 ## Conclusion
 
-K3s's native ARM support makes it the premier Kubernetes distribution for ARM devices. The install script handles architecture detection automatically, so the installation process is the same across all ARM devices. The key preparation steps are enabling cgroup memory in the boot parameters and disabling swap. For resource-constrained devices like the Pi Zero, run K3s as an agent only and offload the control plane to more capable hardware.
+K3s's native ARM support makes it the premier Kubernetes distribution for ARM devices. The install script handles architecture detection automatically for supported ARM64 and ARMv7 systems, so the installation process is largely the same across those devices. On Raspberry Pi OS, the key preparation steps are enabling cgroup memory in the boot parameters and disabling swap. For resource-constrained supported devices, agent-only deployments let you offload the control plane to more capable hardware.
