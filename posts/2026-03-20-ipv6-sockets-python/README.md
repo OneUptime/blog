@@ -8,7 +8,7 @@ Description: Create IPv6 TCP and UDP sockets in Python using the socket module, 
 
 ## Introduction
 
-Python's `socket` module supports IPv6 through `socket.AF_INET6`. IPv6 socket addresses in Python use a 4-tuple `(host, port, flowinfo, scope_id)` instead of IPv4's 2-tuple `(host, port)`. This guide covers creating IPv6 servers and clients with both direct socket calls and higher-level abstractions.
+Python's `socket` module supports IPv6 through `socket.AF_INET6`. IPv6 socket addresses in Python typically use a 4-tuple `(host, port, flowinfo, scope_id)` instead of IPv4's 2-tuple `(host, port)`. This guide covers creating IPv6 servers and clients with both direct socket calls and higher-level abstractions.
 
 ## IPv6 TCP Server
 
@@ -34,9 +34,10 @@ def start_ipv6_tcp_server(port: int = 8080) -> None:
     # Enable SO_REUSEADDR to avoid "Address already in use"
     server.setsockopt(socket.SOL_SOCKET, socket.SO_REUSEADDR, 1)
 
-    # Optional: Enable dual-stack (accept both IPv4 and IPv6)
+    # Optional: Enable dual-stack on platforms that support it
     # 0 = allow IPv4 connections too (via IPv4-mapped IPv6 addresses)
-    server.setsockopt(socket.IPPROTO_IPV6, socket.IPV6_V6ONLY, 0)
+    if socket.has_dualstack_ipv6():
+        server.setsockopt(socket.IPPROTO_IPV6, socket.IPV6_V6ONLY, 0)
 
     # Bind to '::' (IPv6 wildcard) - listens on all IPv6 interfaces
     server.bind(('::', port, 0, 0))
@@ -84,7 +85,7 @@ except ConnectionRefusedError:
 ```python
 import socket
 
-def ipv6_udp_server(port: int = 5353) -> None:
+def ipv6_udp_server(port: int = 55000) -> None:
     """Simple UDP server listening on IPv6."""
     sock = socket.socket(socket.AF_INET6, socket.SOCK_DGRAM)
     sock.setsockopt(socket.SOL_SOCKET, socket.SO_REUSEADDR, 1)
@@ -120,18 +121,19 @@ import socket
 def connect_to_host(host: str, port: int) -> socket.socket:
     """
     Connect to host:port using whatever protocol is available.
-    Prefers IPv6 when both AAAA and A records exist.
+    Tries addresses in the order returned by getaddrinfo().
     """
     # AF_UNSPEC = accept both IPv4 and IPv6
     addr_infos = socket.getaddrinfo(
         host, port,
         family=socket.AF_UNSPEC,
         type=socket.SOCK_STREAM,
-        flags=socket.AI_ADDRCONFIG  # Only return addresses the system can use
+        flags=socket.AI_ADDRCONFIG  # Only return address families the system can use
     )
 
     last_exception = None
     for family, socktype, proto, canonname, sockaddr in addr_infos:
+        sock = None
         try:
             sock = socket.socket(family, socktype, proto)
             sock.settimeout(10)
@@ -139,12 +141,14 @@ def connect_to_host(host: str, port: int) -> socket.socket:
             print(f"Connected via {'IPv6' if family == socket.AF_INET6 else 'IPv4'}")
             return sock
         except OSError as e:
+            if sock is not None:
+                sock.close()
             last_exception = e
             continue
 
     raise ConnectionError(f"Could not connect to {host}:{port}") from last_exception
 
-# Connect - will use IPv6 if AAAA record exists
+# Connect - may use IPv6 or IPv4 depending on system address ordering
 conn = connect_to_host('example.com', 443)
 conn.close()
 ```
@@ -195,4 +199,4 @@ sock.connect(('fe80::1', 8080, 0, scope_id))
 
 ## Conclusion
 
-Python IPv6 sockets use `socket.AF_INET6` with 4-tuple addresses `(host, port, 0, 0)`. Bind servers to `'::'` for all interfaces, and use `socket.getaddrinfo()` with `AF_UNSPEC` for protocol-independent code that automatically uses IPv6 when available. For link-local addresses, include the interface index as the scope_id in the 4-tuple.
+Python IPv6 sockets use `socket.AF_INET6` and typically work with 4-tuple addresses `(host, port, flowinfo, scope_id)`, often `(host, port, 0, 0)` when no scope is needed. Bind servers to `'::'` for all interfaces, and use `socket.getaddrinfo()` with `AF_UNSPEC` for protocol-independent code that tries addresses in the order the system returns them. For link-local addresses, include the interface index as the scope_id in the 4-tuple.
