@@ -25,7 +25,7 @@ flowchart LR
 - Request IPv6 allocation from RIR (ARIN, RIPE NCC, etc.)
 - Design hierarchical address plan
 - Upgrade core routers/switches to support IPv6 forwarding
-- Enable IPv6 on BGP peering sessions and upstream providers
+- Enable IPv6 route exchange with BGP peers and upstream providers
 - Deploy DHCPv6/SLAAC infrastructure
 - Update IPAM and NOC tools for IPv6 visibility
 
@@ -41,7 +41,7 @@ flowchart LR
 - Enable IPv6 on BNG for pilot VLAN/group
 - Deploy dual-stack to pilot customers
 - Train first-line support staff
-- Test transition mechanisms (DS-Lite, NAT64) for IPv4-only content
+- If planning IPv6-only access later, test transition mechanisms (for example, DS-Lite or NAT64/DNS64 with 464XLAT) for IPv4-only content and applications
 
 **Pilot Metrics to Track:**
 
@@ -71,17 +71,19 @@ print(f"IPv6 adoption in pilot: {ipv6_pct:.1f}%")
 - Monitor for IPv6-related support ticket increases
 - Address CPE compatibility issues per model
 
-**Batch migration script example:**
+**Batch migration script example (replace the remote CLI with your vendor's supported syntax):**
 
 ```bash
 #!/bin/bash
+set -euo pipefail
+
 # Enable IPv6 for a batch of DSLAM ports
 DSLAM_HOST="dslam-01.pop1.isp.example.com"
 VLAN_LIST="100 101 102 103 104"
 
 for VLAN in $VLAN_LIST; do
-    ssh admin@$DSLAM_HOST "configure vlan $VLAN ipv6 enable"
-    echo "IPv6 enabled on VLAN $VLAN"
+    ssh "admin@$DSLAM_HOST" "configure vlan $VLAN ipv6 enable"
+    echo "IPv6 enable command sent for VLAN $VLAN"
 done
 ```
 
@@ -90,7 +92,7 @@ done
 **Tasks:**
 - Identify and address remaining IPv4-only subscribers
 - Evaluate IPv6-only deployment for new neighborhoods
-- Reduce IPv4 pool sizes (return addresses or let DS-Lite handle IPv4)
+- Reduce public IPv4 usage (return addresses or move more subscribers to IPv4aaS such as DS-Lite)
 - Publish IPv6 adoption stats publicly (marketing benefit)
 - Optimize for IPv6 performance (PMTUD, ECN, TCP tuning)
 
@@ -101,7 +103,7 @@ done
 | CPE incompatibility | Maintain CPE compatibility list; offer replacement program |
 | IPv6 performance issues | Monitor RTT and loss; tune buffer/MTU settings |
 | Support volume spike | Pre-train support; deploy KB articles before rollout |
-| Routing instability | Use BGP dampening; test in lab before production |
+| Routing instability | Apply prefix filtering and maximum-prefix limits; if using BGP dampening, use RFC 7196-adjusted thresholds and test in lab before production |
 
 ## KPIs to Report to Leadership
 
