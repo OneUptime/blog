@@ -8,7 +8,7 @@ Description: Learn how to map host devices such as USB, GPU, or serial ports to 
 
 ---
 
-Advanced container configuration in Portainer exposes Docker's full feature set through the web UI, allowing you to configure specialized settings without writing raw Docker commands.
+Advanced container configuration in Portainer exposes a broad range of Docker runtime options through the web UI, allowing you to configure specialized settings without writing raw Docker commands.
 
 ## Accessing Advanced Container Settings
 
@@ -24,12 +24,12 @@ When creating or editing a container in Portainer:
 
 docker run -d \
   --device /dev/video0:/dev/video0 \
-  --device /dev/snd \
+  --device /dev/snd:/dev/snd \
   --name my-container \
-  myimage:latest
+  ubuntu:24.04 sleep infinity
 ```
 
-In Portainer UI: **Advanced settings > Runtime & Resources > Devices**
+In Portainer UI: **Advanced container settings > Runtime & Resources > Devices**
 
 ## Sysctls Configuration
 
@@ -37,28 +37,29 @@ In Portainer UI: **Advanced settings > Runtime & Resources > Devices**
 # Equivalent docker run for sysctl settings
 docker run -d \
   --sysctl net.core.somaxconn=65535 \
-  --sysctl net.ipv4.tcp_tw_reuse=1 \
+  --sysctl net.ipv4.ip_forward=1 \
   --name high-connection-server \
   nginx:latest
 ```
 
-In Portainer UI: **Advanced settings > Runtime & Resources > Sysctls**
+In Portainer UI: **Advanced container settings > Runtime & Resources > Sysctls**
 
 ## GPU Configuration (NVIDIA)
+
+In Portainer, GPU support for containers is only available on Docker Standalone environments and only supports NVIDIA GPUs.
 
 ```bash
 # Ensure nvidia-container-toolkit is installed on the host first
 # Then configure GPU access in Portainer
 
 # Equivalent docker run
-docker run -d \
+docker run --rm \
   --gpus all \
-  --name ml-training \
   tensorflow/tensorflow:latest-gpu \
-  python train.py
+  python -c "import tensorflow as tf; print(tf.reduce_sum(tf.random.normal([1000, 1000])))"
 ```
 
-In Portainer UI: **Advanced settings > Runtime & Resources > GPUs**
+In Portainer UI: **Advanced container settings > Runtime & Resources > GPU**
 
 ## Linux Capabilities
 
@@ -67,9 +68,9 @@ In Portainer UI: **Advanced settings > Runtime & Resources > GPUs**
 docker run -d \
   --cap-drop ALL \
   --cap-add NET_BIND_SERVICE \
-  --cap-add CHOWN \
-  --name secure-nginx \
-  nginx:latest
+  --name secure-web \
+  python:3.12-slim \
+  python -m http.server 80
 ```
 
 ## Shared Memory Size
@@ -79,7 +80,7 @@ docker run -d \
 docker run -d \
   --shm-size=2g \
   --name ml-worker \
-  pytorch/pytorch:latest
+  ubuntu:24.04 sleep infinity
 ```
 
 ## DNS Settings
@@ -89,10 +90,11 @@ docker run -d \
 docker run -d \
   --dns 1.1.1.1 \
   --dns 8.8.8.8 \
-  --dns-search example.com \
   --name my-app \
-  myapp:latest
+  nginx:latest
 ```
+
+In Portainer UI: **Advanced container settings > Network > Primary DNS Server / Secondary DNS Server**
 
 ## Privileged Mode (Use Sparingly)
 
@@ -102,7 +104,7 @@ docker run -d \
 docker run -d \
   --privileged \
   --name system-tool \
-  systool:latest
+  ubuntu:24.04 sleep infinity
 ```
 
 ---
