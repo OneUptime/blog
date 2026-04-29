@@ -8,7 +8,7 @@ Description: Learn how to enforce Kubernetes Pod Security Standards with OpenTof
 
 ## Overview
 
-Kubernetes Pod Security Standards (PSS) replaced PodSecurityPolicies in Kubernetes 1.25+. They're enforced via namespace labels and provide three levels: Privileged (no restrictions), Baseline (minimal restrictions), and Restricted (hardened). OpenTofu manages these labels on namespaces.
+PodSecurityPolicy was removed in Kubernetes 1.25, and the built-in Pod Security Admission controller enforces Pod Security Standards (PSS) via namespace labels. Pod Security Standards provide three levels: Privileged (no restrictions), Baseline (minimal restrictions), and Restricted (hardened). OpenTofu manages these labels on namespaces.
 
 ## Step 1: Apply Restricted Security Standard
 
@@ -80,7 +80,7 @@ resource "kubernetes_deployment_v1" "secure_app" {
       }
 
       spec {
-        # Required: set security context at pod level
+        # Required for restricted: run as non-root and set seccomp
         security_context {
           run_as_non_root = true
           run_as_user     = 1000
@@ -96,17 +96,17 @@ resource "kubernetes_deployment_v1" "secure_app" {
           name  = "app"
           image = "myregistry/app:latest"
 
-          # Required: container-level security context for restricted
+          # Required for restricted, plus optional hardening
           security_context {
             allow_privilege_escalation = false
-            read_only_root_filesystem  = true
+            read_only_root_filesystem  = true  # Good hardening, but not required by restricted
 
             capabilities {
-              drop = ["ALL"]  # Drop all Linux capabilities
+              drop = ["ALL"]  # Required for restricted
             }
           }
 
-          # Required: define resource limits
+          # Good practice: define resource requests and limits
           resources {
             requests = {
               cpu    = "100m"
@@ -133,7 +133,7 @@ variable "namespace_security_levels" {
     "production"  = "restricted"
     "staging"     = "baseline"
     "development" = "privileged"
-    "kube-system" = "privileged"
+    "sandbox"     = "privileged"
   }
 }
 
@@ -153,4 +153,4 @@ resource "kubernetes_namespace_v1" "namespaces" {
 
 ## Summary
 
-Kubernetes Pod Security Standards with OpenTofu provide a declarative way to enforce security profiles per namespace. Start with `warn` and `audit` modes before switching to `enforce` to avoid breaking existing workloads. The `restricted` profile requires containers to run as non-root, drop all capabilities, and use read-only root filesystems.
+Kubernetes Pod Security Standards with OpenTofu provide a declarative way to enforce security profiles per namespace. Start with `warn` and `audit` modes before switching to `enforce` to avoid breaking existing workloads. The `restricted` profile requires pods to run as non-root, disallow privilege escalation, set a seccomp profile, and drop `ALL` capabilities (with only `NET_BIND_SERVICE` allowed back if needed).
