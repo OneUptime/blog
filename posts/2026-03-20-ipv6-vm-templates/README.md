@@ -13,33 +13,35 @@ VM templates are golden images used to create new virtual machines. IPv6 configu
 ## Cloud-init for IPv6 in VM Templates
 
 ```yaml
-# user-data: cloud-init network configuration for IPv6
+# network-config or /etc/cloud/cloud.cfg.d/99-ipv6.yaml
 
-#cloud-config
 network:
   version: 2
   ethernets:
-    eth0:
-      # Enable both DHCPv4 and DHCPv6/SLAAC
+    primary:
+      match:
+        name: "e*"
+      # Enable both DHCPv4 and DHCPv6. This also works on SLAAC networks.
       dhcp4: true
       dhcp6: true
 
-      # Or use SLAAC only (no DHCPv6):
-      # dhcp4: true
-      # ipv6-privacy: true    # Enable privacy extensions
-      # accept-ra: true       # Accept Router Advertisements
+      # Optional on SLAAC networks:
+      # accept-ra: true
+      # ipv6-privacy: true
 
-      # Or fully static (parameterized):
-      # Use cloud-init variables from metadata:
-      addresses:
-        - "{{ v4_address }}/24"     # from instance metadata
-        - "{{ v6_address }}/64"     # from IPAM via metadata
-      gateway4: "{{ v4_gateway }}"
-      gateway6: "{{ v6_gateway }}"
-      nameservers:
-        addresses:
-          - "2001:db8::53"
-          - "8.8.8.8"
+      # Or fully static:
+      # addresses:
+      #   - "<v4_address>/24"
+      #   - "<v6_address>/64"
+      # routes:
+      #   - to: default
+      #     via: "<v4_gateway>"
+      #   - to: default
+      #     via: "<v6_gateway>"
+      # nameservers:
+      #   addresses:
+      #     - "2001:db8::53"
+      #     - "8.8.8.8"
 ```
 
 ## KVM Template with cloud-init IPv6
@@ -57,13 +59,18 @@ virt-customize -a jammy-server-cloudimg-amd64.img \
     --run-command "rm -f /var/lib/dbus/machine-id" \
     --run-command "ln -s /etc/machine-id /var/lib/dbus/machine-id"
 
-# Create a cloud-init ISO for template testing
+# Create a NoCloud seed image for template testing
 cat > user-data.yaml << 'EOF'
 #cloud-config
+EOF
+
+cat > network-config.yaml << 'EOF'
 network:
   version: 2
   ethernets:
-    eth0:
+    primary:
+      match:
+        name: "e*"
       dhcp4: true
       dhcp6: true
 EOF
@@ -73,7 +80,7 @@ instance-id: template-test
 local-hostname: template-vm
 EOF
 
-cloud-localds seed.img user-data.yaml meta-data.yaml
+cloud-localds --network-config=network-config.yaml seed.img user-data.yaml meta-data.yaml
 
 # Test the template
 qemu-system-x86_64 \
@@ -104,13 +111,30 @@ qemu-system-x86_64 \
 # vsphere_ipv6_template_clone.py
 
 from pyVmomi import vim
-from pyVim.connect import SmartConnect
+
+def get_vm_by_name(si, name: str):
+    view = si.content.viewManager.CreateContainerView(
+        si.content.rootFolder, [vim.VirtualMachine], True
+    )
+    try:
+        for vm in view.view:
+            if vm.name == name:
+                return vm
+    finally:
+        view.Destroy()
+    raise ValueError(f"VM {name!r} not found")
 
 def clone_with_ipv6(si, template_name: str, vm_name: str, ipv6_addr: str):
     """Clone a VMware template with IPv6 configuration."""
 
     # Get template
     template = get_vm_by_name(si, template_name)
+
+    if template.resourcePool is None:
+        raise ValueError("Template is not attached to a resource pool")
+
+    location = vim.vm.RelocateSpec()
+    location.pool = template.resourcePool
 
     # Create customization spec
     ip_settings = vim.vm.customization.IPSettings()
@@ -122,7 +146,7 @@ def clone_with_ipv6(si, template_name: str, vm_name: str, ipv6_addr: str):
     ipv6_addr_obj.ipAddress = ipv6_addr
     ipv6_addr_obj.subnetMask = 64
     ipv6_settings.ip = [ipv6_addr_obj]
-    ipv6_settings.gateway = "2001:db8::1"
+    ipv6_settings.gateway = ["2001:db8::1"]
     ip_settings.ipV6Spec = ipv6_settings
 
     nic_map = vim.vm.customization.AdapterMapping()
@@ -130,16 +154,18 @@ def clone_with_ipv6(si, template_name: str, vm_name: str, ipv6_addr: str):
 
     spec = vim.vm.customization.Specification()
     spec.nicSettingMap = [nic_map]
+    spec.globalIPSettings = vim.vm.customization.GlobalIPSettings()
     spec.identity = vim.vm.customization.LinuxPrep(
         hostName=vim.vm.customization.FixedName(name=vm_name),
         domain="example.com"
     )
 
     # Clone
-    clone_spec = vim.vm.CloneSpec(
-        customization=spec,
-        powerOn=True,
-    )
+    clone_spec = vim.vm.CloneSpec()
+    clone_spec.location = location
+    clone_spec.customization = spec
+    clone_spec.powerOn = True
+    clone_spec.template = False
     task = template.Clone(name=vm_name, folder=template.parent, spec=clone_spec)
     return task
 ```
@@ -159,22 +185,31 @@ packer {
 }
 
 source "qemu" "ubuntu-ipv6" {
-  iso_url          = "https://releases.ubuntu.com/22.04/ubuntu-22.04.4-live-server-amd64.iso"
-  iso_checksum     = "sha256:..."
+  iso_url          = "https://releases.ubuntu.com/22.04/ubuntu-22.04.5-live-server-amd64.iso"
+  iso_checksum     = "sha256:9bc6028870aef3f74f4e16b900008179e78b130e6b0b9a140635434a46aa98b0"
   disk_size        = "10240"
+  format           = "qcow2"
   memory           = 2048
   output_directory = "output"
-  vm_name          = "ubuntu-ipv6-template.qcow2"
+  vm_name          = "ubuntu-ipv6-template"
 
   # Use bridged networking with IPv6 during build
-  net_device    = "virtio-net"
+  net_device     = "virtio-net"
+  net_bridge     = "br0"
   disk_interface = "virtio"
+  communicator   = "ssh"
+  ssh_username   = "ubuntu"
+  ssh_password   = "ubuntu"
+  ssh_timeout    = "30m"
+  shutdown_command = "echo 'ubuntu' | sudo -S shutdown -P now"
 
+  # http/ must contain NoCloud user-data and meta-data for autoinstall.
+  boot_wait = "5s"
+  headless  = true
   boot_command = [
-    "<esc><wait>",
-    "linux /casper/vmlinuz ip=dhcp ipv6.disable=0 autoinstall ds=nocloud-net;s=http://{{ .HTTPIP }}:{{ .HTTPPort }}/",
-    "<enter>",
-    "initrd /casper/initrd<enter>",
+    "c<wait>",
+    "linux /casper/vmlinuz autoinstall 'ds=nocloud-net;s=http://{{ .HTTPIP }}:{{ .HTTPPort }}/' ---<enter><wait>",
+    "initrd /casper/initrd<enter><wait>",
     "boot<enter>"
   ]
 
@@ -189,6 +224,7 @@ build {
     inline = [
       "sudo truncate -s 0 /etc/machine-id",
       "sudo rm -f /var/lib/dbus/machine-id",
+      "sudo ln -s /etc/machine-id /var/lib/dbus/machine-id",
       "sudo cloud-init clean --logs",
     ]
   }
@@ -212,13 +248,13 @@ build {
 ```bash
 # Before converting a VM to a template, verify:
 
-# 1. Machine ID is cleared (prevents duplicate DHCPv6 DUIDs)
+# 1. Machine ID is cleared (so clones get a new machine identity)
 cat /etc/machine-id
 # Should be empty or "uninitialized"
 
-# 2. No static IPv6 address is configured
-grep -r "inet6" /etc/netplan/ /etc/network/interfaces 2>/dev/null
-# Should show dhcp6:true or accept-ra:true, NOT addresses: - 2001:...
+# 2. No static IPv6 address is configured unless clone-time customization will replace it
+grep -R -E "dhcp6:|accept-ra:|addresses:|gateway6:|routes:" /etc/netplan/ /etc/network/interfaces 2>/dev/null
+# For automatic IPv6, expect dhcp6: true or accept-ra: true; do not leave a production IPv6 address or default route baked into the template.
 
 # 3. cloud-init is clean
 sudo cloud-init clean --logs
@@ -233,4 +269,4 @@ hostname
 
 ## Conclusion
 
-VM templates for IPv6 environments should use cloud-init with `dhcp6: true` or `accept-ra: true` rather than static IPv6 addresses, ensuring each cloned VM receives a unique IPv6 address via SLAAC or DHCPv6. The machine-id must be cleared in templates so each VM gets a unique DUID for DHCPv6. Packer automates the template build process and can install cloud-init configurations as part of the build. VMware provides a customization spec mechanism for injecting IPv6 addresses at clone time. The cloud-init network configuration `version: 2` with `dhcp6: true` is the most portable approach across KVM, VMware, Hyper-V, and cloud providers.
+VM templates for IPv6 environments should use cloud-init network configuration or platform metadata to enable DHCPv6 and RA-driven IPv6 on first boot rather than baking in a static IPv6 address. Clearing the machine-id is recommended so each clone gets a unique machine identity; on systemd-based guests this also avoids reusing DHCP client identity state. Packer automates the template build process and can install cloud-init configurations as part of the build. VMware provides a customization spec mechanism for injecting IPv6 settings at clone time. For Linux images that use cloud-init with netplan-compatible Version 2 network configuration, `dhcp6: true` with optional `accept-ra: true` is a practical default for SLAAC/DHCPv6 environments.
