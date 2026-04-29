@@ -12,13 +12,16 @@ Description: Build IPv6-ready web services with Rust's Axum framework including 
 # Cargo.toml
 
 [dependencies]
-axum = "0.7"
+axum = "0.8"
+serde = { version = "1", features = ["derive"] }
 tokio = { version = "1", features = ["full"] }
+tower-http = { version = "0.6", features = ["trace"] }
+tracing = "0.1"
+tracing-subscriber = "0.3"
 ```
 
 ```rust
 use axum::{routing::get, Router};
-use std::net::SocketAddr;
 
 async fn hello() -> &'static str {
     "Hello from IPv6 Axum!"
@@ -28,7 +31,8 @@ async fn hello() -> &'static str {
 async fn main() {
     let app = Router::new().route("/", get(hello));
 
-    // Listen on all IPv6 interfaces (dual-stack on Linux)
+    // Listen on all IPv6 interfaces. On many Linux systems this also accepts
+    // IPv4 via IPv4-mapped IPv6 addresses unless IPV6_V6ONLY is enabled.
     let listener = tokio::net::TcpListener::bind("[::]:3000").await.unwrap();
     println!("Listening on {}", listener.local_addr().unwrap());
 
@@ -52,7 +56,9 @@ async fn client_ip(ConnectInfo(addr): ConnectInfo<SocketAddr>) -> String {
     let real_ip = match addr.ip() {
         IpAddr::V6(v6) => {
             // Unwrap IPv4-mapped addresses (::ffff:x.x.x.x) from dual-stack
-            v6.to_ipv4().map(IpAddr::V4).unwrap_or(IpAddr::V6(v6))
+            v6.to_ipv4_mapped()
+                .map(IpAddr::V4)
+                .unwrap_or(IpAddr::V6(v6))
         }
         v4 => v4,
     };
@@ -66,7 +72,8 @@ async fn main() {
 
     let listener = tokio::net::TcpListener::bind("[::]:3000").await.unwrap();
 
-    // Must use serve_with_incoming_make_service or into_make_service_with_connect_info
+    // `ConnectInfo` is available when you serve the router with
+    // `into_make_service_with_connect_info`.
     axum::serve(
         listener,
         app.into_make_service_with_connect_info::<SocketAddr>(),
@@ -80,7 +87,6 @@ async fn main() {
 
 ```rust
 use axum::{
-    async_trait,
     extract::{FromRequestParts, Query},
     http::{request::Parts, StatusCode},
     response::{IntoResponse, Response},
@@ -95,7 +101,6 @@ struct IPv6Query {
 
 pub struct ValidIPv6(Ipv6Addr);
 
-#[async_trait]
 impl<St> FromRequestParts<St> for ValidIPv6
 where
     St: Send + Sync,
@@ -124,9 +129,10 @@ async fn process_addr(ValidIPv6(addr): ValidIPv6) -> String {
 ## Tower Middleware for IPv6 Logging
 
 ```rust
-use axum::{routing::get, Router};
+use axum::{extract::ConnectInfo, http::Request, routing::get, Router};
 use std::net::SocketAddr;
-use tower_http::trace::{DefaultMakeSpan, TraceLayer};
+use tower_http::trace::TraceLayer;
+use tracing::Level;
 use tracing_subscriber::{layer::SubscriberExt, util::SubscriberInitExt};
 
 async fn root() -> &'static str {
@@ -139,15 +145,31 @@ async fn main() {
         .with(tracing_subscriber::fmt::layer())
         .init();
 
-    let app = Router::new()
-        .route("/", get(root))
-        .layer(
-            TraceLayer::new_for_http()
-                .make_span_with(DefaultMakeSpan::default().include_headers(true)),
-        );
+    let app = Router::new().route("/", get(root)).layer(
+        TraceLayer::new_for_http().make_span_with(|request: &Request<_>| {
+            let client_ip = request
+                .extensions()
+                .get::<ConnectInfo<SocketAddr>>()
+                .map(|ConnectInfo(addr)| addr.ip().to_canonical().to_string())
+                .unwrap_or_else(|| "unknown".to_string());
+
+            tracing::span!(
+                Level::INFO,
+                "http-request",
+                method = %request.method(),
+                uri = %request.uri(),
+                client_ip = %client_ip,
+            )
+        }),
+    );
 
     let listener = tokio::net::TcpListener::bind("[::]:3000").await.unwrap();
-    axum::serve(listener, app).await.unwrap();
+    axum::serve(
+        listener,
+        app.into_make_service_with_connect_info::<SocketAddr>(),
+    )
+    .await
+    .unwrap();
 }
 ```
 
@@ -209,4 +231,4 @@ async fn main() {
 
 ## Conclusion
 
-Axum supports IPv6 through Tokio's `TcpListener::bind("[::]:port")`. The `ConnectInfo<SocketAddr>` extractor provides the client's socket address including IPv6 addresses. Custom extractors encode validation logic - including IPv6 checks - into the type system. `into_make_service_with_connect_info` is required to enable `ConnectInfo` extraction. Tower middleware via `TraceLayer` provides structured logging that includes IPv6 peer addresses automatically.
+Axum supports IPv6 by binding Tokio's `TcpListener` to an IPv6 socket such as `"[::]:port"`. The `ConnectInfo<SocketAddr>` extractor provides the client's socket address including IPv6 addresses. Custom extractors encode validation logic - including IPv6 checks - into the type system. To extract `ConnectInfo` when serving with `axum::serve`, use `into_make_service_with_connect_info`. Tower middleware via `TraceLayer` can include IPv6 peer addresses when you add them to the span from request extensions such as `ConnectInfo`.
