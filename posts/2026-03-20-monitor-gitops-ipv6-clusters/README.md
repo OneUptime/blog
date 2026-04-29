@@ -55,11 +55,11 @@ argocd_app_info{sync_status!="Synced"}
 # Applications with health issues
 argocd_app_info{health_status!="Healthy"}
 
-# Git repository fetch errors
-argocd_git_request_total{request_type="fetch"} - argocd_git_request_total{request_type="fetch",response_code="200"}
+# Git fetch request rate (spikes can indicate retries due to failures)
+rate(argocd_git_request_total{request_type="fetch"}[5m])
 
-# ArgoCD application sync lag (time since last successful sync)
-time() - argocd_app_info{sync_status="Synced"} * on(name, namespace) group_right argocd_app_condition_last_transition_time
+# ArgoCD application sync activity (rate of failed syncs)
+rate(argocd_app_sync_total{phase="Failed"}[5m])
 ```
 
 ## Flux CD Metrics for IPv6 Cluster
@@ -129,15 +129,15 @@ groups:
           summary: "Flux GitRepository {{ $labels.name }} is not ready"
           description: "Cannot fetch from Git repository - check IPv6 connectivity"
 
-      # ArgoCD cannot connect to Git (IPv6 connectivity issue)
-      - alert: ArgoCDGitFetchErrors
-        expr: rate(argocd_git_request_total{response_code!="200"}[5m]) > 0
+      # ArgoCD application sync failing (often a Git connectivity issue)
+      - alert: ArgoCDAppSyncFailed
+        expr: rate(argocd_app_sync_total{phase="Failed"}[5m]) > 0
         for: 3m
         labels:
           severity: warning
         annotations:
-          summary: "ArgoCD Git fetch errors"
-          description: "ArgoCD failing to fetch from Git - check IPv6 Git server"
+          summary: "ArgoCD application sync failures"
+          description: "ArgoCD application sync is failing - check IPv6 Git server connectivity"
 ```
 
 ## Blackbox Exporter: Probe Deployed IPv6 Services
@@ -162,9 +162,9 @@ spec:
         ip_version: ipv6
       static:
         # Test that deployed services respond over IPv6
-        - "http://[2001:db8::app]:8080/health"
-        - "http://[2001:db8::api]:8080/health"
-        - "https://[2001:db8::frontend]:443/"
+        - "http://[2001:db8::1]:8080/health"
+        - "http://[2001:db8::2]:8080/health"
+        - "https://[2001:db8::3]:443/"
 ```
 
 ```yaml
@@ -225,11 +225,11 @@ modules:
 ```bash
 # Debug ArgoCD source connectivity to IPv6 Git server
 kubectl exec -n argocd deployment/argocd-repo-server -- \
-    curl -6 -I "https://[2001:db8::git]:443"
+    curl -6 -I "https://[2001:db8::4]:443"
 
 # Debug Flux source-controller connectivity
 kubectl exec -n flux-system deployment/source-controller -- \
-    curl -6 -I "https://[2001:db8::git]:443"
+    curl -6 -I "https://[2001:db8::4]:443"
 
 # Check if IPv6 is available in GitOps controller pods
 kubectl exec -n argocd deployment/argocd-repo-server -- ip -6 addr
