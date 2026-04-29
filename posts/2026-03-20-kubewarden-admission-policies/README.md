@@ -14,8 +14,8 @@ This guide covers creating, configuring, and managing namespace-scoped Admission
 
 ## Prerequisites
 
-- Kubewarden installed on your cluster
-- `kubectl` access with namespace admin permissions
+- Kubewarden installed on a Kubernetes v1.21.0+ cluster
+- `kubectl` access with permission to create and manage `AdmissionPolicy` resources in the target namespace
 - Basic understanding of Kubernetes admission webhooks
 
 ## Understanding AdmissionPolicy vs ClusterAdmissionPolicy
@@ -23,7 +23,7 @@ This guide covers creating, configuring, and managing namespace-scoped Admission
 | Feature | AdmissionPolicy | ClusterAdmissionPolicy |
 |---------|----------------|------------------------|
 | Scope | Single namespace | All namespaces |
-| Created by | Namespace admin | Cluster admin |
+| Created by | Users with delegated namespace RBAC | Cluster admin or users with cluster-scoped RBAC |
 | Typical use | Team/app policies | Platform-wide policies |
 | Can target namespace resources | Yes | Yes |
 | Can target cluster resources | No | Yes |
@@ -43,7 +43,7 @@ metadata:
   namespace: production
 spec:
   # Wasm module URI from Kubewarden policy hub
-  module: registry://ghcr.io/kubewarden/policies/pod-privileged:v0.2.0
+  module: registry://ghcr.io/kubewarden/policies/pod-privileged:v1.0.8
 
   # Kubernetes resources this policy watches
   rules:
@@ -124,7 +124,7 @@ metadata:
   name: require-team-label
   namespace: production
 spec:
-  module: registry://ghcr.io/kubewarden/policies/k8s-objects:v1.3.0
+  module: registry://ghcr.io/kubewarden/policies/safe-labels:v1.0.7
 
   settings:
     # Policy-specific configuration
@@ -154,16 +154,14 @@ metadata:
   name: require-resource-limits
   namespace: development
 spec:
-  module: registry://ghcr.io/kubewarden/policies/require-resources:v0.1.0
+  module: registry://ghcr.io/kubewarden/policies/container-resources:v1.3.1
 
   settings:
-    # Require both requests and limits for all containers
+    # Require both requests and limits for CPU and memory
     memory:
-      requireLimit: true
-      requireRequest: true
+      ignoreValues: true
     cpu:
-      requireLimit: true
-      requireRequest: true
+      ignoreValues: true
 
   rules:
     - apiGroups: [""]
@@ -177,25 +175,19 @@ spec:
   mode: protect
 ```
 
-## Using Audit Mode for Non-Disruptive Testing
+## Using Monitor Mode for Non-Disruptive Testing
 
-Before enforcing a policy, run it in audit mode to see what would be blocked:
+Before enforcing a policy, run it in monitor mode to see what would be blocked:
 
 ```yaml
-# policy-audit-mode.yaml
+# policy-monitor-mode.yaml
 apiVersion: policies.kubewarden.io/v1
 kind: AdmissionPolicy
 metadata:
-  name: audit-no-latest-tag
+  name: monitor-privileged-pods
   namespace: production
 spec:
-  module: registry://ghcr.io/kubewarden/policies/verify-image-signatures:v0.1.0
-
-  settings:
-    signatures:
-      - image: "*"
-        anyOf:
-          - kind: githubAction
+  module: registry://ghcr.io/kubewarden/policies/pod-privileged:v1.0.8
 
   rules:
     - apiGroups: [""]
@@ -206,34 +198,46 @@ spec:
         - UPDATE
   mutating: false
 
-  # Audit mode: policy evaluates but doesn't block
+  # Monitor mode: policy evaluates but doesn't block
   # Violations are logged but requests are allowed
   mode: monitor
 ```
 
 ```bash
 # Apply in monitor mode first
-kubectl apply -f policy-audit-mode.yaml
+kubectl apply -f policy-monitor-mode.yaml
 
-# Check events to see what would have been blocked
-kubectl get events -n production \
-  --field-selector reason=PolicyViolation
+# Try creating a resource that would normally be rejected
+kubectl apply -n production -f - <<EOF
+apiVersion: v1
+kind: Pod
+metadata:
+  name: monitor-privileged-test
+spec:
+  containers:
+    - name: test
+      image: nginx:latest
+      securityContext:
+        privileged: true
+EOF
+
+# If you have access to the Kubewarden namespace, inspect the policy-server logs
+kubectl logs -n kubewarden deploy/policy-server-default \
+  --since=5m | grep 'policy evaluation (monitor mode)'
 ```
 
 ## Switching Policy Mode
 
 ```bash
 # Switch from monitor to protect mode
-kubectl patch admissionpolicy audit-no-latest-tag \
+kubectl patch admissionpolicy monitor-privileged-pods \
   -n production \
   --type=merge \
   -p '{"spec":{"mode":"protect"}}'
 
-# Switch back to monitor if issues are discovered
-kubectl patch admissionpolicy audit-no-latest-tag \
-  -n production \
-  --type=merge \
-  -p '{"spec":{"mode":"monitor"}}'
+# To go back to monitor mode, delete and recreate the policy with mode: monitor
+kubectl delete admissionpolicy monitor-privileged-pods -n production
+kubectl apply -f policy-monitor-mode.yaml
 ```
 
 ## Checking Policy Status
@@ -251,8 +255,9 @@ kubectl get admissionpolicy no-privileged-pods -n production \
 ```
 
 Policy status conditions:
-- `PolicyActive`: Policy is active and enforcing
-- `PolicyUniquelyReachable`: No conflicts with other policies
+- `PolicyActive`: The policy webhook has been created
+- `PolicyServerConfigurationUpToDate`: The policy configuration has been rolled out to the assigned PolicyServer
+- `PolicyUniquelyReachable`: Only the latest PolicyServer replica set is serving this policy
 
 ## Deleting a Policy
 
@@ -266,4 +271,4 @@ kubectl get admissionpolicies -n production
 
 ## Conclusion
 
-Kubewarden AdmissionPolicies provide namespace-scoped policy enforcement that can be managed by namespace owners without requiring cluster-admin privileges. By combining validation and mutation policies in audit mode first, then switching to protect mode, you can safely roll out new policies without disrupting existing workloads. The granular namespace scoping makes AdmissionPolicies ideal for implementing team-specific security requirements while maintaining a shared cluster infrastructure.
+Kubewarden AdmissionPolicies provide namespace-scoped policy enforcement that can be delegated to namespace owners via RBAC without granting full cluster-admin privileges. By combining validation and mutation policies in monitor mode first, then switching to protect mode, you can safely roll out new policies without disrupting existing workloads. The granular namespace scoping makes AdmissionPolicies ideal for implementing team-specific security requirements while maintaining a shared cluster infrastructure.
