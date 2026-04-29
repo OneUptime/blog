@@ -13,7 +13,7 @@ While K3s works great on a single node, production deployments benefit from mult
 ## Architecture Overview
 
 **Single Server + Multiple Agents** (non-HA):
-- 1 server node (control plane + etcd)
+- 1 server node (control plane + embedded SQLite datastore by default)
 - N agent nodes (workloads only)
 
 **Multi-Server + Embedded HA** (HA):
@@ -22,9 +22,9 @@ While K3s works great on a single node, production deployments benefit from mult
 
 ## Prerequisites
 
-- 3+ Linux nodes (Ubuntu 20.04+ recommended)
+- 2+ Linux nodes for a single-server cluster with agents, or 3+ server nodes for embedded etcd HA (Ubuntu 20.04+ recommended)
 - Network connectivity between all nodes
-- Open ports: 6443 (API), 10250 (kubelet), 8472/UDP (Flannel VXLAN)
+- Open ports: 6443 (API), 8472/UDP (Flannel VXLAN), 10250 (if you use metrics-server), and 2379-2380 between server nodes for embedded etcd HA
 
 ## Single Server + Multiple Agents Setup
 
@@ -35,8 +35,8 @@ While K3s works great on a single node, production deployments benefit from mult
 
 # Use a custom token for security
 curl -sfL https://get.k3s.io | \
-    K3S_TOKEN="MySecureK3sToken" \
-    sudo sh -
+    sudo K3S_TOKEN="MySecureK3sToken" \
+    sh -
 
 # Wait for the server to be ready
 sudo k3s kubectl wait --for=condition=Ready node --all --timeout=120s
@@ -51,9 +51,9 @@ sudo cat /var/lib/rancher/k3s/server/node-token
 # On each agent node (192.168.1.101, 192.168.1.102, etc.)
 # Replace K3S_URL with your server's IP or hostname
 curl -sfL https://get.k3s.io | \
-    K3S_URL="https://192.168.1.100:6443" \
+    sudo K3S_URL="https://192.168.1.100:6443" \
     K3S_TOKEN="MySecureK3sToken" \
-    sudo sh -
+    sh -
 
 # Check the agent service status
 sudo systemctl status k3s-agent
@@ -67,9 +67,9 @@ sudo k3s kubectl get nodes -o wide
 
 # Expected output:
 # NAME         STATUS   ROLES                  AGE     VERSION
-# server-01    Ready    control-plane,master   5m      v1.28.7+k3s1
-# agent-01     Ready    <none>                 3m      v1.28.7+k3s1
-# agent-02     Ready    <none>                 3m      v1.28.7+k3s1
+# server-01    Ready    control-plane,master   5m      vX.Y.Z+k3s1
+# agent-01     Ready    <none>                 3m      vX.Y.Z+k3s1
+# agent-02     Ready    <none>                 3m      vX.Y.Z+k3s1
 ```
 
 ## Multi-Server HA Setup (with Embedded etcd)
@@ -81,7 +81,7 @@ For production high availability, use embedded etcd with 3 server nodes:
 ```bash
 # On the first server (192.168.1.100)
 curl -sfL https://get.k3s.io | \
-    K3S_TOKEN="MyHAToken" \
+    sudo K3S_TOKEN="MyHAToken" \
     sh -s - server \
     --cluster-init \
     --tls-san 192.168.1.99 \
@@ -95,7 +95,7 @@ curl -sfL https://get.k3s.io | \
 ```bash
 # On the second server (192.168.1.101)
 curl -sfL https://get.k3s.io | \
-    K3S_TOKEN="MyHAToken" \
+    sudo K3S_TOKEN="MyHAToken" \
     sh -s - server \
     --server https://192.168.1.100:6443 \
     --tls-san 192.168.1.99 \
@@ -103,7 +103,7 @@ curl -sfL https://get.k3s.io | \
 
 # On the third server (192.168.1.102)
 curl -sfL https://get.k3s.io | \
-    K3S_TOKEN="MyHAToken" \
+    sudo K3S_TOKEN="MyHAToken" \
     sh -s - server \
     --server https://192.168.1.100:6443 \
     --tls-san 192.168.1.99 \
@@ -114,20 +114,24 @@ curl -sfL https://get.k3s.io | \
 
 ```bash
 # On each agent node
+# If the load balancer from Step 4 is not in place yet,
+# use any existing server URL instead of the LB address.
 curl -sfL https://get.k3s.io | \
-    K3S_URL="https://192.168.1.99:6443" \
+    sudo K3S_URL="https://192.168.1.99:6443" \
     K3S_TOKEN="MyHAToken" \
-    sudo sh -
+    sh -
 ```
 
-Use a load balancer IP (192.168.1.99) so agents connect through the LB rather than a specific server.
+Use the load balancer IP (192.168.1.99) as a fixed registration address so new agents do not depend on a single server endpoint.
 
 ### Step 4: Set Up a Load Balancer
 
-For HA, place a load balancer in front of server nodes:
+For HA, place a TCP load balancer in front of server nodes:
 
 ```nginx
 # /etc/nginx/nginx.conf - nginx TCP load balancer for K3s API
+events {}
+
 stream {
     upstream k3s_servers {
         server 192.168.1.100:6443;
@@ -142,6 +146,8 @@ stream {
 }
 ```
 
+A single Nginx instance still creates a single point of failure for the load balancer layer. If you need end-to-end HA, make the load balancer itself redundant as well.
+
 ## Using a Config File Instead of Environment Variables
 
 Create config files for reproducible deployments:
@@ -149,8 +155,10 @@ Create config files for reproducible deployments:
 ### Server Config
 
 ```yaml
-# /etc/rancher/k3s/config.yaml (on server)
-token: "MySecureK3sToken"
+# /etc/rancher/k3s/config.yaml (on the first HA server)
+# On additional servers, use server: "https://192.168.1.99:6443"
+# instead of cluster-init: true, and keep the other critical flags the same.
+token: "MyHAToken"
 cluster-init: true
 tls-san:
   - 192.168.1.99
@@ -168,7 +176,7 @@ node-label:
 ```yaml
 # /etc/rancher/k3s/config.yaml (on agent)
 server: "https://192.168.1.99:6443"
-token: "MySecureK3sToken"
+token: "MyHAToken"
 node-label:
   - "tier=worker"
   - "zone=us-east-1a"
@@ -242,4 +250,4 @@ sudo /usr/local/bin/k3s-agent-uninstall.sh
 
 ## Conclusion
 
-Setting up a multi-node K3s cluster is straightforward with the install script and token-based node registration. For development and lightweight production workloads, a single-server multi-agent topology works well. For true high availability, use embedded etcd with at least 3 server nodes behind a load balancer. K3s's minimal footprint means you get a fully functional HA Kubernetes cluster with far lower resource requirements than other distributions.
+Setting up a multi-node K3s cluster is straightforward with the install script and token-based node registration. For development and lightweight production workloads, a single-server multi-agent topology works well. For highly available control-plane nodes, use embedded etcd with at least 3 server nodes and a fixed registration address such as a load balancer. If you need end-to-end HA, make the load balancer itself redundant as well. K3s's minimal footprint means you get a fully functional HA Kubernetes cluster with far lower resource requirements than other distributions.
