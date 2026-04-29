@@ -8,7 +8,7 @@ Description: Learn how to use the matchkeys function in OpenTofu to filter one l
 
 ---
 
-`matchkeys()` takes three arguments: a list of values to return, a list of keys to search, and a list of keys to match against. It returns the values from the first list where the corresponding key appears in the third list - similar to a SQL `WHERE key IN (...)` operation.
+`matchkeys()` takes three arguments: a list of values to return, a list of keys to search, and a list of keys to match against. The first two lists must be the same length. It returns the values from the first list where the corresponding key appears in the third list - similar to a SQL `WHERE key IN (...)` operation.
 
 ---
 
@@ -19,6 +19,8 @@ matchkeys(values_list, keys_list, search_set)
 ```
 
 Returns elements from `values_list` where the corresponding element in `keys_list` is also in `search_set`.
+
+`values_list` and `keys_list` must be the same length.
 
 ---
 
@@ -121,18 +123,19 @@ locals {
 ## matchkeys vs for Expression Filter
 
 ```hcl
-# These produce equivalent results:
+locals {
+  # These produce equivalent results:
 
-# Using matchkeys
+  # Using matchkeys
+  result1 = matchkeys(values_list, keys_list, filter_set)
 
-local.result1 = matchkeys(values_list, keys_list, filter_set)
-
-# Using for expression (when you have objects):
-local.result2 = [
-  for i, key in keys_list :
-  values_list[i]
-  if contains(filter_set, key)
-]
+  # Using a for expression
+  result2 = [
+    for i, key in keys_list :
+    values_list[i]
+    if contains(filter_set, key)
+  ]
+}
 ```
 
 `matchkeys()` is more concise when you have parallel lists. A for expression is more flexible when working with objects or needing transformation.
