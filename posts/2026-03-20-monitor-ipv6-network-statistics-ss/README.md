@@ -55,14 +55,14 @@ ss -6 -t state established
 ss -6 -t state listening
 
 # Show connections to a specific remote address
-ss -6 dst 2001:4860:4860::8888
+ss -6 dst '[2001:4860:4860::8888]'
 
 # Show connections from a specific local address
-ss -6 src 2001:db8::10
+ss -6 src '[2001:db8::10]'
 
 # Show connections on a specific port
-ss -6 sport = :443
-ss -6 dport = :80
+ss -6 -t sport = :443
+ss -6 -t dport = :80
 
 # Combine filters
 ss -6 -t state established '( dport = :443 or dport = :80 )'
@@ -110,7 +110,7 @@ watch -n 1 'ss -6 -tn'
 ss -6 -t state established | wc -l
 
 # Show connections per remote address
-ss -6 -tn state established | awk '{print $5}' | cut -d: -f1-7 | sort | uniq -c | sort -rn | head -20
+ss -6 -tn state established | awk 'NR>1 {print $5}' | sed 's/]:[0-9]*$/]/' | sort | uniq -c | sort -rn | head -20
 
 # Monitor for new IPv6 connections (using watch with diff-like approach)
 watch -n 2 'ss -6 -tn state established | wc -l'
@@ -122,7 +122,7 @@ watch -n 2 'ss -6 -tn state established | wc -l'
 # Show IPv6 UDP sockets
 ss -6 -uln
 
-# Show UDP with statistics (receive/send queue sizes)
+# Show UDP with extended info (uid, inode, socket cookie)
 ss -6 -une
 
 # Show mDNS/multicast UDP sockets
