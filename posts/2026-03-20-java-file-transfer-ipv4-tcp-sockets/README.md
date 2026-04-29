@@ -14,12 +14,13 @@ Java's socket and stream APIs make file transfer straightforward. By wrapping so
 
 ```text
 Client -> Server:
-  [UTF string: filename]
+  [modified UTF-8 string via writeUTF: filename]
   [long 8 bytes: file size]
   [byte[]: file data]
 
 Server -> Client:
-  [UTF string: "OK" or error message]
+  [modified UTF-8 string acknowledgment on success: "OK:<filename>"]
+  [on transfer errors, the server logs the error and closes the connection]
 ```
 
 ## File Transfer Server
@@ -69,17 +70,19 @@ public class FileTransferServer {
             
             // Read the file size
             long fileSize = in.readLong();
+            if (fileSize < 0) {
+                throw new IOException("Negative file size is invalid");
+            }
             System.out.printf("Receiving: %s (%,d bytes)%n", filename, fileSize);
             
             // Receive and write the file
             Path savePath = Paths.get(SAVE_DIR, filename);
+            long progressStep = Math.max(1L, fileSize / 20);
+            byte[] buffer = new byte[8192];
+            long bytesReceived = 0;
+            int bytesRead;
             try (BufferedOutputStream fileOut = new BufferedOutputStream(
                     new FileOutputStream(savePath.toFile()))) {
-                
-                byte[] buffer = new byte[8192];
-                long bytesReceived = 0;
-                int bytesRead;
-                
                 while (bytesReceived < fileSize &&
                        (bytesRead = in.read(buffer, 0,
                            (int) Math.min(buffer.length, fileSize - bytesReceived))) != -1) {
@@ -88,14 +91,19 @@ public class FileTransferServer {
                     bytesReceived += bytesRead;
                     
                     // Print progress every 5%
-                    if (bytesReceived % (fileSize / 20) < buffer.length) {
+                    if (fileSize > 0 && bytesReceived % progressStep < buffer.length) {
                         double pct = (bytesReceived * 100.0) / fileSize;
                         System.out.printf("\rProgress: %.0f%%", pct);
                     }
                 }
-                
-                System.out.println("\nSaved: " + savePath);
             }
+
+            if (bytesReceived != fileSize) {
+                Files.deleteIfExists(savePath);
+                throw new EOFException("Connection closed before all file bytes were received");
+            }
+            
+            System.out.println("\nSaved: " + savePath);
             
             // Send acknowledgment
             out.writeUTF("OK:" + filename);
@@ -126,8 +134,17 @@ public class FileTransferClient {
         
         System.out.printf("Sending %s (%,d bytes) to %s:%d%n", filename, fileSize, serverIp, port);
         
-        // Force IPv4 connection
-        InetAddress serverAddr = InetAddress.getByName(serverIp);
+        // Select an IPv4 address so the socket uses IPv4
+        InetAddress serverAddr = null;
+        for (InetAddress address : InetAddress.getAllByName(serverIp)) {
+            if (address instanceof Inet4Address) {
+                serverAddr = address;
+                break;
+            }
+        }
+        if (serverAddr == null) {
+            throw new UnknownHostException("No IPv4 address found for " + serverIp);
+        }
         
         try (Socket socket = new Socket(serverAddr, port);
              DataOutputStream out = new DataOutputStream(
@@ -152,8 +169,10 @@ public class FileTransferClient {
                 out.write(buffer, 0, bytesRead);
                 bytesSent += bytesRead;
                 
-                double pct = (bytesSent * 100.0) / fileSize;
-                System.out.printf("\rSending: %.0f%%", pct);
+                if (fileSize > 0) {
+                    double pct = (bytesSent * 100.0) / fileSize;
+                    System.out.printf("\rSending: %.0f%%", pct);
+                }
             }
             
             out.flush();
@@ -192,4 +211,4 @@ java FileTransferClient 192.168.1.100 5001 /path/to/large-file.zip
 
 ## Conclusion
 
-Java's `DataOutputStream`/`DataInputStream` wrapping around `BufferedInputStream`/`BufferedOutputStream` provides an efficient, structured approach to file transfer over IPv4 TCP. Buffering reduces system call overhead, `DataOutputStream.writeUTF` handles the filename header cleanly, and progress reporting makes the transfer observable.
+Java's `DataOutputStream`/`DataInputStream` wrapping around `BufferedInputStream`/`BufferedOutputStream` provides an efficient, structured approach to file transfer over IPv4 TCP. Buffering reduces system call overhead, `DataOutputStream.writeUTF` handles the filename header cleanly using Java's modified UTF-8 format, and progress reporting makes the transfer observable.
