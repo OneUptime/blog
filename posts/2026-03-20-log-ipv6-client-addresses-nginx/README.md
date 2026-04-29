@@ -41,8 +41,9 @@ http {
 
     # Include IP version in log (useful for analysis)
     map $remote_addr $ip_version {
-        "~^[0-9]+\.[0-9]+\.[0-9]+\.[0-9]+$"   "IPv4";
-        default                                  "IPv6";
+        "~^::ffff:[0-9]+\.[0-9]+\.[0-9]+\.[0-9]+$" "IPv4";
+        "~^[0-9]+\.[0-9]+\.[0-9]+\.[0-9]+$"        "IPv4";
+        default                                        "IPv6";
     }
 
     log_format with_version '$ip_version $remote_addr [$time_local] '
@@ -56,7 +57,7 @@ http {
 
 ## Handling IPv4-Mapped IPv6 Addresses
 
-When `ipv6only=off`, IPv4 clients appear as `::ffff:192.168.1.1`:
+When a single IPv6 listen socket uses `ipv6only=off`, IPv4 clients can appear as `::ffff:192.168.1.1`:
 
 ```nginx
 http {
@@ -83,10 +84,10 @@ http {
     real_ip_header X-Forwarded-For;
 
     # Trust the load balancer's IPv6 address
-    set_real_ip_from 2001:db8:lb::/64;
+    set_real_ip_from 2001:db8:100::/64;
     set_real_ip_from 192.168.1.0/24;  # IPv4 load balancer
 
-    # real_ip_recursive = look through all X-Forwarded-For IPs
+    # real_ip_recursive = use the last non-trusted address from X-Forwarded-For
     real_ip_recursive on;
 
     log_format main '$remote_addr [$time_local] "$request" $status';
@@ -104,18 +105,41 @@ http {
 ```bash
 # Count requests by IPv6 prefix (/64)
 
-awk '{print $1}' /var/log/nginx/access.log | \
-    grep ':' | \
-    sed 's/^\(.*:.*:.*:.*\):.*:.*:.*$/\1::\/64/' | \
-    sort | uniq -c | sort -rn | head -20
+python3 - /var/log/nginx/access.log <<'PY'
+import ipaddress
+import sys
+from collections import Counter
+
+counts = Counter()
+
+with open(sys.argv[1]) as f:
+    for line in f:
+        parts = line.split()
+        if not parts:
+            continue
+
+        ip = parts[0]
+
+        # Exclude IPv4 and IPv4-mapped IPv6 addresses.
+        if ':' not in ip or ip.startswith("::ffff:"):
+            continue
+
+        prefix = ipaddress.ip_network(f"{ip}/64", strict=False)
+        counts[str(prefix)] += 1
+
+for prefix, count in counts.most_common(20):
+    print(f"{count:7d} {prefix}")
+PY
 
 # Count unique IPv6 addresses
-awk '{print $1}' /var/log/nginx/access.log | \
-    grep ':' | sort -u | wc -l
+awk '$1 ~ /:/ && $1 !~ /^::ffff:/ {print $1}' \
+    /var/log/nginx/access.log | sort -u | wc -l
 
 # Show status codes for IPv6 clients
-awk '/[0-9a-f]:.*[45][0-9][0-9]/ {print $8}' \
-    /var/log/nginx/access.log | sort | uniq -c
+awk '$1 ~ /:/ && $1 !~ /^::ffff:/ {
+    match($0, /" [0-9][0-9][0-9] /)
+    if (RSTART) print substr($0, RSTART + 2, 3)
+}' /var/log/nginx/access.log | sort | uniq -c
 ```
 
 ## JSON Log Format for IPv6
@@ -140,4 +164,4 @@ http {
 
 ## Summary
 
-Nginx automatically logs IPv6 client addresses via `$remote_addr` in access logs. With `ipv6only=on`, IPv6 clients appear as `2001:db8::10`, not IPv4-mapped. Use the `real_ip_module` (`set_real_ip_from`, `real_ip_header`) when Nginx is behind a proxy to capture the original client IP. Use a `map` block to normalize `::ffff:` IPv4-mapped addresses for consistent logging. JSON log format makes IPv6 address parsing easier in log analysis tools.
+Nginx automatically logs IPv6 client addresses via `$remote_addr` in access logs. With separate IPv4 and IPv6 listen sockets, such as `listen [::]:80 ipv6only=on;` and `listen 80;`, IPv6 clients appear as `2001:db8::10` rather than IPv4-mapped addresses. Use the `real_ip_module` (`set_real_ip_from`, `real_ip_header`) when Nginx is behind a proxy to capture the original client IP. Use a `map` block to normalize `::ffff:` IPv4-mapped addresses for consistent logging when requests arrive on an IPv6 socket configured with `ipv6only=off`. JSON log format makes IPv6 address parsing easier in log analysis tools.
