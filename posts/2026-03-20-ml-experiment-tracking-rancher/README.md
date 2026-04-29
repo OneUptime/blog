@@ -25,14 +25,14 @@ Deploying this component on Rancher follows Kubernetes-native patterns: using He
 ```bash
 # Add the appropriate Helm repository
 
-helm repo add stable https://charts.helm.sh/stable
+helm repo add community-charts https://community-charts.github.io/helm-charts
 helm repo update
 
 # Create namespace
 kubectl create namespace mlops
 
 # Install with custom values
-helm install ml-experiment-tracking-rancher stable/chart-name   --namespace mlops   --set persistence.enabled=true   --set persistence.storageClass=longhorn
+helm install ml-experiment-tracking-rancher community-charts/mlflow   --namespace mlops   --set persistence.enabled=true   --set persistence.storageClass=longhorn
 ```
 
 ## Step 2: Configure Storage
