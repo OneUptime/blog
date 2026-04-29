@@ -4,11 +4,11 @@ Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
 Tags: C, IPv6, AF_INET6, Socket Programming, POSIX, Systems Programming, Networking
 
-Description: Create and use IPv6 sockets in C using AF_INET6, configure dual-stack behavior with IPV6_V6ONLY, and implement both TCP and UDP IPv6 servers and clients.
+Description: Create and use IPv6 sockets in C using AF_INET6, configure IPv6-only or dual-stack behavior with IPV6_V6ONLY, and implement both TCP and UDP IPv6 servers and clients.
 
 ## Introduction
 
-IPv6 sockets in C use the `AF_INET6` address family with `struct sockaddr_in6` for address storage. Unlike IPv4 sockets, IPv6 introduces additional fields like flow information and scope IDs. This guide covers creating, binding, and using IPv6 sockets for both TCP and UDP.
+IPv6 sockets in C use the `AF_INET6` address family with `struct sockaddr_in6` for address storage. Unlike IPv4 sockets, IPv6 introduces additional fields like flow information and scope IDs, and whether an `AF_INET6` socket also accepts IPv4-mapped connections depends on platform defaults unless you set `IPV6_V6ONLY` explicitly. This guide covers creating, binding, and using IPv6 sockets for both TCP and UDP.
 
 ## Required Headers
 
@@ -17,6 +17,7 @@ IPv6 sockets in C use the `AF_INET6` address family with `struct sockaddr_in6` f
 #include <netinet/in.h>      /* struct sockaddr_in6, in6addr_any */
 #include <arpa/inet.h>       /* inet_pton(), inet_ntop() */
 #include <netdb.h>           /* getaddrinfo() */
+#include <stdint.h>          /* uint16_t */
 #include <unistd.h>          /* close() */
 #include <string.h>          /* memset() */
 #include <stdio.h>
@@ -28,7 +29,9 @@ IPv6 sockets in C use the `AF_INET6` address family with `struct sockaddr_in6` f
 ```c
 #include <sys/socket.h>
 #include <netinet/in.h>
+#include <arpa/inet.h>
 #include <unistd.h>
+#include <string.h>
 #include <stdio.h>
 
 int main(void) {
@@ -47,6 +50,10 @@ int main(void) {
     int reuse = 1;
     setsockopt(sockfd, SOL_SOCKET, SO_REUSEADDR, &reuse, sizeof(reuse));
 
+    /* 1 = IPv6 only, 0 = allow IPv4-mapped addresses if the platform supports it */
+    int v6only = 1;
+    setsockopt(sockfd, IPPROTO_IPV6, IPV6_V6ONLY, &v6only, sizeof(v6only));
+
     /* Step 3: Configure the address structure */
     struct sockaddr_in6 addr;
     memset(&addr, 0, sizeof(addr));
@@ -54,7 +61,7 @@ int main(void) {
     addr.sin6_port     = htons(8080);        /* Port in network byte order */
     addr.sin6_addr     = in6addr_any;        /* :: (all interfaces) */
     addr.sin6_flowinfo = 0;                  /* Flow info (usually 0) */
-    addr.sin6_scope_id = 0;                  /* Scope ID (0 for global) */
+    addr.sin6_scope_id = 0;                  /* Scope ID (0 when not using a scoped address) */
 
     /* Step 4: Bind to the address */
     if (bind(sockfd, (struct sockaddr *)&addr, sizeof(addr)) < 0) {
@@ -110,7 +117,7 @@ int main(void) {
     struct sockaddr_in6 addr;
     memset(&addr, 0, sizeof(addr));
     addr.sin6_family = AF_INET6;
-    addr.sin6_port   = htons(5353);      /* mDNS port for example */
+    addr.sin6_port   = htons(9090);      /* Example unprivileged port */
     addr.sin6_addr   = in6addr_any;
 
     if (bind(sockfd, (struct sockaddr *)&addr, sizeof(addr)) < 0) {
@@ -119,7 +126,7 @@ int main(void) {
         return 1;
     }
 
-    printf("UDP server listening on [::]:5353\n");
+    printf("UDP server listening on [::]:9090\n");
 
     /* Receive a UDP datagram */
     char buf[4096];
@@ -152,6 +159,7 @@ int main(void) {
 #include <sys/socket.h>
 #include <netinet/in.h>
 #include <arpa/inet.h>
+#include <stdint.h>
 #include <unistd.h>
 #include <stdio.h>
 #include <string.h>
@@ -231,4 +239,4 @@ inet_ntop(AF_INET6, &addr, str, INET6_ADDRSTRLEN) /* Binary to string */
 
 ## Conclusion
 
-Creating IPv6 TCP and UDP sockets in C requires `AF_INET6` as the address family, `struct sockaddr_in6` for address storage, `inet_pton(AF_INET6, ...)` for address parsing, and `in6addr_any` for binding to all interfaces. The structure and function calls are slightly more verbose than IPv4 but follow the same pattern. For portable code, use `getaddrinfo()` with `AF_UNSPEC` instead.
+Creating IPv6 TCP and UDP sockets in C requires `AF_INET6` as the address family, `struct sockaddr_in6` for address storage, `inet_pton(AF_INET6, ...)` for address parsing, and `in6addr_any` for binding to all interfaces. The structure and function calls are slightly more verbose than IPv4 but follow the same pattern. For portable code, use `getaddrinfo()` with `AF_UNSPEC`, and set `IPV6_V6ONLY` explicitly when you need consistent IPv6-only or dual-stack behavior across platforms.
