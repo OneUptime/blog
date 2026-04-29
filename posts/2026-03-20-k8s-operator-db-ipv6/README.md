@@ -21,19 +21,33 @@ Configure database connections managed by Kubernetes operators to use IPv6 addre
 ### Checking IPv6 Support in the Cluster
 
 ```go
-// Check if cluster supports IPv6
-func isIPv6Enabled(config *rest.Config) bool {
-    client, _ := kubernetes.NewForConfig(config)
-    nodes, _ := client.CoreV1().Nodes().List(context.Background(), metav1.ListOptions{})
+// Check if the cluster allocates IPv6 Pod CIDRs
+func isIPv6Enabled(config *rest.Config) (bool, error) {
+    clientset, err := kubernetes.NewForConfig(config)
+    if err != nil {
+        return false, err
+    }
+
+    nodes, err := clientset.CoreV1().Nodes().List(context.Background(), metav1.ListOptions{})
+    if err != nil {
+        return false, err
+    }
+
     for _, node := range nodes.Items {
-        for _, addr := range node.Status.Addresses {
-            ip := net.ParseIP(addr.Address)
-            if ip != nil && ip.To4() == nil {
-                return true  // Found an IPv6 node address
+        cidrs := node.Spec.PodCIDRs
+        if len(cidrs) == 0 && node.Spec.PodCIDR != "" {
+            cidrs = []string{node.Spec.PodCIDR}
+        }
+
+        for _, cidr := range cidrs {
+            ip, _, err := net.ParseCIDR(cidr)
+            if err == nil && ip.To4() == nil {
+                return true, nil
             }
         }
     }
-    return false
+
+    return false, nil
 }
 ```
 
@@ -111,13 +125,13 @@ EOF
 kind create cluster --config kind-dual-stack.yaml
 
 # Verify dual-stack is enabled
-kubectl get nodes -o wide
-kubectl get pods -n kube-system -o wide | grep "2001:"
+kubectl get nodes -o go-template --template='{{range .items}}{{.metadata.name}}{{"\n"}}{{range .spec.podCIDRs}}{{printf "  %s\n" .}}{{end}}{{end}}'
+kubectl get pods -n kube-system -o go-template --template='{{range .items}}{{.metadata.name}}{{": "}}{{range .status.podIPs}}{{printf "%s " .ip}}{{end}}{{"\n"}}{{end}}'
 ```
 
 ## Monitoring with OneUptime
 
-Use [OneUptime](https://oneuptime.com) to monitor your operator's health endpoint over IPv6. Configure synthetic monitors that check the operator's metrics and health endpoints from IPv6 addresses.
+Use [OneUptime](https://oneuptime.com) to monitor your operator's health endpoint over IPv6. Configure API monitors for the operator's metrics and health endpoints, or IP monitors for the underlying IPv6 address.
 
 ## Conclusion
 
