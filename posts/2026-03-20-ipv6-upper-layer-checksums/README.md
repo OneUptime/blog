@@ -8,7 +8,7 @@ Description: Learn to calculate TCP, UDP, and ICMPv6 checksums over IPv6 includi
 
 ## Introduction
 
-Every upper-layer protocol (TCP, UDP, ICMPv6) carried over IPv6 must include a checksum that covers both the protocol segment and the IPv6 pseudo-header. This end-to-end integrity check is more critical in IPv6 than in IPv4 because IPv6 removed the IP header checksum, placing full responsibility for data integrity on the upper layers.
+TCP, UDP, and ICMPv6 carried over IPv6 include a checksum that covers both the protocol segment and the IPv6 pseudo-header. This end-to-end integrity check is more critical in IPv6 than in IPv4 because IPv6 removed the IP header checksum, placing full responsibility for data integrity on the upper layers.
 
 ## The Checksum Algorithm
 
@@ -110,7 +110,8 @@ def udp_checksum_ipv6(src: str, dst: str,
     """
     Compute UDP checksum for an IPv6 packet.
 
-    IMPORTANT: UDP checksum is MANDATORY over IPv6 (unlike IPv4 where it's optional).
+    IMPORTANT: UDP checksum is mandatory by default over IPv6 (unlike IPv4 where it's optional).
+    RFC 6936 defines limited tunnel-mode exceptions for zero UDP checksums.
     Set to 0xFFFF if computed checksum would be 0 (to distinguish from 'no checksum').
     """
     udp_length = 8 + len(payload)  # 8-byte UDP header + data
@@ -168,10 +169,10 @@ def build_neighbor_solicitation(src: str, target: str) -> bytes:
     ns += target_bytes                     # target address
 
     # Compute checksum
-    # NS destination is solicited-node multicast: ff02::1:ffXX:XXXX
+    # For address resolution, NS destination is solicited-node multicast: ff02::1:ffXX:XXXX
     target_int = int.from_bytes(target_bytes, 'big')
     last_24 = target_int & 0xFFFFFF
-    sn_prefix = 0xff020000000000000000000100ff0000
+    sn_prefix = 0xff0200000000000000000001ff000000
     sn_addr = str(__import__('ipaddress').IPv6Address(sn_prefix | last_24))
 
     csum = icmpv6_checksum(src, sn_addr, ns)
@@ -205,4 +206,4 @@ print(f"ICMPv6 checksum: 0x{ping[ICMPv6EchoRequest].cksum:04X}")
 
 ## Conclusion
 
-Calculating upper-layer checksums over IPv6 requires including the 40-byte IPv6 pseudo-header (source address, destination address, upper-layer length, and Next Header value). The Internet checksum algorithm is the same as IPv4, but the pseudo-header is larger. UDP checksum is mandatory over IPv6, ICMPv6 checksum must include the pseudo-header (unlike ICMPv4), and TCP checksum uses the same mandatory calculation. These checksums provide the end-to-end integrity that IPv6 relies on since the IP header itself has no checksum.
+Calculating upper-layer checksums over IPv6 requires including the 40-byte IPv6 pseudo-header (source address, destination address, upper-layer length, and Next Header value). The Internet checksum algorithm is the same as IPv4, but the pseudo-header is larger. UDP checksum is mandatory by default over IPv6, ICMPv6 checksum must include the pseudo-header (unlike ICMPv4), and TCP checksum uses the same mandatory calculation. These checksums provide the end-to-end integrity that IPv6 relies on since the IP header itself has no checksum.
