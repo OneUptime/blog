@@ -8,7 +8,7 @@ Description: Learn how to enable JMX on Kafka brokers over IPv4 and scrape metri
 
 ---
 
-Kafka exposes extensive metrics via JMX (Java Management Extensions). Enabling JMX over an IPv4 port allows external monitoring tools to scrape broker health, topic throughput, and consumer lag metrics.
+Kafka exposes extensive metrics via JMX (Java Management Extensions). Enabling JMX over an IPv4 port allows external monitoring tools to scrape broker health, topic throughput, and replication metrics.
 
 ## Enabling JMX on Kafka Broker
 
@@ -18,28 +18,27 @@ Kafka exposes extensive metrics via JMX (Java Management Extensions). Enabling J
 # Enable JMX on a specific IPv4 address and port
 
 export JMX_PORT=9999
-export KAFKA_JMX_OPTS="-Dcom.sun.management.jmxremote \
+export KAFKA_JMX_OPTS="-Dcom.sun.management.jmxremote=true \
   -Dcom.sun.management.jmxremote.authenticate=false \
   -Dcom.sun.management.jmxremote.ssl=false \
   -Dcom.sun.management.jmxremote.port=9999 \
   -Dcom.sun.management.jmxremote.rmi.port=9999 \
   -Djava.rmi.server.hostname=10.0.0.10"
-# java.rmi.server.hostname must be the broker's IPv4 address (not 0.0.0.0)
+# java.rmi.server.hostname must be the broker's routable IPv4 address (not 0.0.0.0)
+# Do not disable authentication and TLS in production.
 ```
 
 ## Verifying JMX is Accessible
 
 ```bash
-# Check that JMX port is listening on the IPv4 address
-ss -tlnp | grep 9999
+# Check that JMX is listening on an IPv4 socket on port 9999
+ss -4 -tlpn '( sport = :9999 )'
 
 # Test with jconsole (GUI tool)
 jconsole 10.0.0.10:9999
 
-# Or use the CLI tool kafka-jmx.sh
-kafka-jmx.sh --jmx-url service:jmx:rmi:///jndi/rmi://10.0.0.10:9999/jmxrmi \
-  --object-name kafka.server:type=BrokerTopicMetrics,name=MessagesInPerSec \
-  --attributes Count,OneMinuteRate
+# Or connect with the full JMX service URL
+jconsole service:jmx:rmi:///jndi/rmi://10.0.0.10:9999/jmxrmi
 ```
 
 ## Using JMX Exporter for Prometheus
@@ -48,7 +47,7 @@ JMX Exporter is a Java agent that exposes JMX metrics as a Prometheus scrape end
 
 ```bash
 # Download JMX Exporter agent JAR
-wget https://repo1.maven.org/maven2/io/prometheus/jmx/jmx_prometheus_javaagent/0.20.0/jmx_prometheus_javaagent-0.20.0.jar \
+wget https://github.com/prometheus/jmx_exporter/releases/download/1.5.0/jmx_prometheus_javaagent-1.5.0.jar \
   -O /opt/jmx_prometheus_javaagent.jar
 ```
 
@@ -56,16 +55,13 @@ wget https://repo1.maven.org/maven2/io/prometheus/jmx/jmx_prometheus_javaagent/0
 # /etc/kafka/kafka-jmx-exporter.yaml
 ---
 rules:
-  # Expose all Kafka JMX metrics
-  - pattern: "kafka.(.*)<type=(.*), name=(.*)><>(.*)"
-    name: "kafka_$1_$2_$3_$4"
-    labels:
-      broker: "$1"
+  # Expose JMX metrics using the exporter's default naming
+  - pattern: ".*"
 ```
 
 ```bash
 # /etc/kafka/kafka-env.sh - add the agent to the JVM
-export KAFKA_OPTS="-javaagent:/opt/jmx_prometheus_javaagent.jar=9998:/etc/kafka/kafka-jmx-exporter.yaml"
+export KAFKA_OPTS="$KAFKA_OPTS -javaagent:/opt/jmx_prometheus_javaagent.jar=9998:/etc/kafka/kafka-jmx-exporter.yaml"
 # Port 9998 is the Prometheus HTTP scrape port (separate from JMX port 9999)
 ```
 
@@ -86,11 +82,11 @@ scrape_configs:
 
 | Metric | MBean | Description |
 |--------|-------|-------------|
-| Messages In/sec | `kafka.server:BrokerTopicMetrics:MessagesInPerSec` | Inbound message rate |
-| Bytes In/sec | `kafka.server:BrokerTopicMetrics:BytesInPerSec` | Inbound bytes |
-| Under-replicated partitions | `kafka.server:ReplicaManager:UnderReplicatedPartitions` | Replication health |
-| ISR Shrinks | `kafka.server:ReplicaManager:IsrShrinksPerSec` | ISR membership changes |
-| Request Queue Size | `kafka.network:RequestMetrics:RequestsPerSec` | Per-request type |
+| Messages In/sec | `kafka.server:type=BrokerTopicMetrics,name=MessagesInPerSec` | Incoming message rate |
+| Bytes In/sec | `kafka.server:type=BrokerTopicMetrics,name=BytesInPerSec` | Inbound bytes from clients |
+| Under-replicated partitions | `kafka.server:type=ReplicaManager,name=UnderReplicatedPartitions` | Replication health |
+| ISR Shrinks | `kafka.server:type=ReplicaManager,name=IsrShrinksPerSec` | ISR shrink rate |
+| Request Queue Size | `kafka.network:type=RequestChannel,name=RequestQueueSize` | Size of the request queue |
 
 ## Key Takeaways
 
