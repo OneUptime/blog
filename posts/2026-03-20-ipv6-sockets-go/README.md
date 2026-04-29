@@ -8,7 +8,7 @@ Description: Create IPv6 TCP and UDP servers and clients in Go using the net pac
 
 ## Introduction
 
-Go's `net` package abstracts socket creation through high-level types like `net.Listener`, `net.Conn`, and `net.PacketConn`. IPv6 support is built in - the key is using the right network string: `"tcp6"` for IPv6-only, `"tcp"` for dual-stack, and `"[::]:port"` for the wildcard bind address.
+Go's `net` package abstracts socket creation through high-level types like `net.Listener`, `net.Conn`, and `net.PacketConn`. IPv6 support is built in - the key is using the right network string: `"tcp6"` for IPv6-only, and `"[::]:port"` for the wildcard bind address. With a wildcard listen address, `"tcp"` may create a dual-stack listener on platforms that support IPv4-mapped IPv6 sockets, but that behavior is OS-dependent.
 
 ## IPv6 TCP Server
 
@@ -24,7 +24,7 @@ import (
 
 func main() {
     // "tcp6" = IPv6-only TCP
-    // Use "tcp" for dual-stack (accepts both IPv4 and IPv6)
+    // Use "tcp" with a wildcard address for OS-dependent dual-stack behavior
     listener, err := net.Listen("tcp6", "[::]:8080")
     if err != nil {
         fmt.Fprintf(os.Stderr, "Listen error: %v\n", err)
@@ -128,7 +128,7 @@ func udpIPv6Server(port string) {
         return
     }
     defer conn.Close()
-    fmt.Printf("UDP server listening on [::]:% s\n", port)
+    fmt.Printf("UDP server listening on [::]:%s\n", port)
 
     buf := make([]byte, 4096)
     for {
@@ -182,14 +182,14 @@ import (
 )
 
 func dualStackServer(port string) error {
-    // "tcp" with "[::]:port" creates a dual-stack listener on Linux
-    // On macOS/BSD, you may need separate listeners
+    // "tcp" with "[::]:port" may create a dual-stack listener when the OS
+    // supports IPv4-mapped IPv6 sockets; otherwise use separate listeners
     listener, err := net.Listen("tcp", "[::]:"+port)
     if err != nil {
         return err
     }
     defer listener.Close()
-    fmt.Printf("Dual-stack server on [::]:% s\n", port)
+    fmt.Printf("Dual-stack server on [::]:%s\n", port)
 
     for {
         conn, err := listener.Accept()
@@ -198,15 +198,10 @@ func dualStackServer(port string) error {
         }
         go func(c net.Conn) {
             defer c.Close()
-            remote := c.RemoteAddr().String()
-            host, _, _ := net.SplitHostPort(remote)
-
-            // Check if connected via IPv6
-            ip := net.ParseIP(host)
-            if ip != nil && ip.To4() == nil {
-                fmt.Printf("IPv6 client: %s\n", host)
+            if remote, ok := c.RemoteAddr().(*net.TCPAddr); ok && remote.IP.To4() == nil {
+                fmt.Printf("IPv6 client: %s\n", remote)
             } else {
-                fmt.Printf("IPv4 client: %s\n", host)
+                fmt.Printf("IPv4 client: %s\n", c.RemoteAddr())
             }
             io.WriteString(c, "Hello dual-stack client!\n")
         }(conn)
@@ -244,4 +239,4 @@ func connectLinkLocal(addr, iface, port string) (net.Conn, error) {
 
 ## Conclusion
 
-Go's `net` package makes IPv6 socket programming straightforward. Use `"tcp6"` for IPv6-only and `"tcp"` for dual-stack listeners. The `net.JoinHostPort()` function correctly formats IPv6 addresses in brackets for host:port strings. `net.SplitHostPort()` correctly parses bracketed IPv6 from address strings, and the `%interface` zone ID syntax handles link-local address connections.
+Go's `net` package makes IPv6 socket programming straightforward. Use `"tcp6"` for IPv6-only listeners. A wildcard `"tcp"` listener such as `"[::]:port"` may accept both IPv4 and IPv6, depending on OS support for IPv4-mapped IPv6 sockets. The `net.JoinHostPort()` function correctly formats IPv6 addresses in brackets for host:port strings. `net.SplitHostPort()` correctly parses bracketed IPv6 from address strings, and the `%interface` zone ID syntax handles link-local address connections.
