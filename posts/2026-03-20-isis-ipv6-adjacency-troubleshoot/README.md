@@ -37,22 +37,24 @@ vtysh -c "show isis neighbor"
 
 ```text
 ! Cisco
-Router# show isis interface GigabitEthernet0/0
-! Should show: IS-IS is ENABLED for IPv6
+Router# show clns interface GigabitEthernet0/0
+! Verify the interface is participating in IS-IS
+! In Cisco single-topology deployments, also verify `ipv6 router isis <tag>` is present on both sides
 
-! If not enabled:
+! If IPv6 IS-IS is missing on the interface:
 Router(config)# interface GigabitEthernet0/0
-Router(config-if)# ipv6 router isis    ! Enable IPv6 IS-IS
+Router(config-if)# ipv6 router isis area2    ! Enable IPv6 IS-IS
 ```
 
 ## Step 3: Check IS-IS Level Compatibility
 
-Both sides must agree on IS-IS level:
+Both sides must share at least one common IS-IS level:
 
 ```text
 ! Cisco: Check configured level
-Router# show isis protocols | include is-type
-! Both sides must be Level-1, Level-2, or L1-L2
+Router# show clns protocol
+! Routers can form adjacency if they share a common level
+! Example: L1-L2 can peer with L1-only or L2-only
 
 ! Mismatch example:
 ! Router A: is-type level-2-only
@@ -74,25 +76,26 @@ For Level-1 adjacency, both routers must be in the same area:
 ## Step 5: Check Authentication
 
 ```text
-! Cisco: Verify authentication mode on interface
-Router# show isis interface GigabitEthernet0/0 | include Auth
+! Cisco: Verify authentication settings on the interface
+Router# show clns interface GigabitEthernet0/0
 ! If authentication is configured on one side but not the other → adjacency fails
 
-! Check authentication key matches
-Router# show key chain ISIS_KEY | include key-string
+! Check the configured password or key chain on both sides
+Router# show running-config interface GigabitEthernet0/0
 ```
 
 ## Step 6: Check MTU
 
-IS-IS PDUs must fit within the interface MTU:
+IS-IS Hellos and LSPs must fit within the real path MTU:
 
 ```text
-! Cisco: Check IS-IS hello PDU MTU
-Router# show isis interface GigabitEthernet0/0 | include MTU
-! If LAN hello PDU size > interface MTU → adjacency fails
+! Cisco: Check interface MTU
+Router# show clns interface GigabitEthernet0/0 | include MTU
+! On many platforms, IS-IS Hellos are padded to the interface MTU by default
+! If padded Hellos exceed the real path MTU, adjacency can fail
 
-! Fix: increase MTU or reduce IS-IS hello size
-Router(config-if)# isis lsp-mtu 1400   ! Reduce IS-IS PDU size
+! Fix: increase MTU or disable Hello padding if appropriate
+Router(config-if)# no isis hello padding always
 ```
 
 ## Step 7: Verify family iso on Juniper
@@ -101,17 +104,17 @@ Juniper requires `family iso` on interfaces for IS-IS:
 
 ```text
 # Check if family iso is configured
-show interfaces ge-0/0/0.0 | grep iso
+show configuration interfaces ge-0/0/0 unit 0 | display set | match "family iso"
 
 # If missing:
-set interfaces ge-0/0/0.0 family iso
+set interfaces ge-0/0/0 unit 0 family iso
 ```
 
 ## Step 8: Capture IS-IS Hellos
 
 ```bash
 # Capture IS-IS PDUs (direct Layer 2, not IP)
-sudo tcpdump -i eth0 -n "ether proto 0x8870"
+sudo tcpdump -i eth0 -n "isis"
 
 # With verbose IS-IS decode
 sudo tshark -i eth0 -Y "isis" -V | grep -A 5 "Hello"
@@ -126,13 +129,13 @@ sudo tshark -i eth0 -Y "isis" -V | grep -A 5 "Hello"
 
 | Symptom | Cause | Fix |
 |---------|-------|-----|
-| No IS-IS PDUs | IS-IS not enabled on interface | Add `ipv6 router isis` to interface |
+| No IS-IS PDUs | Interface not participating in IS-IS | Enable IS-IS on the interface; for Cisco single-topology IPv6 use `ipv6 router isis <tag>` |
 | Init state only | One-way Hello | Check authentication, MTU, area address |
 | Level mismatch | Different is-type config | Match is-type on both sides |
 | Area mismatch (L1) | Different area in NET | Change NET to same area for L1 peers |
-| Auth failure | Key mismatch | Verify key strings are identical |
+| Auth failure | Password or key-chain mismatch | Verify authentication mode and secret match on both sides |
 | family iso missing | Juniper only | Add `family iso` to interface unit |
 
 ## Summary
 
-IS-IS IPv6 adjacency failures are usually caused by: level mismatch, area address mismatch for L1 adjacencies, authentication key mismatch, MTU issues, or (on Juniper) missing `family iso` on the interface. Use `show isis neighbor` for state, tcpdump with `ether proto 0x8870` for raw PDU capture, and check authentication and level settings match on both sides.
+IS-IS IPv6 adjacency failures are usually caused by: level mismatch, area address mismatch for L1 adjacencies, authentication mismatch, MTU and Hello-padding issues, or (on Juniper) missing `family iso` on the interface. Use `show isis neighbors` or `show isis neighbor` for state, tcpdump with `isis` for raw PDU capture, and check authentication and level settings match on both sides.
