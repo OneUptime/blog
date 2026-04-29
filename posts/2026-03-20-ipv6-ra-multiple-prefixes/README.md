@@ -12,7 +12,7 @@ A single router can advertise multiple IPv6 prefixes in its Router Advertisement
 
 ## Why Advertise Multiple Prefixes
 
-- **Dual ISP / Multi-homing**: Clients get addresses from each ISP and can use source address selection rules (RFC 6724) to route traffic via the appropriate provider
+- **Dual ISP / Multi-homing**: Clients get addresses from each ISP, and source address selection rules (RFC 6724) help choose an appropriate source address for outbound connections
 - **Network renumbering**: Old and new prefixes are advertised simultaneously during the transition
 - **VPN split-tunneling**: Different prefixes for internal vs. external traffic
 - **Provider Independent + Provider Assigned**: Clients have both a PI and PA address
@@ -32,57 +32,55 @@ interface eth1 {
     MaxRtrAdvInterval 100;
 
     # Primary prefix - from ISP 1
-    prefix 2001:db8:isp1:1::/64 {
+    prefix 2001:db8:1:1::/64 {
         AdvOnLink on;
         AdvAutonomous on;
-        AdvRouterAddr on;
         AdvValidLifetime 86400;
         AdvPreferredLifetime 14400;
     };
 
     # Secondary prefix - from ISP 2
-    prefix 2001:db9:isp2:1::/64 {
+    prefix 2001:db8:2:1::/64 {
         AdvOnLink on;
         AdvAutonomous on;
-        AdvRouterAddr on;
         AdvValidLifetime 86400;
         AdvPreferredLifetime 14400;
     };
 };
 ```
 
-After this configuration, each client will autoconfigure **two global IPv6 addresses** - one from each prefix.
+After this configuration, each client will autoconfigure at least one global IPv6 address from each prefix.
 
 ## Adding Route Information for Multi-Homing
 
-When two prefixes are from different ISPs, add route information so clients know which gateway to use for return traffic:
+If clients need more-specific routes to off-link IPv6 prefixes reachable through this router, advertise route information options. These options complement router selection, but they do not by themselves control return traffic:
 
 ```text
 interface eth1 {
     AdvSendAdvert on;
 
-    prefix 2001:db8:isp1:1::/64 {
+    prefix 2001:db8:1:1::/64 {
         AdvOnLink on;
         AdvAutonomous on;
         AdvValidLifetime 86400;
         AdvPreferredLifetime 14400;
     };
 
-    prefix 2001:db9:isp2:1::/64 {
+    prefix 2001:db8:2:1::/64 {
         AdvOnLink on;
         AdvAutonomous on;
         AdvValidLifetime 86400;
         AdvPreferredLifetime 14400;
     };
 
-    # Route for ISP1 prefix goes via this router
-    route 2001:db8:isp1::/48 {
+    # Remote network reachable via ISP1 uplink
+    route 2001:db8:100::/48 {
         AdvRouteLifetime 1800;
         AdvRoutePreference high;
     };
 
-    # Route for ISP2 prefix
-    route 2001:db9:isp2::/48 {
+    # Remote network reachable via ISP2 uplink
+    route 2001:db8:200::/48 {
         AdvRouteLifetime 1800;
         AdvRoutePreference high;
     };
@@ -98,7 +96,7 @@ interface eth1 {
     AdvSendAdvert on;
 
     # New prefix - fully preferred
-    prefix 2001:db8:new:1::/64 {
+    prefix 2001:db8:20:1::/64 {
         AdvOnLink on;
         AdvAutonomous on;
         AdvValidLifetime 86400;
@@ -106,13 +104,12 @@ interface eth1 {
     };
 
     # Old prefix - being phased out
-    # Set preferred lifetime to 0 so no new connections use it
-    prefix 2001:db8:old:1::/64 {
+    # Set preferred lifetime to 0 so hosts deprecate it for new connections
+    prefix 2001:db8:10:1::/64 {
         AdvOnLink on;
         AdvAutonomous on;
-        AdvValidLifetime 3600;    # Only valid for 1 more hour
-        AdvPreferredLifetime 0;   # Deprecated immediately
-        DeprecatePrefix on;
+        AdvValidLifetime 7200;    # Existing clients keep it valid for up to 2 more hours
+        AdvPreferredLifetime 0;   # Deprecated immediately for new connections
     };
 };
 ```
@@ -122,10 +119,10 @@ interface eth1 {
 ```text
 ! Advertise multiple prefixes on Cisco IOS
 Router(config)# interface GigabitEthernet0/0
-Router(config-if)# ipv6 address 2001:db8:isp1:1::1/64
-Router(config-if)# ipv6 address 2001:db9:isp2:1::1/64
-Router(config-if)# ipv6 nd prefix 2001:db8:isp1:1::/64 86400 14400
-Router(config-if)# ipv6 nd prefix 2001:db9:isp2:1::/64 86400 14400
+Router(config-if)# ipv6 address 2001:db8:1:1::1/64
+Router(config-if)# ipv6 address 2001:db8:2:1::1/64
+Router(config-if)# ipv6 nd prefix 2001:db8:1:1::/64 86400 14400
+Router(config-if)# ipv6 nd prefix 2001:db8:2:1::/64 86400 14400
 ```
 
 ## Verifying Multiple Addresses on Clients
@@ -134,11 +131,9 @@ Router(config-if)# ipv6 nd prefix 2001:db9:isp2:1::/64 86400 14400
 # On a client that received the multi-prefix RA
 ip -6 addr show scope global
 
-# Expected output:
-# inet6 2001:db8:isp1:1:a1b2:c3d4:e5f6:7890/64 scope global temporary dynamic
-# inet6 2001:db8:isp1:1:f4a1:b3c2:d5e6:7891/64 scope global mngtmpaddr dynamic
-# inet6 2001:db9:isp2:1:a1b2:c3d4:e5f6:7890/64 scope global temporary dynamic
-# inet6 2001:db9:isp2:1:f4a1:b3c2:d5e6:7891/64 scope global mngtmpaddr dynamic
+# Example output (exact flags and number of addresses vary by OS and privacy settings):
+# inet6 2001:db8:1:1:1234:5678:9abc:def0/64 scope global dynamic
+# inet6 2001:db8:2:1:abcd:ef01:2345:6789/64 scope global dynamic
 ```
 
 ## Source Address Selection with Multiple Prefixes
@@ -147,14 +142,14 @@ Linux uses RFC 6724 rules to select the source address for outbound connections:
 
 ```bash
 # Check which source address is selected for a specific destination
-ip -6 route get 2001:db8:isp1::1
-# Expected: 2001:db8:isp1:1::xxx ... src 2001:db8:isp1:1::yyy
+ip -6 route get 2001:db8:1::1
+# Expected: 2001:db8:1::1 ... src 2001:db8:1:1::yyy
 
 # For ISP2 destination:
-ip -6 route get 2001:db9::1
-# Expected: src 2001:db9:isp2:1::yyy
+ip -6 route get 2001:db8:2::1
+# Expected: src 2001:db8:2:1::yyy
 ```
 
 ## Conclusion
 
-Advertising multiple IPv6 prefixes via Router Advertisements is a standard technique for multi-homed environments and network renumbering. Clients automatically configure addresses from all advertised prefixes and use RFC 6724 source address selection to choose the appropriate source for each destination. Combine multiple prefix advertisements with route information options to ensure return traffic flows correctly through the appropriate gateway.
+Advertising multiple IPv6 prefixes via Router Advertisements is a standard technique for multi-homed environments and network renumbering. Clients automatically configure addresses from all advertised prefixes and use RFC 6724 source address selection to choose an appropriate source for each destination. Combine multiple prefix advertisements with correct upstream routing and, where needed, route information options or router preferences.
