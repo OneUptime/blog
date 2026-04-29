@@ -23,14 +23,12 @@ terraform {
   required_providers {
     ec = {
       source  = "elastic/ec"
-      version = "~> 0.10"
+      version = "~> 0.12"
     }
   }
 }
 
-provider "ec" {
-  apikey = var.ec_api_key
-}
+provider "ec" {}
 ```
 
 Set the API key via environment variable:
@@ -99,7 +97,7 @@ resource "ec_deployment" "logs" {
     zone_count = 1
   }
 
-  apm = {
+  integrations_server = {
     size       = "0.5g"
     zone_count = 1
   }
@@ -135,11 +133,11 @@ resource "ec_deployment_traffic_filter_association" "app_search" {
 
 ```hcl
 output "elasticsearch_https_endpoint" {
-  value = ec_deployment.app_search.elasticsearch[0].https_endpoint
+  value = ec_deployment.app_search.elasticsearch.https_endpoint
 }
 
 output "kibana_https_endpoint" {
-  value = ec_deployment.app_search.kibana[0].https_endpoint
+  value = ec_deployment.app_search.kibana.https_endpoint
 }
 
 output "elasticsearch_username" {
@@ -166,7 +164,7 @@ elasticsearch = {
 }
 ```
 
-Run `tofu apply` to apply the change with zero downtime through a rolling restart.
+Run `tofu apply` to apply the change. Elastic Cloud applies the resize plan in the background, and highly available deployments are resized without downtime.
 
 ## Best Practices
 
