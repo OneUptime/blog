@@ -18,7 +18,7 @@ AWS Elastic Container Service (ECS) is a managed container orchestration service
 | Task Definition | Pod / Deployment |
 | Service | Deployment + Service |
 | Container | Container |
-| Task Role (IAM) | ServiceAccount + IRSA |
+| Task Role (IAM) | ServiceAccount + workload identity (IRSA on EKS) |
 | ALB Target Group | Service + Ingress |
 | ECS Parameter Store env | Secret / ConfigMap |
 | EFS Volume | PersistentVolume (EFS CSI) |
@@ -75,9 +75,8 @@ spec:
           resources:
             requests:
               cpu: "250m"
-              memory: "256Mi"
+              memory: "512Mi"
             limits:
-              cpu: "500m"
               memory: "512Mi"
           env:
             - name: APP_ENV
@@ -120,14 +119,15 @@ kubectl create secret docker-registry ecr-credentials \
   --docker-server=123456789.dkr.ecr.us-east-1.amazonaws.com \
   --docker-username=AWS \
   --docker-password=$(aws ecr get-login-password --region us-east-1) \
+  --docker-email=none@example.com \
   -n myapp
 ```
 
-Or use the AWS ECR token rotator for automatic credential refresh.
+If your cluster isn't already authorized to pull from ECR through node credentials, reference this Secret from the workload's ServiceAccount. On EKS, worker node IAM roles can pull private ECR images without a Kubernetes image pull secret. If you do rely on image pull secrets, remember that ECR authorization tokens expire after 12 hours and must be refreshed.
 
-## Step 5: Set Up EKS Node IAM / IRSA
+## Step 5: Set Up Workload IAM with IRSA on EKS
 
-If your containers use IAM roles, set up IAM Roles for Service Accounts (IRSA) on EKS:
+If your Rancher-managed cluster is EKS and your containers use IAM roles, set up IAM Roles for Service Accounts (IRSA):
 
 ```yaml
 apiVersion: v1
@@ -137,19 +137,34 @@ metadata:
   namespace: myapp
   annotations:
     eks.amazonaws.com/role-arn: arn:aws:iam::123456789:role/myapp-role
+imagePullSecrets:
+  - name: ecr-credentials
 ```
 
-## Step 6: Replace ALB with Ingress
+If your Rancher-managed cluster is not EKS, create the same ServiceAccount without the `eks.amazonaws.com/role-arn` annotation.
+
+## Step 6: Expose the Service with Kubernetes Service and Ingress
 
 ```yaml
+apiVersion: v1
+kind: Service
+metadata:
+  name: api
+  namespace: myapp
+spec:
+  selector:
+    app: api
+  ports:
+    - port: 8080
+      targetPort: 8080
+---
 apiVersion: networking.k8s.io/v1
 kind: Ingress
 metadata:
   name: api-ingress
   namespace: myapp
-  annotations:
-    kubernetes.io/ingress.class: nginx
 spec:
+  ingressClassName: nginx
   rules:
     - host: api.example.com
       http:
@@ -184,7 +199,7 @@ spec:
 
 ## Step 8: Deploy via Rancher
 
-In Rancher, use the **Import YAML** feature or connect a Fleet Git repository to deploy manifests. Monitor deployments under **Workloads**.
+In Rancher, use **Create from YAML** or connect a Fleet Git repository to deploy manifests. Monitor deployments under **Workloads**.
 
 ## Best Practices
 
