@@ -35,7 +35,7 @@ resource "aws_lambda_event_source_mapping" "sqs" {
   # Wait up to 20 seconds to fill the batch
   maximum_batching_window_in_seconds = 20
 
-  # Scale concurrency based on queue depth
+  # Cap concurrent Lambda invocations for this queue
   scaling_config {
     maximum_concurrency = 100
   }
@@ -43,7 +43,7 @@ resource "aws_lambda_event_source_mapping" "sqs" {
   # Report partial batch failures to SQS
   function_response_types = ["ReportBatchItemFailures"]
 
-  # Filter to process only specific message attributes
+  # Filter to process only specific message body values
   filter_criteria {
     filter {
       pattern = jsonencode({
@@ -63,7 +63,7 @@ resource "aws_sqs_queue" "dlq" {
 
 resource "aws_sqs_queue" "input" {
   name                       = "${var.function_name}-input"
-  visibility_timeout_seconds = 300  # Must be >= Lambda timeout
+  visibility_timeout_seconds = 300  # Must be >= Lambda timeout; AWS recommends 6x timeout + batch window
 
   redrive_policy = jsonencode({
     deadLetterTargetArn = aws_sqs_queue.dlq.arn
@@ -105,23 +105,29 @@ resource "aws_lambda_event_source_mapping" "dynamodb_stream" {
 
   batch_size                         = 100
   maximum_batching_window_in_seconds = 5
-  parallelization_factor             = 2  # Process 2 shards per function instance
+  parallelization_factor             = 2  # Process up to 2 concurrent batches per shard
 
   # Retry failed batches up to 2 times
   maximum_retry_attempts = 2
 
-  # Destination for unprocessable records
+  # Destination for batches discarded after retries
   destination_config {
     on_failure {
       destination_arn = aws_sqs_queue.dlq.arn
     }
   }
 
-  # Filter for specific DynamoDB operations
+  # Filter for specific item attributes in the stream
   filter_criteria {
     filter {
       pattern = jsonencode({
-        eventName = ["INSERT", "MODIFY"]
+        dynamodb = {
+          NewImage = {
+            eventType = {
+              S = ["ORDER_CREATED", "ORDER_UPDATED"]
+            }
+          }
+        }
       })
     }
   }
@@ -146,7 +152,7 @@ resource "aws_lambda_event_source_mapping" "kinesis" {
   batch_size                         = 500
   maximum_batching_window_in_seconds = 5
 
-  # Process multiple shards in parallel per Lambda instance
+  # Process up to 5 concurrent batches per shard
   parallelization_factor = 5
 
   # Split batches on error instead of failing the whole batch
@@ -161,31 +167,17 @@ resource "aws_lambda_event_source_mapping" "kinesis" {
   }
 }
 
-resource "aws_iam_role_policy" "kinesis_consumer" {
-  name = "kinesis-consumer"
-  role = aws_iam_role.lambda_execution.id
-
-  policy = jsonencode({
-    Version = "2012-10-17"
-    Statement = [{
-      Effect = "Allow"
-      Action = [
-        "kinesis:GetRecords",
-        "kinesis:GetShardIterator",
-        "kinesis:DescribeStream",
-        "kinesis:ListStreams",
-        "kinesis:ListShards"
-      ]
-      Resource = aws_kinesis_stream.events.arn
-    }]
-  })
+# Grant Lambda permission to consume from Kinesis
+resource "aws_iam_role_policy_attachment" "kinesis_consumer" {
+  role       = aws_iam_role.lambda_execution.name
+  policy_arn = "arn:aws:iam::aws:policy/service-role/AWSLambdaKinesisExecutionRole"
 }
 ```
 
 ## Best Practices
 
-- Set SQS `visibility_timeout_seconds` to at least 6x the Lambda function timeout to prevent duplicate processing.
+- Set SQS `visibility_timeout_seconds` to at least 6x the Lambda function timeout, plus `MaximumBatchingWindowInSeconds` when you use a batch window.
 - Use `ReportBatchItemFailures` with SQS to mark only failed messages for retry rather than reprocessing the entire batch.
-- Set `bisect_batch_on_function_error = true` for Kinesis to binary-search for the poisoned record rather than retrying indefinitely.
-- Always configure a `destination_config` with an on-failure destination for streams - otherwise unprocessable records are silently dropped.
+- Set `bisect_batch_on_function_error = true` for Kinesis to isolate poisoned records by retrying smaller batches instead of the full batch every time.
+- Configure a `destination_config` for stream sources when you cap retries or record age so discarded batches are retained somewhere actionable.
 - Use `filter_criteria` to reduce Lambda invocations for events you don't need to process - you pay per invocation.
