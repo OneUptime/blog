@@ -8,16 +8,16 @@ Description: IPv4 protocol numbers are 8-bit values in the IP header that identi
 
 ## What Are Protocol Numbers?
 
-The Protocol field at byte 9 of the IPv4 header is an 8-bit integer. IANA maintains the authoritative registry at iana.org/assignments/protocol-numbers. The system file `/etc/protocols` on Linux/macOS provides a local lookup table.
+The Protocol field at byte offset 9 of the IPv4 header is an 8-bit integer. IANA maintains the authoritative registry at <https://www.iana.org/assignments/protocol-numbers>. That registry is also used for IPv6 Next Header values, so some entries refer to IPv6 extension headers. The system file `/etc/protocols` on Linux/macOS provides a local lookup table.
 
 ## Key Protocol Numbers
 
 | Number | Keyword | Protocol |
 |--------|---------|----------|
-| 0 | HOPOPT | IPv6 Hop-by-Hop Options |
+| 0 | HOPOPT | IPv6 Hop-by-Hop Option |
 | 1 | ICMP | Internet Control Message Protocol |
 | 2 | IGMP | Internet Group Management Protocol |
-| 4 | IP | IP in IP (encapsulation) |
+| 4 | IPv4 | IPv4 encapsulation |
 | 6 | TCP | Transmission Control Protocol |
 | 8 | EGP | Exterior Gateway Protocol |
 | 17 | UDP | User Datagram Protocol |
@@ -40,7 +40,7 @@ The Protocol field at byte 9 of the IPv4 header is an 8-bit integer. IANA mainta
 cat /etc/protocols
 
 # Look up by number (e.g., 89 = OSPF)
-grep "	89	" /etc/protocols
+awk '$2 == 89' /etc/protocols
 
 # Look up by name
 grep "^ospf" /etc/protocols
@@ -77,19 +77,19 @@ for num in [1, 6, 17, 47, 89]:
     print(f"{num:3d} -> {protocols.get(num, 'unknown')}")
 ```
 
-## Using socket.getprotobynumber()
+## Using socket.getprotobyname()
 
-Python's socket module provides a built-in lookup:
+Python's socket module provides a built-in name-to-number lookup, but not a standard reverse lookup from number to name:
 
 ```python
 import socket
 
-for num in [1, 6, 17, 50, 89]:
+for name in ["icmp", "tcp", "udp", "esp", "ospf"]:
     try:
-        name = socket.getprotobynumber(num)
-        print(f"{num} -> {name}")
+        number = socket.getprotobyname(name)
+        print(f"{name} -> {number}")
     except OSError:
-        print(f"{num} -> unknown")
+        print(f"{name} -> unknown")
 ```
 
 ## Filtering by Protocol in iptables
@@ -109,5 +109,5 @@ iptables -A INPUT -p esp -j ACCEPT
 
 - IPv4 protocol numbers are IANA-assigned 8-bit values identifying the encapsulated protocol.
 - `/etc/protocols` provides a local human-readable mapping on Unix systems.
-- Use `socket.getprotobynumber()` for Python lookups or parse `/etc/protocols` directly.
+- Use `socket.getprotobyname()` for name-to-number lookups, or parse `/etc/protocols` directly for number-to-name lookups.
 - Firewall rules can reference protocol names (e.g., `ospf`, `gre`) instead of numbers for readability.
