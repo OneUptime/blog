@@ -8,7 +8,7 @@ Description: Learn how to deploy MetalLB in K3s to provide LoadBalancer service 
 
 ## Introduction
 
-Kubernetes `LoadBalancer` services normally require a cloud provider (AWS, GCP, Azure) to provision external load balancers. On bare-metal K3s clusters, services of type `LoadBalancer` remain in a pending state indefinitely without this support. **MetalLB** solves this problem by implementing a network load balancer for bare-metal environments using either ARP (Layer 2) or BGP (Layer 3) protocols.
+Kubernetes `LoadBalancer` services normally require a cloud provider (AWS, GCP, Azure) to provision external load balancers. On bare-metal Kubernetes clusters, services of type `LoadBalancer` remain in a pending state indefinitely without this support. K3s includes a built-in ServiceLB, but **MetalLB** provides a more flexible bare-metal load balancer using either ARP/NDP (Layer 2) or BGP (Layer 3) protocols.
 
 ## Prerequisites
 
@@ -27,18 +27,21 @@ curl -sfL https://get.k3s.io | \
   INSTALL_K3S_EXEC="--disable servicelb" \
   sh -
 
-# Or add to existing config
+# Or add to existing config on all K3s server nodes
 # /etc/rancher/k3s/config.yaml
 # disable:
 #   - servicelb
+
+# Restart K3s after changing the config
+# sudo systemctl restart k3s
 
 # Verify klipper-lb pods are not running
 kubectl get pods -A | grep svclb
 ```
 
-## Step 2: Enable Strict ARP Mode
+## Step 2: If Using kube-proxy in IPVS Mode, Enable Strict ARP Mode
 
-For MetalLB Layer 2 mode, enable strict ARP in kube-proxy:
+If your cluster is using kube-proxy in IPVS mode, enable strict ARP before installing MetalLB. This is not required for other kube-proxy modes:
 
 ```bash
 # Check current configuration
@@ -82,7 +85,6 @@ metadata:
 spec:
   repo: https://metallb.github.io/metallb
   chart: metallb
-  version: "0.14.3"
   targetNamespace: metallb-system
   createNamespace: true
 ```
@@ -149,7 +151,7 @@ metadata:
   namespace: metallb-system
 spec:
   addresses:
-    - 203.0.113.0/28  # Public IP range for BGP
+    - 203.0.113.0/28  # Example range; replace with addresses from your network
 
 ---
 # BGP configuration
@@ -207,10 +209,11 @@ kind: Service
 metadata:
   name: nginx-lb-test-svc
   namespace: default
+  # Optional: request a specific IP from the pool
+  # annotations:
+  #   metallb.io/loadBalancerIPs: 192.168.1.200
 spec:
   type: LoadBalancer
-  # Optional: request a specific IP from the pool
-  # loadBalancerIP: 192.168.1.200
   selector:
     app: nginx-lb-test
   ports:
@@ -269,7 +272,7 @@ metadata:
   name: internal-service
   annotations:
     # Request IP from the internal pool
-    metallb.universe.tf/address-pool: internal-pool
+    metallb.io/address-pool: internal-pool
 spec:
   type: LoadBalancer
   # ...
