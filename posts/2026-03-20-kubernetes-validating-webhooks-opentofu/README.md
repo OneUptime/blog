@@ -14,6 +14,7 @@ Kubernetes Validating Admission Webhooks intercept API requests and can accept o
 
 ```hcl
 # main.tf - Deploy the validating webhook server
+# Assumes the policy-system namespace and validator-tls-certs Secret already exist.
 
 resource "kubernetes_deployment_v1" "validator_server" {
   metadata {
@@ -93,7 +94,7 @@ resource "kubernetes_validating_webhook_configuration_v1" "image_policy" {
         name      = kubernetes_service_v1.validator_service.metadata[0].name
         path      = "/validate-image-policy"
       }
-      ca_bundle = base64encode(file("${path.module}/certs/ca.crt"))
+      ca_bundle = file("${path.module}/certs/ca.crt")
     }
 
     # Apply to pod creation and updates
@@ -138,7 +139,7 @@ resource "kubernetes_validating_webhook_configuration_v1" "required_labels" {
         name      = "policy-validator"
         path      = "/validate-required-labels"
       }
-      ca_bundle = base64encode(file("${path.module}/certs/ca.crt"))
+      ca_bundle = file("${path.module}/certs/ca.crt")
     }
 
     rule {
