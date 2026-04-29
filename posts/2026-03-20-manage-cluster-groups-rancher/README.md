@@ -8,7 +8,7 @@ Description: Learn how to organize Rancher-managed clusters into logical groups 
 
 ---
 
-As your Kubernetes estate grows, organizing clusters into groups becomes critical for applying consistent policies, deploying workloads, and delegating management responsibilities. Rancher provides two complementary mechanisms: Fleet cluster groups and Rancher cluster labels.
+As your Kubernetes estate grows, organizing clusters into groups becomes critical for applying consistent policies, deploying workloads, and delegating management responsibilities. Rancher provides two complementary mechanisms: Fleet cluster groups and cluster labels.
 
 ---
 
@@ -63,21 +63,21 @@ spec:
 
 ---
 
-## Approach 2: Rancher Labels and Projects
+## Approach 2: Cluster Labels and Projects
 
-In Rancher, label clusters to group them logically. Labels power Fleet selectors and Rancher's UI filters:
+In Fleet, label the workspace `Cluster` resources to group them logically. Labels power Fleet selectors:
 
 ```bash
 # Label clusters by environment
-kubectl label clusters.management.cattle.io c-abc123 \
+kubectl label clusters.fleet.cattle.io frontend-us-east \
   env=production tier=frontend region=us-east \
   -n fleet-default
 
-kubectl label clusters.management.cattle.io c-def456 \
+kubectl label clusters.fleet.cattle.io backend-us-west \
   env=production tier=backend region=us-west \
   -n fleet-default
 
-kubectl label clusters.management.cattle.io c-ghi789 \
+kubectl label clusters.fleet.cattle.io staging-us-east \
   env=staging tier=all region=us-east \
   -n fleet-default
 ```
@@ -118,22 +118,23 @@ apiVersion: management.cattle.io/v3
 kind: ProjectRoleTemplateBinding
 metadata:
   name: alice-project-owner
-  namespace: p-xxxxx
+  namespace: c-m-abcde-p-vwxyz
+projectName: c-m-abcde:p-vwxyz
 roleTemplateName: project-owner
-userPrincipalName: local://u-alice
+userPrincipalName: keycloak_user://alice
 ```
 
 ---
 
 ## Step 5: Monitor Group Health
 
-Query Fleet bundle status across a group:
+Inspect the aggregated Fleet status on the cluster group:
 
 ```bash
-# See bundle readiness per cluster group
-kubectl get bundledeployment -n fleet-default \
-  --selector fleet.cattle.io/cluster-group=production-clusters \
-  -o wide
+# Inspect aggregated health and rollout status for the cluster group
+kubectl get clustergroup production-clusters \
+  -n fleet-default \
+  -o yaml
 ```
 
 ---
@@ -141,6 +142,6 @@ kubectl get bundledeployment -n fleet-default \
 ## Best Practices
 
 - Assign clusters to groups at provisioning time using automation (Terraform, Crossplane) to ensure consistency.
-- Use **hierarchical groups** - start with `env` (production/staging), then `region`, then `tier`.
+- Use a consistent label taxonomy - start with `env` (production/staging), then `region`, then `tier`.
 - Keep group definitions in Git and manage them with Fleet so group membership is auditable.
 - Regularly audit group membership to catch clusters that have been mis-labeled.
