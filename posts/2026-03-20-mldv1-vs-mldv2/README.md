@@ -64,7 +64,7 @@ MLDv2 Report:
   Number of Multicast Address Records: N
 
   Record 1:
-    Record Type: 4 (CHANGE_TO_INCLUDE_MODE) or 1 (MODE_IS_INCLUDE)
+    Record Type: 3 (CHANGE_TO_INCLUDE_MODE) or 1 (MODE_IS_INCLUDE)
     Multicast Address: ff3e::db8:1
     Source Addresses: [2001:db8::source1, 2001:db8::source2]
 
@@ -102,9 +102,9 @@ Routers and switches must be able to handle both versions. When a network has mi
 
 # View MLD version setting per interface
 sysctl net.ipv6.conf.eth0.force_mld_version
-# 0 = automatic (use highest supported version)
+# 0 = no enforcement, MLDv1 fallback allowed (default)
 # 1 = force MLDv1
-# 2 = force MLDv2 (default)
+# 2 = force MLDv2
 
 # Force MLDv1 for compatibility testing
 sysctl -w net.ipv6.conf.eth0.force_mld_version=1
