@@ -19,9 +19,9 @@ Developer pushes to Git
          ↓
 GitHub Actions runs tests
          ↓
-Fleet agent detects change
+Fleet detects the new commit
          ↓
-Fleet applies manifests to clusters
+Fleet agent applies manifests to clusters
          ↓
 Rancher shows deployment status
 ```
@@ -32,8 +32,8 @@ Rancher shows deployment status
 
 - Rancher 2.6+ with Fleet enabled
 - One or more Kubernetes clusters registered in Rancher
-- GitHub repository for manifests
-- kubectl access to Rancher cluster
+- GitHub repository containing your application source, manifests, and CI workflow
+- kubectl access to the Rancher management cluster
 
 ---
 
@@ -46,12 +46,12 @@ Fleet uses cluster labels to target deployments:
 
 # Or via kubectl
 
-kubectl label cluster.fleet.cattle.io/production \
+kubectl label clusters.fleet.cattle.io production \
     env=production \
     region=us-east-1 \
     -n fleet-default
 
-kubectl label cluster.fleet.cattle.io/staging \
+kubectl label clusters.fleet.cattle.io staging \
     env=staging \
     region=us-east-1 \
     -n fleet-default
@@ -62,12 +62,11 @@ kubectl label cluster.fleet.cattle.io/staging \
 ## Step 2: Create Your Application Manifests
 
 ```yaml
-# apps/myapp/deployment.yaml
+# apps/myapp/base/deployment.yaml
 apiVersion: apps/v1
 kind: Deployment
 metadata:
   name: myapp
-  namespace: production
 spec:
   replicas: 3
   selector:
@@ -80,7 +79,7 @@ spec:
     spec:
       containers:
         - name: myapp
-          image: myorg/myapp:v1.0.0
+          image: myorg/myapp
           ports:
             - containerPort: 8080
           resources:
@@ -90,6 +89,21 @@ spec:
             limits:
               memory: "256Mi"
               cpu: "500m"
+
+# apps/myapp/base/kustomization.yaml
+resources:
+  - deployment.yaml
+images:
+  - name: myorg/myapp
+    newTag: v1.0.0
+
+# apps/myapp/overlays/production/kustomization.yaml
+resources:
+  - ../../base
+
+# apps/myapp/overlays/staging/kustomization.yaml
+resources:
+  - ../../base
 ```
 
 ---
@@ -98,31 +112,29 @@ spec:
 
 ```yaml
 # apps/myapp/fleet.yaml
-defaultNamespace: production
+defaultNamespace: myapp
 
 targetCustomizations:
   - name: production
     clusterSelector:
       matchLabels:
         env: production
-    yaml:
-      overlays:
-        - production
+    kustomize:
+      dir: overlays/production
 
   - name: staging
     clusterSelector:
       matchLabels:
         env: staging
-    yaml:
-      overlays:
-        - staging
+    kustomize:
+      dir: overlays/staging
 
 diff:
   comparePatches:
     - apiVersion: apps/v1
       kind: Deployment
       name: myapp
-      namespace: production
+      namespace: myapp
       operations:
         - {"op": "remove", "path": "/spec/template/metadata/annotations"}
 ```
@@ -165,6 +177,7 @@ kubectl apply -f gitrepo.yaml
 ```bash
 # Create secret for private repository
 kubectl create secret generic github-credentials \
+    --type=kubernetes.io/basic-auth \
     --from-literal=username=myorg \
     --from-literal=password=$GITHUB_TOKEN \
     -n fleet-default
@@ -187,38 +200,48 @@ on:
   push:
     branches:
       - main
-      - staging
+
+permissions:
+  contents: write
 
 jobs:
   test:
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v6
       - name: Validate manifests
         run: |
-          kubectl kustomize apps/myapp > /dev/null
+          kubectl kustomize apps/myapp/overlays/production > /dev/null
+          kubectl kustomize apps/myapp/overlays/staging > /dev/null
           echo "Manifests are valid"
 
   build-and-push:
     needs: test
     runs-on: ubuntu-latest
-    if: github.ref == 'refs/heads/main'
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v6
+
+      - name: Log in to Docker Hub
+        uses: docker/login-action@v4
+        with:
+          username: ${{ vars.DOCKERHUB_USERNAME }}
+          password: ${{ secrets.DOCKERHUB_TOKEN }}
 
       - name: Build and push Docker image
-        uses: docker/build-push-action@v5
+        uses: docker/build-push-action@v7
         with:
+          context: .
           push: true
           tags: myorg/myapp:${{ github.sha }}
 
       - name: Update image tag in manifests
         run: |
-          cd apps/myapp/overlays/production
-          kustomize edit set image myorg/myapp:${{ github.sha }}
+          cd apps/myapp/base
+          kustomize edit set image myorg/myapp=myorg/myapp:${{ github.sha }}
           git config user.email "ci@myorg.com"
           git config user.name "CI Bot"
           git add -A
+          git diff --cached --quiet && exit 0
           git commit -m "deploy: update myapp to ${{ github.sha }}"
           git push
 ```
@@ -253,11 +276,11 @@ kubectl describe gitrepo myapp -n fleet-default
 ## Step 8: Rollback
 
 ```bash
-# Find previous commit
+# Find the commit that changed the manifest or image tag
 git log --oneline apps/myapp/
 
-# Revert to previous version
-git revert HEAD
+# Revert that commit
+git revert <commit-sha>
 git push origin main
 
 # Fleet automatically detects the new commit and rolls back
@@ -270,7 +293,7 @@ git push origin main
 1. **Use tags not branches** for production deployments - tags are immutable
 2. **Validate manifests in CI** before they reach Fleet
 3. **Monitor bundle status** with alerting - failed bundles should page on-call
-4. **Use `prune: true`** to automatically clean up deleted resources
+4. **Leave `keepResources` unset (or `false`)** if you want Fleet to clean up managed resources when a bundle is removed
 5. **Separate config repos** from app code repos for cleaner history
 
 ---
