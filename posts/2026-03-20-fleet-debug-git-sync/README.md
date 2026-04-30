@@ -18,13 +18,16 @@ Fleet sync failures prevent GitOps updates from reaching your clusters. Issues r
 GitRepo (spec.repo)
     │
     ▼
-Fleet Manager pulls Git repo
+gitjob-controller creates a Job
     │
     ▼
-Fleet creates Bundle (rendered manifests)
+GitJob clones the Git repo and creates Bundle
     │
     ▼
-Fleet Agent deploys Bundle to target clusters
+fleet-controller creates BundleDeployment for target clusters
+    │
+    ▼
+fleet-agent deploys BundleDeployment to target clusters
     │
     ▼
 BundleDeployment status updated
@@ -48,23 +51,29 @@ kubectl describe gitrepo my-app -n fleet-default
 ```
 
 Common status conditions:
-- `Synced` - Repository was cloned/fetched successfully
-- `Ready` - All bundles are deployed
-- `Error` - Sync failed (check Message field)
+- `Ready` - Desired and current states match; if `False`, the message includes GitJob, Bundle, or BundleDeployment errors
+- `GitPolling` - Polling or initial clone is in progress; `True` when polling succeeds or is disabled
+- `Reconciling` - Fleet is reconciling the latest change
+- `Stalled` - The controller hit an error or timed out
+- `Accepted` - GitRepo restrictions and external Helm secrets were accepted
 
 ---
 
-## Step 2: Check Fleet Manager Logs
+## Step 2: Check Fleet Controller and GitJob Logs
 
 ```bash
-# View Fleet manager logs for sync errors
+# View fleet-controller logs for bundle and deployment errors
 kubectl logs -n cattle-fleet-system \
-  deployment/fleet-controller \
+  -l app=fleet-controller \
   | grep -i "error\|failed\|sync" | tail -50
 
-# Follow logs in real-time
+# Follow fleet-controller logs in real-time
 kubectl logs -n cattle-fleet-system \
-  deployment/fleet-controller -f
+  -l app=fleet-controller -f
+
+# For clone/auth/polling failures, inspect the GitJob pod created for this GitRepo
+# GitJob pods run in the same namespace as the GitRepo
+kubectl logs -f <gitjob-pod-name> -n fleet-default
 ```
 
 ---
@@ -79,17 +88,22 @@ kubectl get gitrepo my-app -n fleet-default \
 # Verify the secret exists and has the correct keys
 kubectl get secret my-git-auth -n fleet-default -o yaml
 
-# For SSH authentication, keys should be:
-# - ssh-privatekey
-# - known_hosts
+# Secrets referenced by clientSecretName should be type:
+# - kubernetes.io/ssh-auth
+# - kubernetes.io/basic-auth
 
-# For HTTP/HTTPS, keys should be:
+# For SSH authentication, the secret should include:
+# - ssh-privatekey
+# Optionally add known_hosts if you need to provide host keys explicitly
+
+# For HTTP/HTTPS, the secret should include:
 # - username
 # - password
 
 # Create the secret if missing
 kubectl create secret generic my-git-auth \
   -n fleet-default \
+  --type=kubernetes.io/basic-auth \
   --from-literal=username=git \
   --from-literal=password=my-token
 
@@ -104,16 +118,15 @@ kubectl patch gitrepo my-app -n fleet-default \
 ## Common Issue 2: Network Connectivity to Git Repository
 
 ```bash
-# Test connectivity from the Fleet manager pod
-kubectl exec -n cattle-fleet-system \
-  $(kubectl get pod -n cattle-fleet-system \
-    -l app=fleet-controller -o name | head -1) \
+# Test connectivity from the GitJob pod created for this GitRepo
+# (if the container image includes curl)
+kubectl exec -n fleet-default \
+  <gitjob-pod-name> \
   -- curl -v https://github.com
 
 # For private Git servers, test the specific URL
-kubectl exec -n cattle-fleet-system \
-  $(kubectl get pod -n cattle-fleet-system \
-    -l app=fleet-controller -o name | head -1) \
+kubectl exec -n fleet-default \
+  <gitjob-pod-name> \
   -- curl -v https://git.example.com
 ```
 
@@ -122,7 +135,7 @@ kubectl exec -n cattle-fleet-system \
 ## Common Issue 3: Helm Chart Rendering Failures
 
 ```bash
-# Check the Bundle for rendering errors
+# If the Bundle was created, inspect it for rendering errors
 kubectl get bundle -n fleet-default | grep -v "1/1"
 
 # Describe the failing bundle
@@ -142,12 +155,12 @@ kubectl get gitrepo my-app -n fleet-default \
   -o jsonpath='{.spec.targets}'
 
 # List available clusters and their labels
-kubectl get cluster -n fleet-default \
+kubectl get clusters.fleet.cattle.io -n fleet-default \
   -o custom-columns='NAME:.metadata.name,LABELS:.metadata.labels'
 
 # If no clusters match the selector, the GitRepo shows 0/0 in cluster counts
 # Fix: add the required label to the target cluster
-kubectl label cluster my-cluster -n fleet-default env=production
+kubectl label clusters.fleet.cattle.io my-cluster -n fleet-default env=production
 ```
 
 ---
@@ -156,15 +169,18 @@ kubectl label cluster my-cluster -n fleet-default env=production
 
 ```bash
 # Check BundleDeployments for failure reasons
-kubectl get bundledeployment -n fleet-default
+kubectl get bundledeployments.fleet.cattle.io -A
 
-# Describe a failing deployment
-kubectl describe bundledeployment my-app-abc123 -n fleet-default
+# BundleDeployments live in per-cluster namespaces such as
+# cluster-fleet-default-<cluster>-<suffix>
+# Describe a failing deployment in its cluster namespace
+kubectl describe bundledeployments.fleet.cattle.io my-app-abc123 \
+  -n <cluster-namespace>
 
 # Check Fleet agent logs on the target cluster
 # (Run this on the downstream cluster, not the management cluster)
 kubectl logs -n cattle-fleet-system \
-  deployment/fleet-agent -f \
+  -l app=fleet-agent -f \
   | grep -i "error\|failed"
 ```
 
@@ -192,10 +208,10 @@ kubectl patch gitrepo my-app -n fleet-default \
 
 ```bash
 # Verify Fleet agent is running on the downstream cluster
-kubectl get pods -n cattle-fleet-system
+kubectl get pods -n cattle-fleet-system -l app=fleet-agent
 
 # Check for connection errors
-kubectl logs -n cattle-fleet-system deployment/fleet-agent \
+kubectl logs -n cattle-fleet-system -l app=fleet-agent \
   | grep -i "error\|connect\|refused"
 
 # Restart the Fleet agent if it's stuck
@@ -214,11 +230,11 @@ kubectl describe gitrepo <name> -n fleet-default | grep -A 5 Conditions
 kubectl get bundle -n fleet-default | grep <gitrepo-name>
 
 # 3. Are BundleDeployments being applied?
-kubectl get bundledeployment -n fleet-default
+kubectl get bundledeployments.fleet.cattle.io -A
 
 # 4. Is the Fleet agent running on downstream clusters?
 # (on each downstream cluster)
-kubectl get pods -n cattle-fleet-system
+kubectl get pods -n cattle-fleet-system -l app=fleet-agent
 
 # 5. Are there RBAC issues on downstream clusters?
 kubectl get clusterrolebinding | grep fleet
@@ -230,4 +246,4 @@ kubectl get clusterrolebinding | grep fleet
 
 - Use HTTPS with token authentication for Git repos rather than SSH - it's easier to debug and doesn't require managing SSH keys.
 - Enable Fleet webhook integration with your Git provider to trigger immediate syncs on push rather than waiting for the polling interval.
-- Test `fleet.yaml` and Helm templates locally using `fleet apply --dry-run` before pushing to Git - this catches rendering errors without requiring a cluster sync.
+- Test `fleet.yaml` and Helm templates locally using `fleet apply -o - my-bundle ./path` before pushing to Git - this lets you inspect the rendered Bundle without requiring a cluster sync.
