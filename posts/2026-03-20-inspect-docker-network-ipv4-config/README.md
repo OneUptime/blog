@@ -23,32 +23,34 @@ docker network inspect my-app-network
 
 ## Reading the Key Fields
 
-The JSON output structure:
+The JSON output is an array; a single network entry looks like this:
 
 ```json
-{
-  "Name": "my-app-network",
-  "Id": "abc123...",
-  "Driver": "bridge",
-  "Scope": "local",
-  "IPAM": {
-    "Driver": "default",
-    "Config": [
-      {
-        "Subnet": "192.168.100.0/24",
-        "Gateway": "192.168.100.1",
-        "IPRange": "192.168.100.128/25"
+[
+  {
+    "Name": "my-app-network",
+    "Id": "abc123...",
+    "Driver": "bridge",
+    "Scope": "local",
+    "IPAM": {
+      "Driver": "default",
+      "Config": [
+        {
+          "Subnet": "192.168.100.0/24",
+          "Gateway": "192.168.100.1",
+          "IPRange": "192.168.100.128/25"
+        }
+      ]
+    },
+    "Containers": {
+      "def456...": {
+        "Name": "web-server",
+        "IPv4Address": "192.168.100.130/24",
+        "MacAddress": "02:42:c0:a8:64:82"
       }
-    ]
-  },
-  "Containers": {
-    "def456...": {
-      "Name": "web-server",
-      "IPv4Address": "192.168.100.130/24",
-      "MacAddress": "02:42:c0:a8:64:82"
     }
   }
-}
+]
 ```
 
 ## Extracting Specific Fields with --format
@@ -84,7 +86,7 @@ docker network inspect my-app-network \
 # Output: br-abc123def456 (the host-side bridge interface)
 ```
 
-Then on the host:
+Then on a Linux host:
 
 ```bash
 ip addr show br-abc123def456
