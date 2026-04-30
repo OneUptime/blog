@@ -8,7 +8,7 @@ Description: Monitor real-time network events including interface state changes,
 
 ## Introduction
 
-`ip monitor` watches the kernel's netlink socket and prints events as they happen - interface up/down, IP address changes, route additions/deletions, ARP changes, and more. Unlike polling tools, `ip monitor` is event-driven and shows changes the instant they occur.
+`ip monitor` watches the kernel's RTNETLINK socket and prints events as they happen - interface up/down, IP address changes, route additions/deletions, neighbor table changes, and more. Unlike polling tools, `ip monitor` is event-driven and shows changes the instant they occur.
 
 ## Monitor All Network Events
 
@@ -20,9 +20,10 @@ ip monitor
 # Press Ctrl+C to stop
 
 # Sample output when an interface changes:
-# [LINK]    eth0: <BROADCAST,MULTICAST,UP,LOWER_UP> mtu 1500 state UP
-# [ADDR]    192.168.1.100/24 dev eth0
-# [ROUTE]   192.168.1.0/24 dev eth0 proto kernel scope link src 192.168.1.100
+# 2: eth0: <BROADCAST,MULTICAST,UP,LOWER_UP> mtu 1500 state UP group default
+#     link/ether 52:54:00:12:34:56 brd ff:ff:ff:ff:ff:ff
+# 192.168.1.100/24 dev eth0 scope global
+# 192.168.1.0/24 dev eth0 proto kernel scope link src 192.168.1.100
 ```
 
 ## Monitor Specific Event Types
@@ -37,7 +38,7 @@ ip monitor route
 # Monitor only link (interface) state changes
 ip monitor link
 
-# Monitor neighbor (ARP) table changes
+# Monitor neighbor (ARP/NDP) table changes
 ip monitor neigh
 
 # Monitor all events explicitly
@@ -62,7 +63,7 @@ ip monitor dev eth0
 
 ```bash
 # Redirect monitor output to a log file
-ip -timestamp monitor all > /var/log/ip-monitor.log &
+ip -timestamp monitor all > ~/ip-monitor.log &
 
 # Or to syslog
 ip -timestamp monitor all | logger -t ip-monitor &
@@ -81,7 +82,7 @@ ip -4 monitor route
 ```bash
 # Watch what happens when a cable is plugged in
 ip monitor link
-# Output: carrier change, UP state, new addresses
+# Output: carrier change, UP state
 
 # Watch DHCP address assignment
 ip monitor address
@@ -98,15 +99,15 @@ ip monitor neigh
 ## ip monitor vs NetworkManager Events
 
 ```bash
-# ip monitor: kernel-level events (most accurate)
+# ip monitor: kernel-level rtnetlink events
 ip monitor
 
-# nmcli monitor: NetworkManager-interpreted events
+# nmcli monitor: NetworkManager activity
 nmcli monitor
 
-# ip monitor catches everything; nmcli monitor only shows NM-managed events
+# ip monitor shows kernel network events; nmcli monitor shows NetworkManager state changes
 ```
 
 ## Conclusion
 
-`ip monitor` watches kernel netlink events in real time. Filter by type: `address`, `route`, `link`, `neigh`. Add `-timestamp` for timestamped logs. Run in background with `&` and redirect to a log file for persistent monitoring. This is the lowest-level network monitoring tool on Linux.
+`ip monitor` watches kernel RTNETLINK events in real time. Filter by type: `address`, `route`, `link`, `neigh`. Add `-timestamp` for timestamped logs. Run in background with `&` and redirect to a log file for persistent monitoring. This is a low-level network monitoring tool on Linux.
