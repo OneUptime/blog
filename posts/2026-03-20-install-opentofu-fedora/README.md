@@ -12,7 +12,7 @@ Fedora is a community-driven Linux distribution sponsored by Red Hat, known for 
 
 ## Prerequisites
 
-- Fedora 38 or later
+- A supported Fedora release
 - `sudo` privileges
 - Internet access
 
@@ -21,16 +21,23 @@ Fedora is a community-driven Linux distribution sponsored by Red Hat, known for 
 ### Step 1: Add the OpenTofu Repository
 
 ```bash
-# Add the OpenTofu repository using dnf config-manager
-
-sudo dnf config-manager --add-repo https://packages.opentofu.org/opentofu/tofu/config_file.repo?type=rpm-md
-
-# Or manually create the repo file
+# Create the OpenTofu repository file
 cat <<EOF | sudo tee /etc/yum.repos.d/opentofu.repo
 [opentofu]
 name=opentofu
 baseurl=https://packages.opentofu.org/opentofu/tofu/rpm_any/rpm_any/\$basearch
-repo_gpgcheck=1
+repo_gpgcheck=0
+gpgcheck=1
+enabled=1
+gpgkey=https://get.opentofu.org/opentofu.gpg
+       https://packages.opentofu.org/opentofu/tofu/gpgkey
+sslverify=1
+sslcacert=/etc/pki/tls/certs/ca-bundle.crt
+metadata_expire=300
+[opentofu-source]
+name=opentofu-source
+baseurl=https://packages.opentofu.org/opentofu/tofu/rpm_any/rpm_any/SRPMS
+repo_gpgcheck=0
 gpgcheck=1
 enabled=1
 gpgkey=https://get.opentofu.org/opentofu.gpg
@@ -53,22 +60,22 @@ sudo dnf install -y tofu
 Download and install the RPM package directly:
 
 ```bash
-TOFU_VERSION="1.9.0"
+TOFU_VERSION="1.11.6"
 
 # Download the RPM package
-curl -LO "https://github.com/opentofu/opentofu/releases/download/v${TOFU_VERSION}/tofu_${TOFU_VERSION}_linux_amd64.rpm"
+curl -LO "https://github.com/opentofu/opentofu/releases/download/v${TOFU_VERSION}/tofu_${TOFU_VERSION}_amd64.rpm"
 
 # Install using rpm
-sudo rpm -i "tofu_${TOFU_VERSION}_linux_amd64.rpm"
+sudo rpm -i "tofu_${TOFU_VERSION}_amd64.rpm"
 
 # Or using dnf for better dependency management
-sudo dnf install "tofu_${TOFU_VERSION}_linux_amd64.rpm"
+sudo dnf install "tofu_${TOFU_VERSION}_amd64.rpm"
 ```
 
 ## Method 3: Install from Binary
 
 ```bash
-TOFU_VERSION="1.9.0"
+TOFU_VERSION="1.11.6"
 
 # Download and extract
 curl -LO "https://github.com/opentofu/opentofu/releases/download/v${TOFU_VERSION}/tofu_${TOFU_VERSION}_linux_amd64.zip"
@@ -86,20 +93,17 @@ sudo chmod +x /usr/local/bin/tofu
 tofu version
 
 # Output:
-# OpenTofu v1.9.0
+# OpenTofu v1.11.6
 # on linux_amd64
 ```
 
 ## Setting Up Shell Autocompletion
 
 ```bash
-# For bash
+# Install autocomplete for your current shell
 tofu -install-autocomplete
-source ~/.bashrc
 
-# For zsh
-tofu -install-autocomplete
-source ~/.zshrc
+# Restart your shell, or re-read the profile script that OpenTofu updated.
 ```
 
 ## Quick Start Example
@@ -158,4 +162,4 @@ sudo rm /etc/yum.repos.d/opentofu.repo
 
 ## Conclusion
 
-Installing OpenTofu on Fedora is simple using the official DNF repository. The package manager approach makes it easy to keep OpenTofu updated and manage its lifecycle. You are now ready to use OpenTofu to define and provision infrastructure on Fedora Linux.
+Installing OpenTofu on Fedora is simple using the official RPM repository. The package manager approach makes it easy to keep OpenTofu updated and manage its lifecycle. You are now ready to use OpenTofu to define and provision infrastructure on Fedora Linux.
