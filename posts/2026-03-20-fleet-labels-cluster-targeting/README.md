@@ -10,7 +10,7 @@ Description: Learn how to use Kubernetes labels on Fleet clusters to create dyna
 
 Labels are the primary mechanism Fleet uses to dynamically target clusters for application deployments. Rather than hardcoding cluster names in your configuration, labels allow you to create flexible, reusable targeting rules that automatically include new clusters as they are registered.
 
-This guide explains how to apply labels to Fleet clusters, design a labeling strategy, and use those labels in your bundle targets.
+This guide explains how to apply labels to Fleet clusters, design a labeling strategy, and use those labels in your GitRepo targets or bundle target overrides.
 
 ## Prerequisites
 
@@ -95,12 +95,12 @@ kubectl get cluster my-cluster -n fleet-default -o jsonpath='{.metadata.labels}'
 4. Under **Labels**, add key-value pairs
 5. Click **Save**
 
-### Via Cluster Registration YAML
+### Via Cluster Resource YAML
 
-You can pre-configure labels during cluster registration:
+For manager-initiated registration, you can pre-configure labels directly on the `Cluster` resource:
 
 ```yaml
-# cluster-registration.yaml
+# cluster.yaml
 apiVersion: fleet.cattle.io/v1alpha1
 kind: Cluster
 metadata:
@@ -113,7 +113,7 @@ metadata:
     purpose: edge
     tier: small
 spec:
-  agentEnvVars: []
+  kubeConfigSecret: edge-cluster-001-kubeconfig
 ```
 
 ## Using Labels in Bundle Targets
@@ -122,7 +122,7 @@ spec:
 
 ```yaml
 # fleet.yaml - Simple label-based targeting
-targets:
+overrideTargets:
   # Match all clusters with env=production label
   - name: production
     clusterSelector:
@@ -134,7 +134,7 @@ targets:
 
 ```yaml
 # fleet.yaml - Multiple labels must ALL match (AND)
-targets:
+overrideTargets:
   - name: us-production
     clusterSelector:
       matchLabels:
@@ -147,7 +147,7 @@ targets:
 
 ```yaml
 # fleet.yaml - Advanced expressions
-targets:
+overrideTargets:
   - name: multi-region-prod
     clusterSelector:
       matchLabels:
@@ -173,30 +173,30 @@ targets:
           operator: DoesNotExist
 ```
 
-### Environment-Progressive Deployment
+### Environment-Based Targeting
 
 ```yaml
-# fleet.yaml - Deploy to environments in order
-targets:
-  # First: development
+# fleet.yaml - Define separate targets for each environment
+overrideTargets:
+  # Development target
   - name: dev
     clusterSelector:
       matchLabels:
         env: dev
 
-  # Second: staging
+  # Staging target
   - name: staging
     clusterSelector:
       matchLabels:
         env: staging
 
-  # Third: production
+  # Production target
   - name: production
     clusterSelector:
       matchLabels:
         env: production
 
-  # Catch-all for unlabeled clusters
+  # Catch-all for any remaining clusters
   - name: default
     clusterSelector: {}
 ```
@@ -204,7 +204,7 @@ targets:
 ## Bulk Labeling Multiple Clusters
 
 ```bash
-# Label all clusters in a namespace that match a condition
+# Label all clusters in a namespace
 for cluster in $(kubectl get clusters.fleet.cattle.io -n fleet-default \
   -o jsonpath='{.items[*].metadata.name}'); do
   echo "Labeling cluster: $cluster"
@@ -222,9 +222,9 @@ done
 kubectl get clusters.fleet.cattle.io -n fleet-default \
   -l env=production
 
-# See which bundles are deployed to production clusters
-kubectl get bundledeployments -A \
-  -l fleet.cattle.io/cluster-namespace=fleet-default
+# See BundleDeployments for a specific cluster
+CLUSTER_NS=$(kubectl get cluster my-cluster -n fleet-default -o jsonpath='{.status.namespace}')
+kubectl get bundledeployments.fleet.cattle.io -n "$CLUSTER_NS"
 
 # Check targeting in a specific bundle
 kubectl describe bundle my-app -n fleet-default
