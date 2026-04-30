@@ -8,58 +8,54 @@ Description: Learn how to hide Docker Hub from Portainer's registry dropdown to 
 
 ## Why Hide Docker Hub?
 
-Organizations with strict security policies may want to prevent developers from pulling images directly from Docker Hub and instead enforce the use of a private, audited registry. Portainer allows administrators to disable Docker Hub visibility in the registry selection dropdown.
+Organizations with strict security policies may want to steer developers away from pulling images directly from Docker Hub and instead use a private, audited registry. Portainer allows administrators to hide the built-in anonymous Docker Hub option from the registry selection dropdown.
 
-## Disabling Docker Hub in Portainer
+## Hiding Docker Hub in Portainer
 
-This is a per-environment setting in Portainer:
+This is a global setting in Portainer:
 
 1. Log in to Portainer as an administrator.
-2. Go to **Settings > Registries**.
-3. Find the **DockerHub** entry in the registry list.
-4. Toggle it **Off** or click the disable icon.
+2. Go to **Registries**.
+3. Find the **Docker Hub (anonymous)** entry in the registry list.
+4. Click **Hide for all users**.
 
-Alternatively, in **Environments**, select an environment and configure which registries are available.
+In current Portainer releases, this control is available in Business Edition.
 
-## Restricting Public Repositories via Endpoint Settings
+Portainer notes that this does not fully disable anonymous Docker Hub access, because it is built into Docker itself. If no other registries are available to a user, the **Docker Hub (anonymous)** option will still appear.
 
-For stricter control, you can disable the use of public images entirely:
+## Restricting Registry Access
 
-1. Go to **Environments** and select your environment.
-2. Click **Edit**.
-3. Under **Security settings**, toggle **Allow users to use public images** to **Off**.
+For stricter control, limit access to approved registries in each environment or apply a registry policy:
+
+1. In the target environment, go to **Host > Registries**.
+2. Find your approved registry and click **Manage access**.
+3. Grant access to the required users or teams with **Create access**.
+4. If you need consistent access rules across environment groups, create a **Docker > Registry** policy under **Environment-related > Policies**.
 
 ## Portainer API Approach
 
-You can also manage registry visibility via the Portainer API:
+You can list configured registries via the Portainer API:
 
 ```bash
-# List all registries to find the Docker Hub registry ID
-
 curl -H "Authorization: Bearer $TOKEN" \
   http://localhost:9000/api/registries
-
-# Update the registry to disable it (set access to none)
-curl -X PUT \
-  -H "Authorization: Bearer $TOKEN" \
-  -H "Content-Type: application/json" \
-  http://localhost:9000/api/registries/1 \
-  -d '{"restricted": true}'
 ```
+
+However, the current Portainer API reference does not document a `restricted` field for hiding the built-in anonymous Docker Hub entry. Use the **Hide for all users** action in the Portainer UI for that specific setting.
 
 ## Enforcing a Specific Registry
 
 To guide users toward a specific registry, you can:
 
 1. Add your private registry (e.g., Harbor or ECR) to Portainer.
-2. Disable Docker Hub.
-3. Set the private registry as the default.
+2. Hide **Docker Hub (anonymous)**.
+3. Grant users or teams access to the private registry in each environment, or apply a Docker registry policy.
 
-This ensures all image pulls go through your approved registry with vulnerability scanning enabled.
+This steers users toward approved registries in Portainer's UI and lets you scope registry access through Portainer.
 
 ## Communicating the Policy
 
-When Docker Hub is hidden, users who attempt to reference a Docker Hub image in a stack deployment will see a pull failure if no credentials are configured. Provide documentation explaining:
+When Docker Hub is hidden, users no longer see the anonymous Docker Hub option in Portainer's registry dropdown. This does not prevent users from referencing Docker Hub images directly in YAML, so provide documentation explaining:
 
 ```text
 All images must be pulled from registry.mycompany.com
@@ -68,4 +64,4 @@ Tag your images as: registry.mycompany.com/myteam/myimage:tag
 
 ## Conclusion
 
-Hiding Docker Hub from Portainer's dropdown is a simple but effective control for enforcing private registry usage policies. Combine it with vulnerability scanning in your approved registry for a complete supply chain security posture.
+Hiding Docker Hub from Portainer's dropdown is a useful UI control for steering users toward private registries. Combine it with registry access controls or registry policies for stronger enforcement.
