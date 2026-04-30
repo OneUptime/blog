@@ -8,7 +8,7 @@ Description: Learn how to access virtual machine consoles in Harvester using the
 
 ## Introduction
 
-Console access to VMs in Harvester is essential for troubleshooting boot issues, fixing network misconfigurations, and accessing VMs when SSH is unavailable. Harvester provides three console access methods: a web-based VNC console in the UI, `virtctl` command-line console access, and serial console for headless server management. This guide covers all three methods.
+Console access to VMs in Harvester is essential for troubleshooting boot issues, fixing network misconfigurations, and accessing VMs when SSH is unavailable. Harvester provides VNC and serial console access in the UI, while KubeVirt's `virtctl` adds command-line serial and VNC access. This guide covers the main access methods and the guest configuration that makes serial console recovery reliable.
 
 ## Method 1: Web VNC Console via UI
 
@@ -64,7 +64,6 @@ virtctl version --client
 # This is useful for text-based/server VMs
 virtctl console ubuntu-web-01 -n default
 
-# The console connects immediately
 # Press Ctrl+] to exit the console
 
 # Access console with a specific kubeconfig
@@ -75,22 +74,21 @@ virtctl console ubuntu-web-01 -n default \
 ### Access the VNC Console via virtctl
 
 ```bash
-# Forward the VNC port to your local machine
+# Open the graphical console with remote-viewer
 virtctl vnc ubuntu-web-01 -n default
 
-# This opens a VNC viewer if one is installed
-# Or specify a VNC client:
-virtctl vnc ubuntu-web-01 -n default --vnc-display=0
-
-# To get the VNC connection details (port forwarding info)
+# Start only the local VNC proxy and print the local port
 virtctl vnc ubuntu-web-01 -n default --proxy-only
+
+# Bind the local VNC proxy to a specific port for your VNC client
+virtctl vnc ubuntu-web-01 -n default --proxy-only --port 5900
 ```
 
 ## Method 3: Serial Console Configuration for Linux VMs
 
 For reliable console access, configure the VM to output to the serial console:
 
-### Cloud-Init Configuration
+### Cloud-Init Configuration (Debian/Ubuntu-style guests)
 
 ```yaml
 #cloud-config
@@ -107,7 +105,7 @@ runcmd:
   - systemctl enable --now serial-getty@ttyS0.service
 ```
 
-### VM Spec with Serial Console Device
+### VM Spec with Serial Console Enabled
 
 ```yaml
 # vm-with-serial-console.yaml
@@ -129,12 +127,9 @@ spec:
         machine:
           type: q35
         devices:
-          # Add serial console device
-          serial:
-            - type: serial
-              target:
-                type: isa-serial
-                port: 0
+          # KubeVirt auto-attaches a serial console by default; set it
+          # explicitly if you want the requirement captured in the manifest.
+          autoattachSerialConsole: true
           disks:
             - name: rootdisk
               bootOrder: 1
@@ -162,20 +157,13 @@ spec:
                 - systemctl enable --now serial-getty@ttyS0.service
 ```
 
-## Method 4: Remote Console Access via kubectl Port Forward
+## Method 4: Remote Console Access via virtctl VNC Proxy
 
-Access the VNC endpoint through kubectl port forwarding:
+Access the graphical console from your own VNC client using `virtctl`'s built-in proxy:
 
 ```bash
-# Get the name of the virt-launcher pod for your VM
-POD_NAME=$(kubectl get pod -n default \
-    -l "vm.kubevirt.io/name=ubuntu-web-01" \
-    -o jsonpath='{.items[0].metadata.name}')
-
-echo "VM pod: ${POD_NAME}"
-
-# Port forward the VNC port (5900) to your local machine
-kubectl port-forward ${POD_NAME} 5900:5900 -n default &
+# Start a local VNC proxy on port 5900
+virtctl vnc ubuntu-web-01 -n default --proxy-only --port 5900
 
 # Connect using your VNC client
 # On Linux: vncviewer localhost:5900
@@ -189,14 +177,13 @@ kubectl port-forward ${POD_NAME} 5900:5900 -n default &
 
 ```bash
 # Connect to console immediately after starting the VM to catch boot errors
-kubectl patch vm problem-vm -n default \
-    --type merge \
-    -p '{"spec":{"running":true}}'
+virtctl start problem-vm -n default
 
 # Immediately attach to console
 virtctl console problem-vm -n default
 
-# You'll see the GRUB menu and boot process
+# If the guest is configured for serial console output, you'll see
+# the GRUB menu and boot process
 # Press 'e' in GRUB to edit boot parameters
 # Add: systemd.unit=rescue.target or init=/bin/bash for recovery mode
 ```
@@ -222,19 +209,19 @@ passwd ubuntu
 exec /sbin/init
 ```
 
-## Console Access via kubectl exec
+## Guest Agent Information and SSH Access via virtctl
 
-For VMs with the qemu-guest-agent installed, you can run commands directly:
+For VMs with the qemu-guest-agent installed, you can query guest OS information. If SSH is configured on the guest, `virtctl ssh` can also run commands over SSH:
 
 ```bash
 # Check if guest agent is running
 virtctl guestosinfo ubuntu-web-01 -n default
 
-# Execute a command inside the VM (requires guest agent)
-virtctl ssh ubuntu@ubuntu-web-01 -n default --command "uptime"
+# Execute a command over SSH
+virtctl ssh ubuntu@vm/ubuntu-web-01/default --command "uptime"
 
 # Get VM filesystem info
-virtctl fsinfo ubuntu-web-01 -n default
+virtctl fslist ubuntu-web-01 -n default
 
 # Get VM user list
 virtctl userlist ubuntu-web-01 -n default
@@ -261,4 +248,4 @@ virtctl console new-vm -n default
 
 ## Conclusion
 
-Console access in Harvester covers the full spectrum from convenient web-based GUI access to low-level serial console for emergency recovery. The web VNC console is ideal for day-to-day interactive use, while `virtctl console` is invaluable for scripted access and automation. Configuring serial console output in your VM images ensures you always have a recovery path even when the network or OS is broken. Make console access configuration a standard part of your VM image build process.
+Console access in Harvester covers the full spectrum from convenient web-based GUI access to low-level serial console for emergency recovery. The web VNC console is ideal for day-to-day interactive use, while `virtctl console` is invaluable for headless access and troubleshooting. Configuring serial console output in your VM images ensures you always have a recovery path even when the network or OS is broken. Make console access configuration a standard part of your VM image build process.
