@@ -8,12 +8,12 @@ Description: Learn how to create GCP Organization Policies with OpenTofu to enfo
 
 ## Overview
 
-GCP Organization Policies let you centrally constrain and enforce security configurations across all projects in your organization. They override individual project settings and cannot be bypassed by project owners. OpenTofu manages these policies at organization, folder, and project levels.
+GCP Organization Policies let you centrally constrain and enforce security configurations across your resource hierarchy. Child resources inherit these policies by default, but lower-level policies can override them or restore the constraint's default behavior when exceptions are needed. OpenTofu manages these policies at organization, folder, and project levels.
 
-## Step 1: Restrict Allowed Compute Regions
+## Step 1: Restrict Allowed Resource Locations
 
 ```hcl
-# main.tf - Restrict resource creation to specific regions
+# main.tf - Restrict resource creation to specific locations
 
 resource "google_org_policy_policy" "restrict_regions" {
   name   = "organizations/${var.org_id}/policies/gcp.resourceLocations"
@@ -22,7 +22,7 @@ resource "google_org_policy_policy" "restrict_regions" {
   spec {
     rules {
       values {
-        # Only allow resources in US regions
+        # Only allow resources in US locations
         allowed_values = [
           "in:us-locations"
         ]
@@ -42,7 +42,7 @@ resource "google_org_policy_policy" "require_os_login" {
 
   spec {
     rules {
-      enforce = true
+      enforce = "TRUE"
     }
   }
 }
@@ -74,7 +74,7 @@ resource "google_org_policy_policy" "restrict_sa_key_creation" {
 
   spec {
     rules {
-      enforce = true
+      enforce = "TRUE"
     }
   }
 }
@@ -83,17 +83,13 @@ resource "google_org_policy_policy" "restrict_sa_key_creation" {
 ## Step 5: Project-Level Policy Override
 
 ```hcl
-# Override at project level to allow external IPs for a specific project
+# Restore the default policy at project level to allow external IPs for a specific project
 resource "google_org_policy_policy" "allow_external_ip_project" {
   name   = "projects/${var.exception_project_id}/policies/compute.vmExternalIpAccess"
   parent = "projects/${var.exception_project_id}"
 
   spec {
-    # Inherit parent policy but with allow rules
-    rules {
-      allow_all = "TRUE"
-    }
-    inherit_from_parent = false
+    reset = true
   }
 }
 ```
@@ -101,7 +97,7 @@ resource "google_org_policy_policy" "allow_external_ip_project" {
 ## Step 6: Restrict Domain Policy
 
 ```hcl
-# Restrict IAM role grants to specific domains only
+# Restrict IAM role grants to identities in a specific Google Workspace customer
 resource "google_org_policy_policy" "restrict_domains" {
   name   = "organizations/${var.org_id}/policies/iam.allowedPolicyMemberDomains"
   parent = "organizations/${var.org_id}"
@@ -110,7 +106,7 @@ resource "google_org_policy_policy" "restrict_domains" {
     rules {
       values {
         allowed_values = [
-          "C0xxxxx"  # Your organization's customer ID
+          "is:C03g5e3bc"  # Your Google Workspace customer ID
         ]
       }
     }
@@ -120,4 +116,4 @@ resource "google_org_policy_policy" "restrict_domains" {
 
 ## Summary
 
-GCP Organization Policies with OpenTofu enforce security guardrails at scale. Start with region restrictions and OS Login requirements, add VM external IP prevention, and restrict service account key creation for a strong security baseline. Project-level overrides allow exceptions for specific use cases while maintaining organization-wide defaults.
+GCP Organization Policies with OpenTofu enforce security guardrails at scale. Start with resource location restrictions and OS Login requirements, add VM external IP prevention, and restrict service account key creation for a strong security baseline. Project-level exceptions can restore the default behavior for specific use cases while maintaining organization-wide guardrails.
