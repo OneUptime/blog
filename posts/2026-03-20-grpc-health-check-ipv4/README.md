@@ -13,6 +13,7 @@ The gRPC Health Checking Protocol defines a standard `Health` service:
 ```proto
 service Health {
   rpc Check(HealthCheckRequest) returns (HealthCheckResponse);
+  rpc List(HealthListRequest) returns (HealthListResponse);
   rpc Watch(HealthCheckRequest) returns (stream HealthCheckResponse);
 }
 
@@ -20,7 +21,7 @@ enum ServingStatus {
   UNKNOWN = 0;
   SERVING = 1;
   NOT_SERVING = 2;
-  SERVICE_UNKNOWN = 3;
+  SERVICE_UNKNOWN = 3; // Used only by the Watch method.
 }
 ```
 
@@ -125,17 +126,17 @@ grpc_health_probe -addr=:50051 -service=helloworld.Greeter
 # Kubernetes probe configuration
 livenessProbe:
   exec:
-    command: ["/bin/grpc_health_probe", "-addr=:50051"]
+    command: ["/usr/local/bin/grpc_health_probe", "-addr=:50051"]
   initialDelaySeconds: 5
   periodSeconds: 10
 
 readinessProbe:
   exec:
-    command: ["/bin/grpc_health_probe", "-addr=:50051", "-service=helloworld.Greeter"]
+    command: ["/usr/local/bin/grpc_health_probe", "-addr=:50051", "-service=helloworld.Greeter"]
   initialDelaySeconds: 5
   periodSeconds: 5
 ```
 
 ## Conclusion
 
-Use the standard `grpc.health.v1.Health` service for gRPC health checking - it is supported by Kubernetes probes via `grpc_health_probe`, load balancers, and service meshes. Register the health servicer alongside your application servicers and call `SetServingStatus` when your service starts and when it becomes unhealthy (e.g., DB connection lost). Mark the service `NOT_SERVING` during graceful shutdown to drain traffic before the pod terminates.
+Use the standard `grpc.health.v1.Health` service for gRPC health checking - it is supported by Kubernetes probes via `grpc_health_probe`, load balancers, and service meshes. Register the health servicer alongside your application servicers and update its serving status when your service starts and when it becomes unhealthy (e.g., DB connection lost). Mark the service `NOT_SERVING` during graceful shutdown to drain traffic before the pod terminates.
