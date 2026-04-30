@@ -17,33 +17,36 @@ Harvester installation can fail due to hardware incompatibilities, network misco
 During ISO installation, access the console logs:
 
 ```bash
-# At the Harvester console, press CTRL+ALT+F2 to switch to a shell
+# At the Harvester console, press CTRL+ALT+F2 and log in as rancher/rancher
 
-# View installation logs
-journalctl -f
+# View installer console output
+cat /var/log/console.log
 
-# Check cloud-init log
-cat /var/log/cloud-init-output.log
+# Check RKE2 startup logs captured during installation
+cat /run/cos/target/rke2.log
 
-# Check Harvester startup
-journalctl -u rke2-server -f
+# Generate a troubleshooting bundle if needed
+supportconfig -k -c
 ```
 
 ---
 
 ## Issue 1: Installation Hangs at "Starting Services"
 
-**Cause**: Usually a network interface naming issue or VLAN misconfiguration.
+**Cause**: Often the management network has no default route, or the gateway/VLAN settings are incorrect.
 
 ```bash
 # Check available network interfaces
 ip link show
 
-# Check if the management interface was configured correctly
-cat /etc/rancher/rke2/config.yaml | grep node-ip
+# Check whether the installer has a default route
+ip route
 
-# If the IP is wrong, reconfigure via the Harvester TUI
-harvester-config
+# Review RKE2 startup logs captured during installation
+cat /run/cos/target/rke2.log
+
+# If no default route exists, fix DHCP to provide option routers
+# or reinstall with a static gateway configured
 ```
 
 ---
@@ -53,12 +56,14 @@ harvester-config
 **Symptoms**: Additional nodes show "Join Token Invalid" or timeout.
 
 ```bash
-# On the first node, get the correct join token
-cat /var/lib/rancher/rke2/server/node-token
+# On an existing server node, get the cluster token
+sudo yq eval .token /etc/rancher/rancherd/config.yaml
 
-# Verify the token matches what was entered during node setup
-# Check network connectivity from joining node to first node
-curl -k https://<first-node-ip>:9345/ping
+# Confirm the join target is the management VIP
+kubectl -n kube-system get svc ingress-expose -o jsonpath='{.metadata.annotations.kube-vip\.io/requestedIP}{"\n"}'
+
+# Check that the management API is reachable on the VIP
+curl -fk https://<cluster-vip>/version
 ```
 
 ---
@@ -84,17 +89,17 @@ wipefs -a /dev/sdb
 ## Issue 4: Harvester WebUI Not Accessible
 
 ```bash
-# Check if the nginx ingress is running
-kubectl get pods -n harvester-system
+# Check the configured management VIP
+kubectl get svc -n kube-system ingress-expose -o jsonpath='{.metadata.annotations.kube-vip\.io/requestedIP}{"\n"}'
 
-# Check the VIP (virtual IP) is configured correctly
-kubectl get svc -n kube-system | grep kube-vip
+# Identify which node currently owns the VIP
+kubectl -n kube-system get svc ingress-expose -o jsonpath='{.metadata.annotations.kube-vip\.io/vipHost}'
 
-# Verify the management IP is assigned
-ip addr show
+# Verify the management bridge and VIP are present on that node
+ip address show mgmt-br
 
-# Check the Harvester ingress
-kubectl get ingress -n harvester-system
+# Verify the Harvester API answers on the VIP
+curl -fk https://<VIP>/version
 ```
 
 ---
@@ -105,32 +110,30 @@ kubectl get ingress -n harvester-system
 # Check RKE2 server status
 systemctl status rke2-server
 
+# Check RKE2 server logs
+journalctl -u rke2-server -f
+
 # Check all system pods
 kubectl get pods -A | grep -v Running
 
 # Check events for errors
 kubectl get events -A --sort-by=.lastTimestamp | tail -30
 
-# Verify etcd health
-/var/lib/rancher/rke2/bin/etcdctl \
-  --endpoints https://127.0.0.1:2379 \
-  --cacert /var/lib/rancher/rke2/server/tls/etcd/server-ca.crt \
-  --cert /var/lib/rancher/rke2/server/tls/etcd/client.crt \
-  --key /var/lib/rancher/rke2/server/tls/etcd/client.key \
-  endpoint health
+# Verify the Harvester API responds on the management VIP
+curl -fk https://<VIP>/version
 ```
 
 ---
 
 ## Issue 6: BIOS/UEFI Configuration Problems
 
-Common hardware requirements not met:
+Common firmware and platform requirements not met:
 
 ```text
-- VT-x / AMD-V virtualization must be enabled in BIOS
-- IOMMU must be enabled (for PCI passthrough)
-- Secure Boot must be disabled (Harvester doesn't support Secure Boot)
-- RAID controller must be in AHCI mode or pass-through
+- VT-x / AMD-V hardware-assisted virtualization must be enabled
+- Use UEFI for new installations; legacy BIOS boot is deprecated starting in Harvester v1.7.0
+- Each node must expose a unique product_uuid
+- Only local disks and hardware RAID are supported
 ```
 
 ---
@@ -140,8 +143,8 @@ Common hardware requirements not met:
 If the issue persists:
 
 ```bash
-# Via Harvester UI: Support > Download Support Bundle
-# Or via kubectl:
+# Via Harvester UI: Support > Generate Support Bundle
+# Then list generated support bundle objects:
 kubectl get supportbundle -A
 ```
 
@@ -151,4 +154,4 @@ kubectl get supportbundle -A
 
 - Verify all hardware meets the Harvester minimum requirements before installation.
 - Use the official Harvester ISO from the releases page - custom or modified ISOs may behave unpredictably.
-- Check the Harvester compatibility list for your NIC and storage controller models.
+- Prefer YES-certified hardware for SUSE Linux Micro 5.5/6.0/6.1 when selecting servers, NICs, and storage controllers.
