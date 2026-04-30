@@ -52,7 +52,7 @@ tofu force-unlock 12345678-1234-1234-1234-123456789012
 
 You will be prompted to confirm:
 
-```hcl
+```text
 Do you really want to force-unlock?
   OpenTofu will remove the lock on the remote state.
   This will allow local OpenTofu commands to modify this state, even though it
@@ -61,7 +61,7 @@ Do you really want to force-unlock?
   Enter a value: yes
 ```
 
-## For AWS S3 + DynamoDB Backend: Manual Lock Removal
+## For AWS S3 Backend Using DynamoDB Locking: Manual Lock Removal
 
 If `force-unlock` does not work (e.g., the DynamoDB item is stuck):
 
@@ -83,10 +83,10 @@ aws dynamodb delete-item \
 
 ```bash
 # List lock files in the GCS bucket
-gsutil ls gs://my-state-bucket/prod/vpc/
+gcloud storage ls gs://my-state-bucket/prod/vpc/
 
 # Remove the lock file (has .tflock extension)
-gsutil rm gs://my-state-bucket/prod/vpc/tofu.tfstate.tflock
+gcloud storage rm gs://my-state-bucket/prod/vpc/tofu.tfstate.tflock
 ```
 
 ## Skipping the Lock (Not Recommended)
@@ -100,18 +100,10 @@ tofu apply -lock=false
 
 ## Preventing Stale Locks
 
-```hcl
-# Set a lock timeout so plans/applies fail quickly if the lock is held too long
-# rather than waiting indefinitely
-terraform {
-  backend "s3" {
-    bucket         = "my-state"
-    key            = "prod/vpc/tofu.tfstate"
-    region         = "us-east-1"
-    dynamodb_table = "opentofu-state-locks"
-    # Lock timeout - fail after 5 minutes instead of waiting forever
-  }
-}
+```bash
+# Retry acquiring the state lock for up to 5 minutes before returning an error
+tofu plan -lock-timeout=5m
+tofu apply -lock-timeout=5m
 ```
 
 In CI/CD, set a job timeout:
@@ -123,4 +115,4 @@ timeout-minutes: 30
 
 ## Conclusion
 
-State lock errors are most commonly caused by crashed CI/CD jobs that left a stale lock. Always verify no legitimate process is running before force-unlocking. For AWS backends, the DynamoDB item can be deleted manually as a last resort. Prevention through CI job timeouts and health checks reduces the frequency of stale locks.
+State lock errors are most commonly caused by crashed CI/CD jobs that left a stale lock. Always verify no legitimate process is running before force-unlocking. For AWS S3 backends using DynamoDB locking, the DynamoDB item can be deleted manually as a last resort. Prevention through CI job timeouts and health checks reduces the frequency of stale locks.
