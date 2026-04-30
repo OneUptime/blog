@@ -19,10 +19,11 @@ Connection draining (also called deregistration delay or graceful removal) ensur
 
 echo "set server web-backends/web2 state drain" | sudo socat stdio /run/haproxy/admin.sock
 
-# Wait for connections to drain
-echo "show servers state web-backends" | sudo socat stdio /run/haproxy/admin.sock | grep web2
+# Wait for current sessions (scur) to drain to 0
+echo "show stat" | sudo socat stdio /run/haproxy/admin.sock | \
+  awk -F, '$1=="web-backends" && $2=="web2" {print "scur=" $5 ", status=" $18}'
 
-# After connections reach 0, take the server fully offline
+# After scur reaches 0, take the server fully offline
 echo "set server web-backends/web2 state maint" | sudo socat stdio /run/haproxy/admin.sock
 ```
 
@@ -30,7 +31,7 @@ echo "set server web-backends/web2 state maint" | sudo socat stdio /run/haproxy/
 
 ```bash
 # Reduce weight gradually over time
-for weight in 50 25 10 0; do
+for weight in 50% 25% 10% 0; do
   echo "set server web-backends/web2 weight $weight" | sudo socat stdio /run/haproxy/admin.sock
   sleep 30
 done
@@ -49,11 +50,17 @@ defaults
 
 ## Nginx Upstream Draining
 
-Nginx OSS doesn't have native draining but you can implement it:
+In Nginx OSS 1.29.6 and later, mark the upstream server as `drain` and reload:
+
+```nginx
+upstream app-servers {
+    server 10.0.0.10:80;
+    server 10.0.0.11:80 drain;
+}
+```
 
 ```bash
-# Remove server from upstream (edit config + reload)
-# nginx reload (nginx -s reload) is zero-downtime - existing connections complete
+# nginx reload (nginx -s reload) is graceful - existing connections complete
 sudo nginx -s reload
 ```
 
@@ -61,7 +68,7 @@ For Nginx Plus, use the upstream API:
 
 ```bash
 # Set server to drain state (Nginx Plus API)
-curl -X PATCH http://localhost:8080/api/6/http/upstreams/app-servers/servers/1 \
+curl -X PATCH http://localhost:8080/api/9/http/upstreams/app-servers/servers/1 \
   -d '{"drain": true}'
 ```
 
@@ -75,7 +82,7 @@ aws elbv2 modify-target-group-attributes \
   --target-group-arn $TG_ARN \
   --attributes Key=deregistration_delay.timeout_seconds,Value=60
 
-# Deregister a target - ALB keeps sending existing connections for 60s
+# Deregister a target - ALB stops new requests and lets in-flight requests finish
 aws elbv2 deregister-targets \
   --target-group-arn $TG_ARN \
   --targets Id=i-0abc123def456
@@ -93,13 +100,15 @@ aws elbv2 describe-target-health \
 ## AWS NLB Connection Draining
 
 ```bash
-# NLB uses the same attribute
+# NLB uses the same timeout attribute; optionally terminate connections at the end
 aws elbv2 modify-target-group-attributes \
   --target-group-arn $NLB_TG_ARN \
-  --attributes Key=deregistration_delay.timeout_seconds,Value=30
+  --attributes \
+    Key=deregistration_delay.timeout_seconds,Value=30 \
+    Key=deregistration_delay.connection_termination.enabled,Value=true
 ```
 
-NLB waits up to 30 seconds for TCP connections to close naturally.
+NLB stops creating new connections to the target, lets in-flight traffic on existing connections complete during the drain window, and with connection termination enabled closes those connections shortly after the timeout expires.
 
 ## GCP Backend Service Connection Draining
 
@@ -125,7 +134,7 @@ containers:
       preStop:
         exec:
           command: ["/bin/sh", "-c", "sleep 30"]
-    # Kubernetes sends SIGTERM after preStop, then waits terminationGracePeriodSeconds
+    # terminationGracePeriodSeconds starts counting down before preStop runs; SIGTERM is sent after the hook completes
 ```
 
 ```yaml
