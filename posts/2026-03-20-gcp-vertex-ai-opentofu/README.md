@@ -4,11 +4,11 @@ Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
 Tags: OpenTofu, GCP, Vertex AI, Machine Learning, MLOps, Workbench, Infrastructure as Code
 
-Description: Learn how to provision GCP Vertex AI Workbench notebooks, training jobs, model endpoints, and feature stores using OpenTofu for reproducible ML infrastructure on Google Cloud.
+Description: Learn how to provision GCP Vertex AI Workbench instances, custom training infrastructure, model endpoints, and supporting IAM, storage, and networking resources using OpenTofu for reproducible ML infrastructure on Google Cloud.
 
 ---
 
-Vertex AI is GCP's unified ML platform for training, serving, and managing ML models. OpenTofu provisions Vertex AI Workbench notebooks, custom training infrastructure, model endpoints, and the supporting IAM and networking configuration.
+Vertex AI is GCP's unified ML platform for training, serving, and managing ML models. OpenTofu provisions Vertex AI Workbench instances, custom training infrastructure, model endpoints, and the supporting IAM and networking configuration.
 
 ## Vertex AI Architecture
 
@@ -93,38 +93,48 @@ resource "google_storage_bucket" "training_data" {
 
 ```hcl
 # workbench.tf
-resource "google_notebooks_instance" "workbench" {
+resource "google_workbench_instance" "workbench" {
   name     = "${var.prefix}-workbench"
   location = "${var.region}-a"
   project  = var.project_id
 
-  machine_type = var.environment == "production" ? "n1-standard-8" : "n1-standard-4"
+  gce_setup {
+    machine_type = var.environment == "production" ? "n1-standard-8" : "n1-standard-4"
 
-  # Use Deep Learning VM image with pre-installed ML frameworks
-  vm_image {
-    project      = "deeplearning-platform-release"
-    image_family = "tf-latest-gpu"
+    # Use the current Vertex AI Workbench image family
+    vm_image {
+      project = "cloud-notebooks-managed"
+      family  = "workbench-instances"
+    }
+
+    # Attach GPU for training experiments
+    accelerator_configs {
+      type       = "NVIDIA_TESLA_T4"
+      core_count = 1
+    }
+
+    service_accounts {
+      email = google_service_account.vertex_ai.email
+    }
+
+    network_interfaces {
+      network = google_compute_network.ml.id
+      subnet  = google_compute_subnetwork.ml.id
+    }
+
+    # No public IP - the subnet must still provide Google API access
+    disable_public_ip = true
+
+    # Auto-shutdown after 1 hour of inactivity
+    metadata = {
+      idle-timeout-seconds = "3600"
+    }
   }
 
-  # Attach GPU for training experiments
-  accelerator_config {
-    type       = "NVIDIA_TESLA_T4"
-    core_count = 1
-  }
+  # Keep proxy access enabled for JupyterLab
+  disable_proxy_access = false
 
-  install_gpu_driver = true
-
-  service_account = google_service_account.vertex_ai.email
-
-  network = google_compute_network.ml.id
-  subnet  = google_compute_subnetwork.ml.id
-
-  # No public IP - access via IAP
-  no_public_ip        = true
-  no_proxy_access     = false
-
-  # Auto-shutdown after 1 hour of inactivity
-  instance_owners = var.notebook_owners
+  instance_owners = [var.notebook_owner]
 
   labels = {
     environment = var.environment
@@ -138,12 +148,10 @@ resource "google_notebooks_instance" "workbench" {
 ```hcl
 # endpoint.tf
 resource "google_vertex_ai_endpoint" "main" {
-  name         = "${var.model_name}-endpoint"
+  name         = "${var.prefix}-endpoint"
   display_name = "${var.model_name} Endpoint"
   location     = var.region
   project      = var.project_id
-
-  network = "projects/${data.google_project.main.number}/global/networks/${google_compute_network.ml.name}"
 
   labels = {
     model       = var.model_name
@@ -194,6 +202,12 @@ resource "google_project_service" "vertex_ai" {
   disable_on_destroy = false
 }
 
+resource "google_project_service" "compute" {
+  project = var.project_id
+  service = "compute.googleapis.com"
+  disable_on_destroy = false
+}
+
 resource "google_project_service" "notebooks" {
   project = var.project_id
   service = "notebooks.googleapis.com"
@@ -209,8 +223,8 @@ resource "google_project_service" "artifact_registry" {
 
 ## Best Practices
 
-- Set `no_public_ip = true` on Workbench instances and use Identity-Aware Proxy (IAP) for access - this avoids exposing notebook instances to the internet.
-- Use Vertex AI managed notebooks rather than individual Workbench instances for teams - managed notebooks auto-shutdown and provide better multi-user isolation.
+- Set `disable_public_ip = true` on Workbench instances and make sure the subnet can still reach Google APIs, for example with Private Google Access - this avoids exposing notebook instances to the internet without breaking JupyterLab access.
+- Use `google_workbench_instance` for new Vertex AI Workbench deployments - `google_notebooks_instance` is deprecated and targets older notebook resources.
 - Store training data and model artifacts in GCS with versioning enabled - this provides a history of datasets and enables reproducible training runs.
 - Use Artifact Registry rather than Container Registry for training images - Artifact Registry supports cleanup policies to prevent storage costs from accumulating with old images.
-- Enable required GCP APIs via `google_project_service` resources - Vertex AI operations fail silently if APIs are not enabled, causing confusing error messages.
+- Enable required GCP APIs via `google_project_service` resources - Workbench, Vertex AI, and Artifact Registry resources won't create successfully until the APIs are enabled.
