@@ -4,7 +4,7 @@ Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
 Tags: iptables, DNAT, Port Forwarding, NAT, Linux, Networking
 
-Description: Configure iptables DNAT rules to forward incoming connections on one port to a different host or port, enabling port forwarding and reverse proxy scenarios.
+Description: Configure iptables DNAT rules to forward incoming connections on one port to a different host or port, enabling port forwarding and traffic redirection scenarios.
 
 DNAT (Destination Network Address Translation) rewrites the destination IP or port of incoming packets, redirecting traffic to a different host. This is how port forwarding works - external port 8080 becomes internal port 80 on a different server.
 
@@ -36,11 +36,13 @@ sudo iptables -A FORWARD \
   -p tcp -d 192.168.1.100 --dport 80 \
   -m state --state NEW,ESTABLISHED,RELATED \
   -j ACCEPT
+sudo iptables -A FORWARD \
+  -p tcp -s 192.168.1.100 --sport 80 \
+  -m state --state ESTABLISHED,RELATED \
+  -j ACCEPT
 
-# Masquerade return traffic
-sudo iptables -t nat -A POSTROUTING \
-  -d 192.168.1.100 -p tcp --dport 80 \
-  -j MASQUERADE
+# No POSTROUTING MASQUERADE rule is needed for ordinary port forwarding.
+# Add SNAT or MASQUERADE only for same-LAN hairpin cases.
 ```
 
 ## Forward to Same Server, Different Port
@@ -52,8 +54,9 @@ sudo iptables -t nat -A PREROUTING \
   -p tcp --dport 80 \
   -j REDIRECT --to-port 8080
 
-# Redirect on loopback too (for local connections)
+# Redirect loopback connections too
 sudo iptables -t nat -A OUTPUT \
+  -o lo \
   -p tcp --dport 80 \
   -j REDIRECT --to-port 8080
 ```
@@ -68,7 +71,14 @@ sudo iptables -t nat -A PREROUTING \
   -j DNAT --to-destination 192.168.1.50:443
 
 # Allow the forwarding
-sudo iptables -A FORWARD -p tcp -d 192.168.1.50 --dport 443 -j ACCEPT
+sudo iptables -A FORWARD \
+  -p tcp -d 192.168.1.50 --dport 443 \
+  -m state --state NEW,ESTABLISHED,RELATED \
+  -j ACCEPT
+sudo iptables -A FORWARD \
+  -p tcp -s 192.168.1.50 --sport 443 \
+  -m state --state ESTABLISHED,RELATED \
+  -j ACCEPT
 ```
 
 ## Forward a UDP Port
@@ -79,7 +89,14 @@ sudo iptables -t nat -A PREROUTING \
   -p udp --dport 53 \
   -j DNAT --to-destination 192.168.1.10:53
 
-sudo iptables -A FORWARD -p udp -d 192.168.1.10 --dport 53 -j ACCEPT
+sudo iptables -A FORWARD \
+  -p udp -d 192.168.1.10 --dport 53 \
+  -m state --state NEW,ESTABLISHED,RELATED \
+  -j ACCEPT
+sudo iptables -A FORWARD \
+  -p udp -s 192.168.1.10 --sport 53 \
+  -m state --state ESTABLISHED,RELATED \
+  -j ACCEPT
 ```
 
 ## Verify DNAT Rules
@@ -93,7 +110,7 @@ sudo iptables -t nat -L PREROUTING -n -v --line-numbers
 # num  target  prot  source    destination     extra
 # 1    DNAT    tcp   0.0.0.0/0 0.0.0.0/0   tcp dpt:8080 to:192.168.1.100:80
 
-# Test the forwarding
+# From another host, test the forwarding
 curl http://your-server:8080
 # Should reach 192.168.1.100:80
 ```
@@ -101,8 +118,8 @@ curl http://your-server:8080
 ## Save DNAT Rules
 
 ```bash
-# Save NAT rules along with filter rules
-sudo iptables-save > /etc/iptables/rules.v4
+# Example: save the current ruleset to /etc/iptables/rules.v4
+sudo iptables-save -f /etc/iptables/rules.v4
 
 # The saved file will include:
 # *nat
