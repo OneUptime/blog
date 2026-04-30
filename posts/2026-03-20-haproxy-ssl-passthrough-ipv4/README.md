@@ -43,9 +43,7 @@ frontend https_passthrough
 backend https_backends
     balance roundrobin
 
-    # TCP health check (cannot do HTTP check without decrypting)
-    option tcp-check
-
+    # Basic TCP connect health checks to port 443
     server web1 192.168.1.10:443 check
     server web2 192.168.1.11:443 check
     server web3 192.168.1.12:443 check
@@ -62,11 +60,11 @@ frontend https_passthrough
 
     # Capture SNI hostname from TLS ClientHello (no decryption needed)
     tcp-request inspect-delay 5s
-    tcp-request content accept if { req_ssl_hello_type 1 }
+    tcp-request content accept if { req.ssl_hello_type 1 }
 
     # Route based on SNI hostname
-    use_backend api_tls   if { req_ssl_sni -i api.example.com }
-    use_backend app_tls   if { req_ssl_sni -i app.example.com }
+    use_backend api_tls   if { req.ssl_sni -i api.example.com }
+    use_backend app_tls   if { req.ssl_sni -i app.example.com }
     default_backend web_tls
 
 backend api_tls
@@ -90,7 +88,7 @@ backend web_tls
 
 ## Mixing Passthrough and Termination
 
-Route some domains through SSL termination and others through passthrough:
+Route some domains through SSL termination and others through passthrough by handing terminated traffic to a local TLS frontend:
 
 ```haproxy
 frontend https_mixed
@@ -98,18 +96,33 @@ frontend https_mixed
     mode tcp
 
     tcp-request inspect-delay 5s
-    tcp-request content accept if { req_ssl_hello_type 1 }
+    tcp-request content accept if { req.ssl_hello_type 1 }
 
     # Sensitive compliance service: passthrough (end-to-end TLS)
-    use_backend compliance_passthrough if { req_ssl_sni -i pci.example.com }
+    use_backend compliance_passthrough if { req.ssl_sni -i pci.example.com }
 
-    # Standard services: terminate TLS at HAProxy
-    default_backend ssl_termination_frontend  # Trick: forward to another frontend
+    # Standard services: hand off to a local TLS-terminating frontend
+    default_backend tls_termination_handoff
 
 backend compliance_passthrough
     mode tcp
     server pci1 192.168.5.10:443 check
     server pci2 192.168.5.11:443 check
+
+backend tls_termination_handoff
+    mode tcp
+    server local_terminator 127.0.0.1:8443 send-proxy-v2
+
+frontend https_terminated
+    bind 127.0.0.1:8443 accept-proxy ssl crt /etc/haproxy/certs/site.pem
+    mode http
+    default_backend https_terminated_backends
+
+backend https_terminated_backends
+    mode http
+    balance roundrobin
+    server app1 192.168.10.10:80 check
+    server app2 192.168.10.11:80 check
 ```
 
 ## Limitations of SSL Passthrough
@@ -117,9 +130,9 @@ backend compliance_passthrough
 | Feature | SSL Termination | SSL Passthrough |
 |---|---|---|
 | HTTP header insertion | Yes | No |
-| Layer 7 ACLs | Yes | No (SNI only) |
+| Layer 7 ACLs | Yes | No HTTP ACLs (TLS metadata only) |
 | Cookie-based persistence | Yes | No |
-| HTTP health checks | Yes | No (TCP only) |
+| HTTP health checks | Yes | Limited (requires separate TLS-aware checks) |
 | Session logging details | Full | TCP only |
 | End-to-end encryption | No | Yes |
 | Backend certificate management | Centralized | Per-backend |
@@ -142,4 +155,4 @@ openssl s_client -connect 203.0.113.10:443 -servername app.example.com 2>/dev/nu
 
 ## Conclusion
 
-SSL passthrough in HAProxy uses `mode tcp` and forwards encrypted connections without decryption. For SNI-based routing, use `tcp-request inspect-delay` with `req_ssl_sni` ACLs to route different domains to different backends without ever seeing the plaintext. Choose passthrough when compliance requirements mandate end-to-end encryption between client and server, accepting the trade-off of losing Layer 7 features.
+SSL passthrough in HAProxy uses `mode tcp` and forwards encrypted connections without decryption. For SNI-based routing, use `tcp-request inspect-delay` with `req.ssl_sni` ACLs to route different domains to different backends without ever seeing the plaintext. Choose passthrough when compliance requirements mandate end-to-end encryption between client and server, accepting the trade-off of losing Layer 7 features.
