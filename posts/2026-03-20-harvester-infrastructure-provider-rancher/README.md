@@ -13,9 +13,10 @@ When Harvester is registered as an infrastructure provider in Rancher, it enable
 ## Prerequisites
 
 - Harvester cluster imported into Rancher
-- Rancher 2.7.0 or higher
+- Rancher 2.7.2 or higher, with an RKE2 version supported by your Rancher release
 - The Harvester node driver enabled in Rancher
-- VM images available in Harvester
+- Cloud images available in Harvester
+- A VLAN network available for guest VMs, with DHCP or Harvester Managed DHCP configured
 - Cloud credentials configured in Rancher
 
 ## Step 1: Verify the Harvester Node Driver
@@ -23,7 +24,7 @@ When Harvester is registered as an infrastructure provider in Rancher, it enable
 ```bash
 # Check if the Harvester node driver is active in Rancher
 
-kubectl get nodedriver harvester -n cattle-system
+kubectl get nodedrivers.management.cattle.io harvester
 
 # Via Rancher API
 curl -sk -H "Authorization: Bearer $RANCHER_TOKEN" \
@@ -61,52 +62,68 @@ Harvester Cluster: local-harvester  (select from dropdown)
 
 RANCHER_URL="https://rancher.company.com"
 RANCHER_TOKEN="token-xxxxx:xxxxxx"
+HARVESTER_KUBECONFIG_FILE="local-harvester.kubeconfig"
 
-# First, get the Harvester cluster ID
-HARVESTER_CLUSTER_ID=$(curl -sk \
+# Download the imported Harvester cluster kubeconfig from
+# Virtualization Management -> local-harvester -> ⋮ -> Download KubeConfig
+
+# Get the imported Harvester cluster ID from Rancher
+HARVESTER_CLUSTER_ID=$(
+  curl -sk \
     -H "Authorization: Bearer ${RANCHER_TOKEN}" \
     "${RANCHER_URL}/v3/clusters" | \
-    jq -r '.data[] | select(.labels["provider.cattle.io"] == "harvester") | .id')
+    jq -r '.data[] | select(.name == "local-harvester") | .id'
+)
 
 echo "Harvester cluster ID: ${HARVESTER_CLUSTER_ID}"
 
-# Create the cloud credential
-curl -sk -X POST \
+# Create the cloud credential and capture the generated secret ID
+CLOUD_CREDENTIAL_ID=$(
+  jq -n \
+    --arg name "harvester-prod-creds" \
+    --arg clusterId "${HARVESTER_CLUSTER_ID}" \
+    --rawfile kubeconfigContent "${HARVESTER_KUBECONFIG_FILE}" \
+    '{
+      type: "cloudCredential",
+      name: $name,
+      harvesterCredentialConfig: {
+        clusterId: $clusterId,
+        clusterType: "imported",
+        kubeconfigContent: $kubeconfigContent
+      }
+    }' | \
+  curl -sk -X POST \
     -H "Authorization: Bearer ${RANCHER_TOKEN}" \
     -H "Content-Type: application/json" \
     "${RANCHER_URL}/v3/cloudcredentials" \
-    -d "{
-        \"type\": \"cloudCredential\",
-        \"name\": \"harvester-prod-creds\",
-        \"harvesterCredentialConfig\": {
-            \"clusterId\": \"${HARVESTER_CLUSTER_ID}\",
-            \"clusterType\": \"imported\"
-        }
-    }"
+    --data-binary @- | \
+  jq -r '.id'
+)
+
+echo "Cloud credential secret ID: ${CLOUD_CREDENTIAL_ID}"
 ```
 
-## Step 3: Configure a Node Template
+## Step 3: Configure a Harvester Machine Config
 
-Node templates define the VM specifications that Rancher will use when provisioning nodes:
+Machine configs define the VM specifications that Rancher will use when provisioning nodes:
 
 ### Via Rancher UI
 
-1. Go to **Cluster Management** → **Node Templates**
+1. Go to **Cluster Management** → **Clusters**
 2. Click **Create**
-3. Select **Harvester**
-4. Configure the VM specification:
+3. Switch to **RKE2/K3s** and select **Harvester**
+4. Under the machine pool configuration, set:
 
 ```text
-Template Name:  ubuntu-22-04-large
-Cloud Creds:    harvester-prod-creds
-Cluster:        local-harvester
-Namespace:      default
-Image Name:     ubuntu-22-04-lts
-Network:        default/vlan-100
-CPU Count:      8
-Memory:         16 GB
-Disk Size:      100 GB
-SSH User:       ubuntu
+Machine Pool Name: ubuntu-22-04-large
+Cloud Credential:  harvester-prod-creds
+Namespace:         default
+Image:             ubuntu-22-04-lts
+Network Name:      default/vlan-100
+CPU Count:         8
+Memory Size:       16 GiB
+Disk Size:         100 GiB
+SSH User:          ubuntu
 ```
 
 ### Via kubectl (RKE2 Machine Config)
@@ -120,36 +137,56 @@ kind: HarvesterConfig
 metadata:
   name: ubuntu-large-node
   namespace: fleet-default
-spec:
-  # Harvester cluster name (matches imported cluster in Rancher)
-  clusterName: local-harvester
-  # Harvester namespace where VMs will be created
-  namespace: default
-  # Image for the VM
-  imageName: default/ubuntu-22-04-lts
-  # Network for the VM
-  networkName: default/vlan-100
-  # VM size
-  cpuCount: "8"
-  memorySize: "16"
-  # Root disk
-  diskSize: "100"
-  diskStorageClassName: longhorn
-  # SSH user for Rancher to access during bootstrap
-  sshUser: ubuntu
-  # Cloud-init for node preparation
-  userData: |
-    #cloud-config
-    package_update: true
-    packages:
-      - qemu-guest-agent
-      - curl
-      - open-iscsi
-    runcmd:
-      - systemctl enable --now qemu-guest-agent
-      - systemctl enable --now iscsid
-      # Required for Longhorn in guest cluster
-      - modprobe iscsi_tcp
+# Harvester namespace where VMs will be created
+vmNamespace: default
+# VM size
+cpuCount: "8"
+memorySize: "16"
+# Root disk and source image
+diskInfo: |
+  {
+    "disks": [
+      {
+        "imageName": "default/ubuntu-22-04-lts",
+        "size": 100,
+        "bootOrder": 1
+      }
+    ]
+  }
+# Network for the VM
+networkInfo: |
+  {
+    "interfaces": [
+      {
+        "networkName": "default/vlan-100"
+      }
+    ]
+  }
+# SSH user for Rancher to access during bootstrap
+sshUser: ubuntu
+# Cloud-init for node preparation
+userData: |
+  #cloud-config
+  package_update: true
+  packages:
+    - qemu-guest-agent
+    - iptables
+    - curl
+    - open-iscsi
+  runcmd:
+    - - systemctl
+      - enable
+      - '--now'
+      - qemu-guest-agent.service
+    - - systemctl
+      - enable
+      - '--now'
+      - iscsid.service
+    # Required for Longhorn in a guest cluster
+    - - modprobe
+      - iscsi_tcp
+    - - sh
+      - -c
       - echo 'iscsi_tcp' >> /etc/modules-load.d/iscsi.conf
 ```
 
@@ -170,6 +207,10 @@ metadata:
     environment: production
     infrastructure: harvester
 spec:
+  # Replace with the ID returned when the Harvester cloud credential is created
+  cloudCredentialSecretName: cattle-global-data:cc-xxxxx
+  # Use an RKE2 version supported by your Rancher release
+  kubernetesVersion: "v1.27.16+rke2r1"
   rkeConfig:
     machinePools:
       # 3-node control plane
@@ -180,11 +221,11 @@ spec:
         workerRole: false
         machineConfigRef:
           kind: HarvesterConfig
-          name: ubuntu-small-control-plane
-      # Auto-scaling worker pool
+          name: ubuntu-large-node
+      # Worker pool prepared for Cluster API autoscaler annotations
       - name: workers
         quantity: 3
-        # Enable auto-scaling
+        # Used if Cluster API autoscaler is installed separately
         machineDeploymentAnnotations:
           cluster.x-k8s.io/cluster-api-autoscaler-node-group-min-size: "3"
           cluster.x-k8s.io/cluster-api-autoscaler-node-group-max-size: "10"
@@ -194,33 +235,46 @@ spec:
         machineConfigRef:
           kind: HarvesterConfig
           name: ubuntu-large-node
-    # Kubernetes component configuration
     machineGlobalConfig:
-      # Disable default ingress
-      disable-cloud-provider: false
+      cni: canal
+    machineSelectorConfig:
+      - config:
+          cloud-provider-name: harvester
+          cloud-provider-config: |
+            # Paste the contents of app-cluster-prod-harvester-kubeconfig here
+    chartValues:
+      harvester-cloud-provider:
+        clusterName: app-cluster-prod
+        cloudConfigPath: /var/lib/rancher/rke2/etc/config-files/cloud-provider-config
     etcd:
       # etcd snapshot configuration
       snapshotRetention: 5
       snapshotScheduleCron: "0 */6 * * *"
-  kubernetesVersion: "v1.27.9+rke2r1"
-  networkConfig:
-    plugin: canal
-  # Cloud provider configuration for Harvester
-  cloudProviderConfig: |
-    [Global]
-    [LoadBalancer]
-    lb-namespace=kube-system
-    lb-image-version=v0.3.0
 ```
 
 ```bash
+# Generate the Harvester cloud provider kubeconfig used in machineSelectorConfig
+RANCHER_SERVER_URL="https://rancher.company.com"
+RANCHER_ACCESS_KEY="token-xxxxx"
+RANCHER_SECRET_KEY="xxxxxx"
+HARVESTER_CLUSTER_ID="c-m-abcde"
+CLUSTER_NAME="app-cluster-prod"
+
+curl -k -X POST "${RANCHER_SERVER_URL}/k8s/clusters/${HARVESTER_CLUSTER_ID}/v1/harvester/kubeconfig" \
+    -H "Content-Type: application/json" \
+    -u "${RANCHER_ACCESS_KEY}:${RANCHER_SECRET_KEY}" \
+    -d "{\"clusterRoleName\":\"harvesterhci.io:cloudprovider\",\"namespace\":\"default\",\"serviceAccountName\":\"${CLUSTER_NAME}\"}" | \
+    xargs | sed 's/\\n/\n/g' > app-cluster-prod-harvester-kubeconfig
+
+# Paste the contents of app-cluster-prod-harvester-kubeconfig into the
+# cloud-provider-config block above, then apply the manifests.
 kubectl apply -f harvester-machine-config.yaml
 kubectl apply -f app-cluster-on-harvester.yaml
 
 # Monitor provisioning
-kubectl get cluster app-cluster-prod -n fleet-default -w
+kubectl get clusters.provisioning.cattle.io app-cluster-prod -n fleet-default -w
 
-# Watch the VMs being created in Harvester
+# In the Harvester cluster context, watch the VMs being created
 kubectl get vmi -n default | grep app-cluster
 ```
 
@@ -228,10 +282,10 @@ kubectl get vmi -n default | grep app-cluster
 
 ```bash
 # Check the machines (VMs) created by Rancher
-kubectl get machines -n fleet-default \
+kubectl get machines.cluster.x-k8s.io -n fleet-default \
     -l cluster.x-k8s.io/cluster-name=app-cluster-prod
 
-# In the Harvester cluster, see the VMs
+# In the Harvester cluster context, see the VMs
 kubectl get vmi -n default | grep app-cluster
 
 # Access the new cluster
