@@ -11,7 +11,7 @@ Description: Use Go's net/netip package (introduced in Go 1.18) for efficient, i
 Go 1.18 introduced the `net/netip` package as a more efficient alternative to `net.IP`. The new types are:
 - **Value types** (not pointers): Copy-by-value, comparable with `==`
 - **Immutable**: Thread-safe without synchronization
-- **Memory efficient**: `netip.Addr` is 24 bytes vs `net.IP` slice
+- **Memory efficient**: On 64-bit platforms, `netip.Addr` is 24 bytes, while `net.IP` has a 24-byte slice header plus separate 4- or 16-byte backing storage
 - **Built-in IPv6 zone support**: Handles `fe80::1%eth0` natively
 
 ## Basic netip.Addr Operations
@@ -72,7 +72,7 @@ func main() {
 
     fmt.Println("Address:", addr)           // fe80::1%eth0
     fmt.Println("Zone:", addr.Zone())       // eth0
-    fmt.Println("Without zone:", addr.WithoutZone())  // fe80::1
+    fmt.Println("Without zone:", addr.WithZone(""))   // fe80::1
     fmt.Println("Is link-local:", addr.IsLinkLocalUnicast())  // true
 }
 ```
@@ -113,6 +113,9 @@ func main() {
 }
 
 func nextSubnet(p netip.Prefix) netip.Prefix {
+    if !p.IsValid() {
+        return netip.Prefix{}
+    }
     // Calculate the address after this subnet ends
     last := lastAddr(p)
     next := last.Next()
@@ -124,8 +127,11 @@ func nextSubnet(p netip.Prefix) netip.Prefix {
 }
 
 func lastAddr(p netip.Prefix) netip.Addr {
+    if !p.IsValid() {
+        return netip.Addr{}
+    }
     // Calculate the last address in the prefix
-    addr := p.Addr()
+    addr := p.Masked().Addr()
     bits := p.Bits()
     // Host bits are all 1s
     a := addr.As16()
@@ -145,6 +151,7 @@ package main
 
 import (
     "fmt"
+    "net"
     "net/netip"
 )
 
@@ -184,22 +191,14 @@ import (
 // Convert net.IP to netip.Addr
 func netIPToAddr(ip net.IP) (netip.Addr, bool) {
     if ip4 := ip.To4(); ip4 != nil {
-        return netip.AddrFrom4([4]byte(ip4)), true
+        return netip.AddrFromSlice(ip4)
     }
-    if ip16 := ip.To16(); ip16 != nil {
-        return netip.AddrFrom16([16]byte(ip16)), true
-    }
-    return netip.Addr{}, false
+    return netip.AddrFromSlice(ip.To16())
 }
 
 // Convert netip.Addr to net.IP
 func addrToNetIP(addr netip.Addr) net.IP {
-    if addr.Is4() {
-        b := addr.As4()
-        return net.IP(b[:])
-    }
-    b := addr.As16()
-    return net.IP(b[:])
+    return net.IP(addr.AsSlice())
 }
 ```
 
