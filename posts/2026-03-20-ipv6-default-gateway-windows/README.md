@@ -26,10 +26,10 @@ The IPv6 default gateway on Windows is configured either automatically via Route
 
 ```cmd
 :: First, set a static IPv6 address
-netsh interface ipv6 set address "Ethernet" 2001:db8::2/64
+netsh interface ipv6 set address interface="Ethernet" address=2001:db8::2/64
 
 :: Set the default gateway
-netsh interface ipv6 add route ::/0 "Ethernet" nexthop=2001:db8::1
+netsh interface ipv6 add route prefix=::/0 interface="Ethernet" nexthop=2001:db8::1
 
 :: Verify the default route
 netsh interface ipv6 show route | findstr "::/0"
@@ -43,12 +43,13 @@ netsh interface ipv6 show route | findstr "::/0"
 $ifIndex = (Get-NetAdapter -Name "Ethernet").ifIndex
 
 # Remove any existing default route
-Get-NetRoute -DestinationPrefix "::/0" -AddressFamily IPv6 -ErrorAction SilentlyContinue |
+Get-NetRoute -DestinationPrefix "::/0" -AddressFamily IPv6 -InterfaceIndex $ifIndex -ErrorAction SilentlyContinue |
   Remove-NetRoute -Confirm:$false
 
 # Add the new default gateway
 New-NetRoute -DestinationPrefix "::/0" `
              -InterfaceIndex $ifIndex `
+             -AddressFamily IPv6 `
              -NextHop "2001:db8::1" `
              -RouteMetric 256
 
@@ -71,20 +72,24 @@ route print -6 | findstr "::/0"
 # Verify reachability of the gateway
 Test-NetConnection -ComputerName "2001:db8::1" -InformationLevel Detailed
 
-# Ping through the gateway
+# Trace the route to an IPv6-capable host
 Test-NetConnection -ComputerName "ipv6.google.com" -TraceRoute
 ```
 
-## Checking if Gateway Was Set by DHCP or RA
+## Checking if Gateway Was Learned Automatically or Set Manually
 
 ```powershell
-# Check how the default route was set
-Get-NetRoute -DestinationPrefix "::/0" -AddressFamily IPv6 |
+# Show the default IPv6 route on the interface
+Get-NetRoute -DestinationPrefix "::/0" -AddressFamily IPv6 -InterfaceAlias "Ethernet" |
   Select-Object Protocol, NextHop, InterfaceAlias
 
-# Protocol values:
-# RouterDiscovery = set via Router Advertisement (automatic)
-# NetMgmt = set via user configuration (manual)
+# Check whether the interface can learn routes from Router Advertisement
+Get-NetIPInterface -InterfaceAlias "Ethernet" -AddressFamily IPv6 |
+  Select-Object InterfaceAlias, RouterDiscovery
+
+# Notes:
+# IPv6 default routers are learned from Router Advertisement, not DHCPv6.
+# A manually added route appears as a static route, for example Protocol = NetMgmt.
 ```
 
 ## Resetting IPv6 Network Configuration
@@ -92,13 +97,11 @@ Get-NetRoute -DestinationPrefix "::/0" -AddressFamily IPv6 |
 If the gateway is misconfigured and you want to start fresh:
 
 ```cmd
-:: Reset all IPv6 settings
+:: Reset all IPv6 settings. Defaults are restored after a restart.
 netsh interface ipv6 reset
-
-:: Restart the network adapter to re-learn settings from RA
-netsh interface set interface "Ethernet" disabled
-netsh interface set interface "Ethernet" enabled
 ```
+
+Restart Windows after the reset so the default IPv6 settings are restored and the adapter can relearn Router Advertisements.
 
 ## Common Issues
 
@@ -106,9 +109,9 @@ netsh interface set interface "Ethernet" enabled
 |-------|-------|-----|
 | No default route | RA not received or manual config missing | Check router RA config or add route manually |
 | Wrong metric | Multiple gateways with same metric | Set explicit metric with RouteMetric |
-| Gateway unreachable | Firewall or wrong subnet | Verify gateway is on same /64 as client |
-| IPv6 disabled | Feature may be disabled | `netsh interface ipv6 set global disabled=no` |
+| Gateway unreachable | Firewall or wrong on-link configuration | Verify the gateway is on-link for the client interface |
+| IPv6 disabled | IPv6 may be unbound or disabled system-wide | Re-enable the IPv6 binding, or set `DisabledComponents` to `0` and restart Windows |
 
 ## Summary
 
-On Windows, set the IPv6 default gateway via the GUI, `netsh interface ipv6 add route ::/0`, or `New-NetRoute`. Verify with `route print -6` and test connectivity with `Test-NetConnection`. In auto-configured environments, the gateway is learned from Router Advertisement with protocol type `RouterDiscovery`.
+On Windows, set the IPv6 default gateway via the GUI, `netsh interface ipv6 add route ::/0`, or `New-NetRoute`. Verify with `route print -6` and test connectivity with `Test-NetConnection`. In auto-configured environments, the gateway is learned from Router Advertisement.
