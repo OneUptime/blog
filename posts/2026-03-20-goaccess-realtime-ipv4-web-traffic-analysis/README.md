@@ -27,10 +27,8 @@ brew install goaccess
 ## Analyze Nginx Log in Terminal
 
 ```bash
-# Interactive terminal dashboard (Nginx combined format)
-goaccess /var/log/nginx/access.log \
-  --log-format=COMBINED \
-  -c   # Select log format interactively on first run
+# Interactive terminal dashboard (select the log format on first run)
+goaccess /var/log/nginx/access.log -c
 ```
 
 ## Non-Interactive with Explicit Format
@@ -50,7 +48,7 @@ goaccess /var/log/nginx/access.log \
   --html-prefs='{"layout":"horizontal"}'
 
 # Multiple log files (rotated logs)
-cat /var/log/nginx/access.log* | goaccess \
+zcat -f /var/log/nginx/access.log* | goaccess \
   --log-format=COMBINED \
   -o /var/www/html/report.html
 ```
@@ -64,10 +62,9 @@ goaccess /var/log/nginx/access.log \
   --real-time-html \
   -o /var/www/html/live-report.html \
   --daemonize \
-  --ws-url=ws://your-server.com:7890 \
-  --port=7890 \
-  --persist \
-  --restore
+  --ws-url=wss://analytics.example.com/ws \
+  --addr=127.0.0.1 \
+  --port=7890
 ```
 
 Nginx config to expose the report:
@@ -76,6 +73,8 @@ Nginx config to expose the report:
 server {
     listen 443 ssl;
     server_name analytics.example.com;
+    ssl_certificate /etc/letsencrypt/live/analytics.example.com/fullchain.pem;
+    ssl_certificate_key /etc/letsencrypt/live/analytics.example.com/privkey.pem;
 
     location / {
         root /var/www/html;
@@ -91,12 +90,12 @@ server {
 }
 ```
 
-## Custom Log Format (with Real IP Header)
+## Custom Log Format (with X-Forwarded-For Logged)
 
 ```bash
-# If using X-Forwarded-For or X-Real-IP
+# If your custom log writes X-Forwarded-For as the final quoted field
 goaccess /var/log/nginx/access.log \
-  --log-format='%^ - %^ [%d:%t %^] "%r" %s %b "%R" "%u" %h' \
+  --log-format='%^ - %^ [%d:%t %^] "%r" %s %b "%R" "%u" "~h{, }"' \
   --date-format='%d/%b/%Y' \
   --time-format='%H:%M:%S'
 ```
@@ -104,16 +103,16 @@ goaccess /var/log/nginx/access.log \
 ## Useful GoAccess Panels
 
 ```text
-Visitors     - Unique IPv4 addresses per day
-Requests     - Most requested URLs
-Static Files - .css, .js, .png requests
-404s         - Not found URLs
-Hosts        - Full IPv4 address breakdown with OS/browser
-Status Codes - 2xx/3xx/4xx/5xx distribution
-Bandwidth    - Data transferred per IP
+Visitors      - Hits, unique visitors, and cumulative bandwidth per date
+Requests      - Most requested non-static URLs
+Static Files  - Frequently requested static assets such as .css, .js, and .png
+404s          - URLs returning 404 responses
+Hosts         - Detailed host/IP breakdown; with -a you can inspect user agents per host
+Status Codes  - HTTP status code distribution
+General Stats - Overall totals, valid/invalid requests, and bandwidth consumption
 ```
 
-## Cron Job for Daily HTML Reports
+## Cron Job for Hourly HTML Reports
 
 ```bash
 # Generate report every hour
@@ -125,4 +124,4 @@ Bandwidth    - Data transferred per IP
 
 ## Conclusion
 
-GoAccess provides instant IPv4 web traffic analytics with zero infrastructure - just a binary and your log files. Use `--real-time-html` with WebSocket for a live browser dashboard, static HTML generation for periodic reports, and `cat access.log*` to include rotated logs. The **Hosts** panel gives a complete breakdown of every IPv4 address accessing your server.
+GoAccess provides instant IPv4 web traffic analytics with zero infrastructure - just a binary and your log files. Use `--real-time-html` with WebSocket for a live browser dashboard, static HTML generation for periodic reports, and `zcat -f access.log*` to include rotated logs. The **Hosts** panel gives a detailed host/IP breakdown, and `-a` lets you inspect user agents per host.
