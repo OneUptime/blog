@@ -19,6 +19,7 @@ Fluent Bit is a lightweight log collector and forwarder commonly deployed as a D
     Flush         5
     Daemon        Off
     Log_Level     info
+    Parsers_File  /etc/fluent-bit/parsers.conf
 
 # Syslog input bound to all IPv6 interfaces
 
@@ -27,6 +28,7 @@ Fluent Bit is a lightweight log collector and forwarder commonly deployed as a D
     Mode          tcp
     Listen        ::
     Port          5140
+    Parser        syslog-rfc3164
     Tag           syslog
 
 # HTTP input on IPv6 (for push-based log shipping)
@@ -83,9 +85,6 @@ function classify_ip(tag, timestamp, record)
     -- IPv6 addresses contain colons
     if string.find(ip, ":") then
         record["ip_version"] = "ipv6"
-        -- Extract first 32 bits (rough /32 prefix)
-        local prefix = string.match(ip, "^([^:]+:[^:]+):")
-        record["ipv6_prefix"] = prefix
     else
         record["ip_version"] = "ipv4"
     end
@@ -101,8 +100,8 @@ end
     Name            es
     Match           nginx.*
     # Elasticsearch on IPv6
-    Host            2001:db8::10
-    Port            9200
+    Host            ${ES_HOST}
+    Port            ${ES_PORT}
     Index           nginx-logs
     HTTP_User       elastic
     HTTP_Passwd     changeme
@@ -149,6 +148,7 @@ spec:
       containers:
         - name: fluent-bit
           image: fluent/fluent-bit:3.0
+          args: ["/fluent-bit/bin/fluent-bit", "-c", "/etc/fluent-bit/fluent-bit.conf"]
           env:
             # Pass IPv6 ES endpoint via environment
             - name: ES_HOST
@@ -159,7 +159,7 @@ spec:
             - name: varlog
               mountPath: /var/log
             - name: config
-              mountPath: /fluent-bit/etc/
+              mountPath: /etc/fluent-bit/
       volumes:
         - name: varlog
           hostPath:
@@ -171,4 +171,4 @@ spec:
 
 ## Conclusion
 
-Fluent Bit supports IPv6 by binding input plugins to `::` (all IPv6 interfaces) and specifying IPv6 addresses in output plugin `Host` configuration. Lua scripts provide flexible IPv6 field classification, enabling routing decisions based on address type or prefix. When deploying as a Kubernetes DaemonSet in dual-stack clusters, Fluent Bit pods automatically receive IPv6 addresses and can connect to IPv6-addressed log storage backends without additional configuration.
+Fluent Bit supports IPv6 by binding input plugins to `::` (all IPv6 interfaces) and specifying IPv6 addresses in output plugin `Host` configuration. Lua scripts provide flexible IPv6 field classification, enabling routing decisions based on address type. When deploying as a Kubernetes DaemonSet in a properly configured dual-stack cluster, Fluent Bit pods can receive IPv6 addresses and connect to IPv6-addressed log storage backends without additional Fluent Bit-specific configuration.
