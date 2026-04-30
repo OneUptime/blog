@@ -64,13 +64,15 @@ def get_rate_limit_key(client_ip: str) -> str:
     """Return rate limit key, grouping /64 subnets for IPv6."""
     try:
         addr = ipaddress.ip_address(client_ip)
+        if isinstance(addr, ipaddress.IPv6Address) and addr.ipv4_mapped:
+            return f"ratelimit:ipv4:{addr.ipv4_mapped}"
         if isinstance(addr, ipaddress.IPv6Address):
             # Group entire /64 subnet under one rate limit key
             # This prevents bypassing rate limits by using different addresses in same /64
-            network = ipaddress.ip_network(f"{client_ip}/64", strict=False)
-            return f"ratelimit:ipv6:{network.network_address}"
+            network = ipaddress.ip_network(f"{addr}/64", strict=False)
+            return f"ratelimit:ipv6:{network}"
         else:
-            return f"ratelimit:ipv4:{client_ip}"
+            return f"ratelimit:ipv4:{addr}"
     except ValueError:
         return f"ratelimit:unknown:{client_ip}"
 
@@ -87,12 +89,17 @@ def check_rate_limit(client_ip: str, max_requests: int = 100, window: int = 60) 
 ## Testing
 
 ```bash
-# Test with IPv6 client address
-curl -6 -X POST https://[2001:db8::1]:443/auth/login   -H "Content-Type: application/json"   -d '{"username": "test", "password": "test"}'
+# Test an IPv6 endpoint directly
+curl -g -6 -X POST "https://[2001:db8::1]:443/auth/login" \
+  -H "Content-Type: application/json" \
+  -d '{"username": "test", "password": "test"}'
 
-# Simulate multiple requests to test rate limiting
+# Simulate multiple requests to test rate limiting over IPv6
 for i in $(seq 1 20); do
-  curl -6 -s -o /dev/null -w "%{http_code}\n"     -X POST https://[::1]:443/auth/login     -H "Content-Type: application/json"     -d '{"username": "test", "password": "wrong"}'
+  curl -g -6 -s -o /dev/null -w "%{http_code}\n" \
+    -X POST "https://[::1]:443/auth/login" \
+    -H "Content-Type: application/json" \
+    -d '{"username": "test", "password": "wrong"}'
 done
 ```
 
