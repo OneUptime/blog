@@ -6,7 +6,7 @@ Tags: WireGuard, IPv4, NAT, iptables, Linux, Networking
 
 Description: Enable IPv4 packet forwarding and configure NAT masquerading on Linux so WireGuard VPN clients can access the internet through the server.
 
-For a WireGuard server to route traffic for its clients, two things must be in place: IP forwarding (so the kernel passes packets between interfaces) and NAT (so responses can find their way back to the correct client).
+For a WireGuard server to provide internet access to its clients, two things must be in place: IP forwarding (so the kernel passes packets between interfaces) and NAT (so responses can find their way back to the correct client).
 
 ## Step 1: Enable IPv4 Forwarding
 
@@ -33,7 +33,7 @@ NAT masquerading rewrites the source IP of packets leaving the server's internet
 
 ```bash
 # Identify the internet-facing interface
-ip route get 8.8.8.8 | awk '{print $5; exit}'
+ip route get 8.8.8.8 | awk '{for (i = 1; i <= NF; i++) if ($i == "dev") { print $(i+1); exit }}'
 # Output example: eth0
 
 # Allow forwarding from the WireGuard interface
@@ -46,7 +46,7 @@ sudo iptables -t nat -A POSTROUTING -s 10.0.0.0/24 -o eth0 -j MASQUERADE
 
 ## Step 3: Integrate NAT into the WireGuard Config
 
-Rather than running iptables commands manually, embed them in the `PostUp` and `PostDown` hooks:
+Rather than running iptables commands manually, embed them in the `wg-quick` `PostUp` and `PostDown` hooks:
 
 ```ini
 # /etc/wireguard/wg0.conf
@@ -63,7 +63,7 @@ PostUp = iptables -A FORWARD -i %i -j ACCEPT; iptables -A FORWARD -o %i -j ACCEP
 PostDown = iptables -D FORWARD -i %i -j ACCEPT; iptables -D FORWARD -o %i -j ACCEPT; iptables -t nat -D POSTROUTING -s 10.0.0.0/24 -o eth0 -j MASQUERADE
 ```
 
-`%i` is a WireGuard macro that expands to the interface name (`wg0`).
+`%i` is a `wg-quick` substitution that expands to the interface name (`wg0`).
 
 ## Step 4: Persist iptables Rules
 
@@ -72,8 +72,8 @@ PostDown = iptables -D FORWARD -i %i -j ACCEPT; iptables -D FORWARD -o %i -j ACC
 sudo apt install iptables-persistent -y
 sudo netfilter-persistent save
 
-# On RHEL/CentOS
-sudo service iptables save
+# On RHEL/CentOS systems using iptables-services
+sudo iptables-save | sudo tee /etc/sysconfig/iptables > /dev/null
 ```
 
 ## Verifying NAT is Working
@@ -82,8 +82,8 @@ sudo service iptables save
 # From a connected VPN client, access the internet
 ping 8.8.8.8
 
-# On the server, watch NAT translations in real time
-sudo conntrack -E -p udp
+# On the server, watch connection tracking events in real time
+sudo conntrack -E
 ```
 
 ## Using nftables Instead of iptables
@@ -91,10 +91,14 @@ sudo conntrack -E -p udp
 On modern systems using nftables:
 
 ```bash
-# Add a masquerade rule using nft
-sudo nft add table ip nat
-sudo nft add chain ip nat postrouting { type nat hook postrouting priority 100 \; }
-sudo nft add rule ip nat postrouting ip saddr 10.0.0.0/24 oif eth0 masquerade
+# Add equivalent forwarding and masquerade rules using nft
+sudo nft add table inet wgfilter
+sudo nft 'add chain inet wgfilter forward { type filter hook forward priority 0; }'
+sudo nft add rule inet wgfilter forward iifname "wg0" accept
+sudo nft add rule inet wgfilter forward oifname "wg0" accept
+sudo nft add table ip wgnat
+sudo nft 'add chain ip wgnat postrouting { type nat hook postrouting priority 100; }'
+sudo nft add rule ip wgnat postrouting ip saddr 10.0.0.0/24 oifname "eth0" masquerade
 ```
 
-With both IP forwarding and NAT properly configured, VPN clients will seamlessly access the internet and any private networks reachable from the server.
+With IP forwarding and outbound NAT properly configured, VPN clients will be able to access the internet through the server and any private networks that route back through it.
