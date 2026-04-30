@@ -2,13 +2,13 @@
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
-Tags: High Availability, Health Check, OpenTofu, ALB, Route53, GCP, Azure
+Tags: High Availability, Health Check, OpenTofu, ALB, Route53, GCP
 
-Description: Learn how to configure comprehensive health checks across AWS, Azure, and GCP using OpenTofu for effective load balancer routing and automatic instance replacement.
+Description: Learn how to configure comprehensive health checks across AWS, GCP, and Kubernetes using OpenTofu for effective traffic routing and workload recovery.
 
 ## Overview
 
-Health checks are the foundation of high availability - they detect failures and trigger routing changes or instance replacement. OpenTofu configures layered health checks: shallow for load balancer routing, deep for application readiness, and synthetic for external monitoring.
+Health checks are the foundation of high availability - they detect failures and trigger routing changes or workload recovery. OpenTofu configures layered health checks: shallow for load balancer routing, deep for application readiness, and metric-based checks for DNS failover.
 
 ## Step 1: AWS ALB Health Checks
 
@@ -25,7 +25,7 @@ resource "aws_lb_target_group" "shallow" {
   health_check {
     path                = "/health/live"   # Just checks if process is running
     healthy_threshold   = 2
-    unhealthy_threshold = 2               # Fast deregistration
+    unhealthy_threshold = 2               # Fast unhealthy detection
     timeout             = 3
     interval            = 15
     matcher             = "200"
@@ -67,45 +67,25 @@ resource "aws_route53_health_check" "composite" {
 # Metric-based health check using CloudWatch alarm
 resource "aws_route53_health_check" "cloudwatch_alarm" {
   type                            = "CLOUDWATCH_METRIC"
-  cloudwatch_alarm_name           = aws_cloudwatch_metric_alarm.app_5xx_rate.alarm_name
+  cloudwatch_alarm_name           = aws_cloudwatch_metric_alarm.app_5xx_count.alarm_name
   cloudwatch_alarm_region         = "us-east-1"
   insufficient_data_health_status = "Unhealthy"
 }
 
-# 5xx rate alarm
-resource "aws_cloudwatch_metric_alarm" "app_5xx_rate" {
-  alarm_name          = "app-5xx-rate-high"
+# Single-metric 5xx alarm supported by Route53 CloudWatch health checks
+resource "aws_cloudwatch_metric_alarm" "app_5xx_count" {
+  alarm_name          = "app-5xx-count-high"
   comparison_operator = "GreaterThanThreshold"
   evaluation_periods  = 3
-  threshold           = 5  # > 5% error rate
+  threshold           = 5  # > 5 target-generated 5xx responses per minute
+  metric_name         = "HTTPCode_Target_5XX_Count"
+  namespace           = "AWS/ApplicationELB"
+  period              = 60
+  statistic           = "Sum"
+  treat_missing_data  = "notBreaching"
 
-  metric_query {
-    id          = "error_rate"
-    expression  = "(errors / total) * 100"
-    label       = "5xx Error Rate"
-    return_data = true
-  }
-
-  metric_query {
-    id = "errors"
-    metric {
-      metric_name = "HTTPCode_Target_5XX_Count"
-      namespace   = "AWS/ApplicationELB"
-      period      = 60
-      stat        = "Sum"
-      dimensions  = { LoadBalancer = aws_lb.app.arn_suffix }
-    }
-  }
-
-  metric_query {
-    id = "total"
-    metric {
-      metric_name = "RequestCount"
-      namespace   = "AWS/ApplicationELB"
-      period      = 60
-      stat        = "Sum"
-      dimensions  = { LoadBalancer = aws_lb.app.arn_suffix }
-    }
+  dimensions = {
+    LoadBalancer = aws_lb.app.arn_suffix
   }
 }
 ```
@@ -113,7 +93,7 @@ resource "aws_cloudwatch_metric_alarm" "app_5xx_rate" {
 ## Step 3: GCP Health Check Configuration
 
 ```hcl
-# GCP TCP health check (fastest)
+# GCP TCP health check (connection-only)
 resource "google_compute_health_check" "tcp" {
   name               = "tcp-health-check"
   check_interval_sec = 5
@@ -126,7 +106,7 @@ resource "google_compute_health_check" "tcp" {
   }
 }
 
-# GCP HTTP health check with custom headers
+# GCP HTTP health check with expected response validation
 resource "google_compute_health_check" "http_deep" {
   name               = "http-deep-health-check"
   check_interval_sec = 15
@@ -137,7 +117,6 @@ resource "google_compute_health_check" "http_deep" {
   http_health_check {
     port         = 8080
     request_path = "/health/ready"
-    request_headers = "X-Health-Check: gcp-lb"
     response     = "OK"  # Expected response body
   }
 }
@@ -147,14 +126,26 @@ resource "google_compute_health_check" "http_deep" {
 
 ```hcl
 # Kubernetes deployment with three probe types
-resource "kubernetes_deployment" "app" {
+resource "kubernetes_deployment_v1" "app" {
   metadata {
     name      = "app"
     namespace = "production"
   }
 
   spec {
+    selector {
+      match_labels = {
+        app = "app"
+      }
+    }
+
     template {
+      metadata {
+        labels = {
+          app = "app"
+        }
+      }
+
       spec {
         container {
           name  = "app"
@@ -181,7 +172,7 @@ resource "kubernetes_deployment" "app" {
             failure_threshold     = 3
           }
 
-          # Readiness probe - remove from load balancer if not ready
+          # Readiness probe - stop receiving traffic if not ready
           readiness_probe {
             http_get {
               path = "/health/ready"
@@ -200,4 +191,4 @@ resource "kubernetes_deployment" "app" {
 
 ## Summary
 
-Health check configuration with OpenTofu uses layered checks for different purposes: liveness checks trigger container restarts, readiness checks control load balancer routing, and startup checks give slow-starting applications extra initialization time. AWS Route53 calculated health checks aggregate multiple regional checks, requiring a quorum of healthy regions before failover. GCP health checks with expected response validation prevent false positives where an application returns 200 but serves error content.
+Health check configuration with OpenTofu uses layered checks for different purposes: liveness checks trigger container restarts, readiness checks control whether Pods receive traffic, and startup checks give slow-starting applications extra initialization time. AWS Route53 calculated health checks aggregate multiple regional checks, requiring a quorum of healthy regions before the calculated health check is considered healthy. GCP health checks with expected response validation prevent false positives where an application returns 200 but serves error content.
