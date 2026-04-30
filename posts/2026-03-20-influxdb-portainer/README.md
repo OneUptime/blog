@@ -8,14 +8,12 @@ Description: Deploy InfluxDB 2.x as a time-series database with Grafana and Tele
 
 ## Introduction
 
-InfluxDB is the leading open-source time-series database, purpose-built for high-performance metrics, events, and logs. It's ideal for IoT sensor data, application metrics, and monitoring use cases. This guide covers deploying InfluxDB 2.x with Telegraf (data collection) and Grafana (visualization) via Portainer.
+InfluxDB is the leading open-source time-series database, purpose-built for high-performance metrics, events, and logs. It's ideal for IoT sensor data, application metrics, and monitoring use cases. This guide covers deploying InfluxDB 2.x with Telegraf (data collection) and Grafana (visualization) via Portainer in a Docker Standalone environment.
 
 ## Step 1: Deploy InfluxDB Stack
 
 ```yaml
 # docker-compose.yml - InfluxDB + Telegraf + Grafana
-
-version: "3.8"
 
 networks:
   metrics_net:
@@ -150,15 +148,14 @@ services:
 [[inputs.docker]]
   endpoint = "unix:///var/run/docker.sock"
   gather_services = false
-  container_names = []
   source_tag = false
   container_name_include = []
   container_name_exclude = []
   timeout = "5s"
+  perdevice = false
+  perdevice_include = ["cpu", "blkio", "network"]
   docker_label_include = []
   docker_label_exclude = []
-  perdevice = true
-  total = false
 
 # Input: HTTP metrics from applications
 [[inputs.http_response]]
@@ -168,7 +165,7 @@ services:
   ]
   response_timeout = "5s"
   method = "GET"
-  [[inputs.http_response.tags]]
+  [inputs.http_response.tags]
     environment = "production"
 
 # Input: Prometheus metrics scraping
@@ -200,7 +197,7 @@ point = Point("application_metrics") \
     .field("request_count", 1542) \
     .field("error_count", 3) \
     .field("response_time_ms", 45.2) \
-    .time(datetime.utcnow(), WritePrecision.NANOSECONDS)
+    .time(datetime.utcnow(), WritePrecision.NS)
 
 write_api.write(bucket="metrics", org="my-org", record=point)
 
@@ -243,7 +240,7 @@ from(bucket: "metrics")
   |> pivot(rowKey: ["_time", "service"], columnKey: ["_field"], valueColumn: "_value")
   |> map(fn: (r) => ({
       r with
-      error_rate: if r.request_count > 0 then r.error_count / r.request_count * 100.0 else 0.0
+      error_rate: if r.request_count > 0 then float(v: r.error_count) / float(v: r.request_count) * 100.0 else 0.0
     }))
   |> filter(fn: (r) => r.error_rate > 5.0)
 ```
@@ -273,10 +270,10 @@ datasources:
 
 ```bash
 # Write IoT data via Line Protocol over HTTP
-curl -X POST "http://localhost:8086/api/v2/write?org=my-org&bucket=iot-sensors&precision=s" \
+curl -X POST "http://localhost:8086/api/v2/write?org=my-org&bucket=metrics&precision=s" \
   -H "Authorization: Token my-super-secret-auth-token" \
   -H "Content-Type: text/plain; charset=utf-8" \
-  --data-raw "
+  --data-binary "
 temperature,sensor=room1,building=HQ value=23.5 $(date +%s)
 humidity,sensor=room1,building=HQ value=65.2 $(date +%s)
 pressure,sensor=weather-station value=1013.25 $(date +%s)
