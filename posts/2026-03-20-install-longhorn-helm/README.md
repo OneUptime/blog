@@ -15,8 +15,10 @@ Helm is one of the most popular ways to install Longhorn on Kubernetes. Helm cha
 - Kubernetes cluster (version 1.21+)
 - Helm 3.x installed on your workstation
 - `kubectl` configured to connect to your cluster
-- `open-iscsi` installed on all nodes
-- Sufficient disk space on each node (at least 10 GiB recommended)
+- `open-iscsi` installed and the `iscsid` daemon running on all nodes
+- `jq` installed locally if you plan to run the environment check script
+- Storage-capable nodes with sufficient disk space; dedicated SSD/NVMe storage is recommended for production
+- If your cluster is earlier than Kubernetes v1.25 and still uses Pod Security Policy admission, install Longhorn with `--set enablePSP=true`
 
 ### Verify Helm is Installed
 
@@ -30,7 +32,7 @@ helm version
 ### Check Node Prerequisites
 
 ```bash
-# Run Longhorn's environment check script
+# Run Longhorn's environment check script (deprecated in v1.7.0 in favor of longhornctl)
 curl -sSfL https://raw.githubusercontent.com/longhorn/longhorn/v1.7.0/scripts/environment_check.sh | bash
 ```
 
@@ -48,7 +50,7 @@ Verify the repository was added:
 
 ```bash
 # Search for available Longhorn chart versions
-helm search repo longhorn
+helm search repo longhorn/longhorn --versions
 ```
 
 ## Install Longhorn with Default Settings
@@ -73,8 +75,9 @@ For production deployments, create a custom `values.yaml` file:
 ```yaml
 # longhorn-values.yaml - Custom configuration for Longhorn installation
 
-# Default replica count for new volumes
+# Default Longhorn settings
 defaultSettings:
+  # Default replica count for volumes created from the Longhorn UI
   defaultReplicaCount: 3
   # Set backup target (e.g., S3 bucket)
   backupTarget: ""
@@ -83,10 +86,9 @@ defaultSettings:
   # Minimum available storage percentage before refusing volume creation
   storageMinimalAvailablePercentage: 25
 
-# Longhorn manager pod resource settings
+# Longhorn manager pod scheduling settings
 longhornManager:
-  priorityClass:
-    name: "system-node-critical"
+  priorityClass: "system-node-critical"
   tolerations:
     - key: "node-role.kubernetes.io/master"
       operator: "Exists"
@@ -156,12 +158,15 @@ helm upgrade longhorn longhorn/longhorn \
 
 ```bash
 # List all values currently applied to the release
-helm get values longhorn -n longhorn-system
+helm get values longhorn -n longhorn-system --all
 ```
 
 ## Uninstall Longhorn with Helm
 
 ```bash
+# Allow Longhorn to be uninstalled
+kubectl -n longhorn-system patch -p '{"value": "true"}' --type=merge lhs deleting-confirmation-flag
+
 # Uninstall the Longhorn Helm release
 helm uninstall longhorn -n longhorn-system
 
@@ -169,7 +174,7 @@ helm uninstall longhorn -n longhorn-system
 kubectl delete namespace longhorn-system
 ```
 
-> **Warning:** Uninstalling Longhorn does not automatically delete PersistentVolumes. Ensure you have migrated or backed up your data before uninstalling.
+> **Warning:** Before uninstalling, delete workloads that use Longhorn volumes. Longhorn does not automatically delete PersistentVolumes, so ensure you have migrated or backed up your data first.
 
 ## Accessing the Longhorn UI
 
