@@ -12,20 +12,20 @@ Design Internal Developer Platforms (IDPs) that expose IPv6-aware infrastructure
 
 ## Prerequisites
 
-- Crossplane installed on a Kubernetes cluster
-- Cloud provider credentials configured
+- Crossplane, the current Upbound AWS EC2 provider, and Function Patch and Transform installed on a Kubernetes cluster
+- AWS provider credentials configured
 - Basic understanding of Crossplane Managed Resources and Compositions
 
 ## IPv6 Infrastructure with Crossplane
 
-Crossplane manages cloud infrastructure as Kubernetes custom resources. For IPv6, this means defining resources with IPv6 CIDR blocks and enabling IPv6 in the managed resource specs.
+Crossplane manages cloud infrastructure as Kubernetes custom resources. For IPv6, this means requesting IPv6 on the VPC, assigning a specific IPv6 CIDR block to each dual-stack subnet, and enabling IPv6 address assignment in the managed resource specs.
 
 ### Example: IPv6-Enabled VPC
 
 ```yaml
 # vpc-ipv6.yaml
 
-apiVersion: ec2.aws.crossplane.io/v1beta1
+apiVersion: ec2.aws.m.upbound.io/v1beta1
 kind: VPC
 metadata:
   name: my-ipv6-vpc
@@ -33,24 +33,23 @@ spec:
   forProvider:
     region: us-east-1
     cidrBlock: 10.0.0.0/16
-    # Enable IPv6 CIDR block assignment
-    amazonProvidedIpv6CidrBlock: true
+    # Request an Amazon-provided IPv6 /56 for the VPC
+    assignGeneratedIpv6CidrBlock: true
     enableDnsHostnames: true
     enableDnsSupport: true
     tags:
-      - key: Name
-        value: my-ipv6-vpc
-      - key: ipv6-enabled
-        value: "true"
+      Name: my-ipv6-vpc
+      ipv6-enabled: "true"
   providerConfigRef:
     name: aws-provider
+    kind: ClusterProviderConfig
 ```
 
 ### Example: IPv6 Subnet
 
 ```yaml
 # subnet-ipv6.yaml
-apiVersion: ec2.aws.crossplane.io/v1beta1
+apiVersion: ec2.aws.m.upbound.io/v1beta1
 kind: Subnet
 metadata:
   name: my-ipv6-subnet
@@ -60,12 +59,13 @@ spec:
     vpcIdRef:
       name: my-ipv6-vpc
     cidrBlock: 10.0.1.0/24
-    # IPv6 CIDR for this subnet (auto-assigned from VPC's /56)
-    ipv6CidrBlock: ""  # Set after VPC IPv6 CIDR is assigned
+    # Use a /64 from the VPC's assigned IPv6 range.
+    ipv6CidrBlock: 2001:db8:1234:1a00::/64
     assignIpv6AddressOnCreation: true
     availabilityZone: us-east-1a
   providerConfigRef:
     name: aws-provider
+    kind: ClusterProviderConfig
 ```
 
 ### Composition for Dual-Stack Network
@@ -80,47 +80,80 @@ spec:
   compositeTypeRef:
     apiVersion: network.example.com/v1alpha1
     kind: XDualStackNetwork
-  resources:
-    - name: vpc
-      base:
-        apiVersion: ec2.aws.crossplane.io/v1beta1
-        kind: VPC
-        spec:
-          forProvider:
-            amazonProvidedIpv6CidrBlock: true
-      patches:
-        - type: FromCompositeFieldPath
-          fromFieldPath: spec.region
-          toFieldPath: spec.forProvider.region
+  mode: Pipeline
+  pipeline:
+    - step: patch-and-transform
+      functionRef:
+        name: function-patch-and-transform
+      input:
+        apiVersion: pt.fn.crossplane.io/v1beta1
+        kind: Resources
+        resources:
+          - name: vpc
+            base:
+              apiVersion: ec2.aws.m.upbound.io/v1beta1
+              kind: VPC
+              spec:
+                forProvider:
+                  cidrBlock: 10.0.0.0/16
+                  assignGeneratedIpv6CidrBlock: true
+                  enableDnsHostnames: true
+                  enableDnsSupport: true
+                providerConfigRef:
+                  name: aws-provider
+                  kind: ClusterProviderConfig
+            patches:
+              - type: FromCompositeFieldPath
+                fromFieldPath: spec.region
+                toFieldPath: spec.forProvider.region
+              - type: FromCompositeFieldPath
+                fromFieldPath: spec.enableIPv6
+                toFieldPath: spec.forProvider.assignGeneratedIpv6CidrBlock
 
-    - name: subnet
-      base:
-        apiVersion: ec2.aws.crossplane.io/v1beta1
-        kind: Subnet
-        spec:
-          forProvider:
-            assignIpv6AddressOnCreation: true
-      patches:
-        - type: FromCompositeFieldPath
-          fromFieldPath: spec.region
-          toFieldPath: spec.forProvider.region
+          - name: subnet
+            base:
+              apiVersion: ec2.aws.m.upbound.io/v1beta1
+              kind: Subnet
+              spec:
+                forProvider:
+                  cidrBlock: 10.0.1.0/24
+                  availabilityZone: us-east-1a
+                  assignIpv6AddressOnCreation: true
+                  vpcIdSelector:
+                    matchControllerRef: true
+                providerConfigRef:
+                  name: aws-provider
+                  kind: ClusterProviderConfig
+            patches:
+              - type: FromCompositeFieldPath
+                fromFieldPath: spec.region
+                toFieldPath: spec.forProvider.region
+              - type: FromCompositeFieldPath
+                fromFieldPath: spec.enableIPv6
+                toFieldPath: spec.forProvider.assignIpv6AddressOnCreation
+              - type: FromCompositeFieldPath
+                fromFieldPath: spec.ipv6CIDR
+                toFieldPath: spec.forProvider.ipv6CidrBlock
 ```
 
 ## XRD with IPv6 Fields
 
 ```yaml
 # xrd-dual-stack.yaml
-apiVersion: apiextensions.crossplane.io/v1
+apiVersion: apiextensions.crossplane.io/v2
 kind: CompositeResourceDefinition
 metadata:
   name: xdualstacknetworks.network.example.com
 spec:
+  scope: Namespaced
   group: network.example.com
   names:
     kind: XDualStackNetwork
     plural: xdualstacknetworks
   versions:
     - name: v1alpha1
+      served: true
+      referenceable: true
       schema:
         openAPIV3Schema:
           type: object
@@ -133,10 +166,13 @@ spec:
                 enableIPv6:
                   type: boolean
                   default: true
-                # IPv6 CIDR validation
+                # Basic IPv6 CIDR format check for the subnet allocation
                 ipv6CIDR:
                   type: string
-                  pattern: '^[0-9a-fA-F:]+/[0-9]+$'
+                  pattern: '^[0-9A-Fa-f:]+/[0-9]{1,3}$'
+              required:
+                - region
+                - ipv6CIDR
 ```
 
 ## Monitoring with OneUptime
@@ -145,4 +181,4 @@ Use [OneUptime](https://oneuptime.com) to monitor the health of your Crossplane-
 
 ## Conclusion
 
-How to Build Internal Developer Platforms with IPv6 Support involves defining cloud resources with IPv6 CIDR blocks enabled, using Crossplane Compositions for reusable dual-stack infrastructure patterns, and validating IPv6 fields in XRDs. Always test Compositions against real cloud providers to verify IPv6 provisioning works end-to-end.
+How to Build Internal Developer Platforms with IPv6 Support involves requesting IPv6 CIDR blocks for VPCs, assigning IPv6 CIDR blocks to subnets, using Crossplane Compositions for reusable dual-stack infrastructure patterns, and validating IPv6 fields in XRDs. Always test Compositions against real cloud providers to verify IPv6 provisioning works end-to-end.
