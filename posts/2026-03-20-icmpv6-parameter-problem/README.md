@@ -36,7 +36,7 @@ Pointer: Byte offset within the invoking packet where the error was found
 Code 0: Erroneous header field encountered
   → A field in the IPv6 header or extension header has an invalid value
   → Pointer points to the byte that is problematic
-  → Example: invalid Next Header value that isn't recognized
+  → Example: unrecognized Routing Type with Segments Left non-zero
 
 Code 1: Unrecognized Next Header type encountered
   → While processing a chain of extension headers,
@@ -46,8 +46,8 @@ Code 1: Unrecognized Next Header type encountered
 Code 2: Unrecognized IPv6 option encountered
   → A TLV option in Hop-by-Hop or Destination Options header
     has an option type that forces the node to report an error
-    (option type bits 7-6 = 10: send ICMPv6 to non-multicast dest)
-    (option type bits 7-6 = 11: send ICMPv6 to any dest)
+    (option type bits 7-6 = 10: send ICMPv6 regardless of multicast dest)
+    (option type bits 7-6 = 11: send ICMPv6 only for non-multicast dest)
   → Pointer points to the unrecognized option type byte
   → Code 2 is NOT generated for option types with bits 7-6 = 00 or 01
 ```
@@ -135,8 +135,8 @@ print(f"Code: {result['code_description']}")
 ## Common Causes and Diagnosis
 
 ```bash
-# Capture all Parameter Problem messages
-sudo tcpdump -i eth0 -v "icmp6 and ip6[40] == 4"
+# Capture ICMPv6 traffic and filter for Parameter Problem messages
+sudo tcpdump -i eth0 -vv "ip6 protochain 58" 2>&1 | grep -i "parameter problem"
 
 # Example: Code 1 (Unrecognized Next Header)
 # Would occur if a new extension header type is sent to an old router
@@ -144,12 +144,12 @@ sudo tcpdump -i eth0 -v "icmp6 and ip6[40] == 4"
 
 # Example: Code 0 (Erroneous header field)
 # Could be caused by:
-# - Invalid Hop Limit = 0 in a non-loopback packet
+# - Unrecognized Routing Type with Segments Left > 0
+# - Fragment with M=1 whose Payload Length is not a multiple of 8
 # - Invalid extension header length
-# - Routing header with segments_left exceeding address count
 
 # Check for malformed packets generating Parameter Problem
-sudo tcpdump -i eth0 -vv "icmp6 and ip6[40] == 4" 2>&1 | \
+sudo tcpdump -i eth0 -vv "ip6 protochain 58" 2>&1 | \
     grep -E "pointer|parameter"
 ```
 
