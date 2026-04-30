@@ -16,10 +16,10 @@ MTU mismatches occur when different parts of a network path expect different max
 # List all interfaces with their MTUs:
 
 ip link show | grep -E "^[0-9]|mtu"
-# Shows: mtu 1500 for each interface
+# Shows each interface line, including its mtu value
 
 # Or more readable:
-ip link show | awk '/^[0-9]/{iface=$2} /mtu/{match($0, /mtu ([0-9]+)/, m); print iface, "MTU:", m[1]}'
+ip -o link show | awk '{sub(/:$/, "", $2); for (i=1; i<=NF; i++) if ($i == "mtu") print $2, "MTU:", $(i+1)}'
 
 # Check specific interface:
 ip link show eth0 | grep mtu
@@ -32,39 +32,41 @@ ip link show | grep -E "tun|gre|vxlan|wireguard|wg"
 ## Detect MTU Mismatch with ping
 
 ```bash
-# If two hosts have different MTUs, one can't send max-size packets to the other:
+# With DF set, probes larger than the path MTU fail:
 
 # Test from HOST A to HOST B:
 # Host A has MTU 9000 (jumbo frames):
-ping -M do -s 8972 -c 3 HOST_B   # 9000 - 28 = 8972
+ping -4 -M do -s 8972 -c 3 HOST_B   # IPv4: 9000 - 28 = 8972
 # If HOST B or the path between them doesn't support jumbo: fail
 
 # Test from HOST B to HOST A:
 # Host B has MTU 1500:
-ping -M do -s 1472 -c 3 HOST_A   # 1500 - 28 = 1472
-# Should succeed (both support 1500)
+ping -4 -M do -s 1472 -c 3 HOST_A   # IPv4: 1500 - 28 = 1472
+# Should succeed if the path supports 1500-byte IPv4 packets
 
 # Asymmetric success → MTU mismatch:
-# A → B works at 1472 but not 8972: path MTU is 1500
+# A → B works at 1472 but not 8972: path MTU is below 9000 (often 1500)
 # B → A fails at 1472: interface or path MTU < 1500
 ```
 
 ## Find MTU Mismatch in a Path
 
 ```bash
-# Use tracepath to find MTU at each hop:
+# Use tracepath to discover the end-to-end path MTU:
 tracepath -n 10.20.0.5
-# Shows "pmtu" changes at each hop
+# Shows "pmtu" when the discovered path MTU changes
 
 # Example output showing mismatch:
+# 1?: [LOCALHOST]  pmtu 9000
 # 1: 10.0.0.1      0.5ms
-# 2: 192.168.1.1   2.1ms  pmtu 9000   ← Core switch (jumbo frames)
-# 3: 10.1.0.1      3.5ms  pmtu 1500   ← This hop reduces MTU!
-# 4: 10.20.0.5     5.1ms  reached
+# 2: 192.168.1.1   2.1ms
+# 3: 10.1.0.1      3.5ms  pmtu 1500   ← path MTU drops here
+# 4: 10.20.0.5     5.1ms reached
+#     Resume: pmtu 1500 hops 4 back 4
 
-# The mismatch is between hop 2 (9000) and hop 3 (1500)
-# If hop 3 doesn't support jumbo frames and hop 2 forwards jumbo packets:
-# → Packets fragmented (if DF bit not set) or dropped (if DF bit set)
+# The end-to-end path MTU is 1500
+# tracepath shows where the path MTU changed during the trace,
+# but you still need to check the device at that hop to confirm the exact interface MTU
 ```
 
 ## Common MTU Mismatch Scenarios
@@ -78,15 +80,16 @@ ip link show eth0 | grep mtu
 
 # Scenario 2: Docker container MTU mismatch
 # Docker default bridge MTU can differ from host MTU
-docker network inspect bridge | grep Mtu
+docker network inspect bridge --format '{{json .Options}}'   # Look for com.docker.network.driver.mtu
 # vs:
 ip link show eth0 | grep mtu
-# If bridge MTU > host MTU: container packets get dropped
+# If the container bridge MTU exceeds the actual egress path MTU: large packets may fragment or get dropped
 
 # Scenario 3: VPN tunnel MTU not updated when path changes
-ip link show wg0 | grep mtu    # Should be < underlying interface MTU
+ip link show wg0 | grep mtu    # Tunnel interface
 ip link show eth0 | grep mtu   # Underlying interface
-# WireGuard MTU should be eth0_MTU - 80
+# wg-quick auto-determines MTU from the endpoint/default-route MTU,
+# and on Linux subtracts 80 bytes when it calculates one automatically
 
 # Scenario 4: VLAN interface inheriting wrong MTU
 ip link show eth0.100 | grep mtu  # VLAN interface
@@ -98,17 +101,16 @@ ip link show eth0 | grep mtu      # Parent interface
 
 ```bash
 #!/bin/bash
-# Verify MTU match between two hosts
-
-HOST1="10.20.0.10"
+# Verify MTU from this host to a peer
+# Run it from each host to test both directions
 HOST2="10.20.0.11"
 
-echo "Testing MTU between $HOST1 and $HOST2"
+echo "Testing MTU from this host to $HOST2"
 echo "========================================"
 
 # Test standard Ethernet MTU (1500):
 echo -n "1500 MTU: "
-if ping -M do -s 1472 -c 3 -W 2 $HOST2 > /dev/null 2>&1; then
+if ping -4 -M do -s 1472 -c 3 -W 2 "$HOST2" > /dev/null 2>&1; then
     echo "PASS"
 else
     echo "FAIL"
@@ -116,17 +118,17 @@ fi
 
 # Test jumbo frames (9000):
 echo -n "9000 MTU: "
-if ping -M do -s 8972 -c 3 -W 2 $HOST2 > /dev/null 2>&1; then
+if ping -4 -M do -s 8972 -c 3 -W 2 "$HOST2" > /dev/null 2>&1; then
     echo "PASS (jumbo frames working)"
 else
     echo "FAIL (jumbo frames not supported on this path)"
 fi
 
 # Find actual path MTU:
-ACTUAL_MTU=$(tracepath -n $HOST2 | grep pmtu | tail -1 | grep -oP 'pmtu \K[0-9]+')
+ACTUAL_MTU=$(tracepath -4 -n "$HOST2" 2>/dev/null | awk '/pmtu/ {for (i=1; i<=NF; i++) if ($i == "pmtu") mtu=$(i+1)} END {print mtu}')
 echo "Path MTU from tracepath: ${ACTUAL_MTU:-not determined}"
 ```
 
 ## Conclusion
 
-MTU mismatches are identified by testing packet delivery at different sizes with the DF bit set. Use `tracepath` to find where the MTU changes. Common mismatches are jumbo-enabled hosts connecting to standard-MTU switches, Docker containers with wrong MTU settings, and VPN tunnels not accounting for tunnel overhead. Fix mismatches by aligning MTU values across all interfaces in the path, or by reducing the MTU of the sending interface to match the bottleneck.
+MTU mismatches are identified by testing packet delivery at different sizes with the DF bit set. Use `tracepath` to discover the path MTU and where it drops during the trace. Common mismatches are jumbo-enabled hosts connecting to standard-MTU switches, Docker containers with wrong MTU settings, and VPN tunnels not accounting for tunnel overhead. Fix mismatches by aligning MTU values across all interfaces in the path, or by reducing the MTU of the sending interface to match the bottleneck.
