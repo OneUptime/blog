@@ -58,10 +58,10 @@ For the most explicit configuration:
 
 ```bash
 # Host A: assign /32 with peer directive
-ip addr add 172.16.0.1 peer 172.16.0.2 dev gre0
+ip addr add 172.16.0.1 peer 172.16.0.2/32 dev gre0
 
 # Host B: assign /32 with peer directive
-ip addr add 172.16.0.2 peer 172.16.0.1 dev gre0
+ip addr add 172.16.0.2 peer 172.16.0.1/32 dev gre0
 ```
 
 ## Verify Address Assignment
