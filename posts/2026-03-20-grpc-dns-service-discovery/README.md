@@ -13,14 +13,14 @@ gRPC Client
     │
     ▼
 DNS Resolver (dns:///)
-    │  resolves "service-name:port" → multiple A records
+    │  resolves "service-name" → multiple A records
     ▼
 ┌──────────────────────────────┐
-│ A record 10.244.1.5:50051    │
-│ A record 10.244.2.8:50051    │  ← all endpoints
-│ A record 10.244.3.12:50051   │
+│ A record 10.244.1.5          │
+│ A record 10.244.2.8          │  ← all endpoints
+│ A record 10.244.3.12         │
 └──────────────────────────────┘
-    │  round_robin policy picks endpoint
+    │  target port 50051 + round_robin policy picks a READY endpoint
     ▼
 gRPC Server Pod
 ```
@@ -41,13 +41,13 @@ import (
 )
 
 func main() {
-    // "dns:///" prefix activates gRPC's built-in DNS resolver
-    // The resolver looks up A records and connects to all of them
+    // "dns:///" prefix selects gRPC's built-in DNS resolver.
+    // With round_robin, gRPC can use all resolved addresses for this host.
     conn, err := grpc.NewClient(
         "dns:///greeter.default.svc.cluster.local:50051",
         grpc.WithTransportCredentials(insecure.NewCredentials()),
         grpc.WithDefaultServiceConfig(`{
-            "loadBalancingPolicy": "round_robin",
+            "loadBalancingConfig": [{ "round_robin": {} }],
             "methodConfig": [{
                 "name": [{}],
                 "waitForReady": true,
@@ -91,8 +91,7 @@ import hello_pb2_grpc
 channel = grpc.insecure_channel(
     "dns:///greeter.default.svc.cluster.local:50051",
     options=[
-        ("grpc.lb_policy_name",           "round_robin"),
-        ("grpc.service_config", '{"loadBalancingPolicy":"round_robin"}'),
+        ("grpc.service_config", '{"loadBalancingConfig":[{"round_robin":{}}]}'),
     ],
 )
 
@@ -110,7 +109,7 @@ metadata:
   name: greeter
   namespace: default
 spec:
-  clusterIP: None   # Headless - DNS returns all matching pod IPs
+  clusterIP: None   # Headless - DNS returns all matching ready pod IPs
   selector:
     app: greeter
   ports:
@@ -144,7 +143,7 @@ spec:
 ```bash
 # From inside a pod
 nslookup greeter.default.svc.cluster.local
-# Should return one A record per pod
+# Should return one A record per ready pod
 
 # With dig
 dig greeter.default.svc.cluster.local A
@@ -152,4 +151,4 @@ dig greeter.default.svc.cluster.local A
 
 ## Conclusion
 
-Use the `dns:///` scheme prefix in the gRPC target to enable DNS-based discovery. Combine with the `round_robin` load balancing policy to distribute RPCs across all resolved addresses. In Kubernetes, a headless Service (no `clusterIP`) returns individual pod IPs from DNS, enabling true client-side load balancing. Add `waitForReady: true` in the service config to make the channel wait for DNS to resolve instead of failing immediately if the service is not yet available.
+Use the `dns:///` scheme prefix in the gRPC target to explicitly select DNS resolution. Combine with the `round_robin` load balancing policy to distribute RPCs across resolved addresses that are `READY`. In Kubernetes, a headless Service (`clusterIP: None`) returns individual pod IPs from DNS, enabling true client-side load balancing. Add `waitForReady: true` in the service config to make matching RPCs wait for a ready connection instead of failing immediately during transient unavailability.
