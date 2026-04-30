@@ -8,7 +8,7 @@ Description: Understand the four key properties of IPv6 address blocks - Source,
 
 ## Introduction
 
-RFC 6890 defines four boolean properties for each address block in the IANA Special-Purpose Address Registry. These properties define how addresses from each block can legitimately be used in packets.
+RFC 6890, as updated by RFC 8190, defines the properties recorded for each address block in the IANA IPv6 Special-Purpose Address Space registry. These properties define how addresses from each block can legitimately be used in packets that transit between devices.
 
 ## The Four Properties
 
@@ -25,12 +25,12 @@ Can packets use addresses from this block as a source address?
 Can packets use addresses from this block as a destination address?
 
 - `::` (unspecified) = Destination: False
-- `::1/128` (loopback) = Destination: True (only from local host)
+- `::1/128` (loopback) = Destination: False (must never leave a single node)
 - `2001:db8::/32` (documentation) = Destination: False
 
 ### Forwardable
 
-Should routers forward packets to/from these addresses?
+May routers forward packets whose destination is in this block?
 
 - `fe80::/10` (link-local) = Forwardable: False (stay on link)
 - `fc00::/7` (ULA) = Forwardable: True (within organization)
@@ -38,19 +38,19 @@ Should routers forward packets to/from these addresses?
 
 ### Globally Reachable
 
-Are addresses from this block expected to be reachable from the global internet?
+May packets to destinations in this block be forwarded beyond an administrative domain?
 
 - `fc00::/7` (ULA) = Globally Reachable: False
-- `5f00::/16` (SRv6 SIDs) = Globally Reachable: True
+- `5f00::/16` (SRv6 SIDs) = Globally Reachable: False
 - `fe80::/10` (link-local) = Globally Reachable: False
 
-## Complete Properties Table
+## Selected Properties Table
 
 ```python
 ADDRESS_BLOCK_PROPERTIES = {
     "::1/128": {
         "name": "Loopback",
-        "source": True, "destination": True,
+        "source": False, "destination": False,
         "forwardable": False, "globally_reachable": False
     },
     "::/128": {
@@ -66,7 +66,7 @@ ADDRESS_BLOCK_PROPERTIES = {
     "64:ff9b::/96": {
         "name": "NAT64 Well-Known",
         "source": True, "destination": True,
-        "forwardable": True, "globally_reachable": False
+        "forwardable": True, "globally_reachable": True
     },
     "100::/64": {
         "name": "Discard-Only",
@@ -76,7 +76,7 @@ ADDRESS_BLOCK_PROPERTIES = {
     "2001::/32": {
         "name": "Teredo",
         "source": True, "destination": True,
-        "forwardable": True, "globally_reachable": False
+        "forwardable": True, "globally_reachable": "N/A"
     },
     "2001:db8::/32": {
         "name": "Documentation",
@@ -86,7 +86,7 @@ ADDRESS_BLOCK_PROPERTIES = {
     "5f00::/16": {
         "name": "SRv6 SIDs",
         "source": True, "destination": True,
-        "forwardable": True, "globally_reachable": True
+        "forwardable": True, "globally_reachable": False
     },
     "fc00::/7": {
         "name": "Unique-Local",
