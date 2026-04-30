@@ -8,23 +8,21 @@ Description: Understand the key best practices for achieving good email delivera
 
 ## Introduction
 
-Sending email from IPv6 addresses presents unique challenges. IPv6 address space is enormous, making traditional IP reputation databases less complete. Major providers like Google, Microsoft, and Yahoo have specific requirements for IPv6 senders that go beyond standard IPv4 practices. This guide consolidates the essential best practices.
+Sending email from IPv6 addresses presents unique challenges. IPv6 address space is enormous, making traditional IP reputation databases less complete. Major providers like Google, Microsoft, and Yahoo publish sender requirements that make reverse DNS, authentication, and reputation hygiene especially important for IPv6 senders. This guide consolidates the essential best practices.
 
 ## Why IPv6 Deliverability Differs
 
 ```mermaid
 graph TD
     A[IPv6 Sender] --> B{Has PTR Record?}
-    B -- No --> C[Rejected by Google/Microsoft]
+    B -- No --> C[Higher reject or defer risk]
     B -- Yes --> D{FCrDNS Matches?}
     D -- No --> C
-    D -- Yes --> E{SPF ip6: Passes?}
-    E -- No --> F[Quarantine or Reject]
-    E -- Yes --> G{DKIM Signed?}
-    G -- No --> F
-    G -- Yes --> H{DMARC Policy?}
-    H -- None --> I[Delivered but unprotected]
-    H -- Pass --> J[Inbox Delivered]
+    D -- Yes --> E{SPF or DKIM passes?}
+    E -- No --> F[Likely filtered or rejected]
+    E -- Yes --> G{DMARC aligned?}
+    G -- No --> H[Delivered with higher spam risk]
+    G -- Yes --> I[Best chance of inbox placement]
 ```
 
 ## 1. Infrastructure Requirements
@@ -57,10 +55,10 @@ echo "net.ipv6.conf.eth0.use_tempaddr=0" | sudo tee -a /etc/sysctl.d/99-mail.con
 
 ## 2. Authentication Stack (Non-Negotiable)
 
-All three must be configured for reliable delivery to major providers:
+For bulk or commercial sending, all three should be configured for reliable delivery to major providers:
 
 ```dns
-; SPF with ip6: mechanism
+; SPF example using ip6: mechanism
 example.com.  300  IN  TXT  "v=spf1 ip4:203.0.113.10 ip6:2001:db8::10 -all"
 
 ; DKIM public key
@@ -75,55 +73,52 @@ _dmarc.example.com.  300  IN  TXT  "v=DMARC1; p=reject; rua=mailto:dmarc@example
 New IPv6 addresses have no sending reputation. Warm up gradually:
 
 ```text
-Week 1: 500-1,000 messages/day
-Week 2: 2,000-5,000 messages/day
-Week 3: 10,000-25,000 messages/day
-Week 4+: Scale based on engagement metrics
+Start with a low sending volume to engaged users.
+Increase volume gradually over days or weeks.
+Avoid sudden spikes or burst sending.
+Monitor bounces, deferrals, spam rate, and reputation as you scale.
 ```
 
 Use a dedicated IPv6 address per sending stream when possible (transactional vs. marketing).
 
-## 4. Use a /64 Dedicated to Mail
+## 4. Use a Dedicated IPv6 Range for Mail
 
 Don't use addresses from a shared range:
 
 ```bash
 # Request a dedicated /64 or /48 from your provider
 # Assign a single stable address for SMTP
-sudo ip -6 addr add 2001:db8:mail::1/64 dev eth0
+sudo ip -6 addr add 2001:db8:100::1/64 dev eth0
 
 # Pin Postfix to this address
-sudo postconf -e 'smtp_bind_address6 = 2001:db8:mail::1'
+sudo postconf -e 'smtp_bind_address6 = 2001:db8:100::1'
 ```
 
 ## 5. Monitor Blacklists
 
-IPv6 DNSBLs are growing. Monitor your IPs:
+IPv6 DNSBL support varies by provider. Monitor your IPs using the query format documented by the DNSBL you use:
 
 ```bash
-# Check IPv6 address against major DNSBLs
+# Example: Spamhaus DQS IPv6 lookup
+# Replace <key> with your Spamhaus DQS key
 python3 - << 'EOF'
+import ipaddress
 import subprocess
 
 ip = "2001:db8::10"
-dnsbls = [
-    "xbl.spamhaus.org",
-    "bl.spamcop.net",
-    "dnsbl.sorbs.net"
-]
+dnsbl_zone = "<key>.zen.dq.spamhaus.net"
 
 # Reverse the IPv6 address for DNSBL lookup
-import ipaddress
 expanded = ipaddress.IPv6Address(ip).exploded.replace(":", "")
 reversed_ip = ".".join(reversed(expanded))
 
-for dnsbl in dnsbls:
-    query = f"{reversed_ip}.{dnsbl}"
-    result = subprocess.run(["dig", "+short", query], capture_output=True, text=True)
-    if result.stdout.strip():
-        print(f"LISTED in {dnsbl}: {result.stdout.strip()}")
-    else:
-        print(f"Clean in {dnsbl}")
+query = f"{reversed_ip}.{dnsbl_zone}"
+result = subprocess.run(["dig", "+short", query], capture_output=True, text=True)
+
+if result.stdout.strip():
+    print(f"LISTED in {dnsbl_zone}: {result.stdout.strip()}")
+else:
+    print(f"Not listed in {dnsbl_zone}")
 EOF
 ```
 
@@ -132,7 +127,7 @@ EOF
 ```ini
 # /etc/postfix/main.cf - Recommended IPv6 settings
 inet_protocols = all
-smtp_address_preference = ipv6
+smtp_address_preference = any
 smtp_bind_address6 = 2001:db8::10
 smtp_bind_address = 203.0.113.10
 myhostname = mail.example.com
@@ -143,38 +138,38 @@ smtp_helo_name = $myhostname
 
 ```bash
 # Count daily delivery success rates
-sudo awk '/sent|deferred|bounced/ {print $NF}' /var/log/mail.log | \
-    grep -oE 'status=[a-z]+' | sort | uniq -c
+sudo grep -oE 'status=(sent|deferred|bounced)' /var/log/mail.log | \
+    sort | uniq -c
 
 # Track IPv6 vs IPv4 delivery
 sudo grep "status=sent" /var/log/mail.log | \
-    grep -oE 'relay=.*?\]' | \
+    grep -oE 'relay=[^ ]+\[[^]]+\]' | \
     awk '{if ($0 ~ /:/) print "IPv6"; else print "IPv4"}' | \
     sort | uniq -c
 ```
 
 ## 8. Register with Postmaster Tools
 
-Register your sending domain with major provider postmaster tools:
+Register with the major provider tools that apply to your audience:
 
 - **Google Postmaster Tools**: https://postmaster.google.com
 - **Microsoft SNDS**: https://sendersupport.olc.protection.outlook.com/snds
-- **Yahoo Sender Hub**: https://senders.yahooinc.com
+- **Yahoo Complaint Feedback Loop / Sender Hub**: https://senders.yahooinc.com/complaint-feedback-loop/
 
-These provide visibility into deliverability metrics for your IPv6 addresses.
+These provide visibility into sender reputation, complaint data, or deliverability guidance depending on the provider.
 
 ## Summary Checklist
 
 - [ ] PTR record configured for IPv6 sending address
 - [ ] FCrDNS verified (PTR → hostname → AAAA matches)
-- [ ] SPF record includes `ip6:` mechanism
+- [ ] SPF record authorizes your IPv6 sending address
 - [ ] DKIM signing configured and DNS record published
-- [ ] DMARC policy at least `p=quarantine`
+- [ ] DMARC record published (`p=none` is acceptable initially)
 - [ ] Privacy extensions disabled on mail server interface
 - [ ] Postfix bound to stable IPv6 address
-- [ ] IPv6 not blacklisted in major DNSBLs
-- [ ] Registered with Google/Microsoft postmaster tools
+- [ ] IPv6 not listed in the DNSBLs you monitor
+- [ ] Registered with relevant Google/Microsoft/Yahoo sender tools
 
 ## Conclusion
 
-IPv6 email deliverability requires the same authentication foundations as IPv4 (SPF, DKIM, DMARC) plus additional infrastructure work unique to IPv6: stable PTR/FCrDNS, disabled privacy extensions, address warmup, and monitoring on IPv6-specific DNSBL lists. Building these foundations correctly from the start saves significant troubleshooting time.
+IPv6 email deliverability requires the same authentication foundations as IPv4 (SPF, DKIM, DMARC) plus additional infrastructure work unique to IPv6: stable PTR/FCrDNS, disabled privacy extensions, address warmup, and monitoring on IPv6-capable DNSBLs and reputation services. Building these foundations correctly from the start saves significant troubleshooting time.
