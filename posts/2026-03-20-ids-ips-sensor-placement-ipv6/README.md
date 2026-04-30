@@ -8,7 +8,7 @@ Description: Design and implement optimal IDS/IPS sensor placement strategies fo
 
 ---
 
-Effective IDS/IPS sensor placement for IPv6 networks requires visibility at multiple network segments, including IPv6-only links, dual-stack zones, and tunnel endpoints. Unlike IPv4, IPv6 eliminates NAT but introduces new protocol elements requiring inspection.
+Effective IDS/IPS sensor placement for IPv6 networks requires visibility at multiple network segments, including IPv6-only links, dual-stack zones, and tunnel endpoints. Unlike many IPv4 deployments, IPv6 typically does not rely on NAT for address conservation but introduces new protocol elements requiring inspection.
 
 ## IPv6 Network Visibility Considerations
 
@@ -22,7 +22,7 @@ Network Architecture:
       |
   [Core Switch] ← Sensor 2: Core aggregation
   /     |    \
-[DMZ] [LAN] [Server Farm] ← Sensor 3: East-West (inter-segment)
+[DMZ] [LAN] [Server Farm] ← Sensor 3: DMZ inline IPS
               |
          [Hosts/VMs] ← Host-based IDS (Wazuh/OSSEC)
 ```
@@ -89,17 +89,22 @@ sudo suricata -c /etc/suricata/suricata.yaml -q 0
 ```bash
 # Teredo tunneling inspection (UDP 3544)
 sudo suricata -c /etc/suricata/suricata.yaml -i eth0
-# Suricata automatically decapsulates and inspects tunneled IPv6
+# Suricata decodes Teredo by default, but its decoder can
+# misidentify some non-Teredo UDP traffic
 
-# 6in4 inspection (protocol 41)
-sudo tcpdump -i eth0 -nn "proto 41" -v
+# 6in4 inspection (IPv4 protocol 41)
+sudo tcpdump -i eth0 -nn "ip proto 41" -v
 
-# ISATAP inspection
-sudo tcpdump -i eth0 -nn "udp port 41" -v
+# ISATAP inspection (also IPv4 protocol 41)
+sudo tcpdump -i eth0 -nn "ip proto 41" -v
 
-# Block unauthorized tunnels at border
-sudo ip6tables -A FORWARD -m state --state NEW \
-  -p udp --dport 3544 -j LOG --log-prefix "TEREDO-TUNNEL: "
+# Log and block unauthorized tunnels at the IPv4 border
+sudo iptables -A FORWARD -p udp --dport 3544 \
+  -j LOG --log-prefix "TEREDO-TUNNEL: "
+sudo iptables -A FORWARD -p udp --dport 3544 -j DROP
+sudo iptables -A FORWARD -p 41 \
+  -j LOG --log-prefix "IPV6-IN-IPV4: "
+sudo iptables -A FORWARD -p 41 -j DROP
 ```
 
 ## Dual-Stack Sensor Configuration
@@ -123,8 +128,11 @@ vars:
 
 ```bash
 # Deploy Wazuh agent on all IPv6-capable hosts
-sudo apt install wazuh-agent -y
-sudo /var/ossec/bin/agent-auth -m 2001:db8::wazuh-manager
+# After configuring the Wazuh repository:
+sudo apt-get install wazuh-agent -y
+
+# If using manual enrollment with wazuh-authd, enable IPv6 on the manager
+sudo /var/ossec/bin/agent-auth -m 2001:db8::10
 
 # Configure host-level monitoring
 # /var/ossec/etc/ossec.conf
