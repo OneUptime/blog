@@ -17,37 +17,39 @@ Running Harvester in production requires hardware selection, operating system tu
 | Component | Minimum | Recommended |
 |---|---|---|
 | CPU | 16 cores | 32+ cores (AMD EPYC or Intel Xeon) |
-| RAM | 32GB | 128GB+ (64GB per 10 VMs) |
-| Storage | SATA SSD | NVMe SSD (dedicated for Longhorn) |
-| Network | 1Gbps | 25Gbps (management) + 25Gbps (storage) |
+| RAM | 64GB | 128GB+ (64GB per 10 VMs) |
+| Storage | 500GB local SSD/NVMe (5,000+ random IOPS per disk) | 1TB+ NVMe SSD (dedicated for Longhorn) |
+| Network | 10Gbps Ethernet | 25Gbps (management) + 25Gbps (storage) |
 | Nodes | 3 | 5+ for HA |
 
 ---
 
 ## Step 1: OS-Level Tuning
 
-Apply these settings on each Harvester node:
+Persist these settings on each Harvester node with a CloudInit resource, then reboot the affected nodes:
 
 ```bash
-# Increase inotify limits for high VM density
-
-cat >> /etc/sysctl.d/99-harvester.conf <<EOF
-# Increase network buffers
-net.core.rmem_max = 134217728
-net.core.wmem_max = 134217728
-net.core.netdev_max_backlog = 5000
-
-# VM memory management
-vm.dirty_ratio = 10
-vm.dirty_background_ratio = 5
-vm.swappiness = 10
-
-# File descriptor limits
-fs.file-max = 2097152
-fs.inotify.max_user_watches = 524288
-fs.inotify.max_user_instances = 1024
+cat <<'EOF' | kubectl apply -f -
+apiVersion: node.harvesterhci.io/v1beta1
+kind: CloudInit
+metadata:
+  name: harvester-sysctl
+spec:
+  matchSelector: {}
+  filename: 99-harvester-sysctl.yaml
+  contents: |
+    os:
+      sysctls:
+        net.core.rmem_max: "134217728"
+        net.core.wmem_max: "134217728"
+        net.core.netdev_max_backlog: "5000"
+        vm.dirty_ratio: "10"
+        vm.dirty_background_ratio: "5"
+        vm.swappiness: "10"
+        fs.file-max: "2097152"
+        fs.inotify.max_user_watches: "524288"
+        fs.inotify.max_user_instances: "1024"
 EOF
-sysctl -p /etc/sysctl.d/99-harvester.conf
 ```
 
 ---
@@ -56,15 +58,16 @@ sysctl -p /etc/sysctl.d/99-harvester.conf
 
 ```bash
 # Set storage minimal available to 15% (Longhorn stops scheduling at this threshold)
-kubectl patch setting.longhorn.io storage-minimal-available-percentage \
+kubectl patch settings.longhorn.io storage-minimal-available-percentage \
   -n longhorn-system --type merge -p '{"value":"15"}'
 
 # Limit concurrent rebuilds to protect production performance
-kubectl patch setting.longhorn.io concurrent-replica-rebuild-per-node-limit \
+kubectl patch settings.longhorn.io concurrent-replica-rebuild-per-node-limit \
   -n longhorn-system --type merge -p '{"value":"1"}'
 
-# Set priority class for Longhorn system pods
-kubectl patch setting.longhorn.io priority-class \
+# Set the priority class for Longhorn system-managed components
+# Detach volumes before changing this setting so Longhorn can restart components cleanly
+kubectl patch settings.longhorn.io priority-class \
   -n longhorn-system --type merge -p '{"value":"longhorn-critical"}'
 ```
 
@@ -75,14 +78,13 @@ kubectl patch setting.longhorn.io priority-class \
 Configure separate VLANs for different traffic types:
 
 ```yaml
-# Example VLAN configuration for Harvester
-# In Harvester UI: Hosts > [Node] > Network Config
+# In Harvester UI: Networks > Cluster Networks and Networks > VM Networks
 
-# Recommended VLAN assignment:
-# VLAN 10: Management (Harvester API, Rancher agent)
-# VLAN 20: Storage (Longhorn replication traffic)
-# VLAN 30: VM traffic (production workloads)
-# VLAN 40: VM traffic (development/testing)
+# Recommended traffic separation:
+# mgmt: Harvester API, Rancher integration, and control-plane traffic
+# storage-network on a custom cluster network: Longhorn replication traffic
+# vm-migration-network on a custom cluster network: live migration traffic
+# VM Networks on separate VLANs: production and development/testing workloads
 ```
 
 ---
@@ -90,16 +92,10 @@ Configure separate VLANs for different traffic types:
 ## Step 4: Configure Resource Overcommit Ratios
 
 ```bash
-# Set CPU overcommit ratio (2.0 = 2x CPU overcommit)
-kubectl patch kubevirt kubevirt -n harvester-system --type merge -p '{
-  "spec": {
-    "configuration": {
-      "developerConfiguration": {
-        "cpuAllocationRatio": 10
-      }
-    }
-  }
-}'
+# Set global CPU, memory, and storage overcommit percentages
+# CPU 200 = 2x overcommit, Memory 150 = 1.5x, Storage 200 = 2x
+kubectl patch settings.harvesterhci.io overcommit-config --type merge -p \
+  '{"value":"{\"cpu\":200,\"memory\":150,\"storage\":200}"}'
 ```
 
 ---
@@ -107,18 +103,10 @@ kubectl patch kubevirt kubevirt -n harvester-system --type merge -p '{
 ## Step 5: Enable Live Migration Performance
 
 ```bash
-# Configure live migration bandwidth limit to protect storage network
-kubectl patch kubevirt kubevirt -n harvester-system --type merge -p '{
-  "spec": {
-    "configuration": {
-      "migrations": {
-        "bandwidthPerMigration": "512Mi",
-        "completionTimeoutPerGiB": 800,
-        "progressTimeout": 150
-      }
-    }
-  }
-}'
+# Configure a dedicated migration network to isolate live migration traffic
+# Example: use an existing custom cluster network named vm-migration
+kubectl patch settings.harvesterhci.io vm-migration-network --type merge -p \
+  '{"value":"{\"vlan\":100,\"clusterNetwork\":\"vm-migration\",\"range\":\"192.168.1.0/24\"}"}'
 ```
 
 ---
@@ -127,11 +115,11 @@ kubectl patch kubevirt kubevirt -n harvester-system --type merge -p '{
 
 - [ ] Minimum 3 nodes (5+ recommended for HA)
 - [ ] Dedicated NVMe SSDs for Longhorn
-- [ ] 25Gbps+ network interfaces
+- [ ] 10Gbps+ network interfaces
 - [ ] Separate network interfaces for storage and management
-- [ ] BIOS SR-IOV and VT-d enabled
+- [ ] BIOS hardware-assisted virtualization enabled; enable VT-d/SR-IOV if required
 - [ ] OS sysctl tuning applied
-- [ ] Longhorn priority classes configured
+- [ ] Longhorn priority class configured
 - [ ] Prometheus monitoring and alerting enabled
 - [ ] Backup target configured (S3 or NFS)
 - [ ] Rancher integration configured
@@ -141,6 +129,6 @@ kubectl patch kubevirt kubevirt -n harvester-system --type merge -p '{
 
 ## Best Practices
 
-- Never run a 2-node Harvester cluster in production - etcd requires an odd quorum.
+- Never run a 2-node Harvester cluster in production - an HA etcd control plane requires an odd quorum.
 - Monitor VM density per node and alert when it exceeds planned capacity.
-- Schedule regular maintenance windows for OS updates using Harvester's built-in drain workflow.
+- Schedule regular maintenance windows for OS updates using Harvester's Maintenance Mode workflow.
