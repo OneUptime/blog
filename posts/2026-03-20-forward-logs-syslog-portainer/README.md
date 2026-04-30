@@ -13,13 +13,12 @@ Many organizations have existing syslog infrastructure - rsyslog, syslog-ng, or 
 ## Step 1: Configure Syslog Log Driver Globally
 
 ```json
-// /etc/docker/daemon.json - Send all container logs to syslog
 {
   "log-driver": "syslog",
   "log-opts": {
     "syslog-address": "udp://syslog.internal.com:514",
     "syslog-format": "rfc5424",
-    "tag": "docker/{{.Name}}/{{.ID}}"
+    "tag": "docker/{{.Name}}"
   }
 }
 ```
@@ -42,8 +41,6 @@ docker run --rm alpine echo "test syslog message"
 
 ```yaml
 # docker-compose.yml - Syslog logging per service
-version: "3.8"
-
 services:
   api:
     image: myapp/api:latest
@@ -56,14 +53,12 @@ services:
         # syslog-address: "tcp://syslog.internal.com:514"
         # Or TCP+TLS for security
         # syslog-address: "tcp+tls://syslog.internal.com:6514"
-        # Syslog facility and severity
+        # Syslog facility
         syslog-facility: "daemon"
-        # RFC5424 format (recommended, includes structured data)
+        # RFC5424 format (recommended, standardized header fields)
         syslog-format: "rfc5424"
         # Tag identifies this container in syslog
-        tag: "api/{{.Name}}"
-        # Add hostname
-        syslog-hostname: "docker-host-1"
+        tag: "docker/{{.Name}}"
 
   nginx:
     image: nginx:alpine
@@ -72,7 +67,7 @@ services:
       options:
         syslog-address: "udp://syslog.internal.com:514"
         syslog-format: "rfc5424"
-        tag: "nginx/{{.Name}}"
+        tag: "docker/{{.Name}}"
 
   database:
     image: postgres:15-alpine
@@ -88,11 +83,9 @@ services:
 
 ```yaml
 # docker-compose.yml - Local rsyslog server
-version: "3.8"
-
 services:
   rsyslog:
-    image: rsyslog/syslog_appliance_alpine:latest
+    image: rsyslog/rsyslog
     container_name: rsyslog
     restart: unless-stopped
     volumes:
@@ -101,13 +94,12 @@ services:
     ports:
       - "514:514/udp"   # Standard syslog UDP
       - "514:514/tcp"   # TCP for reliability
-      - "6514:6514/tcp" # TLS syslog
 
 volumes:
   rsyslog_logs:
 ```
 
-```bash
+```conf
 # rsyslog.conf - Configure rsyslog to receive Docker logs
 
 # Load modules
@@ -118,22 +110,22 @@ module(load="imtcp")
 input(type="imudp" port="514")
 input(type="imtcp" port="514")
 
-# Template for Docker log files organized by container tag
+# Template for Docker log files organized by container name
 template(name="DockerLogFile" type="string"
-  string="/var/log/rsyslog/%SYSLOGTAG:F,47:1%/%$YEAR%-%$MONTH%-%$DAY%.log")
+  string="/var/log/rsyslog/%APP-NAME:F,47:2%/%$YEAR%-%$MONTH%-%$DAY%.log")
 
 # Write Docker logs to organized file structure
-if $syslogtag startswith "docker/" then {
+if $app-name startswith "docker/" then {
   action(
     type="omfile"
-    DynaFile="DockerLogFile"
+    dynaFile="DockerLogFile"
     template="RSYSLOG_TraditionalFileFormat"
   )
   stop  # Don't process further
 }
 
 # Default: write all other messages to messages file
-*.* /var/log/rsyslog/messages
+*.* action(type="omfile" file="/var/log/rsyslog/messages")
 ```
 
 ## Step 4: Forward to Multiple Syslog Destinations
@@ -149,18 +141,20 @@ services:
         # Primary: local rsyslog
         syslog-address: "tcp://rsyslog.internal.com:514"
         syslog-format: "rfc5424"
-        tag: "myapp/api/{{.Name}}"
+        tag: "docker/{{.Name}}"
 ```
 
-```bash
+```conf
 # rsyslog.conf - Forward to SIEM while keeping local copy
+
+global(workDirectory="/var/log/rsyslog")
 
 # Receive from Docker
 module(load="imtcp")
 input(type="imtcp" port="514")
 
 # Local storage
-*.* /var/log/docker/all.log
+*.* action(type="omfile" file="/var/log/rsyslog/all.log")
 
 # Forward to SIEM (Splunk, QRadar, etc.)
 *.* action(
@@ -169,8 +163,9 @@ input(type="imtcp" port="514")
   port="9514"
   protocol="tcp"
   queue.type="LinkedList"
+  queue.filename="siem_fwd"
   queue.size="10000"
-  queue.saveonshutdown="on"
+  queue.saveOnShutdown="on"
   action.resumeRetryCount="-1"
 )
 ```
@@ -178,43 +173,50 @@ input(type="imtcp" port="514")
 ## Step 5: TLS-Secured Syslog
 
 ```bash
-# Generate TLS certificates for secure syslog
-openssl req -x509 -nodes -days 3650 \
+# Generate a self-signed server certificate for TLS syslog
+mkdir -p /etc/rsyslog-certs /etc/docker/syslog-certs
+
+openssl req -x509 -nodes -newkey rsa:2048 -days 3650 \
   -keyout /etc/rsyslog-certs/key.pem \
   -out /etc/rsyslog-certs/cert.pem \
-  -subj "/CN=syslog.internal.com"
+  -subj "/CN=syslog.internal.com" \
+  -addext "subjectAltName=DNS:syslog.internal.com"
+
+# Trust the same certificate as a CA for this example
+cp /etc/rsyslog-certs/cert.pem /etc/rsyslog-certs/ca.pem
+cp /etc/rsyslog-certs/ca.pem /etc/docker/syslog-certs/ca.pem
 
 # rsyslog.conf - TLS configuration
-module(load="imtcp")
-module(load="gtls" streamdriver.name="gtls")
+module(load="imtcp" streamDriver.name="gtls" streamDriver.mode="1")
 
 input(
   type="imtcp"
   port="6514"
-  streamDriver.name="gtls"
-  streamDriver.mode="1"     # TLS mode
-  streamDriver.authMode="x509/name"
-)
-
-global(
-  DefaultNetstreamDriverCAFile="/etc/rsyslog-certs/ca.pem"
-  DefaultNetstreamDriverCertFile="/etc/rsyslog-certs/cert.pem"
-  DefaultNetstreamDriverKeyFile="/etc/rsyslog-certs/key.pem"
+  streamDriver.authMode="anon"
+  streamDriver.certFile="/etc/rsyslog-certs/cert.pem"
+  streamDriver.keyFile="/etc/rsyslog-certs/key.pem"
+  streamDriver.caFile="/etc/rsyslog-certs/ca.pem"
 )
 ```
 
 ```yaml
-# Container using TLS syslog
+# Publish the TLS port and mount the certificates into the rsyslog container
 services:
+  rsyslog:
+    ports:
+      - "6514:6514/tcp"
+    volumes:
+      - /etc/rsyslog-certs:/etc/rsyslog-certs:ro
+
   api:
     image: myapp/api:latest
     logging:
       driver: syslog
       options:
         syslog-address: "tcp+tls://syslog.internal.com:6514"
-        syslog-tls-cert: /etc/docker/syslog-certs/client-cert.pem
-        syslog-tls-key: /etc/docker/syslog-certs/client-key.pem
-        syslog-tls-ca-cert: /etc/docker/syslog-certs/ca.pem
+        syslog-format: "rfc5424"
+        tag: "docker/{{.Name}}"
+        syslog-tls-ca-cert: "/etc/docker/syslog-certs/ca.pem"
 ```
 
 ## Step 6: Verify Syslog Integration
@@ -224,18 +226,16 @@ services:
 docker run --rm \
   --log-driver=syslog \
   --log-opt syslog-address=udp://syslog.internal.com:514 \
-  --log-opt tag="test/container" \
+  --log-opt syslog-format=rfc5424 \
+  --log-opt tag="docker/test" \
   alpine \
   echo "Testing syslog from Docker container"
 
 # Check rsyslog received it
 tail -f /var/log/rsyslog/test/$(date +%Y-%m-%d).log
 # Should show the test message
-
-# Check with logger (manual syslog test)
-docker exec rsyslog logger -t "docker/api" "Manual test message"
 ```
 
 ## Conclusion
 
-Docker's syslog log driver integrates seamlessly with existing syslog infrastructure. Organizations running rsyslog, syslog-ng, or cloud SIEM systems can route container logs through the same pipelines used for host OS logs. RFC5424 format with structured data includes container metadata like the tag and hostname in a machine-parseable format. Use TCP instead of UDP for production to ensure delivery, and TLS for environments where log data is sensitive. Portainer's compose YAML makes it straightforward to configure different logging destinations per service, so noisy services like databases can stay local while application services ship to the central SIEM.
+Docker's syslog log driver integrates seamlessly with existing syslog infrastructure. Organizations running rsyslog, syslog-ng, or cloud SIEM systems can route container logs through the same pipelines used for host OS logs. RFC5424 format gives you standardized syslog header fields such as timestamp, hostname, and app-name/tag in a machine-parseable format. Use TCP instead of UDP for better delivery guarantees, and TLS for environments where log data is sensitive. Portainer's compose YAML makes it straightforward to configure different logging destinations per service, so noisy services like databases can stay local while application services ship to the central SIEM.
