@@ -8,20 +8,21 @@ Description: Learn how the IPv4 Type of Service (ToS) byte works, how DSCP and E
 
 ## Introduction
 
-The Type of Service (ToS) byte is the second byte of the IPv4 header. Originally defined in RFC 791 as a simple precedence and service type field, it was redefined by RFC 2474 into Differentiated Services (DSCP), which is the standard used in modern networks for Quality of Service (QoS). Understanding this byte is important for ensuring voice, video, and critical application traffic gets priority treatment.
+The Type of Service (ToS) byte is the second byte of the IPv4 header. Originally defined in RFC 791 as a precedence and service type field, it was redefined by RFC 2474 as the Differentiated Services (DS) field. RFC 3168 later assigned the lower 2 bits to Explicit Congestion Notification (ECN), while the upper 6 bits carry the Differentiated Services Code Point (DSCP) used in modern Quality of Service (QoS) networks. Understanding this byte is important for ensuring voice, video, and critical application traffic gets priority treatment.
 
 ## ToS Byte Structure: Original vs. DSCP
 
-The original RFC 791 interpretation used precedence bits and service type flags. Modern networks use the DSCP interpretation.
+The original RFC 791 interpretation used precedence bits and service type flags. Modern networks use the DS field interpretation, with DSCP from RFC 2474 and ECN from RFC 3168.
 
 ```text
 Original (RFC 791):
-  Bits: 7  6  5  4  3  2  1  0
-        [Precedence ][D][T][R][0]
+  Bits: 0  1  2  3  4  5  6  7
+        [Precedence ][D][T][R][0][0]
         Precedence: 0=Routine to 7=Network Control
+        D: Low Delay, T: High Throughput, R: High Reliability
 
-DSCP (RFC 2474) - modern standard:
-  Bits: 7  6  5  4  3  2  1  0
+DS field (RFC 2474 + RFC 3168) - modern standard:
+  Bits: 0  1  2  3  4  5  6  7
         [    DSCP (6 bits)    ][ECN (2 bits)]
         DSCP: differentiated services code point
         ECN:  explicit congestion notification
@@ -38,7 +39,7 @@ def parse_tos_byte(tos: int) -> dict:
         "dscp":      dscp,
         "dscp_class": dscp_class_name(dscp),
         "ecn":       ecn,
-        "ecn_capable": ecn >= 2,  # ECT(1) or ECT(0)
+        "ecn_capable": ecn in (1, 2),  # ECT(1) or ECT(0)
         "congestion_experienced": ecn == 3,  # CE
     }
 
@@ -87,9 +88,10 @@ iptables -t mangle -A OUTPUT \
   -p udp --dport 3478 \
   -j DSCP --set-dscp 34
 
-# View existing DSCP markings with tc
+# View tc QoS configuration
 tc qdisc show dev eth0
 tc class show dev eth0
+tc filter show dev eth0
 
 # Check DSCP on received packets
 tcpdump -n -v -i eth0 'ip' | grep tos
@@ -131,11 +133,12 @@ The ECN bits (lower 2 bits of the ToS byte) allow routers to signal congestion w
 | 11 | Congestion Experienced (CE) - router set this |
 
 ```bash
-# Check if ECN is enabled on Linux
+# Check TCP ECN mode on Linux
 cat /proc/sys/net/ipv4/tcp_ecn
-# 0 = disabled, 1 = enabled (both send and receive), 2 = receive only
+# 0 = no ECN, 1 = ECN on incoming and outgoing TCP connections,
+# 2 = ECN on incoming TCP connections only, 3-5 = Accurate ECN (AccECN) modes
 
-# Enable ECN
+# Enable classic ECN for TCP
 sysctl -w net.ipv4.tcp_ecn=1
 
 # Capture ECN-marked packets
@@ -145,16 +148,12 @@ tcpdump -n 'ip[1] & 0x3 == 3'  # CE bit set
 ## QoS Policy Configuration with OpenTofu
 
 ```hcl
-# AWS: Apply DSCP markings via VPC traffic mirroring or
-# use Application Load Balancer attributes
-resource "aws_lb" "api" {
-  name               = "api-lb"
-  internal           = false
-  load_balancer_type = "application"
-}
-
-# For network appliances, configure DSCP via user data scripts
+# OpenTofu can provision an instance that applies DSCP policy.
+# The DSCP marking itself is done inside the guest OS.
 resource "aws_instance" "router" {
+  ami           = "ami-xxxxxxxxxxxxxxxxx" # replace with a valid AMI for your region
+  instance_type = "t3.micro"
+
   user_data = <<-EOF
     #!/bin/bash
     # Mark VoIP traffic with EF (DSCP 46)
