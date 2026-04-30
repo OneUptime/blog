@@ -6,11 +6,11 @@ Tags: WireGuard, pfSense, VPN, IPv4, Firewall, Networking
 
 Description: Set up a WireGuard VPN tunnel on pfSense for IPv4 remote access, including interface creation, peer configuration, and firewall rules.
 
-WireGuard is natively supported in pfSense 2.5.2 and later via a built-in package. It provides a high-performance VPN option for pfSense-based networks.
+WireGuard is available as an add-on package on pfSense CE 2.5.2 and later and pfSense Plus 21.05 and later. It provides a high-performance VPN option for pfSense-based networks.
 
 ## Step 1: Install WireGuard Package (if needed)
 
-In pfSense 2.5.2+, WireGuard is built-in. On older versions:
+On supported pfSense versions, WireGuard is installed from the Package Manager:
 
 1. Navigate to **System → Package Manager → Available Packages**
 2. Search for `WireGuard` and install it
@@ -20,10 +20,11 @@ In pfSense 2.5.2+, WireGuard is built-in. On older versions:
 1. Navigate to **VPN → WireGuard → Tunnels**
 2. Click **+ Add Tunnel**
 3. Configure the tunnel:
+   - **Enable:** Checked
    - **Description:** My WireGuard VPN
    - **Listen Port:** 51820
    - Click **Generate** to create a key pair
-   - **Interface Address:** `10.0.0.1/24` (VPN subnet for this server)
+   - **Interface Addresses:** `10.0.0.1/24` (VPN subnet for this server)
 4. Click **Save Tunnel**
 
 ## Step 3: Add Peers
@@ -32,16 +33,19 @@ In pfSense 2.5.2+, WireGuard is built-in. On older versions:
 2. Fill in peer details:
    - **Tunnel:** Select your tunnel
    - **Description:** Remote client name
+   - **Dynamic Endpoint:** Checked
    - **Public Key:** Paste the client's public key
    - **Allowed IPs:** `10.0.0.2/32` (client's VPN IP)
    - **Endpoint:** Leave blank (client initiates)
-   - **Keepalive:** 25
+   - **Keepalive:** Usually leave blank; use `25` only if the client needs persistent keepalives through NAT
 3. Click **Save Peer**
 
 ## Step 4: Assign the WireGuard Interface
 
+If the firewall default gateway is set to **Automatic**, set it to a specific gateway or gateway group under **System → Routing** before assigning the WireGuard interface.
+
 1. Go to **Interfaces → Assignments**
-2. Find the `wg0` interface in the available network ports dropdown
+2. Find the `tun_wg0` interface (or the appropriate `tun_wg<number>` entry) in the available network ports dropdown
 3. Click **+ Add** and save
 4. Navigate to the newly created interface (e.g., **OPT1**)
 5. Enable it, set a description like `WireGuard`, and save
@@ -54,6 +58,7 @@ Navigate to **Firewall → Rules**.
 - Action: Pass
 - Interface: WAN
 - Protocol: UDP
+- Destination: WAN address
 - Destination Port: 51820
 - Description: Allow WireGuard VPN
 
@@ -67,8 +72,8 @@ Navigate to **Firewall → Rules**.
 ## Step 6: Configure NAT for Internet Access
 
 1. Go to **Firewall → NAT → Outbound**
-2. Switch to **Hybrid** or **Manual** outbound NAT mode
-3. Add a rule to masquerade WireGuard traffic:
+2. If outbound NAT is set to **Automatic**, pfSense will create the necessary outbound NAT rule for the assigned WireGuard interface automatically
+3. If outbound NAT is set to **Hybrid** or **Manual**, add a rule to masquerade WireGuard traffic:
    - Interface: WAN
    - Source: `10.0.0.0/24`
    - Translation Address: Interface Address
@@ -90,4 +95,4 @@ AllowedIPs = 0.0.0.0/0
 PersistentKeepalive = 25
 ```
 
-After applying, clients connecting to the pfSense WireGuard server will receive a VPN IP in the `10.0.0.0/24` range and can access the internal network.
+After applying, clients connecting to the pfSense WireGuard server can use the VPN IPs you assign from the `10.0.0.0/24` range to access the internal network.
