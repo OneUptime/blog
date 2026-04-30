@@ -8,7 +8,7 @@ Description: Learn how to fix GPU enabling errors in Portainer when deploying co
 
 ---
 
-GPU passthrough to Docker containers requires the NVIDIA Container Toolkit (for NVIDIA GPUs) or ROCm drivers (for AMD GPUs) on the host. Without these, Portainer will surface Docker daemon errors when you enable GPU access in the container settings.
+GPU access in Portainer's Docker container UI only supports NVIDIA GPUs on Docker Standalone environments and requires the NVIDIA Container Toolkit on the host. For AMD GPUs, use manual device mappings in a stack or container configuration and ensure the host has ROCm-compatible drivers.
 
 ## Prerequisites Check
 
@@ -21,12 +21,12 @@ nvidia-smi
 nvidia-ctk --version
 
 # Verify Docker can use the NVIDIA runtime
-docker run --rm --gpus all nvidia/cuda:12.0-base nvidia-smi
+docker run --rm --gpus all ubuntu nvidia-smi
 ```
 
 ## Error: "could not select device driver with capabilities: [[gpu]]"
 
-This means the NVIDIA Container Toolkit is not installed or not configured:
+This usually means the NVIDIA Container Toolkit is not installed or Docker is not configured to use it:
 
 ```bash
 # Install NVIDIA Container Toolkit on Ubuntu
@@ -51,32 +51,33 @@ The NVIDIA runtime is not registered with Docker:
 ```bash
 # Check /etc/docker/daemon.json
 cat /etc/docker/daemon.json
+```
 
-# It should contain:
+```json
 {
   "runtimes": {
     "nvidia": {
-      "path": "nvidia-container-runtime",
+      "path": "/usr/bin/nvidia-container-runtime",
       "runtimeArgs": []
     }
-  },
-  "default-runtime": "nvidia"
+  }
 }
+```
 
-# If missing, add it and restart Docker
+```bash
+# If missing, re-run the NVIDIA runtime configuration and restart Docker
+sudo nvidia-ctk runtime configure --runtime=docker
 sudo systemctl restart docker
 ```
 
 ## Configuring GPU in Portainer
 
-In Portainer's container creation UI, the GPU option requires deploying the container with specific runtime settings. Use a stack instead for reliable GPU configuration:
+In Portainer's container creation UI, GPU support is only available for NVIDIA GPUs on Docker Standalone environments. For stack-based deployments, use Docker Compose GPU reservations:
 
 ```yaml
-version: "3.8"
-
 services:
   gpu-app:
-    image: nvidia/cuda:12.0-base
+    image: nvidia/cuda:12.9.0-base-ubuntu22.04
     # Request all available GPUs
     deploy:
       resources:
@@ -90,16 +91,13 @@ services:
 
 ## AMD GPU Support
 
-For AMD GPUs, use the ROCm runtime:
+For AMD GPUs, Portainer's GPU toggle does not apply. Map the required devices manually and ensure the host has ROCm-compatible drivers:
 
 ```yaml
 services:
   rocm-app:
-    image: rocm/pytorch:latest
+    image: rocm/rocm-terminal:latest
     devices:
       - /dev/kfd:/dev/kfd
       - /dev/dri:/dev/dri
-    group_add:
-      - video
-      - render
 ```
