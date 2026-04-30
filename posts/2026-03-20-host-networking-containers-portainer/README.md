@@ -4,17 +4,18 @@ Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
 Tags: Portainer, Docker, Host Network, Networking, Performance
 
-Description: Use host network mode for containers in Portainer to maximize network performance for latency-sensitive workloads.
+Description: Use host network mode for containers in Portainer to reduce NAT overhead for latency-sensitive workloads.
 
 ## Introduction
 
-Use host network mode for containers in Portainer to maximize network performance for latency-sensitive workloads. Network configuration is a critical aspect of containerized infrastructure, and getting it right ensures your services are secure, performant, and reliable.
+Use host network mode for containers in Portainer when you need direct access to the host's network stack for latency-sensitive workloads. In host mode, the container shares the host's network namespace, does not get its own IP address, and does not use Docker port publishing.
 
 ## Prerequisites
 
 - Portainer CE or BE installed
-- Docker or Kubernetes environment connected
-- Basic understanding of networking concepts (subnets, DNS, TLS)
+- A Docker Standalone environment connected to Portainer
+- A Linux host, or Docker Desktop 4.34+ with host networking enabled
+- Basic understanding of networking concepts (ports, DNS, firewalls)
 
 ## Docker Network Types Overview
 
@@ -22,7 +23,7 @@ Use host network mode for containers in Portainer to maximize network performanc
 |----------------|----------|------------|
 | bridge | Single-host container communication | No |
 | overlay | Multi-host Swarm communication | Yes |
-| host | Maximum performance, uses host network | No |
+| host | Lowest overhead, shares host network stack | No |
 | macvlan | Direct L2 network access | No |
 | none | No networking | No |
 
@@ -31,140 +32,71 @@ Use host network mode for containers in Portainer to maximize network performanc
 Design your network topology before implementation:
 
 ```text
-Internet
+Client
    |
-[Nginx/Traefik] (DMZ network)
+[Host IP:80]
    |
-[Frontend] (frontend network)
-   |
-[API] (backend network)
-   |
-[Database] (db network - isolated)
+[Container running with network_mode: host]
 ```
+
+Make sure the required host ports are free before deployment, because the container binds directly on the host.
 
 ## Step 2: Create Networks via Portainer
 
-Navigate to **Networks** > **Add Network**:
+Host mode uses Docker's predefined `host` network, so you do not create a custom network for it under **Networks** > **Add Network**. Instead, configure the container or stack to use host networking:
 
 ```yaml
-# Define networks in your stack
-
-version: "3.8"
-
-networks:
-  # DMZ network - connected to reverse proxy
-  dmz:
-    driver: bridge
-    ipam:
-      config:
-        - subnet: 172.20.0.0/24
-  
-  # Frontend network
-  frontend:
-    driver: bridge
-    internal: false
-  
-  # Backend network - internal only
-  backend:
-    driver: bridge
-    internal: true
-  
-  # Database network - fully isolated
-  db-net:
-    driver: bridge
-    internal: true
-    ipam:
-      config:
-        - subnet: 172.21.0.0/24
-
-  # External overlay network (for Swarm)
-  swarm-overlay:
-    driver: overlay
-    attachable: true
-    encrypted: true
+services:
+  app:
+    image: nginx:alpine
+    network_mode: host
 ```
 
 ## Step 3: Connect Services to Networks
 
-Configure service network membership:
+Configure services that require host networking:
 
 ```yaml
 services:
-  # Reverse proxy - connected to DMZ and frontend
   nginx:
     image: nginx:alpine
-    networks:
-      dmz:
-        aliases:
-          - proxy
-      frontend:
-    ports:
-      - "80:80"
-      - "443:443"
-  
-  # API - connected to frontend and backend
-  api:
-    image: my-api:latest
-    networks:
-      - frontend
-      - backend
-      - db-net
-    # Don't expose ports directly - only through nginx
-  
-  # Database - only on db-net
-  postgres:
-    image: postgres:15
-    networks:
-      db-net:
-        aliases:
-          - database
-    # No port exposure
+    network_mode: host
+    restart: unless-stopped
+    # Do not use ports: with host networking
+    # Do not combine network_mode with networks:
 ```
 
 ## Step 4: Configure Network Security
 
-Add network encryption and security settings:
-
-```yaml
-networks:
-  secure-overlay:
-    driver: overlay
-    # Encrypt all overlay network traffic
-    encrypted: true
-    driver_opts:
-      # Use IPsec for encryption
-      encrypted: "true"
-```
+Host mode removes Docker's network isolation for that container. There is no Docker network-level encryption setting to enable here, so secure access with the host firewall and only use host mode for services that actually need it.
 
 Firewall rules via Portainer host access:
 
 ```bash
-# Configure UFW for container networks
-ufw allow from 172.20.0.0/24 to any port 80
-ufw allow from 172.20.0.0/24 to any port 443
-ufw deny from 172.21.0.0/24 to any  # Isolate DB network
+# Allow only the ports the application actually needs
+ufw allow 80/tcp
+ufw allow 443/tcp
+
+# Keep database ports closed unless they must be reachable
+ufw deny 5432/tcp
 ```
 
 ## Step 5: Troubleshoot Network Issues
 
-Debug container networking from Portainer's console:
+Debug host-mode networking from Portainer's console:
 
 ```bash
-# Test DNS resolution between containers
-docker exec api-container nslookup postgres
+# Confirm the container is using host networking
+docker inspect host-mode-app --format '{{.HostConfig.NetworkMode}}'
 
-# Test connectivity
-docker exec api-container ping postgres
-docker exec api-container curl -I http://frontend:3000
+# Inspect the predefined host network
+docker network inspect host
 
-# Inspect network configuration
-docker network inspect stack-name_backend
+# Verify which process is bound to the host port
+sudo netstat -tulpn | grep :80
 
-# View connected containers
-docker network inspect stack-name_backend | jq '.[0].Containers'
-
-# Check iptables rules (on host)
-iptables -L -n -v | grep DOCKER
+# Test connectivity through the host address
+curl -I http://127.0.0.1:80
 ```
 
 ## Step 6: Monitor Network Traffic
@@ -176,37 +108,38 @@ services:
   # Network traffic monitoring
   ntopng:
     image: ntop/ntopng:latest
-    ports:
-      - "3000:3000"
     volumes:
       - ntopng-data:/var/lib/ntopng
     cap_add:
       - NET_ADMIN
       - NET_RAW
-    network_mode: host  # Required for traffic inspection
+    network_mode: host  # Common when monitoring host interfaces
+
+volumes:
+  ntopng-data:
 ```
 
 ## Common Network Patterns
 
-### Pattern 1: Microservices Isolation
+### Pattern 1: Edge Service on Host Network
 ```yaml
-# Each microservice gets its own network
-networks:
-  payment-svc: {}
-  user-svc: {}
-  api-gateway: {}
-  # API gateway connects to both service networks
+services:
+  ingress:
+    image: nginx:alpine
+    network_mode: host
 ```
 
-### Pattern 2: Tiered Architecture
+### Pattern 2: Traffic Monitoring
 ```yaml
-networks:
-  presentation: {}   # Web/UI layer
-  business: {}       # API/Logic layer
-  data: {}           # DB layer (internal only)
-    internal: true
+services:
+  sensor:
+    image: ntop/ntopng:latest
+    cap_add:
+      - NET_ADMIN
+      - NET_RAW
+    network_mode: host
 ```
 
 ## Conclusion
 
-Proper network configuration in Portainer is fundamental to building secure, maintainable container deployments. By segmenting networks by function, enabling encryption on overlay networks, and following the principle of least connectivity (services only join networks they need), you reduce attack surface and improve security posture. Portainer's visual network management makes it easy to review and maintain your network topology as your infrastructure evolves.
+Proper use of host network mode in Portainer is less about creating multiple Docker networks and more about using host mode selectively. Because the container shares the host network namespace, you get direct port binding and lower overhead, but you also give up Docker's per-container network isolation and port publishing. Use host mode only for services that actually need it, confirm the required host ports are free, and secure access with the host firewall.
