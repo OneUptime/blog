@@ -11,9 +11,10 @@ Integrating IPAM into Ansible playbooks ensures every provisioned resource autom
 ## Using the NetBox Ansible Collection
 
 ```bash
-# Install the NetBox Ansible collection
+# Install the NetBox Ansible collection and its Python dependency on the control node
 
 ansible-galaxy collection install netbox.netbox
+python -m pip install pynetbox
 ```
 
 ## Allocating an IP from NetBox in a Playbook
@@ -51,7 +52,7 @@ ansible-galaxy collection install netbox.netbox
     - name: Use the IP to configure the host
       # ... subsequent tasks use ip_result.ip_address.address
       set_fact:
-        server_ip: "{{ ip_result.ip_address.address | ipaddr('address') }}"
+        server_ip: "{{ ip_result.ip_address.address | ansible.builtin.regex_replace('/.*$', '') }}"
 ```
 
 ## Creating a Full Device Record in NetBox
@@ -62,6 +63,10 @@ ansible-galaxy collection install netbox.netbox
 - name: Create Device Record in NetBox
   hosts: localhost
   gather_facts: false
+
+  vars:
+    netbox_url: "http://netbox.example.com"
+    netbox_token: "{{ lookup('env', 'NETBOX_TOKEN') }}"
 
   tasks:
     - name: Create device
@@ -82,9 +87,9 @@ ansible-galaxy collection install netbox.netbox
         netbox_url: "{{ netbox_url }}"
         netbox_token: "{{ netbox_token }}"
         data:
-          device: { name: "web05" }
+          device: "web05"
           name: "eth0"
-          type: "1000base-t"
+          type: "1000Base-t (1GE)"
         state: present
       register: interface_result
 
@@ -96,9 +101,9 @@ ansible-galaxy collection install netbox.netbox
           address: "10.100.1.15/24"
           status: active
           dns_name: "web05.corp.example.com"
-          assigned_object:
+          interface:
             name: "eth0"
-            device: { name: "web05" }
+            device: "web05"
         state: present
 ```
 
@@ -111,38 +116,45 @@ ansible-galaxy collection install netbox.netbox
   hosts: localhost
   gather_facts: false
 
+  vars:
+    phpipam_url: "http://phpipam.example.com"
+    phpipam_app_id: "myapp"
+    phpipam_username: "admin"
+    phpipam_password: "{{ lookup('env', 'PHPIPAM_PASSWORD') }}"
+    subnet_id: 42
+    server_name: "web05"
+
   tasks:
     - name: Get authentication token
       uri:
-        url: "http://phpipam.example.com/api/myapp/user/"
+        url: "{{ phpipam_url }}/api/{{ phpipam_app_id }}/user/"
         method: POST
-        body_format: json
-        body:
-          username: "admin"
-          password: "{{ phpipam_password }}"
+        url_username: "{{ phpipam_username }}"
+        url_password: "{{ phpipam_password }}"
+        force_basic_auth: true
         status_code: 200
       register: auth_result
 
     - name: Get next free IP in subnet
       uri:
-        url: "http://phpipam.example.com/api/myapp/subnets/{{ subnet_id }}/first_free/"
+        url: "{{ phpipam_url }}/api/{{ phpipam_app_id }}/subnets/{{ subnet_id }}/first_free/"
         headers:
-          token: "{{ auth_result.json.data.token }}"
+          phpipam-token: "{{ auth_result.json.data.token }}"
         method: GET
         status_code: 200
       register: free_ip_result
 
     - name: Reserve the IP address
       uri:
-        url: "http://phpipam.example.com/api/myapp/addresses/"
+        url: "{{ phpipam_url }}/api/{{ phpipam_app_id }}/addresses/"
         headers:
-          token: "{{ auth_result.json.data.token }}"
+          phpipam-token: "{{ auth_result.json.data.token }}"
         method: POST
         body_format: json
         body:
           subnetId: "{{ subnet_id }}"
           ip: "{{ free_ip_result.json.data }}"
-          hostname: "{{ inventory_hostname }}.corp.example.com"
+          hostname: "{{ server_name }}.corp.example.com"
           description: "Allocated by Ansible"
         status_code: 201
       register: allocation_result
@@ -163,4 +175,4 @@ ansible-playbook provision_server.yml -e "server_name=web05"
 # ok: [localhost] => msg: "Allocated IP: 10.100.1.16/24"
 ```
 
-IPAM-integrated Ansible playbooks ensure zero IP conflicts and complete documentation of every provisioned resource.
+IPAM-integrated Ansible playbooks help reduce IP conflicts and keep documentation in sync for every provisioned resource.
