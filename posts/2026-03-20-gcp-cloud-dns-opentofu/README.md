@@ -37,7 +37,7 @@ resource "google_dns_managed_zone" "public" {
 
   labels = {
     environment = var.environment
-    managed-by  = "opentofu"
+    "managed-by" = "opentofu"
   }
 }
 
@@ -153,8 +153,8 @@ resource "google_dns_managed_zone" "forwarding" {
 
 ## Best Practices
 
-- Always end DNS names with a trailing dot in Cloud DNS (`"example.com."`) - without the trailing dot, Cloud DNS treats the name as relative to the zone, causing resolution failures.
-- Enable DNSSEC on public zones to prevent DNS spoofing - after enabling, update your registrar's DS records using the output from `google_dns_managed_zone.dnssec_config`.
+- Use trailing dots for fully qualified DNS names in Cloud DNS (`"example.com."`) - especially for zone `dns_name`, record `name`, and FQDN values in `rrdatas` such as CNAME and MX targets.
+- Enable DNSSEC on public zones to prevent DNS spoofing - after enabling, get the DS record from Cloud DNS (for example, via the Registrar setup view or `gcloud dns dns-keys list --filter='type=keySigning' --format='value(ds_record())' --zone=ZONE_NAME`) and publish it at your registrar.
 - Use private zones with `private_visibility_config` scoped to specific VPCs rather than making internal records public - this prevents internal service endpoints from being publicly resolvable.
 - Use forwarding zones for on-premises domains accessible via Cloud Interconnect or VPN - this allows GCP resources to resolve on-premises hostnames using corporate DNS.
 - After creating a public zone, update your domain registrar's name servers with the `name_servers` output - Cloud DNS zones don't work until the registrar is updated.
