@@ -27,7 +27,7 @@ grep -rn -E "$IPV4_RE" \
     --include="*.yaml" --include="*.yml" --include="*.json" \
     --include="*.toml" --include="*.ini" --include="*.conf" \
     . 2>/dev/null | \
-    grep -v "127.0.0.1\|0.0.0.0\|255.255.255\|test\|spec\|example" | \
+    grep -Ev "127\.0\.0\.1|0\.0\.0\.0|255\.255\.255\.255|test|spec|example" | \
     head -50
 ```
 
@@ -37,15 +37,14 @@ grep -rn -E "$IPV4_RE" \
 #!/usr/bin/env python3
 # find_socket_binding.py - Find code that binds IPv4-only sockets
 
-import subprocess
 import os
 import re
 
 # Patterns that indicate IPv4-only binding
 BINDING_PATTERNS = [
-    (r'socket\.AF_INET\b(?!6)', 'IPv4-only socket (use AF_INET6 with IPV6_V6ONLY=0)'),
-    (r'bind\(["\']0\.0\.0\.0', 'Binding to 0.0.0.0 (use :: for dual-stack)'),
-    (r'listen\(["\']0\.0\.0\.0', 'Listening on 0.0.0.0'),
+    (r'\bAF_INET\b(?!6)', 'IPv4-only socket family (review for AF_INET6 or dual-stack support)'),
+    (r'\bbind\s*\([^#\n]*0\.0\.0\.0', 'Binding to 0.0.0.0 (review for an IPv6 or dual-stack listener)'),
+    (r'\blisten\s*\([^#\n]*0\.0\.0\.0', 'Listening on 0.0.0.0'),
     (r'HOST\s*=\s*["\']0\.0\.0\.0', 'Host configured as 0.0.0.0'),
     (r'BIND_ADDR\s*=\s*["\']0\.0\.0\.0', 'Bind address 0.0.0.0'),
 ]
@@ -90,13 +89,14 @@ for f in all_findings:
 
 echo "=== Configuration File Audit ==="
 
-# Find listen directives binding to 0.0.0.0
-echo "--- IPv4-only listen directives ---"
-grep -rn -E "listen\s+(0\.0\.0\.0|[0-9]+\.[0-9]+\.[0-9]+\.[0-9]+):" \
+# Find explicit IPv4 listen or bind directives
+echo "--- IPv4-only listen or bind directives ---"
+grep -rni -E "(^|[[:space:]])(listen|bind)[[:space:]].*(0\.0\.0\.0|[0-9]+\.[0-9]+\.[0-9]+\.[0-9]+)" \
     /etc/nginx /etc/apache2 /etc/haproxy /etc/caddy 2>/dev/null | \
-    grep -v "#"
+    grep -vE ":[0-9]+:[[:space:]]*#" | \
+    grep -vE "\[[0-9A-Fa-f:]+\]"
 
-# Find Kubernetes services with IPv4-only annotations
+# Find Kubernetes services using only IPv4 service families
 echo ""
 echo "--- Kubernetes IPv4-only services ---"
 kubectl get services --all-namespaces -o json 2>/dev/null | \
@@ -105,9 +105,15 @@ import json, sys
 data = json.load(sys.stdin)
 for svc in data.get('items', []):
     spec = svc.get('spec', {})
-    ip_policy = spec.get('ipFamilyPolicy', 'SingleStack')
-    families = spec.get('ipFamilies', ['IPv4'])
-    if ip_policy == 'SingleStack' and families == ['IPv4']:
+    cluster_ips = spec.get('clusterIPs', [])
+    cluster_ip = spec.get('clusterIP')
+    if not cluster_ips and cluster_ip and cluster_ip != 'None':
+        cluster_ips = [cluster_ip]
+    families = spec.get('ipFamilies')
+    if not families and cluster_ips:
+        families = ['IPv6' if ':' in ip else 'IPv4' for ip in cluster_ips]
+    ip_policy = spec.get('ipFamilyPolicy')
+    if families == ['IPv4'] and ip_policy in (None, 'SingleStack'):
         ns = svc['metadata']['namespace']
         name = svc['metadata']['name']
         print(f'  {ns}/{name}: IPv4-only SingleStack')
@@ -116,7 +122,7 @@ for svc in data.get('items', []):
 # Find Docker networks that are IPv4-only
 echo ""
 echo "--- Docker IPv4-only networks ---"
-docker network ls --format "{{.Name}}" 2>/dev/null | while read net; do
+docker network ls --format "{{.Name}}" 2>/dev/null | while IFS= read -r net; do
     ENABLE_IPV6=$(docker network inspect "$net" --format '{{.EnableIPv6}}' 2>/dev/null)
     if [ "$ENABLE_IPV6" = "false" ]; then
         echo "  $net: IPv6 disabled"
@@ -131,7 +137,6 @@ done
 # check_third_party_ipv6.py - Check IPv6 support for external services
 
 import socket
-import dns.resolver
 
 THIRD_PARTY_SERVICES = [
     # Format: (service_name, hostname)
@@ -149,11 +154,11 @@ print("-" * 60)
 
 for name, hostname in THIRD_PARTY_SERVICES:
     try:
-        answers = dns.resolver.resolve(hostname, 'AAAA')
-        ipv6 = str(answers[0])
+        answers = socket.getaddrinfo(hostname, None, socket.AF_INET6, socket.SOCK_STREAM)
+        ipv6 = sorted({result[4][0] for result in answers})[0]
         print(f"  OK  {name:30s} {ipv6}")
-    except (dns.resolver.NoAnswer, dns.resolver.NXDOMAIN):
-        print(f"  NO  {name:30s} No AAAA record")
+    except socket.gaierror:
+        print(f"  NO  {name:30s} No IPv6 result from resolver")
     except Exception as e:
         print(f"  ??  {name:30s} Error: {e}")
 ```
@@ -166,18 +171,18 @@ for name, hostname in THIRD_PARTY_SERVICES:
 ## Summary
 - Source code files with hardcoded IPv4: 23
 - IPv4-only socket bindings: 8
-- Config files binding to 0.0.0.0: 12
+- Config files with explicit IPv4 listen/bind directives: 12
 - Kubernetes services IPv4-only: 45
 - Third-party services without IPv6: 3
 
 ## High Priority (blocking migration)
 1. **payment-service**: Hardcodes payment gateway IPv4 (no AAAA available)
-2. **user-auth**: Binds to `0.0.0.0:8080` - needs `:::8080`
+2. **user-auth**: Binds to `0.0.0.0:8080` - needs an IPv6 or dual-stack listener
 3. **legacy-api**: Uses `socket.AF_INET` throughout codebase
 
 ## Medium Priority
-1. Nginx configs bind to `0.0.0.0:80` instead of `:::80`
-2. 45 K8s services need `ipFamilyPolicy: PreferDualStack`
+1. Nginx configs bind to `0.0.0.0:80` instead of an IPv6 or dual-stack listener
+2. 45 K8s services need `ipFamilyPolicy: PreferDualStack` once the cluster supports dual-stack
 
 ## External Dependencies Without IPv6
 1. vendor-x.com - contact vendor for IPv6 timeline
