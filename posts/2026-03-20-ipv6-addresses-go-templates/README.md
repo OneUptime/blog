@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
-Tags: Go, IPv6, Template, HTML, Text/template, Html/template
+Tags: Go, IPv6, Template, HTML, text/template, html/template
 
 Description: Handle IPv6 addresses in Go templates including proper formatting, URL generation, and custom template functions.
 
@@ -18,6 +18,7 @@ package main
 import (
     "fmt"
     "net/netip"
+    "text/template"
 )
 
 // IPv6 template helper functions
@@ -28,7 +29,8 @@ var templateFuncs = template.FuncMap{
         if err != nil {
             return addr
         }
-        if a.Is6() && !a.Is4In6() {
+        a = a.Unmap()
+        if a.Is6() {
             return "[" + a.String() + "]"
         }
         return a.String()
@@ -40,7 +42,8 @@ var templateFuncs = template.FuncMap{
         if err != nil {
             return addr
         }
-        if a.Is6() && !a.Is4In6() {
+        a = a.Unmap()
+        if a.Is6() {
             return fmt.Sprintf("[%s]:%d", a, port)
         }
         return fmt.Sprintf("%s:%d", a, port)
@@ -52,7 +55,7 @@ var templateFuncs = template.FuncMap{
         if err != nil {
             return addr
         }
-        return a.String()  // String() always returns compressed form
+        return a.Unmap().String()  // String() compresses IPv6 and keeps IPv4 dotted-decimal
     },
 
     // Check if address is IPv6
@@ -61,7 +64,7 @@ var templateFuncs = template.FuncMap{
         if err != nil {
             return false
         }
-        return a.Is6() && !a.Is4In6()
+        return a.Unmap().Is6()
     },
 }
 ```
@@ -200,7 +203,7 @@ func generateNginxConfig(config NginxConfig) (string, error) {
             if err != nil {
                 return addr
             }
-            return a.String()
+            return a.Unmap().String()
         },
     }
 
@@ -239,6 +242,9 @@ router bgp {{.ASN}}
  neighbor {{ipv6Short .Address}} description {{.Description}}
  {{end}}
  address-family ipv6
+  {{range .Neighbors}}
+  neighbor {{ipv6Short .Address}} activate
+  {{end}}
   {{range .Networks}}
   network {{.Prefix}}/{{.Length}}
   {{end}}
