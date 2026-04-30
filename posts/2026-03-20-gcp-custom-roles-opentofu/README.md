@@ -55,14 +55,14 @@ resource "google_project_iam_custom_role" "cloudsql_reader" {
 
 ## Creating a CI/CD Deployer Custom Role
 
-This role grants the minimum permissions needed for a deployment pipeline.
+This role grants the permissions needed to deploy an existing Artifact Registry image to Cloud Run.
 
 ```hcl
 # cicd_role.tf
 resource "google_project_iam_custom_role" "cicd_deployer" {
   role_id     = "cicdDeployer"
   title       = "CI/CD Deployer"
-  description = "Permissions required for CI/CD pipelines to deploy to Cloud Run and GCR"
+  description = "Permissions required for CI/CD pipelines to deploy to Cloud Run from Artifact Registry"
   project     = var.project_id
 
   permissions = [
@@ -70,25 +70,13 @@ resource "google_project_iam_custom_role" "cicd_deployer" {
     "run.services.create",
     "run.services.update",
     "run.services.get",
-    "run.services.list",
-
-    # Container Registry
-    "storage.objects.create",
-    "storage.objects.delete",
-    "storage.objects.get",
-    "storage.objects.list",
-    "storage.buckets.get",
+    "run.operations.get",
 
     # Artifact Registry
-    "artifactregistry.repositories.get",
-    "artifactregistry.repositories.list",
-    "artifactregistry.tags.create",
-    "artifactregistry.tags.update",
-    "artifactregistry.dockerimages.get",
-    "artifactregistry.dockerimages.list",
+    "artifactregistry.repositories.downloadArtifacts",
 
-    # IAM (to set invoker permissions on Cloud Run)
-    "iam.serviceaccounts.actAs",
+    # IAM (to use the Cloud Run service identity)
+    "iam.serviceAccounts.actAs",
   ]
 
   stage = "GA"
@@ -104,7 +92,7 @@ resource "google_project_iam_member" "cicd_role_binding" {
 
 ## Creating an Organization-Level Custom Role
 
-Organization roles can be assigned across any project in the org.
+Organization roles can be granted on the organization and on resources within it, making them reusable across multiple projects.
 
 ```hcl
 # org_role.tf
@@ -112,14 +100,14 @@ resource "google_organization_iam_custom_role" "billing_viewer" {
   role_id     = "billingViewer"
   org_id      = var.organization_id
   title       = "Billing Viewer"
-  description = "Read-only access to billing and cost data across the organization"
+  description = "Read-only access to billing accounts, budgets, and spend data across the organization"
 
   permissions = [
     "billing.accounts.get",
     "billing.accounts.list",
+    "billing.accounts.getSpendingInformation",
     "billing.budgets.get",
     "billing.budgets.list",
-    "billing.resourceCosts.get",
   ]
 
   stage = "GA"
@@ -128,11 +116,11 @@ resource "google_organization_iam_custom_role" "billing_viewer" {
 
 ## Disabling vs Deleting Custom Roles
 
-If you need to phase out a custom role, disable it first rather than deleting it immediately.
+If you need to phase out a custom role, disable it first rather than deleting it immediately. A disabled role remains defined, but its bindings no longer have any effect.
 
 ```hcl
 # deprecated_role.tf
-# Set stage to DISABLED to prevent new assignments without deleting existing ones
+# Set stage to DISABLED to deactivate the role without permanently deleting it
 resource "google_project_iam_custom_role" "legacy_role" {
   role_id     = "legacyAppRole"
   title       = "Legacy App Role (Deprecated)"
@@ -143,7 +131,7 @@ resource "google_project_iam_custom_role" "legacy_role" {
     "storage.objects.get",
   ]
 
-  # Disabled prevents new assignments but existing ones still work
+  # Existing bindings remain in IAM policies but have no effect
   stage = "DISABLED"
 }
 ```
