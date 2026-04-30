@@ -27,7 +27,7 @@ cat <<EOF | sudo tee /etc/yum.repos.d/opentofu.repo
 [opentofu]
 name=opentofu
 baseurl=https://packages.opentofu.org/opentofu/tofu/rpm_any/rpm_any/\$basearch
-repo_gpgcheck=1
+repo_gpgcheck=0
 gpgcheck=1
 enabled=1
 gpgkey=https://get.opentofu.org/opentofu.gpg
@@ -56,19 +56,19 @@ sudo dnf install -y tofu
 ## Method 2: Install from RPM
 
 ```bash
-TOFU_VERSION="1.9.0"
+TOFU_VERSION="1.11.6"
 
 # Download
-curl -LO "https://github.com/opentofu/opentofu/releases/download/v${TOFU_VERSION}/tofu_${TOFU_VERSION}_linux_amd64.rpm"
+curl -LO "https://github.com/opentofu/opentofu/releases/download/v${TOFU_VERSION}/tofu_${TOFU_VERSION}_amd64.rpm"
 
 # Install
-sudo dnf localinstall -y "tofu_${TOFU_VERSION}_linux_amd64.rpm"
+sudo dnf localinstall -y "tofu_${TOFU_VERSION}_amd64.rpm"
 ```
 
 ## Method 3: Binary Installation
 
 ```bash
-TOFU_VERSION="1.9.0"
+TOFU_VERSION="1.11.6"
 
 # Ensure tools are available
 sudo dnf install -y curl unzip
@@ -86,7 +86,7 @@ sudo install -o root -g root -m 0755 tofu /usr/local/bin/tofu
 tofu version
 
 # Expected output
-# OpenTofu v1.9.0
+# OpenTofu v1.11.6
 # on linux_amd64
 ```
 
@@ -95,7 +95,7 @@ tofu version
 ```bash
 # Install bash completion
 tofu -install-autocomplete
-source /etc/profile.d/bash_completion.sh 2>/dev/null || source ~/.bashrc
+source ~/.bashrc
 ```
 
 ## Using OpenTofu with RHEL-based Clouds
@@ -133,6 +133,11 @@ data "aws_ami" "almalinux" {
   filter {
     name   = "name"
     values = ["AlmaLinux OS 9*"]
+  }
+
+  filter {
+    name   = "architecture"
+    values = ["x86_64"]
   }
 }
 
