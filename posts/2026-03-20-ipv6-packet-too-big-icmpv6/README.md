@@ -30,8 +30,9 @@ ICMPv6 Packet Too Big Message (RFC 4443):
 Field definitions:
   Type:  2 (Packet Too Big)
   Code:  0 (always zero for this message type)
-  MTU:   The maximum MTU that the reporting router's next link can handle
-         This is the value the source should use for its PMTU cache
+  MTU:   The MTU of the next-hop link that could not forward the packet
+         The source uses this as a tentative PMTU value
+         (discarding values below 1280 bytes per RFC 8201)
   Body:  As much of the original (too-large) packet as possible,
          up to a total ICMPv6 message size of 1280 bytes
          (allows the source to identify which packet caused the error)
@@ -48,10 +49,12 @@ Router PTB generation process:
 4. Action:
    a. Drop the original packet (cannot forward)
    b. Construct ICMPv6 Packet Too Big:
-      - Src: Router's address on the ingress interface
+      - Src: Router's unicast address chosen for sending the reply
+             back to the original source
       - Dst: Original packet's source address
       - MTU: Egress interface MTU
-      - Body: Copy first (1280 - 48) = 1232 bytes of original packet
+      - Body: Copy as much of the original packet as fits,
+        up to (1280 - 48) = 1232 bytes
         (1280 total - 40 IPv6 - 8 ICMPv6 header)
 5. Send PTB back to original source
 ```
@@ -73,6 +76,8 @@ def parse_packet_too_big(icmpv6_data: bytes) -> dict:
 
     if icmp_type != 2:
         raise ValueError(f"Expected Type=2 (PTB), got Type={icmp_type}")
+    if icmp_code != 0:
+        raise ValueError(f"Expected Code=0 for PTB, got Code={icmp_code}")
 
     # The body contains the original invoking packet
     invoking_packet = icmpv6_data[8:]
@@ -92,8 +97,8 @@ def parse_packet_too_big(icmpv6_data: bytes) -> dict:
         "type": icmp_type,
         "code": icmp_code,
         "reported_mtu": mtu,
-        "effective_mtu": max(mtu, 1280),  # RFC 8200: never below 1280
-        "must_use_fragment_header": mtu < 1280,
+        "effective_mtu": mtu if mtu >= 1280 else None,
+        "must_discard": mtu < 1280,  # RFC 8201: discard PTB reporting MTU < 1280
         "original_packet_preview": invoking_packet[:20].hex(),
         "original_ipv6_header": original_header,
     }
@@ -101,42 +106,43 @@ def parse_packet_too_big(icmpv6_data: bytes) -> dict:
 
 ## The Special Case: MTU < 1280
 
-RFC 8200 Section 5 defines special handling when the reported MTU is less than 1280:
+RFC 8201 says a Packet Too Big message reporting an MTU below 1280 bytes
+must be discarded for PMTUD. RFC 8200 separately requires links that cannot
+carry a 1280-byte IPv6 packet in one piece to provide fragmentation and
+reassembly below IPv6:
 
 ```python
 def handle_packet_too_big(reported_mtu: int, destination: str,
                            pmtu_cache: dict) -> dict:
     """
     Process a received ICMPv6 Packet Too Big message.
-    Updates the PMTU cache for the destination.
+    Updates the PMTU cache for the destination when the reported MTU is valid.
     """
     if reported_mtu < 1280:
-        # RFC 8200 Section 5: If notified MTU < 1280, source must still
-        # send 1280-byte packets (using Fragment Header to avoid
-        # further fragmentation issues on the sub-1280 link)
-        effective_mtu = 1280
-        requires_fragment_header = True
-        note = "Sub-1280 MTU: send 1280-byte packets with Fragment Header"
-    else:
-        effective_mtu = reported_mtu
-        requires_fragment_header = False
-        note = f"Update PMTU cache to {effective_mtu}"
+        note = ("Discard PTB: reported MTU is below the IPv6 minimum "
+                "link MTU (1280)")
+        return {
+            "destination": destination,
+            "reported_mtu": reported_mtu,
+            "effective_mtu": None,
+            "accepted": False,
+            "note": note,
+        }
 
     pmtu_cache[destination] = {
-        "mtu": effective_mtu,
-        "requires_fragment_header": requires_fragment_header,
+        "mtu": reported_mtu,
     }
 
     return {
         "destination": destination,
         "reported_mtu": reported_mtu,
-        "effective_mtu": effective_mtu,
-        "requires_fragment_header": requires_fragment_header,
-        "note": note,
+        "effective_mtu": reported_mtu,
+        "accepted": True,
+        "note": f"Update PMTU cache to {reported_mtu}",
     }
 
 cache = {}
-print(handle_packet_too_big(1200, "2001:db8::1", cache))  # Below 1280
+print(handle_packet_too_big(1200, "2001:db8::1", cache))  # Invalid PTB for PMTUD
 print(handle_packet_too_big(1400, "2001:db8::2", cache))  # Normal case
 ```
 
@@ -145,17 +151,17 @@ print(handle_packet_too_big(1400, "2001:db8::2", cache))  # Normal case
 ```bash
 # Capture all incoming PTB messages
 
-sudo tcpdump -i eth0 -v "icmp6 and ip6[40] == 2"
+sudo tcpdump -i eth0 -n -v "icmp6[icmp6type] == icmp6-packettoobig"
 
-# Show PTB with the MTU value (bytes 44-47 of IPv6+ICMPv6)
-sudo tcpdump -i eth0 -v "icmp6 and ip6[40] == 2" 2>&1 | \
+# Show PTB messages with the decoded MTU value from tcpdump output
+sudo tcpdump -i eth0 -n -v "icmp6[icmp6type] == icmp6-packettoobig" 2>&1 | \
     grep -E "packet-too-big|mtu"
 
 # Count PTB messages received per minute
-sudo tcpdump -i eth0 -q "icmp6 and ip6[40] == 2" 2>&1 | \
-    awk '{count++; if (NR % 60 == 0) print count " PTBs in last minute"; }'
+sudo tcpdump -i eth0 -l -n -q "icmp6[icmp6type] == icmp6-packettoobig" 2>/dev/null | \
+    awk '{ minute = substr($1, 1, 5); if (last != "" && minute != last) { print count " PTBs in minute " last; count = 0 } count++; last = minute } END { if (last != "") print count " PTBs in minute " last; }'
 ```
 
 ## Conclusion
 
-ICMPv6 Packet Too Big is the cornerstone of IPv6 Path MTU Discovery. Routers generate it whenever a packet exceeds the next-link MTU, allowing sources to learn and cache the path MTU. The special rule for reported MTU values below 1280 ensures compatibility with any IPv6 link by directing the source to use Fragment Headers. The most critical operational requirement: Packet Too Big messages must never be blocked by firewalls, as this would break PMTUD for all traffic passing through that firewall.
+ICMPv6 Packet Too Big is the cornerstone of IPv6 Path MTU Discovery. Routers generate it whenever a packet exceeds the next-link MTU, allowing sources to learn and cache the path MTU. Packet Too Big messages reporting MTUs below 1280 are invalid for PMTUD and must be discarded; links that cannot carry 1280-byte IPv6 packets must handle fragmentation below IPv6. The most critical operational requirement: Packet Too Big messages must not be indiscriminately blocked by firewalls, as filtering them can break standard PMTUD and black-hole traffic.
