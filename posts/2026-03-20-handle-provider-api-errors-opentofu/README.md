@@ -21,7 +21,7 @@ Provider API errors are a fact of life in cloud infrastructure management - rate
 
 ## Enabling Debug Logging
 
-Enable verbose provider logging to see the raw API calls and responses:
+Enable verbose logging to see detailed OpenTofu and provider output:
 
 ```bash
 # Log level: TRACE (most verbose), DEBUG, INFO, WARN, ERROR
@@ -32,10 +32,10 @@ export TF_LOG_PATH=tofu-debug.log
 tofu apply
 ```
 
-For provider-specific logging:
+To focus on provider plugin logs instead of OpenTofu core logs:
 
 ```bash
-# Log only the AWS provider
+# Log provider plugin output
 export TF_LOG_PROVIDER=DEBUG
 ```
 
@@ -45,16 +45,16 @@ export TF_LOG_PROVIDER=DEBUG
 # Test AWS credentials before running tofu
 aws sts get-caller-identity
 
-# Test Azure credentials
+# Test Azure CLI authentication
 az account show
 
-# Test GCP credentials
+# Test GCP Application Default Credentials (ADC)
 gcloud auth application-default print-access-token
 ```
 
 ## Handling Rate Limit Errors
 
-AWS, Azure, and GCP all rate-limit API calls. Configure retries in the provider block:
+Cloud APIs commonly rate-limit calls. Some providers expose retry controls directly, while others mainly let you reduce avoidable API calls:
 
 ```hcl
 # AWS provider: increase retry count for rate-limited operations
@@ -67,21 +67,21 @@ provider "aws" {
 }
 ```
 
-For Azure:
+For AzureRM, you can reduce extra provider initialization API calls if you manage resource provider registration separately:
 
 ```hcl
 provider "azurerm" {
   features {}
 
-  # Azure provider respects ARM_CLIENT_RETRY_MAX env var
-  # or use the skip_provider_registration to reduce API calls
-  skip_provider_registration = true
+  # Disable automatic resource provider registration
+  # if you manage it separately
+  resource_provider_registrations = "none"
 }
 ```
 
 ## Using -target to Apply One Resource at a Time
 
-When a specific resource fails, use `-target` to apply only that resource after fixing the issue:
+When a specific resource fails and you need a short-term recovery path, use `-target` to apply only that resource after fixing the issue:
 
 ```bash
 # Apply only the failing resource
@@ -91,9 +91,11 @@ tofu apply -target=aws_lambda_function.processor
 tofu apply
 ```
 
+Use `-target` only for exceptional recovery situations, then follow with a full `tofu plan` and `tofu apply`.
+
 ## Recovering from Partial Apply Failures
 
-When `tofu apply` fails midway, the state file reflects whatever was successfully created. Run `tofu plan` to see what still needs to happen:
+When `tofu apply` fails midway, the state file typically reflects whatever was successfully created. Run `tofu plan` to see what still needs to happen:
 
 ```bash
 # Review current state vs desired state
@@ -124,7 +126,7 @@ resource "aws_ecs_service" "app" {
 
 ## Handling "Resource Already Exists" Errors
 
-If a resource was created outside of OpenTofu, import it into state before applying:
+If a resource was created outside of OpenTofu, define the matching `resource` block first, then import it into state before applying:
 
 ```bash
 # Import existing resource into state
@@ -133,4 +135,4 @@ tofu import aws_s3_bucket.my_bucket my-existing-bucket-name
 
 ## Conclusion
 
-Provider API errors require a layered approach: enable debug logging to understand what went wrong, fix the root cause (credentials, permissions, configuration), use provider-level retry settings for transient errors, and use `tofu import` or `ignore_changes` for resources that exist outside of your state. Treat each error type differently rather than applying a one-size-fits-all retry strategy.
+Provider API errors require a layered approach: enable debug logging to understand what went wrong, fix the root cause (credentials, permissions, configuration), use provider-level retry settings for transient errors where the provider supports them, and use `tofu import` or `ignore_changes` for resources that exist outside of your state. Treat each error type differently rather than applying a one-size-fits-all retry strategy.
