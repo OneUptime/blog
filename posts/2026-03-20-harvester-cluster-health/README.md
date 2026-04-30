@@ -8,17 +8,17 @@ Description: Learn how to monitor Harvester HCI cluster health including node st
 
 ---
 
-Harvester includes a built-in monitoring stack based on Prometheus and Grafana. This guide covers how to use and extend it to monitor overall cluster health.
+Harvester provides a built-in monitoring stack based on Prometheus and Grafana through the `rancher-monitoring` add-on. On new installations, ensure the add-on is enabled before following this guide. This guide covers how to use and extend it to monitor overall cluster health.
 
 ---
 
 ## Step 1: Access the Harvester Monitoring Dashboard
 
-Harvester deploys a monitoring system that is accessible from the Rancher UI:
+Harvester's monitoring system is accessible from the Harvester UI, including when Harvester is opened inside Rancher through `Virtualization Management`:
 
 1. In Rancher UI, go to **Virtualization Management > [Your Harvester Cluster]**
-2. Click **Monitoring** in the left sidebar
-3. Access Grafana from the monitoring link
+2. Open the **Dashboard**
+3. Click the **Grafana** dashboard link
 
 Or access it directly:
 
@@ -29,7 +29,8 @@ kubectl port-forward svc/rancher-monitoring-grafana \
   -n cattle-monitoring-system 3000:80
 
 # Open http://localhost:3000
-# Default credentials are set during Rancher monitoring installation
+# Default username is admin
+# Default password is prom-operator unless you changed it
 ```
 
 ---
@@ -39,31 +40,31 @@ kubectl port-forward svc/rancher-monitoring-grafana \
 ### Node Health
 
 ```promql
-# Harvester node CPU utilization
-100 - (avg by (node) (rate(node_cpu_seconds_total{mode="idle"}[5m])) * 100)
+# Harvester node CPU utilization by instance
+100 * (1 - avg by (instance) (rate(node_cpu_seconds_total{job="node-exporter", mode="idle"}[5m])))
 
 # Harvester node memory pressure
-(1 - (node_memory_MemAvailable_bytes / node_memory_MemTotal_bytes)) * 100
+100 * (1 - (node_memory_MemAvailable_bytes{job="node-exporter"} / node_memory_MemTotal_bytes{job="node-exporter"}))
 
-# Node disk usage
-(1 - (node_filesystem_avail_bytes{mountpoint="/"} / node_filesystem_size_bytes{mountpoint="/"})) * 100
+# Node disk usage for the root filesystem
+100 * (1 - (node_filesystem_avail_bytes{job="node-exporter", mountpoint="/"} / node_filesystem_size_bytes{job="node-exporter", mountpoint="/"}))
 ```
 
 ### VM Health
 
 ```promql
-# Count of running VMs
-count(kubevirt_vmi_phase_count{phase="Running"})
+# Count of running VM instances
+sum(node:kubevirt_vmi_phase:sum{phase="Running"})
 
-# Count of error-state VMs
-count(kubevirt_vmi_phase_count{phase="Failed"} or kubevirt_vmi_phase_count{phase="Unknown"})
+# Count of error-state VM instances
+sum(node:kubevirt_vmi_phase:sum{phase=~"Failed|Unknown"})
 ```
 
 ### Storage Health
 
 ```promql
-# Longhorn volume health (1 = healthy, 0 = degraded)
-longhorn_volume_robustness == 3
+# Longhorn volumes currently in a healthy robustness state
+longhorn_volume_robustness{state="healthy"} == 1
 
 # Storage utilization per node
 longhorn_node_storage_usage_bytes / longhorn_node_storage_capacity_bytes
@@ -96,7 +97,7 @@ spec:
 
         - alert: HarvesterNodeHighCPU
           expr: |
-            (1 - avg by(instance) (rate(node_cpu_seconds_total{mode="idle"}[5m]))) * 100 > 90
+            100 * (1 - avg by(instance) (rate(node_cpu_seconds_total{job="node-exporter", mode="idle"}[5m]))) > 90
           for: 10m
           labels:
             severity: warning
@@ -104,7 +105,7 @@ spec:
             summary: "Harvester node {{ $labels.instance }} CPU > 90%"
 
         - alert: HarvesterVMFailed
-          expr: kubevirt_vmi_phase_count{phase="Failed"} > 0
+          expr: sum(node:kubevirt_vmi_phase:sum{phase="Failed"}) > 0
           for: 2m
           labels:
             severity: critical
@@ -122,14 +123,14 @@ kubectl get pods -n harvester-system
 kubectl get pods -n longhorn-system
 kubectl get pods -n cattle-monitoring-system
 
-# Check Harvester node conditions
+# Check Harvester node status
 kubectl get nodes -o wide
 
-# Check VM instance conditions
+# Check VM instances
 kubectl get vmi -A
 
 # Check storage volume health
-kubectl get lhvolume -n longhorn-system | grep -v healthy
+kubectl get volumes.longhorn.io -n longhorn-system | grep -v healthy
 ```
 
 ---
