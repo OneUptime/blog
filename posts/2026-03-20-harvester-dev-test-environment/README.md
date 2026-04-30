@@ -35,35 +35,18 @@ Harvester is well-suited for dev/test environments because it combines virtual m
 
 ## Step 1: Create a Dedicated Network for Dev/Test
 
-```yaml
-# dev-network.yaml
+This assumes the underlying cluster network and network configuration are already set up on the Harvester hosts.
 
-apiVersion: k8s.cni.cncf.io/v1
-kind: NetworkAttachmentDefinition
-metadata:
-  name: dev-network
-  namespace: default
-  annotations:
-    network.harvesterhci.io/route: |
-      {"mode":"auto","serverIPAddr":"","cidr":"","gateway":""}
-spec:
-  config: |
-    {
-      "cniVersion": "0.3.1",
-      "name": "dev-network",
-      "type": "bridge",
-      "bridge": "dev-br",
-      "ipam": {
-        "type": "whereabouts",
-        "range": "192.168.100.0/24",
-        "gateway": "192.168.100.1"
-      }
-    }
-```
+In the Harvester UI:
 
-```bash
-kubectl apply -f dev-network.yaml
-```
+1. Go to **Networks** → **VM Networks**
+2. Click **Create**
+3. Set **Type** to `L2VlanNetwork`
+4. Set **Mode** to `Access`
+5. Enter the VLAN ID and select the cluster network that carries the dev/test traffic
+6. On the **Route** tab, choose `Auto(DHCP)` if the VLAN has a DHCP server, or `Manual` if you want Harvester to validate connectivity with explicit CIDR and gateway values
+
+If the VLAN does not have an external DHCP server, enable Harvester's **Managed DHCP** add-on (experimental) and create an `IPPool` for the VM network before attaching VMs to it.
 
 ---
 
@@ -75,18 +58,9 @@ In the Harvester UI, create VM templates that developers can reuse:
 2. Create templates for:
    - Ubuntu 22.04 LTS (developer workstation)
    - CentOS Stream 9 (RHEL-compatible testing)
-   - Windows Server 2022 (Windows development)
+   - Windows Server 2022 (use the built-in `windows-iso-image-base-template` as the base template)
 
-```yaml
-# Example VM template via kubectl
-apiVersion: harvesterhci.io/v1beta1
-kind: VirtualMachineTemplate
-metadata:
-  name: ubuntu-dev
-  namespace: default
-spec:
-  versionName: ubuntu-22.04-dev-v1
-```
+The Harvester UI creates the underlying template and template version objects for you.
 
 ---
 
@@ -121,12 +95,19 @@ spec:
 # create-dev-vm.sh
 # Usage: ./create-dev-vm.sh <vm-name> <developer-name>
 
+set -euo pipefail
+
+if [ $# -ne 2 ]; then
+  echo "Usage: ./create-dev-vm.sh <vm-name> <developer-name>"
+  exit 1
+fi
+
 VM_NAME=$1
 DEVELOPER=$2
 NAMESPACE="dev-${DEVELOPER}"
 
 # Create namespace if it doesn't exist
-kubectl create namespace $NAMESPACE 2>/dev/null
+kubectl get namespace "$NAMESPACE" >/dev/null 2>&1 || kubectl create namespace "$NAMESPACE"
 
 # Create the VM
 kubectl apply -f - <<EOF
@@ -139,11 +120,27 @@ metadata:
     developer: $DEVELOPER
     environment: dev
 spec:
-  running: true
+  runStrategy: Always
+  dataVolumeTemplates:
+    - metadata:
+        name: ${VM_NAME}-root
+      spec:
+        source:
+          registry:
+            url: docker://quay.io/containerdisks/centos-stream:9
+        storage:
+          accessModes:
+            - ReadWriteOnce
+          resources:
+            requests:
+              storage: 50Gi
+          storageClassName: harvester-longhorn
   template:
     metadata:
       labels:
         kubevirt.io/vm: $VM_NAME
+        developer: $DEVELOPER
+        environment: dev
     spec:
       domain:
         cpu:
@@ -161,32 +158,15 @@ spec:
       networks:
         - name: dev-net
           multus:
-            networkName: dev-network
+            networkName: default/dev-network
       volumes:
         - name: root-disk
           dataVolume:
             name: ${VM_NAME}-root
----
-apiVersion: cdi.kubevirt.io/v1beta1
-kind: DataVolume
-metadata:
-  name: ${VM_NAME}-root
-  namespace: $NAMESPACE
-spec:
-  source:
-    registry:
-      url: docker://registry.example.com/images/ubuntu-22.04:latest
-  pvc:
-    accessModes:
-      - ReadWriteOnce
-    resources:
-      requests:
-        storage: 50Gi
-    storageClassName: longhorn
 EOF
 
 echo "VM $VM_NAME created in namespace $NAMESPACE"
-echo "VNC access: kubectl virtctl vnc $VM_NAME -n $NAMESPACE"
+echo "VNC access: virtctl vnc $VM_NAME -n $NAMESPACE"
 ```
 
 ---
@@ -195,6 +175,39 @@ echo "VNC access: kubectl virtctl vnc $VM_NAME -n $NAMESPACE"
 
 ```yaml
 # vm-cleanup-cronjob.yaml
+apiVersion: v1
+kind: ServiceAccount
+metadata:
+  name: vm-cleanup-sa
+  namespace: default
+---
+apiVersion: rbac.authorization.k8s.io/v1
+kind: ClusterRole
+metadata:
+  name: vm-cleanup-role
+rules:
+  - apiGroups:
+      - kubevirt.io
+    resources:
+      - virtualmachines
+    verbs:
+      - get
+      - list
+      - delete
+---
+apiVersion: rbac.authorization.k8s.io/v1
+kind: ClusterRoleBinding
+metadata:
+  name: vm-cleanup-binding
+roleRef:
+  apiGroup: rbac.authorization.k8s.io
+  kind: ClusterRole
+  name: vm-cleanup-role
+subjects:
+  - kind: ServiceAccount
+    name: vm-cleanup-sa
+    namespace: default
+---
 apiVersion: batch/v1
 kind: CronJob
 metadata:
@@ -215,14 +228,15 @@ spec:
                 - -c
                 - |
                   # Delete VMs older than 7 days with the dev label
-                  kubectl get vm -A -l environment=dev -o json | \
-                  jq -r '.items[] | select(
-                    (now - (.metadata.creationTimestamp | fromdateiso8601)) > 604800
-                  ) | "\(.metadata.namespace)/\(.metadata.name)"' | \
-                  while read vm; do
-                    NS=$(echo $vm | cut -d/ -f1)
-                    NAME=$(echo $vm | cut -d/ -f2)
-                    kubectl delete vm $NAME -n $NS
+                  now=$(date -u +%s)
+                  kubectl get virtualmachines.kubevirt.io -A -l environment=dev \
+                    -o jsonpath='{range .items[*]}{.metadata.namespace}{"\t"}{.metadata.name}{"\t"}{.metadata.creationTimestamp}{"\n"}{end}' | \
+                  while IFS=$(printf '\t') read -r ns name created; do
+                    [ -n "$ns" ] || continue
+                    created_epoch=$(date -u -d "$created" +%s)
+                    if [ $((now - created_epoch)) -gt 604800 ]; then
+                      kubectl delete virtualmachines.kubevirt.io "$name" -n "$ns"
+                    fi
                   done
           restartPolicy: OnFailure
 ```
@@ -231,15 +245,19 @@ spec:
 
 ## Step 6: Set Up Test Kubernetes Clusters on Harvester
 
-Use Rancher to provision ephemeral K3s clusters on Harvester VMs for integration testing:
+Use Rancher to provision short-lived K3s clusters on Harvester VMs for integration testing. The Harvester K3s node driver is currently in Tech Preview, requires a VLAN network, and only supports cloud images.
 
 ```bash
-# Create a test cluster via Rancher API
-# Configure: Harvester Infrastructure Provider → K3s → 1 server + 2 agents
-# Enable: Auto-cleanup after test completion
-
-# Or use the Rancher UI:
-# Cluster Management → Create → Harvester → Select K3s
+# Rancher UI:
+# Cluster Management -> Clusters -> Create
+# Toggle to RKE2/K3s
+# Select Harvester node driver
+# Choose a Harvester cloud credential
+# Select a cloud image and VLAN network
+# Example size: 1 server + 2 agents
+# Click Create
+#
+# Delete the guest cluster when the test run is complete
 ```
 
 ---
@@ -248,4 +266,4 @@ Use Rancher to provision ephemeral K3s clusters on Harvester VMs for integration
 
 - Create isolated VLANs per development team so test workloads cannot interfere with each other or with production networks.
 - Implement automated VM cleanup for idle or old VMs - storage costs accumulate quickly when developers forget to delete test VMs.
-- Use VM templates for common OS images and pre-install developer tools in the base images - this reduces VM provisioning time from minutes to seconds.
+- Use VM templates for common OS images and pre-install developer tools in the base images - this reduces repetitive setup and can significantly shorten provisioning time, especially when images are already available on the cluster.
