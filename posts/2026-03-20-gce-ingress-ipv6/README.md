@@ -1,44 +1,52 @@
-# How to Configure GCE Ingress Controller for IPv6
+# How to Configure GCE Ingress Controller on a Dual-Stack GKE Cluster
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
 Tags: IPv6, GKE, GCE, Google Cloud, Kubernetes, Ingress, Load Balancer
 
-Description: Configure the GCE Ingress Controller on Google Kubernetes Engine (GKE) to create IPv6-capable Global HTTP(S) Load Balancers, including dual-stack service configuration and IPv6 external IP assignment.
+Description: Configure the GCE Ingress Controller on Google Kubernetes Engine (GKE) correctly on a dual-stack cluster, including supported Ingress configuration, BackendConfig usage, and network policy requirements.
 
 ## Introduction
 
-Google Kubernetes Engine (GKE) uses the GCE Ingress Controller to provision Google Cloud's HTTP(S) Load Balancer for Kubernetes Ingress resources. GKE supports IPv6 for both external and internal load balancers when the cluster is configured with dual-stack networking. External HTTP(S) Load Balancers on GCP support IPv6 natively through anycast IPv6 addresses.
+Google Kubernetes Engine (GKE) uses the GKE Ingress controller to provision Google Cloud Application Load Balancers for Kubernetes Ingress resources. GKE dual-stack clusters can assign IPv4 and IPv6 addresses to nodes, Pods, and Services. For Ingress, the exact frontend behavior depends on the load balancer type that GKE creates: external GKE Ingress creates a classic Application Load Balancer, and internal GKE Ingress creates a regional internal Application Load Balancer.
 
 ## Prerequisites: GKE Cluster with IPv6
 
 ```bash
-# Create a GKE cluster with dual-stack networking
+# Requires an existing custom mode VPC network, for example my-custom-vpc.
 
+# Create a dual-stack cluster and subnet simultaneously
 gcloud container clusters create my-cluster \
-    --location=us-central1 \
     --enable-ip-alias \
-    --stack-type=IPV4_IPV6 \
+    --stack-type=ipv4-ipv6 \
     --ipv6-access-type=EXTERNAL \
-    --cluster-ipv4-cidr=/16 \
-    --cluster-ipv6-cidr=/48
+    --network=my-custom-vpc \
+    --create-subnetwork name=my-gke-subnet,range=10.0.0.0/20 \
+    --location=us-central1
 
-# Or for private cluster with internal IPv6
+# Or use INTERNAL for private IPv6 addressing on the subnet
+# (the VPC network must use ULA for internal IPv6)
 gcloud container clusters create my-cluster \
-    --location=us-central1 \
     --enable-ip-alias \
-    --stack-type=IPV4_IPV6 \
-    --ipv6-access-type=INTERNAL
+    --stack-type=ipv4-ipv6 \
+    --ipv6-access-type=INTERNAL \
+    --network=my-custom-vpc \
+    --create-subnetwork name=my-gke-subnet,range=10.0.0.0/20 \
+    --location=us-central1
 
-# Verify cluster has IPv6 pod CIDR
+# Verify the cluster's dual-stack configuration
+gcloud container clusters describe my-cluster --location=us-central1 | \
+    grep -E "stackType|ipv6AccessType|subnetIpv6CidrBlock|servicesIpv6CidrBlock"
+
+# Verify nodes have dual-stack Pod CIDRs
 kubectl get node -o yaml | grep -A5 "podCIDRs"
-# Should show: - 10.x.x.x/24 and - xxxx::/112
+# Should show both IPv4 and IPv6 Pod CIDRs
 
-# Install credentials
+# Get credentials
 gcloud container clusters get-credentials my-cluster --location=us-central1
 ```
 
-## GKE Ingress with IPv6 (Global Load Balancer)
+## GKE Ingress on a Dual-Stack Cluster (Global Load Balancer)
 
 ```yaml
 # ingress-gce-ipv6.yaml
@@ -52,70 +60,55 @@ metadata:
     # Use GCE (global) ingress class
     kubernetes.io/ingress.class: "gce"
 
-    # IPv6 is automatically included when:
-    # 1. Cluster has stack-type=IPV4_IPV6
-    # 2. Nodes have external IPv6 addresses (ipv6-access-type=EXTERNAL)
-
     # Static global IP (create with gcloud compute addresses)
     kubernetes.io/ingress.global-static-ip-name: "myapp-global-ip"
 
-    # TLS configuration
+    # TLS configuration using a pre-shared certificate
     ingress.gcp.kubernetes.io/pre-shared-cert: "myapp-ssl-cert"
 
-    # HTTP-to-HTTPS redirect
+    # Disable HTTP. If you need HTTP-to-HTTPS redirects, use FrontendConfig.
     kubernetes.io/ingress.allow-http: "false"
 
 spec:
-  ingressClassName: gce
   rules:
     - host: app.example.com
       http:
         paths:
-          - path: /
-            pathType: Prefix
+          - path: /*
+            pathType: ImplementationSpecific
             backend:
               service:
                 name: myapp
                 port:
                   number: 8080
-  tls:
-    - secretName: app-tls
-      hosts:
-        - app.example.com
 ```
 
-## Create Static Global IPv6 Address
+## Create Static Global Address
 
 ```bash
-# Create a global external IPv6 anycast address for the load balancer
-gcloud compute addresses create myapp-global-ipv6 \
-    --ip-version=IPV6 \
+# Create the global static external IP referenced by the Ingress annotation
+gcloud compute addresses create myapp-global-ip \
     --global
 
-# Get the assigned IPv6 address
-gcloud compute addresses describe myapp-global-ipv6 --global \
+# Get the assigned address
+gcloud compute addresses describe myapp-global-ip --global \
     --format="get(address)"
-# Returns: 2600:1901:xxxx:xxxx::
+# Returns: 203.0.113.10
 
-# Create a dual-stack global IP (both IPv4 and IPv6)
-# Note: GCP provides a single IPv4 and single IPv6 address
-gcloud compute addresses create myapp-global-ip --global
-gcloud compute addresses create myapp-global-ipv6 --ip-version=IPV6 --global
-
-# Update DNS with the IPv6 address
+# Update DNS with the load balancer address
 gcloud dns record-sets transaction start --zone=example-zone
-gcloud dns record-sets transaction add "2600:1901:xxxx:xxxx::" \
+gcloud dns record-sets transaction add "203.0.113.10" \
     --name=app.example.com. \
     --ttl=300 \
-    --type=AAAA \
+    --type=A \
     --zone=example-zone
 gcloud dns record-sets transaction execute --zone=example-zone
 ```
 
-## BackendConfig for IPv6 Health Checks
+## BackendConfig for Health Checks
 
 ```yaml
-# backendconfig-ipv6.yaml
+# backendconfig.yaml
 
 apiVersion: cloud.google.com/v1
 kind: BackendConfig
@@ -123,7 +116,7 @@ metadata:
   name: myapp-backend-config
   namespace: production
 spec:
-  # Health check configuration (same for IPv4 and IPv6 backends)
+  # Health check configuration
   healthCheck:
     checkIntervalSec: 10
     timeoutSec: 5
@@ -131,13 +124,15 @@ spec:
     unhealthyThreshold: 3
     type: HTTP
     requestPath: /health
+    # With container-native load balancing, this should match
+    # the serving Pod's containerPort.
     port: 8080
 
   # Connection draining
   connectionDraining:
     drainingTimeoutSec: 60
 
-  # Session affinity (optional, works with IPv6 clients)
+  # Session affinity (optional; useful when the Service uses NEGs)
   sessionAffinity:
     affinityType: GENERATED_COOKIE
     affinityCookieTtlSec: 3600
@@ -153,6 +148,8 @@ metadata:
   annotations:
     # Link BackendConfig for health check and other LB settings
     cloud.google.com/backend-config: '{"default": "myapp-backend-config"}'
+    # Use container-native load balancing for the Ingress backend
+    cloud.google.com/neg: '{"ingress": true}'
 spec:
   ipFamilyPolicy: PreferDualStack
   ipFamilies:
@@ -160,17 +157,17 @@ spec:
     - IPv6
   selector:
     app: myapp
-  type: NodePort    # GCE Ingress requires NodePort service
+  type: NodePort
   ports:
     - name: http
       port: 8080
       targetPort: 8080
 ```
 
-## GKE Ingress for Internal IPv6 Load Balancer
+## GKE Ingress for Internal Load Balancer
 
 ```yaml
-# ingress-gce-internal-ipv6.yaml
+# ingress-gce-internal.yaml
 
 apiVersion: networking.k8s.io/v1
 kind: Ingress
@@ -179,18 +176,18 @@ metadata:
   namespace: production
   annotations:
     kubernetes.io/ingress.class: "gce-internal"
-    # Internal load balancer with IPv6
-    # Requires cluster with ipv6-access-type=INTERNAL
+    # Internal GKE Ingress creates a regional internal
+    # Application Load Balancer with an IPv4 frontend address.
 
-    # Subnet for the internal LB
+    # Static regional internal IP for the internal load balancer
     kubernetes.io/ingress.regional-static-ip-name: "myapp-internal-ip"
 spec:
   rules:
     - host: app.internal.example.com
       http:
         paths:
-          - path: /
-            pathType: Prefix
+          - path: /*
+            pathType: ImplementationSpecific
             backend:
               service:
                 name: myapp
@@ -198,58 +195,55 @@ spec:
                   number: 8080
 ```
 
-## Verify GCE Ingress IPv6 Operation
+## Verify GCE Ingress Operation
 
 ```bash
-# Check ingress has an address
-kubectl describe ingress myapp -n production | grep -E "Address|Rules"
+# Check the Ingress has an address
+kubectl get ingress myapp -n production
 
-# Get the load balancer IPv6 address
-gcloud compute addresses list --global | grep ipv6
+# Get the load balancer address
+gcloud compute addresses describe myapp-global-ip --global \
+    --format="get(address)"
 
-# Test DNS resolution (should return AAAA record)
-dig AAAA app.example.com
-# Expected: app.example.com AAAA 2600:1901:xxxx::
+# Test DNS resolution
+dig A app.example.com
+# Expected: app.example.com. 300 IN A 203.0.113.10
 
-# Test HTTP over IPv6
-curl -6 -H "Host: app.example.com" "http://[2600:1901:xxxx::]:80/"
+# Test HTTPS
+curl -k -H "Host: app.example.com" "https://203.0.113.10/"
 
-# Check backend health (IPv6 pods should be HEALTHY)
-gcloud compute backend-services get-health myapp-backend-service \
+# Check backend health
+gcloud compute backend-services get-health BACKEND_SERVICE_NAME \
     --global \
     --format="table(status.healthStatus[].ipAddress,status.healthStatus[].healthState)"
-
-# Check forwarding rules include IPv6
-gcloud compute forwarding-rules list --global | grep IPV6
 ```
 
-## GKE Network Policy for IPv6
+## GKE Network Policy
 
 ```yaml
-# network-policy-ipv6.yaml
+# network-policy.yaml
 
 apiVersion: networking.k8s.io/v1
 kind: NetworkPolicy
 metadata:
-  name: allow-lb-ipv6
+  name: allow-lb-health-checks
   namespace: production
 spec:
   podSelector:
     matchLabels:
       app: myapp
   ingress:
-    # Allow from GCP load balancer health check ranges (both IPv4 and IPv6)
+    # Allow Google Cloud health check ranges for external
+    # Application Load Balancer backends
     - from:
         - ipBlock:
             cidr: "35.191.0.0/16"    # GCP health check IPv4
         - ipBlock:
             cidr: "130.211.0.0/22"   # GCP health check IPv4
-        - ipBlock:
-            cidr: "2600:1901::/32"   # GCP load balancer IPv6 range
       ports:
         - port: 8080
 ```
 
 ## Conclusion
 
-GKE's GCE Ingress Controller creates Global HTTP(S) Load Balancers with IPv6 support when the GKE cluster is configured with `--stack-type=IPV4_IPV6` and `--ipv6-access-type=EXTERNAL`. Static global IPv6 anycast addresses are created with `gcloud compute addresses create --ip-version=IPV6 --global` and referenced via the `kubernetes.io/ingress.global-static-ip-name` annotation. The BackendConfig CRD configures health checks and other load balancer settings that work identically for IPv4 and IPv6 backends. GKE services must use `type: NodePort` for GCE Ingress. Update DNS with AAAA records pointing to the global IPv6 anycast address for IPv6 client access. Network policies must include GCP's IPv6 health check ranges (`2600:1901::/32`) to allow health probes to reach backend pods.
+GKE dual-stack clusters are created by using a dual-stack subnet or by creating the subnet and cluster together with `--stack-type=ipv4-ipv6` and `--ipv6-access-type`. For the built-in GKE Ingress controller, use the `kubernetes.io/ingress.class` annotation because GKE does not use `spec.ingressClassName` for this controller. `kubernetes.io/ingress.allow-http: "false"` disables HTTP rather than configuring redirects, and `FrontendConfig` is required for HTTP-to-HTTPS redirection. `BackendConfig` works normally on dual-stack clusters, and when you pin the health check port to a Pod port you should use container-native load balancing with `cloud.google.com/neg: '{"ingress": true}'`. For external Application Load Balancer health checks, allow `35.191.0.0/16` and `130.211.0.0/22`. Internal GKE Ingress creates a regional internal Application Load Balancer that uses an IPv4 frontend address.
