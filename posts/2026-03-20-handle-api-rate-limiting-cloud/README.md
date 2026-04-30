@@ -24,10 +24,7 @@ provider "aws" {
 }
 ```
 
-Common rate-limited AWS services and their limits:
-- EC2: 100 requests/second per account
-- IAM: 300 requests/second
-- CloudWatch: 400 requests/second
+Common rate-limited AWS services include EC2, IAM, and CloudWatch, but exact throttling quotas vary by API, account, and Region.
 
 ## Reducing Parallelism to Stay Under Limits
 
@@ -60,9 +57,9 @@ resource "aws_ecs_service" "app" {
 
 ```bash
 # Check which quota is being exceeded
-TF_LOG=DEBUG tofu apply 2>&1 | grep "429\|quotaExceeded"
+TF_LOG=DEBUG tofu apply 2>&1 | grep -E "429|quotaExceeded"
 
-# Request a quota increase
+# View current Compute Engine quotas
 gcloud compute project-info describe --format="table(quotas.metric,quotas.usage,quotas.limit)"
 ```
 
@@ -70,20 +67,18 @@ gcloud compute project-info describe --format="table(quotas.metric,quotas.usage,
 provider "google" {
   project = var.project_id
   region  = "us-central1"
-  # GCP provider automatically retries quota errors
-  # Reduce parallelism if you hit persistent 429s
+  # Reduce parallelism if you hit persistent quota errors
 }
 ```
 
 ## Azure: Understanding Rate Limits
 
-Azure enforces ARM (Azure Resource Manager) throttling at the subscription level: 1200 write requests per hour for most resource types.
+Azure Resource Manager and individual resource providers enforce throttling, and the exact limits vary by operation and resource provider.
 
 ```hcl
 provider "azurerm" {
   features {}
-  # The Azure RM provider handles retries automatically
-  # Use -parallelism=5 for large Azure deployments
+  # Lower -parallelism if you hit ARM or resource-provider throttling
 }
 ```
 
@@ -123,7 +118,7 @@ resource "aws_instance" "batch2" {
 ```bash
 # Count rate limit errors in a plan/apply log
 TF_LOG=DEBUG TF_LOG_PATH=/tmp/apply.log tofu apply
-grep -c "ThrottlingException\|RequestLimitExceeded\|429" /tmp/apply.log
+grep -E -c "ThrottlingException|RequestLimitExceeded|429" /tmp/apply.log
 
 # If count > 0, reduce parallelism and retry
 ```
