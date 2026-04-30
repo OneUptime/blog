@@ -78,7 +78,7 @@ global_defs {
 vrrp_script chk_haproxy {
     script "kill -0 $(cat /var/run/haproxy.pid)"
     interval 2
-    weight -10
+    weight -20
 }
 
 vrrp_instance VI_1 {
@@ -89,7 +89,7 @@ vrrp_instance VI_1 {
     advert_int 1
     authentication {
         auth_type PASS
-        auth_pass MySecretPass
+        auth_pass Secret01
     }
     virtual_ipaddress {
         10.0.1.100/24
@@ -104,7 +104,22 @@ vrrp_instance VI_1 {
 
 ```text
 # /etc/keepalived/keepalived.conf on haproxy-2 (BACKUP)
-# Same as master but with state BACKUP and lower priority
+# Same as master but with router_id haproxy-2, state BACKUP, and lower priority
+
+global_defs {
+    notification_email {
+        admin@example.com
+    }
+    notification_email_from keepalived@example.com
+    smtp_server 127.0.0.1
+    router_id haproxy-2
+}
+
+vrrp_script chk_haproxy {
+    script "kill -0 $(cat /var/run/haproxy.pid)"
+    interval 2
+    weight -20
+}
 
 vrrp_instance VI_1 {
     state BACKUP
@@ -114,7 +129,7 @@ vrrp_instance VI_1 {
     advert_int 1
     authentication {
         auth_type PASS
-        auth_pass MySecretPass  # Must match master
+        auth_pass Secret01      # Must match master
     }
     virtual_ipaddress {
         10.0.1.100/24        # Same VIP as master
@@ -154,14 +169,14 @@ sudo systemctl stop haproxy
 ip addr show ens3 | grep 10.0.1.100
 ```
 
-The `weight -10` on the VRRP script reduces priority by 10 when HAProxy is down, causing the backup (priority 90) to become master.
+The `weight -20` on the VRRP script reduces the master's effective priority from 100 to 80 when HAProxy is down, causing the backup (priority 90) to become master.
 
 ## Enabling Non-Local IP Binding
 
-HAProxy on the backup needs to bind to the VIP when it takes over:
+This is only required if you change HAProxy to bind directly to the VIP instead of `0.0.0.0:80`. With the frontend shown above, HAProxy already listens on all local IPv4 addresses, so you can skip this step.
 
 ```bash
-# On both nodes
+# On both nodes, only if binding HAProxy directly to the VIP
 echo "net.ipv4.ip_nonlocal_bind = 1" | sudo tee -a /etc/sysctl.d/haproxy.conf
 sudo sysctl -p /etc/sysctl.d/haproxy.conf
 ```
