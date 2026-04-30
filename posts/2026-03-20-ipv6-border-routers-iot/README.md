@@ -35,7 +35,6 @@ sudo apt-get install wpan-tools radvd
 # Configure the 802.15.4 interface
 sudo iwpan phy phy0 set channel 0 26
 sudo iwpan dev wpan0 set pan_id 0xabcd
-sudo iwpan dev wpan0 set short_addr 0xffff   # Border router typically uses 0xffff
 
 # Create 6LoWPAN interface
 sudo ip link add link wpan0 name lowpan0 type lowpan
@@ -43,7 +42,7 @@ sudo ip link set wpan0 up
 sudo ip link set lowpan0 up
 
 # Assign border router's IPv6 address on the mesh interface
-sudo ip -6 addr add 2001:db8:mesh:1::1/64 dev lowpan0
+sudo ip -6 addr add 2001:db8:1:1::1/64 dev lowpan0
 
 # Enable IPv6 forwarding between eth0 (infrastructure) and lowpan0 (mesh)
 sudo sysctl -w net.ipv6.conf.all.forwarding=1
@@ -62,7 +61,7 @@ interface lowpan0 {
     MinRtrAdvInterval 300;
     MaxRtrAdvInterval 600;
 
-    prefix 2001:db8:mesh:1::/64 {
+    prefix 2001:db8:1:1::/64 {
         AdvOnLink on;
         AdvAutonomous on;
         AdvValidLifetime 604800;     # 1 week (IoT devices rarely move)
@@ -70,7 +69,7 @@ interface lowpan0 {
     };
 
     # Provide DNS to mesh devices
-    RDNSS 2001:db8:mesh:1::53 {
+    RDNSS 2001:db8:1:1::1 {
         AdvRDNSSLifetime 1200;
     };
 };
@@ -82,14 +81,16 @@ OpenThread provides a production-ready Border Router implementation:
 
 ```bash
 # Install OTBR on a Raspberry Pi or similar Linux host
-sudo apt-get install curl
-curl -sL https://install.openthread.org/otbr | sudo bash
+sudo apt-get install git
+git clone --depth=1 https://github.com/openthread/ot-br-posix
+cd ot-br-posix
+./script/bootstrap
+INFRA_IF_NAME=eth0 ./script/setup
 
-# Configure OTBR to use eth0 as infrastructure interface
-# and wpan0 as the Thread interface
-sudo otbr-agent -I eth0 -B wpan0 spinel+hdlc+uart:///dev/ttyACM0 &
+# After reboot, verify OTBR is running
+sudo service otbr-agent status
 
-# Access the OTBR web interface
+# After reboot, access the OTBR web interface
 # http://<border-router-ip>:80
 ```
 
@@ -99,12 +100,14 @@ IoT devices on the mesh may need to reach IPv4-only cloud services:
 
 ```bash
 # Install tayga for NAT64
-sudo apt-get install tayga
+sudo apt-get install tayga iptables
 
 # Configure tayga (NAT64 translator)
 sudo tee /etc/tayga.conf > /dev/null << 'EOF'
-# NAT64 prefix (Well-Known NAT64 prefix: 64:ff9b::/96)
-prefix 64:ff9b::/96
+tun-device nat64
+
+# NAT64 prefix (use a Network-Specific Prefix when translating RFC1918 space)
+prefix 2001:db8:64::/96
 
 # IPv4 pool for translation
 dynamic-pool 192.168.100.0/24
@@ -115,11 +118,18 @@ data-dir /var/db/tayga
 ipv4-addr 192.168.100.1
 EOF
 
+sudo mkdir -p /var/db/tayga
+
 # Start tayga
 sudo tayga --mktun
 sudo ip link set nat64 up
-sudo ip -6 route add 64:ff9b::/96 dev nat64
+sudo ip -6 addr add 2001:db8:1::1 dev nat64
+sudo ip addr add 192.168.0.1 dev nat64
+sudo ip -6 route add 2001:db8:64::/96 dev nat64
 sudo ip route add 192.168.100.0/24 dev nat64
+sudo sysctl -w net.ipv4.ip_forward=1
+# If eth0 has a dynamic IPv4 uplink, hide the RFC1918 pool behind it
+sudo iptables -t nat -A POSTROUTING -s 192.168.100.0/24 -o eth0 -j MASQUERADE
 sudo tayga --daemon
 ```
 
@@ -128,12 +138,11 @@ sudo tayga --daemon
 DNS64 synthesizes AAAA records for IPv4-only hosts, enabling IPv6-only IoT devices to reach them:
 
 ```bash
-# In BIND9 (/etc/named.conf.options):
-# Add DNS64 configuration
-dns64 64:ff9b::/96 {
+# In BIND9 (/etc/bind/named.conf.options), inside the options block:
+dns64 2001:db8:64::/96 {
     clients { any; };
     mapped { any; };
-    exclude { 64:ff9b::/96; ::ffff:0:0/96; };
+    exclude { 2001:db8:64::/96; ::ffff:0:0/96; };
 };
 ```
 
@@ -142,7 +151,7 @@ dns64 64:ff9b::/96 {
 ```bash
 # Add route to the IoT mesh prefix on the infrastructure side
 # (run this on the infrastructure router)
-ip -6 route add 2001:db8:mesh:1::/64 via 2001:db8:infra::border-router
+ip -6 route add 2001:db8:1:1::/64 via 2001:db8:0:1::2
 
 # Or use a routing protocol (OSPFv3) to advertise the mesh prefix
 # The border router can inject the mesh prefix into OSPFv3
