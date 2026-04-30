@@ -4,11 +4,13 @@ Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
 Tags: OpenTofu, Terraform, AWS, RDS, Import, Database
 
-Description: Learn how to import existing AWS RDS database instances into OpenTofu state, including subnet groups, parameter groups, and option groups.
+Description: Learn how to import existing AWS RDS database instances into OpenTofu state, including subnet groups, parameter groups, and engine-specific option groups when applicable.
 
 ## Introduction
 
-Importing RDS instances requires importing the instance itself plus associated resources: DB subnet groups, parameter groups, and option groups. The most challenging part is writing HCL that exactly matches the existing RDS configuration to avoid triggering a replacement on the first plan.
+If you want OpenTofu to manage the instance and its associated resources, you often need to import the instance plus resources such as DB subnet groups, parameter groups, and, for engines that use them, option groups. The most challenging part is writing HCL that closely matches the existing RDS configuration to avoid unexpected changes on the first plan.
+
+Because the example in this post uses PostgreSQL, there is no DB option group resource to import.
 
 ## Step 1: Gather RDS Configuration
 
@@ -26,9 +28,18 @@ aws rds describe-db-instances \
     instance_class: .DBInstanceClass,
     allocated_storage: .AllocatedStorage,
     storage_type: .StorageType,
+    storage_encrypted: .StorageEncrypted,
     multi_az: .MultiAZ,
     db_subnet_group: .DBSubnetGroup.DBSubnetGroupName,
     parameter_group: .DBParameterGroups[0].DBParameterGroupName,
+    option_group: (.OptionGroupMemberships[0].OptionGroupName // null),
+    db_name: .DBName,
+    username: .MasterUsername,
+    vpc_security_group_ids: [.VpcSecurityGroups[].VpcSecurityGroupId],
+    deletion_protection: .DeletionProtection,
+    backup_retention_period: .BackupRetentionPeriod,
+    backup_window: .PreferredBackupWindow,
+    maintenance_window: .PreferredMaintenanceWindow,
     publicly_accessible: .PubliclyAccessible
   }'
 ```
@@ -67,7 +78,8 @@ resource "aws_db_instance" "main" {
 
   db_name  = "appdb"
   username = "appuser"
-  # Note: password is not stored in state; set with password variable
+  # RDS does not return the current password from the API.
+  # If you set password here, it is still stored in state.
   password = var.db_password
 
   db_subnet_group_name   = aws_db_subnet_group.main.name
@@ -83,13 +95,13 @@ resource "aws_db_instance" "main" {
   maintenance_window     = "sun:04:00-sun:06:00"
 
   lifecycle {
-    # Ignore password changes (managed externally via Secrets Manager)
+    # Ignore password drift if it is managed externally via Secrets Manager
     ignore_changes = [password]
   }
 }
 ```
 
-## Step 3: Import in Dependency Order
+## Step 3: Add Import Blocks
 
 ```hcl
 # import.tf
@@ -139,8 +151,13 @@ import {
   to = aws_rds_cluster_instance.aurora_instances[0]
   id = "my-aurora-cluster-instance-1"
 }
+
+import {
+  to = aws_rds_cluster_instance.aurora_instances[1]
+  id = "my-aurora-cluster-instance-2"
+}
 ```
 
 ## Conclusion
 
-RDS import requires careful attention to the parameter group and option group configurations - mismatches here cause OpenTofu to plan a replacement. The `ignore_changes = [password]` lifecycle rule is important because RDS passwords can't be read back from the API, so OpenTofu will always show a diff without it. Always verify with `tofu plan` before applying any changes after import.
+RDS import requires careful attention to parameter groups and, for engines that use them, option groups. Mismatches here can cause OpenTofu to plan unexpected updates, and some instance attributes can still force replacement. The `ignore_changes = [password]` lifecycle rule is useful when the password is managed externally because RDS doesn't return the current password from the API. If you set `password` in configuration, remember that OpenTofu still stores it in state. Always verify with `tofu plan` before applying any changes after import.
