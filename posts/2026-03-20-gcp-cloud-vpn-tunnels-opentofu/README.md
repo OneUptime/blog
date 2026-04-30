@@ -8,7 +8,7 @@ Description: Learn how to create GCP Cloud VPN tunnels and HA VPN gateways for h
 
 ## Introduction
 
-GCP Cloud VPN connects your on-premises or other cloud networks to GCP VPCs over IPSec VPN tunnels. HA VPN provides 99.99% availability with two tunnels per gateway. OpenTofu manages gateways, tunnels, routers, and BGP sessions as code.
+GCP Cloud VPN connects your on-premises or other cloud networks to GCP VPCs over IPsec VPN tunnels. HA VPN can provide 99.99% availability when you configure a tunnel on each HA VPN gateway interface. OpenTofu manages gateways, tunnels, routers, and BGP sessions as code.
 
 ## Creating an HA VPN Gateway
 
@@ -115,6 +115,26 @@ resource "google_compute_router_peer" "tunnel_1" {
   advertised_route_priority = 100
   interface                 = google_compute_router_interface.tunnel_1.name
 }
+
+resource "google_compute_router_interface" "tunnel_2" {
+  name       = "if-tunnel-2"
+  project    = var.project_id
+  router     = google_compute_router.vpn.name
+  region     = var.region
+  ip_range   = "169.254.2.1/30"  # link-local BGP IP
+  vpn_tunnel = google_compute_vpn_tunnel.tunnel_2.name
+}
+
+resource "google_compute_router_peer" "tunnel_2" {
+  name                      = "bgp-peer-tunnel-2"
+  project                   = var.project_id
+  router                    = google_compute_router.vpn.name
+  region                    = var.region
+  peer_ip_address           = "169.254.2.2"
+  peer_asn                  = 65000  # on-premises BGP ASN
+  advertised_route_priority = 100
+  interface                 = google_compute_router_interface.tunnel_2.name
+}
 ```
 
 ## Outputs
@@ -139,4 +159,4 @@ tofu apply tfplan
 
 ## Summary
 
-GCP HA VPN provides highly available hybrid connectivity using two active tunnels. OpenTofu manages the entire stack - HA gateways, external gateways, Cloud Router, BGP configuration, and tunnel resources - in a reproducible and auditable way.
+GCP HA VPN provides highly available hybrid connectivity by using a tunnel on each HA VPN gateway interface. OpenTofu manages the entire stack - HA gateways, external gateways, Cloud Router, BGP configuration, and tunnel resources - in a reproducible and auditable way.
