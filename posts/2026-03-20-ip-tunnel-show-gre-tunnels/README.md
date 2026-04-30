@@ -8,20 +8,20 @@ Description: Learn how to use the ip tunnel show command to list and inspect GRE
 
 ---
 
-`ip tunnel show` lists all configured tunnel interfaces on the system, including GRE, IPIP, and SIT tunnels, with their configuration parameters.
+`ip tunnel show` lists configured tunnel interfaces handled by `ip tunnel`, including GRE, IPIP, and SIT tunnels, with their configuration parameters.
 
 ## Basic Usage
 
 ```bash
-# List all tunnel interfaces
+# List tunnel interfaces managed by ip tunnel
 
 ip tunnel show
 
 # Output:
 # gre0: gre/ip remote any local any ttl inherit nopmtudisc
 # gre1: gre/ip remote 10.0.0.2 local 10.0.0.1 ttl 255
-# tunl0: ipip/ip remote any local any ttl inherit nopmtudisc
-# sit0: sit/ip remote any local any ttl 64 nopmtudisc
+# tunl0: ip/ip remote any local any ttl inherit nopmtudisc
+# sit0: ipv6/ip remote any local any ttl 64 nopmtudisc
 
 # Show a specific tunnel
 ip tunnel show gre1
@@ -38,7 +38,7 @@ gre1: gre/ip remote 10.0.0.2 local 10.0.0.1 ttl 255
   remote 10.0.0.2 → Remote tunnel endpoint
   local 10.0.0.1  → Local tunnel endpoint (source IP)
   ttl 255        → TTL for outer GRE packets
-  nopmtudisc     → Path MTU discovery disabled (common)
+  nopmtudisc     → Path MTU discovery disabled (if shown)
   key 0x100      → GRE key (if configured)
   csum           → Checksum enabled (if configured)
 ```
@@ -52,8 +52,8 @@ ip -d link show type gre
 # Show GRETAP tunnels (GRE with Ethernet header)
 ip -d link show type gretap
 
-# Show all tunnels with detailed info
-ip -d tunnel show
+# Show all tunnels managed by ip tunnel
+ip tunnel show
 
 # JSON output for scripting
 ip -j tunnel show | python3 -m json.tool
@@ -75,9 +75,6 @@ ip addr show gre1
 
 ```bash
 # Show packet and byte counters
-ip -s tunnel show gre1
-
-# Or via ip -s link
 ip -s link show gre1
 ```
 
@@ -90,7 +87,7 @@ ip -s link show gre1
 echo "Interface  Outer-Local    Outer-Remote   Inner-IP"
 echo "---------  -----------    ------------   --------"
 
-ip tunnel show | grep "^gre" | while read line; do
+ip tunnel show | awk '$2 == "gre/ip"' | while read line; do
   iface=$(echo "$line" | awk '{print $1}' | tr -d ':')
   local_ip=$(echo "$line" | grep -oP 'local \K[0-9.]+')
   remote_ip=$(echo "$line" | grep -oP 'remote \K[0-9.]+')
