@@ -13,7 +13,8 @@ SSH brute force attacks constantly probe for weak passwords. iptables rate limit
 The `hashlimit` module limits connections per source IP:
 
 ```bash
-# Allow SSH connections at max 3 per minute per source IP
+# Allow SSH connections at an average of 3 per minute per source IP,
+# with an initial burst of 5
 
 sudo iptables -A INPUT -p tcp --dport 22 \
   -m state --state NEW \
@@ -34,19 +35,20 @@ sudo iptables -A INPUT -p tcp --dport 22 \
 ## Method 2: Recent Module (Track Recent Connections)
 
 ```bash
-# If 5+ new SSH connections in 60 seconds from same IP, block for 60 seconds
+# Track new SSH attempts; once an IP reaches 5 attempts in 60 seconds,
+# log and drop matching attempts
 sudo iptables -A INPUT -p tcp --dport 22 \
   -m state --state NEW \
   -m recent --set --name ssh_brute
 
 sudo iptables -A INPUT -p tcp --dport 22 \
   -m state --state NEW \
-  -m recent --update --seconds 60 --hitcount 5 --name ssh_brute \
+  -m recent --rcheck --seconds 60 --hitcount 5 --name ssh_brute \
   -j LOG --log-prefix "SSH-BRUTE-BLOCK: "
 
 sudo iptables -A INPUT -p tcp --dport 22 \
   -m state --state NEW \
-  -m recent --update --seconds 60 --hitcount 5 --name ssh_brute \
+  -m recent --rcheck --seconds 60 --hitcount 5 --name ssh_brute \
   -j DROP
 
 # After this: allow legitimate connections
@@ -101,10 +103,10 @@ cat /proc/net/xt_recent/ssh_brute
 # Check hashlimit table
 cat /proc/net/ipt_hashlimit/ssh-limit
 
-# View logged drops
+# View logged drops on syslog-based systems
 sudo grep "SSH-BRUTE" /var/log/syslog | tail -20
 
-# Count blocked IPs
+# Count blocked IPs on syslog-based systems
 sudo grep "SSH-BRUTE-BLOCK" /var/log/syslog | grep -oP 'SRC=\S+' \
   | sort | uniq -c | sort -rn | head -10
 ```
@@ -112,9 +114,10 @@ sudo grep "SSH-BRUTE-BLOCK" /var/log/syslog | grep -oP 'SRC=\S+' \
 ## Test the Limit
 
 ```bash
-# Verify limit is working from a test machine
+# Verify limit from a test machine that can already SSH successfully with keys
 for i in $(seq 1 10); do
-    ssh -o ConnectTimeout=2 user@server echo "attempt $i" 2>&1 || echo "blocked"
+    ssh -o BatchMode=yes -o ConnectTimeout=2 user@server true \
+      && echo "attempt $i: allowed" || echo "attempt $i: blocked"
 done
 # First few should succeed, later ones should be blocked
 ```
