@@ -17,11 +17,11 @@ IPv4-compatible IPv6 addresses (`::w.x.y.z` or `::0:w.x.y.z/96`) were an early I
 |  0000:0000:0000:0000:0000:0000                 |  IPv4 address |
 
 Example:
-IPv4:  192.168.1.1
-IPv4-compatible IPv6: ::192.168.1.1  (or equivalently ::c0a8:0101)
+IPv4:  192.0.2.1
+IPv4-compatible IPv6: ::192.0.2.1  (or equivalently ::c000:0201)
 
 Full 128-bit representation:
-0000:0000:0000:0000:0000:0000:c0a8:0101
+0000:0000:0000:0000:0000:0000:c000:0201
 ```
 
 ## IPv4-Compatible vs IPv4-Mapped
@@ -41,28 +41,28 @@ import ipaddress
 
 # IPv4-compatible (DEPRECATED - all zeros in bits 81-96)
 
-compat = ipaddress.IPv6Address("::192.168.1.1")
+compat = ipaddress.IPv6Address("::192.0.2.1")
 print(f"IPv4-compatible: {compat}")
-print(f"Is v4-compatible: {compat.ipv4_mapped}")  # None in Python 3.x
-# Python 3.9+ treats ::w.x.y.z as a regular IPv6 address
+print(f"Mapped IPv4 view: {compat.ipv4_mapped}")  # None
+# Python treats ::w.x.y.z as a regular IPv6 address
 
 # IPv4-mapped (still used)
-mapped = ipaddress.IPv6Address("::ffff:192.168.1.1")
+mapped = ipaddress.IPv6Address("::ffff:192.0.2.1")
 print(f"IPv4-mapped: {mapped}")
-print(f"IPv4 address: {mapped.ipv4_mapped}")  # 192.168.1.1
+print(f"IPv4 address: {mapped.ipv4_mapped}")  # 192.0.2.1
 ```
 
 ## Why IPv4-Compatible Addresses Were Deprecated
 
-IPv4-compatible addresses were designed for an automatic tunneling mechanism called **6over4** (RFC 2529), where IPv4 hosts with no explicit tunnel configuration could automatically reach IPv6 destinations by embedding their IPv4 address in an IPv6 address.
+IPv4-compatible addresses were designed for the automatic tunneling mechanism described in RFC 2893, where the IPv4 tunnel endpoint was derived from the embedded IPv4 address in the IPv6 destination.
 
 **Problems that led to deprecation:**
 1. Required every IPv4 host to also run IPv6, which never happened at scale
 2. Created security issues - any IPv4 host could send IPv6 packets to any other IPv4 host
-3. The all-zeros prefix collided with the IPv6 unspecified address (`::`) and loopback (`::1`)
-4. More robust transition mechanisms (6to4, Teredo, NAT64) rendered it obsolete
+3. The `::/96` space also contains the IPv6 unspecified address (`::`) and loopback (`::1`), so implementations had to treat those as special cases
+4. Later mechanisms such as 6to4 and ISATAP handled tunneling differently, while NAT64/DNS64 addressed IPv6-only to IPv4-only communication without using IPv4-compatible addresses
 
-## Modern Replacement Mechanisms
+## Later Transition Mechanisms
 
 What replaced IPv4-compatible addresses:
 
@@ -71,9 +71,9 @@ What replaced IPv4-compatible addresses:
 IPv4: 198.51.100.1 → 6to4: 2002:c633:6401::/48
 ```
 
-**ISATAP (RFC 5214)**: Intra-site tunneling using `::0:5efe:w.x.y.z` IIDs.
+**ISATAP (RFC 5214)**: Intra-site tunneling using interface identifiers such as `::0:5efe:w.x.y.z` (or `::200:5efe:w.x.y.z` when the embedded IPv4 address is globally unique).
 
-**NAT64 + DNS64 (RFC 6146)**: Translates between IPv6-only clients and IPv4-only servers, the preferred modern approach.
+**NAT64 + DNS64 (RFC 6146)**: Translates between IPv6-only clients and IPv4-only servers, a common modern approach.
 
 ## Identifying Legacy IPv4-Compatible Addresses
 
@@ -97,8 +97,8 @@ def is_ipv4_compatible(addr_str):
     except ValueError:
         return False
 
-print(is_ipv4_compatible("::192.168.1.1"))   # True (deprecated)
-print(is_ipv4_compatible("::ffff:192.168.1.1"))  # False (this is mapped)
+print(is_ipv4_compatible("::192.0.2.1"))   # True (deprecated)
+print(is_ipv4_compatible("::ffff:192.0.2.1"))  # False (this is mapped)
 print(is_ipv4_compatible("::1"))              # False (loopback)
 ```
 
@@ -109,14 +109,17 @@ If you encounter IPv4-compatible addresses in legacy configurations:
 ```bash
 # Old Cisco IOS syntax for 6to4 (not IPv4-compatible)
 # interface Tunnel0
-#  ipv6 address 2002:c633:6401::1/128
+#  no ip address
+#  ipv6 address 2002:c633:6401::1/64
+#  tunnel source GigabitEthernet0/0/0
 #  tunnel mode ipv6ip 6to4
 
-# Wireshark filter to catch IPv4-compatible packets (rare)
-# ip.version == 6 and ipv6.addr matches "^::[0-9]"
+# Wireshark display filter to catch IPv4-compatible packets (rare)
+# (ipv6.src > ::1 and ipv6.src < ::1:0:0) or (ipv6.dst > ::1 and ipv6.dst < ::1:0:0)
 
-# Check if your system generates IPv4-compatible addresses
-ip -6 addr show | grep "^0:0:0:0:0:0:"
+# Check for configured addresses in the deprecated ::/96 range
+# (If you only see ::1/128, that's just loopback.)
+ip -6 addr show to ::/96
 ```
 
 ## Conclusion
