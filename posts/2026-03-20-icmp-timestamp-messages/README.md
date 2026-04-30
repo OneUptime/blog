@@ -4,11 +4,11 @@ Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
 Tags: ICMP, Networking, Timestamp, IPv4, Time Synchronization, Security
 
-Description: Understand ICMP Timestamp Request and Reply messages, how they measure one-way network delay, and why they are typically disabled for security reasons.
+Description: Understand ICMP Timestamp Request and Reply messages, how they can estimate clock offset and transit times, and why they are typically disabled for security reasons.
 
 ## Introduction
 
-ICMP Timestamp (Type 13) and Timestamp Reply (Type 14) are designed to measure clock synchronization and one-way network delays between hosts. Unlike ICMP Echo which only measures round-trip time, timestamps include originate, receive, and transmit time fields that allow computation of one-way delays. However, they also leak timing information and are typically disabled.
+ICMP Timestamp (Type 13) and Timestamp Reply (Type 14) are designed to query remote time information for clock synchronization and transit-time measurement between hosts. Unlike ICMP Echo which only measures round-trip time, timestamps include originate, receive, and transmit time fields that can be used to estimate clock offset and, when clocks are sufficiently synchronized, one-way delays. However, they also leak timing information and are typically disabled.
 
 ## ICMP Timestamp Packet Format
 
@@ -33,13 +33,13 @@ ICMP Timestamp (Type 13) and Timestamp Reply (Type 14) are designed to measure c
 # Most modern systems don't have a dedicated timestamp tool
 
 # Use hping3 to send ICMP timestamp requests
-apt install hping3
+sudo apt install hping3
 
 # Send ICMP Timestamp Request
-hping3 --icmp --icmp-type 13 -c 3 10.20.0.1
+sudo hping3 --icmp --icmptype 13 -c 3 10.20.0.1
 
 # Capture the exchange
-tcpdump -i eth0 -n -v 'icmp[0]=13 or icmp[0]=14'
+sudo tcpdump -i eth0 -n -v 'icmp[0]=13 or icmp[0]=14'
 ```
 
 ## Using Python to Send Timestamp Requests
@@ -51,7 +51,7 @@ import time
 
 def send_icmp_timestamp(dest_ip):
     """Send an ICMP Timestamp Request and print the reply."""
-    # Create raw socket
+    # Create raw socket (requires root or CAP_NET_RAW on Linux)
     sock = socket.socket(socket.AF_INET, socket.SOCK_RAW, socket.IPPROTO_ICMP)
     sock.settimeout(2.0)
 
@@ -60,7 +60,9 @@ def send_icmp_timestamp(dest_ip):
 
     # Build ICMP Timestamp Request (type=13, code=0)
     # checksum=0 initially, will be filled
-    header = struct.pack('!BBHHH', 13, 0, 0, 1, 1)
+    identifier = 1
+    sequence = 1
+    header = struct.pack('!BBHHH', 13, 0, 0, identifier, sequence)
     timestamps = struct.pack('!III', now, 0, 0)  # originate, receive, transmit
 
     packet = header + timestamps
@@ -72,14 +74,16 @@ def send_icmp_timestamp(dest_ip):
     s += s >> 16
     checksum = ~s & 0xffff
 
-    packet = struct.pack('!BBHHH', 13, 0, checksum, 1, 1) + timestamps
+    packet = struct.pack('!BBHHH', 13, 0, checksum, identifier, sequence) + timestamps
     sock.sendto(packet, (dest_ip, 0))
 
     try:
         data, addr = sock.recvfrom(1024)
-        icmp_type = data[20]
-        if icmp_type == 14:  # Timestamp Reply
-            _, _, _, orig, recv, trans = struct.unpack('!HHIIII', data[20:40])
+        ip_header_len = (data[0] & 0x0F) * 4
+        icmp_type, code, _, reply_id, reply_seq, orig, recv, trans = struct.unpack(
+            '!BBHHHIII', data[ip_header_len:ip_header_len + 20]
+        )
+        if icmp_type == 14 and code == 0 and reply_id == identifier and reply_seq == sequence:
             print(f"Reply from {addr[0]}:")
             print(f"  Originate: {orig} ms")
             print(f"  Receive:   {recv} ms")
@@ -96,16 +100,16 @@ ICMP timestamps can be used to fingerprint OS clock offsets and assist in timing
 
 ```bash
 # Block ICMP Timestamp Requests (Type 13)
-iptables -A INPUT -p icmp --icmp-type timestamp-request -j DROP
+sudo iptables -A INPUT -p icmp --icmp-type timestamp-request -j DROP
 
 # Block Timestamp Replies (Type 14) - prevent information leakage
-iptables -A OUTPUT -p icmp --icmp-type timestamp-reply -j DROP
+sudo iptables -A OUTPUT -p icmp --icmp-type timestamp-reply -j DROP
 
-# Verify with nmap scanner check
-nmap --script icmp-timestamp 10.20.0.1
-# If blocked, nmap will report timestamps are filtered
+# Verify with an ICMP timestamp probe
+sudo nmap -sn -PP --send-ip 10.20.0.1
+# A type 14 reply means the host still answers timestamp requests
 ```
 
 ## Conclusion
 
-ICMP Timestamp messages are a legacy mechanism largely replaced by NTP for time synchronization. While they provide useful one-way delay measurement capability, the security trade-off (timing fingerprinting, clock inference) makes them worth disabling on public-facing interfaces. Block Types 13 and 14 in your firewall while keeping the operationally critical ICMP types (echo, time-exceeded, fragmentation-needed) open.
+ICMP Timestamp messages are a legacy mechanism largely replaced by NTP for time synchronization. While they can help estimate clock offset and transit times, the security trade-off (timing fingerprinting, clock inference) makes them worth disabling on public-facing interfaces. Block Types 13 and 14 in your firewall while keeping the operationally critical ICMP types (echo, time-exceeded, fragmentation-needed) open.
