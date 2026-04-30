@@ -17,7 +17,7 @@ Without a reserved prefix, authors would either:
 2. Use private addresses (ULA/fc00::/7) that could conflict with internal deployments
 3. Use addresses that look real and confuse learners
 
-The `2001:db8::/32` block is filtered by all responsible ISPs and should never appear in routing tables.
+The `2001:db8::/32` block should be treated as non-routable documentation space and should not appear in production routing tables.
 
 ## Common Usage Patterns
 
@@ -78,7 +78,7 @@ sudo ip6tables -A INPUT -s 2001:db8::/32 -j DROP
 sudo ip6tables -A OUTPUT -d 2001:db8::/32 -j DROP
 
 # Cisco IOS: prefix-list to filter documentation prefix
-# ip prefix-list BOGON-IPV6 seq 10 deny 2001:DB8::/32 le 128
+# ipv6 prefix-list BOGON-IPV6 seq 10 deny 2001:DB8::/32 le 128
 ```
 
 ## What 2001:db8::/32 Is and Is Not
@@ -87,20 +87,20 @@ sudo ip6tables -A OUTPUT -d 2001:db8::/32 -j DROP
 |---|---|
 | RFC | RFC 3849 |
 | Block size | /32 |
-| Routable on internet | No (must be filtered) |
-| Usable in lab/test | Technically yes, but use ULA instead |
-| Assigned by IANA | Yes, to IANA for documentation |
+| Routable on internet | No (not globally reachable) |
+| Usable in lab/test | For examples only; use ULA for active lab traffic |
+| Assigned by IANA | Yes, as special-purpose documentation space |
 
 ## Alternatives for Actual Testing
 
 For real lab environments, use:
 
 ```bash
-# Use ULA (fc00::/7) for actual lab addressing
+# Use ULA (typically fd00::/8) for actual lab addressing
 sudo ip -6 addr add fd12:3456:789a:1::1/64 dev eth0
 
-# Use loopback for single-machine tests
-sudo ip -6 addr add ::1/128 dev lo
+# Use loopback for single-machine tests (::1/128 is already present on lo)
+ip -6 addr show dev lo
 
 # Never use 2001:db8::/32 for actual traffic
 # It may be filtered by some systems and will cause confusion
@@ -113,8 +113,8 @@ For completeness, RFC 5737 IPv4 equivalents:
 ```text
 IPv4 documentation: 192.0.2.0/24, 198.51.100.0/24, 203.0.113.0/24
 IPv6 documentation: 2001:db8::/32
-IPv6 (new, 2023):   3fff::/20  (RFC 9637)
-AS numbers:         64496-64511 (RFC 5398)
+IPv6 (new, 2024):   3fff::/20  (RFC 9637)
+AS numbers:         64496-64511, 65536-65551 (RFC 5398)
 ```
 
 ## Conclusion
