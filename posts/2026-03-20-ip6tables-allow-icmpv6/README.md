@@ -18,16 +18,16 @@ ICMPv6 is far more important in IPv6 than ICMP was in IPv4. Many critical IPv6 f
 | 2 | Packet Too Big | Path MTU Discovery | MUST NEVER block |
 | 3 | Time Exceeded | TTL/loop detection, traceroute | MUST allow |
 | 4 | Parameter Problem | Malformed packet notification | MUST allow |
-| 128 | Echo Request | Ping | Allow (admin discretion) |
-| 129 | Echo Reply | Ping response | Allow with 128 |
-| 133 | Router Solicitation | SLAAC | Allow from link-local only |
-| 134 | Router Advertisement | SLAAC | Allow from link-local only |
-| 135 | Neighbor Solicitation | NDP (like ARP) | Allow from link-local only |
-| 136 | Neighbor Advertisement | NDP (like ARP reply) | Allow from link-local only |
-| 137 | Redirect | Next-hop optimization | Allow from link-local only |
+| 128 | Echo Request | Ping | MUST allow |
+| 129 | Echo Reply | Ping response | MUST allow with 128 |
+| 133 | Router Solicitation | Router discovery | Allow; source may be assigned or unspecified |
+| 134 | Router Advertisement | SLAAC, router discovery | Allow from link-local only |
+| 135 | Neighbor Solicitation | NDP (like ARP) | Allow; source may be assigned or unspecified |
+| 136 | Neighbor Advertisement | NDP (like ARP reply) | Allow; not limited to link-local source |
+| 137 | Redirect | Next-hop optimization | Policy decision; often block |
 | 143 | MLDv2 Report | Multicast membership | Allow on LAN only |
 | 130-132 | MLD | Multicast Listener Discovery | Allow on LAN, block at perimeter |
-| 144-147 | Mobile IPv6 | Home agent, BU | Block unless Mobile IPv6 used |
+| 144-147 | Mobile IPv6 | Home agent discovery, mobile prefix | Block unless Mobile IPv6 used |
 
 ## Why Packet Too Big (Type 2) Must NEVER Be Blocked
 
@@ -46,29 +46,33 @@ ip6tables -A FORWARD -p icmpv6 --icmpv6-type packet-too-big -j ACCEPT
 ip6tables -A OUTPUT  -p icmpv6 --icmpv6-type packet-too-big -j ACCEPT
 ```
 
-## Why NDP Must Only Come From Link-Local
+## Why Only Some NDP Must Come From Link-Local
 
 NDP messages (types 133-137) are used for:
 - Address resolution (neighbor solicitation/advertisement)
 - Router discovery (router solicitation/advertisement)
 
-These should only come from directly connected hosts (link-local scope, fe80::/10):
+Router Advertisements and Redirects must use link-local source addresses, but not every NDP message does. Router Solicitations may use an assigned address or the unspecified address (`::`), and Neighbor Solicitations may also use `::` during Duplicate Address Detection. For NDP in general, the reliable on-link check is Hop Limit 255:
 
 ```bash
-# CORRECT: Allow NDP only from link-local
-ip6tables -A INPUT -s fe80::/10 -p icmpv6 --icmpv6-type router-advertisement -j ACCEPT
-ip6tables -A INPUT -s fe80::/10 -p icmpv6 --icmpv6-type neighbour-solicitation -j ACCEPT
-ip6tables -A INPUT -s fe80::/10 -p icmpv6 --icmpv6-type neighbour-advertisement -j ACCEPT
+# CORRECT: Router Advertisements must come from link-local;
+# other NDP messages must stay on-link (Hop Limit 255)
+ip6tables -A INPUT -p icmpv6 --icmpv6-type router-solicitation -m hl --hl-eq 255 -j ACCEPT
+ip6tables -A INPUT -s fe80::/10 -p icmpv6 --icmpv6-type router-advertisement -m hl --hl-eq 255 -j ACCEPT
+ip6tables -A INPUT -p icmpv6 --icmpv6-type neighbour-solicitation -m hl --hl-eq 255 -j ACCEPT
+ip6tables -A INPUT -p icmpv6 --icmpv6-type neighbour-advertisement -m hl --hl-eq 255 -j ACCEPT
+# If you choose to allow Redirect, require link-local source and Hop Limit 255
+# ip6tables -A INPUT -s fe80::/10 -p icmpv6 --icmpv6-type redirect -m hl --hl-eq 255 -j ACCEPT
 
-# WRONG: Allowing NDP from anywhere - enables rogue RA attacks
-# ip6tables -A INPUT -p icmpv6 --icmpv6-type router-advertisement -j ACCEPT
+# WRONG: Restricting all NDP to fe80::/10 breaks valid RS/NS traffic
+# ip6tables -A INPUT -s fe80::/10 -p icmpv6 --icmpv6-type neighbour-solicitation -j ACCEPT
 ```
 
-## Complete ICMPv6 Policy (RFC 4890 Compliant)
+## Example ICMPv6 Policy for a Perimeter Host (RFC 4890-Aligned)
 
 ```bash
 #!/bin/bash
-# Complete ICMPv6 ip6tables policy (RFC 4890 compliant)
+# Example ICMPv6 ip6tables policy for a perimeter host
 
 # ===== Critical - MUST allow (all directions) =====
 
@@ -92,11 +96,24 @@ ip6tables -A INPUT   -p icmpv6 --icmpv6-type parameter-problem -j ACCEPT
 ip6tables -A OUTPUT  -p icmpv6 --icmpv6-type parameter-problem -j ACCEPT
 ip6tables -A FORWARD -p icmpv6 --icmpv6-type parameter-problem -j ACCEPT
 
-# ===== NDP - link-local only =====
-for NDPTYPE in router-solicitation router-advertisement neighbour-solicitation neighbour-advertisement; do
-    ip6tables -A INPUT  -s fe80::/10 -p icmpv6 --icmpv6-type $NDPTYPE -j ACCEPT
-    ip6tables -A OUTPUT -p icmpv6 --icmpv6-type $NDPTYPE -j ACCEPT
-done
+# ===== NDP =====
+# Router Solicitation may use an assigned address or :: during bootstrapping
+ip6tables -A INPUT  -p icmpv6 --icmpv6-type router-solicitation -m hl --hl-eq 255 -j ACCEPT
+ip6tables -A OUTPUT -p icmpv6 --icmpv6-type router-solicitation -j ACCEPT
+
+# Router Advertisement must come from link-local and stay on-link
+ip6tables -A INPUT  -s fe80::/10 -p icmpv6 --icmpv6-type router-advertisement -m hl --hl-eq 255 -j ACCEPT
+ip6tables -A OUTPUT -p icmpv6 --icmpv6-type router-advertisement -j ACCEPT
+
+# Neighbor Solicitation may use an assigned address or :: during DAD
+ip6tables -A INPUT  -p icmpv6 --icmpv6-type neighbour-solicitation -m hl --hl-eq 255 -j ACCEPT
+ip6tables -A OUTPUT -p icmpv6 --icmpv6-type neighbour-solicitation -j ACCEPT
+
+# Neighbor Advertisement uses an address assigned to the sending interface
+ip6tables -A INPUT  -p icmpv6 --icmpv6-type neighbour-advertisement -m hl --hl-eq 255 -j ACCEPT
+ip6tables -A OUTPUT -p icmpv6 --icmpv6-type neighbour-advertisement -j ACCEPT
+
+# Redirect is left blocked by default; RFC 4890 says it should be an explicit policy decision
 
 # ===== Echo - allow inbound with rate limit =====
 ip6tables -A INPUT  -p icmpv6 --icmpv6-type echo-request \
@@ -104,8 +121,12 @@ ip6tables -A INPUT  -p icmpv6 --icmpv6-type echo-request \
 ip6tables -A INPUT  -p icmpv6 --icmpv6-type echo-reply -j ACCEPT
 ip6tables -A OUTPUT -p icmpv6 --icmpv6-type echo-request -j ACCEPT
 ip6tables -A OUTPUT -p icmpv6 --icmpv6-type echo-reply -j ACCEPT
+ip6tables -A FORWARD -p icmpv6 --icmpv6-type echo-request -j ACCEPT
+ip6tables -A FORWARD -p icmpv6 --icmpv6-type echo-reply -j ACCEPT
 
 # ===== Block everything else =====
+# If this host participates in multicast on a LAN, add interface-specific
+# allow rules for MLD (130-132, 143) before these drop rules.
 ip6tables -A INPUT   -p icmpv6 -j DROP
 ip6tables -A FORWARD -p icmpv6 -j DROP
 ```
@@ -128,4 +149,4 @@ traceroute6 -n 2001:db8::1
 
 ## Summary
 
-ICMPv6 requires careful filtering: never block Packet Too Big (type 2 - breaks PMTUD), Destination Unreachable (type 1), Time Exceeded (type 3), or Parameter Problem (type 4). Allow NDP types (133-137) only from link-local sources (fe80::/10) to prevent rogue Router Advertisement attacks. Rate-limit Echo Request (type 128) to prevent ICMP floods. Drop all other ICMPv6 types at the perimeter including MLD (130-132) from the internet. Follow RFC 4890 for complete guidance on the correct ICMPv6 filtering policy.
+ICMPv6 requires careful filtering: never block Packet Too Big (type 2 - breaks PMTUD), Destination Unreachable (type 1), Time Exceeded (type 3), or Parameter Problem (type 4). Allow Router Advertisements (type 134) only from link-local sources (fe80::/10), verify NDP stays on-link with Hop Limit 255, and do not blanket-restrict all NDP to fe80::/10 because Router Solicitations and Neighbor Solicitations may legitimately use the unspecified address (`::`). Rate-limit inbound Echo Request (type 128) if desired, but allow Echo Request and Echo Reply through the firewall. Redirects (type 137) are a policy decision and are often blocked. Follow RFC 4890 for complete guidance on the correct ICMPv6 filtering policy.
