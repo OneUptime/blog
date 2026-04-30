@@ -4,11 +4,11 @@ Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
 Tags: UDP, Socket, Error Handling, Python, Linux, Programming
 
-Description: Handle UDP socket errors including ICMP port unreachable delivery, ENOBUFS, ECONNREFUSED, and timeout errors correctly in application code.
+Description: Handle UDP socket errors including ICMP port unreachable delivery, ECONNREFUSED, transient local send errors such as ENOBUFS, and timeout errors correctly in application code.
 
 ## Introduction
 
-UDP error handling is counterintuitive because UDP is connectionless. However, the kernel does deliver some errors to UDP sockets - most notably, ICMP port unreachable messages are delivered back to the sender. Proper error handling means catching these asynchronous errors, handling buffer overflow (`ENOBUFS`), implementing timeouts for `recvfrom()`, and deciding when to retry versus give up.
+UDP error handling is counterintuitive because UDP is connectionless. However, the kernel does deliver some errors to UDP sockets - most notably, ICMP port unreachable messages are delivered back to the sender. Proper error handling means catching these asynchronous errors, handling transient local send failures such as `ENOBUFS`, implementing timeouts for request/response `recvfrom()`/`recv()` calls, and deciding when to retry versus give up.
 
 ## ICMP Errors Delivered to UDP Sockets
 
@@ -17,30 +17,30 @@ UDP error handling is counterintuitive because UDP is connectionless. However, t
 # UDP errors from ICMP messages
 
 import socket
-import errno
 
 sock = socket.socket(socket.AF_INET, socket.SOCK_DGRAM)
+sock.settimeout(2.0)
 
-# Send to a port that's not listening (will get ICMP port unreachable back)
+# Send to a port that's not listening (can trigger ICMP port unreachable)
 
-# With connected UDP socket, this error is delivered on the NEXT sendto/recvfrom:
-sock.connect(('10.20.0.5', 9999))  # Port nothing is listening on
+# With a connected UDP socket, this error is typically delivered on a later socket operation:
+sock.connect(('127.0.0.1', 54321))  # UDP port with no listener
 
 try:
     sock.send(b'hello')
     # ICMP port unreachable comes back asynchronously...
-    response = sock.recv(1024)  # This raises ECONNREFUSED
+    response = sock.recv(1024)  # Often raises ECONNREFUSED on Linux
 except ConnectionRefusedError as e:
     print(f"ICMP port unreachable received: {e}")
     # The remote port is not open (ICMP type 3, code 3)
 except socket.timeout:
     print("No response and no ICMP error (filtered)")
 
-# Note: On UNCONNECTED sockets, ICMP errors are NOT delivered in most cases
-# This is a Linux behavior: only "connected" UDP sockets receive ICMP errors
+# Note: On Linux, fatal UDP errors can also be reported on unconnected sockets.
+# Delivery is less predictable there, so connect() is useful when talking to one peer.
 ```
 
-## Complete Error Handling
+## Request/Response Error Handling
 
 ```python
 #!/usr/bin/env python3
@@ -49,17 +49,34 @@ import errno
 import time
 
 def udp_send_recv(server, port, data, retries=3, timeout=2.0):
-    """Send UDP and receive response with full error handling."""
+    """Send UDP and receive response with common error handling."""
     sock = socket.socket(socket.AF_INET, socket.SOCK_DGRAM)
     sock.settimeout(timeout)
+    try:
+        sock.connect((server, port))
+    except OSError as e:
+        if e.errno == errno.ENETUNREACH:
+            print(f"Network unreachable: {e}")
+            sock.close()
+            return None, None
+        elif e.errno == errno.EHOSTUNREACH:
+            print(f"Host unreachable: {e}")
+            sock.close()
+            return None, None
+        else:
+            sock.close()
+            raise
 
     for attempt in range(retries):
         try:
-            sock.sendto(data, (server, port))
+            sock.send(data)
+        except ConnectionRefusedError:
+            print(f"Connection refused: {server}:{port} has no listener")
+            break
         except OSError as e:
             if e.errno == errno.ENOBUFS:
-                # Send buffer is full
-                print(f"Buffer full, waiting... (attempt {attempt+1})")
+                # Transient local send failure (rare on Linux)
+                print(f"Send queue full, waiting... (attempt {attempt+1})")
                 time.sleep(0.01 * (2 ** attempt))  # Exponential backoff
                 continue
             elif e.errno == errno.ENETUNREACH:
@@ -72,9 +89,9 @@ def udp_send_recv(server, port, data, retries=3, timeout=2.0):
                 raise
 
         try:
-            response, addr = sock.recvfrom(65535)
+            response = sock.recv(65535)
             sock.close()
-            return response, addr
+            return response, (server, port)
 
         except socket.timeout:
             print(f"Timeout on attempt {attempt+1}/{retries}")
@@ -85,43 +102,35 @@ def udp_send_recv(server, port, data, retries=3, timeout=2.0):
             print(f"Connection refused: {server}:{port} has no listener")
             break
 
-        except OSError as e:
-            if e.errno == errno.ECONNRESET:
-                print(f"Connection reset (ICMP error): {e}")
-                break
-            else:
-                raise
-
     sock.close()
     return None, None
 
 # Usage:
-result, addr = udp_send_recv('10.20.0.5', 5000, b'query data')
+result, addr = udp_send_recv('127.0.0.1', 54321, b'query data')
 if result:
     print(f"Response from {addr}: {result}")
 else:
     print("No response received")
 ```
 
-## Handling ENOBUFS (Send Buffer Full)
+## Handling ENOBUFS and EAGAIN on Send
 
 ```python
-import socket
 import errno
 import time
 
 def send_with_backpressure(sock, data, addr, max_retries=10):
-    """Send UDP with retry on ENOBUFS."""
+    """Send UDP with retry on transient send backpressure."""
     for i in range(max_retries):
         try:
             sock.sendto(data, addr)
             return True
         except BlockingIOError:
-            # Non-blocking socket: buffer full
+            # Non-blocking socket: send would block (EAGAIN/EWOULDBLOCK)
             time.sleep(0.001 * (i + 1))
         except OSError as e:
             if e.errno == errno.ENOBUFS:
-                # Blocking socket: buffer full
+                # Transient local send failure (rare on Linux)
                 time.sleep(0.001 * (i + 1))
             else:
                 raise
@@ -130,23 +139,21 @@ def send_with_backpressure(sock, data, addr, max_retries=10):
 
 ## ICMP Error Receipt on Linux
 
-```bash
-# By default, ICMP errors only propagate to connected UDP sockets
-# Unconnected sockets don't receive ICMP errors (common gotcha)
-
-# Enable ICMP error receipt on unconnected UDP (Linux):
-# IP_RECVERR socket option:
-python3 -c "
+```python
 import socket
+
+# Linux can report fatal UDP errors on normal socket operations too.
+# IP_RECVERR is useful when you want reliable access to the per-socket error queue.
+IP_RECVERR = getattr(socket, 'IP_RECVERR', 11)  # Linux IPv4 socket option
+MSG_ERRQUEUE = getattr(socket, 'MSG_ERRQUEUE', 8192)  # Linux recvmsg() flag
+
 sock = socket.socket(socket.AF_INET, socket.SOCK_DGRAM)
-sock.setsockopt(socket.IPPROTO_IP, socket.IP_RECVERR, 1)
-# Now ICMP errors are queued in error queue
-# Read with: sock.recvmsg() and MSG_ERRQUEUE flag
-"
+sock.setblocking(False)
+sock.setsockopt(socket.IPPROTO_IP, IP_RECVERR, 1)
 
-# Read error queue (advanced):
-import socket
-MSG_ERRQUEUE = 8192  # Linux-specific flag
+# Send a datagram so any ICMP error has a packet to refer to.
+sock.sendto(b'hello', ('127.0.0.1', 54321))
+
 try:
     data, ancdata, flags, addr = sock.recvmsg(1024, 256, MSG_ERRQUEUE)
 except BlockingIOError:
@@ -155,4 +162,4 @@ except BlockingIOError:
 
 ## Conclusion
 
-UDP error handling requires attention to three error classes: ICMP errors delivered asynchronously (`ECONNREFUSED` for port unreachable), send buffer overflow (`ENOBUFS`/`EAGAIN`), and receive timeouts. Use connected UDP sockets to receive ICMP error delivery automatically. Implement exponential backoff retry for `ENOBUFS`. Set receive timeout with `sock.settimeout()` for all `recvfrom()` calls - blocking forever on a UDP socket is always a bug. For unconnected sockets that need ICMP errors, use `IP_RECVERR` with `MSG_ERRQUEUE`.
+UDP error handling requires attention to three error classes: asynchronous ICMP errors (`ECONNREFUSED` for port unreachable), transient local send backpressure (`EAGAIN`/`EWOULDBLOCK` on non-blocking sockets, and sometimes `ENOBUFS`), and receive timeouts in request/response code. Use a connected UDP socket when talking to one peer, because it simplifies I/O and makes error handling easier. Implement exponential backoff retry only for transient local send failures. Set `sock.settimeout()` when a request/response path needs a bounded wait; servers that intentionally block on `recvfrom()` are fine. For unconnected sockets that need reliable Linux error-queue delivery, use `IP_RECVERR` with `MSG_ERRQUEUE`.
