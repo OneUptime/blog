@@ -4,11 +4,11 @@ Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
 Tags: Helm, IPv6, Validation, JSON Schema, Testing
 
-Description: Add JSON schema validation and helm lint rules to ensure IPv6 configuration in Helm charts is correct before deployment.
+Description: Add a `values.schema.json` schema and use `helm lint` to ensure IPv6 configuration in Helm charts is correct before deployment.
 
 ## Overview
 
-Add JSON schema validation and helm lint rules to ensure IPv6 configuration in Helm charts is correct before deployment.
+Add a `values.schema.json` schema and use `helm lint` to ensure IPv6 configuration in Helm charts is correct before deployment.
 
 ## Helm Chart IPv6 Best Practices
 
@@ -34,23 +34,19 @@ networking:
   # Options: SingleStack, PreferDualStack, RequireDualStack
   ipFamilyPolicy: SingleStack
   
-  # IP families (IPv4, IPv6, or both)
-  ipFamilies:
-    - IPv4
+  # Optional explicit IP families
+  # Leave empty to let Kubernetes choose based on ipFamilyPolicy
+  ipFamilies: []
 
 # Service configuration
 service:
   type: ClusterIP
   port: 80
-  # IPv6 cluster IP (leave empty for auto-assign)
-  ipv6ClusterIP: ""
 
 # Ingress configuration
 ingress:
   enabled: false
-  annotations:
-    # IPv6 Nginx annotation
-    nginx.ingress.kubernetes.io/ipv6-enabled: "true"
+  annotations: {}
 ```
 
 ## Template for Dual-Stack Services
@@ -60,13 +56,15 @@ ingress:
 apiVersion: v1
 kind: Service
 metadata:
-  name: {{ include "mychart.fullname" . }}
+  name: {{ .Release.Name }}
 spec:
   type: {{ .Values.service.type }}
   {{- if .Values.networking.ipv6.enabled }}
   ipFamilyPolicy: {{ .Values.networking.ipFamilyPolicy | default "PreferDualStack" }}
+  {{- if .Values.networking.ipFamilies }}
   ipFamilies:
     {{- toYaml .Values.networking.ipFamilies | nindent 4 }}
+  {{- end }}
   {{- end }}
   ports:
     - port: {{ .Values.service.port }}
@@ -98,26 +96,34 @@ Wraps IPv6 addresses in brackets.
 ## Testing with IPv6 Cluster
 
 ```bash
+# Lint with IPv6 values before deployment
+helm lint ./mychart --set networking.ipv6.enabled=true --set networking.ipFamilyPolicy=PreferDualStack
+
 # Install with IPv6 enabled
-helm install myapp ./mychart   --set networking.ipv6.enabled=true   --set networking.ipFamilyPolicy=PreferDualStack
+helm install myapp ./mychart --set networking.ipv6.enabled=true --set networking.ipFamilyPolicy=PreferDualStack
 
-# Verify service has IPv6 cluster IP
+# Verify service has IPv4 and IPv6 cluster IPs
 kubectl get svc myapp -o jsonpath='{.spec.clusterIPs}'
-
-# Run helm tests
-helm test myapp
 ```
 
-## Validation Schema
+## Validation Schema (`values.schema.json`)
 
 ```json
 {
-  "$schema": "http://json-schema.org/schema#",
+  "$schema": "https://json-schema.org/draft-07/schema#",
   "type": "object",
   "properties": {
     "networking": {
       "type": "object",
       "properties": {
+        "ipv6": {
+          "type": "object",
+          "properties": {
+            "enabled": {
+              "type": "boolean"
+            }
+          }
+        },
         "ipFamilyPolicy": {
           "type": "string",
           "enum": ["SingleStack", "PreferDualStack", "RequireDualStack"]
@@ -127,7 +133,9 @@ helm test myapp
           "items": {
             "type": "string",
             "enum": ["IPv4", "IPv6"]
-          }
+          },
+          "maxItems": 2,
+          "uniqueItems": true
         }
       }
     }
