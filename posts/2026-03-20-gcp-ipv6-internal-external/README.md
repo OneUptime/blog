@@ -8,7 +8,7 @@ Description: Understand the difference between GCP internal IPv6 (ULA) and exter
 
 ## Introduction
 
-Google Cloud offers two types of IPv6 for VPC subnets: external IPv6 (globally routable) and internal IPv6 (ULA - Unique Local Addresses). External IPv6 addresses are accessible from the internet and assigned from Google's public IPv6 ranges. Internal IPv6 uses RFC 4193 ULA addresses (`fd00::/8`) that are only routable within the VPC and connected networks. Choosing the right type depends on your security and connectivity requirements.
+Google Cloud offers two types of IPv6 for VPC subnets: external IPv6 (globally routable) and internal IPv6 (ULA - Unique Local Addresses). External IPv6 addresses are accessible from the internet and are assigned from Google's public IPv6 ranges by default, or from your own BYOIP range if you bring one. Internal IPv6 uses RFC 4193 ULA addresses from a VPC-level `/48` allocated within Google's `fd20::/20` ULA space, and those addresses are only routable within the VPC and connected networks. These examples assume `vpc-main` is a custom mode VPC network, because IPv6 subnet ranges aren't supported on auto mode VPC networks. Choosing the right type depends on your security and connectivity requirements.
 
 ## External IPv6 (Globally Routable)
 
@@ -24,11 +24,11 @@ gcloud compute networks subnets create subnet-external-ipv6 \
     --project="$PROJECT"
 
 # External IPv6 properties:
-# - Addresses from Google's public IPv6 space (2600:1900::/28 range)
+# - Addresses from Google's regional external IPv6 address space
 # - Globally routable from the internet
 # - Can receive inbound connections (controlled by firewall rules)
 # - VMs with external IPv6 can initiate outbound internet connections
-# - /96 per VM, subnet gets a /48
+# - /96 per VM interface, subnet gets a /64
 
 # View external IPv6 prefix assigned
 gcloud compute networks subnets describe subnet-external-ipv6 \
@@ -39,6 +39,11 @@ gcloud compute networks subnets describe subnet-external-ipv6 \
 ## Internal IPv6 (ULA)
 
 ```bash
+# Internal IPv6 requires a /48 ULA range on the VPC first
+gcloud compute networks update vpc-main \
+    --enable-ula-internal-ipv6 \
+    --project="$PROJECT"
+
 # Create subnet with internal IPv6
 gcloud compute networks subnets create subnet-internal-ipv6 \
     --network=vpc-main \
@@ -49,16 +54,16 @@ gcloud compute networks subnets create subnet-internal-ipv6 \
     --project="$PROJECT"
 
 # Internal IPv6 properties:
-# - Addresses from ULA range (fd::/8)
+# - Addresses from the VPC's `/48` ULA range within Google's `fd20::/20` space
 # - NOT globally routable - only within VPC and connected networks
-# - No internet access without Cloud NAT for IPv6
+# - IPv6-only instances need DNS64 and NAT64 to reach IPv4 internet destinations
 # - More secure for backend services
 # - Lower risk of accidental internet exposure
 
 # View internal IPv6 prefix
 gcloud compute networks subnets describe subnet-internal-ipv6 \
     --region=us-east1 \
-    --format="get(ipv6CidrRange)"
+    --format="get(internalIpv6Prefix)"
 ```
 
 ## Use Case Comparison
@@ -68,13 +73,13 @@ External IPv6 Use Cases:
   - Web servers and public-facing APIs
   - CDN origin servers
   - Services that need inbound internet IPv6 connections
-  - Load balancer backends that need direct IPv6
+  - VMs or forwarding rules that need direct IPv6 reachability
 
 Internal IPv6 Use Cases:
   - Databases and internal APIs
   - Service mesh communication within GCP
   - Microservices that don't need internet access
-  - Workloads where all internet access goes through Cloud NAT
+  - IPv6-only workloads that only need IPv4 internet access through DNS64/NAT64
   - Backend clusters where internet access is optional
 ```
 
@@ -84,22 +89,24 @@ Internal IPv6 Use Cases:
 # Describe a VM's network interface to see IPv6 address type
 gcloud compute instances describe vm-web-01 \
     --zone=us-east1-b \
-    --format="json(networkInterfaces[].{ipv6Access:ipv6AccessType, ipv6Addr:ipv6Address, internalIpv6:internalIpv6PrefixLength})"
+    --format="json(networkInterfaces[].ipv6AccessType,networkInterfaces[].ipv6Address,networkInterfaces[].internalIpv6PrefixLength,networkInterfaces[].ipv6AccessConfigs[].externalIpv6,networkInterfaces[].ipv6AccessConfigs[].externalIpv6PrefixLength)"
 
 # External IPv6 shows:
 # ipv6AccessType: EXTERNAL
-# ipv6Address: 2600:1900:4000:abc1:8000::
+# externalIpv6: 2600:1900:4000:abc1:8000::
+# externalIpv6PrefixLength: 96
 
 # Internal IPv6 shows:
 # ipv6AccessType: INTERNAL
 # ipv6Address: fd20:0000:0000:0001::
+# internalIpv6PrefixLength: 96
 ```
 
 ## Switching Between Internal and External
 
 ```bash
-# You CANNOT change ipv6-access-type on an existing subnet
-# You must create a new subnet with the desired access type
+# You CANNOT change ipv6-access-type after a subnet already has IPv6 configured
+# To switch between INTERNAL and EXTERNAL, create a new subnet with the desired access type
 
 # Option: Create secondary subnet with different type
 gcloud compute networks subnets create subnet-web-external \
@@ -115,7 +122,14 @@ gcloud compute networks subnets create subnet-web-external \
 ## Internet Connectivity for Internal IPv6
 
 ```bash
-# Internal IPv6 VMs need Cloud NAT for internet access
+# Internal IPv6 addresses are not internet-routable
+# For IPv6-only instances that need outbound access to IPv4 destinations,
+# configure DNS64 and NAT64
+gcloud dns policies create dns64-policy \
+    --description="DNS64 for IPv6-only workloads" \
+    --networks=vpc-main \
+    --enable-dns64-all-queries
+
 gcloud compute routers create router-nat \
     --network=vpc-main \
     --region=us-east1
@@ -123,12 +137,12 @@ gcloud compute routers create router-nat \
 gcloud compute routers nats create nat-ipv6 \
     --router=router-nat \
     --region=us-east1 \
-    --nat-all-subnet-ip-ranges \
+    --nat64-all-v6-subnet-ip-ranges \
     --auto-allocate-nat-external-ips \
     --enable-endpoint-independent-mapping
 
-# Now internal IPv6 VMs can initiate outbound internet connections
-# Inbound connections are still blocked
+# IPv6-only internal IPv6 VMs can now reach IPv4 internet destinations
+# Inbound internet connections to internal IPv6 addresses are still not possible
 ```
 
 ## Firewall Rules for External vs Internal
@@ -140,7 +154,7 @@ gcloud compute firewall-rules create allow-http-ipv6 \
     --direction=INGRESS \
     --priority=1000 \
     --source-ranges="::/0" \
-    --rules=tcp:80,tcp:443 \
+    --allow=tcp:80,tcp:443 \
     --target-tags=web-server
 
 # Internal IPv6: no internet inbound possible
@@ -149,11 +163,12 @@ gcloud compute firewall-rules create allow-internal-ipv6 \
     --network=vpc-main \
     --direction=INGRESS \
     --priority=1000 \
-    --source-ranges="fd00::/8" \  # ULA range
-    --rules=all \
+    --action=ALLOW \
+    --rules=tcp:0-65535,udp:0-65535,58 \
+    --source-ranges="$(gcloud compute networks describe vpc-main --format='get(internalIpv6Range)')" \
     --target-tags=internal-service
 ```
 
 ## Conclusion
 
-GCP external IPv6 provides globally routable addresses for internet-facing services, while internal IPv6 (ULA) provides secure inter-service communication without internet exposure. External subnets suit public-facing workloads; internal subnets suit backend services. The `ipv6-access-type` cannot be changed after subnet creation, so plan carefully. Internal IPv6 VMs can access the internet via Cloud NAT for IPv6, maintaining outbound connectivity while blocking inbound connections from the internet.
+GCP external IPv6 provides globally routable addresses for internet-facing services, while internal IPv6 (ULA) provides secure inter-service communication without internet exposure. External subnets suit public-facing workloads; internal subnets suit backend services. The `ipv6-access-type` cannot be changed after IPv6 is configured on a subnet, so plan carefully. Internal IPv6 addresses are not internet-routable; for IPv6-only workloads that need outbound access to IPv4 destinations, Google Cloud supports DNS64 and NAT64 with Public NAT while still blocking inbound internet connections to internal IPv6 addresses.
