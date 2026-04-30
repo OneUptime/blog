@@ -4,132 +4,129 @@ Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
 Tags: IPv6, Jumbograms, Linux, Jumbo Frame, HPC Networking
 
-Description: Configure Linux to send and receive IPv6 jumbograms, set jumbo frame MTU on high-performance interfaces, and verify jumbogram support in the kernel.
+Description: Inspect Linux MTU settings for jumbo frames, understand the RFC 2675 requirements for true IPv6 jumbograms, and verify large-MTU readiness in the kernel.
 
 ## Introduction
 
-Linux has supported IPv6 jumbograms since the early kernel 2.6 series. Enabling jumbograms on Linux requires appropriate hardware and driver support for large MTUs (typically ≥ 9000 bytes for "jumbo frames," and much larger for true jumbogram use cases). The configuration primarily involves setting the interface MTU to a value large enough to carry jumbogram-sized packets.
+IPv6 jumbograms are distinct from ordinary Ethernet jumbo frames. RFC 2675 defines a jumbogram as an IPv6 packet with a payload larger than 65,535 octets, carried using a Hop-by-Hop Jumbo Payload option. In practice, Linux can use such packets only on links whose MTU exceeds 65,575 bytes end to end. A large MTU is necessary but not sufficient: the packet format and transport-layer behavior also need to follow RFC 2675. A 9,000-byte MTU is useful for jumbo frames, but it is still well below the threshold for a true IPv6 jumbogram.
 
-## Setting Up Jumbo Frames for Jumbogram Support
+## Setting MTU for Jumbo Frames and Jumbograms
 
 ```bash
-# Check current MTU and maximum supported MTU for an interface
+# Check the current MTU
+ip link show dev eth0
 
-ip link show eth0
-ethtool eth0 | grep -i mtu
+# On kernels that expose them, inspect min/max MTU as well
+ip -d link show dev eth0
 
-# Check if the NIC supports jumbo frames
-ethtool eth0 | grep -i "max.*frame\|mtu"
-
-# Set MTU to 9000 bytes (typical jumbo frame size)
-sudo ip link set eth0 mtu 9000
+# Set MTU to 9000 bytes (ordinary jumbo-frame configuration)
+sudo ip link set dev eth0 mtu 9000
 
 # Verify the change
-ip link show eth0 | grep mtu
+ip link show dev eth0 | grep mtu
 
-# For true jumbogram support (up to 65535+ bytes), set MTU to max supported
-# This is hardware-dependent; Infiniband or specialized NICs may support more
-sudo ip link set ib0 mtu 65520  # Example for Infiniband
+# True RFC 2675 jumbograms require a link MTU greater than 65575 bytes.
+# Only attempt this on hardware and links that explicitly support it.
+sudo ip link set dev <iface> mtu 65576
 
-# Check the configured MTU in the kernel
+# Check the IPv6 MTU the kernel is using for the interface
 cat /proc/sys/net/ipv6/conf/eth0/mtu
 ```
 
-## Linux Kernel Jumbogram Support
+## Linux Kernel Considerations
 
 ```bash
-# Check if the running kernel has IPv6 jumbogram support
-grep -r "JUMBOGRAM\|RFC2675" /boot/config-$(uname -r) 2>/dev/null || \
-    zgrep -i "jumbogram" /boot/config-$(uname -r).gz 2>/dev/null
+# Linux does not provide a separate "enable jumbograms" switch.
+# Instead, verify the MTU values the kernel is using for the interface.
+sysctl net.ipv6.conf.eth0.mtu
 
-# Check kernel jumbogram-related sysctl settings
-sysctl -a 2>/dev/null | grep -i "ipv6.*jumbo"
-
-# TCP buffer sizes for large transfers (important for jumbogram paths)
+# TCP buffer sizes for large transfers
+# Linux exposes these TCP settings under net.ipv4 even for IPv6 TCP.
 cat /proc/sys/net/core/rmem_max
 cat /proc/sys/net/core/wmem_max
+cat /proc/sys/net/ipv4/tcp_rmem
+cat /proc/sys/net/ipv4/tcp_wmem
 
-# For high-performance jumbogram paths, increase socket buffers
+# For high-performance large-MTU paths, increase socket buffers
 sudo sysctl -w net.core.rmem_max=134217728   # 128 MB receive buffer
 sudo sysctl -w net.core.wmem_max=134217728   # 128 MB send buffer
 sudo sysctl -w net.ipv4.tcp_rmem="4096 87380 67108864"
 sudo sysctl -w net.ipv4.tcp_wmem="4096 65536 67108864"
 ```
 
-## Verifying Jumbogram Sending with Python
+## Checking Jumbogram MTU Readiness with Python
 
 ```python
-import socket
-import struct
+import re
+import subprocess
 
-def create_jumbogram_socket() -> socket.socket:
+JUMBOGRAM_MIN_LINK_MTU = 65576
+
+def check_interface_supports_jumbograms(
+    interface: str, min_link_mtu: int = JUMBOGRAM_MIN_LINK_MTU
+) -> dict:
     """
-    Create a raw IPv6 socket for sending jumbograms.
-    Requires root privileges.
+    Check whether an interface meets the RFC 2675 link-MTU requirement.
     """
-    # RAW socket for IPv6
-    s = socket.socket(socket.AF_INET6, socket.SOCK_RAW, socket.IPPROTO_RAW)
-
-    # Set IPV6_HDRINCL to include our own IPv6 header
-    s.setsockopt(socket.IPPROTO_IPV6, socket.IPV6_HDRINCL, 1)
-
-    # Increase socket buffer for large payloads
-    s.setsockopt(socket.SOL_SOCKET, socket.SO_SNDBUF, 10 * 1024 * 1024)
-    s.setsockopt(socket.SOL_SOCKET, socket.SO_RCVBUF, 10 * 1024 * 1024)
-
-    return s
-
-def check_interface_supports_jumbograms(interface: str,
-                                         min_mtu: int = 65536) -> dict:
-    """
-    Check if an interface can support jumbograms.
-    """
-    import subprocess
     result = subprocess.run(
-        ["ip", "link", "show", interface],
-        capture_output=True, text=True
+        ["ip", "link", "show", "dev", interface],
+        capture_output=True,
+        text=True,
+        check=True,
     )
 
-    import re
-    mtu_match = re.search(r'mtu (\d+)', result.stdout)
-    current_mtu = int(mtu_match.group(1)) if mtu_match else 0
+    mtu_match = re.search(r"\bmtu (\d+)\b", result.stdout)
+    if not mtu_match:
+        raise RuntimeError(f"Could not determine MTU for {interface}")
+
+    current_mtu = int(mtu_match.group(1))
 
     return {
         "interface": interface,
         "current_mtu": current_mtu,
-        "min_mtu_for_jumbograms": min_mtu,
-        "supports_jumbograms": current_mtu >= min_mtu,
+        "min_link_mtu_for_jumbograms": min_link_mtu,
+        "supports_jumbograms": current_mtu >= min_link_mtu,
         "recommendation": (
-            f"Set MTU to at least {min_mtu} for jumbogram support"
-            if current_mtu < min_mtu
-            else "Interface MTU adequate for jumbograms"
-        )
+            "Set MTU above 65575 bytes for RFC 2675 jumbograms"
+            if current_mtu < min_link_mtu
+            else "Interface MTU meets the RFC 2675 threshold"
+        ),
     }
 
 # Check common interfaces
 for iface in ["eth0", "lo"]:
-    result = check_interface_supports_jumbograms(iface)
-    print(f"{result['interface']}: MTU={result['current_mtu']} - {result['recommendation']}")
+    try:
+        result = check_interface_supports_jumbograms(iface)
+    except subprocess.CalledProcessError:
+        print(f"{iface}: interface not present on this host")
+        continue
+
+    print(
+        f"{result['interface']}: MTU={result['current_mtu']} - "
+        f"{result['recommendation']}"
+    )
 ```
 
-## Performance Implications of Jumbograms
+## Performance Implications of Larger MTUs
 
 ```bash
 # Baseline performance test with standard MTU (1500 bytes)
-iperf3 -6 -c 2001:db8::server -t 30 -P 4
+iperf3 -6 -c 2001:db8::1 -t 30 -P 4
 
-# Performance test with jumbo frames (9000 byte MTU)
+# Performance test with 9000-byte jumbo frames
 # First set both ends to MTU 9000
-sudo ip link set eth0 mtu 9000
-iperf3 -6 -c 2001:db8::server -t 30 -P 4 -l 8192
+sudo ip link set dev eth0 mtu 9000
+iperf3 -6 -c 2001:db8::1 -t 30 -P 4
 
 # Compare CPU usage and throughput
-# Jumbograms reduce per-packet overhead:
-# - Fewer interrupts from NIC
+# Larger MTUs can reduce per-packet overhead on supported links:
+# - Fewer packets and interrupts per byte transferred
 # - Less TCP/IP processing overhead per byte
-# - Typically 10-30% improvement for bulk transfers on HPC links
+# - Actual gains depend on workload, NIC offloads, and the end-to-end path
+# iperf3 is useful for comparing standard MTU vs jumbo-frame MTU,
+# but it does not by itself prove RFC 2675 jumbogram use.
 
-# Check interrupt rate (lower is better with jumbograms)
+# Check interrupt rate (lower is better with larger MTUs on the same workload)
 watch -n 1 'cat /proc/interrupts | grep eth0'
 ```
 
@@ -161,4 +158,4 @@ nmcli connection up "Wired connection 1"
 
 ## Conclusion
 
-Linux jumbogram support requires hardware that supports large MTUs and explicit MTU configuration on the interface. For practical jumbo frames (9000 bytes), standard server NICs with jumbo frame support are sufficient. For true IPv6 jumbograms beyond 65535 bytes, specialized hardware (InfiniBand, Cray, custom HPC interconnects) is required. In all cases, both endpoints and all intermediate links must be configured with the large MTU, and socket buffers should be increased to take full advantage of the throughput gains.
+Linux configuration for ordinary jumbo frames is mostly an MTU change. True IPv6 jumbograms are stricter: they require the RFC 2675 Jumbo Payload option, transport behavior that follows RFC 2675, and an end-to-end link MTU above 65,575 bytes. In practice, 9,000-byte Ethernet jumbo frames can improve bulk-transfer efficiency, but they are not jumbograms. When testing large-MTU paths, confirm the configured MTU on both ends and tune socket buffers as needed for the workload.
