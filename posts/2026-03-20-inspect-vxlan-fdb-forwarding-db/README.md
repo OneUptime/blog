@@ -18,35 +18,35 @@ The VXLAN FDB (Forwarding Database) maps MAC addresses to remote VTEP IP address
 bridge fdb show dev vxlan0
 
 # Example output:
-# 00:00:00:00:00:00 dev vxlan0 dst 10.0.0.2 self permanent
-# 00:00:00:00:00:00 dev vxlan0 dst 10.0.0.3 self permanent
+# 00:00:00:00:00:00 dev vxlan0 dst 10.0.0.2 self static
+# 00:00:00:00:00:00 dev vxlan0 dst 10.0.0.3 self static
 # aa:bb:cc:dd:ee:11 dev vxlan0 dst 10.0.0.2 self
 ```
 
 ## Interpret FDB Entries
 
 ```text
-00:00:00:00:00:00 dev vxlan0 dst 10.0.0.2 self permanent
+00:00:00:00:00:00 dev vxlan0 dst 10.0.0.2 self static
 ```
 - `00:00:00:00:00:00` - zero MAC = flood/BUM entry
 - `dst 10.0.0.2` - send BUM traffic to this VTEP
-- `permanent` - static entry (won't age out)
+- `static` - statically configured entry (won't age out)
 
 ```text
 aa:bb:cc:dd:ee:11 dev vxlan0 dst 10.0.0.2 self
 ```
 - Real MAC address = dynamically learned unicast entry
 - `dst 10.0.0.2` - this MAC is reachable via this VTEP
-- No `permanent` = dynamic (will age out)
+- No `static` = dynamic (will age out)
 
 ## Add a Static MAC-to-VTEP Entry
 
 ```bash
-# Add a permanent unicast entry for a known remote MAC
-bridge fdb add aa:bb:cc:dd:ee:11 dev vxlan0 dst 10.0.0.2 permanent
+# Add a static unicast entry for a known remote MAC
+bridge fdb add aa:bb:cc:dd:ee:11 dev vxlan0 dst 10.0.0.2 static
 
 # Add a flood entry for a new remote VTEP
-bridge fdb append 00:00:00:00:00:00 dev vxlan0 dst 10.0.0.4 permanent
+bridge fdb append 00:00:00:00:00:00 dev vxlan0 dst 10.0.0.4 static
 ```
 
 ## Delete an FDB Entry
@@ -65,8 +65,8 @@ bridge fdb del 00:00:00:00:00:00 dev vxlan0 dst 10.0.0.2
 # Generate VXLAN traffic on another terminal
 ping -c 10 10.200.0.2 &
 
-# Watch FDB entries appear as MACs are learned
-watch -n 1 "bridge fdb show dev vxlan0 | grep -v permanent"
+# Watch dynamic FDB entries appear as MACs are learned
+watch -n 1 "bridge fdb show dev vxlan0 dynamic"
 ```
 
 ## FDB Aging
@@ -74,25 +74,25 @@ watch -n 1 "bridge fdb show dev vxlan0 | grep -v permanent"
 Dynamic FDB entries age out. Check and tune aging time:
 
 ```bash
-# Check aging time of the VXLAN interface (via bridge it's attached to)
-cat /sys/class/net/br-overlay/bridge/ageing_time
+# Check VXLAN FDB aging time
+ip -d link show vxlan0 | grep "ageing"
 
-# Set aging time (seconds × 100 in kernel units, or set via networkd)
-ip link set br-overlay type bridge ageing_time 300
+# Set VXLAN FDB aging time in seconds
+ip link set vxlan0 type vxlan ageing 300
 ```
 
 ## FDB and ARP Suppression
 
-For large overlays, check if ARP suppression is enabled (reduces flooding):
+For large overlays, check if neighbor suppression is enabled on the VXLAN bridge port (reduces ARP/ND flooding):
 
 ```bash
-# Check ARP suppression
-ip -d link show vxlan0 | grep "arp_suppress"
+# Check neighbor suppression
+bridge link show dev vxlan0 | grep "neigh_suppress"
 
-# Enable ARP suppression
-ip link set vxlan0 type vxlan arp_proxy 1
+# Enable neighbor suppression
+bridge link set dev vxlan0 neigh_suppress on
 ```
 
 ## Conclusion
 
-The VXLAN FDB is the MAC-to-VTEP mapping table that drives forwarding decisions. Use `bridge fdb show dev vxlan0` to inspect it. Zero-MAC entries are flood/BUM entries; real MAC entries are unicast forwarding entries. Dynamic entries are learned from traffic and will age out; permanent entries remain until explicitly deleted. Inspecting the FDB is the primary tool for diagnosing VXLAN connectivity issues.
+The VXLAN FDB is the MAC-to-VTEP mapping table that drives forwarding decisions. Use `bridge fdb show dev vxlan0` to inspect it. Zero-MAC entries are flood/BUM entries; real MAC entries are unicast forwarding entries. Dynamic entries are learned from traffic and will age out; static entries remain until explicitly deleted. Inspecting the FDB is the primary tool for diagnosing VXLAN connectivity issues.
