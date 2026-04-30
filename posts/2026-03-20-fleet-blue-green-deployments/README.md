@@ -1,35 +1,34 @@
-# How to Configure Fleet for Blue-Green Deployments
+# How to Configure Fleet for Multi-Environment Deployments
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
-Tags: Rancher, Fleet, Blue-Green, Kubernetes, GitOps
+Tags: Rancher, Fleet, Helm, Kubernetes, GitOps
 
-Description: Guide to implementing blue-green deployment strategy using Rancher Fleet for zero-downtime releases.
+Description: Guide to deploying a Helm-based application to staging and production clusters using Rancher Fleet.
 
 ## Introduction
 
-Rancher Fleet is a GitOps continuous delivery solution built into Rancher. It enables deploying applications to hundreds of clusters from a single Git repository, making it ideal for large-scale Kubernetes fleet management.
+Rancher Fleet is a GitOps continuous delivery solution built into Rancher. It enables deploying applications to hundreds of clusters from a single Git repository, making it ideal for large-scale Kubernetes fleet management. This guide shows how to target staging and production clusters and apply environment-specific Helm values from one repository.
 
 ## Prerequisites
 
-- Rancher v2.6+ with Fleet installed (built-in)
+- Rancher v2.6+ with Continuous Delivery enabled (Fleet is built in)
 - Git repository (GitHub, GitLab, or any Git server)
-- kubectl access to Rancher management cluster
+- kubectl access to the Rancher management cluster and target downstream clusters
 
 ## Step 1: Verify Fleet is Running
 
 ```bash
-# Check Fleet pods in Rancher management cluster
+# Check Fleet controller pods in Rancher management cluster
 
 kubectl get pods -n cattle-fleet-system
 
-# Expected pods:
+# Expected controller pods:
 # fleet-controller      Running
-# fleet-agent           Running (local cluster agent)
 # gitjob                Running
 
 # Check CRDs
-kubectl get crds | grep fleet
+kubectl get crds | grep fleet.cattle.io
 ```
 
 ## Step 2: Create a GitRepo Resource
@@ -50,7 +49,7 @@ spec:
   paths:
   - apps/my-app
   
-  # Target clusters
+  # Target clusters by Fleet cluster labels
   targets:
   - name: production
     clusterSelector:
@@ -74,32 +73,30 @@ kubectl get gitrepo my-app-gitops -n fleet-default
 
 ```text
 kubernetes-manifests/
-├── fleet.yaml              # Fleet configuration
-├── apps/
-│   └── my-app/
-│       ├── fleet.yaml      # App-level Fleet config
-│       ├── deployment.yaml
-│       ├── service.yaml
-│       └── overlays/       # Kustomize overlays per env
-│           ├── production/
-│           └── staging/
+└── apps/
+    └── my-app/
+        ├── fleet.yaml      # App-level Fleet config
+        └── chart/
+            ├── Chart.yaml
+            ├── values.yaml
+            └── templates/
+                ├── deployment.yaml
+                └── service.yaml
 ```
 
 ## Step 4: Configure fleet.yaml
 
 ```yaml
 # apps/my-app/fleet.yaml
+name: my-app-gitops
 namespace: my-app
 
 # Helm chart deployment
 helm:
   chart: ./chart              # Relative path to Helm chart
-  version: ">=1.0.0"
   releaseName: my-app
-  
-  valuesFiles:
-  - values.yaml              # Base values
-  
+
+  # Base values come from chart/values.yaml automatically
   # Per-cluster value overrides
   values:
     replicaCount: 2
@@ -160,10 +157,10 @@ kubectl logs -n cattle-fleet-system   -l app=fleet-agent   --follow
 
 ```bash
 # For HTTPS authentication
-kubectl create secret generic git-auth   --namespace fleet-default   --from-literal=username=your-username   --from-literal=password=your-personal-access-token
+kubectl create secret generic git-auth   --namespace fleet-default   --type=kubernetes.io/basic-auth   --from-literal=username=your-username   --from-literal=password=your-personal-access-token
 
 # For SSH authentication
-kubectl create secret generic git-ssh   --namespace fleet-default   --from-file=ssh-privatekey=/path/to/private-key   --from-literal=known_hosts="$(ssh-keyscan github.com)"
+kubectl create secret generic git-ssh   --namespace fleet-default   --type=kubernetes.io/ssh-auth   --from-file=ssh-privatekey=/path/to/private-key   --from-literal=known_hosts="$(ssh-keyscan -H github.com)"
 ```
 
 ```yaml
@@ -208,12 +205,13 @@ kubectl describe gitrepo my-app-gitops -n fleet-default
 # Check Events section for errors
 
 # Bundle in Modified/NotReady state
-kubectl get bundledeployments -A -o custom-columns='NAME:.metadata.name,CLUSTER:.metadata.namespace,STATE:.status.display.state'
+kubectl get bundledeployments -A -o custom-columns='NAME:.metadata.name,NAMESPACE:.metadata.namespace,STATE:.status.display.state'
 
-# Force re-sync
-kubectl annotate gitrepo my-app-gitops   fleet.cattle.io/force-sync="$(date)"   -n fleet-default   --overwrite
+# Force re-sync by incrementing spec.forceSyncGeneration
+kubectl patch gitrepo my-app-gitops -n fleet-default --type merge -p '{"spec":{"forceSyncGeneration":1}}'
+# Increase forceSyncGeneration again for later manual re-syncs
 ```
 
 ## Conclusion
 
-Rancher Fleet provides a scalable GitOps platform that works at the scale of hundreds or thousands of clusters. Its declarative model ensures cluster state always matches the Git repository, providing audit trails and easy rollbacks. Start with a simple single-cluster setup and scale to fleet-wide deployment as your organization grows.
+Rancher Fleet provides a scalable GitOps platform that works at the scale of hundreds or thousands of clusters. Its declarative model ensures cluster state always matches the Git repository, providing audit trails and easy rollbacks. Start with a simple staging-and-production setup and scale to additional clusters as your organization grows.
