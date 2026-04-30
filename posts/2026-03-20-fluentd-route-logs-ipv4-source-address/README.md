@@ -8,7 +8,7 @@ Description: Configure Fluentd to parse IPv4 addresses from log fields and route
 
 ## Introduction
 
-Fluentd's `grep` and `record_transformer` filters allow routing decisions based on parsed IPv4 addresses. Combined with `copy` and conditional outputs, you can send logs from different subnets to different Elasticsearch indices, S3 buckets, or monitoring systems.
+Fluentd's `record_transformer` filter and `rewrite_tag_filter` output plugin allow routing decisions based on parsed IPv4 addresses. The `grep` filter can also exclude or keep records for specific IPv4 ranges. Combined with `copy` or separate `match` blocks, you can send logs from different subnets to different Elasticsearch indices, S3 buckets, or monitoring systems.
 
 ## Parse Nginx Logs and Extract IP
 
@@ -28,30 +28,18 @@ Fluentd's `grep` and `record_transformer` filters allow routing decisions based 
 
 The built-in `nginx` parser extracts `remote` (client IP) field automatically.
 
-## Route Based on IPv4 Subnet with grep Filter
+## Route Based on IPv4 Subnet
 
-```xml
-<!-- Route internal (10.x.x.x) to internal store -->
-<match nginx.access>
-  @type route
-  <route 10.**>
-    copy
-    add_tag_prefix internal.
-  </route>
-  <route **>
-    copy
-    add_tag_prefix external.
-  </match>
-</match>
-```
-
-Note: `route` plugin routing uses record field values, not tag patterns. Use `rewrite_tag_filter` for field-based routing:
+The `route` plugin rewrites tags based on tag patterns, not record fields such as `remote`. For IPv4 field-based routing, use `rewrite_tag_filter` after adding a classification field with `record_transformer`.
 
 ## Rewrite Tag Based on IP (rewrite_tag_filter)
+
+Install `fluent-plugin-rewrite-tag-filter` if it is not already available in your Fluentd distribution.
 
 ```xml
 <filter nginx.access>
   @type record_transformer
+  enable_ruby true
   <record>
     ip_class ${record["remote"].start_with?("10.") || record["remote"].start_with?("192.168.") ? "internal" : "external"}
   </record>
@@ -73,6 +61,8 @@ Note: `route` plugin routing uses record field values, not tag patterns. Use `re
 ```
 
 ## Route to Different Elasticsearch Indices
+
+If your Fluentd installation does not already bundle the plugin, install `fluent-plugin-elasticsearch` first.
 
 ```xml
 <match nginx.internal>
@@ -133,4 +123,4 @@ Note: `route` plugin routing uses record field values, not tag patterns. Use `re
 
 ## Conclusion
 
-Fluentd routes logs by IPv4 source address using `record_transformer` to add classification fields, `rewrite_tag_filter` to create routing tags, and separate `match` blocks for each destination. Use Ruby string methods in `record_transformer` for subnet matching; for precise CIDR matching embed a small Ruby `IPAddr.include?` check in the `enable_ruby true` block.
+Fluentd routes logs by IPv4 source address using `record_transformer` to add classification fields, `rewrite_tag_filter` to create routing tags, and separate `match` blocks for each destination. Use Ruby string methods in `record_transformer` for simple prefix matching; for precise CIDR matching embed a small Ruby `IPAddr.include?` check in an `enable_ruby true` block.
