@@ -16,7 +16,7 @@ A well-planned IPv4 addressing scheme is the foundation of a maintainable, scala
 2. **Summarize at boundaries**: Each site, building, or zone should be a summarizable block
 3. **Leave room to grow**: Allocate 2–4x more space than needed today
 4. **Consistent structure**: Same subnet sizes for same-purpose segments across all sites
-5. **Avoid overlap with partners/VPN peers**: Reserve ranges not used by common cloud providers
+5. **Avoid overlap with partners/VPN peers**: Choose ranges that do not conflict with the networks and service ranges you need to interconnect
 
 ## Choosing the Right RFC 1918 Block
 
@@ -32,7 +32,7 @@ For a multi-site enterprise, use `10.0.0.0/8` to give maximum flexibility.
 
 Divide the 10.0.0.0/8 space into three levels:
 
-```javascript
+```text
 10.0.0.0/8 - Global enterprise
   └── 10.SITE.0.0/16 - Per-site allocation (256 sites possible)
         └── 10.SITE.VLAN.0/24 - Per-VLAN/function subnet
@@ -73,7 +73,7 @@ Divide the 10.0.0.0/8 space into three levels:
 10.1.2.0/24    - Workstations
 10.1.3.0/24    - VoIP phones
 10.1.4.0/24    - Corporate WiFi
-10.1.10.0/23   - Guest WiFi (512 hosts, DHCP range)
+10.1.10.0/23   - Guest WiFi (510 usable hosts, DHCP range)
 10.1.20.0/24   - WAN/P2P links (subdivide into /30s)
 ```
 
@@ -96,11 +96,11 @@ VLAN 30 (VoIP)       : 10.1.3.0/24   GW: 10.1.3.1   DHCP: Y  (10.1.3.10-200)
 
 With this hierarchical scheme, you can summarize per-site:
 
-```text
-# On the core router:
+```bash
+# Example on a Linux-based router:
 
 # Route all New York traffic to the NY router
-ip route 10.1.0.0/16 via 10.0.0.2
+ip route add 10.1.0.0/16 via 10.0.0.2
 ```
 
 This keeps routing tables small and manageable.
