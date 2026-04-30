@@ -15,36 +15,32 @@ Understanding what ping output actually means transforms it from a simple "up or
 
    ^           ^              ^          ^          ^
    |           |              |          |          |
-Payload     Source IP    Sequence    Time-to-    Round-trip
-  size                   number      Live        time (ms)
+Reply       Source IP    Sequence    Time-to-    Round-trip
+ size                    number      Live        time (ms)
 ```
 
 ## Interpreting TTL
 
-TTL (Time To Live) decrements at each hop. The remaining TTL hints at the number of hops used:
+TTL (Time To Live) decrements at each routed hop. The `ttl` shown by `ping` is the TTL of the reply packet you received, so it only hints at hop count if you know the sender's initial TTL:
 
 ```bash
 ping -c 1 8.8.8.8
-# ttl=118 → started at 128 (Windows default), used 10 hops
+# ttl=118 → the reply arrived with TTL 118
 
-# Common starting TTL values:
+# To estimate hop count, you must know the sender's initial TTL:
+#   128 - 118 = about 10 routed hops on the return path
+#   64 - 52 = about 12 routed hops if the sender started at 64
 
-#   64  - Linux, Android, macOS (older)
-#   128 - Windows
-#   255 - Cisco IOS, some Linux
-
-# Calculate hop count:
-#   128 - 118 = 10 hops to 8.8.8.8 from Windows source
-#   64 - 52 = 12 hops if source started at 64
-
-# Inconsistent TTL between replies = asymmetric routing or load balancing
+# TTL differences between replies can indicate different return paths
+# or different responders, but TTL alone is not proof.
 ping -c 5 1.1.1.1
-# If ttl alternates between 118 and 119 → traffic is being load-balanced
+# If ttl alternates between 118 and 119 → replies may be taking different paths
+# or coming from different systems behind the same address
 ```
 
 ## Interpreting Round-Trip Time (RTT)
 
-RTT measures total time from sending the ICMP request to receiving the reply:
+RTT measures total time from sending the ICMP request to receiving the reply. These ranges are rough guidance only; real values depend on distance, routing, peering, and congestion:
 
 ```text
 RTT Range       Assessment
@@ -61,11 +57,12 @@ RTT Range       Assessment
 # The statistics line shows:
 # rtt min/avg/max/mdev = 11.2/12.4/14.1/0.9 ms
 #         ^       ^       ^      ^
-#       fastest  mean  slowest  jitter
+#       fastest  mean  slowest  variation
 
-# mdev (mean deviation) = jitter - consistency of latency
+# mdev is the population standard deviation of the RTT samples
+# Lower mdev = more stable latency; higher mdev = more variation over time
 # mdev < 1ms: very stable connection
-# mdev > 10ms: high jitter (bad for VoIP/video)
+# mdev > 10ms: high latency variation (bad for VoIP/video)
 ```
 
 ## Interpreting Packet Loss
@@ -74,21 +71,21 @@ RTT Range       Assessment
 ping -c 100 10.0.0.1
 # 100 packets transmitted, 97 received, 3% packet loss
 
-# Interpreting loss percentage:
-# 0%         - Perfect
-# 0.1-1%     - Minor congestion or CRC errors on link
-# 1-5%       - Significant congestion, check link utilization
-# 5-20%      - Serious problem - check hardware errors
-# > 20%      - Link failing or heavily congested
-# 100%       - Host down, routing broken, or firewall blocking
+# Interpreting loss percentage (rough guide; ICMP can also be rate-limited or filtered):
+# 0%         - No observed loss during the test
+# 0.1-1%     - Usually worth investigating on a healthy wired network
+# 1-5%       - Noticeable loss; check congestion, wireless quality, and counters
+# 5-20%      - Serious impairment or aggressive ICMP rate limiting
+# > 20%      - Severe impairment, filtering, or heavy congestion
+# 100%       - No replies: host down, routing broken, or ICMP filtered/blocked
 
 # Intermittent loss pattern (not consecutive):
 # seq=1 OK, seq=2 OK, seq=3 LOST, seq=4 OK, seq=5 OK
-# → Random loss = congestion or wireless interference
+# → Random loss can point to congestion, wireless interference, or rate limiting
 
 # Consecutive loss pattern:
 # seq=1-4 OK, seq=5-10 LOST, seq=11-15 OK
-# → Burst loss = cable fault, interface flap, or hardware problem
+# → Burst loss can point to transient congestion, interface issues, or hardware faults
 ```
 
 ## Interpreting Latency Spikes
@@ -107,13 +104,13 @@ ping -c 100 10.0.0.1
 ## Detecting Path Changes
 
 ```bash
-# If TTL changes between replies, the route changed
+# If TTL changes between replies, the reply path or responder may have changed
 ping -c 20 8.8.8.8 | grep ttl
 
-# TTL variation indicates:
-# - Load balancing across multiple paths
-# - BGP route flap
-# - Routing protocol reconvergence
+# TTL variation can indicate:
+# - Load balancing across multiple return paths
+# - Different responders behind the same address
+# - Route changes during the test
 ```
 
-Reading ping output diagnostically - not just "are packets coming back" - lets you pinpoint whether problems are local (high RTT from the start), mid-path (increasing RTT), or at the destination (loss with low RTT).
+Reading ping output diagnostically - not just "are packets coming back" - helps you distinguish latency, loss, and variability symptoms. To localize where a problem begins, compare results against progressively farther hosts.
