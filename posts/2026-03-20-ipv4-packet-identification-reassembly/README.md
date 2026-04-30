@@ -26,7 +26,7 @@ The Identification field occupies bits 16–31 (the first 16 bits of the second 
 
 ## How Fragmentation Uses the ID Field
 
-When a router encounters a packet larger than the outgoing interface MTU, it splits the datagram into smaller fragments. Each fragment retains the original Identification value so the destination can reconstruct them.
+When a router encounters a packet larger than the outgoing interface MTU and the DF bit is clear, it splits the datagram into smaller fragments. Each fragment retains the original Identification value so the destination can reconstruct them.
 
 The following Python example uses Scapy to inspect the Identification field:
 
@@ -52,11 +52,11 @@ The receiver tracks fragments using a reassembly buffer keyed on:
 - Protocol number
 - Identification value
 
-Once all fragments with matching keys and contiguous offsets arrive, the datagram is reassembled. A reassembly timer (typically 30–120 seconds) discards incomplete sets to prevent buffer exhaustion.
+Once all fragments with matching keys and contiguous offsets arrive, the datagram is reassembled. A reassembly timer (RFC 1122 recommends 60–120 seconds) discards incomplete sets to prevent buffer exhaustion.
 
 ## Identification Field Uniqueness
 
-RFC 6864 clarified that the ID field must be unique only for datagrams that may be fragmented. For atomic datagrams (DF bit set), the ID value has no reassembly role. Hosts typically use a monotonically incrementing counter or a random value per destination to assign IDs.
+RFC 6864 clarified that the ID field must be unique only for datagrams that may be fragmented. For atomic datagrams (DF=1, MF=0, and fragment offset=0), the ID value has no reassembly role. Implementations therefore focus ID uniqueness on datagrams that may be fragmented.
 
 ## Security Considerations
 
@@ -64,7 +64,7 @@ Because the Identification field historically incremented predictably, it was ex
 - **Idle scanning** (Nmap -sI): Inferring open ports by watching ID increments on a zombie host.
 - **OS fingerprinting**: Different operating systems use different ID assignment strategies.
 
-Modern kernels use per-destination randomized counters to mitigate these risks.
+Modern stacks generally avoid a simple global counter, but the exact ID assignment strategy is implementation-specific.
 
 ## Inspecting the ID Field with tcpdump
 
