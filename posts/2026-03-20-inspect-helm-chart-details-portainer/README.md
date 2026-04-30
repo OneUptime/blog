@@ -13,21 +13,22 @@ After deploying a Helm chart, you often need to inspect the deployed release - t
 ## Accessing Helm Release Details
 
 1. Select your Kubernetes environment.
-2. Navigate to **Applications > Helm charts**.
-3. Click on a deployed release to open its detail view.
+2. Navigate to **Applications**.
+3. Click on a deployed Helm application to open its detail view.
 
 ## What You Can See
 
 ### Release Overview
 - **Chart name and version**
+- **Chart source**
 - **App version** (the application version, separate from chart version)
 - **Namespace**
-- **Status** (deployed, failed, pending)
+- **Revision**
 - **Last deployed** timestamp
 
 ### User-Supplied Values
 
-The values section shows the values used for this deployment - the combination of chart defaults and your overrides:
+The values section shows the values set on the deployment. You can view only user-defined values or include all values shown for the release:
 
 ```yaml
 # Example of values visible in the release detail
@@ -51,8 +52,11 @@ Portainer shows the actual Kubernetes manifests that Helm generated and applied 
 # Equivalent CLI command to view release history
 helm history my-release --namespace production
 
-# Check current values applied
+# Check user-supplied values
 helm get values my-release --namespace production
+
+# Check all computed values
+helm get values my-release --all --namespace production
 
 # Check all manifests applied by the release
 helm get manifest my-release --namespace production
@@ -64,11 +68,11 @@ helm get all my-release --namespace production
 ## Comparing Values Across Revisions
 
 ```bash
-# Get values from a specific revision
-helm get values my-release --revision 2 --namespace production
+# Get all values from a specific revision
+helm get values my-release --revision 2 --all --namespace production
 
 # Compare with current values
-helm get values my-release --namespace production
+helm get values my-release --all --namespace production
 ```
 
 ## Checking Chart Notes
@@ -92,7 +96,7 @@ helm history my-release --namespace production
 helm rollback my-release 2 --namespace production
 ```
 
-In Portainer, the release detail page shows a history table with a **Rollback** button for each revision.
+In Portainer, the release detail page shows a revisions list. Select a revision, then click **Rollback**.
 
 ## Conclusion
 
