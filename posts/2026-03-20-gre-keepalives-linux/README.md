@@ -27,7 +27,9 @@ apt install frr -y
 # /etc/frr/daemons
 bfdd=yes
 
-# Configure BFD peer for GRE tunnel endpoint
+systemctl restart frr
+
+# Configure and enable a BFD peer for the GRE tunnel endpoint
 vtysh << 'EOF'
 conf t
 bfd
@@ -35,11 +37,12 @@ bfd
   receive-interval 300
   transmit-interval 300
   detect-multiplier 3
+  no shutdown
  !
 EOF
 ```
 
-## Alternative 2: Dead Peer Detection with ip tunnel
+## Alternative 2: Ping-Based Dead Peer Detection
 
 ```bash
 # Monitor tunnel reachability with a script
@@ -75,10 +78,17 @@ done
 Run OSPF or BGP over the GRE tunnel. The routing protocol's hello mechanism detects peer failure:
 
 ```bash
+# Enable OSPF in FRR
+# /etc/frr/daemons
+ospfd=yes
+
+systemctl restart frr
+
 # FRR: OSPF on GRE interface
 vtysh << 'EOF'
 conf t
 interface gre1
+  ip ospf area 0
   ip ospf hello-interval 5
   ip ospf dead-interval 20
 EOF
@@ -86,7 +96,9 @@ EOF
 
 When the OSPF neighbor goes down, the route is withdrawn automatically.
 
-## Alternative 4: systemd-networkd Watchdog
+## Alternative 4: systemd-networkd Carrier Binding
+
+systemd-networkd can bind the GRE interface to the underlay carrier state, though this only detects local link loss, not remote peer failure:
 
 ```bash
 # /etc/systemd/network/gre1.network
@@ -95,9 +107,6 @@ Name=gre1
 
 [Network]
 Address=172.16.1.1/30
-
-[Tunnel]
-# No keepalive in networkd, but you can bind to specific interface
 BindCarrier=eth0
 ```
 
@@ -116,7 +125,7 @@ ip monitor link | grep gre1
 
 ## Key Takeaways
 
-- Linux kernel GRE does not support native Cisco-style keepalives; use application-layer detection instead.
+- Linux kernel GRE does not support native Cisco-style keepalives; use control-plane or higher-layer detection instead.
 - Run a routing protocol (OSPF, BGP) over the GRE tunnel for automatic failure detection and route withdrawal.
 - BFD provides sub-second failure detection when paired with FRR on both tunnel endpoints.
 - A simple ping-based monitoring script can detect dead tunnels and trigger alerts or recovery actions.
