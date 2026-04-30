@@ -6,14 +6,14 @@ Tags: Flannel, Kubernetes, IPv4, CNI, Pod Subnet, Networking
 
 Description: Install Flannel CNI in a Kubernetes cluster and configure it to use a custom IPv4 subnet for pod networking.
 
-Flannel is a simple overlay network CNI for Kubernetes that reads the per-node Pod CIDR from the Kubernetes API. Configuring a custom subnet involves matching the Flannel config to your cluster's pod-network-cidr.
+Flannel is a simple layer 3 network fabric for Kubernetes. Configuring a custom subnet involves matching Flannel's `Network` setting to the `--pod-network-cidr` value used when you initialize the cluster.
 
 ## Step 1: Initialize Cluster with Custom Pod CIDR
 
 ```bash
 # Initialize kubeadm with the pod network CIDR you want Flannel to use
 
-sudo kubeadm init --pod-network-cidr=10.244.0.0/16
+sudo kubeadm init --pod-network-cidr=172.16.0.0/16
 
 # Configure kubectl
 mkdir -p $HOME/.kube
@@ -24,7 +24,7 @@ sudo chown $(id -u):$(id -g) $HOME/.kube/config
 ## Step 2: Download the Flannel Manifest
 
 ```bash
-wget https://raw.githubusercontent.com/flannel-io/flannel/master/Documentation/kube-flannel.yml
+wget -O kube-flannel.yml https://github.com/flannel-io/flannel/releases/latest/download/kube-flannel.yml
 ```
 
 ## Step 3: Customize the Network CIDR
@@ -60,12 +60,19 @@ data:
             "hairpinMode": true,
             "isDefaultGateway": true
           }
+        },
+        {
+          "type": "portmap",
+          "capabilities": {
+            "portMappings": true
+          }
         }
       ]
     }
   net-conf.json: |
     {
       "Network": "172.16.0.0/16",
+      "EnableNFTables": false,
       "Backend": {
         "Type": "vxlan"
       }
@@ -79,17 +86,17 @@ kubectl apply -f kube-flannel.yml
 
 # Wait for all Flannel pods to be running
 kubectl get pods -n kube-flannel -w
-# Expected: kube-flannel-ds-xxxxx  1/1  Running
+# Expected: all kube-flannel-ds-* pods reach 1/1 Running
 ```
 
 ## Step 5: Verify Flannel Operation
 
 ```bash
 # Check Flannel DaemonSet status
-kubectl get ds -n kube-flannel
+kubectl get daemonset kube-flannel-ds -n kube-flannel
 
 # View Flannel pod logs (check for errors)
-kubectl logs -n kube-flannel $(kubectl get pods -n kube-flannel -o name | head -1)
+kubectl logs -n kube-flannel $(kubectl get pods -n kube-flannel -l app=flannel -o name | head -1)
 
 # Verify nodes received CIDR allocations
 kubectl get nodes -o jsonpath='{range .items[*]}{.metadata.name}{"\t"}{.spec.podCIDR}{"\n"}{end}'
@@ -109,7 +116,8 @@ Edit the `net-conf.json` to change the encapsulation backend:
 
 ```json
 {
-  "Network": "10.244.0.0/16",
+  "Network": "172.16.0.0/16",
+  "EnableNFTables": false,
   "Backend": {
     "Type": "vxlan"
   }
@@ -118,8 +126,8 @@ Edit the `net-conf.json` to change the encapsulation backend:
 
 | Backend | Description |
 |---|---|
-| `vxlan` | L2 overlay, works across subnets (recommended) |
-| `host-gw` | Routes, faster but requires all nodes in same L2 subnet |
+| `vxlan` | Overlay encapsulation, works across subnets (recommended) |
+| `host-gw` | Routes directly between node subnets; faster but requires direct layer 2 connectivity |
 | `wireguard` | Encrypted WireGuard overlay |
 
-Flannel is the simplest CNI option and is the default in many Kubernetes distributions. For network policies, you'll need to add a separate policy engine like Calico.
+Flannel is a simple CNI option and is used by Kubernetes distributions such as K3s. For network policies, you'll need to add a separate policy engine like Calico.
