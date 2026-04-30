@@ -12,14 +12,14 @@ Hot reload - automatically restarting or refreshing the application when code ch
 
 ## The Core Principle: Bind Mounts
 
-Hot reload works by mounting your local source code directory into the container instead of copying it:
+Hot reload works by mounting your source code directory from the Docker host into the container instead of copying it:
 
 ```yaml
 # Key: use a bind mount (host path) instead of a COPY in Dockerfile
 
 volumes:
-  - ./src:/app    # Changes on host are immediately visible inside container
-  # NOT: - app_data:/app  (named volumes don't reflect host file changes)
+  - /path/to/src:/app    # Changes on host are immediately visible inside container
+  # NOT: - app_data:/app (named volumes don't reflect host file changes)
 ```
 
 ## Language-Specific Hot Reload Tools
@@ -28,25 +28,24 @@ volumes:
 |---|---|---|
 | Node.js | nodemon | `nodemon server.js` |
 | Python | uvicorn | `uvicorn main:app --reload` |
-| Python | watchdog | `watchmedo auto-restart -d . -p '*.py' python app.py` |
+| Python | watchdog | `watchmedo auto-restart -d . -p '*.py' -- python app.py` |
 | Go | air | `air` |
 | Rust | cargo-watch | `cargo watch -x run` |
-| Java/Spring | Spring DevTools | Automatic with DevTools dependency |
-| Ruby/Rails | Built-in | `rails server` (always reloads) |
+| Java/Spring | Spring Boot DevTools | `./mvnw spring-boot:run` or `./gradlew bootRun` (with DevTools) |
+| Ruby/Rails | Built-in | `bin/rails server` (reloads in development between requests) |
 | .NET | dotnet-watch | `dotnet watch run` |
-| PHP | Built-in | `php -S 0.0.0.0:8000` (PHP reads files on each request) |
+| PHP | Built-in | `php -S 0.0.0.0:8000` (development server) |
 
 ## Generic Pattern for Any Stack
 
 ```yaml
-version: "3.8"
 services:
   app:
     image: <your-base-image>
     ports:
       - "8080:8080"
     volumes:
-      - ./src:/app                        # Bind mount source code
+      - /path/to/src:/app                 # Bind mount source code
       - /app/node_modules                 # Exclude node_modules from bind (Node.js)
     working_dir: /app
     command: <your-hot-reload-command>
@@ -62,7 +61,7 @@ On Linux, check inotify watch limits:
 # Check current limit
 cat /proc/sys/fs/inotify/max_user_watches
 
-# Increase if below 100000
+# If your project needs more watches, increase the limit, for example:
 echo fs.inotify.max_user_watches=524288 | sudo tee -a /etc/sysctl.conf
 sudo sysctl -p
 ```
@@ -73,19 +72,14 @@ Use an anonymous volume to prevent the host `node_modules` from overriding the c
 
 ```yaml
 volumes:
-  - ./app:/app              # Mount source code
+  - /path/to/app:/app       # Mount source code
   - /app/node_modules       # Anonymous volume "shadows" node_modules
 ```
 
 **Problem: Slow file watching on macOS**
 
-Use `:delegated` or `:cached` mount options for better performance on macOS Docker Desktop:
-
-```yaml
-volumes:
-  - ./src:/app:delegated
-```
+On macOS, bind mounts on Docker Desktop can be slower. For large repositories, consider Docker Desktop Synchronized file shares to improve bind mount performance.
 
 ## Portainer Management
 
-In Portainer, view real-time application logs while developing: **Containers > [container] > Logs** with **Follow** enabled. You'll see file change detections and server restarts in real time.
+In Portainer, view real-time application logs while developing: **Containers > [container] > Logs** with **Auto refresh** enabled. You'll see file change detections and server restarts in real time.
