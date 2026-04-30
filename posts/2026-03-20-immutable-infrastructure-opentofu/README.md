@@ -14,16 +14,16 @@ Immutable infrastructure means servers are never modified after deployment. Inst
 
 ```mermaid
 graph LR
-    A[Code Change] --> B[Build New AMI<br/>Packer/Docker]
+    A[Code Change] --> B[Build New AMI<br/>Packer/Image Builder]
     B --> C[Launch New Instances<br/>with New AMI]
     C --> D[Shift Traffic<br/>to New Instances]
     D --> E[Terminate Old Instances]
     F[Rollback] --> G[Launch Instances<br/>with Previous AMI]
 ```
 
-## Using `create_before_destroy` for Instance Replacement
+## Using Launch Template Versions and Instance Refresh
 
-OpenTofu's `create_before_destroy` lifecycle rule implements immutable replacement.
+With EC2 Auto Scaling, immutable replacement is typically implemented by publishing a new launch template version and letting an Auto Scaling Group instance refresh replace running instances.
 
 ```hcl
 # main.tf
@@ -32,7 +32,7 @@ terraform {
   required_providers {
     aws = {
       source  = "hashicorp/aws"
-      version = "~> 5.30"
+      version = "~> 6.0"
     }
   }
 }
@@ -41,16 +41,12 @@ provider "aws" {
   region = var.aws_region
 }
 
-# Launch template - new AMI ID triggers new instances
+# Launch template - changing the AMI creates a new launch template version
 resource "aws_launch_template" "app" {
   name_prefix   = "app-"
-  image_id      = var.ami_id  # Change this to trigger replacement
+  image_id      = var.ami_id  # Or data.aws_ami.app.id
   instance_type = var.instance_type
-
-  lifecycle {
-    # Create new launch template before destroying the old one
-    create_before_destroy = true
-  }
+  vpc_security_group_ids = [aws_security_group.app_no_ssh.id]
 
   user_data = base64encode(<<-EOF
     #!/bin/bash
@@ -71,7 +67,7 @@ resource "aws_launch_template" "app" {
 
 # Auto Scaling Group using the launch template
 resource "aws_autoscaling_group" "app" {
-  name                = "app-${var.environment}-${var.ami_id}"  # Name includes AMI ID
+  name                = "app-${var.environment}"
   min_size            = var.min_size
   max_size            = var.max_size
   desired_capacity    = var.desired_count
@@ -79,20 +75,16 @@ resource "aws_autoscaling_group" "app" {
 
   launch_template {
     id      = aws_launch_template.app.id
-    version = "$Latest"
+    version = aws_launch_template.app.latest_version
   }
 
-  # Instance refresh replaces instances with new launch template
+  # Instance refresh replaces running instances with the new launch template version
   instance_refresh {
     strategy = "Rolling"
     preferences {
       min_healthy_percentage = 90  # Keep 90% healthy during refresh
       instance_warmup        = 300  # Wait 5 min for new instances to warm up
     }
-  }
-
-  lifecycle {
-    create_before_destroy = true
   }
 
   target_group_arns = [aws_lb_target_group.app.arn]
@@ -112,7 +104,7 @@ resource "aws_autoscaling_group" "app" {
 # Always use the latest app AMI for a given version
 data "aws_ami" "app" {
   most_recent = true
-  owners      = [data.aws_caller_identity.current.account_id]
+  owners      = ["self"]
 
   filter {
     name   = "name"
@@ -133,17 +125,23 @@ variable "ami_id" {
 }
 ```
 
-## Preventing In-Place Modifications
+## Reducing In-Place Modifications
 
 ```hcl
 # no_drift.tf
-# Prevent SSH access - all changes must go through a new AMI
+# Allow application traffic, but do not expose SSH
 resource "aws_security_group" "app_no_ssh" {
   name        = "app-no-ssh"
   description = "Security group with no SSH access - immutable instances"
   vpc_id      = var.vpc_id
 
-  # No port 22 ingress - enforces immutability
+  ingress {
+    from_port   = var.app_port
+    to_port     = var.app_port
+    protocol    = "tcp"
+    cidr_blocks = var.application_ingress_cidrs
+  }
+
   egress {
     from_port   = 0
     to_port     = 0
@@ -156,7 +154,7 @@ resource "aws_security_group" "app_no_ssh" {
 ## Best Practices
 
 - Build AMIs with Packer, baking in all application code and configuration - instances should start fully configured.
-- Include the AMI ID or app version in the Auto Scaling Group name to force resource replacement on every deployment.
+- Publish a new launch template version for each AMI change and let `instance_refresh` roll it out across the Auto Scaling Group.
 - Disable SSH access to production instances - if you need to debug, use AWS Systems Manager Session Manager.
 - Use `instance_refresh` on Auto Scaling Groups to perform rolling replacements without manual intervention.
 - Store AMI IDs with their build metadata in a registry so rollback means deploying a known-good AMI ID.
