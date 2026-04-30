@@ -18,19 +18,16 @@ C and C++ applications use POSIX socket APIs for IPv6 networking. The key functi
 #include <arpa/inet.h>
 #include <string.h>
 
-/* IPv6 socket address structure */
-struct sockaddr_in6 {
-    sa_family_t     sin6_family;    /* AF_INET6 */
-    in_port_t       sin6_port;      /* Port number (network byte order) */
-    uint32_t        sin6_flowinfo;  /* IPv6 flow info (usually 0) */
-    struct in6_addr sin6_addr;      /* IPv6 address (128 bits) */
-    uint32_t        sin6_scope_id;  /* Scope ID for link-local addresses */
-};
+struct sockaddr_in6 addr6;
+struct in6_addr addr;
 
-/* The 128-bit IPv6 address */
-struct in6_addr {
-    uint8_t s6_addr[16];  /* 16 bytes = 128 bits */
-};
+/* sockaddr_in6 fields:
+ * - sin6_family: AF_INET6
+ * - sin6_port: port number in network byte order
+ * - sin6_flowinfo: IPv6 flow info (usually 0)
+ * - sin6_addr: 128-bit IPv6 address
+ * - sin6_scope_id: scope ID for link-local addresses
+ */
 ```
 
 ## Parsing IPv6 Addresses with inet_pton
@@ -44,8 +41,12 @@ struct in6_addr {
 int parse_ipv6(const char *addr_str, struct in6_addr *result) {
     /* inet_pton returns 1 on success, 0 if invalid, -1 on error */
     int ret = inet_pton(AF_INET6, addr_str, result);
-    if (ret != 1) {
+    if (ret == 0) {
         fprintf(stderr, "Invalid IPv6 address: %s\n", addr_str);
+        return -1;
+    }
+    if (ret < 0) {
+        perror("inet_pton");
         return -1;
     }
     return 0;
@@ -58,18 +59,23 @@ int main(void) {
     if (parse_ipv6(test, &addr) == 0) {
         /* Convert back to string with inet_ntop */
         char buf[INET6_ADDRSTRLEN];  /* 46 bytes, max IPv6 string length */
-        inet_ntop(AF_INET6, &addr, buf, sizeof(buf));
+        if (inet_ntop(AF_INET6, &addr, buf, sizeof(buf)) == NULL) {
+            perror("inet_ntop");
+            return 1;
+        }
         printf("Parsed: %s\n", buf);
-    }
 
-    /* Check for loopback (::1) */
-    if (IN6_IS_ADDR_LOOPBACK(&addr)) {
-        printf("Address is loopback\n");
-    }
+        /* Check for loopback (::1) */
+        if (IN6_IS_ADDR_LOOPBACK(&addr)) {
+            printf("Address is loopback\n");
+        }
 
-    /* Check for link-local (fe80::/10) */
-    if (IN6_IS_ADDR_LINKLOCAL(&addr)) {
-        printf("Address is link-local\n");
+        /* Check for link-local (fe80::/10) */
+        if (IN6_IS_ADDR_LINKLOCAL(&addr)) {
+            printf("Address is link-local\n");
+        }
+    } else {
+        return 1;
     }
 
     return 0;
@@ -124,7 +130,7 @@ int create_ipv6_server(int port) {
         return -1;
     }
 
-    printf("IPv6 server listening on [::]:5%d\n", port);
+    printf("IPv6 server listening on [::]:%d\n", port);
     return sockfd;
 }
 
@@ -174,8 +180,14 @@ int connect_ipv6(const char *addr_str, int port) {
     server_addr.sin6_port = htons(port);
 
     /* Parse the IPv6 address string to binary */
-    if (inet_pton(AF_INET6, addr_str, &server_addr.sin6_addr) != 1) {
+    int ret = inet_pton(AF_INET6, addr_str, &server_addr.sin6_addr);
+    if (ret == 0) {
         fprintf(stderr, "Invalid address: %s\n", addr_str);
+        close(sockfd);
+        return -1;
+    }
+    if (ret < 0) {
+        perror("inet_pton");
         close(sockfd);
         return -1;
     }
@@ -195,6 +207,10 @@ int connect_ipv6(const char *addr_str, int port) {
 For portable code that handles both IPv4 and IPv6:
 
 ```c
+#include <stdio.h>
+#include <string.h>
+#include <unistd.h>
+#include <sys/socket.h>
 #include <netdb.h>
 
 int connect_to_host(const char *host, const char *port) {
@@ -205,8 +221,9 @@ int connect_to_host(const char *host, const char *port) {
     hints.ai_family   = AF_UNSPEC;    /* Accept IPv4 or IPv6 */
     hints.ai_socktype = SOCK_STREAM;
 
-    if (getaddrinfo(host, port, &hints, &res) != 0) {
-        perror("getaddrinfo");
+    int ret = getaddrinfo(host, port, &hints, &res);
+    if (ret != 0) {
+        fprintf(stderr, "getaddrinfo: %s\n", gai_strerror(ret));
         return -1;
     }
 
@@ -227,4 +244,4 @@ int connect_to_host(const char *host, const char *port) {
 
 ## Conclusion
 
-C IPv6 programming uses `inet_pton(AF_INET6, ...)` to parse addresses, `struct sockaddr_in6` to hold them, and `AF_INET6` socket family for dedicated IPv6 sockets. Use `getaddrinfo()` with `AF_UNSPEC` for portable protocol-independent code that handles both IPv4 and IPv6 without duplication.
+C IPv6 programming uses `inet_pton(AF_INET6, ...)` to parse addresses, `struct sockaddr_in6` to hold them, and `AF_INET6` socket family for IPv6 sockets. Use `getaddrinfo()` with `AF_UNSPEC` for portable protocol-independent code that handles both IPv4 and IPv6 without duplication.
