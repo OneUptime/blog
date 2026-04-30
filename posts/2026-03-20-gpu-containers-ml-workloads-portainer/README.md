@@ -12,14 +12,19 @@ Running ML training and inference workloads in containers with GPU access requir
 
 ## Prerequisites
 
-- Host with NVIDIA GPU (GTX 1080 or newer, Quadro, A-series, H-series)
-- Ubuntu 20.04/22.04 or compatible Linux distribution
-- NVIDIA drivers installed on the host
+- Host with a supported NVIDIA GPU
+- Ubuntu 20.04/22.04/24.04 or another supported Linux distribution
+- NVIDIA drivers installed on the host, with a version compatible with the container image you plan to run
 
 ## Step 1: Install NVIDIA Container Toolkit on the Host
 
 ```bash
-# Add NVIDIA Container Toolkit repository
+# Install prerequisites and add the NVIDIA Container Toolkit repository
+
+sudo apt-get update && sudo apt-get install -y --no-install-recommends \
+  ca-certificates \
+  curl \
+  gnupg2
 
 curl -fsSL https://nvidia.github.io/libnvidia-container/gpgkey | \
   sudo gpg --dearmor -o /usr/share/keyrings/nvidia-container-toolkit-keyring.gpg
@@ -28,7 +33,8 @@ curl -s -L https://nvidia.github.io/libnvidia-container/stable/deb/nvidia-contai
   sed 's#deb https://#deb [signed-by=/usr/share/keyrings/nvidia-container-toolkit-keyring.gpg] https://#g' | \
   sudo tee /etc/apt/sources.list.d/nvidia-container-toolkit.list
 
-sudo apt-get update && sudo apt-get install -y nvidia-container-toolkit
+sudo apt-get update
+sudo apt-get install -y nvidia-container-toolkit
 
 # Configure Docker to use NVIDIA runtime
 sudo nvidia-ctk runtime configure --runtime=docker
@@ -37,14 +43,16 @@ sudo nvidia-ctk runtime configure --runtime=docker
 sudo systemctl restart docker
 
 # Verify GPU is accessible to containers
-docker run --rm --gpus all nvidia/cuda:12.3.0-base-ubuntu22.04 nvidia-smi
+sudo docker run --rm --runtime=nvidia --gpus all ubuntu nvidia-smi
 ```
 
 ## Step 2: Enable GPU Resources in Portainer
 
-Portainer reads the Docker daemon's resource capabilities. After installing the NVIDIA Container Toolkit, GPU resources will appear in Portainer's container creation form under **Runtime & Resources > GPUs**.
+On Docker Standalone environments, Portainer reads the Docker daemon's resource capabilities. After installing the NVIDIA Container Toolkit, GPU resources will appear in Portainer's container creation form under **Runtime & Resources > GPU**. Portainer's built-in GPU support currently only supports NVIDIA GPUs.
 
 For stack deployments, use the `deploy.resources.reservations.devices` syntax:
+
+If you use NVIDIA NGC images such as `nvcr.io/nvidia/pytorch`, make sure the host or Portainer can authenticate to `nvcr.io` before deploying.
 
 ```yaml
 # ml-training-stack.yml
@@ -91,7 +99,7 @@ services:
         reservations:
           devices:
             - driver: nvidia
-              count: 1    # Reserve exactly 1 GPU
+              count: 1    # Request 1 GPU
               capabilities: [gpu]
     volumes:
       - /opt/ml/train.py:/workspace/train.py:ro
@@ -141,7 +149,7 @@ Or deploy a GPU metrics exporter for Prometheus:
 
 ```yaml
   dcgm-exporter:
-    image: nvcr.io/nvidia/k8s/dcgm-exporter:3.3.0-3.2.0-ubuntu22.04
+    image: nvcr.io/nvidia/k8s/dcgm-exporter:4.5.2-4.8.1-distroless
     deploy:
       resources:
         reservations:
@@ -149,6 +157,8 @@ Or deploy a GPU metrics exporter for Prometheus:
             - driver: nvidia
               count: all
               capabilities: [gpu]
+    cap_add:
+      - SYS_ADMIN
     ports:
       - "9400:9400"
 ```
@@ -169,7 +179,7 @@ For multi-GPU training (e.g., distributed PyTorch with DDP):
               capabilities: [gpu]
     environment:
       - NCCL_DEBUG=INFO      # Enable NCCL debugging for multi-GPU
-    ipc: host                # Required for shared memory between GPU processes
+    ipc: host                # Commonly used to avoid /dev/shm limits in multi-process jobs
     ulimits:
       memlock: -1
       stack: 67108864
@@ -177,4 +187,4 @@ For multi-GPU training (e.g., distributed PyTorch with DDP):
 
 ## Summary
 
-Setting up GPU containers in Portainer requires the NVIDIA Container Toolkit on the host, and then using the `devices` reservation syntax in your compose stacks. Once configured, Portainer gives you a practical interface for deploying, monitoring, and managing GPU-accelerated ML workloads.
+Setting up GPU containers in Portainer requires the NVIDIA Container Toolkit on the host, and then using the `devices` reservation syntax in your compose stacks on Docker Standalone environments. Once configured, Portainer gives you a practical interface for deploying, monitoring, and managing GPU-accelerated ML workloads.
