@@ -8,15 +8,14 @@ Description: Learn how to fix Portainer UI and console issues when accessed thro
 
 ---
 
-Cloudflare Tunnel provides a secure way to expose Portainer without opening inbound firewall ports. However, the tunnel's HTTP proxying can break WebSocket connections (needed for the container console) and cause origin validation errors.
+Cloudflare Tunnel provides a secure way to expose Portainer without opening inbound firewall ports. However, if WebSockets are disabled at the Cloudflare zone or Portainer does not trust the public hostname, the container console can fail and Portainer can return origin validation errors.
 
-## Step 1: Configure Cloudflare Tunnel for WebSocket
+## Step 1: Confirm Cloudflare WebSockets Are Enabled
 
-In the Cloudflare Zero Trust dashboard:
+Cloudflare supports proxied WebSockets without tunnel-specific configuration, but WebSockets must be enabled for the zone:
 
-1. Go to **Access > Tunnels > [your tunnel] > Public Hostnames**.
-2. Edit the Portainer hostname.
-3. Under **Additional application settings**, enable **WebSocket support**.
+1. Go to **Cloudflare Dashboard > Network**.
+2. Ensure **WebSockets** is enabled.
 
 ## Step 2: Set the Tunnel Origin to HTTP, Not HTTPS
 
@@ -29,49 +28,49 @@ ingress:
   - hostname: portainer.example.com
     service: http://portainer:9000    # Use http, not https
     originRequest:
-      noTLSVerify: false
       httpHostHeader: portainer.example.com
+  - service: http_status:404
 ```
 
 ## Step 3: Fix "Origin Invalid" Errors
 
-Cloudflare forwards requests with the original `Host` header but Portainer's CSRF protection checks the `Origin` header. Configure Portainer to trust Cloudflare:
+If Portainer shows `Origin invalid`, configure Portainer to trust the public hostname used by the reverse proxy:
 
 ```bash
-# Add the --http-enabled flag to ensure Portainer accepts HTTP connections
-# from the trusted Cloudflare tunnel
+# Add the public hostname Portainer should trust behind the reverse proxy
 docker run -d ... portainer/portainer-ce:latest \
-  --http-enabled \
-  --tunnel-addr 0.0.0.0
+  --trusted-origins portainer.example.com
 ```
 
-## Step 4: Set Cloudflare SSL/TLS Mode
+If you previously disabled HTTP in Portainer, re-enable it with `--http-enabled` or point the tunnel at `https://portainer:9443` instead.
 
-Ensure Cloudflare's SSL/TLS mode is appropriate:
+## Step 4: Understand Cloudflare SSL/TLS Mode
 
-1. Go to **Cloudflare Dashboard > SSL/TLS**.
-2. Set mode to **Full** (not Full Strict, since Portainer uses self-signed cert internally).
-3. This ensures HTTPS from browser to Cloudflare but allows HTTP within the tunnel.
+Cloudflare's SSL/TLS mode does not change the local protocol used by the tunnel. The `service: http://portainer:9000` setting above is what keeps the `cloudflared` to Portainer hop on HTTP.
 
-## Step 5: Disable Cloudflare HTTP/2 for Portainer Hostname
+If you switch the tunnel service to `https://portainer:9443`, configure the tunnel's origin TLS settings to match your certificate instead of changing this HTTP example.
 
-Portainer's WebSocket implementation may conflict with HTTP/2 multiplexing:
+## Step 5: Use HTTP/2 Only as a Troubleshooting Step
 
-1. In Cloudflare Dashboard go to **Speed > Optimization > Protocol Optimization**.
-2. For the Portainer hostname, consider disabling HTTP/2 if WebSocket issues persist.
+HTTP/2 is enabled by default in Cloudflare. This is not a Portainer-specific WebSocket requirement, and the setting is zone-wide rather than per-hostname:
 
-## Step 6: Fix Container Console Behind Cloudflare
+1. In Cloudflare Dashboard go to **Speed > Settings > Protocol Optimization**.
+2. If you are specifically troubleshooting `ERR_HTTP2_PROTOCOL_ERROR`, disable HTTP/2 temporarily for the zone to test. This is a generic Cloudflare troubleshooting step, not a standard Portainer fix.
 
-The container console uses a long-lived WebSocket. Cloudflare has a default 100-second timeout on WebSocket connections. Configure idle timeout:
+## Step 6: Fix Container Console Disconnects Behind Cloudflare
 
-1. In **Cloudflare Dashboard > Network > WebSockets** ensure WebSockets are enabled.
-2. Consider using Cloudflare Access policies to restrict who can reach Portainer while keeping the tunnel functional.
+The container console uses a long-lived WebSocket. If it disconnects unexpectedly, review timeout settings across the proxy path and use keepalives:
+
+1. In **Cloudflare Dashboard > Network** ensure **WebSockets** is enabled.
+2. If sessions still close, check timeout settings on every proxy in front of Portainer and implement keepalives. Portainer documents increasing reverse-proxy read timeouts when the console closes unexpectedly.
+3. Consider using Cloudflare Access policies to restrict who can reach Portainer while keeping the tunnel functional.
 
 ## Testing the Fix
 
 ```bash
-# Test WebSocket connection through the tunnel
-wscat -c wss://portainer.example.com/api/websocket
+# Validate that cloudflared will send the hostname to the Portainer service
+cloudflared tunnel ingress rule https://portainer.example.com
 
-# Should connect without TLS handshake errors
+# Then open Portainer, launch a container console, and verify the browser
+# shows a 101 Switching Protocols request under /api/websocket/.
 ```
