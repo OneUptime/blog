@@ -62,7 +62,7 @@ resource "aws_iam_policy" "s3_read" {
 ```hcl
 resource "aws_iam_policy" "vpc_restricted_s3" {
   name        = "S3VPCRestrictedPolicy"
-  description = "Allow S3 access only from within the VPC"
+  description = "Allow S3 access only through a specific VPC endpoint"
 
   policy = jsonencode({
     Version = "2012-10-17"
@@ -80,17 +80,6 @@ resource "aws_iam_policy" "vpc_restricted_s3" {
             "aws:SourceVpce" = var.s3_vpc_endpoint_id
           }
         }
-      },
-      {
-        Sid    = "DenyNonMFAAccess"
-        Effect = "Deny"
-        NotAction = ["sts:GetSessionToken"]
-        Resource  = "*"
-        Condition = {
-          BoolIfExists = {
-            "aws:MultiFactorAuthPresent" = "false"
-          }
-        }
       }
     ]
   })
@@ -100,9 +89,11 @@ resource "aws_iam_policy" "vpc_restricted_s3" {
 ## Step 3: Create an EC2 Policy with Tag-Based Conditions
 
 ```hcl
+data "aws_caller_identity" "current" {}
+
 resource "aws_iam_policy" "ec2_owner_policy" {
   name        = "EC2OwnerPolicy"
-  description = "Allow managing EC2 instances owned by the current user"
+  description = "Allow an IAM user to manage EC2 instances tagged with their username"
 
   policy = jsonencode({
     Version = "2012-10-17"
@@ -168,12 +159,15 @@ tofu init
 tofu plan
 tofu apply
 
-# Validate the policy syntax
+# Retrieve the current default policy version
 aws iam get-policy-version \
   --policy-arn arn:aws:iam::123456789012:policy/application/S3ReadOnlyPolicy \
-  --version-id v1
+  --version-id "$(aws iam get-policy \
+    --policy-arn arn:aws:iam::123456789012:policy/application/S3ReadOnlyPolicy \
+    --query 'Policy.DefaultVersionId' \
+    --output text)"
 ```
 
 ## Conclusion
 
-IAM policies with JSON documents provide the most explicit control over AWS permissions. Use separate `Sid` identifiers to make policies self-documenting. Apply conditions like `aws:SourceVpce`, `aws:RequestedRegion`, and `aws:MultiFactorAuthPresent` to enforce security baselines. Always follow least-privilege-start with denying everything and explicitly allow only what's needed.
+IAM policies with JSON documents provide the most explicit control over AWS permissions. Use separate `Sid` identifiers to make policies self-documenting. Apply conditions like `aws:SourceVpce` and `ec2:ResourceTag/Owner` to enforce network and ownership boundaries. Always follow least privilege: start with the minimum required allows and add explicit denies only when needed.
