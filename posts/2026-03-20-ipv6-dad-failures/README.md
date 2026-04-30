@@ -8,7 +8,7 @@ Description: Diagnose and fix IPv6 Duplicate Address Detection (DAD) failures th
 
 ## Introduction
 
-Duplicate Address Detection (DAD) is the IPv6 process by which a host verifies that no other device on the link is using the same IPv6 address before assigning it. DAD works by sending a Neighbor Solicitation for the tentative address to the solicited-node multicast group. If another host replies with a Neighbor Advertisement, the address is marked "duplicate" and not used. DAD failures can prevent hosts from getting IPv6 addresses.
+Duplicate Address Detection (DAD) is the IPv6 process by which a host verifies that no other device on the link is using the same IPv6 address before assigning it. DAD works by sending a Neighbor Solicitation for the tentative address to the solicited-node multicast group. If another node already owns the address, it can reply with a Neighbor Advertisement. If another node is simultaneously performing DAD for the same address, its Neighbor Solicitation also indicates a duplicate. DAD failures can prevent hosts from getting IPv6 addresses.
 
 ## Understanding DAD States
 
@@ -17,12 +17,12 @@ Duplicate Address Detection (DAD) is the IPv6 process by which a host verifies t
 
 ip -6 addr show dev eth0
 
-# Address states:
+# Address flags/states you may see:
 # tentative  - DAD in progress, not yet usable
-# preferred  - DAD passed, address is valid
 # deprecated - address is being phased out
-# dadfailed  - DAD detected duplicate, address not assigned
+# dadfailed  - DAD detected a duplicate
 # temporary  - privacy extension address
+# usable/preferred - no tentative/deprecated/dadfailed flag is shown
 
 # Show only tentative addresses (DAD in progress)
 ip -6 addr show dev eth0 tentative
@@ -57,43 +57,42 @@ sudo tcpdump -i eth0 -v \
 
 # Decode output shows:
 # - Source :: (unspecified) = DAD probe (Neighbor Solicitation)
-# - Reply with Neighbor Advertisement = CONFLICT DETECTED
+# - Neighbor Advertisement to ff02::1 = duplicate detected
+# - Another DAD Neighbor Solicitation for the same target can also indicate a duplicate
 
 # Example DAD probe:
 # IP6 :: > ff02::1:ff00:1: ICMP6, neighbor solicitation,
 #   who has 2001:db8::1
 
 # Example conflict response:
-# IP6 2001:db8::1 > 2001:db8::100: ICMP6, neighbor advertisement,
-#   tgt is 2001:db8::1 (conflict!)
+# IP6 2001:db8::1 > ff02::1: ICMP6, neighbor advertisement,
+#   tgt is 2001:db8::1 (duplicate detected)
 ```
 
 ## Finding the Conflicting Device
 
 ```bash
-# After detecting a DAD conflict, find the device using the address
-# The conflicting device will have the address in its NDP cache
+# After detecting a DAD conflict, identify the device using the address
 
-# Check ARP/NDP cache for the conflicting address
-ip -6 neigh show | grep "2001:db8::1"
+# If the address is already in the local NDP cache, check its MAC address
+ip -6 neigh show to 2001:db8::1
 
-# Use ndisc6 to query the conflicting device
+# Use ndisc6 to query the on-link device directly
 ndisc6 2001:db8::1 eth0
 
-# Scan the network to find the conflict
-# The response will include the conflicting device's MAC address
+# If the device replies, the output includes its MAC address
 ```
 
 ## Disabling DAD (Testing Only)
 
 ```bash
 # Disable DAD completely (NOT recommended for production)
-sudo sysctl -w net.ipv6.conf.eth0.dad_transmits=0
+sudo sysctl -w net.ipv6.conf.eth0.accept_dad=0
 
-# Set number of DAD probes (default is 1)
+# Set number of DAD probes (Linux default is 1)
 sudo sysctl -w net.ipv6.conf.eth0.dad_transmits=1
 
-# Optimistic DAD - use address before DAD completes
+# Enable Optimistic DAD (RFC 4429)
 sudo sysctl -w net.ipv6.conf.eth0.optimistic_dad=1
 ```
 
@@ -103,10 +102,11 @@ sudo sysctl -w net.ipv6.conf.eth0.optimistic_dad=1
 # DAD requires sending NDP packets with source ::
 # Some firewalls block packets from unspecified source
 
-# Check if ip6tables blocks DAD probes
-sudo ip6tables -L OUTPUT -n | grep "icmp6\|ICMPv6"
+# Check if ip6tables blocks DAD-related ICMPv6
+sudo ip6tables -L INPUT -n | grep -i "icmp"
+sudo ip6tables -L OUTPUT -n | grep -i "icmp"
 
-# Allow DAD probes (source :: Neighbor Solicitation)
+# Allow DAD-related Neighbor Discovery traffic
 sudo ip6tables -A OUTPUT -p icmpv6 \
     --icmpv6-type neighbor-solicitation -j ACCEPT
 sudo ip6tables -A INPUT -p icmpv6 \
@@ -125,17 +125,17 @@ sudo ip -6 addr add 2001:db8::100/64 dev eth0
 # Option 2: Find and reconfigure the conflicting device
 # Use the MAC address from ndisc6 output to identify the device
 
-# Option 3: If SLAAC is generating conflicting addresses, regenerate
-# with a different MAC (or use RFC 7217 stable privacy addresses)
+# Option 3: If SLAAC is generating conflicting interface IDs, use
+# RFC 7217 stable privacy addresses for newly generated addresses
 sudo sysctl -w net.ipv6.conf.eth0.addr_gen_mode=3
 
 # Addr gen modes:
 # 0 = EUI-64 (from MAC address)
-# 1 = stable privacy (RFC 7217)
-# 2 = temporary (RFC 4941)
-# 3 = random stable
+# 1 = no link-local generation; autoconf still uses EUI-64
+# 2 = stable privacy (RFC 7217, using stable_secret)
+# 3 = stable privacy (RFC 7217, using a random secret if unset)
 ```
 
 ## Conclusion
 
-DAD failures occur when two devices attempt to use the same IPv6 address on the same link. Diagnose with `ip -6 addr show dadfailed` and `tcpdump` capturing Neighbor Solicitation packets with source `::`. The conflicting device responds to the DAD probe - capture that response to find its MAC address and identify it. Ensure firewalls allow ICMPv6 Neighbor Solicitation/Advertisement packets, as blocking them prevents DAD from completing and leaves addresses stuck in `tentative` state.
+DAD failures occur when two devices attempt to use the same IPv6 address on the same link. Diagnose with `ip -6 addr show dadfailed` and `tcpdump` capturing DAD-related Neighbor Solicitation and Neighbor Advertisement traffic. A conflict may appear as a Neighbor Advertisement from the current owner or as another DAD Neighbor Solicitation for the same target. Ensure firewalls allow ICMPv6 Neighbor Solicitation/Advertisement packets, as blocking them can keep addresses in `tentative` state or prevent duplicates from being detected correctly.
