@@ -8,7 +8,7 @@ Description: Learn how to configure external backup targets in Harvester, includ
 
 ## Introduction
 
-Configuring a backup target is a critical step in any production Harvester deployment. Without an external backup target, VM backups cannot be created, leaving you with only on-cluster snapshots for data protection. Harvester supports two types of backup targets: S3-compatible object storage (AWS S3, MinIO, Ceph RGW, etc.) and NFS shares. This guide covers setting up both, along with validation and best practices.
+Configuring a backup target is a critical step in any production Harvester deployment. Without an external backup target, VM backups cannot be created, leaving you with only on-cluster snapshots for data protection. Harvester supports two types of backup targets: S3-compatible object storage (AWS S3, MinIO, Ceph RGW, etc.) and NFS shares. Backup support is currently limited to Longhorn-backed volumes; volumes on external storage cannot be backed up by Harvester. This guide covers setting up both, along with validation and best practices.
 
 ## Backup Target Options
 
@@ -72,7 +72,7 @@ aws iam create-access-key --user-name harvester-backup
 
 ### Configure in Harvester UI
 
-1. Navigate to **Settings** → **Backup & Snapshot**
+1. Navigate to **Advanced** → **Settings**
 2. Click **Edit** on **Backup Target**
 3. Configure:
 
@@ -91,22 +91,6 @@ Virtual Hosted-Style:   Enabled
 ### Configure via kubectl
 
 ```yaml
-# backup-target-secret.yaml
-# Store backup credentials securely in Kubernetes
-
-apiVersion: v1
-kind: Secret
-metadata:
-  name: backup-target-secret
-  namespace: harvester-system
-type: Opaque
-stringData:
-  # AWS credentials
-  AWS_ACCESS_KEY_ID: "AKIAIOSFODNN7EXAMPLE"
-  AWS_SECRET_ACCESS_KEY: "wJalrXUtnFEMI/K7MDENG/bPxRfiCYEXAMPLEKEY"
-```
-
-```yaml
 # backup-target-setting.yaml
 # Configure S3 as the backup target
 
@@ -114,26 +98,23 @@ apiVersion: harvesterhci.io/v1beta1
 kind: Setting
 metadata:
   name: backup-target
-  namespace: harvester-system
-spec:
-  value: |
-    {
-      "type": "s3",
-      "endpoint": "https://s3.amazonaws.com",
-      "bucketName": "my-harvester-backups",
-      "bucketRegion": "us-east-1",
-      "accessKeyId": "AKIAIOSFODNN7EXAMPLE",
-      "secretAccessKey": "wJalrXUtnFEMI/K7MDENG/bPxRfiCYEXAMPLEKEY",
-      "virtualHostedStyle": true
-    }
+value: |
+  {
+    "type": "s3",
+    "endpoint": "https://s3.amazonaws.com",
+    "bucketName": "my-harvester-backups",
+    "bucketRegion": "us-east-1",
+    "accessKeyId": "AKIAIOSFODNN7EXAMPLE",
+    "secretAccessKey": "wJalrXUtnFEMI/K7MDENG/bPxRfiCYEXAMPLEKEY",
+    "virtualHostedStyle": true
+  }
 ```
 
 ```bash
-kubectl apply -f backup-target-secret.yaml
 kubectl apply -f backup-target-setting.yaml
 
 # Verify the backup target is configured
-kubectl get setting backup-target -n harvester-system \
+kubectl get setting backup-target \
     -o jsonpath='{.value}' | jq .
 ```
 
@@ -149,11 +130,28 @@ docker run -d \
     -p 9001:9001 \
     -v /data/minio:/data \
     -e MINIO_ROOT_USER=minioadmin \
-    -e MINIO_ROOT_PASSWORD=minioadmin123! \
+    -e MINIO_ROOT_PASSWORD='minioadmin123!' \
     quay.io/minio/minio server /data --console-address ":9001"
 
 # Or deploy MinIO in Kubernetes
 kubectl apply -f - <<EOF
+apiVersion: v1
+kind: Namespace
+metadata:
+  name: minio-system
+---
+apiVersion: v1
+kind: PersistentVolumeClaim
+metadata:
+  name: minio-data
+  namespace: minio-system
+spec:
+  accessModes:
+    - ReadWriteOnce
+  resources:
+    requests:
+      storage: 50Gi
+---
 apiVersion: apps/v1
 kind: Deployment
 metadata:
@@ -172,12 +170,12 @@ spec:
       containers:
         - name: minio
           image: quay.io/minio/minio:latest
-          command: ["minio", "server", "/data", "--console-address", ":9001"]
+          args: ["server", "/data", "--console-address", ":9001"]
           env:
             - name: MINIO_ROOT_USER
-              value: minioadmin
+              value: "minioadmin"
             - name: MINIO_ROOT_PASSWORD
-              value: minioadmin123!
+              value: "minioadmin123!"
           ports:
             - containerPort: 9000
             - containerPort: 9001
@@ -188,10 +186,29 @@ spec:
         - name: data
           persistentVolumeClaim:
             claimName: minio-data
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: minio
+  namespace: minio-system
+spec:
+  selector:
+    app: minio
+  ports:
+    - name: api
+      port: 9000
+      targetPort: 9000
+    - name: console
+      port: 9001
+      targetPort: 9001
 EOF
 
+# If you used the Kubernetes example, run this in another terminal first
+kubectl -n minio-system port-forward svc/minio 9000:9000 9001:9001
+
 # Create a bucket in MinIO
-mc alias set myminio http://minio:9000 minioadmin minioadmin123!
+mc alias set myminio http://127.0.0.1:9000 minioadmin 'minioadmin123!'
 mc mb myminio/harvester-backups
 ```
 
@@ -203,23 +220,23 @@ apiVersion: harvesterhci.io/v1beta1
 kind: Setting
 metadata:
   name: backup-target
-  namespace: harvester-system
-spec:
-  value: |
-    {
-      "type": "s3",
-      "endpoint": "http://192.168.1.50:9000",
-      "bucketName": "harvester-backups",
-      "bucketRegion": "us-east-1",
-      "accessKeyId": "minioadmin",
-      "secretAccessKey": "minioadmin123!",
-      "virtualHostedStyle": false
-    }
+value: |
+  {
+    "type": "s3",
+    "endpoint": "http://192.168.1.50:9000",
+    "bucketName": "harvester-backups",
+    "bucketRegion": "us-east-1",
+    "accessKeyId": "minioadmin",
+    "secretAccessKey": "minioadmin123!",
+    "virtualHostedStyle": false
+  }
 ```
 
 ## Step 3: Set Up NFS Backup Target
 
 ```bash
+# Longhorn backup targets require NFSv4 support
+
 # On the NFS server, create the export directory
 mkdir -p /data/harvester-backups
 chown -R nobody:nogroup /data/harvester-backups
@@ -242,13 +259,11 @@ apiVersion: harvesterhci.io/v1beta1
 kind: Setting
 metadata:
   name: backup-target
-  namespace: harvester-system
-spec:
-  value: |
-    {
-      "type": "nfs",
-      "endpoint": "192.168.1.50:/data/harvester-backups"
-    }
+value: |
+  {
+    "type": "nfs",
+    "endpoint": "nfs://192.168.1.50:/data/harvester-backups"
+  }
 ```
 
 ## Step 4: Verify the Backup Target
@@ -265,7 +280,7 @@ spec:
   source:
     apiGroup: kubevirt.io
     kind: VirtualMachine
-    name: ubuntu-web-01  # Replace with an existing VM
+    name: ubuntu-web-01  # Replace with an existing VM that uses Longhorn-backed volumes
   type: backup
 EOF
 
@@ -279,36 +294,9 @@ aws s3 ls s3://my-harvester-backups/ --recursive | head
 mc ls myminio/harvester-backups/
 ```
 
-## Step 5: Configure Backup Lifecycle Policy
+## Step 5: Manage Backup Retention
 
-For S3 buckets, configure lifecycle rules to manage backup retention:
-
-```bash
-# Create a lifecycle policy for the S3 bucket
-cat > lifecycle-policy.json << 'EOF'
-{
-    "Rules": [
-        {
-            "ID": "DeleteOldBackups",
-            "Status": "Enabled",
-            "Filter": {
-                "Prefix": "backups/"
-            },
-            "Expiration": {
-                "Days": 90
-            },
-            "NoncurrentVersionExpiration": {
-                "NoncurrentDays": 30
-            }
-        }
-    ]
-}
-EOF
-
-aws s3api put-bucket-lifecycle-configuration \
-    --bucket my-harvester-backups \
-    --lifecycle-configuration file://lifecycle-policy.json
-```
+Do not configure S3 bucket lifecycle rules that delete Harvester backup objects directly. Longhorn manages backup lifecycle in the backup store, and Harvester provides scheduled VM backups with a **Retain** setting to control how many backups are kept.
 
 ## Conclusion
 
