@@ -8,21 +8,21 @@ Description: Learn how to migrate virtual machines between nodes in Harvester fo
 
 ## Introduction
 
-VM migration in Harvester allows you to move running or stopped virtual machines from one cluster node to another. This is essential for node maintenance (draining a node before hardware work), load rebalancing, and improving VM placement for performance. Harvester supports both live migration (VM keeps running during the move) and cold migration (VM is stopped during the move).
+VM migration in Harvester allows you to move running virtual machines between cluster nodes without downtime. For stopped virtual machines, placement is decided the next time they are started. This is essential for node maintenance, load rebalancing, and improving VM placement for performance. Harvester supports live migration for migratable VMs, and maintenance workflows can shut down and restart non-migratable VMs when needed.
 
 ## Migration Types
 
 | Type | VM State | Downtime | Use Case |
 |---|---|---|---|
 | Live Migration | Running | None | Node maintenance, load balancing |
-| Cold Migration | Stopped | Yes (planned) | Forced relocation |
-| Eviction | Running | Brief | Node drain for maintenance |
+| Shutdown and Restart | Stopped / Restarted | Yes (planned) | Non-migratable VMs, forced relocation |
+| Maintenance Mode Eviction | Running | None for live-migratable VMs | Node drain for maintenance |
 
 ## Prerequisites
 
 - A multi-node Harvester cluster (minimum 2 nodes)
 - Sufficient resources on the target node (CPU, RAM)
-- Shared storage (Longhorn) configured across all nodes
+- The VM must be live-migratable: volumes with `CD-ROM`, `Container Disk`, or `ReadWriteOnce` access, and node selectors that bind to a single node, prevent live migration
 - For live migration: Network bandwidth between nodes for memory transfer
 
 ## Step 1: Check Current VM Placement
@@ -48,8 +48,8 @@ kubectl get vmi -n default \
 1. Navigate to **Virtual Machines**
 2. Find the VM you want to migrate
 3. Click the **⋮** menu → **Migrate**
-4. Select the target node (or let Harvester choose automatically)
-5. Click **Confirm**
+4. Select the target node
+5. Click **Apply**
 
 ### Via kubectl
 
@@ -89,95 +89,66 @@ kubectl get vmi ubuntu-web-01 -n default \
 kubectl describe virtualmachineinstancemigration migrate-ubuntu-web-01 -n default
 
 # Check the VMI migration state
-kubectl get vmi ubuntu-web-01 -n default \
-    -o jsonpath='{.status.migrationState}' | jq .
+kubectl get vmi ubuntu-web-01 -n default -o json | \
+    jq '.status.migrationState'
 
-# View migration events
-kubectl get events -n default \
-    --field-selector reason=Migration \
-    --sort-by='.lastTimestamp'
+# View recent migration-related events
+kubectl get events -n default --sort-by='.lastTimestamp' | \
+    grep -i migrat
 ```
 
 ## Step 3: Migrate to a Specific Node
 
-To target a specific node, use node affinity or node selectors:
+To constrain a one-off migration to a specific node, use `virtctl` with an added node selector:
 
 ```bash
-# First, label the target node
-kubectl label node harvester-node-03 \
-    migration-target=ubuntu-web-01
+# Trigger a one-off migration to the node identified by its hostname label
+virtctl migrate ubuntu-web-01 \
+    --addedNodeSelector kubernetes.io/hostname=harvester-node-03
 
-# Add a node affinity rule to the VM to prefer node-03
-kubectl patch vm ubuntu-web-01 -n default --type json \
--p '[{
-    "op": "add",
-    "path": "/spec/template/spec/affinity",
-    "value": {
-        "nodeAffinity": {
-            "preferredDuringSchedulingIgnoredDuringExecution": [{
-                "weight": 100,
-                "preference": {
-                    "matchExpressions": [{
-                        "key": "kubernetes.io/hostname",
-                        "operator": "In",
-                        "values": ["harvester-node-03"]
-                    }]
-                }
-            }]
-        }
-    }
-}]'
-
-# Trigger the migration
-kubectl apply -f - <<EOF
-apiVersion: kubevirt.io/v1
-kind: VirtualMachineInstanceMigration
-metadata:
-  name: migrate-to-node03
-  namespace: default
-spec:
-  vmiName: ubuntu-web-01
-EOF
+# Verify the VM is now running on the requested node
+kubectl get vmi ubuntu-web-01 -n default \
+    -o jsonpath='{.status.nodeName}'
 ```
 
 ## Step 4: Drain a Node for Maintenance
 
-To migrate all VMs off a node before maintenance:
+For routine maintenance, Harvester's documented approach is **Maintenance Mode**. It uses batch migration to move live-migratable VMs off the node and lets you handle non-migratable VMs separately.
 
 ```bash
-# Cordon the node to prevent new scheduling
+# Optional: cordon the node to prevent new scheduling
 kubectl cordon harvester-node-01
 
-# Evict all VMs from the node
-# This triggers live migrations for all migratable VMs
-kubectl drain harvester-node-01 \
-    --ignore-daemonsets \
-    --delete-emptydir-data \
-    --pod-selector 'vm.kubevirt.io/name' \
-    --disable-eviction=false
-
-# Watch VMs migrating off the node
+# Watch VMs moving off the node while Maintenance Mode is active
 watch kubectl get vmi -n default \
     -o custom-columns='NAME:.metadata.name,NODE:.status.nodeName'
+```
 
-# Alternatively, use virtctl to evict VMs
-virtctl migrate --all -n default \
-    --node harvester-node-01
+In the UI, go to **Hosts**, find `harvester-node-01`, and select **⋮** → **Enable Maintenance Mode**.
+
+If you are in the documented two-control-plane node-removal case where Maintenance Mode is unavailable, Harvester documents the following manual drain command:
+
+```bash
+kubectl drain harvester-node-01 \
+    --force \
+    --ignore-daemonsets \
+    --delete-local-data \
+    --pod-selector='app!=csi-attacher,app!=csi-provisioner'
 ```
 
 ```bash
-# After maintenance, uncordon the node
+# After maintenance, disable Maintenance Mode and uncordon the node
 kubectl uncordon harvester-node-01
 
 # Verify the node is ready to accept workloads
 kubectl get node harvester-node-01
 ```
 
-## Step 5: Bulk Migrate VMs with a Script
+## Step 5: Bulk Migrate VMs Off a Node with a Script
 
 ```bash
 #!/bin/bash
-# bulk-migrate.sh - Migrate all VMs from one node to another
+# bulk-migrate.sh - Migrate all live-migratable VMIs off one node
 
 SOURCE_NODE="harvester-node-01"
 NAMESPACE="default"
@@ -221,7 +192,7 @@ while kubectl get vmi -n ${NAMESPACE} \
     sleep 10
 done
 
-echo "All VMs migrated from ${SOURCE_NODE}"
+echo "All VMs migrated off ${SOURCE_NODE}"
 ```
 
 ## Troubleshooting Migration Issues
@@ -237,12 +208,13 @@ kubectl describe node harvester-node-02 | grep -A 20 "Allocated resources"
 kubectl get kubevirt -n harvester-system -o yaml | \
     grep -A 10 "migrations:"
 
-# Check the migration pod logs
+# Check the virt-launcher pod logs
 kubectl get pods -n default | grep virt-launcher
 kubectl logs -n default \
-    $(kubectl get pods -n default -l "vm.kubevirt.io/name=ubuntu-web-01" -o name)
+    $(kubectl get pods -n default -l "vm.kubevirt.io/name=ubuntu-web-01" -o name) \
+    --all-containers=true
 ```
 
 ## Conclusion
 
-VM migration in Harvester is a powerful capability that enables zero-downtime maintenance and flexible workload placement. Live migration allows VMs to continue serving traffic while moving between nodes - an essential feature for production environments with strict availability requirements. By combining node cordoning, draining, and targeted migration policies, you can maintain your cluster infrastructure without scheduling maintenance windows that impact users. Always verify sufficient resources on the destination nodes before initiating large-scale migrations.
+VM migration in Harvester is a powerful capability that enables flexible workload placement and low-downtime maintenance for live-migratable VMs. Live migration allows VMs to continue serving traffic while moving between nodes - an essential feature for production environments with strict availability requirements. By combining Maintenance Mode, node cordoning, and targeted migration policies, you can maintain your cluster infrastructure with minimal disruption. Always verify sufficient resources and migration eligibility on the destination nodes before initiating large-scale migrations.
