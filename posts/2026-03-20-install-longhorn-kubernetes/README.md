@@ -15,18 +15,26 @@ Longhorn is a lightweight, reliable, and powerful distributed block storage syst
 Before installing Longhorn, ensure your cluster meets the following requirements:
 
 - Kubernetes version 1.21 or later
-- Each node must have the following utilities installed: `open-iscsi`, `util-linux`, `bash`, `curl`, `findmnt`, `grep`, `awk`, `blkid`, `lsblk`
-- Minimum recommended hardware: 2 vCPU, 4 GiB RAM per node
-- Container runtime compatible with Longhorn (Docker, containerd, CRI-O)
+- Container runtime compatible with Kubernetes (Docker v1.13+, containerd v1.3.7+, etc.)
+- Each node must have `open-iscsi` installed and the `iscsid` daemon running
+- RWX support requires an NFSv4 client on each node
+- The host filesystem must support `file extents` (such as `ext4` or `XFS`)
+- Each node must have the following utilities installed: `bash`, `curl`, `findmnt`, `grep`, `awk`, `blkid`, `lsblk`
+- Mount propagation must be enabled
+- Minimum recommended hardware: 3 nodes, 4 vCPU, 4 GiB RAM per node
 
 ### Verify Prerequisites
 
-Longhorn provides a script to check if your environment meets all prerequisites:
+Longhorn provides the `longhornctl` CLI to check if your environment meets all prerequisites:
 
 ```bash
-# Download and run the environment check script
+# For AMD64 platform
+curl -sSfL -o longhornctl https://github.com/longhorn/cli/releases/download/v1.7.3/longhornctl-linux-amd64
+# For ARM64 platform
+curl -sSfL -o longhornctl https://github.com/longhorn/cli/releases/download/v1.7.3/longhornctl-linux-arm64
 
-curl -sSfL https://raw.githubusercontent.com/longhorn/longhorn/v1.7.0/scripts/environment_check.sh | bash
+chmod +x longhornctl
+./longhornctl check preflight
 ```
 
 You should see output indicating whether each node passes or fails the checks.
@@ -36,8 +44,8 @@ You should see output indicating whether each node passes or fails the checks.
 On each Kubernetes node (for Debian/Ubuntu):
 
 ```bash
-# Install open-iscsi and nfs-common
-apt-get install -y open-iscsi nfs-common
+# Install required packages
+apt-get install -y open-iscsi nfs-common cryptsetup dmsetup
 
 # Enable and start the iscsid service
 systemctl enable iscsid
@@ -48,7 +56,8 @@ For RHEL/CentOS:
 
 ```bash
 # Install required packages
-yum install -y iscsi-initiator-utils nfs-utils
+yum --setopt=tsflags=noscripts install -y iscsi-initiator-utils nfs-utils cryptsetup device-mapper
+echo "InitiatorName=$(/sbin/iscsi-iname)" > /etc/iscsi/initiatorname.iscsi
 
 # Enable and start the iscsid service
 systemctl enable iscsid
@@ -65,10 +74,10 @@ The simplest way to install Longhorn is to apply the official manifest directly:
 
 ```bash
 # Install Longhorn using the official manifest
-kubectl apply -f https://raw.githubusercontent.com/longhorn/longhorn/v1.7.0/deploy/longhorn.yaml
+kubectl apply -f https://raw.githubusercontent.com/longhorn/longhorn/v1.7.3/deploy/longhorn.yaml
 ```
 
-This single command installs all Longhorn components in the `longhorn-system` namespace.
+This single command installs all Longhorn components in the `longhorn-system` namespace. On Kubernetes versions earlier than 1.25, clusters that still enable the Pod Security Policy admission controller must also apply the `podsecuritypolicy.yaml` manifest.
 
 ### Verify the Installation
 
@@ -87,8 +96,11 @@ kubectl get pods -n longhorn-system
 ```
 
 Expected output includes pods for:
+- `longhorn-ui`
 - `longhorn-manager` (one per node)
 - `longhorn-driver-deployer`
+- `longhorn-csi-plugin`
+- `csi-attacher`, `csi-provisioner`, `csi-resizer`, and `csi-snapshotter`
 - `instance-manager`
 - `engine-image`
 
@@ -105,19 +117,21 @@ Now open your browser and navigate to `http://localhost:8080` to access the Long
 
 ## Setting Longhorn as Default Storage Class
 
-After installation, you may want to set Longhorn as your default storage class:
+The official Longhorn manifest already creates the `longhorn` StorageClass and marks it as the default. If you need to reapply that annotation:
 
 ```bash
 # Patch the longhorn StorageClass to be the default
 kubectl patch storageclass longhorn \
+  --type merge \
   -p '{"metadata": {"annotations": {"storageclass.kubernetes.io/is-default-class": "true"}}}'
 ```
 
-If another storage class is currently the default, remove that annotation first:
+If another storage class is also marked as the default, replace `local-path` with that storage class name and set its annotation to `false`:
 
 ```bash
-# Remove default annotation from existing default storage class
+# Unset the default annotation on the existing default StorageClass
 kubectl patch storageclass local-path \
+  --type merge \
   -p '{"metadata": {"annotations": {"storageclass.kubernetes.io/is-default-class": "false"}}}'
 ```
 
@@ -150,7 +164,7 @@ kubectl get pvc longhorn-test-pvc
 
 ## Monitoring Installation Status
 
-You can use the Longhorn UI or CLI to confirm the installation is healthy:
+You can use the Longhorn UI or `kubectl` to confirm the installation is healthy:
 
 ```bash
 # Check all nodes are detected by Longhorn
