@@ -37,7 +37,6 @@ Fleet passes these credentials using HTTP Basic Authentication when cloning and 
 4. Set expiration: 90 days or custom
 5. Select scopes:
    - `repo` (for private repositories)
-   - `read:org` (if using organization repositories)
 6. Click **Generate token**
 7. **Copy the token immediately** - you won't see it again
 
@@ -51,15 +50,16 @@ Fleet passes these credentials using HTTP Basic Authentication when cloning and 
 
 ### GitLab Personal Access Token
 
-1. Go to **User Settings > Access Tokens**
-2. Add name: `fleet-gitops`
-3. Set expiration date
-4. Select scope: `read_repository`
-5. Click **Create personal access token**
+1. Go to **Edit profile > Access > Personal access tokens**
+2. From **Generate token**, select **Legacy token**
+3. Add name: `fleet-gitops`
+4. Set expiration date
+5. Select scope: `read_repository`
+6. Click **Create personal access token**
 
 ### GitLab Project Deploy Token
 
-1. Navigate to **Repository > Settings > Repository > Deploy tokens**
+1. Navigate to **Settings > Repository > Deploy tokens**
 2. Create token with `read_repository` scope
 3. Note both the username and token value
 
@@ -68,7 +68,7 @@ Fleet passes these credentials using HTTP Basic Authentication when cloning and 
 1. Go to **User Settings > Personal access tokens**
 2. Click **New Token**
 3. Set name and expiration
-4. Set scope: **Code: Read**
+4. Set scope: **Code (Read)**
 5. Create and copy the token
 
 ## Creating Kubernetes Secrets for HTTP Auth
@@ -79,25 +79,29 @@ Fleet passes these credentials using HTTP Basic Authentication when cloning and 
 # GitHub Personal Access Token
 
 kubectl create secret generic github-http-auth \
+  --type=kubernetes.io/basic-auth \
   --from-literal=username=my-github-username \
   --from-literal=password=ghp_xxxxxxxxxxxxxxxxxxxx \
   -n fleet-default
 
 # GitLab Personal Access Token
 kubectl create secret generic gitlab-http-auth \
+  --type=kubernetes.io/basic-auth \
   --from-literal=username=my-gitlab-username \
   --from-literal=password=glpat-xxxxxxxxxxxxxxxxxxxx \
   -n fleet-default
 
 # GitLab Deploy Token (uses token-specific username)
 kubectl create secret generic gitlab-deploy-token \
+  --type=kubernetes.io/basic-auth \
   --from-literal=username=gitlab+deploy-token-123456 \
   --from-literal=password=DeployTokenValue \
   -n fleet-default
 
-# Azure DevOps (username is typically your email or "anystring")
+# Azure DevOps (username can be any non-empty string)
 kubectl create secret generic azure-devops-auth \
-  --from-literal=username=my@email.com \
+  --type=kubernetes.io/basic-auth \
+  --from-literal=username=fleet \
   --from-literal=password=AzureDevOpsPAT \
   -n fleet-default
 ```
@@ -196,10 +200,8 @@ spec:
 For Git servers with corporate CA certificates:
 
 ```bash
-# Create a secret with the CA certificate bundle
-kubectl create secret generic git-ca-bundle \
-  --from-file=caBundle=/path/to/corporate-ca.crt \
-  -n fleet-default
+# Base64-encode the CA certificate bundle for GitRepo.spec.caBundle
+cat /path/to/corporate-ca.crt | base64 -w 0
 ```
 
 ```yaml
@@ -214,11 +216,8 @@ spec:
   branch: main
   clientSecretName: git-http-credentials
 
-  # Provide the CA bundle for TLS verification
-  caBundle: |
-    -----BEGIN CERTIFICATE-----
-    MIIDxxxxxx...
-    -----END CERTIFICATE-----
+  # Provide the CA bundle as base64-encoded PEM data
+  caBundle: LS0tLS1CRUdJTiBDRVJUSUZJQ0FURS0tLS0tCg...
 
   targets:
     - clusterSelector: {}
@@ -229,6 +228,7 @@ spec:
 ```bash
 # Create new PAT on your Git provider first, then update the secret
 kubectl create secret generic github-http-auth \
+  --type=kubernetes.io/basic-auth \
   --from-literal=username=my-github-username \
   --from-literal=password=ghp_new_token_here \
   -n fleet-default \
