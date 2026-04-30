@@ -4,12 +4,12 @@ Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
 Tags: HAProxy, QUIC, HTTP/3, IPv6, Load Balancer
 
-Description: Configure HAProxy 2.6+ to terminate QUIC/HTTP3 connections on IPv6 and load balance traffic to backend servers.
+Description: Configure HAProxy 2.7+ to terminate QUIC/HTTP3 connections on IPv6 and load balance traffic to backend servers.
 
 ## Prerequisites
 
-- HAProxy 2.6+ (QUIC support added in 2.6)
-- OpenSSL 3.0+ or BoringSSL compiled into HAProxy
+- HAProxy 2.7+ (HTTP/3 over QUIC was introduced experimentally in 2.6)
+- A QUIC-compatible TLS library such as quictls or BoringSSL compiled into HAProxy
 - SSL certificate for your domain
 
 ## Step 1: Verify HAProxy QUIC Support
@@ -17,9 +17,9 @@ Description: Configure HAProxy 2.6+ to terminate QUIC/HTTP3 connections on IPv6 
 ```bash
 # Check HAProxy version and QUIC support
 
-haproxy -vv 2>&1 | grep -E "QUIC|quic|version"
+haproxy -vv 2>&1 | grep -E "Feature|QUIC|quic|version"
 
-# Look for: "Features: ... QUIC" in the output
+# Look for: "+QUIC" in the feature list output
 # If QUIC is not listed, you need to compile with QUIC support
 ```
 
@@ -27,19 +27,24 @@ haproxy -vv 2>&1 | grep -E "QUIC|quic|version"
 
 ```bash
 # Install dependencies
-sudo apt-get install libssl-dev libpcre2-dev
+sudo apt-get install build-essential git perl libpcre2-dev zlib1g-dev
 
-# Clone and compile with quictls (OpenSSL fork with QUIC support)
+# Build against quictls (a QUIC-compatible OpenSSL fork)
 git clone https://github.com/quictls/openssl
-cd openssl && ./config && make && sudo make install
+cd openssl
+git checkout OpenSSL_1_1_1t+quic
+sudo mkdir -p /opt/quictls
+./Configure --libdir=lib --prefix=/opt/quictls
+make && sudo make install
 
 cd /tmp && git clone https://github.com/haproxy/haproxy
 cd haproxy
 make TARGET=linux-glibc \
   USE_OPENSSL=1 \
   USE_QUIC=1 \
-  SSL_INC=/usr/local/include \
-  SSL_LIB=/usr/local/lib \
+  SSL_INC=/opt/quictls/include \
+  SSL_LIB=/opt/quictls/lib \
+  LDFLAGS="-Wl,-rpath,/opt/quictls/lib" \
   USE_PCRE2=1
 sudo make install
 ```
@@ -66,17 +71,16 @@ defaults
 frontend https_ipv6
     # Bind on all IPv6 addresses - both TCP (HTTP/2) and UDP (QUIC/HTTP3)
     bind [::]:443 ssl crt /etc/ssl/certs/example.com.pem alpn h2,http/1.1
-    bind [::]:443 quic crt /etc/ssl/certs/example.com.pem alpn h3
+    bind quic6@:443 ssl crt /etc/ssl/certs/example.com.pem alpn h3
 
     # Also bind on IPv4
     bind 0.0.0.0:443 ssl crt /etc/ssl/certs/example.com.pem alpn h2,http/1.1
-    bind 0.0.0.0:443 quic crt /etc/ssl/certs/example.com.pem alpn h3
+    bind quic4@:443 ssl crt /etc/ssl/certs/example.com.pem alpn h3
 
     # Advertise HTTP/3 support
-    http-response set-header Alt-Svc "h3=\":443\"; ma=86400"
+    http-response set-header alt-svc "h3=\":443\";ma=86400;"
 
-    # Enable 0-RTT for performance (be aware of replay risks)
-    ssl-request-max-ver TLSv1.3
+    # 0-RTT is disabled by default; add allow-0rtt on the QUIC bind lines only for replay-safe requests
 
     default_backend webservers
 
@@ -89,8 +93,8 @@ frontend http_ipv6
 # Backend servers
 backend webservers
     balance roundrobin
-    server web1 [2001:db8:backend::1]:8080 check
-    server web2 [2001:db8:backend::2]:8080 check
+    server web1 [2001:db8::10]:8080 check
+    server web2 [2001:db8::11]:8080 check
     server web3 192.168.1.10:8080 check  # IPv4 backend also supported
 ```
 
@@ -99,10 +103,10 @@ backend webservers
 QUIC requires TLS 1.3. Ensure your certificate file contains the full chain:
 
 ```bash
-# Combine certificate and key into a single PEM file (HAProxy format)
-cat /etc/ssl/certs/example.com.crt \
-    /etc/ssl/certs/chain.crt \
-    /etc/ssl/private/example.com.key > /etc/ssl/certs/example.com.pem
+# Combine key, certificate, and chain into a single PEM file (HAProxy format)
+cat /etc/ssl/private/example.com.key \
+    /etc/ssl/certs/example.com.crt \
+    /etc/ssl/certs/chain.crt > /etc/ssl/certs/example.com.pem
 
 # Verify TLS 1.3 is available
 openssl s_client -connect [2001:db8::1]:443 -tls1_3
@@ -111,8 +115,12 @@ openssl s_client -connect [2001:db8::1]:443 -tls1_3
 ## Step 5: Firewall Rules
 
 ```bash
-# Open UDP 443 for QUIC
+# Open TCP 80/443 and UDP 443
+sudo ufw allow 80/tcp
+sudo ufw allow 443/tcp
 sudo ufw allow 443/udp
+sudo ip6tables -A INPUT -p tcp --dport 80 -j ACCEPT
+sudo ip6tables -A INPUT -p tcp --dport 443 -j ACCEPT
 sudo ip6tables -A INPUT -p udp --dport 443 -j ACCEPT
 ```
 
@@ -126,10 +134,10 @@ sudo haproxy -c -f /etc/haproxy/haproxy.cfg
 sudo systemctl reload haproxy
 
 # Test HTTP/3 over IPv6
-curl -6 --http3 https://example.com -v 2>&1 | grep -E "QUIC|HTTP/3|using"
+curl -6 --http3-only https://example.com -v 2>&1 | grep -E "HTTP/3|using"
 
 # View HAProxy stats (enable stats in config first)
-curl http://localhost:8404/stats
+curl http://[::1]:8404/stats
 ```
 
 ## Monitoring QUIC Metrics
@@ -141,7 +149,7 @@ frontend stats
     stats enable
     stats uri /stats
     stats refresh 10s
-    # QUIC-specific stats available in HAProxy 2.8+
+    # Detailed QUIC connection information is available via the Runtime API's "show quic" command in HAProxy 2.7+
 ```
 
 ## Monitoring with OneUptime
@@ -150,4 +158,4 @@ Use [OneUptime](https://oneuptime.com) to monitor HAProxy's frontend availabilit
 
 ## Conclusion
 
-HAProxy QUIC/HTTP3 over IPv6 requires version 2.6+ with QUIC compiled in, separate `bind` lines for TCP and `quic` protocols, and an Alt-Svc header to advertise HTTP/3. Ensure UDP 443 is open and test with curl's `--http3` flag.
+HAProxy QUIC/HTTP3 over IPv6 requires HAProxy 2.7+ in current community documentation, with experimental support starting in 2.6. Use separate TCP and QUIC `bind` lines, advertise HTTP/3 with an Alt-Svc header, ensure TCP 80/443 and UDP 443 are open, and verify the setup with curl's `--http3-only` flag.
