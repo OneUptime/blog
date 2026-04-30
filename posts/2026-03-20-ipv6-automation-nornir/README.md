@@ -13,7 +13,7 @@ Nornir is a Python automation framework for network engineers. Unlike NAPALM and
 ## Installation
 
 ```bash
-pip install nornir nornir-napalm nornir-netmiko nornir-utils
+pip install nornir nornir_napalm nornir_netmiko nornir_utils
 ```
 
 ## Step 1: Inventory Configuration
@@ -22,19 +22,19 @@ pip install nornir nornir-napalm nornir-netmiko nornir-utils
 # inventory/hosts.yaml
 
 router1:
-  hostname: 2001:db8::r1      # IPv6 management address
+  hostname: 2001:db8::11      # IPv6 management address
   platform: ios
   groups:
     - core_routers
 
 router2:
-  hostname: 2001:db8::r2
+  hostname: 2001:db8::12
   platform: iosxr
   groups:
     - core_routers
 
 router3:
-  hostname: 2001:db8::r3
+  hostname: 2001:db8::13
   platform: junos
   groups:
     - edge_routers
@@ -69,6 +69,7 @@ connection_options:
 ```python
 # main.py
 from nornir import InitNornir
+from nornir.core.filter import F
 from nornir_utils.plugins.functions import print_result
 
 nr = InitNornir(
@@ -89,7 +90,7 @@ nr = InitNornir(
 )
 
 # Filter to IPv6-enabled devices only
-ipv6_devices = nr.filter(filter_func=lambda h: h.data.get("ipv6_enabled"))
+ipv6_devices = nr.filter(ipv6_enabled=True)
 ```
 
 ## Step 3: Task to Get IPv6 Interfaces
@@ -120,8 +121,8 @@ def get_ipv6_addresses(task: Task) -> Result:
         result=ipv6_data,
     )
 
-# Run on all devices
-results = nr.run(task=get_ipv6_addresses)
+# Run on all IPv6-enabled devices
+results = ipv6_devices.run(task=get_ipv6_addresses)
 print_result(results)
 ```
 
@@ -157,7 +158,7 @@ def deploy_ipv6_prefix_list(task: Task) -> Result:
     return Result(host=task.host, result=result[0].result)
 
 # Deploy to core routers only
-core_nr = nr.filter(groups=["core_routers"])
+core_nr = ipv6_devices.filter(F(has_parent_group="core_routers"))
 results = core_nr.run(task=deploy_ipv6_prefix_list)
 print_result(results)
 ```
@@ -169,21 +170,36 @@ import ipaddress
 
 def check_ipv6_compliance(task: Task) -> Result:
     """
-    Check that each device has at least one global IPv6 address
+    Check that each device has at least one non-link-local IPv6 address
     and no link-local-only interfaces.
     """
     result = task.run(task=napalm_get, getters=["interfaces_ip"])
     interfaces = result[0].result["interfaces_ip"]
 
     violations = []
+    has_non_link_local = False
     for iface, data in interfaces.items():
-        for addr_str in data.get("ipv6", {}):
+        ipv6_addresses = data.get("ipv6", {})
+        if not ipv6_addresses:
+            continue
+
+        interface_has_non_link_local = False
+        for addr_str in ipv6_addresses:
             try:
                 addr = ipaddress.IPv6Address(addr_str)
-                if addr.is_link_local:
-                    violations.append(f"{iface}: link-local only ({addr_str})")
             except ValueError:
-                pass
+                violations.append(f"{iface}: invalid IPv6 address ({addr_str})")
+                continue
+
+            if not addr.is_link_local:
+                interface_has_non_link_local = True
+                has_non_link_local = True
+
+        if not interface_has_non_link_local:
+            violations.append(f"{iface}: link-local only")
+
+    if not has_non_link_local:
+        violations.append("Device has no non-link-local IPv6 addresses")
 
     return Result(
         host=task.host,
@@ -191,10 +207,10 @@ def check_ipv6_compliance(task: Task) -> Result:
         failed=len(violations) > 0,
     )
 
-results = nr.run(task=check_ipv6_compliance)
+results = ipv6_devices.run(task=check_ipv6_compliance)
 print_result(results)
 ```
 
 ## Conclusion
 
-Nornir's inventory system maps IPv6 management addresses to hostnames, enabling fleet-wide IPv6 automation. Tasks run in parallel via the threaded runner. Use `nornir_napalm` for structured data retrieval and `nornir_netmiko` for config deployment. Build compliance check tasks to detect IPv6 misconfigurations across all devices. Integrate with OneUptime to alert on compliance failures.
+Nornir's inventory system maps hostnames to IPv6 management addresses, enabling fleet-wide IPv6 automation. Tasks run in parallel via the threaded runner. Use `nornir_napalm` for structured data retrieval and `nornir_netmiko` for config deployment. Build compliance check tasks to detect IPv6 misconfigurations across all devices. Integrate with OneUptime to alert on compliance failures.
