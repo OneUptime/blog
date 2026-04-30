@@ -8,7 +8,7 @@ Description: Learn how to enable and configure GKE Network Policy with OpenTofu 
 
 ## Overview
 
-GKE Network Policy controls which pods can communicate with each other and with external endpoints. OpenTofu enables Calico or Cilium network policy on the cluster and deploys NetworkPolicy resources for microsegmentation.
+GKE Network Policy controls which pods can communicate with each other and with external endpoints. OpenTofu can enable Calico network policy on a Standard cluster or provision GKE Dataplane V2, then deploy NetworkPolicy resources for microsegmentation.
 
 ## Step 1: Enable Network Policy on GKE Cluster
 
@@ -28,13 +28,19 @@ resource "google_container_cluster" "cluster" {
   networking_mode = "VPC_NATIVE"
   ip_allocation_policy {}
 
-  # Enable network policy (uses Calico)
+  # Enable Calico network policy on a GKE Standard cluster
   network_policy {
     enabled  = true
     provider = "CALICO"
   }
 
-  # Dataplane V2 (Cilium-based) - alternative to Calico
+  addons_config {
+    network_policy_config {
+      disabled = false
+    }
+  }
+
+  # For GKE Dataplane V2, remove the network_policy block above and use:
   # datapath_provider = "ADVANCED_DATAPATH"
 }
 ```
@@ -42,8 +48,8 @@ resource "google_container_cluster" "cluster" {
 ## Step 2: Default Deny All Policy
 
 ```hcl
-# Default deny-all ingress policy - must be paired with allow rules
-resource "kubernetes_network_policy" "default_deny_all" {
+# Default deny-all ingress and egress policy - must be paired with allow rules
+resource "kubernetes_network_policy_v1" "default_deny_all" {
   metadata {
     name      = "default-deny-all"
     namespace = "production"
@@ -52,7 +58,7 @@ resource "kubernetes_network_policy" "default_deny_all" {
   spec {
     pod_selector {}  # Empty = applies to all pods in namespace
 
-    # Empty policy_types with no rules = deny all
+    # No ingress or egress rules + both policy types = deny all traffic
     policy_types = ["Ingress", "Egress"]
   }
 }
@@ -62,7 +68,7 @@ resource "kubernetes_network_policy" "default_deny_all" {
 
 ```hcl
 # Allow frontend pods to reach backend pods on port 8080
-resource "kubernetes_network_policy" "frontend_to_backend" {
+resource "kubernetes_network_policy_v1" "frontend_to_backend" {
   metadata {
     name      = "allow-frontend-to-backend"
     namespace = "production"
@@ -98,8 +104,8 @@ resource "kubernetes_network_policy" "frontend_to_backend" {
 ## Step 4: Allow DNS Egress
 
 ```hcl
-# Allow pods to reach kube-dns for DNS resolution
-resource "kubernetes_network_policy" "allow_dns" {
+# Allow pods to reach the cluster DNS service for DNS resolution
+resource "kubernetes_network_policy_v1" "allow_dns" {
   metadata {
     name      = "allow-dns-egress"
     namespace = "production"
@@ -126,6 +132,11 @@ resource "kubernetes_network_policy" "allow_dns" {
         port     = "53"
         protocol = "UDP"
       }
+
+      ports {
+        port     = "53"
+        protocol = "TCP"
+      }
     }
 
     policy_types = ["Egress"]
@@ -137,7 +148,7 @@ resource "kubernetes_network_policy" "allow_dns" {
 
 ```hcl
 # Allow monitoring namespace to scrape metrics from production pods
-resource "kubernetes_network_policy" "allow_monitoring_scrape" {
+resource "kubernetes_network_policy_v1" "allow_monitoring_scrape" {
   metadata {
     name      = "allow-monitoring-scrape"
     namespace = "production"
