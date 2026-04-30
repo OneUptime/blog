@@ -13,8 +13,8 @@ HAProxy ACLs (Access Control Lists) are powerful conditions that inspect request
 ## ACL Syntax
 
 ```text
-acl <name> <test> <value>
-use_backend <backend> if <acl_name>
+acl <name> <criterion> [flags] [operator] <value> ...
+use_backend <backend> { if | unless } <condition>
 ```
 
 ## Routing by URL Path
@@ -84,7 +84,7 @@ frontend http_in
 
     acl is_post  method POST
     acl is_api   path_beg /api/
-    acl is_heavy hdr(Content-Length) -m int gt 10000000  # > 10MB body
+    acl is_heavy req.hdr_val(Content-Length) gt 10000000  # Content-Length > 10 MB
 
     # Route large POST requests to a dedicated heavy backend
     use_backend heavy_backend if is_api is_post is_heavy
@@ -113,7 +113,7 @@ frontend http_in
 
 ## Key Takeaways
 
-- ACLs are evaluated in order; the first matching `use_backend` wins.
+- `use_backend` rules are evaluated in declaration order; the first matching rule wins.
 - Use `!` to negate an ACL condition (e.g., `!internal_client`).
-- Combine ACLs with `if acl1 acl2` for AND logic; use `or` keyword for OR.
+- Combine ACLs with `if acl1 acl2` for AND logic; use `||` (or `or`) for OR.
 - `http-request deny` can reject traffic without forwarding it to any backend.
