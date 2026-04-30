@@ -64,14 +64,14 @@ import (
 )
 
 // Uint32ToIPv4 converts a 32-bit integer to a dotted-decimal IPv4 string
-func Uint32ToIPv4(n uint32) net.IP {
+func Uint32ToIPv4(n uint32) string {
     ip := make(net.IP, 4)
     binary.BigEndian.PutUint32(ip, n)
-    return ip
+    return ip.String()
 }
 
 func main() {
-    numbers := []uint32{0, 167772161, 3232235519, 4294967295}
+    numbers := []uint32{0, 167772161, 3232236031, 4294967295}
 
     for _, n := range numbers {
         ip := Uint32ToIPv4(n)
@@ -91,8 +91,13 @@ import (
     "net"
 )
 
-func ipToUint32(ip net.IP) uint32 {
-    return binary.BigEndian.Uint32(ip.To4())
+func ipToUint32(ip net.IP) (uint32, bool) {
+    ip4 := ip.To4()
+    if ip4 == nil {
+        return 0, false
+    }
+
+    return binary.BigEndian.Uint32(ip4), true
 }
 
 func IsInRange(ipStr, startStr, endStr string) bool {
@@ -104,9 +109,20 @@ func IsInRange(ipStr, startStr, endStr string) bool {
         return false
     }
 
-    n := ipToUint32(ip)
-    s := ipToUint32(start)
-    e := ipToUint32(end)
+    n, ok := ipToUint32(ip)
+    if !ok {
+        return false
+    }
+
+    s, ok := ipToUint32(start)
+    if !ok {
+        return false
+    }
+
+    e, ok := ipToUint32(end)
+    if !ok {
+        return false
+    }
 
     return n >= s && n <= e
 }
