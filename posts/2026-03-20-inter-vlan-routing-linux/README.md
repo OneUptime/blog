@@ -79,15 +79,19 @@ Each VLAN host must use the Linux router as its default gateway:
 Allow some inter-VLAN traffic and block others:
 
 ```bash
+# Default-deny forwarded traffic
+iptables -P FORWARD DROP
+
+# Allow established and related return traffic
+iptables -A FORWARD -m conntrack --ctstate ESTABLISHED,RELATED -j ACCEPT
+
 # Allow VLAN 10 (management) to access all VLANs
 iptables -A FORWARD -i eth0.10 -j ACCEPT
-iptables -A FORWARD -o eth0.10 -m state --state ESTABLISHED,RELATED -j ACCEPT
 
 # Allow VLAN 20 to access VLAN 30
 iptables -A FORWARD -i eth0.20 -o eth0.30 -j ACCEPT
-iptables -A FORWARD -i eth0.30 -o eth0.20 -m state --state ESTABLISHED,RELATED -j ACCEPT
 
-# Block IoT (VLAN 30) from accessing servers (VLAN 20) unless established
+# Block IoT (VLAN 30) from accessing servers (VLAN 20)
 iptables -A FORWARD -i eth0.30 -o eth0.20 -j DROP
 ```
 
