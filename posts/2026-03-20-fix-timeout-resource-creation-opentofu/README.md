@@ -22,18 +22,21 @@ Error: creating EKS Cluster (prod-eks): unexpected state 'CREATING', wanted targ
 
 ## Fix 1: Override the Timeout in the Resource Block
 
-Most providers support a `timeouts` block per resource:
+Some provider resources support a `timeouts` block per resource:
 
 ```hcl
 resource "aws_db_instance" "main" {
-  identifier        = "prod-postgres"
-  engine            = "postgres"
-  instance_class    = "db.r5.large"
-  allocated_storage = 100
+  identifier                  = "prod-postgres"
+  engine                      = "postgres"
+  instance_class              = "db.r5.large"
+  allocated_storage           = 100
+  username                    = "appadmin"
+  manage_master_user_password = true
+  skip_final_snapshot         = true
 
   # Increase the create timeout for large instances
   timeouts {
-    create = "60m"   # Default is often 40m - increase to 60m
+    create = "60m"   # Default is 40m - increase to 60m
     update = "80m"
     delete = "60m"
   }
@@ -84,33 +87,36 @@ aws service-quotas list-service-quotas --service-code rds \
 # Request a quota increase if needed
 aws service-quotas request-service-quota-increase \
   --service-code rds \
-  --quota-code L-7B9F4748 \
-  --desired-value 40
+  --quota-code L-7B6409FD \
+  --desired-value 80
 ```
 
 ## Fix 4: Idempotent Retry After Timeout
 
-If apply timed out but the resource was actually created (OpenTofu just didn't see it in time), re-running apply will import the resource automatically on the next plan:
+If apply timed out but the resource was actually created (OpenTofu just didn't see it in time), re-running apply will not import the resource automatically. Check the plan first, and import the resource explicitly if it exists remotely but is missing from state:
 
 ```bash
 # Run plan to see the current state
 tofu plan
 
-# If the resource exists and plan shows no changes, you're done
-# If plan wants to recreate it, import it first
+# If plan shows no changes, you're done
+# If the resource exists remotely but plan wants to recreate it, import it first
 tofu import aws_db_instance.main prod-postgres
+
+# Then apply again
+tofu apply
 ```
 
 ## Fix 5: Pre-Warm Resources That Take Long to Create
 
-For clusters and databases with known long creation times, create them in a separate configuration that runs before the main apply:
+For clusters and databases with known long creation times, prefer to isolate them in a separate configuration or staged pipeline. If you must use targeting, use it only in exceptional circumstances and follow it with a full apply:
 
 ```bash
-# Stage 1: Create long-running resources
+# Stage 1: Create long-running resources only as a one-off recovery step
 tofu apply -target=aws_eks_cluster.main
 tofu apply -target=aws_db_instance.main
 
-# Stage 2: Apply everything else that depends on them
+# Stage 2: Reconcile the full configuration
 tofu apply
 ```
 
@@ -125,4 +131,4 @@ tofu apply -parallelism=5
 
 ## Conclusion
 
-Timeout errors during resource creation are fixed by increasing the `timeouts` block values for slow-provisioning resources, investigating whether the underlying cloud service is genuinely slow (quotas, service degradation), and checking whether the resource was actually created (idempotent re-apply). For consistently slow resources, pre-warm them in a separate targeted apply before the main configuration.
+Timeout errors during resource creation are fixed by increasing resource-specific `timeouts` values for slow-provisioning resources, investigating whether the underlying cloud service is genuinely slow (quotas, service degradation), and checking whether the resource was actually created (import it explicitly if it exists remotely but is missing from state). For consistently slow resources, consider separating them into a staged workflow, and use targeted applies only in exceptional circumstances.
