@@ -60,6 +60,8 @@ resource "aws_ec2_transit_gateway" "main" {
 resource "aws_ec2_transit_gateway_vpc_attachment" "hub" {
   subnet_ids         = aws_subnet.hub_private[*].id
   transit_gateway_id = aws_ec2_transit_gateway.main.id
+  transit_gateway_default_route_table_association = false
+  transit_gateway_default_route_table_propagation = false
   vpc_id             = aws_vpc.hub.id
   tags = { Name = "hub-attachment" }
 }
@@ -69,6 +71,8 @@ resource "aws_ec2_transit_gateway_vpc_attachment" "spokes" {
   for_each           = aws_vpc.spokes
   subnet_ids         = [aws_subnet.spoke_private[each.key].id]
   transit_gateway_id = aws_ec2_transit_gateway.main.id
+  transit_gateway_default_route_table_association = false
+  transit_gateway_default_route_table_propagation = false
   vpc_id             = each.value.id
   tags = { Name = "${each.key}-attachment" }
 }
@@ -77,7 +81,7 @@ resource "aws_ec2_transit_gateway_vpc_attachment" "spokes" {
 ## Route Tables
 
 ```hcl
-# Hub route table - routes to all spokes
+# Hub route table - spoke CIDRs propagate here
 resource "aws_ec2_transit_gateway_route_table" "hub" {
   transit_gateway_id = aws_ec2_transit_gateway.main.id
   tags = { Name = "hub-rt" }
@@ -89,7 +93,7 @@ resource "aws_ec2_transit_gateway_route_table_association" "hub" {
   transit_gateway_route_table_id = aws_ec2_transit_gateway_route_table.hub.id
 }
 
-# Spoke route table - default route to hub only
+# Spoke route table - only hub routes propagate here
 resource "aws_ec2_transit_gateway_route_table" "spokes" {
   transit_gateway_id = aws_ec2_transit_gateway.main.id
   tags = { Name = "spoke-rt" }
@@ -107,13 +111,35 @@ resource "aws_ec2_transit_gateway_route_table_propagation" "hub_to_spokes" {
   transit_gateway_attachment_id  = aws_ec2_transit_gateway_vpc_attachment.hub.id
   transit_gateway_route_table_id = aws_ec2_transit_gateway_route_table.spokes.id
 }
+
+# Propagate spoke routes to the hub route table
+resource "aws_ec2_transit_gateway_route_table_propagation" "spokes_to_hub" {
+  for_each                       = aws_ec2_transit_gateway_vpc_attachment.spokes
+  transit_gateway_attachment_id  = each.value.id
+  transit_gateway_route_table_id = aws_ec2_transit_gateway_route_table.hub.id
+}
+
+# VPC subnet route tables must also point to the TGW
+resource "aws_route" "hub_to_spokes" {
+  for_each               = var.spokes
+  route_table_id         = aws_route_table.hub_private.id
+  destination_cidr_block = each.value
+  transit_gateway_id     = aws_ec2_transit_gateway.main.id
+}
+
+resource "aws_route" "spokes_to_hub" {
+  for_each               = var.spokes
+  route_table_id         = aws_route_table.spoke_private[each.key].id
+  destination_cidr_block = aws_vpc.hub.cidr_block
+  transit_gateway_id     = aws_ec2_transit_gateway.main.id
+}
 ```
 
 ## Best Practices
 
 1. **Disable default route table** on the TGW - explicit is safer than implicit
 2. **Use separate route tables** for hub and spokes to enforce isolation
-3. **Enable spoke-to-spoke isolation** by NOT propagating spoke routes to each other
+3. **Enable spoke-to-spoke isolation** by NOT propagating spoke routes to the shared spoke route table
 4. **Use VPC Flow Logs** on all VPCs for security auditing
 5. **Size TGW subnets at /28** - they only need a few IPs per AZ
 
