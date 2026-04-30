@@ -20,23 +20,23 @@ In IPv4, broadcast had significant drawbacks:
 
 3. **Breaks Layer 3 scalability**: Broadcasts cannot cross routers (by design), requiring flattened networks or VLAN stretching for protocols that rely on broadcast.
 
-4. **ARP scales poorly**: In large subnets (like AWS VPCs), ARP broadcasts from thousands of instances create significant overhead.
+4. **ARP scales poorly**: In large Ethernet subnets, ARP broadcasts from many hosts create significant overhead.
 
 ## IPv6 Replacements for Broadcast
 
-| IPv4 Broadcast Use | IPv6 Replacement |
+| Function / Protocol | IPv6 Replacement / Equivalent |
 |---|---|
 | ARP (find MAC for IP) | NDP Neighbor Solicitation to solicited-node multicast |
-| DHCP Discover | DHCPv6 Solicit to ff02::1:2 (all DHCP agents) |
-| Router Discovery | RS to ff02::2 (all routers) / RA from ff02::2 |
+| DHCP discovery | DHCPv6 Solicit to ff02::1:2 (all DHCP relay agents and servers) |
+| Router Discovery | RS to ff02::2 (all routers) / RA to ff02::1 (all nodes) or unicast |
 | All hosts (limited broadcast) | ff02::1 (all nodes, link-local) |
-| Subnet broadcast | ff02::1 (link-local all nodes) |
-| OSPF hellos | ff02::5 / ff02::6 (only OSPF routers) |
-| RIP updates | ff02::9 (only RIP routers) |
+| Subnet broadcast | No direct equivalent; ff02::1 reaches all nodes on the local link |
+| OSPFv3 control traffic | ff02::5 / ff02::6 (OSPF routers / DRs) |
+| RIPng updates | ff02::9 (all RIPng routers) |
 
 ## NDP: The ARP Replacement
 
-The most impactful change is NDP replacing ARP. In IPv4, finding the MAC for 192.168.1.100 broadcasts to every host on the subnet. In IPv6, the Neighbor Solicitation is sent to a **solicited-node multicast address** - which only the target host (and a tiny group of other hosts with similar last 24 bits) must process:
+The most impactful change is NDP replacing ARP. In IPv4, finding the MAC for 192.168.1.100 broadcasts to every host on the subnet. In IPv6, the Neighbor Solicitation is sent to a **solicited-node multicast address** - which only the target host (and any other hosts whose addresses share the same last 24 bits) must process:
 
 ```python
 import ipaddress
@@ -44,8 +44,8 @@ import ipaddress
 def solicited_node(unicast: str) -> str:
     """
     Compute the solicited-node multicast address.
-    Only hosts with the same last 24 bits join this group.
-    On a typical subnet, at most a few hosts share each group.
+    Hosts with the same last 24 bits join the same group.
+    IPv6 spreads address resolution across 2^24 multicast groups.
     """
     addr = ipaddress.IPv6Address(unicast)
     last_24 = int(addr) & 0xFFFFFF
@@ -58,7 +58,7 @@ target = "2001:db8::1234:5678"
 sn_addr = solicited_node(target)
 print(f"NS sent to: {sn_addr}")
 # Output: ff02::1:ff34:5678
-# Only hosts whose last 24 bits are 34:5678 need to process this!
+# Only hosts whose last 24 bits are 34:5678 listen on this group.
 ```
 
 ## Multicast Listener Discovery (MLD)
@@ -71,11 +71,11 @@ ip -6 maddr show dev eth0
 
 # You should see entries like:
 # ff02::1            (all nodes - joined automatically)
-# ff02::1:ff<last24> (solicited-node for each address)
-# ff02::1:ffXX:XXXX  (one per unicast/anycast address)
+# ff02::1:ff<last24> (solicited-node groups derived from configured addresses)
+# ff02::1:ffXX:XXXX  (multiple addresses can map to the same group)
 
 # Example for address 2001:db8::1:
-# ff02::1:ff00:1  ← solicited-node for ::1
+# ff02::1:ff00:1  ← solicited-node for 2001:db8::1
 ```
 
 ## Performance Benefits
@@ -87,15 +87,15 @@ IPv4 /24 subnet (254 hosts):
 
 IPv6 /64 subnet (same hosts):
   NS sent to solicited-node multicast
-  Only ~1-2 hosts share the same last 24 bits (on average)
-  All other hosts: uninterrupted by the packet
+  Address resolution spread across 16,777,216 groups
+  Non-target hosts: address-resolution interrupts greatly reduced
 ```
 
 On a switch level, multicast can be constrained by MLD snooping so only ports subscribed to a group receive the traffic - further reducing unnecessary processing.
 
 ## No "All-Ones" Subnet Address
 
-In IPv4, the all-ones host address in a subnet (e.g., 192.168.1.255 in a /24) was the subnet broadcast and was unusable. IPv6 has no such restriction - every address from `::0` to `::ffff:ffff:ffff:ffff` within a /64 is potentially usable as a host address.
+In IPv4, the all-ones host address in a subnet (e.g., 192.168.1.255 in a /24) was the subnet broadcast and was unusable. IPv6 has no such all-ones restriction, so the highest address in a /64 is not reserved for broadcast. There are still special-purpose addresses in IPv6, such as the subnet-router anycast address with an all-zero interface ID.
 
 ```python
 import ipaddress
@@ -104,9 +104,9 @@ import ipaddress
 ipv4_net = ipaddress.IPv4Network("192.168.1.0/24")
 print(f"IPv4 /24 usable hosts: {ipv4_net.num_addresses - 2}")  # 254
 
-# IPv6: ALL addresses usable (no broadcast)
+# IPv6: no broadcast address is reserved; a /64 still contains 2^64 addresses
 ipv6_net = ipaddress.IPv6Network("2001:db8::/64")
-print(f"IPv6 /64 usable hosts: {ipv6_net.num_addresses:,}")  # 18,446,744,073,709,551,616
+print(f"IPv6 /64 total addresses: {ipv6_net.num_addresses:,}")  # 18,446,744,073,709,551,616
 ```
 
 ## Conclusion
