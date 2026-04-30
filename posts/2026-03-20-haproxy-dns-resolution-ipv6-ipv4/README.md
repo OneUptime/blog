@@ -8,12 +8,12 @@ Description: Learn how to diagnose and fix HAProxy DNS resolution defaulting to 
 
 ---
 
-HAProxy can use DNS to resolve backend server hostnames dynamically. On dual-stack systems, the DNS resolver may return AAAA (IPv6) records first, causing HAProxy to attempt IPv6 connections to backends that only listen on IPv4.
+HAProxy can use DNS to resolve backend server hostnames dynamically. On dual-stack systems, if a backend hostname resolves to both A and AAAA records, HAProxy prefers IPv6 by default and may attempt an IPv6 connection to a backend that only listens on IPv4.
 
 ## Symptoms
 
 - HAProxy logs show `Connection refused` or `No route to host` errors.
-- The resolved address looks like `::ffff:10.0.0.1` (IPv4-mapped IPv6) or a real IPv6 address.
+- The resolved address in HAProxy runtime output is IPv6 even though the backend only listens on IPv4.
 - Backends are IPv4-only but hostnames resolve to both A and AAAA records.
 
 ## Checking What HAProxy Resolves
@@ -21,10 +21,10 @@ HAProxy can use DNS to resolve backend server hostnames dynamically. On dual-sta
 ```bash
 # Check what the system resolver returns for a hostname
 
-getent hosts backend.internal
+getent ahosts backend.internal
 
 # Look in HAProxy runtime for resolved addresses
-echo "show servers state" | socat stdio /var/run/haproxy/admin.sock | grep backend
+echo "show servers state" | socat stdio unix-connect:/var/run/haproxy/admin.sock | grep backend
 ```
 
 ## Fix 1: Use IPv4 Literals in the Backend
@@ -37,9 +37,9 @@ backend app_servers
     server app2 10.0.0.2:8080 check
 ```
 
-## Fix 2: Configure a Custom HAProxy Resolver with prefer-family
+## Fix 2: Configure HAProxy to Prefer IPv4 with resolve-prefer
 
-HAProxy's `resolvers` section supports a `prefer-family` directive to prefer A (IPv4) records.
+Use a `resolvers` section for DNS lookups and set `resolve-prefer ipv4` on each `server` line to prefer A (IPv4) records when both A and AAAA records are returned.
 
 ```haproxy
 # /etc/haproxy/haproxy.cfg
@@ -48,9 +48,8 @@ resolvers local_dns
     # Use your internal DNS server
     nameserver ns1 192.168.1.53:53
 
-    # Prefer IPv4 (A) records over IPv6 (AAAA) records
-    # Available in HAProxy 2.4+
-    resolve-retries 3
+    # DNS retry and cache settings
+    resolve_retries 3
     timeout resolve 1s
     timeout retry   1s
     hold valid 10s
@@ -67,7 +66,7 @@ The `resolve-prefer ipv4` option on the `server` line tells HAProxy to prefer A 
 
 ## Fix 3: Configure the System Resolver to Prefer IPv4
 
-Edit `/etc/gai.conf` to globally prefer IPv4 on the host:
+If you're using the system resolver through libc-based lookups, edit `/etc/gai.conf` to globally prefer IPv4 on the host:
 
 ```bash
 # /etc/gai.conf
@@ -75,7 +74,7 @@ Edit `/etc/gai.conf` to globally prefer IPv4 on the host:
 precedence ::ffff:0:0/96  100
 ```
 
-This affects all applications on the host, not just HAProxy.
+This affects applications that use the system resolver via `getaddrinfo(3)`, not HAProxy's internal DNS resolver in a `resolvers` section. Also note that adding a `precedence` rule overrides the default precedence table in `gai.conf`, so review the rest of the file before using it as a system-wide fix.
 
 ## Fix 4: Return Only A Records from DNS
 
@@ -90,7 +89,7 @@ backend-app1.internal.  IN  A  10.0.0.1
 
 ```bash
 # Confirm HAProxy resolves to an IPv4 address
-echo "show servers state" | socat stdio /var/run/haproxy/admin.sock
+echo "show servers state" | socat stdio unix-connect:/var/run/haproxy/admin.sock
 
 # Test direct connection to the backend IPv4 address
 curl -4 http://10.0.0.1:8080/health
@@ -102,6 +101,6 @@ systemctl reload haproxy
 ## Key Takeaways
 
 - Use IP addresses instead of hostnames in HAProxy backends when DNS is unreliable.
-- Use `resolve-prefer ipv4` on `server` lines with a `resolvers` block (HAProxy 2.4+).
-- Edit `/etc/gai.conf` on the OS to prefer IPv4 system-wide as a fallback fix.
+- Use `resolve-prefer ipv4` on `server` lines with a `resolvers` block.
+- Edit `/etc/gai.conf` only when you need libc-based, system-wide IPv4 preference on the host.
 - Always verify resolved addresses via `show servers state` on the HAProxy admin socket.
