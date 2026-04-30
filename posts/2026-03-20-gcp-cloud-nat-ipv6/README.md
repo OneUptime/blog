@@ -4,13 +4,13 @@ Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
 Tags: GCP, IPv6, Cloud NAT, NAT, Google Cloud, VPC, Outbound
 
-Description: Configure Google Cloud NAT to provide outbound IPv6 internet access for VMs with internal IPv6 (ULA) addresses, including NAT64 for IPv6-only VMs to reach IPv4 destinations.
+Description: Configure Google Cloud NAT NAT64 so IPv6-only VMs with internal IPv6 (ULA) addresses can reach IPv4 destinations on the internet.
 
 ## Introduction
 
-Google Cloud NAT supports two IPv6 scenarios: outbound IPv6 NAT for VMs with internal ULA IPv6 addresses that need to reach IPv6 internet destinations, and NAT64 for IPv6-only VMs that need to reach IPv4-only destinations. VMs with external IPv6 addresses do not need Cloud NAT for IPv6 outbound access. Cloud NAT for IPv6 is configured on a Cloud Router with the `--nat-all-subnet-ip-ranges` and endpoint independent mapping options.
+Google Cloud NAT supports IPv6 through Public NAT NAT64, which lets IPv6-only Compute Engine VMs reach IPv4 internet destinations. VMs with external IPv6 addresses can reach IPv6 internet destinations directly and do not use Cloud NAT for that traffic. For NAT64, configure Cloud NAT on a Cloud Router with `--nat64-all-v6-subnet-ip-ranges` or `--nat64-custom-v6-subnet-ip-ranges`, and configure DNS64 for IPv6-only VMs.
 
-## Configure Cloud NAT for IPv6 Outbound
+## Configure Cloud NAT for IPv6 Outbound (NAT64)
 
 ```bash
 PROJECT="my-project"
@@ -24,19 +24,18 @@ gcloud compute routers create router-main \
     --network=vpc-main \
     --description="Main router for NAT"
 
-# Step 2: Configure NAT with IPv6 support
+# Step 2: Configure NAT64 for all IPv6 subnet ranges in the region
 gcloud compute routers nats create nat-main \
     --project="$PROJECT" \
     --router=router-main \
     --region="$REGION" \
-    --nat-all-subnet-ip-ranges \
+    --nat64-all-v6-subnet-ip-ranges \
     --auto-allocate-nat-external-ips \
-    --enable-endpoint-independent-mapping \
     --enable-logging \
     --log-filter=ERRORS_ONLY
 
-# The --nat-all-subnet-ip-ranges flag includes IPv6 ranges from dual-stack subnets
-# VMs with internal IPv6 addresses can now reach IPv6 internet destinations
+# The --nat64-all-v6-subnet-ip-ranges flag enables NAT64 for IPv6 subnet ranges
+# IPv6-only VMs can now reach IPv4 internet destinations after DNS64 is configured
 
 # Verify NAT configuration
 gcloud compute routers nats describe nat-main \
@@ -49,7 +48,8 @@ gcloud compute routers nats describe nat-main \
 
 ```bash
 # NAT64 translates IPv6 packets to IPv4, allowing IPv6-only VMs to reach IPv4 destinations
-# This is used with IPv6-only subnets that have DNS64 configured
+# Use this subnet-scoped example instead of the all-subnets NAT64 example above
+# If you use INTERNAL IPv6, the VPC network must already have an internal /48 ULA range assigned
 
 # Step 1: Create IPv6-only subnet
 gcloud compute networks subnets create subnet-ipv6only \
@@ -59,18 +59,25 @@ gcloud compute networks subnets create subnet-ipv6only \
     --stack-type=IPV6_ONLY \
     --ipv6-access-type=INTERNAL
 
-# Step 2: Create Cloud Router (if not existing)
+# Step 2: Create a DNS64 policy for the VPC network
+gcloud dns policies create dns64-policy \
+    --project="$PROJECT" \
+    --description="DNS64 for IPv6-only VMs" \
+    --networks=vpc-main \
+    --enable-dns64-all-queries
+
+# Step 3: Create Cloud Router (if not existing)
 # (router-main already created above)
 
-# Step 3: Configure NAT with NAT64 enabled
+# Step 4: Configure Public NAT64 for the IPv6-only subnet
 gcloud compute routers nats create nat-nat64 \
     --project="$PROJECT" \
     --router=router-main \
     --region="$REGION" \
-    --nat-all-subnet-ip-ranges \
+    --nat64-custom-v6-subnet-ip-ranges=subnet-ipv6only \
     --auto-allocate-nat-external-ips \
-    --enable-endpoint-independent-mapping \
-    --type=PRIVATE
+    --enable-logging \
+    --log-filter=ERRORS_ONLY
 
 # Check NAT64 status
 gcloud compute routers get-status router-main \
@@ -85,26 +92,25 @@ gcloud compute routers get-status router-main \
 
 variable "project_id" {}
 variable "region" { default = "us-east1" }
+variable "network" { default = "vpc-main" }
 
 # Cloud Router
 resource "google_compute_router" "main" {
   name    = "router-main"
   region  = var.region
-  network = google_compute_network.main.id
+  network = var.network
   project = var.project_id
 }
 
-# Cloud NAT with IPv6 support
+# Public NAT with IPv4 NAT44 and IPv6 NAT64 support
 resource "google_compute_router_nat" "main" {
-  name                               = "nat-main"
-  router                             = google_compute_router.main.name
-  region                             = var.region
-  project                            = var.project_id
-  nat_ip_allocate_option             = "AUTO_ONLY"
-  source_subnetwork_ip_ranges_to_nat = "ALL_SUBNETWORKS_ALL_IP_RANGES"
-
-  # Required for correct IPv6 NAT behavior
-  enable_endpoint_independent_mapping = true
+  name                                 = "nat-main"
+  router                               = google_compute_router.main.name
+  region                               = var.region
+  project                              = var.project_id
+  nat_ip_allocate_option               = "AUTO_ONLY"
+  source_subnetwork_ip_ranges_to_nat   = "ALL_SUBNETWORKS_ALL_IP_RANGES"
+  source_subnetwork_ip_ranges_to_nat64 = "ALL_IPV6_SUBNETWORKS"
 
   log_config {
     enable = true
@@ -112,30 +118,26 @@ resource "google_compute_router_nat" "main" {
   }
 }
 
-# Output NAT external IPs used
-output "nat_ips" {
-  value = google_compute_router_nat.main.nat_ips
+# DNS64 must be configured separately for IPv6-only VMs
+
+# Output NAT gateway identifier
+output "nat_id" {
+  value = google_compute_router_nat.main.id
 }
 ```
 
 ## Test IPv6 Outbound via Cloud NAT
 
 ```bash
-# SSH into a VM with internal IPv6
-gcloud compute ssh vm-internal \
-    --project="$PROJECT" \
-    --zone=us-east1-b
+# Connect to an IPv6-only VM using your preferred access method
 
-# Inside the VM, test outbound IPv6 connectivity via NAT
-ping6 -c 3 2001:4860:4860::8888  # Google DNS IPv6
+# Inside the VM, verify that DNS64 synthesizes an AAAA record for an IPv4-only destination
+dig AAAA ipv4.icanhazip.com
 
-# Check what external IPv6 the VM appears as after NAT
-curl -6 https://ipv6.icanhazip.com
+# Test NAT64 connectivity to an IPv4-only destination
+curl -6 https://ipv4.icanhazip.com
 
-# This should return the Cloud NAT external IPv6 address, not the VM's ULA address
-
-# Test DNS resolution (should work via Cloud DNS)
-dig AAAA google.com
+# This should return the Cloud NAT external IPv4 address
 ```
 
 ## Monitoring Cloud NAT IPv6 Usage
@@ -143,23 +145,20 @@ dig AAAA google.com
 ```bash
 # View NAT gateway logs
 gcloud logging read \
-    "resource.type=nat_gateway AND jsonPayload.connection.protocol=UDP" \
+    'resource.type="nat_gateway"' \
     --project="$PROJECT" \
     --limit=50
 
-# Check NAT port usage
-gcloud compute routers get-status router-main \
+# Check NAT IP usage
+gcloud compute routers get-nat-ip-info router-main \
     --project="$PROJECT" \
-    --region="$REGION" \
-    --format="json(result.natGatewayStatuses)"
+    --region="$REGION"
 
-# View NAT port usage metrics in Cloud Monitoring
-# Metric: router.googleapis.com/nat/port_usage
-gcloud monitoring metrics list \
-    --filter="metric.type=router.googleapis.com/nat/port_usage" \
-    --project="$PROJECT"
+# View NAT usage metrics in Cloud Monitoring Metrics Explorer
+# Per-VM metric: compute.googleapis.com/nat/port_usage
+# Per-gateway metric: router.googleapis.com/nat/allocated_ports
 ```
 
 ## Conclusion
 
-Cloud NAT provides outbound IPv6 internet access for VMs with internal (ULA) IPv6 addresses by configuring `--nat-all-subnet-ip-ranges` on the NAT gateway, which automatically includes IPv6 ranges from dual-stack subnets. For IPv6-only VMs, NAT64 translates outbound IPv6 packets to IPv4. In Terraform, use `source_subnetwork_ip_ranges_to_nat = "ALL_SUBNETWORKS_ALL_IP_RANGES"` to include IPv6 ranges. VMs with external IPv6 addresses bypass Cloud NAT for direct internet access. Test outbound IPv6 NAT by curling `ipv6.icanhazip.com` and checking that the returned address matches the NAT gateway's external IP.
+Cloud NAT supports IPv6 on Google Cloud through Public NAT NAT64. Use `--nat64-all-v6-subnet-ip-ranges` or `--nat64-custom-v6-subnet-ip-ranges` to enable NAT64 for IPv6 subnet ranges, and configure DNS64 so IPv6-only VMs can resolve IPv4-only destinations. In Terraform, add `source_subnetwork_ip_ranges_to_nat64 = "ALL_IPV6_SUBNETWORKS"` when you want one gateway to serve IPv6 NAT64 alongside IPv4 NAT44. VMs with external IPv6 addresses reach IPv6 destinations directly, while NAT64 traffic uses the Cloud NAT gateway's external IPv4 addresses. Test NAT64 by curling `ipv4.icanhazip.com` and checking that the returned address matches the NAT gateway's external IPv4.
