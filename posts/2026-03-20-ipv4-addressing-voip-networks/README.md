@@ -8,7 +8,7 @@ Description: Design dedicated IPv4 subnets for VoIP networks with separate VLANs
 
 ## Introduction
 
-VoIP traffic is sensitive to latency (< 150 ms), jitter (< 30 ms), and packet loss (< 1%). Placing phones on a dedicated IPv4 subnet and VLAN, separate from data traffic, makes it possible to enforce QoS policies that guarantee voice quality.
+VoIP traffic is sensitive to latency (< 150 ms), jitter (< 30 ms), and packet loss (< 1%). Placing phones on a dedicated IPv4 subnet and VLAN, separate from data traffic, makes it possible to enforce QoS policies that protect voice quality.
 
 ## VoIP Network Architecture
 
@@ -34,7 +34,7 @@ for count in [20, 50, 100, 250, 500]:
     print(f"{count:4d} phones → {voip_subnet(count)}")
 ```
 
-## DHCP Configuration with Option 150 (Cisco TFTP)
+## DHCP Configuration with Options 66 and 150
 
 ```text
 # ISC DHCP for voice VLAN
@@ -44,7 +44,7 @@ subnet 10.1.20.0 netmask 255.255.255.0 {
   option routers 10.1.20.1;
   option domain-name-servers 10.1.1.10;
   option tftp-server-name "10.1.30.5";    # Option 66
-  option 150 ip 10.1.30.5;               # Cisco phone provisioning
+  option tftp-server-address 10.1.30.5;  # Option 150
   default-lease-time 86400;
   max-lease-time    172800;
 }
@@ -53,6 +53,8 @@ subnet 10.1.20.0 netmask 255.255.255.0 {
 ## Cisco Switch Voice VLAN
 
 ```cisco
+mls qos
+!
 ! Access port - data + voice
 interface GigabitEthernet1/0/1
  description IP-Phone-Port
@@ -72,7 +74,7 @@ interface Vlan20
 ## QoS Policy for VoIP Traffic
 
 ```cisco
-! Mark RTP voice traffic (UDP 16384-32767) as EF (DSCP 46)
+! Example: mark RTP voice traffic in a common UDP port range as EF (DSCP 46)
 ip access-list extended VOICE-RTP
  permit udp 10.1.20.0 0.0.0.255 any range 16384 32767
 
@@ -93,15 +95,15 @@ interface GigabitEthernet0/1
 ## NAT Considerations for SIP
 
 ```text
-SIP signaling contains private IPv4 addresses in SDP bodies.
+SIP and SDP can advertise private IPv4 addresses that break signaling or media across NAT.
 With NAT, use one of:
-  1. SIP ALG (Application Layer Gateway) - built into most routers
-  2. STUN/TURN servers for media traversal
-  3. Session Border Controller (SBC) at the network edge
-  4. SIP over TLS with a hosted SBC (recommended for production)
+  1. Session Border Controller (SBC) at the network edge or provider edge
+  2. ICE with STUN/TURN for endpoint and media traversal
+  3. NAT keepalives and symmetric RTP, depending on platform support
+  4. SIP ALG only if your provider or platform specifically requires it
 
 Disable SIP ALG if using a dedicated SBC:
-  (Cisco): no ip nat service sip udp port 5060
+  (Cisco): no ip nat service sip
 ```
 
 ## Sample IPv4 Plan for 200-Person Office
