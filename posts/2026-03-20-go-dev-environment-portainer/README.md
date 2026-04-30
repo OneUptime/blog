@@ -13,22 +13,18 @@ Go's fast compilation makes containerized development practical. Using `air` for
 ## Dev Environment Compose Stack
 
 ```yaml
-version: "3.8"
-
 services:
   go-dev:
-    image: golang:1.22-alpine
+    image: golang:1.26-alpine
     restart: unless-stopped
     ports:
       - "8080:8080"    # Application
       - "2345:2345"    # Delve debugger
     environment:
       CGO_ENABLED: "0"
-      GOOS: linux
-      GOARCH: amd64
       GOPATH: /go
     volumes:
-      - ./src:/app
+      - /path/to/your/project:/app
       # Cache Go modules to speed up builds
       - go_module_cache:/go/pkg/mod
     working_dir: /app
@@ -56,9 +52,9 @@ tmp_dir = "tmp"
 
 [build]
   # Command to build the app
-  cmd = "go build -gcflags='all=-N -l' -o tmp/main ."
+  cmd = "go build -gcflags='all=-N -l' -o ./tmp/main ./src"
   # Binary to run after build
-  bin = "tmp/main"
+  entrypoint = ["./tmp/main"]
   # Watch these directories
   include_dir = ["src", "internal", "pkg"]
   # Exclude these
@@ -109,16 +105,22 @@ func main() {
 ## Remote Debugging with Delve
 
 ```bash
-# Start with Delve (uncomment in command):
-# dlv debug --headless --listen=:2345 --api-version=2 --accept-multiclient .
+# Start with Delve instead of air:
+# dlv debug ./src --headless --listen=:2345 --api-version=2 --accept-multiclient
 
 # VS Code launch.json
 {
   "type": "go",
+  "debugAdapter": "dlv-dap",
   "request": "attach",
   "mode": "remote",
-  "remotePath": "/app",
   "port": 2345,
-  "host": "127.0.0.1"
+  "host": "127.0.0.1",
+  "substitutePath": [
+    {
+      "from": "${workspaceFolder}",
+      "to": "/app"
+    }
+  ]
 }
 ```
