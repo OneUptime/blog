@@ -117,9 +117,13 @@ resource "aws_iam_user_policy" "inline_policy" {
 
 ## Storing Secrets Safely
 
-Never commit access keys to version control. Use AWS Secrets Manager or SSM Parameter Store:
+Never commit access keys to version control. If you write them to AWS Secrets Manager with OpenTofu, protect your state carefully because the secret value is still stored there.
 
 ```hcl
+resource "aws_secretsmanager_secret" "user_creds" {
+  name = "iam/jane.doe"
+}
+
 resource "aws_secretsmanager_secret_version" "user_creds" {
   secret_id = aws_secretsmanager_secret.user_creds.id
 
@@ -136,7 +140,7 @@ resource "aws_secretsmanager_secret_version" "user_creds" {
 2. **Enable MFA** for all human users with console access
 3. **Rotate access keys** regularly and use access key age reporting
 4. **Use groups** to manage permissions at scale rather than attaching policies to individual users
-5. **Mark secrets as sensitive** in OpenTofu outputs to prevent logging
+5. **Mark secrets as sensitive** in OpenTofu outputs to hide them from normal CLI output, and protect your state because sensitive values are still stored there
 
 ## Conclusion
 
