@@ -13,33 +13,39 @@ Wireshark provides a rich graphical and filter-based interface for analyzing IPv
 ## Key Wireshark Display Filters
 
 ```text
-# Capture all IPv6 traffic
+# Show all IPv6 traffic
 
 ip.version == 6
 ipv6
 
-# Filter by Next Header (extension header type)
-ipv6.nxt == 44   # Fragment Header
-ipv6.nxt == 43   # Routing Header
+# Filter by extension header protocol
+ipv6.fraghdr     # Fragment Header
+ipv6.routing     # Routing Header
+ipv6.hopopts     # Hop-by-Hop Options
+ah               # Authentication Header
+esp              # ESP
+
+# Or filter by the IPv6 header's base Next Header field
+ipv6.nxt == 44   # Fragment Header is first after the IPv6 header
+ipv6.nxt == 43   # Routing Header is first after the IPv6 header
 ipv6.nxt == 0    # Hop-by-Hop Options
 ipv6.nxt == 51   # Authentication Header
 ipv6.nxt == 50   # ESP
 
-# Filter IPv6 packets that HAVE extension headers
-# (any packet where the base Next Header != upper-layer protocol)
-not (ipv6.nxt == 6 or ipv6.nxt == 17 or ipv6.nxt == 58 or ipv6.nxt == 59)
+# Filter IPv6 packets that have common extension headers
+ipv6.hopopts or ipv6.dstopts or ipv6.routing or ipv6.fraghdr or ah or esp or mipv6
 
 # Find fragmented packets
-ipv6.fragment
+ipv6.fraghdr
 
 # Find the first fragment of a fragmented sequence
-ipv6.fragment.offset == 0 and ipv6.fragment.more == 1
+ipv6.fraghdr.offset == 0 and ipv6.fraghdr.more == 1
 
 # Find the last fragment
-ipv6.fragment.more == 0 and ipv6.fragment.offset != 0
+ipv6.fraghdr.more == 0 and ipv6.fraghdr.offset != 0
 
 # Filter by Fragment ID
-ipv6.fragment.id == 0x12345678
+ipv6.fraghdr.ident == 0x12345678
 
 # Filter by Flow Label
 ipv6.flow == 0x2a3b4
@@ -55,34 +61,37 @@ ipv6.routing.type == 4    # Type 4 (Segment Routing)
 These go in the "Capture filter" field to filter at capture time:
 
 ```text
-# Capture packets with Fragment Header (Next Header byte at offset 6)
+# Capture packets whose first extension header is Fragment
 ip6[6] == 44
 
-# Capture packets with Hop-by-Hop (Next Header byte at offset 6)
+# Capture packets with Hop-by-Hop (must immediately follow the IPv6 header)
 ip6[6] == 0
 
-# Capture packets with any extension header (not direct to upper layer)
-not (ip6[6] == 6 or ip6[6] == 17 or ip6[6] == 58 or ip6[6] == 59)
+# Capture packets with a Fragment Header anywhere in the IPv6 header chain
+ip6 protochain 44
 
-# Capture fragments
-ip6[6] == 44 and (ip6[48] & 0x01) == 1  # Fragment with M=1
+# Capture packets with common extension headers
+ip6 protochain 0 or ip6 protochain 43 or ip6 protochain 44 or ip6 protochain 50 or ip6 protochain 51 or ip6 protochain 60
+
+# Capture first or middle fragments when the Fragment Header is first after IPv6
+ip6[6] == 44 and (ip6[43] & 0x01) != 0  # M flag set
 ```
 
 ## Setting Up a Wireshark Capture
 
 ```bash
-# Capture IPv6 extension headers to a file for Wireshark analysis
+# Capture common IPv6 extension headers to a file for Wireshark analysis
 sudo tcpdump -i eth0 -w /tmp/ext-headers.pcap \
-    "ip6[6] == 44 or ip6[6] == 43 or ip6[6] == 0 or ip6[6] == 51"
+    "ip6 protochain 44 or ip6 protochain 43 or ip6 protochain 0 or ip6 protochain 51"
 
 # Open in Wireshark
 wireshark /tmp/ext-headers.pcap &
 
 # Or use tshark (Wireshark command line) for scripted analysis
-tshark -r /tmp/ext-headers.pcap -Y "ipv6.nxt == 44" \
+tshark -r /tmp/ext-headers.pcap -Y "ipv6.fraghdr" \
     -T fields -e frame.number -e ipv6.src -e ipv6.dst \
-    -e ipv6.fragment.id -e ipv6.fragment.offset \
-    -e ipv6.fragment.more
+    -e ipv6.fraghdr.ident -e ipv6.fraghdr.offset \
+    -e ipv6.fraghdr.more
 ```
 
 ## Analyzing Fragment Reassembly
@@ -91,22 +100,22 @@ Wireshark can automatically reassemble fragments and show the reassembled packet
 
 ```bash
 # tshark: show fragment reassembly information
-tshark -r capture.pcap -Y "ipv6.fragment" \
+tshark -r capture.pcap -Y "ipv6.fraghdr" \
     -T fields \
     -e frame.number \
     -e ipv6.src \
     -e ipv6.dst \
-    -e ipv6.fragment.id \
-    -e ipv6.fragment.offset \
-    -e ipv6.fragment.more \
+    -e ipv6.fraghdr.ident \
+    -e ipv6.fraghdr.offset \
+    -e ipv6.fraghdr.more \
     -e ipv6.fragment.overlap \
     -e ipv6.fragments \
-    -e ipv6.reassembled_length
+    -e ipv6.reassembled.length
 
 # Enable IPv6 reassembly in tshark
-tshark -r capture.pcap \
+tshark -2 -r capture.pcap \
     -o "ipv6.reassemble_fragments:TRUE" \
-    -Y "ip.reassembled_in != 0"  # Show reassembled packets
+    -Y "ipv6.reassembled.in"  # Show reassembled packets
 ```
 
 ## Debugging Routing Header Issues
@@ -133,12 +142,12 @@ Add these coloring rules in Edit → Coloring Rules to visually highlight extens
 
 ```text
 Rule name: IPv6 Fragment
-Filter: ipv6.fragment
+Filter: ipv6.fraghdr
 Background: Orange
 Foreground: Black
 
 Rule name: IPv6 with Extension Headers
-Filter: (ipv6) and not (ipv6.nxt == 6 or ipv6.nxt == 17 or ipv6.nxt == 58)
+Filter: ipv6.hopopts or ipv6.dstopts or ipv6.routing or ipv6.fraghdr or ah or esp or mipv6
 Background: Light blue
 Foreground: Black
 
@@ -155,7 +164,7 @@ Foreground: White
 # Suspect: Fragment Header being dropped
 
 # Step 1: Capture traffic during the failure
-sudo tcpdump -i eth0 -w /tmp/debug.pcap host 2001:db8::server
+sudo tcpdump -i eth0 -w /tmp/debug.pcap host 2001:db8::1
 
 # Step 2: Open in Wireshark and look for ICMPv6 Packet Too Big
 tshark -r /tmp/debug.pcap -Y "icmpv6.type == 2" \
@@ -163,7 +172,7 @@ tshark -r /tmp/debug.pcap -Y "icmpv6.type == 2" \
     -e icmpv6.mtu
 
 # Step 3: Check if fragments are being created but not received
-tshark -r /tmp/debug.pcap -Y "ipv6.fragment"
+tshark -r /tmp/debug.pcap -Y "ipv6.fraghdr"
 # Count outgoing fragments vs reassembled packets
 
 # Step 4: Check for ICMPv6 Time Exceeded (fragment reassembly timeout)
@@ -172,4 +181,4 @@ tshark -r /tmp/debug.pcap -Y "icmpv6.type == 3 and icmpv6.code == 1"
 
 ## Conclusion
 
-Wireshark's IPv6 dissectors provide detailed visibility into every extension header type, with automatic fragment reassembly and rich filtering capabilities. The display filters `ipv6.nxt == 44` (fragment), `ipv6.routing.type` (routing type), and `ipv6.fragment` are the most commonly needed for extension header debugging. When diagnosing mysterious IPv6 connectivity failures, always look for ICMPv6 Packet Too Big messages (type 2) and fragment header drops, as these are the most common causes of "works with small packets but fails with large data" symptoms.
+Wireshark's IPv6 dissectors provide detailed visibility into every extension header type, with automatic fragment reassembly and rich filtering capabilities. The display filters `ipv6.fraghdr` (fragment), `ipv6.routing.type` (routing type), and `ipv6.hopopts` / `ipv6.dstopts` are the most commonly needed for extension header debugging. When diagnosing mysterious IPv6 connectivity failures, always look for ICMPv6 Packet Too Big messages (type 2) and fragment header drops, as these are the most common causes of "works with small packets but fails with large data" symptoms.
