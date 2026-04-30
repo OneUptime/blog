@@ -24,9 +24,8 @@ ip netns list
 sudo ip netns exec ns-ipv6-test ip link list
 
 # The namespace starts with only a loopback interface
-# Bring up loopback with IPv6
+# Bring up loopback
 sudo ip netns exec ns-ipv6-test ip link set lo up
-sudo ip netns exec ns-ipv6-test ip -6 addr add ::1/128 dev lo
 ```
 
 ## Adding IPv6 Addresses to Namespace
@@ -51,13 +50,14 @@ ping6 -c 3 2001:db8::2   # From host to namespace
 sudo ip netns exec ns-ipv6-test ping6 -c 3 2001:db8::1  # From namespace to host
 ```
 
-## Enabling IPv6 in the Namespace
+## Enabling IPv6 Forwarding in the Namespace
 
 ```bash
 # Enable IPv6 forwarding in the namespace
 sudo ip netns exec ns-ipv6-test sysctl -w net.ipv6.conf.all.forwarding=1
 
-# Allow router advertisements (needed for SLAAC)
+# Allow router advertisements even when forwarding is enabled
+# (needed for SLAAC on this interface)
 sudo ip netns exec ns-ipv6-test sysctl -w net.ipv6.conf.veth1.accept_ra=2
 
 # Check IPv6 configuration
@@ -107,11 +107,11 @@ echo "  ip netns exec $NS_NAME ping6 -c 3 2001:db8:1::1"
 ## Cleaning Up
 
 ```bash
-# Delete the namespace (also removes interfaces moved into it)
-sudo ip netns del ns-ipv6-test
-
-# Remove veth pair on host
+# Delete the veth pair on the host (this removes the namespace peer too)
 sudo ip link del veth0
+
+# Delete the namespace
+sudo ip netns del ns-ipv6-test
 ```
 
 ## Monitoring with OneUptime
