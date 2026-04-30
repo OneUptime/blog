@@ -13,7 +13,7 @@ This guide covers How to Create GitHub Webhooks with OpenTofu using OpenTofu wit
 ## Prerequisites
 
 - OpenTofu v1.6+
-- API credentials for the relevant service
+- A GitHub token with access to create repositories and manage webhooks
 - Basic understanding of OpenTofu concepts
 
 ## Step 1: Install and Configure the Provider
@@ -22,23 +22,15 @@ This guide covers How to Create GitHub Webhooks with OpenTofu using OpenTofu wit
 terraform {
   required_version = ">= 1.6.0"
   required_providers {
-    # Provider configuration depends on the specific service
-    # Replace with the actual provider source and version
-    example = {
-      source  = "hashicorp/example"
-      version = "~> 1.0"
+    github = {
+      source  = "integrations/github"
+      version = "~> 6.0"
     }
   }
 }
 
-# Configure the provider with credentials
-
-provider "example" {
-  # Use environment variables for credentials
-  # EXAMPLE_API_KEY, EXAMPLE_TOKEN, etc.
-  
-  # Or specify directly (not recommended for secrets)
-  # api_key = var.api_key
+provider "github" {
+  # Uses GITHUB_TOKEN and GITHUB_OWNER from the environment
 }
 ```
 
@@ -46,83 +38,69 @@ provider "example" {
 
 ```bash
 # Use environment variables for authentication
-export PROVIDER_API_KEY="your-api-key"
-export PROVIDER_TOKEN="your-token"
-export PROVIDER_ORG="your-organization"
+export GITHUB_TOKEN="your-github-token"
+export GITHUB_OWNER="your-github-user-or-organization"
 ```
 
 ```hcl
-variable "api_key" {
-  description = "API key for authentication"
+variable "repository_name" {
+  description = "The name of the repository to create"
   type        = string
-  sensitive   = true
 }
 
-variable "organization" {
-  description = "Organization name or ID"
+variable "webhook_url" {
+  description = "The URL that will receive GitHub webhook deliveries"
   type        = string
+}
+
+variable "webhook_secret" {
+  description = "Shared secret used to sign webhook payloads"
+  type        = string
+  sensitive   = true
 }
 ```
 
 ## Step 3: Create Basic Resources
 
 ```hcl
-# Example resource creation
-# Replace with actual resource types for the provider
-
-resource "example_project" "main" {
-  name        = "${var.environment}-project"
+resource "github_repository" "main" {
+  name        = var.repository_name
   description = "Managed by OpenTofu"
-
-  tags = {
-    environment = var.environment
-    managed_by  = "opentofu"
-  }
-}
-
-# Configure access control
-resource "example_team" "developers" {
-  name    = "developers"
-  project = example_project.main.id
-  role    = "contributor"
+  visibility  = "private"
+  auto_init   = true
 }
 ```
 
 ## Step 4: Configure Advanced Settings
 
 ```hcl
-# Monitoring and alerting configuration
-resource "example_alert" "main" {
-  name      = "critical-alert"
-  project   = example_project.main.id
-  severity  = "critical"
-  threshold = 90
+resource "github_repository_webhook" "main" {
+  repository = github_repository.main.name
 
-  notification {
-    channel = var.notification_channel
+  configuration {
+    url          = var.webhook_url
+    content_type = "json"
+    secret       = var.webhook_secret
+    insecure_ssl = false
   }
-}
 
-# Backup and retention policies
-resource "example_backup_policy" "main" {
-  name              = "daily-backup"
-  project           = example_project.main.id
-  retention_days    = 30
-  schedule          = "0 2 * * *"  # Daily at 2 AM
+  active = true
+
+  events = ["push", "pull_request"]
 }
 ```
 
 ## Step 5: Define Outputs
 
 ```hcl
-output "project_id" {
-  description = "The ID of the created project"
-  value       = example_project.main.id
+output "repository_name" {
+  description = "The name of the created repository"
+  value       = github_repository.main.name
 }
 
-output "project_name" {
-  description = "The name of the created project"
-  value       = example_project.main.name
+output "webhook_id" {
+  description = "The ID of the created repository webhook"
+  value       = github_repository_webhook.main.id
 }
 ```
 
@@ -145,14 +123,14 @@ tofu apply
 ## Common Issues and Solutions
 
 ### Authentication Errors
-Verify API keys are valid and have the required permissions. Check for typos in environment variable names.
+Verify `GITHUB_TOKEN` and `GITHUB_OWNER` are set correctly and that the token has permission to create repositories and manage repository webhooks. Fine-grained personal access tokens need the repository `Webhooks` permission with `write` access.
 
 ### Rate Limiting
-Add `depends_on` to serialize resource creation and avoid hitting API rate limits.
+Use the GitHub provider's `write_delay_ms`, `read_delay_ms`, `max_retries`, and `retry_delay_ms` settings if you run into API throttling.
 
 ### Provider Version Conflicts
 Pin to a specific provider version range to ensure reproducible deployments.
 
 ## Conclusion
 
-You have successfully configured How to Create GitHub Webhooks with OpenTofu using OpenTofu. This provider enables you to manage all aspects of the service as code, ensuring consistency and enabling GitOps workflows. Always use environment variables or secure secret stores for sensitive credentials.
+You have successfully configured GitHub webhooks with OpenTofu. Using the GitHub provider, you can manage repositories and webhook integrations as code for consistent CI/CD and event-driven workflows. Always use environment variables or secure secret stores for sensitive credentials.
