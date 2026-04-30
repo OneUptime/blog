@@ -8,7 +8,7 @@ Description: Diagnose and fix IPv6 traffic being blocked by firewalls, including
 
 ## Introduction
 
-IPv6 firewalls can silently break IPv6 networking by blocking essential ICMPv6 messages. Unlike IPv4 where ICMP is optional, IPv6 relies on ICMPv6 for NDP, PMTUD, router discovery, and other critical functions. A firewall that blocks all ICMPv6 will appear to work (hosts can get addresses) but cause mysterious failures in connectivity and performance.
+IPv6 firewalls can silently break IPv6 networking by blocking essential ICMPv6 messages. Unlike IPv4, IPv6 relies much more directly on ICMPv6 for NDP, PMTUD, router discovery, and other critical functions. A firewall that blocks ICMPv6 can leave partial connectivity in place while causing mysterious failures in addressing, routing, and performance.
 
 ## Check Current ip6tables Rules
 
@@ -48,7 +48,7 @@ sudo nft list chain ip6 filter input
 ## Essential ICMPv6 Rules (Must Allow)
 
 ```bash
-# ICMPv6 types that MUST NOT be blocked:
+# Critical ICMPv6 types that must not be blocked on a typical host:
 
 # 1. Allow all ICMPv6 (simplest, recommended for basic setups)
 sudo ip6tables -A INPUT -p icmpv6 -j ACCEPT
@@ -63,23 +63,25 @@ sudo ip6tables -A INPUT -p icmpv6 --icmpv6-type 136 -j ACCEPT  # NA
 sudo ip6tables -A OUTPUT -p icmpv6 --icmpv6-type 135 -j ACCEPT
 sudo ip6tables -A OUTPUT -p icmpv6 --icmpv6-type 136 -j ACCEPT
 
-# Router Discovery (required for SLAAC and default route)
-sudo ip6tables -A INPUT -p icmpv6 --icmpv6-type 133 -j ACCEPT   # RS
+# Router Discovery for hosts (required for SLAAC and default route)
+sudo ip6tables -A OUTPUT -p icmpv6 --icmpv6-type 133 -j ACCEPT  # RS
 sudo ip6tables -A INPUT -p icmpv6 --icmpv6-type 134 -j ACCEPT   # RA
+# If this system acts as a router, also allow inbound RS and outbound RA.
 
 # PMTUD - Packet Too Big (required to avoid MTU black holes)
 sudo ip6tables -A INPUT -p icmpv6 --icmpv6-type 2 -j ACCEPT
 
-# Destination Unreachable and Time Exceeded (for connectivity feedback)
+# Destination Unreachable, Time Exceeded, and Parameter Problem
 sudo ip6tables -A INPUT -p icmpv6 --icmpv6-type 1 -j ACCEPT
 sudo ip6tables -A INPUT -p icmpv6 --icmpv6-type 3 -j ACCEPT
+sudo ip6tables -A INPUT -p icmpv6 --icmpv6-type 4 -j ACCEPT
 ```
 
 ## Diagnosing Firewall as the Cause
 
 ```bash
-# Temporarily flush all ip6tables rules to test
-# WARNING: This removes ALL firewall protection
+# Temporarily flush the ip6tables-managed filter rules to test
+# WARNING: This removes firewall protection from the filter table
 sudo ip6tables -F
 sudo ip6tables -X
 sudo ip6tables -P INPUT ACCEPT
@@ -87,13 +89,13 @@ sudo ip6tables -P OUTPUT ACCEPT
 sudo ip6tables -P FORWARD ACCEPT
 
 # Test if IPv6 works after flush
-ping6 -c 3 2001:4860:4860::8888
+ping -6 -c 3 2001:4860:4860::8888
 curl -6 https://ipv6.google.com
 
 # If it works after flush, a firewall rule was blocking it
 # Add rules back carefully
 
-# Check for packet drop counters
+# Check for rule counters
 sudo ip6tables -L -n -v | grep -v "^$\|^Chain\|^target" | \
     awk '$1 > 0 {print}' | head -20
 ```
@@ -114,7 +116,7 @@ ip6tables -P FORWARD DROP
 ip6tables -P OUTPUT ACCEPT
 
 # Allow established connections
-ip6tables -A INPUT -m state --state ESTABLISHED,RELATED -j ACCEPT
+ip6tables -A INPUT -m conntrack --ctstate ESTABLISHED,RELATED -j ACCEPT
 
 # Allow loopback
 ip6tables -A INPUT -i lo -j ACCEPT
@@ -144,7 +146,7 @@ table ip6 filter {
         type filter hook input priority 0; policy drop;
         iif lo accept
         ct state established,related accept
-        ip6 nexthdr icmpv6 accept  # Allow all ICMPv6
+        meta l4proto ipv6-icmp accept  # Allow all ICMPv6
         tcp dport { ssh, http, https } accept
     }
     chain output {
@@ -152,7 +154,7 @@ table ip6 filter {
     }
     chain forward {
         type filter hook forward priority 0; policy drop;
-        ip6 nexthdr icmpv6 accept  # Allow ICMPv6 forwarding
+        meta l4proto ipv6-icmp accept  # Allow ICMPv6 forwarding
     }
 }
 EOF
@@ -161,4 +163,4 @@ sudo systemctl restart nftables
 
 ## Conclusion
 
-IPv6 firewalls must allow ICMPv6 to function correctly. The most common mistake is blocking all ICMP including ICMPv6, which breaks NDP (Layer 2 resolution), PMTUD (MTU discovery), and router/prefix discovery. Always allow ICMPv6 types 1, 2, 3, 133, 134, 135, and 136 at minimum. Test by temporarily flushing ip6tables rules - if IPv6 immediately works, a rule is the cause. Use packet drop counters (`ip6tables -L -n -v`) to identify which rule is dropping traffic.
+IPv6 firewalls must allow ICMPv6 to function correctly. The most common mistake is blocking all ICMP including ICMPv6, which breaks NDP (link-layer address resolution), PMTUD (MTU discovery), and router/prefix discovery. At minimum, make sure ICMPv6 error handling (Types 1, 2, 3, and 4) and the Neighbor Discovery / Router Discovery messages your node needs are allowed; many setups simply allow all ICMPv6. Test by temporarily flushing the ip6tables-managed filter rules - if IPv6 immediately works, a rule is the cause. Use packet counters (`ip6tables -L -n -v`) to identify which rule is dropping traffic.
