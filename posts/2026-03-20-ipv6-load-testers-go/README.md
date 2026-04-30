@@ -12,9 +12,10 @@ Description: Build IPv6 load testing tools in Go to benchmark servers, test dual
 package main
 
 import (
-    "crypto/tls"
+    "context"
     "flag"
     "fmt"
+    "io"
     "net"
     "net/http"
     "sync"
@@ -33,29 +34,23 @@ type LoadTestResult struct {
 
 func runIPv6LoadTest(target string, concurrency, requests int, forceIPv6 bool) *LoadTestResult {
     result := &LoadTestResult{MinLatency: 1<<62}
+    dialer := &net.Dialer{
+        Timeout:   10 * time.Second,
+        KeepAlive: 30 * time.Second,
+    }
 
     // Create IPv6-aware HTTP transport
     transport := &http.Transport{
-        DialContext: (&net.Dialer{
-            Timeout:   10 * time.Second,
-            KeepAlive: 30 * time.Second,
-        }).DialContext,
-        TLSClientConfig:     &tls.Config{InsecureSkipVerify: false},
+        DialContext:         dialer.DialContext,
         MaxIdleConns:        concurrency,
         MaxIdleConnsPerHost: concurrency,
     }
 
     if forceIPv6 {
         // Override dialer to force IPv6
-        transport.DialContext = func(ctx interface{ Deadline() (time.Time, bool) },
-            network, addr string) (net.Conn, error) {
-            d := &net.Dialer{Timeout: 10 * time.Second}
-            return d.DialContext(ctx.(interface {
-                Deadline() (time.Time, bool)
-                Done() <-chan struct{}
-                Err() error
-                Value(interface{}) interface{}
-            }), "tcp6", addr)
+        transport.DialContext = func(ctx context.Context,
+            _ string, addr string) (net.Conn, error) {
+            return dialer.DialContext(ctx, "tcp6", addr)
         }
     }
 
@@ -76,17 +71,23 @@ func runIPv6LoadTest(target string, concurrency, requests int, forceIPv6 bool) *
 
             start := time.Now()
             resp, err := client.Get(target)
+            if err != nil {
+                atomic.AddInt64(&result.TotalRequests, 1)
+                atomic.AddInt64(&result.ErrorCount, 1)
+                return
+            }
+
+            _, bodyErr := io.Copy(io.Discard, resp.Body)
+            if closeErr := resp.Body.Close(); bodyErr == nil {
+                bodyErr = closeErr
+            }
             latency := time.Since(start).Nanoseconds()
 
             atomic.AddInt64(&result.TotalRequests, 1)
-            if err != nil || resp.StatusCode >= 500 {
+            if bodyErr != nil || resp.StatusCode >= 500 {
                 atomic.AddInt64(&result.ErrorCount, 1)
-                if err == nil {
-                    resp.Body.Close()
-                }
                 return
             }
-            resp.Body.Close()
 
             atomic.AddInt64(&result.SuccessCount, 1)
             atomic.AddInt64(&result.TotalLatency, latency)
@@ -125,8 +126,18 @@ func main() {
     result := runIPv6LoadTest(*target, *concurrency, *requests, *ipv6only)
     elapsed := time.Since(start)
 
-    successPct := float64(result.SuccessCount) / float64(result.TotalRequests) * 100
-    avgLatency := float64(result.TotalLatency) / float64(result.SuccessCount) / 1e6
+    successPct := 0.0
+    avgLatency := 0.0
+    minLatency := 0.0
+    maxLatency := 0.0
+    if result.TotalRequests > 0 {
+        successPct = float64(result.SuccessCount) / float64(result.TotalRequests) * 100
+    }
+    if result.SuccessCount > 0 {
+        avgLatency = float64(result.TotalLatency) / float64(result.SuccessCount) / 1e6
+        minLatency = float64(result.MinLatency) / 1e6
+        maxLatency = float64(result.MaxLatency) / 1e6
+    }
 
     fmt.Printf("\n=== Results ===\n")
     fmt.Printf("Duration:         %.2fs\n", elapsed.Seconds())
@@ -135,8 +146,8 @@ func main() {
     fmt.Printf("Errors:           %d\n", result.ErrorCount)
     fmt.Printf("Throughput:       %.1f req/s\n", float64(result.TotalRequests)/elapsed.Seconds())
     fmt.Printf("Avg latency:      %.2f ms\n", avgLatency)
-    fmt.Printf("Min latency:      %.2f ms\n", float64(result.MinLatency)/1e6)
-    fmt.Printf("Max latency:      %.2f ms\n", float64(result.MaxLatency)/1e6)
+    fmt.Printf("Min latency:      %.2f ms\n", minLatency)
+    fmt.Printf("Max latency:      %.2f ms\n", maxLatency)
 }
 ```
 
@@ -148,14 +159,12 @@ package main
 import (
     "fmt"
     "net"
-    "net/http"
     "time"
 )
 
 type ProtocolResult struct {
     Protocol string
     Latency  time.Duration
-    Status   int
     Error    error
 }
 
@@ -166,25 +175,25 @@ func testBothProtocols(host string, port int) [2]ProtocolResult {
     // Test IPv6
     go func() {
         start := time.Now()
-        addr := fmt.Sprintf("[%s]:%d", host, port)
+        addr := net.JoinHostPort(host, fmt.Sprintf("%d", port))
         conn, err := net.DialTimeout("tcp6", addr, 5*time.Second)
         latency := time.Since(start)
         if err != nil {
-            done <- ProtocolResult{"IPv6", latency, 0, err}
+            done <- ProtocolResult{"IPv6", latency, err}
             return
         }
         conn.Close()
-        done <- ProtocolResult{"IPv6", latency, 200, nil}
+        done <- ProtocolResult{"IPv6", latency, nil}
     }()
 
-    // Test IPv4 (if dual-stack DNS)
+    // Test IPv4 if the hostname has A records
     go func() {
-        time.Sleep(50 * time.Millisecond)  // Happy Eyeballs delay
+        time.Sleep(50 * time.Millisecond)
         start := time.Now()
         // Resolve IPv4 for same hostname
         addrs, err := net.LookupHost(host)
         if err != nil {
-            done <- ProtocolResult{"IPv4", 0, 0, err}
+            done <- ProtocolResult{"IPv4", 0, err}
             return
         }
         var ipv4 string
@@ -195,17 +204,17 @@ func testBothProtocols(host string, port int) [2]ProtocolResult {
             }
         }
         if ipv4 == "" {
-            done <- ProtocolResult{"IPv4", 0, 0, fmt.Errorf("no IPv4 address")}
+            done <- ProtocolResult{"IPv4", 0, fmt.Errorf("no IPv4 address")}
             return
         }
-        conn, err := net.DialTimeout("tcp4", fmt.Sprintf("%s:%d", ipv4, port), 5*time.Second)
+        conn, err := net.DialTimeout("tcp4", net.JoinHostPort(ipv4, fmt.Sprintf("%d", port)), 5*time.Second)
         latency := time.Since(start)
         if err != nil {
-            done <- ProtocolResult{"IPv4", latency, 0, err}
+            done <- ProtocolResult{"IPv4", latency, err}
             return
         }
         conn.Close()
-        done <- ProtocolResult{"IPv4", latency, 200, nil}
+        done <- ProtocolResult{"IPv4", latency, nil}
     }()
 
     for i := 0; i < 2; i++ {
@@ -217,8 +226,8 @@ func testBothProtocols(host string, port int) [2]ProtocolResult {
 
 func main() {
     hosts := []struct{ host string; port int }{
-        {"2001:db8::server", 80},
-        {"2001:db8::server", 443},
+        {"example.com", 80},
+        {"example.com", 443},
     }
     for _, h := range hosts {
         fmt.Printf("\nTesting %s:%d\n", h.host, h.port)
@@ -251,6 +260,11 @@ func tcpConnectionTest(target string, ratePerSec int, duration time.Duration) {
     var established int64
     var failed int64
 
+    if ratePerSec <= 0 {
+        fmt.Println("ratePerSec must be greater than 0")
+        return
+    }
+
     interval := time.Second / time.Duration(ratePerSec)
     end := time.Now().Add(duration)
     var wg sync.WaitGroup
@@ -275,15 +289,19 @@ func tcpConnectionTest(target string, ratePerSec int, duration time.Duration) {
     wg.Wait()
 
     total := established + failed
+    successPct := 0.0
+    if total > 0 {
+        successPct = float64(established) / float64(total) * 100
+    }
     fmt.Printf("Results: %d total, %d established (%.1f%%), %d failed\n",
-        total, established, float64(established)/float64(total)*100, failed)
+        total, established, successPct, failed)
 }
 
 func main() {
-    tcpConnectionTest("[2001:db8::server]:80", 100, 30*time.Second)
+    tcpConnectionTest("[2001:db8::1]:80", 100, 30*time.Second)
 }
 ```
 
 ## Conclusion
 
-IPv6 load testing in Go uses `net.DialTimeout("tcp6", "[addr]:port", timeout)` to force IPv6 connections and `http.Transport` with a custom `DialContext` to control address family selection. Use `sync/atomic` for thread-safe counters and goroutine pools with a semaphore channel to control concurrency. Compare IPv6 vs IPv4 performance by racing both protocols - a latency gap greater than 5ms indicates routing or peering issues. For production load testing, use existing tools like `wrk` or `k6` with IPv6 targets (`http://[2001:db8::1]/`); build custom Go load testers when you need IPv6-specific metrics or protocol-level testing of TCP connection establishment rates.
+IPv6 load testing in Go uses `net.DialTimeout("tcp6", "[addr]:port", timeout)` to force IPv6 connections and `http.Transport` with a custom `DialContext` to control address family selection. Use `sync/atomic` for thread-safe counters and goroutine pools with a semaphore channel to control concurrency. Compare IPv6 vs IPv4 performance by testing both protocols against the same dual-stack hostname; consistent latency differences can point to different routing or peering paths, but they should be interpreted in the context of your network and the remote service. For production load testing, use existing tools like `wrk` or `k6` with IPv6 targets (`http://[2001:db8::1]/`); build custom Go load testers when you need IPv6-specific metrics or protocol-level testing of TCP connection establishment rates.
