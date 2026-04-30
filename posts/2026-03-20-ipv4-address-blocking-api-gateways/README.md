@@ -27,7 +27,8 @@ curl -X POST http://localhost:8001/plugins \
 ```
 
 ```yaml
-# declarative (deck/KongIngress)
+# declarative (decK / DB-less)
+_format_version: "3.0"
 plugins:
   - name: ip-restriction
     config:
@@ -95,8 +96,9 @@ const express = require('express');
 const redis = require('redis');
 
 const app = express();
-const client = redis.createClient();
-await client.connect();
+app.set('trust proxy', 1);
+
+let client;
 
 async function ipBlockMiddleware(req, res, next) {
     const ip = req.ip.replace('::ffff:', '');
@@ -111,8 +113,17 @@ async function blockIP(ip, ttl = 3600) {
     else await client.set(`blocked:${ip}`, '1');
 }
 
-app.use(ipBlockMiddleware);
-app.get('/api/data', (req, res) => res.json({ ok: true }));
+async function main() {
+    client = redis.createClient();
+    client.on('error', err => console.error('Redis Client Error', err));
+    await client.connect();
+
+    app.use(ipBlockMiddleware);
+    app.get('/api/data', (req, res) => res.json({ ok: true }));
+    app.listen(3000);
+}
+
+main().catch(console.error);
 ```
 
 ## Terraform - AWS WAF IP Set
@@ -129,6 +140,42 @@ resource "aws_wafv2_ip_set" "blocked_ips" {
   ]
 }
 
+resource "aws_wafv2_web_acl" "main" {
+  name  = "blocked-ipv4-acl"
+  scope = "REGIONAL"
+
+  default_action {
+    allow {}
+  }
+
+  rule {
+    name     = "block-listed-ipv4"
+    priority = 1
+
+    action {
+      block {}
+    }
+
+    statement {
+      ip_set_reference_statement {
+        arn = aws_wafv2_ip_set.blocked_ips.arn
+      }
+    }
+
+    visibility_config {
+      cloudwatch_metrics_enabled = true
+      metric_name                = "blockListedIpv4"
+      sampled_requests_enabled   = true
+    }
+  }
+
+  visibility_config {
+    cloudwatch_metrics_enabled = true
+    metric_name                = "blockedIpv4Acl"
+    sampled_requests_enabled   = true
+  }
+}
+
 resource "aws_wafv2_web_acl_association" "api_gw" {
   resource_arn = aws_api_gateway_stage.prod.arn
   web_acl_arn  = aws_wafv2_web_acl.main.arn
@@ -137,4 +184,4 @@ resource "aws_wafv2_web_acl_association" "api_gw" {
 
 ## Conclusion
 
-Block IPv4 addresses at the gateway layer for zero-overhead enforcement - the request never reaches your application. Use static lists for known bad actors, CIDR ranges for subnets, and dynamic Redis-backed lists for automated threat response.
+Block IPv4 addresses as early as possible in the request path so your application does not have to process known-bad traffic. Use static lists for known bad actors, CIDR ranges for subnets, and dynamic Redis-backed lists for automated threat response.
