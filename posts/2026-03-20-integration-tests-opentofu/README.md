@@ -8,7 +8,7 @@ Description: Learn how to write integration tests for OpenTofu configurations us
 
 ## Introduction
 
-Integration tests use `command = apply` in OpenTofu test files to create real infrastructure, validate it, and destroy it. Unlike unit tests with mock providers, integration tests verify that your module works with the actual cloud provider - catching API changes, permission issues, and configuration errors that mocks cannot detect.
+Integration tests use `command = apply` in OpenTofu test files to create real infrastructure, validate it, and destroy it after the run completes. Unlike unit tests with mock providers, integration tests verify that your module works with the actual cloud provider - catching API changes, permission issues, and configuration errors that mocks cannot detect.
 
 ## Basic Integration Test
 
@@ -76,47 +76,38 @@ run "create_test_database" {
 # Cleanup is automatic - tofu test destroys resources after each run block
 ```
 
-## Multi-Step Integration Tests
+## Multi-Module Integration Tests
 
 ```hcl
 # tests/integration/app_stack.tftest.hcl
 
-# Step 1: Create networking
-run "create_networking" {
+# Compose dependent modules in a helper module so they are
+# created and validated in the same apply run.
+run "create_app_stack" {
   command = apply
 
   module {
-    source = "./modules/vpc"
+    source = "./tests/helpers/app_stack"
   }
 
   variables {
     vpc_cidr    = "10.99.0.0/16"
     environment = "test"
   }
-}
 
-# Step 2: Create database using outputs from step 1
-run "create_database" {
-  command = apply
-
-  module {
-    source = "./modules/database"
-  }
-
-  variables {
-    vpc_id     = run.create_networking.vpc_id
-    subnet_ids = run.create_networking.private_subnet_ids
-    environment = "test"
+  assert {
+    condition     = output.vpc_id != ""
+    error_message = "VPC should be created"
   }
 
   assert {
-    condition     = aws_db_instance.main.status == "available"
+    condition     = output.db_status == "available"
     error_message = "Database should be available"
   }
 }
 ```
 
-## Testing Network Connectivity
+## Testing Network Access Rules
 
 ```hcl
 # tests/integration/connectivity.tftest.hcl
@@ -131,7 +122,7 @@ run "test_security_group_rules" {
 
   assert {
     # Verify security group allows internal traffic
-    condition     = length([for rule in aws_security_group.app.ingress : rule if rule.cidr_blocks[0] == "10.0.0.0/8"]) > 0
+    condition     = length([for rule in aws_security_group.app.ingress : rule if contains(rule.cidr_blocks, "10.0.0.0/8")]) > 0
     error_message = "Security group should allow traffic from internal CIDR"
   }
 
@@ -146,14 +137,17 @@ run "test_security_group_rules" {
 ## Running Integration Tests
 
 ```bash
-# Run integration tests (requires real AWS credentials)
-tofu test tests/integration/ -verbose
+# Initialize the working directory
+tofu init
 
-# Run with a specific workspace/account
-AWS_PROFILE=test-account tofu test tests/integration/
+# Run integration tests (requires real AWS credentials)
+tofu test -test-directory=tests/integration -verbose
+
+# Run with a specific AWS profile/account
+AWS_PROFILE=test-account tofu test -test-directory=tests/integration
 
 # Run a single integration test
-tofu test tests/integration/vpc_integration.tftest.hcl
+tofu test -filter=tests/integration/vpc_integration.tftest.hcl
 ```
 
 ## CI/CD Configuration
@@ -168,10 +162,14 @@ on:
   schedule:
     - cron: '0 2 * * *'  # Nightly
 
+permissions:
+  contents: read
+  id-token: write
+
 jobs:
   integration-test:
     runs-on: ubuntu-latest
-    environment: test  # Requires approval for PR runs
+    environment: test  # Optional: use environment-scoped vars/secrets and protection rules
 
     steps:
       - uses: actions/checkout@v4
@@ -180,10 +178,14 @@ jobs:
           role-to-assume: ${{ vars.TEST_ROLE_ARN }}
           aws-region: us-east-1
 
-      - uses: opentofu/setup-opentofu@v1
+      - uses: opentofu/setup-opentofu@v2
+
+      - name: Initialize OpenTofu
+        run: tofu init
+        working-directory: modules/vpc
 
       - name: Run integration tests
-        run: tofu test tests/integration/ -verbose
+        run: tofu test -test-directory=tests/integration -verbose
         working-directory: modules/vpc
 ```
 
