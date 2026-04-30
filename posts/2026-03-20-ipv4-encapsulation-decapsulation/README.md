@@ -43,10 +43,11 @@ def decapsulate_ethernet_ipv4(frame: bytes):
     # IPv4 header: minimum 20 bytes
     version_ihl = eth_payload[0]
     ihl = (version_ihl & 0x0F) * 4   # Header length in bytes
+    total_length = struct.unpack("!H", eth_payload[2:4])[0]
     protocol = eth_payload[9]
     src_ip = socket.inet_ntoa(eth_payload[12:16])
     dst_ip = socket.inet_ntoa(eth_payload[16:20])
-    ip_payload = eth_payload[ihl:]    # Strip IP header
+    ip_payload = eth_payload[ihl:total_length]    # Strip IP header and exclude any Ethernet padding
 
     return src_ip, dst_ip, protocol, ip_payload
 
@@ -67,7 +68,7 @@ print(f"Src={src} Dst={dst} Proto={proto} Payload={payload.hex()}")
 
 ## IP-in-IP and GRE Tunneling
 
-IPv4 datagrams can themselves be encapsulated inside another IP datagram (IP-in-IP, protocol 4) or inside GRE (protocol 47), creating tunnel overlays.
+IPv4 datagrams can themselves be encapsulated inside another IP datagram (IP-in-IP, protocol 4) or inside GRE carried over IPv4 (protocol 47), creating tunnel overlays.
 
 ```bash
 # Create a GRE tunnel on Linux
@@ -80,5 +81,5 @@ ip link set gre0 up
 
 - Encapsulation adds headers layer-by-layer going down the stack; decapsulation strips them going up.
 - The IPv4 Protocol field tells the receiver which upper-layer handler should process the payload.
-- Tunneling is just another layer of encapsulation, wrapping IP datagrams inside other IP datagrams.
-- Each layer's header is independent; changing one layer does not require modifying others.
+- Tunneling is another layer of encapsulation; IP-in-IP adds an outer IP header, while GRE adds an outer IP header plus a GRE header.
+- Each layer adds its own header, but changing encapsulated data can require updating outer length, checksum, or framing fields.
