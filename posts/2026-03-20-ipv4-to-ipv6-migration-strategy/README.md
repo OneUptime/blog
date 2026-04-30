@@ -8,7 +8,7 @@ Description: A practical guide to migrating from IPv4 to IPv6, covering dual-sta
 
 ## Why Migrate to IPv6?
 
-IPv4 address exhaustion is a real problem - the global pool of available IPv4 addresses ran out years ago. IPv6 provides a vastly larger address space (340 undecillion addresses), built-in security features, and eliminates the need for NAT. Migration is no longer optional for organizations building scalable internet infrastructure.
+IPv4 address exhaustion is a real problem - the global pool of available IPv4 addresses ran out years ago. IPv6 provides a vastly larger address space (340 undecillion addresses), standardized support for IPsec, and reduces reliance on NAT. Migration is no longer optional for organizations building scalable internet infrastructure.
 
 ## Migration Strategies
 
@@ -20,7 +20,7 @@ Run IPv4 and IPv6 simultaneously. This is the most practical approach and allows
 Client ─→ Load Balancer (dual-stack) ─→ Backend (IPv4 initially, IPv6 later)
 ```
 
-**AWS Example:** Enable dual-stack on an Application Load Balancer:
+**AWS Example:** Enable dual-stack on an Application Load Balancer after assigning IPv6 CIDR blocks to the VPC and subnets:
 
 ```hcl
 resource "aws_lb" "app" {
@@ -47,9 +47,9 @@ ip link set tun6 up
 
 Allow IPv6-only clients to communicate with IPv4-only servers. DNS64 synthesizes AAAA records from A records, and NAT64 translates packets at the network boundary.
 
-### 4. IPv6-Only with CLAT
+### 4. IPv6-Only with 464XLAT (CLAT)
 
-Use Customer-side Lightweight Address Translation (CLAT) to provide IPv4 compatibility on IPv6-only networks, as used by mobile carriers.
+Use 464XLAT, which combines a Customer-side Translator (CLAT) with a Provider-side Translator (PLAT), to provide IPv4 compatibility on IPv6-only networks, as used by mobile carriers.
 
 ## Migration Checklist
 
@@ -76,11 +76,12 @@ sudo ip -6 addr add 2001:db8:1::1/64 dev eth0
 ### Phase 3: Application Updates
 
 ```python
+import socket
+
 # Bad: hardcoded IPv4
 server = socket.create_connection(("192.168.1.10", 8080))
 
 # Good: use hostnames, support both
-import socket
 server = socket.create_connection(("app.example.com", 8080))
 ```
 
@@ -88,14 +89,14 @@ server = socket.create_connection(("app.example.com", 8080))
 
 ```bash
 # Test IPv6 connectivity
-ping6 2001:4860:4860::8888
+ping -6 2001:4860:4860::8888
 curl -6 https://example.com
 
 # Check AAAA record resolution
 dig AAAA example.com
 
 # Trace IPv6 route
-traceroute6 2001:4860:4860::8888
+traceroute -6 2001:4860:4860::8888
 ```
 
 ## Common Pitfalls
