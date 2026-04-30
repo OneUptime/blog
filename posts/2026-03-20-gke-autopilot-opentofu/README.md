@@ -4,15 +4,17 @@ Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
 Tags: OpenTofu, GCP, GKE, Kubernetes, Autopilot, Terraform, Infrastructure as Code
 
-Description: Learn how to deploy a Google Kubernetes Engine Autopilot cluster with OpenTofu, including network configuration, node pool settings, workload identity, and kubectl access.
+Description: Learn how to deploy a Google Kubernetes Engine Autopilot cluster with OpenTofu, including network configuration, private cluster setup, Workload Identity Federation, and kubectl access.
 
 ---
 
-GKE Autopilot is a fully managed Kubernetes mode where Google manages the control plane, node pools, and infrastructure. You pay only for what your pods use. This guide covers deploying GKE Autopilot with OpenTofu.
+GKE Autopilot is a fully managed Kubernetes mode where Google manages the control plane, nodes, and much of the cluster infrastructure. In most situations, you pay for the CPU, memory, and storage that your workloads request. This guide covers deploying GKE Autopilot with OpenTofu.
 
 ---
 
 ## Prerequisites
+
+Before you apply the configuration, make sure the Google Kubernetes Engine API, Compute Engine API, and IAM Service Account Credentials API are enabled, and that `gcloud` and `kubectl` are installed locally.
 
 ```hcl
 # providers.tf
@@ -21,7 +23,7 @@ terraform {
   required_providers {
     google = {
       source  = "hashicorp/google"
-      version = "~> 5.0"
+      version = "~> 7.0"
     }
   }
 }
@@ -77,6 +79,7 @@ resource "google_container_cluster" "autopilot" {
 
   # Enable Autopilot mode
   enable_autopilot = true
+  deletion_protection = false
 
   # Network configuration
   network    = google_compute_network.gke_vpc.id
@@ -96,12 +99,14 @@ resource "google_container_cluster" "autopilot" {
 
   master_authorized_networks_config {
     cidr_blocks {
-      cidr_block   = "0.0.0.0/0"
-      display_name = "all"
+      # Replace with your admin IP range
+      cidr_block   = "203.0.113.0/29"
+      display_name = "admin-access"
     }
   }
 
-  # Workload Identity
+  # Autopilot uses Workload Identity Federation for GKE by default;
+  # this keeps the workload pool explicit
   workload_identity_config {
     workload_pool = "${var.project_id}.svc.id.goog"
   }
@@ -133,7 +138,7 @@ resource "google_container_cluster" "autopilot" {
 
 ---
 
-## Workload Identity for GKE Pods
+## Workload Identity Federation for GKE Pods
 
 ```hcl
 # workload_identity.tf
@@ -159,6 +164,27 @@ resource "google_service_account_iam_binding" "workload_identity" {
   ]
 }
 ```
+
+Autopilot already has Workload Identity Federation for GKE enabled, but you still need to create and annotate the Kubernetes ServiceAccount that your Pods use.
+
+```yaml
+# app-sa.yaml
+# Replace PROJECT_ID with your Google Cloud project ID
+apiVersion: v1
+kind: Namespace
+metadata:
+  name: production
+---
+apiVersion: v1
+kind: ServiceAccount
+metadata:
+  name: app-sa
+  namespace: production
+  annotations:
+    iam.gke.io/gcp-service-account: gke-app-sa@PROJECT_ID.iam.gserviceaccount.com
+```
+
+Apply this manifest before deploying the sample workload.
 
 ---
 
@@ -196,7 +222,7 @@ output "cluster_endpoint" {
 }
 
 output "cluster_ca_certificate" {
-  value     = google_container_cluster.autopilot.master_auth.0.cluster_ca_certificate
+  value     = google_container_cluster.autopilot.master_auth[0].cluster_ca_certificate
   sensitive = true
 }
 ```
@@ -208,12 +234,12 @@ output "cluster_ca_certificate" {
 ```bash
 # After tofu apply
 gcloud container clusters get-credentials autopilot-cluster \
-    --region us-central1 \
+    --location us-central1 \
     --project my-project
 
 # Verify
 kubectl get nodes
-# In Autopilot, nodes appear when pods are scheduled
+# Empty Autopilot clusters can have zero usable nodes until a workload is scheduled
 # kubectl get pods --all-namespaces
 ```
 
@@ -227,6 +253,7 @@ apiVersion: apps/v1
 kind: Deployment
 metadata:
   name: nginx
+  namespace: production
 spec:
   replicas: 2
   selector:
@@ -237,6 +264,7 @@ spec:
       labels:
         app: nginx
     spec:
+      serviceAccountName: app-sa
       containers:
         - name: nginx
           image: nginx:latest
@@ -252,15 +280,15 @@ spec:
 
 1. **Use private clusters** for production - enable_private_nodes = true
 2. **Configure Cloud NAT** for private clusters to pull images from the internet
-3. **Use Workload Identity** instead of node service accounts for pod GCP access
-4. **Set resource requests** on all pods - Autopilot requires them for scheduling
+3. **Use Workload Identity Federation for GKE** instead of node service accounts for Pod access to Google Cloud APIs
+4. **Set resource requests** on all Pods - Autopilot applies defaults if you omit them, but explicit requests make scheduling and costs more predictable
 5. **Use REGULAR release channel** - it receives updates after they've been validated
 
 ---
 
 ## Conclusion
 
-GKE Autopilot with OpenTofu gives you a fully managed Kubernetes cluster with minimal configuration. Enable Autopilot mode, configure VPC and secondary ranges, set up Workload Identity, and deploy - Google handles everything else.
+GKE Autopilot with OpenTofu gives you a fully managed Kubernetes cluster with minimal configuration. Enable Autopilot mode, configure VPC and secondary ranges, set up Workload Identity Federation for GKE, and deploy - Google handles node provisioning and most cluster operations.
 
 ---
 
