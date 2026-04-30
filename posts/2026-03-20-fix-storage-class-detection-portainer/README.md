@@ -23,7 +23,7 @@ kubectl get storageclasses -o jsonpath='{range .items[*]}{.metadata.name}{"\t"}{
 
 ## Step 2: Set a Default Storage Class
 
-If no default storage class is set, Portainer cannot auto-detect which to use:
+If no default storage class is set, Portainer cannot automatically choose one for PersistentVolumeClaims that do not set `storageClassName`:
 
 ```bash
 # Mark a storage class as default (replace 'local-path' with your storage class name)
@@ -35,13 +35,13 @@ kubectl get storageclasses
 # The default class should show "(default)" next to its name
 ```
 
-## Step 3: Install a Default Storage Class
+## Step 3: Install a Storage Provisioner
 
-For bare-metal Kubernetes clusters without a CSI driver, install one:
+For bare-metal Kubernetes clusters without dynamic provisioning, install a storage provisioner. After installation, return to Step 2 and mark the new StorageClass as default if needed:
 
 ```bash
 # Option 1: Rancher Local Path Provisioner (good for single-node)
-kubectl apply -f https://raw.githubusercontent.com/rancher/local-path-provisioner/master/deploy/local-path-storage.yaml
+kubectl apply -f https://raw.githubusercontent.com/rancher/local-path-provisioner/v0.0.35/deploy/local-path-storage.yaml
 
 # Option 2: NFS Subdir External Provisioner (for NFS)
 helm repo add nfs-subdir-external-provisioner \
@@ -55,16 +55,22 @@ helm install nfs-subdir-external-provisioner \
 
 ## Step 4: Check Portainer RBAC Permissions
 
-Portainer needs permission to read storage classes:
+Portainer or the Portainer Agent needs permission to read storage classes:
 
 ```bash
-# Check if the Portainer service account can list storage classes
-kubectl auth can-i list storageclasses --as=system:serviceaccount:portainer:portainer-sa
+# Replace <service-account-name> with the account used by your Portainer deployment
+# Common values are 'portainer' for local installs and 'portainer-sa-clusteradmin' for agent installs
+kubectl auth can-i list storageclasses \
+  --as=system:serviceaccount:portainer:<service-account-name>
 
-# If "no", create the required ClusterRole binding
-kubectl create clusterrolebinding portainer-storage \
-  --clusterrole=view \
-  --serviceaccount=portainer:portainer-sa
+# If "no", create a minimal ClusterRole and bind it to that service account
+kubectl create clusterrole portainer-storageclasses \
+  --verb=get,list,watch \
+  --resource=storageclasses.storage.k8s.io
+
+kubectl create clusterrolebinding portainer-storageclasses \
+  --clusterrole=portainer-storageclasses \
+  --serviceaccount=portainer:<service-account-name>
 ```
 
 ## Step 5: Refresh Kubernetes Environment in Portainer
@@ -77,7 +83,7 @@ After fixing the storage class:
 
 ## Step 6: Check CSI Driver Pods
 
-If using a CSI driver, verify its pods are healthy:
+If using a CSI driver, verify its pods are healthy (replace `kube-system` if your driver runs in a different namespace):
 
 ```bash
 # Check CSI driver pods are running
