@@ -9,10 +9,43 @@ Description: DHCP pool exhaustion occurs when all addresses in a scope are lease
 ## Detecting Pool Exhaustion
 
 ```bash
-# Count active leases
+# Count current, unexpired active leases
+ACTIVE=$(python3 << 'EOF'
+import re
+from datetime import datetime, timezone
 
-ACTIVE=$(grep -c "binding state active" /var/lib/dhcp/dhcpd.leases)
-POOL_SIZE=100  # Your pool size
+with open("/var/lib/dhcp/dhcpd.leases") as f:
+    content = f.read()
+
+current = {}
+for match in re.finditer(r'lease\s+([\d.]+)\s+\{(.*?)\}', content, re.DOTALL):
+    current[match.group(1)] = match.group(2)
+
+now = datetime.now(timezone.utc)
+
+def parse_ends(block):
+    default_match = re.search(r'ends\s+\d+\s+(\d+/\d+/\d+\s+\d+:\d+:\d+);', block)
+    if default_match:
+        return datetime.strptime(default_match.group(1), "%Y/%m/%d %H:%M:%S").replace(
+            tzinfo=timezone.utc
+        )
+
+    epoch_match = re.search(r'ends\s+epoch\s+(\d+);', block)
+    if epoch_match:
+        return datetime.fromtimestamp(int(epoch_match.group(1)), tz=timezone.utc)
+
+    return None
+
+print(sum(
+    1
+    for block in current.values()
+    if re.search(r'^\s*binding state active;', block, re.MULTILINE)
+    and (ends := parse_ends(block))
+    and ends > now
+))
+EOF
+)
+POOL_SIZE=100  # Set this to the size of your DHCP range
 
 echo "Active leases: $ACTIVE / $POOL_SIZE"
 if [ "$ACTIVE" -ge "$POOL_SIZE" ]; then
@@ -23,9 +56,9 @@ fi
 # Get-DhcpServerv4ScopeStatistics -ScopeId 192.168.1.0
 ```
 
-Server logs will show:
+Server logs may include:
 ```text
-DHCPDISCOVER from aa:bb:cc:dd:ee:ff via eth0: no free leases
+DHCPDISCOVER from aa:bb:cc:dd:ee:ff via eth0: network 192.168.1.0/24: no free leases
 ```
 
 ## Solution 1: Reduce Lease Time
@@ -46,8 +79,8 @@ subnet 192.168.1.0 netmask 255.255.255.0 {
 ## Solution 2: Expand the Address Pool
 
 ```text
-# Original scope: .50 to .200 (150 addresses)
-# Expanded: .50 to .240 (190 addresses)
+# Original scope: .50 to .200 (151 addresses)
+# Expanded: .50 to .240 (191 addresses)
 
 subnet 192.168.1.0 netmask 255.255.255.0 {
     range 192.168.1.50 192.168.1.240;   # Expanded pool
@@ -55,12 +88,12 @@ subnet 192.168.1.0 netmask 255.255.255.0 {
 }
 ```
 
-## Solution 3: Reclaim Stale Leases
+## Solution 3: Review Stale Lease Records
 
-Manually expire leases for devices that are no longer on the network:
+Review current lease records before cleanup during a maintenance window:
 
 ```bash
-# Find leases that haven't been renewed in > 7 days
+# List current active leases that are already expired
 python3 << 'EOF'
 import re
 from datetime import datetime, timezone
@@ -68,36 +101,47 @@ from datetime import datetime, timezone
 with open("/var/lib/dhcp/dhcpd.leases") as f:
     content = f.read()
 
-# Parse each lease block
-lease_blocks = re.findall(r'lease ([\d.]+) \{(.*?)\}', content, re.DOTALL)
+current = {}
+for match in re.finditer(r'lease\s+([\d.]+)\s+\{(.*?)\}', content, re.DOTALL):
+    current[match.group(1)] = match.group(2)
+
 now = datetime.now(timezone.utc)
-stale = []
+expired = []
 
-for ip, block in lease_blocks:
-    ends_match = re.search(r'ends \d+ (\d+/\d+/\d+ \d+:\d+:\d+)', block)
-    state_match = re.search(r'binding state (\w+)', block)
-    if ends_match and state_match and state_match.group(1) == 'active':
-        try:
-            ends = datetime.strptime(ends_match.group(1), "%Y/%m/%d %H:%M:%S")
-            ends = ends.replace(tzinfo=timezone.utc)
-            if ends < now:
-                stale.append(ip)
-        except ValueError:
-            pass
+def parse_ends(block):
+    default_match = re.search(r'ends\s+\d+\s+(\d+/\d+/\d+\s+\d+:\d+:\d+);', block)
+    if default_match:
+        return datetime.strptime(default_match.group(1), "%Y/%m/%d %H:%M:%S").replace(
+            tzinfo=timezone.utc
+        )
 
-print(f"Stale expired leases: {stale}")
+    epoch_match = re.search(r'ends\s+epoch\s+(\d+);', block)
+    if epoch_match:
+        return datetime.fromtimestamp(int(epoch_match.group(1)), tz=timezone.utc)
+
+    return None
+
+for ip, block in current.items():
+    state_match = re.search(r'^\s*binding state (\w+);', block, re.MULTILINE)
+    ends = parse_ends(block)
+    if state_match and state_match.group(1) == "active" and ends and ends < now:
+        expired.append((ip, ends.isoformat()))
+
+print("Expired current lease records:")
+for ip, ends in expired:
+    print(f"{ip}\t{ends}")
 EOF
 ```
 
 ## Solution 4: Subnet the Network
 
-If the single subnet is too small, divide clients into multiple smaller subnets:
+If you can redistribute clients across separate VLANs and scopes, divide them into multiple smaller subnets:
 
 ```python
 import ipaddress
 
 # Original: 192.168.1.0/24 (254 hosts)
-# Split into two /25s for different departments
+# Split into two /25s for different departments/VLANs
 original = ipaddress.IPv4Network("192.168.1.0/24")
 for subnet in original.subnets(new_prefix=25):
     print(f"  {subnet}  ({subnet.num_addresses - 2} hosts)")
@@ -108,7 +152,7 @@ for subnet in original.subnets(new_prefix=25):
 ```text
 # Extend to a /23 block to double address space
 subnet 192.168.0.0 netmask 255.255.254.0 {
-    range 192.168.0.50 192.168.1.250;   # ~450 addresses
+    range 192.168.0.50 192.168.1.250;   # 457 addresses in this range
     option routers 192.168.0.1;
 }
 ```
@@ -118,8 +162,47 @@ subnet 192.168.0.0 netmask 255.255.254.0 {
 ```bash
 # Alert when pool > 80% full
 #!/bin/bash
-LEASES=$(grep -c "binding state active" /var/lib/dhcp/dhcpd.leases 2>/dev/null || echo 0)
-POOL=150
+LEASES=$(python3 << 'EOF'
+import re
+from datetime import datetime, timezone
+from pathlib import Path
+
+lease_file = Path("/var/lib/dhcp/dhcpd.leases")
+try:
+    content = lease_file.read_text()
+except FileNotFoundError:
+    print(0)
+    raise SystemExit
+
+current = {}
+for match in re.finditer(r'lease\s+([\d.]+)\s+\{(.*?)\}', content, re.DOTALL):
+    current[match.group(1)] = match.group(2)
+
+now = datetime.now(timezone.utc)
+
+def parse_ends(block):
+    default_match = re.search(r'ends\s+\d+\s+(\d+/\d+/\d+\s+\d+:\d+:\d+);', block)
+    if default_match:
+        return datetime.strptime(default_match.group(1), "%Y/%m/%d %H:%M:%S").replace(
+            tzinfo=timezone.utc
+        )
+
+    epoch_match = re.search(r'ends\s+epoch\s+(\d+);', block)
+    if epoch_match:
+        return datetime.fromtimestamp(int(epoch_match.group(1)), tz=timezone.utc)
+
+    return None
+
+print(sum(
+    1
+    for block in current.values()
+    if re.search(r'^\s*binding state active;', block, re.MULTILINE)
+    and (ends := parse_ends(block))
+    and ends > now
+))
+EOF
+)
+POOL=151
 THRESHOLD=80
 
 PERCENT=$(( LEASES * 100 / POOL ))
@@ -131,7 +214,7 @@ fi
 
 ## Key Takeaways
 
-- First response to exhaustion: reduce lease time to reclaim addresses faster.
-- Second response: expand the pool range or use a larger subnet.
+- Reduce lease time when the scope serves many short-lived clients.
+- Expand the pool range or use a larger subnet to increase available addresses.
 - Proactively monitor pool utilization and alert at 80% to get ahead of exhaustion.
-- Segmenting large flat networks into VLANs distributes the load across multiple smaller scopes.
+- Segmenting large flat networks into VLANs distributes clients across multiple scopes, but does not increase the total address space by itself.
