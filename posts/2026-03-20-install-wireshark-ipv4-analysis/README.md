@@ -18,16 +18,16 @@ sudo apt install wireshark -y
 # During install, when asked "Should non-superusers be able to capture packets?"
 # Select YES to allow non-root capturing
 
-# RHEL/CentOS
-sudo yum install wireshark wireshark-qt -y
+# Fedora/RHEL-compatible
+sudo dnf install wireshark -y
 
 # macOS
-brew install --cask wireshark
+brew install --cask wireshark-app
 ```
 
 ## Configure Non-Root Capture Permissions
 
-Capturing packets normally requires root. The `dumpcap` setuid approach is safer:
+On Linux, capturing packets normally requires elevated privileges. Using `dumpcap` with capabilities is safer than running Wireshark as root:
 
 ```bash
 # Add your user to the wireshark group (set during install, or manually)
@@ -37,7 +37,7 @@ sudo usermod -a -G wireshark $USER
 groups $USER | grep wireshark
 
 # Set capabilities on dumpcap (if not done during install)
-sudo setcap cap_net_raw,cap_net_admin=eip /usr/bin/dumpcap
+sudo setcap cap_net_raw,cap_net_admin+eip /usr/bin/dumpcap
 
 # Log out and back in for group change to take effect
 # Or: newgrp wireshark
@@ -95,13 +95,13 @@ tshark is Wireshark's command-line interface, useful on servers:
 
 ```bash
 # Capture 100 packets and print summary
-sudo tshark -i eth0 -c 100
+tshark -i eth0 -c 100
 
 # Apply display filter
-sudo tshark -i eth0 -Y 'ip.addr == 8.8.8.8'
+tshark -i eth0 -Y 'ip.addr == 8.8.8.8'
 
 # Print specific fields
-sudo tshark -i eth0 -T fields -e ip.src -e ip.dst -e tcp.dstport \
+tshark -i eth0 -T fields -e ip.src -e ip.dst -e tcp.dstport \
   -Y 'tcp and tcp.flags.syn == 1'
 
 # Read a PCAP and filter
@@ -114,7 +114,7 @@ Capture on a remote server, analyze locally:
 
 ```bash
 # Stream remote capture directly into Wireshark
-ssh user@server sudo tcpdump -i eth0 -w - 'not port 22' | wireshark -k -i -
+ssh user@server 'sudo tcpdump -i eth0 -U -w - not port 22' | wireshark -k -i -
 
 # Or capture to file and copy
 ssh user@server 'sudo tcpdump -i eth0 -c 500 -w /tmp/cap.pcap'
