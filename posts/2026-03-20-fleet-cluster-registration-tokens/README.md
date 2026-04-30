@@ -8,15 +8,17 @@ Description: Learn how to create and manage Fleet ClusterRegistrationToken resou
 
 ## Introduction
 
-Before Fleet can manage a cluster, that cluster must be registered with the Fleet manager. ClusterRegistrationTokens are the mechanism through which clusters authenticate and join the Fleet management plane. Each token generates a registration manifest that is applied to the downstream cluster, causing the Fleet agent to install and establish a connection.
+Before Fleet can manage a cluster through the agent-initiated registration flow, that cluster must be registered with the Fleet manager. ClusterRegistrationTokens are the mechanism through which clusters authenticate in that flow. Each token causes Fleet to create a Secret containing `values.yaml` content that is passed to the downstream cluster's Helm install to deploy the Fleet agent and establish a connection.
+
+If you register clusters through the Rancher UI, Rancher uses manager-initiated registration and you typically do not create `ClusterRegistrationToken` resources manually.
 
 This guide covers creating registration tokens, managing their lifecycles, and following security best practices.
 
 ## Prerequisites
 
-- Fleet installed in Rancher
+- Fleet manager installed and accessible
 - Admin access to Fleet manager
-- `kubectl` access to Fleet manager namespace
+- `kubectl` access to the Fleet workspace namespace
 - Target clusters where you want to install Fleet agents
 
 ## Understanding ClusterRegistrationTokens
@@ -24,14 +26,14 @@ This guide covers creating registration tokens, managing their lifecycles, and f
 A ClusterRegistrationToken:
 1. Is created in a specific Fleet namespace (workspace)
 2. Has a configurable time-to-live (TTL)
-3. Generates a URL or manifest for agent installation
-4. Can be used by multiple clusters
+3. Causes Fleet to create a Secret whose `values` field contains the agent installation values
+4. Can be used by multiple clusters until it expires
 
-When a cluster uses a token to register, Fleet creates a `Cluster` resource in the corresponding namespace.
+When a cluster uses a token to register, Fleet either creates a `Cluster` resource in the corresponding namespace or associates the agent with a pre-created `Cluster` that matches the supplied `clientID`.
 
 ## Creating a ClusterRegistrationToken
 
-### Basic Token with Default TTL
+### Basic Token with 24-Hour TTL
 
 ```yaml
 # registration-token-default.yaml
@@ -42,7 +44,7 @@ metadata:
   name: default-token
   namespace: fleet-default
 spec:
-  # Token expires after 24 hours (default)
+  # Token expires after 24 hours
   ttl: 24h
 ```
 
@@ -86,35 +88,31 @@ spec:
   ttl: 1h
 ```
 
-## Retrieving the Registration Manifest
+## Retrieving the Registration Values
 
-After creating a token, retrieve the agent installation manifest:
+After creating a token, wait for Fleet to create the generated Secret:
 
 ```bash
-# Get the namespace where the manifest is stored
+# Wait until the registration Secret exists
+while ! kubectl get secret default-token -n fleet-default >/dev/null 2>&1; do
+  sleep 5
+done
+
+# Get the Secret name recorded on the token status
 kubectl get clusterregistrationtoken default-token \
   -n fleet-default \
-  -o jsonpath='{.status.manifestNamespace}'
-
-# Get the secret containing the registration values
-MANIFEST_NS=$(kubectl get clusterregistrationtoken default-token \
-  -n fleet-default \
-  -o jsonpath='{.status.manifestNamespace}')
-
-# The registration manifest URL for the downstream cluster
-# Access it via the Fleet manager API endpoint
-echo "Registration namespace: ${MANIFEST_NS}"
+  -o jsonpath='{.status.secretName}{"\n"}'
 ```
 
 ### Getting the Helm Values for Agent Installation
 
 ```bash
-# Get Fleet agent installation values from the token
+# Write the generated values.yaml locally
 kubectl get secret \
   $(kubectl get clusterregistrationtoken default-token -n fleet-default \
     -o jsonpath='{.status.secretName}') \
   -n fleet-default \
-  -o jsonpath='{.data.values}' | base64 -d
+  -o jsonpath='{.data.values}' | base64 --decode > values.yaml
 ```
 
 ## Installing Fleet Agent Using the Token
@@ -122,36 +120,24 @@ kubectl get secret \
 ### Using Helm on the Downstream Cluster
 
 ```bash
-# Step 1: Switch kubectl context to the downstream cluster
+# Step 1: Switch kubectl and Helm context to the downstream cluster
 kubectl config use-context my-downstream-cluster
 
-# Step 2: Get the Fleet manager URL and token
-FLEET_MANAGER_URL="https://rancher.example.com"
-CLUSTER_NAMESPACE="fleet-default"
-
-# Step 3: Install Fleet agent
+# Step 2: Add the Fleet Helm repo
 helm repo add fleet https://rancher.github.io/fleet-helm-charts/
 helm repo update
 
+# Step 3: Install Fleet agent using the generated values.yaml
 helm install fleet-agent fleet/fleet-agent \
   --namespace cattle-fleet-system \
   --create-namespace \
-  --set apiServerURL="${FLEET_MANAGER_URL}" \
-  --set token="$(kubectl get clusterregistrationtoken default-token \
-    -n fleet-default \
-    --context=fleet-manager-context \
-    -o jsonpath='{.status.secretName}')" \
-  --set clusterNamespace="${CLUSTER_NAMESPACE}" \
-  --set clusterName="my-downstream-cluster"
+  --wait \
+  --values values.yaml
 ```
 
-### Using kubectl apply with Registration Manifest
+### Using Rancher's Import Command
 
-```bash
-# In Rancher, get the import command from the cluster registration UI
-# The command looks like:
-kubectl apply -f https://rancher.example.com/v3/import/token-xxxx.yaml
-```
+The `kubectl apply -f https://<rancher>/v3/import/...` command is Rancher's manager-initiated registration flow. It is separate from Fleet `ClusterRegistrationToken` resources, which are used for agent-initiated registration with the `values.yaml` and Helm workflow shown above.
 
 ## Managing Token Lifecycle
 
@@ -163,7 +149,7 @@ kubectl get clusterregistrationtokens -A
 
 # Get token expiration info
 kubectl get clusterregistrationtokens -A \
-  -o jsonpath='{range .items[*]}{.metadata.namespace}/{.metadata.name}: expires={.spec.ttl}{"\n"}{end}'
+  -o jsonpath='{range .items[*]}{.metadata.namespace}/{.metadata.name}: ttl={.spec.ttl}, expires={.status.expires}{"\n"}{end}'
 ```
 
 ### Rotating Tokens
@@ -215,10 +201,10 @@ After a cluster uses a token to register:
 # Check that the cluster appears in Fleet
 kubectl get clusters.fleet.cattle.io -n fleet-default
 
-# Verify the cluster is connected
-kubectl get cluster my-downstream-cluster \
+# Verify that registered agents are checking in
+kubectl get clusters.fleet.cattle.io \
   -n fleet-default \
-  -o jsonpath='{.status.agent}'
+  -o jsonpath='{range .items[*]}{.metadata.name}: lastSeen={.status.agent.lastSeen}{"\n"}{end}'
 ```
 
 ## Security Best Practices
@@ -237,4 +223,4 @@ kubectl get clusters.fleet.cattle.io -n fleet-default -w
 
 ## Conclusion
 
-ClusterRegistrationTokens are the secure gateway for onboarding Kubernetes clusters into Fleet management. By choosing appropriate TTLs for your use case - short-lived for one-time registrations and longer-lived for automated edge deployments - you balance security with operational convenience. Regular token rotation and workspace-level token isolation ensure that your Fleet management plane remains secure even as you scale to hundreds or thousands of managed clusters.
+ClusterRegistrationTokens are the secure gateway for onboarding Kubernetes clusters into Fleet through the agent-initiated registration flow. By choosing appropriate TTLs for your use case - short-lived for one-time registrations and longer-lived for automated edge deployments - you balance security with operational convenience. Regular token rotation and workspace-level token isolation ensure that your Fleet management plane remains secure even as you scale to hundreds or thousands of managed clusters.
