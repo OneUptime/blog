@@ -15,6 +15,9 @@ Description: Learn how to capture and analyze IPv6 packets in Go using the gopac
 ## Installation
 
 ```bash
+# Start a new module
+go mod init example.com/ipv6-analyzer
+
 # Install gopacket
 
 go get github.com/google/gopacket
@@ -129,6 +132,9 @@ func analyzeICMPv6(packet gopacket.Packet) {
     icmpv6, _ := icmpv6Layer.(*layers.ICMPv6)
 
     ipv6Layer := packet.Layer(layers.LayerTypeIPv6)
+    if ipv6Layer == nil {
+        return
+    }
     ipv6, _ := ipv6Layer.(*layers.IPv6)
 
     msgType := ""
@@ -166,7 +172,9 @@ func analyzeFile(filename string) {
     defer handle.Close()
 
     // Filter for IPv6
-    handle.SetBPFFilter("ip6")
+    if err := handle.SetBPFFilter("ip6"); err != nil {
+        log.Fatal(err)
+    }
 
     var (
         tcpCount  int
@@ -222,21 +230,39 @@ func checkExtensionHeaders(packet gopacket.Packet) {
 ## Writing Captured Packets to pcap File
 
 ```go
-import "github.com/google/gopacket/pcapgo"
+import (
+    "log"
+    "os"
+
+    "github.com/google/gopacket/pcapgo"
+)
 
 func captureToFile(iface, filename string) {
-    handle, _ := pcap.OpenLive(iface, 65535, true, pcap.BlockForever)
+    handle, err := pcap.OpenLive(iface, 65535, true, pcap.BlockForever)
+    if err != nil {
+        log.Fatal(err)
+    }
     defer handle.Close()
-    handle.SetBPFFilter("ip6")
 
-    f, _ := os.Create(filename)
+    if err := handle.SetBPFFilter("ip6"); err != nil {
+        log.Fatal(err)
+    }
+
+    f, err := os.Create(filename)
+    if err != nil {
+        log.Fatal(err)
+    }
     defer f.Close()
 
     writer := pcapgo.NewWriter(f)
-    writer.WriteFileHeader(65535, layers.LinkTypeEthernet)
+    if err := writer.WriteFileHeader(65535, handle.LinkType()); err != nil {
+        log.Fatal(err)
+    }
 
     for packet := range gopacket.NewPacketSource(handle, handle.LinkType()).Packets() {
-        writer.WritePacket(packet.Metadata().CaptureInfo, packet.Data())
+        if err := writer.WritePacket(packet.Metadata().CaptureInfo, packet.Data()); err != nil {
+            log.Fatal(err)
+        }
     }
 }
 ```
@@ -246,9 +272,9 @@ func captureToFile(iface, filename string) {
 ## Best Practices
 
 1. **Use BPF filters** to reduce captured traffic to only what you need
-2. **Handle errors** on layer assertion - not all packets have all layers
+2. **Check that a layer exists** before accessing it - not all packets have all layers
 3. **Use goroutines** for parallel packet processing at high capture rates
-4. **Prefer pcap files** for analysis - live capture needs root/CAP_NET_RAW
+4. **Prefer pcap files** for analysis - live capture usually needs elevated privileges
 5. **Use `layers.DecodingLayerParser`** for high-performance parsing at scale
 
 ---
