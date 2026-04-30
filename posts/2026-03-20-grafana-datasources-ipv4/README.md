@@ -8,7 +8,7 @@ Description: Configure Grafana data sources to connect to Prometheus, InfluxDB, 
 
 ## Introduction
 
-Grafana data sources connect to time-series databases and metric backends. Each data source is configured with a URL (using IPv4 or hostname) for the backend. Proper data source configuration is the foundation of all Grafana dashboards.
+Grafana data sources connect to time-series databases and metric backends. Each data source is configured with a backend address, typically a URL for HTTP-based sources or `host:port` for SQL backends. Proper data source configuration is the foundation of all Grafana dashboards.
 
 ## Prometheus Data Source
 
@@ -45,15 +45,11 @@ datasources:
     access: proxy
     url: http://10.0.1.5:9090
     isDefault: true
-    jsonData:
-      customQueryParameters: "cluster=production"
 
   - name: Prometheus-Staging
     type: prometheus
     access: proxy
     url: http://10.0.2.5:9090
-    jsonData:
-      customQueryParameters: "cluster=staging"
 
   - name: InfluxDB
     type: influxdb
@@ -72,6 +68,8 @@ datasources:
 ## MySQL/PostgreSQL Data Sources
 
 ```yaml
+apiVersion: 1
+
 datasources:
   - name: MySQL-Production
     type: mysql
@@ -97,6 +95,8 @@ datasources:
 ## Alertmanager Data Source
 
 ```yaml
+apiVersion: 1
+
 datasources:
   - name: Alertmanager
     type: alertmanager
@@ -117,22 +117,28 @@ curl -s -u admin:password \
   http://10.0.0.5:3000/api/datasources | \
   python3 -c "import sys,json; [print(d['name'],d['url']) for d in json.load(sys.stdin)]"
 
+# Get the Prometheus data source UID
+PROM_UID=$(curl -s -u admin:password \
+  http://10.0.0.5:3000/api/datasources | \
+  python3 -c "import sys,json; print(next(d['uid'] for d in json.load(sys.stdin) if d['name']=='Prometheus'))")
+
 # Test a specific data source
 curl -s -u admin:password \
-  http://10.0.0.5:3000/api/datasources/name/Prometheus | python3 -m json.tool
+  http://10.0.0.5:3000/api/datasources/uid/$PROM_UID/health | python3 -m json.tool
 ```
 
 ## Via Grafana UI
 
 ```bash
 # In the Grafana web interface:
-# Settings (gear icon) → Data Sources → Add data source
-# Select type, enter URL (http://10.0.0.5:9090), click "Save & Test"
+# Connections → Add new connection
+# Search for the data source type, select it, click "Add new data source"
+# Enter the URL (http://10.0.0.5:9090), then click "Save & test"
 
-# "Data source connected and labels found" = working
+# "Successfully queried the Prometheus API." = working
 # "HTTP Error Bad Gateway" = Grafana can't reach the backend IP
 ```
 
 ## Conclusion
 
-Configure Grafana data sources with IPv4 URLs using provisioning YAML files in `/etc/grafana/provisioning/datasources/`. Provisioned data sources are automatically created or updated at startup. Use `access: proxy` so Grafana server makes the connection (not the user's browser). Verify data sources work with the "Save & Test" button in the UI or the datasources API.
+Configure Grafana data sources with IPv4 addresses using provisioning YAML files in `/etc/grafana/provisioning/datasources/`. Provisioned data sources are automatically created or updated at startup. Use `access: proxy` for HTTP-based data sources so Grafana server makes the connection. Verify data sources work with the "Save & test" button in the UI or the data source HTTP API.
