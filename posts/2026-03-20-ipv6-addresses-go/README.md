@@ -107,7 +107,8 @@ import (
 
 func main() {
     // Listen on all IPv6 interfaces (:: is the IPv6 wildcard)
-    // tcp6 explicitly uses IPv6; use "tcp" for dual-stack behavior
+    // tcp6 explicitly uses IPv6; with "tcp", [::]:8080 may also accept
+    // IPv4 on platforms that support IPv4-mapped IPv6 addresses
     listener, err := net.Listen("tcp6", "[::]:8080")
     if err != nil {
         fmt.Fprintf(os.Stderr, "Failed to listen: %v\n", err)
@@ -235,7 +236,8 @@ func main() {
         }
     })
 
-    // Listen on both IPv4 and IPv6 with dual-stack
+    // Listen on the IPv6 unspecified address; some platforms also accept
+    // IPv4 here when IPv4-mapped IPv6 is supported
     fmt.Println("Starting server on [::]:8080")
     if err := http.ListenAndServe("[::]:8080", nil); err != nil {
         panic(err)
