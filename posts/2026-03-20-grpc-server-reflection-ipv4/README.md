@@ -16,6 +16,7 @@ gRPC Server Reflection lets clients query a server's available services at runti
 package main
 
 import (
+    "context"
     "log"
     "net"
 
@@ -26,6 +27,10 @@ import (
 
 type server struct {
     pb.UnimplementedGreeterServer
+}
+
+func (s *server) SayHello(_ context.Context, req *pb.HelloRequest) (*pb.HelloReply, error) {
+    return &pb.HelloReply{Message: "Hello, " + req.Name + "!"}, nil
 }
 
 func main() {
@@ -116,27 +121,45 @@ grpc_cli call 192.168.1.10:50051 SayHello "name: 'World'"
 ## Restrict Reflection to Internal Networks
 
 ```go
-// Use an interceptor to restrict reflection to trusted IPv4 ranges
+// Use a stream interceptor to restrict reflection to trusted IPv4 ranges
 import (
     "net"
     "strings"
+
     "google.golang.org/grpc"
+    "google.golang.org/grpc/codes"
     "google.golang.org/grpc/peer"
+    "google.golang.org/grpc/status"
 )
 
-func reflectionGuard(ctx context.Context, req interface{},
-    info *grpc.UnaryServerInfo, handler grpc.UnaryHandler) (interface{}, error) {
+var trustedNetwork = mustParseCIDR("192.168.0.0/16")
 
-    if strings.Contains(info.FullMethod, "ServerReflection") {
-        p, _ := peer.FromContext(ctx)
-        addr := p.Addr.String()
-        host, _, _ := net.SplitHostPort(addr)
+func mustParseCIDR(cidr string) *net.IPNet {
+    _, network, err := net.ParseCIDR(cidr)
+    if err != nil {
+        panic(err)
+    }
+    return network
+}
+
+func reflectionGuard(srv interface{}, ss grpc.ServerStream,
+    info *grpc.StreamServerInfo, handler grpc.StreamHandler) error {
+
+    if strings.HasPrefix(info.FullMethod, "/grpc.reflection.") {
+        p, ok := peer.FromContext(ss.Context())
+        if !ok {
+            return status.Error(codes.PermissionDenied, "reflection not allowed")
+        }
+        host, _, err := net.SplitHostPort(p.Addr.String())
+        if err != nil {
+            return status.Error(codes.PermissionDenied, "reflection not allowed")
+        }
         ip := net.ParseIP(host)
-        if !trustedNetwork.Contains(ip) {
-            return nil, status.Error(codes.PermissionDenied, "reflection not allowed")
+        if ip == nil || !trustedNetwork.Contains(ip) {
+            return status.Error(codes.PermissionDenied, "reflection not allowed")
         }
     }
-    return handler(ctx, req)
+    return handler(srv, ss)
 }
 ```
 
