@@ -8,7 +8,7 @@ Description: A guide to using the -replace flag in OpenTofu to force specific re
 
 ## Introduction
 
-The `-replace` flag in OpenTofu lets you force a specific resource to be destroyed and recreated, even when no configuration changes would normally trigger replacement. This is useful for replacing degraded resources, applying non-detected changes, or recovering from corrupted state.
+The `-replace` flag in OpenTofu lets you force a specific resource to be destroyed and recreated, even when no configuration changes would normally trigger replacement. This is useful for replacing degraded resources, applying changes OpenTofu cannot detect automatically, or recovering from damaged remote objects.
 
 ## Basic -replace Usage
 
@@ -60,7 +60,7 @@ tofu apply -replace='module.app.aws_instance.server'
 tofu plan -replace="aws_instance.web" -out=replace-plan.tfplan
 
 # Step 2: Review the plan
-tofu show replace-plan.tfplan
+tofu show -plan=replace-plan.tfplan
 
 # Step 3: Apply the saved plan
 tofu apply replace-plan.tfplan
@@ -76,8 +76,8 @@ tofu apply
 # New way: -replace (one step, preferred)
 tofu apply -replace="aws_instance.web"
 
-# -replace is atomic: plan + apply happen together
-# taint modifies state file before apply
+# -replace keeps the replacement request in the plan/apply workflow
+# taint writes a taint marker to state before apply
 
 # For auditing/GitOps workflows, use -replace with plan file:
 tofu plan -replace="aws_instance.web" -out=fix-degraded.tfplan
@@ -104,7 +104,8 @@ tofu plan -replace="aws_instance.web"
 ## Combining -replace with -target
 
 ```bash
-# Replace only a specific resource and its dependents
+# Force replacement of one resource while focusing the plan
+# on selected resources and their dependencies
 tofu apply \
   -replace="aws_instance.web" \
   -target="aws_instance.web" \
@@ -154,4 +155,4 @@ tofu state show aws_instance.web
 
 ## Conclusion
 
-The `-replace` flag provides a clean, explicit way to force resource recreation without modifying configuration files. It is the preferred replacement for the older `tofu taint` command. Use `-replace` when a resource has become degraded, when you need to force rotation of credentials or certificates, or when you need to recover from an inconsistent state. Always preview replacements with `tofu plan -replace` before applying to understand the full impact on dependent resources.
+The `-replace` flag provides a clean, explicit way to force resource recreation without modifying configuration files. It is the preferred replacement for the older `tofu taint` command. Use `-replace` when a resource has become degraded, when you need to force rotation of credentials or certificates, or when you need to recover from damaged remote objects that OpenTofu cannot automatically detect. Always preview replacements with `tofu plan -replace` before applying to understand the full impact on dependent resources.
