@@ -24,26 +24,35 @@ graph LR
 ## Step 1: Install InfluxDB and Grafana
 
 ```bash
-# Install InfluxDB 2.x
-
-wget https://dl.influxdata.com/influxdb/releases/influxdb2_2.7.1_amd64.deb
-sudo dpkg -i influxdb2_2.7.1_amd64.deb
+# Install InfluxDB 2.x from the InfluxData APT repository
+sudo apt-get update
+sudo apt-get install -y curl gpg apt-transport-https wget gnupg
+sudo mkdir -p /etc/apt/keyrings
+curl --silent --location -O https://repos.influxdata.com/influxdata-archive.key
+gpg --show-keys --with-fingerprint --with-colons ./influxdata-archive.key 2>&1 \
+  | grep -q '^fpr:\+24C975CBA61A024EE1B631787C3D57159FC2F927:$' \
+  && cat influxdata-archive.key \
+  | gpg --dearmor \
+  | sudo tee /etc/apt/keyrings/influxdata-archive.gpg > /dev/null \
+  && echo 'deb [signed-by=/etc/apt/keyrings/influxdata-archive.gpg] https://repos.influxdata.com/debian stable main' \
+  | sudo tee /etc/apt/sources.list.d/influxdata.list
+sudo apt-get update
+sudo apt-get install -y influxdb2
 sudo systemctl enable influxdb && sudo systemctl start influxdb
 
-# Set up InfluxDB (one-time)
-influx setup \
-  --username admin \
-  --password Admin@Passw0rd! \
-  --org myorg \
-  --bucket network \
-  --force
-
-# Install Grafana
-sudo apt-get install -y adduser libfontconfig1
-wget https://dl.grafana.com/oss/release/grafana_10.4.0_amd64.deb
-sudo dpkg -i grafana_10.4.0_amd64.deb
-sudo systemctl enable grafana-server && sudo systemctl start grafana-server
+# Install Grafana from the Grafana APT repository
+sudo wget -O /etc/apt/keyrings/grafana.asc https://apt.grafana.com/gpg-full.key
+sudo chmod 644 /etc/apt/keyrings/grafana.asc
+echo "deb [signed-by=/etc/apt/keyrings/grafana.asc] https://apt.grafana.com stable main" \
+  | sudo tee -a /etc/apt/sources.list.d/grafana.list
+sudo apt-get update
+sudo apt-get install -y grafana
+sudo systemctl daemon-reload
+sudo systemctl enable grafana-server
+sudo systemctl start grafana-server
 ```
+
+Then open `http://localhost:8086` and complete the one-time InfluxDB setup, creating the `myorg` organization and the `network` bucket. After setup, create a second bucket named `netflow`, and copy an operator or all-access token for the Telegraf and Grafana steps below.
 
 ## Step 2: Configure Telegraf for SNMP Polling
 
@@ -62,23 +71,25 @@ Create Telegraf SNMP configuration:
   agents = ["192.168.1.1:161", "192.168.1.2:161"]
   version = 2
   community = "public"
+  agent_host_tag = "source"
   interval = "60s"
 
   # Hostname/sysName
   [[inputs.snmp.field]]
     name = "hostname"
     oid = "RFC1213-MIB::sysName.0"
+    is_tag = true
 
-  # CPU utilization
+  # CPU utilization on Cisco devices
   [[inputs.snmp.field]]
     name = "cpu_5min"
-    oid = "CISCO-PROCESS-MIB::cpmCPUTotal5minRev.7"
+    # Replace `.1` with the correct cpmCPUTotalIndex for your device if needed
+    oid = "CISCO-PROCESS-MIB::cpmCPUTotal5minRev.1"
 
   # Interface table - polled for each interface
   [[inputs.snmp.table]]
     name = "interface"
     inherit_tags = ["hostname"]
-    oid = "IF-MIB::ifXTable"
 
     [[inputs.snmp.table.field]]
       name = "name"
@@ -103,6 +114,7 @@ Create Telegraf SNMP configuration:
   token = "your-influxdb-token"
   organization = "myorg"
   bucket = "network"
+  namedrop = ["netflow"]
 ```
 
 ```bash
@@ -118,20 +130,31 @@ Add a NetFlow input to Telegraf:
 
 [[inputs.netflow]]
   service_address = "udp://:2055"
-  # Or for IPFIX:
+  # Or for IPFIX on the standard port:
   # service_address = "udp://:4739"
+
+[[processors.converter]]
+  namepass = ["netflow"]
+  # Convert source IP to a tag so Grafana can group top talkers by source.
+  [processors.converter.fields]
+    tag = ["src"]
 
 [[outputs.influxdb_v2]]
   urls = ["http://localhost:8086"]
   token = "your-influxdb-token"
   organization = "myorg"
   bucket = "netflow"
+  namepass = ["netflow"]
+```
+
+```bash
+sudo systemctl restart telegraf
 ```
 
 ## Step 4: Add InfluxDB Data Source in Grafana
 
 1. Open Grafana at `http://server-ip:3000` (admin/admin)
-2. Go to **Configuration > Data Sources > Add data source**
+2. Go to **Connections > Data sources > Add new data source**
 3. Select **InfluxDB**
 4. Configure:
    - Query language: **Flux**
@@ -162,7 +185,8 @@ from(bucket: "network")
 // Top 10 source IPs by bytes in last hour
 from(bucket: "netflow")
   |> range(start: -1h)
-  |> filter(fn: (r) => r["_measurement"] == "netflow" and r["_field"] == "in_bytes")
+  |> filter(fn: (r) => r["_measurement"] == "netflow")
+  |> filter(fn: (r) => r["_field"] == "in_bytes" or r["_field"] == "in_total_bytes")
   |> group(columns: ["src"])
   |> sum()
   |> sort(columns: ["_value"], desc: true)
