@@ -8,7 +8,7 @@ Description: Learn how to configure GKE Gateway API with OpenTofu for advanced H
 
 ## Overview
 
-GKE Gateway API is the next-generation Kubernetes ingress solution, offering more expressive routing rules, multi-tenancy support, and standardized traffic management. OpenTofu enables the Gateway API and deploys Gateway and HTTPRoute resources.
+GKE Gateway API is the next-generation Kubernetes ingress solution, offering more expressive routing rules, multi-tenancy support, and standardized traffic management. OpenTofu can enable the Gateway API on the cluster, and once the cluster is available and the Gateway API CRDs are installed, the Kubernetes provider can deploy Gateway and HTTPRoute resources in a separate apply.
 
 ## Step 1: Enable Gateway API on GKE Cluster
 
@@ -19,8 +19,7 @@ resource "google_container_cluster" "gateway_cluster" {
   name     = "gateway-api-cluster"
   location = "us-central1"
 
-  remove_default_node_pool = true
-  initial_node_count       = 1
+  initial_node_count = 1
 
   network    = google_compute_network.vpc.name
   subnetwork = google_compute_subnetwork.subnet.name
@@ -38,7 +37,7 @@ resource "google_container_cluster" "gateway_cluster" {
 ## Step 2: Deploy a Gateway
 
 ```hcl
-# Deploy a Gateway resource (external HTTPS)
+# Apply after the cluster exists and Gateway API CRDs are installed; tls-secret must already exist
 resource "kubernetes_manifest" "external_gateway" {
   manifest = {
     apiVersion = "gateway.networking.k8s.io/v1"
@@ -59,9 +58,7 @@ resource "kubernetes_manifest" "external_gateway" {
             mode = "Terminate"
             certificateRefs = [
               {
-                kind  = "Secret"
-                name  = "tls-secret"
-                group = ""
+                name = "tls-secret"
               }
             ]
           }
@@ -135,19 +132,48 @@ resource "kubernetes_manifest" "web_app_route" {
 ## Step 4: Traffic Splitting for Canary Deployments
 
 ```hcl
-# Canary deployment with traffic splitting
-resource "kubernetes_manifest" "canary_route" {
+# Replace the web_app_route resource with this version to split "/" traffic between stable and canary backends
+resource "kubernetes_manifest" "web_app_route" {
   manifest = {
     apiVersion = "gateway.networking.k8s.io/v1"
     kind       = "HTTPRoute"
     metadata = {
-      name      = "canary-route"
+      name      = "web-app-route"
       namespace = "default"
     }
     spec = {
-      parentRefs = [{ name = "external-gateway" }]
+      parentRefs = [
+        {
+          name = "external-gateway"
+        }
+      ]
+      hostnames = ["app.example.com"]
       rules = [
         {
+          matches = [
+            {
+              path = {
+                type  = "PathPrefix"
+                value = "/api"
+              }
+            }
+          ]
+          backendRefs = [
+            {
+              name = "api-service"
+              port = 8080
+            }
+          ]
+        },
+        {
+          matches = [
+            {
+              path = {
+                type  = "PathPrefix"
+                value = "/"
+              }
+            }
+          ]
           backendRefs = [
             {
               name   = "app-v1"
@@ -164,9 +190,11 @@ resource "kubernetes_manifest" "canary_route" {
       ]
     }
   }
+
+  depends_on = [kubernetes_manifest.external_gateway]
 }
 ```
 
 ## Summary
 
-GKE Gateway API with OpenTofu provides a Kubernetes-native approach to advanced traffic management. HTTPRoutes support path-based routing, header matching, and traffic splitting for canary deployments. The GKE-managed gateway eliminates the need to manage ingress controllers while providing integration with Google Cloud Load Balancing.
+GKE Gateway API with OpenTofu provides a Kubernetes-native approach to advanced traffic management. After the cluster exists and Gateway API is enabled, HTTPRoutes can provide path-based routing, header matching, and weighted traffic splitting for canary deployments. The GKE-managed gateway eliminates the need to manage an ingress controller while providing integration with Google Cloud Load Balancing.
