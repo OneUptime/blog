@@ -44,7 +44,12 @@ echo -n "YourSecurePassword" | sha256sum | awk '{print $1}'
 # Save the output - you'll need it in the compose file
 
 # Generate a secret string (min 16 characters)
-pwgen -N 1 -s 96
+tr -dc 'A-Za-z0-9' < /dev/urandom | head -c 96; echo
+# Save the output - you'll need it in the compose file
+
+# Generate a strong OpenSearch admin password
+tr -dc 'A-Za-z0-9_@#%^+=-' < /dev/urandom | head -c 32; echo
+# Save the output - you'll need it in the compose file
 ```
 
 ## Step 3: Create the Stack in Portainer
@@ -74,14 +79,21 @@ services:
       - cluster.name=graylog
       - node.name=opensearch
       - discovery.type=single-node
+      - action.auto_create_index=false
       # Disable security for internal use (enable for production)
+      - plugins.security.ssl.http.enabled=false
       - plugins.security.disabled=true
+      # Required by OpenSearch 2.12+
+      - OPENSEARCH_INITIAL_ADMIN_PASSWORD=yourstrongopensearchadminpasswordhere
       - bootstrap.memory_lock=true
       - "OPENSEARCH_JAVA_OPTS=-Xms1g -Xmx1g"
     ulimits:
       memlock:
         soft: -1
         hard: -1
+      nofile:
+        soft: 65536
+        hard: 65536
     volumes:
       - /opt/graylog/data/opensearch:/usr/share/opensearch/data
     networks:
@@ -106,8 +118,8 @@ services:
     ports:
       # Graylog Web UI
       - "9000:9000"
-      # Syslog UDP input
-      - "514:514/udp"
+      # Syslog UDP input (use a non-privileged port)
+      - "5140:5140/udp"
       # GELF UDP input
       - "12201:12201/udp"
       # GELF TCP input
