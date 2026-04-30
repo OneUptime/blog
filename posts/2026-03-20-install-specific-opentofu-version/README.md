@@ -13,9 +13,9 @@ Installing a specific version of OpenTofu is essential for maintaining consisten
 ## Finding Available Versions
 
 ```bash
-# List all available releases via GitHub API
+# List available releases via GitHub API
 
-curl -s https://api.github.com/repos/opentofu/opentofu/releases | \
+curl -s 'https://api.github.com/repos/opentofu/opentofu/releases?per_page=100' | \
   jq -r '.[].tag_name' | sort -V
 
 # Or browse the releases page
@@ -44,17 +44,33 @@ sudo mv tofu /usr/local/bin/tofu-${TOFU_VERSION}
 sudo ln -sf /usr/local/bin/tofu-${TOFU_VERSION} /usr/local/bin/tofu
 ```
 
-## macOS: Install via Homebrew with Version Pin
+## macOS: Install a Specific Version from Binary
 
 ```bash
-# Install a specific version via tap
-brew tap opentofu/tap
+# Set the desired version
+TOFU_VERSION="1.8.5"
+ARCH="arm64"  # use amd64 on Intel Macs
 
-# For versioned formula
-brew install opentofu@1.8
+# Download the specific version
+curl -LO "https://github.com/opentofu/opentofu/releases/download/v${TOFU_VERSION}/tofu_${TOFU_VERSION}_darwin_${ARCH}.zip"
 
-# Link it as default
-brew link --overwrite opentofu@1.8
+# Verify the checksum
+curl -LO "https://github.com/opentofu/opentofu/releases/download/v${TOFU_VERSION}/tofu_${TOFU_VERSION}_SHA256SUMS"
+ZIPFILE="tofu_${TOFU_VERSION}_darwin_${ARCH}.zip"
+CHECKSUM=$(shasum -a 256 "${ZIPFILE}" | cut -f 1 -d ' ')
+EXPECTED_CHECKSUM=$(grep "${ZIPFILE}" "tofu_${TOFU_VERSION}_SHA256SUMS" | cut -f 1 -d ' ')
+if [ "${CHECKSUM}" = "${EXPECTED_CHECKSUM}" ]; then
+  echo "OK"
+else
+  echo "MISMATCH"
+fi
+
+# Extract and install
+unzip "${ZIPFILE}"
+sudo mv tofu /usr/local/bin/tofu-${TOFU_VERSION}
+
+# Create a symlink to the desired version
+sudo ln -sf /usr/local/bin/tofu-${TOFU_VERSION} /usr/local/bin/tofu
 
 # Verify
 tofu version
@@ -62,13 +78,13 @@ tofu version
 
 ## Using tofuenv for Version Management
 
-The recommended way to manage multiple versions:
+A convenient way to manage multiple versions on Linux and macOS:
 
 ```bash
 # Install tofuenv
-git clone --depth=1 https://github.com/tofuutils/tofuenv.git ~/.tofuenv
-echo 'export PATH="$HOME/.tofuenv/bin:$PATH"' >> ~/.bashrc
-source ~/.bashrc
+git clone --depth=1 https://github.com/opentofuutils/tofuenv.git ~/.tofuenv
+echo 'export PATH="$HOME/.tofuenv/bin:$PATH"' >> ~/.bashrc  # use ~/.zprofile on macOS zsh
+source ~/.bashrc  # or: source ~/.zprofile
 
 # Install a specific version
 tofuenv install 1.8.5
@@ -96,8 +112,7 @@ tofu version
 # Install specific version
 scoop install opentofu@1.8.5
 
-# Or install and reset to it
-scoop install opentofu
+# If you have multiple versions installed, switch back to it
 scoop reset opentofu@1.8.5
 ```
 
@@ -150,4 +165,4 @@ tofu version
 
 ## Conclusion
 
-Installing a specific version of OpenTofu ensures reproducible infrastructure deployments across all environments. Using tofuenv or version-pinned package managers makes it easy to maintain multiple versions simultaneously. Always pin versions in your `required_version` constraint to prevent accidental upgrades that could break your infrastructure code.
+Installing a specific version of OpenTofu ensures reproducible infrastructure deployments across all environments. Using tofuenv, standalone installs, or package managers that support historical versions makes it easier to keep a chosen release available. Use `required_version` constraints in your root modules to prevent unsupported or accidental OpenTofu upgrades from breaking your infrastructure code.
