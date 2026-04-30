@@ -15,15 +15,16 @@ One of Fleet's most powerful capabilities is the ability to customize Helm value
 - Fleet installed in Rancher
 - A Helm chart (in Git or a Helm registry)
 - Multiple clusters registered with labels
-- `kubectl` access to Fleet manager
+- `kubectl` access to the Fleet manager and downstream clusters
 
 ## Helm Values Inheritance Model
 
 Fleet applies Helm values in a merge hierarchy:
 1. Chart's default `values.yaml` (lowest priority)
-2. Global values in `fleet.yaml`'s `helm.values`
-3. Values files specified in `helm.valuesFiles`
-4. Target-specific values in each target's `helm.values` (highest priority)
+2. Root values in `fleet.yaml`'s `helm.values`
+3. Values files specified in root `helm.valuesFiles`
+4. Values loaded from root `helm.valuesFrom`
+5. Matching `targetCustomizations[].helm` overrides for that cluster (highest priority)
 
 Later values override earlier ones, giving you fine-grained control.
 
@@ -47,7 +48,7 @@ helm:
       type: ClusterIP
       port: 80
 
-targets:
+targetCustomizations:
   # Development: minimal setup
   - name: dev
     clusterSelector:
@@ -140,14 +141,13 @@ helm:
   valuesFiles:
     - values/common.yaml
 
-targets:
+targetCustomizations:
   - name: dev
     clusterSelector:
       matchLabels:
         env: dev
     helm:
       valuesFiles:
-        - values/common.yaml
         - values/dev.yaml  # Overrides common values for dev
 
   - name: production-us-east
@@ -157,7 +157,6 @@ targets:
         region: us-east-1
     helm:
       valuesFiles:
-        - values/common.yaml
         - values/production.yaml
         - values/us-east-1.yaml  # Region-specific overrides
 ```
@@ -174,46 +173,46 @@ helm:
   chart: chart
   releaseName: my-app
 
-targets:
+targetCustomizations:
   - name: all-clusters
     clusterSelector: {}
     helm:
       values:
         # These values will be different per cluster based on its labels
-        # Note: Use Fleet's variable substitution for this pattern
+        # Note: Use Fleet's `${ }` templating with `.ClusterLabels`
         clusterConfig:
-          environment: "${CLUSTER_LABEL_env}"
-          region: "${CLUSTER_LABEL_region}"
+          environment: '${ if hasKey .ClusterLabels "env" }${ .ClusterLabels.env }${ else }unknown${ end}'
+          region: '${ if hasKey .ClusterLabels "region" }${ .ClusterLabels.region }${ else }unknown${ end}'
 ```
 
 ## Secrets-Based Values per Cluster
 
-For sensitive per-cluster values, use Kubernetes secrets:
+For sensitive per-cluster values, use Kubernetes secrets in the downstream clusters:
 
 ```bash
-# Create cluster-specific secrets
-kubectl create secret generic my-app-staging-values \
+# Create cluster-specific secrets in each downstream cluster
+kubectl --context staging-cluster create secret generic my-app-staging-values \
   --from-literal=values.yaml='
 database:
   host: "staging-db.internal"
   port: "5432"
 api:
   key: "staging-api-key-here"
-' -n fleet-default
+' -n my-app
 
-kubectl create secret generic my-app-production-values \
+kubectl --context production-cluster create secret generic my-app-production-values \
   --from-literal=values.yaml='
 database:
   host: "prod-db.internal"
   port: "5432"
 api:
   key: "production-api-key-here"
-' -n fleet-default
+' -n my-app
 ```
 
 ```yaml
 # fleet.yaml - Reference secrets for sensitive values
-targets:
+targetCustomizations:
   - name: staging
     clusterSelector:
       matchLabels:
@@ -222,6 +221,7 @@ targets:
       valuesFrom:
         - secretKeyRef:
             name: my-app-staging-values
+            namespace: my-app
             key: values.yaml
 
   - name: production
@@ -232,6 +232,7 @@ targets:
       valuesFrom:
         - secretKeyRef:
             name: my-app-production-values
+            namespace: my-app
             key: values.yaml
 ```
 
@@ -255,7 +256,7 @@ helm:
     cache:
       enabled: true
 
-targets:
+targetCustomizations:
   - name: us-east-1
     clusterSelector:
       matchLabels:
