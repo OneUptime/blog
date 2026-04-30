@@ -13,7 +13,7 @@ Portainer is a lightweight management UI that lets you manage Docker environment
 ## Prerequisites
 
 - Docker Engine installed and running
-- Port 9443 (HTTPS) or 9000 (HTTP) available on the host
+- Port 9443 (HTTPS) available on the host, port 8000 if you plan to use Edge agents, and port 9000 only if you need legacy HTTP access
 
 ## Create the Portainer Data Volume
 
@@ -27,12 +27,12 @@ docker volume create portainer_data
 
 ## Run Portainer CE
 
-The following command pulls and starts the latest Portainer CE image, exposing both the web UI and the agent communication port:
+The following command pulls and starts the current Portainer CE LTS image, exposing the web UI on port 9443 and the optional Edge agent tunnel port on 8000:
 
 ```bash
 # Run Portainer CE with HTTPS on port 9443
 # -d          : detached mode (run in background)
-# --restart=always : restart the container if Docker restarts
+# --restart=always : restart the container if it stops or when Docker restarts
 # -v /var/run/docker.sock:/var/run/docker.sock : give Portainer access to Docker
 # -v portainer_data:/data : persist Portainer configuration
 docker run -d \
@@ -42,7 +42,7 @@ docker run -d \
   --restart=always \
   -v /var/run/docker.sock:/var/run/docker.sock \
   -v portainer_data:/data \
-  portainer/portainer-ce:latest
+  portainer/portainer-ce:lts
 ```
 
 ## Access the Web UI
@@ -53,6 +53,8 @@ After the container starts, open your browser and navigate to:
 https://localhost:9443
 ```
 
+If you are connecting from another machine, replace `localhost` with the Docker host's IP address or FQDN.
+
 On first launch, Portainer prompts you to create an admin account. Set a strong password (minimum 12 characters).
 
 ## Verify the Installation
@@ -60,15 +62,15 @@ On first launch, Portainer prompts you to create an admin account. Set a strong 
 Check that the container is running successfully:
 
 ```bash
-# Confirm Portainer container is up and healthy
+# Confirm the Portainer container is running
 docker ps --filter name=portainer
 ```
 
 Expected output shows the container in `Up` status:
 
 ```text
-CONTAINER ID   IMAGE                           STATUS         PORTS
-abc123def456   portainer/portainer-ce:latest   Up 2 minutes   0.0.0.0:9443->9443/tcp
+CONTAINER ID   IMAGE                        STATUS         PORTS
+abc123def456   portainer/portainer-ce:lts   Up 2 minutes   0.0.0.0:8000->8000/tcp, 0.0.0.0:9443->9443/tcp
 ```
 
 ## Optional: HTTP Access on Port 9000
@@ -85,7 +87,7 @@ docker run -d \
   --restart=always \
   -v /var/run/docker.sock:/var/run/docker.sock \
   -v portainer_data:/data \
-  portainer/portainer-ce:latest
+  portainer/portainer-ce:lts
 ```
 
 ## Port Reference
