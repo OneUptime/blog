@@ -25,9 +25,9 @@ The SSL/TLS handshake is the negotiation phase where client and server agree on 
 openssl s_client -connect example.com:443 -debug 2>&1 | head -50
 
 # Test with specific protocol version
-openssl s_client -connect example.com:443 -tls1_3 2>&1 | grep -E "handshake|error|alert"
-openssl s_client -connect example.com:443 -tls1_2 2>&1 | grep -E "handshake|error|alert"
-openssl s_client -connect example.com:443 -tls1_1 2>&1 | grep -E "handshake|error|alert"
+openssl s_client -connect example.com:443 -tls1_3 2>&1 | grep -Ei "handshake|error|alert"
+openssl s_client -connect example.com:443 -tls1_2 2>&1 | grep -Ei "handshake|error|alert"
+openssl s_client -connect example.com:443 -tls1_1 2>&1 | grep -Ei "handshake|error|alert"
 
 # Check what the server supports
 nmap --script ssl-enum-ciphers -p 443 example.com
@@ -44,8 +44,8 @@ ssl_protocols TLSv1.2 TLSv1.3;
 # For Apache
 SSLProtocol all -SSLv3 -TLSv1 -TLSv1.1
 
-# For curl (as a client) - force a specific version
-curl --tlsv1.2 --tls-max 1.3 https://example.com
+# For curl (as a client) - force TLS 1.2 exactly
+curl --tlsv1.2 --tls-max 1.2 https://example.com
 ```
 
 ## Step 3: Fix Cipher Suite Mismatch
@@ -53,11 +53,20 @@ curl --tlsv1.2 --tls-max 1.3 https://example.com
 If no common cipher suite exists:
 
 ```bash
-# See which cipher suites client and server have in common
-openssl s_client -connect example.com:443 -cipher ALL 2>&1 | grep Cipher
+# If the handshake succeeds, check which cipher suite was negotiated
+openssl s_client -connect example.com:443 2>&1 | grep -i "Cipher *:"
 
-# Add more cipher suites to Nginx (for legacy client compatibility)
+# Test a specific TLS 1.2 cipher suite
+openssl s_client -connect example.com:443 -tls1_2 -cipher 'ECDHE-RSA-AES128-GCM-SHA256'
+
+# Test a specific TLS 1.3 cipher suite
+openssl s_client -connect example.com:443 -tls1_3 -ciphersuites TLS_AES_128_GCM_SHA256
+
+# Add more cipher suites to Nginx for TLS 1.2 and below (legacy client compatibility)
 ssl_ciphers ECDHE-ECDSA-AES128-GCM-SHA256:ECDHE-RSA-AES128-GCM-SHA256:ECDHE-ECDSA-AES256-GCM-SHA384:ECDHE-RSA-AES256-GCM-SHA384:DHE-RSA-AES128-GCM-SHA256:DHE-RSA-AES256-GCM-SHA384:ECDHE-RSA-AES128-SHA256;
+
+# If your Nginx build supports ssl_conf_command, configure TLS 1.3 cipher suites separately
+ssl_conf_command Ciphersuites TLS_AES_128_GCM_SHA256:TLS_AES_256_GCM_SHA384:TLS_CHACHA20_POLY1305_SHA256;
 ```
 
 ## Step 4: Fix Certificate/Key Mismatch
@@ -65,16 +74,15 @@ ssl_ciphers ECDHE-ECDSA-AES128-GCM-SHA256:ECDHE-RSA-AES128-GCM-SHA256:ECDHE-ECDS
 A very common cause of handshake failure is a mismatch between the certificate and its private key:
 
 ```bash
-# Compare the modulus of the cert and key - they must match
-openssl x509 -noout -modulus -in example.com.crt | openssl md5
-openssl rsa -noout -modulus -in example.com.key | openssl md5
+# Compare the public keys from the cert and key - they must match
+openssl x509 -in example.com.crt -pubkey -noout | openssl pkey -pubin -outform DER | openssl dgst -sha256
+openssl pkey -in example.com.key -pubout -outform DER | openssl dgst -sha256
 
-# If MD5 hashes differ, the key doesn't match the certificate
+# If the SHA-256 digests differ, the key doesn't match the certificate
 # You need to either get the correct key or regenerate the certificate
 
-# Check the certificate and key are paired
-openssl x509 -noout -text -in example.com.crt | grep "Public Key"
-openssl rsa -text -noout -in example.com.key | grep "Private-Key"
+# Check the private key itself is structurally valid
+openssl pkey -in example.com.key -check -noout
 ```
 
 ## Step 5: Fix SNI Mismatch
@@ -94,14 +102,14 @@ In Nginx, ensure `server_name` matches the certificate:
 ```nginx
 server {
     listen 443 ssl;
-    server_name example.com www.example.com;  # Must match certificate CN/SAN
+    server_name example.com www.example.com;  # Must match a hostname listed in the certificate SAN
     ssl_certificate /etc/ssl/certs/example.com.crt;
 }
 ```
 
-## Step 6: Handle Java/Old Client Handshake Failures
+## Step 6: Handle Java Client Handshake Failures
 
-Java clients older than Java 11 may fail with TLS 1.3:
+Java clients without TLS 1.3 support may fail if the server only accepts TLS 1.3:
 
 ```bash
 # Force Java to use TLS 1.2
@@ -111,39 +119,39 @@ java -Djdk.tls.client.protocols="TLSv1.2" -jar your-application.jar
 ssl_protocols TLSv1.2 TLSv1.3;
 ```
 
-## Step 7: Enable TLS Debugging in Application Logs
+## Step 7: Enable TLS Debugging
 
 For Node.js:
 
 ```bash
-NODE_DEBUG=tls node app.js 2>&1 | grep -E "TLS|SSL|error"
+node --trace-tls app.js 2>&1 | grep -Ei "tls|ssl|error"
 ```
 
 For Java:
 
 ```bash
-java -Djavax.net.debug=ssl:handshake your-app
+java -Djavax.net.debug=ssl:handshake -jar your-application.jar
 ```
 
 For Python:
 
 ```python
 import ssl
-import logging
-logging.basicConfig(level=logging.DEBUG)
-ssl.SSLContext.set_alpn_protocols  # Enable SSL debug logging
+
+ctx = ssl.create_default_context()
+ctx.keylog_filename = "/tmp/sslkeys.log"  # Python 3.8+: use this context for Wireshark-compatible TLS key logging
 ```
 
 ## Common Error Codes Reference
 
 | Error | Common Cause | Fix |
 |---|---|---|
-| `ssl_error_rx_record_too_long` | Connecting to HTTP port with HTTPS | Use port 443 |
-| `certificate_unknown` | Certificate not trusted | Install correct chain |
-| `handshake_failure` | No common protocol/cipher | Expand TLS versions/ciphers |
-| `unknown_ca` | Self-signed or unknown CA | Add CA to trust store |
-| `bad_certificate` | Certificate parsing error | Verify PEM format |
+| `ssl_error_rx_record_too_long` | HTTPS sent to a non-TLS listener or wrong port | Use the correct TLS-enabled port and verify the server is speaking TLS |
+| `certificate_unknown` | Certificate rejected for a reason other than unknown CA | Check SAN/hostname, EKU, validity, and chain details |
+| `handshake_failure` | No common protocol/cipher or client auth requirement not met | Expand TLS versions/ciphers or provide the required client certificate |
+| `unknown_ca` | Self-signed, private CA, or missing intermediate | Add the correct CA or intermediate to the trust store |
+| `bad_certificate` | Corrupt or otherwise unacceptable certificate | Validate the certificate, chain, and key pairing |
 
 ## Conclusion
 
-SSL handshake failures require systematic diagnosis: start with `openssl s_client` to see the exact error, verify certificate/key matching with modulus comparison, check for protocol and cipher suite compatibility, and ensure SNI is configured correctly. Most handshake failures fall into one of these categories and can be fixed within minutes once the root cause is identified.
+SSL handshake failures require systematic diagnosis: start with `openssl s_client` to see the exact error, verify certificate/key pairing by comparing the public key derived from the certificate and private key, check for protocol and cipher suite compatibility, and ensure SNI is configured correctly. Most handshake failures fall into one of these categories and can be fixed within minutes once the root cause is identified.
