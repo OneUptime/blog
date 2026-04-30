@@ -8,22 +8,23 @@ Description: Learn how to fix Portainer container log streaming delays and disco
 
 ---
 
-Container log streaming in Portainer uses server-sent events (SSE) or WebSocket connections. Nginx buffers HTTP responses by default, which causes log streams to appear delayed or cut off. This guide configures Nginx for real-time log delivery.
+Container log streaming in Portainer is proxied through the Docker HTTP API. Nginx buffers proxied HTTP responses by default, which can cause log streams to appear delayed or cut off. This guide configures Nginx for real-time log delivery.
 
 ## The Root Cause: Nginx Proxy Buffering
 
-By default, Nginx buffers the entire response before sending it to the client. For streaming log endpoints that send data continuously, this means:
+By default, Nginx buffers responses from the proxied server. For streaming log endpoints that send data continuously, this means:
 
 - Logs appear in large delayed batches instead of in real-time
-- Streams appear to disconnect after the buffer fills
-- Nginx may timeout waiting for a "complete" response
+- Streams can stall or appear to stop updating promptly
+- Long-lived streams can hit `proxy_read_timeout` if the upstream stays idle too long
 
 ## Step 1: Diagnose Buffering
 
 ```bash
 # Test if logs stream without the proxy
 
-curl -N "http://portainer:9000/api/endpoints/1/docker/containers/<id>/logs?follow=true&stdout=true"
+curl -N "http://portainer:9000/api/endpoints/1/docker/containers/<id>/logs?follow=true&stdout=true" \
+  -H "Authorization: Bearer <your-portainer-api-token>"
 
 # If logs appear in real-time without the proxy but not through Nginx,
 # Nginx buffering is the problem
@@ -46,20 +47,18 @@ server {
         proxy_cache off;
         proxy_read_timeout 86400s;
 
-        # Required for server-sent events
-        proxy_set_header X-Accel-Buffering no;
-
         # Pass important headers
         proxy_set_header Host $host;
-        proxy_set_header Connection '';
+        proxy_set_header Connection "";
     }
 
-    # WebSocket for real-time logs
+    # WebSocket endpoint used by Portainer
     location /api/websocket {
         proxy_pass http://portainer:9000;
         proxy_http_version 1.1;
+        proxy_set_header Host $host;
         proxy_set_header Upgrade $http_upgrade;
-        proxy_set_header Connection "Upgrade";
+        proxy_set_header Connection "upgrade";
         proxy_buffering off;
         proxy_read_timeout 86400s;
     }
@@ -86,12 +85,20 @@ server {
     # Disable all response buffering for this server block
     proxy_buffering off;
 
-    location / {
+    location /api/websocket {
         proxy_pass http://portainer:9000;
         proxy_http_version 1.1;
         proxy_set_header Host $host;
         proxy_set_header Upgrade $http_upgrade;
-        proxy_set_header Connection $http_upgrade;
+        proxy_set_header Connection "upgrade";
+        proxy_read_timeout 86400s;
+    }
+
+    location / {
+        proxy_pass http://portainer:9000;
+        proxy_http_version 1.1;
+        proxy_set_header Host $host;
+        proxy_set_header X-Real-IP $remote_addr;
         proxy_read_timeout 86400s;
     }
 }
