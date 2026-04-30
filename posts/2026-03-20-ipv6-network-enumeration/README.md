@@ -13,13 +13,13 @@ IPv6 network enumeration combines multiple discovery techniques to build a compl
 Before finding individual hosts, identify the IPv6 prefixes in use:
 
 ```bash
-# Check BGP routing table for the target organization's prefixes
+# Check IRR route6 objects for the target organization's ASN
 
-# Use public BGP data sources
+# Use public IRR data sources
 whois -h whois.radb.net -- '-i origin AS12345' | grep ^route6
 
-# Query ARIN/RIPE for IPv6 allocations
-whois -h whois.arin.net example.com | grep IPv6
+# Search ARIN's Whois for the target organization record
+whois -h whois.arin.net 'o *Example*'
 
 # Check DNS for IPv6 nameservers (reveals organization's prefixes)
 dig NS example.com
@@ -36,7 +36,7 @@ dig AAAA mail.example.com
 dig AAAA vpn.example.com
 
 # DNS brute force with nmap
-nmap -6 --script dns-brute example.com
+nmap --script dns-brute example.com
 
 # DNS zone transfer (if permitted)
 dig AXFR example.com @ns1.example.com
@@ -54,23 +54,21 @@ done
 sudo scan6 -i eth0 -L -e
 
 # Pattern-based scanning of known prefixes
-sudo scan6 -i eth0 -d 2001:db8::/64 \
-  --tgt-low-byte \
-  --tgt-ipv4-mapped \
-  --tgt-word
+sudo scan6 -d 2001:db8::/64 \
+  --tgt-low-byte
 
-# Ping sweep of discovered addresses
-nmap -6 -sn -iL discovered-prefixes.txt
+# Probe the discovered IPv6 addresses
+nmap -6 -sn -iL ipv6-hosts.txt
 ```
 
 ## Phase 4: NDP Cache Mining
 
 ```bash
-# From a device already on the segment, dump the NDP cache
+# From a device already on the segment, list currently reachable NDP entries
 ip -6 neigh show | grep REACHABLE | awk '{print $1}'
 
-# Trigger NDP resolution by pinging broadcast
-ping6 -c 3 ff02::1%eth0
+# Trigger NDP resolution by pinging the all-nodes multicast address
+ping -6 -c 3 ff02::1%eth0
 
 # After pinging multicast, read the full NDP cache
 ip -6 neigh show
@@ -82,7 +80,7 @@ Once hosts are discovered, enumerate services:
 
 ```bash
 # Full service scan of discovered hosts
-nmap -6 -sV -sC -p- $(cat ipv6-hosts.txt | tr '\n' ' ')
+nmap -6 -sV -sC -p- -iL ipv6-hosts.txt
 
 # Web service enumeration
 nmap -6 -p 80,443,8080,8443 --script http-title,http-server-header \
@@ -97,26 +95,26 @@ nmap -6 -p 443 --script ssl-cert,ssl-enum-ciphers \
 
 ```bash
 # IPv6 traceroute to map network path
-traceroute6 2001:db8::target
+traceroute -6 2001:db8::10
 
 # nmap traceroute
-nmap -6 --traceroute 2001:db8::target
+nmap -6 --traceroute 2001:db8::10
 
 # mtr for continuous path monitoring
-mtr -6 2001:db8::target
+mtr -6 2001:db8::10
 ```
 
 ## Phase 7: OS and Version Fingerprinting
 
 ```bash
 # OS detection via nmap
-sudo nmap -6 -O 2001:db8::target
+sudo nmap -6 -O 2001:db8::10
 
 # Banner grabbing
-nmap -6 -p 22,80,443 -sV --version-intensity 9 2001:db8::target
+nmap -6 -p 22,80,443 -sV --version-intensity 9 2001:db8::10
 
 # HTTP headers reveal server info
-curl -6 -I http://[2001:db8::target]/
+curl -6 -I http://[2001:db8::10]/
 ```
 
 ## Building the Enumeration Database
@@ -133,7 +131,10 @@ python3 -c "
 import xml.etree.ElementTree as ET
 tree = ET.parse('ipv6-enum.xml')
 for host in tree.findall('.//host'):
-    addr = host.find('address').get('addr')
+    addr = host.find(\"address[@addrtype='ipv6']\")
+    if addr is None:
+        continue
+    addr = addr.get('addr')
     for port in host.findall('.//port'):
         portid = port.get('portid')
         service = port.find('service')
@@ -145,8 +146,8 @@ for host in tree.findall('.//host'):
 ## Passive Enumeration (Zero-Traffic)
 
 ```bash
-# Monitor IPv6 traffic to discover hosts without sending probes
-sudo tcpdump -i eth0 -n ip6 2>/dev/null | \
+# Monitor ICMPv6 traffic to discover hosts without sending probes
+sudo tcpdump -i eth0 -n icmp6 2>/dev/null | \
   awk '{gsub(/:$/, "", $3); gsub(/:$/, "", $5); print $3"\n"$5}' | \
   grep -v '^$' | sort | uniq -c | sort -rn > passive-hosts.txt
 ```
