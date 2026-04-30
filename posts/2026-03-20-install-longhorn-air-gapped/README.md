@@ -23,9 +23,11 @@ On an internet-connected machine, get the list of images for the Longhorn versio
 
 ```bash
 # Download the image list for Longhorn v1.7.0
+# longhorn-images.txt is published as a comma-separated list, so
+# normalize it to one image per line for the steps below.
 
 curl -sSfL https://raw.githubusercontent.com/longhorn/longhorn/v1.7.0/deploy/longhorn-images.txt \
-  -o longhorn-images.txt
+  | tr ',' '\n' > longhorn-images.txt
 
 # View the list of required images
 cat longhorn-images.txt
@@ -46,8 +48,8 @@ while IFS= read -r image; do
 done < longhorn-images.txt
 
 # Save all images to a tar archive for transfer
-docker save $(cat longhorn-images.txt | tr '\n' ' ') \
-  -o longhorn-images-${LONGHORN_VERSION}.tar
+docker save -o longhorn-images-${LONGHORN_VERSION}.tar \
+  $(tr '\n' ' ' < longhorn-images.txt)
 
 # Compress the archive for easier transfer
 gzip longhorn-images-${LONGHORN_VERSION}.tar
@@ -76,8 +78,8 @@ LONGHORN_VERSION="v1.7.0"
 
 # Re-tag and push each image to your private registry
 while IFS= read -r image; do
-  # Extract image name without the original registry prefix
-  new_tag="${PRIVATE_REGISTRY}/${image#*/}"
+  # Keep the longhornio/ namespace so the tags match the manifest rewrite
+  new_tag="${PRIVATE_REGISTRY}/${image}"
   echo "Tagging $image as $new_tag"
   docker tag "$image" "$new_tag"
   echo "Pushing $new_tag"
@@ -133,37 +135,39 @@ imagePullSecrets:
 
 ## Step 7: Configure Helm Values for Air-Gapped Install (Helm Method)
 
-If using Helm, create a values file that overrides image repositories:
+If using Helm, create a values file that points Longhorn at your private registry:
 
 ```yaml
 # longhorn-airgap-values.yaml
 
-# Override the default image registry
-global:
-  cattle:
-    systemDefaultRegistry: "registry.internal.example.com:5000"
-
-# Image pull secret if registry requires auth
-imagePullSecrets:
-  - name: longhorn-registry-secret
+# Use your private registry for all Longhorn images
+privateRegistry:
+  createSecret: true
+  registryUrl: "registry.internal.example.com:5000"
+  registryUser: "your-registry-user"
+  registryPasswd: "your-registry-password"
+  registrySecret: "registry-internal-example-com"
 
 # Override individual image settings if needed
-longhorn:
-  manager:
-    image:
-      repository: registry.internal.example.com:5000/longhornio/longhorn-manager
+# Do not include the registry prefix here; Longhorn adds it automatically.
+image:
+  longhorn:
+    manager:
+      repository: longhornio/longhorn-manager
       tag: v1.7.0
-  engine:
-    image:
-      repository: registry.internal.example.com:5000/longhornio/longhorn-engine
+    engine:
+      repository: longhornio/longhorn-engine
       tag: v1.7.0
-  ui:
-    image:
-      repository: registry.internal.example.com:5000/longhornio/longhorn-ui
+    ui:
+      repository: longhornio/longhorn-ui
       tag: v1.7.0
 ```
 
 ```bash
+# Add the Longhorn Helm repository
+helm repo add longhorn https://charts.longhorn.io
+helm repo update
+
 # Install using the air-gap values file
 helm install longhorn longhorn/longhorn \
   --namespace longhorn-system \
