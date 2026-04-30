@@ -8,7 +8,7 @@ Description: Learn how to create GCP hierarchical and network firewall policies 
 
 ## Overview
 
-GCP Firewall Policies are a modern replacement for per-VPC firewall rules. Hierarchical policies apply at the organization or folder level, while network policies apply to specific VPCs. Both support FQDN and geo-location based rules not available in traditional firewall rules.
+GCP Firewall Policies provide a centralized way to manage network security alongside per-VPC firewall rules. Hierarchical policies apply at the organization or folder level, while network policies apply to specific VPCs. Both support FQDN and geo-location based rules not available in traditional firewall rules.
 
 ## Step 1: Create a Hierarchical Firewall Policy
 
@@ -65,7 +65,7 @@ resource "google_compute_firewall_policy_rule" "deny_ssh" {
 # Apply the policy to the organization
 resource "google_compute_firewall_policy_association" "org_association" {
   name              = "org-policy-association"
-  firewall_policy   = google_compute_firewall_policy.org_policy.name
+  firewall_policy   = google_compute_firewall_policy.org_policy.id
   attachment_target = "organizations/${var.org_id}"
 }
 ```
@@ -78,6 +78,12 @@ resource "google_compute_network_firewall_policy" "vpc_policy" {
   name        = "vpc-network-firewall-policy"
   project     = var.project_id
   description = "VPC-specific firewall policy with FQDN rules"
+}
+
+resource "google_compute_network" "vpc" {
+  name                    = "example-vpc"
+  project                 = var.project_id
+  auto_create_subnetworks = false
 }
 
 # Rule allowing access to specific FQDN (e.g., internal API)
@@ -104,7 +110,7 @@ resource "google_compute_network_firewall_policy_rule" "allow_internal_api" {
 resource "google_compute_network_firewall_policy_association" "vpc_association" {
   name              = "vpc-policy-association"
   project           = var.project_id
-  firewall_policy   = google_compute_network_firewall_policy.vpc_policy.name
+  firewall_policy   = google_compute_network_firewall_policy.vpc_policy.id
   attachment_target = google_compute_network.vpc.id
 }
 ```
