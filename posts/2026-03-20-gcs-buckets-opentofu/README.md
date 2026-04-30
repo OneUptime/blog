@@ -4,7 +4,7 @@ Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
 Tags: OpenTofu, GCS, Google Cloud Storage, GCP, Infrastructure as Code, Storage
 
-Description: Learn how to configure Google Cloud Storage buckets with OpenTofu - setting storage classes, retention policies, lifecycle rules, uniform bucket-level access, and VPC Service Controls.
+Description: Learn how to configure Google Cloud Storage buckets with OpenTofu - setting storage classes, retention policies, lifecycle rules, uniform bucket-level access, and bucket notifications.
 
 ## Introduction
 
@@ -47,6 +47,10 @@ resource "google_storage_bucket" "data" {
   storage_class = "STANDARD"
 
   uniform_bucket_level_access = true
+
+  versioning {
+    enabled = true
+  }
 
   lifecycle_rule {
     condition {
@@ -112,8 +116,8 @@ resource "google_storage_bucket" "compliance" {
   public_access_prevention    = "enforced"
 
   retention_policy {
-    is_locked        = true   # Lock prevents policy modification
-    retention_period = 220752000  # 7 years in seconds
+    is_locked        = true   # Lock prevents the retention period from being reduced or removed
+    retention_period = 220903200  # 7 years in seconds
   }
 }
 ```
@@ -123,14 +127,14 @@ resource "google_storage_bucket" "compliance" {
 ```hcl
 resource "google_storage_bucket" "dual_region" {
   name          = "${var.project_id}-ha-${var.environment}"
-  location      = "US"  # Multi-region, or "NAM4" for dual-region
-  storage_class = "MULTI_REGIONAL"
+  location      = "US"  # Location code for a configurable dual-region
+  storage_class = "STANDARD"
 
   uniform_bucket_level_access = true
 
-  # Dual-region replication for lower RPO
+  # Configurable dual-region placement for higher availability
   custom_placement_config {
-    data_locations = ["US-EAST1", "US-CENTRAL1"]
+    data_locations = ["US-EAST1", "US-WEST1"]
   }
 }
 ```
@@ -164,6 +168,8 @@ resource "google_storage_bucket_iam_member" "backup_admin" {
 ## Customer-Managed Encryption Key (CMEK)
 
 ```hcl
+data "google_storage_project_service_account" "gcs_kms" {}
+
 resource "google_kms_key_ring" "storage" {
   name     = "${var.environment}-storage-keyring"
   location = var.region
@@ -190,19 +196,23 @@ resource "google_storage_bucket" "encrypted" {
   encryption {
     default_kms_key_name = google_kms_crypto_key.storage.id
   }
+
+  depends_on = [google_kms_crypto_key_iam_member.storage_kms]
 }
 
 # Grant GCS service account permission to use the KMS key
 resource "google_kms_crypto_key_iam_member" "storage_kms" {
   crypto_key_id = google_kms_crypto_key.storage.id
   role          = "roles/cloudkms.cryptoKeyEncrypterDecrypter"
-  member        = "serviceAccount:${data.google_storage_project_service_account.gcs.email_address}"
+  member        = "serviceAccount:${data.google_storage_project_service_account.gcs_kms.email_address}"
 }
 ```
 
 ## Bucket Notification to Pub/Sub
 
 ```hcl
+data "google_storage_project_service_account" "gcs_notifications" {}
+
 resource "google_pubsub_topic" "storage_events" {
   name = "${var.environment}-storage-events"
 }
@@ -223,10 +233,10 @@ resource "google_storage_notification" "uploads" {
 resource "google_pubsub_topic_iam_member" "storage_publisher" {
   topic  = google_pubsub_topic.storage_events.id
   role   = "roles/pubsub.publisher"
-  member = "serviceAccount:${data.google_storage_project_service_account.gcs.email_address}"
+  member = "serviceAccount:${data.google_storage_project_service_account.gcs_notifications.email_address}"
 }
 ```
 
 ## Conclusion
 
-GCS buckets with OpenTofu require `uniform_bucket_level_access = true` for all production buckets - it disables per-object ACLs and simplifies IAM management. Use `public_access_prevention = "enforced"` to block public access regardless of bucket or object-level ACLs. Combine lifecycle rules to automatically transition objects from STANDARD to NEARLINE to COLDLINE to ARCHIVE - GCS storage costs decrease 80%+ from STANDARD to ARCHIVE. For compliance data, set `is_locked = true` on the retention policy to prevent modification even by project owners.
+GCS buckets with OpenTofu generally should use `uniform_bucket_level_access = true` for production buckets - it disables per-object ACLs and simplifies IAM management. Use `public_access_prevention = "enforced"` to block public access through IAM policies or ACLs. Combine lifecycle rules to automatically transition objects from STANDARD to NEARLINE to COLDLINE to ARCHIVE as access patterns cool. For compliance data, set `is_locked = true` on the retention policy to prevent it from being removed or reduced, even by project owners.
