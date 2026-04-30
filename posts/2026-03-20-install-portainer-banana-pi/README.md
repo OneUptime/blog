@@ -35,11 +35,11 @@ sudo usermod -aG docker $USER
 newgrp docker
 ```
 
-Verify Docker is running:
+Enable Docker and verify the installation:
 
 ```bash
-docker --version
 sudo systemctl enable --now docker
+docker run hello-world
 ```
 
 ## Step 3: Create the Portainer Volume
@@ -58,7 +58,7 @@ docker run -d \
   --restart=always \
   -v /var/run/docker.sock:/var/run/docker.sock \
   -v portainer_data:/data \
-  portainer/portainer-ce:latest
+  portainer/portainer-ce:lts
 ```
 
 ## Step 5: Access the Portainer UI
@@ -76,19 +76,20 @@ Accept the self-signed certificate warning and create your admin account on firs
 The `--restart=always` flag ensures Portainer restarts on reboot. Verify it with:
 
 ```bash
-docker ps -a
+docker inspect --format='{{.HostConfig.RestartPolicy.Name}}' portainer
 ```
 
 ## Troubleshooting
 
 **Docker socket permission denied:**
 ```bash
-sudo chmod 666 /var/run/docker.sock
+sudo usermod -aG docker $USER
+newgrp docker
 ```
 
 **Container not starting on ARM:**
 
-Ensure you are using the `portainer/portainer-ce:latest` image which supports multi-arch including ARM64 and ARMv7.
+Ensure you are using the `portainer/portainer-ce:lts` image. Portainer supports ARM64, with ARMv7 also available.
 
 **Check logs:**
 ```bash
@@ -100,7 +101,7 @@ docker logs portainer
 ```bash
 docker stop portainer
 docker rm portainer
-docker pull portainer/portainer-ce:latest
+docker pull portainer/portainer-ce:lts
 # Re-run the docker run command from Step 4
 ```
 
