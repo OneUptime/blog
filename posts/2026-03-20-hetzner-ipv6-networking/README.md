@@ -4,46 +4,50 @@ Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
 Tags: Hetzner, IPv6, Cloud, Dual-Stack, VPS, Networking
 
-Description: Configure IPv6 on Hetzner Cloud servers and private networks for dual-stack application deployments.
+Description: Configure public IPv6 on Hetzner Cloud servers and combine it with IPv4-only private networks for dual-stack application deployments.
 
 ## Introduction
 
-Hetzner Cloud IPv6 Networking covers the provider-specific steps needed to enable IPv6 on compute resources, configure networking primitives, and validate end-to-end IPv6 connectivity.
+Hetzner Cloud IPv6 Networking covers the provider-specific steps needed to enable public IPv6 on compute resources, pair it with Hetzner's IPv4-only private Networks when needed, and validate end-to-end IPv6 connectivity.
 
 ## Step 1: Enable IPv6 on the Instance/Resource
 
 ```bash
-# Example commands for Hetzner Cloud IPv6 Networking
+# New servers receive IPv6 by default unless you create them with --without-ipv6
+hcloud server create --name ipv6-instance --type cx23 --image ubuntu-24.04
 
-# Enable IPv6 networking at creation time or after
-# (Refer to provider-specific CLI or web console)
-echo "Enabling IPv6 for Hetzner Cloud IPv6 Networking"
+# If you assign a Primary IPv6 after server creation, power off the server first.
+# Then update the OS network configuration before relying on the new address.
 ```
 
 ## Step 2: Configure the Network Interface
 
 ```bash
-# After enabling IPv6, configure the OS network interface
-# (Linux example)
-ip -6 addr show
+# Inspect the current IPv6 configuration
+ip -6 addr show dev eth0
+ip -6 route show
 
-# If using static IPv6 assignment
-ip -6 addr add 2001:db8::1/64 dev eth0
-ip -6 route add ::/0 via 2001:db8::1 dev eth0
+# Temporary example for a manually added Primary IPv6.
+# For a persistent configuration, update your distro's network config as documented by Hetzner.
+ip -6 addr add 2001:db8:0:3df1::1/64 dev eth0
+ip -6 route replace default via fe80::1 dev eth0
 ```
 
 ## Step 3: Configure Firewall Rules for IPv6
 
 ```bash
+# Allow loopback
+ip6tables -A INPUT -i lo -j ACCEPT
+
+# Allow established connections
+ip6tables -A INPUT -m conntrack --ctstate ESTABLISHED,RELATED -j ACCEPT
+
 # Allow ICMPv6 (required for IPv6 operation)
 ip6tables -A INPUT -p ipv6-icmp -j ACCEPT
 ip6tables -A OUTPUT -p ipv6-icmp -j ACCEPT
 
-# Allow established connections
-ip6tables -A INPUT -m state --state ESTABLISHED,RELATED -j ACCEPT
-
-# Allow SSH over IPv6
-ip6tables -A INPUT -s 2001:db8:admin::/48 -p tcp --dport 22 -j ACCEPT
+# Allow SSH over IPv6 from an admin prefix
+ip6tables -A INPUT -s 2001:db8:100::/48 -p tcp --dport 22 -j ACCEPT
 
 # Default deny
 ip6tables -P INPUT DROP
@@ -52,15 +56,17 @@ ip6tables -P INPUT DROP
 ## Step 4: DNS Configuration for IPv6
 
 ```bash
-# Add AAAA record for the instance hostname
-# (In the provider's DNS management console or API)
+# Add an AAAA record for the instance hostname in your authoritative DNS provider
+
+# On Hetzner, set reverse DNS (PTR) for the server IP
+hcloud server set-rdns --ip 2001:db8:0:3df1::1 --hostname myhost.example.com my-server
 
 # Verify resolution
 dig AAAA myhost.example.com
 # Should return the IPv6 address
 
 # Test reverse DNS
-dig -x 2001:db8::1
+dig -x 2001:db8:0:3df1::1
 ```
 
 ## Step 5: Test IPv6 Connectivity
@@ -68,10 +74,10 @@ dig -x 2001:db8::1
 ```bash
 # Test outbound IPv6
 curl -6 https://ipv6.google.com/
-ping6 -c 3 2600::
+ping -6 -c 3 ipv6.google.com
 
-# Test inbound IPv6
-curl -6 http://[2001:db8::1]/health
+# From another IPv6-capable host, test inbound IPv6
+curl -6 http://[2001:db8:0:3df1::1]/health
 
 # Verify dual-stack (both IPv4 and IPv6 work)
 curl -4 http://myhost.example.com/health
@@ -82,20 +88,20 @@ curl -6 http://myhost.example.com/health
 
 ```terraform
 # Terraform example for Hetzner Cloud IPv6 Networking
-# Resource with IPv6 enabled
-resource "example_instance" "main" {
-  name = "ipv6-instance"
+# Resource with dual-stack public networking enabled
+resource "hcloud_server" "main" {
+  name        = "ipv6-instance"
+  image       = "ubuntu-24.04"
+  server_type = "cx23"
 
-  # Enable dual-stack networking
-  ipv6_enabled = true
-
-  network {
-    ipv6_address = "2001:db8::1"
+  public_net {
+    ipv4_enabled = true
+    ipv6_enabled = true
   }
 
-  tags = {
-    Environment = "production"
-    IPv6        = "enabled"
+  labels = {
+    environment = "production"
+    stack       = "dual-stack"
   }
 }
 ```
@@ -119,4 +125,4 @@ ip6tables -L INPUT -n -v
 
 ## Conclusion
 
-Hetzner Cloud IPv6 Networking requires enabling IPv6 at the provider level, configuring OS network settings, setting up firewall rules that permit ICMPv6, and verifying end-to-end connectivity. Use Infrastructure as Code (Terraform) to ensure consistent IPv6 configuration across all instances. Monitor IPv6 endpoint availability with OneUptime from IPv6 vantage points.
+Hetzner Cloud IPv6 Networking requires enabling a Primary IPv6 at the provider level, configuring OS network settings, setting up firewall rules that permit ICMPv6, and verifying end-to-end connectivity. Hetzner private Networks are IPv4-only, so dual-stack deployments typically combine public IPv6 with private IPv4. Use Infrastructure as Code (Terraform) to ensure consistent IPv6 configuration across all instances. Monitor IPv6 endpoint availability with OneUptime from IPv6 vantage points.
