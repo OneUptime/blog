@@ -13,7 +13,8 @@ Map physical host devices including USB and serial ports to Docker containers in
 ## Prerequisites
 
 - Portainer installed (CE or BE)
-- At least one Docker or Kubernetes environment connected
+- At least one Docker environment connected
+- The host device is present on the Docker host (for example `/dev/ttyUSB0` or `/dev/ttyACM0`)
 - Basic familiarity with Docker concepts
 
 ## Using the Portainer UI
@@ -21,29 +22,29 @@ Map physical host devices including USB and serial ports to Docker containers in
 ### Step 1: Navigate to the Relevant Section
 
 1. Log in to your Portainer instance
-2. Select your environment from the home screen
-3. Navigate to **Containers** (or **Stacks** for compose-based tasks)
+2. Select your Docker environment from the home screen
+3. Navigate to **Containers**
+4. Click **Add container** for a new deployment, or open an existing container and click **Duplicate/Edit** to update it
 
 ### Step 2: Locate Your Container
 
-Use the search and filter options in Portainer:
+Use the search and filter options in Portainer if you are updating an existing container:
 
 1. Click the **Containers** menu item
 2. Use the search box to find your container
-3. Filter by status (running, stopped, unhealthy)
-4. Click on the container name for details
+3. Click on the container name for details
+4. Click **Duplicate/Edit** to change the configuration
 
 ## Step-by-Step Instructions
 
 ### View Container Details
 
 ```bash
-# Using Docker CLI equivalent
+# Confirm the device exists on the Docker host
+ls -l /dev/ttyUSB0
 
-docker inspect container-name
-
-# View formatted output
-docker inspect container-name | jq '.[0].Config'
+# Inspect the container's configured device mappings
+docker inspect container-name | jq '.[0].HostConfig.Devices'
 
 # Via Portainer: Containers > container-name > Inspect
 ```
@@ -51,33 +52,18 @@ docker inspect container-name | jq '.[0].Config'
 ### Key Configuration Options
 
 ```yaml
-# docker-compose.yml example
-version: "3.8"
-
+# compose.yaml example
 services:
   app:
     image: your-app:latest
     container_name: my-app
-    restart: always
-    # Resource constraints
-    deploy:
-      resources:
-        limits:
-          cpus: '1.0'
-          memory: 512M
-    # Health check
-    healthcheck:
-      test: ["CMD", "curl", "-f", "http://localhost:8080/health"]
-      interval: 30s
-      timeout: 10s
-      retries: 3
-    # Environment
+    restart: unless-stopped
+    devices:
+      - "/dev/ttyUSB0:/dev/ttyUSB0"
     environment:
       - NODE_ENV=production
-    # Volumes
     volumes:
       - app-data:/data
-    # Network
     networks:
       - app-net
 
@@ -94,57 +80,58 @@ networks:
 Useful Docker commands for this task:
 
 ```bash
-# Basic inspection commands
-docker ps -a                              # List all containers
-docker stats container-name               # View resource usage
-docker logs container-name --tail 100     # View recent logs
-docker inspect container-name             # Full container config
-docker exec -it container-name /bin/sh   # Access container shell
+# Confirm the device exists on the host
+ls -l /dev/ttyUSB0
 
-# Advanced filtering
-docker ps --filter "status=running" \
-           --filter "label=env=production" \
-           --format "table {{.Names}}\t{{.Status}}\t{{.Ports}}"
+# Start a container with the device mapped
+docker run -d --name my-app \
+  --device=/dev/ttyUSB0:/dev/ttyUSB0 \
+  your-app:latest
 
-# File operations
-docker cp /host/path container-name:/container/path
-docker cp container-name:/container/path /host/path
+# Inspect the applied device mapping
+docker inspect my-app | jq '.[0].HostConfig.Devices'
+
+# Verify the device node exists inside the container
+docker exec my-app ls -l /dev/ttyUSB0
 ```
 
 ## Portainer-Specific Features
 
 Portainer provides several UI conveniences for this task:
 
-1. **Visual Stats Dashboard**: Click any container > Stats for real-time graphs
-2. **Log Streaming**: Click Logs for real-time log output with search
-3. **Container Console**: Click Console for direct shell access
-4. **Quick Actions**: Stop, restart, kill from the container list
-5. **Inspect View**: Formatted JSON view of container configuration
+1. **Duplicate/Edit**: Update an existing container and replace it with the new configuration
+2. **Advanced container settings**: Under **Runtime & Resources**, use **Devices** to add the host path and container path
+3. **Inspect View**: Confirm the mapped device appears under `HostConfig.Devices`
+4. **Container Console**: Verify the device node is visible inside the container
+5. **Quick Actions**: Start, stop, and restart the container after applying changes
 
 ## Troubleshooting Common Issues
 
-**Issue: Container not appearing in list**
+**Issue: Device path not found**
 ```bash
-# Check all containers including stopped ones
-docker ps -a
+# Check that the device exists on the Docker host
+ls -l /dev/ttyUSB0
 
-# Refresh Portainer's environment
-# Settings > Environments > Re-sync
+# Confirm the container mapping
+docker inspect container-name | jq '.[0].HostConfig.Devices'
 ```
 
 **Issue: Permission denied errors**
 ```bash
-# Check container user
-docker inspect container-name | jq '.[0].Config.User'
+# Check ownership and mode of the host device
+ls -l /dev/ttyUSB0
 
-# Run container with specific user
-docker run --user 1000:1000 your-image
+# Check which user the container runs as
+docker inspect container-name | jq '.[0].Config.User'
 ```
 
-**Issue: Resource limits not applying**
+**Issue: Changes not applied after editing**
 ```bash
-# Verify limits are applied
-docker inspect container-name | jq '.[0].HostConfig | {Memory, CpuShares, CpuQuota}'
+# Verify the saved mapping
+docker inspect container-name | jq '.[0].HostConfig.Devices'
+
+# Portainer replaces the container when you edit it
+# Containers > container-name > Duplicate/Edit > Deploy the container > Replace
 ```
 
 ## Automating with the Portainer API
@@ -158,12 +145,30 @@ TOKEN=$(curl -s -X POST \
   -H "Content-Type: application/json" \
   -d '{"Username":"admin","Password":"password"}' | jq -r .jwt)
 
-# List containers
-curl -s -X GET \
-  "https://portainer.example.com/api/endpoints/1/docker/containers/json" \
-  -H "Authorization: Bearer $TOKEN" | jq '.[] | {Names, Status, Image}'
+# Create a container with a mapped serial device
+CONTAINER_ID=$(curl -s -X POST \
+  "https://portainer.example.com/api/endpoints/1/docker/containers/create?name=my-app" \
+  -H "Authorization: Bearer $TOKEN" \
+  -H "Content-Type: application/json" \
+  -d '{
+    "Image": "your-app:latest",
+    "HostConfig": {
+      "Devices": [
+        {
+          "PathOnHost": "/dev/ttyUSB0",
+          "PathInContainer": "/dev/ttyUSB0",
+          "CgroupPermissions": "rwm"
+        }
+      ]
+    }
+  }' | jq -r .Id)
+
+# Start the container
+curl -s -X POST \
+  "https://portainer.example.com/api/endpoints/1/docker/containers/${CONTAINER_ID}/start" \
+  -H "Authorization: Bearer $TOKEN"
 ```
 
 ## Conclusion
 
-Understanding how to Map Host Devices (USB, Serial) to Containers in Portainer gives you greater control over your containerized infrastructure. Portainer's visual interface makes these operations accessible to team members who may not be comfortable with the Docker CLI, while also providing quick access to underlying Docker capabilities. Regular use of these features helps maintain healthy, well-monitored container environments.
+Understanding how to Map Host Devices (USB, Serial) to Containers in Portainer gives you a straightforward way to expose hardware such as USB-to-serial adapters to your workloads. Portainer's visual interface makes these mappings accessible to team members who may not be comfortable with the Docker CLI, while Docker inspect and the Portainer API give you reliable ways to verify the resulting configuration.
