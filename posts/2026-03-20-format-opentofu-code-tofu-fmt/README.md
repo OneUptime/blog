@@ -13,7 +13,7 @@ Description: A guide to using tofu fmt to automatically format OpenTofu configur
 ## Basic Usage
 
 ```bash
-# Format all .tf files in the current directory
+# Format OpenTofu configuration files in the current directory
 
 tofu fmt
 
@@ -92,7 +92,7 @@ tofu fmt -diff
 # -list=false: don't list files that were changed
 tofu fmt -list=false
 
-# -recursive: format all .tf files in subdirectories
+# -recursive: format all configuration files in subdirectories
 tofu fmt -recursive .
 
 # -write=false: don't write changes (just show what would change)
@@ -105,7 +105,7 @@ tofu fmt -write=false -diff
 # .git/hooks/pre-commit
 #!/bin/bash
 
-# Check if any .tf files need formatting
+# Check if any configuration files need formatting
 UNFORMATTED=$(tofu fmt -check -list -recursive)
 if [ -n "$UNFORMATTED" ]; then
   echo "The following files need formatting:"
@@ -128,10 +128,11 @@ chmod +x .git/hooks/pre-commit
 # .pre-commit-config.yaml
 repos:
   - repo: https://github.com/antonbabenko/pre-commit-terraform
-    rev: v1.88.0
+    rev: v1.105.0
     hooks:
       - id: terraform_fmt
         args:
+          - --hook-config=--tf-path=tofu
           - --args=-recursive
 ```
 
@@ -157,9 +158,9 @@ jobs:
     steps:
       - uses: actions/checkout@v4
 
-      - uses: opentofu/setup-opentofu@v1
+      - uses: opentofu/setup-opentofu@v2
         with:
-          tofu_version: "1.9.0"
+          tofu_version: "1.11.6"
 
       - name: Check formatting
         run: |
@@ -171,14 +172,15 @@ jobs:
 
 ### VS Code
 
-Install the OpenTofu/Terraform extension which runs `tofu fmt` on save:
+Install the OpenTofu extension which runs `tofu fmt` on save:
 
 ```json
 // .vscode/settings.json
 {
-  "[terraform]": {
-    "editor.defaultFormatter": "hashicorp.terraform",
-    "editor.formatOnSave": true
+  "[opentofu][opentofu-vars]": {
+    "editor.defaultFormatter": "opentofu.vscode-opentofu",
+    "editor.formatOnSave": true,
+    "editor.formatOnSaveMode": "file"
   }
 }
 ```
@@ -190,7 +192,9 @@ Install the OpenTofu/Terraform extension which runs `tofu fmt` on save:
 local null_ls = require("null-ls")
 null_ls.setup({
   sources = {
-    null_ls.builtins.formatting.terraform_fmt,
+    null_ls.builtins.formatting.terraform_fmt.with({
+      command = "tofu",
+    }),
   }
 })
 ```
