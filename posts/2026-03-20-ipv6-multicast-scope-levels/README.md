@@ -15,7 +15,7 @@ IPv6 multicast addresses include a 4-bit scope field that determines how far mul
 ### Scope 1: Interface-Local (Node-Local)
 
 ```text
-Prefix: ff01::/16
+Common permanent-group prefix: ff01::/16
 Example: ff01::1 (all nodes, interface-local)
 ```
 
@@ -24,7 +24,7 @@ Traffic with this scope never leaves the network interface - it stays within the
 ### Scope 2: Link-Local
 
 ```text
-Prefix: ff02::/16
+Common permanent-group prefix: ff02::/16
 Examples: ff02::1 (all nodes), ff02::2 (all routers), ff02::fb (mDNS)
 ```
 
@@ -33,7 +33,7 @@ Link-local scope is the most commonly used scope. Traffic is confined to a singl
 ### Scope 5: Site-Local
 
 ```text
-Prefix: ff05::/16
+Common permanent-group prefix: ff05::/16
 Examples: ff05::1:3 (DHCPv6 all servers), ff05::101 (NTP servers)
 ```
 
@@ -42,7 +42,7 @@ Site-local scope allows multicast within a campus or site. The definition of "si
 ### Scope E (14): Global
 
 ```text
-Prefix: ff0e::/16
+Common permanent-group prefix: ff0e::/16
 Examples: ff0e::101 (NTP, global)
 ```
 
@@ -52,12 +52,12 @@ Global scope multicast can travel anywhere on the internet (with appropriate rou
 
 ```mermaid
 graph TD
-    I[Interface-local ff01::/16] -->|contained within| L[Link-local ff02::/16]
-    L -->|contained within| R[Realm-local ff03::/16]
-    R -->|contained within| A[Admin-local ff04::/16]
-    A -->|contained within| S[Site-local ff05::/16]
-    S -->|contained within| O[Organization-local ff08::/16]
-    O -->|contained within| G[Global ff0e::/16]
+    I[Interface-local (1)] -->|contained within| L[Link-local (2)]
+    L -->|contained within| R[Realm-local (3)]
+    R -->|contained within| A[Admin-local (4)]
+    A -->|contained within| S[Site-local (5)]
+    S -->|contained within| O[Organization-local (8)]
+    O -->|contained within| G[Global (e)]
 ```
 
 ## Scope and Router Behavior
@@ -67,26 +67,26 @@ graph TD
 | Interface-local (1) | Never | Loopback testing |
 | Link-local (2) | Never beyond link | NDP, DHCPv6, mDNS, OSPFv3 hellos |
 | Site-local (5) | Within site | DHCPv6 servers, NTP |
-| Global (e) | Globally (with PIM) | Internet multicast streams |
+| Global (e) | Potentially, if multicast routing is enabled | Internet multicast streams |
 
 ## Configuring Scope Boundaries on Routers
 
 Cisco IOS example for configuring multicast scope boundaries:
 
 ```cisco
-! Define a site boundary - don't forward ff05::/16 beyond this interface
+! Define a site boundary - don't forward scope-5 multicast beyond this interface
 interface GigabitEthernet0/0
  ipv6 multicast boundary scope 5
 ```
 
-Linux `ip6tables` example for enforcing scope boundaries:
+Linux `ip6tables` example for filtering common permanently assigned multicast prefixes:
 
 ```bash
-# Block site-local multicast from leaving the site uplink
+# Block permanently assigned site-local multicast groups from leaving the site uplink
 
 ip6tables -A FORWARD -d ff05::/16 -o wan0 -j DROP
 
-# Block global multicast from entering the internal network (if not expected)
+# Block permanently assigned global-scope multicast groups from entering the internal network (if not expected)
 # ip6tables -A FORWARD -d ff0e::/16 -i wan0 -j DROP
 ```
 
@@ -96,14 +96,14 @@ ip6tables -A FORWARD -d ff05::/16 -o wan0 -j DROP
 # Send a multicast ping to link-local all-nodes (should reach all hosts on link)
 ping6 ff02::1%eth0
 
-# Send a site-local multicast ping (reaches further within the site)
-ping6 ff05::1
+# Send a site-local multicast ping to all-routers (if site-local multicast routing is configured)
+ping6 ff05::2
 
 # Observe which scope multicast groups are joined
 ip -6 maddr show dev eth0 | grep 'ff0'
 
-# Check routing configuration for multicast
-ip -6 route show table local | grep 'ff'
+# Check the local multicast route installed by the kernel
+ip -6 route show table local type multicast
 ```
 
 ## Common Scope Mistakes
@@ -114,7 +114,7 @@ ip -6 route show table local | grep 'ff'
 
 **Mistake**: Using link-local scope for a service that must reach multiple subnets.
 **Impact**: Service discovery (like mDNS) doesn't cross subnet boundaries.
-**Fix**: Use site-local scope or deploy proxy services (e.g., Avahi mDNS proxy) at router boundaries.
+**Fix**: Use a broader-scope multicast group for protocols designed for it, or deploy proxy services (e.g., Avahi mDNS proxy) at router boundaries.
 
 ## Admin-Local and Organization-Local
 
@@ -127,4 +127,4 @@ Organizations using these scopes must configure their routers with matching mult
 
 ## Summary
 
-IPv6 multicast scope levels control how far multicast traffic travels: interface-local (loopback), link-local (single segment), site-local (campus), and global (internet). The scope is encoded in the third nibble of the `ff` prefix. Routers enforce scope boundaries by refusing to forward multicast packets to scopes larger than the configured boundary. Use the appropriate scope for your use case - link-local for neighbor discovery, site-local for internal services, and global only for internet multicast.
+IPv6 multicast scope levels control how far multicast traffic travels: interface-local (loopback), link-local (single segment), site-local (campus), and global (internet). The scope is encoded in the fourth nibble of the multicast address (the low 4 bits of the second octet). Routers enforce scope boundaries by refusing to forward multicast packets beyond the boundary implied by the destination scope. Use the appropriate scope for your use case - link-local for neighbor discovery, site-local for internal services, and global only for internet multicast.
