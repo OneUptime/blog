@@ -4,7 +4,7 @@ Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
 Tags: Ipconfig, DHCP, Window, IP Address, Release Renew
 
-Description: Learn how to use ipconfig /release and /renew to flush the current IPv4 address and request a new one from the DHCP server, fixing IP assignment and connectivity issues on Windows.
+Description: Learn how to use ipconfig /release and /renew to release the current IPv4 configuration and request a new DHCP lease, fixing IP assignment and connectivity issues on Windows.
 
 ## When to Use ipconfig /release and /renew
 
@@ -31,10 +31,10 @@ REM    Link-local IPv6 Address . . . . . : fe80::...
 REM    Default Gateway . . . . . . . . . :
 REM (IP is now blank - adapter has no IPv4 address)
 
-REM Request new IP from DHCP server
+REM Request DHCP configuration from the server
 ipconfig /renew
 
-REM Expected output shows new IP:
+REM Expected output shows renewed IP configuration:
 REM IPv4 Address. . . . . . . . . . . : 192.168.1.105
 REM Subnet Mask . . . . . . . . . . . : 255.255.255.0
 REM Default Gateway . . . . . . . . . : 192.168.1.1
@@ -58,10 +58,10 @@ ipconfig /release "Wi*"
 ipconfig /renew "Wi*"
 ```
 
-## Step 3: Flush DNS Alongside Renew
+## Step 3: Flush DNS Alongside Renew (Optional)
 
 ```cmd
-REM Complete IP refresh sequence - best practice
+REM Optional sequence when you're also troubleshooting DNS
 ipconfig /release
 ipconfig /flushdns
 ipconfig /renew
@@ -70,7 +70,7 @@ ipconfig /registerdns
 REM Verify result
 ipconfig /all
 
-REM Check DNS cache is flushed
+REM View DNS client cache after flushing
 ipconfig /displaydns
 ```
 
@@ -113,7 +113,7 @@ sudo networkctl renew eth0
 # macOS
 sudo ipconfig set en0 DHCP
 # Or via networksetup
-networksetup -setdhcp "Wi-Fi"
+sudo networksetup -setdhcp "Wi-Fi"
 ```
 
 ## Step 6: What Happens Under the Hood
@@ -123,13 +123,15 @@ DHCP Release and Renew sequence:
 
 ipconfig /release:
   Client → DHCP Release → Server
-  Server marks IP as available in the pool
+  Server can return the address to its available pool
 
 ipconfig /renew:
-  Client → DHCP Discover (broadcast)
-  Server → DHCP Offer (IP: 192.168.1.105)
-  Client → DHCP Request (accept offer)
-  Server → DHCP Acknowledge (lease confirmed)
+  If no usable lease is present, the exchange typically is:
+    Client → DHCP Discover
+    Server → DHCP Offer (IP: 192.168.1.105)
+    Client → DHCP Request (accept offer)
+    Server → DHCP Acknowledge (lease confirmed)
+  If the client is renewing an existing lease, DHCP can begin with DHCP Request instead.
 ```
 
 ```cmd
@@ -159,10 +161,10 @@ ipconfig /renew "Ethernet"
 
 echo.
 echo Current IP configuration:
-ipconfig | findstr "IPv4\|Gateway"
+ipconfig | findstr /c:"IPv4" /c:"Gateway"
 pause
 ```
 
 ## Conclusion
 
-`ipconfig /release` sends a DHCP Release message returning the IP to the pool, and `ipconfig /renew` performs a full DHCP Discover/Offer/Request/Acknowledge cycle to obtain a fresh address. Always flush DNS alongside renewal with `ipconfig /flushdns`. If `/renew` hangs, check that the DHCP Client service is running with `sc query dhcp` and the adapter is enabled. For multiple adapters, specify the adapter name explicitly to avoid releasing all connections simultaneously.
+`ipconfig /release` sends a DHCP Release message to release the current lease, and `ipconfig /renew` requests DHCP configuration again, which may renew the same IPv4 address or assign a different one. If the client has no usable lease, this typically follows the standard Discover/Offer/Request/Acknowledge exchange. Use `ipconfig /flushdns` when you're also troubleshooting stale DNS cache entries, and `ipconfig /registerdns` when you need to refresh dynamic DNS registration. If `/renew` hangs, check that the DHCP Client service is running with `sc query dhcp` and the adapter is enabled. For multiple adapters, specify the adapter name explicitly to avoid releasing all connections simultaneously.
