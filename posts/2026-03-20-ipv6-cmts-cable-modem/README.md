@@ -10,40 +10,39 @@ Description: Configure IPv6 on Cable Modem Termination Systems (CMTS) for DOCSIS
 
 DOCSIS 3.0+ supports native IPv6 for cable subscribers. The IPv6 provisioning flow:
 
-1. Cable modem powers on, requests IPv6 via DHCPv6
+1. Cable modem powers on and requests IPv6 provisioning via DHCPv6
 2. CMTS relays DHCPv6 to provisioning server
-3. Cable modem gets IPv6 address + config file URL
-4. CPE router gets prefix delegation (/56 or /48) via DHCPv6-PD
-5. Home devices get addresses via SLAAC from CPE
+3. Cable modem gets an IPv6 address and provisioning parameters, then retrieves its config file from TFTP
+4. CPE router gets a delegated prefix via DHCPv6-PD
+5. Home devices typically get addresses via SLAAC from the CPE
 
 ## Cisco CMTS: IPv6 Configuration
 
 ```text
 ! Cisco uBR or cBR-8 CMTS - IPv6 configuration
 
-! Configure cable interface for IPv6
-interface Cable1/0/1
-  ipv6 address 2001:db8:cmts::1/64
-  ipv6 nd ra-interval 60
-  ipv6 nd prefix 2001:db8:cmts::/64
+ipv6 unicast-routing
+
+! Configure the subscriber bundle for IPv6
+interface Bundle1
+  ipv6 address 2001:db8:100::1/64
+  ipv6 enable
+  ipv6 nd managed-config-flag
+  ipv6 nd other-config-flag
+  ipv6 nd ra interval 30
 
 ! DHCPv6 relay for cable subscribers
-  ipv6 dhcp relay destination 2001:db8::dhcp
-  ipv6 helper-address 2001:db8::dhcp
+  ipv6 dhcp relay destination 2001:db8:ffff::10
 
-! Enable IPv6 subscriber management
-  cable ipv6 source-verify
-  cable dhcpv6-giaddr policy
+! Associate the cable MAC domain with the IPv6-enabled bundle
+interface Cable1/0/1
+  cable ip-init ipv6
+  cable bundle 1
 
-! Cable bundle interface
-interface Bundle1
-  ipv6 address 2001:db8:mgmt::1/64
-  ipv6 nd ra-interval 30
-  cable ipv6 address 2001:db8:subs::/64
-
-! Verify IPv6 cable modem leases
+! Verify IPv6 cable modem and prefix assignments
 show cable modem ipv6
-show ipv6 dhcp binding | head -20
+show cable modem ipv6 prefix
+show cable modem ipv6 summary
 ```
 
 ## ISC Kea DHCPv6 for CMTS
@@ -52,21 +51,21 @@ show ipv6 dhcp binding | head -20
 {
     "Dhcp6": {
         "interfaces-config": {
-            "interfaces": ["cmts0"]
+            "interfaces": ["eth0"]
         },
         "subnet6": [
             {
                 "id": 1,
-                "subnet": "2001:db8:subs::/48",
+                "subnet": "2001:db8:100::/48",
                 "relay": {
-                    "ip-addresses": ["2001:db8:cmts::1"]
+                    "ip-addresses": ["2001:db8:100::1"]
                 },
                 "pools": [
-                    {"pool": "2001:db8:subs::1 - 2001:db8:subs::ffff"}
+                    {"pool": "2001:db8:100::10 - 2001:db8:100::ffff"}
                 ],
                 "pd-pools": [
                     {
-                        "prefix": "2001:db8:home::/40",
+                        "prefix": "2001:db8:2000::",
                         "prefix-len": 40,
                         "delegated-len": 56
                     }
@@ -79,18 +78,17 @@ show ipv6 dhcp binding | head -20
 
 ## Monitoring Cable IPv6 Subscribers
 
-```bash
-# Check cable modem IPv6 registration
+```text
+# Registered IPv6 cable modems
+show cable modem ipv6 registered
 
-show cable modem ipv6 | grep "online"
+# Delegated IPv6 prefixes visible on the CMTS
+show cable modem ipv6 prefix
 
-# DHCPv6 statistics
-show ipv6 dhcp statistics
-
-# Subscriber counts
-show cable modem summary | grep "IPv6"
+# IPv6 subscriber summary by cable interface
+show cable modem ipv6 summary
 ```
 
 ## Conclusion
 
-CMTS IPv6 configuration for DOCSIS networks requires enabling IPv6 on cable interfaces, configuring DHCPv6 relay to forward subscriber DHCPv6 requests to the provisioning server, and allocating per-subscriber /56 prefixes for home network delegation. Cisco CMTS platforms use `cable ipv6` commands for subscriber management. Monitor cable modem IPv6 registration with `show cable modem ipv6` and alert when IPv6 registration rates fall below IPv4 rates, indicating provisioning issues.
+CMTS IPv6 configuration for DOCSIS networks requires enabling IPv6 on cable bundle interfaces, configuring DHCPv6 relay to forward subscriber DHCPv6 requests to the provisioning server, and allocating delegated prefixes for home network routing. Cisco CMTS platforms use bundle-interface IPv6 configuration together with cable-interface provisioning commands such as `cable ip-init` and `cable bundle`. Monitor IPv6 subscriber state with `show cable modem ipv6`, `show cable modem ipv6 prefix`, and `show cable modem ipv6 summary` to catch provisioning issues early.
