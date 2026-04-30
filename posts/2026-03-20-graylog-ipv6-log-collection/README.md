@@ -33,9 +33,12 @@ Graylog inputs are configured in the web UI (**System > Inputs**), but can also 
 
 ```bash
 # Create a UDP syslog input bound to all IPv6 interfaces
-curl -u admin:admin -H "Content-Type: application/json" \
+curl -u '<access_token>:token' \
+  -H "Accept: application/json" \
+  -H "Content-Type: application/json" \
+  -H "X-Requested-By: cli" \
   -X POST \
-  http://[::1]:9000/api/system/inputs \
+  "http://[::1]:9000/api/system/inputs" \
   -d '{
     "title": "Syslog UDP IPv6",
     "type": "org.graylog2.inputs.syslog.udp.SyslogUDPInput",
@@ -45,7 +48,6 @@ curl -u admin:admin -H "Content-Type: application/json" \
       "port": 5140,
       "recv_buffer_size": 262144,
       "number_worker_threads": 2,
-      "override_source": null,
       "allow_override_date": true,
       "store_full_message": false,
       "force_rdns": false
@@ -55,9 +57,12 @@ curl -u admin:admin -H "Content-Type: application/json" \
 
 ```bash
 # Create a GELF UDP input on IPv6
-curl -u admin:admin -H "Content-Type: application/json" \
+curl -u '<access_token>:token' \
+  -H "Accept: application/json" \
+  -H "Content-Type: application/json" \
+  -H "X-Requested-By: cli" \
   -X POST \
-  http://[::1]:9000/api/system/inputs \
+  "http://[::1]:9000/api/system/inputs" \
   -d '{
     "title": "GELF UDP IPv6",
     "type": "org.graylog2.inputs.gelf.udp.GELFUDPInput",
@@ -107,57 +112,80 @@ Create a regex extractor in the Graylog web UI or via API to extract IPv6 addres
 
 ```bash
 # Create regex extractor for IPv6 addresses in syslog messages
-curl -u admin:admin -H "Content-Type: application/json" \
+curl -u '<access_token>:token' \
+  -H "Accept: application/json" \
+  -H "Content-Type: application/json" \
+  -H "X-Requested-By: cli" \
   -X POST \
   "http://[::1]:9000/api/system/inputs/{input_id}/extractors" \
   -d '{
     "title": "Extract IPv6 Source",
-    "type": "regex",
-    "order": 0,
+    "cursor_strategy": "copy",
     "source_field": "message",
     "target_field": "src_ipv6",
+    "extractor_type": "regex",
     "extractor_config": {
-      "regex_value": "from ([0-9a-fA-F]{1,4}(?::[0-9a-fA-F]{0,4}){2,7}) port"
+      "regex_value": "(?i)from ((?:[0-9a-f]{1,4}:){7}[0-9a-f]{1,4}|(?:[0-9a-f]{1,4}:){1,7}:|(?:[0-9a-f]{1,4}:){1,6}:[0-9a-f]{1,4}|(?:[0-9a-f]{1,4}:){1,5}(?::[0-9a-f]{1,4}){1,2}|(?:[0-9a-f]{1,4}:){1,4}(?::[0-9a-f]{1,4}){1,3}|(?:[0-9a-f]{1,4}:){1,3}(?::[0-9a-f]{1,4}){1,4}|(?:[0-9a-f]{1,4}:){1,2}(?::[0-9a-f]{1,4}){1,5}|[0-9a-f]{1,4}:(?:(?::[0-9a-f]{1,4}){1,6})|:(?:(?::[0-9a-f]{1,4}){1,7}|:)) port"
     },
     "converters": [],
     "condition_type": "regex",
-    "condition_value": ":[0-9a-fA-F]"
+    "condition_value": ":[0-9a-fA-F]",
+    "order": 0
   }'
 ```
 
 ## Step 5: Create an IPv6 Stream
 
-Streams route matching messages to specific indices or trigger alerts:
+Streams route matching messages and can be used to scope searches or event definitions:
 
 ```bash
 # Create a stream for IPv6 traffic
-curl -u admin:admin -H "Content-Type: application/json" \
+# Replace {index_set_id} with a writable index set ID
+curl -u '<access_token>:token' \
+  -H "Accept: application/json" \
+  -H "Content-Type: application/json" \
+  -H "X-Requested-By: cli" \
   -X POST \
-  http://[::1]:9000/api/streams \
+  "http://[::1]:9000/api/streams" \
   -d '{
-    "title": "IPv6 Traffic",
-    "description": "All log messages from IPv6 sources",
-    "rules": [
-      {
-        "field": "src_ipv6",
-        "type": 5,
-        "value": ":",
-        "inverted": false,
-        "description": "Message contains IPv6 address"
-      }
-    ],
-    "matching_type": "AND"
+    "entity": {
+      "title": "IPv6 Traffic",
+      "description": "All log messages from IPv6 sources",
+      "index_set_id": "{index_set_id}",
+      "rules": [
+        {
+          "field": "src_ipv6",
+          "type": 5,
+          "value": "",
+          "inverted": false,
+          "description": "src_ipv6 field is present"
+        }
+      ],
+      "matching_type": "AND",
+      "remove_matches_from_default_stream": false
+    }
   }'
+```
+
+New streams are created paused. Start the stream in the UI or resume it via the API:
+
+```bash
+curl -u '<access_token>:token' \
+  -H "Accept: application/json" \
+  -H "X-Requested-By: cli" \
+  -X POST \
+  "http://[::1]:9000/api/streams/{stream_id}/resume"
 ```
 
 ## Step 6: IPv6 Alert Condition
 
-In the Graylog web UI under **Alerts**:
-- Create an alert condition on the IPv6 stream
-- Condition type: "Message count"
-- Threshold: > 1000 messages in 5 minutes
-- Use for brute-force SSH detection from IPv6 sources
+In the Graylog web UI under **Alerts > Event Definitions**:
+- Create an event definition that targets the IPv6 stream
+- Condition type: "Filter & Aggregation"
+- Filter the IPv6 stream for failed SSH logins
+- Set the aggregation threshold to more than 1000 messages in 5 minutes
+- Attach a notification to alert on bursts from IPv6 sources
 
 ## Conclusion
 
-Graylog supports IPv6 log collection by binding inputs to `::` (all IPv6 interfaces). Create separate UDP syslog and GELF inputs for IPv6 sources, use regex extractors to pull IPv6 addresses into dedicated fields, and create streams to route IPv6 traffic for dedicated storage, dashboards, and alerting. Configure `http_bind_address` to `[::]:9000` in server.conf to enable the Graylog web interface on IPv6.
+Graylog supports IPv6 log collection by binding inputs to `::` (all IPv6 interfaces). Create separate UDP syslog and GELF inputs for IPv6 sources, use regex extractors to pull IPv6 addresses into dedicated fields, and create streams to route IPv6 traffic for dedicated storage, dashboards, and event definitions. Configure `http_bind_address` to `[::]:9000` in server.conf to enable the Graylog web interface on IPv6.
