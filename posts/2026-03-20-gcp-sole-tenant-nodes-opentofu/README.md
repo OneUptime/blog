@@ -8,7 +8,7 @@ Description: Learn how to configure GCP Sole-Tenant Nodes with OpenTofu for comp
 
 ## Overview
 
-GCP Sole-Tenant Nodes provide dedicated physical hosts where only your project's VMs run. This is required for BYOL (Bring Your Own License) compliance, regulatory requirements, and workloads that must run on isolated hardware.
+GCP Sole-Tenant Nodes provide dedicated physical hosts where only your project's VMs run. This is commonly used for BYOL (Bring Your Own License) scenarios that require dedicated hardware, regulatory requirements, and workloads that must run on isolated hardware.
 
 ## Step 1: Create a Node Template
 
@@ -22,7 +22,7 @@ resource "google_compute_node_template" "sole_tenant_template" {
   # Node type determines the physical CPU and memory
   node_type = "n1-node-96-624"  # 96 vCPUs, 624 GB RAM
 
-  # Optional: specify CPU overcommit for better utilization
+  # Optional: enable CPU overcommit for VMs that set min_node_cpus
   cpu_overcommit_type = "ENABLED"
 
   # Node affinity labels for VM placement
@@ -52,7 +52,7 @@ resource "google_compute_node_group" "sole_tenant_group" {
     max_nodes = 5
   }
 
-  # Maintenance policy: when can nodes be migrated for maintenance
+  # Maintenance policy: how hosted VMs behave during node maintenance
   maintenance_policy = "RESTART_IN_PLACE"
 }
 ```
@@ -68,13 +68,13 @@ resource "google_compute_instance" "sole_tenant_vm" {
 
   boot_disk {
     initialize_params {
-      image = "windows-cloud/windows-2022"  # Common for BYOL Windows licenses
+      image = "windows-cloud/windows-2022"  # Public image with Google-provided licensing
       size  = 200
     }
   }
 
   network_interface {
-    subnetwork = google_compute_subnetwork.subnet.self_link
+    network = "default"
   }
 
   # Node affinity ensures this VM runs only on sole-tenant nodes
@@ -88,8 +88,6 @@ resource "google_compute_instance" "sole_tenant_vm" {
     }
   }
 
-  # Enable license tracking for BYOL
-  enable_display = false
 }
 ```
 
@@ -104,14 +102,14 @@ resource "google_compute_instance" "byol_windows_vm" {
 
   boot_disk {
     initialize_params {
-      # Use BYOL image for bring-your-own Windows Server license
-      image = "windows-cloud/windows-2022-core-for-sole-tenant-byol"
+      # Use a custom image you imported or built for BYOL; public Windows images are on-demand licensed
+      image = "projects/my-project/global/images/custom-windows-byol-image"
       size  = 100
     }
   }
 
   network_interface {
-    subnetwork = google_compute_subnetwork.subnet.self_link
+    network = "default"
   }
 
   scheduling {
@@ -127,4 +125,4 @@ resource "google_compute_instance" "byol_windows_vm" {
 
 ## Summary
 
-GCP Sole-Tenant Nodes with OpenTofu provide dedicated physical hardware for compliance and BYOL licensing requirements. Node templates define the hardware type, node groups manage capacity and autoscaling, and VM node affinity rules ensure workloads land on the correct isolated hosts.
+GCP Sole-Tenant Nodes with OpenTofu provide dedicated physical hardware for compliance and BYOL scenarios that require dedicated hosts. Node templates define the hardware type, node groups manage capacity and autoscaling, and VM node affinity rules ensure workloads land on the correct isolated hosts.
