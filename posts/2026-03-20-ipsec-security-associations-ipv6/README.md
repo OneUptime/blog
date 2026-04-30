@@ -8,11 +8,11 @@ Description: Learn how IPsec Security Associations work in IPv6 networks, includ
 
 ## Overview
 
-A Security Association (SA) is a one-way logical connection between two IPv6 hosts that defines the cryptographic parameters (algorithm, key, SPI) for IPsec processing. Every IPsec tunnel requires two SAs - one in each direction. Understanding SAs is fundamental to troubleshooting IPsec issues.
+A Security Association (SA) is a one-way logical connection between two IPv6 hosts that defines the cryptographic parameters (algorithm, key, SPI) for IPsec processing. A typical bidirectional IPsec tunnel uses two SAs - one in each direction. Understanding SAs is fundamental to troubleshooting IPsec issues.
 
 ## SA Components
 
-A Security Association is uniquely identified by three values:
+For inbound IPsec processing, an SA is commonly identified by three values:
 
 | Component | Description |
 |-----------|-------------|
@@ -20,7 +20,7 @@ A Security Association is uniquely identified by three values:
 | Destination IP | IPv6 address of the SA's destination |
 | Protocol | AH (51) or ESP (50) |
 
-Together these form the SA selector: `(SPI, dst, protocol)`
+Together these are commonly shown as the inbound SA selector: `(SPI, dst, protocol)`
 
 ## Security Association Database (SAD)
 
@@ -30,8 +30,8 @@ The SAD contains all active SAs. Each entry includes:
 SA Parameters:
   SPI:           0xABC123
   Protocol:      ESP
-  Src:           2001:db8:gw1::1
-  Dst:           2001:db8:gw2::1
+  Src:           2001:db8:1::1
+  Dst:           2001:db8:2::1
   Mode:          Tunnel
   Cipher:        AES-256-GCM
   Key:           [256-bit key]
@@ -51,7 +51,7 @@ ip xfrm state list
 ip -s xfrm state list
 
 # Sample output:
-# src 2001:db8:gw1::1 dst 2001:db8:gw2::1
+# src 2001:db8:1::1 dst 2001:db8:2::1
 #   proto esp spi 0x00abc123 reqid 1 mode tunnel
 #   replay-window 64 flag af-unspec
 #   aead rfc4106(gcm(aes)) 0x...key...  128
@@ -72,14 +72,14 @@ The SPD determines which traffic is subject to IPsec processing:
 ip xfrm policy list
 
 # Sample output:
-# src 2001:db8:site1::/48 dst 2001:db8:site2::/48
+# src 2001:db8:100::/48 dst 2001:db8:200::/48
 #   dir out priority 0
-#   tmpl src 2001:db8:gw1::1 dst 2001:db8:gw2::1
+#   tmpl src 2001:db8:1::1 dst 2001:db8:2::1
 #     proto esp spi 0x00000000(0) reqid 1 mode tunnel
 ```
 
 SPD actions:
-- **PROTECT**: Apply IPsec (ENCRYPT/AUTHENTICATE)
+- **PROTECT**: Apply IPsec processing
 - **BYPASS**: Send without IPsec
 - **DISCARD**: Drop the packet
 
@@ -97,7 +97,7 @@ sequenceDiagram
     Note over Init,Resp: Derive IKE SA keys
 
     Init->>Resp: IKE_AUTH: ID, AUTH, SA proposal, TS
-    Resp->>Init: IKE_AUTH: ID, AUTH, SA accepted, TS, Assigns SPI
+    Resp->>Init: IKE_AUTH: ID, AUTH, SA accepted, TS
 
     Note over Init,Resp: First CHILD_SA (IPsec SA) established
 ```
@@ -108,23 +108,31 @@ SAs have both time and byte-based lifetimes:
 
 ```bash
 # strongSwan: Configure SA lifetimes in swanctl.conf
-children {
-    my-tunnel {
-        rekey_time = 3600s      ! Initiate rekey at 3600s
-        life_time  = 7200s      ! Hard lifetime (force new SA at 7200s)
-        rekey_bytes = 1000000000  ! Rekey after 1GB
-        life_bytes  = 2000000000  ! Hard byte limit
+connections {
+    example {
+        children {
+            my-tunnel {
+                # Initiate rekey at 3600s
+                rekey_time = 3600s
+                # Hard lifetime (force new SA at 7200s)
+                life_time  = 7200s
+                # Rekey after 1GB
+                rekey_bytes = 1000000000
+                # Hard byte limit
+                life_bytes  = 2000000000
+            }
+        }
     }
 }
 ```
 
-### SA Rekey vs SA Renewal
+### SA Rekey vs SA Reauthentication
 
 - **Rekey**: New keys are negotiated while old SA is still valid (smooth transition)
-- **Renewal**: Old SA expires, new negotiation starts (brief interruption possible)
+- **Reauthentication**: A new IKE SA is created from scratch and the associated IPsec SAs are recreated (brief interruption possible)
 
 ```bash
-# Monitor SA rekey events
+# strongSwan with charon-systemd: Monitor SA rekey events
 journalctl -u strongswan | grep -E 'rekeying|CHILD_SA'
 ```
 
@@ -133,17 +141,17 @@ journalctl -u strongswan | grep -E 'rekeying|CHILD_SA'
 ESP includes a sequence number for anti-replay protection:
 
 ```bash
-# The anti-replay window (default 64 packets)
+# Example anti-replay window shown above: 64 packets
 # If a packet arrives with a sequence number outside the window → dropped
 # This prevents replay attacks where attacker resends captured ESP packets
 
 # View current sequence numbers
-ip xfrm state list | grep 'anti-replay context'
-# seq = expected next inbound sequence
-# oseq = current outbound sequence
+ip -s xfrm state list | grep 'anti-replay context'
+# seq = inbound sequence state
+# oseq = outbound sequence state
 
-# Extend anti-replay window (for high-bandwidth links with reordering)
-ip xfrm state add ... replay-window 512
+# Example: increase the replay window on an existing SA
+ip xfrm state update src 2001:db8:1::1 dst 2001:db8:2::1 proto esp spi 0x00abc123 replay-window 512
 ```
 
 ## SA Monitoring
@@ -162,4 +170,4 @@ swanctl --list-sas --raw | grep -E 'spi|bytes|rekey'
 
 ## Summary
 
-IPsec SAs are identified by (SPI, Destination IP, Protocol). The SAD stores active SAs with their keys, algorithms, and counters. The SPD determines which traffic gets IPsec treatment. IKEv2 negotiates SAs in two phases: IKE_SA_INIT (DH exchange) and IKE_AUTH (authentication + first CHILD_SA). SAs have time and byte-based lifetimes with automatic rekeying (strongSwan: `rekey_time`). Monitor SAs with `ip xfrm state list` on Linux or `swanctl --list-sas`. Anti-replay protection uses a sequence number window to prevent replay attacks.
+IPsec SAs use SPIs, and inbound processing commonly inspects the SPI, destination IP, and protocol. The SAD stores active SAs with their keys, algorithms, and counters. The SPD determines which traffic gets IPsec treatment. IKEv2 negotiates SAs in two phases: IKE_SA_INIT (DH exchange) and IKE_AUTH (authentication + first CHILD_SA). SAs have time and byte-based lifetimes with automatic rekeying (strongSwan: `rekey_time`). Monitor SAs with `ip xfrm state list` on Linux or `swanctl --list-sas`. Anti-replay protection uses a sequence number window to prevent replay attacks.
