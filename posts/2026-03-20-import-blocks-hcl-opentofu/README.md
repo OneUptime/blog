@@ -4,11 +4,11 @@ Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
 Tags: OpenTofu, Import Blocks, HCL, Migration, Infrastructure as Code
 
-Description: Learn how to use OpenTofu import blocks with -generate-config-out to automatically generate HCL configuration from existing infrastructure, streamlining the process of bringing resources under...
+Description: Learn how to use OpenTofu import blocks with the experimental -generate-config-out flag to generate starter HCL configuration from existing infrastructure, streamlining the process of bringing resources under...
 
 ---
 
-Import blocks are the modern way to bring existing infrastructure into OpenTofu management. Combined with `-generate-config-out`, they automatically generate HCL configuration matching the real resource state, eliminating the need to write configuration from scratch for existing resources.
+Import blocks are the modern way to bring existing infrastructure into OpenTofu management. Combined with the experimental `-generate-config-out` flag, they can generate starter HCL configuration based on the real resource state, reducing the amount of configuration you need to write by hand for existing resources.
 
 ## Import Block vs Legacy tofu import
 
@@ -31,14 +31,14 @@ import {
 ```
 
 ```bash
-# Generate HCL configuration for all import blocks
+# Assuming the provider is already configured and initialized, generate HCL configuration
 tofu plan -generate-config-out=generated.tf
 
-# This creates generated.tf with the resource configuration
-# Review the generated file, then apply
+# This creates generated.tf with a starter resource configuration
+# Review and edit the generated file, then apply
 
 tofu apply
-# Resources are added to state - no infrastructure changes made
+# The resource is imported into state rather than created by OpenTofu
 ```
 
 ## Generating Configuration for Multiple Resources
@@ -112,7 +112,7 @@ resource "aws_vpc" "main" {
 
 ```hcl
 # After generation, clean up:
-# 1. Remove redundant tags_all (managed by provider default_tags)
+# 1. Remove provider-managed tags_all
 # 2. Replace hardcoded IDs with references
 # 3. Remove computed-only attributes
 # 4. Add variable references
@@ -159,17 +159,19 @@ import {
   to = aws_subnet.main[each.key]
 }
 
-# Corresponding resource (written after inspecting generated output)
+# Corresponding resource (written manually)
 resource "aws_subnet" "main" {
   for_each = local.subnet_imports
-  # ... attributes from generated config
+  # ... attributes you define yourself
 }
 ```
+
+OpenTofu supports `for_each` in `import` blocks, but `-generate-config-out` does not currently generate configuration for imports defined this way, so the matching `resource` block must be written manually.
 
 ## Best Practices
 
 - Keep import blocks in a separate `imports.tf` file - remove or archive them after the resources are successfully imported.
 - Always run `tofu plan` after `tofu apply` on imports to confirm no unintended changes remain.
-- Use `-generate-config-out` to a new file rather than appending to existing files - it's easier to review changes separately.
-- Remove `tags_all` and other computed-only attributes from generated config - they cause unnecessary complexity without adding value.
-- Import blocks support `for_each` for importing multiple similar resources with a single block.
+- Use `-generate-config-out` with a new file path rather than an existing file - OpenTofu throws an error if the target file already exists, and separate files are easier to review.
+- Remove provider-managed attributes such as `tags_all` and other computed-only attributes from generated config - they cause unnecessary complexity without adding value.
+- Import blocks support `for_each` for importing multiple similar resources with a single block, but `-generate-config-out` does not currently generate configuration for those imports.
