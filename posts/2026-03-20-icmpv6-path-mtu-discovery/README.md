@@ -8,7 +8,7 @@ Description: Understand how ICMPv6 Packet Too Big messages drive IPv6 Path MTU D
 
 ## Introduction
 
-IPv6 Path MTU Discovery (RFC 8201) relies entirely on ICMPv6 Packet Too Big messages. When a router cannot forward a packet because it exceeds the next-link MTU, it discards the packet and sends a Packet Too Big message to the source. The source uses this to update its PMTU cache and resend at the correct size. Without ICMPv6 Packet Too Big, all IPv6 paths would have PMTU black holes for any connection crossing a reduced-MTU link.
+IPv6 Path MTU Discovery (RFC 8201) relies entirely on ICMPv6 Packet Too Big messages. When a router cannot forward a packet because it exceeds the next-link MTU, it discards the packet and sends a Packet Too Big message to the source. The source uses this to update its PMTU cache and resend at the correct size. Without ICMPv6 Packet Too Big, connections sending packets above the actual path MTU can black-hole when they cross a reduced-MTU link.
 
 ## PMTUD Using ICMPv6: The Complete Flow
 
@@ -29,7 +29,7 @@ sequenceDiagram
     S->>R1: Re-send (1280 bytes)
     R1->>R2: Forward (1280 bytes)
     R2->>D: Deliver (1280 bytes)
-    Note over S: Cache expires after 10 min → retry with 1500
+    Note over S: Cache ages after 10 min → may probe for a larger PMTU
 ```
 
 ## PMTU Cache Mechanics
@@ -43,20 +43,16 @@ ip -6 route show cache
 # 2001:db8::1 from :: via fe80::1 dev eth0 src 2001:db8::100
 #    cache  expires 590sec mtu 1280
 
-# The cache has a 10-minute expiry:
+# On Linux, the default PMTU cache timeout is 10 minutes:
 cat /proc/sys/net/ipv6/route/mtu_expires
 # Default: 600 (seconds)
 
-# After expiry, source tries full MTU again to detect path changes
-# If path MTU increased: success, new cache entry at larger size
-# If path MTU same: receives another PTB, cache updated
+# After expiry, a later packet can probe for a larger PMTU again
+# If path MTU increased: success, cache can grow
+# If path MTU is unchanged: another PTB refreshes the cached PMTU
 
 # Force PMTU rediscovery for all destinations
 sudo ip -6 route flush cache
-
-# Check if PMTUD is enabled for an interface
-cat /proc/sys/net/ipv6/conf/eth0/path_mtu_discovery
-# 1 = enabled (should always be 1)
 ```
 
 ## Monitoring PMTUD with tcpdump
@@ -64,34 +60,33 @@ cat /proc/sys/net/ipv6/conf/eth0/path_mtu_discovery
 ```bash
 # Watch for Packet Too Big messages arriving at this host
 # These indicate PMTUD is active and reducing MTU
-sudo tcpdump -i eth0 -v "icmp6 and ip6[40] == 2"
+sudo tcpdump -i eth0 -v \
+    "icmp6 and icmp6[icmp6type] == icmp6-packettoobig"
 
 # Watch for all PMTUD-related traffic simultaneously
 sudo tcpdump -i eth0 -v \
-    "(icmp6 and ip6[40] == 2) or (ip6[6] == 44)"
-# Type 2 = PTB messages, ip6[6]==44 = Fragment Header (post-PTB fragmentation)
+    "(icmp6 and icmp6[icmp6type] == icmp6-packettoobig) or (ip6[6] == 44)"
+# icmp6-packettoobig = PTB messages, ip6[6]==44 = Fragment Header
 
 # Trace PMTUD for a specific destination
 sudo tcpdump -i eth0 -v \
-    "(host 2001:db8::1 and icmp6 and ip6[40] == 2) or \
-     (src host 2001:db8::1 and icmp6 and ip6[40] == 2)"
+    "host 2001:db8::1 and icmp6 and \
+     icmp6[icmp6type] == icmp6-packettoobig"
 
 # Check PMTU statistics from kernel
 cat /proc/net/snmp6 | grep -E "Pmtu|TooBig|Reasm"
-# Ip6InTooBigErrors: Number of PTB messages received
+# Icmp6InPktTooBigs: Number of ICMPv6 PTB messages received
 ```
 
 ## Simulating PMTUD
 
 ```python
 import subprocess
-import re
-
 def simulate_pmtud(destination: str, start_mtu: int = 1500,
                    min_mtu: int = 1280) -> list:
     """
     Simulate PMTUD by probing with decreasing packet sizes.
-    Uses ping6 -M do to prevent fragmentation.
+    Uses ping -6 -M probe to bypass cached PMTU checks while probing.
     Returns list of MTU probes and results.
     """
     results = []
@@ -102,11 +97,12 @@ def simulate_pmtud(destination: str, start_mtu: int = 1500,
         data_size = probe_mtu - 48
 
         proc = subprocess.run(
-            ["ping6", "-c", "1", "-M", "do", "-s", str(data_size),
+            ["ping", "-6", "-c", "1", "-M", "probe", "-s", str(data_size),
              "-W", "2", destination],
             capture_output=True, text=True
         )
 
+        output = f"{proc.stdout}\n{proc.stderr}".lower()
         success = proc.returncode == 0
         results.append({
             "probe_mtu": probe_mtu,
@@ -119,9 +115,9 @@ def simulate_pmtud(destination: str, start_mtu: int = 1500,
             break
         else:
             # Check if it's a PTB error vs timeout
-            if "Message too long" in proc.stderr or "mtu=" in proc.stderr:
+            if "message too long" in output or "mtu:" in output or "mtu=" in output:
                 print(f"✗ MTU {probe_mtu} bytes: TOO LARGE (PTB received)")
-                # Reduce by 8 bytes (common MTU reduction step)
+                # Reduce and retry
                 probe_mtu -= 8
             else:
                 print(f"? MTU {probe_mtu} bytes: timeout (firewall blocking PTB?)")
@@ -142,7 +138,7 @@ Pattern 1: PTB is blocked by firewall
 
 Pattern 2: PTB is rate-limited
   Symptom: Occasional large-packet failures that self-recover
-  Fix:     Ensure PTB is not in the rate-limited message types
+  Fix:     Tune ICMPv6 error-message rate limits so PTB is not suppressed too aggressively
 
 Pattern 3: PTB is delivered but cache expires too fast
   Symptom: Periodic large-packet failures every N minutes
@@ -155,4 +151,4 @@ Pattern 4: PTB contains wrong MTU value
 
 ## Conclusion
 
-ICMPv6 Packet Too Big is the single mechanism that makes IPv6 PMTUD work. Without it, every connection crossing a reduced-MTU link would fail silently for large data transfers. The kernel's PMTU cache (visible via `ip -6 route show cache`) stores per-destination learned MTU values with a 10-minute expiry. Monitoring for ICMPv6 Type 2 messages with tcpdump is the first diagnostic step when large-data connectivity issues arise. The kernel's `Ip6InTooBigErrors` counter provides aggregate statistics on PMTUD activity.
+ICMPv6 Packet Too Big is the single mechanism that makes IPv6 PMTUD work. Without it, connections sending packets larger than the actual path MTU can fail silently on reduced-MTU paths. The kernel's PMTU cache (visible via `ip -6 route show cache`) stores per-destination learned MTU values; on Linux, the default timeout is 10 minutes. Monitoring for ICMPv6 Type 2 messages with tcpdump is the first diagnostic step when large-data connectivity issues arise. The kernel's `Icmp6InPktTooBigs` counter provides aggregate statistics on PTB activity.
