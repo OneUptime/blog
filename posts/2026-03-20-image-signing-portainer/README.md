@@ -4,7 +4,7 @@ Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
 Tags: Portainer, Docker, Security, Image Signing, Cosign, Supply Chain Security
 
-Description: Sign Docker images with Cosign and configure Portainer to only run verified, signed images as part of a supply chain security strategy.
+Description: Sign Docker images with Cosign and verify them before deploying through Portainer as part of a supply chain security strategy.
 
 ## Introduction
 
@@ -99,7 +99,7 @@ jobs:
       - uses: actions/checkout@v4
 
       - name: Install Cosign
-        uses: sigstore/cosign-installer@v3
+        uses: sigstore/cosign-installer@v4
 
       - name: Log in to Registry
         uses: docker/login-action@v3
@@ -109,17 +109,21 @@ jobs:
           password: ${{ secrets.GITHUB_TOKEN }}
 
       - name: Build and Push
+        id: build
         uses: docker/build-push-action@v5
         with:
           push: true
           tags: ghcr.io/${{ github.repository }}:${{ github.sha }}
 
       - name: Sign Image (Keyless - uses GitHub OIDC)
+        env:
+          IMAGE: ghcr.io/${{ github.repository }}:${{ github.sha }}
+          DIGEST: ${{ steps.build.outputs.digest }}
         run: |
           cosign sign \
             --yes \
-            ghcr.io/${{ github.repository }}:${{ github.sha }}
-          # Keyless: signature stored in Rekor public ledger
+            "${IMAGE}@${DIGEST}"
+          # Keyless: the signature is stored in the registry and logged to Rekor
 ```
 
 ## Step 5: Enforce Signature Verification Before Deployment
@@ -127,71 +131,49 @@ jobs:
 ```bash
 #!/bin/bash
 # verify-and-deploy.sh - Verify signature before triggering Portainer deployment
+# Requires a Portainer Business Edition stack webhook.
 
 IMAGE=$1
+IMAGE_TAG=${IMAGE##*:}
 COSIGN_PUBLIC_KEY=/etc/cosign/cosign.pub
-PORTAINER_WEBHOOK="https://portainer.example.com/api/webhooks/YOUR_WEBHOOK_ID"
+PORTAINER_WEBHOOK="https://portainer.example.com/api/stacks/webhooks/YOUR_WEBHOOK_ID"
 
 echo "Verifying signature for: $IMAGE"
 
-cosign verify \
+# For keyless GitHub Actions signatures, verify with --certificate-identity
+# or --certificate-identity-regexp together with
+# --certificate-oidc-issuer https://token.actions.githubusercontent.com
+if ! cosign verify \
   --key "$COSIGN_PUBLIC_KEY" \
-  "$IMAGE" > /dev/null 2>&1
-
-if [ $? -ne 0 ]; then
+  "$IMAGE" > /dev/null 2>&1; then
   echo "BLOCKED: Image signature verification failed for $IMAGE"
-  echo "This image has not been signed by the CI pipeline."
+  echo "This image is unsigned or was not signed with the expected key."
   exit 1
 fi
 
 echo "Signature verified. Proceeding with deployment."
 
-# Update compose stack image reference
-sed -i "s|image: myapp/api:.*|image: $IMAGE|" /opt/stacks/myapp/docker-compose.yml
-
-# Trigger Portainer deployment
-curl -s -X POST "$PORTAINER_WEBHOOK"
+# Redeploy the stack with the verified image tag
+curl -fsS -X POST "${PORTAINER_WEBHOOK}?tag=${IMAGE_TAG}" > /dev/null
 echo "Deployment triggered."
 ```
 
 ## Step 6: Container Signature Policy with Connaisseur
 
-```yaml
-# Connaisseur enforces image verification as a Kubernetes admission webhook
-# For Docker, use a verification wrapper script
-
-# docker-compose.yml with wrapper image that verifies before starting
-version: "3.8"
-
-services:
-  api:
-    image: registry.example.com/myapp/api:1.0.0
-    # Use a pre-start hook to verify the image signature
-    entrypoint: ["/bin/sh", "-c"]
-    command:
-      - |
-        echo "Verifying image signature..."
-        cosign verify \
-          --key /etc/cosign/cosign.pub \
-          registry.example.com/myapp/api:1.0.0 || exit 1
-        echo "Signature valid. Starting application..."
-        exec node server.js
-    volumes:
-      - ./cosign.pub:/etc/cosign/cosign.pub:ro
-```
+Connaisseur enforces image verification as a Kubernetes admission webhook. Use it when Portainer is managing a Kubernetes environment and you want signature policy enforced at cluster admission time. It does not apply to Portainer-managed Docker or Compose stacks, so for those environments keep the external verification gate shown above.
 
 ## Step 7: Verify All Running Container Images
 
 ```bash
-# Audit script - verify signatures on all running containers
 #!/bin/bash
+# Audit script - verify signatures on all running containers
 
 COSIGN_KEY=/etc/cosign/cosign.pub
 FAILURES=0
 
 echo "Auditing running containers for valid signatures..."
 
-docker ps --format "{{.Image}}" | sort -u | while read image; do
+while IFS= read -r image; do
   echo -n "Checking $image... "
   if cosign verify --key "$COSIGN_KEY" "$image" > /dev/null 2>&1; then
     echo "VALID"
@@ -199,9 +181,9 @@ docker ps --format "{{.Image}}" | sort -u | while read image; do
     echo "UNSIGNED or INVALID"
     FAILURES=$((FAILURES + 1))
   fi
-done
+done < <(docker ps --format "{{.Image}}" | sort -u)
 
-if [ $FAILURES -gt 0 ]; then
+if [ "$FAILURES" -gt 0 ]; then
   echo "WARNING: $FAILURES images failed signature verification"
   exit 1
 fi
@@ -210,4 +192,4 @@ echo "All images verified successfully."
 
 ## Conclusion
 
-Image signing creates a cryptographic chain of custody from build to deployment. Every signed image proves it came from your CI/CD pipeline and hasn't been modified. Cosign's keyless mode using OIDC tokens (GitHub Actions, GitLab CI) eliminates key management overhead while maintaining cryptographic guarantees. Combining signature verification with Portainer webhook deployments creates a secure deployment gate - only images that passed CI and were signed can reach production.
+Image signing creates a cryptographic chain of custody from build to deployment. Every signed image proves it came from your CI/CD pipeline and hasn't been modified. Cosign's keyless mode using OIDC tokens (GitHub Actions, GitLab CI) eliminates key management overhead while maintaining cryptographic guarantees. Combining signature verification with a Portainer deployment webhook creates an external deployment gate, and when you need admission-time enforcement in Kubernetes, you can apply that policy with Connaisseur.
