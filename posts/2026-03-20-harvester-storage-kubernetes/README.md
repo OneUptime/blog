@@ -8,7 +8,7 @@ Description: Learn how to configure Harvester's built-in Longhorn storage for Ku
 
 ---
 
-Harvester uses Longhorn as its built-in storage backend, providing hyperconverged storage that is shared between virtual machines and Kubernetes workloads. Kubernetes clusters provisioned on Harvester can consume this storage directly via CSI.
+Harvester uses Longhorn as its built-in storage backend, providing hyperconverged storage that is shared between virtual machines and Kubernetes workloads. Kubernetes clusters provisioned on Harvester consume this storage through the Harvester CSI driver, which hot-plugs host-cluster volumes into the guest cluster VMs.
 
 ---
 
@@ -53,12 +53,11 @@ kubectl get node.longhorn.io -n longhorn-system
 ## Step 2: Review Harvester Default StorageClasses
 
 ```bash
-# List available StorageClasses
+# List available StorageClasses on the Harvester management cluster
 kubectl get storageclass
 
-# Harvester provides these by default:
-# harvester-longhorn (default) - 3 replicas
-# longhorn - standard Longhorn StorageClass
+# Harvester provides this default StorageClass on the host cluster:
+# harvester-longhorn (default) - 3 replicas by default
 ```
 
 ---
@@ -66,7 +65,7 @@ kubectl get storageclass
 ## Step 3: Create a Custom StorageClass for Kubernetes Workloads
 
 ```yaml
-# k8s-workloads-storageclass.yaml
+# k8s-workloads-storageclass.yaml (on the Harvester management cluster)
 apiVersion: storage.k8s.io/v1
 kind: StorageClass
 metadata:
@@ -86,16 +85,20 @@ parameters:
 
 ## Step 4: Provision K8s Clusters on Harvester via Rancher
 
-When creating an RKE2 or K3s cluster on Harvester through Rancher, configure the cloud provider to use Harvester storage:
+When creating an RKE2 or K3s cluster on Harvester through Rancher, select the `Harvester` cloud provider. Rancher deploys the Harvester cloud provider and Harvester CSI driver automatically. In the guest cluster, the default StorageClass is `harvester`.
 
 ```yaml
-# In the Rancher cluster provisioning YAML, configure the Harvester CSI
-# This is typically done through the Rancher UI under:
-# Cluster Management → Create → Harvester → Cloud Provider: Harvester
-
-# The Harvester cloud provider installs automatically and creates:
-# - harvester-longhorn StorageClass
-# - The CSI driver for dynamic provisioning
+# guest-storageclass.yaml (on the guest Kubernetes cluster)
+apiVersion: storage.k8s.io/v1
+kind: StorageClass
+metadata:
+  name: harvester-ssd
+provisioner: driver.harvesterhci.io
+allowVolumeExpansion: true
+reclaimPolicy: Delete
+volumeBindingMode: Immediate
+parameters:
+  hostStorageClass: harvester-ssd
 ```
 
 ---
@@ -114,7 +117,7 @@ metadata:
 spec:
   accessModes:
     - ReadWriteOnce
-  storageClassName: harvester-longhorn   # Use the Harvester storage class
+  storageClassName: harvester-ssd        # Guest-cluster StorageClass backed by Harvester
   resources:
     requests:
       storage: 50Gi
@@ -131,20 +134,21 @@ kubectl get pvc -n production
 
 ## Step 6: Configure Storage Topology for Multi-Node K8s on Harvester
 
-For multi-node Kubernetes clusters on Harvester, ensure volumes are placed on nodes where the VMs are running:
+For multi-node Kubernetes clusters on Harvester, tune the host Harvester StorageClass so provisioning waits for a consumer, and use Harvester-supported data locality:
 
 ```yaml
 # StorageClass with WaitForFirstConsumer binding mode
+# Create this on the Harvester management cluster
 apiVersion: storage.k8s.io/v1
 kind: StorageClass
 metadata:
   name: harvester-local
 provisioner: driver.longhorn.io
-volumeBindingMode: WaitForFirstConsumer   # Wait until pod is scheduled
+volumeBindingMode: WaitForFirstConsumer   # Wait until a VM uses the PVC
 reclaimPolicy: Delete
 parameters:
   numberOfReplicas: "2"
-  dataLocality: "strict-local"
+  dataLocality: "best-effort"
 ```
 
 ---
@@ -167,14 +171,14 @@ kubectl get node.longhorn.io -n longhorn-system \
 
 ## Step 8: Configure Backup Target for Guest Cluster PVCs
 
-```bash
-# Set Longhorn backup target (from the Harvester management cluster)
-kubectl patch setting -n longhorn-system \
-  backup-target \
-  --type merge \
-  -p '{"value":"s3://my-backups@us-west-2/harvester-longhorn"}'
+Guest-cluster PVCs are backed by Longhorn volumes on the Harvester management cluster, so configure backup targets and recurring jobs on the Harvester management cluster rather than inside the guest cluster.
 
-# Create volume backups from the guest cluster
+```bash
+# Configure the backup target on the Harvester management cluster first.
+# One supported path is the embedded Longhorn UI:
+# Harvester -> More -> Longhorn -> Settings -> Backup Target
+
+# Create a recurring backup job on the Harvester management cluster
 kubectl apply -f - <<EOF
 apiVersion: longhorn.io/v1beta2
 kind: RecurringJob
@@ -184,8 +188,10 @@ metadata:
 spec:
   cron: "0 2 * * *"
   task: "backup"
-  groups: ["default"]
+  groups:
+    - default
   retain: 7
+  concurrency: 1
 EOF
 ```
 
@@ -193,6 +199,6 @@ EOF
 
 ## Best Practices
 
-- Use `WaitForFirstConsumer` volume binding mode for Kubernetes clusters on Harvester - this ensures volumes are created on the same Harvester node as the VM, reducing cross-node storage traffic.
+- Use `WaitForFirstConsumer` on host Harvester StorageClasses when provisioning should wait until a VM consumer exists, and use `dataLocality: best-effort` for Harvester-supported locality tuning.
 - Size Harvester node disks generously - Longhorn volumes for both the VMs and the guest Kubernetes workloads compete for the same physical storage.
 - Tag SSDs and HDDs differently in Longhorn (`disk-type=ssd`, `disk-type=hdd`) and create separate StorageClasses for each - this lets you route database workloads to SSDs and archival workloads to HDDs.
