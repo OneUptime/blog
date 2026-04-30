@@ -24,14 +24,14 @@ import (
 )
 
 func main() {
-    // Listen on all interfaces (both IPv4 and IPv6 on most systems)
+    // Listen on all local TCP addresses
     listener, err := net.Listen("tcp", ":8080")
     if err != nil {
         log.Fatal(err)
     }
     defer listener.Close()
 
-    fmt.Println("Listening on :8080 (dual-stack)")
+    fmt.Println("Listening on :8080")
 
     for {
         conn, err := listener.Accept()
@@ -95,7 +95,7 @@ func connectIPv6() {
 }
 
 func dialWithResolver() {
-    // net.Dial resolves DNS names to IPv6 if AAAA records exist
+    // net.Dial resolves DNS names to available IPs and tries each address until one succeeds
     conn, err := net.Dial("tcp", "ipv6.google.com:80")
     if err != nil {
         fmt.Println("Error:", err)
@@ -123,7 +123,7 @@ import (
 )
 
 func udpServer() {
-    // UDP server on all interfaces (dual-stack on most systems)
+    // UDP server on all local IP addresses
     conn, err := net.ListenPacket("udp", ":9090")
     if err != nil {
         panic(err)
@@ -172,7 +172,7 @@ func parseIPv6Examples() {
         "2001:db8::1",
         "::1",
         "fe80::1",
-        "::ffff:192.168.1.1",  // IPv4-mapped IPv6
+        "::ffff:192.168.1.1",  // IPv4-mapped IPv6; To4 treats this as IPv4
         "192.168.1.1",          // IPv4 - not IPv6
         "invalid",
     }
@@ -219,17 +219,16 @@ func networkExamples() {
 
 ---
 
-## Dual-Stack HTTP Server
+## HTTP Server with IP Family Detection
 
 ```go
 import (
-    "net/http"
     "net"
-    "context"
+    "net/http"
 )
 
 func dualStackServer() {
-    // net/http.ListenAndServe automatically handles dual-stack
+    // ListenAndServe uses the same TCP listener behavior as net.Listen("tcp", addr)
     http.HandleFunc("/", func(w http.ResponseWriter, r *http.Request) {
         remoteIP, _, _ := net.SplitHostPort(r.RemoteAddr)
         ip := net.ParseIP(remoteIP)
@@ -273,9 +272,9 @@ func resolveIPv6(hostname string) {
 
 ## Best Practices
 
-1. **Use `":port"` not `"0.0.0.0:port"`** - the former enables dual-stack on most systems
+1. **Use `":port"` or `[::]:port` with `"tcp"`/`"udp"`** - these listen on all local addresses; use `"tcp4"`/`"tcp6"` or `"udp4"`/`"udp6"` to force a family
 2. **Use `net.SplitHostPort()`** to handle both IPv4 and IPv6 address:port strings
-3. **Check `ip.To4() == nil`** to determine if an address is truly IPv6
+3. **Check `ip.To4() == nil`** to distinguish non-mapped IPv6 from IPv4 and IPv4-mapped IPv6
 4. **Use zone IDs** (`%eth0`) when working with link-local addresses
 5. **Test with `::1`** (IPv6 loopback) in addition to `127.0.0.1` in unit tests
 
@@ -283,7 +282,7 @@ func resolveIPv6(hostname string) {
 
 ## Conclusion
 
-Go's `net` package makes IPv6 development straightforward. Most server and client code written with `:port` syntax automatically supports dual-stack. Use `net.ParseIP()`, `net.ParseCIDR()`, and address type checks to build robust IPv6-aware applications.
+Go's `net` package makes IPv6 development straightforward. An empty host such as `":8080"` listens on all local addresses, while `"tcp4"`/`"tcp6"` and `"udp4"`/`"udp6"` let you force an address family. Use `net.ParseIP()`, `net.ParseCIDR()`, and address type checks to build robust IPv6-aware applications.
 
 ---
 
