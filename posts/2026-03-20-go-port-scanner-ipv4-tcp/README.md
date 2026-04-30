@@ -64,8 +64,6 @@ func scanPortConcurrent(host string, port int, timeout time.Duration,
     
     defer wg.Done()
     
-    // Acquire semaphore slot
-    sem <- struct{}{}
     defer func() { <-sem }()
     
     address := fmt.Sprintf("%s:%d", host, port)
@@ -79,10 +77,11 @@ func scanPortConcurrent(host string, port int, timeout time.Duration,
 
 func scanHost(host string, startPort, endPort, maxConcurrent int, timeout time.Duration) []int {
     results := make(chan int, endPort-startPort+1)
-    sem := make(chan struct{}, maxConcurrent)   // Limit concurrent goroutines
+    sem := make(chan struct{}, maxConcurrent)   // Limit concurrent connection attempts
     var wg sync.WaitGroup
 
     for port := startPort; port <= endPort; port++ {
+        sem <- struct{}{} // Acquire semaphore slot before launching the goroutine
         wg.Add(1)
         go scanPortConcurrent(host, port, timeout, results, &wg, sem)
     }
@@ -120,7 +119,7 @@ func main() {
 
 ## Service Banner Grabbing
 
-Extend the scanner to grab service banners:
+Extend the scanner to try grabbing service banners:
 
 ```go
 package main
@@ -152,10 +151,10 @@ func scanWithBanner(host string, port int, timeout time.Duration) ScanResult {
     // Set a short read deadline for banner grabbing
     conn.SetReadDeadline(time.Now().Add(2 * time.Second))
 
-    // Try to read a banner (many services send data on connect)
+    // Try to read a banner (some services send data on connect)
     reader := bufio.NewReader(conn)
-    banner, err := reader.ReadString('\n')
-    if err == nil {
+    banner, _ := reader.ReadString('\n')
+    if banner != "" {
         result.Banner = strings.TrimSpace(banner)
     }
 
@@ -183,11 +182,11 @@ func main() {
 ## Scanning Multiple Hosts
 
 ```go
-// Scan all hosts in a /24 subnet
+// Scan all hosts in a /24 IPv4 range; subnet should be the first three octets
 func scanSubnet(subnet string, port int, timeout time.Duration) {
     var wg sync.WaitGroup
     for i := 1; i < 255; i++ {
-        host := fmt.Sprintf("%s.%d", subnet, i)  // e.g., "192.168.1.X"
+        host := fmt.Sprintf("%s.%d", subnet, i)  // e.g., "192.168.1.42"
         wg.Add(1)
         go func(h string) {
             defer wg.Done()
@@ -202,4 +201,4 @@ func scanSubnet(subnet string, port int, timeout time.Duration) {
 
 ## Conclusion
 
-Go's concurrency primitives make it straightforward to build a fast port scanner. The semaphore pattern controls resource usage while goroutines provide high throughput. Always obtain authorization before scanning systems you don't own.
+Go's concurrency primitives make it straightforward to build a fast port scanner. The semaphore pattern limits concurrent connection attempts and helps control resource usage while goroutines provide high throughput. Always obtain authorization before scanning systems you don't own.
