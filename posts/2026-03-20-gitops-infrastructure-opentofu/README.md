@@ -62,14 +62,24 @@ jobs:
         working-directory: environments/${{ matrix.environment }}
         continue-on-error: true
       - uses: actions/github-script@v7
+        env:
+          ENVIRONMENT: ${{ matrix.environment }}
+          PLAN_PATH: environments/${{ matrix.environment }}/plan.txt
         with:
           script: |
-            const plan = require('fs').readFileSync('environments/${{ matrix.environment }}/plan.txt', 'utf8');
-            github.rest.issues.createComment({
+            const fs = require('fs');
+            const plan = fs.readFileSync(process.env.PLAN_PATH, 'utf8');
+            const body = [
+              `## Plan: ${process.env.ENVIRONMENT}`,
+              '```',
+              plan.substring(0, 60000),
+              '```'
+            ].join('\n');
+            await github.rest.issues.createComment({
               issue_number: context.issue.number,
               owner: context.repo.owner,
               repo: context.repo.repo,
-              body: `## Plan: ${{ matrix.environment }}\n```\n${plan.substring(0, 60000)}\n````
+              body
             });
 ```
 
@@ -117,6 +127,7 @@ jobs:
   detect-drift:
     runs-on: ubuntu-latest
     permissions:
+      contents: read
       id-token: write
       issues: write
 
@@ -141,7 +152,7 @@ jobs:
         uses: actions/github-script@v7
         with:
           script: |
-            github.rest.issues.create({
+            await github.rest.issues.create({
               owner: context.repo.owner,
               repo: context.repo.repo,
               title: '⚠️ Infrastructure drift detected in production',
@@ -155,5 +166,5 @@ jobs:
 - Never apply infrastructure outside of the GitOps pipeline - revoke human apply permissions and only allow CI/CD roles.
 - Use `-detailed-exitcode` in drift detection plans: exit code 0 = no changes, 1 = error, 2 = changes detected.
 - Run drift detection on a schedule (every 6 hours) and create GitHub issues automatically when drift is found.
-- Require `environment: production` in GitHub Actions apply jobs to enforce manual approval via GitHub Environments.
+- Require `environment: production` in GitHub Actions apply jobs and configure required reviewers in that environment to enforce manual approval via GitHub Environments.
 - Keep plan and apply in separate workflows with separate IAM roles - plan roles are read-only, apply roles have write access.
