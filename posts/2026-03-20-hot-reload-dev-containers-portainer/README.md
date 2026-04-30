@@ -8,7 +8,7 @@ Description: Configure hot reload for any language's development container using
 
 ## Introduction
 
-Hot reload (also called live reload or hot module replacement) automatically restarts or refreshes your application when source files change. When developing in Docker containers managed by Portainer, setting this up correctly requires the right combination of bind mounts, file watchers, and process managers. This guide covers hot reload patterns for all major languages.
+Hot reload (often used interchangeably with live reload) automatically restarts or refreshes your application when source files change. When developing in Docker containers managed by Portainer, setting this up correctly requires the right combination of bind mounts, file watchers, and process managers. This guide covers hot reload patterns for all major languages.
 
 ## The Core Concept
 
@@ -25,10 +25,10 @@ Hot reload in Docker requires three components:
 services:
   app:
     volumes:
-      # Mount entire project directory
-      - .:/app
-      # CRITICAL: Exclude node_modules/build artifacts from mount
-      # This anonymous volume "masks" the directory on the host
+      # Mount entire project directory from the Docker host
+      - /srv/dev/myapp:/app
+      # CRITICAL: Keep dependency/build directories container-managed
+      # This anonymous volume masks the directory inside the container
       - /app/node_modules    # Node.js
       - /app/vendor          # PHP
       - /app/target          # Rust
@@ -45,9 +45,9 @@ services:
     image: node:20-alpine
     working_dir: /app
     volumes:
-      - .:/app
+      - /srv/dev/myapp:/app
       - /app/node_modules
-    command: npx nodemon --watch src --ext js,ts,json src/index.js
+    command: npx nodemon
     environment:
       - NODE_ENV=development
 ```
@@ -63,7 +63,7 @@ services:
 }
 ```
 
-### Python with watchdog/uvicorn
+### Python with uvicorn/watchfiles
 
 ```yaml
 services:
@@ -71,13 +71,10 @@ services:
     image: python:3.12-slim
     working_dir: /app
     volumes:
-      - .:/app
+      - /srv/dev/myapp:/app
     command: >
-      uvicorn src.main:app
-      --host 0.0.0.0
-      --port 8000
-      --reload
-      --reload-dir src
+      sh -c "pip install 'uvicorn[standard]' &&
+      uvicorn src.main:app --host 0.0.0.0 --port 8000 --reload --reload-dir src"
     environment:
       - PYTHONDONTWRITEBYTECODE=1
       - PYTHONUNBUFFERED=1
@@ -86,12 +83,15 @@ services:
 ### Go with Air
 
 ```yaml
+volumes:
+  go_cache:
+
 services:
   go_app:
-    image: golang:1.22-alpine
+    image: golang:1.25-alpine
     working_dir: /app
     volumes:
-      - .:/app
+      - /srv/dev/myapp:/app
       - go_cache:/go/pkg/mod
     command: go run github.com/air-verse/air@latest
 ```
@@ -109,14 +109,17 @@ services:
 ### Rust with cargo-watch
 
 ```yaml
+volumes:
+  cargo_cache:
+
 services:
   rust_app:
     image: rust:1.76
     working_dir: /app
     volumes:
-      - .:/app
+      - /srv/dev/myapp:/app
       - cargo_cache:/usr/local/cargo/registry
-    command: cargo watch -x run
+    command: sh -c "cargo install cargo-watch --locked && cargo watch -x run"
     environment:
       - RUST_LOG=debug
 ```
@@ -129,24 +132,20 @@ services:
     image: php:8.3-cli
     working_dir: /app
     volumes:
-      - .:/app
-    command: php -S 0.0.0.0:8080 public/index.php
+      - /srv/dev/myapp:/app
+    command: php -S 0.0.0.0:8080 -t public public/index.php
     # PHP's built-in server automatically picks up changes
 ```
 
 ## Step 3: Handle File Permission Issues
 
-On Linux, file permissions can cause watch events to not trigger:
+On Linux, mismatched container user IDs can prevent the app from reading or writing mounted files cleanly:
 
 ```yaml
 # docker-compose.yml - Fix file permissions
 services:
   app:
     user: "${UID:-1000}:${GID:-1000}"
-    # OR
-    environment:
-      - PUID=1000
-      - PGID=1000
 ```
 
 ```bash
@@ -157,20 +156,22 @@ echo "GID=$(id -g)" >> .env
 
 ## Step 4: Polling Mode for NFS/Network Mounts
 
-On some systems (macOS with Docker Desktop, NFS mounts), inotify doesn't work. Use polling:
+On some systems (macOS with Docker Desktop, NFS mounts), native file notifications may not propagate reliably through bind mounts. Use polling:
 
 ```yaml
 # For Node.js
 environment:
   - CHOKIDAR_USEPOLLING=true   # Create React App
-  - WATCHPACK_POLLING=true      # Webpack
+  - WATCHPACK_POLLING=true     # Webpack/Watchpack
 
 # For .NET
 environment:
   - DOTNET_USE_POLLING_FILE_WATCHER=1
 
-# For Python uvicorn
-command: uvicorn src.main:app --reload --reload-delay 1.0
+# For Python uvicorn/watchfiles
+environment:
+  - WATCHFILES_FORCE_POLLING=true
+  - WATCHFILES_POLL_DELAY_MS=1000
 ```
 
 ```toml
@@ -184,28 +185,24 @@ command: uvicorn src.main:app --reload --reload-delay 1.0
 
 ```yaml
 # docker-compose.yml - Optimized for fast hot reload
-version: "3.8"
-
 services:
   app:
     build:
       context: .
       dockerfile: Dockerfile.dev
-      # Use BuildKit for faster builds
+      # Embed inline cache metadata for BuildKit-based rebuilds
       args:
         BUILDKIT_INLINE_CACHE: 1
     volumes:
       - type: bind
-        source: ./src
+        source: /srv/dev/myapp/src
         target: /app/src
-        # Consistent mode for macOS - uses inotify instead of polling
-        consistency: consistent
     tmpfs:
       # Use tmpfs for build artifacts (faster I/O)
-      - /app/dist:exec
-      - /tmp:exec
+      - /app/dist
+      - /tmp
     environment:
-      # Faster Node.js startup
+      # Cap Node.js heap size in the dev container
       - NODE_OPTIONS=--max-old-space-size=512
 ```
 
@@ -213,8 +210,6 @@ services:
 
 ```yaml
 # docker-compose.yml - Complete hot-reload dev stack
-version: "3.8"
-
 networks:
   dev_network:
     driver: bridge
@@ -229,7 +224,7 @@ services:
     image: node:20-alpine
     working_dir: /app
     volumes:
-      - ./frontend:/app
+      - /srv/dev/myapp/frontend:/app
       - node_modules_cache:/app/node_modules
     command: npm run dev -- --host 0.0.0.0
     ports:
@@ -241,10 +236,10 @@ services:
       - dev_network
 
   backend:
-    image: golang:1.22-alpine
+    image: golang:1.25-alpine
     working_dir: /app
     volumes:
-      - ./backend:/app
+      - /srv/dev/myapp/backend:/app
       - go_module_cache:/go/pkg/mod
     command: go run github.com/air-verse/air@latest
     ports:
