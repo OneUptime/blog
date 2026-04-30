@@ -18,7 +18,7 @@ HAProxy can reload configuration without dropping active connections:
 # Validate new config before applying
 
 sudo haproxy -c -f /etc/haproxy/haproxy.cfg
-# Expected: Configuration file is valid
+# Exit status 0 means the configuration parsed successfully; add -V if you want a success message printed
 
 # Graceful reload: new process takes over, old process finishes existing connections
 sudo systemctl reload haproxy
@@ -33,23 +33,25 @@ ps aux | grep haproxy | grep -v grep
 
 ## Server Drain Mode
 
-Drain stops new connections to a server while allowing existing connections to complete:
+The following runtime API examples assume an admin-level `stats socket` is configured at `/run/haproxy/admin.sock`.
+
+Drain removes a server from load balancing for new traffic while allowing existing connections to complete; persistent connections may still be reused:
 
 ```bash
-# Step 1: Put server into drain mode (stops new connections, finishes existing)
+# Step 1: Put server into drain mode (removes it from load balancing, keeps health checks running)
 echo "set server app_servers/app1 state drain" | \
-  sudo socat stdio /run/haproxy/admin.sock
+  sudo socat stdio unix-connect:/run/haproxy/admin.sock
 
-# Step 2: Wait for connections to drain
-watch -n2 "echo 'show servers conn app_servers' | sudo socat stdio /run/haproxy/admin.sock"
-# Wait until the connection count reaches 0
+# Step 2: Wait for current sessions to drain
+watch -n2 "echo 'show stat' | sudo socat stdio unix-connect:/run/haproxy/admin.sock | awk -F, '\$1 == \"app_servers\" && \$2 == \"app1\" {print \"scur=\" \$5}'"
+# Wait until scur reaches 0
 
 # Step 3: Deploy new version on app1
-ssh 192.168.1.10 "sudo systemctl stop app && deploy_new_version && sudo systemctl start app"
+ssh 192.168.1.10 "sudo /opt/app/deploy.sh"
 
 # Step 4: Bring server back into rotation
 echo "set server app_servers/app1 state ready" | \
-  sudo socat stdio /run/haproxy/admin.sock
+  sudo socat stdio unix-connect:/run/haproxy/admin.sock
 ```
 
 ## Rolling Update Script
@@ -58,10 +60,10 @@ echo "set server app_servers/app1 state ready" | \
 #!/bin/bash
 # /usr/local/bin/rolling-deploy.sh
 
-HAPROXY_SOCKET="/run/haproxy/admin.sock"
+HAPROXY_SOCKET="unix-connect:/run/haproxy/admin.sock"
 BACKEND="app_servers"
 SERVERS=("app1:192.168.1.10" "app2:192.168.1.11" "app3:192.168.1.12")
-DRAIN_TIMEOUT=60   # Seconds to wait for connections to drain
+DRAIN_TIMEOUT=60   # Seconds to wait for current sessions to drain
 
 deploy_server() {
     local server_name="$1"
@@ -71,16 +73,18 @@ deploy_server() {
     echo "set server ${BACKEND}/${server_name} state drain" | \
         socat stdio "${HAPROXY_SOCKET}"
 
-    # Wait for connections to drain
+    # Wait for current sessions to drain
     local elapsed=0
+    local conn
     while true; do
-        conn=$(echo "show servers conn ${BACKEND}" | \
+        conn=$(echo "show stat" | \
                socat stdio "${HAPROXY_SOCKET}" | \
-               awk -v s="${server_name}" '$0 ~ s {print $NF}')
+               awk -F, -v b="${BACKEND}" -v s="${server_name}" '$1 == b && $2 == s {print $5}')
+        [ -z "${conn}" ] && { echo "Unable to read current sessions for ${server_name}."; return 1; }
         [ "${conn}" = "0" ] && break
         [ $elapsed -ge $DRAIN_TIMEOUT ] && { echo "Drain timeout!"; return 1; }
         sleep 5; elapsed=$((elapsed + 5))
-        echo "  ${server_name}: ${conn} connections remaining..."
+        echo "  ${server_name}: ${conn} current sessions remaining..."
     done
 
     echo "Deploying to ${server_ip}..."
@@ -106,25 +110,25 @@ echo "Rolling deployment complete!"
 
 ## Dynamic Server Addition
 
-Add new servers without a config reload using the runtime API:
+Add new servers without a config reload using the runtime API. This works on backends that use a dynamic load-balancing algorithm such as `roundrobin`, `leastconn`, `first`, or `random`, and runtime-added servers are not persisted across reloads:
 
 ```bash
-# Add a new backend server at runtime
-echo "add server app_servers/app4 192.168.1.14:8080" | \
-  sudo socat stdio /run/haproxy/admin.sock
+# Add a new backend server at runtime and define its health-check port
+echo "add server app_servers/app4 192.168.1.14:8080 check port 8080" | \
+  sudo socat stdio unix-connect:/run/haproxy/admin.sock
 
-# Enable the new server
-echo "set server app_servers/app4 state ready" | \
-  sudo socat stdio /run/haproxy/admin.sock
+# Take the new server out of maintenance mode
+echo "enable server app_servers/app4" | \
+  sudo socat stdio unix-connect:/run/haproxy/admin.sock
 
-# Set health check parameters
-echo "set server app_servers/app4 check-port 8080" | \
-  sudo socat stdio /run/haproxy/admin.sock
+# Enable active health checks
+echo "enable health app_servers/app4" | \
+  sudo socat stdio unix-connect:/run/haproxy/admin.sock
 ```
 
 ## Blue-Green Deployment with Weights
 
-Switch all traffic from blue to green by adjusting weights:
+Shift new load-balanced traffic from blue to green by adjusting weights:
 
 ```haproxy
 backend app_servers
@@ -136,18 +140,18 @@ backend app_servers
 
 ```bash
 # Gradually shift traffic to green
-echo "set server app_servers/green1 weight 50" | sudo socat stdio /run/haproxy/admin.sock
-echo "set server app_servers/green2 weight 50" | sudo socat stdio /run/haproxy/admin.sock
+echo "set server app_servers/green1 weight 50" | sudo socat stdio unix-connect:/run/haproxy/admin.sock
+echo "set server app_servers/green2 weight 50" | sudo socat stdio unix-connect:/run/haproxy/admin.sock
 
-# After verification, shift 100% to green
+# After verification, shift new load-balanced traffic to green
 for s in blue1 blue2; do
-    echo "set server app_servers/$s weight 0" | sudo socat stdio /run/haproxy/admin.sock
+    echo "set server app_servers/$s weight 0" | sudo socat stdio unix-connect:/run/haproxy/admin.sock
 done
 for s in green1 green2; do
-    echo "set server app_servers/$s weight 100" | sudo socat stdio /run/haproxy/admin.sock
+    echo "set server app_servers/$s weight 100" | sudo socat stdio unix-connect:/run/haproxy/admin.sock
 done
 ```
 
 ## Conclusion
 
-HAProxy zero-downtime deployments rely on three mechanisms: graceful reload (config changes), drain mode (single server updates), and runtime API commands (dynamic changes without reloads). The rolling update script automates the drain-deploy-restore cycle. Blue-green deployments via weight adjustment allow instant, reversible traffic switching between deployment versions.
+HAProxy zero-downtime deployments rely on three mechanisms: graceful reload (config changes), drain mode (single server updates), and runtime API commands (dynamic, in-memory changes without reloads). The rolling update script automates the drain-deploy-restore cycle. Blue-green deployments via weight adjustment allow fast, reversible shifts of new load-balanced traffic between deployment versions.
