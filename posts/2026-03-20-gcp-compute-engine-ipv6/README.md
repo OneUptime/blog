@@ -8,7 +8,7 @@ Description: Assign IPv6 addresses to Google Compute Engine VM instances, config
 
 ## Introduction
 
-Google Compute Engine VMs receive IPv6 addresses when placed in dual-stack subnets. Each VM's network interface can have both an IPv4 address and an IPv6 address. External IPv6 VMs get globally routable addresses, while internal IPv6 VMs get ULA addresses. IPv6 configuration in GCE is automatic - once the subnet supports IPv6, VMs launched in it receive IPv6 addresses.
+Google Compute Engine VMs can use IPv6 when their network interface stack type is configured for IPv6 and the attached subnet has an IPv6 range. A dual-stack network interface can have both an IPv4 address and a `/96` IPv6 range. For a single network interface, that IPv6 range is either internal or external, not both. External IPv6 VMs get globally routable addresses, while internal IPv6 VMs get ULA addresses. If you do not specify a custom IPv6 address, GCE automatically assigns an ephemeral IPv6 address from the subnet's IPv6 range.
 
 ## Create VM with IPv6 Address
 
@@ -16,24 +16,31 @@ Google Compute Engine VMs receive IPv6 addresses when placed in dual-stack subne
 PROJECT="my-project"
 ZONE="us-east1-b"
 
-# Create VM in dual-stack subnet (gets IPv6 automatically)
+# Create VM in dual-stack subnet with an ephemeral external IPv6 range
 
 gcloud compute instances create vm-web-01 \
     --project="$PROJECT" \
     --zone="$ZONE" \
     --machine-type=n2-standard-2 \
     --subnet=subnet-web \
-    --network-interface=subnet=subnet-web,stack-type=IPV4_IPV6,ipv6-network-tier=PREMIUM \
+    --stack-type=IPV4_IPV6 \
+    --ipv6-network-tier=PREMIUM \
     --image-family=debian-12 \
     --image-project=debian-cloud \
     --boot-disk-size=20GB
 
-# Specify specific IPv6 address (optional)
+# Assign a reserved static external IPv6 range (optional)
+STATIC_IPV6="2600:1900:4000::"  # first address in the reserved /96 range
+
 gcloud compute instances create vm-web-static \
     --project="$PROJECT" \
     --zone="$ZONE" \
     --machine-type=n2-standard-2 \
-    --network-interface=subnet=subnet-web,stack-type=IPV4_IPV6,ipv6-address=2600:1900::/128 \
+    --subnet=subnet-web \
+    --stack-type=IPV4_IPV6 \
+    --external-ipv6-address="$STATIC_IPV6" \
+    --external-ipv6-prefix-length=96 \
+    --ipv6-network-tier=PREMIUM \
     --image-family=debian-12 \
     --image-project=debian-cloud
 ```
@@ -46,12 +53,7 @@ gcloud compute instances network-interfaces update vm-existing \
     --project="$PROJECT" \
     --zone="$ZONE" \
     --network-interface=nic0 \
-    --stack-type=IPV4_IPV6 \
-    --ipv6-network-tier=PREMIUM
-
-# Restart the VM for changes to take effect
-gcloud compute instances stop vm-existing --zone="$ZONE"
-gcloud compute instances start vm-existing --zone="$ZONE"
+    --stack-type=IPV4_IPV6
 ```
 
 ## Terraform GCE VM with IPv6
@@ -75,12 +77,16 @@ resource "google_compute_instance" "web" {
   network_interface {
     subnetwork = google_compute_subnetwork.web.self_link
 
-    # Enable dual-stack IPv6
-    stack_type         = "IPV4_IPV6"
-    ipv6_network_tier  = "PREMIUM"
+    # Enable dual-stack IPv6 on a subnet with external IPv6
+    stack_type = "IPV4_IPV6"
 
     # IPv4 access config (for external IPv4)
     access_config {
+      network_tier = "PREMIUM"
+    }
+
+    # External IPv6 access config
+    ipv6_access_config {
       network_tier = "PREMIUM"
     }
   }
@@ -101,7 +107,7 @@ output "vm_ipv4" {
 }
 
 output "vm_ipv6" {
-  value = google_compute_instance.web.network_interface[0].ipv6_address
+  value = google_compute_instance.web.network_interface[0].ipv6_access_config[0].external_ipv6
 }
 ```
 
@@ -116,16 +122,15 @@ gcloud compute ssh vm-web-01 \
 # Inside VM, check IPv6 address
 ip -6 addr show
 
-# Expected: IPv6 address on ens4 interface
-# 2600:1900:4000:abc1:8000:: for external
-# fd20:0000:0000:0001:: for internal
+# Expected: an internal or external /96 IPv6 range on the primary interface
 
-# Test IPv6 connectivity
-ping6 -c 3 2001:4860:4860::8888  # Google DNS
-curl -6 -s https://ipv6.icanhazip.com
+# For VMs with external IPv6, test native IPv6 connectivity
+ping -6 -c 3 2001:4860:4860::8888  # Google DNS
 
-# Test DNS resolution
-dig AAAA google.com
+# For internal-only IPv6, test another internal IPv6 address in your VPC instead of a public address.
+
+# Test AAAA DNS resolution
+getent ahostsv6 google.com
 ```
 
 ## External IPv6 vs Internal IPv6 VMs
@@ -135,19 +140,20 @@ dig AAAA google.com
 gcloud compute instances describe vm-web-01 \
     --project="$PROJECT" \
     --zone="$ZONE" \
-    --format="json(networkInterfaces[].{ipv6Access:ipv6AccessType, ipv6Addr:ipv6Address})"
+    --format="flattened(networkInterfaces[0].ipv6AccessType,networkInterfaces[0].ipv6Address,networkInterfaces[0].ipv6AccessConfigs[0].externalIpv6)"
 
 # External IPv6 VM:
 # Can receive inbound connections from internet (if firewall allows)
-# ipv6AccessType: EXTERNAL
+# networkInterfaces[0].ipv6AccessType: EXTERNAL
 
 # Internal IPv6 VM:
-# Only reachable within VPC
-# Can reach internet via Cloud NAT for IPv6
-# ipv6AccessType: INTERNAL
+# Only reachable within the VPC and connected networks
+# Internal IPv6 addresses are not internet-routable
+# networkInterfaces[0].ipv6AccessType: INTERNAL
 
 # Firewall rule needed to allow inbound to external IPv6 VM
 gcloud compute firewall-rules create allow-http-ipv6 \
+    --project="$PROJECT" \
     --network=vpc-main \
     --direction=INGRESS \
     --source-ranges="::/0" \
@@ -163,7 +169,8 @@ gcloud compute instance-templates create tmpl-web-ipv6 \
     --project="$PROJECT" \
     --machine-type=n2-standard-2 \
     --subnet=subnet-web \
-    --network-interface=subnet=projects/$PROJECT/regions/us-east1/subnetworks/subnet-web,stack-type=IPV4_IPV6,ipv6-network-tier=PREMIUM \
+    --stack-type=IPV4_IPV6 \
+    --ipv6-network-tier=PREMIUM \
     --image-family=debian-12 \
     --image-project=debian-cloud \
     --tags=web-server
@@ -179,4 +186,4 @@ gcloud compute instance-groups managed create mig-web \
 
 ## Conclusion
 
-GCE VMs in dual-stack subnets automatically receive IPv6 addresses through their network interface. Configure `stack_type = "IPV4_IPV6"` in the network interface definition in Terraform or use `--stack-type=IPV4_IPV6` with gcloud. External IPv6 VMs are reachable from the internet when firewall rules permit; internal IPv6 VMs use Cloud NAT for outbound internet access. Check VM IPv6 addresses with `ip -6 addr show` inside the instance or via `gcloud compute instances describe`.
+GCE VMs can use IPv6 when the attached subnet has an IPv6 range and the VM network interface is configured for IPv6. Configure `stack_type = "IPV4_IPV6"` in the network interface definition in Terraform or use `--stack-type=IPV4_IPV6` with gcloud. External IPv6 VMs are reachable from the internet when firewall rules permit, while internal IPv6 addresses are private to the VPC and connected networks. Check VM IPv6 addresses with `ip -6 addr show` inside the instance or via `gcloud compute instances describe`.
