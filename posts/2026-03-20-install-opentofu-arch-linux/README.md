@@ -24,9 +24,6 @@ OpenTofu is available in the Arch Linux extra repository:
 # Sync the package database and install OpenTofu
 
 sudo pacman -Syu opentofu
-
-# If opentofu is not yet in the main repos, try the community repo
-sudo pacman -S opentofu
 ```
 
 ## Method 2: Install via AUR (opentofu-bin)
@@ -73,7 +70,7 @@ makepkg -si
 ## Method 3: Install from Binary
 
 ```bash
-TOFU_VERSION="1.9.0"
+TOFU_VERSION="1.11.6"
 
 # Install required tools
 sudo pacman -S curl unzip
@@ -95,7 +92,7 @@ tofu version
 
 # Verify binary location
 which tofu
-# Expected: /usr/bin/opentofu or /usr/local/bin/tofu
+# Expected: /usr/bin/tofu or /usr/local/bin/tofu
 ```
 
 ## Setting Up Shell Completion
@@ -108,9 +105,6 @@ source ~/.bashrc
 # For zsh (common on Arch)
 tofu -install-autocomplete
 source ~/.zshrc
-
-# For fish shell
-tofu completion fish > ~/.config/fish/completions/tofu.fish
 ```
 
 ## Quick Test
