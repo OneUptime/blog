@@ -47,7 +47,7 @@ sysctl net.ipv4.ip_forward
 
 ## Per-Interface Forwarding
 
-You can enable forwarding on specific interfaces only:
+You can also control forwarding on specific interfaces:
 
 ```bash
 # Enable forwarding specifically for the GRE tunnel interface
@@ -89,9 +89,9 @@ If you have a restrictive FORWARD chain policy, you must explicitly allow tunnel
 iptables -A FORWARD -i gre0 -j ACCEPT
 iptables -A FORWARD -o gre0 -j ACCEPT
 
-# Or with nftables
-nft add rule inet filter forward iif gre0 accept
-nft add rule inet filter forward oif gre0 accept
+# Or with nftables (assuming the inet filter table and forward base chain already exist)
+nft add rule inet filter forward iifname "gre0" accept
+nft add rule inet filter forward oifname "gre0" accept
 ```
 
 ## Reverse Path Filtering Consideration
@@ -99,10 +99,13 @@ nft add rule inet filter forward oif gre0 accept
 Reverse path filtering may drop tunnel traffic. Check and adjust if needed:
 
 ```bash
-# Check rp_filter setting for tunnel interface
+# Check global and tunnel rp_filter settings
+sysctl net.ipv4.conf.all.rp_filter
 sysctl net.ipv4.conf.gre0.rp_filter
 
-# If needed, disable reverse path filtering for the tunnel
+# If needed, disable reverse path filtering globally and on the tunnel interface
+# Linux uses the higher value of conf/all/rp_filter and conf/<iface>/rp_filter.
+echo 0 > /proc/sys/net/ipv4/conf/all/rp_filter
 echo 0 > /proc/sys/net/ipv4/conf/gre0/rp_filter
 ```
 
