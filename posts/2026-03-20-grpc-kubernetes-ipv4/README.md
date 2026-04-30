@@ -58,10 +58,10 @@ kind: Ingress
 metadata:
   name: greeter-grpc
   annotations:
-    kubernetes.io/ingress.class: "nginx"
     nginx.ingress.kubernetes.io/backend-protocol: "GRPC"
     nginx.ingress.kubernetes.io/ssl-redirect: "true"
 spec:
+  ingressClassName: nginx
   tls:
     - hosts:
         - grpc.example.com
@@ -109,13 +109,13 @@ spec:
             - name: GRPC_ADDR
               value: "0.0.0.0:50051"
           readinessProbe:
-            exec:
-              command: ["/bin/grpc_health_probe", "-addr=:50051"]
+            grpc:
+              port: 50051
             initialDelaySeconds: 5
             periodSeconds: 10
           livenessProbe:
-            exec:
-              command: ["/bin/grpc_health_probe", "-addr=:50051"]
+            grpc:
+              port: 50051
             initialDelaySeconds: 10
             periodSeconds: 20
           lifecycle:
@@ -124,17 +124,17 @@ spec:
                 command: ["sleep", "5"]
 ```
 
-## Verify from Inside the Cluster
+## Verify from Your Workstation
 
 ```bash
 # Port-forward for local testing
 kubectl port-forward svc/greeter 50051:50051 &
 
-# Test with grpcurl
+# These grpcurl examples assume server reflection is enabled
 grpcurl -plaintext localhost:50051 list
 grpcurl -plaintext -d '{"name":"k8s"}' localhost:50051 helloworld.Greeter/SayHello
 ```
 
 ## Conclusion
 
-ClusterIP services are inappropriate for gRPC load balancing because TCP connections are long-lived and stick to a single pod. Use a headless service with the `dns:///` scheme and `round_robin` load balancing policy for client-side distribution, or front the service with Nginx Ingress (`backend-protocol: GRPC`) for server-side balancing. Add `grpc_health_probe` readiness probes to ensure pods only receive traffic after they are fully initialised. Configure `terminationGracePeriodSeconds` longer than the gRPC grace period to allow in-flight RPCs to complete.
+ClusterIP services do not provide effective per-RPC load balancing for long-lived gRPC connections because a single HTTP/2 connection typically stays attached to one backend. Use a headless service with the `dns:///` scheme and `round_robin` load balancing policy for client-side distribution, or front the service with Nginx Ingress (`backend-protocol: GRPC`) for server-side balancing. Add gRPC readiness probes so pods only receive traffic after they are fully initialised. Configure `terminationGracePeriodSeconds` longer than your application's graceful shutdown timeout so in-flight RPCs have time to complete.
