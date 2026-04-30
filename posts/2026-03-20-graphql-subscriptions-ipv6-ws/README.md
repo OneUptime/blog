@@ -18,13 +18,13 @@ Set up GraphQL subscriptions using WebSocket transport over IPv6 for real-time d
 
 ## Configuration
 
-Each framework has specific ways to bind to IPv6 interfaces. The general pattern is to use `::` as the bind address, which is the IPv6 equivalent of `0.0.0.0`.
+Each framework has specific ways to bind to IPv6 interfaces. The general pattern is to use `::` as the bind address, which is the IPv6 unspecified address. Depending on the server and OS, binding to `::` may also accept IPv4 connections unless IPv6-only mode is enabled.
 
 ```bash
 # Verify IPv6 is available on your system
 
 ip -6 addr show
-ping6 -c 3 ::1
+ping -6 -c 3 ::1
 ```
 
 ## Step-by-Step Setup
@@ -63,7 +63,7 @@ function getClientIP(req) {
 Ensure your firewall allows incoming connections on the required port over IPv6:
 
 ```bash
-# UFW
+# UFW (when IPv6 is enabled in UFW)
 sudo ufw allow 4000/tcp
 
 # ip6tables
@@ -81,7 +81,7 @@ example.com.  300  IN  AAAA  2001:db8::1
 ## Testing
 
 ```bash
-# Test over IPv6
+# Test the GraphQL HTTP endpoint over IPv6
 curl -6 http://[2001:db8::1]:4000/graphql   -H "Content-Type: application/json"   -d '{"query": "{ __typename }"}'
 
 # Verify IPv6 is used
