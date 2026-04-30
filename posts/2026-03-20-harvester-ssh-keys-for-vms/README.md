@@ -13,7 +13,7 @@ SSH key-based authentication is the standard method for secure, passwordless acc
 ## Step 1: Generate an SSH Key Pair
 
 ```bash
-# Generate an Ed25519 key pair (recommended - more secure than RSA)
+# Generate an Ed25519 key pair (recommended for most use cases)
 
 ssh-keygen -t ed25519 \
     -C "harvester-vms-$(date +%Y%m)" \
@@ -24,12 +24,16 @@ ssh-keygen -t rsa -b 4096 \
     -C "harvester-vms-$(date +%Y%m)" \
     -f ~/.ssh/harvester_rsa_key
 
-# Set appropriate permissions
-chmod 600 ~/.ssh/harvester_key
-chmod 644 ~/.ssh/harvester_key.pub
+# Set the file name for the key you generated
+KEY_FILE=~/.ssh/harvester_key
+# If you generated the RSA key instead, use:
+# KEY_FILE=~/.ssh/harvester_rsa_key
+
+chmod 600 "${KEY_FILE}"
+chmod 644 "${KEY_FILE}.pub"
 
 # View the public key (this is what you'll add to Harvester)
-cat ~/.ssh/harvester_key.pub
+cat "${KEY_FILE}.pub"
 ```
 
 ## Step 2: Add the SSH Keypair to Harvester
@@ -126,7 +130,7 @@ metadata:
   name: dev-server-01
   namespace: default
 spec:
-  running: true
+  runStrategy: Always
   template:
     spec:
       domain:
@@ -158,8 +162,8 @@ spec:
             claimName: dev-server-01-root
         - name: cloudinit
           cloudInitNoCloud:
-            # Reference Harvester keypairs as Kubernetes secrets
-            # Harvester automatically creates a secret from the keypair
+            # Reference a Kubernetes Secret that contains cloud-init userdata
+            # This Secret is separate from Harvester KeyPair objects
             secretRef:
               name: dev-server-01-cloudinit
 ```
@@ -213,7 +217,6 @@ Host harvester-dev-01
     HostName <VM_IP>
     User ubuntu
     IdentityFile ~/.ssh/harvester_key
-    StrictHostKeyChecking no
 EOF
 
 # Connect using the config alias
@@ -222,11 +225,11 @@ ssh harvester-dev-01
 
 ## Step 5: Dynamic Key Injection with accessCredentials
 
-For adding SSH keys to already-running VMs without restart:
+For dynamic SSH key management with accessCredentials (attach the credential before the VM starts, or restart the VM after adding it):
 
 ```yaml
 # vm-dynamic-keys.yaml
-# Add SSH keys to a running VM via accessCredentials
+# Configure dynamic SSH key injection via accessCredentials
 
 apiVersion: kubevirt.io/v1
 kind: VirtualMachine
@@ -234,7 +237,7 @@ metadata:
   name: prod-server-01
   namespace: default
 spec:
-  running: true
+  runStrategy: Always
   template:
     spec:
       # accessCredentials allows dynamic key management
@@ -273,7 +276,7 @@ spec:
 ```
 
 ```bash
-# Create the SSH keys secret
+# Create the SSH keys secret before starting the VM
 kubectl apply -f - <<EOF
 apiVersion: v1
 kind: Secret
@@ -287,13 +290,14 @@ stringData:
     ssh-ed25519 AAAAC3NzaC1... sre-team@company.com
 EOF
 
-# The qemu-guest-agent will inject the keys automatically
-# No VM restart required!
+# After the VM starts with this access credential attached,
+# the qemu-guest-agent will inject the keys automatically
+# Later Secret updates are applied without a VM restart
 
-# To add a new key, just update the secret
+# To add a new key, update the Secret with the full desired key set
 kubectl patch secret prod-ssh-keys -n default \
     --type merge \
-    -p '{"stringData":{"authorized_keys":"ssh-ed25519 NEW_KEY...\n"}}'
+    -p '{"stringData":{"authorized_keys":"ssh-ed25519 AAAAC3NzaC1... alice@company.com\nssh-ed25519 AAAAC3NzaC1... sre-team@company.com\nssh-ed25519 NEW_KEY... new-user@company.com\n"}}'
 ```
 
 ## Best Practices
@@ -319,10 +323,10 @@ kubectl get keypair -A -o jsonpath='{range .items[*]}{.metadata.name} {.metadata
 # 3. Remove compromised keys immediately
 kubectl delete keypair compromised-key -n default
 
-# 4. If using accessCredentials, also remove from the secret
+# 4. If using accessCredentials, replace the Secret contents with only the remaining authorized keys
 kubectl patch secret prod-ssh-keys -n default \
     --type merge \
-    -p '{"stringData":{"authorized_keys":"ssh-ed25519 REMAINING_KEY...\n"}}'
+    -p '{"stringData":{"authorized_keys":"ssh-ed25519 REMAINING_KEY_1...\nssh-ed25519 REMAINING_KEY_2...\n"}}'
 ```
 
 ## Conclusion
