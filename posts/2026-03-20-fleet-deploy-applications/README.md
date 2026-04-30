@@ -17,11 +17,11 @@ This guide demonstrates how to deploy a real-world application using Fleet, cove
 - Fleet installed and configured in Rancher
 - One or more Kubernetes clusters registered in Fleet
 - A Git repository (GitHub, GitLab, Bitbucket, etc.)
-- `kubectl` with Fleet manager access
+- `kubectl` access to the upstream cluster where Fleet is installed
 
 ## Setting Up Your Application Repository
 
-Fleet expects your repository to contain Kubernetes manifests. Organize your repository for clarity:
+For this example, the repository contains Kubernetes manifests. Organize your repository for clarity:
 
 ```text
 my-app/
@@ -107,27 +107,7 @@ The `fleet.yaml` file in each directory tells Fleet how to handle the resources:
 
 ```yaml
 # fleet.yaml - Fleet bundle configuration
-namespace: my-app
-
-# Override default values for specific clusters
-targets:
-  # Deploy to staging clusters with 1 replica
-  - name: staging
-    clusterSelector:
-      matchLabels:
-        env: staging
-    helm:
-      values:
-        replicaCount: 1
-
-  # Deploy to production clusters with 3 replicas
-  - name: production
-    clusterSelector:
-      matchLabels:
-        env: production
-    helm:
-      values:
-        replicaCount: 3
+defaultNamespace: my-app
 ```
 
 ## Creating the Fleet GitRepo Resource
@@ -142,9 +122,6 @@ metadata:
 spec:
   repo: https://github.com/my-org/my-app
   branch: main
-  # Deploy from the root of the repository
-  paths:
-    - /
 
   # Target all clusters
   targets:
@@ -183,19 +160,38 @@ my-app/
 apiVersion: fleet.cattle.io/v1alpha1
 kind: GitRepo
 metadata:
-  name: my-app-multi-env
+  name: my-app-staging
   namespace: fleet-default
 spec:
   repo: https://github.com/my-org/my-app
   branch: main
-  # Deploy staging and production overlays separately
+  # Deploy the staging overlay only to staging clusters
   paths:
     - overlays/staging
+
+  targets:
+    - name: staging
+      clusterSelector:
+        matchLabels:
+          env: staging
+---
+apiVersion: fleet.cattle.io/v1alpha1
+kind: GitRepo
+metadata:
+  name: my-app-production
+  namespace: fleet-default
+spec:
+  repo: https://github.com/my-org/my-app
+  branch: main
+  # Deploy the production overlay only to production clusters
+  paths:
     - overlays/production
 
   targets:
-    - name: all-clusters
-      clusterSelector: {}
+    - name: production
+      clusterSelector:
+        matchLabels:
+          env: production
 ```
 
 ## Verifying Deployments
@@ -254,10 +250,11 @@ git push origin main
 kubectl get bundles -n fleet-default -o wide
 
 # Get detailed bundle status
-kubectl describe bundle my-app -n fleet-default
+# Use a bundle name from `kubectl get bundles -n fleet-default`
+kubectl describe bundle your-bundle-name -n fleet-default
 
 # Check events for deployment issues
-kubectl get events -n fleet-default --sort-by='.lastTimestamp'
+kubectl get events -n fleet-default --sort-by='.metadata.creationTimestamp'
 ```
 
 ## Conclusion
