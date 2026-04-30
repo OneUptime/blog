@@ -28,7 +28,7 @@ Switch(config)# interface Vlan100
 Switch(config-if)# ipv6 address 2001:db8:1:100::1/64
 Switch(config-if)# no shutdown
 
-! Configure loopback for router-id
+! Configure an IPv6 loopback
 Switch(config)# interface Loopback0
 Switch(config-if)# ipv6 address 2001:db8::1/128
 ```
@@ -41,18 +41,18 @@ Switch(config)# router bgp 65001
 Switch(config-router-bgp)# router-id 10.0.0.1
 Switch(config-router-bgp)# !
 Switch(config-router-bgp)# address-family ipv6
-Switch(config-router-bgp-af-ipv6)# network 2001:db8::/48
+Switch(config-router-bgp-af-ipv6)# network 2001:db8::1/128
 
 ! Configure BGP neighbor with IPv6
-Switch(config-router-bgp)# neighbor 2001:db8:0:1::2 remote-as 65002
+Switch(config-router-bgp)# neighbor 2001:db8:1:1::2 remote-as 65002
 Switch(config-router-bgp)# !
 Switch(config-router-bgp)# address-family ipv6
-Switch(config-router-bgp-af-ipv6)# neighbor 2001:db8:0:1::2 activate
+Switch(config-router-bgp-af-ipv6)# neighbor 2001:db8:1:1::2 activate
 ```
 
 ## Step 3: BGP Unnumbered with IPv6 Link-Local
 
-Arista EOS excels at BGP unnumbered, which uses IPv6 link-local addresses for BGP peering:
+Arista EOS excels at BGP unnumbered, which uses IPv6 link-local addresses for BGP peering. For unnumbered peering, the interface only needs IPv6 enabled so EOS can use its auto-generated link-local address:
 
 ```text
 ! Enable IPv6 on the interface (link-local is auto-generated)
@@ -61,16 +61,16 @@ Switch(config-if)# no switchport
 Switch(config-if)# ipv6 enable
 Switch(config-if)# no shutdown
 
-! Configure BGP unnumbered - uses link-local as next-hop
+! Configure BGP unnumbered over IPv6 link-local transport
 Switch(config)# router bgp 65001
 Switch(config-router-bgp)# neighbor SPINE peer group
-Switch(config-router-bgp)# neighbor SPINE remote-as external  ! eBGP, AS determined dynamically
+Switch(config-router-bgp)# neighbor SPINE remote-as 65002
+Switch(config-router-bgp)# neighbor SPINE auto-local-addr
 Switch(config-router-bgp)# neighbor interface Ethernet1 peer-group SPINE
 
 ! Activate for both IPv4 and IPv6
 Switch(config-router-bgp)# address-family ipv4
 Switch(config-router-bgp-af-ipv4)# neighbor SPINE activate
-Switch(config-router-bgp-af-ipv4)# neighbor SPINE next-hop-unchanged
 
 Switch(config-router-bgp)# address-family ipv6
 Switch(config-router-bgp-af-ipv6)# neighbor SPINE activate
@@ -81,8 +81,8 @@ Switch(config-router-bgp-af-ipv6)# neighbor SPINE activate
 ```text
 ! Create IPv6 access control list
 Switch(config)# ipv6 access-list IPV6-PROTECT
-Switch(config-ipv6-acl)# permit icmp any any
-Switch(config-ipv6-acl)# permit tcp any any established
+Switch(config-ipv6-acl)# permit icmpv6 any any
+Switch(config-ipv6-acl)# permit tcp any any
 Switch(config-ipv6-acl)# deny ipv6 any any log
 
 ! Apply to interface
@@ -92,7 +92,7 @@ Switch(config-if)# ipv6 access-group IPV6-PROTECT in
 
 ## Step 5: Automate with eAPI
 
-Arista's eAPI provides a JSON-RPC interface for automation:
+After enabling `management api http-commands`, Arista's eAPI provides a JSON-RPC interface for automation:
 
 ```python
 #!/usr/bin/env python3
@@ -148,13 +148,13 @@ Switch# show ipv6 interface brief
 Switch# show ipv6 route
 
 ! Show BGP IPv6 summary
-Switch# show bgp ipv6 unicast summary
+Switch# show ipv6 bgp summary
 
 ! Show IPv6 neighbors
 Switch# show ipv6 neighbors
 
 ! Show BGP unnumbered peers
-Switch# show bgp ipv6 unicast neighbors Ethernet1
+Switch# show ipv6 bgp peers
 
 ! Ping with IPv6
 Switch# ping ipv6 2001:db8::1
