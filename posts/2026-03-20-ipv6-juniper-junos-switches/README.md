@@ -44,7 +44,6 @@ set routing-options rib inet6.0 static route ::/0 next-hop 2001:db8:0:1::1
 
 # Or configure OSPFv3 for dynamic routing
 set protocols ospf3 area 0.0.0.0 interface irb.10
-set protocols ospf3 area 0.0.0.0 interface irb.20
 ```
 
 ## Step 4: Configure Router Advertisements on IRB
@@ -57,7 +56,7 @@ set protocols router-advertisement interface irb.10 default-lifetime 1800
 
 set protocols router-advertisement interface irb.10 prefix 2001:db8:1:10::/64 valid-lifetime 86400
 set protocols router-advertisement interface irb.10 prefix 2001:db8:1:10::/64 preferred-lifetime 14400
-set protocols router-advertisement interface irb.10 prefix 2001:db8:1:10::/64 onlink-flag
+set protocols router-advertisement interface irb.10 prefix 2001:db8:1:10::/64 on-link
 
 # Add DNS server advertisement
 set protocols router-advertisement interface irb.10 dns-server-address 2001:db8:1:10::53
@@ -70,24 +69,19 @@ set protocols router-advertisement interface irb.10 dns-server-address 2001:db8:
 RA Guard prevents rogue Router Advertisements from untrusted switch ports:
 
 ```text
-# Create RA Guard policies
-set forwarding-options ipv6-ra-guard policy TRUSTED-RA-POLICY role router
-set forwarding-options ipv6-ra-guard policy UNTRUSTED-RA-POLICY role host
+# Mark uplink port as trusted for RA Guard
+set forwarding-options access-security router-advertisement-guard interface ge-0/0/47.0 mark-interface trusted
 
-# Apply trusted policy to uplink port (allows RA)
-set interfaces ge-0/0/47 unit 0 family ethernet-switching ipv6-ra-guard TRUSTED-RA-POLICY
-
-# Apply untrusted policy to access ports (blocks RA from clients)
-set interfaces ge-0/0/1 unit 0 family ethernet-switching ipv6-ra-guard UNTRUSTED-RA-POLICY
-set interfaces ge-0/0/2 unit 0 family ethernet-switching ipv6-ra-guard UNTRUSTED-RA-POLICY
+# Block RA messages from client-facing access ports
+set forwarding-options access-security router-advertisement-guard interface ge-0/0/1.0 mark-interface block
+set forwarding-options access-security router-advertisement-guard interface ge-0/0/2.0 mark-interface block
 ```
 
 ### DHCPv6 Snooping
 
 ```text
-# Enable DHCPv6 snooping for VLAN 10
-set vlans EMPLOYEES dhcpv6-snooping
-set vlans EMPLOYEES dhcpv6-snooping trusted ge-0/0/47.0
+# Enable DHCP/DHCPv6 snooping for VLAN 10
+set vlans EMPLOYEES forwarding-options dhcp-security
 ```
 
 ## Step 6: Configure IPv6 ACL on IRB
@@ -96,6 +90,7 @@ set vlans EMPLOYEES dhcpv6-snooping trusted ge-0/0/47.0
 # Firewall filter for IRB interface
 set firewall family inet6 filter IRB-PROTECT term ALLOW-ICMPV6 from protocol icmp6
 set firewall family inet6 filter IRB-PROTECT term ALLOW-ICMPV6 then accept
+set firewall family inet6 filter IRB-PROTECT term ALLOW-ESTABLISHED from protocol tcp
 set firewall family inet6 filter IRB-PROTECT term ALLOW-ESTABLISHED from tcp-established
 set firewall family inet6 filter IRB-PROTECT term ALLOW-ESTABLISHED then accept
 set firewall family inet6 filter IRB-PROTECT term DENY-REST then discard
@@ -119,8 +114,8 @@ show ipv6 router-advertisement
 # Show IPv6 neighbor discovery cache (ARP equivalent)
 show ipv6 neighbors
 
-# Show RA Guard policy status
-show ipv6 ra-guard policy TRUSTED-RA-POLICY
+# Show RA Guard status
+show access-security router-advertisement state
 
 # Show OSPFv3 neighbors
 show ospf3 neighbor
