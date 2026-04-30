@@ -40,8 +40,9 @@ In Rancher, create a cloud credential that Rancher uses to provision VMs on Harv
 
 1. Go to **Cluster Management > Cloud Credentials > Create**
 2. Select **Harvester** as the provider
-3. Provide the Harvester kubeconfig (download from Harvester UI > Support)
-4. Name the credential (e.g., `harvester-prod`)
+3. Set **Harvester Cluster Type** to **Imported Harvester Cluster**
+4. Select the imported Harvester cluster
+5. Name the credential (e.g., `harvester-prod`)
 
 ---
 
@@ -49,30 +50,33 @@ In Rancher, create a cloud credential that Rancher uses to provision VMs on Harv
 
 In Rancher UI:
 
-1. **Cluster Management > Create > RKE2/K3s > Harvester**
+1. **Cluster Management > Clusters > Create > RKE2/K3s > Harvester**
 2. Select the Harvester cloud credential
-3. Configure machine pools:
+3. Configure machine pools with a cloud image on a VLAN-backed network:
 
 ```yaml
-# Machine pool configuration (shown in Rancher UI)
+# Example values to enter in Rancher UI
 
 controlPlane:
   count: 3
-  cpus: 4
-  memory: 8192Mi
-  diskSize: 50Gi
-  image: ubuntu-22-04      # Harvester image name
-  network: vlan-100        # Harvester network
-  storageClass: longhorn   # Harvester storage class
+  cpuCount: 4
+  memorySize: 8
+  diskSize: 50
+  imageName: default/ubuntu-22-04-lts
+  networkName: default/vlan-100
+  sshUser: ubuntu
 
 worker:
   count: 5
-  cpus: 8
-  memory: 16384Mi
-  diskSize: 100Gi
-  image: ubuntu-22-04
-  network: vlan-100
+  cpuCount: 8
+  memorySize: 16
+  diskSize: 100
+  imageName: default/ubuntu-22-04-lts
+  networkName: default/vlan-100
+  sshUser: ubuntu
 ```
+
+If your image does not already include `qemu-guest-agent`, add it in **Show Advanced > User Data**. For Canal or Calico, ensure `iptables` or `xtables-nft` is present on the guest image. When you use RKE2 with the **Harvester** cloud provider selected, Rancher deploys the Harvester cloud provider and CSI driver automatically.
 
 ---
 
@@ -87,25 +91,29 @@ kind: HarvesterConfig
 metadata:
   name: my-rke2-workers
   namespace: fleet-default
-spec:
-  # Harvester VM settings
-  vmNamespace: default
-  cpuCount: "8"
-  memorySize: "16384"
-  diskSize: "102400"
-  diskBus: virtio
-  imageName: default/ubuntu-22-04
-  networkName: default/vlan-100
-  networkModel: virtio
-  # SSH key for initial VM access
-  sshUser: ubuntu
-  # Cloud-init user data
-  userData: |
-    #cloud-config
-    package_update: true
-    packages:
-      - open-iscsi
-      - nfs-common
+# Harvester VM settings
+vmNamespace: default
+cpuCount: "8"
+memorySize: "16"   # GiB
+diskSize: "100"    # GiB
+diskBus: virtio
+imageName: default/ubuntu-22-04-lts
+networkName: default/vlan-100
+networkModel: virtio
+# SSH user in the cloud image
+sshUser: ubuntu
+# Cloud-init user data
+userData: |
+  #cloud-config
+  package_update: true
+  packages:
+    - qemu-guest-agent
+    - iptables
+  runcmd:
+    - - systemctl
+      - enable
+      - '--now'
+      - qemu-guest-agent.service
 ```
 
 ---
@@ -130,4 +138,4 @@ KUBECONFIG=~/.kube/harvester-cluster.yaml kubectl get nodes
 - Use Harvester networks with VLANs to isolate production Kubernetes clusters from development.
 - Size VMs based on your workload - control plane nodes need more CPU and memory than their Kubernetes requirements suggest (add 20% for Harvester VM overhead).
 - Use Longhorn-backed Harvester storage for cluster disks to leverage Harvester's built-in replication.
-- Enable Rancher's cluster autoscaler for worker machine pools to handle variable workloads.
+- Scale worker machine pools from Rancher when capacity requirements change.
