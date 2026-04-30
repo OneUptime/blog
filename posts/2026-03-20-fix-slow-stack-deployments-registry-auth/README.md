@@ -17,46 +17,48 @@ Stack deployments that take minutes instead of seconds are often blocked on imag
 
 time docker pull <image-name>:<tag>
 
-# If the first few seconds are silent before pulling starts,
-# the delay is in authentication (token fetch)
+# If the first few seconds are silent before layer output starts,
+# the delay is often in registry reachability, TLS, or authentication
 ```
 
 ## Step 2: Test Registry Latency
 
 ```bash
-# Test authentication endpoint latency
+# Test Docker Hub's authentication endpoint latency
 time curl -s -o /dev/null -w "%{time_total}" \
   https://auth.docker.io/token?service=registry.docker.io&scope=repository:library/ubuntu:pull
 
-# For private registries
+# For private registries, test the registry API endpoint first.
+# A 401 response with WWW-Authenticate is normal on authenticated registries.
 time curl -s -o /dev/null -w "%{time_total}" \
   https://your-registry.example.com/v2/
 ```
 
 ## Step 3: Pre-pull Images Before Deployment
 
-For frequently deployed images, pre-pull them so Docker uses the local cache:
+For frequently deployed images, pre-pull them so Docker can reuse the local cache:
 
 ```bash
-# Create a script to pre-pull all images used by stacks
+# On multi-node environments, pre-pull on every node that may run the service
 docker pull myapp:1.2.3
 docker pull postgres:16-alpine
 docker pull redis:7-alpine
 
-# Then deploy the stack - it will use local images and skip the pull
+# Then deploy the stack. This can avoid layer downloads,
+# although Docker Swarm may still contact the registry to resolve image metadata
 ```
 
-## Step 4: Set Pull Policy to Never in Portainer
+## Step 4: Avoid Forced Re-pulls in Portainer
 
-For development environments where images do not change often:
+For development environments where images do not change often, leave Portainer's **Re-pull image** option disabled when updating the stack. On Docker Standalone stacks, you can also use Compose pull policies. This does not apply to Docker Swarm stacks, which Portainer deploys with `docker stack deploy`.
 
 ```yaml
 version: "3.8"
 services:
   app:
-    image: myapp:latest
-    # Skip pull if image already exists locally
-    pull_policy: if_not_present
+    image: myapp:1.2.3
+    # Never pull if the image already exists locally
+    pull_policy: never
 ```
 
 ## Step 5: Set Up a Local Registry Mirror
@@ -68,7 +70,7 @@ A local registry mirror caches Docker Hub images on your network:
 version: "3.8"
 services:
   registry-mirror:
-    image: registry:2
+    image: registry:3
     ports:
       - "5000:5000"
     environment:
@@ -80,24 +82,24 @@ volumes:
   registry_mirror:
 ```
 
-Configure Docker to use the mirror in `/etc/docker/daemon.json`:
+Configure each Docker daemon to use the mirror in `/etc/docker/daemon.json`:
 
 ```json
 {
-  "registry-mirrors": ["http://localhost:5000"]
+  "registry-mirrors": ["http://<mirror-host>:5000"]
 }
 ```
 
 ## Step 6: Cache Registry Credentials
 
-For private registries, ensure credentials are cached to avoid re-authentication on every pull:
+For private registries, ensure credentials are stored so Docker can authenticate without prompting every time:
 
 ```bash
-# Log in once to cache the token
+# Log in once so Docker can reuse stored credentials
 docker login registry.example.com
 
-# Docker stores credentials in ~/.docker/config.json
-# This cache persists across container restarts
+# Docker stores credentials in the configured credential store
+# If no credential store is configured, they are stored in ~/.docker/config.json
 ```
 
-In Portainer, registries added under **Registries** are automatically used for pulls without requiring re-authentication at deployment time.
+In Portainer, registries added under **Registries** can be used for image pulls during deployment.
