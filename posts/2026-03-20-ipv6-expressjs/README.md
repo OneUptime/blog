@@ -18,7 +18,7 @@ app.get('/', (req, res) => {
 });
 
 // Listen on all IPv6 interfaces
-// Second argument is the host - '::' enables dual-stack
+// Second argument is the host - on many OSes, '::' also accepts IPv4
 app.listen(3000, '::', () => {
     console.log('Express server on [::]:3000');
 });
@@ -26,14 +26,14 @@ app.listen(3000, '::', () => {
 
 ## Client IP Extraction Middleware
 
-Express populates `req.ip` when `trust proxy` is configured:
+Express always exposes `req.ip`; when `trust proxy` is configured, it derives that value from `X-Forwarded-For`:
 
 ```javascript
 const express = require('express');
 
 const app = express();
 
-// Trust first proxy (for deployments behind Nginx/load balancer)
+// Trust one reverse-proxy hop (adjust this for your deployment)
 app.set('trust proxy', 1);
 
 // Middleware to normalize and log client IP
@@ -104,21 +104,57 @@ app.listen(3000, '::', () => console.log('Validation server on [::]:3000'));
 
 ```javascript
 const express = require('express');
+const net = require('net');
 
 const app = express();
 const requests = new Map();
 
+function normalizeIPv6(ip) {
+    if (!net.isIPv6(ip)) return null;
+
+    const [left, right = ''] = ip.toLowerCase().split('::');
+    const leftParts = left ? left.split(':') : [];
+    const rightParts = right ? right.split(':') : [];
+
+    const expandMixed = (parts) => {
+        if (parts.length === 0) return [];
+        const last = parts[parts.length - 1];
+        if (!last.includes('.')) return parts;
+
+        const octets = last.split('.').map(Number);
+        return [
+            ...parts.slice(0, -1),
+            ((octets[0] << 8) | octets[1]).toString(16),
+            ((octets[2] << 8) | octets[3]).toString(16),
+        ];
+    };
+
+    const normalizedLeft = expandMixed(leftParts);
+    const normalizedRight = expandMixed(rightParts);
+    const missing = 8 - (normalizedLeft.length + normalizedRight.length);
+
+    if ((!ip.includes('::') && missing !== 0) || missing < 0) return null;
+
+    const parts = [
+        ...normalizedLeft,
+        ...Array(ip.includes('::') ? missing : 0).fill('0'),
+        ...normalizedRight,
+    ];
+
+    return parts.map((part) => part.padStart(4, '0')).join(':');
+}
+
 function getIPv6Prefix(ip) {
-    // For IPv6, rate-limit by /64 prefix
-    if (ip.includes(':')) {
-        const parts = ip.split(':');
-        return parts.slice(0, 4).join(':') + '::/64';
+    // For IPv6, a common heuristic is to rate-limit by /64 prefix
+    const normalized = normalizeIPv6(ip);
+    if (normalized) {
+        return normalized.split(':').slice(0, 4).join(':') + '::/64';
     }
     return ip;
 }
 
 app.use((req, res, next) => {
-    let ip = req.socket.remoteAddress || '';
+    let ip = req.ip || req.socket.remoteAddress || '';
     if (ip.startsWith('::ffff:')) ip = ip.slice(7);
 
     const key = getIPv6Prefix(ip);
@@ -161,25 +197,60 @@ app.use(express.json());
 // Database of IPv6-addressed resources
 const devices = new Map();
 
-// GET /devices/:ipv6 - URL-encode brackets or use hex without brackets
-app.get('/devices/:address', (req, res) => {
-    const address = decodeURIComponent(req.params.address);
+function normalizeIPv6(ip) {
+    if (!net.isIPv6(ip)) return null;
 
-    if (!net.isIPv6(address)) {
+    const [left, right = ''] = ip.toLowerCase().split('::');
+    const leftParts = left ? left.split(':') : [];
+    const rightParts = right ? right.split(':') : [];
+
+    const expandMixed = (parts) => {
+        if (parts.length === 0) return [];
+        const last = parts[parts.length - 1];
+        if (!last.includes('.')) return parts;
+
+        const octets = last.split('.').map(Number);
+        return [
+            ...parts.slice(0, -1),
+            ((octets[0] << 8) | octets[1]).toString(16),
+            ((octets[2] << 8) | octets[3]).toString(16),
+        ];
+    };
+
+    const normalizedLeft = expandMixed(leftParts);
+    const normalizedRight = expandMixed(rightParts);
+    const missing = 8 - (normalizedLeft.length + normalizedRight.length);
+
+    if ((!ip.includes('::') && missing !== 0) || missing < 0) return null;
+
+    const parts = [
+        ...normalizedLeft,
+        ...Array(ip.includes('::') ? missing : 0).fill('0'),
+        ...normalizedRight,
+    ];
+
+    return parts.map((part) => part.padStart(4, '0')).join(':');
+}
+
+// GET /devices/:address - plain IPv6 text works in a path segment
+app.get('/devices/:address', (req, res) => {
+    const address = normalizeIPv6(req.params.address);
+
+    if (!address) {
         return res.status(400).json({ error: 'Invalid IPv6 address' });
     }
 
-    // Normalize to compressed form
-    // In production, use a library like 'ip6' for normalization
+    // Normalize to a stable key so equivalent spellings match
     const device = devices.get(address);
     if (!device) return res.status(404).json({ error: 'Not found' });
     res.json(device);
 });
 
 app.post('/devices', (req, res) => {
-    const { address, name } = req.body;
+    const { name } = req.body;
+    const address = normalizeIPv6(req.body.address);
 
-    if (!net.isIPv6(address)) {
+    if (!address) {
         return res.status(400).json({ error: 'Invalid IPv6 address' });
     }
 
@@ -192,4 +263,4 @@ app.listen(3000, '::', () => console.log('Device API on [::]:3000'));
 
 ## Conclusion
 
-Express.js supports IPv6 by passing `'::'` as the host to `listen()`. Set `app.set('trust proxy', 1)` when behind a proxy to populate `req.ip` from `X-Forwarded-For`. Normalize client IPs by stripping `::ffff:` from IPv4-mapped addresses. Use `net.isIPv6()` for input validation. Rate-limit by `/64` prefix since a single IPv6 user may rotate through many addresses in their prefix. IPv6 literals in URL paths must be URL-encoded since brackets have special meaning in URLs.
+Express.js supports IPv6 by passing `'::'` as the host to `listen()`, which binds the IPv6 unspecified address and, on many operating systems, also accepts IPv4 connections. Set `app.set('trust proxy', 1)` only when your app is actually behind one trusted proxy hop so `req.ip` can use `X-Forwarded-For`. Normalize client IPs by stripping `::ffff:` from IPv4-mapped addresses. Use `net.isIPv6()` for input validation. A common IPv6 rate-limiting heuristic is to aggregate by `/64` prefix, since hosts can use multiple addresses within the same subnet. IPv6 text such as `2001:db8::1` can be used directly in a path segment; brackets are only for the URL host portion.
