@@ -62,7 +62,7 @@ resource "google_compute_subnetwork" "internal_ipv6" {
 }
 
 output "internal_ipv6_cidr" {
-  value = google_compute_subnetwork.internal_ipv6.ipv6_cidr_range
+  value = google_compute_subnetwork.internal_ipv6.internal_ipv6_prefix
   description = "GCP-assigned internal IPv6 /64 for this subnet"
 }
 ```
@@ -87,7 +87,7 @@ resource "google_compute_subnetwork" "external_ipv6" {
 }
 
 output "external_ipv6_cidr" {
-  value = google_compute_subnetwork.external_ipv6.ipv6_cidr_range
+  value = google_compute_subnetwork.external_ipv6.external_ipv6_prefix
 }
 ```
 
@@ -109,10 +109,13 @@ resource "google_compute_instance" "dual_stack" {
   network_interface {
     subnetwork = google_compute_subnetwork.external_ipv6.id
 
-    # Request an IPv4 address
+    # Make the VM network interface dual-stack
+    stack_type = "IPV4_IPV6"
+
+    # Request an external IPv4 address
     access_config {}
 
-    # Request an IPv6 address from the subnet's external IPv6 range
+    # Request an external IPv6 /96 range from the subnet's external IPv6 /64
     ipv6_access_config {
       network_tier = "PREMIUM"
     }
@@ -123,13 +126,19 @@ resource "google_compute_instance" "dual_stack" {
 ## Step 6: Create IPv6 Firewall Rules
 
 ```hcl
-# firewall.tf - Allow ICMPv6 and SSH for the dual-stack subnet
+# firewall.tf - Allow ICMPv6 and SSH over IPv6 for the dual-stack subnet
 resource "google_compute_firewall" "allow_icmpv6" {
   name    = "allow-icmpv6"
   network = google_compute_network.main.name
 
   allow {
-    protocol = "icmpv6"
+    # Use IANA protocol number 58 for ICMPv6
+    protocol = "58"
+  }
+
+  allow {
+    protocol = "tcp"
+    ports    = ["22"]
   }
 
   # Apply to IPv6 traffic from anywhere
@@ -142,10 +151,10 @@ resource "google_compute_firewall" "allow_icmpv6" {
 ```bash
 terraform apply
 
-# Check the subnet's IPv6 CIDR
+# Check the subnet's external IPv6 /64
 gcloud compute networks subnets describe snet-external-ipv6 \
   --region=us-central1 \
-  --format='value(ipv6CidrRange,stackType,ipv6AccessType)'
+  --format='value(externalIpv6Prefix,stackType,ipv6AccessType)'
 ```
 
 GCP's dual-stack subnets with `EXTERNAL` IPv6 access type provide globally routable IPv6 addresses without requiring additional gateways, simplifying IPv6 deployment on Google Cloud.
