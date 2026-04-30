@@ -61,17 +61,10 @@ Fluentd can accept log input over IPv6 sockets and route events based on IPv6 fi
   @type record_transformer
   enable_ruby true
   <record>
-    # Normalize the remote IP (handles both IPv4 and IPv6)
-    client_ip_normalized ${
-      require 'ipaddr'
-      begin
-        IPAddr.new(record['remote_addr']).to_s
-      rescue
-        record['remote_addr']
-      end
-    }
+    # Normalize the remote IP parsed by the nginx parser (handles both IPv4 and IPv6)
+    client_ip_normalized ${begin; require "ipaddr"; IPAddr.new(record["remote"]).to_s; rescue IPAddr::InvalidAddressError, ArgumentError; record["remote"]; end}
     # Tag whether source is IPv6
-    is_ipv6 ${record['remote_addr'].include?(':') ? true : false}
+    is_ipv6 ${(record["remote"] || "").include?(":") ? true : false}
   </record>
 </filter>
 ```
@@ -81,35 +74,29 @@ Fluentd can accept log input over IPv6 sockets and route events based on IPv6 fi
 ```xml
 <!-- Route logs from specific IPv6 subnets to different outputs -->
 <match nginx.access>
-  @type route
-  <route **>
-    copy
-    <match>
-      @type rewrite_tag_filter
-      <rule>
-        key client_ip_normalized
-        pattern /^2001:db8:/
-        tag nginx.ipv6.internal
-      </rule>
-      <rule>
-        key is_ipv6
-        pattern /^true$/
-        tag nginx.ipv6.external
-      </rule>
-      <rule>
-        key is_ipv6
-        pattern /^false$/
-        tag nginx.ipv4
-      </rule>
-    </match>
-  </route>
+  @type rewrite_tag_filter
+  <rule>
+    key client_ip_normalized
+    pattern /^2001:db8:/
+    tag nginx.ipv6.internal
+  </rule>
+  <rule>
+    key is_ipv6
+    pattern /^true$/
+    tag nginx.ipv6.external
+  </rule>
+  <rule>
+    key is_ipv6
+    pattern /^false$/
+    tag nginx.ipv4
+  </rule>
 </match>
 ```
 
 ## Step 4: Forward to Elasticsearch over IPv6
 
 ```xml
-<!-- Send to Elasticsearch using IPv6 URL -->
+<!-- Send to Elasticsearch over IPv6 -->
 <match nginx.**>
   @type elasticsearch
   # Elasticsearch on IPv6
@@ -122,7 +109,6 @@ Fluentd can accept log input over IPv6 sockets and route events based on IPv6 fi
 
   index_name nginx-logs
   include_timestamp true
-  type_name _doc
 
   <buffer>
     @type file
@@ -140,7 +126,7 @@ Fluentd can accept log input over IPv6 sockets and route events based on IPv6 fi
 <!-- Aggregate logs to a central Fluentd over IPv6 -->
 <match syslog.**>
   @type forward
-  # Use IPv6 address in brackets for the server
+  # Use the IPv6 literal as the server host
   <server>
     host 2001:db8::20
     port 24224
@@ -178,4 +164,4 @@ Fluentd can accept log input over IPv6 sockets and route events based on IPv6 fi
 
 ## Conclusion
 
-Fluentd supports IPv6 natively through its socket-based input plugins - bind `::` to accept connections on all IPv6 interfaces, and use bracketed IPv6 addresses in output plugin configuration for forwarding. The `record_transformer` with Ruby enables IPv6 address normalization and subnet classification, while the `rewrite_tag_filter` plugin routes events from different IPv6 prefixes to appropriate outputs. Always test IPv6 connectivity from Fluentd's process to downstream systems before enabling in production.
+Fluentd supports IPv6 natively through its socket-based input plugins - bind `::` to accept connections on IPv6 interfaces, use bracketed IPv6 literals in URL-style endpoints such as `http://[::1]:9880`, and use plain IPv6 literals for plugins that take separate `host` and `port` parameters. The `record_transformer` with Ruby enables IPv6 address normalization and subnet classification, while the `rewrite_tag_filter` plugin routes events from different IPv6 prefixes to appropriate outputs. Always test IPv6 connectivity from Fluentd's process to downstream systems before enabling in production.
