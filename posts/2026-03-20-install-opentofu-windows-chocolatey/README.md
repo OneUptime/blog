@@ -53,11 +53,11 @@ choco install opentofu -y
 tofu version
 
 # Expected output:
-# OpenTofu v1.9.0
+# OpenTofu v1.x.y
 # on windows_amd64
 
-# Check binary location
-where tofu
+# Check binary location in PowerShell
+(Get-Command tofu).Source
 # C:\ProgramData\chocolatey\bin\tofu.exe
 ```
 
@@ -94,18 +94,12 @@ tofu plan
 tofu apply -auto-approve
 ```
 
-## Setting Up Shell Completion on Windows
+## Setting Up Shell Completion on Windows (Bash/Zsh)
 
 ```powershell
-# Install completion for PowerShell
+# OpenTofu's built-in autocomplete installer supports bash and zsh shells.
+# If you use Git Bash or WSL on Windows, run:
 tofu -install-autocomplete
-
-# Or manually add to your PowerShell profile
-# Add this to $PROFILE:
-Register-ArgumentCompleter -Native -CommandName tofu -ScriptBlock {
-    param($wordToComplete, $commandAst, $cursorPosition)
-    & tofu complete -- $wordToComplete
-}
 ```
 
 ## Working with Environment Variables
@@ -143,7 +137,7 @@ tofu version
 choco uninstall opentofu
 
 # Verify removal
-tofu version  # Should show "not found"
+Get-Command tofu -ErrorAction SilentlyContinue  # Should return no result
 ```
 
 ## Tips for Windows Users
