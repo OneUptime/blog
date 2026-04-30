@@ -28,6 +28,7 @@ The most straightforward approach is to include your Helm chart directly in your
 ```text
 my-helm-app/
 ├── fleet.yaml          # Fleet configuration
+├── values-common.yaml  # Additional Fleet values
 └── chart/
     ├── Chart.yaml      # Helm chart metadata
     ├── values.yaml     # Default values
@@ -64,9 +65,6 @@ helm:
   # Additional values files to merge
   valuesFiles:
     - values-common.yaml
-
-targets:
-  - clusterSelector: {}
 ```
 
 ## Deploying a Helm Chart from a Registry
@@ -96,9 +94,6 @@ helm:
       replicaCount: 2
       service:
         type: LoadBalancer
-
-targets:
-  - clusterSelector: {}
 ```
 
 ## Per-Cluster Value Overrides
@@ -124,7 +119,7 @@ helm:
     monitoring:
       enabled: true
 
-targets:
+targetCustomizations:
   # Development: minimal resources
   - name: dev
     clusterSelector:
@@ -177,16 +172,16 @@ helm:
     - values/common.yaml
     - values/monitoring.yaml
 
-targets:
+targetCustomizations:
   - name: production
     clusterSelector:
       matchLabels:
         env: production
     helm:
-      valuesFiles:
-        - values/common.yaml
-        - values/monitoring.yaml
-        - values/production.yaml  # Production-specific overrides
+      values:
+        replicaCount: 3
+        ingress:
+          enabled: true  # Production-specific overrides
 ```
 
 ## Using Secret-Based Values
@@ -202,19 +197,19 @@ helm:
   releaseName: my-app
 
   # Reference a secret containing Helm values
-  # The secret must exist in the fleet-default namespace
+  # The secret must exist in the downstream cluster
   valuesFrom:
     - secretKeyRef:
         name: my-app-helm-values
+        namespace: my-app
         key: values.yaml
-        optional: false
 ```
 
 ```bash
 # Create the secret with sensitive values
 kubectl create secret generic my-app-helm-values \
   --from-file=values.yaml=sensitive-values.yaml \
-  -n fleet-default
+  -n my-app
 ```
 
 ## Configuring Helm Options
@@ -227,7 +222,7 @@ helm:
   chart: chart
   releaseName: my-app
 
-  # Wait for resources to become ready before marking as deployed
+  # Wait for Helm Jobs to complete before marking the GitRepo as ready
   waitForJobs: true
 
   # Set the timeout for Helm operations
@@ -242,7 +237,7 @@ helm:
   # Atomic install - rollback on failure
   atomic: true
 
-  # Disable OpenAPI validation
+  # Disable Go template preprocessing for Fleet values
   disablePreProcess: false
 ```
 
