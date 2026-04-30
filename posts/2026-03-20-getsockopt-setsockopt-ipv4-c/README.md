@@ -33,7 +33,7 @@ Both return `0` on success and `-1` on error with `errno` set.
 | Level constant | Header | Covers |
 |---------------|--------|--------|
 | `SOL_SOCKET` | `<sys/socket.h>` | Generic socket options |
-| `IPPROTO_TCP` | `<netinet/tcp.h>` | TCP-specific options |
+| `IPPROTO_TCP` | `<netinet/in.h>` | TCP-specific options |
 | `IPPROTO_IP` | `<netinet/in.h>` | IPv4-specific options |
 
 ## SOL_SOCKET Options
@@ -90,6 +90,7 @@ void configure_socket(int fd) {
 ## IPPROTO_TCP Options
 
 ```c
+#include <netinet/in.h>
 #include <netinet/tcp.h>
 
 void configure_tcp(int fd) {
@@ -99,16 +100,18 @@ void configure_tcp(int fd) {
     opt = 1;
     setsockopt(fd, IPPROTO_TCP, TCP_NODELAY, &opt, sizeof(opt));
 
-    /* TCP_CORK - accumulate data until full segment (opposite of NODELAY) */
+#ifdef __linux__
+    /* TCP_CORK - Linux-only; hold partial frames until uncorked */
     opt = 1;
     setsockopt(fd, IPPROTO_TCP, TCP_CORK, &opt, sizeof(opt));
+#endif
 
-    /* TCP_MAXSEG - maximum segment size (must set before connect/listen) */
+    /* TCP_MAXSEG - maximum segment size; set before connect/listen to affect advertised MSS */
     opt = 1460;
     setsockopt(fd, IPPROTO_TCP, TCP_MAXSEG, &opt, sizeof(opt));
 
 #ifdef __linux__
-    /* Linux keepalive tuning */
+    /* Linux keepalive tuning (takes effect when SO_KEEPALIVE is enabled) */
     opt = 60;
     setsockopt(fd, IPPROTO_TCP, TCP_KEEPIDLE,  &opt, sizeof(opt));  /* idle secs */
     opt = 10;
@@ -131,20 +134,22 @@ void configure_ip(int fd) {
     opt = 64;
     setsockopt(fd, IPPROTO_IP, IP_TTL, &opt, sizeof(opt));
 
-    /* IP_TOS - type of service / DSCP byte (affects QoS) */
+    /* IP_TOS - type-of-service / DS field byte (affects QoS) */
     opt = 0x10;  /* IPTOS_LOWDELAY */
     setsockopt(fd, IPPROTO_IP, IP_TOS, &opt, sizeof(opt));
 
+#ifdef __linux__
     /* IP_MTU_DISCOVER - path MTU discovery (Linux) */
     opt = IP_PMTUDISC_DO;
     setsockopt(fd, IPPROTO_IP, IP_MTU_DISCOVER, &opt, sizeof(opt));
+#endif
 }
 ```
 
 ## Reading Back Option Values
 
 ```c
-/* After setsockopt(SO_SNDBUF), the kernel may double the size.
+/* After setsockopt(SO_SNDBUF), Linux returns a doubled size.
    Always read back with getsockopt to learn the actual value. */
 int sndbuf = 128 * 1024;
 setsockopt(fd, SOL_SOCKET, SO_SNDBUF, &sndbuf, sizeof(sndbuf));
@@ -156,4 +161,4 @@ printf("Actual SO_SNDBUF: %d bytes\n", sndbuf);
 
 ## Conclusion
 
-`setsockopt` and `getsockopt` use a three-part key (socket fd, level, option name) and a value pointer. The `level` parameter routes the option to the correct protocol layer: `SOL_SOCKET` for generic options, `IPPROTO_TCP` for TCP-specific tuning, and `IPPROTO_IP` for IP-layer control. Always read buffer sizes back with `getsockopt` after setting them - the kernel silently adjusts to twice the requested value. Use `SO_ERROR` via `getsockopt` to retrieve the result of an asynchronous operation (non-blocking connect). Check the man page for the exact `optval` type - some options take `int`, others take `struct timeval` or `struct linger`.
+`setsockopt` and `getsockopt` use a three-part key (socket fd, level, option name) and a value pointer. The `level` parameter routes the option to the correct protocol layer: `SOL_SOCKET` for generic options, `IPPROTO_TCP` for TCP-specific tuning, and `IPPROTO_IP` for IP-layer control. Always read buffer sizes back with `getsockopt` after setting them - on Linux, `SO_SNDBUF` and `SO_RCVBUF` are doubled internally for bookkeeping, and `getsockopt` returns the doubled value. Use `SO_ERROR` via `getsockopt` to retrieve the result of an asynchronous operation (non-blocking connect). Check the man page for the exact `optval` type - some options take `int`, others take `struct timeval` or `struct linger`.
