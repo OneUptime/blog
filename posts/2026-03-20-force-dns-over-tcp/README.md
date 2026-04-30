@@ -4,11 +4,11 @@ Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
 Tags: DNS, TCP, UDP, Linux, Networking, Configuration, Troubleshooting
 
-Description: Configure DNS clients to use TCP instead of UDP for all queries, useful when UDP is blocked, to verify TCP DNS works, or to bypass UDP packet size limitations.
+Description: Configure DNS clients to use TCP instead of UDP for all queries, useful when UDP is blocked, to verify TCP DNS works, or to work around UDP transport issues.
 
 ## Introduction
 
-DNS defaults to UDP for efficiency but falls back to TCP when responses are too large. In some environments, UDP port 53 is blocked while TCP port 53 is allowed, requiring explicit TCP configuration. Forcing TCP is also useful for debugging: if DNS works over TCP but not UDP, you have a UDP firewall issue. This guide covers forcing TCP at the query, application, and system resolver levels.
+DNS defaults to UDP for efficiency but falls back to TCP when responses are truncated or too large for UDP. In some environments, UDP port 53 is blocked while TCP port 53 is allowed, requiring explicit TCP configuration. Forcing TCP is also useful for debugging: if DNS works over TCP but not UDP, you likely have a UDP filtering, fragmentation, or path issue. This guide covers forcing TCP at the query, application, and system resolver levels.
 
 ## Force TCP with dig
 
@@ -24,28 +24,31 @@ dig example.com +tcp
 
 # Test TCP connectivity without DNS:
 nc -z 8.8.8.8 53 && echo "TCP 53 reachable" || echo "TCP 53 blocked"
-nc -zu 8.8.8.8 53 && echo "UDP 53 reachable" || echo "UDP 53 blocked"
 
-# Common use case: test from behind a firewall:
+# Test UDP DNS with a real query:
+dig @8.8.8.8 example.com
+
+# Common use case: test from behind a firewall or problematic network path:
 dig @8.8.8.8 example.com +tcp
-# If this works but UDP doesn't: UDP 53 is blocked
+# If this works but plain UDP queries do not, UDP transport is being filtered or failing on the path
 ```
 
 ## Force TCP in systemd-resolved
 
 ```bash
-# Enable DNS over TLS (which uses TCP with TLS):
-# /etc/systemd/resolved.conf:
-cat >> /etc/systemd/resolved.conf << 'EOF'
+# Enable DNS over TLS for upstream queries (which uses TCP with TLS):
+# /etc/systemd/resolved.conf.d/force-dot.conf:
+mkdir -p /etc/systemd/resolved.conf.d
+cat > /etc/systemd/resolved.conf.d/force-dot.conf << 'EOF'
 [Resolve]
-DNS=8.8.8.8
-DNSOverTLS=yes   # Force DoT (TCP/853)
+DNS=8.8.8.8#dns.google
+DNSOverTLS=yes
 EOF
 
 systemctl restart systemd-resolved
 
-# Verify DoT is being used:
-resolvectl status | grep -i "tls\|over"
+# Verify DoT is enabled:
+resolvectl status | grep -i 'DNSOverTLS'
 
 # For plain TCP (not TLS), systemd-resolved doesn't have a direct TCP-only option
 # Use Unbound or direct application configuration instead
@@ -61,11 +64,11 @@ server:
     tcp-upstream: yes
 EOF
 
-unbound-control reload
+unbound-checkconf && systemctl restart unbound
 
 # Verify Unbound is using TCP:
 tcpdump -i eth0 -n 'tcp port 53' &
-dig @127.0.0.1 -p 5335 google.com
+dig @127.0.0.1 google.com
 # Should see TCP connections from Unbound to upstream resolver
 ```
 
@@ -82,8 +85,7 @@ import dns.message
 
 # Method 1: Use dnspython's TCP-aware functions
 def query_dns_tcp(domain, record_type='A', server='8.8.8.8'):
-    qname = dns.name.from_text(domain)
-    q = dns.message.make_query(qname, record_type)
+    q = dns.message.make_query(domain, record_type)
 
     # Force TCP:
     response = dns.query.tcp(q, server, port=53, timeout=5)
@@ -96,32 +98,27 @@ for rr in response.answer:
 # Method 2: Resolver with TCP flag:
 resolver = dns.resolver.Resolver()
 resolver.nameservers = ['8.8.8.8']
-# dnspython handles TCP fallback automatically when TC bit is set
-# To always use TCP, send initial query with truncation flag set
-# This forces immediate retry over TCP
+answer = resolver.resolve('example.com', 'A', tcp=True)
+for rr in answer:
+    print(rr)
 ```
 
 ## Configure Resolver for TCP (BIND9)
 
 ```bash
-# If using BIND as a caching resolver, force TCP for upstream queries:
-# /etc/bind/named.conf.options:
-options {
-    # ... other options ...
+# BIND already retries over TCP when needed after a truncated UDP response.
+# There is no general "tcp-only" option for recursive upstream queries.
 
-    # Try TCP after UDP fails:
-    # (BIND handles this automatically)
-
-    # But you can also use query-source to limit to TCP:
-    # Note: BIND doesn't have a "tcp-only" option for upstream queries
-    # Use forward-only with a specific TCP resolver instead:
+# If you want to force a TCP-based transport, BIND 9.20+ can
+# forward to a DNS-over-TLS resolver:
+tls GOOGLE {
+    remote-hostname "dns.google";
 };
 
-# Alternative: Use BIND to forward to a DoT resolver:
 options {
     forward only;
-    forwarders {
-        8.8.8.8 port 853 tls GOOGLE;
+    forwarders port 853 tls GOOGLE {
+        8.8.8.8;
     };
 };
 ```
@@ -138,7 +135,7 @@ dig @8.8.8.8 google.com +tcp | grep "Query time"
 
 # Test specific port:
 # DNS over TLS (port 853):
-dig @8.8.8.8 google.com -p 853 +tcp +tls
+dig @8.8.8.8 google.com +tls +tls-ca +tls-hostname=dns.google
 
 # Capture to verify transport:
 tcpdump -i eth0 -n '(tcp or udp) and port 53' -c 10 &
@@ -149,4 +146,4 @@ wait
 
 ## Conclusion
 
-Force TCP for DNS with `dig +tcp` for single queries. When UDP is blocked, TCP DNS provides a reliable fallback - verify both with `nc -z` (TCP) and `nc -zu` (UDP) tests. For production environments where UDP is blocked, configure `systemd-resolved` with `DNSOverTLS=yes` for encrypted TCP, or configure Unbound with `tcp-upstream: yes` for unencrypted TCP. DNS over TCP is 1-2ms slower than UDP due to the handshake but functionally identical for the responses themselves.
+Force TCP for DNS with `dig +tcp` for single queries. When UDP is blocked, TCP DNS provides a reliable fallback - verify TCP port 53 with `nc -z` and verify UDP with a real DNS query. For production environments where UDP is blocked, configure `systemd-resolved` with `DNSOverTLS=yes` and a resolver hostname for encrypted TCP, or configure Unbound with `tcp-upstream: yes` for unencrypted TCP. DNS over TCP may add latency when a new connection is opened, though connection reuse can reduce that overhead.
