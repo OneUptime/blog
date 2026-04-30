@@ -6,7 +6,7 @@ Tags: OpenTofu, GCP, Billing, Budget Alerts, Infrastructure as Code
 
 Description: Learn how to create GCP billing budgets and alerts with OpenTofu to monitor and control Google Cloud spending across projects and services.
 
-GCP Billing Budgets alert your team when spending exceeds thresholds and can automatically disable billing when critical limits are reached. Managing budgets in OpenTofu ensures all projects have cost guardrails from day one.
+GCP Billing Budgets alert your team when spending exceeds thresholds and can publish Pub/Sub notifications that you can use to automate actions like disabling billing when critical limits are reached. Managing budgets in OpenTofu ensures all projects have cost guardrails from day one.
 
 ## Provider Configuration
 
@@ -15,14 +15,19 @@ terraform {
   required_providers {
     google = {
       source  = "hashicorp/google"
-      version = "~> 5.0"
+      version = "~> 7.0"
     }
   }
 }
 
 provider "google" {
-  project         = var.project_id
-  billing_project = var.project_id
+  project               = var.project_id
+  billing_project       = var.project_id
+  user_project_override = true
+}
+
+data "google_project" "current" {
+  project_id = var.project_id
 }
 ```
 
@@ -35,7 +40,7 @@ resource "google_billing_budget" "project_budget" {
 
   # Filter to a specific project
   budget_filter {
-    projects = ["projects/${var.project_id}"]
+    projects = ["projects/${data.google_project.current.number}"]
   }
 
   amount {
@@ -70,15 +75,14 @@ resource "google_billing_budget" "project_budget" {
   }
 
   all_updates_rule {
-    pubsub_topic  = google_pubsub_topic.budget_alerts.id
+    pubsub_topic   = google_pubsub_topic.budget_alerts.id
     schema_version = "1.0"
 
     monitoring_notification_channels = [
       google_monitoring_notification_channel.email.name,
-      google_monitoring_notification_channel.slack.name,
     ]
 
-    # Automatically disable billing at 100% (prevents runaway spend)
+    # Keep default Billing Account Admin/User email recipients enabled
     disable_default_iam_recipients = false
   }
 }
@@ -93,19 +97,6 @@ resource "google_monitoring_notification_channel" "email" {
 
   labels = {
     email_address = "finops@example.com"
-  }
-}
-
-resource "google_monitoring_notification_channel" "slack" {
-  display_name = "FinOps Slack Alerts"
-  type         = "slack"
-
-  labels = {
-    channel_name = "#finops-alerts"
-  }
-
-  sensitive_labels {
-    auth_token = var.slack_token
   }
 }
 ```
@@ -135,8 +126,8 @@ resource "google_billing_budget" "bigquery_budget" {
   display_name    = "BigQuery Monthly Budget"
 
   budget_filter {
-    projects = ["projects/${var.project_id}"]
-    services = ["services/95FF-2EF5-5EA1"]  # BigQuery service ID
+    projects = ["projects/${data.google_project.current.number}"]
+    services = ["services/24E6-581D-38E5"]  # BigQuery service ID
   }
 
   amount {
@@ -156,7 +147,8 @@ resource "google_billing_budget" "bigquery_budget" {
 
   all_updates_rule {
     monitoring_notification_channels = [google_monitoring_notification_channel.email.name]
-    pubsub_topic = google_pubsub_topic.budget_alerts.id
+    pubsub_topic                     = google_pubsub_topic.budget_alerts.id
+    schema_version                   = "1.0"
   }
 }
 ```
@@ -166,10 +158,15 @@ resource "google_billing_budget" "bigquery_budget" {
 ```hcl
 locals {
   project_budgets = {
-    "production"  = { project = var.prod_project_id,  amount = 50000 }
-    "staging"     = { project = var.staging_project_id, amount = 5000 }
-    "development" = { project = var.dev_project_id,   amount = 2000 }
+    "production"  = { project_id = var.prod_project_id, amount = 50000 }
+    "staging"     = { project_id = var.staging_project_id, amount = 5000 }
+    "development" = { project_id = var.dev_project_id, amount = 2000 }
   }
+}
+
+data "google_project" "budget_projects" {
+  for_each   = local.project_budgets
+  project_id = each.value.project_id
 }
 
 resource "google_billing_budget" "projects" {
@@ -179,7 +176,7 @@ resource "google_billing_budget" "projects" {
   display_name    = "${each.key} project budget"
 
   budget_filter {
-    projects = ["projects/${each.value.project}"]
+    projects = ["projects/${data.google_project.budget_projects[each.key].number}"]
   }
 
   amount {
@@ -205,4 +202,4 @@ resource "google_billing_budget" "projects" {
 
 ## Conclusion
 
-GCP Billing Budgets in OpenTofu provide automated spending visibility across all your projects. Route budget alerts to both email notification channels and Pub/Sub topics for programmatic handling (e.g., automatic project shutdown). Set forecasted alerts to catch trends before the budget is breached, and use service-specific budgets to identify which GCP services are driving unexpected costs.
+GCP Billing Budgets in OpenTofu provide automated spending visibility across all your projects. Route budget alerts to email notification channels and Pub/Sub topics for programmatic handling (for example, sending Slack messages or disabling billing with a separate handler). Set forecasted alerts to catch trends before the budget is breached, and use service-specific budgets to identify which GCP services are driving unexpected costs.
