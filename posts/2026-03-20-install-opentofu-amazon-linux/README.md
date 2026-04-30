@@ -14,7 +14,7 @@ Amazon Linux is AWS's own Linux distribution optimized for running on EC2 instan
 
 - Amazon Linux 2 or Amazon Linux 2023
 - `sudo` or root access
-- Internet access (or VPC endpoints for S3/GitHub)
+- Internet access to `packages.opentofu.org` or GitHub releases
 
 ## Method 1: Install via YUM/DNF Repository
 
@@ -27,7 +27,7 @@ cat <<EOF | sudo tee /etc/yum.repos.d/opentofu.repo
 [opentofu]
 name=opentofu
 baseurl=https://packages.opentofu.org/opentofu/tofu/rpm_any/rpm_any/\$basearch
-repo_gpgcheck=1
+repo_gpgcheck=0
 gpgcheck=1
 enabled=1
 gpgkey=https://get.opentofu.org/opentofu.gpg
@@ -49,7 +49,7 @@ cat <<EOF | sudo tee /etc/yum.repos.d/opentofu.repo
 [opentofu]
 name=opentofu
 baseurl=https://packages.opentofu.org/opentofu/tofu/rpm_any/rpm_any/\$basearch
-repo_gpgcheck=1
+repo_gpgcheck=0
 gpgcheck=1
 enabled=1
 gpgkey=https://get.opentofu.org/opentofu.gpg
@@ -69,21 +69,32 @@ sudo yum install -y tofu
 ## Method 2: Install from Binary
 
 ```bash
-TOFU_VERSION="1.9.0"
+TOFU_VERSION="1.11.6"
 
 # Install unzip if needed
 sudo yum install -y unzip  # or dnf for AL2023
 
+# Pick the correct archive for x86_64 or Graviton/ARM instances
+ARCH="$(uname -m)"
+case "$ARCH" in
+  x86_64) TOFU_ARCH="amd64" ;;
+  aarch64) TOFU_ARCH="arm64" ;;
+  *)
+    echo "Unsupported architecture: $ARCH" >&2
+    exit 1
+    ;;
+esac
+
 # Download the binary
-curl -LO "https://github.com/opentofu/opentofu/releases/download/v${TOFU_VERSION}/tofu_${TOFU_VERSION}_linux_amd64.zip"
+curl -LO "https://github.com/opentofu/opentofu/releases/download/v${TOFU_VERSION}/tofu_${TOFU_VERSION}_linux_${TOFU_ARCH}.zip"
 
 # Extract and install
-unzip "tofu_${TOFU_VERSION}_linux_amd64.zip"
+unzip "tofu_${TOFU_VERSION}_linux_${TOFU_ARCH}.zip"
 sudo mv tofu /usr/local/bin/
 sudo chmod +x /usr/local/bin/tofu
 
 # Clean up
-rm "tofu_${TOFU_VERSION}_linux_amd64.zip"
+rm "tofu_${TOFU_VERSION}_linux_${TOFU_ARCH}.zip"
 ```
 
 ## Using OpenTofu with AWS on EC2
@@ -137,9 +148,12 @@ version: 0.2
 phases:
   install:
     commands:
-      - TOFU_VERSION="1.9.0"
-      - curl -LO "https://github.com/opentofu/opentofu/releases/download/v${TOFU_VERSION}/tofu_${TOFU_VERSION}_linux_amd64.zip"
-      - unzip "tofu_${TOFU_VERSION}_linux_amd64.zip"
+      - TOFU_VERSION="1.11.6"
+      - ARCH="$(uname -m)"
+      - if [ "$ARCH" = "x86_64" ]; then export TOFU_ARCH="amd64"; elif [ "$ARCH" = "aarch64" ]; then export TOFU_ARCH="arm64"; else echo "Unsupported architecture: $ARCH" >&2; exit 1; fi
+      - yum install -y unzip
+      - curl -LO "https://github.com/opentofu/opentofu/releases/download/v${TOFU_VERSION}/tofu_${TOFU_VERSION}_linux_${TOFU_ARCH}.zip"
+      - unzip "tofu_${TOFU_VERSION}_linux_${TOFU_ARCH}.zip"
       - mv tofu /usr/local/bin/
       - tofu version
 
@@ -157,7 +171,7 @@ phases:
 # Check the version
 tofu version
 
-# Test with AWS provider (requires IAM permissions)
+# In a directory with OpenTofu configuration, list required providers
 tofu providers
 ```
 
