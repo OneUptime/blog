@@ -8,7 +8,7 @@ Description: Learn how to use Go's modern netip package for efficient, immutable
 
 ---
 
-Go 1.18 introduced the `net/netip` package - a modern, allocation-efficient alternative to `net.IP` for working with IP addresses. `netip.Addr` is an immutable value type that avoids heap allocations and supports both IPv4 and IPv6 including scoped (zone ID) addresses.
+Go 1.18 introduced the `net/netip` package - a modern alternative to `net.IP` for working with IP addresses. `netip.Addr` is a small, immutable value type that takes less memory than `net.IP` and supports both IPv4 and IPv6 including scoped (zone ID) addresses.
 
 ---
 
@@ -16,7 +16,7 @@ Go 1.18 introduced the `net/netip` package - a modern, allocation-efficient alte
 
 | Feature | net.IP | netip.Addr |
 |---------|--------|-----------|
-| Memory allocation | Heap ([]byte slice) | Stack (value type) |
+| Representation | `[]byte` slice | Small value type |
 | Comparability | No (slice) | Yes (comparable) |
 | Map key | No | Yes |
 | Immutability | No | Yes |
@@ -192,11 +192,11 @@ func convertBetweenTypes() {
     fmt.Println("net.IP:", legacyIP)
 
     // net.IP → netip.Addr
-    legacyIP2 := net.ParseIP("2001:db8::1")
+    legacyIP2 := net.ParseIP("192.0.2.1")
     addr2, ok := netip.AddrFromSlice(legacyIP2)
     if ok {
-        // IPv6 addresses from net.IP.To16() are always 16 bytes
-        // Map them to 6 if they are IPv4
+        // net.ParseIP returns IPv4 addresses in 16-byte IPv4-mapped form.
+        // Unmap converts ::ffff:192.0.2.1 to 192.0.2.1.
         addr2 = addr2.Unmap()
         fmt.Println("netip.Addr:", addr2)
     }
@@ -232,9 +232,9 @@ func main() {
 
 ## Best Practices
 
-1. **Prefer netip.Addr over net.IP** for new code - it's faster and more correct
-2. **Use MustParse*** only for literals known to be valid at compile time
-3. **Use Unmap()** when converting from net.IP to remove IPv4-in-IPv6 mapping
+1. **Prefer netip.Addr over net.IP** for new code when you want an immutable, comparable value type
+2. **Use MustParse*** only with hard-coded strings you know are valid
+3. **Use Unmap()** when converting IPv4 values from net.IP, because `net.ParseIP` returns them in IPv4-mapped IPv6 form
 4. **Use Prefix.Masked()** to normalize prefixes (e.g., `2001:db8::1/32` → `2001:db8::/32`)
 5. **Use AddrPort** for address+port pairs instead of parsing strings manually
 
@@ -242,7 +242,7 @@ func main() {
 
 ## Conclusion
 
-The `net/netip` package is the modern way to work with IP addresses in Go. It's faster than `net.IP`, comparable (usable as map keys), and has a cleaner API. Use it for all new IPv6-aware Go code.
+The `net/netip` package is a modern way to work with IP addresses in Go. It takes less memory than `net.IP`, is immutable and comparable (usable as map keys), and has a cleaner API. Use it for new IPv6-aware Go code.
 
 ---
 
