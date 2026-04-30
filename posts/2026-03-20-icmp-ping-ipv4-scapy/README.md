@@ -33,13 +33,16 @@ def ping(host: str, timeout: int = 2) -> dict | None:
         "ttl": reply[IP].ttl,
         "rtt_ms": round(rtt, 2),
         "icmp_type": reply[ICMP].type,
+        "icmp_code": reply[ICMP].code,
     }
 
 # Ping a host
 
 result = ping("8.8.8.8")
-if result:
+if result and result["icmp_type"] == 0:
     print(f"Reply from {result['src']}: TTL={result['ttl']} time={result['rtt_ms']}ms")
+elif result:
+    print(f"Host replied with ICMP type={result['icmp_type']} code={result['icmp_code']}")
 else:
     print("Request timeout")
 ```
@@ -64,16 +67,17 @@ if reply:
 ## Continuous Ping
 
 ```python
-from scapy.all import IP, ICMP, sr1
+from scapy.all import IP, ICMP, Raw, sr1
 import time
 
 def continuous_ping(host: str, count: int = 5, interval: float = 1.0):
     """Send multiple pings like the classic ping command."""
-    print(f"Pinging {host} with 32 bytes of data:")
+    payload = b"X" * 32
+    print(f"Pinging {host} with {len(payload)} bytes of data:")
     sent = received = 0
 
     for seq in range(1, count + 1):
-        pkt = IP(dst=host) / ICMP(seq=seq)
+        pkt = IP(dst=host) / ICMP(seq=seq) / Raw(load=payload)
         start = time.time()
         reply = sr1(pkt, timeout=2, verbose=False)
         rtt = (time.time() - start) * 1000
@@ -81,7 +85,10 @@ def continuous_ping(host: str, count: int = 5, interval: float = 1.0):
 
         if reply and ICMP in reply and reply[ICMP].type == 0:
             received += 1
-            print(f"Reply from {reply[IP].src}: bytes=32 time={rtt:.1f}ms TTL={reply[IP].ttl}")
+            print(
+                f"Reply from {reply[IP].src}: bytes={len(bytes(reply[ICMP].payload))} "
+                f"time={rtt:.1f}ms TTL={reply[IP].ttl}"
+            )
         else:
             print(f"Request timeout for seq={seq}")
 
