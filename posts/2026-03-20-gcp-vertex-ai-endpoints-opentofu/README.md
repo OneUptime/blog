@@ -4,11 +4,11 @@ Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
 Tags: OpenTofu, GCP, Vertex AI, Machine Learning, MLOps, Infrastructure as Code
 
-Description: Learn how to create GCP Vertex AI endpoints, deploy models, and configure traffic splits for A/B testing using OpenTofu.
+Description: Learn how to create GCP Vertex AI endpoints with OpenTofu, then deploy models and configure traffic splits with the Google Cloud CLI.
 
 ## Introduction
 
-Vertex AI Endpoints serve trained ML models for online prediction. You can deploy multiple model versions to a single endpoint and split traffic between them for gradual rollouts or A/B testing. OpenTofu manages endpoints and model deployments as code.
+Vertex AI Endpoints serve trained ML models for online prediction. You can deploy multiple model versions to a single endpoint and split traffic between them for gradual rollouts or A/B testing. OpenTofu can manage endpoint creation as code, while model upload and deployment are currently done with the Google Cloud CLI or Vertex AI API.
 
 ## Enabling Required APIs
 
@@ -17,28 +17,13 @@ resource "google_project_service" "vertex_ai" {
   project = var.project_id
   service = "aiplatform.googleapis.com"
 }
-
-resource "google_project_service" "container_registry" {
-  project = var.project_id
-  service = "containerregistry.googleapis.com"
-}
 ```
+
+If you store your own serving container in Artifact Registry, enable `artifactregistry.googleapis.com` as well.
 
 ## Service Account for Vertex AI
 
-```hcl
-resource "google_service_account" "vertex_ai" {
-  account_id   = "${var.app_name}-vertex-ai-sa"
-  display_name = "Vertex AI Service Account"
-  project      = var.project_id
-}
-
-resource "google_project_iam_member" "vertex_ai_user" {
-  project = var.project_id
-  role    = "roles/aiplatform.user"
-  member  = "serviceAccount:${google_service_account.vertex_ai.email}"
-}
-```
+A separate service account isn't required just to create an endpoint. Vertex AI uses its service agent to pull container images. If your serving container needs runtime access to other Google Cloud services, create a custom service account and pass it during deployment with `gcloud ai endpoints deploy-model --service-account=...`.
 
 ## Creating a Vertex AI Endpoint
 
@@ -54,80 +39,57 @@ resource "google_vertex_ai_endpoint" "prediction" {
     environment = var.environment
     managed_by  = "opentofu"
   }
+
+  depends_on = [google_project_service.vertex_ai]
 }
 ```
 
 ## Uploading a Model
 
-```hcl
-resource "google_vertex_ai_model" "classifier" {
-  display_name = "${var.app_name}-classifier-v${var.model_version}"
-  project      = var.project_id
-  location     = var.region
+OpenTofu can create the endpoint, but model upload is done with the Google Cloud CLI or Vertex AI API:
 
-  artifact_uri = "gs://${var.model_bucket}/models/classifier/v${var.model_version}/"
-
-  container_spec {
-    image_uri = "us-docker.pkg.dev/vertex-ai/prediction/sklearn-cpu.1-0:latest"
-
-    # Optionally specify a custom serving command
-    # command = ["python", "serve.py"]
-
-    env {
-      name  = "MODEL_VERSION"
-      value = var.model_version
-    }
-  }
-
-  labels = {
-    environment = var.environment
-  }
-}
+```bash
+gcloud ai models upload \
+  --project="${PROJECT_ID}" \
+  --region="${REGION}" \
+  --display-name="${APP_NAME}-classifier-v${MODEL_VERSION}" \
+  --artifact-uri="gs://${MODEL_BUCKET}/models/classifier/v${MODEL_VERSION}/" \
+  --container-image-uri="${CONTAINER_IMAGE_URI}"
 ```
+
+Use an Artifact Registry image for `CONTAINER_IMAGE_URI`. If you use a Vertex AI prebuilt prediction container, choose an image that matches your framework version and repository location requirements.
 
 ## Deploying Model to Endpoint
 
-```hcl
-resource "google_vertex_ai_endpoint_deployment" "primary" {
-  endpoint = google_vertex_ai_endpoint.prediction.name
-  project  = var.project_id
-  location = var.region
+Deploy models to the endpoint with the Google Cloud CLI:
 
-  deployed_models {
-    model                  = google_vertex_ai_model.classifier.id
-    display_name           = "classifier-primary"
-    traffic_split          = 90  # 90% of traffic to primary
+```bash
+gcloud ai endpoints deploy-model "${ENDPOINT_ID}" \
+  --project="${PROJECT_ID}" \
+  --region="${REGION}" \
+  --model="${PRIMARY_MODEL_ID}" \
+  --display-name="classifier-primary" \
+  --deployed-model-id=1 \
+  --machine-type="n1-standard-4" \
+  --min-replica-count=1 \
+  --max-replica-count=5 \
+  --autoscaling-metric-specs=cpu-usage=60 \
+  --traffic-split=0=100
 
-    dedicated_resources {
-      min_replica_count = 1
-      max_replica_count = 5
+gcloud ai endpoints deploy-model "${ENDPOINT_ID}" \
+  --project="${PROJECT_ID}" \
+  --region="${REGION}" \
+  --model="${CANARY_MODEL_ID}" \
+  --display-name="classifier-canary" \
+  --deployed-model-id=2 \
+  --machine-type="n1-standard-4" \
+  --min-replica-count=1 \
+  --max-replica-count=2
 
-      machine_spec {
-        machine_type = "n1-standard-4"
-      }
-
-      autoscaling_metric_specs {
-        metric_name = "aiplatform.googleapis.com/prediction/online/cpu/utilization"
-        target      = 60  # scale when CPU > 60%
-      }
-    }
-  }
-
-  deployed_models {
-    model        = google_vertex_ai_model.classifier_canary.id
-    display_name = "classifier-canary"
-    traffic_split = 10  # 10% of traffic to canary
-
-    dedicated_resources {
-      min_replica_count = 1
-      max_replica_count = 2
-
-      machine_spec {
-        machine_type = "n1-standard-4"
-      }
-    }
-  }
-}
+gcloud ai endpoints update "${ENDPOINT_ID}" \
+  --project="${PROJECT_ID}" \
+  --region="${REGION}" \
+  --traffic-split=1=90,2=10
 ```
 
 ## Outputs
@@ -152,4 +114,4 @@ tofu apply tfplan
 
 ## Summary
 
-Vertex AI endpoints provide managed online prediction with traffic splitting for safe model rollouts. OpenTofu manages endpoint creation, model registration, and deployment configurations - enabling reproducible, version-controlled ML model serving.
+Vertex AI endpoints provide managed online prediction with traffic splitting for safe model rollouts. OpenTofu manages endpoint creation, while model registration and deployment are handled with the Google Cloud CLI or Vertex AI API - enabling reproducible, version-controlled ML model serving.
