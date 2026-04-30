@@ -2,164 +2,83 @@
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
-Tags: HART, Industrial IoT, Portainer, OPC-UA, Docker, Manufacturing, Edge Computing
+Tags: HART, Industrial IoT, Portainer, HART-IP, Docker, Manufacturing, Edge Computing
 
-Description: Deploy containerized HART protocol gateways and data collection agents using Portainer to bridge industrial field instruments to modern data platforms.
+Description: Deploy containerized HART multiplexer software with Portainer to expose field-device data to HART-IP-enabled asset-management applications.
 
 ---
 
-HART (Highway Addressable Remote Transducer) is the dominant protocol for industrial field instruments - pressure transmitters, flow meters, level sensors, and more. Connecting HART devices to modern data infrastructure requires protocol gateways. Portainer makes it easy to deploy and manage these gateways as containers on edge hardware.
+HART (Highway Addressable Remote Transducer) is a widely deployed protocol for industrial field instruments - pressure transmitters, flow meters, level sensors, and more. Portainer makes it easy to deploy and manage containerized HART multiplexer software on edge hardware.
 
 ## HART Protocol Architecture
 
 ```mermaid
 graph LR
-    Instruments[HART Instruments] -->|4-20mA + HART| Multiplexer[HART Multiplexer]
-    Multiplexer -->|Serial/USB| Gateway[Protocol Gateway Container]
-    Gateway -->|MQTT/OPC-UA| Broker[Data Platform]
-    Broker --> TSDB[Time Series DB]
+    Instruments[HART Instruments] -->|4-20mA + HART| RemoteIO[HART I/O / Remote I/O]
+    RemoteIO -->|Ethernet| Gateway[smartLink SW-HT Container]
+    Gateway -->|HART-IP| Client[Asset Management Client]
 ```
 
-## Step 1: Deploy a HART-to-MQTT Gateway
+## Step 1: Deploy a HART Multiplexer Container
 
-The following stack deploys a HART gateway container that reads instrument data and publishes it to MQTT:
+The following stack deploys Softing smartLink SW-HT, a Docker-based HART multiplexer that exposes connected HART devices over HART-IP:
 
 ```yaml
 # hart-gateway-stack.yml
 
-version: "3.8"
-
 services:
-  hart-gateway:
-    image: industrial/hart-gateway:2.1.0
-    # Privileged mode needed for serial port access
-    privileged: true
-    devices:
-      # Map the HART multiplexer's serial port
-      - /dev/ttyUSB0:/dev/ttyUSB0
-      - /dev/ttyUSB1:/dev/ttyUSB1
+  smartlink-sw-ht:
+    image: softingindustrial/smartlink-sw-ht:1.43.1
     environment:
-      - MQTT_BROKER=mosquitto
-      - MQTT_PORT=1883
-      - MQTT_TOPIC_PREFIX=plant/field-instruments
-      - POLL_INTERVAL_MS=1000
-      - LOG_LEVEL=INFO
-    volumes:
-      - /opt/hart-gateway/devices.json:/config/devices.json:ro
-    depends_on:
-      - mosquitto
-    restart: unless-stopped
-    networks:
-      - industrial-net
-
-  mosquitto:
-    image: eclipse-mosquitto:2.0
-    volumes:
-      - mosquitto-data:/mosquitto/data
+      # Set these to the IP address and hostname your HART-IP clients use.
+      SMARTLINK_IP: "192.0.2.10"
+      SMARTLINK_HOST: "hart-gateway-edge"
+      # Required only when Siemens PROFINET remote I/Os use a non-default NIC.
+      # PNS_INTERFACE_NAME: "eth1"
     ports:
-      - "1883:1883"
-    restart: unless-stopped
-    networks:
-      - industrial-net
-
-  telegraf:
-    image: telegraf:1.29
+      - "80:80"
+      - "443:443"
+      - "5094:5094"
+      - "49152:49152/udp"
+      - "49154:49154/udp"
     volumes:
-      - /opt/telegraf/telegraf.conf:/etc/telegraf/telegraf.conf:ro
-    depends_on:
-      - mosquitto
-    restart: unless-stopped
-    networks:
-      - industrial-net
-
-volumes:
-  mosquitto-data:
-
-networks:
-  industrial-net:
-    driver: bridge
+      - /var/lib/smartLinkSW-HT:/var/lib/smartLinkSW-HT
+    restart: always
 ```
 
-## Step 2: Configure Device Mapping
+## Step 2: Configure HART-RIO Access
 
-Define which HART instruments are connected and their tag assignments:
+smartLink SW-HT is configured through its web UI rather than a JSON device file. After deploying the stack, open the container on port 443 and configure the `HART-RIOs` section for the supported controller or remote I/O you are using. Softing documents support for Allen-Bradley, Siemens, Schneider Electric, R.Stahl, Turck, and Altus HART I/O and remote I/O combinations.
 
-```json
-// /opt/hart-gateway/devices.json
-{
-  "multiplexers": [
-    {
-      "id": "mux-1",
-      "serial_port": "/dev/ttyUSB0",
-      "baud_rate": 1200,
-      "instruments": [
-        {
-          "address": 1,
-          "tag": "PT-101",
-          "description": "Reactor Inlet Pressure",
-          "unit": "PSI",
-          "scale_min": 0,
-          "scale_max": 500
-        },
-        {
-          "address": 2,
-          "tag": "FT-201",
-          "description": "Feed Flow Transmitter",
-          "unit": "GPM",
-          "scale_min": 0,
-          "scale_max": 100
-        }
-      ]
-    }
-  ]
-}
-```
+Licensing is node-locked to the container and is based on the number of HART devices you want to access.
 
-## Step 3: Configure Telegraf to Forward Data
+## Step 3: Connect a HART-IP Client
 
-```toml
-# /opt/telegraf/telegraf.conf
-# Read HART data from MQTT and forward to InfluxDB
-
-[[inputs.mqtt_consumer]]
-  servers = ["tcp://mosquitto:1883"]
-  topics = ["plant/field-instruments/#"]
-  data_format = "json"
-  # Map MQTT topic segments to tags
-  [[inputs.mqtt_consumer.topic_parsing]]
-    topic = "plant/field-instruments/+/+"
-    tags = "_/_/_/tag"
-    fields = "_/_/_/measurement"
-
-[[outputs.influxdb_v2]]
-  urls = ["http://influxdb:8086"]
-  token = "your-token"
-  organization = "plant-ops"
-  bucket = "hart-data"
-```
+Expose port `5094` from the stack and point your HART-IP client at the container host. Softing documents support for Emerson AMS Device Manager `>= V14`, Honeywell Experion PKS Field Device Manager `>= R540.2`, and Softing smartLink DTM `>= V1.10`.
 
 ## Step 4: Monitor Instrument Health
 
-HART devices report diagnostic information including:
+smartLink SW-HT provides access to HART device information including:
 
-- Loop current (4–20mA)
-- Device status flags (sensor failure, configuration changed)
-- Primary variable and engineering units
+- Device identification
+- Health
+- Diagnostics
+- Process data
 
-Use the Portainer log viewer to monitor the gateway container for instrument communication errors.
+Use the smartLink SW-HT `Live List` and diagnosis pages for device-level visibility, and use the Portainer log viewer to monitor the container for communication errors.
 
 ## Handling Network Interruptions
 
-Edge sites often have intermittent connectivity. Configure Telegraf's buffer for resilience:
+At edge sites, persist the smartLink SW-HT data directory and use a restart policy so the container recovers cleanly after a reboot or transient failure:
 
-```toml
-[agent]
-  # Buffer up to 100,000 metrics before dropping (handles 1.5 hours of data at 1s intervals)
-  metric_buffer_limit = 100000
-  flush_interval = "10s"
-  flush_jitter = "2s"
+```yaml
+services:
+  smartlink-sw-ht:
+    restart: always
+    volumes:
+      - /var/lib/smartLinkSW-HT:/var/lib/smartLinkSW-HT
 ```
 
 ## Summary
 
-Portainer makes it easy to deploy and manage industrial HART gateway containers on edge hardware. The container-based approach gives you the flexibility to update gateway software without disrupting the underlying OS, and Portainer's remote management lets you push updates to remote plant sites without traveling on-site.
+Portainer makes it easy to deploy and manage industrial HART multiplexer containers on edge hardware. The container-based approach gives you the flexibility to update the HART access layer without disrupting the underlying OS, and Portainer Edge Stacks let you deploy the same stack across multiple edge environments from a single page.
