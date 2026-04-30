@@ -2,9 +2,9 @@
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
-Tags: WiFi, Window, IP Configuration, DHCP, Troubleshooting
+Tags: WiFi, Windows, IP Configuration, DHCP, Troubleshooting
 
-Description: Learn how to fix the 'WiFi doesn't have a valid IP configuration' error on Windows by resetting the network stack, flushing DHCP, and reconfiguring the wireless adapter.
+Description: Learn how to fix the 'WiFi doesn't have a valid IP configuration' error on Windows by resetting the network stack, renewing the DHCP lease, and reconfiguring the wireless adapter.
 
 ## What Causes This Error?
 
@@ -47,7 +47,7 @@ netsh winsock reset
 REM Reset TCP/IP stack
 netsh int ip reset
 
-REM Reset Windows Firewall (in case it's blocking)
+REM Optional: reset Windows Firewall policies if you suspect a firewall issue
 netsh advfirewall reset
 
 REM Reboot after these commands
@@ -71,7 +71,8 @@ ipconfig /renew
 ## Step 4: Reset Network Adapter
 
 ```powershell
-# PowerShell - Disable and re-enable the wireless adapter
+# PowerShell (run as Administrator) - Disable and re-enable the wireless adapter
+# Replace "Wi-Fi" with your adapter name if different
 
 Get-NetAdapter -Name "Wi-Fi" | Disable-NetAdapter -Confirm:$false
 Start-Sleep -Seconds 3
@@ -89,31 +90,32 @@ Get-NetAdapter -Name "Wi-Fi" | Enable-NetAdapter
 Outdated or corrupted drivers cause this error frequently:
 
 ```powershell
-# Check current driver version
-Get-NetAdapter -Name "Wi-Fi" | Get-NetAdapterAdvancedProperty | Select-Object DisplayName, DisplayValue
+# Check current driver details, including driver version and date
+# Replace "Wi-Fi" with your adapter name if different
+Get-NetAdapter -Name "Wi-Fi" | Format-Table -View Driver
 
 # Via Device Manager:
 # 1. devmgmt.msc → Network Adapters
 # 2. Right-click wireless adapter
 # 3. "Update driver" → "Search automatically"
 # OR
-# 4. "Uninstall device" (check "Delete driver software")
+# 4. "Uninstall device" (optionally check "Attempt to remove the driver for this device" if shown)
 # 5. Reboot to reinstall automatically
 ```
 
 ## Step 6: Check for IP Conflicts
 
-If another device has the same IP address, DHCP may assign a conflicting address:
+If another device is already using the same IPv4 address, Windows may report a conflict or fail to communicate properly:
 
 ```cmd
-REM Check current IP
+REM Check current IP and default gateway
 ipconfig
 
-REM Ping the gateway to see if it's reachable
+REM Ping your default gateway from ipconfig (example: 192.168.1.1)
 ping 192.168.1.1
 
-REM Run the Windows network troubleshooter
-msdt.exe -id NetworkDiagnosticsNetworkAdapter
+REM Windows 11: run the Network and Internet troubleshooter in Get Help
+REM Windows 10: Settings > Network & Internet > Status > Network troubleshooter
 ```
 
 ## Step 7: Set a Static IP as a Workaround
@@ -121,13 +123,14 @@ msdt.exe -id NetworkDiagnosticsNetworkAdapter
 If DHCP consistently fails:
 
 ```powershell
-# Get adapter name
-Get-NetAdapter -Name "Wi-Fi"
+# PowerShell (run as Administrator)
+# List adapters to confirm the interface alias
+Get-NetAdapter
 
-# Set static IP
+# Example: replace these values with an unused IP on your subnet and your actual gateway
 New-NetIPAddress -InterfaceAlias "Wi-Fi" -IPAddress 192.168.1.50 -PrefixLength 24 -DefaultGateway 192.168.1.1
 
-# Set DNS server
+# Example public DNS servers; use your network's required DNS servers if different
 Set-DnsClientServerAddress -InterfaceAlias "Wi-Fi" -ServerAddresses 8.8.8.8, 8.8.4.4
 
 # Verify
@@ -136,4 +139,4 @@ ipconfig /all
 
 ## Conclusion
 
-The "WiFi doesn't have a valid IP configuration" error is almost always resolved by `ipconfig /release && ipconfig /renew`, followed by `netsh winsock reset && netsh int ip reset` if that fails. Update or reinstall the wireless adapter driver if software resets don't help. If DHCP is fundamentally broken on the network, set a static IP as a workaround while investigating the DHCP server.
+The "WiFi doesn't have a valid IP configuration" error is often resolved by running `ipconfig /release` and then `ipconfig /renew`, followed by `netsh winsock reset` and `netsh int ip reset` if that fails. Update or reinstall the wireless adapter driver if software resets don't help. If DHCP is fundamentally broken on the network, set a static IP as a workaround while investigating the DHCP server.
