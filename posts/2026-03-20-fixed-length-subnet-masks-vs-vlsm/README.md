@@ -56,7 +56,7 @@ def vlsm_demo():
         print(f"  {name:10s}: /{prefix} = {allocated} hosts (need {hosts})")
 
     print(f"\nVLSM total allocated: {vlsm_total}")
-    print(f"VLSM saved vs FLSM:  {total_flsm - vlsm_total} addresses")
+    print(f"VLSM saved vs FLSM:  {total_flsm - vlsm_total} usable host addresses")
 
 vlsm_demo()
 ```
@@ -69,16 +69,16 @@ vlsm_demo()
 | Exam simulation (CCNA lab) | FLSM (per question requirements) |
 | Enterprise with mixed segment sizes | VLSM |
 | ISP customer assignments | VLSM (essential) |
-| Routing protocol support | FLSM: RIPv1 OK; VLSM: needs RIPv2/OSPF/BGP |
+| Routing protocol support | FLSM: works with classful or classless protocols; VLSM: needs classless support |
 
 ## Routing Protocol Requirements
 
-- **FLSM**: Compatible with RIPv1, IGRP (classful protocols).
-- **VLSM**: Requires classless protocols: RIPv2, OSPF, EIGRP, BGP - all carry the prefix length.
+- **FLSM**: Can be used with classful protocols such as RIPv1 and IGRP, and also with classless protocols.
+- **VLSM**: Requires classless routing support. RIPv2, OSPF, EIGRP, and BGP all carry mask or prefix information.
 
 ## Key Takeaways
 
-- FLSM wastes addresses when segment sizes vary; VLSM eliminates this waste.
+- FLSM wastes addresses when segment sizes vary; VLSM greatly reduces this waste.
 - VLSM requires classless routing protocols that carry prefix lengths in updates.
-- Modern networks always use VLSM; FLSM is mainly seen in legacy environments or exam scenarios.
-- Always allocate largest segments first in a VLSM design to avoid fragmentation.
+- Modern networks typically use VLSM; FLSM is mainly seen in legacy environments or exam scenarios.
+- A common practice is to allocate largest segments first in a VLSM design to avoid fragmentation.
