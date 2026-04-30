@@ -33,21 +33,21 @@ With `option forwardfor`, HAProxy adds:
 X-Forwarded-For: 203.0.113.50
 ```
 
-If XFF already exists (from an upstream proxy), HAProxy appends:
+If `X-Forwarded-For` already exists, HAProxy adds another `X-Forwarded-For` header with the current connection source IP. Backends should use the last occurrence unless you configure `if-none`:
 ```text
-X-Forwarded-For: 203.0.113.50, 10.0.0.1
+X-Forwarded-For: 203.0.113.50
+X-Forwarded-For: 10.0.0.1
 ```
 
-## Excluding Certain Backends from XFF
+## Excluding Certain Source Addresses from XFF
 
 ```haproxy
-defaults
+frontend http_in
+    bind 203.0.113.10:80
     mode    http
-    option  forwardfor except 127.0.0.1   # Don't add XFF for localhost backends
+    option  forwardfor except 127.0.0.1   # Don't add XFF for requests arriving from localhost
 
-backend local_backend
-    server local 127.0.0.1:8080 check
-    # XFF header NOT added for requests going to localhost
+    default_backend app_servers
 ```
 
 ## Replacing XFF to Prevent Spoofing
@@ -69,7 +69,7 @@ frontend http_in
 
 ## Trusted Proxy Chain Handling
 
-When HAProxy is behind a CDN or upstream load balancer, preserve the full chain:
+When HAProxy is behind a CDN or upstream load balancer, trust only those source ranges and preserve their XFF header if present:
 
 ```haproxy
 frontend http_in
@@ -78,11 +78,11 @@ frontend http_in
     # Only trust XFF from our CDN IP range
     acl is_cdn src 103.21.244.0/22 103.22.200.0/22
 
-    # If from CDN: keep its XFF and append connection IP
-    http-request set-header X-Forwarded-For "%[req.hdr(X-Forwarded-For)],%[src]" if is_cdn
+    # Remove untrusted client-supplied XFF
+    http-request del-header X-Forwarded-For if !is_cdn
 
-    # If NOT from CDN: replace XFF with just the connection IP
-    http-request set-header X-Forwarded-For %[src] if !is_cdn
+    # Preserve trusted XFF if present; otherwise add one with the connection IP
+    option forwardfor if-none
 
     default_backend app_servers
 ```
@@ -137,4 +137,4 @@ curl -s http://203.0.113.10/debug/headers | jq .
 
 ## Conclusion
 
-HAProxy's `option forwardfor` is the simplest way to add `X-Forwarded-For` for HTTP traffic. For security, always strip client-supplied XFF headers with `http-request del-header X-Forwarded-For` before adding your own to prevent IP spoofing. Combine with `X-Real-IP` and `X-Forwarded-Proto` so backends have complete proxy context for redirect URL construction and access control.
+HAProxy's `option forwardfor` is the simplest way to add `X-Forwarded-For` for HTTP traffic. At the edge, strip or overwrite untrusted client-supplied XFF headers to prevent IP spoofing. If HAProxy sits behind a trusted proxy or CDN, preserve only the XFF values from those trusted source ranges or use `option forwardfor if-none` in that trusted path. Combine with `X-Real-IP` and `X-Forwarded-Proto` so backends have complete proxy context for redirect URL construction and access control.
