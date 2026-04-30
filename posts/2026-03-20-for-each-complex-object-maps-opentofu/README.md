@@ -42,6 +42,8 @@ resource "aws_ecs_service" "services" {
 
   name            = each.key
   cluster         = var.ecs_cluster_arn
+  launch_type     = "FARGATE"
+  task_definition = aws_ecs_task_definition.services[each.key].arn
   desired_count   = each.value.desired_count
 
   load_balancer {
@@ -64,7 +66,7 @@ resource "aws_appautoscaling_target" "services" {
   }
 
   service_namespace  = "ecs"
-  resource_id        = "service/${var.cluster_name}/${each.key}"
+  resource_id        = "service/${var.cluster_name}/${aws_ecs_service.services[each.key].name}"
   scalable_dimension = "ecs:service:DesiredCount"
   min_capacity       = each.value.autoscaling.min_capacity
   max_capacity       = each.value.autoscaling.max_capacity
@@ -78,6 +80,7 @@ variable "databases" {
   type = map(object({
     engine         = string
     engine_version = string
+    parameter_group_family = string
     instance_class = string
     storage_gb     = number
     multi_az       = bool
@@ -99,6 +102,7 @@ resource "aws_db_instance" "databases" {
   instance_class = each.value.instance_class
   allocated_storage = each.value.storage_gb
   multi_az       = each.value.multi_az
+  parameter_group_name = aws_db_parameter_group.databases[each.key].name
 
   username = var.db_username
   password = var.db_password
@@ -108,7 +112,7 @@ resource "aws_db_parameter_group" "databases" {
   for_each = var.databases
 
   name   = "pg-${each.key}"
-  family = "${each.value.engine}${split(".", each.value.engine_version)[0]}"
+  family = each.value.parameter_group_family
 
   dynamic "parameter" {
     for_each = each.value.parameters
