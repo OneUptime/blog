@@ -37,7 +37,7 @@ Field breakdown:
 ```text
 Next Header (8 bits):
   - Identifies the type of the header that follows the Fragment Header
-  - For the first fragment: type of the original next header (TCP=6, UDP=17, etc.)
+  - For the first fragment: type of the first header in the original packet's Fragmentable Part (often TCP=6, UDP=17, etc.)
   - For subsequent fragments: same value (carried in every fragment)
   - Allows the destination to reconstruct the full original packet
 
@@ -51,13 +51,13 @@ Fragment Offset (13 bits):
 More Fragments (M, 1 bit):
   - M=1: More fragments follow (this is not the last fragment)
   - M=0: This is the last fragment (or only fragment)
-  - Fragment with offset=0 and M=0: "atomic fragment" (single-fragment packet)
+  - Fragment with offset=0 and M=0: "atomic fragment"; if received, it is processed as a fully reassembled packet, and RFC 8200 says sources must not create these whole-datagram fragments
 
 Identification (32 bits):
   - Same value in all fragments of the same original packet
-  - Must be unique for the same (source, destination, next-header) tuple
-  - Uniqueness required for the packet's lifetime (~60 seconds max)
-  - RFC 7739 recommends pseudo-random generation to prevent attacks
+  - Must be different from other recently sent fragmented packets with the same source and destination address
+  - "Recently" means within the maximum likely packet lifetime, including time spent awaiting reassembly
+  - RFC 7739 describes algorithms that reduce reuse frequency and improve unpredictability
 ```
 
 ## Parsing the Fragment Header in Python
@@ -137,16 +137,16 @@ def build_fragment_header(
 
     return struct.pack("!BBHI", next_header, 0, offset_and_flags, identification)
 
-# Build fragment headers for a 3000-byte UDP payload fragmented at 1480-byte boundary
+# Build example fragment headers using a 1448-byte first fragment
 # Fragment 1: offset=0, more=True
 frag1_header = build_fragment_header(17, 0, True, 0x12345678)
 print(f"Fragment 1 header: {frag1_header.hex()}")
 
-# Fragment 2: offset=1448, more=False (1480 - 8 Fragment Header - 32 for alignment)
+# Fragment 2: offset=1448, more=False
 frag2_header = build_fragment_header(17, 1448, False, 0x12345678)
 print(f"Fragment 2 header: {frag2_header.hex()}")
 ```
 
 ## Conclusion
 
-The IPv6 Fragment Header is a compact 8-byte structure with four meaningful fields: Next Header (what follows), Fragment Offset (position in 13-bit units of 8 bytes), More Fragments flag (last fragment indicator), and Identification (32-bit link between all fragments of the same packet). The offset granularity of 8 bytes means all fragments except the last must have payload sizes that are multiples of 8. The Identification field must be unique per source/destination/next-header triple for the fragment lifetime to prevent reassembly collisions.
+The IPv6 Fragment Header is a compact 8-byte structure with four meaningful fields: Next Header (what follows), Fragment Offset (position in 13-bit units of 8 bytes), More Fragments flag (last fragment indicator), and Identification (32-bit link between all fragments of the same packet). The offset granularity of 8 bytes means all fragments except the last must have payload sizes that are multiples of 8. The Identification field must be different from other recently sent fragmented packets with the same source and destination address to prevent reassembly collisions.
