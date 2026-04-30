@@ -65,7 +65,8 @@ backend web_backend
 backend api_backend
     balance leastconn          # Least connections for API
 
-    option httpchk GET /api/health HTTP/1.1\r\nHost:\ api.example.com
+    option httpchk
+    http-check send meth GET uri /api/health ver HTTP/1.1 hdr Host api.example.com
 
     server api1 192.168.2.10:8080 check
     server api2 192.168.2.11:8080 check
@@ -82,10 +83,9 @@ backend app_backend
 
 ```haproxy
 backend web_backend
-    # TCP-level health check (default)
-    option tcp-check
+    # TCP connect health checks are enabled by the `check` keyword on each server.
 
-    # Or HTTP health check on a specific path
+    # To use an HTTP health check on a specific path instead:
     option httpchk GET /health
     http-check expect status 200
 
@@ -129,17 +129,17 @@ frontend stats
 sudo haproxy -c -f /etc/haproxy/haproxy.cfg
 # Expected: Configuration file is valid
 
-# Reload without dropping connections
+# Reload the service
 sudo systemctl reload haproxy
 
 # Verify listening ports
 sudo ss -tlnp | grep haproxy
 
 # Check backend server states
-echo "show servers state" | sudo socat stdio /run/haproxy/admin.sock
+echo "show servers state" | sudo socat stdio unix-connect:/run/haproxy/admin.sock
 
-# View stats via API
-curl http://10.0.0.1:8404/stats
+# View stats page
+curl -u admin:securepass http://10.0.0.1:8404/stats
 ```
 
 ## Conclusion
