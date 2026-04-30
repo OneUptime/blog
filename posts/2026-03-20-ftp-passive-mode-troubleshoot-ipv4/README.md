@@ -81,10 +81,12 @@ sudo systemctl restart vsftpd
 ### Using Dynamic Public IP
 
 ```bash
-# Use DNS name that resolves to current public IP
+# Use a DNS name; vsftpd resolves it at startup
 pasv_address=ftp.example.com
 pasv_addr_resolve=YES
 ```
+
+Restart vsftpd after the public IP changes so it re-resolves the hostname.
 
 ---
 
@@ -117,17 +119,19 @@ If the FTP server is behind NAT (home router/firewall), forward both the control
 # Forward port 21 to FTP server
 iptables -t nat -A PREROUTING -p tcp --dport 21 -j DNAT \
     --to-destination 10.0.0.5:21
+iptables -A FORWARD -p tcp -d 10.0.0.5 --dport 21 -j ACCEPT
 
 # Forward passive data ports
 iptables -t nat -A PREROUTING -p tcp --dport 49152:49252 -j DNAT \
     --to-destination 10.0.0.5:49152-49252
+iptables -A FORWARD -p tcp -d 10.0.0.5 --dport 49152:49252 -j ACCEPT
 ```
 
 ---
 
 ## Fix 4: Load nf_conntrack_ftp (Connection Tracking Helper)
 
-The Linux kernel's FTP connection tracking module automatically handles PASV port forwarding:
+On a Linux firewall or router, the FTP connection tracking helper can allow stateful firewall rules to recognize related FTP data connections. It does not replace correct PASV IP or passive port forwarding, and modern kernels may require explicit helper assignment:
 
 ```bash
 # Load the module
@@ -140,6 +144,8 @@ echo "nf_conntrack_ftp" | sudo tee -a /etc/modules
 lsmod | grep ftp
 # nf_conntrack_ftp        20480  0
 ```
+
+If you use firewalld, `--add-service=ftp` adds the FTP service/helper. With direct nftables or iptables rules, you may also need an explicit helper assignment rule.
 
 ---
 
@@ -170,16 +176,16 @@ sudo systemctl restart pure-ftpd
 ## Testing Passive Mode
 
 ```bash
-# Use curl to test FTP passive (EPSV)
-curl -v ftp://ftp.example.com/ --user "user:pass"
+# Use curl to test passive mode on IPv4 (force PASV instead of EPSV)
+curl -v --disable-epsv ftp://ftp.example.com/ --user "user:pass"
 
 # Use lftp with explicit passive mode
 lftp ftp://ftp.example.com
 lftp> set ftp:passive-mode yes
 lftp> ls
 
-# Use ftp client with passive mode
-ftp -p ftp.example.com
+# Use BSD/tnftp client (passive mode is the default)
+ftp ftp.example.com
 ```
 
 ---
@@ -199,15 +205,15 @@ ftp -p ftp.example.com
 
 1. **Use EPSV (Extended Passive)** instead of PASV when possible - simpler and works with IPv6
 2. **Set a port range of at least 100 ports** - concurrent transfers need separate ports
-3. **Load nf_conntrack_ftp** on Linux firewalls to handle FTP automatically
-4. **Consider SFTP or FTPS** as modern alternatives that don't have passive mode complexity
+3. **Use nf_conntrack_ftp only when needed** on Linux firewalls/routers - it can help with related FTP data connections, but modern kernels may require explicit helper assignment
+4. **Consider SFTP as a modern alternative** - FTPS adds TLS, but it still uses FTP data connections and passive mode
 5. **Monitor FTP connections** at the firewall level to catch port exhaustion
 
 ---
 
 ## Conclusion
 
-FTP passive mode failures are almost always caused by wrong advertised IP, closed firewall ports, or missing NAT port forwarding. Set `pasv_address` to your public IP, open the passive port range in firewalls, and use `nf_conntrack_ftp` on Linux routers for seamless operation.
+FTP passive mode failures are almost always caused by wrong advertised IP, closed firewall ports, or missing NAT port forwarding. Set `pasv_address` to your public IP, open the passive port range in firewalls, and use the FTP helper on Linux firewalls only when you actually need stateful FTP connection tracking.
 
 ---
 
