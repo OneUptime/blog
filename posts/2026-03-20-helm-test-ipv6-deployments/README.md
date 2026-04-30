@@ -36,21 +36,18 @@ networking:
   
   # IP families (IPv4, IPv6, or both)
   ipFamilies:
-    - IPv4
+    - IPv6
 
 # Service configuration
 service:
   type: ClusterIP
   port: 80
-  # IPv6 cluster IP (leave empty for auto-assign)
-  ipv6ClusterIP: ""
 
 # Ingress configuration
 ingress:
   enabled: false
-  annotations:
-    # IPv6 Nginx annotation
-    nginx.ingress.kubernetes.io/ipv6-enabled: "true"
+  # IPv6 support is controller-specific and is usually configured on the ingress controller Service
+  annotations: {}
 ```
 
 ## Template for Dual-Stack Services
@@ -61,6 +58,8 @@ apiVersion: v1
 kind: Service
 metadata:
   name: {{ include "mychart.fullname" . }}
+  labels:
+    app.kubernetes.io/instance: {{ .Release.Name }}
 spec:
   type: {{ .Values.service.type }}
   {{- if .Values.networking.ipv6.enabled }}
@@ -70,7 +69,7 @@ spec:
   {{- end }}
   ports:
     - port: {{ .Values.service.port }}
-      targetPort: http
+      targetPort: {{ .Values.service.port }}
   selector:
     {{- include "mychart.selectorLabels" . | nindent 4 }}
 ```
@@ -99,10 +98,13 @@ Wraps IPv6 addresses in brackets.
 
 ```bash
 # Install with IPv6 enabled
-helm install myapp ./mychart   --set networking.ipv6.enabled=true   --set networking.ipFamilyPolicy=PreferDualStack
+helm install myapp ./mychart \
+  --set networking.ipv6.enabled=true \
+  --set networking.ipFamilyPolicy=PreferDualStack \
+  --set-json 'networking.ipFamilies=["IPv6","IPv4"]'
 
-# Verify service has IPv6 cluster IP
-kubectl get svc myapp -o jsonpath='{.spec.clusterIPs}'
+# Verify service has IPv6 and IPv4 cluster IPs
+kubectl get svc -l app.kubernetes.io/instance=myapp -o jsonpath='{.items[0].spec.clusterIPs}'
 
 # Run helm tests
 helm test myapp
@@ -112,7 +114,7 @@ helm test myapp
 
 ```json
 {
-  "$schema": "http://json-schema.org/schema#",
+  "$schema": "https://json-schema.org/draft-07/schema#",
   "type": "object",
   "properties": {
     "networking": {
@@ -124,6 +126,9 @@ helm test myapp
         },
         "ipFamilies": {
           "type": "array",
+          "minItems": 1,
+          "maxItems": 2,
+          "uniqueItems": true,
           "items": {
             "type": "string",
             "enum": ["IPv4", "IPv6"]
