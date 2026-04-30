@@ -19,13 +19,13 @@ sequenceDiagram
     participant HAProxy Backend
     participant Server
 
-    Client->>HAProxy Frontend: TCP connect (timeout connect)
-    HAProxy Frontend->>HAProxy Backend: accept
+    Client->>HAProxy Frontend: TCP connect
+    Client->>HAProxy Frontend: Send request headers (timeout http-request)
+    HAProxy Frontend->>HAProxy Backend: Route request
     HAProxy Backend->>Server: TCP connect (timeout connect)
-    Client->>HAProxy Frontend: Send request (timeout http-request)
-    HAProxy Frontend->>Server: Forward request
+    HAProxy Backend->>Server: Forward request
     Server->>HAProxy Backend: Send response (timeout server)
-    HAProxy Backend->>Client: Forward response (timeout client)
+    HAProxy Frontend->>Client: Forward response (timeout client)
 ```
 
 ## Timeout Reference
@@ -35,10 +35,10 @@ sequenceDiagram
 | `timeout connect` | Backend | Max time to establish TCP connection to backend |
 | `timeout client` | Frontend | Max inactivity on client side |
 | `timeout server` | Backend | Max inactivity on server side |
-| `timeout http-request` | Frontend | Max time to receive a full HTTP request |
+| `timeout http-request` | Frontend | Max time to receive HTTP request headers |
 | `timeout http-keep-alive` | Frontend | Max idle time between keep-alive requests |
 | `timeout queue` | Backend | Max time a request waits in the backend queue |
-| `timeout tunnel` | Frontend/Backend | Timeout for WebSocket/tunnel connections |
+| `timeout tunnel` | Backend | Inactivity timeout for upgraded/tunnel connections |
 
 ## Recommended Configuration
 
@@ -61,12 +61,12 @@ defaults
     # Match your application's slow query / processing time
     timeout server  60s
 
-    # Max time to receive a complete HTTP request from the client
-    # Prevents slow-header attacks (Slowloris)
+    # Max time to receive complete HTTP request headers from the client
+    # With option http-buffer-request, this also covers the request body
     timeout http-request 10s
 
     # Max idle time between requests on a keep-alive connection
-    # Short value frees connections faster; 0 disables keep-alive
+    # Short value frees connections faster
     timeout http-keep-alive 5s
 
     # Max time a connection can wait in the backend queue
@@ -84,14 +84,13 @@ backend app_servers
 
 ## WebSocket / Long-Lived Connections
 
-For WebSocket or streaming connections, the default timeouts will terminate the tunnel. Use `timeout tunnel` instead.
+For WebSocket or other upgraded tunnel connections, the normal client/server timeouts still apply during the initial HTTP exchange. After the upgrade, use `timeout tunnel` to control idle tunnel lifetime.
 
 ```haproxy
 backend websocket_backend
     timeout connect 3s
-    timeout client  0      # No client timeout for tunnels
-    timeout server  0      # No server timeout for tunnels
-    timeout tunnel  1h     # Close tunnels after 1 hour of inactivity
+    timeout server  60s    # Applies before the connection is upgraded
+    timeout tunnel  1h     # Close upgraded tunnels after 1 hour of inactivity
 
     server ws1 10.0.0.5:8080 check
 ```
@@ -110,6 +109,6 @@ backend slow_api
 ## Key Takeaways
 
 - `timeout connect` should be short (2-5s); backends on the same network respond in milliseconds.
-- `timeout client` and `timeout server` should match your application's expected response time.
+- `timeout client` and `timeout server` should match your application's expected inactivity and processing time.
 - Set `timeout http-request` to 5-15s to defend against Slowloris attacks.
-- Use `timeout tunnel` with large or zero values for WebSocket and SSE connections.
+- Use `timeout tunnel` with a large inactivity value for WebSocket and other upgraded tunnel connections.
