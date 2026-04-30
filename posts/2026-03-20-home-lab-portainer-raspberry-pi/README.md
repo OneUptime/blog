@@ -38,8 +38,6 @@ Total: ~1.25GB, comfortable on 8GB Pi 4.
 In Portainer, create a stack named `network`:
 
 ```yaml
-version: "3.8"
-
 services:
   # Pi-hole for DNS ad blocking
   pihole:
@@ -47,10 +45,11 @@ services:
     ports:
       - "53:53/tcp"
       - "53:53/udp"
-      - "80:80"        # Pi-hole admin UI
+      - "8081:80"      # Pi-hole admin UI
     environment:
       TZ: America/New_York
-      WEBPASSWORD: your_pihole_password
+      FTLCONF_webserver_api_password: your_pihole_password
+      FTLCONF_dns_listeningMode: all
     volumes:
       - /home/pi/homelab/pihole/etc:/etc/pihole
       - /home/pi/homelab/pihole/dnsmasq:/etc/dnsmasq.d
@@ -62,7 +61,7 @@ services:
     ports:
       - "8181:81"    # Admin UI
       - "443:443"    # HTTPS
-      - "81:80"      # HTTP (not using 80, Pi-hole uses it)
+      - "80:80"      # HTTP
     volumes:
       - /home/pi/homelab/npm/data:/data
       - /home/pi/homelab/npm/letsencrypt:/etc/letsencrypt
@@ -74,8 +73,6 @@ services:
 Create a stack named `media`:
 
 ```yaml
-version: "3.8"
-
 services:
   jellyfin:
     image: jellyfin/jellyfin:latest
@@ -108,8 +105,6 @@ services:
 Create a stack named `cloud`:
 
 ```yaml
-version: "3.8"
-
 services:
   nextcloud:
     image: nextcloud:latest
@@ -146,8 +141,6 @@ services:
 Create a stack named `monitoring`:
 
 ```yaml
-version: "3.8"
-
 services:
   prometheus:
     image: prom/prometheus:latest
@@ -158,7 +151,6 @@ services:
       - prometheus_data:/prometheus
     command:
       - '--config.file=/etc/prometheus/prometheus.yml'
-      - '--storage.tsdb.retention.time=7d'  # Limit retention on Pi
     restart: unless-stopped
 
   grafana:
@@ -174,17 +166,37 @@ services:
   node-exporter:
     image: prom/node-exporter:latest
     network_mode: host
+    pid: host
     volumes:
-      - /proc:/host/proc:ro
-      - /sys:/host/sys:ro
+      - /:/host:ro,rslave
     command:
-      - '--path.procfs=/host/proc'
-      - '--path.sysfs=/host/sys'
+      - '--path.rootfs=/host'
     restart: unless-stopped
 
 volumes:
   prometheus_data:
   grafana_data:
+```
+
+Create `/home/pi/homelab/prometheus/prometheus.yml`:
+
+```yaml
+global:
+  scrape_interval: 15s
+
+storage:
+  tsdb:
+    retention:
+      time: 7d
+
+scrape_configs:
+  - job_name: 'prometheus'
+    static_configs:
+      - targets: ['localhost:9090']
+
+  - job_name: 'node-exporter'
+    static_configs:
+      - targets: ['192.168.1.100:9100']
 ```
 
 ## Step 6: Configure External Storage
@@ -217,7 +229,7 @@ mkdir -p "$BACKUP_DIR"
 tar czf "$BACKUP_DIR/homelab-config.tar.gz" /home/pi/homelab/
 
 # Remove backups older than 7 days
-find /mnt/usb/backups -maxdepth 1 -type d -mtime +7 -exec rm -rf {} \;
+find /mnt/usb/backups -mindepth 1 -maxdepth 1 -type d -mtime +7 -exec rm -rf {} \;
 
 echo "Backup completed: $BACKUP_DIR"
 EOF
