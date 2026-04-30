@@ -73,16 +73,20 @@ resource "google_compute_subnetwork" "app_subnet" {
 ## Step 4: Grant IAM Access to Shared Subnet
 
 ```hcl
-# Grant service project 1's compute service account access to the subnet
+# Grant the IAM principal that will create resources in service project 1
+# access to the shared subnet
+# Example: serviceAccount:deployer@service-project-1.iam.gserviceaccount.com
 resource "google_compute_subnetwork_iam_member" "service_project_1_access" {
   project    = var.host_project_id
   region     = "us-central1"
   subnetwork = google_compute_subnetwork.app_subnet.name
   role       = "roles/compute.networkUser"
-  member     = "serviceAccount:${var.service_project_1_number}@cloudservices.gserviceaccount.com"
+  member     = var.service_project_1_admin_member
 }
 
-# Grant GKE service account access to the subnet
+# If you also use GKE in the service project, grant the GKE service agent
+# access to the subnet. If the service project was attached without enabling
+# GKE access, also grant roles/container.hostServiceAgentUser on the host project.
 resource "google_compute_subnetwork_iam_member" "gke_access" {
   project    = var.host_project_id
   region     = "us-central1"
@@ -101,6 +105,11 @@ resource "google_compute_instance" "service_vm" {
   name         = "service-project-vm"
   machine_type = "e2-medium"
   zone         = "us-central1-a"
+
+  depends_on = [
+    google_compute_shared_vpc_service_project.service_project_1,
+    google_compute_subnetwork_iam_member.service_project_1_access,
+  ]
 
   boot_disk {
     initialize_params {
