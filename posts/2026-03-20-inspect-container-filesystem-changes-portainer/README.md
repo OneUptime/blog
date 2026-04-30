@@ -4,15 +4,15 @@ Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
 Tags: Portainer, Docker, Debugging, Filesystem, Container Inspection, Diff
 
-Description: Inspect what files have been added, modified, or deleted inside a running container since it was started, using Docker's diff command and Portainer's container interface.
+Description: Inspect what files have been added, modified, or deleted inside a container since it was created, using Docker's diff command alongside Portainer's container details.
 
 ---
 
-When debugging containers or investigating unexpected behavior, it's often valuable to see what files have changed inside a container since it started. Docker tracks these changes as a diff against the original image layers.
+When debugging containers or investigating unexpected behavior, it's often valuable to see what files have changed inside a container since it was created. Docker exposes these changes as a diff against the container's original filesystem state.
 
 ## The Docker Diff Command
 
-`docker diff` shows all filesystem changes since the container started:
+`docker diff` shows all filesystem changes since the container was created:
 
 ```bash
 docker diff container_name
@@ -30,16 +30,16 @@ C /etc/nginx/nginx.conf
 D /tmp/startup.sh
 ```
 
-## Accessing diff via Portainer Console
+## Accessing diff for Portainer-managed containers
 
-Run the diff command from Portainer's container console or exec feature:
+Use Portainer to identify the container name or ID, then run the diff command from the Docker host or another shell that has access to the Docker daemon:
 
 ```bash
-# In the Portainer container console, you can exec from the host:
-docker exec portainer-host docker diff webapp_container_1
+# Find the container name or ID in Portainer, then run this on the Docker host:
+docker diff webapp_container_1
 ```
 
-Or use Portainer's **Container Details** view which shows this information in some versions.
+Portainer's **Container Details**, **Inspect**, and **Console** views can help you find the right container and review its configuration, but the console itself runs inside the selected container rather than on the Docker host.
 
 ## Interpreting Common Filesystem Changes
 
@@ -53,7 +53,7 @@ A /tmp/                    # Temp files - usually fine
 
 # Potentially concerning changes:
 C /etc/passwd              # Password file modified - investigate
-C /etc/hosts               # Hosts file modified - check for DNS poisoning
+C /etc/shadow              # Password hashes modified - investigate immediately
 A /usr/bin/suspicious      # New binary in system paths - malware risk
 C /etc/cron.d/             # Cron jobs modified - backdoor risk
 ```
@@ -125,10 +125,10 @@ docker commit \
   container_name \
   myregistry/nginx-custom:v1.1
 
-# This creates a new image layer containing all the diff changes
+# This creates a new image from the container's writable-layer changes
 ```
 
-Note: Committed images have all the runtime changes baked in. For reproducibility, prefer building a proper Dockerfile instead.
+Note: Committed images bake in runtime changes from the container's writable layer, but they do not include data from mounted volumes. For reproducibility, prefer building a proper Dockerfile instead.
 
 ## Limiting Filesystem Changes
 
@@ -146,7 +146,7 @@ services:
       - app-uploads:/app/uploads   # Writable via named volume
 ```
 
-With `read_only: true`, `docker diff` will only show changes in tmpfs and volume mounts, making it easier to audit.
+With `read_only: true`, writes to the root filesystem are blocked, so any writable paths must be provided explicitly via `tmpfs` or volumes. This reduces changes in the container's writable layer and makes auditing easier.
 
 ## Summary
 
