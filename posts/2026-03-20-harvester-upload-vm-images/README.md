@@ -8,7 +8,7 @@ Description: Step-by-step instructions for uploading virtual machine disk images
 
 ## Introduction
 
-Uploading VM images to Harvester is a critical first step before creating virtual machines. Harvester supports importing images from remote URLs and uploading local files - including QCOW2, RAW, and ISO formats. This guide covers all upload methods including the UI, API, and automation-friendly scripts.
+Uploading VM images to Harvester is a critical first step before creating virtual machines. Harvester supports importing images from remote URLs and uploading local files - including QCOW2, RAW, and ISO formats. This guide covers Harvester image import workflows through the UI, the Kubernetes API, and automation-friendly scripts.
 
 ## Supported Image Formats
 
@@ -31,7 +31,7 @@ Uploading VM images to Harvester is a critical first step before creating virtua
 Name:         ubuntu-22-04-lts
 Namespace:    default
 Source Type:  Download
-URL:          https://cloud-images.ubuntu.com/jammy/current/jammy-server-cloudimg-amd64.img
+URL:          https://cloud-images.ubuntu.com/releases/jammy/release/ubuntu-22.04-server-cloudimg-amd64.img
 ```
 
 5. Click **Create** - Harvester will begin downloading and importing the image
@@ -42,11 +42,11 @@ URL:          https://cloud-images.ubuntu.com/jammy/current/jammy-server-cloudim
 2. Switch the source to **Upload**
 3. Fill in:
 
-```sql
+```text
 Name:         windows-server-2022
 Namespace:    default
 Source Type:  Upload
-File:         [Choose File] → Select your .qcow2 or .iso
+File:         [Choose File] → Select your .qcow2, .raw, or .iso
 ```
 
 4. Click **Create** - the file upload begins immediately
@@ -63,12 +63,11 @@ kind: VirtualMachineImage
 metadata:
   name: ubuntu-22-04-lts
   namespace: default
-  annotations:
-    harvesterhci.io/imageDisplayName: "Ubuntu 22.04 LTS"
 spec:
+  displayName: "Ubuntu 22.04 LTS"
   # Download from a public URL
   sourceType: download
-  url: "https://cloud-images.ubuntu.com/jammy/current/jammy-server-cloudimg-amd64.img"
+  url: "https://cloud-images.ubuntu.com/releases/jammy/release/ubuntu-22.04-server-cloudimg-amd64.img"
 ```
 
 ```bash
@@ -82,68 +81,56 @@ kubectl get virtualmachineimage ubuntu-22-04-lts -n default \
     -o jsonpath='{.status.conditions}' | jq .
 ```
 
-## Method 3: Upload via the Harvester API
+## Method 3: Create via the Kubernetes API
 
-For scripted uploads of local files, use the Harvester API directly:
+For scripted imports from URLs, you can create the same `VirtualMachineImage` resource over the Kubernetes API:
 
 ```bash
 #!/bin/bash
-# upload-image.sh - Upload a local VM image to Harvester
+# create-image-via-api.sh - Create a Harvester VM image from a remote URL
 
-HARVESTER_URL="https://192.168.1.100"
-USERNAME="admin"
-PASSWORD="YourPassword"
-IMAGE_FILE="ubuntu-22-04-server.qcow2"
-IMAGE_NAME="ubuntu-22-04-server"
+set -euo pipefail
+
+API_SERVER="http://127.0.0.1:8001"
+IMAGE_NAME="ubuntu-22-04-lts"
 NAMESPACE="default"
+IMAGE_URL="https://cloud-images.ubuntu.com/releases/jammy/release/ubuntu-22.04-server-cloudimg-amd64.img"
 
-# Step 1: Authenticate and get a token
-TOKEN=$(curl -sk -X POST \
-    "${HARVESTER_URL}/v3-public/localProviders/local?action=login" \
-    -H "Content-Type: application/json" \
-    -d "{\"username\":\"${USERNAME}\",\"password\":\"${PASSWORD}\"}" \
-    | jq -r '.token')
+kubectl proxy --api-prefix=/ --port=8001 >/tmp/kubectl-proxy.log 2>&1 &
+PROXY_PID=$!
+trap 'kill "${PROXY_PID}"' EXIT
 
-echo "Got auth token: ${TOKEN:0:20}..."
+until curl -fsS "${API_SERVER}/apis/harvesterhci.io/v1beta1" >/dev/null; do
+    sleep 1
+done
 
-# Step 2: Create the image resource with type 'upload'
-CREATE_RESPONSE=$(curl -sk -X POST \
-    "${HARVESTER_URL}/v1/harvester/namespaces/${NAMESPACE}/virtualmachineimages" \
-    -H "Authorization: Bearer ${TOKEN}" \
+curl -fsS -X POST \
+    "${API_SERVER}/apis/harvesterhci.io/v1beta1/namespaces/${NAMESPACE}/virtualmachineimages" \
     -H "Content-Type: application/json" \
     -d "{
+        \"apiVersion\": \"harvesterhci.io/v1beta1\",
+        \"kind\": \"VirtualMachineImage\",
         \"metadata\": {
             \"name\": \"${IMAGE_NAME}\",
             \"namespace\": \"${NAMESPACE}\"
         },
         \"spec\": {
-            \"displayName\": \"${IMAGE_NAME}\",
-            \"sourceType\": \"upload\"
+            \"displayName\": \"Ubuntu 22.04 LTS\",
+            \"sourceType\": \"download\",
+            \"url\": \"${IMAGE_URL}\"
         }
-    }")
+    }"
 
-# Extract the upload URL from the response
-UPLOAD_URL=$(echo ${CREATE_RESPONSE} | jq -r '.links.upload')
-echo "Upload URL: ${UPLOAD_URL}"
-
-# Step 3: Upload the image file
-FILE_SIZE=$(stat -c%s "${IMAGE_FILE}")
-echo "Uploading ${IMAGE_FILE} (${FILE_SIZE} bytes)..."
-
-curl -sk -X POST "${UPLOAD_URL}" \
-    -H "Authorization: Bearer ${TOKEN}" \
-    -H "Content-Type: application/octet-stream" \
-    -H "Content-Length: ${FILE_SIZE}" \
-    --data-binary @"${IMAGE_FILE}" \
-    --progress-bar
-
-echo "Upload complete!"
+kubectl wait virtualmachineimage/${IMAGE_NAME} \
+    -n ${NAMESPACE} \
+    --for=condition=Imported=True \
+    --timeout=600s
 ```
 
 ```bash
 # Make the script executable and run it
-chmod +x upload-image.sh
-./upload-image.sh
+chmod +x create-image-via-api.sh
+./create-image-via-api.sh
 ```
 
 ## Method 4: Import from an Existing PVC
@@ -176,10 +163,10 @@ NAMESPACE="default"
 
 # Define images as name|url pairs
 declare -A IMAGES=(
-    ["ubuntu-22-04-lts"]="https://cloud-images.ubuntu.com/jammy/current/jammy-server-cloudimg-amd64.img"
-    ["ubuntu-20-04-lts"]="https://cloud-images.ubuntu.com/focal/current/focal-server-cloudimg-amd64.img"
-    ["debian-12"]="https://cloud.debian.org/images/cloud/bookworm/latest/debian-12-genericcloud-amd64.qcow2"
-    ["rocky-linux-9"]="https://download.rockylinux.org/pub/rocky/9/images/x86_64/Rocky-9-GenericCloud.latest.x86_64.qcow2"
+    ["ubuntu-22-04-lts"]="https://cloud-images.ubuntu.com/releases/jammy/release/ubuntu-22.04-server-cloudimg-amd64.img"
+    ["ubuntu-20-04-lts"]="https://cloud-images.ubuntu.com/releases/focal/release/ubuntu-20.04-server-cloudimg-amd64.img"
+    ["debian-12"]="https://cloud.debian.org/images/cloud/bookworm/20260413-2447/debian-12-genericcloud-amd64-20260413-2447.qcow2"
+    ["rocky-linux-9"]="https://download.rockylinux.org/pub/rocky/9/images/x86_64/Rocky-9-GenericCloud-Base-9.7-20251123.2.x86_64.qcow2"
 )
 
 for IMAGE_NAME in "${!IMAGES[@]}"; do
@@ -202,12 +189,12 @@ EOF
 
 done
 
-echo "Waiting for all images to become Active..."
+echo "Waiting for all images to finish importing..."
 for IMAGE_NAME in "${!IMAGES[@]}"; do
     kubectl wait virtualmachineimage/${IMAGE_NAME} \
         -n ${NAMESPACE} \
-        --for=condition=Initialized=True \
-        --timeout=300s
+        --for=condition=Imported=True \
+        --timeout=600s
     echo "${IMAGE_NAME}: Ready"
 done
 ```
@@ -222,7 +209,7 @@ kubectl get virtualmachineimage -n default \
 
 # An image is ready when:
 # - status.progress = 100
-# - status.conditions contains type=Initialized with status=True
+# - status.conditions contains type=Imported with status=True
 
 kubectl get virtualmachineimage ubuntu-22-04-lts -n default -o yaml | \
     grep -A 5 "conditions:"
@@ -236,18 +223,18 @@ kubectl get virtualmachineimage ubuntu-22-04-lts -n default -o yaml | \
 kubectl logs -n longhorn-system \
     $(kubectl get pods -n longhorn-system -l app=longhorn-manager -o name | head -1)
 
-# Check the CDI (Containerized Data Importer) pod logs
+# If you're using the CDI backend, check the CDI controller pod logs
 kubectl logs -n harvester-system \
-    $(kubectl get pods -n harvester-system -l app=cdi-controller -o name)
+    $(kubectl get pods -n harvester-system -l app=cdi-controller -o name | head -1)
 ```
 
 **URL download fails:**
 ```bash
 # Test URL accessibility from within the cluster
-kubectl run test-curl --image=curlimages/curl --rm -it -- \
-    curl -I https://cloud-images.ubuntu.com/jammy/current/jammy-server-cloudimg-amd64.img
+kubectl run test-curl --image=curlimages/curl --restart=Never --rm -it -- \
+    curl -I https://cloud-images.ubuntu.com/releases/jammy/release/ubuntu-22.04-server-cloudimg-amd64.img
 ```
 
 ## Conclusion
 
-Harvester provides flexible options for importing VM images - from simple URL downloads to scripted API uploads for large files or automation pipelines. Building a curated library of tested, labeled images sets a strong foundation for consistent VM deployments. Combine batch import scripts with a regular update schedule to keep your image library current with the latest OS patches and security updates.
+Harvester provides flexible options for importing VM images - from simple UI-driven uploads to scripted API imports for automation pipelines. Building a curated library of tested, labeled images sets a strong foundation for consistent VM deployments. Combine batch import scripts with a regular update schedule to keep your image library current with the latest OS patches and security updates.
