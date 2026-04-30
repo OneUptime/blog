@@ -24,59 +24,54 @@ PMTUD Process:
    - Resends packet at the reduced size
 4. Process repeats if further bottlenecks exist
 5. PMTU cache entries expire (default: 10 minutes on Linux)
-   - Source retries with full MTU to detect path changes
+   - Later traffic can use a larger MTU again and rediscover the path if it changed
 ```
 
 ## Configuring PMTUD on Linux
 
-PMTUD is enabled by default on Linux but can be tuned:
+PMTUD is used by default on Linux. In most cases, you inspect cached PMTU state and tune related timers rather than enabling it with a global IPv6 sysctl:
 
 ```bash
-# Check PMTU discovery status per interface
+# Check how long cached IPv6 PMTU information is kept
+cat /proc/sys/net/ipv6/route/mtu_expires
+# Default: 600 seconds (10 minutes)
 
-cat /proc/sys/net/ipv6/conf/eth0/path_mtu_discovery
-# 1 = enabled (default)
+# Inspect the resolved route for a specific destination
+ip -6 route get 2001:db8::1
 
-# Enable PMTU discovery globally
-sudo sysctl -w net.ipv6.conf.all.path_mtu_discovery=1
+# Example output if a PMTU exception is cached:
+# 2001:db8::1 from :: via fe80::1 dev eth0 src 2001:db8::100
+#    cache expires 594sec mtu 1280
 
-# Make persistent
-echo "net.ipv6.conf.all.path_mtu_discovery=1" | sudo tee -a /etc/sysctl.conf
-sudo sysctl -p
-
-# View current PMTU cache (cached path MTU values per destination)
-ip -6 route show cache
-
-# View PMTU cache with more detail
-ip -6 route show cache | grep mtu
-
-# Force PMTU rediscovery by flushing the cache
+# Force PMTU rediscovery by flushing cached cloned routes / PMTU exceptions
 sudo ip -6 route flush cache
 
-# View PMTU statistics
-cat /proc/net/snmp6 | grep -i pmtu
+# View PMTU-related IPv6 and ICMPv6 counters
+grep -E 'Ip6InTooBigErrors|Ip6FragCreates|Icmp6InPktTooBigs|Icmp6OutPktTooBigs' /proc/net/snmp6
 # Key counters:
-# Ip6InTooBigErrors   - received Packet Too Big messages
+# Icmp6InPktTooBigs   - received ICMPv6 Packet Too Big messages
+# Icmp6OutPktTooBigs  - transmitted ICMPv6 Packet Too Big messages
+# Ip6InTooBigErrors   - incoming IPv6 packets dropped locally as too big
 # Ip6FragCreates      - fragments created by this host
 ```
 
 ## Checking PMTU for a Specific Destination
 
 ```bash
-# Check if a PMTU cache entry exists for a destination
+# Inspect the resolved route and any cached PMTU for a destination
 ip -6 route get 2001:db8::1
 
 # Example output showing PMTU:
 # 2001:db8::1 from :: via fe80::1 dev eth0 src 2001:db8::100
 #    cache  expires 594sec mtu 1280
 
-# Test PMTUD interactively using ping6 with large packet sizes
-ping6 -M do -s 1452 2001:db8::1
-# -M do: "prohibit fragmentation, even local" (equivalent to DF bit in IPv4)
+# Test PMTUD interactively using ping with IPv6 and large packet sizes
+ping -6 -M do -s 1452 2001:db8::1
+# -M do: enforce kernel PMTU checks so oversized probes are rejected locally
+# For IPv6, this uses the socket's PMTU discovery setting; IPv6 has no DF bit
 # -s 1452: data size (1452 + 8 ICMPv6 + 40 IPv6 = 1500 bytes total)
 
-# If path MTU is smaller, you should see:
-# "Message too long: mtu=1280"
+# If path MTU is smaller, ping will report an MTU-related error or Packet Too Big response
 ```
 
 ## Firewall Configuration for PMTUD
@@ -92,34 +87,35 @@ sudo ip6tables -A FORWARD -p icmpv6 --icmpv6-type packet-too-big -j ACCEPT
 
 # Using nftables
 # nft add rule ip6 filter input icmpv6 type packet-too-big accept
+# nft add rule ip6 filter output icmpv6 type packet-too-big accept
 # nft add rule ip6 filter forward icmpv6 type packet-too-big accept
 
 # Verify existing rules allow PTB (look for packet-too-big or type 2)
 sudo ip6tables -L -v | grep -i "packet-too-big\|icmpv6"
 
 # Test if PMTU messages are reaching the source
-sudo tcpdump -i eth0 "icmp6 and ip6[40] == 2"
+sudo tcpdump -i eth0 'icmp6 and icmp6[icmp6type] == icmp6-packettoobig'
 ```
 
 ## PMTU Black Hole Detection
 
-Linux has built-in black hole detection to handle cases where PTB messages are silently dropped:
+Linux ages cached PMTU information automatically, and TCP can use Packetization Layer PMTU Discovery (PLPMTUD) when ICMP-based PMTUD fails:
 
 ```bash
-# Check black hole detection settings
+# Check PMTU cache lifetime
 cat /proc/sys/net/ipv6/route/mtu_expires
 # Default: 600 seconds (10 minutes)
 
-# PMTU cache age - after this, source retries with original MTU
-# to detect path changes
+# Cached PMTU information ages out after this interval
 
-# Check if TCP is using PMTUD
+# TCP settings live under net.ipv4 on Linux and apply to IPv6 TCP as well
+# Check whether TCP MTU probing (PLPMTUD fallback) is enabled
 cat /proc/sys/net/ipv4/tcp_mtu_probing
 # 0 = disabled
-# 1 = enabled when black hole detected
-# 2 = always enabled (uses MSS_BASE)
+# 1 = enabled when an ICMP black hole is detected
+# 2 = always enabled (uses tcp_base_mss as the initial MSS)
 
-# Enable TCP MTU probing (helps when PMTUD fails)
+# Enable TCP MTU probing (helps TCP recover when ICMP-based PMTUD fails)
 sudo sysctl -w net.ipv4.tcp_mtu_probing=1
 ```
 
@@ -131,8 +127,8 @@ import re
 
 def check_pmtu_to_destination(destination: str) -> dict:
     """
-    Check the cached PMTU to a destination using 'ip route get'.
-    Returns PMTU info or None if no cached entry.
+    Resolve an IPv6 route and parse any cached PMTU information
+    reported by 'ip -6 route get'.
     """
     result = subprocess.run(
         ["ip", "-6", "route", "get", destination],
