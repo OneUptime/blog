@@ -8,13 +8,13 @@ Description: Learn how to bind a gRPC server to 0.0.0.0 to accept connections on
 
 ## Why 0.0.0.0 Matters in Containers
 
-In Docker and Kubernetes, each container has its own network namespace. If a gRPC server binds to `127.0.0.1`, only processes inside the same container can reach it. Binding to `0.0.0.0` allows the container's virtual NIC to accept external traffic routed through the host's network.
+In Docker, a container typically has its own network namespace. In Kubernetes, containers in the same Pod share one network namespace. If a gRPC server binds to `127.0.0.1`, only processes inside that namespace can reach it; in Kubernetes that means other containers in the same Pod can still connect over `localhost`. Binding to `0.0.0.0` makes the server listen on all IPv4 interfaces in that namespace, including the Pod IP, so external traffic routed to the Pod can reach it.
 
 ```text
 Pod Network:   10.244.1.5
-Container:     127.0.0.1 (loopback) + 10.244.1.5 (eth0)
+Namespace:     127.0.0.1 (loopback) + 10.244.1.5 (eth0)
 
-Bind 127.0.0.1:50051 → only sidecar in same pod can connect
+Bind 127.0.0.1:50051 → only containers in the same pod can connect
 Bind 0.0.0.0:50051   → any pod with network access can connect
 ```
 
