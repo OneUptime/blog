@@ -8,7 +8,7 @@ Description: Learn how to use OpenTofu import blocks to declaratively import exi
 
 ## Introduction
 
-OpenTofu 1.5 introduced `import` blocks - a declarative way to import existing cloud resources. Unlike the imperative `tofu import` CLI command, import blocks live in your configuration files, making imports reviewable, version-controlled, and repeatable.
+OpenTofu supports `import` blocks - a declarative way to import existing cloud resources. Unlike the imperative `tofu import` CLI command, import blocks live in your configuration files, making imports reviewable, version-controlled, and repeatable.
 
 ## Basic Import Block Syntax
 
@@ -33,10 +33,10 @@ import {
 
 ```bash
 # Find the resource IDs from AWS CLI
-aws ec2 describe-instances --query 'Reservations[*].Instances[*].[InstanceId,Tags[?Key=="Name"].Value]'
+aws ec2 describe-instances --query 'Reservations[*].Instances[*].[InstanceId,Tags[?Key==`Name`]|[0].Value]'
 
 # VPC
-aws ec2 describe-vpcs --query 'Vpcs[*].[VpcId,Tags[?Key=="Name"].Value]'
+aws ec2 describe-vpcs --query 'Vpcs[*].[VpcId,Tags[?Key==`Name`]|[0].Value]'
 ```
 
 ### Step 2: Write Import Blocks and Resource Configurations
@@ -53,7 +53,7 @@ import {
   id = "i-0123456789abcdef0"
 }
 
-# resources.tf - write the resource configuration
+# resources.tf - write resource configurations that match the existing resources
 resource "aws_vpc" "production" {
   cidr_block           = "10.0.0.0/16"
   enable_dns_hostnames = true
@@ -67,7 +67,6 @@ resource "aws_vpc" "production" {
 resource "aws_instance" "web" {
   ami           = "ami-0c55b159cbfafe1f0"
   instance_type = "t3.micro"
-  subnet_id     = aws_subnet.public.id
 
   tags = {
     Name = "web-server"
@@ -97,19 +96,19 @@ tofu apply
 # aws_instance.web: Import complete [id=i-0123456789abcdef0]
 ```
 
-### Step 5: Remove Import Blocks
+### Step 5: Optionally Remove Import Blocks
 
-After a successful import, remove the import blocks (they're one-time operations):
+After a successful import, you can remove the import blocks (they're one-time operations):
 
 ```hcl
-# imports.tf - remove after successful import
+# imports.tf - optionally remove after successful import
 # import {
 #   to = aws_vpc.production
 #   id = "vpc-0a1b2c3d4e5f6789"
 # }
 ```
 
-Then run `tofu plan` - it should show no changes.
+Then run `tofu plan` - if your resource configuration matches the imported infrastructure, it should show no changes.
 
 ## Import Block with for_each (OpenTofu 1.7+)
 
@@ -136,6 +135,8 @@ resource "aws_instance" "web" {
 }
 ```
 
+Config generation is currently not available when using `for_each` on `import` blocks.
+
 ## Advantages of Import Blocks over CLI Import
 
 | Feature | CLI import | Import blocks |
@@ -144,8 +145,8 @@ resource "aws_instance" "web" {
 | Code reviewable | No | Yes |
 | Repeatable | No (already imported) | Yes (idempotent) |
 | for_each support | No | Yes (1.7+) |
-| Config generation | No | Yes (1.6+) |
+| Config generation | No | Yes (1.6+, experimental) |
 
 ## Conclusion
 
-Import blocks transform resource imports from one-off CLI operations into code-reviewed, version-controlled infrastructure changes. Use them as part of a standard PR workflow to bring existing resources under OpenTofu management. After the import is applied and verified, remove the import blocks from your configuration - they've served their purpose.
+Import blocks transform resource imports from one-off CLI operations into code-reviewed, version-controlled infrastructure changes. Use them as part of a standard PR workflow to bring existing resources under OpenTofu management. After the import is applied and verified, you can remove the import blocks from your configuration or leave them as a record of the resource's origin.
