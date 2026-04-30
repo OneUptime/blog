@@ -8,7 +8,7 @@ Description: Forward container logs directly to Grafana Loki using the Loki Dock
 
 ## Introduction
 
-Forwarding logs directly to Loki from Docker containers eliminates the need for a file-based agent polling container log files. There are two approaches: the Loki Docker Driver Plugin (installed on the Docker host) which intercepts logs at the driver level, and Promtail which reads Docker's JSON log files. This guide covers both methods with production configurations for Portainer-managed environments.
+Forwarding logs directly to Loki from Docker containers eliminates the need for a file-based agent polling container log files. There are two approaches: the Loki Docker Driver Plugin (installed on the Docker host) which runs at the Docker logging-driver layer, and Promtail which reads Docker's JSON log files. Promtail reached end-of-life on March 2, 2026, so Grafana recommends Grafana Alloy for new file-based deployments. This guide covers both methods for Portainer-managed environments.
 
 ## Method 1: Loki Docker Driver Plugin
 
@@ -16,16 +16,17 @@ Forwarding logs directly to Loki from Docker containers eliminates the need for 
 
 ```bash
 # Install the Loki Docker driver plugin on each host
+# Use the -arm64 tag on ARM64 hosts
 
-docker plugin install grafana/loki-docker-driver:latest \
+docker plugin install grafana/loki-docker-driver:3.7.0-amd64 \
   --alias loki \
   --grant-all-permissions
 
 # Verify plugin is installed and active
 docker plugin ls
-# Should show: loki (enabled)
+# Should show NAME 'loki' with ENABLED set to true
 
-# The plugin intercepts container logs at the kernel level
+# The plugin runs as a Docker logging driver on the host
 # No agent container needed with this approach
 ```
 
@@ -41,7 +42,7 @@ docker plugin ls
     "loki-retries": "5",
     "loki-max-backoff": "800ms",
     "loki-timeout": "1s",
-    "loki-external-labels": "host=docker-host-1,environment=production"
+    "loki-external-labels": "container_name={{.Name}},host=docker-host-1,environment=production"
   }
 }
 ```
@@ -49,9 +50,12 @@ docker plugin ls
 ```bash
 sudo systemctl restart docker
 
-# Verify
-docker info | grep "Logging Driver"
-# Returns: Logging Driver: loki
+# Recreate existing containers after changing daemon.json;
+# existing containers keep the log driver they were created with
+
+# Verify the daemon default
+docker info --format '{{.LoggingDriver}}'
+# Returns: loki
 ```
 
 ## Method 2: Per-Container Loki Configuration
@@ -60,8 +64,6 @@ docker info | grep "Logging Driver"
 
 ```yaml
 # docker-compose.yml - Loki logging per service
-version: "3.8"
-
 services:
   api:
     image: myapp/api:latest
@@ -71,20 +73,19 @@ services:
         # Loki push API endpoint
         loki-url: "http://loki:3100/loki/api/v1/push"
         # Labels attached to every log line
-        loki-labels: "service=api,environment=production,stack=myapp"
+        loki-external-labels: "container_name={{.Name}},image={{.ImageName}},service=api,environment=production,stack=myapp"
         # Performance tuning
-        loki-batch-size: "400"          # Bytes per batch
+        loki-batch-size: "400"
         loki-retries: "5"               # Retry failed sends
         loki-max-backoff: "800ms"       # Max retry backoff
         loki-timeout: "1s"              # Per-request timeout
-        # Include Docker container labels as Loki labels
-        loki-external-labels: "container_name={{.Name}},image={{.ImageName}}"
         # Pipeline stages for log parsing
         loki-pipeline-stages: |
           - json:
               expressions:
                 level: level
                 msg: msg
+                timestamp: timestamp
           - labels:
               level:
           - timestamp:
@@ -97,7 +98,7 @@ services:
       driver: loki
       options:
         loki-url: "http://loki:3100/loki/api/v1/push"
-        loki-labels: "service=nginx,environment=production"
+        loki-external-labels: "container_name={{.Name}},service=nginx,environment=production"
         # Parse nginx access log format
         loki-pipeline-stages: |
           - regex:
@@ -107,17 +108,17 @@ services:
               method:
 ```
 
-## Method 3: Promtail for File-Based Collection
+## Method 3: Promtail for Legacy File-Based Collection
 
-### Step 4: Deploy Promtail as Sidecar or Global Service
+### Step 4: Deploy Promtail for Existing File-Based Collection
+
+Promtail is end-of-life as of March 2, 2026, so reserve this method for existing environments that still scrape Docker JSON log files.
 
 ```yaml
 # docker-compose.yml - Promtail reads Docker JSON log files
-version: "3.8"
-
 services:
   promtail:
-    image: grafana/promtail:2.9.0
+    image: grafana/promtail:3.6.0
     container_name: promtail
     restart: unless-stopped
     command: -config.file=/etc/promtail/config.yaml
@@ -131,6 +132,9 @@ services:
       - promtail_pos:/tmp/promtail
     networks:
       - logging_net
+
+networks:
+  logging_net:
 
 volumes:
   promtail_pos:
@@ -159,6 +163,9 @@ scrape_configs:
         refresh_interval: 5s
 
     relabel_configs:
+      - source_labels: ["__meta_docker_container_id"]
+        target_label: __path__
+        replacement: /var/lib/docker/containers/$1/*-json.log
       - source_labels: ["__meta_docker_container_name"]
         regex: "/(.*)"
         target_label: container
@@ -168,19 +175,22 @@ scrape_configs:
       - source_labels:
           ["__meta_docker_container_label_com_docker_compose_project"]
         target_label: stack
-      - source_labels: ["__meta_docker_container_log_stream"]
-        target_label: stream
 
     pipeline_stages:
-      # Parse JSON logs
+      # Decode Docker's JSON log wrapper
+      - docker: {}
+      # Parse JSON application logs from the extracted Docker output field
       - json:
+          source: output
           expressions:
             level: level
             msg: msg
             error: error
             duration: duration
+            timestamp: timestamp
       # Promote level to label for efficient filtering
       - labels:
+          stream:
           level:
       # Handle timestamp from log content
       - timestamp:
@@ -189,6 +199,9 @@ scrape_configs:
           fallback_formats:
             - "2006-01-02T15:04:05Z07:00"
             - "2006-01-02 15:04:05"
+      # Send the unwrapped container output to Loki
+      - output:
+          source: output
 ```
 
 ## Step 5: Query Logs with LogQL
@@ -213,7 +226,7 @@ scrape_configs:
   | status >= 500
 
 # Rate of errors over time (metric query)
-sum(rate({stack="myapp", level="error"}[5m])) by (service)
+sum by (service) (rate({stack="myapp", level="error"}[5m]))
 
 # Top services by log volume
 topk(5, sum by (service) (rate({stack="myapp"}[5m])))
@@ -234,7 +247,7 @@ curl -s http://loki:3100/metrics | grep -E "loki_distributor|ingester"
 
 # Verify labels are being applied correctly
 curl -s "http://loki:3100/loki/api/v1/labels" | jq '.data[]'
-# Should include: service, stack, level, container
+# Should include labels such as: service, stack, level, container, or container_name
 
 curl -s "http://loki:3100/loki/api/v1/label/service/values" | jq '.data[]'
 # Should list all your services
@@ -242,4 +255,4 @@ curl -s "http://loki:3100/loki/api/v1/label/service/values" | jq '.data[]'
 
 ## Conclusion
 
-The Loki Docker driver plugin is the cleanest approach for new deployments - zero configuration per container, all metadata captured automatically, and no additional agent containers needed. Promtail provides more flexibility for existing environments where changing the log driver isn't feasible, or where you need advanced pipeline stages for complex log parsing. Both methods support LogQL's label-based filtering, which is far more efficient than full-text search for typical operational queries. Portainer's compose YAML manages both Loki infrastructure and the application services that ship logs to it from a single management interface.
+The Loki Docker driver plugin is the cleanest approach for new deployments - zero configuration per container, no additional agent containers, and automatic attachment of basic container and Compose metadata. Promtail remains workable for existing environments where changing the log driver isn't feasible, but for new file-based collection Grafana recommends Grafana Alloy. Both methods support LogQL's label-based filtering, which is far more efficient than full-text search for typical operational queries. Portainer's compose YAML manages both Loki infrastructure and the application services that ship logs to it from a single management interface.
