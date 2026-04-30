@@ -8,12 +8,12 @@ Description: Learn how to diagnose and fix permission errors on the Portainer da
 
 ---
 
-Portainer stores its database (`portainer.db`), TLS certificates, and agent keys in a data volume. Incorrect file ownership causes startup failures with cryptic errors like `permission denied` or `failed to open database`.
+Portainer stores its database (`portainer.db`), TLS certificates, and agent keys in its `/data` volume. Incorrect file ownership causes startup failures with cryptic errors like `permission denied` or `failed to open database`.
 
 ## Common Symptoms
 
-- Portainer logs show: `bolt: timeout` or `open /data/portainer.db: permission denied`
-- Portainer starts but immediately crashes with `failed to create TLS service`
+- Portainer logs show: `open /data/portainer.db: permission denied`
+- Portainer starts but immediately exits with certificate or key permission errors under `/data/certs`
 - After a host migration or volume copy, Portainer refuses to start
 
 ## Check Current Ownership
@@ -30,7 +30,7 @@ docker run --rm -v portainer_data:/data alpine ls -la /data
 
 ## Fix Ownership on Named Volume
 
-Portainer runs as root (UID 0) by default. All files in the data volume must be owned by root:
+In Portainer's standard Docker installation, the container runs as root (UID 0), so files in the data volume should be owned by UID 0:
 
 ```bash
 # Fix ownership of all files in the data volume
@@ -60,10 +60,8 @@ sudo chmod 600 /opt/portainer/data/portainer.db
 docker start portainer
 docker logs portainer --tail 20
 
-# Look for:
-# level=info msg="Starting Portainer ..."
-# level=info msg="Creating TLS folder in: /data/certs"
-# NOT "permission denied" errors
+# The container should stay up, and the logs should not show
+# "permission denied" or certificate/key read errors under /data/certs
 ```
 
 ## Prevent Issues During Backups
@@ -71,12 +69,20 @@ docker logs portainer --tail 20
 When backing up the Portainer volume, preserve ownership:
 
 ```bash
-# Correct: use tar with ownership preservation
-docker run --rm -v portainer_data:/data alpine \
-  tar czpf - /data > portainer-backup.tar.gz
+# Correct: archive the volume from inside a helper container
+docker run --rm \
+  -v portainer_data:/data \
+  -v "$(pwd)":/backup \
+  alpine sh -c 'cd /data && tar czf /backup/portainer-backup.tar.gz .'
 
-# When restoring, extract with ownership preserved
-tar xzpf portainer-backup.tar.gz -C /
+# Stop Portainer before restoring into the volume
+docker stop portainer
+
+# Restore back into the named volume
+docker run --rm \
+  -v portainer_data:/data \
+  -v "$(pwd)":/backup \
+  alpine sh -c 'cd /data && tar xzf /backup/portainer-backup.tar.gz'
 ```
 
 Using `cp -r` without `-p` loses ownership information and causes permission errors on restore.
