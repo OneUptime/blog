@@ -46,14 +46,14 @@ frontend http_in
     acl is_trusted_ip   src 10.0.0.0/8 192.168.0.0/16 203.0.113.64/26
 
     # Reject admin requests from untrusted IPs
-    http-request deny code 403 if is_admin_path !is_trusted_ip
+    http-request deny status 403 if is_admin_path !is_trusted_ip
 
     default_backend app_servers
 ```
 
 ## TCP-Level Connection Rejection
 
-For TCP mode, reject connections before the handshake completes:
+For TCP mode, reject connections at the TCP connection stage before traffic is forwarded to the backend:
 
 ```haproxy
 frontend db_frontend
@@ -73,14 +73,18 @@ frontend db_frontend
 ```haproxy
 frontend http_in
     bind 203.0.113.10:80
+    mode http
 
     acl is_internal     src 10.0.0.0/8
     acl is_api_path     path_beg /api/
     acl is_v2_path      path_beg /api/v2/
     acl is_partner      src 198.51.100.0/24
 
-    # Allow /api/v2/ from internal OR partner networks
-    http-request deny if is_api_path !is_v2_path !is_internal !is_partner
+    # Allow API access only from internal OR partner networks
+    http-request deny if is_api_path !is_internal !is_partner
+
+    # Partner networks may access only /api/v2/
+    http-request deny if is_api_path !is_v2_path is_partner
 
     # Allow internal access to all API versions
     use_backend api_v2_backend  if is_v2_path is_internal
@@ -94,6 +98,7 @@ frontend http_in
 ```haproxy
 frontend http_in
     bind 203.0.113.10:80
+    mode http
 
     # Stick table: track request rate per source IP
     stick-table type ip size 100k expire 60s store http_req_rate(10s)
@@ -106,7 +111,7 @@ frontend http_in
     acl is_trusted       src 10.0.0.0/8
 
     # Rate limit only untrusted clients
-    http-request deny deny_status 429 if is_rate_limited !is_trusted
+    http-request deny status 429 if is_rate_limited !is_trusted
 
     default_backend app_servers
 ```
@@ -116,13 +121,14 @@ frontend http_in
 ```haproxy
 frontend http_in
     bind 203.0.113.10:80
+    mode http
 
     acl is_internal src 10.0.0.0/8
 
-    # Capture source IP for logging
-    http-request capture req.hdr(X-Real-IP) len 40
+    # Capture client IPv4 for logging
+    http-request capture src len 15
 
-    # Log which ACL matched using custom headers (backend sees this)
+    # Mark which ACL matched using custom headers (backend sees this)
     http-request set-header X-Client-Type internal if is_internal
     http-request set-header X-Client-Type external if !is_internal
 
@@ -139,8 +145,8 @@ curl -4 --interface 10.0.0.5 http://203.0.113.10/admin/
 # Test from blocked IP (should get 403 or connection rejected)
 curl -4 --interface 192.0.2.100 http://203.0.113.10/admin/
 
-# View HAProxy stats to see rejected connection counts
-echo "show info" | sudo socat stdio /run/haproxy/admin.sock | grep -i deny
+# View HAProxy stats and inspect the dreq, dcon, and dses counters
+echo "show stat" | sudo socat stdio /run/haproxy/admin.sock | grep -E '(^#|^http_in,)'
 
 # Validate config before reload
 sudo haproxy -c -f /etc/haproxy/haproxy.cfg
