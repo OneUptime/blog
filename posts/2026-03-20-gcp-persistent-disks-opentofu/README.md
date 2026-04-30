@@ -103,7 +103,7 @@ resource "google_compute_instance" "db_vm" {
   }
 
   network_interface {
-    subnetwork = google_compute_subnetwork.subnet.self_link
+    network = "default"
   }
 }
 ```
@@ -118,7 +118,7 @@ resource "google_compute_disk" "restored_disk" {
   zone     = "us-central1-a"
   size     = 200
   # Restore disk data from a snapshot
-  snapshot = google_compute_snapshot.daily_snapshot.self_link
+  snapshot = "global/snapshots/daily-snapshot"
 }
 ```
 
