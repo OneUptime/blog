@@ -12,7 +12,7 @@ How to Fix SELinux Issues with Portainer Agent is an important operational task 
 
 ## Overview
 
-The Portainer Agent communicates with the Portainer server on TCP port 9001. Proper configuration and troubleshooting of the agent is essential for uninterrupted container management.
+The Portainer server connects to the Portainer Agent on TCP port 9001 over HTTPS. Proper configuration and troubleshooting of the agent is essential for uninterrupted container management.
 
 ## Common Configuration Steps
 
@@ -37,8 +37,9 @@ netstat -tlnp | grep 9001
 nc -zv <agent-host-ip> 9001
 # Expected: Connection succeeded
 
-# Test with curl (should get a response)
-curl -k https://<agent-host-ip>:9001 2>&1 | head -5
+# Test the agent ping endpoint over HTTPS
+curl -sk -o /dev/null -w '%{http_code}\n' https://<agent-host-ip>:9001/ping
+# Expected: 204
 ```
 
 ## Firewall Configuration
@@ -55,18 +56,19 @@ sudo firewall-cmd --reload
 sudo iptables -A INPUT -s <portainer-server-ip> -p tcp --dport 9001 -j ACCEPT
 ```
 
-## SELinux Context Fix (RHEL/CentOS)
+## SELinux Fix (RHEL/CentOS)
 
 ```bash
-# Check for SELinux denials
-sudo ausearch -c 'docker' --raw | audit2allow -M portainer-agent
-sudo semodule -i portainer-agent.pp
+# Portainer's documented fix on SELinux-enabled Docker hosts is to run the agent privileged
+IMAGE="$(docker inspect portainer_agent --format '{{.Config.Image}}')"
+docker stop portainer_agent && docker container rm portainer_agent
+docker run -d --privileged -p 9001:9001 --name portainer_agent --restart=always \
+  -v /var/run/docker.sock:/var/run/docker.sock \
+  -v /var/lib/docker/volumes:/var/lib/docker/volumes \
+  "$IMAGE"
 
 # Or temporarily disable enforcement for testing
 sudo setenforce 0
-
-# Add correct context for Docker socket
-sudo chcon -Rt svirt_sandbox_file_t /var/run/docker.sock
 ```
 
 ## Agent Version Compatibility
@@ -76,19 +78,20 @@ sudo chcon -Rt svirt_sandbox_file_t /var/run/docker.sock
 docker inspect portainer_agent --format '{{.Config.Image}}'
 
 # Check Portainer server version
-curl -s https://localhost:9443/api/status --insecure | python3 -c "
+SERVER_VERSION="$(curl -sk https://localhost:9443/api/system/status | python3 -c '
 import sys, json
 status = json.load(sys.stdin)
-print(f'Server version: {status.get(\"Version\", \"unknown\")}')
-"
+print(status.get(\"Version\", \"unknown\"))
+')"
+echo "Server version: $SERVER_VERSION"
 
 # Update agent to match server version
 docker stop portainer_agent && docker container rm portainer_agent
-docker pull portainer/agent:latest
-docker run -d -p 9001:9001 --name portainer_agent --restart=always \
+docker pull portainer/agent:$SERVER_VERSION
+docker run -d --privileged -p 9001:9001 --name portainer_agent --restart=always \
   -v /var/run/docker.sock:/var/run/docker.sock \
   -v /var/lib/docker/volumes:/var/lib/docker/volumes \
-  portainer/agent:latest
+  portainer/agent:$SERVER_VERSION
 ```
 
 ---
