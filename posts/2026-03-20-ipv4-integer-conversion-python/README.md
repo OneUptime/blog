@@ -101,4 +101,4 @@ print(next_ip("192.168.1.255"))  # 192.168.2.0  (wraps subnet boundary)
 
 ## Conclusion
 
-The `ipaddress.IPv4Address` class makes integer conversion idiomatic: `int(addr)` converts to a 32-bit unsigned integer and `IPv4Address(n)` reverses it. Integer representations are useful for sorting (avoids lexicographic ordering), range membership checks, arithmetic on addresses, and storing IPs efficiently in databases as `INTEGER` columns. The `struct` + `socket.inet_aton` approach is useful when working with raw bytes in network packets.
+The `ipaddress.IPv4Address` class makes integer conversion idiomatic: `int(addr)` converts to a 32-bit unsigned integer and `IPv4Address(n)` reverses it. Integer representations are useful for sorting (avoids lexicographic ordering), range membership checks, arithmetic on addresses, and storing IPs efficiently in databases as integer values when the column type supports the full 32-bit range. The `struct` + `socket.inet_aton` approach is useful when working with raw bytes in network packets.
