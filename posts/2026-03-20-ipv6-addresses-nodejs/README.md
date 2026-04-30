@@ -4,11 +4,11 @@ Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
 Tags: Node.js, IPv6, Networking, JavaScript, Socket Programming, Development
 
-Description: Handle, validate, parse, and use IPv6 addresses in Node.js applications using built-in net and dns modules and popular third-party validation libraries.
+Description: Handle, validate, parse, and use IPv6 addresses in Node.js applications using built-in net and dns modules.
 
 ## Introduction
 
-Node.js has built-in support for IPv6 through its `net`, `dns`, and `http` modules. The `net.isIPv6()` function provides quick validation, while Express and other web frameworks require specific binding configurations to accept IPv6 connections.
+Node.js has built-in support for IPv6 through its `net`, `dns`, and `http` modules. The `net.isIPv6()` function provides quick validation, while Express and other web frameworks use Node's underlying server binding behavior when accepting IPv6 connections.
 
 ## Basic IPv6 Validation
 
@@ -36,11 +36,13 @@ addresses.forEach(addr => {
 
 ## Stripping Zone IDs from Link-Local Addresses
 
-Link-local IPv6 addresses may include a zone ID (interface name) that must be stripped for most operations:
+Link-local IPv6 addresses may include a zone ID (interface name). Some APIs expect the bare address literal, so strip the zone ID first:
 
 ```javascript
+const net = require('net');
+
 /**
- * Strip zone ID from an IPv6 address.
+ * Strip zone ID from an IPv6 address when an API expects the bare literal.
  * e.g., "fe80::1%eth0" → "fe80::1"
  */
 function stripZoneId(addr) {
@@ -48,8 +50,8 @@ function stripZoneId(addr) {
   return zoneIdx !== -1 ? addr.substring(0, zoneIdx) : addr;
 }
 
-// Format IPv6 for URL inclusion (bracket notation)
-function formatIPv6ForUrl(addr) {
+// Format a bare IPv6 host literal with bracket notation
+function formatIPv6HostLiteral(addr) {
   const clean = stripZoneId(addr);
   if (net.isIPv6(clean)) {
     return `[${clean}]`;
@@ -57,9 +59,9 @@ function formatIPv6ForUrl(addr) {
   return clean;
 }
 
-console.log(formatIPv6ForUrl('2001:db8::1'));     // [2001:db8::1]
-console.log(formatIPv6ForUrl('fe80::1%eth0'));    // [fe80::1]
-console.log(formatIPv6ForUrl('192.168.1.1'));     // 192.168.1.1
+console.log(formatIPv6HostLiteral('2001:db8::1'));     // [2001:db8::1]
+console.log(formatIPv6HostLiteral('fe80::1%eth0'));    // [fe80::1]
+console.log(formatIPv6HostLiteral('192.168.1.1'));     // 192.168.1.1
 ```
 
 ## Creating an IPv6 TCP Server
@@ -73,15 +75,16 @@ const server = net.createServer((socket) => {
   const remoteAddr = socket.remoteAddress;
   const remotePort = socket.remotePort;
   const family = socket.remoteFamily;  // 'IPv6' or 'IPv4'
+  const printableAddr = family === 'IPv6' ? `[${remoteAddr}]` : remoteAddr;
 
-  console.log(`Connection from ${remoteAddr}:${remotePort} (${family})`);
+  console.log(`Connection from ${printableAddr}:${remotePort} (${family})`);
 
   socket.write('Hello from IPv6 server\n');
   socket.end();
 });
 
 // '::' is the IPv6 wildcard address, listens on all interfaces
-// With IPV6_V6ONLY=false (default on some systems), also accepts IPv4
+// On most operating systems, listening on '::' may also accept IPv4 connections
 server.listen(8080, '::', () => {
   console.log('Server listening on [::]:8080');
 });
@@ -120,17 +123,19 @@ client.on('error', (err) => {
 
 ```javascript
 const express = require('express');
+const net = require('net');
 const app = express();
 
 app.get('/', (req, res) => {
   // Express stores the client IP in req.ip
-  // For IPv6, it looks like: ::ffff:192.168.1.1 (IPv4-mapped) or 2001:db8::1
+  // It may look like ::ffff:192.168.1.1 for an IPv4 client on an IPv6 socket,
+  // or 2001:db8::1 for a native IPv6 client
   const clientIP = req.ip;
 
   res.json({
     message: 'Hello',
     clientIP,
-    isIPv6: require('net').isIPv6(clientIP.replace(/^::ffff:/, ''))
+    isIPv6: net.isIPv6(clientIP)
   });
 });
 
@@ -164,7 +169,7 @@ async function main() {
   const ipv6Addrs = await lookupIPv6('ipv6.google.com');
   console.log('IPv6 addresses:', ipv6Addrs);
 
-  // Protocol-agnostic lookup (returns both A and AAAA)
+  // Protocol-agnostic lookup (may return both A and AAAA, depending on records and resolver behavior)
   const all = await dns.lookup('google.com', { all: true, family: 0 });
   all.forEach(({ address, family }) => {
     console.log(`${family === 6 ? 'AAAA' : 'A'}: ${address}`);
@@ -178,7 +183,8 @@ main().catch(console.error);
 
 ```javascript
 /**
- * Extract real client IP from various proxy headers.
+ * Extract client IP from X-Forwarded-For when you trust the reverse proxy;
+ * otherwise, fall back to the socket address.
  * Handles IPv6 addresses including IPv4-mapped IPv6.
  */
 function getClientIP(req) {
