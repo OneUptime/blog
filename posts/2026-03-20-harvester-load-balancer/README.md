@@ -14,7 +14,7 @@ Harvester includes a built-in load balancer controller that provides Layer 4 loa
 
 ```mermaid
 graph TD
-    Client["External Client"] --> VIP["Load Balancer VIP\n(Public IP)"]
+    Client["External Client"] --> VIP["Load Balancer VIP"]
     VIP --> LBC["Harvester LB Controller"]
     LBC --> VM1["VM 1\nApp Instance"]
     LBC --> VM2["VM 2\nApp Instance"]
@@ -23,22 +23,18 @@ graph TD
 
 The Harvester load balancer works at the IP level, distributing TCP/UDP traffic across backend VM instances.
 
-## Step 1: Install the Harvester Load Balancer
+## Step 1: Verify the Harvester Load Balancer
 
-The load balancer is included in Harvester but may need to be explicitly enabled in some versions:
+Harvester includes the load balancer as a built-in feature (available since v1.2.0). Verify that the load balancer CRDs are present:
 
 ```bash
-# Check if the load balancer controller is running
-
-kubectl get pods -n harvester-system | grep lb
-
-# Check the load balancer CRDs
-kubectl get crd | grep loadbalancer
-
-# Expected: loadbalancers.loadbalancer.harvesterhci.io
+kubectl get crd loadbalancers.loadbalancer.harvesterhci.io
+kubectl get crd ippools.loadbalancer.harvesterhci.io
 ```
 
 ## Step 2: Create a Load Balancer
+
+For VM load balancers, the backend VMs must be in the same namespace, must not use a Kube-OVN overlay network, and must have the guest agent installed so Harvester can discover their IP addresses.
 
 ### Via the UI
 
@@ -50,6 +46,11 @@ kubectl get crd | grep loadbalancer
 Name:            web-app-lb
 Namespace:       default
 Description:     Load balancer for web application VMs
+IPAM:            pool
+IP Pool:         lb-ip-pool
+Listeners:       TCP/80 -> 80, TCP/443 -> 443
+VM Selector:     harvesterhci.io/vmName in [web-app-1, web-app-2, web-app-3]
+Health Check:    TCP port 80
 
 ```
 
@@ -65,10 +66,11 @@ metadata:
   name: web-app-lb
   namespace: default
 spec:
-  # IP address mode: DHCP, Pool, or External
-  ipam: Pool
+  workloadType: vm
+  # IP address mode: dhcp or pool
+  ipam: pool
   # Reference to the IP pool (if using Pool mode)
-  ipPool: default/lb-ip-pool
+  ipPool: lb-ip-pool
   # Health check configuration
   healthCheck:
     # Port to check
@@ -81,14 +83,12 @@ spec:
     failureThreshold: 3
     # Timeout for each health check
     timeoutSeconds: 5
-  # Backend servers (VM IPs + ports)
-  backendServers:
-    - address: 10.0.100.10
-      port: 80
-    - address: 10.0.100.11
-      port: 80
-    - address: 10.0.100.12
-      port: 80
+  # Match backend VMs by label
+  backendServerSelector:
+    harvesterhci.io/vmName:
+      - web-app-1
+      - web-app-2
+      - web-app-3
   # Load balancer listeners
   listeners:
     - name: http
@@ -107,23 +107,25 @@ For the load balancer to allocate IPs, configure an IP pool:
 
 ```yaml
 # ip-pool.yaml
-# IP address pool for load balancer VIPs
+# Global IP address pool for load balancer VIPs
 
 apiVersion: loadbalancer.harvesterhci.io/v1beta1
 kind: IPPool
 metadata:
   name: lb-ip-pool
-  namespace: default
 spec:
   # CIDR range for load balancer VIPs
   ranges:
-    - subnet: 192.168.1.200/29
-      rangeStart: 192.168.1.200
-      rangeEnd: 192.168.1.207
-      gateway: 192.168.1.1
-  # Network selector - this pool is for the management network
+    - subnet: 192.168.100.0/24
+      rangeStart: 192.168.100.200
+      rangeEnd: 192.168.100.207
+      gateway: 192.168.100.1
+  # Global selector scope so both VM and guest-cluster LBs can match this pool
   selector:
-    network: default/management-network
+    scope:
+      - namespace: "*"
+        project: "*"
+        guestCluster: "*"
 ```
 
 ```bash
@@ -132,12 +134,12 @@ kubectl apply -f load-balancer.yaml
 
 # Verify the load balancer got an IP
 kubectl get loadbalancer web-app-lb -n default \
-    -o jsonpath='{.status.address}'
+    -o jsonpath='{.status.allocatedAddress.ip}'
 ```
 
 ## Step 4: Use Load Balancer in Guest Kubernetes Clusters
 
-When Kubernetes clusters run on Harvester (via Rancher), you can use the Harvester cloud provider to create LoadBalancer services:
+When Kubernetes clusters run on Harvester (via Rancher), you can use the Harvester cloud provider to create LoadBalancer services. Guest-cluster load balancers are supported on VLAN networks, not Kube-OVN overlay networks.
 
 ### Configure the Harvester Cloud Provider in the Guest Cluster
 
@@ -146,7 +148,7 @@ When Kubernetes clusters run on Harvester (via Rancher), you can use the Harvest
 # It's automatically configured when creating clusters via Rancher
 
 # Verify the cloud provider is configured
-kubectl get pods -n kube-system | grep cloud-provider
+kubectl get deployment -n kube-system harvester-cloud-provider
 ```
 
 ### Create a LoadBalancer Service
@@ -161,10 +163,8 @@ metadata:
   name: web-app-service
   namespace: production
   annotations:
-    # Request a specific IP from the Harvester IP pool
+    # Request pool-based IP allocation from Harvester IP pools
     cloudprovider.harvesterhci.io/ipam: pool
-    # Specify the IP pool to use
-    cloudprovider.harvesterhci.io/ip-pool-ref: default/lb-ip-pool
 spec:
   type: LoadBalancer
   # Load balancer source range restriction
@@ -190,7 +190,7 @@ kubectl get svc web-app-service -n production -w
 
 # Expected output:
 # NAME               TYPE           CLUSTER-IP     EXTERNAL-IP      PORT(S)
-# web-app-service    LoadBalancer   10.96.50.123   192.168.1.200    80:31234/TCP
+# web-app-service    LoadBalancer   10.96.50.123   192.168.100.200  80:31234/TCP,443:32456/TCP
 ```
 
 ## Step 5: Configure Health Checks
@@ -205,8 +205,9 @@ metadata:
   name: api-server-lb
   namespace: default
 spec:
-  ipam: Pool
-  ipPool: default/lb-ip-pool
+  workloadType: vm
+  ipam: pool
+  ipPool: lb-ip-pool
   healthCheck:
     # TCP health check on port 8080
     port: 8080
@@ -214,11 +215,10 @@ spec:
     successThreshold: 2
     failureThreshold: 3
     timeoutSeconds: 3
-  backendServers:
-    - address: 10.0.100.20
-      port: 8080
-    - address: 10.0.100.21
-      port: 8080
+  backendServerSelector:
+    harvesterhci.io/vmName:
+      - api-server-1
+      - api-server-2
   listeners:
     - name: api
       port: 8080
@@ -232,16 +232,15 @@ spec:
 # Check load balancer status
 kubectl get loadbalancer -n default
 
-# Get detailed status including backend health
+# Get detailed status including conditions
 kubectl describe loadbalancer web-app-lb -n default
 
-# Check which backends are healthy
-kubectl get loadbalancer web-app-lb -n default \
-    -o jsonpath='{.status}' | jq .
+# Inspect the allocated address and current backend server IPs
+kubectl get loadbalancer web-app-lb -n default -o json | jq .status
 
 # View load balancer events
 kubectl get events -n default \
-    --field-selector involvedObject.name=web-app-lb
+    --field-selector involvedObject.kind=LoadBalancer,involvedObject.name=web-app-lb
 ```
 
 ## Use Case: Blue-Green Deployments
@@ -250,18 +249,17 @@ Load balancers enable blue-green deployments for VMs:
 
 ```bash
 #!/bin/bash
-# blue-green-switch.sh - Switch LB from blue to green VMs
+# blue-green-switch.sh - Switch LB selector from blue to green VMs
 
 LB_NAME="app-lb"
 NAMESPACE="default"
-BLUE_BACKENDS='[{"address":"10.0.100.10","port":80},{"address":"10.0.100.11","port":80}]'
-GREEN_BACKENDS='[{"address":"10.0.100.20","port":80},{"address":"10.0.100.21","port":80}]'
+GREEN_SELECTOR='{"environment":["green"]}'
 
 echo "Switching load balancer to green environment..."
 
 kubectl patch loadbalancer ${LB_NAME} -n ${NAMESPACE} \
     --type merge \
-    -p "{\"spec\":{\"backendServers\":${GREEN_BACKENDS}}}"
+    -p "{\"spec\":{\"backendServerSelector\":${GREEN_SELECTOR}}}"
 
 echo "Traffic now routing to green VMs"
 echo "Monitor for 5 minutes before decommissioning blue VMs"
@@ -269,4 +267,4 @@ echo "Monitor for 5 minutes before decommissioning blue VMs"
 
 ## Conclusion
 
-The Harvester load balancer provides essential traffic distribution capabilities for both native VM workloads and guest Kubernetes services. By combining IP pools with health checks and backend VM groups, you can create highly available application architectures on Harvester. The integration with Kubernetes LoadBalancer services in guest clusters makes it seamless for application developers to expose their services through proper load balancers without needing to understand the underlying Harvester infrastructure.
+The Harvester load balancer provides essential traffic distribution capabilities for both native VM workloads and guest Kubernetes services. By combining IP pools with health checks and backend VM selectors, you can create highly available application architectures on Harvester. The integration with Kubernetes LoadBalancer services in guest clusters makes it seamless for application developers to expose their services through proper load balancers without needing to understand the underlying Harvester infrastructure.
