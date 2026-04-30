@@ -8,14 +8,14 @@ Description: A guide to using for expressions in OpenTofu to transform lists, ma
 
 ## Introduction
 
-For expressions in OpenTofu allow you to transform one collection type into another by applying an expression to each element. You can use for expressions to convert lists to maps, maps to lists, reshape data structures, and filter collections based on conditions.
+For expressions in OpenTofu allow you to transform one collection into another shape by applying an expression to each element. A `for` expression produces either a tuple or an object value, which OpenTofu can automatically convert in many contexts. You can use for expressions to convert lists to maps, maps to lists, reshape data structures, and filter collections based on conditions.
 
 ## Basic For Expression Syntax
 
 ```hcl
-# List output: [for <item> in <collection> : <expression>]
+# Tuple output: [for <item> in <collection> : <expression>]
 
-# Map output:  {for <item> in <collection> : <key> => <value>}
+# Object output: {for <item> in <collection> : <key> => <value>}
 
 variable "names" {
   type    = list(string)
@@ -56,7 +56,7 @@ locals {
   env_summary = [
     for env, type in var.environments : "${env}: ${type}"
   ]
-  # Result: ["dev: t3.micro", "staging: t3.small", "prod: t3.large"]
+  # Result: ["dev: t3.micro", "prod: t3.large", "staging: t3.small"]
 }
 ```
 
@@ -211,4 +211,4 @@ locals {
 
 ## Conclusion
 
-For expressions are one of the most powerful tools in OpenTofu for data transformation. They enable converting between collection types (list to map, map to list), reshaping data structures for use with `for_each`, extracting specific fields from complex objects, and creating computed configurations from input variables. Use square brackets `[]` to produce lists and curly braces `{}` to produce maps. Combine for expressions with `flatten()` for nested structures and `distinct()` for deduplication.
+For expressions are one of the most powerful tools in OpenTofu for data transformation. They enable converting between collection shapes (list to map, map to list), reshaping data structures for use with `for_each`, extracting specific fields from complex objects, and creating computed configurations from input variables. Use square brackets `[]` to produce tuple results and curly braces `{}` to produce object results, which OpenTofu can often convert automatically to lists, maps, or sets as needed. Combine for expressions with `flatten()` for nested structures and `distinct()` for deduplication.
