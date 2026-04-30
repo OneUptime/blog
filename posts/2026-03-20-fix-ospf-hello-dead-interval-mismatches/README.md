@@ -48,7 +48,7 @@ Run this on both routers and compare the Hello and Dead values.
 
 ## Step 2: Fix the Timer on the Mismatched Router
 
-Set the Hello and Dead intervals to match. The Dead interval should always be at least 3x the Hello interval:
+Set the Hello and Dead intervals to match. On Cisco IOS, the default Dead interval is 4x the Hello interval:
 
 ```text
 ! Change to match the other router (10s hello / 40s dead)
@@ -57,7 +57,7 @@ Router(config-if)# ip ospf hello-interval 10
 Router(config-if)# ip ospf dead-interval 40
 ```
 
-**Important:** Changing the Hello interval on Cisco IOS automatically adjusts the Dead interval to 4x the Hello value. If you need a custom ratio, set both explicitly.
+**Important:** By default, Cisco IOS uses a Dead interval that is 4x the Hello interval. If you need a custom ratio, set both explicitly.
 
 ## Step 3: Verify After Fixing
 
@@ -85,7 +85,7 @@ Router(config-if)# ip ospf dead-interval minimal hello-multiplier 4
 ! Hello interval = 250ms (1000ms / 4 multiplier)
 ```
 
-Both routers on the link must be configured identically for fast Hello to work.
+Both routers on the link must use a consistent Dead interval for fast Hello to work. On Cisco IOS, the hello-multiplier itself does not have to match as long as at least one Hello is sent within the 1-second Dead interval.
 
 ## Step 5: Restore Default Timers
 
@@ -104,7 +104,7 @@ Sometimes the root cause is a network type mismatch-one side is configured as Br
 
 ```text
 ! Check network type
-Router# show ip ospf interface Gig0/0 | include network type
+Router# show ip ospf interface Gig0/0 | include Network Type
 
 ! If mismatch: set matching network type on both
 Router(config-if)# ip ospf network broadcast
