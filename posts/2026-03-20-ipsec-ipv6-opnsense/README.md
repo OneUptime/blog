@@ -8,26 +8,27 @@ Description: Step-by-step guide to configuring IPv6 IPsec site-to-site VPN on OP
 
 ## Overview
 
-OPNsense uses strongSwan for IPsec and provides a web UI for configuration under VPN → IPsec. It supports IKEv2 with IPv6 endpoints for site-to-site tunnels. OPNsense configuration is similar to pfSense but with a different UI layout and some naming differences.
+OPNsense uses strongSwan for IPsec and provides a web UI for configuration under VPN → IPsec. It supports IKEv2 with IPv6 endpoints for site-to-site tunnels. The steps below use the legacy **Tunnel Settings** Phase 1 / Phase 2 workflow; OPNsense 23.1+ also includes a newer **Connections** UI where Phase 2 entries are called children.
 
 ## Configuring IPv6 IPsec on OPNsense
 
 ### Phase 1 Configuration
 
-Navigate to **VPN → IPsec → Connections → Add**:
+Navigate to **VPN → IPsec → Tunnel Settings** and click **+** to add a Phase 1 entry:
 
 ```text
 General Settings:
-  Connection: Enabled
+  Connection method: default
   Description: IPv6-Site-To-Site
-  Key Exchange: IKEv2
+  Key Exchange version: V2
   Internet Protocol: IPv6
+  Interface: WAN
 
 Remote Gateway:
-  Remote gateway: 2001:db8:gw2::1
+  Remote gateway: 2001:db8:100::2
 
 Authentication:
-  Authentication method: Pre-Shared Key
+  Authentication method: Mutual PSK
   My identifier:         My IP address
   Peer identifier:       Peer IP address
   Pre-shared key:        [strong PSK]
@@ -46,7 +47,7 @@ Dead Peer Detection:
 
 ### Phase 2 Configuration
 
-Under the Phase 1 entry, click **Add Phase 2**:
+Under the Phase 1 entry, click **+** to add a Phase 2 entry:
 
 ```text
 General:
@@ -55,11 +56,11 @@ General:
 
 Local Network:
   Type: Network
-  Address: 2001:db8:site1::/48
+  Address: 2001:db8:1::/48
 
 Remote Network:
   Type: Network
-  Address: 2001:db8:site2::/48
+  Address: 2001:db8:2::/48
 
 Phase 2 Proposal:
   Encryption Algorithms: AES-GCM-256 (128-bit tag)
@@ -83,7 +84,7 @@ Interface:        WAN
 Direction:        in
 TCP/IP Version:   IPv6
 Protocol:         UDP
-Source:           2001:db8:gw2::1/128
+Source:           2001:db8:100::2/128
 Destination:      WAN address
 Destination port: 500 (ISAKMP)
 Description:      Allow IKEv2 from remote gateway
@@ -94,7 +95,7 @@ Description:      Allow IKEv2 from remote gateway
 # Rule 3: Allow ESP
 Action:           Pass
 Protocol:         ESP (50)
-Source:           2001:db8:gw2::1/128
+Source:           2001:db8:100::2/128
 ```
 
 ### IPsec Interface Rules
@@ -106,8 +107,8 @@ Action:           Pass
 Interface:        IPsec
 TCP/IP Version:   IPv6
 Protocol:         Any
-Source:           2001:db8:site2::/48
-Destination:      2001:db8:site1::/48
+Source:           2001:db8:2::/48
+Destination:      2001:db8:1::/48
 Description:      Allow tunnel traffic from Site2
 
 ```
@@ -119,9 +120,9 @@ Navigate to **VPN → IPsec → Status Overview**:
 ```text
 Active Tunnels:
   Connection        Remote Gateway         State
-  IPv6-S2S          2001:db8:gw2::1        ESTABLISHED
+  IPv6-Site-To-Site 2001:db8:100::2        ESTABLISHED
   Child SAs:
-    site1-to-site2  2001:db8:site1::/48 ↔ 2001:db8:site2::/48
+    site1-to-site2  2001:db8:1::/48 ↔ 2001:db8:2::/48
     Bytes in: 45892    Bytes out: 38422
 ```
 
@@ -133,7 +134,7 @@ OPNsense runs FreeBSD with strongSwan:
 
 ```bash
 # SSH to OPNsense
-ssh root@opnsense.local
+ssh root@<opnsense-hostname-or-ip>
 
 # Show strongSwan status
 ipsec statusall
@@ -144,43 +145,42 @@ swanctl --list-sas
 # List active connections
 swanctl --list-conns
 
-# Initiate manually
-swanctl --initiate conn:IPv6-Site-To-Site
+# Initiate manually (use the CHILD name shown by swanctl --list-conns)
+swanctl --initiate --child <child-name>
 
 # Ping through tunnel
-ping6 -c 3 2001:db8:site2::1
+ping -6 -c 3 2001:db8:2::1
 
 # View IPsec logs
-grep -i ipsec /var/log/system.log | tail -50
+tail -50 /var/logs/ipsec/latest.log
 
-# tcpdump: Verify ESP on WAN
-tcpdump -i vtnet0 'ip6 proto 50' -n -c 10
+# tcpdump: Verify ESP or IKE/NAT-T on WAN
+tcpdump -ni <wan-interface> 'ip6 proto 50 or udp port 500 or udp port 4500' -c 10
 ```
 
 ## Key Differences: OPNsense vs pfSense for IPv6 IPsec
 
 | Feature | OPNsense | pfSense |
 |---------|----------|---------|
-| UI Location | VPN → IPsec → Connections | VPN → IPsec → Tunnels |
+| UI Location | VPN → IPsec → Tunnel Settings (legacy) or Connections (new) | VPN → IPsec → Tunnels |
 | IKEv2 support | Yes | Yes |
 | IPv6 support | Yes | Yes |
-| Logging | System log + swanctl | /var/log/ipsec.log |
+| Logging | VPN → IPsec → Log File + swanctl | Status → System Logs → IPsec |
 | Plugin management | OPNsense plugins | pfSense packages |
 
 ## Routes After Tunnel Establishment
 
 ```bash
-# Verify route was added
-netstat -rn -f inet6 | grep 'site2'
-# or
-route -n get -inet6 2001:db8:site2::1
+# For a standard policy-based Phase 1 / Phase 2 tunnel, OPNsense installs
+# the matching kernel route/policy automatically.
+route -n get -inet6 2001:db8:2::1
 
-# If route is missing, add static route:
-# System → Routes → Configuration → Add
-# Destination: 2001:db8:site2::/48
-# Gateway: dynamic-VPN-gateway or tunnel interface
+# Inspect the active security associations
+swanctl --list-sas
+
+# Static routes are typically only needed for route-based (VTI) IPsec setups.
 ```
 
 ## Summary
 
-OPNsense IPv6 IPsec configuration follows the same Phase 1/Phase 2 structure as pfSense. Set Internet Protocol to IPv6 in Phase 1, use AES-256-GCM in Phase 2, and ensure firewall rules allow UDP 500, UDP 4500, and ESP from the remote gateway. Monitor from **VPN → IPsec → Status Overview** or via CLI with `swanctl --list-sas`. Routes to remote sites are automatically installed when Phase 2 is established. Use `swanctl --initiate` from CLI if the tunnel doesn't auto-start.
+OPNsense IPv6 IPsec configuration in the legacy **Tunnel Settings** UI follows the same Phase 1/Phase 2 structure as pfSense. Set Internet Protocol to IPv6 in Phase 1, use AES-GCM-256 in Phase 2, and ensure firewall rules allow UDP 500, UDP 4500, and ESP from the remote gateway. Monitor from **VPN → IPsec → Status Overview** or via CLI with `swanctl --list-sas`. For a standard policy-based tunnel, OPNsense installs the matching kernel route/policy automatically. Use `swanctl --initiate --child <child-name>` from CLI if the tunnel doesn't auto-start.
