@@ -16,33 +16,33 @@ State drift occurs when the actual state of your infrastructure differs from wha
 - **Resource deleted**: A resource was deleted manually but still exists in state
 - **Resource added**: A resource was created outside OpenTofu (not in state - requires import)
 
-## Step 1: Detect Drift with tofu plan
+## Step 1: Detect Drift with tofu plan -refresh-only
 
-The simplest drift detection is running `tofu plan` - it refreshes state and shows differences:
+The most focused drift detection is running `tofu plan -refresh-only` - it shows changes made outside OpenTofu without mixing in configuration changes:
 
 ```bash
-# Run a plan with refresh enabled (default)
+# Run a refresh-only plan to detect drift
 
-tofu plan
+tofu plan -refresh-only
 
 # Example output showing drift:
 # aws_instance.web will be updated in-place
 #   ~ instance_type = "t3.micro" -> "t3.small"  # Changed in console
 ```
 
-## Step 2: Run tofu refresh to Update State
+## Step 2: Run tofu apply -refresh-only to Update State
 
 If you want to accept the external changes and update state to match reality:
 
 ```bash
-# Refresh state to match actual infrastructure
-tofu refresh
-
-# Or use tofu apply -refresh-only to see what would change
+# Review and apply a refresh-only plan
 tofu apply -refresh-only
+
+# The older tofu refresh command is a deprecated alias for:
+# tofu apply -refresh-only -auto-approve
 ```
 
-This updates state to reflect the real infrastructure without making any changes to the infrastructure itself.
+After approval, this updates state to reflect the real infrastructure without making any changes to the infrastructure itself.
 
 ## Step 3: Investigate the Drift
 
@@ -50,12 +50,12 @@ Before deciding how to resolve drift, understand what changed:
 
 ```bash
 # See the full diff between current state and actual infrastructure
-tofu plan -refresh=true -detailed-exitcode
-# Exit code 2 = changes detected (drift found)
-# Exit code 0 = no changes (no drift)
+tofu plan -refresh-only -detailed-exitcode
+# Exit code 2 = refresh-only changes detected
+# Exit code 0 = no refresh-only changes
 
 # Save the plan for review
-tofu plan -out=drift.tfplan
+tofu plan -refresh-only -out=drift.tfplan
 tofu show drift.tfplan
 ```
 
@@ -113,8 +113,8 @@ Set up automated drift detection in CI/CD:
 #!/bin/bash
 # drift-check.sh
 
-# Run plan with refresh and capture exit code
-tofu plan -refresh=true -detailed-exitcode
+# Run a refresh-only plan and capture exit code
+tofu plan -refresh-only -detailed-exitcode
 EXIT_CODE=$?
 
 if [ $EXIT_CODE -eq 0 ]; then
@@ -151,4 +151,4 @@ The best cure for drift is prevention:
 
 ## Conclusion
 
-State drift is inevitable in dynamic environments, but OpenTofu provides excellent tools to detect and resolve it. Regular drift detection runs via `tofu plan`, combined with `tofu refresh` or `tofu apply -refresh-only`, keep your state accurate. For teams, automated drift detection pipelines and strict IAM controls prevent unauthorized changes from accumulating into larger problems.
+State drift is inevitable in dynamic environments, but OpenTofu provides excellent tools to detect and resolve it. Regular drift detection runs via `tofu plan -refresh-only`, combined with `tofu apply -refresh-only` when you want to accept external changes, keep your state accurate. For teams, automated drift detection pipelines and strict IAM controls prevent unauthorized changes from accumulating into larger problems.
