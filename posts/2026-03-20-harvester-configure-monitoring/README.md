@@ -21,105 +21,93 @@ Harvester includes a built-in monitoring stack based on Prometheus and Grafana. 
 
 ## Step 1: Enable Monitoring via the UI
 
-1. Navigate to **Advanced** → **Monitoring & Logging**
-2. Click **Enable Monitoring**
-3. Configure:
-   - **Prometheus Storage**: Set retention and storage size
-   - **Grafana**: Enable/disable public access
-4. Click **Save**
+1. Navigate to **Advanced** → **Add-ons**
+2. Find **rancher-monitoring** and click **⋮** → **Enable**
+3. Open the **rancher-monitoring** add-on page
+4. From the **Prometheus** tab, adjust Prometheus and Prometheus Node Exporter resource requests and limits as needed
+5. Click **Save**
 
 ## Step 2: Enable Monitoring via kubectl
 
-```yaml
-# harvester-monitoring.yaml
+```bash
+# Enable the built-in rancher-monitoring add-on
+kubectl patch addons.harvesterhci.io rancher-monitoring \
+    -n cattle-monitoring-system \
+    --type merge \
+    -p '{"spec":{"enabled":true}}'
 
-# Enable and configure Harvester monitoring
-
-apiVersion: harvesterhci.io/v1beta1
-kind: Setting
-metadata:
-  name: harvester-monitoring
-  namespace: harvester-system
-spec:
-  value: |
-    {
-      "enabled": true,
-      "prometheusNodeExporter": {
-        "resources": {
-          "requests": {
-            "cpu": "150m",
-            "memory": "100Mi"
-          }
-        }
-      },
-      "prometheus": {
-        "prometheusSpec": {
-          "evaluationInterval": "1m",
-          "scrapeInterval": "1m",
-          "retention": "5d",
-          "retentionSize": "50GiB",
-          "resources": {
-            "requests": {
-              "cpu": "750m",
-              "memory": "750Mi"
-            }
-          }
-        }
-      },
-      "grafana": {
-        "enabled": true
-      }
-    }
+# Edit the add-on values
+kubectl edit addons.harvesterhci.io -n cattle-monitoring-system rancher-monitoring
 ```
 
-```bash
-# Or install via Helm (Harvester's monitoring chart)
-helm repo add rancher-charts https://charts.rancher.io
-helm repo update
+```yaml
+# rancher-monitoring values excerpt
 
-helm install rancher-monitoring rancher-charts/rancher-monitoring \
-    --namespace cattle-monitoring-system \
-    --create-namespace \
-    --set prometheus.prometheusSpec.retentionSize="50GiB" \
-    --set prometheus.prometheusSpec.retention="5d" \
-    --set grafana.enabled=true \
-    --set alertmanager.enabled=true
+spec:
+  valuesContent: |
+    prometheus:
+      prometheusSpec:
+        evaluationInterval: 1m
+        scrapeInterval: 1m
+        retention: 5d
+        retentionSize: 50GB
+        resources:
+          limits:
+            cpu: 1000m
+            memory: 2500Mi
+          requests:
+            cpu: 850m
+            memory: 1750Mi
+    prometheus-node-exporter:
+      resources:
+        limits:
+          cpu: 200m
+          memory: 50Mi
+        requests:
+          cpu: 100m
+          memory: 30Mi
+    grafana:
+      enabled: true
+    alertmanager:
+      enabled: true
 ```
 
 ## Step 3: Access the Grafana Dashboard
 
 ```bash
 # Get the Grafana service URL
-kubectl get svc -n cattle-monitoring-system | grep grafana
+kubectl get svc -n cattle-monitoring-system rancher-monitoring-grafana
 
 # Forward the Grafana port to your local machine
 kubectl port-forward -n cattle-monitoring-system \
     svc/rancher-monitoring-grafana 3000:80
 
 # Access Grafana at http://localhost:3000
-# Default credentials: admin / (get from secret)
-kubectl get secret -n cattle-monitoring-system rancher-monitoring-grafana \
-    -o jsonpath='{.data.admin-password}' | base64 -d
+# Default credentials: admin / prom-operator
 ```
 
 ## Step 4: Key Grafana Dashboards for Harvester
 
-Navigate to these pre-built dashboards in Grafana:
+Navigate to these dashboards and views in Harvester and Grafana:
 
 ### Node Dashboards
 - **Kubernetes / Nodes**: CPU, memory, disk, network per node
-- **Node Exporter Full**: Detailed OS-level metrics
 
 ### VM Dashboards
 
+For per-VM metrics in Harvester, go to **VM details page** → **VM Metrics**.
+
 ```bash
-# Import the KubeVirt dashboard
+# Create the namespace watched by the Grafana dashboard sidecar, if needed
+kubectl create namespace cattle-dashboards --dry-run=client -o yaml | kubectl apply -f -
+
+# Import a custom KubeVirt dashboard
 kubectl apply -f - <<EOF
 apiVersion: v1
 kind: ConfigMap
 metadata:
   name: kubevirt-grafana-dashboard
-  namespace: cattle-monitoring-system
+  namespace: cattle-dashboards
   labels:
     grafana_dashboard: "1"
 data:
@@ -130,7 +118,7 @@ data:
       "panels": [
         {
           "title": "VM CPU Usage",
-          "type": "graph",
+          "type": "timeseries",
           "datasource": "Prometheus",
           "targets": [
             {
@@ -145,7 +133,8 @@ EOF
 ```
 
 ### Storage Dashboards
-- **Longhorn**: Volume health, replica status, disk utilization
+- **Kubernetes / Persistent Volumes**: Persistent volume usage and capacity
+- Use Longhorn metrics in custom panels for volume health, replica status, and disk utilization
 
 ## Step 5: Configure Prometheus Alerting Rules
 
@@ -161,7 +150,6 @@ metadata:
   name: harvester-alerts
   namespace: cattle-monitoring-system
   labels:
-    app: kube-prometheus-stack
     release: rancher-monitoring
 spec:
   groups:
@@ -192,7 +180,12 @@ spec:
         # Alert when node disk is nearly full
         - alert: HarvesterNodeDiskFull
           expr: |
-            (1 - (node_filesystem_free_bytes{mountpoint="/"} / node_filesystem_size_bytes{mountpoint="/"})) > 0.85
+            max by (instance) (
+              1 - (
+                node_filesystem_free_bytes{mountpoint="/",fstype!=""} /
+                node_filesystem_size_bytes{mountpoint="/",fstype!=""}
+              )
+            ) > 0.85
           for: 5m
           labels:
             severity: warning
@@ -203,7 +196,7 @@ spec:
       rules:
         # Alert when a Longhorn volume is degraded
         - alert: LonghornVolumeDegraded
-          expr: longhorn_volume_robustness == 2
+          expr: longhorn_volume_robustness{state="degraded"} == 1
           for: 5m
           labels:
             severity: warning
@@ -212,7 +205,7 @@ spec:
 
         # Alert when a Longhorn volume is faulted
         - alert: LonghornVolumeFaulted
-          expr: longhorn_volume_robustness == 3
+          expr: longhorn_volume_robustness{state="faulted"} == 1
           for: 2m
           labels:
             severity: critical
@@ -245,16 +238,15 @@ spec:
 kubectl apply -f harvester-alert-rules.yaml
 
 # Verify the rules are loaded
-kubectl get prometheusrule -n cattle-monitoring-system
-kubectl get prometheusrule harvester-alerts -n cattle-monitoring-system -o yaml | \
-    grep -A 5 "status:"
+kubectl get prometheusrule -n cattle-monitoring-system harvester-alerts
+kubectl describe prometheusrule harvester-alerts -n cattle-monitoring-system
 ```
 
 ## Step 6: Configure Alertmanager for Notifications
 
 ```yaml
 # alertmanager-config.yaml
-# Configure Alertmanager to send alerts to Slack and PagerDuty
+# Update the Alertmanager configuration secret used by rancher-monitoring
 
 apiVersion: v1
 kind: Secret
@@ -276,12 +268,12 @@ stringData:
       receiver: 'default'
       routes:
         # Critical alerts go to PagerDuty
-        - match:
-            severity: critical
+        - matchers:
+            - severity="critical"
           receiver: pagerduty
         # Warnings go to Slack
-        - match:
-            severity: warning
+        - matchers:
+            - severity="warning"
           receiver: slack
 
     receivers:
@@ -314,15 +306,15 @@ kubectl apply -f alertmanager-config.yaml
 # Total VMs by state
 count by (phase) (kubevirt_vmi_info)
 
-# VM CPU usage per VM
-rate(kubevirt_vmi_cpu_usage_seconds_total[5m]) * 100
+# VM CPU usage per VM (cores)
+sum by (name, namespace) (rate(kubevirt_vmi_cpu_usage_seconds_total[5m]))
 
 # VM memory usage
-kubevirt_vmi_memory_used_bytes / kubevirt_vmi_memory_available_bytes * 100
+(1 - (kubevirt_vmi_memory_available_bytes / kubevirt_vmi_memory_domain_bytes)) * 100
 
 # Longhorn volume IOPS
-rate(longhorn_volume_read_iops[5m])
-rate(longhorn_volume_write_iops[5m])
+sum by (volume, pvc_namespace) (longhorn_volume_read_iops)
+sum by (volume, pvc_namespace) (longhorn_volume_write_iops)
 
 # Node disk I/O utilization
 rate(node_disk_io_time_seconds_total[5m]) * 100
