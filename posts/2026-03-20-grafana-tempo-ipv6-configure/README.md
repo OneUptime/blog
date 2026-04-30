@@ -10,15 +10,14 @@ Grafana Tempo is a distributed tracing backend. Configuring it for IPv6 allows t
 
 ## Step 1: Configure Tempo to Listen on IPv6
 
-Edit `tempo.yaml` to bind all listening ports to IPv6:
+Edit `tempo.yaml` to expose Tempo on IPv6-capable listen addresses:
 
 ```yaml
 # tempo.yaml - Tempo configuration with IPv6 listeners
 
 server:
-  # Listen on all interfaces (both IPv4 and IPv6)
-  # Use :: to bind all interfaces; [::] notation in the config
-  http_listen_address: ""      # Empty = all interfaces (both IPv4/IPv6)
+  # Empty listen addresses use Tempo's default all-interface bind
+  http_listen_address: ""
   http_listen_port: 3200
   grpc_listen_address: ""
   grpc_listen_port: 9095
@@ -29,7 +28,7 @@ distributor:
     otlp:
       protocols:
         grpc:
-          # Listen on all interfaces including IPv6
+          # Bind the OTLP receiver on the IPv6 wildcard address
           endpoint: "[::]:4317"
         http:
           endpoint: "[::]:4318"
@@ -56,27 +55,35 @@ compactor:
 
 ```bash
 # Start Tempo with the IPv6 configuration
-tempo -config.file=tempo.yaml
+tempo --config.file=tempo.yaml
 
 # Verify it's listening on IPv6
 ss -6 -tlnp | grep tempo
-# Expected: *:3200 (http), *:9095 (grpc), *:4317 (otlp-grpc)
+# Look for LISTEN entries on [::]:3200, [::]:9095, and [::]:4317
 ```
 
 ## Step 3: Configure OpenTelemetry Collector to Send to Tempo over IPv6
 
 ```yaml
 # otel-collector-config.yaml - Send traces to Tempo via IPv6
+receivers:
+  otlp:
+    protocols:
+      grpc:
+
+processors:
+  batch:
+
 exporters:
   otlp:
-    # Use IPv6 address for Tempo
-    endpoint: "[2001:db8::tempo]:4317"
+    # Use an IPv6 literal for Tempo's OTLP/gRPC endpoint
+    endpoint: "[2001:db8::1]:4317"
     tls:
       insecure: true    # For development; use proper TLS in production
 
-  # Or using the Tempo HTTP endpoint
+  # Or use Tempo's OTLP/HTTP endpoint and switch the pipeline exporter to [otlphttp]
   otlphttp:
-    endpoint: "http://[2001:db8::tempo]:4318"
+    endpoint: "http://[2001:db8::1]:4318"
 
 service:
   pipelines:
@@ -98,12 +105,12 @@ datasources:
   - name: Tempo
     type: tempo
     # Connect to Tempo via IPv6
-    url: "http://[2001:db8::tempo]:3200"
+    url: "http://[2001:db8::1]:3200"
     access: proxy
     isDefault: false
     jsonData:
       # Enable trace to logs correlation
-      tracesToLogs:
+      tracesToLogsV2:
         datasourceUid: "loki"
       # Enable service graph
       serviceMap:
@@ -112,17 +119,17 @@ datasources:
 
 ## Step 5: Query IPv6 Trace Data in Grafana
 
-In the Grafana Explore view with Tempo selected, use TraceQL to find traces from IPv6 services:
+In the Grafana Explore view with Tempo selected, use TraceQL to find traces that use IPv6 network attributes:
 
 ```text
-# Find traces from services running on IPv6 addresses
-{ .net.peer.ip =~ ".*:.*" }
+# Find traces recorded over IPv6
+{ span.network.type = "ipv6" }
 
-# Find slow IPv6 HTTP requests (>1s)
-{ .http.url =~ ".*\\[.*\\].*" && duration > 1s }
+# Find slow IPv6 requests (>1s)
+{ span.network.type = "ipv6" && span:duration > 1s }
 
-# Find traces with IPv6 source IPs
-{ .network.source.ip =~ "[0-9a-f:]+" && span.kind = server }
+# Find server spans where the client address is an IPv6 literal
+{ span.client.address =~ ".*:.*" && span:kind = server }
 ```
 
 ## Step 6: Kubernetes Deployment with IPv6
@@ -139,12 +146,15 @@ spec:
     matchLabels:
       app: tempo
   template:
+    metadata:
+      labels:
+        app: tempo
     spec:
       containers:
         - name: tempo
           image: grafana/tempo:latest
           args:
-            - -config.file=/etc/tempo/tempo.yaml
+            - --config.file=/etc/tempo/tempo.yaml
           ports:
             - name: http
               containerPort: 3200
@@ -158,12 +168,34 @@ spec:
 
 ```bash
 # Send a test trace to Tempo via IPv6
-curl -X POST "http://[2001:db8::tempo]:4318/v1/traces" \
+curl -X POST "http://[2001:db8::1]:4318/v1/traces" \
   -H "Content-Type: application/json" \
-  -d '{"resourceSpans": []}'
+  -d '{
+    "resourceSpans": [{
+      "resource": {
+        "attributes": [{
+          "key": "service.name",
+          "value": { "stringValue": "tempo-ipv6-demo" }
+        }]
+      },
+      "scopeSpans": [{
+        "scope": { "name": "curl-demo" },
+        "spans": [{
+          "traceId": "5B8EFFF798038103D269B633813FC60C",
+          "spanId": "EEE19B7EC3C1B174",
+          "name": "ipv6-test-span",
+          "startTimeUnixNano": "1544712660000000000",
+          "endTimeUnixNano": "1544712661000000000",
+          "kind": 2
+        }]
+      }]
+    }]
+  }'
 
-# Query for recent traces
-curl "http://[2001:db8::tempo]:3200/api/search?limit=5" | jq '.traces[].rootTraceName'
+# Query for the test trace
+curl -G "http://[2001:db8::1]:3200/api/search" \
+  --data-urlencode 'q={ span:name = "ipv6-test-span" }' \
+  --data-urlencode 'limit=5' | jq '.traces[].rootTraceName'
 ```
 
 Configuring Tempo to listen on IPv6 ensures that traces from IPv6-addressed services are collected without any special routing, providing full observability coverage for dual-stack and IPv6-only deployments.
