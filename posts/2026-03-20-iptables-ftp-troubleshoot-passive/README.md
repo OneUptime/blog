@@ -21,7 +21,7 @@ Client tries to connect to IP:PORT → FAILS
 Failure causes:
 1. Server advertises wrong IP (private instead of public)
 2. Data port not open in firewall
-3. nf_conntrack_ftp not loaded (firewall can't track the connection)
+3. FTP helper not loaded/attached when firewall or NAT relies on it
 4. NAT not forwarding data ports
 5. Port range exhausted
 ```
@@ -72,20 +72,16 @@ sudo ufw allow 30000:31000/tcp
 ## Step 3: Check nf_conntrack_ftp
 
 ```bash
-# The nf_conntrack_ftp module allows iptables to track FTP data ports
+# The FTP helper is only needed if your firewall/NAT relies on helper-assigned
+# RELATED connections for FTP data traffic
 lsmod | grep nf_conntrack_ftp
 
 # If not loaded:
 sudo modprobe nf_conntrack_ftp
-echo "nf_conntrack_ftp" | sudo tee -a /etc/modules
 
-# Check the kernel parameter that enables connection tracking helpers
+# Check whether automatic helper assignment is enabled
 cat /proc/sys/net/netfilter/nf_conntrack_helper
-# If 0, enable:
-sudo sysctl -w net.netfilter.nf_conntrack_helper=1
-echo "net.netfilter.nf_conntrack_helper=1" | sudo tee -a /etc/sysctl.conf
-
-# For kernel 4.18+, explicitly attach helper to port 21:
+# If 0 (the default on current kernels), attach the helper explicitly:
 sudo iptables -t raw -A PREROUTING -p tcp --dport 21 -j CT --helper ftp
 ```
 
@@ -96,16 +92,20 @@ sudo iptables -t raw -A PREROUTING -p tcp --dport 21 -j CT --helper ftp
 # NAT gateway must forward:
 # - Port 21 (command)
 # - Ports 30000-31000 (passive data)
+# - And allow those forwarded packets to reach the FTP server
 
 # Check iptables NAT rules on gateway:
 sudo iptables -t nat -L PREROUTING -n | grep -E "21|30000"
 
-# If missing:
+# If missing, add DNAT and FORWARD rules:
 FTP_SERVER=10.0.0.5
 sudo iptables -t nat -A PREROUTING -p tcp --dport 21 \
   -j DNAT --to-destination $FTP_SERVER:21
 sudo iptables -t nat -A PREROUTING -p tcp --dport 30000:31000 \
   -j DNAT --to-destination $FTP_SERVER
+sudo iptables -A FORWARD -m conntrack --ctstate ESTABLISHED,RELATED -j ACCEPT
+sudo iptables -A FORWARD -p tcp -d $FTP_SERVER --dport 21 -j ACCEPT
+sudo iptables -A FORWARD -p tcp -d $FTP_SERVER --dport 30000:31000 -j ACCEPT
 ```
 
 ## Step 5: Use Packet Capture for Confirmation
@@ -118,26 +118,27 @@ sudo tcpdump -i eth0 -n "host client.ip and (port 21 or portrange 30000-31000)"
 # - PASV response (server sends port to client)
 # - SYN from client to data port (should appear)
 # - SYN-ACK from server (confirms port is open)
-# - If no SYN seen: client using wrong IP
-# - If SYN but no SYN-ACK: firewall blocking
+# - If no SYN seen: client is using the wrong IP/port or traffic is not reaching the server
+# - If SYN but no SYN-ACK: firewall blocking or server not listening on that port
 ```
 
 ## Common Quick Fixes
 
 ```bash
 # All-in-one fix script:
-# 1. Load conntrack helper
+# 1. Load FTP helper if your firewall/NAT relies on it
 sudo modprobe nf_conntrack_ftp
 
-# 2. Enable conntrack helper
-sudo sysctl -w net.netfilter.nf_conntrack_helper=1
+# 2. On current kernels, attach the helper explicitly instead of enabling
+# global auto-assignment
+sudo iptables -t raw -A PREROUTING -p tcp --dport 21 -j CT --helper ftp
 
 # 3. Allow FTP and passive ports
 sudo iptables -A INPUT -p tcp --dport 21 -j ACCEPT
 sudo iptables -A INPUT -p tcp --dport 30000:31000 -j ACCEPT
 
-# 4. Allow established/related (handles data connections)
-sudo iptables -I INPUT 1 -m state --state ESTABLISHED,RELATED -j ACCEPT
+# 4. Allow established traffic and helper-marked RELATED traffic
+sudo iptables -I INPUT 1 -m conntrack --ctstate ESTABLISHED,RELATED -j ACCEPT
 
 # 5. Restart FTP server
 sudo systemctl restart vsftpd   # or proftpd
@@ -145,4 +146,4 @@ sudo systemctl restart vsftpd   # or proftpd
 
 ## Conclusion
 
-FTP passive mode failures almost always come from one of four causes: wrong `pasv_address` advertising a private IP, firewall blocking the passive port range, `nf_conntrack_ftp` not loaded, or NAT not forwarding data ports. Test systematically: check PASV response IP, verify port range is open, confirm conntrack module is loaded, and use tcpdump to observe the actual data connection attempt.
+FTP passive mode failures almost always come from one of four causes: wrong `pasv_address` advertising the wrong IPv4 address, firewall blocking the passive port range, NAT not forwarding the passive ports, or missing FTP helper attachment when the firewall/NAT relies on it. Test systematically: check the PASV response IP, verify the passive range is open, confirm whether you actually need the FTP helper, and use tcpdump to observe the data connection attempt.
