@@ -8,7 +8,7 @@ Description: A comprehensive guide to planning IPv6 address allocation for ISPs,
 
 ## ISP IPv6 Allocation Overview
 
-ISPs receive large IPv6 blocks from Regional Internet Registries (RIRs) and delegate smaller prefixes to customers. The standard allocation for ISPs is a /32, which provides enormous address space for customer delegation.
+ISPs receive large IPv6 blocks from Regional Internet Registries (RIRs) and delegate smaller prefixes to customers. Many ISPs begin with a /32, although the exact initial allocation varies by RIR policy and documented need.
 
 ## Typical ISP Allocation Structure
 
@@ -24,9 +24,9 @@ Reserved/Growth:    2001:db8:f000::/40
 
 ## Customer Prefix Delegation Standards
 
-Follow RFC 6177 recommendations for customer prefix sizes:
+RFC 6177 recommends giving end sites at least a /64 and, in most cases, significantly more. In practice, many ISPs use plans like:
 
-| Customer Type | Recommended Prefix | Subnets Available |
+| Customer Type | Common Prefix | Subnets Available |
 |--------------|-------------------|-------------------|
 | Home/SOHO     | /56 or /60        | 256 or 16         |
 | Small Business | /48              | 65,536            |
@@ -37,13 +37,12 @@ Follow RFC 6177 recommendations for customer prefix sizes:
 
 Assign home prefixes dynamically using DHCPv6 Prefix Delegation:
 
-```text
-# ISC Kea DHCPv6 configuration for residential PD
-
+```json
 {
   "Dhcp6": {
     "subnet6": [
       {
+        "id": 1,
         "subnet": "2001:db8:0100::/40",
         "pd-pools": [
           {
@@ -60,15 +59,14 @@ Assign home prefixes dynamically using DHCPv6 Prefix Delegation:
 
 ## BGP Route Aggregation
 
-Never advertise individual customer /56s or /48s to the internet. Aggregate at the ISP level:
+In a typical provider-aggregatable design, do not advertise individual customer /56s or /48s to the internet. Aggregate at the ISP level:
 
-```nginx
-# Only advertise the ISP's summary blocks to upstream peers
+```frr
+# Only advertise the ISP aggregate to upstream peers
 router bgp 65001
- address-family ipv6
+ address-family ipv6 unicast
   network 2001:db8::/32
-  ! Suppress more-specific customer routes from being advertised externally
-  aggregate-address 2001:db8::/32 summary-only
+ exit-address-family
 ```
 
 ## Tracking Customer Allocations
@@ -82,10 +80,15 @@ import pynetbox
 nb = pynetbox.api("http://netbox.isp.example.com", token="your-token")
 
 # Get all /48 prefixes assigned to business customers
-prefixes = nb.ipam.prefixes.filter(prefix_length=48, status="active", role="customer")
+prefixes = nb.ipam.prefixes.filter(status="active")
 
 for prefix in prefixes:
-    print(f"{prefix.prefix} -> {prefix.description}")
+    if (
+        getattr(prefix.family, "value", None) == 6
+        and getattr(prefix.role, "slug", None) == "customer"
+        and str(prefix.prefix).endswith("/48")
+    ):
+        print(f"{prefix.prefix} -> {prefix.description}")
 ```
 
 ## Reserve Space for Infrastructure
@@ -99,8 +102,8 @@ P2P link:        2001:db8:0000:1000::{pair-id}/127
 
 ## Multihoming Considerations
 
-If the ISP is multihomed (multiple upstream providers), ensure the full /32 is advertised to all upstreams. Customers should not need to get PI space if they can receive a portable /48 from the ISP.
+If the ISP is multihomed (multiple upstream providers), ensure the ISP aggregate(s) are advertised to all upstreams. Customers that need a prefix portable across providers generally need PI space rather than an allocation from the ISP's provider-assigned (PA) block.
 
 ## Conclusion
 
-ISP IPv6 address planning requires a hierarchical structure, clear delegation policies, and strict route aggregation. Following RIR recommendations for customer prefix sizes and maintaining an IPAM system ensures long-term scalability and clean routing table hygiene.
+ISP IPv6 address planning requires a hierarchical structure, clear delegation policies, and strict route aggregation. Following RIR policy for allocations, using clear customer prefix policies, and maintaining an IPAM system ensures long-term scalability and clean routing table hygiene.
