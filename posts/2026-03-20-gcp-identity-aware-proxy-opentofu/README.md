@@ -10,37 +10,37 @@ Description: Learn how to configure GCP Identity-Aware Proxy (IAP) with OpenTofu
 
 GCP Identity-Aware Proxy (IAP) controls access to your applications and VMs based on identity and context rather than network perimeter. It acts as a BeyondCorp access layer, allowing secure access to internal apps without a VPN.
 
-## Step 1: Enable IAP for App Engine or Cloud Run
+## Step 1: Enable the IAP API
 
 ```hcl
 # main.tf - Enable IAP API
 
 resource "google_project_service" "iap" {
+  project = var.project_id
   service = "iap.googleapis.com"
 }
 ```
 
-## Step 2: Configure IAP Brand (OAuth Consent Screen)
+## Step 2: Use the Google-managed OAuth client or a pre-created custom client
 
-```hcl
-# IAP brand for OAuth consent screen
-resource "google_iap_brand" "project_brand" {
-  support_email     = "support@example.com"
-  application_title = "Internal Engineering Tools"
-  project           = var.project_id
-}
-
-# IAP OAuth client
-resource "google_iap_client" "project_client" {
-  display_name = "Internal Tools IAP Client"
-  brand        = google_iap_brand.project_brand.name
-}
-```
+For new IAP-enabled resources, Google can use a Google-managed OAuth client automatically. If you need custom branding or external-user access, create a custom OAuth client in the Google Cloud console and attach it through the resource's native API. The `google_iap_brand` and `google_iap_client` OpenTofu resources rely on the deprecated IAP OAuth Admin API and should not be used for new setups.
 
 ## Step 3: Secure a Web App Backend Service
 
 ```hcl
-# Enable IAP on a backend service (App Engine, Cloud Run, or Load Balancer backend)
+# Enable IAP on an HTTP(S) load balancer backend service
+resource "google_compute_backend_service" "app_backend" {
+  project               = var.project_id
+  name                  = "internal-tools-backend"
+  protocol              = "HTTP"
+  load_balancing_scheme = "EXTERNAL"
+
+  iap {
+    enabled = true
+  }
+}
+
+# Grant access to the IAP-protected backend service
 resource "google_iap_web_backend_service_iam_binding" "app_iap" {
   project             = var.project_id
   web_backend_service = google_compute_backend_service.app_backend.name
@@ -55,11 +55,13 @@ resource "google_iap_web_backend_service_iam_binding" "app_iap" {
 }
 ```
 
-## Step 4: Secure a GCE Backend Service
+If the backend is Cloud Run behind a load balancer, disable the default `run.app` URL or restrict ingress so traffic cannot bypass IAP.
+
+## Step 4: Secure Compute Engine-backed web apps
 
 ```hcl
-# IAP for Compute Engine instances behind a load balancer
-resource "google_iap_web_iam_member" "gce_iap" {
+# Project-level IAP policy for Compute Engine-backed web apps
+resource "google_iap_web_type_compute_iam_member" "gce_iap" {
   project = var.project_id
   role    = "roles/iap.httpsResourceAccessor"
   member  = "group:developers@example.com"
@@ -79,10 +81,12 @@ resource "google_iap_tunnel_instance_iam_member" "vm_tunnel_access" {
 }
 ```
 
-## Step 6: App Engine IAP
+You also need a firewall rule that allows ingress from `35.235.240.0/20` to the ports you want to reach, such as `22` for SSH or `3389` for RDP.
+
+## Step 6: Grant App Engine IAP access
 
 ```hcl
-# Enable IAP on App Engine
+# Grant access to an App Engine app protected by IAP
 resource "google_iap_web_type_app_engine_iam_binding" "app_engine_iap" {
   project = var.project_id
   app_id  = google_app_engine_application.app.app_id
@@ -96,4 +100,4 @@ resource "google_iap_web_type_app_engine_iam_binding" "app_engine_iap" {
 
 ## Summary
 
-GCP Identity-Aware Proxy with OpenTofu replaces VPN-based access with identity-aware, context-sensitive security. By granting IAP roles to users and groups, you control who can access applications and VMs based on Google identity. IAP tunnel access enables SSH/RDP to private VMs without external IPs, fulfilling zero-trust remote access requirements.
+GCP Identity-Aware Proxy with OpenTofu helps replace VPN-based access with identity-aware, context-sensitive security. By enabling IAP on supported backends and granting IAP roles to users and groups, you control who can access applications and VMs based on Google identity. IAP tunnel access enables SSH/RDP to private VMs without external IPs when combined with the required firewall rules, fulfilling zero-trust remote access requirements.
