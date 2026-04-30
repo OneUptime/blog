@@ -4,7 +4,7 @@ Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
 Tags: gRPC, IPv4, Python, Go, Client, Networking
 
-Description: Learn how to configure a gRPC client to connect to a server at a specific IPv4 address in Python and Go, including channel options, TLS, timeouts, retry policies, and connection management.
+Description: Learn how to configure a gRPC client to connect to a server at a specific IPv4 address in Python and Go, including channel options, TLS, deadlines, and keepalive settings.
 
 ## Python: Basic gRPC Client
 
@@ -39,6 +39,7 @@ channel = grpc.insecure_channel(
         ("grpc.keepalive_time_ms",          30_000),
         ("grpc.keepalive_timeout_ms",       10_000),
         ("grpc.keepalive_permit_without_calls", True),
+        ("grpc.http2.max_pings_without_data", 0),
     ],
 )
 ```
@@ -51,16 +52,12 @@ import grpc
 def create_secure_channel(address: str) -> grpc.Channel:
     with open("ca.crt", "rb") as f:
         trusted_certs = f.read()
-    with open("client.key", "rb") as f:
-        client_key = f.read()
-    with open("client.crt", "rb") as f:
-        client_cert = f.read()
 
     credentials = grpc.ssl_channel_credentials(
         root_certificates=trusted_certs,
-        private_key=client_key,
-        certificate_chain=client_cert,
     )
+    # If the server requires mutual TLS, also pass private_key=... and certificate_chain=....
+    # When connecting by IPv4 address, the server certificate must include that IP in subjectAltName.
     return grpc.secure_channel(address, credentials)
 ```
 
@@ -106,13 +103,14 @@ import (
 func main() {
     addr := "192.168.1.10:50051"
 
-    // grpc.Dial is deprecated in newer versions - use grpc.NewClient
+    // grpc.Dial is deprecated in newer versions; grpc.NewClient creates the ClientConn
+    // and the first RPC will trigger connection establishment.
     conn, err := grpc.NewClient(
         addr,
         grpc.WithTransportCredentials(insecure.NewCredentials()),
     )
     if err != nil {
-        log.Fatalf("connect: %v", err)
+        log.Fatalf("create client: %v", err)
     }
     defer conn.Close()
 
@@ -131,4 +129,4 @@ func main() {
 
 ## Conclusion
 
-Pass the server address as `"host:port"` to `grpc.insecure_channel` (Python) or `grpc.NewClient` (Go). Use environment variables for the server address to avoid hard-coding IPs. Set `timeout` per-call (Python) or use `context.WithTimeout` (Go) to enforce deadlines. Enable keepalive options for long-lived connections to detect broken links quickly. For production, use TLS credentials (`ssl_channel_credentials` / `credentials.NewTLS`) instead of insecure channels.
+Pass the server address as `"host:port"` to `grpc.insecure_channel` (Python) or `grpc.NewClient` (Go). In gRPC-Go, `grpc.NewClient` creates the `ClientConn`; the first RPC triggers connection establishment. Use environment variables for the server address to avoid hard-coding IPs. Set `timeout` per-call (Python) or use `context.WithTimeout` (Go) to enforce deadlines. Enable keepalive options for long-lived connections, but keep the client and server keepalive settings aligned. For production, use TLS credentials (`ssl_channel_credentials` in Python or `grpc.WithTransportCredentials(credentials.NewTLS(...))` in Go) instead of insecure channels, and ensure the certificate is valid for the IPv4 address if you connect by IP.
