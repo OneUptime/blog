@@ -14,9 +14,9 @@ A well-designed data center IPv4 addressing plan enables route summarization, si
 
 | Block | Size | Best For |
 |-------|------|----------|
-| 10.0.0.0/8 | 16M hosts | Large enterprise / multi-DC |
-| 172.16.0.0/12 | 1M hosts | Medium DC or single site |
-| 192.168.0.0/16 | 65K hosts | Small DC / lab |
+| 10.0.0.0/8 | 16,777,216 addresses | Large enterprise / multi-DC |
+| 172.16.0.0/12 | 1,048,576 addresses | Medium DC or single site |
+| 192.168.0.0/16 | 65,536 addresses | Small DC / lab |
 
 ## Sample Data Center Addressing Plan (10.x.x.x)
 
@@ -39,14 +39,14 @@ A well-designed data center IPv4 addressing plan enables route summarization, si
 ## Subnet Sizing Guidelines
 
 ```text
-/30  (4 hosts, 2 usable)   - Point-to-point links
-/29  (8 hosts, 6 usable)   - Small management segments
-/28  (16 hosts, 14 usable) - Server clusters
-/27  (32 hosts, 30 usable) - Rack groups
-/26  (64 hosts, 62 usable) - Pod or row
-/24  (256 hosts)            - Standard VLAN
-/23  (512 hosts)            - Large VLAN
-/22  (1024 hosts)           - Compute zone
+/30  (4 addresses, 2 usable)     - Point-to-point links
+/29  (8 addresses, 6 usable)     - Small management segments
+/28  (16 addresses, 14 usable)   - Server clusters
+/27  (32 addresses, 30 usable)   - Rack groups
+/26  (64 addresses, 62 usable)   - Pod or row
+/24  (256 addresses, 254 usable) - Standard VLAN
+/23  (512 addresses, 510 usable) - Large VLAN
+/22  (1024 addresses, 1022 usable) - Compute zone
 ```
 
 ## Python Subnet Calculator
@@ -54,13 +54,20 @@ A well-designed data center IPv4 addressing plan enables route summarization, si
 ```python
 import ipaddress
 
+def usable_hosts(network: ipaddress.IPv4Network) -> int:
+    if network.prefixlen == 32:
+        return 1
+    if network.prefixlen == 31:
+        return 2
+    return max(network.num_addresses - 2, 0)
+
 def plan_subnets(base: str, prefix: int, count: int):
     network = ipaddress.IPv4Network(f"{base}/{prefix}")
     subnets = list(network.subnets(new_prefix=prefix + 4))[:count]
     for i, sn in enumerate(subnets):
         print(f"  Subnet {i+1}: {sn}  "
               f"({sn.network_address} – {sn.broadcast_address}, "
-              f"{sn.num_addresses - 2} usable)")
+              f"{usable_hosts(sn)} usable)")
 
 # Divide 10.10.0.0/16 into /20 blocks
 
