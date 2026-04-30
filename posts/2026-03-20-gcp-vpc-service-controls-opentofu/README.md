@@ -8,7 +8,7 @@ Description: Learn how to configure GCP VPC Service Controls with OpenTofu to cr
 
 ## Overview
 
-VPC Service Controls create security perimeters around GCP projects and services, preventing data exfiltration even if credentials are compromised. Resources inside the perimeter can communicate with each other but not with resources outside, unless explicitly allowed.
+VPC Service Controls create security perimeters around GCP resources and supported services, helping prevent data exfiltration even if credentials are compromised. Resources inside the perimeter can access restricted Google Cloud services within the perimeter, but access across the perimeter is blocked unless explicitly allowed.
 
 ## Step 1: Create an Access Policy
 
@@ -75,18 +75,21 @@ resource "google_access_context_manager_service_perimeter" "data_perimeter" {
       "pubsub.googleapis.com",
     ]
 
-    # Access levels that can cross the perimeter
+    # Access levels that allow access to resources in the perimeter from outside
     access_levels = [
       google_access_context_manager_access_level.corporate_access.name,
     ]
 
-    # Ingress rules - allow specific external identities to access perimeter
+    # Ingress rules - allow a specific external service account to access the perimeter
     ingress_policies {
       ingress_from {
-        identity_type = "SERVICE_ACCOUNT"
         identities    = [
-          "serviceAccount:${google_service_account.data_sa.email}",
+          "serviceAccount:${var.data_service_account_email}",
         ]
+
+        sources {
+          access_level = "*"
+        }
       }
 
       ingress_to {
@@ -94,18 +97,18 @@ resource "google_access_context_manager_service_perimeter" "data_perimeter" {
         operations {
           service_name = "bigquery.googleapis.com"
           method_selectors {
-            method = "google.cloud.bigquery.v2.TableService.ListTables"
+            method = "TableService.ListTables"
           }
         }
       }
     }
   }
 
-  # Use dry_run to test before enforcement
+  # To test before enforcement, define a spec block and set use_explicit_dry_run_spec = true.
   # lifecycle { prevent_destroy = true }
 }
 ```
 
 ## Summary
 
-GCP VPC Service Controls with OpenTofu create an additional layer of security beyond IAM by restricting API access to specific networks, identities, and device states. Perimeters prevent data exfiltration even with stolen credentials, making them essential for compliance-sensitive environments handling PII or regulated data.
+GCP VPC Service Controls with OpenTofu create an additional layer of security beyond IAM by restricting access to supported Google Cloud service APIs based on networks, identities, and device states. Perimeters help prevent data exfiltration even with stolen credentials, making them essential for compliance-sensitive environments handling PII or regulated data.
