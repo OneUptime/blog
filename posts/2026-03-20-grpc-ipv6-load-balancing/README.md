@@ -19,7 +19,7 @@ gRPC uses long-lived HTTP/2 connections. Standard TCP load balancers route at co
 // Go: client-side round-robin load balancing
 import (
     "google.golang.org/grpc"
-    "google.golang.org/grpc/balancer/roundrobin"
+    "google.golang.org/grpc/credentials/insecure"
     _ "google.golang.org/grpc/balancer/roundrobin"
 )
 
@@ -27,7 +27,7 @@ import (
 conn, err := grpc.NewClient(
     // DNS scheme resolves multiple IPv6 AAAA records
     "dns:///grpc-service.example.com:50051",
-    grpc.WithDefaultServiceConfig(`{"loadBalancingPolicy":"round_robin"}`),
+    grpc.WithDefaultServiceConfig(`{"loadBalancingConfig":[{"round_robin":{}}]}`),
     grpc.WithTransportCredentials(insecure.NewCredentials()),
 )
 ```
@@ -40,9 +40,7 @@ import grpc
 channel = grpc.insecure_channel(
     "dns:///grpc-service.example.com:50051",
     options=[
-        ("grpc.lb_policy_name", "round_robin"),
-        # Force IPv6 resolution
-        ("grpc.enable_http_proxy", 0),
+        ("grpc.service_config", '{"loadBalancingConfig":[{"round_robin":{}}]}'),
     ]
 )
 ```
@@ -50,19 +48,14 @@ channel = grpc.insecure_channel(
 ## Option 2: Kubernetes Headless Service for IPv6 gRPC
 
 ```yaml
-# headless-service.yaml - returns all pod IPv6 addresses from DNS
+# headless-service.yaml - DNS returns pod AAAA records directly for IPv6-backed pods
 apiVersion: v1
 kind: Service
 metadata:
   name: grpc-service
 spec:
-  # Headless service - no cluster IP, DNS returns all pod IPs
+  # Headless service - no cluster IP, DNS returns pod IPs directly
   clusterIP: None
-  # Enable IPv6 dual-stack
-  ipFamilies:
-    - IPv6
-    - IPv4
-  ipFamilyPolicy: PreferDualStack
   selector:
     app: grpc-server
   ports:
@@ -74,7 +67,7 @@ spec:
 // Connect to Kubernetes headless service - round-robin across IPv6 pods
 conn, err := grpc.NewClient(
     "dns:///grpc-service.default.svc.cluster.local:50051",
-    grpc.WithDefaultServiceConfig(`{"loadBalancingPolicy":"round_robin"}`),
+    grpc.WithDefaultServiceConfig(`{"loadBalancingConfig":[{"round_robin":{}}]}`),
     grpc.WithTransportCredentials(insecure.NewCredentials()),
 )
 ```
@@ -114,7 +107,11 @@ static_resources:
   clusters:
     - name: grpc_backends
       type: STATIC
-      http2_protocol_options: {}  # gRPC requires HTTP/2
+      typed_extension_protocol_options:
+        envoy.extensions.upstreams.http.v3.HttpProtocolOptions:
+          "@type": type.googleapis.com/envoy.extensions.upstreams.http.v3.HttpProtocolOptions
+          explicit_http_config:
+            http2_protocol_options: {}  # gRPC requires HTTP/2 upstream
       load_assignment:
         cluster_name: grpc_backends
         endpoints:
@@ -122,12 +119,12 @@ static_resources:
               - endpoint:
                   address:
                     socket_address:
-                      address: "2001:db8:backend::1"
+                      address: "2001:db8::101"
                       port_value: 50051
               - endpoint:
                   address:
                     socket_address:
-                      address: "2001:db8:backend::2"
+                      address: "2001:db8::102"
                       port_value: 50051
 ```
 
@@ -135,14 +132,15 @@ static_resources:
 
 ```nginx
 upstream grpc_backends {
-    server [2001:db8:backend::1]:50051;
-    server [2001:db8:backend::2]:50051;
-    server [2001:db8:backend::3]:50051;
+    server [2001:db8::101]:50051;
+    server [2001:db8::102]:50051;
+    server [2001:db8::103]:50051;
     keepalive 32;
 }
 
 server {
-    listen [::]:50051 http2;
+    listen [::]:50051;
+    http2 on;
 
     location / {
         grpc_pass grpc://grpc_backends;
@@ -157,9 +155,10 @@ server {
 ```bash
 # Check gRPC connection distribution across backends
 # Using grpcurl to test each backend directly
-for backend in 2001:db8:backend::1 2001:db8:backend::2 2001:db8:backend::3; do
+# Requires server reflection or local proto/protoset files
+for backend in 2001:db8::101 2001:db8::102 2001:db8::103; do
     echo "Testing $backend:"
-    grpcurl -plaintext "[$backend]:50051" grpc.health.v1.Health/Check
+    grpcurl -plaintext -d '{}' "[$backend]:50051" grpc.health.v1.Health/Check
 done
 ```
 
