@@ -12,13 +12,13 @@ The Internet Group Management Protocol (IGMP) allows hosts to signal routers abo
 
 ## IGMP v1 (RFC 1112)
 
-IGMPv1 is the baseline. Hosts send **Membership Reports** to join a group. There is no explicit leave mechanism - the router must wait for the **Membership Report Timer** to expire before pruning the group.
+IGMPv1 is the baseline. Hosts send **Membership Reports** to join a group. There is no explicit leave mechanism - the router must wait for membership state to age out after queries go unanswered before pruning the group.
 
 Key characteristics:
 - No Leave message (silent departure)
 - Query-Response model: router sends General Query, hosts respond
 - Host report suppression: if one host reports first, others stay silent
-- Query interval: 60 seconds by default
+- Queries are normally sent no more than once a minute
 
 ## IGMP v2 (RFC 2236)
 
@@ -39,14 +39,14 @@ Router → Group:  Group-Specific Query  (dst 239.1.2.3)
 Router:          Prunes group from interface
 ```
 
-## IGMP v3 (RFC 3376)
+## IGMP v3 (RFC 9776; obsoletes RFC 3376)
 
 IGMPv3 is the current standard, adding **source filtering** - the foundation for Source-Specific Multicast (SSM).
 
 Key improvements over v2:
 - Hosts specify **INCLUDE** or **EXCLUDE** source lists in reports
 - Reports sent to 224.0.0.22 (IGMPv3-capable routers)
-- Supports SSM (`232.0.0.0/8` range by convention)
+- Supports SSM (`232.0.0.0/8` in IPv4)
 - Eliminates report suppression (all hosts send individual reports)
 
 Example IGMPv3 Group Record types:
@@ -55,10 +55,10 @@ Example IGMPv3 Group Record types:
 |---|---|
 | MODE_IS_INCLUDE | Accept traffic only from listed sources |
 | MODE_IS_EXCLUDE | Accept from all except listed sources |
-| CHANGE_TO_INCLUDE | Leave or filter change |
-| CHANGE_TO_EXCLUDE | Join or filter change |
-| ALLOW_NEW_SOURCES | Add sources to include list |
-| BLOCK_OLD_SOURCES | Remove sources from include list |
+| CHANGE_TO_INCLUDE_MODE | Filter mode changed to INCLUDE |
+| CHANGE_TO_EXCLUDE_MODE | Filter mode changed to EXCLUDE |
+| ALLOW_NEW_SOURCES | Add newly desired sources |
+| BLOCK_OLD_SOURCES | Stop receiving listed sources |
 
 ## Version Comparison Table
 
@@ -69,7 +69,7 @@ Example IGMPv3 Group Record types:
 | SSM Support | No | No | Yes |
 | Querier Election | No | Yes | Yes |
 | Report Suppression | Yes | Yes | No |
-| RFC | 1112 | 2236 | 3376 |
+| RFC | 1112 | 2236 | 9776 |
 
 ## Detecting the Active IGMP Version
 
@@ -81,16 +81,19 @@ Capture IGMP traffic and inspect message types:
 sudo tcpdump -i eth0 -n -vv "ip proto 2"
 ```
 
-In tcpdump output:
+Typical tcpdump labels include:
 - `igmp v1 report` - IGMPv1
 - `igmp v2 report` / `igmp leave` - IGMPv2
 - `igmp v3 report` - IGMPv3
 
-Check the configured version on a Linux host:
+Check IGMP state on a Linux host:
 
 ```bash
-# Read IGMP version for a specific interface (eth0)
+# Show per-interface IGMP state
 cat /proc/net/igmp
+
+# Read whether eth0 is forcing a specific IGMP version (0 = automatic)
+cat /proc/sys/net/ipv4/conf/eth0/force_igmp_version
 
 # Or use ip maddr to see joined groups
 ip maddr show dev eth0
@@ -102,10 +105,10 @@ ip maddr show dev eth0
 # Force IGMPv2 on eth0 (useful for compatibility with older routers)
 echo 2 | sudo tee /proc/sys/net/ipv4/conf/eth0/force_igmp_version
 
-# Revert to automatic version negotiation
+# Revert to automatic compatibility mode
 echo 0 | sudo tee /proc/sys/net/ipv4/conf/eth0/force_igmp_version
 ```
 
 ## Conclusion
 
-IGMPv3 is the preferred version for modern networks because it enables source-specific multicast and eliminates the latency of implicit membership timeouts. Use IGMPv2 when legacy routers are present, and avoid IGMPv1 in all new deployments.
+IGMPv3 is the preferred version for modern networks because it enables source-specific multicast while retaining low leave latency. Use IGMPv2 when legacy routers are present, and avoid IGMPv1 in all new deployments.
