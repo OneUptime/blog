@@ -8,7 +8,7 @@ Description: Learn how to save and restore ip6tables rules across reboots using 
 
 ## Overview
 
-ip6tables rules are in-memory only - they are lost on reboot unless explicitly saved. This guide covers all methods for making IPv6 firewall rules persistent: iptables-persistent, systemd service files, cloud-init, and manual approaches. Always save rules after testing to prevent accidentally losing your firewall configuration.
+ip6tables rules are in-memory only - they are lost on reboot unless explicitly saved. This guide covers common methods for making IPv6 firewall rules persistent: iptables-persistent, systemd service files, and manual approaches. Always save rules after testing to prevent accidentally losing your firewall configuration.
 
 ## Method 1: iptables-persistent (Debian/Ubuntu)
 
@@ -21,14 +21,14 @@ sudo apt install iptables-persistent
 # For IPv6, it uses /etc/iptables/rules.v6
 
 # Save current rules manually
-ip6tables-save > /etc/iptables/rules.v6
-iptables-save > /etc/iptables/rules.v4
+sudo ip6tables-save -f /etc/iptables/rules.v6
+sudo iptables-save -f /etc/iptables/rules.v4
 
 # Restore manually (also runs at boot)
-ip6tables-restore < /etc/iptables/rules.v6
+sudo ip6tables-restore /etc/iptables/rules.v6
 
 # Restart the service to reload
-systemctl restart netfilter-persistent
+sudo systemctl restart netfilter-persistent
 
 # Verify service is enabled
 systemctl is-enabled netfilter-persistent
@@ -60,36 +60,40 @@ COMMIT
 ## Method 2: RHEL/CentOS/Fedora
 
 ```bash
+# If firewalld is active, disable it first
+sudo systemctl disable --now firewalld
+
 # Install iptables-services
-dnf install iptables-services
+sudo dnf install iptables-services
 
 # Enable and start the service
-systemctl enable --now iptables
-systemctl enable --now ip6tables
+sudo systemctl enable --now iptables
+sudo systemctl enable --now ip6tables
 
 # Configure rules
-ip6tables -A INPUT -p tcp --dport 22 -j ACCEPT
+sudo ip6tables -A INPUT -p tcp --dport 22 -j ACCEPT
 # ... add your rules ...
 
 # Save rules
-service ip6tables save
+sudo service ip6tables save
 # Saves to: /etc/sysconfig/ip6tables
 
 # Verify
-cat /etc/sysconfig/ip6tables
+sudo cat /etc/sysconfig/ip6tables
 ```
 
 ## Method 3: Systemd Service (Distribution-Agnostic)
 
 ```bash
 # Create the rules file
-ip6tables-save > /etc/ip6tables.rules
+sudo ip6tables-save -f /etc/ip6tables.rules
 
 # Create systemd service
-cat > /etc/systemd/system/ip6tables-restore.service << 'EOF'
+sudo tee /etc/systemd/system/ip6tables-restore.service > /dev/null << 'EOF'
 [Unit]
 Description=Restore ip6tables rules
-Before=network.target
+Wants=network-pre.target
+Before=network-pre.target
 After=local-fs.target
 
 [Service]
@@ -102,19 +106,19 @@ RemainAfterExit=yes
 WantedBy=multi-user.target
 EOF
 
-systemctl daemon-reload
-systemctl enable --now ip6tables-restore
+sudo systemctl daemon-reload
+sudo systemctl enable --now ip6tables-restore
 ```
 
 ## Method 4: if-pre-up.d / if-up.d (Debian Legacy)
 
 ```bash
 # Run on network interface up
-cat > /etc/network/if-pre-up.d/ip6tables << 'EOF'
+sudo tee /etc/network/if-pre-up.d/ip6tables > /dev/null << 'EOF'
 #!/bin/sh
-ip6tables-restore < /etc/iptables/rules.v6
+ip6tables-restore /etc/iptables/rules.v6
 EOF
-chmod +x /etc/network/if-pre-up.d/ip6tables
+sudo chmod +x /etc/network/if-pre-up.d/ip6tables
 ```
 
 ## Safe Save Workflow
@@ -133,16 +137,18 @@ if [ -f "$RULES_FILE" ]; then
 fi
 
 # Save current in-memory rules
-ip6tables-save > "$RULES_FILE"
+ip6tables-save -f "$RULES_FILE"
 echo "Rules saved to $RULES_FILE"
 
 # Verify the saved file can be restored
-ip6tables-restore --test < "$RULES_FILE"
-if [ $? -eq 0 ]; then
+if ip6tables-restore --test "$RULES_FILE"; then
     echo "Rules verified: file is syntactically valid"
 else
-    echo "ERROR: Rules file is invalid - restoring backup"
-    cp "$BACKUP_FILE" "$RULES_FILE"
+    echo "ERROR: Rules file is invalid"
+    if [ -f "$BACKUP_FILE" ]; then
+        echo "Restoring backup"
+        cp "$BACKUP_FILE" "$RULES_FILE"
+    fi
     exit 1
 fi
 ```
@@ -151,10 +157,10 @@ fi
 
 ```bash
 # Save only the filter table
-ip6tables-save -t filter > /etc/ip6tables-filter.rules
+sudo ip6tables-save -t filter -f /etc/ip6tables-filter.rules
 
 # Restore only filter table
-ip6tables-restore -T filter < /etc/ip6tables-filter.rules
+sudo ip6tables-restore -T filter /etc/ip6tables-filter.rules
 ```
 
 ## Verify Persistence After Reboot
@@ -162,7 +168,7 @@ ip6tables-restore -T filter < /etc/ip6tables-filter.rules
 ```bash
 # Test rule persistence (WARNING: causes brief network interruption on VMs)
 # 1. Save rules
-ip6tables-save > /etc/iptables/rules.v6
+sudo ip6tables-save -f /etc/iptables/rules.v6
 
 # 2. Verify service is enabled
 systemctl is-enabled netfilter-persistent
@@ -171,10 +177,10 @@ systemctl is-enabled netfilter-persistent
 sudo reboot
 
 # 4. After reboot, verify rules are loaded
-ip6tables -L -n -v
+sudo ip6tables -L -n -v
 # Should show your rules, not empty chains
 ```
 
 ## Summary
 
-ip6tables rules are in-memory and require explicit saving. On Debian/Ubuntu, use `iptables-persistent` with `ip6tables-save > /etc/iptables/rules.v6` - rules reload at boot via `netfilter-persistent.service`. On RHEL/CentOS, use `ip6tables-services` with `service ip6tables save`. For portability, create a systemd unit running `ip6tables-restore` on startup. Always test rules with `ip6tables-restore --test < file` before applying. Maintain backups when updating rules, and use `--test` to validate syntax without applying changes.
+ip6tables rules are in-memory and require explicit saving. On Debian/Ubuntu, use `iptables-persistent` with `sudo ip6tables-save -f /etc/iptables/rules.v6` - rules reload at boot via `netfilter-persistent.service`. On RHEL/CentOS, use `iptables-services` with `sudo service ip6tables save`. For portability, create a systemd unit running `ip6tables-restore` before network interfaces are configured. Always test rules with `ip6tables-restore --test file` before applying. Maintain backups when updating rules, and use `--test` to validate syntax without applying changes.
