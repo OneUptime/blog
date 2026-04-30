@@ -13,31 +13,32 @@ MAC address collisions in Docker occur when two containers or network interfaces
 ## When MAC Collisions Occur
 
 - Manually setting `mac_address` in Compose without ensuring uniqueness
-- Cloning a VM or container that has a Docker macvlan interface
-- Docker's random MAC generation produces a collision (rare but possible)
+- Cloning a VM or host and redeploying the same macvlan or static network settings on the same Layer-2 network
 
 ## Diagnosing a Collision
 
 ```bash
 # Check if a stack failed with MAC-related errors
 
+# Replace "portainer" if your Portainer container uses a different name
 docker logs portainer 2>&1 | grep -i "mac\|duplicate\|collision"
 
 # Or check Docker events
 docker events --filter type=network --since 5m
 
 # Check MAC addresses currently in use on a network
-docker network inspect bridge | python3 -c "
+# Replace macvlan_net with the network name used by your stack
+docker network inspect macvlan_net | python3 -c "
 import json, sys
 data = json.load(sys.stdin)
 for net in data:
-    for cid, info in net['Containers'].items():
+    for cid, info in (net.get('Containers') or {}).items():
         print(f'{info[\"Name\"]}: {info[\"MacAddress\"]}')"
 ```
 
 ## Fixing Manual MAC Address Conflicts in Compose
 
-If your Compose file sets `mac_address` explicitly, generate a unique one:
+If your Compose file assigns a MAC explicitly, generate a unique locally administered unicast address:
 
 ```bash
 # Generate a random MAC address with the locally-administered bit set
@@ -53,7 +54,7 @@ print(':'.join(f'{b:02x}' for b in mac))
 "
 ```
 
-Update the Compose YAML in Portainer with the new MAC:
+Update the Compose YAML in Portainer with the new MAC using the network attachment syntax:
 
 ```yaml
 services:
@@ -65,9 +66,9 @@ services:
         mac_address: "02:42:ac:11:00:02"
 ```
 
-## Fixing Macvlan IP/MAC Pool Exhaustion
+## Fixing Macvlan IP Pool Overlap
 
-For macvlan networks, define explicit IP and MAC ranges to prevent overlap:
+For macvlan networks, define an explicit IP allocation range to reduce address overlap:
 
 ```yaml
 networks:
@@ -84,15 +85,12 @@ networks:
 
 ## Preventing Collisions When Cloning Hosts
 
-When cloning a VM that runs Docker with macvlan interfaces, reset the Docker daemon state:
+When cloning a VM that runs Docker with macvlan interfaces, do not reuse the same static `mac_address` or `ipv4_address` values on the same Layer-2 network. Update the stack definition in Portainer and redeploy it; the CLI equivalent is:
 
 ```bash
-# Stop Docker on the cloned VM
-sudo systemctl stop docker
+# Stop and remove the existing stack containers
+docker compose down
 
-# Remove the network state files
-sudo rm -rf /var/lib/docker/network/files/*
-
-# Restart Docker - it will regenerate unique identifiers
-sudo systemctl start docker
+# After updating any static mac_address / ipv4_address values, recreate the stack
+docker compose up -d
 ```
