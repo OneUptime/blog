@@ -128,7 +128,7 @@ sudo tcpdump -i eth0 -vv ip6
 sudo tcpdump -i eth0 -XX ip6 | head -30
 
 # Filter by flow label
-sudo tcpdump -i eth0 "ip6 and ip6[1:3] & 0x0fffff == 0x0000ab"
+sudo tcpdump -i eth0 "ip6 and ip6[0:4] & 0x000fffff == 0x000000ab"
 ```
 
 ## Conclusion
