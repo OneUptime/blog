@@ -8,7 +8,7 @@ Description: Understand IPv6 jumbograms - packets exceeding 65535 bytes - how th
 
 ## Introduction
 
-IPv6's Payload Length field is 16 bits, supporting a maximum payload of 65535 bytes. For high-performance computing, storage area networks, and InfiniBand over Ethernet, larger packets are desirable to reduce per-packet overhead. IPv6 jumbograms (RFC 2675) extend the maximum payload beyond 65535 bytes using a Hop-by-Hop option, enabling payloads up to 4,294,967,295 bytes (approximately 4 GB).
+IPv6's Payload Length field is 16 bits, supporting a maximum payload of 65535 bytes. For high-performance computing, storage area networks, and other specialized high-MTU interconnects, larger packets are desirable to reduce per-packet overhead. IPv6 jumbograms (RFC 2675) extend the maximum IPv6 payload beyond 65535 bytes using the Jumbo Payload option in a Hop-by-Hop header, enabling payloads up to 4,294,967,295 bytes (approximately 4 GB).
 
 ## Standard IPv6 vs Jumbogram Size Limits
 
@@ -21,13 +21,13 @@ IPv6 Jumbogram (RFC 2675):
   Payload Length field: set to 0 (signals jumbogram)
   Jumbo Payload Length: 32-bit field in Hop-by-Hop option
   Maximum payload: 2^32 - 1 = 4,294,967,295 bytes
-  Total packet size: up to ~4 GB
+  Total packet size: up to ~4 GB plus the 40-byte IPv6 header
 
 Practical maximum (limited by link MTU):
-  Standard Ethernet: 1500 bytes (no jumbogram benefit)
-  Jumbo frames (9000 bytes): modest benefit
-  InfiniBand: up to 65535-byte MTU
-  HPC interconnects: can support larger MTUs for jumbograms
+  Standard Ethernet: 1500 bytes (cannot carry jumbograms)
+  Ethernet jumbo frames (9000 bytes): still too small for jumbograms
+  Jumbograms require links with MTUs greater than 65575 octets
+  Typically limited to specialized high-MTU interconnects
 ```
 
 ## The Jumbo Payload Hop-by-Hop Option
@@ -39,7 +39,7 @@ Hop-by-Hop Options Header with Jumbo Payload option:
 
 Byte 0: Next Header (type of header after Hop-by-Hop)
 Byte 1: Hdr Ext Len = 0 (8-byte header total)
-Byte 2: Option Type = 0xC2 (Jumbo Payload, 2 bits: 11 = skip+discard)
+Byte 2: Option Type = 0xC2 (Jumbo Payload, 2 high bits: 11 = discard and send ICMP if unrecognized, unless the destination is multicast)
 Byte 3: Option Length = 4 (the value field is 4 bytes)
 Byte 4-7: Jumbo Payload Length (32-bit big-endian)
 
@@ -47,7 +47,7 @@ When a jumbogram is sent:
   1. IPv6 Payload Length field is set to 0
   2. Hop-by-Hop Options header is added as the first extension header
   3. Hop-by-Hop Options contains the Jumbo Payload option
-  4. Jumbo Payload Length contains the actual total payload size (≥ 65536)
+  4. Jumbo Payload Length contains the IPv6 packet length excluding the 40-byte IPv6 header, including this Hop-by-Hop header (≥ 65536)
 ```
 
 ## Jumbogram Requirements and Constraints
@@ -57,23 +57,23 @@ RFC 2675 requirements:
 
 1. Must not be fragmented
    → Jumbograms cannot use the Fragment Header
-   → The source must ensure the entire jumbogram fits in the path MTU
+   → The source must ensure the entire jumbogram fits in the path MTU, or a router will return ICMPv6 Packet Too Big
 
 2. Hop-by-Hop Options header must be first extension header
-   → All routers process Hop-by-Hop options
-   → Jumbo Payload Length reaches every router
+   → The Jumbo Payload option is defined only in that header
+   → It must immediately follow the IPv6 header
 
-3. Routers must support jumbograms to forward them
-   → A router that cannot handle jumbograms sends ICMPv6 Parameter Problem
-   → Code 0, Pointer to the Jumbo Payload option
+3. Malformed jumbograms trigger ICMPv6 Parameter Problem
+   → Example: Payload Length = 0 but the Jumbo Payload option is missing
+   → Example: Jumbo Payload Length is present but less than 65536
 
 4. Link must support the required MTU
-   → Useless on standard Ethernet (1500-byte MTU)
-   → Designed for high-speed interconnects with large MTUs
+   → Relevant only on links with MTUs greater than 65575 octets
+   → Standard Ethernet (1500) and 9000-byte Ethernet jumbo frames are too small
 
 5. Upper-layer protocols must handle large sizes
-   → TCP: uses 32-bit sequence numbers (handles jumbogram sizes)
-   → UDP: checksum remains 16-bit, payload up to 4 GB
+   → TCP implementations need RFC 2675's MSS and urgent-pointer handling
+   → UDP jumbograms set the UDP Length field to 0 and use the actual UDP length for checksum calculation
 ```
 
 ## Building a Jumbogram Hop-by-Hop Header
@@ -89,7 +89,8 @@ def build_jumbo_payload_header(next_header: int,
 
     Args:
         next_header:  Type of the following header (6=TCP, 17=UDP)
-        jumbo_length: Total payload size (must be >= 65536)
+        jumbo_length: IPv6 packet length excluding the IPv6 header
+                      (must be >= 65536, and includes this Hop-by-Hop header)
 
     Returns:
         8-byte Hop-by-Hop Options header with Jumbo Payload option
@@ -117,6 +118,8 @@ def parse_jumbo_payload_header(data: bytes) -> dict:
 
     next_header, hdr_ext_len = data[0], data[1]
     total_bytes = (hdr_ext_len + 1) * 8
+    if len(data) < total_bytes:
+        raise ValueError(f"Need {total_bytes} bytes for this Hop-by-Hop header, got {len(data)}")
 
     # Scan for Jumbo Payload option (type 0xC2)
     offset = 2
@@ -125,15 +128,21 @@ def parse_jumbo_payload_header(data: bytes) -> dict:
         if opt_type == 0:     # Pad1
             offset += 1
             continue
+        if offset + 1 >= total_bytes:
+            raise ValueError("Truncated option header")
         opt_len = data[offset + 1]
         if opt_type == 0xC2:  # Jumbo Payload
+            if opt_len != 4 or offset + 6 > total_bytes:
+                raise ValueError("Invalid Jumbo Payload option")
             jumbo_length = struct.unpack("!I", data[offset+2:offset+6])[0]
+            if jumbo_length < 65536:
+                raise ValueError("Jumbo Payload Length must be >= 65536")
             return {"has_jumbo": True, "jumbo_length": jumbo_length, "next_header": next_header}
         offset += 2 + opt_len
 
     return {"has_jumbo": False, "next_header": next_header}
 
-# Example: Build header for a 100,000-byte jumbogram
+# Example: Build a Hop-by-Hop header whose Jumbo Payload Length is 100,000 bytes
 
 header = build_jumbo_payload_header(17, 100000)  # 17 = UDP
 print(f"Hop-by-Hop header: {header.hex()}")
@@ -144,4 +153,4 @@ print(f"Jumbo length: {parsed['jumbo_length']} bytes")
 
 ## Conclusion
 
-IPv6 jumbograms address the 65535-byte payload limit by using a 32-bit Jumbo Payload Length option in a Hop-by-Hop Options header. They are applicable only on high-performance network links that support MTUs above 65535 bytes - InfiniBand, some HPC interconnects, and specialized storage networks. On standard Ethernet (1500 or 9000 bytes jumbo frames), jumbograms provide no benefit. The most important constraint: jumbograms cannot be fragmented, so the link MTU must be large enough to carry the entire packet.
+IPv6 jumbograms address the 65535-byte payload limit by using a 32-bit Jumbo Payload Length option in a Hop-by-Hop Options header. They are applicable only on high-performance network links that support MTUs above 65575 octets, such as specialized HPC and storage interconnects. On standard Ethernet (1500 or 9000 bytes jumbo frames), jumbograms provide no benefit. The most important constraint: jumbograms cannot be fragmented, so the path MTU must be large enough to carry the entire packet.
