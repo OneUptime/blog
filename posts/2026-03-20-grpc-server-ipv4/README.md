@@ -4,18 +4,18 @@ Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
 Tags: gRPC, IPv4, Python, Go, Networking, Microservice
 
-Description: Learn how to configure a gRPC server to listen on a specific IPv4 address in Python and Go, including bind address syntax, TLS configuration, and health checking setup.
+Description: Learn how to configure a gRPC server to listen on a specific IPv4 address in Python and Go, including bind address syntax, TLS configuration, and graceful shutdown.
 
 ## gRPC Address Syntax
 
-gRPC uses a URI-style address for listen addresses:
+gRPC server listen APIs in Python and Go use address strings in `host:port` form (use brackets around IPv6 literals):
 
 | Address | Meaning |
 |---------|---------|
 | `0.0.0.0:50051` | All IPv4 interfaces |
 | `127.0.0.1:50051` | Localhost only |
 | `192.168.1.10:50051` | Specific IPv4 interface |
-| `[::]:50051` | All IPv6 (+ IPv4 dual-stack on Linux) |
+| `[::]:50051` | All IPv6 interfaces |
 
 ## Python: grpc server on specific IP
 
@@ -79,6 +79,7 @@ def serve_tls(bind_address: str = "0.0.0.0:50051") -> None:
 package main
 
 import (
+    "context"
     "fmt"
     "log"
     "net"
@@ -141,4 +142,4 @@ server.wait_for_termination()
 
 ## Conclusion
 
-Pass the bind address as `"host:port"` to `add_insecure_port` or `add_secure_port`. Use environment variables to configure the address at deploy time without changing code. Use `"tcp4"` (Go) or `"0.0.0.0"` (Python) to restrict to IPv4. Implement graceful shutdown with a non-zero `grace` period to drain in-flight requests before the process exits. For production, always use TLS or a service mesh that enforces mTLS between services.
+Pass the bind address as `"host:port"` to `add_insecure_port` or `add_secure_port`. Use environment variables to configure the address at deploy time without changing code. Use `"tcp4"` (Go) or bind to an IPv4 address such as `"0.0.0.0:50051"` (Python) to restrict to IPv4. Implement graceful shutdown with a non-zero `grace` period to drain in-flight requests before the process exits. For production, always use TLS or a service mesh that enforces mTLS between services.
