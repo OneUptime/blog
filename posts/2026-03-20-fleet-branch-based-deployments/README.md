@@ -20,12 +20,18 @@ Git Repository:
 
 Each branch contains:
 ├── frontend/
-│   ├── fleet.yaml
-│   └── deployment.yaml
+│   ├── Chart.yaml
+│   ├── values.yaml
+│   ├── templates/
+│   │   └── deployment.yaml
+│   └── fleet.yaml
 ├── backend/
-│   ├── fleet.yaml
-│   └── deployment.yaml
-└── fleet.yaml    (root bundle config)
+│   ├── Chart.yaml
+│   ├── values.yaml
+│   ├── templates/
+│   │   └── deployment.yaml
+│   └── fleet.yaml
+└── fleet.yaml    (optional root bundle config)
 ```
 
 ## Step 1: Create GitRepo Resources per Branch
@@ -82,65 +88,51 @@ spec:
 
 ```bash
 # Label production cluster
-kubectl label cluster production-cluster env=production \
+kubectl label clusters.fleet.cattle.io production-cluster env=production \
   -n fleet-default
 
 # Label staging cluster
-kubectl label cluster staging-cluster env=staging \
+kubectl label clusters.fleet.cattle.io staging-cluster env=staging \
   -n fleet-default
 
 # Label development cluster
-kubectl label cluster dev-cluster env=development \
+kubectl label clusters.fleet.cattle.io dev-cluster env=development \
   -n fleet-default
 ```
 
 ## Step 3: Configure Branch-Specific Values
 
-Use Fleet's `values` override per GitRepo to customize deployments per branch:
+Store Helm overrides in the branch itself, inside the bundle's `fleet.yaml`, rather than on the `GitRepo` resource:
 
 ```yaml
-# gitrepo-production.yaml with overrides
-spec:
-  repo: https://github.com/myorg/myapp-config.git
-  branch: main
-  helm:
-    values:
-      replicaCount: 3
-      resources:
-        requests:
-          memory: "512Mi"
-          cpu: "500m"
-      ingress:
-        host: app.company.com
-      image:
-        pullPolicy: Always
-  targets:
-    - name: production
-      clusterSelector:
-        matchLabels:
-          env: production
+# frontend/fleet.yaml in the main branch
+helm:
+  values:
+    replicaCount: 3
+    resources:
+      requests:
+        memory: "512Mi"
+        cpu: "500m"
+    ingress:
+      host: app.company.com
+    image:
+      pullPolicy: Always
 ```
 
 ```yaml
-# gitrepo-staging.yaml with overrides
-spec:
-  repo: https://github.com/myorg/myapp-config.git
-  branch: staging
-  helm:
-    values:
-      replicaCount: 1
-      resources:
-        requests:
-          memory: "256Mi"
-          cpu: "250m"
-      ingress:
-        host: staging.app.company.com
-  targets:
-    - name: staging
-      clusterSelector:
-        matchLabels:
-          env: staging
+# frontend/fleet.yaml in the staging branch
+helm:
+  values:
+    replicaCount: 1
+    resources:
+      requests:
+        memory: "256Mi"
+        cpu: "250m"
+    ingress:
+      host: staging.app.company.com
 ```
+
+Each branch can carry its own chart values, manifests, or overlays. When Fleet watches `main`, `staging`, or `develop`, it deploys the configuration that exists in that branch.
 
 ## Step 4: Implement Promotion Workflow
 
