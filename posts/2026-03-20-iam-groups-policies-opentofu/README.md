@@ -80,29 +80,39 @@ resource "aws_iam_group_policy_attachment" "devops_iam" {
   policy_arn = aws_iam_policy.iam_limited.arn
 }
 
+data "aws_caller_identity" "current" {}
+
 resource "aws_iam_policy" "iam_limited" {
   name        = "IAMLimitedPolicy"
   description = "Limited IAM access for DevOps"
 
   policy = jsonencode({
     Version = "2012-10-17"
-    Statement = [{
-      Sid    = "AllowIAMReadAndRoleManagement"
-      Effect = "Allow"
-      Action = [
-        "iam:List*",
-        "iam:Get*",
-        "iam:PassRole",
-        "iam:AttachRolePolicy",
-        "iam:DetachRolePolicy"
-      ]
-      Resource = "*"
-      Condition = {
-        StringEquals = {
-          "iam:PermissionsBoundary" = "arn:aws:iam::${data.aws_caller_identity.current.account_id}:policy/DevOpsBoundary"
+    Statement = [
+      {
+        Sid    = "AllowIAMReadOnly"
+        Effect = "Allow"
+        Action = [
+          "iam:List*",
+          "iam:Get*"
+        ]
+        Resource = "*"
+      },
+      {
+        Sid    = "AllowRolePolicyManagementWithBoundary"
+        Effect = "Allow"
+        Action = [
+          "iam:AttachRolePolicy",
+          "iam:DetachRolePolicy"
+        ]
+        Resource = "arn:aws:iam::${data.aws_caller_identity.current.account_id}:role/*"
+        Condition = {
+          ArnEquals = {
+            "iam:PermissionsBoundary" = "arn:aws:iam::${data.aws_caller_identity.current.account_id}:policy/DevOpsBoundary"
+          }
         }
       }
-    }]
+    ]
   })
 }
 
@@ -165,4 +175,4 @@ tofu apply
 
 ## Conclusion
 
-IAM groups are the standard way to manage permissions for human users in AWS organizations. Attach policies to groups rather than individual users to reduce administrative overhead-adding or removing a user from a group instantly changes their permissions. Use multiple groups with specific permissions (e.g., `developers` + `devops`) to compose the exact permission set each person needs.
+If you're using IAM users, groups are the standard way to manage their permissions. For human users in AWS organizations, AWS generally recommends federation or IAM Identity Center instead of long-term IAM users. Attach policies to groups rather than individual users to reduce administrative overhead; adding or removing a user from a group changes their effective permissions, though IAM changes can take time to propagate. Use multiple groups with specific permissions (e.g., `developers` + `devops`) to compose the exact permission set each person needs.
