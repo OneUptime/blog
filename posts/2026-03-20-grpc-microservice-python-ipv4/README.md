@@ -73,6 +73,8 @@ def serve() -> None:
     def graceful_stop(signum, frame):
         log.info("Signal %d - shutting down", signum)
         health_servicer.set("", health_pb2.HealthCheckResponse.NOT_SERVING)
+        health_servicer.set("helloworld.Greeter",
+                            health_pb2.HealthCheckResponse.NOT_SERVING)
         server.stop(grace=10).wait()
         log.info("Server stopped")
 
@@ -91,8 +93,7 @@ if __name__ == "__main__":
 ```dockerfile
 FROM python:3.11-slim
 WORKDIR /app
-COPY requirements.txt .
-RUN pip install --no-cache-dir -r requirements.txt
+RUN python -m pip install --no-cache-dir grpcio grpcio-health-checking
 COPY . .
 EXPOSE 50051
 CMD ["python", "server.py"]
@@ -124,8 +125,9 @@ spec:
             - name: GRPC_ADDR
               value: "0.0.0.0:50051"
           readinessProbe:
-            exec:
-              command: ["/bin/grpc_health_probe", "-addr=:50051"]
+            grpc:
+              port: 50051
+              service: helloworld.Greeter
             initialDelaySeconds: 5
             periodSeconds: 10
           lifecycle:
