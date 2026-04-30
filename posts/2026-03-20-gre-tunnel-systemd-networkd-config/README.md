@@ -15,7 +15,7 @@ GRE (Generic Routing Encapsulation) tunnels encapsulate network layer packets fo
 ## GRE Tunnel Overview
 
 ```text
-Host A (192.168.1.10) ←→ Internet ←→ Host B (203.0.113.20)
+Host A (198.51.100.10) ←→ Internet ←→ Host B (203.0.113.20)
        [GRE tunnel: 10.100.0.1/30 ←→ 10.100.0.2/30]
 ```
 
@@ -26,7 +26,7 @@ GRE encapsulates packets in IP, adding a 24-byte overhead. The underlying transp
 ## Prerequisites
 
 - Two Linux hosts with systemd-networkd
-- Public IPs or connectivity between the two endpoints
+- Routable connectivity between the two tunnel endpoints
 - Root/sudo access
 
 ---
@@ -43,8 +43,10 @@ Name=gre-to-hostb
 Kind=gre
 
 [Tunnel]
-Local=192.168.1.10       # Host A's local IP (used as tunnel source)
-Remote=203.0.113.20      # Host B's public IP (tunnel destination)
+# Host A's public or routed IP used as the tunnel source
+Local=198.51.100.10
+# Host B's public or routed IP used as the tunnel destination
+Remote=203.0.113.20
 TTL=64
 ```
 
@@ -59,7 +61,8 @@ Name=gre-to-hostb
 Address=10.100.0.1/30
 
 [Route]
-Destination=10.200.0.0/24    # Network reachable via Host B
+# Network reachable via Host B
+Destination=10.200.0.0/24
 Gateway=10.100.0.2
 ```
 
@@ -86,8 +89,10 @@ Name=gre-to-hosta
 Kind=gre
 
 [Tunnel]
-Local=203.0.113.20       # Host B's local IP
-Remote=192.168.1.10      # Host A's IP
+# Host B's public or routed IP
+Local=203.0.113.20
+# Host A's public or routed IP
+Remote=198.51.100.10
 TTL=64
 ```
 
@@ -102,7 +107,8 @@ Name=gre-to-hosta
 Address=10.100.0.2/30
 
 [Route]
-Destination=192.168.1.0/24    # Network reachable via Host A
+# Network reachable via Host A
+Destination=192.168.1.0/24
 Gateway=10.100.0.1
 ```
 
@@ -117,7 +123,7 @@ sudo systemctl restart systemd-networkd
 ```bash
 # Check tunnel interface
 ip link show gre-to-hostb
-# Should show: UP state
+# Should show the interface with the UP flag
 
 # Check IP assignment
 ip addr show gre-to-hostb
@@ -148,8 +154,10 @@ Name=grev6-tunnel
 Kind=ip6gre
 
 [Tunnel]
-Local=2001:db8:a::1     # Local IPv6 address
-Remote=2001:db8:b::1    # Remote IPv6 address
+# Local IPv6 address
+Local=2001:db8:a::1
+# Remote IPv6 address
+Remote=2001:db8:b::1
 ```
 
 ```ini
@@ -175,12 +183,12 @@ sudo iptables -A FORWARD -i gre-to-hostb -j ACCEPT
 sudo iptables -A FORWARD -o gre-to-hostb -j ACCEPT
 
 # nftables
-nft add rule inet filter input ip protocol gre accept
-nft add rule inet filter forward iifname "gre-to-hostb" accept
-nft add rule inet filter forward oifname "gre-to-hostb" accept
+sudo nft add rule inet filter input ip protocol gre accept
+sudo nft add rule inet filter forward iifname "gre-to-hostb" accept
+sudo nft add rule inet filter forward oifname "gre-to-hostb" accept
 
-# Make persistent
-sudo iptables-save > /etc/iptables/rules.v4
+# Make persistent on Debian/Ubuntu with iptables-persistent
+sudo iptables-save -f /etc/iptables/rules.v4
 ```
 
 ---
@@ -207,7 +215,7 @@ sudo sysctl -p
 Name=gre-site-b
 Kind=gre
 [Tunnel]
-Local=192.168.1.10
+Local=198.51.100.10
 Remote=203.0.113.20
 
 # /etc/systemd/network/11-gre-site-c.netdev
@@ -215,7 +223,7 @@ Remote=203.0.113.20
 Name=gre-site-c
 Kind=gre
 [Tunnel]
-Local=192.168.1.10
+Local=198.51.100.10
 Remote=203.0.113.30
 ```
 
@@ -232,7 +240,7 @@ sudo tcpdump -i eth0 proto gre
 
 # Check MTU (GRE reduces effective MTU by 24 bytes)
 ip link show gre-to-hostb | grep mtu
-# Set explicit MTU
+# Set explicit MTU at runtime
 sudo ip link set gre-to-hostb mtu 1476  # 1500 - 24 GRE overhead
 
 # Check routing
@@ -247,7 +255,7 @@ ip route get 10.200.0.1
 2. **Use TCP MSS clamping** to handle MTU for TCP traffic over the tunnel
 3. **Consider IPsec** if you need encrypted GRE tunnels
 4. **Monitor tunnel interface** - GRE tunnels fail silently if the remote endpoint is unreachable
-5. **Use keepalives** or monitoring to detect tunnel failures promptly
+5. **Use monitoring** to detect tunnel failures promptly
 
 ---
 
