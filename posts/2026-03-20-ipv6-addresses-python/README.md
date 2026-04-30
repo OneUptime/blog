@@ -35,7 +35,7 @@ print(full.exploded)   # 2001:0db8:0000:0000:0000:0000:0000:0001
 print(addr.is_global)         # False (2001:db8::/32 is documentation range)
 print(addr.is_loopback)       # False
 print(addr.is_link_local)     # False
-print(addr.is_private)        # False (Python 3.11+; True in older versions)
+print(addr.is_private)        # True (the documentation range is not globally reachable)
 ```
 
 ## Validating IPv6 User Input
@@ -55,18 +55,16 @@ def validate_ipv6(address: str) -> bool:
 
 # Test cases
 test_addresses = [
-    '2001:db8::1',           # Valid global
+    '2001:db8::1',           # Valid IPv6 documentation address
     '::1',                   # Valid loopback
-    'fe80::1%eth0',          # Link-local with zone ID (needs stripping)
+    'fe80::1%eth0',          # Valid link-local with a zone ID
     '192.168.1.1',           # IPv4 (returns False)
     'not-an-address',        # Invalid
     '2001:db8::1/64',        # CIDR notation (use ip_network instead)
 ]
 
 for addr in test_addresses:
-    # Strip zone ID if present before validating
-    clean = addr.split('%')[0]
-    print(f"{addr}: {validate_ipv6(clean)}")
+    print(f"{addr}: {validate_ipv6(addr)}")
 ```
 
 ## Working with IPv6 Networks
@@ -98,28 +96,32 @@ import socket
 
 def connect_ipv6(host: str, port: int) -> socket.socket:
     """Create an IPv6 TCP connection to host:port."""
-    # getaddrinfo resolves hostnames to IPv6 addresses
-    addr_info = socket.getaddrinfo(
+    # Limit results to IPv6 TCP sockets and try them in order.
+    for family, socktype, proto, _, sockaddr in socket.getaddrinfo(
         host, port,
         family=socket.AF_INET6,
-        type=socket.SOCK_STREAM
-    )
+        type=socket.SOCK_STREAM,
+        proto=socket.IPPROTO_TCP,
+    ):
+        sock = socket.socket(family, socktype, proto)
+        try:
+            sock.connect(sockaddr)
+            return sock
+        except OSError:
+            sock.close()
 
-    # Use the first result
-    family, socktype, proto, canonname, sockaddr = addr_info[0]
+    raise OSError(f"Could not connect to {host}:{port} over IPv6")
 
-    sock = socket.socket(family, socktype, proto)
-    sock.connect(sockaddr)
-    return sock
-
-# Example: Connect to an IPv6-only HTTP server
+# Example: Connect to a host that has AAAA records
 try:
-    sock = connect_ipv6('ipv6.google.com', 80)
-    sock.send(b'GET / HTTP/1.0\r\nHost: ipv6.google.com\r\n\r\n')
-    response = sock.recv(1024)
-    print(response[:100])
-    sock.close()
-except Exception as e:
+    sock = connect_ipv6('example.com', 80)
+    try:
+        sock.sendall(b'GET / HTTP/1.0\r\nHost: example.com\r\n\r\n')
+        response = sock.recv(1024)
+        print(response[:100])
+    finally:
+        sock.close()
+except OSError as e:
     print(f"Connection failed: {e}")
 ```
 
@@ -131,29 +133,29 @@ import threading
 
 def handle_client(conn, addr):
     """Handle a client connection."""
-    # addr is a 4-tuple for IPv6: (host, port, flowinfo, scope_id)
+    # addr is a 4-tuple on AF_INET6 sockets: (host, port, flowinfo, scope_id)
     host, port, flowinfo, scope_id = addr
     print(f"Connection from [{host}]:{port}")
-    conn.send(b"Hello from IPv6 server\n")
+    conn.sendall(b"Hello from IPv6 server\n")
     conn.close()
 
 def start_ipv6_server(port: int = 8080):
     """Start a TCP server listening on all IPv6 interfaces."""
     # AF_INET6 with '::' binds to all IPv6 interfaces
-    server = socket.socket(socket.AF_INET6, socket.SOCK_STREAM)
+    if socket.has_dualstack_ipv6():
+        server = socket.create_server(
+            ('::', port),
+            family=socket.AF_INET6,
+            dualstack_ipv6=True,
+        )
+    else:
+        server = socket.create_server(('::', port), family=socket.AF_INET6)
 
-    # Allow both IPv4 and IPv6 connections (dual-stack)
-    server.setsockopt(socket.IPPROTO_IPV6, socket.IPV6_V6ONLY, 0)
-    server.setsockopt(socket.SOL_SOCKET, socket.SO_REUSEADDR, 1)
-
-    server.bind(('::', port))
-    server.listen(5)
     print(f"Listening on [::]:{port}")
 
     while True:
         conn, addr = server.accept()
-        thread = threading.Thread(target=handle_client, args=(conn, addr))
-        thread.daemon = True
+        thread = threading.Thread(target=handle_client, args=(conn, addr), daemon=True)
         thread.start()
 
 # Start the server
@@ -169,7 +171,7 @@ def format_ipv6_for_url(addr_str: str) -> str:
     """Wrap IPv6 address in brackets for URL use."""
     addr = ipaddress.ip_address(addr_str)
     if isinstance(addr, ipaddress.IPv6Address):
-        return f"[{addr}]"
+        return f"[{str(addr).replace('%', '%25')}]"
     return addr_str
 
 # Usage
