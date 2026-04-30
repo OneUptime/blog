@@ -12,7 +12,7 @@ Description: Learn how to convert between IPv4 address strings and their 32-bit 
 use std::net::Ipv4Addr;
 
 fn ipv4_to_u32(ip: Ipv4Addr) -> u32 {
-    // u32::from() uses big-endian (network byte order) conversion
+    // u32::from() uses the same integer representation as Ipv4Addr::to_bits()
     u32::from(ip)
 }
 
@@ -128,11 +128,16 @@ fn next_ip(ip: Ipv4Addr) -> Option<Ipv4Addr> {
 }
 
 fn enumerate_subnet(network: Ipv4Addr, prefix: u8) -> Vec<Ipv4Addr> {
-    let start = u32::from(network) + 1;  // Skip network address
-    let host_bits = 32 - prefix as u32;
-    let count = (1u32 << host_bits) - 2;  // Exclude network + broadcast
+    assert!(prefix <= 32, "prefix must be between /0 and /32");
 
-    (0..count).map(|i| Ipv4Addr::from(start + i)).collect()
+    let host_bits = 32 - prefix as u32;
+    let count = (1u64 << host_bits).saturating_sub(2);  // Exclude network + broadcast
+    let start = u32::from(network).saturating_add(1);  // Skip network address
+
+    (0..count)
+        .filter_map(|i| start.checked_add(i as u32))
+        .map(Ipv4Addr::from)
+        .collect()
 }
 
 fn main() {
@@ -144,4 +149,4 @@ fn main() {
 
 ## Conclusion
 
-Rust's `Ipv4Addr` seamlessly converts to and from `u32` via `u32::from(ip)` and `Ipv4Addr::from(n)`. These conversions use network byte order (big-endian). The `u32` representation enables efficient IP arithmetic: range checks, sorting, subnet enumeration, and address incrementing-all expressible as simple integer operations.
+Rust's `Ipv4Addr` seamlessly converts to and from `u32` via `u32::from(ip)` and `Ipv4Addr::from(n)`. These conversions use the same integer representation as `Ipv4Addr::to_bits()` and `Ipv4Addr::from_bits()`, which Rust documents in native byte order. The `u32` representation enables efficient IP arithmetic: range checks, sorting, subnet enumeration, and address incrementing, all expressible as simple integer operations.
