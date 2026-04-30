@@ -11,10 +11,10 @@ Description: Configure Node.js gRPC servers and clients using @grpc/grpc-js to l
 ```bash
 # Install gRPC for Node.js
 
-npm install @grpc/grpc-js @grpc/proto-loader
+npm install @grpc/grpc-js @grpc/proto-loader grpc-health-check
 
 # Verify installation
-node -e "const grpc = require('@grpc/grpc-js'); console.log(grpc.channel.Channel ? 'OK' : 'ERR')"
+node -e "const grpc = require('@grpc/grpc-js'); console.log(typeof grpc.Channel === 'function' ? 'OK' : 'ERR')"
 ```
 
 ## Step 1: gRPC Server Listening on IPv6
@@ -64,7 +64,6 @@ function main() {
                 process.exit(1);
             }
             console.log(`gRPC server bound on port ${port}`);
-            server.start();
         }
     );
 }
@@ -92,7 +91,8 @@ const packageDefinition = protoLoader.loadSync(PROTO_PATH, {
 const helloProto = grpc.loadPackageDefinition(packageDefinition).helloworld;
 
 // Connect to IPv6 gRPC server - square brackets required
-const target = '[2001:db8::1]:50051';
+// Replace ::1 with your server's IPv6 address when connecting remotely
+const target = '[::1]:50051';
 
 const client = new helloProto.Greeter(
     target,
@@ -117,8 +117,12 @@ client.sayHello({ name: 'World' }, (error, response) => {
 const fs = require('fs');
 const grpc = require('@grpc/grpc-js');
 
+// Reuse helloProto and sayHello from Step 1
+const server = new grpc.Server();
+server.addService(helloProto.Greeter.service, { sayHello });
+
 const credentials = grpc.ServerCredentials.createSsl(
-    fs.readFileSync('ca.crt'),    // CA certificate
+    null,    // Root CAs are only needed when validating client certificates
     [{
         cert_chain: fs.readFileSync('server.crt'),
         private_key: fs.readFileSync('server.key')
@@ -127,10 +131,11 @@ const credentials = grpc.ServerCredentials.createSsl(
 );
 
 server.bindAsync('[::]:443', credentials, (error, port) => {
-    if (!error) {
-        console.log(`Secure gRPC server on [::]:${port}`);
-        server.start();
+    if (error) {
+        console.error('Failed to bind:', error);
+        return;
     }
+    console.log(`Secure gRPC server on [::]:${port}`);
 });
 
 // client-tls.js - connect to IPv6 with TLS
@@ -172,32 +177,23 @@ module.exports = { bindAddress };
 
 ```javascript
 // health.js
-const grpc = require('@grpc/grpc-js');
+const { HealthImplementation } = require('grpc-health-check');
 
-// Simple health check endpoint
-const healthImplementation = {
-    check: (call, callback) => {
-        const response = {
-            status: 'SERVING'  // SERVING = 1
-        };
-        callback(null, response);
-    },
-    watch: (call) => {
-        call.write({ status: 'SERVING' });
-        // Keep stream alive for watch protocol
-    }
-};
+// Reuse the server created in Step 1
+const healthImpl = new HealthImplementation({
+    'helloworld.Greeter': 'SERVING',
+    '': 'SERVING'
+});
 
-// Add to server:
-// server.addService(healthProto.grpc.health.v1.Health.service, healthImplementation);
+healthImpl.addToServer(server);
 ```
 
 ## Testing
 
 ```bash
-# Test with grpcurl
-grpcurl -plaintext '[::1]:50051' list
-grpcurl -plaintext '[::1]:50051' helloworld.Greeter/SayHello
+# Test with grpcurl using the local proto definition
+grpcurl -import-path . -proto hello.proto list
+grpcurl -plaintext -import-path . -proto hello.proto -d '{"name":"World"}' '[::1]:50051' helloworld.Greeter/SayHello
 
 # Quick Node.js test
 node client.js
@@ -209,4 +205,4 @@ Use [OneUptime](https://oneuptime.com) to monitor your Node.js gRPC service over
 
 ## Conclusion
 
-Node.js gRPC with `@grpc/grpc-js` uses `[::]:port` format for IPv6 server binding. Clients connect using `[ipv6addr]:port`. The `bindAsync` method is the modern API for starting servers. Ensure brackets are present around IPv6 addresses in both server bind addresses and client targets.
+Node.js gRPC with `@grpc/grpc-js` uses `[::]:port` format for IPv6 server binding. Clients connect using `[ipv6addr]:port`. Use `bindAsync` to bind the server; calling `server.start()` is not necessary in current `@grpc/grpc-js` versions. If you test with `grpcurl` without enabling reflection, pass your `.proto` file with `-proto`. Ensure brackets are present around IPv6 addresses in both server bind addresses and client targets.
