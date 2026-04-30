@@ -23,7 +23,7 @@ This guide provides a systematic debugging approach for Fleet Git sync issues.
 ```bash
 # 1. Check GitRepo conditions
 
-kubectl get gitrepo my-app -n fleet-default -o jsonpath='{.status.conditions}' | python3 -m json.tool
+kubectl get gitrepo my-app -n fleet-default -o jsonpath-as-json='{.status.conditions}' | python3 -m json.tool
 
 # 2. Check for sync errors
 kubectl describe gitrepo my-app -n fleet-default | grep -A 5 "Conditions:"
@@ -46,10 +46,12 @@ kubectl get gitrepo my-app -n fleet-default \
 ```
 
 Possible conditions:
-- `Ready: True` - All syncing successfully
-- `Ready: False` - Sync is failing (check message)
-- `Stalled: True` - Persistent failure, manual intervention needed
-- `Synced: True` - Latest commit has been synced
+- `Ready: True` - Bundles are deployed and ready
+- `Ready: False` - Sync, templating, or downstream deployment needs attention
+- `GitPolling: True` - Polling succeeded or polling is disabled
+- `Reconciling: True` - Fleet is currently reconciling changes
+- `Stalled: True` - The controller encountered an error or failed to make progress
+- `Accepted: True` - GitRepo restrictions were applied and external Helm secrets exist
 
 ## Debugging Authentication Failures
 
@@ -65,9 +67,10 @@ kubectl get secret my-git-secret -n fleet-default
 
 # Verify the secret has the required keys
 kubectl get secret my-git-secret -n fleet-default \
-  -o jsonpath='{.data}' | python3 -m json.tool
+  -o jsonpath-as-json='{.data}' | python3 -m json.tool
 
-# For SSH secrets, expected keys: ssh-privatekey
+# Fleet expects clientSecretName secrets to use type kubernetes.io/ssh-auth or kubernetes.io/basic-auth
+# For SSH secrets, expected key: ssh-privatekey
 # For HTTP secrets, expected keys: username, password
 ```
 
@@ -80,9 +83,8 @@ GITHUB_USER=$(kubectl get secret my-git-secret -n fleet-default \
 GITHUB_TOKEN=$(kubectl get secret my-git-secret -n fleet-default \
   -o jsonpath='{.data.password}' | base64 -d)
 
-# Test access to the repository
-curl -u "${GITHUB_USER}:${GITHUB_TOKEN}" \
-  "https://api.github.com/repos/my-org/my-repo"
+# Test access to the repository over HTTPS
+git ls-remote "https://${GITHUB_USER}:${GITHUB_TOKEN}@github.com/my-org/my-repo.git"
 ```
 
 ### Testing SSH Credentials
@@ -94,10 +96,9 @@ kubectl get secret my-ssh-secret -n fleet-default \
 
 chmod 600 /tmp/test_key
 
-# Test SSH connection
-ssh -i /tmp/test_key \
-  -o StrictHostKeyChecking=no \
-  -T git@github.com
+# Test access to the repository over SSH
+GIT_SSH_COMMAND='ssh -i /tmp/test_key -o StrictHostKeyChecking=accept-new' \
+  git ls-remote git@github.com:my-org/my-repo.git
 
 # Clean up
 rm /tmp/test_key
@@ -108,23 +109,24 @@ rm /tmp/test_key
 ```bash
 # Update the credentials secret
 kubectl create secret generic my-git-secret \
+  --type=kubernetes.io/basic-auth \
   --from-literal=username=new-username \
   --from-literal=password=new-token \
   -n fleet-default \
   --dry-run=client -o yaml | kubectl apply -f -
 
-# Force a re-sync
-kubectl annotate gitrepo my-app \
+# Force a re-sync by incrementing forceSyncGeneration
+kubectl patch gitrepo my-app \
   -n fleet-default \
-  fleet.cattle.io/commit="" \
-  --overwrite
+  --type=merge \
+  -p '{"spec":{"forceSyncGeneration":1}}'
 ```
 
 ## Debugging Network Connectivity Issues
 
 ### Symptoms
 - Error: `failed to clone`, `connection refused`, `i/o timeout`
-- GitRepo stuck in `Syncing` state
+- GitRepo stuck in `GitUpdating` state
 
 ### Diagnosis
 
@@ -132,7 +134,7 @@ kubectl annotate gitrepo my-app \
 # Check if the gitjob pod can reach the Git server
 kubectl exec -n cattle-fleet-system \
   $(kubectl get pods -n cattle-fleet-system -l app=gitjob -o jsonpath='{.items[0].metadata.name}') \
-  -- curl -v https://github.com
+  -- wget -S --spider https://github.com
 
 # Check DNS resolution
 kubectl exec -n cattle-fleet-system \
@@ -194,10 +196,10 @@ find . -name "*.yaml" -exec kubeval {} \;
 
 ```bash
 # Verify the branch exists in the remote repository
-git ls-remote https://github.com/my-org/my-repo refs/heads/main
+git ls-remote --exit-code https://github.com/my-org/my-repo.git refs/heads/main
 
 # Check if it's a tag issue
-git ls-remote https://github.com/my-org/my-repo refs/tags/v1.0.0
+git ls-remote --exit-code https://github.com/my-org/my-repo.git refs/tags/v1.0.0
 
 # Check current GitRepo spec
 kubectl get gitrepo my-app -n fleet-default \
@@ -221,12 +223,12 @@ kubectl logs -n cattle-fleet-system \
   --tail=100
 
 # Check gitjob memory usage (OOM kills can cause sync failures)
-kubectl top pods -n cattle-fleet-system
+kubectl top pod -n cattle-fleet-system -l app=gitjob
 ```
 
 ## Checking for Rate Limiting
 
-GitHub and GitLab apply API rate limits. Excessive polling can trigger these:
+Hosted Git providers can apply HTTP rate limits. Excessive polling can trigger these:
 
 ```bash
 # Check for rate limit errors in logs
@@ -242,16 +244,15 @@ kubectl patch gitrepo my-app -n fleet-default \
 
 ## Forcing a Fresh Clone
 
-If the local Git cache is corrupted:
+If you need Fleet to recreate the Git job from scratch:
 
 ```bash
-# Delete the gitjob pods to force fresh clones
-kubectl delete pods -n cattle-fleet-system \
-  -l app=gitjob
+# GitJobs are created in the GitRepo namespace, not cattle-fleet-system
+kubectl get jobs -n fleet-default | grep '^my-app-'
 
-# Delete any cached jobs
-kubectl delete jobs -n cattle-fleet-system \
-  -l fleet.cattle.io/repo-name=my-app
+# Delete the GitJob so Fleet recreates it and performs a fresh clone
+kubectl delete job -n fleet-default \
+  $(kubectl get jobs -n fleet-default -o name | grep '^job.batch/my-app-' | head -n 1 | cut -d/ -f2)
 ```
 
 ## Conclusion
