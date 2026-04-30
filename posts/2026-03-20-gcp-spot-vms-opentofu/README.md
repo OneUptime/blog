@@ -8,7 +8,7 @@ Description: Learn how to create GCP Spot VMs with OpenTofu - the next generatio
 
 ## Overview
 
-GCP Spot VMs are the successor to Preemptible VMs, offering up to 91% discount on on-demand prices with the same interruption model but more flexible configuration options. They're ideal for batch processing, ML training, and CI/CD workloads.
+GCP Spot VMs are the successor to Preemptible VMs, offering up to 91% discount on on-demand prices with more flexible configuration options and no 24-hour maximum runtime by default. They're ideal for batch processing, ML training, and CI/CD workloads.
 
 ## Step 1: Create a Spot VM
 
@@ -33,13 +33,15 @@ resource "google_compute_instance" "spot_vm" {
   }
 
   scheduling {
+    preemptible = true
+
     # "SPOT" is the provisioning model for Spot VMs
     provisioning_model  = "SPOT"
     on_host_maintenance = "TERMINATE"
     automatic_restart   = false
 
     # Optional: specify instance termination action
-    # "STOP" stops the VM (state preserved); "DELETE" deletes it
+    # "STOP" keeps the instance and attached persistent disks; "DELETE" deletes it
     instance_termination_action = "STOP"
   }
 
@@ -72,7 +74,12 @@ resource "google_compute_instance" "spot_gpu_vm" {
     count = 1
   }
 
+  metadata = {
+    "install-nvidia-driver" = "True"
+  }
+
   scheduling {
+    preemptible                 = true
     provisioning_model          = "SPOT"
     on_host_maintenance         = "TERMINATE"
     automatic_restart           = false
@@ -106,6 +113,7 @@ resource "google_compute_instance_template" "spot_template" {
   }
 
   scheduling {
+    preemptible                 = true
     provisioning_model          = "SPOT"
     on_host_maintenance         = "TERMINATE"
     automatic_restart           = false
@@ -134,4 +142,4 @@ output "spot_vm_status" {
 
 ## Summary
 
-GCP Spot VMs with OpenTofu deliver the deepest discounts on compute resources. Using `instance_termination_action = "STOP"` preserves VM state across interruptions, enabling stateful workloads to resume efficiently. Spot VMs in MIGs provide a cost-effective, elastic compute pool for batch and ML workloads.
+GCP Spot VMs with OpenTofu deliver deep discounts on compute resources. Using `instance_termination_action = "STOP"` keeps the instance definition and attached persistent disks after preemption, which can simplify recovery for stateful workloads. Spot VMs in MIGs provide a cost-effective, elastic compute pool for batch and ML workloads.
