@@ -8,14 +8,14 @@ Description: Create GCP VPC firewall rules to allow traffic from specific IPv4 C
 
 ## Introduction
 
-GCP VPC firewall rules control traffic to and from VM instances based on IP ranges, protocols, and ports. Unlike AWS security groups (which are stateful), GCP firewall rules can be either stateful ingress/egress rules. All traffic is denied by default except rules explicitly allowing it.
+GCP VPC firewall rules control traffic to and from VM instances based on IP ranges, protocols, and ports. Like AWS security groups, GCP VPC firewall rules are stateful, and each rule applies to either ingress or egress traffic. Every VPC network also has implied firewall rules: ingress is denied by default, while egress is allowed by default unless a higher-priority rule overrides it.
 
 ## Firewall Rule Components
 
 - **Direction**: INGRESS (inbound) or EGRESS (outbound)
 - **Priority**: 0–65535 (lower = higher priority); default is 1000
 - **Action**: ALLOW or DENY
-- **Source/Destination**: IP ranges, service accounts, or network tags
+- **Source/Destination and Targets**: CIDR ranges, service accounts, or network tags, depending on rule direction
 - **Protocol/Ports**: tcp, udp, icmp, all
 
 ## Allowing a Specific CIDR Range (Ingress)
@@ -28,8 +28,8 @@ gcloud compute firewall-rules create allow-office-https \
   --direction INGRESS \
   --action ALLOW \
   --rules tcp:443 \
-  --source-ranges 203.0.113.0/24 \   # Office public IP range
-  --target-tags web-server \          # Only applies to VMs with this tag
+  --source-ranges 203.0.113.0/24 \
+  --target-tags web-server \
   --priority 1000 \
   --description "Allow HTTPS from NYC office"
 ```
