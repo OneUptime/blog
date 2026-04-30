@@ -34,8 +34,11 @@ resource "google_container_cluster" "monitored_cluster" {
   # Configure what to log
   logging_config {
     enable_components = [
-      "SYSTEM_COMPONENTS",  # kube-system, apiserver, scheduler, etc.
-      "WORKLOADS",          # Application container logs
+      "SYSTEM_COMPONENTS",   # kube-system workloads and node-level system logs
+      "WORKLOADS",           # Application container logs
+      "APISERVER",           # Kubernetes API server logs
+      "SCHEDULER",           # Kubernetes scheduler logs
+      "CONTROLLER_MANAGER",  # Kubernetes controller manager logs
     ]
   }
 
@@ -54,7 +57,8 @@ resource "google_container_cluster" "monitored_cluster" {
       "STATEFULSET",
     ]
 
-    # Enable Managed Prometheus for metrics collection
+    # Enable Managed Service for Prometheus managed collection
+    # Scrape targets still require PodMonitoring or ClusterPodMonitoring resources.
     managed_prometheus {
       enabled = true
     }
@@ -65,10 +69,10 @@ resource "google_container_cluster" "monitored_cluster" {
 ## Step 2: Log-Based Metrics for Alerting
 
 ```hcl
-# Create a log-based metric for error rates
+# Create a log-based metric for container error logs
 resource "google_logging_metric" "error_rate_metric" {
-  name        = "gke-application-errors"
-  description = "Count of application error logs in GKE"
+  name        = "gke-container-errors"
+  description = "Count of container error logs in GKE"
   project     = var.project_id
 
   filter = <<-FILTER
@@ -81,7 +85,7 @@ resource "google_logging_metric" "error_rate_metric" {
     metric_kind = "DELTA"
     value_type  = "INT64"
     unit        = "1"
-    display_name = "GKE Application Errors"
+    display_name = "GKE Container Errors"
   }
 }
 ```
@@ -89,23 +93,23 @@ resource "google_logging_metric" "error_rate_metric" {
 ## Step 3: Alerting Policies
 
 ```hcl
-# Alert when application error count exceeds threshold
+# Alert when container error count exceeds 50 over five minutes
 resource "google_monitoring_alert_policy" "high_error_rate" {
-  display_name = "GKE High Application Error Rate"
+  display_name = "GKE High Container Error Log Volume"
   combiner     = "OR"
 
   conditions {
-    display_name = "Error rate too high"
+    display_name = "Container error log volume too high"
 
     condition_threshold {
-      filter     = "metric.type=\"logging.googleapis.com/user/gke-application-errors\" resource.type=\"k8s_container\""
+      filter     = "metric.type=\"logging.googleapis.com/user/gke-container-errors\" AND resource.type=\"k8s_container\""
       duration   = "300s"
       comparison = "COMPARISON_GT"
       threshold_value = 50
 
       aggregations {
-        alignment_period   = "60s"
-        per_series_aligner = "ALIGN_RATE"
+        alignment_period   = "300s"
+        per_series_aligner = "ALIGN_DELTA"
       }
     }
   }
@@ -133,14 +137,15 @@ resource "google_monitoring_dashboard" "gke_dashboard" {
       columns = "2"
       widgets = [
         {
-          title = "Pod Count"
+          title = "Container CPU Requests"
           xyChart = {
             dataSets = [{
               timeSeriesQuery = {
                 timeSeriesFilter = {
-                  filter = "metric.type=\"kubernetes.io/container/cpu/request_cores\" resource.type=\"k8s_container\""
+                  filter = "metric.type=\"kubernetes.io/container/cpu/request_cores\" AND resource.type=\"k8s_container\""
                 }
-              }
+              },
+              plotType = "LINE"
             }]
           }
         }
@@ -152,4 +157,4 @@ resource "google_monitoring_dashboard" "gke_dashboard" {
 
 ## Summary
 
-GKE logging and monitoring configured with OpenTofu provides comprehensive observability from the start. Managed Prometheus handles workload metrics collection, Cloud Logging captures container logs, and log-based metrics bridge the gap between logs and alerting. This approach eliminates the need to self-manage Prometheus or logging agents.
+GKE logging and monitoring configured with OpenTofu provides comprehensive observability from the start. Managed Prometheus provides managed collection for Prometheus-compatible workload metrics after you configure PodMonitoring or ClusterPodMonitoring resources, Cloud Logging captures container logs, and log-based metrics bridge the gap between logs and alerting. This approach eliminates the need to self-manage Prometheus infrastructure or node-level logging agents.
