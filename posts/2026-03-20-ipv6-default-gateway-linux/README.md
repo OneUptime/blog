@@ -8,7 +8,7 @@ Description: Learn how to configure, verify, and persist an IPv6 default gateway
 
 ## Overview
 
-The IPv6 default gateway is the `::/0` route - it determines where packets are sent when no more-specific route exists. Misconfiguring or missing the default gateway is one of the most common causes of IPv6 connectivity failures.
+The IPv6 default route is the `::/0` route, and its gateway is the next-hop router used when no more-specific route exists. Misconfiguring or missing the default gateway is one of the most common causes of IPv6 connectivity failures.
 
 ## Adding the Default Gateway Temporarily
 
@@ -48,7 +48,7 @@ Name=eth0
 
 [Network]
 Address=2001:db8::2/64
-Gateway=2001:db8::1   # IPv6 default gateway
+Gateway=2001:db8::1
 DNS=2001:4860:4860::8888
 ```
 
@@ -62,7 +62,9 @@ sudo systemctl restart systemd-networkd
 ```bash
 # Set IPv6 gateway with nmcli
 nmcli connection modify "Wired connection 1" \
-  ipv6.gateway "2001:db8::1"
+  ipv6.addresses "2001:db8::2/64" \
+  ipv6.gateway "2001:db8::1" \
+  ipv6.method manual
 nmcli connection up "Wired connection 1"
 
 # Verify
@@ -79,7 +81,7 @@ iface eth0 inet6 static
     gateway 2001:db8::1
 ```
 
-### RHEL/CentOS/Fedora with ifcfg files
+### RHEL/CentOS with ifcfg files
 
 ```bash
 # /etc/sysconfig/network-scripts/ifcfg-eth0
@@ -105,21 +107,21 @@ ip -6 route show default
 
 ```bash
 # Ping the gateway to confirm it's reachable
-ping6 fe80::1%eth0   # Note: % notation for link-local
+ping -6 fe80::1%eth0   # Note: % notation for link-local
 
 # Ping a remote IPv6 address to confirm forwarding works
-ping6 2001:4860:4860::8888
+ping -6 2001:4860:4860::8888
 
 # Trace the path to verify default route is used
-traceroute6 2001:4860:4860::8888
+traceroute -6 2001:4860:4860::8888
 ```
 
 ## Troubleshooting Missing Gateway
 
 ```bash
-# If no default route exists, check for RA daemon on the router
-# On the router, verify radvd is running
-systemctl status radvd
+# If no default route exists, check whether the router is sending RAs
+# If the router uses radvd, verify radvd is running
+sudo systemctl status radvd
 
 # Check RA messages are being received on the client
 sudo tcpdump -i eth0 -n "icmp6 and ip6[40] == 134"
@@ -128,4 +130,4 @@ sudo tcpdump -i eth0 -n "icmp6 and ip6[40] == 134"
 
 ## Summary
 
-Configure the IPv6 default gateway with `ip -6 route add default via <gateway> dev <interface>`. For persistence, use systemd-networkd `.network` files or NetworkManager. Remember that link-local gateways always require the `dev` parameter. Verify with `ip -6 route show default` and test with `ping6`.
+Configure the IPv6 default route with `ip -6 route add default via <gateway> dev <interface>`. For persistence, use systemd-networkd `.network` files or NetworkManager. Remember that link-local gateways always require the `dev` parameter. Verify with `ip -6 route show default` and test with `ping -6`.
