@@ -85,7 +85,7 @@ data "aws_iam_policy" "admin_policy" {
 }
 
 output "admin_policy_id" {
-  value = data.aws_iam_policy.admin_policy.id
+  value = data.aws_iam_policy.admin_policy.policy_id
 }
 ```
 
