@@ -17,19 +17,21 @@ Fortinet FortiGate firewalls support full IPv6 including static and dynamic addr
 
 config system interface
     edit "wan1"
-        set ip6 2001:db8:isp::2/64
-        set allowaccess6 ping
+        config ipv6
+            set ip6-address 2001:db8:0:100::2/64
+            set ip6-allowaccess ping
+        end
     next
     edit "internal"
         config ipv6
             set ip6-address 2001:db8:1:1::1/64
             set ip6-allowaccess ping https ssh
             set ip6-send-adv enable
-            set ip6-manage-flag disable
-            set ip6-other-flag disable
+            set ip6-manage-flag enable
+            set ip6-other-flag enable
             config ip6-prefix-list
                 edit 2001:db8:1:1::/64
-                    set autonomous-flag enable
+                    set autonomous-flag disable
                     set onlink-flag enable
                     set preferred-life-time 14400
                     set valid-life-time 86400
@@ -42,18 +44,19 @@ end
 
 ## Step 2: Configure IPv6 on Interface via GUI
 
-1. Navigate to **Network > Interfaces**
-2. Click on the interface to edit (e.g., `internal`)
-3. Scroll to **IPv6** section
-4. Set **IPv6 Address**: `2001:db8:1:1::1/64`
-5. Enable **Send Advertisements**
-6. Set **M Flag**: Off (for SLAAC)
-7. Set **O Flag**: Off
-8. Under **Prefix List**, add the /64 prefix with:
-   - **Autonomous Flag**: On
+1. If the **IPv6** section is hidden, go to **System > Feature Visibility** and enable **IPv6**
+2. Navigate to **Network > Interfaces**
+3. Click on the interface to edit (e.g., `internal`)
+4. Scroll to **IPv6** section
+5. Set **IPv6 Address**: `2001:db8:1:1::1/64`
+6. Enable **Send Advertisements**
+7. Set **M Flag**: On (for stateful DHCPv6)
+8. Set **O Flag**: On
+9. Under **Prefix List**, add the /64 prefix with:
+   - **Autonomous Flag**: Off
    - **On-link Flag**: On
    - Valid/Preferred Lifetimes as desired
-9. Click **OK**
+10. Click **OK**
 
 ## Step 3: Configure Static IPv6 Route
 
@@ -61,7 +64,7 @@ end
 config router static6
     edit 1
         set dst ::/0
-        set gateway 2001:db8:isp::1
+        set gateway 2001:db8:0:100::1
         set device "wan1"
     next
 end
@@ -73,23 +76,29 @@ end
 config system dhcp6 server
     edit 1
         set interface "internal"
+        set subnet 2001:db8:1:1::/64
         set ip-mode range
-        set ip-range start-ip 2001:db8:1:1::1000 end-ip 2001:db8:1:1::1fff
+        set dns-service specify
         set dns-server1 2001:db8:1:1::53
-        set dns-service local
         set domain "example.com"
         set lease-time 86400
+        config ip-range
+            edit 1
+                set start-ip 2001:db8:1:1::1000
+                set end-ip 2001:db8:1:1::1fff
+            next
+        end
     next
 end
 ```
 
 ## Step 5: Configure IPv6 Firewall Policies
 
-IPv6 policies are separate from IPv4 policies in FortiGate:
+On current FortiOS releases, IPv4 and IPv6 firewall policies are configured under `config firewall policy` using the IPv6 address fields:
 
 ```bash
 # Allow LAN IPv6 traffic to WAN
-config firewall policy6
+config firewall policy
     edit 1
         set name "LAN-to-WAN-IPv6"
         set srcintf "internal"
@@ -99,7 +108,6 @@ config firewall policy6
         set action accept
         set schedule "always"
         set service "ALL"
-        set nat6 enable
         set logtraffic all
     next
 end
@@ -116,7 +124,7 @@ config firewall address6
         set ip6 2001:db8:1:1::/64
     next
     edit "DNS-Servers-IPv6"
-        set type range
+        set type iprange
         set start-ip 2001:db8:1:1::53
         set end-ip 2001:db8:1:1::53
     next
@@ -135,7 +143,7 @@ config router ospf6
     config ospf6-interface
         edit "internal"
             set interface "internal"
-            set area 0.0.0.0
+            set area-id 0.0.0.0
         next
     end
 end
@@ -145,27 +153,27 @@ end
 
 ```bash
 # Show IPv6 interface addresses
-get system interface | grep -A3 ip6
+diagnose ipv6 address list
 
 # Show IPv6 routing table
-get router info6 routing-table all
+get router info6 routing-table
 
 # Show DHCPv6 leases
-get system dhcp6 lease
+execute dhcp6 lease-list internal
 
 # Show IPv6 firewall policy statistics
-get firewall policy6
+diagnose firewall iprope6 show
 
 # Ping test
 execute ping6 2606:4700:4700::1111
 
-# Traceroute
-execute tracert6 2606:4700:4700::1111
+# Traceroute (interactive)
+execute tracert6
 
-# Check RA is being sent
-diagnose ipv6 nd info
+# Show IPv6 neighbor cache
+diagnose ipv6 neighbor-cache list
 ```
 
 ## Conclusion
 
-FortiGate provides comprehensive IPv6 support with the interface-level IPv6 configuration containing both the address and RA settings. IPv6 security policies are managed separately from IPv4, allowing precise control over IPv6 traffic flows. For production deployments, configure both IPv4 and IPv6 policies in parallel and verify using the `diagnose ipv6` command family for deep inspection of the IPv6 stack.
+FortiGate provides comprehensive IPv6 support with the interface-level IPv6 configuration containing both the address and RA settings. On current FortiOS releases, IPv6 traffic is controlled through the consolidated firewall policy model using the IPv6 source and destination fields. For production deployments, verify addressing, routing, DHCPv6 leases, and policy hits using the `diagnose ipv6`, `execute dhcp6`, and `diagnose firewall iprope6` command families.
