@@ -22,6 +22,8 @@ Name=gre0
 Kind=gre
 
 [Tunnel]
+# Create the tunnel without requiring Tunnel= from another .network file
+Independent=yes
 # Local underlay IP (this host's IP)
 Local=10.0.0.1
 # Remote underlay IP (the other end of the tunnel)
@@ -56,6 +58,7 @@ Name=gre0
 Kind=gre
 
 [Tunnel]
+Independent=yes
 Local=10.0.0.2
 Remote=10.0.0.1
 TTL=255
@@ -110,13 +113,13 @@ journalctl -u systemd-networkd | grep gre
 networkctl status gre0
 ```
 
-## Load ip_gre Module at Boot
+## Load ip_gre Module at Boot (If Needed)
 
 ```bash
-# Ensure the ip_gre module loads at boot
+# If your system does not auto-load GRE support, ensure the ip_gre module loads at boot
 echo "ip_gre" > /etc/modules-load.d/ip_gre.conf
 ```
 
 ## Conclusion
 
-systemd-networkd manages GRE tunnels through `.netdev` files (defining tunnel type and underlay endpoints) and `.network` files (assigning overlay IPs and routes). This provides clean, persistent tunnel configuration. Ensure the `ip_gre` module is loaded at boot by adding it to `/etc/modules-load.d/`. Use `networkctl status gre0` to verify the tunnel state after applying configuration.
+systemd-networkd manages GRE tunnels through `.netdev` files (defining tunnel type and underlay endpoints) and `.network` files (assigning overlay IPs and routes). This provides clean, persistent tunnel configuration. If automatic module loading is unavailable on your system, load `ip_gre` at boot by adding it to `/etc/modules-load.d/`. Use `networkctl status gre0` to verify the tunnel state after applying configuration.
