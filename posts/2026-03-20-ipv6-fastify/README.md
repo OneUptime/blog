@@ -128,15 +128,65 @@ app.listen({ port: 3000, host: '::' });
 ```javascript
 const Fastify = require('fastify');
 const fp = require('fastify-plugin');
+const { isIPv6 } = require('node:net');
 
 // Rate limit plugin grouped by /64 prefix
 async function ipv6RateLimitPlugin(fastify, options) {
     const { limit = 100, windowMs = 60_000 } = options;
     const buckets = new Map();
 
+    function expandIPv6(ip) {
+        const normalized = ip.toLowerCase().split('%')[0];
+        if (!isIPv6(normalized)) return null;
+
+        const [head = '', tail = ''] = normalized.split('::');
+
+        function parseGroups(part) {
+            if (!part) return [];
+
+            const groups = part.split(':');
+            const lastGroup = groups[groups.length - 1];
+
+            if (lastGroup.includes('.')) {
+                const octets = lastGroup.split('.').map(Number);
+                if (
+                    octets.length !== 4 ||
+                    octets.some((octet) => !Number.isInteger(octet) || octet < 0 || octet > 255)
+                ) {
+                    return null;
+                }
+
+                groups.splice(
+                    groups.length - 1,
+                    1,
+                    ((octets[0] << 8) | octets[1]).toString(16),
+                    ((octets[2] << 8) | octets[3]).toString(16)
+                );
+            }
+
+            return groups;
+        }
+
+        const headGroups = parseGroups(head);
+        const tailGroups = parseGroups(tail);
+        if (!headGroups || !tailGroups) return null;
+
+        const missingGroups = 8 - (headGroups.length + tailGroups.length);
+        if (missingGroups < 0) return null;
+
+        return [
+            ...headGroups,
+            ...Array(missingGroups).fill('0'),
+            ...tailGroups,
+        ].map((group) => group.padStart(4, '0'));
+    }
+
     function getKey(ip) {
-        if (ip && ip.includes(':')) {
-            return ip.split(':').slice(0, 4).join(':') + '::/64';
+        if (ip && isIPv6(ip)) {
+            const expanded = expandIPv6(ip);
+            if (expanded) {
+                return expanded.slice(0, 4).join(':') + '::/64';
+            }
         }
         return ip || 'unknown';
     }
