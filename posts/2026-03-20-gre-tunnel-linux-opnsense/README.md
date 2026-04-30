@@ -33,6 +33,9 @@ ip tunnel add gre1 \
 ip addr add 172.16.1.1/30 dev gre1
 ip link set gre1 up
 
+# If this Linux system routes a LAN behind it, enable IPv4 forwarding
+sysctl -w net.ipv4.ip_forward=1
+
 # Route traffic to OPNsense LAN through tunnel
 ip route add 192.168.2.0/24 via 172.16.1.2 dev gre1
 
@@ -43,7 +46,7 @@ ip route add 192.168.2.0/24 via 172.16.1.2 dev gre1
 ## OPNsense Side Configuration
 
 ```text
-Interfaces → Other Types → GRE → Add
+Interfaces → Devices → GRE → Add
 
   Parent Interface: WAN (or the interface facing Linux host)
   GRE Remote Address: 10.0.0.1     (Linux host's outer IP)
@@ -58,7 +61,7 @@ After saving:
 Interfaces → Assignments
   Assign the new GRE interface (greX)
   Enable the interface
-  Set IPv4 address: 172.16.1.2/30
+  Confirm the tunnel local address is 172.16.1.2/30
 ```
 
 ## Static Routes on OPNsense
@@ -113,6 +116,6 @@ tcpdump -i eth0 -nn proto 47   # GRE is IP protocol 47
 ## Key Takeaways
 
 - GRE uses IP protocol 47 (not TCP/UDP); ensure firewall rules allow protocol 47 between the two endpoints.
-- On OPNsense, configure the GRE tunnel under `Interfaces → Other Types → GRE` and then assign it as an interface.
+- On OPNsense, configure the GRE tunnel under `Interfaces → Devices → GRE` and then assign it as an interface.
 - Add static routes on both sides to direct LAN-to-LAN traffic through the tunnel.
 - Use `tcpdump -i eth0 proto 47` to verify GRE packets are being sent and received.
