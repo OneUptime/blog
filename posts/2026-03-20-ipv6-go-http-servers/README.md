@@ -13,6 +13,7 @@ package main
 
 import (
     "fmt"
+    "net"
     "net/http"
 )
 
@@ -24,15 +25,16 @@ func main() {
         fmt.Fprintf(w, "Your address: %s\n", r.RemoteAddr)
     })
 
-    // Listen on all IPv6 interfaces
-    // "[::]:8080" binds to all IPv6 interfaces on port 8080
-    server := &http.Server{
-        Addr:    "[::]:8080",
-        Handler: mux,
+    // Listen on all IPv6 interfaces using an IPv6-only listener.
+    ln, err := net.Listen("tcp6", "[::]:8080")
+    if err != nil {
+        panic(err)
     }
 
+    server := &http.Server{Handler: mux}
+
     fmt.Println("HTTP server on [::]:8080")
-    if err := server.ListenAndServe(); err != nil {
+    if err := server.Serve(ln); err != nil {
         panic(err)
     }
 }
@@ -51,8 +53,8 @@ import (
     "strings"
 )
 
-// GetClientIP extracts the real client IP from an HTTP request.
-// Handles X-Forwarded-For, X-Real-IP, and IPv4-mapped IPv6.
+// GetClientIP extracts a client IP from an HTTP request.
+// Prefers X-Forwarded-For and X-Real-IP, and handles IPv4-mapped IPv6.
 func GetClientIP(r *http.Request) (netip.Addr, error) {
     // Check proxy headers first
     for _, header := range []string{"X-Forwarded-For", "X-Real-IP"} {
@@ -102,7 +104,6 @@ func ipInfoHandler(w http.ResponseWriter, r *http.Request) {
 package main
 
 import (
-    "context"
     "fmt"
     "net"
     "net/http"
@@ -164,7 +165,6 @@ package main
 
 import (
     "net/http"
-    "net/netip"
     "sync"
     "time"
 )
@@ -229,4 +229,4 @@ func (rl *IPv6RateLimiter) Middleware(next http.Handler) http.Handler {
 
 ## Conclusion
 
-Go HTTP servers handle IPv6 naturally when bound to `[::]:port`. The key considerations are extracting client IPv6 addresses correctly (handling proxy headers and IPv4-mapped addresses), and using /64 prefix-based rate limiting to handle IPv6 privacy extensions. For production use, bind separately to IPv4 and IPv6 listeners to have explicit control over each protocol.
+Go HTTP servers handle IPv6 naturally when served on an IPv6 listener. The key considerations are extracting client IPv6 addresses correctly (handling proxy headers and IPv4-mapped addresses), and using /64 prefix-based rate limiting to handle IPv6 privacy extensions. If you use `ListenAndServe` with `[::]:port`, whether the underlying `tcp` listener also accepts IPv4 is platform-dependent, so bind separately to IPv4 and IPv6 listeners when you need explicit control over each protocol.
