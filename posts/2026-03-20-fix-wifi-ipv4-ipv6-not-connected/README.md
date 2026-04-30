@@ -8,7 +8,7 @@ Description: Learn how to fix the issue where both IPv4 and IPv6 show 'Not Conne
 
 ## What Does "IPv4 and IPv6 Not Connected" Mean?
 
-When Windows shows both IPv4 and IPv6 as "Not Connected" in the Network and Sharing Center, the WiFi adapter has associated with the access point (Layer 2 is up) but has failed to obtain any IP configuration. This is more severe than just "No Internet" - the device has no IP address at all.
+When Windows shows both IPv4 and IPv6 as "Not Connected" in the Network and Sharing Center, Windows has not established usable IP connectivity on that adapter. The cause can be a WiFi link problem, disabled protocol bindings, or failure to obtain usable IP configuration. This is more severe than just "No Internet" because the adapter is not communicating over either IP protocol.
 
 ## Step 1: Verify the WiFi Association
 
@@ -23,7 +23,8 @@ REM SSID                   : MyNetwork
 REM BSSID                  : aa:bb:cc:dd:ee:ff
 REM Authentication         : WPA2-Personal
 
-REM If State is "connected" but no IP, the problem is at Layer 3
+REM If State is "connected" but IP configuration is still missing or unusable,
+REM the problem is at Layer 3
 REM If State is "disconnected", fix the WiFi connection first
 ```
 
@@ -35,7 +36,7 @@ ipconfig /release
 ipconfig /renew
 
 REM If renew fails with "Unable to contact DHCP server":
-REM The DHCP server is not responding
+REM The client is not reaching a DHCP server
 
 REM Try release/renew for specific adapter
 ipconfig /release "Wi-Fi"
@@ -46,15 +47,15 @@ ipconfig /renew "Wi-Fi"
 
 ```cmd
 REM Full network stack reset (run as Administrator)
-netsh winsock reset catalog
-netsh int ip reset reset.log
-netsh int ipv6 reset resetlog.log
+netsh winsock reset
+netsh interface ipv4 reset
+netsh interface ipv6 reset
 netsh advfirewall reset
 ipconfig /flushdns
 
 REM Restart adapter
-netsh interface set interface "Wi-Fi" disable
-netsh interface set interface "Wi-Fi" enable
+netsh interface set interface name="Wi-Fi" admin=DISABLED
+netsh interface set interface name="Wi-Fi" admin=ENABLED
 
 REM Reboot
 shutdown /r /t 0
@@ -94,16 +95,20 @@ REM Start if stopped
 net start Dhcp
 
 REM Check other required services
-sc query NlaSvc    REM Network Location Awareness
-sc query WlanSvc   REM WLAN AutoConfig
-sc query Netprofm  REM Network List Service
+REM NlaSvc = Network Location Awareness
+sc query NlaSvc
+REM WlanSvc = WLAN AutoConfig
+sc query WlanSvc
+REM Netprofm = Network List Service
+sc query Netprofm
 
 REM Start any stopped services
 net start NlaSvc
 net start WlanSvc
+net start Netprofm
 ```
 
-## Step 6: Uninstall and Reinstall WiFi Adapter
+## Step 6: Restart or Reinstall WiFi Adapter
 
 ```powershell
 # Get the WiFi adapter
@@ -115,10 +120,9 @@ Get-NetAdapter -Name "Wi-Fi"
 # Check "Delete the driver software for this device"
 # Action → Scan for hardware changes (reinstalls)
 
-# Or via PowerShell
-$adapter = Get-PnpDevice -FriendlyName "*Wireless*" -Status "OK"
-Disable-PnpDevice -InstanceId $adapter.InstanceId -Confirm:$false
-Enable-PnpDevice -InstanceId $adapter.InstanceId -Confirm:$false
+# Or restart the adapter via PowerShell
+Disable-NetAdapter -Name "Wi-Fi" -Confirm:$false
+Enable-NetAdapter -Name "Wi-Fi" -Confirm:$false
 ```
 
 ## Step 7: Check DHCP Server Availability
@@ -129,13 +133,16 @@ The issue may be the DHCP server, not the client:
 REM From another working device, check if DHCP server has capacity
 REM Log into router and verify DHCP pool is not exhausted
 
-REM Test if you can get an IP with a static assignment:
-netsh interface ip set address name="Wi-Fi" static 192.168.1.100 255.255.255.0 192.168.1.1
-netsh interface ip set dns name="Wi-Fi" static 8.8.8.8
+REM Test if the adapter works with a static IPv4 assignment:
+netsh interface ipv4 set address name="Wi-Fi" source=static address=192.168.1.100 mask=255.255.255.0 gateway=192.168.1.1
+netsh interface ipv4 set dnsservers name="Wi-Fi" source=static address=8.8.8.8
 ipconfig /all
-REM If static works, DHCP server is the problem
+REM Return the adapter to DHCP after testing
+netsh interface ipv4 set address name="Wi-Fi" source=dhcp
+netsh interface ipv4 set dnsservers name="Wi-Fi" source=dhcp
+REM If static IPv4 works, the WiFi link is up and the DHCP path is the next thing to check
 ```
 
 ## Conclusion
 
-Both IPv4 and IPv6 showing "Not Connected" means the WiFi adapter is associated but has no IP address. Work through the steps: run `ipconfig /release && /renew`, then reset the TCP/IP stack with `netsh winsock reset && netsh int ip reset`, re-enable protocol bindings, verify the DHCP Client service is running, and reinstall the wireless adapter driver as a last resort. Test with a static IP to determine whether the issue is the DHCP client or DHCP server.
+Both IPv4 and IPv6 showing "Not Connected" means Windows has not established usable IP connectivity on that adapter. Work through the steps: run `ipconfig /release && ipconfig /renew`, then reset the stack with `netsh winsock reset`, `netsh interface ipv4 reset`, and `netsh interface ipv6 reset`, re-enable protocol bindings, verify the DHCP Client service is running, and reinstall the wireless adapter driver as a last resort. Test with a static IPv4 address to help determine whether the problem is in the DHCP path or on the DHCP server.
