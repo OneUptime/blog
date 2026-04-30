@@ -4,11 +4,11 @@ Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
 Tags: Portainer, Docker, Health Check, Microservice, Monitoring, Reliability
 
-Description: Configure Docker health checks for microservices to enable automatic restart, load balancer awareness, and deployment safety with Portainer.
+Description: Configure Docker health checks for microservices to improve health visibility, load balancer awareness, and deployment safety with Portainer.
 
 ## Introduction
 
-Docker health checks automatically monitor container health and inform orchestrators (Swarm, Kubernetes) and load balancers whether a container is ready to receive traffic. A container can be running but unhealthy (e.g., application crashed but process is still alive). Proper health checks are critical for zero-downtime deployments. This guide covers implementing comprehensive health checks managed through Portainer.
+Docker health checks automatically monitor container health and expose a status that Docker, Docker Compose, Docker Swarm, Portainer, and integrations such as Traefik can use. A container can be running but unhealthy (e.g., the process is still running but the app is no longer serving traffic). Proper health checks are critical for zero-downtime deployments. This guide covers implementing comprehensive health checks deployed and viewed through Portainer.
 
 ## Step 1: Basic Health Check in Dockerfile
 
@@ -19,7 +19,10 @@ FROM python:3.12-slim
 
 WORKDIR /app
 COPY requirements.txt .
-RUN pip install -r requirements.txt
+RUN apt-get update \
+    && apt-get install -y --no-install-recommends curl \
+    && rm -rf /var/lib/apt/lists/* \
+    && pip install -r requirements.txt
 COPY . .
 
 EXPOSE 8000
@@ -29,7 +32,7 @@ HEALTHCHECK --interval=30s \
             --timeout=10s \
             --start-period=30s \
             --retries=3 \
-  CMD curl -f http://localhost:8000/health || exit 1
+  CMD ["curl", "-f", "http://localhost:8000/health"]
 
 CMD ["uvicorn", "main:app", "--host", "0.0.0.0", "--port", "8000"]
 ```
@@ -38,8 +41,6 @@ CMD ["uvicorn", "main:app", "--host", "0.0.0.0", "--port", "8000"]
 
 ```yaml
 # docker-compose.yml - Health checks for all services
-version: "3.8"
-
 networks:
   app_network:
     driver: bridge
@@ -67,7 +68,7 @@ services:
   postgres:
     image: postgres:15-alpine
     healthcheck:
-      test: ["CMD-SHELL", "pg_isready -U ${POSTGRES_USER:-postgres} -d ${POSTGRES_DB:-postgres}"]
+      test: ["CMD-SHELL", "pg_isready -U $${POSTGRES_USER:-postgres} -d $${POSTGRES_DB:-postgres}"]
       interval: 10s
       timeout: 5s
       retries: 5
@@ -83,7 +84,7 @@ services:
   mysql:
     image: mysql:8.0
     healthcheck:
-      test: ["CMD", "mysqladmin", "ping", "-h", "localhost", "-u", "root", "--password=${MYSQL_ROOT_PASSWORD}"]
+      test: ["CMD-SHELL", "mysqladmin ping -h localhost -u root --password=\"$$MYSQL_ROOT_PASSWORD\""]
       interval: 10s
       timeout: 5s
       retries: 5
@@ -131,17 +132,18 @@ services:
   elasticsearch:
     image: elasticsearch:8.12.0
     healthcheck:
-      test: ["CMD-SHELL", "curl -f http://localhost:9200/_cat/health || exit 1"]
+      test: ["CMD-SHELL", "curl -fsS http://localhost:9200/_cluster/health || exit 1"]
       interval: 30s
       timeout: 10s
       retries: 5
       start_period: 60s
     environment:
       - discovery.type=single-node
+      - xpack.security.enabled=false
     networks:
       - app_network
 
-  # Service B waits for Service A to be healthy
+  # Service B waits for its dependencies to be healthy on startup
   service_b:
     image: service-b:latest
     depends_on:
@@ -242,6 +244,8 @@ func Handler(db *sql.DB) http.HandlerFunc {
             checks["database"] = "healthy"
         }
 
+        w.Header().Set("Content-Type", "application/json")
+
         status := HealthStatus{Checks: checks}
         if healthy {
             status.Status = "healthy"
@@ -251,7 +255,6 @@ func Handler(db *sql.DB) http.HandlerFunc {
             w.WriteHeader(http.StatusServiceUnavailable)
         }
 
-        w.Header().Set("Content-Type", "application/json")
         json.NewEncoder(w).Encode(status)
     }
 }
@@ -259,19 +262,19 @@ func Handler(db *sql.DB) http.HandlerFunc {
 
 ## Step 4: View Health Status in Portainer
 
-Portainer displays health status in multiple places:
-- **Containers** list: Shows a green/yellow/red dot for health status
-- **Container details**: Shows health check history and last output
-- **Stacks**: Shows overall stack health
+Portainer surfaces container status in the UI and lets you inspect Docker health data:
+- **Containers** list: Shows container status
+- **Container details**: Shows status, logs, stats, and actions
+- **Inspect** view: Shows the raw Docker JSON, including `.State.Health` when a health check is configured
 
 ```bash
 # Check health status via Docker CLI
-docker inspect --format='{{.State.Health}}' mycontainer
+docker inspect --format='{{.State.Health.Status}}' mycontainer
 
 # View health check log
-docker inspect --format='{{range .State.Health.Log}}{{.Output}}{{end}}' mycontainer
+docker inspect --format='{{range .State.Health.Log}}{{println .Output}}{{end}}' mycontainer
 
-# Force a health check immediately
+# Run the same probe manually inside the container
 docker exec mycontainer curl -f http://localhost:8000/health
 ```
 
@@ -281,9 +284,9 @@ docker exec mycontainer curl -f http://localhost:8000/health
 # swarm-stack.yml - Health checks for Swarm services
 services:
   api:
-    image: myapp:latest
+    image: myapp/api:latest
     healthcheck:
-      test: ["CMD", "wget", "-q", "--spider", "http://localhost:8080/health"]
+      test: ["CMD", "curl", "-f", "http://localhost:8000/health"]
       interval: 15s
       timeout: 5s
       retries: 3
@@ -291,13 +294,14 @@ services:
     deploy:
       replicas: 3
       update_config:
-        # Wait for health check before updating next replica
+        # Start the new task before stopping the old one
         order: start-first
         failure_action: rollback
+        monitor: 30s
       rollback_config:
         parallelism: 1
 ```
 
 ## Conclusion
 
-Health checks are fundamental to reliable microservice deployments. With proper health checks in place, Docker will automatically restart unhealthy containers, Traefik will stop routing traffic to failing instances, and Swarm will restart replicas that fail health checks. Portainer's container dashboard shows health status at a glance, making it easy to spot problematic services before they impact users. Use the readiness/liveness pattern to distinguish between "app is starting" and "app is broken."
+Health checks are fundamental to reliable microservice deployments. With proper health checks in place, Docker exposes container health status, Traefik can stop routing traffic to unhealthy instances, and Swarm can reschedule service tasks that become unhealthy. Portainer's container views make that status easier to inspect before users are affected. Use separate readiness and liveness endpoints to distinguish between "app is starting" and "app is broken," and configure Kubernetes probes explicitly if you deploy there.
