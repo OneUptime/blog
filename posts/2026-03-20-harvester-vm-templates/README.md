@@ -55,7 +55,7 @@ metadata:
 spec:
   description: "Ubuntu 22.04 LTS web server template - 4 CPU / 8 GB RAM"
   # This will be updated to point to the default version
-  defaultVersionID: ""
+  defaultVersionId: ""
 ```
 
 ```bash
@@ -75,16 +75,35 @@ metadata:
   namespace: default
 spec:
   # Reference to the parent template
-  templateID: default/ubuntu-web-server
+  templateId: default/ubuntu-web-server
   description: "Initial version - Ubuntu 22.04 LTS"
   vm:
-    # Kubernetes annotations to apply to the VM
-    objectMeta:
+    # Kubernetes metadata to apply to the VM
+    metadata:
       labels:
         role: web-server
         managed-by: template
+      annotations:
+        harvesterhci.io/volumeClaimTemplates: |-
+          [{
+            "metadata": {
+              "name": "pvc-rootdisk",
+              "annotations": {
+                "harvesterhci.io/imageId": ""
+              }
+            },
+            "spec": {
+              "accessModes": ["ReadWriteMany"],
+              "resources": {
+                "requests": {
+                  "storage": "20Gi"
+                }
+              },
+              "volumeMode": "Block"
+            }
+          }]
     spec:
-      running: false  # Don't start automatically; let the user decide
+      runStrategy: Halted  # Don't start automatically; let the user decide
       template:
         spec:
           domain:
@@ -96,8 +115,10 @@ spec:
             # Memory
             resources:
               requests:
+                cpu: 4
                 memory: 8Gi
               limits:
+                cpu: 4
                 memory: 8Gi
             # Machine type
             machine:
@@ -128,9 +149,8 @@ spec:
           # Volume definitions
           volumes:
             - name: rootdisk
-              # dataVolume will be auto-populated when creating VM from template
-              dataVolume:
-                name: ""
+              persistentVolumeClaim:
+                claimName: pvc-rootdisk
             - name: cloudinitdisk
               cloudInitNoCloud:
                 userData: |
@@ -151,10 +171,10 @@ spec:
 ```bash
 kubectl apply -f vm-template-version-v1.yaml
 
-# Set this version as the default for the template
+# Optionally set this version as the default for the template
 kubectl patch virtualmachinetemplate ubuntu-web-server -n default \
     --type merge \
-    -p '{"spec":{"defaultVersionID":"default/ubuntu-web-server-v1"}}'
+    -p '{"spec":{"defaultVersionId":"default/ubuntu-web-server-v1"}}'
 ```
 
 ## Step 3: Create a Version 2 (Updated Template)
@@ -171,11 +191,34 @@ metadata:
   name: ubuntu-web-server-v2
   namespace: default
 spec:
-  templateID: default/ubuntu-web-server
+  templateId: default/ubuntu-web-server
   description: "v2 - Increased to 8 CPU / 16 GB RAM for higher traffic"
   vm:
+    metadata:
+      labels:
+        role: web-server
+        managed-by: template
+      annotations:
+        harvesterhci.io/volumeClaimTemplates: |-
+          [{
+            "metadata": {
+              "name": "pvc-rootdisk",
+              "annotations": {
+                "harvesterhci.io/imageId": ""
+              }
+            },
+            "spec": {
+              "accessModes": ["ReadWriteMany"],
+              "resources": {
+                "requests": {
+                  "storage": "20Gi"
+                }
+              },
+              "volumeMode": "Block"
+            }
+          }]
     spec:
-      running: false
+      runStrategy: Halted
       template:
         spec:
           domain:
@@ -185,8 +228,10 @@ spec:
               threads: 1
             resources:
               requests:
+                cpu: 8
                 memory: 16Gi   # Increased from 8Gi
               limits:
+                cpu: 8
                 memory: 16Gi
             machine:
               type: q35
@@ -203,13 +248,17 @@ spec:
                 - name: default
                   model: virtio
                   masquerade: {}
+              inputs:
+                - name: tablet
+                  bus: usb
+                  type: tablet
           networks:
             - name: default
               pod: {}
           volumes:
             - name: rootdisk
-              dataVolume:
-                name: ""
+              persistentVolumeClaim:
+                claimName: pvc-rootdisk
             - name: cloudinitdisk
               cloudInitNoCloud:
                 userData: |
@@ -220,6 +269,10 @@ spec:
                   runcmd:
                     - systemctl enable --now qemu-guest-agent
                     - systemctl enable --now nginx
+                  users:
+                    - name: ubuntu
+                      sudo: ALL=(ALL) NOPASSWD:ALL
+                      shell: /bin/bash
 ```
 
 ```bash
@@ -228,7 +281,7 @@ kubectl apply -f vm-template-version-v2.yaml
 # Optionally promote v2 as the new default
 kubectl patch virtualmachinetemplate ubuntu-web-server -n default \
     --type merge \
-    -p '{"spec":{"defaultVersionID":"default/ubuntu-web-server-v2"}}'
+    -p '{"spec":{"defaultVersionId":"default/ubuntu-web-server-v2"}}'
 ```
 
 ## Creating a VM from a Template
@@ -243,31 +296,59 @@ kubectl patch virtualmachinetemplate ubuntu-web-server -n default \
 
 ### Via kubectl
 
+`kubectl` does not have a native command that expands a Harvester template into a `VirtualMachine` automatically. To stay in the CLI, inspect the template version and use its `spec.vm` section as the starting point for a regular KubeVirt `VirtualMachine` manifest:
+
+```bash
+kubectl get virtualmachinetemplateversion ubuntu-web-server-v2 -n default -o yaml
+```
+
 ```yaml
 # vm-from-template.yaml
-# Create a VM using a template
+# Create a VM from the vm.spec section of a template version
 
-apiVersion: harvesterhci.io/v1beta1
+apiVersion: kubevirt.io/v1
 kind: VirtualMachine
 metadata:
   name: web-server-01
   namespace: default
+  labels:
+    role: web-server
+    managed-by: template
   annotations:
-    # Reference the template version used
-    harvesterhci.io/vmTemplateVersion: default/ubuntu-web-server-v2
+    # Replace default/ubuntu-2204-image with your Harvester VM image ID
+    harvesterhci.io/volumeClaimTemplates: |-
+      [{
+        "metadata": {
+          "name": "web-server-01-rootdisk",
+          "annotations": {
+            "harvesterhci.io/imageId": "default/ubuntu-2204-image"
+          }
+        },
+        "spec": {
+          "accessModes": ["ReadWriteMany"],
+          "resources": {
+            "requests": {
+              "storage": "20Gi"
+            }
+          },
+          "volumeMode": "Block"
+        }
+      }]
 spec:
-  running: true
+  runStrategy: Always
   template:
-    # Spec is inherited from the template version
-    # Override specific fields here if needed
     spec:
       domain:
         cpu:
           cores: 8
+          sockets: 1
+          threads: 1
         resources:
           requests:
+            cpu: 8
             memory: 16Gi
           limits:
+            cpu: 8
             memory: 16Gi
         machine:
           type: q35
@@ -277,17 +358,38 @@ spec:
               bootOrder: 1
               disk:
                 bus: virtio
+            - name: cloudinitdisk
+              disk:
+                bus: virtio
           interfaces:
             - name: default
               model: virtio
               masquerade: {}
+          inputs:
+            - name: tablet
+              bus: usb
+              type: tablet
       networks:
         - name: default
           pod: {}
       volumes:
         - name: rootdisk
           persistentVolumeClaim:
-            claimName: web-server-01-root
+            claimName: web-server-01-rootdisk
+        - name: cloudinitdisk
+          cloudInitNoCloud:
+            userData: |
+              #cloud-config
+              packages:
+                - qemu-guest-agent
+                - nginx
+              runcmd:
+                - systemctl enable --now qemu-guest-agent
+                - systemctl enable --now nginx
+              users:
+                - name: ubuntu
+                  sudo: ALL=(ALL) NOPASSWD:ALL
+                  shell: /bin/bash
 ```
 
 ## Listing and Managing Templates
@@ -299,7 +401,7 @@ kubectl get virtualmachinetemplate -n default
 # List all template versions
 kubectl get virtualmachinetemplateversion -n default
 
-# Delete a template version (keeps other versions)
+# Delete a non-default template version (keeps other versions)
 kubectl delete virtualmachinetemplateversion ubuntu-web-server-v1 -n default
 
 # Delete the entire template and all versions
@@ -308,4 +410,4 @@ kubectl delete virtualmachinetemplate ubuntu-web-server -n default
 
 ## Conclusion
 
-VM templates in Harvester bring consistency and governance to your VM deployments. By defining approved configurations as versioned templates, you ensure that all VMs are created with the right resources, security settings, and software packages. Template versioning gives you the flexibility to evolve your standard configurations over time while maintaining an audit trail. Teams can share templates across namespaces and automate VM provisioning using the Kubernetes API.
+VM templates in Harvester bring consistency and governance to your VM deployments. By defining approved configurations as versioned templates, you ensure that all VMs are created with the right resources, security settings, and software packages. Template versioning gives you the flexibility to evolve your standard configurations over time while maintaining an audit trail. Teams can standardize VM definitions and automate provisioning using the Kubernetes API.
