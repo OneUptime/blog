@@ -4,58 +4,58 @@ Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
 Tags: Harvester, Kubernetes, Virtualization, HCI, Witness Node, High Availability
 
-Description: Learn how to configure a Harvester witness node to maintain etcd quorum in multi-datacenter deployments without adding full compute nodes.
+Description: Learn how to configure a Harvester witness node to maintain etcd quorum in multi-datacenter deployments without adding a third full management node.
 
 ## Introduction
 
-A witness node in Harvester is a lightweight cluster member that participates in etcd quorum voting without running VM workloads. Witness nodes are valuable for two-datacenter disaster recovery configurations where you need a third node to break ties in quorum voting, but don't want to deploy a full Harvester node in a third location. The witness node runs etcd and the Kubernetes control plane but not the heavy KubeVirt and Longhorn storage components.
+A witness node in Harvester is a lightweight cluster member that participates in etcd quorum voting without running VM workloads. Witness nodes are valuable for two-datacenter disaster recovery configurations where you need a third node to break ties in quorum voting, but don't want to deploy a full management node in a third location. The witness node is an etcd-only cluster member and does not run the full Kubernetes control plane, KubeVirt, or Longhorn storage components.
 
 ## When to Use a Witness Node
 
 ```mermaid
 graph TD
-    DC1["Datacenter 1\n2 Full Nodes"] --> WN["Witness Node\n(3rd location or small VM)"]
-    DC2["Datacenter 2\n2 Full Nodes"] --> WN
-    WN --> Quorum["etcd Quorum = 5\nRequires 3 for majority"]
+    DC1["Datacenter 1\nManagement Node"] --> WN["Witness Node\n(3rd location)"]
+    DC2["Datacenter 2\nManagement Node"] --> WN
+    WN --> Quorum["etcd Members = 3\nRequires 2 for majority"]
 ```
 
 **Use witness nodes when:**
-- You have exactly 2 datacenters with 2+ nodes each
-- You need a tie-breaker for etcd quorum
-- The third location cannot host a full HCI node
-- Cost of a full node in a third location is prohibitive
+- You are building a Harvester cluster with 2 management nodes and 1 witness node
+- You need a third etcd voter without adding a third full management node
+- The third location does not need to host VM or Longhorn workloads
+- Cost of a full third management node is prohibitive
 
 ## Witness Node Architecture
 
 A Harvester witness node:
-- Runs etcd (participates in consensus voting)
-- Runs the Kubernetes API server
+- Runs etcd (participates in consensus voting) and only essential supporting workloads
+- Does NOT run control-plane components such as kube-apiserver, kube-scheduler, or kube-controller-manager
 - Does NOT run KubeVirt (no VMs)
 - Does NOT run Longhorn (no storage)
-- Requires minimal hardware (~4 vCPUs, 8 GB RAM, 100 GB disk)
+- Still must meet Harvester witness-node hardware requirements and etcd storage performance guidance
 
 ## Prerequisites
 
-- An existing Harvester cluster (2-node minimum)
-- A third server or VM for the witness
+- A Harvester deployment that will use 2 management nodes and 1 witness node
+- A third server for the witness
 - Network connectivity between all nodes
 - The cluster join token
 
 ## Step 1: Prepare the Witness Node Hardware
 
-Witness nodes have minimal hardware requirements:
+Witness nodes consume fewer resources than full management nodes, but they still need to meet Harvester's documented minimums:
 
 ```text
 Minimum Witness Node Specs:
-- CPU:     4 cores (no virtualization extensions needed)
-- RAM:     8 GB
-- Disk:    100 GB SSD (for OS and etcd data only)
-- Network: 1 NIC with management network connectivity
+- CPU:     8 cores minimum
+- RAM:     32 GB minimum
+- Disk:    180 GB minimum for witness nodes, on fast SSD/NVMe storage
+- Network: 1 NIC minimum for the management network
 ```
 
 ## Step 2: Install Harvester on the Witness Node
 
-Boot the server with the Harvester ISO and select **Join an existing Harvester cluster**:
+Boot the server with the Harvester ISO, select **Join an existing Harvester cluster**, and choose the **Witness Role**. If you are automating the install, use a configuration like this:
 
 ```yaml
 # witness-node-config.yaml
@@ -64,9 +64,21 @@ Boot the server with the Harvester ISO and select **Join an existing Harvester c
 
 scheme_version: 1
 
+server_url: https://192.168.1.100:443
+token: "your-cluster-token"
+
 install:
   device: /dev/sda
   automatic: true
+  mode: join
+  role: witness
+  management_interface:
+    interfaces:
+      - name: eth0
+    method: static
+    ip: 192.168.1.15
+    subnet_mask: 255.255.255.0
+    gateway: 192.168.1.1
 
 os:
   hostname: harvester-witness-01
@@ -76,54 +88,21 @@ os:
     - pool.ntp.org
   dns_nameservers:
     - 8.8.8.8
-
-network:
-  interfaces:
-    - name: eth0
-
-harvester:
-  mode: join
-  # URL of the existing cluster
-  server_url: https://192.168.1.100
-  # Cluster join token
-  token: "your-cluster-token"
-  management_interface:
-    interfaces:
-      - name: eth0
-    method: static
-    ip: 192.168.1.15
-    subnetMask: 255.255.255.0
-    gateway: 192.168.1.1
-    dnsNameservers:
-      - 8.8.8.8
-  # CRITICAL: Mark this node as a witness node
-  role: "witness"
 ```
 
-## Step 3: Configure the Node Role After Joining
+## Step 3: Verify the Node Role After Joining
 
-After the node joins the cluster, configure it as a witness:
+After the node joins the cluster, verify that it came up with the witness role. In Harvester, the witness role must be assigned when the node joins the cluster.
 
 ```bash
-# SSH into the witness node
-ssh rancher@192.168.1.15
+# On a management node, or omit this if your external workstation already has cluster access
+export KUBECONFIG=/etc/rancher/rke2/rke2.yaml
 
-# Verify the node joined
-sudo kubectl --kubeconfig /etc/rancher/rke2/rke2.yaml get nodes
+# Verify the node joined with the witness role
+kubectl get nodes
 
-# Label the node as a witness to prevent VM and storage scheduling
-sudo kubectl --kubeconfig /etc/rancher/rke2/rke2.yaml \
-    label node harvester-witness-01 \
-    harvesterhci.io/role=witness
-
-# Add taints to prevent workload scheduling
-sudo kubectl --kubeconfig /etc/rancher/rke2/rke2.yaml \
-    taint node harvester-witness-01 \
-    harvesterhci.io/witness=true:NoSchedule
-
-# Verify the node is labeled correctly
-sudo kubectl --kubeconfig /etc/rancher/rke2/rke2.yaml \
-    get node harvester-witness-01 -o yaml | grep -A 10 "labels:"
+# Expected witness role:
+# harvester-witness-01    Ready    etcd
 ```
 
 ## Step 4: Verify Witness Node in the Cluster
@@ -136,9 +115,9 @@ kubectl get nodes -o wide
 
 # Expected:
 # NAME                    STATUS   ROLES
-# harvester-node-01       Ready    control-plane,etcd,master   (Full node)
-# harvester-node-02       Ready    control-plane,etcd,master   (Full node)
-# harvester-witness-01    Ready    control-plane,etcd,master   (Witness node)
+# harvester-node-01       Ready    control-plane,etcd,master   (Management node)
+# harvester-node-02       Ready    control-plane,etcd,master   (Management node)
+# harvester-witness-01    Ready    etcd                         (Witness node)
 
 # Verify etcd has 3 members
 kubectl exec -n kube-system \
@@ -149,25 +128,30 @@ kubectl exec -n kube-system \
             --key /var/lib/rancher/rke2/server/tls/etcd/server-client.key \
             member list
 
-# Verify no VMs can be scheduled on the witness
-kubectl describe node harvester-witness-01 | grep -A 5 "Taints:"
+# Verify the witness only runs essential system pods
+kubectl get pods -A -o wide | grep -F "harvester-witness-01"
 ```
 
 ## Step 5: Verify Workload Isolation
 
-Confirm that VMs and Longhorn replicas don't schedule on the witness:
+Confirm that VMs and Longhorn data don't land on the witness. If your cluster has only 2 management nodes and 1 witness node, make sure the default StorageClass uses 2 replicas instead of 3 or Longhorn volumes will be degraded.
 
 ```bash
 # Check that no VMs are scheduled on the witness
-kubectl get vmi -A \
-    --field-selector spec.nodeName=harvester-witness-01
+kubectl get vmi -A -o wide | grep -F "harvester-witness-01" || \
+    echo "No VMIs scheduled on witness"
 
 # Check that no Longhorn replicas are on the witness
 kubectl get replicas.longhorn.io -n longhorn-system \
     -o json | jq --arg node "harvester-witness-01" \
     '[.items[] | select(.spec.nodeID == $node)] | length'
 
-# Both should return 0
+# Check the default StorageClass replica count
+kubectl get storageclass \
+    -o custom-columns=NAME:.metadata.name,REPLICAS:.parameters.numberOfReplicas,DEFAULT:.metadata.annotations.storageclass\\.kubernetes\\.io/is-default-class
+
+# In a 2 management + 1 witness cluster with no worker nodes,
+# the default StorageClass should use 2 replicas.
 ```
 
 ## Step 6: Test Quorum with Witness Node
@@ -188,11 +172,16 @@ kubectl get nodes
 # Test that VMs continue running
 kubectl get vmi -A
 
-# Test that the Harvester API is still accessible
-curl -k https://192.168.1.100/healthz
+# Test that the Kubernetes API is still ready
+kubectl get --raw='/readyz?verbose'
 
 # Verify etcd still has quorum
-kubectl get componentstatuses
+kubectl exec -n kube-system \
+    $(kubectl get pods -n kube-system -l component=etcd -o name | head -1) -- \
+    etcdctl --cacert /var/lib/rancher/rke2/server/tls/etcd/server-ca.crt \
+            --cert /var/lib/rancher/rke2/server/tls/etcd/server-client.crt \
+            --key /var/lib/rancher/rke2/server/tls/etcd/server-client.key \
+            endpoint health --cluster
 ```
 
 ## Step 7: Witness Node Monitoring
@@ -200,33 +189,27 @@ kubectl get componentstatuses
 The witness node should be monitored specifically for etcd health:
 
 ```bash
-# Check etcd on the witness node
-ssh rancher@192.168.1.15
+# On a management node, or omit this if your external workstation already has cluster access
+export KUBECONFIG=/etc/rancher/rke2/rke2.yaml
 
-sudo kubectl --kubeconfig /etc/rancher/rke2/rke2.yaml \
-    exec -n kube-system \
-    $(kubectl --kubeconfig /etc/rancher/rke2/rke2.yaml \
-        get pods -n kube-system -l component=etcd \
-        --field-selector spec.nodeName=harvester-witness-01 \
-        -o name) -- \
-    etcdctl endpoint health \
-    --cacert /var/lib/rancher/rke2/server/tls/etcd/server-ca.crt \
-    --cert /var/lib/rancher/rke2/server/tls/etcd/server-client.crt \
-    --key /var/lib/rancher/rke2/server/tls/etcd/server-client.key
+ETCD_POD=$(kubectl get pods -n kube-system -l component=etcd \
+    --field-selector spec.nodeName=harvester-witness-01 \
+    -o name)
 
-# Monitor etcd disk latency (critical for etcd performance)
-sudo kubectl --kubeconfig /etc/rancher/rke2/rke2.yaml \
-    exec -n kube-system \
-    $(kubectl --kubeconfig /etc/rancher/rke2/rke2.yaml \
-        get pods -n kube-system -l component=etcd \
-        --field-selector spec.nodeName=harvester-witness-01 \
-        -o name) -- \
-    etcdctl check perf \
-    --cacert /var/lib/rancher/rke2/server/tls/etcd/server-ca.crt \
+kubectl exec -n kube-system "$ETCD_POD" -- \
+    etcdctl --cacert /var/lib/rancher/rke2/server/tls/etcd/server-ca.crt \
     --cert /var/lib/rancher/rke2/server/tls/etcd/server-client.crt \
-    --key /var/lib/rancher/rke2/server/tls/etcd/server-client.key
+    --key /var/lib/rancher/rke2/server/tls/etcd/server-client.key \
+    endpoint health
+
+# Run an etcd performance check
+kubectl exec -n kube-system "$ETCD_POD" -- \
+    etcdctl --cacert /var/lib/rancher/rke2/server/tls/etcd/server-ca.crt \
+    --cert /var/lib/rancher/rke2/server/tls/etcd/server-client.crt \
+    --key /var/lib/rancher/rke2/server/tls/etcd/server-client.key \
+    check perf
 ```
 
 ## Conclusion
 
-The witness node is an elegant solution to the etcd quorum problem in two-datacenter deployments. By contributing only to voting without running expensive hypervisor workloads, the witness enables a geographically distributed cluster to survive a complete datacenter failure without needing three full-featured HCI nodes. The minimal hardware requirements mean the witness can even run as a VM on an existing server in a third location, colocation facility, or cloud instance - providing high availability at a fraction of the cost of a full third HCI node.
+The witness node is an elegant solution to the etcd quorum problem in two-datacenter deployments. By contributing only to etcd quorum without hosting VM or Longhorn data, it allows you to build a supported 2-management-node plus 1-witness-node Harvester cluster with lower resource use than a third full management node. Just remember the key constraints: the witness role must be assigned when the node joins, each cluster can have only one witness node, and clusters with 2 management nodes plus 1 witness node and no workers need a default StorageClass that uses 2 replicas.
