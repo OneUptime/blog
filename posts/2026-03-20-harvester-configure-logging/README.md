@@ -4,48 +4,47 @@ Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
 Tags: Harvester, Kubernetes, Virtualization, HCI, Logging, Observability
 
-Description: Learn how to configure centralized logging in Harvester to collect, aggregate, and forward logs from cluster components and virtual machines.
+Description: Learn how to configure centralized logging in Harvester to collect, aggregate, and forward logs from cluster Pods and node services.
 
 ## Introduction
 
-Centralized logging in Harvester enables you to collect logs from all cluster components - Kubernetes, VMs, system services, and applications - in one place for troubleshooting, auditing, and compliance. Harvester supports log forwarding through its integrated logging subsystem built on Banzai Cloud Logging Operator, which can send logs to various backends including Elasticsearch, Loki, Splunk, and any Fluentd-compatible endpoint.
+Centralized logging in Harvester enables you to collect logs from cluster Pods, node kernel logs, and select systemd services in one place for troubleshooting, auditing, and compliance. Harvester supports log forwarding through its integrated logging subsystem built on Logging Operator, which can send logs to various backends including Elasticsearch, Loki, Splunk, and other supported Fluentd outputs.
 
 ## Logging Architecture
 
 ```mermaid
 graph LR
-    NodeLogs["Node System Logs\n(journald)"] --> Fluentd["Fluentd\n(per node)"]
-    K8sLogs["Kubernetes\nContainer Logs"] --> Fluentd
-    VMConsole["VM Console\nLogs"] --> Fluentd
-    Fluentd --> Aggregator["Fluentd\nAggregator"]
-    Aggregator --> Elasticsearch["Elasticsearch\n/OpenSearch"]
-    Aggregator --> Loki["Grafana Loki"]
-    Aggregator --> Splunk["Splunk"]
-    Aggregator --> S3["S3 / Object Store"]
+    NodeLogs["Node Logs\n(kernel + systemd)"] --> FluentBit["Fluent Bit\n(per node)"]
+    PodLogs["Kubernetes\nPod Logs"] --> FluentBit
+    FluentBit --> Fluentd["Fluentd\nAggregator"]
+    Fluentd --> Elasticsearch["Elasticsearch\n/OpenSearch"]
+    Fluentd --> Loki["Grafana Loki"]
+    Fluentd --> Splunk["Splunk"]
+    Fluentd --> S3["S3 / Object Store"]
 ```
 
 ## Step 1: Enable Logging in Harvester
 
 ### Via the UI
 
-1. Navigate to **Advanced** → **Monitoring & Logging**
-2. Click **Enable Logging**
-3. Click **Save**
+1. Navigate to **Advanced** → **Add-ons**
+2. Find **rancher-logging** and click **Enable**
+3. Wait until the add-on state is `DeploySuccessful`
 
 ### Via kubectl
 
 ```bash
-# Enable Harvester logging subsystem
+# Enable the rancher-logging add-on
 
-kubectl apply -f - <<EOF
-apiVersion: harvesterhci.io/v1beta1
-kind: Setting
-metadata:
-  name: harvester-logging
-  namespace: harvester-system
-spec:
-  value: "enabled"
-EOF
+kubectl patch addons.harvesterhci.io rancher-logging \
+  -n cattle-logging-system \
+  --type merge \
+  -p '{"spec":{"enabled":true}}'
+
+# Verify the add-on is enabled
+kubectl get addons.harvesterhci.io rancher-logging \
+  -n cattle-logging-system \
+  -o jsonpath='{.spec.enabled}{"\n"}'
 
 # Verify logging pods are running
 kubectl get pods -n cattle-logging-system
@@ -74,16 +73,28 @@ spec:
     logstash_prefix: harvester
     # Buffer configuration for reliable delivery
     buffer:
+      timekey: 1m
+      timekey_wait: 30s
+      timekey_use_utc: true
       flush_interval: 60s
       chunk_limit_size: 10MB
       total_limit_size: 10GB
-      retry_max_interval: 30
+      retry_max_interval: 30s
       retry_forever: true
     # For secured Elasticsearch:
+    # scheme: https
+    # ssl_verify: true
     # user: elastic
-    # password_secret:
-    #   name: elasticsearch-credentials
-    #   key: password
+    # password:
+    #   valueFrom:
+    #     secretKeyRef:
+    #       name: elasticsearch-credentials
+    #       key: password
+    # ca_file:
+    #   mountFrom:
+    #     secretKeyRef:
+    #       name: elasticsearch-ca
+    #       key: ca.crt
     # ssl_version: TLSv1_2
 ```
 
@@ -113,10 +124,13 @@ spec:
     extra_labels:
       cluster: harvester-prod
       environment: production
-    # Strip null labels from logs
+    # Remove unneeded record keys before sending to Loki
     remove_keys:
       - kubernetes_namespace_labels
     buffer:
+      timekey: 1m
+      timekey_wait: 30s
+      timekey_use_utc: true
       flush_interval: 30s
       chunk_limit_size: 5MB
 ```
@@ -127,11 +141,11 @@ kubectl apply -f loki-output.yaml
 
 ## Step 4: Create a ClusterFlow to Route Logs
 
-A ClusterFlow defines which logs to collect and which output to send them to:
+A ClusterFlow defines which collected logs to route and which outputs to send them to:
 
 ```yaml
 # all-logs-flow.yaml
-# Route all Harvester system logs to the output
+# Route all collected Harvester logs to the configured outputs
 
 apiVersion: logging.banzaicloud.io/v1beta1
 kind: ClusterFlow
@@ -144,19 +158,22 @@ spec:
     - select: {}  # Select all logs
   # Apply filters
   filters:
-    # Add Kubernetes metadata to logs
-    - kube_events_timestamp: {}
-    # Parse JSON logs automatically
-    - parser:
-        parse:
-          type: json
-          time_format: "%Y-%m-%dT%H:%M:%S.%NZ"
-          time_key: time
-    # Remove noisy system logs
+    # Normalise tags before sending to the outputs
+    - tag_normaliser: {}
+    # Remove noisy health-check logs
     - grep:
         exclude:
           - key: message
             pattern: "health check"
+    # Parse structured JSON logs when present
+    - parser:
+        remove_key_name_field: true
+        reserve_data: true
+        parse:
+          type: multi_format
+          patterns:
+            - format: json
+            - format: none
   # Send to outputs
   globalOutputRefs:
     - elasticsearch-output
@@ -172,60 +189,55 @@ kubectl apply -f all-logs-flow.yaml
 For targeted log routing per namespace or application:
 
 ```yaml
-# vm-logs-flow.yaml
-# Collect logs specifically from VM workload namespaces
+# workload-logs-flow.yaml
+# Collect logs specifically from workloads in the production namespace
 
 apiVersion: logging.banzaicloud.io/v1beta1
 kind: Flow
 metadata:
-  name: production-vm-logs
+  name: production-workload-logs
   namespace: production
 spec:
-  # Match logs from the production namespace
+  # Match pods labeled environment=production in the production namespace
   match:
     - select:
         labels:
           environment: production
   filters:
-    # Add log severity level based on content
+    # Add static fields for downstream routing
     - record_transformer:
         records:
           - cluster: harvester-prod
-          - log_type: vm-application
-    # Enrich with VM name from labels
-    - kube_metadata: {}
+          - log_type: application
   # Output reference (must be in same namespace, or use ClusterOutput)
   globalOutputRefs:
     - elasticsearch-output
 ```
 
-## Step 6: Configure Node-Level System Log Collection
+## Step 6: Configure Node-Level Log Routing
 
-Collect system logs from the Harvester OS (journald logs):
+Harvester already collects kernel logs and select systemd service logs from each node. You can route logs from specific Harvester nodes with a ClusterFlow:
 
 ```yaml
 # node-logs-flow.yaml
-# Collect OS-level logs from Harvester nodes
+# Route logs from specific Harvester nodes
 
 apiVersion: logging.banzaicloud.io/v1beta1
 kind: ClusterFlow
 metadata:
-  name: node-system-logs
+  name: node-logs
   namespace: cattle-logging-system
 spec:
   match:
     - select:
-        labels:
-          app.kubernetes.io/name: "node-journal-log"
+        hosts:
+          - harvester-node-1
+          - harvester-node-2
   filters:
-    # Filter for important system events
-    - grep:
-        regexp:
-          - key: SYSTEMD_UNIT
-            pattern: "rke2|kubelet|longhorn|harvester|NetworkManager"
+    # Add fields to identify node-scoped routes downstream
     - record_transformer:
         records:
-          - log_type: system
+          - log_type: node
           - cluster: harvester-prod
   globalOutputRefs:
     - elasticsearch-output
@@ -235,7 +247,8 @@ spec:
 
 ```yaml
 # log-retention.yaml
-# Configure Elasticsearch index lifecycle for log retention
+# Example Elasticsearch ILM policy for log retention
+# Also attach the policy to an index template or data stream that matches your harvester-* indices.
 
 # Apply this in Elasticsearch (Kibana Dev Tools or API):
 # PUT _ilm/policy/harvester-logs-policy
@@ -264,30 +277,29 @@ spec:
 ## Step 8: Verify Log Collection
 
 ```bash
-# Check that log collectors are running on each node
+# Check that logging pods are running
 kubectl get pods -n cattle-logging-system
 
-# Check FluentD pod logs for any collection errors
+# Check a Fluentd pod for any forwarding errors
 kubectl logs -n cattle-logging-system \
-    $(kubectl get pods -n cattle-logging-system -l app=fluentd -o name | head -1) \
+    $(kubectl get pods -n cattle-logging-system -o name | grep fluentd | head -1) \
     --tail=50
 
 # Verify ClusterFlows are active
 kubectl get clusterflow -n cattle-logging-system
 
-# Check ClusterOutputs are connected
-kubectl get clusteroutput -n cattle-logging-system
-kubectl describe clusteroutput elasticsearch-output -n cattle-logging-system | \
-    grep -A 5 "Status:"
+# Inspect ClusterOutput status
+kubectl get clusteroutput elasticsearch-output -n cattle-logging-system -o yaml
+kubectl get clusteroutput loki-output -n cattle-logging-system -o yaml
 
 # Test by creating a log entry and checking Elasticsearch/Loki
-kubectl run test-logger -n default --image=busybox --rm -it -- \
+kubectl run test-logger -n default --image=busybox --restart=Never --rm -it -- \
     sh -c 'for i in $(seq 1 10); do echo "Test log entry $i from Harvester"; sleep 1; done'
 ```
 
 ## Step 9: Forwarding to External Syslog
 
-For legacy systems or compliance requirements, forward to syslog:
+For legacy systems or compliance requirements, forward logs to a remote syslog endpoint:
 
 ```yaml
 # syslog-output.yaml
@@ -297,21 +309,33 @@ metadata:
   name: syslog-output
   namespace: cattle-logging-system
 spec:
-  forward:
-    # Syslog/Fluentd forward to external collector
-    servers:
-      - host: syslog.company.com
-        port: 24224
-    # Use TLS for security
-    tls:
-      enabled: true
-      cert_path: /fluentd/tls/cert.pem
-      private_key_path: /fluentd/tls/key.pem
-      ca_path: /fluentd/tls/ca.pem
+  syslog:
+    host: syslog.company.com
+    port: 6514
+    transport: tls
+    version: TLSv1_2
+    # Provide CA and client credentials from Kubernetes secrets when required
+    # trusted_ca_path:
+    #   mountFrom:
+    #     secretKeyRef:
+    #       name: syslog-tls
+    #       key: ca.crt
+    # client_cert_path:
+    #   mountFrom:
+    #     secretKeyRef:
+    #       name: syslog-tls
+    #       key: tls.crt
+    # private_key_path:
+    #   mountFrom:
+    #     secretKeyRef:
+    #       name: syslog-tls
+    #       key: tls.key
     buffer:
-      flush_interval: 30s
+      timekey: 1m
+      timekey_wait: 30s
+      timekey_use_utc: true
 ```
 
 ## Conclusion
 
-Centralized logging transforms Harvester from a collection of nodes and VMs into an observable system where you can trace issues across components, audit access, and prove compliance. By routing logs to Elasticsearch/Loki for real-time search and analysis, and configuring retention policies for long-term storage, you build a comprehensive audit trail. The FluentD-based logging operator in Harvester provides flexible routing with filters, so you can send different types of logs to different backends based on your organization's requirements.
+Centralized logging transforms Harvester from a collection of nodes and workloads into an observable system where you can trace issues across components, audit access, and prove compliance. By routing logs to Elasticsearch or Loki for real-time search and analysis, and configuring retention policies in your backend, you build a comprehensive audit trail. The Logging Operator-based pipeline in Harvester provides flexible routing and filtering so you can send different types of collected cluster logs to different backends based on your organization's requirements.
