@@ -8,7 +8,7 @@ Description: A guide to using the http data source in OpenTofu to fetch data fro
 
 ## Introduction
 
-The `http` data source from the http provider makes an HTTP GET request to a given URL and exposes the response body and headers as data source attributes. It is useful for fetching configuration data from APIs, checking remote resources, or retrieving content that doesn't have a dedicated provider.
+The `http` data source from the http provider makes an HTTP request to a given URL and exposes the response body, headers, and status code as data source attributes. By default, it uses `GET`. It is useful for fetching configuration data from APIs, checking remote resources, or retrieving content that doesn't have a dedicated provider.
 
 ## Setting Up the HTTP Provider
 
@@ -17,7 +17,7 @@ terraform {
   required_providers {
     http = {
       source  = "hashicorp/http"
-      version = "~> 3.0"
+      version = "~> 3.3"
     }
   }
 }
@@ -45,7 +45,7 @@ data "http" "github_release" {
   url = "https://api.github.com/repos/opentofu/opentofu/releases/latest"
 
   request_headers = {
-    Accept = "application/vnd.github.v3+json"
+    Accept = "application/vnd.github+json"
   }
 }
 
@@ -92,19 +92,18 @@ output "response_info" {
 }
 ```
 
-## Fetching EC2 Metadata
+## Fetching AWS IP Range Metadata
 
 ```hcl
-# Fetch instance metadata from AWS metadata service
-data "http" "instance_identity" {
-  url = "http://169.254.169.254/latest/dynamic/instance-identity/document"
+# Fetch public AWS IP range metadata
+data "http" "aws_ip_ranges" {
+  url = "https://ip-ranges.amazonaws.com/ip-ranges.json"
 }
 
 locals {
-  instance_identity = jsondecode(data.http.instance_identity.response_body)
-  account_id        = local.instance_identity["accountId"]
-  region            = local.instance_identity["region"]
-  instance_type     = local.instance_identity["instanceType"]
+  aws_ip_ranges = jsondecode(data.http.aws_ip_ranges.response_body)
+  sync_token    = local.aws_ip_ranges["syncToken"]
+  create_date   = local.aws_ip_ranges["createDate"]
 }
 ```
 
@@ -153,7 +152,7 @@ data "http" "config_api" {
 data "http" "flaky_api" {
   url = "https://api.example.com/data"
 
-  # Retry settings (provider version 3.4+)
+  # Retry settings (provider version 3.3+)
   retry {
     attempts     = 3
     min_delay_ms = 1000
@@ -165,9 +164,9 @@ data "http" "flaky_api" {
 ## Fetching Remote tfvars
 
 ```hcl
-# Fetch centralized configuration from a config server
+# Fetch centralized configuration from a remote .tfvars.json file
 data "http" "remote_config" {
-  url = "https://config.company.com/environments/${var.environment}/opentofu.json"
+  url = "https://config.company.com/environments/${var.environment}/opentofu.tfvars.json"
 
   request_headers = {
     Authorization = "Bearer ${var.config_token}"
@@ -196,25 +195,19 @@ data "http" "verify_endpoint" {
 ## Caching Considerations
 
 ```hcl
-# HTTP data sources are fetched on every plan and apply
-# For expensive or rate-limited APIs, consider:
+# HTTP data sources are read during planning when possible and may be
+# deferred until apply when values are unknown or dependencies change.
+# OpenTofu does not provide built-in caching for this data source.
+# For expensive or rate-limited APIs, consider persisting the response:
 
-# 1. Store results in SSM Parameter Store
+# Store results in SSM Parameter Store for downstream consumers
 resource "aws_ssm_parameter" "cached_config" {
   name  = "/myapp/remote-config"
   type  = "String"
   value = data.http.remote_config.response_body
 }
-
-# 2. Use a trigger to only refresh when needed
-resource "terraform_data" "config_refresh" {
-  triggers_replace = {
-    # Only refresh on manual trigger or schedule
-    refresh_date = var.config_refresh_date
-  }
-}
 ```
 
 ## Conclusion
 
-The `http` data source is a versatile tool for fetching configuration data, checking external APIs, and retrieving remote content. It supports custom headers for authentication, response status validation through postconditions, and retry logic for unreliable endpoints. Since HTTP requests are made on every plan and apply, be mindful of rate limits and latency. For authenticated requests, use ephemeral variables for tokens to avoid storing credentials in state. The `http` data source works best for read-only configuration lookups from stable, low-latency APIs.
+The `http` data source is a versatile tool for fetching configuration data, checking external APIs, and retrieving remote content. It supports custom headers for authentication, response status validation through postconditions, and retry logic for unreliable endpoints. Since data resources are read during planning when possible and can be deferred until apply in some cases, be mindful of rate limits and latency. For authenticated requests, avoid hardcoding tokens in configuration; use sensitive variables and protect your state and plan files accordingly. The `http` data source works best for read-only configuration lookups from stable, low-latency APIs.
