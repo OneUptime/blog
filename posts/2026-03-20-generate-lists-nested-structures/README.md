@@ -51,14 +51,11 @@ locals {
   server_names_set = toset(local.server_names)
 }
 
-resource "aws_instance" "web" {
+resource "terraform_data" "web" {
   for_each = local.server_names_set
 
-  ami           = data.aws_ami.ubuntu.id
-  instance_type = "t3.medium"
-
-  tags = {
-    Name = each.key
+  input = {
+    name = each.key
   }
 }
 ```
@@ -74,6 +71,10 @@ locals {
   # Generate 4 /24 subnets from the VPC CIDR
   subnet_cidrs = cidrsubnets(local.vpc_cidr, 8, 8, 8, 8)
   # Result: ["10.0.0.0/24", "10.0.1.0/24", "10.0.2.0/24", "10.0.3.0/24"]
+}
+
+resource "aws_vpc" "main" {
+  cidr_block = local.vpc_cidr
 }
 
 resource "aws_subnet" "public" {
@@ -183,7 +184,7 @@ locals {
 
 ---
 
-## Generate JSON Arrays
+## Generate JSON Objects and Arrays
 
 ```hcl
 variable "allowed_origins" {
