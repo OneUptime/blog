@@ -4,11 +4,11 @@ Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
 Tags: Linux, Network Namespaces, iptables, Firewall, Networking, Security, Container
 
-Description: Apply iptables firewall rules within a specific network namespace to create per-namespace firewall policies independent of the host and other namespaces.
+Description: Apply iptables firewall rules within a specific network namespace to create per-namespace firewall policies configured separately from the host and other namespaces.
 
 ## Introduction
 
-Each network namespace has its own independent iptables (and nftables) ruleset. Rules applied in the host namespace do not affect namespaces, and vice versa. This allows you to create fine-grained, per-namespace firewall policies - useful for multi-tenant setups, testing, and security isolation.
+Each network namespace has its own independent iptables (and nftables) ruleset. Commands run in the host namespace modify only the host ruleset, and commands run with `ip netns exec` modify only that namespace's ruleset. Traffic that traverses both the namespace and the host can still be filtered in both places. This allows you to create fine-grained, per-namespace firewall policies - useful for multi-tenant setups, testing, and security isolation.
 
 ## Prerequisites
 
@@ -58,10 +58,12 @@ ip netns exec ns1 iptables -t nat -A POSTROUTING -o veth-ns -j MASQUERADE
 
 ## Apply Rate Limiting Inside a Namespace
 
+If you want to rate-limit SSH instead of allowing it unconditionally, replace the plain SSH `ACCEPT` rule above with:
+
 ```bash
-# Limit new SSH connections to 3 per minute inside ns1
+# Allow up to 3 new SSH connections per minute inside ns1 (burst 5)
 ip netns exec ns1 iptables -A INPUT -p tcp --dport 22 \
-    -m state --state NEW -m limit --limit 3/min --limit-burst 5 -j ACCEPT
+    -m conntrack --ctstate NEW -m limit --limit 3/min --limit-burst 5 -j ACCEPT
 ip netns exec ns1 iptables -A INPUT -p tcp --dport 22 -j DROP
 ```
 
@@ -109,12 +111,11 @@ setup_namespace_firewall $NS
 ## Namespace vs Host Firewall Independence
 
 ```bash
-# Block port 80 in the namespace - does NOT affect the host
+# Block port 80 in the namespace - this changes only ns1's ruleset
 ip netns exec ns1 iptables -A INPUT -p tcp --dport 80 -j DROP
 
-# The host can still receive port 80 traffic
-iptables -L INPUT -n | grep 80
-# (no matching rule)
+# Inspect the host namespace separately
+iptables -S INPUT
 ```
 
 ## Use nftables Instead
@@ -130,4 +131,4 @@ ip netns exec ns1 nft add rule inet filter input tcp dport 22 accept
 
 ## Conclusion
 
-iptables rules inside a network namespace are fully independent from the host and other namespaces. Use `ip netns exec <namespace> iptables` to apply namespace-specific firewall policies. This isolation makes network namespaces suitable for multi-tenant environments where each tenant requires their own firewall configuration.
+iptables rulesets inside a network namespace are configured independently from the host and other namespaces. Use `ip netns exec <namespace> iptables` to apply namespace-specific firewall policies. Traffic that traverses both a namespace and the host can still be filtered in both places, which makes network namespaces useful for multi-tenant environments and layered network isolation.
