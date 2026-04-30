@@ -28,26 +28,26 @@ docker stop <conflicting-container>
 
 ## Error 2: Address Already in Use
 
-This error occurs when a non-Docker process owns the port:
+This error occurs when another process is already bound to the requested host IP and port:
 
 ```bash
 # Identify the process
 sudo fuser 8080/tcp
 
 # Get process details
-ps -p $(sudo fuser 8080/tcp 2>/dev/null) -o pid,ppid,cmd
+ps -fp $(sudo fuser 8080/tcp 2>/dev/null)
 
 # Stop the process or change the Portainer container to use a different host port
 ```
 
 ## Error 3: Invalid Port Specification
 
-Portainer passes port specs directly to Docker. Common mistakes:
+Portainer passes port mappings to Docker. Common mistakes:
 
 ```bash
-# Wrong: using host port 0 (invalid in Portainer UI)
+# Wrong: entering 0 as the host port in Portainer; use the random host port option instead
 # Wrong: port numbers above 65535
-# Wrong: mixing protocol types incorrectly (TCP vs UDP)
+# Wrong: using mismatched port ranges
 
 # Correct port specification format in Portainer:
 # Host Port: 8080
@@ -60,24 +60,23 @@ Portainer passes port specs directly to Docker. Common mistakes:
 If you specify a host IP for the binding and that IP does not exist on the host:
 
 ```bash
-# List all IPs on the host
-ip addr show | grep "inet "
+# List IPs configured on the host
+ip addr show
 
 # Use only IPs that appear in the list
-# Use 0.0.0.0 to bind to all interfaces (default)
+# Use 0.0.0.0 to bind to all IPv4 interfaces (default when no host IP is specified)
 ```
 
-## Error 5: Port in TIME_WAIT State
+## Error 5: Port Still Busy After a Stop
 
-A recently stopped container may leave its port in TCP `TIME_WAIT` state for up to 60 seconds:
+TCP `TIME_WAIT` connections are usually not what block Docker from publishing a port. If a redeploy fails right after a stop, the usual problem is that the old listener has not fully exited yet:
 
 ```bash
-# Check for TIME_WAIT on the port
-ss -tnp | grep :8080 | grep TIME-WAIT
+# Re-check for an active listener on the host port
+sudo ss -tlnp | grep :8080
 
-# Option 1: Wait 60 seconds before reusing the port
-# Option 2: Enable port reuse in the kernel (not recommended for production)
-sudo sysctl -w net.ipv4.tcp_tw_reuse=1
+# Retry the deploy after the old container or process has fully stopped
+# Do not change net.ipv4.tcp_tw_reuse just to work around published-port conflicts
 ```
 
 ## Fix in Portainer: Edit Port Bindings
@@ -86,6 +85,6 @@ In Portainer, go to **Containers > Select Container > Duplicate/Edit**:
 
 1. Scroll to the **Port mapping** section.
 2. Remove or change the conflicting host port.
-3. Click **Deploy the container**.
+3. Click **Deploy the container**, then click **Replace** when prompted.
 
-For stacks, edit the stack YAML directly and change the host port number under `ports`.
+For stacks, change the host port number under `ports` in the Compose YAML. In Portainer, direct editing is available for stacks deployed with the Web Editor or uploaded manually; for Git-deployed stacks, edit the Compose file in the repository or detach the stack from Git first.
