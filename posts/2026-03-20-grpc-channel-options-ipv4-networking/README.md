@@ -8,7 +8,7 @@ Description: Configure gRPC channel options including keepalive, connection time
 
 ## Introduction
 
-gRPC channel options control low-level transport behavior: TCP keepalive, backoff on reconnect, message size limits, and connection management. Tuning these parameters is essential for stable long-lived connections over IPv4 networks.
+gRPC channel options control low-level transport behavior: HTTP/2 keepalive pings, backoff on reconnect, message size limits, and connection management. Tuning these parameters is essential for stable long-lived connections over IPv4 networks.
 
 ## Go - Comprehensive Channel Configuration
 
@@ -26,7 +26,7 @@ import (
 
 func newGRPCConn(target string) (*grpc.ClientConn, error) {
     kaParams := keepalive.ClientParameters{
-        Time:                10 * time.Second, // send ping every 10s
+        Time:                10 * time.Second, // ping after 10s of inactivity
         Timeout:             5 * time.Second,  // wait 5s for ping ack
         PermitWithoutStream: true,             // ping even without active RPCs
     }
@@ -38,7 +38,7 @@ func newGRPCConn(target string) (*grpc.ClientConn, error) {
         MaxDelay:   30 * time.Second,
     }
 
-    return grpc.Dial(
+    return grpc.NewClient(
         target,
         grpc.WithTransportCredentials(insecure.NewCredentials()),
         grpc.WithKeepaliveParams(kaParams),
@@ -50,7 +50,7 @@ func newGRPCConn(target string) (*grpc.ClientConn, error) {
             grpc.MaxCallRecvMsgSize(16*1024*1024), // 16 MB
             grpc.MaxCallSendMsgSize(16*1024*1024),
         ),
-        grpc.WithInitialWindowSize(1<<20),        // 1 MB flow control window
+        grpc.WithInitialWindowSize(1<<20),        // 1 MB initial stream flow-control window
         grpc.WithInitialConnWindowSize(1<<20),
     )
 }
@@ -90,25 +90,32 @@ channel = grpc.insecure_channel(
 ## Server-Side Keepalive (Go)
 
 ```go
-import "google.golang.org/grpc/keepalive"
+import (
+    "time"
 
-kaServerParams := keepalive.ServerParameters{
-    MaxConnectionIdle:     15 * time.Second,
-    MaxConnectionAge:      30 * time.Second,
-    MaxConnectionAgeGrace: 5 * time.Second,
-    Time:                  5 * time.Second,
-    Timeout:               1 * time.Second,
-}
-
-kaEnforcementPolicy := keepalive.EnforcementPolicy{
-    MinTime:             5 * time.Second,
-    PermitWithoutStream: true,
-}
-
-server := grpc.NewServer(
-    grpc.KeepaliveParams(kaServerParams),
-    grpc.KeepaliveEnforcementPolicy(kaEnforcementPolicy),
+    "google.golang.org/grpc"
+    "google.golang.org/grpc/keepalive"
 )
+
+func newGRPCServer() *grpc.Server {
+    kaServerParams := keepalive.ServerParameters{
+        MaxConnectionIdle:     15 * time.Second,
+        MaxConnectionAge:      30 * time.Second,
+        MaxConnectionAgeGrace: 5 * time.Second,
+        Time:                  5 * time.Second,
+        Timeout:               1 * time.Second,
+    }
+
+    kaEnforcementPolicy := keepalive.EnforcementPolicy{
+        MinTime:             5 * time.Second,
+        PermitWithoutStream: true,
+    }
+
+    return grpc.NewServer(
+        grpc.KeepaliveParams(kaServerParams),
+        grpc.KeepaliveEnforcementPolicy(kaEnforcementPolicy),
+    )
+}
 ```
 
 ## Bind to Specific IPv4 Interface (Go)
@@ -116,15 +123,19 @@ server := grpc.NewServer(
 ```go
 import (
     "net"
+
     "google.golang.org/grpc"
 )
 
-lis, err := net.Listen("tcp4", "192.168.1.10:50051")
-if err != nil {
-    panic(err)
+func serveIPv4() error {
+    lis, err := net.Listen("tcp4", "192.168.1.10:50051")
+    if err != nil {
+        return err
+    }
+
+    srv := grpc.NewServer()
+    return srv.Serve(lis) // only accepts connections on 192.168.1.10
 }
-srv := grpc.NewServer()
-srv.Serve(lis) // only accepts on 192.168.1.10
 ```
 
 ## Conclusion
