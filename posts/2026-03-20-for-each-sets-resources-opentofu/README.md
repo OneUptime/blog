@@ -70,7 +70,7 @@ resource "aws_instance" "web" {
   # Convert list to set for stable keys
   for_each = toset(var.instance_names)
 
-  ami           = "ami-0c55b159cbfafe1f0"
+  ami           = "resolve:ssm:/aws/service/ami-amazon-linux-latest/al2023-ami-kernel-default-x86_64"
   instance_type = "t3.micro"
 
   tags = {
@@ -102,7 +102,7 @@ resource "aws_kms_grant" "service" {
 }
 ```
 
-## DNS Records with Sets
+## Security Group Ingress Rules with Sets
 
 ```hcl
 variable "allowed_ip_addresses" {
@@ -111,15 +111,14 @@ variable "allowed_ip_addresses" {
   default     = ["10.0.1.5", "10.0.2.10", "10.0.3.15"]
 }
 
-resource "aws_security_group_rule" "allowed_ips" {
+resource "aws_vpc_security_group_ingress_rule" "allowed_ips" {
   for_each = var.allowed_ip_addresses
 
-  type              = "ingress"
   security_group_id = aws_security_group.app.id
   from_port         = 443
   to_port           = 443
-  protocol          = "tcp"
-  cidr_blocks       = ["${each.value}/32"]  # Each IP as /32
+  ip_protocol       = "tcp"
+  cidr_ipv4         = "${each.value}/32"  # Each IP as /32
 
   description = "Allow ${each.value}"
 }
@@ -182,4 +181,4 @@ output "arn_list" {
 
 ## Conclusion
 
-`for_each` with sets is the natural choice for creating resources from unique string identifiers. Unlike `count`, set-based resources maintain stable addresses even when elements are added or removed from the middle of the collection. This makes set-based `for_each` ideal for user accounts, security group rules, DNS records, and any resource where each instance has a meaningful, unique identifier.
+`for_each` with sets is the natural choice for creating resources from unique string identifiers. Unlike `count`, set-based resources maintain stable addresses when elements are added or removed because instances are keyed by value instead of by numeric index. This makes set-based `for_each` ideal for user accounts, security group rules, DNS records, and any resource where each instance has a meaningful, unique identifier.
