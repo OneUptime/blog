@@ -27,10 +27,10 @@ ip -6 addr show dev eth0
 ip -6 addr show scope link
 
 # Show addresses with additional details
-ip -6 addr show detail
+ip -6 -details addr show
 
-# Show address flags (TEMPORARY, PERMANENT, DEPRECATED)
-ip -6 addr show dev eth0 mngtmpaddr
+# Show only temporary IPv6 addresses
+ip -6 addr show dev eth0 temporary
 
 # Add an IPv6 address manually
 sudo ip -6 addr add 2001:db8::10/64 dev eth0
@@ -45,7 +45,7 @@ ip -6 -brief addr show
 ## IPv6 Routing Table
 
 ```bash
-# Show the full IPv6 routing table
+# Show the IPv6 main routing table
 ip -6 route show
 
 # Show default route only
@@ -57,22 +57,22 @@ ip -6 route show 2001:db8::/32
 # Show route that would be used for a specific destination
 ip -6 route get 2001:4860:4860::8888
 
-# Show route with source address selection
+# Show route lookup for a specific source address
 ip -6 route get 2001:4860:4860::8888 from 2001:db8::10
 
 # Add a static route
-sudo ip -6 route add 2001:db8:remote::/48 via 2001:db8::1
+sudo ip -6 route add 2001:db8:100::/48 via 2001:db8::1
 
 # Add default route
 sudo ip -6 route add default via fe80::1 dev eth0
 
 # Delete a route
-sudo ip -6 route del 2001:db8:remote::/48
+sudo ip -6 route del 2001:db8:100::/48
 
-# Show routes with cache info
+# Show cloned routes from the cache table (if any)
 ip -6 route show cache
 
-# Show per-interface routing tables
+# Show routes from all tables
 ip -6 route show table all
 ```
 
@@ -109,10 +109,10 @@ sudo ip -6 neigh flush dev eth0
 
 ```bash
 # Show interface status with statistics
-ip -6 link show
+ip -6 -s link show
 
 # Show detailed stats for an interface
-ip -6 link show dev eth0
+ip -6 -s link show dev eth0
 
 # Show IPv6 forwarding status
 cat /proc/sys/net/ipv6/conf/all/forwarding
@@ -152,7 +152,7 @@ echo "--- Route to Google IPv6 ---"
 ip -6 route get 2001:4860:4860::8888 2>/dev/null || echo "No route to Google IPv6"
 
 echo ""
-echo "--- IPv6 Statistics ---"
+echo "--- Interface Statistics ---"
 ip -6 -s link show dev "$INTERFACE" 2>/dev/null | grep -A3 "RX\|TX"
 ```
 
@@ -168,18 +168,19 @@ sudo sysctl -w net.ipv6.conf.eth0.disable_ipv6=0
 
 # Check accept_ra (Router Advertisement processing)
 cat /proc/sys/net/ipv6/conf/eth0/accept_ra
-# 0 = ignore RAs (manual config only)
-# 1 = accept RAs (SLAAC enabled)
-# 2 = accept RAs even with forwarding enabled
+# 0 = do not accept RAs
+# 1 = accept RAs if forwarding is disabled
+# 2 = accept RAs even if forwarding is enabled
 
 # Check autoconf (SLAAC)
 cat /proc/sys/net/ipv6/conf/eth0/autoconf
-# 1 = generate addresses from RA prefix
+# 1 = autoconfigure addresses from RA prefix information
 
 # Check privacy extensions (temporary addresses)
 cat /proc/sys/net/ipv6/conf/eth0/use_tempaddr
 # 0 = no temporary addresses
-# 2 = prefer temporary addresses (default on many systems)
+# 1 = enable temporary addresses but prefer public addresses
+# 2 = prefer temporary addresses over public addresses
 ```
 
 ## Monitoring IPv6 Events
