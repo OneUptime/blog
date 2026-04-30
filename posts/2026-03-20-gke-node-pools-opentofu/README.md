@@ -35,6 +35,7 @@ resource "google_container_node_pool" "general_pool" {
     disk_size_gb = 100
     disk_type    = "pd-ssd"
 
+    # Requires Workload Identity enabled on the cluster
     workload_metadata_config {
       mode = "GKE_METADATA"
     }
@@ -43,9 +44,7 @@ resource "google_container_node_pool" "general_pool" {
       pool = "general"
     }
 
-    taint {
-      # No taint - accepts all pods by default
-    }
+    # No taints - accepts all pods by default
 
     oauth_scopes = ["https://www.googleapis.com/auth/cloud-platform"]
   }
@@ -88,10 +87,10 @@ resource "google_container_node_pool" "memory_pool" {
 }
 ```
 
-## Step 3: Spot/Preemptible Pool for Batch Workloads
+## Step 3: Spot Pool for Batch Workloads
 
 ```hcl
-# Cost-optimized spot node pool for batch jobs
+# Cost-optimized Spot node pool for batch jobs
 resource "google_container_node_pool" "spot_pool" {
   name     = "spot-pool"
   location = "us-central1"
@@ -104,12 +103,10 @@ resource "google_container_node_pool" "spot_pool" {
 
   node_config {
     machine_type = "n2-standard-4"
-    preemptible  = false
     spot         = true  # Use Spot VMs for cost savings
 
     labels = {
-      pool  = "spot"
-      cloud.google.com/gke-spot = "true"
+      pool = "spot"
     }
 
     taint {
@@ -129,8 +126,9 @@ resource "google_container_node_pool" "spot_pool" {
 # GPU node pool for machine learning inference
 resource "google_container_node_pool" "gpu_pool" {
   name     = "gpu-pool"
-  location = "us-central1-a"  # Zonal - GPU availability varies by zone
+  location = "us-central1"
   cluster  = google_container_cluster.primary.name
+  node_locations = ["us-central1-a"]  # GPU availability varies by zone
 
   autoscaling {
     min_node_count = 0
