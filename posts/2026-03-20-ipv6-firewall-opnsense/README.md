@@ -8,7 +8,7 @@ Description: Learn how to configure IPv6 firewall policies on OPNsense, covering
 
 ## Overview
 
-OPNsense is a FreeBSD-based firewall using pf, similar to pfSense but with a redesigned UI and focus on security. IPv6 firewalling is integrated throughout the rule configuration interface. Rules can be IPv6-only, IPv4-only, or both. OPNsense includes ICMPv6 neighbor discovery passthrough by default.
+OPNsense is a FreeBSD-based firewall using pf, similar to pfSense but with a redesigned UI and focus on security. IPv6 firewalling is integrated throughout the rule configuration interface. Rules can be IPv6-only, IPv4-only, or both. OPNsense also shows automatic firewall rules in the rules view so you can inspect system-generated behavior alongside your own rules.
 
 ## Enabling IPv6 on Interfaces
 
@@ -18,7 +18,8 @@ Navigate to **Interfaces → WAN**:
 
 Navigate to **Interfaces → LAN**:
 - IPv6 Configuration Type: Track Interface or Static
-- Track WAN: Select WAN, prefix delegation size /48
+- Track IPv6 Interface: WAN
+- IPv6 Prefix ID: 0 (or another unique hex ID for this LAN /64)
 
 ## Creating IPv6 Firewall Rules
 
@@ -34,7 +35,7 @@ TCP/IP Version:   IPv6
 Protocol:         Any
 Source:           LAN net (IPv6)
 Destination:      Any
-Allow options:    ✓ (enabled by default - stateful)
+State Type:       Keep state (default)
 Description:      Allow all IPv6 from LAN
 
 ```
@@ -60,7 +61,7 @@ Action:           Pass
 Interface:        WAN
 TCP/IP Version:   IPv6
 Protocol:         TCP
-Source:           fd00:mgmt::/48
+Source:           2001:db8:100::/48
 Destination:      WAN address
 Destination port: SSH (22)
 Description:      Management SSH IPv6
@@ -68,13 +69,13 @@ Description:      Management SSH IPv6
 
 ## ICMPv6 Configuration
 
-OPNsense automatically handles essential ICMPv6. Verify under **Firewall → Rules → Floating**:
+OPNsense supports dedicated ICMPv6 matching. In the rules view, use the automatic-rules toggle to inspect system-defined rules, and make sure your own rules do not block ICMPv6 traffic required for IPv6 to function correctly:
 
 ```text
-# Automatic rules include:
-# Allow Neighbor Discovery (Solicitation/Advertisement)
-# Allow Router Advertisement/Solicitation
-# Allow Packet Too Big (required for PMTUD)
+# Important ICMPv6 traffic includes:
+# Neighbor Discovery (Neighbor Solicitation/Advertisement, types 135/136)
+# Router Solicitation/Advertisement (types 133/134)
+# Packet Too Big (type 2, required for PMTUD)
 ```
 
 ### Custom ICMPv6 Rules
@@ -84,9 +85,9 @@ OPNsense automatically handles essential ICMPv6. Verify under **Firewall → Rul
 Action:           Pass
 Interface:        WAN
 TCP/IP Version:   IPv6
-Protocol:         ICMP
-ICMP type:        Echo Request (128)
-Source:           2001:db8:monitor::/48
+Protocol:         IPv6-ICMP
+ICMPv6 type:      Echo Request (128)
+Source:           2001:db8:200::/48
 Destination:      WAN address
 Description:      Allow IPv6 ping from monitoring
 ```
@@ -96,7 +97,7 @@ Description:      Allow IPv6 ping from monitoring
 Navigate to **Firewall → Rules → Floating**:
 
 ```text
-# Block traffic from bogon IPv6 sources on all interfaces
+# Example: block a specific IPv6 prefix on all interfaces
 Action:           Block
 Interface:        (all - checked boxes for all interfaces)
 Direction:        in
@@ -113,8 +114,8 @@ Navigate to **Firewall → Aliases → Add**:
 Name:             IPv6_Management
 Type:             Network
 Network(s):
-  fd00:mgmt::/48
-  2001:db8:ops::/64
+  fd00:1234:5678::/48
+  2001:db8:100::/64
 Description:      IPv6 Management Networks
 ```
 
@@ -126,12 +127,12 @@ Navigate to **Firewall → Diagnostics → States**:
 
 ```text
 # Filter options:
-Protocol:   IPv6
 Interface:  WAN
+Search:     2001:db8:
 
 # Shows active IPv6 connections:
-# State   Proto  Source                Destination          Flags
-# ESTAB   TCP    2001:db8:client::1:54321 2001:db8:server::1:443
+# State        Proto  Source                    Destination
+# ESTABLISHED  TCP    [2001:db8:10::10]:54321  [2001:db8:20::20]:443
 ```
 
 ```bash
@@ -149,39 +150,39 @@ pfctl -s states | grep inet6 | wc -l
 
 ```text
 # Enable logging on a rule:
-# In rule editor: Logging → Enable ✓
+# In rule editor: Log → Enable ✓
 
 # View logs:
-# Reporting → System Health → Firewall
-# Filter: IPv6
+# Firewall → Log Files → Live View
+# Add filter conditions for the relevant host, interface, or rule label
 
 # From CLI:
-clog /var/log/filterlog.log | grep ',6,' | tail -50
-# CSV format: time, rule, direction, interface, proto=6 (IPv6)
+tail -f /var/log/filter.log
+# Add grep on a known IPv6 host or prefix when needed
 ```
 
 ## Key Differences: OPNsense vs pfSense IPv6 Firewall
 
 | Feature | OPNsense | pfSense |
 |---------|----------|---------|
-| ICMPv6 auto rules | Built-in, visible in Floating | Built-in, less visible |
-| UI for IPv6 | IPv6 column in rules list | TCP/IP version field |
-| Plugin security | OPNsense has security audit checks | Package-based |
-| Logging | filterlog CSV format | Similar CSV format |
+| Rule family selection | TCP/IP Version can be IPv4, IPv6, or both | Address Family can be IPv4, IPv6, or both |
+| Automatic rules visibility | Automatic rules can be shown from the rules view | Automatic rules exist and can be inspected separately |
+| Diagnostics | Firewall → Diagnostics → Sessions / States | Diagnostics → States |
+| Logging | Firewall → Log Files → Live View / Plain View | Status → System Logs → Firewall |
 
 ## Verify IPv6 Connectivity Through Firewall
 
 ```bash
 # From behind OPNsense LAN:
-ping6 -c 3 2001:4860:4860::8888   # Google IPv6 DNS
+ping -6 -c 3 2001:4860:4860::8888   # Google IPv6 DNS
 
 # Check firewall isn't blocking PMTUD
-ping6 -c 3 -s 1400 2001:4860:4860::8888   # Large packet
+ping -6 -c 3 -s 1400 2001:4860:4860::8888   # Large packet
 
-# Traceroute6 to verify path
-traceroute6 ipv6.google.com
+# Traceroute to verify path
+traceroute -6 ipv6.google.com
 ```
 
 ## Summary
 
-OPNsense IPv6 firewall rules are configured under **Firewall → Rules** with **TCP/IP Version: IPv6**. Default auto-rules handle essential ICMPv6 including Neighbor Discovery and Packet Too Big. Create Aliases for common IPv6 prefixes (management networks, trusted sources) and reference them in rules for maintainability. Use Floating rules for policies that apply across all interfaces. Monitor active IPv6 connections under **Firewall → Diagnostics → States** filtered to IPv6. Enable logging per-rule for audit trail.
+OPNsense IPv6 firewall rules are configured under **Firewall → Rules** with **TCP/IP Version: IPv6**. For ICMPv6-specific policies, use **Protocol: IPv6-ICMP** and be careful not to block traffic needed for Neighbor Discovery and Path MTU Discovery. Create Aliases for common IPv6 prefixes (management networks, trusted sources) and reference them in rules for maintainability. Use Floating rules for policies that apply across all interfaces. Monitor active IPv6 connections under **Firewall → Diagnostics → States** and **Sessions**, and enable per-rule logging for audit trail.
