@@ -13,9 +13,9 @@ Loopback interfaces are virtual interfaces that are always up regardless of phys
 ## Why Use Loopback Addresses
 
 - **BGP peering**: Loopback IPs don't go down when a physical interface fails (with redundant paths).
-- **Router ID**: OSPF and BGP use the highest loopback IP as the router ID by default.
+- **Router ID**: OSPF and BGP often use a loopback IP for the router ID, but the default behavior varies by implementation.
 - **Management**: SSH/SNMP to a stable IP that doesn't change regardless of which path is used.
-- **MPLS LDP**: LDP uses loopback IPs as transport addresses.
+- **MPLS LDP**: LDP commonly uses loopback IPs as transport addresses.
 
 ## Linux: Configure Loopback Addresses
 
@@ -80,6 +80,7 @@ router ospf
 router bgp 65001
   bgp router-id 10.0.0.1
   neighbor 10.0.0.2 remote-as 65002
+  neighbor 10.0.0.2 ebgp-multihop      # Required for eBGP loopback peering
   neighbor 10.0.0.2 update-source lo   # Use loopback as BGP source
 ```
 
@@ -88,7 +89,7 @@ router bgp 65001
 ```bash
 # Test from remote router
 ping 10.0.0.1 source 10.0.0.2   # Cisco IOS
-ping -I lo 10.0.0.1              # Linux
+ping -I 10.0.0.2 10.0.0.1       # Linux
 
 # SSH via loopback
 ssh admin@10.0.0.1
@@ -98,5 +99,5 @@ ssh admin@10.0.0.1
 
 - Use /32 prefix for loopback addresses - they represent a single host, not a network.
 - Advertise loopback IPs via OSPF or BGP to make them reachable from other routers.
-- Configure BGP with `update-source loopback` so sessions survive physical link failures (requires IGP redundancy).
+- Configure BGP with `update-source` set to the loopback interface or address so sessions survive physical link failures; eBGP loopback peers also need `ebgp-multihop`.
 - Assign loopbacks consistently: e.g., `10.0.0.X/32` for router X across all devices.
