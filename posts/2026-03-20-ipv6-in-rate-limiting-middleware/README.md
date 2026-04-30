@@ -17,30 +17,19 @@ With IPv4, an attacker has a limited pool of IPs. With IPv6:
 - Each /64 has 18,446,744,073,709,551,616 addresses
 - Traditional per-IP rate limiting is easily bypassed
 
-Solution: Rate limit by /48 or /64 prefix for IPv6, not individual addresses.
+Solution: Rate limit by an IPv6 prefix such as /64, /56, or /48, not individual addresses.
 
 ## Nginx: Rate Limiting by IPv6 Prefix
 
-Nginx can map IPv6 addresses to a prefix using `geo` module:
+Nginx can rate limit on a computed key, but reliably extracting an IPv6 /64 requires normalizing the address first:
 
 ```nginx
 # /etc/nginx/conf.d/rate_limit.conf
+# Requires ngx_http_js_module (njs) to be installed and loaded.
 
-# Map IPv6 addresses to their /64 prefix for rate limiting
-
-geo $rate_limit_key {
-    default $binary_remote_addr;  # For IPv4, use full address
-
-    # For IPv6, extract /64 prefix (first 8 bytes)
-    # This is handled differently - use a Lua map or upstream solution
-}
-
-# Simpler approach: use map to set key based on address family
-map $remote_addr $rate_key {
-    # IPv6 addresses match this pattern
-    "~^([0-9a-fA-F:]+:){4}"  $1$2$3$4;  # First 4 groups (64-bit prefix)
-    default                   $binary_remote_addr;
-}
+js_path "/etc/nginx/njs/";
+js_import rate_limit.js;
+js_set $rate_key rate_limit.key;
 
 limit_req_zone $rate_key zone=api:10m rate=60r/m;
 
@@ -52,62 +41,65 @@ server {
 }
 ```
 
+```javascript
+// /etc/nginx/njs/rate_limit.js
+
+function key(r) {
+    var addr = r.remoteAddress;
+    var parts;
+    var left;
+    var right;
+    var missing;
+    var expanded;
+    var i;
+
+    if (addr.indexOf('::ffff:') === 0) {
+        return addr.slice(7);
+    }
+
+    if (addr.indexOf(':') === -1) {
+        return addr;
+    }
+
+    parts = addr.split('::');
+    left = parts[0] ? parts[0].split(':') : [];
+    right = parts[1] ? parts[1].split(':') : [];
+    missing = 8 - left.length - right.length;
+    expanded = left.slice(0);
+
+    for (i = 0; i < missing; i += 1) {
+        expanded.push('0');
+    }
+
+    expanded = expanded.concat(right);
+
+    for (i = 0; i < expanded.length; i += 1) {
+        expanded[i] = ('0000' + expanded[i]).slice(-4).toLowerCase();
+    }
+
+    return expanded.slice(0, 4).join(':') + '::/64';
+}
+
+export default { key };
+```
+
 ## Node.js: express-rate-limit with IPv6 Prefix
 
+If Express runs behind Nginx or another reverse proxy, configure `trust proxy` correctly before relying on `req.ip`.
+
 ```javascript
-const rateLimit = require('express-rate-limit');
-const net = require('net');
-
-/**
- * Extract rate limiting key from IP address.
- * For IPv6, uses /64 prefix. For IPv4, uses full address.
- */
-function getRateLimitKey(ip) {
-  // Strip IPv4-mapped prefix
-  const cleanIP = ip.replace(/^::ffff:/, '');
-
-  if (!net.isIPv6(cleanIP)) {
-    return cleanIP;  // IPv4: use full address
-  }
-
-  // IPv6: extract /64 prefix (first 4 groups of 4 hex chars)
-  const groups = cleanIP.split(':');
-  if (groups.length < 4) {
-    // Expand compressed address
-    const expanded = expandIPv6(cleanIP);
-    return expanded.split(':').slice(0, 4).join(':') + '::/64';
-  }
-
-  return groups.slice(0, 4).join(':') + '::/64';
-}
-
-function expandIPv6(addr) {
-  // Use Node's dns module to expand, or implement manually
-  const parts = addr.split('::');
-  if (parts.length === 2) {
-    const left = parts[0].split(':').filter(x => x);
-    const right = parts[1].split(':').filter(x => x);
-    const missing = 8 - left.length - right.length;
-    return [...left, ...Array(missing).fill('0'), ...right].join(':');
-  }
-  return addr;
-}
+const { rateLimit } = require('express-rate-limit');
 
 // Configure rate limiter with IPv6-aware key
 const apiLimiter = rateLimit({
-  windowMs: 60 * 1000,     // 1 minute window
-  max: 100,                  // 100 requests per window per /64
-  keyGenerator: (req) => {
-    const ip = req.ip || req.socket.remoteAddress || '';
-    const key = getRateLimitKey(ip);
-    console.log(`Rate limit key for ${ip}: ${key}`);
-    return key;
-  },
+  windowMs: 60 * 1000,      // 1 minute window
+  limit: 100,               // 100 requests per window per /64
+  ipv6Subnet: 64,           // Group IPv6 clients by /64
   message: {
     error: 'Too many requests, please try again later.',
     retryAfter: '60 seconds'
   },
-  standardHeaders: true,     // Send RateLimit-* headers
+  standardHeaders: 'draft-8',
   legacyHeaders: false,
 });
 
@@ -118,10 +110,11 @@ app.use('/api/', apiLimiter);
 ## Redis-Based IPv6 Rate Limiting
 
 ```python
-import redis
 import ipaddress
 import time
-from typing import Optional
+import uuid
+
+import redis
 
 class IPv6RateLimiter:
     def __init__(self, redis_client: redis.Redis, limit: int, window: int):
@@ -155,13 +148,14 @@ class IPv6RateLimiter:
         Returns (allowed, remaining_requests).
         """
         key = self.get_rate_key(ip)
-        now = int(time.time())
-        window_start = now - self.window
+        now_ms = time.time_ns() // 1_000_000
+        window_start = now_ms - (self.window * 1000)
+        member = f'{now_ms}:{uuid.uuid4().hex}'
 
-        # Sliding window using Redis sorted set
+        # Sliding window using Redis sorted set with a unique member per request
         pipe = self.redis.pipeline()
         pipe.zremrangebyscore(key, '-inf', window_start)
-        pipe.zadd(key, {str(now): now})
+        pipe.zadd(key, {member: now_ms})
         pipe.zcard(key)
         pipe.expire(key, self.window)
         results = pipe.execute()
@@ -186,18 +180,19 @@ def rate_limit_middleware(ip: str) -> dict:
 ## Testing IPv6 Rate Limiting
 
 ```bash
-# Test that different /64 addresses share the same rate limit bucket
-# All these should count toward the same /64 limit:
+# If your app is behind a trusted reverse proxy and Express trust proxy is configured,
+# these requests should count toward the same /64 limit bucket:
 for i in 1 2 3 4 5; do
     curl -s -o /dev/null -w "%{http_code}\n" \
-        --ipv6 -6 \
-        http://[2001:db8::$i]/api/endpoint
+        -H "X-Forwarded-For: 2001:db8:1:2::$i" \
+        http://localhost:3000/api/endpoint
 done
 
 # Test from a completely different /64 (should have its own bucket)
-curl -6 http://[2001:db8:0:1::1]/api/endpoint
+curl -H "X-Forwarded-For: 2001:db8:1:3::1" \
+    http://localhost:3000/api/endpoint
 ```
 
 ## Conclusion
 
-IPv6 rate limiting must aggregate by network prefix (/48 or /64) rather than individual addresses to prevent bypass through address rotation. In Nginx, use `geo` or `map` directives to extract the prefix. In application code, normalize the client IP to its /64 prefix before using it as the rate limit key. Redis sorted sets provide efficient sliding-window rate limiting that scales with high request volumes.
+IPv6 rate limiting must aggregate by network prefix rather than individual addresses to prevent bypass through address rotation. In Nginx, compute a normalized key with `njs` or in upstream application code before applying `limit_req_zone`. In application code, normalize the client IP to its chosen IPv6 prefix before using it as the rate limit key. Redis sorted sets provide efficient sliding-window rate limiting that scales with high request volumes.
