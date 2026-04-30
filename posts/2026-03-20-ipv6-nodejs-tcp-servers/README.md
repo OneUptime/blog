@@ -31,7 +31,8 @@ const server = net.createServer((socket) => {
     });
 });
 
-// Listen on all IPv6 interfaces
+// Listen on the IPv6 unspecified address (::).
+// On most operating systems this may also accept IPv4 connections.
 server.listen(9000, '::', () => {
     const addr = server.address();
     console.log(`IPv6 TCP server on [${addr.address}]:${addr.port}`);
@@ -69,7 +70,7 @@ function connectIPv6(host, port) {
     return client;
 }
 
-connectIPv6('2001:db8::1', 9000);
+connectIPv6('::1', 9000);
 ```
 
 ## IPv6-Only vs Dual-Stack Server
@@ -77,7 +78,8 @@ connectIPv6('2001:db8::1', 9000);
 ```javascript
 const net = require('net');
 
-// Dual-stack: accepts IPv4 (as ::ffff:x.x.x.x) and IPv6
+// On most operating systems, binding to :: also accepts IPv4
+// connections as IPv4-mapped IPv6 addresses (::ffff:x.x.x.x).
 const dualStack = net.createServer((socket) => {
     let addr = socket.remoteAddress;
     const isIPv4Mapped = addr && addr.startsWith('::ffff:');
@@ -93,7 +95,7 @@ const ipv6Only = net.createServer((socket) => {
     console.log(`[ipv6-only] Client: ${socket.remoteAddress}`);
     socket.end('OK\n');
 });
-// On Linux, use ipv6Only option or bind to specific IPv6 address
+// Use ipv6Only to disable dual-stack behavior when binding to ::.
 ipv6Only.listen({ host: '::', port: 9002, ipv6Only: true }, () => {
     console.log('IPv6-only on [::]:9002');
 });
@@ -108,9 +110,10 @@ const net = require('net');
 
 const server = net.createServer((socket) => {
     let buffer = '';
+    socket.setEncoding('utf8');
 
     socket.on('data', (chunk) => {
-        buffer += chunk.toString();
+        buffer += chunk;
         let idx;
 
         // Process complete lines
@@ -187,4 +190,4 @@ setInterval(() => {
 
 ## Conclusion
 
-Node.js's `net` module supports IPv6 through `listen(port, '::')`. The `ipv6Only: true` listen option restricts to IPv6-only on supported platforms. Client addresses arrive via `socket.remoteAddress` with IPv4 connections appearing as `::ffff:x.x.x.x` on dual-stack servers. For application protocols, buffer incoming data and process complete framing units (lines, length-prefixed, etc.) rather than treating each `data` event as a complete message.
+Node.js's `net` module supports IPv6 through `listen(port, '::')`. Binding to `::` listens on the IPv6 unspecified address and, on most operating systems, may also accept IPv4 connections. The `ipv6Only: true` listen option disables that dual-stack behavior. Client addresses arrive via `socket.remoteAddress` with IPv4 connections appearing as `::ffff:x.x.x.x` on dual-stack servers. For application protocols, buffer incoming data and process complete framing units (lines, length-prefixed, etc.) rather than treating each `data` event as a complete message.
