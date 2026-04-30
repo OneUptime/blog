@@ -55,7 +55,7 @@ import (
 
 func dialFromIPv6(localAddr, remoteAddr string) (net.Conn, error) {
     // Parse the local IPv6 address to bind to
-    local, err := net.ResolveTCPAddr("tcp6", fmt.Sprintf("[%s]:0", localAddr))
+    local, err := net.ResolveTCPAddr("tcp6", net.JoinHostPort(localAddr, "0"))
     if err != nil {
         return nil, fmt.Errorf("invalid local address: %w", err)
     }
@@ -86,7 +86,7 @@ func main() {
 
 ## Dialer with Custom DNS Resolver
 
-Force IPv6-only DNS resolution:
+Send DNS queries over IPv6 and dial only AAAA results:
 
 ```go
 package main
@@ -105,9 +105,17 @@ func createIPv6OnlyDialer() *net.Dialer {
         Resolver: &net.Resolver{
             PreferGo: true,
             Dial: func(ctx context.Context, network, address string) (net.Conn, error) {
-                // Force DNS queries over IPv6 to a specific DNS server
-                d := net.Dialer{}
-                return d.DialContext(ctx, "udp6", "[2001:4860:4860::8888]:53")
+                // Force DNS queries to a specific DNS server over IPv6.
+                d := net.Dialer{Timeout: 5 * time.Second}
+
+                switch network {
+                case "udp", "udp4", "udp6":
+                    return d.DialContext(ctx, "udp6", "[2001:4860:4860::8888]:53")
+                case "tcp", "tcp4", "tcp6":
+                    return d.DialContext(ctx, "tcp6", "[2001:4860:4860::8888]:53")
+                default:
+                    return nil, fmt.Errorf("unexpected DNS network %q", network)
+                }
             },
         },
     }
@@ -115,24 +123,28 @@ func createIPv6OnlyDialer() *net.Dialer {
 
 func dialWithIPv6DNS(host, port string) (net.Conn, error) {
     dialer := createIPv6OnlyDialer()
-    ctx := context.Background()
+    ctx, cancel := context.WithTimeout(context.Background(), dialer.Timeout)
+    defer cancel()
 
-    // Resolve host and port
-    addrs, err := dialer.Resolver.LookupIPAddr(ctx, host)
+    // Resolve only IPv6 addresses for the host.
+    addrs, err := dialer.Resolver.LookupIP(ctx, "ip6", host)
     if err != nil {
         return nil, fmt.Errorf("DNS lookup failed: %w", err)
     }
 
-    // Try each resolved address
+    // Try each resolved IPv6 address.
+    var lastErr error
     for _, addr := range addrs {
-        if addr.IP.To4() != nil {
-            continue  // Skip IPv4
-        }
-        target := net.JoinHostPort(addr.IP.String(), port)
+        target := net.JoinHostPort(addr.String(), port)
         conn, err := dialer.DialContext(ctx, "tcp6", target)
         if err == nil {
             return conn, nil
         }
+        lastErr = err
+    }
+
+    if lastErr != nil {
+        return nil, fmt.Errorf("failed to connect to %s over IPv6: %w", host, lastErr)
     }
 
     return nil, fmt.Errorf("no IPv6 addresses available for %s", host)
@@ -148,7 +160,6 @@ package main
 
 import (
     "context"
-    "fmt"
     "net"
     "syscall"
 )
@@ -156,24 +167,22 @@ import (
 func dialWithSocketOptions(addr string) (net.Conn, error) {
     dialer := &net.Dialer{
         Control: func(network, address string, c syscall.RawConn) error {
-            return c.Control(func(fd uintptr) {
-                // Set socket options at the raw socket level
-                // Example: set IPv6 traffic class (DSCP)
-                syscall.SetsockoptInt(
-                    int(fd),
-                    syscall.IPPROTO_IPV6,
-                    syscall.IPV6_TCLASS,
-                    0x10,  // DSCP AF11 (low latency)
-                )
+            var sockErr error
 
-                // Example: set socket receive buffer size
-                syscall.SetsockoptInt(
+            err := c.Control(func(fd uintptr) {
+                // Set socket options at the raw socket level.
+                sockErr = syscall.SetsockoptInt(
                     int(fd),
                     syscall.SOL_SOCKET,
                     syscall.SO_RCVBUF,
                     256*1024,
                 )
             })
+            if err != nil {
+                return err
+            }
+
+            return sockErr
         },
     }
 
@@ -207,6 +216,7 @@ func newIPv6HTTPClient() *http.Client {
             // Force TCP6 regardless of what http.Transport requests
             return dialer.DialContext(ctx, "tcp6", addr)
         },
+        ForceAttemptHTTP2:     true,
         MaxIdleConns:          100,
         IdleConnTimeout:       90 * time.Second,
         TLSHandshakeTimeout:   10 * time.Second,
