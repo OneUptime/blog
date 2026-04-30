@@ -50,17 +50,16 @@ def show_network_host_bits(cidr: str) -> None:
     ip_bits = f"{int(iface.ip):032b}"
     prefix  = iface.network.prefixlen
 
-    net_part  = ip_bits[:prefix]
-    host_part = ip_bits[prefix:]
-
     # Reinsert dots at octet boundaries
     full = ip_bits[:8]+"."+ip_bits[8:16]+"."+ip_bits[16:24]+"."+ip_bits[24:]
-    mask = ("N"*8+".")*3 + "N"*8  # placeholder; rebuild below
-    segs = [
-        ("N" if i < prefix else "H") * 8
+    annotation_bits = "".join(
+        "N" if i < prefix else "H"
+        for i in range(32)
+    )
+    annotation = ".".join(
+        annotation_bits[i:i+8]
         for i in range(0, 32, 8)
-    ]
-    annotation = ".".join(segs[:4])
+    )
 
     print(f"IP:         {cidr}")
     print(f"Binary:     {full}")
