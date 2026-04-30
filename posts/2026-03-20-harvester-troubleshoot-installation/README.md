@@ -59,7 +59,7 @@ sudo dd if=harvester-v1.3.0-amd64.iso \
 **Troubleshooting:**
 
 ```bash
-# Boot from Harvester rescue shell (press Ctrl+C during installation)
+# Log in to the Harvester live installer shell (press Ctrl+Alt+F2)
 # Or boot a Linux live USB and check disk health
 
 # Check disk health with SMART
@@ -98,7 +98,7 @@ ls /dev/sd*
 **Troubleshooting:**
 
 ```bash
-# During installation, press Alt+F2 for a shell (if available)
+# During installation, press Ctrl+Alt+F2 for a shell
 # Or after first boot, access the node console
 
 # Check network interface names
@@ -112,12 +112,13 @@ lspci | grep -i network
 dmesg | grep -i eth
 dmesg | grep -i net
 
+# Check whether a default route exists
+ip route
+
 # Try manually configuring the interface
-ip link set eth0 up
-dhclient eth0  # For DHCP
-# Or for static:
-ip addr add 192.168.1.11/24 dev eth0
-ip route add default via 192.168.1.1
+ip link set <interface> up
+ip addr add 192.168.1.11/24 dev <interface>
+ip route add default via 192.168.1.1 dev <interface>
 
 # Test network connectivity
 ping -c 3 192.168.1.1
@@ -153,9 +154,8 @@ modprobe mlx5_core
 # Add these to the end of the 'linux' line for verbose boot:
 # systemd.log_level=debug console=ttyS0,115200n8
 
-# Common kernel parameter fixes:
-# If using a RAID controller: add 'nomodeset'
-# If using NVMe: ensure NVMe drivers are included
+# Common kernel parameter fix:
+# If display output is blank or older graphics firmware is involved, add 'nomodeset'
 
 # Access rescue mode
 # Add to GRUB linux line: systemd.unit=rescue.target
@@ -199,9 +199,9 @@ sudo ss -tlnp | grep -E "6443|9345|2379|2380"
 
 # 2. Certificate issues (clock skew)
 timedatectl status
-# If time is wrong, fix NTP and regenerate certs:
+# If time is wrong, fix NTP first, then rotate certs using the supported workflow:
 sudo systemctl stop rke2-server
-sudo rm -rf /var/lib/rancher/rke2/server/tls
+sudo rke2 certificate rotate
 sudo systemctl start rke2-server
 
 # 3. etcd startup failure
@@ -215,7 +215,7 @@ sudo journalctl -u rke2-server | grep -i etcd
 
 **Symptoms:**
 - New node shows NotReady
-- "Unable to connect to server" in RKE2 logs
+- "failed to bootstrap system" or token-related errors in rancherd logs
 - Timeout joining existing cluster
 
 **Troubleshooting:**
@@ -223,29 +223,34 @@ sudo journalctl -u rke2-server | grep -i etcd
 ```bash
 # On the new node, check connectivity to the cluster VIP
 ping -c 3 192.168.1.100
-curl -k https://192.168.1.100:443/healthz
+curl -fk https://192.168.1.100/version
+
+# Check rancherd bootstrap logs on the joining node
+sudo journalctl -b -u rancherd
 
 # Check the join token is correct
-sudo cat /etc/rancher/rke2/config.yaml | grep token
+sudo yq eval .token /etc/rancher/rancherd/config.yaml
 
 # Compare with the token on the existing cluster
 ssh rancher@192.168.1.11
-sudo cat /var/lib/rancher/rke2/server/node-token
+sudo yq eval .token /etc/rancher/rancherd/config.yaml
 
 # Check firewall rules
 sudo firewall-cmd --list-all  # For systems with firewalld
 
-# Required ports to open:
+# Required ports to open between Harvester nodes:
 # TCP 6443 - Kubernetes API
-# TCP 9345 - RKE2 join
-# TCP 2379,2380 - etcd
-# UDP 8472 - VXLAN (Flannel)
+# TCP 9345 - RKE2 supervisor API
+# TCP 10250 - kubelet
+# UDP 8472 - Canal/Flannel VXLAN
+# If the joining node is or becomes a management node, also allow TCP 2379,2380,2381
 sudo firewall-cmd --add-port=6443/tcp --permanent
 sudo firewall-cmd --add-port=9345/tcp --permanent
+sudo firewall-cmd --add-port=10250/tcp --permanent
+sudo firewall-cmd --add-port=8472/udp --permanent
 sudo firewall-cmd --reload
 
-# Check MTU issues (common with VXLAN)
-# If using VXLANs, the underlying MTU must be at least 1550
+# Check MTU mismatches on the management path and overlay interfaces
 ip link show | grep mtu
 ```
 
@@ -273,7 +278,7 @@ sudo systemctl status iscsid
 sudo systemctl enable --now iscsid
 
 # Check if open-iscsi is installed
-rpm -q open-iscsi || zypper install open-iscsi
+rpm -q open-iscsi
 
 # Check disk availability for Longhorn
 lsblk
@@ -287,16 +292,12 @@ kubectl get nodes.longhorn.io -n longhorn-system -o yaml | \
 ## General Debugging Commands
 
 ```bash
-# Collect all relevant logs for support
-sudo tar czf /tmp/harvester-debug-$(date +%Y%m%d).tar.gz \
-    /var/log/harvester/ \
-    /var/log/rke2/ \
-    /etc/rancher/rke2/config.yaml \
-    <(sudo journalctl -u rke2-server -n 1000) \
-    <(sudo kubectl --kubeconfig /etc/rancher/rke2/rke2.yaml \
-        get events -A --sort-by='.lastTimestamp' 2>/dev/null)
+# Generate the official Harvester troubleshooting bundle
+sudo supportconfig -k -c
 
-echo "Debug bundle saved to /tmp/harvester-debug-$(date +%Y%m%d).tar.gz"
+# If Kubernetes is already reachable, capture recent cluster events too
+sudo kubectl --kubeconfig /etc/rancher/rke2/rke2.yaml \
+    get events -A --sort-by=.metadata.creationTimestamp
 ```
 
 ## Conclusion
