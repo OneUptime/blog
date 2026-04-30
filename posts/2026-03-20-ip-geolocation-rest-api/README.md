@@ -15,20 +15,23 @@ from flask import Flask, request, jsonify
 app = Flask(__name__)
 
 async def geolocate(ip: str) -> dict:
-    async with httpx.AsyncClient(timeout=3.0) as client:
-        resp = await client.get(f"https://ipapi.co/{ip}/json/")
-        if resp.status_code == 200:
+    try:
+        async with httpx.AsyncClient(timeout=3.0) as client:
+            resp = await client.get(f"https://ipapi.co/{ip}/json/")
             data = resp.json()
-            return {
-                "ip":      data.get("ip"),
-                "country": data.get("country_name"),
-                "city":    data.get("city"),
-                "region":  data.get("region"),
-                "lat":     data.get("latitude"),
-                "lon":     data.get("longitude"),
-                "org":     data.get("org"),
-            }
-    return {"error": "lookup failed"}
+            if resp.status_code == 200 and not data.get("error"):
+                return {
+                    "ip":      data.get("ip"),
+                    "country": data.get("country_name"),
+                    "city":    data.get("city"),
+                    "region":  data.get("region"),
+                    "lat":     data.get("latitude"),
+                    "lon":     data.get("longitude"),
+                    "org":     data.get("org"),
+                }
+            return {"ip": ip, "error": data.get("reason", "lookup failed")}
+    except (httpx.HTTPError, ValueError):
+        return {"ip": ip, "error": "lookup failed"}
 ```
 
 ## MaxMind GeoLite2 (Local Database - No API Calls)
@@ -39,13 +42,17 @@ async def geolocate(ip: str) -> dict:
 pip install geoip2
 
 # Download GeoLite2-City.mmdb from https://dev.maxmind.com/geoip/geolite2-free-geolocation-data
+# (requires a MaxMind account and license key)
 ```
 
 ```python
 import geoip2.database
+import geoip2.errors
 from flask import Flask, request, jsonify
+from werkzeug.middleware.proxy_fix import ProxyFix
 
 app = Flask(__name__)
+app.wsgi_app = ProxyFix(app.wsgi_app, x_for=1)
 
 # Load once at startup
 _reader = geoip2.database.Reader("/opt/GeoLite2-City.mmdb")
@@ -70,16 +77,14 @@ def geolocate_local(ip: str) -> dict:
 
 @app.get("/api/geo")
 def geo_endpoint():
-    xff = request.headers.get("X-Forwarded-For")
-    ip  = xff.split(",")[0].strip() if xff else request.remote_addr
+    ip = request.remote_addr
     return jsonify(geolocate_local(ip))
 ```
 
 ## Node.js with @maxmind/geoip2-node
 
 ```javascript
-const { WebServiceClient } = require("@maxmind/geoip2-node");
-const Reader = require("@maxmind/geoip2-node").Reader;
+const { AddressNotFoundError, Reader, ValueError } = require("@maxmind/geoip2-node");
 const express = require("express");
 
 const app = express();
@@ -87,15 +92,10 @@ app.set("trust proxy", 1);
 
 let dbReader;
 
-(async () => {
-    // Open the local MMDB file
-    dbReader = await Reader.open("/opt/GeoLite2-City.mmdb");
-})();
-
-app.get("/api/geo", async (req, res) => {
+app.get("/api/geo", (req, res) => {
     const ip = req.ip;
     try {
-        const result = await dbReader.city(ip);
+        const result = dbReader.city(ip);
         res.json({
             ip,
             country:  result.country?.names?.en,
@@ -105,11 +105,25 @@ app.get("/api/geo", async (req, res) => {
             timezone: result.location?.timeZone,
         });
     } catch (err) {
-        res.status(404).json({ ip, error: "not found" });
+        if (err instanceof AddressNotFoundError) {
+            return res.status(404).json({ ip, error: "not found" });
+        }
+        if (err instanceof ValueError) {
+            return res.status(400).json({ ip, error: "invalid IP address" });
+        }
+        return res.status(500).json({ ip, error: "lookup failed" });
     }
 });
 
-app.listen(3000);
+Reader.open("/opt/GeoLite2-City.mmdb")
+    .then((reader) => {
+        dbReader = reader;
+        app.listen(3000);
+    })
+    .catch((err) => {
+        console.error("Failed to open GeoLite2 database:", err);
+        process.exit(1);
+    });
 ```
 
 ## Caching Geolocation Results
@@ -132,4 +146,4 @@ def cached_geolocate(ip: str) -> tuple:
 
 ## Conclusion
 
-For high-volume APIs, use a local MaxMind GeoLite2 MMDB database - lookups take microseconds and require no network call. External services (ipapi.co, ip-api.com) are convenient for low traffic but add latency and rate limits. Cache results aggressively with `lru_cache` or Redis since IP-to-geo mappings change rarely. Always extract the real client IP using proxy-aware logic before calling the geolocation function, and skip private/loopback addresses which won't have geolocation data.
+For high-volume APIs, use a local MaxMind GeoLite2 MMDB database - lookups are fast and require no network call. External services (ipapi.co, ip-api.com) are convenient for low traffic but add latency and rate limits. Cache results aggressively with `lru_cache` or Redis since IP-to-geo mappings change rarely. Always extract the real client IP using proxy-aware logic before calling the geolocation function, and skip private/loopback addresses which won't have geolocation data.
