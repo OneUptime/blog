@@ -15,9 +15,10 @@ Good IPv6 address planning at the rack level enables route summarization, simpli
 ```text
 /32  - Organization total
   /40  - Data Center site
-    /48  - Pod or row
-      /56  - Rack
-        /64  - Individual VLAN/subnet within rack
+    /48  - Pod
+      /52  - Row (optional)
+        /56  - Rack
+          /64  - Individual VLAN/subnet within rack
 ```
 
 This gives each rack a /56, providing 256 individual /64 subnets - enough for multiple VLANs per rack.
@@ -25,15 +26,15 @@ This gives each rack a /56, providing 256 individual /64 subnets - enough for mu
 ## Allocation Example
 
 ```text
-Site: DC-EAST     = 2001:db8:01::/40
-Pod A             = 2001:db8:01:00::/48
-  Row 1           = 2001:db8:01:00::/52
-    Rack 1        = 2001:db8:01:00::/56
-      VLAN 100    = 2001:db8:01:00:0100::/64   (servers)
-      VLAN 200    = 2001:db8:01:00:0200::/64   (storage)
-      VLAN 300    = 2001:db8:01:00:0300::/64   (IPMI/BMC)
-    Rack 2        = 2001:db8:01:00:0100::/56
-    Rack 3        = 2001:db8:01:00:0200::/56
+Site: DC-EAST     = 2001:db8:100::/40
+Pod A             = 2001:db8:100::/48
+  Row 1           = 2001:db8:100:0::/52
+    Rack 1        = 2001:db8:100:0::/56
+      VLAN 100    = 2001:db8:100:0::/64   (servers)
+      VLAN 200    = 2001:db8:100:1::/64   (storage)
+      VLAN 300    = 2001:db8:100:2::/64   (IPMI/BMC)
+    Rack 2        = 2001:db8:100:100::/56
+    Rack 3        = 2001:db8:100:200::/56
 ```
 
 ## IPAM Spreadsheet Template
@@ -42,9 +43,9 @@ Track allocations in a structured IPAM tool or at minimum a spreadsheet:
 
 | Site    | Pod | Row | Rack | VLAN | Prefix                  | Purpose   |
 |---------|-----|-----|------|------|-------------------------|-----------|
-| DC-EAST | A   | 1   | 1    | 100  | 2001:db8:1:100::/64     | Servers   |
-| DC-EAST | A   | 1   | 1    | 200  | 2001:db8:1:200::/64     | Storage   |
-| DC-EAST | A   | 1   | 2    | 100  | 2001:db8:1:1100::/64    | Servers   |
+| DC-EAST | A   | 1   | 1    | 100  | 2001:db8:100:0::/64     | Servers   |
+| DC-EAST | A   | 1   | 1    | 200  | 2001:db8:100:1::/64     | Storage   |
+| DC-EAST | A   | 1   | 2    | 100  | 2001:db8:100:100::/64   | Servers   |
 
 ## Automating Allocation with Python
 
@@ -55,7 +56,7 @@ import ipaddress
 
 # Start with a /48 for a pod
 
-pod_prefix = ipaddress.IPv6Network("2001:db8:1::/48")
+pod_prefix = ipaddress.IPv6Network("2001:db8:100::/48")
 
 # Generate /56 prefixes for each rack (subnets of /48)
 rack_prefixes = list(pod_prefix.subnets(new_prefix=56))
@@ -75,14 +76,14 @@ Ensure each ToR (Top-of-Rack) switch advertises only the rack's /56 summary rout
 ```text
 # FRR - advertise rack summary only
 router bgp 65001
- address-family ipv6
-  network 2001:db8:1::/56
-  no network 2001:db8:1::/64
+ address-family ipv6 unicast
+  aggregate-address 2001:db8:100:0::/56 summary-only
+ exit-address-family
 ```
 
 ## Avoiding Common Mistakes
 
-- Do not assign /128s to individual servers manually - use SLAAC or DHCPv6 within the /64.
+- Do not carve shared rack VLANs into prefixes longer than /64 - assign server addresses from the /64 using SLAAC, DHCPv6, or static configuration as needed.
 - Reserve a /64 per rack for OOB management (IPMI/iDRAC/iLO).
 - Document allocations in an IPAM system before deployment.
 
