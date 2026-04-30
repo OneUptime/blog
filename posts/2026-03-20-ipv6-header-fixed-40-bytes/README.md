@@ -16,45 +16,44 @@ One of the most important design decisions in IPv6 was to fix the base header at
 IPv4 packet processing (variable header):
 1. Read first byte → extract IHL (header length)
 2. Multiply IHL × 4 to get actual header length in bytes
-3. Skip IHL bytes to reach the payload
+3. Skip that many bytes to reach the payload
 4. Optionally parse options between bytes 20 and IHL×4
 
-This prevents hardware acceleration because:
-- Cannot predict payload location without reading IHL first
+This complicates fixed-function hardware parsing because:
+- Cannot know payload location until IHL is read and scaled
 - Options may require special processing per-hop
-- Pipeline stages cannot work in parallel
+- Early parse stages have less fixed-offset information to work with
 ```
 
 ## IPv6 Fixed Header Benefits
 
 ```text
 IPv6 packet processing (fixed 40-byte header):
-1. Always: offset 40 = start of payload or first extension header
-2. Next Header field at byte 6 tells you what is at offset 40
-3. No length calculation needed
-4. Hardware can parse all fields simultaneously
+1. Always: offset 40 = start of the IPv6 payload
+   (either an extension header or an upper-layer header)
+2. Next Header field at byte 6 tells you the type of header at offset 40
+3. No base-header length calculation needed
+4. Hardware can be designed to extract fixed-offset fields in parallel
 
 Benefits:
-  ✓ Enables hardware ASIC processing at line rate
+  ✓ Supports efficient ASIC processing
   ✓ Predictable memory access patterns → better cache utilization
   ✓ Parallel field extraction (all fields at known offsets)
   ✓ Simplified FPGA/ASIC router design
-  ✓ Constant time header processing (O(1))
+  ✓ Constant-time base-header processing (O(1))
 ```
 
 ## Fixed Offsets of All Header Fields
 
-Because the header is fixed, every field is at a predictable byte offset:
+Because the base header is fixed, every byte-aligned field is at a predictable
+offset, and the bit-packed first 32 bits can be decoded from a fixed location:
 
 ```python
-# All IPv6 header fields at fixed byte offsets
+# Byte ranges in the fixed 40-byte IPv6 base header
 
-IPV6_FIELD_OFFSETS = {
+IPV6_BYTE_RANGES = {
     # Field name: (byte_offset, byte_length)
-    "version_tc_fl":       (0, 4),   # version[3:0] + traffic_class + flow_label
-    "version":             (0, 1),   # upper nibble
-    "traffic_class":       (0, 2),   # bits 4-11 (spans bytes 0-1)
-    "flow_label":          (1, 3),   # bits 12-31 (spans bytes 1-3)
+    "version_tc_fl":       (0, 4),   # first 32 bits: version + TC + flow label
     "payload_length":      (4, 2),
     "next_header":         (6, 1),
     "hop_limit":           (7, 1),
@@ -63,15 +62,20 @@ IPV6_FIELD_OFFSETS = {
     # Total: 40 bytes
 }
 
-def extract_field(packet: bytes, field_name: str) -> bytes:
-    """Extract a field from an IPv6 header using fixed offsets."""
-    offset, length = IPV6_FIELD_OFFSETS[field_name]
+def extract_bytes(packet: bytes, field_name: str) -> bytes:
+    """Extract a byte-aligned field from an IPv6 header using fixed offsets."""
+    offset, length = IPV6_BYTE_RANGES[field_name]
     return packet[offset:offset + length]
 
 # Example
 raw_header = bytes(40)  # Mock header (all zeros for demonstration)
-src_bytes = extract_field(raw_header, "source_address")  # Always bytes 8-23
-dst_bytes = extract_field(raw_header, "destination_address")  # Always bytes 24-39
+first_word = int.from_bytes(extract_bytes(raw_header, "version_tc_fl"), "big")
+version = (first_word >> 28) & 0xF
+traffic_class = (first_word >> 20) & 0xFF
+flow_label = first_word & 0xFFFFF
+
+src_bytes = extract_bytes(raw_header, "source_address")  # Always bytes 8-23
+dst_bytes = extract_bytes(raw_header, "destination_address")  # Always bytes 24-39
 ```
 
 ## Extension Headers: Flexibility Without Variability
@@ -80,32 +84,35 @@ Options are not removed - they are moved to extension headers that are optional 
 
 ```text
 Why this is better:
-- Routers that don't need to process options skip them entirely
+- Transit routers do not process most extension headers during forwarding
 - The fixed base header is always processed the same way
 - Extension headers are chained with their own Next Header fields
-- Only specialized routers (and endpoints) need to parse extension headers
+- Endpoints, and transit nodes with specific policy needs, parse beyond the base header
 
 Compare:
-IPv4: ALL routers must check for options in EVERY packet
-IPv6: Options are in extension headers; transit routers skip them
-       (except Hop-by-Hop Options, which are rare in practice)
+IPv4: ALL routers must at least inspect IHL in EVERY packet
+IPv6: Options are in extension headers; transit routers generally do not
+      process them during forwarding
+      (Hop-by-Hop Options are the exception, and RFC 8200 says nodes along
+      the path process them only if explicitly configured to do so)
 ```
 
 ## Impact on Router Hardware
 
 ```text
-Cisco ASR 9000 IPv6 forwarding:
-  Fixed header → ASIC can parallelize field extraction
-  Simultaneous reads:
-    - Traffic Class at offset 0
+Generic IPv6 forwarding pipeline:
+  Fixed header → parser can read known positions in the base header
+  Examples of fixed locations:
+    - Version / Traffic Class / Flow Label in the first 32-bit word
     - Payload Length at offset 4
     - Next Header at offset 6
     - Hop Limit at offset 7
     - Source at offset 8
     - Destination at offset 24
 
-  Route lookup starts at offset 24 (destination) immediately
-  while Hop Limit decrement is in another pipeline stage
+  A forwarding implementation can begin destination-based lookup from the
+  fixed destination-address position while handling Hop Limit and Next Header
+  checks in parallel pipeline stages.
 ```
 
 ## The 40-Byte Choice: Why Not 20?
@@ -130,4 +137,4 @@ The total increase is purely from the address expansion.
 
 ## Conclusion
 
-IPv6's fixed 40-byte header is a fundamental performance enabler for high-speed routers. By moving all optional processing to extension headers (which are rare in practice and processed only when needed), the base header processing becomes constant-time and hardware-optimizable. Every field is at a known byte offset, enabling parallel extraction and pipelined processing that was impossible with IPv4's variable-length header. This design enables routers to forward IPv6 packets at terabit speeds.
+IPv6's fixed 40-byte header is a fundamental performance enabler for high-speed routers. By moving optional information out of the base header and into extension headers, the base header processing becomes constant-time and hardware-optimizable. Every base-header field lives at a known fixed location, enabling parallel extraction and pipelined processing that is simpler than with IPv4's variable-length header. This design helps modern routers forward IPv6 packets at very high speeds.
