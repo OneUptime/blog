@@ -28,7 +28,7 @@ gcloud compute networks subnets list \
 
 # List firewall rules
 gcloud compute firewall-rules list \
-  --filter="network:$NETWORK" \
+  --filter="network=$NETWORK" \
   --project=$PROJECT \
   --format="table(name,direction,priority,sourceRanges,targetTags,allowed)"
 ```
@@ -71,7 +71,7 @@ resource "google_compute_firewall" "allow_internal" {
   direction = "INGRESS"
   priority  = 1000
 
-  source_ranges = ["10.10.0.0/8"]
+  source_ranges = ["10.0.0.0/8"]
 
   allow {
     protocol = "tcp"
@@ -93,19 +93,19 @@ resource "google_compute_firewall" "allow_internal" {
 
 ```hcl
 # import.tf
-# GCP network format: PROJECT/NETWORK_NAME
+# Accepted shorthand network import format: PROJECT/NETWORK_NAME
 import {
   to = google_compute_network.main
   id = "my-project-id/my-vpc-network"
 }
 
-# Subnetwork format: PROJECT/REGION/SUBNETWORK_NAME
+# Accepted shorthand subnetwork import format: PROJECT/REGION/SUBNETWORK_NAME
 import {
   to = google_compute_subnetwork.app
   id = "my-project-id/us-central1/app-subnet"
 }
 
-# Firewall rule format: PROJECT/RULE_NAME
+# Accepted shorthand firewall import format: PROJECT/RULE_NAME
 import {
   to = google_compute_firewall.allow_internal
   id = "my-project-id/allow-internal"
@@ -141,7 +141,7 @@ import {
   id = "my-project-id/us-central1/app-router"
 }
 
-# Cloud NAT format: PROJECT/REGION/ROUTER_NAME/NAT_NAME
+# Accepted shorthand Cloud NAT import format: PROJECT/REGION/ROUTER_NAME/NAT_NAME
 import {
   to = google_compute_router_nat.nat
   id = "my-project-id/us-central1/app-router/app-nat"
@@ -150,4 +150,4 @@ import {
 
 ## Conclusion
 
-GCP VPC import uses consistent `PROJECT/RESOURCE_NAME` or `PROJECT/REGION/RESOURCE_NAME` patterns depending on whether the resource is global or regional. Import the network first, then subnets, then firewall rules since they reference each other. Secondary IP ranges on subnets (used for GKE pods and services) must be specified exactly as they exist to avoid drift.
+The Google provider accepts shorthand import IDs such as `PROJECT/RESOURCE_NAME`, `PROJECT/REGION/RESOURCE_NAME`, and `PROJECT/REGION/ROUTER_NAME/NAT_NAME`, and it also accepts the full `projects/...` resource-path forms shown in the provider documentation. If you import incrementally, start with the network and then import related subnetworks, routers/NAT, and firewall rules so referenced resources already exist in state. Secondary IP ranges on subnets (used for GKE pods and services) must be specified exactly as they exist to avoid drift.
