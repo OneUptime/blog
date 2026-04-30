@@ -21,7 +21,7 @@ terraform {
   required_providers {
     google = {
       source  = "hashicorp/google"
-      version = "~> 5.10"
+      version = "~> 7.30"
     }
   }
 }
@@ -45,10 +45,6 @@ resource "google_monitoring_notification_channel" "email" {
 resource "google_monitoring_notification_channel" "pagerduty" {
   display_name = "PagerDuty On-Call"
   type         = "pagerduty"
-
-  labels = {
-    service_key = var.pagerduty_service_key
-  }
 
   sensitive_labels {
     service_key = var.pagerduty_service_key
@@ -122,7 +118,7 @@ resource "google_monitoring_alert_policy" "cloud_run_latency" {
 
       aggregations {
         alignment_period     = "60s"
-        per_series_aligner   = "ALIGN_PERCENTILE_99"
+        per_series_aligner   = "ALIGN_PERCENTILE_95"
         cross_series_reducer = "REDUCE_MEAN"
         group_by_fields      = ["resource.label.service_name"]
       }
@@ -164,7 +160,7 @@ resource "google_monitoring_uptime_check_config" "app_health" {
   selected_regions = ["USA", "EUROPE", "ASIA_PACIFIC"]
 }
 
-# Alert when uptime check fails
+# Alert when the uptime check is failing in multiple regions
 resource "google_monitoring_alert_policy" "uptime_failure" {
   display_name = "App Uptime Check Failed"
   combiner     = "OR"
@@ -196,5 +192,5 @@ resource "google_monitoring_alert_policy" "uptime_failure" {
 - Use `combiner = "OR"` for independent conditions and `"AND"` only when conditions are correlated.
 - Include runbook links in the `documentation` block so on-call engineers know what to do when an alert fires.
 - Set `duration` on threshold conditions to reduce false positives from transient spikes.
-- Test notification channels using the GCP Console "Send Test Notification" feature before production.
+- Test notification channels before production. For Slack, the console offers a "Send test notification" option during setup; for other channel types, verify them with a temporary alert policy.
 - Co-locate monitoring configuration with the infrastructure it monitors so they change together.
