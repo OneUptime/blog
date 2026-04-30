@@ -86,7 +86,7 @@ kubectl get bundledeployments -A -w
 ```bash
 # Get complete GitRepo status
 kubectl get gitrepo my-app -n fleet-default \
-  -o jsonpath='{.status}' | python3 -m json.tool
+  -o jsonpath-as-json='{.status}' | python3 -m json.tool
 
 # Key fields to check:
 # .status.commit - Currently synced Git commit SHA
@@ -100,15 +100,15 @@ kubectl get gitrepo my-app -n fleet-default \
 ```bash
 # Get comprehensive bundle status
 kubectl get bundle my-app -n fleet-default \
-  -o jsonpath='{.status.summary}' | python3 -m json.tool
+  -o jsonpath-as-json='{.status.summary}' | python3 -m json.tool
 
 # Get conditions
 kubectl get bundle my-app -n fleet-default \
-  -o jsonpath='{.status.conditions}' | python3 -m json.tool
+  -o jsonpath-as-json='{.status.conditions}' | python3 -m json.tool
 
-# Get display list showing per-target status
+# Get display summary showing the overall bundle state
 kubectl get bundle my-app -n fleet-default \
-  -o jsonpath='{.status.display}' | python3 -m json.tool
+  -o jsonpath-as-json='{.status.display}' | python3 -m json.tool
 ```
 
 ### BundleDeployment Per-Cluster Status
@@ -116,12 +116,12 @@ kubectl get bundle my-app -n fleet-default \
 ```bash
 # List all bundle deployments with their cluster context
 kubectl get bundledeployments -A \
-  -o jsonpath='{range .items[*]}{.metadata.namespace} {.metadata.name} ready={.status.ready} modified={.status.modified}{"\n"}{end}'
+  -o jsonpath='{range .items[*]}{.metadata.namespace} {.metadata.name} ready={.status.ready} state={.status.display.state}{"\n"}{end}'
 
 # Get the non-ready resources for a failing bundle deployment
 kubectl get bundledeployment my-app \
   -n fleet-cluster-fleet-default-cluster-123 \
-  -o jsonpath='{.status.nonReadyStatus}' | python3 -m json.tool
+  -o jsonpath-as-json='{.status.nonReadyStatus}' | python3 -m json.tool
 ```
 
 ## Creating a Health Check Script
@@ -146,13 +146,14 @@ kubectl get bundles -A \
 echo ""
 echo "--- Non-Ready Bundles ---"
 kubectl get bundles -A \
-  -o jsonpath='{range .items[?(@.status.summary.notReady>0)]}{.metadata.namespace}/{.metadata.name}: {.status.summary.notReady} clusters not ready{"\n"}{end}'
+  -o jsonpath='{range .items[*]}{.metadata.namespace} {.metadata.name} {.status.summary.notReady}{"\n"}{end}' \
+  | awk '$3 > 0 {print $1 "/" $2 ": " $3 " clusters not ready"}'
 
 echo ""
 echo "--- Recent Events ---"
 kubectl get events -A \
-  --field-selector reason=FailedSync \
-  --sort-by='.lastTimestamp' \
+  --field-selector type=Warning \
+  --sort-by='.metadata.creationTimestamp' \
   | tail -10
 ```
 
@@ -188,9 +189,10 @@ spec:
 
 ### Key Fleet Metrics to Monitor
 
-- `fleet_cluster_ready`: Number of ready clusters per bundle
-- `fleet_bundle_ready`: Bundle readiness state
-- `fleet_gitrepo_sync_latency`: Time to sync from Git to cluster
+- `fleet_bundle_ready`: Number of ready bundle deployments per bundle
+- `fleet_bundle_desired_ready`: Number of bundle deployments expected to be ready
+- `fleet_bundle_err_applied`: Number of bundle deployments with apply errors
+- `fleet_bundle_state`: Overall bundle state label for alerting and dashboards
 
 ## Alerting on Deployment Failures
 
@@ -201,6 +203,9 @@ kind: PrometheusRule
 metadata:
   name: fleet-alerts
   namespace: cattle-fleet-system
+  labels:
+    # Match your Prometheus operator's selector
+    release: prometheus-stack
 spec:
   groups:
     - name: fleet.rules
@@ -208,7 +213,7 @@ spec:
         # Alert when bundles are not fully deployed after 10 minutes
         - alert: FleetBundleNotReady
           expr: |
-            fleet_bundle_desired_ready > fleet_bundle_ready
+            (fleet_bundle_desired_ready - fleet_bundle_ready) > 0
           for: 10m
           labels:
             severity: warning
@@ -216,15 +221,15 @@ spec:
             summary: "Fleet bundle {{ $labels.name }} has unready deployments"
             description: "Bundle {{ $labels.name }} has {{ $value }} clusters not ready"
 
-        # Alert when GitRepo fails to sync for 5 minutes
-        - alert: FleetGitRepoSyncFailed
+        # Alert when bundle deployments report apply errors for 5 minutes
+        - alert: FleetBundleApplyError
           expr: |
-            fleet_gitrepo_sync_error == 1
+            fleet_bundle_err_applied > 0
           for: 5m
           labels:
             severity: critical
           annotations:
-            summary: "Fleet GitRepo {{ $labels.name }} sync failing"
+            summary: "Fleet bundle {{ $labels.name }} has apply errors"
 ```
 
 ## Conclusion
