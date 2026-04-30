@@ -35,13 +35,13 @@ Default rules:
 | `from <address>` | `from 10.0.0.5` | Source IP |
 | `to <address>` | `to 8.8.8.8` | Destination IP |
 | `fwmark <mark>` | `fwmark 0x1` | Netfilter packet mark |
-| `tos <value>` | `tos 0x10` | TOS/DSCP field |
+| `tos <value>` | `tos 0x10` | TOS/DS field |
 | `iif <interface>` | `iif eth0` | Incoming interface |
 
 ## Scenario 1: Route Traffic by Source IP
 
 ```bash
-# Create table 100 for special traffic
+# Register table 100 with the name "vpn"
 echo "100 vpn" | sudo tee -a /etc/iproute2/rt_tables
 
 # Populate table 100: route to VPN gateway
@@ -67,10 +67,10 @@ sudo ip rule add fwmark 0x1 table 200 priority 150
 
 ## Scenario 3: Route by Incoming Interface
 
-Useful when accepting traffic from multiple interfaces:
+Useful when routing forwarded traffic received on multiple interfaces:
 
 ```bash
-# Traffic arriving on eth1 should reply via eth1's gateway
+# Forwarded traffic received on eth1 should use eth1's routing table
 sudo ip route add default via 10.0.0.1 dev eth1 table 300
 sudo ip rule add iif eth1 table 300 priority 200
 ```
@@ -81,7 +81,7 @@ sudo ip rule add iif eth1 table 300 priority 200
 # Delete a specific rule
 sudo ip rule del from 192.168.1.50 table vpn
 
-# Flush all rules except the default three
+# Flush all rules, including the default three
 sudo ip rule flush
 # Re-add the mandatory rules
 sudo ip rule add from all lookup local priority 0
@@ -92,7 +92,7 @@ sudo ip rule add from all lookup default priority 32767
 ## Verifying Policy Routing
 
 ```bash
-# Check which table a specific packet would use
+# Inspect current rule order and priorities
 ip rule show | head -20
 
 # Test route lookup with specific source
@@ -106,9 +106,10 @@ Add the `ip rule` and `ip route` commands to a startup script or NetworkManager 
 ```bash
 sudo tee /etc/NetworkManager/dispatcher.d/99-pbr << 'EOF'
 #!/bin/bash
-if [ "$1" = "eth0" ] && [ "$2" = "up" ]; then
+if [ "$1" = "tun0" ] && [ "$2" = "vpn-up" ]; then
+    ip rule del from 192.168.1.50 table vpn priority 100 2>/dev/null
     ip rule add from 192.168.1.50 table vpn priority 100
-    ip route add default via 10.8.0.1 dev tun0 table vpn
+    ip route replace default via 10.8.0.1 dev tun0 table vpn
 fi
 EOF
 sudo chmod +x /etc/NetworkManager/dispatcher.d/99-pbr
