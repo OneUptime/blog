@@ -8,31 +8,33 @@ Description: Configure Git SSH connections over IPv6 for GitOps workflows, inclu
 
 ## Introduction
 
-SSH is the most common protocol for Git authentication in GitOps pipelines. Connecting to Git servers over IPv6 via SSH requires proper URL formatting, SSH config adjustments for IPv6 hosts, and correctly formatted `known_hosts` entries. Both ArgoCD and Flux CD use SSH keys stored in Kubernetes secrets with IPv6-formatted known_hosts to authenticate with Git servers.
+SSH is the most common protocol for Git authentication in GitOps pipelines. Connecting to Git servers over IPv6 via SSH requires proper URL formatting, SSH config adjustments for IPv6 hosts, and correctly formatted `known_hosts` entries. ArgoCD stores repository SSH private keys in repository secrets and SSH host keys in `argocd-ssh-known-hosts-cm`; Flux CD stores SSH private keys and `known_hosts` data in Kubernetes secrets.
 
 ## SSH URL Format for IPv6 Git Servers
 
 ```bash
 # Standard SSH Git URL formats for IPv6:
 
-# Format 1: SCP-like (does NOT support IPv6 literal addresses)
+# Format 1: SCP-like (works with current Git/OpenSSH clients on port 22)
+git clone "git@[2001:db8::10]:org/repo.git"
 
-# git@[2001:db8::git]:org/repo.git  ← NOT valid
-# Use hostname with AAAA record instead:
+# A hostname with an AAAA record also works:
 git clone git@gitserver.example.com:org/repo.git
 
-# Format 2: Full SSH URL (supports IPv6 literal)
-git clone "ssh://git@[2001:db8::git]:22/org/repo.git"
+# Format 2: Full SSH URL (supports IPv6 literal and explicit ports)
+git clone "ssh://git@[2001:db8::10]:22/org/repo.git"
 
 # Format 3: SSH URL without port (port 22)
-git clone "ssh://git@[2001:db8::git]/org/repo.git"
+git clone "ssh://git@[2001:db8::10]/org/repo.git"
+
+# Flux GitRepository URLs must use the ssh:// form
 
 # Test SSH connection to IPv6 Git server
-ssh -6 -T git@2001:db8::git
-# Expected: "Hi user! You've successfully authenticated..."
+ssh -6 -T git@[2001:db8::10]
+# Expected: authentication succeeds or the Git server returns its Git-shell banner
 
-# Test with full URL
-ssh -6 -v "ssh://git@[2001:db8::git]:22"
+# Test with explicit port
+ssh -6 -v -p 22 git@[2001:db8::10]
 ```
 
 ## SSH Config for IPv6 Git Server
@@ -42,7 +44,7 @@ ssh -6 -v "ssh://git@[2001:db8::git]:22"
 
 # Git server on IPv6
 Host gitserver-ipv6
-    HostName 2001:db8::git
+    HostName 2001:db8::10
     User git
     Port 22
     IdentityFile ~/.ssh/id_ed25519_gitops
@@ -66,22 +68,24 @@ git clone "git@gitserver-ipv6:org/repo.git"
 ```bash
 # Add IPv6 host key to known_hosts
 
-# Standard format for IPv6 in known_hosts requires brackets:
-# [hostname]:port key-type key-data
-# or for port 22:
-# [ipv6-address] key-type key-data
+# Standard known_hosts format:
+# hostnames key-type key-data
+# If you need to encode a port, use [host]:port key-type key-data
 
 # Scan host keys from IPv6 Git server
-ssh-keyscan -6 -H 2001:db8::git >> ~/.ssh/known_hosts
-# Adds: |1|hash| ecdsa-sha2-nistp256 AAAAE2...
+ssh-keyscan -6 -H 2001:db8::10 >> ~/.ssh/known_hosts
+# Adds: |1|hash|... ssh-ed25519 AAAAC3...
 
 # Non-hashed format (easier to read/manage)
-ssh-keyscan -6 2001:db8::git >> ~/.ssh/known_hosts
-# Adds: 2001:db8::git ssh-rsa AAAAB3...
-#   or: [2001:db8::git]:22 ecdsa-sha2-nistp256 AAAAE2...
+ssh-keyscan -6 2001:db8::10 >> ~/.ssh/known_hosts
+# Adds: 2001:db8::10 ssh-ed25519 AAAAC3...
+
+# With an explicit non-default port, output uses [host]:port
+ssh-keyscan -6 -p 2222 2001:db8::10 >> ~/.ssh/known_hosts
+# Adds: [2001:db8::10]:2222 ssh-ed25519 AAAAC3...
 
 # Verify the known_hosts entry works
-ssh -6 -o "StrictHostKeyChecking=yes" git@2001:db8::git
+ssh -6 -o "StrictHostKeyChecking=yes" git@[2001:db8::10]
 ```
 
 ## ArgoCD: SSH Repository with IPv6
@@ -97,21 +101,31 @@ metadata:
   labels:
     argocd.argoproj.io/secret-type: repository
 stringData:
-  # SSH URL with IPv6 literal (must use ssh:// format)
-  url: "ssh://git@[2001:db8::git]:22/org/myrepo.git"
+  type: git
+  # SSH URL with IPv6 literal
+  url: "ssh://git@[2001:db8::10]/org/myrepo.git"
 
   # SSH private key
   sshPrivateKey: |
     -----BEGIN OPENSSH PRIVATE KEY-----
     b3BlbnNzaC1rZXktdjEAAAAABG5vbmUAAAAEbm9uZQ...
     -----END OPENSSH PRIVATE KEY-----
-
+---
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: argocd-ssh-known-hosts-cm
+  namespace: argocd
+  labels:
+    app.kubernetes.io/name: argocd-ssh-known-hosts-cm
+    app.kubernetes.io/part-of: argocd
+data:
   # known_hosts for the IPv6 Git server
-  # Get with: ssh-keyscan -6 2001:db8::git
-  knownHosts: |
-    [2001:db8::git]:22 ecdsa-sha2-nistp256 AAAAE2VjZHNhLXNo...
-    [2001:db8::git]:22 ssh-rsa AAAAB3NzaC1yc2EAAAA...
-    [2001:db8::git]:22 ssh-ed25519 AAAAC3NzaC1lZDI1NTE5...
+  # Get with: ssh-keyscan -6 2001:db8::10
+  ssh_known_hosts: |
+    2001:db8::10 ecdsa-sha2-nistp256 AAAAE2VjZHNhLXNo...
+    2001:db8::10 ssh-rsa AAAAB3NzaC1yc2EAAAA...
+    2001:db8::10 ssh-ed25519 AAAAC3NzaC1lZDI1NTE5...
 ```
 
 ## Flux CD: SSH Repository with IPv6
@@ -133,7 +147,7 @@ stringData:
   identity.pub: "ssh-ed25519 AAAAC3NzaC1lZDI1NTE5... gitops-key"
   # known_hosts with IPv6 server entry
   known_hosts: |
-    [2001:db8::git]:22 ssh-ed25519 AAAAC3NzaC1lZDI1NTE5...
+    2001:db8::10 ssh-ed25519 AAAAC3NzaC1lZDI1NTE5...
 
 ---
 apiVersion: source.toolkit.fluxcd.io/v1
@@ -143,7 +157,7 @@ metadata:
   namespace: flux-system
 spec:
   interval: 5m
-  url: "ssh://git@[2001:db8::git]:22/org/myapp.git"
+  url: "ssh://git@[2001:db8::10]/org/myapp.git"
   ref:
     branch: main
   secretRef:
@@ -156,41 +170,37 @@ spec:
 #!/bin/bash
 # get-ipv6-hostkeys.sh - Collect SSH host keys from IPv6 Git server
 
-GIT_SERVER_IPV6="2001:db8::git"
+GIT_SERVER_IPV6="2001:db8::10"
 OUTPUT="known_hosts_ipv6"
 
 echo "Scanning SSH host keys from [$GIT_SERVER_IPV6]..."
 
 # Get all key types
-ssh-keyscan -6 -t rsa,ecdsa,ed25519 "$GIT_SERVER_IPV6" 2>/dev/null | \
-    sed "s/^/[$GIT_SERVER_IPV6]:22 /" | \
-    sed "s/\[$GIT_SERVER_IPV6\]:22 $GIT_SERVER_IPV6 /[$GIT_SERVER_IPV6]:22 /" \
+ssh-keyscan -6 -t rsa,ecdsa,ed25519 "$GIT_SERVER_IPV6" 2>/dev/null \
     > "$OUTPUT"
 
 echo "Host keys written to $OUTPUT:"
 cat "$OUTPUT"
 echo ""
-echo "Add to ArgoCD or Flux known_hosts secret field."
+echo "Add to argocd-ssh-known-hosts-cm or the Flux known_hosts secret field."
 ```
 
 ## Test SSH over IPv6 from GitOps Pod
 
 ```bash
-# Test SSH connectivity from ArgoCD repo-server pod
+# Example: if the controller image includes OpenSSH, verify the Git server is reachable over IPv6
 kubectl exec -n argocd deployment/argocd-repo-server -- \
-    ssh -6 -o StrictHostKeyChecking=no \
-        -i /app/config/ssh/id_rsa \
-        "git@[2001:db8::git]" 2>&1
+    ssh-keyscan -6 2001:db8::10 2>&1
 
-# Test from Flux source-controller
+# Example: if the controller image includes OpenSSH, verify the Git server is reachable over IPv6
 kubectl exec -n flux-system deployment/source-controller -- \
-    ssh -6 -T "git@[2001:db8::git]" 2>&1
+    ssh-keyscan -6 2001:db8::10 2>&1
 
-# If SSH fails: check if IPv6 is available in the pod
+# If SSH fails and the image includes iproute2: check if IPv6 is available in the pod
 kubectl exec -n flux-system deployment/source-controller -- \
     ip -6 addr show
 ```
 
 ## Conclusion
 
-Git SSH over IPv6 requires using the `ssh://` URL scheme with bracket notation for IPv6 addresses (e.g., `ssh://git@[2001:db8::git]:22/repo.git`) since the SCP-like syntax doesn't support IPv6 literals. The `known_hosts` file must contain the IPv6 server's host keys in `[ipv6address]:port key-type data` format, collected with `ssh-keyscan -6`. ArgoCD stores known_hosts in the repository secret's `knownHosts` field; Flux stores it in the SSH secret's `known_hosts` field. Use `ssh-keyscan -6 -t rsa,ecdsa,ed25519` to collect all key types. Verify SSH over IPv6 is working by testing from inside the GitOps controller pod with `kubectl exec` before configuring the repository secret.
+Git SSH over IPv6 supports literal IPv6 addresses in both scp-like and `ssh://` forms on current Git/OpenSSH clients. Use the `ssh://` form when you need to encode a port (e.g., `ssh://git@[2001:db8::10]:22/repo.git`) and for Flux `GitRepository` URLs, which do not accept scp-like syntax. The `known_hosts` file must contain the IPv6 server's host keys in `host key-type data` format, or `[host]:port key-type data` when a port must be encoded, collected with `ssh-keyscan -6`. ArgoCD stores SSH host keys in `argocd-ssh-known-hosts-cm`; Flux stores them in the SSH secret's `known_hosts` field. Use `ssh-keyscan -6 -t rsa,ecdsa,ed25519` to collect all key types. Verify IPv6 reachability from inside the GitOps controller pod with `kubectl exec` before configuring the repository connection.
