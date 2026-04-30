@@ -34,7 +34,6 @@ Description: Configure Java gRPC servers using grpc-java to listen on IPv6 addre
 ```java
 // HelloWorldServer.java
 import io.grpc.Server;
-import io.grpc.ServerBuilder;
 import io.grpc.netty.shaded.io.grpc.netty.NettyServerBuilder;
 
 import java.net.InetAddress;
@@ -51,6 +50,7 @@ public class HelloWorldServer {
 
         server = NettyServerBuilder
             .forAddress(listenAddress)
+            .intercept(new GrpcClientAddressInterceptor())
             .addService(new GreeterImpl())
             .build()
             .start();
@@ -79,15 +79,14 @@ public class HelloWorldServer {
 ```java
 // GreeterImpl.java
 import io.grpc.stub.StreamObserver;
-import io.grpc.Context;
+
+import java.net.SocketAddress;
 
 public class GreeterImpl extends GreeterGrpc.GreeterImplBase {
 
     @Override
     public void sayHello(HelloRequest request, StreamObserver<HelloReply> responseObserver) {
-        // Get client's peer address (includes IPv6)
-        String peerAddress = io.grpc.Grpc.TRANSPORT_ATTR_REMOTE_ADDR
-            .get(io.grpc.Attributes.EMPTY);
+        SocketAddress peerAddress = GrpcClientAddressInterceptor.REMOTE_ADDRESS.get();
 
         System.out.println("Request from: " + peerAddress);
 
@@ -115,8 +114,8 @@ import java.net.InetSocketAddress;
 public class HelloWorldClient {
 
     public static void main(String[] args) throws Exception {
-        // Connect to IPv6 gRPC server
-        InetAddress ipv6Server = InetAddress.getByName("2001:db8::1");
+        // Connect to the local IPv6 gRPC server
+        InetAddress ipv6Server = InetAddress.getByName("::1");
         InetSocketAddress serverAddress = new InetSocketAddress(ipv6Server, 50051);
 
         ManagedChannel channel = NettyChannelBuilder
@@ -154,17 +153,17 @@ Using `grpc-spring-boot-starter`:
 grpc:
   server:
     # Bind to all IPv6 interfaces
-    address: "[::]"
+    address: "::"
     port: 50051
   client:
     my-service:
       # Connect to IPv6 server
-      address: "static://[2001:db8::1]:50051"
+      address: "static://[::1]:50051"
       negotiation-type: PLAINTEXT
 ```
 
 ```java
-@GrpcService
+@GrpcService(interceptors = GrpcClientAddressInterceptor.class)
 public class GreeterService extends GreeterGrpc.GreeterImplBase {
 
     @Override
@@ -180,22 +179,32 @@ public class GreeterService extends GreeterGrpc.GreeterImplBase {
 ## Step 5: Extract IPv6 Client Address
 
 ```java
-import io.grpc.stub.ServerCallStreamObserver;
+import io.grpc.Context;
+import io.grpc.Contexts;
 import io.grpc.Grpc;
-import java.net.InetSocketAddress;
+import io.grpc.Metadata;
+import io.grpc.ServerCall;
+import io.grpc.ServerCallHandler;
+import io.grpc.ServerInterceptor;
 
-public class GreeterImpl extends GreeterGrpc.GreeterImplBase {
+import java.net.SocketAddress;
+
+public class GrpcClientAddressInterceptor implements ServerInterceptor {
+
+    public static final Context.Key<SocketAddress> REMOTE_ADDRESS =
+        Context.key("remote-address");
 
     @Override
-    public void sayHello(HelloRequest request, StreamObserver<HelloReply> responseObserver) {
-        // Get remote address from context
-        io.grpc.ServerCall<?, ?> call = io.grpc.ServerInterceptors.CALL_SERVER_CALL.get();
+    public <ReqT, RespT> ServerCall.Listener<ReqT> interceptCall(
+        ServerCall<ReqT, RespT> call,
+        Metadata headers,
+        ServerCallHandler<ReqT, RespT> next
+    ) {
+        SocketAddress remoteAddress =
+            call.getAttributes().get(Grpc.TRANSPORT_ATTR_REMOTE_ADDR);
 
-        // Alternative: use interceptor to capture address
-        // See GrpcClientAddressInterceptor below
-        System.out.println("Processing request for: " + request.getName());
-        responseObserver.onNext(HelloReply.newBuilder().setMessage("Hello!").build());
-        responseObserver.onCompleted();
+        Context context = Context.current().withValue(REMOTE_ADDRESS, remoteAddress);
+        return Contexts.interceptCall(context, call, headers, next);
     }
 }
 ```
@@ -204,17 +213,20 @@ public class GreeterImpl extends GreeterGrpc.GreeterImplBase {
 
 ```bash
 # Test with grpcurl
-grpcurl -plaintext '[2001:db8::1]:50051' list
-grpcurl -plaintext '[2001:db8::1]:50051' helloworld.Greeter/SayHello
+# Requires server reflection, or pass -proto/-import-path explicitly
+grpcurl -plaintext '[::1]:50051' list
+grpcurl -plaintext -d '{"name":"World"}' '[::1]:50051' helloworld.Greeter/SayHello
 
 # Health check
-grpcurl -plaintext '[2001:db8::1]:50051' grpc.health.v1.Health/Check
+# Requires the gRPC health service to be registered and server reflection,
+# or pass -proto/-import-path explicitly
+grpcurl -plaintext -d '{"service":""}' '[::1]:50051' grpc.health.v1.Health/Check
 ```
 
 ## Monitoring with OneUptime
 
-Use [OneUptime](https://oneuptime.com) to monitor your Java gRPC service over IPv6. Set up TCP availability monitors on port 50051 and health check monitors for the gRPC health protocol endpoint.
+Use [OneUptime](https://oneuptime.com) to monitor your Java gRPC service over IPv6. Set up TCP availability monitors on port 50051 and, if you register the gRPC health service, health check monitors for the gRPC health protocol endpoint.
 
 ## Conclusion
 
-Java gRPC servers bind to IPv6 using `InetAddress.getByName("::")` and `NettyServerBuilder.forAddress()`. Clients connect using `InetSocketAddress` with the IPv6 address. Spring Boot gRPC starters accept `[::]` notation in configuration. All Java gRPC features work transparently with IPv6.
+Java gRPC servers bind to IPv6 using `InetAddress.getByName("::")` and `NettyServerBuilder.forAddress()`. Clients connect using `InetSocketAddress` with the IPv6 address. Spring Boot gRPC starters accept `::` for server binding and bracketed IPv6 literals in client URIs. On systems with IPv6 enabled, Java uses IPv6 sockets by default; whether that also accepts IPv4 traffic depends on the JVM and OS network settings.
