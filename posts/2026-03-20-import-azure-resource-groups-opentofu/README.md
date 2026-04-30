@@ -8,7 +8,7 @@ Description: Learn how to import existing Azure Resource Groups and their resour
 
 ## Introduction
 
-Azure Resource Groups are the container for all Azure resources. Importing them into OpenTofu is usually the first step when bringing an existing Azure environment under infrastructure-as-code management.
+Azure Resource Groups are logical containers for related Azure resources. Importing them into OpenTofu is usually the first step when bringing an existing Azure environment under infrastructure-as-code management.
 
 ## Step 1: Find Resource Group Details
 
@@ -40,10 +40,10 @@ resource "azurerm_resource_group" "app" {
   name     = "my-app-rg"
   location = "East US"  # Must match existing location
 
+  # Match existing tags if you want a no-op plan after import
   tags = {
     Environment = "prod"
     Project     = "myapp"
-    ManagedBy   = "OpenTofu"
   }
 }
 ```
@@ -59,7 +59,11 @@ import {
 ```
 
 ```bash
-# Or use the CLI import command
+# Review and apply the declarative import
+tofu plan
+tofu apply
+
+# Or use the CLI import command instead of an import block
 tofu import azurerm_resource_group.app \
   "/subscriptions/12345678-1234-5678-9012-123456789012/resourceGroups/my-app-rg"
 ```
@@ -69,6 +73,7 @@ tofu import azurerm_resource_group.app \
 ```hcl
 variable "resource_groups" {
   type = map(object({
+    id       = string
     name     = string
     location = string
     tags     = map(string)
@@ -83,22 +88,17 @@ resource "azurerm_resource_group" "groups" {
   tags     = each.value.tags
 }
 
-# Import each resource group
 import {
-  to = azurerm_resource_group.groups["app"]
-  id = "/subscriptions/${var.subscription_id}/resourceGroups/my-app-rg"
-}
-
-import {
-  to = azurerm_resource_group.groups["data"]
-  id = "/subscriptions/${var.subscription_id}/resourceGroups/my-data-rg"
+  for_each = var.resource_groups
+  to       = azurerm_resource_group.groups[each.key]
+  id       = each.value.id
 }
 ```
 
 ## Finding ARM IDs for Import
 
 ```bash
-# The ARM ID format for resources is standardized:
+# A common ARM ID format for resource-group scoped resources is:
 # /subscriptions/{subscriptionId}/resourceGroups/{resourceGroupName}/providers/{provider}/{type}/{name}
 
 # Get subscription ID
@@ -122,10 +122,10 @@ resource "azurerm_management_lock" "app_rg_lock" {
 
 import {
   to = azurerm_management_lock.app_rg_lock
-  id = "${azurerm_resource_group.app.id}/providers/Microsoft.Authorization/locks/protect-prod-rg"
+  id = "/subscriptions/12345678-1234-5678-9012-123456789012/resourceGroups/my-app-rg/providers/Microsoft.Authorization/locks/protect-prod-rg"
 }
 ```
 
 ## Conclusion
 
-Azure Resource Group import is usually the entry point for bringing existing Azure infrastructure under OpenTofu management. The full ARM resource ID (including subscription ID) is required for import. After importing the resource group, continue importing its contents by listing them with `az resource list` and importing each in dependency order.
+Azure Resource Group import is usually the entry point for bringing existing Azure infrastructure under OpenTofu management. For `azurerm_resource_group`, the full ARM resource ID (including subscription ID) is the import ID. After importing the resource group, continue importing its contents by listing them with `az resource list` and importing each resource with the ID format documented for that resource type.
