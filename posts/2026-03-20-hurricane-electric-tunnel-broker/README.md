@@ -60,10 +60,21 @@ ping6 2001:4860:4860::8888      # Ping Google IPv6 DNS
 ## Make Persistent on Linux (systemd-networkd)
 
 ```ini
+# /etc/systemd/network/10-wan.network
+# Replace eth0 with your WAN interface
+[Match]
+Name=eth0
+
+[Network]
+Tunnel=he-ipv6
+```
+
+```ini
 # /etc/systemd/network/10-he-ipv6.netdev
 [NetDev]
 Name=he-ipv6
 Kind=sit
+MTUBytes=1480
 
 [Tunnel]
 Remote=216.218.218.218
@@ -78,9 +89,7 @@ Name=he-ipv6
 
 [Network]
 Address=2001:470:xxxx::2/64
-
-[Route]
-Destination=::/0
+Gateway=2001:470:xxxx::1
 ```
 
 ```bash
@@ -92,11 +101,20 @@ sudo systemctl restart systemd-networkd
 Assign a /64 subnet from your /48 to your LAN interface:
 
 ```bash
+# Enable IPv6 forwarding
+sudo sysctl -w net.ipv6.conf.all.forwarding=1
+
+# Persist IPv6 forwarding across reboots
+sudo tee /etc/sysctl.d/99-he-ipv6-forwarding.conf > /dev/null << 'EOF'
+net.ipv6.conf.all.forwarding=1
+EOF
+sudo sysctl --system
+
 # Use first /64 from your /48 for the LAN
 sudo ip addr add 2001:470:yyyy:1::1/64 dev eth1
 
 # Advertise to LAN hosts via radvd
-cat > /etc/radvd.conf << 'EOF'
+sudo tee /etc/radvd.conf > /dev/null << 'EOF'
 interface eth1 {
     AdvSendAdvert on;
     MinRtrAdvInterval 30;
@@ -105,7 +123,6 @@ interface eth1 {
     prefix 2001:470:yyyy:1::/64 {
         AdvOnLink on;
         AdvAutonomous on;
-        AdvRouterAddr on;
     };
 
     RDNSS 2001:470:20::2 { };  # HE's IPv6 DNS (optional)
@@ -136,7 +153,7 @@ ipv6 route ::/0 Tunnel0
 ! Distribute /48 to LAN
 interface GigabitEthernet0/1
  ipv6 address 2001:470:yyyy:1::1/64
- ipv6 nd ra-interval 30
+ ipv6 nd ra interval 30
 ```
 
 ## Windows Configuration
@@ -148,9 +165,9 @@ netsh interface teredo set state disabled
 netsh interface 6to4 set state disabled
 netsh interface isatap set state disabled
 
-netsh interface ipv6 add v6v4tunnel IP6Tunnel 203.0.113.10 216.218.218.218
-netsh interface ipv6 add address IP6Tunnel 2001:470:xxxx::2
-netsh interface ipv6 add route ::/0 IP6Tunnel 2001:470:xxxx::1
+netsh interface ipv6 add v6v4tunnel interface=IP6Tunnel localaddress=203.0.113.10 remoteaddress=216.218.218.218
+netsh interface ipv6 add address interface=IP6Tunnel address=2001:470:xxxx::2/64
+netsh interface ipv6 add route prefix=::/0 interface=IP6Tunnel nexthop=2001:470:xxxx::1
 ```
 
 ## Dynamic IPv4 Update
@@ -159,26 +176,30 @@ If your ISP assigns dynamic IPv4, update the tunnel endpoint automatically:
 
 ```bash
 # /etc/dhcp/dhclient-exit-hooks.d/update-he-tunnel
-# Replace USERNAME, APIKEY, TUNNELID with your HE account details
+# Replace USERNAME, PASSWORD_OR_UPDATE_KEY, TUNNELID with your HE tunnel details
 
 if [ "$reason" = "BOUND" ] || [ "$reason" = "RENEW" ] || [ "$reason" = "REBIND" ]; then
     HE_USER="your_username"
-    HE_KEY="your_apikey"
+    HE_PASS="your_password_or_update_key"
     HE_TUNNEL="12345"   # Found in tunnel details URL
 
     NEW_IPV4="${new_ip_address}"
 
     # Update HE tunnel with new IPv4
-    RESPONSE=$(curl -4 -s \
-        "https://${HE_USER}:${HE_KEY}@ipv4.tunnelbroker.net/nic/update?hostname=${HE_TUNNEL}&myip=${NEW_IPV4}")
+    RESPONSE=$(curl -4 -sG \
+        --data-urlencode "username=${HE_USER}" \
+        --data-urlencode "password=${HE_PASS}" \
+        --data-urlencode "hostname=${HE_TUNNEL}" \
+        --data-urlencode "myip=${NEW_IPV4}" \
+        "https://ipv4.tunnelbroker.net/nic/update")
     logger "HE Tunnel update response: $RESPONSE"
 
     # Update local tunnel endpoint
-    sudo ip tunnel change he-ipv6 local "${NEW_IPV4}"
+    ip tunnel change he-ipv6 local "${NEW_IPV4}"
 fi
 ```
 
-HE API key is found under: My Account → API Key
+Use your account password for this endpoint-update API, or the tunnel-specific Update Key from the tunnel's Advanced tab if one is set.
 
 ## Verify Connectivity
 
@@ -192,12 +213,12 @@ ping6 -c 3 2001:470:xxxx::1
 ping6 -c 3 2001:4860:4860::8888
 
 # Test browser: visit https://test-ipv6.com
-# Should show: "Your IPv6 address: 2001:470:xxxx::2"
-# Score: 10/10
+# Should show an IPv6 address from your HE allocation
+# A fully working dual-stack setup typically scores 10/10
 
 # HE IPv6 certification (free): https://ipv6.he.net/certification/
 ```
 
 ## Summary
 
-Hurricane Electric tunnel broker (tunnelbroker.net) provides free 6in4 tunnels with a /64 for the tunnel link and a /48 for your LAN. Sign up, select the nearest PoP, and get the server/client IPv4 and IPv6 addresses. Configure with `ip tunnel add he-ipv6 mode sit remote <HE-IPv4> local <your-IPv4>`. Make persistent with systemd-networkd. Configure radvd to advertise your /48 subnet to LAN hosts. For dynamic IPs, use HE's API (`ipv4.tunnelbroker.net/nic/update`) via dhclient-exit-hooks to keep the tunnel endpoint current.
+Hurricane Electric tunnel broker (tunnelbroker.net) provides free 6in4 tunnels with a /64 for the tunnel link and a /48 for your LAN. Sign up, select the nearest PoP, and get the server/client IPv4 and IPv6 addresses. Configure with `ip tunnel add he-ipv6 mode sit remote <HE-IPv4> local <your-IPv4>`. Make persistent with systemd-networkd. Enable IPv6 forwarding and configure radvd to advertise your /48 subnet to LAN hosts. For dynamic IPs, use HE's endpoint update API (`ipv4.tunnelbroker.net/nic/update`) via dhclient-exit-hooks to keep the tunnel endpoint current.
