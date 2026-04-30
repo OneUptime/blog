@@ -14,7 +14,7 @@ ICMP is the network layer's built-in diagnostic language. When something goes wr
 
 ```mermaid
 graph TD
-    A[Can ping 127.0.0.1?] -->|No| B[IP stack broken - check ifconfig/netplan]
+    A[Can ping 127.0.0.1?] -->|No| B[IP stack broken - check ip addr / network config]
     A -->|Yes| C[Can ping local gateway?]
     C -->|No| D[Layer 2 issue - check ARP, switch port, cable]
     C -->|Yes| E[Can ping remote IP?]
@@ -32,7 +32,7 @@ graph TD
 ping -c 1 127.0.0.1
 
 # Test own IP address
-ip addr show eth0 | grep inet
+ip -4 addr show scope global
 ping -c 1 <your-own-ip>
 ```
 
@@ -46,9 +46,9 @@ ip route show default
 # Ping the gateway
 ping -c 4 192.168.1.1
 
-# If this fails: ARP problem, check:
-arp -n 192.168.1.1
-# If incomplete/missing, the gateway is unreachable at Layer 2
+# If this fails, check neighbour resolution:
+ip neigh show to 192.168.1.1
+# If the entry stays INCOMPLETE/FAILED, the gateway is unreachable at Layer 2
 ```
 
 ## Step 3: Test Remote Routing
@@ -58,24 +58,24 @@ arp -n 192.168.1.1
 ping -c 4 8.8.8.8
 
 # If this fails but gateway works:
-# Check for outbound firewall rules
-iptables -L FORWARD -n
+# Check local firewall rules that could block requests or replies
 iptables -L OUTPUT -n
+iptables -L INPUT -n
 
 # Check routing table for default route
-ip route show | grep default
+ip route show default
 ```
 
 ## Step 4: Use ICMP to Detect Specific Problems
 
 ```bash
 # Detect MTU issues: large ping with DF bit
-# If 1472-byte payload fails but 1000 succeeds, MTU problem exists
+# If 1472-byte payload fails but 1000 succeeds, a path MTU issue is likely
 ping -s 1472 -M do -c 3 8.8.8.8   # -M do = set Don't Fragment
 ping -s 1000 -M do -c 3 8.8.8.8
 
-# Detect routing loops: traceroute showing repeated hops
-traceroute -n 10.20.0.5 | awk '{print $2}' | sort | uniq -d
+# Look for repeated hops that may indicate a routing loop
+traceroute -I -n 10.20.0.5 | awk 'NR > 1 && $2 ~ /^[0-9.]+$/ {print $2}' | sort | uniq -d
 
 # Detect packet loss: extended ping
 ping -c 1000 -i 0.2 10.20.0.5 | tail -3
@@ -85,10 +85,10 @@ ping -c 1000 -i 0.2 10.20.0.5 | tail -3
 
 ```bash
 # Watch for ICMP error messages being returned to you
-tcpdump -i eth0 -n 'icmp and icmp[0] != 0 and icmp[0] != 8'
+tcpdump -i <interface> -n 'icmp[icmptype] != icmp-echo and icmp[icmptype] != icmp-echoreply'
 
 # This filters out echo requests (8) and replies (0)
-# Leaving only error messages: unreachable, redirect, time-exceeded, etc.
+# Making it easier to spot error messages: unreachable, redirect, time-exceeded, etc.
 ```
 
 ## ICMP-Based Connectivity Script
