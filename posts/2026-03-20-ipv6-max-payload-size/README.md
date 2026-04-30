@@ -8,7 +8,7 @@ Description: Calculate the maximum data payload available to upper-layer protoco
 
 ## Introduction
 
-The maximum amount of data a single IPv6 packet can carry depends on the path MTU minus the IPv6 header and any extension headers. Unlike IPv4 where the minimum MTU is 576 bytes, IPv6 mandates a minimum MTU of 1280 bytes on every link. Understanding how to calculate available payload sizes helps in application design and protocol implementation.
+The maximum amount of data a single IPv6 packet can carry depends on the path MTU minus the IPv6 header and any extension headers. Unlike IPv4, which historically required hosts to reassemble at least 576-byte datagrams, IPv6 mandates a minimum MTU of 1280 bytes on every link. Understanding how to calculate available payload sizes helps in application design and protocol implementation.
 
 ## Basic Calculation
 
@@ -86,17 +86,17 @@ for mtu, ext, transport, desc in scenarios:
 
 ## MSS (Maximum Segment Size) for TCP
 
-TCP's MSS option is set during the three-way handshake to prevent fragmentation:
+TCP's MSS option is advertised during the three-way handshake to help bound segment size and avoid IP fragmentation:
 
 ```bash
 # View MSS on established connections
-ss -6 -n -t info | grep mss
+ss -6 -n -t -i state established | grep mss
 
 # Ideal MSS calculation:
 # MSS = Path MTU - IPv6 header (40) - TCP header (20)
 # For 1500 MTU: MSS = 1500 - 40 - 20 = 1440 bytes
 
-# Set MSS clamp via ip6tables (for tunnels with reduced MTU)
+# Set a fixed MSS via ip6tables (for tunnels with reduced MTU)
 sudo ip6tables -t mangle -A FORWARD \
     -p tcp --tcp-flags SYN,RST SYN \
     -j TCPMSS --set-mss 1400
@@ -127,9 +127,9 @@ UDP_HEADER = 8
 MAX_UDP_PAYLOAD = MTU - IPV6_HEADER - UDP_HEADER  # 1452 bytes
 
 # For DNS (typically small queries but large responses):
-# EDNS0 allows responses up to 4096+ bytes
-# Set EDNS0 buffer size = MTU - headers
-DNS_EDNS_BUFFER = MTU - IPV6_HEADER - UDP_HEADER  # 1452 bytes
+# EDNS0 allows responses larger than 512 bytes, but a conservative buffer
+# size for general IPv6 Internet use is 1232 bytes to avoid fragmentation.
+DNS_EDNS_BUFFER = 1232
 
 print(f"Max UDP payload without fragmentation: {MAX_UDP_PAYLOAD} bytes")
 print(f"DNS EDNS0 recommended buffer size: {DNS_EDNS_BUFFER} bytes")
