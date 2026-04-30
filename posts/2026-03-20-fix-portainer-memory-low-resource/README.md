@@ -8,7 +8,7 @@ Description: Learn how to diagnose and resolve Portainer memory issues on low-RA
 
 ---
 
-Portainer's memory footprint grows with the number of containers and snapshot frequency. On hosts with 512MB or 1GB RAM, Portainer can trigger the OOM killer, causing random crashes and blank screens.
+Portainer's memory footprint can grow with the number of containers it monitors and how often it collects environment snapshots. On hosts with 512MB or 1GB RAM, that can trigger the OOM killer and crash the Portainer container.
 
 ## Diagnosing Memory Issues
 
@@ -26,10 +26,12 @@ free -m
 
 ## Reduce Snapshot Interval
 
-Snapshots are the biggest memory consumer. The default interval is 60 seconds. For low-resource hosts, increase it significantly:
+Portainer's environment snapshots can be a significant source of background work. The default interval is 5 minutes. For low-resource hosts, increase it further if needed:
 
 ```bash
-# Restart Portainer with a longer snapshot interval (5 minutes)
+# Recreate Portainer with a longer snapshot interval (5 minutes)
+docker stop portainer
+docker rm portainer
 docker run -d \
   --name portainer \
   --restart=always \
@@ -37,7 +39,7 @@ docker run -d \
   -v portainer_data:/data \
   -p 9000:9000 \
   portainer/portainer-ce:latest \
-  --snapshot-interval 300
+  --snapshot-interval 5m
 ```
 
 ## Set a Memory Limit
@@ -52,7 +54,7 @@ services:
     deploy:
       resources:
         limits:
-          memory: 256m    # Portainer will OOM-restart rather than crash the host
+          memory: 256m    # Cap Portainer so it cannot consume all host RAM
         reservations:
           memory: 128m
 ```
@@ -62,20 +64,26 @@ services:
 Portainer is written in Go. The Go runtime can be configured to run GC more aggressively:
 
 ```bash
-# Set GOGC to 50 to trigger GC more frequently (default is 100)
+# Recreate Portainer with GOGC=50 to trigger GC more frequently (default is 100)
 # Lower values = more CPU usage but lower peak memory
+docker stop portainer
+docker rm portainer
 docker run -d \
   -e GOGC=50 \
   --name portainer \
+  --restart=always \
+  -v /var/run/docker.sock:/var/run/docker.sock \
+  -v portainer_data:/data \
+  -p 9000:9000 \
   portainer/portainer-ce:latest
 ```
 
 ## Disable Unused Features
 
-If you do not use Edge agents, disable edge compute to reduce background processing:
+If you do not use Edge agents, do not enable Edge Compute features:
 
 ```bash
-# Do NOT pass --edge-compute flag when starting Portainer
+# Do not pass --edge-compute when starting Portainer
 # For existing deployments, remove the flag and restart
 ```
 
