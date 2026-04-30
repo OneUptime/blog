@@ -15,27 +15,27 @@ iftop shows a live, sorted list of network connections and their bandwidth usage
 
 sudo apt install iftop -y
 
-# RHEL/CentOS
-sudo yum install iftop -y
+# RHEL/CentOS (with EPEL enabled)
+sudo dnf install iftop -y
 ```
 
 ## Basic Usage
 
 ```bash
-# Monitor default interface (requires root)
-sudo iftop
+# Monitor the auto-selected interface (usually requires root)
+sudo iftop -f 'ip'
 
 # Monitor specific interface
-sudo iftop -i eth0
+sudo iftop -i eth0 -f 'ip'
 
 # Monitor with no DNS resolution (faster, clearer)
-sudo iftop -i eth0 -n
+sudo iftop -i eth0 -f 'ip' -n
 
-# Monitor with port numbers visible
-sudo iftop -i eth0 -P
+# Monitor with numeric port numbers visible
+sudo iftop -i eth0 -f 'ip' -NP
 
-# Combine: numeric + ports
-sudo iftop -i eth0 -nP
+# Combine: numeric hosts + numeric ports
+sudo iftop -i eth0 -f 'ip' -nNP
 ```
 
 ## Reading iftop Output
@@ -69,7 +69,7 @@ n      Toggle DNS resolution
 p      Toggle port display
 s      Toggle source host display
 d      Toggle destination host display
-t      Toggle TX/RX/both display
+t      Cycle display mode
 j/k    Scroll through connections
 1/2/3  Sort by 2s / 10s / 40s average
 </>    Sort by source / destination
@@ -96,10 +96,10 @@ sudo iftop -i eth0 -f 'not net 192.168.1.0/24'
 ## Identify Bandwidth Hogs
 
 ```bash
-# iftop automatically sorts by bandwidth (highest at top)
-sudo iftop -i eth0 -n
+# iftop automatically sorts by current bandwidth (highest 10s average at top)
+sudo iftop -i eth0 -f 'ip' -n
 
-# The top connection = biggest bandwidth consumer
+# The top connection = biggest current bandwidth consumer
 # Use this to identify:
 # - Backup jobs consuming all bandwidth
 # - Video streaming eating your link
@@ -110,11 +110,11 @@ sudo iftop -i eth0 -n
 ## Save a Text Report
 
 ```bash
-# Run iftop for 60 seconds and save report
-sudo iftop -i eth0 -n -t -s 60 > /tmp/iftop-report.txt
+# Wait 60 seconds, print one text snapshot, then save it
+sudo iftop -i eth0 -f 'ip' -n -t -s 60 > /tmp/iftop-report.txt
 
 # -t = text mode (no ncurses)
-# -s = run for N seconds then exit
+# -s = wait N seconds, print one report, then exit
 
 # View the report
 cat /tmp/iftop-report.txt
