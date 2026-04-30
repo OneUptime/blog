@@ -4,7 +4,7 @@ Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
 Tags: IPv6, Extension Headers, Protocol Design, IANA, RFC 8200
 
-Description: Learn the process and considerations for defining new IPv6 extension headers and options through the IANA registration process and IETF standards track.
+Description: Learn the process and considerations for defining new IPv6 extension headers and options through the IANA registration process and IETF review and approval paths.
 
 ## Introduction
 
@@ -21,7 +21,7 @@ Extension Header Considerations:
   + Works with both TCP and UDP payloads
 
   - High drop rates on internet paths (RFC 9098)
-  - HbH headers cause CPU exhaustion in routers
+  - HbH headers can trigger slow-path/control-plane processing in routers
   - Requires IANA registration and IETF process
   - Cannot be added without changes to packet structure
 
@@ -38,22 +38,22 @@ To register a new extension header:
 
 ```text
 For a new Extension Header type:
-  1. Write an IETF RFC defining the header format and semantics
-  2. RFC must be on the Standards Track (RFC 7045 requirement)
-  3. Submit to IANA IPv6 Extension Header Types registry
+  1. Write a specification defining the header format and semantics, and explain why existing headers/options cannot be used
+  2. The allocation policy is Standards Action or IESG Approval
+  3. Register it in the IANA IPv6 Extension Header Types registry
   4. IANA assigns the Next Header value
 
 For a new Hop-by-Hop or Destination Option:
-  1. Write a specification (RFC or RFC-quality document)
+  1. Write a specification suitable for IETF Review, Standards Action, or IESG Approval
   2. Specify the 8-bit option type including action bits and change flag
-  3. Submit to IANA IPv6 Parameters registry:
+  3. Register it in the IANA IPv6 Parameters registry:
      - "Destination Options and Hop-by-Hop Options"
 
 IANA allocates option types as:
   0x00-0x3F: Skip-and-continue group (action bits = 00)
   0x40-0x7F: Discard-silently group (action bits = 01)
-  0x80-0xBF: Discard-and-ICMP group (action bits = 10)
-  0xC0-0xFF: Discard-and-ICMP-always group (action bits = 11)
+  0x80-0xBF: Discard-and-ICMP-always group (action bits = 10)
+  0xC0-0xFF: Discard-and-ICMP-if-not-multicast group (action bits = 11)
 ```
 
 ## Designing a New Destination Option
@@ -61,8 +61,6 @@ IANA allocates option types as:
 The easiest path to extending IPv6 behavior is registering a new option type for the Destination Options header:
 
 ```python
-import struct
-
 def design_new_option(
     option_name: str,
     option_value_format: str,
@@ -79,18 +77,18 @@ def design_new_option(
     action_codes = {
         "skip":        0b00,
         "discard":     0b01,
-        "icmp":        0b10,
-        "icmp-always": 0b11,
+        "icmp-always": 0b10,
+        "icmp-if-not-multicast": 0b11,
     }
 
     action_bits = action_codes[action_on_unknown]
     change_flag = 1 if is_mutable else 0
 
-    # The option ID within its action group
-    # In practice, IANA assigns this. Use 0x1F (31) for experimentation.
-    option_id = 0x1F  # Use experimental range
+    # The full 8-bit Option Type identifies the option.
+    # For local experiments, RFC 4727 reserves rest=0x1E (11110).
+    option_rest_value = 0x1E
 
-    option_type = (action_bits << 6) | (change_flag << 5) | option_id
+    option_type = (action_bits << 6) | (change_flag << 5) | option_rest_value
 
     return {
         "name": option_name,
@@ -124,31 +122,32 @@ for key, value in telemetry_opt.items():
 For testing and experimentation without IANA registration:
 
 ```python
-# RFC 3692: Use type values 253 and 254 for experimental extension headers
-EXPERIMENTAL_TYPES = [253, 254]
+import struct
+
+# RFC 4727 / RFC 3692-style: use Next Header values 253 and 254
+# in the preceding header for experimental extension headers.
+EXPERIMENTAL_NEXT_HEADER_TYPES = [253, 254]
 
 def build_experimental_extension_header(
     data: bytes,
-    experimental_type: int = 253
+    next_header: int = 59
 ) -> bytes:
-    """Build an experimental extension header for testing."""
-    if experimental_type not in EXPERIMENTAL_TYPES:
-        raise ValueError("Use 253 or 254 for experimental headers")
-
+    """Build a simple RFC 8200/RFC 6564-style extension header body."""
     # Pad data to 8-byte boundary (minus 2 bytes for Next Header + Hdr Ext Len)
     padded_len = ((len(data) + 2 + 7) // 8) * 8
     padding = bytes(padded_len - 2 - len(data))
 
     hdr_ext_len = (padded_len // 8) - 1
 
-    next_header_placeholder = 59  # No Next Header (placeholder)
-    header = struct.pack("BB", next_header_placeholder, hdr_ext_len)
+    header = struct.pack("BB", next_header, hdr_ext_len)
     header += data + padding
 
     return header
 
-# Note: 253/254 are also used in Destination Options and HbH options
-# for option type experimentation
+# When embedding this header in a packet, set the previous header's
+# Next Header field to one of EXPERIMENTAL_NEXT_HEADER_TYPES.
+# RFC 4727 reserves experimental option types 0x1E, 0x3E, 0x5E, 0x7E,
+# 0x9E, 0xBE, 0xDE, and 0xFE for Destination Options and HbH options.
 ```
 
 ## Alignment Requirements
@@ -174,4 +173,4 @@ Use Pad1 (type=0) and PadN (type=1) options to achieve alignment:
 
 ## Conclusion
 
-Defining new IPv6 extension headers requires IETF RFC publication and IANA registration for standardized use. For experimental work, use Next Header types 253 and 254. Given the operational challenges documented in RFC 9098 (high drop rates, CPU exhaustion from Hop-by-Hop), protocol designers should carefully consider whether a new extension header is the best approach or whether alternative designs (UDP encapsulation, destination options, application-layer metadata) would be more practical for real-world deployment.
+Defining new IPv6 extension headers requires IANA registration for standardized use, with allocations governed by Standards Action or IESG Approval. For experimental work, use Next Header types 253 and 254. Given the operational challenges documented in RFC 9098 (high drop rates and Hop-by-Hop slow-path/control-plane processing risks), protocol designers should carefully consider whether a new extension header is the best approach or whether alternative designs (UDP encapsulation, destination options, application-layer metadata) would be more practical for real-world deployment.
