@@ -153,10 +153,10 @@ resource "google_storage_bucket_iam_binding" "audit_viewer" {
   ]
 }
 
-# Prevent anyone from deleting objects (defense in depth)
-resource "google_storage_bucket_iam_binding" "prevent_delete" {
+# Grant write-only uploads to the log writer without delete permission
+resource "google_storage_bucket_iam_binding" "log_writer" {
   bucket = google_storage_bucket.audit_logs.name
-  role   = "roles/storage.legacyBucketWriter"
+  role   = "roles/storage.objectCreator"
 
   members = [
     "serviceAccount:log-writer@${var.project_id}.iam.gserviceaccount.com",
@@ -214,15 +214,16 @@ tofu plan
 tofu apply
 
 # Check retention policy via gcloud
-gcloud storage buckets describe gs://audit-logs-my-project \
-  --format="json" | jq '.retentionPolicy'
+gcloud storage buckets describe gs://company-audit-logs-my-project \
+  --format="default(retention_policy)"
 
 # Upload a test object
-echo "test" | gsutil cp - gs://audit-logs-my-project/test.txt
+echo "test" > test.txt
+gcloud storage cp test.txt gs://company-audit-logs-my-project/test.txt
 
 # Try to delete it (should fail during retention period)
-gsutil rm gs://audit-logs-my-project/test.txt
-# AccessDeniedException: 403 Object 'test.txt' is subject to a retain-until time
+gcloud storage rm gs://company-audit-logs-my-project/test.txt
+# Deletion fails with a 403 retention policy error until the retention period expires
 ```
 
 ---
@@ -233,7 +234,7 @@ gsutil rm gs://audit-logs-my-project/test.txt
 2. **Combine with object versioning** for full protection against overwrites
 3. **Use COLDLINE/ARCHIVE** storage class for long-retention archives to minimize cost
 4. **Document retention decisions** - note the regulation that requires each retention period
-5. **Enable audit logging** on the bucket for access tracking during the retention period
+5. **Enable Cloud Audit Logs** (including Data Access logs) for Cloud Storage access tracking during the retention period
 
 ---
 
