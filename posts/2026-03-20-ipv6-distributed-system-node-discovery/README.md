@@ -17,14 +17,14 @@ The most common mistake when adding IPv6 addresses to distributed system configs
 ```bash
 # WRONG: IPv6 address without brackets in URL context
 
-cassandra_seeds: "2001:db8::1:9042"  # Ambiguous - is :9042 part of address?
+seed_node_url: "2001:db8::1:9042"  # Ambiguous - is :9042 part of address?
 
 # CORRECT: IPv6 address with brackets in URL context
-cassandra_seeds: "[2001:db8::1]:9042"
+seed_node_url: "[2001:db8::1]:9042"
 
-# For configuration file values (not URLs), brackets often not needed:
-# Cassandra: seeds = "2001:db8::1"  (just IP, no port in seeds config)
-# ZooKeeper: server.1 = 2001:db8::1:2888:3888  (host:peer:election, brackets optional)
+# For configuration values that are not URIs, use the syntax expected by that system:
+# Cassandra: seeds = "2001:db8::1"
+# ZooKeeper: server.1 = [2001:db8::1]:2888:3888  (host:peer:election)
 ```
 
 ## DNS-Based Node Discovery with AAAA Records
@@ -42,7 +42,7 @@ zk2.example.com.  IN AAAA  2001:db8::2
 zk3.example.com.  IN AAAA  2001:db8::3
 
 # Applications use hostname-based seeds (automatically IPv6 when AAAA exists)
-# E.g. Kafka bootstrap.servers = zk1.example.com:9092
+# E.g. Kafka bootstrap.servers = broker1.example.com:9092,broker2.example.com:9092
 ```
 
 ## Multicast-Based Discovery for IPv6
@@ -51,8 +51,8 @@ IPv6 has link-local multicast addresses well-suited for local discovery:
 
 ```bash
 # IPv6 multicast addresses for service discovery
-# FF02::1  - All nodes multicast (link-local)
-# FF05::1  - All nodes multicast (site-local)
+# FF02::1   - All nodes multicast (link-local)
+# FF02::FB  - mDNS multicast (link-local)
 
 # Example: Join a custom multicast group for service discovery
 python3 << 'EOF'
@@ -62,17 +62,19 @@ import struct
 # Join IPv6 multicast group for service discovery
 MCAST_GROUP = 'ff02::cafe'
 MCAST_PORT = 15353
+INTERFACE = 'eth0'  # Replace with the interface name for your link
 
 sock = socket.socket(socket.AF_INET6, socket.SOCK_DGRAM)
 sock.setsockopt(socket.SOL_SOCKET, socket.SO_REUSEADDR, 1)
 sock.bind(('::', MCAST_PORT))
 
-# Join the multicast group
+# Join the multicast group on the selected interface
 group = socket.inet_pton(socket.AF_INET6, MCAST_GROUP)
-mreq = group + struct.pack('@I', 0)  # 0 = default interface
+ifindex = socket.if_nametoindex(INTERFACE)
+mreq = group + struct.pack('@I', ifindex)
 sock.setsockopt(socket.IPPROTO_IPV6, socket.IPV6_JOIN_GROUP, mreq)
 
-print(f"Listening for service discovery on {MCAST_GROUP}:{MCAST_PORT}")
+print(f"Listening for service discovery on {MCAST_GROUP}%{INTERFACE}:{MCAST_PORT}")
 data, addr = sock.recvfrom(1024)
 print(f"Discovered node: {addr}")
 EOF
@@ -96,15 +98,15 @@ def discover_nodes_dns(service_name, default_port):
     nodes = []
     try:
         answers = dns.resolver.resolve(
-            f'__{service_name}.__tcp.example.com', 'SRV'
+            f'_{service_name}._tcp.example.com.', 'SRV'
         )
         for rdata in answers:
             hostname = str(rdata.target).rstrip('.')
             port = rdata.port or default_port
 
-            # Resolve hostname to IPv6
+            # Resolve hostname to IPv6 TCP endpoints
             for _, _, _, _, addr in socket.getaddrinfo(
-                hostname, port, socket.AF_INET6
+                hostname, port, socket.AF_INET6, socket.SOCK_STREAM
             ):
                 nodes.append(addr)  # Returns (host, port, flowinfo, scope_id)
     except Exception as e:
@@ -139,7 +141,7 @@ curl -6 -X PUT http://[::1]:8500/v1/agent/service/register \
   }'
 
 # Discover services via Consul DNS
-dig @[::1] -p 8600 kafka-broker.service.consul AAAA +short
+dig @::1 -p 8600 kafka-broker.service.consul AAAA +short
 ```
 
 ## etcd-Based Service Discovery with IPv6
@@ -150,10 +152,10 @@ etcdctl put /services/kafka/node1 \
   '{"host":"2001:db8::1","port":9092}'
 
 # List all service nodes
-etcdctl get /services/kafka/ --prefix
+etcdctl get --prefix /services/kafka/
 
 # Watch for new nodes (dynamic discovery)
-etcdctl watch /services/kafka/ --prefix
+etcdctl watch --prefix /services/kafka/
 ```
 
 ## Handling Dual-Stack in Node Discovery
