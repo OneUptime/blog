@@ -22,12 +22,12 @@ set interfaces ge-0/0/0 unit 0 description "LAN Interface"
 
 set interfaces ge-0/0/0 unit 0 family inet6 address fe80::1/64
 
-# Configure loopback for router-id purposes
+# Configure a loopback IPv6 address
 set interfaces lo0 unit 0 family inet6 address 2001:db8::1/128
 
 # Commit and verify
 commit
-show interfaces ge-0/0/0 detail | grep inet6
+show interfaces ge-0/0/0 detail | match inet6
 ```
 
 ## Configuring Static IPv6 Routes
@@ -37,10 +37,10 @@ show interfaces ge-0/0/0 detail | grep inet6
 set routing-options rib inet6.0 static route 2001:db8:2::/48 next-hop 2001:db8:0:1::2
 
 # Default IPv6 route
-set routing-options rib inet6.0 static route ::/0 next-hop 2001:db8:isp::1
+set routing-options rib inet6.0 static route ::/0 next-hop 2001:db8:0:ff::1
 
 # Floating static route (higher preference number = lower preference)
-set routing-options rib inet6.0 static route ::/0 next-hop 2001:db8:isp2::1 preference 200
+set routing-options rib inet6.0 static route ::/0 next-hop 2001:db8:0:fe::1 preference 200
 ```
 
 ## Configuring OSPFv3
@@ -64,16 +64,16 @@ show ospf3 database
 ```bash
 # Configure BGP group for IPv6 peering
 set routing-options autonomous-system 65001
-set routing-options rib inet6.0 aggregate route 2001:db8::/48
+set routing-options rib inet6.0 static route 2001:db8::/48 discard
 
 set protocols bgp group UPSTREAM-IPV6 type external
 set protocols bgp group UPSTREAM-IPV6 family inet6 unicast
 set protocols bgp group UPSTREAM-IPV6 peer-as 65000
-set protocols bgp group UPSTREAM-IPV6 neighbor 2001:db8:isp::1
+set protocols bgp group UPSTREAM-IPV6 neighbor 2001:db8:0:ff::1
 
 # Export policy to announce your prefix
 set policy-options policy-statement EXPORT-IPV6 term 1 from family inet6
-set policy-options policy-statement EXPORT-IPV6 term 1 from route-filter 2001:db8::/48 orlonger
+set policy-options policy-statement EXPORT-IPV6 term 1 from route-filter 2001:db8::/48 exact
 set policy-options policy-statement EXPORT-IPV6 term 1 then accept
 
 set protocols bgp group UPSTREAM-IPV6 export EXPORT-IPV6
@@ -96,7 +96,7 @@ set firewall family inet6 filter IPV6-PROTECT term DENY-REST then discard
 set interfaces ge-0/0/0 unit 0 family inet6 filter input IPV6-PROTECT
 ```
 
-## Full Configuration in Stanza Format
+## Example Configuration in Stanza Format
 
 ```text
 interfaces {
@@ -122,7 +122,7 @@ routing-options {
     autonomous-system 65001;
     rib inet6.0 {
         static {
-            route ::/0 next-hop 2001:db8:isp::1;
+            route ::/0 next-hop 2001:db8:0:ff::1;
         }
     }
 }
@@ -146,7 +146,7 @@ show interfaces terse | match inet6
 # Show IPv6 routing table
 show route table inet6.0
 
-# Show BGP summary for IPv6
+# Show BGP summary
 show bgp summary
 
 # Show OSPFv3 neighbor table
@@ -162,4 +162,4 @@ traceroute inet6 2606:4700:4700::1111
 
 ## Conclusion
 
-Juniper Junos IPv6 configuration centers on the `family inet6` addressing and the `inet6.0` routing table. The hierarchical configuration model makes it easy to audit and manage IPv6 settings separately from IPv4. For internet-connected deployments, pair BGP IPv6 with an aggregate route and export policy to properly announce your IPv6 prefix to upstream providers.
+Juniper Junos IPv6 configuration centers on the `family inet6` addressing and the `inet6.0` routing table. The hierarchical configuration model makes it easy to audit and manage IPv6 settings separately from IPv4. For internet-connected deployments, pair BGP IPv6 with an active route for your prefix, such as a static discard route, and an export policy to properly announce your IPv6 prefix to upstream providers.
