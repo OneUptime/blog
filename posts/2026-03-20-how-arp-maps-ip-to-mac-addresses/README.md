@@ -34,22 +34,28 @@ Proto Address Len: 4 (IPv4 = 4 bytes)
 Operation:        1 = Request, 2 = Reply
 Sender MAC:       Source MAC
 Sender IP:        Source IP
-Target MAC:       00:00:00:00:00:00 (request) / dest MAC (reply)
+Target MAC:       00:00:00:00:00:00 (request) / requester's MAC (reply)
 Target IP:        IP being queried
 ```
 
 ## Python: Sending an ARP Request with Scapy
 
+Sending layer-2 packets with Scapy typically requires root/administrator privileges.
+
 ```python
 from scapy.all import ARP, Ether, srp
 
-def arp_lookup(target_ip: str, interface: str = "eth0") -> str:
+def arp_lookup(target_ip: str, interface: str | None = None) -> str | None:
     """
     Send an ARP request and return the MAC address for the target IP.
     Returns None if no response.
     """
     pkt = Ether(dst="ff:ff:ff:ff:ff:ff") / ARP(pdst=target_ip)
-    result, _ = srp(pkt, iface=interface, timeout=2, verbose=False)
+    send_kwargs = {"timeout": 2, "verbose": False}
+    if interface is not None:
+        send_kwargs["iface"] = interface
+
+    result, _ = srp(pkt, **send_kwargs)
 
     for _, rcvd in result:
         return rcvd[ARP].hwsrc   # Sender MAC in the reply
@@ -61,7 +67,7 @@ print(f"192.168.1.1 is at {mac}")
 
 ## The ARP Cache
 
-Hosts cache ARP replies to avoid broadcasting for every packet. The cache has a timeout (typically 5–20 minutes on Linux/macOS):
+Hosts cache ARP replies to avoid broadcasting for every packet. Cache aging is OS-specific, so entries eventually become stale and are refreshed or garbage-collected:
 
 ```bash
 # View the ARP cache on Linux
