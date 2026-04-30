@@ -4,16 +4,16 @@ Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
 Tags: Portainer, Terraform, Import, Infrastructure as Code, DevOps
 
-Description: Learn how to import existing Portainer environments, stacks, and users into Terraform state for future management as code.
+Description: Learn how to import existing Portainer environments, stacks, users, and teams into Terraform state for future management as code.
 
 ## Why Import Existing Resources?
 
-If you've been managing Portainer manually via the UI, importing existing resources into Terraform lets you start managing them as code without recreating them. The `terraform import` command maps existing Portainer resources to Terraform resource blocks.
+If you've been managing Portainer manually via the UI, importing existing resources into Terraform lets you start managing them as code without recreating them. The `terraform import` command maps existing Portainer resources into Terraform state for the resource blocks you define.
 
 ## Prerequisites
 
 - Portainer Terraform provider configured (see provider setup guide).
-- The IDs of existing Portainer resources you want to import.
+- The IDs and current settings of the existing Portainer resources you want to import.
 
 ## Finding Resource IDs
 
@@ -21,22 +21,22 @@ If you've been managing Portainer manually via the UI, importing existing resour
 # Get environment (endpoint) IDs
 
 curl -s "https://portainer.mycompany.com/api/endpoints" \
-  -H "Authorization: Bearer ${API_TOKEN}" | \
-  jq '[.[] | {id: .Id, name: .Name}]'
+  -H "X-API-Key: ${PORTAINER_API_KEY}" | \
+  jq '[.[] | {id: .Id, name: .Name, url: .URL, type: .Type}]'
 
 # Get stack IDs
 curl -s "https://portainer.mycompany.com/api/stacks" \
-  -H "Authorization: Bearer ${API_TOKEN}" | \
-  jq '[.[] | {id: .Id, name: .Name}]'
+  -H "X-API-Key: ${PORTAINER_API_KEY}" | \
+  jq '[.[] | {id: .Id, name: .Name, endpointId: .EndpointId}]'
 
 # Get user IDs
 curl -s "https://portainer.mycompany.com/api/users" \
-  -H "Authorization: Bearer ${API_TOKEN}" | \
+  -H "X-API-Key: ${PORTAINER_API_KEY}" | \
   jq '[.[] | {id: .Id, username: .Username}]'
 
 # Get team IDs
 curl -s "https://portainer.mycompany.com/api/teams" \
-  -H "Authorization: Bearer ${API_TOKEN}" | \
+  -H "X-API-Key: ${PORTAINER_API_KEY}" | \
   jq '[.[] | {id: .Id, name: .Name}]'
 ```
 
@@ -53,8 +53,9 @@ terraform import <resource_type>.<resource_name> <resource_id>
 # Write the Terraform resource block first
 cat >> main.tf << 'EOF'
 resource "portainer_environment" "production" {
-  name = "production"
-  # Other fields will be populated after import
+  name                = "production"
+  environment_address = "tcp://prod-server:2376"
+  type                = 1
 }
 EOF
 
@@ -68,13 +69,15 @@ terraform import portainer_environment.production 1
 # Add resource block
 cat >> stacks.tf << 'EOF'
 resource "portainer_stack" "web_app" {
-  name        = "web-app"
-  endpoint_id = 1
+  name            = "web-app"
+  deployment_type = "standalone"
+  method          = "string"
+  endpoint_id     = 1
 }
 EOF
 
-# Import the stack (format: stackId:endpointId)
-terraform import portainer_stack.web_app 3:1
+# Import the stack (format: endpointId-stackId-deploymentType-method)
+terraform import portainer_stack.web_app 1-3-standalone-string
 ```
 
 ## Importing Users
@@ -95,9 +98,11 @@ terraform import portainer_user.alice 5
 ## Importing Teams
 
 ```bash
+cat >> teams.tf << 'EOF'
 resource "portainer_team" "backend" {
   name = "backend"
 }
+EOF
 
 terraform import portainer_team.backend 2
 ```
@@ -115,9 +120,9 @@ Update your HCL to match the current state until `plan` shows no changes:
 ```hcl
 # Update the resource block to match actual state
 resource "portainer_environment" "production" {
-  name = "production"    # Match actual name
-  url  = "tcp://prod-server:2376"  # Match actual URL
-  type = 2               # Match actual type
+  name                = "production"          # Match actual name
+  environment_address = "tcp://prod-server:2376"  # Match actual environment address
+  type                = 1                     # Match actual type
 }
 ```
 
@@ -127,28 +132,33 @@ resource "portainer_environment" "production" {
 #!/bin/bash
 # Import all environments from Portainer into Terraform
 
-API_TOKEN="${PORTAINER_API_TOKEN}"
+API_KEY="${PORTAINER_API_KEY}"
 PORTAINER_URL="https://portainer.mycompany.com"
 
 # Get all environments
 ENVIRONMENTS=$(curl -s "${PORTAINER_URL}/api/endpoints" \
-  -H "Authorization: Bearer ${API_TOKEN}")
+  -H "X-API-Key: ${API_KEY}")
 
 # Generate resource blocks and import commands
-echo "$ENVIRONMENTS" | jq -c '.[]' | while read env; do
-  ID=$(echo $env | jq '.Id')
-  NAME=$(echo $env | jq -r '.Name' | tr '-' '_')
+echo "$ENVIRONMENTS" | jq -c '.[]' | while read -r env; do
+  ID=$(echo "$env" | jq '.Id')
+  RESOURCE_NAME=$(echo "$env" | jq -r '.Name | ascii_downcase | gsub("[^a-z0-9_]"; "_") | if test("^[a-z_]") then . else "env_" + . end')
+  ENV_NAME=$(echo "$env" | jq -r '.Name | @json')
+  ENVIRONMENT_ADDRESS=$(echo "$env" | jq -r '.URL | @json')
+  TYPE=$(echo "$env" | jq '.Type')
 
-  echo "Importing environment: $NAME (ID: $ID)"
+  echo "Importing environment: $RESOURCE_NAME (ID: $ID)"
 
   cat >> imported_environments.tf << EOF
 
-resource "portainer_environment" "${NAME}" {
-  name = "$(echo $env | jq -r '.Name')"
+resource "portainer_environment" "${RESOURCE_NAME}" {
+  name                = ${ENV_NAME}
+  environment_address = ${ENVIRONMENT_ADDRESS}
+  type                = ${TYPE}
 }
 EOF
 
-  terraform import "portainer_environment.${NAME}" "$ID"
+  terraform import "portainer_environment.${RESOURCE_NAME}" "$ID"
 done
 ```
 
