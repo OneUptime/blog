@@ -4,22 +4,22 @@ Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
 Tags: IPv6, Hop-by-Hop, Extension Headers, Router Alert, Networking
 
-Description: Understand the IPv6 Hop-by-Hop Options extension header, how it is processed by every router, and its practical uses for Router Alert and Jumbo Payload options.
+Description: Understand the IPv6 Hop-by-Hop Options extension header, how it is handled along the path, and its practical uses for Router Alert and Jumbo Payload options.
 
 ## Introduction
 
-The Hop-by-Hop Options Header (Next Header = 0) is the only IPv6 extension header that must be examined by every router along the path. It carries information that routers need to process before forwarding the packet. In practice, Hop-by-Hop is rare - most packets carry no extension headers at all. When present, the Hop-by-Hop header MUST be the first extension header immediately following the IPv6 base header.
+The Hop-by-Hop Options Header (Next Header = 0) is the only IPv6 extension header that may be examined by nodes along the path. It carries information for nodes that are configured to process it before forwarding the packet. In practice, Hop-by-Hop is rare - most packets carry no extension headers at all. When present, the Hop-by-Hop header MUST be the first extension header immediately following the IPv6 base header.
 
 ## Performance Warning
 
-A critical implementation detail: most modern routers slow-path any packet with a Hop-by-Hop header. While RFC 8200 says routers MUST process it, the hardware fast path typically cannot handle these packets, so they are sent to the router's CPU:
+A critical implementation detail: many modern routers either drop packets with a Hop-by-Hop header or send them to a slow path for control-plane processing. RFC 8200 and later guidance explicitly note that nodes may ignore the Hop-by-Hop Options header, drop these packets, or assign them to a slow processing path:
 
 ```text
 Normal IPv6 packet → ASIC hardware fast path → line-rate forwarding
-Hop-by-Hop packet → CPU slow path → ~1000x slower
+Hop-by-Hop packet → slow path / control plane → reduced throughput or drop
 ```
 
-This means sending traffic with Hop-by-Hop Options can unintentionally trigger a denial-of-service condition (CPU exhaustion) on routers along the path.
+This means sending traffic with Hop-by-Hop Options can stress router control-plane resources or get dropped along the path.
 
 ## Header Format
 
@@ -50,8 +50,8 @@ Option Type bits:
   Bits 7-6 (Action on Unknown Option):
     00 = Skip and continue processing
     01 = Discard packet silently
-    10 = Discard and send ICMP Parameter Problem (to source)
-    11 = Discard and send ICMP (even if multicast destination)
+    10 = Discard and send ICMP Parameter Problem (even if multicast destination)
+    11 = Discard and send ICMP Parameter Problem (only if destination is not multicast)
   Bit 5 (Change flag):
     0 = Option data does not change in transit
     1 = Option data may change in transit (important for AH)
@@ -116,9 +116,11 @@ print(f"Length: {len(mld_alert)} bytes")
 
 ## Jumbo Payload Option
 
-For jumbograms (packets > 65,535 bytes payload):
+For jumbograms (packets > 65,535 bytes payload), the IPv6 base header's Payload Length field must be set to 0 and no Fragment header may be present:
 
 ```python
+import struct
+
 def build_jumbo_payload_option(payload_length: int) -> bytes:
     """
     Build a Jumbo Payload Hop-by-Hop option for jumbograms.
@@ -130,7 +132,7 @@ def build_jumbo_payload_option(payload_length: int) -> bytes:
         raise ValueError("Jumbo Payload requires payload > 65,535 bytes")
 
     # Jumbo Payload option: type=0xC2, len=4, value=32-bit length
-    # Plus PadN for alignment
+    # No extra padding is needed: 2-byte header + 6-byte option = 8 bytes
     next_header_placeholder = 0
     hdr_ext_len = 0  # 8-byte total
 
@@ -151,13 +153,14 @@ def build_jumbo_payload_option(payload_length: int) -> bytes:
 sudo tcpdump -i eth0 -XX "ip6[6] == 0"
 
 # MLD (multicast listener discovery) uses Hop-by-Hop with Router Alert
-sudo tcpdump -i eth0 "ip6[6] == 0 and ip6[42] == 58"
-# ip6[6]==0 means HbH header, ip6[42] is the next header inside HbH (58=ICMPv6=MLD)
+sudo tcpdump -i eth0 "ip6[6] == 0 and ip6[40] == 58"
+# ip6[6]==0 means HbH header, ip6[40] is the Next Header field inside HbH (58=ICMPv6)
 
 # Example: capture MLD query/report packets
-sudo tcpdump -i eth0 "icmp6 and (ip6[40] == 130 or ip6[40] == 131 or ip6[40] == 143)"
+sudo tcpdump -i eth0 "ip6[6] == 0 and ip6[40] == 58 and (ip6[48] == 130 or ip6[48] == 131 or ip6[48] == 143)"
+# For the common 8-byte Router Alert HbH header used by MLD, ip6[48] is the ICMPv6 type
 ```
 
 ## Conclusion
 
-The Hop-by-Hop Options Header is the most operationally significant extension header because it is the only one that all routers must process. In practice, it is used primarily for MLD (via Router Alert) and jumbograms (via Jumbo Payload). Due to the performance impact of Hop-by-Hop processing on router hardware (triggering slow-path CPU processing), avoid using Hop-by-Hop in normal application traffic. MLD is generated by the kernel, not applications, so this concern primarily applies to custom protocol implementations.
+The Hop-by-Hop Options Header is operationally significant because it is the only IPv6 extension header that can be processed along the path before the packet reaches its destination. In practice, it is used primarily for MLD (via Router Alert) and jumbograms (via Jumbo Payload). Due to the performance and interoperability impact of Hop-by-Hop processing on router hardware, avoid using Hop-by-Hop in normal application traffic. On typical systems, MLD is generated by the network stack rather than by user applications, so this concern primarily applies to custom protocol implementations.
