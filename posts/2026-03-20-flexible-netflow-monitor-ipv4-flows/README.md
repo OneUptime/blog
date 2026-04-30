@@ -27,7 +27,7 @@ Define which IPv4 fields to match (keys) and collect (non-keys).
 
 ```text
 ! Cisco IOS/IOS-XE
-ip flow record IPV4-FLOW-RECORD
+flow record IPV4-FLOW-RECORD
 
   ! Key fields: used to identify unique flows
   match ipv4 source address
@@ -51,11 +51,11 @@ ip flow record IPV4-FLOW-RECORD
 Configure where to send flow records.
 
 ```text
-ip flow exporter NETFLOW-COLLECTOR
+flow exporter NETFLOW-COLLECTOR
   destination 10.0.0.50         ! Collector's IPv4 address
   source GigabitEthernet0/0    ! Source interface for flow packets
-  transport udp 9999            ! Standard NetFlow UDP port
-  export-protocol netflow-v9   ! Use NetFlow v9 (or ipfix for v10)
+  transport udp 9999            ! Example collector UDP port
+  export-protocol netflow-v9   ! Use NetFlow v9; some platforms also support IPFIX
   template data timeout 30     ! Send templates every 30 seconds
 ```
 
@@ -64,7 +64,7 @@ ip flow exporter NETFLOW-COLLECTOR
 Tie the record and exporter together.
 
 ```bash
-ip flow monitor IPV4-MONITOR
+flow monitor IPV4-MONITOR
   record IPV4-FLOW-RECORD
   exporter NETFLOW-COLLECTOR
   cache timeout active 60      ! Export active flows every 60 seconds
@@ -115,7 +115,7 @@ show flow interface GigabitEthernet0/1
 
 apt install nfdump -y
 
-# Start capturing NetFlow on UDP 9999 (from the Cisco device's IPv4)
+# Start capturing NetFlow on the collector's 10.0.0.50/UDP 9999 listener
 mkdir -p /var/netflow
 nfcapd -w /var/netflow -p 9999 -b 10.0.0.50 -D
 
@@ -129,6 +129,6 @@ nfdump -R /var/netflow/ 'src ip 10.0.1.5' -n 10
 ## Key Takeaways
 
 - Flexible NetFlow's `match` fields define flow keys (what makes a flow unique); `collect` fields gather statistics.
-- Apply the flow monitor to both `input` and `output` on an interface to capture bidirectional traffic.
+- Apply the flow monitor to both `input` and `output` on an interface to capture both ingress and egress traffic.
 - Use sampling (`sampler`) on high-traffic interfaces to reduce CPU and memory overhead.
 - Open-source collectors like `nfcapd`/`nfdump` or ntopng can receive and analyze FNF records.
