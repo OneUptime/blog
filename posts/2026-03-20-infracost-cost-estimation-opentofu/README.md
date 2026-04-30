@@ -8,7 +8,7 @@ Description: Learn how to integrate Infracost with OpenTofu to get cloud cost es
 
 ## Introduction
 
-Infracost integrates with OpenTofu to show the hourly and monthly cost of infrastructure changes before `tofu apply`. Engineers see the cost impact of their changes in pull requests, enabling cost-aware decisions without leaving the development workflow.
+Infracost integrates with OpenTofu workflows to show the cost impact of infrastructure changes before `tofu apply`. Engineers see the cost impact of their changes in pull requests, enabling cost-aware decisions without leaving the development workflow.
 
 ## Installing Infracost
 
@@ -33,8 +33,9 @@ infracost --version
 infracost breakdown --path .
 
 # Run against a specific plan file
+tofu init
 tofu plan -out=tfplan.binary
-tofu show -json tfplan.binary > tfplan.json
+tofu show -json -plan=tfplan.binary > tfplan.json
 infracost breakdown --path tfplan.json --format table
 ```
 
@@ -60,10 +61,10 @@ The most powerful feature is `diff` - shows the cost change for proposed modific
 
 ```bash
 # Compare current state (main branch) with changes (feature branch)
-git stash  # or checkout main
+git checkout main
 infracost breakdown --path . --format json --out-file infracost-base.json
 
-git stash pop  # or checkout feature branch
+git checkout -
 infracost diff --path . --compare-to infracost-base.json
 ```
 
@@ -93,10 +94,8 @@ jobs:
       pull-requests: write
 
     steps:
-      - uses: actions/checkout@v4
-
       - name: Setup OpenTofu
-        uses: opentofu/setup-opentofu@v1
+        uses: opentofu/setup-opentofu@v2
 
       - name: Setup Infracost
         uses: infracost/actions/setup@v3
@@ -104,17 +103,23 @@ jobs:
           api-key: ${{ secrets.INFRACOST_API_KEY }}
 
       # Generate cost estimate for the base branch
+      - name: Checkout base branch
+        uses: actions/checkout@v4
+        with:
+          ref: ${{ github.event.pull_request.base.ref }}
+
       - name: Infracost for base branch
         run: |
-          git checkout ${{ github.base_ref }}
           infracost breakdown --path . \
             --format json \
             --out-file /tmp/infracost-base.json
 
       # Generate cost diff for the PR branch
+      - name: Checkout PR branch
+        uses: actions/checkout@v4
+
       - name: Infracost diff for PR
         run: |
-          git checkout ${{ github.head_ref }}
           infracost diff \
             --path . \
             --compare-to /tmp/infracost-base.json \
@@ -142,12 +147,12 @@ projects:
   - path: environments/production
     name: production
     terraform_var_files:
-      - environments/production/terraform.tfvars
+      - terraform.tfvars
 
   - path: environments/staging
     name: staging
     terraform_var_files:
-      - environments/staging/terraform.tfvars
+      - terraform.tfvars
 ```
 
 Run with config:
