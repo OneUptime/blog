@@ -4,55 +4,75 @@ Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
 Tags: OpenTofu, Troubleshooting, Variable, Error, Backend Configuration, Infrastructure as Code
 
-Description: Learn why OpenTofu prohibits input variables in certain contexts like backend blocks and provider meta-arguments, and how to work around these restrictions.
+Description: Learn which OpenTofu settings require constant values, where input variables are allowed, and how to work around these restrictions.
 
 ## Introduction
 
-OpenTofu evaluates certain blocks - most notably `backend` and some provider meta-arguments - during initialization, before input variables are available. Using a variable in these positions produces the "variables may not be used here" error.
+OpenTofu only allows constant values inside the top-level `terraform` block, so settings like `required_version` and `required_providers` cannot reference input variables. By contrast, backend blocks and provider configuration can use variables in current OpenTofu, as long as the values are available when needed.
 
 ## Error Message
 
-```text
-Error: Variables not allowed
-  on backend.tf line 5, in terraform:
-  5:     bucket = var.state_bucket
-  Variables may not be used here.
+```hcl
+terraform {
+  required_version = var.tofu_version
 
-Error: References to input variables not supported here
-  on main.tf line 3, in terraform:
-  3:     required_version = var.tofu_version
+  required_providers {
+    aws = {
+      source  = var.aws_provider_source
+      version = var.aws_provider_version
+    }
+  }
+}
 ```
 
-## Fix 1: Backend Block - Use -backend-config Instead
+These references fail because they appear inside the top-level `terraform` block, which only accepts constant values.
 
-The backend block is evaluated at `tofu init` time, before variables exist:
+## Fix 1: Backend Block - Variables Are Allowed in OpenTofu
+
+Backend configuration is a special case in OpenTofu: you may use variables and locals there, as long as all values can be resolved during `tofu init`:
 
 ```hcl
-# WRONG - variables not allowed in backend
-
 terraform {
   backend "s3" {
-    bucket = var.state_bucket   # Error!
+    bucket = var.state_bucket
     key    = "${var.environment}/tofu.tfstate"
   }
 }
+```
 
-# CORRECT - use an empty backend block
+When the backend uses input variables, assign them during init:
+
+```bash
+# Option 1: pass root module variables to init
+tofu init \
+  -var="state_bucket=my-opentofu-state-prod" \
+  -var="environment=prod"
+
+# Option 2: use a tfvars file
+cat > backend-prod.tfvars <<EOF
+state_bucket = "my-opentofu-state-prod"
+environment  = "prod"
+EOF
+
+tofu init -var-file=backend-prod.tfvars
+```
+
+`-backend-config` is still useful for partial backend configuration when you intentionally leave some backend arguments out of the block:
+
+```hcl
 terraform {
   backend "s3" {}
 }
 ```
 
-Then pass configuration at init time:
-
 ```bash
-# Option 1: -backend-config flags
+# Option 3: -backend-config flags
 tofu init \
   -backend-config="bucket=my-opentofu-state-prod" \
   -backend-config="key=prod/app/tofu.tfstate" \
   -backend-config="region=us-east-1"
 
-# Option 2: -backend-config file
+# Option 4: -backend-config file
 cat > backend-prod.hcl <<EOF
 bucket = "my-opentofu-state-prod"
 key    = "prod/app/tofu.tfstate"
@@ -78,9 +98,9 @@ terraform {
 }
 ```
 
-## Fix 3: Provider Source - Use Literals
+## Fix 3: required_providers - Use Literal Values
 
-Provider source addresses and version constraints are static:
+Provider source addresses and version constraints live inside the top-level `terraform` block, so they must be constant values:
 
 ```hcl
 # WRONG
@@ -104,41 +124,32 @@ terraform {
 }
 ```
 
-## Fix 4: Provider Assume Role - Use Environment Variables
+## Fix 4: Provider Configuration - Input Variables Are Allowed
 
-For dynamic provider configuration (e.g., different roles per environment), use environment variables since the provider block is evaluated before full variable resolution:
-
-```bash
-# Set dynamically in CI/CD
-export AWS_ROLE_ARN="arn:aws:iam::${ACCOUNT_ID}:role/deploy-role"
-
-# Or use a wrapper script that sets the env var before calling tofu
-```
+Provider configuration is not subject to the same restriction. Provider arguments can use expressions whose values are known before apply, including input variables:
 
 ```hcl
-# Read from environment in the provider block using null-safe expressions
-provider "aws" {
-  region = "us-east-1"
-  # Role can be set via AWS_ROLE_ARN environment variable
-  # No need to use a variable in the provider block
+provider "google" {
+  project = var.project_id
+  region  = var.region
 }
 ```
 
+Environment variables are still useful for credentials or other provider settings that the provider explicitly supports, but they are not required just to avoid this error.
+
 ## Fix 5: Workspaces for Environment-Specific Config
 
-Use `terraform.workspace` (a special built-in) instead of a variable for environment-specific values:
+Use `terraform.workspace` (a special built-in) for environment-specific values in normal configuration expressions:
 
 ```hcl
 # terraform.workspace IS allowed in some contexts
 locals {
   environment = terraform.workspace   # "default", "prod", "staging"
 }
-
-terraform {
-  backend "s3" {}   # Still can't use locals here - use -backend-config
-}
 ```
+
+This can be useful in ordinary configuration, but it does not make settings inside the top-level `terraform` block dynamic.
 
 ## Conclusion
 
-Variables are prohibited in `backend`, `required_version`, `required_providers`, and provider source/version fields because these are evaluated during initialization before the variable evaluation phase. Solve this by passing backend config via `-backend-config`, using literal values for version constraints, and using environment variables for dynamic provider settings.
+Variables are prohibited in top-level `terraform` block settings such as `required_version` and `required_providers` because that block only accepts constant values. Backend configuration is different in OpenTofu: it may use variables and locals if they can be resolved during `tofu init`. Provider configuration can also use input variables as long as those values are known before apply.
