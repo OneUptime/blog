@@ -42,10 +42,15 @@ def get_payload_length(raw_packet: bytes) -> int:
 def validate_total_length(raw_packet: bytes) -> bool:
     """Verify Total Length is consistent with actual packet data."""
     total_length = get_total_length(raw_packet)
+    header_length = (raw_packet[0] & 0x0F) * 4
     actual_length = len(raw_packet)
 
+    if header_length < 20:
+        raise ValueError(f"Header Length {header_length} < minimum 20 bytes")
     if total_length < 20:
         raise ValueError(f"Total Length {total_length} < minimum 20 bytes")
+    if total_length < header_length:
+        raise ValueError(f"Total Length {total_length} < header length {header_length}")
     if total_length > actual_length:
         raise ValueError(f"Total Length {total_length} > actual data {actual_length}")
     return True
@@ -63,14 +68,13 @@ ip link show eth0 | grep mtu
 
 # Check path MTU to a destination
 tracepath 8.8.8.8
-# Displays MTU at each hop
+# Shows the discovered path MTU and where it changes along the route
 
 # Test specific packet size
 ping -s 1472 -M do 8.8.8.8
 # -s 1472 payload + 28 header = 1500 total (matches Ethernet MTU)
 # -M do = Don't Fragment
-# If MTU is smaller somewhere in the path, you'll get:
-# ping: local error: message too long, mtu=1480
+# If the path MTU is smaller, the probe fails and PMTU discovery reports it
 ```
 
 ## Fragmentation and Total Length
@@ -138,9 +142,9 @@ def classify_packet_size(raw_packet: bytes) -> str:
     if total_length < 20:
         return "INVALID: below minimum"
     elif total_length == 20:
-        return "Headeronly: ACK or probe"
+        return "Header-only: no payload"
     elif total_length <= 576:
-        return "Small: fits all IP paths safely"
+        return "Small: within IPv4's 576-byte reassembly minimum"
     elif total_length <= 1500:
         return "Standard: fits Ethernet MTU"
     elif total_length <= 9000:
@@ -150,8 +154,8 @@ def classify_packet_size(raw_packet: bytes) -> str:
 ```
 
 ```bash
-# Find unusually small packets (possible port scans)
-tcpdump -n 'ip[2:2] == 40'  # Total Length exactly 40 (min TCP SYN)
+# Find minimal IPv4 + TCP packets with no options (common in scans)
+tcpdump -n 'tcp and ip[2:2] == 40'
 
 # Find large packets that may cause fragmentation
 tcpdump -n 'ip[2:2] > 1400 && ip[6] & 0x40 != 0'
@@ -160,4 +164,4 @@ tcpdump -n 'ip[2:2] > 1400 && ip[6] & 0x40 != 0'
 
 ## Summary
 
-The 16-bit Total Length field (bytes 2-3) defines the complete IPv4 packet size in bytes, from the first byte of the header through the last byte of the payload. Payload length is Total Length minus (IHL × 4). For standard Ethernet networks, Total Length ≤ 1500 bytes; larger values require jumbo frame support or will be fragmented. When parsing packets programmatically, always use Total Length to bound data extraction rather than assuming the buffer contains only one packet. Use `ping -s <size> -M do` to probe path MTU and detect fragmentation points.
+The 16-bit Total Length field (bytes 2-3) defines the complete IPv4 packet size in bytes, from the first byte of the header through the last byte of the payload. Payload length is Total Length minus (IHL × 4). For standard Ethernet networks, Total Length ≤ 1500 bytes; larger values require jumbo frame support or will be fragmented or dropped if DF is set. When parsing packets programmatically, always use Total Length to bound data extraction rather than assuming the buffer contains only one packet. Use `ping -s <size> -M do` to probe path MTU and detect when a packet would need fragmentation.
