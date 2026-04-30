@@ -13,7 +13,7 @@ AWS IAM users and groups control human and programmatic access to AWS APIs. Open
 ## IAM Groups with Policies
 
 ```hcl
-# Group for developers - read-only to production, full access to dev
+# Group for developers - read-only baseline plus lifecycle access to tagged dev EC2 instances
 
 resource "aws_iam_group" "developers" {
   name = "developers"
@@ -25,7 +25,7 @@ resource "aws_iam_group_policy_attachment" "developers_readonly" {
   policy_arn = "arn:aws:iam::aws:policy/ReadOnlyAccess"
 }
 
-# Custom policy for developer-specific permissions
+# Custom policy for selected dev instance actions
 resource "aws_iam_group_policy" "developers_custom" {
   name  = "developers-custom"
   group = aws_iam_group.developers.name
@@ -36,8 +36,13 @@ resource "aws_iam_group_policy" "developers_custom" {
       {
         Sid    = "AllowDevEnvironmentAccess"
         Effect = "Allow"
-        Action = ["ec2:*", "s3:*", "rds:*"]
-        Resource = "*"
+        Action = [
+          "ec2:StartInstances",
+          "ec2:StopInstances",
+          "ec2:RebootInstances",
+          "ec2:TerminateInstances"
+        ]
+        Resource = "arn:aws:ec2:*:*:instance/*"
         Condition = {
           StringEquals = {
             "aws:ResourceTag/Environment" = "dev"
@@ -153,7 +158,8 @@ resource "aws_secretsmanager_secret_version" "cicd_keys" {
 ## MFA Enforcement Policy
 
 ```hcl
-# Policy that enforces MFA for all actions except credential management
+# Policy that enforces MFA for all actions except the minimum actions
+# needed to manage an MFA device and request a session token
 resource "aws_iam_policy" "enforce_mfa" {
   name        = "EnforceMFA"
   description = "Deny all API calls unless MFA is present"
@@ -164,25 +170,27 @@ resource "aws_iam_policy" "enforce_mfa" {
       {
         Sid    = "AllowViewAccountInfo"
         Effect = "Allow"
-        Action = [
-          "iam:GetAccountPasswordPolicy",
-          "iam:ListVirtualMFADevices"
-        ]
+        Action = "iam:ListVirtualMFADevices"
         Resource = "*"
       },
       {
-        Sid    = "AllowManageOwnMFA"
+        Sid    = "AllowManageOwnVirtualMFADevice"
+        Effect = "Allow"
+        Action = ["iam:CreateVirtualMFADevice"]
+        Resource = "arn:aws:iam::*:mfa/*"
+      },
+      {
+        Sid    = "AllowManageOwnUserMFA"
         Effect = "Allow"
         Action = [
-          "iam:CreateVirtualMFADevice",
+          "iam:DeactivateMFADevice",
           "iam:EnableMFADevice",
           "iam:GetUser",
-          "iam:ListMFADevices"
+          "iam:GetMFADevice",
+          "iam:ListMFADevices",
+          "iam:ResyncMFADevice"
         ]
-        Resource = [
-          "arn:aws:iam::*:mfa/&{aws:username}",
-          "arn:aws:iam::*:user/&{aws:username}"
-        ]
+        Resource = "arn:aws:iam::*:user/$${aws:username}"
       },
       {
         Sid    = "DenyWithoutMFA"
@@ -190,8 +198,11 @@ resource "aws_iam_policy" "enforce_mfa" {
         NotAction = [
           "iam:CreateVirtualMFADevice",
           "iam:EnableMFADevice",
+          "iam:GetMFADevice",
           "iam:GetUser",
           "iam:ListMFADevices",
+          "iam:ListVirtualMFADevices",
+          "iam:ResyncMFADevice",
           "sts:GetSessionToken"
         ]
         Resource = "*"
@@ -221,10 +232,10 @@ resource "aws_iam_account_password_policy" "main" {
   allow_users_to_change_password = true
   max_password_age               = 90   # Force rotation every 90 days
   password_reuse_prevention      = 24   # Cannot reuse last 24 passwords
-  hard_expiry                    = false # Don't lock out - warn instead
+  hard_expiry                    = false # Allow users to reset expired passwords themselves
 }
 ```
 
 ## Conclusion
 
-IAM users and groups with OpenTofu provide auditable access management for AWS. Use groups to assign permissions - never attach policies directly to users, as group-based policies scale better across team changes. For human users, prefer AWS IAM Identity Center (SSO) over long-lived IAM users - it integrates with your identity provider and doesn't require access key management. When IAM users are necessary (legacy systems, specific tooling), enforce MFA with the deny policy shown above and rotate access keys regularly using the `aws_iam_access_key` resource with a version suffix.
+IAM users and groups with OpenTofu provide auditable access management for AWS. Use groups to assign permissions - never attach policies directly to users, as group-based policies scale better across team changes. For human users, prefer AWS IAM Identity Center (SSO) over long-lived IAM users - it integrates with your identity provider and doesn't require access key management. When IAM users are necessary (legacy systems, specific tooling), enforce MFA with the deny policy shown above and rotate access keys regularly.
