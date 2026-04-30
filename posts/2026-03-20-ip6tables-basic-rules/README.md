@@ -8,23 +8,27 @@ Description: Learn the fundamentals of ip6tables for IPv6 firewalling on Linux, 
 
 ## Overview
 
-ip6tables is the Linux kernel's IPv6 packet filtering framework - the IPv6 counterpart to iptables. It uses the same netfilter architecture with tables (filter, mangle, nat) and chains (INPUT, OUTPUT, FORWARD, PREROUTING, POSTROUTING). ip6tables rules control which IPv6 packets are accepted, dropped, or modified.
+ip6tables is the userspace command used to configure IPv6 packet filtering and NAT in the Linux kernel - the IPv6 counterpart to iptables. It uses the same netfilter architecture with tables such as filter, mangle, raw, security, and nat (when supported) and built-in chains such as INPUT, OUTPUT, FORWARD, PREROUTING, and POSTROUTING. ip6tables rules control which IPv6 packets are accepted, dropped, or modified.
 
 ## ip6tables vs iptables
 
 | Aspect | iptables | ip6tables |
 |--------|----------|-----------|
 | Protocol | IPv4 | IPv6 |
-| NAT support | Full | Limited (no MASQUERADE in older kernels) |
+| NAT support | Supported | Supported since Linux kernel 3.7 |
 | ICMPv6 module | icmp | icmpv6 |
-| Config file | /etc/iptables/rules.v4 | /etc/iptables/rules.v6 |
+| Saved rules file | Distro-dependent (for example `/etc/iptables/rules.v4`) | Distro-dependent (for example `/etc/iptables/rules.v6`) |
 | Status command | iptables -L -n | ip6tables -L -n |
 
 ## ip6tables Rule Syntax
 
 ```bash
-ip6tables -[ADIRF] chain [-s src] [-d dst] [-p proto] [-i in-iface] [-o out-iface] \
-          [protocol-specific options] -j TARGET
+ip6tables [-t table] {-A|-C|-D} chain rule-specification [options]
+ip6tables [-t table] -I chain [rulenum] rule-specification [options]
+ip6tables [-t table] -R chain rulenum rule-specification [options]
+ip6tables [-t table] -P chain target
+ip6tables [-t table] -L [chain] [options]
+ip6tables [-t table] -F [chain]
 
 # Common flags:
 
@@ -69,8 +73,6 @@ ip6tables -A OUTPUT -o lo -j ACCEPT
 
 ```bash
 # Allow replies to connections we initiated
-ip6tables -A INPUT -m state --state ESTABLISHED,RELATED -j ACCEPT
-# Or use conntrack module (newer)
 ip6tables -A INPUT -m conntrack --ctstate ESTABLISHED,RELATED -j ACCEPT
 ```
 
@@ -89,11 +91,13 @@ ip6tables -A INPUT -p icmpv6 --icmpv6-type time-exceeded -j ACCEPT
 # Parameter Problem
 ip6tables -A INPUT -p icmpv6 --icmpv6-type parameter-problem -j ACCEPT
 
-# NDP - only from link-local sources
+# Router Advertisements must come from link-local sources
 ip6tables -A INPUT -s fe80::/10 -p icmpv6 --icmpv6-type router-advertisement -j ACCEPT
-ip6tables -A INPUT -s fe80::/10 -p icmpv6 --icmpv6-type router-solicitation -j ACCEPT
-ip6tables -A INPUT -s fe80::/10 -p icmpv6 --icmpv6-type neighbour-solicitation -j ACCEPT
-ip6tables -A INPUT -s fe80::/10 -p icmpv6 --icmpv6-type neighbour-advertisement -j ACCEPT
+
+# Router Solicitations and Neighbor Discovery can use unspecified or assigned sources
+ip6tables -A INPUT -p icmpv6 --icmpv6-type router-solicitation -j ACCEPT
+ip6tables -A INPUT -p icmpv6 --icmpv6-type neighbour-solicitation -j ACCEPT
+ip6tables -A INPUT -p icmpv6 --icmpv6-type neighbour-advertisement -j ACCEPT
 
 # Echo (ping) - allow but rate-limit
 ip6tables -A INPUT -p icmpv6 --icmpv6-type echo-request -m limit --limit 5/s -j ACCEPT
@@ -104,7 +108,7 @@ ip6tables -A INPUT -p icmpv6 --icmpv6-type echo-reply -j ACCEPT
 
 ```bash
 # SSH from management network
-ip6tables -A INPUT -p tcp --dport 22 -s fd00:mgmt::/48 -j ACCEPT
+ip6tables -A INPUT -p tcp --dport 22 -s fd00:1234:5678::/48 -j ACCEPT
 
 # Web server
 ip6tables -A INPUT -p tcp --dport 80 -j ACCEPT
@@ -162,8 +166,8 @@ ip6tables -F INPUT
 #!/bin/bash
 # /usr/local/sbin/ip6tables-server.sh
 
-ip6tables -F   # Flush all chains
-ip6tables -X   # Delete user-defined chains
+ip6tables -F   # Flush filter table chains
+ip6tables -X   # Delete user-defined filter table chains
 
 # Default policies
 ip6tables -P INPUT   DROP
@@ -181,7 +185,12 @@ ip6tables -A INPUT -p icmpv6 --icmpv6-type packet-too-big -j ACCEPT
 ip6tables -A INPUT -p icmpv6 --icmpv6-type destination-unreachable -j ACCEPT
 ip6tables -A INPUT -p icmpv6 --icmpv6-type time-exceeded -j ACCEPT
 ip6tables -A INPUT -p icmpv6 --icmpv6-type parameter-problem -j ACCEPT
-ip6tables -A INPUT -s fe80::/10 -p icmpv6 -j ACCEPT
+ip6tables -A INPUT -s fe80::/10 -p icmpv6 --icmpv6-type router-advertisement -j ACCEPT
+ip6tables -A INPUT -p icmpv6 --icmpv6-type router-solicitation -j ACCEPT
+ip6tables -A INPUT -p icmpv6 --icmpv6-type neighbour-solicitation -j ACCEPT
+ip6tables -A INPUT -p icmpv6 --icmpv6-type neighbour-advertisement -j ACCEPT
+ip6tables -A INPUT -p icmpv6 --icmpv6-type echo-request -m limit --limit 5/s -j ACCEPT
+ip6tables -A INPUT -p icmpv6 --icmpv6-type echo-reply -j ACCEPT
 
 # Services
 ip6tables -A INPUT -p tcp --dport 22 -j ACCEPT
@@ -194,4 +203,4 @@ ip6tables -A INPUT -j LOG --log-prefix "IPv6-DROP: "
 
 ## Summary
 
-ip6tables uses the same syntax as iptables with the key difference of the `--icmpv6-type` match (instead of `--icmp-type`). Always set DROP as the default INPUT policy, allow loopback, allow ESTABLISHED/RELATED connections, and explicitly permit required ICMPv6 types (especially packet-too-big). Use `ip6tables -L -n -v` to verify rules. Save rules with `ip6tables-save > /etc/iptables/rules.v6` and restore with `ip6tables-restore < /etc/iptables/rules.v6`.
+ip6tables uses the same syntax as iptables with the key difference of the `--icmpv6-type` match (instead of `--icmp-type`). Always set DROP as the default INPUT policy, allow loopback, allow ESTABLISHED/RELATED connections, and explicitly permit required ICMPv6 types (especially packet-too-big). Use `ip6tables -L -n -v` to verify rules. Save rules with `ip6tables-save > rules.v6` and restore with `ip6tables-restore < rules.v6`; some distributions conventionally use `/etc/iptables/rules.v6` for persisted IPv6 rules.
