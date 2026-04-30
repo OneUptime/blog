@@ -8,7 +8,7 @@ Description: Learn how to configure iBGP sessions using loopback addresses for s
 
 ## Why Use Loopback Addresses for iBGP?
 
-When iBGP peers use physical interface addresses, the BGP session drops whenever that specific interface goes down-even if the routers are still reachable via another path. By sourcing iBGP sessions from loopback interfaces, the session survives as long as any path between the routers exists. Loopbacks are always up unless the router itself is down.
+When iBGP peers use physical interface addresses, the BGP session drops whenever that specific interface goes down-even if the routers are still reachable via another path. By sourcing iBGP sessions from loopback interfaces, the session survives as long as any path between the routers exists. Loopbacks are not tied to a physical link and remain up unless they are administratively shut down or the router itself is down.
 
 ## Topology
 
@@ -18,7 +18,7 @@ graph LR
     R2 -- OSPF + iBGP --> R3["R3\nLoop: 3.3.3.3\nAS 65001"]
 ```
 
-All three routers are in AS 65001. OSPF provides reachability between loopbacks.
+All three routers are in AS 65001. OSPF provides reachability between loopbacks, and the iBGP sessions form a full mesh between R1, R2, and R3.
 
 ## Step 1: Configure Loopback Interfaces
 
@@ -80,6 +80,16 @@ R2(config-router)# neighbor 1.1.1.1 remote-as 65001
 R2(config-router)# neighbor 1.1.1.1 update-source Loopback0
 R2(config-router)# neighbor 3.3.3.3 remote-as 65001
 R2(config-router)# neighbor 3.3.3.3 update-source Loopback0
+```
+
+```text
+! On R3 - peer with R1 and R2
+R3(config)# router bgp 65001
+R3(config-router)# bgp router-id 3.3.3.3
+R3(config-router)# neighbor 1.1.1.1 remote-as 65001
+R3(config-router)# neighbor 1.1.1.1 update-source Loopback0
+R3(config-router)# neighbor 2.2.2.2 remote-as 65001
+R3(config-router)# neighbor 2.2.2.2 update-source Loopback0
 ```
 
 ## Step 4: Verify Sessions Are Established
