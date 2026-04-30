@@ -8,18 +8,23 @@ Description: Configure GitHub Actions workflows to build Docker images and deplo
 
 ## Introduction
 
-GitHub Actions is the most widely used CI/CD platform for public and private repositories. This guide covers creating workflows that build Docker images, push to a registry, and deploy to Portainer - supporting both webhook-based and API-based deployment methods.
+GitHub Actions is the most widely used CI/CD platform for public and private repositories. This guide covers creating workflows that build Docker images, push to a registry, and deploy to Portainer - supporting both webhook-based and API-based deployment methods. Portainer stack webhooks require Portainer Business Edition and a non-Edge environment; if you're on Portainer CE or using Edge, use the API-based flow instead.
 
-## Step 1: Configure GitHub Secrets
+## Step 1: Configure GitHub Secrets and Variables
 
 In your GitHub repository: **Settings** > **Secrets and variables** > **Actions**
 
 Add these repository secrets:
 - `PORTAINER_URL`: `https://portainer.yourdomain.com`
 - `PORTAINER_API_KEY`: Your Portainer access token
-- `PORTAINER_STACK_WEBHOOK`: Webhook URL from Portainer stack
-- `REGISTRY_URL`: `ghcr.io` or your private registry
-- `REGISTRY_TOKEN`: GitHub token or registry password
+- `PORTAINER_STAGING_WEBHOOK`: Webhook URL from the staging stack
+- `PORTAINER_PRODUCTION_WEBHOOK`: Webhook URL from the production stack if you use the advanced webhook example
+
+Add these repository or environment variables:
+- `PRODUCTION_STACK_ID`: Numeric Portainer stack ID for the production stack
+- `PORTAINER_ENDPOINT_ID`: Numeric Portainer environment/endpoint ID
+
+`GITHUB_TOKEN` is created automatically by GitHub Actions, so you do not need to create a separate registry secret for the GHCR-based examples below.
 
 ## Step 2: Basic Deployment Workflow
 
@@ -72,6 +77,9 @@ jobs:
     runs-on: ubuntu-latest
     needs: test
     if: github.event_name != 'pull_request'
+    permissions:
+      contents: read
+      packages: write
     outputs:
       image_tag: ${{ steps.meta.outputs.version }}
 
@@ -156,25 +164,39 @@ jobs:
       url: https://yourdomain.com
 
     steps:
-      - name: Deploy via Portainer API
+      - name: Deploy via Portainer API (file-based stack)
         run: |
           IMAGE_TAG="${{ needs.build-and-push.outputs.image_tag }}"
+          STACK_ID="${{ vars.PRODUCTION_STACK_ID }}"
+          ENDPOINT_ID="${{ vars.PORTAINER_ENDPOINT_ID }}"
 
-          # Update stack environment variable and redeploy
+          # Retrieve the current stack file, then redeploy it with an updated IMAGE_TAG.
+          STACK_FILE_CONTENT=$(curl -fsSL \
+            -H "X-API-Key: ${{ secrets.PORTAINER_API_KEY }}" \
+            "${{ secrets.PORTAINER_URL }}/api/stacks/${STACK_ID}/file" \
+            | python3 -c 'import json,sys; print(json.load(sys.stdin)["StackFileContent"])')
+
+          PAYLOAD=$(IMAGE_TAG="$IMAGE_TAG" STACK_FILE_CONTENT="$STACK_FILE_CONTENT" python3 - <<'PY'
+          import json
+          import os
+
+          print(json.dumps({
+              "Env": [{"name": "IMAGE_TAG", "value": os.environ["IMAGE_TAG"]}],
+              "Prune": False,
+              "RepullImageAndRedeploy": True,
+              "StackFileContent": os.environ["STACK_FILE_CONTENT"],
+          }))
+          PY
+          )
+
           RESPONSE=$(curl -s -w "\n%{http_code}" -X PUT \
             -H "X-API-Key: ${{ secrets.PORTAINER_API_KEY }}" \
             -H "Content-Type: application/json" \
-            "${{ secrets.PORTAINER_URL }}/api/stacks/${{ vars.PRODUCTION_STACK_ID }}?endpointId=1" \
-            -d "{
-              \"env\": [
-                {\"name\": \"IMAGE_TAG\", \"value\": \"${IMAGE_TAG}\"}
-              ],
-              \"prune\": false,
-              \"pullImage\": true
-            }")
+            "${{ secrets.PORTAINER_URL }}/api/stacks/${STACK_ID}?endpointId=${ENDPOINT_ID}" \
+            -d "$PAYLOAD")
 
-          HTTP_STATUS=$(echo "$RESPONSE" | tail -1)
-          BODY=$(echo "$RESPONSE" | head -1)
+          HTTP_STATUS=$(echo "$RESPONSE" | tail -n 1)
+          BODY=$(echo "$RESPONSE" | sed '$d')
 
           echo "Response: $BODY"
 
@@ -212,6 +234,8 @@ jobs:
           POSTGRES_DB: testdb
           POSTGRES_USER: test
           POSTGRES_PASSWORD: test
+        ports:
+          - 5432:5432
         options: >-
           --health-cmd pg_isready
           --health-interval 10s
@@ -231,6 +255,9 @@ jobs:
   build:
     needs: test
     runs-on: ubuntu-latest
+    permissions:
+      contents: read
+      packages: write
     outputs:
       tags: ${{ steps.meta.outputs.tags }}
     steps:
@@ -261,12 +288,10 @@ jobs:
         include:
           - branch: develop
             environment: staging
-            stack_var: STAGING_STACK_ID
-            webhook_var: STAGING_WEBHOOK
+            webhook_secret: PORTAINER_STAGING_WEBHOOK
           - branch: main
             environment: production
-            stack_var: PROD_STACK_ID
-            webhook_var: PROD_WEBHOOK
+            webhook_secret: PORTAINER_PRODUCTION_WEBHOOK
     if: contains(fromJSON('["develop", "main"]'), github.ref_name)
     environment:
       name: ${{ matrix.environment }}
@@ -274,7 +299,7 @@ jobs:
       - name: Deploy to ${{ matrix.environment }}
         if: github.ref_name == matrix.branch
         run: |
-          curl -X POST "${{ secrets[matrix.webhook_var] }}"
+          curl -fsS -X POST "${{ secrets[matrix.webhook_secret] }}"
 ```
 
 ## Step 4: Reusable Deployment Action
@@ -282,7 +307,7 @@ jobs:
 ```yaml
 # .github/actions/portainer-deploy/action.yml
 name: Deploy to Portainer
-description: Deploy a stack to Portainer via API
+description: Deploy a file-based stack to Portainer via API
 
 inputs:
   portainer-url:
@@ -293,12 +318,12 @@ inputs:
     description: Portainer API key
   stack-id:
     required: true
-    description: Stack ID to update
+    description: File-based stack ID to update
   image-tag:
     required: true
     description: Docker image tag to deploy
   endpoint-id:
-    default: "1"
+    required: true
     description: Portainer endpoint ID
 
 runs:
@@ -306,16 +331,35 @@ runs:
   steps:
     - shell: bash
       run: |
+        STACK_FILE_CONTENT=$(curl -fsSL \
+          -H "X-API-Key: ${{ inputs.api-key }}" \
+          "${{ inputs.portainer-url }}/api/stacks/${{ inputs.stack-id }}/file" \
+          | python3 -c 'import json,sys; print(json.load(sys.stdin)["StackFileContent"])')
+
+        PAYLOAD=$(IMAGE_TAG="${{ inputs.image-tag }}" STACK_FILE_CONTENT="$STACK_FILE_CONTENT" python3 - <<'PY'
+        import json
+        import os
+
+        print(json.dumps({
+            "Env": [{"name": "IMAGE_TAG", "value": os.environ["IMAGE_TAG"]}],
+            "Prune": False,
+            "RepullImageAndRedeploy": True,
+            "StackFileContent": os.environ["STACK_FILE_CONTENT"],
+        }))
+        PY
+        )
+
         RESPONSE=$(curl -s -w "\n%{http_code}" -X PUT \
           -H "X-API-Key: ${{ inputs.api-key }}" \
           -H "Content-Type: application/json" \
           "${{ inputs.portainer-url }}/api/stacks/${{ inputs.stack-id }}?endpointId=${{ inputs.endpoint-id }}" \
-          -d "{\"env\": [{\"name\": \"IMAGE_TAG\", \"value\": \"${{ inputs.image-tag }}\"}], \"pullImage\": true}")
+          -d "$PAYLOAD")
 
-        HTTP=$(echo "$RESPONSE" | tail -1)
-        [ "$HTTP" = "200" ] && echo "Deployed!" || (echo "Failed: $HTTP"; exit 1)
+        HTTP=$(echo "$RESPONSE" | tail -n 1)
+        BODY=$(echo "$RESPONSE" | sed '$d')
+        [ "$HTTP" = "200" ] && echo "Deployed!" || (echo "Failed: $HTTP"; echo "$BODY"; exit 1)
 ```
 
 ## Conclusion
 
-GitHub Actions provides excellent CI/CD capabilities for Portainer deployments. The webhook approach is the simplest, while the API approach gives you more control over what gets deployed. GitHub's environment protection rules add manual approval gates for production deployments. Combined with Portainer's stack management, you have a clean pipeline: code in GitHub, built images in a container registry, and running workloads managed in Portainer.
+GitHub Actions provides excellent CI/CD capabilities for Portainer deployments. If you're using Portainer Business Edition, the webhook approach is the simplest, while the API approach gives you more control over what gets deployed. GitHub's environment protection rules add manual approval gates for production deployments. Combined with Portainer's stack management, you have a clean pipeline: code in GitHub, built images in a container registry, and running workloads managed in Portainer.
