@@ -68,7 +68,6 @@ terraform {
 ```bash
 # Set credentials via environment variable (preferred)
 export GOOGLE_APPLICATION_CREDENTIALS="/path/to/opentofu-sa-key.json"
-export GOOGLE_CREDENTIALS=$(cat opentofu-sa-key.json)
 ```
 
 ```hcl
@@ -82,22 +81,18 @@ terraform {
 }
 ```
 
-### Option 3: Inline Credentials
+### Option 3: Backend-Specific Environment Variable
+
+```bash
+# Use a backend-specific credentials variable
+export GOOGLE_BACKEND_CREDENTIALS="/path/to/opentofu-sa-key.json"
+```
 
 ```hcl
-# Less secure - only for testing
 terraform {
   backend "gcs" {
-    bucket      = "my-terraform-state-bucket"
-    prefix      = "prod"
-    credentials = <<EOF
-{
-  "type": "service_account",
-  "project_id": "my-project",
-  "private_key_id": "key-id",
-  ...
-}
-EOF
+    bucket = "my-terraform-state-bucket"
+    prefix = "prod"
   }
 }
 ```
@@ -153,13 +148,13 @@ jobs:
       - uses: actions/checkout@v4
 
       - name: Authenticate to GCP
-        uses: google-github-actions/auth@v2
+        uses: google-github-actions/auth@v3
         with:
           workload_identity_provider: projects/PROJECT_NUM/locations/global/workloadIdentityPools/github-pool/providers/github-provider
           service_account: sa-opentofu-runner@my-project.iam.gserviceaccount.com
 
       - name: Setup OpenTofu
-        uses: opentofu/setup-opentofu@v1
+        uses: opentofu/setup-opentofu@v2
 
       - name: Deploy
         run: |
