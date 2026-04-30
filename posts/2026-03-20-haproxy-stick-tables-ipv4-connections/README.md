@@ -8,7 +8,7 @@ Description: Learn how to use HAProxy stick tables to track IPv4 client connecti
 
 ---
 
-HAProxy stick tables are in-memory key-value stores keyed on client attributes (typically the IPv4 source address). They enable session persistence, connection counting, rate limiting, and abuse detection across all HAProxy processes.
+HAProxy stick tables are in-memory key-value stores keyed on client attributes (typically the IPv4 source address). They enable session persistence, connection counting, rate limiting, and abuse detection within an HAProxy instance. With `peers`, stick table data can also be synchronized across HAProxy nodes, except for local-only counters such as `conn_cur`.
 
 ## What Stick Tables Store
 
@@ -17,9 +17,9 @@ Each stick table entry can track multiple counters per key:
 | Counter | Description |
 |---------|-------------|
 | `conn_cur` | Current active connections |
-| `conn_rate(10s)` | Connection rate per 10 seconds |
-| `http_req_rate(10s)` | HTTP request rate per 10 seconds |
-| `bytes_in_rate(1m)` | Bytes received per minute |
+| `conn_rate(10s)` | Average connection rate over 10 seconds |
+| `http_req_rate(10s)` | Average HTTP request rate over 10 seconds |
+| `bytes_in_rate(1m)` | Average incoming byte rate over 1 minute |
 | `gpc0` | General-purpose counter 0 |
 
 ## Session Persistence with Stick Tables
@@ -64,7 +64,7 @@ frontend http_in
     bind 0.0.0.0:80
     mode http
 
-    # Track HTTP request rate per source IPv4 over 10-second sliding window
+    # Track HTTP request rate per source IPv4 over a 10-second period
     stick-table type ip size 200k expire 30s store http_req_rate(10s)
     http-request track-sc0 src
 
@@ -89,19 +89,21 @@ backend sticky_app
     server app2 10.0.0.2:8080 check
 ```
 
+Peer replication can synchronize stored stick table data across HAProxy instances, but `conn_cur` remains local by default.
+
 ## Viewing Stick Table Contents
 
 ```bash
-# Show all entries in the stick table named 'http_in'
+# Assuming a Runtime API socket is configured at /var/run/haproxy/admin.sock, show all entries in the stick table named 'http_in'
 echo "show table http_in" | socat stdio /var/run/haproxy/admin.sock
 
-# Filter to a specific IP
+# Filter to a specific IPv4 key
 echo "show table http_in key 203.0.113.5" | socat stdio /var/run/haproxy/admin.sock
 ```
 
 ## Key Takeaways
 
-- Stick tables persist connection-level data between HAProxy requests for each IPv4 source.
+- Stick tables persist per-client data between requests and connections for each IPv4 source.
 - Use `stick on src` for IP-based session persistence without cookies.
-- Combine `conn_cur` and `conn_rate` tracking to implement per-IP connection limits.
-- Use `peers` to synchronize stick tables across multiple HAProxy instances.
+- Combine `conn_cur` and `conn_rate(10s)` tracking to implement per-IP connection limits.
+- Use `peers` to synchronize stick tables across multiple HAProxy instances, noting that `conn_cur` is local-only by default.
