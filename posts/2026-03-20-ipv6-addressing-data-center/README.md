@@ -24,7 +24,7 @@ graph TD
 
 ## Addressing Scheme Design
 
-Using the prefix `2001:db8:dc::/48`:
+Using the documentation prefix `2001:db8:dc::/48` (replace it with your assigned production prefix):
 
 ```text
 Subnet field (16 bits): TTSS
@@ -94,23 +94,26 @@ sudo ip -6 route add default via 2001:db8:dc:0110::1
 echo "nameserver 2001:db8:dc:0002::53" | sudo tee -a /etc/resolv.conf
 
 # Verify connectivity
-ping6 -c 3 2001:db8:dc:0002::1  # DNS server
-ping6 -c 3 2001:db8::1           # Default gateway
+ping6 -c 3 2001:db8:dc:0002::53    # Configured DNS server
+ping6 -c 3 2001:db8:dc:0110::1     # Default gateway
 ```
 
 ## Docker / Container Platform Addressing
 
-```yaml
-# Kubernetes node CIDR allocation from data center prefix
-# Pod network: assign a /64 per node from the DC block
-# Node 1 pods: 2001:db8:dc:0110::/64
-# Node 2 pods: 2001:db8:dc:0120::/64
+Kubernetes node CIDR allocation from a dedicated container range within the DC block:
 
-# Docker daemon config with IPv6
-# /etc/docker/daemon.json
+```text
+Pod network: assign a /64 per node from the DC block
+Node 1 pods: 2001:db8:dc:0150::/64
+Node 2 pods: 2001:db8:dc:0160::/64
+```
+
+Docker daemon config with IPv6 (`/etc/docker/daemon.json`):
+
+```json
 {
   "ipv6": true,
-  "fixed-cidr-v6": "2001:db8:dc:0110::/64",
+  "fixed-cidr-v6": "2001:db8:dc:0150::/64",
   "ip6tables": true
 }
 ```
@@ -118,8 +121,8 @@ ping6 -c 3 2001:db8::1           # Default gateway
 ## BGP Announcement Strategy
 
 ```bash
-# Announce the full DC block to upstream providers
-# 2001:db8:dc::/48  → announced from both edge routers
+# Announce your assigned DC block to upstream providers
+# Example documentation prefix: 2001:db8:dc::/48
 
 # Internal route summarization:
 # Leaf 1 announces: 2001:db8:dc:0100::/56 (Pod 1)
