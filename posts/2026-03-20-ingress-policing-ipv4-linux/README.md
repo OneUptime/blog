@@ -4,9 +4,9 @@ Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
 Tags: tc, IPv4, Linux, Ingress Policing, QoS, Rate Limiting
 
-Description: Use tc ingress qdiscs and police actions to drop or mark incoming IPv4 packets that exceed a defined rate limit, implementing inbound traffic policing on Linux.
+Description: Use tc ingress qdiscs and police actions to drop incoming IPv4 packets that exceed a defined rate limit, or pass them to later actions for further handling, implementing inbound traffic policing on Linux.
 
-Ingress policing drops or marks incoming packets that exceed a configured rate without buffering them (unlike shaping). It is used to enforce inbound rate limits at the earliest possible point.
+Ingress policing drops incoming packets that exceed a configured rate, or can pass them to later actions or filters, without buffering them (unlike shaping). It is used to enforce inbound rate limits at the earliest possible point in tc processing.
 
 ## Policing vs. Shaping
 
@@ -39,7 +39,7 @@ sudo tc filter add dev eth0 parent ffff: \
 # Parameters:
 # rate 10mbit  - allowed rate
 # burst 100kb  - burst allowance before policing kicks in
-# drop         - action for packets exceeding the rate (alternatives: continue, reclassify)
+# drop         - action for packets exceeding the rate (alternatives include pipe, continue, reclassify)
 # flowid :1    - flow ID for matched packets
 ```
 
@@ -54,16 +54,17 @@ sudo tc filter add dev eth0 parent ffff: \
   police rate 5mbit burst 50kb drop flowid :1
 ```
 
-## Using CONTINUE Instead of DROP
+## Using PIPE Instead of DROP
 
-Mark exceeded packets for downstream handling instead of dropping:
+Set a firewall mark on exceeded packets for downstream handling instead of dropping them:
 
 ```bash
-# Re-mark packets that exceed the rate (for DSCP re-marking)
+# Exceeding packets continue to the next action and get marked
+# Conforming packets are accepted without the mark
 sudo tc filter add dev eth0 parent ffff: protocol ip prio 1 \
   u32 match ip src 0.0.0.0/0 \
-  police rate 5mbit burst 50kb \
-  conform-exceed reclassify/pipe flowid :1
+  action police rate 5mbit burst 50kb conform-exceed pipe/ok \
+  action skbedit mark 0x1
 ```
 
 ## Checking Policing Statistics
