@@ -4,11 +4,11 @@ Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
 Tags: Go, Golang, Net/netip, IPv6, Standard Library, Netip.Addr, Prefix
 
-Description: Use Go's net/netip package (introduced in Go 1.18) for efficient, allocation-free IPv6 address parsing, prefix operations, and network calculations.
+Description: Use Go's net/netip package (introduced in Go 1.18) for efficient IPv6 address parsing, prefix operations, and network calculations.
 
 ## Introduction
 
-Go 1.18 introduced `net/netip` - a new package with value-type IP addresses (`netip.Addr`) that are significantly more efficient than the older `net.IP` slice type. `netip.Addr` is comparable, zero-allocation, and supports IPv6 natively including IPv4-in-IPv6 addresses.
+Go 1.18 introduced `net/netip` - a new package with value-type IP addresses (`netip.Addr`) that are significantly more efficient than the older `net.IP` slice type. `netip.Addr` is comparable, immutable, takes less memory than `net.IP`, and supports IPv6 natively including IPv4-mapped IPv6 addresses.
 
 ## Basic IPv6 Operations
 
@@ -39,7 +39,7 @@ func main() {
     // IPv4-mapped IPv6
     mapped, _ := netip.ParseAddr("::ffff:192.0.2.1")
     fmt.Println(mapped.Is4In6()) // true
-    fmt.Println(mapped.Unmap())  // 192.0.2.1 (IPv4Address)
+    fmt.Println(mapped.Unmap())  // 192.0.2.1
 }
 ```
 
@@ -179,9 +179,9 @@ import (
     "net/netip"
 )
 
-// Old approach (heap allocation, not comparable)
+// Old approach (slice-backed, not comparable)
 func oldWay(ipStr string) bool {
-    ip := net.ParseIP(ipStr)  // Allocates on heap
+    ip := net.ParseIP(ipStr)
     if ip == nil {
         return false
     }
@@ -189,7 +189,7 @@ func oldWay(ipStr string) bool {
     return ip.IsGlobalUnicast()
 }
 
-// New approach (stack allocation, comparable, map key)
+// New approach (value type, comparable, map key)
 func newWay(ipStr string) bool {
     addr, err := netip.ParseAddr(ipStr)
     if err != nil {
@@ -202,4 +202,4 @@ func newWay(ipStr string) bool {
 
 ## Conclusion
 
-`net/netip.Addr` is the preferred Go type for IPv6 addresses in new code: it's a value type, comparable (usable as map keys), allocation-free, and correctly handles IPv4-in-IPv6. Use `addr.Prefix(64)` for /64 subnet extraction in rate limiting and ACLs. Migrate from `net.IP` to `netip.Addr` for performance-sensitive networking code. Use these primitives in OneUptime exporters and data plane code.
+`net/netip.Addr` is the preferred Go type for IPv6 addresses in new code: it's a small value type, comparable (usable as map keys), and correctly handles IPv4-mapped IPv6 addresses. Use `addr.Prefix(64)` for /64 subnet extraction in rate limiting and ACLs. Migrate from `net.IP` to `netip.Addr` for performance-sensitive networking code. Use these primitives in OneUptime exporters and data plane code.
