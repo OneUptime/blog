@@ -24,23 +24,23 @@ check_interval = 0
 [[runners]]
   name = "ipv6-docker-runner"
   url = "https://gitlab.example.com"
-  token = "<your-registration-token>"
+  token = "<your-runner-authentication-token>"
   executor = "docker"
 
   [runners.docker]
     tls_verify = false
     image = "ubuntu:22.04"
-    privileged = false
+    privileged = true
     disable_entrypoint_overwrite = false
     oom_kill_disable = false
     disable_cache = false
-    volumes = ["/cache"]
+    volumes = ["/certs/client", "/cache"]
 
-    # Enable IPv6 in Docker containers for CI builds
+    # Attach job and service containers to an IPv6-enabled Docker network
     network_mode = "ipv6-ci-net"
 
-    # Or configure IPv6 directly
-    [[runners.docker.sysctls]]
+    # Optional: ensure IPv6 is not disabled inside job containers
+    [runners.docker.sysctls]
       "net.ipv6.conf.all.disable_ipv6" = "0"
 ```
 
@@ -52,8 +52,8 @@ check_interval = 0
 docker network create \
     --driver bridge \
     --ipv6 \
-    --subnet 2001:db8:ci::/64 \
-    --gateway 2001:db8:ci::1 \
+    --subnet 2001:db8:100::/64 \
+    --gateway 2001:db8:100::1 \
     ipv6-ci-net
 
 # Verify network was created with IPv6
@@ -66,24 +66,26 @@ Or add to `/etc/docker/daemon.json`:
 {
   "ipv6": true,
   "fixed-cidr-v6": "2001:db8:1::/64",
-  "ip6tables": true,
-  "experimental": true
+  "ip6tables": true
 }
+```
+
+```bash
+# Apply the Docker daemon changes
+sudo systemctl restart docker
 ```
 
 ## Step 3: Register the Runner with IPv6
 
 ```bash
-# Register the runner, ensuring it can reach GitLab over IPv6
+# Register the runner, ensuring gitlab.example.com resolves to an IPv6 address
 gitlab-runner register \
-    --url https://[2001:db8::gitlab]/  \
-    --registration-token <token> \
+    --non-interactive \
+    --url https://gitlab.example.com/ \
+    --token "$RUNNER_AUTHENTICATION_TOKEN" \
     --executor docker \
     --docker-image ubuntu:22.04 \
-    --description "IPv6 Docker Runner" \
-    --tag-list ipv6,docker \
-    --run-untagged=false \
-    --locked=false
+    --description "IPv6 Docker Runner"
 ```
 
 ## Step 4: GitLab CI Pipeline with IPv6 Tests
@@ -109,7 +111,7 @@ ipv6-connectivity-test:
     - apt-get update -q && apt-get install -y iputils-ping curl dnsutils
     # Test IPv6 connectivity from the CI environment
     - ip -6 addr show
-    - ping6 -c 3 2606:4700:4700::1111
+    - ping -6 -c 3 2606:4700:4700::1111
     - curl -6 https://ipv6.icanhazip.com
     - dig AAAA example.com +short
 
@@ -117,7 +119,8 @@ build-with-ipv6:
   stage: build
   image: docker:24
   services:
-    - docker:24-dind
+    - name: docker:24-dind
+      command: ["--ipv6", "--fixed-cidr-v6=2001:db8:200::/64"]
   tags:
     - ipv6
   variables:
@@ -126,11 +129,12 @@ build-with-ipv6:
   script:
     # Build Docker image - base images pulled over IPv6 if available
     - docker build -t myapp:$CI_COMMIT_SHA .
-    # Test IPv6 connectivity in the built container
-    - docker run --rm myapp:$CI_COMMIT_SHA curl -6 https://example.com || true
+    # Test IPv6 connectivity from a container started by the DinD daemon
+    - docker run --rm ubuntu:22.04 sh -c "apt-get update -q && apt-get install -y curl ca-certificates && curl -6 https://example.com"
 
 deploy-to-ipv6-cluster:
   stage: deploy
+  image: portainer/kubectl-shell:latest
   tags:
     - ipv6
   script:
@@ -151,7 +155,7 @@ docker run --rm --network ipv6-ci-net ubuntu:22.04 ip -6 addr show
 
 # Test connectivity from a CI-like container
 docker run --rm --network ipv6-ci-net ubuntu:22.04 \
-    sh -c "apt-get update -q && apt-get install -y iputils-ping && ping6 -c 3 2606:4700:4700::1111"
+    sh -c "apt-get update -q && apt-get install -y iputils-ping && ping -6 -c 3 2606:4700:4700::1111"
 ```
 
 ## Troubleshooting
@@ -160,6 +164,7 @@ docker run --rm --network ipv6-ci-net ubuntu:22.04 \
 # If containers don't get IPv6 addresses:
 # 1. Check Docker daemon has IPv6 enabled
 docker info | grep IPv6
+# If you're using docker:dind, run the same command inside the CI job
 
 # 2. Check ip6tables rules are not blocking
 ip6tables -L DOCKER -n
@@ -174,4 +179,4 @@ sysctl net.ipv6.conf.all.disable_ipv6
 
 ## Conclusion
 
-GitLab CI/CD runners support IPv6 by configuring `config.toml` to use IPv6-enabled Docker networks and ensuring the Docker daemon has IPv6 enabled. The combination of a custom Docker network with a /64 IPv6 prefix and ip6tables masquerading allows CI build containers to have full IPv6 connectivity. This enables testing IPv6-specific features, pulling dependencies over IPv6, and deploying to IPv6-only or dual-stack infrastructure directly from CI pipelines.
+GitLab CI/CD runners support IPv6 by configuring `config.toml` to use IPv6-enabled Docker networks and ensuring the Docker daemon has IPv6 enabled. If your pipeline uses Docker-in-Docker, the DinD daemon must also start with IPv6 enabled so child containers receive IPv6 addresses. This enables testing IPv6-specific features, pulling dependencies over IPv6, and deploying to IPv6-only or dual-stack infrastructure directly from CI pipelines.
