@@ -112,13 +112,13 @@ variable "vpc_cidr" {
   type = string
 
   validation {
-    condition     = can(cidrhost(var.vpc_cidr, 0))
+    condition     = can(cidrnetmask(var.vpc_cidr))
     error_message = "The vpc_cidr must be a valid IPv4 CIDR block."
   }
 
   validation {
-    condition     = tonumber(split("/", var.vpc_cidr)[1]) <= 24
-    error_message = "The VPC CIDR prefix must be /24 or larger to allow subnet allocation."
+    condition     = try(tonumber(split("/", var.vpc_cidr)[1]) == 16, false)
+    error_message = "This example expects a /16 VPC CIDR so cidrsubnets(..., 8, ...) creates /24 subnets."
   }
 }
 ```
