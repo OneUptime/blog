@@ -8,18 +8,18 @@ Description: A step-by-step guide to installing Portainer CE on an NVIDIA Jetson
 
 ## Why Portainer on NVIDIA Jetson?
 
-NVIDIA Jetson devices (Jetson Nano, Jetson Xavier NX, Jetson Orin) are powerful ARM64-based edge computing platforms optimized for AI inference workloads. Portainer provides a browser-based container management interface, making it easy to deploy and manage containerized AI applications on Jetson hardware.
+NVIDIA Jetson devices (Jetson Xavier NX, Jetson Orin Nano, Jetson AGX Orin) are powerful ARM64-based edge computing platforms optimized for AI inference workloads. Portainer provides a browser-based container management interface, making it easy to deploy and manage containerized AI applications on Jetson hardware.
 
 ## Prerequisites
 
-- NVIDIA Jetson running JetPack 5.x or later (Ubuntu 20.04 / 22.04 base)
+- NVIDIA Jetson running JetPack 5.x or later (JetPack 5.x uses Ubuntu 20.04; JetPack 6.x uses Ubuntu 22.04)
 - SSH or direct terminal access
-- Docker installed (JetPack includes Docker by default)
+- Docker installed and running
 - At least 4 GB RAM recommended
 
 ## Step 1: Verify Docker Installation
 
-JetPack includes Docker. Verify it is running:
+Verify Docker is installed and running:
 
 ```bash
 docker --version
@@ -57,10 +57,10 @@ docker run -d \
   --restart=always \
   -v /var/run/docker.sock:/var/run/docker.sock \
   -v portainer_data:/data \
-  portainer/portainer-ce:latest
+  portainer/portainer-ce:lts
 ```
 
-The `portainer/portainer-ce:latest` image supports linux/arm64, which matches the Jetson architecture.
+The `portainer/portainer-ce:lts` image supports linux/arm64, which matches the Jetson architecture.
 
 ## Step 5: Access Portainer
 
@@ -88,7 +88,9 @@ Then in Portainer, when creating a container, add the runtime option `nvidia` to
 
 **Cannot connect to Docker daemon:**
 ```bash
-sudo chmod 666 /var/run/docker.sock
+sudo systemctl start docker
+sudo usermod -aG docker $USER
+newgrp docker
 ```
 
 **Image pull fails for ARM64:**
@@ -109,7 +111,7 @@ docker logs portainer
 
 ```bash
 docker stop portainer && docker rm portainer
-docker pull portainer/portainer-ce:latest
+docker pull portainer/portainer-ce:lts
 # Re-run the deploy command from Step 4
 ```
 
