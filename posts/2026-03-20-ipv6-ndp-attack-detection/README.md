@@ -27,30 +27,30 @@ flowchart LR
 
 # /etc/suricata/rules/ipv6-ndp.rules
 
-# All RA messages (ICMPv6 type 134)
-alert icmp6 any any -> ff02::1 any (
+# All RA messages (ICMPv6 type 134, multicast or unicast)
+alert icmpv6 any any -> any any (
     msg:"ICMPv6 Router Advertisement Detected";
     itype:134;
-    sid:9002001; rev:1;
+    sid:9002001; rev:2;
     classtype:protocol-command-decode;
 )
 
-# RA from link-local (expected from routers)
+# RFC 4861 requires Router Advertisements to use a link-local source address
 # Flag non-link-local RA sources as suspicious
-alert icmp6 !fe80::/10 any -> any any (
+alert icmpv6 !fe80::/10 any -> any any (
     msg:"Suspicious IPv6 Router Advertisement - Non-Link-Local Source";
     itype:134;
     priority:1;
-    sid:9002002; rev:1;
+    sid:9002002; rev:2;
     classtype:bad-unknown;
 )
 
 # High-frequency RA flooding (DoS)
-alert icmp6 any any -> any any (
+alert icmpv6 any any -> any any (
     msg:"IPv6 RA Flood Detected";
     itype:134;
     threshold: type both, track by_src, count 10, seconds 5;
-    sid:9002003; rev:1;
+    sid:9002003; rev:2;
     classtype:attempted-dos;
 )
 ```
@@ -61,14 +61,15 @@ alert icmp6 any any -> any any (
 # Cache poisoning: NA sent unsolicited claiming to own address
 # Attacker sends Neighbor Advertisement with O=1 (Override) for victim's address
 
-# Suricata: detect unsolicited NA (NA without prior NS)
-alert icmp6 any any -> any any (
-    msg:"Possible NDP Cache Poisoning - Unsolicited Neighbor Advertisement";
+# Suricata heuristic: repeated NA packets with Override set can indicate cache poisoning
+alert icmpv6 any any -> any any (
+    msg:"Possible NDP Cache Poisoning - NA Override Flag Burst";
     itype:136;
-    # Override flag set (byte 4 of ICMPv6 data, bit 5 = 0x20)
-    icmp6.hdr:5,1,0x20,0x20;
+    icmpv6.hdr;
+    # Override flag set in the NA flags byte at offset 4 (O=1 / 0x20)
+    byte_test:1,&,0x20,4;
     threshold: type both, track by_src, count 5, seconds 10;
-    sid:9002004; rev:1;
+    sid:9002004; rev:2;
     classtype:bad-unknown;
 )
 ```
@@ -80,7 +81,7 @@ alert icmp6 any any -> any any (
 
 LOGFILE="/var/log/ndp-changes.log"
 
-ip monitor neigh dev eth0 | while read -r line; do
+ip -6 monitor neigh dev eth0 | while read -r line; do
     echo "$(date '+%Y-%m-%d %H:%M:%S') ${line}" >> "${LOGFILE}"
 
     # Alert on LLADDR change for existing entry
@@ -89,7 +90,7 @@ ip monitor neigh dev eth0 | while read -r line; do
         MAC=$(echo "${line}" | awk '{print $5}')
 
         # Check previous MAC for this address
-        PREV_MAC=$(grep "${ADDR}" "${LOGFILE}" | tail -2 | head -1 | awk '{print $7}')
+        PREV_MAC=$(grep -F " ${ADDR} " "${LOGFILE}" | grep -v 'ALERT:' | tail -2 | head -1 | awk '{print $7}')
 
         if [ -n "${PREV_MAC}" ] && [ "${MAC}" != "${PREV_MAC}" ]; then
             echo "$(date): ALERT: MAC changed for ${ADDR}: ${PREV_MAC} → ${MAC}" \
@@ -135,9 +136,13 @@ while true; do
 
     if [ ${TOTAL} -gt ${THRESHOLD_CRIT} ]; then
         logger -p local0.crit "NDP CRITICAL: ${TOTAL} incomplete/failed entries (attack likely)"
-        # Optional: rate limit NS with nftables
-        nft insert rule ip6 filter input icmpv6 type nd-neighbor-solicit \
-            limit rate over 100/second drop
+        # Optional: if the ip6/filter/input chain already exists, add a one-time NS rate limit rule
+        if nft list chain ip6 filter input >/dev/null 2>&1; then
+            if ! nft list chain ip6 filter input | grep -Fq 'ndp-ns-flood-guard'; then
+                nft insert rule ip6 filter input icmpv6 type nd-neighbor-solicit \
+                    limit rate over 100/second drop comment "ndp-ns-flood-guard"
+            fi
+        fi
     elif [ ${TOTAL} -gt ${THRESHOLD_WARN} ]; then
         logger -p local0.warning "NDP WARNING: ${TOTAL} incomplete/failed entries"
     fi
@@ -152,14 +157,15 @@ done
 # DAD DoS: attacker responds to every DAD NS with NA
 # Prevents legitimate hosts from acquiring addresses
 
-# Suricata: detect rapid NA responses to DAD (NS to solicited-node multicast)
-alert icmp6 any any -> any any (
-    msg:"IPv6 DAD Denial of Service - Rapid NA Response";
+# Suricata heuristic: bursts of unsolicited all-nodes NAs can indicate DAD disruption
+alert icmpv6 any any -> ff02::1 any (
+    msg:"IPv6 DAD DoS Heuristic - Unsolicited NA Burst";
     itype:136;
-    # Solicited flag NOT set (S=0) - unsolicited NA typical in DAD DoS
-    icmp6.hdr:5,1,0x40,0x00;
+    icmpv6.hdr;
+    # Solicited flag not set in the NA flags byte at offset 4 (S=0)
+    byte_test:1,!&,0x40,4;
     threshold: type threshold, track by_src, count 20, seconds 10;
-    sid:9002005; rev:1;
+    sid:9002005; rev:2;
     classtype:attempted-dos;
 )
 ```
@@ -200,4 +206,4 @@ groups:
 
 ## Conclusion
 
-NDP attack detection requires monitoring at multiple layers: IDS signatures (Suricata) for real-time packet-level detection, kernel NDP table monitoring for cache overflow and MAC changes, and SIEM correlation for multi-event attack patterns. The most critical rules: RA from non-link-local sources (rogue RA), NA with Override flag at high rate (cache poisoning), INCOMPLETE entry count > 500 (NS flood), and MAC changes for established NDP entries (cache poisoning). Enable RA Guard on switches as a preventive control - detection rules catch what RA Guard misses or what comes through trusted ports.
+NDP attack detection requires monitoring at multiple layers: IDS signatures (Suricata) for real-time packet-level detection, kernel NDP table monitoring for cache overflow and MAC changes, and SIEM correlation for multi-event attack patterns. The most critical rules: RA from non-link-local sources (rogue RA), NA with Override flag at high rate (possible cache poisoning), INCOMPLETE entry count > 500 (NS flood), and MAC changes for established NDP entries (cache poisoning). Enable RA Guard on switches as a preventive control - detection rules catch what RA Guard misses or what comes through trusted ports.
