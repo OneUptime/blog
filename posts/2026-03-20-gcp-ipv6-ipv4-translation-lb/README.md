@@ -6,17 +6,17 @@ Tags: GCP, IPv6, IPv4, Translation, Load Balancer, Cloud
 
 Description: A guide to GCP's built-in IPv6-to-IPv4 translation at the load balancer layer, enabling IPv6 clients to reach IPv4-only backends without modifying the backend infrastructure.
 
-GCP's Global External HTTP(S) Load Balancer automatically translates IPv6 client connections to IPv4 when forwarding to IPv4-only backends. This is GCP's approach to dual-stack without requiring backends to support IPv6 natively.
+GCP's global external Application Load Balancer can terminate IPv6 client connections and proxy them over IPv4 to IPv4-only backends. This lets you offer IPv6 and IPv4 frontends without requiring your backends to support IPv6 natively.
 
 ## How GCP IPv6-to-IPv4 Translation Works
 
 ```text
-IPv6 Client → GCP Global LB (IPv6 frontend) → IPv4 backend
+IPv6 Client → GCP global external ALB (IPv6 frontend) → IPv4 backend
               ↑ Translation happens here
-              - Assigns IPv6 global address
+              - Allocates a global IPv6 /64 to the forwarding rule
               - Accepts IPv6 connections
-              - Translates to IPv4 for backend communication
-              - Preserves original IPv6 in X-Forwarded-For
+              - Proxies to IPv4 for backend communication
+              - Preserves the client IPv6 in X-Forwarded-For
 ```
 
 ## Architecture
@@ -29,8 +29,10 @@ The key insight: your backends can remain IPv4-only while clients can connect us
 # Backend with IPv4 instances (no IPv6 required on backends)
 
 resource "google_compute_backend_service" "main" {
-  name     = "main-backend"
-  protocol = "HTTP"
+  name                  = "main-backend"
+  protocol              = "HTTP"
+  load_balancing_scheme = "EXTERNAL_MANAGED"
+  port_name             = "http"
 
   backend {
     group = google_compute_instance_group.ipv4_instances.id
@@ -39,6 +41,7 @@ resource "google_compute_backend_service" "main" {
   health_checks = [google_compute_health_check.main.id]
 
   # No IPv6 configuration required here - backends are IPv4
+  # The instance group must define the matching named port "http"
 }
 
 resource "google_compute_health_check" "main" {
@@ -74,57 +77,60 @@ resource "google_compute_global_address" "ipv6" {
 
 # IPv4 forwarding rule
 resource "google_compute_global_forwarding_rule" "https_ipv4" {
-  name       = "https-fwd-ipv4"
-  target     = google_compute_target_https_proxy.main.id
-  port_range = "443"
-  ip_address = google_compute_global_address.ipv4.id
+  name                  = "https-fwd-ipv4"
+  target                = google_compute_target_https_proxy.main.id
+  port_range            = "443"
+  ip_address            = google_compute_global_address.ipv4.id
+  load_balancing_scheme = "EXTERNAL_MANAGED"
 }
 
 # IPv6 forwarding rule → same HTTPS proxy → same IPv4 backends
 resource "google_compute_global_forwarding_rule" "https_ipv6" {
-  name       = "https-fwd-ipv6"
-  target     = google_compute_target_https_proxy.main.id
-  port_range = "443"
-  ip_address = google_compute_global_address.ipv6.id
+  name                  = "https-fwd-ipv6"
+  target                = google_compute_target_https_proxy.main.id
+  port_range            = "443"
+  ip_address            = google_compute_global_address.ipv6.id
+  load_balancing_scheme = "EXTERNAL_MANAGED"
 }
 ```
 
 ## Reading the Original IPv6 Client IP in Backends
 
-Since backends only see IPv4 (GCP's load balancer IPs), the original IPv6 client address is in HTTP headers:
+Since the backend connection is proxied over IPv4, read the original client IPv6 from HTTP headers:
 
 ```bash
 # Configure your application to read X-Forwarded-For
-# The first IP in X-Forwarded-For is the original client IPv6 address
-
-# Example X-Forwarded-For header when client connects via IPv6:
-# X-Forwarded-For: 2001:db8::client, 130.211.x.x
-
-# In nginx:
-set $real_client $http_x_forwarded_for;
-# Or use the first IP only:
-# real_ip_header X-Forwarded-For;
+# Google Cloud appends: <client-ip>, <load-balancer-ip>
+# If an upstream proxy already sent X-Forwarded-For, the header becomes:
+# X-Forwarded-For: <existing-value>, <client-ip>, <load-balancer-ip>
+#
+# Example when the client connects via IPv6:
+# X-Forwarded-For: 2001:db8:abcd:1::1234, 2607:f8b0:4005:801::200e
+#
+# The client IP appended by Google Cloud is the second-to-last element.
+# The last element is the load balancer's forwarding-rule IP.
 ```
 
 ## Verifying IPv6 Translation
 
 ```bash
 # Get your load balancer's IPv6 address
+# Google Cloud allocates a /64 to the IPv6 forwarding rule; gcloud prints one address from that range.
 gcloud compute addresses describe lb-ipv6 --global \
   --format="value(address)"
 
-# Test IPv6 client connection
-curl -6 https://[GCP_IPV6_ADDRESS]/
+# Test IPv6 while keeping the HTTPS hostname for SNI and certificate validation
+curl -6 --resolve example.com:443:[GCP_IPV6_ADDRESS] https://example.com/
 
-# In backend access logs, verify original IPv6 appears in X-Forwarded-For
-tail -f /var/log/nginx/access.log | grep -E "2001:|fe80:|::1"
+# In application or reverse-proxy logs that record X-Forwarded-For,
+# verify it contains the client IPv6 followed by the load balancer IPv6 address
 ```
 
 ## GCP Header Reference
 
 | Header | Contains |
 |---|---|
-| `X-Forwarded-For` | Original client IP (IPv4 or IPv6) |
+| `X-Forwarded-For` | Existing forwarded IPs (if any), then the client IP, then the load balancer forwarding-rule IP |
 | `X-Forwarded-Proto` | Original protocol (http/https) |
 | `X-Goog-Iap-Jwt-Assertion` | IAP token if using Cloud IAP |
 
@@ -137,8 +143,8 @@ tail -f /var/log/nginx/access.log | grep -E "2001:|fe80:|::1"
 
 ## Limitations
 
-- Backends cannot initiate connections to IPv6 clients
-- Some protocols that embed IP addresses (like FTP active mode) won't work
+- Backends receive proxied connections, not direct end-to-end IPv6 client sessions
+- Applications must use `X-Forwarded-For` if they need the original client IPv6
 - True end-to-end IPv6 requires IPv6-capable backend instances
 
 GCP's IPv6-to-IPv4 translation at the load balancer is the recommended starting point for adding IPv6 support to existing GCP workloads - it enables IPv6 connectivity immediately without any infrastructure changes.
