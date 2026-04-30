@@ -12,10 +12,12 @@ Installing Longhorn with `kubectl` is the most straightforward approach, requiri
 
 ## Prerequisites
 
-- A running Kubernetes cluster (version 1.21 or later)
+- A running Kubernetes cluster (version 1.25 or later)
 - `kubectl` installed and configured to access your cluster
 - `open-iscsi` installed and enabled on each Kubernetes node
-- Each node should have at least 10 GiB of available disk space
+- Mount propagation enabled on each Kubernetes node
+- An `ext4` or `XFS` filesystem available for Longhorn storage
+- Available disk space sized appropriately for your workload
 
 ### Install open-iscsi on Each Node
 
@@ -32,7 +34,10 @@ systemctl enable --now iscsid
 **RHEL/CentOS/Rocky Linux:**
 ```bash
 # Install iscsi-initiator-utils
-yum install -y iscsi-initiator-utils
+yum --setopt=tsflags=noscripts install -y iscsi-initiator-utils
+
+# Generate the initiator name file required by Longhorn
+echo "InitiatorName=$(/sbin/iscsi-iname)" > /etc/iscsi/initiatorname.iscsi
 
 # Enable and start the service
 systemctl enable --now iscsid
@@ -40,11 +45,11 @@ systemctl enable --now iscsid
 
 ### Run the Environment Check
 
-Before installing, verify all nodes meet Longhorn's requirements:
+Before installing, verify all nodes meet Longhorn's current requirements:
 
 ```bash
-# Download and run the environment check script
-curl -sSfL https://raw.githubusercontent.com/longhorn/longhorn/v1.7.0/scripts/environment_check.sh | bash
+# After installing longhornctl locally, run the official preflight check
+longhornctl check preflight
 ```
 
 Review the output and fix any warnings before proceeding.
@@ -55,7 +60,7 @@ You can either apply the manifest directly from the URL or download it first for
 
 ```bash
 # Option 1: Download the manifest locally
-curl -sSfL https://raw.githubusercontent.com/longhorn/longhorn/v1.7.0/deploy/longhorn.yaml \
+curl -sSfL https://raw.githubusercontent.com/longhorn/longhorn/v1.11.1/deploy/longhorn.yaml \
   -o longhorn.yaml
 ```
 
@@ -70,7 +75,7 @@ less longhorn.yaml
 
 ```bash
 # Option 1: Apply directly from the URL (requires internet access)
-kubectl apply -f https://raw.githubusercontent.com/longhorn/longhorn/v1.7.0/deploy/longhorn.yaml
+kubectl apply -f https://raw.githubusercontent.com/longhorn/longhorn/v1.11.1/deploy/longhorn.yaml
 
 # Option 2: Apply from the locally downloaded file
 kubectl apply -f longhorn.yaml
@@ -125,10 +130,14 @@ Longhorn creates a default StorageClass during installation:
 kubectl get storageclass
 ```
 
-You should see a `longhorn` storage class in the output. To make it the cluster default:
+You should see a `longhorn` storage class in the output, and the official deployment manifest marks it as the default. If another StorageClass is still marked as default and you want Longhorn to be the only default:
 
 ```bash
-# Set Longhorn as the default storage class
+# Mark the current default StorageClass as non-default
+kubectl patch storageclass <existing-default-storageclass> \
+  -p '{"metadata": {"annotations":{"storageclass.kubernetes.io/is-default-class":"false"}}}'
+
+# Set Longhorn as the default StorageClass
 kubectl patch storageclass longhorn \
   -p '{"metadata": {"annotations":{"storageclass.kubernetes.io/is-default-class":"true"}}}'
 ```
@@ -201,4 +210,4 @@ kubectl delete -f test-volume.yaml
 
 ## Conclusion
 
-Installing Longhorn with `kubectl` is simple and effective. The single-command manifest installation gets Longhorn running quickly, and the provided tools help you verify the installation and test volume provisioning. For more advanced configurations such as custom replica counts, backup targets, and encryption, explore Longhorn's settings through the UI or patch the Longhorn settings ConfigMap directly.
+Installing Longhorn with `kubectl` is simple and effective. The single-command manifest installation gets Longhorn running quickly, and the provided tools help you verify the installation and test volume provisioning. For more advanced configurations such as custom replica counts, backup targets, and encryption, explore Longhorn's settings through the UI or update them with `kubectl edit settings.longhorn.io <SETTING-NAME> -n longhorn-system`.
