@@ -11,7 +11,7 @@ Testing firewall rules with crafted packets verifies that your IPv6 firewall act
 ## Testing Methodology
 
 ```text
-Blocked:  Crafted packet → Firewall → DROP (no response)
+Blocked:  Crafted packet → Firewall → DROP/REJECT (often no response)
 Permitted: Crafted packet → Firewall → Passes through
 ```
 
@@ -27,24 +27,21 @@ sudo ip6tables -t filter -L -n -v
 sudo ip6tables -t mangle -L -n -v
 
 # Check if rules exist (common issue: IPv6 rules missing when IPv4 rules present)
-sudo ip6tables -L | wc -l   # Should be more than 3
-sudo iptables -L | wc -l    # Compare IPv4 rule count
+sudo ip6tables -S | wc -l   # Compare IPv6 and IPv4 rule counts; a near-empty IPv6 ruleset is a red flag
+sudo iptables -S | wc -l    # Compare IPv4 rule count
 ```
 
-## Testing with hping3 (IPv6)
+## Testing with Nping (IPv6)
 
 ```bash
-# TCP SYN to blocked port (expect no response)
-hping3 -6 -S -p 23 2001:db8::target
+# TCP SYN to blocked port (expect no response or an ICMPv6 reject)
+sudo nping -6 --tcp --flags syn -p 23 2001:db8::10
 
 # TCP SYN to allowed port (expect SYN-ACK)
-hping3 -6 -S -p 443 2001:db8::target
+sudo nping -6 --tcp --flags syn -p 443 2001:db8::10
 
 # UDP probe
-hping3 -6 -2 -p 161 2001:db8::target
-
-# ICMP echo test
-hping3 -6 --icmpv6 2001:db8::target
+sudo nping -6 --udp -p 161 2001:db8::10
 ```
 
 ## Testing with Scapy
@@ -53,9 +50,9 @@ hping3 -6 --icmpv6 2001:db8::target
 from scapy.all import *
 from scapy.layers.inet6 import *
 
-target = "2001:db8::target"
+target = "2001:db8::10"
 
-# Test TCP port (expect RST for open, no response for filtered)
+# Test TCP port (expect SYN-ACK for open, RST for closed, or no response / ICMPv6 unreachable for filtered)
 pkt = IPv6(dst=target) / TCP(dport=22, flags="S")
 resp = sr1(pkt, timeout=2, verbose=0, iface="eth0")
 
@@ -65,6 +62,8 @@ if resp:
             print(f"Port 22: OPEN")
         elif resp[TCP].flags == "RA":
             print(f"Port 22: CLOSED (RST)")
+    elif resp.haslayer(ICMPv6DestUnreach):
+        print(f"Port 22: FILTERED (ICMPv6 unreachable)")
 else:
     print(f"Port 22: FILTERED (no response)")
 
@@ -79,18 +78,27 @@ print("ICMP Echo:", "ALLOWED" if resp else "BLOCKED")
 Many firewalls have bugs in handling extension headers:
 
 ```bash
-# Test RA with hop-by-hop header (bypass RA Guard)
-sudo ra6 -i eth0 --hbh-opt -P 2001:db8:test::/64 -d 2001:db8::target
+# Test RA with a Hop-by-Hop header (common RA Guard evasion case on local links)
+sudo ra6 -i eth0 -H 8 -P 2001:db8:1::/64 -d ff02::1
 
-# Test fragments (ensure firewall reassembles before filtering)
-sudo frag6 -i eth0 -d 2001:db8::target --frag-size 8 --proto tcp --dport 80
+# Test fragmented TCP probes (ensure fragments do not bypass filtering)
+python3 -c "
+from scapy.all import *
+from scapy.layers.inet import *
+from scapy.layers.inet6 import *
+pkt = IPv6(dst='2001:db8::10') / TCP(dport=80, flags='S') / Raw(b'A' * 256)
+for frag in fragment6(pkt, 128):
+    send(frag, iface='eth0', verbose=0)
+"
 
-# Test type 0 routing header (should be blocked per RFC 5095)
+# Test type 0 routing header with Segments Left > 0 (should be blocked per RFC 5095)
 python3 -c "
 from scapy.all import *
 from scapy.layers.inet6 import *
-pkt = IPv6(dst='2001:db8::target') / IPv6ExtHdrRouting(type=0) / TCP(dport=80)
-send(pkt, iface='eth0')
+from scapy.layers.inet import *
+# The IPv6 destination is the first segment; the final destination is in the RH0 list.
+pkt = IPv6(dst='2001:db8::20') / IPv6ExtHdrRouting(type=0, segleft=1, addresses=['2001:db8::10']) / TCP(dport=80)
+send(pkt, iface='eth0', verbose=0)
 "
 ```
 
@@ -99,17 +107,12 @@ send(pkt, iface='eth0')
 Test that critical ICMPv6 is permitted:
 
 ```bash
-# Packet Too Big - must be allowed (required for PMTUD)
-python3 -c "
-from scapy.all import *
-from scapy.layers.inet6 import *
-pkt = IPv6(dst='2001:db8::target') / ICMPv6PacketTooBig(mtu=1280)
-send(pkt, iface='eth0')
-"
+# Capture Packet Too Big messages during a large transfer
+sudo tcpdump -i eth0 'icmp6 and ip6[40] == 2'
 
-# Verify by checking if connection establishes to large-packet services
-# If PTB is blocked: large HTTP requests will hang
-curl -6 --max-time 10 http://[2001:db8::target]/large-file
+# Verify by checking whether PMTUD works end-to-end
+# If PTB is blocked: large HTTP transfers may hang or stall
+curl -6 --max-time 10 http://[2001:db8::10]/large-file
 ```
 
 ## Common IPv6 Firewall Test Cases
@@ -118,11 +121,11 @@ curl -6 --max-time 10 http://[2001:db8::target]/large-file
 |---|---|---|
 | ICMPv6 Echo Request | ALLOWED | Diagnostic |
 | ICMPv6 Packet Too Big | ALLOWED | PMTUD requirement |
-| NDP (Types 133-136) | ALLOWED | Address configuration |
+| NDP (Types 133-136) | ALLOWED on the local link | Address configuration |
 | TCP to allowed ports | ALLOWED | Application traffic |
-| TCP to denied ports | DROPPED | Security policy |
+| TCP to denied ports | DROPPED or REJECTED | Security policy |
 | Routing Header Type 0 | DROPPED | RFC 5095 |
-| ICMPv6 RA from non-router | DROPPED | RA Guard |
+| ICMPv6 RA from non-router on guarded access ports | DROPPED | RA Guard |
 | IPv6 fragments | Depends | Application-specific |
 
 ## Automated Firewall Rule Testing
@@ -131,13 +134,12 @@ curl -6 --max-time 10 http://[2001:db8::target]/large-file
 #!/bin/bash
 # ipv6-fw-test.sh - Test IPv6 firewall rules
 
-TARGET="2001:db8::target"
-IFACE="eth0"
+TARGET="2001:db8::10"
 
 test_port() {
   local port=$1
   local expected=$2
-  result=$(nmap -6 -p $port --open $TARGET 2>/dev/null | grep -c "open")
+  result=$(nmap -6 -Pn -p "$port" --open "$TARGET" 2>/dev/null | grep -c "/tcp open")
   if [ "$result" = "$expected" ]; then
     echo "PASS: Port $port"
   else
@@ -149,7 +151,7 @@ test_port() {
 test_port 443 1
 test_port 22 1
 
-# Should be filtered
+# Should not be open
 test_port 23 0
 test_port 3389 0
 ```
