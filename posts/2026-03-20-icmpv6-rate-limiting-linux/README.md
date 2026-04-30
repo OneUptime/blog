@@ -8,7 +8,7 @@ Description: Configure Linux kernel ICMPv6 rate limiting using sysctl, understan
 
 ## Introduction
 
-Linux automatically rate-limits ICMPv6 error message generation to prevent a router or host from flooding the network with error messages. The rate limiting is controlled by two sysctl parameters: `net.ipv6.icmp.ratelimit` (the interval between messages in milliseconds) and `net.ipv6.icmp.ratemask` (a bitmask that controls which message types are rate-limited). Understanding these parameters allows tuning for both DoS protection and high-performance environments.
+Linux automatically rate-limits ICMPv6 error message generation to prevent a router or host from flooding the network with error messages. The rate limiting is controlled by two sysctl parameters: `net.ipv6.icmp.ratelimit` (the minimum interval between messages in milliseconds) and `net.ipv6.icmp.ratemask` (a comma-separated list of ICMPv6 type ranges that are rate-limited). Understanding these parameters allows tuning for both DoS protection and high-performance environments.
 
 ## Linux ICMPv6 Rate Limiting Parameters
 
@@ -16,21 +16,29 @@ Linux automatically rate-limits ICMPv6 error message generation to prevent a rou
 # View current rate limiting settings
 
 sysctl net.ipv6.icmp.ratelimit
-# Default: 1000 (1000ms = 1 error per second per source)
+# Default: 1000 (1000ms minimum spacing between rate-limited messages)
 
 sysctl net.ipv6.icmp.ratemask
-# Default: 0000001110000000 in binary representation
-# = bitmask of ICMPv6 types that are rate-limited
+# Default: 0-1,3-127
+# = comma-separated ranges of ICMPv6 types that are rate-limited
+#   (the default rate-limits ICMPv6 errors except Packet Too Big)
 
-# Interpret the ratemask as a bitmask:
-# bit N = 1 means ICMPv6 type N is rate-limited
-python3 -c "
-mask = $(cat /proc/sys/net/ipv6/icmp/ratemask)
-print(f'Ratemask: {mask} ({mask:016b} binary)')
-for t in range(16):
-    if mask & (1 << t):
-        print(f'  Type {t} is rate-limited')
-"
+# Interpret the ratemask as a list of ranges
+python3 << 'EOF'
+with open('/proc/sys/net/ipv6/icmp/ratemask') as f:
+    ratemask = f.read().strip()
+
+print(f'Ratemask: {ratemask}')
+for part in ratemask.split(','):
+    if '-' in part:
+        start, end = map(int, part.split('-', 1))
+    else:
+        start = end = int(part)
+    if start == end:
+        print(f'  Type {start} is rate-limited')
+    else:
+        print(f'  Types {start}-{end} are rate-limited')
+EOF
 ```
 
 ## Tuning ratelimit
@@ -38,12 +46,12 @@ for t in range(16):
 ```bash
 # View current setting
 cat /proc/sys/net/ipv6/icmp/ratelimit
-# 1000 = 1 error per second (default)
+# 1000 = 1000ms minimum spacing between rate-limited ICMPv6 messages (default)
 
-# High-traffic server: allow up to 100 errors per second
+# High-traffic server: allow up to about 100 rate-limited messages per second
 sudo sysctl -w net.ipv6.icmp.ratelimit=10
 
-# Conservative setting: 1 error per 10 seconds
+# Conservative setting: about 1 rate-limited message every 10 seconds
 sudo sysctl -w net.ipv6.icmp.ratelimit=10000
 
 # Effectively disable rate limiting (use only if you have other protections)
@@ -58,31 +66,45 @@ sudo sysctl -p /etc/sysctl.d/ipv6-icmp.conf
 
 ```bash
 # The ratemask determines WHICH ICMPv6 types are rate-limited
-# Default includes Types 1, 2, 3 (error messages)
+# Default: 0-1,3-127 (rate-limit ICMPv6 errors except Packet Too Big)
 
 # Calculate a custom ratemask
 python3 << 'EOF'
-# Types to rate-limit: 1 (Dest Unreachable), 3 (Time Exceeded), 4 (Parameter Problem)
-# Type 2 (Packet Too Big) should NOT be rate-limited (would break PMTUD)
-rate_limit_types = [1, 3, 4]   # Exclude Type 2!
-mask = 0
-for t in rate_limit_types:
-    mask |= (1 << t)
-print(f"Ratemask value: {mask}")
-print(f"Binary: {mask:016b}")
+# Types to rate-limit: 1 (Destination Unreachable), 3 (Time Exceeded), 4 (Parameter Problem)
+# Type 2 (Packet Too Big) should not be rate-limited because PMTUD depends on it.
+rate_limit_types = [1, 3, 4]
+
+ranges = []
+start = prev = rate_limit_types[0]
+for t in rate_limit_types[1:]:
+    if t == prev + 1:
+        prev = t
+    else:
+        ranges.append(f"{start}-{prev}" if start != prev else str(start))
+        start = prev = t
+ranges.append(f"{start}-{prev}" if start != prev else str(start))
+
+ratemask = ",".join(ranges)
+print(f"Ratemask value: {ratemask}")
 EOF
 
-# Apply the custom ratemask (replace <VALUE> with the calculated number)
+# Apply the custom ratemask (replace <VALUE> with the calculated range list)
 # Example: rate limit types 1, 3, 4 but NOT 2 (Packet Too Big)
-sudo sysctl -w net.ipv6.icmp.ratemask=26  # 11010 binary = types 1, 3, 4
+sudo sysctl -w net.ipv6.icmp.ratemask='1,3-4'
 
 # Verify the types being rate-limited
 python3 -c "
-mask = 26
-for t in range(16):
-    status = 'rate-limited' if mask & (1 << t) else 'NOT rate-limited'
-    if t in [1,2,3,4]:
-        print(f'Type {t}: {status}')
+ratemask = '1,3-4'
+ranges = []
+for part in ratemask.split(','):
+    if '-' in part:
+        start, end = map(int, part.split('-', 1))
+    else:
+        start = end = int(part)
+    ranges.append((start, end))
+for t in [1,2,3,4]:
+    status = 'rate-limited' if any(start <= t <= end for start, end in ranges) else 'NOT rate-limited'
+    print(f'Type {t}: {status}')
 "
 ```
 
@@ -97,38 +119,33 @@ For more granular control than the kernel sysctl:
 # Allow Packet Too Big without rate limiting (critical for PMTUD)
 sudo ip6tables -I INPUT 1 -p icmpv6 --icmpv6-type packet-too-big -j ACCEPT
 
-# Rate limit Echo Request (ping flood protection)
+# Allow core ICMPv6 errors before any rate-limited rules
+sudo ip6tables -I INPUT 2 -p icmpv6 --icmpv6-type destination-unreachable -j ACCEPT
+sudo ip6tables -I INPUT 3 -p icmpv6 --icmpv6-type time-exceeded -j ACCEPT
+sudo ip6tables -I INPUT 4 -p icmpv6 --icmpv6-type parameter-problem -j ACCEPT
+
+# Rate limit Echo Request (ping flood protection) per source
 sudo ip6tables -A INPUT -p icmpv6 --icmpv6-type echo-request \
-    -m limit --limit 20/second --limit-burst 40 -j ACCEPT
+    -m hashlimit --hashlimit-upto 20/second --hashlimit-burst 40 \
+    --hashlimit-mode srcip --hashlimit-name icmpv6-echo-request -j ACCEPT
 sudo ip6tables -A INPUT -p icmpv6 --icmpv6-type echo-request -j DROP
-
-# Rate limit Neighbor Solicitation
-sudo ip6tables -A INPUT -p icmpv6 --icmpv6-type neighbor-solicitation \
-    -m limit --limit 50/second --limit-burst 100 -j ACCEPT
-sudo ip6tables -A INPUT -p icmpv6 --icmpv6-type neighbor-solicitation -j DROP
-
-# Global rate limit for all other ICMPv6
-sudo ip6tables -A INPUT -p icmpv6 \
-    -m limit --limit 100/second --limit-burst 200 -j ACCEPT
-sudo ip6tables -A INPUT -p icmpv6 -j DROP
 ```
 
 ## Monitoring Rate Limiting Effects
 
 ```bash
-# Check if rate limiting is dropping ICMPv6
-cat /proc/net/snmp6 | grep -E "Icmp6|OutErrors"
+# Inspect ICMPv6 counters, including the rate-limit counter if present
+cat /proc/net/snmp6 | grep -E "Icmp6OutRateLimit|Icmp6OutMsgs|Icmp6OutErrors"
 
-# Compare with tcpdump to see actual traffic rate
-sudo tcpdump -i eth0 -q "icmp6" 2>&1 | \
-    awk '{count++} NR%10==0 {print count " ICMPv6 packets in last 10"}'
+# Count ICMPv6 packets observed over a 10-second sample
+sudo timeout 10 tcpdump -i eth0 -qn -l icmp6 2>/dev/null | wc -l
 
-# Check ip6tables hit counts on rate-limit rules
-sudo ip6tables -L INPUT -v -n | grep "icmpv6.*limit"
+# Check ip6tables hit counts on ICMPv6 rules
+sudo ip6tables -L INPUT -v -n
 
-# Monitor neighbor table for exhaustion (related to NS rate limiting)
+# Monitor neighbor table for exhaustion (related to ND pressure on the link)
 watch -n 1 'ip -6 neigh show | wc -l'
-# If this grows rapidly: NS flood or neighbor table exhaustion
+# If this grows rapidly: possible NS flood or neighbor table exhaustion
 ```
 
 ## Recommended Settings by Environment
@@ -136,19 +153,19 @@ watch -n 1 'ip -6 neigh show | wc -l'
 ```python
 RATE_LIMIT_PROFILES = {
     "workstation": {
-        "ratelimit":  1000,  # 1/second (default)
+        "ratelimit":  1000,  # 1000ms minimum spacing (default)
         "description": "Conservative default; adequate for desktop use"
     },
     "server": {
-        "ratelimit":  100,   # 10/second
+        "ratelimit":  100,   # 100ms minimum spacing
         "description": "More responsive for servers handling many connections"
     },
     "router": {
-        "ratelimit":  50,    # 20/second
+        "ratelimit":  50,    # 50ms minimum spacing
         "description": "Higher throughput; router handles many flows"
     },
     "ddos_protection": {
-        "ratelimit":  5000,  # 0.2/second
+        "ratelimit":  5000,  # 5000ms minimum spacing
         "description": "Aggressive limiting when under attack"
     },
 }
@@ -159,4 +176,4 @@ for profile, config in RATE_LIMIT_PROFILES.items():
 
 ## Conclusion
 
-Linux ICMPv6 rate limiting protects against error storms and DoS attacks using the `net.ipv6.icmp.ratelimit` sysctl. The `ratemask` controls which types are rate-limited - never include Type 2 (Packet Too Big) in the ratemask, as rate-limiting it breaks PMTUD. The default settings (1 error per second, types 1-4 rate-limited) are appropriate for most environments. For high-performance servers or routers, reduce the ratelimit interval (to 100ms or less). For DoS protection, combine kernel rate limiting with ip6tables `--limit` rules for per-type and per-source granularity.
+Linux ICMPv6 rate limiting protects against error storms and DoS attacks using the `net.ipv6.icmp.ratelimit` sysctl. The `net.ipv6.icmp.ratemask` sysctl uses comma-separated type ranges, not a bitmask; the default value is `0-1,3-127`, which rate-limits ICMPv6 errors except Packet Too Big. Type 2 (Packet Too Big) should not be rate-limited, because PMTUD depends on it. For high-performance servers or routers, reduce the ratelimit interval (to 100ms or less). For DoS protection, combine kernel rate limiting with ip6tables `--hashlimit` rules when you need per-type or per-source granularity.
