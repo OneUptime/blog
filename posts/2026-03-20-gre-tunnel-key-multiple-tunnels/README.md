@@ -13,7 +13,7 @@ When multiple GRE tunnels share the same source and destination IPs, GRE keys di
 ## Why Use GRE Keys
 
 ```text
-Without keys: only one GRE tunnel possible between 10.0.0.1 and 10.0.0.2
+Without keys: no GRE key is available to distinguish logical flows between 10.0.0.1 and 10.0.0.2
 
 With keys:
   Tunnel 1: 10.0.0.1 → 10.0.0.2, key 100 (Tenant A)
@@ -69,6 +69,10 @@ ip link set gre-tenant-a up
 ip tunnel add gre-tenant-b mode gre local 10.0.0.2 remote 10.0.0.1 key 200 ttl 255
 ip addr add 172.16.2.2/30 dev gre-tenant-b
 ip link set gre-tenant-b up
+
+ip tunnel add gre-mgmt mode gre local 10.0.0.2 remote 10.0.0.1 key 300 ttl 255
+ip addr add 172.16.99.2/30 dev gre-mgmt
+ip link set gre-mgmt up
 ```
 
 ## Verifying Keyed Tunnels
@@ -78,17 +82,19 @@ ip link set gre-tenant-b up
 ip tunnel show | grep key
 # gre-tenant-a: gre/ip remote 10.0.0.2 local 10.0.0.1 ttl 255 key 0x64
 # gre-tenant-b: gre/ip remote 10.0.0.2 local 10.0.0.1 ttl 255 key 0xc8
-# (0x64 = 100, 0xc8 = 200 in decimal)
+# gre-mgmt: gre/ip remote 10.0.0.2 local 10.0.0.1 ttl 255 key 0x12c
+# (0x64 = 100, 0xc8 = 200, 0x12c = 300 in decimal)
 
 # Ping through each tunnel
 ping 172.16.1.2   # Tenant A tunnel
 ping 172.16.2.2   # Tenant B tunnel
+ping 172.16.99.2  # Management tunnel
 ```
 
 ## Capturing Keyed GRE Traffic
 
 ```bash
-# Capture GRE with specific key (requires tshark)
+# Display only GRE packets with key 100 (tshark display filter)
 tshark -i eth0 -Y "gre.key == 100"
 
 # Or with tcpdump (shows all GRE)
@@ -104,6 +110,7 @@ Name=gre-tenant-a
 Kind=gre
 
 [Tunnel]
+Independent=yes
 Local=10.0.0.1
 Remote=10.0.0.2
 TTL=255
@@ -114,5 +121,5 @@ Key=100
 
 - GRE keys allow multiple tunnels between the same source/destination IP pair to be differentiated.
 - The key must match on both ends; a mismatch causes the tunnel to not receive traffic.
-- `ip tunnel show | grep key` shows keys in hexadecimal; convert with `printf "%d\n" 0x64`.
+- `ip tunnel show | grep key` may display keys in hexadecimal; convert with `printf "%d\n" 0x64`.
 - Use GRE keys for multi-tenant environments where different tenants share the same underlay infrastructure.
