@@ -23,9 +23,9 @@ ICMP Echo Request (Type 8) and Echo Reply (Type 0) are the foundation of the pin
 |                          Data / Payload                       |
 ```
 
-- **Identifier**: Identifies the ping session (PID of the ping process)
-- **Sequence Number**: Increments per packet - gaps indicate loss
-- **Data**: Filled with timestamp or pattern bytes (used to calculate RTT)
+- **Identifier**: Used by the sender to match replies with requests; many ping implementations set one value per session, but the exact value is implementation-specific
+- **Sequence Number**: Typically increments with each request so replies can be matched and missing replies spotted
+- **Data**: Arbitrary payload returned unchanged in the reply; many ping implementations place a timestamp and pattern bytes here
 
 ## Capturing Echo Request/Reply
 
@@ -49,8 +49,23 @@ tcpdump -i eth0 -n -v icmp
 tcpdump -i eth0 -n -w /tmp/ping.pcap 'icmp and (icmp[0]=8 or icmp[0]=0)'
 
 # Read back and look for unanswered requests
-tcpdump -r /tmp/ping.pcap -n | awk '/request/{req[$NF]=$0} /reply/{rep[$NF]=$0}
-  END{for(k in req) if(!(k in rep)) print "No reply for:", req[k]}'
+tcpdump -r /tmp/ping.pcap -n | awk '{
+  id = ""; seq = ""
+  for (i = 1; i <= NF; i++) {
+    if ($i == "id") id = $(i + 1)
+    if ($i == "seq") seq = $(i + 1)
+  }
+  gsub(/,/, "", id)
+  gsub(/,/, "", seq)
+  key = id ":" seq
+}
+/request/ && id != "" && seq != "" { req[key] = $0 }
+/reply/ && id != "" && seq != "" { rep[key] = $0 }
+END {
+  for (key in req)
+    if (!(key in rep))
+      print "No reply for:", req[key]
+}'
 ```
 
 ## Building a Custom Ping with Python
@@ -58,11 +73,13 @@ tcpdump -r /tmp/ping.pcap -n | awk '/request/{req[$NF]=$0} /reply/{rep[$NF]=$0}
 ```python
 import struct
 import socket
-import time
 import os
 
 def create_icmp_echo_request(identifier, sequence):
     """Create an ICMP Echo Request packet."""
+    identifier &= 0xffff
+    sequence &= 0xffff
+
     # Type=8, Code=0, Checksum=0 (filled later), ID, Seq
     header = struct.pack('!BBHHH', 8, 0, 0, identifier, sequence)
     data = b'ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefgh'  # 34 bytes of payload
@@ -83,8 +100,9 @@ def calculate_checksum(packet):
     return ~s & 0xffff
 
 # Usage:
+# Raw ICMP sockets typically require root or CAP_NET_RAW privileges.
 # sock = socket.socket(socket.AF_INET, socket.SOCK_RAW, socket.IPPROTO_ICMP)
-# packet = create_icmp_echo_request(os.getpid(), 1)
+# packet = create_icmp_echo_request(os.getpid() & 0xffff, 1)
 # sock.sendto(packet, ('8.8.8.8', 0))
 ```
 
@@ -92,13 +110,15 @@ def calculate_checksum(packet):
 
 ```bash
 # Standard ping measures round-trip time (RTT)
-# But ICMP timestamps embedded in the payload let you measure one-way delay
+# Dividing RTT by 2 is only a rough estimate, not a true one-way measurement
 
-# Check if target embeds timestamps (some implementations do)
+# The time= field reported by ping is RTT
 ping -c 1 -v 8.8.8.8 | grep "bytes from"
-# The time= field is always RTT - divide by 2 for approximate one-way latency
+
+# True one-way delay requires synchronized clocks or a different mechanism,
+# such as ICMP Timestamp (Type 13/14), which is distinct from Echo Request/Reply
 ```
 
 ## Conclusion
 
-ICMP Echo Request and Reply are simple but powerful. The identifier and sequence number fields let you correlate requests with replies and detect loss. The payload's embedded timestamp enables RTT calculation. Capturing these packets gives you direct visibility into reachability and latency at the IP layer, independent of transport protocol behavior.
+ICMP Echo Request and Reply are simple but powerful. The identifier and sequence number fields let you correlate requests with replies and detect loss. Many ping implementations place a timestamp in the payload to calculate RTT. Capturing these packets gives you direct visibility into reachability and latency at the IP layer, independent of transport protocol behavior.
