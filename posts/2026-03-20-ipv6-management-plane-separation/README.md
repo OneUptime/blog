@@ -16,7 +16,7 @@ Management plane separation ensures that administrative access to network device
 flowchart LR
     Internet --> DataPlane[Data Plane\n2001:db8::/32]
     DataPlane --> Router
-    Router --> ManagementPlane[Management Plane\nfd00:mgmt::/48]
+    Router --> ManagementPlane[Management Plane\nfd12:3456:789a::/48]
     Admin --> ManagementPlane
     Note[Data plane traffic CANNOT\nreach management plane] -.- ManagementPlane
 ```
@@ -31,14 +31,14 @@ Benefits:
 Use ULA (Unique Local Addresses, fc00::/7) for management networks:
 
 ```text
-Management network:     fd00:mgmt::/48   (ULA - never routed to internet)
-Router loopbacks:       fd00:mgmt:0::/64
-Switch management:      fd00:mgmt:1::/64
-Server IPMI/BMC:        fd00:mgmt:2::/64
-Admin workstations:     fd00:mgmt:3::/64
+Management network:     fd12:3456:789a::/48   (ULA - not intended to be routed on the public Internet)
+Router loopbacks:       fd12:3456:789a:0::/64
+Switch management:      fd12:3456:789a:1::/64
+Server IPMI/BMC:        fd12:3456:789a:2::/64
+Admin workstations:     fd12:3456:789a:3::/64
 ```
 
-ULA ensures management addresses can never appear in the global routing table.
+ULA is not intended to be routed on the public Internet, which helps keep management prefixes out of global routing.
 
 ## Cisco: Management VRF for IPv6
 
@@ -52,51 +52,54 @@ vrf definition MGMT
 interface GigabitEthernet0/0
   description "Management Network"
   vrf forwarding MGMT
-  ipv6 address fd00:mgmt:0::1/64
-  ipv6 nd ra suppress   ! No RA on management link
+  ipv6 address fd12:3456:789a:0::1/64
+  ipv6 nd ra suppress all   ! No RA on management link
   no shutdown
 
 ! Restrict VTY access to management VRF only
 line vty 0 15
   login local
   transport input ssh
-  ipv6 access-class IPv6-MGMT-ACL in
+  ipv6 access-class IPv6-MGMT-ACL in vrfname MGMT
 
 ipv6 access-list IPv6-MGMT-ACL
-  permit ipv6 fd00:mgmt::/48 any   ! Only management subnet
+  permit ipv6 fd12:3456:789a::/48 any   ! Only management subnet
   deny   ipv6 any any log
 ```
 
-## Juniper: Routing Instance for Management
+## Juniper: Management Instance for IPv6
 
 ```text
-# JunOS: Use the dedicated fxp0 management interface
+# Junos OS: Use the dedicated fxp0 interface in the mgmt_junos instance
 
-set interfaces fxp0 unit 0 family inet6 address fd00:mgmt:0::1/64
+set routing-instances mgmt_junos description "Dedicated management VRF"
+set system management-instance
+set interfaces fxp0 unit 0 family inet6 address fd12:3456:789a:0::1/64
 
-# Restrict SSH to management interface only
+# Protect the management interface with an IPv6 source filter
 set system services ssh root-login deny
-set firewall family inet6 filter MGMT-ONLY term allow-mgmt from source-address fd00:mgmt::/48
+set firewall family inet6 filter MGMT-ONLY term allow-mgmt from source-address fd12:3456:789a::/48
 set firewall family inet6 filter MGMT-ONLY term allow-mgmt then accept
 set firewall family inet6 filter MGMT-ONLY term deny-rest then reject
-set interfaces lo0 unit 0 family inet6 filter input MGMT-ONLY
+set interfaces fxp0 unit 0 family inet6 filter input MGMT-ONLY
 ```
 
 ## Linux: Management Namespace Separation
 
-On Linux servers, use network namespaces to separate management from data:
+On Linux servers, use network namespaces to separate management from data when you have a dedicated management NIC:
 
 ```bash
 # Create a management namespace
 ip netns add mgmt
 
-# Add management interface to namespace
-ip link set eth0 netns mgmt
+# Move a dedicated management interface to the namespace
+ip link set eth1 netns mgmt
 
 # Configure address in namespace
-ip netns exec mgmt ip -6 addr add fd00:mgmt:2::10/64 dev eth0
-ip netns exec mgmt ip link set eth0 up
-ip netns exec mgmt ip -6 route add default via fd00:mgmt:2::1
+ip netns exec mgmt ip link set lo up
+ip netns exec mgmt ip -6 addr add fd12:3456:789a:2::10/64 dev eth1
+ip netns exec mgmt ip link set eth1 up
+ip netns exec mgmt ip -6 route add default via fd12:3456:789a:2::1 dev eth1
 
 # Run sshd in management namespace only
 ip netns exec mgmt /usr/sbin/sshd -f /etc/ssh/sshd_mgmt.conf
@@ -106,14 +109,14 @@ ip netns exec mgmt /usr/sbin/sshd -f /etc/ssh/sshd_mgmt.conf
 
 ```bash
 # Create a management VRF
-ip link add mgmt0 type vrf table 100
-ip link set mgmt0 up
+ip link add dev mgmt0 type vrf table 100
+ip link set dev mgmt0 up
 
-# Assign interface to management VRF
-ip link set eth0 master mgmt0
+# Assign a dedicated management interface to the management VRF
+ip link set dev eth1 master mgmt0
 
 # Configure address
-ip -6 addr add fd00:mgmt:2::10/64 dev eth0
+ip -6 addr add fd12:3456:789a:2::10/64 dev eth1
 
 # Traffic in management VRF is isolated in routing table 100
 ip -6 route show vrf mgmt0
@@ -123,15 +126,15 @@ ip -6 route show vrf mgmt0
 
 ```bash
 # ip6tables: Restrict SSH to management network only
-ip6tables -A INPUT -p tcp --dport 22 -s fd00:mgmt::/48 -j ACCEPT
+ip6tables -A INPUT -p tcp --dport 22 -s fd12:3456:789a::/48 -j ACCEPT
 ip6tables -A INPUT -p tcp --dport 22 -j DROP
 
 # Restrict SNMP to management network
-ip6tables -A INPUT -p udp --dport 161 -s fd00:mgmt::/48 -j ACCEPT
+ip6tables -A INPUT -p udp --dport 161 -s fd12:3456:789a::/48 -j ACCEPT
 ip6tables -A INPUT -p udp --dport 161 -j DROP
 
-# Restrict Netconf/RESTCONF
-ip6tables -A INPUT -p tcp --dport 830 -s fd00:mgmt::/48 -j ACCEPT
+# Restrict NETCONF over SSH
+ip6tables -A INPUT -p tcp --dport 830 -s fd12:3456:789a::/48 -j ACCEPT
 ip6tables -A INPUT -p tcp --dport 830 -j DROP
 ```
 
@@ -141,15 +144,19 @@ On routers, use Control Plane Policing to rate-limit traffic destined for the ro
 
 ```text
 ! Cisco: CoPP for IPv6 management traffic
+ipv6 access-list MGMT-CPU-ACL
+ permit tcp fd12:3456:789a::/48 any eq 22
+ permit tcp fd12:3456:789a::/48 any eq 830
+ permit udp fd12:3456:789a::/48 any eq 161
+!
+class-map match-all MGMT-TRAFFIC
+ match access-group name MGMT-CPU-ACL
+!
 policy-map COPP-POLICY
  class MGMT-TRAFFIC
-  police rate 1000 pps
- class SSH-TRAFFIC
-  police rate 100 pps
- class ROUTING-PROTOCOL
-  police rate 5000 pps
- class DEFAULT
-  police rate 500 pps
+  police rate 1000 pps conform-action transmit exceed-action drop
+ class class-default
+  police rate 500 pps conform-action transmit exceed-action drop
 
 control-plane
  service-policy input COPP-POLICY
@@ -157,4 +164,4 @@ control-plane
 
 ## Summary
 
-IPv6 management plane separation uses ULA addressing (fd00::/8), dedicated VRFs or network namespaces, and strict ACLs that restrict management protocols (SSH, SNMP, NETCONF) to the management prefix only. On Cisco, use `vrf definition MGMT` with a management interface. On Juniper, use the dedicated fxp0 interface. On Linux, use VRFs or network namespaces. Combined with Control Plane Policing, this protects network devices from being attacked via the data plane.
+IPv6 management plane separation uses ULA addressing (fc00::/7, typically a locally assigned `fdxx:` prefix), dedicated VRFs or network namespaces, and strict ACLs that restrict management protocols (SSH, SNMP, NETCONF) to the management prefix only. On Cisco, use `vrf definition MGMT` with a management interface and VRF-aware VTY ACLs. On Juniper, place the dedicated `fxp0` interface in the `mgmt_junos` management instance. On Linux, use a dedicated management interface inside a namespace or VRF. Combined with Control Plane Policing, this reduces management-plane exposure from the data plane.
