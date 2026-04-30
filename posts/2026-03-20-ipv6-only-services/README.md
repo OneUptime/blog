@@ -69,13 +69,18 @@ spec:
     spec:
       containers:
         - name: backend
-          image: nginx:latest
+          image: registry.k8s.io/e2e-test-images/agnhost:2.53
+          command:
+            - /agnhost
+          args:
+            - netexec
+            - --http-port=8080
           ports:
             - containerPort: 8080
-          # Ensure the app binds to IPv6
-          env:
-            - name: LISTEN_ADDRESS
-              value: "[::]"
+```
+
+```bash
+kubectl apply -f backend-deployment.yaml
 ```
 
 ## Access IPv6-Only Service from Pods
@@ -86,7 +91,7 @@ SVC_V6=$(kubectl get svc backend-v6 -o jsonpath='{.spec.clusterIP}')
 echo "IPv6 ClusterIP: $SVC_V6"
 
 # Test from a client pod
-kubectl run client --image=alpine --command -- sleep infinity
+kubectl run client --image=alpine --restart=Never --command -- sleep 3600
 
 # Access IPv6-only service
 kubectl exec client -- sh -c "
@@ -94,13 +99,14 @@ kubectl exec client -- sh -c "
     curl -6 http://[$SVC_V6]:8080/
 "
 
-# Access by hostname (CoreDNS returns AAAA record)
+# Access by hostname
 kubectl exec client -- sh -c "
     apk add --no-cache curl bind-tools -q
-    # Check DNS returns only IPv6
-    dig AAAA backend-v6.default.svc.cluster.local
-    # Curl uses AAAA record
-    curl http://backend-v6.default.svc.cluster.local:8080/
+    # Check DNS returns only an IPv6 Service address
+    dig +short AAAA backend-v6.default.svc.cluster.local
+    dig +short A backend-v6.default.svc.cluster.local
+    # Curl resolves the hostname to the IPv6 ClusterIP
+    curl -6 http://backend-v6.default.svc.cluster.local:8080/
 "
 ```
 
@@ -152,20 +158,23 @@ spec:
 ## Verify IPv6-Only Isolation
 
 ```bash
-# IPv4 clients cannot connect to IPv6-only service
-# This demonstrates the isolation
+# Forcing IPv4 resolution fails because the Service has no IPv4 address
 
-kubectl run ipv4-test --image=alpine --command -- sleep infinity
+kubectl run ipv4-test --image=alpine --restart=Never --command -- sleep 3600
 kubectl exec ipv4-test -- sh -c "
-    apk add --no-cache curl -q
-    SVC_V6='fd00:10:96::abc'
-    # This should work (uses IPv6)
-    curl -6 http://[$SVC_V6]:8080/ && echo 'IPv6: SUCCESS'
-    # IPv4-only curl would fail
-    curl -4 http://[$SVC_V6]:8080/ 2>&1 && echo 'IPv4: UNEXPECTED SUCCESS' || echo 'IPv4: Expected failure (no IPv4 ClusterIP)'
+    apk add --no-cache curl bind-tools -q
+    SVC_NAME='backend-v6.default.svc.cluster.local'
+    # AAAA lookup returns the Service address
+    dig +short AAAA $SVC_NAME
+    # A lookup returns nothing because the Service has no IPv4 ClusterIP
+    dig +short A $SVC_NAME
+    # IPv6 access works
+    curl -6 http://$SVC_NAME:8080/ && echo 'IPv6: SUCCESS'
+    # Forcing IPv4 resolution fails because there is no A record
+    curl -4 http://$SVC_NAME:8080/ 2>&1 && echo 'IPv4: UNEXPECTED SUCCESS' || echo 'IPv4: Expected failure (service has no IPv4 address)'
 "
 ```
 
 ## Conclusion
 
-Deploy IPv6-only Kubernetes Services by setting `ipFamilyPolicy: SingleStack` and `ipFamilies: [IPv6]`. The service gets a single IPv6 ClusterIP from the cluster's IPv6 service CIDR. This is useful for incrementally migrating services to IPv6 in dual-stack clusters. Pods can access IPv6-only services using the IPv6 ClusterIP directly or via DNS hostname (CoreDNS returns AAAA records). IPv4-only clients cannot reach IPv6-only services by ClusterIP - they must use the hostname and have IPv6 connectivity.
+Deploy IPv6-only Kubernetes Services by setting `ipFamilyPolicy: SingleStack` and `ipFamilies: [IPv6]`. The service gets a single IPv6 ClusterIP from the cluster's IPv6 service CIDR. This is useful for incrementally migrating services to IPv6 in dual-stack clusters. Pods can access IPv6-only services using the IPv6 ClusterIP directly or via DNS hostname, which resolves to an AAAA record for the Service. Clients that only use IPv4 cannot reach an IPv6-only Service, because it has no IPv4 ClusterIP or A record.
