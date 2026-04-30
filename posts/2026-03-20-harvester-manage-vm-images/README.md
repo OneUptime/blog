@@ -8,7 +8,7 @@ Description: A guide to managing virtual machine images in Harvester, including 
 
 ## Introduction
 
-VM images in Harvester are the base disks from which virtual machines are created. Harvester stores images as Kubernetes custom resources (`VirtualMachineImage`) backed by Longhorn volumes. Images can be imported from URLs, uploaded from local files, or exported from existing VMs. Proper image management ensures you always have up-to-date, secure base images for your VMs.
+VM images in Harvester are the base disks from which virtual machines are created. Harvester stores images as Kubernetes custom resources (`VirtualMachineImage`) and, by default, keeps the underlying image data as Longhorn backing images. Images can be imported from URLs, uploaded from local files, or exported from existing VM volumes. Proper image management ensures you always have up-to-date, secure base images for your VMs.
 
 ## Understanding VM Image Storage
 
@@ -17,11 +17,11 @@ When you import an image into Harvester:
 ```mermaid
 graph LR
     A[Source: URL or File] --> B[Harvester Image Store]
-    B --> C[Longhorn Volume]
+    B --> C[Longhorn Backing Image]
     C --> D[PVC for new VM]
 ```
 
-Images are stored as Longhorn volumes and replicated across nodes based on the configured replica count. Each time you create a VM from an image, Harvester clones the image volume, giving the VM its own independent copy.
+By default, images are stored as Longhorn backing images and use parameters inherited from the selected StorageClass, such as replica count. Each time you create a VM or volume from an image, Harvester creates a new PVC with its own independent copy.
 
 ## Listing and Viewing Images
 
@@ -31,11 +31,11 @@ Images are stored as Longhorn volumes and replicated across nodes based on the c
 kubectl get virtualmachineimages -A
 
 # Get detailed info about a specific image
-kubectl describe virtualmachineimage ubuntu-22-04 -n default
+kubectl describe virtualmachineimage ubuntu-22-04-lts -n default
 
-# Check image status (should show "Active" when ready)
-kubectl get virtualmachineimage ubuntu-22-04 -n default \
-    -o jsonpath='{.status.storageClassName}'
+# Check whether the image import is complete (should show "True" when ready)
+kubectl get virtualmachineimage ubuntu-22-04-lts -n default \
+    -o jsonpath='{.status.conditions[?(@.type=="Imported")].status}'
 ```
 
 ## Importing Images from a URL
@@ -60,13 +60,10 @@ kind: VirtualMachineImage
 metadata:
   name: ubuntu-22-04-lts
   namespace: default
-  annotations:
-    # Human-readable display name
-    harvesterhci.io/imageDisplayName: "Ubuntu 22.04 LTS"
 spec:
+  displayName: "Ubuntu 22.04 LTS"
   # Source URL for the image
-  url: "https://cloud-images.ubuntu.com/jammy/current/jammy-server-cloudimg-amd64.img"
-  # qcow2 or raw
+  url: "https://cloud-images.ubuntu.com/releases/jammy/release/ubuntu-22.04-server-cloudimg-amd64.img"
   sourceType: download
 ```
 
@@ -77,18 +74,21 @@ kubectl apply -f ubuntu-image.yaml
 # Watch the import progress
 kubectl get virtualmachineimage ubuntu-22-04-lts -n default -w
 
-# The image goes through these phases:
-# Initializing -> Importing -> Active
+# Wait until the image is ready
+kubectl wait virtualmachineimage/ubuntu-22-04-lts \
+    -n default \
+    --for=condition=Imported=True \
+    --timeout=600s
 ```
 
 ### Common Cloud Image URLs
 
 ```bash
 # Ubuntu 22.04 LTS
-https://cloud-images.ubuntu.com/jammy/current/jammy-server-cloudimg-amd64.img
+https://cloud-images.ubuntu.com/releases/jammy/release/ubuntu-22.04-server-cloudimg-amd64.img
 
 # Ubuntu 20.04 LTS
-https://cloud-images.ubuntu.com/focal/current/focal-server-cloudimg-amd64.img
+https://cloud-images.ubuntu.com/releases/focal/release/ubuntu-20.04-server-cloudimg-amd64.img
 
 # Debian 12 (Bookworm)
 https://cloud.debian.org/images/cloud/bookworm/latest/debian-12-genericcloud-amd64.qcow2
@@ -99,7 +99,7 @@ https://cloud.centos.org/centos/9-stream/x86_64/images/CentOS-Stream-GenericClou
 # Rocky Linux 9
 https://download.rockylinux.org/pub/rocky/9/images/x86_64/Rocky-9-GenericCloud.latest.x86_64.qcow2
 
-# Windows Server 2022 (requires manual upload - not publicly downloadable)
+# Windows Server 2022 (typically requires manual upload rather than a public cloud-image URL)
 # Use the Upload method instead
 ```
 
@@ -118,9 +118,10 @@ For images that aren't available via public URL (e.g., Windows, custom builds):
 ### Via the Harvester API
 
 ```bash
-# Get the upload URL from the Harvester API
 IMAGE_NAME="windows-server-2022"
 NAMESPACE="default"
+HARVESTER_URL="https://harvester.example.com"
+API_TOKEN="your-api-token"
 
 # Create the image resource first
 kubectl apply -f - <<EOF
@@ -134,21 +135,25 @@ spec:
   displayName: "Windows Server 2022"
 EOF
 
-# Get the upload endpoint
-UPLOAD_URL=$(kubectl get virtualmachineimage ${IMAGE_NAME} -n ${NAMESPACE} \
-    -o jsonpath='{.status.uploadURL}')
-
-# Upload the file using curl
-curl -X POST "${UPLOAD_URL}" \
+# Upload the file using the Harvester API action
+curl -X POST \
+    "${HARVESTER_URL}/v1/harvester/harvesterhci.io.virtualmachineimages/${NAMESPACE}/${IMAGE_NAME}?action=upload" \
+    -H "Authorization: Bearer ${API_TOKEN}" \
     -H "Content-Type: application/octet-stream" \
     --data-binary @windows-server-2022.qcow2
+
+# Wait until the upload/import finishes
+kubectl wait virtualmachineimage/${IMAGE_NAME} \
+    -n ${NAMESPACE} \
+    --for=condition=Imported=True \
+    --timeout=600s
 ```
 
 ## Organizing Images with Labels
 
 Use Kubernetes labels to organize images by OS, version, or environment:
 
-```yaml
+```bash
 # Apply labels to an existing image
 kubectl label virtualmachineimage ubuntu-22-04-lts -n default \
     os=ubuntu \
@@ -169,7 +174,7 @@ Export a VM's root disk as a reusable image:
 
 ```bash
 # First, stop the VM if it's running
-kubectl patch vm my-vm --type merge -p '{"spec":{"running":false}}'
+kubectl patch vm my-vm -n default --type merge -p '{"spec":{"running":false}}'
 
 # Find the root PVC name
 kubectl get pvc -n default | grep my-vm
@@ -192,13 +197,13 @@ EOF
 ## Deleting Images
 
 ```bash
-# Delete an image (only if no VMs are using it)
+# Delete an image after confirming nothing still references it
 kubectl delete virtualmachineimage ubuntu-20-04-lts -n default
 
-# Check if an image is in use before deleting
-kubectl get pvc -A -o json | jq '.items[] |
-    select(.spec.dataSource.name == "ubuntu-20-04-lts") |
-    .metadata.name'
+# Check for volumes that were created from the image before deleting
+kubectl get pvc -A -o json | jq -r '.items[] |
+    select(.metadata.annotations["harvesterhci.io/imageId"] == "default/ubuntu-20-04-lts") |
+    .metadata.namespace + "/" + .metadata.name'
 ```
 
 ## Image Maintenance Best Practices
