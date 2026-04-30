@@ -14,7 +14,7 @@ A BRAS (Broadband Remote Access Server) or BNG (Broadband Network Gateway) is th
 
 A BNG must support:
 - DHCPv6 server or relay (for prefix delegation)
-- PPPoEv6 / IPoEv6 session termination
+- PPPoE / IPoE session termination for IPv6 services
 - Per-subscriber IPv6 ACLs and QoS
 - RADIUS integration for IPv6 attributes
 - IPv6 route injection into the core routing table
@@ -24,8 +24,16 @@ A BNG must support:
 Configure IPv6 subscriber sessions on a Cisco ASR 1000:
 
 ```text
-! IPv6 address pool for subscribers
-ipv6 local pool SUBSCRIBER-POOL 2001:db8:subs::/40 56
+! Loopback used as the unnumbered source for PPPoE IPv6 sessions
+interface Loopback1
+ ipv6 address 2001:db8:2::1/40
+
+! IPv6 delegated-prefix pool for subscribers
+ipv6 local pool SUBSCRIBER-POOL 2001:db8:1200::/40 56
+
+! DHCPv6 pool for prefix delegation
+ipv6 dhcp pool DHCPV6-PD
+ prefix-delegation pool SUBSCRIBER-POOL
 
 ! BBA group for PPPoE sessions
 bba-group pppoe RESIDENTIAL
@@ -33,15 +41,13 @@ bba-group pppoe RESIDENTIAL
 
 ! Virtual template with IPv6
 interface Virtual-Template1
- ipv6 enable
- ipv6 address 2001:db8:bng::1/64
- peer default ipv6 pool SUBSCRIBER-POOL
+ ipv6 unnumbered Loopback1
+ ipv6 dhcp server DHCPV6-PD
  ppp authentication chap
- ppp ipcp address accept
 
 ! RADIUS server for subscriber authentication
 radius server AUTH1
- address ipv6 2001:db8:radius::10 auth-port 1812 acct-port 1813
+ address ipv6 2001:db8::10 auth-port 1812 acct-port 1813
  key my-radius-secret
 ```
 
@@ -50,16 +56,19 @@ radius server AUTH1
 On Juniper MX with Enhanced Subscriber Management:
 
 ```text
-# groups {
+# IPv6 delegated-prefix pool
+set access address-assignment pool RESIDENTIAL-POOL family inet6 prefix 2001:db8:1200::/40
+set access address-assignment pool RESIDENTIAL-POOL family inet6 range PD-RANGE prefix-length 56
 
-#   subscriber-management {
-set access address-assignment pool RESIDENTIAL-POOL family inet6 prefix 2001:db8:subs::/40
-set access address-assignment pool RESIDENTIAL-POOL family inet6 prefix-length 56
+# DHCPv6 local server for PPPoE subscribers
+set system services dhcp-local-server dhcpv6 group RESIDENTIAL interface pp0.0
+set system services dhcp-local-server dhcpv6 group RESIDENTIAL overrides delegated-pool RESIDENTIAL-POOL
 
-set dynamic-profiles SUBSCRIBER-PROFILE interfaces pp0 unit "$junos-interface-unit" family inet6
-set dynamic-profiles SUBSCRIBER-PROFILE interfaces pp0 unit "$junos-interface-unit" family inet6 rpf-check
-set dynamic-profiles SUBSCRIBER-PROFILE interfaces pp0 unit "$junos-interface-unit" dhcpv6-server
-set dynamic-profiles SUBSCRIBER-PROFILE interfaces pp0 unit "$junos-interface-unit" dhcpv6-server group RESIDENTIAL
+# PPPoE dynamic profile with IPv6 enabled
+set dynamic-profiles SUBSCRIBER-PROFILE interfaces pp0 unit "$junos-interface-unit" pppoe-options underlying-interface $junos-underlying-interface
+set dynamic-profiles SUBSCRIBER-PROFILE interfaces pp0 unit "$junos-interface-unit" pppoe-options server
+set dynamic-profiles SUBSCRIBER-PROFILE interfaces pp0 unit "$junos-interface-unit" ppp-options chap
+set dynamic-profiles SUBSCRIBER-PROFILE interfaces pp0 unit "$junos-interface-unit" family inet6 unnumbered-address lo0.0
 ```
 
 ## RADIUS Attributes for IPv6 Delegation
@@ -69,37 +78,39 @@ The BNG communicates with RADIUS to get per-subscriber IPv6 prefix assignments:
 ```text
 # FreeRADIUS - return IPv6 prefix for subscriber
 user@isp.com Cleartext-Password := "test123"
-    Delegated-IPv6-Prefix = "2001:db8:subs:1a2b::/56",
-    Framed-IPv6-Route = "2001:db8:subs:1a2b::/56 :: 1",
-    Framed-IPv6-Pool = "RESIDENTIAL-POOL"
+    Delegated-IPv6-Prefix = "2001:db8:1200:1a2b::/56",
+    Framed-IPv6-Route = "2001:db8:1200:1a2b::/56 :: 1",
+    Delegated-IPv6-Prefix-Pool = "RESIDENTIAL-POOL"
 ```
 
 Key RADIUS attributes for IPv6:
 - `Framed-IPv6-Address` (Attr 168): Static /128 for subscriber's WAN link
 - `Delegated-IPv6-Prefix` (Attr 123): Prefix to delegate to CPE
+- `Delegated-IPv6-Prefix-Pool` (Attr 171): Named pool for DHCPv6 prefix delegation
 - `Framed-IPv6-Route` (Attr 99): Static route to inject for subscriber
 
 ## Subscriber Route Injection
 
-When a subscriber comes online, the BNG injects a host route into the routing table:
+When a subscriber comes online, the BNG injects a route for the delegated prefix into the routing table:
 
 ```text
 ! Cisco IOS - verify subscriber routes
-show ipv6 route subscriber
+show ipv6 route 2001:db8:1200:1a2b::/56
 
 ! Expected output:
 ! IPv6 Routing Table - default
-! S   2001:db8:subs:1a2b::/56 [1/0] via Virtual-Access1
+! U   2001:db8:1200:1a2b::/56 [0/0]
+!      via Virtual-Access1
 ```
 
 ## Monitoring Active Sessions
 
 ```bash
 # Cisco: show active IPv6 subscriber sessions
-show subscriber session all detail | include IPv6
+show subscriber session detailed | include IPv6
 
 # Juniper: show DHCP client bindings
-show dhcp v6 server binding detail
+show dhcpv6 server binding detail
 ```
 
 ## Conclusion
