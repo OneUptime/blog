@@ -4,7 +4,7 @@ Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
 Tags: IPv6, Extension Headers, Networking, Protocol, RFC 8200
 
-Description: Understand IPv6 extension headers, their purpose, how they are chained together, and which ones are processed by routers versus only by endpoints.
+Description: Understand IPv6 extension headers, their purpose, how they are chained together, and which ones may be processed en route versus only by addressed endpoints.
 
 ## Introduction
 
@@ -28,24 +28,24 @@ IPv6 Base Header (40 bytes)
   TCP Segment + Application Data
 ```
 
-## All Defined Extension Headers
+## Common Next Header Values in IPv6 Header Chains
 
 | Next Header Value | Extension Header | Processed By |
 |---|---|---|
-| 0 | Hop-by-Hop Options | All routers + destination |
-| 43 | Routing Header | Routers in the path + destination |
+| 0 | Hop-by-Hop Options | Nodes along the path that are configured to process it |
+| 43 | Routing Header | Nodes listed in the header + destination |
 | 44 | Fragment Header | Destination only |
-| 50 | ESP (IPsec) | Destination only |
-| 51 | AH (IPsec Auth) | Destination only |
+| 50 | ESP (IPsec) | IPsec endpoint(s) |
+| 51 | AH (IPsec Auth) | IPsec endpoint(s) |
 | 59 | No Next Header | - |
-| 60 | Destination Options | Destination only |
-| 135 | Mobility Header | Destination only |
-| 139 | HIP (Host Identity) | Destination only |
-| 140 | Shim6 | Destination only |
+| 60 | Destination Options | Destination(s); before a Routing header, also listed nodes |
+| 135 | Mobility Header | Mobility-aware endpoint(s) |
+| 139 | HIP (Host Identity) | HIP endpoint(s) |
+| 140 | Shim6 | Shim6 endpoint(s) |
 
-## Common Extension Header Format
+## Common Format Used by Several Extension Headers
 
-Most extension headers (except Fragment) share a common format:
+Hop-by-Hop Options, Routing, and Destination Options share a common format:
 
 ```text
  0                   1                   2                   3
@@ -61,22 +61,24 @@ Hdr Ext Len:  Length of this header in 8-byte units, NOT including the first 8 b
               Total header length = (Hdr Ext Len + 1) × 8 bytes
 ```
 
+Fragment is always 8 bytes, AH uses a different length field, and ESP carries its Next Header value in the ESP trailer rather than in the first two bytes.
+
 ## Parsing Extension Headers
 
 ```python
-import struct
-
 # Extension header type codes
 
-EXT_HEADERS = {
-    0:   ("Hop-by-Hop Options", "variable"),
-    43:  ("Routing Header", "variable"),
-    44:  ("Fragment Header", "fixed-8"),
-    50:  ("ESP", "variable"),
-    51:  ("AH", "variable"),
-    59:  ("No Next Header", "none"),
-    60:  ("Destination Options", "variable"),
-    135: ("Mobility Header", "variable"),
+GENERIC_EXT_HEADERS = {
+    0:   "Hop-by-Hop Options",
+    43:  "Routing Header",
+    60:  "Destination Options",
+    135: "Mobility Header",
+}
+
+OPAQUE_CHAINED_HEADERS = {
+    50:  "ESP",
+    139: "HIP",
+    140: "Shim6",
 }
 
 UPPER_LAYER = {6: "TCP", 17: "UDP", 58: "ICMPv6", 4: "IPv4", 41: "IPv6"}
@@ -91,31 +93,57 @@ def parse_extension_headers(packet: bytes, start_offset: int = 40) -> list:
                       (40 for the first header after IPv6 base header)
 
     Returns:
-        List of (name, next_header, offset, length) tuples
+        List of (name, next_header, offset, length) tuples.
+        Opaque headers such as ESP use None for next_header and -1 for length.
     """
+    if len(packet) < 40:
+        raise ValueError("packet is too short to contain an IPv6 header")
+
     next_header = packet[6]  # From IPv6 base header
     offset = start_offset
     headers = []
 
-    while offset < len(packet):
-        name = EXT_HEADERS.get(next_header, {})
+    while offset <= len(packet):
         if next_header in UPPER_LAYER:
             headers.append((UPPER_LAYER[next_header], next_header, offset, -1))
             break
         elif next_header == 59:  # No Next Header
+            headers.append(("No Next Header", next_header, offset, 0))
             break
         elif next_header == 44:  # Fragment Header: fixed 8 bytes
+            if offset + 8 > len(packet):
+                raise ValueError("truncated Fragment header")
             nh = packet[offset]
             headers.append(("Fragment Header", nh, offset, 8))
             next_header = nh
             offset += 8
-        elif next_header in EXT_HEADERS:
+        elif next_header == 51:  # AH: length is in 32-bit words, minus 2
+            if offset + 2 > len(packet):
+                raise ValueError("truncated AH header")
+            nh = packet[offset]
+            payload_len = packet[offset + 1]
+            length = (payload_len + 2) * 4
+            if offset + length > len(packet):
+                raise ValueError("truncated AH header")
+            headers.append(("AH", nh, offset, length))
+            next_header = nh
+            offset += length
+        elif next_header in GENERIC_EXT_HEADERS:
+            if offset + 2 > len(packet):
+                raise ValueError(f"truncated {GENERIC_EXT_HEADERS[next_header]} header")
             nh = packet[offset]
             ext_len = packet[offset + 1]
             length = (ext_len + 1) * 8
-            headers.append((EXT_HEADERS[next_header][0], nh, offset, length))
+            if offset + length > len(packet):
+                raise ValueError(f"truncated {GENERIC_EXT_HEADERS[next_header]} header")
+            headers.append((GENERIC_EXT_HEADERS[next_header], nh, offset, length))
             next_header = nh
             offset += length
+        elif next_header in OPAQUE_CHAINED_HEADERS:
+            # ESP carries its Next Header in the trailer; HIP and Shim6 have
+            # their own formats, so stop here unless you parse them separately.
+            headers.append((OPAQUE_CHAINED_HEADERS[next_header], None, offset, -1))
+            break
         else:
             break
 
@@ -128,16 +156,17 @@ The most critical distinction:
 
 ```text
 Hop-by-Hop Options (Next Header = 0):
-  ✗ MUST be processed by EVERY router along the path
+  ✗ Is the only header defined for hop-by-hop processing
   ✗ MUST be the FIRST extension header if present
-  ✗ Causes performance issues (typically slow-pathed in hardware)
+  ✗ In RFC 8200, nodes along the path often process it only if explicitly configured
+  ✗ Often causes performance issues (typically slow-pathed in hardware)
   → Used for: Router Alert, Jumbo Payload
   → In practice: Very rare in production networks
 
 All other extension headers:
-  ✓ Processed ONLY by the destination (or specific nodes in routing headers)
-  ✓ Transit routers simply forward without examining them
-  ✓ No performance impact on forwarding path
+  ✓ Are not defined for hop-by-hop processing
+  ✓ Usually processed by the destination, or by nodes explicitly named in the packet
+  ✓ Ordinary transit routers generally forward them without examining them, though middleboxes may still inspect or filter them
   → Used for: fragmentation (44), IPsec (50,51), mobility (135)
 ```
 
@@ -145,16 +174,16 @@ All other extension headers:
 
 ```bash
 # Capture packets with Hop-by-Hop header
-sudo tcpdump -i eth0 -XX "ip6[6] == 0"
+sudo tcpdump -i eth0 -XX "ip6 protochain 0"
 
 # Capture packets with Fragment header
-sudo tcpdump -i eth0 -vv "ip6[6] == 44"
+sudo tcpdump -i eth0 -vv "ip6 protochain 44"
 
 # Capture IPsec AH packets
-sudo tcpdump -i eth0 "ip6[6] == 51"
+sudo tcpdump -i eth0 "ip6 protochain 51"
 
 # Capture IPsec ESP packets
-sudo tcpdump -i eth0 "ip6[6] == 50"
+sudo tcpdump -i eth0 "ip6 protochain 50"
 ```
 
 ## Extension Header Security Considerations
@@ -163,9 +192,9 @@ sudo tcpdump -i eth0 "ip6[6] == 50"
 # Many networks drop packets with unusual extension headers
 # RFC 7045 defines rules for which extension headers should be forwarded
 
-# Check if your firewall passes common extension headers:
-# Fragment header (44) must be allowed for legitimate fragmented traffic
-# AH (51) and ESP (50) must be allowed for IPsec
+# Check if your firewall passes the extension headers you actually use:
+# Fragment header (44) needs to be allowed if you expect legitimate fragmented traffic
+# AH (51) and ESP (50) need to be allowed if you expect IPsec traffic
 
 # ip6tables: allow IPsec headers
 sudo ip6tables -A INPUT -p ah -j ACCEPT
@@ -178,4 +207,4 @@ sudo ip6tables -A INPUT -m frag --fraglast -j ACCEPT  # Last fragment
 
 ## Conclusion
 
-IPv6 extension headers provide a flexible mechanism for optional features that would otherwise require a larger, more complex base header. The key insight is that only Hop-by-Hop Options require per-hop processing - all other extension headers are processed only at the destination. This means transit routers are not burdened by extension header processing in the common case. However, extension headers do present security challenges, and many network operators filter them at boundaries.
+IPv6 extension headers provide a flexible mechanism for optional features that would otherwise require a larger, more complex base header. The key insight is that Hop-by-Hop Options are the only header defined for hop-by-hop processing. Most other extension headers are handled at the destination, or by nodes explicitly named in the packet, so ordinary transit routers can usually forward them without special processing. However, extension headers do present security and operational challenges, and many network operators filter them at boundaries.
