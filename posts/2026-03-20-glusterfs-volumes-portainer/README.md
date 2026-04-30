@@ -19,7 +19,7 @@ graph TD
     A[Node 1 - GlusterFS Brick] <--> B[Node 2 - GlusterFS Brick]
     B <--> C[Node 3 - GlusterFS Brick]
     A <--> C
-    D[Docker Container on Node 1] --> E[GlusterFS Volume - /mnt/gfs]
+    D[Docker Container on Node 1] --> E[GlusterFS Volume - /mnt/portainer-vol]
     F[Docker Container on Node 2] --> E
     G[Docker Container on Node 3] --> E
 ```
@@ -86,11 +86,14 @@ sudo apt install -y glusterfs-client
 # Create the mount point
 sudo mkdir -p /mnt/portainer-vol
 
-# Mount the GlusterFS volume (replace localhost with any GlusterFS node IP)
-sudo mount -t glusterfs localhost:/portainer-vol /mnt/portainer-vol
+# Mount the GlusterFS volume (replace 192.168.1.100 with a GlusterFS node IP or hostname)
+sudo mount -t glusterfs 192.168.1.100:/portainer-vol /mnt/portainer-vol
+
+# Create the application directories used by the stack
+sudo mkdir -p /mnt/portainer-vol/webapp/data /mnt/portainer-vol/webapp/uploads
 
 # Make the mount permanent by adding to /etc/fstab
-echo "localhost:/portainer-vol /mnt/portainer-vol glusterfs defaults,_netdev 0 0" | sudo tee -a /etc/fstab
+echo "192.168.1.100:/portainer-vol /mnt/portainer-vol glusterfs defaults,_netdev 0 0" | sudo tee -a /etc/fstab
 ```
 
 ---
@@ -106,36 +109,17 @@ version: "3.8"
 services:
   webapp:
     image: myapp:latest
-    restart: unless-stopped
     volumes:
       # Bind mount to the GlusterFS mount point
       - /mnt/portainer-vol/webapp/data:/app/data
       - /mnt/portainer-vol/webapp/uploads:/app/uploads
     deploy:
       replicas: 3
+      restart_policy:
+        condition: any
       placement:
         constraints:
           - "node.role == worker"
-```
-
----
-
-## Step 5: Use a Docker Volume Driver (Alternative)
-
-For a more Docker-native approach, use the `glusterfs` volume driver so Portainer can manage volumes directly.
-
-```bash
-# Install the convoy volume driver (supports GlusterFS)
-# Or use the docker-volume-glusterfs plugin
-docker plugin install mikesplain/glusterfs-volume-plugin --alias glusterfs
-
-# Create a Docker volume backed by GlusterFS
-docker volume create \
-  --driver glusterfs \
-  --name myapp-data \
-  --opt voluri="localhost:/portainer-vol"
-
-# In Portainer UI: Volumes > Add Volume > Driver: glusterfs
 ```
 
 ---
