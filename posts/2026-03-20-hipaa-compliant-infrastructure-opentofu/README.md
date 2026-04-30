@@ -8,20 +8,22 @@ Description: Learn how to provision HIPAA-compliant AWS infrastructure using Ope
 
 ---
 
-HIPAA requires technical safeguards for protected health information (PHI): encryption, audit controls, access controls, and data integrity mechanisms. OpenTofu codifies these requirements so every PHI environment is provisioned identically and compliantly.
+HIPAA's Security Rule requires technical safeguards for electronic protected health information (ePHI), including access controls, audit controls, integrity controls, person or entity authentication, and transmission security. Encryption is an addressable implementation specification under the Security Rule, and OpenTofu can codify these safeguards so every ePHI environment is provisioned consistently and reviewed as code.
 
 ## HIPAA Technical Safeguard Requirements
 
 ```mermaid
 graph TD
-    A[HIPAA Technical Safeguards] --> B[Access Controls<br/>§164.312a]
-    A --> C[Audit Controls<br/>§164.312b]
-    A --> D[Integrity Controls<br/>§164.312c]
-    A --> E[Transmission Security<br/>§164.312e]
-    B --> F[IAM, MFA, least privilege]
-    C --> G[CloudTrail, VPC Flow Logs]
-    D --> H[S3 versioning, checksums]
-    E --> I[TLS, no unencrypted transport]
+    A[HIPAA Technical Safeguards] --> B[Access Controls<br/>§164.312(a)]
+    A --> C[Audit Controls<br/>§164.312(b)]
+    A --> D[Integrity Controls<br/>§164.312(c)]
+    A --> E[Person or Entity Authentication<br/>§164.312(d)]
+    A --> F[Transmission Security<br/>§164.312(e)]
+    B --> G[IAM, MFA, least privilege]
+    C --> H[CloudTrail, VPC Flow Logs]
+    D --> I[S3 versioning, checksums]
+    E --> J[IAM Identity Center, role assumptions]
+    F --> K[TLS, secure transport controls]
 ```
 
 ## Encryption at Rest
@@ -30,31 +32,9 @@ graph TD
 # kms.tf
 
 resource "aws_kms_key" "phi" {
-  description             = "KMS key for PHI encryption - HIPAA compliant"
+  description             = "KMS key for PHI encryption"
   deletion_window_in_days = 30
-  enable_key_rotation     = true  # Required for HIPAA
-
-  policy = jsonencode({
-    Version = "2012-10-17"
-    Statement = [
-      {
-        Sid    = "AllowHIPAAAdmin"
-        Effect = "Allow"
-        Principal = { AWS = var.hipaa_admin_role_arn }
-        Action   = "kms:*"
-        Resource = "*"
-      },
-      {
-        Sid    = "AllowServiceEncryption"
-        Effect = "Allow"
-        Principal = {
-          Service = ["rds.amazonaws.com", "s3.amazonaws.com"]
-        }
-        Action   = ["kms:GenerateDataKey*", "kms:Decrypt"]
-        Resource = "*"
-      }
-    ]
-  })
+  enable_key_rotation     = true  # Optional, but commonly enabled
 
   tags = {
     PHI        = "true"
@@ -68,9 +48,9 @@ resource "aws_db_instance" "phi" {
   engine                  = "postgres"
   storage_encrypted       = true
   kms_key_id              = aws_kms_key.phi.arn
-  backup_retention_period = 35  # HIPAA requires 6-year retention capability
+  backup_retention_period = 35  # RDS automated backup maximum
   deletion_protection     = true
-  multi_az                = true  # Availability requirement
+  multi_az                = true  # Supports availability and resilience
   publicly_accessible     = false
 
   lifecycle {
@@ -82,7 +62,7 @@ resource "aws_db_instance" "phi" {
 ## Audit Logging
 
 ```hcl
-# cloudtrail.tf - HIPAA requires audit activity logs
+# cloudtrail.tf - CloudTrail supports HIPAA audit controls
 resource "aws_cloudtrail" "phi_audit" {
   name                          = "phi-audit-trail"
   s3_bucket_name                = aws_s3_bucket.audit_logs.id
@@ -104,7 +84,7 @@ resource "aws_cloudtrail" "phi_audit" {
   cloud_watch_logs_role_arn  = aws_iam_role.cloudtrail.arn
 }
 
-# Audit log retention - HIPAA requires 6 years
+# Example audit log retention policy
 resource "aws_s3_bucket_lifecycle_configuration" "audit_logs" {
   bucket = aws_s3_bucket.audit_logs.id
 
@@ -118,7 +98,7 @@ resource "aws_s3_bucket_lifecycle_configuration" "audit_logs" {
     }
 
     expiration {
-      days = 2190  # 6 years
+      days = 2190  # Example 6-year retention policy
     }
   }
 }
@@ -147,7 +127,7 @@ resource "aws_s3_bucket_object_lock_configuration" "phi" {
   rule {
     default_retention {
       mode = "COMPLIANCE"
-      days = 2190  # 6-year retention
+      years = 6  # Example retention period aligned to policy
     }
   }
 }
@@ -167,7 +147,7 @@ resource "aws_s3_bucket_server_side_encryption_configuration" "phi" {
 
 ```hcl
 # iam_phi.tf
-# Only specific roles can access PHI
+# Example identity policy for approved PHI access
 resource "aws_iam_policy" "phi_access" {
   name = "phi-data-access"
 
@@ -189,8 +169,8 @@ resource "aws_iam_policy" "phi_access" {
 
 ## Best Practices
 
-- Sign a Business Associate Agreement (BAA) with AWS before storing PHI - this is a legal requirement.
-- Enable KMS key rotation - HIPAA doesn't prescribe rotation frequency but CMS requires at least annual rotation.
-- Use S3 Object Lock in COMPLIANCE mode for audit logs - compliance mode prevents anyone, including AWS, from deleting records.
-- Enable CloudTrail log file validation to detect tampering and use it as evidence in audits.
-- Test backup restoration quarterly - HIPAA requires not just backing up but verifying you can restore.
+- Sign a Business Associate Agreement (BAA) with AWS before storing or processing PHI, and keep PHI workloads on HIPAA-eligible AWS services.
+- Enable KMS key rotation if it fits your risk model - AWS KMS automatic rotation for customer-managed symmetric keys is optional and defaults to an annual schedule.
+- Use S3 Object Lock in COMPLIANCE mode for WORM audit archives - compliance mode prevents any user, including the root user in your AWS account, from deleting protected object versions before retention expires.
+- Enable CloudTrail log file validation to detect log modification or deletion and to strengthen your audit evidence.
+- Test backup restoration regularly - HIPAA requires a data backup plan and periodic testing/revision of contingency plans, but it does not prescribe a quarterly cadence.
