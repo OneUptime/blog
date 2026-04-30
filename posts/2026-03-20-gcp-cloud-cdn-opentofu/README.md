@@ -16,7 +16,7 @@ GCP Cloud CDN is tightly integrated with the GCP HTTP(S) Load Balancer. Enabling
 graph LR
     A[Internet] --> B[Global External HTTP(S) LB]
     B --> C[URL Map]
-    C -->|/static/*| D[Backend Bucket<br/>CDN Enabled]
+    C -->|default| D[Backend Bucket<br/>CDN Enabled]
     C -->|/api/*| E[Backend Service<br/>Cloud Run/GCE]
     D --> F[Cloud Storage Bucket]
 ```
@@ -30,7 +30,7 @@ terraform {
   required_providers {
     google = {
       source  = "hashicorp/google"
-      version = "~> 5.10"
+      version = "~> 7.0"
     }
   }
 }
@@ -65,15 +65,15 @@ resource "google_compute_backend_bucket" "static" {
   enable_cdn  = true
 
   cdn_policy {
-    # Cache content for 1 hour by default
+    # Set 1-hour TTL defaults when the origin doesn't send a valid TTL
     default_ttl = 3600
     max_ttl     = 86400  # 24 hours max
     client_ttl  = 3600
 
-    # Cache all query-string variants separately
+    # Cache common static content types and honor valid origin cache headers
     cache_mode = "CACHE_ALL_STATIC"
 
-    # Serve stale content for up to 1 day while revalidating
+    # Serve stale cached content for up to 1 day during revalidation or refresh errors
     serve_while_stale = 86400
   }
 }
@@ -126,10 +126,12 @@ resource "google_compute_target_http_proxy" "redirect" {
 }
 
 resource "google_compute_global_forwarding_rule" "http" {
-  name        = "${var.project_name}-http-forwarding-rule"
-  target      = google_compute_target_http_proxy.redirect.id
-  port_range  = "80"
-  ip_address  = google_compute_global_address.default.address
+  name                  = "${var.project_name}-http-forwarding-rule"
+  target                = google_compute_target_http_proxy.redirect.id
+  port_range            = "80"
+  ip_protocol           = "TCP"
+  ip_address            = google_compute_global_address.default.address
+  load_balancing_scheme = "EXTERNAL_MANAGED"
 }
 ```
 
@@ -150,10 +152,10 @@ resource "google_compute_url_map" "default" {
     name            = "main"
     default_service = google_compute_backend_bucket.static.id
 
-    # Route API traffic to a Cloud Run backend (no CDN)
+    # Route API traffic to an existing backend service (for example, Cloud Run or GCE)
     path_rule {
       paths   = ["/api/*"]
-      service = google_compute_backend_service.api.id
+      service = var.api_backend_service_id
     }
   }
 }
@@ -162,7 +164,7 @@ resource "google_compute_url_map" "default" {
 ## Best Practices
 
 - Use `CACHE_ALL_STATIC` cache mode for static asset backends - it automatically caches images, JS, CSS, and other static types.
-- Set `serve_while_stale` to serve cached content while refreshing in the background - this eliminates cache miss latency for users.
+- Set `serve_while_stale` to let Cloud CDN serve stale cached content during revalidation or refresh errors - this can reduce user-visible latency when stale content is acceptable.
 - Use managed SSL certificates rather than self-managed certificates - GCP handles renewal automatically.
 - Monitor Cache Hit Rate in Cloud Monitoring - low hit rates indicate over-personalized responses or missing cache headers.
 - Enable Cloud Armor (WAF) on the backend service for DDoS protection and security policy enforcement.
