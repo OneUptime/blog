@@ -4,19 +4,20 @@ Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
 Tags: Harvester, SR-IOV, Networking, High Performance, HCI, KubeVirt, SUSE Rancher
 
-Description: Learn how to configure SR-IOV (Single Root I/O Virtualization) in Harvester to provide VMs with near-native network performance by bypassing the software switching layer.
+Description: Learn how to configure SR-IOV (Single Root I/O Virtualization) in Harvester to provide VMs with near-native network performance by exposing NIC virtual functions through Harvester's PCI passthrough workflow.
 
 ---
 
-SR-IOV allows a single physical NIC to present multiple virtual functions (VFs) directly to VMs, bypassing the Kubernetes software bridge and achieving near-native network throughput with sub-microsecond latency.
+SR-IOV allows a single physical NIC to present multiple virtual functions (VFs) that Harvester can pass through to VMs as PCI devices, bypassing the standard virtual switching path and achieving near-native network throughput with lower latency.
 
 ---
 
 ## Prerequisites
 
-- SR-IOV capable NIC (Intel X710, Mellanox ConnectX series, etc.)
+- Harvester v1.2.0 or later
+- SR-IOV capable NIC (Intel X710, Mellanox ConnectX series, etc.) that is not used for Harvester management or VLAN traffic
 - BIOS with SR-IOV and IOMMU enabled
-- Linux kernel 4.15+ with `igb`, `ixgbe`, or `mlx5_core` drivers
+- Guest OS support for the VF driver you plan to expose
 
 ---
 
@@ -30,131 +31,100 @@ In your server BIOS/UEFI:
 Verify IOMMU is active:
 
 ```bash
-dmesg | grep -e DMAR -e IOMMU | head -5
-# Should show: "IOMMU enabled"
+dmesg | grep -E 'DMAR|IOMMU' | head -5
+# Look for DMAR/IOMMU initialization messages
 
 ```
 
 ---
 
-## Step 2: Configure SR-IOV Virtual Functions
+## Step 2: Enable the PCI Devices Add-on
 
-On each Harvester node with SR-IOV NICs:
+In the Harvester UI:
+- Go to **Advanced > Add-ons**
+- Enable **pcidevices-controller**
+- Wait for the add-on state to become **DeploySuccessful**
 
 ```bash
-# Find the physical NIC (PF - Physical Function)
-lspci | grep -i ethernet
-
-# Check the NIC supports SR-IOV
-cat /sys/bus/pci/devices/<pci-address>/sriov_totalvfs
-
-# Create virtual functions
-# Replace ens3 with your NIC name and 8 with desired VF count
-echo 8 > /sys/bus/pci/devices/<pci-address>/sriov_numvfs
-
-# Make persistent via udev rule
-cat > /etc/udev/rules.d/99-sriov.rules <<EOF
-ACTION=="add", SUBSYSTEM=="net", KERNEL=="ens3", RUN+="/bin/sh -c 'echo 8 > /sys/bus/pci/devices/\$ID_PATH_TAG/sriov_numvfs'"
-EOF
-
-# Verify VFs were created
-ip link show ens3
+# Verify the controller is running
+kubectl -n harvester-system get pods | grep pcidevices-controller
 ```
 
 ---
 
-## Step 3: Install SR-IOV Network Device Plugin
+## Step 3: Configure SR-IOV Virtual Functions
+
+On each Harvester node with SR-IOV NICs, Harvester discovers supported interfaces as `SRIOVNetworkDevice` objects.
+
+In the Harvester UI:
+- Go to **Advanced** and locate the **SR-IOV Network Devices** list
+- Locate the SR-IOV capable interface
+- Select **⋮ > Enable**
+- Set the number of VFs to create
+
+Verify the SR-IOV devices and resulting VFs:
 
 ```bash
-# Install the SR-IOV device plugin as a DaemonSet
-kubectl apply -f https://raw.githubusercontent.com/k8snetworkplumbingwg/sriov-network-device-plugin/master/deployments/sriovdp-daemonset.yaml
-
-# Create a ConfigMap specifying which VFs to expose
-kubectl apply -f - <<EOF
-apiVersion: v1
-kind: ConfigMap
-metadata:
-  name: sriovdp-config
-  namespace: kube-system
-data:
-  config.json: |
-    {
-      "resourceList": [
-        {
-          "resourceName": "intel_sriov_netdevice",
-          "selectors": {
-            "vendors": ["8086"],
-            "devices": ["154c"],
-            "drivers": ["iavf"]
-          }
-        }
-      ]
-    }
-EOF
+kubectl get sriovnetworkdevices.devices.harvesterhci.io
+kubectl get pcidevices.devices.harvesterhci.io
 ```
+
+The newly created VFs appear as `PCIDevice` resources after the next re-scan.
 
 ---
 
-## Step 4: Create a Network Attachment Definition for SR-IOV
+## Step 4: Enable Passthrough for the VF
+
+Use the `address` and `nodeName` values from the `PCIDevice` you want to claim:
 
 ```yaml
-# sriov-net-attach-def.yaml
-apiVersion: k8s.cni.cncf.io/v1
-kind: NetworkAttachmentDefinition
+# pcideviceclaim.yaml
+apiVersion: devices.harvesterhci.io/v1beta1
+kind: PCIDeviceClaim
 metadata:
-  name: sriov-dpdk
-  namespace: default
-  annotations:
-    k8s.v1.cni.cncf.io/resourceName: intel.com/intel_sriov_netdevice
+  name: vf-claim
 spec:
-  config: |
-    {
-      "cniVersion": "0.3.1",
-      "name": "sriov-dpdk",
-      "type": "sriov",
-      "spoofchk": "off",
-      "trust": "on"
-    }
+  address: "<vf-pci-address>"
+  nodeName: "<harvester-node-name>"
+  userName: "<your-user>"
 ```
+
+Apply the claim:
+
+```bash
+kubectl apply -f pcideviceclaim.yaml
+```
+
+Harvester binds the claimed VF to `vfio-pci`, which KubeVirt requires for PCI device assignment.
+The `PCIDeviceClaim` is a request object; once the VF is prepared, the enabled device is reflected on the corresponding `PCIDevice`.
 
 ---
 
-## Step 5: Attach SR-IOV Network to a VM
+## Step 5: Attach the SR-IOV VF to a VM
 
-```yaml
-# vm-with-sriov.yaml
-apiVersion: kubevirt.io/v1
-kind: VirtualMachine
-metadata:
-  name: high-perf-vm
-  namespace: default
-spec:
-  running: true
-  template:
-    spec:
-      networks:
-        - name: default
-          pod: {}
-        - name: sriov-net
-          multus:
-            networkName: sriov-dpdk
-      domain:
-        resources:
-          requests:
-            # Request SR-IOV VF
-            intel.com/intel_sriov_netdevice: "1"
-        devices:
-          interfaces:
-            - name: default
-              masquerade: {}
-            - name: sriov-net
-              sriov: {}   # SR-IOV interface
+In the Harvester UI:
+- Go to **Virtual Machines**
+- Create a VM or edit an existing one
+- Open the **PCI Devices** section
+- Attach the VF that you enabled for passthrough
+- Start the VM
+
+Inside the guest, verify that the VF is visible as a PCI network device:
+
+```bash
+lspci | grep -i -E 'ethernet|network'
+ip link show
 ```
+
+Because the VF is passed through as a PCI device, configure IP addressing and guest drivers inside the VM as you would on bare metal.
 
 ---
 
 ## Best Practices
 
 - Use SR-IOV for latency-sensitive workloads like financial trading systems or HPC applications.
-- Keep at least 2 VFs per node for cluster management traffic - do not allocate all VFs to VMs.
-- Monitor VF utilization using `ethtool -S ens3` or the DPDK PMD stats.
+- Use SR-IOV only on dedicated NICs or PFs; do not use host-owned devices such as Harvester management or VLAN NICs.
+- If multiple identical PCI devices exist in the cluster, pin the VM to a specific node to avoid incorrect scheduling.
+- VMs with PCI passthrough devices cannot be live-migrated while the device is attached.
+- Some NICs, such as certain Mellanox adapters, may require the guest driver to be installed inside the VM.
+- Monitor interface counters with `ethtool -S <vf-interface>` inside the guest or on the backing PF on the host.
