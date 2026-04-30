@@ -15,7 +15,7 @@ Fleet's auto-update functionality is at the heart of its GitOps model. When chan
 - Fleet installed and operational
 - GitRepo resources configured
 - `kubectl` access to Fleet manager
-- Optionally: a publicly accessible Fleet endpoint for webhooks
+- Optionally: a publicly accessible Fleet gitjob endpoint for webhooks
 
 ## How Fleet Auto-Updates Work
 
@@ -98,7 +98,7 @@ spec:
 
 1. Go to your GitHub repository
 2. Navigate to **Settings > Webhooks > Add webhook**
-3. Set **Payload URL**: `https://fleet-webhook.example.com/webhook`
+3. Set **Payload URL**: `https://fleet-webhook.example.com/`
 4. Set **Content type**: `application/json`
 5. Set **Secret**: (save this for the next step)
 6. Select events: **Just the push event**
@@ -106,10 +106,10 @@ spec:
 ### Step 3: Create the Webhook Secret in Kubernetes
 
 ```bash
-# Create a secret with the GitHub webhook secret
+# Create a per-GitRepo secret in the same namespace as the GitRepo
 kubectl create secret generic github-webhook-secret \
-  --from-literal=token=your-webhook-secret-here \
-  -n cattle-fleet-system
+  --from-literal=github=your-webhook-secret-here \
+  -n fleet-default
 ```
 
 ### Step 4: Configure GitRepo to Use Webhook
@@ -125,8 +125,9 @@ spec:
   repo: https://github.com/my-org/my-app
   branch: main
 
-  # Reference the webhook secret
-  webhookCommitID: ""
+  # Disable polling and reference the per-GitRepo webhook secret
+  disablePolling: true
+  webhookSecret: github-webhook-secret
 
   targets:
     - clusterSelector: {}
@@ -135,15 +136,15 @@ spec:
 ## Configuring GitLab Webhooks
 
 ```bash
-# Create GitLab webhook token secret
+# Create a per-GitRepo secret in the same namespace as the GitRepo
 kubectl create secret generic gitlab-webhook-secret \
-  --from-literal=token=your-gitlab-token \
-  -n cattle-fleet-system
+  --from-literal=gitlab=your-gitlab-token \
+  -n fleet-default
 ```
 
 In GitLab:
 1. Navigate to **Repository > Settings > Webhooks**
-2. Set URL: `https://fleet-webhook.example.com/webhook`
+2. Set URL: `https://fleet-webhook.example.com/`
 3. Set Secret Token
 4. Check **Push events**
 5. Click **Add webhook**
@@ -153,16 +154,14 @@ In GitLab:
 When you need Fleet to re-sync without waiting for the polling interval:
 
 ```bash
-# Force immediate re-sync by clearing the tracked commit
+# Increment forceSyncGeneration to trigger an immediate re-sync
+CURRENT_SYNC_GEN=$(kubectl get gitrepo my-app -n fleet-default \
+  -o jsonpath='{.spec.forceSyncGeneration}')
+CURRENT_SYNC_GEN=${CURRENT_SYNC_GEN:-0}
+
 kubectl patch gitrepo my-app -n fleet-default \
   --type=merge \
-  -p '{"spec":{"revision":""}}'
-
-# Or annotate the GitRepo to trigger a sync
-kubectl annotate gitrepo my-app \
-  -n fleet-default \
-  fleet.cattle.io/commit="" \
-  --overwrite
+  -p "{\"spec\":{\"forceSyncGeneration\":$((CURRENT_SYNC_GEN + 1))}}"
 ```
 
 ## Update Strategies
@@ -197,12 +196,12 @@ kubectl get gitrepo my-app -n fleet-default \
 
 # View sync history via events
 kubectl get events -n fleet-default \
-  --sort-by='.lastTimestamp' \
+  --sort-by='.metadata.creationTimestamp' \
   | grep my-app
 
-# Check bundle update times
-kubectl get bundles -n fleet-default \
-  -o jsonpath='{range .items[*]}{.metadata.name}{" "}{.metadata.creationTimestamp}{"\n"}{end}'
+# Check Fleet's current polling and webhook commit state
+kubectl get gitrepo my-app -n fleet-default \
+  -o custom-columns=SYNCED:.status.commit,WEBHOOK:.status.webhookCommit,POLLING:.status.pollingCommit
 ```
 
 ## Troubleshooting Auto-Update Issues
@@ -216,10 +215,9 @@ kubectl logs -n cattle-fleet-system \
   -l app=gitjob \
   --tail=50
 
-# Verify webhook is being received
-kubectl logs -n cattle-fleet-system \
-  -l app=gitjob \
-  | grep webhook
+# Verify the last webhook commit Fleet recorded
+kubectl get gitrepo my-app -n fleet-default \
+  -o jsonpath='{.status.webhookCommit}'
 ```
 
 ## Conclusion
