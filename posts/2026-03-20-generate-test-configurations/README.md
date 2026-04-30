@@ -8,11 +8,11 @@ Description: Learn how to generate test configuration scaffolding for OpenTofu m
 
 ## Introduction
 
-Writing test configurations from scratch for every module is repetitive. OpenTofu's testing framework supports a modular approach where setup modules create prerequisites, shared variables reduce duplication, and helper scripts generate boilerplate. This guide covers patterns for generating and organizing test configurations efficiently.
+Writing test configurations from scratch for every module is repetitive. OpenTofu's testing framework supports a modular approach where helper modules can create prerequisites and wrap the module under test, shared variables reduce duplication, and helper scripts generate boilerplate. This guide covers patterns for generating and organizing test configurations efficiently.
 
-## Test Setup Modules
+## Test Helper Modules
 
-A setup module creates prerequisites that your main module needs:
+A helper module can create prerequisites and call the module under test in the same run:
 
 ```text
 tests/
@@ -36,6 +36,12 @@ resource "aws_subnet" "test" {
   vpc_id     = aws_vpc.test.id
   cidr_block = cidrsubnet(var.vpc_cidr, 8, 1)
 }
+
+module "main" {
+  source    = "../.."
+  vpc_id    = aws_vpc.test.id
+  subnet_id = aws_subnet.test.id
+}
 ```
 
 ```hcl
@@ -47,34 +53,29 @@ output "vpc_id" {
 output "subnet_id" {
   value = aws_subnet.test.id
 }
+
+output "resource_id" {
+  value = module.main.resource_id
+}
 ```
 
 ```hcl
 # tests/integration.tftest.hcl
 
 variables {
+  vpc_cidr    = "10.100.0.0/16"
   test_suffix = "test-${formatdate("YYYYMMDDhhmmss", timestamp())}"
 }
 
-# Run setup module first
-run "setup_prerequisites" {
+# Run the helper module, which creates prerequisites and invokes the module under test
+run "create_main_resource" {
   module {
     source = "./tests/setup"
   }
 
   variables {
-    vpc_cidr    = "10.100.0.0/16"
+    vpc_cidr    = var.vpc_cidr
     test_suffix = var.test_suffix
-  }
-}
-
-# Main test uses outputs from setup run
-run "create_main_resource" {
-  command = apply
-
-  variables {
-    vpc_id    = run.setup_prerequisites.vpc_id
-    subnet_id = run.setup_prerequisites.subnet_id
   }
 
   assert {
@@ -100,7 +101,7 @@ mkdir -p "$TESTS_DIR/setup"
 # Generate unit test file
 cat > "$TESTS_DIR/unit.tftest.hcl" << EOF
 # Unit tests for $MODULE_NAME module
-# Run with: tofu test tests/unit.tftest.hcl
+# Run with: tofu test -filter=tests/unit.tftest.hcl
 
 mock_provider "aws" {}
 
@@ -110,18 +111,14 @@ variables {
 
 run "plan_succeeds_with_defaults" {
   command = plan
-
-  assert {
-    condition     = true  # TODO: Add real assertions
-    error_message = "Plan should succeed with default values"
-  }
+  # TODO: Add assert blocks that reference real resources or outputs.
 }
 EOF
 
 # Generate integration test file
 cat > "$TESTS_DIR/integration.tftest.hcl" << EOF
 # Integration tests for $MODULE_NAME module
-# Run with: tofu test tests/integration.tftest.hcl
+# Run with: tofu test -filter=tests/integration.tftest.hcl
 # Requires: AWS credentials
 
 variables {
@@ -130,11 +127,7 @@ variables {
 
 run "creates_resources_successfully" {
   command = apply
-
-  assert {
-    condition     = true  # TODO: Add real assertions
-    error_message = "Resources should be created successfully"
-  }
+  # TODO: Add assert blocks that reference real resources or outputs.
 }
 EOF
 
@@ -190,11 +183,11 @@ default_tags = {
 
 ```bash
 # Reference common variables in all test runs
-tofu test tests/unit.tftest.hcl -var-file="tests/common.tfvars"
-tofu test tests/integration.tftest.hcl -var-file="tests/common.tfvars"
+tofu test -filter=tests/unit.tftest.hcl -var-file="tests/common.tfvars"
+tofu test -filter=tests/integration.tftest.hcl -var-file="tests/common.tfvars"
 ```
 
-## Generating Tests with tofu test -generate-config-out
+## Generating Configuration with tofu plan -generate-config-out
 
 For modules with import blocks, generate configuration:
 
@@ -226,4 +219,4 @@ modules/ec2-instance/
 
 ## Conclusion
 
-Organize your test configurations with setup modules for prerequisites, shared variable files for common values, and separate files for unit vs integration tests. Use shell scripts to generate boilerplate when creating new modules. The `module` block in run blocks enables testing the same scenarios against different module versions, which is particularly valuable for library modules used across multiple projects.
+Organize your test configurations with helper modules that create prerequisites and invoke the module under test in a single run, shared variable files for common values, and separate files for unit vs integration tests. Use shell scripts to generate boilerplate when creating new modules. The `module` block in run blocks enables testing the same scenarios against different module versions, which is particularly valuable for library modules used across multiple projects.
