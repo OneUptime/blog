@@ -53,16 +53,19 @@ while not shutdown_event:
         print(f"Connection from {addr}")
         # Handle client (simplified: echo and close)
         with conn:
-            data = conn.recv(1024)
-            if data:
-                conn.sendall(data)
-    except socket.timeout:
+            try:
+                data = conn.recv(1024)
+                if data:
+                    conn.sendall(data)
+            except OSError:
+                pass
+    except TimeoutError:
         continue   # Check shutdown_event and loop again
     except OSError:
         break
 
-print("Server shutdown complete")
 server.close()
+print("Server shutdown complete")
 ```
 
 ## Graceful Shutdown with Threading
@@ -90,7 +93,7 @@ def handle_client(conn: socket.socket, addr: tuple) -> None:
                 if not data:
                     break
                 conn.sendall(data)
-            except socket.timeout:
+            except TimeoutError:
                 continue
             except OSError:
                 break
@@ -121,7 +124,7 @@ while not shutdown_event.is_set():
         with lock:
             active_threads.append(t)
         t.start()
-    except socket.timeout:
+    except TimeoutError:
         continue
     except OSError:
         break
@@ -131,36 +134,41 @@ print("Waiting for active clients to finish...")
 
 # Wait for all client threads to exit
 for t in list(active_threads):
-    t.join(timeout=10)
+    t.join()
 
 print("All clients disconnected. Bye!")
 ```
 
 ## Using TCP Shutdown Half-Close
 
-When closing a connection, use `shutdown()` before `close()` to flush pending data:
+When closing a connection, call `shutdown()` before `close()` to stop further sends and close the connection promptly:
 
 ```python
-# Gracefully close: stop sending new data, flush buffer, then close
-conn.shutdown(socket.SHUT_WR)   # Signal EOF to client (no more writes)
+# Gracefully close: stop sending, signal EOF to the peer, then close
+conn.shutdown(socket.SHUT_WR)
 conn.close()
 ```
 
 ## asyncio Graceful Shutdown
+
+On Unix-like systems, `loop.add_signal_handler()` can be used to stop accepting new connections and wait for the listening socket to close:
 
 ```python
 import asyncio
 import signal
 
 async def main():
+    shutdown_event = asyncio.Event()
     server = await asyncio.start_server(handle_client, "0.0.0.0", 9007)
 
-    # Graceful shutdown on SIGTERM
     loop = asyncio.get_running_loop()
-    loop.add_signal_handler(signal.SIGTERM, server.close)
+    loop.add_signal_handler(signal.SIGINT, shutdown_event.set)
+    loop.add_signal_handler(signal.SIGTERM, shutdown_event.set)
 
     async with server:
-        await server.serve_forever()
+        await shutdown_event.wait()
+        server.close()
+        await server.wait_closed()
 ```
 
 ## Conclusion
