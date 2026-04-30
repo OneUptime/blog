@@ -2,168 +2,168 @@
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
-Tags: Portainer, Docker, Init Container, Kubernetes, DevOps
+Tags: Portainer, Init Container, Kubernetes, DevOps
 
-Description: Configure and deploy init containers in Portainer to run setup tasks before main application containers start.
+Description: Configure and deploy Kubernetes init containers in Portainer to run setup tasks before main application containers start.
 
 ## Introduction
 
-Configure and deploy init containers in Portainer to run setup tasks before main application containers start. This guide walks you through the process step by step with practical examples.
+Init containers are a Kubernetes feature. In Portainer, the usual way to run them is to deploy a Kubernetes manifest that defines `initContainers`. This guide walks you through the process step by step with a practical example.
 
 ## Prerequisites
 
-- Portainer installed (CE or BE)
-- At least one Docker or Kubernetes environment connected
-- Basic familiarity with Docker concepts
+- Portainer installed (CE or BE) with a Kubernetes environment connected
+- Permission to deploy applications to the target namespace
+- Basic familiarity with Kubernetes manifests
 
 ## Using the Portainer UI
 
 ### Step 1: Navigate to the Relevant Section
 
 1. Log in to your Portainer instance
-2. Select your environment from the home screen
-3. Navigate to **Containers** (or **Stacks** for compose-based tasks)
+2. Select your Kubernetes environment from the home screen
+3. Navigate to **Applications**
+4. Click **Create from code** and choose **Manifest**
 
-### Step 2: Locate Your Container
+### Step 2: Locate Your Application
 
-Use the search and filter options in Portainer:
+After deploying the manifest in Portainer:
 
-1. Click the **Containers** menu item
-2. Use the search box to find your container
-3. Filter by status (running, stopped, unhealthy)
-4. Click on the container name for details
+1. Open the **Applications** menu item
+2. Use the namespace filter if needed
+3. Click on the application name to inspect its details
+4. Review the **Events** tab and the pod list to confirm the init container completed successfully
 
 ## Step-by-Step Instructions
 
-### View Container Details
+### Deploy an Application Manifest
 
-```bash
-# Using Docker CLI equivalent
-
-docker inspect container-name
-
-# View formatted output
-docker inspect container-name | jq '.[0].Config'
-
-# Via Portainer: Containers > container-name > Inspect
+```yaml
+apiVersion: v1
+kind: Pod
+metadata:
+  name: init-demo
+spec:
+  containers:
+    - name: nginx
+      image: nginx
+      ports:
+        - containerPort: 80
+      volumeMounts:
+        - name: workdir
+          mountPath: /usr/share/nginx/html
+  # This container runs during Pod initialization
+  initContainers:
+    - name: install
+      image: busybox:1.28
+      command:
+        - wget
+        - "-O"
+        - "/work-dir/index.html"
+        - http://info.cern.ch
+      volumeMounts:
+        - name: workdir
+          mountPath: /work-dir
+  dnsPolicy: Default
+  volumes:
+    - name: workdir
+      emptyDir: {}
 ```
 
 ### Key Configuration Options
 
 ```yaml
-# docker-compose.yml example
-version: "3.8"
-
-services:
-  app:
-    image: your-app:latest
-    container_name: my-app
-    restart: always
-    # Resource constraints
-    deploy:
-      resources:
-        limits:
-          cpus: '1.0'
-          memory: 512M
-    # Health check
-    healthcheck:
-      test: ["CMD", "curl", "-f", "http://localhost:8080/health"]
-      interval: 30s
-      timeout: 10s
-      retries: 3
-    # Environment
-    environment:
-      - NODE_ENV=production
-    # Volumes
-    volumes:
-      - app-data:/data
-    # Network
-    networks:
-      - app-net
-
-volumes:
-  app-data:
-
-networks:
-  app-net:
-    driver: bridge
+spec:
+  initContainers:
+    - name: install
+      image: busybox:1.28
+      command: ["wget", "-O", "/work-dir/index.html", "http://info.cern.ch"]
+      volumeMounts:
+        - name: workdir
+          mountPath: /work-dir
+  containers:
+    - name: nginx
+      image: nginx
+      volumeMounts:
+        - name: workdir
+          mountPath: /usr/share/nginx/html
+  volumes:
+    - name: workdir
+      emptyDir: {}
 ```
 
 ## Command Line Examples
 
-Useful Docker commands for this task:
+Useful Kubernetes commands for this task:
 
 ```bash
-# Basic inspection commands
-docker ps -a                              # List all containers
-docker stats container-name               # View resource usage
-docker logs container-name --tail 100     # View recent logs
-docker inspect container-name             # Full container config
-docker exec -it container-name /bin/sh   # Access container shell
+# Check the Pod created by the manifest
+kubectl get pod init-demo
 
-# Advanced filtering
-docker ps --filter "status=running" \
-           --filter "label=env=production" \
-           --format "table {{.Names}}\t{{.Status}}\t{{.Ports}}"
+# Inspect Pod state, events, and init container progress
+kubectl describe pod init-demo
 
-# File operations
-docker cp /host/path container-name:/container/path
-docker cp container-name:/container/path /host/path
+# View logs from the init container
+kubectl logs init-demo -c install
+
+# View logs from the main application container
+kubectl logs init-demo -c nginx
+
+# Inspect init container status in structured output
+kubectl get pod init-demo -o jsonpath='{.status.initContainerStatuses}'
 ```
 
 ## Portainer-Specific Features
 
 Portainer provides several UI conveniences for this task:
 
-1. **Visual Stats Dashboard**: Click any container > Stats for real-time graphs
-2. **Log Streaming**: Click Logs for real-time log output with search
-3. **Container Console**: Click Console for direct shell access
-4. **Quick Actions**: Stop, restart, kill from the container list
-5. **Inspect View**: Formatted JSON view of container configuration
+1. **Manifest Deployment**: Use **Applications** > **Create from code** > **Manifest** to paste or load Kubernetes YAML
+2. **Application Details**: Inspect the application status, placement, and related events from the application details page
+3. **YAML View**: Review the generated YAML for the application, and edit it there in Business Edition
+4. **Application Containers**: Open pod logs, stats, and console access from the application details view
+5. **kubectl Shell**: Use Portainer's built-in `kubectl` and `helm` shell for cluster-side troubleshooting
 
 ## Troubleshooting Common Issues
 
-**Issue: Container not appearing in list**
+**Issue: Pod stays in `Init:0/1` or `Init:CrashLoopBackOff`**
 ```bash
-# Check all containers including stopped ones
-docker ps -a
+# Inspect events and status details
+kubectl describe pod init-demo
 
-# Refresh Portainer's environment
-# Settings > Environments > Re-sync
+# Check the init container logs
+kubectl logs init-demo -c install
 ```
 
-**Issue: Permission denied errors**
+**Issue: Application deployed to the wrong namespace**
 ```bash
-# Check container user
-docker inspect container-name | jq '.[0].Config.User'
+# Check the Pod in the expected namespace
+kubectl get pod init-demo -n your-namespace
 
-# Run container with specific user
-docker run --user 1000:1000 your-image
+# When deploying from Portainer, make sure the selected namespace
+# matches the target namespace for the manifest
 ```
 
-**Issue: Resource limits not applying**
+**Issue: Need to confirm the init container completed successfully**
 ```bash
-# Verify limits are applied
-docker inspect container-name | jq '.[0].HostConfig | {Memory, CpuShares, CpuQuota}'
+# View init container status directly
+kubectl get pod init-demo -o jsonpath='{.status.initContainerStatuses[*].state}'
 ```
 
 ## Automating with the Portainer API
 
-Automate this task via the Portainer API:
+Portainer exposes an API for authenticated automation, and it can also act as a gateway to the underlying Kubernetes API for connected environments.
 
 ```bash
-# Authenticate and get JWT token
+# Authenticate and get a JWT token
 TOKEN=$(curl -s -X POST \
-  "https://portainer.example.com/api/auth" \
+  "https://portainer.example.com:9443/api/auth" \
   -H "Content-Type: application/json" \
   -d '{"Username":"admin","Password":"password"}' | jq -r .jwt)
 
-# List containers
-curl -s -X GET \
-  "https://portainer.example.com/api/endpoints/1/docker/containers/json" \
-  -H "Authorization: Bearer $TOKEN" | jq '.[] | {Names, Status, Image}'
+# Use the token in the Authorization header for subsequent API calls
+printf 'Authorization: Bearer %s\n' "$TOKEN"
 ```
 
 ## Conclusion
 
-Understanding how to Run Init Containers Using Portainer gives you greater control over your containerized infrastructure. Portainer's visual interface makes these operations accessible to team members who may not be comfortable with the Docker CLI, while also providing quick access to underlying Docker capabilities. Regular use of these features helps maintain healthy, well-monitored container environments.
+Understanding how to run init containers in Portainer gives you greater control over Kubernetes application startup. Portainer's visual interface makes manifest deployment, inspection, and troubleshooting accessible to team members who may not want to work directly in `kubectl`, while still providing quick access to logs, events, YAML, and a built-in `kubectl` shell when needed.
