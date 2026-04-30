@@ -8,7 +8,7 @@ Description: Enable IPv6 in Google Cloud VPC networks, configure dual-stack subn
 
 ## Introduction
 
-Google Cloud Platform (GCP) supports IPv6 in VPC networks through subnet-level IPv6 ranges. Unlike AWS and Azure that assign IPv6 at the VPC level, GCP enables IPv6 per-subnet with the choice of external IPv6 (globally routable from the internet) or internal IPv6 (ULA, only within VPC). GCP VMs can receive dual-stack addresses with both IPv4 and IPv6.
+Google Cloud Platform (GCP) supports IPv6 in VPC networks through subnet-level IPv6 ranges. GCP enables IPv6 per-subnet with the choice of external IPv6 (globally routable from the internet) or internal IPv6 (ULA, only within VPC). GCP VMs can receive dual-stack addresses with both IPv4 and IPv6.
 
 ## Enable IPv6 on GCP Subnet
 
@@ -19,9 +19,11 @@ VPC_NAME="vpc-main"
 SUBNET_NAME="subnet-web"
 
 # Create VPC first (if not exists)
+# Internal IPv6 subnets require a ULA /48 on the VPC network.
 
 gcloud compute networks create "$VPC_NAME" \
     --subnet-mode=custom \
+    --enable-ula-internal-ipv6 \
     --project="$PROJECT"
 
 # Create subnet with external IPv6 (globally routable)
@@ -58,7 +60,7 @@ terraform {
   required_providers {
     google = {
       source  = "hashicorp/google"
-      version = "~> 5.0"
+      version = "~> 7.0"
     }
   }
 }
@@ -71,6 +73,7 @@ provider "google" {
 resource "google_compute_network" "main" {
   name                    = "vpc-main"
   auto_create_subnetworks = false
+  enable_ula_internal_ipv6 = true
 }
 
 # External IPv6 subnet (globally routable)
@@ -115,20 +118,22 @@ output "app_subnet_ipv6" {
 
 ```text
 GCP IPv6 Types:
-  External IPv6 - GCP-assigned globally routable /96 prefix
-    → VMs get addresses reachable from internet
-    → Subnet gets /48 from GCP's public IPv6 range
+  External IPv6 - GCP-assigned globally routable IPv6 range
+    → Subnet gets a /64 external IPv6 range
+    → VM interfaces get a /96 from that subnet range
     → Used for internet-facing workloads
 
-  Internal IPv6 - ULA (Unique Local Addresses) /96
-    → VMs get addresses only reachable within VPC
+  Internal IPv6 - ULA (Unique Local Addresses)
+    → VPC network gets a /48 ULA range first
+    → Each internal IPv6 subnet gets a /64 from that /48
+    → VM interfaces get an internal /96 from the subnet range
     → Good for backend services not exposed to internet
     → Unique per-subnet, not globally routable
 
 Stack Types:
   IPV4_ONLY    - Only IPv4 (default)
   IPV4_IPV6    - Both IPv4 and IPv6 (dual-stack)
-  IPV6_ONLY    - Only IPv6 (requires DNS64/NAT64)
+  IPV6_ONLY    - Only IPv6 (use DNS64/NAT64 for IPv4 internet access)
 ```
 
 ## Verify VPC IPv6 Configuration
@@ -150,4 +155,4 @@ gcloud compute networks subnets describe "$SUBNET_NAME" \
 
 ## Conclusion
 
-GCP VPC IPv6 is configured per-subnet using `stack_type = "IPV4_IPV6"` and `ipv6_access_type` of either `EXTERNAL` (globally routable) or `INTERNAL` (ULA). Unlike AWS where VPCs get a `/56`, GCP assigns individual `/96` or larger prefixes to subnets. External IPv6 subnets receive a `/48` prefix from GCP's public IP space, with individual VMs getting `/96` addresses. Internal IPv6 uses ULA ranges for private inter-VPC communication. After enabling IPv6 on a subnet, VMs in that subnet can be configured to receive IPv6 addresses via their network interface settings.
+GCP VPC IPv6 is configured per-subnet using `stack_type = "IPV4_IPV6"` and `ipv6_access_type` of either `EXTERNAL` (globally routable) or `INTERNAL` (ULA). External IPv6 subnets receive a `/64` prefix, and VM interfaces get a `/96` from that subnet range. Internal IPv6 requires assigning a `/48` ULA range to the VPC network first, after which each internal IPv6 subnet receives a `/64` from that network range. After enabling IPv6 on a subnet, VMs in that subnet can be configured to receive IPv6 addresses via their network interface settings.
