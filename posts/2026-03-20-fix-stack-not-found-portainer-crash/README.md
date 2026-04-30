@@ -4,15 +4,15 @@ Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
 Tags: Portainer, Troubleshooting, Stack, Recovery, Database, Crash
 
-Description: Learn how to recover from 'Stack Not Found' errors after a Portainer crash by restoring stack metadata from the database or re-importing running stacks.
+Description: Learn how to recover from 'Stack Not Found' errors after a Portainer crash by restoring Portainer from backup, re-associating orphaned stacks, or rolling back a failed upgrade.
 
 ---
 
-After a Portainer crash or improper shutdown, stack metadata in the BoltDB database can become inconsistent. Portainer may show "Stack Not Found" even though the containers are still running. This guide covers recovery options.
+Because Portainer stores its configuration separately from the Docker workloads it manages, a crash or failed upgrade can leave Portainer unable to find a stack even though the containers are still running. This guide covers supported recovery options.
 
 ## Understanding the Problem
 
-Portainer stores stack metadata (name, compose content, environment variables) in its BoltDB database (`portainer.db`). The actual running containers live in Docker - independent of Portainer. A corrupt database loses the metadata link but not the running containers.
+Portainer stores its configuration in the BoltDB database (`portainer.db`) inside the `/data` volume. Stack definitions created in Portainer are part of that configuration, while the actual running containers continue to exist in Docker independently of Portainer.
 
 ## Step 1: Verify Containers Are Still Running
 
@@ -21,62 +21,64 @@ Portainer stores stack metadata (name, compose content, environment variables) i
 
 docker ps --format "table {{.Names}}\t{{.Status}}\t{{.Image}}"
 
-# List Docker-managed networks (stacks usually create a dedicated network)
-docker network ls | grep <stack-name>
+# List Docker-managed networks (Compose usually creates a project-specific network)
+docker network ls --filter name=<stack-name>
 ```
 
 ## Step 2: Check Portainer Logs
 
 ```bash
-docker logs portainer --tail 50 | grep -i "stack\|error\|database"
+docker logs portainer --tail 50 | grep -Ei "stack|error|database"
 ```
 
 ## Step 3: Restore from Backup
 
 If you have a Portainer backup:
 
-1. In Portainer go to **Settings > Backup Portainer**.
-2. Upload the `.tar.gz` backup file.
-3. Click **Restore**.
+1. Stop and remove the current Portainer container, then start a fresh Portainer instance with an empty data volume.
+2. On the initialization page, expand **Restore Portainer from backup**.
+3. Select the `.tar.gz` backup file, enter the password if it was encrypted, and click **Restore Portainer**.
 
-Portainer will restore all stack metadata.
+Portainer will restore its saved configuration, including stack definitions created in Portainer.
 
-## Step 4: Re-import Orphaned Stacks
+## Step 4: Re-associate Orphaned Stacks
 
-For stacks deployed from Portainer without a Git repository, you can re-import them:
+If the crash forced you to remove and re-add the Docker environment in Portainer, the stacks may appear as orphaned instead of missing:
 
-```bash
-# Find the Compose labels on a container from the stack
-docker inspect <container-name> | python3 -c "
-import json, sys
-data = json.load(sys.stdin)
-labels = data[0]['Config']['Labels']
-for k, v in labels.items():
-    if 'compose' in k.lower() or 'stack' in k.lower():
-        print(f'{k}: {v}')"
-```
+1. In the recovered environment, go to **Stacks**.
+2. Click the three dots in the top right and select **Show all orphaned stacks**.
+3. Open the stack and click **Associate**.
 
-Then in Portainer create a new stack with the same name and paste the compose content. Portainer will detect the existing containers and link them.
+This reconnects the existing stack record to the recreated environment.
 
-## Step 5: Use the --rollback Flag for Failed Upgrades
+## Step 5: Restore `portainer.db.bak` for Failed Upgrades
 
 If the crash occurred during a Portainer upgrade:
 
 ```bash
-# Roll back to the previous version
-docker stop portainer && docker rm portainer
+# Stop and remove Portainer, but keep the portainer_data volume
+docker stop portainer
+docker rm portainer
 
-# Run the previous Portainer version (replace with your previous version)
+# Restore the automatic database backup created during the upgrade
+docker run --rm -v portainer_data:/data alpine sh -c '
+  cd /data &&
+  mv portainer.db portainer.db.oldversion &&
+  cp backups/portainer.db.bak portainer.db
+'
+
+# Start the previous Portainer version
 docker run -d \
+  -p 8000:8000 -p 9443:9443 \
   --name portainer \
-  portainer/portainer-ce:2.19.5 \
-  --rollback-from 2.20.0
+  --restart=always \
+  -v /var/run/docker.sock:/var/run/docker.sock \
+  -v portainer_data:/data \
+  portainer/portainer-ce:<previous-version>
 ```
+
+The Portainer image version must match the version that created `backups/portainer.db.bak`.
 
 ## Prevention: Back Up Before Updates
 
-```bash
-# Create a backup before any Portainer update
-docker run --rm -v portainer_data:/data alpine \
-  tar czf - /data > portainer-backup-$(date +%Y%m%d).tar.gz
-```
+Use **Settings > Back up Portainer** to download a `.tar.gz` backup before updates. This is the backup format Portainer documents for restore during initial setup.
