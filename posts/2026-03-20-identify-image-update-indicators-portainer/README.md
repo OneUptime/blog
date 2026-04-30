@@ -8,11 +8,11 @@ Description: Detect when newer versions of Docker images are available in Portai
 
 ---
 
-Portainer's image management features provide a web-based interface for the full image lifecycle: pulling, building, tagging, inspecting, and cleaning up Docker images.
+Portainer's image management features provide a web-based interface for common image tasks such as pulling, building, importing, and exporting Docker images. For deployed workloads, Portainer shows image update indicators next to containers, stacks, and services by comparing the first local image digest with the remote digest for the same image tag.
 
 ## Navigating Image Management
 
-In Portainer, navigate to **Images** in the left sidebar to see all available images on the connected environment.
+In Portainer, navigate to **Images** in the left sidebar to see all available images on the connected environment. To identify update indicators for deployed workloads, check the **Containers**, **Stacks**, or **Services** views.
 
 ## Pull Images from a Registry
 
@@ -30,7 +30,7 @@ docker login registry.example.com
 docker pull registry.example.com/private/image:tag
 ```
 
-In Portainer: **Images > Pull image** - enter the image name and tag, optionally select a registry.
+In Portainer: **Images** - select the registry, enter the image name, then click **Pull the image**. Use **Advanced mode** for a custom registry URL and port.
 
 ## Build Images
 
@@ -45,7 +45,7 @@ docker build -f Dockerfile.prod -t myapp:prod .
 docker build --build-arg NODE_ENV=production -t myapp:prod .
 ```
 
-In Portainer: **Images > Build image** - paste Dockerfile content or upload a file.
+In Portainer: **Images > Build a new image** - use the web editor, upload a Dockerfile, or provide a URL.
 
 ## Import/Export Images
 
@@ -88,12 +88,17 @@ docker system df
 
 ## Identify Outdated Images
 
-```bash
-# Check if a newer digest exists for an image
-docker pull nginx:latest 2>&1 | grep -E "Pull complete|up to date"
+In Portainer, image update indicators appear next to containers, stacks, and services. Portainer compares the first local digest for the image tag with the remote digest when the page refreshes.
 
-# View image creation date
-docker inspect nginx:latest --format '{{.Created}}'
+```bash
+# Show the first local digest that Portainer compares
+docker inspect --type=image nginx:latest --format '{{index .RepoDigests 0}}'
+
+# View the local image creation date
+docker inspect --type=image nginx:latest --format '{{.Created}}'
+
+# Pull the tag again and check whether Docker reports a newer image
+docker pull nginx:latest
 ```
 
 ---
