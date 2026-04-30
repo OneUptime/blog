@@ -26,6 +26,7 @@ graph LR
 # psc.tf
 
 resource "google_compute_global_address" "psc_google_apis" {
+  provider      = google-beta
   name          = "${var.prefix}-psc-google-apis"
   purpose       = "PRIVATE_SERVICE_CONNECT"
   address_type  = "INTERNAL"
@@ -35,8 +36,9 @@ resource "google_compute_global_address" "psc_google_apis" {
 }
 
 resource "google_compute_global_forwarding_rule" "psc_google_apis" {
-  name                  = "${var.prefix}-psc-all-apis"
-  target                = "all-apis"  # Bundle of all Google APIs
+  provider              = google-beta
+  name                  = "pscgoogleapis"
+  target                = "all-apis"  # Bundle of most Google APIs and services
   network               = google_compute_network.main.id
   ip_address            = google_compute_global_address.psc_google_apis.id
   load_balancing_scheme = ""  # Empty for PSC
@@ -63,7 +65,7 @@ resource "google_dns_managed_zone" "googleapis" {
 
 # Route all googleapis.com traffic to PSC IP
 resource "google_dns_record_set" "googleapis_a" {
-  name         = "*.googleapis.com."
+  name         = "googleapis.com."
   type         = "A"
   ttl          = 300
   managed_zone = google_dns_managed_zone.googleapis.name
@@ -76,7 +78,7 @@ resource "google_dns_record_set" "googleapis_cname" {
   type         = "CNAME"
   ttl          = 300
   managed_zone = google_dns_managed_zone.googleapis.name
-  rrdatas      = ["private.googleapis.com."]
+  rrdatas      = ["googleapis.com."]
   project      = var.project_id
 }
 
@@ -95,11 +97,51 @@ resource "google_dns_managed_zone" "gcr" {
 }
 
 resource "google_dns_record_set" "gcr_a" {
-  name         = "*.gcr.io."
+  name         = "gcr.io."
   type         = "A"
   ttl          = 300
   managed_zone = google_dns_managed_zone.gcr.name
   rrdatas      = [google_compute_global_address.psc_google_apis.address]
+  project      = var.project_id
+}
+
+resource "google_dns_record_set" "gcr_cname" {
+  name         = "*.gcr.io."
+  type         = "CNAME"
+  ttl          = 300
+  managed_zone = google_dns_managed_zone.gcr.name
+  rrdatas      = ["gcr.io."]
+  project      = var.project_id
+}
+
+resource "google_dns_managed_zone" "pkgdev" {
+  name        = "${var.prefix}-pkgdev"
+  dns_name    = "pkg.dev."
+  visibility  = "private"
+  project     = var.project_id
+
+  private_visibility_config {
+    networks {
+      network_url = google_compute_network.main.id
+    }
+  }
+}
+
+resource "google_dns_record_set" "pkgdev_a" {
+  name         = "pkg.dev."
+  type         = "A"
+  ttl          = 300
+  managed_zone = google_dns_managed_zone.pkgdev.name
+  rrdatas      = [google_compute_global_address.psc_google_apis.address]
+  project      = var.project_id
+}
+
+resource "google_dns_record_set" "pkgdev_cname" {
+  name         = "*.pkg.dev."
+  type         = "CNAME"
+  ttl          = 300
+  managed_zone = google_dns_managed_zone.pkgdev.name
+  rrdatas      = ["pkg.dev."]
   project      = var.project_id
 }
 ```
@@ -136,7 +178,7 @@ resource "google_compute_forwarding_rule" "psc_consumer" {
 ```hcl
 # publisher_psc.tf - expose your service for other VPCs to connect
 
-# NLB is required as the frontend for PSC published services
+# This example uses an internal passthrough NLB as the target service for PSC
 resource "google_compute_forwarding_rule" "psc_producer_nlb" {
   name                  = "${var.prefix}-psc-nlb"
   region                = var.region
@@ -155,8 +197,9 @@ resource "google_compute_service_attachment" "main" {
   region                = var.region
   project               = var.project_id
   description           = "PSC service attachment for ${var.service_name}"
-  forwarding_rule       = google_compute_forwarding_rule.psc_producer_nlb.id
-  connection_preference = "ACCEPT_AUTOMATIC"  # or ACCEPT_MANUAL for explicit approval
+  target_service        = google_compute_forwarding_rule.psc_producer_nlb.id
+  enable_proxy_protocol = false
+  connection_preference = "ACCEPT_MANUAL"  # Use ACCEPT_AUTOMATIC to accept any consumer
 
   nat_subnets = [google_compute_subnetwork.psc_nat.id]
 
@@ -175,8 +218,8 @@ output "service_attachment_uri" {
 
 ## Best Practices
 
-- Use the `all-apis` PSC target rather than `vpc-sc` unless you need VPC Service Controls - `all-apis` covers all Google APIs with a single endpoint.
-- Create private DNS zones for `googleapis.com` and `gcr.io` to route API calls through the PSC endpoint - without DNS, applications will still resolve to public IP addresses.
+- Use the `all-apis` PSC target rather than `vpc-sc` unless you need VPC Service Controls - `all-apis` covers most Google APIs and services, including all `*.googleapis.com` service endpoints, with a single endpoint.
+- Create private DNS zones for `googleapis.com`, `gcr.io`, and `pkg.dev` to route API calls through the PSC endpoint - without DNS, applications will still resolve to public IP addresses.
 - Use `ACCEPT_AUTOMATIC` for trusted internal consumers and `ACCEPT_MANUAL` for external organizations that need approval before connecting.
 - Create a dedicated NAT subnet (`/29` minimum) for PSC service attachments - this subnet provides IP addresses for PSC connection translations.
 - Test PSC connectivity by resolving `storage.googleapis.com` from inside the VPC - it should resolve to the PSC endpoint IP rather than a public Google IP.
