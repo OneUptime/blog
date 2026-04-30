@@ -8,7 +8,7 @@ Description: Configure HAProxy stick tables to implement session persistence by 
 
 ## Introduction
 
-Stick tables are HAProxy's in-memory key-value store for tracking client state. Using source IP as the key, HAProxy can route a returning client back to the same backend server, implementing sticky sessions without cookies.
+Stick tables are HAProxy's in-memory key-value store for tracking client state. Using a source IPv4 address as the key, HAProxy can route a returning client back to the same backend server, implementing sticky sessions without cookies. In HAProxy 3.2 and later, use `type ipv4` for IPv4-only tables; older releases use `type ip`.
 
 ## Source IP Persistence
 
@@ -26,10 +26,10 @@ backend app_servers
     balance roundrobin
 
     # Stick table: map client IPv4 to backend server
-    # - type ip: key is client IP address
+    # - type ipv4: key is client IPv4 address
     # - size 100k: store up to 100,000 entries
     # - expire 30m: remove entries after 30 minutes of inactivity
-    stick-table type ip size 100k expire 30m
+    stick-table type ipv4 size 100k expire 30m
 
     # Record which server the client was sent to
     stick on src
@@ -49,12 +49,11 @@ frontend http_in
     mode http
 
     # Track multiple stats per source IP
-    stick-table type ip size 100k expire 60s \
+    stick-table type ipv4 size 100k expire 60s \
         store conn_cur,conn_rate(30s),http_req_rate(60s),http_err_rate(60s)
 
-    # Update counters for every connection/request
+    # Start tracking each client IPv4; HAProxy updates the stored counters
     tcp-request connection track-sc0 src
-    http-request track-sc0 src
 
     # ACL based on tracked data
     acl too_many_connections  sc_conn_cur(0) gt 50
@@ -79,9 +78,10 @@ backend app_servers
     # Insert a persistence cookie naming which server handled the request
     cookie SERVERID insert indirect nocache
 
-    # Stick table backed by cookie value
+    # Learn the inserted cookie value from responses and match it on later requests
     stick-table type string len 32 size 100k expire 4h
-    stick on cookie(SERVERID)
+    stick match req.cook(SERVERID)
+    stick store-response res.cook(SERVERID)
 
     # Each server has a cookie value
     server app1 192.168.1.10:8080 check cookie app1
@@ -94,24 +94,24 @@ backend app_servers
 ```bash
 # List all entries in a stick table
 
-echo "show table backend app_servers" | sudo socat stdio /run/haproxy/admin.sock
+echo "show table app_servers" | sudo socat stdio /run/haproxy/admin.sock
 
 # Show entries for a specific source IP
-echo "show table backend app_servers key 203.0.113.50" | \
+echo "show table app_servers key 203.0.113.50" | \
   sudo socat stdio /run/haproxy/admin.sock
 
 # Delete a specific entry (force re-routing a client)
-echo "clear table backend app_servers key 203.0.113.50" | \
+echo "clear table app_servers key 203.0.113.50" | \
   sudo socat stdio /run/haproxy/admin.sock
 
 # Clear all entries in a table
-echo "clear table backend app_servers" | \
+echo "clear table app_servers" | \
   sudo socat stdio /run/haproxy/admin.sock
 ```
 
 ## Stick Table Replication in HA Clusters
 
-In a two-node HAProxy active/passive setup, replicate stick table state:
+In a two-node HAProxy active/passive setup, replicate stick table state. On each node, make sure the local peer name matches one of the `peer` entries, either via the hostname or `global localpeer`:
 
 ```haproxy
 peers my_peers
@@ -119,7 +119,7 @@ peers my_peers
     peer haproxy2 192.168.0.2:1024
 
 backend app_servers
-    stick-table type ip size 100k expire 30m peers my_peers
+    stick-table type ipv4 size 100k expire 30m peers my_peers
     stick on src
 
     server app1 192.168.1.10:8080 check
@@ -128,4 +128,4 @@ backend app_servers
 
 ## Conclusion
 
-HAProxy stick tables provide flexible, in-memory session persistence tied to IPv4 source addresses. Use `stick on src` for simple IP-based stickiness, `store http_req_rate` for request tracking and rate limiting, and cookie-based stickiness for more reliable session binding. In HA deployments, configure `peers` to replicate stick table state between HAProxy instances so failover doesn't break client sessions.
+HAProxy stick tables provide flexible, in-memory persistence keyed by IPv4 source addresses or other values such as cookies. Use `stick on src` for simple IP-based stickiness, `store http_req_rate(60s)` for request tracking and rate limiting, and request/response cookie matching when you want a stick table to learn cookie-based affinity. In HA deployments, configure `peers` to replicate stick table state between HAProxy instances so failover doesn't break client sessions.
