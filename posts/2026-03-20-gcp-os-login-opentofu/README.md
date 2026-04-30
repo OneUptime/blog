@@ -15,11 +15,9 @@ GCP OS Login replaces the traditional SSH key management in project metadata wit
 ```hcl
 # main.tf - Enable OS Login for all VMs in the project
 
-resource "google_compute_project_metadata" "os_login" {
-  metadata = {
-    enable-oslogin      = "TRUE"
-    enable-oslogin-2fa  = "FALSE"  # Set to TRUE to require 2FA
-  }
+resource "google_compute_project_metadata_item" "os_login" {
+  key   = "enable-oslogin"
+  value = "TRUE"
 }
 ```
 
@@ -84,14 +82,17 @@ resource "google_project_iam_member" "sa_os_login" {
 ## Step 4: Required IAM for OS Login
 
 ```hcl
-# Users also need compute.instances.get for instance information
+# If OS Login is granted at the instance level and users connect with the
+# Google Cloud console or gcloud CLI, also grant a project-level role that
+# includes compute.projects.get. roles/compute.viewer is one built-in option.
 resource "google_project_iam_member" "compute_viewer" {
   project = var.project_id
   role    = "roles/compute.viewer"
   member  = "user:developer@example.com"
 }
 
-# Service Account User role required if using service accounts
+# Grant Service Account User to each principal that needs OS Login if the VM
+# has a service account attached
 resource "google_service_account_iam_member" "sa_user" {
   service_account_id = google_service_account.vm_sa.name
   role               = "roles/iam.serviceAccountUser"
@@ -102,12 +103,10 @@ resource "google_service_account_iam_member" "sa_user" {
 ## Step 5: OS Login with 2FA
 
 ```hcl
-# Enable 2FA for OS Login across the project
-resource "google_compute_project_metadata" "os_login_2fa" {
-  metadata = {
-    enable-oslogin     = "TRUE"
-    enable-oslogin-2fa = "TRUE"  # Requires Google 2FA for SSH access
-  }
+# Enable 2FA for OS Login across the project after enable-oslogin is TRUE
+resource "google_compute_project_metadata_item" "os_login_2fa" {
+  key   = "enable-oslogin-2fa"
+  value = "TRUE"  # Requires Google 2-Step Verification for user SSH access
 }
 ```
 
