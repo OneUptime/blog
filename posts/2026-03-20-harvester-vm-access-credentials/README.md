@@ -15,9 +15,9 @@ Configuring secure access credentials for VMs in Harvester is essential for both
 | Method | OS Support | Use Case |
 |---|---|---|
 | SSH Key Injection | Linux | Key-based SSH access (recommended) |
-| Password via cloud-init | Linux/Windows | Interactive access |
+| Password via cloud-init | Linux | Console or SSH access when enabled |
 | Cloud-init user data | Linux | Full user management |
-| Kubernetes Secret | All | Store credentials securely |
+| Kubernetes Secret | All | Back access credentials with Secret data |
 
 ## Method 1: SSH Keys via Cloud-Init
 
@@ -78,28 +78,19 @@ spec:
                     - ssh-ed25519 AAAAC3NzaC1lZDI1NTE5AAAA... admin@bastion
               # Disable root login and password authentication
               disable_root: true
+              ssh_pwauth: false
               ssh:
                 emit_keys_to_console: false
-              # Configure SSH server
-              write_files:
-                - path: /etc/ssh/sshd_config.d/99-security.conf
-                  content: |
-                    PermitRootLogin no
-                    PasswordAuthentication no
-                    PubkeyAuthentication yes
-                    AuthorizedKeysFile .ssh/authorized_keys
-              runcmd:
-                - systemctl restart sshd
 ```
 
 ## Method 2: Use Kubernetes Secrets for Credentials
 
-Store SSH keys and passwords in Kubernetes Secrets, then reference them in VMs:
+Store SSH public keys in a Kubernetes Secret, then reference them in a VM:
 
 ```bash
 # Create a secret with SSH public keys
 kubectl create secret generic vm-ssh-keys \
-    --from-file=authorized_keys=$HOME/.ssh/id_rsa.pub \
+    --from-file=key1=$HOME/.ssh/id_rsa.pub \
     -n default
 
 # Or create a multi-key secret
@@ -112,10 +103,9 @@ metadata:
 type: Opaque
 stringData:
   # Store SSH public keys
-  authorized_keys: |
-    ssh-rsa AAAAB3NzaC1... user1@host
-    ssh-ed25519 AAAAC3Nz... user2@host
-    ssh-rsa AAAAB3NzaC1... deployer@ci
+  key1: ssh-rsa AAAAB3NzaC1... user1@host
+  key2: ssh-ed25519 AAAAC3Nz... user2@host
+  key3: ssh-rsa AAAAB3NzaC1... deployer@ci
 EOF
 ```
 
@@ -163,7 +153,6 @@ spec:
               qemuGuestAgent:
                 users:
                   - ubuntu
-                  - admin
       networks:
         - name: default
           pod: {}
@@ -195,9 +184,8 @@ metadata:
   namespace: default
 type: Opaque
 stringData:
-  # Password for the admin user
-  # Use a strong, randomly generated password
-  password: "$(openssl rand -base64 24)"
+  # Each key must match an existing username inside the guest
+  Administrator: "$(openssl rand -base64 24)"
 EOF
 ```
 
@@ -236,9 +224,7 @@ spec:
               secret:
                 secretName: vm-user-passwords
             propagationMethod:
-              qemuGuestAgent:
-                # Username to set the password for
-                userPasswordFile: "Administrator"
+              qemuGuestAgent: {}
       networks:
         - name: default
           pod: {}
@@ -256,11 +242,11 @@ Using the `accessCredentials` with `qemuGuestAgent`, you can rotate SSH keys wit
 # Update the secret with new SSH keys
 kubectl patch secret vm-ssh-keys -n default \
     --type merge \
-    -p '{"stringData":{"authorized_keys":"ssh-rsa AAAAB3NzaC1... new-key@host\n"}}'
+    -p '{"stringData":{"key1":"ssh-rsa AAAAB3NzaC1... new-key@host\n"}}'
 
 # The qemu-guest-agent will automatically propagate the change
 # Verify the key was updated inside the VM
-virtctl guestosinfo ubuntu-web-01 -n default
+ssh ubuntu@<ip-address-or-hostname> 'grep "new-key@host" ~/.ssh/authorized_keys'
 ```
 
 ## Method 5: Cloud-Init via Harvester UI
@@ -268,7 +254,7 @@ virtctl guestosinfo ubuntu-web-01 -n default
 When creating a VM through the UI:
 
 1. Click **Create VM**
-2. Go to the **Advanced** tab
+2. Go to the **Advanced Options** section
 3. In the **User Data** section, enter cloud-init YAML:
 
 ```yaml
@@ -288,6 +274,7 @@ chpasswd:
   list: |
     ubuntu:ChangeMe123!
   expire: true
+ssh_pwauth: true
 ```
 
 ## Credential Security Best Practices
@@ -302,7 +289,7 @@ ssh-keygen -t ed25519 -C "harvester-vm-access" -f ~/.ssh/harvester_ed25519
 # 3. Rotate keys regularly - update the secret and let qemu-guest-agent propagate
 kubectl patch secret vm-ssh-keys -n default \
     --type merge \
-    -p "{\"stringData\":{\"authorized_keys\":\"$(cat ~/.ssh/harvester_ed25519.pub)\"}}"
+    -p "{\"stringData\":{\"key1\":\"$(cat ~/.ssh/harvester_ed25519.pub)\"}}"
 
 # 4. Use RBAC to restrict who can read VM secrets
 kubectl apply -f - <<EOF
