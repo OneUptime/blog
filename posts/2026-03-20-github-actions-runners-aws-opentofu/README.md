@@ -8,16 +8,16 @@ Description: Learn how to deploy self-hosted GitHub Actions runners on AWS EC2 w
 
 ---
 
-Self-hosted GitHub Actions runners on AWS give you control over compute size, network access, and cost. Auto Scaling Groups paired with the GitHub Actions Runner Controller or instance lifecycle hooks provide elastic scaling that matches your CI/CD throughput.
+Self-hosted GitHub Actions runners on AWS give you control over compute size, network access, and cost. Auto Scaling Groups paired with `workflow_job` webhooks and scaling automation provide elastic scaling that matches your CI/CD throughput.
 
 ## Architecture
 
 ```mermaid
 graph TD
-    A[GitHub Actions<br/>Job queued] --> B[Auto Scaling Group<br/>EC2 Spot/On-Demand]
+    A[GitHub Actions<br/>Job queued] --> B[workflow_job webhook<br/>Lambda updates ASG]
     B --> C[EC2 Runner Instance<br/>Registers with GitHub]
     C --> D[Job Executes<br/>Private VPC access]
-    D --> E[Instance Terminates<br/>After job completes]
+    D --> E[Instance shuts down<br/>and terminates]
 ```
 
 ## IAM Role for Runners
@@ -58,6 +58,11 @@ resource "aws_iam_policy" "runner_ci" {
         Effect   = "Allow"
         Action   = ["s3:PutObject", "s3:GetObject"]
         Resource = "${aws_s3_bucket.artifacts.arn}/*"
+      },
+      {
+        Effect   = "Allow"
+        Action   = ["secretsmanager:GetSecretValue"]
+        Resource = var.github_token_secret_arn
       }
     ]
   })
@@ -89,9 +94,9 @@ data "aws_ami" "ubuntu" {
 }
 
 resource "aws_launch_template" "runner" {
-  name_prefix   = "${var.prefix}-runner-"
-  image_id      = data.aws_ami.ubuntu.id
-  instance_type = var.instance_type  # e.g., "c6i.2xlarge" for compute-intensive jobs
+  name_prefix                         = "${var.prefix}-runner-"
+  image_id                            = data.aws_ami.ubuntu.id
+  instance_initiated_shutdown_behavior = "terminate"
 
   iam_instance_profile {
     arn = aws_iam_instance_profile.runner.arn
@@ -114,10 +119,10 @@ resource "aws_launch_template" "runner" {
   }
 
   user_data = base64encode(templatefile("${path.module}/userdata.sh", {
-    github_token        = var.github_runner_token
-    github_org          = var.github_org
-    runner_labels       = join(",", var.runner_labels)
-    runner_group        = var.runner_group
+    github_token_secret_arn = var.github_token_secret_arn
+    github_org              = var.github_org
+    runner_labels           = join(",", var.runner_labels)
+    runner_group            = var.runner_group
   }))
 
   lifecycle {
@@ -140,30 +145,60 @@ resource "aws_launch_template" "runner" {
 ```bash
 #!/bin/bash
 # userdata.sh
-set -e
+set -euo pipefail
 
 # Install dependencies
-apt-get update && apt-get install -y curl jq docker.io
-systemctl start docker && systemctl enable docker
+apt-get update
+apt-get install -y curl jq docker.io awscli
+systemctl enable --now docker
 usermod -aG docker ubuntu
 
 # Install GitHub Actions runner
 cd /home/ubuntu
-curl -o actions-runner.tar.gz -L https://github.com/actions/runner/releases/download/v2.313.0/actions-runner-linux-x64-2.313.0.tar.gz
-tar xzf actions-runner.tar.gz
+curl -fL -o actions-runner.tar.gz https://github.com/actions/runner/releases/download/v2.334.0/actions-runner-linux-x64-2.334.0.tar.gz
+mkdir -p actions-runner
+tar xzf actions-runner.tar.gz -C actions-runner
+cd actions-runner
+./bin/installdependencies.sh
+chown -R ubuntu:ubuntu /home/ubuntu/actions-runner
+
+# Discover the instance Region for AWS CLI calls.
+imds_token=$(curl -fsSL -X PUT \
+  -H "X-aws-ec2-metadata-token-ttl-seconds: 21600" \
+  http://169.254.169.254/latest/api/token)
+
+aws_region=$(curl -fsSL \
+  -H "X-aws-ec2-metadata-token: ${imds_token}" \
+  http://169.254.169.254/latest/dynamic/instance-identity/document \
+  | jq -r '.region')
+
+# Fetch a GitHub API token from Secrets Manager, then mint a fresh
+# runner registration token. Registration tokens expire after one hour.
+github_api_token=$(aws secretsmanager get-secret-value \
+  --region "${aws_region}" \
+  --secret-id "${github_token_secret_arn}" \
+  --query SecretString \
+  --output text)
+
+github_runner_token=$(curl -fsSL -X POST \
+  -H "Accept: application/vnd.github+json" \
+  -H "Authorization: Bearer ${github_api_token}" \
+  -H "X-GitHub-Api-Version: 2022-11-28" \
+  "https://api.github.com/orgs/${github_org}/actions/runners/registration-token" \
+  | jq -r '.token')
 
 # Configure and register runner
-./config.sh \
-  --url https://github.com/${github_org} \
-  --token ${github_token} \
-  --labels ${runner_labels} \
-  --runnergroup ${runner_group} \
-  --ephemeral \  # Runner terminates after one job
+sudo -u ubuntu ./config.sh \
+  --url "https://github.com/${github_org}" \
+  --token "${github_runner_token}" \
+  --labels "${runner_labels}" \
+  --runnergroup "${runner_group}" \
+  --ephemeral \
   --unattended
 
-# Install and start as service
-./svc.sh install ubuntu
-./svc.sh start
+# Run one job, then shut the instance down so EC2 terminates it.
+sudo -u ubuntu ./run.sh
+shutdown -h now
 ```
 
 ## Auto Scaling Group
@@ -176,11 +211,6 @@ resource "aws_autoscaling_group" "runners" {
   min_size            = 0
   max_size            = var.max_runners
   desired_capacity    = 0
-
-  launch_template {
-    id      = aws_launch_template.runner.id
-    version = "$Latest"
-  }
 
   # Use spot instances for cost savings
   mixed_instances_policy {
@@ -224,7 +254,7 @@ resource "aws_security_group" "runner" {
   description = "GitHub Actions runner - outbound only"
   vpc_id      = var.vpc_id
 
-  # No inbound rules - runners connect outbound to GitHub
+  # No inbound rules - runners connect outbound to GitHub over HTTPS.
   egress {
     from_port   = 0
     to_port     = 0
@@ -236,8 +266,8 @@ resource "aws_security_group" "runner" {
 
 ## Best Practices
 
-- Use `--ephemeral` flag in the runner configuration - ephemeral runners terminate after one job, preventing state leakage between jobs and ensuring clean environments.
-- Use Spot instances with multiple instance types for non-critical CI jobs - this reduces costs by 60-80% compared to On-Demand pricing.
-- Restrict the security group to outbound-only - runners don't need inbound access. GitHub uses long-polling over HTTPS for job dispatch.
-- Store the GitHub runner token in AWS Secrets Manager and fetch it in user data rather than embedding it in the launch template.
-- Scale the ASG to zero when no jobs are queued - use GitHub's runner scale sets or a Lambda function that watches queue depth to trigger scaling events.
+- Use `--ephemeral` flag in the runner configuration - GitHub de-registers ephemeral runners after one job, and you can shut the instance down afterward to ensure a clean environment.
+- Use Spot instances with multiple instance types for non-critical CI jobs - this can significantly reduce costs compared to On-Demand pricing for interrupt-tolerant workloads.
+- Restrict the security group to outbound-only - runners don't need inbound access. Self-hosted runners connect outbound to GitHub over HTTPS for job dispatch.
+- Store a GitHub API token in AWS Secrets Manager and request a fresh runner registration token at boot rather than embedding a short-lived registration token in the launch template.
+- Scale the ASG to zero when no jobs are queued - use the `workflow_job` webhook with Lambda or another scaler to adjust ASG capacity.
