@@ -39,11 +39,11 @@ docker run -d \
   --restart=always \
   -v /var/run/docker.sock:/var/run/docker.sock \
   -v portainer_data:/data \
-  -v /etc/letsencrypt:/letsencrypt:ro \
+  -v /etc/letsencrypt/live/portainer.example.com:/certs/live/portainer.example.com:ro \
+  -v /etc/letsencrypt/archive/portainer.example.com:/certs/archive/portainer.example.com:ro \
   portainer/portainer-ce:latest \
-  --ssl \
-  --sslcert /letsencrypt/live/portainer.example.com/fullchain.pem \
-  --sslkey /letsencrypt/live/portainer.example.com/privkey.pem
+  --tlscert /certs/live/portainer.example.com/fullchain.pem \
+  --tlskey /certs/live/portainer.example.com/privkey.pem
 ```
 
 ## Solution 2: Create a CA-Signed Internal Certificate
@@ -54,7 +54,9 @@ For internal deployments without a public domain, create a local CA:
 # Create an internal CA
 openssl genrsa -out internal-ca.key 4096
 openssl req -x509 -new -nodes -key internal-ca.key -sha256 -days 3650 \
-  -out internal-ca.crt -subj "/C=US/O=Internal/CN=Internal CA"
+  -out internal-ca.crt -subj "/C=US/O=Internal/CN=Internal CA" \
+  -addext "basicConstraints=critical,CA:true" \
+  -addext "keyUsage=critical,keyCertSign,cRLSign"
 
 # Create a certificate signed by the internal CA
 openssl genrsa -out portainer.key 2048
@@ -91,27 +93,29 @@ sudo cp internal-ca.crt /usr/local/share/ca-certificates/
 sudo update-ca-certificates
 ```
 
+Start Portainer with these files using the same `--tlscert` and `--tlskey` flags shown in Solution 1.
+
 ## Solution 3: Add Certificate Exception in the Browser
 
-For development environments only - permanently trust the certificate:
+For development environments only - temporarily bypass the warning:
 
 **Chrome/Edge:**
 1. Click "Advanced" on the warning page
-2. Click "Proceed to localhost (unsafe)"
-3. For permanent trust: visit `chrome://flags/#allow-insecure-localhost`
+2. Click "Proceed to ... (unsafe)" if the browser allows it
+3. For `https://localhost` only, Chromium also supports the `allow-insecure-localhost` override for local testing, but it does not trust certificates for other hostnames or IPs
 
 **Firefox:**
 1. Click "Advanced..."
-2. Click "Accept the Risk and Continue"
-3. This creates a permanent exception for this site
+2. Click "Accept the Risk and Continue" if Firefox allows it
+3. This is not a general permanent trust mechanism; for lasting trust, import the CA certificate into Firefox or trust it through managed/system CA configuration
 
 ## Solution 4: Trust the Self-Signed Cert via OS
 
-Extract and trust Portainer's generated certificate on all clients:
+Extract and trust Portainer's generated certificate on all clients. This only fixes trust warnings, not hostname mismatches:
 
 ```bash
 # Extract the certificate Portainer is currently using
-openssl s_client -connect localhost:9443 </dev/null 2>/dev/null | \
+openssl s_client -showcerts -connect localhost:9443 -servername localhost </dev/null 2>/dev/null | \
   openssl x509 -outform PEM > /tmp/portainer-cert.pem
 
 # Trust it on Ubuntu/Debian
