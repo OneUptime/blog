@@ -18,6 +18,7 @@ The `resolvers` section in HAProxy enables runtime DNS resolution for backend se
 global
     log /dev/log local0
     maxconn 50000
+    stats socket /run/haproxy/admin.sock mode 660 level admin
 
 resolvers local_dns
     # DNS server addresses
@@ -30,14 +31,14 @@ resolvers local_dns
     timeout retry   1s                 # Timeout between retries
 
     # How long to hold different DNS response states
-    hold valid    10s    # Valid responses cached for 10s (even if TTL is shorter)
-    hold other    30s    # Non-NXDOMAIN errors held for 30s
+    hold valid    10s    # Valid-response cache for do-resolve actions
+    hold other    30s    # Other DNS errors
     hold refused  30s
     hold nx       30s
     hold timeout  10s
-    hold obsolete 30s
+    hold obsolete 30s    # Obsolete SRV records
 
-    # Accept IP changes without requiring full reload
+    # Allow larger DNS responses with more returned addresses
     accepted_payload_size 8192
 ```
 
@@ -48,14 +49,14 @@ backend microservices
     balance roundrobin
 
     # The 'init-addr' parameter controls initial address resolution:
-    # - last: use last known address
-    # - libc: use OS resolver
-    # - none: fail if DNS is unavailable at startup
+    # - last: use the last known address from a server state file
+    # - libc: use the OS resolver at startup
+    # - none: start without an address and resolve it later at runtime
     server svc1 user-service.default.svc.cluster.local:8080 \
-        check resolvers local_dns resolve-prefer ipv4 init-addr last
+        check resolvers local_dns resolve-prefer ipv4 init-addr last,none
 
     server svc2 order-service.default.svc.cluster.local:8080 \
-        check resolvers local_dns resolve-prefer ipv4 init-addr last
+        check resolvers local_dns resolve-prefer ipv4 init-addr last,none
 ```
 
 ## Server Templates for Scale-Out Discovery
@@ -67,7 +68,7 @@ backend scalable_backend
     balance roundrobin
 
     # Create up to 10 server entries from DNS A records
-    # HAProxy populates server1 through server10 from DNS responses
+    # HAProxy populates svc1 through svc10 from DNS responses
     server-template svc 1-10 myapp.service.consul:8080 \
         check resolvers local_dns resolve-prefer ipv4 init-addr none
 ```
@@ -91,33 +92,30 @@ backend consul_services
 ## Monitoring DNS Resolution Activity
 
 ```bash
-# View resolver status and cached entries
+# View resolver statistics
 
-echo "show resolvers" | sudo socat stdio /run/haproxy/admin.sock
+echo "show resolvers" | sudo socat stdio unix-connect:/run/haproxy/admin.sock
 
 # View server states and their current resolved IPs
-echo "show servers state" | sudo socat stdio /run/haproxy/admin.sock
+echo "show servers state" | sudo socat stdio unix-connect:/run/haproxy/admin.sock
 
-# Force re-resolution of a specific server
+# Set a server's FQDN dynamically at runtime
 echo "set server microservices/svc1 fqdn user-service.default.svc.cluster.local" | \
-  sudo socat stdio /run/haproxy/admin.sock
-
-# Force DNS query immediately (bypass cache)
-echo "set server microservices/svc1 fqdn user-service.default.svc.cluster.local" | \
-  sudo socat stdio /run/haproxy/admin.sock
+  sudo socat stdio unix-connect:/run/haproxy/admin.sock
 ```
 
 ## HAProxy Logs for DNS Events
 
 ```bash
-# Monitor HAProxy logs for DNS resolution events
-sudo tail -f /var/log/haproxy.log | grep -i "resolv\|DNS\|FQDN"
+# If your syslog setup writes HAProxy logs to /var/log/haproxy.log,
+# monitor DNS resolution events with:
+sudo tail -f /var/log/haproxy.log | grep -iE "resolv|dns|fqdn"
 
-# Expected log entries:
+# You may see log entries similar to:
 # Server microservices/svc1 changed its IP from 10.0.0.10 to 10.0.0.15
 # health check for server microservices/svc1 succeeded
 ```
 
 ## Conclusion
 
-The HAProxy `resolvers` section transforms static IP backends into dynamically discovered services. Configure sensible `hold` timeouts to avoid excessive DNS queries while still reacting quickly to infrastructure changes. Use `server-template` for auto-scaling backends and `init-addr none` for container environments where services may not exist at HAProxy startup. This approach removes the need for config reloads when backend IPs change.
+The HAProxy `resolvers` section transforms static IP backends into dynamically discovered services. Configure sensible resolver timeouts and `hold` periods to balance fast updates with stable backend state changes. Use `server-template` for auto-scaling backends and `init-addr none` for container environments where services may not exist at HAProxy startup. This approach removes the need for config reloads when backend IPs change.
