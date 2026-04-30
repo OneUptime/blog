@@ -14,13 +14,15 @@ GRE (Generic Routing Encapsulation) tunnels encapsulate network packets to creat
 
 ```bash
 # Create a GRE tunnel connection
+# 10.0.0.1 is this host's tunnel source IP
+# 10.0.0.2 is the remote tunnel endpoint IP
 
 nmcli connection add type ip-tunnel \
   ifname gre1 \
   con-name gre-tunnel-1 \
   ip-tunnel.mode gre \
-  ip-tunnel.local 10.0.0.1 \        # This host's tunnel source IP
-  ip-tunnel.remote 10.0.0.2         # Remote tunnel endpoint IP
+  ip-tunnel.local 10.0.0.1 \
+  ip-tunnel.remote 10.0.0.2
 
 # Assign IP to the tunnel interface
 nmcli connection modify gre-tunnel-1 \
@@ -57,13 +59,18 @@ nmcli connection modify gre-tunnel-1 \
 
 nmcli connection up gre-tunnel-1
 
+# On both tunnel endpoints, enable IPv4 forwarding if they route
+# traffic for other subnets through the GRE tunnel
+echo "net.ipv4.ip_forward=1" > /etc/sysctl.d/95-IPv4-forwarding.conf
+sysctl -p /etc/sysctl.d/95-IPv4-forwarding.conf
+
 # Verify
 ip route show | grep 192.168.2.0
 ```
 
 ## GRE Tunnel Configuration File (for reference)
 
-NetworkManager stores the connection in `/etc/NetworkManager/system-connections/`:
+NetworkManager stores the connection in `/etc/NetworkManager/system-connections/`. A generated profile looks similar to:
 
 ```ini
 # /etc/NetworkManager/system-connections/gre-tunnel-1.nmconnection
@@ -73,10 +80,9 @@ type=ip-tunnel
 interface-name=gre1
 
 [ip-tunnel]
-mode=3       # 3 = GRE
 local=10.0.0.1
+mode=2
 remote=10.0.0.2
-ttl=255
 
 [ipv4]
 method=manual
@@ -84,7 +90,8 @@ address1=172.16.1.1/30
 route1=192.168.2.0/24,172.16.1.2
 
 [ipv6]
-method=ignore
+addr-gen-mode=default
+method=auto
 ```
 
 ## Remote Side Configuration
@@ -121,6 +128,6 @@ nmcli connection show | grep tunnel
 ## Key Takeaways
 
 - Use `nmcli connection add type ip-tunnel` with `ip-tunnel.mode gre` to create persistent GRE tunnels on RHEL.
-- Set `ip-tunnel.local` to the outbound interface IP and `ip-tunnel.remote` to the peer's IP.
+- Set `ip-tunnel.local` to the local tunnel endpoint IP and `ip-tunnel.remote` to the peer's IP.
 - Add static routes with `+ipv4.routes` to direct traffic through the tunnel.
-- nmcli stores connections persistently; tunnels survive reboots and reconnect automatically.
+- nmcli stores connections persistently; with autoconnect enabled, tunnels reconnect automatically after reboot.
