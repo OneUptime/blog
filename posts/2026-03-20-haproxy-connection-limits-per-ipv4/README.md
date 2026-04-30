@@ -82,13 +82,10 @@ frontend http_in
 
 ## Per-Backend Connection Limits
 
-Limit connections at the backend level (total, not per-IP):
+HAProxy does not support a hard `maxconn` on `backend` sections. Use per-server limits inside the backend:
 
 ```haproxy
 backend database_servers
-    # Total max connections across this entire backend
-    maxconn 500
-
     server db1 192.168.1.10:5432 check maxconn 200   # Per-server limit
     server db2 192.168.1.11:5432 check maxconn 200
     server db3 192.168.1.12:5432 check maxconn 100
@@ -98,10 +95,10 @@ backend database_servers
 
 ```haproxy
 global
-    maxconn 100000     # Total HAProxy-wide connection limit
+    maxconn 100000     # Per-process connection limit
 
 defaults
-    maxconn 10000      # Per-frontend default limit
+    maxconn 10000      # Default limit for following frontends/listens
 
 frontend http_in
     maxconn 5000       # Override for this frontend only
@@ -119,11 +116,10 @@ echo "show table http_in" | sudo socat stdio /run/haproxy/admin.sock
 # # table: http_in, type: ip, size:102400, used:5
 # 0x...: key=203.0.113.50 use=0 exp=55000 conn_cur=8
 
-# Find IPs with many concurrent connections
-echo "show table http_in" | sudo socat stdio /run/haproxy/admin.sock | \
-  awk '/conn_cur=/ && /conn_cur=[2-9][0-9]/{print}' | sort -t= -k2 -n -r | head 20
+# Find IPs with 20+ concurrent connections
+echo "show table http_in data.conn_cur gt 19" | sudo socat stdio /run/haproxy/admin.sock
 
-# Clear a specific IP's entry (reset its counter)
+# Remove a specific IP's entry
 echo "clear table http_in key 203.0.113.50" | sudo socat stdio /run/haproxy/admin.sock
 ```
 
