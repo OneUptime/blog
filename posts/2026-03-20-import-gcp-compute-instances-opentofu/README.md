@@ -19,18 +19,21 @@ INSTANCE="my-app-vm"
 
 # Get instance details
 
-gcloud compute instances describe $INSTANCE \
-  --zone=$ZONE \
-  --project=$PROJECT \
+gcloud compute instances describe "$INSTANCE" \
+  --zone="$ZONE" \
+  --project="$PROJECT" \
   --format=json | jq '{
     machine_type: .machineType | split("/") | last,
-    image: .disks[0].source | split("/") | last,
-    disk_size: .disks[0].diskSizeGb,
+    boot_disk: (.disks[] | select(.boot == true) | .source | split("/") | last),
+    boot_auto_delete: (.disks[] | select(.boot == true) | .autoDelete),
     network: .networkInterfaces[0].network | split("/") | last,
     subnetwork: .networkInterfaces[0].subnetwork | split("/") | last,
-    service_account: .serviceAccounts[0].email,
-    tags: .tags.items,
-    labels: .labels
+    external_ip: (.networkInterfaces[0].accessConfigs[0].natIP // null),
+    service_account: (.serviceAccounts[0].email // null),
+    scopes: (.serviceAccounts[0].scopes // []),
+    tags: (.tags.items // []),
+    labels: (.labels // {}),
+    metadata: ((.metadata.items // []) | from_entries)
   }'
 ```
 
@@ -45,20 +48,20 @@ resource "google_compute_instance" "app" {
 
   # Boot disk configuration
   boot_disk {
-    initialize_params {
-      image = "ubuntu-os-cloud/ubuntu-2204-lts"
-      size  = 30
-      type  = "pd-ssd"
-    }
+    source      = "my-app-vm"
+    auto_delete = true
   }
 
   network_interface {
     network    = "my-vpc-network"
     subnetwork = "my-private-subnet"
 
-    # Omit access_config if no external IP
+    # Omit access_config if no external IP.
+    # Use an empty block for an ephemeral external IP:
+    # access_config {}
+    # Set nat_ip only when the VM uses a reserved static external IP.
     # access_config {
-    #   nat_ip = ""
+    #   nat_ip = "203.0.113.10"
     # }
   }
 
@@ -79,8 +82,8 @@ resource "google_compute_instance" "app" {
   }
 
   lifecycle {
-    # Prevent replacement when the boot disk image has a new version
-    ignore_changes = [boot_disk[0].initialize_params[0].image]
+    # Required if non-boot disks are managed with google_compute_attached_disk.
+    ignore_changes = [attached_disk]
   }
 }
 ```
@@ -147,4 +150,4 @@ resource "google_compute_instance" "worker" {
 
 ## Conclusion
 
-GCP Compute instances use the `PROJECT/ZONE/INSTANCE_NAME` format for import IDs. The most important `ignore_changes` setting is the boot disk image reference - GCP image families regularly publish new versions, and without this ignore the instance will appear to need replacement every time the base image is updated.
+GCP Compute instances use the `PROJECT/ZONE/INSTANCE_NAME` format for import IDs. When importing an existing VM, reference the existing boot disk in `boot_disk.source` so the configuration matches the instance that already exists. If you manage extra data disks with `google_compute_attached_disk`, add `ignore_changes = [attached_disk]` on the instance resource so the two resources do not fight over the same attachments.
