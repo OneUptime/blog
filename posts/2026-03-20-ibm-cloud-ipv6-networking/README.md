@@ -4,46 +4,52 @@ Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
 Tags: IBM Cloud, IPv6, VPC, Classic Infrastructure, Dual-Stack
 
-Description: Configure IPv6 on IBM Cloud VPC and classic infrastructure for dual-stack server deployments.
+Description: Configure IPv6 on IBM Cloud classic infrastructure for dual-stack server deployments, and understand the current VPC limitation.
 
 ## Introduction
 
-IBM Cloud IPv6 Networking covers the provider-specific steps needed to enable IPv6 on compute resources, configure networking primitives, and validate end-to-end IPv6 connectivity.
+IBM Cloud IPv6 networking is available on classic infrastructure. IBM Cloud VPC is currently IPv4-only, so dual-stack deployments that need native IPv6 must use classic infrastructure resources and IBM Cloud DNS and security controls.
 
 ## Step 1: Enable IPv6 on the Instance/Resource
 
 ```bash
-# Example commands for IBM Cloud IPv6 Networking
+# IBM Cloud VPC does not currently support IPv6.
+# For classic infrastructure, request a primary public IPv6 address when you provision
+# the server, or order a public IPv6 /64 secondary subnet on the server's public VLAN.
 
-# Enable IPv6 networking at creation time or after
-# (Refer to provider-specific CLI or web console)
-echo "Enabling IPv6 for IBM Cloud IPv6 Networking"
+# List existing IPv6 subnets on your account
+ibmcloud sl subnet list --6
+
+# Order a public IPv6 /64 on a public VLAN
+ibmcloud sl subnet create public 64 <PUBLIC_VLAN_ID> --6
 ```
 
 ## Step 2: Configure the Network Interface
 
 ```bash
-# After enabling IPv6, configure the OS network interface
-# (Linux example)
-ip -6 addr show
+# On a classic server, verify that the IPv6 address and route are present
+ip -6 addr show dev eth0
+ip -6 route show
 
-# If using static IPv6 assignment
-ip -6 addr add 2001:db8::1/64 dev eth0
-ip -6 route add ::/0 via 2001:db8::1 dev eth0
+# If you purchased a secondary IPv6 subnet, configure one of its addresses
+# as an interface alias by using your Linux distribution's network config.
 ```
 
 ## Step 3: Configure Firewall Rules for IPv6
 
 ```bash
+# If you use a host firewall inside the guest, allow ICMPv6 and SSH over IPv6.
+# Classic infrastructure security groups also support IPv6 rules.
+
 # Allow ICMPv6 (required for IPv6 operation)
 ip6tables -A INPUT -p ipv6-icmp -j ACCEPT
 ip6tables -A OUTPUT -p ipv6-icmp -j ACCEPT
 
 # Allow established connections
-ip6tables -A INPUT -m state --state ESTABLISHED,RELATED -j ACCEPT
+ip6tables -A INPUT -m conntrack --ctstate ESTABLISHED,RELATED -j ACCEPT
 
 # Allow SSH over IPv6
-ip6tables -A INPUT -s 2001:db8:admin::/48 -p tcp --dport 22 -j ACCEPT
+ip6tables -A INPUT -s 2001:db8:100::/48 -p tcp --dport 22 -j ACCEPT
 
 # Default deny
 ip6tables -P INPUT DROP
@@ -52,15 +58,15 @@ ip6tables -P INPUT DROP
 ## Step 4: DNS Configuration for IPv6
 
 ```bash
-# Add AAAA record for the instance hostname
-# (In the provider's DNS management console or API)
+# Add an AAAA record in IBM Cloud DNS Services
+ibmcloud dns resource-record-create <DNS_ZONE_ID> --type AAAA --name myhost --ipv6 2001:db8::10
 
 # Verify resolution
 dig AAAA myhost.example.com
 # Should return the IPv6 address
 
-# Test reverse DNS
-dig -x 2001:db8::1
+# Reverse DNS for classic public IPs is managed from the subnet/IP details page
+dig -x 2001:db8::10
 ```
 
 ## Step 5: Test IPv6 Connectivity
@@ -68,10 +74,10 @@ dig -x 2001:db8::1
 ```bash
 # Test outbound IPv6
 curl -6 https://ipv6.google.com/
-ping6 -c 3 2600::
+ping -6 -c 3 2001:4860:4860::8888
 
 # Test inbound IPv6
-curl -6 http://[2001:db8::1]/health
+curl -6 http://[2001:db8::10]/health
 
 # Verify dual-stack (both IPv4 and IPv6 work)
 curl -4 http://myhost.example.com/health
@@ -81,42 +87,36 @@ curl -6 http://myhost.example.com/health
 ## Step 6: Infrastructure as Code
 
 ```terraform
-# Terraform example for IBM Cloud IPv6 Networking
-# Resource with IPv6 enabled
-resource "example_instance" "main" {
-  name = "ipv6-instance"
-
-  # Enable dual-stack networking
-  ipv6_enabled = true
-
-  network {
-    ipv6_address = "2001:db8::1"
-  }
-
-  tags = {
-    Environment = "production"
-    IPv6        = "enabled"
-  }
+# IBM Cloud VPC resources are IPv4-only.
+# For classic infrastructure, Terraform can order a public IPv6 /64 subnet.
+resource "ibm_subnet" "classic_ipv6_subnet" {
+  type       = "Portable"
+  private    = false
+  ip_version = 6
+  capacity   = 64
+  vlan_id    = 1234567
+  notes      = "classic-ipv6-subnet"
 }
 ```
 
 ## Common Issues
 
 ```bash
-# Issue: IPv6 address not assigned
-# Check if provider assigned the address
-ip -6 addr show
+# Issue: Trying to enable IPv6 on a VPC instance
+# IBM Cloud VPC is currently IPv4-only
 
-# Issue: No IPv6 connectivity
-# Check routing
+# Issue: IPv6 address not assigned on classic infrastructure
+ip -6 addr show dev eth0
+ibmcloud sl subnet list --6
+
+# Issue: No IPv6 connectivity on classic infrastructure
 ip -6 route show
-# Verify default route: default via fe80::1 dev eth0
 
-# Issue: Can't ping IPv6 address
-# Check if firewall is blocking
+# Issue: Can't reach the server over IPv6
+# Check guest firewall or classic security group rules
 ip6tables -L INPUT -n -v
 ```
 
 ## Conclusion
 
-IBM Cloud IPv6 Networking requires enabling IPv6 at the provider level, configuring OS network settings, setting up firewall rules that permit ICMPv6, and verifying end-to-end connectivity. Use Infrastructure as Code (Terraform) to ensure consistent IPv6 configuration across all instances. Monitor IPv6 endpoint availability with OneUptime from IPv6 vantage points.
+IBM Cloud IPv6 networking on classic infrastructure requires requesting public IPv6 or ordering an IPv6 /64, configuring OS and firewall settings, setting up DNS, and verifying end-to-end connectivity. IBM Cloud VPC remains IPv4-only at the time of writing, so native dual-stack deployments require classic infrastructure rather than VPC. Use Infrastructure as Code (Terraform) to keep classic IPv6 configuration consistent across instances. Monitor IPv6 endpoint availability with OneUptime from IPv6 vantage points.
