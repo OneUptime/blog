@@ -8,7 +8,7 @@ Description: Learn how to configure Kubernetes Horizontal Pod Autoscaler (HPA) u
 
 ---
 
-The Horizontal Pod Autoscaler (HPA) automatically adjusts the number of pod replicas in a deployment based on observed metrics. With OpenTofu's Kubernetes provider, you can manage HPA configurations alongside your application infrastructure, ensuring scaling policies are version-controlled and consistent.
+The Horizontal Pod Autoscaler (HPA) automatically adjusts the number of pod replicas in a deployment based on observed metrics. With OpenTofu and the Kubernetes provider, you can manage HPA configurations alongside your application infrastructure, ensuring scaling policies are version-controlled and consistent.
 
 ## Setting Up the Kubernetes Provider
 
@@ -19,7 +19,7 @@ terraform {
   required_providers {
     kubernetes = {
       source  = "hashicorp/kubernetes"
-      version = "~> 2.24"
+      version = "~> 3.1.0"
     }
   }
 }
@@ -36,7 +36,7 @@ provider "kubernetes" {
 ```hcl
 # hpa.tf
 # Create a deployment to scale
-resource "kubernetes_deployment" "app" {
+resource "kubernetes_deployment_v1" "app" {
   metadata {
     name      = "app"
     namespace = var.namespace
@@ -95,7 +95,7 @@ resource "kubernetes_horizontal_pod_autoscaler_v2" "app" {
     scale_target_ref {
       api_version = "apps/v1"
       kind        = "Deployment"
-      name        = kubernetes_deployment.app.metadata[0].name
+      name        = kubernetes_deployment_v1.app.metadata[0].name
     }
 
     metric {
@@ -145,7 +145,7 @@ resource "kubernetes_horizontal_pod_autoscaler_v2" "app_multi" {
       }
     }
 
-    # Also scale on memory - HPA scales up if EITHER threshold is exceeded
+    # Also scale on memory - HPA uses the largest replica recommendation across the configured metrics
     metric {
       type = "Resource"
       resource {
@@ -191,7 +191,7 @@ resource "kubernetes_horizontal_pod_autoscaler_v2" "app_multi" {
 
 ```hcl
 # custom_metrics_hpa.tf
-# Scale based on requests per second (requires metrics-server + custom metrics adapter)
+# Scale based on requests per second (requires a custom metrics adapter such as Prometheus Adapter)
 resource "kubernetes_horizontal_pod_autoscaler_v2" "app_custom" {
   metadata {
     name      = "app-rps-hpa"
