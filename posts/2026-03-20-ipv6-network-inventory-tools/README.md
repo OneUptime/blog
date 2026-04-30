@@ -4,7 +4,7 @@ Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
 Tags: IPv6, Inventory, NAPALM, Netmiko, Automation, Python
 
-Description: Build automated IPv6 network inventory tools that discover interfaces, addresses, BGP peers, and routing tables from network devices.
+Description: Build automated IPv6 network inventory tools that discover interfaces, addresses, and BGP peers from network devices.
 
 ## Introduction
 
@@ -14,8 +14,6 @@ An accurate IPv6 network inventory is the foundation for automation, capacity pl
 
 ```python
 from dataclasses import dataclass, field
-from typing import Optional
-import json
 
 @dataclass
 class IPv6Interface:
@@ -28,7 +26,7 @@ class IPv6Interface:
 @dataclass
 class IPv6BGPPeer:
     device: str
-    local_address: str
+    router_id: str
     peer_address: str
     remote_as: int
     state: str
@@ -47,7 +45,6 @@ class DeviceInventory:
 
 ```python
 from napalm import get_network_driver
-import json
 
 def collect_ipv6_inventory(hostname: str, driver_name: str,
                             username: str, password: str) -> DeviceInventory:
@@ -57,13 +54,13 @@ def collect_ipv6_inventory(hostname: str, driver_name: str,
         hostname=hostname,
         username=username,
         password=password,
-        optional_args={"transport": "ssh"}
     )
 
     inventory = DeviceInventory(hostname=hostname, platform=driver_name)
 
     with device:
         # Collect interface IPv6 addresses
+        interface_states = device.get_interfaces()
         interfaces = device.get_interfaces_ip()
         for iface_name, iface_data in interfaces.items():
             ipv6_addrs = [
@@ -71,25 +68,31 @@ def collect_ipv6_inventory(hostname: str, driver_name: str,
                 for addr, data in iface_data.get("ipv6", {}).items()
             ]
             if ipv6_addrs:
+                iface_details = interface_states.get(iface_name, {})
                 inventory.interfaces.append(IPv6Interface(
                     device=hostname,
                     interface=iface_name,
                     addresses=ipv6_addrs,
-                    enabled=True,
-                    mtu=1500,
+                    enabled=iface_details.get("is_enabled", False),
+                    mtu=iface_details.get("mtu", 0),
                 ))
 
         # Collect BGP peers
         bgp_data = device.get_bgp_neighbors()
-        for vrf, vrf_data in bgp_data.items():
+        for vrf_data in bgp_data.values():
+            router_id = vrf_data.get("router_id", "")
             for peer_addr, peer_data in vrf_data.get("peers", {}).items():
                 if ":" in peer_addr:  # IPv6 peers only
                     inventory.bgp_peers.append(IPv6BGPPeer(
                         device=hostname,
-                        local_address=vrf_data.get("router_id", ""),
+                        router_id=router_id,
                         peer_address=peer_addr,
                         remote_as=peer_data.get("remote_as", 0),
-                        state=peer_data.get("state", "unknown"),
+                        state=(
+                            "Established" if peer_data.get("is_up")
+                            else "Disabled" if not peer_data.get("is_enabled", True)
+                            else "Not Established"
+                        ),
                         prefixes_received=peer_data.get("address_family", {})
                             .get("ipv6", {}).get("received_prefixes", 0),
                     ))
@@ -182,4 +185,4 @@ def query_down_peers(db_path: str = "ipv6_inventory.db") -> list:
 
 ## Conclusion
 
-Automated IPv6 inventory collection with NAPALM provides accurate, up-to-date data about your network's addressing, routing, and BGP state. Store results in a database for trending and querying. Run collection jobs regularly (every hour or day) and compare against baseline. Integrate inventory data with OneUptime to correlate device state with monitoring alerts.
+Automated IPv6 inventory collection with NAPALM provides accurate, up-to-date data about your network's addressing and BGP state. Store results in a database for trending and querying. Run collection jobs regularly (every hour or day) and compare against baseline. Integrate inventory data with OneUptime to correlate device state with monitoring alerts.
