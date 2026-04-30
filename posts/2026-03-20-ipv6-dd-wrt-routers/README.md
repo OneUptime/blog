@@ -8,21 +8,21 @@ Description: Configure IPv6 on DD-WRT routers using the web interface and SSH, e
 
 ## Introduction
 
-DD-WRT is a popular open-source firmware for consumer routers. IPv6 support in DD-WRT is provided through native DHCPv6 client, radvd, and ip6tables. The configuration is accessible through the web interface (Administration > Management > IPv6) or via the CLI.
+DD-WRT is a popular open-source firmware for consumer routers. IPv6 support in DD-WRT is provided through its built-in DHCPv6 client, radvd, and ip6tables. The configuration is accessible through the web interface (**Setup > IPv6**) or via the CLI.
 
 ## Step 1: Enable IPv6 via Web Interface
 
 1. Log in to the DD-WRT web interface (default: `http://192.168.1.1`)
 2. Navigate to **Setup > IPv6**
 3. Set **IPv6** to **Enable**
-4. Set the **IPv6 Connection Type**:
-   - **Native IPv6 from ISP**: Uses DHCPv6 stateless or stateful
-   - **6in4 Tunnel**: For ISPs offering Hurricane Electric tunnel
-   - **6to4 Tunnel**: Legacy transition mechanism
-5. For **Native IPv6**:
-   - Enable **DHCPv6**
-   - Enable **Prefix Delegation** if your ISP delegates a prefix
-6. Click **Save** and **Apply Settings**
+4. Set the **IPv6 Type**:
+   - **Native IPv6 from ISP**: For native IPv6 service from your ISP
+   - **DHCPv6 with Prefix Delegation**: For ISPs that delegate a routed prefix to the router
+   - **6in4 Static Tunnel**: For tunnel brokers such as Hurricane Electric
+5. Set **IPv6 Prefix Length** to the prefix length your ISP delegates when using **DHCPv6 with Prefix Delegation** (for example, `56`)
+6. In the **Radvd** section, set **Radvd** to **Enable** so LAN clients can use SLAAC
+7. Enable **DHCPv6 Server** only if you need stateful DHCPv6 on the LAN
+8. Click **Save** and **Apply Settings**
 
 ## Step 2: Configure via SSH (Advanced)
 
@@ -37,16 +37,14 @@ ip -6 addr show
 ps | grep radvd
 
 # View the radvd configuration DD-WRT generated
-cat /tmp/radvd.conf
+cat /tmp/radvd/radvd.conf
 ```
 
-## Step 3: Customize radvd via Startup Script
+## Step 3: Customize radvd via Custom Configuration
 
-DD-WRT generates radvd.conf automatically, but you can customize via a startup script:
+DD-WRT generates `radvd.conf` automatically, and it also supports a custom `radvd` configuration directly on the IPv6 page:
 
-```bash
-# Add to Administration > Commands > Startup
-cat > /tmp/custom-radvd.conf << 'EOF'
+```conf
 interface br0 {
     AdvSendAdvert on;
     AdvManagedFlag off;
@@ -58,7 +56,6 @@ interface br0 {
     prefix ::/64 {
         AdvOnLink on;
         AdvAutonomous on;
-        AdvRouterAddr on;
         AdvValidLifetime 86400;
         AdvPreferredLifetime 14400;
     };
@@ -67,54 +64,51 @@ interface br0 {
         AdvRDNSSLifetime 600;
     };
 };
-EOF
-
-# Restart radvd with custom config
-killall radvd
-radvd -C /tmp/custom-radvd.conf &
 ```
+
+Enable **Radvd**, enable **Custom Configuration**, paste the configuration, then click **Save** and **Apply Settings**.
 
 ## Step 4: Configure IPv6 via NVRAM
 
 For persistent configuration in DD-WRT, use NVRAM:
 
 ```bash
-# Set IPv6 WAN type to DHCPv6
-nvram set ipv6_proto=dhcp6
-
 # Enable IPv6
 nvram set ipv6_enable=1
 
-# Enable prefix delegation
-nvram set ipv6_prefix_delegation=1
+# Set IPv6 type to DHCPv6 with Prefix Delegation
+nvram set ipv6_typ=ipv6pd
 
-# Set DNS servers
-nvram set ipv6_dns=2606:4700:4700::1111 2001:4860:4860::8888
+# Set delegated prefix length from ISP (example: /56)
+nvram set ipv6_pf_len=56
+
+# Enable router advertisements for SLAAC
+nvram set radvd_enable=1
+
+# Optional DNS servers to advertise
+nvram set ipv6_dns1=2606:4700:4700::1111
+nvram set ipv6_dns2=2001:4860:4860::8888
 
 # Commit to flash
 nvram commit
 
-# Restart networking
-service network restart
+# Restart IPv6 services
+stopservice dhcp6c
+startservice dhcp6c
+stopservice radvd
+startservice radvd
 ```
 
 ## Step 5: Configure IPv6 Firewall
 
 ```bash
 # View current ip6tables rules
-ip6tables -L -n
+ip6tables -L -n -v
 
-# Allow established/related connections
-ip6tables -I FORWARD -m state --state ESTABLISHED,RELATED -j ACCEPT
-
-# Allow ICMPv6
-ip6tables -I INPUT -p icmpv6 -j ACCEPT
-ip6tables -I FORWARD -p icmpv6 -j ACCEPT
-
-# Allow LAN to WAN
-ip6tables -I FORWARD -i br0 -j ACCEPT
-
-# Save rules using DD-WRT startup script mechanism
+# DD-WRT already installs IPv6 firewall rules when IPv6 is enabled,
+# including essential ICMPv6 and established/related traffic.
+# Add only specific custom exceptions through
+# Administration > Commands > Firewall.
 ```
 
 ## Step 6: Verify IPv6 Connectivity
@@ -153,10 +147,10 @@ nslookup -type=AAAA google.com
 ## DD-WRT Build Requirements
 
 Not all DD-WRT builds include full IPv6 support. Ensure you have:
-- A build that includes the `ipv6` and `radvd` packages
-- For DHCPv6-PD support, ensure `odhcp6c` or `dhcp6c` is included
+- A build compiled with IPv6 and `radvd` support
+- For DHCPv6-PD support, ensure the DHCPv6 client (`dhcp6c`) is included
 - Check the DD-WRT wiki for your router model's IPv6 support status
 
 ## Conclusion
 
-DD-WRT provides IPv6 support through a combination of the web interface for basic configuration and SSH/startup scripts for advanced customization. The auto-generated radvd configuration handles most cases, but custom radvd configurations via startup scripts provide the flexibility needed for RDNSS, multiple prefixes, or specific timing requirements. Always verify that your DD-WRT build includes the necessary IPv6 packages before planning a deployment.
+DD-WRT provides IPv6 support through a combination of the web interface for basic configuration and SSH or NVRAM for advanced inspection and automation. The auto-generated radvd configuration handles most cases, but DD-WRT's built-in custom radvd configuration provides the flexibility needed for RDNSS, multiple prefixes, or specific timing requirements. Always verify that your DD-WRT build includes the necessary IPv6 components before planning a deployment.
