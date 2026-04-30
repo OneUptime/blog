@@ -8,7 +8,7 @@ Description: Configure HTTP Live Streaming (HLS) to serve video content to viewe
 
 ---
 
-HTTP Live Streaming (HLS) is an adaptive streaming protocol that delivers video segments over HTTP. Since HLS is HTTP-based, configuring it for IPv6 primarily involves ensuring the HTTP server listens on IPv6 and generates correct IPv6-aware playlist URLs.
+HTTP Live Streaming (HLS) is an adaptive streaming protocol that delivers video segments over HTTP. Since HLS is HTTP-based, configuring it for IPv6 primarily involves ensuring the HTTP delivery path listens on IPv6. Playlist URIs can remain relative; if you use literal IPv6 addresses in URLs, enclose them in brackets.
 
 ## Setting Up Nginx HLS Origin Server
 
@@ -66,6 +66,7 @@ http {
 
             # Disable cache for live stream playlists
             location ~ \.m3u8$ {
+                add_header Access-Control-Allow-Origin '*';
                 add_header Cache-Control 'no-cache, no-store, must-revalidate';
                 expires -1;
             }
@@ -90,11 +91,18 @@ ffmpeg -i "rtmp://[2001:db8::source]/live/stream" \
 
 # Multi-bitrate HLS from IPv6 source
 ffmpeg -i "rtmp://[2001:db8::source]/live/stream" \
-  -filter_complex "[v:0]split=2[v1][v2]" \
-  -map "[v1]" -map a:0 -c:v libx264 -b:v 3000k -c:a aac \
-  -f hls -var_stream_map "v:0,a:0" \
+  -filter_complex "[0:v]split=2[v0][v1];[v1]scale=w=640:h=-2[v1out]" \
+  -map "[v0]" -map 0:a:0 -map "[v1out]" -map 0:a:0 \
+  -c:v libx264 -c:a aac \
+  -b:v:0 3000k -b:v:1 1500k \
+  -b:a:0 128k -b:a:1 96k \
+  -f hls \
+  -hls_time 4 \
+  -hls_list_size 5 \
+  -var_stream_map "v:0,a:0 v:1,a:1" \
   -master_pl_name master.m3u8 \
-  /var/www/html/hls/stream_%v.m3u8
+  -hls_segment_filename "/var/www/html/hls/v%v/seg_%03d.ts" \
+  /var/www/html/hls/v%v/stream.m3u8
 ```
 
 ## Firewall for HLS over IPv6
@@ -107,7 +115,8 @@ sudo ip6tables -A INPUT -p tcp --dport 443 -j ACCEPT
 # Allow RTMP ingress from encoders
 sudo ip6tables -A INPUT -p tcp --dport 1935 -j ACCEPT
 
-sudo ip6tables-save > /etc/ip6tables/rules.v6
+# Save the current IPv6 ruleset; persistence on reboot depends on your distro
+sudo ip6tables-save
 
 # Verify Nginx listening on IPv6
 ss -6 -tlnp | grep -E "80|443|1935"
@@ -121,17 +130,22 @@ ss -6 -tlnp | grep -E "80|443|1935"
 <html>
 <head>
     <title>IPv6 HLS Stream</title>
-    <script src="https://cdn.jsdelivr.net/npm/hls.js@latest"></script>
+    <script src="https://cdn.jsdelivr.net/npm/hls.js@1"></script>
 </head>
 <body>
     <video id="video" controls width="800"></video>
     <script>
-        // HLS.js handles IPv6 URLs in brackets automatically
         var video = document.getElementById('video');
-        var hls = new Hls();
-        // For IPv6 direct access (works in most modern browsers)
-        hls.loadSource('http://[2001:db8::hls-server]/hls/stream.m3u8');
-        hls.attachMedia(video);
+        var videoSrc = 'http://[2001:db8::hls-server]/hls/stream.m3u8';
+
+        // Literal IPv6 addresses in URLs must be enclosed in brackets
+        if (Hls.isSupported()) {
+            var hls = new Hls();
+            hls.loadSource(videoSrc);
+            hls.attachMedia(video);
+        } else if (video.canPlayType('application/vnd.apple.mpegurl')) {
+            video.src = videoSrc;
+        }
     </script>
 </body>
 </html>
@@ -141,18 +155,18 @@ ss -6 -tlnp | grep -E "80|443|1935"
 
 ```text
 Configure CDN origin over IPv6:
-- Origin server: 2001:db8::hls-origin
-- CDN fetches segments from IPv6 origin
-- Serves to both IPv4 and IPv6 viewers via Anycast
+- Origin server: hls.example.com
+- CDN fetches playlists and segments from the origin over IPv6 or dual-stack, depending on provider settings
+- Viewers can still connect over IPv4 or IPv6 independently of origin connectivity
 
 Cloudflare:
-- Stream > Live Inputs > Create Input
-- Supports IPv6 for both ingest and delivery
+- Proxy an A, AAAA, or CNAME record for hls.example.com through Cloudflare
+- Proxied hostnames return Cloudflare Anycast IPs, so allow Cloudflare IP ranges at the origin firewall
 
 AWS CloudFront:
-- Origin: hls.example.com (with AAAA record)
-- Enables IPv6: Yes
-- IPv6 viewers receive content via IPv6 PoP
+- Origin: hls.example.com
+- Origin connectivity: IPv6 only or Dual-stack for a custom origin
+- Enable viewer IPv6 if you want IPv6 clients to reach the distribution
 ```
 
 ## Testing HLS over IPv6
@@ -171,4 +185,4 @@ curl -6 -O "http://[2001:db8::hls-server]/hls/seg_001.ts"
 vlc "http://[2001:db8::hls-server]/hls/stream.m3u8"
 ```
 
-HLS over IPv6 requires only ensuring the HTTP server's `listen [::]:80` directive is active, with the RTMP-to-HLS transcoding pipeline and segment delivery working identically to IPv4 once the transport layer accepts IPv6 client connections.
+HLS over IPv6 requires the full delivery path to support IPv6: the HTTP listener, firewall, DNS/CDN origin settings, and any literal IPv6 URLs must all be configured correctly. Once that path is in place, HLS playlists and segments are served the same way as over IPv4.
