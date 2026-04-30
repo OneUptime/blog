@@ -21,7 +21,7 @@ ICMP Type 3 (Destination Unreachable) is sent by routers or destination hosts to
 | 4 | Fragmentation Needed | Router | Packet too big, DF bit set |
 | 9 | Net Administratively Prohibited | Router | ACL/policy blocks network |
 | 10 | Host Administratively Prohibited | Router | ACL/policy blocks host |
-| 13 | Communication Administratively Prohibited | Router | Firewall DROP with ICMP |
+| 13 | Communication Administratively Prohibited | Router or firewall | Administrative filtering blocks traffic |
 
 ## Capturing and Interpreting
 
@@ -35,7 +35,7 @@ tcpdump -i eth0 -n -v 'icmp[0] = 3'
 # -> Router 10.0.0.1 says host 10.20.0.5 is unreachable (Code 1)
 
 # Generate a Port Unreachable (Code 3) by sending UDP to a closed port
-nc -u 10.20.0.5 12345
+nc -u -z -w1 10.20.0.5 12345
 # If port 12345 is not open on 10.20.0.5, it responds with Type 3 Code 3
 ```
 
@@ -83,9 +83,9 @@ traceroute -I 10.20.0.5
 
 ```bash
 # Generate a Code 13 (prohibited) with iptables REJECT
-iptables -A INPUT -s 10.50.0.0/24 -j REJECT --reject-with icmp-host-prohibited
+iptables -A INPUT -s 10.50.0.0/24 -j REJECT --reject-with icmp-admin-prohibited
 
-# From a host in 10.50.0.0/24, trying to connect will receive Code 10/13
+# From a host in 10.50.0.0/24, trying to connect will receive Type 3 Code 13
 ping -c 1 <your-server-ip>
 ```
 
