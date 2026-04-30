@@ -8,7 +8,7 @@ Description: Learn how to configure Fleet to access private Git repositories usi
 
 ## Introduction
 
-Most production Git repositories are private and require authentication to access. Fleet supports multiple authentication methods for private repositories, including SSH key authentication, HTTP basic authentication, and Git provider-specific deploy tokens. This guide covers all authentication methods and how to configure them securely in Fleet.
+Most production Git repositories are private and require authentication to access. Fleet supports multiple authentication methods for private repositories, including SSH auth keys, HTTP basic authentication, and GitHub Apps. This guide focuses on the most common secret-based approaches and a GitLab deploy token example for secure GitOps deployments in Fleet.
 
 ## Prerequisites
 
@@ -19,23 +19,23 @@ Most production Git repositories are private and require authentication to acces
 
 ## Authentication Methods Overview
 
-Fleet supports three authentication methods:
+This guide covers three common ways to supply credentials to Fleet:
 
 1. **SSH Key Authentication**: Uses an SSH key pair (recommended for production)
 2. **HTTP Basic Authentication**: Uses username and password/token
-3. **Deploy Tokens**: Provider-specific read-only tokens
+3. **GitLab Deploy Tokens**: Provider-specific HTTP credentials that can be scoped for read-only repository access
 
 ## Method 1: SSH Key Authentication
 
 ### Step 1: Generate an SSH Key Pair
 
 ```bash
-# Generate a new ED25519 SSH key pair for Fleet
+# Generate a new RSA SSH key pair in PEM format for Fleet
 
-ssh-keygen -t ed25519 \
+ssh-keygen -t rsa -b 4096 -m PEM \
   -C "fleet-gitops@example.com" \
   -f ~/.ssh/fleet_gitops_key \
-  -N ""  # No passphrase (required for automated use)
+  -N ""  # No passphrase (Fleet does not support passphrase-protected keys)
 
 # View the public key to add to Git provider
 cat ~/.ssh/fleet_gitops_key.pub
@@ -63,6 +63,7 @@ cat ~/.ssh/fleet_gitops_key.pub
 # Create a secret with the SSH private key
 kubectl create secret generic git-ssh-auth \
   --from-file=ssh-privatekey=~/.ssh/fleet_gitops_key \
+  --type=kubernetes.io/ssh-auth \
   -n fleet-default
 
 # Verify the secret was created
@@ -100,9 +101,10 @@ kubectl apply -f gitrepo-ssh-auth.yaml
 
 ```bash
 # Create secret with username and token
-kubectl create secret generic git-http-auth \
+kubectl create secret generic git-http-credentials \
   --from-literal=username=my-username \
-  --from-literal=password=ghp_your_personal_access_token \
+  --from-literal=password=your_personal_access_token \
+  --type=kubernetes.io/basic-auth \
   -n fleet-default
 ```
 
@@ -117,10 +119,10 @@ metadata:
   namespace: fleet-default
 type: kubernetes.io/basic-auth
 stringData:
-  # GitHub username or organization
+  # GitHub username
   username: my-github-username
-  # GitHub Personal Access Token with repo scope
-  password: ghp_xxxxxxxxxxxxxxxxxxxxxxxxxxxx
+  # GitHub token with read access to the repository
+  password: your_personal_access_token
 ```
 
 ```bash
@@ -148,13 +150,14 @@ spec:
     - clusterSelector: {}
 ```
 
-## Method 3: GitLab Deploy Token
+## Method 3: GitLab Deploy Token over HTTPS
 
 ```bash
-# GitLab deploy tokens use username/token format
+# GitLab deploy tokens authenticate over HTTPS using username/token
 kubectl create secret generic gitlab-deploy-token \
   --from-literal=username=gitlab+deploy-token-12345 \
   --from-literal=password=your-gitlab-deploy-token \
+  --type=kubernetes.io/basic-auth \
   -n fleet-default
 ```
 
@@ -189,13 +192,10 @@ spec:
   branch: main
   clientSecretName: git-credentials
 
-  # CA bundle for self-signed certificate
-  caBundle: |-
-    -----BEGIN CERTIFICATE-----
-    MIIBxxx...
-    -----END CERTIFICATE-----
+  # Base64-encoded PEM CA bundle for the Git server certificate
+  caBundle: <base64-encoded-ca-pem>
 
-  # Or disable TLS verification (not recommended for production)
+  # Keep TLS verification enabled when providing a CA bundle
   insecureSkipTLSVerify: false
 
   targets:
@@ -203,10 +203,8 @@ spec:
 ```
 
 ```bash
-# Create secret with CA certificate bundle
-kubectl create secret generic git-ca-bundle \
-  --from-file=caBundle=ca.crt \
-  -n fleet-default
+# Base64-encode the CA certificate for use in spec.caBundle
+base64 < ca.crt | tr -d '\n'
 ```
 
 ## Using Rancher UI for Private Repo Authentication
@@ -225,14 +223,17 @@ kubectl create secret generic git-ca-bundle \
 # Update SSH key secret with new private key
 kubectl create secret generic git-ssh-auth \
   --from-file=ssh-privatekey=~/.ssh/new_fleet_key \
+  --type=kubernetes.io/ssh-auth \
   -n fleet-default \
   --dry-run=client -o yaml | kubectl apply -f -
 
 # Force Fleet to re-sync with new credentials
-kubectl annotate gitrepo private-app \
+CURRENT=$(kubectl get gitrepo private-app -n fleet-default -o jsonpath='{.spec.forceSyncGeneration}')
+CURRENT=${CURRENT:-0}
+kubectl patch gitrepo private-app \
   -n fleet-default \
-  fleet.cattle.io/commit="" \
-  --overwrite
+  --type=merge \
+  -p "{\"spec\":{\"forceSyncGeneration\":$((CURRENT + 1))}}"
 ```
 
 ## Verifying Authentication
@@ -241,10 +242,8 @@ kubectl annotate gitrepo private-app \
 # Check if Fleet can access the repository
 kubectl describe gitrepo private-app -n fleet-default
 
-# Look for authentication errors
-kubectl get events -n fleet-default \
-  --field-selector reason=FailedSync \
-  --sort-by='.lastTimestamp'
+# Inspect recent events in the GitRepo namespace
+kubectl get events -n fleet-default --sort-by='.lastTimestamp'
 
 # Check gitjob logs for authentication issues
 kubectl logs -n cattle-fleet-system \
