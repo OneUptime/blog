@@ -4,11 +4,11 @@ Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
 Tags: GCP, VPC, Routing, IPv4, Cloud Networking, Static Routes
 
-Description: Create and manage custom IPv4 static routes in a GCP VPC to direct traffic to specific next-hops, including instances, gateways, and VPN tunnels.
+Description: Create and manage custom IPv4 static routes in a GCP VPC to direct traffic to specific next-hops, including instances, gateways, and Classic VPN tunnels.
 
 ## Introduction
 
-GCP VPCs have system-generated routes for subnets and a default internet gateway route. You can add custom static routes to direct traffic to specific next-hops - such as a NAT instance, VPN tunnel, or virtual appliance - overriding the default routing behavior.
+GCP VPCs have system-generated routes for subnets and a default internet gateway route. You can add custom static routes to direct traffic to specific next-hops - such as a NAT instance, Classic VPN tunnel, or virtual appliance - based on destination specificity and route priority.
 
 ## Route Types in GCP
 
@@ -17,12 +17,12 @@ GCP VPCs have system-generated routes for subnets and a default internet gateway
 | Subnet routes | Auto-created for each VPC subnet |
 | Default route | 0.0.0.0/0 → default internet gateway |
 | Static custom routes | Manually created, point to a next-hop |
-| Dynamic routes | Created by Cloud Router via BGP |
+| Dynamic routes | Learned by Cloud Router via BGP |
 
 ## Creating a Custom Static Route
 
 ```bash
-# Route traffic to 192.168.0.0/16 through a VPN tunnel
+# Route traffic to 192.168.0.0/16 through a Classic VPN tunnel
 
 gcloud compute routes create route-to-onprem \
   --network my-vpc \
@@ -46,16 +46,20 @@ gcloud compute routes create nat-route \
   --tags private-vm                  # Only applies to VMs with this network tag
 ```
 
-## Routing to a Network Interface (Virtual Appliance)
+The NAT instance must have IP forwarding enabled and be configured with any required OS-level NAT or firewall rules.
+
+## Routing to a Virtual Appliance by Internal IP
 
 ```bash
-# Route through a virtual firewall appliance NIC
+# Route through a virtual firewall appliance by its primary internal IPv4 address
 gcloud compute routes create route-via-fw \
   --network my-vpc \
   --destination-range 10.100.0.0/16 \
-  --next-hop-ip 10.0.1.100 \         # Internal IP of the firewall appliance
+  --next-hop-address 10.0.1.100 \
   --priority 900
 ```
+
+The appliance VM must have IP forwarding enabled, and the next-hop address must be the VM's primary internal IPv4 address.
 
 ## Listing Routes
 
@@ -63,7 +67,7 @@ gcloud compute routes create route-via-fw \
 # List all routes in the VPC
 gcloud compute routes list \
   --filter="network=my-vpc" \
-  --format="table(name,destRange,nextHopType,priority,tags)"
+  --format="table(name,destRange,priority,tags)"
 
 # Show details of a specific route
 gcloud compute routes describe route-to-onprem
@@ -89,16 +93,16 @@ resource "google_compute_route" "to_onprem" {
 }
 ```
 
-## Policy-Based Routing with Tags
+## Selective Routing with Tags
 
-GCP routes support network tags to apply routes selectively:
+GCP static routes support network tags to apply routes selectively:
 
 ```bash
 # Create a route that only applies to VMs tagged "backend"
 gcloud compute routes create backend-route \
   --network my-vpc \
   --destination-range 10.200.0.0/16 \
-  --next-hop-ip 10.0.1.100 \
+  --next-hop-address 10.0.1.100 \
   --priority 900 \
   --tags backend
 ```
@@ -110,7 +114,7 @@ Only instances with the `backend` network tag will use this route.
 Use GCP's Connectivity Tests to verify routing:
 
 ```bash
-# Test connectivity from one instance to another
+# Test connectivity from a VM to a destination IP
 gcloud network-management connectivity-tests create test-route \
   --source-instance projects/PROJECT_ID/zones/us-east1-b/instances/vm-a \
   --destination-ip-address 192.168.1.50 \
