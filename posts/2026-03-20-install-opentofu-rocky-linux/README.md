@@ -27,7 +27,7 @@ cat <<EOF | sudo tee /etc/yum.repos.d/opentofu.repo
 [opentofu]
 name=opentofu
 baseurl=https://packages.opentofu.org/opentofu/tofu/rpm_any/rpm_any/\$basearch
-repo_gpgcheck=1
+repo_gpgcheck=0
 gpgcheck=1
 enabled=1
 gpgkey=https://get.opentofu.org/opentofu.gpg
@@ -56,19 +56,19 @@ sudo dnf install -y tofu
 ## Method 2: Install from RPM Package
 
 ```bash
-TOFU_VERSION="1.9.0"
+TOFU_VERSION="1.11.6"
 
 # Download the RPM package
-curl -LO "https://github.com/opentofu/opentofu/releases/download/v${TOFU_VERSION}/tofu_${TOFU_VERSION}_linux_amd64.rpm"
+curl -LO "https://github.com/opentofu/opentofu/releases/download/v${TOFU_VERSION}/tofu_${TOFU_VERSION}_amd64.rpm"
 
-# Install using dnf localinstall
-sudo dnf localinstall -y "tofu_${TOFU_VERSION}_linux_amd64.rpm"
+# Install using dnf
+sudo dnf install -y "./tofu_${TOFU_VERSION}_amd64.rpm"
 ```
 
 ## Method 3: Install from Binary
 
 ```bash
-TOFU_VERSION="1.9.0"
+TOFU_VERSION="1.11.6"
 
 # Install required tools
 sudo dnf install -y curl unzip
@@ -78,17 +78,6 @@ curl -LO "https://github.com/opentofu/opentofu/releases/download/v${TOFU_VERSION
 unzip "tofu_${TOFU_VERSION}_linux_amd64.zip"
 sudo mv tofu /usr/local/bin/
 sudo chmod +x /usr/local/bin/tofu
-```
-
-## Enabling EPEL (if needed for dependencies)
-
-```bash
-# Enable EPEL repository on Rocky Linux 8
-sudo dnf install -y epel-release
-
-# For Rocky Linux 9
-sudo dnf install -y epel-release
-sudo dnf config-manager --set-enabled crb
 ```
 
 ## Verifying the Installation
