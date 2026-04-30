@@ -8,7 +8,7 @@ Description: Learn how to create GCP Cloud Logging log sinks with OpenTofu to ro
 
 ---
 
-GCP Cloud Logging collects logs from all GCP services automatically, but by default they have limited retention. Log sinks allow you to route logs to destinations like BigQuery for analytics, Cloud Storage for long-term archival, or Pub/Sub for real-time stream processing. OpenTofu manages sinks, destinations, and IAM permissions in a single configuration.
+GCP Cloud Logging automatically collects log data from Google Cloud resources, but by default those logs have limited retention. Log sinks allow you to route logs to destinations like BigQuery for analytics, Cloud Storage for long-term archival, or Pub/Sub for real-time stream processing. OpenTofu manages sinks, destinations, and IAM permissions in a single configuration.
 
 ## Log Sink Architecture
 
@@ -30,7 +30,7 @@ terraform {
   required_providers {
     google = {
       source  = "hashicorp/google"
-      version = "~> 5.10"
+      version = "~> 7.0"
     }
   }
 }
@@ -62,7 +62,7 @@ resource "google_logging_project_sink" "audit_to_bigquery" {
   # Filter: only route Admin Activity audit logs
   filter = "logName:\"cloudaudit.googleapis.com%2Factivity\""
 
-  # Create a dedicated service account for this sink
+  # Use a managed writer identity for this sink
   unique_writer_identity = true
 }
 
@@ -149,6 +149,11 @@ resource "google_pubsub_topic_iam_member" "log_sink_publisher" {
 ```hcl
 # org_sink.tf
 # Route logs from all projects in the org to a central archive
+resource "google_storage_bucket" "central_archive" {
+  name     = "${var.project_id}-org-central-log-archive"
+  location = var.region
+}
+
 resource "google_logging_organization_sink" "central_archive" {
   name        = "org-central-log-archive"
   org_id      = var.org_id
@@ -160,12 +165,18 @@ resource "google_logging_organization_sink" "central_archive" {
   # Filter: only high-severity events
   filter = "severity >= WARNING"
 }
+
+resource "google_storage_bucket_iam_member" "org_sink_writer" {
+  bucket = google_storage_bucket.central_archive.name
+  role   = "roles/storage.objectCreator"
+  member = google_logging_organization_sink.central_archive.writer_identity
+}
 ```
 
 ## Best Practices
 
-- Use `unique_writer_identity = true` on all sinks to get a dedicated service account per sink rather than sharing the default logging service account.
+- For project-level sinks, use `unique_writer_identity = true` so Cloud Logging uses a managed writer identity instead of the legacy `cloud-logs@system.gserviceaccount.com` account. Organization-level sinks already expose a writer identity that you grant on the destination.
 - Always grant the minimum required permission to the sink's writer identity (e.g., `storage.objectCreator` rather than `storage.objectAdmin`).
-- Use specific log filters to avoid routing unnecessary logs and incurring egress costs.
+- Use specific log filters to avoid routing unnecessary logs and incurring storage and downstream processing costs.
 - Test your filter with the Log Explorer in the GCP Console before deploying.
 - For compliance use cases (PCI, HIPAA), use organization-level sinks to centralize all project logs.
