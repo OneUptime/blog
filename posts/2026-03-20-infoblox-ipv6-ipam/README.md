@@ -32,19 +32,26 @@ curl -u admin:password \
 # infoblox_ipv6.py
 
 import requests
-import json
 
 WAPI = "https://infoblox.example.com/wapi/v2.12"
 AUTH = ("admin", "password")
 VERIFY_SSL = False
 
-def wapi_post(endpoint, data):
+def wapi_post(endpoint, data, params=None):
     resp = requests.post(
         f"{WAPI}/{endpoint}",
-        json=data, auth=AUTH, verify=VERIFY_SSL
+        params=params, json=data, auth=AUTH, verify=VERIFY_SSL
     )
     resp.raise_for_status()
-    return resp.json()
+    return resp.json() if resp.content else None
+
+def wapi_put(endpoint, data, params=None):
+    resp = requests.put(
+        f"{WAPI}/{endpoint}",
+        params=params, json=data, auth=AUTH, verify=VERIFY_SSL
+    )
+    resp.raise_for_status()
+    return resp.json() if resp.content else None
 
 def wapi_get(endpoint, params=None):
     resp = requests.get(
@@ -57,6 +64,7 @@ def wapi_get(endpoint, params=None):
 # Create IPv6 network (parent /48)
 wapi_post("ipv6network", {
     "network": "2001:db8:0001::/48",
+    "network_view": "ipv6-production",
     "comment": "HQ Site IPv6",
     "extattrs": {
         "Location": {"value": "Headquarters"},
@@ -67,6 +75,7 @@ wapi_post("ipv6network", {
 # Create /64 subnet within the /48
 wapi_post("ipv6network", {
     "network": "2001:db8:0001:0001::/64",
+    "network_view": "ipv6-production",
     "comment": "HQ Servers VLAN",
     "extattrs": {
         "VLAN": {"value": "10"},
@@ -81,6 +90,7 @@ wapi_post("ipv6network", {
 # Create a DHCPv6 range within the /64
 wapi_post("ipv6range", {
     "network": "2001:db8:0001:0001::/64",
+    "network_view": "ipv6-production",
     "start_addr": "2001:db8:0001:0001::1000",
     "end_addr": "2001:db8:0001:0001::ffff",
     "comment": "HQ Servers DHCPv6 pool"
@@ -90,7 +100,7 @@ wapi_post("ipv6range", {
 ## Step 4: Create AAAA Records via WAPI
 
 ```python
-# Create AAAA record in DNS
+# Create AAAA record in an existing authoritative DNS zone
 wapi_post("record:aaaa", {
     "name": "server-01.example.com",
     "ipv6addr": "2001:db8:0001:0001::10",
@@ -98,17 +108,25 @@ wapi_post("record:aaaa", {
     "comment": "Web server IPv6"
 })
 
-# Create AAAA with PTR record
+# Create AAAA and matching PTR records
 wapi_post("record:aaaa", {
     "name": "api.example.com",
     "ipv6addr": "2001:db8:0001:0001::20",
-    "create_ptr": True,   # Automatically create PTR record
-    "view": "external"
+    "view": "external",
+    "comment": "API service IPv6"
+})
+
+wapi_post("record:ptr", {
+    "ipv6addr": "2001:db8:0001:0001::20",
+    "ptrdname": "api.example.com",
+    "view": "external",
+    "comment": "Reverse record for api.example.com"
 })
 
 # Search for AAAA records
 aaaa_records = wapi_get("record:aaaa", {
-    "name~": "*.example.com",
+    "zone": "example.com",
+    "view": "external",
     "_return_fields": "name,ipv6addr"
 })
 for record in aaaa_records:
@@ -119,19 +137,25 @@ for record in aaaa_records:
 
 ```python
 # Allocate next available IPv6 address in a network
-def allocate_next_ipv6(network: str, hostname: str) -> str:
-    result = wapi_post(f"ipv6network?network={network}/_nextavailableip", {
-        "comment": f"Auto-allocated for {hostname}",
-        "num": 1
-    })
-    return result["ips"][0]["ip_address"]
+def allocate_next_ipv6(network: str) -> str:
+    result = wapi_post(
+        "ipv6network",
+        {"num": 1},
+        params={
+            "network": network,
+            "network_view": "ipv6-production",
+            "_function": "next_available_ip"
+        }
+    )
+    return result["ips"][0]
 
-# Allocate address and create AAAA record together
-new_ip = allocate_next_ipv6("2001:db8:0001:0001::/64", "db-server-05")
+# Allocate address and create an AAAA record
+new_ip = allocate_next_ipv6("2001:db8:0001:0001::/64")
 wapi_post("record:aaaa", {
     "name": "db-server-05.example.com",
     "ipv6addr": new_ip,
-    "create_ptr": True
+    "view": "external",
+    "comment": "Auto-allocated IPv6 for db-server-05"
 })
 print(f"Allocated {new_ip} for db-server-05")
 ```
@@ -139,27 +163,39 @@ print(f"Allocated {new_ip} for db-server-05")
 ## Step 6: IPv6 Network Discovery
 
 ```python
-# Configure discovery for an IPv6 network
-wapi_post("discovery:task", {
-    "network": "2001:db8:0001::/48",
-    "discovery_method": "ICMP6",
-    "scan_interfaces": True,
-    "tcp_scan_technique": "SYN"
+# Reconfigure the current discovery task for the IPv6 network view
+discovery_task = wapi_get("discoverytask", {
+    "discovery_task_oid": "current",
+    "_return_fields": "_ref"
+})[0]
+
+wapi_put(discovery_task["_ref"], {
+    "network_view": "ipv6-production",
+    "mode": "ICMP",
+    "ping_retries": 2,
+    "ping_timeout": 1000
 })
+
+# Start discovery
+wapi_post(
+    discovery_task["_ref"],
+    {"action": "START"},
+    params={"_function": "network_discovery_control"}
+)
 ```
 
-## Step 7: DNS64 Configuration
+## Step 7: Create a DNS64 Synthesis Group
 
 ```python
-# Configure DNS64 for IPv4-only clients
-wapi_post("dns:dns64synthesisgroup", {
+# Create a DNS64 synthesis group for IPv6-only clients
+wapi_post("dns64group", {
     "name": "dns64-main",
     "prefix": "64:ff9b::/96",
     "comment": "DNS64 for IPv6-only clients reaching IPv4 services",
-    "mapped": [{"address": "0.0.0.0", "prefix": "0"}]
+    "mapped": [{"address": "0.0.0.0/0", "permission": "ALLOW"}]
 })
 ```
 
 ## Conclusion
 
-Infoblox provides enterprise-grade IPv6 IPAM through its WAPI REST API with atomic DDI operations - a single API call can allocate an address, create an AAAA record, and create a PTR record. The `_nextavailableip` endpoint for IPv6 networks automates address allocation without conflict checking. Use Infoblox's DNS64 feature when deploying IPv6-only environments that still need to reach IPv4-only external services. The extattrs (extensible attributes) system enables custom metadata like VLAN ID, environment, and owner tracking on IPv6 prefixes.
+Infoblox provides enterprise-grade IPv6 IPAM through its WAPI REST API with automated DDI operations such as allocating the next available IPv6 address and then creating related DNS records. The `next_available_ip` function for IPv6 networks automates address allocation while skipping addresses that are already in use or otherwise unavailable. Use Infoblox's DNS64 feature with NAT64 when deploying IPv6-only environments that still need to reach IPv4-only services, and remember that creating a DNS64 synthesis group is only one part of the full DNS64 configuration. The extattrs (extensible attributes) system enables custom metadata like VLAN ID, environment, and owner tracking on IPv6 prefixes.
