@@ -19,13 +19,13 @@ import (
 
 func main() {
     // Link-local addresses: fe80::/10
-    // REQUIRE a zone ID (interface name) to be usable
+    // Scoped addresses often need a zone ID (interface name)
 
-    // Parse link-local - valid without zone but not usable for sockets
+    // Parse link-local - valid without zone but not enough for a scoped socket address
     addr, _ := netip.ParseAddr("fe80::1")
     fmt.Println("Is link-local:", addr.IsLinkLocalUnicast())  // true
 
-    // With zone ID - for socket operations
+    // With zone ID - for scoped socket operations
     addrWithZone, _ := netip.ParseAddrPort("[fe80::1%eth0]:8080")
     fmt.Println("Addr:", addrWithZone.Addr())   // fe80::1%eth0
     fmt.Println("Zone:", addrWithZone.Addr().Zone())  // eth0
@@ -33,9 +33,9 @@ func main() {
     // net.IP approach
     ip := net.ParseIP("fe80::1")
     fmt.Println("net.IP link-local:", ip.IsLinkLocalUnicast())  // true
-    // net.IP has no zone ID - must use net.IPAddr or net.UDPAddr
+    // net.IP has no zone ID - must use net.IPAddr, net.TCPAddr, or net.UDPAddr
 
-    // For binding, always specify interface
+    // For scoped IPv6 socket addresses, specify the interface
     ipAddr := &net.IPAddr{IP: ip, Zone: "eth0"}
     fmt.Println("With zone:", ipAddr)  // fe80::1%eth0
 }
@@ -76,6 +76,8 @@ func getLinkLocalAddresses() []struct {
             switch v := addr.(type) {
             case *net.IPNet:
                 ip = v.IP
+            case *net.IPAddr:
+                ip = v.IP
             }
             if ip != nil && ip.IsLinkLocalUnicast() {
                 results = append(results, struct {
@@ -109,7 +111,7 @@ import (
 )
 
 func dialLinkLocal(ipv6LinkLocal, zone, port string) (net.Conn, error) {
-    // Zone ID is required for link-local addresses
+    // Zone ID is required for a remote link-local literal
     // Combine as: "fe80::1%eth0"
     addr := fmt.Sprintf("[%s%%%s]:%s", ipv6LinkLocal, zone, port)
     fmt.Printf("Dialing: %s\n", addr)
@@ -146,21 +148,36 @@ import (
     "net"
 )
 
-func listenLinkLocal(iface string, port int) (net.Listener, error) {
-    // Bind to link-local address on specific interface
-    // Use "%iface" zone suffix
-    bindAddr := fmt.Sprintf("[fe80::%%%s]:%d", iface, port)
-
-    ln, err := net.Listen("tcp6", bindAddr)
+func listenLinkLocal(ifaceName string, port int) (net.Listener, error) {
+    // Bind to an actual link-local address assigned to the interface
+    iface, err := net.InterfaceByName(ifaceName)
     if err != nil {
-        // Fallback: listen on all link-local addresses
-        fmt.Printf("Specific bind failed (%v), trying all link-locals\n", err)
-        ln, err = net.Listen("tcp6", fmt.Sprintf("[::%%%s]:%d", iface, port))
-        if err != nil {
-            return nil, err
+        return nil, err
+    }
+
+    addrs, err := iface.Addrs()
+    if err != nil {
+        return nil, err
+    }
+
+    for _, addr := range addrs {
+        var ip net.IP
+        switch v := addr.(type) {
+        case *net.IPNet:
+            ip = v.IP
+        case *net.IPAddr:
+            ip = v.IP
+        }
+        if ip != nil && ip.IsLinkLocalUnicast() {
+            return net.ListenTCP("tcp6", &net.TCPAddr{
+                IP:   ip,
+                Port: port,
+                Zone: iface.Name,
+            })
         }
     }
-    return ln, nil
+
+    return nil, fmt.Errorf("no IPv6 link-local address on %s", ifaceName)
 }
 
 func main() {
@@ -194,36 +211,36 @@ import (
 )
 
 func sendMulticast(iface, message string) error {
-    // ff02::1 = all nodes on link
-    // ff02::2 = all routers on link
+    // ff02::1 = all nodes on the local link
     multicastAddr := &net.UDPAddr{
         IP:   net.ParseIP("ff02::1"),
-        Port: 5353,
-        Zone: iface,  // Zone ID for link-scoped multicast
+        Port: 9999,
+        Zone: iface,  // Zone ID selects the link for this destination
     }
 
-    conn, err := net.ListenUDP("udp6", &net.UDPAddr{
-        IP:   net.IPv6zero,
-        Zone: iface,
-    })
+    conn, err := net.DialUDP("udp6", nil, multicastAddr)
     if err != nil {
         return err
     }
     defer conn.Close()
 
-    _, err = conn.WriteToUDP([]byte(message), multicastAddr)
+    _, err = conn.Write([]byte(message))
     return err
 }
 
 func receiveMulticast(iface string) error {
-    // Join all-nodes multicast group on interface
-    groupAddr := &net.UDPAddr{
-        IP:   net.ParseIP("ff02::1"),
-        Port: 5353,
-        Zone: iface,
+    // Join the all-nodes group on a specific interface
+    ifi, err := net.InterfaceByName(iface)
+    if err != nil {
+        return err
     }
 
-    conn, err := net.ListenMulticastUDP("udp6", &net.Interface{Name: iface}, groupAddr)
+    groupAddr := &net.UDPAddr{
+        IP:   net.ParseIP("ff02::1"),
+        Port: 9999,
+    }
+
+    conn, err := net.ListenMulticastUDP("udp6", ifi, groupAddr)
     if err != nil {
         return err
     }
@@ -240,7 +257,7 @@ func receiveMulticast(iface string) error {
 }
 
 func main() {
-    // Example: send multicast discovery message
+    // Example: send a discovery message to all nodes on the local link
     if err := sendMulticast("eth0", "IPv6 discovery probe"); err != nil {
         fmt.Println("Send error:", err)
     }
@@ -249,4 +266,4 @@ func main() {
 
 ## Conclusion
 
-IPv6 link-local addresses in Go require a zone ID (interface name) for all socket operations - without it, the OS cannot determine which interface to use. Always specify zone IDs: in `net.IPAddr{Zone: "eth0"}`, in `net.UDPAddr{Zone: "eth0"}`, or by appending `%iface` to the address string in dial/listen calls (`"[fe80::1%eth0]:8080"`). Use `net/netip.Addr.Zone()` to extract the zone from a parsed address. For link-local multicast (service discovery protocols like mDNS), use `net.ListenMulticastUDP` with the interface's `Zone` field set. Always check `ip.IsLinkLocalUnicast()` before using a link-local address and ensure your application handles the zone ID requirement gracefully.
+IPv6 link-local addresses in Go often need a zone ID to disambiguate the interface, especially when you dial or parse a scoped literal such as `"[fe80::1%eth0]:8080"`. Use `net.IPAddr`, `net.TCPAddr`, or `net.UDPAddr` when you need to carry both the IP and zone, or append `%iface` to the address string for APIs such as `Dial`. Use `net/netip.Addr.Zone()` to extract the zone from a parsed address. When listening, bind to an actual link-local address assigned to the interface, not just the `fe80::/10` prefix or the unspecified `::` address with a zone. For link-local multicast, use `net.ListenMulticastUDP` with the specific interface you want to join on. Always check `ip.IsLinkLocalUnicast()` before using a link-local address and ensure your application handles scoped IPv6 addresses gracefully.
