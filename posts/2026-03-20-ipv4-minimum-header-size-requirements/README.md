@@ -13,7 +13,7 @@ The IPv4 header contains the following mandatory fields, totaling exactly 20 byt
 | Field | Size | Offset |
 |-------|------|--------|
 | Version + IHL | 1 byte | 0 |
-| DSCP/ToS | 1 byte | 1 |
+| DS field (DSCP + ECN) | 1 byte | 1 |
 | Total Length | 2 bytes | 2 |
 | Identification | 2 bytes | 4 |
 | Flags + Fragment Offset | 2 bytes | 6 |
@@ -28,7 +28,7 @@ The IPv4 header contains the following mandatory fields, totaling exactly 20 byt
 
 The Internet Header Length (IHL) occupies the low nibble of byte 0. It is measured in 32-bit words:
 - Minimum: IHL = 5 → 5 × 4 = **20 bytes** (no options)
-- Maximum: IHL = 15 → 15 × 4 = **60 bytes** (up to 40 bytes of options)
+- Maximum: IHL = 15 → 15 × 4 = **60 bytes** (up to 40 bytes for options and padding)
 
 ## Validating Header Length in Code
 
@@ -36,7 +36,7 @@ The Internet Header Length (IHL) occupies the low nibble of byte 0. It is measur
 def validate_ipv4_header(packet: bytes) -> bool:
     """
     Check that the packet is at least the minimum IPv4 header size
-    and that IHL is consistent with the packet length.
+    and that IHL and Total Length are consistent with the packet length.
     """
     MIN_HEADER = 20
     if len(packet) < MIN_HEADER:
@@ -61,6 +61,9 @@ def validate_ipv4_header(packet: bytes) -> bool:
     if total_length < ihl:
         print(f"Total Length {total_length} < IHL {ihl}")
         return False
+    if len(packet) < total_length:
+        print(f"Truncated packet: {len(packet)} < Total Length {total_length}")
+        return False
 
     print(f"Valid header: IHL={ihl} bytes, Total={total_length} bytes")
     return True
@@ -80,9 +83,10 @@ validate_ipv4_header(hdr)
 
 ```python
 def get_payload(packet: bytes) -> bytes:
-    """Return the payload (everything after the IP header)."""
+    """Return the IP payload from a validated packet."""
     ihl = (packet[0] & 0x0F) * 4
-    return packet[ihl:]
+    total_length = (packet[2] << 8) | packet[3]
+    return packet[ihl:total_length]
 ```
 
 ## RFC Minimum Reassembly Buffer
