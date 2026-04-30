@@ -8,7 +8,7 @@ Description: Learn how to diagnose and recover from provider plugin crashes in O
 
 ## Introduction
 
-Provider plugin crashes produce a distinctive panic message from the Go runtime. Unlike configuration errors, these are bugs in the provider binary itself - not in your OpenTofu code. The resolution usually involves updating the provider, reporting the bug upstream, or working around the specific operation that triggers the crash.
+Provider plugin crashes often produce a panic message from the provider process. Unlike configuration errors, these are bugs in the provider binary itself - not in your OpenTofu code. The resolution usually involves updating the provider, reporting the bug upstream, or working around the specific operation that triggers the crash.
 
 ## Recognizing a Crash
 
@@ -35,8 +35,8 @@ export TF_LOG=TRACE
 export TF_LOG_PATH=/tmp/crash-log.txt
 tofu apply 2>&1 | tee /tmp/apply-output.txt
 
-# The crash log will contain the full Go panic stacktrace
-cat /tmp/crash-log.txt | grep -A 50 "panic:"
+# Search both the apply output and the debug log for panic details
+grep -A 50 "panic:" /tmp/apply-output.txt /tmp/crash-log.txt
 ```
 
 ## Step 2: Check for a Known Issue
@@ -68,20 +68,19 @@ terraform {
 
 ```bash
 # Reinitialize with the pinned version
-rm .terraform.lock.hcl
-tofu init
+tofu init -upgrade
 ```
 
 ## Step 4: Work Around the Crashing Resource
 
-If the crash happens on a specific resource type, try applying other resources first:
+If the crash happens on a specific resource type, try applying other resources first only in exceptional circumstances as a temporary workaround:
 
 ```bash
 # Apply everything except the crashing resource
 tofu apply -target=aws_vpc.main -target=aws_subnet.public
 
 # Then apply the problematic resource in isolation to narrow the issue
-tofu apply -target=aws_ec2_whatever.crashing_resource
+tofu apply -target=aws_instance.crashing_resource
 ```
 
 ## Step 5: Reduce the Crashing Configuration
@@ -90,11 +89,14 @@ Binary search to find the minimal configuration that triggers the crash:
 
 ```hcl
 # Try removing optional attributes one by one
-resource "aws_problematic_resource" "main" {
-  required_arg = "value"
+resource "aws_s3_bucket" "main" {
+  bucket = "replace-with-a-globally-unique-name"
+
   # Comment out optional args until crash stops
-  # optional_arg_1 = "value1"
-  # optional_arg_2 = "value2"
+  # force_destroy = true
+  # tags = {
+  #   Name = "example"
+  # }
 }
 ```
 
@@ -104,20 +106,20 @@ When reporting a provider crash, include:
 
 ```bash
 # Collect information for the bug report
-tofu version          # OpenTofu version
-tofu providers        # Provider versions
-cat .terraform.lock.hcl
+tofu version          # OpenTofu version and installed providers
+tofu providers        # Provider requirements seen in config and state
+cat .terraform.lock.hcl   # Exact selected provider versions and checksums
 
 # Minimal reproducible configuration
-# Full crash output with stack trace
+# Full crash output, including any panic stack trace
 ```
 
 File the issue on the provider's GitHub repository with:
 - OpenTofu version
 - Provider version
 - Minimal reproducing configuration
-- Full panic stack trace
+- Full crash output, including any panic stack trace
 
 ## Conclusion
 
-Provider crashes are bugs in provider binaries, not in your configuration. Enable `TF_LOG=TRACE` to capture the full stack trace, check for a known issue or newer version that fixes it, pin to a stable version if needed, and report the bug upstream with a minimal reproducer. In the meantime, use `-target` to work around the affected resource type.
+Provider crashes are bugs in provider binaries, not in your configuration. Enable `TF_LOG=TRACE` to capture detailed logs and crash output, check for a known issue or newer version that fixes it, pin to a stable version if needed, and report the bug upstream with a minimal reproducer. In the meantime, use `-target` only in exceptional circumstances as a temporary workaround for the affected resource type.
