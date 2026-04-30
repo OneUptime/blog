@@ -33,6 +33,8 @@ Key fields in a GitRepo:
 
 ### Step 1: Create the GitRepo Manifest
 
+The examples below use the `fleet-default` workspace that Rancher creates for downstream clusters. If you are using Fleet in a single-cluster style, use `fleet-local` instead.
+
 ```yaml
 # gitrepo-basic.yaml
 
@@ -189,13 +191,13 @@ kubectl get gitrepo -n fleet-default -w
 ```
 
 Status conditions to look for:
-- `Ready: True` - Repository is syncing successfully
-- `Stalled: True` - Repository has an error preventing sync
-- `GitPolling` - Fleet is actively polling the repository
+- `Ready: True` - Desired and current states match successfully
+- `Stalled: True` - The controller encountered an error or failed to make progress
+- `GitPolling: True` - Polling or initial cloning succeeded; this is also `True` when polling is disabled
 
 ## Deleting a GitRepo
 
-When you delete a GitRepo, Fleet will remove the deployed resources from targeted clusters:
+By default, when you delete a GitRepo, Fleet removes the deployed resources from targeted clusters unless `keepResources: true` is set:
 
 ```bash
 # Delete a GitRepo and trigger cleanup on clusters
