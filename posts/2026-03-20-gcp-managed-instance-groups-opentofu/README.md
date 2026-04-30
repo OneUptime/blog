@@ -26,7 +26,7 @@ resource "google_compute_instance_group_manager" "web_mig" {
     instance_template = google_compute_instance_template.web_template.self_link
   }
 
-  # Named port for load balancer health checks
+  # Named port for load balancer backend services
   named_port {
     name = "http"
     port = 80
@@ -95,11 +95,12 @@ resource "google_compute_region_instance_group_manager" "regional_web_mig" {
 ## Step 4: Rolling Update Configuration
 
 ```hcl
-# MIG with rolling update policy for zero-downtime deployments
+# MIG with rolling update policy for controlled deployments
 resource "google_compute_region_instance_group_manager" "rolling_update_mig" {
   name               = "rolling-update-mig"
   region             = "us-central1"
   base_instance_name = "app-server"
+  target_size        = 3
 
   version {
     name              = "v2"
@@ -110,7 +111,7 @@ resource "google_compute_region_instance_group_manager" "rolling_update_mig" {
     type                           = "PROACTIVE"       # Start update immediately
     minimal_action                 = "REPLACE"         # Replace instances on update
     max_surge_fixed                = 3                 # Allow 3 extra instances during update
-    max_unavailable_fixed          = 0                 # Keep all instances available
+    max_unavailable_fixed          = 1                 # Allow one instance to be unavailable during update
     replacement_method             = "SUBSTITUTE"
   }
 }
@@ -127,4 +128,4 @@ output "mig_instance_group" {
 
 ## Summary
 
-GCP Managed Instance Groups with OpenTofu provide scalable, self-healing VM fleets. Regional MIGs offer better availability by distributing instances across zones. Rolling update policies enable zero-downtime deployments by controlling the pace of instance replacement during template updates.
+GCP Managed Instance Groups with OpenTofu provide scalable, self-healing VM fleets. Regional MIGs offer better availability by distributing instances across zones. Rolling update policies help reduce deployment disruption by controlling the pace of instance replacement during template updates.
