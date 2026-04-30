@@ -8,26 +8,26 @@ Description: Learn how to configure Fleet's drift detection to automatically ide
 
 ## Introduction
 
-Configuration drift occurs when the actual state of your Kubernetes resources diverges from the desired state defined in Git. Drift can happen when someone manually edits resources, when an operator modifies a deployment, or when a cluster partially applies updates. Fleet's drift detection feature continuously monitors your clusters and automatically reconciles any detected drift.
+Configuration drift occurs when the actual state of your Kubernetes resources diverges from the desired state defined in Git. Drift can happen when someone manually edits resources, when an operator modifies a deployment, or when a cluster partially applies updates. Fleet surfaces detected drift in status fields and, when `correctDrift.enabled` is set, can automatically reconcile it.
 
-This guide covers how to enable and configure Fleet's drift detection, understand drift conditions, and respond to drift events.
+This guide covers how to configure Fleet's drift detection, enable automatic drift correction, understand drift conditions, and respond to drift status changes.
 
 ## Prerequisites
 
-- Fleet installed in Rancher (v0.6+ for drift detection support)
+- Fleet installed in Rancher
 - GitRepo resources configured
-- `kubectl` access to Fleet manager
+- `kubectl` access to the Fleet manager and a downstream cluster
 
 ## How Fleet Drift Detection Works
 
-Fleet's agent in each downstream cluster periodically compares the live state of deployed resources against the desired state stored in the bundle. When it detects a difference (drift), it can:
+Fleet's agent in each downstream cluster monitors deployed resources and compares their live state against the desired state stored in the bundle. When it detects a difference (drift), it can:
 
 1. **Report** the drift (non-remediation mode)
 2. **Remediate** the drift by re-applying the desired state
 
-## Enabling Drift Detection
+## Enabling Drift Correction
 
-Drift detection is configured at the GitRepo level:
+Fleet reports drift through status fields by default. Automatic drift correction is configured at the GitRepo level:
 
 ```yaml
 # gitrepo-drift-detection.yaml
@@ -41,28 +41,24 @@ spec:
   repo: https://github.com/my-org/my-app
   branch: main
 
-  # Enable drift detection and correction
+  # Enable automatic drift correction
   correctDrift:
     # Enable drift correction (re-applies desired state when drift detected)
     enabled: true
 
-    # Force correction even for resources not owned by Fleet
-    # Use with caution in shared clusters
+    # Use Helm rollback with --force if needed
+    # Warning: this may recreate resources
     force: false
-
-    # Keep resources that exist in the cluster but not in Git
-    # (true = don't delete extra resources)
-    keepResources: false
 
   targets:
     - clusterSelector: {}
 ```
 
 ```bash
-# Apply the GitRepo with drift detection
+# Apply the GitRepo with drift correction
 kubectl apply -f gitrepo-drift-detection.yaml
 
-# Verify drift detection is configured
+# Verify drift correction is configured
 kubectl get gitrepo my-app -n fleet-default -o jsonpath='{.spec.correctDrift}'
 ```
 
@@ -74,13 +70,13 @@ To test that drift detection is working:
 # Step 1: Deploy an application via Fleet and confirm it's running
 kubectl get bundle my-app -n fleet-default
 
-# Step 2: Manually scale the deployment on a downstream cluster
+# Step 2: Using access to a downstream cluster, manually scale the deployment
 # (This simulates drift)
-kubectl scale deployment my-app --replicas=5 -n my-app
+kubectl --context <downstream-cluster-context> scale deployment my-app --replicas=5 -n my-app
 
-# Step 3: Wait for Fleet's drift detection interval (typically 15 seconds)
+# Step 3: Wait a few seconds for Fleet to detect and reconcile the drift
 # Step 4: Verify Fleet corrected the drift
-kubectl get deployment my-app -n my-app -o jsonpath='{.spec.replicas}'
+kubectl --context <downstream-cluster-context> get deployment my-app -n my-app -o jsonpath='{.spec.replicas}'
 # Should return to the value defined in Git
 ```
 
@@ -93,24 +89,23 @@ kubectl get deployment my-app -n my-app -o jsonpath='{.spec.replicas}'
 kubectl get bundledeployments -A
 
 # Check a specific bundle deployment for drift
-kubectl describe bundledeployment my-app -n fleet-default
+kubectl describe bundledeployment <bundledeployment-name> -n <cluster-namespace>
 
-# Look for "Modified" status indicating drift was detected
+# Look for "Modified" in the display state
 kubectl get bundledeployments -A \
-  -o jsonpath='{range .items[*]}{.metadata.name}{" "}{.status.modifiedStatus}{"\n"}{end}'
+  -o jsonpath='{range .items[*]}{.metadata.namespace}{" "}{.metadata.name}{" "}{.status.display.state}{"\n"}{end}'
 ```
 
-### GitRepo Drift Status Conditions
+### GitRepo Drift Status Summary
 
 ```bash
-# Check the GitRepo conditions for drift information
+# Check the GitRepo display state
 kubectl get gitrepo my-app -n fleet-default \
-  -o jsonpath='{.status.conditions}' | python3 -m json.tool
+  -o jsonpath='{.status.display.state}{"\n"}'
 
-# Watch for drift-related events
-kubectl get events -n fleet-default \
-  --field-selector reason=Modified \
-  --sort-by='.lastTimestamp'
+# Check how many resources are currently reported as modified
+kubectl get gitrepo my-app -n fleet-default \
+  -o jsonpath='{.status.resourceCounts.modified}{"\n"}'
 ```
 
 ## Configuring Drift Detection Per Target
@@ -119,7 +114,7 @@ You can configure drift detection differently for different cluster types:
 
 ```yaml
 # fleet.yaml - Per-target drift behavior
-targets:
+targetCustomizations:
   # Production: always correct drift immediately
   - name: production
     clusterSelector:
@@ -129,7 +124,7 @@ targets:
       enabled: true
       force: false
 
-  # Development: report drift but don't auto-correct
+  # Development: detect drift but don't auto-correct
   # Developers may want to experiment with live changes
   - name: development
     clusterSelector:
@@ -145,58 +140,59 @@ When Fleet detects drift, the bundle deployment shows `Modified` status. The `mo
 
 ```bash
 # Get detailed modified status
-kubectl get bundledeployment my-app-local -n fleet-local \
-  -o jsonpath='{.status.modifiedStatus}' | python3 -m json.tool
+kubectl get bundledeployment <bundledeployment-name> -n <cluster-namespace> -o json
+# Look under status.modifiedStatus
 ```
 
 This shows output like:
 ```json
-[
-  {
-    "apiVersion": "apps/v1",
-    "kind": "Deployment",
-    "name": "my-app",
-    "namespace": "my-app",
-    "patch": "{\"spec\":{\"replicas\":5}}"
-  }
-]
+{
+  "modifiedStatus": [
+    {
+      "apiVersion": "apps/v1",
+      "kind": "Deployment",
+      "name": "my-app",
+      "namespace": "my-app",
+      "patch": "{\"spec\":{\"replicas\":5}}"
+    }
+  ]
+}
 ```
 
 ## Handling Drift in Shared Clusters
 
-In clusters where multiple teams deploy resources, be careful with drift correction:
+In clusters where multiple teams deploy resources, enable drift correction only for resources your GitRepo owns:
 
 ```yaml
 # gitrepo-shared-cluster.yaml
 spec:
   correctDrift:
     enabled: true
-    # Do NOT force correction - avoid overwriting other teams' changes
+    # Avoid --force unless you need it; it may recreate resources during rollback
     force: false
-    # Keep resources that exist but aren't in our Git repo
-    keepResources: true
+  # Keep resources if this GitRepo is later removed
+  keepResources: true
 ```
 
 ## Drift Detection for Immutable Fields
 
-Some Kubernetes fields are immutable after creation (like Job selectors). Fleet handles this gracefully:
+Some Kubernetes fields are immutable after creation (like Job selectors). If drift correction hits an immutable field, the BundleDeployment status will show the apply error:
 
 ```bash
-# Check for immutable field errors
-kubectl get events -n fleet-default \
-  --field-selector reason=FailedSync
+# Inspect the BundleDeployment status and conditions
+kubectl describe bundledeployment <bundledeployment-name> -n <cluster-namespace>
 ```
 
 ## Setting Up Alerts for Drift
 
-Integrate drift detection with your monitoring stack by watching for condition changes:
+Integrate drift detection with your monitoring stack by watching for BundleDeployments that enter the `Modified` state:
 
 ```bash
 # Script to report all clusters with drift
 kubectl get bundledeployments -A \
-  -o jsonpath='{range .items[?(@.status.modified==true)]}{.metadata.namespace}{" "}{.metadata.name}{"\n"}{end}'
+  -o jsonpath='{range .items[?(@.status.display.state=="Modified")]}{.metadata.namespace}{" "}{.metadata.name}{"\n"}{end}'
 ```
 
 ## Conclusion
 
-Fleet's drift detection provides continuous compliance enforcement for your Kubernetes clusters. By automatically detecting and correcting deviations from the Git-defined desired state, you maintain consistency across your entire fleet without manual intervention. Configure drift detection aggressively for production environments where changes outside of GitOps workflows should not persist, and more permissively for development environments where experimentation is expected. Combined with proper monitoring and alerting, drift detection gives you confidence that your clusters always reflect exactly what is defined in Git.
+Fleet's drift detection provides continuous compliance enforcement for your Kubernetes clusters. By detecting and, when configured, correcting deviations from the Git-defined desired state, you maintain consistency across your entire fleet without manual intervention. Configure drift detection aggressively for production environments where changes outside of GitOps workflows should not persist, and more permissively for development environments where experimentation is expected. Combined with proper monitoring and alerting, drift detection gives you confidence that your clusters always reflect what is defined in Git.
