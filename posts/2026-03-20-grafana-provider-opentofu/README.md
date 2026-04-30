@@ -13,7 +13,7 @@ This guide covers How to Configure the Grafana Provider in OpenTofu using OpenTo
 ## Prerequisites
 
 - OpenTofu v1.6+
-- API credentials for the relevant service
+- A Grafana service account token
 - Basic understanding of OpenTofu concepts
 
 ## Step 1: Install and Configure the Provider
@@ -24,7 +24,7 @@ terraform {
   required_providers {
     grafana = {
       source  = "grafana/grafana"
-      version = "~> 3.0"
+      version = "~> 4.0"
     }
   }
 }
@@ -33,16 +33,16 @@ terraform {
 
 provider "grafana" {
   url  = var.grafana_url
-  auth = var.grafana_api_key
+  auth = var.grafana_service_account_token
 }
 ```
 
 ## Step 2: Set Up Authentication
 
 ```bash
-# Use environment variables for authentication
-export GRAFANA_URL="https://grafana.example.com"
-export GRAFANA_AUTH="your-api-key"
+# Use environment variables to populate OpenTofu variables
+export TF_VAR_grafana_url="https://grafana.example.com"
+export TF_VAR_grafana_service_account_token="your-service-account-token"
 ```
 
 ```hcl
@@ -51,8 +51,8 @@ variable "grafana_url" {
   type        = string
 }
 
-variable "grafana_api_key" {
-  description = "API key for Grafana authentication"
+variable "grafana_service_account_token" {
+  description = "Service account token for Grafana authentication"
   type        = string
   sensitive   = true
 }
@@ -132,7 +132,18 @@ resource "grafana_rule_group" "cpu_alerts" {
       }
 
       model = jsonencode({
-        expr = "100 - (avg by(instance) (rate(node_cpu_seconds_total{mode=\"idle\"}[5m])) * 100)"
+        datasource = {
+          type = "prometheus"
+          uid  = grafana_data_source.prometheus.uid
+        }
+        editorMode    = "code"
+        expr          = "100 - (avg by(instance) (rate(node_cpu_seconds_total{mode=\"idle\"}[5m])) * 100)"
+        instant       = true
+        intervalMs    = 1000
+        legendFormat  = "__auto"
+        maxDataPoints = 43200
+        range         = false
+        refId         = "A"
       })
     }
 
@@ -146,11 +157,9 @@ resource "grafana_rule_group" "cpu_alerts" {
       }
 
       model = jsonencode({
-        type       = "threshold"
-        expression = "A"
-        conditions = [{
-          evaluator = { type = "gt", params = [90] }
-        }]
+        expression = "$A > 90"
+        refId      = "C"
+        type       = "math"
       })
     }
   }
@@ -190,7 +199,7 @@ tofu apply
 ## Common Issues and Solutions
 
 ### Authentication Errors
-Verify API keys are valid and have the required permissions. Check for typos in environment variable names.
+Verify the service account token is valid and has the required permissions. Check for typos in environment variable names.
 
 ### Rate Limiting
 Add `depends_on` to serialize resource creation and avoid hitting API rate limits.
@@ -200,4 +209,4 @@ Pin to a specific provider version range to ensure reproducible deployments.
 
 ## Conclusion
 
-You have successfully configured the Grafana provider in OpenTofu. This provider enables you to manage dashboards, data sources, alerts, and access control as code, ensuring consistency and enabling GitOps workflows. Always use environment variables or secure secret stores for sensitive credentials like API keys.
+You have successfully configured the Grafana provider in OpenTofu. This provider enables you to manage dashboards, data sources, alerts, and access control as code, ensuring consistency and enabling GitOps workflows. Always use environment variables or secure secret stores for sensitive credentials like service account tokens.
