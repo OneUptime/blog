@@ -64,7 +64,7 @@ def describe_hierarchy(prefix: str, level: int = 0):
 
 describe_hierarchy(ORG_PREFIX)
 # RIR Allocation: 2001:db8::/32
-#   → Can allocate 65,536 /48 prefixes
+#   → Can allocate 16 /36 prefixes
 ```
 
 ## Example Hierarchy: Multi-Site Organization
@@ -106,14 +106,17 @@ A common practice is to encode site/region/VLAN information directly in the addr
 ```
 
 ```python
+import ipaddress
+
 def decode_address(ipv6: str) -> dict:
     """Decode metadata from an IPv6 address using the RRSS:VVVV scheme."""
-    parts = ipv6.split(":")
-    if len(parts) < 4:
+    try:
+        parts = ipaddress.IPv6Address(ipv6).exploded.split(":")
+    except ipaddress.AddressValueError:
         return {}
 
-    region_site = parts[2].zfill(4)   # "RRSS"
-    vlan = parts[3].zfill(4)           # "VVVV"
+    region_site = parts[2]             # "RRSS"
+    vlan = parts[3]                    # "VVVV"
 
     region_map = {"00": "AMER", "10": "EMEA", "20": "APAC"}
     region_code = region_site[:2]
