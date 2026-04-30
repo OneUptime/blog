@@ -28,33 +28,33 @@ A network automation pipeline treats network configuration as code. Changes flow
 
 ---
 addressing:
-  loopback_prefix: "5f00:fe81::/32"
-  link_prefix: "fd00::/48"
-  management_prefix: "fd00:mgmt::/64"
+  loopback_prefix: "fd12:3456:789a::/48"
+  link_prefix: "fd12:3456:789a:100::/56"
+  management_prefix: "fd12:3456:789a:ff00::/64"
 
 bgp:
   asn: 65001
   route_reflectors:
-    - "5f00:fe81:100::"
-    - "5f00:fe81:101::"
+    - "fd12:3456:789a::100"
+    - "fd12:3456:789a::101"
 
 routing:
   ospfv3_area: "0.0.0.0"
-  isis_net: "49.0001"
+  isis_net: "49.0001.0000.0000.0001.00"
 
 security:
   management_acl:
-    - "fd00:mgmt::/64"
-    - "fd00:noc::/64"
+    - "fd12:3456:789a:ff00::/64"
+    - "fd12:3456:789a:ff10::/64"
 
 devices:
   - name: R1
     role: leaf
-    loopback: "5f00:fe81:1::/128"
+    loopback: "fd12:3456:789a::1/128"
     links:
       - peer: R2
-        local_addr: "fd00:12::1/64"
-        peer_addr: "fd00:12::2/64"
+        local_addr: "fd12:3456:789a:112::1/64"
+        peer_addr: "fd12:3456:789a:112::2/64"
 ```
 
 ## Stage 2: Configuration Generation
@@ -151,6 +151,8 @@ def deploy_configs(configs: dict, dry_run: bool = True):
     print_result(result)
     return result
 
+configs = generate_all_configs("network/ipv6_policy.yml", "templates")
+
 # Dry run first
 print("=== Dry run ===")
 deploy_configs(configs, dry_run=True)
@@ -162,6 +164,7 @@ deploy_configs(configs, dry_run=True)
 ## Stage 5: Continuous Compliance
 
 ```python
+from nornir import InitNornir
 import schedule
 import time
 
@@ -175,8 +178,8 @@ def compliance_check():
         peers = result[0].result.get("bgp_neighbors", {})
         for vrf, vrf_data in peers.items():
             for peer, data in vrf_data.get("peers", {}).items():
-                if ":" in peer and data["state"] != "Established":
-                    print(f"ALERT: {task.host.name} peer {peer} is {data['state']}")
+                if ":" in peer and data.get("is_enabled", True) and not data.get("is_up", False):
+                    print(f"ALERT: {task.host.name} peer {peer} is down")
 
     nr.run(task=check_bgp)
 
