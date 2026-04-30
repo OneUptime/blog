@@ -14,10 +14,10 @@ import java.net.*;
 public class InetAddressExample {
     public static boolean isValidIPv4(String s) {
         try {
-            InetAddress addr = InetAddress.getByName(s);
-            // Inet4Address is the subclass for IPv4
-            return addr instanceof Inet4Address;
-        } catch (UnknownHostException e) {
+            // Java 22+: parse an IPv4 literal without DNS lookup
+            Inet4Address.ofLiteral(s);
+            return true;
+        } catch (IllegalArgumentException e) {
             return false;
         }
     }
@@ -38,13 +38,18 @@ public class InetAddressExample {
 ```java
 import java.net.*;
 
-// Create from raw bytes (4 bytes for IPv4)
-byte[] addr = { (byte)192, (byte)168, 1, 100 };
-InetAddress ip = InetAddress.getByAddress(addr);
-System.out.println(ip.getHostAddress());  // "192.168.1.100"
+public class CreateFromOctetsExample {
+    public static void main(String[] args) throws UnknownHostException {
+        // Create from raw bytes (4 bytes for IPv4)
+        byte[] addr = { (byte)192, (byte)168, 1, 100 };
+        InetAddress ip = InetAddress.getByAddress(addr);
+        System.out.println(ip.getHostAddress());  // "192.168.1.100"
 
-// Create Inet4Address specifically
-Inet4Address ip4 = (Inet4Address) InetAddress.getByAddress(addr);
+        // Create Inet4Address specifically
+        Inet4Address ip4 = (Inet4Address) InetAddress.getByAddress(addr);
+        System.out.println(ip4.getHostAddress());
+    }
+}
 ```
 
 ## DNS Resolution: Hostname to IPv4
@@ -76,27 +81,32 @@ public class DNSResolver {
 ```java
 import java.net.*;
 
-// InetAddress.getByName() with an IP string + getHostName() for reverse lookup
-InetAddress addr = InetAddress.getByName("8.8.8.8");
-String hostname = addr.getHostName();  // dns.google
-System.out.println("Reverse lookup: 8.8.8.8 -> " + hostname);
+public class ReverseDnsExample {
+    public static void main(String[] args) throws UnknownHostException {
+        // For literal IP strings, getByName() validates the format without hostname resolution
+        InetAddress addr = InetAddress.getByName("8.8.8.8");
+        String hostname = addr.getHostName();  // Result depends on DNS and resolver configuration
+        System.out.println("Reverse lookup: 8.8.8.8 -> " + hostname);
+    }
+}
 ```
 
 ## IP Classification
 
 ```java
+import java.io.IOException;
 import java.net.*;
 
 public class IpClassifier {
-    public static void classify(String ipStr) throws UnknownHostException {
+    public static void classify(String ipStr) throws IOException {
         InetAddress ip = InetAddress.getByName(ipStr);
         System.out.printf("%s:%n", ipStr);
         System.out.printf("  isLoopbackAddress:     %b%n", ip.isLoopbackAddress());
-        System.out.printf("  isSiteLocalAddress:    %b%n", ip.isSiteLocalAddress());    // Private
-        System.out.printf("  isLinkLocalAddress:    %b%n", ip.isLinkLocalAddress());    // 169.254.x.x
-        System.out.printf("  isMulticastAddress:    %b%n", ip.isMulticastAddress());    // 224.x.x.x
+        System.out.printf("  isSiteLocalAddress:    %b%n", ip.isSiteLocalAddress());    // RFC 1918 private ranges
+        System.out.printf("  isLinkLocalAddress:    %b%n", ip.isLinkLocalAddress());    // 169.254.0.0/16
+        System.out.printf("  isMulticastAddress:    %b%n", ip.isMulticastAddress());    // 224.0.0.0/4
         System.out.printf("  isAnyLocalAddress:     %b%n", ip.isAnyLocalAddress());     // 0.0.0.0
-        System.out.printf("  isReachable(timeout):  %b%n", ip.isReachable(2000));
+        System.out.printf("  isReachable(timeout):  %b%n", ip.isReachable(2000));       // Best effort only
     }
 
     public static void main(String[] args) throws Exception {
@@ -107,28 +117,34 @@ public class IpClassifier {
 }
 ```
 
-## Converting IPv4 to Integer
+## Converting IPv4 to an Unsigned Integer
 
 ```java
 import java.net.*;
 import java.nio.ByteBuffer;
 
-public static int ipv4ToInt(String ipStr) throws UnknownHostException {
-    Inet4Address addr = (Inet4Address) InetAddress.getByName(ipStr);
-    return ByteBuffer.wrap(addr.getAddress()).getInt();
-}
+public class IPv4IntegerConversion {
+    public static long ipv4ToLong(String ipStr) throws UnknownHostException {
+        Inet4Address addr = (Inet4Address) InetAddress.getByName(ipStr);
+        return Integer.toUnsignedLong(ByteBuffer.wrap(addr.getAddress()).getInt());
+    }
 
-public static String intToIPv4(int n) throws UnknownHostException {
-    byte[] bytes = ByteBuffer.allocate(4).putInt(n).array();
-    return InetAddress.getByAddress(bytes).getHostAddress();
-}
+    public static String longToIPv4(long n) throws UnknownHostException {
+        if (n < 0 || n > 0xFFFF_FFFFL) {
+            throw new IllegalArgumentException("IPv4 value out of range");
+        }
+        byte[] bytes = ByteBuffer.allocate(4).putInt((int) n).array();
+        return InetAddress.getByAddress(bytes).getHostAddress();
+    }
 
-// Example
-int num = ipv4ToInt("192.168.1.1");
-System.out.printf("192.168.1.1 = %d%n", num);
-System.out.printf("%d = %s%n", num, intToIPv4(num));
+    public static void main(String[] args) throws UnknownHostException {
+        long num = ipv4ToLong("192.168.1.1");
+        System.out.printf("192.168.1.1 = %d%n", num);
+        System.out.printf("%d = %s%n", num, longToIPv4(num));
+    }
+}
 ```
 
 ## Conclusion
 
-Java's `InetAddress` and its subclass `Inet4Address` provide comprehensive IPv4 address handling: parsing, validation (via `instanceof Inet4Address`), DNS resolution (`getAllByName`), reverse lookup (`getHostName`), and classification (`isSiteLocalAddress`, `isLoopbackAddress`, etc.). Use `InetAddress.getAllByName()` with filtering for explicit IPv4-only resolution.
+Java's `InetAddress` and its subclass `Inet4Address` provide comprehensive IPv4 address handling: parsing, literal validation (for example with `Inet4Address.ofLiteral()`), DNS resolution (`getAllByName`), reverse lookup (`getHostName`), and classification (`isSiteLocalAddress`, `isLoopbackAddress`, etc.). Use `InetAddress.getAllByName()` with filtering for explicit IPv4-only resolution.
