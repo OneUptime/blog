@@ -11,7 +11,7 @@ Description: Learn how to handle null values in OpenTofu configurations to build
 ## null Basics
 
 ```hcl
-# null can be assigned to any type
+# null can be used as the default for a nullable variable of any type
 
 variable "optional_tag" {
   type    = string
@@ -26,15 +26,15 @@ locals {
 
 ## Passing null to Resource Arguments
 
-When you pass `null` to a resource argument, OpenTofu omits that argument from the API call - the provider uses its default:
+When you pass `null` to an optional resource argument, OpenTofu behaves as though you omitted that argument - the provider uses its default if one exists:
 
 ```hcl
 resource "aws_instance" "app" {
   ami           = var.ami_id
   instance_type = var.instance_type
 
-  # Passing null here means "let AWS choose the default subnet"
-  subnet_id     = var.subnet_id  # Can be null - AWS uses default VPC subnet
+  # Passing null here omits subnet_id from the resource configuration
+  subnet_id     = var.subnet_id  # Can be null - OpenTofu treats it as unset
 }
 ```
 
@@ -52,7 +52,7 @@ resource "aws_instance" "app" {
   ami           = var.ami_id
   instance_type = "t3.micro"
 
-  # monitoring block only appears when enable_monitoring is true
+  # monitoring argument is omitted when enable_monitoring is false
   monitoring = var.enable_monitoring ? true : null
 }
 ```
@@ -66,7 +66,7 @@ variable "custom_domain" {
 }
 
 locals {
-  # Use coalesce to fall back to a computed value when variable is null
+  # Use coalesce to fall back when variable is null or an empty string
   domain = coalesce(var.custom_domain, "${local.app_name}.example.com")
 
   # Or use a ternary with null check
@@ -76,22 +76,19 @@ locals {
 
 ## Null-Safe Attribute Access with try
 
-Accessing attributes on a `null` object causes an error. Use `try` for null-safe access:
+Accessing attributes on a `null` value causes an error. Use `try` for null-safe access:
 
 ```hcl
-# data source may return null if no matching resource is found
-data "aws_ami" "existing" {
-  most_recent = true
-  owners      = ["self"]
-  filter {
-    name   = "name"
-    values = [var.ami_name_filter]
-  }
+variable "app_config" {
+  type = object({
+    description = string
+  })
+  default = null
 }
 
 locals {
-  # Safe access - returns "" if the data source result is null
-  ami_description = try(data.aws_ami.existing.description, "")
+  # Safe access - returns "" if app_config is null
+  app_description = try(var.app_config.description, "")
 }
 ```
 
@@ -142,4 +139,4 @@ locals {
 
 ## Conclusion
 
-`null` in OpenTofu is a first-class value that enables clean optional parameter patterns. Use it to omit resource arguments (letting providers use defaults), with `coalesce` and `try` for safe fallback handling, with `optional()` in object types for flexible module inputs, and with `compact` to clean null values from lists.
+`null` in OpenTofu is a first-class value that enables clean optional parameter patterns. Use it to omit optional resource arguments (letting providers use defaults where available), with `coalesce` and `try` for safe fallback handling, with `optional()` in object types for flexible module inputs, and with `compact` to clean null values from lists.
