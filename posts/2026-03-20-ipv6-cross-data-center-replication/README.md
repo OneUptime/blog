@@ -8,15 +8,15 @@ Description: Configure IPv6 for cross-data-center database and storage replicati
 
 ## Why IPv6 Simplifies Cross-DC Replication
 
-Cross-data-center replication over IPv6 eliminates NAT traversal issues and simplifies firewall rules. Each replication endpoint has a globally unique, routable IPv6 address, making peer configuration straightforward.
+Cross-data-center replication over IPv6 can avoid NAT traversal issues and simplify firewall rules. Each replication endpoint can use a globally unique IPv6 address, making peer configuration straightforward.
 
 ## Address Planning for Replication Traffic
 
 Dedicate a specific subnet for replication traffic to allow targeted QoS and firewall policies:
 
 ```text
-DC1 Replication Subnet: 2001:db8:1:repl::/64  (hex: 2001:db8:1:7265::/64)
-DC2 Replication Subnet: 2001:db8:2:repl::/64
+DC1 Replication Subnet: 2001:db8:1:7265::/64
+DC2 Replication Subnet: 2001:db8:2:7265::/64
 
 DC1 DB Primary:  2001:db8:1:7265::10
 DC2 DB Replica:  2001:db8:2:7265::10
@@ -40,21 +40,29 @@ host  replication  replicator  2001:db8:2:7265::/64  scram-sha-256
 Connect the standby to the primary using an IPv6 connection string:
 
 ```text
-# recovery.conf / postgresql.conf on Replica (DC2)
+# postgresql.conf on Replica (DC2)
 primary_conninfo = 'host=2001:db8:1:7265::10 port=5432 user=replicator password=secret'
+
+# create standby.signal in the data directory before starting PostgreSQL
 ```
 
 ## MySQL Group Replication over IPv6
 
-MySQL Group Replication requires configuring the communication stack with IPv6 addresses:
+MySQL Group Replication requires unique member addresses, a shared seed list, and, with the default XCom stack, an allowlist for the IPv6 replication subnets:
 
 ```sql
--- On each node, set the local address
+-- On DC1
 SET GLOBAL group_replication_local_address = '[2001:db8:1:7265::10]:33061';
+SET GLOBAL group_replication_group_seeds = '[2001:db8:1:7265::10]:33061,[2001:db8:2:7265::10]:33061';
+SET GLOBAL group_replication_ip_allowlist = '2001:db8:1:7265::/64,2001:db8:2:7265::/64';
 
--- Set seeds pointing to DC2 replica
-SET GLOBAL group_replication_group_seeds = '[2001:db8:2:7265::10]:33061';
+-- On DC2
+SET GLOBAL group_replication_local_address = '[2001:db8:2:7265::10]:33061';
+SET GLOBAL group_replication_group_seeds = '[2001:db8:1:7265::10]:33061,[2001:db8:2:7265::10]:33061';
+SET GLOBAL group_replication_ip_allowlist = '2001:db8:1:7265::/64,2001:db8:2:7265::/64';
 ```
+
+Changes to `group_replication_local_address` and `group_replication_group_seeds` take effect after Group Replication is stopped and started on the member.
 
 ## Firewall Rules for Replication Traffic
 
@@ -71,35 +79,31 @@ ip6tables -A INPUT -p tcp --dport 5432 -j DROP
 
 ## Storage Replication: Ceph over IPv6
 
-Configure Ceph monitors and OSDs to bind to IPv6 addresses:
+Configure Ceph daemons for IPv6 and publish monitor endpoints through `mon_host`:
 
 ```text
 # ceph.conf
 [global]
 ms_bind_ipv6 = true
 ms_bind_ipv4 = false
-
-[mon.dc1-mon1]
-mon_host = [2001:db8:1:7265::1]:6789
-
-[mon.dc2-mon1]
-mon_host = [2001:db8:2:7265::1]:6789
+mon_host = 2001:db8:1:7265::1,2001:db8:2:7265::1
 ```
 
 ## Latency and Bandwidth Tuning
 
-Cross-DC replication is latency-sensitive. Tune TCP buffer sizes for high-latency links:
+Cross-DC replication is latency-sensitive. Tune TCP buffer ceilings for high-latency links:
 
 ```bash
 # Increase TCP send/receive buffers for replication connections
 sysctl -w net.core.rmem_max=134217728
 sysctl -w net.core.wmem_max=134217728
-sysctl -w net.ipv6.conf.all.use_oif_addrs_only=1
+sysctl -w net.ipv4.tcp_rmem="4096 131072 134217728"
+sysctl -w net.ipv4.tcp_wmem="4096 16384 134217728"
 ```
 
 ## Monitoring Replication Lag
 
-Use Prometheus and node_exporter to track replication lag. Pair with alerting in OneUptime to notify when replication falls behind a threshold.
+Use Prometheus with database- or storage-specific exporters to track replication lag. `node_exporter` is still useful for host and network metrics. Pair with alerting in OneUptime to notify when replication falls behind a threshold.
 
 ## Conclusion
 
