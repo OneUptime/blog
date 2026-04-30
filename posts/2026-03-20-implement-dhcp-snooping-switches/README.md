@@ -9,9 +9,9 @@ Description: DHCP snooping is a switch-level security feature that drops DHCP se
 ## How DHCP Snooping Works
 
 - **Trusted ports**: Connected to authorized DHCP servers or uplinks. DHCP offers and acks are permitted.
-- **Untrusted ports**: Client-facing ports. DHCP offers and acks are dropped; only discovers and requests pass.
+- **Untrusted ports**: Client-facing ports. Server-originated DHCP replies such as offers and acks are dropped; client-originated DHCP messages pass.
 
-The switch builds a DHCP snooping binding table: `{MAC, IP, VLAN, interface}` for each leased address.
+The switch builds a DHCP snooping binding table with entries such as `{MAC, IP, lease time, VLAN, interface}` for each leased address.
 
 ## Cisco IOS Configuration
 
@@ -25,11 +25,15 @@ ip dhcp snooping vlan 10,20,30
 ! Mark uplink to DHCP server as trusted
 interface GigabitEthernet0/1
   ip dhcp snooping trust
+exit
 
 ! Client ports are untrusted by default
 ! Rate-limit DHCP on client ports to prevent starvation
 interface GigabitEthernet0/2
   ip dhcp snooping limit rate 15   ! Max 15 DHCP packets/second
+exit
+
+end
 
 ! Verify
 show ip dhcp snooping
@@ -42,16 +46,18 @@ show ip dhcp snooping binding
 ! Insert Option 82 on snooped packets
 ip dhcp snooping information option
 
-! Log DHCP snooping violations
+! Save the DHCP snooping binding database to flash
 ip dhcp snooping database flash:dhcp_snooping.db
+
+end
 
 ! Show snooping statistics
 show ip dhcp snooping statistics
 ```
 
-## Linux: Using iptables to Simulate Snooping
+## Linux: Using iptables to Approximate Snooping
 
-On a Linux bridge/switch:
+On a Linux bridge/switch, with `br_netfilter` enabled so bridged IPv4 traffic reaches `iptables`:
 
 ```bash
 # Drop DHCP offers/acks from non-server ports (untrusted)
@@ -66,7 +72,7 @@ iptables -A FORWARD -i eth3 -p udp --sport 67 -j DROP
 
 ## Verifying Snooping Is Working
 
-```bash
+```text
 # From a client, try to run a rogue DHCP server
 # and confirm it cannot reach clients
 
@@ -89,6 +95,6 @@ ip arp inspection vlan 10,20,30
 ## Key Takeaways
 
 - DHCP snooping marks switch ports as trusted (uplinks, DHCP server) or untrusted (clients).
-- Untrusted ports drop any DHCP offer or ack, blocking rogue servers.
+- Untrusted ports drop server-originated DHCP replies such as offers and acks, blocking rogue servers.
 - Rate-limit DHCP on client ports to prevent starvation attacks.
 - The DHCP snooping binding table feeds Dynamic ARP Inspection for additional security.
