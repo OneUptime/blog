@@ -13,8 +13,6 @@ phpIPAM is an open-source web-based IP address management application written in
 ```yaml
 # docker-compose.yml
 
-version: "3.8"
-
 services:
   phpipam-web:
     image: phpipam/phpipam-www:latest
@@ -26,14 +24,35 @@ services:
       - IPAM_DATABASE_PASS=phpipam_pass
       - IPAM_DATABASE_NAME=phpipam
       - IPAM_DATABASE_USER=phpipam
-      # Disable SSL requirement for internal use
-      - IPAM_NO_ONLINE_UPDATES=0
+      - IPAM_DATABASE_WEBHOST=%
     volumes:
       - phpipam-logo:/phpipam/css/images/logo
-      - phpipam-ca:/usr/local/share/ca-certificates
+      - phpipam-ca:/usr/local/share/ca-certificates:ro
     restart: unless-stopped
     depends_on:
       - phpipam-db
+    cap_add:
+      - NET_ADMIN
+      - NET_RAW
+
+  phpipam-cron:
+    image: phpipam/phpipam-cron:latest
+    environment:
+      - TZ=UTC
+      - IPAM_DATABASE_HOST=phpipam-db
+      - IPAM_DATABASE_PASS=phpipam_pass
+      - IPAM_DATABASE_NAME=phpipam
+      - IPAM_DATABASE_USER=phpipam
+      - IPAM_DATABASE_WEBHOST=%
+      - SCAN_INTERVAL=1h
+    volumes:
+      - phpipam-ca:/usr/local/share/ca-certificates:ro
+    restart: unless-stopped
+    depends_on:
+      - phpipam-db
+    cap_add:
+      - NET_ADMIN
+      - NET_RAW
 
   phpipam-db:
     image: mariadb:latest
@@ -55,7 +74,7 @@ volumes:
 ```bash
 docker compose up -d
 
-# Wait for containers to be healthy
+# Verify the services are running
 docker compose ps
 ```
 
@@ -63,9 +82,9 @@ docker compose ps
 
 1. Open `http://localhost` in your browser
 2. Click **Install new phpipam database**
-3. Enter the MySQL credentials from your compose file
-4. Set the admin password
-5. Log in with `admin` / your chosen password
+3. Enter the database credentials from your compose file
+4. Log in with `Admin` / `ipamadmin`
+5. Change the default admin password
 
 ## Step 3: Configure IPAM via the Web Interface
 
@@ -75,14 +94,15 @@ docker compose ps
 
 ## Step 4: Create Sections and Subnets via API
 
+In the phpIPAM web UI, enable the API module and create an API app named `myapp` under **Settings → API**.
+
 ```bash
 # First, get an API token
 curl -X POST \
-  -H "Content-Type: application/json" \
-  -d '{"app_id": "myapp", "password": "adminpassword"}' \
-  "http://localhost/api/user/"
+  -u "Admin:your-admin-password" \
+  "http://localhost/api/myapp/user/"
 
-# Store the token
+# Store the token from the response
 TOKEN="your-api-token-here"
 
 # Create a section
@@ -93,6 +113,7 @@ curl -X POST \
   "http://localhost/api/myapp/sections/"
 
 # Create a subnet
+# Replace sectionId with the numeric ID of your section
 curl -X POST \
   -H "token: $TOKEN" \
   -H "Content-Type: application/json" \
@@ -107,38 +128,40 @@ curl -X POST \
 
 ## Step 5: Enable Subnet Scanning
 
-phpIPAM can automatically scan subnets for live hosts:
+phpIPAM can automatically scan subnets for live hosts when the `phpipam-cron` container is running:
 
 ```bash
-# In the web UI: Administration → Scan Agents → Local
-# Or configure via docker environment variable
-# IPAM_PWRESET=0
+# Scheduled discovery jobs are controlled by the cron container
+# SCAN_INTERVAL=1h
 ```
 
 Enable scanning in the subnet settings:
 1. Edit a subnet
-2. Check **Enable subnet scanning**
-3. Set scan interval
+2. Assign a scan agent
+3. Enable host status checks and/or new host discovery
 
 ## Viewing Subnet Utilization
 
 ```bash
-# Get subnet details including used IPs
+# Replace with the numeric ID of your subnet
+SUBNET_ID="1"
+
+# Get subnet usage details
 curl -H "token: $TOKEN" \
-  "http://localhost/api/myapp/subnets/search/10.100.1.0/24/" \
-  | python3 -m json.tool | grep -E "\"used\"|\"available\"|\"free\""
+  "http://localhost/api/myapp/subnets/$SUBNET_ID/usage/" \
+  | python3 -m json.tool
 ```
 
 ## Backing Up phpIPAM
 
 ```bash
 # Database backup
-docker compose exec phpipam-db mysqldump \
-  -u phpipam -p phpipam_pass phpipam > phpipam-backup.sql
+docker compose exec -T phpipam-db mariadb-dump \
+  -u phpipam --password=phpipam_pass phpipam > phpipam-backup.sql
 
 # Restore from backup
-docker compose exec -T phpipam-db mysql \
-  -u phpipam -p phpipam_pass phpipam < phpipam-backup.sql
+docker compose exec -T phpipam-db mariadb \
+  -u phpipam --password=phpipam_pass phpipam < phpipam-backup.sql
 ```
 
 phpIPAM provides a lighter-weight alternative to NetBox for organizations primarily needing subnet and IP tracking without full DCIM functionality.
