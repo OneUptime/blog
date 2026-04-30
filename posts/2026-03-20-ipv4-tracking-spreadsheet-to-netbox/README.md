@@ -14,20 +14,18 @@ Many organizations track IP addresses in Excel or Google Sheets. While this work
 
 | Feature | Spreadsheet | NetBox/phpIPAM |
 |---------|-------------|----------------|
-| Duplicate detection | Manual | Automatic |
+| Duplicate detection | Manual | Built-in validation/tools |
 | Subnet visualization | No | Yes |
 | API for automation | No | Full REST API |
 | Change audit trail | No | Built-in |
 | VLAN management | Limited | Full |
-| DNS/DHCP integration | No | Yes |
+| DNS/DHCP integration | No | Via API/integrations |
 
 ## Step 1: Export Your Spreadsheet
 
 Structure your existing data into a CSV with standard columns:
 
 ```csv
-# ip-inventory.csv
-
 ip_address,subnet,hostname,description,device,location,vlan,status
 10.1.1.10,10.1.1.0/24,web-01.example.com,Web server,Dell PowerEdge,NYC-DC,10,active
 10.1.1.11,10.1.1.0/24,web-02.example.com,Web server,Dell PowerEdge,NYC-DC,10,active
@@ -36,38 +34,48 @@ ip_address,subnet,hostname,description,device,location,vlan,status
 
 ## Step 2A: Import into NetBox via CSV
 
-NetBox supports native CSV import for most object types.
+NetBox supports native CSV import for most object types, and the REST API can automate repeatable imports.
 
 ```bash
-# NetBox API: Create prefixes (subnets) first
+# NetBox API: Create each prefix (subnet) first
 curl -s -X POST "http://netbox.example.com/api/ipam/prefixes/" \
   -H "Authorization: Token your-api-token" \
   -H "Content-Type: application/json" \
   -d '{
     "prefix": "10.1.1.0/24",
     "description": "NYC DC Server VLAN",
-    "vlan": {"id": 10},
-    "site": {"name": "New York DC"},
+    "vlan": 10,
+    "scope_type": "dcim.site",
+    "scope_id": 1,
     "status": "active"
   }'
 
 # Create IP address records via API (script to loop over CSV)
 python3 << 'PYEOF'
-import csv, requests
+import csv
+import ipaddress
+
+import requests
 
 NETBOX_URL = "http://netbox.example.com/api"
 TOKEN = "your-api-token"
 HEADERS = {"Authorization": f"Token {TOKEN}", "Content-Type": "application/json"}
 
-with open("ip-inventory.csv") as f:
+with open("ip-inventory.csv", newline="") as f:
     for row in csv.DictReader(f):
+        prefix_length = ipaddress.ip_network(row["subnet"], strict=False).prefixlen
         data = {
-            "address": f"{row['ip_address']}/24",
+            "address": f"{row['ip_address']}/{prefix_length}",
             "dns_name": row["hostname"],
             "description": row["description"],
             "status": row["status"]
         }
-        r = requests.post(f"{NETBOX_URL}/ipam/ip-addresses/", json=data, headers=HEADERS)
+        r = requests.post(
+            f"{NETBOX_URL}/ipam/ip-addresses/",
+            json=data,
+            headers=HEADERS,
+            timeout=30,
+        )
         if r.status_code == 201:
             print(f"Created: {row['ip_address']}")
         else:
@@ -79,7 +87,7 @@ PYEOF
 
 phpIPAM supports CSV import from the UI:
 
-1. Navigate to **IP Addresses > Import addresses**
+1. Open the IP address import tool in the web UI
 2. Upload your CSV file
 3. Map CSV columns to phpIPAM fields
 4. Review conflicts and import
@@ -87,19 +95,54 @@ phpIPAM supports CSV import from the UI:
 Or use the API:
 
 ```bash
-#!/bin/bash
-# Bulk import via phpIPAM API
+python3 << 'PYEOF'
+import csv
+from urllib.parse import quote
 
-TOKEN=$(curl -s -X POST "http://phpipam.example.com/api/myapp/user/" \
-  -u "admin:password" | jq -r '.data.token')
+import requests
+from requests.auth import HTTPBasicAuth
 
-while IFS=, read -r ip subnet hostname description rest; do
-    [[ "$ip" == "ip_address" ]] && continue   # Skip header
-    curl -s -X POST "http://phpipam.example.com/api/myapp/addresses/" \
-      -H "Content-Type: application/json" \
-      -H "token: ${TOKEN}" \
-      -d "{\"subnetId\": \"5\", \"ip\": \"${ip}\", \"hostname\": \"${hostname}\", \"description\": \"${description}\"}"
-done < ip-inventory.csv
+PHPIPAM_URL = "http://phpipam.example.com/api/myapp"
+USERNAME = "admin"
+PASSWORD = "password"
+
+auth = requests.post(
+    f"{PHPIPAM_URL}/user/",
+    auth=HTTPBasicAuth(USERNAME, PASSWORD),
+    timeout=30,
+)
+auth.raise_for_status()
+token = auth.json()["data"]["token"]
+headers = {"phpipam-token": token}
+
+with open("ip-inventory.csv", newline="") as f:
+    for row in csv.DictReader(f):
+        subnet = row["subnet"]
+        subnet_lookup = requests.get(
+            f"{PHPIPAM_URL}/subnets/cidr/{quote(subnet, safe='')}/",
+            headers=headers,
+            timeout=30,
+        )
+        subnet_lookup.raise_for_status()
+        subnet_id = subnet_lookup.json()["data"]["id"]
+
+        payload = {
+            "subnetId": subnet_id,
+            "ip": row["ip_address"],
+            "hostname": row["hostname"],
+            "description": row["description"],
+        }
+        r = requests.post(
+            f"{PHPIPAM_URL}/addresses/",
+            json=payload,
+            headers=headers,
+            timeout=30,
+        )
+        if r.status_code == 201:
+            print(f"Created: {row['ip_address']}")
+        else:
+            print(f"Error {r.status_code}: {row['ip_address']} - {r.text}")
+PYEOF
 ```
 
 ## Step 3: Validate the Migration
@@ -107,15 +150,54 @@ done < ip-inventory.csv
 After import, validate the data:
 
 ```bash
-# NetBox: Check for IP addresses without a prefix
-curl -s "http://netbox.example.com/api/ipam/ip-addresses/?limit=1000" \
-  -H "Authorization: Token your-api-token" | \
-  jq '.results[] | select(.prefix == null) | .address'
+python3 << 'PYEOF'
+import csv
+import ipaddress
+from collections import Counter
 
-# Check for duplicates
-curl -s "http://netbox.example.com/api/ipam/ip-addresses/?limit=1000" \
-  -H "Authorization: Token your-api-token" | \
-  jq '[.results[].address] | group_by(.) | map(select(length > 1)) | .[]'
+import requests
+
+NETBOX_URL = "http://netbox.example.com/api"
+TOKEN = "your-api-token"
+HEADERS = {"Authorization": f"Token {TOKEN}"}
+
+def get_all(path):
+    url = f"{NETBOX_URL}{path}"
+    items = []
+    while url:
+        response = requests.get(url, headers=HEADERS, timeout=30)
+        response.raise_for_status()
+        payload = response.json()
+        items.extend(payload["results"])
+        url = payload["next"]
+    return items
+
+ip_objects = get_all("/ipam/ip-addresses/")
+addresses = [item["address"] for item in ip_objects]
+address_set = set(addresses)
+
+expected = []
+with open("ip-inventory.csv", newline="") as f:
+    for row in csv.DictReader(f):
+        prefix_length = ipaddress.ip_network(row["subnet"], strict=False).prefixlen
+        expected.append(f"{row['ip_address']}/{prefix_length}")
+
+missing = [address for address in expected if address not in address_set]
+if missing:
+    print("Missing IPs:")
+    for address in missing:
+        print(address)
+else:
+    print("All CSV IPs are present in NetBox.")
+
+duplicates = sorted(address for address, count in Counter(addresses).items() if count > 1)
+if duplicates:
+    print("Duplicate IPs:")
+    for address in duplicates:
+        print(address)
+else:
+    print("No duplicate IPs found.")
+PYEOF
 ```
 
 ## Step 4: Set Up Ongoing Automation
