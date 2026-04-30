@@ -10,6 +10,8 @@ Description: Learn how to implement IPv4 traceroute using Scapy by incrementing 
 
 Traceroute sends packets with incrementing TTL (Time to Live) values. When a router decrements TTL to 0, it sends back an ICMP "Time Exceeded" message. By collecting these responses, we can map each hop on the path to the destination.
 
+These examples require privileges that allow Scapy to send packets, such as running with `sudo` on Linux or from an elevated command prompt on Windows.
+
 ## Basic Traceroute with ICMP
 
 ```python
@@ -59,6 +61,7 @@ def traceroute_with_rtt(destination: str, max_hops: int = 30, probes: int = 3) -
     for ttl in range(1, max_hops + 1):
         hop_ip = None
         rtts = []
+        reached_destination = False
 
         for _ in range(probes):
             pkt = IP(dst=destination, ttl=ttl) / ICMP()
@@ -69,13 +72,15 @@ def traceroute_with_rtt(destination: str, max_hops: int = 30, probes: int = 3) -
             if reply:
                 hop_ip = reply[IP].src
                 rtts.append(f"{rtt:.2f} ms")
+                if ICMP in reply and reply[ICMP].type == 0:
+                    reached_destination = True
             else:
                 rtts.append("*")
 
         rtt_str = "  ".join(rtts)
         if hop_ip:
             print(f"  {ttl:2d}  {hop_ip:<18} {rtt_str}")
-            if reply and ICMP in reply and reply[ICMP].type == 0:
+            if reached_destination:
                 print("     (destination reached)")
                 return
         else:
@@ -94,8 +99,8 @@ def traceroute_udp(destination: str, max_hops: int = 30, base_port: int = 33434)
     print(f"UDP traceroute to {destination}:\n")
 
     for ttl in range(1, max_hops + 1):
-        # Use ascending UDP port numbers (same as classic traceroute)
-        pkt = IP(dst=destination, ttl=ttl) / UDP(dport=base_port + ttl)
+        # Start at port 33434 and increment for each probe, like classic traceroute
+        pkt = IP(dst=destination, ttl=ttl) / UDP(dport=base_port + ttl - 1)
 
         reply = sr1(pkt, timeout=2, verbose=False)
 
@@ -117,7 +122,7 @@ def traceroute_udp(destination: str, max_hops: int = 30, base_port: int = 33434)
 ```python
 from scapy.all import traceroute
 
-# Scapy has a built-in traceroute that returns results and can graph them
+# Scapy has a built-in TCP traceroute that returns results and can graph them
 
 result, unans = traceroute(["8.8.8.8", "1.1.1.1"], maxttl=20, verbose=False)
 result.show()
