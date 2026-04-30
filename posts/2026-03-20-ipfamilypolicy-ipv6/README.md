@@ -13,7 +13,7 @@ Description: Understand and use Kubernetes ipFamilyPolicy to control whether ser
 ## ipFamilyPolicy Values Explained
 
 ```yaml
-# Option 1: SingleStack (default)
+# Option 1: SingleStack (default for most Services)
 
 # Gets one ClusterIP based on first ipFamilies entry
 apiVersion: v1
@@ -32,8 +32,8 @@ spec:
 
 ```yaml
 # Option 2: PreferDualStack
-# Gets both IPv4 and IPv6 if cluster supports dual-stack
-# Falls back gracefully to single-stack on older/single-stack clusters
+# Gets both IPv4 and IPv6 if dual-stack is enabled
+# Falls back gracefully to single-stack if dual-stack is not enabled
 apiVersion: v1
 kind: Service
 metadata:
@@ -90,7 +90,7 @@ spec:
 EOF
 
 kubectl get svc ipv4-primary -o jsonpath='{.spec.clusterIPs}'
-# ["10.96.x.x", "fd00::x"]   <-- IPv4 first
+# [10.96.x.x fd00::x]   <-- IPv4 first
 
 # IPv6-primary dual-stack service
 kubectl apply -f - << 'EOF'
@@ -108,7 +108,7 @@ spec:
 EOF
 
 kubectl get svc ipv6-primary -o jsonpath='{.spec.clusterIPs}'
-# ["fd00::x", "10.96.x.x"]   <-- IPv6 first
+# [fd00::x 10.96.x.x]   <-- IPv6 first
 ```
 
 ## Practical Examples
@@ -128,7 +128,7 @@ for item in data['items']:
 " | sort
 
 # Patch service to upgrade from SingleStack to PreferDualStack
-kubectl patch svc my-service -p '{"spec":{"ipFamilyPolicy":"PreferDualStack","ipFamilies":["IPv4","IPv6"]}}'
+kubectl patch svc my-service -p '{"spec":{"ipFamilyPolicy":"PreferDualStack"}}'
 
 # View the patched service
 kubectl get svc my-service -o yaml | grep -A10 "ipFamily"
@@ -137,8 +137,9 @@ kubectl get svc my-service -o yaml | grep -A10 "ipFamily"
 ## Default Behavior Without ipFamilyPolicy
 
 ```bash
-# When ipFamilyPolicy is not set, Kubernetes defaults to SingleStack
-# The IP family is based on the cluster's default (usually IPv4)
+# For most Services, when ipFamilyPolicy is not set, Kubernetes defaults to SingleStack
+# Headless Services without selectors are a documented exception and default to RequireDualStack
+# The IP family is based on the first configured service-cluster-ip-range (usually IPv4 first)
 
 # Create service without ipFamilyPolicy
 kubectl expose deployment myapp --port=80
@@ -148,11 +149,11 @@ kubectl get svc myapp -o jsonpath='{.spec.ipFamilyPolicy}'
 # SingleStack
 
 kubectl get svc myapp -o jsonpath='{.spec.ipFamilies}'
-# ["IPv4"]  -- default on most clusters
+# [IPv4]  -- default on most clusters
 
 # In IPv6-only clusters, default would be IPv6
 ```
 
 ## Conclusion
 
-`ipFamilyPolicy` controls dual-stack behavior for Kubernetes Services: `SingleStack` (default, one IP family), `PreferDualStack` (both if available), and `RequireDualStack` (both required). Use `PreferDualStack` for services that should work on both single-stack and dual-stack clusters. Use `RequireDualStack` when your application requires both address families and should fail fast on misconfigured clusters. The `ipFamilies` array determines the primary IP family and the order of `clusterIPs`. Changing `ipFamilyPolicy` on existing services is possible with `kubectl patch`.
+`ipFamilyPolicy` controls dual-stack behavior for Kubernetes Services: `SingleStack` (default for most Services, one IP family), `PreferDualStack` (both if available), and `RequireDualStack` (both required). Use `PreferDualStack` for services that should work on both single-stack and dual-stack clusters. Use `RequireDualStack` when your application requires both address families and should fail fast on misconfigured clusters. The `ipFamilies` array determines the primary IP family and the order of `clusterIPs`. Changing `ipFamilyPolicy` on existing services is possible with `kubectl patch`.
