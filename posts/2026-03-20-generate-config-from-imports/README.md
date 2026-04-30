@@ -8,14 +8,14 @@ Description: Learn how to use OpenTofu's -generate-config-out flag to automatica
 
 ## Introduction
 
-OpenTofu 1.6 introduced the `-generate-config-out` flag for `tofu plan`. When used with import blocks, it automatically generates the HCL resource configuration based on the actual imported resource's attributes. This dramatically speeds up brownfield infrastructure adoption - you don't need to manually write every resource configuration.
+OpenTofu 1.6 introduced the `-generate-config-out` flag for `tofu plan` as an experimental feature. When used with import blocks, it generates HCL resource configuration based on OpenTofu's best guess for the imported resource's arguments. This dramatically speeds up brownfield infrastructure adoption - you don't need to manually write every resource configuration.
 
 ## Basic Usage
 
 ### Step 1: Write Only the Import Block
 
 ```hcl
-# imports.tf - just the import block, no resource block required
+# imports.tf - no resource block required here
 
 import {
   to = aws_vpc.main
@@ -28,34 +28,33 @@ import {
 }
 ```
 
+You still need your normal provider configuration elsewhere in the configuration if it is not already present.
+
 ### Step 2: Generate Configuration
 
 ```bash
-# Generate HCL configuration for all imported resources
+# Generate HCL configuration for all imported resources; the output file must not already exist
 tofu plan -generate-config-out=generated.tf
 
 # Output:
 # aws_vpc.main: Preparing import... [id=vpc-0a1b2c3d4e5f6789]
-# aws_instance.web: Preparing import... [id=i-0123456789abcdef0]
-# OpenTofu has generated configuration for the following resources:
-#   - aws_vpc.main in generated.tf
-#   - aws_instance.web in generated.tf
+# ...
+# Warning: Config generation is experimental
+# ...
+# OpenTofu has generated configuration and written it to generated.tf.
 ```
 
 ### Step 3: Review and Clean Up Generated Configuration
 
-The generated file (`generated.tf`) contains all the resource attributes:
+The generated file (`generated.tf`) contains OpenTofu's best guess for the resource arguments, often including more attributes than you want to keep long-term:
 
 ```hcl
 # generated.tf (auto-generated, needs cleanup)
 resource "aws_vpc" "main" {
   assign_generated_ipv6_cidr_block     = false
   cidr_block                           = "10.0.0.0/16"
-  enable_classiclink                   = null
-  enable_classiclink_dns_support       = null
   enable_dns_hostnames                 = true
   enable_dns_support                   = true
-  id                                   = "vpc-0a1b2c3d4e5f6789"
   instance_tenancy                     = "default"
   ipv4_ipam_pool_id                    = null
   ipv4_netmask_length                  = null
@@ -88,19 +87,21 @@ resource "aws_vpc" "main" {
 
 ```bash
 tofu apply
-# aws_vpc.main: Importing...
-# aws_instance.web: Importing...
-# Import complete!
+# aws_vpc.main: Importing... [id=vpc-0a1b2c3d4e5f6789]
+# aws_vpc.main: Import complete [id=vpc-0a1b2c3d4e5f6789]
+# aws_instance.web: Importing... [id=i-0123456789abcdef0]
+# aws_instance.web: Import complete [id=i-0123456789abcdef0]
+# Apply complete! Resources: 2 imported, 0 added, 0 changed, 0 destroyed.
 ```
 
 ### Step 5: Verify and Remove Import Blocks
 
 ```bash
 tofu plan
-# No changes. Infrastructure is up-to-date.
+# No changes. Your infrastructure matches the configuration.
 ```
 
-Remove import blocks from `imports.tf`.
+You can remove the import blocks from `imports.tf`, or leave them in place as a record of the resources' origin.
 
 ## Generated Config for Complex Resources
 
@@ -116,10 +117,10 @@ import {
 
 ```bash
 tofu plan -generate-config-out=eks-generated.tf
-# Generates ALL EKS cluster attributes including nested blocks
+# Can generate a large amount of configuration for complex resources, including nested blocks when supported by the provider schema
 ```
 
-## Batch Generation with for_each
+## Batch Imports with for_each
 
 ```hcl
 locals {
@@ -127,6 +128,11 @@ locals {
     "assets"  = "company-assets"
     "logs"    = "company-logs"
   }
+}
+
+resource "aws_s3_bucket" "main" {
+  for_each = local.buckets
+  bucket   = each.value
 }
 
 import {
@@ -137,14 +143,17 @@ import {
 ```
 
 ```bash
-# Generates configuration for all buckets
-tofu plan -generate-config-out=buckets-generated.tf
+# Preview the batch imports; configuration generation is not supported with for_each
+tofu plan
 ```
 
 ## Limitations
 
-- Generated config may include deprecated attributes
-- Not all attributes need to be specified (many have defaults)
+- Config generation is still experimental
+- The file passed to `-generate-config-out` must not already exist
+- Generating configuration is currently not supported when using `for_each` on `import` blocks
+- Generated config may include more arguments than you want to keep
+- Some complex resources can require manual fixes after generation
 - Review and simplify the generated config before committing
 
 ## Conclusion
