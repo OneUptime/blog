@@ -8,7 +8,7 @@ Description: Learn how to configure Portainer to automatically poll a Git reposi
 
 ## What Is Git Polling?
 
-Git polling is a pull-based update mechanism where Portainer periodically checks a Git repository for new commits. When it detects a change (new commit on the configured branch), it automatically redeployes the stack.
+Git polling is a pull-based update mechanism where Portainer periodically checks a Git repository for new commits. When it detects a change on the configured Git reference (typically a branch), it automatically redeploys the stack.
 
 This is useful when:
 - The Git repository host cannot send webhooks to Portainer.
@@ -18,17 +18,18 @@ This is useful when:
 ## Enabling Polling When Creating a Stack
 
 1. Create a stack from a Git repository (see deploy from Git guide).
-2. Under **GitOps updates**, select **Polling**.
-3. Set the **Polling interval** (minimum: 1 minute, recommended: 5-15 minutes).
-4. Click **Deploy the stack**.
+2. Under **GitOps updates**, turn it on.
+3. Under **Mechanism**, select **Polling**.
+4. Set the **Fetch interval** (minimum: `1m`; for example `5m` or `15m`).
+5. Click **Deploy the stack**.
 
 ## Enabling Polling on an Existing Stack
 
 1. Navigate to **Stacks** and click the stack name.
-2. Scroll to **GitOps updates** section.
-3. Toggle **Automatic updates** to On.
-4. Select **Polling** and set the interval.
-5. Click **Save changes**.
+2. Click **Edit Git settings**.
+3. Under **GitOps updates**, turn it on.
+4. Select **Polling** as the **Mechanism** and set the **Fetch interval**.
+5. Click **Save settings**.
 
 ## Polling Interval Recommendations
 
@@ -42,25 +43,25 @@ Shorter intervals mean faster auto-deploys but more API calls to your Git host.
 
 ## How Portainer Detects Changes
 
-Portainer compares the current deployed commit hash with the latest commit on the configured branch:
+Portainer compares the deployed commit hash stored in its database with the latest commit on the configured Git reference:
 
 ```bash
-# Portainer internally does something equivalent to:
+# Conceptually, Portainer does something like this:
 
-CURRENT_SHA=$(git rev-parse HEAD)
+DEPLOYED_SHA="<hash stored by Portainer>"
 LATEST_SHA=$(git ls-remote origin refs/heads/main | cut -f1)
 
-if [ "$CURRENT_SHA" != "$LATEST_SHA" ]; then
-  # Redeploy the stack
+if [ "$DEPLOYED_SHA" != "$LATEST_SHA" ]; then
+  # Pull and redeploy the stack
 fi
 ```
 
 ## Viewing Poll Status in Portainer
 
 After enabling polling, the stack detail page shows:
-- **GitOps status**: Last check time.
-- **Current commit**: The deployed Git SHA.
-- **Auto-update**: Enabled/disabled and interval.
+- **Repo / Ref / File**: The Git repository URL, reference, and Compose file path.
+- **Commit**: The deployed Git SHA.
+- **Auto-update / Interval**: Whether auto-update is enabled and the polling interval.
 
 ## Forcing an Immediate Update
 
@@ -73,10 +74,10 @@ Or via API:
 
 ```bash
 # Force an immediate git pull and redeploy
-curl -X POST "${PORTAINER_URL}/api/stacks/${STACK_ID}/git/redeploy?endpointId=${ENDPOINT_ID}" \
-  -H "Authorization: Bearer ${API_TOKEN}" \
+curl -X PUT "${PORTAINER_URL}/api/stacks/${STACK_ID}/git/redeploy?endpointId=${ENDPOINT_ID}" \
+  -H "X-API-Key: ${ACCESS_TOKEN}" \
   -H "Content-Type: application/json" \
-  -d '{"pullImage": true, "prune": false}'
+  -d '{"RepullImageAndRedeploy": true, "Prune": false}'
 ```
 
 ## Best Practices
@@ -91,9 +92,9 @@ curl -X POST "${PORTAINER_URL}/api/stacks/${STACK_ID}/git/redeploy?endpointId=${
 |---------|---------|----------|
 | Setup | Simple | Requires Git webhook config |
 | Latency | Up to poll interval | Near-instant |
-| Works behind NAT | Yes | No (needs inbound access) |
+| Works without inbound access to Portainer | Yes | No |
 | API calls to Git | Regular | Only on push |
 
 ## Conclusion
 
-Git polling in Portainer provides a zero-configuration auto-update mechanism that works in any network environment. Set a polling interval appropriate to your deployment cadence, and combine it with commit-based image tags for a clean GitOps workflow.
+Git polling in Portainer provides a simple pull-based auto-update mechanism that works well when Portainer cannot receive inbound webhooks. Set a polling interval appropriate to your deployment cadence, and combine it with commit-based image tags for a clean GitOps workflow.
