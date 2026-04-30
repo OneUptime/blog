@@ -21,13 +21,13 @@ Attaching volumes to VMs in Harvester allows you to add persistent data disks to
 ### To a Stopped VM
 
 1. Navigate to **Virtual Machines**
-2. Click on the VM name to open its details
-3. Click **Edit**
+2. Find the stopped VM and click the **⋮** menu
+3. Click **Edit Config**
 4. Go to the **Volumes** tab
 5. Click **Add Volume**
 6. Select **Use Existing Volume**
 7. Choose the PVC from the dropdown
-8. Set the bus type (VirtIO recommended for Linux, SATA for Windows)
+8. Set the bus type (VirtIO is recommended when the guest has VirtIO drivers installed; use SATA for compatibility if needed)
 9. Click **Save**
 
 ### Hot-Plug to a Running VM
@@ -35,14 +35,14 @@ Attaching volumes to VMs in Harvester allows you to add persistent data disks to
 1. Navigate to **Virtual Machines**
 2. Click on the running VM
 3. Click the **⋮** menu → **Add Volume**
-4. Select the existing PVC
-5. Click **Add** - the disk appears in the VM within seconds
+4. Enter a name and select the existing PVC
+5. Click **Apply** - the disk appears in the VM within seconds
 
 ## Method 2: Attach via kubectl (Cold Attach)
 
-Edit the VM specification to add a new disk:
+Stop the VM first, or restart it after applying the updated spec, then edit the VM specification to add a new disk:
 
-```yaml
+```bash
 # The VM spec needs both a disk entry and a volume entry
 
 # First, check the current VM spec
@@ -87,7 +87,7 @@ metadata:
   name: database-server-01
   namespace: default
 spec:
-  running: true
+  runStrategy: Always
   template:
     spec:
       domain:
@@ -160,25 +160,26 @@ The `virtctl` tool supports hot-plugging volumes to running VMs:
 ```bash
 # Install virtctl (if not already installed)
 VERSION=$(kubectl get kubevirt -n harvester-system -o jsonpath='{.items[0].status.observedKubeVirtVersion}')
-curl -L -o /usr/local/bin/virtctl \
+sudo curl -L -o /usr/local/bin/virtctl \
     https://github.com/kubevirt/kubevirt/releases/download/${VERSION}/virtctl-${VERSION}-linux-amd64
-chmod +x /usr/local/bin/virtctl
+sudo chmod +x /usr/local/bin/virtctl
 
+# The value passed to --volume-name must match an existing PVC or DataVolume name
+# In current Harvester releases, hot-plugged volumes use the SCSI bus
 # Hot-plug a volume to a running VM
 virtctl addvolume my-database-vm \
     --volume-name=extra-storage \
-    --persist \
+    --bus=scsi \
     --serial=ext1 \
     -n default
 
-# The --persist flag makes the attachment survive VM restarts
-# Without --persist, the volume is detached on next VM restart
+# virtctl addvolume persists the attachment by default
+# The deprecated --persist flag is no longer needed
 ```
 
 ```bash
 # Verify the volume was hot-plugged successfully
-kubectl get vmi my-database-vm -n default \
-    -o jsonpath='{.status.volumeStatus}' | jq .
+kubectl get vmi my-database-vm -n default -o json | jq '.status.volumeStatus'
 
 # Inside the VM, the new disk should appear immediately
 # Check for the new device
@@ -192,17 +193,19 @@ After attaching a new empty volume, format and mount it inside the VM:
 ```bash
 # Access the VM console or SSH into it
 
-# List block devices - new disk will appear as /dev/vdb, /dev/vdc, etc.
+# List block devices and identify the new disk
+# Depending on the disk bus and guest OS, it may appear as /dev/vdb, /dev/sdb, etc.
 lsblk
 
+# Replace /dev/DEVICE with the actual device path from lsblk
 # Format the new disk (WARNING: this erases all data on the disk)
-sudo mkfs.ext4 -L data-disk /dev/vdb
+sudo mkfs.ext4 -L data-disk /dev/DEVICE
 
 # Create a mount point
 sudo mkdir -p /mnt/data
 
 # Mount temporarily
-sudo mount /dev/vdb /mnt/data
+sudo mount /dev/DEVICE /mnt/data
 
 # Add to fstab for persistent mounting
 echo 'LABEL=data-disk /mnt/data ext4 defaults 0 2' | sudo tee -a /etc/fstab
@@ -221,25 +224,20 @@ df -h /mnt/data
 # Hot unplug a volume from a running VM
 virtctl removevolume my-database-vm \
     --volume-name=extra-storage \
-    --persist \
     -n default
 ```
 
 ### Via kubectl (Cold Detach)
 
 ```bash
-# Remove the disk from the VM spec (requires VM restart)
-kubectl patch vm my-database-vm -n default --type json \
--p '[
-  {
-    "op": "remove",
-    "path": "/spec/template/spec/domain/devices/disks/2"
-  },
-  {
-    "op": "remove",
-    "path": "/spec/template/spec/volumes/2"
-  }
-]'
+# Remove the disk from the VM spec by name (replace datavolume1 as needed)
+DISK_INDEX=$(kubectl get vm my-database-vm -n default -o json | jq '.spec.template.spec.domain.devices.disks | map(.name) | index("datavolume1")')
+VOLUME_INDEX=$(kubectl get vm my-database-vm -n default -o json | jq '.spec.template.spec.volumes | map(.name) | index("datavolume1")')
+
+kubectl patch vm my-database-vm -n default --type json -p="[
+  {\"op\": \"remove\", \"path\": \"/spec/template/spec/domain/devices/disks/${DISK_INDEX}\"},
+  {\"op\": \"remove\", \"path\": \"/spec/template/spec/volumes/${VOLUME_INDEX}\"}
+]"
 ```
 
 ## Troubleshooting Volume Attachment Issues
@@ -250,15 +248,21 @@ kubectl get events -n default \
     --field-selector involvedObject.name=my-database-vm \
     --sort-by='.lastTimestamp'
 
-# Check if PVC is already bound to another VM
-kubectl get pvc database-data-500gb -n default \
-    -o jsonpath='{.spec.volumeName}'
+# Check if any VM already references the PVC
+kubectl get vm -A -o json | jq -r '
+  .items[]
+  | select(any(.spec.template.spec.volumes[]?; .persistentVolumeClaim?.claimName == "database-data-500gb"))
+  | "\(.metadata.namespace)/\(.metadata.name)"'
 
 # Verify the PVC is in Bound state
-kubectl get pvc -n default | grep database-data-500gb
+kubectl get pvc database-data-500gb -n default
+
+# Get the backing PV / Longhorn volume name for the PVC
+PV_NAME=$(kubectl get pvc database-data-500gb -n default -o jsonpath='{.spec.volumeName}')
+echo "${PV_NAME}"
 
 # Check Longhorn volume is healthy
-kubectl get volumes.longhorn.io -n longhorn-system | grep database-data
+kubectl get volumes.longhorn.io "${PV_NAME}" -n longhorn-system
 ```
 
 ## Conclusion
