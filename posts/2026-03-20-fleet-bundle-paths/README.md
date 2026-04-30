@@ -8,7 +8,7 @@ Description: Learn how to customize Fleet bundle paths to control which director
 
 ## Introduction
 
-When Fleet processes a Git repository, it converts each qualifying directory into a separate Bundle. The `paths` field in your GitRepo resource controls which directories Fleet monitors, and the internal structure of those directories determines how bundles are organized. Understanding bundle paths is key to building a clean, maintainable GitOps repository structure.
+When Fleet processes a Git repository, each entry in the `paths` field of your GitRepo resource is scanned independently. That scanned path becomes a Bundle, and any subdirectory under it with its own `fleet.yaml` becomes a separate Bundle. Understanding bundle paths is key to building a clean, maintainable GitOps repository structure.
 
 ## Prerequisites
 
@@ -18,13 +18,13 @@ When Fleet processes a Git repository, it converts each qualifying directory int
 
 ## How Fleet Discovers Bundles
 
-Fleet traverses your repository starting from the specified paths. It creates a bundle for each directory that contains:
-- Kubernetes YAML files directly
+Fleet traverses your repository starting from the specified paths. Each path in `spec.paths` is scanned independently, and Fleet looks for:
+- Kubernetes YAML files (`.yaml` or `.yml`)
 - A `fleet.yaml` file
 - A `kustomization.yaml` file
 - A `Chart.yaml` file (Helm chart)
 
-Each subdirectory with its own `fleet.yaml` becomes a separate bundle.
+Each subdirectory with its own `fleet.yaml` becomes a separate bundle. YAML files in nested directories without their own `fleet.yaml` stay in the bundle for the scanned path.
 
 ## Basic Path Configuration
 
@@ -176,10 +176,10 @@ Fleet generates bundle names from the GitRepo name and directory path. You can s
 kubectl get bundles -n fleet-default
 
 # Example output:
-# NAME                                           NAMESPACE      STATUS
-# my-app-apps-frontend                          fleet-default  Ready
-# my-app-apps-backend                           fleet-default  Ready
-# my-app-infrastructure-monitoring              fleet-default  Ready
+# NAME                                      BUNDLEDEPLOYMENTS-READY   STATUS
+# my-app-apps-frontend                      1/1                       Ready
+# my-app-apps-backend                       1/1                       Ready
+# my-app-infrastructure-monitoring          1/1                       Ready
 ```
 
 ## Using .fleetignore to Exclude Paths
@@ -220,12 +220,12 @@ my-app/
     └── prometheus-rule.yaml
 ```
 
-Each directory with a `fleet.yaml` becomes its own independently targeted bundle:
+Each directory with a `fleet.yaml` becomes its own bundle. Use `overrideTargets` if a nested bundle should target a different set of clusters than the parent `GitRepo`:
 
 ```yaml
 # my-app/fleet.yaml
 namespace: my-app
-targets:
+overrideTargets:
   - clusterSelector:
       matchLabels:
         env: production
@@ -234,7 +234,7 @@ targets:
 ```yaml
 # my-app/monitoring/fleet.yaml
 namespace: monitoring
-targets:
+overrideTargets:
   # Monitoring only goes to clusters with monitoring enabled
   - clusterSelector:
       matchLabels:
@@ -244,18 +244,18 @@ targets:
 ## Verifying Bundle Path Configuration
 
 ```bash
-# List all bundles and their source paths
+# List all bundles created from the GitRepo
 kubectl get bundles -n fleet-default \
-  -o jsonpath='{range .items[*]}{.metadata.name}: path={.spec.source.git.path}{"\n"}{end}'
+  -l fleet.cattle.io/repo-name=my-app
 
-# Check what path a bundle was created from
+# Inspect a specific bundle definition
+kubectl get bundle my-app-apps-frontend -n fleet-default -o yaml
+
+# Verify which files were included in a bundle
 kubectl get bundle my-app-apps-frontend -n fleet-default \
-  -o jsonpath='{.spec.source.git.path}'
-
-# Verify the correct files are in a bundle
-kubectl describe bundle my-app-apps-frontend -n fleet-default
+  -o jsonpath='{range .spec.resources[*]}{.name}{"\n"}{end}'
 ```
 
 ## Conclusion
 
-Fleet bundle paths give you fine-grained control over how your Git repository is organized and deployed. A well-designed path structure separates concerns clearly - different applications, environments, and infrastructure components each get their own bundle with independent targeting and lifecycle management. By combining GitRepo path configurations with nested `fleet.yaml` files and `.fleetignore` exclusions, you can build a scalable repository structure that cleanly maps to your deployment requirements.
+Fleet bundle paths give you fine-grained control over how your Git repository is organized and deployed. A well-designed path structure separates concerns clearly - different applications, environments, and infrastructure components can each become their own bundle when you split them across GitRepo paths or nested `fleet.yaml` files. By combining GitRepo path configurations with nested `fleet.yaml` files and `.fleetignore` exclusions, you can build a scalable repository structure that cleanly maps to your deployment requirements.
