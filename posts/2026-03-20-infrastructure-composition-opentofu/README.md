@@ -142,6 +142,9 @@ module "s3_bucket" {
 
   bucket = "my-application-data"
   acl    = "private"
+
+  control_object_ownership = true
+  object_ownership         = "ObjectWriter"
 }
 
 module "vpc" {
@@ -183,8 +186,8 @@ module "dns" {
   # Pass the ALB DNS name from app module to DNS module
   alb_dns_name = module.app.alb_dns_name
 
-  # Explicit depends_on for non-output dependencies
-  depends_on = [module.app]
+  # No explicit depends_on is needed here because referencing
+  # module.app.alb_dns_name already creates the dependency
 }
 ```
 

@@ -13,21 +13,26 @@ Learn how to integrate Infracost with OpenTofu for cloud cost estimation in CI/C
 ## Prerequisites
 
 - OpenTofu v1.6+ installed
+- Infracost CLI installed
 - Basic knowledge of OpenTofu concepts
 - Relevant cloud credentials configured
 
 ## Step 1: Set Up the Environment
 
 ```bash
-# Verify OpenTofu installation
+# Verify OpenTofu and Infracost installations
 
 tofu version
+infracost --version
 
-# Set up required environment variables
-export TF_LOG=INFO  # Enable logging
+# Authenticate Infracost
+infracost auth login
+
+# Set up common environment variables
 export TF_INPUT=false  # Disable interactive input
+export INFRACOST_API_KEY=your-api-key  # For non-interactive environments such as CI/CD
 
-# Configure cloud credentials
+# Configure cloud credentials for tofu plan
 # AWS
 export AWS_PROFILE=your-profile
 # Azure
@@ -77,29 +82,28 @@ provider "aws" {
 
 ```bash
 # Initialize the project
-tofu init -backend-config=backend.tfvars
+tofu init
 
 # Create a plan and save it
-tofu plan -out=tfplan -var-file=production.tfvars
+tofu plan -out=tfplan.binary -var-file=production.tfvars
 
-# Review the plan
-tofu show tfplan
+# Convert the OpenTofu plan to JSON for Infracost
+tofu show -json tfplan.binary > plan.json
 
-# Apply the saved plan
-tofu apply tfplan
+# Estimate the monthly cost change
+infracost diff --path plan.json
 ```
 
 ## Step 4: Set Up Automation
 
 ```yaml
-# .github/workflows/infrastructure.yml
-name: Infrastructure Deployment
+# .github/workflows/infracost.yml
+name: Infracost Cost Estimation
 
 on:
-  push:
-    branches: [main]
   pull_request:
     branches: [main]
+    types: [opened, synchronize, reopened]
 
 permissions:
   id-token: write
@@ -107,15 +111,20 @@ permissions:
   pull-requests: write
 
 jobs:
-  plan:
+  infracost:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
 
       - name: Setup OpenTofu
-        uses: opentofu/setup-opentofu@v1
+        uses: opentofu/setup-opentofu@v2
         with:
-          tofu_version: "1.7.0"
+          tofu_version: "1.11.0"
+
+      - name: Setup Infracost
+        uses: infracost/actions/setup@v3
+        with:
+          api-key: ${{ secrets.INFRACOST_API_KEY }}
 
       - name: Configure AWS Credentials
         uses: aws-actions/configure-aws-credentials@v4
@@ -127,58 +136,36 @@ jobs:
         run: tofu init
 
       - name: OpenTofu Plan
-        run: tofu plan -no-color -out=tfplan
+        run: tofu plan -no-color -out=tfplan.binary -var-file=production.tfvars
 
-      - name: Upload Plan
-        uses: actions/upload-artifact@v3
-        with:
-          name: tfplan
-          path: tfplan
+      - name: Export OpenTofu Plan to JSON
+        run: tofu show -json tfplan.binary > plan.json
 
-  apply:
-    needs: plan
-    runs-on: ubuntu-latest
-    environment: production
-    if: github.ref == 'refs/heads/main'
-    steps:
-      - uses: actions/checkout@v4
+      - name: Generate Infracost cost estimate
+        run: infracost diff --path=plan.json --format=json --out-file=/tmp/infracost.json
 
-      - name: Setup OpenTofu
-        uses: opentofu/setup-opentofu@v1
-        with:
-          tofu_version: "1.7.0"
-
-      - name: Configure AWS Credentials
-        uses: aws-actions/configure-aws-credentials@v4
-        with:
-          role-to-assume: ${{ secrets.AWS_ROLE_ARN }}
-          aws-region: us-east-1
-
-      - name: Download Plan
-        uses: actions/download-artifact@v3
-        with:
-          name: tfplan
-
-      - name: OpenTofu Init
-        run: tofu init
-
-      - name: OpenTofu Apply
-        run: tofu apply -auto-approve tfplan
+      - name: Post Infracost comment
+        run: |
+          infracost comment github --path=/tmp/infracost.json \
+                                   --repo=$GITHUB_REPOSITORY \
+                                   --github-token=${{ github.token }} \
+                                   --pull-request=${{ github.event.pull_request.number }} \
+                                   --behavior=update
 ```
 
 ## Step 5: Monitor and Verify
 
 ```bash
-# Check current state
-tofu show
+# Review the current cost estimate
+infracost diff --path plan.json
 
-# List all managed resources
-tofu state list
+# Save machine-readable output for CI/CD systems
+infracost diff --path plan.json --format json --out-file infracost.json
 
-# Verify resource configuration
-tofu state show aws_instance.main
+# Check for unsupported resources
+infracost breakdown --path . --show-skipped
 
-# Check for drift
+# Check for drift before generating a new plan JSON
 tofu plan -refresh-only
 ```
 
@@ -213,10 +200,10 @@ variable "environment" {
 If you encounter issues:
 
 1. Enable debug logging: `export TF_LOG=DEBUG`
-2. Check provider credentials: Verify environment variables
-3. Review state consistency: Run `tofu refresh` then `tofu plan`
-4. Consult provider documentation for service-specific errors
+2. Check provider credentials and Infracost authentication: Verify your cloud environment variables and `INFRACOST_API_KEY`
+3. Review state consistency: Run `tofu plan -refresh-only`, then rerun `tofu plan -out=tfplan.binary -var-file=production.tfvars` and regenerate `plan.json` with `tofu show -json tfplan.binary > plan.json`
+4. Check for unsupported resources: Run `infracost breakdown --path . --show-skipped`
 
 ## Conclusion
 
-You have successfully implemented How to Use Infracost for OpenTofu Cost Estimation. This approach provides a repeatable, auditable, and collaborative infrastructure management workflow. Combine with code review processes, automated testing, and proper access controls for a production-ready setup.
+You have successfully implemented How to Use Infracost for OpenTofu Cost Estimation. This approach provides a repeatable, auditable, and collaborative cost estimation workflow for infrastructure changes before they are applied. Combine it with code review processes, automated testing, and proper access controls for a production-ready setup.
