@@ -16,13 +16,14 @@ Restoring VMs from backups is a critical disaster recovery capability. Harvester
 |---|---|---|
 | In-place restore | Overwrite existing VM with backup state | VM must be stopped |
 | New VM restore | Create a new VM from a backup | Any state |
-| Cross-cluster restore | Import backup into a different cluster | Same backup target configured |
+| Cross-cluster restore | Import backup into a different cluster | Same backup target configured; VM images must be available on the target cluster |
 
 ## Prerequisites
 
 - Harvester cluster with the backup target configured
-- An existing `VirtualMachineBackup` in `Complete` state
+- An existing `VirtualMachineBackup` with `status.readyToUse: true` (shown as `Ready` in the UI)
 - For cross-cluster restore: the same backup target configured on the target cluster
+- For cross-cluster restore: on Harvester v1.4.0 and later, VM images are synced automatically unless the target cluster already has an image with the same name or display name; on earlier versions, upload identical VM images manually first
 
 ## Step 1: List Available Backups
 
@@ -42,10 +43,6 @@ kubectl describe virtualmachinebackup ubuntu-web-01-backup-20240315 -n default
 
 # Check the backup is ready for restore
 kubectl get virtualmachinebackup ubuntu-web-01-backup-20240315 -n default \
-    -o jsonpath='{.status.phase}'
-# Expected: Complete
-
-kubectl get virtualmachinebackup ubuntu-web-01-backup-20240315 -n default \
     -o jsonpath='{.status.readyToUse}'
 # Expected: true
 ```
@@ -57,11 +54,11 @@ This replaces the VM's current disks with the backup data:
 ### Via the UI
 
 1. Navigate to **VM Backups**
-2. Find the backup you want to restore
-3. Click the **⋮** menu → **Restore**
-4. Select **Replace Existing VM**
-5. Confirm the restore operation
-6. The VM will be stopped, restored, and optionally restarted
+2. Select the backup you want to restore
+3. Click **Restore Backup**
+4. Click **Replace Existing**
+5. Select the existing VM you want to replace
+6. Confirm the restore operation
 
 ### Via kubectl
 
@@ -75,8 +72,6 @@ metadata:
   name: ubuntu-web-01-restore-20240315
   namespace: default
 spec:
-  # Type: restore (from backup) or replaceVolumes
-  type: restore
   # Source backup to restore from
   virtualMachineBackupName: ubuntu-web-01-backup-20240315
   virtualMachineBackupNamespace: default
@@ -86,19 +81,17 @@ spec:
     kind: VirtualMachine
     name: ubuntu-web-01
   # Do not keep the original volumes (delete replaced volumes)
-  deletionPolicy: delete-volumes
+  deletionPolicy: delete
 ```
 
 ```bash
 # First, stop the VM
-kubectl patch vm ubuntu-web-01 -n default \
-    --type merge \
-    -p '{"spec":{"running":false}}'
+virtctl stop ubuntu-web-01 -n default
 
 # Wait for VM to stop
 echo "Waiting for VM to stop..."
 kubectl wait vmi/ubuntu-web-01 -n default \
-    --for delete --timeout=120s
+    --for=delete --timeout=120s
 
 echo "VM stopped. Initiating restore..."
 
@@ -126,21 +119,15 @@ metadata:
   name: ubuntu-web-01-dr-restore
   namespace: default
 spec:
-  type: restore
   virtualMachineBackupName: ubuntu-web-01-backup-20240315
   virtualMachineBackupNamespace: default
+  # Create a new VM instead of replacing an existing one
+  newVM: true
   target:
     apiGroup: kubevirt.io
     kind: VirtualMachine
     # NEW name - VM will be created fresh
     name: ubuntu-web-01-restored
-  # Keep the original volumes if they exist (for new VM, there are none)
-  deletionPolicy: retain-volumes
-  # Custom volume names for the new VM
-  newVolumes:
-    - volumeBackupName: ubuntu-web-01-root
-      # New PVC name for the restored disk
-      volumeName: ubuntu-web-01-restored-root
 ```
 
 ```bash
@@ -149,10 +136,9 @@ kubectl apply -f vm-restore-new.yaml
 # Monitor the restore
 kubectl get virtualmachinerestore ubuntu-web-01-dr-restore -n default -w
 
-# Once complete, start the new VM
-kubectl patch vm ubuntu-web-01-restored -n default \
-    --type merge \
-    -p '{"spec":{"running":true}}'
+# Wait for the restore to complete
+kubectl wait virtualmachinerestore/ubuntu-web-01-dr-restore -n default \
+    --for=condition=Ready=True --timeout=600s
 
 # Verify the new VM started
 kubectl get vmi ubuntu-web-01-restored -n default
@@ -166,6 +152,8 @@ To restore a VM on a different Harvester cluster:
 
 Configure the same backup target as the source cluster:
 
+On Harvester v1.4.0 and later, VM images are synced automatically unless the target cluster already contains an image with the same name or display name. On earlier versions, upload identical VM images to the target cluster before restoring.
+
 ```yaml
 # backup-target-config.yaml
 # Configure the same S3 bucket on the target cluster
@@ -174,16 +162,17 @@ apiVersion: harvesterhci.io/v1beta1
 kind: Setting
 metadata:
   name: backup-target
-  namespace: harvester-system
-spec:
-  value: |
-    {
-      "type": "s3",
-      "endpoint": "https://s3.amazonaws.com",
-      "bucketName": "harvester-vm-backups",
-      "bucketRegion": "us-east-1",
-      "secret": "backup-target-secret"
-    }
+value: |
+  {
+    "type": "s3",
+    "endpoint": "https://s3.amazonaws.com",
+    "accessKeyId": "YOUR_ACCESS_KEY_ID",
+    "secretAccessKey": "YOUR_SECRET_ACCESS_KEY",
+    "bucketName": "harvester-vm-backups",
+    "bucketRegion": "us-east-1",
+    "cert": "",
+    "virtualHostedStyle": false
+  }
 ```
 
 ```bash
@@ -202,9 +191,9 @@ metadata:
   name: cross-cluster-restore
   namespace: default
 spec:
-  type: restore
   virtualMachineBackupName: ubuntu-web-01-backup-20240315
   virtualMachineBackupNamespace: default
+  newVM: true
   target:
     apiGroup: kubevirt.io
     kind: VirtualMachine
@@ -217,10 +206,14 @@ EOF
 After restore, always verify the VM is functioning correctly:
 
 ```bash
-# Start the restored VM
-kubectl patch vm ubuntu-web-01-restored -n default \
-    --type merge \
-    -p '{"spec":{"running":true}}'
+# Wait for the restore to complete
+kubectl wait virtualmachinerestore/ubuntu-web-01-dr-restore -n default \
+    --for=condition=Ready=True \
+    --timeout=600s
+
+# Wait for the VMI to be created
+kubectl wait --for=create vmi/ubuntu-web-01-restored -n default \
+    --timeout=300s
 
 # Wait for the VMI to be running
 kubectl wait vmi/ubuntu-web-01-restored -n default \
@@ -266,9 +259,9 @@ metadata:
   name: dr-test-restore
   namespace: ${NAMESPACE}
 spec:
-  type: restore
   virtualMachineBackupName: ${BACKUP_NAME}
   virtualMachineBackupNamespace: ${NAMESPACE}
+  newVM: true
   target:
     apiGroup: kubevirt.io
     kind: VirtualMachine
@@ -280,11 +273,6 @@ kubectl wait virtualmachinerestore/dr-test-restore \
     -n ${NAMESPACE} \
     --for=condition=Ready=True \
     --timeout=600s
-
-# Start the VM
-kubectl patch vm ${TEST_VM_NAME} -n ${NAMESPACE} \
-    --type merge \
-    -p '{"spec":{"running":true}}'
 
 # Wait for VM
 kubectl wait vmi/${TEST_VM_NAME} -n ${NAMESPACE} \
@@ -305,8 +293,10 @@ fi
 
 # Cleanup test VM
 echo "Cleaning up test VM..."
-kubectl patch vm ${TEST_VM_NAME} -n ${NAMESPACE} \
-    --type merge -p '{"spec":{"running":false}}'
+virtctl stop ${TEST_VM_NAME} -n ${NAMESPACE}
+kubectl wait vmi/${TEST_VM_NAME} -n ${NAMESPACE} \
+    --for=delete \
+    --timeout=120s
 kubectl delete vm ${TEST_VM_NAME} -n ${NAMESPACE}
 kubectl delete virtualmachinerestore dr-test-restore -n ${NAMESPACE}
 
