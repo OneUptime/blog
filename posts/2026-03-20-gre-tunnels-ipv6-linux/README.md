@@ -8,7 +8,7 @@ Description: Learn how to configure GRE (Generic Routing Encapsulation) tunnels 
 
 ## Overview
 
-GRE (Generic Routing Encapsulation, RFC 2784) encapsulates any network layer protocol inside IPv4 using IP protocol 47. Unlike 6in4 (SIT, protocol 41), GRE can carry multiple protocols and is more widely supported in enterprise and operator environments. GRE tunnels are used to carry IPv6 traffic across IPv4-only transit paths and are compatible with routing protocols like OSPFv3 and BGP.
+GRE (Generic Routing Encapsulation, RFC 2784) can encapsulate multiple network layer protocols. When GRE uses IPv4 as the delivery protocol, it uses IP protocol 47. Unlike 6in4 (SIT, protocol 41), GRE can carry multiple protocols and is more widely supported in enterprise and operator environments. GRE tunnels are used to carry IPv6 traffic across IPv4-only transit paths and are compatible with routing protocols like OSPFv3 and BGP.
 
 ## GRE vs 6in4 (SIT)
 
@@ -17,7 +17,7 @@ GRE (Generic Routing Encapsulation, RFC 2784) encapsulates any network layer pro
 | Protocol number | 47 | 41 |
 | Overhead | 24 bytes (IPv4 + GRE) | 20 bytes (IPv4 only) |
 | Multi-protocol | Yes | IPv6 only |
-| Routing protocol support | Yes | Limited |
+| Routing protocols over tunnel | Yes | IPv6 only |
 | Cisco compatibility | Yes | Yes |
 | Key/checksum options | Yes | No |
 
@@ -101,12 +101,12 @@ For IPv6-over-IPv6 GRE tunnels (less common):
 
 ```bash
 # GRE6: IPv6 inside IPv6
-sudo ip tunnel add gre6tun mode ip6gre \
+sudo ip -6 tunnel add gre6tun mode ip6gre \
     remote 2001:db8:peer::1 \
     local  2001:db8:local::1
 
 sudo ip link set gre6tun up
-sudo ip addr add 2001:db8:via6::/64 dev gre6tun
+sudo ip -6 addr add 2001:db8:via6::1/64 dev gre6tun
 ```
 
 ## Using GRE with OSPFv3 (FRR/Quagga)
@@ -117,9 +117,7 @@ GRE tunnels can run routing protocols to exchange IPv6 routes dynamically:
 # /etc/frr/frr.conf
 
 router ospf6
-  ospf6-id 0.0.0.1
-  area 0.0.0.0 range 2001:db8::/32
-  interface gre1 area 0.0.0.0
+  ospf6 router-id 0.0.0.1
 
 interface gre1
   ipv6 ospf6 area 0.0.0.0
@@ -188,4 +186,4 @@ sudo iptables -t mangle -A FORWARD -p tcp --tcp-flags SYN,RST SYN \
 
 ## Summary
 
-GRE tunnels on Linux (`ip tunnel add gre1 mode gre`) carry IPv6 over IPv4 with 24 bytes of overhead (MTU 1476). GRE supports multiple protocols and routing protocols (OSPFv3, BGP), making it more flexible than 6in4/SIT. Use `ip tunnel add` with `remote/local` for static tunnels, or systemd-networkd `.netdev` files for persistence. GRE uses IP protocol 47 - restrict at the firewall to authorized endpoints only. Run OSPFv3 over GRE with FRR for dynamic IPv6 route exchange across the tunnel.
+GRE tunnels on Linux (`ip tunnel add gre1 mode gre`) carry IPv6 over IPv4 with 24 bytes of overhead (MTU 1476). GRE supports multiple protocols and routing protocols (OSPFv3, BGP), making it more flexible than 6in4/SIT. Use `ip tunnel add` with `remote/local` for GRE over IPv4, or `ip -6 tunnel add` for `ip6gre`; systemd-networkd `.netdev` files make the configuration persistent. GRE uses IP protocol 47 - restrict at the firewall to authorized endpoints only. Run OSPFv3 over GRE with FRR for dynamic IPv6 route exchange across the tunnel.
