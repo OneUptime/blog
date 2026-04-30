@@ -40,11 +40,11 @@ defaults
 #----------------------------------------------
 # Frontend: accept IPv4 and IPv6 connections
 
-# ':::80' binds to all IPv6 addresses (and IPv4
-# via mapped addresses on Linux by default)
+# '[::]:80' binds to all IPv6 addresses; with
+# v4v6 it also accepts IPv4 connections
 #----------------------------------------------
 frontend http_dual
-    bind :::80 v4v6       # Accept both IPv6 and IPv4-mapped IPv6
+    bind [::]:80 v4v6     # Accept both IPv6 and IPv4 connections
     default_backend ipv4_backends
 
 #----------------------------------------------
@@ -57,7 +57,7 @@ backend ipv4_backends
     server app2 10.0.0.11:8080 check
 ```
 
-The `v4v6` flag on the `bind` directive enables `IPV6_V6ONLY=0`, allowing the same socket to accept both IPv4 and IPv6 connections.
+The `v4v6` option on the `bind` directive tells HAProxy to use a dual-stack listener on the default IPv6 address, allowing the same listener to accept both IPv6 and IPv4 connections.
 
 ## Preserving the Original Client IPv6 Address
 
@@ -65,7 +65,7 @@ When forwarding to IPv4 backends, include the original IPv6 client address in th
 
 ```haproxy
 frontend http_dual
-    bind :::80 v4v6
+    bind [::]:80 v4v6
     option forwardfor       # Add X-Forwarded-For with original client IP (IPv6)
     default_backend ipv4_backends
 ```
@@ -77,7 +77,7 @@ For strict IPv6-only ingress:
 ```haproxy
 frontend ipv6_only
     # Bind only to an IPv6 address; reject IPv4 connections
-    bind 2001:db8::1:80
+    bind [2001:db8::1]:80
     default_backend ipv4_backends
 
 backend ipv4_backends
@@ -90,7 +90,7 @@ backend ipv4_backends
 
 ```haproxy
 frontend https_dual
-    bind :::443 v4v6 ssl crt /etc/ssl/haproxy.pem
+    bind [::]:443 v4v6 ssl crt /etc/ssl/haproxy.pem
     option forwardfor
     http-request set-header X-Forwarded-Proto https
     default_backend ipv4_backends
@@ -102,19 +102,19 @@ frontend https_dual
 # Validate the config
 haproxy -c -f /etc/haproxy/haproxy.cfg
 
-# Confirm HAProxy listens on IPv6 and IPv4 ports
+# Confirm HAProxy is listening on the expected ports
 ss -tlnp | grep haproxy
 
 # Test from an IPv6 client
 curl -6 http://[2001:db8::1]/
 
-# Test from an IPv4 client (via v4v6 mapping)
+# Test from an IPv4 client
 curl -4 http://192.168.1.10/
 ```
 
 ## Key Takeaways
 
-- Use `bind :::80 v4v6` to accept both IPv6 and IPv4 connections on a single socket.
+- Use `bind [::]:80 v4v6` to accept both IPv6 and IPv4 connections on a single listener.
 - Backends remain unchanged - HAProxy opens new IPv4 connections to them.
-- Use `option forwardfor` to preserve the client's original IPv6 address in logs and application headers.
-- For IPv6-only ingress, bind to a specific IPv6 address without the `v4v6` flag.
+- Use `option forwardfor` to pass the client's original IPv6 address to the backend in the `X-Forwarded-For` header.
+- For IPv6-only ingress, bind to a specific IPv6 address instead of a dual-stack listener.
