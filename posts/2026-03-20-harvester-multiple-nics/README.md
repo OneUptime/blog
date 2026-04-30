@@ -8,45 +8,50 @@ Description: Learn how to configure Harvester nodes with multiple NICs for dedic
 
 ## Introduction
 
-Production Harvester deployments benefit greatly from multiple NICs per node. Each NIC can be dedicated to a specific traffic type: management (cluster control plane + API), storage (Longhorn replication), and VM traffic (guest VM networks). This traffic isolation ensures that heavy storage replication or VM traffic never impacts cluster management operations, and vice versa.
+Production Harvester deployments benefit greatly from multiple NICs per node. Harvester uses the management network for cluster control plane traffic, while custom cluster networks can isolate VM traffic and the Harvester storage-network setting can isolate Longhorn replication traffic. This traffic isolation helps keep cluster management responsive during heavy storage or VM activity.
 
 ## Recommended Multi-NIC Layout
 
 ```text
-NIC 1 (eth0/bond0): Management Network
+NIC 1 (eth0 or mgmt bond): Management Network
   - Kubernetes API
   - etcd replication
   - Harvester UI
   - SSH access
 
-NIC 2 (eth1): Storage Network
-  - Longhorn volume replication
-  - iSCSI traffic
+NIC 2 (eth1): Custom Cluster Network for Storage
+  - Uplink for the Harvester storage-network setting
+  - Longhorn replication traffic
 
-NIC 3 (eth2/bond1): VM Network
+NIC 3 (eth2): Custom Cluster Network for VM Traffic
+  - Uplink for VLAN or untagged VM networks
   - Guest VM traffic
-  - VLAN trunking
 ```
 
 ## Step 1: Plan Network Layout
 
-Before installation, document your NIC and IP layout:
+Before installation, document your management IPs and the cluster networks you want to build on the additional NICs:
 
 ```text
+Cluster-wide:
+  VIP:          192.168.1.100/24
+  Storage VLAN: 200
+  Storage CIDR: 10.200.0.0/24   (used by the storage-network setting)
+
 Node 1:
   Management:  192.168.1.11/24  (eth0)
-  Storage:     10.200.0.11/24   (eth1)
-  VM:          (eth2 - unaddressed, used by VMs only)
+  Storage:     eth1             (custom cluster network uplink)
+  VM:          eth2             (custom cluster network uplink)
 
 Node 2:
   Management:  192.168.1.12/24  (eth0)
-  Storage:     10.200.0.12/24   (eth1)
-  VM:          (eth2 - unaddressed)
+  Storage:     eth1
+  VM:          eth2
 
 Node 3:
   Management:  192.168.1.13/24  (eth0)
-  Storage:     10.200.0.13/24   (eth1)
-  VM:          (eth2 - unaddressed)
+  Storage:     eth1
+  VM:          eth2
 ```
 
 ## Step 2: Configure Multiple NICs During Installation
@@ -56,13 +61,8 @@ Use a Harvester config file for automated multi-NIC setup:
 ```yaml
 # multi-nic-config.yaml
 
-# Harvester node configuration with 3 NICs
-
 scheme_version: 1
-
-install:
-  device: /dev/sda
-  automatic: true
+token: "my-cluster-token"
 
 os:
   hostname: harvester-node-01
@@ -70,195 +70,166 @@ os:
     - ssh-ed25519 AAAAC3NzaC1... admin@host
   ntp_servers:
     - pool.ntp.org
+  dns_nameservers:
+    - 8.8.8.8
+    - 8.8.4.4
+  password: "HarvesterAdmin123!"
 
-# Network interface configuration
-network:
-  interfaces:
-    # Management NIC - primary interface
-    - name: eth0
-      hwAddr: "aa:bb:cc:dd:ee:01"  # Optional: specify MAC
-    # Storage NIC
-    - name: eth1
-      hwAddr: "aa:bb:cc:dd:ee:02"
-    # VM NIC (configured separately as a cluster network)
-    - name: eth2
-      hwAddr: "aa:bb:cc:dd:ee:03"
-
-harvester:
+install:
   mode: create
-  # Management interface configuration
+  device: /dev/sda
+  automatic: true
   management_interface:
     interfaces:
       - name: eth0
+        hwAddr: "aa:bb:cc:dd:ee:01"  # Optional
     method: static
     ip: 192.168.1.11
-    subnetMask: 255.255.255.0
+    subnet_mask: 255.255.255.0
     gateway: 192.168.1.1
-    dnsNameservers:
-      - 8.8.8.8
-      - 8.8.4.4
-  token: "my-cluster-token"
   vip: 192.168.1.100
   vip_mode: static
-  password: "HarvesterAdmin123!"
 ```
+
+Additional NICs such as `eth1` and `eth2` are discovered after installation and are attached to custom cluster networks later.
 
 ## Step 3: Configure Bonding for Redundancy
 
-For high availability, bond two NICs together for each network:
+For high availability, replace the `management_interface` portion of the install config with a bonded configuration:
 
 ```yaml
-# bonded-nic-config.yaml
-# Configuration with NIC bonding for redundancy
-
-scheme_version: 1
-
-network:
-  interfaces:
-    - name: eth0  # Management bond member 1
-    - name: eth1  # Management bond member 2
-    - name: eth2  # Storage NIC
-    - name: eth3  # VM NIC 1
-    - name: eth4  # VM NIC 2
-
-  # Management bond (active-backup for simplicity)
-  bonds:
-    - name: harvester-mgmt
-      mode: active-backup
-      slaves:
-        - eth0
-        - eth1
-      mtu: 1500
-
-harvester:
+install:
   management_interface:
     interfaces:
-      - name: harvester-mgmt  # Use the bond
+      - name: eth0
+      - name: eth1
     method: static
     ip: 192.168.1.11
-    subnetMask: 255.255.255.0
+    subnet_mask: 255.255.255.0
     gateway: 192.168.1.1
+    bond_options:
+      mode: active-backup
+      miimon: 100
+    mtu: 1500
+  vip: 192.168.1.100
+  vip_mode: static
 ```
+
+For custom cluster networks that you create after installation, define bonded uplinks in the `VlanConfig` object instead of a separate `network.bonds` section.
 
 ## Step 4: Configure Storage NIC After Installation
 
-Once the cluster is up, configure the storage NIC on each node:
+Once the cluster is up, create a custom cluster network that uses the storage NIC uplink:
 
-```bash
-# SSH into each node and configure the storage NIC
+```yaml
+# storage-cluster-network.yaml
 
-# On Node 1
-ssh rancher@192.168.1.11
-
-# Configure eth1 for storage traffic
-sudo vi /etc/sysconfig/network/ifcfg-eth1
+apiVersion: network.harvesterhci.io/v1beta1
+kind: ClusterNetwork
+metadata:
+  name: storage
+---
+apiVersion: network.harvesterhci.io/v1beta1
+kind: VlanConfig
+metadata:
+  name: storage-config
+spec:
+  clusterNetwork: storage
+  uplink:
+    nics:
+      - eth1
+    linkAttributes:
+      mtu: 9000
 ```
 
-```ini
-# /etc/sysconfig/network/ifcfg-eth1
-# Storage network interface
-
-STARTMODE='auto'
-BOOTPROTO='static'
-IPADDR='10.200.0.11'
-NETMASK='255.255.255.0'
-MTU='9000'  # Jumbo frames for storage performance
-```
-
 ```bash
-# Bring up the storage interface
-sudo wicked ifup eth1
+kubectl apply -f storage-cluster-network.yaml
 
 # Verify
-ip addr show eth1
-ping -c 3 10.200.0.12  # Ping Node 2 storage IP
+kubectl get clusternetwork storage
+kubectl get vlanconfig storage-config
 ```
-
-Repeat on all nodes (10.200.0.12 for node 2, 10.200.0.13 for node 3).
 
 ## Step 5: Configure Longhorn to Use Storage Network
 
 ```yaml
-# longhorn-storage-network.yaml
-# Direct Longhorn to use the dedicated storage network
+# harvester-storage-network.yaml
+# Enable Harvester's storage-network setting on the storage cluster network
 
-apiVersion: longhorn.io/v1beta2
+apiVersion: harvesterhci.io/v1beta1
 kind: Setting
 metadata:
   name: storage-network
-  namespace: longhorn-system
-spec:
-  value: "10.200.0.0/24"  # Storage network CIDR
+value: '{"vlan":200,"clusterNetwork":"storage","range":"10.200.0.0/24","exclude":["10.200.0.1/32"]}'
 ```
 
-```bash
-kubectl apply -f longhorn-storage-network.yaml
+Stop all VMs and ensure Longhorn volumes are detached before applying the storage network setting:
 
-# Verify Longhorn is using the storage network
-kubectl get nodes.longhorn.io -n longhorn-system \
-    -o jsonpath='{range .items[*]}{.metadata.name}: {.status.address}{"\n"}{end}'
-# Should show 10.200.x.x addresses
+```bash
+kubectl apply -f harvester-storage-network.yaml
+
+# Verify the Harvester setting is configured
+kubectl get settings.harvesterhci.io storage-network -o yaml
+# Status should show type: configured and status: "True"
 ```
 
 ## Step 6: Configure VM Network NIC
 
-The third NIC (eth2) is used for VM VLAN traffic. Create a ClusterNetwork for it:
+The third NIC (`eth2`) is used as the uplink for VM VLAN traffic. Back it with a `ClusterNetwork` and `VlanConfig`:
 
 ```yaml
 # vm-cluster-network.yaml
-# ClusterNetwork backed by eth2 on all nodes
 
 apiVersion: network.harvesterhci.io/v1beta1
 kind: ClusterNetwork
 metadata:
   name: vm-network
+---
+apiVersion: network.harvesterhci.io/v1beta1
+kind: VlanConfig
+metadata:
+  name: vm-network-config
 spec:
-  description: "VM network using eth2 on all nodes"
-  enable: true
-  mtu: 9000
+  clusterNetwork: vm-network
+  uplink:
+    nics:
+      - eth2
+    linkAttributes:
+      mtu: 9000
 ```
 
 ```bash
 kubectl apply -f vm-cluster-network.yaml
 
-# Configure NodeNetwork for each node to map eth2 to the ClusterNetwork
-for NODE in harvester-node-01 harvester-node-02 harvester-node-03; do
-kubectl apply -f - <<EOF
-apiVersion: network.harvesterhci.io/v1beta1
-kind: NodeNetwork
-metadata:
-  name: ${NODE}-vm
-  namespace: harvester-system
-spec:
-  nodeName: ${NODE}
-  nic: eth2
-  clusterNetwork: vm-network
-EOF
-done
+# Verify the VM uplink config exists
+kubectl get clusternetwork vm-network
+kubectl get vlanconfig vm-network-config
 ```
+
+After that, create a VLAN or Untagged VM network in Harvester that uses `vm-network` as its cluster network.
 
 ## Step 7: Verify Traffic Separation
 
 Validate that each type of traffic flows through the correct NIC:
 
 ```bash
-# Monitor management NIC traffic (should show API, etcd traffic)
-iftop -i eth0
+# Monitor management traffic
+iftop -i mgmt-bo
 
-# Monitor storage NIC traffic (should show Longhorn replication)
-iftop -i eth1
-# Trigger volume replication to test:
-# Create a test PVC and watch eth1 traffic spike
+# Monitor storage uplink traffic
+iftop -i storage-bo
 
-# Monitor VM NIC (should show VM guest traffic)
-iftop -i eth2
-# Start a VM and do network transfers to verify
+# Monitor VM uplink traffic
+iftop -i vm-network-bo
 
 # Check interface statistics
-for NIC in eth0 eth1 eth2; do
+for NIC in mgmt-bo storage-bo vm-network-bo; do
     echo "=== ${NIC} ==="
     ip -s link show ${NIC} | grep -A 3 "RX:"
 done
+
+# Verify the Harvester storage-network setting remains configured
+kubectl get settings.harvesterhci.io storage-network -o yaml
 ```
 
 ## Step 8: NIC Configuration Persistence
@@ -266,38 +237,36 @@ done
 Ensure all NIC configurations persist across reboots:
 
 ```bash
-# Verify all interfaces are configured in sysconfig
-ls /etc/sysconfig/network/ifcfg-*
-
 # Test by rebooting a node
 sudo reboot
 
-# After reboot, verify all interfaces are up
-ip addr show
-# Should show:
-# eth0: 192.168.1.11/24 (management)
-# eth1: 10.200.0.11/24  (storage)
-# eth2: (no IP - used by VMs)
+# After reboot, verify the network objects still exist
+kubectl get clusternetwork storage vm-network
+kubectl get vlanconfig storage-config vm-network-config
 
-# Verify Longhorn storage network is still active
-kubectl get setting storage-network -n longhorn-system \
-    -o jsonpath='{.spec.value}'
+# Verify the generated interfaces are back
+ip link show mgmt-bo
+ip link show storage-bo
+ip link show vm-network-bo
+
+# Verify Harvester still reports the storage network as configured
+kubectl get settings.harvesterhci.io storage-network -o yaml
 ```
 
 ## Performance Impact of Traffic Separation
 
 ```text
-Without traffic separation (all traffic on eth0):
-  Management latency:  100-300ms during heavy storage operations
-  Storage throughput:  Limited by management traffic sharing NIC
-  VM network:          Competing with all other traffic
+Without traffic separation:
+  Management latency:  Can increase during heavy storage or VM activity
+  Storage throughput:  Shares bandwidth with management and guest traffic
+  VM network:          Competes with all other traffic
 
 With dedicated NICs:
-  Management latency:  <10ms (dedicated path)
-  Storage throughput:  Full NIC bandwidth available (~9 Gbps on 10GbE with jumbo frames)
-  VM network:          Predictable performance, not affected by storage operations
+  Management latency:  More predictable because mgmt is isolated
+  Storage throughput:  Less contention from management and guest traffic
+  VM network:          More predictable and easier to scale
 ```
 
 ## Conclusion
 
-Configuring Harvester with multiple dedicated NICs transforms the cluster's performance and reliability. Traffic isolation ensures that heavy Longhorn replication doesn't impact the cluster's control plane responsiveness, and VM network performance remains predictable regardless of storage activity. While a single NIC works for development environments, any production deployment should plan for at least two dedicated NICs: one for management and one for combined storage/VM traffic, with three or more being ideal for full isolation. The investment in additional NICs and switch ports pays dividends in operational stability and performance predictability.
+Configuring Harvester with multiple dedicated NICs can significantly improve the cluster's performance and reliability. Traffic isolation helps keep Longhorn replication off the management network, and VM network performance becomes more predictable as workload traffic grows. While a single NIC can work for development environments, Harvester recommends bonded management NICs in production and additional NICs for each custom cluster network. The investment in additional NICs and switch ports pays dividends in operational stability and performance predictability.
