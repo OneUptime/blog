@@ -22,7 +22,7 @@ graph TD
     style ServerA fill:#4CAF50,color:#fff
 ```
 
-All servers advertise the same prefix. The routing protocol (BGP, OSPF) selects the best path, directing traffic to the nearest server automatically.
+All servers advertise the same address, commonly as a /128 host route. The routing protocol (BGP, OSPF) selects the best path, directing traffic to the nearest server automatically.
 
 ## Anycast vs Unicast vs Multicast
 
@@ -35,24 +35,22 @@ All servers advertise the same prefix. The routing protocol (BGP, OSPF) selects 
 
 ## Subnet-Router Anycast Address
 
-IPv6 defines a mandatory anycast address for every subnet - the **Subnet-Router Anycast Address**. It is the lowest address in the subnet (all interface ID bits set to zero):
+IPv6 defines a required anycast address for routers on every subnet - the **Subnet-Router Anycast Address**. It is the lowest address in the subnet (all interface ID bits set to zero):
 
 ```text
 Subnet prefix: 2001:db8:1:2::/64
 Subnet-Router anycast: 2001:db8:1:2::
 ```
 
-Routers must support this address so that mobile nodes can send packets to any router on the subnet without knowing the specific router address.
+Routers must support this address so that a node can send packets to any one of the routers for that subnet without knowing a specific router address.
 
 ## Configuring Anycast on Linux
 
-To configure an anycast address on Linux, use the `anycast` flag:
+To assign the same IPv6 service address on multiple Linux nodes, add it as a normal /128 address; the anycast behavior comes from routing:
 
 ```bash
-# Add an anycast address to an interface
-
-# The 'anycast' keyword tells the kernel this is an anycast address
-sudo ip -6 addr add 2001:db8::1/128 anycast dev eth0
+# Add the same service address on each node
+sudo ip -6 addr add 2001:db8::1/128 dev eth0
 
 # Verify the anycast address
 ip -6 addr show dev eth0
@@ -60,31 +58,31 @@ ip -6 addr show dev eth0
 # Check routing table entries
 ip -6 route show
 
-# Remove an anycast address
-sudo ip -6 addr del 2001:db8::1/128 anycast dev eth0
+# Remove the address
+sudo ip -6 addr del 2001:db8::1/128 dev eth0
 ```
 
 ## BGP Anycast for DNS
 
-The most common real-world use of anycast is DNS. All major DNS providers (Cloudflare's 2606:4700:4700::1111, Google's 2001:4860:4860::8888) use BGP anycast:
+The most common real-world use of anycast is DNS. Major public DNS providers such as Cloudflare (2606:4700:4700::1111) and Google (2001:4860:4860::8888) use BGP anycast:
 
 ```bash
 # Cloudflare's IPv6 DNS anycast addresses
 # 2606:4700:4700::1111 and 2606:4700:4700::1001
 # These are announced from dozens of PoPs worldwide
 
-# Check which PoP you're hitting via traceroute
-traceroute6 2606:4700:4700::1111
+# Check the path your traffic takes
+traceroute -6 2606:4700:4700::1111
 
 # Measure latency to anycast DNS
-ping6 -c 5 2606:4700:4700::1111
+ping -6 -c 5 2606:4700:4700::1111
 ```
 
 ## Practical Anycast Use Cases
 
 1. **DNS resolution** - Multiple DNS servers share one address; clients always hit the nearest one
 2. **CDN edge nodes** - Content served from the nearest geographic location
-3. **NTP services** - pool.ntp.org uses anycast for time synchronization
+3. **Global service ingress** - The same service IP can be announced from multiple sites for low latency and failover
 4. **DDoS mitigation** - Distribute attack traffic across many nodes
 
 ## Anycast with OSPFv3 (Internal Anycast)
@@ -94,13 +92,11 @@ For internal anycast deployments using OSPFv3:
 ```text
 # On each anycast server, add the address as a loopback:
 # /etc/network/interfaces (Debian/Ubuntu)
-auto lo:anycast
-iface lo:anycast inet6 static
-    address 2001:db8:service::1
-    netmask 128
+iface lo inet6 static
+    address 2001:db8:100::1/128
 
-# Then redistribute into OSPFv3 so all routers learn the route
-# Each server's nearest router will advertise the /128
+# Then advertise the same /128 into OSPFv3 from each site
+# so routers can choose the nearest path to that address
 ```
 
 ## Limitations and Considerations
