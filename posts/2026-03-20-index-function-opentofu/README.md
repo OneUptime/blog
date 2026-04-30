@@ -88,7 +88,7 @@ output "region_index" {
 
 ---
 
-## Using index with for_each Results
+## Building a Value-to-Index Map
 
 ```hcl
 variable "instance_types" {
@@ -105,7 +105,7 @@ locals {
 
 ---
 
-## Ordering Resources Like a List
+## Assigning List-Based Priority Values
 
 ```hcl
 variable "ordered_regions" {
@@ -113,7 +113,7 @@ variable "ordered_regions" {
   default = ["us-east-1", "eu-west-1", "ap-southeast-1"]
 }
 
-# Create a map ordered by priority (lower index = higher priority)
+# Create a map of region to priority (lower index = higher priority)
 
 locals {
   region_priority = {
@@ -133,10 +133,10 @@ locals {
 | `index(list, value)` | value → position | Error |
 | `element(list, index)` | position → value | Wraps cyclically |
 
-They are inverses of each other: `element(list, index(list, v)) == v` when `v` is in the list.
+You can combine them as `element(list, index(list, v)) == v` when `v` is in the list. In most cases, use the built-in index syntax `list[index]`; `element()` is mainly useful for wrap-around behavior.
 
 ---
 
 ## Summary
 
-`index(list, value)` returns the zero-based position of a value in a list. Use it to find the position of a known value - such as the index of a preferred availability zone in a list of zones, or to map values to their ordinal positions. Always use `contains()` first to guard against the error thrown when the value isn't found. For the reverse operation (position to value), use `element()`.
+`index(list, value)` returns the zero-based position of a value in a list. Use it to find the position of a known value - such as the index of a preferred availability zone in a list of zones, or to map values to their ordinal positions. Always use `contains()` first to guard against the error thrown when the value isn't found. For the reverse operation (position to value), use `list[index]` in most cases, or `element()` if you specifically want wrap-around behavior.
