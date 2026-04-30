@@ -15,11 +15,11 @@ UDP broadcast allows a single packet to be delivered to all hosts on a local net
 ```text
 Broadcast types:
 - Limited broadcast:  255.255.255.255 (never forwarded by any router)
-- Directed broadcast: 192.168.1.255   (last host address of a subnet)
-                      10.0.0.255       etc.
+- Directed broadcast: 192.168.1.255   (broadcast address of 192.168.1.0/24)
+                      10.0.0.255       (broadcast address of 10.0.0.0/24)
 
 For sending to all hosts on the local segment:
-- Use 255.255.255.255 (works regardless of subnet)
+- Use 255.255.255.255 (avoids calculating a subnet-specific broadcast address)
 - Or calculate the directed broadcast for your subnet
 
 Calculate directed broadcast:
@@ -48,9 +48,6 @@ sock = socket.socket(socket.AF_INET, socket.SOCK_DGRAM)
 
 sock.setsockopt(socket.SOL_SOCKET, socket.SO_BROADCAST, 1)
 
-# Optional: allow rapid restart without "address in use" error
-sock.setsockopt(socket.SOL_SOCKET, socket.SO_REUSEADDR, 1)
-
 # Send to limited broadcast address
 for i in range(5):
     sock.sendto(MESSAGE + f" #{i}".encode(), ('255.255.255.255', BROADCAST_PORT))
@@ -72,8 +69,7 @@ BROADCAST_PORT = 5000
 
 sock = socket.socket(socket.AF_INET, socket.SOCK_DGRAM)
 
-# Allow receiving broadcasts
-sock.setsockopt(socket.SOL_SOCKET, socket.SO_BROADCAST, 1)
+# Optional: allow rapid restart without "address already in use"
 sock.setsockopt(socket.SOL_SOCKET, socket.SO_REUSEADDR, 1)
 
 # Bind to all interfaces on the broadcast port
@@ -107,7 +103,6 @@ SERVICE_INFO = {
 def discovery_server():
     """Respond to discovery broadcast with service info."""
     sock = socket.socket(socket.AF_INET, socket.SOCK_DGRAM)
-    sock.setsockopt(socket.SOL_SOCKET, socket.SO_BROADCAST, 1)
     sock.setsockopt(socket.SOL_SOCKET, socket.SO_REUSEADDR, 1)
     sock.bind(('', DISCOVERY_PORT))
 
@@ -171,10 +166,10 @@ Limitations of UDP broadcast:
 - IPv6 does not support broadcast (uses multicast instead)
 - Some clouds block broadcast (use multicast or service discovery like mDNS instead)
 
-For multi-subnet discovery: use multicast (224.0.0.0/4) instead
+For multi-subnet discovery: use routed multicast if the network supports it, or use unicast with a known rendezvous server
 For internet-facing discovery: use unicast with a known rendezvous server
 ```
 
 ## Conclusion
 
-UDP broadcast requires the `SO_BROADCAST` socket option on both sender and receiver. It is ideal for LAN-local service discovery and protocols like DHCP where the destination host is not yet known. Use `255.255.255.255` for simplicity (works on any subnet), or calculate the directed broadcast address for your specific subnet. For anything beyond the local segment, switch to multicast - it provides group delivery without the overhead of delivering to every host on the network.
+UDP broadcast requires the `SO_BROADCAST` socket option on the sender. On Linux, the receiver can simply bind to the port and receive broadcasts. It is ideal for LAN-local service discovery and protocols like DHCP where the destination host is not yet known. Use `255.255.255.255` for a limited local broadcast, or calculate the directed broadcast address for your specific subnet. For anything beyond the local segment, use a design meant for routing, such as unicast to a known rendezvous server or routed multicast if the network supports it.
