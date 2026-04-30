@@ -12,7 +12,7 @@ When you have existing resources that should be managed within an OpenTofu modul
 
 ## Module Resource Addresses
 
-Resources within modules have addresses like `module.<name>.<resource_type>.<resource_name>`:
+Resources within modules use addresses that combine the module path and resource spec, for example:
 
 ```text
 module.networking.aws_vpc.main
@@ -22,12 +22,14 @@ module.database.aws_db_instance.primary
 
 ## Method 1: Import Blocks into Modules
 
+OpenTofu supports configuration-driven `import` blocks, though the feature is currently marked experimental in the official documentation.
+
 ```hcl
 # imports.tf
 
 import {
   to = module.networking.aws_vpc.main
-  id = "vpc-0a1b2c3d4e5f6789"
+  id = "vpc-0a1b2c3d4e5f6789a"
 }
 
 import {
@@ -36,7 +38,7 @@ import {
 }
 ```
 
-The module configuration must define these resources:
+The module configuration must define the target resources, for example:
 
 ```hcl
 # main.tf
@@ -64,7 +66,7 @@ resource "aws_vpc" "main" {
 
 ```bash
 # Import using the full module address
-tofu import 'module.networking.aws_vpc.main' vpc-0a1b2c3d4e5f6789
+tofu import 'module.networking.aws_vpc.main' vpc-0a1b2c3d4e5f6789a
 
 # Import into indexed module
 tofu import 'module.compute[0].aws_instance.web' i-0123456789abcdef0
@@ -81,13 +83,13 @@ For deeply nested modules:
 # Root → networking module → vpc submodule
 import {
   to = module.networking.module.vpc.aws_vpc.main
-  id = "vpc-0a1b2c3d4e5f6789"
+  id = "vpc-0a1b2c3d4e5f6789a"
 }
 ```
 
 ```bash
 # CLI equivalent
-tofu import 'module.networking.module.vpc.aws_vpc.main' vpc-0a1b2c3d4e5f6789
+tofu import 'module.networking.module.vpc.aws_vpc.main' vpc-0a1b2c3d4e5f6789a
 ```
 
 ## Importing into Count-Based Modules
@@ -102,17 +104,17 @@ module "web_servers" {
 ```hcl
 import {
   to = module.web_servers[0].aws_instance.main
-  id = "i-0000000000000000"
+  id = "i-0a1b2c3d"
 }
 
 import {
   to = module.web_servers[1].aws_instance.main
-  id = "i-1111111111111111"
+  id = "i-1a2b3c4d"
 }
 
 import {
   to = module.web_servers[2].aws_instance.main
-  id = "i-2222222222222222"
+  id = "i-2a3b4c5d"
 }
 ```
 
@@ -129,12 +131,12 @@ module "environments" {
 ```hcl
 import {
   to = module.environments["prod"].aws_vpc.main
-  id = "vpc-prod-0a1b2c3d"
+  id = "vpc-0a1b2c3d"
 }
 
 import {
   to = module.environments["staging"].aws_vpc.main
-  id = "vpc-stg-0e1f2a3b"
+  id = "vpc-0e1f2a3b"
 }
 ```
 
@@ -143,9 +145,9 @@ import {
 ```hcl
 locals {
   existing_vpcs = {
-    "dev"     = "vpc-dev-0a1b2c3d"
-    "staging" = "vpc-stg-0e1f2a3b"
-    "prod"    = "vpc-prod-0g1h2i3j"
+    "dev"     = "vpc-0a1b2c3d"
+    "staging" = "vpc-0e1f2a3b"
+    "prod"    = "vpc-0f1a2b3c"
   }
 }
 
@@ -164,11 +166,11 @@ After importing, verify the plan shows no changes:
 tofu plan
 
 # Ideal output:
-# No changes. Infrastructure is up-to-date.
+# No changes. Your infrastructure matches the configuration.
 
 # If changes appear, update the module configuration to match reality
 ```
 
 ## Conclusion
 
-Importing resources into modules uses the full module path as the resource address. Import blocks are preferred for their reviewability and for_each support. After importing, always verify that `tofu plan` shows no changes, and update your module configuration to accurately reflect the imported resource's attributes. Remove import blocks after successful import.
+Importing resources into modules uses the full module path as the resource address. Import blocks offer reviewability and `for_each` support, but OpenTofu currently documents them as experimental. After importing, always verify that `tofu plan` shows no changes, and update your module configuration to accurately reflect the imported resource's attributes. You can remove import blocks after successful import or keep them as a record of the resource's origin.
