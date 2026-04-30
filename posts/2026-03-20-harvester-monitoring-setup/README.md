@@ -8,7 +8,7 @@ Description: Learn how to enable and configure the Harvester monitoring stack in
 
 ---
 
-Harvester includes a built-in monitoring system based on the kube-prometheus-stack. This guide covers enabling it, customizing retention, and accessing Grafana dashboards.
+Harvester includes a built-in monitoring system based on the Rancher `rancher-monitoring` add-on, which closely tracks the kube-prometheus-stack. This guide covers enabling it, customizing retention, and accessing Grafana dashboards.
 
 ---
 
@@ -16,44 +16,41 @@ Harvester includes a built-in monitoring system based on the kube-prometheus-sta
 
 In the Harvester UI:
 
-1. Go to **Advanced > Monitoring & Logging**
-2. Click **Enable Monitoring**
-3. Configure storage and retention settings
+1. Go to **Advanced > Addons**
+2. Select **rancher-monitoring**
+3. Enable the add-on and adjust the Prometheus resource settings as needed
 
-Or via Helm (if managing Harvester via Rancher):
+Or via `kubectl`:
 
 ```bash
-helm repo add rancher-charts https://charts.rancher.io
-helm install rancher-monitoring \
-  rancher-charts/rancher-monitoring \
-  --namespace cattle-monitoring-system \
-  --create-namespace \
-  --set prometheus.prometheusSpec.retention=30d \
-  --set prometheus.prometheusSpec.storageSpec.volumeClaimTemplate.spec.storageClassName=longhorn \
-  --set prometheus.prometheusSpec.storageSpec.volumeClaimTemplate.spec.resources.requests.storage=50Gi
+kubectl edit addons.harvesterhci.io -n cattle-monitoring-system rancher-monitoring
 ```
 
 ---
 
 ## Step 2: Configure Prometheus Retention
 
-```yaml
-# Patch Prometheus to adjust retention
+Edit `spec.valuesContent` in the `rancher-monitoring` add-on to persist retention and storage changes:
 
-kubectl patch prometheus rancher-monitoring-prometheus \
-  -n cattle-monitoring-system \
-  --type merge \
-  -p '{
-    "spec": {
-      "retention": "30d",
-      "retentionSize": "45GB"
-    }
-  }'
+```yaml
+prometheus:
+  prometheusSpec:
+    retention: 30d
+    retentionSize: 45GB
+    storageSpec:
+      volumeClaimTemplate:
+        spec:
+          storageClassName: longhorn
+          resources:
+            requests:
+              storage: 50Gi
 ```
 
 ---
 
 ## Step 3: Configure Alertmanager
+
+Create the `AlertmanagerConfig` in the namespace whose alerts you want to route:
 
 ```yaml
 # alertmanager-config.yaml
@@ -61,18 +58,20 @@ apiVersion: monitoring.coreos.com/v1alpha1
 kind: AlertmanagerConfig
 metadata:
   name: harvester-alerts
-  namespace: cattle-monitoring-system
+  namespace: your-namespace
 spec:
   route:
     receiver: default
     groupBy: [alertname, cluster]
     routes:
       - receiver: slack-ops
-        match:
-          severity: warning
+        matchers:
+          - name: severity
+            value: warning
       - receiver: pagerduty-critical
-        match:
-          severity: critical
+        matchers:
+          - name: severity
+            value: critical
 
   receivers:
     - name: default
@@ -85,7 +84,7 @@ spec:
           title: 'Harvester Alert: {{ .GroupLabels.alertname }}'
     - name: pagerduty-critical
       pagerdutyConfigs:
-        - serviceKey:
+        - routingKey:
             name: pagerduty-secret
             key: key
 ```
@@ -107,33 +106,27 @@ kubectl port-forward svc/rancher-monitoring-grafana \
 # Access at http://localhost:3000
 ```
 
-Pre-built Harvester dashboards are available under the Grafana **Harvester** folder.
+Harvester also exposes built-in dashboards from the Dashboard page via the Grafana link.
 
 ---
 
-## Step 5: Import Harvester-Specific Dashboards
+## Step 5: Import Additional Dashboards
 
-Import these Grafana dashboard IDs for comprehensive Harvester visibility:
+Use Grafana's import flow to add optional dashboards from Grafana.com:
 
 | Dashboard | ID | Description |
 |---|---|---|
-| Harvester Overview | 17119 | Cluster-wide metrics |
-| Longhorn Volumes | 17626 | Storage health |
+| Longhorn Example v1.4.0 | 17626 | Storage health |
 | Node Exporter Full | 1860 | Per-node system metrics |
-| KubeVirt VMs | 12006 | VM performance metrics |
+| KubeVirt VM Info | 11748 | VM performance metrics |
 
-```bash
-# Import via Grafana API
-curl -X POST http://admin:password@localhost:3000/api/dashboards/import \
-  -H "Content-Type: application/json" \
-  -d '{"dashboardId": 17119, "overwrite": true, "inputs": [{"name": "DS_PROMETHEUS", "type": "datasource", "pluginId": "prometheus", "value": "Prometheus"}]}'
-```
+From Grafana, go to **Dashboards > New > Import dashboard** and paste one of the IDs above.
 
 ---
 
 ## Best Practices
 
 - Use Longhorn-backed persistent volumes for Prometheus data to survive node failures.
-- Set Prometheus retention based on your compliance requirements - typically 30-90 days.
+- Size Prometheus retention and storage based on your series count and available disk; Prometheus is not intended for long-term metrics retention.
 - Configure separate Alertmanager routes for node-level alerts vs. VM-level alerts.
 - Add custom dashboards for your specific VM workloads alongside the default Harvester dashboards.
