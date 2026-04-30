@@ -13,7 +13,7 @@ RFC 6724 uses two distinct mechanisms:
 | Mechanism | Controls | Tool |
 |---|---|---|
 | Label | Source/destination pairing (prefer same label) | `ip addrlabel` (kernel) + `gai.conf` |
-| Precedence | Destination sort order (higher = tried first) | `gai.conf` only |
+| Precedence | Destination sort order (higher = sorted earlier) | `gai.conf` only |
 
 Labels are used to pair source and destination addresses. Precedence ranks destination addresses regardless of source.
 
@@ -22,19 +22,22 @@ Labels are used to pair source and destination addresses. Precedence ranks desti
 RFC 6724 Rule 6: "Prefer matching label" - if the source address label matches the destination address label, that source-destination pair is preferred.
 
 ```bash
-# Default label assignments:
+# Typical Linux kernel default label assignments (`ip addrlabel list`):
 
-# ::1/128        label 0   (loopback)
-# ::/0           label 1   (global IPv6)
-# ::ffff:0:0/96  label 4   (IPv4-mapped)
-# 2002::/16      label 2   (6to4)
-# 2001::/32      label 5   (Teredo)
-# fc00::/7       label 13  (ULA)
+# ::1/128         label 0   (loopback)
+# ::/96           label 3   (IPv4-compatible)
+# ::ffff:0:0/96   label 4   (IPv4-mapped)
+# 2001::/32       label 6   (Teredo)
+# 2001:10::/28    label 7   (ORCHID)
+# 2002::/16       label 2   (6to4)
+# fec0::/10       label 11  (site-local, obsolete)
+# fc00::/7        label 5   (ULA)
+# ::/0            label 1   (other global IPv6)
 
 # Result:
-# Global IPv6 source (label 1) matches global IPv6 dest (label 1) → preferred
-# ULA source (label 13) matches ULA dest (label 13) → stays local
-# IPv4-mapped source (label 4) matches IPv4 dest (label 4) → IPv4 path
+# Global IPv6 source (label 1) matches most global IPv6 dests (label 1) → preferred
+# ULA source (label 5) matches ULA dest (label 5) → preferred
+# IPv4-mapped source (label 4) matches IPv4 dest (label 4) → preferred
 ```
 
 ## Manipulating Labels with ip addrlabel
@@ -44,44 +47,48 @@ RFC 6724 Rule 6: "Prefer matching label" - if the source address label matches t
 ip addrlabel list
 
 # Add a custom label for a specific prefix
-# Use case: make connections to 2001:db8:cdn::/48 prefer ULA source
-ip addrlabel add prefix 2001:db8:cdn::/48 label 13
+# Use case: make connections to 2001:db8:cd0::/48 prefer ULA source
+ip addrlabel add prefix 2001:db8:cd0::/48 label 5
 
 # Now:
-# Destination 2001:db8:cdn:: has label 13
-# ULA source fd00:: has label 13 → MATCH (ULA source preferred for CDN)
+# Destination 2001:db8:cd0:: has label 5
+# ULA source fd00:: has label 5 → MATCH (ULA source preferred for CDN)
 # Global source 2001:db8:: has label 1 → NO MATCH
 
 # Remove the custom label
-ip addrlabel del prefix 2001:db8:cdn::/48
+ip addrlabel del prefix 2001:db8:cd0::/48
 
-# Flush all custom entries (restore RFC 6724 defaults)
+# Flush all labels (including defaults; this does not restore the kernel default table)
 ip addrlabel flush
 ```
 
 ## Manipulating Precedence in gai.conf
 
 ```bash
-# Higher precedence = destination is tried first
+# Higher precedence = destination is sorted earlier when higher-priority rules tie
 # Useful for controlling IPv4 vs IPv6 and tunnel preference
 
-# Use case 1: Force IPv6 for specific prefix, IPv4 for everything else
+# Use case 1: Prefer IPv6 for specific prefix, IPv4 for everything else
 cat > /etc/gai.conf << 'EOF'
-# Standard labels
+# Duplicate the full default label table because any label line disables the built-in defaults
 label ::1/128        0
 label ::/0           1
-label ::ffff:0:0/96  4
 label 2002::/16      2
-label 2001::/32      5
-label fc00::/7       13
+label ::/96          3
+label ::ffff:0:0/96  4
+label fec0::/10      5
+label fc00::/7       6
+label 2001:0::/32    7
 
-# Raise IPv6 precedence globally
+# Duplicate the default precedence table because any precedence line disables the built-in defaults
 precedence ::1/128       50
 precedence ::/0          40   # global IPv6
-precedence ::ffff:0:0/96 35   # IPv4 (lower = tried after IPv6)
+precedence 2002::/16     30
+precedence ::/96         20
+precedence ::ffff:0:0/96 35   # IPv4 (still lower than global IPv6)
 
-# Raise specific prefix even higher (always tried first)
-precedence 2001:db8:cdn::/48  100
+# Raise specific prefix even higher (sorted earlier than other usable destinations)
+precedence 2001:db8:cd0::/48  100
 EOF
 ```
 
@@ -97,7 +104,7 @@ EOF
 ip addrlabel add prefix 2001:db8:a::/48 label 20
 ip addrlabel add prefix 2001:db8:b::/48 label 21
 
-# gai.conf - affects getaddrinfo destination sorting
+# gai.conf - affects getaddrinfo destination sorting (append to the full table from above)
 cat >> /etc/gai.conf << 'EOF'
 label 2001:db8:a::/48 20
 label 2001:db8:b::/48 21
@@ -105,34 +112,34 @@ EOF
 
 # Result:
 # Host in subnet A connecting to subnet A dest → source from 2001:db8:a:: (label 20 matches)
-# Host in subnet A connecting to subnet B dest → source from ::/0 label 1 (no label 20 match)
-# Traffic policy enforced purely through address selection
+# Host in subnet A connecting to subnet B dest → if another usable label-1 source exists, it can be preferred
+# Traffic policy is expressed as address selection preference, not hard enforcement
 ```
 
 ## Preventing ULA Leakage to Internet
 
 ```bash
-# Verify ULA addresses don't get selected for global destinations
+# Verify ULA addresses are not preferred for global destinations when a global source is available
 
-# ULA should have label 13 (not label 1)
+# ULA should have label 5 in the Linux kernel default table (not label 1)
 ip addrlabel list | grep "fc00"
-# prefix fc00::/7 label 13  ← correct
+# prefix fc00::/7 label 5  ← typical Linux default
 
-# Global destinations have label 1 - no match with ULA label 13
-# So global destinations will not prefer ULA source addresses
+# Global destinations have label 1 - no match with ULA label 5
+# So if a global source address is also available, it is preferred over a ULA source
 
-# Test: ULA source should NOT be chosen for global destination
+# Test: if the host has both ULA and global source addresses, the chosen source should normally not be ULA
 python3 -c "
 import socket
 s = socket.socket(socket.AF_INET6, socket.SOCK_DGRAM)
 s.connect(('2001:db8::1', 80))
 src = s.getsockname()[0]
 print(f'Source for global dest: {src}')
-# Should NOT be fd00:: or fc00::/7 range
+# If both ULA and global source addresses are configured, src should not be in fc00::/7
 if src.startswith('fd') or src.startswith('fc'):
-    print('WARNING: ULA source selected for global destination!')
+    print('WARNING: ULA source selected; verify whether a global source was available')
 else:
-    print('OK: Non-ULA source selected')
+    print('OK: Selected a non-ULA source')
 "
 ```
 
@@ -149,11 +156,13 @@ After=network.target
 Type=oneshot
 RemainAfterExit=yes
 ExecStart=/bin/bash -c '\
-    ip addrlabel flush; \
-    ip addrlabel add prefix 2001:db8:cdn::/48 label 13; \
-    ip addrlabel add prefix 2001:db8:a::/48 label 20; \
-    ip addrlabel add prefix 2001:db8:b::/48 label 21'
-ExecStop=/usr/sbin/ip addrlabel flush
+    /usr/sbin/ip addrlabel add prefix 2001:db8:cd0::/48 label 5; \
+    /usr/sbin/ip addrlabel add prefix 2001:db8:a::/48 label 20; \
+    /usr/sbin/ip addrlabel add prefix 2001:db8:b::/48 label 21'
+ExecStop=-/bin/bash -c '\
+    /usr/sbin/ip addrlabel del prefix 2001:db8:cd0::/48; \
+    /usr/sbin/ip addrlabel del prefix 2001:db8:a::/48; \
+    /usr/sbin/ip addrlabel del prefix 2001:db8:b::/48'
 
 [Install]
 WantedBy=multi-user.target
@@ -177,7 +186,7 @@ echo "=== Source selection for various destinations ==="
 DESTS=(
     "2001:db8::1"      # global
     "fd00::1"          # ULA
-    "2001:db8:cdn::1"  # CDN prefix (if custom label added)
+    "2001:db8:cd0::1"  # custom prefix (if custom label added)
     "::1"              # loopback
 )
 
@@ -192,7 +201,7 @@ try:
 except Exception as e:
     print(f'error: {e}')
 ")
-    echo "  Dest: ${dest:<30} → Source: ${src}"
+    printf '  Dest: %-30s -> Source: %s\n' "$dest" "$src"
 done
 
 echo ""
@@ -202,4 +211,4 @@ grep "^label" /etc/gai.conf 2>/dev/null || echo "(using built-in defaults)"
 
 ## Conclusion
 
-Label manipulation is the most powerful aspect of RFC 6724 policy control. By assigning the same label to a source prefix and destination prefix, you force traffic to prefer that source for those destinations. Use `ip addrlabel add prefix <prefix> label <N>` for kernel-level source selection, and add matching `label` entries to `/etc/gai.conf` for userspace `getaddrinfo()` destination sorting. Precedence values in `gai.conf` control absolute destination ordering - raise a prefix's precedence to make it always tried first. Persist kernel label rules across reboots with a systemd oneshot service that runs `ip addrlabel` commands at startup.
+Label manipulation is the most powerful aspect of RFC 6724 policy control. By assigning the same label to a source prefix and destination prefix, you make that source preferred for those destinations when earlier selection rules do not override it. Use `ip addrlabel add prefix <prefix> label <N>` for kernel-level source selection, and add matching `label` entries to `/etc/gai.conf` for userspace `getaddrinfo()` destination sorting. Precedence values in `gai.conf` influence destination ordering - raise a prefix's precedence to sort it earlier when higher-priority rules do not decide the result. Persist custom kernel label rules across reboots with a systemd oneshot service that adds the desired `ip addrlabel` entries at startup.
