@@ -15,10 +15,9 @@ Fluent Bit is a lightweight log forwarder ideal for edge collection on Kubernete
 ```mermaid
 graph LR
     A[Container Logs] --> B[Fluent Bit<br/>DaemonSet]
-    B --> C[Fluentd<br/>StatefulSet]
+    B --> C[Fluentd<br/>Deployment]
     C --> D[Elasticsearch]
     C --> E[S3 Archive]
-    C --> F[CloudWatch Logs]
 ```
 
 ## Fluent Bit DaemonSet
@@ -30,9 +29,10 @@ resource "helm_release" "fluent_bit" {
   name             = "fluent-bit"
   repository       = "https://fluent.github.io/helm-charts"
   chart            = "fluent-bit"
-  version          = "0.43.0"
+  version          = "0.57.3"
   namespace        = "logging"
   create_namespace = true
+  depends_on       = [helm_release.fluentd]
 
   values = [
     yamlencode({
@@ -81,7 +81,6 @@ resource "helm_release" "fluent_bit" {
               Match         *
               Host          fluentd.logging
               Port          24224
-              Shared_Key    ${var.fluentd_shared_key}
               tls           off
         EOT
       }
@@ -101,15 +100,18 @@ resource "helm_release" "fluent_bit" {
 
 ```hcl
 resource "helm_release" "fluentd" {
-  name       = "fluentd"
-  repository = "https://fluent.github.io/helm-charts"
-  chart      = "fluentd"
-  version    = "0.5.2"
-  namespace  = "logging"
+  name             = "fluentd"
+  repository       = "https://fluent.github.io/helm-charts"
+  chart            = "fluentd"
+  version          = "0.5.3"
+  namespace        = "logging"
+  create_namespace = true
 
   values = [
     yamlencode({
+      kind         = "Deployment"
       replicaCount = var.environment == "production" ? 3 : 1
+      plugins      = ["fluent-plugin-s3"]
 
       env = [
         { name = "ELASTICSEARCH_HOST", value = "elasticsearch-master.logging" }
@@ -117,14 +119,21 @@ resource "helm_release" "fluentd" {
         { name = "S3_BUCKET", value = aws_s3_bucket.log_archive.id }
       ]
 
+      service = {
+        ports = [
+          {
+            name          = "forwarder"
+            protocol      = "TCP"
+            containerPort = 24224
+          }
+        ]
+      }
+
       fileConfigs = {
         "01_sources.conf" = <<-EOT
           <source>
             @type forward
             port 24224
-            <security>
-              shared_key ${var.fluentd_shared_key}
-            </security>
           </source>
         EOT
 
@@ -148,18 +157,24 @@ resource "helm_release" "fluentd" {
               port 9200
               logstash_format true
               logstash_prefix kubernetes
-              flush_interval 10s
+              <buffer>
+                flush_interval 10s
+              </buffer>
             </store>
 
             <store>
               @type s3
-              aws_key_id "#{ENV['AWS_ACCESS_KEY_ID']}"
-              aws_sec_key "#{ENV['AWS_SECRET_ACCESS_KEY']}"
               s3_bucket "#{ENV['S3_BUCKET']}"
               s3_region "#{ENV['AWS_REGION']}"
               path logs/%Y/%m/%d/
               s3_object_key_format %{path}%{time_slice}_%{index}.%{file_extension}
-              time_slice_format %Y%m%d%H
+              <buffer tag,time>
+                @type file
+                path /var/log/fluent/s3
+                timekey 1h
+                timekey_wait 10m
+                timekey_use_utc true
+              </buffer>
             </store>
           </match>
         EOT
@@ -176,8 +191,8 @@ resource "helm_release" "fluentd" {
 
 ## Best Practices
 
-- Use Fluent Bit for node-level collection and Fluentd for aggregation - Fluent Bit is 10x more memory-efficient as a DaemonSet.
-- Set `Mem_Buf_Limit` in Fluent Bit to prevent OOM kills when log rates spike - data is dropped rather than causing the pod to crash.
+- Use Fluent Bit for node-level collection and Fluentd for aggregation - Fluent Bit has a much smaller memory footprint, which makes it a better fit as a DaemonSet.
+- Set `Mem_Buf_Limit` in Fluent Bit to cap in-memory buffering during backpressure - with memory buffering, the input pauses when the limit is reached, so use filesystem buffering if you need better loss tolerance during outages.
 - Filter out system namespace logs (kube-system, logging, monitoring) in Fluentd to reduce noise and storage costs.
-- Use shared keys for Fluent Bit to Fluentd communication - don't accept unauthenticated log forwarding.
+- If you need authenticated forwarding, enable TLS and shared keys for Fluent Bit to Fluentd communication instead of using plain `forward` traffic.
 - Archive logs to S3 in addition to Elasticsearch for long-term retention at low cost.
