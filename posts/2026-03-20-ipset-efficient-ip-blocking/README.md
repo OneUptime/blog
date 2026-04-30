@@ -4,9 +4,9 @@ Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
 Tags: Ipset, iptables, Linux, Security, Firewall, DDoS
 
-Description: Use ipset to create high-performance IP blocklists and allowlists that iptables can match against in O(1) time, far outperforming individual iptables rules.
+Description: Use ipset to create high-performance IP blocklists and allowlists that iptables can match efficiently without creating thousands of individual rules.
 
-Blocking thousands of IPs with individual iptables rules creates a linear lookup chain that degrades performance. ipset stores IP addresses in a hash table - iptables can match against 100,000 IPs as fast as matching against one.
+Blocking thousands of IPs with individual iptables rules creates a linear lookup chain that degrades performance. Hash-based ipset types such as hash:ip keep lookups fast even when the set grows large.
 
 ## Install ipset
 
@@ -101,26 +101,26 @@ sudo iptables -A INPUT -m set --match-set temp-block src -j DROP
 BLOCKLIST_URL="https://www.spamhaus.org/drop/drop.txt"
 
 # Create set if it doesn't exist
-sudo ipset create -exist blocklist hash:net family inet
+sudo ipset -exist create blocklist hash:net family inet
 
 # Download and parse threat feed
 curl -s "$BLOCKLIST_URL" | grep -v '^;' | awk '{print $1}' | while read cidr; do
-    sudo ipset add -exist blocklist "$cidr"
+    sudo ipset -exist add blocklist "$cidr"
 done
 
 echo "Blocklist updated: $(sudo ipset list blocklist | grep 'Number of entries')"
 ```
 
-## Save and Restore ipset Rules
+## Save and Restore ipset State
 
-ipset rules are lost on reboot unless saved:
+ipset state is lost on reboot unless saved:
 
 ```bash
 # Save current ipset state
-sudo ipset save > /etc/ipset.conf
+sudo ipset -file /etc/ipset.conf save
 
 # Restore at boot (add to rc.local or systemd service)
-sudo ipset restore < /etc/ipset.conf
+sudo ipset -file /etc/ipset.conf restore
 
 # Create a systemd service for persistence
 # /etc/systemd/system/ipset-restore.service
@@ -128,7 +128,7 @@ sudo ipset restore < /etc/ipset.conf
 # Description=Restore ipset rules
 # Before=iptables.service
 # [Service]
-# ExecStart=/sbin/ipset restore -f /etc/ipset.conf
+# ExecStart=/sbin/ipset -file /etc/ipset.conf restore
 # [Install]
 # WantedBy=multi-user.target
 ```
@@ -141,11 +141,11 @@ for i in $(seq 1 10000); do
     sudo ipset add blocklist "10.$((i/256)).$((i%256)).1" 2>/dev/null
 done
 
-# ipset lookup is O(1) - constant time regardless of set size
-# vs 10,000 iptables rules which are O(n) linear search
+# hash:ip lookups are hash-based, avoiding a 10,000-rule linear chain
+# vs 10,000 individual iptables rules, which are checked in order
 
 # Check set statistics
 sudo ipset list blocklist | grep "Number of entries"
 ```
 
-ipset is essential when blocking more than a few hundred IPs - it keeps iptables performance constant even with millions of blocked addresses.
+ipset is essential when blocking more than a few hundred IPs - it avoids long iptables rule chains and keeps lookups fast even with very large blocklists.
