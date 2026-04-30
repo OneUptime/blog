@@ -14,7 +14,7 @@ MTU issues have a distinctive pattern:
 - SSH connects but hangs after banner
 - VPN tunnels work for small packets but not large transfers
 
-This happens when ICMP "Packet Too Big" (type 3 code 4) messages are blocked, breaking Path MTU Discovery (PMTUD).
+This happens when PMTUD ICMP messages are blocked, breaking Path MTU Discovery (PMTUD): in IPv4 this is ICMP "Fragmentation Needed" (destination unreachable, type 3 code 4), and in IPv6 it is ICMPv6 "Packet Too Big".
 
 ## Step 1: Identify MTU Issues with Ping
 
@@ -41,8 +41,8 @@ ping -f -l 1400 8.8.8.8
 # Binary search for exact PMTU (Linux)
 #!/bin/bash
 TARGET=8.8.8.8
-LOW=576
-HIGH=1500
+LOW=0
+HIGH=1472
 
 while [ $((HIGH - LOW)) -gt 1 ]; do
     MID=$(( (LOW + HIGH) / 2 ))
@@ -57,7 +57,7 @@ echo "Path MTU to $TARGET: $((LOW + 28)) bytes (payload: $LOW)"
 ```
 
 ```bash
-# tracepath - automatically discovers PMTU at each hop
+# tracepath - discovers the path MTU and shows where it changes
 tracepath 8.8.8.8
 # Look for: pmtu XXXX entries showing where MTU decreases
 ```
@@ -67,7 +67,7 @@ tracepath 8.8.8.8
 ```bash
 # Linux
 ip link show eth0 | grep mtu
-# or
+# Legacy alternative if net-tools is installed
 ifconfig eth0 | grep mtu
 
 # Windows
@@ -124,14 +124,14 @@ sudo iptables -t mangle -A FORWARD -p tcp --tcp-flags SYN,RST SYN \
 sudo iptables -t mangle -A FORWARD -p tcp --tcp-flags SYN,RST SYN \
     -j TCPMSS --set-mss 1410
 
-# Make persistent
-sudo iptables-save > /etc/iptables/rules.v4
+# Make persistent (for systems using iptables-persistent / netfilter-persistent)
+sudo sh -c 'iptables-save > /etc/iptables/rules.v4'
 ```
 
 ## Step 6: Verify ICMP Is Not Blocked
 
 ```bash
-# ICMP type 3 code 4 = "Fragmentation Needed" - must not be blocked
+# IPv4 ICMP type 3 code 4 = "Fragmentation Needed" - must not be blocked
 # Check iptables
 sudo iptables -L -n | grep -i icmp
 
