@@ -6,7 +6,7 @@ Tags: GCP, Terraform, IPv6, Firewall, Security, Networking
 
 Description: A guide to creating GCP VPC firewall rules that control IPv6 traffic using Terraform, covering common patterns for web, SSH, and internal services.
 
-GCP VPC firewall rules support both IPv4 and IPv6 address ranges in `source_ranges` and `destination_ranges`. Rules with IPv6 source ranges only match IPv6 traffic, allowing you to write precise firewall policies for dual-stack environments.
+GCP VPC firewall rules support IPv4 or IPv6 address ranges in `source_ranges` and `destination_ranges`. Each rule can contain only one IP family, so rules with IPv6 source ranges only match IPv6 traffic, allowing you to write precise firewall policies for dual-stack environments.
 
 ## Step 1: Allow ICMPv6 (Essential)
 
@@ -21,7 +21,7 @@ resource "google_compute_firewall" "allow_icmpv6" {
 
   # ICMPv6 protocol (protocol number 58)
   allow {
-    protocol = "icmpv6"
+    protocol = "58"
   }
 
   # Allow from all IPv6 sources
@@ -69,7 +69,7 @@ resource "google_compute_firewall" "allow_ssh_ipv6" {
   }
 
   # Restrict SSH to a specific management IPv6 subnet
-  source_ranges = ["2001:db8:management::/48"]
+  source_ranges = ["2001:db8:1234::/48"]
 
   target_tags = ["allow-ssh"]
   priority    = 900
@@ -79,7 +79,7 @@ resource "google_compute_firewall" "allow_ssh_ipv6" {
 ## Step 4: Allow Internal IPv6 Traffic Within the VPC
 
 ```hcl
-# fw-internal-ipv6.tf - Allow all traffic between instances in the same subnet
+# fw-internal-ipv6.tf - Allow common internal IPv6 traffic between instances in the same subnet
 resource "google_compute_firewall" "allow_internal_ipv6" {
   name    = "allow-internal-ipv6"
   network = google_compute_network.main.name
@@ -91,19 +91,19 @@ resource "google_compute_firewall" "allow_internal_ipv6" {
     protocol = "udp"
   }
   allow {
-    protocol = "icmpv6"
+    protocol = "58"
   }
 
-  # Allow from the subnet's IPv6 CIDR
-  source_ranges = [google_compute_subnetwork.external_ipv6.ipv6_cidr_range]
+  # Allow from the subnet's internal IPv6 CIDR
+  source_ranges = [google_compute_subnetwork.main.ipv6_cidr_range]
 
   priority = 1000
 }
 ```
 
-## Step 5: Deny All Other IPv6 Ingress
+## Step 5: Optionally Deny All Other IPv6 Ingress
 
-GCP has an implicit allow-all ingress rule for internal traffic and implicit deny for external. To explicitly deny all other IPv6 ingress at a lower priority:
+GCP already has an implied deny-all ingress rule for traffic that does not match a higher-priority allow rule. If you want an explicit lower-priority deny rule for IPv6 ingress, you can add:
 
 ```hcl
 # fw-deny-ipv6.tf - Deny all other IPv6 ingress (lower priority)
@@ -127,23 +127,23 @@ resource "google_compute_firewall" "deny_all_ipv6" {
 ```bash
 terraform apply
 
-# List all IPv6 firewall rules in the VPC
+# List firewall rules in the VPC and inspect their IPv6 ranges
 gcloud compute firewall-rules list \
-  --filter="network=vpc-dual-stack" \
-  --format="table(name,direction,sourceRanges,allowed)"
+  --filter="network~'networks/vpc-dual-stack$'" \
+  --format="table(name,direction,sourceRanges.list():label=SRC_RANGES,allowed[].map().firewall_rule().list():label=ALLOW,denied[].map().firewall_rule().list():label=DENY)"
 
 # Test connectivity from an IPv6 host
 curl -6 --connect-timeout 5 http://[<instance-external-ipv6>]/
 ```
 
-## Combine IPv4 and IPv6 in a Single Rule
+## Use Separate Rules for IPv4 and IPv6
 
-GCP firewall rules can contain both IPv4 and IPv6 ranges in `source_ranges` for dual-stack coverage:
+Because each GCP firewall rule can contain either IPv4 or IPv6 ranges, but not both, use the IPv6 rule above alongside a separate IPv4 rule for dual-stack coverage:
 
 ```hcl
-# Single rule covering both address families
-resource "google_compute_firewall" "allow_web_dual" {
-  name    = "allow-web-dual-stack"
+# Separate IPv4 rule to pair with the IPv6 rule above
+resource "google_compute_firewall" "allow_web_ipv4" {
+  name    = "allow-web-ipv4-ingress"
   network = google_compute_network.main.name
 
   allow {
@@ -151,8 +151,7 @@ resource "google_compute_firewall" "allow_web_dual" {
     ports    = ["80", "443"]
   }
 
-  # Both IPv4 and IPv6 ranges in the same rule
-  source_ranges = ["0.0.0.0/0", "::/0"]
+  source_ranges = ["0.0.0.0/0"]
   target_tags   = ["web-server"]
 }
 ```
