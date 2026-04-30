@@ -1,114 +1,74 @@
-# How to Install Portainer Agent on Kubernetes via Helm
+# How to Install Portainer Agent on Kubernetes
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
-Tags: Portainer, Kubernetes, Helm, Agent, DevOps
+Tags: Portainer, Kubernetes, Agent, DevOps
 
-Description: Deploy the Portainer Agent on Kubernetes using Helm charts for centralized cluster management from a Portainer server.
+Description: Deploy the Portainer Agent on Kubernetes using the Portainer-provided manifests for centralized cluster management from a Portainer server.
 
 ---
 
-The Portainer Agent for Kubernetes runs as a DaemonSet, deploying a pod on each node to enable volume browsing and other per-node features. Helm is the recommended installation method.
+Installing Portainer Agent on Kubernetes is a legacy option that does not support edge features or policy management. For most use cases, Portainer recommends the Edge Agent. To deploy the standard Kubernetes agent, use the Portainer-provided YAML manifests.
 
 ## Prerequisites
 
-- `helm` v3 installed
 - `kubectl` configured for the target cluster
-- Portainer server accessible from the cluster
+- Cluster Admin rights on the target cluster
+- A running Portainer server instance
+- If Portainer Server uses `AGENT_SECRET`, the same secret must be added to the agent deployment manifest
 
-## Add the Portainer Helm Repository
+## Generate the Portainer Agent Manifest
 
-```bash
-# Add the official Portainer Helm repository
-
-helm repo add portainer https://portainer.github.io/k8s/
-helm repo update
-
-# View available charts
-helm search repo portainer
-```
+1. In Portainer, navigate to **Environments > Add environment**
+2. Select **Kubernetes** and click **Start Wizard**
+3. Under **More options**, select **Agent**
+4. Choose **Kubernetes via load balancer** or **Kubernetes via node port**
+5. Copy the generated `kubectl apply -f ...` command and run it on the control node of your Kubernetes cluster
 
 ## Install the Portainer Agent
 
 ### Standard Agent (for Portainer Agent-based connection)
 
-```bash
-# Create the portainer namespace
-kubectl create namespace portainer
-
-# Install the Portainer Agent
-helm install portainer-agent portainer/portainer-agent \
-  -n portainer \
-  --set env.serverAddress="tcp://portainer.example.com:9001"
-```
+Use the generated Portainer command to apply the agent manifest to your cluster.
 
 ### Edge Agent (for Edge environments)
 
-```bash
-# Install the Edge Agent variant
-helm install portainer-agent portainer/portainer-agent \
-  -n portainer \
-  --create-namespace \
-  --set env.edge.enable=true \
-  --set env.edge.id="YOUR-EDGE-ID" \
-  --set env.edge.key="YOUR-EDGE-KEY" \
-  --set env.edge.insecure=false
-```
+For Kubernetes Edge Agent deployments, create the environment in Portainer using **Kubernetes > Edge Agent Standard**, then copy and run the generated deployment command on your cluster. If your Portainer Server uses a self-signed certificate, enable **Allow self-signed certs** so the generated deployment includes `EDGE_INSECURE_POLL=1`.
 
 ## Verify the Installation
 
 ```bash
-# Check agent pods are running on all nodes
-kubectl get pods -n portainer -l app=portainer-agent
+# Check the agent pod is running
+kubectl get pods --namespace=portainer
 
-# Check the DaemonSet
-kubectl get daemonset -n portainer
+# Check the Deployment
+kubectl get deployment -n portainer portainer-agent
 
 # View agent logs
-kubectl logs -n portainer -l app=portainer-agent --tail=20
+kubectl logs -n portainer deployment/portainer-agent --tail=20
 ```
 
-## Configure Values
+## Configure the Agent Manifest
 
-Create a `values.yaml` for custom configuration:
+If Portainer Server was started with `AGENT_SECRET`, add the same secret to the agent deployment manifest before applying it:
 
 ```yaml
-# values.yaml for Portainer Agent
-image:
-  repository: portainer/agent
-  tag: latest
-
-resources:
-  requests:
-    memory: "64Mi"
-    cpu: "50m"
-  limits:
-    memory: "128Mi"
-    cpu: "100m"
-
-tolerations:
-  # Allow running on master/control-plane nodes
-  - key: node-role.kubernetes.io/master
-    effect: NoSchedule
-  - key: node-role.kubernetes.io/control-plane
-    effect: NoSchedule
+env:
+  - name: AGENT_SECRET
+    value: "yoursecret"
 ```
 
-```bash
-# Install with custom values
-helm install portainer-agent portainer/portainer-agent \
-  -n portainer \
-  -f values.yaml
-```
+Apply the updated manifest after making the change.
 
 ## Add the Kubernetes Environment to Portainer
 
-After agent installation, add the environment to Portainer:
+After agent installation, complete the environment setup in Portainer:
 
-1. In Portainer, navigate to **Environments > Add environment**
-2. Select **Agent**
-3. Enter the agent URL: `tcp://<node-ip>:9001`
-4. Or use the Kubernetes service DNS if Portainer is in the same cluster
+1. Return to the Portainer wizard after running the generated deployment command
+2. Enter a name for the environment
+3. Enter the Kubernetes host or IP address and the appropriate port: `9001` for LoadBalancer or `30778` for NodePort
+4. Do not include a protocol in the environment URL
+5. Add the environment only once for the cluster
 
 ---
 
