@@ -15,6 +15,7 @@ iPXE network booting allows you to install Harvester on multiple servers without
 - A DHCP server on your network
 - An HTTP/TFTP server to host the boot files
 - Servers with network boot (PXE) enabled in BIOS/UEFI
+- At least 8 GiB of RAM per server
 - Harvester ISO and kernel files downloaded
 - Basic knowledge of network configuration
 
@@ -63,9 +64,10 @@ sudo apt-get install -y tftpd-hpa
 # Install iPXE binaries
 sudo apt-get install -y ipxe
 
-# Copy iPXE binaries to the TFTP root
-sudo cp /usr/lib/ipxe/undionly.kpxe /var/lib/tftpboot/
-sudo cp /usr/lib/ipxe/ipxe.efi /var/lib/tftpboot/
+# Use the same TFTP root configured in /etc/default/tftpd-hpa
+sudo mkdir -p /srv/tftp
+sudo cp /usr/lib/ipxe/undionly.kpxe /srv/tftp/
+sudo cp /usr/lib/ipxe/ipxe.efi /srv/tftp/
 
 # Start and enable the TFTP service
 sudo systemctl enable --now tftpd-hpa
@@ -76,31 +78,33 @@ sudo systemctl enable --now tftpd-hpa
 Configure your DHCP server to point clients to the iPXE bootloader. Below is an example using `dnsmasq`:
 
 ```ini
-# /etc/dnsmasq.conf - DHCP and TFTP configuration
+# /etc/dnsmasq.conf - DHCP and PXE boot configuration
 
 # DHCP range
-dhcp-range=192.168.1.100,192.168.1.200,12h
+dhcp-range=192.168.1.110,192.168.1.200,12h
 
-# TFTP server (same host in this example)
-dhcp-boot=tag:!ipxe,undionly.kpxe
+# Default gateway required for Harvester PXE installs
+dhcp-option=option:router,192.168.1.1
 
-# For UEFI clients, serve the EFI bootloader
+# Detect iPXE and UEFI x86_64 clients
+dhcp-userclass=set:ipxe,iPXE
 dhcp-match=set:efi-x86_64,option:client-arch,7
-dhcp-boot=tag:efi-x86_64,ipxe.efi
+
+# Legacy BIOS PXE clients chainload iPXE via TFTP
+dhcp-boot=tag:!ipxe,tag:!efi-x86_64,undionly.kpxe
+
+# UEFI PXE clients chainload iPXE via TFTP
+dhcp-boot=tag:!ipxe,tag:efi-x86_64,ipxe.efi
 
 # Once iPXE is loaded, redirect to the boot script
 dhcp-boot=tag:ipxe,http://192.168.1.50/harvester/boot.ipxe
-
-# Enable TFTP
-enable-tftp
-tftp-root=/var/lib/tftpboot
 ```
 
 ## Step 4: Create the iPXE Boot Script
 
 Create the main iPXE script that Harvester nodes will load:
 
-```bash
+```text
 # /var/www/html/harvester/boot.ipxe
 
 #!ipxe
@@ -113,6 +117,7 @@ echo Booting Harvester ${harvester_version}...
 
 # Kernel and initrd paths
 kernel ${base_url}/harvester-${harvester_version}-vmlinuz-amd64 \
+    initrd=harvester-${harvester_version}-initrd-amd64 \
     ip=dhcp \
     rd.cos.disable \
     root=live:${base_url}/harvester-${harvester_version}-rootfs-amd64.squashfs \
@@ -137,12 +142,8 @@ For unattended (automated) installation, create a configuration YAML:
 
 scheme_version: 1
 
-# Installation settings
-install:
-  # The device to install Harvester OS onto
-  device: /dev/sda
-  # Automatically confirm installation (no interactive prompts)
-  automatic: true
+# Cluster secret shared by all nodes in this Harvester cluster
+token: "your-secret-cluster-token"
 
 os:
   # Hostname for this node
@@ -150,7 +151,7 @@ os:
   # SSH public key for the rancher user
   ssh_authorized_keys:
     - ssh-rsa AAAA... your-public-key-here
-  # Password for the rancher user (hashed)
+  # Password for the rancher user (clear text or encrypted)
   password: "$6$rounds=4096$salt$hash"
   # NTP servers
   ntp_servers:
@@ -160,35 +161,24 @@ os:
     - 8.8.8.8
     - 8.8.4.4
 
-# Network configuration
-network:
-  interfaces:
-    - name: eth0
-      hwAddr: ""
-      mtu: 1500
-  bonds:
-    - name: harvester-mgmt
-      mode: active-backup
-      slaves:
-        - eth0
-  vlans: []
-
-# Harvester cluster settings
-harvester:
+# Installation settings
+install:
+  # Automatically confirm installation (no interactive prompts)
+  automatic: true
   # Mode: create (first node) or join (subsequent nodes)
   mode: create
-  # Management interface for the cluster
+  # Management interface used during installation
   management_interface:
     interfaces:
       - name: eth0
     method: dhcp
-  # Cluster token (shared secret for joining nodes)
-  token: "your-secret-cluster-token"
-  # Virtual IP for the cluster (used for API and UI access)
+  # The device to install Harvester OS onto
+  device: /dev/sda
+  # Full ISO used by the installer when booting from kernel/initrd
+  iso_url: http://192.168.1.50/harvester/v1.3.0/harvester-v1.3.0-amd64.iso
+  # Virtual IP for the cluster management endpoint
   vip: 192.168.1.100
   vip_mode: static
-  # Admin password for the Harvester UI
-  password: "YourAdminPassword"
 ```
 
 ## Step 6: Test the iPXE Boot
@@ -210,26 +200,36 @@ tail -f /var/log/apache2/access.log
 
 For deploying multiple nodes, use different config files per node or use templates with hostname derivation:
 
-```bash
+```yaml
 # /var/www/html/harvester/config-join.yaml
 # Configuration for additional nodes joining the cluster
 
 scheme_version: 1
 
-install:
-  device: /dev/sda
-  automatic: true
+server_url: https://192.168.1.100:443
+token: "your-secret-cluster-token"
 
-harvester:
+os:
+  hostname: harvester-node-02
+  ssh_authorized_keys:
+    - ssh-rsa AAAA... your-public-key-here
+  password: "$6$rounds=4096$salt$hash"
+  dns_nameservers:
+    - 8.8.8.8
+    - 8.8.4.4
+
+install:
+  automatic: true
   mode: join
-  # URL of the first (seed) node
-  server_url: https://192.168.1.100:443
-  token: "your-secret-cluster-token"
   management_interface:
     interfaces:
       - name: eth0
     method: dhcp
+  device: /dev/sda
+  iso_url: http://192.168.1.50/harvester/v1.3.0/harvester-v1.3.0-amd64.iso
 ```
+
+Point joining nodes to this file by using a separate iPXE script or host-specific DHCP rule that changes `harvester.install.config_url` to `http://192.168.1.50/harvester/config-join.yaml`.
 
 ## Troubleshooting
 
@@ -245,7 +245,7 @@ curl -I http://192.168.1.50/harvester/boot.ipxe
 **DHCP not assigning the correct boot file:**
 ```bash
 # Capture DHCP traffic to diagnose
-tcpdump -i eth0 port 67 or port 68 -n
+tcpdump -ni eth0 'port 67 or port 68'
 ```
 
 ## Conclusion
