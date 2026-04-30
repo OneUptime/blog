@@ -12,33 +12,38 @@ Description: Build IPv6 network monitoring tools in Python including availabilit
 import asyncio
 import socket
 import ipaddress
-from datetime import datetime
+from datetime import UTC, datetime
 
 class IPv6Monitor:
-    """Monitor IPv6 host availability with async pings."""
+    """Monitor IPv6 service availability with async TCP checks."""
 
-    def __init__(self, targets: list[str], interval: int = 60):
+    def __init__(self, targets: list[str], port: int = 53, interval: int = 60):
         self.targets = targets
+        self.port = port
         self.interval = interval
         self.results = {}
 
     async def check_host(self, host: str) -> dict:
-        """Check if an IPv6 host is reachable via TCP connect."""
-        start = asyncio.get_event_loop().time()
+        """Check if an IPv6 service is reachable via TCP connect."""
+        loop = asyncio.get_running_loop()
+        start = loop.time()
         try:
             addr = ipaddress.ip_address(host)
-            # TCP connect as reachability check (port 80 or 443)
-            conn = asyncio.open_connection(host, 80,
+            if addr.version != 6:
+                raise ValueError(f"{host} is not an IPv6 address")
+
+            # TCP connect to a known IPv6 service port.
+            conn = asyncio.open_connection(host, self.port,
                                            family=socket.AF_INET6)
             reader, writer = await asyncio.wait_for(conn, timeout=5.0)
-            latency = (asyncio.get_event_loop().time() - start) * 1000
+            latency = (loop.time() - start) * 1000
             writer.close()
             await writer.wait_closed()
             return {"host": host, "up": True, "latency_ms": round(latency, 2),
-                    "timestamp": datetime.utcnow().isoformat()}
-        except (asyncio.TimeoutError, ConnectionRefusedError, OSError) as e:
+                    "timestamp": datetime.now(UTC).isoformat()}
+        except (ValueError, asyncio.TimeoutError, ConnectionRefusedError, OSError) as e:
             return {"host": host, "up": False, "error": str(e),
-                    "timestamp": datetime.utcnow().isoformat()}
+                    "timestamp": datetime.now(UTC).isoformat()}
 
     async def run_once(self) -> dict[str, dict]:
         """Check all targets concurrently."""
@@ -58,8 +63,8 @@ class IPv6Monitor:
 
 # Run monitor
 
-targets = ["2001:4860:4860::8888", "2606:4700:4700::1111", "2001:db8::1"]
-monitor = IPv6Monitor(targets, interval=30)
+targets = ["2001:4860:4860::8888", "2606:4700:4700::1111", "2620:fe::9"]
+monitor = IPv6Monitor(targets, port=53, interval=30)
 asyncio.run(monitor.run_forever())
 ```
 
@@ -71,18 +76,31 @@ import time
 import json
 from collections import defaultdict
 
-def get_ndp_stats(interface: str = None) -> dict:
+def get_ndp_stats(interface: str | None = None) -> dict[str, int]:
     """Collect NDP neighbor statistics."""
     cmd = ["ip", "-6", "-j", "neigh", "show"]
     if interface:
         cmd += ["dev", interface]
 
-    result = subprocess.run(cmd, capture_output=True, text=True)
-    neighbors = json.loads(result.stdout or "[]")
+    try:
+        result = subprocess.run(cmd, capture_output=True, text=True, check=True)
+        neighbors = json.loads(result.stdout or "[]")
+    except (OSError, subprocess.CalledProcessError, json.JSONDecodeError) as e:
+        print(f"Error querying NDP: {e}")
+        return {
+            "total": 0,
+            "reachable": 0,
+            "stale": 0,
+            "failed": 0,
+            "incomplete": 0,
+            "noarp": 0,
+        }
 
     stats = defaultdict(int)
     for n in neighbors:
-        state = n.get("state", ["UNKNOWN"])[0]
+        state = n.get("state", ["UNKNOWN"])
+        if isinstance(state, list):
+            state = state[0]
         stats[state] += 1
 
     return {
@@ -111,17 +129,19 @@ while True:
 ```python
 import subprocess
 import json
-import re
+
+def _prefix_count(value: object) -> int:
+    return value if isinstance(value, int) else 0
 
 def get_frr_bgp_ipv6_sessions() -> list[dict]:
     """Monitor BGP IPv6 sessions using FRR vtysh."""
     try:
         result = subprocess.run(
             ["vtysh", "-c", "show bgp ipv6 unicast summary json"],
-            capture_output=True, text=True, timeout=10
+            capture_output=True, text=True, timeout=10, check=True
         )
         data = json.loads(result.stdout)
-    except (subprocess.TimeoutExpired, json.JSONDecodeError) as e:
+    except (OSError, subprocess.CalledProcessError, subprocess.TimeoutExpired, json.JSONDecodeError) as e:
         print(f"Error querying BGP: {e}")
         return []
 
@@ -131,9 +151,9 @@ def get_frr_bgp_ipv6_sessions() -> list[dict]:
             "peer": peer_ip,
             "as": peer_data.get("remoteAs"),
             "state": peer_data.get("bgpState"),
-            "up_down": peer_data.get("bgpTimerUpEstablishedEpoch"),
-            "prefixes_received": peer_data.get("pfxRcd", 0),
-            "prefixes_sent": peer_data.get("pfxSnt", 0),
+            "established_since_epoch": peer_data.get("bgpTimerUpEstablishedEpoch"),
+            "prefixes_received": _prefix_count(peer_data.get("pfxRcd")),
+            "prefixes_sent": _prefix_count(peer_data.get("pfxSnt")),
         })
 
     return sessions
@@ -142,7 +162,8 @@ def get_frr_bgp_ipv6_sessions() -> list[dict]:
 sessions = get_frr_bgp_ipv6_sessions()
 for s in sessions:
     status = "UP" if s["state"] == "Established" else "DOWN"
-    print(f"BGP peer {s['peer']:40s} AS{s['as']:10d} {status} "
+    remote_as = str(s["as"]) if s["as"] is not None else "?"
+    print(f"BGP peer {s['peer']:40s} AS{remote_as:>10s} {status} "
           f"prefixes_rx={s['prefixes_received']}")
 
 # Alert on non-established sessions
@@ -156,11 +177,74 @@ if down:
 ## Prometheus IPv6 Metrics Exporter
 
 ```python
-from prometheus_client import start_http_server, Gauge, Counter
-import subprocess
 import json
+import subprocess
 import time
-import socket
+from collections import defaultdict
+
+from prometheus_client import Gauge, start_http_server
+
+def get_ndp_stats(interface: str | None = None) -> dict[str, int]:
+    """Collect NDP neighbor statistics."""
+    cmd = ["ip", "-6", "-j", "neigh", "show"]
+    if interface:
+        cmd += ["dev", interface]
+
+    try:
+        result = subprocess.run(cmd, capture_output=True, text=True, check=True)
+        neighbors = json.loads(result.stdout or "[]")
+    except (OSError, subprocess.CalledProcessError, json.JSONDecodeError) as e:
+        print(f"Error querying NDP: {e}")
+        return {
+            "total": 0,
+            "reachable": 0,
+            "stale": 0,
+            "failed": 0,
+            "incomplete": 0,
+            "noarp": 0,
+        }
+
+    stats = defaultdict(int)
+    for n in neighbors:
+        state = n.get("state", ["UNKNOWN"])
+        if isinstance(state, list):
+            state = state[0]
+        stats[state] += 1
+
+    return {
+        "total": len(neighbors),
+        "reachable": stats.get("REACHABLE", 0),
+        "stale": stats.get("STALE", 0),
+        "failed": stats.get("FAILED", 0),
+        "incomplete": stats.get("INCOMPLETE", 0),
+        "noarp": stats.get("NOARP", 0),
+    }
+
+def _prefix_count(value: object) -> int:
+    return value if isinstance(value, int) else 0
+
+def get_frr_bgp_ipv6_sessions() -> list[dict]:
+    """Monitor BGP IPv6 sessions using FRR vtysh."""
+    try:
+        result = subprocess.run(
+            ["vtysh", "-c", "show bgp ipv6 unicast summary json"],
+            capture_output=True, text=True, timeout=10, check=True
+        )
+        data = json.loads(result.stdout)
+    except (OSError, subprocess.CalledProcessError, subprocess.TimeoutExpired, json.JSONDecodeError) as e:
+        print(f"Error querying BGP: {e}")
+        return []
+
+    sessions = []
+    for peer_ip, peer_data in data.get("peers", {}).items():
+        sessions.append({
+            "peer": peer_ip,
+            "as": peer_data.get("remoteAs"),
+            "state": peer_data.get("bgpState"),
+            "prefixes_received": _prefix_count(peer_data.get("pfxRcd")),
+        })
+
+    return sessions
 
 # Define metrics
 ndp_neighbors = Gauge("ipv6_ndp_neighbors_total",
@@ -168,7 +252,7 @@ ndp_neighbors = Gauge("ipv6_ndp_neighbors_total",
 bgp_sessions = Gauge("ipv6_bgp_sessions_up",
                      "Number of established BGP IPv6 sessions")
 bgp_prefixes_rx = Gauge("ipv6_bgp_prefixes_received",
-                         "BGP IPv6 prefixes received", ["peer_as"])
+                         "BGP IPv6 prefixes received", ["peer", "peer_as"])
 
 def collect_ndp_metrics():
     """Collect and export NDP metrics."""
@@ -183,10 +267,13 @@ def collect_bgp_metrics():
     sessions = get_frr_bgp_ipv6_sessions()
     established = sum(1 for s in sessions if s["state"] == "Established")
     bgp_sessions.set(established)
+    bgp_prefixes_rx.clear()
 
     for s in sessions:
         if s["state"] == "Established":
-            bgp_prefixes_rx.labels(peer_as=str(s["as"])).set(s["prefixes_received"])
+            bgp_prefixes_rx.labels(peer=s["peer"], peer_as=str(s["as"])).set(
+                s["prefixes_received"]
+            )
 
 # Start Prometheus exporter on port 9100
 start_http_server(9100)
@@ -200,4 +287,4 @@ while True:
 
 ## Conclusion
 
-Build IPv6 monitoring tools in Python using: `asyncio.open_connection()` with `family=socket.AF_INET6` for async host availability checking, `subprocess` with `ip -6 -j neigh show` (JSON output) for NDP neighbor table monitoring, and `vtysh` JSON output for BGP session state. Export metrics to Prometheus using `prometheus_client` library with `Gauge` metrics for NDP neighbor counts by state and BGP session counts. Set alert thresholds on failed NDP neighbors (indicates routing problems), BGP sessions going non-Established, and prefix count drops greater than 10% from baseline. Use `asyncio.gather()` to check hundreds of IPv6 hosts concurrently without blocking.
+Build IPv6 monitoring tools in Python using: `asyncio.open_connection()` with `family=socket.AF_INET6` for async IPv6 service availability checking over TCP, `subprocess` with `ip -6 -j neigh show` (JSON output) for NDP neighbor table monitoring, and `vtysh` JSON output for BGP session state. Export metrics to Prometheus using `prometheus_client` library with `Gauge` metrics for NDP neighbor counts by state and BGP session counts. Set alert thresholds on failed NDP neighbors (indicates routing problems), BGP sessions going non-Established, and prefix count drops greater than 10% from baseline. Use `asyncio.gather()` to check hundreds of IPv6 hosts concurrently without blocking.
