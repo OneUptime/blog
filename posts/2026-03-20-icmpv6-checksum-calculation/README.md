@@ -8,7 +8,7 @@ Description: Understand how ICMPv6 checksums are calculated using the IPv6 pseud
 
 ## Introduction
 
-ICMPv6 checksums differ from ICMPv4 checksums in one important way: they are mandatory (ICMPv4 checksums are optional for some message types) and they include an IPv6 pseudo-header in the calculation. The pseudo-header binds the ICMPv6 message to its source and destination IPv6 addresses, providing some protection against spoofed messages even without IPsec.
+ICMPv6 checksums differ from ICMPv4 checksums in one important way: they are mandatory and they include an IPv6 pseudo-header in the calculation. Unlike ICMPv4, which does not include a pseudo-header in its checksum, ICMPv6 incorporates IPv6 header fields into the checksum input. This helps protect against misdelivery or corruption of IPv6 header fields that ICMPv6 depends on.
 
 ## The IPv6 Pseudo-Header
 
@@ -124,12 +124,13 @@ def verify_icmpv6_checksum(src_addr: str, dst_addr: str,
                             icmpv6_message: bytes) -> bool:
     """
     Verify ICMPv6 checksum. Returns True if valid.
-    The checksum of the full message (with checksum included) should be 0xFFFF.
+    The one's complement sum of the full message should be 0xFFFF,
+    so this helper returns 0x0000 for a valid packet.
     """
     # Calculate checksum over the message including the existing checksum
     result = calculate_icmpv6_checksum(src_addr, dst_addr, icmpv6_message)
-    # A valid checksum results in 0xFFFF after verification
-    return result == 0xFFFF
+    # A valid checksum results in 0x0000 after verification
+    return result == 0
 
 # Test
 
@@ -148,7 +149,7 @@ print(f"Checksum value: 0x{checksum:04X}")
 
 ## Checksum When Source Address Changes
 
-A subtle issue occurs when ICMPv6 messages are forwarded or NAT64 is applied - the checksum must be recalculated because the source address is part of the checksum input:
+A subtle issue occurs when an intermediary rewrites IPv6 addresses, such as during NAT64 - the checksum must be recalculated because the source and destination addresses are part of the checksum input:
 
 ```python
 def update_icmpv6_checksum_for_new_src(
