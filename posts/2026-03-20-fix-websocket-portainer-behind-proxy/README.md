@@ -4,23 +4,24 @@ Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
 Tags: Portainer, Troubleshooting, WebSocket, Reverse Proxy, Nginx, Traefik, Networking
 
-Description: Learn how to fix WebSocket connection failures in Portainer when deployed behind Nginx, Traefik, or Caddy, enabling the container console and log streaming features.
+Description: Learn how to fix WebSocket connection failures in Portainer when deployed behind Nginx, Traefik, or Caddy, enabling the container console and other interactive shell features.
 
 ---
 
-Portainer uses WebSocket connections for the container console (exec) and real-time log streaming. Standard HTTP reverse proxy configurations do not forward WebSocket upgrade requests, breaking these features.
+Portainer uses WebSocket connections for the container console (exec) and other interactive shell features. If a reverse proxy does not preserve WebSocket upgrade requests, these features break.
 
 ## How WebSocket Proxying Works
 
 A WebSocket connection starts as an HTTP request with an `Upgrade: websocket` header. The proxy must:
 
 1. Forward the `Upgrade` and `Connection` headers
-2. Use HTTP/1.1 (not HTTP/2) for the upgrade handshake
-3. Not buffer the connection (streaming)
+2. For proxies that require an explicit upstream protocol version, use HTTP/1.1 for the upgrade handshake
+3. Allow long-lived connections without short read timeouts
 
 ## Nginx Configuration
 
 ```nginx
+# Place this map in the `http` context, not inside the `server` block.
 map $http_upgrade $connection_upgrade {
     default upgrade;
     ''      close;
@@ -72,30 +73,19 @@ labels:
 
 ```caddy
 portainer.example.com {
-    reverse_proxy portainer:9000 {
-        # Caddy handles WebSocket upgrade automatically
-        # No extra configuration needed for basic WebSocket support
-        flush_interval -1   # Disable buffering for streaming
-    }
+    # Caddy handles WebSocket upgrade automatically
+    reverse_proxy portainer:9000
 }
 ```
 
 ## Testing WebSocket Connectivity
 
-```bash
-# Install wscat
-npm install -g wscat
-
-# Test WebSocket connection to Portainer
-wscat -c wss://portainer.example.com/api/websocket
-
-# Should output: "Connected (press CTRL+C to quit)"
-# If it errors with 400/403, the proxy is not forwarding upgrade headers
-```
+Portainer's console WebSocket URLs are authenticated and include query parameters such as the environment and exec or attach ID. Because of that, testing a guessed endpoint like `/api/websocket` with `wscat` is not a reliable validation method.
 
 ## Verifying in Browser DevTools
 
 Open DevTools Network tab and filter by **WS**. When you open a container console, you should see an entry with:
 
+- Request path: `/api/websocket/exec` or `/api/websocket/attach`
 - Status: `101 Switching Protocols`
 - Type: `websocket`
