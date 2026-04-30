@@ -17,7 +17,7 @@ GCP Assured Workloads creates compliance-controlled environments by restricting 
 
 resource "google_assured_workloads_workload" "fedramp_workload" {
   display_name       = "FedRAMP Moderate Workload"
-  compliance_regime  = "FEDRAMP_MODERATE"
+  compliance_regime  = "DATA_BOUNDARY_FOR_FEDRAMP_MODERATE"
   location           = "us-central1"
   organization       = var.org_id
 
@@ -43,15 +43,15 @@ resource "google_assured_workloads_workload" "fedramp_workload" {
 # Assured Workload for DoD IL4 compliance
 resource "google_assured_workloads_workload" "il4_workload" {
   display_name      = "DoD IL4 Workload"
-  compliance_regime = "IL4"
+  compliance_regime = "DATA_BOUNDARY_FOR_IL4"
   location          = "us-central1"
   organization      = var.org_id
   billing_account   = var.billing_account
 
-  # IL4 requires CMEK with KMS keys
-  kms_settings {
-    next_rotation_time = "2027-01-01T00:00:00.000Z"
-    rotation_period    = "31536000s"  # Annual rotation
+  # IL4 supports optional CMEK, but a standard workload can use a managed folder
+  resource_settings {
+    resource_type = "CONSUMER_FOLDER"
+    display_name  = "DoD IL4 Folder"
   }
 }
 ```
@@ -62,7 +62,7 @@ resource "google_assured_workloads_workload" "il4_workload" {
 # Criminal Justice Information Services compliance
 resource "google_assured_workloads_workload" "cjis_workload" {
   display_name      = "CJIS Law Enforcement Workload"
-  compliance_regime = "CJIS"
+  compliance_regime = "DATA_BOUNDARY_FOR_CJIS"
   location          = "us-central1"
   organization      = var.org_id
   billing_account   = var.billing_account
@@ -79,9 +79,13 @@ resource "google_assured_workloads_workload" "cjis_workload" {
 ## Step 4: Retrieve Workload Resources
 
 ```hcl
-# Output the resources created by Assured Workloads (folder, project, KMS keys)
+# Output the folder resource created for the Assured Workload
 output "workload_folder_id" {
-  value       = google_assured_workloads_workload.fedramp_workload.resources[0].resource_id
+  value = one([
+    for resource in google_assured_workloads_workload.fedramp_workload.resources :
+    resource.resource_id
+    if resource.resource_type == "CONSUMER_FOLDER"
+  ])
   description = "GCP folder ID created for the Assured Workload"
 }
 
@@ -94,13 +98,13 @@ output "workload_compliance_regime" {
 
 | Regime | Standard |
 |--------|----------|
-| `FEDRAMP_MODERATE` | FedRAMP Moderate |
-| `FEDRAMP_HIGH` | FedRAMP High |
-| `IL4` | DoD Impact Level 4 |
-| `CJIS` | Criminal Justice Information Services |
-| `ITAR` | International Traffic in Arms Regulations |
-| `HIPAA` | Health Insurance Portability and Accountability Act |
+| `DATA_BOUNDARY_FOR_FEDRAMP_MODERATE` | FedRAMP Moderate |
+| `DATA_BOUNDARY_FOR_FEDRAMP_HIGH` | FedRAMP High |
+| `DATA_BOUNDARY_FOR_IL4` | DoD Impact Level 4 |
+| `DATA_BOUNDARY_FOR_CJIS` | Criminal Justice Information Services |
+| `DATA_BOUNDARY_FOR_ITAR` | International Traffic in Arms Regulations |
+| `US_DATA_BOUNDARY_FOR_HEALTHCARE_AND_LIFE_SCIENCES` | Healthcare and Life Sciences controls for HIPAA/HITRUST workloads |
 
 ## Summary
 
-GCP Assured Workloads with OpenTofu simplify regulatory compliance by automatically applying data residency controls, personnel access restrictions, and encryption requirements. The workload creates a dedicated folder with appropriate Organization Policies pre-applied for the chosen compliance framework.
+GCP Assured Workloads with OpenTofu simplify regulatory compliance by automatically applying data residency controls, personnel access restrictions, and encryption requirements. The workload applies a control package to a folder and preconfigures the appropriate Organization Policies for the chosen compliance framework.
