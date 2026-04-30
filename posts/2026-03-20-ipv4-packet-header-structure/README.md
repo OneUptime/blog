@@ -38,12 +38,12 @@ The IPv4 header consists of fields arranged in 32-bit (4-byte) rows.
 |---|---|---|
 | Version | 4 bits | IP version (4 for IPv4) |
 | IHL | 4 bits | Header length in 32-bit words |
-| Type of Service | 8 bits | QoS/DSCP priority markings |
+| Type of Service | 8 bits | DSCP/ECN markings (historically TOS) |
 | Total Length | 16 bits | Total packet size in bytes |
 | Identification | 16 bits | Identifies fragments of the same datagram |
-| Flags | 3 bits | Fragmentation control (DF, MF) |
-| Fragment Offset | 13 bits | Position of fragment in original datagram |
-| Time to Live | 8 bits | Hop limit - decremented at each router |
+| Flags | 3 bits | Fragmentation control bits (reserved, DF, MF) |
+| Fragment Offset | 13 bits | Position of fragment in original datagram, in 8-byte units |
+| Time to Live | 8 bits | Packet lifetime; decremented by at least 1 at each router |
 | Protocol | 8 bits | Upper-layer protocol (6=TCP, 17=UDP, 1=ICMP) |
 | Header Checksum | 16 bits | Error detection for the header only |
 | Source Address | 32 bits | Sender's IP address |
@@ -96,10 +96,10 @@ def parse_ipv4_header(raw_bytes):
         "dst":          dst_addr,
     }
 
-# Example: parse a raw packet captured with scapy or socket
+# Example: parse a raw packet captured with scapy or a Linux AF_PACKET socket
 
 # raw = socket.socket(socket.AF_PACKET, socket.SOCK_RAW, ...).recv(65535)
-# header = parse_ipv4_header(raw[14:])  # skip 14-byte Ethernet frame
+# header = parse_ipv4_header(raw[14:])  # if present, skip the 14-byte Ethernet II header
 ```
 
 ## Inspecting Headers with Common Tools
@@ -108,7 +108,7 @@ def parse_ipv4_header(raw_bytes):
 # Capture and display IPv4 header fields with tcpdump
 tcpdump -n -v -i eth0 'ip'
 
-# -v shows TTL, TOS, ID, length, checksum
+# -v shows TTL, TOS, ID, length, and fragmentation details
 # Output example:
 # IP (tos 0x0, ttl 64, id 12345, offset 0, flags [DF],
 #     proto TCP (6), length 60)
@@ -134,4 +134,4 @@ The minimal set of fields a router examines for each packet:
 
 ## Summary
 
-The IPv4 header is a 20-byte fixed structure followed by optional extensions. The most operationally significant fields are the destination address (for routing), TTL (for loop prevention), protocol (to hand off to TCP/UDP/ICMP), and total length (for reassembly). Understanding how to parse these fields - with tools like `tcpdump`, Wireshark, or Python `struct.unpack` - is essential for network debugging and building network-aware applications.
+The IPv4 header has a 20-byte fixed portion and may include optional extensions. The most operationally significant fields are the destination address (for routing), TTL (for loop prevention), protocol (to hand off to TCP/UDP/ICMP), and total length (for reassembly). Understanding how to parse these fields - with tools like `tcpdump`, Wireshark, or Python `struct.unpack` - is essential for network debugging and building network-aware applications.
