@@ -8,7 +8,7 @@ Description: Learn how to diagnose and fix Portainer blank screen or infinite lo
 
 ---
 
-A blank screen or spinner that never resolves in Portainer is one of the most common UI complaints. The root cause is almost always one of three things: a stale browser cache, a corrupted BoltDB database, or a broken WebSocket connection. This guide covers all three.
+A blank screen or spinner that never resolves in Portainer is one of the most common UI complaints. Common causes include a stale browser cache, a corrupted BoltDB database, or a broken WebSocket connection. This guide covers all three.
 
 ## Step 1: Clear Browser Cache and Hard Reload
 
@@ -26,8 +26,8 @@ Also try an incognito/private window to rule out extensions interfering.
 
 Open browser Developer Tools (`F12`) and check the Console and Network tabs:
 
-- `404` on `/api/websocket` → WebSocket path not forwarded by reverse proxy
-- `401 Unauthorized` on `/api/auth/logout` → Expired or invalid JWT
+- `404` on `/api/websocket/...` → Reverse proxy likely is not forwarding the WebSocket path correctly
+- `401 Unauthorized` on `/api/auth/logout` → Session token may be expired or invalid
 - JavaScript errors mentioning `undefined` → Stale cached JS after upgrade
 
 ## Step 3: Check Portainer Container Logs
@@ -36,9 +36,8 @@ Open browser Developer Tools (`F12`) and check the Console and Network tabs:
 # Inspect Portainer server logs for startup errors
 docker logs portainer --tail 100
 
-# Look for lines like:
-# level=error msg="Unable to open database"
-# level=fatal msg="Failed to create JWT service"
+# Look for lines mentioning database open/migration failures
+# or JWT/authentication initialization errors
 ```
 
 ## Step 4: Fix a Corrupted BoltDB Database
@@ -49,30 +48,31 @@ If logs show database errors, the BoltDB file may be corrupt:
 # Stop Portainer
 docker stop portainer
 
-# Back up the existing database
-docker run --rm -v portainer_data:/data alpine \
-  tar czf /tmp/portainer-backup.tar.gz /data
+# Back up the Portainer data volume to the current directory
+docker run --rm -v portainer_data:/data -v "$PWD:/backup" alpine \
+  tar czf /backup/portainer-data-backup.tar.gz -C /data .
 
-# Remove only the corrupted database file, not your stacks
+# Rename the current database so Portainer creates a fresh one
 docker run --rm -v portainer_data:/data alpine \
-  rm /data/portainer.db
+  mv /data/portainer.db /data/portainer.db.corrupt
 
 # Restart Portainer - it will create a fresh database
 docker start portainer
 ```
 
-Note: This resets users and settings but leaves stack definitions intact if you have them in Git.
+Note: Portainer stores users, settings, endpoints, and stack metadata in `/data`. Creating a fresh database resets that state, so use this only if you can restore from backup or redeploy afterward.
 
 ## Step 5: Fix WebSocket Behind a Reverse Proxy
 
 If the blank screen occurs only behind Nginx, ensure WebSocket upgrade headers are forwarded:
 
 ```nginx
-location /api/websocket {
-    proxy_pass http://portainer:9000;
+location /api/websocket/ {
+    proxy_pass http://portainer:9000/api/websocket/;
     proxy_http_version 1.1;
     proxy_set_header Upgrade $http_upgrade;
-    proxy_set_header Connection "Upgrade";
+    proxy_set_header Connection "upgrade";
+    proxy_read_timeout 3600;
 }
 ```
 
