@@ -37,6 +37,8 @@ def explain_prefix(prefix_str: str):
 
     # Expand the address
     expanded = net.network_address.exploded
+    # IPv6 has no broadcast address, so compute the last address directly.
+    last_address = ipaddress.IPv6Address(int(net.network_address) + net.num_addresses - 1)
 
     # Show the prefix bits
     prefix_len = net.prefixlen
@@ -51,10 +53,10 @@ def explain_prefix(prefix_str: str):
     print(f"Host bits:      {128 - prefix_len} bits")
     print(f"Netmask:        {net.netmask}")
     print(f"First address:  {net.network_address}")
-    print(f"Last address:   {net.broadcast_address}")
+    print(f"Last address:   {last_address}")
     print()
-    print(f"Binary (first 64 bits): {prefix_part[:32]}...")
-    print(f"       (network part): {'^' * prefix_len}{' ' * (128-prefix_len-64)}...")
+    print(f"Binary (first 64 bits): {binary[:64]}")
+    print(f"       (network part): {'^' * min(prefix_len, 64)}")
 
 # Examples
 
@@ -104,11 +106,11 @@ for addr_str in test_addresses:
 
 | Compact | Expanded | Prefix bits |
 |---|---|---|
-| `::1/128` | `0000:0000:...0001/128` | 128 |
-| `fe80::1/10` | `1111 1110 10xx...` | 10 |
-| `2001:db8::/32` | `2001:0db8:0000:.../32` | 32 |
-| `fc00::/7` | `1111 110x:...` | 7 |
-| `ff02::1/128` | all multicast bits | 128 |
+| `::1/128` | `0000:0000:0000:0000:0000:0000:0000:0001/128` | 128 |
+| `fe80::1/10` | `fe80:0000:0000:0000:0000:0000:0000:0001/10` | 10 |
+| `2001:db8::/32` | `2001:0db8:0000:0000:0000:0000:0000:0000/32` | 32 |
+| `fc00::/7` | `fc00:0000:0000:0000:0000:0000:0000:0000/7` | 7 |
+| `ff02::1/128` | `ff02:0000:0000:0000:0000:0000:0000:0001/128` | 128 |
 
 ## Longest Prefix Match
 
