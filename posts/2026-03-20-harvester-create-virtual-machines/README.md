@@ -8,7 +8,7 @@ Description: Learn how to create and configure virtual machines in Harvester HCI
 
 ## Introduction
 
-Harvester uses KubeVirt to run virtual machines as Kubernetes-native resources. This means every VM is represented as a `VirtualMachine` custom resource, giving you the flexibility to manage VMs through the Harvester UI, `kubectl`, or infrastructure-as-code tools like Terraform. This guide covers creating VMs using all three approaches.
+Harvester uses KubeVirt to run virtual machines as Kubernetes-native resources. This means every VM is represented as a `VirtualMachine` custom resource, giving you the flexibility to manage VMs through the Harvester UI or `kubectl`. This guide covers creating VMs using the UI, Kubernetes manifests, and Harvester VM templates.
 
 ## Prerequisites
 
@@ -43,21 +43,19 @@ Under the **Volumes** tab:
 - Select **Create New Volume from Image**
 - Choose your uploaded Ubuntu image
 - Set the volume size (e.g., 50 GB)
-- Set the Storage Class (default Longhorn)
+- Harvester uses the StorageClass associated with the selected image
 
 ### Step 4: Configure Networks
 
 Under the **Networks** tab:
-- The management network is added automatically (provides access to the VM)
-- Click **Add Network** to add a VLAN network for VM traffic
+- The management network is added by default and provides in-cluster access to the VM
+- Click **Add Network** to add a VLAN network if the VM needs external or secondary network connectivity
 
 ### Step 5: Configure Cloud-Init (Optional)
 
 Under the **Advanced** tab, add a cloud-init script:
 
 ```yaml
-# Cloud-init user data for Ubuntu
-
 #cloud-config
 users:
   - name: ubuntu
@@ -83,12 +81,29 @@ Click **Create** to create the VM. It will start automatically (default behavior
 
 ## Method 2: Create a VM via kubectl
 
-Define a `VirtualMachine` resource using the KubeVirt API:
+First create a PVC from the uploaded Harvester image, then define a `VirtualMachine` resource that attaches that PVC:
 
 ```yaml
 # ubuntu-vm.yaml
-# VirtualMachine resource for Harvester/KubeVirt
+# Replace image-8rb2z and longhorn-image-8rb2z with your uploaded image ID
+# and the corresponding image-backed StorageClass created by Harvester.
 
+apiVersion: v1
+kind: PersistentVolumeClaim
+metadata:
+  name: ubuntu-web-01-root
+  namespace: default
+  annotations:
+    harvesterhci.io/imageId: default/image-8rb2z
+spec:
+  accessModes:
+    - ReadWriteMany
+  resources:
+    requests:
+      storage: 50Gi
+  storageClassName: longhorn-image-8rb2z
+  volumeMode: Block
+---
 apiVersion: kubevirt.io/v1
 kind: VirtualMachine
 metadata:
@@ -97,8 +112,7 @@ metadata:
   labels:
     app: web
 spec:
-  # Set to true to automatically start the VM
-  running: true
+  runStrategy: RerunOnFailure
   template:
     metadata:
       labels:
@@ -115,6 +129,7 @@ spec:
           requests:
             memory: 8Gi
           limits:
+            cpu: "4"
             memory: 8Gi
         # Machine type - use q35 for modern features
         machine:
@@ -126,7 +141,7 @@ spec:
             - name: rootdisk
               disk:
                 bus: virtio
-            - name: cloudinit
+            - name: cloudinitdisk
               disk:
                 bus: virtio
           # Network interfaces
@@ -147,7 +162,7 @@ spec:
         - name: rootdisk
           persistentVolumeClaim:
             claimName: ubuntu-web-01-root
-        - name: cloudinit
+        - name: cloudinitdisk
           cloudInitNoCloud:
             userData: |
               #cloud-config
@@ -182,7 +197,7 @@ metadata:
   namespace: default
 spec:
   description: "Ubuntu 22.04 LTS - 4 CPU / 8 GB RAM"
-  defaultVersionID: ""
+  defaultVersionId: ""
 ```
 
 Then create a template version with the full spec:
@@ -195,16 +210,42 @@ metadata:
   name: ubuntu-22-04-standard-v1
   namespace: default
 spec:
-  templateID: default/ubuntu-22-04-standard
+  templateId: default/ubuntu-22-04-standard
   vm:
+    metadata:
+      annotations:
+        # Replace image-8rb2z and longhorn-image-8rb2z with your uploaded
+        # image ID and the corresponding image-backed StorageClass.
+        harvesterhci.io/volumeClaimTemplates: |-
+          [{
+            "metadata": {
+              "name": "pvc-rootdisk",
+              "annotations": {
+                "harvesterhci.io/imageId": "default/image-8rb2z"
+              }
+            },
+            "spec": {
+              "accessModes": ["ReadWriteMany"],
+              "resources": {
+                "requests": {
+                  "storage": "50Gi"
+                }
+              },
+              "storageClassName": "longhorn-image-8rb2z",
+              "volumeMode": "Block"
+            }
+          }]
     spec:
-      running: false
+      runStrategy: RerunOnFailure
       template:
         spec:
           domain:
             cpu:
               cores: 4
             resources:
+              limits:
+                cpu: "4"
+                memory: 8Gi
               requests:
                 memory: 8Gi
             machine:
@@ -214,16 +255,31 @@ spec:
                 - name: rootdisk
                   disk:
                     bus: virtio
+                  bootOrder: 1
+                - name: cloudinitdisk
+                  disk:
+                    bus: virtio
               interfaces:
                 - name: default
                   masquerade: {}
+                  model: virtio
           networks:
             - name: default
               pod: {}
           volumes:
             - name: rootdisk
-              dataVolume:
-                name: ""
+              persistentVolumeClaim:
+                claimName: pvc-rootdisk
+            - name: cloudinitdisk
+              cloudInitNoCloud:
+                userData: |
+                  #cloud-config
+                  users:
+                    - name: ubuntu
+                      sudo: ALL=(ALL) NOPASSWD:ALL
+                      shell: /bin/bash
+                      ssh_authorized_keys:
+                        - ssh-rsa AAAA... your-public-key
 ```
 
 ```bash
@@ -238,12 +294,10 @@ kubectl apply -f vm-template-version.yaml
 
 ```bash
 # Start a stopped VM
-kubectl patch vm ubuntu-web-01 --type merge \
-    -p '{"spec":{"running":true}}'
+virtctl start ubuntu-web-01 -n default
 
-# Stop a running VM (graceful shutdown)
-kubectl patch vm ubuntu-web-01 --type merge \
-    -p '{"spec":{"running":false}}'
+# Stop a running VM
+virtctl stop ubuntu-web-01 -n default
 
 # Restart a VM
 virtctl restart ubuntu-web-01 -n default
@@ -252,7 +306,7 @@ virtctl restart ubuntu-web-01 -n default
 kubectl delete vm ubuntu-web-01
 
 # Get detailed VM status
-kubectl describe vmi ubuntu-web-01
+kubectl describe vm ubuntu-web-01
 ```
 
 ## Checking VM Health
@@ -265,8 +319,8 @@ kubectl get vm -A
 kubectl get vmi -A
 
 # Get VM events
-kubectl get events --field-selector \
-    involvedObject.name=ubuntu-web-01 --sort-by='.lastTimestamp'
+kubectl get events -n default --field-selector \
+    involvedObject.name=ubuntu-web-01 --sort-by='.metadata.creationTimestamp'
 ```
 
 ## Conclusion
