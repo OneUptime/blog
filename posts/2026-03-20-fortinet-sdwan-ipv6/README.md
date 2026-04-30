@@ -21,14 +21,20 @@ config system interface
     edit "wan1"
         set mode static
         set ip 203.0.113.1 255.255.255.0
-        set ip6 address 2001:db8:wan1::1/64
         set role wan
+        config ipv6
+            set ip6-mode static
+            set ip6-address 2001:db8:1:1::1/64
+        end
     next
     edit "wan2"
         set mode static
         set ip 198.51.100.1 255.255.255.0
-        set ip6 address 2001:db8:wan2::1/64
         set role wan
+        config ipv6
+            set ip6-mode static
+            set ip6-address 2001:db8:1:2::1/64
+        end
     next
 end
 
@@ -39,14 +45,21 @@ config system sdwan
         edit 1
             set interface "wan1"
             set gateway 203.0.113.254
-            set gateway6 2001:db8:wan1::254
+            set gateway6 2001:db8:1:1::254
         next
         edit 2
             set interface "wan2"
             set gateway 198.51.100.254
-            set gateway6 2001:db8:wan2::254
+            set gateway6 2001:db8:1:2::254
         next
     end
+end
+
+# Add an IPv6 default route to the SD-WAN zone
+config router static6
+    edit 1
+        set sdwan-zone "virtual-wan-link"
+    next
 end
 ```
 
@@ -57,12 +70,16 @@ end
 config system sdwan
     config health-check
         edit "IPv6-Internet-Health"
-            set server "2606:4700:4700::1111"  # Cloudflare DNS IPv6
-            set protocol ping6
-            set interval 1000     # ms
+            set addr-mode ipv6
+            # Cloudflare DNS IPv6
+            set server "2606:4700:4700::1111"
+            set protocol ping
+            # 1000 ms
+            set interval 1000
             set failtime 3
             set recoverytime 5
-            set members 1 2       # Monitor both WAN members
+            # Monitor both WAN members
+            set members 1 2
             set threshold-warning-packetloss 1
             set threshold-alert-packetloss 5
             set threshold-warning-latency 100
@@ -71,7 +88,8 @@ config system sdwan
             set threshold-alert-jitter 50
         next
         edit "IPv6-VoIP-Health"
-            set server "2001:db8::sip-server"
+            set addr-mode ipv6
+            set server "2001:db8:30:5060::10"
             set protocol tcp-echo
             set port 5060
             set interval 500
@@ -93,25 +111,30 @@ config system sdwan
             set addr-mode ipv6
             set src6 "all"
             set dst6 "VoIP-Servers-IPv6"
-            set dscp 0x2e        # EF for VoIP
-            set priority-members 1  # Prefer WAN1 (MPLS)
+            set dscp-forward enable
+            set dscp-forward-tag 46
+            # Prefer WAN1 (MPLS)
+            set priority-members 1
         next
         edit 2
             set name "IPv6-Video-Balanced"
-            set mode load-balance
+            set mode manual
             set addr-mode ipv6
             set src6 "all"
             set dst6 "Video-CDN-IPv6"
-            set load-balance-mode weighted
-            set members 1 2
+            set load-balance enable
+            set hash-mode round-robin
+            set priority-members 1 2
         next
         edit 3
             set name "IPv6-Default-Route"
-            set mode best-quality
+            set mode priority
             set addr-mode ipv6
             set src6 "all"
             set dst6 "all"
-            set quality-link bandwidth
+            set default enable
+            set health-check "IPv6-Internet-Health"
+            set link-cost-factor latency
         next
     end
 end
@@ -125,7 +148,7 @@ config firewall policy
     edit 100
         set name "IPv6-LAN-to-WAN-SDWAN"
         set srcintf "lan"
-        set dstintf "virtual-wan-link"  # SD-WAN interface
+        set dstintf "virtual-wan-link"
         set srcaddr6 "LAN-IPv6-Subnet"
         set dstaddr6 "all"
         set action accept
@@ -141,11 +164,23 @@ end
 config firewall address6
     edit "LAN-IPv6-Subnet"
         set type ipprefix
-        set ip6 2001:db8:lan::/64
+        set ip6 2001:db8:10:100::/64
     next
     edit "VoIP-Servers-IPv6"
         set type ipprefix
-        set ip6 2001:db8:voip::/64
+        set ip6 2001:db8:20:200::/64
+    next
+    edit "Video-CDN-IPv6"
+        set type ipprefix
+        set ip6 2001:db8:30:300::/64
+    next
+end
+
+# Create IPv6 IP pool for NAT66
+config firewall ippool6
+    edit "IPv6-WAN-Pool"
+        set startip 2001:db8:100:1::10
+        set endip 2001:db8:100:1::1f
     next
 end
 ```
@@ -159,18 +194,16 @@ config router bgp
     set router-id 10.0.0.1
 
     config neighbor
-        edit "2001:db8::isp-peer"
+        edit "2001:db8:1:ff::1"
             set remote-as 65001
-            set capability-graceful-restart enable
-            config capability
-                set af-ipv6 enable
-            end
+            set activate6 enable
+            set capability-graceful-restart6 enable
         next
     end
 
     config network6
         edit 1
-            set prefix6 2001:db8:customer::/48
+            set prefix6 2001:db8:1000::/48
         next
     end
 
@@ -193,16 +226,15 @@ diagnose sys sdwan member list
 diagnose sys sdwan service list | grep -i ipv6
 
 # Check health check status
-get router info6 routing-table
-diagnose sys sdwan health-check status IPv6-Internet-Health
+diagnose sys sdwan health-check
 
 # Check IPv6 routes
 get router info6 routing-table
 # or
-diagnose ip6 route list
+diagnose ipv6 route list
 
 # Test IPv6 path from SD-WAN
-execute ping6-options source 2001:db8::fortigate
+execute ping6-options source 2001:db8:1:1::1
 execute ping6 2001:4860:4860::8888
 
 # Monitor SD-WAN IPv6 traffic via Dashboard
@@ -210,4 +242,4 @@ execute ping6 2001:4860:4860::8888
 # Filter: IPv6
 ```
 
-Fortinet SD-WAN IPv6 support requires setting `set addr-mode ipv6` in SD-WAN service rules to match IPv6 traffic, configuring `gateway6` in SD-WAN member interfaces, and creating Performance SLA monitors that probe IPv6 destinations to measure path quality for intelligent IPv6 traffic steering decisions.
+Fortinet SD-WAN IPv6 support requires configuring interface IPv6 settings under `config ipv6`, adding an IPv6 static route that points to the SD-WAN zone, setting `set addr-mode ipv6` in health checks and SD-WAN service rules where IPv6 traffic is matched, configuring `gateway6` in SD-WAN member interfaces, and creating Performance SLA monitors that probe IPv6 destinations to measure path quality for intelligent IPv6 traffic steering decisions.
