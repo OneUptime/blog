@@ -4,11 +4,11 @@ Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
 Tags: GCP, Machine Image, Compute Engine, OpenTofu, Infrastructure, Golden Image
 
-Description: Learn how to create GCP Machine Images with OpenTofu to capture complete VM state including all disks and configuration for cloning and disaster recovery.
+Description: Learn how to create GCP Machine Images with OpenTofu to capture VM configuration and data from multiple disks for instance cloning and disaster recovery.
 
 ## Overview
 
-GCP Machine Images capture the complete state of a Compute Engine instance, including all attached disks, metadata, and configuration. Unlike snapshots (single disk), machine images can capture multi-disk VMs and serve as golden image sources for new instances.
+GCP Machine Images store a Compute Engine instance's configuration, metadata, permissions, and data from multiple disks. Unlike snapshots, which back up a single disk at a time, machine images can capture multi-disk VMs and serve as sources for cloned instances.
 
 ## Step 1: Create a Machine Image from an Existing VM
 
@@ -16,6 +16,7 @@ GCP Machine Images capture the complete state of a Compute Engine instance, incl
 # main.tf - Source VM to create a machine image from
 
 resource "google_compute_instance" "source_vm" {
+  provider     = google-beta
   name         = "golden-image-source"
   machine_type = "e2-medium"
   zone         = "us-central1-a"
@@ -35,21 +36,20 @@ resource "google_compute_instance" "source_vm" {
   metadata_startup_script = <<-SCRIPT
     #!/bin/bash
     apt-get update
-    apt-get install -y nginx python3 pip
-    pip3 install flask gunicorn
+    apt-get install -y nginx python3 python3-flask gunicorn
     systemctl enable nginx
   SCRIPT
 }
 
 # Create a machine image from the configured VM
 resource "google_compute_machine_image" "golden_image" {
-  name        = "golden-app-image-v1"
-  description = "Golden image with nginx and Python app stack"
+  provider        = google-beta
+  name            = "golden-app-image-v1"
+  description     = "Golden image with nginx and Python app stack"
   source_instance = google_compute_instance.source_vm.self_link
 
-  # Machine image is regional - specifies where image data is stored
+  # Optionally encrypt the machine image with a CMEK key
   machine_image_encryption_key {
-    # Optionally encrypt with a CMEK key
     kms_key_name = google_kms_crypto_key.image_key.id
   }
 }
@@ -59,7 +59,8 @@ resource "google_compute_machine_image" "golden_image" {
 
 ```hcl
 # Create a new VM from the machine image
-resource "google_compute_instance" "vm_from_image" {
+resource "google_compute_instance_from_machine_image" "vm_from_image" {
+  provider     = google-beta
   name         = "app-server-from-image"
   machine_type = "e2-medium"
   zone         = "us-central1-b"
@@ -84,6 +85,7 @@ resource "google_compute_instance" "vm_from_image" {
 ```hcl
 # Source VM with multiple disks
 resource "google_compute_instance" "multi_disk_source" {
+  provider     = google-beta
   name         = "multi-disk-source"
   machine_type = "n2-standard-4"
   zone         = "us-central1-a"
@@ -108,14 +110,16 @@ resource "google_compute_instance" "multi_disk_source" {
 }
 
 resource "google_compute_disk" "data_disk" {
-  name = "app-data-disk"
-  type = "pd-ssd"
-  zone = "us-central1-a"
-  size = 200
+  provider = google-beta
+  name     = "app-data-disk"
+  type     = "pd-ssd"
+  zone     = "us-central1-a"
+  size     = 200
 }
 
-# Machine image captures ALL disks (boot + data)
+# Machine image captures both attached persistent disks (boot + data)
 resource "google_compute_machine_image" "complete_image" {
+  provider        = google-beta
   name            = "complete-app-image"
   source_instance = google_compute_instance.multi_disk_source.self_link
 }
@@ -132,4 +136,4 @@ output "machine_image_self_link" {
 
 ## Summary
 
-GCP Machine Images with OpenTofu enable golden image workflows where you configure one VM, capture it as a machine image, and then create multiple identical instances from it. Unlike disk snapshots, machine images capture the entire VM state including all disks, making them ideal for complete environment cloning and DR recovery.
+GCP Machine Images with OpenTofu enable instance-cloning workflows where you configure one VM, capture it as a machine image, and then create new instances with most of the same configuration. Unlike disk snapshots, machine images store VM configuration plus data from multiple disks, making them useful for multi-disk backup, cloning, and DR recovery.
