@@ -8,7 +8,7 @@ Description: Learn how to diagnose and fix invalid provider configuration errors
 
 ## Introduction
 
-"Error: Invalid provider configuration" surfaces when the provider block contains wrong attribute types, missing required fields, or references to undefined variables. It can also appear when using `provider` meta-arguments that reference an alias that does not exist.
+"Error: Invalid provider configuration" often surfaces when the provider block contains wrong attribute types or missing required fields. Related provider setup failures can also appear when provider arguments depend on unset input variables or when `provider` meta-arguments reference an alias that does not exist.
 
 ## Common Error Forms
 
@@ -23,7 +23,7 @@ Error: No value for required variable
   Use a -var or -var-file command line argument to provide a value for this variable.
 
 Error: Unsupported argument
-  An argument named "assume_role" is not expected here. Did you mean "assume_role_arn"?
+  An argument named "assume_role_arn" is not expected here.
 ```
 
 ## Fix 1: Add Required Provider Arguments
@@ -31,7 +31,7 @@ Error: Unsupported argument
 Check the provider's documentation for required arguments:
 
 ```hcl
-# WRONG - missing required region
+# WRONG when no region is configured elsewhere
 
 provider "aws" {}
 
@@ -87,10 +87,15 @@ resource "aws_instance" "west" {
 
 ## Fix 4: Passing Provider to a Module
 
-If a module uses a non-default provider, you must pass it explicitly:
+If a module should use a non-default provider configuration, you must pass it explicitly:
 
 ```hcl
-# WRONG - module uses aws.west but it's not passed
+provider "aws" {
+  alias  = "us-west-2"
+  region = "us-west-2"
+}
+
+# WRONG - module should use the west-region provider, but it's not passed
 module "west_vpc" {
   source = "./modules/vpc"
 }
@@ -106,7 +111,7 @@ module "west_vpc" {
 
 ## Fix 5: Variable Used in Provider Config Not Set
 
-Provider configurations are evaluated before variables are fully resolved. Use `TF_VAR_` or `-var` flags:
+Provider configurations can reference input variables, but required variable values still must be set. Use `TF_VAR_` or `-var` flags:
 
 ```hcl
 variable "aws_region" {
@@ -129,10 +134,10 @@ tofu plan
 ## Validating Provider Configuration
 
 ```bash
-# Run validate to catch configuration errors before plan
+# Run validate in an initialized working directory to catch configuration errors before plan
 tofu validate
 
-# Check which providers are configured
+# Check which providers the configuration requires
 tofu providers
 ```
 
