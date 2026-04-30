@@ -13,6 +13,7 @@ The Horizontal Pod Autoscaler (HPA) automatically adjusts the number of pod repl
 ## Prerequisites
 
 - Portainer connected to a Kubernetes cluster
+- An existing namespace to deploy into (the examples below use `production`)
 - Metrics Server installed in the cluster (required for CPU/memory-based HPA)
 
 ```bash
@@ -23,7 +24,7 @@ kubectl apply -f https://github.com/kubernetes-sigs/metrics-server/releases/late
 
 ## Step 1: Deploy a Scalable Application
 
-In Portainer, go to **Kubernetes > Advanced Deployment** and apply:
+In Portainer, go to **Applications > Create from code**, choose **Manifest**, select the `production` namespace, and apply:
 
 ```yaml
 # web-deployment.yaml
@@ -48,7 +49,7 @@ spec:
           ports:
             - containerPort: 8080
           resources:
-            # Resource requests are required for CPU-based HPA
+            # Resource requests are required for utilization-based HPA targets
             requests:
               cpu: "250m"
               memory: "256Mi"
@@ -59,7 +60,7 @@ spec:
 
 ## Step 2: Create an HPA for CPU Scaling
 
-Apply the following HPA manifest via Portainer's manifest editor:
+Apply the following HPA manifest via Portainer's **Create from code** workflow:
 
 ```yaml
 # web-api-hpa.yaml
@@ -94,7 +95,7 @@ spec:
 
 ## Step 3: Custom Metrics HPA
 
-For application-level metrics (requests per second, queue depth), use a custom metrics API provider:
+For application-level metrics (requests per second, queue depth), use a metrics adapter that exposes the appropriate custom or external metrics API. The example below uses an external metric:
 
 ```yaml
 # custom-metrics-hpa.yaml
@@ -126,13 +127,13 @@ spec:
 
 ## Step 4: Monitor HPA Status in Portainer
 
-View the HPA resource in Portainer under **Kubernetes > Namespaces > production > HPA** to see:
+Use Portainer's **kubectl shell** to inspect HPA status and see:
 
 - Current vs desired replica count
 - Current metric values vs targets
 - Recent scaling events
 
-You can also check via the Portainer terminal:
+Run:
 
 ```bash
 kubectl get hpa -n production
