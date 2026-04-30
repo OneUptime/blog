@@ -4,7 +4,7 @@ Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
 Tags: AWS, High Availability, OpenTofu, Multi-AZ, Auto Scaling, Load Balancer
 
-Description: Learn how to deploy highly available applications on AWS using OpenTofu with multi-AZ deployment, Auto Scaling Groups, health checks, and circuit breakers.
+Description: Learn how to deploy highly available applications on AWS using OpenTofu with multi-AZ deployment, Auto Scaling Groups, health checks, and rolling instance refreshes.
 
 ## Overview
 
@@ -22,14 +22,14 @@ module "vpc" {
   name = "ha-app-vpc"
   cidr = "10.0.0.0/16"
 
-  # Span all 3 AZs in the region
-  azs             = data.aws_availability_zones.available.names
+  # Use the first 3 available AZs in the region
+  azs             = slice(data.aws_availability_zones.available.names, 0, 3)
   private_subnets = ["10.0.1.0/24", "10.0.2.0/24", "10.0.3.0/24"]
   public_subnets  = ["10.0.101.0/24", "10.0.102.0/24", "10.0.103.0/24"]
 
   # One NAT Gateway per AZ for HA outbound traffic
-  enable_nat_gateway   = true
-  single_nat_gateway   = false  # Critical for HA
+  enable_nat_gateway     = true
+  single_nat_gateway     = false  # Critical for HA
   one_nat_gateway_per_az = true
 
   enable_dns_hostnames = true
@@ -81,7 +81,7 @@ resource "aws_autoscaling_group" "ha_app" {
     }
   }
 
-  # Deployment strategy with circuit breaker
+  # Rolling instance refresh during updates
   instance_refresh {
     strategy = "Rolling"
     preferences {
@@ -102,8 +102,8 @@ resource "aws_lb" "ha_app" {
   security_groups    = [aws_security_group.alb.id]
   subnets            = module.vpc.public_subnets
 
-  enable_deletion_protection = true
-  enable_cross_zone_load_balancing = true  # Default: enabled
+  enable_deletion_protection       = true
+  enable_cross_zone_load_balancing = true  # ALBs always use cross-zone load balancing
 }
 
 resource "aws_lb_target_group" "app" {
@@ -129,11 +129,13 @@ resource "aws_lb_target_group" "app" {
 ## Step 4: Auto Scaling Policy
 
 ```hcl
-# Scale out when CPU > 70%
+# Target 70% average CPU utilization
 resource "aws_autoscaling_policy" "scale_out" {
   name                   = "scale-out"
   autoscaling_group_name = aws_autoscaling_group.ha_app.name
   policy_type            = "TargetTrackingScaling"
+
+  estimated_instance_warmup = 300
 
   target_tracking_configuration {
     predefined_metric_specification {
@@ -142,13 +144,11 @@ resource "aws_autoscaling_policy" "scale_out" {
 
     target_value = 70.0
 
-    # Scale in slowly to avoid flapping
-    customized_scaling_in_cooldown  = 300
-    disable_scale_in               = false
+    disable_scale_in = false
   }
 }
 ```
 
 ## Summary
 
-Highly available applications on AWS built with OpenTofu deploy across all three AZs with a minimum of one instance per AZ, ensuring zone failures do not cause downtime. One NAT Gateway per AZ prevents a single NAT Gateway from becoming a single point of failure for private subnet outbound traffic. The ALB health check with a readiness endpoint ensures traffic only routes to fully initialized instances, and the instance refresh with a 90% minimum healthy percentage prevents deployment-time outages.
+Highly available applications on AWS built with OpenTofu can span three AZs so a single-AZ failure does not take down the entire fleet, provided the remaining AZs have enough healthy capacity. One NAT Gateway per AZ prevents a single NAT Gateway from becoming a single point of failure for private subnet outbound traffic. The ALB health check with a readiness endpoint helps keep traffic on healthy instances during normal operation, and the instance refresh with a 90% minimum healthy percentage reduces deployment-time disruption.
