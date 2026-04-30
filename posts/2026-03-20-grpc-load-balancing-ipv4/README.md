@@ -18,19 +18,17 @@ import (
     "time"
 
     "google.golang.org/grpc"
-    "google.golang.org/grpc/balancer/roundrobin"
     "google.golang.org/grpc/credentials/insecure"
-    "google.golang.org/grpc/resolver"
     pb "example.com/hello"
 )
 
 func main() {
-    // Static IP list resolver for demo
-    // In production use DNS resolver with multiple A records
+    // DNS-based service discovery: a headless Service can return multiple pod IPs.
+    // round_robin tells the client to connect to all resolved addresses and rotate RPCs.
     conn, err := grpc.NewClient(
         "dns:///greeter.default.svc.cluster.local:50051",
         grpc.WithTransportCredentials(insecure.NewCredentials()),
-        grpc.WithDefaultServiceConfig(`{"loadBalancingPolicy":"round_robin"}`),
+        grpc.WithDefaultServiceConfig(`{"loadBalancingConfig": [{"round_robin":{}}]}`),
     )
     if err != nil {
         log.Fatal(err)
@@ -58,7 +56,7 @@ import grpc
 import hello_pb2
 import hello_pb2_grpc
 
-# DNS-based round-robin: resolve all A records and balance across them
+# Load balancing takes effect when DNS returns multiple A records for this name.
 
 channel = grpc.insecure_channel(
     "dns:///greeter.default.svc.cluster.local:50051",
@@ -77,7 +75,7 @@ for _ in range(5):
 ## Nginx: Server-Side gRPC Load Balancer
 
 ```nginx
-# Nginx 1.13.10+ supports gRPC proxying natively
+# gRPC proxying is available in Nginx 1.13.10+; this snippet uses current HTTP/2 syntax.
 upstream grpc_backends {
     least_conn;
     server 10.0.0.1:50051;
@@ -87,7 +85,8 @@ upstream grpc_backends {
 }
 
 server {
-    listen 50051 http2;
+    listen 50051;
+    http2 on;
 
     location / {
         grpc_pass grpc://grpc_backends;
@@ -128,8 +127,8 @@ nslookup greeter.default.svc.cluster.local
 → 10.244.3.12
 ```
 
-The gRPC client resolves all A records and round-robins across them with `round_robin` policy.
+A gRPC client configured with `round_robin` connects to the resolved addresses and rotates RPCs across them.
 
 ## Conclusion
 
-gRPC load balancing works at the application layer (HTTP/2 multiplexing), which is invisible to TCP-level load balancers. Use the `round_robin` load balancing policy with DNS resolution to distribute across all pod IPs from a Kubernetes headless Service. For server-side load balancing, configure Nginx with `grpc_pass` or use Envoy, which is the standard data plane in service meshes. Avoid ClusterIP services for gRPC unless you use a Layer-7 proxy, because TCP connections are long-lived and a single connection will always land on the same pod.
+Per-RPC gRPC load balancing happens in the client or a Layer-7 proxy. A TCP-level load balancer can spread connections, but it does not see individual RPCs inside a long-lived HTTP/2 connection. Use the `round_robin` load balancing policy with DNS resolution to distribute across the pod IPs returned by a Kubernetes headless Service. For server-side load balancing, configure Nginx with `grpc_pass` or use Envoy, which is the standard data plane in many service meshes. A Kubernetes `ClusterIP` Service still balances new TCP connections, but a long-lived gRPC client connection will typically keep sending RPCs to the same backend until it reconnects.
