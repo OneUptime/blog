@@ -8,7 +8,7 @@ Description: Configure policy-based routing on Linux using ip rule to direct tra
 
 ## Introduction
 
-`ip rule` manages the policy routing database - a list of rules evaluated in priority order. Each rule specifies a match condition (source IP, fwmark, etc.) and which routing table to consult. Rules run before the main routing table, enabling per-source routing, VPN split tunneling, and multi-homing.
+`ip rule` manages the policy routing database - a list of rules evaluated in priority order. Each rule specifies a match condition (source IP, fwmark, etc.) and which routing table to consult. The built-in `main` table rule is normally priority `32766`, so custom rules with lower priority numbers are consulted before it, enabling per-source routing, VPN split tunneling, and multi-homing.
 
 ## Show All Rules
 
@@ -63,12 +63,12 @@ ip rule add iif eth1 table 200
 
 ```bash
 # Table 100 routes (used for source 10.0.0.100)
-ip route add default via 10.0.0.1 table 100
 ip route add 10.0.0.0/24 dev eth0 table 100
+ip route add default via 10.0.0.1 dev eth0 table 100
 
 # Table 200 routes
-ip route add default via 10.0.1.1 table 200
 ip route add 10.0.1.0/24 dev eth1 table 200
+ip route add default via 10.0.1.1 dev eth1 table 200
 ```
 
 ## Verify Rule and Route Are Working
@@ -95,8 +95,7 @@ ip rule del from 10.0.0.100/32 table 100 priority 100
 
 ```bash
 # Lower number = higher priority
-# 0 = highest (checked first)
-# 32767 = lowest
+# The built-in rules are typically 0 (local), 32766 (main), and 32767 (default)
 
 # Insert high-priority rule
 ip rule add from 10.0.0.100 table 100 priority 10
@@ -107,7 +106,8 @@ ip rule add from 10.0.0.100 table 100 priority 10
 ## Make Rules Persistent
 
 ```bash
-# Add to /etc/rc.local or use Netplan/nmcli/systemd-networkd routing-policy
+# Persist the equivalent configuration in startup or network config
+# (for example, /etc/rc.local, Netplan, NetworkManager via nmcli, or systemd-networkd)
 ```
 
 ## Conclusion
