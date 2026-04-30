@@ -15,13 +15,13 @@ This guide covers structuring your repository for Kustomize, configuring Fleet t
 ## Prerequisites
 
 - Fleet installed in Rancher
-- `kubectl` access to Fleet manager
+- `kubectl` access to the Fleet manager cluster
 - Basic knowledge of Kustomize
 - A Git repository with Kubernetes manifests
 
 ## Understanding Fleet's Kustomize Support
 
-Fleet automatically detects Kustomize directories by looking for a `kustomization.yaml` file. When found, Fleet runs `kustomize build` on the directory before applying the resulting manifests. No additional configuration is needed - it just works.
+Fleet automatically detects Kustomize directories by looking for a `kustomization.yaml` file. When found, Fleet renders the directory with Kustomize before applying the resulting manifests. No additional configuration is needed - it just works.
 
 ## Setting Up a Kustomize Repository Structure
 
@@ -107,7 +107,7 @@ apiVersion: kustomize.config.k8s.io/v1beta1
 kind: Kustomization
 
 # Reference the base
-bases:
+resources:
   - ../../base
 
 # Development-specific namespace
@@ -119,8 +119,8 @@ images:
     newTag: "dev-latest"
 
 # Patches for development resources
-patchesStrategicMerge:
-  - patches/deployment-patch.yaml
+patches:
+  - path: patches/deployment-patch.yaml
 ```
 
 ```yaml
@@ -153,8 +153,10 @@ spec:
 apiVersion: kustomize.config.k8s.io/v1beta1
 kind: Kustomization
 
-bases:
+resources:
   - ../../base
+  - hpa.yaml
+  - poddisruptionbudget.yaml
 
 namespace: my-app-prod
 
@@ -162,13 +164,8 @@ images:
   - name: my-registry/my-app
     newTag: "v1.2.0"  # Pinned release version
 
-patchesStrategicMerge:
-  - patches/deployment-patch.yaml
-
-# Add production-specific resources
-resources:
-  - hpa.yaml
-  - poddisruptionbudget.yaml
+patches:
+  - path: patches/deployment-patch.yaml
 ```
 
 ```yaml
@@ -206,8 +203,8 @@ spec:
 namespace: my-app-prod
 
 # No special kustomize config needed - Fleet detects it automatically
-# But you can specify targets here
-targets:
+# But you can override targets here
+overrideTargets:
   - name: production-clusters
     clusterSelector:
       matchLabels:
@@ -243,10 +240,10 @@ For more precise patches, use JSON patches:
 apiVersion: kustomize.config.k8s.io/v1beta1
 kind: Kustomization
 
-bases:
+resources:
   - ../../base
 
-patchesJson6902:
+patches:
   # Patch the deployment replica count
   - target:
       group: apps
@@ -258,10 +255,10 @@ patchesJson6902:
         path: /spec/replicas
         value: 3
       - op: add
-        path: /spec/template/spec/containers/0/env/-
+        path: /spec/template/spec/containers/0/env
         value:
-          name: ENVIRONMENT
-          value: production
+          - name: ENVIRONMENT
+            value: production
 ```
 
 ## Verifying Kustomize Deployments
