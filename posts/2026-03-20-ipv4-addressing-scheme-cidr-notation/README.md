@@ -78,8 +78,12 @@ ipcalc 10.100.1.0/24
 # Hosts/Net: 254
 
 # Find the right subnet size for 30 hosts
-ipcalc -n --hosts 30
-# Recommends /27 (30 usable hosts)
+# /27 provides 32 total addresses and 30 usable hosts
+ipcalc 10.100.1.0/27
+# Network:   10.100.1.0/27
+# HostMin:   10.100.1.1
+# HostMax:   10.100.1.30
+# Hosts/Net: 30
 ```
 
 ## Step 4: Reserve Ranges
@@ -88,8 +92,8 @@ Always reserve space for growth:
 
 ```text
 10.0.0.0/8 allocation plan:
-10.1.0.0/16 – 10.50.0.0/16   : Office sites (50 sites × /16 each)
-10.100.0.0/16 – 10.110.0.0/16: Data centers
+10.0.0.0/10                   : Office sites (50 sites × /16 each, with headroom)
+10.96.0.0/12                  : Data centers (11 × /16 each, with headroom)
 10.200.0.0/16                 : Cloud VPCs
 10.250.0.0/16                 : VPN ranges
 10.255.0.0/16                 : Management / OOB
@@ -104,7 +108,7 @@ cat > ip-plan.md << 'EOF'
 
 ## Summary Block: 10.0.0.0/8
 
-### Sites (10.0.0.0/13 = 10.0.0.0 - 10.7.255.255)
+### Sites (10.0.0.0/10 = 10.0.0.0 - 10.63.255.255)
 - 10.1.0.0/16: New York office
 - 10.2.0.0/16: London office
 
@@ -113,7 +117,7 @@ cat > ip-plan.md << 'EOF'
 - .2.0/24: Workstation VLAN
 - .3.0/24: Management VLAN
 
-### Data Centers (10.100.0.0/14)
+### Data Centers (10.96.0.0/12 = 10.96.0.0 - 10.111.255.255)
 - 10.100.0.0/16: NYC-DC1
 - 10.101.0.0/16: NYC-DC2
 EOF
