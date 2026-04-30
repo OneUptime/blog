@@ -8,7 +8,7 @@ Description: Learn how to take, manage, and restore virtual machine snapshots in
 
 ## Introduction
 
-VM snapshots in Harvester capture the state of a VM's disks at a specific point in time. Snapshots are useful before applying OS updates, configuration changes, or software upgrades - if something goes wrong, you can quickly revert to the pre-change state. Harvester uses Longhorn's snapshot technology to create space-efficient, copy-on-write snapshots stored on the same cluster storage.
+VM snapshots in Harvester capture the state of a VM and its snapshot-capable disks at a specific point in time. Snapshots are useful before applying OS updates, configuration changes, or software upgrades - if something goes wrong, you can quickly revert to the pre-change state. Harvester uses KubeVirt VM snapshots backed by Kubernetes `VolumeSnapshot` objects on Longhorn storage, so snapshots remain space-efficient and stay on the same cluster storage. To snapshot VM disks, the backing `StorageClass` must have a matching `VolumeSnapshotClass`. For running VMs, install the QEMU Guest Agent if you want filesystem-consistent snapshots; otherwise the snapshot is best-effort.
 
 ## Snapshot vs. Backup
 
@@ -24,7 +24,7 @@ VM snapshots in Harvester capture the state of a VM's disks at a specific point 
 
 1. Navigate to **Virtual Machines**
 2. Find the VM you want to snapshot
-3. Click the **⋮** (Actions) menu → **Take Snapshot**
+3. Click the **⋮** (Actions) menu → **Take VM Snapshot**
 4. Provide a snapshot name and optional description
 5. Click **Create**
 
@@ -37,7 +37,7 @@ The snapshot appears in the **VM Snapshots** section of the VM details.
 
 # Take a snapshot of a VM
 
-apiVersion: snapshot.kubevirt.io/v1alpha1
+apiVersion: snapshot.kubevirt.io/v1beta1
 kind: VirtualMachineSnapshot
 metadata:
   name: ubuntu-web-01-before-upgrade
@@ -54,13 +54,14 @@ spec:
 kubectl apply -f vm-snapshot.yaml
 
 # Watch the snapshot creation progress
-kubectl get virtualmachinesnapshot ubuntu-web-01-before-upgrade -n default -w
+kubectl get vmsnapshot ubuntu-web-01-before-upgrade -n default -w
 
-# A snapshot is ready when:
-# READY: true
-# PHASE: Succeeded
+# A snapshot is ready when the Ready condition is true
+kubectl wait vmsnapshot/ubuntu-web-01-before-upgrade -n default \
+    --for=condition=Ready --timeout=300s
+
 kubectl get vmsnapshot ubuntu-web-01-before-upgrade -n default \
-    -o jsonpath='{.status.phase}'
+    -o jsonpath='{.status.phase}{"\n"}'
 ```
 
 ## Step 3: List Snapshots
@@ -70,15 +71,15 @@ kubectl get vmsnapshot ubuntu-web-01-before-upgrade -n default \
 kubectl get virtualmachinesnapshot -n default
 
 # List snapshots for a specific VM
-kubectl get virtualmachinesnapshot -n default \
-    --field-selector spec.source.name=ubuntu-web-01
+kubectl get vmsnapshot -n default -o json | jq -r \
+    '.items[] | select(.spec.source.name=="ubuntu-web-01") | .metadata.name'
 
 # Get detailed snapshot information
 kubectl describe virtualmachinesnapshot ubuntu-web-01-before-upgrade -n default
 
-# Check snapshot size and contents
+# Check snapshot status and included volumes
 kubectl get virtualmachinesnapshot ubuntu-web-01-before-upgrade -n default \
-    -o jsonpath='{.status}' | jq .
+    -o json | jq '.status'
 ```
 
 ## Step 4: Restore a VM from a Snapshot
@@ -89,7 +90,7 @@ kubectl get virtualmachinesnapshot ubuntu-web-01-before-upgrade -n default \
 # vm-restore-inplace.yaml
 # Restore a VM to a snapshot state
 
-apiVersion: snapshot.kubevirt.io/v1alpha1
+apiVersion: snapshot.kubevirt.io/v1beta1
 kind: VirtualMachineRestore
 metadata:
   name: ubuntu-web-01-restore
@@ -102,28 +103,22 @@ spec:
     name: ubuntu-web-01
   # Source snapshot to restore from
   virtualMachineSnapshotName: ubuntu-web-01-before-upgrade
+  # Stop the target VM automatically if it is still running
+  targetReadinessPolicy: StopTarget
+  # Keep restored volume names aligned with the original VM
+  volumeRestorePolicy: InPlace
 ```
 
 ```bash
-# The VM must be stopped before restoring
-kubectl patch vm ubuntu-web-01 -n default \
-    --type merge \
-    -p '{"spec":{"running":false}}'
-
-# Wait for the VM to stop
-kubectl wait vmi/ubuntu-web-01 -n default \
-    --for delete --timeout=60s
-
 # Apply the restore
 kubectl apply -f vm-restore-inplace.yaml
 
-# Watch restore progress
-kubectl get virtualmachinerestore ubuntu-web-01-restore -n default -w
+# Wait for the restore to complete
+kubectl wait vmrestore/ubuntu-web-01-restore -n default \
+    --for=condition=Ready --timeout=300s
 
-# Once complete, start the VM
-kubectl patch vm ubuntu-web-01 -n default \
-    --type merge \
-    -p '{"spec":{"running":true}}'
+# If the VM is not running after the restore, start it
+virtctl start ubuntu-web-01
 ```
 
 ### Restore to a New VM
@@ -132,7 +127,7 @@ kubectl patch vm ubuntu-web-01 -n default \
 # vm-restore-new.yaml
 # Create a new VM from a snapshot
 
-apiVersion: snapshot.kubevirt.io/v1alpha1
+apiVersion: snapshot.kubevirt.io/v1beta1
 kind: VirtualMachineRestore
 metadata:
   name: ubuntu-web-01-clone
@@ -149,22 +144,23 @@ spec:
 ```bash
 kubectl apply -f vm-restore-new.yaml
 
-# The new VM will be created with the snapshot data
+# Wait for the new VM to be created from the snapshot
+kubectl wait vmrestore/ubuntu-web-01-clone -n default \
+    --for=condition=Ready --timeout=300s
+
 kubectl get vm ubuntu-web-01-clone -n default
 
-# Start the new VM
-kubectl patch vm ubuntu-web-01-clone -n default \
-    --type merge \
-    -p '{"spec":{"running":true}}'
+# If the restored VM is not running, start it
+virtctl start ubuntu-web-01-clone
 ```
 
 ## Step 5: Automate Snapshots with Recurring Jobs
 
-For regular automatic snapshots, use Longhorn recurring jobs:
+For regular automatic snapshots of the Longhorn volumes backing a VM, use Longhorn recurring jobs. These create Longhorn volume snapshots, not Harvester VM snapshots.
 
 ```yaml
 # recurring-snapshot-job.yaml
-# Take daily snapshots of all VM volumes with retention of 7
+# Take daily snapshots with retention of 7
 
 apiVersion: longhorn.io/v1beta2
 kind: RecurringJob
@@ -175,8 +171,6 @@ spec:
   # Cron expression: daily at 2:00 AM
   cron: "0 2 * * *"
   task: snapshot
-  groups:
-    - default
   retain: 7     # Keep 7 snapshots
   concurrency: 2
   labels:
@@ -186,10 +180,12 @@ spec:
 ```bash
 kubectl apply -f recurring-snapshot-job.yaml
 
-# Assign the recurring job to a specific volume
-kubectl label volume.longhorn.io ubuntu-web-01-root -n longhorn-system \
+# Assign the recurring job to a specific Longhorn volume
+kubectl label volume/<LONGHORN_VOLUME_NAME> -n longhorn-system \
     recurring-job.longhorn.io/daily-vm-snapshot=enabled
 ```
+
+By default, Longhorn recurring jobs run only while the volume is attached. If you also need snapshots while a VM is powered off and its volume is detached, enable the Longhorn setting `allow-recurring-job-while-volume-detached`.
 
 ## Step 6: Snapshot Before OS Updates (Best Practice Workflow)
 
@@ -205,7 +201,7 @@ SNAPSHOT_NAME="${VM_NAME}-pre-update-$(date +%Y%m%d%H%M%S)"
 
 echo "Step 1: Taking pre-update snapshot..."
 kubectl apply -f - <<EOF
-apiVersion: snapshot.kubevirt.io/v1alpha1
+apiVersion: snapshot.kubevirt.io/v1beta1
 kind: VirtualMachineSnapshot
 metadata:
   name: ${SNAPSHOT_NAME}
@@ -231,15 +227,20 @@ echo "If updates fail: restore from ${SNAPSHOT_NAME}"
 
 ## Deleting Snapshots
 
+If you use Harvester v1.7.x with Longhorn V2 volumes, avoid deleting the latest VM snapshot because of a known Longhorn issue that can block later operations on the related volumes.
+
 ```bash
 # Delete a specific snapshot
-kubectl delete virtualmachinesnapshot ubuntu-web-01-before-upgrade -n default
+kubectl delete vmsnapshot ubuntu-web-01-before-upgrade -n default
 
-# Delete all snapshots older than 30 days (using labels)
-kubectl get virtualmachinesnapshot -n default \
-    -o json | jq -r \
-    '.items[] | select(.metadata.creationTimestamp < "2024-01-01") | .metadata.name' | \
-    xargs -I {} kubectl delete virtualmachinesnapshot {} -n default
+# Delete snapshots older than a specific cutoff date
+CUTOFF="2026-01-01T00:00:00Z"
+kubectl get vmsnapshot -n default -o json | jq -r \
+    --arg cutoff "$CUTOFF" \
+    '.items[] | select(.metadata.creationTimestamp < $cutoff) | .metadata.name' | \
+    while read -r name; do
+      kubectl delete vmsnapshot "$name" -n default
+    done
 ```
 
 ## Conclusion
