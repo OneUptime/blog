@@ -13,6 +13,8 @@ Cross-account role assumption allows principals in one AWS account to assume rol
 ## Prerequisites
 
 - OpenTofu v1.6+
+- AWS CLI v2
+- jq (for the AWS CLI example)
 - AWS credentials with IAM permissions in both accounts
 - At least two AWS accounts
 
@@ -42,7 +44,7 @@ resource "aws_iam_role" "cross_account_target" {
             "aws:MultiFactorAuthPresent" = "true"
           }
           StringEquals = {
-            # Only allow a specific role/user in the source account
+            # Require the expected external ID to mitigate the confused deputy problem
             "sts:ExternalId" = var.external_id
           }
         }
@@ -84,7 +86,7 @@ resource "aws_iam_policy" "assume_cross_account" {
   })
 }
 
-# Attach to the CI/CD role or admin group
+# Attach to the CI/CD role in the source account
 resource "aws_iam_role_policy_attachment" "cicd_assume" {
   role       = var.cicd_role_name
   policy_arn = aws_iam_policy.assume_cross_account.arn
@@ -101,7 +103,7 @@ provider "aws" {
 
   assume_role {
     role_arn     = "arn:aws:iam::${var.target_account_id}:role/CrossAccountAccessRole"
-    session_name = "OpenTofu-CrossAccount-${formatdate("YYYYMMDDHHmm", timestamp())}"
+    session_name = "OpenTofu-CrossAccount"
     external_id  = var.external_id
   }
 }
@@ -118,16 +120,19 @@ resource "aws_s3_bucket" "target_bucket" {
 
 ```bash
 # Assume the cross-account role and export credentials
+SOURCE_ACCOUNT_ID="111122223333"
+TARGET_ACCOUNT_ID="123456789012"
+
 CREDENTIALS=$(aws sts assume-role \
-  --role-arn "arn:aws:iam::123456789012:role/CrossAccountAccessRole" \
+  --role-arn "arn:aws:iam::${TARGET_ACCOUNT_ID}:role/CrossAccountAccessRole" \
   --role-session-name "cli-session" \
   --external-id "my-external-id" \
-  --serial-number "arn:aws:iam::${SOURCE_ACCOUNT}:mfa/username" \
+  --serial-number "arn:aws:iam::${SOURCE_ACCOUNT_ID}:mfa/username" \
   --token-code "123456")
 
-export AWS_ACCESS_KEY_ID=$(echo $CREDENTIALS | jq -r '.Credentials.AccessKeyId')
-export AWS_SECRET_ACCESS_KEY=$(echo $CREDENTIALS | jq -r '.Credentials.SecretAccessKey')
-export AWS_SESSION_TOKEN=$(echo $CREDENTIALS | jq -r '.Credentials.SessionToken')
+export AWS_ACCESS_KEY_ID=$(printf '%s' "$CREDENTIALS" | jq -r '.Credentials.AccessKeyId')
+export AWS_SECRET_ACCESS_KEY=$(printf '%s' "$CREDENTIALS" | jq -r '.Credentials.SecretAccessKey')
+export AWS_SESSION_TOKEN=$(printf '%s' "$CREDENTIALS" | jq -r '.Credentials.SessionToken')
 
 # Now commands run in the target account context
 aws s3 ls  # Lists buckets in target account
@@ -143,4 +148,4 @@ tofu apply
 
 ## Conclusion
 
-Cross-account role assumption is more secure than creating IAM users with long-lived credentials. Always use an `ExternalId` for third-party tool access to prevent the confused deputy problem. Set `session duration` appropriately-shorter for human users (1 hour) and longer for automated pipelines (up to 12 hours). Audit cross-account activity via CloudTrail in each account by filtering for `AssumeRole` events.
+Cross-account role assumption is more secure than creating IAM users with long-lived credentials. Always use an `ExternalId` for third-party tool access to prevent the confused deputy problem. Set `session duration` appropriately: shorter for human users (1 hour) and longer for automated pipelines (up to 12 hours, subject to the role's maximum session duration). If the caller is already using temporary credentials through role chaining, the maximum session duration is 1 hour. Audit cross-account activity via CloudTrail in each account by filtering for `AssumeRole` events.
