@@ -4,13 +4,15 @@ Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
 Tags: GCP, IPv6, Load Balancing, Google Cloud, Dual-Stack, HTTP Load Balancer
 
-Description: Configure Google Cloud HTTP(S), TCP, and Network load balancers to accept IPv6 client connections and route traffic to IPv4 backends using GCP's built-in IPv6 termination.
+Description: Configure Google Cloud classic HTTP(S) load balancers to accept IPv6 client connections and route them to IPv4 backends, and configure backend service-based regional external passthrough Network Load Balancers with IPv6 frontends.
 
 ## Introduction
 
-Google Cloud Load Balancing supports IPv6 at the frontend through Global HTTP(S) Load Balancers and Network Load Balancers. The global HTTP(S) load balancer accepts IPv6 connections from clients and translates them to IPv4 when forwarding to backends - a process called IPv6 termination. This allows backends to remain IPv4-only while clients connect over IPv6.
+Google Cloud Load Balancing supports IPv6 on several frontends, but the behavior differs by load balancer type. The classic Application Load Balancer accepts IPv6 connections from clients and proxies them to IPv4 backends - a process called IPv6 termination. Backend service-based regional external passthrough Network Load Balancers also support IPv6 frontends, but they require dual-stack or IPv6 backends because passthrough load balancers do not terminate IPv6. If you use the newer global external Application Load Balancer (`EXTERNAL_MANAGED`), IPv6 traffic requires dual-stack backends.
 
-## Global HTTP(S) Load Balancer with IPv6
+## Classic Application Load Balancer with IPv6
+
+This example uses the classic Application Load Balancer (`EXTERNAL`), which supports IPv6 clients with IPv4-only backends.
 
 ```bash
 PROJECT="my-project"
@@ -29,38 +31,54 @@ gcloud compute addresses describe lb-ipv6-vip \
     --global \
     --format="get(address)"
 
-# Step 2: Create backend service
+# Step 2: Create a global health check
+gcloud compute health-checks create http http-health-check \
+    --project="$PROJECT" \
+    --port=80
+
+# Step 3: Create backend service
 gcloud compute backend-services create web-backend \
     --project="$PROJECT" \
     --protocol=HTTP \
     --port-name=http \
     --health-checks=http-health-check \
+    --load-balancing-scheme=EXTERNAL \
     --global
 
-# Step 3: Create URL map
+# Step 4: Add an instance group backend
+# Assumes web-group exists and exposes a named port called http
+gcloud compute backend-services add-backend web-backend \
+    --project="$PROJECT" \
+    --instance-group=web-group \
+    --instance-group-zone=us-east1-b \
+    --global
+
+# Step 5: Create URL map
 gcloud compute url-maps create web-url-map \
     --project="$PROJECT" \
     --default-service=web-backend
 
-# Step 4: Create HTTPS proxy with SSL certificate
+# Step 6: Create HTTPS proxy with SSL certificate
 gcloud compute target-https-proxies create web-https-proxy \
     --project="$PROJECT" \
     --url-map=web-url-map \
     --ssl-certificates=my-ssl-cert
 
-# Step 5: Create forwarding rule for IPv6
+# Step 7: Create forwarding rule for IPv6
 gcloud compute forwarding-rules create web-ipv6-rule \
     --project="$PROJECT" \
+    --load-balancing-scheme=EXTERNAL \
+    --network-tier=PREMIUM \
     --address=lb-ipv6-vip \
     --target-https-proxy=web-https-proxy \
     --ports=443 \
     --global
 ```
 
-## Terraform Global HTTP(S) LB with IPv6
+## Terraform Classic Application Load Balancer with IPv6
 
 ```hcl
-# lb_ipv6.tf
+# classic_lb_ipv6.tf
 
 # Reserve global IPv6 address
 resource "google_compute_global_address" "ipv6" {
@@ -72,15 +90,26 @@ resource "google_compute_global_address" "ipv6" {
 }
 
 # Instance group as backend
+# Replace the instance self_link with an existing VM in the same zone.
 resource "google_compute_instance_group" "web" {
   name    = "web-group"
   zone    = "us-east1-b"
   project = var.project_id
 
-  instances = [google_compute_instance.web.self_link]
+  instances = ["projects/${var.project_id}/zones/us-east1-b/instances/web-1"]
 
   named_port {
     name = "http"
+    port = 80
+  }
+}
+
+# Global health check
+resource "google_compute_health_check" "http" {
+  name    = "http-health-check"
+  project = var.project_id
+
+  http_health_check {
     port = 80
   }
 }
@@ -107,21 +136,25 @@ resource "google_compute_url_map" "web" {
 }
 
 # HTTPS proxy
+# Replace the SSL certificate self_link with an existing global SSL certificate.
 resource "google_compute_target_https_proxy" "web" {
   name             = "web-https-proxy"
   project          = var.project_id
   url_map          = google_compute_url_map.web.id
-  ssl_certificates = [google_compute_ssl_certificate.web.id]
+  ssl_certificates = ["projects/${var.project_id}/global/sslCertificates/my-ssl-cert"]
 }
 
 # IPv6 forwarding rule
 resource "google_compute_global_forwarding_rule" "ipv6" {
-  name       = "web-ipv6-rule"
-  project    = var.project_id
-  target     = google_compute_target_https_proxy.web.id
-  port_range = "443"
-  ip_address = google_compute_global_address.ipv6.address
-  ip_version = "IPV6"
+  name                  = "web-ipv6-rule"
+  project               = var.project_id
+  target                = google_compute_target_https_proxy.web.id
+  ip_protocol           = "TCP"
+  port_range            = "443"
+  ip_address            = google_compute_global_address.ipv6.id
+  ip_version            = "IPV6"
+  load_balancing_scheme = "EXTERNAL"
+  network_tier          = "PREMIUM"
 }
 
 # IPv4 forwarding rule (keep both)
@@ -134,33 +167,66 @@ resource "google_compute_global_address" "ipv4" {
 }
 
 resource "google_compute_global_forwarding_rule" "ipv4" {
-  name       = "web-ipv4-rule"
-  project    = var.project_id
-  target     = google_compute_target_https_proxy.web.id
-  port_range = "443"
-  ip_address = google_compute_global_address.ipv4.address
+  name                  = "web-ipv4-rule"
+  project               = var.project_id
+  target                = google_compute_target_https_proxy.web.id
+  ip_protocol           = "TCP"
+  port_range            = "443"
+  ip_address            = google_compute_global_address.ipv4.id
+  load_balancing_scheme = "EXTERNAL"
+  network_tier          = "PREMIUM"
 }
 ```
 
 ## Network Load Balancer with IPv6
 
+Regional external passthrough Network Load Balancers with IPv6 must use backend services. Target pool-based Network Load Balancers remain IPv4-only.
+
 ```bash
-# Regional NLB with IPv6 frontend
+# Regional external passthrough NLB with IPv6 frontend
+# Assumes lb-subnet is dual-stack with an external IPv6 range
+# and web-group contains dual-stack backends in us-east1.
+
 # Step 1: Reserve regional IPv6 address
 gcloud compute addresses create nlb-ipv6 \
     --project="$PROJECT" \
     --region=us-east1 \
+    --subnet=lb-subnet \
     --ip-version=IPV6 \
-    --network-tier=PREMIUM
+    --endpoint-type=NETLB
 
-# Step 2: Create forwarding rule for TCP NLB
-gcloud compute forwarding-rules create nlb-ipv6-rule \
+# Step 2: Create a TCP health check
+gcloud compute health-checks create tcp tcp-health-check \
     --project="$PROJECT" \
     --region=us-east1 \
+    --port=80
+
+# Step 3: Create a regional backend service
+gcloud compute backend-services create network-lb-backend-service \
+    --project="$PROJECT" \
+    --protocol=TCP \
+    --health-checks=tcp-health-check \
+    --health-checks-region=us-east1 \
+    --region=us-east1
+
+# Step 4: Add a dual-stack instance group backend
+gcloud compute backend-services add-backend network-lb-backend-service \
+    --project="$PROJECT" \
+    --instance-group=web-group \
+    --instance-group-zone=us-east1-b \
+    --region=us-east1
+
+# Step 5: Create forwarding rule for the IPv6 frontend
+gcloud compute forwarding-rules create nlb-ipv6-rule \
+    --project="$PROJECT" \
+    --load-balancing-scheme=EXTERNAL \
+    --region=us-east1 \
+    --network-tier=PREMIUM \
+    --ip-version=IPV6 \
+    --subnet=lb-subnet \
     --address=nlb-ipv6 \
-    --target-pool=web-pool \
-    --ports=80,443 \
-    --ip-protocol=TCP
+    --ports=80 \
+    --backend-service=network-lb-backend-service
 
 # Check the IPv6 forwarding rule
 gcloud compute forwarding-rules describe nlb-ipv6-rule \
@@ -179,10 +245,9 @@ IPV6_VIP=$(gcloud compute addresses describe lb-ipv6-vip \
 
 echo "LB IPv6 VIP: $IPV6_VIP"
 
-# Test HTTP over IPv6
-curl -6 -v "https://[$IPV6_VIP]/" \
-    --resolve "example.com:443:[$IPV6_VIP]" \
-    -H "Host: example.com"
+# Test HTTPS over IPv6 with the correct Host header and SNI
+curl -6 -v --resolve "example.com:443:[$IPV6_VIP]" \
+    https://example.com/
 
 # Check AAAA DNS record points to LB IPv6
 dig AAAA example.com
@@ -193,4 +258,4 @@ curl -6 https://example.com/
 
 ## Conclusion
 
-GCP Global HTTP(S) Load Balancers accept IPv6 connections natively by reserving a global IPv6 address with `ip_version = "IPV6"` and creating an IPv6 forwarding rule pointing to your HTTPS proxy. Backends remain IPv4, as GCP handles IPv6 termination at the frontend. Use both IPv4 and IPv6 forwarding rules pointing to the same proxy for dual-stack support. Add AAAA DNS records pointing to the IPv6 VIP for full IPv6 client accessibility.
+Classic Application Load Balancers accept IPv6 connections natively by reserving a global IPv6 address and creating an IPv6 forwarding rule that points to your HTTPS proxy. In this classic configuration, Google Cloud terminates IPv6 at the frontend and proxies to IPv4 backends. For regional external passthrough Network Load Balancers, use a backend service-based configuration with dual-stack backends, because target pool-based Network Load Balancers remain IPv4-only. Add AAAA DNS records pointing to the IPv6 VIP for full IPv6 client accessibility.
