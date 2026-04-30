@@ -51,7 +51,7 @@ Huawei network equipment runs VRP (Versatile Routing Platform), which powers rou
 
 ```bash
 # Default route
-[Huawei] ipv6 route-static :: 0 GigabitEthernet0/0/1 2001:db8:isp::1
+[Huawei] ipv6 route-static :: 0 GigabitEthernet 0/0/1 2001:db8:0:ff::1
 
 # Specific route
 [Huawei] ipv6 route-static 2001:db8:2:: 48 2001:db8:0:1::2
@@ -65,15 +65,17 @@ Huawei network equipment runs VRP (Versatile Routing Platform), which powers rou
 ```bash
 # Enable RA on the interface
 [Huawei] interface Vlanif 100
-[Huawei-Vlanif100] ipv6 nd ra interval 100
-[Huawei-Vlanif100] ipv6 nd ra lifetime 1800
+[Huawei-Vlanif100] undo ipv6 nd ra halt
+[Huawei-Vlanif100] ipv6 nd ra max-interval 100
+[Huawei-Vlanif100] ipv6 nd ra min-interval 33
+[Huawei-Vlanif100] ipv6 nd ra router-lifetime 1800
 
 # Configure the prefix to advertise
-[Huawei-Vlanif100] ipv6 nd prefix 2001:db8:1:100:: 64 valid-ltime 86400 prefer-ltime 14400
+[Huawei-Vlanif100] ipv6 nd ra prefix 2001:db8:1:100:: 64 86400 14400
 
 # Set M and O flags to off for SLAAC
-[Huawei-Vlanif100] undo ipv6 nd managed-address-flag
-[Huawei-Vlanif100] undo ipv6 nd other-config-flag
+[Huawei-Vlanif100] undo ipv6 nd autoconfig managed-address-flag
+[Huawei-Vlanif100] undo ipv6 nd autoconfig other-flag
 
 # Set DNS server in RA (RDNSS)
 [Huawei-Vlanif100] ipv6 nd ra dns-server 2001:db8:1:100::53 600
@@ -93,7 +95,7 @@ Huawei network equipment runs VRP (Versatile Routing Platform), which powers rou
 [Huawei-Vlanif100] ospfv3 1 area 0
 [Huawei-Vlanif100] quit
 
-[Huawei] interface GigabitEthernet0/0/0
+[Huawei] interface GigabitEthernet 0/0/0
 [Huawei-GigabitEthernet0/0/0] ospfv3 1 area 0
 [Huawei-GigabitEthernet0/0/0] quit
 
@@ -114,12 +116,12 @@ Huawei network equipment runs VRP (Versatile Routing Platform), which powers rou
 # Enable IPv6 address family
 [Huawei-bgp] ipv6-family unicast
 [Huawei-bgp-af-ipv6] peer 2001:db8:0:1::2 enable
-[Huawei-bgp-af-ipv6] network 2001:db8:: 48
+[Huawei-bgp-af-ipv6] network 2001:db8::1 128
 [Huawei-bgp-af-ipv6] quit
 [Huawei-bgp] quit
 ```
 
-## Step 7: Configure IPv6 ACL (Traffic Classifier)
+## Step 7: Configure IPv6 ACL
 
 ```bash
 # Create an IPv6 ACL
@@ -133,7 +135,7 @@ Huawei network equipment runs VRP (Versatile Routing Platform), which powers rou
 
 ```bash
 # Show IPv6 interface details
-display ipv6 interface GigabitEthernet0/0/0
+display ipv6 interface GigabitEthernet 0/0/0
 
 # Show IPv6 routing table
 display ipv6 routing-table
@@ -142,13 +144,13 @@ display ipv6 routing-table
 display ospfv3 peer
 
 # Show BGP IPv6 peers
-display bgp ipv6 unicast peer
+display bgp ipv6 peer
 
 # Show IPv6 neighbor cache
 display ipv6 neighbors
 
 # Ping test
-ping ipv6 2606:4700:4700::1111 -c 3
+ping ipv6 -c 3 2606:4700:4700::1111
 ```
 
 ## Conclusion
