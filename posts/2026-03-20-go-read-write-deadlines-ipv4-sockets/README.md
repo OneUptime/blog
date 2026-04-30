@@ -8,7 +8,7 @@ Description: Configure read and write deadlines on Go TCP connections over IPv4 
 
 ## Introduction
 
-Network connections can hang forever if a remote peer stops sending data or becomes unresponsive. Go's `net.Conn` interface provides `SetReadDeadline`, `SetWriteDeadline`, and `SetDeadline` methods to enforce timeouts on individual socket operations, ensuring your application stays responsive.
+Network connections can hang forever if a remote peer stops sending data or becomes unresponsive. Go's `net.Conn` interface provides `SetReadDeadline`, `SetWriteDeadline`, and `SetDeadline` methods to set absolute I/O deadlines so blocked operations eventually fail instead of hanging indefinitely, ensuring your application stays responsive.
 
 ## Basic Deadline Usage
 
@@ -16,8 +16,10 @@ Network connections can hang forever if a remote peer stops sending data or beco
 package main
 
 import (
+    "errors"
     "fmt"
     "net"
+    "os"
     "time"
 )
 
@@ -28,11 +30,6 @@ func connectWithDeadlines(address string) error {
         return fmt.Errorf("connect failed: %w", err)
     }
     defer conn.Close()
-
-    // Set a read deadline: give the server 10 seconds to send data
-    if err := conn.SetReadDeadline(time.Now().Add(10 * time.Second)); err != nil {
-        return fmt.Errorf("set read deadline: %w", err)
-    }
 
     // Set a write deadline: we must finish writing within 5 seconds
     if err := conn.SetWriteDeadline(time.Now().Add(5 * time.Second)); err != nil {
@@ -45,11 +42,16 @@ func connectWithDeadlines(address string) error {
         return fmt.Errorf("write failed: %w", err)
     }
 
+    // Set a read deadline: give the server 10 seconds to send data back
+    if err := conn.SetReadDeadline(time.Now().Add(10 * time.Second)); err != nil {
+        return fmt.Errorf("set read deadline: %w", err)
+    }
+
     // Read the response (will return error if 10s read deadline expires)
     buf := make([]byte, 4096)
     n, err := conn.Read(buf)
     if err != nil {
-        if netErr, ok := err.(net.Error); ok && netErr.Timeout() {
+        if errors.Is(err, os.ErrDeadlineExceeded) {
             return fmt.Errorf("read timeout: server did not respond in time")
         }
         return fmt.Errorf("read failed: %w", err)
@@ -82,7 +84,7 @@ func handleConnection(conn net.Conn) {
 
         n, err := conn.Read(buf)
         if err != nil {
-            if netErr, ok := err.(net.Error); ok && netErr.Timeout() {
+            if errors.Is(err, os.ErrDeadlineExceeded) {
                 fmt.Println("Connection idle timeout - closing")
             } else {
                 fmt.Printf("Read error: %v\n", err)
@@ -110,8 +112,10 @@ func handleConnection(conn net.Conn) {
 package main
 
 import (
+    "errors"
     "fmt"
     "net"
+    "os"
     "time"
 )
 
@@ -143,7 +147,7 @@ func handleConnectionWithTimeout(conn net.Conn) {
     buf := make([]byte, 512)
     n, err := conn.Read(buf)
     if err != nil {
-        if netErr, ok := err.(net.Error); ok && netErr.Timeout() {
+        if errors.Is(err, os.ErrDeadlineExceeded) {
             fmt.Printf("Client %s timed out\n", conn.RemoteAddr())
         }
         return
