@@ -8,7 +8,7 @@ Description: Learn how to deploy GitLab Runner on Kubernetes using the Helm char
 
 ---
 
-GitLab Runner with the Kubernetes executor creates a new pod for each CI job and deletes it when complete. OpenTofu deploys the runner via Helm and configures pod templates, resource limits, and auto-scaling for efficient CI/CD on Kubernetes.
+GitLab Runner with the Kubernetes executor creates a new pod for each CI job and deletes it when complete. OpenTofu deploys the runner via Helm and can configure pod templates, resource limits, and optional horizontal scaling for the runner manager.
 
 ## Architecture
 
@@ -34,16 +34,17 @@ resource "kubernetes_namespace" "gitlab_runner" {
   }
 }
 
-# Store registration token as Kubernetes secret
+# Store runner authentication token as Kubernetes secret
 resource "kubernetes_secret" "runner_token" {
   metadata {
     name      = "gitlab-runner-secret"
     namespace = kubernetes_namespace.gitlab_runner.metadata[0].name
   }
 
+  # Keep runner-registration-token present but empty for chart compatibility.
   data = {
-    runner-registration-token = var.gitlab_runner_registration_token
-    runner-token              = ""
+    runner-registration-token = ""
+    runner-token              = var.gitlab_runner_token
   }
 }
 
@@ -58,60 +59,53 @@ resource "helm_release" "gitlab_runner" {
     yamlencode({
       gitlabUrl = var.gitlab_url
 
-      # Reference the pre-created secret
-      runnerToken = ""
-      existingSecret = kubernetes_secret.runner_token.metadata[0].name
+      rbac = {
+        create             = false
+        serviceAccountName = kubernetes_service_account.runner.metadata[0].name
+      }
 
       concurrent = var.concurrent_jobs  # Max parallel jobs
 
-      # Runner configuration
       runners = {
-        name = "${var.cluster_name}-runner"
+        name   = "${var.cluster_name}-runner"
+        secret = kubernetes_secret.runner_token.metadata[0].name
 
-        tags = join(",", var.runner_tags)
+        config = <<-EOT
+          [[runners]]
+            [runners.kubernetes]
+              namespace = "${kubernetes_namespace.gitlab_runner.metadata[0].name}"
+              image = "ubuntu:22.04"
 
-        # Kubernetes executor settings
-        executor = "kubernetes"
+              # CPU and memory for the build containers
+              cpu_request = "500m"
+              cpu_limit = "2000m"
+              memory_request = "512Mi"
+              memory_limit = "2Gi"
 
-        kubernetes = {
-          namespace = kubernetes_namespace.gitlab_runner.metadata[0].name
+              # Service account for runners (for IRSA/Workload Identity)
+              service_account = "${kubernetes_service_account.runner.metadata[0].name}"
 
-          # CPU and memory for the build containers
-          cpu_request    = "500m"
-          cpu_limit      = "2000m"
-          memory_request = "512Mi"
-          memory_limit   = "2Gi"
+              # Poll interval
+              poll_interval = 5
+              poll_timeout = 180
 
-          # Service account for runners (for IRSA/Workload Identity)
-          service_account = kubernetes_service_account.runner.metadata[0].name
+              # Run jobs on dedicated CI nodes
+              [runners.kubernetes.node_selector]
+                "node-role" = "ci-runner"
 
-          # Run jobs on dedicated CI nodes
-          node_selector = jsonencode({
-            "node-role" = "ci-runner"
-          })
+              [runners.kubernetes.node_tolerations]
+                "dedicated=ci-runners" = "NoSchedule"
 
-          tolerations = jsonencode([{
-            key      = "dedicated"
-            value    = "ci-runners"
-            operator = "Equal"
-            effect   = "NoSchedule"
-          }])
+            [runners.cache]
+              Type = "s3"
+              Shared = true
 
-          # Poll interval
-          poll_interval = 5
-          poll_timeout  = 180
-        }
-
-        # S3 cache configuration
-        cache = {
-          Type = "s3"
-          s3 = {
-            ServerAddress  = "s3.amazonaws.com"
-            BucketName     = var.cache_bucket_name
-            BucketLocation = var.aws_region
-          }
-          Shared = true
-        }
+              [runners.cache.s3]
+                ServerAddress = "s3.amazonaws.com"
+                BucketName = "${var.cache_bucket_name}"
+                BucketLocation = "${var.aws_region}"
+                AuthenticationType = "iam"
+        EOT
       }
 
       resources = {
@@ -144,15 +138,35 @@ resource "kubernetes_service_account" "runner" {
   }
 }
 
-resource "kubernetes_cluster_role_binding" "runner" {
+resource "kubernetes_role" "runner" {
   metadata {
-    name = "gitlab-runner"
+    name      = "gitlab-runner"
+    namespace = kubernetes_namespace.gitlab_runner.metadata[0].name
+  }
+
+  rule {
+    api_groups = [""]
+    resources  = ["configmaps", "events", "pods", "pods/attach", "pods/exec", "secrets", "services"]
+    verbs      = ["get", "list", "watch", "create", "patch", "update", "delete"]
+  }
+
+  rule {
+    api_groups = [""]
+    resources  = ["pods/log"]
+    verbs      = ["get"]
+  }
+}
+
+resource "kubernetes_role_binding" "runner" {
+  metadata {
+    name      = "gitlab-runner"
+    namespace = kubernetes_namespace.gitlab_runner.metadata[0].name
   }
 
   role_ref {
     api_group = "rbac.authorization.k8s.io"
-    kind      = "ClusterRole"
-    name      = "cluster-admin"
+    kind      = "Role"
+    name      = kubernetes_role.runner.metadata[0].name
   }
 
   subject {
@@ -166,24 +180,20 @@ resource "kubernetes_cluster_role_binding" "runner" {
 ## Custom Pod Templates
 
 ```hcl
-# Custom pod template for Docker builds using Kaniko
+# Example config to pass to runners.config for container image builds with Kaniko
 locals {
   runner_config = <<-EOT
     [[runners]]
-      name = "${var.cluster_name}-runner"
-      url = "${var.gitlab_url}"
-      executor = "kubernetes"
-
       [runners.kubernetes]
         namespace = "gitlab-runner"
         image = "ubuntu:22.04"
 
-        [[runners.kubernetes.volumes.empty_dir]]
-          name = "kaniko-workspace"
-          mount_path = "/kaniko"
+      [[runners.kubernetes.volumes.empty_dir]]
+        name = "kaniko-workspace"
+        mount_path = "/kaniko"
 
-        [[runners.kubernetes.pod_annotations]]
-          "cluster-autoscaler.kubernetes.io/safe-to-evict" = "false"
+      [runners.kubernetes.pod_annotations]
+        "cluster-autoscaler.kubernetes.io/safe-to-evict" = "false"
   EOT
 }
 ```
@@ -191,6 +201,7 @@ locals {
 ## Horizontal Pod Autoscaler for Runner Manager
 
 ```hcl
+# Requires a metrics adapter that exposes this metric through external.metrics.k8s.io
 resource "kubernetes_horizontal_pod_autoscaler_v2" "runner" {
   metadata {
     name      = "gitlab-runner"
