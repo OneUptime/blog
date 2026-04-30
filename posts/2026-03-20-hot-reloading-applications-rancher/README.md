@@ -4,18 +4,20 @@ Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
 Tags: Rancher, Hot Reloading, Developer Experience, Kubernetes, File Sync, Skaffold
 
-Description: Configure hot reloading for Node.js, Python, and Go applications deployed on Rancher using file sync tools and process managers for near-instant code iteration.
+Description: Configure hot reloading for Node.js, Python, and Go applications on Rancher-managed Kubernetes clusters using file sync tools, traffic interception, and process managers for near-instant code iteration.
 
 ## Introduction
 
-Hot reloading allows code changes to take effect in a running application without restarting the process or rebuilding the container. On Kubernetes, this requires file sync to propagate local changes into the running container, combined with a process manager that watches for file changes.
+Hot reloading speeds up development by applying code changes without rebuilding and redeploying the container for every edit. On Kubernetes, this usually means syncing local changes into the running container and using a process manager that watches for file changes and reloads or restarts the application. Another option is to run the service locally with Telepresence while it stays connected to cluster dependencies.
 
-## Approach 1: Skaffold Live Update (Recommended)
+## Approach 1: Skaffold File Sync (Recommended)
 
-Skaffold's `live_update` feature syncs file changes directly into the running container:
+Skaffold's `sync` configuration copies file changes directly into the running container during `skaffold dev`:
 
 ```yaml
 # skaffold.yaml
+apiVersion: skaffold/v4beta13
+kind: Config
 
 build:
   artifacts:
@@ -68,6 +70,9 @@ CMD ["uvicorn", "main:app", "--host", "0.0.0.0", "--port", "8000", "--reload"]
 
 ```yaml
 # skaffold.yaml for Python
+apiVersion: skaffold/v4beta13
+kind: Config
+
 build:
   artifacts:
     - image: myregistry/pyapp
@@ -81,20 +86,25 @@ build:
 
 ```python
 # Tiltfile
-docker_build(
+load('ext://restart_process', 'docker_build_with_restart')
+
+docker_build_with_restart(
     'myregistry/goapp',
     '.',
+    entrypoint='/app/server',
     live_update=[
         # Sync Go source files
         sync('./cmd', '/app/cmd'),
         sync('./internal', '/app/internal'),
-        # Re-run go build and restart when binary changes
-        run('go build -o /app/server ./cmd/server && pkill server || true; /app/server &'),
+        # Rebuild in the container; the extension restarts the entrypoint after Live Update
+        run('cd /app && go build -o /app/server ./cmd/server'),
     ]
 )
 ```
 
-## Approach 4: Telepresence for File Sync
+## Approach 4: Telepresence for Local Execution
+
+Telepresence does not sync files into the cluster. Instead, it intercepts service traffic so you can run the application locally with your IDE's normal hot reload:
 
 ```bash
 # Connect to cluster
@@ -104,7 +114,7 @@ telepresence connect
 telepresence intercept myapp --port 8080
 
 # Run locally with your IDE's hot reload
-npm run dev    # Changes immediately affect the intercepted traffic
+npm run dev    # Intercepted traffic is now handled by your local process
 ```
 
 ## Development vs Production Images
@@ -113,6 +123,9 @@ Always use separate Dockerfiles for development and production:
 
 ```yaml
 # skaffold.yaml - profile-based image selection
+apiVersion: skaffold/v4beta13
+kind: Config
+
 profiles:
   - name: dev
     build:
@@ -130,4 +143,4 @@ profiles:
 
 ## Conclusion
 
-Hot reloading on Rancher requires two things working together: a file sync tool (Skaffold, Tilt, or Telepresence) to move changes into the cluster, and a process watcher (nodemon, uvicorn --reload, air for Go) to reload the application when files change. This combination provides iteration speeds comparable to local development.
+Hot reloading on Rancher-managed Kubernetes clusters usually comes from either a file sync tool (Skaffold or Tilt) plus a process watcher (nodemon, uvicorn --reload, or a Go rebuild-and-restart workflow), or from Telepresence running the service locally while it talks to in-cluster dependencies. Either approach can provide iteration speeds comparable to local development.
