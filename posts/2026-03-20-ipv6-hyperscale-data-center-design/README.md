@@ -18,9 +18,9 @@ flowchart TB
     S1 --- L2[Leaf 2]
     S2[Spine 2] --- L1
     S2 --- L2
-    L1 --- H1[Host A\n2001:db8:rack1::10]
-    L1 --- H2[Host B\n2001:db8:rack1::11]
-    L2 --- H3[Host C\n2001:db8:rack2::10]
+    L1 --- H1[Host A\n2001:db8:100:1::10]
+    L1 --- H2[Host B\n2001:db8:100:1::11]
+    L2 --- H3[Host C\n2001:db8:100:2::10]
 ```
 
 ## BGP Unnumbered for Fabric Links
@@ -33,11 +33,11 @@ BGP unnumbered uses IPv6 link-local addresses for peering, eliminating the need 
 router bgp 65100
  bgp router-id 10.0.0.1
  !
- neighbor fabric interface remote-as external
+ neighbor swp1 interface remote-as external
  !
  address-family ipv6 unicast
-  neighbor fabric activate
-  network 2001:db8:rack1::/48
+  neighbor swp1 activate
+  network 2001:db8:100:1::/64
  exit-address-family
 ```
 
@@ -72,8 +72,9 @@ Deploy anycast IPv6 addresses for internal services (DNS, NTP, load balancers) t
 ```text
 # Advertise anycast address from all DNS servers
 router bgp 65100
- address-family ipv6
-  network 2001:db8:anycast::53/128
+ address-family ipv6 unicast
+  network 2001:db8:ffff:53::53/128
+ exit-address-family
 ```
 
 ## Large-Scale DHCPv6 Considerations
