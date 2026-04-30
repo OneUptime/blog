@@ -71,10 +71,10 @@ resource "google_access_context_manager_access_level" "managed_device" {
 }
 ```
 
-## Step 4: Combine Access Levels with AND Logic
+## Step 4: Combine Conditions with AND Logic
 
 ```hcl
-# Access level requiring BOTH corporate network AND managed device
+# Access level requiring BOTH corporate network AND device conditions
 resource "google_access_context_manager_access_level" "highly_sensitive" {
   parent = "accessPolicies/${google_access_context_manager_access_policy.org_policy.name}"
   name   = "accessPolicies/${google_access_context_manager_access_policy.org_policy.name}/accessLevels/highly_sensitive"
