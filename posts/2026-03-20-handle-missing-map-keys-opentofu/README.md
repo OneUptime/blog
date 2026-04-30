@@ -36,7 +36,7 @@ locals {
 
 `lookup` signature: `lookup(map, key, default)`
 
-The third argument is required in OpenTofu when you want a default. If you omit it and the key is missing, `lookup` returns an error.
+The third argument is the modern, non-deprecated form when you want a default. For historical reasons, OpenTofu still allows omitting it, but that behavior is deprecated, and a missing key then returns an error just like `map["key"]`.
 
 ## Solution 2: try Function
 
@@ -53,7 +53,7 @@ Use `try` when the expression is more complex than a simple key lookup.
 
 ## Solution 3: can + Ternary
 
-When you need to branch logic based on whether a key exists:
+If you specifically need a boolean check, `can` works, though OpenTofu recommends `try` for most non-validation error handling:
 
 ```hcl
 locals {
@@ -61,6 +61,8 @@ locals {
   instance_type   = local.has_custom_type ? var.settings["instance_type"] : "t3.micro"
 }
 ```
+
+This pattern is valid, but the OpenTofu docs recommend using `can` mainly in variable validation rules and preferring `try` elsewhere in configuration code.
 
 ## Solution 4: merge with Defaults
 
@@ -113,7 +115,7 @@ This is the most type-safe approach for structured configurations.
 |---|---|
 | Simple map with known default | `lookup(map, key, default)` |
 | Complex expression that might fail | `try(expression, default)` |
-| Need a boolean check first | `can(expression)` |
+| Variable validation or explicit boolean check | `can(expression)` |
 | Multiple keys need defaults | `merge(defaults, var.map)` |
 | Structured config object | `object` type with `optional()` |
 
@@ -138,4 +140,4 @@ locals {
 
 ## Conclusion
 
-Missing map key errors are common in reusable OpenTofu modules where callers provide partial configurations. Use `lookup` for simple key access with a default, `merge` when building complete configurations from partial inputs, and `object` with `optional()` for strongly-typed structured variables. Reserve `try` for complex expressions where `lookup` is insufficient.
+Missing map key errors are common in reusable OpenTofu modules where callers provide partial configurations. Use `lookup` for simple key access with a default, `merge` when building complete configurations from partial inputs, and `object` with `optional()` for strongly-typed structured variables. Reserve `try` for complex expressions where `lookup` is insufficient, and use `can` mainly when you truly need a boolean result, especially in validation rules.
