@@ -12,8 +12,8 @@ Description: Configure IPv6 on Broadband Network Gateway (BNG) and BRAS equipmen
 flowchart LR
     CPE[Home Router CPE] -->|PPPoE/IPoE| BNG[BNG/BRAS]
     BNG -->|RADIUS Auth| RADIUS[RADIUS Server]
-    RADIUS -->|Framed-IPv6-Prefix + Delegated-IPv6-Prefix| BNG
-    BNG -->|DHCPv6-PD /56| CPE
+    RADIUS -->|Framed-IPv6-Address + Delegated-IPv6-Prefix| BNG
+    BNG -->|DHCPv6 IA_NA + PD /56| CPE
     CPE -->|SLAAC /64| Devices[Home Devices]
 ```
 
@@ -22,30 +22,33 @@ flowchart LR
 ```text
 ! Cisco ASR9K IOS-XR - IPv6 BNG configuration
 
-! DHCPv6 pool for WAN addresses
-ipv6 dhcp pool WAN_POOL
- address prefix 2001:db8:wan::/48 lifetime 86400 43200
+! Local DHCPv6 IA_NA pool for WAN /128 addresses
+pool vrf default ipv6 WAN_POOL
+ prefix-length 128
+ address-range 2001:db8:100::1 2001:db8:100::ffff
 
-! Delegate prefix from RADIUS
-ipv6 dhcp pool PD_POOL
- prefix-delegation pool RADIUS_PD
+! Local DHCPv6-PD pool for /56 delegated prefixes
+pool vrf default ipv6 PD_POOL
+ prefix-length 56
+ prefix-range 2001:db8:200:: 2001:db8:200:ff00::
 
-! Configure subscriber virtual template
-interface Virtual-Template1
- ipv6 enable
- ipv6 address 2001:db8:bng::1/64
+! Configure subscriber dynamic templates
+dynamic-template type ppp PPPoE-IPv6
  ppp authentication chap
- peer ipv6 pool WAN_POOL
- ipv6 dhcp server PD_POOL
+ ipv6 enable
+ dhcpv6 address-pool WAN_POOL
+
+dynamic-template type ipsubscriber IPV6-PD
+ dhcpv6 delegated-prefix-pool PD_POOL
 
 ! Enable subscriber management
-subscriber-manager
- accounting aaa
-  list default method radius
+aaa authentication subscriber default group radius
+aaa authorization subscriber default group radius
+aaa accounting subscriber default group radius
 
 ! Verify active subscribers
-show subscriber session all detail | include IPv6
-show ipv6 subscribers
+show subscriber session all detail
+show dhcp ipv6 server binding detail
 ```
 
 ## Juniper MX BNG: IPv6 Configuration
@@ -53,21 +56,17 @@ show ipv6 subscribers
 ```text
 # Juniper MX - IPv6 BNG with DHCPv6
 
-set interfaces ge-0/0/0 unit 0 family pppoe
+set access profile RADIUS_PROFILE authentication-order radius
+set access profile RADIUS_PROFILE radius-server 2001:db8::10 secret "radius-shared-secret"
 
-set access profile RADIUS_PROFILE
-    authentication-order radius
-    radius authentication-server 2001:db8::radius
+set access address-assignment pool IPV6_POOL family inet6 prefix 2001:db8:100::/64
+set access address-assignment pool IPV6_POOL family inet6 range WAN_RANGE low 2001:db8:100::1/128
+set access address-assignment pool IPV6_POOL family inet6 range WAN_RANGE high 2001:db8:100::ffff:ffff/128
 
-set access address-assignment pool IPV6_POOL
-    family inet6
-    prefix 2001:db8:wan::/48
-    range WAN_RANGE prefix-length 128  # /128 per subscriber
+set access address-assignment pool PD_POOL family inet6 prefix 2001:db8:200::/48
+set access address-assignment pool PD_POOL family inet6 range PD_RANGE prefix-length 56
 
-set access address-assignment pool PD_POOL
-    family inet6
-    prefix 2001:db8:home::/40
-    range PD_RANGE prefix-length 56    # /56 per home router
+set system services dhcp-local-server dhcpv6 overrides delegated-pool PD_POOL
 
 # Verify
 
@@ -81,25 +80,27 @@ show dhcpv6 server statistics
 {
     "Dhcp6": {
         "interfaces-config": {
-            "interfaces": ["::"]
+            "interfaces": ["bng0"]
         },
         "lease-database": {
             "type": "mysql",
             "host": "2001:db8::db",
-            "name": "kea"
+            "name": "kea",
+            "user": "kea",
+            "password": "kea-password"
         },
         "subnet6": [
             {
                 "id": 1,
-                "subnet": "2001:db8:wan::/48",
+                "subnet": "2001:db8:100::/64",
                 "interface": "bng0",
                 "pools": [
-                    {"pool": "2001:db8:wan::1 - 2001:db8:wan::ffff"}
+                    {"pool": "2001:db8:100::1 - 2001:db8:100::ffff"}
                 ],
                 "pd-pools": [
                     {
-                        "prefix": "2001:db8:home::/40",
-                        "prefix-len": 40,
+                        "prefix": "2001:db8:200::",
+                        "prefix-len": 48,
                         "delegated-len": 56
                     }
                 ],
@@ -119,9 +120,9 @@ show dhcpv6 server statistics
 # /etc/freeradius/3.0/users
 
 pppoe_user Cleartext-Password := "password"
-    Framed-IPv6-Prefix = "2001:db8:wan::1/128",
-    Delegated-IPv6-Prefix = "2001:db8:home:a0::/56",
-    Framed-IPv6-Route = "2001:db8:home:a0::/56 ::",
+    Framed-IPv6-Address = "2001:db8:100::1",
+    Delegated-IPv6-Prefix = "2001:db8:200:a0::/56",
+    Framed-IPv6-Route = "2001:db8:200:a0::/56 ::",
     DNS-Server-IPv6-Address = "2001:db8::53"
 ```
 
@@ -133,23 +134,23 @@ pppoe_user Cleartext-Password := "password"
 
 # Active IPv6 sessions
 ACTIVE=$(mysql -u radius -p${PASS} radius \
-    -e "SELECT COUNT(*) FROM radacct WHERE acctstoptime IS NULL AND framedipv6prefix IS NOT NULL" \
+    -e "SELECT COUNT(*) FROM radacct WHERE acctstoptime IS NULL AND framedipv6address <> ''" \
     -s -N)
 echo "Active IPv6 subscribers: ${ACTIVE}"
 
 # Address pool utilization
 POOL_USED=$(mysql -u radius -p${PASS} radius \
-    -e "SELECT COUNT(DISTINCT framedipv6prefix) FROM radacct WHERE acctstoptime IS NULL" \
+    -e "SELECT COUNT(DISTINCT framedipv6address) FROM radacct WHERE acctstoptime IS NULL AND framedipv6address <> ''" \
     -s -N)
 echo "IPv6 pool entries used: ${POOL_USED}"
 
 # DHCPv6-PD utilization
 PD_USED=$(mysql -u radius -p${PASS} radius \
-    -e "SELECT COUNT(DISTINCT delegatedipv6prefix) FROM radacct WHERE acctstoptime IS NULL AND delegatedipv6prefix IS NOT NULL" \
+    -e "SELECT COUNT(DISTINCT delegatedipv6prefix) FROM radacct WHERE acctstoptime IS NULL AND delegatedipv6prefix <> ''" \
     -s -N)
 echo "Delegated prefixes active: ${PD_USED}"
 ```
 
 ## Conclusion
 
-BNG/BRAS IPv6 configuration combines RADIUS authentication, DHCPv6 for WAN address assignment, and DHCPv6-PD for home prefix delegation. Configure RADIUS to return `Framed-IPv6-Prefix` (subscriber's WAN /128) and `Delegated-IPv6-Prefix` (home /56 for DHCPv6-PD). On Cisco ASR9K, use `ipv6 dhcp pool` with `prefix-delegation pool RADIUS_PD` to apply RADIUS-returned prefixes. Monitor subscriber session counts and address pool utilization with RADIUS SQL queries and alert when pools exceed 80% utilization.
+BNG/BRAS IPv6 configuration combines RADIUS authentication, DHCPv6 for WAN address assignment, and DHCPv6-PD for home prefix delegation. Configure RADIUS to return `Framed-IPv6-Address` (subscriber's WAN /128) and `Delegated-IPv6-Prefix` (home /56 for DHCPv6-PD). On Cisco ASR9K, configure local IPv6 pools with `pool vrf ... ipv6` and reference them from `dhcpv6 address-pool` and `dhcpv6 delegated-prefix-pool` in subscriber dynamic templates. Monitor subscriber session counts and address pool utilization with RADIUS SQL queries and alert when pools exceed 80% utilization.
