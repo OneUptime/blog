@@ -32,14 +32,21 @@ import ipaddress
 def subnet_info(cidr: str):
     """Print subnet details including broadcast address."""
     net = ipaddress.IPv4Network(cidr, strict=False)
+    if net.prefixlen >= 31:
+        host_count = net.num_addresses
+        first_host = net.network_address
+        last_host = net.broadcast_address
+    else:
+        host_count = net.num_addresses - 2
+        first_host = net.network_address + 1
+        last_host = net.broadcast_address - 1
+
     print(f"Network    : {net.network_address}")
     print(f"Broadcast  : {net.broadcast_address}")
     print(f"Subnet Mask: {net.netmask}")
-    print(f"Host Count : {net.num_addresses - 2}")
-    hosts = list(net.hosts())
-    if hosts:
-        print(f"First Host : {hosts[0]}")
-        print(f"Last Host  : {hosts[-1]}")
+    print(f"Host Count : {host_count}")
+    print(f"First Host : {first_host}")
+    print(f"Last Host  : {last_host}")
 
 # Examples
 
@@ -67,8 +74,8 @@ print(is_broadcast("192.168.1.254", "192.168.1.0/24"))  # False
 A directed broadcast at Layer 3 maps to the Ethernet broadcast MAC address `FF:FF:FF:FF:FF:FF`. All hosts on the segment receive the frame and pass it up to the IP layer.
 
 ```bash
-# Send a ping to the directed broadcast (may be blocked by default on Linux)
-ping 192.168.1.255
+# Send a ping to the directed broadcast (Linux requires -b for broadcast ping)
+ping -b 192.168.1.255
 
 # Enable responding to broadcast pings (Linux)
 echo 0 | sudo tee /proc/sys/net/ipv4/icmp_echo_ignore_broadcasts
@@ -79,7 +86,7 @@ echo 0 | sudo tee /proc/sys/net/ipv4/icmp_echo_ignore_broadcasts
 A Smurf attack spoofs the victim's IP as the source and sends ICMP echo requests to broadcast addresses. All hosts reply to the victim, amplifying traffic. Modern routers block directed broadcast forwarding by default.
 
 ```bash
-# Verify directed broadcasts are disabled on Linux router
+# Verify directed broadcast forwarding is disabled on Linux router
 cat /proc/sys/net/ipv4/conf/all/bc_forwarding  # 0 = disabled
 ```
 
