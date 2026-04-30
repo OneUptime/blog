@@ -8,7 +8,7 @@ Description: Learn how to configure GKE Workload Identity with OpenTofu to enabl
 
 ## Overview
 
-GKE Workload Identity binds Kubernetes service accounts to GCP service accounts using OIDC federation. Pods authenticate with GCP APIs using their projected identity tokens instead of mounted key files, eliminating the security risk of long-lived credentials.
+GKE Workload Identity Federation for GKE lets Kubernetes workloads authenticate to Google Cloud using federated Kubernetes service account identities. In this example, the Kubernetes service account is linked to a Google Cloud service account so pods can obtain short-lived credentials through the GKE metadata server instead of using mounted key files.
 
 ## Step 1: Enable Workload Identity on the Cluster
 
@@ -53,6 +53,12 @@ resource "google_container_node_pool" "nodes" {
 ## Step 2: Create GCP Service Account
 
 ```hcl
+# Required for the IAM service account impersonation flow used in this example
+resource "google_project_service" "iamcredentials_api" {
+  project = var.project_id
+  service = "iamcredentials.googleapis.com"
+}
+
 # GCP service account that pods will impersonate
 resource "google_service_account" "app_sa" {
   account_id   = "k8s-app-service-account"
@@ -111,4 +117,4 @@ output "gcp_service_account_email" {
 
 ## Summary
 
-GKE Workload Identity with OpenTofu eliminates the need for service account key files in Kubernetes. By binding a Kubernetes service account to a GCP service account via IAM, pods automatically receive short-lived credentials from the GKE metadata server, following the least-privilege principle without key rotation overhead.
+GKE Workload Identity with OpenTofu eliminates the need for service account key files in Kubernetes. In the service account impersonation pattern shown here, a Kubernetes service account is linked to a Google Cloud service account via IAM, and pods receive short-lived credentials from the GKE metadata server instead of long-lived keys.
