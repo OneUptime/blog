@@ -17,8 +17,8 @@ graph TD
     D -->|Yes| F[Merge to main]
     F --> G[Build & Push Docker image]
     G --> H[Update image tag in config repo]
-    H --> I[Portainer detects config change]
-    I --> J[Redeploy stack with new image]
+    H --> I[GitHub webhook triggers Portainer update check]
+    I --> J[Redeploy stack if commit changed]
 ```
 
 ## Repository Structure
@@ -56,6 +56,9 @@ on:
 jobs:
   build:
     runs-on: ubuntu-latest
+    permissions:
+      contents: read
+      packages: write
     outputs:
       image-tag: ${{ steps.meta.outputs.version }}
     steps:
@@ -115,7 +118,7 @@ version: "3.8"
 services:
   app:
     # This line is automatically updated by CI
-    image: ghcr.io/myorg/myapp:abc1234
+    image: ghcr.io/myorg/myapp:sha-abc1234
     deploy:
       replicas: 2
     environment:
@@ -128,22 +131,28 @@ services:
     environment:
       - POSTGRES_DB=myapp_staging
       - POSTGRES_PASSWORD_FILE=/run/secrets/db_password
+    secrets:
+      - db_password
+
+secrets:
+  db_password:
+    file: ./secrets/db_password.txt
 ```
 
 ## Step 3: Portainer GitOps Configuration
 
 1. Create a stack in Portainer backed by `infra-repo`.
 2. Compose file path: `stacks/staging/docker-compose.yml`.
-3. Enable **Webhook** auto-updates.
+3. Enable **GitOps updates** and select **Webhook** as the mechanism (this requires Portainer Business Edition on a non-Edge environment).
 
 ## Step 4: GitHub Webhook on Infra Repo
 
-Configure the infra repo to notify Portainer when the compose file changes:
+Configure the infra repo to notify Portainer on pushes to the GitOps repo:
 
 1. In `infra-repo` settings, add a webhook:
    - **Payload URL**: Portainer stack webhook URL.
    - **Event**: Push.
-2. Portainer immediately redeployments when the compose file is updated.
+2. When the webhook fires, Portainer checks the repository and redeploys the stack if the latest commit differs from the currently deployed commit.
 
 ## Promotion to Production
 
@@ -152,8 +161,9 @@ To promote staging to production:
 ```bash
 # Create a production update via pull request
 git checkout -b promote-to-prod
-sed -i "s|myapp:abc1234|myapp:abc1234|" stacks/production/docker-compose.yml
-git commit -am "promote: myapp abc1234 to production"
+sed -i "s|image: ghcr.io/myorg/myapp:.*|image: ghcr.io/myorg/myapp:sha-abc1234|" \
+  stacks/production/docker-compose.yml
+git commit -am "promote: myapp sha-abc1234 to production"
 git push origin promote-to-prod
 # Open a PR - required review before merging
 ```
