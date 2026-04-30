@@ -16,8 +16,8 @@ Wireless networks have unique IPv4 addressing needs: the wireless LAN controller
 Layer               VLAN   Subnet             Purpose
 ──────────────────────────────────────────────────────────────
 WLC Management       99   10.1.99.0/28       Controller web/SSH
-AP Management        50   10.1.50.0/22       One IP per AP
-CAPWAP Tunnels        -   (uses AP mgmt IP)  Control/data tunnel
+AP Management        50   10.1.52.0/22       One IP per AP
+CAPWAP Tunnels        -   (uses AP/WLC mgmt IPs)  Control/data tunnel
 SSID-Corp          100   10.1.100.0/22       Employee Wi-Fi
 SSID-Guest         200   10.1.200.0/22       Guest Wi-Fi
 SSID-IoT           300   10.1.50.0/23        IoT devices
@@ -27,12 +27,12 @@ SSID-IoT           300   10.1.50.0/23        IoT devices
 
 ```text
 For 500 APs across a campus:
-  AP management subnet: 10.1.50.0/22  (1022 usable IPs)
+  AP management subnet: 10.1.52.0/22  (1022 usable IPs)
   Allocate by building:
-    Building A:  10.1.50.1  – 10.1.50.100
-    Building B:  10.1.51.1  – 10.1.51.100
-    Building C:  10.1.52.1  – 10.1.52.100
-  Reserve 10.1.53.x for future expansion
+    Building A:  10.1.52.1  – 10.1.52.100
+    Building B:  10.1.53.1  – 10.1.53.100
+    Building C:  10.1.54.1  – 10.1.54.100
+  Reserve 10.1.55.x for future expansion
 ```
 
 ## Python AP Subnet Planner
@@ -40,16 +40,17 @@ For 500 APs across a campus:
 ```python
 import ipaddress
 
-AP_MGMT = ipaddress.IPv4Network("10.1.50.0/22")
-BUILDINGS = ["BuildingA", "BuildingB", "BuildingC", "BuildingD"]
+AP_MGMT = ipaddress.IPv4Network("10.1.52.0/22")
+BUILDINGS = ["BuildingA", "BuildingB", "BuildingC"]
 
-hosts = list(AP_MGMT.hosts())
-per_building = len(hosts) // len(BUILDINGS)
+subnets = list(AP_MGMT.subnets(new_prefix=24))
 
-for i, building in enumerate(BUILDINGS):
-    start = hosts[i * per_building]
-    end   = hosts[(i + 1) * per_building - 1]
-    print(f"{building}: {start} – {end} ({per_building} IPs)")
+for building, subnet in zip(BUILDINGS, subnets):
+    start = subnet.network_address + 1
+    end   = subnet.network_address + 100
+    print(f"{building}: {start} – {end} (100 IPs)")
+
+print(f"Reserved for future expansion: {subnets[-1]}")
 ```
 
 ## DHCP Option 43 for AP Discovery (Cisco WLC)
@@ -57,14 +58,14 @@ for i, building in enumerate(BUILDINGS):
 ```text
 # ISC DHCP - DHCP option 43 for LWAPP/CAPWAP
 
-option space Cisco;
-option Cisco.wlc-address code 241 = ip-address;
+option space Cisco_LWAPP_AP;
+option Cisco_LWAPP_AP.server-address code 241 = array of ip-address;
 
-subnet 10.1.50.0 netmask 255.255.252.0 {
-  range 10.1.50.10 10.1.53.250;
-  option routers 10.1.50.1;
-  vendor-option-space Cisco;
-  option Cisco.wlc-address 10.1.99.10;   # WLC management IP
+subnet 10.1.52.0 netmask 255.255.252.0 {
+  range 10.1.52.10 10.1.55.250;
+  option routers 10.1.52.1;
+  vendor-option-space Cisco_LWAPP_AP;
+  option Cisco_LWAPP_AP.server-address 10.1.99.10;   # WLC management IP
   default-lease-time 86400;
 }
 ```
