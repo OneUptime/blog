@@ -25,7 +25,7 @@ ssh -6 user@2001:db8::10
 ssh -4 user@server.example.com
 ```
 
-## Using -6 with SSH Utilities
+## Using IPv6 with SSH Utilities
 
 ```bash
 # SCP with IPv6
@@ -40,7 +40,7 @@ ssh-keyscan -6 server.example.com
 ssh-keyscan -6 2001:db8::10
 
 # ssh-copy-id with IPv6 (install public key)
-ssh-copy-id -6 user@server.example.com
+ssh-copy-id -o AddressFamily=inet6 user@server.example.com
 ```
 
 ## rsync with IPv6
@@ -141,4 +141,4 @@ ssh -v -6 user@server.example.com 2>&1 | grep -E "Connecting|AF_INET"
 
 ## Summary
 
-Force SSH to use IPv6 exclusively with the `-6` flag: `ssh -6 user@host`. This also works with `scp -6`, `sftp -6`, `ssh-keyscan -6`, and `ssh-copy-id -6`. To make IPv6 the default for all or specific hosts, add `AddressFamily inet6` to `~/.ssh/config`. The `-6` flag is useful when a host has both A and AAAA records but you specifically need to test or use IPv6 connectivity, bypassing potential IPv4 fallback.
+Force SSH to use IPv6 exclusively with the `-6` flag: `ssh -6 user@host`. This also works with `scp -6`, `sftp -6`, and `ssh-keyscan -6`. For `ssh-copy-id`, pass `-o AddressFamily=inet6` or set `AddressFamily inet6` in `~/.ssh/config`. The `-6` flag is useful when a host has both A and AAAA records but you specifically need to test or use IPv6 connectivity, bypassing potential IPv4 fallback.
