@@ -8,13 +8,13 @@ Description: Learn how to deploy Helm charts with custom values, version pinning
 
 ## Introduction
 
-This guide covers How to Deploy Helm Charts with OpenTofu using OpenTofu with production-ready configurations, best practices, and practical examples.
+This guide covers how to deploy Helm charts with OpenTofu using the Helm provider, version pinning, lifecycle controls, and practical examples.
 
 ## Prerequisites
 
 - OpenTofu v1.6+
-- Access to a Kubernetes cluster or Docker daemon
-- Relevant provider configured
+- Access to a Kubernetes cluster and a kubeconfig file
+- A valid Kubernetes context for the target cluster
 
 ## Step 1: Configure the Provider
 
@@ -22,32 +22,33 @@ This guide covers How to Deploy Helm Charts with OpenTofu using OpenTofu with pr
 terraform {
   required_version = ">= 1.6.0"
   required_providers {
-    kubernetes = {
-      source  = "hashicorp/kubernetes"
-      version = "~> 2.0"
+    helm = {
+      source  = "hashicorp/helm"
+      version = "~> 3.0"
     }
   }
 }
 
-provider "kubernetes" {
-  config_path    = "~/.kube/config"
-  config_context = var.kube_context
+provider "helm" {
+  kubernetes = {
+    config_path = "~/.kube/config"
+  }
 }
 ```
 
 ## Step 2: Define Variables
 
 ```hcl
-variable "kube_context" {
-  description = "Kubernetes context to use"
+variable "release_name" {
+  description = "Helm release name"
   type        = string
-  default     = "default"
+  default     = "my-nginx"
 }
 
 variable "namespace" {
-  description = "Kubernetes namespace"
+  description = "Kubernetes namespace for the release"
   type        = string
-  default     = "default"
+  default     = "web"
 }
 
 variable "environment" {
@@ -55,134 +56,86 @@ variable "environment" {
   type        = string
   default     = "production"
 }
+
+variable "chart_version" {
+  description = "Bitnami NGINX chart version"
+  type        = string
+  default     = "23.0.3"
+}
 ```
 
-## Step 3: Create Core Kubernetes Resources
+## Step 3: Create Helm Values
 
 ```hcl
-# Create namespace
+locals {
+  chart_values = yamlencode({
+    replicaCount = 3
 
-resource "kubernetes_namespace" "app" {
-  metadata {
-    name = var.namespace
-    labels = {
+    service = {
+      type = "ClusterIP"
+    }
+
+    resources = {
+      requests = {
+        cpu    = "100m"
+        memory = "128Mi"
+      }
+      limits = {
+        cpu    = "500m"
+        memory = "512Mi"
+      }
+    }
+
+    podLabels = {
       environment = var.environment
-      managed-by  = "opentofu"
+      "managed-by" = "opentofu"
     }
-  }
-}
-
-# Resource quota to limit namespace resources
-resource "kubernetes_resource_quota" "app" {
-  metadata {
-    name      = "app-quota"
-    namespace = kubernetes_namespace.app.metadata[0].name
-  }
-  spec {
-    hard = {
-      pods               = "20"
-      requests_cpu       = "4"
-      requests_memory    = "8Gi"
-      limits_cpu         = "8"
-      limits_memory      = "16Gi"
-    }
-  }
+  })
 }
 ```
 
-## Step 4: Deploy Workloads
+## Step 4: Deploy the Helm Chart
 
 ```hcl
-resource "kubernetes_deployment" "app" {
-  metadata {
-    name      = "app"
-    namespace = kubernetes_namespace.app.metadata[0].name
-    labels = {
-      app         = "my-app"
-      environment = var.environment
-    }
-  }
+resource "helm_release" "app" {
+  name             = var.release_name
+  namespace        = var.namespace
+  create_namespace = true
 
-  spec {
-    replicas = 3
+  repository = "oci://registry-1.docker.io/bitnamicharts"
+  chart      = "nginx"
+  version    = var.chart_version
 
-    selector {
-      match_labels = {
-        app = "my-app"
-      }
-    }
+  atomic          = true
+  cleanup_on_fail = true
+  wait            = true
+  timeout         = 300
 
-    template {
-      metadata {
-        labels = {
-          app = "my-app"
-        }
-      }
-
-      spec {
-        container {
-          name  = "app"
-          image = var.container_image
-
-          resources {
-            requests = {
-              cpu    = "100m"
-              memory = "128Mi"
-            }
-            limits = {
-              cpu    = "500m"
-              memory = "512Mi"
-            }
-          }
-
-          liveness_probe {
-            http_get {
-              path = "/health"
-              port = 8080
-            }
-            initial_delay_seconds = 30
-            period_seconds        = 10
-          }
-        }
-      }
-    }
-  }
+  values = [local.chart_values]
 }
 ```
 
-## Step 5: Expose the Workload
+## Step 5: Control Release Lifecycle
 
-```hcl
-resource "kubernetes_service" "app" {
-  metadata {
-    name      = "app-service"
-    namespace = kubernetes_namespace.app.metadata[0].name
-  }
-
-  spec {
-    selector = {
-      app = "my-app"
-    }
-
-    port {
-      port        = 80
-      target_port = 8080
-    }
-
-    type = "ClusterIP"
-  }
-}
-```
+The `version`, `atomic`, `cleanup_on_fail`, `wait`, and `timeout` settings in the `helm_release` resource pin the chart version and make installs and upgrades safer.
 
 ## Step 6: Define Outputs
 
 ```hcl
-output "namespace" {
-  value = kubernetes_namespace.app.metadata[0].name
+output "release_name" {
+  value = helm_release.app.name
 }
 
-output "service_cluster_ip" {
-  value = kubernetes_service.app.spec[0].cluster_ip
+output "release_namespace" {
+  value = helm_release.app.namespace
+}
+
+output "release_status" {
+  value = helm_release.app.status
+}
+
+output "chart_version" {
+  value = helm_release.app.metadata[0].version
 }
 ```
 
@@ -196,12 +149,12 @@ tofu apply
 
 ## Best Practices
 
-- Always specify resource requests and limits for all containers
-- Use namespaces to isolate workloads and apply resource quotas
-- Label all resources for easy selection and management
-- Use liveness and readiness probes to ensure workload health
-- Never run containers as root; use security contexts
+- Pin chart versions instead of relying on the latest chart release
+- Use `atomic`, `cleanup_on_fail`, and `wait` for safer Helm release upgrades
+- Prefer `values = [yamlencode(...)]` or checked-in values files for structured Helm overrides
+- Use namespaces to isolate releases across environments
+- Review chart-specific prerequisites and security settings before deploying to production
 
 ## Conclusion
 
-You have successfully configured How to Deploy Helm Charts with OpenTofu using OpenTofu. This approach enables GitOps-style management of Kubernetes resources alongside your infrastructure code. Combine OpenTofu Kubernetes resources with Helm releases for a complete infrastructure-as-code solution.
+You have successfully configured a Helm chart deployment with OpenTofu. This approach lets OpenTofu manage Helm release installation, upgrades, and rollbacks alongside the rest of your infrastructure code.
