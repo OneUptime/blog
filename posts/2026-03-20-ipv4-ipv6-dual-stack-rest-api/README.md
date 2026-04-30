@@ -21,7 +21,6 @@ On dual-stack systems, binding to `::` (IPv6 any) or `0.0.0.0` (IPv4 any) has di
 
 ```python
 import socket
-import threading
 from http.server import HTTPServer, BaseHTTPRequestHandler
 
 class Handler(BaseHTTPRequestHandler):
@@ -34,22 +33,17 @@ class Handler(BaseHTTPRequestHandler):
         self.end_headers()
         self.wfile.write(f"Your IP: {client_ip}".encode())
 
-def start_server(host: str, port: int, family: int) -> HTTPServer:
-    server = HTTPServer.__new__(HTTPServer)
-    server.socket = socket.socket(family, socket.SOCK_STREAM)
-    server.socket.setsockopt(socket.SOL_SOCKET, socket.SO_REUSEADDR, 1)
-    if family == socket.AF_INET6:
-        server.socket.setsockopt(socket.IPPROTO_IPV6, socket.IPV6_V6ONLY, 1)
-    server.socket.bind((host, port))
-    server.server_address = (host, port)
-    server.RequestHandlerClass = Handler
-    return server
+class DualStackHTTPServer(HTTPServer):
+    address_family = socket.AF_INET6
 
-ipv4_server = start_server("0.0.0.0", 8080, socket.AF_INET)
-ipv6_server = start_server("::",     8080, socket.AF_INET6)
+    def server_bind(self):
+        if not socket.has_dualstack_ipv6():
+            raise RuntimeError("This platform needs separate IPv4 and IPv6 sockets")
+        self.socket.setsockopt(socket.IPPROTO_IPV6, socket.IPV6_V6ONLY, 0)
+        super().server_bind()
 
-threading.Thread(target=ipv4_server.serve_forever, daemon=True).start()
-ipv6_server.serve_forever()
+server = DualStackHTTPServer(("::", 8080), Handler)
+server.serve_forever()
 ```
 
 ## Node.js: Express Dual-Stack
@@ -58,8 +52,8 @@ ipv6_server.serve_forever()
 const express = require("express");
 const app = express();
 
-// Express/Node.js automatically accepts both IPv4 and IPv6 when listening on "::"
-// Node uses IPV6_V6ONLY=0 by default on Linux (dual-stack)
+// On many operating systems, listening on "::" also accepts IPv4 connections.
+// When that happens, IPv4 clients appear as ::ffff:x.x.x.x.
 
 app.get("/whoami", (req, res) => {
     let ip = req.socket.remoteAddress;
@@ -70,7 +64,6 @@ app.get("/whoami", (req, res) => {
     res.json({ ip, family: ip.includes(":") ? "ipv6" : "ipv4" });
 });
 
-// "::" on Linux accepts both IPv4 (mapped) and IPv6 connections
 app.listen(8080, "::", () => console.log("Listening on dual-stack :8080"));
 ```
 
@@ -84,8 +77,6 @@ def normalize_client_ip(raw: str) -> str:
     Convert IPv4-mapped IPv6 addresses to plain IPv4.
     ::ffff:192.168.1.1 → 192.168.1.1
     """
-    if raw.startswith("::ffff:"):
-        raw = raw[7:]
     try:
         addr = ipaddress.ip_address(raw)
         if isinstance(addr, ipaddress.IPv6Address) and addr.ipv4_mapped:
@@ -115,4 +106,4 @@ def ip_version(s: str) -> str:
 
 ## Conclusion
 
-Binding to `::` with `IPV6_V6ONLY=0` (Linux default) accepts both IPv4 and IPv6 connections, with IPv4 clients appearing as `::ffff:x.x.x.x`. Always normalize these mapped addresses before IP-based logic (whitelisting, geolocation, logging). If you need strict separation, bind two sockets: one to `0.0.0.0` and one to `::` with `IPV6_V6ONLY=1`. On macOS/BSD, `IPV6_V6ONLY=1` is the default, so you always need two sockets for dual-stack.
+Binding to `::` with `IPV6_V6ONLY=0` (Linux default) accepts both IPv4 and IPv6 connections, with IPv4 clients appearing as `::ffff:x.x.x.x`. Always normalize these mapped addresses before IP-based logic (whitelisting, geolocation, logging). If you need strict separation, bind two sockets: one to `0.0.0.0` and one to `::` with `IPV6_V6ONLY=1`. Outside Linux, check the OS default before assuming a single `::` listener will also accept IPv4. FreeBSD defaults `IPV6_V6ONLY=1`, so you typically need two sockets there unless you explicitly disable it.
