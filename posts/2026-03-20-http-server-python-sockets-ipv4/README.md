@@ -36,11 +36,11 @@ HOST = "0.0.0.0"
 PORT = 8080
 
 
-def parse_request(raw: bytes) -> tuple[str, str, dict]:
+def parse_request(raw: bytes) -> tuple[str, str, dict[str, str]]:
     """Parse an HTTP request into (method, path, headers)."""
     try:
         header_section, *_ = raw.split(b"\r\n\r\n", 1)
-        lines = header_section.decode("utf-8").splitlines()
+        lines = header_section.decode("iso-8859-1").splitlines()
         method, path, _ = lines[0].split(" ", 2)
         headers = {}
         for line in lines[1:]:
@@ -48,19 +48,32 @@ def parse_request(raw: bytes) -> tuple[str, str, dict]:
                 key, value = line.split(":", 1)
                 headers[key.strip().lower()] = value.strip()
         return method, path, headers
-    except Exception:
-        return "GET", "/", {}
+    except (IndexError, ValueError) as exc:
+        raise ValueError("Invalid HTTP request") from exc
 
 
-def build_response(status: int, body: str, content_type: str = "text/plain") -> bytes:
+def build_response(
+    status: int,
+    body: str,
+    content_type: str = "text/plain",
+    extra_headers: tuple[tuple[str, str], ...] = (),
+) -> bytes:
     """Build a minimal HTTP/1.1 response."""
-    status_text = {200: "OK", 404: "Not Found", 405: "Method Not Allowed"}.get(status, "Unknown")
+    status_text = {
+        200: "OK",
+        400: "Bad Request",
+        404: "Not Found",
+        405: "Method Not Allowed",
+        501: "Not Implemented",
+    }.get(status, "Unknown")
     body_bytes = body.encode("utf-8")
+    extra = "".join(f"{name}: {value}\r\n" for name, value in extra_headers)
     headers = (
         f"HTTP/1.1 {status} {status_text}\r\n"
         f"Content-Type: {content_type}; charset=utf-8\r\n"
         f"Content-Length: {len(body_bytes)}\r\n"
         f"Connection: close\r\n"
+        f"{extra}"
         f"\r\n"
     )
     return headers.encode("utf-8") + body_bytes
@@ -73,7 +86,12 @@ def handle_client(conn: socket.socket, addr: tuple) -> None:
         if not raw:
             return
 
-        method, path, headers = parse_request(raw)
+        try:
+            method, path, headers = parse_request(raw)
+        except ValueError:
+            conn.sendall(build_response(400, "Bad Request"))
+            return
+
         print(f"{addr} {method} {path}")
 
         # Route requests
@@ -81,8 +99,14 @@ def handle_client(conn: socket.socket, addr: tuple) -> None:
             response = build_response(200, "Hello from Python socket HTTP server!\n")
         elif path == "/health" and method == "GET":
             response = build_response(200, '{"status":"ok"}', "application/json")
+        elif path in ("/", "/health") and method == "POST":
+            response = build_response(
+                405,
+                "Method Not Allowed",
+                extra_headers=(("Allow", "GET"),),
+            )
         elif method not in ("GET", "POST"):
-            response = build_response(405, "Method Not Allowed")
+            response = build_response(501, "Not Implemented")
         else:
             response = build_response(404, f"Not Found: {path}")
 
@@ -94,7 +118,7 @@ def run_server():
         srv.setsockopt(socket.SOL_SOCKET, socket.SO_REUSEADDR, 1)
         srv.bind((HOST, PORT))
         srv.listen(50)
-        print(f"HTTP server on http://{HOST}:{PORT}")
+        print(f"HTTP server listening on {HOST}:{PORT}")
 
         while True:
             try:
@@ -136,7 +160,7 @@ def parse_post_body(raw: bytes) -> str:
 
 ## A Note on Production Use
 
-This raw socket HTTP server is for learning purposes. For production, use a proper WSGI/ASGI server like `gunicorn`, `uvicorn`, or Python's built-in `http.server`. Real HTTP parsing handles chunked transfer encoding, keep-alive, pipelining, and many edge cases not covered here.
+This raw socket HTTP server is for learning purposes. For production, use a proper WSGI/ASGI server like `gunicorn` or `uvicorn` rather than Python's built-in `http.server`. Real HTTP parsing handles chunked transfer encoding, keep-alive, pipelining, and many edge cases not covered here.
 
 ## Conclusion
 
