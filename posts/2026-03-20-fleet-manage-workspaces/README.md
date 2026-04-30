@@ -8,7 +8,7 @@ Description: Learn how to create and manage Fleet workspaces to isolate GitOps d
 
 ## Introduction
 
-Fleet workspaces provide namespace-level isolation for GitOps operations. Each workspace is a Kubernetes namespace that contains its own set of GitRepo resources, ClusterGroups, and Bundles. This isolation enables multi-tenant Fleet deployments where different teams can manage their own clusters and applications without interfering with each other.
+Fleet workspaces provide namespace-level isolation for GitOps operations. In Rancher, a Fleet workspace is backed by a Kubernetes namespace of the same name and contains its own set of GitRepo resources, Cluster resources, ClusterGroups, and Bundles. This isolation enables multi-tenant Fleet deployments where different teams can manage their own clusters and applications without interfering with each other.
 
 This guide covers how to create workspaces, assign clusters to workspaces, and manage RBAC for workspace isolation.
 
@@ -21,50 +21,50 @@ This guide covers how to create workspaces, assign clusters to workspaces, and m
 
 ## Understanding Fleet Workspaces
 
-In Fleet, workspaces are implemented as Kubernetes namespaces with a specific structure:
+In Rancher, Fleet workspaces are `FleetWorkspace` resources backed by Kubernetes namespaces with a specific structure:
 
 - **fleet-local**: The default workspace for the local Rancher cluster
 - **fleet-default**: The default workspace for all downstream clusters
-- **Custom workspaces**: User-defined namespaces for team or environment isolation
+- **Custom workspaces**: User-defined Fleet workspaces backed by namespaces for team or environment isolation
 
 Each workspace has its own:
-- GitRepo resources
+- Cluster resources
 - ClusterGroup resources
+- GitRepo resources
 - Bundle resources
 - RBAC policies
 
 ## Creating a New Workspace
 
-### Step 1: Create the Namespace
+### Step 1: Create the FleetWorkspace
+
+In Rancher, creating a `FleetWorkspace` automatically creates a backing namespace with the same name.
 
 ```bash
-# Create a new namespace to serve as a Fleet workspace
-
-kubectl create namespace fleet-team-alpha
-
-# Alternatively, use a manifest for reproducibility
+# Create a new Fleet workspace in Rancher
 cat <<EOF | kubectl apply -f -
-apiVersion: v1
-kind: Namespace
+apiVersion: management.cattle.io/v3
+kind: FleetWorkspace
 metadata:
   name: fleet-team-alpha
   labels:
-    # Label helps identify Fleet workspaces
-    fleet.cattle.io/workspace: "true"
     team: alpha
 EOF
+
+# Verify the workspace exists
+kubectl get fleetworkspaces.management.cattle.io fleet-team-alpha
 ```
 
 ### Step 2: Register Clusters to the Workspace
 
-In Rancher, clusters are registered to a workspace through the UI or by moving them:
+In Rancher, create or move clusters from the **Continuous Delivery** UI after selecting the target workspace. The cluster's Fleet namespace is the backing namespace for that workspace:
 
 ```bash
-# Check which workspace a cluster belongs to
-kubectl get cluster my-cluster -n fleet-default -o jsonpath='{.metadata.namespace}'
+# Show Fleet clusters and the workspace namespace each one belongs to
+kubectl get clusters.fleet.cattle.io -A
 
-# Move a cluster to a different workspace by updating its namespace reference
-# Note: This typically requires re-registration in Rancher
+# Do not patch metadata.namespace on a Cluster resource:
+# namespaces are immutable, so use Rancher to move the cluster between workspaces
 ```
 
 ### Step 3: Create Resources in the Workspace
@@ -78,8 +78,9 @@ metadata:
   # Place the GitRepo in the team workspace
   namespace: fleet-team-alpha
 spec:
-  repo: https://github.com/team-alpha/k8s-configs
-  branch: main
+  repo: https://github.com/rancher/fleet-examples
+  paths:
+    - simple
   targets:
     - clusterSelector: {}
 ```
@@ -89,6 +90,8 @@ kubectl apply -f gitrepo-in-workspace.yaml
 ```
 
 ## Configuring Workspace RBAC
+
+For direct Kubernetes API access, you can grant Kubernetes RBAC in the workspace's backing namespace. If users need to work with the workspace in the Rancher UI, also grant access to the `FleetWorkspace` resource through a Rancher `GlobalRole`.
 
 ### Creating a Workspace Admin Role
 
@@ -110,9 +113,9 @@ rules:
     resources: ["clustergroups"]
     verbs: ["get", "list", "watch", "create", "update", "patch", "delete"]
 
-  # Read-only access to Bundles (Fleet manages these)
+  # Read-only access to Bundles (BundleDeployments live in per-cluster namespaces)
   - apiGroups: ["fleet.cattle.io"]
-    resources: ["bundles", "bundledeployments"]
+    resources: ["bundles"]
     verbs: ["get", "list", "watch"]
 ```
 
@@ -154,7 +157,7 @@ metadata:
   namespace: fleet-team-alpha
 rules:
   - apiGroups: ["fleet.cattle.io"]
-    resources: ["gitrepos", "clustergroups", "bundles", "bundledeployments"]
+    resources: ["gitrepos", "clustergroups", "bundles"]
     verbs: ["get", "list", "watch"]
 ```
 
@@ -163,21 +166,21 @@ rules:
 ### Viewing All Workspaces
 
 ```bash
-# List all Fleet workspaces (namespaces starting with fleet-)
-kubectl get namespaces | grep fleet
+# List Fleet workspaces in Rancher
+kubectl get fleetworkspaces.management.cattle.io
 
-# Or with custom label
-kubectl get namespaces -l fleet.cattle.io/workspace=true
+# Or inspect their backing namespaces
+kubectl get namespaces | grep '^fleet-'
 ```
 
 ### Switching Between Workspaces
 
 ```bash
 # List GitRepos in a specific workspace
-kubectl get gitrepo -n fleet-team-alpha
+kubectl get gitrepos -n fleet-team-alpha
 
 # List all GitRepos across all workspaces
-kubectl get gitrepo -A
+kubectl get gitrepos -A
 
 # Get bundles in a specific workspace
 kubectl get bundles -n fleet-team-alpha
@@ -193,10 +196,10 @@ kubectl get bundles -n fleet-team-alpha
 
 ### Creating a Workspace in Rancher
 
-1. Navigate to **Continuous Delivery > Advanced > Workspaces**
-2. Click **Create**
-3. Enter a workspace name
-4. Assign clusters to the workspace
+1. Navigate to **Continuous Delivery** in Rancher
+2. Use the workspace selector at the top of the page to create a new workspace or switch to an existing one
+3. After selecting the workspace, click **Clusters** in the left navigation
+4. Assign or move clusters into the current workspace
 
 ## Workspace Isolation Best Practices
 
@@ -216,16 +219,17 @@ fleet-prod-only       # Production-only critical services
 ```bash
 # Create workspaces by environment
 for env in development staging production; do
-  kubectl create namespace "fleet-${env}" --dry-run=client -o yaml | \
-    kubectl apply -f -
-
-  # Label the namespace
-  kubectl label namespace "fleet-${env}" \
-    fleet.cattle.io/workspace="true" \
-    environment="${env}"
+  cat <<EOF | kubectl apply -f -
+apiVersion: management.cattle.io/v3
+kind: FleetWorkspace
+metadata:
+  name: fleet-${env}
+  labels:
+    environment: "${env}"
+EOF
 done
 ```
 
 ## Conclusion
 
-Fleet workspaces provide a clean isolation model for multi-team, multi-environment GitOps deployments. By using namespaces as workspaces and combining them with Kubernetes RBAC, you can give teams autonomy over their own deployments without risking interference with other teams. A thoughtful workspace design - whether team-based, environment-based, or a combination - forms the foundation of a scalable and secure Fleet deployment.
+Fleet workspaces provide a clean isolation model for multi-team, multi-environment GitOps deployments. By using Fleet workspaces backed by namespaces and combining them with Kubernetes RBAC, you can give teams autonomy over their own deployments without risking interference with other teams. A thoughtful workspace design - whether team-based, environment-based, or a combination - forms the foundation of a scalable and secure Fleet deployment.
