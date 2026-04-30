@@ -13,25 +13,26 @@ GitOps applies to Portainer configuration itself - not just the workloads it man
 ## Repository Structure
 
 ```text
-portainer-config/
-├── environments/
-│   ├── production.tf
-│   ├── staging.tf
-│   └── development.tf
-├── users/
-│   ├── users.tf
-│   └── teams.tf
-├── registries/
-│   └── registries.tf
-├── stacks/
-│   ├── monitoring.tf
-│   └── application.tf
-├── provider.tf
-├── versions.tf
-├── variables.tf
-└── .github/
-    └── workflows/
-        └── terraform.yml
+.
+├── .github/
+│   └── workflows/
+│       └── terraform.yml
+└── portainer-config/
+    ├── environments/
+    │   ├── production.tf
+    │   ├── staging.tf
+    │   └── development.tf
+    ├── users/
+    │   ├── users.tf
+    │   └── teams.tf
+    ├── registries/
+    │   └── registries.tf
+    ├── stacks/
+    │   ├── monitoring.tf
+    │   └── application.tf
+    ├── provider.tf
+    ├── versions.tf
+    └── variables.tf
 ```
 
 ## Provider Configuration
@@ -47,7 +48,7 @@ terraform {
     }
   }
 
-  # Store Terraform state remotely (required for GitOps)
+  # Store Terraform state remotely for CI/CD-driven GitOps
   backend "s3" {
     bucket = "mycompany-terraform-state"
     key    = "portainer/terraform.tfstate"
@@ -56,8 +57,8 @@ terraform {
 }
 
 provider "portainer" {
-  endpoint     = var.portainer_url
-  access_token = var.portainer_api_token
+  endpoint = var.portainer_url
+  api_key  = var.portainer_api_key
 }
 ```
 
@@ -77,12 +78,15 @@ on:
 
 permissions:
   contents: read
-  pull-requests: write
+  issues: write
 
 jobs:
   terraform:
     name: Terraform
     runs-on: ubuntu-latest
+    env:
+      AWS_ACCESS_KEY_ID: ${{ secrets.AWS_ACCESS_KEY_ID }}
+      AWS_SECRET_ACCESS_KEY: ${{ secrets.AWS_SECRET_ACCESS_KEY }}
     defaults:
       run:
         working-directory: portainer-config
@@ -90,14 +94,11 @@ jobs:
     steps:
       - uses: actions/checkout@v4
 
-      - uses: hashicorp/setup-terraform@v3
+      - uses: hashicorp/setup-terraform@v4
         with:
-          terraform_version: 1.7.0
+          terraform_version: 1.14.8
 
       - name: Terraform Init
-        env:
-          AWS_ACCESS_KEY_ID: ${{ secrets.AWS_ACCESS_KEY_ID }}
-          AWS_SECRET_ACCESS_KEY: ${{ secrets.AWS_SECRET_ACCESS_KEY }}
         run: terraform init
 
       - name: Terraform Validate
@@ -107,29 +108,37 @@ jobs:
         id: plan
         env:
           TF_VAR_portainer_url: ${{ secrets.PORTAINER_URL }}
-          TF_VAR_portainer_api_token: ${{ secrets.PORTAINER_API_TOKEN }}
+          TF_VAR_portainer_api_key: ${{ secrets.PORTAINER_API_KEY }}
         run: terraform plan -no-color
 
       # Post plan output as PR comment
       - name: Comment Plan on PR
         if: github.event_name == 'pull_request'
-        uses: actions/github-script@v7
+        uses: actions/github-script@v9
+        env:
+          PLAN: ${{ steps.plan.outputs.stdout }}
         with:
           script: |
-            const plan = `${{ steps.plan.outputs.stdout }}`;
-            github.rest.issues.createComment({
+            const body = [
+              '## Terraform Plan',
+              '```',
+              process.env.PLAN,
+              '```'
+            ].join('\n');
+
+            await github.rest.issues.createComment({
               issue_number: context.issue.number,
               owner: context.repo.owner,
               repo: context.repo.repo,
-              body: `## Terraform Plan\n```\n${plan}\n````
-            })
+              body
+            });
 
       # Only apply on main branch
       - name: Terraform Apply
         if: github.ref == 'refs/heads/main' && github.event_name == 'push'
         env:
           TF_VAR_portainer_url: ${{ secrets.PORTAINER_URL }}
-          TF_VAR_portainer_api_token: ${{ secrets.PORTAINER_API_TOKEN }}
+          TF_VAR_portainer_api_key: ${{ secrets.PORTAINER_API_KEY }}
         run: terraform apply -auto-approve
 ```
 
@@ -142,8 +151,8 @@ variable "portainer_url" {
   type        = string
 }
 
-variable "portainer_api_token" {
-  description = "Portainer API access token"
+variable "portainer_api_key" {
+  description = "Portainer API key"
   type        = string
   sensitive   = true  # Redacted from logs
 }
@@ -159,7 +168,6 @@ variable "registry_passwords" {
 
 ```text
 main          ← Production Portainer config (auto-applied)
-staging       ← Staging Portainer config (auto-applied to staging)
 feature/*     ← Developer changes (plan-only, no apply)
 ```
 
