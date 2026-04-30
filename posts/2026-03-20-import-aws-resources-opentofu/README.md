@@ -8,7 +8,7 @@ Description: Learn how to import existing AWS resources into OpenTofu state usin
 
 ---
 
-Importing existing infrastructure into OpenTofu brings manually-created resources under code management without recreating them. The modern `import` block approach generates configuration automatically, while `tofu import` adds resources to state for hand-written configurations.
+Importing existing infrastructure into OpenTofu brings manually-created resources under code management without recreating them. Assuming your AWS provider is already configured and initialized, the modern `import` block approach can generate configuration automatically with the experimental `tofu plan -generate-config-out` workflow, while `tofu import` adds resources to state for hand-written configurations.
 
 ## Import Workflow
 
@@ -25,7 +25,7 @@ graph LR
 ## Import Block (Modern Approach)
 
 ```hcl
-# import.tf - generates configuration automatically
+# import.tf - used with tofu plan -generate-config-out
 
 import {
   id = "i-1234567890abcdef0"
@@ -50,7 +50,7 @@ tofu plan -generate-config-out=generated.tf
 # Review the generated configuration
 cat generated.tf
 
-# Apply to add resources to state
+# After any needed edits, apply to add resources to state
 tofu apply
 ```
 
@@ -58,6 +58,7 @@ tofu apply
 
 ```bash
 # tofu import <resource_address> <resource_id>
+# First, define matching resource blocks in your configuration
 
 # EC2 instance
 tofu import aws_instance.web i-1234567890abcdef0
@@ -121,12 +122,14 @@ tofu plan -generate-config-out=generated_instances.tf
 ```bash
 # After importing, run plan to check for drift
 tofu plan
+```
 
-# Common issues after import:
-# 1. Tags that OpenTofu would add - add to your config
-# 2. Settings that differ - decide if your config or reality is correct
-# 3. Lifecycle rules - add ignore_changes for attributes you don't want to manage
+Common issues after import:
+1. Tags that OpenTofu would add - add to your config.
+2. Settings that differ - decide if your config or reality is correct.
+3. Lifecycle rules - add `ignore_changes` for attributes you don't want to manage.
 
+```hcl
 # Example: ignore tags managed externally
 resource "aws_instance" "web" {
   # ... imported config ...
