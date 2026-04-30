@@ -8,90 +8,171 @@ Description: Implement per-client rate limiting for GraphQL APIs using IPv6 addr
 
 ## Overview
 
-Implement per-client rate limiting for GraphQL APIs using IPv6 addresses as client identifiers. This guide covers the configuration steps and best practices.
+Implement per-client rate limiting for GraphQL APIs using IPv6 addresses as client identifiers. A practical setup is to extract the client IP from the request, normalize IPv4-mapped IPv6 addresses, and use Redis to count requests before the GraphQL handler runs.
 
 ## Prerequisites
 
 - Basic understanding of IPv6 networking
-- The relevant software installed and running
+- Node.js 18+ with an HTTP GraphQL server
+- Redis installed and running
 - IPv6 connectivity on your server
 
 ## Configuration
 
-Each framework has specific ways to bind to IPv6 interfaces. The general pattern is to use `::` as the bind address, which is the IPv6 equivalent of `0.0.0.0`.
+Bind your HTTP server to `::`, make sure your application reads a trustworthy client address, and point your Redis client at a reachable Redis instance. On many operating systems, listening on `::` may also accept IPv4 connections unless you explicitly configure IPv6-only sockets.
 
 ```bash
 # Verify IPv6 is available on your system
-
 ip -6 addr show
-ping6 -c 3 ::1
+ping -6 -c 3 ::1
+
+# Verify Redis is reachable
+redis-cli PING
 ```
 
 ## Step-by-Step Setup
 
 ### 1. Bind to IPv6 Interfaces
 
-Most servers accept `::` as the host to listen on all IPv6 interfaces:
+Listen on `::` so IPv6 clients can reach the GraphQL endpoint:
 
 ```javascript
 // Node.js example
-server.listen(4000, '::', () => {
-    console.log('Server listening on [::]:4000');
+app.listen(4000, '::', () => {
+    console.log('GraphQL server listening on http://[::]:4000/graphql');
 });
-```
-
-```python
-# Python example
-uvicorn.run(app, host="::", port=4000)
 ```
 
 ### 2. Handle IPv6 Addresses in Application Logic
 
-When working with client addresses, normalize IPv4-mapped IPv6 addresses:
+If your app is behind a trusted reverse proxy, configure Express `trust proxy` to that proxy's exact IP or CIDR before using `req.ip`. Otherwise Express falls back to the socket peer address.
 
 ```javascript
 function getClientIP(req) {
-    const addr = req.socket.remoteAddress || '';
-    // Convert ::ffff:192.168.1.1 to 192.168.1.1
-    const ipv4Mapped = addr.match(/^::ffff:(\d+\.\d+\.\d+\.\d+)$/);
-    return ipv4Mapped ? ipv4Mapped[1] : addr;
+    const addr = req.ip || req.socket.remoteAddress || '';
+    // Convert IPv4-mapped IPv6 such as ::ffff:192.168.1.1 to plain IPv4.
+    return addr.replace(/^::ffff:/, '');
 }
 ```
 
-### 3. Firewall Configuration
+### 3. Count Requests in Redis
 
-Ensure your firewall allows incoming connections on the required port over IPv6:
+Use Redis to atomically increment a per-client counter and apply an expiry window:
 
-```bash
-# UFW
-sudo ufw allow 4000/tcp
+```javascript
+import { createClient } from 'redis';
 
-# ip6tables
-sudo ip6tables -A INPUT -p tcp --dport 4000 -j ACCEPT
+const redis = createClient({
+    url: process.env.REDIS_URL ?? 'redis://127.0.0.1:6379',
+});
+
+redis.on('error', (err) => console.error('Redis Client Error', err));
+await redis.connect();
+
+const WINDOW_SECONDS = 60;
+const MAX_REQUESTS = 5; // Raise this for production.
+
+const RATE_LIMIT_SCRIPT = `
+local current = redis.call('INCR', KEYS[1])
+if current == 1 then
+  redis.call('EXPIRE', KEYS[1], ARGV[1])
+end
+return current
+`;
+
+async function checkRateLimit(clientIP) {
+    const key = `graphql:rate:${clientIP}`;
+    const current = await redis.eval(RATE_LIMIT_SCRIPT, {
+        keys: [key],
+        arguments: [String(WINDOW_SECONDS)],
+    });
+
+    const retryAfter = current > MAX_REQUESTS
+        ? Math.max(await redis.ttl(key), 1)
+        : 0;
+
+    return {
+        allowed: current <= MAX_REQUESTS,
+        retryAfter,
+    };
+}
 ```
 
-### 4. DNS Configuration
+### 4. Apply the Limit Before GraphQL Execution
 
-Add an AAAA record pointing to your server's IPv6 address:
+Run the rate-limit check before the GraphQL handler so rejected requests do not execute queries or resolvers:
 
-```text
-example.com.  300  IN  AAAA  2001:db8::1
+```javascript
+import express from 'express';
+import { GraphQLObjectType, GraphQLSchema, GraphQLString } from 'graphql';
+import { createHandler } from 'graphql-http/lib/use/express';
+
+const app = express();
+
+// Example for a reverse proxy on the same host:
+// app.set('trust proxy', 'loopback');
+
+const schema = new GraphQLSchema({
+    query: new GraphQLObjectType({
+        name: 'Query',
+        fields: {
+            hello: {
+                type: GraphQLString,
+                resolve: () => 'Hello from IPv6 GraphQL!',
+            },
+        },
+    }),
+});
+
+app.use('/graphql', async (req, res, next) => {
+    try {
+        const clientIP = getClientIP(req);
+        const { allowed, retryAfter } = await checkRateLimit(clientIP);
+
+        if (!allowed) {
+            res.setHeader('Retry-After', String(retryAfter));
+            return res.status(429).json({
+                errors: [{ message: 'Too many GraphQL requests from this client' }],
+            });
+        }
+
+        next();
+    } catch (err) {
+        next(err);
+    }
+});
+
+app.all('/graphql', createHandler({ schema }));
+
+app.listen(4000, '::', () => {
+    console.log('GraphQL server listening on http://[::]:4000/graphql');
+});
 ```
 
 ## Testing
 
 ```bash
-# Test over IPv6
-curl -6 http://[2001:db8::1]:4000/graphql   -H "Content-Type: application/json"   -d '{"query": "{ __typename }"}'
+# Send 6 requests over IPv6. With MAX_REQUESTS=5, the 6th should return 429.
+for i in {1..6}; do
+  curl -6 -s -o /dev/null -w "%{http_code}\n" \
+    http://[::1]:4000/graphql \
+    -H "Content-Type: application/json" \
+    --data '{"query":"{ hello }"}'
+done
+
+# Inspect the rate-limited response and Retry-After header.
+curl -6 -i http://[::1]:4000/graphql \
+  -H "Content-Type: application/json" \
+  --data '{"query":"{ hello }"}'
 
 # Verify IPv6 is used
-curl -6 -v http://[::1]:4000/ 2>&1 | grep "Connected"
+curl -6 -v http://[::1]:4000/graphql 2>&1 | grep "Connected to"
 ```
 
 ## Monitoring with OneUptime
 
-Use [OneUptime](https://oneuptime.com) to monitor your service's IPv6 endpoints. Set up HTTP monitors pointing to your IPv6 address and configure alerts for availability and response time thresholds.
+Use [OneUptime](https://oneuptime.com) to monitor your service's IPv6 GraphQL endpoint. Keep routine health checks below the configured rate limit, and track spikes in `429 Too Many Requests` responses separately so you can distinguish abuse from availability problems.
 
 ## Conclusion
 
-Configuring How to Rate Limit GraphQL Queries by IPv6 Client is primarily about ensuring the server binds to IPv6 interfaces using `::` and that firewalls permit traffic on the required ports. Client IPv6 addresses are then available through standard request handling mechanisms in your application code.
+Rate limiting GraphQL by IPv6 client is not just about binding the server to `::`. You also need to extract a trustworthy client address, normalize IPv4-mapped IPv6 addresses, and reject excess requests before GraphQL execution. For user-level quotas, combine IP-based limiting with authenticated identity because IPv6 privacy addresses can rotate.
