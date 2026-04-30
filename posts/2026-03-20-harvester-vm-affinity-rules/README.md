@@ -49,7 +49,7 @@ metadata:
   name: database-vm
   namespace: default
 spec:
-  running: true
+  runStrategy: Always
   template:
     spec:
       # Affinity rules go in the template spec
@@ -133,7 +133,7 @@ metadata:
     role: postgres
     instance: primary
 spec:
-  running: true
+  runStrategy: Always
   template:
     metadata:
       labels:
@@ -188,7 +188,7 @@ metadata:
     role: postgres
     instance: replica
 spec:
-  running: true
+  runStrategy: Always
   template:
     metadata:
       labels:
@@ -245,7 +245,7 @@ metadata:
   name: redis-cache
   namespace: default
 spec:
-  running: true
+  runStrategy: Always
   template:
     metadata:
       labels:
@@ -292,12 +292,8 @@ spec:
 ## Step 4: Configure Affinity via the UI
 
 1. Navigate to **Virtual Machines** → **Create** (or edit an existing VM)
-2. Go to the **Advanced** tab
-3. Find the **Node Scheduling** section
-4. Select from:
-   - **Run VM on any available node** (no affinity)
-   - **Run VM on node matching rules** (node affinity/selector)
-   - **Run VM on node that has fewer VMs** (spread preference)
+2. Go to the **Node Scheduling** tab to configure node affinity rules based on node labels
+3. Go to the **VM Scheduling** tab to configure affinity or anti-affinity rules based on workload labels
 
 ## Verifying Affinity Rules
 
