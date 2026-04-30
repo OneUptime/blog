@@ -25,7 +25,7 @@ Infrastructure:
 Fabric /52 breakdown:
   2001:db8:dc1:0100::/56   → Spine Loopbacks
   2001:db8:dc1:0200::/56   → Leaf Loopbacks
-  2001:db8:dc1:0300::/56   → Spine-Leaf P2P Links (/126 or /127 each)
+  2001:db8:dc1:0300::/56   → Spine-Leaf P2P Links (/127 each)
 
 Server /52 breakdown (by pod/rack):
   2001:db8:dc1:2000::/56   → Pod 1 (256 /64s per pod)
@@ -51,7 +51,7 @@ Leaf Loopback Addressing (/128):
   ...
   Encoding: 0200::RRrr where RR=row, rr=rack
 
-P2P Link Addressing (/126 or /127):
+P2P Link Addressing (/127):
   Spine-1 <-> Leaf-101: 2001:db8:dc1:0300:1:101::/127
     Spine-1 port: ...::0
     Leaf-101 port: ...::1
@@ -89,7 +89,6 @@ router bgp 65101
   neighbor 2001:db8:dc1:0300:1:101::0   ! Spine-1
     remote-as 65001
     address-family ipv6 unicast
-      activate
 ```
 
 ## Server Workload IPv6 Addressing
@@ -99,7 +98,7 @@ Server Workload Addressing (/64 per VLAN):
 
 Pod 1, Rack 1:
   VLAN 100 (App Tier): 2001:db8:dc1:2001::/64
-    Servers: ...::server-mac-derived (SLAAC)
+    Servers: ...::SLAAC-derived IID
     Or DHCPv6: ...::100 to ...::200
 
   VLAN 200 (DB Tier): 2001:db8:dc1:2002::/64
@@ -109,15 +108,19 @@ Pod 1, Rack 2:
   VLAN 200: 2001:db8:dc1:2012::/64
 
 Container Workloads (Kubernetes):
-  Each node gets a /64: 2001:db8:dc1:3NNN::/64
-    Where NNN = node number
-  Each pod gets a /128 from the node's /64
+  Each node commonly gets a pod CIDR, often a /64: 2001:db8:dc1:23HH::/64
+    Where HH = node number in hex
+  Each pod gets a /128 from that node CIDR
+    Exact node prefix size depends on the CNI plugin and cluster configuration
 ```
 
 ## BGP Spine Configuration
 
 ```text
 ! Spine-1 - Aggregates leaf routes
+
+route-map LEAF-ASNS permit 10
+  match as-number 65100-65199
 
 router bgp 65001
   router-id 10.0.0.1
@@ -126,17 +129,14 @@ router bgp 65001
     ! Aggregate leaf loopback block
     aggregate-address 2001:db8:dc1:0200::/56 summary-only
 
-  ! Dynamic BGP neighbors for all leaf connections
-  neighbor 2001:db8:dc1:0300:1::/80   ! All /127 from Spine-1 to leaves
-    remote-as range 65100 65199
+  ! Dynamic BGP prefix peer for all leaf-facing links on Spine-1
+  neighbor 2001:db8:dc1:0300:1::/80 remote-as route-map LEAF-ASNS
     address-family ipv6 unicast
-      activate
-      route-map LEAF-IN in
-      route-map SPINE-OUT out
+      prefix-list LEAF-ALLOWED in
 
 ! Only accept leaf loopbacks and workload prefixes
-ip prefix-list LEAF-ALLOWED seq 10 permit 2001:db8:dc1:0200::/56 le 128
-ip prefix-list LEAF-ALLOWED seq 20 permit 2001:db8:dc1:2000::/52 le 64
+ipv6 prefix-list LEAF-ALLOWED seq 10 permit 2001:db8:dc1:0200::/56 le 128
+ipv6 prefix-list LEAF-ALLOWED seq 20 permit 2001:db8:dc1:2000::/52 le 64
 ```
 
 ## IPv6 Addressing Documentation Template
@@ -145,11 +145,11 @@ ip prefix-list LEAF-ALLOWED seq 20 permit 2001:db8:dc1:2000::/52 le 64
 #!/usr/bin/env python3
 # dc_ipv6_inventory.py - Generate DC IPv6 inventory
 
-import ipaddress
+from ipaddress import IPv6Interface, IPv6Network
 
-DC_BASE = "2001:db8:dc1::/48"
-SPINE_LOOPBACKS = "2001:db8:dc1:0100::/56"
-LEAF_LOOPBACKS = "2001:db8:dc1:0200::/56"
+DC_BASE = IPv6Network("2001:db8:dc1::/48")
+SPINE_LOOPBACKS = IPv6Network("2001:db8:dc1:0100::/56")
+LEAF_LOOPBACKS = IPv6Network("2001:db8:dc1:0200::/56")
 
 spines = {
     "Spine-1": "2001:db8:dc1:0100::1/128",
@@ -158,13 +158,20 @@ spines = {
     "Spine-4": "2001:db8:dc1:0100::4/128",
 }
 
-# Generate leaf loopbacks
+# Generate leaf loopbacks using row/rack encoding (6 rows x 8 racks = 48 leaves)
 
 leaves = {}
-for rack in range(1, 48 + 1):  # 48 leaf switches
-    name = f"Leaf-{rack:03d}"
-    addr = f"2001:db8:dc1:0200::{rack:x}/128"
-    leaves[name] = addr
+for row in range(1, 6 + 1):
+    for rack in range(1, 8 + 1):
+        leaf_id = row * 100 + rack
+        name = f"Leaf-{leaf_id}"
+        addr = f"2001:db8:dc1:0200::{row}{rack:02d}/128"
+        leaves[name] = addr
+
+assert SPINE_LOOPBACKS.subnet_of(DC_BASE)
+assert LEAF_LOOPBACKS.subnet_of(DC_BASE)
+assert all(IPv6Interface(addr).ip in SPINE_LOOPBACKS for addr in spines.values())
+assert all(IPv6Interface(addr).ip in LEAF_LOOPBACKS for addr in leaves.values())
 
 print("=== DC IPv6 Spine Loopbacks ===")
 for name, addr in spines.items():
@@ -176,4 +183,4 @@ for name, addr in list(leaves.items())[:10]:
 print(f"  ... ({len(leaves)} total)")
 ```
 
-Data center fabric IPv6 addressing works best when it encodes switch role and location into the address structure, uses /127 or /126 point-to-point links between spine and leaf nodes, assigns /128 loopbacks for router IDs and iBGP peers, and allocates /64 server subnets from a separate block that enables route aggregation at pod boundaries.
+Data center fabric IPv6 addressing works best when it encodes switch role and location into the address structure, uses /127 point-to-point links between spine and leaf nodes, assigns /128 loopbacks as stable peering and reachability addresses, keeps BGP router IDs as separate 32-bit values, and allocates /64 server subnets from a separate block that enables route aggregation at pod boundaries.
