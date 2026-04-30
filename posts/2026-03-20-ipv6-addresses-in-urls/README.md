@@ -4,11 +4,11 @@ Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
 Tags: IPv6, URL, HTTP, Networking, Web Development
 
-Description: Learn the correct syntax for including IPv6 addresses in URLs using square brackets as required by RFC 2732 and RFC 3986, with examples across common tools and languages.
+Description: Learn the correct syntax for including IPv6 addresses in URLs using square brackets as originally defined in RFC 2732 and standardized in RFC 3986, with examples across common tools and languages.
 
 ## Introduction
 
-IPv6 addresses contain colons (`:`), which conflict with the colon used to separate a host from a port number in URLs (`host:port`). RFC 2732 (updated by RFC 3986) resolves this by requiring IPv6 addresses in URLs to be enclosed in square brackets `[ ]`.
+IPv6 addresses contain colons (`:`), which conflict with the colon used to separate a host from a port number in URLs (`host:port`). RFC 2732, later obsoleted by RFC 3986, resolves this by requiring IPv6 addresses in URLs to be enclosed in square brackets `[ ]`.
 
 ## Basic Syntax
 
@@ -126,7 +126,7 @@ console.log(makeIPv6URL('http', '2001:db8::1', 8080, '/api'));
 
 // Using the URL API (handles IPv6 automatically)
 const url = new URL('http://[2001:db8::1]:8080/api');
-console.log(url.hostname); // 2001:db8::1
+console.log(url.hostname); // [2001:db8::1]
 console.log(url.port);     // 8080
 ```
 
@@ -139,7 +139,7 @@ server {
     listen [::1]:80;
     listen [2001:db8::1]:443 ssl;
 
-    # Listen on all IPv6 addresses (dual-stack with IPv4)
+    # Listen on all IPv6 addresses
     listen [::]:80;
     listen [::]:443 ssl;
 
