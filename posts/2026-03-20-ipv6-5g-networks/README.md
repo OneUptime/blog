@@ -2,13 +2,13 @@
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
-Tags: IPv6, 5G, Mobile Networks, 3GPP, PDU Session, NR, SAS, NSA
+Tags: IPv6, 5G, Mobile Networks, 3GPP, PDU Session, NR, SA, NSA
 
 Description: Understand IPv6 addressing in 5G standalone and non-standalone networks, PDU session types, 5G network slicing with IPv6, and how UE devices receive IPv6 addresses over 5G.
 
 ---
 
-5G networks are designed as IPv6-first. 3GPP specifications mandate IPv6 support in 5G Standalone (SA) architecture, with PDU sessions supporting IPv4, IPv6, IPv4v6 (dual-stack), and Ethernet types. 5G's large address space requires IPv6 for efficient addressing at scale.
+5G networks are designed with native IPv6 support. 3GPP specifications define PDU session types for IPv4, IPv6, IPv4v6 (dual-stack), Ethernet, and Unstructured traffic in 5G Standalone (SA) architecture. IPv6 provides the address scale needed for large mobile and IoT deployments.
 
 ## 5G IPv6 Architecture
 
@@ -17,12 +17,10 @@ Description: Understand IPv6 addressing in 5G standalone and non-standalone netw
 
 UE (User Equipment)
 └── 5G NR Radio (gNB)
-    └── N2/N3 interfaces (IPv6)
-        └── AMF (Access and Mobility Function)
-        └── SMF (Session Management Function) - assigns IPv6 to UE
-            └── UPF (User Plane Function)
-                └── DN (Data Network) - Internet or private
-                    └── IPv6 Internet
+    ├── N2 (control plane) → AMF → SMF
+    └── N3 (user plane) → UPF → DN → IPv6 Internet
+
+SMF ↔ UPF over N4
 
 PDU Session Types:
 - IPv4: Legacy IPv4 only
@@ -38,20 +36,20 @@ PDU Session Types:
 How UE Gets IPv6 in 5G:
 
 1. UE initiates PDU Session Establishment
-2. SMF allocates IPv6 prefix (typically /64)
-3. UPF configures uplink/downlink for the prefix
-4. SMF sends Router Advertisement to UE via N1 interface
-   - RA includes /64 prefix
-   - UE performs SLAAC to form interface address
-5. Optional: DHCPv6 for additional addresses
+2. SMF allocates a /64 IPv6 prefix and a link-local interface identifier
+3. UPF configures uplink/downlink for the session
+4. SMF sends Router Advertisement to UE via the UPF
+   - RA includes the /64 prefix and link MTU
+   - UE performs SLAAC to form its global IPv6 address
+5. Optional: Stateless DHCPv6 can provide additional parameters such as DNS
 
 IPv6 Prefix Types in 5G:
-- /64 per PDU session (standard SLAAC)
-- /128 for specific UE address (DHCPv6 stateful)
-- Multiple prefixes for multi-homed UEs
+- /64 per IPv6 or IPv4v6 PDU session (standard UE case)
+- Additional delegated prefixes via DHCPv6 Prefix Delegation (for RG/downstream use cases)
+- Multiple prefixes for IPv6 multi-homing scenarios
 
 Typical 5G IPv6 addresses:
-2001:db8:5g:ue1::1/64  (from SMF prefix delegation)
+2001:db8:100:1::1234/64  (example UE global address formed from an allocated /64)
 ```
 
 ## 3GPP 5G IPv6 PDU Session
@@ -65,18 +63,21 @@ PDU Session Establishment Request:
 
 SMF → UPF:
   N4 Session Establishment Request
-  IPv6 prefix: 2001:db8:5g::/64
+  IPv6 prefix: 2001:db8:100:1::/64
 
 SMF → UE (via AMF/gNB):
   PDU Session Establishment Accept
-  IPv6 Address: 2001:db8:5g:ue1::/64
-  PCO (Protocol Configuration Options):
+  PDU Address: IPv6 link-local interface identifier
+  Extended protocol configuration options (optional):
     IPv6 DNS: 2001:4860:4860::8888
-    MTU: 1500
 
-UE sends Router Solicitation
-SMF/UPF sends Router Advertisement with assigned /64
-UE uses SLAAC to form: 2001:db8:5g:ue1::device-eui/64
+SMF → UE (via UPF):
+  IPv6 Router Advertisement
+  Prefix: 2001:db8:100:1::/64
+  MTU: 1400
+
+UE processes Router Advertisement
+UE uses SLAAC to form a global address within 2001:db8:100:1::/64
 ```
 
 ## Verify IPv6 on 5G Device (Android/Linux)
@@ -98,15 +99,15 @@ ip -6 addr show rmnet_data0
 ip -6 route show
 
 # Test IPv6 connectivity
-ping6 -I rmnet_data0 2606:4700:4700::1111
+ping -6 -I rmnet_data0 2606:4700:4700::1111
 
 # Linux laptop with 5G modem (ModemManager)
 nmcli device status  # Shows wwan0 state
-nmcli connection show --active | grep "IPv6"
+nmcli device show wwan0 | grep '^IP6\.'
 
 # Check ModemManager for IPv6 bearer info
 mmcli -b /org/freedesktop/ModemManager1/Bearer/0
-# Shows: ipv6.address, ipv6.prefix, ipv6.gateway, ipv6.dns
+# Shows IPv6 bearer settings such as method, address, gateway, and DNS when exposed
 ```
 
 ## 5G Network Slicing with IPv6
@@ -117,17 +118,17 @@ Each network slice can have different IPv6 addressing:
 
 Slice 1 (eMBB - enhanced Mobile Broadband):
   PDU Session: IPv4v6 dual-stack
-  IPv6 prefix: 2001:db8:slice1::/48
+  IPv6 prefix: 2001:db8:1000::/48
   Use: Consumer internet
 
 Slice 2 (URLLC - Ultra-Reliable Low Latency):
   PDU Session: IPv6
-  IPv6 prefix: 2001:db8:slice2::/48
+  IPv6 prefix: 2001:db8:2000::/48
   Use: Industrial IoT, autonomous vehicles
 
 Slice 3 (mMTC - massive Machine Type Communication):
   PDU Session: IPv6 (massive IoT devices)
-  IPv6 prefix: 2001:db8:slice3::/48
+  IPv6 prefix: 2001:db8:3000::/48
   Use: Smart city sensors, meters
 ```
 
@@ -138,20 +139,30 @@ Slice 3 (mMTC - massive Machine Type Communication):
 
 smf:
   sbi:
-    addr: 2001:db8::smf
-    port: 7777
+    server:
+      - address: 127.0.0.4
+        port: 7777
 
   pfcp:
-    addr: 2001:db8::smf  # N4 interface to UPF
+    server:
+      - address: 127.0.0.4  # N4 interface to UPF
 
   gtpu:
-    addr: 2001:db8::smf  # GTP-U endpoint
+    server:
+      - address: 127.0.0.4  # GTP-U endpoint
 
-  subnet:
-    # IPv6 pool for PDU sessions
-    - addr: 2001:db8:ue::/48
+  metrics:
+    server:
+      - address: 127.0.0.4
+        port: 9090
+
+  session:
+    # UE address pools for PDU sessions
+    - subnet: 2001:db8:cafe::/48
+      gateway: 2001:db8:cafe::1
       dnn: internet    # Data Network Name
-    - addr: 10.45.0.0/16
+    - subnet: 10.45.0.0/16
+      gateway: 10.45.0.1
       dnn: internet    # IPv4 pool
 
   dns:
@@ -172,11 +183,11 @@ sudo tcpdump -i ogstun -nn ip6
 sudo sysctl net.ipv6.conf.all.forwarding
 # Must be 1
 
-# Monitor active PDU sessions
-curl http://127.0.0.100:7777/v1/sessions | python3 -m json.tool | grep -i ipv6
+# Monitor active PDU sessions (recent Open5GS main builds with infoAPI)
+curl -s http://127.0.0.4:9090/pdu-info | python3 -m json.tool | grep -i ipv6
 
-# Check IPv6 routes added by UPF for UE sessions
+# Check IPv6 routes via ogstun
 ip -6 route show table all | grep ogstun
 ```
 
-5G networks treat IPv6 as the primary address family, with SMFs assigning /64 prefixes per PDU session and delivering them via Router Advertisement to UEs, enabling SLAAC configuration that scales to billions of 5G-connected IoT and mobile devices without NAT.
+5G networks treat IPv6 as a primary address family, with the SMF allocating an IPv6 prefix and link-local interface identifier for IPv6-capable PDU sessions, then sending Router Advertisements to the UE via the user plane so the UE can complete SLAAC-based configuration at scale.
