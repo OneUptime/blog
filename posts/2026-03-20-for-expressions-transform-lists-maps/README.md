@@ -82,7 +82,7 @@ variable "instance_config" {
 locals {
   # Extract just the keys
   service_names = [for k, v in var.instance_config : k]
-  # Result: ["web", "api", "worker"]
+  # Result: ["api", "web", "worker"]
 
   # Swap keys and values
   type_to_service = {for k, v in var.instance_config : v => k}
@@ -197,7 +197,7 @@ locals {
 
 1. **Store complex expressions in locals** - don't embed long for expressions directly in resources
 2. **Use meaningful variable names** in expressions: `for subnet in var.subnets` vs `for s in var.s`
-3. **Test with tofu console** before deploying: `echo 'local.dns_records' | tofu console`
+3. **Test with tofu console** before deploying: run `tofu console` and evaluate `local.dns_records`
 4. **Avoid deeply nested for expressions** - split into multiple local values for readability
 5. **Add type constraints** to variables to prevent unexpected input shapes
 
