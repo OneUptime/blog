@@ -8,7 +8,7 @@ Description: Create and manage AAAA records in Google Cloud DNS for IPv6 address
 
 ## Introduction
 
-Google Cloud DNS supports IPv6 through AAAA records for forward resolution and PTR records in reverse zones for reverse DNS lookups. Cloud DNS managed zones work identically for IPv4 and IPv6 - you create AAAA records pointing hostnames to IPv6 addresses. Private zones support AAAA records for internal service discovery over IPv6.
+Google Cloud DNS supports IPv6 through AAAA records for forward resolution. Cloud DNS managed zones work identically for IPv4 and IPv6 - you create AAAA records pointing hostnames to IPv6 addresses. Private zones support AAAA records for internal service discovery over IPv6. For reverse DNS of Google Cloud VM external IP addresses, configure PTR records through Compute Engine rather than by manually creating reverse zones in Cloud DNS.
 
 ## Create AAAA Records with gcloud
 
@@ -55,11 +55,10 @@ gcloud dns record-sets create api.example.com. \
     --rrdatas="2600:1900:4000:abc1:8002::" \
     --project="$PROJECT"
 
-# Verify records
+# List records in the zone
 gcloud dns record-sets list \
     --zone="$ZONE_NAME" \
-    --project="$PROJECT" \
-    --filter="type:AAAA"
+    --project="$PROJECT"
 ```
 
 ## Terraform Cloud DNS with AAAA Records
@@ -131,6 +130,11 @@ resource "google_dns_record_set" "aaaa_api" {
 ## Private DNS Zone with IPv6
 
 ```hcl
+resource "google_compute_network" "main" {
+  name                    = "main-vpc"
+  auto_create_subnetworks = false
+}
+
 # Private zone for internal services
 resource "google_dns_managed_zone" "private" {
   name        = "internal-example-com"
@@ -162,29 +166,23 @@ resource "google_dns_record_set" "aaaa_internal_service" {
 
 ## PTR Records for Reverse DNS
 
+For Google Cloud VM external IPv6 addresses, verify domain ownership first, then configure the PTR record on the instance's primary network interface instead of manually creating an `ip6.arpa.` zone in Cloud DNS.
+
 ```bash
-# Create reverse zone for IPv6 prefix 2600:1900:4000::/48
-# Reverse zone name: 0.0.0.4.0.0.9.1.0.0.6.2.ip6.arpa.
-gcloud dns managed-zones create ipv6-reverse \
+INSTANCE_NAME="my-vm"
+INSTANCE_ZONE="us-central1-a"
+PTR_DOMAIN="www.example.com."
+
+# The VM must already have an external IPv6 address on nic0.
+gcloud compute instances update-access-config "$INSTANCE_NAME" \
     --project="$PROJECT" \
-    --dns-name="0.0.0.4.0.0.9.1.0.0.6.2.ip6.arpa." \
-    --description="IPv6 reverse zone"
+    --zone="$INSTANCE_ZONE" \
+    --ipv6-public-ptr-domain="$PTR_DOMAIN"
 
-# Add PTR record
-# For address 2600:1900:4000:abc1:8000::
-# Reversed: 0.0.0.0.0.0.0.8.1.c.b.a.0.0.0.4.0.0.9.1.0.0.6.2.ip6.arpa.
-gcloud dns record-sets create \
-    "0.0.0.0.0.0.0.8.1.c.b.a.0.0.0.4.0.0.9.1.0.0.6.2.ip6.arpa." \
-    --zone=ipv6-reverse \
-    --type=PTR \
-    --ttl=300 \
-    --rrdatas="www.example.com." \
-    --project="$PROJECT"
-
-# Verify reverse lookup
+# Verify reverse lookup against the VM's external IPv6 address
 dig -x 2600:1900:4000:abc1:8000::
 ```
 
 ## Conclusion
 
-GCP Cloud DNS AAAA records work exactly like A records - use `type = "AAAA"` in Terraform or `--type=AAAA` in gcloud with the IPv6 address as the record data. Create both A and AAAA records pointing to your IPv4 and IPv6 addresses for dual-stack name resolution. Private zones support AAAA records for internal service discovery using ULA addresses. For reverse DNS, create a PTR record in the appropriate `ip6.arpa.` reverse zone. Use `dig AAAA hostname` or `dig -x ipv6-address` to verify DNS resolution.
+GCP Cloud DNS AAAA records work exactly like A records - use `type = "AAAA"` in Terraform or `--type=AAAA` in gcloud with the IPv6 address as the record data. Create both A and AAAA records pointing to your IPv4 and IPv6 addresses for dual-stack name resolution. Private zones support AAAA records for internal service discovery using ULA addresses. For reverse DNS of a Google Cloud VM external IPv6 address, verify domain ownership and set the PTR domain on the instance access configuration. Use `dig AAAA hostname` or `dig -x ipv6-address` to verify DNS resolution.
