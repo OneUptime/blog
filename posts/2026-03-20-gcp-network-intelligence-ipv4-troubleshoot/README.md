@@ -15,9 +15,9 @@ GCP Network Intelligence Center is a suite of tools for monitoring, analyzing, a
 | Tool | Purpose |
 |------|---------|
 | Connectivity Tests | Simulate and verify packet paths between endpoints |
-| Network Topology | Visual map of VPC topology and traffic flows |
-| Firewall Insights | Identify overly permissive or unused firewall rules |
-| Performance Dashboard | Latency and packet loss between Google services |
+| Network Topology | Visual map of network topology and observed communication |
+| Firewall Insights | Identify shadowed, overly permissive, or unused firewall rules |
+| Performance Dashboard | Packet loss and latency for VM-to-VM traffic, plus latency to internet locations |
 
 ## Connectivity Tests
 
@@ -43,30 +43,37 @@ gcloud network-management connectivity-tests create internal-test \
 ## Running and Retrieving Test Results
 
 ```bash
-# Run an existing connectivity test
-gcloud network-management connectivity-tests run vm-to-internet
+# Rerun an existing connectivity test
+gcloud network-management connectivity-tests rerun vm-to-internet
 
 # Get the test result
 gcloud network-management connectivity-tests describe vm-to-internet \
   --format json | jq '.reachabilityDetails'
 ```
 
-The result includes a `result` field (`REACHABLE`, `UNREACHABLE`, `AMBIGUOUS`) and a trace showing every hop and the rule that allowed or blocked it.
+The result includes a `result` field (`REACHABLE`, `UNREACHABLE`, `AMBIGUOUS`, `UNDETERMINED`) and one or more traces showing the resources and rules that allowed or blocked the simulated packet.
 
 ## Firewall Insights
 
 Identify shadowed, overly permissive, or unused rules:
 
 ```bash
-# Enable Firewall Insights (requires Firewall Insights API)
+# Enable the APIs used by Firewall Insights
 gcloud services enable firewallinsights.googleapis.com
+gcloud services enable recommender.googleapis.com
 
-# View insights for your project via Cloud Console or REST API
-gcloud compute firewall-rules list --filter="network=my-vpc"
+# List Firewall Insights for your project
+gcloud recommender insights list \
+  --project=my-project \
+  --location=global \
+  --insight-type=google.compute.firewall.Insight \
+  --format=json
 ```
 
+Log-based insights require Firewall Rules Logging, and shadowed or overly permissive rule insights must be enabled in Firewall Insights configuration before they appear.
+
 Navigate to **Network Intelligence Center > Firewall Insights** in the console to see:
-- Rules with no hits in the last 30 days
+- Rules with no hits during the observation period
 - Rules shadowed by higher-priority rules
 - Overly broad source ranges (e.g., 0.0.0.0/0 on sensitive ports)
 
@@ -81,7 +88,7 @@ gcloud services enable networkmanagement.googleapis.com
 
 Navigate to **Network Intelligence Center > Network Topology** to see a visual graph of:
 - VPC networks and subnets
-- VM-to-VM and VM-to-internet traffic flows
+- Observed communication between resources, including internet traffic
 - Cloud Interconnect and VPN connections
 
 ## Diagnosing a Specific Connectivity Problem
@@ -91,23 +98,25 @@ A common workflow for debugging an unreachable VM:
 ```bash
 # Step 1: Run a connectivity test
 gcloud network-management connectivity-tests create debug-test \
-  --source-ip 203.0.113.50 \
-  --destination-instance projects/my-project/zones/us-east1-b/instances/target-vm \
+  --source-ip-address 203.0.113.50 \
+  --source-network-type non-gcp-network \
+  --destination-ip-address 10.0.1.10 \
+  --destination-network projects/my-project/global/networks/my-vpc \
   --protocol TCP \
   --destination-port 22
 
-# Step 2: Check if the route exists
-gcloud compute routes list --filter="network=my-vpc destRange=0.0.0.0/0"
+# Step 2: Check whether a route exists for the destination subnet
+gcloud compute routes list --filter="network=my-vpc AND destRange=10.0.1.0/24"
 
-# Step 3: Verify firewall rules
+# Step 3: Verify ingress firewall rules
 gcloud compute firewall-rules list \
-  --filter="targetTags=bastion OR targetTags='' direction=INGRESS" \
+  --filter="network=my-vpc AND direction=INGRESS" \
   --format="table(name,sourceRanges,allowed,targetTags)"
 ```
 
 ## Performance Dashboard
 
-Monitor latency between GCP regions and to external endpoints:
+Monitor packet loss and latency between GCP zones or regions, plus latency to internet locations:
 
 ```bash
 # View performance dashboard
