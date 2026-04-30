@@ -8,7 +8,7 @@ Description: Learn how to set up a multi-node Harvester HCI cluster with high av
 
 ## Introduction
 
-A Harvester cluster provides the foundation for running virtual machines at scale with built-in high availability. While a single node works for testing, production deployments require at least three nodes to achieve HA for both Kubernetes control plane components and VM workloads. This guide walks through setting up a production-ready three-node Harvester cluster.
+A Harvester cluster provides the foundation for running virtual machines at scale with built-in high availability. While a single node works for testing, production deployments require at least three nodes to achieve control plane HA and support Harvester's multi-node VM recovery and live migration features. This guide walks through setting up a production-ready three-node Harvester cluster.
 
 ## Cluster Architecture
 
@@ -35,7 +35,7 @@ Each node runs:
 - Three physical servers (minimum) meeting hardware requirements
 - A shared management network with static IPs available
 - One additional IP for the cluster VIP
-- All nodes in the same L2 network segment (for VXLAN overlay)
+- Matching CPU specifications across nodes if you plan to use live migration
 - Synchronized system clocks (NTP configured)
 
 ## Step 1: Plan Your Network Layout
@@ -73,7 +73,8 @@ VIP Mode: Static
 Cluster Token: my-secure-cluster-token-2024
 Hostname: harvester-node-01
 
-OS Installation Disk: /dev/sda
+Installation Disk: /dev/sda
+Data Disk: /dev/sdb
 ```
 
 Wait for the seed node installation to complete and the node to reboot. Verify it's accessible at `https://192.168.1.100` before proceeding.
@@ -91,13 +92,15 @@ Gateway: 192.168.1.1
 DNS: 8.8.8.8
 
 # URL of the existing cluster
-Server URL: https://192.168.1.100
+Server URL: https://192.168.1.100:443
 
 # Must match the token set on the seed node
 Cluster Token: my-secure-cluster-token-2024
 
+Role: Default Role
 Hostname: harvester-node-02
-OS Installation Disk: /dev/sda
+Installation Disk: /dev/sda
+Data Disk: /dev/sdb
 ```
 
 ## Step 4: Add the Third Node
@@ -112,11 +115,13 @@ IP Address: 192.168.1.13/24
 Gateway: 192.168.1.1
 DNS: 8.8.8.8
 
-Server URL: https://192.168.1.100
+Server URL: https://192.168.1.100:443
 Cluster Token: my-secure-cluster-token-2024
 
+Role: Default Role
 Hostname: harvester-node-03
-OS Installation Disk: /dev/sda
+Installation Disk: /dev/sda
+Data Disk: /dev/sdb
 ```
 
 ## Step 5: Verify the Cluster
@@ -130,14 +135,8 @@ ssh rancher@192.168.1.11
 # Set kubeconfig
 export KUBECONFIG=/etc/rancher/rke2/rke2.yaml
 
-# All nodes should show Ready status
-kubectl get nodes -o wide
-
-# Expected output:
-# NAME               STATUS   ROLES                       AGE   VERSION
-# harvester-node-01  Ready    control-plane,etcd,master   10m   v1.27.x
-# harvester-node-02  Ready    control-plane,etcd,master   5m    v1.27.x
-# harvester-node-03  Ready    control-plane,etcd,master   2m    v1.27.x
+# All three nodes should show Ready status
+kubectl get nodes
 ```
 
 ```bash
@@ -163,14 +162,18 @@ All nodes must have synchronized clocks for etcd and distributed systems:
 # Check current time sync status on each node
 timedatectl status
 
-# If NTP is not configured, edit the configuration
-sudo vi /etc/systemd/timesyncd.conf
-# Add:
-# [Time]
-# NTP=pool.ntp.org 0.pool.ntp.org 1.pool.ntp.org
+# Configure cluster-wide NTP servers in Harvester:
+# Advanced > Settings > ntp-servers
+# Example value:
+# {
+#   "ntpServers": [
+#     "0.suse.pool.ntp.org",
+#     "1.suse.pool.ntp.org"
+#   ]
+# }
 
-# Restart the time sync service
-sudo systemctl restart systemd-timesyncd
+# Verify the node annotation includes node.harvesterhci.io/ntp-service
+kubectl get node harvester-node-01 -o yaml | grep 'node.harvesterhci.io/ntp-service'
 
 # Verify sync
 timedatectl timesync-status
@@ -200,23 +203,23 @@ For a trusted certificate, navigate to **Settings > SSL Certificates** and uploa
 
 ## Step 8: Validate High Availability
 
-Test HA by simulating a node failure:
+Test control plane HA by simulating a management node failure:
 
 ```bash
-# Identify which node is currently hosting the VIP
-ip addr show | grep 192.168.1.100
+# On a management node that will remain online, verify the VIP/API responds
+curl -fk https://192.168.1.100/version
 
-# Simulate node failure by stopping RKE2 on one node
+# On the management node you want to test, stop the management service
 sudo systemctl stop rke2-server
 
-# From another node, verify the VIP has moved
-ip addr show | grep 192.168.1.100
+# Back on the healthy management node, verify the VIP/API still responds
+curl -fk https://192.168.1.100/version
 
-# Verify the cluster is still accessible
+# Verify the cluster is still accessible from a healthy management node
 kubectl get nodes
 ```
 
-The VIP should migrate to another node within 30–60 seconds.
+The management URL should remain reachable from another healthy management node while the failed node is down.
 
 ## Cluster Sizing Recommendations
 
@@ -228,4 +231,4 @@ The VIP should migrate to another node within 30–60 seconds.
 
 ## Conclusion
 
-You now have a three-node Harvester cluster with high availability for both the control plane and VM workloads. With three nodes, the cluster can tolerate a single node failure without losing access to the API or running VMs. As your workload grows, you can add more nodes to increase compute and storage capacity. The cluster forms the foundation for deploying virtual machines, integrating with Rancher, and running Kubernetes workloads side by side with VMs.
+You now have a three-node Harvester cluster with a highly available management plane and multi-node VM capabilities. With three management nodes, the cluster can tolerate a single node failure without losing access to the API. During an unexpected node failure, VMs on that node are restarted or rescheduled based on Harvester settings rather than live-migrated in place. As your workload grows, you can add more nodes to increase compute and storage capacity. The cluster forms the foundation for deploying virtual machines, integrating with Rancher, and running Kubernetes workloads side by side with VMs.
