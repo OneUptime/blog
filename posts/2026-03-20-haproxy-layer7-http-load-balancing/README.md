@@ -29,7 +29,7 @@ defaults
     option  dontlognull           # Skip logging empty connections
     option  forwardfor            # Add X-Forwarded-For header
     option  http-server-close     # Keep client connection alive, close server side
-    option  redispatch            # Retry on another server if server goes down mid-request
+    option  redispatch            # Retry on another server after a failed connection attempt
     retries 3
     timeout http-request  10s    # Time to receive full HTTP request
     timeout queue         30s    # Time in queue when backend full
@@ -55,9 +55,9 @@ frontend https_in
     acl is_websocket hdr(Upgrade) -i WebSocket
 
     # Route based on ACL matches
+    use_backend ws_servers      if is_websocket
     use_backend api_servers     if is_api
     use_backend static_servers  if is_static
-    use_backend ws_servers      if is_websocket
     default_backend web_servers
 ```
 
@@ -68,7 +68,8 @@ backend web_servers
     balance roundrobin
 
     # HTTP health check endpoint
-    option httpchk GET /health HTTP/1.1\r\nHost:\ www.example.com
+    option httpchk GET /health HTTP/1.1
+    http-check send hdr Host www.example.com
     http-check expect status 200
 
     # Manipulate headers before sending to backend
@@ -109,8 +110,7 @@ backend ws_servers
 ## URL Rewriting and Header Manipulation
 
 ```haproxy
-frontend https_in
-    bind 203.0.113.10:443 ssl crt /etc/haproxy/certs/bundle.pem
+# Add these directives inside the existing frontend https_in
 
     # Rewrite URL path before forwarding
     http-request set-path /v2%[path] if { path_beg /api/ }
@@ -127,15 +127,12 @@ frontend https_in
     http-response set-header X-Content-Type-Options nosniff
     http-response set-header X-Frame-Options DENY
     http-response set-header Strict-Transport-Security "max-age=63072000; includeSubDomains"
-
-    default_backend web_servers
 ```
 
 ## Rate Limiting at Layer 7
 
 ```haproxy
-frontend https_in
-    bind 203.0.113.10:443 ssl crt /etc/haproxy/certs/bundle.pem
+# Add these directives inside the existing frontend https_in
 
     # Track request rate per source IP
     stick-table type ip size 100k expire 60s store http_req_rate(60s)
@@ -143,8 +140,6 @@ frontend https_in
 
     # Reject if more than 100 requests per minute
     http-request reject if { sc_http_req_rate(0) gt 100 }
-
-    default_backend web_servers
 ```
 
 ## Conclusion
