@@ -11,12 +11,12 @@ strongSwan is a widely used open-source IPsec implementation that supports IPv6 
 ## Installing strongSwan
 
 ```bash
-# Debian/Ubuntu
+# Debian/Ubuntu (swanctl + charon-systemd, with EAP-MSCHAPv2 support)
 
-sudo apt-get install strongswan strongswan-swanctl charon-systemd
+sudo apt-get install strongswan-swanctl charon-systemd libcharon-extauth-plugins
 
-# Check version (5.x supports IKEv2 and IPv6 well)
-strongswan version
+# Check version
+swanctl --version
 ```
 
 ## IPv6 IPsec with swanctl (Modern Configuration)
@@ -33,7 +33,7 @@ connections {
         proposals = aes256gcm16-prfsha384-ecp384
 
         # Server's IPv6 address
-        local_addrs = 2001:db8::vpn-server
+        local_addrs = 2001:db8::1
 
         # Accept connections from any remote
         remote_addrs = %any
@@ -51,12 +51,12 @@ connections {
         }
 
         children {
-            ipv6-child {
+            ipv6-vpn-child {
                 # Local traffic selector: all IPv6
                 local_ts = ::/0
 
-                # Remote traffic selector: client's tunnel prefix
-                remote_ts = ::/0
+                # Remote traffic selector: narrowed to the client's assigned IPv6
+                remote_ts = dynamic
 
                 # IPsec mode (tunnel)
                 mode = tunnel
@@ -64,8 +64,7 @@ connections {
                 # ESP proposals
                 esp_proposals = aes256gcm16-ecp384
 
-                # Install routes
-                install_routes = yes
+                # Route installation is controlled via charon.install_routes in strongswan.conf
             }
         }
 
@@ -76,7 +75,7 @@ connections {
 
 pools {
     ipv6-pool {
-        addrs = fd00:ipsec::/64
+        addrs = fd00:100::/64
         dns = 2001:4860:4860::8888
     }
 }
@@ -98,7 +97,7 @@ connections {
 
         # Connect over IPv4
         local_addrs = 192.0.2.1
-        remote_addrs = 198.51.100.0/24
+        remote_addrs = 198.51.100.2
 
         local {
             id = server.example.com
@@ -112,12 +111,12 @@ connections {
         }
 
         children {
-            ipv6-child {
+            ipv4-ipv6-child {
                 # Tunnel IPv6 traffic
-                local_ts = 2001:db8:server::/48
-                remote_ts = 2001:db8:client::/48
+                local_ts = 2001:db8:1::/48
+                remote_ts = 2001:db8:2::/48
                 mode = tunnel
-                esp_proposals = aes256gcm16-sha384
+                esp_proposals = aes256gcm16-ecp384
             }
         }
     }
@@ -137,13 +136,13 @@ sudo swanctl --list-conns
 sudo swanctl --list-sas
 
 # Initiate a connection
-sudo swanctl --initiate --child ipv6-child
+sudo swanctl --initiate --child ipv6-vpn-child
 
 # Terminate a connection
 sudo swanctl --terminate --ike ipv6-vpn
 ```
 
-## Legacy ipsec.conf Configuration (strongSwan 4.x style)
+## Legacy ipsec.conf Configuration (Deprecated `stroke` backend)
 
 ```conf
 # /etc/ipsec.conf
@@ -152,12 +151,17 @@ config setup
 
 conn ipv6-tunnel
     keyexchange=ikev2
-    left=2001:db8::server
+    left=2001:db8::1
     leftsubnet=::/0
+    leftcert=server-cert.pem
+    leftid=@vpn.example.com
+    leftauth=pubkey
     right=%any
-    rightsubnet=::/0
+    rightsendcert=never
+    rightauth=eap-mschapv2
     rightdns=2001:4860:4860::8888
-    rightsourceip=fd00:ipsec::/64
+    rightsourceip=fd00:100::/64
+    eap_identity=%any
     auto=add
 ```
 
@@ -174,7 +178,7 @@ sudo ip -6 xfrm policy show
 sudo ip -6 xfrm state show
 
 # Test connectivity through IPsec tunnel
-ping6 -c 3 fd00:ipsec::1
+ping -6 -c 3 <client-assigned-ipv6>
 ```
 
 ## Key Differences: IPv6 IPsec vs IPv4
@@ -183,7 +187,7 @@ ping6 -c 3 fd00:ipsec::1
 |---|---|---|
 | Header | 20-byte IP + AH/ESP | 40-byte IPv6 + extension headers |
 | Fragment | Source or router | Source only |
-| IPsec in IPv6 spec | Optional | Originally mandatory |
+| IPsec support in spec | Optional | Originally mandatory to implement |
 | NAT Traversal | Required for NAT | Usually not needed |
 
-strongSwan's full IPv6 support makes it an excellent choice for deploying modern IPsec VPN tunnels that protect IPv6 traffic with hardware-accelerated AES-GCM encryption.
+strongSwan's full IPv6 support makes it an excellent choice for deploying modern IPsec VPN tunnels that protect IPv6 traffic with AES-GCM encryption.
