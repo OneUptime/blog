@@ -2,9 +2,9 @@
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
-Tags: Go, IPv6, Network Automation, SSH, REST API, NETCONF
+Tags: Go, IPv6, Network Automation, SSH, REST API
 
-Description: Use Go for IPv6 network automation tasks including SSH-based configuration, REST API interactions, and NETCONF device management.
+Description: Use Go for IPv6 network automation tasks including SSH-based configuration, REST API interactions, and IPv6 address validation for IPAM workflows.
 
 ## SSH-Based Device Configuration
 
@@ -15,6 +15,9 @@ package main
 
 import (
     "fmt"
+    "io"
+    "net"
+    "strconv"
     "strings"
     "time"
 
@@ -22,7 +25,7 @@ import (
 )
 
 type NetworkDevice struct {
-    Host     string  // IPv6 address of the device
+    Host     string // IPv6 address or hostname of the device
     Port     int
     Username string
     Password string
@@ -38,24 +41,52 @@ func (d *NetworkDevice) Connect() (*ssh.Client, error) {
         Timeout:         10 * time.Second,
     }
 
-    addr := fmt.Sprintf("[%s]:%d", d.Host, d.Port)
+    addr := net.JoinHostPort(d.Host, strconv.Itoa(d.Port))
     return ssh.Dial("tcp", addr, config)
 }
 
-func (d *NetworkDevice) RunCommand(client *ssh.Client, cmd string) (string, error) {
+func (d *NetworkDevice) RunCommands(client *ssh.Client, cmds []string) (string, error) {
     session, err := client.NewSession()
     if err != nil {
         return "", err
     }
     defer session.Close()
 
-    var stdout strings.Builder
-    session.Stdout = &stdout
-
-    if err := session.Run(cmd); err != nil {
+    modes := ssh.TerminalModes{
+        ssh.ECHO: 0,
+    }
+    if err := session.RequestPty("vt100", 40, 80, modes); err != nil {
         return "", err
     }
-    return stdout.String(), nil
+
+    stdin, err := session.StdinPipe()
+    if err != nil {
+        return "", err
+    }
+
+    var output strings.Builder
+    session.Stdout = &output
+    session.Stderr = &output
+
+    if err := session.Shell(); err != nil {
+        return "", err
+    }
+
+    for _, cmd := range cmds {
+        if _, err := io.WriteString(stdin, cmd+"\n"); err != nil {
+            return "", err
+        }
+    }
+    if _, err := io.WriteString(stdin, "exit\nexit\n"); err != nil {
+        return "", err
+    }
+    if err := stdin.Close(); err != nil {
+        return "", err
+    }
+    if err := session.Wait(); err != nil {
+        return "", err
+    }
+    return output.String(), nil
 }
 
 func configureIPv6Route(device *NetworkDevice, prefix, nextHop string) error {
@@ -66,12 +97,14 @@ func configureIPv6Route(device *NetworkDevice, prefix, nextHop string) error {
     defer client.Close()
 
     // Configure a static IPv6 route (IOS syntax)
-    cmd := fmt.Sprintf(
-        "configure terminal\nipv6 route %s %s\nend\nwrite memory\n",
-        prefix, nextHop,
-    )
+    commands := []string{
+        "configure terminal",
+        fmt.Sprintf("ipv6 route %s %s", prefix, nextHop),
+        "end",
+        "write memory",
+    }
 
-    output, err := device.RunCommand(client, cmd)
+    output, err := device.RunCommands(client, commands)
     if err != nil {
         return fmt.Errorf("command failed: %w", err)
     }
@@ -82,13 +115,13 @@ func configureIPv6Route(device *NetworkDevice, prefix, nextHop string) error {
 
 func main() {
     router := &NetworkDevice{
-        Host:     "2001:db8::router1",
+        Host:     "2001:db8::10",
         Port:     22,
         Username: "admin",
         Password: "secret",
     }
 
-    err := configureIPv6Route(router, "2001:db8:remote::/48", "2001:db8::gateway")
+    err := configureIPv6Route(router, "2001:db8:100::/48", "2001:db8::1")
     if err != nil {
         fmt.Println("Error:", err)
     }
@@ -144,7 +177,7 @@ func (c *NetBoxClient) CreateIPv6Prefix(prefix, description string) error {
         return err
     }
 
-    req.Header.Set("Authorization", "Token "+c.Token)
+    req.Header.Set("Authorization", "Bearer "+c.Token)
     req.Header.Set("Content-Type", "application/json")
 
     resp, err := c.HTTP.Do(req)
@@ -163,8 +196,8 @@ func (c *NetBoxClient) CreateIPv6Prefix(prefix, description string) error {
 
 func main() {
     client := &NetBoxClient{
-        BaseURL: "http://[2001:db8::netbox]",
-        Token:   "your-api-token",
+        BaseURL: "http://[2001:db8::20]",
+        Token:   "nbt_your-key.your-token",
         HTTP:    &http.Client{},
     }
 
@@ -241,4 +274,4 @@ func validateAndReport(records []IPAMRecord) {
 
 ## Conclusion
 
-Go is an excellent language for IPv6 network automation due to its standard library support for SSH, HTTP, and low-level networking. Combined with libraries like `golang.org/x/crypto/ssh` for device access and standard `net/http` for REST API integration, Go enables building robust automation tools that scale from single-device configuration to fleet-wide IPv6 deployment management.
+Go is an excellent language for IPv6 network automation due to its standard library support for HTTP and low-level networking, plus packages such as `golang.org/x/crypto/ssh` for device access. Combined with `golang.org/x/crypto/ssh` for SSH automation and standard `net/http` for REST API integration, Go enables building robust automation tools that scale from single-device configuration to fleet-wide IPv6 deployment management.
