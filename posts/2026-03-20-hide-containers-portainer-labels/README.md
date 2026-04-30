@@ -8,20 +8,17 @@ Description: Learn how to use Docker labels to hide specific containers from app
 
 ---
 
-Portainer supports a label-based mechanism to exclude specific containers from appearing in its UI. This is useful for hiding infrastructure containers (like Portainer itself, monitoring agents, or log shippers) from regular users.
+Portainer supports a label-based mechanism to exclude specific containers from appearing in its UI. This works by configuring Portainer to hide containers that match an exact label name and value. This is useful for hiding infrastructure containers (like Portainer itself, monitoring agents, or log shippers) from the main container list.
 
 ## The Hide Label
 
-Add the following label to any container you want hidden from Portainer:
+Portainer does not use a built-in hide label for containers. Instead, choose a label and configure Portainer to hide that exact name and value. For example:
 
 ```text
-io.portainer.agent.hide=true
+hide-from-portainer=true
 ```
 
-Alternatively, for the blacklisted label setting:
-```text
-com.docker.compose.oneoff=true
-```
+For the examples below to work, Portainer must be configured to hide `hide-from-portainer=true`, either in **Settings** > **Hidden containers** or by starting Portainer with `-l hide-from-portainer=true`.
 
 ## Method 1: Docker Run with Labels
 
@@ -31,7 +28,7 @@ com.docker.compose.oneoff=true
 # This container will not appear in Portainer's container list
 docker run -d \
   --name my-agent \
-  --label "io.portainer.agent.hide=true" \
+  --label "hide-from-portainer=true" \
   -v /var/run/docker.sock:/var/run/docker.sock \
   my-monitoring-agent:latest
 ```
@@ -39,8 +36,7 @@ docker run -d \
 ## Method 2: Docker Compose Labels
 
 ```yaml
-# docker-compose.yml
-version: "3.8"
+# compose.yaml
 
 services:
   app:
@@ -51,7 +47,7 @@ services:
     image: fluent/fluent-bit:latest
     # Hide this infrastructure container from Portainer UI
     labels:
-      - "io.portainer.agent.hide=true"
+      - "hide-from-portainer=true"
     volumes:
       - /var/log:/var/log:ro
 
@@ -59,13 +55,13 @@ services:
     image: prom/node-exporter:latest
     # Also hidden from Portainer
     labels:
-      - "io.portainer.agent.hide=true"
+      - "hide-from-portainer=true"
     network_mode: host
 ```
 
 ## Method 3: Configure Blacklisted Labels in Portainer Settings
 
-In Portainer, you can define labels whose presence causes containers to be hidden globally. This is configured server-side rather than requiring labels on every container:
+In Portainer, you can define label name and value pairs whose presence causes containers to be hidden globally. This is configured server-side rather than requiring labels on every container:
 
 ```bash
 # Authenticate
@@ -76,7 +72,7 @@ TOKEN=$(curl -s -X POST \
   --insecure | python3 -c "import sys,json; print(json.load(sys.stdin)['jwt'])")
 
 # Configure blacklisted labels in Portainer settings
-# Any container with these labels will be hidden
+# Any container with matching labels will be hidden
 curl -X PUT \
   https://localhost:9443/api/settings \
   -H "Authorization: Bearer $TOKEN" \
@@ -118,7 +114,8 @@ docker run -d \
   --label "hide-from-portainer=true" \
   -v /var/run/docker.sock:/var/run/docker.sock \
   -v portainer_data:/data \
-  portainer/portainer-ce:latest
+  portainer/portainer-ce:latest \
+  -l hide-from-portainer=true
 ```
 
 ---
