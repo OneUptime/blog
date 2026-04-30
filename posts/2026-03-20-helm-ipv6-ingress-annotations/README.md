@@ -4,11 +4,11 @@ Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
 Tags: Helm, IPv6, Ingress, Kubernetes, Annotation
 
-Description: Add IPv6-specific Ingress annotations to Helm charts for Nginx Ingress Controller, Traefik, and AWS ALB.
+Description: Add dual-stack Service settings and controller-specific IPv6 configuration to Helm charts for Nginx Ingress Controller, Traefik, and AWS ALB.
 
 ## Overview
 
-Add IPv6-specific Ingress annotations to Helm charts for Nginx Ingress Controller, Traefik, and AWS ALB.
+Add dual-stack Service settings to Helm charts for Nginx Ingress Controller and Traefik, and use controller-specific Ingress annotations such as AWS ALB's `alb.ingress.kubernetes.io/ip-address-type: dualstack` when supported.
 
 ## Helm Chart IPv6 Best Practices
 
@@ -32,25 +32,22 @@ networking:
   
   # IP family policy for services
   # Options: SingleStack, PreferDualStack, RequireDualStack
-  ipFamilyPolicy: SingleStack
+  ipFamilyPolicy: PreferDualStack
   
-  # IP families (IPv4, IPv6, or both)
-  ipFamilies:
-    - IPv4
+  # Optional IP family order; leave empty to let Kubernetes choose
+  ipFamilies: []
 
 # Service configuration
 service:
   type: ClusterIP
   port: 80
-  # IPv6 cluster IP (leave empty for auto-assign)
-  ipv6ClusterIP: ""
 
 # Ingress configuration
 ingress:
   enabled: false
-  annotations:
-    # IPv6 Nginx annotation
-    nginx.ingress.kubernetes.io/ipv6-enabled: "true"
+  annotations: {}
+  # Example for AWS Load Balancer Controller:
+  # alb.ingress.kubernetes.io/ip-address-type: dualstack
 ```
 
 ## Template for Dual-Stack Services
@@ -65,8 +62,10 @@ spec:
   type: {{ .Values.service.type }}
   {{- if .Values.networking.ipv6.enabled }}
   ipFamilyPolicy: {{ .Values.networking.ipFamilyPolicy | default "PreferDualStack" }}
+  {{- with .Values.networking.ipFamilies }}
   ipFamilies:
-    {{- toYaml .Values.networking.ipFamilies | nindent 4 }}
+    {{- toYaml . | nindent 4 }}
+  {{- end }}
   {{- end }}
   ports:
     - port: {{ .Values.service.port }}
@@ -101,8 +100,8 @@ Wraps IPv6 addresses in brackets.
 # Install with IPv6 enabled
 helm install myapp ./mychart   --set networking.ipv6.enabled=true   --set networking.ipFamilyPolicy=PreferDualStack
 
-# Verify service has IPv6 cluster IP
-kubectl get svc myapp -o jsonpath='{.spec.clusterIPs}'
+# Verify service has IPv6 cluster IPs
+kubectl get svc <service-name> -o jsonpath='{.spec.clusterIPs}'
 
 # Run helm tests
 helm test myapp
@@ -141,4 +140,4 @@ Use [OneUptime](https://oneuptime.com) to monitor the services deployed by your 
 
 ## Conclusion
 
-How to Configure IPv6 Ingress Annotations in Helm Charts requires careful template design that conditionally applies IPv6 settings, provides schema validation for IPv6 fields, and is tested against real dual-stack clusters. Always document IPv6 values options and provide examples for common deployment scenarios.
+How to Configure IPv6 Ingress Annotations in Helm Charts requires careful template design that conditionally applies dual-stack Service settings, uses controller-specific annotations only where they exist, provides schema validation for IPv6 fields, and is tested against real dual-stack clusters. Always document IPv6 values options and provide examples for common deployment scenarios.
