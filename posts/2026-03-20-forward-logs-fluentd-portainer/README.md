@@ -8,14 +8,12 @@ Description: Configure Docker containers to forward logs to Fluentd using the bu
 
 ## Introduction
 
-Docker's built-in Fluentd log driver forwards container logs directly to a Fluentd instance without requiring a log file agent. Fluentd then handles parsing, enrichment, and routing to downstream destinations like Elasticsearch, S3, or monitoring systems. This approach is more reliable than file-based log collection and provides richer metadata. This guide covers deploying Fluentd and configuring containers to forward logs via Portainer.
+Docker's built-in Fluentd log driver forwards container logs directly to a Fluentd instance without requiring a separate file tailing agent. Fluentd then handles parsing, enrichment, and routing to downstream destinations like Elasticsearch, S3, or monitoring systems. This approach provides richer metadata and keeps log forwarding separate from application code. This guide covers deploying Fluentd and configuring containers to forward logs via Portainer.
 
 ## Step 1: Deploy Fluentd Server
 
 ```yaml
 # docker-compose.yml - Fluentd with multiple output plugins
-
-version: "3.8"
 
 services:
   fluentd:
@@ -26,11 +24,12 @@ services:
     restart: unless-stopped
     volumes:
       - ./fluentd/conf/fluent.conf:/fluentd/etc/fluent.conf
-      - fluentd_buffer:/var/log/fluentd
+      - fluentd_buffer:/fluentd/log
     ports:
       - "24224:24224"        # Fluentd forward protocol (TCP)
-      - "24224:24224/udp"    # Fluentd forward protocol (UDP)
+      - "24224:24224/udp"    # Fluentd forward heartbeat (UDP)
       - "9880:9880"          # HTTP input (optional)
+      - "24231:24231"        # Prometheus metrics
     networks:
       - logging_net
     environment:
@@ -52,15 +51,16 @@ networks:
 
 ```dockerfile
 # fluentd/Dockerfile
-FROM fluent/fluentd:v1.16-debian-1
+FROM fluent/fluentd:v1.19.2-debian-1.0
 
 USER root
-RUN gem install \
-  fluent-plugin-elasticsearch \
-  fluent-plugin-s3 \
-  fluent-plugin-record-modifier \
-  fluent-plugin-rewrite-tag-filter \
-  fluent-plugin-prometheus
+RUN gem install elasticsearch --no-document --version 8.19.0 && \
+  gem install fluent-plugin-elasticsearch --no-document --version 5.4.3 && \
+  gem install --no-document \
+    fluent-plugin-s3 \
+    fluent-plugin-record-modifier \
+    fluent-plugin-prometheus \
+    fluent-plugin-multi-format-parser
 
 USER fluent
 ```
@@ -77,12 +77,6 @@ USER fluent
   @type forward
   port 24224
   bind 0.0.0.0
-
-  # Add tag based on container name
-  <security>
-    self_hostname fluentd
-    shared_key ""
-  </security>
 </source>
 
 # Optional: HTTP input for testing
@@ -119,24 +113,9 @@ USER fluent
   <record>
     hostname "#{Socket.gethostname}"
     environment production
-    log_timestamp ${time.strftime('%Y-%m-%dT%H:%M:%S.%LZ')}
+    log_timestamp ${Time.at(time).utc.strftime('%Y-%m-%dT%H:%M:%S.%LZ')}
   </record>
 </filter>
-
-# Route errors to separate stream
-<match docker.api>
-  @type rewrite_tag_filter
-  <rule>
-    key level
-    pattern /error|ERROR/
-    tag error.${tag}
-  </rule>
-  <rule>
-    key msg
-    pattern /.+/
-    tag info.${tag}
-  </rule>
-</match>
 
 # ==================
 # OUTPUT: Elasticsearch
@@ -149,19 +128,18 @@ USER fluent
   logstash_prefix docker-logs
   include_tag_key true
   tag_key @log_tag
-  type_name _doc
 
   # Resilient buffering
   <buffer>
     @type file
-    path /var/log/fluentd/elasticsearch.buffer
+    path /fluentd/log/elasticsearch.buffer
     flush_mode interval
     flush_interval 5s
     retry_type exponential_backoff
     retry_max_interval 30s
     retry_forever true
     chunk_limit_size 8m
-    queue_limit_length 512
+    total_limit_size 4g
     overflow_action block
   </buffer>
 </match>
@@ -172,11 +150,11 @@ USER fluent
 <label @ERROR>
   <match **>
     @type file
-    path /var/log/fluentd/error
+    path /fluentd/log/error
     append true
     <buffer>
       @type file
-      path /var/log/fluentd/error.buffer
+      path /fluentd/log/error.buffer
     </buffer>
   </match>
 </label>
@@ -186,7 +164,6 @@ USER fluent
 
 ```yaml
 # docker-compose.yml - Application stack using Fluentd logging
-version: "3.8"
 
 services:
   api:
@@ -194,17 +171,17 @@ services:
     logging:
       driver: fluentd
       options:
-        # Fluentd server address
-        fluentd-address: "fluentd:24224"
+        # Fluentd server address as seen by the Docker host
+        fluentd-address: "localhost:24224"
         # Tag format: docker.<service-name>
         tag: docker.api
-        # Don't block app if Fluentd is unavailable
+        # Don't fail container startup if Fluentd is temporarily unavailable
         fluentd-async: "true"
         fluentd-async-reconnect-interval: "500ms"
         # Retry configuration
         fluentd-retry-wait: "1s"
         fluentd-max-retries: "30"
-        # Buffer size (before dropping in async mode)
+        # Driver-side in-memory buffer limit
         fluentd-buffer-limit: "8388608"  # 8MB
     networks:
       - logging_net
@@ -215,7 +192,7 @@ services:
     logging:
       driver: fluentd
       options:
-        fluentd-address: "fluentd:24224"
+        fluentd-address: "localhost:24224"
         tag: docker.worker
         fluentd-async: "true"
     networks:
@@ -232,7 +209,8 @@ networks:
 ## Step 4: Multi-Destination Log Routing
 
 ```xml
-# fluent.conf snippet - Route logs to multiple destinations
+# fluent.conf snippet - Replace the generic <match docker.**> block above
+# with this more specific route, or place it before that block.
 
 # API logs: Elasticsearch + S3 archive
 <match docker.api>
@@ -254,11 +232,11 @@ networks:
     s3_bucket "#{ENV['S3_BUCKET']}"
     s3_region "#{ENV['S3_REGION']}"
     path logs/api/%Y/%m/%d/
-    s3_object_key_format %{path}%{time_slice}_%{uuid_hash}.gz
+    s3_object_key_format %{path}%{time_slice}_%{index}.%{file_extension}
     store_as gzip
     <buffer time>
       @type file
-      path /var/log/fluentd/s3-api.buffer
+      path /fluentd/log/s3-api.buffer
       timekey 3600       # 1 hour chunks
       timekey_wait 10m   # Wait 10 min for late logs
     </buffer>
@@ -297,17 +275,17 @@ networks:
 ```bash
 # Send a test log to Fluentd HTTP input
 curl -X POST -d 'json={"level":"info","msg":"Test log","service":"test"}' \
-  http://fluentd:9880/docker.test
+  http://localhost:9880/docker.test
 
 # Check Fluentd is receiving logs
-docker exec fluentd fluent-cat --host fluentd --port 24224 \
-  test.tag '{"level":"info","msg":"manual test"}'
+docker exec -i fluentd fluent-cat --host 127.0.0.1 --port 24224 test.tag \
+  <<< '{"level":"info","msg":"manual test"}'
 
 # Check Fluentd output plugin status
 docker exec fluentd fluent-gem list | grep plugin
 
 # Monitor Fluentd buffer
-docker exec fluentd ls -lh /var/log/fluentd/
+docker exec fluentd ls -lh /fluentd/log/
 
 # Check Fluentd logs for errors
 docker logs fluentd 2>&1 | grep -i error | tail -20
@@ -315,4 +293,4 @@ docker logs fluentd 2>&1 | grep -i error | tail -20
 
 ## Conclusion
 
-Fluentd's log driver integration enables rich log processing between Docker containers and downstream systems. The forward protocol is more efficient than file-based collection and provides backpressure handling via the buffer system - if Elasticsearch goes down, logs buffer to disk and replay when it recovers. `fluentd-async: true` is critical for production: it prevents slow Fluentd processing from causing application blocking. Portainer's compose YAML makes it easy to apply consistent logging configuration across all services in a stack while keeping application code completely decoupled from the log destination.
+Fluentd's log driver integration enables rich log processing between Docker containers and downstream systems. Using the forward input avoids a separate file tailing agent, and Fluentd's file buffer lets outputs like Elasticsearch recover without immediately losing queued data. `fluentd-async: true` is important in production because it lets containers start even if Fluentd is temporarily unavailable. Portainer's compose YAML makes it easy to apply consistent logging configuration across all services in a stack while keeping application code completely decoupled from the log destination.
