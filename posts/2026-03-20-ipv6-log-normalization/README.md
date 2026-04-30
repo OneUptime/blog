@@ -8,14 +8,14 @@ Description: Normalize IPv6 addresses across different log formats and represent
 
 ## Why IPv6 Normalization Matters
 
-The same IPv6 address can appear in dozens of different formats across log sources:
+IPv6 values can appear in multiple pure-address and address+port representations across log sources:
 - `2001:0db8:0000:0000:0000:0000:0000:0001` (full)
 - `2001:db8::1` (compressed)
 - `::ffff:192.168.1.1` (IPv4-mapped)
 - `[2001:db8::1]` (bracketed, URL syntax)
 - `[2001:db8::1]:443` (with port)
-- `2001:db8::1:443` (Cisco/some syslog)
-- `2001:db8::1.443` (some syslog daemons)
+- `2001:db8::1:443` (ambiguous address+port form in some vendor logs; not recommended)
+- `2001:db8::1.443` (vendor-specific address+port delimiter)
 
 Without normalization, correlation queries miss matches and dashboards undercount events.
 
@@ -25,6 +25,7 @@ The canonical (normalized) form uses RFC 5952 compressed notation:
 - Lowercase hexadecimal
 - Longest run of zeros replaced with `::`
 - Leading zeros in groups removed
+- For IPv4-mapped addresses, mixed notation like `::ffff:192.168.1.1` is recommended
 - Example: `2001:db8::1` (not `2001:0DB8:0000::0001`)
 
 ## Python: IPv6 Normalization Library
@@ -33,6 +34,12 @@ The canonical (normalized) form uses RFC 5952 compressed notation:
 import ipaddress
 import re
 from typing import Optional
+
+def _format_ipv6(ip: ipaddress.IPv6Address) -> str:
+    # RFC 5952 recommends mixed notation for well-known embedded IPv4 prefixes.
+    if ip.ipv4_mapped:
+        return f"::ffff:{ip.ipv4_mapped}"
+    return str(ip)
 
 def normalize_ipv6(addr: str) -> Optional[str]:
     """
@@ -53,12 +60,15 @@ def normalize_ipv6(addr: str) -> Optional[str]:
         addr = dot_port_match.group(1)
 
     try:
-        return str(ipaddress.ip_address(addr))
+        ip = ipaddress.ip_address(addr)
     except ValueError:
         return None
+    if ip.version != 6:
+        return None
+    return _format_ipv6(ip)
 
 def extract_prefix(addr: str, prefix_len: int = 64) -> Optional[str]:
-    """Extract the /N prefix from an IPv6 address."""
+    """Extract the network address for an IPv6 /N prefix."""
     normalized = normalize_ipv6(addr)
     if not normalized:
         return None
@@ -76,11 +86,12 @@ def classify_ipv6(addr: str) -> str:
     ip = ipaddress.ip_address(normalized)
     if ip.is_loopback:           return "loopback"
     if ip.is_link_local:         return "link-local"
-    if ip.is_private:            return "ula"
     if ip.is_multicast:          return "multicast"
     if ip.ipv4_mapped:           return "ipv4-mapped"
-    if str(ip).startswith("2002"): return "6to4"
-    if str(ip).startswith("2001:0:"): return "teredo"
+    if ip in ipaddress.ip_network("fc00::/7"): return "ula"
+    if ip in ipaddress.ip_network("2001:db8::/32"): return "documentation"
+    if ip in ipaddress.ip_network("2002::/16"): return "6to4"
+    if ip in ipaddress.ip_network("2001::/32"): return "teredo"
     return "global"
 
 # Test
@@ -110,18 +121,20 @@ filter {
           ip = event.get("[source][ip]")
           # Strip brackets and port
           ip = ip.gsub(/^\[/, "").gsub(/\].*$/, "")
-          normalized = IPAddr.new(ip).to_s
+          addr = IPAddr.new(ip)
+          raise ArgumentError, "not IPv6" unless addr.ipv6?
+          normalized = addr.to_s
           event.set("[source][ip]", normalized)
           # Set address type
-          addr = IPAddr.new(normalized)
           type = if addr.loopback? then "loopback"
                  elsif addr.link_local? then "link-local"
-                 elsif normalized.start_with?("fc", "fd") then "ula"
-                 elsif addr.multicast? then "multicast"
+                 elsif addr.ipv4_mapped? then "ipv4-mapped"
+                 elsif addr.private? then "ula"
+                 elsif IPAddr.new("ff00::/8").include?(addr) then "multicast"
                  else "global" end
           event.set("[source][ip_type]", type)
           # Extract /64 prefix
-          prefix64 = IPAddr.new(normalized).mask(64).to_s
+          prefix64 = addr.mask(64).to_s
           event.set("[source][prefix64]", prefix64)
         rescue => e
           # Not an IPv6 address - leave as-is
@@ -137,6 +150,17 @@ filter {
 ```python
 import ipaddress
 import re
+
+def normalize_ip_literal(raw: str) -> str:
+    clean = raw.strip()
+    bracket_match = re.match(r'^\[([^\]]+)\](?::\d+)?$', clean)
+    if bracket_match:
+        clean = bracket_match.group(1)
+
+    ip = ipaddress.ip_address(clean)
+    if isinstance(ip, ipaddress.IPv6Address) and ip.ipv4_mapped:
+        return f"::ffff:{ip.ipv4_mapped}"
+    return str(ip)
 
 def parse_cef_ipv6(cef_event: str) -> dict:
     """
@@ -155,10 +179,8 @@ def parse_cef_ipv6(cef_event: str) -> dict:
         match = re.search(pattern, cef_event)
         if match:
             raw = match.group(1)
-            # Normalize IPv6 addresses
-            clean = re.sub(r'^\[|\].*$', '', raw)
             try:
-                fields[key] = str(ipaddress.ip_address(clean))
+                fields[key] = normalize_ip_literal(raw)
                 fields[f"{key}_type"] = "ipv6" if ":" in fields[key] else "ipv4"
             except ValueError:
                 fields[key] = raw
@@ -195,13 +217,18 @@ import re
 
 def normalize(addr):
     addr = addr.strip()
-    bracket_match = re.match(r'^\[([^\]]+)\]', addr)
+    bracket_match = re.match(r'^\[([^\]]+)\](?::\d+)?$', addr)
     if bracket_match:
         addr = bracket_match.group(1)
     try:
-        return str(ipaddress.ip_address(addr))
-    except:
+        ip = ipaddress.ip_address(addr)
+    except ValueError:
         return None
+    if ip.version != 6:
+        return None
+    if ip.ipv4_mapped:
+        return f"::ffff:{ip.ipv4_mapped}"
+    return str(ip)
 
 passed = 0
 for raw, expected in test_cases:
@@ -222,14 +249,14 @@ EOF
 
 Platform    Raw Field           ECS Field           Normalization
 Splunk      src                 source.ip           IPv6 compression
-Cisco ASA   %SRC                source.ip           Strip port
-iptables    SRC=                source.ip           Strip "SRC="
-nginx       $remote_addr        source.ip           Strip brackets
-Apache      %h                  source.ip           Strip brackets
-CEF         src                 source.ip           ipaddress.ip_address()
-LEEF        src                 source.ip           ipaddress.ip_address()
+Cisco ASA   %SRC                source.ip           Extract IP, strip port if present
+iptables    SRC=                source.ip           Extract value, then compress
+nginx       $remote_addr        source.ip           RFC 5952 compression if IPv6
+Apache      %h                  source.ip           RFC 5952 compression if IPv6
+CEF         src                 source.ip           Normalize IP literal
+LEEF        src                 source.ip           Normalize IP literal
 ```
 
 ## Conclusion
 
-IPv6 log normalization is a prerequisite for effective SIEM correlation. Without it, the same host appears under a dozen different string representations, breaking deduplication, rate counting, and lookup enrichment. The canonical form (RFC 5952 lowercase compressed) is produced by Python's `ipaddress.ip_address()`, Ruby's `IPAddr`, or JavaScript's `new URL()` with IPv6 address parsing. Build normalization into the ingestion pipeline (Logstash filter, Splunk `eval`, or Elastic ingest pipeline) so all downstream analysis works on consistent data. Always extract and store the /64 prefix alongside the full address - it enables meaningful aggregation in large IPv6 deployments.
+IPv6 log normalization is a prerequisite for effective SIEM correlation. Without it, the same host appears under a dozen different string representations, breaking deduplication, rate counting, and lookup enrichment. The canonical form (RFC 5952 lowercase compressed) is easy to produce with Python's `ipaddress` module and Ruby's `IPAddr`; for IPv4-mapped addresses, preserve the dotted-quad tail (`::ffff:192.0.2.1`) per RFC 5952 Section 5. Build normalization into the ingestion pipeline (Logstash filter, Splunk `eval`, or Elastic ingest pipeline) so all downstream analysis works on consistent data. When your environment uses /64 subnets, store the /64 prefix alongside the full address - it enables meaningful aggregation in large IPv6 deployments.
