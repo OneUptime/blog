@@ -8,7 +8,7 @@ Description: Configure Go gRPC servers and clients to work with IPv6, including 
 
 ## IPv6 gRPC Server
 
-gRPC in Go uses the standard `net.Listen` for binding, so IPv6 configuration is the same as any TCP server:
+gRPC in Go uses the standard `net.Listen` for binding, so IPv6 configuration is the same as any TCP server. Binding to `[::]:50051` listens on the IPv6 unspecified address; with network `"tcp"`, whether that also accepts IPv4 depends on the OS:
 
 ```go
 package main
@@ -31,7 +31,7 @@ func (s *greeterServer) SayHello(
     ctx context.Context,
     req *pb.HelloRequest,
 ) (*pb.HelloReply, error) {
-    // Get client's IPv6 address from gRPC peer info
+    // Get client's remote address from gRPC peer info
     p, ok := peer.FromContext(ctx)
     clientAddr := "unknown"
     if ok {
@@ -46,8 +46,8 @@ func (s *greeterServer) SayHello(
 }
 
 func main() {
-    // Listen on all IPv6 interfaces
-    // Use [::]: for dual-stack or tcp6 for IPv6-only
+    // Listen on the IPv6 unspecified address.
+    // With network "tcp", whether this also accepts IPv4 depends on the OS.
     lis, err := net.Listen("tcp", "[::]:50051")
     if err != nil {
         panic(fmt.Sprintf("Failed to listen: %v", err))
@@ -151,6 +151,7 @@ package main
 import (
     "context"
     "fmt"
+    "net"
     "time"
 
     "google.golang.org/grpc"
@@ -164,7 +165,7 @@ func createIPv6GRPCClient(serverAddr string) (*grpc.ClientConn, error) {
     conn, err := grpc.NewClient(
         serverAddr,
         grpc.WithTransportCredentials(insecure.NewCredentials()),
-        // Force IPv6 resolution
+        // Force IPv6 dialing
         grpc.WithContextDialer(func(ctx context.Context, addr string) (net.Conn, error) {
             d := &net.Dialer{}
             return d.DialContext(ctx, "tcp6", addr)
@@ -205,8 +206,11 @@ import (
     "google.golang.org/grpc/health/grpc_health_v1"
 )
 
-func setupGRPCWithHealth(port int) {
-    lis, _ := net.Listen("tcp6", fmt.Sprintf("[::]:%d", port))
+func setupGRPCWithHealth(port int) error {
+    lis, err := net.Listen("tcp6", fmt.Sprintf("[::]:%d", port))
+    if err != nil {
+        return fmt.Errorf("listen: %w", err)
+    }
 
     s := grpc.NewServer()
     healthServer := health.NewServer()
@@ -215,10 +219,10 @@ func setupGRPCWithHealth(port int) {
     // Mark services as healthy
     healthServer.SetServingStatus("", grpc_health_v1.HealthCheckResponse_SERVING)
 
-    s.Serve(lis)
+    return s.Serve(lis)
 }
 ```
 
 ## Conclusion
 
-Go gRPC servers support IPv6 by using `net.Listen("tcp", "[::]:port")` for dual-stack or `net.Listen("tcp6", "[::]:port")` for IPv6-only. The `peer.FromContext()` function extracts client addresses from gRPC contexts, and custom dialers in `grpc.NewClient` can force IPv6 connections for clients. gRPC interceptors provide a clean place to log or enforce policies on IPv6 connections.
+Go gRPC servers support IPv6 by using the standard Go networking APIs. `net.Listen("tcp6", "[::]:port")` is IPv6-only, while `net.Listen("tcp", "[::]:port")` listens on the IPv6 unspecified address and may also accept IPv4 depending on the OS. The `peer.FromContext()` function extracts client addresses from gRPC contexts, and custom dialers in `grpc.NewClient` can force IPv6 connections for clients. gRPC interceptors provide a clean place to log or enforce policies on IPv6 connections.
