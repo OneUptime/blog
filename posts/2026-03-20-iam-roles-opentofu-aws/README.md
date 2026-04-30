@@ -8,7 +8,7 @@ Description: A practical guide to creating and managing AWS IAM roles using Open
 
 ## What Are IAM Roles?
 
-IAM roles are identities in AWS that can be assumed by users, services, or applications. Unlike IAM users, roles do not have permanent credentials - they issue temporary security tokens. Roles are the recommended way to grant permissions to:
+IAM roles are identities in AWS that can be assumed by users, services, or applications. Unlike IAM users, roles do not have long-term credentials - assuming a role provides temporary security credentials. Roles are the recommended way to grant permissions to:
 
 - EC2 instances and Lambda functions
 - Cross-account access
@@ -89,14 +89,14 @@ resource "aws_iam_role_policy_attachment" "lambda_basic" {
 
 ```hcl
 resource "aws_iam_role" "cross_account_role" {
-  name = "cross-account-read-role"
+  name = "cross-account-role"
 
   assume_role_policy = jsonencode({
     Version = "2012-10-17"
     Statement = [
       {
         Effect    = "Allow"
-        Principal = { AWS = "arn:aws:iam::TRUSTED-ACCOUNT-ID:root" }
+        Principal = { AWS = "arn:aws:iam::${var.trusted_account_id}:root" }
         Action    = "sts:AssumeRole"
         Condition = {
           StringEquals = {
@@ -135,9 +135,9 @@ output "role_name" {
 
 1. **Use roles instead of long-lived credentials** for all AWS services
 2. **Apply permission boundaries** to restrict the maximum effective permissions
-3. **Add external IDs** for cross-account roles to prevent confused deputy attacks
+3. **Add external IDs** for third-party cross-account roles to prevent confused deputy attacks
 4. **Set maximum session duration** appropriately for the use case
-5. **Tag roles** for cost allocation and auditing
+5. **Tag roles** for organization, access control, and auditing
 
 ## Conclusion
 
