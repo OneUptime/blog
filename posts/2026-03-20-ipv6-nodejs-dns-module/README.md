@@ -24,8 +24,8 @@ async function lookupAAAA(hostname) {
     }
 }
 
-// lookup resolves using OS (both A and AAAA depending on system config)
-async function lookupAny(hostname) {
+// lookup uses the OS resolver; family: 6 limits results to IPv6
+async function lookupIPv6(hostname) {
     const result = await dns.lookup(hostname, { family: 6 });
     console.log(`Lookup (IPv6): ${result.address}`);
     return result;
@@ -86,7 +86,7 @@ function buildPTRName(ipv6Addr) {
 ```javascript
 const dns = require('dns');
 
-// Set order: 'verbatim' preserves DNS order, 'ipv4first' returns IPv4 first
+// Set order: 'verbatim' preserves resolver order, 'ipv4first' returns IPv4 first
 // Node.js 17+ default is 'verbatim', earlier versions default to 'ipv4first'
 dns.setDefaultResultOrder('verbatim');
 
@@ -122,8 +122,8 @@ async function queryWithCustomServer(hostname) {
 
     // Use IPv6 DNS servers
     resolver.setServers([
-        '[2001:4860:4860::8888]',   // Google DNS over IPv6
-        '[2620:fe::fe]',            // Hurricane Electric DNS
+        '2001:4860:4860::8888',     // Google Public DNS over IPv6
+        '2620:fe::fe',              // Quad9 over IPv6
     ]);
 
     try {
@@ -138,9 +138,7 @@ async function queryWithCustomServer(hostname) {
 
 async function dnsLookupWithTimeout(hostname, timeoutMs) {
     const resolver = new Resolver({ timeout: timeoutMs });
-    resolver.setServers(['[2001:4860:4860::8888]']);
-
-    const controller = new AbortController();
+    resolver.setServers(['2001:4860:4860::8888']);
     const timer = setTimeout(() => resolver.cancel(), timeoutMs);
 
     try {
@@ -189,10 +187,10 @@ async function lookupService(service, proto, domain) {
 }
 
 (async () => {
-    await lookupService('http', 'tcp', 'example.com');
+    await lookupService('xmpp-server', 'tcp', 'jabber.org');
 })();
 ```
 
 ## Conclusion
 
-Node.js's `dns/promises` API provides `resolve6()` for AAAA queries and `reverse()` for PTR lookups. The `Resolver` class allows per-query DNS server configuration, useful for testing against IPv6-capable resolvers. Set the default resolution order with `dns.setDefaultResultOrder('verbatim')` to use DNS-returned order rather than preferring IPv4. For DNS server addresses in `setServers()`, IPv6 addresses must be bracketed: `'[2001:db8::1]'`. Node 17+ changed the default ordering to `'verbatim'`, which is more RFC-compliant.
+Node.js's `dns/promises` API provides `resolve6()` for AAAA queries and `reverse()` for PTR lookups. The `Resolver` class allows per-query DNS server configuration, useful for testing against IPv6-capable resolvers. Set the default resolution order with `dns.setDefaultResultOrder('verbatim')` to preserve resolver-returned order rather than preferring IPv4. In `setServers()`, Node accepts RFC 5952 IPv6 literals such as `'2001:db8::1'`; when you specify a custom port, use bracketed form such as `'[2001:db8::1]:1053'`. Node 17+ changed the default ordering to `'verbatim'`.
