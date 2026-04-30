@@ -51,15 +51,16 @@ jobs:
       - uses: actions/checkout@v4
 
       - name: Configure AWS credentials via OIDC
-        uses: aws-actions/configure-aws-credentials@v4
+        uses: aws-actions/configure-aws-credentials@v6
         with:
           role-to-assume: ${{ secrets.AWS_PLAN_ROLE_ARN }}
           aws-region: us-east-1
 
       - name: Setup OpenTofu
-        uses: opentofu/setup-opentofu@v1
+        uses: opentofu/setup-opentofu@v2
         with:
-          tofu_version: "1.7.0"
+          tofu_version: "~1.11.0"
+          tofu_wrapper: false
 
       - name: Initialize OpenTofu
         run: tofu init
@@ -69,11 +70,16 @@ jobs:
         id: plan
         run: |
           tofu plan -no-color -out=tfplan 2>&1 | tee plan_output.txt
-          echo "exit_code=${PIPESTATUS[0]}" >> $GITHUB_OUTPUT
+          exit_code=${PIPESTATUS[0]}
+          echo "exit_code=$exit_code" >> "$GITHUB_OUTPUT"
+          if [ "$exit_code" -ne 0 ]; then
+            exit "$exit_code"
+          fi
         working-directory: infrastructure
 
       - name: Post Plan to PR
-        uses: actions/github-script@v7
+        if: always() && steps.plan.outcome != 'skipped'
+        uses: actions/github-script@v9
         with:
           script: |
             const fs = require('fs');
@@ -83,11 +89,16 @@ jobs:
               ? planOutput.substring(0, maxLength) + '\n\n... (truncated)'
               : planOutput;
 
-            github.rest.issues.createComment({
+            await github.rest.issues.createComment({
               issue_number: context.issue.number,
               owner: context.repo.owner,
               repo: context.repo.repo,
-              body: `## OpenTofu Plan\n```\n${truncated}\n````
+              body: [
+                '## OpenTofu Plan',
+                '```',
+                truncated,
+                '```'
+              ].join('\n')
             });
 ```
 
@@ -117,13 +128,16 @@ jobs:
       - uses: actions/checkout@v4
 
       - name: Configure AWS credentials via OIDC
-        uses: aws-actions/configure-aws-credentials@v4
+        uses: aws-actions/configure-aws-credentials@v6
         with:
           role-to-assume: ${{ secrets.AWS_APPLY_ROLE_ARN }}
           aws-region: us-east-1
 
       - name: Setup OpenTofu
-        uses: opentofu/setup-opentofu@v1
+        uses: opentofu/setup-opentofu@v2
+        with:
+          tofu_version: "~1.11.0"
+          tofu_wrapper: false
 
       - name: Initialize OpenTofu
         run: tofu init
@@ -143,6 +157,11 @@ on:
   schedule:
     - cron: '0 */6 * * *'  # Every 6 hours
 
+permissions:
+  contents: read
+  issues: write
+  id-token: write
+
 jobs:
   detect-drift:
     runs-on: ubuntu-latest
@@ -151,13 +170,16 @@ jobs:
       - uses: actions/checkout@v4
 
       - name: Configure AWS credentials
-        uses: aws-actions/configure-aws-credentials@v4
+        uses: aws-actions/configure-aws-credentials@v6
         with:
           role-to-assume: ${{ secrets.AWS_PLAN_ROLE_ARN }}
           aws-region: us-east-1
 
       - name: Setup OpenTofu
-        uses: opentofu/setup-opentofu@v1
+        uses: opentofu/setup-opentofu@v2
+        with:
+          tofu_version: "~1.11.0"
+          tofu_wrapper: false
 
       - name: Initialize
         run: tofu init
@@ -167,16 +189,20 @@ jobs:
         id: drift
         run: |
           tofu plan -detailed-exitcode -no-color 2>&1 | tee drift_output.txt
-          echo "exit_code=${PIPESTATUS[0]}" >> $GITHUB_OUTPUT
+          exit_code=${PIPESTATUS[0]}
+          echo "exit_code=$exit_code" >> "$GITHUB_OUTPUT"
+          if [ "$exit_code" -eq 1 ]; then
+            exit 1
+          fi
         working-directory: infrastructure
 
       - name: Alert on Drift
         if: steps.drift.outputs.exit_code == '2'
-        uses: actions/github-script@v7
+        uses: actions/github-script@v9
         with:
           script: |
             // Create a GitHub issue for detected drift
-            github.rest.issues.create({
+            await github.rest.issues.create({
               owner: context.repo.owner,
               repo: context.repo.repo,
               title: '⚠️ Infrastructure Drift Detected',
@@ -187,8 +213,8 @@ jobs:
 
 ## Best Practices
 
-- Separate plan and apply roles with different IAM permissions - the plan role only needs read access.
+- Separate plan and apply roles with different IAM permissions - the plan role usually needs read access to managed resources plus access to the remote state backend and lock table.
 - Require at least one approval on infrastructure PRs before merge triggers apply.
 - Use GitHub Environments with protection rules for the apply workflow to add a human approval gate.
 - Run drift detection on a schedule (not just on push) to catch out-of-band changes made via console or CLI.
-- Store `tofu plan` output as an artifact or GitHub check so reviewers can see exactly what will change.
+- Store `tofu plan` output as an artifact or GitHub check so reviewers can inspect the proposed changes before merge.
