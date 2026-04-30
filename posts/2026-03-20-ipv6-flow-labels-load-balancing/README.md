@@ -8,7 +8,7 @@ Description: Use IPv6 Flow Labels to implement stateless per-flow load balancing
 
 ## Introduction
 
-IPv6 Flow Labels enable stateless load balancing by providing a per-flow identifier at Layer 3 without requiring the load balancer to inspect TCP/UDP port numbers. This is particularly valuable for encrypted traffic (IPsec, QUIC, TLS) where port numbers may be obscured or unavailable. A load balancer can hash on (Source IP, Destination IP, Flow Label) and always send the same flow to the same backend.
+When endpoints set non-zero Flow Labels, IPv6 Flow Labels enable stateless load balancing by providing a per-flow identifier at Layer 3 without requiring the load balancer to inspect transport-layer ports. This is particularly valuable for traffic such as IPsec ESP or tunneled and fragmented packets where transport headers may be unavailable or inconvenient to parse. A load balancer can hash on (Source IP, Destination IP, Flow Label) and always send the same flow to the same backend while the backend set remains unchanged.
 
 ## Why Flow Labels Help Load Balancing
 
@@ -20,20 +20,24 @@ Traditional load balancing: hash(src_ip, dst_ip, src_port, dst_port, protocol)
 
 Flow Label load balancing: hash(src_ip, dst_ip, flow_label)
   → Only Layer 3 parsing needed
-  → Works with all protocols
-  → Flow Label persists across the path
-  → Non-zero Flow Label implies consistent 5-tuple (RFC 6437)
+  → Useful when transport headers are unavailable or inconvenient to parse
+  → Non-zero labels are expected to remain unchanged along the path
+  → Flow Label should be combined with source/destination addresses (RFC 6437)
 ```
 
 ## Linux ECMP with Flow Labels
 
 ```bash
-# Check if Linux ECMP uses Flow Label for hashing
+# Check the current IPv6 ECMP hash policy
+# 0 = Layer 3 hash using source, destination, and Flow Label
 
-cat /proc/sys/net/ipv6/flowlabel_state_ranges
+cat /proc/sys/net/ipv6/fib_multipath_hash_policy
 
-# Enable Flow Label-aware ECMP hashing in the kernel
-sudo sysctl -w net.ipv6.flowlabel_state_ranges=1
+# Enable automatic Flow Labels for locally generated IPv6 traffic
+sudo sysctl -w net.ipv6.auto_flowlabels=1
+
+# Explicitly use the Layer 3 ECMP hash policy
+sudo sysctl -w net.ipv6.fib_multipath_hash_policy=0
 
 # Add multiple equal-cost routes (ECMP)
 sudo ip -6 route add 2001:db8:2::/48 \
@@ -43,14 +47,16 @@ sudo ip -6 route add 2001:db8:2::/48 \
 # Verify ECMP routes
 ip -6 route show 2001:db8:2::/48
 
-# The kernel will distribute flows across both nexthops
-# using (src, dst, flow_label) as the hash key
+# Under the Layer 3 policy, the kernel will distribute flows
+# using source address, destination address, and Flow Label
 ```
 
-## HAProxy Load Balancer with IPv6 Flow Label Awareness
+## HAProxy Load Balancer with IPv6 Source-Address Persistence
+
+Standard HAProxy configuration can provide IPv6 source-address persistence, but it does not natively hash on the IPv6 Flow Label.
 
 ```text
-# haproxy.cfg - IPv6 frontend with flow-based persistence
+# haproxy.cfg - IPv6 frontend with source-address persistence
 frontend ipv6_frontend
     bind [::]:443 ssl crt /etc/ssl/server.pem
     mode tcp
@@ -58,27 +64,31 @@ frontend ipv6_frontend
 
 backend ipv6_servers
     mode tcp
-    balance source    # Hash on source address (includes flow context)
-    server server1 [2001:db8:server:1::1]:8080 check
-    server server2 [2001:db8:server:1::2]:8080 check
-    server server3 [2001:db8:server:1::3]:8080 check
+    balance source    # Hash on source address only
+    server server1 [2001:db8:10::1]:8080 check
+    server server2 [2001:db8:10::2]:8080 check
+    server server3 [2001:db8:10::3]:8080 check
 ```
 
-## NGINX Upstream with IPv6
+## NGINX Upstream with IPv6 Source-Address Hashing
+
+NGINX `ip_hash` supports IPv6 client-address hashing, but it does not use the IPv6 Flow Label.
 
 ```nginx
 # nginx.conf - IPv6 upstream load balancing
 upstream backend_pool {
     ip_hash;   # Hash on client IP (persistent per client)
 
-    server [2001:db8:backend:1::1]:8080;
-    server [2001:db8:backend:1::2]:8080;
-    server [2001:db8:backend:1::3]:8080;
+    server [2001:db8:20::1]:8080;
+    server [2001:db8:20::2]:8080;
+    server [2001:db8:20::3]:8080;
 }
 
 server {
     listen [::]:80;
     listen [::]:443 ssl;
+    ssl_certificate /etc/ssl/certs/server.crt;
+    ssl_certificate_key /etc/ssl/private/server.key;
 
     location / {
         proxy_pass http://backend_pool;
@@ -134,14 +144,14 @@ class IPv6FlowLabelLoadBalancer:
 
 # Example usage
 lb = IPv6FlowLabelLoadBalancer([
-    ("2001:db8:backend::1", 8080),
-    ("2001:db8:backend::2", 8080),
-    ("2001:db8:backend::3", 8080),
+    ("2001:db8:30::1", 8080),
+    ("2001:db8:30::2", 8080),
+    ("2001:db8:30::3", 8080),
 ])
 
 # Simulate requests from the same client flow
-client = "2001:db8:client::1"
-service = "2001:db8:service::1"
+client = "2001:db8:100::1"
+service = "2001:db8:200::1"
 flow = 0x2A3B4
 
 # Same flow always goes to same backend
@@ -157,16 +167,22 @@ When Flow Label = 0, fall back to 5-tuple hashing:
 
 ```python
 def select_backend_with_fallback(
-    src_addr, dst_addr, flow_label,
+    lb, src_addr, dst_addr, flow_label,
     src_port=0, dst_port=0, protocol=6
 ):
     """Fall back to 5-tuple if flow label is zero."""
     if flow_label != 0:
-        return select_by_flow_label(src_addr, dst_addr, flow_label)
-    else:
-        return select_by_5tuple(src_addr, dst_addr, src_port, dst_port, protocol)
+        return lb.select_backend(src_addr, dst_addr, flow_label)
+
+    src_bytes = socket.inet_pton(socket.AF_INET6, src_addr)
+    dst_bytes = socket.inet_pton(socket.AF_INET6, dst_addr)
+    l4_bytes = struct.pack("!HHB", src_port, dst_port, protocol)
+
+    hash_input = src_bytes + dst_bytes + l4_bytes
+    hash_value = int(hashlib.sha256(hash_input).hexdigest(), 16)
+    return lb.backends[hash_value % len(lb.backends)]
 ```
 
 ## Conclusion
 
-IPv6 Flow Labels enable truly stateless load balancing at Layer 3, without maintaining per-connection state tables. The same (src, dst, flow_label) triple always produces the same hash, ensuring all packets from a flow reach the same backend. This is especially valuable for encrypted traffic where port numbers are unavailable, and for high-performance environments where maintaining per-connection state is too expensive.
+IPv6 Flow Labels enable stateless load balancing at Layer 3 without maintaining per-connection state tables. When non-zero labels are present, the same (src, dst, flow_label) triple always produces the same hash for a fixed backend set, ensuring all packets from a flow reach the same backend. This is especially valuable for traffic such as IPsec ESP or tunneled packets where transport ports are unavailable or not desirable to parse, and for high-performance environments where maintaining per-connection state is too expensive.
