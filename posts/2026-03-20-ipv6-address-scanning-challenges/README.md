@@ -22,22 +22,22 @@ Even at 10 billion probes per second, scanning a /64 would take 58 years.
 
 ## Why This Is Actually Good Security
 
-IPv6's large address space provides **obscurity-based security** that doesn't exist in IPv4 - a host at a random address in a /64 is effectively hidden from network scanners. However, this should never be relied upon as the sole security control.
+IPv6's large address space provides **obscurity-based resistance to blind scanning** that doesn't exist in IPv4 - a host at a random address in a /64 is effectively hidden from brute-force address scans. However, this should never be relied upon as the sole security control.
 
 ## Practical IPv6 Host Discovery Techniques
 
 ### 1. Multicast-Based Discovery (Most Effective on LAN)
 
 ```bash
-# Discover all-nodes on local link
+# Discover local IPv6 hosts with Nmap's IPv6 host-discovery scripts
 
-sudo nmap -6 -sn ff02::1%eth0
+sudo nmap -6 -n -sn --script 'targets-ipv6-multicast-*'
 
 # Use scan6 for comprehensive local discovery
 sudo scan6 -i eth0 -L -e
 
 # Ping all-nodes multicast
-ping6 -c 3 ff02::1%eth0
+ping -6 -c 3 ff02::1%eth0
 ```
 
 ### 2. Address Pattern Probing
@@ -46,14 +46,14 @@ Many IPv6 addresses follow predictable patterns:
 
 ```bash
 # Scan low-byte patterns (::1, ::2, ::10, etc.)
-sudo scan6 -i eth0 -d 2001:db8::/64 --tgt-low-byte
+sudo scan6 -d 2001:db8::/64 --tgt-low-byte
 
-# Scan IPv4-mapped patterns (common in dual-stack)
-# e.g., 2001:db8::192.168.1.1 = 2001:db8::c0a8:101
-sudo scan6 -i eth0 -d 2001:db8::/64 --tgt-ipv4-mapped
+# Scan IPv4-embedded patterns
+# e.g., 2001:db8::c0a8:101 embeds 192.168.1.1 in the low 32 bits
+sudo scan6 -d 2001:db8::/64 -B ipv4-32 --ipv4-host 192.168.1.0/24
 
-# Scan word patterns (manually configured: ::cafe, ::dead, ::1337)
-sudo scan6 -i eth0 -d 2001:db8::/64 --tgt-word
+# Probe specific word patterns (manually configured: ::cafe, ::dead, ::1337)
+sudo nmap -6 -sn 2001:db8::cafe 2001:db8::dead 2001:db8::1337
 ```
 
 ### 3. DNS-Based Discovery
@@ -61,13 +61,13 @@ sudo scan6 -i eth0 -d 2001:db8::/64 --tgt-word
 DNS AAAA records reveal deployed IPv6 addresses:
 
 ```bash
-# DNS brute force for AAAA records
-nmap -6 --script dns-brute example.com
+# DNS brute force for hostnames that may have AAAA records
+nmap --script dns-brute --script-args dns-brute.domain=example.com
 
 # Zone transfer (if allowed)
-dig AXFR example.com @ns1.example.com | grep AAAA
+dig @ns1.example.com example.com AXFR | grep ' IN AAAA '
 
-# Reverse DNS lookup for known prefixes
+# Reverse DNS lookups for guessed low-byte addresses
 for i in $(seq 1 254); do
   dig +short -x "2001:db8::${i}"
 done
@@ -91,7 +91,7 @@ done
 ```bash
 # Read NDP cache from routers (authorized access required)
 show ipv6 neighbors                    # Cisco IOS
-show ipv6 cache neighbor               # Juniper
+show ipv6 neighbors                    # Junos
 ip -6 neigh show                       # Linux router
 
 # Extract addresses from NDP cache and scan them
@@ -103,10 +103,10 @@ nmap -6 -iL ndp-hosts.txt -sV
 
 ```bash
 # Capture IPv6 traffic to discover addresses passively
-sudo tcpdump -i eth0 -n ip6 | awk '{print $3, $5}' | sort | uniq > observed-ipv6.txt
+sudo tshark -i eth0 -f ip6 -T fields -e ipv6.src -e ipv6.dst -l | tr '\t' '\n' | sort -u > observed-ipv6.txt
 
 # Extract from existing pcap
-tshark -r capture.pcap -T fields -e ipv6.src -e ipv6.dst | sort | uniq
+tshark -r capture.pcap -Y ipv6 -T fields -e ipv6.src -e ipv6.dst | tr '\t' '\n' | sort -u
 ```
 
 ## Address Space That Is Still Scannable
@@ -119,7 +119,7 @@ nmap -6 2001:db8::/120
 
 # EUI-64 derived addresses from known MAC OUI
 # MAC OUI 00:50:56 (VMware) → many addresses start with 2001:db8::250:56ff:fe...
-sudo scan6 -i eth0 -d 2001:db8::/64 --tgt-vendor "VMware"
+sudo scan6 -d 2001:db8::/64 --tgt-ieee-oui 00:50:56
 ```
 
 ## Summary: IPv6 Host Discovery Methods
@@ -129,8 +129,8 @@ sudo scan6 -i eth0 -d 2001:db8::/64 --tgt-vendor "VMware"
 | Multicast (ff02::1) | LAN only | High for local |
 | Pattern scanning | Any | Medium |
 | DNS AAAA records | Global | High if DNS complete |
-| NDP cache mining | LAN only | Very high |
-| Traffic capture | LAN only | High over time |
+| NDP cache mining | Local segments | Very high |
+| Traffic capture | On-path only | High over time |
 | CT logs / OSINT | Global | Medium |
 
 IPv6's large address space makes proactive host discovery more dependent on intelligence gathering and passive observation than on brute-force sequential scanning.
