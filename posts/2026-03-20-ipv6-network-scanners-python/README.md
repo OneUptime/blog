@@ -13,17 +13,17 @@ IPv4 scanning: 254 hosts per /24 - trivial to sweep
 IPv6 scanning: 18 quintillion addresses per /64 - impossible to brute-force
 
 IPv6 discovery methods:
-1. NDP neighbor table (passive - see who the router knows)
+1. NDP neighbor table (passive - see who your local host already knows)
 2. Multicast ping (ff02::1 - all nodes on segment)
-3. DNS PTR records (ip6.arpa zone walking)
+3. DNS AAAA/PTR records for known hosts
 4. Service-specific multicast groups (ff02::fb for mDNS)
 5. DHCPv6 lease database
-6. SLAAC address prediction (EUI-64 if MAC known)
+6. SLAAC address prediction (modified EUI-64 only, if MAC known)
 ```
 
 ## NDP Neighbor Table Reader
 
-The fastest way to discover IPv6 hosts on a local segment.
+The fastest passive way to discover IPv6 hosts already present in the local kernel neighbor cache.
 
 ```python
 import subprocess
@@ -67,13 +67,18 @@ def read_ndp_table(interface: str = None) -> list[dict]:
 neighbors = read_ndp_table()
 print(f"Found {len(neighbors)} IPv6 neighbors:")
 for n in neighbors:
-    scope = "link-local" if n["is_link_local"] else "global"
+    if n["is_link_local"]:
+        scope = "link-local"
+    elif n["is_global"]:
+        scope = "global"
+    else:
+        scope = "other"
     print(f"  {n['address']:40s} {scope:12s} MAC={n['mac']} [{n['state']}]")
 ```
 
 ## Multicast Ping Scanner
 
-Ping the all-nodes multicast address to discover hosts on the segment.
+Ping the all-nodes multicast address to discover responding hosts on the segment.
 
 ```python
 from scapy.all import *
@@ -88,7 +93,7 @@ def multicast_ping_scan(interface: str, timeout: int = 3) -> list[str]:
     discovered = []
 
     # Build ping to all-nodes multicast
-    ping = IPv6(dst="ff02::1") / ICMPv6EchoRequest(id=0xBEEF, seq=1)
+    ping = IPv6(dst=f"ff02::1%{interface}") / ICMPv6EchoRequest(id=0xBEEF, seq=1)
 
     print(f"Scanning all-nodes multicast on {interface}...")
     # Send and collect all responses
@@ -105,9 +110,8 @@ def multicast_ping_scan(interface: str, timeout: int = 3) -> list[str]:
             src = recv[IPv6].src
             try:
                 addr = ipaddress.ip_address(src)
-                if addr.is_link_local or addr.is_global:
-                    discovered.append(src)
-                    print(f"  Responded: {src}")
+                discovered.append(str(addr))
+                print(f"  Responded: {addr}")
             except ValueError:
                 pass
 
@@ -120,7 +124,7 @@ def multicast_ping_scan(interface: str, timeout: int = 3) -> list[str]:
 
 ## EUI-64 Address Prediction
 
-If you know a device's MAC address, predict its IPv6 SLAAC address.
+If you know a device's MAC address, predict its IPv6 address only when it uses modified EUI-64-based SLAAC.
 
 ```python
 import ipaddress
@@ -148,17 +152,19 @@ def mac_to_eui64(mac: str) -> str:
 def predict_slaac_address(prefix: str, mac: str) -> str:
     """Predict SLAAC address from prefix and MAC."""
     net = ipaddress.ip_network(prefix, strict=False)
+    if net.version != 6 or net.prefixlen != 64:
+        raise ValueError("SLAAC prediction requires an IPv6 /64 prefix")
     eui64 = mac_to_eui64(mac)
-    # Combine first 64 bits of prefix with EUI-64
-    network_prefix = str(net.network_address).rstrip(":")
-    return f"{network_prefix}:{eui64}"
+    # Combine the /64 network prefix with the 64-bit interface identifier
+    interface_id = int(ipaddress.IPv6Address(f"::{eui64}"))
+    return str(ipaddress.IPv6Address(int(net.network_address) | interface_id))
 
 # Example
 mac = "aa:bb:cc:dd:ee:ff"
-prefix = "2001:db8:home:1::/64"
+prefix = "2001:db8:1:1::/64"
 predicted = predict_slaac_address(prefix, mac)
 print(f"MAC {mac} → SLAAC {predicted}")
-# aa:bb:cc:dd:ee:ff → 2001:db8:home:1:a8bb:ccff:fedd:eeff
+# aa:bb:cc:dd:ee:ff → 2001:db8:1:1:a8bb:ccff:fedd:eeff
 ```
 
 ## DNS-Based IPv6 Discovery
@@ -209,4 +215,4 @@ for host in hosts[:2]:
 
 ## Conclusion
 
-IPv6 network scanning cannot use traditional sequential address sweeps due to the enormous address space of a /64. Effective IPv6 host discovery uses: NDP neighbor table inspection (`ip -6 neigh show`) for hosts already known to the router, multicast ping to `ff02::1` for all-nodes discovery on the local segment, EUI-64 prediction when device MAC addresses are known, and DNS AAAA/PTR record queries for service hosts. Build Python scanners with `subprocess` for NDP table reading, Scapy for multicast probes, and `ipaddress` for address manipulation. Always obtain proper authorization before scanning networks - IPv6 multicast probes are detectable by SIEM systems.
+IPv6 network scanning cannot use traditional sequential address sweeps due to the enormous address space of a /64. Effective IPv6 host discovery uses: NDP neighbor table inspection (`ip -6 neigh show`) for hosts already present in the local neighbor cache, multicast ping to `ff02::1` for responding nodes on the local segment, modified EUI-64 prediction when device MAC addresses are known and the target uses EUI-64-based SLAAC, and DNS AAAA/PTR record queries for service hosts. Build Python scanners with `subprocess` for NDP table reading, Scapy for multicast probes, and `ipaddress` for address manipulation. Always obtain proper authorization before scanning networks - IPv6 multicast probes are detectable by SIEM systems.
