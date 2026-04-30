@@ -104,6 +104,10 @@ func NetworkDetails(cidr string) {
 
     // Network address (first address)
     networkIP := network.IP.To4()
+    if networkIP == nil {
+        fmt.Println("CIDR must be IPv4")
+        return
+    }
 
     // Broadcast address (network | ^mask)
     broadcastIP := make(net.IP, 4)
@@ -111,26 +115,44 @@ func NetworkDetails(cidr string) {
         broadcastIP[i] = networkIP[i] | ^network.Mask[i]
     }
 
-    // First usable host (network + 1)
-    firstHost := make(net.IP, 4)
-    copy(firstHost, networkIP)
-    n := binary.BigEndian.Uint32(firstHost)
-    binary.BigEndian.PutUint32(firstHost, n+1)
-
-    // Last usable host (broadcast - 1)
-    lastHost := make(net.IP, 4)
-    copy(lastHost, broadcastIP)
-    m := binary.BigEndian.Uint32(lastHost)
-    binary.BigEndian.PutUint32(lastHost, m-1)
-
     totalHosts := uint64(1) << uint(hostBits)
+    usableHosts := totalHosts
+
+    var firstHost, lastHost net.IP
+    switch ones {
+    case 32:
+        firstHost = make(net.IP, 4)
+        lastHost = make(net.IP, 4)
+        copy(firstHost, networkIP)
+        copy(lastHost, networkIP)
+    case 31:
+        firstHost = make(net.IP, 4)
+        lastHost = make(net.IP, 4)
+        copy(firstHost, networkIP)
+        copy(lastHost, broadcastIP)
+    default:
+        // For prefixes smaller than /31, exclude network and broadcast.
+        usableHosts = totalHosts - 2
+
+        // First usable host (network + 1)
+        firstHost = make(net.IP, 4)
+        copy(firstHost, networkIP)
+        n := binary.BigEndian.Uint32(firstHost)
+        binary.BigEndian.PutUint32(firstHost, n+1)
+
+        // Last usable host (broadcast - 1)
+        lastHost = make(net.IP, 4)
+        copy(lastHost, broadcastIP)
+        m := binary.BigEndian.Uint32(lastHost)
+        binary.BigEndian.PutUint32(lastHost, m-1)
+    }
 
     fmt.Printf("CIDR:      %s\n", cidr)
     fmt.Printf("Network:   %s\n", networkIP)
     fmt.Printf("Broadcast: %s\n", broadcastIP)
     fmt.Printf("First host:%s\n", firstHost)
     fmt.Printf("Last host: %s\n", lastHost)
-    fmt.Printf("Hosts:     %d usable (%d total)\n", totalHosts-2, totalHosts)
+    fmt.Printf("Hosts:     %d usable (%d total)\n", usableHosts, totalHosts)
     fmt.Printf("Prefix:    /%d\n", ones)
 }
 
@@ -159,22 +181,27 @@ func SplitCIDR(cidr string, newPrefix int) ([]string, error) {
         return nil, err
     }
 
-    ones, _ := network.Mask.Size()
-    if newPrefix <= ones {
-        return nil, fmt.Errorf("newPrefix must be larger than current prefix")
+    networkIP := network.IP.To4()
+    if networkIP == nil {
+        return nil, fmt.Errorf("CIDR must be IPv4")
+    }
+
+    ones, bits := network.Mask.Size()
+    if newPrefix <= ones || newPrefix > bits {
+        return nil, fmt.Errorf("newPrefix must be between /%d and /%d", ones+1, bits)
     }
 
     var subnets []string
-    current := binary.BigEndian.Uint32(network.IP.To4())
-    subnetSize := uint32(1) << (32 - newPrefix)
-    newMask := net.CIDRMask(newPrefix, 32)
+    current := binary.BigEndian.Uint32(networkIP)
+    subnetCount := uint64(1) << uint(newPrefix-ones)
+    subnetSize := uint32(1) << uint(bits-newPrefix)
+    newMask := net.CIDRMask(newPrefix, bits)
 
-    for network.Contains(func() net.IP { ip := make(net.IP, 4); binary.BigEndian.PutUint32(ip, current); return ip }()) {
+    for i := uint64(0); i < subnetCount; i++ {
         ip := make(net.IP, 4)
         binary.BigEndian.PutUint32(ip, current)
-        subnets = append(subnets, fmt.Sprintf("%s/%d", ip, newPrefix))
+        subnets = append(subnets, (&net.IPNet{IP: ip, Mask: newMask}).String())
         current += subnetSize
-        _ = newMask
     }
 
     return subnets, nil
