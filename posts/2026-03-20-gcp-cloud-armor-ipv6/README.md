@@ -8,7 +8,7 @@ Description: Configure Google Cloud Armor security policies with IPv6 rules to a
 
 ## Introduction
 
-Google Cloud Armor security policies work with Global HTTP(S) Load Balancers and support IPv6 addresses in match conditions. You can create rules that match specific IPv6 CIDR prefixes to allow or deny traffic. Cloud Armor evaluates rules for both IPv4 and IPv6 clients based on the client's IP address received at the load balancer. IPv6 address matching uses standard CIDR notation in rule conditions.
+Google Cloud Armor security policies work with supported Google Cloud load balancers, including global external Application Load Balancers, and support IPv6 addresses in match conditions. You can create rules that match specific IPv6 CIDR prefixes to allow or deny traffic. Cloud Armor evaluates rules for both IPv4 and IPv6 clients based on the client's IP address received at the load balancer. IPv6 address matching uses standard CIDR notation in rule conditions.
 
 ## Create Cloud Armor Policy with IPv6 Rules
 
@@ -26,7 +26,7 @@ gcloud compute security-policies rules create 100 \
     --project="$PROJECT" \
     --security-policy=web-security-policy \
     --description="Allow trusted IPv6 range" \
-    --src-ip-ranges="2001:db8:trusted::/48" \
+    --src-ip-ranges="2001:db8:1234::/48" \
     --action=allow
 
 # Block specific IPv6 prefix (blocklist)
@@ -34,25 +34,24 @@ gcloud compute security-policies rules create 200 \
     --project="$PROJECT" \
     --security-policy=web-security-policy \
     --description="Block known bad IPv6 range" \
-    --src-ip-ranges="2001:db8:bad::/48" \
+    --src-ip-ranges="2001:db8:dead::/48" \
     --action=deny-403
 
-# Rate limit IPv6 traffic from entire /64 subnet
+# Rate limit all IPv6 traffic per source IP
 gcloud compute security-policies rules create 300 \
     --project="$PROJECT" \
     --security-policy=web-security-policy \
-    --description="Rate limit IPv6 /64 subnets" \
+    --description="Rate limit IPv6 clients" \
     --expression="inIpRange(origin.ip, '::/0')" \
     --action=throttle \
     --rate-limit-threshold-count=100 \
     --rate-limit-threshold-interval-sec=60 \
     --conform-action=allow \
     --exceed-action=deny-429 \
-    --enforce-on-key=IP \
-    --ban-duration-sec=300
+    --enforce-on-key=IP
 
 # Default deny rule
-gcloud compute security-policies rules create 2147483647 \
+gcloud compute security-policies rules update 2147483647 \
     --project="$PROJECT" \
     --security-policy=web-security-policy \
     --description="Default deny" \
@@ -81,7 +80,7 @@ resource "google_compute_security_policy" "web" {
     match {
       versioned_expr = "SRC_IPS_V1"
       config {
-        src_ip_ranges = ["2001:db8:trusted::/48", "192.168.1.0/24"]
+        src_ip_ranges = ["2001:db8:1234::/48", "198.51.100.0/24"]
       }
     }
 
@@ -96,7 +95,7 @@ resource "google_compute_security_policy" "web" {
     match {
       versioned_expr = "SRC_IPS_V1"
       config {
-        src_ip_ranges = ["2001:db8:blocked::/32"]
+        src_ip_ranges = ["2001:db8:dead::/48"]
       }
     }
 
@@ -149,7 +148,7 @@ resource "google_compute_security_policy" "web" {
 resource "google_compute_backend_service" "web" {
   name            = "web-backend"
   project         = var.project_id
-  security_policy = google_compute_security_policy.web.id
+  security_policy = google_compute_security_policy.web.self_link
   # ... other backend config
 }
 ```
@@ -167,13 +166,13 @@ gcloud compute security-policies rules create 150 \
     --expression="inIpRange(origin.ip, '::/0') && request.path.matches('/admin.*')" \
     --action=deny-403
 
-# Allow only specific IPv6 country codes (use geo-based rules)
+# Allow only US IPv6 traffic by denying other IPv6 regions
 gcloud compute security-policies rules create 120 \
     --project="$PROJECT" \
     --security-policy=web-security-policy \
-    --description="Allow only US IPv6 traffic" \
-    --expression="origin.region_code == 'US' && inIpRange(origin.ip, '::/0')" \
-    --action=allow
+    --description="Deny non-US IPv6 traffic" \
+    --expression="origin.region_code != 'US' && inIpRange(origin.ip, '::/0')" \
+    --action=deny-403
 
 # View all rules in the policy
 gcloud compute security-policies describe web-security-policy \
@@ -184,24 +183,23 @@ gcloud compute security-policies describe web-security-policy \
 ## Monitor Cloud Armor IPv6 Traffic
 
 ```bash
-# View Cloud Armor logs for IPv6 clients
+# Make sure backend service logging is enabled before reading Cloud Armor request logs
+
+# View denied Cloud Armor logs for IPv6 clients
 gcloud logging read \
     'resource.type="http_load_balancer" AND
-     jsonPayload.enforcedSecurityPolicy.outcome!="" AND
-     jsonPayload.jsonPayload.remoteIp=~":"' \
+     jsonPayload.enforcedSecurityPolicy.outcome="DENY" AND
+     jsonPayload.securityPolicyRequestData.remoteIpInfo.ipAddress : ":"' \
     --project="$PROJECT" \
     --limit=100
 
-# Check Cloud Armor metrics for blocked IPv6
-gcloud monitoring metrics list \
-    --filter="metric.type=networksecurity.googleapis.com/https/request_count" \
-    --project="$PROJECT"
-
-# Summary of allowed vs blocked by IP version (Cloud Console metrics)
-# Filter: resource.type = "http_load_balancer"
-# Metric: compute.googleapis.com/firewall/dropped_bytes_count
+# Check Cloud Armor request metrics in Cloud Monitoring
+# Dashboard: Cloud Armor policies overview
+# Resource type: Network Security Policy
+# Metrics: Requests count, Previewed Requests count
+# Filter dimensions: backend_target_name, blocked
 ```
 
 ## Conclusion
 
-GCP Cloud Armor security policies support IPv6 address matching in rule conditions using standard CIDR notation like `2001:db8::/32` in `src_ip_ranges` or `inIpRange(origin.ip, '::/0')` in CEL expressions. Create rules to allowlist trusted IPv6 prefixes, blocklist known malicious ranges, and rate-limit IPv6 traffic by source IP. Attach security policies to backend services used by your Global HTTP(S) Load Balancer. Cloud Armor evaluates rules for both IPv4 and IPv6 clients simultaneously, so include both address families in your rules as needed.
+GCP Cloud Armor security policies support IPv6 address matching in rule conditions using standard CIDR notation like `2001:db8::/32` in `src_ip_ranges` or `inIpRange(origin.ip, '::/0')` in CEL expressions. Create rules to allowlist trusted IPv6 prefixes, blocklist known malicious ranges, and rate-limit IPv6 traffic by source IP. Attach security policies to backend services used by supported Google Cloud load balancers such as global external Application Load Balancers. Cloud Armor evaluates rules for both IPv4 and IPv6 clients simultaneously, so include both address families in your rules as needed.
