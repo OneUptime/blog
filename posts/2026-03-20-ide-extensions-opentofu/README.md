@@ -8,7 +8,7 @@ Description: Learn how to configure IDE extensions and plugins for OpenTofu deve
 
 ## Introduction
 
-IDE extensions for OpenTofu provide syntax highlighting, auto-completion, inline error detection, and formatting integration. Since OpenTofu uses the same HCL syntax as Terraform, most Terraform extensions work directly with OpenTofu files. This guide covers setup for the most common development environments.
+IDE extensions for OpenTofu provide syntax highlighting, auto-completion, inline error detection, and formatting integration. Since OpenTofu uses the same HCL syntax as Terraform, many Terraform extensions also work for OpenTofu, though some editors need file associations for `.tofu` files or a custom `tofu` binary path. This guide covers setup for the most common development environments.
 
 ## VS Code Setup
 
@@ -40,12 +40,12 @@ code --install-extension hashicorp.terraform
     "editor.defaultFormatter": "hashicorp.terraform",
     "editor.formatOnSave": true
   },
-  "terraform.languageServer.enable": true,
-  "terraform.languageServer.path": "/usr/local/bin/tofu",
+  "[terraform-vars]": {
+    "editor.defaultFormatter": "hashicorp.terraform",
+    "editor.formatOnSave": true
+  },
   "files.associations": {
-    "*.tf": "terraform",
-    "*.tfvars": "terraform",
-    "*.hcl": "hcl"
+    "*.tofu": "terraform"
   },
   "terraform.experimentalFeatures.prefillRequiredFields": true,
   "terraform.experimentalFeatures.validateOnSave": true
@@ -54,20 +54,21 @@ code --install-extension hashicorp.terraform
 
 ## Configuring the Language Server for OpenTofu
 
-The HashiCorp extension uses terraform-ls by default. Point it to the OpenTofu binary for better compatibility:
+The HashiCorp extension bundles `terraform-ls` by default. In your user settings, keep the language server pointed at `terraform-ls` and set its CLI path to the OpenTofu binary:
 
 ```json
-// .vscode/settings.json
+// User settings.json
 {
   "terraform.languageServer.enable": true,
+  // Optional: override the bundled language server with your own binary
   "terraform.languageServer.path": "/usr/local/bin/terraform-ls",
   "terraform.languageServer.args": ["serve"],
-  // Alternatively, use tofu as the backend
+  // Use OpenTofu for fmt, validate, and other CLI-backed features
   "terraform.languageServer.terraform.path": "/usr/local/bin/tofu"
 }
 ```
 
-Install terraform-ls separately for the best experience:
+For editors that do not bundle it, install `terraform-ls` separately:
 
 ```bash
 # macOS
@@ -75,8 +76,9 @@ Install terraform-ls separately for the best experience:
 brew install hashicorp/tap/terraform-ls
 
 # Linux
-curl -fsSL https://apt.releases.hashicorp.com/gpg | sudo gpg --dearmor > /usr/share/keyrings/hashicorp-archive-keyring.gpg
-sudo apt-get install terraform-ls
+wget -O - https://apt.releases.hashicorp.com/gpg | sudo gpg --dearmor -o /usr/share/keyrings/hashicorp-archive-keyring.gpg
+echo "deb [arch=$(dpkg --print-architecture) signed-by=/usr/share/keyrings/hashicorp-archive-keyring.gpg] https://apt.releases.hashicorp.com $(grep -oP '(?<=UBUNTU_CODENAME=).*' /etc/os-release || lsb_release -cs) main" | sudo tee /etc/apt/sources.list.d/hashicorp.list
+sudo apt update && sudo apt install terraform-ls
 ```
 
 ## JetBrains IDEs (IntelliJ, GoLand, PyCharm)
@@ -89,19 +91,14 @@ Install the HashiCorp Terraform/HCL plugin:
 Configure the plugin to use OpenTofu:
 
 ```text
-Settings → Languages & Frameworks → Terraform and HCL
-  → Terraform binary path: /usr/local/bin/tofu
-  → Enable formatting on save: ✓
-  → Enable validation: ✓
+Settings → Tools → Terraform Tools
+  → OpenTofu executable path: /usr/local/bin/tofu
+  → Click Detect and Test if needed
 ```
 
-```ini
-# .editorconfig for JetBrains-specific settings
-[*.tf]
-ij_terraform_hcl_space_before_assign_operator = true
-ij_terraform_hcl_space_after_assign_operator = true
-ij_terraform_hcl_indent_before_blocks = true
-ij_terraform_hcl_keep_blank_lines_in_code = 1
+```text
+Settings → Editor → Code Style → Terraform/OpenTofu → Other
+  → Invoke 'terraform/tofu fmt' for formatting
 ```
 
 ## Neovim Setup (LSP)
@@ -110,16 +107,18 @@ ij_terraform_hcl_keep_blank_lines_in_code = 1
 -- ~/.config/nvim/lua/lsp.lua
 -- Install terraform-ls first: brew install hashicorp/tap/terraform-ls
 
-require('lspconfig').terraformls.setup({
+vim.lsp.config('terraformls', {
   cmd = { "terraform-ls", "serve" },
-  filetypes = { "terraform", "terraform-vars", "hcl" },
-  root_dir = require('lspconfig.util').root_pattern(".terraform", ".git"),
-  settings = {
-    ["terraform-ls"] = {
-      terraformExecPath = "/usr/local/bin/tofu"
+  filetypes = { "terraform", "terraform-vars" },
+  root_markers = { ".terraform", ".git" },
+  init_options = {
+    terraform = {
+      path = "/usr/local/bin/tofu"
     }
   }
 })
+
+vim.lsp.enable('terraformls')
 
 -- Format on save
 vim.api.nvim_create_autocmd("BufWritePre", {
@@ -146,15 +145,10 @@ require('nvim-treesitter.configs').setup({
 
 " Using vim-plug:
 Plug 'hashivim/vim-terraform'
-Plug 'vim-syntastic/syntastic'
 
 " Configuration
-let g:terraform_align = 1
 let g:terraform_fmt_on_save = 1
 let g:terraform_binary_path = '/usr/local/bin/tofu'
-
-" Syntastic with tflint
-let g:syntastic_terraform_checkers = ['tflint']
 ```
 
 ## Emacs Setup
@@ -165,18 +159,12 @@ let g:syntastic_terraform_checkers = ['tflint']
 
 (use-package terraform-mode
   :hook (terraform-mode . terraform-format-on-save-mode)
-  :config
-  (setq terraform-binary-path "/usr/local/bin/tofu"))
+  :custom
+  (terraform-command "tofu"))
 
 ;; LSP with terraform-ls
 (use-package lsp-mode
-  :hook (terraform-mode . lsp-deferred)
-  :config
-  (lsp-register-client
-    (make-lsp-client
-      :new-connection (lsp-stdio-connection '("terraform-ls" "serve"))
-      :major-modes '(terraform-mode)
-      :server-id 'terraform-ls)))
+  :hook (terraform-mode . lsp-deferred))
 ```
 
 ## Workspace Recommendations File
@@ -203,4 +191,4 @@ Commit this to share extension recommendations with your team:
 
 ## Conclusion
 
-The HashiCorp Terraform extension for VS Code and the JetBrains Terraform plugin both work with OpenTofu by pointing the language server path to the `tofu` binary. The terraform-ls language server provides the most features - auto-completion, go-to-definition, hover documentation, and inline validation - across all editors that support LSP. Commit `.vscode/extensions.json` and `.vscode/settings.json` to ensure the whole team uses the same configuration.
+The HashiCorp Terraform extension for VS Code and the JetBrains Terraform plugin both work with OpenTofu, but the `tofu` and `terraform-ls` binary paths are machine-specific settings rather than workspace settings. The `terraform-ls` language server provides the most features - auto-completion, go-to-definition, hover documentation, and inline validation - across editors that support LSP. Commit `.vscode/extensions.json` and workspace-safe `.vscode/settings.json` preferences to share team defaults, and keep local binary paths in user settings.
