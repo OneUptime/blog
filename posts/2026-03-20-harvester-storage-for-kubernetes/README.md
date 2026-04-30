@@ -29,6 +29,7 @@ When a PVC is created in the guest cluster, the CSI driver calls the Harvester A
 
 - Harvester cluster running with Longhorn storage
 - A guest Kubernetes cluster (RKE2 or K3s) running on Harvester VMs
+- The guest cluster's VMs must be in the same Harvester namespace
 - The guest cluster's VMs must have the `open-iscsi` package installed (required for Longhorn iSCSI)
 - Harvester cluster API access from the guest cluster (network connectivity)
 
@@ -36,7 +37,7 @@ When a PVC is created in the guest cluster, the CSI driver calls the Harvester A
 
 Guest cluster nodes need iSCSI support for Longhorn volume attachment:
 
-```bash
+```yaml
 # Add to cloud-init for guest cluster nodes
 
 # This ensures iSCSI is available when nodes boot
@@ -44,45 +45,37 @@ Guest cluster nodes need iSCSI support for Longhorn volume attachment:
 #cloud-config
 packages:
   - open-iscsi
-  - nfs-common  # For NFS volumes if needed
 
 runcmd:
-  # Enable and start the iSCSI initiator
-  - systemctl enable --now iscsid
   # Load the iSCSI TCP kernel module
   - modprobe iscsi_tcp
   # Persist the module load
-  - echo 'iscsi_tcp' >> /etc/modules-load.d/iscsi.conf
+  - echo 'iscsi_tcp' > /etc/modules-load.d/iscsi.conf
+  # Enable and start the iSCSI initiator
+  - systemctl enable --now iscsid
 ```
 
-## Step 2: Create the Harvester CSI Secret in the Guest Cluster
+## Step 2: Generate the Harvester CSI Cloud Config
 
-The CSI driver needs credentials to communicate with the Harvester API:
+For manual installs, use Harvester's helper script to create the host-cluster service account and RBAC, then generate the `cloud-provider-config` used by the CSI driver:
 
 ```bash
-# On the Harvester cluster (not the guest cluster)
-# Get the Harvester kubeconfig
+# On a Harvester management node
+# Requires kubectl, jq, and curl
 export KUBECONFIG=/etc/rancher/rke2/rke2.yaml
-cat /etc/rancher/rke2/rke2.yaml > /tmp/harvester.kubeconfig
 
-# Modify the server URL in the kubeconfig to use the cluster VIP
-# (must be reachable from inside the guest VMs)
-sed -i 's|server: https://127.0.0.1:6443|server: https://192.168.1.100:6443|' \
-    /tmp/harvester.kubeconfig
+curl -LO https://raw.githubusercontent.com/harvester/harvester-csi-driver/master/deploy/generate_addon_csi.sh
+chmod +x generate_addon_csi.sh
 
-# Now switch to the guest cluster
-export KUBECONFIG=/path/to/guest-cluster.kubeconfig
+# <serviceaccount name> is usually the guest cluster name.
+# <namespace> must match the Harvester namespace that contains the guest VMs.
+./generate_addon_csi.sh <serviceaccount name> <namespace> RKE2
 
-# Create the namespace and secret for the CSI driver
-kubectl create namespace harvester-system
-
-kubectl create secret generic harvester-csi-controller-sa \
-    --from-file=kubeconfig=/tmp/harvester.kubeconfig \
-    -n harvester-system
-
-# Verify the secret
-kubectl get secret harvester-csi-controller-sa -n harvester-system
+# For K3s clusters, use:
+# ./generate_addon_csi.sh <serviceaccount name> <namespace> k3s
 ```
+
+Copy the `cloud-init user data` output from the script into the guest cluster node template or cloud-init configuration. For RKE2 nodes, this writes the `cloud-provider-config` file to `/var/lib/rancher/rke2/etc/config-files/cloud-provider-config`.
 
 ## Step 3: Install the Harvester CSI Driver
 
@@ -96,36 +89,27 @@ helm repo update
 
 # Install the CSI driver
 helm install harvester-csi-driver harvester/harvester-csi-driver \
-    --namespace harvester-system \
-    --set cloudConfigPath=/etc/kubernetes/cloud-config
+    --namespace kube-system
 
 # Verify the CSI driver pods are running
-kubectl get pods -n harvester-system
+kubectl get pods -n kube-system
 
 # Expected pods:
-# harvester-csi-controller-xxxxx   Running
-# harvester-csi-node-xxxxx (on each worker node)  Running
+# harvester-csi-driver-controllers-xxxxx   Running
+# harvester-csi-driver-xxxxx (on each node)  Running
 ```
 
 ## Step 4: Verify the StorageClass
 
-After installing the CSI driver, a `harvester` StorageClass is created:
+After installing the CSI driver, a default `harvester` StorageClass is created:
 
 ```bash
 # Check available storage classes
 kubectl get storageclass
 
-# Expected output:
-# NAME         PROVISIONER                       RECLAIMPOLICY  VOLUMEBINDINGMODE
-# harvester    driver.harvesterhci.io            Delete         Immediate
-# (default)    rancher.io/local-path             Delete         WaitForFirstConsumer
-
-# Make harvester the default storage class if desired
-kubectl patch storageclass harvester \
-    -p '{"metadata": {"annotations": {"storageclass.kubernetes.io/is-default-class": "true"}}}'
-
-# Verify the change
-kubectl get storageclass
+# Expected output includes:
+# NAME                   PROVISIONER            RECLAIMPOLICY  VOLUMEBINDINGMODE  ALLOWVOLUMEEXPANSION
+# harvester (default)    driver.harvesterhci.io Delete         Immediate          true
 ```
 
 ## Step 5: Test Persistent Volume Provisioning
@@ -158,9 +142,14 @@ kubectl get pvc test-harvester-pvc -w
 # NAME                  STATUS   VOLUME   CAPACITY   ACCESS MODES   STORAGECLASS
 # test-harvester-pvc    Bound    pvc-xxx  10Gi       RWO            harvester
 
-# Verify the volume was created in Harvester
+# Capture the CSI volume ID from the guest cluster
+VOLUME_ID=$(kubectl get pv "$(kubectl get pvc test-harvester-pvc -o jsonpath='{.spec.volumeName}')" \
+  -o jsonpath='{.spec.csi.volumeHandle}')
+echo "$VOLUME_ID"
+
+# Verify the backing PVC was created in Harvester
 # (on the Harvester cluster)
-kubectl get pvc -n default | grep guest-cluster
+kubectl get pvc -A | grep "$VOLUME_ID"
 ```
 
 ## Step 6: Deploy a Stateful Application
@@ -171,6 +160,33 @@ Test with a real stateful workload:
 # postgres-with-harvester-storage.yaml
 # PostgreSQL with Harvester-backed storage
 
+apiVersion: v1
+kind: Namespace
+metadata:
+  name: production
+---
+apiVersion: v1
+kind: Secret
+metadata:
+  name: postgres-secret
+  namespace: production
+type: Opaque
+stringData:
+  password: change-me
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: postgres
+  namespace: production
+spec:
+  clusterIP: None
+  selector:
+    app: postgres
+  ports:
+    - port: 5432
+      targetPort: 5432
+---
 apiVersion: apps/v1
 kind: StatefulSet
 metadata:
@@ -225,41 +241,30 @@ kubectl get pod -n production -l app=postgres -w
 # Verify the PVC was created and bound
 kubectl get pvc -n production
 
-# Check that the volume exists in Harvester
+# Capture the CSI volume ID for the StatefulSet PVC
+VOLUME_ID=$(kubectl get pv "$(kubectl get pvc -n production postgres-data-postgres-0 -o jsonpath='{.spec.volumeName}')" \
+  -o jsonpath='{.spec.csi.volumeHandle}')
+
+# Check that the backing PVC exists in Harvester
 # (on the Harvester cluster)
-kubectl get volumes.longhorn.io -n longhorn-system | grep postgres
+kubectl get pvc -A | grep "$VOLUME_ID"
 ```
 
 ## Step 7: Configure Volume Snapshots
 
-Enable Kubernetes volume snapshots backed by Longhorn:
+Starting with Harvester CSI Driver v0.1.25, volume snapshots are supported. On RKE2, the CSI snapshot controller and CRDs are deployed by default. On K3s or other Kubernetes distributions, ensure the CSI snapshot controller and snapshot CRDs are installed before installing or upgrading the Harvester CSI driver.
 
-```bash
-# Install the snapshot CRDs and controller
-kubectl apply -f https://raw.githubusercontent.com/kubernetes-csi/external-snapshotter/main/client/config/crd/snapshot.storage.k8s.io_volumesnapshotclasses.yaml
-kubectl apply -f https://raw.githubusercontent.com/kubernetes-csi/external-snapshotter/main/client/config/crd/snapshot.storage.k8s.io_volumesnapshotcontents.yaml
-kubectl apply -f https://raw.githubusercontent.com/kubernetes-csi/external-snapshotter/main/client/config/crd/snapshot.storage.k8s.io_volumesnapshots.yaml
-```
+The current Harvester CSI chart creates a default `VolumeSnapshotClass` named `harvester-snapshot`.
 
 ```yaml
-# snapshot-class.yaml
-apiVersion: snapshot.storage.k8s.io/v1
-kind: VolumeSnapshotClass
-metadata:
-  name: harvester-snapshot-class
-driver: driver.harvesterhci.io
-deletionPolicy: Delete
-```
-
-```yaml
-# Take a snapshot
+# postgres-snapshot.yaml
 apiVersion: snapshot.storage.k8s.io/v1
 kind: VolumeSnapshot
 metadata:
   name: postgres-snapshot-20240315
   namespace: production
 spec:
-  volumeSnapshotClassName: harvester-snapshot-class
+  volumeSnapshotClassName: harvester-snapshot
   source:
     persistentVolumeClaimName: postgres-data-postgres-0
 ```
