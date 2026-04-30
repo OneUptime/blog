@@ -10,7 +10,7 @@ Description: Learn how to configure Fleet bundle targets to control which cluste
 
 Fleet bundle targets define the rules for which Kubernetes clusters should receive a particular bundle of resources. Configuring targets correctly is fundamental to managing multi-cluster deployments - it allows you to specify exactly where your applications should run, whether by individual cluster name, labels, or cluster groups.
 
-Targets can be configured both in the `fleet.yaml` file within your Git repository and in the `GitRepo` resource itself.
+Targets are typically configured in the `GitRepo` resource itself. In `fleet.yaml`, you can customize deployments per target with `targetCustomizations`, or replace the inherited `GitRepo` targets for a specific bundle with `overrideTargets`.
 
 ## Prerequisites
 
@@ -21,7 +21,7 @@ Targets can be configured both in the `fleet.yaml` file within your Git reposito
 
 ## Understanding Fleet Bundle Targeting
 
-Fleet evaluates targets in order and applies the **first matching target** to each cluster. This precedence model allows you to define general rules and override them for specific clusters.
+Fleet evaluates the entries in `GitRepo` `targets`, `fleet.yaml` `overrideTargets`, and `targetCustomizations` in order. In each case, the **first matching entry** is used for a cluster. This precedence model allows you to define general rules and override them for specific clusters.
 
 Target matching methods:
 1. **clusterName**: Exact match on a specific cluster
@@ -32,11 +32,11 @@ Target matching methods:
 ## Basic Target Configuration in fleet.yaml
 
 ```yaml
-# fleet.yaml - Bundle target configuration
+# fleet.yaml - Bundle target override configuration
 
 namespace: my-app
 
-targets:
+overrideTargets:
   # Target a specific cluster by name
   - name: local-deployment
     clusterName: local
@@ -59,13 +59,13 @@ targets:
 
 ## Configuring Targets with Customizations Per Target
 
-Each target can include custom Helm values, Kustomize patches, or namespace overrides:
+Each target customization can include custom Helm values, Kustomize patches, or namespace overrides:
 
 ```yaml
 # fleet.yaml - Per-target customizations
 namespace: my-app
 
-targets:
+targetCustomizations:
   # Staging: reduced resources, verbose logging
   - name: staging
     clusterSelector:
@@ -103,7 +103,7 @@ For more complex label matching:
 
 ```yaml
 # fleet.yaml - Advanced label expressions
-targets:
+targetCustomizations:
   - name: large-clusters
     clusterSelector:
       matchLabels:
@@ -122,7 +122,7 @@ targets:
 
 ## Configuring Targets in GitRepo Resources
 
-You can also set default targets at the GitRepo level:
+You can also set targets at the GitRepo level:
 
 ```yaml
 # gitrepo-with-targets.yaml
@@ -136,7 +136,7 @@ spec:
   branch: main
 
   # GitRepo-level targets apply to all bundles
-  # unless overridden in fleet.yaml
+  # unless a bundle overrides them in fleet.yaml
   targets:
     - name: dev-clusters
       clusterSelector:
@@ -151,23 +151,23 @@ spec:
 
 ## Restricting Deployments with Namespace Isolation
 
-Use `targetNamespace` to constrain where resources are deployed:
+Use `namespace` in `targetCustomizations` to constrain where resources are deployed:
 
 ```yaml
 # fleet.yaml - Namespace-restricted targets
-targets:
+targetCustomizations:
   - name: team-a-clusters
     clusterSelector:
       matchLabels:
         team: team-a
     # All resources go into the team-a namespace
-    targetNamespace: team-a-apps
+    namespace: team-a-apps
 
   - name: team-b-clusters
     clusterSelector:
       matchLabels:
         team: team-b
-    targetNamespace: team-b-apps
+    namespace: team-b-apps
 ```
 
 ## Labeling Clusters for Targeting
@@ -176,14 +176,14 @@ To use label-based targeting, you first need to label your clusters:
 
 ```bash
 # Label a cluster via kubectl (Fleet cluster resource)
-kubectl label cluster my-cluster-name \
+kubectl label clusters.fleet.cattle.io my-cluster-name \
   env=production \
   region=us-west-2 \
   team=platform \
   -n fleet-default
 
 # Verify the labels
-kubectl get cluster my-cluster-name -n fleet-default --show-labels
+kubectl get clusters.fleet.cattle.io my-cluster-name -n fleet-default --show-labels
 ```
 
 Via the Rancher UI:
@@ -196,23 +196,23 @@ Via the Rancher UI:
 After configuring targets, verify which clusters are matched:
 
 ```bash
-# Check which bundles are deployed where
-kubectl get bundledeployments -A
+# Check which bundles Fleet created
+kubectl get bundles.fleet.cattle.io -A
 
-# Get detailed bundle deployment status
-kubectl get bundledeployment -A -o wide
+# Check which bundle deployments were created per target cluster
+kubectl get bundledeployments.fleet.cattle.io -A -o wide
 
 # Check a specific bundle's targets
-kubectl describe bundle my-app -n fleet-default | grep -A 20 "Targets:"
+kubectl get bundles.fleet.cattle.io my-app -n fleet-default -o yaml
 ```
 
 ## Handling Target Conflicts
 
-When a cluster matches multiple targets, Fleet uses the first match. Order targets from most specific to most general:
+When a cluster matches multiple target customizations, Fleet uses the first match. Order them from most specific to most general:
 
 ```yaml
-# fleet.yaml - Correct target ordering (specific first)
-targets:
+# fleet.yaml - Correct target customization ordering (specific first)
+targetCustomizations:
   # Most specific: production clusters in EU
   - name: prod-eu
     clusterSelector:
@@ -233,4 +233,4 @@ targets:
 
 ## Conclusion
 
-Fleet bundle targets give you precise control over application deployment topology across your cluster fleet. By combining cluster name targeting, label selectors, and cluster groups, you can implement sophisticated deployment strategies - from simple all-cluster deployments to complex per-region, per-environment configurations. Careful target ordering and labeling strategy are key to maintaining a clean and predictable multi-cluster delivery pipeline.
+Fleet bundle targets give you precise control over application deployment topology across your cluster fleet. By combining `GitRepo` targets, optional `fleet.yaml` target overrides, and per-target customizations, you can implement sophisticated deployment strategies - from simple all-cluster deployments to complex per-region, per-environment configurations. Careful target ordering and labeling strategy are key to maintaining a clean and predictable multi-cluster delivery pipeline.
