@@ -20,12 +20,13 @@ flowchart LR
     G --> U[IPv6 Uptime Row]
 ```
 
-## Step 1: Create the Dashboard via Grafana API
+## Step 1: Create the Dashboard via Grafana HTTP API
 
 ```bash
 # Create dashboard via Grafana API
 
-curl -X POST http://admin:password@localhost:3000/api/dashboards/db \
+curl -X POST http://localhost:3000/apis/dashboard.grafana.app/v1/namespaces/default/dashboards \
+  -H "Authorization: Bearer $GRAFANA_TOKEN" \
   -H "Content-Type: application/json" \
   -d @ipv6-dashboard.json
 ```
@@ -40,19 +41,14 @@ curl -X POST http://admin:password@localhost:3000/api/dashboards/db \
   "type": "timeseries",
   "targets": [
     {
-      "expr": "rate(node_netstat_Ip6_InReceives{instance=~\"$instance\"}[5m])",
+      "expr": "rate(node_netstat_Ip6_InOctets{instance=~\"$instance\"}[$__rate_interval])",
       "legendFormat": "{{instance}} - IPv6 In"
     },
     {
-      "expr": "rate(node_netstat_Ip4_InReceives{instance=~\"$instance\"}[5m])",
+      "expr": "rate(node_netstat_IpExt_InOctets{instance=~\"$instance\"}[$__rate_interval])",
       "legendFormat": "{{instance}} - IPv4 In"
     }
-  ],
-  "fieldConfig": {
-    "defaults": {
-      "unit": "pps"
-    }
-  }
+  ]
 }
 ```
 
@@ -60,29 +56,31 @@ curl -X POST http://admin:password@localhost:3000/api/dashboards/db \
 
 ```promql
 # PromQL for IPv6 proportion of total traffic
-sum(rate(node_netstat_Ip6_InReceives[5m]))
+sum(rate(node_netstat_Ip6_InOctets{instance=~"$instance"}[$__rate_interval]))
 /
-(sum(rate(node_netstat_Ip6_InReceives[5m])) + sum(rate(node_netstat_InReceives[5m])))
+(sum(rate(node_netstat_Ip6_InOctets{instance=~"$instance"}[$__rate_interval])) + sum(rate(node_netstat_IpExt_InOctets{instance=~"$instance"}[$__rate_interval])))
 * 100
 ```
 
-### Panel 3: ICMPv6 Message Types
+### Panel 3: ICMPv6 Traffic and Errors
 
 ```promql
 # ICMPv6 inbound message rate
-rate(node_netstat_Icmp6_InMsgs[5m])
+rate(node_netstat_Icmp6_InMsgs{instance=~"$instance"}[$__rate_interval])
 
 # ICMPv6 error rate (should be low)
-rate(node_netstat_Icmp6_InErrors[5m])
+rate(node_netstat_Icmp6_InErrors{instance=~"$instance"}[$__rate_interval])
 ```
 
 ### Panel 4: IPv6 Uptime Probe (from Blackbox Exporter)
+
+Configure the Blackbox Exporter module with `preferred_ip_protocol: "ip6"` and `ip_protocol_fallback: false` so the probe stays IPv6-only.
 
 ```promql
 # IPv6 endpoint availability
 probe_success{job="blackbox-http-ipv6"}
 
-# IPv6 HTTP response latency
+# IPv6 probe duration
 probe_duration_seconds{job="blackbox-http-ipv6"}
 ```
 
@@ -90,7 +88,10 @@ probe_duration_seconds{job="blackbox-http-ipv6"}
 
 ```json
 {
-  "dashboard": {
+  "metadata": {
+    "name": "ipv6-network-monitoring"
+  },
+  "spec": {
     "title": "IPv6 Network Monitoring",
     "tags": ["ipv6", "networking"],
     "timezone": "browser",
@@ -99,7 +100,7 @@ probe_duration_seconds{job="blackbox-http-ipv6"}
         {
           "name": "instance",
           "type": "query",
-          "query": "label_values(node_netstat_Ip6_InReceives, instance)",
+          "query": "label_values(node_netstat_Ip6_InOctets, instance)",
           "multi": true,
           "includeAll": true
         }
@@ -112,48 +113,40 @@ probe_duration_seconds{job="blackbox-http-ipv6"}
         "gridPos": {"h": 8, "w": 12, "x": 0, "y": 0},
         "targets": [
           {
-            "expr": "rate(node_netstat_Ip6_InReceives{instance=~\"$instance\"}[5m])",
+            "expr": "rate(node_netstat_Ip6_InOctets{instance=~\"$instance\"}[$__rate_interval])",
             "legendFormat": "{{instance}}"
           }
         ]
       },
       {
-        "title": "IPv6 No-Route Errors",
+        "title": "ICMPv6 Inbound Errors",
         "type": "timeseries",
         "gridPos": {"h": 8, "w": 12, "x": 12, "y": 0},
         "targets": [
           {
-            "expr": "rate(node_netstat_Ip6_OutNoRoutes{instance=~\"$instance\"}[5m])",
-            "legendFormat": "{{instance}} no-route"
+            "expr": "rate(node_netstat_Icmp6_InErrors{instance=~\"$instance\"}[$__rate_interval])",
+            "legendFormat": "{{instance}} errors"
           }
-        ],
-        "alert": {
-          "conditions": [{"evaluator": {"type": "gt", "params": [5]}}]
-        }
+        ]
       }
     ]
   }
 }
 ```
 
-## Step 4: Import the Community IPv6 Dashboard
+In current Grafana versions, create alert rules separately in Grafana Alerting instead of embedding an `alert` block in panel JSON.
 
-The Grafana dashboard repository includes community-contributed IPv6 dashboards:
+## Step 4: Import a Community Dashboard as a Starting Point
 
-```bash
-# Import dashboard ID 1860 (Node Exporter Full) which includes IPv6 panels
-curl -X POST http://admin:password@localhost:3000/api/dashboards/import \
-  -H "Content-Type: application/json" \
-  -d '{"dashboardId": 1860, "overwrite": true, "folderId": 0}'
-```
+Grafana.com includes community dashboards you can use as a starting point. For example, import dashboard ID 1860 (Node Exporter Full) through **Dashboards > New > Import**, then add the IPv6-specific panels from this guide.
 
 ## Step 5: Create an IPv6 Adoption Tracking Panel
 
 ```promql
-# Track what percentage of your servers have IPv6 addresses
-count(node_netstat_Ip6_InReceives > 0)
+# Track what percentage of your servers have seen IPv6 traffic since boot
+count(node_netstat_Ip6_InOctets > 0)
 /
-count(node_netstat_InReceives)
+count(node_uname_info)
 * 100
 ```
 
