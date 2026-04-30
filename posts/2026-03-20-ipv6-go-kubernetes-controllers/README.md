@@ -8,7 +8,7 @@ Description: Handle IPv6 in Go Kubernetes controllers including dual-stack servi
 
 ## Kubernetes Dual-Stack Overview
 
-Kubernetes 1.21+ supports dual-stack natively. Controllers need to handle both IPv4 and IPv6 addresses for Services, Pods, and Nodes.
+Kubernetes dual-stack networking is enabled by default starting in 1.21 and is stable in 1.23+. Controllers need to handle both IPv4 and IPv6 addresses for Services, Pods, and Nodes.
 
 Key dual-stack Kubernetes concepts:
 - Services can have both IPv4 and IPv6 ClusterIPs
@@ -17,21 +17,20 @@ Key dual-stack Kubernetes concepts:
 
 ## Detecting Cluster IPv6 Support
 
+One simple API check is to inspect `Node.status.addresses` for IPv6 entries.
+
 ```go
 package main
 
 import (
     "context"
-    "fmt"
-    "net"
+    "net/netip"
 
     metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
     "k8s.io/client-go/kubernetes"
-    "k8s.io/client-go/rest"
 )
 
-func isClusterDualStack(clientset *kubernetes.Clientset) (bool, error) {
-    // Check if cluster has IPv6 service CIDR
+func hasIPv6NodeAddresses(clientset *kubernetes.Clientset) (bool, error) {
     nodes, err := clientset.CoreV1().Nodes().List(context.Background(), metav1.ListOptions{})
     if err != nil {
         return false, err
@@ -39,9 +38,9 @@ func isClusterDualStack(clientset *kubernetes.Clientset) (bool, error) {
 
     for _, node := range nodes.Items {
         for _, addr := range node.Status.Addresses {
-            ip := net.ParseIP(addr.Address)
-            if ip != nil && ip.To4() == nil {
-                return true, nil  // Found an IPv6 address
+            ip, err := netip.ParseAddr(addr.Address)
+            if err == nil && ip.Is6() && !ip.Is4In6() {
+                return true, nil  // Found an IPv6 address on a node
             }
         }
     }
@@ -56,7 +55,6 @@ package main
 
 import (
     "context"
-    "net/netip"
 
     corev1 "k8s.io/api/core/v1"
     metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
@@ -69,7 +67,7 @@ func createDualStackService(
     selector map[string]string,
     port int32,
 ) error {
-    // Dual-stack service requires IPv6 support in cluster
+    // Request dual-stack allocation with IPv4 as the primary service family.
     ipFamilyPolicyPreferDualStack := corev1.IPFamilyPolicyPreferDualStack
     ipFamilies := []corev1.IPFamily{
         corev1.IPv4Protocol,
@@ -108,10 +106,11 @@ func createDualStackService(
 package main
 
 import (
+    "context"
     "fmt"
     "net/netip"
 
-    "k8s.io/apimachinery/pkg/runtime"
+    metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
     "sigs.k8s.io/controller-runtime/pkg/webhook/admission"
 )
 
@@ -127,26 +126,30 @@ type NetworkDeviceSpec struct {
     PrefixLen   int    `json:"prefixLen,omitempty"`
 }
 
-// ValidateCreate validates IPv6 on CRD creation
-func (d *NetworkDevice) ValidateCreate() (admission.Warnings, error) {
-    return nil, d.validateIPv6()
+type NetworkDeviceCustomValidator struct{}
+
+// ValidateCreate validates IPv6 on CRD creation.
+func (v *NetworkDeviceCustomValidator) ValidateCreate(_ context.Context, obj *NetworkDevice) (admission.Warnings, error) {
+    return nil, validateIPv6(obj)
 }
 
-func (d *NetworkDevice) ValidateUpdate(old runtime.Object) (admission.Warnings, error) {
-    return nil, d.validateIPv6()
+func (v *NetworkDeviceCustomValidator) ValidateUpdate(_ context.Context, _, newObj *NetworkDevice) (admission.Warnings, error) {
+    return nil, validateIPv6(newObj)
 }
 
-func (d *NetworkDevice) validateIPv6() error {
+func (v *NetworkDeviceCustomValidator) ValidateDelete(_ context.Context, _ *NetworkDevice) (admission.Warnings, error) {
+    return nil, nil
+}
+
+func validateIPv6(d *NetworkDevice) error {
     addr, err := netip.ParseAddr(d.Spec.IPv6Address)
-    if err != nil || !addr.Is6() {
+    if err != nil || !addr.Is6() || addr.Is4In6() {
         return fmt.Errorf("spec.ipv6Address is not a valid IPv6 address: %s",
             d.Spec.IPv6Address)
     }
 
-    if d.Spec.PrefixLen > 0 {
-        if d.Spec.PrefixLen < 0 || d.Spec.PrefixLen > 128 {
-            return fmt.Errorf("spec.prefixLen must be between 0 and 128")
-        }
+    if d.Spec.PrefixLen < 0 || d.Spec.PrefixLen > 128 {
+        return fmt.Errorf("spec.prefixLen must be between 0 and 128")
     }
     return nil
 }
@@ -159,8 +162,7 @@ package main
 
 import (
     "context"
-    "fmt"
-    "net"
+    "net/netip"
 
     corev1 "k8s.io/api/core/v1"
     "sigs.k8s.io/controller-runtime/pkg/client"
@@ -181,8 +183,8 @@ func getPodIPv6Addresses(
 
     var ipv6Addrs []string
     for _, podIP := range pod.Status.PodIPs {
-        ip := net.ParseIP(podIP.IP)
-        if ip != nil && ip.To4() == nil {
+        ip, err := netip.ParseAddr(podIP.IP)
+        if err == nil && ip.Is6() && !ip.Is4In6() {
             ipv6Addrs = append(ipv6Addrs, podIP.IP)
         }
     }
@@ -198,7 +200,6 @@ package main
 
 import (
     "context"
-    "net"
 
     networkingv1 "k8s.io/api/networking/v1"
     metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
@@ -223,7 +224,7 @@ func createIPv6NetworkPolicy(
                 {
                     From: []networkingv1.NetworkPolicyPeer{
                         {
-                            // Allow from internal IPv6 prefix only
+                            // Allow from a specific IPv6 prefix only
                             IPBlock: &networkingv1.IPBlock{
                                 CIDR:   "2001:db8::/48",
                                 Except: []string{"2001:db8:ff::/64"},
