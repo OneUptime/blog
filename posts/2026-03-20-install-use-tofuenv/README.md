@@ -31,12 +31,13 @@ source ~/.bashrc  # or source ~/.zshrc
 
 ```bash
 # Install via Homebrew
-brew tap tofuutils/tap
 brew install tofuenv
 
 # Verify installation
-tofuenv version
+tofuenv --version
 ```
+
+Before using `tofuenv list-remote` or `tofuenv install`, install `jq`. On manual macOS installs, upstream also requires GNU `grep`, and `gnupg` is optional if you want GPG signature verification during OpenTofu downloads.
 
 ## Basic tofuenv Commands
 
@@ -77,7 +78,6 @@ tofuenv use 1.9.0
 
 # Use a version for the current directory only (creates .opentofu-version)
 echo "1.9.0" > .opentofu-version
-tofuenv use
 
 # Verify active version
 tofu version
@@ -128,26 +128,13 @@ terraform {
 
 ## Automatically Switching Versions
 
-Add this to your shell configuration for automatic version switching:
-
-```bash
-# Add to ~/.bashrc or ~/.zshrc
-# Auto-switch based on .opentofu-version when changing directories
-autoload -U add-zsh-hook 2>/dev/null && \
-  add-zsh-hook chpwd tofuenv_auto_use 2>/dev/null || true
-
-tofuenv_auto_use() {
-  if [ -f ".opentofu-version" ]; then
-    tofuenv use
-  fi
-}
-```
+`tofuenv` already checks `.opentofu-version` files in the current and parent directories when you run `tofu`, so no extra shell hook is required for version switching.
 
 ## Verifying tofuenv Setup
 
 ```bash
 # Check tofuenv version
-tofuenv version
+tofuenv --version
 
 # Check active OpenTofu version
 tofuenv version-name
