@@ -22,18 +22,18 @@ graph LR
 
 The migration process:
 1. A migration pod starts on the target node
-2. VM memory is pre-copied to the target (iteratively, starting with dirty pages)
-3. When the dirty page rate drops below a threshold, a final stop-and-copy occurs
+2. VM memory is pre-copied to the target in iterative rounds while the VM keeps running on the source node
+3. When the remaining dirty pages can be transferred during a short switchover window, a final stop-and-copy occurs
 4. The VM resumes on the target node
 5. Source VM resources are released
 
 ## Prerequisites for Live Migration
 
 Live migration requires:
-- At least 2 nodes with sufficient resources
-- Shared storage (Longhorn - already built into Harvester)
+- At least 2 nodes with sufficient resources and compatible CPU settings
+- Migratable storage for the VM's disks (for example, Harvester-backed volumes that are not single-replica `ReadWriteOnce`)
 - Network connectivity between nodes for memory transfer
-- The VM must not have PCI passthrough or SR-IOV devices (these prevent live migration)
+- The VM must not have non-migratable devices or volumes such as PCI/vGPU passthrough, SR-IOV interfaces, `CD-ROM` disks, or `Container Disk` volumes
 
 ## Step 1: Verify Live Migration Capability
 
@@ -41,17 +41,18 @@ Live migration requires:
 # Check if a VM is migratable
 
 kubectl get vmi ubuntu-web-01 -n default \
-    -o jsonpath='{.status.conditions[?(@.type=="LiveMigratable")]}' | jq .
+    -o json | jq '.status.conditions[] | select(.type=="LiveMigratable")'
 
-# If reason is "True", the VM can be live migrated
-# If reason contains "NonMigratable", see the message for why
+# If .status is "True", the VM can be live migrated
+# If .status is "False", inspect .reason and .message for the blocker
 ```
 
 Common reasons a VM cannot be live migrated:
-- Has host devices (PCI passthrough)
+- Has host devices (PCI passthrough or vGPU)
 - Uses SR-IOV interfaces
-- Has CPU pinning configured without appropriate settings
-- Has local volumes not backed by a shared storage class
+- Has `CD-ROM`, `Container Disk`, or single-replica `ReadWriteOnce` volumes
+- Has node selectors or scheduling rules that only match one node
+- Has CPU pinning enabled but CPU Manager is not enabled on enough nodes
 
 ## Step 2: Configure Live Migration Bandwidth
 
@@ -69,21 +70,19 @@ metadata:
 spec:
   configuration:
     migrations:
-      # Maximum bandwidth for a single migration (bytes/sec)
-      # 64 Mi = 64 MB/s - conservative setting to avoid network saturation
+      # Maximum bandwidth for a single migration
+      # 64MiB/s is a conservative setting to avoid saturating the network
       bandwidthPerMigration: "64Mi"
       # Maximum number of concurrent migrations per cluster
       parallelMigrationsPerCluster: 5
       # Maximum migrations per node
       parallelOutboundMigrationsPerNode: 2
-      # Timeout in seconds for the final migration phase
+      # Completion timeout in seconds per GiB of data to migrate
       completionTimeoutPerGiB: 800
-      # Maximum time for the entire migration (seconds)
+      # Abort if migration makes no progress for this many seconds
       progressTimeout: 150
-      # Allow post-copy migration as a fallback
+      # Keep post-copy disabled unless you explicitly want that behavior
       allowPostCopy: false
-      # Network for migration traffic
-      network: ""
 ```
 
 ```bash
@@ -97,7 +96,7 @@ kubectl apply -f kubevirt-migration-config.yaml
 1. Navigate to **Virtual Machines**
 2. Find the running VM
 3. Click the **⋮** menu → **Migrate**
-4. The migration starts immediately (auto-selects target node)
+4. Choose the target node and click **Apply** to start the migration
 
 ### Via kubectl
 
@@ -116,7 +115,7 @@ spec:
 kubectl apply -f live-migration.yaml
 
 # Track detailed migration progress
-kubectl get virtualmachineinstancemigration live-mig-ubuntu-web-01 \
+kubectl get vmim live-mig-ubuntu-web-01 \
     -n default -o yaml | grep -A 30 "status:"
 ```
 
@@ -126,19 +125,20 @@ kubectl get virtualmachineinstancemigration live-mig-ubuntu-web-01 \
 # Migrate using virtctl
 virtctl migrate ubuntu-web-01 -n default
 
-# Check migration state
-virtctl migration-info ubuntu-web-01 -n default
+# Track the VMI's migration state
+kubectl get vmi ubuntu-web-01 -n default \
+    -o json | jq '.status.migrationState'
 ```
 
 ## Step 4: Monitor Migration Progress
 
 ```bash
-# Watch migration status
-watch -n 2 kubectl get vmsimigration -n default
+# Watch migration objects
+watch -n 2 kubectl get vmim -n default
 
-# Get migration memory transfer progress
+# Get the current migration state from the VMI
 kubectl get vmi ubuntu-web-01 -n default \
-    -o jsonpath='{.status.migrationState}' | jq '{
+    -o json | jq '.status.migrationState | {
         mode: .mode,
         startTimestamp: .startTimestamp,
         endTimestamp: .endTimestamp,
@@ -154,60 +154,37 @@ sar -n DEV 1 60 | grep eth0
 
 ## Step 5: Set Up a Dedicated Migration Network
 
-For production clusters, use a dedicated network for migration traffic to avoid impacting VM networking:
+For production clusters, use a dedicated network for migration traffic to avoid impacting VM networking. In Harvester, configure this through the `vm-migration-network` setting instead of editing KubeVirt directly:
 
 ```yaml
-# migration-network.yaml
-# Dedicated migration network configuration
+# vm-migration-network.yaml
+# Dedicated migration network configuration in Harvester
 
-apiVersion: v1
-kind: ConfigMap
+apiVersion: harvesterhci.io/v1beta1
+kind: Setting
 metadata:
-  name: kubevirt-config
-  namespace: harvester-system
-data:
-  # Configure migrations to use a specific network
-  # This is the name of a Multus NetworkAttachmentDefinition
-  migrations: |
-    {
-      "network": "default/migration-network",
-      "bandwidthPerMigration": "128Mi"
-    }
+  name: vm-migration-network
+value: '{"vlan":100,"clusterNetwork":"vm-migration","range":"192.168.1.0/24","exclude":["192.168.1.100/32"]}'
 ```
 
-Create the migration network:
+```bash
+kubectl apply -f vm-migration-network.yaml
+```
 
-```yaml
-# migration-nad.yaml
-apiVersion: k8s.cni.cncf.io/v1
-kind: NetworkAttachmentDefinition
-metadata:
-  name: migration-network
-  namespace: default
-spec:
-  config: |
-    {
-      "cniVersion": "0.3.1",
-      "name": "migration-network",
-      "type": "macvlan",
-      "master": "eth2",
-      "mode": "bridge",
-      "ipam": {
-        "type": "host-local",
-        "subnet": "10.201.0.0/24",
-        "rangeStart": "10.201.0.10",
-        "rangeEnd": "10.201.0.200"
-      }
-    }
+Harvester creates the required `NetworkAttachmentDefinition` and updates KubeVirt automatically.
+
+```bash
+# Verify the setting is configured
+kubectl get settings.harvesterhci.io vm-migration-network -o yaml
 ```
 
 ## Step 6: Cancel a Migration
 
 ```bash
 # Cancel a running migration
-kubectl delete virtualmachineinstancemigration live-mig-ubuntu-web-01 -n default
+kubectl delete vmim live-mig-ubuntu-web-01 -n default
 
-# The VM will continue running on the source node
+# Confirm which node the VM is running on after the abort request
 kubectl get vmi ubuntu-web-01 -n default \
     -o jsonpath='{.status.nodeName}'
 ```
@@ -229,7 +206,7 @@ ping -c 5 $VM_IP
 # Test application availability
 curl -sf http://$VM_IP/healthz && echo "App healthy after migration"
 
-# Verify no memory corruption (check VM logs)
+# Optionally attach to the serial console for an application-level sanity check
 virtctl console ubuntu-web-01 -n default
 ```
 
@@ -240,14 +217,14 @@ For VMs with large amounts of RAM (e.g., 256 GB), migrations can take a long tim
 ```bash
 # Check how long the last migration took
 kubectl get vmi ubuntu-web-01 -n default \
-    -o jsonpath='{.status.migrationState}' | jq '{
+    -o json | jq '.status.migrationState | {
         start: .startTimestamp,
         end: .endTimestamp,
         mode: .mode
     }'
 
 # For large VM migrations, increase the timeout
-kubectl patch kubevirt kubevirt -n harvester-system --type json \
+kubectl patch kubevirts.kubevirt.io kubevirt -n harvester-system --type json \
 -p '[{
     "op": "replace",
     "path": "/spec/configuration/migrations/completionTimeoutPerGiB",
@@ -255,7 +232,7 @@ kubectl patch kubevirt kubevirt -n harvester-system --type json \
 }]'
 
 # Increase bandwidth limit for faster migration
-kubectl patch kubevirt kubevirt -n harvester-system --type json \
+kubectl patch kubevirts.kubevirt.io kubevirt -n harvester-system --type json \
 -p '[{
     "op": "replace",
     "path": "/spec/configuration/migrations/bandwidthPerMigration",
