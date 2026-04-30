@@ -6,7 +6,7 @@ Tags: iptables, Debian, Linux, Firewall, Persistence, Iptables-persistent
 
 Description: Configure iptables-persistent on Debian to automatically restore iptables and ip6tables rules at boot, ensuring your firewall configuration survives system restarts.
 
-On Debian and Debian-based systems, `iptables-persistent` is the standard package for making iptables rules survive reboots. It provides a systemd service (`netfilter-persistent`) that restores saved rules during the boot sequence.
+On Debian and Debian-based systems, `iptables-persistent` is a common package for making iptables rules survive reboots. It provides a systemd service (`netfilter-persistent`) that restores saved rules during the boot sequence.
 
 ## Install iptables-persistent
 
@@ -33,8 +33,8 @@ cat /etc/iptables/rules.v4
 # IPv6 rules
 cat /etc/iptables/rules.v6
 
-# These files are automatically restored at boot by:
-# /lib/systemd/system/netfilter-persistent.service
+# These files are automatically restored at boot by the
+# netfilter-persistent service
 ```
 
 ## Save Rules After Changes
@@ -43,13 +43,13 @@ After making changes, you must explicitly save:
 
 ```bash
 # Method 1: Direct file save
-sudo iptables-save > /etc/iptables/rules.v4
-sudo ip6tables-save > /etc/iptables/rules.v6
+sudo iptables-save -f /etc/iptables/rules.v4
+sudo ip6tables-save -f /etc/iptables/rules.v6
 
 # Method 2: Using netfilter-persistent
 sudo netfilter-persistent save
 
-# Method 3: Using the iptables-save command alias
+# Method 3: Using the SysV init script wrapper
 sudo /etc/init.d/netfilter-persistent save
 
 # Verify save was successful
@@ -63,16 +63,19 @@ stat /etc/iptables/rules.v4  # Check modification time
 # Check service status
 sudo systemctl status netfilter-persistent
 
-# Enable service (should be auto-enabled after install)
+# Enable service if needed
 sudo systemctl enable netfilter-persistent
 
 # Manually restore rules (without reboot)
 sudo systemctl restart netfilter-persistent
 # or
-sudo netfilter-persistent reload
+sudo netfilter-persistent start
 
-# Stop and remove all rules (dangerous on remote server!)
+# Stop the service (does not flush rules unless FLUSH_ON_STOP is enabled)
 sudo systemctl stop netfilter-persistent
+
+# Remove all currently loaded rules (dangerous on remote server!)
+sudo netfilter-persistent flush
 ```
 
 ## Verify Rules at Boot
@@ -80,12 +83,11 @@ sudo systemctl stop netfilter-persistent
 Test that rules load correctly on boot:
 
 ```bash
-# Simulate a reboot by flushing and restoring
-sudo iptables -F   # Flush all rules
-sudo iptables -P INPUT ACCEPT   # Reset policies
+# Test restore by flushing current rules and loading the saved rules
+sudo netfilter-persistent flush
 
 # Restore as service would
-sudo netfilter-persistent reload
+sudo netfilter-persistent start
 
 # Verify rules are back
 sudo iptables -L -n -v --line-numbers
@@ -95,9 +97,10 @@ sudo iptables -L -n -v --line-numbers
 
 ```bash
 # 1. Set up your rules
-sudo iptables -A INPUT -p tcp --dport 22 -j ACCEPT
-sudo iptables -A INPUT -p tcp --dport 80 -j ACCEPT
-sudo iptables -A INPUT -j DROP
+sudo iptables -A INPUT -i lo -j ACCEPT
+sudo iptables -A INPUT -m conntrack --ctstate ESTABLISHED,RELATED -j ACCEPT
+sudo iptables -A INPUT -p tcp --dport 22 -m conntrack --ctstate NEW -j ACCEPT
+sudo iptables -A INPUT -p tcp --dport 80 -m conntrack --ctstate NEW -j ACCEPT
 sudo iptables -P INPUT DROP
 
 # 2. Test (verify SSH still works, web server reachable)
