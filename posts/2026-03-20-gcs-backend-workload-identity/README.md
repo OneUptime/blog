@@ -13,11 +13,13 @@ Workload Identity Federation allows external identities (like GitHub Actions wor
 ## How Workload Identity Federation Works
 
 1. GitHub Actions generates a short-lived OIDC token for the workflow
-2. GCP's Workload Identity Pool exchanges the OIDC token for a short-lived GCP token
-3. The GCP token allows impersonating a service account
+2. GCP's Security Token Service exchanges the OIDC token for a federated token
+3. The federated token is used to impersonate a service account
 4. OpenTofu uses the service account to access the GCS backend
 
 ## Step 1: Create the Workload Identity Pool and Provider
+
+Before creating these resources, enable the IAM, Security Token Service, and Service Account Credentials APIs in your GCP project.
 
 ```hcl
 # workload-identity.tf
@@ -68,7 +70,7 @@ resource "google_service_account_iam_member" "github_impersonation" {
 
 # Grant the SA access to the state bucket
 resource "google_storage_bucket_iam_member" "terraform_state" {
-  bucket = google_storage_bucket.terraform_state.name
+  bucket = "my-terraform-state-bucket"
   role   = "roles/storage.objectAdmin"
   member = "serviceAccount:${google_service_account.terraform.email}"
 }
@@ -82,9 +84,6 @@ terraform {
   backend "gcs" {
     bucket = "my-terraform-state-bucket"
     prefix = "prod"
-
-    # Impersonate the SA - credentials come from Workload Identity
-    impersonate_service_account = "sa-opentofu-runner@my-project.iam.gserviceaccount.com"
   }
 }
 ```
@@ -112,7 +111,7 @@ jobs:
       - uses: actions/checkout@v4
 
       - name: Authenticate to GCP
-        uses: google-github-actions/auth@v2
+        uses: google-github-actions/auth@v3
         with:
           workload_identity_provider: projects/${{ vars.GCP_PROJECT_NUMBER }}/locations/global/workloadIdentityPools/github-pool/providers/github-provider
           service_account: sa-opentofu-runner@${{ vars.GCP_PROJECT_ID }}.iam.gserviceaccount.com
@@ -135,7 +134,7 @@ jobs:
       - uses: actions/checkout@v4
 
       - name: Authenticate to GCP
-        uses: google-github-actions/auth@v2
+        uses: google-github-actions/auth@v3
         with:
           workload_identity_provider: projects/${{ vars.GCP_PROJECT_NUMBER }}/locations/global/workloadIdentityPools/github-pool/providers/github-provider
           service_account: sa-opentofu-runner@${{ vars.GCP_PROJECT_ID }}.iam.gserviceaccount.com
@@ -156,14 +155,14 @@ For tighter security, restrict which GitHub Actions runs can assume the role:
 ```hcl
 # Only allow main branch to use production service account
 resource "google_service_account_iam_member" "github_main_only" {
-  service_account_id = google_service_account.terraform_prod.name
+  service_account_id = "projects/my-project/serviceAccounts/sa-opentofu-prod@my-project.iam.gserviceaccount.com"
   role               = "roles/iam.workloadIdentityUser"
   member             = "principalSet://iam.googleapis.com/${google_iam_workload_identity_pool.github.name}/attribute.ref/refs/heads/main"
 }
 
 # Allow any branch to use staging service account
 resource "google_service_account_iam_member" "github_all_branches" {
-  service_account_id = google_service_account.terraform_staging.name
+  service_account_id = "projects/my-project/serviceAccounts/sa-opentofu-staging@my-project.iam.gserviceaccount.com"
   role               = "roles/iam.workloadIdentityUser"
   member             = "principalSet://iam.googleapis.com/${google_iam_workload_identity_pool.github.name}/attribute.repository/my-org/my-repo"
 }
@@ -178,7 +177,7 @@ gcloud iam workload-identity-pools describe github-pool \
   --project=my-project
 
 # Test authentication from GitHub Actions
-# The google-github-actions/auth step outputs credentials
+# The auth action creates a credentials file and exports GOOGLE_APPLICATION_CREDENTIALS
 # Check GitHub Actions logs for successful authentication
 ```
 
