@@ -4,13 +4,13 @@ Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
 Tags: gRPC, IPv4, Name Resolution, Go, Python, Networking
 
-Description: Use the ipv4:// URI scheme in gRPC to create direct IPv4 connections, configure custom name resolvers, and handle multi-address load balancing in Go and Python.
+Description: Use the `ipv4:` target syntax in gRPC C-core-based clients such as Python, and use `passthrough` and custom resolvers for direct IPv4 connections and multi-address load balancing in Go.
 
 ## Introduction
 
-gRPC supports pluggable name resolution. The built-in `ipv4` scheme allows you to specify one or more IPv4 endpoints directly without DNS lookup, which is useful in environments where DNS is unavailable or unreliable.
+gRPC supports pluggable name resolution. The `ipv4:` target syntax in the gRPC naming spec lets gRPC C-core-based clients specify one or more IPv4 endpoints directly without DNS lookup, which is useful in environments where DNS is unavailable or unreliable. `grpc-go` does not include a built-in `ipv4` resolver, so Go clients use `passthrough` for a single direct address or a custom resolver for multiple backends.
 
-## Basic ipv4:// Target in Go
+## Direct IPv4 Target in Go
 
 ```go
 package main
@@ -27,8 +27,8 @@ import (
 
 func main() {
     // Single IPv4 target
-    conn, err := grpc.Dial(
-        "ipv4:///192.168.1.10:50051",
+    conn, err := grpc.NewClient(
+        "passthrough:///192.168.1.10:50051",
         grpc.WithTransportCredentials(insecure.NewCredentials()),
     )
     if err != nil {
@@ -50,16 +50,13 @@ func main() {
 
 ## Multiple IPv4 Addresses with Round-Robin
 
-```go
-import (
-    "google.golang.org/grpc/balancer/roundrobin"
-    _ "google.golang.org/grpc/balancer/roundrobin" // register
-)
+In `grpc-go`, use the `static` resolver shown below to return multiple backend addresses, then enable `round_robin` via service config.
 
-conn, err := grpc.Dial(
-    "ipv4:///192.168.1.10:50051,192.168.1.11:50051,192.168.1.12:50051",
+```go
+conn, err := grpc.NewClient(
+    "static:///helloworld",
     grpc.WithTransportCredentials(insecure.NewCredentials()),
-    grpc.WithDefaultServiceConfig(`{"loadBalancingPolicy":"round_robin"}`),
+    grpc.WithDefaultServiceConfig(`{"loadBalancingConfig":[{"round_robin":{}}]}`),
 )
 ```
 
@@ -71,11 +68,7 @@ import helloworld_pb2
 import helloworld_pb2_grpc
 
 channel = grpc.insecure_channel(
-    "ipv4:///192.168.1.10:50051",
-    options=[
-        ("grpc.lb_policy_name", "round_robin"),
-        ("grpc.dns_min_time_between_resolutions_ms", 30000),
-    ]
+    "ipv4:192.168.1.10:50051"
 )
 
 stub = helloworld_pb2_grpc.GreeterStub(channel)
@@ -87,7 +80,7 @@ print(response.message)
 
 ```python
 channel = grpc.insecure_channel(
-    "ipv4:///192.168.1.10:50051,192.168.1.11:50051",
+    "ipv4:192.168.1.10:50051,192.168.1.11:50051",
     options=[("grpc.lb_policy_name", "round_robin")]
 )
 ```
@@ -132,12 +125,12 @@ func init() {
 
 ```go
 serviceConfig := `{
-    "loadBalancingPolicy": "round_robin",
+    "loadBalancingConfig": [{"round_robin":{}}],
     "healthCheckConfig": {"serviceName": ""}
 }`
 
-conn, _ := grpc.Dial(
-    "ipv4:///192.168.1.10:50051",
+conn, _ := grpc.NewClient(
+    "static:///helloworld",
     grpc.WithDefaultServiceConfig(serviceConfig),
     grpc.WithTransportCredentials(insecure.NewCredentials()),
 )
@@ -145,4 +138,4 @@ conn, _ := grpc.Dial(
 
 ## Conclusion
 
-The `ipv4://` scheme bypasses DNS and connects directly to specified IPv4 addresses. Combine it with `round_robin` load balancing policy to distribute calls across multiple backends. For dynamic address sets, implement a custom `resolver.Builder` that pushes updated address lists to the gRPC channel.
+The `ipv4:` target syntax bypasses DNS and connects directly to specified IPv4 addresses in gRPC C-core-based clients such as Python. In `grpc-go`, use `passthrough` for a single direct address and a custom `resolver.Builder` to push multi-address updates into the gRPC channel. Combine the resolved address list with the `round_robin` load balancing policy to distribute calls across multiple backends.
