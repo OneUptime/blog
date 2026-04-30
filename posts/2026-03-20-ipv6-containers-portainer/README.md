@@ -8,22 +8,20 @@ Description: Enable IPv6 networking for Docker containers, configure dual-stack 
 
 ## Introduction
 
-IPv6 is disabled in Docker by default. With IPv6 adoption increasing and ISPs providing native IPv6 connectivity, containers may need IPv6 for direct internet access, compliance requirements, or internal IPv6 infrastructure. This guide covers enabling IPv6 in Docker, creating dual-stack networks, and deploying containers with IPv6 addresses via Portainer.
+IPv6 is not enabled on Docker's default bridge network by default. With IPv6 adoption increasing and ISPs providing native IPv6 connectivity, containers may need IPv6 for direct internet access, compliance requirements, or internal IPv6 infrastructure. Docker's native IPv6 container networking is supported on Linux hosts. This guide covers enabling IPv6 in Docker, creating dual-stack networks, and deploying containers with IPv6 addresses via Portainer.
 
-## Step 1: Enable IPv6 in Docker Daemon
+## Step 1: Optional - Enable IPv6 on Docker's Default Bridge
 
 ```json
-// /etc/docker/daemon.json - Enable IPv6 globally
 {
   "ipv6": true,
-  "fixed-cidr-v6": "fd00::/80",
-  "ip6tables": true,
-  "experimental": false
+  "fixed-cidr-v6": "fd00:1::/64",
+  "ip6tables": true
 }
 ```
 
 ```bash
-# Apply daemon changes
+# If you also want IPv6 on Docker's default bridge network, apply the daemon changes
 
 sudo systemctl restart docker
 
@@ -38,11 +36,9 @@ docker network inspect bridge | grep -A 5 "EnableIPv6"
 # Create network with both IPv4 and IPv6 subnets
 docker network create \
   --driver bridge \
-  --subnet=172.30.0.0/24 \
-  --gateway=172.30.0.1 \
   --ipv6 \
-  --subnet=fd00::/80 \
-  --gateway=fd00::1 \
+  --subnet=172.30.0.0/24 \
+  --subnet=fd00:2::/64 \
   dual_stack_net
 
 # Verify both address families are configured
@@ -51,12 +47,13 @@ docker network inspect dual_stack_net
 
 ## Step 3: Deploy Containers with IPv6 via Portainer
 
+If you use this stack file, Portainer will create the same `dual_stack_net` network for you, so you can skip Step 2.
+
 ```yaml
 # docker-compose.yml - Dual-stack deployment
-version: "3.8"
-
 networks:
   dual_stack:
+    name: dual_stack_net
     driver: bridge
     enable_ipv6: true
     ipam:
@@ -66,8 +63,8 @@ networks:
         - subnet: 172.30.0.0/24
           gateway: 172.30.0.1
         # IPv6 range (ULA prefix - private)
-        - subnet: fd00::/80
-          gateway: fd00::1
+        - subnet: fd00:2::/64
+          gateway: fd00:2::1
 
 services:
   nginx:
@@ -77,7 +74,7 @@ services:
     networks:
       dual_stack:
         ipv4_address: 172.30.0.10
-        ipv6_address: fd00::10   # Static IPv6 address
+        ipv6_address: fd00:2::10   # Static IPv6 address
     ports:
       - "80:80"
       - "443:443"
@@ -89,11 +86,9 @@ services:
     networks:
       dual_stack:
         ipv4_address: 172.30.0.20
-        ipv6_address: fd00::20   # Static IPv6 address
+        ipv6_address: fd00:2::20   # Static IPv6 address
     environment:
-      # Connect via IPv6
-      - DB_HOST=fd00::30
-      # Or use DNS (works for both IPv4 and IPv6)
+      # Docker DNS resolves the service name on the dual-stack network
       - DB_HOST=database
 
   database:
@@ -103,7 +98,7 @@ services:
     networks:
       dual_stack:
         ipv4_address: 172.30.0.30
-        ipv6_address: fd00::30   # Database accessible via IPv6
+        ipv6_address: fd00:2::30   # Database accessible via IPv6
     environment:
       - POSTGRES_DB=appdb
       - POSTGRES_USER=app
@@ -113,74 +108,72 @@ services:
 ## Step 4: Test IPv6 Connectivity
 
 ```bash
-# Check container's IPv6 address
-docker exec nginx_v6 ip -6 addr show eth0
-# Should show: fd00::10/80
+# Check a container's IPv6 address from the host
+docker inspect --format='{{range .NetworkSettings.Networks}}{{.GlobalIPv6Address}}/{{.GlobalIPv6PrefixLen}}{{end}}' nginx_v6
+# Should show: fd00:2::10/64
 
-# Test IPv6 between containers
-docker exec api_v6 ping6 -c 3 fd00::30
-docker exec api_v6 ping6 -c 3 database  # DNS resolves to IPv6 too
+# Test IPv6 between containers and verify DNS resolution
+docker run --rm --network dual_stack_net alpine sh -c \
+  "apk add --no-cache iputils bind-tools >/dev/null && \
+   ping -6 -c 3 database && \
+   nslookup -query=AAAA database && \
+   nslookup -query=A database"
 
 # Test IPv6 internet connectivity (requires host to have IPv6)
-docker exec nginx_v6 ping6 -c 3 ipv6.google.com
-
-# Curl with IPv6
-docker exec nginx_v6 curl -6 http://[fd00::20]:8080/health
-
-# Verify both IPv4 and IPv6 DNS resolution
-docker exec api_v6 nslookup -query=AAAA database
-docker exec api_v6 nslookup -query=A database
+docker run --rm --network dual_stack_net alpine sh -c \
+  "apk add --no-cache iputils >/dev/null && ping -6 -c 3 ipv6.google.com"
 ```
 
 ## Step 5: Expose Containers via IPv6
 
 ```yaml
-# To listen on IPv6 as well as IPv4
+# When no host IP is specified, Docker publishes the port on the host's IPv4 and IPv6 addresses
 services:
   nginx:
     image: nginx:alpine
     ports:
-      # IPv4 binding
-      - "0.0.0.0:80:80"
-      # IPv6 binding
-      - "[::]:80:80"
-      # Or bind to all interfaces (both IPv4 and IPv6)
-      - "80:80"  # Docker handles both by default when IPv6 enabled
+      - "80:80"
 ```
 
 ```bash
-# Verify nginx is listening on IPv6
-docker exec nginx_v6 ss -tlnp | grep :80
-# Should show :::80 (IPv6) and 0.0.0.0:80 (IPv4)
-
 # Test from host
+curl http://127.0.0.1:80
 curl http://[::1]:80  # Loopback IPv6
-curl http://[fd00::10]:80  # Container IPv6 address
 ```
 
 ## Step 6: IPv6 with NDP Proxy (Public IPv6)
 
-For containers to get public IPv6 addresses from your ISP block:
+For containers to use public IPv6 addresses from your ISP block, create the bridge network in routed IPv6 mode and make sure your upstream network routes that prefix to the Docker host:
 
 ```bash
-# Example: Your ISP gives you 2001:db8::/48
-# Allocate a /64 for containers
+# Example: your ISP routes 2001:db8:0:1::/64 to this Docker host
 
 docker network create \
   --driver bridge \
   --ipv6 \
   --subnet=2001:db8:0:1::/64 \
+  -o com.docker.network.bridge.gateway_mode_ipv6=routed \
   public_ipv6_net
 
-# Enable NDP proxy so router knows about container IPs
+# Start a container with a static IPv6 address on that network
+docker run -d --name web_v6 \
+  --network public_ipv6_net \
+  --ip6 2001:db8:0:1::10 \
+  -p '[::]::80' \
+  nginx:alpine
+
+# Ensure the application inside the container is listening on IPv6
+
+# Remote hosts still need a route to 2001:db8:0:1::/64 via this Docker host.
+# On a directly connected L2 network, one option is NDP proxy:
 sysctl -w net.ipv6.conf.eth0.proxy_ndp=1
 
-# Add proxy entry for each container's IPv6
+# Add a proxy entry for the container's IPv6 address
 ip -6 neigh add proxy 2001:db8:0:1::10 dev eth0
 
-# Now container is reachable from internet at 2001:db8:0:1::10
+# The container can then be reached directly at 2001:db8:0:1::10
 ```
 
 ## Conclusion
 
-IPv6 in Docker provides containers with globally routable addresses, eliminates NAT for internal services, and prepares your infrastructure for the IPv6-only future. Use ULA prefixes (fd00::/8) for private networks and public prefixes from your ISP for internet-facing services. Portainer's container inspection views show both IPv4 and IPv6 addresses, making it straightforward to verify dual-stack connectivity across your environment.
+IPv6 in Docker can provide containers with globally routable addresses when you use a routed public prefix, eliminates NAT for internal services, and prepares your infrastructure for the IPv6-only future. Use ULA prefixes (fd00::/8) for private networks and public prefixes from your ISP for internet-facing services. Portainer's container inspection views show both IPv4 and IPv6 addresses, making it straightforward to verify dual-stack connectivity across your environment.
