@@ -12,15 +12,15 @@ GCP allows you to create custom machine types with exact vCPU and memory configu
 
 ## Step 1: Custom Machine Type Syntax
 
-GCP custom machine types follow the format: `custom-{vCPUs}-{memoryMB}`. Extended memory uses `n1-custom-{vCPUs}-{memoryMB}-ext`.
+For N1 custom machine types, GCP uses the format `custom-{vCPUs}-{memoryMB}`. Other supported series use `{series}-custom-{vCPUs}-{memoryMB}`. On supported series, extended memory adds the `-ext` suffix, for example `custom-{vCPUs}-{memoryMB}-ext` on N1 or `n2-custom-{vCPUs}-{memoryMB}-ext` on N2.
 
 ```hcl
-# main.tf - Custom machine type with specific vCPU and memory
+# main.tf - N1 custom machine type with specific vCPU and memory
 
 resource "google_compute_instance" "custom_vm" {
   name         = "my-custom-vm"
   zone         = "us-central1-a"
-  # Custom machine type: 4 vCPUs, 8192 MB (8 GB) RAM
+  # N1 custom machine type: 4 vCPUs, 8192 MB (8 GB) RAM
   machine_type = "custom-4-8192"
 
   boot_disk {
@@ -80,7 +80,7 @@ resource "google_compute_instance" "extended_memory_vm" {
   name         = "extended-mem-vm"
   zone         = "us-central1-a"
   # Extended memory: 4 vCPUs, 32768 MB (32 GB) - exceeds standard 6.5GB/vCPU ratio
-  machine_type = "n1-custom-4-32768-ext"
+  machine_type = "custom-4-32768-ext"
 
   boot_disk {
     initialize_params {
@@ -109,7 +109,7 @@ variable "memory_mb" {
   default = 4096
 }
 
-# Construct custom machine type string from variables
+# Construct an N1 custom machine type string from variables
 locals {
   machine_type = "custom-${var.vcpus}-${var.memory_mb}"
 }
@@ -133,4 +133,4 @@ resource "google_compute_instance" "dynamic_vm" {
 
 ## Summary
 
-GCP custom machine types with OpenTofu let you optimize VM costs by specifying exact vCPU and memory configurations. Use standard custom types for workloads within the 6.5 GB/vCPU ratio, and extended memory types for memory-intensive applications like in-memory databases or analytics workloads.
+GCP custom machine types with OpenTofu let you optimize VM costs by specifying exact vCPU and memory configurations. Use standard custom types for workloads within the default memory-per-vCPU ratio for your chosen machine series, and extended memory types for memory-intensive applications like in-memory databases or analytics workloads.
