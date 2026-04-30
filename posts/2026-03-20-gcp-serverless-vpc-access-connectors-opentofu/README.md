@@ -20,7 +20,7 @@ resource "google_vpc_access_connector" "serverless_connector" {
   region        = "us-central1"
   network       = google_compute_network.vpc.name
 
-  # Connector requires its own /28 CIDR not overlapping with other subnets
+  # Connector requires its own /28 CIDR not overlapping with any in-use range
   ip_cidr_range = "10.8.0.0/28"
 
   # Machine type for connector instances
@@ -81,7 +81,7 @@ resource "google_cloud_run_v2_service" "api_service" {
     vpc_access {
       connector = google_vpc_access_connector.serverless_connector.id
       # "ALL_TRAFFIC" routes all traffic through VPC
-      # "PRIVATE_RANGES_ONLY" routes only private RFC1918 traffic through VPC
+      # "PRIVATE_RANGES_ONLY" routes private/internal IP ranges through VPC
       egress = "PRIVATE_RANGES_ONLY"
     }
 
@@ -102,7 +102,7 @@ resource "google_cloudfunctions2_function" "data_processor" {
   location = "us-central1"
 
   build_config {
-    runtime     = "nodejs20"
+    runtime     = "nodejs22"
     entry_point = "processData"
     source {
       storage_source {
