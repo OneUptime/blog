@@ -21,16 +21,16 @@ Grafana defaults to listening on all interfaces (0.0.0.0:3000). Binding it to a 
 http_addr = 10.0.0.5
 http_port = 3000
 
-# Protocol: http or https
+# Protocol: http, https, h2, socket, or socket_h2
 protocol = http
 
-# Domain for cookie security and links
+# Public-facing host/IP used for links and redirects
 domain = 10.0.0.5
 
 # Root URL (important for correct redirect URLs)
 root_url = http://10.0.0.5:3000/
 
-# Socket path (for Unix socket binding - alternative to TCP)
+# For Unix socket binding, set protocol = socket and configure:
 # socket = /run/grafana/grafana.sock
 ```
 
@@ -61,7 +61,7 @@ protocol = http
 domain = grafana.example.com
 root_url = https://grafana.example.com/
 
-# Trust reverse proxy headers
+# Keep false unless Grafana is served from a sub-path
 serve_from_sub_path = false
 ```
 
@@ -90,16 +90,18 @@ server {
 # /etc/grafana/grafana.ini
 
 [security]
+# Initial admin credentials (used on first start)
 admin_user = admin
 admin_password = StrongAdminPass!
 secret_key = RandomSecretKeyHere
 
-# Disable user signup
-allow_sign_up = false
-
 # Protect cookies
 cookie_secure = true    # Only if using HTTPS
 cookie_samesite = lax
+
+[users]
+# Disable user signup
+allow_sign_up = false
 ```
 
 ## Applying and Verifying
@@ -120,8 +122,8 @@ curl -s http://10.0.0.5:3000/api/health | python3 -m json.tool
 
 ```bash
 # Allow Grafana from admin workstations only
-sudo ufw allow from 10.0.0.0/24 to any port 3000
-sudo ufw deny 3000
+sudo ufw allow from 10.0.0.0/24 to any port 3000 proto tcp
+sudo ufw deny 3000/tcp
 
 # If behind reverse proxy:
 # Only allow Nginx to access Grafana on localhost
