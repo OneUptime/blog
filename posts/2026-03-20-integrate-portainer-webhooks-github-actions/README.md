@@ -8,13 +8,13 @@ Description: Automate container redeployment to Portainer after successful GitHu
 
 ---
 
-Portainer webhooks enable CI/CD pipelines to automatically redeploy containers after a new image is built. This creates a complete GitOps workflow from code push to container update.
+On non-Edge Portainer Business Edition environments, container webhooks enable CI/CD pipelines to automatically redeploy containers after a new image is built. This creates an automated flow from code push to container update.
 
 ## Enable Container Webhooks in Portainer
 
 1. Navigate to **Containers > [Container Name]**
 2. Scroll to the **Container webhooks** section
-3. Toggle the webhook switch to **Enabled**
+3. Toggle the **Container webhook** switch to **Enabled**
 4. Copy the generated webhook URL
 
 The URL format: `https://portainer.example.com/api/webhooks/<uuid>`
@@ -26,7 +26,7 @@ The URL format: `https://portainer.example.com/api/webhooks/<uuid>`
 
 curl -X POST https://portainer.example.com/api/webhooks/<webhook-uuid>
 
-# With SERVICE_TAG to specify a specific image tag
+# With the tag query parameter to specify a specific image tag
 curl -X POST "https://portainer.example.com/api/webhooks/<webhook-uuid>?tag=v1.2.3"
 ```
 
@@ -45,6 +45,13 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
+
+      - name: Log in to container registry
+        uses: docker/login-action@v3
+        with:
+          registry: myregistry
+          username: ${{ secrets.REGISTRY_USERNAME }}
+          password: ${{ secrets.REGISTRY_PASSWORD }}
 
       - name: Build and push Docker image
         run: |
@@ -70,6 +77,7 @@ stages:
 build:
   stage: build
   script:
+    - echo "$CI_REGISTRY_PASSWORD" | docker login registry.gitlab.com -u "$CI_REGISTRY_USER" --password-stdin
     - docker build -t registry.gitlab.com/org/myapp:$CI_COMMIT_SHA .
     - docker push registry.gitlab.com/org/myapp:$CI_COMMIT_SHA
 
@@ -81,11 +89,11 @@ deploy:
         "${PORTAINER_WEBHOOK_URL}?tag=${CI_COMMIT_SHA}" \
         --fail
       echo "Deployment triggered for tag ${CI_COMMIT_SHA}"
-  only:
-    - main
+  rules:
+    - if: '$CI_COMMIT_BRANCH == "main"'
 ```
 
-## Using SERVICE_TAG Variable
+## Using the `tag` Query Parameter
 
 When Portainer receives a webhook with a `tag` query parameter, it updates the container to use that image tag:
 
@@ -95,7 +103,7 @@ WEBHOOK_URL="https://portainer.example.com/api/webhooks/abc123"
 IMAGE_TAG="v2.1.0"
 
 curl -s -X POST "${WEBHOOK_URL}?tag=${IMAGE_TAG}"
-# Portainer will redeploy the container with image:v2.1.0
+# Portainer will redeploy the container using the v2.1.0 image tag
 ```
 
 ## Secure Webhooks
