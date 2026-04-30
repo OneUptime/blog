@@ -8,7 +8,7 @@ Description: Configure HAProxy in TCP mode for Layer 4 load balancing, distribut
 
 ## Introduction
 
-Layer 4 load balancing operates at the TCP transport layer, forwarding connections based on source/destination IP and port without inspecting application content. HAProxy's `tcp` mode is faster than `http` mode and works with any TCP-based protocol.
+Layer 4 load balancing operates at the TCP transport layer, forwarding connections based on source/destination IP and port without inspecting application content. HAProxy's `tcp` mode has lower overhead than `http` mode and works with any TCP-based protocol.
 
 ## Basic TCP Load Balancer
 
@@ -51,7 +51,7 @@ backend mysql_servers
 
 ## TCP with Custom Health Check
 
-For protocols that send a banner on connect (MySQL, Redis, etc.):
+For protocols where a simple request/response health check is more useful than a bare TCP connect:
 
 ```haproxy
 backend redis_servers
@@ -95,7 +95,7 @@ frontend mqtt_frontend
 
 backend mqtt_servers
     mode tcp
-    balance source          # Same client always goes to same broker
+    balance source          # Same client IP hashes to the same broker
 
     server mqtt1 192.168.3.10:1883 check
     server mqtt2 192.168.3.11:1883 check
@@ -109,14 +109,17 @@ defaults
     timeout connect    5s
     timeout client     10m    # Idle client timeout
     timeout server     10m    # Idle server timeout
-    timeout queue      30s    # Queue timeout when maxconn reached
+    timeout queue      30s    # Queue timeout while waiting for a server slot
+
+frontend database_frontend
+    bind 203.0.113.10:3306
+    maxconn 100              # Max client connections this frontend accepts
+    default_backend database_servers
 
 backend database_servers
     balance leastconn
 
     # Limit connections to protect the database
-    maxconn 100              # Max connections this backend accepts in total
-
     server db1 192.168.1.10:3306 check maxconn 50   # Per-server limit
     server db2 192.168.1.11:3306 check maxconn 50
 ```
@@ -141,13 +144,13 @@ telnet 203.0.113.10 3306
 # Test MySQL connection
 mysql -h 203.0.113.10 -P 3306 -u testuser -p
 
-# Monitor active connections
+# Monitor active connections (requires a configured HAProxy stats/admin socket)
 echo "show info" | sudo socat stdio /run/haproxy/admin.sock | grep CurrConns
 
-# Watch backend server states
+# Watch backend server states (requires a configured HAProxy stats/admin socket)
 watch -n2 "echo 'show servers state' | sudo socat stdio /run/haproxy/admin.sock"
 ```
 
 ## Conclusion
 
-HAProxy TCP mode provides high-performance Layer 4 load balancing for any TCP protocol. Set `mode tcp` in both `defaults` and your `frontend`/`backend` sections, use `option tcp-check` for basic health monitoring, and configure appropriate timeouts for your protocol's connection duration. Layer 4 bypasses HTTP inspection overhead, making it ideal for database, message broker, and game server load balancing.
+HAProxy TCP mode provides high-performance Layer 4 load balancing for any TCP protocol. Set `mode tcp` in `defaults`, or explicitly on the `frontend`/`backend` sections you want in TCP mode, use `option tcp-check` for basic health monitoring, and configure appropriate timeouts for your protocol's connection duration. Layer 4 bypasses HTTP inspection overhead, making it ideal for database, message broker, and game server load balancing.
