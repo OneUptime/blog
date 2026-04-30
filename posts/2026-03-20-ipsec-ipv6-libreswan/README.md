@@ -19,7 +19,7 @@ sudo dnf install libreswan
 sudo apt-get install libreswan
 
 # Check version
-ipsec --version
+ipsec version
 ```
 
 ## Basic IPv6 Tunnel Configuration
@@ -37,15 +37,15 @@ conn ipv6-site-to-site
     # Or: authby=rsasig   # RSA certificates
 
     # Left (local) side
-    left=2001:db8::site-a-gateway
-    leftsubnet=2001:db8:site-a::/48
+    left=2001:db8:0:1::1
+    leftsubnet=2001:db8:1::/48
 
     # Right (remote) side
-    right=2001:db8::site-b-gateway
-    rightsubnet=2001:db8:site-b::/48
+    right=2001:db8:0:2::1
+    rightsubnet=2001:db8:2::/48
 
     # Crypto algorithms
-    ike=aes256-sha2_256-dh14
+    ike=aes256-sha2_256;dh14
     esp=aes256-sha2_256
 
     # Connection behavior
@@ -65,18 +65,19 @@ conn ipv6-roadwarrior
     authby=secret
 
     # Server's IPv6 address
-    left=2001:db8::vpn-server
+    left=2001:db8:0:10::1
     leftsubnet=::/0      # Allow access to any IPv6
 
     # Any remote client
     right=%any
-    rightsubnet=::/0
 
     # Assign IPv6 address to client
-    rightsourceip=fd00:ipsec::/64
+    rightaddresspool=fd00:100::/64
 
     # DNS to push to clients
-    rightdns=2001:4860:4860::8888
+    modecfgdns=2001:4860:4860::8888
+
+    narrowing=yes
 
     auto=add
 ```
@@ -86,10 +87,10 @@ conn ipv6-roadwarrior
 ```bash
 # /etc/ipsec.secrets
 # Shared secret between server and all clients
-%any %any : PSK "your-strong-pre-shared-key"
+2001:db8:0:10::1 %any6 : PSK "your-strong-pre-shared-key"
 
 # Per-peer shared key
-2001:db8::site-a-gateway 2001:db8::site-b-gateway : PSK "site-specific-key"
+2001:db8:0:1::1 2001:db8:0:2::1 : PSK "site-specific-key"
 ```
 
 ## Certificate-Based Authentication
@@ -102,21 +103,27 @@ conn ipv6-cert-auth
     authby=rsasig
 
     # Server certificate
-    left=2001:db8::vpn-server
-    leftcert=server-cert.pem     # Place in /etc/ipsec.d/certs/
+    left=2001:db8:0:10::1
+    leftcert=vpn.example.com     # Certificate nickname in the NSS database
     leftid=@vpn.example.com
+    leftsendcert=always
+    leftsubnet=::/0
+    leftrsasigkey=%cert
 
     right=%any
     rightca=%same    # Client must use cert from same CA
+    rightrsasigkey=%cert
 
-    rightsourceip=fd00:ipsec::/64
+    rightaddresspool=fd00:100::/64
+    modecfgdns=2001:4860:4860::8888
+    narrowing=yes
     auto=add
 ```
 
 ```bash
 # Import certificates
 sudo ipsec import server-cert.p12
-sudo certutil -d /etc/ipsec.d -L   # List installed certs
+sudo certutil -d sql:/var/lib/ipsec/nss -L   # List installed certs
 ```
 
 ## Managing Libreswan
@@ -126,9 +133,9 @@ sudo certutil -d /etc/ipsec.d -L   # List installed certs
 sudo systemctl start ipsec
 sudo systemctl enable ipsec
 
-# Load/reload configuration
+# Load and start the configuration
 sudo ipsec auto --add ipv6-site-to-site
-sudo ipsec auto --start ipv6-site-to-site
+sudo ipsec auto --up ipv6-site-to-site
 
 # Check status
 sudo ipsec status
@@ -138,26 +145,26 @@ sudo ipsec whack --status
 sudo ipsec trafficstatus
 
 # Test configuration syntax
-sudo ipsec verify
+sudo ipsec checkconfig
 ```
 
 ## Verifying IPv6 IPsec Tunnel
 
 ```bash
 # Check kernel IPsec policies for IPv6
-sudo ip -6 xfrm policy show
+sudo ip xfrm policy
 
 # Check IPsec SAs (Security Associations)
-sudo ip -6 xfrm state show
+sudo ip xfrm state
 
 # Test connectivity through tunnel
-ping6 -c 3 2001:db8:site-b::1
+ping -6 -c 3 2001:db8:2::1
 
 # Monitor IKE negotiations
 sudo journalctl -u ipsec -f
 
 # Enable debug logging
-sudo ipsec auto --log-all
+sudo ipsec whack --debug all
 ```
 
 ## Enabling IPv6 Forwarding
@@ -176,7 +183,7 @@ sudo sysctl -p
 | Issue | Diagnosis | Fix |
 |---|---|---|
 | No IKE response | Firewall blocking UDP 500/4500 | Open firewall ports |
-| SA not established | Certificate mismatch | Verify cert CN matches `left/right` |
+| SA not established | Certificate mismatch | Verify the certificate SAN or ID matches `leftid/rightid` |
 | Ping fails after SA up | Routing issue | Check `leftsubnet/rightsubnet` |
 | Constant rekeying | Clock skew | Sync NTP on both sides |
 
