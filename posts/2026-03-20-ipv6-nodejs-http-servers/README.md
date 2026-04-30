@@ -22,7 +22,7 @@ const server = http.createServer((req, res) => {
     res.end(`Hello from IPv6 Node.js! Your IP: ${clientIP}\n`);
 });
 
-// '::' listens on all IPv6 interfaces (dual-stack on Linux)
+// '::' listens on all IPv6 interfaces and may also accept IPv4 on most OSes
 server.listen(8080, '::', () => {
     const addr = server.address();
     console.log(`Server on [${addr.address}]:${addr.port}`);
@@ -31,39 +31,38 @@ server.listen(8080, '::', () => {
 
 ## Extracting Real Client IPv6 Address
 
-When behind a proxy, use `X-Forwarded-For`. Handle IPv4-mapped addresses (`::ffff:x.x.x.x`) from dual-stack:
+When behind a trusted proxy, use the forwarding header it sets, commonly `X-Forwarded-For`. Handle IPv4-mapped addresses (`::ffff:x.x.x.x`) from dual-stack listeners:
 
 ```javascript
 const http = require('http');
+const net = require('net');
+
+function normalizeIP(addr = '') {
+    // Unwrap IPv4-mapped IPv6: ::ffff:192.168.1.1 -> 192.168.1.1
+    return addr.startsWith('::ffff:') ? addr.slice(7) : addr;
+}
 
 function getClientIP(req) {
-    // Check proxy headers first
+    // Only trust proxy headers added by a reverse proxy you control.
     const forwarded = req.headers['x-forwarded-for'];
     if (forwarded) {
-        return forwarded.split(',')[0].trim();
+        return normalizeIP(forwarded.split(',')[0].trim());
     }
 
     const realIP = req.headers['x-real-ip'];
-    if (realIP) return realIP;
+    if (realIP) return normalizeIP(realIP);
 
-    let addr = req.socket.remoteAddress || '';
-
-    // Unwrap IPv4-mapped IPv6: ::ffff:192.168.1.1 → 192.168.1.1
-    if (addr.startsWith('::ffff:')) {
-        addr = addr.slice(7);
-    }
-
-    return addr;
+    return normalizeIP(req.socket.remoteAddress || '');
 }
 
 const server = http.createServer((req, res) => {
     const ip = getClientIP(req);
-    const isIPv6 = ip.includes(':');
+    const version = net.isIPv6(ip) ? 'IPv6' : net.isIPv4(ip) ? 'IPv4' : 'unknown';
 
     res.writeHead(200, { 'Content-Type': 'application/json' });
     res.end(JSON.stringify({
         ip,
-        version: isIPv6 ? 'IPv6' : 'IPv4',
+        version,
         path: req.url,
     }));
 });
@@ -98,43 +97,97 @@ server.listen(443, '::', () => {
 
 ```javascript
 const http = require('http');
-const net = require('net');
 
-function createServer(bindAddr, port) {
+function createServer(port, ipv6Only) {
     const server = http.createServer((req, res) => {
-        res.end(`Bound to ${bindAddr}\n`);
+        res.end(`Listening on [::]:${port} (ipv6Only=${ipv6Only})\n`);
     });
 
-    server.listen(port, bindAddr, () => {
-        console.log(`Server on [${bindAddr}]:${port}`);
-        console.log(`IPv6 only: ${net.isIPv6(bindAddr)}`);
+    server.listen({ port, host: '::', ipv6Only }, () => {
+        console.log(`Server on [::]:${port}`);
+        console.log(`ipv6Only: ${ipv6Only}`);
     });
 
     return server;
 }
 
-// IPv6-only (loopback)
-createServer('::1', 8081);
+// IPv6-only on all interfaces
+createServer(8081, true);
 
-// All IPv6 interfaces (+ IPv4 on dual-stack)
-createServer('::', 8082);
+// Dual-stack on most operating systems
+createServer(8082, false);
 ```
 
 ## Middleware for IPv6 Rate Limiting
 
 ```javascript
 const http = require('http');
+const net = require('net');
 
 const rateLimits = new Map();
 const LIMIT = 100;  // requests per minute
 const WINDOW_MS = 60_000;
 
+function normalizeIP(addr = '') {
+    return addr.startsWith('::ffff:') ? addr.slice(7) : addr;
+}
+
+function ipv4TailToHextets(ipv4) {
+    const octets = ipv4.split('.').map(Number);
+    if (octets.length !== 4 || octets.some((value) => !Number.isInteger(value) || value < 0 || value > 255)) {
+        return null;
+    }
+
+    return [
+        ((octets[0] << 8) | octets[1]).toString(16),
+        ((octets[2] << 8) | octets[3]).toString(16),
+    ];
+}
+
+function expandIPv6(ip) {
+    if (!net.isIPv6(ip)) {
+        return null;
+    }
+
+    let normalized = ip.toLowerCase();
+    const ipv4TailMatch = normalized.match(/^(.*:)(\d+\.\d+\.\d+\.\d+)$/);
+
+    if (ipv4TailMatch) {
+        const hextets = ipv4TailToHextets(ipv4TailMatch[2]);
+        if (!hextets) {
+            return null;
+        }
+
+        normalized = `${ipv4TailMatch[1]}${hextets[0]}:${hextets[1]}`;
+    }
+
+    const halves = normalized.split('::');
+    if (halves.length > 2) {
+        return null;
+    }
+
+    const left = halves[0] ? halves[0].split(':') : [];
+    const right = halves[1] ? halves[1].split(':') : [];
+    const missing = 8 - (left.length + right.length);
+
+    if ((halves.length === 1 && left.length !== 8) || missing < 0) {
+        return null;
+    }
+
+    const parts = halves.length === 2
+        ? [...left, ...Array(missing).fill('0'), ...right]
+        : left;
+
+    return parts.map((part) => part.padStart(4, '0'));
+}
+
 function getRateKey(ip) {
     // Group IPv6 addresses by /64 prefix for rate limiting
-    if (ip.includes(':')) {
-        const parts = ip.split(':');
-        return parts.slice(0, 4).join(':') + '::/64';
+    const expanded = expandIPv6(ip);
+    if (expanded) {
+        return `${expanded.slice(0, 4).join(':')}::/64`;
     }
+
     return ip;
 }
 
@@ -155,8 +208,7 @@ function checkRateLimit(ip) {
 }
 
 const server = http.createServer((req, res) => {
-    const ip = req.socket.remoteAddress || '';
-    const realIP = ip.startsWith('::ffff:') ? ip.slice(7) : ip;
+    const realIP = normalizeIP(req.socket.remoteAddress || '');
 
     if (!checkRateLimit(realIP)) {
         res.writeHead(429, { 'Retry-After': '60' });
@@ -173,4 +225,4 @@ server.listen(8080, '::', () => console.log('Rate-limited server on [::]:8080'))
 
 ## Conclusion
 
-Node.js HTTP servers support IPv6 by passing `'::'` as the hostname to `listen()`. The `req.socket.remoteAddress` property contains the client's IPv6 address, with IPv4 connections appearing as `::ffff:x.x.x.x` on dual-stack servers. Strip the `::ffff:` prefix to get the real IPv4 address. For production deployments behind Nginx or a load balancer, trust `X-Forwarded-For` headers instead. Rate limit IPv6 clients by `/64` prefix since each user may have many individual addresses within their prefix.
+Node.js HTTP servers support IPv6 by passing `'::'` as the hostname to `listen()`. Use the `ipv6Only` option when you want IPv6-only behavior; otherwise, binding to `'::'` may also accept IPv4 on most operating systems. The `req.socket.remoteAddress` property contains the client's IP, with IPv4 connections often appearing as `::ffff:x.x.x.x` on dual-stack listeners. Strip the `::ffff:` prefix to recover the IPv4 address. For production deployments behind Nginx or a load balancer, only trust `X-Forwarded-For` or `X-Real-IP` headers added by a reverse proxy you control. Grouping IPv6 clients by `/64` is a common rate-limiting heuristic because a single client or network may use multiple addresses inside the same prefix.
