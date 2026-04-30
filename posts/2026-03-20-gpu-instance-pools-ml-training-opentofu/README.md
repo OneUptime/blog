@@ -23,10 +23,12 @@ data "aws_ami" "dlami" {
   }
 }
 
+data "aws_region" "current" {}
+
 resource "aws_launch_template" "gpu" {
   name_prefix   = "${var.app_name}-gpu-"
   image_id      = data.aws_ami.dlami.id
-  instance_type = "p3.2xlarge"  # 1x V100 GPU
+  instance_type = "g5.xlarge"  # 1x A10G GPU
 
   iam_instance_profile {
     arn = aws_iam_instance_profile.gpu.arn
@@ -36,15 +38,14 @@ resource "aws_launch_template" "gpu" {
 
   user_data = base64encode(<<-SCRIPT
     #!/bin/bash
-    # Install NVIDIA container toolkit and configure Docker
-    distribution=$(. /etc/os-release;echo $ID$VERSION_ID)
-    curl -s -L https://nvidia.github.io/nvidia-container-runtime/gpgkey | sudo apt-key add -
-    curl -s -L https://nvidia.github.io/nvidia-container-runtime/$distribution/nvidia-container-runtime.list \
-      | sudo tee /etc/apt/sources.list.d/nvidia-container-runtime.list
-    sudo apt-get update && sudo apt-get install -y nvidia-container-runtime
+    # The DLAMI already includes NVIDIA drivers and container tooling.
+    sudo apt-get update
+    sudo apt-get install -y nfs-common
+    sudo mkdir -p /data
 
     # Mount EFS for shared dataset storage
-    sudo mount -t efs ${var.efs_id}:/ /data
+    sudo mount -t nfs -o nfsvers=4.1,rsize=1048576,wsize=1048576,hard,timeo=600,retrans=2,noresvport \
+      ${var.efs_id}.efs.${data.aws_region.current.name}.amazonaws.com:/ /data
   SCRIPT
   )
 
@@ -59,7 +60,7 @@ resource "aws_launch_template" "gpu" {
 
 resource "aws_autoscaling_group" "gpu" {
   name                = "${var.app_name}-gpu-asg"
-  desired_capacity    = 0  # start at zero; scale up via scheduled actions
+  desired_capacity    = 0  # start at zero; scale up later
   max_size            = var.max_gpu_instances
   min_size            = 0
   vpc_zone_identifier = var.private_subnet_ids
@@ -71,12 +72,12 @@ resource "aws_autoscaling_group" "gpu" {
         version            = "$Latest"
       }
 
-      # Allow AWS to choose instance types for spot
+      # Diversify across compatible spot instance types
       override {
-        instance_type = "p3.2xlarge"
+        instance_type = "g5.xlarge"
       }
       override {
-        instance_type = "g4dn.xlarge"
+        instance_type = "g5.2xlarge"
       }
     }
 
@@ -97,7 +98,7 @@ resource "google_compute_instance_template" "gpu" {
   machine_type = "n1-standard-8"
 
   scheduling {
-    preemptible         = true   # use preemptible instances for 80% cost saving
+    preemptible         = true   # use preemptible instances for lower cost
     automatic_restart   = false
     on_host_maintenance = "TERMINATE"
   }
@@ -109,7 +110,7 @@ resource "google_compute_instance_template" "gpu" {
   }
 
   disk {
-    source_image = "deeplearning-platform-release/common-cu121"
+    source_image = "deeplearning-platform-release/common-cu129-ubuntu-2204-nvidia-580"
     auto_delete  = true
     boot         = true
     disk_size_gb = 100
@@ -140,10 +141,9 @@ resource "google_compute_instance_group_manager" "gpu" {
   zone    = "${var.region}-a"
 
   base_instance_name = "${var.app_name}-gpu"
-  target_size        = 0  # start at zero
 
   version {
-    instance_template = google_compute_instance_template.gpu.id
+    instance_template = google_compute_instance_template.gpu.self_link_unique
   }
 
   auto_healing_policies {
@@ -165,7 +165,7 @@ resource "google_compute_autoscaler" "gpu" {
 
     metric {
       name                       = "pubsub.googleapis.com/subscription/num_undelivered_messages"
-      filter                     = "resource.type = pubsub_subscription AND resource.label.subscription_id = ${var.training_queue}"
+      filter                     = "resource.type = \"pubsub_subscription\" AND resource.labels.subscription_id = \"${var.training_queue}\""
       single_instance_assignment = 1  # one VM per pending message
     }
   }
