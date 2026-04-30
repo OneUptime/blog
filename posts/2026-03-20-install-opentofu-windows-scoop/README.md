@@ -30,14 +30,14 @@ Invoke-RestMethod -Uri https://get.scoop.sh | Invoke-Expression
 scoop --version
 ```
 
-## Step 2: Add the Main Bucket
+## Step 2: Confirm the Main Bucket
 
 ```powershell
-# Add the main bucket which contains opentofu
-scoop bucket add main
-
-# Verify buckets
+# The main bucket is installed by default with Scoop
 scoop bucket list
+
+# Confirm OpenTofu is available
+scoop search opentofu
 ```
 
 ## Step 3: Install OpenTofu
@@ -56,31 +56,31 @@ scoop install opentofu@1.9.0
 # Check installed version
 tofu version
 
-# Output:
-# OpenTofu v1.9.0
+# Output will look similar to:
+# OpenTofu v1.x.y
 # on windows_amd64
 
-# Check binary location
-where tofu
+# Check executable location
+scoop which tofu
 # C:\Users\YourUsername\scoop\apps\opentofu\current\tofu.exe
 ```
 
 ## Advantages of Scoop Over Chocolatey
 
-- Does **not** require administrator privileges
-- Installs to user home directory (`~/scoop/apps/`)
+- For user-scope installs, does **not** require administrator privileges
+- Installs to user home directory (`~/scoop/apps/`) by default
 - Easy version management with `scoop reset`
-- Clean uninstalls with no registry changes
+- For portable apps like OpenTofu, installs and uninstalls typically avoid registry changes
 
 ## Managing Multiple Versions with Scoop
 
 ```powershell
-# Install a specific version alongside current
+# Install a specific older version alongside the current one
 scoop install opentofu@1.8.0
 
 # Switch between installed versions
 scoop reset opentofu@1.8.0  # Switch to 1.8.0
-scoop reset opentofu@1.9.0  # Switch back to 1.9.0
+scoop reset opentofu        # Switch back to the latest installed version
 
 # Check which version is active
 tofu version
@@ -144,17 +144,14 @@ tofu version
 ```powershell
 # Uninstall OpenTofu
 scoop uninstall opentofu
-
-# Optionally, remove the bucket
-scoop bucket rm main
 ```
 
 ## Comparison: Scoop vs Chocolatey vs Winget
 
 | Feature | Scoop | Chocolatey | Winget |
 |---------|-------|------------|--------|
-| Admin required | No | Sometimes | No |
-| Install location | User dir | System dir | Both |
+| Admin required | No | Sometimes | Sometimes |
+| Install location | User dir | System dir | User or machine |
 | Version pinning | Easy | Supported | Limited |
 | CLI focused | Yes | Both | Both |
 
