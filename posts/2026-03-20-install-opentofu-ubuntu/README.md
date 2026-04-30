@@ -56,6 +56,8 @@ echo \
 deb-src [signed-by=/etc/apt/keyrings/opentofu.gpg,/etc/apt/keyrings/opentofu-repo.gpg] \
   https://packages.opentofu.org/opentofu/tofu/any/ any main" | \
   sudo tee /etc/apt/sources.list.d/opentofu.list > /dev/null
+
+sudo chmod a+r /etc/apt/sources.list.d/opentofu.list
 ```
 
 ### Step 4: Install OpenTofu
@@ -80,12 +82,13 @@ sudo snap install --classic opentofu
 For users who prefer manual installation or need a specific version:
 
 ```bash
-# Download the latest version (replace VERSION with actual version number)
-TOFU_VERSION="1.9.0"
-wget "https://github.com/opentofu/opentofu/releases/download/v${TOFU_VERSION}/tofu_${TOFU_VERSION}_linux_amd64.zip"
+# Install required tools if needed
+sudo apt-get update
+sudo apt-get install -y unzip wget
 
-# Install unzip if needed
-sudo apt-get install -y unzip
+# Download a specific version (replace with the version you want)
+TOFU_VERSION="1.11.6"
+wget "https://github.com/opentofu/opentofu/releases/download/v${TOFU_VERSION}/tofu_${TOFU_VERSION}_linux_amd64.zip"
 
 # Extract and install
 unzip "tofu_${TOFU_VERSION}_linux_amd64.zip"
@@ -101,8 +104,8 @@ After installation, verify OpenTofu is installed correctly:
 # Check the installed version
 tofu version
 
-# Expected output:
-# OpenTofu v1.9.0
+# Expected output will look similar to:
+# OpenTofu v1.11.6
 # on linux_amd64
 ```
 
@@ -137,7 +140,7 @@ When a new version is released, update with:
 
 ```bash
 # Using apt (if installed via package repository)
-sudo apt-get update && sudo apt-get upgrade tofu
+sudo apt-get update && sudo apt-get install --only-upgrade tofu
 
 # Using snap
 sudo snap refresh opentofu
