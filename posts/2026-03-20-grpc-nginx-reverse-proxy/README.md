@@ -4,7 +4,7 @@ Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
 Tags: gRPC, Nginx, IPv4, Reverse Proxy, TLS, Networking
 
-Description: Learn how to configure Nginx as an IPv4 reverse proxy for gRPC services, including HTTP/2 passthrough, TLS termination, load balancing, and gRPC-specific health check error handling.
+Description: Learn how to configure Nginx as an IPv4 reverse proxy for gRPC services, including HTTP/2 proxying, TLS termination, load balancing, and gRPC-specific upstream error handling.
 
 ## Basic gRPC Proxy (HTTP/2 Plain-Text)
 
@@ -17,7 +17,8 @@ upstream grpc_backend {
 }
 
 server {
-    listen 50051 http2;    # gRPC requires HTTP/2
+    listen 50052;
+    http2 on;              # gRPC requires HTTP/2
     server_name grpc.internal;
 
     location / {
@@ -46,7 +47,8 @@ upstream grpc_backend {
 }
 
 server {
-    listen 443 ssl http2;
+    listen 443 ssl;
+    http2 on;
     server_name grpc.example.com;
 
     ssl_certificate     /etc/ssl/grpc.crt;
@@ -77,8 +79,14 @@ server {
 ## gRPC with mTLS Termination
 
 ```nginx
+upstream grpc_backend {
+    server 127.0.0.1:50051;
+    keepalive 32;
+}
+
 server {
-    listen 443 ssl http2;
+    listen 443 ssl;
+    http2 on;
 
     ssl_certificate     /etc/ssl/server.crt;
     ssl_certificate_key /etc/ssl/server.key;
@@ -87,8 +95,8 @@ server {
 
     location / {
         grpc_pass grpc://grpc_backend;
-        # Forward client identity to backend
-        grpc_set_header X-Client-CN $ssl_client_s_dn;
+        # Forward client subject DN to backend
+        grpc_set_header X-Client-Subject-DN $ssl_client_s_dn;
     }
 }
 ```
@@ -105,7 +113,8 @@ upstream grpc_pool {
 }
 
 server {
-    listen 50051 http2;
+    listen 50051;
+    http2 on;
 
     location / {
         grpc_pass grpc://grpc_pool;
@@ -120,7 +129,7 @@ server {
 
 | Directive | Purpose |
 |-----------|---------|
-| `listen 50051 http2` | Enable HTTP/2 on port (required for gRPC) |
+| `http2 on` | Enable HTTP/2 in the server block (required for gRPC) |
 | `grpc_pass grpc://` | Proxy to plain-text HTTP/2 backend |
 | `grpc_pass grpcs://` | Proxy to TLS backend |
 | `grpc_set_header` | Set request header forwarded to backend |
@@ -129,4 +138,4 @@ server {
 
 ## Conclusion
 
-Nginx supports gRPC proxying natively with `grpc_pass` on HTTP/2 listeners. TLS termination decouples certificate management from the gRPC service - the backend runs plain HTTP/2 while clients see a valid TLS server. Use `keepalive` in the upstream block to reuse connections to backends (gRPC channels map to HTTP/2 connections). Return gRPC status `14` (UNAVAILABLE) from the `error_page` handler so clients receive a proper gRPC error instead of an HTTP 502 response.
+Nginx supports gRPC proxying natively with `grpc_pass` when HTTP/2 is enabled. TLS termination decouples certificate management from the gRPC service - the backend runs plain HTTP/2 while clients see a valid TLS server. Use `keepalive` in the upstream block to reuse connections to backends (gRPC channels map to HTTP/2 connections). Return gRPC status `14` (UNAVAILABLE) from the `error_page` handler so clients receive a proper gRPC error instead of an HTTP 502 response.
