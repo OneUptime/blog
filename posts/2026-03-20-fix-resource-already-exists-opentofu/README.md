@@ -13,7 +13,7 @@ Description: Learn how to resolve the 'resource already exists' error in OpenTof
 ## Common Error Examples
 
 ```text
-Error: creating EC2 VPC (10.0.0.0/16): VpcLimitExceeded: The maximum number of VPCs has been reached for this account.
+Error: creating Security Group (web-sg): InvalidGroup.Duplicate: You cannot create a security group with the same name as an existing security group in the same VPC.
 
 Error: creating S3 Bucket (my-app-bucket): BucketAlreadyOwnedByYou: Your previous request to create the named bucket succeeded and you already own it.
 
@@ -22,7 +22,7 @@ Error: creating IAM Role (app-role): EntityAlreadyExists: Role with name app-rol
 
 ## Fix 1: Import the Existing Resource
 
-The correct fix is to bring the existing resource under OpenTofu management:
+The correct fix is to bring the existing resource under OpenTofu management. Make sure the matching `resource` block already exists in your configuration before you import:
 
 ```bash
 # Find the existing resource's ID
@@ -60,15 +60,15 @@ tofu import aws_instance.web i-0abc123def456789
 tofu import aws_db_instance.main prod-postgres
 
 # Azure resource group
-tofu import azurerm_resource_group.main /subscriptions/00000000/resourceGroups/my-rg
+tofu import azurerm_resource_group.main /subscriptions/00000000-0000-0000-0000-000000000000/resourceGroups/my-rg
 
 # GCP GCS bucket
 tofu import google_storage_bucket.main my-project/my-bucket
 ```
 
-## Fix 2: Use import Block (OpenTofu 1.5+)
+## Fix 2: Use import Block (OpenTofu 1.6+, experimental)
 
-Instead of running the import command manually, declare imports in your configuration:
+Instead of running the import command manually, declare imports in your configuration. You still need matching `resource` blocks in your configuration:
 
 ```hcl
 # import.tf - declarative import
@@ -86,10 +86,13 @@ import {
 Then run:
 
 ```bash
+# Review the import during planning
+tofu plan
+
 # Apply the imports
 tofu apply
 
-# After import, remove the import blocks (they are one-time)
+# After import, you can remove the import blocks or keep them as a record
 ```
 
 ## Fix 3: Use a Data Source Instead (If Not Managing the Resource)
@@ -113,16 +116,16 @@ resource "aws_subnet" "app" {
 }
 ```
 
-## Fix 4: Add lifecycle.ignore_changes to Avoid Re-Creation
+## Fix 4: Use lifecycle.prevent_destroy to Block Accidental Replacement
 
-If the resource is managed by OpenTofu but gets recreated periodically:
+If the resource is already managed by OpenTofu and you want OpenTofu to fail instead of destroying and recreating it while you fix the configuration or state:
 
 ```hcl
 resource "aws_s3_bucket" "app" {
   bucket = "my-app-bucket"
 
   lifecycle {
-    # Prevent OpenTofu from destroying and recreating the bucket
+    # Fail the plan instead of destroying and recreating the bucket
     prevent_destroy = true
   }
 }
