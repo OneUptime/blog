@@ -4,7 +4,7 @@ Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
 Tags: IPv6, IPAM, REST API, Automation, NetBox, Python
 
-Description: Use IPAM REST APIs to automate IPv6 address allocation, prefix management, and DNS record creation as part of infrastructure provisioning workflows.
+Description: Use IPAM REST APIs to automate IPv6 address allocation, prefix management, and associated DNS name tracking as part of infrastructure provisioning workflows.
 
 ## Introduction
 
@@ -17,23 +17,18 @@ IPAM REST APIs enable infrastructure-as-code workflows where address allocation 
 # netbox_ipv6_api.py
 
 import requests
-import ipaddress
 from typing import Optional
 
 NETBOX_URL = "http://netbox.internal"
-TOKEN = "your-api-token"
-HEADERS = {
-    "Authorization": f"Token {TOKEN}",
-    "Content-Type": "application/json",
-    "Accept": "application/json"
-}
+TOKEN = "nbt_<key>.<token>"
 
 class NetBoxIPAM:
     def __init__(self, url: str, token: str):
         self.base = f"{url}/api"
         self.headers = {
-            "Authorization": f"Token {token}",
-            "Content-Type": "application/json"
+            "Authorization": f"Bearer {token}",
+            "Content-Type": "application/json",
+            "Accept": "application/json"
         }
 
     def get_prefix_id(self, prefix: str) -> Optional[int]:
@@ -42,6 +37,7 @@ class NetBoxIPAM:
             params={"prefix": prefix},
             headers=self.headers
         )
+        resp.raise_for_status()
         results = resp.json().get("results", [])
         return results[0]["id"] if results else None
 
@@ -55,6 +51,14 @@ class NetBoxIPAM:
 
         resp = requests.post(
             f"{self.base}/ipam/prefixes/{prefix_id}/available-ips/",
+            json={},
+            headers=self.headers
+        )
+        resp.raise_for_status()
+        ip_record = resp.json()
+
+        patch_resp = requests.patch(
+            f"{self.base}/ipam/ip-addresses/{ip_record['id']}/",
             json={
                 "description": description,
                 "dns_name": dns_name,
@@ -62,10 +66,10 @@ class NetBoxIPAM:
             },
             headers=self.headers
         )
-        resp.raise_for_status()
-        return resp.json()["address"]
+        patch_resp.raise_for_status()
+        return patch_resp.json()["address"]
 
-    def create_prefix(self, prefix: str, site_slug: str = None,
+    def create_prefix(self, prefix: str, site_slug: Optional[str] = None,
                        description: str = "") -> dict:
         """Create a new IPv6 prefix."""
         data = {
@@ -79,9 +83,11 @@ class NetBoxIPAM:
                 params={"slug": site_slug},
                 headers=self.headers
             )
+            site_resp.raise_for_status()
             sites = site_resp.json().get("results", [])
             if sites:
-                data["site"] = sites[0]["id"]
+                data["scope_type"] = "dcim.site"
+                data["scope_id"] = sites[0]["id"]
 
         resp = requests.post(
             f"{self.base}/ipam/prefixes/",
@@ -97,6 +103,7 @@ class NetBoxIPAM:
             params={"parent": prefix, "family": 6, "limit": 200},
             headers=self.headers
         )
+        resp.raise_for_status()
         return resp.json().get("results", [])
 
     def mark_deprecated(self, address: str, reason: str = "") -> bool:
@@ -106,6 +113,7 @@ class NetBoxIPAM:
             params={"address": address},
             headers=self.headers
         )
+        resp.raise_for_status()
         results = resp.json().get("results", [])
         if not results:
             return False
@@ -119,11 +127,12 @@ class NetBoxIPAM:
             },
             headers=self.headers
         )
-        return patch_resp.status_code == 200
+        patch_resp.raise_for_status()
+        return True
 
 # Usage
 
-ipam = NetBoxIPAM("http://netbox.internal", "your-token")
+ipam = NetBoxIPAM(NETBOX_URL, TOKEN)
 
 # Allocate address for new server
 new_ip = ipam.allocate_next_ipv6(
@@ -137,18 +146,19 @@ print(f"Allocated: {new_ip}")
 ## Terraform Provider Pattern
 
 ```hcl
-# Automate IPv6 allocation with Terraform
+# Match the provider version to your NetBox release
 terraform {
   required_providers {
     netbox = {
       source  = "e-breuninger/netbox"
-      version = "~> 3.0"
-    }
-    aws = {
-      source  = "hashicorp/aws"
       version = "~> 5.0"
     }
   }
+}
+
+provider "netbox" {
+  server_url = "https://netbox.internal"
+  api_token  = "<your api token>"
 }
 
 # Allocate IPv6 address from IPAM
@@ -173,26 +183,37 @@ output "instance_ipv6_address" {
 ```yaml
 # allocate_ipv6.yml
 - name: Allocate IPv6 address from NetBox IPAM
-  uri:
+  ansible.builtin.uri:
     url: "http://netbox.internal/api/ipam/prefixes/{{ prefix_id }}/available-ips/"
     method: POST
     headers:
-      Authorization: "Token {{ netbox_token }}"
+      Authorization: "Bearer {{ netbox_token }}"
+      Content-Type: "application/json"
+    body_format: json
+    body: {}
+    status_code: 201
+  register: ipam_allocation
+
+- name: Update allocated IPv6 metadata in NetBox
+  ansible.builtin.uri:
+    url: "http://netbox.internal/api/ipam/ip-addresses/{{ ipam_allocation.json.id }}/"
+    method: PATCH
+    headers:
+      Authorization: "Bearer {{ netbox_token }}"
       Content-Type: "application/json"
     body_format: json
     body:
       description: "Ansible-provisioned: {{ inventory_hostname }}"
       dns_name: "{{ inventory_hostname }}.example.com"
       status: "active"
-    status_code: 201
-  register: ipam_allocation
+    status_code: 200
 
 - name: Set allocated IPv6 fact
   set_fact:
-    allocated_ipv6: "{{ ipam_allocation.json.address | ipaddr('address') }}"
+    allocated_ipv6: "{{ ipam_allocation.json.address | ansible.utils.ipaddr('address') }}"
 
 - name: Configure server IPv6 address
-  nmcli:
+  community.general.nmcli:
     conn_name: eth0
     type: ethernet
     ip6: "{{ allocated_ipv6 }}/64"
@@ -202,4 +223,4 @@ output "instance_ipv6_address" {
 
 ## Conclusion
 
-IPAM REST APIs enable IPv6 address management to become part of infrastructure-as-code workflows. The NetBox `available-ips` endpoint atomically allocates the next available address with a single POST request - the IPAM system handles concurrency and conflict prevention. Integrate IPAM allocation into provisioning pipelines (Terraform, Ansible, CI/CD) to ensure every address is tracked from creation. Use IPAM API calls in decommission workflows to mark addresses as deprecated, maintaining audit history without deleting records.
+IPAM REST APIs enable IPv6 address management to become part of infrastructure-as-code workflows. The NetBox `available-ips` endpoint atomically allocates the next available address, and the created IP object can then be updated with metadata such as status, description, or `dns_name`. Integrate IPAM allocation into provisioning pipelines (Terraform, Ansible, CI/CD) to ensure every address is tracked from creation. Use IPAM API calls in decommission workflows to mark addresses as deprecated, maintaining audit history without deleting records.
