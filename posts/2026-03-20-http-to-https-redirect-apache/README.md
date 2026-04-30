@@ -8,7 +8,7 @@ Description: Learn how to configure Apache HTTP Server to automatically redirect
 
 ## Why HTTPS Redirection Matters
 
-Forcing HTTPS ensures all traffic between clients and your server is encrypted. Apache provides multiple mechanisms to implement this redirect, from simple `Redirect` directives to full `mod_rewrite` rules.
+Forcing HTTPS helps ensure clients use an encrypted connection to your server. Apache provides multiple mechanisms to implement this redirect, from simple `Redirect` directives to full `mod_rewrite` rules.
 
 ## Method 1: Using the Redirect Directive
 
@@ -89,9 +89,8 @@ The redirect target must have a properly configured HTTPS VirtualHost:
     ServerAlias www.example.com
 
     SSLEngine on
-    SSLCertificateFile      /etc/letsencrypt/live/example.com/cert.pem
+    SSLCertificateFile      /etc/letsencrypt/live/example.com/fullchain.pem
     SSLCertificateKeyFile   /etc/letsencrypt/live/example.com/privkey.pem
-    SSLCertificateChainFile /etc/letsencrypt/live/example.com/chain.pem
 
     DocumentRoot /var/www/html
 
