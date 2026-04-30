@@ -4,7 +4,7 @@ Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
 Tags: IPv4, Network Migration, Mergers, Renumbering, NAT, Network Design
 
-Description: Create a structured IPv4 address migration plan for network mergers that resolves CIDR conflicts using NAT, phased renumbering, and dual-stack transition periods.
+Description: Create a structured IPv4 address migration plan for network mergers that resolves CIDR conflicts using temporary NAT, phased renumbering, and parallel old/new addressing during transition.
 
 ## Introduction
 
@@ -46,16 +46,16 @@ for c in find_conflicts(company_a, company_b):
 ## Phase 2 - Temporary NAT Bridge (Week 1–4)
 
 ```text
-Until renumbering is complete, use policy-based NAT to allow
+Until renumbering is complete, use temporary static NAT to allow
 communication between conflicting address spaces.
 
-Company A 10.1.0.0/16  ←→  NAT/PAT  ←→  Company B 10.1.0.0/16
-          (A-side)          bridge         (translated to 100.64.x.x)
+Company A 10.1.0.0/16  ←→   NAT   ←→  Company B 10.1.0.0/16
+          (A-side)        bridge        (translated to 100.64.x.x)
 ```
 
 ```cisco
 ! On the merger gateway
-ip nat inside source static network 10.1.0.0 100.64.0.0 /16
+ip nat inside source static network 10.1.0.0 100.64.0.0 255.255.0.0
 !
 interface GigabitEthernet0/0
  description Company-A-LAN
@@ -71,9 +71,9 @@ interface GigabitEthernet0/1
 ```text
 Post-merger master allocation: 10.0.0.0/8
 
-  Legacy Company A:   10.10.0.0/12   (immediate keep, renumber over time)
-  Legacy Company B:   10.30.0.0/12   (immediate keep, renumber over time)
-  Merged Corporate:   10.50.0.0/12   (new greenfield allocations)
+  Legacy Company A:   10.0.0.0/12    (immediate keep, renumber over time)
+  Legacy Company B:   10.16.0.0/12   (immediate keep, renumber over time)
+  Merged Corporate:   10.48.0.0/12   (new greenfield allocations)
   Data Centers:       10.64.0.0/12
   DMZ / Cloud:        10.80.0.0/12
 ```
@@ -97,12 +97,12 @@ For each subnet being renumbered:
 
 ## Phase 5 - DNS Strategy
 
-```bash
-# Run split-DNS during transition
+```text
+# Publish both records internally during transition
 
-# Old IP still resolves until all clients move
+# Make sure the service is reachable on both IPs before adding the new record
 app-server.corp.com.  IN A  10.1.5.10   # old
-app-server.corp.com.  IN A  10.50.5.10  # new (add simultaneously)
+app-server.corp.com.  IN A  10.50.5.10  # new
 
 # After all clients updated:
 # Remove old record, keep TTL low (60s) during transition
