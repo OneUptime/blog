@@ -40,12 +40,12 @@ Harvester includes built-in Prometheus and Grafana for monitoring cluster infras
 Harvester monitoring is deployed via the built-in Rancher monitoring stack:
 
 ```bash
-# Check if monitoring is enabled
+# Check if the rancher-monitoring addon is running
 
 kubectl get pods -n cattle-monitoring-system
 
-# If not present, enable via Harvester UI:
-# Advanced → Monitoring → Enable Monitoring
+# If the addon is disabled, enable it via Harvester UI:
+# Advanced → Addons → rancher-monitoring
 ```
 
 ---
@@ -60,12 +60,12 @@ kubectl get svc -n cattle-monitoring-system | grep grafana
 kubectl port-forward -n cattle-monitoring-system \
   svc/rancher-monitoring-grafana 3000:80 &
 
-# Or access via Harvester UI → Monitoring → Grafana
+# Or open the Grafana dashboard link from the Harvester Dashboard page
 ```
 
-Default dashboards include:
-- **Harvester Overview** - cluster-wide resource usage
-- **Node Exporter** - per-node CPU, memory, disk, network
+Typical dashboards include:
+- **Cluster overview** - cluster-wide resource usage
+- **Node exporter** - per-node CPU, memory, disk, network
 - **Longhorn** - volume and replica health
 - **KubeVirt** - VM resource usage
 
@@ -94,16 +94,16 @@ spec:
           labels:
             severity: warning
           annotations:
-            summary: "Node {{ $labels.node }} memory usage > 90%"
+            summary: "Node {{ $labels.instance }} memory usage > 90%"
 
         - alert: HarvesterNodeHighCPU
           expr: |
-            100 - (avg by(node) (rate(node_cpu_seconds_total{mode="idle"}[5m])) * 100) > 95
+            100 - (avg by(instance) (rate(node_cpu_seconds_total{mode="idle"}[5m])) * 100) > 95
           for: 5m
           labels:
             severity: warning
           annotations:
-            summary: "Node {{ $labels.node }} CPU usage > 95%"
+            summary: "Node {{ $labels.instance }} CPU usage > 95%"
 
         - alert: HarvesterDiskSpaceLow
           expr: |
@@ -134,7 +134,7 @@ metadata:
 spec:
   route:
     receiver: slack-notifications
-    groupBy: ['alertname', 'node']
+    groupBy: ['alertname', 'instance']
     groupWait: 30s
     groupInterval: 5m
     repeatInterval: 12h
@@ -160,23 +160,23 @@ sum by (name, namespace) (
 )
 
 # VM memory usage
-kubevirt_vmi_memory_used_bytes
+vmi:kubevirt_vmi_memory_used_bytes:sum
 
 # VM network traffic
 rate(kubevirt_vmi_network_receive_bytes_total[5m])
 rate(kubevirt_vmi_network_transmit_bytes_total[5m])
 
 # VM disk I/O
-rate(kubevirt_vmi_storage_read_times_ms_total[5m])
-rate(kubevirt_vmi_storage_write_times_ms_total[5m])
+rate(kubevirt_vmi_storage_read_times_seconds_total[5m])
+rate(kubevirt_vmi_storage_write_times_seconds_total[5m])
 ```
 
 ---
 
-## Step 6: Integrate with External Prometheus
+## Step 6: Integrate with an External Remote-Write Endpoint
 
 ```yaml
-# remote-write config for sending metrics to an external Prometheus
+# Patch the existing Prometheus CR to add a remote-write-compatible endpoint
 apiVersion: monitoring.coreos.com/v1
 kind: Prometheus
 metadata:
@@ -184,6 +184,7 @@ metadata:
   namespace: cattle-monitoring-system
 spec:
   remoteWrite:
+    # The receiver must support the Prometheus remote-write API.
     - url: https://external-prometheus.example.com/api/v1/write
       basicAuth:
         username:
@@ -198,6 +199,6 @@ spec:
 
 ## Best Practices
 
-- Create alerts for Longhorn disk space (< 20% free) and VM memory pressure - these are the most common causes of production incidents in Harvester environments.
-- Export metrics to a long-term storage system (Thanos, Cortex, or Mimir) - Prometheus in Harvester only retains 15 days of metrics by default.
+- Create alerts for Longhorn disk space (< 20% free) and VM memory pressure to catch capacity-related issues early.
+- Export metrics to a long-term storage system (Thanos, Cortex, or Mimir) if you need retention beyond the local Prometheus instance.
 - Use the KubeVirt Grafana dashboard to track VM resource utilization over time and plan capacity for new VMs.
