@@ -24,10 +24,6 @@ resource "google_container_node_pool" "autoscaling_pool" {
   autoscaling {
     min_node_count  = 2   # Minimum nodes per zone (regional cluster)
     max_node_count  = 20  # Maximum nodes per zone
-
-    # Total limits across all zones (optional)
-    total_min_node_count = 2
-    total_max_node_count = 60
   }
 
   management {
@@ -65,19 +61,6 @@ resource "google_container_cluster" "cluster" {
 
     # Autoscaler profile affects scale-down aggressiveness
     autoscaling_profile = "OPTIMIZE_UTILIZATION"  # vs "BALANCED"
-
-    # Resource limits for Node Auto Provisioning
-    resource_limits {
-      resource_type = "cpu"
-      minimum       = 4
-      maximum       = 100
-    }
-
-    resource_limits {
-      resource_type = "memory"
-      minimum       = 16
-      maximum       = 400
-    }
   }
 }
 ```
@@ -128,9 +111,8 @@ resource "google_container_cluster" "nap_cluster" {
 ## Step 4: Scale Down Configuration
 
 ```hcl
-# Configure when nodes can be scaled down
-# This is typically configured via GKE annotations/settings
-# The autoscaler respects PodDisruptionBudgets during scale-down
+# Use a PodDisruptionBudget to limit voluntary evictions during scale-down
+# The autoscaler respects PodDisruptionBudgets when removing nodes
 
 # Example pod disruption budget to protect critical services
 resource "kubernetes_pod_disruption_budget_v1" "app_pdb" {
@@ -153,4 +135,4 @@ resource "kubernetes_pod_disruption_budget_v1" "app_pdb" {
 
 ## Summary
 
-GKE Cluster Autoscaler with OpenTofu dynamically adjusts node count based on pod scheduling needs. Configure min/max bounds per node pool, choose between BALANCED and OPTIMIZE_UTILIZATION profiles, and use PodDisruptionBudgets to ensure safe scale-down operations. Node Auto Provisioning extends this by automatically creating new node pools with appropriate machine types.
+GKE Cluster Autoscaler with OpenTofu dynamically adjusts node count based on pod scheduling needs. Configure min/max bounds per node pool, choose between BALANCED and OPTIMIZE_UTILIZATION profiles, and use PodDisruptionBudgets to help protect workloads during scale-down operations. Node Auto Provisioning extends this by automatically creating new node pools with appropriate machine types.
