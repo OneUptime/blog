@@ -23,8 +23,8 @@ The redirection happens instantly, and the actual packet processing (delivery to
 
 sudo modprobe ifb
 
-# Load automatically at boot
-echo "ifb" | sudo tee -a /etc/modules
+# Load automatically at boot on systemd-based systems
+echo "ifb" | sudo tee /etc/modules-load.d/ifb.conf
 
 # Verify the module is loaded
 lsmod | grep ifb
@@ -61,7 +61,7 @@ Now that inbound traffic flows through `ifb0`, apply any standard egress qdisc:
 # Limit inbound traffic to 20 Mbps with TBF
 sudo tc qdisc add dev ifb0 root tbf \
   rate 20mbit \
-  burst 32kbit \
+  burst 32kb \
   latency 400ms
 ```
 
@@ -75,16 +75,17 @@ sudo tc class add dev ifb0 parent 1: classid 1:1 htb rate 20mbit
 sudo tc class add dev ifb0 parent 1:1 classid 1:10 htb rate 10mbit ceil 20mbit prio 1
 sudo tc class add dev ifb0 parent 1:1 classid 1:30 htb rate 10mbit ceil 20mbit prio 2
 
-# Filter: high-priority inbound traffic (SSH source port 22)
+# Filter: high-priority inbound TCP traffic from SSH (source port 22)
 sudo tc filter add dev ifb0 protocol ip parent 1:0 prio 1 u32 \
-  match ip sport 22 0xffff flowid 1:10
+  match ip protocol 6 0xff \
+  match tcp src 22 0xffff flowid 1:10
 ```
 
 ## Step 5: Combine with Outbound Shaping
 
 ```bash
 # Apply TBF to outbound traffic on eth0
-sudo tc qdisc add dev eth0 root tbf rate 20mbit burst 32kbit latency 400ms
+sudo tc qdisc add dev eth0 root tbf rate 20mbit burst 32kb latency 400ms
 ```
 
 Now both inbound and outbound are shaped.
@@ -96,7 +97,7 @@ Now both inbound and outbound are shaped.
 sudo tc -s qdisc show dev ifb0
 
 # Download a large file and monitor the rate
-wget -O /dev/null http://speedtest.wdc01.softlayer.com/downloads/test10.zip &
+wget -O /dev/null https://proof.ovh.net/files/10Mb.dat &
 sudo tc -s qdisc show dev ifb0
 ```
 
