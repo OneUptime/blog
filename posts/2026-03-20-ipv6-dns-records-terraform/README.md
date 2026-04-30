@@ -46,14 +46,16 @@ resource "aws_route53_record" "app_aaaa_alias" {
 ```hcl
 # cloudflare-aaaa.tf - AAAA records in Cloudflare DNS
 data "cloudflare_zone" "main" {
-  name = "example.com"
+  filter = {
+    name = "example.com"
+  }
 }
 
-resource "cloudflare_record" "api_aaaa" {
+resource "cloudflare_dns_record" "api_aaaa" {
   zone_id = data.cloudflare_zone.main.id
-  name    = "api"
+  name    = "api.example.com"
   type    = "AAAA"
-  value   = "2001:db8::2"
+  content = "2001:db8::2"
   ttl     = 1       # Auto-TTL when proxied
   proxied = true    # Route through Cloudflare's proxy
 }
@@ -101,6 +103,16 @@ variable "ttl" {
   default = 300
 }
 
+variable "route53_zone_id" {
+  type    = string
+  default = null
+}
+
+variable "cloudflare_zone_id" {
+  type    = string
+  default = null
+}
+
 # Create in Route 53
 resource "aws_route53_record" "aaaa" {
   count   = contains(var.providers_to_use, "route53") ? 1 : 0
@@ -112,12 +124,12 @@ resource "aws_route53_record" "aaaa" {
 }
 
 # Create in Cloudflare
-resource "cloudflare_record" "aaaa" {
+resource "cloudflare_dns_record" "aaaa" {
   count   = contains(var.providers_to_use, "cloudflare") ? 1 : 0
   zone_id = var.cloudflare_zone_id
-  name    = split(".", var.hostname)[0]
+  name    = var.hostname
   type    = "AAAA"
-  value   = var.ipv6_address
+  content = var.ipv6_address
   ttl     = var.ttl
   proxied = false
 }
@@ -129,13 +141,13 @@ Link AAAA records directly to infrastructure outputs to keep DNS in sync:
 
 ```hcl
 # auto-aaaa.tf - AAAA record that always reflects the current LB IPv6 address
-resource "cloudflare_record" "lb_aaaa" {
+resource "cloudflare_dns_record" "lb_aaaa" {
   zone_id = data.cloudflare_zone.main.id
-  name    = "app"
+  name    = "app.example.com"
   type    = "AAAA"
 
   # Automatically use the IPv6 from GCP forwarding rule
-  value   = google_compute_global_forwarding_rule.ipv6.ip_address
+  content = google_compute_global_forwarding_rule.ipv6.ip_address
 
   proxied = false
   ttl     = 60     # Short TTL for fast failover
