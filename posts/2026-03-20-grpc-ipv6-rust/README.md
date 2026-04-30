@@ -10,13 +10,14 @@ Description: Configure Rust gRPC servers using the Tonic framework to listen on 
 
 ```toml
 [dependencies]
-tonic = "0.11"
-prost = "0.12"
+tonic = { version = "0.14", features = ["tls-ring"] }
+tonic-prost = "0.14"
+prost = "0.14"
 tokio = { version = "1", features = ["full"] }
 tokio-stream = "0.1"
 
 [build-dependencies]
-tonic-build = "0.11"
+tonic-prost-build = "0.14"
 ```
 
 ## Step 1: Proto Definition
@@ -37,7 +38,7 @@ message HelloReply { string message = 1; }
 ```rust
 // build.rs
 fn main() -> Result<(), Box<dyn std::error::Error>> {
-    tonic_build::compile_protos("proto/hello.proto")?;
+    tonic_prost_build::compile_protos("proto/hello.proto")?;
     Ok(())
 }
 ```
@@ -45,7 +46,7 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
 ## Step 2: gRPC Server on IPv6
 
 ```rust
-// src/server.rs
+// src/bin/server.rs
 use tonic::{transport::Server, Request, Response, Status};
 use std::net::SocketAddr;
 
@@ -66,7 +67,7 @@ impl Greeter for MyGreeter {
         &self,
         request: Request<HelloRequest>,
     ) -> Result<Response<HelloReply>, Status> {
-        // Extract client IPv6 address from request extensions
+        // Inspect the client socket address when the transport provides it
         let remote_addr = request.remote_addr();
         println!("Request from: {:?}", remote_addr);
 
@@ -98,7 +99,7 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
 ## Step 3: gRPC Client Connecting to IPv6
 
 ```rust
-// src/client.rs
+// src/bin/client.rs
 use tonic::transport::Channel;
 
 pub mod helloworld {
@@ -111,7 +112,7 @@ use helloworld::HelloRequest;
 #[tokio::main]
 async fn main() -> Result<(), Box<dyn std::error::Error>> {
     // Connect to IPv6 gRPC server - use http://[addr]:port format
-    let endpoint = "http://[2001:db8::1]:50051";
+    let endpoint = "http://[::1]:50051";
 
     let channel = Channel::from_static(endpoint)
         .connect()
@@ -133,8 +134,36 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
 ## Step 4: TLS over IPv6
 
 ```rust
-// src/server_tls.rs
-use tonic::transport::{Certificate, Identity, Server, ServerTlsConfig};
+// src/bin/server_tls.rs
+use tonic::transport::{
+    Certificate, Channel, ClientTlsConfig, Identity, Server, ServerTlsConfig,
+};
+use tonic::{Request, Response, Status};
+
+pub mod helloworld {
+    tonic::include_proto!("helloworld");
+}
+
+use helloworld::greeter_client::GreeterClient;
+use helloworld::greeter_server::{Greeter, GreeterServer};
+use helloworld::{HelloReply, HelloRequest};
+
+#[derive(Debug, Default)]
+pub struct MyGreeter {}
+
+#[tonic::async_trait]
+impl Greeter for MyGreeter {
+    async fn say_hello(
+        &self,
+        request: Request<HelloRequest>,
+    ) -> Result<Response<HelloReply>, Status> {
+        let reply = HelloReply {
+            message: format!("Hello, {}!", request.into_inner().name),
+        };
+
+        Ok(Response::new(reply))
+    }
+}
 
 async fn serve_with_tls() -> Result<(), Box<dyn std::error::Error>> {
     // Load TLS certificate and key
@@ -160,7 +189,7 @@ async fn connect_with_tls() -> Result<GreeterClient<Channel>, Box<dyn std::error
     let ca_cert = tokio::fs::read("ca.crt").await?;
     let ca = Certificate::from_pem(ca_cert);
 
-    let tls_config = tonic::transport::ClientTlsConfig::new()
+    let tls_config = ClientTlsConfig::new()
         .ca_certificate(ca)
         .domain_name("example.com");
 
@@ -170,6 +199,11 @@ async fn connect_with_tls() -> Result<GreeterClient<Channel>, Box<dyn std::error
         .await?;
 
     Ok(GreeterClient::new(channel))
+}
+
+#[tokio::main]
+async fn main() -> Result<(), Box<dyn std::error::Error>> {
+    serve_with_tls().await
 }
 ```
 
@@ -204,8 +238,8 @@ fn get_grpc_addr() -> SocketAddr {
 cargo run --bin server
 
 # Test with grpcurl (in another terminal)
-grpcurl -plaintext '[::1]:50051' list
-grpcurl -plaintext '[::1]:50051' helloworld.Greeter/SayHello
+grpcurl -import-path proto -proto hello.proto list
+grpcurl -plaintext -import-path proto -proto hello.proto -d '{"name":"World"}' '[::1]:50051' helloworld.Greeter/SayHello
 
 # Run client
 cargo run --bin client
