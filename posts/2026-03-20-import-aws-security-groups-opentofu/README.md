@@ -8,21 +8,28 @@ Description: Learn how to import existing AWS security groups and their rules in
 
 ## Introduction
 
-Security groups can be imported into OpenTofu as a single resource (with inline ingress/egress rules) or as separate `aws_security_group_rule` resources. The approach you choose depends on how you want to manage rules going forward.
+Security groups can be imported into OpenTofu as a single resource (with inline ingress/egress rules) or as separate rule resources. If you want to manage rules separately, current AWS provider best practice is to use `aws_vpc_security_group_ingress_rule` and `aws_vpc_security_group_egress_rule` resources.
 
 ## Approach 1: Import as Single Resource with Inline Rules
 
 ```bash
-# Get security group ID and rules
+# Get security group details and rules
 
 SG_ID="sg-0123456789abcdef0"
 
-aws ec2 describe-security-groups --group-ids $SG_ID \
+aws ec2 describe-security-groups --group-ids "$SG_ID" \
   --query 'SecurityGroups[0]' --output json | jq '{
     group_name: .GroupName,
     description: .Description,
     vpc_id: .VpcId,
     ingress: [.IpPermissions[] | {
+      from_port: .FromPort,
+      to_port: .ToPort,
+      protocol: .IpProtocol,
+      cidr_blocks: [.IpRanges[].CidrIp],
+      description: .IpRanges[0].Description
+    }],
+    egress: [.IpPermissionsEgress[] | {
       from_port: .FromPort,
       to_port: .ToPort,
       protocol: .IpProtocol,
@@ -73,7 +80,7 @@ import {
 
 ## Approach 2: Import Separate Security Group Rule Resources
 
-This approach is useful when rules are managed by different teams or configurations:
+This approach is useful when rules are managed by different teams or configurations. For current AWS provider versions, prefer the dedicated ingress/egress rule resources over the older `aws_security_group_rule` resource:
 
 ```hcl
 resource "aws_security_group" "app" {
@@ -84,60 +91,62 @@ resource "aws_security_group" "app" {
   tags = { Name = "app-server-sg" }
 }
 
-resource "aws_security_group_rule" "https_ingress" {
-  type              = "ingress"
-  from_port         = 443
-  to_port           = 443
-  protocol          = "tcp"
-  cidr_blocks       = ["0.0.0.0/0"]
+resource "aws_vpc_security_group_ingress_rule" "https_ingress" {
   security_group_id = aws_security_group.app.id
+  cidr_ipv4         = "0.0.0.0/0"
+  from_port         = 443
+  ip_protocol       = "tcp"
+  to_port           = 443
   description       = "HTTPS from internet"
 }
 
-resource "aws_security_group_rule" "all_egress" {
-  type              = "egress"
-  from_port         = 0
-  to_port           = 0
-  protocol          = "-1"
-  cidr_blocks       = ["0.0.0.0/0"]
+resource "aws_vpc_security_group_egress_rule" "all_egress" {
   security_group_id = aws_security_group.app.id
+  cidr_ipv4         = "0.0.0.0/0"
+  ip_protocol       = "-1"
+  description       = "All outbound"
 }
 ```
 
+Use `aws ec2 describe-security-group-rules --filters Name="group-id",Values="sg-0123456789abcdef0"` to look up the `sgr-...` rule IDs before importing.
+
 ```hcl
-# Security group rule IDs use composite format:
-# SECURITY_GROUP_ID_TYPE_PROTOCOL_FROM_PORT_TO_PORT_CIDR
+# Dedicated ingress/egress rule resources import by security group rule ID (`sgr-...`)
 import {
   to = aws_security_group.app
   id = "sg-0123456789abcdef0"
 }
 
 import {
-  to = aws_security_group_rule.https_ingress
-  id = "sg-0123456789abcdef0_ingress_tcp_443_443_0.0.0.0/0"
+  to = aws_vpc_security_group_ingress_rule.https_ingress
+  id = "sgr-0123456789abcdef0"
+}
+
+import {
+  to = aws_vpc_security_group_egress_rule.all_egress
+  id = "sgr-0fedcba9876543210"
 }
 ```
 
 ## Handling Security Groups with Source SG References
 
 ```hcl
-resource "aws_security_group_rule" "from_alb" {
-  type                     = "ingress"
-  from_port                = 8080
-  to_port                  = 8080
-  protocol                 = "tcp"
-  source_security_group_id = "sg-alb0123456789abcdef"
-  security_group_id        = aws_security_group.app.id
-  description              = "Traffic from ALB"
+resource "aws_vpc_security_group_ingress_rule" "from_alb" {
+  security_group_id            = aws_security_group.app.id
+  referenced_security_group_id = "sg-0abc1234def567890"
+  from_port                    = 8080
+  to_port                      = 8080
+  ip_protocol                  = "tcp"
+  description                  = "Traffic from ALB"
 }
 
-# Import ID for source-SG rules uses the source SG ID instead of CIDR
+# Rules that reference another security group still import by security group rule ID
 import {
-  to = aws_security_group_rule.from_alb
-  id = "sg-0123456789abcdef0_ingress_tcp_8080_8080_sg-alb0123456789abcdef"
+  to = aws_vpc_security_group_ingress_rule.from_alb
+  id = "sgr-0abc1234def567891"
 }
 ```
 
 ## Conclusion
 
-Choose the inline rules approach when a single team manages all rules for a security group. Choose the separate `aws_security_group_rule` approach when rules come from multiple sources. Note that you cannot mix inline rules in `aws_security_group` with separate `aws_security_group_rule` resources - pick one approach per security group.
+Choose the inline rules approach only if you want a single `aws_security_group` resource to manage the rules. Choose separate `aws_vpc_security_group_ingress_rule` and `aws_vpc_security_group_egress_rule` resources when rules come from multiple sources. Note that you cannot mix inline rules in `aws_security_group` with separate rule resources - pick one approach per security group.
