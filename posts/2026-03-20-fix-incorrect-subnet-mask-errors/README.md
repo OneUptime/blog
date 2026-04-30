@@ -8,11 +8,11 @@ Description: Learn how to detect and fix incorrect subnet mask configurations th
 
 ## How Subnet Mask Errors Cause Problems
 
-A subnet mask mismatch means two devices on the same physical network think they're in different networks:
+A subnet mask mismatch can make two devices on the same physical network think they're in different networks:
 
 ```text
-Device A: IP 192.168.1.10, mask 255.255.255.0  → subnet 192.168.1.0/24
-Device B: IP 192.168.1.20, mask 255.255.0.0    → subnet 192.168.0.0/16
+Device A: IP 192.168.1.10, mask 255.255.255.128  → subnet 192.168.1.0/25
+Device B: IP 192.168.1.200, mask 255.255.255.0   → subnet 192.168.1.0/24
 
 Device A thinks B is remote (sends to gateway)
 Device B thinks A is local (sends directly via ARP)
@@ -22,15 +22,13 @@ Result: asymmetric routing, no communication
 ## Step 1: Identify Misconfigured Devices
 
 ```bash
-# Scan network and compare subnet masks
+# Scan the local network to find active hosts
 
 nmap -sn 192.168.1.0/24 -v
 
 # On each device, check the mask
 # Linux
-ip addr show eth0
-# or
-ifconfig eth0
+ip addr show dev eth0
 
 # Windows
 ipconfig /all | findstr "Subnet Mask"
@@ -38,39 +36,38 @@ ipconfig /all | findstr "Subnet Mask"
 
 # Cisco router/switch
 show interfaces GigabitEthernet0/0
-# Shows: Internet address is 192.168.1.1/24
+# Shows: Internet address is 192.168.1.1, subnet mask is 255.255.255.0
 ```
 
 ## Step 2: Diagnose the Communication Failure
 
 ```bash
 # Test if two devices on same network can reach each other
-ping 192.168.1.20
+ping 192.168.1.200
 
 # Check ARP to see if hosts are resolving each other
-arp -n | grep 192.168.1.20
+ip neigh show dev eth0 | grep 192.168.1.200
 
 # If ping fails but they're on same switch:
-# 1. Check if ARP is resolving (same MAC should appear)
-# 2. If ARP resolves but ping fails: firewall issue
-# 3. If ARP doesn't resolve: routing to gateway instead of direct
+# 1. Check if the target resolves to a MAC address
+# 2. If ARP resolves but ping fails: firewall issue is possible
+# 3. If ARP doesn't resolve: traffic may be going to the gateway instead of direct
 
 # Trace what happens to packets
-ip route get 192.168.1.20
-# Correct: shows "dev eth0 src 192.168.1.10" (direct)
-# Wrong:   shows "via 192.168.1.1 dev eth0" (going through gateway)
+ip route get 192.168.1.200
+# Correct: shows "192.168.1.200 dev eth0 src 192.168.1.10" (direct)
+# Wrong:   shows "192.168.1.200 via 192.168.1.1 dev eth0 src 192.168.1.10" (going through gateway)
 ```
 
 ## Step 3: Fix on Linux
 
 ```bash
 # Temporary fix - set correct mask
-sudo ip addr del 192.168.1.10/16 dev eth0    # Remove wrong mask
+sudo ip addr del 192.168.1.10/25 dev eth0    # Remove wrong mask
 sudo ip addr add 192.168.1.10/24 dev eth0    # Add correct mask
-sudo ip route add default via 192.168.1.1    # Restore default route
 
 # Verify
-ip addr show eth0
+ip addr show dev eth0
 ip route show
 ```
 
@@ -91,8 +88,7 @@ network:
 
 ```bash
 # NetworkManager
-nmcli con mod "Wired connection 1" ipv4.addresses "192.168.1.10/24"
-nmcli con mod "Wired connection 1" ipv4.gateway "192.168.1.1"
+nmcli con mod "Wired connection 1" ipv4.method manual ipv4.addresses "192.168.1.10/24" ipv4.gateway "192.168.1.1"
 nmcli con up "Wired connection 1"
 ```
 
@@ -100,7 +96,7 @@ nmcli con up "Wired connection 1"
 
 ```powershell
 # Check current config
-Get-NetIPAddress -InterfaceAlias "Ethernet" | Select-Object IPAddress, PrefixLength
+Get-NetIPAddress -InterfaceAlias "Ethernet" -AddressFamily IPv4 | Select-Object IPAddress, PrefixLength
 
 # Fix incorrect prefix length
 # Remove bad address first
@@ -115,7 +111,7 @@ New-NetIPAddress -InterfaceAlias "Ethernet" `
 
 ```cmd
 REM netsh alternative
-netsh interface ip set address name="Ethernet" static 192.168.1.10 255.255.255.0 192.168.1.1
+netsh interface ipv4 set address name="Ethernet" source=static address=192.168.1.10 mask=255.255.255.0 gateway=192.168.1.1 store=persistent
 ```
 
 ## Step 5: Fix on Cisco IOS
@@ -142,9 +138,9 @@ expected_prefix = 24  # Expected /24 everywhere
 
 devices = [
     ("router", "192.168.1.1/24"),
-    ("server1", "192.168.1.10/24"),
-    ("workstation", "192.168.1.20/16"),   # WRONG
-    ("printer", "192.168.1.30/24"),
+    ("server1", "192.168.1.50/24"),
+    ("workstation", "192.168.1.10/25"),   # WRONG
+    ("printer", "192.168.1.200/24"),
 ]
 
 for name, addr_str in devices:
@@ -157,4 +153,4 @@ for name, addr_str in devices:
 
 ## Conclusion
 
-Subnet mask mismatches cause two devices to see each other as being in different networks, even when physically adjacent. Diagnose with `ip route get [target-ip]` - if it shows the gateway instead of direct, the local mask is wrong. Fix on Linux with `ip addr del/add` or netplan, on Windows with `New-NetIPAddress -PrefixLength 24`, and on Cisco with `ip address X.X.X.X 255.255.255.0`. Audit all devices systematically to ensure consistent masks across the network.
+Subnet mask mismatches can cause two devices to see each other as being in different networks, even when physically adjacent. Diagnose with `ip route get [target-ip]` - if a host on the same LAN is being sent to the gateway instead of directly, the local mask is wrong. Fix on Linux with `ip addr del/add` or netplan, on Windows with `New-NetIPAddress -PrefixLength 24`, and on Cisco with `ip address X.X.X.X 255.255.255.0`. Audit all devices systematically to ensure consistent masks across the network.
