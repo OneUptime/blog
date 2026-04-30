@@ -13,7 +13,7 @@ Every resource type has a specific import ID format - it might be an ARN, a reso
 ## Finding Import ID Formats
 
 ```bash
-# The provider documentation always lists the import format
+# The provider documentation lists the import format for importable resources
 
 # Look for "Import" section at the bottom of each resource page
 # Format: tofu import resource_type.name <id_format>
@@ -59,7 +59,7 @@ tofu import aws_s3_bucket.assets my-company-assets-bucket
 # S3 Bucket Policy - Bucket Name
 tofu import aws_s3_bucket_policy.assets my-company-assets-bucket
 
-# S3 Bucket ACL - Bucket Name
+# S3 Bucket ACL - Bucket name in the simplest case; can also include expected_bucket_owner and/or acl
 tofu import aws_s3_bucket_acl.main bucket-name
 
 # S3 Object - bucket/key
@@ -84,8 +84,8 @@ tofu import aws_iam_policy.custom arn:aws:iam::123456789012:policy/custom-policy
 # IAM Role Policy Attachment - role_name/policy_arn
 tofu import aws_iam_role_policy_attachment.app "app-role/arn:aws:iam::aws:policy/AmazonS3ReadOnlyAccess"
 
-# IAM User Group Membership - user_name/group1,group2
-tofu import aws_iam_user_group_membership.jane "jane.doe/developers,admins"
+# IAM User Group Membership - user_name/group1/group2
+tofu import aws_iam_user_group_membership.jane "jane.doe/developers/admins"
 ```
 
 ## RDS Resources
@@ -110,8 +110,8 @@ tofu import aws_db_parameter_group.main my-db-params
 # Hosted Zone - Zone ID
 tofu import aws_route53_zone.main Z1PA6795UKMFR9
 
-# DNS Record - zone_id/name/type
-tofu import aws_route53_record.api Z1PA6795UKMFR9/api.example.com/A
+# DNS Record - zone_id_record_name_type[_set_identifier]
+tofu import aws_route53_record.api Z1PA6795UKMFR9_api.example.com_A
 
 # Health Check - Health Check ID
 tofu import aws_route53_health_check.main abc12345-1234-1234-1234-abc123456789
@@ -126,8 +126,8 @@ tofu import aws_ecs_cluster.main my-cluster
 # ECS Service - cluster_name/service_name
 tofu import aws_ecs_service.app my-cluster/my-service
 
-# ECS Task Definition - task_definition:revision or family:revision
-tofu import aws_ecs_task_definition.app my-task-family:1
+# ECS Task Definition - Task definition ARN
+tofu import aws_ecs_task_definition.app arn:aws:ecs:us-east-1:123456789012:task-definition/my-task-family:1
 ```
 
 ## EKS Resources
@@ -136,8 +136,8 @@ tofu import aws_ecs_task_definition.app my-task-family:1
 # EKS Cluster - Cluster Name
 tofu import aws_eks_cluster.main my-eks-cluster
 
-# EKS Node Group - cluster_name/node_group_name
-tofu import aws_eks_node_group.workers my-cluster/worker-nodes
+# EKS Node Group - cluster_name:node_group_name
+tofu import aws_eks_node_group.workers my-cluster:worker-nodes
 
 # EKS Addon - cluster_name:addon_name
 tofu import aws_eks_addon.vpc_cni my-cluster:vpc-cni
