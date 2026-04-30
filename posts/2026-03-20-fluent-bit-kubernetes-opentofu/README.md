@@ -4,9 +4,9 @@ Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
 Tags: OpenTofu, Fluent Bit, Kubernetes, EKS, Logging, Observability, Infrastructure as Code
 
-Description: Learn how to deploy Fluent Bit log collection on Kubernetes and EKS using OpenTofu to efficiently collect, filter, and forward container logs to CloudWatch, Elasticsearch, and other destinations.
+Description: Learn how to deploy Fluent Bit log collection on Kubernetes and EKS using OpenTofu to efficiently collect, filter, and forward container logs to CloudWatch, S3, and other destinations.
 
-Fluent Bit is a lightweight, high-performance log processor designed for Kubernetes environments. Unlike Fluentd, it has minimal memory footprint (under 1MB), making it ideal for running as a DaemonSet on every node. Managing Fluent Bit deployments in OpenTofu ensures consistent, low-overhead log collection across your clusters.
+Fluent Bit is a lightweight, high-performance log processor designed for Kubernetes environments. Compared to Fluentd, it typically has a lower resource footprint, making it ideal for running as a DaemonSet on every schedulable node. Managing Fluent Bit deployments in OpenTofu ensures consistent, low-overhead log collection across your clusters.
 
 ## Deploy Fluent Bit on EKS with Helm
 
@@ -34,7 +34,7 @@ resource "helm_release" "fluent_bit" {
   chart            = "fluent-bit"
   namespace        = "logging"
   create_namespace = true
-  version          = "0.43.0"
+  version          = "0.57.3"
 
   values = [
     yamlencode({
@@ -105,7 +105,7 @@ resource "helm_release" "fluent_bit" {
 
       tolerations = [
         {
-          operator = "Exists"  # Run on ALL nodes including control plane
+          operator = "Exists"  # Tolerate tainted schedulable nodes too
         }
       ]
     })
@@ -116,6 +116,8 @@ resource "helm_release" "fluent_bit" {
 ## IAM Role for Fluent Bit
 
 ```hcl
+data "aws_caller_identity" "current" {}
+
 resource "aws_iam_role" "fluent_bit" {
   name = "fluent-bit-eks-role"
 
@@ -141,92 +143,150 @@ resource "aws_iam_role_policy_attachment" "fluent_bit_cloudwatch" {
   role       = aws_iam_role.fluent_bit.name
   policy_arn = "arn:aws:iam::aws:policy/CloudWatchAgentServerPolicy"
 }
+
+resource "aws_iam_role_policy" "fluent_bit_s3" {
+  name = "fluent-bit-s3"
+  role = aws_iam_role.fluent_bit.name
+
+  policy = jsonencode({
+    Version = "2012-10-17"
+    Statement = [{
+      Effect   = "Allow"
+      Action   = ["s3:PutObject"]
+      Resource = "arn:aws:s3:::${var.logs_bucket_name}/*"
+    }]
+  })
+}
 ```
 
 ## Multi-Output Configuration (CloudWatch + S3)
 
+To send the same Kubernetes logs to both CloudWatch and S3, use this `helm_release` variant:
+
 ```hcl
-resource "kubernetes_config_map" "fluent_bit_outputs" {
-  metadata {
-    name      = "fluent-bit-outputs"
-    namespace = "logging"
-  }
+resource "helm_release" "fluent_bit" {
+  name             = "fluent-bit"
+  repository       = "https://fluent.github.io/helm-charts"
+  chart            = "fluent-bit"
+  namespace        = "logging"
+  create_namespace = true
+  version          = "0.57.3"
 
-  data = {
-    "outputs.conf" = <<-EOT
-      # Forward application logs to CloudWatch
-      [OUTPUT]
-          Name                cloudwatch_logs
-          Match               kube.*
-          region              ${var.region}
-          log_group_name      /aws/eks/${var.cluster_name}/containers
-          log_stream_prefix   ${var.environment}-
-          auto_create_group   true
+  values = [
+    yamlencode({
+      serviceAccount = {
+        create = true
+        annotations = {
+          "eks.amazonaws.com/role-arn" = aws_iam_role.fluent_bit.arn
+        }
+      }
 
-      # Forward all logs to S3 for long-term storage
-      [OUTPUT]
-          Name                s3
-          Match               kube.*
-          region              ${var.region}
-          bucket              ${aws_s3_bucket.logs.id}
-          total_file_size     100M
-          upload_timeout      10m
-          use_put_object      On
-          s3_key_format       /%Y/%m/%d/%H/$TAG[1]
-          s3_key_format_tag_delimiters  .
+      config = {
+        outputs = <<-EOT
+          # Forward application logs to CloudWatch
+          [OUTPUT]
+              Name                cloudwatch_logs
+              Match               kube.*
+              region              ${var.region}
+              log_group_name      /aws/eks/${var.cluster_name}/containers
+              log_stream_prefix   ${var.environment}-
+              auto_create_group   true
 
-      # Forward error logs to OpenSearch
-      [OUTPUT]
-          Name                es
-          Match               kube.*.error
-          Host                ${var.opensearch_endpoint}
-          Port                443
-          TLS                 On
-          Index               fluent-bit
-          Type                _doc
-          AWS_Auth            On
-          AWS_Region          ${var.region}
-    EOT
-  }
+          # Forward all logs to S3 for long-term storage
+          [OUTPUT]
+              Name                s3
+              Match               kube.*
+              region              ${var.region}
+              bucket              ${var.logs_bucket_name}
+              total_file_size     100M
+              upload_timeout      10m
+              use_put_object      On
+              s3_key_format       /%Y/%m/%d/%H/$TAG[1]/$UUID.gz
+              s3_key_format_tag_delimiters  .
+        EOT
+      }
+    })
+  ]
 }
 ```
 
 ## Namespace-Based Log Routing
 
+To route namespaces into separate CloudWatch log groups, use this `helm_release` variant:
+
 ```hcl
-resource "kubernetes_config_map" "fluent_bit_routing" {
-  metadata {
-    name      = "fluent-bit-routing"
-    namespace = "logging"
-  }
+resource "helm_release" "fluent_bit" {
+  name             = "fluent-bit"
+  repository       = "https://fluent.github.io/helm-charts"
+  chart            = "fluent-bit"
+  namespace        = "logging"
+  create_namespace = true
+  version          = "0.57.3"
 
-  data = {
-    "filters.conf" = <<-EOT
-      # Tag production namespace logs separately
-      [FILTER]
-          Name  rewrite_tag
-          Match kube.*
-          Rule  $kubernetes['namespace_name'] production prod.$TAG false
-          Emitter_Name re_emitted_prod
+  values = [
+    yamlencode({
+      serviceAccount = {
+        create = true
+        annotations = {
+          "eks.amazonaws.com/role-arn" = aws_iam_role.fluent_bit.arn
+        }
+      }
 
-      # Tag staging namespace logs separately
-      [FILTER]
-          Name  rewrite_tag
-          Match kube.*
-          Rule  $kubernetes['namespace_name'] staging staging.$TAG false
-          Emitter_Name re_emitted_staging
+      config = {
+        filters = <<-EOT
+          # Tag production namespace logs separately
+          [FILTER]
+              Name  rewrite_tag
+              Match kube.*
+              Rule  $kubernetes['namespace_name'] ^production$ prod.$TAG false
+              Emitter_Name re_emitted_prod
 
-      # Add environment label to all records
-      [FILTER]
-          Name  record_modifier
-          Match kube.*
-          Record cluster_name ${var.cluster_name}
-          Record environment ${var.environment}
-    EOT
-  }
+          # Tag staging namespace logs separately
+          [FILTER]
+              Name  rewrite_tag
+              Match kube.*
+              Rule  $kubernetes['namespace_name'] ^staging$ staging.$TAG false
+              Emitter_Name re_emitted_staging
+
+          # Add environment labels to emitted and non-emitted records
+          [FILTER]
+              Name  record_modifier
+              Match *
+              Record cluster_name ${var.cluster_name}
+              Record environment ${var.environment}
+        EOT
+
+        outputs = <<-EOT
+          [OUTPUT]
+              Name                cloudwatch_logs
+              Match               prod.*
+              region              ${var.region}
+              log_group_name      /aws/eks/${var.cluster_name}/production
+              log_stream_prefix   fluent-bit-
+              auto_create_group   true
+
+          [OUTPUT]
+              Name                cloudwatch_logs
+              Match               staging.*
+              region              ${var.region}
+              log_group_name      /aws/eks/${var.cluster_name}/staging
+              log_stream_prefix   fluent-bit-
+              auto_create_group   true
+
+          [OUTPUT]
+              Name                cloudwatch_logs
+              Match               kube.*
+              region              ${var.region}
+              log_group_name      /aws/eks/${var.cluster_name}/other
+              log_stream_prefix   fluent-bit-
+              auto_create_group   true
+        EOT
+      }
+    })
+  ]
 }
 ```
 
 ## Conclusion
 
-Fluent Bit on Kubernetes in OpenTofu provides ultra-lightweight, high-performance log collection with minimal resource overhead. Use IRSA for secure AWS credential management, configure multi-output routing to send logs to CloudWatch for alerting and S3 for long-term archival, and use the rewrite_tag filter to route logs from different namespaces to different destinations. Fluent Bit's built-in Kubernetes filter automatically enriches logs with pod labels, namespace, and container metadata.
+Fluent Bit on Kubernetes in OpenTofu provides lightweight, high-performance log collection with minimal resource overhead. Use IRSA for secure AWS credential management, configure multi-output routing to send logs to CloudWatch for alerting and S3 for long-term archival, and use the rewrite_tag filter to route logs from different namespaces to different outputs or log groups. Fluent Bit's built-in Kubernetes filter automatically enriches logs with pod labels, namespace, and container metadata.
