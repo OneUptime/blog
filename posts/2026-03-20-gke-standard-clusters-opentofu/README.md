@@ -77,7 +77,7 @@ resource "google_container_node_pool" "primary_nodes" {
   name       = "primary-node-pool"
   location   = "us-central1"
   cluster    = google_container_cluster.primary.name
-  node_count = 1  # Per zone for regional cluster (3 zones = 3 nodes)
+  initial_node_count = 1  # Per zone for regional cluster (3 zones = 3 nodes initially)
 
   management {
     auto_repair  = true
