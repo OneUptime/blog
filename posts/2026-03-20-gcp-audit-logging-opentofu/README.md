@@ -6,7 +6,7 @@ Tags: OpenTofu, GCP, Audit Logging, Cloud Audit Logs, Compliance, Infrastructure
 
 Description: Learn how to configure GCP Cloud Audit Logs with OpenTofu to capture admin activity, data access, and system events across your Google Cloud projects for compliance and security monitoring.
 
-GCP Cloud Audit Logs record who did what, where, and when across your Google Cloud resources. Admin Activity logs are always enabled, but Data Access logs (which capture reads and data manipulation) must be explicitly enabled. Managing audit log configuration in OpenTofu ensures consistent coverage across projects.
+GCP Cloud Audit Logs record who did what, where, and when across your Google Cloud resources. Admin Activity logs are always enabled, and System Event logs are also always written. Data Access logs (which capture reads and data manipulation) usually must be explicitly enabled, except for BigQuery Data Access logs, which are enabled by default. Managing audit log configuration in OpenTofu ensures consistent coverage across projects.
 
 ## Provider Configuration
 
@@ -29,14 +29,14 @@ provider "google" {
 ## Enable Data Access Audit Logs
 
 ```hcl
-# Enable Data Access logs for all services at the project level
+# Enable Data Access audit log permission types for all services at the project level
 
 resource "google_project_iam_audit_config" "all_services" {
   project = var.project_id
   service = "allServices"  # Apply to all Google Cloud services
 
   audit_log_config {
-    log_type = "ADMIN_READ"   # Admin reads (Cloud Console, API reads)
+    log_type = "ADMIN_READ"   # Reads of configuration or metadata that require ADMIN_READ permissions
   }
 
   audit_log_config {
@@ -70,13 +70,17 @@ resource "google_project_iam_audit_config" "storage" {
   }
 }
 
-# Enable audit logs for BigQuery
+# Configure service-level audit logging for BigQuery
 resource "google_project_iam_audit_config" "bigquery" {
   project = var.project_id
   service = "bigquery.googleapis.com"
 
   audit_log_config {
-    log_type = "DATA_READ"   # Query execution is logged
+    log_type = "ADMIN_READ"  # Required for some BigQuery services, such as Reservations
+  }
+
+  audit_log_config {
+    log_type = "DATA_READ"   # BigQuery Data Access logs are enabled by default
   }
 
   audit_log_config {
@@ -189,14 +193,23 @@ resource "google_storage_bucket_iam_member" "audit_sink_writer" {
 resource "google_logging_metric" "iam_policy_changes" {
   name   = "iam-policy-changes"
   filter = <<-EOT
-    resource.type="project"
-    AND protoPayload.methodName="SetIamPolicy"
+    log_id("cloudaudit.googleapis.com/activity")
+    protoPayload.methodName:"SetIamPolicy"
   EOT
 
   metric_descriptor {
     metric_kind = "DELTA"
     value_type  = "INT64"
     unit        = "1"
+  }
+}
+
+resource "google_monitoring_notification_channel" "email" {
+  display_name = "Security Email"
+  type         = "email"
+
+  labels = {
+    email_address = var.alert_email
   }
 }
 
@@ -213,7 +226,7 @@ resource "google_monitoring_alert_policy" "iam_policy_change" {
       threshold_value = 0
       aggregations {
         alignment_period   = "60s"
-        per_series_aligner = "ALIGN_COUNT"
+        per_series_aligner = "ALIGN_SUM"
       }
     }
   }
@@ -228,4 +241,4 @@ resource "google_monitoring_alert_policy" "iam_policy_change" {
 
 ## Conclusion
 
-GCP Cloud Audit Logs in OpenTofu provide comprehensive visibility into who accessed and changed your cloud resources. Admin Activity logs are always on; explicitly enable Data Access logs for services with sensitive data like Cloud Storage, BigQuery, and Secret Manager. Export audit logs to Cloud Storage with retention locks for compliance archival, and create log-based metrics with alerting for critical security events like IAM policy changes.
+GCP Cloud Audit Logs in OpenTofu provide comprehensive visibility into who accessed and changed your cloud resources. Admin Activity and System Event logs are always on; explicitly enable Data Access logs for services with sensitive data like Cloud Storage and Secret Manager, while BigQuery Data Access logs are enabled by default. Export audit logs to Cloud Storage with retention locks for compliance archival, and create log-based metrics with alerting for critical security events like IAM policy changes.
