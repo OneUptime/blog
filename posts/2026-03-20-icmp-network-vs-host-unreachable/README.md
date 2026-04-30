@@ -14,10 +14,10 @@ ICMP Destination Unreachable Type 3 has two closely related codes that are often
 
 | | Network Unreachable (Code 0) | Host Unreachable (Code 1) |
 |---|---|---|
-| Sent by | Intermediate router | Last-hop router or source host |
-| Meaning | No route to the network exists | Route to network exists but host not responding |
-| Location | Anywhere in the path | The router directly connected to the target |
-| Fix | Add/fix routing | Fix the host (down, wrong ARP, etc.) |
+| Sent by | Router with no route | Last-hop router |
+| Meaning | No route to the destination network exists | The destination network is reachable, but the final hop cannot deliver to the host |
+| Location | Anywhere along the path | The router directly connected to the target |
+| Fix | Add/fix routing | Fix final-hop reachability (host down, ARP, Layer 2, etc.) |
 
 ## Generating and Capturing Both
 
@@ -49,28 +49,24 @@ ip route show | grep "10.20.0"   # On the reporting router
 # If route is missing on the reporting router:
 ip route add 10.20.0.0/24 via 192.168.1.254
 
-# Network Unreachable from the LOCAL host means:
-# no default route + no specific route for this destination
+# Network Unreachable from the LOCAL host usually means:
+# no matching route (no default route and no specific route for this destination)
+ip route get 10.20.0.5
 ip route show default   # Check if default route exists
 ```
 
 ## Diagnosing Host Unreachable
 
 ```bash
-# Host Unreachable: the last-hop router has the network route but can't reach the host
-# Cause 1: Host is down (ping fails, ARP fails)
+# Host Unreachable: the last-hop router has the network route but can't deliver on the final link
+# Cause 1: Host is down or not reachable on the local segment
 ping -c 3 10.20.0.5
-arp -n 10.20.0.5   # Check ARP resolution
+ip neigh show 10.20.0.5   # On the last-hop router or a host on the same subnet
 
-# Cause 2: ARP table incomplete on the router
+# Cause 2: neighbour/ARP entry incomplete or failed on the router
 # (router knows the network but can't resolve the host's MAC)
-# Check the host's ARP entry on the router
-arp -n | grep 10.20.0.5
-# "incomplete" means ARP request sent but no reply
-
-# Cause 3: Host has wrong default gateway configured
-# The host doesn't know to send replies back correctly
-ssh root@10.20.0.5 "ip route show default"
+ip neigh show 10.20.0.5
+# "INCOMPLETE" or "FAILED" means neighbour resolution did not succeed
 ```
 
 ## Triggering Host Unreachable
@@ -95,11 +91,11 @@ Receiving ICMP Unreachable?
   │   └── Check routing table on the router that sent the ICMP
   │       └── Add missing route to the destination network
   └── Code 1 (Host Unreachable)
-      └── Check if the target host is up and responding
+      └── Check host reachability on the final hop
           ├── If host is down: fix the host
           └── If host is up: check ARP/Layer2 connectivity to the host
 ```
 
 ## Conclusion
 
-Network Unreachable (Code 0) and Host Unreachable (Code 1) are routing layer and host layer problems respectively. Code 0 means a router lacks a route - fix the routing configuration. Code 1 means the network is routable but the specific host isn't responding - the problem is at the host (down, ARP failure, or Layer 2 issue). The ICMP source IP tells you which router identified the problem, giving you a precise location to investigate.
+Network Unreachable (Code 0) and Host Unreachable (Code 1) point to different failure points. Code 0 means the reporting router lacks a route - fix the routing configuration. Code 1 means the destination network is reachable but the final hop cannot deliver to the specific host - usually a host down, ARP failure, or Layer 2 problem on the directly connected network. The ICMP source IP tells you which device identified the problem, giving you a precise location to investigate.
