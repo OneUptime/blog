@@ -78,11 +78,12 @@ kubernetes-manifests/
 ├── apps/
 │   └── my-app/
 │       ├── fleet.yaml      # App-level Fleet config
-│       ├── deployment.yaml
-│       ├── service.yaml
-│       └── overlays/       # Kustomize overlays per env
-│           ├── production/
-│           └── staging/
+│       └── chart/
+│           ├── Chart.yaml
+│           ├── values.yaml
+│           └── templates/
+│               ├── deployment.yaml
+│               └── service.yaml
 ```
 
 ## Step 4: Configure fleet.yaml
@@ -94,11 +95,7 @@ namespace: my-app
 # Helm chart deployment
 helm:
   chart: ./chart              # Relative path to Helm chart
-  version: ">=1.0.0"
   releaseName: my-app
-  
-  valuesFiles:
-  - values.yaml              # Base values
   
   # Per-cluster value overrides
   values:
@@ -146,8 +143,8 @@ kubectl get gitrepo -n fleet-default
 # View bundle status (Fleet unit of deployment)
 kubectl get bundles -n fleet-default
 
-# Detailed bundle status
-kubectl describe bundle my-app-gitops -n fleet-default
+# Detailed bundle status (bundle names are generated from the GitRepo name and path unless overridden)
+kubectl describe bundle <bundle-name> -n fleet-default
 
 # Check per-cluster deployment status
 kubectl get bundledeployments -A
@@ -160,10 +157,10 @@ kubectl logs -n cattle-fleet-system   -l app=fleet-agent   --follow
 
 ```bash
 # For HTTPS authentication
-kubectl create secret generic git-auth   --namespace fleet-default   --from-literal=username=your-username   --from-literal=password=your-personal-access-token
+kubectl create secret generic git-auth   --namespace fleet-default   --type=kubernetes.io/basic-auth   --from-literal=username=your-username   --from-literal=password=your-personal-access-token
 
 # For SSH authentication
-kubectl create secret generic git-ssh   --namespace fleet-default   --from-file=ssh-privatekey=/path/to/private-key   --from-literal=known_hosts="$(ssh-keyscan github.com)"
+kubectl create secret generic git-ssh   --namespace fleet-default   --type=kubernetes.io/ssh-auth   --from-file=ssh-privatekey=/path/to/private-key   --from-literal=known_hosts="$(ssh-keyscan -H github.com)"
 ```
 
 ```yaml
@@ -208,10 +205,10 @@ kubectl describe gitrepo my-app-gitops -n fleet-default
 # Check Events section for errors
 
 # Bundle in Modified/NotReady state
-kubectl get bundledeployments -A -o custom-columns='NAME:.metadata.name,CLUSTER:.metadata.namespace,STATE:.status.display.state'
+kubectl get bundledeployments -A -L fleet.cattle.io/cluster-namespace,fleet.cattle.io/cluster
 
 # Force re-sync
-kubectl annotate gitrepo my-app-gitops   fleet.cattle.io/force-sync="$(date)"   -n fleet-default   --overwrite
+kubectl patch gitrepo my-app-gitops   -n fleet-default   --type merge   -p "{\"spec\":{\"forceSyncGeneration\":$(date +%s)}}"
 ```
 
 ## Conclusion
