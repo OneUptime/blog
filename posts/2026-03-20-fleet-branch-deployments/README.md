@@ -14,48 +14,46 @@ Rancher Fleet is a GitOps continuous delivery solution built into Rancher. It en
 
 - Rancher v2.6+ with Fleet installed (built-in)
 - Git repository (GitHub, GitLab, or any Git server)
-- kubectl access to Rancher management cluster
+- kubectl access to the Rancher management cluster and any downstream clusters you want to inspect
 
 ## Step 1: Verify Fleet is Running
 
 ```bash
-# Check Fleet pods in Rancher management cluster
+# Check Fleet controller pods in the Rancher management cluster
 
 kubectl get pods -n cattle-fleet-system
 
+# If the local cluster is also managed by Fleet, check the local agent
+kubectl get pods -n cattle-local-fleet-system
+
 # Expected pods:
-# fleet-controller      Running
-# fleet-agent           Running (local cluster agent)
-# gitjob                Running
+# cattle-fleet-system: fleet-controller, gitjob
+# cattle-local-fleet-system: fleet-agent (local cluster only)
 
 # Check CRDs
 kubectl get crds | grep fleet
 ```
 
-## Step 2: Create a GitRepo Resource
+## Step 2: Create GitRepo Resources
 
 ```yaml
-# gitrepo.yaml - Connect Fleet to your Git repository
+# branch-gitrepos.yaml - Deploy different branches to different environments
 apiVersion: fleet.cattle.io/v1alpha1
 kind: GitRepo
 metadata:
-  name: my-app-gitops
+  name: my-app-staging
   namespace: fleet-default
 spec:
   # Git repository URL
   repo: https://github.com/your-org/kubernetes-manifests
-  branch: main
+  branch: staging
   
   # Path within the repository
   paths:
   - apps/my-app
   
-  # Target clusters
+  # Target staging clusters
   targets:
-  - name: production
-    clusterSelector:
-      matchLabels:
-        env: production
   - name: staging
     clusterSelector:
       matchLabels:
@@ -63,26 +61,43 @@ spec:
   
   # Poll interval
   pollingInterval: 30s
+---
+apiVersion: fleet.cattle.io/v1alpha1
+kind: GitRepo
+metadata:
+  name: my-app-production
+  namespace: fleet-default
+spec:
+  repo: https://github.com/your-org/kubernetes-manifests
+  branch: main
+  paths:
+  - apps/my-app
+  targets:
+  - name: production
+    clusterSelector:
+      matchLabels:
+        env: production
+  pollingInterval: 30s
 ```
 
 ```bash
-kubectl apply -f gitrepo.yaml
-kubectl get gitrepo my-app-gitops -n fleet-default
+kubectl apply -f branch-gitrepos.yaml
+kubectl get gitrepo -n fleet-default
 ```
 
 ## Step 3: Repository Structure
 
 ```text
 kubernetes-manifests/
-├── fleet.yaml              # Fleet configuration
-├── apps/
-│   └── my-app/
-│       ├── fleet.yaml      # App-level Fleet config
-│       ├── deployment.yaml
-│       ├── service.yaml
-│       └── overlays/       # Kustomize overlays per env
-│           ├── production/
-│           └── staging/
+└── apps/
+    └── my-app/
+        ├── fleet.yaml      # Fleet configuration for this bundle
+        └── chart/
+            ├── Chart.yaml
+            ├── values.yaml
+            └── templates/
+                ├── deployment.yaml
+                └── service.yaml
 ```
 
 ## Step 4: Configure fleet.yaml
@@ -94,11 +109,7 @@ namespace: my-app
 # Helm chart deployment
 helm:
   chart: ./chart              # Relative path to Helm chart
-  version: ">=1.0.0"
   releaseName: my-app
-  
-  valuesFiles:
-  - values.yaml              # Base values
   
   # Per-cluster value overrides
   values:
@@ -147,23 +158,26 @@ kubectl get gitrepo -n fleet-default
 kubectl get bundles -n fleet-default
 
 # Detailed bundle status
-kubectl describe bundle my-app-gitops -n fleet-default
+kubectl describe bundle <bundle-name> -n fleet-default
 
 # Check per-cluster deployment status
 kubectl get bundledeployments -A
 
-# View Fleet agent logs on downstream cluster
+# View Fleet agent logs on a downstream cluster
 kubectl logs -n cattle-fleet-system   -l app=fleet-agent   --follow
+
+# For the Rancher local cluster, use:
+# kubectl logs -n cattle-local-fleet-system -l app=fleet-agent --follow
 ```
 
 ## Step 6: Configure Private Git Repository Authentication
 
 ```bash
 # For HTTPS authentication
-kubectl create secret generic git-auth   --namespace fleet-default   --from-literal=username=your-username   --from-literal=password=your-personal-access-token
+kubectl create secret generic git-auth   --namespace fleet-default   --type=kubernetes.io/basic-auth   --from-literal=username=your-username   --from-literal=password=your-personal-access-token
 
 # For SSH authentication
-kubectl create secret generic git-ssh   --namespace fleet-default   --from-file=ssh-privatekey=/path/to/private-key   --from-literal=known_hosts="$(ssh-keyscan github.com)"
+kubectl create secret generic git-ssh   --namespace fleet-default   --type=kubernetes.io/ssh-auth   --from-file=ssh-privatekey=/path/to/private-key   --from-literal=known_hosts="$(ssh-keyscan github.com)"
 ```
 
 ```yaml
@@ -204,14 +218,15 @@ spec:
 
 ```bash
 # GitRepo not syncing
-kubectl describe gitrepo my-app-gitops -n fleet-default
+kubectl describe gitrepo my-app-staging -n fleet-default
 # Check Events section for errors
 
 # Bundle in Modified/NotReady state
 kubectl get bundledeployments -A -o custom-columns='NAME:.metadata.name,CLUSTER:.metadata.namespace,STATE:.status.display.state'
 
-# Force re-sync
-kubectl annotate gitrepo my-app-gitops   fleet.cattle.io/force-sync="$(date)"   -n fleet-default   --overwrite
+# Force re-sync by incrementing forceSyncGeneration
+kubectl patch gitrepo my-app-staging   -n fleet-default   --type=merge   -p '{"spec":{"forceSyncGeneration":1}}'
+# Use a higher number for subsequent manual re-syncs
 ```
 
 ## Conclusion
