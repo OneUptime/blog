@@ -8,7 +8,7 @@ Description: Compare the IPv6 and IPv4 header structures to understand the desig
 
 ## Introduction
 
-IPv6 was designed with lessons from IPv4's 30-year history. While IPv6 headers are larger in absolute terms (40 bytes vs 20 bytes minimum), they are more efficient because of their fixed size, removed fragmentation overhead, and eliminated checksum computation.
+IPv6 was designed with lessons from IPv4's 30-year history. While IPv6 headers are larger in absolute terms (40 bytes vs 20 bytes minimum), they are more efficient because of their fixed size, removed in-network fragmentation overhead, and eliminated checksum computation.
 
 ## Header Structure Comparison
 
@@ -45,7 +45,7 @@ graph TD
 | Fragment Offset | 13 bits | Removed | Same reason |
 | TTL | 8 bits | Hop Limit (8 bits) | Renamed, equivalent |
 | Protocol | 8 bits | Next Header (8 bits) | Equivalent, but chains extension headers |
-| Header Checksum | 16 bits | Removed | L2 and L4 provide checksums |
+| Header Checksum | 16 bits | Removed | No IPv6 header checksum in the base header |
 | Source Address | 32 bits | 128 bits | 4x larger |
 | Destination Address | 32 bits | 128 bits | 4x larger |
 | Options | 0–40 bytes | Extension Headers | Moved out of base header |
@@ -77,25 +77,25 @@ This saves CPU cycles at every routing hop across the internet.
 
 ### 3. Fragmentation Is End-to-End Only
 
-IPv4 routers can fragment packets. IPv6 routers cannot - only the source host fragments, reducing router state and processing.
+IPv4 routers can fragment packets. IPv6 routers cannot - only the source host fragments, reducing router work and avoiding in-network fragmentation.
 
 ```bash
-# IPv6 fragmentation is done by the source (Path MTU Discovery)
+# IPv6 fragmentation is done by the source (with Path MTU Discovery)
 
-# Check the PMTU to a destination
-ip -6 route get 2001:db8::1 | grep mtu
+# Discover the path MTU to a destination
+tracepath -6 2606:4700:4700::1111
 
-# Verify PMTU discovery is enabled
-sysctl net.ipv6.conf.all.mtu_disc_policy
+# Inspect how long Linux keeps learned PMTU information
+sysctl net.ipv6.route.mtu_expires
 ```
 
 ## Practical Overhead
 
-For a 1500-byte Ethernet frame:
+For a 1500-byte Ethernet MTU:
 - IPv4: 20 bytes header = **1.3% overhead**
 - IPv6: 40 bytes header = **2.7% overhead**
 
-However, for larger jumbo frames (9000 bytes):
+However, for larger 9000-byte MTUs:
 - IPv4: 20/9000 = **0.22% overhead**
 - IPv6: 40/9000 = **0.44% overhead**
 
