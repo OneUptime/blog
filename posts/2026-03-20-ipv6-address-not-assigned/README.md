@@ -24,7 +24,7 @@ ip -6 addr show scope global
 ip -6 addr show dev eth0
 
 # Expected output includes:
-# - Link-local (fe80::) - always present if IPv6 is enabled
+# - Link-local (fe80::) - normally present if IPv6 is enabled
 # - Global (2001: or 2600: etc.) - assigned via SLAAC or DHCPv6
 # - ULA (fc00:: or fd00::) - private IPv6 addresses
 ```
@@ -58,7 +58,7 @@ cat /proc/sys/net/ipv6/conf/eth0/accept_ra
 # 2 = accept RAs even when forwarding is enabled
 
 # Enable RA acceptance
-sudo sysctl -w net.ipv6.conf.eth0.accept_ra=1
+sudo sysctl -w net.ipv6.conf.eth0.accept_ra=1   # use 2 instead if IPv6 forwarding is enabled
 
 # Try to solicit a Router Advertisement
 sudo rdisc6 eth0
@@ -82,22 +82,24 @@ sudo sysctl -w net.ipv6.conf.eth0.autoconf=1
 rdisc6 eth0 2>/dev/null | grep "Autonomous"
 # "Autonomous address conf.: Yes" means SLAAC should work
 
-# Check if temporary addresses are enabled (RFC 7217 privacy)
+# Check if temporary privacy addresses are enabled
 cat /proc/sys/net/ipv6/conf/eth0/use_tempaddr
-# 0 = disabled, 1 = generate temp addresses, 2 = prefer temp
+# 0 = disabled, 1 = generate temp addresses but prefer public, 2 = prefer temp
 ```
 
 ## Step 5: Check DHCPv6
 
 ```bash
-# Check if M flag in RA requires DHCPv6
+# Check if M flag in RA advertises DHCPv6-managed addressing
 rdisc6 eth0 2>/dev/null | grep "Stateful address"
-# "Stateful address conf.: Yes" = DHCPv6 required for addresses
+# "Stateful address conf.: Yes" means addresses are available via DHCPv6;
+# SLAAC can still coexist if the prefix also has the A flag
 
-# Check if DHCPv6 client is running
-systemctl status dhclient 2>/dev/null || \
-systemctl status dhcpcd 2>/dev/null || \
-systemctl status NetworkManager 2>/dev/null
+# Check if a DHCPv6 client or network manager is handling the interface
+pgrep -a dhclient 2>/dev/null || \
+pgrep -a dhcpcd 2>/dev/null || \
+pgrep -a NetworkManager 2>/dev/null || \
+pgrep -a systemd-networkd 2>/dev/null
 
 # Run DHCPv6 client manually
 sudo dhclient -6 eth0
@@ -137,8 +139,15 @@ ll=$(ip -6 addr show dev "$IFACE" scope link 2>/dev/null | grep "inet6")
 [ -n "$ll" ] && echo "[OK] Link-local address: $ll" || echo "[FAIL] No link-local address"
 
 # 3. Accept RA?
+forwarding=$(cat /proc/sys/net/ipv6/conf/$IFACE/forwarding 2>/dev/null)
 accept_ra=$(cat /proc/sys/net/ipv6/conf/$IFACE/accept_ra 2>/dev/null)
-[ "$accept_ra" -ge 1 ] 2>/dev/null && echo "[OK] accept_ra=$accept_ra" || echo "[WARN] accept_ra=$accept_ra (RAs not accepted)"
+if [ "$accept_ra" = "2" ] || { [ "$accept_ra" = "1" ] && [ "$forwarding" = "0" ]; }; then
+  echo "[OK] accept_ra=$accept_ra"
+elif [ "$accept_ra" = "1" ] && [ "$forwarding" = "1" ]; then
+  echo "[WARN] accept_ra=1 but forwarding=1 (Linux ignores RAs unless accept_ra=2)"
+else
+  echo "[WARN] accept_ra=$accept_ra (RAs not accepted)"
+fi
 
 # 4. SLAAC enabled?
 autoconf=$(cat /proc/sys/net/ipv6/conf/$IFACE/autoconf 2>/dev/null)
@@ -156,4 +165,4 @@ ra=$(timeout 5 rdisc6 "$IFACE" 2>/dev/null | head -5)
 
 ## Conclusion
 
-IPv6 address assignment failures typically stem from three causes: kernel IPv6 being disabled (`disable_ipv6=1`), no Router Advertisement being received (check `rdisc6`), or SLAAC being disabled (`autoconf=0`, `accept_ra=0`). Check each layer systematically: verify IPv6 is enabled, confirm a link-local address exists, check if RAs are being received and have the `A` flag set, then verify SLAAC or DHCPv6 is configured to process them.
+IPv6 address assignment failures typically stem from four causes: kernel IPv6 being disabled (`disable_ipv6=1`), no Router Advertisement being received (check `rdisc6`), SLAAC being disabled (`autoconf=0`, `accept_ra=0`), or DHCPv6 not running when the RA signals managed addressing. Check each layer systematically: verify IPv6 is enabled, confirm a link-local address exists, check if RAs are being received and have the `A` flag set, then verify SLAAC or DHCPv6 is configured to process them.
