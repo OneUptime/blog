@@ -6,71 +6,73 @@ Tags: Grafana, SNMP, IPv6, Monitoring, Network, MIB
 
 Description: A guide to monitoring IPv6 statistics from network devices using SNMP, the SNMP Exporter for Prometheus, and Grafana dashboards.
 
-SNMP (Simple Network Management Protocol) provides IPv6 statistics through RFC 4293 (IP-MIB) and RFC 4022 (TCP-MIB). This guide covers scraping IPv6 SNMP metrics from network devices and visualizing them in Grafana.
+SNMP (Simple Network Management Protocol) provides IPv6 traffic statistics through RFC 4293 (IP-MIB) and routing information through RFC 4292 (IP-FORWARD-MIB). This guide covers scraping IPv6 SNMP metrics from network devices and visualizing them in Grafana.
 
 ## Step 1: Install and Configure SNMP Exporter
 
 ```bash
 # Download SNMP exporter
 
-wget https://github.com/prometheus/snmp_exporter/releases/latest/download/snmp_exporter-*.linux-amd64.tar.gz
-tar xzf snmp_exporter-*.linux-amd64.tar.gz
-sudo mv snmp_exporter /usr/local/bin/
+wget https://github.com/prometheus/snmp_exporter/releases/download/v0.30.1/snmp_exporter-0.30.1.linux-amd64.tar.gz
+tar xzf snmp_exporter-0.30.1.linux-amd64.tar.gz
+sudo mv snmp_exporter-0.30.1.linux-amd64/snmp_exporter /usr/local/bin/
 ```
 
 ## Step 2: Generate SNMP Module for IPv6 MIBs
 
 Use the `generator` tool to create a config for IPv6-related OIDs:
 
+```bash
+git clone https://github.com/prometheus/snmp_exporter.git
+cd snmp_exporter/generator
+make generator mibs
+```
+
 ```yaml
 # generator.yml - Generate SNMP config for IPv6 statistics
+auths:
+  public_v2:
+    version: 2
+    community: public
+
 modules:
   ipv6_stats:
     walk:
-      # IP-MIB IPv6 statistics (RFC 4293)
-      - 1.3.6.1.2.1.4.24    # ipv6RouteTable
-      - 1.3.6.1.2.1.55      # ipv6MIB
-      - 1.3.6.1.2.1.56      # ipv6IfTable
-    metrics:
-      - name: ipv6IfStatInReceives
-        oid: 1.3.6.1.2.1.56.1.1.1.6
-        type: counter
-        help: "Total IPv6 datagrams received on the interface"
-      - name: ipv6IfStatOutRequests
-        oid: 1.3.6.1.2.1.56.1.1.1.22
-        type: counter
-        help: "Total IPv6 datagrams sent from the interface"
+      - ipSystemStatsTable
+      - ipIfStatsTable
+      - inetCidrRouteTable
+    lookups:
+      - source_indexes: [ipIfStatsIfIndex]
+        lookup: IF-MIB::ifDescr
+      - source_indexes: [ipIfStatsIfIndex]
+        lookup: IF-MIB::ifName
+    overrides:
+      ifDescr:
+        ignore: true
+      ifName:
+        ignore: true
 ```
 
 ```bash
 # Generate snmp.yml from generator.yml
-snmp_exporter/generator generate
+./generator generate -m ./mibs -g ./generator.yml -o ./snmp.yml
 ```
 
 ## Step 3: Configure snmp.yml for IPv6 Devices
 
 ```yaml
-# snmp.yml - SNMP module for IPv6 network devices
-modules:
-  cisco_ios_ipv6:
-    walk:
-      - sysUpTime
-      - ifXTable
-      - ipv6IfTable
-      - ipv6IfStatsTable
-    auth:
-      community: "{{ snmp_community }}"
+# snmp.yml - use the generated auth and module names in the runtime config
+auths:
+  public_v2:
     version: 2
-    timeout: 15s
-    retries: 3
+    community: public
 
-  linux_ipv6:
+modules:
+  ipv6_stats:
     walk:
-      - ipv6IfTable
-      - ipv6IfStatsTable
-    auth:
-      community: public
-    version: 2
+      - ipSystemStatsTable
+      - ipIfStatsTable
+      - inetCidrRouteTable
 ```
 
 ## Step 4: Prometheus Configuration for SNMP + IPv6
@@ -82,11 +84,12 @@ scrape_configs:
   - job_name: "snmp-ipv6-devices"
     static_configs:
       - targets:
-          - "2001:db8::router1"   # IPv6 address of the device
-          - "2001:db8::switch1"
+          - "2001:db8::1"   # IPv6 address of the device
+          - "2001:db8::2"
     metrics_path: /snmp
     params:
-      module: [cisco_ios_ipv6]
+      auth: [public_v2]
+      module: [ipv6_stats]
     relabel_configs:
       - source_labels: [__address__]
         target_label: __param_target
@@ -111,39 +114,41 @@ Useful PromQL queries for Grafana panels:
 
 ```promql
 # IPv6 interface receive rate (packets/sec)
-rate(ipv6IfStatInReceives{instance=~"$device"}[5m])
+rate(ipIfStatsHCInReceives{instance=~"$device",ipIfStatsIPVersion="ipv6"}[5m])
 
 # IPv6 interface transmit rate
-rate(ipv6IfStatOutRequests{instance=~"$device"}[5m])
+rate(ipIfStatsHCOutTransmits{instance=~"$device",ipIfStatsIPVersion="ipv6"}[5m])
 
 # IPv6 routing table size
-ipv6RouteNumber
+count by (instance) (inetCidrRouteIfIndex{instance=~"$device",inetCidrRouteDestType="ipv6"})
 
-# IPv6 interface errors
-rate(ipv6IfStatInDiscards{instance=~"$device"}[5m])
-rate(ipv6IfStatOutDiscards{instance=~"$device"}[5m])
+# IPv6 interface discards
+rate(ipIfStatsInDiscards{instance=~"$device",ipIfStatsIPVersion="ipv6"}[5m])
+rate(ipIfStatsOutDiscards{instance=~"$device",ipIfStatsIPVersion="ipv6"}[5m])
 ```
 
 ## Step 7: Import Community SNMP IPv6 Dashboard
 
 ```bash
-# Import the SNMP Statistics dashboard from Grafana.com (dashboard ID varies)
-# Or use the Grafana UI: Dashboards > Import > Enter ID
-curl -s "https://grafana.com/api/dashboards/11169/revisions/1/download" \
-  | curl -X POST http://admin:admin@localhost:3000/api/dashboards/import \
-    -H "Content-Type: application/json" \
-    --data-binary @-
+# Import a general SNMP dashboard from Grafana.com with the Grafana UI
+# Dashboards > New > Import > Enter 11169
+# Then add panels for the IPv6 IP-MIB queries above
+curl -L -o snmp-stats-dashboard.json \
+  "https://grafana.com/api/dashboards/11169/revisions/latest/download"
 ```
 
 ## Verify SNMP IPv6 Collection
 
 ```bash
 # Test manual SNMP query to IPv6 device
-snmpwalk -v2c -c public "[2001:db8::router1]" ipv6IfTable
+snmpwalk -v2c -c public 'udp6:[2001:db8::1]:161' 1.3.6.1.2.1.4.31.2
 
 # Test SNMP Exporter is collecting IPv6 stats
-curl "http://[::1]:9116/snmp?module=cisco_ios_ipv6&target=2001:db8::router1" | \
-  grep ipv6
+curl -G "http://[::1]:9116/snmp" \
+  --data-urlencode "auth=public_v2" \
+  --data-urlencode "module=ipv6_stats" \
+  --data-urlencode "target=udp://[2001:db8::1]:161" | \
+  grep 'ipIfStats.*ipv6'
 ```
 
 Combining SNMP with the SNMP Exporter and Grafana provides comprehensive IPv6 visibility for network devices that may not have modern telemetry APIs, making it essential for monitoring legacy hardware alongside modern cloud infrastructure.
