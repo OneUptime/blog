@@ -71,15 +71,14 @@ locals {
   # ]
 }
 
-resource "aws_security_group_rule" "ports" {
+resource "aws_vpc_security_group_ingress_rule" "ports" {
   for_each = { for rule in local.all_port_rules : "${rule.service}-${rule.port}" => rule }
 
-  type              = "ingress"
+  security_group_id = aws_security_group.app.id
+  cidr_ipv4         = "0.0.0.0/0"
   from_port         = each.value.port
   to_port           = each.value.port
-  protocol          = "tcp"
-  cidr_blocks       = ["0.0.0.0/0"]
-  security_group_id = aws_security_group.app.id
+  ip_protocol       = "tcp"
   description       = "Allow ${each.value.service} on port ${each.value.port}"
 }
 ```
