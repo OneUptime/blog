@@ -15,8 +15,10 @@ HAProxy SSL termination decrypts incoming HTTPS connections at the load balancer
 HAProxy requires PEM bundles containing the certificate, chain, and private key:
 
 ```bash
-# Combine certificate, chain, and key into a single PEM bundle
+# Create a directory for certificate bundles
+mkdir -p /etc/haproxy/certs/
 
+# Combine certificate, chain, and key into a single PEM bundle
 # (HAProxy requires this single-file format)
 cat /etc/letsencrypt/live/example.com/fullchain.pem \
     /etc/letsencrypt/live/example.com/privkey.pem \
@@ -25,8 +27,7 @@ cat /etc/letsencrypt/live/example.com/fullchain.pem \
 # Set correct permissions
 chmod 600 /etc/haproxy/certs/example.com.pem
 
-# For multiple certificates, place them all in a directory
-mkdir -p /etc/haproxy/certs/
+# For multiple certificates, place them all in this directory
 # HAProxy loads all .pem files from the directory automatically
 ```
 
@@ -86,7 +87,7 @@ frontend https_in
     # Load all certificates from directory (SNI-based selection)
     bind 203.0.113.10:443 ssl crt /etc/haproxy/certs/
 
-    # Route to backend based on the hostname from SNI
+    # Route to backend based on the HTTP Host header
     acl is_api  hdr(host) -i api.example.com
     acl is_app  hdr(host) -i app.example.com
 
@@ -97,29 +98,29 @@ frontend https_in
 
 ## OCSP Stapling
 
-Enable OCSP stapling for better TLS performance:
+To preload a cached OCSP response for stapling, save a `.ocsp` file next to the certificate:
 
 ```bash
-# Fetch OCSP response
-openssl ocsp -issuer /etc/haproxy/certs/chain.pem \
-  -cert /etc/haproxy/certs/cert.pem \
-  -url http://ocsp.letsencrypt.org \
-  -respout /etc/haproxy/ocsp/example.com.ocsp
+# Fetch OCSP response using the certificate's responder URL
+openssl ocsp -issuer /etc/letsencrypt/live/example.com/chain.pem \
+  -cert /etc/letsencrypt/live/example.com/cert.pem \
+  -url "$(openssl x509 -in /etc/letsencrypt/live/example.com/cert.pem -noout -ocsp_uri)" \
+  -respout /etc/haproxy/certs/example.com.ocsp
 
-# HAProxy will pick up .ocsp files automatically from the cert directory
+# HAProxy loads example.com.ocsp automatically when it sits next to example.com.pem
 ```
 
 ## Testing SSL Configuration
 
 ```bash
-# Check TLS negotiation
-openssl s_client -connect 203.0.113.10:443 -servername example.com
+# Check TLS negotiation and stapled OCSP status
+openssl s_client -connect 203.0.113.10:443 -servername example.com -status
 
 # Test cipher suites
 nmap --script ssl-enum-ciphers -p 443 203.0.113.10
 
-# Check SSL grade
-curl https://www.ssllabs.com/ssltest/analyze.html?d=example.com
+# Check HTTPS response headers on the configured frontend
+curl -I --resolve example.com:443:203.0.113.10 https://example.com/
 
 # Verify HAProxy is listening on HTTPS
 sudo ss -tlnp | grep haproxy | grep 443
@@ -127,4 +128,4 @@ sudo ss -tlnp | grep haproxy | grep 443
 
 ## Conclusion
 
-HAProxy SSL termination combines certificate management, TLS offloading, and load balancing in a single configuration. Build PEM bundles from your certificate chain, use `ssl-default-bind-ciphers` and `ssl-min-ver TLSv1.2` in `global` for security hardening, and always forward `X-Forwarded-Proto: https` so backends can construct correct redirect URLs. Use a certificate directory with SNI for hosting multiple HTTPS domains on one IP.
+HAProxy SSL termination combines certificate management, TLS offloading, and load balancing in a single configuration. Build PEM bundles from your certificate chain and private key, use `ssl-default-bind-ciphers` and `ssl-min-ver TLSv1.2` in `global` for security hardening, and always forward `X-Forwarded-Proto: https` so backends can construct correct redirect URLs. Use a certificate directory with SNI for hosting multiple HTTPS domains on one IP.
