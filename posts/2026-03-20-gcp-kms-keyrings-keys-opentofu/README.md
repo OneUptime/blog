@@ -17,13 +17,13 @@ Google Cloud KMS provides centralized cryptographic key management for encryptin
 
 resource "google_kms_key_ring" "production_keyring" {
   name     = "production-keyring"
-  location = "us-central1"  # Keys are regional or global
+  location = "us-central1"  # For CMEK, match the protected resource's location
   project  = var.project_id
 }
 
 resource "google_kms_key_ring" "global_keyring" {
   name     = "global-keyring"
-  location = "global"  # Global keys for use across regions
+  location = "global"  # Global multi-region for distributed workloads
   project  = var.project_id
 }
 ```
@@ -100,10 +100,11 @@ resource "google_kms_crypto_key_iam_member" "ci_signer" {
 ## Step 5: CMEK for GCP Services
 
 ```hcl
-# Use the KMS key as CMEK for Cloud Storage
+# Use the symmetric KMS key as CMEK for a bucket in the same location
 resource "google_storage_bucket" "cmek_bucket" {
-  name     = "cmek-protected-bucket"
+  name     = "${var.project_id}-cmek-protected-bucket"
   location = "us-central1"
+  project  = var.project_id
 
   encryption {
     default_kms_key_name = google_kms_crypto_key.app_encryption_key.id
@@ -120,4 +121,4 @@ resource "google_kms_crypto_key_iam_member" "storage_encrypter" {
 
 ## Summary
 
-GCP KMS keyrings and keys with OpenTofu provide centralized cryptographic key management. Use symmetric keys with automatic rotation for data encryption, asymmetric keys for digital signatures, and HSM protection for high-security use cases. CMEK integration with Cloud Storage, BigQuery, and GKE gives you control over data encryption without managing key material directly.
+GCP KMS keyrings and keys with OpenTofu provide centralized cryptographic key management. Use symmetric keys with automatic rotation for data encryption, asymmetric keys for digital signatures, and HSM protection for high-security use cases. CMEK integration with Cloud Storage, BigQuery, and GKE gives you control over data encryption without managing key material directly, as long as the KMS key uses the same location as the protected resource.
