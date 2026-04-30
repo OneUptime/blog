@@ -24,9 +24,7 @@ puts addr.ipv4?      # false
 
 # Validate addresses safely
 def valid_ipv6?(address)
-  # Strip zone ID first
-  clean = address.split('%').first
-  IPAddr.new(clean).ipv6?
+  IPAddr.new(address).ipv6?
 rescue IPAddr::InvalidAddressError, IPAddr::AddressFamilyError
   false
 end
@@ -101,7 +99,7 @@ begin
   response = client.gets
   puts "Server: #{response}"
   client.close
-rescue SocketError => e
+rescue SocketError, SystemCallError => e
   puts "Connection failed: #{e.message}"
 end
 ```
@@ -135,6 +133,8 @@ end
 ## Handling IPv6 in Rails/Rack
 
 ```ruby
+require 'ipaddr'
+
 # config/application.rb or middleware
 # Get real client IP handling IPv6 and proxies
 
@@ -156,20 +156,16 @@ class IPv6AwareMiddleware
   private
 
   def extract_client_ip(request)
-    forwarded = request.env['HTTP_X_FORWARDED_FOR']
-    if forwarded
-      # First IP in X-Forwarded-For chain
-      forwarded.split(',').first.strip
-    else
-      # Strip IPv4-mapped prefix (::ffff:x.x.x.x)
-      request.ip.sub(/^::ffff:/, '')
-    end
+    # Rack/Rails already handle forwarded headers based on proxy settings.
+    IPAddr.new(request.ip).native.to_s
+  rescue IPAddr::InvalidAddressError, IPAddr::AddressFamilyError
+    request.ip
   end
 
   def valid_ipv6?(addr)
     return false unless addr
     IPAddr.new(addr).ipv6?
-  rescue
+  rescue IPAddr::InvalidAddressError, IPAddr::AddressFamilyError
     false
   end
 end
@@ -182,10 +178,11 @@ require 'ipaddr'
 
 # Wrap IPv6 addresses in brackets for URL use
 def format_for_url(addr_str)
-  clean = addr_str.split('%').first
-  addr = IPAddr.new(clean)
-  addr.ipv6? ? "[#{addr}]" : addr.to_s
-rescue
+  addr = IPAddr.new(addr_str)
+  host = addr.to_s
+  host = host.sub('%', '%25') if addr.ipv6? && addr.zone_id
+  addr.ipv6? ? "[#{host}]" : host
+rescue IPAddr::InvalidAddressError, IPAddr::AddressFamilyError
   addr_str
 end
 
@@ -215,4 +212,4 @@ end
 
 ## Conclusion
 
-Ruby's `IPAddr` class provides clean IPv6 validation and network membership testing. For server sockets, use `'::'` as the bind address for IPv6. HTTP clients need bracket notation in URIs, and Rack/Rails middleware should handle `::ffff:` IPv4-mapped addresses when extracting real client IPs.
+Ruby's `IPAddr` class provides clean IPv6 validation and network membership testing. For server sockets, use `'::'` as the bind address for IPv6. HTTP clients need bracket notation in URIs, and Rack/Rails middleware should normalize IPv4-mapped IPv6 addresses when extracting real client IPs.
