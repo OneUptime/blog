@@ -28,9 +28,11 @@ frontend prometheus_exporter
 
 frontend main_http
     bind 10.0.0.5:80
+    mode http
     default_backend app_servers
 
 backend app_servers
+    mode http
     balance roundrobin
     server web1 10.0.1.1:80 check
     server web2 10.0.1.2:80 check
@@ -66,14 +68,14 @@ scrape_configs:
 
 | Metric | Description |
 |---|---|
-| `haproxy_frontend_current_sessions` | Active frontend connections |
-| `haproxy_backend_current_sessions` | Active backend connections |
-| `haproxy_backend_connection_errors_total` | Backend connection errors |
-| `haproxy_server_up` | Backend server health (1=up, 0=down) |
-| `haproxy_backend_queue_current` | Requests queued for backend |
-| `haproxy_frontend_bytes_in_total` | Total bytes received |
-| `haproxy_frontend_bytes_out_total` | Total bytes sent |
-| `haproxy_frontend_requests_total` | Total HTTP requests |
+| `haproxy_frontend_current_sessions` | Current frontend sessions |
+| `haproxy_backend_current_sessions` | Current backend sessions |
+| `haproxy_backend_connection_errors_total` | Failed backend connections |
+| `haproxy_server_status` | Backend server status, with one time series per `state` label |
+| `haproxy_backend_current_queue` | Current queued backend connections |
+| `haproxy_frontend_bytes_in_total` | Total request bytes received |
+| `haproxy_frontend_bytes_out_total` | Total response bytes sent |
+| `haproxy_frontend_http_requests_total` | Total HTTP requests processed |
 
 ## Grafana Dashboard
 
@@ -82,20 +84,20 @@ scrape_configs:
 haproxy_frontend_current_sessions{proxy="main_http"}
 
 # Request rate per second
-rate(haproxy_frontend_requests_total[5m])
+rate(haproxy_frontend_http_requests_total[5m])
 
 # Backend server health
-haproxy_server_up
+haproxy_server_status{state="UP"}
 
 # HTTP error rate (4xx/5xx)
-rate(haproxy_frontend_http_responses_total{code=~"4xx|5xx"}[5m]) /
-rate(haproxy_frontend_requests_total[5m]) * 100
+sum by (proxy) (rate(haproxy_frontend_http_responses_total{code=~"4xx|5xx"}[5m])) /
+sum by (proxy) (rate(haproxy_frontend_http_requests_total[5m])) * 100
 
 # Queue depth (indicates backend saturation)
-haproxy_backend_queue_current > 0
+haproxy_backend_current_queue > 0
 
-# Connection pool saturation
-haproxy_backend_current_sessions / haproxy_backend_limit_sessions * 100
+# Backend session load
+haproxy_backend_current_sessions
 
 # Bandwidth in Mbps
 rate(haproxy_frontend_bytes_in_total[5m]) * 8 / 1000000
@@ -110,15 +112,15 @@ groups:
   - name: haproxy
     rules:
       - alert: HAProxyBackendDown
-        expr: haproxy_server_up == 0
+        expr: haproxy_backend_active_servers == 0
         for: 1m
         labels:
           severity: critical
         annotations:
-          summary: "HAProxy backend {{ $labels.server }} is down"
+          summary: "HAProxy backend {{ $labels.proxy }} has no active servers"
 
       - alert: HAProxyHighQueueDepth
-        expr: haproxy_backend_queue_current > 100
+        expr: haproxy_backend_current_queue > 100
         for: 5m
         labels:
           severity: warning
@@ -128,4 +130,4 @@ groups:
 
 ## Conclusion
 
-HAProxy 2.0+ exposes native Prometheus metrics at `/metrics` via a dedicated frontend. Configure a `frontend` bound to your monitoring network IP, enable it with `http-request use-service prometheus-exporter`. Scrape it with Prometheus using the standard `scrape_configs`. Build Grafana dashboards from `haproxy_frontend_*`, `haproxy_backend_*`, and `haproxy_server_up` metrics for complete visibility into load balancer health.
+HAProxy 2.0+ exposes native Prometheus metrics at `/metrics` via a dedicated frontend. Configure a `frontend` bound to your monitoring network IP, enable it with `http-request use-service prometheus-exporter`, and run your application traffic proxies in `mode http` when you want HTTP request and response metrics. Scrape it with Prometheus using the standard `scrape_configs`. Build Grafana dashboards from `haproxy_frontend_*`, `haproxy_backend_*`, and `haproxy_server_status` metrics for complete visibility into load balancer health.
