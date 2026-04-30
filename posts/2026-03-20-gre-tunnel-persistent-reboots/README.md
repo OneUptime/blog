@@ -20,8 +20,10 @@ Name=gre1
 Kind=gre
 
 [Tunnel]
-Local=10.0.0.1        # This host's outer IP
-Remote=10.0.0.2       # Remote peer's outer IP
+# This host's outer IP
+Local=10.0.0.1
+# Remote peer's outer IP
+Remote=10.0.0.2
 TTL=255
 ```
 
@@ -61,6 +63,7 @@ nmcli connection add type ip-tunnel \
 nmcli connection modify gre-site-b \
   ipv4.method manual \
   ipv4.addresses "172.16.1.1/30" \
+  ipv4.routes "192.168.2.0/24 172.16.1.2" \
   connection.autoconnect yes    # Auto-connect on boot
 
 nmcli connection up gre-site-b
@@ -100,7 +103,7 @@ Wants=network-online.target
 [Service]
 Type=oneshot
 ExecStart=/usr/local/bin/setup-gre.sh
-ExecStop=/sbin/ip link del gre1
+ExecStop=ip link del gre1
 RemainAfterExit=yes
 
 [Install]
@@ -121,7 +124,7 @@ reboot
 ip link show gre1         # Should show UP
 ip addr show gre1         # Should have 172.16.1.1/30
 ip route show dev gre1    # Should show remote subnet route
-ping 172.16.1.2           # Should succeed
+ping 172.16.1.2           # Should succeed if the remote GRE peer is up and allows ICMP
 ```
 
 ## Key Takeaways
