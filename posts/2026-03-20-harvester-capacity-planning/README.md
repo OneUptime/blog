@@ -22,7 +22,7 @@ graph TD
     Memory --> NodeCount
     Storage --> NodeCount
     Network --> NodeCount
-    NodeCount --> HABuffer["Add 33% HA Buffer\n(N+1 or N+2)"]
+    NodeCount --> HABuffer["Add HA Buffer\n(N+1 or N+2)"]
     HABuffer --> FinalSize["Final Cluster Size"]
 ```
 
@@ -79,7 +79,7 @@ Example calculation:
 
   Per node (3-node cluster): 34 / 3 = 12 cores/node
   Add HA buffer (N+1 - lose 1 node): 34 / 2 = 17 cores/node
-  Node selection: 20-core processors (e.g., Xeon Gold 6256)
+  Node selection: 20-core processors
 ```
 
 ```bash
@@ -87,14 +87,18 @@ Example calculation:
 TOTAL_VCPU=100
 OVERCOMMIT_RATIO=3
 HA_NODES=3  # 3 nodes, survive 1 failure
-REQUIRED_PHYSICAL=$((TOTAL_VCPU / OVERCOMMIT_RATIO))
-PER_NODE=$(( (REQUIRED_PHYSICAL * HA_NODES) / (HA_NODES - 1) ))
+
+# Round up fractional requirements.
+ceil_div() { echo $(( ($1 + $2 - 1) / $2 )); }
+
+REQUIRED_PHYSICAL=$(ceil_div "${TOTAL_VCPU}" "${OVERCOMMIT_RATIO}")
+PER_NODE=$(ceil_div "${REQUIRED_PHYSICAL}" "$((HA_NODES - 1))")
 echo "Minimum physical cores per node: ${PER_NODE}"
 ```
 
 ## Step 3: Calculate Memory Capacity
 
-Memory overcommit is riskier than CPU overcommit - VMs will be killed if the host runs out of memory (OOM). Conservative memory planning is recommended:
+Memory planning is less forgiving than CPU planning. Harvester can overcommit RAM for scheduling, but classic memory overcommit or ballooning is not supported, so conservative planning is recommended:
 
 ```text
 Memory Capacity Formula:
@@ -108,7 +112,7 @@ System overhead per node:
 
 Memory overcommit (use with caution):
   - Conservative: 1:1 (no overcommit)
-  - Moderate: 1.2:1 (20% overcommit with swap or balloon driver)
+  - Moderate: up to 1.5:1 only after validating workload behavior and node headroom
   - Do NOT overcommit for databases or memory-intensive apps
 ```
 
@@ -118,37 +122,41 @@ TOTAL_VM_RAM=300  # GB - sum of all VM RAM
 OVERHEAD_PER_NODE=20  # GB - system overhead
 NUM_NODES=3
 
+# Round up fractional requirements.
+ceil_div() { echo $(( ($1 + $2 - 1) / $2 )); }
+
 # No overcommit scenario
 REQUIRED_RAM_NO_OC=$((TOTAL_VM_RAM + (OVERHEAD_PER_NODE * NUM_NODES)))
-PER_NODE_NO_OC=$((REQUIRED_RAM_NO_OC / NUM_NODES))
+PER_NODE_NO_OC=$(ceil_div "${REQUIRED_RAM_NO_OC}" "${NUM_NODES}")
 
 # With N+1 HA (survive 1 node failure)
-PER_NODE_HA=$((REQUIRED_RAM_NO_OC / (NUM_NODES - 1)))
+PER_NODE_HA=$(ceil_div "${REQUIRED_RAM_NO_OC}" "$((NUM_NODES - 1))")
 
 echo "RAM per node (no overcommit): ${PER_NODE_NO_OC} GB"
 echo "RAM per node (N+1 HA): ${PER_NODE_HA} GB"
-echo "Select node with: $((PER_NODE_HA + 16)) GB RAM (round up)"
+echo "Select node with at least ${PER_NODE_HA} GB usable RAM; round up to the next standard size"
 ```
 
 ## Step 4: Calculate Storage Capacity
 
 ```text
 Storage Capacity Formula:
-  Total storage needed = (Sum of VM disk sizes) * (Replica count) * (Overprovisioning factor)
+  Scheduled storage = (Sum of VM disk sizes) * (Replica count)
+  Then add buffer for snapshots and free space
 
 For a 3-replica Longhorn configuration:
   VM disks: 500 GB total
   Replicas: 3x
-  Raw needed: 500 GB * 3 = 1.5 TB
+  Scheduled raw: 500 GB * 3 = 1.5 TB
 
   Additional factors:
-  - Snapshots: 20% overhead
-  - OS disk: 250 GB per node (not counted in VM storage)
-  - System volume: 100 GB per node
+  - Snapshots: actual space can grow beyond the nominal volume size
+  - Longhorn free-space buffer: keep at least 25% free by default
+  - Harvester production node disk: 500 GB minimum, 1 TB or more recommended
 
-  Total per node: 1.5 TB / 3 nodes = 500 GB per node + buffer
+  Total per node: 1.5 TB / 3 nodes = 500 GB per node before buffers
 
-  Recommendation: Use 800 GB - 1 TB NVMe per node for this workload
+  Recommendation: Use ~1 TB NVMe per node for this workload
 ```
 
 ```bash
@@ -176,12 +184,12 @@ echo "Storage per node: ${PER_NODE} GB"
 ```text
 Network Bandwidth Planning:
 
-  Management network: 1 GbE is typically sufficient
-  Storage network: Calculate Longhorn replication bandwidth
-    - Worst case: 3 nodes failing simultaneously means full re-replication
-    - Target: Complete re-replication within 2-4 hours
+  Management network: 10 GbE minimum for production; 1 GbE is only suitable for development/testing
+  Storage network: Calculate Longhorn replica rebuild bandwidth
+    - Model at least a single node or disk failure and the resulting rebuild traffic
+    - Target: Complete rebuilds within 2-4 hours
     - For 1 TB of data: 1 TB / 3 hours = ~740 Mbps sustained
-    - Recommendation: 10 GbE for storage network
+    - Recommendation: 10 GbE minimum; consider a dedicated storage network to isolate Longhorn replication traffic
 
   VM network: Based on aggregate VM bandwidth requirements
     - Sum all VM network allocations
@@ -227,18 +235,18 @@ STORAGE SIZING
   NVMe capacity per node:    _____  GB or TB
 
 NETWORK SIZING
-  Management NIC:            1 GbE or 10 GbE
+  Management NIC:            10 GbE for production (1 GbE for dev/test)
   Storage NIC:               10 GbE (minimum)
   VM NIC:                    10 GbE or 25 GbE
 
 FINAL CLUSTER SIZE
   Minimum nodes for HA:      3
-  Recommended node count:    _____  (3, 5, or 7)
+  Recommended node count:    _____  (3 or more)
   Node specification:
     CPU:  _____  cores
     RAM:  _____  GB
     NVMe: _____  TB
-    NICs: 3x (management + storage + VM)
+    NICs: _____  (management, VM, and optional dedicated storage network)
 WORKSHEET
 ```
 
@@ -247,26 +255,25 @@ WORKSHEET
 After deployment, monitor actual utilization to validate and refine your sizing:
 
 ```bash
-# Check actual cluster utilization
+# Check actual cluster utilization from a Harvester management node
 export KUBECONFIG=/etc/rancher/rke2/rke2.yaml
 
 # CPU utilization
-kubectl top nodes
+kubectl top node
 
 # Memory utilization
 kubectl describe nodes | grep -A 4 "Allocated resources"
 
-# Storage utilization
-kubectl get nodes.longhorn.io -n longhorn-system \
-    -o custom-columns='NODE:.metadata.name,USED:.status.diskStatus.default-disk-1.storageScheduled,MAX:.status.diskStatus.default-disk-1.storageMaximum'
+# Longhorn storage status (inspect status.diskStatus for per-disk capacity and scheduling)
+kubectl get nodes.longhorn.io -n longhorn-system -o yaml
 
 # VM density
-kubectl get vmi -A | wc -l
-echo "VMs per node (average): $(kubectl get vmi -A | wc -l)/$(kubectl get nodes | wc -l)"
+kubectl get -A vmi --no-headers | wc -l
+echo "VMs per node (average): $(kubectl get -A vmi --no-headers | wc -l)/$(kubectl get nodes --no-headers | wc -l)"
 
 # Generate utilization report
-kubectl top nodes --sort-by=cpu
-kubectl top nodes --sort-by=memory
+kubectl top node --sort-by=cpu
+kubectl top node --sort-by=memory
 ```
 
 ## Conclusion
