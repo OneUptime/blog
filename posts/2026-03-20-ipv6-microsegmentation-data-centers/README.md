@@ -37,13 +37,13 @@ table ip6 filter {
         ct state established,related accept
 
         # Allow ICMPv6 (required for IPv6 operation)
-        ip6 nexthdr icmpv6 accept
+        meta l4proto ipv6-icmp accept
 
         # Allow HTTPS from load balancer prefix only
-        ip6 saddr 2001:db8:lb::/64 tcp dport 443 ct state new accept
+        ip6 saddr 2001:db8:100::/64 tcp dport 443 ct state new accept
 
         # Allow SSH from management network only
-        ip6 saddr 2001:db8:mgmt::/64 tcp dport 22 ct state new accept
+        ip6 saddr 2001:db8:200::/64 tcp dport 22 ct state new accept
 
         # Log and drop everything else
         log prefix "DROPPED: " drop
@@ -97,15 +97,15 @@ Calico is a popular CNI that supports IPv6 microsegmentation with GlobalNetworkP
 apiVersion: projectcalico.org/v3
 kind: GlobalNetworkPolicy
 metadata:
-  name: deny-cross-tenant
+  name: tenant-a-isolation
 spec:
-  selector: has(tenant)
+  selector: tenant == 'tenant-a'
   types:
     - Ingress
   ingress:
     - action: Allow
       source:
-        selector: tenant == 'same-tenant-label'
+        selector: tenant == 'tenant-a'
     - action: Deny
 ```
 
@@ -123,4 +123,4 @@ ipv6 access-list WORKLOAD-ISOLATION
 
 ## Conclusion
 
-IPv6 microsegmentation works at multiple layers: host-based nftables, Kubernetes NetworkPolicy, and switch ACLs. The unique per-workload address in IPv6 makes policy writing precise - you can target individual /128 addresses rather than relying on port ranges or tags.
+IPv6 microsegmentation works at multiple layers: host-based nftables, Kubernetes NetworkPolicy, and switch ACLs. The unique per-workload address in IPv6 makes policy writing precise - you can target individual /128 addresses where IP-based rules make sense, alongside label- and tag-based controls.
