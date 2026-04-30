@@ -8,7 +8,7 @@ Description: Handle, validate, parse, and use IPv6 addresses in PHP applications
 
 ## Introduction
 
-PHP provides IPv6 support through built-in functions including `filter_var()` with `FILTER_VALIDATE_IP`, `inet_pton()`, and `inet_ntop()`. PHP web applications running behind proxies need careful handling of IPv6 client addresses in `$_SERVER` superglobals.
+PHP provides IPv6 support through built-in functions including `filter_var()` with `FILTER_VALIDATE_IP`, `inet_pton()`, and `inet_ntop()`. PHP web applications running behind trusted proxies need careful handling of IPv6 client addresses in `$_SERVER` superglobals.
 
 ## Validating IPv6 Addresses
 
@@ -65,8 +65,11 @@ foreach ($addresses as $addr) {
  * e.g., "2001:db8::1" → "2001:0db8:0000:0000:0000:0000:0000:0001"
  */
 function expandIPv6(string $address): string {
-    $clean = explode('%', $address)[0];
-    // inet_pton converts to packed binary, inet_ntop back to string
+    [$clean, $zoneId] = array_pad(explode('%', $address, 2), 2, null);
+    if (filter_var($clean, FILTER_VALIDATE_IP, FILTER_FLAG_IPV6) === false) {
+        throw new InvalidArgumentException("Invalid IPv6: $address");
+    }
+    // inet_pton converts to packed binary; format the bytes back into full hextets
     $packed = inet_pton($clean);
     if ($packed === false) {
         throw new InvalidArgumentException("Invalid IPv6: $address");
@@ -74,18 +77,26 @@ function expandIPv6(string $address): string {
     // Unpack as hex, then format in groups of 4
     $hex = bin2hex($packed);
     $groups = str_split($hex, 4);
-    return implode(':', $groups);
+    $expanded = implode(':', $groups);
+
+    return $zoneId !== null && $zoneId !== '' ? $expanded . '%' . $zoneId : $expanded;
 }
 
 /**
- * Compress an IPv6 address to shortest form.
+ * Compress an IPv6 address to a shorter text form.
  */
 function compressIPv6(string $address): string {
-    $packed = inet_pton($address);
+    [$clean, $zoneId] = array_pad(explode('%', $address, 2), 2, null);
+    if (filter_var($clean, FILTER_VALIDATE_IP, FILTER_FLAG_IPV6) === false) {
+        throw new InvalidArgumentException("Invalid IPv6: $address");
+    }
+    $packed = inet_pton($clean);
     if ($packed === false) {
         throw new InvalidArgumentException("Invalid IPv6: $address");
     }
-    return inet_ntop($packed);
+    $compressed = inet_ntop($packed);
+
+    return $zoneId !== null && $zoneId !== '' ? $compressed . '%' . $zoneId : $compressed;
 }
 
 echo expandIPv6('2001:db8::1');
@@ -101,40 +112,90 @@ echo compressIPv6('2001:0db8:0000:0000:0000:0000:0000:0001');
 <?php
 
 /**
- * Get the real client IP address from the request,
- * handling IPv6, IPv4-mapped IPv6, and proxy headers.
+ * Normalize a client or proxy IP address.
  */
-function getClientIP(): string {
-    // Check proxy headers (order of trust)
-    $headers = [
-        'HTTP_CF_CONNECTING_IP',     // Cloudflare
-        'HTTP_X_FORWARDED_FOR',
-        'HTTP_X_REAL_IP',
-        'REMOTE_ADDR',
-    ];
+function normalizeIP(string $ip): ?string {
+    $ip = trim($ip);
+    if ($ip === '') {
+        return null;
+    }
 
-    foreach ($headers as $header) {
-        if (!empty($_SERVER[$header])) {
-            // X-Forwarded-For can be a comma-separated list
-            $ip = trim(explode(',', $_SERVER[$header])[0]);
+    // Zone IDs are only locally significant and are not used in proxy headers
+    $ip = explode('%', $ip, 2)[0];
 
-            // Remove IPv4-mapped IPv6 prefix
-            $ip = preg_replace('/^::ffff:/i', '', $ip);
+    if (filter_var($ip, FILTER_VALIDATE_IP, FILTER_FLAG_IPV6)) {
+        // Convert IPv4-mapped IPv6 (for example ::ffff:192.0.2.1) to plain IPv4
+        $packed = inet_pton($ip);
+        if (
+            $packed !== false &&
+            substr($packed, 0, 12) === str_repeat("\x00", 10) . "\xff\xff"
+        ) {
+            return inet_ntop(substr($packed, 12));
+        }
 
-            // Strip zone ID
-            $ip = explode('%', $ip)[0];
+        return $ip;
+    }
 
-            if (filter_var($ip, FILTER_VALIDATE_IP)) {
-                return $ip;
+    if (filter_var($ip, FILTER_VALIDATE_IP, FILTER_FLAG_IPV4)) {
+        return $ip;
+    }
+
+    return null;
+}
+
+/**
+ * Get the client IP address when the app is behind a trusted proxy or CDN.
+ */
+function getClientIP(array $trustedProxies = []): string {
+    $remoteAddr = normalizeIP($_SERVER['REMOTE_ADDR'] ?? '');
+    if ($remoteAddr === null) {
+        return '0.0.0.0';
+    }
+
+    // If the direct peer is not trusted, ignore forwarding headers.
+    if (!in_array($remoteAddr, $trustedProxies, true)) {
+        return $remoteAddr;
+    }
+
+    // Cloudflare sends this header when traffic reaches your origin through Cloudflare.
+    if (!empty($_SERVER['HTTP_CF_CONNECTING_IP'])) {
+        $cfIP = normalizeIP($_SERVER['HTTP_CF_CONNECTING_IP']);
+        if ($cfIP !== null) {
+            return $cfIP;
+        }
+    }
+
+    if (!empty($_SERVER['HTTP_X_FORWARDED_FOR'])) {
+        $forwarded = array_values(array_filter(array_map(
+            'normalizeIP',
+            explode(',', $_SERVER['HTTP_X_FORWARDED_FOR'])
+        )));
+
+        // Search from the right, skipping trusted proxies, and return the
+        // first untrusted address in the chain.
+        for ($i = count($forwarded) - 1; $i >= 0; $i--) {
+            if (!in_array($forwarded[$i], $trustedProxies, true)) {
+                return $forwarded[$i];
             }
         }
     }
 
-    return '0.0.0.0';
+    if (!empty($_SERVER['HTTP_X_REAL_IP'])) {
+        $realIP = normalizeIP($_SERVER['HTTP_X_REAL_IP']);
+        if ($realIP !== null) {
+            return $realIP;
+        }
+    }
+
+    return $remoteAddr;
 }
 
-$clientIP = getClientIP();
-$isIPv6 = filter_var($clientIP, FILTER_VALIDATE_IP, FILTER_FLAG_IPV6);
+$trustedProxies = [
+    '203.0.113.10', // Replace with your reverse proxy or load balancer IP
+];
+
+$clientIP = getClientIP($trustedProxies);
+$isIPv6 = filter_var($clientIP, FILTER_VALIDATE_IP, FILTER_FLAG_IPV6) !== false;
 echo "Client IP: $clientIP (" . ($isIPv6 ? 'IPv6' : 'IPv4') . ")";
 ```
 
@@ -147,8 +208,26 @@ echo "Client IP: $clientIP (" . ($isIPv6 ? 'IPv6' : 'IPv4') . ")";
  * Check if an IPv6 address belongs to a given CIDR block.
  */
 function ipv6InCidr(string $ip, string $cidr): bool {
-    [$network, $prefix] = explode('/', $cidr);
+    $parts = explode('/', $cidr, 2);
+    if (count($parts) !== 2 || !ctype_digit($parts[1])) {
+        return false;
+    }
+
+    [$network, $prefix] = $parts;
     $prefix = (int) $prefix;
+    if ($prefix < 0 || $prefix > 128) {
+        return false;
+    }
+
+    $ip = explode('%', $ip, 2)[0];
+    $network = explode('%', $network, 2)[0];
+
+    if (
+        filter_var($ip, FILTER_VALIDATE_IP, FILTER_FLAG_IPV6) === false ||
+        filter_var($network, FILTER_VALIDATE_IP, FILTER_FLAG_IPV6) === false
+    ) {
+        return false;
+    }
 
     // Convert addresses to packed binary
     $ipBinary = inet_pton($ip);
@@ -191,7 +270,7 @@ if ($result === false) {
 }
 
 // Send and receive data
-socket_write($socket, "GET / HTTP/1.0\r\nHost: [2001:db8::1]\r\n\r\n");
+socket_write($socket, "GET / HTTP/1.1\r\nHost: [2001:db8::1]:8080\r\nConnection: close\r\n\r\n");
 $response = socket_read($socket, 4096);
 echo $response;
 socket_close($socket);
@@ -204,14 +283,24 @@ socket_close($socket);
 
 /**
  * Format an IP address for use in a URL.
- * IPv6 addresses require bracket notation per RFC 2732.
+ * IPv6 addresses require bracket notation per RFC 3986.
+ * Scoped IPv6 zone IDs use %25 encoding per RFC 6874.
  */
 function formatIPForUrl(string $ip): string {
-    $clean = explode('%', $ip)[0];
-    if (filter_var($clean, FILTER_VALIDATE_IP, FILTER_FLAG_IPV6)) {
-        return "[{$clean}]";
+    if (filter_var($ip, FILTER_VALIDATE_IP, FILTER_FLAG_IPV4)) {
+        return $ip;
     }
-    return $clean;
+
+    [$address, $zoneId] = array_pad(explode('%', $ip, 2), 2, null);
+    if (filter_var($address, FILTER_VALIDATE_IP, FILTER_FLAG_IPV6) === false) {
+        throw new InvalidArgumentException("Invalid IP address: $ip");
+    }
+
+    if ($zoneId !== null && $zoneId !== '') {
+        return '[' . $address . '%25' . rawurlencode($zoneId) . ']';
+    }
+
+    return "[{$address}]";
 }
 
 $ipv6 = '2001:db8::1';
@@ -221,4 +310,4 @@ echo $url;  // https://[2001:db8::1]:443/api/v1
 
 ## Conclusion
 
-PHP handles IPv6 through `filter_var()` with `FILTER_FLAG_IPV6`, `inet_pton()`/`inet_ntop()` for binary conversion, and `AF_INET6` for socket creation. Always strip zone IDs and IPv4-mapped prefixes when processing client IP addresses, and use bracket notation when building IPv6 URLs.
+PHP handles IPv6 through `filter_var()` with `FILTER_FLAG_IPV6`, `inet_pton()`/`inet_ntop()` for binary conversion, and `AF_INET6` for socket creation. Strip zone IDs before pure address validation or comparison, trust proxy headers only for known proxies or CDNs, and use bracket notation when building IPv6 URLs (with `%25` zone ID encoding for scoped addresses).
