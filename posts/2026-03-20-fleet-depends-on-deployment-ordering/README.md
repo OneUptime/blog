@@ -21,10 +21,7 @@ This guide covers how to configure bundle dependencies to ensure correct deploym
 
 ## Understanding dependsOn
 
-The `dependsOn` field in `fleet.yaml` tells Fleet that a bundle should not be deployed until the specified bundles are in the `Ready` state. Fleet checks:
-1. The referenced bundle exists
-2. The referenced bundle has `status.summary.ready` equal to `status.summary.desiredReady`
-3. No clusters are in `NotReady` or `Modified` state for the referenced bundle
+The `dependsOn` field in `fleet.yaml` tells Fleet that a bundle should not be deployed until the specified dependencies are in an accepted state. By default, the accepted state is `Ready`, but you can use `acceptedStates` to allow other bundle states such as `Modified`. Dependencies can be referenced by bundle name or by label selector.
 
 ## Basic Dependency Configuration
 
@@ -70,7 +67,6 @@ namespace: my-app
 # Wait for namespaces bundle to be Ready before deploying
 dependsOn:
   - name: app-stack-01-namespaces
-    namespace: fleet-default
 
 targets:
   - clusterSelector: {}
@@ -83,7 +79,6 @@ namespace: my-app
 # Wait for database bundle to be Ready
 dependsOn:
   - name: app-stack-02-database
-    namespace: fleet-default
 
 targets:
   - clusterSelector: {}
@@ -96,7 +91,6 @@ namespace: my-app
 # Wait for backend to be Ready
 dependsOn:
   - name: app-stack-03-backend
-    namespace: fleet-default
 
 targets:
   - clusterSelector: {}
@@ -114,13 +108,10 @@ namespace: my-app
 dependsOn:
   # Database must be ready
   - name: app-stack-02-database
-    namespace: fleet-default
   # Message queue must be ready
   - name: platform-rabbitmq
-    namespace: fleet-default
   # Shared config must be ready
   - name: platform-shared-config
-    namespace: fleet-default
 
 targets:
   - clusterSelector: {}
@@ -128,7 +119,7 @@ targets:
 
 ## Cross-GitRepo Dependencies
 
-Dependencies can reference bundles from different GitRepo resources:
+Dependencies can reference bundles from different GitRepo resources in the same Fleet workspace namespace:
 
 ```yaml
 # apps/my-service/fleet.yaml
@@ -138,11 +129,9 @@ namespace: my-service
 dependsOn:
   # Wait for the ingress controller (from infrastructure GitRepo)
   - name: infrastructure-ingress-nginx
-    namespace: fleet-default
 
   # Wait for cert-manager (from platform GitRepo)
   - name: platform-cert-manager
-    namespace: fleet-default
 
 targets:
   - clusterSelector:
@@ -180,10 +169,8 @@ namespace: monitoring
 dependsOn:
   # Monitoring requires CRDs to be installed first
   - name: platform-crds
-    namespace: fleet-default
   # Monitoring ingress requires ingress controller
   - name: platform-ingress-nginx
-    namespace: fleet-default
 
 targets:
   - clusterSelector: {}
@@ -196,11 +183,8 @@ namespace: applications
 dependsOn:
   # All platform components must be ready first
   - name: platform-cert-manager
-    namespace: fleet-default
   - name: platform-ingress-nginx
-    namespace: fleet-default
   - name: platform-monitoring
-    namespace: fleet-default
 
 targets:
   - clusterSelector: {}
@@ -209,9 +193,9 @@ targets:
 ## Viewing Dependency Relationships
 
 ```bash
-# Check if a bundle is waiting on dependencies
-kubectl describe bundle app-stack-03-backend -n fleet-default \
-  | grep -A 10 "Waiting"
+# Check if a bundle is blocked by a dependency
+kubectl get bundle app-stack-03-backend -n fleet-default \
+  -o jsonpath='{.status.summary.nonReadyResources}{"\n"}'
 
 # View the dependsOn configuration of a bundle
 kubectl get bundle app-stack-03-backend -n fleet-default \
@@ -225,21 +209,26 @@ kubectl get bundles -n fleet-default \
 ## Troubleshooting Dependency Issues
 
 ```bash
-# Bundle stuck waiting? Check the dependency
-kubectl describe bundle app-stack-03-backend -n fleet-default
+# Bundle stuck waiting? Check the non-ready details
+kubectl get bundle app-stack-03-backend -n fleet-default \
+  -o jsonpath='{.status.summary.nonReadyResources}{"\n"}'
 
 # Verify the dependency bundle exists and is ready
-kubectl get bundle app-stack-02-database -n fleet-default
+kubectl get bundle app-stack-02-database -n fleet-default \
+  -o jsonpath='{.status.display.state}{"\n"}'
 
 # Check for naming mismatches
-# Bundle names follow the pattern: <gitrepo-name>-<path-with-dashes>
+# Bundle names are usually <gitrepo-name>-<path-with-dashes>, unless name is set in fleet.yaml;
+# long names are truncated with a hash suffix
 kubectl get bundles -n fleet-default | grep "app-stack"
 
-# Force a re-evaluation
-kubectl annotate gitrepo my-app-stack \
+# Force a re-evaluation by incrementing spec.forceSyncGeneration
+CURRENT_FORCE_SYNC=$(kubectl get gitrepo my-app-stack -n fleet-default \
+  -o jsonpath='{.spec.forceSyncGeneration}')
+kubectl patch gitrepo my-app-stack \
   -n fleet-default \
-  fleet.cattle.io/commit="" \
-  --overwrite
+  --type=merge \
+  -p "{\"spec\":{\"forceSyncGeneration\":$(( ${CURRENT_FORCE_SYNC:-0} + 1 ))}}"
 ```
 
 ## Conclusion
