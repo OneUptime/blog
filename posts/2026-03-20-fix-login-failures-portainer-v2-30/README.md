@@ -2,37 +2,46 @@
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
-Tags: Portainer, Troubleshooting, Authentication, Login, V2.30, JWT, Upgrade
+Tags: Portainer, Troubleshooting, Authentication, Login, V2.30, Upgrade
 
-Description: Learn how to fix login failures introduced in Portainer v2.30.0, including JWT changes, admin password reset procedures, and database migration issues.
+Description: Learn how to fix login failures after upgrading to Portainer v2.30.0, including cached browser state, reverse proxy origin errors, admin password reset procedures, and safe rollback steps.
 
 ---
 
-Portainer v2.30.0 introduced changes to the JWT token format and session handling. Users upgrading from earlier versions may find themselves locked out or unable to log in with correct credentials.
+After upgrading to Portainer v2.30.0, some users may hit login failures caused by stale browser-side authentication state or the known reverse proxy `Origin invalid` issue documented for this release.
 
 ## Step 1: Clear Browser State
 
-Before anything else, clear all browser-stored Portainer state:
+Before anything else, rule out stale browser state after the upgrade:
 
 ```bash
 # In browser DevTools (F12) > Application > Storage > Clear site data
-
-# This removes stored JWTs, cookies, and cached login state
+# Or test the login flow in a private/incognito window first
+#
+# This clears cached tokens, cookies, and local storage that can block
+# authentication after an update
 ```
 
 ## Step 2: Check for CSRF / Origin Validation Changes
 
-v2.30.0 tightened origin validation. If you access Portainer via IP and the `--http-disabled` or `--ssl` flags changed, you may see login rejections:
+Portainer v2.30.0 has a documented known issue where deployments behind some reverse proxies may return `Forbidden - Origin invalid` during login:
 
 ```bash
 # Check Portainer logs for origin errors
-docker logs portainer 2>&1 | grep -i "origin\|csrf\|referer\|forbidden"
+docker logs portainer 2>&1 | grep -Ei "origin|csrf|referer|forbidden"
 ```
 
-If origin errors appear, set the `--base-url` flag to match how you access Portainer:
+If origin errors appear, update to `2.31.3` or newer. When Portainer is behind a reverse proxy, use the documented `--trusted-origins` option (or `TRUSTED_ORIGINS` environment variable) with the hostname you use to access Portainer:
 
 ```bash
-docker run ... portainer/portainer-ce:latest --base-url /portainer
+docker stop portainer && docker rm portainer
+
+docker run -d --name portainer \
+  -p 9443:9443 -p 8000:8000 \
+  -v /var/run/docker.sock:/var/run/docker.sock \
+  -v portainer_data:/data \
+  portainer/portainer-ce:2.31.3 \
+  --trusted-origins portainer.example.com
 ```
 
 ## Step 3: Reset the Admin Password
@@ -43,8 +52,9 @@ If you cannot log in with the correct password:
 # Stop Portainer
 docker stop portainer
 
-# Reset the admin password using the reset utility
-docker run --rm -v portainer_data:/data portainer/helper-reset-password:latest
+# Pull and run the reset utility against the Portainer data volume
+docker pull portainer/helper-reset-password
+docker run --rm -v portainer_data:/data portainer/helper-reset-password
 
 # The output will show a new random password
 # Use it to log in, then change it in the UI
@@ -55,31 +65,33 @@ docker start portainer
 
 ```bash
 # Look for migration errors in the startup logs
-docker logs portainer 2>&1 | grep -i "migration\|migrate\|database"
+docker logs portainer 2>&1 | grep -Ei "migration|migrate|database"
 
-# If there are migration failures, try rolling back one version
+# Portainer cannot use a newer database on an older version.
+# If you need to roll back, restore the automatic DB backup first.
 docker stop portainer && docker rm portainer
 
-# Run the previous version against the existing data
-docker run -d --name portainer \
-  -v portainer_data:/data \
-  portainer/portainer-ce:2.29.3
+docker run --rm -v portainer_data:/data alpine sh -c \
+  'mv /data/portainer.db /data/portainer.db.oldversion && \
+   cp /data/backups/portainer.db.bak /data/portainer.db'
+
+# Start Portainer again using the exact image tag you were running before
+# the upgrade. The version must match the backed up database.
 ```
 
-## Step 5: Verify JWT Secret Integrity
+## Step 5: Verify the URL and Protocol You Are Using
 
-v2.30.0 changed how the JWT signing key is stored. If the key was regenerated during upgrade:
+Portainer serves HTTPS on `9443` by default. If your upgrade also changed published ports or disabled HTTP, make sure you are signing in to the correct URL for your deployment:
 
 ```bash
-# All existing sessions are invalid when the JWT key changes
-# Simply log in again with your credentials
-# If credentials are rejected, reset the admin password (Step 3)
+# Example default URL for current Portainer deployments
+# https://your-hostname:9443
 ```
 
 ## Step 6: Check LDAP/OAuth Configuration
 
-If using external authentication, v2.30.0 changed some LDAP query formats:
+If using external authentication, re-test the configuration stored under **Settings > Authentication**. For LDAP, Portainer specifically recommends rechecking the configured service account credentials and running the built-in connectivity check:
 
 1. Go to **Settings > Authentication**.
 2. Re-enter and re-test your LDAP/OAuth configuration.
-3. Check for changes in the v2.30.0 release notes for your auth provider.
+3. For LDAP, run the connectivity check before saving changes.
