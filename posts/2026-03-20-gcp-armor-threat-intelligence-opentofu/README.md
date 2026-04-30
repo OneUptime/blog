@@ -8,7 +8,7 @@ Description: Learn how to configure GCP Cloud Armor Threat Intelligence with Ope
 
 ## Overview
 
-GCP Cloud Armor Threat Intelligence (available with Cloud Armor Managed Protection) automatically blocks traffic from known malicious sources including Tor exit nodes, anonymous proxies, and IP addresses on Google's threat intelligence lists.
+Google Threat Intelligence in Cloud Armor is available to Cloud Armor Enterprise subscribers and lets you allow or block traffic to external Application Load Balancers based on Google's threat intelligence feeds, including Tor exit nodes, anonymous proxies, and known malicious IP addresses.
 
 ## Step 1: Create a Security Policy with Threat Intelligence
 
@@ -17,7 +17,7 @@ GCP Cloud Armor Threat Intelligence (available with Cloud Armor Managed Protecti
 
 resource "google_compute_security_policy" "threat_intel_policy" {
   name        = "threat-intelligence-policy"
-  description = "WAF policy with Threat Intelligence feeds enabled"
+  description = "Security policy with Threat Intelligence feeds enabled"
   type        = "CLOUD_ARMOR"
 
   # Adaptive Protection for DDoS and application attacks
@@ -28,25 +28,25 @@ resource "google_compute_security_policy" "threat_intel_policy" {
     }
   }
 
-  # Rule 1: Block Tor exit nodes
+  # Rule 1: Block known malicious IP addresses
   rule {
     action   = "deny(403)"
     priority = 1000
-    description = "Block traffic from Tor exit nodes"
+    description = "Block traffic from known malicious IP addresses"
 
     match {
       expr {
-        # Threat intelligence expression for Tor exit nodes
+        # Threat intelligence expression for known malicious IP addresses
         expression = "evaluateThreatIntelligence('iplist-known-malicious-ips')"
       }
     }
   }
 
-  # Rule 2: Block anonymous proxies and VPNs
+  # Rule 2: Block anonymous proxies
   rule {
     action   = "deny(403)"
     priority = 1100
-    description = "Block anonymous proxies and VPNs"
+    description = "Block traffic from anonymous proxies"
 
     match {
       expr {
@@ -84,10 +84,10 @@ resource "google_compute_security_policy" "threat_intel_policy" {
 }
 ```
 
-## Step 2: Add WAF Preconfigured Rules
+## Step 2: Create a Combined Policy with WAF Rules
 
 ```hcl
-# Add OWASP Top 10 protection alongside Threat Intelligence
+# Combine OWASP Top 10 protection with Threat Intelligence
 resource "google_compute_security_policy" "combined_policy" {
   name = "combined-security-policy"
 
@@ -98,7 +98,7 @@ resource "google_compute_security_policy" "combined_policy" {
 
     match {
       expr {
-        expression = "evaluatePreconfiguredExpr('sqli-stable')"
+        expression = "evaluatePreconfiguredWaf('sqli-v422-stable')"
       }
     }
   }
@@ -110,12 +110,12 @@ resource "google_compute_security_policy" "combined_policy" {
 
     match {
       expr {
-        expression = "evaluatePreconfiguredExpr('xss-stable')"
+        expression = "evaluatePreconfiguredWaf('xss-v422-stable')"
       }
     }
   }
 
-  # Threat Intelligence block
+  # Threat Intelligence: known malicious IP addresses
   rule {
     action   = "deny(403)"
     priority = 1000
@@ -123,6 +123,30 @@ resource "google_compute_security_policy" "combined_policy" {
     match {
       expr {
         expression = "evaluateThreatIntelligence('iplist-known-malicious-ips')"
+      }
+    }
+  }
+
+  # Threat Intelligence: anonymous proxies
+  rule {
+    action   = "deny(403)"
+    priority = 1100
+
+    match {
+      expr {
+        expression = "evaluateThreatIntelligence('iplist-anon-proxies')"
+      }
+    }
+  }
+
+  # Threat Intelligence: Tor exit nodes
+  rule {
+    action   = "deny(403)"
+    priority = 1200
+
+    match {
+      expr {
+        expression = "evaluateThreatIntelligence('iplist-tor-exit-nodes')"
       }
     }
   }
@@ -149,19 +173,20 @@ resource "google_compute_security_policy" "combined_policy" {
 resource "google_compute_backend_service" "protected_backend" {
   name                  = "threat-intel-protected-backend"
   protocol              = "HTTP"
+  port_name             = "http"
   load_balancing_scheme = "EXTERNAL_MANAGED"
 
   backend {
     group = google_compute_instance_group_manager.web_mig.instance_group
   }
 
-  health_checks = [google_compute_health_check.http_hc.id]
+  health_checks = [google_compute_health_check.http_hc.self_link]
 
   # Apply the Cloud Armor security policy
-  security_policy = google_compute_security_policy.combined_policy.id
+  security_policy = google_compute_security_policy.combined_policy.self_link
 }
 ```
 
 ## Summary
 
-GCP Cloud Armor Threat Intelligence with OpenTofu integrates Google's threat intelligence feeds directly into your WAF policy. By blocking Tor exit nodes, anonymous proxies, and known malicious IPs alongside OWASP protections, you create a comprehensive defense-in-depth approach that reduces attack surface without manually maintaining IP blocklists.
+Cloud Armor Threat Intelligence with OpenTofu lets Cloud Armor Enterprise subscribers enforce Google's threat intelligence feeds directly in a backend security policy. By blocking Tor exit nodes, anonymous proxies, and known malicious IPs alongside OWASP protections, you create a comprehensive defense-in-depth approach that reduces attack surface without manually maintaining IP blocklists.
