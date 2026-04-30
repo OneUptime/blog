@@ -32,25 +32,23 @@ networking:
   
   # IP family policy for services
   # Options: SingleStack, PreferDualStack, RequireDualStack
-  ipFamilyPolicy: SingleStack
+  # PreferDualStack falls back to single-stack on IPv4-only clusters
+  ipFamilyPolicy: PreferDualStack
   
-  # IP families (IPv4, IPv6, or both)
-  ipFamilies:
-    - IPv4
+  # Optional IP family order override for dual-stack Services
+  ipFamilies: []
 
 # Service configuration
 service:
   type: ClusterIP
   port: 80
-  # IPv6 cluster IP (leave empty for auto-assign)
-  ipv6ClusterIP: ""
+  # ClusterIP (leave empty for auto-assign)
+  clusterIP: ""
 
 # Ingress configuration
 ingress:
   enabled: false
-  annotations:
-    # IPv6 Nginx annotation
-    nginx.ingress.kubernetes.io/ipv6-enabled: "true"
+  annotations: {}
 ```
 
 ## Template for Dual-Stack Services
@@ -65,8 +63,10 @@ spec:
   type: {{ .Values.service.type }}
   {{- if .Values.networking.ipv6.enabled }}
   ipFamilyPolicy: {{ .Values.networking.ipFamilyPolicy | default "PreferDualStack" }}
+  {{- with .Values.networking.ipFamilies }}
   ipFamilies:
-    {{- toYaml .Values.networking.ipFamilies | nindent 4 }}
+    {{- toYaml . | nindent 4 }}
+  {{- end }}
   {{- end }}
   ports:
     - port: {{ .Values.service.port }}
@@ -101,7 +101,7 @@ Wraps IPv6 addresses in brackets.
 # Install with IPv6 enabled
 helm install myapp ./mychart   --set networking.ipv6.enabled=true   --set networking.ipFamilyPolicy=PreferDualStack
 
-# Verify service has IPv6 cluster IP
+# Verify service has dual-stack cluster IPs
 kubectl get svc myapp -o jsonpath='{.spec.clusterIPs}'
 
 # Run helm tests
@@ -112,12 +112,20 @@ helm test myapp
 
 ```json
 {
-  "$schema": "http://json-schema.org/schema#",
+  "$schema": "https://json-schema.org/draft-07/schema#",
   "type": "object",
   "properties": {
     "networking": {
       "type": "object",
       "properties": {
+        "ipv6": {
+          "type": "object",
+          "properties": {
+            "enabled": {
+              "type": "boolean"
+            }
+          }
+        },
         "ipFamilyPolicy": {
           "type": "string",
           "enum": ["SingleStack", "PreferDualStack", "RequireDualStack"]
