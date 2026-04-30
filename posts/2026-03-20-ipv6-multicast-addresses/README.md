@@ -8,7 +8,7 @@ Description: Understand the structure, scopes, and common uses of IPv6 multicast
 
 ## Introduction
 
-IPv6 multicast addresses (ff00::/8) replace both IPv4 multicast and broadcast. In IPv6, there is no broadcast - every use case that relied on broadcast in IPv4 now uses multicast. Understanding multicast is essential for IPv6 networking, as protocols like NDP, DHCPv6, and MLD all rely on it.
+IPv6 multicast addresses (ff00::/8) are the IPv6 mechanism for multicast and replace broadcast from IPv4. In IPv6, there is no broadcast - protocols that relied on broadcast in IPv4 typically use multicast instead. Understanding multicast is essential for IPv6 networking, as protocols like NDP, DHCPv6, and MLD all rely on it.
 
 ## Multicast Address Structure
 
@@ -19,7 +19,7 @@ An IPv6 multicast address starts with `ff` and has this layout:
 |  0xff  | flags  | scope  | Group ID  |
 ```
 
-- **Flags (4 bits)**: `0` = well-known IANA address, `1` = transient/dynamically assigned
+- **Flags (4 bits)**: The low-order `T` flag distinguishes `0` = permanently assigned (well-known/IANA) from `1` = transient/dynamically assigned; the other flag bits are used by specific multicast address formats
 - **Scope (4 bits)**: Defines the reach of the multicast group
 - **Group ID**: Identifies the multicast group
 
@@ -29,13 +29,13 @@ The scope nibble controls how far multicast traffic can propagate:
 
 | Scope | Value | Description |
 |---|---|---|
-| Interface-local | 1 | Loopback only, never forwarded |
+| Interface-local | 1 | Single interface on a node, never forwarded |
 | Link-local | 2 | Single link, not forwarded by routers |
 | Realm-local | 3 | Larger than link but topologically determined |
 | Admin-local | 4 | Smallest administratively scoped region |
 | Site-local | 5 | Single site, not beyond site boundary |
 | Organization-local | 8 | Across an entire organization |
-| Global | e | No boundary (internet-wide) |
+| Global | e | No scope boundary |
 
 ## Well-Known Multicast Addresses
 
@@ -50,8 +50,8 @@ ff02::9  - All RIPng routers
 ff02::a  - All EIGRP routers
 ff02::d  - All PIM routers
 ff02::16 - All MLDv2-capable routers
-ff02::1:2 - All DHCPv6 servers/relay agents
-ff02::1:3 - All DHCPv6 servers
+ff02::1:2 - All DHCPv6 relay agents and servers
+ff02::1:3 - Link-local Multicast Name Resolution (LLMNR)
 ff05::1:3 - All DHCPv6 servers (site-local)
 ```
 
@@ -78,7 +78,7 @@ def solicited_node(unicast_addr):
     addr_int = int(addr)
     last_24 = addr_int & 0xFFFFFF
     # Combine with solicited-node prefix ff02::1:ff00:0
-    prefix = 0xff020000000000000000000100ff0000
+    prefix = int(ipaddress.IPv6Address("ff02::1:ff00:0"))
     sn_addr = ipaddress.IPv6Address(prefix | last_24)
     return sn_addr
 
@@ -112,11 +112,11 @@ Example output:
 MLD is the IPv6 equivalent of IGMP for managing multicast group memberships. Routers use MLD to track which hosts on a link want which multicast groups:
 
 ```bash
-# Check MLD statistics on Linux
+# Inspect IPv6 multicast/MLD membership state on Linux
 cat /proc/net/igmp6
 
 # Monitor MLD messages with tcpdump
-sudo tcpdump -i eth0 -vv "ip6[6] == 0 and ip6[40] == 58 and (ip6[42] == 130 or ip6[42] == 131 or ip6[42] == 143)"
+sudo tcpdump -i eth0 -vv "ip6[6] == 0 and ip6[40] == 58 and (ip6[48] == 130 or ip6[48] == 131 or ip6[48] == 132 or ip6[48] == 143)"
 ```
 
 ## Conclusion
