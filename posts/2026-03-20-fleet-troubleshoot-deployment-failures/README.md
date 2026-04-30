@@ -35,9 +35,9 @@ When a Fleet deployment fails, follow this systematic approach:
 
 kubectl get gitrepo -A
 
-# Look for non-Ready states
+# Inspect the current state and message for each GitRepo
 kubectl get gitrepo -A \
-  -o jsonpath='{range .items[*]}{.metadata.namespace}/{.metadata.name}: {.status.conditions[0].type}={.status.conditions[0].status} {.status.conditions[0].message}{"\n"}{end}'
+  -o jsonpath='{range .items[*]}{.metadata.namespace}/{.metadata.name}: {.status.display.state} {.status.display.message}{"\n"}{end}'
 
 # Detailed description of a specific GitRepo
 kubectl describe gitrepo my-app -n fleet-default
@@ -55,7 +55,7 @@ kubectl get gitrepo my-app -n fleet-default \
 |-------|-------|------------|
 | `failed to clone` | Authentication or network issue | Check credentials secret, network policies |
 | `branch not found` | Incorrect branch name | Verify branch exists in Git |
-| `failed to parse` | Invalid YAML syntax | Validate YAML files with `kubectl apply --dry-run` |
+| `failed to parse` | Invalid YAML syntax | Validate YAML files with `kubectl apply --dry-run=server` |
 
 ## Step 2: Check Bundle Status
 
@@ -79,9 +79,13 @@ kubectl get bundledeployments -A
 
 # Find failing bundle deployments
 kubectl get bundledeployments -A \
-  -o jsonpath='{range .items[?(@.status.ready==false)]}{.metadata.namespace}/{.metadata.name}: {.status.message}{"\n"}{end}'
+  -o jsonpath='{range .items[?(@.status.ready==false)]}{.metadata.namespace}/{.metadata.name}: {.status.display.state}{"\n"}{end}'
 
 # Get detailed error from a specific bundle deployment
+kubectl get bundledeployment my-app -n fleet-clusters-ns \
+  -o jsonpath='{.status.conditions[?(@.type=="Ready")].message}{"\n"}'
+
+# Full details for a specific bundle deployment
 kubectl describe bundledeployment my-app -n fleet-clusters-ns
 ```
 
@@ -93,6 +97,7 @@ kubectl describe bundledeployment my-app -n fleet-clusters-ns
 # Check Fleet controller logs
 kubectl logs -n cattle-fleet-system \
   -l app=fleet-controller \
+  -c fleet-controller \
   --tail=100
 
 # Check gitjob logs (handles Git operations)
@@ -103,6 +108,7 @@ kubectl logs -n cattle-fleet-system \
 # Filter for errors only
 kubectl logs -n cattle-fleet-system \
   -l app=fleet-controller \
+  -c fleet-controller \
   | grep -i "error\|failed\|warn"
 ```
 
@@ -126,17 +132,23 @@ kubectl logs -n cattle-fleet-system \
 ### Git Authentication Failures
 
 ```bash
-# Symptoms: GitRepo shows "FailedSync" with authentication error
-kubectl get events -n fleet-default \
-  --field-selector reason=FailedSync
+# Check the GitRepo Ready condition message
+kubectl get gitrepo my-app -n fleet-default \
+  -o jsonpath='{.status.conditions[?(@.type=="Ready")].message}{"\n"}'
+
+# Check gitjob controller logs on the management cluster
+kubectl logs -n cattle-fleet-system \
+  -l app=gitjob \
+  --tail=100
 
 # Check if secret exists and has correct keys
 kubectl get secret my-git-auth -n fleet-default -o jsonpath='{.data}' | \
   python3 -c "import sys,json; d=json.load(sys.stdin); print(list(d.keys()))"
 
 # Test credentials manually (for HTTPS)
-curl -u "username:token" \
-  https://api.github.com/repos/my-org/my-repo
+curl --request GET \
+  --url https://api.github.com/repos/my-org/my-repo \
+  --header "Authorization: Bearer TOKEN"
 ```
 
 ### Invalid Kubernetes YAML
@@ -149,7 +161,7 @@ kubectl apply --dry-run=server -f ./my-manifest.yaml
 kubeval --strict ./my-manifest.yaml
 
 # Check what Fleet is actually applying
-kubectl describe bundle my-app -n fleet-default | grep -A 50 "Raw Resources:"
+kubectl get bundle my-app -n fleet-default -o yaml
 ```
 
 ### RBAC Permission Issues
@@ -193,10 +205,10 @@ kubectl get deployment my-app -n my-app \
 
 ```bash
 # After fixing the underlying issue, force Fleet to re-sync
-kubectl annotate gitrepo my-app \
+kubectl patch gitrepo my-app \
   -n fleet-default \
-  fleet.cattle.io/commit="" \
-  --overwrite
+  --type=merge \
+  -p "{\"spec\":{\"forceSyncGeneration\":$(date +%s)}}"
 
 # Or delete and recreate the bundle
 kubectl delete bundle my-app -n fleet-default
@@ -211,12 +223,14 @@ kubectl delete bundle my-app -n fleet-default
 # Check the bundle deployment in the cluster namespace
 kubectl get bundledeployments -A | grep my-app
 
-# Check for stuck jobs in the fleet namespace
-kubectl get jobs -n cattle-fleet-system
+# Check for git jobs in the GitRepo namespace
+kubectl get jobs -n fleet-default
 
-# Delete stuck gitjob to trigger retry
-kubectl delete job -n cattle-fleet-system \
-  -l fleet.cattle.io/repo-name=my-app
+# Force Fleet to regenerate the Git job and bundle content
+kubectl patch gitrepo my-app \
+  -n fleet-default \
+  --type=merge \
+  -p "{\"spec\":{\"forceSyncGeneration\":$(date +%s)}}"
 ```
 
 ### Issue: Fleet Agent Not Connecting
