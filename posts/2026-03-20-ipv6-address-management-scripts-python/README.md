@@ -11,13 +11,14 @@ Description: Build IPv6 address management (IPAM) scripts in Python to automate 
 ```python
 import sqlite3
 import ipaddress
-from datetime import datetime
+from datetime import datetime, timezone
 
 class IPv6IPAM:
     """Simple IPv6 IPAM using SQLite."""
 
     def __init__(self, db_path: str = "ipam.db"):
         self.conn = sqlite3.connect(db_path)
+        self.conn.execute("PRAGMA foreign_keys = ON")
         self._init_schema()
 
     def _init_schema(self):
@@ -45,6 +46,8 @@ class IPv6IPAM:
     def add_pool(self, name: str, prefix: str, description: str = ""):
         """Register an address pool."""
         net = ipaddress.ip_network(prefix, strict=True)
+        if net.version != 6:
+            raise ValueError("Pool must be an IPv6 prefix")
         self.conn.execute(
             "INSERT OR IGNORE INTO pools (name, prefix, prefixlen, description) VALUES (?,?,?,?)",
             (name, str(net.network_address), net.prefixlen, description)
@@ -64,20 +67,23 @@ class IPv6IPAM:
         pool_net = ipaddress.ip_network(f"{pool_prefix}/{pool_len}")
 
         # Get all active allocations for this pool
-        allocated = {row[0] for row in self.conn.execute(
-            "SELECT prefix FROM allocations WHERE pool_id = ? AND released_at IS NULL",
-            (pool_id,)
-        )}
+        allocated = [
+            ipaddress.ip_network(f"{row[0]}/{row[1]}")
+            for row in self.conn.execute(
+                "SELECT prefix, prefixlen FROM allocations WHERE pool_id = ? AND released_at IS NULL",
+                (pool_id,)
+            )
+        ]
 
         # Find first unallocated subnet
         for candidate in pool_net.subnets(new_prefix=alloc_len):
-            if str(candidate.network_address) not in allocated:
+            if not any(candidate.overlaps(existing) for existing in allocated):
                 self.conn.execute(
                     """INSERT INTO allocations
                        (pool_id, prefix, prefixlen, assignee, assigned_at, notes)
                        VALUES (?,?,?,?,?,?)""",
                     (pool_id, str(candidate.network_address), alloc_len,
-                     assignee, datetime.utcnow().isoformat(), notes)
+                     assignee, datetime.now(timezone.utc).isoformat(), notes)
                 )
                 self.conn.commit()
                 result = f"{candidate.network_address}/{alloc_len}"
@@ -92,7 +98,7 @@ class IPv6IPAM:
         net = ipaddress.ip_network(prefix, strict=False)
         self.conn.execute(
             "UPDATE allocations SET released_at = ? WHERE prefix = ? AND released_at IS NULL",
-            (datetime.utcnow().isoformat(), str(net.network_address))
+            (datetime.now(timezone.utc).isoformat(), str(net.network_address))
         )
         self.conn.commit()
         print(f"Released {prefix}")
@@ -116,7 +122,7 @@ class IPv6IPAM:
 # Usage
 
 ipam = IPv6IPAM("/tmp/ipv6_ipam.db")
-ipam.add_pool("isp-home", "2001:db8:home::/40", "Home subscriber prefixes")
+ipam.add_pool("isp-home", "2001:db8:1000::/40", "Home subscriber prefixes")
 ipam.allocate("isp-home", 56, "customer-001", notes="Account ID 1001")
 ipam.allocate("isp-home", 56, "customer-002", notes="Account ID 1002")
 ipam.allocate("isp-home", 56, "customer-003")
@@ -139,12 +145,13 @@ def utilization_report(db_path: str = "ipam.db"):
 
         # Count active /56 allocations
         allocs = conn.execute(
-            "SELECT COUNT(*) FROM allocations WHERE pool_id = ? AND released_at IS NULL",
+            "SELECT COUNT(*) FROM allocations "
+            "WHERE pool_id = ? AND prefixlen = 56 AND released_at IS NULL",
             (pool_id,)
         ).fetchone()[0]
 
         # How many /56s fit in the pool?
-        total_56s = 2 ** (56 - plen)
+        total_56s = 2 ** (56 - pool_net.prefixlen) if pool_net.prefixlen <= 56 else 0
         util_pct = (allocs / total_56s) * 100 if total_56s > 0 else 0
 
         print(f"Pool: {name} ({prefix}/{plen})")
@@ -160,29 +167,55 @@ utilization_report("/tmp/ipv6_ipam.db")
 ```python
 import csv
 import ipaddress
+from datetime import datetime, timezone
 from ipv6_ipam import IPv6IPAM   # the class above
 
-def bulk_import(ipam: IPv6IPAM, csv_file: str):
+def bulk_import(ipam: IPv6IPAM, pool_name: str, csv_file: str):
     """
     Import existing allocations from CSV.
     CSV columns: prefix, assignee, notes
     """
+    pool = ipam.conn.execute(
+        "SELECT id, prefix, prefixlen FROM pools WHERE name = ?",
+        (pool_name,)
+    ).fetchone()
+    if not pool:
+        raise ValueError(f"Pool '{pool_name}' not found")
+
+    pool_id, pool_prefix, pool_len = pool
+    pool_net = ipaddress.ip_network(f"{pool_prefix}/{pool_len}")
     imported = 0
     errors = 0
-    with open(csv_file) as f:
+    with open(csv_file, newline="") as f:
         reader = csv.DictReader(f)
         for row in reader:
             try:
                 net = ipaddress.ip_network(row["prefix"], strict=False)
                 if net.version != 6:
                     continue
+                if not net.subnet_of(pool_net):
+                    raise ValueError(f"{net} is outside pool {pool_net}")
+
+                active_allocations = [
+                    ipaddress.ip_network(f"{prefix}/{prefixlen}")
+                    for prefix, prefixlen in ipam.conn.execute(
+                        "SELECT prefix, prefixlen FROM allocations "
+                        "WHERE pool_id = ? AND released_at IS NULL",
+                        (pool_id,)
+                    )
+                ]
+                if any(net.overlaps(existing) for existing in active_allocations):
+                    raise ValueError(f"{net} overlaps an existing allocation")
+
                 # Directly insert (bypasses pool allocation logic)
                 ipam.conn.execute(
                     """INSERT OR IGNORE INTO allocations
                        (pool_id, prefix, prefixlen, assignee, assigned_at, notes)
-                       VALUES (1, ?, ?, ?, datetime('now'), ?)""",
-                    (str(net.network_address), net.prefixlen,
-                     row.get("assignee", "imported"), row.get("notes", ""))
+                       VALUES (?, ?, ?, ?, ?, ?)""",
+                    (pool_id, str(net.network_address), net.prefixlen,
+                     row.get("assignee", "imported"),
+                     datetime.now(timezone.utc).isoformat(),
+                     row.get("notes", ""))
                 )
                 imported += 1
             except Exception as e:
@@ -194,4 +227,4 @@ def bulk_import(ipam: IPv6IPAM, csv_file: str):
 
 ## Conclusion
 
-A Python IPv6 IPAM script uses `ipaddress.ip_network()` to enumerate candidate prefixes and SQLite to track allocations. The core algorithm iterates subnets of a pool with `pool_net.subnets(new_prefix=alloc_len)` and checks the first candidate not in the allocated set. Generate utilization reports by comparing active allocation count to total capacity (`2 ** (56 - pool_prefixlen)` for /56s from a pool). For production use, replace SQLite with PostgreSQL and add REST API endpoints via FastAPI. Integrate with your RADIUS or Kea DHCP server to automatically provision the allocated prefix as a `Delegated-IPv6-Prefix` attribute for new subscriber sessions.
+A Python IPv6 IPAM script uses `ipaddress.ip_network()` to enumerate candidate prefixes and SQLite to track allocations. The core algorithm iterates subnets of a pool with `pool_net.subnets(new_prefix=alloc_len)` and checks the first candidate that does not overlap any active allocation. Generate utilization reports by comparing active `/56` allocation count to total capacity (`2 ** (56 - pool_prefixlen)` when the pool prefix length is `/56` or shorter). For production use, replace SQLite with PostgreSQL and add REST API endpoints via FastAPI. Integrate with your RADIUS server to provision the allocated prefix as a `Delegated-IPv6-Prefix` attribute for new subscriber sessions, or with a Kea DHCP server to automate DHCPv6 prefix delegation from configured `pd-pools`.
