@@ -8,44 +8,47 @@ Description: Understand why IPv6 mandates a minimum link MTU of 1280 bytes, how 
 
 ## Introduction
 
-RFC 8200 mandates that every link carrying IPv6 traffic must support a minimum MTU of 1280 bytes. This is significantly higher than IPv4's theoretical minimum (68 bytes) and practical recommendations (576 bytes). The 1280-byte minimum was chosen to ensure that every IPv6 link can carry a minimally useful packet without requiring fragmentation, simplifying the network stack.
+RFC 8200 mandates that every link carrying IPv6 traffic must support a minimum MTU of 1280 bytes. This is significantly higher than IPv4's 68-byte minimum forwardable datagram size and 576-byte minimum reassembly capability. The 1280-byte minimum provides a guaranteed floor for useful IPv6 packet size and simplifies interoperability across links and tunnels.
 
 ## Why 1280 Bytes?
 
-The 1280-byte minimum was set to satisfy several constraints simultaneously:
+A practical way to think about the 1280-byte minimum is:
 
 ```text
 Design requirements for the IPv6 minimum MTU:
 
 1. Must be larger than IPv6 base header (40 bytes) by a useful amount
    → At 1280 bytes: 1280 - 40 = 1240 bytes of payload available
-   → At the minimum, a single PMTU discovery probe fits without fragmentation
+   → Even a node that does not implement PMTU Discovery can still send a full 1280-byte packet
 
-2. Must accommodate any possible extension header combination
+2. Must still leave useful payload even when small extension headers are present
    → A single Hop-by-Hop option: 8 bytes
    → Fragment header: 8 bytes
    → 1280 - 40 - 8 - 8 = 1224 bytes payload → still useful
 
 3. Should be large enough for common upper-layer protocols
    → DNS over UDP: typical query/response < 512 bytes (easily fits)
-   → ICMPv6 error messages include at minimum the first 1280 bytes of offending packet
+   → ICMPv6 error messages include as much of the offending packet as possible without exceeding the minimum IPv6 MTU
    → NDP messages fit easily in 1280 bytes
 
-4. Provides 2× the IPv4 practical minimum (576 bytes)
-   → Signals that IPv6 paths should have reasonable capacity
+4. Serves as the conservative fallback size when PMTU Discovery is not used
+   → Minimal IPv6 implementations may simply send packets no larger than 1280 bytes
+   → PMTU Discovery is used to take advantage of larger paths
 ```
 
 ## Comparison with IPv4 Minimums
 
 ```text
 IPv4:
-  RFC 791: Minimum MTU = 68 bytes
-  RFC 1191: Recommended minimum = 576 bytes
+  RFC 791: Minimum forwardable datagram = 68 bytes
+  RFC 791: Minimum reassembly size = 576 bytes
+  RFC 1191: PMTU Discovery must not reduce PMTU below 68 bytes
   Practice: Most networks use 1500 bytes (Ethernet)
 
 IPv6:
   RFC 8200: Minimum MTU = 1280 bytes (MANDATORY)
-  RFC 8201: Recommended PMTU = at least 1280 bytes
+  RFC 8201: Nodes not using PMTU Discovery use 1280 bytes as the maximum packet size
+  RFC 8201: Packet Too Big messages below 1280 bytes are discarded
   Practice: Most networks use 1500 bytes (Ethernet)
   Tunnels: Often reduce to 1480 or less (overhead)
 ```
@@ -67,13 +70,13 @@ Links where MTU challenges arise:
    IPv4 (20) + GRE (4) = 24 bytes overhead
    Available for IPv6: 1500 - 24 = 1476 bytes (still > 1280 ✓)
 
-4. VPN with IPsec (worst case):
+4. VPN with IPsec (example):
    IPv4 (20) + ESP (8) + IV (16) + ICV (16) + Pad (~12) ≈ 72 bytes
    Available for IPv6: 1500 - 72 = 1428 bytes (still > 1280 ✓)
 
 5. Nested tunnels (problematic):
-   IPsec ESP tunnel + GRE + MPLS: could approach or exceed overhead
-   May require reduced outer link MTU of 9000+ (jumbo frames)
+   IPsec ESP tunnel + GRE + MPLS can consume much of the 220-byte headroom between 1500 and 1280
+   May require a larger outer link MTU (jumbo frames) or a reduced inner tunnel MTU
 ```
 
 ## Configuring MTU on IPv6 Interfaces
@@ -96,9 +99,9 @@ sudo ip link set sit0 mtu 1480
 # Check IPv6 MTU as seen by the kernel
 cat /proc/sys/net/ipv6/conf/eth0/mtu
 
-# Check if any interfaces have MTU < 1280 (would break IPv6)
+# Check if any interfaces have MTU < 1280 (below the IPv6 minimum MTU requirement)
 ip link show | awk '/mtu/ {for(i=1;i<=NF;i++) if ($i=="mtu") print $(i+1), $2}' | \
-    awk '{if ($1 < 1280) print "WARNING: " $2 " has MTU " $1 " < 1280 (IPv6 broken)"}'
+    awk '{if ($1 < 1280) print "WARNING: " $2 " has MTU " $1 " < 1280 (below IPv6 minimum)"}'
 ```
 
 ## Handling Sub-1280-MTU Links
@@ -107,52 +110,52 @@ If a link truly cannot support 1280-byte packets (rare but possible in some IoT 
 
 ```bash
 # Option 1: Increase the physical link MTU (preferred)
-# Configure the underlying link to support ≥ 1500 bytes
+# Configure the underlying link to support ≥ 1280 bytes
 
 # Option 2: Use 6LoWPAN (IPv6 over Low-Power Wireless)
 # 6LoWPAN (RFC 4944) provides header compression and fragmentation
 # for IEEE 802.15.4 links with 127-byte frames
 # The 6LoWPAN layer fragments and reassembles to/from 1280-byte IPv6 packets
 
-# The source (6LoWPAN border router) handles fragmentation
+# The 6LoWPAN adaptation layer on the sending node handles fragmentation
 # The IPv6 layer above never sees sub-1280 packets
 ```
 
 ## ICMPv6 Packet Too Big and the 1280-byte Rule
 
-RFC 8200 requires that if a Packet Too Big message specifies an MTU less than 1280 bytes, the source should send packets of exactly 1280 bytes with a Fragment Header:
+RFC 8201 requires that if a Packet Too Big message specifies an MTU less than 1280 bytes, the node must discard the message and must not reduce its PMTU estimate below 1280 bytes:
 
 ```python
-def handle_packet_too_big(notified_mtu: int, original_packet: bytes) -> dict:
+def handle_packet_too_big(notified_mtu: int, current_pmtu: int) -> dict:
     """
     Handle an ICMPv6 Packet Too Big message.
 
     Args:
         notified_mtu: The MTU value in the PTB message
-        original_packet: The packet that was too big
+        current_pmtu: Current PMTU estimate for the path
     """
     if notified_mtu < 1280:
-        # RFC 8200 Section 5: If the notified MTU < 1280, use 1280 bytes
-        # and include a Fragment Header to prevent further fragmentation issues
-        effective_mtu = 1280
-        must_fragment = True
-        print(f"PTB MTU {notified_mtu} < 1280: Use 1280 bytes with Fragment Header")
+        # RFC 8201 Section 4: Discard PTB messages that report MTU < 1280
+        # and never reduce PMTU below the IPv6 minimum link MTU.
+        effective_mtu = max(current_pmtu, 1280)
+        ignored = True
+        print(f"PTB MTU {notified_mtu} < 1280: ignore message and keep PMTU {effective_mtu}")
     else:
-        effective_mtu = notified_mtu
-        must_fragment = False
+        effective_mtu = min(current_pmtu, notified_mtu)
+        ignored = False
         print(f"PTB MTU {notified_mtu}: Update PMTU cache to {effective_mtu}")
 
     return {
         "notified_mtu": notified_mtu,
         "effective_mtu": effective_mtu,
-        "must_use_fragment_header": must_fragment,
+        "ignored_below_ipv6_minimum": ignored,
     }
 
 # Test
-print(handle_packet_too_big(1200, b""))  # Below 1280 - use 1280 + Fragment Header
-print(handle_packet_too_big(1400, b""))  # Normal case - use 1400
+print(handle_packet_too_big(1200, 1500))  # Below 1280 - ignore PTB, keep current PMTU
+print(handle_packet_too_big(1400, 1500))  # Normal case - reduce PMTU to 1400
 ```
 
 ## Conclusion
 
-IPv6's 1280-byte minimum MTU is a hard requirement that simplifies protocol design by providing a guaranteed floor for packet size. Every IPv6 implementation can assume that a 1280-byte packet will reach any destination without fragmentation at the path level. Tunnel configurations must account for encapsulation overhead to ensure they still support 1280-byte inner packets. When configuring IPv6 interfaces or tunnels, always verify that the configured MTU leaves sufficient room for the IPv6 stack to function correctly.
+IPv6's 1280-byte minimum MTU is a hard requirement that simplifies protocol design by providing a guaranteed floor for packet size. Every IPv6 implementation can assume that 1280 bytes is the conservative end-to-end packet-size floor without relying on router fragmentation; if a link cannot carry that size in one piece, fragmentation and reassembly must happen below IPv6. Tunnel configurations must account for encapsulation overhead to ensure they still support 1280-byte inner packets. When configuring IPv6 interfaces or tunnels, always verify that the configured MTU leaves sufficient room for the IPv6 stack to function correctly.
