@@ -2,13 +2,13 @@
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
-Tags: Helm, IPv6, CIDR, Network Policy, Kubernetes
+Tags: Helm, IPv6, CIDR, Ingress, Kubernetes
 
-Description: Template IPv6 CIDR ranges for network policies, service CIDR configuration, and pod CIDR settings in Helm charts.
+Description: Template IPv6-aware service settings and controller-specific CIDR annotations in Helm charts.
 
 ## Overview
 
-Template IPv6 CIDR ranges for network policies, service CIDR configuration, and pod CIDR settings in Helm charts.
+Template IPv6-aware service settings and controller-specific CIDR annotations in Helm charts.
 
 ## Helm Chart IPv6 Best Practices
 
@@ -32,25 +32,23 @@ networking:
   
   # IP family policy for services
   # Options: SingleStack, PreferDualStack, RequireDualStack
-  ipFamilyPolicy: SingleStack
+  ipFamilyPolicy: PreferDualStack
   
-  # IP families (IPv4, IPv6, or both)
-  ipFamilies:
-    - IPv4
+  # Leave empty to let Kubernetes choose, or set an explicit order
+  # Example: [IPv4, IPv6] or [IPv6, IPv4]
+  ipFamilies: []
 
 # Service configuration
 service:
   type: ClusterIP
   port: 80
-  # IPv6 cluster IP (leave empty for auto-assign)
-  ipv6ClusterIP: ""
 
 # Ingress configuration
 ingress:
   enabled: false
   annotations:
-    # IPv6 Nginx annotation
-    nginx.ingress.kubernetes.io/ipv6-enabled: "true"
+    # Example CIDR allowlist for ingress-nginx
+    nginx.ingress.kubernetes.io/whitelist-source-range: "2001:db8::/32"
 ```
 
 ## Template for Dual-Stack Services
@@ -65,8 +63,10 @@ spec:
   type: {{ .Values.service.type }}
   {{- if .Values.networking.ipv6.enabled }}
   ipFamilyPolicy: {{ .Values.networking.ipFamilyPolicy | default "PreferDualStack" }}
+  {{- with .Values.networking.ipFamilies }}
   ipFamilies:
-    {{- toYaml .Values.networking.ipFamilies | nindent 4 }}
+    {{- toYaml . | nindent 4 }}
+  {{- end }}
   {{- end }}
   ports:
     - port: {{ .Values.service.port }}
@@ -99,10 +99,10 @@ Wraps IPv6 addresses in brackets.
 
 ```bash
 # Install with IPv6 enabled
-helm install myapp ./mychart   --set networking.ipv6.enabled=true   --set networking.ipFamilyPolicy=PreferDualStack
+helm install myapp ./mychart --set networking.ipv6.enabled=true
 
-# Verify service has IPv6 cluster IP
-kubectl get svc myapp -o jsonpath='{.spec.clusterIPs}'
+# Verify service has IPv4 and IPv6 cluster IPs
+kubectl get svc <rendered-service-name> -o jsonpath='{.spec.clusterIPs}'
 
 # Run helm tests
 helm test myapp
@@ -112,7 +112,7 @@ helm test myapp
 
 ```json
 {
-  "$schema": "http://json-schema.org/schema#",
+  "$schema": "https://json-schema.org/draft-07/schema#",
   "type": "object",
   "properties": {
     "networking": {
@@ -141,4 +141,4 @@ Use [OneUptime](https://oneuptime.com) to monitor the services deployed by your 
 
 ## Conclusion
 
-How to Handle IPv6 CIDR Ranges in Helm Chart Templates requires careful template design that conditionally applies IPv6 settings, provides schema validation for IPv6 fields, and is tested against real dual-stack clusters. Always document IPv6 values options and provide examples for common deployment scenarios.
+Handling IPv6-aware service settings and CIDR-based ingress annotations in Helm chart templates requires careful template design that conditionally applies IPv6 settings, provides schema validation for IPv6-related fields, and is tested against real dual-stack clusters. Always document IPv6 values options and provide examples for common deployment scenarios.
