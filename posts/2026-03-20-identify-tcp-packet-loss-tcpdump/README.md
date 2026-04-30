@@ -4,11 +4,11 @@ Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
 Tags: TCP, tcpdump, Packet Loss, Networking, Troubleshooting, Analysis
 
-Description: Use tcpdump to capture TCP traffic and identify packet loss through sequence number gaps, duplicate ACKs, and retransmission patterns.
+Description: Use tcpdump to capture TCP traffic and investigate packet loss through sequence numbers, duplicate ACKs, and retransmission patterns.
 
 ## Introduction
 
-tcpdump is the ground truth for TCP packet analysis. By examining sequence numbers and ACK numbers in a capture, you can identify exactly which packets were lost, when loss occurred, and whether the connection recovered through fast retransmit or had to wait for timeout. This is the most precise way to confirm and quantify packet loss on a specific connection.
+tcpdump gives you packet-level visibility into a TCP flow. By examining sequence numbers, ACK numbers, retransmissions, and duplicate ACKs in a capture, you can infer likely loss on a connection, see when recovery started, and distinguish fast retransmission from timer-based retransmission. This is one of the most precise ways to confirm suspected loss from a capture point, but the result still depends on where the trace was taken and whether the capture itself missed packets.
 
 ## Basic Capture for Loss Analysis
 
@@ -22,45 +22,45 @@ tcpdump -i eth0 -n -w /tmp/loss_analysis.pcap 'tcp and host 10.20.0.5'
 
 # Quick capture and analysis (no file)
 tcpdump -i eth0 -n -S 'tcp and port 8080 and host 10.20.0.5' | head -50
-# -S = absolute sequence numbers (easier to spot gaps)
+# -S = absolute sequence numbers (easier to inspect sequence progression)
 ```
 
-## Identifying Packet Loss from Sequence Numbers
+## Using Sequence Numbers with TCP Analysis Flags
 
 ```bash
-# Analyze a capture file for sequence number gaps
+# Show sequence numbers together with TCP analysis flags
 tshark -r /tmp/loss_analysis.pcap \
-  -Y "ip.dst == 10.20.0.5" \
+  -Y "tcp && ip.dst == 10.20.0.5" \
   -T fields \
   -e frame.number \
+  -e ip.src \
   -e tcp.seq \
   -e tcp.len \
   -e tcp.ack \
-  | awk '
-    prev_seq != "" && $2 != prev_seq + prev_len {
-      print "GAP at frame " $1 ": expected seq " prev_seq+prev_len " got " $2
-    }
-    {prev_seq=$2; prev_len=$3}
-  '
+  -e tcp.analysis.lost_segment \
+  -e tcp.analysis.retransmission \
+  -e tcp.analysis.fast_retransmission \
+  -e tcp.analysis.spurious_retransmission
+
+# Read this as a timeline. Sequence numbers show what data was sent,
+# while the TCP analysis flags show where Wireshark suspects missing
+# segments or retransmissions in this capture.
 ```
 
 ## Detecting Duplicate ACKs (Loss Signals)
 
 ```bash
-# Duplicate ACKs indicate the receiver got out-of-order data (possible loss ahead)
-tcpdump -r /tmp/loss_analysis.pcap -n | \
-  awk '
-    /Flags \[.\].*ack/ {
-      match($0, /ack ([0-9]+)/, a)
-      if (a[1] == last_ack) {
-        dup_count++
-        if (dup_count == 3) print "3 DUP ACKs for ack=" a[1] ": LOSS EVENT at " $1
-      } else {
-        dup_count = 0
-      }
-      last_ack = a[1]
-    }
-  '
+# Duplicate ACKs suggest a gap ahead of the receiver, although reordering can
+# also produce them
+tshark -r /tmp/loss_analysis.pcap \
+  -Y "tcp.analysis.duplicate_ack" \
+  -T fields \
+  -e frame.number \
+  -e ip.src \
+  -e tcp.ack \
+  -e tcp.analysis.duplicate_ack_num
+
+# Duplicate ACK #3 is the traditional fast retransmit threshold
 ```
 
 ## Wireshark Packet Loss Filters
@@ -68,24 +68,24 @@ tcpdump -r /tmp/loss_analysis.pcap -n | \
 ```text
 # In Wireshark:
 
-# Find all retransmissions (after loss)
-tcp.analysis.retransmission
+# Find suspected retransmissions
+tcp.analysis.retransmission or tcp.analysis.fast_retransmission or tcp.analysis.spurious_retransmission
 
-# Find the duplicate ACKs that triggered fast retransmit
+# Find the duplicate ACKs at or beyond the traditional fast retransmit threshold
 tcp.analysis.duplicate_ack_num >= 3
 
-# Find sequence number gaps (evidence of loss)
+# Find packets where previous segment(s) were not captured at this capture point
 tcp.analysis.lost_segment
 
-# Combined loss event view
-tcp.analysis.lost_segment or tcp.analysis.fast_retransmission or tcp.analysis.retransmission
+# Combined retransmission and capture-gap view
+tcp.analysis.lost_segment or tcp.analysis.fast_retransmission or tcp.analysis.retransmission or tcp.analysis.spurious_retransmission
 ```
 
 ## Automated Loss Detection Script
 
 ```bash
 #!/bin/bash
-# Capture and report packet loss statistics for a connection
+# Capture and report retransmission statistics for a connection
 
 TARGET="10.20.0.5"
 PORT="8080"
@@ -98,23 +98,25 @@ TCPDUMP_PID=$!
 
 sleep $DURATION
 kill $TCPDUMP_PID 2>/dev/null
+wait $TCPDUMP_PID 2>/dev/null
 
 echo "Analyzing capture..."
 tshark -r /tmp/loss_test.pcap -q -z io,stat,1 2>/dev/null | head -20
 
-# Count retransmission events
+# Count retransmitted packets seen in the capture
 RETRANS=$(tshark -r /tmp/loss_test.pcap \
-  -Y "tcp.analysis.retransmission" 2>/dev/null | wc -l)
+  -Y "tcp.analysis.retransmission or tcp.analysis.fast_retransmission or tcp.analysis.spurious_retransmission" \
+  2>/dev/null | wc -l)
 
 TOTAL=$(tshark -r /tmp/loss_test.pcap 2>/dev/null | wc -l)
 
 echo "Total packets: $TOTAL"
-echo "Retransmissions: $RETRANS"
+echo "Retransmitted packets: $RETRANS"
 if [ $TOTAL -gt 0 ]; then
-    echo "Retransmit rate: $(echo "scale=2; $RETRANS * 100 / $TOTAL" | bc)%"
+    echo "Retransmission rate: $(echo "scale=2; $RETRANS * 100 / $TOTAL" | bc)%"
 fi
 ```
 
 ## Conclusion
 
-tcpdump and tshark provide definitive evidence of TCP packet loss through sequence number gaps and duplicate ACK patterns. A single `tshark -Y "tcp.analysis.retransmission"` command on a capture file counts loss events. Combined with the sequence number timeline, you can determine when loss occurred, how much was lost, and whether the TCP connection recovered gracefully or required a timeout. This is the most reliable method for confirming suspected packet loss.
+tcpdump and tshark provide strong evidence of TCP loss when you correlate sequence numbers with retransmissions and duplicate ACK patterns. A command such as `tshark -Y "tcp.analysis.retransmission or tcp.analysis.fast_retransmission or tcp.analysis.spurious_retransmission"` counts retransmitted packets seen in a capture, not distinct loss events. Combined with the sequence number timeline and duplicate ACKs, you can determine when recovery started and whether the TCP connection recovered via fast retransmission or a later timeout. Interpret `tcp.analysis.lost_segment` carefully: it means packets were not seen in the capture, which can also happen because the trace started late or the capture point missed traffic.
