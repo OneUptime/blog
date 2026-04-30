@@ -8,7 +8,7 @@ Description: Learn how to deploy GitLab Runner on AWS EC2 with the Docker Machin
 
 ---
 
-GitLab Runner on AWS uses the Docker+Machine executor to provision ephemeral EC2 instances for each CI job. OpenTofu manages the runner manager instance, IAM permissions, and Auto Scaling configuration for cost-effective elastic scaling.
+GitLab Runner on AWS can use the Docker+Machine executor to provision ephemeral EC2 instances for each CI job. The Docker+Machine executor was deprecated in GitLab 17.5 and is scheduled for removal in GitLab 20.0, so plan a future migration to the GitLab Runner Autoscaler. OpenTofu manages the runner manager instance, IAM permissions, and runner autoscaling configuration for cost-effective elastic scaling.
 
 ## Architecture
 
@@ -38,7 +38,7 @@ resource "aws_iam_role" "runner" {
   })
 }
 
-# Permissions for Docker Machine to create EC2 instances
+# Permissions for Docker Machine to create EC2 instances and manage the S3 cache
 resource "aws_iam_policy" "runner" {
   name = "${var.prefix}-gitlab-runner"
   policy = jsonencode({
@@ -59,9 +59,19 @@ resource "aws_iam_policy" "runner" {
         Resource = "*"
       },
       {
-        Effect   = "Allow"
-        Action   = ["ecr:GetAuthorizationToken", "ecr:BatchGetImage"]
-        Resource = "*"
+        Effect = "Allow"
+        Action = ["s3:ListBucket"]
+        Resource = aws_s3_bucket.runner_cache.arn
+      },
+      {
+        Effect = "Allow"
+        Action = [
+          "s3:GetObject",
+          "s3:GetObjectVersion",
+          "s3:PutObject",
+          "s3:DeleteObject",
+        ]
+        Resource = "${aws_s3_bucket.runner_cache.arn}/*"
       }
     ]
   })
@@ -105,20 +115,20 @@ resource "aws_instance" "runner_manager" {
 
   vpc_security_group_ids = [aws_security_group.runner_manager.id]
 
-  user_data = base64encode(templatefile("${path.module}/runner-userdata.sh", {
-    gitlab_url           = var.gitlab_url
-    registration_token   = var.gitlab_runner_token
-    runner_name          = "${var.prefix}-runner"
-    runner_tag_list      = join(",", var.runner_tags)
-    max_instances        = var.max_runner_instances
-    idle_count           = var.idle_runner_count
-    idle_time            = var.idle_time
-    aws_region           = var.aws_region
-    worker_instance_type = var.worker_instance_type
-    worker_subnet_id     = var.private_subnet_id
-    worker_sg_id         = aws_security_group.worker.id
-    s3_bucket_cache      = aws_s3_bucket.runner_cache.id
-  }))
+  user_data = templatefile("${path.module}/runner-userdata.sh", {
+    gitlab_url            = var.gitlab_url
+    runner_token          = var.gitlab_runner_auth_token
+    runner_name           = "${var.prefix}-runner"
+    max_instances         = var.max_runner_instances
+    idle_count            = var.idle_runner_count
+    idle_time             = var.idle_time
+    aws_region            = var.aws_region
+    worker_instance_type  = var.worker_instance_type
+    worker_subnet_id      = var.private_subnet_id
+    worker_security_group = aws_security_group.worker.name
+    worker_ami_id         = data.aws_ami.ubuntu.id
+    s3_bucket_cache       = aws_s3_bucket.runner_cache.id
+  })
 
   tags = {
     Name        = "${var.prefix}-gitlab-runner-manager"
@@ -133,29 +143,22 @@ resource "aws_instance" "runner_manager" {
 ```bash
 #!/bin/bash
 # runner-userdata.sh
-apt-get update && apt-get install -y curl
+apt-get update && apt-get install -y curl docker.io
+systemctl enable --now docker
 
 # Install GitLab Runner
 curl -L https://packages.gitlab.com/install/repositories/runner/gitlab-runner/script.deb.sh | bash
 apt-get install -y gitlab-runner
 
-# Install Docker Machine
-curl -L https://github.com/docker/machine/releases/download/v0.16.2/docker-machine-Linux-x86_64 \
+# Install Docker Machine from GitLab's maintained fork
+curl -L https://gitlab-docker-machine-downloads.s3.amazonaws.com/v0.16.2-gitlab.45/docker-machine-Linux-x86_64 \
   -o /usr/local/bin/docker-machine
 chmod +x /usr/local/bin/docker-machine
 
-# Register runner
-gitlab-runner register \
-  --non-interactive \
-  --url "${gitlab_url}" \
-  --registration-token "${registration_token}" \
-  --executor "docker+machine" \
-  --name "${runner_name}" \
-  --tag-list "${runner_tag_list}" \
-  --docker-image "alpine:latest"
-
-# Configure auto-scaling
-cat >> /etc/gitlab-runner/config.toml << 'EOF'
+# Create a runner in GitLab first, then use its authentication token here
+cat > /tmp/runner.template.toml << 'EOF'
+[[runners]]
+  limit = ${max_instances}
   [runners.machine]
     IdleCount = ${idle_count}
     IdleTime = ${idle_time}
@@ -166,19 +169,23 @@ cat >> /etc/gitlab-runner/config.toml << 'EOF'
       "amazonec2-instance-type=${worker_instance_type}",
       "amazonec2-region=${aws_region}",
       "amazonec2-subnet-id=${worker_subnet_id}",
-      "amazonec2-security-group=${worker_sg_id}",
-      "amazonec2-use-private-address=true",
+      "amazonec2-security-group=${worker_security_group}",
+      "amazonec2-ami=${worker_ami_id}",
+      "amazonec2-ssh-user=ubuntu",
+      "amazonec2-private-address-only=true",
       "amazonec2-request-spot-instance=true",
-      "amazonec2-spot-price=0.05",
+      "amazonec2-spot-price=",
     ]
     [[runners.machine.autoscaling]]
       Periods = ["* * 9-17 * * mon-fri *"]  # Scale up during business hours
       IdleCount = 2
       IdleTime = 1800
+      Timezone = "UTC"
     [[runners.machine.autoscaling]]
       Periods = ["* * * * * sat,sun *"]  # Minimal on weekends
       IdleCount = 0
       IdleTime = 300
+      Timezone = "UTC"
 
   [runners.cache]
     Type = "s3"
@@ -187,8 +194,19 @@ cat >> /etc/gitlab-runner/config.toml << 'EOF'
       ServerAddress = "s3.amazonaws.com"
       BucketName = "${s3_bucket_cache}"
       BucketLocation = "${aws_region}"
+      AuthenticationType = "iam"
       Insecure = false
 EOF
+
+# Register runner
+gitlab-runner register \
+  --non-interactive \
+  --url "${gitlab_url}" \
+  --token "${runner_token}" \
+  --template-config /tmp/runner.template.toml \
+  --executor "docker+machine" \
+  --description "${runner_name}" \
+  --docker-image "alpine:latest"
 ```
 
 ## Cache Bucket
@@ -210,16 +228,14 @@ resource "aws_s3_bucket_lifecycle_configuration" "runner_cache" {
       days = 7
     }
 
-    filter {
-      prefix = "runner/"
-    }
+    filter {}
   }
 }
 ```
 
 ## Best Practices
 
-- Use Spot instances for worker instances with multiple fallback instance types - CI jobs tolerate interruption when runners are configured to retry.
+- Use Spot instances for worker instances when your CI jobs can tolerate interruption.
 - Configure the shared S3 cache - without it, every job re-downloads dependencies, adding minutes to build times. The cache bucket pays for itself in compute savings.
 - Set `MaxBuilds = 10` on machine runners - after 10 builds, Docker Machine terminates and recreates the worker, preventing disk accumulation from Docker layers.
 - Use time-based auto-scaling periods to maintain a few idle runners during business hours and scale to zero overnight and weekends.
