@@ -53,7 +53,7 @@ kubectl describe node | grep -A 5 "Allocated resources"
 ```bash
 # Check if the volume is attached and healthy
 kubectl get pvc -n default | grep <vm-name>
-kubectl get lhvolume -n longhorn-system | grep <pvc-id>
+kubectl get volumes.longhorn.io -n longhorn-system | grep <pvc-id>
 
 # Check virt-launcher log for disk errors
 kubectl logs -n default <virt-launcher-pod-name> -c compute | head -100
@@ -72,7 +72,7 @@ Cloud-init failures prevent VMs from configuring correctly after boot:
 # Access the VM serial console from Harvester UI
 # Virtual Machines > [VM Name] > Console
 
-# Or via kubectl
+# Or via virtctl
 virtctl console <vm-name> -n default
 
 # Inside the VM, check cloud-init logs
@@ -81,7 +81,7 @@ cloud-init status --long
 
 # Check for syntax errors in your cloud-init config
 # Use this validator:
-cloud-init devel schema --config-file user-data.yaml
+cloud-init schema --config-file user-data.yaml --annotate
 ```
 
 ---
@@ -102,7 +102,7 @@ kubectl get vm <vm-name> -n default \
 ip link show | grep -E "br-|vlan"
 
 # Verify network attachment definition
-kubectl get nad -n default
+kubectl get network-attachment-definitions.k8s.cni.cncf.io -n default
 ```
 
 ---
@@ -111,10 +111,10 @@ kubectl get nad -n default
 
 ```bash
 # Check if the image was fully downloaded before creating the VM
-kubectl get virtualmachineimage -A
-kubectl describe virtualmachineimage <image-name> -n default
+kubectl get virtualmachineimages -A
+kubectl describe virtualmachineimages <image-name> -n default
 
-# Status should show "Initialized: true" and "Failed: false"
+# Status should show "Initialized: True", "Imported: True", and "Failed: 0"
 # If failed, re-upload the image or fix the download URL
 ```
 
@@ -133,8 +133,9 @@ Or via `virtctl`:
 
 ```bash
 # Install virtctl
-curl -Lo virtctl https://github.com/kubevirt/kubevirt/releases/download/v1.2.0/virtctl-v1.2.0-linux-amd64
-chmod +x virtctl && sudo mv virtctl /usr/local/bin/
+export VERSION=$(curl -Ls https://storage.googleapis.com/kubevirt-prow/release/kubevirt/kubevirt/stable.txt)
+curl -L -o virtctl "https://github.com/kubevirt/kubevirt/releases/download/${VERSION}/virtctl-${VERSION}-linux-amd64"
+chmod +x virtctl && sudo install -m 0755 virtctl /usr/local/bin/virtctl
 
 virtctl console <vm-name> -n default
 ```
@@ -143,6 +144,6 @@ virtctl console <vm-name> -n default
 
 ## Best Practices
 
-- Validate cloud-init configuration with `cloud-init devel schema` before using it in production VMs.
+- Validate cloud-init configuration with `cloud-init schema --config-file user-data.yaml --annotate` before using it in production VMs.
 - Keep VM images small and use backing images for base OS layers to speed up provisioning.
 - Set VM resource requests/limits to prevent over-committing and VMs starving each other.
