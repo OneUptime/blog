@@ -8,7 +8,7 @@ Description: Learn how to roll back Fleet deployments to a previous state using 
 
 ## Introduction
 
-In GitOps, rollbacks are performed by reverting or changing Git state rather than using imperative commands. Fleet automatically detects the Git change and restores the previous configuration across all targeted clusters. This approach maintains audit trails, requires no direct cluster access for rollbacks, and keeps Git as the single source of truth.
+In GitOps, rollbacks are usually performed by reverting Git history or changing the Git reference a deployment tracks rather than manually editing downstream clusters. Fleet automatically detects the Git or GitRepo change and restores the previous configuration across all targeted clusters. This approach maintains audit trails, avoids direct access to each downstream cluster for rollbacks, and keeps Git as the source of the deployed content.
 
 This guide covers several rollback strategies for Fleet deployments, from simple Git reverts to more sophisticated branch-based strategies.
 
@@ -22,10 +22,10 @@ This guide covers several rollback strategies for Fleet deployments, from simple
 ## GitOps Rollback Principles
 
 In Fleet (and GitOps generally):
-- The Git repository is the single source of truth
-- Rolling back means changing Git state to match a previous desired state
-- Fleet automatically reconciles clusters to match the current Git state
-- There is no separate "rollback command" - it's always a Git operation
+- The Git repository is the source of the deployed manifests and charts
+- Rolling back means changing Git history or changing the Git reference that the GitRepo tracks
+- Fleet automatically reconciles clusters to match the current GitRepo configuration and selected Git revision
+- There is no separate Fleet "rollback command" - rollback is driven by Git history or GitRepo reference changes
 
 ## Strategy 1: Git Revert (Recommended)
 
@@ -38,14 +38,14 @@ git log --oneline -10
 
 # Example output:
 # a1b2c3d Update image to v2.0.0 (PROBLEMATIC)
-# e4f5g6h Add production configmap
-# i7j8k9l Initial application deployment
+# e4f5c6d Add production configmap
+# b7c8d9e Initial application deployment
 
 # Step 2: Revert the problematic commit
 git revert a1b2c3d --no-edit
 
 # This creates a new commit that undoes the changes:
-# i7j8k9l  Revert "Update image to v2.0.0"
+# f6e5d4c  Revert "Update image to v2.0.0"
 
 # Step 3: Push the revert
 git push origin main
@@ -59,7 +59,7 @@ git push origin main
 # Monitor Fleet syncing the revert
 kubectl get gitrepo my-app -n fleet-default -w
 
-# Check the new commit is being applied
+# Check the GitRepo has picked up the expected commit
 kubectl get gitrepo my-app -n fleet-default \
   -o jsonpath='{.status.commit}'
 
@@ -71,20 +71,20 @@ kubectl get deployment my-app -n my-app \
 
 ## Strategy 2: Pinning to a Specific Commit
 
-If you need to roll back quickly without creating a revert commit:
+If you need to roll back quickly without creating a revert commit, you can pin the GitRepo to a specific commit:
 
 ```bash
 # Step 1: Find the last known good commit
 git log --oneline
 
 # Step 2: Pin Fleet's GitRepo to that commit
-GOOD_COMMIT="e4f5g6h"
+GOOD_COMMIT="e4f5c6d"
 
 kubectl patch gitrepo my-app -n fleet-default \
   --type=merge \
   -p "{\"spec\":{\"revision\":\"${GOOD_COMMIT}\"}}"
 
-# Step 3: Fleet will revert all clusters to that commit's state
+# Step 3: Fleet will reconcile all clusters to that commit's state
 # Monitor the rollback
 kubectl get bundles -n fleet-default -w
 ```
@@ -105,7 +105,7 @@ For larger teams or complex applications, use a branch-based release strategy:
 
 ```bash
 # Create a release branch from a known good state
-git checkout -b release/v1.5.0 e4f5g6h
+git checkout -b release/v1.5.0 e4f5c6d
 git push origin release/v1.5.0
 ```
 
@@ -150,10 +150,10 @@ kubectl patch gitrepo my-app -n fleet-default \
 
 ## Rollback for Helm Deployments
 
-For Helm-based Fleet deployments, verify the Helm rollback on downstream clusters:
+For Helm-based Fleet deployments, verify that the downstream Helm release now reflects the expected state. If your `fleet.yaml` sets `helm.releaseName: my-app`, you can check it like this:
 
 ```bash
-# After Fleet rolls back, verify the Helm release was rolled back
+# After Fleet rolls back, verify the Helm release now matches the expected state
 # (On downstream cluster)
 helm list -n my-app
 
@@ -169,14 +169,14 @@ helm get values my-app -n my-app
 ```bash
 #!/bin/bash
 # emergency-rollback.sh
-# Usage: ./emergency-rollback.sh <gitrepo-name> <namespace> <good-commit>
+# Usage: ./emergency-rollback.sh <gitrepo-name> <good-commit> [namespace]
 
 GITREPO_NAME="$1"
-NAMESPACE="${2:-fleet-default}"
-GOOD_COMMIT="$3"
+GOOD_COMMIT="$2"
+NAMESPACE="${3:-fleet-default}"
 
 if [ -z "${GITREPO_NAME}" ] || [ -z "${GOOD_COMMIT}" ]; then
-  echo "Usage: $0 <gitrepo-name> <namespace> <commit-sha>"
+  echo "Usage: $0 <gitrepo-name> <good-commit> [namespace]"
   exit 1
 fi
 
@@ -219,4 +219,4 @@ kubectl get bundles -n fleet-default \
 
 ## Conclusion
 
-Fleet rollbacks leverage Git's natural version control capabilities to restore previous application states across all managed clusters simultaneously. Whether you use `git revert` for production-safe history preservation, commit pinning for immediate emergency rollbacks, or branch/tag-based strategies for structured release management, Fleet ensures all clusters converge to the specified state without manual intervention on each cluster. The key principle is that rollback is always a Git operation - Fleet takes care of propagating that change to your infrastructure.
+Fleet rollbacks leverage Git's natural version control capabilities to restore previous application states across all managed clusters simultaneously. Whether you use `git revert` for production-safe history preservation, commit pinning for immediate emergency rollbacks, or branch/tag-based strategies for structured release management, Fleet ensures all clusters converge to the specified state without manual intervention on each cluster. The key principle is that rollback is driven by Git history or by the Git reference a GitRepo tracks - Fleet takes care of propagating that change to your infrastructure.
