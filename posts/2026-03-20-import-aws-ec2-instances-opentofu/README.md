@@ -8,7 +8,7 @@ Description: Learn how to import existing AWS EC2 instances into OpenTofu state,
 
 ## Introduction
 
-EC2 instances created outside of OpenTofu - through the console, CLI, or other tools - can be brought under management using `tofu import`. After import, OpenTofu tracks the instance and can apply configuration changes, but you must first write HCL that matches the existing resource's configuration.
+EC2 instances created outside of OpenTofu - through the console, CLI, or other tools - can be brought under management using `tofu import`. After import, OpenTofu tracks the instance and can apply configuration changes, but you must first define the instance in HCL and then reconcile any differences after import.
 
 ## Step 1: Find the Instance ID
 
@@ -20,12 +20,12 @@ aws ec2 describe-instances \
   --query 'Reservations[].Instances[].[InstanceId,State.Name,Tags[?Key==`Name`].Value|[0]]' \
   --output table
 
-# Output: i-0123456789abcdef0
+# Example output includes: i-0123456789abcdef0
 ```
 
 ## Step 2: Write the HCL Configuration
 
-Before importing, write HCL that matches the existing instance configuration:
+Before importing, write the `resource` block and make it match the existing instance configuration as closely as possible:
 
 ```hcl
 # main.tf
@@ -80,16 +80,16 @@ aws ec2 describe-instances \
     subnet_id: .SubnetId,
     security_groups: [.SecurityGroups[].GroupId],
     key_name: .KeyName,
-    iam_instance_profile: .IamInstanceProfile.Arn
+    iam_instance_profile: (.IamInstanceProfile.Arn | if . then split("/")[-1] else null end)
   }'
 ```
 
-## Step 5: Using the import Block (OpenTofu 1.5+)
+## Step 5: Using the import Block (OpenTofu 1.6+, experimental)
 
-The declarative `import` block is preferred over the CLI command:
+The declarative `import` block is an alternative to the CLI command and can be version controlled:
 
 ```hcl
-# Import block - runs during plan/apply, can be version controlled
+# Import block - reviewed during plan, executed during apply, can be version controlled
 import {
   to = aws_instance.app
   id = "i-0123456789abcdef0"
@@ -105,7 +105,7 @@ resource "aws_instance" "app" {
 
 ## Attributes to Ignore After Import
 
-Some attributes change frequently or are set outside of OpenTofu:
+Some attributes are intentionally managed outside of OpenTofu, or you may not want changes to them to trigger updates:
 
 ```hcl
 resource "aws_instance" "app" {
@@ -113,8 +113,8 @@ resource "aws_instance" "app" {
   instance_type = "t3.medium"
 
   lifecycle {
-    # Ignore changes to user_data (often managed by cloud-init separately)
-    # Ignore changes to ami if using auto-update pipelines
+    # Ignore changes to user_data if it is updated outside OpenTofu
+    # Ignore changes to ami if your configuration resolves the latest AMI
     ignore_changes = [user_data, ami]
   }
 }
@@ -122,4 +122,4 @@ resource "aws_instance" "app" {
 
 ## Conclusion
 
-Importing EC2 instances requires matching your HCL configuration to the existing instance before running import. The `import` block approach is cleaner than CLI import because it's declarative and version-controlled. After import, always run `tofu plan` and resolve any differences before making changes, to avoid accidental instance replacement.
+Importing EC2 instances requires defining the instance in HCL, then reconciling the configuration with the existing resource after import. The `import` block approach is declarative and version-controlled. After import, always run `tofu plan` and resolve any differences before making changes, to avoid accidental instance replacement.
