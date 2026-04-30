@@ -4,7 +4,7 @@ Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
 Tags: Portainer, HashiCorp Vault, Secret, Security, Docker, DevOps
 
-Description: Learn how to deploy HashiCorp Vault via Portainer and integrate it with your containerized applications for dynamic secret management.
+Description: Learn how to deploy HashiCorp Vault via Portainer and integrate it with your containerized applications for centralized secret management.
 
 ---
 
@@ -31,16 +31,8 @@ services:
     environment:
       VAULT_DEV_ROOT_TOKEN_ID: "root-dev-token"    # dev mode only - change for production
       VAULT_DEV_LISTEN_ADDRESS: "0.0.0.0:8200"
-      VAULT_ADDR: "http://0.0.0.0:8200"
     cap_add:
       - IPC_LOCK    # required for memory locking (prevents secrets from swapping to disk)
-    volumes:
-      - vault_data:/vault/data
-      - vault_config:/vault/config
-
-volumes:
-  vault_data:
-  vault_config:
 ```
 
 > Note: For production, use a proper Vault configuration file with TLS and a production storage backend (Raft, Consul, etc.).
@@ -57,16 +49,16 @@ export VAULT_TOKEN="root-dev-token"
 # Verify Vault is running
 vault status
 
-# Enable the KV secrets engine (version 2)
-vault secrets enable -path=secret kv-v2
+# Enable a dedicated KV secrets engine (version 2)
+vault secrets enable -path=apps kv-v2
 
 # Write a test secret
-vault kv put secret/myapp/config \
+vault kv put -mount=apps myapp/config \
   db_password="supersecretpassword" \
   api_key="myapp-api-key-12345"
 
 # Read it back
-vault kv get secret/myapp/config
+vault kv get -mount=apps myapp/config
 ```
 
 ---
@@ -76,14 +68,9 @@ vault kv get secret/myapp/config
 Vault policies control what secrets each application can access.
 
 ```hcl
-# myapp-policy.hcl - grant read-only access to myapp secrets
-path "secret/data/myapp/*" {
-  capabilities = ["read", "list"]
-}
-
-# Deny access to other paths
-path "secret/data/*" {
-  capabilities = ["deny"]
+# myapp-policy.hcl - grant read-only access to secrets under myapp/
+path "apps/data/myapp/*" {
+  capabilities = ["read"]
 }
 ```
 
@@ -96,10 +83,10 @@ vault auth enable approle
 
 vault write auth/approle/role/myapp \
   secret_id_ttl=10m \
-  token_num_uses=10 \
+  secret_id_num_uses=10 \
   token_ttl=20m \
   token_max_ttl=30m \
-  policies=myapp-policy
+  token_policies=myapp-policy
 
 # Get the role ID and generate a secret ID
 vault read auth/approle/role/myapp/role-id
@@ -122,12 +109,10 @@ services:
     restart: unless-stopped
     command: vault agent -config=/vault/config/agent.hcl
     environment:
-      VAULT_ADDR: http://vault:8200
+      VAULT_ADDR: http://vault.example.internal:8200   # replace with the Vault address reachable from this stack
     volumes:
-      - vault_agent_config:/vault/config
+      - ./vault-agent:/vault/config:ro   # contains agent.hcl, templates, role_id, and secret_id files
       - shared_secrets:/run/secrets   # write secrets here for the app to read
-    depends_on:
-      - vault
 
   myapp:
     image: myapp:latest
@@ -138,7 +123,6 @@ services:
       - vault-agent
 
 volumes:
-  vault_agent_config:
   shared_secrets:
 ```
 
@@ -147,12 +131,23 @@ volumes:
 ## Step 5: Python Example - Fetch Secrets Directly from Vault
 
 ```python
-# vault_secrets.py - fetch secrets using the hvac Python client
+# vault_secrets.py - fetch secrets using the hvac Python client and AppRole auth
 import hvac
+from pathlib import Path
 
-def get_vault_secrets(vault_url: str, token: str, secret_path: str) -> dict:
+def get_vault_secrets(
+    vault_url: str,
+    role_id_path: str,
+    secret_id_path: str,
+    secret_path: str,
+) -> dict:
     """Retrieve secrets from HashiCorp Vault."""
-    client = hvac.Client(url=vault_url, token=token)
+    client = hvac.Client(url=vault_url)
+
+    client.auth.approle.login(
+        role_id=Path(role_id_path).read_text().strip(),
+        secret_id=Path(secret_id_path).read_text().strip(),
+    )
 
     # Verify authentication
     if not client.is_authenticated():
@@ -161,14 +156,15 @@ def get_vault_secrets(vault_url: str, token: str, secret_path: str) -> dict:
     # Read secrets from KV v2
     response = client.secrets.kv.v2.read_secret_version(
         path=secret_path,
-        mount_point="secret"
+        mount_point="apps"
     )
     return response["data"]["data"]
 
 # Usage inside a container
 secrets = get_vault_secrets(
-    vault_url="http://vault:8200",
-    token="root-dev-token",
+    vault_url="http://vault.example.internal:8200",
+    role_id_path="/vault/auth/role_id",
+    secret_id_path="/vault/auth/secret_id",
     secret_path="myapp/config"
 )
 db_password = secrets["db_password"]
@@ -178,4 +174,4 @@ db_password = secrets["db_password"]
 
 ## Summary
 
-Deploying Vault via Portainer gives you a powerful secrets management layer for all your containerized workloads. The key workflow is: store secrets in Vault, create AppRole credentials for each application, and fetch secrets either via the Vault Agent sidecar or directly from the SDK. This approach eliminates secrets from Compose files and environment variables entirely.
+Deploying Vault via Portainer gives you a powerful secrets management layer for all your containerized workloads. The key workflow is: store secrets in Vault, create AppRole credentials for each application, and fetch secrets either via the Vault Agent sidecar or directly from the SDK. This approach keeps application secrets out of Compose files and container images, but your Vault auth material still needs its own secure delivery path.
