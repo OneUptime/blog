@@ -70,7 +70,7 @@ networks:
 
 ## Step 2: Auto-Provision Grafana Data Source
 
-Create a provisioning file so Grafana automatically connects to InfluxDB on startup:
+Create the following provisioning file on the Docker host so Grafana automatically connects to InfluxDB on startup. If Grafana is already running, restart or redeploy it after adding the file:
 
 ```yaml
 # /opt/grafana/provisioning/datasources/influxdb.yaml
@@ -103,7 +103,7 @@ import time
 
 # Connect to InfluxDB
 client = InfluxDBClient(
-    url="http://influxdb:8086",
+    url="http://localhost:8086",
     token="my-super-secret-token",
     org="iot-org"
 )
@@ -118,7 +118,7 @@ def write_sensor_reading(device_id, temperature, humidity):
         .field("temperature", temperature)
         .field("humidity", humidity)
     )
-    write_api.write(bucket="iot-sensors", record=point)
+    write_api.write(bucket="iot-sensors", org="iot-org", record=point)
 
 # Example usage
 while True:
@@ -144,9 +144,9 @@ from(bucket: "iot-sensors")
 
 Configure alerts for sensor threshold violations:
 
-1. In Grafana, open a panel and click **Alert > Create Alert Rule**
-2. Set a condition like: `temperature > 35` for more than 5 minutes
-3. Configure notification channels (email, Slack, PagerDuty)
+1. In Grafana, open a dashboard panel, click the panel menu, then select **More... > New alert rule**
+2. Define a query and condition that alerts when `temperature` is above `35`, then set a pending period of `5m`
+3. Configure contact points for notifications (email, Slack, PagerDuty)
 
 ## Summary
 
