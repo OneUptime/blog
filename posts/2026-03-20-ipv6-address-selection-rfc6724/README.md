@@ -8,7 +8,7 @@ Description: Understand how RFC 6724 governs IPv6 source and destination address
 
 ## What Is RFC 6724?
 
-RFC 6724 defines the default behavior for selecting source and destination IPv6 addresses when a host has multiple addresses available. Every IPv6 host follows these rules when initiating a connection.
+RFC 6724 defines the default behavior for selecting source and destination IPv6 addresses when a host has multiple addresses available. Compliant hosts and libraries typically use these rules by default, subject to OS-specific policy overrides.
 
 Two selection algorithms work together:
 - **Source address selection**: which local address to use as the packet source
@@ -16,16 +16,16 @@ Two selection algorithms work together:
 
 ## Address Scopes
 
-RFC 6724 classifies addresses by scope, from narrowest to broadest:
+RFC 6724 compares addresses by scope, from narrowest to broadest:
 
 | Scope | Value | Example |
 |---|---|---|
-| Interface-local | 1 | ::1 (loopback) |
+| Interface-local | 1 | ff01::1 |
 | Link-local | 2 | fe80::/10 |
 | Site-local (deprecated) | 5 | fec0::/10 |
 | Global | 14 | 2001:db8::/32 |
 
-Higher scope is preferred for global communication.
+The source address needs a scope appropriate for the destination; for example, link-local sources are not used for global destinations.
 
 ## The Default Policy Table
 
@@ -53,31 +53,23 @@ Higher precedence = preferred destination. Labels are used to match source and d
 
 ip addrlabel list
 
-# Default output shows prefix/len label pairs
-# Example:
-#   prefix ::1/128 label 0
-#   prefix ::/0 label 1
-#   prefix 2002::/16 label 2
-#   prefix ::/96 label 3
-#   prefix ::ffff:0:0/96 label 4
-#   prefix 2001::/32 label 5
-#   prefix fc00::/7 label 13
-#   prefix fec0::/10 label 11
-#   prefix 3ffe::/16 label 12
+# Output shows prefix/label pairs in the kernel's address-label table.
+# Exact default rows vary by kernel and distribution.
 ```
 
-Precedence is stored in `/proc/sys/net/ipv6/conf/all/use_tempaddr` for privacy extensions, but the policy table itself is managed via `ip addrlabel`.
+On Linux, `ip addrlabel` shows and manages the kernel's address labels. Precedence for destination sorting is handled in userspace resolver policy on glibc systems (for example, `/etc/gai.conf`), while `net.ipv6.conf.*.use_tempaddr` controls privacy-address preference, not precedence.
 
-## Source Address Selection: 8 Rules
+## Source Address Selection Rules
 
-RFC 6724 source address selection evaluates candidates using 8 rules in order. The first rule that produces a winner stops evaluation:
+RFC 6724 source address selection evaluates candidates using ordered pair-wise rules. Later rules act as tiebreakers when earlier rules tie:
 
 ```text
 Rule 1: Prefer same address (if source == destination, done)
-Rule 2: Prefer appropriate scope (source scope >= destination scope)
+Rule 2: Prefer appropriate scope
 Rule 3: Avoid deprecated addresses
 Rule 4: Prefer home addresses (Mobile IPv6)
 Rule 5: Prefer outgoing interface address
+Rule 5.5: Prefer addresses in a prefix advertised by the next-hop (if tracked)
 Rule 6: Prefer matching label (source label == destination label)
 Rule 7: Prefer temporary addresses (privacy extensions)
 Rule 8: Use longest matching prefix
@@ -110,59 +102,58 @@ ip addr show eth0
 #    inet6 2001:db8::10/64
 #    inet6 fe80::1/64
 
-# DNS returns both A and AAAA records:
-# host example.com
-# example.com has address 93.184.216.34
-# example.com has IPv6 address 2606:2800:220:1:248:1893:25c8:1946
+# DNS may return both A and AAAA records:
+host example.com
+# The exact addresses depend on current DNS, but dual-stack names can return
+# both IPv4 and IPv6 answers.
 
-# RFC 6724 rule 6: IPv6 destination (label 1) matches IPv6 source (label 1)
-# IPv4 destination (label 4, IPv4-mapped) does NOT match IPv6 source (label 1)
-# Result: IPv6 path is preferred
+# With the RFC 6724 default policy table, native IPv6 usually sorts ahead of
+# IPv4 on dual-stack hosts because ::/0 has higher precedence than
+# ::ffff:0:0/96 when both destinations are equally suitable.
 
-# Confirm with getaddrinfo trace:
+# Confirm with getaddrinfo:
 python3 -c "
 import socket
 results = socket.getaddrinfo('example.com', 80, type=socket.SOCK_STREAM)
 for r in results:
-    print(r[4])
+    print(socket.AddressFamily(r[0]).name, r[4])
 "
-# [('2606:2800:...', 80, 0, 0), ('93.184.216.34', 80)]
-# IPv6 listed first = preferred
+# On many Linux systems, AF_INET6 results appear before AF_INET results.
+# Exact addresses and ordering can vary by resolver, OS, and local policy.
 ```
 
 ## ULA vs Global Address Selection
 
 ```bash
 # When a host has both ULA (fc00::/7) and global addresses,
-# destination scope drives source selection
+# label matching - not scope - usually drives source selection,
+# because both ULA and global unicast have global scope.
 
-# ULA destination → ULA source preferred (label 13 matches label 13)
-# Global destination → Global source preferred (label 1 matches label 1)
+# ULA destination → ULA source preferred (matching ULA label)
+# Global destination → Global source preferred (matching default IPv6 label)
 
-# Test:
-# Connect to ULA destination
-strace -e trace=connect curl -6 http://[fd00::1]/ 2>&1 | grep "sin6_addr"
-
-# Verify source address chosen
-ss -6 -n state established | head -5
+# Test the selected source address for a specific destination:
+ip -6 route get fd00::1
+ip -6 route get 2001:db8::1
+# Look for the "src" field in the output.
 ```
 
 ## Privacy Extensions and Rule 7
 
-RFC 4941 privacy extensions generate temporary addresses with random interface IDs. RFC 6724 Rule 7 prefers temporary addresses for outgoing connections to enhance privacy:
+Temporary address extensions (RFC 8981, which obsoletes RFC 4941) generate temporary addresses with random interface IDs. RFC 6724 Rule 7 prefers temporary addresses for outgoing connections to enhance privacy:
 
 ```bash
 # Check privacy extension settings
 sysctl net.ipv6.conf.eth0.use_tempaddr
-# 0 = disabled
-# 1 = generate but prefer public
-# 2 = generate and prefer temporary (default on many systems)
+# <= 0 = disable privacy extensions
+# 1 = enable them, but prefer public addresses
+# > 1 = enable them and prefer temporary addresses
 
-# Verify which address is chosen for outgoing connections
+# Verify which public IPv6 address is used for outgoing connections
 curl -6 https://ifconfig.co
-# Should return your temporary address if use_tempaddr=2
+# If temporary addresses are preferred, this typically shows a temporary source address.
 ```
 
 ## Conclusion
 
-RFC 6724 address selection is automatic but configurable. The policy table assigns labels and precedence to prefixes - same-label source/destination pairs are preferred, and higher precedence destinations are tried first. The 8-rule source selection and 10-rule destination sorting algorithms work together to choose the best path. Key practical outcomes: IPv6 is preferred over IPv4 on dual-stack hosts (labels differ), temporary addresses are preferred for privacy (Rule 7), and ULA addresses stay local (scope matching). Modify the policy table with `ip addrlabel` to override defaults.
+RFC 6724 address selection is automatic but configurable. The policy table assigns labels and precedence to prefixes - same-label source/destination pairs are preferred, and higher precedence destinations are tried first. The source selection rules and 10-rule destination sorting algorithm work together to choose the best path. Key practical outcomes: IPv6 is preferred over IPv4 on dual-stack hosts when both are equally suitable (default precedence), temporary addresses are often preferred for privacy (Rule 7), and ULA sources are preferred for ULA destinations because the labels match. On Linux, adjust kernel labels with `ip addrlabel`; on glibc systems, destination precedence can also be overridden via `/etc/gai.conf`.
