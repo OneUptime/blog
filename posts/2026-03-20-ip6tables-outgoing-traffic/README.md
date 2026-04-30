@@ -32,7 +32,7 @@ Most servers use ACCEPT, but consider DROP for:
 # Loopback - always allow
 ip6tables -A OUTPUT -o lo -j ACCEPT
 
-# Established connections (replies to incoming requests)
+# Established/related traffic for existing connections
 ip6tables -A OUTPUT -m conntrack --ctstate ESTABLISHED,RELATED -j ACCEPT
 
 # Essential ICMPv6 outgoing
@@ -57,6 +57,7 @@ ip6tables -A OUTPUT -p icmpv6 --icmpv6-type router-solicitation -j ACCEPT
 ip6tables -A OUTPUT -p udp --dport 53 -d 2001:4860:4860::8888 -j ACCEPT  # Google DNS
 ip6tables -A OUTPUT -p udp --dport 53 -d 2001:4860:4860::8844 -j ACCEPT
 ip6tables -A OUTPUT -p tcp --dport 53 -d 2001:4860:4860::8888 -j ACCEPT
+ip6tables -A OUTPUT -p tcp --dport 53 -d 2001:4860:4860::8844 -j ACCEPT
 
 # NTP - only to authorized time servers
 ip6tables -A OUTPUT -p udp --dport 123 -d 2610:20:6f15:15::27 -j ACCEPT  # NIST NTP
@@ -66,7 +67,7 @@ ip6tables -A OUTPUT -p tcp --dport 80 -j ACCEPT
 ip6tables -A OUTPUT -p tcp --dport 443 -j ACCEPT
 
 # SMTP outbound (mail relay)
-ip6tables -A OUTPUT -p tcp --dport 25 -d 2001:db8::mailserver -j ACCEPT
+ip6tables -A OUTPUT -p tcp --dport 25 -d 2001:db8:100::25 -j ACCEPT
 
 # Database connections to specific backend
 ip6tables -A OUTPUT -p tcp --dport 5432 -d 2001:db8:db::/64 -j ACCEPT
@@ -75,13 +76,15 @@ ip6tables -A OUTPUT -p tcp --dport 5432 -d 2001:db8:db::/64 -j ACCEPT
 ## Anti-Spoofing: Restrict Outbound Source Addresses
 
 ```bash
-# Only allow packets with our assigned prefix as source
-ip6tables -A OUTPUT -s 2001:db8:corp::/48 -j ACCEPT
-ip6tables -A OUTPUT -s fe80::/10 -j ACCEPT   # Link-local
-ip6tables -A OUTPUT -s ::1 -j ACCEPT          # Loopback
+# Put source validation in its own chain and jump to it before your service-specific OUTPUT rules
+ip6tables -N OUTPUT-SPOOF-CHECK
+ip6tables -A OUTPUT -j OUTPUT-SPOOF-CHECK
+ip6tables -A OUTPUT-SPOOF-CHECK -s 2001:db8:100::/48 -j RETURN
+ip6tables -A OUTPUT-SPOOF-CHECK -s fe80::/10 -j RETURN   # Link-local
+ip6tables -A OUTPUT-SPOOF-CHECK -s ::1/128 -j RETURN     # Loopback
 # All other sources = spoofed
-ip6tables -A OUTPUT -j LOG --log-prefix "IPv6-SPOOF-OUT: "
-ip6tables -A OUTPUT -j DROP
+ip6tables -A OUTPUT-SPOOF-CHECK -j LOG --log-prefix "IPv6-SPOOF-OUT: "
+ip6tables -A OUTPUT-SPOOF-CHECK -j DROP
 ```
 
 ## Block Unauthorized Tunneling
@@ -115,8 +118,8 @@ ip6tables -P OUTPUT ACCEPT   # Usually permissive for workstations
 # Add specific blocks for restricted environments:
 
 # Block access to sensitive internal subnets
-ip6tables -A OUTPUT -d 2001:db8:prod::/48 -j DROP   # Can't reach production from workstation
-ip6tables -A OUTPUT -d fd00:mgmt::/48 -j DROP        # Can't reach management network
+ip6tables -A OUTPUT -d 2001:db8:200::/48 -j DROP   # Can't reach production from workstation
+ip6tables -A OUTPUT -d fd00:1234::/48 -j DROP      # Can't reach management network
 ```
 
 ## Log Unusual Outbound Activity
@@ -134,12 +137,18 @@ ip6tables -A OUTPUT -p tcp --dport 31337 -j LOG --log-prefix "BACKDOOR-OUT: "
 #!/bin/bash
 # High-security server: restrictive egress
 ip6tables -F OUTPUT
+ip6tables -F OUTPUT-SPOOF-CHECK 2>/dev/null
+ip6tables -X OUTPUT-SPOOF-CHECK 2>/dev/null
 ip6tables -P OUTPUT DROP
+ip6tables -N OUTPUT-SPOOF-CHECK
 
 # Loopback
 ip6tables -A OUTPUT -o lo -j ACCEPT
 
-# Established (replies to inbound connections)
+# Anti-spoofing check
+ip6tables -A OUTPUT -j OUTPUT-SPOOF-CHECK
+
+# Established/related traffic for existing connections
 ip6tables -A OUTPUT -m conntrack --ctstate ESTABLISHED,RELATED -j ACCEPT
 
 # ICMPv6 essential
@@ -147,18 +156,22 @@ ip6tables -A OUTPUT -p icmpv6 --icmpv6-type 1 -j ACCEPT
 ip6tables -A OUTPUT -p icmpv6 --icmpv6-type 2 -j ACCEPT
 ip6tables -A OUTPUT -p icmpv6 --icmpv6-type 3 -j ACCEPT
 ip6tables -A OUTPUT -p icmpv6 --icmpv6-type 4 -j ACCEPT
-ip6tables -A OUTPUT -s fe80::/10 -p icmpv6 --icmpv6-type 135 -j ACCEPT
-ip6tables -A OUTPUT -s fe80::/10 -p icmpv6 --icmpv6-type 136 -j ACCEPT
+ip6tables -A OUTPUT -p icmpv6 --icmpv6-type 135 -j ACCEPT
+ip6tables -A OUTPUT -p icmpv6 --icmpv6-type 136 -j ACCEPT
 
 # DNS to authorized resolvers only
 ip6tables -A OUTPUT -p udp --dport 53 -d 2001:db8::53 -j ACCEPT
+ip6tables -A OUTPUT -p tcp --dport 53 -d 2001:db8::53 -j ACCEPT
 
 # HTTPS for package updates/API calls
 ip6tables -A OUTPUT -p tcp --dport 443 -j ACCEPT
 
 # Anti-spoof: only our IP as source
-ip6tables -A OUTPUT ! -s 2001:db8:server::10 -j LOG --log-prefix "SPOOF-SRC: "
-ip6tables -A OUTPUT ! -s 2001:db8:server::10 ! -s fe80::/10 ! -s ::1 -j DROP
+ip6tables -A OUTPUT-SPOOF-CHECK -s 2001:db8:100::10 -j RETURN
+ip6tables -A OUTPUT-SPOOF-CHECK -s fe80::/10 -j RETURN
+ip6tables -A OUTPUT-SPOOF-CHECK -s ::1/128 -j RETURN
+ip6tables -A OUTPUT-SPOOF-CHECK -j LOG --log-prefix "SPOOF-SRC: "
+ip6tables -A OUTPUT-SPOOF-CHECK -j DROP
 
 # Log everything else before dropping
 ip6tables -A OUTPUT -m limit --limit 5/min -j LOG --log-prefix "IPv6-OUT-DROP: "
@@ -166,4 +179,4 @@ ip6tables -A OUTPUT -m limit --limit 5/min -j LOG --log-prefix "IPv6-OUT-DROP: "
 
 ## Summary
 
-ip6tables OUTPUT chain rules control egress IPv6 traffic. For most servers, use `ACCEPT` default but add specific drops for unauthorized tunneling (block IPv4 protocol 41 and UDP 3544 with iptables) and restrict DNS to authorized resolvers. For high-security hosts, use DROP default and explicitly permit: loopback, established connections, essential ICMPv6, DNS to authorized servers, and required service ports. Always include anti-spoofing rules ensuring only your assigned prefix appears as source. Log unusual outbound activity (IRC ports, backdoor ports) before dropping.
+ip6tables OUTPUT chain rules control egress IPv6 traffic. For most servers, use `ACCEPT` default but add specific drops for unauthorized tunneling (block IPv4 protocol 41 and UDP 3544 with iptables) and restrict DNS to authorized resolvers. For high-security hosts, use DROP default and explicitly permit: loopback, established connections, essential ICMPv6, DNS to authorized servers, and required service ports. Always include anti-spoofing rules ensuring only your assigned prefix and other legitimate local sources appear as source addresses. Log unusual outbound activity (IRC ports, backdoor ports) before dropping.
