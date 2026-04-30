@@ -8,7 +8,7 @@ Description: Learn how to configure centralized log collection in Harvester usin
 
 ---
 
-Harvester includes a built-in logging stack based on Rancher Logging (Banzai Cloud Logging Operator). It collects logs from all nodes, VMs, and Kubernetes workloads and routes them to configurable outputs.
+Harvester includes a built-in logging stack based on Rancher Logging and the Logging Operator. It collects logs from cluster Pods, kernel logs from each node, and logs from select systemd services, then routes them to configurable outputs.
 
 ---
 
@@ -20,7 +20,7 @@ Harvester includes a built-in logging stack based on Rancher Logging (Banzai Clo
 kubectl get pods -n cattle-logging-system
 
 # Enable via Harvester UI:
-# Advanced → Logging → Enable Logging
+# Advanced -> Addons -> rancher-logging -> Enable
 ```
 
 ---
@@ -40,7 +40,6 @@ spec:
     port: 9200
     scheme: http
     index_name: harvester-logs
-    type_name: fluentd
     buffer:
       timekey: 1m
       timekey_wait: 30s
@@ -97,20 +96,20 @@ metadata:
   namespace: production
 spec:
   match:
-    - select:
-        labels:
-          app: my-app
     - exclude:
         labels:
           logging: disabled
+    - select:
+        labels:
+          app: my-app
 
   filters:
     - grep:
         regexp:
-          - key: log
+          - key: message
             pattern: /ERROR|WARN/
 
-  localOutputRefs:
+  globalOutputRefs:
     - elasticsearch-output
 ```
 
@@ -159,23 +158,22 @@ spec:
 
 ---
 
-## Step 6: Collect Node System Logs
+## Step 6: Route Logs for Specific Nodes
 
-Harvester also supports collecting host-level system logs (from `/var/log/` or journald):
+Harvester already collects kernel logs and logs from select systemd services on each node. You can route logs from a specific node with a `ClusterFlow`, but it is not supported to change which logs Harvester collects.
 
 ```yaml
 # host-log-flow.yaml
 apiVersion: logging.banzaicloud.io/v1beta1
 kind: ClusterFlow
 metadata:
-  name: host-systemd-logs
+  name: node-logs
   namespace: cattle-logging-system
 spec:
   match:
     - select:
-        # Match systemd journal logs from nodes
-        labels:
-          component: systemd
+        hosts:
+          - harvester-node-0
 
   globalOutputRefs:
     - elasticsearch-output
@@ -191,14 +189,15 @@ kubectl get pods -n cattle-logging-system
 
 # View Fluentbit logs (log collector)
 kubectl logs -n cattle-logging-system \
-  $(kubectl get pod -n cattle-logging-system \
-    -l app.kubernetes.io/name=fluentbit -o name | head -1) \
-  | tail -50
+  $(kubectl get pod -n cattle-logging-system -o name \
+    | grep 'root-fluentbit' | head -1) \
+  --tail=50
 
-# Check for output errors
+# Check for output errors in Fluentd
 kubectl logs -n cattle-logging-system \
-  $(kubectl get pod -n cattle-logging-system \
-    -l app.kubernetes.io/name=fluentd -o name | head -1) \
+  $(kubectl get pod -n cattle-logging-system -o name \
+    | grep 'root-fluentd-0$' | head -1) \
+  --all-containers=true \
   | grep -i error
 ```
 
@@ -218,7 +217,7 @@ spec:
       chunk_limit_size: 8m
       total_limit_size: 512m
       retry_max_times: 10
-      retry_exponential_backoff_base: 2
+      retry_exponential_backoff_base: "2"
       retry_wait: 30s
 ```
 
@@ -228,4 +227,4 @@ spec:
 
 - Use `ClusterOutput` for sending logs to centralized systems (Elasticsearch, Splunk) and `Output` (namespace-scoped) for per-team log destinations.
 - Add `record_transformer` to include cluster name, environment, and region in every log record - this is essential when aggregating logs from multiple Harvester clusters.
-- Monitor Fluentd buffer size and tail it in Prometheus - a growing buffer indicates the output destination is too slow and logs may be dropped.
+- Monitor Fluentd buffer size in Prometheus - a growing buffer indicates the output destination is too slow and logs may be dropped.
