@@ -12,11 +12,11 @@ Designing an IPv6 addressing plan for an ISP requires careful thought about cust
 
 ## ISP Allocation Model
 
-A typical ISP receives a /32 from their RIR. The ISP's job is to delegate portions of this to:
+A common starting point is a /32 from the RIR. The ISP's job is to delegate portions of this to:
 - Residential customers (/56 or /60 each)
 - Business customers (/48 each)
 - Hosting customers (/48 or /52 each)
-- ISP's own infrastructure (/48 for internal use)
+- ISP's own infrastructure blocks (/48s per PoP or function)
 
 ## High-Level Address Plan
 
@@ -33,8 +33,8 @@ Allocation map:
 
   2001:db8:1000::/36     Residential customers (/56 each)
     2001:db8:1000::/56   Customer 1 (residential)
-    2001:db8:1001::/56   Customer 2 (residential)
-    ...                  (up to 65,536 residential customers from this /36)
+    2001:db8:1000:100::/56 Customer 2 (residential)
+    ...                  (up to 1,048,576 residential customers from this /36)
 
   2001:db8:2000::/36     Business customers (/48 each)
     2001:db8:2000::/48   Business customer 1
@@ -45,7 +45,7 @@ Allocation map:
 
   2001:db8:f000::/36     Peering / transit infrastructure
     2001:db8:f000::/64   IXP 1 peering LAN
-    2001:db8:f001::/64   IXP 2 peering LAN
+    2001:db8:f000:1::/64 IXP 2 peering LAN
     2001:db8:fffe::/64   Transit provider links
 ```
 
@@ -57,7 +57,7 @@ import ipaddress
 # Generate loopback addresses for core routers
 
 # One /128 per router from infrastructure block
-LOOPBACK_PREFIX = "2001:db8:0000:ff00::/120"  # 256 loopbacks
+LOOPBACK_PREFIX = "2001:db8:0000:ff00::/120"  # 255 usable loopbacks via hosts()
 
 def assign_loopbacks(prefix, count):
     """Assign loopback /128 addresses to routers."""
@@ -139,14 +139,15 @@ Individual customer /48s and /56s are NOT leaked to the global table.
 ```bash
 # Cisco IOS: ISP BGP configuration
 # router bgp 64500
+#  neighbor 2001:db8:f000::1 remote-as 64501
 #  address-family ipv6 unicast
 #   network 2001:db8::/32
 #   aggregate-address 2001:db8::/32 summary-only
-#   neighbor 2001:db8:f000::1 remote-as 64501
+#   neighbor 2001:db8:f000::1 activate
 #   neighbor 2001:db8:f000::1 prefix-list ANNOUNCE out
 #
-# ip prefix-list ANNOUNCE seq 10 permit 2001:DB8::/32
-# ip prefix-list ANNOUNCE seq 20 deny ::/0 le 128
+# ipv6 prefix-list ANNOUNCE seq 10 permit 2001:DB8::/32
+# ipv6 prefix-list ANNOUNCE seq 20 deny ::/0 le 128
 ```
 
 ## Conclusion
