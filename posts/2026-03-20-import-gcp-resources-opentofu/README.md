@@ -8,7 +8,7 @@ Description: Learn how to import existing GCP resources into OpenTofu using impo
 
 ---
 
-Importing GCP resources into OpenTofu allows you to manage existing Google Cloud infrastructure as code without recreating resources. The modern import block approach with `-generate-config-out` is the recommended path, supplemented by specific GCP resource ID patterns.
+Importing GCP resources into OpenTofu allows you to manage existing Google Cloud infrastructure as code without recreating resources. The modern import block approach with `-generate-config-out` is the recommended path when you want OpenTofu to generate configuration. The `tofu import` command only imports into state, so it requires matching `resource` blocks to already exist.
 
 ## GCP Import ID Patterns
 
@@ -73,7 +73,7 @@ import {
 
 import {
   id = "projects/my-project/zones/us-central1-a/instances/web-1"
-  to = google_compute_instance.web["web-1"]
+  to = google_compute_instance.web_1
 }
 ```
 
@@ -88,11 +88,11 @@ tofu apply
 ## Importing IAM Bindings
 
 ```bash
-# IAM member: project/{project} roles/{role} {member}
+# IAM member: {project_id} roles/{role} {member}
 tofu import google_project_iam_member.app_storage \
   "my-project roles/storage.objectViewer serviceAccount:app@my-project.iam.gserviceaccount.com"
 
-# IAM binding: project/{project} roles/{role}
+# IAM binding: {project_id} roles/{role}
 tofu import google_project_iam_binding.editors \
   "my-project roles/editor"
 ```
@@ -102,7 +102,7 @@ tofu import google_project_iam_binding.editors \
 ```bash
 # List all GCE instances to find import IDs
 gcloud compute instances list \
-  --format="table(name,zone,selfLink)" \
+  --format="table(name,zone.basename(),selfLink)" \
   --project my-project
 
 # List Cloud SQL instances
@@ -125,7 +125,7 @@ PROJECT="my-project"
 
 # Generate import blocks for all GCE instances
 gcloud compute instances list --project "$PROJECT" \
-  --format="value(name,zone)" | \
+  --format="value(name,zone.basename())" | \
 while read -r NAME ZONE; do
   SAFE_NAME=$(echo "$NAME" | tr '-' '_')
   cat >> imports.tf << EOF
