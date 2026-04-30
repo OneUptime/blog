@@ -14,12 +14,12 @@ go get golang.org/x/net/ipv4
 
 ## What Does golang.org/x/net/ipv4 Provide?
 
-The standard `net` package doesn't expose all IPv4 socket options. The `ipv4` package fills this gap by wrapping `net.Conn`, `net.PacketConn`, and `net.Listener` to expose:
+The standard `net` package doesn't expose all IPv4 socket options. The `ipv4` package fills this gap by wrapping `net.Conn` and `net.PacketConn`, and by providing `RawConn` support for raw IPv4 sockets, to expose:
 
 - IP_TTL (unicast TTL control)
 - IP_MULTICAST_TTL and multicast group membership
 - IP_TOS (Type of Service / DSCP)
-- IP_RECVTTL, IP_RECVDST, IP_RECVIF (per-packet control messages)
+- Per-packet control messages for received TTL, destination address, and interface index
 
 ## Controlling Unicast TTL
 
@@ -116,7 +116,9 @@ func main() {
     pc := ipv4.NewPacketConn(conn)
 
     // Enable receiving of control messages
-    pc.SetControlMessage(ipv4.FlagTTL|ipv4.FlagDst|ipv4.FlagInterface, true)
+    if err := pc.SetControlMessage(ipv4.FlagTTL|ipv4.FlagDst|ipv4.FlagInterface, true); err != nil {
+        log.Fatal(err)
+    }
 
     buf := make([]byte, 4096)
     for {
@@ -173,8 +175,12 @@ func main() {
     defer pc.LeaveGroup(iface, group)
 
     // Set outgoing multicast interface and TTL
-    pc.SetMulticastInterface(iface)
-    pc.SetMulticastTTL(1)
+    if err := pc.SetMulticastInterface(iface); err != nil {
+        log.Fatal(err)
+    }
+    if err := pc.SetMulticastTTL(1); err != nil {
+        log.Fatal(err)
+    }
 
     buf := make([]byte, 4096)
     for {
