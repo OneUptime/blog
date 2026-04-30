@@ -19,21 +19,12 @@ IAM OIDC Providers allow external identity providers to authenticate to AWS usin
 ## Step 1: Create OIDC Provider for GitHub Actions
 
 ```hcl
-# Get the OIDC thumbprint from GitHub's OIDC endpoint
-
-data "tls_certificate" "github" {
-  url = "https://token.actions.githubusercontent.com"
-}
-
 # Create the GitHub Actions OIDC provider
 resource "aws_iam_openid_connect_provider" "github" {
   url = "https://token.actions.githubusercontent.com"
 
   # Client IDs that are valid for this provider
   client_id_list = ["sts.amazonaws.com"]
-
-  # Thumbprints of the OIDC provider's root CA certificates
-  thumbprint_list = [data.tls_certificate.github.certificates[0].sha1_fingerprint]
 
   tags = {
     Name     = "github-actions-oidc"
@@ -63,7 +54,7 @@ resource "aws_iam_role" "github_actions_deploy" {
           "token.actions.githubusercontent.com:aud" = "sts.amazonaws.com"
         }
         StringLike = {
-          # Restrict to a specific organization/repository and branch
+          # Restrict to a specific organization/repository and branch or environment
           "token.actions.githubusercontent.com:sub" = [
             "repo:${var.github_org}/${var.github_repo}:ref:refs/heads/main",
             "repo:${var.github_org}/${var.github_repo}:environment:production"
@@ -104,6 +95,10 @@ resource "aws_iam_role_policy" "github_deploy" {
     }]
   })
 }
+
+output "github_actions_role_arn" {
+  value = aws_iam_role.github_actions_deploy.arn
+}
 ```
 
 ## Step 3: GitHub Actions Workflow Using OIDC
@@ -124,10 +119,10 @@ jobs:
   deploy:
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v6
 
       - name: Configure AWS Credentials via OIDC
-        uses: aws-actions/configure-aws-credentials@v4
+        uses: aws-actions/configure-aws-credentials@v6
         with:
           role-to-assume: arn:aws:iam::123456789012:role/GitHubActionsDeploy
           role-session-name: GitHubActionsSession
@@ -148,7 +143,6 @@ jobs:
 resource "aws_iam_openid_connect_provider" "gitlab" {
   url            = "https://gitlab.example.com"
   client_id_list = ["https://gitlab.example.com"]
-  thumbprint_list = [var.gitlab_thumbprint]
 
   tags = { Name = "gitlab-ci-oidc" }
 }
@@ -165,8 +159,8 @@ resource "aws_iam_role" "gitlab_ci" {
         Federated = aws_iam_openid_connect_provider.gitlab.arn
       }
       Condition = {
-        StringLike = {
-          "gitlab.example.com:sub" = "project_path:${var.gitlab_group}/${var.gitlab_project}:*"
+        StringEquals = {
+          "gitlab.example.com:sub" = "project_path:${var.gitlab_group}/${var.gitlab_project}:ref_type:branch:ref:main"
         }
       }
     }]
@@ -182,7 +176,7 @@ tofu plan
 tofu apply
 
 # Output the role ARN for CI/CD configuration
-tofu output github_actions_role_arn
+tofu output -raw github_actions_role_arn
 ```
 
 ## Conclusion
