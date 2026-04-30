@@ -60,8 +60,9 @@ spec:
   hard:
     # Maximum VMs
     count/virtualmachines.kubevirt.io: "10"
-    # Maximum vCPUs across all VMs
+    # Maximum aggregate CPU requested by VM workloads
     requests.cpu: "32"
+    # Maximum aggregate CPU limits across VM workloads
     limits.cpu: "32"
     # Maximum memory
     requests.memory: 64Gi
@@ -93,7 +94,7 @@ metadata:
   namespace: dev-team-alpha
 spec:
   description: "Developer workstation - Ubuntu 22.04 with dev tools"
-  defaultVersionID: ""
+  defaultVersionId: dev-team-alpha/dev-workstation-v1
 ---
 apiVersion: harvesterhci.io/v1beta1
 kind: VirtualMachineTemplateVersion
@@ -101,11 +102,34 @@ metadata:
   name: dev-workstation-v1
   namespace: dev-team-alpha
 spec:
-  templateID: dev-team-alpha/dev-workstation
+  templateId: dev-team-alpha/dev-workstation
   description: "Ubuntu 22.04 + Docker + kubectl + common dev tools"
   vm:
+    metadata:
+      name: dev-workstation
+      namespace: dev-team-alpha
     spec:
       running: false
+      dataVolumeTemplates:
+        - apiVersion: cdi.kubevirt.io/v1beta1
+          kind: DataVolume
+          metadata:
+            name: dev-workstation-rootdisk
+            annotations:
+              # Replace with the namespace/name of an imported Harvester VM image.
+              harvesterhci.io/imageId: harvester-public/ubuntu-2204
+          spec:
+            pvc:
+              accessModes:
+                - ReadWriteMany
+              resources:
+                requests:
+                  storage: 40Gi
+              # Replace if your image uses a different image-backed StorageClass.
+              storageClassName: longhorn-ubuntu-2204
+              volumeMode: Block
+            source:
+              blank: {}
       template:
         spec:
           domain:
@@ -137,7 +161,7 @@ spec:
           volumes:
             - name: rootdisk
               dataVolume:
-                name: ""
+                name: dev-workstation-rootdisk
             - name: cloudinit
               cloudInitNoCloud:
                 userData: |
@@ -181,21 +205,31 @@ metadata:
 rules:
   # VM management
   - apiGroups: ["kubevirt.io"]
-    resources: ["virtualmachines", "virtualmachineinstances"]
+    resources: ["virtualmachines"]
     verbs: ["get", "list", "create", "update", "patch", "delete"]
-  # VM operations (start, stop, console)
+  # VM instance visibility
+  - apiGroups: ["kubevirt.io"]
+    resources: ["virtualmachineinstances"]
+    verbs: ["get", "list"]
+  # VM operations (start, stop, restart)
   - apiGroups: ["subresources.kubevirt.io"]
-    resources: ["virtualmachines/start", "virtualmachines/stop",
-                "virtualmachines/restart", "virtualmachineinstances/console",
-                "virtualmachineinstances/vnc"]
-    verbs: ["get", "update"]
+    resources: ["virtualmachines/start", "virtualmachines/stop", "virtualmachines/restart"]
+    verbs: ["update"]
+  # Console and VNC access
+  - apiGroups: ["subresources.kubevirt.io"]
+    resources: ["virtualmachineinstances/console", "virtualmachineinstances/vnc"]
+    verbs: ["get"]
+  # DataVolumes created from imported VM images
+  - apiGroups: ["cdi.kubevirt.io"]
+    resources: ["datavolumes"]
+    verbs: ["get", "list"]
   # PVC management for VM disks
   - apiGroups: [""]
     resources: ["persistentvolumeclaims"]
     verbs: ["get", "list", "create", "delete"]
-  # VM images
+  # VM images and templates
   - apiGroups: ["harvesterhci.io"]
-    resources: ["virtualmachineimages"]
+    resources: ["virtualmachineimages", "virtualmachinetemplates", "virtualmachinetemplateversions"]
     verbs: ["get", "list"]
   # Secrets for cloud-init
   - apiGroups: [""]
@@ -230,12 +264,25 @@ Help developers quickly spin up and tear down environments:
 # dev-env-manager.sh - Manage dev environments
 
 NAMESPACE="${NAMESPACE:-dev-team-alpha}"
+IMAGE_NAMESPACE="${IMAGE_NAMESPACE:-harvester-public}"
+IMAGE_NAME="${IMAGE_NAME:-ubuntu-2204}"
+IMAGE_STORAGE_CLASS="${IMAGE_STORAGE_CLASS:-longhorn-${IMAGE_NAME}}"
+ROOTDISK_SIZE="${ROOTDISK_SIZE:-40Gi}"
+SSH_KEY_FILE="${SSH_KEY_FILE:-$HOME/.ssh/id_ed25519.pub}"
 ACTION="${1:-help}"
 ENV_NAME="${2:-}"
 
 # Create a new dev environment (VM)
 create_env() {
     local NAME="${1:-dev-$(whoami)-$(date +%m%d)}"
+    local SSH_KEY
+
+    if [[ ! -f "${SSH_KEY_FILE}" ]]; then
+        echo "Missing SSH public key: ${SSH_KEY_FILE}" >&2
+        return 1
+    fi
+
+    SSH_KEY="$(cat "${SSH_KEY_FILE}")"
     echo "Creating dev environment: ${NAME}"
 
     kubectl apply -f - <<EOF
@@ -250,6 +297,24 @@ metadata:
     purpose: development
 spec:
   running: true
+  dataVolumeTemplates:
+    - apiVersion: cdi.kubevirt.io/v1beta1
+      kind: DataVolume
+      metadata:
+        name: ${NAME}-rootdisk
+        annotations:
+          harvesterhci.io/imageId: ${IMAGE_NAMESPACE}/${IMAGE_NAME}
+      spec:
+        pvc:
+          accessModes:
+            - ReadWriteMany
+          resources:
+            requests:
+              storage: ${ROOTDISK_SIZE}
+          volumeMode: Block
+          storageClassName: ${IMAGE_STORAGE_CLASS}
+        source:
+          blank: {}
   template:
     spec:
       domain:
@@ -277,8 +342,8 @@ spec:
           pod: {}
       volumes:
         - name: rootdisk
-          persistentVolumeClaim:
-            claimName: ${NAME}-root
+          dataVolume:
+            name: ${NAME}-rootdisk
         - name: cloudinit
           cloudInitNoCloud:
             userData: |
@@ -287,8 +352,11 @@ spec:
                 - name: ubuntu
                   sudo: ALL=(ALL) NOPASSWD:ALL
                   ssh_authorized_keys:
-                    - $(cat ~/.ssh/id_ed25519.pub 2>/dev/null || echo "# Add your key")
+                    - ${SSH_KEY}
 EOF
+
+    echo "Waiting for VM instance to be created..."
+    kubectl wait --for=create vmi/${NAME} -n ${NAMESPACE} --timeout=600s
 
     echo "Waiting for VM to start..."
     kubectl wait vmi/${NAME} -n ${NAMESPACE} \
@@ -296,8 +364,8 @@ EOF
 
     VM_IP=$(kubectl get vmi ${NAME} -n ${NAMESPACE} \
         -o jsonpath='{.status.interfaces[0].ipAddress}')
-    echo "VM ${NAME} is ready! IP: ${VM_IP}"
-    echo "Connect: ssh ubuntu@${VM_IP}"
+    echo "VM ${NAME} is ready! Reported guest IP: ${VM_IP}"
+    echo "Connect from a cluster-reachable network: ssh ubuntu@${VM_IP}"
 }
 
 # List all dev environments for the current user
@@ -312,7 +380,6 @@ delete_env() {
     local NAME="${1}"
     echo "Deleting dev environment: ${NAME}"
     kubectl delete vm ${NAME} -n ${NAMESPACE}
-    kubectl delete pvc ${NAME}-root -n ${NAMESPACE} 2>/dev/null || true
     echo "Deleted ${NAME}"
 }
 
@@ -334,13 +401,44 @@ Prevent resource waste by automatically cleaning up old development VMs:
 # dev-cleanup-cronjob.yaml
 # Delete dev VMs older than 7 days
 
+apiVersion: v1
+kind: ServiceAccount
+metadata:
+  name: cleanup-sa
+  namespace: dev-team-alpha
+---
+apiVersion: rbac.authorization.k8s.io/v1
+kind: Role
+metadata:
+  name: dev-env-cleanup
+  namespace: dev-team-alpha
+rules:
+  - apiGroups: ["kubevirt.io"]
+    resources: ["virtualmachines"]
+    verbs: ["get", "list", "delete"]
+---
+apiVersion: rbac.authorization.k8s.io/v1
+kind: RoleBinding
+metadata:
+  name: dev-env-cleanup
+  namespace: dev-team-alpha
+subjects:
+  - kind: ServiceAccount
+    name: cleanup-sa
+    namespace: dev-team-alpha
+roleRef:
+  kind: Role
+  name: dev-env-cleanup
+  apiGroup: rbac.authorization.k8s.io
+---
 apiVersion: batch/v1
 kind: CronJob
 metadata:
   name: dev-env-cleanup
   namespace: dev-team-alpha
 spec:
-  schedule: "0 6 * * *"  # Daily at 6 AM
+  schedule: "0 6 * * *"  # Daily at 6 AM UTC
+  timeZone: "Etc/UTC"
   jobTemplate:
     spec:
       template:
@@ -355,12 +453,15 @@ spec:
                 - -c
                 - |
                   # Delete VMs with 'purpose: development' label older than 7 days
-                  CUTOFF=$(date -d '7 days ago' --iso-8601)
+                  CUTOFF="$(date -u -d '7 days ago' '+%Y-%m-%dT%H:%M:%SZ')"
                   kubectl get vm -n dev-team-alpha -l purpose=development \
-                      -o json | jq -r \
-                      ".items[] | select(.metadata.creationTimestamp < \"${CUTOFF}\") |
-                       .metadata.name" | \
-                      xargs -I {} kubectl delete vm {} -n dev-team-alpha
+                      -o jsonpath='{range .items[*]}{.metadata.name}{"\t"}{.metadata.creationTimestamp}{"\n"}{end}' | \
+                      while IFS="$(printf '\t')" read -r NAME CREATED; do
+                        [ -n "${NAME}" ] || continue
+                        if [ "${CREATED}" \< "${CUTOFF}" ]; then
+                          kubectl delete vm "${NAME}" -n dev-team-alpha
+                        fi
+                      done
 ```
 
 ## Conclusion
