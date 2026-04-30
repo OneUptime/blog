@@ -61,8 +61,8 @@ module "vpc" {
 ```
 
 ```hcl
-# ~/.terraform.rc - authenticate with GitLab
-# Set TF_TOKEN_gitlab_company_com env var, or use a literal token:
+# ~/.tofurc - authenticate with GitLab
+# Or set TF_TOKEN_gitlab_company_com instead:
 credentials "gitlab.company.com" {
   token = "your-gitlab-personal-access-token"
 }
@@ -72,6 +72,8 @@ credentials "gitlab.company.com" {
 
 ```bash
 # Service discovery
+mkdir -p "/var/www/registry/.well-known"
+
 cat > /var/www/registry/.well-known/terraform.json << 'EOF'
 {
   "modules.v1": "/v1/modules/"
@@ -96,20 +98,16 @@ cat > "/var/www/registry/v1/modules/mycompany/vpc/aws/versions" << 'EOF'
 }
 EOF
 
-# Download endpoint - redirects to actual download URL
-mkdir -p "/var/www/registry/v1/modules/mycompany/vpc/aws/2.0.0"
-
-cat > "/var/www/registry/v1/modules/mycompany/vpc/aws/2.0.0/download" << 'EOF'
-# This endpoint should return HTTP 204 with X-Terraform-Get header
-# nginx can't easily do custom headers on static files
-# Use a backend script or proxy instead
-EOF
+# Download endpoint is handled by the backend in the nginx config below.
+# It can return either HTTP 200 with {"location": "..."} or
+# HTTP 204 with an X-Terraform-Get header.
 ```
 
 ```nginx
 # /etc/nginx/sites-enabled/module-registry
 server {
-    listen 443 ssl http2;
+    listen 443 ssl;
+    http2 on;
     server_name registry.internal.company.com;
 
     ssl_certificate     /etc/ssl/certs/registry.crt;
@@ -118,13 +116,14 @@ server {
     # Service discovery
     location /.well-known/ {
         root /var/www/registry;
-        add_header Content-Type "application/json";
+        default_type application/json;
+        try_files $uri =404;
     }
 
     # Module versions - static JSON files
     location ~* ^/v1/modules/([^/]+)/([^/]+)/([^/]+)/versions$ {
         root /var/www/registry;
-        add_header Content-Type "application/json";
+        default_type application/json;
         try_files $uri =404;
     }
 
@@ -158,7 +157,7 @@ def download(namespace, module, provider, version):
     filename = f"{module}-{version}.tgz"
     download_url = f"{STORAGE_BASE}/{namespace}/{module}/{provider}/{version}/{filename}"
 
-    # Return 204 with X-Terraform-Get header
+    # Return one valid protocol response: 204 with X-Terraform-Get header
     resp = Response(status=204)
     resp.headers['X-Terraform-Get'] = download_url
     return resp
@@ -171,7 +170,7 @@ if __name__ == '__main__':
 
 ```bash
 #!/bin/bash
-# publish-module.sh
+# scripts/publish-module.sh
 
 set -euo pipefail
 
@@ -242,6 +241,7 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
+      - uses: opentofu/setup-opentofu@v2
 
       - name: Extract version from tag
         id: version
@@ -262,4 +262,4 @@ jobs:
 
 ## Conclusion
 
-For most organizations, GitLab's built-in Terraform module registry provides the simplest path to an internal module registry - upload a `.tgz` archive via the Packages API and it becomes available via the familiar registry source syntax. For organizations without GitLab, implementing the Module Registry Protocol requires a service discovery endpoint, a versions endpoint returning JSON, and a download endpoint returning HTTP 204 with an `X-Terraform-Get` header pointing to the actual module archive URL.
+For most organizations, GitLab's built-in Terraform module registry provides the simplest path to an internal module registry - upload a `.tgz` archive via the Packages API and it becomes available via the familiar registry source syntax. For organizations without GitLab, implementing the Module Registry Protocol requires a service discovery endpoint, a versions endpoint returning JSON, and a download endpoint that returns either JSON containing a `location` value or HTTP 204 with an `X-Terraform-Get` header pointing to the actual module archive URL.
