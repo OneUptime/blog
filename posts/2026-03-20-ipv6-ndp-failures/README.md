@@ -21,7 +21,7 @@ ip -6 neigh show
 ip -6 neigh show dev eth0
 
 # Show only reachable neighbors
-ip -6 neigh show state REACHABLE
+ip -6 neigh show nud reachable
 
 # Neighbor states:
 # REACHABLE  - recently confirmed reachable
@@ -43,10 +43,10 @@ ndisc6 2001:db8::1 eth0
 ndisc6 fe80::1 eth0
 
 # Multiple probes
-ndisc6 -m 3 2001:db8::1 eth0
+ndisc6 -r 3 2001:db8::1 eth0
 
-# If timeout: host not responding to Neighbor Solicitations
-# If returns MAC: NDP working correctly
+# If timeout: host may be down, filtering ICMPv6, or not on this link
+# If it returns a link-layer address: NDP working correctly
 ```
 
 ## Step 3: Capture NDP Traffic
@@ -99,10 +99,10 @@ sudo ip -6 neigh del 2001:db8::1 dev eth0
 sudo ip -6 neigh flush dev eth0
 
 # Flush all failed entries
-sudo ip -6 neigh flush failed dev eth0
+sudo ip -6 neigh flush nud failed dev eth0
 
 # After flush, trigger re-resolution
-ping6 -c 1 2001:db8::1
+ping -6 -c 1 2001:db8::1
 
 # Set neighbor cache timeout (seconds)
 sudo sysctl -w net.ipv6.neigh.eth0.gc_stale_time=60
@@ -142,12 +142,12 @@ ip -6 neigh show dev "$IFACE"
 
 echo ""
 echo "Failed entries:"
-ip -6 neigh show dev "$IFACE" state FAILED
+ip -6 neigh show dev "$IFACE" nud failed
 
 if [ -n "$TARGET" ]; then
     echo ""
     echo "Testing NDP to $TARGET:"
-    result=$(ndisc6 -m 2 -w 2000 "$TARGET" "$IFACE" 2>/dev/null)
+    result=$(ndisc6 -q -r 2 -w 2000 "$TARGET" "$IFACE" 2>/dev/null)
     if [ -n "$result" ]; then
         echo "[OK] $result"
     else
@@ -162,9 +162,9 @@ fi
 
 echo ""
 echo "ICMPv6 rules (ip6tables):"
-sudo ip6tables -L INPUT -n 2>/dev/null | grep "icmp6\|ICMPv6\|neighbor" || echo "  (no rules found or not root)"
+sudo ip6tables -L INPUT -n 2>/dev/null | grep -Ei "icmp|neighbor" || echo "  (no rules found or not root)"
 ```
 
 ## Conclusion
 
-NDP failures prevent IPv6 communication even between hosts on the same subnet. Diagnose with `ip -6 neigh show` to see cache states, use `ndisc6` to manually probe specific neighbors, and capture traffic with `tcpdump` filtering on ICMPv6 types 135/136. The most common cause of NDP failure is a firewall blocking ICMPv6 - ensure types 135 (Neighbor Solicitation) and 136 (Neighbor Advertisement) are allowed on all interfaces. Flush stale/failed cache entries with `ip -6 neigh flush dev eth0` to force re-resolution.
+NDP failures prevent IPv6 communication even between hosts on the same subnet. Diagnose with `ip -6 neigh show` to see cache states, use `ndisc6` to manually probe specific neighbors, and capture traffic with `tcpdump` filtering on ICMPv6 types 135/136. A common cause of NDP failure is a firewall blocking ICMPv6 - ensure types 135 (Neighbor Solicitation) and 136 (Neighbor Advertisement) are allowed on all interfaces. Flush stale/failed cache entries with `ip -6 neigh flush dev eth0` to force re-resolution.
