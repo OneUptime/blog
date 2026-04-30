@@ -4,13 +4,13 @@ Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
 Tags: OpenTofu, Retry Logic, Resilience, Provisioner, Infrastructure as Code
 
-Description: Learn how to implement retry logic in OpenTofu for transient failures using provider settings, null_resource retries, and external_provider patterns.
+Description: Learn how to implement retry logic in OpenTofu for transient failures using provider settings, `terraform_data` provisioners, `time_sleep`, and CI retry wrappers.
 
 Cloud APIs fail transiently - rate limits, eventually-consistent reads, and service-side timeouts are routine. OpenTofu itself does not have a built-in retry keyword for resource operations, but several patterns let you build retry behavior into your configurations.
 
-## Provider-Level Retry Settings
+## Provider-Level Retries and Resource Timeouts
 
-The first line of defense is configuring the provider's built-in retry mechanism:
+The first line of defense is using the retry and timeout controls that providers and resources already support:
 
 ```hcl
 # AWS: increase API retry count and use adaptive retry mode
@@ -18,7 +18,7 @@ The first line of defense is configuring the provider's built-in retry mechanism
 provider "aws" {
   region      = "us-east-1"
   retry_mode  = "adaptive"   # Automatically backs off on throttling
-  max_retries = 10           # Default is 3
+  max_retries = 10           # Default is 25
 }
 ```
 
@@ -29,7 +29,7 @@ provider "google" {
   region  = "us-central1"
 }
 
-# Each resource supports timeout blocks
+# Some resources support timeout blocks
 resource "google_container_cluster" "primary" {
   name = "my-cluster"
 
@@ -43,7 +43,7 @@ resource "google_container_cluster" "primary" {
 
 Resource-Level Timeouts
 
-Most resources support a `timeouts` block for controlling how long OpenTofu waits for operations:
+Some resources support a `timeouts` block for controlling how long OpenTofu waits for operations:
 
 ```hcl
 resource "aws_db_instance" "main" {
@@ -60,22 +60,22 @@ resource "aws_db_instance" "main" {
 }
 ```
 
-## Retry with null_resource and local-exec
+## Retry with terraform_data and local-exec
 
-For operations that require retry logic not supported natively by providers, use `null_resource` with a retry loop in a provisioner:
+For operations that require retry logic not supported natively by providers, use `terraform_data` with a retry loop in a provisioner:
 
 ```hcl
-resource "null_resource" "wait_for_service" {
+resource "terraform_data" "wait_for_service" {
   # Re-run when the service endpoint changes
-  triggers = {
-    endpoint = aws_lb.app.dns_name
-  }
+  triggers_replace = [
+    aws_lb.app.dns_name
+  ]
 
   provisioner "local-exec" {
     # Retry health check up to 30 times with 10-second intervals
     command = <<-EOT
       for i in $(seq 1 30); do
-        if curl -sf "http://${self.triggers.endpoint}/health"; then
+        if curl -sf "http://${aws_lb.app.dns_name}/health"; then
           echo "Service is healthy"
           exit 0
         fi
@@ -93,7 +93,7 @@ resource "null_resource" "wait_for_service" {
 
 ## Retry with time_sleep for Eventual Consistency
 
-Use the `time_sleep` resource to add a wait between dependent operations:
+Use the `time_sleep` resource from the `time` provider to add a wait between dependent operations:
 
 ```hcl
 resource "time_sleep" "wait_for_iam_propagation" {
@@ -140,9 +140,9 @@ echo "Apply failed after $MAX_ATTEMPTS attempts."
 exit 1
 ```
 
-## Using create_before_destroy for Zero-Downtime Replacements
+## Using create_before_destroy to Reduce Replacement Downtime
 
-When a resource must be replaced, `create_before_destroy` ensures the new instance is ready before the old one is deleted:
+When a resource must be replaced, `create_before_destroy` tells OpenTofu to create the replacement object before destroying the existing one, which can reduce downtime when the API allows both objects to exist at once:
 
 ```hcl
 resource "aws_instance" "web" {
@@ -157,4 +157,4 @@ resource "aws_instance" "web" {
 
 ## Conclusion
 
-Retry logic in OpenTofu is implemented at multiple layers: provider retry settings for API-level throttling, `timeouts` blocks for long-running operations, `null_resource` with shell loops for application-level health checks, `time_sleep` for eventual consistency waits, and CI-level retry wrappers for transient apply failures. Use the appropriate layer for each type of failure.
+Retry logic in OpenTofu is implemented at multiple layers: provider retry settings for API-level throttling, `timeouts` blocks for long-running operations, `terraform_data` with shell loops for application-level health checks, `time_sleep` from the `time` provider for eventual consistency waits, and CI-level retry wrappers for transient apply failures. Use the appropriate layer for each type of failure.
