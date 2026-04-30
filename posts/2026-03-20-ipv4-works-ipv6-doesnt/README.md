@@ -8,7 +8,7 @@ Description: Systematic approach to diagnosing why IPv4 works but IPv6 fails on 
 
 ## Introduction
 
-When IPv4 works but IPv6 doesn't, the issue is almost always in IPv6-specific configuration: the IPv6 address isn't assigned, the default route is missing, ICMPv6 is blocked, or the DNS resolver isn't returning AAAA records. Because IPv6 has a completely separate stack from IPv4, each layer must be checked independently.
+When IPv4 works but IPv6 doesn't, the issue is almost always in IPv6-specific configuration: the IPv6 address isn't assigned, the default route is missing, ICMPv6 is blocked, or the DNS resolver isn't returning AAAA records. Because IPv6 has separate addressing, routing, and neighbor discovery from IPv4, each layer must be checked independently.
 
 ## Quick Diagnosis Checklist
 
@@ -22,13 +22,13 @@ echo "=== IPv4 vs IPv6 Quick Comparison ==="
 
 echo ""
 echo "IPv4:"
-IPV4=$(curl -4 -s --max-time 5 https://api4.my-ip.io/ip 2>/dev/null)
+IPV4=$(curl -4 -s --max-time 5 https://icanhazip.com 2>/dev/null)
 echo "  Public IP: ${IPV4:-NOT WORKING}"
 
 # IPv6 check
 echo ""
 echo "IPv6:"
-IPV6=$(curl -6 -s --max-time 5 https://api6.my-ip.io/ip 2>/dev/null)
+IPV6=$(curl -6 -s --max-time 5 https://icanhazip.com 2>/dev/null)
 echo "  Public IP: ${IPV6:-NOT WORKING}"
 
 # If IPv4 works but IPv6 doesn't, run the detailed checks below
@@ -47,11 +47,11 @@ ip -4 addr show scope global
 # → Check if IPv6 is disabled
 cat /proc/sys/net/ipv6/conf/all/disable_ipv6
 
-# → Check for Router Advertisement
+# → Check for Router Advertisement (if rdisc6 is installed)
 sudo rdisc6 eth0 2>/dev/null | head -10
 
-# → Check DHCPv6 if M flag is set
-systemctl status dhclient 2>/dev/null
+# → If the RA Managed (M) flag is set, check DHCPv6 logs
+journalctl -b 2>/dev/null | grep -i dhcp6 | tail -20
 ```
 
 ## Step 2: Check IPv6 Default Route
@@ -68,15 +68,16 @@ ip -6 route show default
 # → accept_ra is disabled
 # → Need to add static route
 
-# Quick fix: add static default route
+# Quick fix: add a static default route
+# Replace fe80::1 and eth0 with your actual router and interface
 sudo ip -6 route add default via fe80::1 dev eth0
 ```
 
 ## Step 3: Test IPv6 Connectivity at Each Layer
 
 ```bash
-# Layer 2: Can we reach the gateway?
-ping6 -I eth0 fe80::1  # Link-local gateway
+# First hop: Can we reach the gateway?
+ping6 -I eth0 fe80::1  # Replace fe80::1 with the router from "ip -6 route show default"
 
 # Layer 3: Can we reach a known IPv6 host?
 ping6 -c 3 2001:4860:4860::8888  # Google DNS
@@ -144,10 +145,10 @@ ss -tlnp4 | grep ":80\|:443"
 
 # Check if nginx/apache is configured for IPv6
 grep -r "listen.*ipv6\|listen.*\[::\]" /etc/nginx/sites-enabled/ 2>/dev/null
-grep -r "Listen\|NameVirtualHost" /etc/apache2/sites-enabled/ 2>/dev/null | grep ":"
+grep -RE "Listen .*\\[.*\\]:|<VirtualHost .*\\[.*\\]:" /etc/apache2/ports.conf /etc/apache2/sites-enabled/ 2>/dev/null
 
 # Test application over IPv6
-curl -6 -I http://localhost/  # Should work if app listens on [::]
+curl -6 -I http://[::1]/  # Tests the IPv6 loopback listener
 ```
 
 ## Common Causes Table
