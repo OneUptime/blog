@@ -8,12 +8,12 @@ Description: Learn how to identify and handle orphaned resources in OpenTofu sta
 
 ## Introduction
 
-Orphaned resources are state file entries that no longer correspond to a resource in your configuration or that point to a cloud resource that was deleted outside OpenTofu. They cause spurious diffs, failed applies, and cluttered state.
+Orphaned resources are state file entries that no longer correspond to a resource in your configuration or that point to a cloud resource that was deleted outside OpenTofu. They cause spurious diffs, unexpected recreation plans, and cluttered state.
 
 ## Types of Orphans
 
 1. **Configuration orphan**: Resource is in state but no longer in `.tf` files → OpenTofu will plan to destroy it
-2. **Cloud orphan**: Resource is in state and config but was deleted manually → Apply will fail trying to update it
+2. **Cloud orphan**: Resource is in state and config but was deleted manually → Refresh will detect the drift, and a normal plan will typically propose recreating it
 
 ## Identifying Orphaned Resources
 
@@ -58,13 +58,13 @@ tofu state list | grep old_web_server
 If OpenTofu's state references a resource that was deleted in the cloud console:
 
 ```bash
-# Run a refresh to detect the missing resource
+# Run a refresh-only apply to detect the missing resource and update state
 tofu apply -refresh-only
 
-# OpenTofu will show the resource as deleted and offer to update state
-# Review and confirm
+# OpenTofu will show the resource as missing and offer to update state
+# If it is still in config, the next normal plan will typically propose recreating it
 
-# Or remove it from state manually
+# Or remove it from state manually with the same result
 tofu state rm aws_instance.deleted_externally
 ```
 
@@ -75,9 +75,9 @@ tofu state rm aws_instance.deleted_externally
 tofu state list | grep "aws_instance"
 
 # Remove multiple orphaned instances
-tofu state rm aws_instance.old_worker[0]
-tofu state rm aws_instance.old_worker[1]
-tofu state rm aws_instance.old_worker[2]
+tofu state rm 'aws_instance.old_worker[0]'
+tofu state rm 'aws_instance.old_worker[1]'
+tofu state rm 'aws_instance.old_worker[2]'
 
 # Or remove all with a specific prefix using a loop
 for resource in $(tofu state list | grep "aws_instance.old_worker"); do
@@ -85,27 +85,29 @@ for resource in $(tofu state list | grep "aws_instance.old_worker"); do
 done
 ```
 
-## Preventing Orphans: Use lifecycle.prevent_destroy
+## Guard Critical Resources: Use lifecycle.prevent_destroy
 
 ```hcl
-resource "aws_rds_cluster" "main" {
-  cluster_identifier = "prod-aurora"
+resource "aws_ecs_cluster" "main" {
+  name = "prod-cluster"
 
   lifecycle {
-    # Error if someone tries to remove this from config without explicit override
+    # Error if a plan would destroy or replace this resource while it remains in config
     prevent_destroy = true
   }
 }
 ```
 
-## Preventing Orphans: Audit State Regularly
+This protects against planned destroys and replacements, but it does not stop OpenTofu from destroying the resource if you remove the entire `resource` block from configuration.
+
+## Preventing Orphans: Review Planned Destroys Regularly
 
 ```bash
-# Script to report state entries with no corresponding config
+# Quick heuristic to review resources slated for destruction
 tofu plan -no-color 2>&1 | grep "will be destroyed" > orphans-to-review.txt
 cat orphans-to-review.txt
 ```
 
 ## Conclusion
 
-Handle orphaned resources by deciding whether to destroy them (remove from config and apply), keep them unmanaged (use `tofu state rm`), or re-import them (use `tofu import`). Run `tofu plan -refresh-only` regularly to detect externally deleted resources before they cause apply failures, and use `lifecycle.prevent_destroy` to guard critical resources against accidental removal.
+Handle orphaned resources by deciding whether to destroy them (remove from config and apply), keep them unmanaged (use `tofu state rm`), or re-import them (use `tofu import`). Run `tofu plan -refresh-only` regularly to detect externally deleted resources before they lead to unexpected recreation plans, and use `lifecycle.prevent_destroy` to guard critical resources against accidental destroys or replacements while the resource block remains in configuration.
