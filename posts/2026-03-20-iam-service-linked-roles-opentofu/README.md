@@ -18,14 +18,11 @@ Service-linked roles are IAM roles pre-configured with the exact permissions nee
 ## Step 1: Create Service-Linked Roles
 
 ```hcl
-# Service-linked role for ECS to manage EC2 instances and load balancers
+# Service-linked role for ECS to manage cluster-related resources
 
 resource "aws_iam_service_linked_role" "ecs" {
   aws_service_name = "ecs.amazonaws.com"
   description      = "Service-linked role for Amazon ECS"
-
-  # Suffix is optional and must be unique per account if specified
-  # custom_suffix = "production"  # Uncomment for multiple instances
 }
 
 # Service-linked role for Elastic Load Balancing
@@ -38,6 +35,9 @@ resource "aws_iam_service_linked_role" "elasticloadbalancing" {
 resource "aws_iam_service_linked_role" "autoscaling" {
   aws_service_name = "autoscaling.amazonaws.com"
   description      = "Service-linked role for EC2 Auto Scaling"
+
+  # Auto Scaling supports an optional custom suffix for additional roles
+  # custom_suffix = "production"
 }
 ```
 
@@ -62,16 +62,14 @@ resource "aws_iam_service_linked_role" "elasticache" {
 ## Step 4: Handle Already-Existing Roles
 
 ```hcl
-# Use data source to check if a service-linked role already exists
-data "aws_iam_role" "ecs_existing" {
-  name = "AWSServiceRoleForECS"
-}
-
-# Conditionally create only if it doesn't exist
-resource "aws_iam_service_linked_role" "ecs_conditional" {
-  count            = data.aws_iam_role.ecs_existing.arn == null ? 1 : 0
+# Declare the role in configuration as usual
+resource "aws_iam_service_linked_role" "ecs" {
   aws_service_name = "ecs.amazonaws.com"
 }
+
+# If AWSServiceRoleForECS already exists in the account,
+# import it into OpenTofu state before running `tofu apply`
+# instead of trying to detect it with a data source lookup.
 ```
 
 ## Step 5: Import Existing Service-Linked Roles
@@ -83,7 +81,7 @@ tofu import aws_iam_service_linked_role.ecs \
 ```
 
 ```hcl
-# Import block for OpenTofu 1.5+
+# Import block
 import {
   to = aws_iam_service_linked_role.ecs
   id = "arn:aws:iam::123456789012:role/aws-service-role/ecs.amazonaws.com/AWSServiceRoleForECS"
@@ -100,13 +98,12 @@ resource "aws_iam_service_linked_role" "ecs" {
 # List all service-linked roles in the account
 aws iam list-roles \
   --path-prefix "/aws-service-role/" \
-  --query 'Roles[].{Name: RoleName, Service: AssumeRolePolicyDocument}' \
+  --query 'Roles[].{Name:RoleName, Arn:Arn}' \
   --output table
 
-# Get the policy for a specific service-linked role
+# Get details for a specific service-linked role
 aws iam get-role \
-  --role-name AWSServiceRoleForECS \
-  --query 'Role.AssumeRolePolicyDocument'
+  --role-name AWSServiceRoleForECS
 ```
 
 ## Step 7: Deploy
