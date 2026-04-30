@@ -12,7 +12,7 @@ HTTP Keep-Alive (also called persistent connections) allows a single TCP connect
 
 ## Default Nginx Keep-Alive Behavior
 
-Nginx enables Keep-Alive by default for HTTP/1.1 clients. The key directives controlling this behavior live in the `http` or `server` context.
+Nginx enables Keep-Alive by default for HTTP/1.1 clients. The key directives controlling this behavior live in the `http`, `server`, or `location` context.
 
 ## Configuring Keep-Alive Timeouts
 
@@ -51,7 +51,7 @@ upstream app_backend {
     server 127.0.0.1:3000;
     server 127.0.0.1:3001;
 
-    # Keep up to 32 idle connections to upstreams in the pool
+    # Keep up to 32 idle upstream Keep-Alive connections per worker process
     keepalive 32;
 }
 
@@ -62,14 +62,14 @@ server {
     location / {
         proxy_pass http://app_backend;
 
-        # Required for upstream Keep-Alive to work properly
+        # Required on Nginx versions before 1.29.7
         proxy_http_version 1.1;
         proxy_set_header Connection "";
     }
 }
 ```
 
-Setting `proxy_http_version 1.1` and clearing the `Connection` header are both required-HTTP/1.0 does not support persistent connections by default.
+For Nginx versions before 1.29.7, setting `proxy_http_version 1.1` and clearing the `Connection` header are both required for HTTP upstream Keep-Alive. Since 1.29.7, Nginx uses HTTP/1.1 for proxying and enables upstream Keep-Alive by default.
 
 ## Tuning for High-Traffic Sites
 
@@ -87,18 +87,18 @@ http {
 
 ## Verifying Keep-Alive Is Active
 
-Use `curl` to confirm Keep-Alive headers are present:
+Use `curl` to inspect the response headers:
 
 ```bash
-# --http1.1 forces HTTP/1.1; -v shows verbose headers
-curl -v --http1.1 http://example.com 2>&1 | grep -i keep-alive
+# --http1.1 forces HTTP/1.1; -I shows response headers only
+curl -I --http1.1 http://example.com
 ```
 
-You should see `Connection: keep-alive` in the response headers.
+With HTTP/1.1, persistent connections are the default, so you may not see `Connection: keep-alive`. If you set a second `keepalive_timeout` value, you may see a `Keep-Alive: timeout=...` header; `Connection: close` indicates the server will not keep the connection open.
 
 ## Monitoring Keep-Alive Connections
 
-Enable the Nginx stub status module to monitor active connections:
+If Nginx was built with the stub status module, enable it to monitor active connections:
 
 ```nginx
 server {
@@ -118,8 +118,8 @@ Then poll it with:
 curl http://127.0.0.1:8080/nginx_status
 ```
 
-The `Reading`, `Writing`, and `Waiting` counters show active, active-writing, and Keep-Alive idle connections respectively.
+The `Reading`, `Writing`, and `Waiting` counters show connections currently being read, written, and kept idle waiting for the next request respectively.
 
 ## Conclusion
 
-Tuning HTTP Keep-Alive in Nginx is a low-effort, high-reward optimization. Set `keepalive_timeout` and `keepalive_requests` appropriate for your traffic pattern, and enable upstream Keep-Alive when proxying to application servers. Always validate with load testing to confirm the improvements.
+Tuning HTTP Keep-Alive in Nginx is a low-effort, high-reward optimization. Set `keepalive_timeout` and `keepalive_requests` appropriate for your traffic pattern, and configure upstream Keep-Alive when proxying to application servers. Always validate with load testing to confirm the improvements.
