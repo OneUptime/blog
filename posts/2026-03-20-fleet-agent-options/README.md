@@ -10,41 +10,40 @@ Description: Learn how to configure Fleet agent options to customize agent behav
 
 The Fleet agent runs in each managed cluster and is responsible for receiving bundle deployments and applying resources. Properly configuring the agent ensures it can operate correctly in your specific environment - whether that means setting proxy configurations, resource limits, custom tolerations, or connection settings.
 
-This guide covers all Fleet agent configuration options and how to apply them at installation time or update them for existing agents.
+In standalone Fleet, you use the `fleet-agent` Helm chart for agent-initiated registration. In Fleet running inside Rancher, downstream agent deployments are created programmatically, and per-cluster agent settings are applied on the Fleet `Cluster` resource.
+
+This guide covers the supported Fleet agent configuration options and how to apply them at installation time or update them for existing agents.
 
 ## Prerequisites
 
-- Fleet installed in Rancher
+- Fleet manager installed (standalone Fleet or Fleet in Rancher)
 - `kubectl` access to both Fleet manager and downstream clusters
-- Helm v3 installed for agent installation/updates
+- Helm v3 installed if you are using agent-initiated registration
+- Fleet Helm repository added locally if you are installing with Helm (`helm repo add fleet https://rancher.github.io/fleet-helm-charts/`)
 
 ## Fleet Agent Components
 
-The Fleet agent consists of:
-- **fleet-agent**: The main agent controller that manages bundle deployments
-- **fleet-agent-bootstrap**: Initial registration component (runs once)
+The Fleet agent installation includes:
+- **fleet-agent**: The main agent deployment that manages bundle deployments
+- **fleet-agent-bootstrap**: The bootstrap Secret used during initial registration
+- **fleet-agent** ConfigMap: Stores agent configuration such as labels, client ID, and TLS mode
 
-Both components run in the `cattle-fleet-system` namespace.
+These resources are created in the `cattle-fleet-system` namespace by default.
 
 ## Basic Agent Configuration at Installation
 
-When installing the Fleet agent via Helm, you can configure all options:
+When installing the Fleet agent via Helm for agent-initiated registration, you can pass supported chart values alongside the registration `values.yaml` from Fleet:
 
 ```bash
-# Full Fleet agent installation with options
-
-helm install fleet-agent fleet/fleet-agent \
-  --namespace cattle-fleet-system \
-  --create-namespace \
-  --set apiServerURL="https://fleet-manager.example.com" \
-  --set token="registration-token" \
-  --set clusterNamespace="fleet-default" \
-  --set clusterName="my-cluster" \
-  # Resource limits
-  --set agent.resources.requests.cpu="100m" \
-  --set agent.resources.requests.memory="128Mi" \
-  --set agent.resources.limits.cpu="500m" \
-  --set agent.resources.limits.memory="512Mi"
+# values.yaml comes from the ClusterRegistrationToken secret on the Fleet manager
+helm -n cattle-fleet-system install --create-namespace --wait \
+  --values values.yaml \
+  --set-string labels.environment=production \
+  --set-string labels.region=us-west-2 \
+  --set proxy="http://proxy.corp.example.com:3128" \
+  --set noProxy="127.0.0.0/8,10.0.0.0/8,172.16.0.0/12,192.168.0.0/16,.svc,.cluster.local" \
+  --set fleetAgent.nodeSelector.node-role=system \
+  fleet-agent fleet/fleet-agent
 ```
 
 ## Configuring Agent Resources
@@ -52,10 +51,15 @@ helm install fleet-agent fleet/fleet-agent \
 ### Setting Resource Limits
 
 ```yaml
-# fleet-agent-values.yaml
-agent:
+# fleet-cluster-agent-resources.yaml
+apiVersion: fleet.cattle.io/v1alpha1
+kind: Cluster
+metadata:
+  name: my-cluster
+  namespace: clusters
+spec:
   # Resource allocation for the Fleet agent
-  resources:
+  agentResources:
     requests:
       # Minimum CPU guaranteed to the agent
       cpu: "100m"
@@ -71,9 +75,14 @@ agent:
 For edge clusters with limited resources:
 
 ```yaml
-# fleet-agent-edge-values.yaml
-agent:
-  resources:
+# fleet-cluster-agent-edge-resources.yaml
+apiVersion: fleet.cattle.io/v1alpha1
+kind: Cluster
+metadata:
+  name: my-cluster
+  namespace: clusters
+spec:
+  agentResources:
     requests:
       cpu: "50m"
       memory: "64Mi"
@@ -88,27 +97,19 @@ For clusters behind an HTTP proxy:
 
 ```yaml
 # fleet-agent-proxy-values.yaml
-agent:
-  extraEnv:
-    # HTTP proxy for outbound traffic
-    - name: HTTP_PROXY
-      value: "http://proxy.corp.example.com:3128"
-    # HTTPS proxy
-    - name: HTTPS_PROXY
-      value: "http://proxy.corp.example.com:3128"
-    # Bypass proxy for local traffic
-    - name: NO_PROXY
-      value: "localhost,127.0.0.1,10.0.0.0/8,172.16.0.0/12,192.168.0.0/16,.cluster.local"
+# The chart uses the same proxy value for both HTTP_PROXY and HTTPS_PROXY
+proxy: "http://proxy.corp.example.com:3128"
+
+# Bypass proxy for local traffic
+noProxy: "127.0.0.0/8,10.0.0.0/8,172.16.0.0/12,192.168.0.0/16,.svc,.cluster.local"
 ```
 
 ```bash
 # Apply proxy settings during installation
-helm install fleet-agent fleet/fleet-agent \
-  --namespace cattle-fleet-system \
-  --create-namespace \
-  --set apiServerURL="https://fleet-manager.example.com" \
-  --set token="registration-token" \
-  -f fleet-agent-proxy-values.yaml
+helm -n cattle-fleet-system install --create-namespace --wait \
+  --values values.yaml \
+  -f fleet-agent-proxy-values.yaml \
+  fleet-agent fleet/fleet-agent
 ```
 
 ## Configuring Agent Tolerations
@@ -117,7 +118,7 @@ For nodes with taints (edge devices, GPU nodes, etc.):
 
 ```yaml
 # fleet-agent-tolerations.yaml
-agent:
+fleetAgent:
   tolerations:
     # Allow running on nodes with the edge taint
     - key: "node.kubernetes.io/edge"
@@ -138,13 +139,22 @@ Pin the Fleet agent to specific nodes:
 
 ```yaml
 # fleet-agent-nodeselector.yaml
-agent:
+fleetAgent:
   nodeSelector:
     # Run the agent only on nodes labeled as system nodes
     node-role: system
+```
 
-  # Or use affinity for more complex rules
-  affinity:
+For more complex scheduling rules on an existing or Rancher-managed agent, use `spec.agentAffinity` on the Fleet `Cluster` resource:
+
+```yaml
+apiVersion: fleet.cattle.io/v1alpha1
+kind: Cluster
+metadata:
+  name: my-cluster
+  namespace: clusters
+spec:
+  agentAffinity:
     nodeAffinity:
       preferredDuringSchedulingIgnoredDuringExecution:
         - weight: 100
@@ -160,73 +170,68 @@ For environments with custom CA certificates:
 
 ```yaml
 # fleet-agent-tls.yaml
-# Add custom CA bundle for Fleet manager's TLS certificate
-global:
-  cattle:
-    # CA bundle for the Rancher/Fleet manager certificate
-    systemDefaultRegistry: ""
+# Strict mode trusts only the configured CA bundle
+agentTLSMode: "strict"
+```
 
-# Set the CA bundle
-agent:
-  extraEnv:
-    - name: SSL_CERT_FILE
-      value: /etc/ssl/certs/custom-ca.crt
-  extraVolumeMounts:
-    - name: custom-ca
-      mountPath: /etc/ssl/certs/custom-ca.crt
-      subPath: custom-ca.crt
-  extraVolumes:
-    - name: custom-ca
-      configMap:
-        name: custom-ca-bundle
+```bash
+# Pass the management cluster API server CA as a PEM file when it is not signed by a well-known CA
+helm -n cattle-fleet-system install --create-namespace --wait \
+  --values values.yaml \
+  --set-file apiServerCA=ca.pem \
+  -f fleet-agent-tls.yaml \
+  fleet-agent fleet/fleet-agent
 ```
 
 ## Updating Agent Configuration
 
-For existing Fleet agents, update via Helm upgrade:
+For existing Fleet agents, update the Fleet `Cluster` resource instead of running `helm upgrade` on the downstream cluster:
 
 ```bash
 # Update resource limits on existing agent
-helm upgrade fleet-agent fleet/fleet-agent \
-  --namespace cattle-fleet-system \
-  --reuse-values \
-  --set agent.resources.limits.memory="1Gi"
+kubectl patch clusters.fleet.cattle.io my-cluster \
+  -n clusters \
+  --type merge \
+  -p '{"spec":{"agentResources":{"limits":{"memory":"1Gi"}}}}'
 
 # Update proxy settings
-helm upgrade fleet-agent fleet/fleet-agent \
-  --namespace cattle-fleet-system \
-  --reuse-values \
-  -f fleet-agent-proxy-values.yaml
+kubectl patch clusters.fleet.cattle.io my-cluster \
+  -n clusters \
+  --type merge \
+  -p '{"spec":{"agentEnvVars":[{"name":"HTTP_PROXY","value":"http://proxy.corp.example.com:3128"},{"name":"HTTPS_PROXY","value":"http://proxy.corp.example.com:3128"},{"name":"NO_PROXY","value":"localhost,127.0.0.1,10.0.0.0/8,172.16.0.0/12,192.168.0.0/16,.svc,.cluster.local"}]}}'
 ```
 
-## Configuring Agent Labels and Annotations
+## Configuring Cluster Labels at Registration
 
-Propagate labels from the agent to the cluster registration:
+Set labels during registration; these become labels on the Fleet `Cluster` resource:
 
 ```yaml
 # fleet-agent-labels.yaml
-# These become labels on the Fleet Cluster resource
-clusterLabels:
+# These labels are applied when the cluster is first registered
+labels:
   environment: production
   region: us-west-2
   team: platform
   managed-by: fleet-agent-helm
-
-clusterAnnotations:
-  installed-by: "platform-team"
-  install-date: "2026-03-20"
 ```
+
+After registration is completed, the agent cannot change these labels.
 
 ## Verifying Agent Configuration
 
 ```bash
 # Check the Fleet agent is running
-kubectl get pods -n cattle-fleet-system
+kubectl get pods -n cattle-fleet-system -l app=fleet-agent
 
-# View agent configuration
+# View the agent deployment
 kubectl get deployment fleet-agent \
   -n cattle-fleet-system \
   -o yaml
+
+# View agent runtime configuration
+kubectl get configmap fleet-agent \
+  -n cattle-fleet-system \
+  -o jsonpath='{.data.config}{"\n"}'
 
 # Check agent resource usage
 kubectl top pods -n cattle-fleet-system
@@ -237,26 +242,30 @@ kubectl logs -n cattle-fleet-system \
   --tail=50
 
 # Verify agent is connected to Fleet manager
-kubectl get cluster -n fleet-default \
-  -o jsonpath='{range .items[*]}{.metadata.name}: {.status.agent.lastSeen}{"\n"}{end}'
+kubectl get clusters.fleet.cattle.io -A \
+  -o jsonpath='{range .items[*]}{.metadata.namespace}/{.metadata.name}: {.status.agent.lastSeen}{"\n"}{end}'
 ```
 
 ## Troubleshooting Agent Issues
 
 ```bash
 # Agent not starting - check pod events
-kubectl describe pod -n cattle-fleet-system \
+kubectl describe pods -n cattle-fleet-system \
   -l app=fleet-agent
 
-# Network connectivity issues
-kubectl exec -n cattle-fleet-system \
-  -l app=fleet-agent \
-  -- curl -k https://fleet-manager.example.com/healthz
+# Check upstream connection settings
+kubectl get secret fleet-agent-bootstrap \
+  -n cattle-fleet-system \
+  -o yaml
+
+kubectl get configmap fleet-agent \
+  -n cattle-fleet-system \
+  -o yaml
 
 # Check agent version
 kubectl get deployment fleet-agent \
   -n cattle-fleet-system \
-  -o jsonpath='{.spec.template.spec.containers[0].image}'
+  -o jsonpath='{.spec.template.spec.containers[?(@.name=="fleet-agent")].image}{"\n"}'
 ```
 
 ## Conclusion
