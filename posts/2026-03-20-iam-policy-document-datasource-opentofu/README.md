@@ -36,13 +36,23 @@ data "aws_iam_policy_document" "s3_access" {
   }
 
   statement {
-    sid    = "AllowS3ObjectOperations"
+    sid    = "AllowS3ObjectReadDelete"
     effect = "Allow"
 
     actions = [
       "s3:GetObject",
-      "s3:PutObject",
       "s3:DeleteObject",
+    ]
+
+    resources = ["arn:aws:s3:::${var.bucket_name}/*"]
+  }
+
+  statement {
+    sid    = "AllowS3ObjectPutWithKMSEncryption"
+    effect = "Allow"
+
+    actions = [
+      "s3:PutObject",
     ]
 
     resources = ["arn:aws:s3:::${var.bucket_name}/*"]
@@ -101,6 +111,9 @@ resource "aws_iam_role" "lambda" {
 ## Step 3: Merge Multiple Policy Documents
 
 ```hcl
+# Get the current AWS account ID for ARN construction
+data "aws_caller_identity" "current" {}
+
 # Base policy for all application roles
 data "aws_iam_policy_document" "base" {
   statement {
