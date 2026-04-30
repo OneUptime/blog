@@ -4,7 +4,7 @@ Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
 Tags: IPv6, Regex, Regular Expression, Validation, Programming, Pattern Matching
 
-Description: Write and use regular expressions to match, validate, and extract IPv6 addresses from text, logs, and user input, handling all valid IPv6 formats.
+Description: Write and use regular expressions to match, validate, and extract IPv6 addresses from text, logs, and user input, handling common IPv6 text forms, URL literals, and zone IDs.
 
 ## Introduction
 
@@ -33,7 +33,7 @@ import ipaddress
 
 def is_ipv6(s):
     try:
-        ipaddress.IPv6Address(s.split('%')[0])
+        ipaddress.IPv6Address(s)
         return True
     except ValueError:
         return False
@@ -63,9 +63,9 @@ if match:
 ```python
 import re
 
-# Match IPv6 in bracket notation as found in URLs
-# Captures the address without brackets
-IPV6_IN_URL_PATTERN = r'\[([0-9a-fA-F:]+)\](?::\d+)?'
+# Loose match for bracketed IPv6 literals in URLs.
+# URI zone IDs use %25 inside the brackets, not a bare %.
+IPV6_IN_URL_PATTERN = r'\[([0-9A-Fa-f:.]+(?:%25(?:[0-9A-Za-z._~-]|%[0-9A-Fa-f]{2})+)?)\](?::\d+)?'
 
 urls = [
     'http://[2001:db8::1]:8080/api',
@@ -84,57 +84,45 @@ for url in urls:
 ```python
 import re
 
-# Comprehensive pattern covering all valid IPv6 forms (RFC 4291)
-# Based on the well-known regex from David Lively / regex101
-IPV6_FULL_PATTERN = re.compile(r"""
-    ^(
-        # 1. Full 8-group notation
-        ([0-9a-fA-F]{1,4}:){7}[0-9a-fA-F]{1,4}
-        |
-        # 2. Compressed with :: in different positions
-        ([0-9a-fA-F]{1,4}:){1,7}:
-        |
-        ([0-9a-fA-F]{1,4}:){1,6}:[0-9a-fA-F]{1,4}
-        |
-        ([0-9a-fA-F]{1,4}:){1,5}(:[0-9a-fA-F]{1,4}){1,2}
-        |
-        ([0-9a-fA-F]{1,4}:){1,4}(:[0-9a-fA-F]{1,4}){1,3}
-        |
-        ([0-9a-fA-F]{1,4}:){1,3}(:[0-9a-fA-F]{1,4}){1,4}
-        |
-        ([0-9a-fA-F]{1,4}:){1,2}(:[0-9a-fA-F]{1,4}){1,5}
-        |
-        [0-9a-fA-F]{1,4}:((:[0-9a-fA-F]{1,4}){1,6})
-        |
-        # 3. All zeros / loopback
-        :((:[0-9a-fA-F]{1,4}){1,7}|:)
-        |
-        # 4. IPv4-mapped
-        ::ffff(:0{1,4})?:((25[0-5]|(2[0-4]|1?[0-9])?[0-9])\.){3}
-            (25[0-5]|(2[0-4]|1?[0-9])?[0-9])
-        |
-        ([0-9a-fA-F]{1,4}:){1,4}:((25[0-5]|(2[0-4]|1?[0-9])?[0-9])\.){3}
-            (25[0-5]|(2[0-4]|1?[0-9])?[0-9])
-    )$
-""", re.VERBOSE | re.IGNORECASE)
+# Comprehensive pattern based on the RFC 3986 ABNF for IPv6 text forms,
+# plus an optional RFC 4007-style %zone suffix.
+H16 = r'[0-9A-Fa-f]{1,4}'
+IPV4_SEG = r'(?:25[0-5]|2[0-4]\d|1\d\d|[1-9]?\d)'
+IPV4_ADDR = rf'(?:{IPV4_SEG}\.){{3}}{IPV4_SEG}'
+LS32 = rf'(?:{H16}:{H16}|{IPV4_ADDR})'
+
+IPV6_FULL_PATTERN = re.compile(rf"""
+    ^(?:
+        (?:{H16}:){{6}}{LS32}
+        | ::(?:{H16}:){{5}}{LS32}
+        | (?:{H16})?::(?:{H16}:){{4}}{LS32}
+        | (?:(?:{H16}:){{0,1}}{H16})?::(?:{H16}:){{3}}{LS32}
+        | (?:(?:{H16}:){{0,2}}{H16})?::(?:{H16}:){{2}}{LS32}
+        | (?:(?:{H16}:){{0,3}}{H16})?::{H16}:{LS32}
+        | (?:(?:{H16}:){{0,4}}{H16})?::{LS32}
+        | (?:(?:{H16}:){{0,5}}{H16})?::{H16}
+        | (?:(?:{H16}:){{0,6}}{H16})?::
+    )(?:%[^%]+)?$
+""", re.VERBOSE)
 
 # Test
 test_addrs = ['2001:db8::1', '::1', '::', '::ffff:192.168.1.1',
-              'not-valid', '192.168.1.1', '2001:db8:0:0:0:0:0:1']
+              '::13.1.68.3', 'fe80::1%eth0', 'not-valid',
+              '192.168.1.1', '2001:db8:0:0:0:0:0:1']
 
 for addr in test_addrs:
-    valid = bool(IPV6_FULL_PATTERN.match(addr))
+    valid = bool(IPV6_FULL_PATTERN.fullmatch(addr))
     print(f"{addr}: {valid}")
 ```
 
-### Pattern 4: Extract All IPs from Text
+### Pattern 4: Extract IPv4 and IPv6-Like Strings from Text
 
 ```python
 import re
 
-def extract_ips(text: str) -> list:
-    """Extract all IPv4 and IPv6 addresses from text."""
-    # Simple but effective for log extraction
+def extract_ips(text: str) -> dict[str, list[str]]:
+    """Extract IPv4 addresses and IPv6-like strings from text."""
+    # Simple but effective for log extraction, not full validation
     ipv6_re = re.compile(
         r'(?<![:\w])(?:[0-9a-fA-F]{0,4}:){2,7}[0-9a-fA-F]{0,4}(?![:\w])'
     )
@@ -175,7 +163,7 @@ grep -oE '[0-9a-fA-F:]{3,40}' /var/log/nginx/access.log | \
 
 | Use Case | Recommendation |
 |----------|---------------|
-| User input validation | Use `ipaddress` / `net.ParseIP` |
+| User input validation | Use `ipaddress` / `netip.ParseAddr` |
 | Log parsing/extraction | Regex is fine (loose matching) |
 | Security-critical validation | Always use parsing library |
 | Database insertion | Parse and normalize first |
@@ -183,4 +171,4 @@ grep -oE '[0-9a-fA-F:]{3,40}' /var/log/nginx/access.log | \
 
 ## Conclusion
 
-IPv6 regex patterns are complex and error-prone for strict validation. For input validation and security decisions, always use language-native IP parsing libraries. Reserve regex for extracting IPv6 patterns from unstructured text like logs, where perfect accuracy is less critical. The non-strict extraction pattern `[0-9a-fA-F]{0,4}(?::[0-9a-fA-F]{0,4}){2,7}` covers most log analysis needs.
+IPv6 regex patterns are complex and error-prone for strict validation. For input validation and security decisions, always use language-native IP parsing libraries. Reserve regex for extracting IPv6 patterns from unstructured text like logs, where perfect accuracy is less critical. The non-strict extraction pattern `[0-9a-fA-F]{0,4}(?::[0-9a-fA-F]{0,4}){2,7}` is useful for many log analysis tasks, but it is intentionally looser than a full validator.
