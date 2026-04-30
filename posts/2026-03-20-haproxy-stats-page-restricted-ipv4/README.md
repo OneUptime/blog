@@ -20,6 +20,7 @@ HAProxy's built-in stats page provides real-time visibility into frontend and ba
 frontend stats
     # Bind to internal management IPv4 only
     bind 10.0.0.1:8404
+    mode http
 
     # Restrict access to trusted subnets at TCP level
     tcp-request connection reject if !{ src 10.0.0.0/8 }
@@ -28,7 +29,7 @@ frontend stats
     stats uri /stats              # URL path for stats page
     stats refresh 10s             # Auto-refresh every 10 seconds
     stats show-legends            # Show column descriptions
-    stats show-node               # Show hostname
+    stats show-node               # Show node name
 
     # Optional: Basic Auth as additional layer
     stats auth admin:StrongP@ssw0rd
@@ -44,6 +45,7 @@ If you don't want a dedicated port, add stats to a path on an existing frontend:
 ```haproxy
 frontend http_in
     bind 203.0.113.10:80
+    mode http
 
     # Only serve stats to internal IPs
     acl is_internal src 10.0.0.0/8 192.168.0.0/16
@@ -56,12 +58,10 @@ frontend http_in
     use_backend stats_backend if is_stats_uri
 
 backend stats_backend
+    mode http
     stats enable
     stats uri /haproxy-stats
     stats refresh 10s
-
-    # Proxy to itself for the stats handler
-    server localhost 127.0.0.1:80
 ```
 
 ## Prometheus Metrics Exporter
@@ -71,6 +71,7 @@ For Prometheus scraping, enable the built-in Prometheus exporter (HAProxy 2.0+):
 ```haproxy
 frontend prometheus
     bind 10.0.0.1:8405
+    mode http
 
     # Only allow Prometheus server
     tcp-request connection reject if !{ src 10.0.0.5 }
@@ -98,23 +99,36 @@ curl http://10.0.0.1:8405/metrics | grep haproxy_
 For programmatic access (monitoring scripts, alerting):
 
 ```bash
+# Requires in global:
+# stats socket /run/haproxy/admin.sock user haproxy group haproxy mode 660 level admin
+#
 # Show all stats in CSV format
-echo "show stat" | sudo socat stdio /run/haproxy/admin.sock
+echo "show stat" | sudo socat stdio unix-connect:/run/haproxy/admin.sock
 
 # Show specific backend
-echo "show stat" | sudo socat stdio /run/haproxy/admin.sock | \
+echo "show stat" | sudo socat stdio unix-connect:/run/haproxy/admin.sock | \
   grep web_servers | column -t -s,
 
 # Get info section (current connections, uptime)
-echo "show info" | sudo socat stdio /run/haproxy/admin.sock
+echo "show info" | sudo socat stdio unix-connect:/run/haproxy/admin.sock
 
-# Parse with Python for monitoring
+# Read stats with Python for monitoring
 python3 -c "
 import socket
-s = socket.socket(socket.AF_UNIX, socket.SOCK_STREAM)
-s.connect('/run/haproxy/admin.sock')
-s.sendall(b'show stat\n')
-print(s.recv(65536).decode())
+with socket.socket(socket.AF_UNIX, socket.SOCK_STREAM) as s:
+    s.connect('/run/haproxy/admin.sock')
+    s.settimeout(1.0)
+    s.sendall(b'show stat\n')
+    chunks = []
+    while True:
+        try:
+            data = s.recv(65536)
+        except socket.timeout:
+            break
+        if not data:
+            break
+        chunks.append(data)
+    print(b''.join(chunks).decode())
 "
 ```
 
@@ -123,6 +137,7 @@ print(s.recv(65536).decode())
 ```haproxy
 frontend stats
     bind 10.0.0.1:8404
+    mode http
 
     stats enable
     stats uri /stats
@@ -131,12 +146,12 @@ frontend stats
     stats show-node              # Show this HAProxy node name
     stats show-desc "Production Load Balancer"  # Custom description
 
-    # Hide sensitive server names in the stats page
+    # Hide HAProxy version in the stats page
     stats hide-version           # Don't show HAProxy version
 
-    # Authentication
-    stats auth monitor:readonlypass    # Read-only user
-    stats auth admin:adminpass         # Full admin user
+    # Authentication (both users can view the stats page)
+    stats auth monitor:readonlypass
+    stats auth admin:adminpass
 ```
 
 ## Conclusion
