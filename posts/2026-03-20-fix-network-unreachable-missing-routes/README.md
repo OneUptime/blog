@@ -8,7 +8,7 @@ Description: Learn how to diagnose and fix 'Network Unreachable' ICMP errors cau
 
 ## What "Network Unreachable" Means
 
-Unlike "Request Timed Out" where packets are sent but no reply comes back, "Network Unreachable" means the local routing table has no route to the destination. The local OS immediately returns the error without sending any packet.
+Unlike "Request Timed Out" where packets are sent but no reply comes back, the local `connect: Network is unreachable` error means the host has no route to the destination. The OS returns that error without sending the packet. An ICMP "Destination Network Unreachable" can also come from an upstream router that has no route.
 
 ```bash
 ping 10.20.30.1
@@ -41,7 +41,7 @@ netstat -rn
 # Check if default route exists
 ip route show default
 # 'default via 192.168.1.1 dev eth0' - this is your default gateway
-# If missing, all non-local traffic will fail
+# If missing, traffic to destinations without a more specific route will fail
 ```
 
 ## Step 2: Add a Missing Default Route
@@ -55,10 +55,13 @@ ip route show default
 ping 8.8.8.8
 
 # Make persistent (netplan)
-# In /etc/netplan/01-netcfg.yaml:
-#   routes:
-#     - to: default
-#       via: 192.168.1.1
+# In the eth0 section of /etc/netplan/01-netcfg.yaml:
+# network:
+#   ethernets:
+#     eth0:
+#       routes:
+#         - to: default
+#           via: 192.168.1.1
 sudo netplan apply
 ```
 
@@ -98,9 +101,9 @@ Router# show ip route 10.20.30.0
 ! Add static route
 Router(config)# ip route 10.20.30.0 255.255.255.0 192.168.1.254
 
-! Or redistribute missing networks into OSPF
+! Or, if this static route should be advertised into OSPF
 Router(config)# router ospf 1
-Router(config-router)# network 10.20.30.0 0.0.0.255 area 0
+Router(config-router)# redistribute static subnets
 
 ! Verify
 Router# show ip route 10.20.30.0
@@ -114,26 +117,27 @@ Router# ping 10.20.30.1 source GigabitEthernet0/0
 
 # Check OSPF neighbors
 vtysh -c "show ip ospf neighbor"
-# Neighbor must be Full state
+# Expected adjacencies should reach Full
+# (on broadcast/NBMA networks, some neighbors may stay 2-Way)
 
-# Check what's being advertised
+# Check the OSPF database and OSPF routing table
 vtysh -c "show ip ospf database"
-vtysh -c "show ip route ospf"
+vtysh -c "show ip ospf route"
 
 # Check BGP
 vtysh -c "show bgp ipv4 unicast summary"
 vtysh -c "show bgp ipv4 unicast 10.20.30.0/24"
 
 # If route is in BGP but not in routing table:
-# Check if it's being filtered
-vtysh -c "show bgp ipv4 unicast 10.20.30.0/24"
-# Look for: "Suppressed due to..." or route-map filtering
+vtysh -c "show ip route 10.20.30.0/24"
+# In summary output, "(Policy)" means missing import/export policy
+# Also inspect the prefix for next-hop reachability or bestpath issues
 ```
 
 ## Step 6: Diagnose with Traceroute
 
 ```bash
-# Find exactly where routing breaks
+# Help narrow down where forwarding or replies stop
 traceroute 10.20.30.1
 
 # If you see:
@@ -142,8 +146,9 @@ traceroute 10.20.30.1
 # 3  * * *        (timeout)
 # 4  * * *        (timeout)
 
-# The hop before the asterisks has a routing problem
-# Log into 10.0.0.1 and check its routing table for 10.20.30.0
+# The break may be at 10.0.0.1 or farther downstream
+# Asterisks can also mean filtered or rate-limited ICMP replies
+# If 10.0.0.1 is the last responding hop, start there and check its route to 10.20.30.0
 ```
 
 ## Step 7: Persistent Route Script
@@ -151,9 +156,7 @@ traceroute 10.20.30.1
 ```bash
 #!/bin/bash
 # /etc/network/if-up.d/add-routes
-# Runs when interface comes up
-
-IFACE="eth0"
+# Runs when interface comes up (ifupdown-based systems)
 
 if [ "$IFACE" = "eth0" ]; then
     # Add corporate network routes
@@ -169,4 +172,4 @@ chmod +x /etc/network/if-up.d/add-routes
 
 ## Conclusion
 
-"Network Unreachable" means the local routing table lacks a path to the destination. Check with `ip route get [destination]` and add missing routes with `ip route add` (Linux) or `route add` (Windows). For permanent routes, update netplan/NetworkManager configs or Cisco running config with `write memory`. If routes should come from OSPF or BGP, verify neighbor adjacency and check for route-map filters suppressing the prefix.
+"Network Unreachable" often means the local routing table lacks a path to the destination, though an upstream router can also return an ICMP network unreachable. Check with `ip route get [destination]` and add missing routes with `ip route add` (Linux) or `route add` (Windows). For permanent routes, update netplan/NetworkManager configs or Cisco running config with `write memory`. If routes should come from OSPF or BGP, verify neighbor adjacency and check for policy or route-map filters suppressing the prefix.
