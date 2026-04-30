@@ -36,10 +36,10 @@ Aggregate 4 × /24 into a /22:
 Subnets: 10.100.0.0, 10.100.1.0, 10.100.2.0, 10.100.3.0
 
 Binary of third octet:
-0.0 = 00000000
-0.1 = 00000001
-0.2 = 00000010
-0.3 = 00000011
+0 = 00000000
+1 = 00000001
+2 = 00000010
+3 = 00000011
 
 Common bits: 000000xx (22 bits match)
 Supernet: 10.100.0.0/22
@@ -52,38 +52,35 @@ Verify: 10.100.0.0/22 covers 10.100.0.0 – 10.100.3.255 ✓
 #!/usr/bin/env python3
 import ipaddress
 
-def find_supernet(subnets):
-    """Find the minimal supernet that covers a list of subnets."""
+def collapse_subnets(subnets):
+    """Collapse subnets into the smallest exact set of CIDR blocks."""
     network_list = [ipaddress.IPv4Network(s) for s in subnets]
-    supernet = ipaddress.collapse_addresses(network_list)
-    return list(supernet)
+    collapsed = ipaddress.collapse_addresses(network_list)
+    return list(collapsed)
 
 # Aggregate four /24s
 
 subnets = ["10.100.0.0/24", "10.100.1.0/24", "10.100.2.0/24", "10.100.3.0/24"]
-result = find_supernet(subnets)
+result = collapse_subnets(subnets)
 for net in result:
     print(net)  # Output: 10.100.0.0/22
 
 # Aggregate non-contiguous (will return multiple entries)
 non_contiguous = ["10.100.0.0/24", "10.100.2.0/24"]
-result = find_supernet(non_contiguous)
+result = collapse_subnets(non_contiguous)
 for net in result:
     print(net)  # Returns two separate entries (can't aggregate with gap)
 ```
 
-## Using ipcalc for Aggregation
+## Using ipcalc to Verify a Candidate Supernet
 
 ```bash
-# Check if two subnets can be aggregated
-ipcalc 10.100.0.0/24
-ipcalc 10.100.1.0/24
-# If the network addresses differ only in the last bit (in binary), they form a /23
-
-# Verify the supernet covers all subnets
+# Inspect the candidate aggregate
 ipcalc 10.100.0.0/22
+# Network:   10.100.0.0/22
 # HostMin: 10.100.0.1
 # HostMax: 10.100.3.254
+# Broadcast: 10.100.3.255
 # Covers: 10.100.0.0 - 10.100.3.255 ✓
 ```
 
@@ -94,14 +91,19 @@ In BGP (bird2 config):
 ```conf
 # Instead of advertising 4 routes, advertise one aggregated route
 protocol static {
+    ipv4;
     route 10.100.0.0/22 reject;
     # Individual /24s exist in the local routing table but only /22 is exported
 }
 
 protocol bgp upstream {
-    export filter {
-        if net ~ [ 10.100.0.0/22 ] then accept;
-        reject;
+    local 198.51.100.14 as 65000;
+    neighbor 198.51.100.130 as 64496;
+    ipv4 {
+        export filter {
+            if net ~ [ 10.100.0.0/22 ] then accept;
+            reject;
+        };
     };
 }
 ```
