@@ -8,11 +8,11 @@ Description: Learn how to create and configure GCP Identity Platform tenants for
 
 ## Introduction
 
-GCP Identity Platform (Firebase Authentication) supports multi-tenancy, allowing you to create isolated authentication environments for different customers or applications. OpenTofu manages tenant creation and configuration as code.
+Identity Platform, the Google Cloud customer identity service built on Firebase Authentication, supports multi-tenancy, allowing you to create isolated authentication environments for different customers or applications. OpenTofu manages tenant creation and configuration as code.
 
 ## Enabling Identity Platform
 
-First, ensure the Identity Toolkit API is enabled in your project.
+First, enable Google Identity Platform for the project, then ensure the Identity Toolkit API is enabled in your project.
 
 ```hcl
 resource "google_project_service" "identity_toolkit" {
@@ -23,47 +23,46 @@ resource "google_project_service" "identity_toolkit" {
 
 ## Creating a Tenant
 
+Google requires multi-tenancy to be enabled for the project before you create tenants.
+
 ```hcl
 resource "google_identity_platform_tenant" "customer_a" {
   project      = var.project_id
   display_name = "Customer A"
+  depends_on   = [google_project_service.identity_toolkit]
 
   # Allow email/password sign-in
   allow_password_signup = true
 
-  # Disable legacy sign-in methods
+  # Disable email link sign-in
   enable_email_link_signin = false
-
-  # MFA configuration (requires Identity Platform billing plan)
-  mfa_config {
-    state = "ENABLED"
-    enabled_providers = ["PHONE_SMS"]
-  }
 }
 ```
 
-## Configuring OAuth Identity Providers for a Tenant
+## Configuring an OIDC Identity Provider for a Tenant
 
 ```hcl
 resource "google_identity_platform_tenant_oauth_idp_config" "google_oidc" {
-  project   = var.project_id
-  tenant    = google_identity_platform_tenant.customer_a.name
-  name      = "oidc.google-workspace"
-  client_id = var.google_client_id
-  issuer    = "https://accounts.google.com"
-  enabled   = true
+  project      = var.project_id
+  tenant       = google_identity_platform_tenant.customer_a.name
+  name         = "oidc.google-workspace"
+  display_name = "Google Workspace"
+  client_id    = var.google_client_id
+  issuer       = "https://accounts.google.com"
+  enabled      = true
 
   client_secret = var.google_client_secret
 }
 ```
 
-## Configuring SAML for a Tenant
+## Configuring an Inbound SAML Provider for a Tenant
 
 ```hcl
-resource "google_identity_platform_tenant_saml_idp_config" "okta_saml" {
-  project   = var.project_id
-  tenant    = google_identity_platform_tenant.customer_a.name
-  name      = "saml.okta"
+resource "google_identity_platform_tenant_inbound_saml_config" "okta_saml" {
+  project      = var.project_id
+  tenant       = google_identity_platform_tenant.customer_a.name
+  name         = "saml.okta"
+  display_name = "Okta"
 
   idp_config {
     idp_entity_id = "http://www.okta.com/${var.okta_app_id}"
@@ -85,16 +84,17 @@ resource "google_identity_platform_tenant_saml_idp_config" "okta_saml" {
 }
 ```
 
-## Tenant Default Config
+## Project-Level Identity Platform Config
+
+Google requires multi-tenancy to be enabled before tenant creation, and this resource manages the project-level Identity Platform settings.
 
 ```hcl
 resource "google_identity_platform_config" "default" {
-  project = var.project_id
+  project    = var.project_id
+  depends_on = [google_project_service.identity_toolkit]
 
-  # Multi-tenancy must be enabled at the project level
   multi_tenant {
-    allow_tenants         = true
-    default_tenant_location = "projects/${var.project_id}"
+    allow_tenants = true
   }
 
   sign_in {
@@ -117,10 +117,16 @@ resource "google_identity_platform_config" "default" {
 ```hcl
 variable "project_id"          { type = string }
 variable "google_client_id"    { type = string }
-variable "google_client_secret"{ type = string sensitive = true }
+variable "google_client_secret" {
+  type      = string
+  sensitive = true
+}
 variable "okta_domain"         { type = string }
 variable "okta_app_id"         { type = string }
-variable "okta_x509_certificate"{ type = string sensitive = true }
+variable "okta_x509_certificate" {
+  type      = string
+  sensitive = true
+}
 
 output "tenant_id" {
   description = "Tenant ID to pass to Firebase SDK"
@@ -138,4 +144,4 @@ tofu apply tfplan
 
 ## Summary
 
-GCP Identity Platform multi-tenancy enables isolated authentication for each of your customers. OpenTofu manages tenant creation, OAuth and SAML provider configurations, and project-level settings, making multi-tenant identity infrastructure reproducible and auditable.
+GCP Identity Platform multi-tenancy enables isolated authentication for each of your customers. OpenTofu manages tenant creation, OIDC and SAML provider configurations, and project-level settings, making multi-tenant identity infrastructure reproducible and auditable.
