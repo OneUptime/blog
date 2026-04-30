@@ -8,13 +8,13 @@ Description: Learn how to handle complex variable types in OpenTofu, including o
 
 ---
 
-OpenTofu supports rich type constraints that let you define variables with structured, nested shapes. Complex types - objects, tuples, lists of objects, and maps of objects - make your configurations self-documenting and catch mismatches early during `tofu validate`.
+OpenTofu supports rich type constraints that let you define variables with structured, nested shapes. Complex types - objects, tuples, lists of objects, and maps of objects - make your configurations self-documenting and help catch mismatches early before deployment.
 
 ---
 
 ## Object Variables
 
-An `object` type variable describes a map with named fields, each with its own type:
+An `object` type variable describes a value with named attributes, each with its own type:
 
 ```hcl
 variable "database_config" {
@@ -44,7 +44,7 @@ resource "aws_db_instance" "main" {
 
 ## Optional Object Attributes
 
-Use `optional()` to mark fields as optional with defaults:
+Use `optional()` to mark fields as optional and give them defaults when needed:
 
 ```hcl
 variable "service_config" {
@@ -154,7 +154,7 @@ locals {
 
 ## Tuple Variables
 
-A `tuple` is like an object but with positional fields instead of named ones:
+A `tuple` is a fixed-length positional sequence where each element can have its own type:
 
 ```hcl
 variable "port_pair" {
@@ -208,4 +208,4 @@ ingress_rules = [
 
 ## Summary
 
-Complex variable types in OpenTofu use `object()`, `list(object())`, `map(object())`, and `tuple()` to enforce structured shapes. Use `optional()` to add fields with default values without breaking callers. Access fields with dot notation for objects and index notation for lists and tuples. Pass complex values through `.tfvars` files using HCL syntax. Structured types make your module APIs explicit and validated before deployment.
+Complex variable types in OpenTofu use `object()`, `list(object())`, `map(object())`, and `tuple()` to enforce structured shapes. Use `optional()` to add optional fields, with default values when needed, without breaking callers. Access fields with dot notation for objects and index notation for lists and tuples. Pass complex values through `.tfvars` files using HCL syntax. Structured types make your module APIs explicit and validated before deployment.
