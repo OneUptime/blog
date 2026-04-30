@@ -70,7 +70,7 @@ ip route show
 # 192.168.10.0/24 dev eth0.10 proto kernel scope link src 192.168.10.1
 # 192.168.20.0/24 dev eth0.20 proto kernel scope link src 192.168.20.1
 
-# From a host on VLAN 10, ping a host on VLAN 20
+# From a host on VLAN 10 with 192.168.10.1 as its default gateway, ping a host on VLAN 20
 ping -c 4 192.168.20.5
 ```
 
@@ -105,10 +105,11 @@ Use iptables to control which VLANs can communicate:
 ```bash
 # Allow VLAN 10 to reach VLAN 20
 iptables -A FORWARD -i eth0.10 -o eth0.20 -j ACCEPT
-iptables -A FORWARD -i eth0.20 -o eth0.10 -m state --state RELATED,ESTABLISHED -j ACCEPT
+iptables -A FORWARD -i eth0.20 -o eth0.10 -m conntrack --ctstate RELATED,ESTABLISHED -j ACCEPT
 
 # Drop all other inter-VLAN traffic
-iptables -A FORWARD -j DROP
+iptables -A FORWARD -i eth0.10 -o eth0.20 -j DROP
+iptables -A FORWARD -i eth0.20 -o eth0.10 -j DROP
 ```
 
 ## Conclusion
