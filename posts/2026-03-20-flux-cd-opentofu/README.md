@@ -29,25 +29,33 @@ terraform {
   required_providers {
     helm = {
       source  = "hashicorp/helm"
-      version = "~> 2.12"
+      version = "~> 3.1"
     }
     kubernetes = {
       source  = "hashicorp/kubernetes"
-      version = "~> 2.24"
+      version = "~> 3.1"
     }
   }
 }
 
 provider "helm" {
-  kubernetes {
+  kubernetes = {
     host                   = var.cluster_endpoint
     cluster_ca_certificate = base64decode(var.cluster_ca_cert)
     token                  = var.cluster_token
   }
 }
+
+provider "kubernetes" {
+  host                   = var.cluster_endpoint
+  cluster_ca_certificate = base64decode(var.cluster_ca_cert)
+  token                  = var.cluster_token
+}
 ```
 
 ## Deploying the Flux Operator
+
+Install the operator chart first, then apply the `FluxInstance` in a second OpenTofu run. The `kubernetes_manifest` resource needs the Flux Operator CRD schema to exist at plan time.
 
 ```hcl
 # flux.tf
@@ -64,13 +72,14 @@ resource "helm_release" "flux_operator" {
   name       = "flux-operator"
   repository = "oci://ghcr.io/controlplaneio-fluxcd/charts"
   chart      = "flux-operator"
-  version    = "0.8.0"
+  version    = "0.48.0"
   namespace  = kubernetes_namespace.flux_system.metadata[0].name
 
   wait    = true
   timeout = 300
 }
 
+# Apply this after a first OpenTofu run has installed the Flux Operator CRDs.
 # Create a FluxInstance to configure Flux
 resource "kubernetes_manifest" "flux_instance" {
   depends_on = [helm_release.flux_operator]
@@ -99,11 +108,11 @@ resource "kubernetes_manifest" "flux_instance" {
       }
       # Bootstrap from a Git repository
       sync = {
-        kind    = "GitRepository"
-        url     = var.flux_git_repository_url
-        ref     = "refs/heads/main"
-        path    = "clusters/production"
-        pullSecret = "flux-git-auth"
+        kind       = "GitRepository"
+        url        = var.flux_git_repository_url
+        ref        = "refs/heads/main"
+        path       = "clusters/production"
+        pullSecret = kubernetes_secret.flux_git_auth.metadata[0].name
       }
     }
   }
@@ -114,7 +123,7 @@ resource "kubernetes_manifest" "flux_instance" {
 
 ```hcl
 # git_auth.tf
-# Create a Kubernetes secret with the SSH key for Git access
+# Create a Kubernetes secret with the SSH private key and known_hosts entries for Git access
 resource "kubernetes_secret" "flux_git_auth" {
   metadata {
     name      = "flux-git-auth"
@@ -123,9 +132,8 @@ resource "kubernetes_secret" "flux_git_auth" {
 
   data = {
     # SSH private key for Git access
-    "identity"     = var.git_ssh_private_key
-    "identity.pub" = var.git_ssh_public_key
-    "known_hosts"  = var.git_known_hosts
+    "identity"    = var.git_ssh_private_key
+    "known_hosts" = var.git_known_hosts
   }
 
   type = "Opaque"
@@ -134,11 +142,28 @@ resource "kubernetes_secret" "flux_git_auth" {
 
 ## Configuring Flux Notifications
 
+Apply the notification resources only after the `FluxInstance` has installed Flux's notification CRDs.
+
 ```hcl
 # notifications.tf
+# Create a Kubernetes secret with the Slack bot token
+resource "kubernetes_secret" "slack_bot_token" {
+  metadata {
+    name      = "slack-bot-token"
+    namespace = kubernetes_namespace.flux_system.metadata[0].name
+  }
+
+  data = {
+    token = var.slack_bot_token
+  }
+
+  type = "Opaque"
+}
+
+# Apply this after Flux has installed the notification-controller CRDs.
 # Create a Slack notification provider
 resource "kubernetes_manifest" "slack_provider" {
-  depends_on = [helm_release.flux_operator]
+  depends_on = [kubernetes_manifest.flux_instance]
 
   manifest = {
     apiVersion = "notification.toolkit.fluxcd.io/v1beta3"
@@ -149,9 +174,10 @@ resource "kubernetes_manifest" "slack_provider" {
     }
     spec = {
       type      = "slack"
-      channel   = "#deployments"
+      address   = "https://slack.com/api/chat.postMessage"
+      channel   = "deployments"
       secretRef = {
-        name = "slack-webhook-url"
+        name = kubernetes_secret.slack_bot_token.metadata[0].name
       }
     }
   }
@@ -190,8 +216,8 @@ resource "kubernetes_manifest" "reconciliation_alert" {
 
 ## Best Practices
 
-- Store Flux's bootstrap configuration in the same Git repository it manages - this ensures Flux can self-heal if it's accidentally deleted.
-- Use SSH key authentication rather than HTTPS tokens for better security and easier rotation.
+- Store the manifests referenced by `sync.path` in the same Git repository Flux reconciles so cluster state remains declarative and auditable.
+- Use a Git authentication method supported by Flux, such as SSH keys or HTTPS tokens, and manage those credentials securely.
 - Enable Flux notifications so your team knows when reconciliation fails - silent failures are the worst kind.
 - Use Kustomize overlays or HelmRelease values to manage environment-specific configuration within the Git repo.
 - Set resource limits on Flux controllers to prevent them from consuming excessive cluster resources.
