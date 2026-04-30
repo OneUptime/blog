@@ -6,7 +6,7 @@ Tags: iptables, Linux, Firewall, Security, Safety
 
 Description: Safely flush all iptables rules on a remote server without losing SSH access, using the correct sequence of commands to avoid lockout.
 
-Flushing iptables rules (`iptables -F`) without changing the default policy first can permanently lock you out of a remote server. The safe approach sets policies to ACCEPT before flushing.
+Flushing iptables rules (`iptables -F`) without changing the default policy first can lock you out of a remote server if the active policy is DROP. The safe approach sets the built-in chain policies to ACCEPT before flushing.
 
 ## The Dangerous Way (DON'T DO THIS REMOTELY)
 
@@ -32,6 +32,9 @@ sudo iptables -P INPUT DROP   # Without first ensuring SSH is allowed
 sudo iptables -P INPUT ACCEPT
 sudo iptables -P FORWARD ACCEPT
 sudo iptables -P OUTPUT ACCEPT
+sudo iptables -t security -P INPUT ACCEPT 2>/dev/null || true
+sudo iptables -t security -P FORWARD ACCEPT 2>/dev/null || true
+sudo iptables -t security -P OUTPUT ACCEPT 2>/dev/null || true
 
 # Step 2: Now safe to flush all chains
 sudo iptables -F         # Flush all rules in filter table
@@ -46,6 +49,14 @@ sudo iptables -t nat -X
 sudo iptables -t mangle -F
 sudo iptables -t mangle -X
 
+# Step 5: Flush raw table
+sudo iptables -t raw -F
+sudo iptables -t raw -X
+
+# Step 6: Flush security table if present
+sudo iptables -t security -F 2>/dev/null || true
+sudo iptables -t security -X 2>/dev/null || true
+
 echo "All iptables rules flushed safely"
 sudo iptables -L -n -v
 ```
@@ -55,11 +66,14 @@ sudo iptables -L -n -v
 For risky changes, schedule a flush-and-reset that runs in 5 minutes:
 
 ```bash
+# Save a known-good ruleset first
+sudo iptables-save -f /root/iptables.rules.v4.backup
+
 # Create an escape hatch: if something goes wrong, this will restore access
-echo "sudo iptables-restore < /etc/iptables/rules.v4.backup" | sudo at now + 5 minutes
+echo "iptables-restore < /root/iptables.rules.v4.backup" | sudo at now + 5 minutes
 
 # Or simpler: schedule a flush to run in 5 minutes
-echo "sudo iptables -P INPUT ACCEPT; sudo iptables -F" | sudo at now + 5 minutes
+echo "iptables -P INPUT ACCEPT; iptables -P FORWARD ACCEPT; iptables -P OUTPUT ACCEPT; iptables -F" | sudo at now + 5 minutes
 
 # Now make your changes
 # If you get locked out, wait 5 minutes - the scheduled job will restore access
@@ -73,11 +87,9 @@ sudo atrm <job-number>       # Cancel specific job
 
 ```bash
 # Flush only filter table (most common)
-sudo iptables -F INPUT
-sudo iptables -F OUTPUT
-sudo iptables -F FORWARD
+sudo iptables -F
 
-# Flush only NAT rules (doesn't affect packet filtering)
+# Flush only NAT rules (doesn't change filter-table packet filtering rules)
 sudo iptables -t nat -F
 
 # Flush only a specific chain
@@ -96,6 +108,9 @@ To fully reset iptables to defaults (as if freshly installed):
 sudo iptables -P INPUT ACCEPT
 sudo iptables -P FORWARD ACCEPT
 sudo iptables -P OUTPUT ACCEPT
+sudo iptables -t security -P INPUT ACCEPT 2>/dev/null || true
+sudo iptables -t security -P FORWARD ACCEPT 2>/dev/null || true
+sudo iptables -t security -P OUTPUT ACCEPT 2>/dev/null || true
 
 # Flush filter table
 sudo iptables -F
@@ -113,6 +128,10 @@ sudo iptables -t mangle -X
 sudo iptables -t raw -F
 sudo iptables -t raw -X
 
+# Flush security table if present
+sudo iptables -t security -F 2>/dev/null || true
+sudo iptables -t security -X 2>/dev/null || true
+
 # Clear ipsets if used
 command -v ipset >/dev/null && sudo ipset flush
 
@@ -122,19 +141,20 @@ echo "iptables completely reset to open state"
 ## Verify the Result
 
 ```bash
-# After flush, verify all chains are empty with ACCEPT policy
+# After flush, the filter table should show ACCEPT policies and no rules
 sudo iptables -L -n -v
 
-# Expected output:
-# Chain INPUT (policy ACCEPT 0 packets, 0 bytes)
+# Expected output will be similar to:
+# Chain INPUT (policy ACCEPT ...)
 # target prot opt source destination
-# (empty)
+# (no rules)
 #
-# Chain FORWARD (policy ACCEPT 0 packets, 0 bytes)
-# (empty)
+# Chain FORWARD (policy ACCEPT ...)
+# (no rules)
 #
-# Chain OUTPUT (policy ACCEPT 0 packets, 0 bytes)
-# (empty)
+# Chain OUTPUT (policy ACCEPT ...)
+# (no rules)
+# Packet and byte counters may be non-zero on a busy system
 ```
 
 The golden rule: always set policies to ACCEPT before flushing rules - this one habit prevents the most common and most damaging iptables mistakes on remote servers.
