@@ -24,7 +24,7 @@ IPv6 Reassembly Steps (RFC 8200):
    a. Fragment with M=0 received (last fragment known)
    b. All byte ranges from 0 to last-fragment-end are filled
 7. If complete: reconstruct original packet, deliver to upper layer
-8. If not complete within timeout: discard buffer, send ICMPv6 Time Exceeded
+8. If not complete within timeout: discard buffer; if fragment offset 0 was received, send ICMPv6 Time Exceeded
 ```
 
 ## Reassembly Timer and Timeout
@@ -32,19 +32,19 @@ IPv6 Reassembly Steps (RFC 8200):
 ```bash
 # Linux reassembly timeout: check kernel parameters
 
-cat /proc/sys/net/ipv6/netfilter/ip6_frag_time
-# Default: 60 seconds (in jiffies, system-dependent)
+cat /proc/sys/net/ipv6/ip6frag_time
+# Default: 60 seconds
 
-# Alternative location for raw timeout
+# Netfilter conntrack has a separate IPv6 fragment timeout
 cat /proc/sys/net/netfilter/nf_conntrack_frag6_timeout
-# Default: 60000000 (60 seconds in nanoseconds)
+# Default: 60 seconds
 
 # Check reassembly memory limits
-cat /proc/sys/net/ipv6/netfilter/ip6_frag_high_thresh
+cat /proc/sys/net/ipv6/ip6frag_high_thresh
 # Maximum memory used for reassembly (bytes)
 
-cat /proc/sys/net/ipv6/netfilter/ip6_frag_low_thresh
-# Memory at which fragment queues start being dropped
+cat /proc/sys/net/ipv6/ip6frag_low_thresh
+# Memory target after fragment queues are shed back below the high threshold
 
 # Monitor reassembly failures
 cat /proc/net/snmp6 | grep -i reasm
@@ -55,7 +55,7 @@ cat /proc/net/snmp6 | grep -i reasm
 
 ## Reassembly Failure: ICMPv6 Time Exceeded
 
-When the reassembly timer expires, the destination sends an ICMPv6 Time Exceeded message (Type 3, Code 1) back to the source of the first fragment received:
+When the reassembly timer expires, the destination sends an ICMPv6 Time Exceeded message (Type 3, Code 1) to the source of the fragment with Fragment Offset 0, if that fragment has been received:
 
 ```bash
 # Capture ICMPv6 reassembly timeout messages
@@ -72,12 +72,12 @@ sudo tcpdump -i eth0 -n "icmp6 and ip6[40] == 3 and ip6[41] == 1"
 
 ```python
 import time
-from collections import defaultdict
 
 class IPv6Reassembler:
-    """Simple IPv6 fragment reassembler per RFC 8200."""
+    """Illustrative reassembler for the Fragmentable Part of an IPv6 packet."""
 
     TIMEOUT = 60  # seconds
+    MAX_REASSEMBLED_SIZE = 65_535
 
     def __init__(self):
         # Key: (src, dst, identification) -> reassembly state
@@ -90,8 +90,21 @@ class IPv6Reassembler:
                      offset_bytes: int, more_fragments: bool, data: bytes) -> bytes | None:
         """
         Add a fragment to the reassembly buffer.
-        Returns the reassembled packet bytes if complete, else None.
+        Returns the reassembled fragment payload bytes if complete, else None.
         """
+        if offset_bytes % 8 != 0:
+            raise ValueError("Fragment offsets must be multiples of 8 bytes")
+
+        if more_fragments and len(data) % 8 != 0:
+            raise ValueError("All non-final fragments must have a data length that is a multiple of 8 bytes")
+
+        if offset_bytes + len(data) > self.MAX_REASSEMBLED_SIZE:
+            raise ValueError("Reassembled packet would exceed 65,535 bytes")
+
+        # Atomic fragments are processed independently of any queued fragments.
+        if offset_bytes == 0 and not more_fragments:
+            return data
+
         key = self._key(src, dst, identification)
 
         if key not in self._buffers:
@@ -105,8 +118,25 @@ class IPv6Reassembler:
 
         # Check timeout
         if time.time() - buf["created"] > self.TIMEOUT:
+            # Discard the expired queue and treat this fragment as a new start.
             del self._buffers[key]
-            return None  # Would send ICMPv6 Time Exceeded here
+            self._buffers[key] = {
+                "received": {},
+                "total_length": None,
+                "created": time.time(),
+            }
+            buf = self._buffers[key]
+
+        new_end = offset_bytes + len(data)
+        for frag_offset, frag_data in buf["received"].items():
+            frag_end = frag_offset + len(frag_data)
+
+            if frag_offset == offset_bytes and frag_data == data:
+                return None  # Exact duplicate fragment
+
+            if not (new_end <= frag_offset or offset_bytes >= frag_end):
+                del self._buffers[key]
+                return None  # RFC 8200 requires abandoning reassembly on overlap
 
         # Store this fragment
         buf["received"][offset_bytes] = data
@@ -117,17 +147,18 @@ class IPv6Reassembler:
 
         # Check if reassembly is complete
         if buf["total_length"] is not None:
-            # Verify all bytes from 0 to total_length are covered
-            covered = set()
-            for frag_offset, frag_data in buf["received"].items():
-                for b in range(frag_offset, frag_offset + len(frag_data)):
-                    covered.add(b)
+            # Verify contiguous coverage from offset 0 to total_length
+            expected_offset = 0
+            for frag_offset in sorted(buf["received"]):
+                frag_data = buf["received"][frag_offset]
+                if frag_offset != expected_offset:
+                    return None
+                expected_offset += len(frag_data)
 
-            if len(covered) == buf["total_length"]:
-                # Reassemble in order
-                result = bytearray(buf["total_length"])
-                for frag_offset, frag_data in buf["received"].items():
-                    result[frag_offset:frag_offset + len(frag_data)] = frag_data
+            if expected_offset == buf["total_length"]:
+                result = bytearray()
+                for frag_offset in sorted(buf["received"]):
+                    result.extend(buf["received"][frag_offset])
                 del self._buffers[key]
                 return bytes(result)
 
@@ -154,18 +185,18 @@ Known fragment reassembly attacks:
 
 1. Fragment flooding: Sending many incomplete fragment sets
    → Exhausts reassembly buffer memory
-   → Mitigated by ip6_frag_high_thresh limit
+   → Mitigated by ip6frag_high_thresh limit
 
 2. Overlapping fragments (Teardrop attack):
    → RFC 8200: Destination MUST silently discard on overlap
    → No overlapping fragments are permitted in IPv6
 
 3. Atomic fragment attacks (RFC 6946):
-   → Spoofed ICMPv6 PTB with large MTU forces atomic fragments
-   → Attacker can predict Identification and inject data
-   → Mitigated by using random Identification values (RFC 7739)
+   → Spoofed ICMPv6 PTB with a reported MTU below 1280 can trigger atomic fragments
+   → If a stack mishandles them, an attacker can exploit Identification collisions
+   → RFC 6946-compliant atomic-fragment processing removes this reassembly vector; unpredictable Identification values also reduce collision-based attacks (RFC 7739)
 ```
 
 ## Conclusion
 
-IPv6 fragment reassembly is simpler than IPv4 in some respects (no overlapping fragments allowed) but places the full burden on the destination. The 60-second reassembly timer means all fragments of a packet must arrive within one minute. Reassembly buffers are memory-limited, so high fragment rates can exhaust them. In practice, IPv6 fragmentation should be avoided through proper PMTUD implementation - fragmentation is a fallback mechanism, not a primary design pattern.
+IPv6 fragment reassembly is simpler than IPv4 in some respects (no overlapping fragments allowed) but places the full burden on the destination. The 60-second reassembly timer means all fragments of a packet must arrive within one minute of the first-arriving fragment. Reassembly buffers are memory-limited, so high fragment rates can exhaust them. In practice, IPv6 fragmentation should be avoided through proper PMTUD implementation - fragmentation is a fallback mechanism, not a primary design pattern.
