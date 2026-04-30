@@ -8,6 +8,8 @@ Description: Configure IPsec transport mode using strongSwan to encrypt traffic 
 
 IPsec transport mode encrypts the payload of IP packets between two hosts while preserving the original IP headers. This is ideal for host-to-host encryption where you don't need to connect entire subnets.
 
+The examples below use strongSwan's legacy `ipsec.conf`/`ipsec.secrets` backend and the `ipsec` command, which current strongSwan documentation deprecates in favor of `swanctl.conf` and `swanctl`.
+
 ## Transport Mode vs. Tunnel Mode
 
 ```text
@@ -17,7 +19,7 @@ Transport Mode: [Original IP Header][ESP Header][Payload]
 Transport mode is lighter and used for:
 - Host-to-host encryption
 - Protecting specific connections (e.g., database replication)
-- Microservice mesh encryption
+- Securing tunneling protocols like L2TP or GRE
 ```
 
 ## Configuration on Host A (10.0.0.1)
@@ -40,7 +42,7 @@ conn host-to-host
     rightauth=psk
     ike=aes256-sha256-modp2048!
     esp=aes256-sha256!
-    # No leftsubnet/rightsubnet in transport mode
+    # Omitting leftsubnet/rightsubnet defaults the selectors to the host IPs
 ```
 
 ```conf
@@ -77,7 +79,9 @@ conn host-to-host
 
 ```bash
 # On both hosts
-sudo systemctl restart strongswan
+sudo ipsec restart
+
+# If the connection does not come up automatically, initiate it manually from one host
 sudo ipsec up host-to-host
 
 # Check status
@@ -118,11 +122,11 @@ conn db-transport
     auto=start
     left=10.0.0.1
     right=10.0.0.2
-    # leftprotoport and rightprotoport restrict to specific traffic
-    leftprotoport=tcp/5432   # Only PostgreSQL traffic
-    rightprotoport=tcp/5432
+    # Restrict the traffic selectors to PostgreSQL on both hosts
+    leftsubnet=10.0.0.1/32[tcp/5432]
+    rightsubnet=10.0.0.2/32[tcp/5432]
     leftauth=psk
     rightauth=psk
 ```
 
-Transport mode is the foundation of service mesh security patterns and is used in Kubernetes CNI plugins like Cilium for node-to-node traffic encryption.
+Transport mode is commonly used for host-to-host protection and for securing specific protocols between endpoints, such as L2TP or GRE.
