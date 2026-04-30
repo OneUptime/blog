@@ -8,7 +8,7 @@ Description: Diagnose and fix IPv6 link-local address issues including missing f
 
 ## Introduction
 
-IPv6 link-local addresses (`fe80::/10`) are automatically assigned to every IPv6-enabled interface and are required for NDP, router discovery, and same-link communication. Unlike global addresses, link-local addresses are never forwarded by routers and require a scope ID (interface name) when used outside the kernel. Issues with link-local addresses can prevent SLAAC, NDP, and default gateway discovery from working.
+IPv6-enabled non-loopback interfaces normally auto-configure a link-local address from `fe80::/10`. These addresses are required for NDP and router discovery, and they can also be used for same-link communication. Unlike global addresses, link-local addresses are never forwarded by routers and often need a scope ID or zone ID (interface name or index) when used in user-space tools. Issues with link-local addresses can prevent SLAAC, NDP, and default gateway discovery from working.
 
 ## Step 1: Verify Link-Local Address Exists
 
@@ -50,15 +50,16 @@ ip -6 addr show dev eth0 | grep "scope link"
 
 ## Step 3: Using Scope IDs Correctly
 
-Link-local addresses require a scope ID when used in commands or URLs:
+Link-local addresses often need a scope ID when used in commands or URLs, especially on multi-interface systems:
 
 ```bash
-# Ping a link-local address - must specify interface
+# Ping a link-local address - include the interface to remove ambiguity
 ping6 fe80::1%eth0
-# The %eth0 is the scope ID
+# The %eth0 is the scope ID (zone identifier)
 
-# Without scope ID, ping6 fails:
-ping6 fe80::1  # Error: network is unreachable
+# Without an explicit scope ID, some tools may fail
+# or choose the wrong interface:
+ping6 fe80::1
 
 # SSH to a link-local address
 ssh user@fe80::1%eth0
@@ -76,13 +77,13 @@ traceroute6 fe80::1%eth0
 ## Step 4: Link-Local as Default Gateway
 
 ```bash
-# Routers use link-local addresses as default gateway next-hops
+# Router Advertisements usually install default routes via a router's link-local address
 ip -6 route show default
 # Example: default via fe80::1 dev eth0 proto ra
 
 # The gateway fe80::1 must be on the same link as eth0
 # Verify gateway is reachable
-ping6 -I eth0 fe80::1  # Must specify interface
+ping6 -I eth0 fe80::1  # Specify the interface explicitly
 
 # If gateway is unreachable:
 # → Check physical connectivity
@@ -94,21 +95,22 @@ ip -6 neigh show dev eth0 | grep fe80
 ## Step 5: Duplicate Link-Local Addresses
 
 ```bash
-# Link-local DAD failure means another device has the same fe80:: address
-# This is rare since link-local is derived from MAC address
+# Link-local DAD failure means another device is already using that address
+# This is uncommon because DAD runs before the address is assigned
 
 # Check for DAD failure
 ip -6 addr show dev eth0 | grep "tentative\|dadfailed"
 
 # If link-local is dadfailed:
-# → Another device has the same MAC-derived address
-# → Use a custom link-local address
-sudo ip -6 addr del fe80::DADFAILED/64 dev eth0
-sudo ip -6 addr add fe80::abcd:1234:5678:9abc/64 dev eth0 scope link
+# → Another node is already using that address
+# → If the failed address was auto-generated, investigate duplicate MACs or cloned NICs first
+# → If the failed address was manually configured, choose a different link-local address
+# Example: replace a manually configured duplicate with a different value
+sudo ip -6 addr del fe80::abcd:1234:5678:9abc/64 dev eth0
+sudo ip -6 addr add fe80::abcd:1234:5678:9abd/64 dev eth0 scope link
 
-# Ensure no conflicts
-ndisc6 fe80::abcd:1234:5678:9abc eth0
-# Should timeout (no other device has this address)
+# Re-check the link-local address state
+ip -6 addr show dev eth0 | grep "scope link"
 ```
 
 ## Step 6: Troubleshoot Scope ID in Applications
@@ -170,4 +172,4 @@ done < <(ip -6 route show default)
 
 ## Conclusion
 
-IPv6 link-local addresses are fundamental to IPv6 operation - without them, NDP and router discovery cannot function. Verify their existence with `ip -6 addr show scope link`. When using link-local addresses in commands or applications, always include the scope ID (`%eth0`) since link-local addresses are not globally unique. The most common link-local issue is forgetting the scope ID, which causes "network is unreachable" errors even when the address exists and the device is reachable.
+IPv6 link-local addresses are fundamental to IPv6 operation - without them, NDP and router discovery cannot function. Verify their existence with `ip -6 addr show scope link`. When using link-local addresses in commands or applications, include the scope ID (`%eth0`) when the tool needs help selecting the correct interface, especially on multi-interface systems, since link-local addresses are not globally unique. A common link-local issue is omitting the scope ID, which can make tools fail or select the wrong interface even when the address exists and the device is reachable.
