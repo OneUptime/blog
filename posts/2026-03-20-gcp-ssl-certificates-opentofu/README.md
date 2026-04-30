@@ -58,6 +58,14 @@ resource "google_dns_record_set" "apex" {
   rrdatas      = [google_compute_global_address.lb.address]
 }
 
+resource "google_dns_record_set" "www" {
+  name         = "www.${var.domain_name}."
+  type         = "A"
+  ttl          = 300
+  managed_zone = google_dns_managed_zone.main.name
+  rrdatas      = [google_compute_global_address.lb.address]
+}
+
 resource "google_dns_record_set" "api" {
   name         = "api.${var.domain_name}."
   type         = "A"
@@ -75,6 +83,7 @@ resource "google_compute_backend_service" "app" {
   name                  = "${var.app_name}-backend"
   protocol              = "HTTP"
   load_balancing_scheme = "EXTERNAL_MANAGED"
+  port_name             = "http"
   timeout_sec           = 30
 
   backend {
@@ -132,10 +141,11 @@ resource "google_compute_target_http_proxy" "redirect" {
 }
 
 resource "google_compute_global_forwarding_rule" "http" {
-  name        = "${var.app_name}-http"
-  target      = google_compute_target_http_proxy.redirect.id
-  ip_address  = google_compute_global_address.lb.id
-  port_range  = "80"
+  name                  = "${var.app_name}-http"
+  target                = google_compute_target_http_proxy.redirect.id
+  ip_address            = google_compute_global_address.lb.id
+  port_range            = "80"
+  load_balancing_scheme = "EXTERNAL_MANAGED"
 }
 ```
 
@@ -157,7 +167,8 @@ resource "google_compute_ssl_certificate" "custom" {
 ## GKE Ingress Certificate
 
 ```hcl
-# For GKE workloads using GKE Ingress
+# For GKE workloads using GKE Ingress; also attach this ManagedCertificate
+# to the Ingress with the networking.gke.io/managed-certificates annotation
 resource "kubernetes_manifest" "managed_cert" {
   manifest = {
     apiVersion = "networking.gke.io/v1"
@@ -176,7 +187,7 @@ resource "kubernetes_manifest" "managed_cert" {
 ## Best Practices
 
 - Use Google-managed certificates for all public-facing services - they're free, automatically renewed, and require no operational overhead.
-- The DNS A record must exist and point to the correct load balancer IP before requesting a managed certificate - Google validates domain ownership by resolving the DNS name.
-- Google-managed certificates can take up to 60 minutes to provision after DNS propagates - plan for this delay in initial deployments.
-- Use `create_before_destroy = true` on certificate resources so replacement certificates are issued before the old one is detached.
+- A Google-managed certificate can be created before the load balancer, but it won't become `ACTIVE` until the certificate is attached to a target proxy on TCP port 443 and each hostname resolves to the load balancer IP.
+- Google-managed certificates can take up to 60 minutes to provision after DNS and load balancer changes propagate - plan for this delay in initial deployments.
+- Use `create_before_destroy = true` on certificate resources so replacement resources are created first. For Google-managed certificates, keep both old and replacement certificates attached to the target proxy until the new one becomes `ACTIVE`.
 - Set `min_tls_version = "TLS_1_2"` on the SSL policy - TLS 1.0 and 1.1 are deprecated and should never be enabled in production.
