@@ -21,10 +21,12 @@ Description: Build high-performance IPv6 servers and clients with Netty includin
 import io.netty.bootstrap.ServerBootstrap;
 import io.netty.channel.*;
 import io.netty.channel.nio.NioEventLoopGroup;
+import io.netty.handler.codec.LineBasedFrameDecoder;
 import io.netty.channel.socket.SocketChannel;
 import io.netty.channel.socket.nio.NioServerSocketChannel;
 import io.netty.handler.codec.string.*;
 import java.net.InetSocketAddress;
+import java.nio.charset.StandardCharsets;
 
 public class IPv6NettyServer {
 
@@ -41,14 +43,15 @@ public class IPv6NettyServer {
                     @Override
                     protected void initChannel(SocketChannel ch) {
                         ch.pipeline().addLast(
-                            new StringDecoder(),
-                            new StringEncoder(),
+                            new LineBasedFrameDecoder(8192),
+                            new StringDecoder(StandardCharsets.UTF_8),
+                            new StringEncoder(StandardCharsets.UTF_8),
                             new IPv6EchoHandler()
                         );
                     }
                 });
 
-            // Bind to [::]:8080 for dual-stack
+            // Bind to [::]:8080 to listen on the IPv6 wildcard address
             ChannelFuture f = bootstrap.bind(new InetSocketAddress("::", 8080)).sync();
             System.out.println("IPv6 Netty server on " + f.channel().localAddress());
             f.channel().closeFuture().sync();
@@ -86,10 +89,12 @@ class IPv6EchoHandler extends ChannelInboundHandlerAdapter {
 import io.netty.bootstrap.Bootstrap;
 import io.netty.channel.*;
 import io.netty.channel.nio.NioEventLoopGroup;
+import io.netty.handler.codec.LineBasedFrameDecoder;
 import io.netty.channel.socket.SocketChannel;
 import io.netty.channel.socket.nio.NioSocketChannel;
 import io.netty.handler.codec.string.*;
 import java.net.InetSocketAddress;
+import java.nio.charset.StandardCharsets;
 
 public class IPv6NettyClient {
 
@@ -104,21 +109,23 @@ public class IPv6NettyClient {
                     @Override
                     protected void initChannel(SocketChannel ch) {
                         ch.pipeline().addLast(
-                            new StringDecoder(),
-                            new StringEncoder(),
+                            new LineBasedFrameDecoder(8192),
+                            new StringDecoder(StandardCharsets.UTF_8),
+                            new StringEncoder(StandardCharsets.UTF_8),
                             new SimpleChannelInboundHandler<String>() {
                                 @Override
                                 protected void channelRead0(ChannelHandlerContext ctx, String msg) {
                                     System.out.println("Server: " + msg);
+                                    ctx.close();
                                 }
                             }
                         );
                     }
                 });
 
-            // Connect to IPv6 server
+            // Connect to the local IPv6 server
             ChannelFuture f = bootstrap.connect(
-                new InetSocketAddress("2001:db8::1", 8080)).sync();
+                new InetSocketAddress("::1", 8080)).sync();
 
             Channel channel = f.channel();
             channel.writeAndFlush("Hello IPv6 Netty!\n");
@@ -135,6 +142,7 @@ public class IPv6NettyClient {
 ```java
 import io.netty.channel.ChannelHandlerContext;
 import io.netty.channel.SimpleChannelInboundHandler;
+import io.netty.util.ReferenceCountUtil;
 import java.net.Inet6Address;
 import java.net.InetSocketAddress;
 
@@ -153,7 +161,7 @@ public class IPv6AwareHandler extends SimpleChannelInboundHandler<Object> {
     @Override
     protected void channelRead0(ChannelHandlerContext ctx, Object msg) {
         // Process message
-        ctx.writeAndFlush(msg);
+        ctx.writeAndFlush(ReferenceCountUtil.retain(msg));
     }
 }
 ```
@@ -176,45 +184,51 @@ public class IPv6HTTPServer {
         EventLoopGroup boss = new NioEventLoopGroup(1);
         EventLoopGroup worker = new NioEventLoopGroup();
 
-        new ServerBootstrap()
-            .group(boss, worker)
-            .channel(NioServerSocketChannel.class)
-            .childHandler(new ChannelInitializer<SocketChannel>() {
-                @Override
-                protected void initChannel(SocketChannel ch) {
-                    ch.pipeline().addLast(
-                        new HttpServerCodec(),
-                        new HttpObjectAggregator(65536),
-                        new SimpleChannelInboundHandler<FullHttpRequest>() {
-                            @Override
-                            protected void channelRead0(ChannelHandlerContext ctx,
-                                                        FullHttpRequest req) {
-                                InetSocketAddress remote = (InetSocketAddress)
-                                    ctx.channel().remoteAddress();
-                                String body = "Hello from " + remote.getAddress().getHostAddress();
+        try {
+            ChannelFuture f = new ServerBootstrap()
+                .group(boss, worker)
+                .channel(NioServerSocketChannel.class)
+                .childHandler(new ChannelInitializer<SocketChannel>() {
+                    @Override
+                    protected void initChannel(SocketChannel ch) {
+                        ch.pipeline().addLast(
+                            new HttpServerCodec(),
+                            new HttpObjectAggregator(65536),
+                            new SimpleChannelInboundHandler<FullHttpRequest>() {
+                                @Override
+                                protected void channelRead0(ChannelHandlerContext ctx,
+                                                            FullHttpRequest req) {
+                                    InetSocketAddress remote = (InetSocketAddress)
+                                        ctx.channel().remoteAddress();
+                                    String body = "Hello from " + remote.getAddress().getHostAddress();
 
-                                FullHttpResponse resp = new DefaultFullHttpResponse(
-                                    HttpVersion.HTTP_1_1,
-                                    HttpResponseStatus.OK,
-                                    Unpooled.wrappedBuffer(body.getBytes())
-                                );
-                                resp.headers()
-                                    .set(HttpHeaderNames.CONTENT_TYPE, "text/plain")
-                                    .setInt(HttpHeaderNames.CONTENT_LENGTH,
-                                        resp.content().readableBytes());
+                                    FullHttpResponse resp = new DefaultFullHttpResponse(
+                                        HttpVersion.HTTP_1_1,
+                                        HttpResponseStatus.OK,
+                                        Unpooled.wrappedBuffer(body.getBytes())
+                                    );
+                                    resp.headers()
+                                        .set(HttpHeaderNames.CONTENT_TYPE, "text/plain")
+                                        .setInt(HttpHeaderNames.CONTENT_LENGTH,
+                                            resp.content().readableBytes());
 
-                                ctx.writeAndFlush(resp);
+                                    ctx.writeAndFlush(resp);
+                                }
                             }
-                        }
-                    );
-                }
-            })
-            .bind(new InetSocketAddress("::", 8080)).sync()
-            .channel().closeFuture().sync();
+                        );
+                    }
+                })
+                .bind(new InetSocketAddress("::", 8080)).sync();
+
+            f.channel().closeFuture().sync();
+        } finally {
+            boss.shutdownGracefully();
+            worker.shutdownGracefully();
+        }
     }
 }
 ```
 
 ## Conclusion
 
-Netty supports IPv6 by passing `InetSocketAddress("::", port)` to `bind()` or `connect()`. The channel's `remoteAddress()` returns a `InetSocketAddress` whose `getAddress()` may be an `Inet6Address` for IPv6 clients. Netty's `NioServerSocketChannel` provides dual-stack support on Linux when `[::]` is used. For high-throughput IPv6 services, Netty's non-blocking I/O model is more scalable than thread-per-connection approaches.
+Netty supports IPv6 by passing an IPv6 `InetSocketAddress` to `bind()` or `connect()`. Binding `InetSocketAddress("::", port)` listens on the IPv6 wildcard address, while `connect()` should use a specific remote IPv6 address such as `::1`. The channel's `remoteAddress()` returns an `InetSocketAddress` whose `getAddress()` may be an `Inet6Address` for IPv6 clients. When Java uses IPv6 sockets by default (`java.net.preferIPv4Stack=false`), a socket bound to `::` can accept both IPv6 and IPv4 connections. For high-throughput IPv6 services, Netty's non-blocking I/O model is more scalable than thread-per-connection approaches.
