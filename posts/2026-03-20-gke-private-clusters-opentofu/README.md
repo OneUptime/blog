@@ -8,7 +8,7 @@ Description: Learn how to create GKE private clusters with OpenTofu where nodes 
 
 ## Overview
 
-GKE Private Clusters assign only internal IP addresses to nodes, preventing direct internet access to your Kubernetes nodes. The control plane communicates with nodes over a VPC peering connection. OpenTofu manages the VPC setup, firewall rules, and cluster configuration.
+GKE Private Clusters assign only internal IP addresses to nodes, preventing direct access from the public internet to your Kubernetes nodes. The control plane communicates with nodes over a VPC peering connection. OpenTofu manages the VPC setup, firewall rules, and cluster configuration.
 
 ## Step 1: Create VPC with Required Subnets
 
@@ -87,7 +87,7 @@ resource "google_container_cluster" "private_cluster" {
 ## Step 3: Cloud NAT for Outbound Internet Access
 
 ```hcl
-# Private nodes need Cloud NAT to pull container images from internet
+# Private nodes need Cloud NAT for outbound internet access, such as pulling images from public registries
 resource "google_compute_router" "nat_router" {
   name    = "gke-nat-router"
   region  = "us-central1"
@@ -140,4 +140,4 @@ resource "google_container_node_pool" "private_nodes" {
 
 ## Summary
 
-GKE Private Clusters with OpenTofu provide node-level network isolation by removing public IPs from all nodes. Add Cloud NAT for outbound internet access (e.g., pulling container images), authorized networks to restrict control plane access, and Workload Identity for secure GCP API authentication from pods.
+GKE Private Clusters with OpenTofu provide node-level network isolation by removing public IPs from all nodes. Add Cloud NAT for outbound internet access to public endpoints (for example, pulling images from public registries), authorized networks to restrict control plane access, and Workload Identity for secure GCP API authentication from pods.
