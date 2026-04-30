@@ -8,16 +8,16 @@ Description: Understand how IPsec works in the context of IPv6, including header
 
 ## Overview
 
-IPsec was originally mandatory for IPv6 (RFC 2460), but RFC 6434 (2011) changed this to optional since practical experience showed that making it mandatory created interoperability problems without meaningfully improving security. IPsec in IPv6 uses the same two protocols as IPv4 - Authentication Header (AH) and Encapsulating Security Payload (ESP) - but they are carried as IPv6 Extension Headers rather than as separate IP protocols.
+IPsec support was originally mandatory for IPv6 nodes (RFC 4294), but RFC 6434 (2011) relaxed this by making support for the IPsec architecture a SHOULD. IPsec in IPv6 uses the same two protocols as IPv4 - Authentication Header (AH) and Encapsulating Security Payload (ESP) - but in IPv6 they are identified by Next Header values in the packet's header chain.
 
 ## How IPsec Headers Appear in IPv6
 
-In IPv6, AH and ESP are extension headers with Next Header values:
+In IPv6, AH and ESP are identified by Next Header values and appear in the header chain as follows:
 
 | Protocol | Next Header Value | Position in Header Chain |
 |----------|------------------|--------------------------|
-| AH | 51 | After Routing Header, before upper-layer |
-| ESP | 50 | After Routing Header, before upper-layer |
+| AH | 51 | Typically after Routing/Fragment headers if present, before upper-layer |
+| ESP | 50 | Typically after Routing/Fragment headers if present, before upper-layer |
 
 ```text
 IPv6 Packet with AH (Transport Mode):
@@ -35,10 +35,10 @@ Outer IPv6 Header (NH=50) → ESP Header → [Inner IPv6 Header → TCP/UDP] →
 | Feature | AH (NH=51) | ESP (NH=50) |
 |---------|-----------|-------------|
 | Authentication | Yes | Yes (optional) |
-| Encryption | No | Yes |
+| Encryption | No | Yes (optional) |
 | Protects IP header | Yes (most fields) | Only inner header (tunnel) |
 | NAT compatible | No | Yes (in NAT-T mode) |
-| Use case | Integrity only | Confidentiality + integrity |
+| Use case | Integrity only | Confidentiality + integrity (typical) |
 
 ## Transport Mode vs Tunnel Mode
 
@@ -70,26 +70,23 @@ Use case: Gateway-to-gateway VPN (site-to-site).
 
 ## The Mandatory-to-Optional Change (RFC 6434)
 
-RFC 2460 (original IPv6) stated: "IPv6 requires support for AH and ESP"
+RFC 4294 (2006 IPv6 Node Requirements) made IPsec support mandatory for IPv6 nodes, requiring support for both ESP and AH.
 
-RFC 6434 (2011) revised this to: "Implementations SHOULD support AH and ESP"
+RFC 6434 (2011) revised this: support for the IPsec architecture became a SHOULD; nodes that implement it MUST support ESP and MAY support AH.
 
 Reasons for the change:
-- Many deployments never used IPsec
-- TLS/DTLS/application-layer security covers most use cases
-- Mandatory IPsec created pressure without benefit
-- Interoperability with NAT required workarounds that undermined the "mandatory" nature
+- IPsec is one of several security approaches, and no single approach fits every environment
+- Some devices have limited application sets where application-specific security is sufficient
+- Some devices run on constrained hardware where the full IPsec architecture is not justified
 
 ```bash
-# Verify IPsec support on Linux
+# Inspect Linux IPsec/XFRM state (usually requires root)
 
-ip xfrm state   # Should work if IPsec is supported
-lsmod | grep xfrm
+sudo ip xfrm state list
+sudo ip xfrm policy list
 
-# Verify kernel modules are loaded
-modprobe xfrm4_mode_transport
-modprobe xfrm6_mode_transport
-modprobe xfrm6_mode_tunnel
+# Check whether XFRM/IPsec modules are loaded on modular kernels
+lsmod | grep -E 'xfrm|esp6|ah6'
 ```
 
 ## Security Associations (SA) for IPv6
@@ -98,7 +95,7 @@ IPsec SAs in IPv6 use the same concept as IPv4: identified by (SPI, Destination 
 
 ```bash
 # View current IPv6 IPsec SAs
-ip xfrm state list | grep '::'   # IPv6 SAs have :: notation
+sudo ip -6 xfrm state list
 
 # Sample SA output:
 # src 2001:db8:1::1 dst 2001:db8:2::1
@@ -134,7 +131,7 @@ connections {
                 local_ts  = 2001:db8:1::1/128
                 remote_ts = 2001:db8:2::1/128
                 mode = transport
-                esp_proposals = aes256gcm128-prfsha256-ecp256
+                esp_proposals = aes256gcm16-ecp256
             }
         }
     }
@@ -151,21 +148,21 @@ secrets {
 
 ## IPv6 AH Complication: Mutable Header Fields
 
-AH authenticates the entire IPv6 header, but some fields are mutable (can change in transit):
+AH authenticates the immutable and predictable parts of the IPv6 header, but some fields are mutable or excluded from the ICV calculation:
 
-**Mutable fields (zeroed for AH calculation):**
-- Traffic Class (DSCP may be changed by QoS devices)
-- Flow Label (may be changed in transit)
+**Fields not covered verbatim by AH calculation:**
+- Traffic Class (DSCP/ECN bits may change in transit)
+- Flow Label (excluded from AHv2 for compatibility with earlier IPv6 rules)
 - Hop Limit (decremented at each router)
 
 **Immutable fields (authenticated by AH):**
 - Version (always 6)
 - Payload Length
 - Source Address
-- Destination Address (unless Routing Header present)
+- Destination Address (without Routing Header; with a Routing Header it is mutable but predictable)
 
 This means AH over IPv6 is still meaningful but doesn't protect mutable fields.
 
 ## Summary
 
-IPsec in IPv6 uses AH (NH=51) and ESP (NH=50) as Extension Headers. IPsec was mandatory in original IPv6 (RFC 2460) but downgraded to SHOULD in RFC 6434 because application-layer security (TLS) serves most use cases. Transport mode protects host-to-host communications; tunnel mode is used for gateway VPNs. Modern deployments use IKEv2 (strongSwan/Libreswan) for automatic SA negotiation. AH authenticates the IPv6 header but must zero mutable fields (Traffic Class, Flow Label, Hop Limit) for the calculation.
+IPsec in IPv6 uses AH (NH=51) and ESP (NH=50) in the IPv6 header chain. IPsec support was mandatory for IPv6 nodes in RFC 4294, but RFC 6434 relaxed this: support for the IPsec architecture became a SHOULD, and implementations that use it MUST implement ESP while AH is optional. Transport mode protects host-to-host communications; tunnel mode is used for gateway VPNs. Modern deployments use IKEv2 (strongSwan/Libreswan) for automatic SA negotiation. AH authenticates the immutable and predictable parts of the IPv6 header and excludes mutable fields such as Traffic Class, Flow Label, and Hop Limit from the ICV calculation.
