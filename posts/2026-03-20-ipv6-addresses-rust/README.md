@@ -69,8 +69,9 @@ fn classify_ip(ip: &IpAddr) -> &'static str {
         IpAddr::V6(v6) => {
             if v6.is_loopback() { "IPv6 loopback" }
             else if v6.is_unicast_link_local() { "IPv6 link-local" }
-            else if v6.is_unicast_global() { "IPv6 global" }
-            else { "IPv6 other" }
+            else if v6.is_unique_local() { "IPv6 unique-local" }
+            else if v6.is_multicast() { "IPv6 multicast" }
+            else { "IPv6 unicast" }
         }
     }
 }
@@ -141,7 +142,7 @@ fn connect_ipv6(host: &str, port: u16) -> std::io::Result<TcpStream> {
 }
 
 fn main() {
-    match TcpStream::connect("[2001:db8::1]:8080") {
+    match connect_ipv6("::1", 8080) {
         Ok(mut stream) => {
             println!("Connected to {}", stream.peer_addr().unwrap());
             stream.write_all(b"Hello server\n").unwrap();
@@ -208,4 +209,4 @@ fn main() {
 
 ## Conclusion
 
-Rust's `std::net` module provides type-safe IPv6 handling through `Ipv6Addr` and `IpAddr`. The type system enforces correct handling of IPv4 vs IPv6 at compile time. Use `"[::]:port"` for listeners, handle `IpAddr::V6` variants in match expressions, and leverage `Ipv6Addr` methods like `is_loopback()` and `is_unicast_global()` for address classification.
+Rust's `std::net` module provides type-safe IPv6 handling through `Ipv6Addr` and `IpAddr`. The type system enforces correct handling of IPv4 vs IPv6 at compile time. Use `"[::]:port"` for listeners, handle `IpAddr::V6` variants in match expressions, and leverage `Ipv6Addr` methods like `is_loopback()`, `is_unicast_link_local()`, and `is_unique_local()` for address classification.
