@@ -10,9 +10,9 @@ Description: Learn how to configure IPFIX (IP Flow Information Export) on networ
 
 IPFIX (RFC 7011) is the IETF standard for IP flow export, based on NetFlow v9's template architecture. While NetFlow v9 is Cisco-proprietary, IPFIX is vendor-neutral and supported by Juniper, Palo Alto, F5, Open vSwitch, and others alongside Cisco.
 
-Key differences from NetFlow v9:
+Common distinctions from typical NetFlow v9 deployments:
 - IANA-assigned information element IDs (standardized field definitions)
-- TCP transport support (more reliable than UDP)
+- IANA-assigned service port 4739 for IPFIX export
 - Enterprise-specific extensions possible
 - Broader vendor support
 
@@ -62,20 +62,26 @@ interface GigabitEthernet0/0
 ## Step 2: Configure IPFIX on Juniper Junos
 
 ```text
-# Junos IPFIX configuration (flow-server)
+# Junos inline active flow monitoring example (MX/vMX/T/EX/NFX/SRX)
 
-set forwarding-options flow-export-format ipfix-version9
+set services flow-monitoring version-ipfix template IPV4_TEMPLATE flow-active-timeout 60
+set services flow-monitoring version-ipfix template IPV4_TEMPLATE flow-inactive-timeout 60
+set services flow-monitoring version-ipfix template IPV4_TEMPLATE template-refresh-rate packets 1000
+set services flow-monitoring version-ipfix template IPV4_TEMPLATE template-refresh-rate seconds 30
+set services flow-monitoring version-ipfix template IPV4_TEMPLATE option-refresh-rate packets 500
+set services flow-monitoring version-ipfix template IPV4_TEMPLATE option-refresh-rate seconds 60
+set services flow-monitoring version-ipfix template IPV4_TEMPLATE ipv4-template
 
-set services flow-monitoring version-ipfix template IPV4_TEMPLATE
-set services flow-monitoring version-ipfix template IPV4_TEMPLATE ip-headers
-set services flow-monitoring version-ipfix template IPV4_TEMPLATE transport-ports
-set services flow-monitoring version-ipfix template IPV4_TEMPLATE protocol
+set chassis fpc 0 sampling-instance IPFIX
+set forwarding-options sampling instance IPFIX input rate 1
+set forwarding-options sampling instance IPFIX input run-length 0
+set forwarding-options sampling instance IPFIX family inet output flow-server 192.168.1.200 port 4739
+set forwarding-options sampling instance IPFIX family inet output flow-server 192.168.1.200 version-ipfix template IPV4_TEMPLATE
+set forwarding-options sampling instance IPFIX family inet output inline-jflow source-address 192.168.1.1
+set forwarding-options sampling instance IPFIX family inet output inline-jflow flow-export-rate 2
 
-set services flow-monitoring version-ipfix flow-export-destination COLLECTOR
-set services flow-monitoring version-ipfix flow-export-destination COLLECTOR version ipfix
-set services flow-monitoring version-ipfix flow-export-destination COLLECTOR template IPV4_TEMPLATE
-set services flow-monitoring version-ipfix flow-export-destination COLLECTOR remote-address 192.168.1.200
-set services flow-monitoring version-ipfix flow-export-destination COLLECTOR remote-port 4739
+set interfaces ge-0/0/0 unit 0 family inet sampling input
+set interfaces ge-0/0/0 unit 0 family inet sampling output
 ```
 
 ## Step 3: Configure IPFIX on Open vSwitch (Linux)
@@ -100,22 +106,25 @@ ovs-vsctl list ipfix
 GoFlow2 is a modern open-source flow collector supporting IPFIX, NetFlow, and sFlow:
 
 ```bash
-# Install GoFlow2
+# Run GoFlow2 and listen for IPFIX/NetFlow on UDP 4739
 docker run -d \
   --name goflow2 \
   -p 4739:4739/udp \
-  -p 2055:2055/udp \
+  -v "$(pwd)/goflow2-data:/data" \
   netsampler/goflow2:latest \
-  -transport.file.path=/data/flows
+  -listen 'netflow://:4739' \
+  -transport.file /data/flows.log
 
 # Or with Kafka output
 docker run -d \
   --name goflow2 \
   -p 4739:4739/udp \
   netsampler/goflow2:latest \
-  -transport kafka \
-  -kafka.brokers kafka:9092 \
-  -kafka.topic network-flows
+  -listen 'netflow://:4739' \
+  -transport=kafka \
+  -transport.kafka.brokers=kafka:9092 \
+  -transport.kafka.topic=network-flows \
+  -format=bin
 ```
 
 ## Step 5: Collect IPFIX with nfdump
@@ -124,21 +133,22 @@ nfdump supports IPFIX in addition to NetFlow v5/v9:
 
 ```bash
 # Start nfcapd listener for IPFIX on port 4739
-sudo nfcapd -w -D -T all -l /var/log/ipfix -p 4739 -b 0.0.0.0
+sudo nfcapd -w /var/log/ipfix -D -p 4739 -b 0.0.0.0
 
 # Analyze captured IPFIX data
-nfdump -R /var/log/ipfix/ -s srcip/bytes -n 10
+nfdump -r /var/log/ipfix -s srcip/bytes -n 10
 
 # Show top flows in the last hour
-nfdump -R /var/log/ipfix/ -t "$(date -d '1 hour ago' +%Y/%m/%d.%H:%M):now" \
+nfdump -r /var/log/ipfix \
+  -t "$(date -d '1 hour ago' +%Y/%m/%d.%H:%M:%S)-$(date +%Y/%m/%d.%H:%M:%S)" \
   -s proto/bytes -n 5
 ```
 
 ## Step 6: Verify IPFIX Export
 
-```bash
+```text
 ! Cisco IOS - verify export is working
-Router# show flow exporter IPFIX_EXPORTER statistics
+Router# show flow exporter name IPFIX_EXPORTER statistics
 
 ! Check packets sent
 ! Successfully sent: 5000 (growing number indicates success)
@@ -150,4 +160,4 @@ sudo tcpdump -i any udp port 4739 -n -c 10
 
 ## Conclusion
 
-IPFIX is the vendor-neutral standard for flow export, based on NetFlow v9's template architecture. On Cisco IOS XE, configure it by specifying `export-protocol ipfix` in the flow exporter. Use port 4739 (IANA-assigned for IPFIX) instead of the common NetFlow port 2055. IPFIX works with any standards-compliant collector including nfdump, GoFlow2, and ElastiFlow.
+IPFIX is the vendor-neutral standard for flow export, based on NetFlow v9's template architecture. On Cisco IOS XE, configure it by specifying `export-protocol ipfix` in the flow exporter. Port 4739 is the IANA-assigned IPFIX port, although many collectors can also be configured to receive IPFIX on other ports such as 2055. IPFIX works with standards-compliant collectors including nfdump, GoFlow2, and ElastiFlow.
