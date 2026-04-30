@@ -4,11 +4,11 @@ Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
 Tags: OpenTofu, Terraform, AWS, VPC, Import, Networking
 
-Description: Learn how to import existing AWS VPCs and their associated resources (subnets, route tables, internet gateways) into OpenTofu state with a complete import strategy.
+Description: Learn how to import existing AWS VPCs and their associated resources (subnets, route tables, internet gateways) into OpenTofu state with a repeatable import strategy.
 
 ## Introduction
 
-Importing a VPC is rarely just about the VPC - you also need to import all associated resources: subnets, route tables, internet gateways, NAT gateways, and security groups. This guide covers the full import sequence for a complete VPC.
+Importing a VPC is rarely just about the VPC - you also need to import associated resources such as subnets, route tables, internet gateways, NAT gateways, and security groups. This guide covers the core import sequence for a VPC and the pattern you can extend to the rest of the network resources.
 
 ## Step 1: Inventory the VPC Resources
 
@@ -25,11 +25,11 @@ aws ec2 describe-subnets \
   --query 'Subnets[].[SubnetId,CidrBlock,AvailabilityZone,Tags[?Key==`Name`].Value|[0]]' \
   --output table
 
-# List route tables
+# List route tables, routes, and associations
 aws ec2 describe-route-tables \
   --filters "Name=vpc-id,Values=$VPC_ID" \
-  --query 'RouteTables[].[RouteTableId,Associations[0].SubnetId]' \
-  --output table
+  --query 'RouteTables[*].{RouteTableId:RouteTableId,Routes:Routes,Associations:Associations}' \
+  --output json
 
 # Get Internet Gateway
 aws ec2 describe-internet-gateways \
@@ -38,7 +38,7 @@ aws ec2 describe-internet-gateways \
   --output table
 ```
 
-## Step 2: Write HCL for All VPC Resources
+## Step 2: Write HCL for the Resources You Plan to Import
 
 ```hcl
 resource "aws_vpc" "main" {
@@ -83,10 +83,10 @@ resource "aws_route_table_association" "public_a" {
 }
 ```
 
-## Step 3: Import All Resources in Order
+## Step 3: Define Import Blocks for the Resources
 
 ```hcl
-# import.tf - Declarative import blocks (OpenTofu 1.5+)
+# import.tf - Declarative import blocks (OpenTofu 1.6+)
 import {
   to = aws_vpc.main
   id = "vpc-0123456789abcdef0"
@@ -119,12 +119,17 @@ import {
 }
 ```
 
-## Step 4: Verify the Import
+## Step 4: Plan, Apply, and Verify the Import
 
 ```bash
 tofu plan
-# Look for: Plan: X to import, 0 to add, 0 to change, 0 to destroy
-# After: No changes. Infrastructure is up-to-date.
+# Look for planned imports with 0 to add, 0 to change, and 0 to destroy
+
+tofu apply
+# OpenTofu imports the resources during apply
+
+tofu plan
+# After import: No changes. Infrastructure is up-to-date.
 ```
 
 ## Handling the Default VPC
@@ -144,4 +149,4 @@ resource "aws_default_vpc" "default" {
 
 ## Conclusion
 
-VPC import requires importing the entire resource tree in dependency order. Use declarative `import` blocks to version-control the import process. The key challenge is ensuring your HCL exactly matches the existing VPC configuration - pay close attention to DHCP options, DNS settings, and network ACLs which are easy to overlook.
+VPC import usually requires importing more than just the VPC itself. Use declarative `import` blocks to version-control the import process. The key challenge is ensuring your HCL exactly matches the existing VPC configuration - pay close attention to DHCP options, DNS settings, and network ACLs which are easy to overlook.
