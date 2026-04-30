@@ -21,9 +21,10 @@ dnf install -y glusterfs-server        # RHEL/CentOS
 # Enable and start GlusterFS daemon
 systemctl enable --now glusterd
 
-# Verify GlusterFS is listening on IPv6
-ss -tlnp | grep glusterd
-# Should show [::]:24007 (GlusterFS management port)
+# Verify GlusterFS is listening on the management port
+ss -tlnp | grep 24007
+# If glusterd is configured for IPv6, this should show an IPv6 listener
+# such as [::]:24007 or the specific IPv6 bind address
 ```
 
 ## Configure /etc/hosts for IPv6 GlusterFS Nodes
@@ -40,24 +41,28 @@ ss -tlnp | grep glusterd
 ## Peer Probing over IPv6
 
 ```bash
-# From gluster1, probe other nodes using IPv6 addresses or hostnames
+# From gluster1, probe other nodes using hostnames that resolve to IPv6
 gluster peer probe gluster2
 gluster peer probe gluster3
+
+# From gluster2, probe gluster1 back once if you want hostnames
+# recorded consistently in the trusted pool
+gluster peer probe gluster1
 
 # Verify peer status
 gluster peer status
 # Expected:
 # Number of Peers: 2
-# Hostname: gluster2 (2001:db8::11)
+# Hostname: gluster2
 # State: Peer in Cluster (Connected)
-# Hostname: gluster3 (2001:db8::12)
+# Hostname: gluster3
 # State: Peer in Cluster (Connected)
 ```
 
 ## Create a GlusterFS Volume with IPv6 Bricks
 
 ```bash
-# Create distributed-replicated volume with IPv6 node addresses
+# Create a replicated volume using hostnames that resolve to IPv6 addresses
 gluster volume create myvol replica 3 \
     gluster1:/data/brick1 \
     gluster2:/data/brick1 \
@@ -82,12 +87,11 @@ gluster volume info myvol
 ## Mount GlusterFS Volume over IPv6 (Native Client)
 
 ```bash
-# Mount using IPv6 server address directly
-# The native GlusterFS client resolves hostnames to IPv6
+# Mount using a hostname that resolves to IPv6
 mount -t glusterfs gluster1:/myvol /mnt/glusterfs
 
-# Or explicitly using IPv6 address (requires DNS or /etc/hosts)
-mount -t glusterfs [2001:db8::10]:/myvol /mnt/glusterfs
+# Or explicitly using an IPv6 address literal
+mount -t glusterfs 2001:db8::10:/myvol /mnt/glusterfs
 
 # Mount with options
 mount -t glusterfs \
@@ -101,32 +105,34 @@ gluster1:/myvol   /mnt/glusterfs   glusterfs   defaults,_netdev   0   0
 ## GlusterFS Volume Options for IPv6
 
 ```bash
-# Set volume transport to TCP (default, supports IPv6)
+# Use IPv6-only addressing for the volume's TCP transport
 gluster volume set myvol transport.address-family inet6
 
 # Enable auth for IPv6 client addresses
-gluster volume set myvol auth.allow 2001:db8:clients::/48
+gluster volume set myvol auth.allow 2001:db8:100::/48
 
-# Check transport type
-gluster volume info myvol | grep Transport
-# Transport-type: tcp
+# Check configured address family
+gluster volume get myvol transport.address-family
 
-# Enable glusterfs-server to listen on specific IPv6 address
-# Edit /etc/glusterfs/glusterd.vol if needed
-# Or set via environment: GLUSTERD_OPTIONS="--bind-address 2001:db8::10"
+# Make glusterd listen on IPv6
+# Edit /etc/glusterfs/glusterd.vol and set:
+# option transport.address-family inet6
+# option transport.socket.bind-address 2001:db8::10
+# Then restart glusterd:
+# systemctl restart glusterd
 ```
 
 ## Firewall Rules for GlusterFS over IPv6
 
 ```bash
-# GlusterFS management port
-ip6tables -A INPUT -p tcp --dport 24007 -s 2001:db8::/32 -j ACCEPT
+# GlusterFS management ports
+ip6tables -A INPUT -p tcp -m multiport --dports 24007,24008 -s 2001:db8::/32 -j ACCEPT
 
-# GlusterFS brick ports (24009 + one port per brick)
-ip6tables -A INPUT -p tcp --dport 24008:24107 -s 2001:db8::/32 -j ACCEPT
+# Gluster 10+ randomizes brick ports within base-port:max-port.
+# With the default glusterd.vol template, that range is 49152:60999.
+ip6tables -A INPUT -p tcp --dport 49152:60999 -s 2001:db8::/32 -j ACCEPT
 
-# RDMA transport (if used)
-# ip6tables -A INPUT -p tcp --dport 24011 -s 2001:db8::/32 -j ACCEPT
+# RDMA-enabled volumes also need their allocated brick ports permitted
 
 ip6tables-save > /etc/ip6tables/rules.v6
 ```
@@ -167,4 +173,4 @@ gluster volume get myvol transport.address-family
 
 ## Conclusion
 
-GlusterFS supports IPv6 through standard TCP transport, which is IPv6-capable when IPv6 is configured on the network interfaces. The key requirement is consistent use of hostnames (resolved via `/etc/hosts` or DNS) or IPv6 addresses across all peer probe commands, volume creation, and client mounts. The `auth.allow` option accepts IPv6 CIDR notation for restricting client access. Firewall rules must allow the management port (24007) and brick ports (24008+) from the GlusterFS node CIDRs. Mount clients using `glusterfs` type with either hostnames resolving to IPv6 or direct IPv6 addresses in bracket notation.
+GlusterFS supports IPv6 through standard TCP transport, which is IPv6-capable when IPv6 is configured on the network interfaces. The key requirement is consistent use of hostnames (resolved via `/etc/hosts` or DNS) or IPv6 addresses across all peer probe commands, volume creation, and client mounts. The `auth.allow` option accepts IPv6 CIDR notation for restricting client access. Firewall rules must allow the management ports (24007 and 24008) and the configured brick port range from the GlusterFS node CIDRs. Mount clients using `glusterfs` type with either hostnames resolving to IPv6 or direct IPv6 literals in `SERVER:/VOLNAME` form.
