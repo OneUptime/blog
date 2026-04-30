@@ -12,7 +12,9 @@ Source address persistence (also called IP-based sticky sessions) routes all con
 
 ## How Source Persistence Works
 
-HAProxy hashes the client IPv4 address and maps it consistently to one backend server. The same client always lands on the same server unless that server goes down.
+With `balance source`, HAProxy hashes the client IPv4 address and maps it consistently to one backend server. The same client keeps landing on the same server as long as the set of running servers does not change.
+
+With stick tables, HAProxy records the chosen server for a source IP and reuses that mapping on later requests.
 
 ```mermaid
 graph LR
@@ -36,11 +38,11 @@ backend app_servers
     server app3 10.0.1.12:8080 check
 ```
 
-**Limitation:** If a server goes down, the hash changes and clients may be rerouted.
+**Limitation:** If the set of running servers changes, clients may be rerouted.
 
 ## Method 2: Stick Tables (More Reliable)
 
-Stick tables record which server a client was assigned to, surviving backend changes gracefully.
+Stick tables record which server a client was assigned to, so existing clients are not immediately reshuffled when the backend pool changes.
 
 ```haproxy
 backend app_servers
@@ -49,11 +51,8 @@ backend app_servers
     # Stick table: keyed on IPv4 source, 1M entries, 2-hour TTL
     stick-table type ip size 1m expire 2h
 
-    # Record the assigned server on the first request
+    # Look up an existing mapping and record a new one after server selection
     stick on src
-
-    # On subsequent requests, look up and use the recorded server
-    stick match src
 
     server app1 10.0.1.10:8080 check
     server app2 10.0.1.11:8080 check
@@ -62,7 +61,7 @@ backend app_servers
 
 ## Handling Failover
 
-When a server goes down, HAProxy can redirect its stuck clients to a new server and update the stick table.
+If a persisted server becomes unavailable, HAProxy can retry another server and refresh the stick-table mapping.
 
 ```haproxy
 backend app_servers
@@ -70,7 +69,7 @@ backend app_servers
     stick-table type ip size 1m expire 2h
     stick on src
 
-    # option redispatch: if the selected server is down, pick a new one
+    # Allow a retry to break persistence and choose another healthy server
     option redispatch
 
     server app1 10.0.1.10:8080 check
@@ -97,17 +96,18 @@ backend pg_servers
 ## Verifying Persistence
 
 ```bash
-# Send multiple requests and confirm they hit the same backend
+# If your application returns a backend-identifying header such as X-Backend-Server,
+# send multiple requests and confirm the value stays the same
 
-for i in $(seq 1 5); do curl -s http://192.168.1.10/ | grep "Server:"; done
+for i in $(seq 1 5); do curl -si http://192.168.1.10/ | grep "^X-Backend-Server:"; done
 
-# Check the stick table to see which server is recorded for your IP
-echo "show table app_servers" | socat stdio /var/run/haproxy/admin.sock | grep "$(curl -s ifconfig.me)"
+# Inspect the stick table and look for the client IP as seen by HAProxy
+echo "show table app_servers" | socat stdio /var/run/haproxy/admin.sock
 ```
 
 ## Key Takeaways
 
 - `balance source` is simple but redistributes clients when the backend pool changes.
 - Stick tables are more resilient; they remember assignments even after pool changes.
-- Use `option redispatch` so clients stuck to a failed server are automatically reassigned.
+- Use `option redispatch` so failed connection attempts can be retried on another server.
 - For TCP backends (databases, LDAP), `balance source` in TCP mode provides simple IP affinity.
