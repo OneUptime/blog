@@ -51,9 +51,9 @@ sudo iptables -t nat -A POSTROUTING \
   -j SNAT --to-source 203.0.113.10
 
 # Allow forwarding
-sudo iptables -A FORWARD -s 192.168.1.0/24 -j ACCEPT
-sudo iptables -A FORWARD -d 192.168.1.0/24 -m state \
-  --state ESTABLISHED,RELATED -j ACCEPT
+sudo iptables -A FORWARD -s 192.168.1.0/24 -o eth0 -j ACCEPT
+sudo iptables -A FORWARD -d 192.168.1.0/24 -i eth0 -m conntrack \
+  --ctstate ESTABLISHED,RELATED -j ACCEPT
 ```
 
 ## SNAT vs MASQUERADE
@@ -68,25 +68,26 @@ sudo iptables -t nat -A POSTROUTING -s 10.0.0.0/8 -o eth0 \
   -j MASQUERADE
 
 # Difference:
-# SNAT: hardcodes the source IP (faster, better for static IPs)
-# MASQUERADE: auto-detects the interface IP each time (slower, but works with DHCP)
+# SNAT: sets an explicit translated source IP
+# MASQUERADE: uses the outgoing interface's current IP automatically
 ```
 
 ## SNAT for a VPN Server
 
-When running an OpenVPN or WireGuard server and clients need internet access:
+When running an OpenVPN or WireGuard server and clients need internet access through a gateway with a static public IP:
 
 ```bash
 # WireGuard clients (10.200.0.0/24) exit to internet via eth0
 sudo iptables -t nat -A POSTROUTING \
   -s 10.200.0.0/24 \
   -o eth0 \
-  -j SNAT --to-source $(ip route get 1 | awk '{print $7; exit}')
-# Uses current public IP automatically
+  -j SNAT --to-source 203.0.113.10
+# If eth0 gets its address dynamically, use MASQUERADE instead.
 
 # Allow VPN client forwarding
-sudo iptables -A FORWARD -i wg0 -j ACCEPT
-sudo iptables -A FORWARD -o wg0 -j ACCEPT
+sudo iptables -A FORWARD -i wg0 -o eth0 -j ACCEPT
+sudo iptables -A FORWARD -i eth0 -o wg0 -m conntrack \
+  --ctstate ESTABLISHED,RELATED -j ACCEPT
 ```
 
 ## Verify NAT Is Working
@@ -94,11 +95,11 @@ sudo iptables -A FORWARD -o wg0 -j ACCEPT
 ```bash
 # On an internal client, before SNAT:
 curl https://api.ipify.org
-# Shows: 10.0.0.5 (private IP)
+# Likely fails or times out because replies cannot be routed back to 10.0.0.5
 
 # After SNAT:
 curl https://api.ipify.org
-# Shows: 203.0.113.1 (the gateway's public IP)
+# Shows the translated public IP, such as 203.0.113.1
 
 # View NAT table hit counters
 sudo iptables -t nat -L POSTROUTING -n -v
@@ -107,14 +108,16 @@ sudo iptables -t nat -L POSTROUTING -n -v
 
 ## Save SNAT Rules
 
-```bash
-# Save NAT rules
-sudo iptables-save > /etc/iptables/rules.v4
+On systems that use `/etc/iptables/rules.v4` (for example Debian/Ubuntu with `iptables-persistent`):
 
-# The rules.v4 file will contain:
+```bash
+# Save the current IPv4 ruleset
+sudo sh -c 'iptables-save > /etc/iptables/rules.v4'
+
+# The rules.v4 file will include all IPv4 tables and rules, including entries such as:
 # *nat
 # -A POSTROUTING -s 192.168.1.0/24 -o eth0 -j SNAT --to-source 203.0.113.1
 # COMMIT
 ```
 
-SNAT is what makes shared internet access work - without it, private IP addresses have no way to communicate with the public internet, since routers can't route back to RFC 1918 addresses.
+SNAT is what makes shared internet access work in this setup - without it, private IP addresses can't communicate directly with the public internet, since routers can't route back to RFC 1918 addresses.
