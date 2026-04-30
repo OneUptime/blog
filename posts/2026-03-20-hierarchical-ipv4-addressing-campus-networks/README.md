@@ -16,9 +16,9 @@ Campus networks follow a three-tier hierarchy: core (fast routing between buildi
 10.0.0.0/8          - Enterprise total allocation
   10.SITE.0.0/16    - One /16 per campus site
     10.1.0.0/16     - Main Campus
-      10.1.BLDG.0/24  - One /24 per building/floor
-        10.1.10.0/24  - Building A, Floor 0
-        10.1.11.0/24  - Building A, Floor 1
+      10.1.X.0/24     - One /24 per VLAN or floor, allocated from a building summary block
+        10.1.12.0/24  - Building A, Floor 0
+        10.1.13.0/24  - Building A, Floor 1
         10.1.20.0/24  - Building B, Floor 0
       10.1.200.0/21  - Wired infrastructure (switches, routers)
       10.1.210.0/24  - Wireless controllers / APs
@@ -32,18 +32,18 @@ Campus networks follow a three-tier hierarchy: core (fast routing between buildi
 ```text
 Site: Main Campus (10.1.0.0/16)
 
-Building A - 10.1.10.0/22 (allocates 4 × /24)
-  VLAN 110  Students      10.1.10.0/24   GW: 10.1.10.1
-  VLAN 111  Staff         10.1.11.0/24   GW: 10.1.11.1
-  VLAN 112  APs           10.1.12.0/24   GW: 10.1.12.1
-  VLAN 113  Phones        10.1.13.0/24   GW: 10.1.13.1
+Building A - 10.1.12.0/22 (allocates 4 × /24)
+  VLAN 110  Students      10.1.12.0/24   GW: 10.1.12.1
+  VLAN 111  Staff         10.1.13.0/24   GW: 10.1.13.1
+  VLAN 112  APs           10.1.14.0/24   GW: 10.1.14.1
+  VLAN 113  Phones        10.1.15.0/24   GW: 10.1.15.1
 
 Building B - 10.1.20.0/22
   VLAN 120  Students      10.1.20.0/24
   VLAN 121  Staff         10.1.21.0/24
 
 Core / Infrastructure
-  VLAN 200  Core links    10.1.200.0/29  (/30s for P2P)
+  Transit pool            10.1.200.0/29  (split into /30s for routed P2P links)
   VLAN 201  Mgmt          10.1.201.0/24
 ```
 
@@ -53,9 +53,9 @@ Core / Infrastructure
 import ipaddress
 
 BUILDINGS = {
-    "BuildingA": "10.1.10.0/22",
+    "BuildingA": "10.1.12.0/22",
     "BuildingB": "10.1.20.0/22",
-    "BuildingC": "10.1.30.0/22",
+    "BuildingC": "10.1.28.0/22",
 }
 
 ROLES = ["Students", "Staff", "APs", "Phones"]
@@ -74,21 +74,22 @@ for building, cidr in BUILDINGS.items():
 ! Distribution switch for Building A
 interface Vlan110
  description Students-BldgA
- ip address 10.1.10.1 255.255.255.0
+ ip address 10.1.12.1 255.255.255.0
  ip helper-address 10.1.201.10    ! DHCP server
 !
 interface Vlan111
  description Staff-BldgA
- ip address 10.1.11.1 255.255.255.0
+ ip address 10.1.13.1 255.255.255.0
  ip helper-address 10.1.201.10
 !
-! Summarize Building A to core
+! Summarize Building A to core on the uplink
+interface GigabitEthernet1/1
+ description Uplink-to-Core
+ ip summary-address eigrp 1 10.1.12.0 255.255.252.0
+!
 router eigrp 1
  network 10.0.0.0
- auto-summary
-!
-! Or static summary toward core
-ip route 10.1.10.0 255.255.252.0 Null0
+ no auto-summary
 ```
 
 ## Summarization Benefits
