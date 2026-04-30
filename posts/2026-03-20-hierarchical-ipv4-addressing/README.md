@@ -8,18 +8,18 @@ Description: Learn how to implement a three-level hierarchical IPv4 addressing m
 
 ## The Three-Level Hierarchy
 
-A hierarchical IPv4 design maps IP octets to network topology levels:
+A hierarchical IPv4 design maps portions of the private 10.0.0.0/8 address space to network topology levels:
 
 ```text
-10.[region].[campus/building].[floor/vlan]
+10.[region].[campus block + floor/vlan].[host]
 
-Level 1: Region (10.X.0.0/8 → /16)
-Level 2: Campus  (10.X.Y.0/16 → /21 or /22)
-Level 3: Floor   (10.X.Y.Z/24)
+Level 1: Region      (allocate 10.X.0.0/16 from 10.0.0.0/8)
+Level 2: Campus      (subdivide each region /16 into /21 or /22 campus blocks)
+Level 3: Floor/VLAN  (allocate /24s inside each campus block)
 ```
 
 This enables route summarization at each level:
-- Each floor advertises its /24
+- Each floor/VLAN advertises its /24
 - Each campus summarizes to its /21 or /22
 - Each region summarizes to its /16
 
@@ -33,7 +33,7 @@ Region Code → Second Octet:
 10.3.0.0/16 = APAC     (Region 3)
 ```
 
-At the regional level, routers only need to know one route per region.
+Upstream of the regional summary point, routers only need to know one route per region.
 
 ## Step 2: Campus Allocation Within a Region
 
@@ -59,7 +59,7 @@ Divide each /21 into /24s for floors or VLANs:
 ```text
 10.1.0.0/21 - NYC-HQ Campus
 
-Floor/VLAN allocations (/24 per floor):
+Floor/VLAN allocations (/24 per floor or VLAN):
   10.1.0.0/24  Floor 1 - Reception, Lobby  (VLAN 100)
   10.1.1.0/24  Floor 2 - Sales             (VLAN 110)
   10.1.2.0/24  Floor 3 - Engineering       (VLAN 120)
@@ -67,14 +67,14 @@ Floor/VLAN allocations (/24 per floor):
   10.1.4.0/24  Floor 5 - Executive         (VLAN 140)
   10.1.5.0/24  Servers (data room)         (VLAN 200)
   10.1.6.0/24  WiFi guests                 (VLAN 210)
-  10.1.7.0/28  Printers/IoT               (VLAN 220)
+  10.1.7.0/24  Printers/IoT                (VLAN 220)
 ```
 
 ## Step 4: Route Summarization at Each Level
 
 ```text
 NYC-HQ campus router advertises:
-  10.1.0.0/21  (summarizes all 8 floor /24s)
+  10.1.0.0/21  (summarizes all 8 /24 floor/VLAN subnets)
 
 Americas region router receives:
   10.1.0.0/21 from NYC-HQ
@@ -96,7 +96,7 @@ Core/WAN router sees:
 router ospf 1
   area 1 range 10.1.0.0 255.255.248.0   ! Summarize NYC-HQ /21
 
-! At regional router (core OSPF to BGP):
+! At regional router (after more-specific campus routes are in BGP):
 router bgp 65001
   aggregate-address 10.1.0.0 255.255.0.0 summary-only   ! Advertise /16 only
 ```
@@ -147,4 +147,4 @@ for region, rdata in design.items():
 
 ## Conclusion
 
-Hierarchical IPv4 addressing maps network topology to IP address structure: region (second octet), campus (bits 17-21), floor (last octet). This enables clean route summarization at each level: /24 floors aggregate to /21 campus blocks, which aggregate to /16 regional routes. The result is dramatically smaller routing tables at the core and a self-documenting address plan where an IP address immediately reveals its location in the network.
+Hierarchical IPv4 addressing maps network topology to IP address structure: region (second octet), campus (the /21 campus block inside the regional /16), and floor/VLAN (individual /24s within that block). This enables clean route summarization at each level: /24 floor/VLAN subnets aggregate to /21 campus blocks, which aggregate to /16 regional routes. The result is dramatically smaller routing tables at the core and a self-documenting address plan where an IP address immediately reveals its location in the network.
