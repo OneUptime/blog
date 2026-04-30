@@ -16,10 +16,10 @@ Google Distributed Cloud (GDC) Bare Metal extends Google Kubernetes Engine to on
 
 ## Step 1: Configure the Cluster for Dual-Stack
 
-When creating or updating a GDC Bare Metal cluster, set dual-stack in the cluster configuration file:
+When creating a GDC Bare Metal cluster, set dual-stack in the cluster configuration file. You can't enable dual-stack on an existing cluster after creation:
 
 ```yaml
-# cluster-config.yaml - GDC Bare Metal dual-stack cluster configuration
+# Relevant dual-stack portions of bmctl-workspace/my-ipv6-cluster/my-ipv6-cluster.yaml
 
 apiVersion: baremetal.cluster.gke.io/v1
 kind: Cluster
@@ -33,12 +33,11 @@ spec:
     pods:
       cidrBlocks:
         - 192.168.0.0/16
-        - fd00:1234::/80      # IPv6 pod CIDR
     services:
       cidrBlocks:
         - 10.96.0.0/20
-        - fd00:1234:1::/112   # IPv6 service CIDR
-  # Load balancer must support IPv6 virtual IPs
+        - fd00:1234:2::/116   # IPv6 service CIDR
+  # For bundled load balancing, provide both IPv4 and IPv6 address pools
   loadBalancer:
     mode: bundled
     ports:
@@ -46,13 +45,31 @@ spec:
     vips:
       controlPlaneVIP: "10.0.0.8"
       ingressVIP: "10.0.0.9"
+    addressPools:
+      - name: default
+        addresses:
+          - "10.0.0.9-10.0.0.19"
+          - "fd00:1234:3::100-fd00:1234:3::10f"
+---
+apiVersion: baremetal.cluster.gke.io/v1alpha1
+kind: ClusterCIDRConfig
+metadata:
+  name: cluster-wide-ranges
+  namespace: cluster-my-ipv6-cluster
+spec:
+  ipv4:
+    cidr: 192.168.0.0/16
+    perNodeMaskSize: 24
+  ipv6:
+    cidr: fd00:1234:1::/112
+    perNodeMaskSize: 120
 ```
 
 ## Step 2: Create the Cluster
 
 ```bash
 # Create the cluster using the bmctl CLI
-bmctl create cluster -c my-ipv6-cluster --config cluster-config.yaml
+bmctl create cluster -c my-ipv6-cluster
 
 # Monitor cluster creation progress
 bmctl check cluster -c my-ipv6-cluster
@@ -109,7 +126,7 @@ kubectl apply -f ipv6-app.yaml
 
 ```bash
 # Check that the service has both IPv4 and IPv6 LoadBalancer IPs
-kubectl get svc ipv6-nginx-svc -o wide
+kubectl get svc ipv6-nginx-svc -o jsonpath='{.status.loadBalancer.ingress[*].ip}'
 
 # Get the ClusterIPs to verify dual-stack assignment
 kubectl get svc ipv6-nginx-svc -o jsonpath='{.spec.clusterIPs}'
@@ -120,18 +137,18 @@ kubectl get svc ipv6-nginx-svc -o jsonpath='{.spec.clusterIPs}'
 ```bash
 # Get the external IPv6 load balancer IP
 LB_IPV6=$(kubectl get svc ipv6-nginx-svc \
-  -o jsonpath='{.status.loadBalancer.ingress[?(@.ipFamily=="IPv6")].ip}')
+  -o jsonpath='{range .status.loadBalancer.ingress[*]}{.ip}{"\n"}{end}' | grep ':' | head -n1)
 
 # Test HTTP access via IPv6
-curl -6 http://[$LB_IPV6]/
+curl -6 "http://[$LB_IPV6]/"
 ```
 
 ## Step 6: Configure Network Policies for IPv6
 
-GDC Bare Metal with Calico supports IPv6 network policies:
+GDC Bare Metal with Calico supports Kubernetes `NetworkPolicy`; the same policy applies to IPv4 and IPv6 traffic:
 
 ```yaml
-# allow-ipv6-ingress.yaml - Allow IPv6 HTTP traffic to the application
+# allow-ipv6-ingress.yaml - Allow HTTP traffic to the application
 apiVersion: networking.k8s.io/v1
 kind: NetworkPolicy
 metadata:
@@ -154,8 +171,8 @@ Use OneUptime to monitor the IPv6 endpoints of your GDC-deployed applications wi
 
 ```bash
 # Quick connectivity test from outside the cluster
-ping6 $LB_IPV6
-curl -6 -o /dev/null -s -w "%{http_code}" http://[$LB_IPV6]/
+ping -6 "$LB_IPV6"
+curl -6 -o /dev/null -s -w "%{http_code}" "http://[$LB_IPV6]/"
 ```
 
 GDC Bare Metal's dual-stack support allows organizations running their own on-premises hardware to fully embrace IPv6 while using familiar Kubernetes APIs.
