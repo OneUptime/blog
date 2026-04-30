@@ -26,7 +26,7 @@ tar xzf GeoLite2-City.tar.gz
 
 # Or use geoipupdate tool
 sudo apt install geoipupdate
-# Configure /etc/GeoIP.conf with your license key and run:
+# Configure /etc/GeoIP.conf with your AccountID, EditionIDs, and license key, then run:
 sudo geoipupdate
 ```
 
@@ -40,7 +40,7 @@ import ipaddress
 def geoip_lookup(ip_str: str, db_path: str = '/usr/share/GeoIP/GeoLite2-City.mmdb') -> dict:
     """
     Look up geolocation for an IPv4 or IPv6 address.
-    Returns dict with country, city, latitude, longitude.
+    Returns dict with country, city, latitude, longitude, and timezone.
     """
     result = {
         'ip': ip_str,
@@ -50,16 +50,16 @@ def geoip_lookup(ip_str: str, db_path: str = '/usr/share/GeoIP/GeoLite2-City.mmd
         'city': None,
         'latitude': None,
         'longitude': None,
+        'timezone': None,
         'error': None,
     }
 
     # Normalize and validate the IP
     try:
-        # Handle IPv4-mapped IPv6 addresses
-        clean = ip_str.replace('::ffff:', '').split('%')[0]
+        clean = ip_str.strip().split('%')[0].strip('[]')
         addr = ipaddress.ip_address(clean)
         result['version'] = addr.version
-        lookup_ip = str(addr)
+        lookup_ip = str(addr.ipv4_mapped or addr)
     except ValueError:
         result['error'] = 'Invalid IP address'
         return result
@@ -72,8 +72,8 @@ def geoip_lookup(ip_str: str, db_path: str = '/usr/share/GeoIP/GeoLite2-City.mmd
             result['country_code'] = response.country.iso_code
             result['country_name'] = response.country.name
             result['city'] = response.city.name
-            result['latitude'] = float(response.location.latitude or 0)
-            result['longitude'] = float(response.location.longitude or 0)
+            result['latitude'] = response.location.latitude
+            result['longitude'] = response.location.longitude
             result['timezone'] = response.location.time_zone
 
     except geoip2.errors.AddressNotFoundError:
@@ -101,38 +101,43 @@ for ip in test_ips:
 ## Node.js: GeoIP2 IPv6 Lookup
 
 ```javascript
-const maxmind = require('maxmind');
+const { Reader } = require('@maxmind/geoip2-node');
 const net = require('net');
 
 let reader;
 
 async function initGeoIP(dbPath) {
-  reader = await maxmind.open(dbPath || '/usr/share/GeoIP/GeoLite2-City.mmdb');
+  reader = await Reader.open(dbPath || '/usr/share/GeoIP/GeoLite2-City.mmdb');
 }
 
 function geoipLookup(ipStr) {
   // Clean the IP address
-  let cleanIP = ipStr.replace(/^::ffff:/, '').split('%')[0].replace(/[\[\]]/g, '');
-
-  const isV6 = net.isIPv6(cleanIP);
+  const cleanIP = ipStr.trim().split('%')[0].replace(/^\[|\]$/g, '');
+  const mapped = cleanIP.match(/^::ffff:(\d+\.\d+\.\d+\.\d+)$/i);
+  const lookupIP = mapped ? mapped[1] : cleanIP;
+  const version = mapped ? 6 : net.isIP(cleanIP);
 
   try {
-    const result = reader.get(cleanIP);
-    if (!result) {
-      return { ip: cleanIP, version: isV6 ? 6 : 4, error: 'Not found' };
+    if (!version) {
+      return { ip: cleanIP, error: 'Invalid IP address' };
     }
+
+    const result = reader.city(lookupIP);
 
     return {
       ip: cleanIP,
-      version: isV6 ? 6 : 4,
-      countryCode: result.country?.iso_code,
+      version,
+      countryCode: result.country?.isoCode,
       countryName: result.country?.names?.en,
       city: result.city?.names?.en,
       latitude: result.location?.latitude,
       longitude: result.location?.longitude,
-      timezone: result.location?.time_zone,
+      timezone: result.location?.timeZone,
     };
   } catch (e) {
+    if (e.name === 'AddressNotFoundError') {
+      return { ip: cleanIP, version, error: 'Not found' };
+    }
     return { ip: cleanIP, error: e.message };
   }
 }
@@ -161,24 +166,26 @@ Configure Nginx to use GeoIP2 for IPv6 traffic:
 
 load_module modules/ngx_http_geoip2_module.so;
 
-geoip2 /usr/share/GeoIP/GeoLite2-Country.mmdb {
-    auto_reload 5m;
-    $geoip2_metadata_country_build metadata build_epoch;
-    $geoip2_data_country_code default=XX source=$remote_addr country iso_code;
-    $geoip2_data_country_name country names en;
-}
+http {
+    geoip2 /usr/share/GeoIP/GeoLite2-Country.mmdb {
+        auto_reload 5m;
+        $geoip2_metadata_country_build metadata build_epoch;
+        $geoip2_data_country_code default=XX source=$remote_addr country iso_code;
+        $geoip2_data_country_name country names en;
+    }
 
-# Use in access control or logging
-server {
-    # Log country for both IPv4 and IPv6 clients
     log_format geoip '$remote_addr - [$geoip2_data_country_code] '
                      '"$request" $status';
 
-    access_log /var/log/nginx/geoip.log geoip;
+    # Use in access control or logging
+    server {
+        # Log country for both IPv4 and IPv6 clients
+        access_log /var/log/nginx/geoip.log geoip;
 
-    # Block requests from a specific country
-    if ($geoip2_data_country_code = "XX") {
-        return 403;
+        # Block requests from a specific country
+        if ($geoip2_data_country_code = "XX") {
+            return 403;
+        }
     }
 }
 ```
@@ -195,19 +202,24 @@ def should_geoip_lookup(ip_str: str) -> bool:
     except ValueError:
         return False
 
-    # Skip private, loopback, link-local addresses
-    if addr.is_loopback or addr.is_private or addr.is_link_local:
+    # Skip addresses that should not have public GeoIP data
+    if (
+        addr.is_loopback
+        or addr.is_private
+        or addr.is_link_local
+        or addr.is_multicast
+        or addr.is_unspecified
+        or addr.is_reserved
+    ):
         return False
 
     # Skip documentation ranges
-    if isinstance(addr, ipaddress.IPv6Address):
-        if ipaddress.IPv6Network('2001:db8::/32').supernet_of(
-                ipaddress.IPv6Network(f'{addr}/128')):
-            return False
+    if isinstance(addr, ipaddress.IPv6Address) and addr in ipaddress.IPv6Network('2001:db8::/32'):
+        return False
 
     return True
 ```
 
 ## Conclusion
 
-GeoIP lookups for IPv6 use the same MaxMind GeoIP2 API as IPv4. The key considerations are stripping IPv4-mapped prefixes before lookup, skipping GeoIP for private/link-local addresses, and ensuring your database is kept up to date with `geoipupdate`. Both GeoLite2-City and GeoLite2-Country databases include substantial IPv6 coverage.
+GeoIP lookups for IPv6 use the same MaxMind GeoIP2 API as IPv4. The key considerations are normalizing IPv4-mapped IPv6 addresses before lookup, skipping GeoIP for private, loopback, link-local, and reserved/documentation addresses, and ensuring your database is kept up to date with `geoipupdate`. Both GeoLite2-City and GeoLite2-Country databases include substantial IPv6 coverage.
