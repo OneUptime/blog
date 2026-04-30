@@ -122,7 +122,7 @@ kubectl get clustergroups -n fleet-default
 # Get ClusterGroup details including member count
 kubectl get clustergroup production -n fleet-default -o yaml
 
-# See which clusters are in a group
+# For this example selector, list the matching clusters
 kubectl get clusters.fleet.cattle.io -n fleet-default \
   -l env=production
 ```
@@ -137,14 +137,20 @@ development  8                8                  2d
 
 ## Using ClusterGroups in Bundle Targets
 
-Reference ClusterGroups by name in your `fleet.yaml`:
+Reference ClusterGroups by name in your `fleet.yaml` using `overrideTargets` and `targetCustomizations`:
 
 ```yaml
 # fleet.yaml - Using ClusterGroup references
 namespace: my-app
 
-targets:
-  # Deploy to the staging group
+overrideTargets:
+  # Target the staging ClusterGroup
+  - clusterGroup: staging
+  # Target the production ClusterGroup
+  - clusterGroup: production
+
+targetCustomizations:
+  # Apply staging-specific values to clusters in the staging group
   - name: staging-deployment
     clusterGroup: staging
     helm:
@@ -152,7 +158,7 @@ targets:
         replicaCount: 1
         debug: true
 
-  # Deploy to the production group
+  # Apply production-specific values to clusters in the production group
   - name: production-deployment
     clusterGroup: production
     helm:
@@ -163,11 +169,11 @@ targets:
 
 ### Using clusterGroupSelector
 
-Instead of referencing a group by name, use a selector to target groups dynamically:
+Instead of referencing a group by name, use a selector in `overrideTargets` to target groups dynamically:
 
 ```yaml
 # fleet.yaml - ClusterGroup selector targeting
-targets:
+overrideTargets:
   - name: all-prod-groups
     clusterGroupSelector:
       matchLabels:
@@ -241,7 +247,7 @@ kubectl apply -f regional-clustergroups.yaml
 
 # Target all US production clusters using group selector
 # In fleet.yaml:
-# targets:
+# overrideTargets:
 #   - name: us-production
 #     clusterGroupSelector:
 #       matchLabels:
@@ -257,9 +263,9 @@ kubectl get clustergroups -A
 # Get detailed status for a specific group
 kubectl describe clustergroup production -n fleet-default
 
-# Check bundle deployments for a ClusterGroup
-kubectl get bundledeployments -A \
-  -o jsonpath='{range .items[?(@.spec.clusterGroup=="production")]}{.metadata.name}{"\n"}{end}'
+# Check the ClusterGroup's aggregated deployment summary
+kubectl get clustergroup production -n fleet-default \
+  -o jsonpath='{.status.display.readyBundles}{" bundles ready, "}{.status.display.readyClusters}{" clusters ready\n"}'
 ```
 
 ## Updating ClusterGroup Membership
