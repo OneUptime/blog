@@ -17,28 +17,30 @@ timeline
     title IPv6 Temporary Address Lifecycle
     section Hour 0
         Address created : preferred + valid
-    section Hour 20
-        New address generated : old addr deprecated
-    section Hour 24
+    section Before preferred expiry
+        New address generated : overlap for transition
+    section Preferred lifetime ends
         Old addr deprecated : only for existing connections
-    section Day 7
-        Old address expires : connection teardown
+    section Valid lifetime ends
+        Old address expires : removed
 ```
 
 - **Preferred lifetime**: During this period, the address is used for new outgoing connections
 - **Valid lifetime**: After preferred expires, the address still works for established connections but no new ones are initiated from it
-- **REGEN_ADVANCE**: Linux generates the next temporary address before the current one expires to ensure seamless transitions
+- **REGEN_ADVANCE**: RFC 8981 defines a lead time so Linux can generate the next temporary address before the current one is deprecated
 
 ## Default Linux Values
 
-The defaults from RFC 4941 are:
+Current upstream Linux kernel defaults are:
 
 | Parameter | Default | sysctl key |
 |---|---|---|
 | Preferred lifetime | 86400s (1 day) | `temp_prefered_lft` |
-| Valid lifetime | 604800s (7 days) | `temp_valid_lft` |
-| Regeneration advance | 5 seconds | `regen_max_retry` |
-| Regeneration retries | 3 | `regen_max_retry` |
+| Valid lifetime | 172800s (2 days) | `temp_valid_lft` |
+| Min regeneration advance | 2 seconds | `regen_min_advance` |
+| Regeneration retries | 5 | `regen_max_retry` |
+
+Distributions or local sysctl overrides can set different runtime values, so verify the active values on the host you are tuning.
 
 ## Viewing Current Lifetime Settings
 
@@ -47,7 +49,7 @@ The defaults from RFC 4941 are:
 
 sysctl -a | grep -E "eth0.*(temp|addr_gen|use_temp)"
 
-# Show lifetimes for all interfaces
+# Show lifetimes for eth0
 sysctl net.ipv6.conf.eth0.temp_prefered_lft
 sysctl net.ipv6.conf.eth0.temp_valid_lft
 ```
@@ -99,17 +101,17 @@ net.ipv6.conf.all.temp_valid_lft = 1209600
 
 ## How the Router Advertisement Affects Lifetimes
 
-The actual lifetime used is the **minimum** of the router-advertised prefix lifetime and the locally configured value:
+The actual lifetime of a temporary address is bounded by both the router-advertised prefix lifetimes and your local privacy settings. Per RFC 8981, the valid lifetime is the lower of the advertised prefix valid lifetime and `temp_valid_lft`, while the preferred lifetime is capped by both the advertised preferred lifetime and `temp_prefered_lft` (with Linux also applying a randomized desynchronization factor).
 
 ```bash
-# Monitor incoming Router Advertisements to see advertised prefix lifetimes
+# Request and display Router Advertisements to inspect advertised prefix lifetimes
 sudo rdisc6 eth0
 
 # Or use tcpdump to capture RA packets
 sudo tcpdump -i eth0 -v "icmp6 and ip6[40] == 134"
 ```
 
-If the RA advertises a shorter preferred lifetime than your sysctl setting, the RA value takes precedence.
+If the RA advertises shorter prefix lifetimes than your local sysctl settings, the advertised values cap the resulting temporary address lifetime.
 
 ## Checking Current Address Lifetimes
 
@@ -125,14 +127,14 @@ ip -6 addr show eth0
 
 ## Verifying Lifetime Changes Take Effect
 
-```bash
-# Force a new temporary address to be generated immediately
-# by cycling the privacy extension
-sudo sysctl -w net.ipv6.conf.eth0.use_tempaddr=0
-sudo sysctl -w net.ipv6.conf.eth0.use_tempaddr=2
+Existing temporary addresses keep their current remaining lifetimes; the new settings apply to newly generated temporary addresses.
 
-# Check that new addresses appear with the correct lifetimes
-ip -6 addr show eth0 | grep temporary
+```bash
+# Ask for a fresh Router Advertisement so the kernel refreshes SLAAC state
+sudo rdisc6 eth0
+
+# Check temporary addresses and their remaining lifetimes
+ip -6 addr show dev eth0 temporary
 ```
 
 ## Conclusion
