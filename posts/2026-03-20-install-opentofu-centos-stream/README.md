@@ -8,11 +8,11 @@ Description: A complete guide to installing OpenTofu on CentOS Stream using the 
 
 ## Introduction
 
-CentOS Stream is the upstream development platform for Red Hat Enterprise Linux (RHEL). This guide covers installing OpenTofu on CentOS Stream 8 and 9, which are popular choices for enterprise environments.
+CentOS Stream is the upstream development platform for Red Hat Enterprise Linux (RHEL). This guide covers installing OpenTofu on CentOS Stream 9 and 10, which are popular choices for enterprise environments.
 
 ## Prerequisites
 
-- CentOS Stream 8 or 9
+- CentOS Stream 9 or 10
 - `sudo` or root access
 - Active internet connection
 
@@ -27,7 +27,7 @@ cat <<EOF | sudo tee /etc/yum.repos.d/opentofu.repo
 [opentofu]
 name=opentofu
 baseurl=https://packages.opentofu.org/opentofu/tofu/rpm_any/rpm_any/\$basearch
-repo_gpgcheck=1
+repo_gpgcheck=0
 gpgcheck=1
 enabled=1
 gpgkey=https://get.opentofu.org/opentofu.gpg
@@ -49,29 +49,29 @@ sudo rpm --import https://packages.opentofu.org/opentofu/tofu/gpgkey
 ### Step 3: Install OpenTofu
 
 ```bash
-# Install using dnf (CentOS Stream 8+)
+# Install using dnf (CentOS Stream 9 and 10)
 sudo dnf install -y tofu
 
-# Or using yum (older systems)
+# Or using yum (if available on your system)
 sudo yum install -y tofu
 ```
 
 ## Method 2: Install via RPM Package
 
 ```bash
-TOFU_VERSION="1.9.0"
+TOFU_VERSION="1.11.6"
 
 # Download the RPM
-curl -LO "https://github.com/opentofu/opentofu/releases/download/v${TOFU_VERSION}/tofu_${TOFU_VERSION}_linux_amd64.rpm"
+curl -LO "https://github.com/opentofu/opentofu/releases/download/v${TOFU_VERSION}/tofu_${TOFU_VERSION}_amd64.rpm"
 
 # Install the package
-sudo dnf localinstall -y "tofu_${TOFU_VERSION}_linux_amd64.rpm"
+sudo dnf install -y "./tofu_${TOFU_VERSION}_amd64.rpm"
 ```
 
 ## Method 3: Manual Binary Installation
 
 ```bash
-TOFU_VERSION="1.9.0"
+TOFU_VERSION="1.11.6"
 ARCH="amd64"
 
 # Download and install
