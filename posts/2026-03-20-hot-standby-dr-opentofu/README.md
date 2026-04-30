@@ -4,11 +4,11 @@ Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
 Tags: Disaster Recovery, Hot Standby, OpenTofu, AWS, Multi-Region, Active-Passive
 
-Description: Learn how to implement the Hot Standby (Active-Passive) disaster recovery strategy using OpenTofu to maintain full-capacity mirror environment for near-instant failover.
+Description: Learn how to implement the Hot Standby (Active-Passive) disaster recovery strategy using OpenTofu to maintain a full-capacity mirror environment for rapid failover.
 
 ## Overview
 
-Hot Standby maintains a full-capacity, fully operational environment in the DR region that is kept synchronized with the primary region. Failover happens in seconds to minutes with minimal or no data loss. This is the most expensive DR strategy but provides the lowest RTO/RPO.
+Hot Standby maintains a full-capacity, fully operational environment in the DR region that is kept synchronized with the primary region. With Aurora Global Database and Route53 failover, recovery is typically measured in minutes, with low data loss on unplanned failovers and no data loss on planned switchovers. This is the most expensive DR strategy but provides very low RTO/RPO compared to lower-cost DR patterns.
 
 ## Step 1: Identical Infrastructure in Both Regions
 
@@ -41,10 +41,10 @@ module "app_standby" {
 }
 ```
 
-## Step 2: Database with Synchronous Replication
+## Step 2: Database with Low-Latency Asynchronous Replication
 
 ```hcl
-# Aurora Global Database for near-synchronous cross-region replication
+# Aurora Global Database for low-latency asynchronous cross-region replication
 resource "aws_rds_global_cluster" "app" {
   global_cluster_identifier = "app-global-db"
   engine                    = "aurora-postgresql"
@@ -58,10 +58,23 @@ resource "aws_rds_cluster" "primary" {
   provider                  = aws.primary
   cluster_identifier        = "app-primary"
   engine                    = "aurora-postgresql"
+  engine_version            = aws_rds_global_cluster.app.engine_version
+  database_name             = "appdb"
   global_cluster_identifier = aws_rds_global_cluster.app.id
+  master_username           = "appadmin"
+  manage_master_user_password = true
 
-  # Aurora Global typically achieves < 1 second replication lag
+  # Aurora Global Database replicates asynchronously with latency typically under a second
   engine_mode = "provisioned"
+}
+
+resource "aws_rds_cluster_instance" "primary_instances" {
+  provider           = aws.primary
+  count              = 2
+  cluster_identifier = aws_rds_cluster.primary.id
+  instance_class     = "db.r6g.2xlarge"
+  engine             = aws_rds_cluster.primary.engine
+  engine_version     = aws_rds_cluster.primary.engine_version
 }
 
 # Hot standby cluster in DR region
@@ -69,10 +82,17 @@ resource "aws_rds_cluster" "standby" {
   provider                  = aws.dr
   cluster_identifier        = "app-standby"
   engine                    = "aurora-postgresql"
+  engine_version            = aws_rds_global_cluster.app.engine_version
   global_cluster_identifier = aws_rds_global_cluster.app.id
 
-  # Standby must be provisioned - cannot be serverless
+  # Hot standby keeps fixed capacity ready to take traffic immediately
   engine_mode = "provisioned"
+
+  lifecycle {
+    ignore_changes = [replication_source_identifier]
+  }
+
+  depends_on = [aws_rds_cluster_instance.primary_instances]
 }
 
 resource "aws_rds_cluster_instance" "standby_instances" {
@@ -80,14 +100,15 @@ resource "aws_rds_cluster_instance" "standby_instances" {
   count              = 2
   cluster_identifier = aws_rds_cluster.standby.id
   instance_class     = "db.r6g.2xlarge"
-  engine             = "aurora-postgresql"
+  engine             = aws_rds_cluster.standby.engine
+  engine_version     = aws_rds_cluster.standby.engine_version
 }
 ```
 
 ## Step 3: Health Check with Automatic Failover
 
 ```hcl
-# Route53 with health checks for sub-minute DNS failover
+# Route53 with health checks for automated DNS failover
 resource "aws_route53_health_check" "primary" {
   fqdn              = module.app_primary.alb_dns_name
   port              = 443
@@ -142,6 +163,7 @@ resource "null_resource" "global_db_failover" {
       aws rds failover-global-cluster \
         --global-cluster-identifier ${aws_rds_global_cluster.app.id} \
         --target-db-cluster-identifier ${aws_rds_cluster.standby.arn} \
+        --allow-data-loss \
         --region us-west-2
     EOT
   }
@@ -154,4 +176,4 @@ resource "null_resource" "global_db_failover" {
 
 ## Summary
 
-Hot Standby DR implemented with OpenTofu provides RTO under 60 seconds using Route53 failover routing with 10-second health check intervals and a 20-second failure threshold. Aurora Global Database achieves typically under 1 second replication lag, providing near-zero RPO. The cost is approximately 2x production infrastructure, but this is justified for applications with strict SLAs requiring less than 5 minutes RTO and 1 minute RPO.
+Hot Standby DR implemented with OpenTofu can deliver recovery measured in minutes. Route53 health checks with 10-second intervals and a failure threshold of 2 can shorten detection time, but total recovery still depends on Route53 health-check consensus, DNS caching, and Aurora failover duration. Aurora Global Database replicates asynchronously with latency typically under a second, so unplanned failovers can still lose a small amount of recent data, while planned switchovers can avoid data loss. The cost is approximately 2x production infrastructure, but this is justified for applications with strict SLAs requiring very low RTO and RPO.
