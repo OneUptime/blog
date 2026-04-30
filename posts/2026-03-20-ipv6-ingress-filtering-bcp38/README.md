@@ -8,11 +8,11 @@ Description: Learn how to implement BCP 38 ingress filtering for IPv6 to prevent
 
 ## Overview
 
-BCP 38 (RFC 2827) defines ingress filtering: a network operator should drop packets arriving on an interface if the source address is not reachable via that interface. For IPv6 this prevents source address spoofing, which is a prerequisite for many DDoS amplification attacks. IPv6's lack of NAT makes source address validation more important, not less.
+BCP 38 (RFC 2827), updated by RFC 3704, recommends ingress filtering: a network operator should drop packets whose source address should not arrive on a given interface. For IPv6 this prevents source address spoofing, which is a prerequisite for many DDoS amplification attacks. IPv6's lack of NAT makes source address validation more important, not less.
 
 ## Why IPv6 Needs BCP 38
 
-IPv4 networks frequently hide behind NAT, which inadvertently validates source addresses. IPv6 uses no NAT - every host has a globally-routable address. Without ingress filtering, any host can spoof any IPv6 source address and launch:
+IPv4 networks frequently hide behind NAT, but NAT is not source address validation. IPv6 typically avoids NAT, and many Internet-connected hosts use global unicast addresses. Without ingress filtering, a host on a poorly filtered network can still spoof IPv6 source addresses and launch:
 
 - Amplification attacks using ICMPv6 echo to multicast groups
 - NDP exhaustion with spoofed sources
@@ -23,21 +23,23 @@ IPv4 networks frequently hide behind NAT, which inadvertently validates source a
 
 ```mermaid
 flowchart LR
-    Customer[Customer\n2001:db8:cust::/48] --> ISP_Router[ISP Router]
-    ISP_Router -- "Source 2001:db8:cust::/48\n→ ACCEPT" --> Internet
-    ISP_Router -- "Source 2001:db8:other::/32\n→ DROP (spoofed)" --> Sink[/dev/null]
+    Customer[Customer\n2001:db8:1000::/48] --> ISP_Router[ISP Router]
+    ISP_Router -- "Source 2001:db8:1000::/48\n→ ACCEPT" --> Internet
+    ISP_Router -- "Source 2001:db8:2000::/48\n→ DROP (spoofed)" --> Sink[/dev/null]
 ```
 
-Rule: If a packet arrives from Customer, its source address MUST be within the Customer's assigned prefix. Any other source = spoofed → DROP.
+Rule: If forwarded customer traffic arrives from Customer, its source address MUST be within the Customer's assigned prefix. Any other forwarded source = spoofed → DROP. On a live access link, keep required control-plane traffic such as NDP, DHCPv6 PD, or customer BGP sessions above the anti-spoofing rules.
 
 ## Implementation: Router ACL
+
+The examples below show the anti-spoofing logic itself. In production, add any required control-plane exceptions before the final drop or reject rule.
 
 ### Cisco IOS
 
 ```nginx
-! Customer assigned: 2001:db8:cust::/48
+! Customer assigned: 2001:db8:1000::/48
 ipv6 access-list INGRESS-CUSTOMER
-  permit ipv6 2001:db8:cust::/48 any    ! Allow customer's legitimate addresses
+  permit ipv6 2001:db8:1000::/48 any    ! Allow customer's legitimate addresses
   deny   ipv6 any any log               ! Drop everything else (spoofed)
 
 interface GigabitEthernet0/0
@@ -59,9 +61,9 @@ ipv6 access-list INGRESS-UPSTREAM
 ```text
 # Filter applied to customer-facing interface
 
-set firewall family inet6 filter INGRESS-CUSTOMER term allow-customer from source-address 2001:db8:cust::/48
+set firewall family inet6 filter INGRESS-CUSTOMER term allow-customer from source-address 2001:db8:1000::/48
 set firewall family inet6 filter INGRESS-CUSTOMER term allow-customer then accept
-set firewall family inet6 filter INGRESS-CUSTOMER term deny-spoof then reject
+set firewall family inet6 filter INGRESS-CUSTOMER term deny-spoof then discard
 
 set interfaces ge-0/0/0 unit 0 family inet6 filter input INGRESS-CUSTOMER
 ```
@@ -71,11 +73,11 @@ set interfaces ge-0/0/0 unit 0 family inet6 filter input INGRESS-CUSTOMER
 ```bash
 # nftables: Ingress filtering for a hosted customer
 nft add table ip6 ingress
-nft add chain ip6 ingress input { type filter hook input priority -100\; }
+nft add chain ip6 ingress forward { type filter hook forward priority filter\; }
 
-# Allow only from customer's assigned prefix
-nft add rule ip6 ingress input iifname "eth1" ip6 saddr 2001:db8:cust::/48 accept
-nft add rule ip6 ingress input iifname "eth1" drop
+# Allow only forwarded traffic from the customer's assigned prefix
+nft add rule ip6 ingress forward iifname "eth1" ip6 saddr 2001:db8:1000::/48 accept
+nft add rule ip6 ingress forward iifname "eth1" drop
 ```
 
 ## Unicast Reverse Path Forwarding (uRPF)
@@ -91,38 +93,36 @@ interface GigabitEthernet0/0
 ```
 
 ```bash
-# Linux: Enable strict reverse path filtering
-sysctl -w net.ipv6.conf.eth1.accept_source_route=0
-# Note: IPv6 uRPF is handled differently on Linux - use ip rules and routing tables
-# Add: route to customer prefix via customer interface in main routing table
-ip -6 route add 2001:db8:cust::/48 dev eth1
-# Then packets arriving on eth1 claiming to be from other prefixes have no reverse path
+# Linux does not provide an IPv6 rp_filter sysctl equivalent to IPv4.
+# For IPv6, enforce source validation with nftables/ip6tables rules on the
+# forwarding path instead.
 ```
 
-## Source Address Validation at Access Layer (SAVI)
+## Source Address Validation at Access Layer
 
-SAVI (RFC 7039) implements ingress filtering at the switch port level:
+SAVI (RFC 7039) is a framework for access-layer source validation; on Cisco platforms this is typically implemented with IPv6 Source Guard:
 
 ```text
-! Cisco: SAVI on access switch
-ipv6 snooping policy SAVI-POLICY
-  limit address-count 10
+! Cisco: IPv6 Source Guard on access switch
+ipv6 source-guard policy SAVI-POLICY
+  permit link-local
 
 interface GigabitEthernet0/1
-  ipv6 snooping attach-policy SAVI-POLICY
-  ! SAVI learns valid addresses via DHCPv6/SLAAC monitoring
-  ! Drops packets with non-learned source addresses
+  ipv6 source-guard attach-policy SAVI-POLICY
+  ! Source Guard learns bindings via ND/DHCP gleaning
+  ! Drops data traffic with source addresses not in the binding table
 ```
 
 ## Bogon Prefix Ingress Filter
 
-Always apply at internet-facing interfaces:
+At minimum, filter obviously invalid or non-global source prefixes at internet-facing interfaces:
 
 ```bash
-# ip6tables: Drop bogon sources at ingress
-for prefix in "::/128" "::1/128" "::ffff:0:0/96" "64:ff9b::/96" "100::/64" \
-  "2001::/23" "2001:db8::/32" "2002::/16" "fc00::/7" "fe80::/10"; do
-  ip6tables -A INPUT -s "$prefix" -j DROP
+# ip6tables: Drop clearly invalid or non-global sources at ingress
+# Keep this list aligned with the current IANA IPv6 Special-Purpose Address Registry.
+for prefix in "::/128" "::1/128" "::ffff:0:0/96" "2001:db8::/32" \
+  "fc00::/7" "fe80::/10"; do
+  ip6tables -A FORWARD -i eth0 -s "$prefix" -j DROP
 done
 ```
 
@@ -131,14 +131,16 @@ done
 Use the CAIDA Spoofer project tools to test your network:
 
 ```bash
-# Download and run spoofer test
-wget https://spoofer.caida.org/cgi-bin/spoofer.pl
-chmod +x spoofer.pl
-./spoofer.pl --protocol ipv6
+# The Spoofer client automatically tests IPv6 if the host has IPv6 connectivity.
+# Download the current client or source package from:
+# https://www.caida.org/projects/spoofer/
+#
+# If you build from source, you can run the probe manually as root:
+# ./spoofer-prober
 
 # Report shows whether your ISP blocks spoofed IPv6 packets
 ```
 
 ## Summary
 
-IPv6 ingress filtering (BCP 38) is implemented via ACLs on customer-facing interfaces that only permit traffic with source addresses matching the customer's assigned prefix, router-level uRPF (Cisco: `ipv6 verify unicast source reachable-via rx`), and switch-level SAVI for access-layer enforcement. Always combine with bogon prefix filtering at internet-facing interfaces. Test compliance with the CAIDA Spoofer project to verify your ISP drops spoofed IPv6 packets.
+IPv6 ingress filtering (BCP 38) is implemented via ACLs on customer-facing interfaces that only permit forwarded traffic with source addresses matching the customer's assigned prefix, router-level uRPF (Cisco: `ipv6 verify unicast source reachable-via rx`), and access-layer source validation features such as SAVI or IPv6 Source Guard. Always combine with filtering of obviously invalid or non-global source prefixes at internet-facing interfaces, and keep those lists aligned with the IANA special-purpose registry. Test compliance with the CAIDA Spoofer project to verify your network blocks spoofed IPv6 packets.
