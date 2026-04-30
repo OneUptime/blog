@@ -30,11 +30,11 @@ ping -s 1400 -M do -c 3 8.8.8.8   # Narrow down
 
 # Use tracepath which automatically discovers path MTU
 tracepath 8.8.8.8
-# Shows MTU at each hop:
-# 1: 192.168.1.10  0.5ms pmtu 1500
-# 2: 192.168.1.1   1.2ms
+# Example output can reveal where the path MTU drops:
+# 1?: [LOCALHOST]  pmtu 1500
+# 1: 192.168.1.1   1.2ms
 # ...
-# 5: 10.0.0.1      8ms   pmtu 1400  <-- MTU drops here
+# 5: 10.0.0.1      8ms   pmtu 1400  <-- Path MTU drops here
 ```
 
 ## Capturing Fragmentation Needed Messages
@@ -46,8 +46,8 @@ tcpdump -i eth0 -n -v 'icmp[0]=3 and icmp[1]=4'
 # If you see these messages, PMTUD is working:
 # 10.0.0.1 > 192.168.1.10: ICMP need-to-frag, next-hop MTU 1400
 
-# If you DON'T see them but connections hang, the router is silently
-# dropping packets (MTU black hole) instead of sending ICMP back
+# If you DON'T see them but connections hang, the ICMP error may be
+# filtered on the return path, or the router may be creating an MTU black hole
 ```
 
 ## Fixing Fragmentation Needed Problems
@@ -88,11 +88,12 @@ iptables -I OUTPUT -p icmp --icmp-type fragmentation-needed -j ACCEPT
 
 ```bash
 # After applying MSS clamping or MTU reduction, test large transfers
-curl -v -o /dev/null http://speed.cloudflare.com/100mb.bin
+curl -v -o /dev/null https://proof.ovh.net/files/100Mb.dat
 
-# Also verify with ping
-ping -s 1472 -M do -c 5 8.8.8.8
-# Should succeed or clearly report MTU mismatch
+# Also verify with ping using the discovered path MTU
+# For a 1400-byte path MTU, use 1372 bytes of ICMP payload (1400 - 28)
+ping -s 1372 -M do -c 5 8.8.8.8
+# Should succeed; larger payloads should clearly report MTU mismatch
 
 # Check that TCP connections no longer hang
 ssh user@remote-server "dd if=/dev/zero bs=1M count=10 | wc -c"
