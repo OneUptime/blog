@@ -71,7 +71,7 @@ iptables -I FORWARD -i eth0.100 -d 172.16.0.0/12 -j DROP
 iptables -I FORWARD -o eth0.100 -s 192.168.1.0/24 -j DROP
 
 # Allow established/related traffic
-iptables -I FORWARD -m state --state ESTABLISHED,RELATED -j ACCEPT
+iptables -I FORWARD -m conntrack --ctstate ESTABLISHED,RELATED -j ACCEPT
 
 # NAT guest traffic
 iptables -t nat -A POSTROUTING -s 192.168.100.0/24 -o eth1 -j MASQUERADE
@@ -96,9 +96,13 @@ config wifi-iface 'guest_wifi'
     option isolate '1'    # Enable client isolation
 
 # /etc/config/network
-config interface 'guest'
+config device 'guest_dev'
+    option name 'br-guest'
     option type 'bridge'
-    option ifname 'eth0.100'
+    list ports 'eth0.100'
+
+config interface 'guest'
+    option device 'br-guest'
     option proto 'none'
 
 # Reload
@@ -113,21 +117,24 @@ Prevent guests from consuming all bandwidth:
 
 ```bash
 # Create a traffic shaping class for guest WiFi
-# Limit to 20 Mbps down, 10 Mbps up
+# This example limits guest upload to 20 Mbps on the WAN interface
 
-tc qdisc add dev eth1 root handle 1: htb default 30
+tc qdisc add dev eth1 root handle 1: htb default 10
 
-# Guest class (100 Mbps full bandwidth)
+# Parent class (example WAN speed: 100 Mbps)
 tc class add dev eth1 parent 1: classid 1:1 htb rate 100mbit
+
+# Default class for other traffic
+tc class add dev eth1 parent 1:1 classid 1:10 htb rate 100mbit ceil 100mbit
 
 # Guest limit (20 Mbps)
 tc class add dev eth1 parent 1:1 classid 1:100 htb rate 20mbit ceil 20mbit
 
 # Mark guest traffic with iptables
-iptables -t mangle -A POSTROUTING -s 192.168.100.0/24 -j MARK --set-mark 100
+iptables -t mangle -A POSTROUTING -s 192.168.100.0/24 -o eth1 -j MARK --set-mark 100
 
 # Apply shaping to marked packets
-tc filter add dev eth1 parent 1: handle 100 fw classid 1:100
+tc filter add dev eth1 parent 1: protocol ip handle 100 fw classid 1:100
 ```
 
 ## Conclusion
