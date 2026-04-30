@@ -8,7 +8,7 @@ Description: Migrate existing Google Cloud VPC subnets from IPv4-only to dual-st
 
 ## Introduction
 
-Google Cloud allows in-place conversion of existing IPv4-only subnets to dual-stack by updating `stack-type` to `IPV4_IPV6`. This migration is non-disruptive - existing VMs keep their IPv4 addresses and connectivity during the update. After the subnet is upgraded, VMs must be individually updated or restarted to receive IPv6 addresses. The `ipv6-access-type` (EXTERNAL or INTERNAL) is chosen at migration time and cannot be changed afterward.
+Google Cloud allows in-place conversion of existing IPv4-only subnets to dual-stack by updating `stack-type` to `IPV4_IPV6`. This migration is non-disruptive - existing VMs keep their IPv4 addresses and connectivity during the update. Dual-stack subnets are supported only on custom-mode VPC networks, and `INTERNAL` IPv6 requires a `/48` ULA internal IPv6 range to already be enabled on the VPC network. After the subnet is upgraded, update each VM network interface to `IPV4_IPV6` so Google Cloud can assign an IPv6 range from the subnet. The `ipv6-access-type` (EXTERNAL or INTERNAL) is chosen when IPv6 is first enabled on the subnet and cannot be changed afterward.
 
 ## Migrate Subnet to Dual-Stack
 
@@ -50,7 +50,7 @@ gcloud compute networks subnets describe existing-subnet \
 ZONE="us-east1-b"
 
 # After subnet is dual-stack, update existing VMs
-# Method 1: Update network interface (stops and starts VM)
+# Method 1: Update network interface stack type in place
 gcloud compute instances network-interfaces update vm-existing \
     --project="$PROJECT" \
     --zone="$ZONE" \
@@ -58,21 +58,34 @@ gcloud compute instances network-interfaces update vm-existing \
     --stack-type=IPV4_IPV6 \
     --ipv6-network-tier=PREMIUM
 
-# Method 2: Stop VM, update, then start
+# Method 2: Stop VM, update the network interface, then start
 gcloud compute instances stop vm-existing \
     --project="$PROJECT" \
     --zone="$ZONE"
 
-# The VM automatically gets IPv6 when started in a dual-stack subnet
+gcloud compute instances network-interfaces update vm-existing \
+    --project="$PROJECT" \
+    --zone="$ZONE" \
+    --network-interface=nic0 \
+    --stack-type=IPV4_IPV6 \
+    --ipv6-network-tier=PREMIUM
+
 gcloud compute instances start vm-existing \
     --project="$PROJECT" \
     --zone="$ZONE"
 
-# Verify VM received IPv6
+# Verify VM received IPv4 and external IPv6
 gcloud compute instances describe vm-existing \
     --project="$PROJECT" \
     --zone="$ZONE" \
-    --format="json(networkInterfaces[].{ipv6Addr:ipv6Address, ipv4:networkIP})"
+    --format="get(networkInterfaces[0].networkIP)"
+
+gcloud compute instances describe vm-existing \
+    --project="$PROJECT" \
+    --zone="$ZONE" \
+    --format="get(networkInterfaces[0].ipv6AccessConfigs[0].externalIpv6)"
+
+# For INTERNAL IPv6 subnets, use networkInterfaces[0].ipv6Address instead.
 ```
 
 ## Migration Script for Multiple VMs
@@ -89,7 +102,7 @@ gcloud compute networks subnets update "$SUBNET_NAME" \
     --region="$REGION" \
     --project="$PROJECT" \
     --stack-type=IPV4_IPV6 \
-    --ipv6-access-type=INTERNAL
+    --ipv6-access-type=EXTERNAL
 
 echo "Subnet upgraded. Waiting for propagation..."
 sleep 10
@@ -119,7 +132,7 @@ for VM in $VMS; do
     IPV6=$(gcloud compute instances describe "$VM" \
         --project="$PROJECT" \
         --zone="$ZONE" \
-        --format="get(networkInterfaces[0].ipv6Address)")
+        --format="get(networkInterfaces[0].ipv6AccessConfigs[0].externalIpv6)")
     echo "VM: $VM - IPv6: ${IPV6:-NOT ASSIGNED}"
 done
 ```
@@ -140,12 +153,12 @@ resource "google_compute_subnetwork" "existing" {
   name          = "existing-subnet"
   ip_cidr_range = "10.0.1.0/24"
   region        = "us-east1"
-  network       = google_compute_network.main.id
+  network       = google_compute_network.main.id  # custom-mode VPC network
   project       = var.project_id
 
   # Added: enable dual-stack
   stack_type       = "IPV4_IPV6"
-  ipv6_access_type = "INTERNAL"  # or "EXTERNAL" - cannot change later
+  ipv6_access_type = "EXTERNAL"  # use INTERNAL only if the VPC has enable_ula_internal_ipv6 = true
 }
 ```
 
@@ -158,18 +171,21 @@ gcloud compute networks subnets describe existing-subnet \
     --project="$PROJECT" \
     --format="get(ipv6CidrRange)"
 
-# Check VMs have IPv6
+# Check VMs have external IPv6
 gcloud compute instances list \
     --project="$PROJECT" \
-    --format="table(name, zone, networkInterfaces[0].networkIP, networkInterfaces[0].ipv6Address)"
+    --format="table(name, zone, networkInterfaces[0].networkIP, networkInterfaces[0].ipv6AccessConfigs[0].externalIpv6)"
+
+# For INTERNAL IPv6 subnets, use networkInterfaces[0].ipv6Address instead.
 
 # SSH into a VM and verify IPv6
 gcloud compute ssh vm-existing --zone="$ZONE" --project="$PROJECT"
 # Inside VM:
 ip -6 addr show
-ping6 -c 3 2001:4860:4860::8888
+# If you used EXTERNAL IPv6, test internet reachability
+ping -6 -c 3 2001:4860:4860::8888
 ```
 
 ## Conclusion
 
-Migrating GCP subnets from IPv4-only to dual-stack is a non-destructive in-place operation using `gcloud compute networks subnets update --stack-type=IPV4_IPV6 --ipv6-access-type=EXTERNAL|INTERNAL`. Existing VMs retain their IPv4 connectivity during the upgrade. After the subnet is upgraded, update each VM's network interface to receive IPv6. In Terraform, simply adding `stack_type` and `ipv6_access_type` to the existing subnetwork resource updates it in place without recreation. Choose `ipv6-access-type` carefully - it cannot be changed after subnet creation.
+Migrating GCP subnets from IPv4-only to dual-stack is a non-destructive in-place operation using `gcloud compute networks subnets update --stack-type=IPV4_IPV6 --ipv6-access-type=EXTERNAL|INTERNAL`. Existing VMs retain their IPv4 connectivity during the upgrade. After the subnet is upgraded, update each VM's network interface to `IPV4_IPV6` so Google Cloud can assign an IPv6 range. In Terraform, adding `stack_type` and `ipv6_access_type` to the existing subnetwork resource updates the subnet in place the first time you convert it to dual-stack. Use a custom-mode VPC, and if you choose `INTERNAL`, enable ULA internal IPv6 on the VPC network first. Choose `ipv6-access-type` carefully - it cannot be changed after IPv6 is enabled on the subnet.
