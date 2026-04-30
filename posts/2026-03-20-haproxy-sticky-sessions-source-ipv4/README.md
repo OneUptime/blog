@@ -31,6 +31,7 @@ More accurate than IP-based - individual browser sessions stick regardless of NA
 
 ```text
 backend app-servers
+    mode http
     balance roundrobin
     cookie SERVERID insert indirect nocache
     server app1 10.0.1.10:8080 check cookie app1
@@ -54,7 +55,7 @@ backend app-servers
     server app3 10.0.1.12:8080 check
 ```
 
-- `type ip size 200k`: Table holds up to 200,000 entries keyed by IPv4
+- `type ip size 200k`: Table holds up to 204,800 entries keyed by IPv4
 - `expire 30m`: Entry expires after 30 minutes of inactivity
 - `stick on src`: Track the client's source IP
 
@@ -64,6 +65,7 @@ Use a session token header as the stick key:
 
 ```text
 backend app-servers
+    mode http
     balance roundrobin
     stick-table type string len 32 size 100k expire 1h
     stick on req.hdr(X-Session-ID)
@@ -77,7 +79,7 @@ backend app-servers
 echo "show table app-servers" | sudo socat stdio /run/haproxy/admin.sock
 ```
 
-Output shows client IPs and the server they are mapped to.
+Output shows the table entries keyed by client IP, along with any stored counters or other data fields.
 
 ## Clearing Stick Table Entries
 
@@ -101,9 +103,9 @@ With `balance source`, the client is redistributed to another server based on th
 | Method | Precision | Overhead | Stateless? |
 |---|---|---|---|
 | balance source | Low (NAT issue) | None | Yes |
-| Cookie insert | High | Low | No |
-| Stick table (IP) | Medium | Low | Yes |
-| Stick table (token) | Exact | Low | Yes |
+| Cookie insert | High | Low | Yes |
+| Stick table (IP) | Medium | Low | No |
+| Stick table (token) | Exact | Low | No |
 
 ## Conclusion
 
