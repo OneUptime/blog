@@ -49,11 +49,8 @@ kind: Service
 metadata:
   name: myapp-lb
   namespace: production
-  annotations:
-    # AWS: Enable dual-stack on NLB
-    service.beta.kubernetes.io/aws-load-balancer-ip-address-type: "dualstack"
-    # GKE: Enable IPv6 for load balancer
-    cloud.google.com/load-balancer-type: "External"
+  # Some cloud providers require additional annotations or subnet settings
+  # for dual-stack load balancers.
 spec:
   ipFamilyPolicy: RequireDualStack
   ipFamilies:
@@ -98,18 +95,18 @@ spec:
           # Environment variables for IPv6-aware application
           env:
             - name: LISTEN_ADDR
-              value: "[::]:8080"    # Bind to all IPv6 (and IPv4 via dual-stack)
+              value: "[::]:8080"    # Bind to the IPv6 unspecified address; IPv4 handling depends on the app/runtime
             - name: DATABASE_HOST
               value: "[2001:db8::db]:5432"
             - name: REDIS_URL
-              value: "redis://[2001:db8::redis]:6379"
+              value: "redis://[2001:db8::6379]:6379"
 
-          # Health check endpoints accessible over IPv6
+          # Health check endpoints reached via the Pod IP
           livenessProbe:
             httpGet:
               path: /health
               port: 8080
-              # Kubernetes probes use pod IP - works for both IPv4 and IPv6
+              # Kubernetes probes target the Pod IP unless httpGet.host is set
             initialDelaySeconds: 10
             periodSeconds: 30
 
@@ -133,14 +130,14 @@ metadata:
   namespace: production
 data:
   # IPv6 configuration for the application
-  ALLOWED_CIDRS: "2001:db8:clients::/48,10.0.0.0/8"
-  TRUSTED_PROXIES: "2001:db8:lb::/48,fd00:proxy::/64"
+  ALLOWED_CIDRS: "2001:db8:100::/48,10.0.0.0/8"
+  TRUSTED_PROXIES: "2001:db8:200::/48,fd00:100::/64"
   DNS_SERVER: "2001:db8::53"
-  NTP_SERVER: "2001:db8::ntp"
+  NTP_SERVER: "2001:db8::123"
 
   # Application-specific IPv6 settings
   IPV6_ONLY: "false"          # Accept both IPv4 and IPv6 clients
-  BIND_ADDRESS: "[::]"        # Bind to all interfaces
+  BIND_ADDRESS: "::"          # Bind to the IPv6 unspecified address
 ```
 
 ## Kustomize Overlay for IPv6-Only Environment
@@ -151,7 +148,7 @@ data:
 apiVersion: kustomize.config.k8s.io/v1beta1
 kind: Kustomization
 
-bases:
+resources:
   - ../../base
 
 # Patches for IPv6-only environment
@@ -243,29 +240,29 @@ spec:
   # Substitute variables for IPv6 configuration
   postBuild:
     substitute:
-      IPV6_PREFIX: "2001:db8:app::"
+      IPV6_PREFIX: "2001:db8:300::/64"
       DNS_SERVER: "2001:db8::53"
 ```
 
-## Validate IPv6 Manifest Before Committing
+## Validate IPv6 Configuration
 
 ```bash
-# Validate that services have correct IPv6 configuration
+# Validate that the Service manifest is accepted by the API server
 kubectl apply --dry-run=server -f kubernetes/services/app-service.yaml
 
-# Check service will get IPv6 cluster IP
-kubectl get svc myapp -o jsonpath='{.spec.clusterIPs}' | jq .
+# After applying, check that the Service has both cluster IP families
+kubectl get svc myapp -o jsonpath-as-json='{.spec.clusterIPs}'
 # Expected: ["10.96.1.1", "fd00::1"]
 
-# Verify pod gets IPv6 in pod IP list
-kubectl get pod myapp-xxx -o jsonpath='{.status.podIPs}' | jq .
-# Expected: [{"ip":"10.244.0.1"}, {"ip":"fd00:pod::1"}]
+# After the Deployment is running, verify the Pod IP list
+kubectl get pod myapp-xxx -o jsonpath-as-json='{.status.podIPs}'
+# Expected: [{"ip":"10.244.0.1"}, {"ip":"fd00::10"}]
 
-# Test IPv6 connectivity to service
-kubectl run -it --rm debug --image=nicolaka/netshoot -- \
+# Test IPv6 connectivity to the Service from inside the cluster
+kubectl run -it --rm debug --restart=Never --image=nicolaka/netshoot -- \
     curl -6 http://[fd00::1]:8080/health
 ```
 
 ## Conclusion
 
-Kubernetes manifests for IPv6 GitOps deployments specify `ipFamilyPolicy` and `ipFamilies` on services to control dual-stack or IPv6-only operation. Application containers should bind to `[::]` rather than `0.0.0.0` for IPv6 dual-stack support. Kustomize overlays enable environment-specific IPv6 configuration without duplicating base manifests. ArgoCD and Flux CD deploy these manifests from Git repositories without special IPv6 consideration - the manifests themselves carry the IPv6 configuration. Use `--dry-run=server` to validate manifests against the cluster before committing to Git. Flux's `postBuild.substitute` enables parameterizing IPv6 prefixes and addresses per environment.
+Kubernetes manifests for IPv6 GitOps deployments specify `ipFamilyPolicy` and `ipFamilies` on services to control dual-stack or IPv6-only operation. Application containers that support IPv6 should listen on the IPv6 unspecified address (`::` or `[::]:PORT`, depending on the application's configuration format) rather than only `0.0.0.0` when IPv6 connectivity is required. Kustomize overlays enable environment-specific IPv6 configuration without duplicating base manifests. ArgoCD and Flux CD deploy these manifests from Git repositories without special IPv6 consideration - the manifests themselves carry the IPv6 configuration. Use `--dry-run=server` to validate manifests against the cluster before committing to Git, and verify assigned `clusterIPs` and `podIPs` after applying. Flux's `postBuild.substitute` enables parameterizing IPv6 prefixes and addresses per environment.
