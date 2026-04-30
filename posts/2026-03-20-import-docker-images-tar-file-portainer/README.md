@@ -8,7 +8,7 @@ Description: Import Docker images from a local .tar archive into Portainer for a
 
 ---
 
-Portainer's image management features provide a web-based interface for the full image lifecycle: pulling, building, tagging, inspecting, and cleaning up Docker images.
+Portainer's image management features provide a web-based interface for pulling, building, importing, exporting, inspecting, and cleaning up Docker images.
 
 ## Navigating Image Management
 
@@ -30,7 +30,7 @@ docker login registry.example.com
 docker pull registry.example.com/private/image:tag
 ```
 
-In Portainer: **Images > Pull image** - enter the image name and tag, optionally select a registry.
+In Portainer: **Images** - select the registry and image name, or use **Advanced mode** for a custom registry.
 
 ## Build Images
 
@@ -45,7 +45,7 @@ docker build -f Dockerfile.prod -t myapp:prod .
 docker build --build-arg NODE_ENV=production -t myapp:prod .
 ```
 
-In Portainer: **Images > Build image** - paste Dockerfile content or upload a file.
+In Portainer: **Images > Build a new image** - use the web editor, upload a Dockerfile, or provide a URL.
 
 ## Import/Export Images
 
@@ -58,6 +58,8 @@ docker save myapp:latest | gzip > myapp-latest.tar.gz
 docker load < myapp-latest.tar
 docker load -i myapp-latest.tar.gz
 ```
+
+In Portainer: **Images > Import** - upload a `.tar`, `.tar.gz`, `.tar.bz2`, or `.tar.xz` image archive, optionally choose the target node and tag, then click **Upload**. To export an image from Portainer, open the image and click **Export this image**.
 
 ## Tag Images
 
@@ -89,8 +91,8 @@ docker system df
 ## Identify Outdated Images
 
 ```bash
-# Check if a newer digest exists for an image
-docker pull nginx:latest 2>&1 | grep -E "Pull complete|up to date"
+# Pull the tag again and let Docker report whether it downloaded a newer image
+docker pull nginx:latest
 
 # View image creation date
 docker inspect nginx:latest --format '{{.Created}}'
