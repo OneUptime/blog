@@ -12,7 +12,7 @@ IPv6 Neighbor Discovery Protocol (NDP), defined in RFC 4861, is the IPv6 replace
 
 ## NDP's Five Core Functions
 
-```javascript
+```text
 Function 1: Router Discovery
   Hosts discover routers on the local link
   Messages: Router Solicitation (RS, Type 133) and
@@ -33,8 +33,8 @@ Function 4: Address Resolution
             Neighbor Advertisement (NA, Type 136)
 
 Function 5: Next-Hop Determination
-  Determine if a destination is on-link or off-link
-  Uses the Prefix List from RA messages
+  Determine whether to send directly to a neighbor or via a router
+  Uses the Prefix List and Default Router List learned from RA messages
 ```
 
 ## NDP Message Types Summary
@@ -50,7 +50,8 @@ ICMPv6 Type 133: Router Solicitation (RS)
 ICMPv6 Type 134: Router Advertisement (RA)
   From: Routers
   To:   All-Nodes multicast (ff02::1), or unicast reply to RS
-  When: Periodically (default 200s interval), and in response to RS
+  When: Periodically (not a fixed timer; by default randomized
+        between about 200s and 600s), and in response to RS
   Content: Flags, Prefix Information, MTU, Hop Limit, etc.
 
 ICMPv6 Type 135: Neighbor Solicitation (NS)
@@ -77,15 +78,15 @@ ICMPv6 Type 137: Redirect
 
 ```text
 ARP (IPv4):
-  Protocol: Ethernet (ARP EtherType 0x0806)
+  Protocol: Link-layer protocol; on Ethernet, ARP uses EtherType 0x0806
   Broadcast: Entire subnet receives every ARP request
   No authentication: Trivially spoofable
-  No router discovery: Separate DHCP or manual config
-  No autoconfiguration: IP addresses require DHCP or manual setup
+  No router discovery in ARP itself: handled by separate mechanisms
+  No address autoconfiguration in ARP itself: handled separately
 
 NDP (IPv6):
   Protocol: ICMPv6 (part of IP layer)
-  Multicast: Only interested nodes receive NS (solicited-node multicast)
+  Multicast: NS goes to the target's solicited-node multicast group
   Authentication: Optional SEND (RFC 3971) for cryptographic verification
   Router discovery: Built-in via RS/RA
   Autoconfiguration: SLAAC using RA prefix information
@@ -108,7 +109,8 @@ def solicited_node_multicast(ipv6_addr: str) -> str:
     import socket
     addr_bytes = socket.inet_pton(socket.AF_INET6, ipv6_addr)
     last_3_bytes = addr_bytes[-3:]
-    multicast = b'\xff\x02' + b'\x00' * 9 + b'\xff' + last_3_bytes
+    prefix = socket.inet_pton(socket.AF_INET6, "ff02::1:ff00:0")
+    multicast = prefix[:13] + last_3_bytes
     return socket.inet_ntop(socket.AF_INET6, multicast)
 
 test_addrs = [
@@ -124,4 +126,4 @@ EOF
 
 ## Conclusion
 
-NDP is the cornerstone of IPv6 network operation, replacing multiple IPv4 mechanisms with a unified protocol. Its five functions - router discovery, prefix discovery, parameter discovery, address resolution, and next-hop determination - are all performed using ICMPv6 messages. The use of solicited-node multicast for address resolution is more efficient than ARP's broadcast approach. NDP messages must be allowed through all firewalls on the local segment for IPv6 to function, making firewall policy one of the most common NDP troubleshooting targets.
+NDP is the cornerstone of IPv6 network operation, replacing multiple IPv4 mechanisms with a unified protocol. Its five functions - router discovery, prefix discovery, parameter discovery, address resolution, and next-hop determination - rely on ICMPv6 messages and the information they carry. The use of solicited-node multicast for address resolution is more efficient than ARP's broadcast approach. Essential NDP messages must be allowed through firewalls on the local segment for IPv6 to function correctly, making firewall policy one of the most common NDP troubleshooting targets.
