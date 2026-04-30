@@ -4,7 +4,7 @@ Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
 Tags: OpenTofu, GitLab, CI/CD, Runner, AWS, Kubernetes, Infrastructure as Code
 
-Description: Learn how to deploy GitLab CI/CD runners using OpenTofu on EC2 or Kubernetes, with auto-scaling configuration and secure registration token management.
+Description: Learn how to deploy GitLab CI/CD runners using OpenTofu on EC2 or Kubernetes, with Kubernetes-based scaling and runner authentication token management.
 
 ---
 
@@ -38,13 +38,19 @@ provider "helm" {
   }
 }
 
+provider "kubernetes" {
+  host                   = var.cluster_endpoint
+  cluster_ca_certificate = base64decode(var.cluster_ca_cert)
+  token                  = var.cluster_token
+}
+
 resource "kubernetes_namespace" "gitlab_runner" {
   metadata {
     name = "gitlab-runner"
   }
 }
 
-# Store registration token as a Kubernetes secret
+# Store the runner authentication token as a Kubernetes secret
 resource "kubernetes_secret" "runner_token" {
   metadata {
     name      = "gitlab-runner-secret"
@@ -52,8 +58,8 @@ resource "kubernetes_secret" "runner_token" {
   }
 
   data = {
-    runner-registration-token = var.gitlab_runner_registration_token
-    runner-token              = ""
+    runner-registration-token = ""
+    runner-token              = var.gitlab_runner_token
   }
 }
 
@@ -71,14 +77,14 @@ resource "helm_release" "gitlab_runner" {
     yamlencode({
       gitlabUrl = var.gitlab_url
 
-      # Reference the secret for the registration token
-      existingRunnerRegistrationToken = kubernetes_secret.runner_token.metadata[0].name
-
       rbac = {
         create = true
       }
 
       runners = {
+        # Reference the secret that contains the runner token
+        secret = kubernetes_secret.runner_token.metadata[0].name
+
         # Runner configuration
         config = <<-TOML
           [[runners]]
@@ -92,7 +98,7 @@ resource "helm_release" "gitlab_runner" {
               memory_request = "128Mi"
               cpu_limit = "2"
               memory_limit = "4Gi"
-              # Allow privileged containers for Docker-in-Docker
+              # Keep privileged mode disabled unless you need Docker-in-Docker
               privileged = false
               [runners.kubernetes.node_selector]
                 "kubernetes.io/os" = "linux"
@@ -117,9 +123,9 @@ resource "helm_release" "gitlab_runner" {
 }
 ```
 
-## Deploying GitLab Runner on EC2 with Auto Scaling
+## Deploying GitLab Runner on EC2 in an Auto Scaling Group
 
-For workloads that need full VM isolation, use the EC2 executor with auto-scaling.
+For workloads that need runners hosted on EC2 instances, you can place Docker executor runner managers in an Auto Scaling Group.
 
 ```hcl
 # ec2_runner.tf
@@ -159,7 +165,7 @@ resource "aws_iam_instance_profile" "runner" {
 # Launch template for runner instances
 resource "aws_launch_template" "runner" {
   name_prefix   = "gitlab-runner-"
-  image_id      = data.aws_ami.amazon_linux_2023.id
+  image_id      = var.runner_ami_id
   instance_type = "t3.medium"
 
   iam_instance_profile {
@@ -178,7 +184,7 @@ resource "aws_launch_template" "runner" {
     gitlab-runner register \
       --non-interactive \
       --url "${var.gitlab_url}" \
-      --registration-token "${var.gitlab_runner_registration_token}" \
+      --token "${var.gitlab_runner_token}" \
       --executor "docker" \
       --docker-image "alpine:latest" \
       --description "ec2-runner-$(hostname)"
@@ -188,7 +194,7 @@ resource "aws_launch_template" "runner" {
   )
 }
 
-# Auto Scaling Group for runners
+# Auto Scaling Group for runner managers
 resource "aws_autoscaling_group" "runners" {
   name                = "gitlab-runners"
   min_size            = var.runner_min_count
@@ -212,7 +218,7 @@ resource "aws_autoscaling_group" "runners" {
 ## Best Practices
 
 - Use the Kubernetes executor for dynamic scaling and better resource utilization in containerized environments.
-- Store runner registration tokens in AWS Secrets Manager or Kubernetes Secrets - never in plain-text variables.
+- Avoid hard-coding runner authentication tokens in configuration or version control. If OpenTofu manages the secret value, protect access to state because secret data is stored there.
 - Set appropriate `concurrent` limits to prevent a single repo from monopolizing all runner capacity.
 - Use runner tags to route specific job types (e.g., `docker`, `gpu`, `high-memory`) to appropriately configured runners.
-- Enable runner autoscaling to handle burst workloads without paying for idle capacity.
+- Use the Kubernetes executor or GitLab Runner autoscaler when you need capacity to expand and contract automatically with job demand.
