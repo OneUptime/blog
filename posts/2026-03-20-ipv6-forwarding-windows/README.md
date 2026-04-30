@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
-Tags: IPv6, Window, IP Forwarding, Routing, Netsh
+Tags: IPv6, Windows, IP Forwarding, Routing, Netsh
 
 Description: Learn how to enable IPv6 packet forwarding on Windows to allow a Windows Server to route IPv6 traffic between network interfaces.
 
@@ -43,15 +43,12 @@ Get-NetIPInterface -AddressFamily IPv6 |
 ## Enabling Forwarding with netsh
 
 ```cmd
-:: Enable IPv6 routing globally
-netsh interface ipv6 set global routerdiscovery=enabled
-
-:: Set forwarding on a specific interface
-netsh interface ipv6 set interface "Ethernet" forwarding=enabled
-netsh interface ipv6 set interface "Ethernet 2" forwarding=enabled
+:: Enable forwarding on specific interfaces
+netsh interface ipv6 set interface interface="Ethernet" forwarding=enabled
+netsh interface ipv6 set interface interface="Ethernet 2" forwarding=enabled
 
 :: Verify
-netsh interface ipv6 show interface "Ethernet"
+netsh interface ipv6 show interfaces interface="Ethernet" level=verbose
 ```
 
 ## Using the Routing and Remote Access Service (RRAS)
@@ -59,16 +56,8 @@ netsh interface ipv6 show interface "Ethernet"
 For full router functionality on Windows Server, use RRAS:
 
 ```powershell
-# Install the RRAS feature
-Install-WindowsFeature -Name "Routing" -IncludeManagementTools
-
-# Configure RRAS for LAN routing
-$rrasCfg = [PSCustomObject]@{
-    RouterType = "LAN"
-}
-
-# Enable RRAS with IPv6 routing
-netsh routing ip install
+# Install and configure RRAS as a LAN router
+Install-RemoteAccess -VpnType RoutingOnly
 ```
 
 Alternatively, use the GUI:
@@ -79,14 +68,14 @@ Alternatively, use the GUI:
 
 ## Windows Registry Method (Advanced)
 
-For non-RRAS environments, edit the registry:
+For non-RRAS environments, Windows also exposes a global IP routing switch in the registry:
 
 ```powershell
-# Enable IP forwarding via registry (requires reboot)
-Set-ItemProperty -Path "HKLM:\SYSTEM\CurrentControlSet\Services\Tcpip6\Parameters" `
+# Enable global IP forwarding via registry (requires reboot)
+Set-ItemProperty -Path "HKLM:\SYSTEM\CurrentControlSet\Services\Tcpip\Parameters" `
   -Name "IPEnableRouter" -Value 1 -Type DWord
 
-# Restart the system or the TCP/IP stack to apply
+# Restart the system to apply
 Restart-Computer
 ```
 
@@ -106,8 +95,8 @@ route print -6
 
 ## Limitations on Windows Desktop
 
-Windows 10/11 Home and Pro editions have IP forwarding disabled and it cannot be fully enabled without RRAS (which requires Server edition). For routing on desktop Windows, consider using a Linux VM or WSL2 with forwarding enabled.
+Windows 10/11 expose the same per-interface forwarding settings, but the full RRAS role is a Windows Server feature. For production routing, use Windows Server with RRAS or a dedicated router.
 
 ## Summary
 
-Enable IPv6 forwarding on Windows Server using `Set-NetIPInterface -AddressFamily IPv6 -Forwarding Enabled` or `netsh interface ipv6 set interface <name> forwarding=enabled`. For full routing capabilities, install the RRAS role. Verify forwarding is active with `Get-NetIPInterface` before testing inter-network packet flow.
+Enable IPv6 forwarding on Windows using `Set-NetIPInterface -AddressFamily IPv6 -Forwarding Enabled` or `netsh interface ipv6 set interface interface="<name>" forwarding=enabled`. On Windows Server, use RRAS when you need full router functionality. Verify forwarding is active with `Get-NetIPInterface` before testing inter-network packet flow.
