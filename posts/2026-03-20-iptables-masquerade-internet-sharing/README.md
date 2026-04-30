@@ -49,7 +49,7 @@ sudo iptables -t nat -A POSTROUTING \
 # Allow forwarding between interfaces
 sudo iptables -A FORWARD -i eth1 -o eth0 -j ACCEPT
 sudo iptables -A FORWARD -i eth0 -o eth1 \
-  -m state --state ESTABLISHED,RELATED -j ACCEPT
+  -m conntrack --ctstate ESTABLISHED,RELATED -j ACCEPT
 ```
 
 ## Complete Gateway Setup
@@ -73,8 +73,8 @@ sudo iptables -t nat -F
 sudo iptables -A INPUT -i lo -j ACCEPT
 
 # Allow established connections
-sudo iptables -A INPUT -m state --state ESTABLISHED,RELATED -j ACCEPT
-sudo iptables -A FORWARD -m state --state ESTABLISHED,RELATED -j ACCEPT
+sudo iptables -A INPUT -m conntrack --ctstate ESTABLISHED,RELATED -j ACCEPT
+sudo iptables -A FORWARD -m conntrack --ctstate ESTABLISHED,RELATED -j ACCEPT
 
 # Allow LAN to WAN forwarding
 sudo iptables -A FORWARD -i "$LAN_IFACE" -o "$WAN_IFACE" -j ACCEPT
@@ -100,7 +100,7 @@ WAN_IFACE="eth0"
 
 sudo iptables -A FORWARD -i "$WG_IFACE" -o "$WAN_IFACE" -j ACCEPT
 sudo iptables -A FORWARD -i "$WAN_IFACE" -o "$WG_IFACE" \
-  -m state --state ESTABLISHED,RELATED -j ACCEPT
+  -m conntrack --ctstate ESTABLISHED,RELATED -j ACCEPT
 
 # Masquerade VPN traffic
 sudo iptables -t nat -A POSTROUTING \
@@ -126,12 +126,12 @@ curl https://api.ipify.org
 ## Save and Persist
 
 ```bash
-# Save rules (including NAT table)
-sudo iptables-save > /etc/iptables/rules.v4
-
-# Restore on boot via iptables-persistent
+# Install iptables-persistent so rules can be restored on boot
 sudo apt install iptables-persistent -y
+
+# Save rules (including NAT table)
+sudo iptables-save -f /etc/iptables/rules.v4
 sudo netfilter-persistent save
 ```
 
-Masquerading is the simplest form of outbound NAT - it requires just one rule and automatically handles dynamic IP changes, making it ideal for home gateways, VPN servers, and any Linux host sharing internet access.
+Masquerading is the simplest form of outbound NAT - it requires just one rule and automatically handles dynamic IP changes, making it ideal for home gateways, VPN servers, and Linux hosts sharing internet access when the external IP can change.
