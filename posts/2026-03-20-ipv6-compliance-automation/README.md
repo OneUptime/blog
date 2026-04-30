@@ -8,7 +8,7 @@ Description: Automate IPv6 compliance auditing across your network infrastructur
 
 ## Introduction
 
-IPv6 compliance automation ensures every device follows your security and operational policy: ICMPv6 is permitted, link-local-only interfaces are flagged, SLAAC is properly configured, and no unintended globally-routable addresses exist. Automated compliance checks can run continuously or in CI/CD pipelines.
+IPv6 compliance automation ensures every device follows your security and operational policy: required ICMPv6 control traffic is permitted, link-local-only interfaces are flagged, SLAAC is properly configured, and no unintended globally-routable addresses exist. Automated compliance checks can run continuously or in CI/CD pipelines.
 
 ## Step 1: Define Compliance Policy
 
@@ -23,14 +23,14 @@ ipv6_compliance:
       check: global_ipv6_present
 
     - id: IPV6-002
-      description: "ICMPv6 must not be blocked at any interface"
+      description: "Required ICMPv6 control traffic must not be blocked"
       severity: critical
       check: icmpv6_not_blocked
 
     - id: IPV6-003
-      description: "No IPv6-mapped IPv4 addresses in routing table"
+      description: "No IPv4-mapped IPv6 addresses (::ffff:0:0/96) configured on interfaces"
       severity: medium
-      check: no_mapped_routes
+      check: no_mapped_interface_addresses
 
     - id: IPV6-004
       description: "Loopback must have ::1/128"
@@ -49,7 +49,6 @@ ipv6_compliance:
 # compliance/check_ipv6.py
 import ipaddress
 from napalm import get_network_driver
-from typing import Any
 
 class IPv6ComplianceChecker:
     def __init__(self, device_info: dict):
@@ -67,22 +66,26 @@ class IPv6ComplianceChecker:
     def __exit__(self, *args):
         self.device.close()
 
+    @staticmethod
+    def is_system_loopback(iface: str) -> bool:
+        return iface.lower() in ("lo", "lo0", "loopback0")
+
     def check_global_ipv6_present(self) -> dict:
         """IPV6-001: All interfaces have a global IPv6 address."""
+        interfaces = self.device.get_interfaces()
         interfaces_ip = self.device.get_interfaces_ip()
         violations = []
 
-        for iface, data in interfaces_ip.items():
-            if iface.lower() in ("lo", "loopback0"):
+        for iface in interfaces:
+            if self.is_system_loopback(iface):
                 continue
-            has_global = any(
-                not ipaddress.IPv6Address(addr).is_link_local and
-                not ipaddress.IPv6Address(addr).is_loopback
-                for addr in data.get("ipv6", {})
-                if not ipaddress.AddressValueError
-            )
-            if not has_global and data.get("ipv6"):
-                violations.append(f"{iface}: link-local only, no global address")
+            ipv6_addrs = interfaces_ip.get(iface, {}).get("ipv6", {})
+            has_global = any(ipaddress.IPv6Address(addr).is_global for addr in ipv6_addrs)
+
+            if not ipv6_addrs:
+                violations.append(f"{iface}: no IPv6 address configured")
+            elif not has_global:
+                violations.append(f"{iface}: no global IPv6 address configured")
 
         return {"rule": "IPV6-001", "passed": len(violations) == 0, "violations": violations}
 
@@ -91,9 +94,9 @@ class IPv6ComplianceChecker:
         interfaces_ip = self.device.get_interfaces_ip()
         loopback_ok = False
         for iface, data in interfaces_ip.items():
-            if iface.lower() in ("lo", "loopback0"):
-                for addr in data.get("ipv6", {}):
-                    if addr == "::1":
+            if self.is_system_loopback(iface):
+                for addr, details in data.get("ipv6", {}).items():
+                    if addr == "::1" and details.get("prefix_length") == 128:
                         loopback_ok = True
         return {
             "rule": "IPV6-004",
@@ -119,28 +122,34 @@ class IPv6ComplianceChecker:
   gather_facts: false
 
   tasks:
-    - name: Check IPv6 is enabled on all interfaces
+    - name: Collect IPv6 interface summary
       cisco.iosxr.iosxr_command:
         commands:
           - "show ipv6 interface brief"
       register: ipv6_ifaces
 
-    - name: Verify ICMPv6 not blocked
+    - name: Retrieve IPv6 access lists
       cisco.iosxr.iosxr_command:
         commands:
-          - "show ipv6 access-list"
+          - "show access-lists ipv6"
       register: acl_output
 
-    - name: Check for ICMPv6 deny rules
+    - name: Check for broad ICMPv6 deny rules
       fail:
-        msg: "COMPLIANCE FAILURE IPV6-002: ICMPv6 deny rule found on {{ inventory_hostname }}"
-      when: "'deny ipv6-icmp' in acl_output.stdout[0] or 'deny icmpv6' in acl_output.stdout[0]"
+        msg: "COMPLIANCE FAILURE IPV6-002: broad ICMPv6 deny rule found on {{ inventory_hostname }}"
+      when: "'deny icmp any any' in acl_output.stdout[0]"
+
+    - name: Ensure local reports directory exists
+      file:
+        path: reports
+        state: directory
+      delegate_to: localhost
 
     - name: Save compliance report
       copy:
         content: |
           Host: {{ inventory_hostname }}
-          Date: {{ ansible_date_time.iso8601 }}
+          Date: {{ now(utc=true, fmt='%Y-%m-%dT%H:%M:%SZ') }}
           IPv6 Interfaces: {{ ipv6_ifaces.stdout_lines }}
         dest: "reports/{{ inventory_hostname }}_ipv6_compliance.txt"
       delegate_to: localhost
@@ -154,7 +163,7 @@ name: IPv6 Compliance Audit
 
 on:
   schedule:
-    - cron: "0 6 * * *"  # Daily at 6 AM
+    - cron: "0 6 * * *"  # Daily at 6 AM UTC
   push:
     branches: [main]
 
@@ -164,7 +173,9 @@ jobs:
     steps:
       - uses: actions/checkout@v4
       - name: Install dependencies
-        run: pip install napalm nornir ansible
+        run: |
+          pip install napalm nornir ansible
+          ansible-galaxy collection install cisco.iosxr
 
       - name: Run compliance checks
         run: python compliance/run_audit.py
@@ -207,4 +218,4 @@ def generate_html_report(results: list, output_file: str):
 
 ## Conclusion
 
-IPv6 compliance automation provides continuous visibility into configuration drift and security policy violations. Define rules in YAML, implement checks with NAPALM for vendor-agnostic retrieval, and enforce compliance as a CI/CD gate. Critical violations - especially blocked ICMPv6 - should trigger immediate alerts. Use OneUptime to monitor compliance check job execution and alert on failures.
+IPv6 compliance automation provides continuous visibility into configuration drift and security policy violations. Define rules in YAML, implement checks with NAPALM for vendor-agnostic retrieval, and enforce compliance as a CI/CD gate. Critical violations - especially broad ICMPv6 deny rules - should trigger immediate alerts. Use OneUptime to monitor compliance check job execution and alert on failures.
