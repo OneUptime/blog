@@ -8,7 +8,7 @@ Description: Learn how to use Google Cloud Artifact Registry as an OCI registry 
 
 ## Introduction
 
-Google Cloud Artifact Registry supports OCI artifacts alongside Docker images and other package formats. For GCP-centric organizations, it provides IAM-based authentication, multi-region repositories, CMEK encryption, and VPC Service Controls - making it a natural choice for OpenTofu provider and module distribution.
+Google Cloud Artifact Registry supports OCI artifacts alongside Docker images and other package formats. For GCP-centric organizations, it provides IAM-based authentication, multi-region repositories, CMEK encryption, and VPC Service Controls - making it a natural choice for OpenTofu module packages and provider mirrors.
 
 ## Creating Artifact Registry Repositories
 
@@ -83,16 +83,22 @@ resource "google_artifact_registry_repository_iam_member" "internal_reader" {
 ## Authentication
 
 ```bash
-# Authenticate gcloud and configure Docker credential helper
-gcloud auth configure-docker us-central1-docker.pkg.dev
+# Authenticate ORAS; OpenTofu can discover the same Docker-style credentials
+gcloud auth print-access-token | oras login \
+  -u oauth2accesstoken \
+  --password-stdin us-central1-docker.pkg.dev
 
 # For service accounts in CI/CD
-gcloud auth activate-service-account \
+gcloud auth activate-service-account ACCOUNT \
   --key-file=/path/to/service-account-key.json
-gcloud auth configure-docker us-central1-docker.pkg.dev --quiet
+gcloud auth print-access-token | oras login \
+  -u oauth2accesstoken \
+  --password-stdin us-central1-docker.pkg.dev
 
-# Workload Identity (recommended for GKE/Cloud Run)
-# No explicit authentication needed - uses node metadata server
+# With Workload Identity or other ambient Google credentials
+gcloud auth print-access-token | oras login \
+  -u oauth2accesstoken \
+  --password-stdin us-central1-docker.pkg.dev
 ```
 
 ## Pushing Providers to Artifact Registry
@@ -110,10 +116,11 @@ PROVIDER_NAMESPACE="hashicorp"
 PROVIDER_TYPE="google"
 PROVIDER_VERSION="5.5.0"
 
-# Configure Docker auth
-gcloud auth configure-docker "${REGION}-docker.pkg.dev" --quiet
+# Authenticate ORAS and write Docker-style credentials for OpenTofu
+gcloud auth print-access-token | oras login \
+  -u oauth2accesstoken \
+  --password-stdin "${REGION}-docker.pkg.dev"
 
-# Download provider
 WORK_DIR=$(mktemp -d)
 trap "rm -rf $WORK_DIR" EXIT
 
@@ -135,15 +142,33 @@ tofu providers mirror \
   -platform=linux_arm64 \
   "$WORK_DIR/mirror/"
 
-cd "$WORK_DIR/mirror/registry.opentofu.org/${PROVIDER_NAMESPACE}/${PROVIDER_TYPE}/"
+MIRROR_DIR="$WORK_DIR/mirror/registry.opentofu.org/${PROVIDER_NAMESPACE}/${PROVIDER_TYPE}"
+LAYOUT="$WORK_DIR/layout"
+mkdir -p "$LAYOUT"
 
-ARTIFACT="${GAR_REGISTRY}/${PROVIDER_NAMESPACE}-${PROVIDER_TYPE}:${PROVIDER_VERSION}"
+oras push \
+  --artifact-type application/vnd.opentofu.provider-target \
+  --artifact-platform linux/amd64 \
+  --oci-layout "${LAYOUT}:linux_amd64" \
+  "${MIRROR_DIR}/terraform-provider-${PROVIDER_TYPE}_${PROVIDER_VERSION}_linux_amd64.zip:archive/zip"
 
-oras push "$ARTIFACT" \
-  --config /dev/null:application/vnd.opentofu.provider.config.v1+json \
-  "terraform-provider-${PROVIDER_TYPE}_${PROVIDER_VERSION}_linux_amd64.zip:application/vnd.opentofu.provider.v1.linux.amd64" \
-  "terraform-provider-${PROVIDER_TYPE}_${PROVIDER_VERSION}_linux_arm64.zip:application/vnd.opentofu.provider.v1.linux.arm64" \
-  "terraform-provider-${PROVIDER_TYPE}_${PROVIDER_VERSION}_SHA256SUMS:application/vnd.opentofu.provider.v1.shasums"
+oras push \
+  --artifact-type application/vnd.opentofu.provider-target \
+  --artifact-platform linux/arm64 \
+  --oci-layout "${LAYOUT}:linux_arm64" \
+  "${MIRROR_DIR}/terraform-provider-${PROVIDER_TYPE}_${PROVIDER_VERSION}_linux_arm64.zip:archive/zip"
+
+oras manifest index create \
+  --artifact-type="application/vnd.opentofu.provider" \
+  --oci-layout "${LAYOUT}:${PROVIDER_VERSION}" \
+  linux_amd64 \
+  linux_arm64
+
+ARTIFACT="${GAR_REGISTRY}/${PROVIDER_NAMESPACE}/${PROVIDER_TYPE}:${PROVIDER_VERSION}"
+
+oras cp \
+  --from-oci-layout "${LAYOUT}:${PROVIDER_VERSION}" \
+  "$ARTIFACT"
 
 echo "Pushed: $ARTIFACT"
 ```
@@ -154,47 +179,51 @@ echo "Pushed: $ARTIFACT"
 #!/bin/bash
 # push-module-to-gar.sh
 
+set -euo pipefail
+
 MODULE_DIR="${1:?Usage: $0 <module-dir> <version>}"
 VERSION="${2:?}"
 GCP_PROJECT="${GOOGLE_CLOUD_PROJECT}"
 REGION="us-central1"
 MODULE_NAME=$(basename "$MODULE_DIR")
+ARCHIVE="${PWD}/${MODULE_NAME}-${VERSION}.zip"
 
 GAR_REGISTRY="${REGION}-docker.pkg.dev/${GCP_PROJECT}/opentofu-modules"
 
-gcloud auth configure-docker "${REGION}-docker.pkg.dev" --quiet
+gcloud auth print-access-token | oras login \
+  -u oauth2accesstoken \
+  --password-stdin "${REGION}-docker.pkg.dev"
 
 # Package module
-tar -czf "${MODULE_NAME}-${VERSION}.tgz" \
-  --exclude='.terraform' \
-  --exclude='*.tfstate*' \
-  --exclude='.git' \
-  -C "$MODULE_DIR" .
+(
+  cd "$MODULE_DIR"
+  zip -r "$ARCHIVE" . \
+    -x '.terraform/*' '*.tfstate*' '.git/*'
+)
 
 ARTIFACT="${GAR_REGISTRY}/${MODULE_NAME}:${VERSION}"
 
-oras push "$ARTIFACT" \
-  --config /dev/null:application/vnd.opentofu.module.config.v1+json \
-  "${MODULE_NAME}-${VERSION}.tgz:application/vnd.opentofu.module.v1.tar+gzip"
+oras push \
+  --artifact-type=application/vnd.opentofu.modulepkg \
+  "$ARTIFACT" \
+  "${ARCHIVE}:archive/zip"
 
 # Tag latest
-oras tag "${REGION}-docker.pkg.dev/${GCP_PROJECT}" \
-  "opentofu-modules/${MODULE_NAME}:${VERSION}" \
-  "opentofu-modules/${MODULE_NAME}:latest"
+oras tag "$ARTIFACT" latest
 
-rm "${MODULE_NAME}-${VERSION}.tgz"
+rm "$ARCHIVE"
 echo "Pushed module: $ARTIFACT"
 ```
 
 ## Configuring OpenTofu to Use GAR
 
 ```hcl
-# ~/.terraform.rc
+# ~/.tofurc
 
 provider_installation {
   oci_mirror {
-    url     = "oci://us-central1-docker.pkg.dev/my-gcp-project/opentofu-providers"
-    include = ["registry.opentofu.org/hashicorp/*"]
+    repository_template = "us-central1-docker.pkg.dev/my-gcp-project/opentofu-providers/hashicorp/${type}"
+    include             = ["registry.opentofu.org/hashicorp/*"]
   }
 
   direct {
@@ -206,7 +235,7 @@ provider_installation {
 ```hcl
 # For modules
 module "gke" {
-  source = "oci://us-central1-docker.pkg.dev/my-gcp-project/opentofu-modules/gke:2.0.0"
+  source = "oci://us-central1-docker.pkg.dev/my-gcp-project/opentofu-modules/gke?tag=2.0.0"
 
   project_id = var.project_id
   name       = "production"
@@ -223,13 +252,23 @@ steps:
     args:
       - '-c'
       - |
+        apt-get update
+        apt-get install -y gnupg unzip
+
+        # Install OpenTofu
+        curl --proto '=https' --tlsv1.2 -fsSL https://get.opentofu.org/install-opentofu.sh -o install-opentofu.sh
+        chmod +x install-opentofu.sh
+        ./install-opentofu.sh --install-method standalone
+
         # Install oras
-        curl -LO https://github.com/oras-project/oras/releases/download/v1.1.0/oras_1.1.0_linux_amd64.tar.gz
-        tar -xzf oras_1.1.0_linux_amd64.tar.gz
+        curl -LO https://github.com/oras-project/oras/releases/download/v1.3.0/oras_1.3.0_linux_amd64.tar.gz
+        tar -xzf oras_1.3.0_linux_amd64.tar.gz
         mv oras /usr/local/bin/
 
         # Configure auth
-        gcloud auth configure-docker us-central1-docker.pkg.dev --quiet
+        gcloud auth print-access-token | oras login \
+          -u oauth2accesstoken \
+          --password-stdin us-central1-docker.pkg.dev
 
         # Run mirror update
         ./scripts/push-provider-to-gar.sh
@@ -242,4 +281,4 @@ options:
 
 ## Conclusion
 
-GCP Artifact Registry provides IAM-based authentication (including Workload Identity for GKE), multi-region support, and CMEK encryption for OpenTofu provider and module distribution. The Docker credential helper (`gcloud auth configure-docker`) handles authentication transparently for both `oras` and OpenTofu. Use `roles/artifactregistry.reader` on the compute service account or a domain-wide binding to give all team members pull access without individual IAM role assignments.
+GCP Artifact Registry provides IAM-based authentication, multi-region support, and CMEK encryption for OpenTofu module packages and provider mirrors. OpenTofu can install module packages directly from OCI repositories, and can use OCI repositories as a secondary mirror for providers. Use `oras login` with a short-lived Google access token so both ORAS and OpenTofu can reuse the same Docker-style credentials. Use `roles/artifactregistry.reader` on the compute service account or a domain-wide binding to give all team members pull access without individual IAM role assignments.
