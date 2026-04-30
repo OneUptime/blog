@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
-Tags: Portainer, WSL2, Ubuntu, Docker, Window, Self-Hosted
+Tags: Portainer, WSL2, Ubuntu, Docker, Windows, Self-Hosted
 
 Description: Learn how to install Portainer CE inside WSL2 Ubuntu on Windows to get a Linux-native Docker container management UI on your Windows machine.
 
@@ -15,7 +15,7 @@ Windows Subsystem for Linux 2 (WSL2) provides a full Linux kernel on Windows 10/
 - Windows 10 version 2004+ or Windows 11
 - WSL2 enabled
 - Ubuntu 22.04 or 24.04 installed from Microsoft Store
-- At least 4 GB RAM assigned to WSL2
+- Enough available RAM for Docker workloads (4 GB is a reasonable baseline)
 
 ## Step 1: Enable WSL2
 
@@ -26,7 +26,7 @@ wsl --install
 wsl --set-default-version 2
 ```
 
-Reboot and install Ubuntu from the Microsoft Store.
+Reboot if prompted, then launch Ubuntu to complete first-run setup. If you want a specific Ubuntu release, install it from the Microsoft Store.
 
 ## Step 2: Configure WSL2 Memory (Optional)
 
@@ -51,6 +51,7 @@ Open your Ubuntu terminal:
 
 ```bash
 sudo apt update && sudo apt upgrade -y
+sudo apt install -y ca-certificates curl
 curl -fsSL https://get.docker.com -o get-docker.sh
 sudo sh get-docker.sh
 
@@ -64,12 +65,17 @@ Start Docker:
 sudo service docker start
 ```
 
-To auto-start Docker with WSL2, add to `~/.bashrc` or `~/.profile`:
+On Windows 11, to start Docker when the distro launches, add to `/etc/wsl.conf`:
 
-```bash
-if ! pgrep -x "dockerd" > /dev/null; then
-    sudo service docker start
-fi
+```ini
+[boot]
+command=service docker start
+```
+
+Then restart WSL2:
+
+```powershell
+wsl --shutdown
 ```
 
 ## Step 4: Create Portainer Volume
@@ -88,7 +94,7 @@ docker run -d \
   --restart=always \
   -v /var/run/docker.sock:/var/run/docker.sock \
   -v portainer_data:/data \
-  portainer/portainer-ce:latest
+  portainer/portainer-ce:lts
 ```
 
 ## Step 6: Access Portainer
@@ -126,7 +132,7 @@ Access via the WSL2 IP if localhost forwarding is not working.
 
 ```bash
 docker stop portainer && docker rm portainer
-docker pull portainer/portainer-ce:latest
+docker pull portainer/portainer-ce:lts
 # Re-run the deploy command
 ```
 
