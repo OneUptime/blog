@@ -20,7 +20,7 @@ IPv6 Payload Length:
   - Includes: Extension headers + Upper-layer data (TCP/UDP/ICMPv6)
   - Does NOT include: The 40-byte IPv6 base header itself
   - Maximum value: 65,535 bytes (in standard packets)
-  - Zero: Special meaning → Jumbogram (see below)
+  - Zero: Either no payload, or a Jumbogram when a Hop-by-Hop header carries the Jumbo Payload Option
 
 IPv4 Total Length (for comparison):
   - 16-bit unsigned integer
@@ -87,6 +87,13 @@ def parse_ipv6_header(raw_bytes: bytes) -> dict:
     src_addr = socket.inet_ntop(socket.AF_INET6, raw_bytes[8:24])
     dst_addr = socket.inet_ntop(socket.AF_INET6, raw_bytes[24:40])
 
+    if payload_length == 0:
+        # Zero can mean either an empty payload or that the actual payload
+        # length is carried in the Jumbo Payload option.
+        total_packet_length = 40 if next_header == 59 else None
+    else:
+        total_packet_length = 40 + payload_length
+
     return {
         "payload_length": payload_length,
         "next_header": next_header,
@@ -94,18 +101,18 @@ def parse_ipv6_header(raw_bytes: bytes) -> dict:
         "src": src_addr,
         "dst": dst_addr,
         "payload_start_offset": 40,
-        "total_packet_length": 40 + payload_length,
+        "total_packet_length": total_packet_length,
     }
 ```
 
-## Special Case: Zero Payload Length (Jumbograms)
+## Special Case: Zero Payload Length and Jumbograms
 
-When the Payload Length field is `0`, it signals that the packet is a **Jumbogram** - a packet larger than 65,535 bytes. The actual size is carried in a Hop-by-Hop Options extension header using the Jumbo Payload Option:
+When the Payload Length field is `0`, it can mean either there is no payload or that the packet is a **Jumbogram**. In a valid Jumbogram, a Hop-by-Hop Options extension header immediately follows the IPv6 header and carries the Jumbo Payload Option with the actual payload size:
 
 ```text
-Payload Length = 0 (signals Jumbogram)
+Payload Length = 0
   ↓
-Hop-by-Hop Options Header MUST be present
+If Next Header = Hop-by-Hop (0), parse the Hop-by-Hop Options header
   ↓
 Jumbo Payload Option (option type 0xC2) contains 32-bit actual length
   ↓
@@ -113,11 +120,12 @@ Actual payload can be up to 2^32 - 1 bytes (4 GB)
 ```
 
 ```python
-# Detect Jumbogram condition
-def is_jumbogram(ipv6_header: bytes) -> bool:
+# Detect whether the IPv6 base header indicates a possible Jumbogram
+def indicates_jumbogram(ipv6_header: bytes) -> bool:
     """
-    Return True if this IPv6 header indicates a Jumbogram.
-    Jumbograms have Payload Length = 0 and Next Header = Hop-by-Hop (0).
+    Return True if this IPv6 header indicates that a Hop-by-Hop Options
+    header follows and the packet may be a Jumbogram.
+    Confirm by parsing the Hop-by-Hop header for a Jumbo Payload option.
     """
     payload_length = struct.unpack("!H", ipv6_header[4:6])[0]
     next_header = ipv6_header[6]
@@ -127,18 +135,17 @@ def is_jumbogram(ipv6_header: bytes) -> bool:
 ## Verifying Payload Length with tcpdump
 
 ```bash
-# tcpdump shows the payload length as "length"
-sudo tcpdump -i eth0 -vv ip6 | grep "length"
+# With -vv, tcpdump shows the IPv6 payload length in the decoded header details
+sudo tcpdump -n -i eth0 -vv ip6 | grep "payload length"
 
 # Example output:
-# IP6 2001:db8::1 > 2001:db8::2: ICMP6, echo request, id 1, seq 1, length 64
-#   (class 0x00, flowlabel 0x00000, hlim 64, next-header ICMPv6 (58), length 64)
-# "length 64" = Payload Length field value = ICMPv6 header (8 bytes) + data (56 bytes)
+# IP6 (hlim 64, next-header ICMPv6 (58) payload length: 64) 2001:db8::1 > 2001:db8::2: ICMP6, echo request, id 1, seq 1
+# "payload length: 64" = Payload Length field value = ICMPv6 header (8 bytes) + data (56 bytes)
 
-# Check that payload_length + 40 = actual packet size
-sudo tcpdump -i eth0 -vv ip6 | awk '/length/ {print "Payload:", $NF, "Total:", $NF+40}'
+# Check that payload_length + 40 = actual packet size for non-jumbograms
+sudo tcpdump -n -i eth0 -vv ip6 | awk -F'payload length: ' '/payload length:/ {split($2, a, /[) ]/); print "Payload:", a[1], "Total:", a[1] + 40}'
 ```
 
 ## Conclusion
 
-The IPv6 Payload Length field specifies the number of bytes after the 40-byte base header, making packet processing straightforward: `total_packet_size = 40 + payload_length`. Unlike IPv4, the header length is not included. The zero value is a special signal for Jumbograms (packets over 65,535 bytes), which are rarely used outside of high-performance computing and specialized network environments. Correct implementation of this field is essential for any IPv6 packet generator or parser.
+The IPv6 Payload Length field specifies the number of bytes after the 40-byte base header. Unlike IPv4, the header length is not included. For non-jumbograms, packet processing is straightforward: `total_packet_size = 40 + payload_length`. When the field is zero, you must distinguish between an empty payload and a Jumbogram by checking whether a Hop-by-Hop header carries the Jumbo Payload Option. Correct implementation of this field is essential for any IPv6 packet generator or parser.
