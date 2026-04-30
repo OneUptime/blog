@@ -8,7 +8,7 @@ Description: Learn how to implement IP whitelisting with AWS Security Groups, Az
 
 ## Overview
 
-IP whitelisting restricts service access to known IP ranges. OpenTofu manages security group rules dynamically, supporting CIDR-based rules, prefix list references, and tagged resource-based rules for maintainable, auditable access control.
+IP whitelisting restricts service access to known IP ranges. OpenTofu manages network access rules dynamically, supporting CIDR-based rules, prefix list references, and provider-specific targeting features for maintainable, auditable access control.
 
 ## Step 1: AWS Security Group with IP Whitelisting
 
@@ -147,4 +147,4 @@ resource "google_compute_firewall" "deny_all_ingress" {
 
 ## Summary
 
-IP whitelisting with OpenTofu uses `for_each` and `toset()` to create rules dynamically from a centralized list, making updates a single-variable change that propagates to all providers. AWS Managed Prefix Lists are the most maintainable approach - a single security group rule references the list, so adding or removing IPs doesn't require rule changes. Using explicit deny-all rules ensures unmatched traffic is blocked even if allow rules are misconfigured.
+IP whitelisting with OpenTofu uses `for_each` and `toset()` to create rules dynamically from a centralized list, making updates a single-variable change that propagates to all providers. AWS Managed Prefix Lists are the most maintainable approach - a single security group rule references the list, so adding or removing IPs doesn't require rule changes. On Azure and GCP, explicit deny-all rules can override broader inbound allows, but basic whitelisting already relies on the platforms' default or implied deny behavior. AWS security groups support allow rules only and start with no inbound rules.
