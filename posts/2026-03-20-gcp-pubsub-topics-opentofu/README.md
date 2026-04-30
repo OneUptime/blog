@@ -34,10 +34,10 @@ resource "google_pubsub_topic" "orders" {
   name    = "orders"
   project = var.project_id
 
-  # Message retention - keep unacknowledged messages for 7 days
+  # Topic message retention - retain published messages for 7 days for replay/seek
   message_retention_duration = "604800s"
 
-  # Use a regional topic for lower latency and higher throughput
+  # Restrict message storage to the specified region
   message_storage_policy {
     allowed_persistence_regions = [var.region]
   }
@@ -79,7 +79,7 @@ resource "google_pubsub_subscription" "orders_processor" {
     maximum_backoff = "600s"
   }
 
-  # Dead letter policy - move to DLQ after 5 failed deliveries
+  # Dead letter policy - forward to the DLQ after approximately 5 delivery attempts
   dead_letter_policy {
     dead_letter_topic     = google_pubsub_topic.orders_dlq.id
     max_delivery_attempts = 5
@@ -102,7 +102,7 @@ resource "google_pubsub_subscription" "orders_webhook" {
   push_config {
     push_endpoint = var.webhook_url
 
-    # Include message attributes in the HTTP headers
+    # Use the v1 push payload format
     attributes = {
       x-goog-version = "v1"
     }
@@ -139,6 +139,14 @@ resource "google_pubsub_topic_iam_member" "dlq_publisher" {
   topic  = google_pubsub_topic.orders_dlq.name
   role   = "roles/pubsub.publisher"
   member = "serviceAccount:service-${data.google_project.main.number}@gcp-sa-pubsub.iam.gserviceaccount.com"
+}
+
+# Grant Pub/Sub service account permission to acknowledge and remove
+# dead-lettered messages from the source subscription
+resource "google_pubsub_subscription_iam_member" "orders_dlq_forwarder" {
+  subscription = google_pubsub_subscription.orders_processor.name
+  role         = "roles/pubsub.subscriber"
+  member       = "serviceAccount:service-${data.google_project.main.number}@gcp-sa-pubsub.iam.gserviceaccount.com"
 }
 
 data "google_project" "main" {}
@@ -178,8 +186,8 @@ resource "google_pubsub_topic" "orders_validated" {
 
 ## Best Practices
 
-- Always configure a dead letter policy on subscriptions to prevent failed messages from blocking the queue indefinitely.
-- Grant Pub/Sub's service account publisher access on the DLQ topic - without this, dead-lettering silently fails.
-- Use pull subscriptions for high-throughput processing - push subscriptions add HTTP overhead and have lower throughput limits.
+- Consider configuring a dead letter policy on subscriptions that need bounded redelivery attempts.
+- Grant Pub/Sub's service account publisher access on the DLQ topic and subscriber access on the source subscription - without these, dead-lettering won't work correctly.
+- Use pull subscriptions with StreamingPull for maximum throughput and lowest latency; use push subscriptions when webhook-style delivery is a better fit.
 - Set `message_retention_duration` based on your consumer's recovery time - if your consumer has a 1-hour outage window, retain messages for longer.
 - Use schemas to enforce message contracts between publishers and subscribers, preventing silent data quality issues.
