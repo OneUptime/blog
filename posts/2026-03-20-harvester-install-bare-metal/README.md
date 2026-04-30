@@ -17,10 +17,10 @@ This guide walks you through the complete bare metal installation process, from 
 Before you begin, ensure you meet these hardware and software requirements:
 
 **Minimum Hardware Requirements (per node):**
-- CPU: 8 cores, x86_64 architecture with hardware virtualization support (Intel VT-x or AMD-V)
-- RAM: 32 GB
-- Storage: 250 GB SSD for the OS disk, plus additional disks for VM storage
-- Network: Two NICs recommended (one for management, one for VM traffic)
+- CPU: 8 cores minimum for development/testing or 16 cores minimum for production, with hardware virtualization support (Intel VT-x or AMD-V)
+- RAM: 32 GB minimum for development/testing or 64 GB minimum for production
+- Storage: 250 GB minimum for development/testing (180 GB minimum when using multiple disks); 500 GB minimum for production
+- Network: At least one NIC for the management network and one for VM workload traffic; additional NICs are recommended for redundancy and performance
 
 **Software Requirements:**
 - Harvester ISO (download from the [official releases page](https://github.com/harvester/harvester/releases))
@@ -28,21 +28,23 @@ Before you begin, ensure you meet these hardware and software requirements:
 
 **Network Requirements:**
 - A static IP address or DHCP reservation for the management network
-- DNS resolution for the cluster VIP (Virtual IP)
+- DNS servers for the nodes, and optionally a DNS record for the cluster VIP (Virtual IP) if you want name-based access
 - NTP access for time synchronization
 
 ## Step 1: Download the Harvester ISO
 
-Download the latest stable Harvester ISO from the GitHub releases page:
+Download the current stable Harvester ISO from the GitHub releases page:
 
 ```bash
-# Download the latest Harvester ISO
+# Example: replace this with the current stable release from the releases page
+HARVESTER_VERSION=v1.7.1
 
-wget https://releases.rancher.com/harvester/v1.3.0/harvester-v1.3.0-amd64.iso
+# Download the Harvester AMD64 ISO
+wget https://releases.rancher.com/harvester/${HARVESTER_VERSION}/harvester-${HARVESTER_VERSION}-amd64.iso
 
 # Verify the checksum
-wget https://releases.rancher.com/harvester/v1.3.0/harvester-v1.3.0-amd64.iso.sha512
-sha512sum -c harvester-v1.3.0-amd64.iso.sha512
+wget https://releases.rancher.com/harvester/${HARVESTER_VERSION}/harvester-${HARVESTER_VERSION}-amd64.sha512
+grep " harvester-${HARVESTER_VERSION}-amd64.iso$" harvester-${HARVESTER_VERSION}-amd64.sha512 | sha512sum -c -
 ```
 
 ## Step 2: Create Bootable Media
@@ -53,8 +55,11 @@ Use `dd` on Linux or Rufus on Windows to write the ISO to a USB drive:
 # On Linux: Identify your USB device (replace /dev/sdX with your device)
 lsblk
 
+# If you opened a new shell, set the version again
+HARVESTER_VERSION=v1.7.1
+
 # Write the ISO to the USB drive (this will erase all data on the USB)
-sudo dd if=harvester-v1.3.0-amd64.iso of=/dev/sdX bs=4M status=progress oflag=sync
+sudo dd if=harvester-${HARVESTER_VERSION}-amd64.iso of=/dev/sdX bs=64k status=progress oflag=sync
 ```
 
 ## Step 3: Configure BIOS/UEFI Settings
@@ -64,7 +69,7 @@ Before booting from the installation media, configure your server's BIOS/UEFI:
 1. Enable hardware virtualization (Intel VT-x / AMD-V)
 2. Enable IOMMU if you plan to use PCI passthrough
 3. Set the boot order to boot from USB first
-4. Disable Secure Boot (Harvester may not be compatible with all Secure Boot configurations)
+4. Use UEFI boot mode for new installations (legacy BIOS boot is deprecated in Harvester v1.7 and later)
 5. Enable Wake-on-LAN if needed for remote management
 
 ## Step 4: Boot from Installation Media
@@ -72,7 +77,7 @@ Before booting from the installation media, configure your server's BIOS/UEFI:
 1. Insert the USB drive into the server
 2. Power on the server and enter the boot menu (typically F12, F10, or Del)
 3. Select the USB drive as the boot device
-4. The Harvester installer GRUB menu will appear - select **Install Harvester**
+4. The Harvester boot menu will appear - select **Harvester Installer**
 
 ## Step 5: Run the Interactive Installer
 
@@ -84,10 +89,10 @@ Choose **Create a new Harvester cluster** for the first node, or **Join an exist
 ### Network Configuration
 ```text
 # Example network settings for the management interface
-Management NIC:   eth0
-IP Address:       192.168.1.10/24
-Gateway:          192.168.1.1
-DNS:              8.8.8.8, 8.8.4.4
+Management Interface(s): eth0
+IP Address:            192.168.1.10/24
+Gateway:               192.168.1.1
+DNS:                   8.8.8.8, 8.8.4.4
 ```
 
 ### Cluster VIP
@@ -100,21 +105,21 @@ Cluster VIP: 192.168.1.100
 This VIP must be on the same subnet as the management network and must not be assigned to any other device.
 
 ### Storage Configuration
-Select the disk(s) for the Harvester OS installation. Harvester will use the remaining disks for VM storage via Longhorn.
+Select the installation disk for Harvester and a data disk for VM storage. If you use a single disk for both, configure the persistent partition size in the installer.
 
 ```text
-OS Disk:      /dev/sda  (250 GB SSD - for the operating system)
-Data Disks:   /dev/sdb, /dev/sdc  (auto-detected by Longhorn)
+Installation Disk: /dev/sda  (250 GB SSD - for the Harvester OS)
+Data Disk:         /dev/sdb  (recommended separate disk for VM data)
 ```
 
 ### Set Passwords
-Configure the cluster admin password and the `rancher` user password for node SSH access.
+Configure the `rancher` user password for node SSH access. You will set the default `admin` user password the first time you log in to the Harvester UI.
 
 ## Step 6: Complete Installation
 
 The installer will:
 1. Partition and format the selected OS disk
-2. Install the Harvester OS (based on openSUSE Leap Micro)
+2. Install the Harvester OS (built on SUSE Linux Micro)
 3. Configure Kubernetes (RKE2) and all Harvester components
 4. Reboot the node
 
@@ -126,17 +131,15 @@ Once the node reboots, you can access the Harvester dashboard:
 
 1. Open a browser and navigate to `https://<CLUSTER_VIP>`
 2. Accept the self-signed certificate warning
-3. Log in with `admin` and the password you set during installation
+3. On first login, set the password for the default `admin` user and then sign in
 
 ```bash
-# Alternatively, access via kubectl
-# The kubeconfig is available on the node at:
-cat /etc/rancher/rke2/rke2.yaml
+# Alternatively, access via kubectl from a management node
+sudo cat /etc/rancher/rke2/rke2.yaml
 
-# Set KUBECONFIG and verify cluster health
-export KUBECONFIG=/etc/rancher/rke2/rke2.yaml
-kubectl get nodes
-kubectl get pods -A
+# Verify cluster health
+sudo kubectl --kubeconfig /etc/rancher/rke2/rke2.yaml get nodes
+sudo kubectl --kubeconfig /etc/rancher/rke2/rke2.yaml get pods -A
 ```
 
 ## Step 8: Verify the Installation
@@ -145,13 +148,13 @@ After logging in, verify your cluster is healthy:
 
 ```bash
 # Check all nodes are Ready
-kubectl get nodes -o wide
+sudo kubectl --kubeconfig /etc/rancher/rke2/rke2.yaml get nodes -o wide
 
 # Check Harvester system pods are running
-kubectl get pods -n harvester-system
+sudo kubectl --kubeconfig /etc/rancher/rke2/rke2.yaml get pods -n harvester-system
 
 # Check Longhorn storage is healthy
-kubectl get pods -n longhorn-system
+sudo kubectl --kubeconfig /etc/rancher/rke2/rke2.yaml get pods -n longhorn-system
 ```
 
 In the UI, navigate to **Dashboard** and confirm:
@@ -166,8 +169,8 @@ After the base installation, consider these next steps:
 - **Add additional nodes** to increase capacity and redundancy
 - **Configure backup targets** (NFS or S3) for VM backups
 - **Set up VLAN networks** for VM network isolation
-- **Install Rancher** on top of Harvester for advanced cluster management
-- **Configure monitoring** with the built-in Grafana/Prometheus stack
+- **Integrate with Rancher** for advanced cluster management
+- **Enable the `rancher-monitoring` add-on** if you want Prometheus/Grafana monitoring
 
 ## Conclusion
 
