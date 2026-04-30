@@ -8,7 +8,7 @@ Description: Learn the operational process of allocating IPv6 prefixes to custom
 
 ## Introduction
 
-Allocating IPv6 prefixes to customers is a core ISP operation. Unlike IPv4 where NAT allowed a single IP to serve many devices, IPv6 gives each customer their own routable prefix. The primary mechanism for automated prefix delivery is DHCPv6 Prefix Delegation (DHCPv6-PD, RFC 3633). Understanding how to allocate, track, and revoke prefixes is essential for ISP operations.
+Allocating IPv6 prefixes to customers is a core ISP operation. Unlike IPv4 where NAT allowed a single IP to serve many devices, IPv6 gives each customer their own routable prefix. The primary mechanism for automated prefix delivery is DHCPv6 Prefix Delegation (DHCPv6-PD, now covered by RFC 9915; originally RFC 3633). Understanding how to allocate, track, and revoke prefixes is essential for ISP operations.
 
 ## Allocation Methods
 
@@ -79,7 +79,9 @@ For business customers with stable requirements:
 }
 ```
 
-## ISC DHCP (dhcpd) Configuration for PD
+## Legacy ISC DHCP (dhcpd) Configuration for PD
+
+For existing deployments that still use ISC DHCP (now end-of-life):
 
 ```bash
 # /etc/dhcp/dhcpd6.conf
@@ -87,7 +89,7 @@ For business customers with stable requirements:
 # Residential /56 pool
 subnet6 2001:db8:1000::/36 {
   # Prefix delegation pool
-  prefix6 2001:db8:1000:: 2001:db8:1fff:: /56;
+  prefix6 2001:db8:1000:: 2001:db8:1fff:ff00:: /56;
 
   # Lease timers
   default-lease-time 7200;
@@ -124,8 +126,8 @@ id-assoc pd 1 {
 sudo dhcp6c -c /etc/wide-dhcpv6/dhcp6c.conf eth0
 
 # Check received prefix
-ip -6 addr show dev eth1  # Should show a delegated /64
-ip -6 route show          # Should show the delegated prefix route
+ip -6 addr show dev eth1  # Should show a global /64 derived from the delegated prefix
+ip -6 route show          # Should show the connected /64 route
 ```
 
 ## IPAM Tracking with Python
