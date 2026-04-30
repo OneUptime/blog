@@ -4,11 +4,11 @@ Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
 Tags: IPv6, HAProxy, Kubernetes, Ingress, Load Balancer, Dual-Stack
 
-Description: Configure HAProxy Ingress Controller in Kubernetes to accept IPv6 connections, configure dual-stack load balancer services, and handle IPv6 client IP forwarding with trusted proxy configuration.
+Description: Configure HAProxy Ingress Controller in Kubernetes to accept IPv6 connections, configure dual-stack load balancer services, and handle IPv6 client IP forwarding with HAProxy headers or PROXY protocol.
 
 ## Introduction
 
-HAProxy Ingress Controller is a Kubernetes ingress controller built on HAProxy, known for its high performance and advanced load balancing features. IPv6 configuration for HAProxy Ingress involves enabling dual-stack service exposure, configuring HAProxy frontends to listen on IPv6, and setting trusted proxy CIDRs for correct client IP handling when behind IPv6 load balancers.
+HAProxy Ingress Controller is a Kubernetes ingress controller built on HAProxy, known for its high performance and advanced load balancing features. IPv6 configuration for HAProxy Ingress involves enabling dual-stack service exposure, configuring HAProxy frontends to listen on both IPv4 and IPv6 addresses, and handling client IP forwarding correctly when HAProxy Ingress sits behind another load balancer.
 
 ## Install HAProxy Ingress with IPv6 (Helm)
 
@@ -16,6 +16,9 @@ HAProxy Ingress Controller is a Kubernetes ingress controller built on HAProxy, 
 # haproxy-ingress-values.yaml
 
 controller:
+  ingressClassResource:
+    enabled: true
+
   # Service configuration for dual-stack exposure
   service:
     type: LoadBalancer
@@ -24,25 +27,31 @@ controller:
     ipFamilies:
       - IPv4
       - IPv6
-    # Cloud annotations for dual-stack LB
+    # Example AWS annotations for a dual-stack NLB
     annotations:
+      service.beta.kubernetes.io/aws-load-balancer-type: "external"
+      service.beta.kubernetes.io/aws-load-balancer-nlb-target-type: "ip"
       service.beta.kubernetes.io/aws-load-balancer-ip-address-type: "dualstack"
+
+  stats:
+    enabled: true
 
   # HAProxy configuration
   config:
-    # HAProxy frontend binds to all interfaces (IPv4 and IPv6)
-    # when the pod has IPv6 connectivity
-    bind-ipv4-address: "0.0.0.0"
-    bind-ipv6-address: "::"
+    # Bind HTTP and HTTPS frontends to all IPv4 and IPv6 addresses
+    bind-http: ":80,:::80"
+    bind-https: ":443,:::443"
+    bind-ip-addr-stats: "::"
 
-    # Trusted proxy CIDRs (IPv4 and IPv6)
-    forwardfor: "if-missing"
-    proxy-real-ip-header: "X-Forwarded-For"
-    proxy-protocol: ""
+    # Client IP forwarding headers
+    forwardfor: "add"
+    real-ip-hdr: "X-Real-IP"
 
-    # Source IP extraction when behind IPv6 LB
-    # Trusted IPs: allow these to set X-Forwarded-For
-    # (HAProxy handles this via frontend TCP accept rules)
+    # If the fronting load balancer sends PROXY protocol,
+    # enable it on the HTTP frontends
+    # use-proxy-protocol: "true"
+
+    ssl-redirect: "true"
 ```
 
 ```bash
@@ -54,8 +63,8 @@ helm install haproxy-ingress haproxy-ingress/haproxy-ingress \
     --create-namespace \
     -f haproxy-ingress-values.yaml
 
-# Verify service has IPv6 external IP
-kubectl get svc haproxy-ingress -n ingress-controller
+# Verify the service is provisioned and inspect dual-stack settings
+kubectl get svc haproxy-ingress -n ingress-controller -o yaml
 ```
 
 ## Kubernetes Ingress with HAProxy
@@ -74,9 +83,6 @@ metadata:
     haproxy-ingress.github.io/balance-algorithm: "leastconn"
     haproxy-ingress.github.io/timeout-connect: "5s"
     haproxy-ingress.github.io/timeout-server: "60s"
-    # IPv6 forwarding configuration
-    haproxy-ingress.github.io/forwardfor: "add"
-    haproxy-ingress.github.io/proxy-real-ip-header: "X-Real-IP"
 spec:
   ingressClassName: haproxy
   rules:
@@ -109,51 +115,49 @@ metadata:
 data:
   # Global HAProxy settings for IPv6
 
-  # Bind to both IPv4 and IPv6
-  bind-ipv4-address: "0.0.0.0"
-  bind-ipv6-address: "::"
+  # Bind HTTP and HTTPS frontends to all IPv4 and IPv6 addresses
+  bind-http: ":80,:::80"
+  bind-https: ":443,:::443"
+  bind-ip-addr-stats: "::"
 
   # Client IP forwarding
   forwardfor: "add"
-  use-forward-for: "true"
+  real-ip-hdr: "X-Real-IP"
 
-  # Trusted proxies: IPs allowed to set X-Forwarded-For
-  # Specified as whitespace-separated CIDRs
-  whitelist-source-range: "10.0.0.0/8 fd00::/8 2001:db8:lb::/48"
+  # Enable if the fronting load balancer sends the PROXY protocol
+  # use-proxy-protocol: "true"
 
   # HTTPS redirect
   ssl-redirect: "true"
-  http-port: "80"
-  https-port: "443"
 
-  # Real client IP extraction
-  real-ip-header: "X-Forwarded-For"
+  # Stats page
+  stats-port: "1936"
 ```
 
 ## HAProxy Backend Configuration for IPv6
 
 ```yaml
-# haproxy-backend-ipv6.yaml - Configure specific backend for IPv6
+# myapp-service-haproxy-ipv6.yaml - Configure backend-specific options on the Service
 
-apiVersion: haproxy-ingress.github.io/v1
-kind: Backend
+apiVersion: v1
+kind: Service
 metadata:
-  name: myapp-backend
+  name: myapp
   namespace: production
+  annotations:
+    haproxy-ingress.github.io/timeout-connect: "5s"
+    haproxy-ingress.github.io/timeout-server: "60s"
+    haproxy-ingress.github.io/health-check-uri: "/health"
+    haproxy-ingress.github.io/health-check-interval: "10s"
+
+# In dual-stack clusters, backend endpoints can be IPv4 or IPv6
+# depending on the Service and cluster networking
 spec:
-  # Backend connection settings
-  timeoutConnect: "5s"
-  timeoutServer: "60s"
-
-  # Health check
-  healthCheck:
-    enabled: true
-    uri: "/health"
-    interval: "10s"
-
-  # Source IP configuration for IPv6 backends
-  # HAProxy connects to backend pods via their pod IPs
-  # In dual-stack clusters, pods have both IPv4 and IPv6 addresses
+  selector:
+    app: myapp
+  ports:
+    - port: 8080
+      targetPort: 8080
 ```
 
 ## PROXY Protocol v2 Configuration (HAProxy to Backend)
@@ -200,8 +204,6 @@ metadata:
     # Rate limiting (applies to all clients including IPv6)
     haproxy-ingress.github.io/limit-rps: "100"
     haproxy-ingress.github.io/limit-whitelist: "10.0.0.0/8,fd00::/8"
-    # Scale the limit window
-    haproxy-ingress.github.io/limit-period: "60"
 spec:
   rules:
     - host: api.example.com
@@ -221,27 +223,27 @@ spec:
 ```bash
 # Check HAProxy pod listens on IPv6
 kubectl exec -n ingress-controller deployment/haproxy-ingress -- \
-    ss -tlnp | grep -E ":80|:443"
-# Should show [::]:80 and [::]:443
+    sh -c 'ss -tlnp | grep -E ":80|:443"'
+# Should show both IPv4 and IPv6 listeners, such as 0.0.0.0:80 and [::]:80
 
 # Test HTTP access over IPv6
 curl -6 -H "Host: app.example.com" \
-    "http://[2001:db8::haproxy-lb]:80/"
+    "http://[2001:db8::100]:80/"
 
 # Check HAProxy stats page
-kubectl port-forward -n ingress-controller svc/haproxy-ingress 1936:1936
+kubectl port-forward -n ingress-controller svc/haproxy-ingress-stats 1936:1936
 curl http://localhost:1936/stats
 
 # Check real client IP is passed (connect from IPv6 client)
 curl -6 -H "Host: app.example.com" \
-    "http://[2001:db8::haproxy-lb]:80/api/ip"
-# Expected: {"ip": "2001:db8::client", "version": 6}
+    "http://[2001:db8::100]:80/api/ip"
+# Expected: {"ip": "2001:db8::1234", "version": 6}
 
 # Check HAProxy configuration rendered for the ingress
 kubectl exec -n ingress-controller deployment/haproxy-ingress -- \
-    cat /etc/haproxy/haproxy.cfg | grep -A5 "frontend\|bind"
+    sh -c 'grep -E -A5 "frontend|bind" /etc/haproxy/haproxy.cfg'
 ```
 
 ## Conclusion
 
-HAProxy Ingress Controller exposes IPv6 by binding frontends to `[::]` using `bind-ipv6-address: "::"` in the ConfigMap and setting the Kubernetes service to `ipFamilyPolicy: PreferDualStack`. The `forwardfor` option adds `X-Forwarded-For` headers with the real client IPv6 address. PROXY Protocol v2 can carry IPv6 client addresses to backends that support it, using the `haproxy-ingress.github.io/proxy-protocol: "v2"` annotation. Rate limiting applies to IPv6 clients via the `limit-rps` annotation with IPv6 CIDR whitelisting. Trusted proxy configuration uses the `whitelist-source-range` ConfigMap option with both IPv4 and IPv6 CIDR ranges for correct client IP extraction when HAProxy sits behind a cloud load balancer.
+HAProxy Ingress Controller can expose IPv6 by binding HTTP and HTTPS frontends to both IPv4 and IPv6 addresses with `bind-http: ":80,:::80"` and `bind-https: ":443,:::443"`, while the Kubernetes service is set to `ipFamilyPolicy: PreferDualStack`. The `forwardfor` option controls how `X-Forwarded-For` is added to requests, and `real-ip-hdr` can populate `X-Real-IP` for applications. PROXY Protocol v2 can carry IPv6 client addresses to backends that support it, using the `haproxy-ingress.github.io/proxy-protocol: "v2"` annotation. Rate limiting applies to IPv6 clients via the `limit-rps` annotation with IPv6 CIDR entries in `limit-whitelist`. If HAProxy Ingress sits behind a load balancer that sends PROXY protocol, enable `use-proxy-protocol` globally on the HTTP frontends.
