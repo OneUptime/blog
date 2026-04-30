@@ -8,7 +8,7 @@ Description: Learn how to manage the complete lifecycle of Fleet bundles, from c
 
 ## Introduction
 
-Fleet Bundles are the internal deployment units that Fleet creates from your Git repositories. Each directory in a GitRepo that contains Kubernetes manifests or a fleet.yaml becomes a Bundle. Understanding how bundles are created, updated, and deleted is essential for managing your Fleet deployments reliably.
+Fleet Bundles are the internal deployment units that Fleet creates from your Git repositories. Fleet creates bundles from the paths a GitRepo scans, and a subdirectory with its own `fleet.yaml` defines a separate Bundle. Understanding how bundles are created, updated, and deleted is essential for managing your Fleet deployments reliably.
 
 This guide covers the complete bundle lifecycle: creation, status monitoring, updating, pausing, and cleanup.
 
@@ -27,7 +27,7 @@ The lifecycle of a Fleet Bundle follows these stages:
 3. **Deployment**: Fleet agents on downstream clusters apply the resources
 4. **Monitoring**: Fleet continuously checks the deployed state
 5. **Update**: A new Git commit triggers a Bundle update
-6. **Deletion**: GitRepo deletion triggers Bundle and resource cleanup
+6. **Deletion**: GitRepo deletion triggers Bundle cleanup and, unless `keepResources` is set, deployed resource cleanup
 
 ## Viewing Bundle Status
 
@@ -36,7 +36,7 @@ The lifecycle of a Fleet Bundle follows these stages:
 
 kubectl get bundles -A
 
-# List bundles in a specific workspace
+# List bundles in a specific namespace
 kubectl get bundles -n fleet-default
 
 # Get detailed bundle information
@@ -61,11 +61,11 @@ kubectl get bundle my-app -n fleet-default \
 ```
 
 Key status fields:
-- `summary.ready`: Number of clusters with bundle deployed successfully
-- `summary.desiredReady`: Total clusters that should have the bundle
-- `summary.notReady`: Clusters where deployment failed
-- `summary.modified`: Clusters where deployed state differs from desired
-- `summary.waitApplied`: Clusters waiting for deployment
+- `summary.ready`: Number of BundleDeployments where all resources are ready
+- `summary.desiredReady`: Number of BundleDeployments that should be ready
+- `summary.notReady`: Number of BundleDeployments that were deployed but still have non-ready resources
+- `summary.modified`: Number of BundleDeployments where resources were modified outside Git
+- `summary.waitApplied`: Number of BundleDeployments that are synced but still waiting to be applied
 
 ## Managing BundleDeployments
 
@@ -77,41 +77,34 @@ kubectl get bundledeployments -A
 
 # Filter bundle deployments for a specific bundle
 kubectl get bundledeployments -A \
-  -o jsonpath='{range .items[?(@.spec.bundleID=="fleet-default/my-app")]}{.metadata.name}{"\n"}{end}'
+  -l fleet.cattle.io/bundle-name=my-app,fleet.cattle.io/bundle-namespace=fleet-default
 
-# Check a specific bundle deployment
-kubectl describe bundledeployment my-app -n my-cluster-namespace
+# Check a specific bundle deployment from the list above
+kubectl describe bundledeployment <bundledeployment-name> -n <cluster-namespace>
 ```
 
 ## Pausing a Bundle
 
-To temporarily stop Fleet from updating a bundle (for maintenance or testing):
+To temporarily stop Fleet from updating bundles created by a GitRepo (for maintenance or testing):
 
 ```bash
-# Pause a bundle by patching the GitRepo
-# This sets a specific commit, freezing the deployment
-CURRENT_COMMIT=$(kubectl get gitrepo my-app -n fleet-default \
-  -o jsonpath='{.status.commit}')
-
-echo "Current commit: ${CURRENT_COMMIT}"
-
-# Pin to the current commit to freeze updates
+# Pause updates for bundles created from this GitRepo
 kubectl patch gitrepo my-app -n fleet-default \
   --type=merge \
-  -p "{\"spec\":{\"revision\":\"${CURRENT_COMMIT}\"}}"
+  -p '{"spec":{"paused":true}}'
 
-echo "Bundle updates are now paused at commit: ${CURRENT_COMMIT}"
+echo "Bundle updates are now paused"
 ```
 
 ### Resuming a Paused Bundle
 
 ```bash
-# Resume auto-updates by switching back to branch tracking
+# Resume updates
 kubectl patch gitrepo my-app -n fleet-default \
   --type=merge \
-  -p '{"spec":{"revision":"","branch":"main"}}'
+  -p '{"spec":{"paused":false}}'
 
-echo "Bundle updates resumed - tracking main branch"
+echo "Bundle updates resumed"
 ```
 
 ## Forcing a Bundle Re-Deployment
@@ -119,12 +112,17 @@ echo "Bundle updates resumed - tracking main branch"
 To force Fleet to re-apply all resources even if no Git changes occurred:
 
 ```bash
-# Delete and recreate the bundle (causes brief downtime)
-# Better approach: annotate the GitRepo
-kubectl annotate gitrepo my-app \
-  -n fleet-default \
-  fleet.cattle.io/commit="" \
-  --overwrite
+# Increment forceSyncGeneration to request a fresh redeploy
+CURRENT_GEN=$(kubectl get gitrepo my-app -n fleet-default \
+  -o jsonpath='{.spec.forceSyncGeneration}')
+CURRENT_GEN=${CURRENT_GEN:-0}
+NEXT_GEN=$((CURRENT_GEN + 1))
+
+kubectl patch gitrepo my-app -n fleet-default \
+  --type=merge \
+  -p "{\"spec\":{\"forceSyncGeneration\":${NEXT_GEN}}}"
+
+echo "Requested re-deploy with forceSyncGeneration=${NEXT_GEN}"
 
 # Wait for Fleet to re-sync
 kubectl get gitrepo my-app -n fleet-default -w
@@ -134,7 +132,7 @@ kubectl get gitrepo my-app -n fleet-default -w
 
 ### Automatic Deletion via GitRepo Removal
 
-When you delete a GitRepo, Fleet automatically removes all associated Bundles and deployed resources:
+When you delete a GitRepo, Fleet automatically removes all associated Bundles and, unless `keepResources` is set, deployed resources:
 
 ```bash
 # Delete the GitRepo - this triggers bundle and resource cleanup
@@ -191,16 +189,15 @@ kubectl patch gitrepo my-app -n fleet-default \
 kubectl get bundles -A \
   -o jsonpath='{range .items[*]}{.metadata.namespace}/{.metadata.name}: ready={.status.summary.ready}, desired={.status.summary.desiredReady}{"\n"}{end}'
 
-# Find all non-ready bundles
+# Find all bundles where ready does not match desired
 kubectl get bundles -A \
-  --field-selector 'status.summary.ready!=status.summary.desiredReady' \
-  2>/dev/null || \
-  kubectl get bundles -A \
-  -o jsonpath='{range .items[?(@.status.summary.ready!=@.status.summary.desiredReady)]}{.metadata.namespace}/{.metadata.name}{"\n"}{end}'
+  -o custom-columns='NAMESPACE:.metadata.namespace,NAME:.metadata.name,READY:.status.summary.ready,DESIRED:.status.summary.desiredReady' \
+  --no-headers | \
+  awk '$3 != $4 {print $1 "/" $2 ": ready=" $3 ", desired=" $4}'
 
-# Check events for bundle errors
+# Check recent warning events that may explain bundle failures
 kubectl get events -A \
-  --field-selector reason=FailedSync \
+  --field-selector type=Warning \
   --sort-by='.lastTimestamp'
 ```
 
