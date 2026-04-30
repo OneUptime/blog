@@ -61,16 +61,13 @@ backend app_servers
 
 ## Database-Specific Health Checks
 
-Custom TCP check sequences for MySQL:
+Use HAProxy's built-in MySQL health check:
 
 ```haproxy
 backend mysql_servers
     mode tcp
-    option tcp-check
-
-    # MySQL health check: connect and wait for greeting packet
-    tcp-check connect
-    tcp-check expect binary 5b  # Check for MySQL greeting (starts with 5b or similar)
+    # Requires an authorized MySQL user without a password
+    option mysql-check user haproxy
 
     server db1 192.168.3.10:3306 check inter 5s fall 3 rise 2
     server db2 192.168.3.11:3306 check inter 5s fall 3 rise 2
