@@ -13,7 +13,7 @@ AWS IAM Access Analyzer uses automated reasoning to analyze resource-based polic
 ## Prerequisites
 
 - OpenTofu v1.6+
-- AWS credentials with IAM and Access Analyzer permissions
+- AWS credentials with IAM Access Analyzer permissions, and AWS Organizations permissions if you plan to create an organization-level analyzer
 
 ## Step 1: Create an Account-Level Access Analyzer
 
@@ -37,7 +37,9 @@ resource "aws_accessanalyzer_analyzer" "account" {
 # Organization-level analyzer detects resources shared outside the org
 resource "aws_accessanalyzer_analyzer" "organization" {
   analyzer_name = "organization-access-analyzer"
-  type          = "ORGANIZATION"  # Requires delegated administrator setup
+  # Requires AWS Organizations trusted access.
+  # If you create it from a member account, register that account as a delegated administrator first.
+  type = "ORGANIZATION"
 
   tags = {
     Name = "org-access-analyzer"
@@ -57,7 +59,7 @@ resource "aws_accessanalyzer_archive_rule" "approved_partner" {
 
   filter {
     criteria = "principal.AWS"
-    eq       = ["arn:aws:iam::${var.partner_account_id}:root"]
+    eq       = [var.partner_account_id]
   }
 
   filter {
@@ -66,14 +68,19 @@ resource "aws_accessanalyzer_archive_rule" "approved_partner" {
   }
 }
 
-# Archive rule for CloudFront OAC access (known-good configuration)
-resource "aws_accessanalyzer_archive_rule" "cloudfront_oac" {
+# Archive rule for a known CloudFront-backed S3 origin bucket
+resource "aws_accessanalyzer_archive_rule" "cloudfront_origin_bucket" {
   analyzer_name = aws_accessanalyzer_analyzer.account.analyzer_name
-  rule_name     = "cloudfront-oac-access"
+  rule_name     = "cloudfront-origin-bucket"
 
   filter {
-    criteria = "principal.Service"
-    eq       = ["cloudfront.amazonaws.com"]
+    criteria = "resource"
+    eq       = ["arn:aws:s3:::${var.origin_bucket_name}"]
+  }
+
+  filter {
+    criteria = "resourceType"
+    eq       = ["AWS::S3::Bucket"]
   }
 }
 ```
@@ -114,7 +121,7 @@ aws accessanalyzer validate-policy \
 aws accessanalyzer validate-policy \
   --policy-type RESOURCE_POLICY \
   --policy-document file://bucket-policy.json \
-  --resource-type "AWS::S3::Bucket"
+  --validate-policy-resource-type "AWS::S3::Bucket"
 
 # List active findings
 aws accessanalyzer list-findings \
@@ -132,4 +139,4 @@ tofu apply
 
 ## Conclusion
 
-IAM Access Analyzer provides continuous monitoring for unintended resource exposure. Enable it in every AWS account and organization, configure archive rules for known-good configurations, and set up EventBridge alerts for new findings so your security team can respond immediately. Use the policy validation feature in CI/CD pipelines to catch IAM policy errors before deployment-it can identify errors like referencing non-existent actions or over-permissive wildcards.
+IAM Access Analyzer provides continuous monitoring for unintended resource exposure. Enable it in every AWS account and organization, configure archive rules for known-good configurations, and set up EventBridge alerts for new findings so your security team can respond promptly. Use the policy validation feature in CI/CD pipelines to catch IAM policy errors before deployment-it can identify errors like referencing non-existent actions or over-permissive wildcards.
