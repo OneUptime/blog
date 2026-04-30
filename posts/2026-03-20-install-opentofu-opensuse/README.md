@@ -34,14 +34,16 @@ cat <<EOF | sudo tee /etc/zypp/repos.d/opentofu.repo
 [opentofu]
 name=opentofu
 baseurl=https://packages.opentofu.org/opentofu/tofu/rpm_any/rpm_any/\$basearch
+repo_gpgcheck=1
 gpgcheck=1
 gpgkey=https://get.opentofu.org/opentofu.gpg
+       https://packages.opentofu.org/opentofu/tofu/gpgkey
 enabled=1
 autorefresh=1
 EOF
 ```
 
-### Step 2: Import the GPG Key
+### Step 2: Import the GPG Keys
 
 ```bash
 # Import the OpenTofu GPG key
@@ -60,22 +62,22 @@ sudo zypper install -y tofu
 ## Method 2: Install from RPM Package
 
 ```bash
-TOFU_VERSION="1.9.0"
+TOFU_VERSION="1.11.6"
 
 # Download the RPM
-curl -LO "https://github.com/opentofu/opentofu/releases/download/v${TOFU_VERSION}/tofu_${TOFU_VERSION}_linux_amd64.rpm"
+curl -LO "https://github.com/opentofu/opentofu/releases/download/v${TOFU_VERSION}/tofu_${TOFU_VERSION}_amd64.rpm"
 
 # Install using zypper
-sudo zypper install --allow-unsigned-rpm "tofu_${TOFU_VERSION}_linux_amd64.rpm"
+sudo zypper install --allow-unsigned-rpm "tofu_${TOFU_VERSION}_amd64.rpm"
 
 # Or using rpm directly
-sudo rpm -i "tofu_${TOFU_VERSION}_linux_amd64.rpm"
+sudo rpm -i "tofu_${TOFU_VERSION}_amd64.rpm"
 ```
 
 ## Method 3: Install from Binary
 
 ```bash
-TOFU_VERSION="1.9.0"
+TOFU_VERSION="1.11.6"
 
 # Install unzip if needed
 sudo zypper install -y unzip
