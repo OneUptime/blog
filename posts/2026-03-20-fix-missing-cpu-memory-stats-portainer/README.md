@@ -20,19 +20,19 @@ First verify the issue is at the Docker level, not just in Portainer:
 docker stats --no-stream
 
 # If all values show 0 or N/A for memory, the issue is in cgroups
-# If stats work in CLI but not in Portainer, it's a Portainer connectivity issue
+# If stats work in CLI but not in Portainer, the issue is in Portainer or its agent configuration
 ```
 
 ## Step 2: Enable cgroup Memory Accounting (Raspberry Pi / ARM)
 
-Raspberry Pi OS disables memory cgroup by default. Edit the kernel cmdline:
+Some Raspberry Pi OS / ARM setups have memory cgroup or swap accounting disabled. Edit the kernel cmdline:
 
 ```bash
-# Edit the boot command line
-sudo nano /boot/cmdline.txt
+# Edit the boot command line (older Raspberry Pi OS releases use /boot/cmdline.txt)
+sudo nano /boot/firmware/cmdline.txt
 
 # Add these parameters to the existing single line (do NOT add a new line):
-cgroup_enable=memory cgroup_memory=1 cgroup_enable=cpuset
+cgroup_enable=memory swapaccount=1
 
 # Reboot
 sudo reboot
@@ -41,20 +41,23 @@ sudo reboot
 After reboot, verify:
 
 ```bash
-# Check that memory cgroup is enabled
+# On cgroup v1 hosts
 cat /proc/cgroups | grep memory
 # Should show: memory  0  XX  1  (the last 1 means enabled)
+
+# On cgroup v2 hosts
+cat /sys/fs/cgroup/cgroup.controllers | tr ' ' '\n' | grep memory
+# Should output: memory
 ```
 
 ## Step 3: Fix Missing Stats in LXC Containers
 
-If Docker runs inside an LXC container (Proxmox), enable cgroup nesting:
+If Docker runs inside an LXC container (Proxmox), enable the Proxmox features Docker typically needs:
 
 In the Proxmox LXC configuration file (e.g., `/etc/pve/lxc/100.conf`):
 
 ```bash
-# Add these lines to enable cgroup nesting
-lxc.cgroup2.memory.limit_in_bytes = max
+# Add this line to allow nesting and keyctl for Docker in LXC
 features: nesting=1,keyctl=1
 ```
 
@@ -63,17 +66,17 @@ Restart the LXC container after editing.
 ## Step 4: Verify Docker Daemon cgroup Driver
 
 ```bash
-# Check the Docker cgroup driver
-docker info | grep "Cgroup Driver"
-# Should show: Cgroup Driver: cgroupfs or systemd
+# Check the Docker cgroup driver and cgroup version
+docker info | grep -E "Cgroup Driver|Cgroup Version"
+# On cgroup v2 hosts, Docker normally uses the systemd driver
 
-# If blank, configure it explicitly in /etc/docker/daemon.json
+# If you need to set it explicitly on a systemd-based host, configure it in /etc/docker/daemon.json
 sudo nano /etc/docker/daemon.json
 ```
 
 ```json
 {
-  "exec-opts": ["native.cgroupdriver=cgroupfs"]
+  "exec-opts": ["native.cgroupdriver=systemd"]
 }
 ```
 
@@ -83,11 +86,11 @@ sudo systemctl restart docker
 
 ## Step 5: Check Agent Permissions
 
-If using the Portainer Agent, ensure it has access to `/proc`:
+If using the Portainer Agent, make sure you are using the documented host mount:
 
 ```bash
-# The agent container needs access to the host /proc filesystem
+# For Portainer Agent host management features, mount the host filesystem at /host
 docker run ... \
-  -v /proc:/host/proc:ro \
+  -v /:/host \
   portainer/agent:latest
 ```
