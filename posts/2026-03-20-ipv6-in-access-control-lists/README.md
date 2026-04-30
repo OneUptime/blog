@@ -34,15 +34,27 @@ class IPv6ACL:
         self._whitelist: List[Union[ipaddress.IPv4Network, ipaddress.IPv6Network]] = []
         self._blacklist: List[Union[ipaddress.IPv4Network, ipaddress.IPv6Network]] = []
 
+    def _normalize_network(self, network):
+        """Convert IPv4-mapped IPv6 networks to pure IPv4 when possible."""
+        if (
+            isinstance(network, ipaddress.IPv6Network)
+            and network.network_address.ipv4_mapped
+            and network.prefixlen >= 96
+        ):
+            mapped = network.network_address.ipv4_mapped
+            return ipaddress.ip_network(f'{mapped}/{network.prefixlen - 96}', strict=False)
+        return network
+
     def _parse_network(self, entry: str):
         """Parse an IP address or CIDR block, stripping zone IDs and brackets."""
         clean = entry.strip().strip('[]').split('%')[0]
         try:
             # Try as network first (CIDR notation)
-            return ipaddress.ip_network(clean, strict=False)
+            network = ipaddress.ip_network(clean, strict=False)
         except ValueError:
             # Try as single address (convert to /128 or /32)
-            return ipaddress.ip_network(ipaddress.ip_address(clean))
+            network = ipaddress.ip_network(ipaddress.ip_address(clean))
+        return self._normalize_network(network)
 
     def add_whitelist(self, *entries: str):
         for entry in entries:
@@ -54,7 +66,7 @@ class IPv6ACL:
 
     def _normalize_ip(self, ip_str: str) -> ipaddress.IPv4Address | ipaddress.IPv6Address:
         """Normalize IP, converting IPv4-mapped IPv6 to pure IPv4."""
-        clean = ip_str.strip().strip('[]').split('%')[0].replace('::ffff:', '')
+        clean = ip_str.strip().strip('[]').split('%')[0]
         addr = ipaddress.ip_address(clean)
         if isinstance(addr, ipaddress.IPv6Address) and addr.ipv4_mapped:
             return addr.ipv4_mapped
@@ -125,17 +137,24 @@ class IPv6ACL {
     this.blacklist = [];
   }
 
+  _normalizeRange([network, bits]) {
+    if (network.kind() === 'ipv6' && network.isIPv4MappedAddress() && bits >= 96) {
+      return [network.toIPv4Address(), bits - 96];
+    }
+    return [network, bits];
+  }
+
   _parseRange(entry) {
     try {
       // Remove brackets and zone IDs
       const clean = entry.trim().replace(/[\[\]]/g, '').split('%')[0];
       if (clean.includes('/')) {
-        return ipaddr.parseCIDR(clean);
+        return this._normalizeRange(ipaddr.parseCIDR(clean));
       }
       const addr = ipaddr.parse(clean);
       // Convert to CIDR for consistent matching
       const bits = addr.kind() === 'ipv6' ? 128 : 32;
-      return [addr, bits];
+      return this._normalizeRange([addr, bits]);
     } catch (e) {
       throw new Error(`Invalid IP/CIDR: ${entry} - ${e.message}`);
     }
