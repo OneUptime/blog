@@ -24,7 +24,7 @@ Each framework has specific ways to bind to IPv6 interfaces. The general pattern
 # Verify IPv6 is available on your system
 
 ip -6 addr show
-ping6 -c 3 ::1
+ping -6 -c 3 ::1
 ```
 
 ## Step-by-Step Setup
@@ -60,7 +60,7 @@ function getClientIP(req) {
 
 ### 3. Firewall Configuration
 
-Ensure your firewall allows incoming connections on the required port over IPv6:
+Ensure your firewall allows incoming connections on the required port over IPv6. If you use UFW, make sure IPv6 support is enabled in `/etc/default/ufw`:
 
 ```bash
 # UFW
