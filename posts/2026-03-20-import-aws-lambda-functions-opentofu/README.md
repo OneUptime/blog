@@ -18,13 +18,14 @@ FUNCTION="my-app-processor"
 aws lambda get-function-configuration \
   --function-name $FUNCTION \
   --query '{
-    runtime: .Runtime,
-    handler: .Handler,
-    timeout: .Timeout,
-    memory_size: .MemorySize,
-    role: .Role,
-    environment: .Environment,
-    vpc_config: .VpcConfig
+    description: Description,
+    runtime: Runtime,
+    handler: Handler,
+    timeout: Timeout,
+    memory_size: MemorySize,
+    role: Role,
+    environment_variables: Environment.Variables,
+    vpc_config: VpcConfig
   }' --output json
 ```
 
@@ -33,6 +34,14 @@ aws lambda get-function-configuration \
 ```hcl
 data "aws_iam_role" "lambda" {
   name = "my-app-processor-role"
+}
+
+variable "vpc_config" {
+  type = object({
+    subnet_ids         = list(string)
+    security_group_ids = list(string)
+  })
+  default = null
 }
 
 resource "aws_lambda_function" "processor" {
@@ -44,8 +53,8 @@ resource "aws_lambda_function" "processor" {
   timeout       = 300
   memory_size   = 512
 
-  # When importing, use a placeholder - code won't be managed by OpenTofu
-  # unless you switch to S3-based or archive deployment
+  # When importing, use a placeholder package. OpenTofu won't manage code
+  # updates until you replace this with your real deployment artifact.
   filename         = data.archive_file.placeholder.output_path
   source_code_hash = data.archive_file.placeholder.output_base64sha256
 
@@ -78,11 +87,11 @@ resource "aws_lambda_function" "processor" {
   tags = { Environment = "prod", ManagedBy = "OpenTofu" }
 }
 
-# Placeholder archive to satisfy Terraform's requirement for a deployment package
+# Placeholder archive to satisfy the Lambda resource's deployment package requirement
 
 data "archive_file" "placeholder" {
   type        = "zip"
-  output_path = "/tmp/placeholder.zip"
+  output_path = "${path.module}/placeholder.zip"
   source {
     content  = "# placeholder"
     filename = "placeholder.py"
@@ -104,7 +113,7 @@ import {
 
 ```hcl
 resource "aws_lambda_event_source_mapping" "sqs" {
-  event_source_arn = "arn:aws:sqs:us-east-1:123456789:my-queue"
+  event_source_arn = "arn:aws:sqs:us-east-1:123456789012:my-queue"
   function_name    = aws_lambda_function.processor.arn
   batch_size       = 10
   enabled          = true
@@ -113,7 +122,7 @@ resource "aws_lambda_event_source_mapping" "sqs" {
 # Event source mapping uses the UUID as the import ID
 import {
   to = aws_lambda_event_source_mapping.sqs
-  id = "abc12345-def6-7890-ghij-klmnopqrstuv"
+  id = "a1b2c3d4-5678-90ab-cdef-11111EXAMPLE"
 }
 ```
 
