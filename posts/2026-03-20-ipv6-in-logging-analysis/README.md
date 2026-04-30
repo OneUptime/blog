@@ -35,15 +35,15 @@ IPv6 addresses in Nginx logs appear without brackets:
 
 ## Apache: Logging IPv6 Addresses
 
-Apache logs IPv6 addresses in brackets for the Combined Log Format:
+Apache logs IPv6 addresses correctly in access logs. Use `%a` for the client IP address, especially when `mod_remoteip` is enabled:
 
 ```apache
 # /etc/apache2/apache2.conf
-LogFormat "%h %l %u %t \"%r\" %>s %O \"%{Referer}i\" \"%{User-Agent}i\"" combined
+LogFormat "%a %l %u %t \"%r\" %>s %b \"%{Referer}i\" \"%{User-Agent}i\"" combined
 
-# %h logs the remote host (IP address)
-# For IPv6, Apache may log: [2001:db8::1] or 2001:db8::1
-# depending on configuration
+# %a logs the client IP address
+# In access logs, IPv6 addresses appear without brackets,
+# for example: 2001:db8::1
 ```
 
 Enable `mod_remoteip` for proper proxy handling:
@@ -63,10 +63,9 @@ from typing import Optional
 
 def normalize_ip_in_log_line(line: str) -> str:
     """
-    Normalize all IP addresses in a log line to compressed IPv6 form.
-    Handles both IPv4 and IPv6 addresses.
+    Normalize IPv6 addresses in a log line to compressed form.
     """
-    # Pattern to match IPv6 in brackets or standalone
+    # Pattern to match bracketed or standalone IPv6 text
     ipv6_pattern = r'\[?([0-9a-fA-F:]+:[0-9a-fA-F:]*)\]?'
 
     def normalize_match(m):
@@ -83,13 +82,13 @@ def normalize_ip_in_log_line(line: str) -> str:
 
 def extract_ip_from_nginx_log(line: str) -> Optional[str]:
     """Extract and normalize IP from Nginx access log line."""
-    parts = line.split(' ', 1)
-    if not parts:
+    raw_ip = line.split(' ', 1)[0].strip()
+    if not raw_ip:
         return None
 
-    raw_ip = parts[0].strip('[]')
+    raw_ip = raw_ip.strip('[]')
     # Strip zone ID
-    raw_ip = raw_ip.split('%')[0]
+    raw_ip = raw_ip.split('%', 1)[0]
 
     try:
         # Normalize to standard form
@@ -113,14 +112,13 @@ with open('/var/log/nginx/access.log') as f:
 
 Configure Elasticsearch to properly handle IPv6 addresses:
 
-```json
-// Elasticsearch index mapping for IP logging
+```http
 PUT /access-logs
 {
   "mappings": {
     "properties": {
       "client_ip": {
-        "type": "ip"  // Elasticsearch ip type handles IPv4 and IPv6
+        "type": "ip"
       },
       "timestamp": {
         "type": "date"
@@ -141,20 +139,18 @@ PUT /access-logs
 
 Query for IPv6 traffic in Elasticsearch:
 
-```json
-// Find all requests from IPv6 clients
+```http
 GET /access-logs/_search
 {
   "query": {
     "term": {
-      "client_ip": {
-        "value": "2001:db8::1"
-      }
+      "client_ip": "2001:db8::1"
     }
   }
 }
+```
 
-// CIDR range query for IPv6 subnet
+```http
 GET /access-logs/_search
 {
   "query": {
@@ -200,8 +196,8 @@ filter {
 
 ```bash
 # Count unique IPv6 client addresses from Nginx logs
-grep -oE '[0-9a-fA-F:]+:[0-9a-fA-F:]+' /var/log/nginx/access.log | \
-    sort | uniq -c | sort -rn | head -20
+awk '$1 ~ /:/ { print $1 }' /var/log/nginx/access.log | \
+    sort -u | wc -l
 
 # Count requests by IP version
 awk '{
@@ -214,7 +210,7 @@ END {
 }' /var/log/nginx/access.log
 
 # Find IPv6 addresses making the most requests
-grep -oE '([0-9a-fA-F]{1,4}:){1,7}[0-9a-fA-F]{1,4}|::1' /var/log/nginx/access.log | \
+awk '$1 ~ /:/ { print $1 }' /var/log/nginx/access.log | \
     sort | uniq -c | sort -rn | head -10
 ```
 
