@@ -20,24 +20,25 @@ ESP (Encapsulating Security Payload) is IPsec protocol 50 (Next Header value 50 
 +-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+
 |                      Sequence Number                          |
 +-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+  ←─ Authenticated
-|            Initialization Vector (IV) - variable             |
-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+  ←─ Encrypted
-|                       Payload Data                            |  (starts here)
+|                    Payload Data* (variable)                  |
 |                                                               |
 +-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+
 |                     Padding (0-255 bytes)                     |
 +-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+
 |   Pad Length  |  Next Header  |                               |  ←─ Encrypted
 +-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+                               |
-|                 Integrity Check Value (ICV)                   |  ←─ Authenticated
+|              Integrity Check Value (ICV / tag)                |  ←─ Authenticated
 +-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+
 ```
 
+* If the selected ESP algorithm needs an explicit IV/nonce, it is carried at the
+start of the Payload Data field.
+
 Key points:
 - **SPI + Sequence Number**: Unencrypted - receiver uses SPI to find the SA
-- **IV**: Unencrypted - needed by receiver to decrypt
-- **Payload + Padding + Next Header**: Encrypted
-- **ICV**: MAC over SPI, Sequence Number, IV, and Payload
+- **Explicit IV/nonce (if present)**: Carried inside Payload Data and usually sent unencrypted
+- **Payload Data + Padding + Next Header**: Encrypted, except for any explicit IV/nonce at the start of Payload Data
+- **ICV/tag**: Integrity check over SPI, Sequence Number, Payload Data, Padding, Pad Length, and Next Header
 
 ## Recommended Cipher Suites
 
@@ -62,20 +63,20 @@ Before ESP:
 [IPv6: src=A, dst=B, NH=TCP] [TCP] [Data]
 
 After ESP Transport Mode:
-[IPv6: src=A, dst=B, NH=50] [ESP Header (SPI, Seq)] [IV] [Encrypted TCP+Data] [Padding] [ESP Trailer] [ICV]
+[IPv6: src=A, dst=B, NH=50] [ESP Header (SPI, Seq)] [Optional explicit IV/nonce] [Encrypted TCP+Data] [Padding] [ESP Trailer] [ICV/tag]
 ```
 
 ```bash
-# Linux: Create ESP transport mode SA
+# Linux: Create ESP transport mode SA (manual SA example)
 
 ip xfrm state add \
   src 2001:db8:1::1 dst 2001:db8:2::1 \
   proto esp spi 0x100 \
-  enc aes 0x0123456789abcdef0123456789abcdef \
-  auth hmac\(sha256\) 0xfedcba9876543210fedcba9876543210fedcba9876543210fedcba9876543210 \
+  enc 'cbc(aes)' 0x0123456789abcdef0123456789abcdef \
+  auth-trunc 'hmac(sha256)' 0xfedcba9876543210fedcba9876543210fedcba9876543210fedcba9876543210 128 \
   mode transport
 
-# Or with AEAD (AES-GCM)
+# Example syntax for AEAD (AES-GCM); counter-mode AEAD SAs should be negotiated via IKEv2, not manual keying
 ip xfrm state add \
   src 2001:db8:1::1 dst 2001:db8:2::1 \
   proto esp spi 0x100 \
@@ -90,22 +91,22 @@ Before ESP Tunnel Mode:
 Original: [IPv6: src=A, dst=B] [TCP] [Data]
 
 After ESP Tunnel Mode:
-[Outer IPv6: src=GW1, dst=GW2, NH=50] [ESP] [IV] [Encrypted: Inner IPv6 + TCP + Data] [ESP Trailer] [ICV]
+[Outer IPv6: src=GW1, dst=GW2, NH=50] [ESP Header] [Optional explicit IV/nonce] [Encrypted: Inner IPv6 + TCP + Data] [ESP Trailer] [ICV/tag]
 ```
 
 ```bash
-# Linux: Create ESP tunnel mode SA (site-to-site)
+# Example syntax for a tunnel SA; counter-mode AEAD SAs should be negotiated via IKEv2, not manual keying
 ip xfrm state add \
-  src 2001:db8:gw1::1 dst 2001:db8:gw2::1 \
+  src 2001:db8:100::1 dst 2001:db8:200::1 \
   proto esp spi 0x200 \
   aead "rfc4106(gcm(aes))" 0x0123456789abcdef0123456789abcdef01234567 128 \
   mode tunnel
 
 # Create policy
 ip xfrm policy add \
-  src 2001:db8:site1::/48 dst 2001:db8:site2::/48 \
+  src 2001:db8:1::/48 dst 2001:db8:2::/48 \
   dir out \
-  tmpl src 2001:db8:gw1::1 dst 2001:db8:gw2::1 proto esp mode tunnel
+  tmpl src 2001:db8:100::1 dst 2001:db8:200::1 proto esp mode tunnel
 ```
 
 ## NAT Traversal (NAT-T) for ESP
@@ -114,7 +115,8 @@ When ESP must pass through NAT, NAT-T encapsulates ESP in UDP port 4500:
 
 ```text
 Normal ESP: [IPv6] [ESP (protocol 50)] [Encrypted payload]
-NAT-T ESP:  [IPv6] [UDP: dport=4500] [Non-ESP Marker (4 bytes)] [ESP] [Encrypted payload]
+NAT-T ESP:  [IPv6] [UDP: dport=4500] [ESP (SPI != 0)] [Encrypted payload]
+IKE on 4500: [IPv6] [UDP: dport=4500] [Non-ESP Marker (4 bytes)] [IKE]
 ```
 
 ```bash
@@ -131,8 +133,8 @@ connections {
 ## Verifying ESP Traffic
 
 ```bash
-# tcpdump: Capture ESP traffic (protocol 50)
-tcpdump -i eth0 'ip6 proto 50' -n -v
+# tcpdump: Capture ESP traffic (protocol / Next Header 50)
+tcpdump -i eth0 'ip6 protochain 50' -n -v
 
 # With NAT-T (UDP 4500)
 tcpdump -i eth0 'udp port 4500' -n -v
@@ -147,7 +149,7 @@ ip xfrm state list | grep esp
 #   anti-replay context: seq 0x5, oseq 0x5, bitmap 0xffffffff
 
 # Check byte counters
-ip xfrm state list | grep -A5 '2001:db8:2::1' | grep bytes
+ip -s xfrm state list | grep -A8 '2001:db8:2::1' | grep bytes
 ```
 
 ## Summary
