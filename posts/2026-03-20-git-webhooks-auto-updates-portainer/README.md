@@ -8,7 +8,7 @@ Description: Learn how to configure Portainer and your Git repository to automat
 
 ## What Is a Git Webhook Update?
 
-Instead of Portainer polling Git for changes, webhooks let your Git provider (GitHub, GitLab, etc.) push a notification to Portainer the moment a push happens. This gives near-instant deployments with no unnecessary polling overhead.
+Instead of Portainer polling Git for changes, webhooks let your Git provider (GitHub, GitLab, etc.) send a POST request to Portainer the moment a push happens. This gives near-instant update checks with no unnecessary polling overhead.
 
 ## Prerequisites
 
@@ -30,7 +30,7 @@ Instead of Portainer polling Git for changes, webhooks let your Git provider (Gi
 4. Set:
    - **Payload URL**: The Portainer webhook URL.
    - **Content type**: `application/json`.
-   - **Secret**: Optional but recommended.
+   - **Secret**: Leave this blank unless you have an intermediate service validating GitHub webhook signatures. Portainer uses the token in the webhook URL itself.
    - **Events**: Select **Just the push event**.
 5. Click **Add webhook**.
 
@@ -40,7 +40,7 @@ Instead of Portainer polling Git for changes, webhooks let your Git provider (Gi
 2. Navigate to **Settings > Webhooks**.
 3. Set:
    - **URL**: The Portainer webhook URL.
-   - **Secret token**: Optional.
+   - **Secret token**: Leave this blank unless you have an intermediate service validating GitLab webhook headers. Portainer uses the token in the webhook URL itself.
    - **Trigger**: Check **Push events**.
 4. Click **Add webhook**.
 
@@ -49,8 +49,8 @@ Instead of Portainer polling Git for changes, webhooks let your Git provider (Gi
 ```bash
 # Test the Portainer stack webhook manually
 
-curl -X POST "https://portainer.mycompany.com/api/stacks/webhooks/abc123token"
-# Expect: 204 No Content
+curl -i -X POST "https://portainer.mycompany.com/api/stacks/webhooks/abc123token"
+# Expect: a successful HTTP response if the webhook URL is reachable
 
 # Or trigger from GitHub webhook test
 # In GitHub: Settings > Webhooks > Recent Deliveries > Redeliver
@@ -58,20 +58,29 @@ curl -X POST "https://portainer.mycompany.com/api/stacks/webhooks/abc123token"
 
 ## Securing Webhooks with a Secret
 
-Portainer currently validates the webhook URL token rather than a shared secret. For additional security:
+Portainer's webhook URL already includes the token Portainer validates. GitHub and GitLab secret or signing tokens are only useful if something in front of Portainer validates them. For additional security:
 
 1. Use HTTPS for Portainer.
-2. Add IP allowlisting at the reverse proxy for known GitHub/GitLab IP ranges.
+2. If you add IP allowlisting at the reverse proxy, keep GitHub's ranges synced from the GitHub Meta API and use GitLab.com's published webhook ranges.
 
 ```nginx
-# Nginx: Restrict webhook endpoint to GitHub IP ranges
+# Nginx: Restrict webhook endpoint to your current provider IP ranges
 location /api/stacks/webhooks/ {
-    # Allow GitHub's webhook IP ranges
+    # GitHub changes ranges over time, so keep these synced with:
+    # https://api.github.com/meta  (use the "hooks" ranges)
     allow 140.82.112.0/20;
+    allow 143.55.64.0/20;
     allow 185.199.108.0/22;
     allow 192.30.252.0/22;
+    allow 2a0a:a440::/29;
+    allow 2606:50c0::/32;
+
+    # GitLab.com webhook traffic currently comes from:
+    allow 34.74.90.64/28;
+    allow 34.74.226.0/24;
+
     deny all;
-    proxy_pass http://portainer:9000;
+    proxy_pass https://portainer:9443;
 }
 ```
 
@@ -81,8 +90,9 @@ location /api/stacks/webhooks/ {
 sequenceDiagram
     Developer->>GitHub: git push origin main
     GitHub->>Portainer: POST /api/stacks/webhooks/token
-    Portainer->>GitHub: Fetch latest Compose file
-    Portainer->>Docker: Redeploy stack with new config
+    Portainer->>GitHub: Check latest commit hash
+    Portainer->>GitHub: Pull repository if the commit changed
+    Portainer->>Docker: Redeploy stack with updated config
     Docker->>Portainer: Deploy success
 ```
 
@@ -90,9 +100,9 @@ sequenceDiagram
 
 In Portainer:
 1. Go to the stack.
-2. Check **Stack events** or the activity log.
-3. Verify the deploy timestamp matches your recent push.
+2. Confirm the stack now shows the updated configuration or image tag from your recent push.
+3. If you need more detail, check the Portainer server logs for the redeploy request.
 
 ## Conclusion
 
-Git webhooks provide the fastest Portainer auto-update mechanism - deployments trigger within seconds of a push. Combine them with your CI/CD pipeline (build image, update tag in docker-compose.yml, commit, push) for a complete automated delivery chain.
+Git webhooks provide the fastest Portainer auto-update mechanism - update checks trigger within seconds of a push, and Portainer redeploys when it detects a new commit. Combine them with your CI/CD pipeline (build image, update tag in docker-compose.yml, commit, push) for a complete automated delivery chain.
