@@ -8,7 +8,7 @@ Description: Learn how to deploy highly available applications on Azure using Op
 
 ## Overview
 
-High availability on Azure distributes workloads across Availability Zones within a region, uses VMSS or zone-redundant App Service for automatic instance replacement, and Standard Load Balancer for zone-redundant traffic distribution.
+High availability on Azure distributes workloads across Availability Zones within a region, uses VMSS or zone-redundant App Service for resilient multi-instance hosting, and Standard Load Balancer for zone-redundant traffic distribution.
 
 ## Step 1: Zone-Redundant App Service
 
@@ -23,8 +23,8 @@ resource "azurerm_service_plan" "ha" {
   sku_name            = "P1v3"
 
   # Zone balancing distributes across AZs automatically
-  zone_balancing_enabled = true  # Requires Premium v3 or higher
-  worker_count           = 3     # Minimum 3 for zone redundancy
+  zone_balancing_enabled = true  # Requires a plan and region that support zone redundancy
+  worker_count           = 3     # Example count; use a multiple of your region's available zones
 }
 
 resource "azurerm_linux_web_app" "ha" {
@@ -63,8 +63,7 @@ resource "azurerm_linux_virtual_machine_scale_set" "ha_vmss" {
   zones               = ["1", "2", "3"]
   zone_balance        = true  # Even distribution across zones
 
-  # Orchestration mode for modern features
-  orchestration_mode = "Flexible"
+  upgrade_mode = "Rolling"
 
   admin_username = "azureuser"
   admin_ssh_key {
@@ -96,10 +95,18 @@ resource "azurerm_linux_virtual_machine_scale_set" "ha_vmss" {
     }
   }
 
-  # Automatic OS upgrades
+  health_probe_id = azurerm_lb_probe.health.id
+
+  # Automatic OS image upgrades
   automatic_os_upgrade_policy {
     disable_automatic_rollback  = false
     enable_automatic_os_upgrade = true
+  }
+
+  automatic_instance_repair {
+    enabled      = true
+    grace_period = "PT10M"
+    action       = "Replace"
   }
 
   rolling_upgrade_policy {
@@ -109,35 +116,23 @@ resource "azurerm_linux_virtual_machine_scale_set" "ha_vmss" {
     pause_time_between_batches              = "PT2M"
   }
 
-  extension {
-    name                 = "HealthExtension"
-    publisher            = "Microsoft.ManagedServices"
-    type                 = "ApplicationHealthLinux"
-    type_handler_version = "1.0"
-
-    settings = jsonencode({
-      protocol    = "https"
-      port        = 443
-      requestPath = "/health"
-    })
-  }
 }
 ```
 
 ## Step 3: Zone-Redundant Load Balancer
 
 ```hcl
-# Standard SKU Load Balancer (zone-redundant by default)
+# Standard SKU Load Balancer with a zone-redundant frontend
 resource "azurerm_lb" "ha" {
   name                = "ha-app-lb"
   resource_group_name = azurerm_resource_group.rg.name
   location            = azurerm_resource_group.rg.location
-  sku                 = "Standard"  # Standard = zone-redundant
+  sku                 = "Standard"  # Standard is required for availability zones
 
   frontend_ip_configuration {
     name                 = "ha-frontend"
     public_ip_address_id = azurerm_public_ip.lb.id
-    zones                = ["1", "2", "3"]  # Zone-redundant frontend IP
+    zones                = ["1", "2", "3"]  # Zone-redundant frontend
   }
 }
 
@@ -154,4 +149,4 @@ resource "azurerm_lb_probe" "health" {
 
 ## Summary
 
-Highly available applications on Azure built with OpenTofu use zone-redundant services to protect against datacenter failures within a region. App Service Premium v3 with `zone_balancing_enabled` distributes instances across zones automatically. VMSS with `zone_balance = true` and the Application Health Extension provides self-healing by automatically replacing instances that fail health checks, ensuring the desired capacity is maintained even during zone failures.
+Highly available applications on Azure built with OpenTofu use zone-redundant services to protect against datacenter failures within a region. App Service Premium v3 with `zone_balancing_enabled` distributes instances across zones automatically. VMSS with `zone_balance = true`, `upgrade_mode = "Rolling"`, a load balancer health probe, and `automatic_instance_repair` can replace unhealthy instances while using the same health signal for rolling and automatic OS image upgrades.
