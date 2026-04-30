@@ -8,7 +8,7 @@ Description: Learn how to create GCP Cloud Interconnect VLAN attachments and con
 
 ## Introduction
 
-GCP Cloud Interconnect provides high-bandwidth, low-latency connections from your data center to GCP. Dedicated Interconnect uses your own fiber at colocation facilities; Partner Interconnect uses a service provider. OpenTofu manages VLAN attachments and Cloud Router configurations.
+GCP Cloud Interconnect provides high-bandwidth, low-latency connections from your data center to GCP. Dedicated Interconnect uses direct physical connections at colocation facilities; Partner Interconnect uses a service provider. OpenTofu manages VLAN attachments and Cloud Router configurations.
 
 ## Cloud Router
 
@@ -22,7 +22,7 @@ resource "google_compute_router" "interconnect" {
   network = google_compute_network.main.id
 
   bgp {
-    asn               = 16550  # GCP Interconnect reserved ASN for Partner Interconnect
+    asn               = 16550  # Required for Partner Interconnect; also valid for Dedicated Interconnect
     advertise_mode    = "CUSTOM"
     advertised_groups = ["ALL_SUBNETS"]
   }
@@ -59,11 +59,10 @@ resource "google_compute_interconnect_attachment" "partner" {
   region        = var.region
   router        = google_compute_router.interconnect.id
   type          = "PARTNER"
-  bandwidth     = "BPS_1G"
   admin_enabled = true
 
-  # Activation key is provided to your service provider
-  # for them to configure their end of the connection
+  # Share the generated pairing_key with your service provider
+  # after the attachment is created
 }
 ```
 
@@ -88,7 +87,7 @@ resource "google_compute_router_peer" "interconnect" {
   project         = var.project_id
   router          = google_compute_router.interconnect.name
   region          = var.region
-  peer_ip_address = google_compute_interconnect_attachment.dedicated.customer_router_ip_address
+  peer_ip_address = split("/", google_compute_interconnect_attachment.dedicated.customer_router_ip_address)[0]
   peer_asn        = var.onprem_bgp_asn
   interface       = google_compute_router_interface.interconnect.name
 
