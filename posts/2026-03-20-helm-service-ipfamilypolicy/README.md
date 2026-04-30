@@ -34,23 +34,18 @@ networking:
   # Options: SingleStack, PreferDualStack, RequireDualStack
   ipFamilyPolicy: SingleStack
   
-  # IP families (IPv4, IPv6, or both)
-  ipFamilies:
-    - IPv4
+  # Optional IP families for single-stack selection or dual-stack ordering
+  ipFamilies: []
 
 # Service configuration
 service:
   type: ClusterIP
   port: 80
-  # IPv6 cluster IP (leave empty for auto-assign)
-  ipv6ClusterIP: ""
 
 # Ingress configuration
 ingress:
   enabled: false
-  annotations:
-    # IPv6 Nginx annotation
-    nginx.ingress.kubernetes.io/ipv6-enabled: "true"
+  annotations: {}
 ```
 
 ## Template for Dual-Stack Services
@@ -65,12 +60,14 @@ spec:
   type: {{ .Values.service.type }}
   {{- if .Values.networking.ipv6.enabled }}
   ipFamilyPolicy: {{ .Values.networking.ipFamilyPolicy | default "PreferDualStack" }}
+  {{- if .Values.networking.ipFamilies }}
   ipFamilies:
     {{- toYaml .Values.networking.ipFamilies | nindent 4 }}
   {{- end }}
+  {{- end }}
   ports:
     - port: {{ .Values.service.port }}
-      targetPort: http
+      targetPort: {{ .Values.service.port }}
   selector:
     {{- include "mychart.selectorLabels" . | nindent 4 }}
 ```
@@ -99,10 +96,12 @@ Wraps IPv6 addresses in brackets.
 
 ```bash
 # Install with IPv6 enabled
-helm install myapp ./mychart   --set networking.ipv6.enabled=true   --set networking.ipFamilyPolicy=PreferDualStack
+helm install myapp ./mychart \
+  --set networking.ipv6.enabled=true \
+  --set networking.ipFamilyPolicy=PreferDualStack
 
-# Verify service has IPv6 cluster IP
-kubectl get svc myapp -o jsonpath='{.spec.clusterIPs}'
+# Verify the service has dual-stack cluster IPs
+kubectl describe svc <service-name>
 
 # Run helm tests
 helm test myapp
