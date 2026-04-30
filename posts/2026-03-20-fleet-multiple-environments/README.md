@@ -19,14 +19,20 @@ Rancher Fleet is a GitOps continuous delivery solution built into Rancher. It en
 ## Step 1: Verify Fleet is Running
 
 ```bash
-# Check Fleet pods in Rancher management cluster
+# Check Fleet components in the Rancher management cluster
 
 kubectl get pods -n cattle-fleet-system
 
 # Expected pods:
 # fleet-controller      Running
-# fleet-agent           Running (local cluster agent)
 # gitjob                Running
+
+# If Rancher's local cluster is also a downstream target,
+# check its Fleet agent separately
+kubectl get pods -n cattle-local-fleet-system
+
+# Expected pod:
+# fleet-agent           Running
 
 # Check CRDs
 kubectl get crds | grep fleet
@@ -78,11 +84,13 @@ kubernetes-manifests/
 ├── apps/
 │   └── my-app/
 │       ├── fleet.yaml      # App-level Fleet config
-│       ├── deployment.yaml
-│       ├── service.yaml
-│       └── overlays/       # Kustomize overlays per env
-│           ├── production/
-│           └── staging/
+│       ├── values.yaml     # Base values referenced by fleet.yaml
+│       └── chart/
+│           ├── Chart.yaml
+│           ├── values.yaml
+│           └── templates/
+│               ├── deployment.yaml
+│               └── service.yaml
 ```
 
 ## Step 4: Configure fleet.yaml
@@ -147,12 +155,13 @@ kubectl get gitrepo -n fleet-default
 kubectl get bundles -n fleet-default
 
 # Detailed bundle status
-kubectl describe bundle my-app-gitops -n fleet-default
+kubectl describe bundle my-app-gitops-apps-my-app -n fleet-default
 
 # Check per-cluster deployment status
 kubectl get bundledeployments -A
 
-# View Fleet agent logs on downstream cluster
+# View Fleet agent logs on a downstream cluster
+# (use cattle-local-fleet-system for Rancher's local cluster)
 kubectl logs -n cattle-fleet-system   -l app=fleet-agent   --follow
 ```
 
@@ -160,10 +169,10 @@ kubectl logs -n cattle-fleet-system   -l app=fleet-agent   --follow
 
 ```bash
 # For HTTPS authentication
-kubectl create secret generic git-auth   --namespace fleet-default   --from-literal=username=your-username   --from-literal=password=your-personal-access-token
+kubectl create secret generic git-auth   --namespace fleet-default   --type=kubernetes.io/basic-auth   --from-literal=username=your-username   --from-literal=password=your-personal-access-token
 
 # For SSH authentication
-kubectl create secret generic git-ssh   --namespace fleet-default   --from-file=ssh-privatekey=/path/to/private-key   --from-literal=known_hosts="$(ssh-keyscan github.com)"
+kubectl create secret generic git-ssh   --namespace fleet-default   --type=kubernetes.io/ssh-auth   --from-file=ssh-privatekey=/path/to/private-key   --from-literal=known_hosts="$(ssh-keyscan -H github.com)"
 ```
 
 ```yaml
@@ -208,10 +217,11 @@ kubectl describe gitrepo my-app-gitops -n fleet-default
 # Check Events section for errors
 
 # Bundle in Modified/NotReady state
-kubectl get bundledeployments -A -o custom-columns='NAME:.metadata.name,CLUSTER:.metadata.namespace,STATE:.status.display.state'
+kubectl get bundledeployments -A -o custom-columns='NAME:.metadata.name,NAMESPACE:.metadata.namespace,STATE:.status.display.state'
 
 # Force re-sync
-kubectl annotate gitrepo my-app-gitops   fleet.cattle.io/force-sync="$(date)"   -n fleet-default   --overwrite
+kubectl patch gitrepo my-app-gitops   -n fleet-default   --type merge   -p '{"spec":{"forceSyncGeneration":1}}'
+# Increment forceSyncGeneration each time you want to trigger another manual re-sync
 ```
 
 ## Conclusion
