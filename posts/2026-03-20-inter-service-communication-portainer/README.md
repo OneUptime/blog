@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
-Tags: Portainer, Docker, Microservice, Networking, Service Mesh, Communication
+Tags: Portainer, Docker, Microservice, Networking, Communication
 
 Description: Configure reliable inter-service communication between Docker containers using shared networks, DNS resolution, and message queues managed via Portainer.
 
@@ -22,15 +22,10 @@ All services that need to communicate must share a Docker network:
 ```yaml
 # docker-compose.yml - Shared network setup
 
-version: "3.8"
-
 networks:
-  # Internal service mesh network
+  # Internal shared network
   services_net:
     driver: bridge
-    # Enable custom DNS options
-    driver_opts:
-      com.docker.network.bridge.enable_icc: "true"
 
 services:
   service_a:
@@ -52,7 +47,6 @@ services:
 ```python
 # Python example: Service A calling Service B
 import httpx
-import asyncio
 from tenacity import retry, stop_after_attempt, wait_exponential
 
 @retry(
@@ -77,8 +71,6 @@ async def call_user_service(user_id: str) -> dict:
 
 ```yaml
 # docker-compose.yml - gRPC services
-version: "3.8"
-
 networks:
   grpc_net:
     driver: bridge
@@ -88,7 +80,7 @@ services:
     image: my-grpc-server:latest
     networks:
       - grpc_net
-    # gRPC default port
+    # Common gRPC port
     expose:
       - "50051"
 
@@ -106,7 +98,7 @@ services:
 conn, err := grpc.NewClient(
     os.Getenv("GRPC_SERVER_ADDR"),  // "grpc_server:50051"
     grpc.WithTransportCredentials(insecure.NewCredentials()),
-    grpc.WithDefaultServiceConfig(`{"loadBalancingPolicy":"round_robin"}`),
+    grpc.WithDefaultServiceConfig(`{"loadBalancingConfig":[{"round_robin":{}}]}`),
 )
 ```
 
@@ -114,8 +106,6 @@ conn, err := grpc.NewClient(
 
 ```yaml
 # docker-compose.yml - RabbitMQ message bus
-version: "3.8"
-
 networks:
   services_net:
     driver: bridge
@@ -167,8 +157,10 @@ services:
 
 ```python
 # Publisher (Order Service)
-import pika
 import json
+import os
+
+import pika
 
 def publish_order_created(order: dict):
     connection = pika.BlockingConnection(
@@ -198,6 +190,11 @@ def publish_order_created(order: dict):
 
 ```python
 # Consumer (Notification Service)
+import json
+import os
+
+import pika
+
 def start_consumer():
     connection = pika.BlockingConnection(
         pika.URLParameters(os.environ['RABBITMQ_URL'])
@@ -205,7 +202,10 @@ def start_consumer():
     channel = connection.channel()
 
     channel.exchange_declare(exchange='orders', exchange_type='topic', durable=True)
-    result = channel.queue_declare('', exclusive=True)
+    result = channel.queue_declare(
+        queue='notification_service.order_created',
+        durable=True
+    )
     queue_name = result.method.queue
 
     channel.queue_bind(
@@ -230,10 +230,16 @@ def start_consumer():
 package main
 
 import (
+    "fmt"
     "github.com/sony/gobreaker"
+    "io"
     "net/http"
     "time"
 )
+
+var httpClient = &http.Client{
+    Timeout: 5 * time.Second,
+}
 
 var userServiceBreaker = gobreaker.NewCircuitBreaker(gobreaker.Settings{
     Name:        "UserService",
@@ -249,17 +255,25 @@ var userServiceBreaker = gobreaker.NewCircuitBreaker(gobreaker.Settings{
 
 func getUser(userID string) ([]byte, error) {
     result, err := userServiceBreaker.Execute(func() (interface{}, error) {
-        resp, err := http.Get("http://user_service:8002/users/" + userID)
+        resp, err := httpClient.Get("http://user_service:8002/users/" + userID)
         if err != nil {
             return nil, err
         }
         defer resp.Body.Close()
-        // ... read body
+
+        if resp.StatusCode >= http.StatusInternalServerError {
+            return nil, fmt.Errorf("user service returned %d", resp.StatusCode)
+        }
+
+        body, err := io.ReadAll(resp.Body)
+        if err != nil {
+            return nil, err
+        }
         return body, nil
     })
 
     if err != nil {
-        // Circuit is open, return fallback
+        // Request failed or circuit is open, return fallback
         return getFallbackUser(userID), nil
     }
     return result.([]byte), nil
@@ -269,7 +283,7 @@ func getUser(userID string) ([]byte, error) {
 ## Step 6: Health Check Dependencies
 
 ```yaml
-# Ensure service B starts before service A
+# Ensure service B is healthy before service A starts
 services:
   service_b:
     image: service-b:latest
@@ -289,16 +303,16 @@ services:
 ## Monitoring Inter-Service Communication in Portainer
 
 ```bash
-# View service-to-service traffic
-docker exec service_a curl -s http://service_b:8080/health
+# View service-to-service connectivity
+docker compose exec service_a curl -s http://service_b:8080/health
 
-# Inspect network to verify connectivity
-docker network inspect services_net
+# Inspect the Compose-created network (replace <project> with your Compose project name)
+docker network inspect <project>_services_net
 
-# Check DNS resolution
-docker exec service_a nslookup service_b
+# Check DNS resolution from the service container
+docker compose exec service_a nslookup service_b
 ```
 
 ## Conclusion
 
-You now have multiple patterns for reliable inter-service communication in Docker managed by Portainer. Synchronous HTTP with retry logic handles most use cases, while asynchronous messaging via RabbitMQ decouples services for better resilience. Circuit breakers prevent cascade failures when services go down. Portainer's network view shows all containers connected to each network, making it easy to debug communication issues.
+You now have multiple patterns for reliable inter-service communication in Docker managed by Portainer. Synchronous HTTP with retry logic handles most use cases, while asynchronous messaging via RabbitMQ decouples services for better resilience. Circuit breakers prevent cascade failures when services go down. Portainer lets you manage Docker networks and inspect container network settings, making it easier to debug communication issues.
