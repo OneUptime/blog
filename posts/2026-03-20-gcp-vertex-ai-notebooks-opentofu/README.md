@@ -4,11 +4,11 @@ Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
 Tags: OpenTofu, GCP, Vertex AI, Notebook, Machine Learning, Infrastructure as Code
 
-Description: Learn how to create GCP Vertex AI Workbench managed notebooks and user-managed notebook instances for ML development using OpenTofu.
+Description: Learn how to create GCP Vertex AI Workbench instances with OpenTofu for ML development.
 
 ## Introduction
 
-Vertex AI Workbench provides Jupyter-based notebook environments for ML development on GCP. Managed notebooks are fully hosted by Google; user-managed notebooks give more control over the VM. OpenTofu manages both types as code.
+Vertex AI Workbench provides Jupyter-based notebook environments for ML development on GCP. Managed notebooks and user-managed notebooks were deprecated on April 14, 2025, so new deployments should use Vertex AI Workbench instances instead. OpenTofu manages these instances as code.
 
 ## Enabling APIs
 
@@ -20,52 +20,51 @@ resource "google_project_service" "notebooks" {
 
 resource "google_project_service" "aiplatform" {
   project = var.project_id
-  service = "aiplatform.googleapis.com"
+  service = "aiplatform.googleapis.com" # enable if the notebook will use Vertex AI APIs
 }
 ```
 
-## Managed Notebook Instance (Workbench)
+## Vertex AI Workbench Instance
 
 ```hcl
-resource "google_notebooks_instance" "managed_nb" {
-  name     = "${var.app_name}-notebook-${var.environment}"
+resource "google_workbench_instance" "workbench" {
+  name     = "${var.app_name}-workbench-${var.environment}"
   project  = var.project_id
-  location = "${var.region}-a"  # notebooks are zonal resources
+  location = "${var.region}-a"  # Workbench instances are zonal resources
 
-  machine_type = "n1-standard-4"
+  gce_setup {
+    machine_type      = "e2-standard-4"
+    disable_public_ip = true
 
-  vm_image {
-    project      = "deeplearning-platform-release"
-    image_family = "tf-latest-cpu"  # TensorFlow CPU image
-    # or "tf-latest-gpu" for GPU-enabled
+    vm_image {
+      project = "cloud-notebooks-managed"
+      family  = "workbench-instances"
+    }
+
+    service_accounts {
+      email = google_service_account.notebooks.email
+    }
+
+    network_interfaces {
+      network = google_compute_network.main.id
+      subnet  = google_compute_subnetwork.private.id
+    }
+
+    metadata = {
+      notebook-disable-root = "true"
+    }
   }
 
-  # Attach a GPU (if using a GPU VM type)
-  # accelerator_config {
-  #   type       = "NVIDIA_TESLA_T4"
-  #   core_count = 1
-  # }
-
-  install_gpu_driver = false
-
-  service_account = google_service_account.notebooks.email
-
-  # Network configuration
-  network = google_compute_network.main.id
-  subnet  = google_compute_subnetwork.private.id
-
-  no_public_ip    = true  # use private IP only
-  no_proxy_access = false  # allow JupyterLab proxy access
+  disable_proxy_access = false  # allow JupyterLab proxy access
 
   labels = {
     environment = var.environment
     managed_by  = "opentofu"
   }
 
-  metadata = {
-    notebook-disable-root = "true"
-    framework             = "tensorflow"
-  }
+  depends_on = [
+    google_project_service.notebooks
+  ]
 }
 ```
 
@@ -91,28 +90,44 @@ resource "google_project_iam_member" "notebooks_aiplatform" {
 }
 ```
 
-## Vertex AI Workbench User-Managed Notebook (Legacy)
+If you use service account access mode, users who need to open JupyterLab must also have `roles/iam.serviceAccountUser` on this service account.
+
+## Vertex AI Workbench Instance with a Container Image
 
 ```hcl
-resource "google_notebooks_instance" "user_managed" {
-  name     = "${var.app_name}-user-nb-${var.environment}"
+resource "google_workbench_instance" "container_workbench" {
+  name     = "${var.app_name}-container-nb-${var.environment}"
   project  = var.project_id
   location = "${var.region}-b"
 
-  machine_type = "e2-standard-4"
+  gce_setup {
+    machine_type      = "e2-standard-4"
+    disable_public_ip = true
 
-  container_image {
-    repository = "gcr.io/deeplearning-platform-release/base-cpu"
-    tag        = "latest"
+    container_image {
+      repository = "us-docker.pkg.dev/deeplearning-platform-release/gcr.io/workbench-container"
+      tag        = "latest"
+    }
+
+    service_accounts {
+      email = google_service_account.notebooks.email
+    }
+
+    network_interfaces {
+      network = google_compute_network.main.id
+      subnet  = google_compute_subnetwork.private.id
+    }
+
+    metadata = {
+      post-startup-script = "gs://${var.setup_bucket}/scripts/notebook_setup.sh"
+    }
   }
 
-  service_account  = google_service_account.notebooks.email
-  network          = google_compute_network.main.id
-  subnet           = google_compute_subnetwork.private.id
-  no_public_ip     = true
-  no_proxy_access  = false
+  disable_proxy_access = false
 
-  post_startup_script = "gs://${var.setup_bucket}/scripts/notebook_setup.sh"
+  depends_on = [
+    google_project_service.notebooks
+  ]
 }
 ```
 
@@ -121,7 +136,7 @@ resource "google_notebooks_instance" "user_managed" {
 ```hcl
 output "notebook_proxy_uri" {
   description = "JupyterLab access URL"
-  value       = google_notebooks_instance.managed_nb.proxy_uri
+  value       = google_workbench_instance.workbench.proxy_uri
 }
 ```
 
@@ -135,4 +150,4 @@ tofu apply tfplan
 
 ## Summary
 
-Vertex AI Workbench notebooks provide managed Jupyter environments optimized for ML workflows on GCP. OpenTofu manages notebook instances, service accounts with appropriate permissions, and post-startup scripts - creating a consistent, reproducible data science environment.
+Vertex AI Workbench instances provide Jupyter environments optimized for ML workflows on GCP. OpenTofu manages the Workbench instance, service account permissions, network settings, and startup configuration as code, creating a consistent and reproducible data science environment.
