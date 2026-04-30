@@ -4,27 +4,32 @@ Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
 Tags: gRPC, TLS, IPv4, Security, Python, Go
 
-Description: Learn how to secure gRPC connections with TLS over IPv4 in Python and Go, covering self-signed certificates, server-only TLS, mutual TLS (mTLS), and certificate rotation.
+Description: Learn how to secure gRPC connections with TLS over IPv4 in Python and Go, covering self-signed certificates, server-only TLS, mutual TLS (mTLS), and production certificate rotation considerations.
 
 ## Generate Self-Signed Certificates
 
 ```bash
 # CA
 
-openssl req -x509 -newkey rsa:4096 -days 3650 -nodes \
+openssl req -x509 -newkey rsa:4096 -days 3650 -noenc \
     -keyout ca.key -out ca.crt -subj "/CN=gRPC-CA"
 
-# Server key and signed certificate
-openssl req -newkey rsa:4096 -nodes \
-    -keyout server.key -out server.csr -subj "/CN=grpc-server"
+# Server key and signed certificate for 192.168.1.10
+openssl req -newkey rsa:4096 -noenc \
+    -keyout server.key -out server.csr -subj "/CN=grpc-server" \
+    -addext "subjectAltName = IP:192.168.1.10" \
+    -addext "extendedKeyUsage = serverAuth"
 openssl x509 -req -days 365 -in server.csr \
-    -CA ca.crt -CAkey ca.key -CAcreateserial -out server.crt
+    -CA ca.crt -CAkey ca.key -CAcreateserial -out server.crt \
+    -copy_extensions copy
 
 # Client key and signed certificate (for mTLS)
-openssl req -newkey rsa:4096 -nodes \
-    -keyout client.key -out client.csr -subj "/CN=grpc-client"
+openssl req -newkey rsa:4096 -noenc \
+    -keyout client.key -out client.csr -subj "/CN=grpc-client" \
+    -addext "extendedKeyUsage = clientAuth"
 openssl x509 -req -days 365 -in client.csr \
-    -CA ca.crt -CAkey ca.key -CAcreateserial -out client.crt
+    -CA ca.crt -CAkey ca.key -CAcreateserial -out client.crt \
+    -copy_extensions copy
 ```
 
 ## Python: TLS Server (Server-Only Auth)
@@ -105,18 +110,26 @@ def call_mtls():
 import (
     "crypto/tls"
     "crypto/x509"
+    "fmt"
     "os"
+
     "google.golang.org/grpc"
     "google.golang.org/grpc/credentials"
 )
 
 func tlsClient(addr string) (*grpc.ClientConn, error) {
-    caCert, _ := os.ReadFile("ca.crt")
+    caCert, err := os.ReadFile("ca.crt")
+    if err != nil {
+        return nil, err
+    }
+
     pool := x509.NewCertPool()
-    pool.AppendCertsFromPEM(caCert)
+    if !pool.AppendCertsFromPEM(caCert) {
+        return nil, fmt.Errorf("failed to append CA certificate")
+    }
 
     tlsCfg := &tls.Config{RootCAs: pool}
-    creds  := credentials.NewTLS(tlsCfg)
+    creds := credentials.NewTLS(tlsCfg)
 
     return grpc.NewClient(addr, grpc.WithTransportCredentials(creds))
 }
@@ -124,4 +137,4 @@ func tlsClient(addr string) (*grpc.ClientConn, error) {
 
 ## Conclusion
 
-Pass `grpc.ssl_server_credentials` (Python) or `credentials.NewTLS` (Go) to the server and client to enable TLS. For server-only TLS, the client verifies the server certificate with the CA bundle. For mTLS, set `require_client_auth=True` (Python) or configure `ClientAuth: tls.RequireAndVerifyClientCert` (Go) and provide client certificates. In production, use a proper CA (Let's Encrypt, HashiCorp Vault PKI, or cert-manager in Kubernetes) rather than self-signed certificates, and automate rotation before certificates expire.
+Use `grpc.ssl_server_credentials` on the Python server, `grpc.ssl_channel_credentials` on the Python client, and `credentials.NewTLS` in Go to enable TLS. For server-only TLS, the client verifies the server certificate with the CA bundle, and when you connect by IPv4 address the server certificate must include that IP address in `subjectAltName`. For mTLS, set `require_client_auth=True` (Python) or configure `ClientAuth: tls.RequireAndVerifyClientCert` (Go) and provide client certificates. In production, use a proper CA (Let's Encrypt, HashiCorp Vault PKI, or cert-manager in Kubernetes) rather than self-signed certificates, and automate rotation before certificates expire.
