@@ -22,25 +22,32 @@ server:
   http_listen_port: 3100
   grpc_listen_address: 10.0.0.25
 
+common:
+  path_prefix: /var/loki
+  replication_factor: 1
+  ring:
+    instance_addr: 10.0.0.25
+    kvstore:
+      store: inmemory
+
 schema_config:
   configs:
     - from: 2024-01-01
       store: tsdb
       object_store: filesystem
-      schema: v12
+      schema: v13
       index:
         prefix: index_
         period: 24h
 
 storage_config:
-  tsdb_shipper:
-    active_index_directory: /var/loki/index
-    cache_location: /var/loki/index_cache
   filesystem:
     directory: /var/loki/chunks
 ```
 
-## Promtail Configuration (Log Shipper)
+## Promtail Configuration (Legacy Log Shipper)
+
+Promtail reached end of life on March 2, 2026. Use Grafana Alloy or another supported client for new deployments; the example below is for existing Promtail installations.
 
 ```yaml
 # /etc/promtail/config.yml
@@ -48,6 +55,9 @@ storage_config:
 server:
   http_listen_address: 10.0.0.1
   http_listen_port: 9080
+
+positions:
+  filename: /tmp/positions.yaml
 
 clients:
   - url: http://10.0.0.25:3100/loki/api/v1/push
@@ -78,31 +88,47 @@ scrape_configs:
 {job="nginx"}
 
 # Requests from specific IPv4
-{job="nginx"} |= "203.0.113.20"
+{job="nginx"} |= ip("203.0.113.20")
 
-# Requests matching IPv4 pattern (regex)
-{job="nginx"} |~ `\b10\.0\.0\.\d+\b`
+# Requests matching IPv4 subnet (CIDR)
+{job="nginx"} |= ip("10.0.0.0/24")
 
 # Count requests per source IP (metric query)
 sum by (remote_addr) (
-  count_over_time({job="nginx"} | logfmt | line_format "{{.remote_addr}}" [5m])
+  count_over_time(
+    {job="nginx"}
+    | pattern `<remote_addr> - - <_> "<method> <uri> <_>" <status> <bytes_sent> <_> "<agent>" <_>`
+    [5m]
+  )
 )
 
 # Top 10 IPs by request count
 topk(10,
   sum by (remote_addr) (
-    count_over_time({job="nginx"} | regexp `(?P<remote_addr>\d+\.\d+\.\d+\.\d+)` [5m])
+    count_over_time(
+      {job="nginx"}
+      | pattern `<remote_addr> - - <_> "<method> <uri> <_>" <status> <bytes_sent> <_> "<agent>" <_>`
+      [5m]
+    )
   )
 )
 
 # HTTP 4xx errors per IP
-{job="nginx"} | regexp `(?P<remote_addr>\d+\.\d+\.\d+\.\d+) .* (?P<status>[45]\d{2})`
-| status =~ "4.."
+sum by (remote_addr) (
+  count_over_time(
+    {job="nginx"}
+    | pattern `<remote_addr> - - <_> "<method> <uri> <_>" <status> <bytes_sent> <_> "<agent>" <_>`
+    | status =~ "4.."
+    [5m]
+  )
+)
 
 # Bandwidth per IP (if log includes bytes)
 sum by (remote_addr) (
   sum_over_time(
-    {job="nginx"} | logfmt | unwrap bytes_sent [5m]
+    {job="nginx"}
+    | pattern `<remote_addr> - - <_> "<method> <uri> <_>" <status> <bytes_sent> <_> "<agent>" <_>`
+    | unwrap bytes_sent [5m]
   )
 )
 ```
@@ -113,16 +139,16 @@ sum by (remote_addr) (
 # In Grafana, create a new panel with Loki data source:
 
 # Panel 1: Log stream (Logs type)
-# Query: {job="nginx"} | logfmt | remote_addr != ""
+# Query: {job="nginx"} | pattern `<remote_addr> - - <_> "<method> <uri> <_>" <status> <bytes_sent> <_> "<agent>" <_>` | remote_addr != ""
 
 # Panel 2: Request rate by IP (Time series type)
-# Query: sum by (remote_addr) (rate({job="nginx"} | logfmt [5m]))
+# Query: sum by (remote_addr) (rate({job="nginx"} | pattern `<remote_addr> - - <_> "<method> <uri> <_>" <status> <bytes_sent> <_> "<agent>" <_>` [5m]))
 
 # Panel 3: Top IPs table (Table type)
-# Query: topk(10, sum by (remote_addr) (count_over_time({job="nginx"}[1h])))
+# Query: topk(10, sum by (remote_addr) (count_over_time({job="nginx"} | pattern `<remote_addr> - - <_> "<method> <uri> <_>" <status> <bytes_sent> <_> "<agent>" <_>` [1h])))
 
 # Panel 4: Error rate (Stat type)
-# Query: sum(count_over_time({job="nginx"} |= "\" 5" [5m]))
+# Query: sum(rate({job="nginx"} | pattern `<remote_addr> - - <_> "<method> <uri> <_>" <status> <bytes_sent> <_> "<agent>" <_>` | status =~ "5.." [5m]))
 ```
 
 ## Loki Alert Rules
@@ -135,7 +161,7 @@ groups:
     rules:
       - alert: HighErrorRate
         expr: >
-          sum(rate({job="nginx"} |~ " (4|5)[0-9][0-9] " [5m])) > 10
+          sum(rate({job="nginx"} | pattern `<remote_addr> - - <_> "<method> <uri> <_>" <status> <bytes_sent> <_> "<agent>" <_>` | status =~ "[45].." [5m])) > 10
         for: 5m
         labels:
           severity: warning
@@ -145,4 +171,4 @@ groups:
 
 ## Conclusion
 
-Loki with LogQL enables IPv4-based log analysis without indexing full log content. Use `|=` for literal IP search, `|~` for regex IP patterns, and `| regexp` with named captures for extracting IPs into labels. Combine with Prometheus metrics for mixed log+metric dashboards. Alert on log-derived metrics using Loki ruler configuration for detecting high error rates or suspicious access patterns.
+Loki with LogQL enables IPv4-based log analysis without indexing full log content. Use `ip()` for exact IP, range, and CIDR matches, and `| pattern` or `| regexp` when you need to extract fields from Nginx access logs at query time. Combine with Prometheus metrics for mixed log+metric dashboards. Alert on log-derived metrics using Loki ruler configuration for detecting high error rates or suspicious access patterns.
