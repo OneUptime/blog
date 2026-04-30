@@ -10,33 +10,30 @@ Description: Learn how to provision GPU instances for machine learning training 
 
 GPU instances accelerate deep learning training but are expensive - an unattended p3.2xlarge costs over $3/hour. OpenTofu provisions GPU compute with auto-shutdown policies, spot instance configuration, and proper NVIDIA driver setup to balance training performance with cost control.
 
+The prices below are example Linux rates for us-east-1, East US, and us-central1 as of 2026-04-30; spot and preemptible rates can change frequently.
+
 ## GPU Instance Cost Comparison
 
 | Provider | Instance | GPUs | On-Demand | Spot/Preemptible |
 |----------|----------|------|-----------|-----------------|
-| AWS | p3.2xlarge | 1x V100 | $3.06/hr | ~$0.90/hr |
-| AWS | p4d.24xlarge | 8x A100 | $32.77/hr | ~$10/hr |
-| Azure | NC6s_v3 | 1x V100 | $3.06/hr | ~$0.92/hr |
-| GCP | n1+T4 | 1x T4 | $0.95/hr | ~$0.29/hr |
+| AWS | p3.2xlarge | 1x V100 | $3.06/hr | ~$1.38/hr |
+| AWS | p4d.24xlarge | 8x A100 | ~$21.96/hr | ~$13.07/hr |
+| Azure | NC6s_v3 | 1x V100 | $3.06/hr | ~$0.57/hr |
+| GCP | n1-standard-8 + T4 | 1x T4 | ~$0.73/hr | Dynamic (60-91% off) |
 
 ## AWS GPU Instance
 
 ```hcl
 # aws_gpu.tf
 
-data "aws_ami" "deep_learning" {
-  most_recent = true
-  owners      = ["amazon"]
-
-  filter {
-    name   = "name"
-    values = ["Deep Learning AMI GPU PyTorch*Ubuntu*"]
-  }
+data "aws_ssm_parameter" "deep_learning_ami" {
+  name = "/aws/service/deeplearning/ami/x86_64/oss-nvidia-driver-gpu-pytorch-2.6-ubuntu-22.04/latest/ami-id"
 }
 
 resource "aws_instance" "gpu_training" {
-  ami                  = data.aws_ami.deep_learning.id
-  instance_type        = var.gpu_instance_type  # "p3.2xlarge", "p4d.24xlarge"
+  count                = var.use_spot ? 0 : 1
+  ami                  = data.aws_ssm_parameter.deep_learning_ami.value
+  instance_type        = var.gpu_instance_type  # "g5.xlarge", "p4d.24xlarge"
   subnet_id            = var.private_subnet_id
   iam_instance_profile = aws_iam_instance_profile.training.name
   key_name             = var.key_pair_name
@@ -53,16 +50,13 @@ resource "aws_instance" "gpu_training" {
     encrypted             = true
   }
 
-  # Instance store for fast scratch storage (NVMe)
-  # p3.2xlarge has 1x 488 GB NVMe SSD
+  # p3.2xlarge is EBS-only; larger GPU families such as p4d include local NVMe instance storage
 
-  user_data = base64encode(<<-EOF
+  user_data = <<-EOF
     #!/bin/bash
-    # Auto-shutdown after training completes or 8 hours
-    shutdown -h +480 &
-    echo "0 * * * * sudo shutdown -c" | crontab -
+    # Auto-shutdown after 8 hours unless canceled manually
+    shutdown -h +480
   EOF
-  )
 
   tags = {
     Name         = "${var.prefix}-gpu-training"
@@ -72,26 +66,37 @@ resource "aws_instance" "gpu_training" {
   }
 }
 
-# Spot instance request for cost savings
-resource "aws_spot_instance_request" "gpu_training_spot" {
+# Spot instance for cost savings
+resource "aws_instance" "gpu_training_spot" {
   count = var.use_spot ? 1 : 0
 
-  ami                  = data.aws_ami.deep_learning.id
+  ami                  = data.aws_ssm_parameter.deep_learning_ami.value
   instance_type        = var.gpu_instance_type
-  spot_price           = var.spot_max_price  # e.g., "1.00"
-  spot_type            = "one-time"
-  wait_for_fulfillment = true
-
   subnet_id              = var.private_subnet_id
   vpc_security_group_ids = [aws_security_group.gpu.id]
   iam_instance_profile   = aws_iam_instance_profile.training.name
   key_name               = var.key_pair_name
+
+  instance_market_options {
+    market_type = "spot"
+
+    spot_options {
+      max_price          = var.spot_max_price  # e.g., "1.50"
+      spot_instance_type = "one-time"
+    }
+  }
 
   root_block_device {
     volume_type = "gp3"
     volume_size = 500
     encrypted   = true
   }
+
+  user_data = <<-EOF
+    #!/bin/bash
+    # Auto-shutdown after 8 hours unless canceled manually
+    shutdown -h +480
+  EOF
 
   tags = {
     Name      = "${var.prefix}-gpu-spot"
@@ -120,11 +125,11 @@ resource "azurerm_linux_virtual_machine" "gpu" {
 
   network_interface_ids = [azurerm_network_interface.gpu.id]
 
-  # NVIDIA GPU Optimized image with CUDA pre-installed
+  # Ubuntu 20.04 is supported by the NVIDIA GPU Driver Extension for CUDA on NC/ND series VMs
   source_image_reference {
-    publisher = "microsoft-dsvm"
-    offer     = "ubuntu-2004"
-    sku       = "2004-gen2"
+    publisher = "Canonical"
+    offer     = "0001-com-ubuntu-server-focal"
+    sku       = "20_04-lts-gen2"
     version   = "latest"
   }
 
@@ -134,20 +139,44 @@ resource "azurerm_linux_virtual_machine" "gpu" {
     caching              = "ReadWrite"
   }
 
-  # Data disk for training data
-  dynamic "data_disk" {
-    for_each = [0]
-    content {}
-  }
-
   identity {
     type = "SystemAssigned"
   }
 
-  # Auto-shutdown schedule
+  # Keep the VM stable even if the marketplace image version advances later
   lifecycle {
     ignore_changes = [source_image_reference]
   }
+}
+
+# Data disk for training data
+resource "azurerm_managed_disk" "gpu_data" {
+  name                 = "${var.prefix}-gpu-data"
+  location             = azurerm_resource_group.ml.location
+  resource_group_name  = azurerm_resource_group.ml.name
+  storage_account_type = "Premium_LRS"
+  create_option        = "Empty"
+  disk_size_gb         = 256
+}
+
+resource "azurerm_virtual_machine_data_disk_attachment" "gpu_data" {
+  managed_disk_id    = azurerm_managed_disk.gpu_data.id
+  virtual_machine_id = azurerm_linux_virtual_machine.gpu.id
+  lun                = 10
+  caching            = "ReadWrite"
+}
+
+resource "azurerm_virtual_machine_extension" "nvidia_driver" {
+  name                       = "nvidia-driver"
+  virtual_machine_id         = azurerm_linux_virtual_machine.gpu.id
+  publisher                  = "Microsoft.HpcCompute"
+  type                       = "NvidiaGpuDriverLinux"
+  type_handler_version       = "1.6"
+  auto_upgrade_minor_version = true
+
+  settings = jsonencode({
+    installCUDA = true
+  })
 }
 
 # Auto-shutdown at end of business day
@@ -172,7 +201,7 @@ resource "azurerm_dev_test_global_vm_shutdown_schedule" "gpu" {
 resource "google_compute_instance" "gpu" {
   name         = "${var.prefix}-gpu-training"
   machine_type = "n1-standard-8"
-  zone         = "${var.region}-a"
+  zone         = var.zone  # e.g. "us-central1-a"
 
   scheduling {
     preemptible         = var.use_preemptible
@@ -181,7 +210,7 @@ resource "google_compute_instance" "gpu" {
   }
 
   guest_accelerator {
-    type  = var.gpu_type   # "nvidia-tesla-t4", "nvidia-a100-80gb"
+    type  = var.gpu_type   # "nvidia-tesla-t4", "nvidia-tesla-v100"
     count = var.gpu_count
   }
 
@@ -207,7 +236,7 @@ resource "google_compute_instance" "gpu" {
   metadata = {
     install-nvidia-driver = "True"
     # Auto-shutdown via startup script
-    startup-script = "sudo shutdown -h +${var.max_runtime_hours * 60} &"
+    startup-script = "shutdown -h +${var.max_runtime_hours * 60}"
   }
 
   labels = {
