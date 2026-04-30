@@ -4,9 +4,9 @@ Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
 Tags: IKEv2, strongSwan, VPN, IPv4, PKI, Linux
 
-Description: Build a production-ready IKEv2 VPN server with StrongSwan using certificate authentication for secure IPv4 remote access.
+Description: Build a production-ready IKEv2 VPN server with StrongSwan using server certificate authentication and EAP-MSCHAPv2 credentials for secure IPv4 remote access.
 
-IKEv2 is the modern standard for IPSec key exchange, offering faster renegotiation, MOBIKE for mobility, and better security than IKEv1. Combined with certificate authentication, it provides a robust VPN solution compatible with Windows, macOS, iOS, and Android native VPN clients.
+IKEv2 is the modern standard for IPSec key exchange, offering faster renegotiation, MOBIKE for mobility, and better security than IKEv1. Combined with server certificate authentication and EAP-MSCHAPv2 user authentication, it provides a robust VPN solution compatible with Windows, macOS, and iOS native VPN clients, plus Android clients such as the strongSwan app.
 
 ## Step 1: Generate the PKI
 
@@ -30,7 +30,7 @@ ipsec pki --self --ca --lifetime 3650 \
 ipsec pki --gen --type rsa --size 4096 --outform pem > ~/pki/private/server-key.pem
 
 # Generate and sign the server certificate
-# Replace vpn.example.com with your server's FQDN or public IP
+# Replace vpn.example.com with your server's FQDN
 ipsec pki --pub --in ~/pki/private/server-key.pem --type rsa | \
   ipsec pki --issue --lifetime 1825 \
   --cacert ~/pki/cacerts/ca-cert.pem \
@@ -41,9 +41,9 @@ ipsec pki --pub --in ~/pki/private/server-key.pem --type rsa | \
   --outform pem > ~/pki/certs/server-cert.pem
 
 # Copy to StrongSwan directories
-sudo cp -r ~/pki/private/* /etc/ipsec.d/private/
-sudo cp -r ~/pki/cacerts/* /etc/ipsec.d/cacerts/
-sudo cp -r ~/pki/certs/* /etc/ipsec.d/certs/
+sudo cp ~/pki/private/server-key.pem /etc/ipsec.d/private/
+sudo cp ~/pki/cacerts/ca-cert.pem /etc/ipsec.d/cacerts/
+sudo cp ~/pki/certs/server-cert.pem /etc/ipsec.d/certs/
 ```
 
 ## Step 2: Configure StrongSwan for IKEv2
@@ -69,6 +69,7 @@ conn ikev2-vpn
     # Server side
     left=%any
     leftid=@vpn.example.com
+    leftauth=pubkey
     leftcert=server-cert.pem
     leftsendcert=always
     leftsubnet=0.0.0.0/0
@@ -101,18 +102,19 @@ bob   : EAP "SecurePassword2!"
 ```bash
 sudo sysctl -w net.ipv4.ip_forward=1
 
-# Allow IKEv2 and ESP
+# Allow IKEv2 and NAT-T
 sudo iptables -A INPUT -p udp --dport 500 -j ACCEPT
 sudo iptables -A INPUT -p udp --dport 4500 -j ACCEPT
 sudo iptables -A FORWARD -s 10.10.0.0/24 -j ACCEPT
+sudo iptables -A FORWARD -m conntrack --ctstate RELATED,ESTABLISHED -j ACCEPT
 sudo iptables -t nat -A POSTROUTING -s 10.10.0.0/24 -o eth0 -j MASQUERADE
 ```
 
 ## Step 5: Start and Test
 
 ```bash
-sudo systemctl restart strongswan
+sudo ipsec restart
 sudo ipsec statusall
 ```
 
-Clients can now connect using the built-in IKEv2 VPN clients on Windows, macOS, iOS, and Android by trusting the CA certificate.
+Clients can now connect using the built-in IKEv2 VPN clients on Windows, macOS, and iOS, or an Android IKEv2 client such as the strongSwan app, after trusting the CA certificate and entering a configured username and password.
