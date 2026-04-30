@@ -8,7 +8,7 @@ Description: Learn how to use aztfexport to generate OpenTofu/Terraform configur
 
 ---
 
-aztfexport (Azure Terraform Export) is Microsoft's official tool for generating Terraform/OpenTofu configuration from existing Azure resources. It queries Azure Resource Manager and produces ready-to-use HCL configuration with matching state.
+aztfexport (Azure Terraform Export) is Microsoft's official tool for generating Terraform configuration from existing Azure resources. It queries Azure Resource Manager and Azure Resource Graph, and produces HCL configuration with matching state. `aztfexport` itself expects a `terraform` binary on your `PATH`, but you can review the generated files and validate them with OpenTofu afterwards.
 
 ## aztfexport Workflow
 
@@ -26,12 +26,12 @@ graph LR
 ## Installing aztfexport
 
 ```bash
-# macOS
+# macOS or Linux (Homebrew)
 
 brew install aztfexport
 
-# Linux
-curl -sSL https://aka.ms/aztfexport/install.sh | bash
+# Cross-platform (Go toolchain)
+go install github.com/Azure/aztfexport@latest
 
 # Verify installation
 aztfexport --version
@@ -41,21 +41,23 @@ aztfexport --version
 
 ```bash
 # Export all resources in a resource group
-aztfexport resource-group MyResourceGroup \
+aztfexport resource-group \
   --output-dir ./imported-azure \
-  --non-interactive
+  --non-interactive \
+  MyResourceGroup
 
-# This creates:
+# In a fresh output directory, this typically creates:
 # imported-azure/
-# ├── main.tf           - all resource definitions
-# ├── provider.tf       - azurerm provider config
-# └── terraform.tfstate - matching state file
+# ├── main.tf           - generated resource definitions
+# ├── provider.tf       - provider config
+# ├── terraform.tf      - required_providers and backend config
+# └── terraform.tfstate - matching local state
 ```
 
-## Export Specific Resource Types
+## Export Specific Resources
 
 ```bash
-# Export only specific resource types
+# Export a specific resource by resource ID
 aztfexport resource \
   --output-dir ./imported-azure \
   --non-interactive \
@@ -65,7 +67,7 @@ aztfexport resource \
 aztfexport query \
   --output-dir ./imported-azure \
   --non-interactive \
-  "resourceGroup == 'my-production-rg' and type == 'microsoft.network/virtualnetworks'"
+  "resourceGroup =~ 'my-production-rg' and type =~ 'microsoft.network/virtualnetworks'"
 ```
 
 ## Review and Clean Generated Configuration
@@ -113,7 +115,11 @@ resource "azurerm_subnet" "res-1" {
 ```bash
 # Rename auto-generated resource names (res-0, res-1) to meaningful names
 # Use a sed script or IDE rename
-sed -i 's/azurerm_virtual_network.res-0/azurerm_virtual_network.main/g' main.tf
+sed -i.bak \
+  -e 's/resource "azurerm_virtual_network" "res-0"/resource "azurerm_virtual_network" "main"/g' \
+  -e 's/azurerm_virtual_network.res-0/azurerm_virtual_network.main/g' \
+  main.tf
+rm -f main.tf.bak
 
 # Extract common values to variables
 cat > variables.tf << 'EOF'
@@ -127,7 +133,8 @@ variable "resource_group_name" {
 EOF
 
 # Replace hardcoded values
-sed -i 's/location            = "eastus"/location            = var.location/g' main.tf
+sed -i.bak 's/location            = "eastus"/location            = var.location/g' main.tf
+rm -f main.tf.bak
 
 # Run plan to verify no unintended changes
 tofu plan
@@ -136,7 +143,7 @@ tofu plan
 ## Move State to Remote Backend
 
 ```bash
-# After cleanup, migrate state to S3 or Azure Blob
+# After cleanup, migrate state to Azure Blob
 # Add backend config
 cat > backend.tf << 'EOF'
 terraform {
