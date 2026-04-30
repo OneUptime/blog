@@ -4,9 +4,9 @@ Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
 Tags: iptables, Firewall, Linux, Security, Default Deny, IPv4
 
-Description: Configure iptables with a default deny policy for all chains and then progressively add allow rules for required traffic, implementing a secure firewall baseline.
+Description: Configure iptables with a default deny policy for the built-in filter chains and then progressively add allow rules for required traffic, implementing a secure firewall baseline.
 
-A default deny firewall policy rejects all traffic unless explicitly permitted. This is the security-first approach to firewall design.
+A default deny firewall policy denies all traffic unless explicitly permitted. This is the security-first approach to firewall design.
 
 ## Step 1: Flush Existing Rules and Set Default Policy
 
@@ -14,12 +14,14 @@ A default deny firewall policy rejects all traffic unless explicitly permitted. 
 #!/bin/bash
 # firewall-setup.sh - Default deny firewall
 
-# Flush all existing rules
+# Flush existing rules from the filter, nat, and mangle tables
 
-iptables -F       # Flush all rules in all chains
-iptables -X       # Delete user-defined chains
+iptables -F       # Flush all rules in the filter table
+iptables -X       # Delete user-defined chains in the filter table
 iptables -t nat -F
+iptables -t nat -X
 iptables -t mangle -F
+iptables -t mangle -X
 
 # Set default policies to DROP (deny all)
 iptables -P INPUT DROP
@@ -100,6 +102,7 @@ iptables -A OUTPUT -m state --state ESTABLISHED,RELATED -j ACCEPT
 iptables -A INPUT -p tcp --dport 80 -j ACCEPT
 iptables -A INPUT -p tcp --dport 443 -j ACCEPT
 iptables -A OUTPUT -p udp --dport 53 -j ACCEPT
+iptables -A OUTPUT -p tcp --dport 53 -j ACCEPT
 iptables -A OUTPUT -p tcp --dport 443 -j ACCEPT
 iptables -A OUTPUT -p tcp --dport 80 -j ACCEPT
 
@@ -117,10 +120,10 @@ sudo iptables -L -n | grep "policy DROP"
 # Chain FORWARD (policy DROP)
 # Chain OUTPUT (policy DROP)
 
-# Test that blocked traffic is actually blocked
-sudo iptables -A INPUT -p tcp --dport 8888 -j DROP
-nc -l 8888 &
-nc localhost 8888  # Should fail immediately
+# On the firewall host, start a temporary listener on a port you did not allow
+python3 -m http.server --bind 0.0.0.0 8888 &
+# From another host:
+nc -vz SERVER_IP 8888  # Should fail or time out because no INPUT rule allows port 8888
 ```
 
 ## Saving the Configuration
