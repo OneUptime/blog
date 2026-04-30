@@ -17,6 +17,7 @@ sudo apt update
 sudo apt install strongswan strongswan-pki libcharon-extra-plugins -y
 
 # RHEL/CentOS
+sudo dnf install epel-release -y
 sudo dnf install strongswan -y
 ```
 
@@ -28,7 +29,7 @@ The main configuration file is `/etc/ipsec.conf`:
 # /etc/ipsec.conf
 
 config setup
-    # Log level: 0=none, 4=verbose
+    # Log levels range from -1 to 4
     charondebug="ike 2, knl 2, cfg 2"
 
 conn %default
@@ -52,7 +53,7 @@ conn vpn-psk
     # Authentication method: PSK (pre-shared key)
     leftauth=psk
     rightauth=psk
-    # Load this connection
+    # Load this connection and wait for clients
     auto=add
 ```
 
@@ -81,7 +82,12 @@ sudo chmod 600 /etc/ipsec.secrets
 sudo sysctl -w net.ipv4.ip_forward=1
 echo "net.ipv4.ip_forward = 1" | sudo tee -a /etc/sysctl.conf
 
+# Allow VPN client traffic to be forwarded
+sudo iptables -A FORWARD -s 10.10.10.0/24 -j ACCEPT
+sudo iptables -A FORWARD -d 10.10.10.0/24 -m conntrack --ctstate RELATED,ESTABLISHED -j ACCEPT
+
 # NAT for VPN clients to access the internet
+sudo iptables -t nat -A POSTROUTING -s 10.10.10.0/24 -o eth0 -m policy --pol ipsec --dir out -j ACCEPT
 sudo iptables -t nat -A POSTROUTING -s 10.10.10.0/24 -o eth0 -j MASQUERADE
 
 # Allow IPSec traffic
@@ -94,15 +100,14 @@ sudo iptables -A INPUT -p esp -j ACCEPT
 
 ```bash
 # Start StrongSwan
-sudo systemctl enable strongswan
-sudo systemctl start strongswan
+sudo systemctl enable strongswan-starter
+sudo systemctl start strongswan-starter
 
 # Check status
 sudo ipsec statusall
 
 # Load the new configuration without restart
 sudo ipsec reload
-sudo ipsec up vpn-psk
 ```
 
 ## Monitoring Active Connections
@@ -120,7 +125,7 @@ sudo ip xfrm policy list
 
 ```bash
 # View StrongSwan logs
-sudo journalctl -u strongswan -f
+sudo journalctl -u strongswan-starter -f
 
 # Enable IKE debug logging
 sudo ipsec stroke loglevel ike 4
