@@ -8,9 +8,12 @@ Description: Learn how to deploy Portainer Server on a Kubernetes cluster using 
 
 ## Prerequisites
 
-- A running Kubernetes cluster (v1.20+)
+- A working and up-to-date Kubernetes cluster
+- Cluster-admin access to the Kubernetes cluster
+- A default StorageClass configured for persistent storage
 - `kubectl` configured to access the cluster
 - Helm 3 installed
+- A Portainer Business Edition license key (for Business Edition installs)
 
 ## Adding the Portainer Helm Repository
 
@@ -100,8 +103,8 @@ kubectl get service portainer --namespace portainer --watch
 
 Once the service is available:
 
-- **NodePort**: `http://<node-ip>:<nodeport>` (default NodePort is usually 30777)
-- **LoadBalancer**: `http://<external-ip>:9000`
+- **NodePort**: `http://<node-ip>:30777` or `https://<node-ip>:30779`
+- **LoadBalancer**: `http://<external-ip>:9000` or `https://<external-ip>:9443`
 
 On first access, Portainer prompts you to create an admin account. Complete setup within 5 minutes or the initialization window expires.
 
@@ -111,7 +114,7 @@ On first access, Portainer prompts you to create an admin account. Complete setu
 # Update Helm repos to get the latest chart version
 helm repo update
 
-# Upgrade Portainer to the latest version
+# Upgrade Portainer using the existing release values
 helm upgrade portainer portainer/portainer \
   --namespace portainer \
   --reuse-values
