@@ -36,16 +36,16 @@ resource "google_project_iam_member" "dev_team_viewer" {
   member  = "group:dev-team@example.com"
 }
 
-# Conditional binding - only during business hours
+# Conditional binding - only during weekday business hours
 resource "google_project_iam_member" "conditional_access" {
   project = var.project_id
-  role    = "roles/editor"
+  role    = "roles/container.admin"
   member  = "user:oncall@example.com"
 
   condition {
     title       = "business-hours"
-    description = "Only allow access during business hours"
-    expression  = "request.time.getHours(\"America/New_York\") >= 9 && request.time.getHours(\"America/New_York\") <= 17"
+    description = "Only allow access during weekday business hours"
+    expression  = "request.time.getDayOfWeek(\"America/New_York\") >= 1 && request.time.getDayOfWeek(\"America/New_York\") <= 5 && request.time.getHours(\"America/New_York\") >= 9 && request.time.getHours(\"America/New_York\") <= 17"
   }
 }
 ```
@@ -139,8 +139,8 @@ resource "google_project_iam_member" "app_roles" {
 
 ## Best Practices
 
-- Prefer `iam_member` for additive grants - it's the safest option and won't accidentally remove access granted outside OpenTofu.
-- Use `iam_binding` only when you need to own all members of a specific role.
-- Never use `iam_policy` on a project unless you want OpenTofu to manage 100% of the project's IAM - it removes any manually added bindings on the next apply.
-- Apply IAM at the narrowest scope (resource > folder > project > organization) to minimize blast radius.
-- Use conditional bindings for temporary access grants - they expire automatically without manual cleanup.
+- Prefer `iam_member` for additive grants - it's the safest option and won't accidentally remove access granted outside OpenTofu, as long as the same role is not also managed by `iam_binding`.
+- Use `iam_binding` only when you need to own all members of a specific role, and don't combine it with `iam_member` for the same role.
+- Never use `iam_policy` on a project unless you want OpenTofu to manage 100% of the project's IAM - it removes any manually added bindings on the next apply and should not be mixed with `iam_binding` or `iam_member`.
+- Apply IAM at the narrowest scope (resource > project > folder > organization) to minimize blast radius.
+- Use conditional bindings for temporary access grants - access can stop automatically when the condition no longer matches.
