@@ -13,7 +13,6 @@ A home lab is a personal computing environment where you can experiment with sof
 ## Prerequisites
 
 - A machine running Linux (Ubuntu 22.04 recommended), a Raspberry Pi, or an old PC
-- Docker installed
 - At least 4GB RAM and 50GB storage
 - Basic knowledge of Docker and networking
 
@@ -25,7 +24,8 @@ A home lab is a personal computing environment where you can experiment with sof
 sudo apt update && sudo apt upgrade -y
 
 # Install Docker using the convenience script
-curl -fsSL https://get.docker.com | sh
+curl -fsSL https://get.docker.com -o get-docker.sh
+sudo sh get-docker.sh
 
 # Add your user to the docker group
 sudo usermod -aG docker $USER
@@ -35,8 +35,10 @@ sudo systemctl enable docker
 sudo systemctl start docker
 
 # Verify Docker is running
-docker --version
+sudo docker run hello-world
 ```
+
+Log out and back in before continuing so your updated `docker` group membership takes effect.
 
 ## Step 2: Install Portainer
 
@@ -52,15 +54,15 @@ docker run -d \
   --restart=always \
   -v /var/run/docker.sock:/var/run/docker.sock \
   -v portainer_data:/data \
-  portainer/portainer-ce:latest
+  portainer/portainer-ce:lts
 ```
 
 ## Step 3: Initial Portainer Configuration
 
 1. Navigate to `https://your-server-ip:9443` in your browser
 2. Create your admin account with a strong password
-3. Select **Docker** as your environment type
-4. Click **Connect** to manage your local Docker environment
+3. Portainer will automatically detect and set up the local environment
+4. Click **Get Started** to begin using Portainer, or **Add Environments** if you want to connect additional hosts
 
 ## Step 4: Set Up a Core Home Lab Stack
 
@@ -68,7 +70,6 @@ Create a foundational `docker-compose.yml` for essential services:
 
 ```yaml
 # docker-compose.yml - Core Home Lab Stack
-version: "3.8"
 
 networks:
   # Shared network for all home lab services
@@ -98,7 +99,6 @@ services:
     networks:
       - homelab
     command:
-      - "--api.insecure=true"
       - "--providers.docker=true"
       - "--providers.docker.exposedbydefault=false"
       - "--entrypoints.web.address=:80"
@@ -115,7 +115,6 @@ services:
       # Check for updates every 24 hours
       - WATCHTOWER_SCHEDULE=0 0 4 * * *
       - WATCHTOWER_CLEANUP=true
-      - WATCHTOWER_NOTIFICATIONS=email
     networks:
       - homelab
 ```
@@ -139,19 +138,21 @@ docker run -d \
   --restart=always \
   -v /var/run/docker.sock:/var/run/docker.sock \
   -v /var/lib/docker/volumes:/var/lib/docker/volumes \
-  portainer/agent:latest
+  portainer/agent:lts
 ```
 
-Then in Portainer, go to **Environments** > **Add environment** > **Docker Standalone** and enter `tcp://remote-machine-ip:9001`.
+Then in Portainer, go to **Environments** > **Add environment** > **Docker Standalone**, select **Agent** under **More options**, and enter `remote-machine-ip:9001` as the environment URL.
 
 ## Step 7: Set Up Backups
 
 ```bash
 # Create a backup script for Portainer data
-cat << 'EOF' > /usr/local/bin/backup-portainer.sh
+sudo tee /usr/local/bin/backup-portainer.sh > /dev/null << 'EOF'
 #!/bin/bash
 DATE=$(date +%Y%m%d_%H%M%S)
 BACKUP_DIR="/opt/backups"
+
+mkdir -p "$BACKUP_DIR"
 
 # Stop Portainer temporarily
 docker stop portainer
@@ -159,22 +160,22 @@ docker stop portainer
 # Backup Portainer volume
 docker run --rm \
   -v portainer_data:/data \
-  -v $BACKUP_DIR:/backup \
-  alpine tar czf /backup/portainer_backup_$DATE.tar.gz /data
+  -v "$BACKUP_DIR":/backup \
+  alpine tar czf "/backup/portainer_backup_$DATE.tar.gz" /data
 
 # Restart Portainer
 docker start portainer
 
 # Remove backups older than 30 days
-find $BACKUP_DIR -name "portainer_backup_*.tar.gz" -mtime +30 -delete
+find "$BACKUP_DIR" -name "portainer_backup_*.tar.gz" -mtime +30 -delete
 
 echo "Backup completed: portainer_backup_$DATE.tar.gz"
 EOF
 
-chmod +x /usr/local/bin/backup-portainer.sh
+sudo chmod +x /usr/local/bin/backup-portainer.sh
 
-# Add to cron - runs at 2 AM daily
-echo "0 2 * * * /usr/local/bin/backup-portainer.sh" | crontab -
+# Add to root's cron - runs at 2 AM daily
+echo "0 2 * * * /usr/local/bin/backup-portainer.sh" | sudo crontab -
 ```
 
 ## Recommended Home Lab Services
