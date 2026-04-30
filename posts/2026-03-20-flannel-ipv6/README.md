@@ -8,7 +8,7 @@ Description: Configure Flannel CNI for dual-stack IPv6 Kubernetes clusters, set 
 
 ## Introduction
 
-Flannel is a simple CNI plugin that provides overlay networking for Kubernetes pods. Flannel supports dual-stack networking through the `IPv6Network` and `EnableIPv6` configuration options. Flannel uses VXLAN encapsulation to carry IPv6 traffic between nodes. While simpler than Calico or Cilium, Flannel's dual-stack support is functional for many use cases.
+Flannel is a simple CNI plugin that provides overlay networking for Kubernetes pods. Flannel supports dual-stack networking through the `IPv6Network` and `EnableIPv6` configuration options when the Kubernetes cluster and nodes are already configured for dual-stack. In this configuration, Flannel uses VXLAN encapsulation to carry IPv6 traffic between nodes. While simpler than Calico or Cilium, Flannel's dual-stack support is functional for many use cases.
 
 ## Install Flannel with IPv6 Support
 
@@ -72,10 +72,10 @@ data:
 kubectl apply -f kube-flannel-cfg-patch.yaml
 
 # Restart Flannel daemonset to pick up changes
-kubectl -n kube-flannel rollout restart daemonset kube-flannel-ds
+kubectl -n kube-flannel rollout restart daemonset/kube-flannel-ds
 
 # Wait for Flannel to be ready
-kubectl -n kube-flannel rollout status daemonset kube-flannel-ds
+kubectl -n kube-flannel rollout status daemonset/kube-flannel-ds
 
 # Verify Flannel pods are running
 kubectl -n kube-flannel get pods
@@ -85,15 +85,15 @@ kubectl -n kube-flannel get pods
 
 ```bash
 # Check Flannel logs for IPv6 configuration
-kubectl -n kube-flannel logs daemonset/kube-flannel-ds | grep -i "ipv6\|IPv6"
+kubectl -n kube-flannel logs daemonset/kube-flannel-ds -c kube-flannel | grep -i ipv6
 
 # Verify Flannel daemon is managing IPv6 routes
 # On a worker node:
 sudo cat /run/flannel/subnet.env
 # FLANNEL_NETWORK=10.244.0.0/16
-# FLANNEL_SUBNET=10.244.x.0/24
+# FLANNEL_SUBNET=10.244.x.1/24
 # FLANNEL_IPV6_NETWORK=fd00:10:244::/56   <-- should exist
-# FLANNEL_IPV6_SUBNET=fd00:10:244:x::/64  <-- per-node IPv6 subnet
+# FLANNEL_IPV6_SUBNET=fd00:10:244:x::1/64 <-- per-node IPv6 subnet
 
 # Check IPv6 routes added by Flannel
 ip -6 route show | grep fd00
@@ -106,18 +106,18 @@ ip -6 addr show flannel.1
 
 ```bash
 # Deploy test pods
-kubectl run pod1 --image=alpine --command -- sleep infinity
-kubectl run pod2 --image=alpine --command -- sleep infinity
+kubectl run pod1 --image=alpine --command -- sleep 3600
+kubectl run pod2 --image=alpine --command -- sleep 3600
 
 # Check pod IPs (both IPv4 and IPv6)
-kubectl get pod pod1 pod2 -o jsonpath='{range .items[*]}{.metadata.name}: {.status.podIPs}{"\n"}{end}'
+kubectl get pod pod1 pod2 -o jsonpath='{range .items[*]}{.metadata.name}:{range .status.podIPs[*]} {.ip}{end}{"\n"}{end}'
 
 # Expected output:
-# pod1: [{"ip":"10.244.0.5"},{"ip":"fd00:10:244::5"}]
-# pod2: [{"ip":"10.244.1.3"},{"ip":"fd00:10:244:1::3"}]
+# pod1: 10.244.0.5 fd00:10:244::5
+# pod2: 10.244.1.3 fd00:10:244:1::3
 
 # Test IPv6 connectivity between pods
-POD2_IPV6=$(kubectl get pod pod2 -o jsonpath='{.status.podIPs[1].ip}')
+POD2_IPV6=$(kubectl get pod pod2 -o jsonpath='{range .status.podIPs[*]}{.ip}{"\n"}{end}' | grep ':')
 kubectl exec pod1 -- ping6 -c 3 "$POD2_IPV6"
 
 # Check network interface inside pod
@@ -129,7 +129,7 @@ kubectl exec pod1 -- ip -6 addr show eth0
 ```text
 Flannel IPv6 Limitations:
   - No network policy support (use with NetworkPolicy provider)
-  - VXLAN only for IPv6 (no host-gw mode for IPv6)
+  - Dual-stack support is limited to VXLAN, WireGuard, and host-gw on Linux
   - Limited metrics and observability
   - No eBPF acceleration
 
@@ -145,4 +145,4 @@ Alternatives with richer IPv6 support:
 
 ## Conclusion
 
-Configure Flannel for dual-stack Kubernetes by adding `"IPv6Network"` and `"EnableIPv6": true` to the `net-conf.json` in the `kube-flannel-cfg` ConfigMap, then restarting the Flannel DaemonSet. Flannel assigns IPv6 subnets per node based on the configured IPv6Network, visible in `/run/flannel/subnet.env`. Verify pod IPv6 addresses with `kubectl get pod -o jsonpath='{.status.podIPs}'`. Note that Flannel does not support native NetworkPolicy for IPv6 - use Calico or Cilium if network policy enforcement is required.
+Configure Flannel for dual-stack Kubernetes by adding `"IPv6Network"` and `"EnableIPv6": true` to the `net-conf.json` in the `kube-flannel-cfg` ConfigMap, then restarting the Flannel DaemonSet. This assumes Kubernetes itself is already configured for dual-stack Pod and Service CIDRs and that the nodes have IPv4 and IPv6 connectivity. Flannel assigns IPv6 subnets per node based on the configured IPv6Network, visible in `/run/flannel/subnet.env`. Verify pod IPv6 addresses with `kubectl get pod <pod-name> -o jsonpath='{range .status.podIPs[*]}{.ip}{"\n"}{end}'`. Note that Flannel does not support native NetworkPolicy - use Calico or Cilium if network policy enforcement is required.
