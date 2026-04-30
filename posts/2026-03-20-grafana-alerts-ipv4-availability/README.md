@@ -14,6 +14,9 @@ Grafana Unified Alerting (introduced in Grafana 8) evaluates alert rules against
 
 ```bash
 # Ensure Blackbox Exporter is running and scraping targets
+# Ensure the HTTP probe module for these targets is IPv4-only:
+#   preferred_ip_protocol: ip4
+#   ip_protocol_fallback: false
 
 # (See Prometheus Blackbox Exporter configuration)
 
@@ -48,11 +51,15 @@ groups:
             model:
               expr: probe_success{job="blackbox_http"}
               instant: true
+              intervalMs: 1000
+              maxDataPoints: 43200
+              range: false
+              refId: A
 
           - refId: C
             queryType: ''
             relativeTimeRange:
-              from: 300
+              from: 0
               to: 0
             datasourceUid: __expr__
             model:
@@ -64,7 +71,16 @@ groups:
                     type: and
                   query:
                     params: [A]
+                  reducer:
+                    params: []
+                    type: last
                   type: query
+              datasource:
+                type: __expr__
+                uid: __expr__
+              intervalMs: 1000
+              maxDataPoints: 43200
+              refId: C
               type: classic_conditions
 
         noDataState: Alerting
@@ -73,8 +89,13 @@ groups:
         labels:
           severity: critical
         annotations:
-          summary: "Endpoint {{ $labels.instance }} is not reachable"
-          description: "probe_success = {{ $values.A }}"
+          summary: "One or more IPv4 endpoints are not reachable"
+          description: |
+            {{ range $k, $v := $values -}}
+            {{ if (match "C[0-9]+" $k) -}}
+            {{ $v.Labels }} probe_success={{ $v.Value }}
+            {{ end }}
+            {{ end }}
 ```
 
 ## Contact Points (Notification Channels)
@@ -101,14 +122,15 @@ contactPoints:
       - uid: slack-01
         type: slack
         settings:
-          url: https://hooks.slack.com/services/YOUR/SLACK/WEBHOOK
-          channel: '#ops-alerts'
+          recipient: '#ops-alerts'
           text: |
             *Alert:* {{ .GroupLabels.alertname }}
             *Severity:* {{ .GroupLabels.severity }}
             {{ range .Alerts }}
             - Instance: {{ .Labels.instance }}
             {{ end }}
+        secure_settings:
+          url: https://hooks.slack.com/services/YOUR/SLACK/WEBHOOK
 ```
 
 ## Notification Policies
@@ -127,8 +149,8 @@ policies:
     repeat_interval: 4h
     routes:
       - receiver: Slack Ops
-        matchers:
-          - severity = critical
+        object_matchers:
+          - ['severity', '=', 'critical']
         group_wait: 10s
         repeat_interval: 1h
 ```
@@ -150,4 +172,4 @@ policies:
 
 ## Conclusion
 
-Grafana Unified Alerting evaluates PromQL against Prometheus data. Use `probe_success == 0` from Blackbox Exporter to detect endpoint failures. Configure contact points for notification channels (email, Slack, PagerDuty) and notification policies for routing by severity. Provision alerting rules, contact points, and policies through YAML files in `/etc/grafana/provisioning/alerting/` for version-controlled alert management.
+Grafana Unified Alerting evaluates PromQL against Prometheus data. Use `probe_success == 0` from a Blackbox Exporter module configured with `preferred_ip_protocol: ip4` and `ip_protocol_fallback: false` to detect IPv4 endpoint failures. Configure contact points for notification channels (email, Slack, PagerDuty) and notification policies for routing by severity. Provision alerting rules, contact points, and policies through YAML files in `/etc/grafana/provisioning/alerting/` for version-controlled alert management.
