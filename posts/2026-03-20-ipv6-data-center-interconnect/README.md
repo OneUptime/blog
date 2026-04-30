@@ -20,11 +20,16 @@ Description: Configure IPv6 routing and tunneling for data center interconnect l
 ```text
 ! Cisco NX-OS - DCI link between DC1 and DC2
 
+feature ospfv3
+feature bgp
+
+route-map EXPORT_TO_OSPF permit 10
+
 ! DC1 (2001:db8:dc1::/48) interconnect interface
 interface Ethernet1/1
   description DCI_to_DC2
-  ipv6 address 2001:db8:transit::1/64
-  ipv6 ospfv3 1 area 0
+  ipv6 address 2001:db8:100:1::1/64
+  ipv6 router ospfv3 1 area 0
 
 router ospfv3 1
   router-id 1.1.1.1
@@ -33,9 +38,9 @@ router ospfv3 1
 
 router bgp 65001
   router-id 1.1.1.1
-  neighbor 2001:db8:dc2::router remote-as 65002
+  neighbor 2001:db8:100:1::2 remote-as 65002
   address-family ipv6 unicast
-    neighbor 2001:db8:dc2::router activate
+    neighbor 2001:db8:100:1::2 activate
     network 2001:db8:dc1::/48
 ```
 
@@ -45,16 +50,17 @@ router bgp 65001
 # Linux VTEP with EVPN for DCI L2 extension
 
 # Create VXLAN interface at DC1
+ip addr add 2001:db8:0:1::1/128 dev lo
 
 ip link add vxlan100 type vxlan \
     id 100 \
-    local 2001:db8:dc1::vtep \
+    local 2001:db8:0:1::1 \
     dstport 4789 \
     nolearning
 
 ip link add br100 type bridge
-ip link set br100 type bridge neigh_suppress on
 ip link set vxlan100 master br100
+ip link set vxlan100 type bridge_slave neigh_suppress on learning off
 ip link set vxlan100 up
 ip link set br100 up
 
@@ -62,9 +68,9 @@ ip link set br100 up
 # /etc/frr/frr.conf
 router bgp 65001
  bgp router-id 1.1.1.1
- neighbor 2001:db8:dc2::router remote-as 65002
+ neighbor 2001:db8:100:1::2 remote-as 65002
  address-family l2vpn evpn
-  neighbor 2001:db8:dc2::router activate
+  neighbor 2001:db8:100:1::2 activate
   advertise-all-vni
 ```
 
@@ -72,21 +78,21 @@ router bgp 65001
 
 ```bash
 # DCI links often have different MTU than intra-DC
-# VXLAN over IPv6 = 50 bytes overhead
+# VXLAN over IPv6 = 56 bytes IP/UDP/VXLAN overhead
 
 # DC1 fabric MTU: 9216
 # DCI link MTU: 9000 (common for 100G DCI)
-# VXLAN overhead: 50 bytes
-# Effective payload: 8950 bytes
+# VXLAN overhead: 56 bytes
+# Effective inner Ethernet frame size: 8944 bytes
 
 # Set MTU on DCI interface
 ip link set dev eth-dci mtu 9000
 
-# Enable PMTU discovery for DCI traffic
-sysctl -w net.ipv6.conf.eth-dci.mtu_expires=600
+# Optional: shorten cached PMTU lifetime after DCI MTU changes
+sysctl -w net.ipv6.route.mtu_expires=600
 
-# Test DCI path MTU
-ping6 -M do -s 8900 2001:db8:dc2::router
+# Test DCI underlay path MTU
+ping6 -M do -s 8952 2001:db8:100:1::2
 ```
 
 ## BGP Communities for DCI Traffic Engineering
@@ -96,15 +102,22 @@ ping6 -M do -s 8900 2001:db8:dc2::router
 
 route-map DCI_EXPORT permit 10
   set community 65001:1000  # DCI route tag
-  set local-preference 150  # Prefer direct path over DCI
 
-# DC2 BGP: apply MED for DCI path selection
+ip community-list standard DCI_ROUTES permit 65001:1000
+
+# DC1 BGP: tag routes on export toward the DCI peer
+router bgp 65001
+  neighbor 2001:db8:100:1::2 route-map DCI_EXPORT out
+
+# DC2 BGP: lower local preference for DCI-tagged routes
 router bgp 65002
-  neighbor 2001:db8:dc1::router route-map DCI_IMPORT in
+  neighbor 2001:db8:100:1::1 route-map DCI_IMPORT in
 
 route-map DCI_IMPORT permit 10
   match community DCI_ROUTES
-  set metric 100  # Higher metric = lower preference
+  set local-preference 80  # Lower than intra-DC routes inside AS 65002
+
+route-map DCI_IMPORT permit 20
 ```
 
 ## Monitoring DCI Links
@@ -113,30 +126,30 @@ route-map DCI_IMPORT permit 10
 #!/bin/bash
 # monitor-dci.sh - DCI IPv6 health check
 
-DC1_ROUTER="2001:db8:dc1::router"
-DC2_ROUTER="2001:db8:dc2::router"
+DCI_PEER="2001:db8:100:1::2"
+DC2_PREFIX="2001:db8:dc2::/48"
 
 echo "=== DCI Link Health ==="
 
 # Ping test
-if ping6 -c 3 -W 2 "${DC2_ROUTER}" &>/dev/null; then
+if ping6 -c 3 -W 2 "${DCI_PEER}" &>/dev/null; then
     echo "PASS: DCI link to DC2 is up"
 else
     echo "FAIL: DCI link to DC2 is down"
 fi
 
 # BGP session check
-if vtysh -c "show bgp summary" | grep "${DC2_ROUTER}" | grep -q "Establ"; then
+if vtysh -c "show bgp ipv6 unicast summary established" | grep -Fq "${DCI_PEER}"; then
     echo "PASS: BGP session to DC2 is established"
 else
     echo "FAIL: BGP session to DC2 is down"
 fi
 
 # Route check
-ROUTES=$(ip -6 route show | grep "2001:db8:dc2::" | wc -l)
+ROUTES=$(ip -6 route show "${DC2_PREFIX}" | wc -l)
 echo "IPv6 routes to DC2: ${ROUTES}"
 ```
 
 ## Conclusion
 
-IPv6 DCI configuration depends on the L2/L3 requirements. For pure L3 routing, use OSPFv3 or eBGP between sites with site-specific /48 prefixes advertised across the DCI link. For L2 extension (VM migration, stretched clusters), use EVPN-VXLAN with BGP EVPN Type 2 MAC/IP routes propagated between sites. Always account for DCI MTU - VXLAN over IPv6 adds 50 bytes overhead, so ensure the DCI link supports at least 9050 bytes for jumbo frame workloads. Use BGP communities to tag DCI-learned routes for traffic engineering and prefer intra-DC paths for local traffic.
+IPv6 DCI configuration depends on the L2/L3 requirements. For pure L3 routing, use OSPFv3 or eBGP between sites with site-specific /48 prefixes advertised across the DCI link. For L2 extension (VM migration, stretched clusters), use EVPN-VXLAN with BGP EVPN Type 2 MAC/IP routes propagated between sites. Always account for DCI MTU - VXLAN over IPv6 adds 56 bytes of IP/UDP/VXLAN overhead, so a 9000-byte DCI underlay MTU leaves 8944 bytes for the inner Ethernet frame. Use BGP communities to tag DCI-learned routes for traffic engineering and lower local preference on import so intra-DC paths stay preferred for local traffic.
