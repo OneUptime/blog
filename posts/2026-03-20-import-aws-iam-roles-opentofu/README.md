@@ -8,19 +8,20 @@ Description: Learn how to import existing AWS IAM roles, policies, and policy at
 
 ## Introduction
 
-IAM roles created manually or by other tools can be imported into OpenTofu. The challenge is that IAM roles have multiple associated resources - assume role policies, inline policies, and managed policy attachments - that must all be imported separately.
+IAM roles created manually or by other tools can be imported into OpenTofu. The challenge is that IAM roles have multiple associated pieces of configuration - the assume role policy on the role itself, inline policies, and managed policy attachments - and the inline policies and managed policy attachments must be imported separately from the role.
 
 ## Step 1: Inventory the IAM Role
 
 ```bash
 ROLE_NAME="my-app-role"
 
-# Get assume role policy
+# Get and decode assume role policy
 
 aws iam get-role \
-  --role-name $ROLE_NAME \
+  --role-name "$ROLE_NAME" \
   --query 'Role.AssumeRolePolicyDocument' \
-  --output json | python3 -m json.tool
+  --output text \
+  | python3 -c 'import json, sys, urllib.parse; print(json.dumps(json.loads(urllib.parse.unquote(sys.stdin.read())), indent=2))'
 
 # List attached managed policies
 aws iam list-attached-role-policies \
@@ -82,7 +83,7 @@ data "aws_iam_policy_document" "custom" {
   statement {
     effect    = "Allow"
     actions   = ["secretsmanager:GetSecretValue"]
-    resources = ["arn:aws:secretsmanager:us-east-1:123456789:secret:myapp/*"]
+    resources = ["arn:aws:secretsmanager:us-east-1:123456789012:secret:myapp/*"]
   }
 }
 
@@ -138,4 +139,4 @@ import {
 
 ## Conclusion
 
-IAM role import requires importing the role plus every policy attachment separately. The composite key format (ROLE/POLICY_ARN for managed attachments, ROLE:POLICY_NAME for inline policies) is non-obvious. Always verify that your HCL's `assume_role_policy` JSON matches exactly what's in AWS - policy JSON comparison is order-sensitive in some cases and may cause spurious plan diffs.
+IAM role import requires importing the role plus every inline policy and managed policy attachment separately. The composite key format (ROLE/POLICY_ARN for managed attachments, ROLE:POLICY_NAME for inline policies) is non-obvious. Always verify that your HCL's `assume_role_policy` is semantically equivalent to what's in AWS. Using `aws_iam_policy_document` or `jsonencode()` helps avoid formatting-related plan diffs.
