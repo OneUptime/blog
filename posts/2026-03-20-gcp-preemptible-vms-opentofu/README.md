@@ -8,7 +8,7 @@ Description: Learn how to create GCP Preemptible VMs with OpenTofu for up to 80%
 
 ## Overview
 
-GCP Preemptible VMs offer up to 80% savings compared to regular VMs but can be terminated by GCP at any time with a 30-second warning. They're ideal for batch jobs, CI/CD runners, stateless workers, and fault-tolerant distributed systems.
+GCP Preemptible VMs offer up to 80% savings compared to regular VMs but can be terminated by GCP at any time with up to 30 seconds of best-effort warning. Google recommends Spot VMs for new workloads, but preemptible VMs remain available and can run for a maximum of 24 hours at a time. They're ideal for batch jobs, CI/CD runners, stateless workers, and fault-tolerant distributed systems.
 
 ## Step 1: Create a Preemptible VM
 
@@ -42,9 +42,16 @@ resource "google_compute_instance" "preemptible_worker" {
   metadata_startup_script = <<-SCRIPT
     #!/bin/bash
     # Pull work from a queue and process
+    process_task() {
+      local task="$1"
+      # Replace this with your application-specific task handler.
+      echo "Processing task: $task"
+    }
+
     while true; do
-      TASK=$(gsutil cat gs://my-tasks-bucket/pending/$(ls gs://my-tasks-bucket/pending/ | head -1) 2>/dev/null)
-      if [ -n "$TASK" ]; then
+      TASK_OBJECT=$(gsutil ls "gs://my-tasks-bucket/pending/*" 2>/dev/null | head -1)
+      if [ -n "$TASK_OBJECT" ]; then
+        TASK=$(gsutil cat "$TASK_OBJECT")
         process_task "$TASK"
       fi
       sleep 5
@@ -125,7 +132,7 @@ resource "google_compute_instance" "graceful_preemptible" {
     network = "default"
   }
 
-  # Shutdown script runs during the 30-second preemption warning
+  # Shutdown script runs during the best-effort preemption notice
   metadata = {
     shutdown-script = <<-SCRIPT
       #!/bin/bash
@@ -145,4 +152,4 @@ resource "google_compute_instance" "graceful_preemptible" {
 
 ## Summary
 
-GCP Preemptible VMs with OpenTofu reduce compute costs by up to 80% for fault-tolerant workloads. Design your applications to checkpoint state to Cloud Storage or Pub/Sub so they can resume from where they left off after a preemption. Use MIGs of preemptible VMs with autoscaling for elastic batch processing pipelines.
+GCP Preemptible VMs with OpenTofu reduce compute costs by up to 80% for fault-tolerant workloads, but they have a maximum runtime of 24 hours and up to 30 seconds of best-effort preemption notice. Google recommends Spot VMs for new workloads. Design your applications to checkpoint state to Cloud Storage or Pub/Sub so they can resume from where they left off after a preemption. Use MIGs of preemptible VMs with autoscaling for elastic batch processing pipelines.
