@@ -13,13 +13,13 @@ MikroTik RouterOS supports full IPv6 with a comprehensive feature set including 
 ## Step 1: Enable IPv6 Package
 
 ```bash
-# Check that IPv6 package is installed
+# On current RouterOS v7, IPv6 is included in the main routeros package.
+# Verify that RouterOS is installed and that IPv6 commands are available.
 
 /system package print
-# Look for "ipv6" in the list
+# Look for "routeros" in the list
 
-# If not installed, download from MikroTik's package repository
-# Packages > Download & Install > ipv6
+# On older RouterOS v6 systems, ensure the separate "ipv6" package is installed and enabled.
 ```
 
 ## Step 2: Configure WAN IPv6 via DHCPv6-PD
@@ -33,7 +33,7 @@ MikroTik RouterOS supports full IPv6 with a comprehensive feature set including 
     pool-name=ISP-POOL \
     pool-prefix-length=64 \
     add-default-route=yes \
-    use-peer-dns=yes
+    use-peer-dns=no
 
 # Verify DHCPv6 client status
 /ipv6 dhcp-client print detail
@@ -44,6 +44,7 @@ MikroTik RouterOS supports full IPv6 with a comprehensive feature set including 
 ```bash
 # Assign IPv6 address to the LAN interface from the delegated pool
 /ipv6 address add \
+    address=::1/64 \
     interface=bridge1 \
     from-pool=ISP-POOL \
     advertise=yes
@@ -55,8 +56,9 @@ MikroTik RouterOS supports full IPv6 with a comprehensive feature set including 
 ## Step 4: Configure Router Advertisements
 
 ```bash
-# Set RA parameters for the LAN bridge
-/ipv6 nd set [find interface=bridge1] \
+# Add RA parameters for the LAN bridge
+/ipv6 nd add \
+    interface=bridge1 \
     ra-interval=30s-100s \
     ra-lifetime=30m \
     managed-address-configuration=no \
@@ -74,13 +76,14 @@ MikroTik's IPv6 firewall uses the same structure as IPv4 with the `/ipv6 firewal
 
 ```bash
 # Input chain - protect the router itself
-/ipv6 firewall filter add chain=input action=accept connection-state=established,related comment="Accept established/related"
+/ipv6 firewall filter add chain=input action=accept connection-state=established,related,untracked comment="Accept established/related/untracked"
 /ipv6 firewall filter add chain=input action=accept protocol=icmpv6 comment="Accept ICMPv6 (required)"
-/ipv6 firewall filter add chain=input action=accept src-address=fe80::/10 comment="Accept link-local"
-/ipv6 firewall filter add chain=input action=drop comment="Drop all other input"
+/ipv6 firewall filter add chain=input action=accept protocol=udp dst-port=546 src-address=fe80::/10 comment="Accept DHCPv6-PD replies"
+/ipv6 firewall filter add chain=input action=drop in-interface=!bridge1 comment="Drop other input not from LAN"
 
 # Forward chain - traffic through the router
-/ipv6 firewall filter add chain=forward action=accept connection-state=established,related comment="Accept established"
+/ipv6 firewall filter add chain=forward action=accept connection-state=established,related,untracked comment="Accept established/related/untracked"
+/ipv6 firewall filter add chain=forward action=drop connection-state=invalid comment="Drop invalid"
 /ipv6 firewall filter add chain=forward action=accept protocol=icmpv6 comment="Accept ICMPv6"
 /ipv6 firewall filter add chain=forward action=accept in-interface=bridge1 comment="Allow LAN to WAN"
 /ipv6 firewall filter add chain=forward action=drop in-interface=ether1 comment="Drop unsolicited inbound from WAN"
@@ -109,10 +112,10 @@ For complex firewall rules, use address lists:
 
 ```bash
 # Add a static IPv6 route
-/ipv6 route add dst-address=2001:db8:remote::/48 gateway=2001:db8:0:1::2
+/ipv6 route add dst-address=2001:db8:100::/48 gateway=2001:db8:0:1::2
 
 # Add a floating default route for failover (higher distance)
-/ipv6 route add dst-address=::/0 gateway=2001:db8:backup::1 distance=200
+/ipv6 route add dst-address=::/0 gateway=2001:db8:ffff::1 distance=200
 ```
 
 ## Verification
