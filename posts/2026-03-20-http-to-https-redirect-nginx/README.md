@@ -51,14 +51,14 @@ server {
     listen 80 default_server;
     listen [::]:80 default_server;
 
-    # Match any server name
+    # Placeholder name; default_server handles unmatched hosts
     server_name _;
 
     return 301 https://$host$request_uri;
 }
 ```
 
-Place this block before your individual HTTPS server blocks so Nginx applies it first.
+The `default_server` parameter, not the order of `server` blocks, is what makes this the catch-all for that listen address and port.
 
 ## Excluding the ACME Challenge Path
 
@@ -94,7 +94,7 @@ You should see an HTTP `301` response followed by a `200` on the HTTPS URL.
 
 ## Using HTTP Strict Transport Security (HSTS)
 
-Once HTTPS is stable, add HSTS to tell browsers to always use HTTPS for your domain:
+Once HTTPS is stable, add HSTS to tell browsers that have seen the header to use HTTPS for your domain:
 
 ```nginx
 server {
@@ -115,4 +115,4 @@ Start with a short `max-age` (e.g., 300 seconds) while testing, then increase to
 
 ## Conclusion
 
-Redirecting HTTP to HTTPS in Nginx is a two-step process: add a server block that listens on port 80 and issues a `301` redirect, then ensure your HTTPS server block is correctly configured with a valid certificate. Pairing this with HSTS guarantees that browsers never fall back to plain HTTP.
+Redirecting HTTP to HTTPS in Nginx is a two-step process: add a server block that listens on port 80 and issues a `301` redirect, then ensure your HTTPS server block is correctly configured with a valid certificate. Pairing this with HSTS helps browsers continue using HTTPS after they have received the HSTS header.
