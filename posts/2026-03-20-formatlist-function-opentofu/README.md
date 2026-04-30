@@ -8,7 +8,7 @@ Description: Learn how to use the formatlist function in OpenTofu to apply forma
 
 ---
 
-`formatlist()` is the list version of `format()`. It applies a format string to each element in one or more lists, producing a new list where each element is formatted. When multiple list arguments are provided, they are zipped together element by element.
+`formatlist()` is the list version of `format()`. It applies a format string across one or more list arguments, producing a new list where each element is formatted. Non-list arguments are reused for each element. When multiple list arguments are provided, they are zipped together element by element.
 
 ---
 
@@ -18,7 +18,7 @@ Description: Learn how to use the formatlist function in OpenTofu to apply forma
 formatlist(format_string, values...)
 ```
 
-Where `values` can be individual strings/numbers or lists. Lists are iterated in parallel.
+Where `values` can be a mix of list and non-list arguments. All list arguments must have the same length. Lists are iterated in parallel, while non-list arguments are reused for each element.
 
 ---
 
@@ -159,4 +159,4 @@ For simple formatting, `formatlist()` is more concise. For complex transformatio
 
 ## Summary
 
-`formatlist()` applies a format string to each element of one or more lists, returning a new list of formatted strings. Use it to generate lists of ARNs, bucket names, CIDR blocks, or any other patterned strings from an input list. When multiple list arguments are provided, elements are paired by index (first element of each list, then second, etc.). For more complex transformations, use a for expression instead.
+`formatlist()` applies a format string across one or more list arguments, returning a new list of formatted strings. Non-list arguments are reused for each element, and any list arguments must all be the same length. Use it to generate lists of ARNs, bucket names, CIDR blocks, or any other patterned strings from an input list. When multiple list arguments are provided, elements are paired by index (first element of each list, then second, etc.). For more complex transformations, use a for expression instead.
