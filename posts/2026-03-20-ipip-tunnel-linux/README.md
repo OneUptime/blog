@@ -69,6 +69,9 @@ ip -s link show ipip0
 ## Add Routes Through the Tunnel
 
 ```bash
+# On both hosts, if they will route traffic between LANs
+sysctl -w net.ipv4.ip_forward=1
+
 # On Host A: reach Host B's LAN
 ip route add 192.168.2.0/24 via 172.16.0.2
 
@@ -95,6 +98,7 @@ Name=ipip0
 Kind=ipip
 
 [Tunnel]
+Independent=yes
 Local=10.0.0.1
 Remote=10.0.0.2
 TTL=255
@@ -125,4 +129,4 @@ tcpdump -i eth0 proto 4 and host 10.0.0.2
 
 ## Conclusion
 
-IPIP tunnels are the most lightweight tunneling option on Linux for IPv4-over-IPv4. Use them when you need simple point-to-point IP encapsulation and don't require multicast or non-IP protocol support. IPIP has less overhead than GRE but is more limited in capability. Load the `ipip` module, create the tunnel with `ip tunnel add mode ipip`, assign an overlay IP, and add static routes for remote subnets.
+IPIP tunnels are the most lightweight tunneling option on Linux for IPv4-over-IPv4. Use them when you need simple point-to-point IP encapsulation and don't require multicast or non-IP protocol support. IPIP has less overhead than GRE but is more limited in capability. Load the `ipip` module, create the tunnel with `ip tunnel add mode ipip`, assign an overlay IP, and if you are routing other subnets through the tunnel, enable IPv4 forwarding and add static routes for the remote subnets.
