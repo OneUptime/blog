@@ -8,7 +8,7 @@ Description: Learn how to configure IAM Permission Boundaries using OpenTofu to 
 
 ## Introduction
 
-IAM Permission Boundaries set the maximum permissions an IAM entity can have, regardless of the identity-based policies attached. They enable safe delegation-you can allow developers to create IAM roles for their services without risking privilege escalation beyond what you've defined as the boundary.
+IAM Permission Boundaries set the maximum permissions that identity-based policies can grant to an IAM entity. They enable safe delegation-you can allow developers to create IAM roles for their services without letting identity-based policies grant permissions beyond what you've defined as the boundary.
 
 ## Prerequisites
 
@@ -18,6 +18,8 @@ IAM Permission Boundaries set the maximum permissions an IAM entity can have, re
 ## Step 1: Create a Permission Boundary Policy
 
 ```hcl
+data "aws_caller_identity" "current" {}
+
 # Permission boundary limits what any role created by developers can do
 
 # Even if a developer attaches AdministratorAccess, the boundary caps it
@@ -45,18 +47,6 @@ resource "aws_iam_policy" "developer_boundary" {
         Resource = "*"
       },
       {
-        Sid    = "AllowPassRoleWithBoundary"
-        Effect = "Allow"
-        Action = ["iam:PassRole", "iam:CreateRole", "iam:AttachRolePolicy"]
-        Resource = "*"
-        Condition = {
-          StringEquals = {
-            # Any role created by this role must also have the boundary
-            "iam:PermissionsBoundary" = "arn:aws:iam::${data.aws_caller_identity.current.account_id}:policy/boundaries/DeveloperPermissionBoundary"
-          }
-        }
-      },
-      {
         Sid    = "DenyPrivilegeEscalation"
         Effect = "Deny"
         Action = [
@@ -78,7 +68,7 @@ resource "aws_iam_policy" "developer_boundary" {
 
 ```hcl
 # A role that has the permission boundary applied
-# Even if more permissive policies are attached later,
+# Even if more permissive identity-based policies are attached later,
 # the boundary caps the effective permissions
 resource "aws_iam_role" "service_role" {
   name        = "app-service-role"
@@ -150,6 +140,10 @@ resource "aws_iam_policy" "developer_role_creation" {
 ## Step 4: Attach the Role Creation Policy to Developers
 
 ```hcl
+resource "aws_iam_group" "developers" {
+  name = "developers"
+}
+
 resource "aws_iam_group_policy_attachment" "developer_creation" {
   group      = aws_iam_group.developers.name
   policy_arn = aws_iam_policy.developer_role_creation.arn
@@ -166,4 +160,4 @@ tofu apply
 
 ## Conclusion
 
-IAM Permission Boundaries enable safe delegation-developers can create IAM roles for their services without risk of privilege escalation beyond the defined boundary. The key insight is that effective permissions are the intersection of identity-based policies AND the boundary. Always add a `DenyBoundaryRemoval` policy to ensure developers cannot simply remove the boundary from roles they create.
+IAM Permission Boundaries enable safe delegation-developers can create IAM roles for their services without risk of identity-based policies granting permissions beyond the defined boundary. The key insight is that effective permissions are the intersection of identity-based policies AND the boundary, and the boundary does not grant permissions on its own. Always add a `DenyBoundaryRemoval` policy to ensure developers cannot simply change or remove the boundary from roles they create.
