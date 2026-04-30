@@ -19,17 +19,18 @@ Anti-fragmentation strategies ranked by preference:
    → TCP negotiates MSS, adjusts to path MTU dynamically
    → No application-level effort needed
 
-2. Keep packets below minimum IPv6 MTU (1280 bytes)
+2. Keep the full IPv6 packet below minimum IPv6 MTU (1280 bytes)
    → Guaranteed to work on all IPv6 paths
+   → For UDP over IPv6, that means payload ≤ 1232 bytes before extension headers
    → Limits throughput on high-MTU paths
    → Appropriate for DNS queries, NDP, ICMPv6
 
-3. Use PMTU Discovery with UDP (RFC 8899 for QUIC/DTLS)
-   → Application handles Packet Too Big and reduces packet size
+3. Use PMTU Discovery / DPLPMTUD with UDP-based protocols
+   → Application or transport handles Packet Too Big and reduces packet size
    → More complex but allows full path MTU utilization
 
-4. Set IP_DONTFRAGMENT socket option
-   → Get explicit errors instead of silent fragmentation
+4. Set IPV6_DONTFRAG (or platform equivalent) socket option
+   → Disable local IPv6 fragmentation and get explicit errors
    → Allows application to handle MTU feedback
 
 5. Fragment at application layer (not IPv6 level)
@@ -40,8 +41,8 @@ Anti-fragmentation strategies ranked by preference:
 ## Socket Options for Controlling Fragmentation
 
 ```python
+import errno
 import socket
-import struct
 
 def create_udp6_no_fragment_socket() -> socket.socket:
     """
@@ -51,17 +52,17 @@ def create_udp6_no_fragment_socket() -> socket.socket:
     s = socket.socket(socket.AF_INET6, socket.SOCK_DGRAM)
 
     # IPV6_DONTFRAG: If set, send returns EMSGSIZE for over-MTU packets
-    # instead of silently fragmenting
-    IPV6_DONTFRAG = 62  # Linux constant
-    s.setsockopt(socket.IPPROTO_IPV6, IPV6_DONTFRAG, 1)
+    # instead of inserting an IPv6 Fragment Header
+    s.setsockopt(socket.IPPROTO_IPV6, socket.IPV6_DONTFRAG, 1)
 
-    # IPV6_RECVPATHMTU: Request PMTU change notifications
-    IPV6_RECVPATHMTU = 60  # Linux constant
-    s.setsockopt(socket.IPPROTO_IPV6, IPV6_RECVPATHMTU, 1)
+    # Optional on Linux: request PMTU change notifications via recvmsg()
+    # with IPV6_PATHMTU ancillary data. Handling that control message is
+    # not shown in this example.
+    # s.setsockopt(socket.IPPROTO_IPV6, socket.IPV6_RECVPATHMTU, 1)
 
-    # IPV6_USE_MIN_MTU: Set to 1 to use 1280-byte minimum for all sends
-    # Useful for applications that need guaranteed delivery without PMTUD
-    # IPV6_USE_MIN_MTU = 63
+    # IPV6_USE_MIN_MTU: Set to 1 to use the IPv6 minimum MTU (1280 bytes)
+    # for the full packet size on all sends
+    # IPV6_USE_MIN_MTU = 63  # Linux constant; not exposed by Python everywhere
     # s.setsockopt(socket.IPPROTO_IPV6, IPV6_USE_MIN_MTU, 1)
 
     return s
@@ -79,7 +80,7 @@ def send_with_mtu_awareness(s: socket.socket, data: bytes,
         try:
             return s.sendto(data, dest)
         except OSError as e:
-            if e.errno == 90:  # EMSGSIZE: packet too large
+            if e.errno == errno.EMSGSIZE:
                 print(f"Packet too large for current PMTU={current_pmtu}")
                 return -1
             raise
@@ -102,14 +103,15 @@ DNS is a real-world example of fragmentation avoidance strategy:
 
 # EDNS0 extends to 4096 bytes with fragmentation risk
 
-# Check if DNS responses require fragmentation
-# Large DNSSEC responses can exceed 1280 bytes
-dig @8.8.8.8 cloudflare.com DNSKEY +dnssec +bufsize=1232
+# Send an IPv6 DNSSEC query with a conservative EDNS buffer size
+# If the answer does not fit, the server can truncate and the client can retry over TCP
+dig -6 @2001:4860:4860::8888 cloudflare.com DNSKEY +dnssec +bufsize=1232
 
 # 1232 = 1280 (min IPv6 MTU) - 40 (IPv6) - 8 (UDP)
 # Setting bufsize=1232 avoids fragmentation on all IPv6 paths
 
-# Modern recommendation (RFC 8900): keep DNS UDP responses ≤ 1232 bytes
+# Conservative DNS practice: keep DNS UDP responses ≤ 1232 bytes
+# when you need to avoid IPv6 fragmentation on all paths
 # If response is larger, truncate and let client retry over TCP
 
 # Configure BIND to limit UDP response size
@@ -125,21 +127,21 @@ Modern protocol approaches to avoid fragmentation:
 
 QUIC (RFC 9000):
   - Runs over UDP
-  - Built-in PMTU Discovery (RFC 9000 Section 14)
+  - Uses PMTUD or DPLPMTUD (RFC 9000 Section 14, RFC 8899)
   - Uses PADDING frames to probe MTU
-  - Falls back to 1280-byte minimum if PMTUD fails
+  - Uses a 1200-byte minimum UDP payload size until larger sizes are validated
   - No application-level fragmentation needed
 
-DTLS (Datagram TLS):
-  - Applications split records to fit PMTU
-  - PMTU Discovery handled per RFC 6347
+DTLS (Datagram TLS; RFC 9147, RFC 6347 for DTLS 1.2):
+  - Leaves PMTU discovery primarily to the application/underlying transport
+  - Handshake messages may be fragmented to fit the PMTU
 
 WireGuard:
-  - Sets tunnel MTU = underlying MTU - 60 bytes (overhead)
-  - All packets fit within outer link MTU automatically
-  - No fragmentation at IPsec/WireGuard layer
+  - Encapsulates packets in UDP and depends on a correct interface MTU
+  - `wg-quick` auto-detects MTU from the endpoint route unless overridden
+  - With a correct MTU, outer IP fragmentation is avoided
 ```
 
 ## Conclusion
 
-The best way to avoid IPv6 fragmentation is to use TCP for connections that need it (TCP handles PMTUD automatically through MSS negotiation) and to keep UDP payloads conservative (within 1280 bytes for guaranteed delivery, or implementing application-level PMTUD for higher efficiency). The `IPV6_DONTFRAG` socket option is invaluable during development - it surfaces MTU problems as explicit errors rather than silent fragmentation failures. For DNS specifically, RFC 8900 recommends limiting UDP response sizes to 1232 bytes to avoid fragmentation on all IPv6 paths.
+The best way to avoid IPv6 fragmentation is to use TCP for connections that need it (TCP handles PMTUD automatically through MSS negotiation) and to keep UDP payloads conservative (for example, 1232 bytes over IPv6 when you need every packet to fit within the 1280-byte minimum MTU, or implementing application-level PMTUD for higher efficiency). On platforms that expose it, the `IPV6_DONTFRAG` socket option is invaluable during development - it surfaces MTU problems as explicit errors rather than silent fragmentation failures. For DNS specifically, 1232 bytes is the conservative UDP payload size derived from IPv6's 1280-byte minimum MTU.
