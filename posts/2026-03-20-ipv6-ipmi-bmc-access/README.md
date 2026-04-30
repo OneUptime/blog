@@ -20,28 +20,27 @@ IPMI (Intelligent Platform Management Interface) and BMC provide hardware-level 
 racadm set iDRAC.IPv6.Enable 1
 
 # Configure static IPv6
-racadm set iDRAC.IPv6.Address1 2001:db8:oob::201
-racadm set iDRAC.IPv6.PrefixLength1 64
-racadm set iDRAC.IPv6.Gateway1 2001:db8:oob::1
-racadm set iDRAC.IPv6.AutoConfig Disabled
+racadm set iDRAC.IPv6.AutoConfig 0
+racadm set iDRAC.IPv6Static.Address1 2001:db8:100::201
+racadm set iDRAC.IPv6Static.PrefixLength 64
+racadm set iDRAC.IPv6Static.Gateway 2001:db8:100::1
 
-# Or enable DHCPv6
+# Or enable IPv6 autoconfiguration (SLAAC/DHCPv6)
 racadm set iDRAC.IPv6.AutoConfig 1
-racadm set iDRAC.IPv6.Autoconfig 2  # DHCPv6 stateful
 
 # Verify configuration
 racadm get iDRAC.IPv6
 
 # Remote racadm via existing IPv4
-racadm -r 192.168.1.201 -u root -p calvin set iDRAC.IPv6.Address1 2001:db8:oob::201
+racadm -r 192.168.1.201 -u root -p calvin set iDRAC.IPv6Static.Address1 2001:db8:100::201
 
 # Method 2: iDRAC Web GUI
 # https://idrac-ip/
-# iDRAC Settings > Network > IPv6
+# iDRAC Settings > Connectivity > Network > IPv6 Settings
 # Enable IPv6: Enabled
-# IP Address: 2001:db8:oob::201
+# IP Address: 2001:db8:100::201
 # Prefix Length: 64
-# Gateway: 2001:db8:oob::1
+# Gateway: 2001:db8:100::1
 ```
 
 ## HP iLO IPv6 Configuration
@@ -51,24 +50,26 @@ racadm -r 192.168.1.201 -u root -p calvin set iDRAC.IPv6.Address1 2001:db8:oob::
 
 # Via hponcfg XML
 cat > /tmp/ilo-ipv6-config.xml << 'EOF'
-<RIBCL VERSION="2.23">
+<RIBCL VERSION="2.0">
   <LOGIN USER_LOGIN="admin" PASSWORD="password">
     <RIB_INFO MODE="write">
       <MOD_NETWORK_SETTINGS>
-        <SPEED_AUTOSELECT VALUE="Yes"/>
-        <REG_WINS_SERVER VALUE="No"/>
-        <DHCP_ENABLE VALUE="No"/>
+        <SPEED_AUTOSELECT VALUE="Y"/>
+        <REG_WINS_SERVER VALUE="N"/>
+        <DHCP_ENABLE VALUE="N"/>
         <IP_ADDRESS VALUE="192.168.1.202"/>
         <SUBNET_MASK VALUE="255.255.255.0"/>
         <GATEWAY_IP_ADDRESS VALUE="192.168.1.1"/>
         <!-- IPv6 Settings -->
-        <IPV6_ADDRESS VALUE="2001:db8:oob::202"/>
-        <IPV6_PREFIX_LENGTH VALUE="64"/>
-        <IPV6_DEFAULT_GATEWAY VALUE="2001:db8:oob::1"/>
-        <PREFER_IPV6 VALUE="No"/>
-        <DHCPV6_ENABLED VALUE="No"/>
-        <IPV6_STATIC_IP_ADDRESS_1 VALUE="2001:db8:oob::202"/>
-        <IPV6_STATIC_PREFIX_LENGTH_1 VALUE="64"/>
+        <IPV6_ADDRESS VALUE="2001:DB8:100::202"
+                      PREFIXLEN="64"
+                      ADDR_SOURCE="STATIC"
+                      ADDR_STATUS="ACTIVE"/>
+        <IPV6_DEFAULT_GATEWAY VALUE="2001:DB8:100::1"/>
+        <IPV6_PREFERRED_PROTOCOL VALUE="N"/>
+        <IPV6_ADDR_AUTOCFG VALUE="N"/>
+        <DHCPV6_STATELESS_ENABLE VALUE="N"/>
+        <DHCPV6_STATEFUL_ENABLE VALUE="N"/>
       </MOD_NETWORK_SETTINGS>
     </RIB_INFO>
   </LOGIN>
@@ -79,7 +80,7 @@ hponcfg -i < /tmp/ilo-ipv6-config.xml
 
 # Verify via hponcfg
 cat > /tmp/ilo-get-network.xml << 'EOF'
-<RIBCL VERSION="2.23">
+<RIBCL VERSION="2.0">
   <LOGIN USER_LOGIN="admin" PASSWORD="password">
     <RIB_INFO MODE="read">
       <GET_NETWORK_SETTINGS/>
@@ -97,31 +98,28 @@ hponcfg -i < /tmp/ilo-get-network.xml
 # Supermicro IPMI - ipmitool configuration
 
 # Check IPv6 support
-ipmitool -H 192.168.1.203 -U admin -P password lan6 print 1
+ipmitool -I lanplus -H 192.168.1.203 -U admin -P password lan6 print 1
 
-# Enable IPv6 channel
-ipmitool -H 192.168.1.203 -U admin -P password \
-    raw 0x0c 0x01 0x01 0xc0 0x01
+# Enable IPv6 on the LAN channel
+ipmitool -I lanplus -H 192.168.1.203 -U admin -P password \
+    lan6 set 1 enables ipv6
 
 # Set IPv6 static address
-ipmitool -H 192.168.1.203 -U admin -P password \
-    lan6 set 1 ipv6static 0 address 2001:db8:oob::203
+ipmitool -I lanplus -H 192.168.1.203 -U admin -P password \
+    lan6 set 1 static_addr 0 enable 2001:db8:100::203 64
 
-ipmitool -H 192.168.1.203 -U admin -P password \
-    lan6 set 1 ipv6static 0 prefix_len 64
-
-ipmitool -H 192.168.1.203 -U admin -P password \
-    lan6 set 1 ipv6static 0 gateway 2001:db8:oob::1
-
-# Enable the static address
-ipmitool -H 192.168.1.203 -U admin -P password \
-    lan6 set 1 enables ipv6_static_addr
+# Configure a static default router entry
+# Replace 00:11:22:33:44:55 with the MAC address of the IPv6 gateway on this segment
+ipmitool -I lanplus -H 192.168.1.203 -U admin -P password \
+    lan6 set 1 rtr_cfg static
+ipmitool -I lanplus -H 192.168.1.203 -U admin -P password \
+    lan6 set 1 static_rtr 1 2001:db8:100::1 00:11:22:33:44:55 :: 0
 
 # Verify
-ipmitool -H 192.168.1.203 -U admin -P password lan6 print 1
+ipmitool -I lanplus -H 192.168.1.203 -U admin -P password lan6 print 1
 
 # Test access via IPv6
-ipmitool -H 2001:db8:oob::203 -U admin -P password power status
+ipmitool -I lanplus -H 2001:db8:100::203 -U admin -P password power status
 ```
 
 ## Generic IPMI 2.0 IPv6 via ipmitool
@@ -136,24 +134,26 @@ ipmitool lan6 set 1 enables ipv6
 ipmitool lan6 print 1 | grep -i slaac
 
 # Set static IPv6 address
-ipmitool lan6 set 1 ipv6static 0 address 2001:db8:oob::101
-ipmitool lan6 set 1 ipv6static 0 prefix_len 64
-ipmitool lan6 set 1 ipv6static 0 gateway 2001:db8:oob::1
-ipmitool lan6 set 1 enables ipv6_static_addr
+ipmitool lan6 set 1 static_addr 0 enable 2001:db8:100::101 64
+
+# Configure a static default router entry
+# Replace 00:11:22:33:44:55 with the MAC address of the IPv6 gateway on this segment
+ipmitool lan6 set 1 rtr_cfg static
+ipmitool lan6 set 1 static_rtr 1 2001:db8:100::1 00:11:22:33:44:55 :: 0
 
 # Verify current IPv6 configuration
 ipmitool lan6 print 1
 
 # Check BMC SDR sensors remotely via IPv6
-ipmitool -H 2001:db8:oob::101 -U admin -P password sdr list
+ipmitool -I lanplus -H 2001:db8:100::101 -U admin -P password sdr list
 
 # Remote power control
-ipmitool -H 2001:db8:oob::101 -U admin -P password power status
-ipmitool -H 2001:db8:oob::101 -U admin -P password power cycle
+ipmitool -I lanplus -H 2001:db8:100::101 -U admin -P password power status
+ipmitool -I lanplus -H 2001:db8:100::101 -U admin -P password power cycle
 
 # Remote console via SOL
-ipmitool -H 2001:db8:oob::101 -U admin -P password \
-    -I lanplus sol activate
+ipmitool -I lanplus -H 2001:db8:100::101 -U admin -P password \
+    sol activate
 ```
 
 ## Redfish API over IPv6
@@ -163,18 +163,18 @@ ipmitool -H 2001:db8:oob::101 -U admin -P password \
 
 # Get system info
 curl -sk -u admin:password \
-    https://[2001:db8:oob::201]/redfish/v1/Systems/System.Embedded.1 | \
+    https://[2001:db8:100::201]/redfish/v1/Systems/System.Embedded.1 | \
     python3 -m json.tool | grep -E "Model|MemorySize|Status|PowerState"
 
 # Power control via Redfish IPv6
 curl -sk -X POST -u admin:password \
     -H "Content-Type: application/json" \
     -d '{"ResetType": "ForceRestart"}' \
-    https://[2001:db8:oob::201]/redfish/v1/Systems/System.Embedded.1/Actions/ComputerSystem.Reset
+    https://[2001:db8:100::201]/redfish/v1/Systems/System.Embedded.1/Actions/ComputerSystem.Reset
 
 # Get sensor readings
 curl -sk -u admin:password \
-    https://[2001:db8:oob::201]/redfish/v1/Chassis/System.Embedded.1/Thermal | \
+    https://[2001:db8:100::201]/redfish/v1/Chassis/System.Embedded.1/Thermal | \
     python3 -m json.tool | grep -E "Name|ReadingCelsius"
 ```
 
@@ -184,44 +184,43 @@ curl -sk -u admin:password \
 #!/bin/bash
 # configure_bmc_ipv6.sh - Configure IPv6 on all BMC interfaces
 
-# Array of servers: hostname:ipv4-bmc:ipv6-bmc
+# Array of servers: hostname|ipv4-bmc|ipv6-bmc
 SERVERS=(
-    "server-01:192.168.1.201:2001:db8:oob::201"
-    "server-02:192.168.1.202:2001:db8:oob::202"
-    "server-03:192.168.1.203:2001:db8:oob::203"
+    "server-01|192.168.1.201|2001:db8:100::201"
+    "server-02|192.168.1.202|2001:db8:100::202"
+    "server-03|192.168.1.203|2001:db8:100::203"
 )
 
-GW6="2001:db8:oob::1"
+GW6="2001:db8:100::1"
+# Replace with the MAC address of the IPv6 gateway on this OOB segment
+GW6_MAC="00:11:22:33:44:55"
 ADMIN_USER="admin"
 ADMIN_PASS="password"
 
 for server in "${SERVERS[@]}"; do
-    NAME=$(echo $server | cut -d: -f1)
-    IPV4=$(echo $server | cut -d: -f2)
-    IPV6=$(echo $server | cut -d: -f3)
+    IFS='|' read -r NAME IPV4 IPV6 <<< "$server"
 
     echo "Configuring IPv6 on $NAME BMC ($IPV6)..."
 
-    ipmitool -H $IPV4 -U $ADMIN_USER -P $ADMIN_PASS \
-        lan6 set 1 ipv6static 0 address $IPV6 && \
-    ipmitool -H $IPV4 -U $ADMIN_USER -P $ADMIN_PASS \
-        lan6 set 1 ipv6static 0 prefix_len 64 && \
-    ipmitool -H $IPV4 -U $ADMIN_USER -P $ADMIN_PASS \
-        lan6 set 1 ipv6static 0 gateway $GW6 && \
-    ipmitool -H $IPV4 -U $ADMIN_USER -P $ADMIN_PASS \
-        lan6 set 1 enables ipv6_static_addr && \
+    ipmitool -I lanplus -H "$IPV4" -U "$ADMIN_USER" -P "$ADMIN_PASS" \
+        lan6 set 1 enables ipv6 && \
+    ipmitool -I lanplus -H "$IPV4" -U "$ADMIN_USER" -P "$ADMIN_PASS" \
+        lan6 set 1 static_addr 0 enable "$IPV6" 64 && \
+    ipmitool -I lanplus -H "$IPV4" -U "$ADMIN_USER" -P "$ADMIN_PASS" \
+        lan6 set 1 rtr_cfg static && \
+    ipmitool -I lanplus -H "$IPV4" -U "$ADMIN_USER" -P "$ADMIN_PASS" \
+        lan6 set 1 static_rtr 1 "$GW6" "$GW6_MAC" :: 0 && \
     echo "$NAME: IPv6 configured successfully" || \
     echo "$NAME: FAILED to configure IPv6"
 done
 
 echo "Verifying IPv6 BMC connectivity..."
 for server in "${SERVERS[@]}"; do
-    NAME=$(echo $server | cut -d: -f1)
-    IPV6=$(echo $server | cut -d: -f3)
-    ping6 -c 1 -W 2 $IPV6 > /dev/null 2>&1 && \
+    IFS='|' read -r NAME IPV4 IPV6 <<< "$server"
+    ping6 -c 1 -W 2 "$IPV6" > /dev/null 2>&1 && \
         echo "$NAME ($IPV6): REACHABLE" || \
         echo "$NAME ($IPV6): UNREACHABLE"
 done
 ```
 
-IPMI/BMC IPv6 configuration varies by vendor but follows the same pattern: enable IPv6 on the BMC LAN channel, assign a static IPv6 address from the OOB management prefix, configure the IPv6 gateway, and verify with remote ipmitool commands or Redfish API calls using bracket notation for the IPv6 address in the URL.
+IPMI/BMC IPv6 configuration varies by vendor but follows the same pattern: enable IPv6 on the BMC LAN channel, assign a static IPv6 address from the OOB management prefix or enable autoconfiguration, configure any required IPv6 router settings, and verify with remote ipmitool commands or Redfish API calls using bracket notation for the IPv6 address in the URL.
