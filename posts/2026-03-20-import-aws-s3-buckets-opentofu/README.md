@@ -23,7 +23,7 @@ aws s3api get-bucket-versioning --bucket $BUCKET
 aws s3api get-bucket-encryption --bucket $BUCKET
 
 # Check public access block
-aws s3api get-public-access-block --bucket $BUCKET
+aws s3api get-public-access-block --bucket $BUCKET 2>/dev/null || echo "No public access block"
 
 # Check lifecycle rules
 aws s3api get-bucket-lifecycle-configuration --bucket $BUCKET 2>/dev/null || echo "No lifecycle rules"
@@ -65,7 +65,9 @@ resource "aws_s3_bucket_public_access_block" "main" {
 }
 ```
 
-## Step 3: Import Blocks for All Sub-Resources
+## Step 3: Import Blocks for Each Existing Sub-Resource
+
+Only add import blocks for sub-resources that actually exist on the bucket.
 
 ```hcl
 # import.tf
@@ -124,7 +126,10 @@ data "aws_iam_policy_document" "bucket_policy" {
   statement {
     effect    = "Deny"
     actions   = ["s3:*"]
-    resources = ["arn:aws:s3:::my-existing-bucket/*"]
+    resources = [
+      "arn:aws:s3:::my-existing-bucket",
+      "arn:aws:s3:::my-existing-bucket/*",
+    ]
     principals {
       type        = "*"
       identifiers = ["*"]
@@ -158,7 +163,7 @@ resource "aws_s3_bucket" "main" {
 
   lifecycle {
     ignore_changes = [
-      # Ignore if tags are managed by AWS Organizations tag policies
+      # Ignore if tags are managed outside OpenTofu
       tags,
     ]
   }
@@ -167,4 +172,4 @@ resource "aws_s3_bucket" "main" {
 
 ## Conclusion
 
-S3 bucket import requires importing the bucket itself plus each configuration sub-resource separately. Check each configuration with AWS CLI first, write matching HCL, then import in dependency order (bucket first, then its configurations). The `import` block approach makes this process version-controlled and repeatable across environments.
+S3 bucket import requires importing the bucket itself plus each existing configuration sub-resource separately. Check each configuration with AWS CLI first, write matching HCL, then import in dependency order (bucket first, then its configurations). The `import` block approach makes this process version-controlled and repeatable across environments.
