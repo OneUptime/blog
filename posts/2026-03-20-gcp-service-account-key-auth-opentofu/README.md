@@ -19,7 +19,7 @@ gcloud iam service-accounts create opentofu-sa \
   --display-name="OpenTofu Service Account" \
   --project="${PROJECT_ID}"
 
-# Grant Terraform/OpenTofu required roles
+# Example broad role for testing only
 gcloud projects add-iam-policy-binding "${PROJECT_ID}" \
   --member="serviceAccount:opentofu-sa@${PROJECT_ID}.iam.gserviceaccount.com" \
   --role="roles/editor"
@@ -51,14 +51,14 @@ variable "credentials_file" {
 # Set the credentials path via environment variable
 export GOOGLE_APPLICATION_CREDENTIALS="/path/to/opentofu-key.json"
 # Or use inline JSON
-export GOOGLE_CREDENTIALS=$(cat opentofu-key.json)
+export GOOGLE_CREDENTIALS="$(cat opentofu-key.json)"
 ```
 
 ```hcl
 provider "google" {
   project = var.project_id
   region  = var.region
-  # Automatically uses GOOGLE_APPLICATION_CREDENTIALS
+  # Automatically uses Application Default Credentials
 }
 ```
 
@@ -67,11 +67,11 @@ provider "google" {
 ```yaml
 # GitHub Actions example
 - name: Set up GCP credentials
-  run: echo '${{ secrets.GCP_SA_KEY }}' > /tmp/gcp-key.json
+  run: printf '%s' '${{ secrets.GCP_SA_KEY }}' > /tmp/gcp-key.json
 
 - name: Run OpenTofu
   env:
-    GOOGLE_CREDENTIALS: ${{ secrets.GCP_SA_KEY }}
+    GOOGLE_APPLICATION_CREDENTIALS: /tmp/gcp-key.json
   run: |
     tofu init
     tofu apply -auto-approve
@@ -80,14 +80,10 @@ provider "google" {
 ## Step 5: Least Privilege Roles
 
 ```bash
-# Instead of editor, use specific roles
+# Exact roles depend on the resources in your configuration
 gcloud projects add-iam-policy-binding "${PROJECT_ID}" \
   --member="serviceAccount:opentofu-sa@${PROJECT_ID}.iam.gserviceaccount.com" \
   --role="roles/compute.admin"
-
-gcloud projects add-iam-policy-binding "${PROJECT_ID}" \
-  --member="serviceAccount:opentofu-sa@${PROJECT_ID}.iam.gserviceaccount.com" \
-  --role="roles/iam.serviceAccountUser"
 ```
 
 ## Conclusion
