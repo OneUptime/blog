@@ -8,7 +8,7 @@ Description: Configure Icecast internet radio streaming server to accept source 
 
 ---
 
-Icecast is a streaming media server for audio and video. It supports IPv6 through its hostname binding configuration, enabling internet radio stations to serve both IPv4 and IPv6 listeners simultaneously.
+Icecast is a streaming media server commonly used for internet radio. It supports IPv6 through its listener socket configuration, enabling internet radio stations to serve both IPv4 and IPv6 listeners simultaneously.
 
 ## Installing Icecast
 
@@ -20,17 +20,18 @@ sudo apt install icecast2 -y
 # Configuration wizard runs during install
 # Set passwords carefully
 
-# RHEL/CentOS
+# Fedora
 sudo dnf install icecast -y
 
 # Check version
-icecast -v
+icecast2 -v   # Ubuntu/Debian
+icecast -v    # Fedora
 ```
 
 ## Configuring Icecast for IPv6
 
 ```xml
-<!-- /etc/icecast2/icecast.xml -->
+<!-- /etc/icecast2/icecast.xml on Debian/Ubuntu -->
 
 <icecast>
     <location>Earth</location>
@@ -54,14 +55,19 @@ icecast -v
 
     <hostname>stream.example.com</hostname>
 
-    <!-- Listen on all interfaces including IPv6 -->
+    <!-- Listen explicitly on IPv6 -->
     <listen-socket>
         <port>8000</port>
-        <!-- Bind to all IPv4 and IPv6 interfaces -->
         <bind-address>::</bind-address>
     </listen-socket>
 
-    <!-- Or bind to specific IPv6 address -->
+    <!-- Also listen on IPv4 for predictable dual-stack behavior -->
+    <listen-socket>
+        <port>8000</port>
+        <bind-address>0.0.0.0</bind-address>
+    </listen-socket>
+
+    <!-- Or bind to a specific IPv6 address instead -->
     <!--
     <listen-socket>
         <port>8000</port>
@@ -69,16 +75,10 @@ icecast -v
     </listen-socket>
     -->
 
-    <!-- Also listen on IPv4 if needed -->
-    <listen-socket>
-        <port>8000</port>
-        <bind-address>0.0.0.0</bind-address>
-    </listen-socket>
-
     <paths>
         <logdir>/var/log/icecast2</logdir>
-        <webroot>/usr/share/icecast2/web</webroot>
-        <adminroot>/usr/share/icecast2/admin</adminroot>
+        <webroot>/etc/icecast2/web</webroot>
+        <adminroot>/etc/icecast2/admin</adminroot>
     </paths>
 
     <logging>
@@ -97,14 +97,20 @@ icecast -v
 
 ```bash
 # Start Icecast
+# Ubuntu/Debian
 sudo systemctl start icecast2
 sudo systemctl enable icecast2
+
+# Fedora
+sudo systemctl start icecast
+sudo systemctl enable icecast
 
 # Verify listening on IPv6
 ss -6 -tlnp | grep 8000
 
 # Check logs
-sudo tail -f /var/log/icecast2/error.log
+sudo tail -f /var/log/icecast2/error.log   # Ubuntu/Debian
+sudo tail -f /var/log/icecast/error.log    # Fedora
 ```
 
 ## Configuring Source (Liquidsoap over IPv6)
@@ -113,11 +119,11 @@ sudo tail -f /var/log/icecast2/error.log
 # /etc/liquidsoap/radio.liq - Liquidsoap source script
 
 # Define audio source
-source = playlist("/var/music/", mode="normal")
+source = playlist(mode="normal", "/var/music/")
 
 # Output to Icecast over IPv6
 output.icecast(%mp3,
-    host="2001:db8::icecast-server",
+    host="2001:db8::1",
     port=8000,
     password="sourcepassword",
     mount="/stream.mp3",
@@ -132,27 +138,27 @@ output.icecast(%mp3,
 # Allow Icecast listener port
 sudo ip6tables -A INPUT -p tcp --dport 8000 -j ACCEPT
 
-# Allow SSL Icecast (if using)
+# Allow HTTPS Icecast (if using)
 sudo ip6tables -A INPUT -p tcp --dport 8443 -j ACCEPT
 
-sudo ip6tables-save > /etc/ip6tables/rules.v6
+# Persist the rules using your distribution's firewall tooling
 ```
 
 ## Testing Icecast over IPv6
 
 ```bash
 # Test Icecast web interface over IPv6
-curl -6 http://[2001:db8::icecast]:8000/
+curl -6 http://[2001:db8::1]:8000/
 
 # Test stream playback over IPv6
-ffplay "http://[2001:db8::icecast]:8000/stream.mp3"
+ffplay "http://[2001:db8::1]:8000/stream.mp3"
 
 # VLC playback
-vlc "http://[2001:db8::icecast]:8000/stream.mp3"
+vlc "http://[2001:db8::1]:8000/stream.mp3"
 
 # Check listener statistics
 curl -6 -u admin:adminpassword \
-  "http://[2001:db8::icecast]:8000/admin/stats"
+  "http://[2001:db8::1]:8000/admin/stats"
 ```
 
 ## Icecast Relay over IPv6
@@ -161,7 +167,7 @@ curl -6 -u admin:adminpassword \
 <!-- Relay configuration in icecast.xml -->
 <relay>
     <!-- Relay from IPv6 master server -->
-    <server>2001:db8::master-icecast</server>
+    <server>2001:db8::2</server>
     <port>8000</port>
     <mount>/source.mp3</mount>
     <local-mount>/relay.mp3</local-mount>
@@ -169,4 +175,4 @@ curl -6 -u admin:adminpassword \
 </relay>
 ```
 
-Icecast's `bind-address` using `::` enables dual-stack listening where both IPv4 and IPv6 listeners can connect to the same stream, making it straightforward to serve internet radio to the growing number of IPv6-capable network connections.
+Using explicit IPv6 and IPv4 `listen-socket` entries with `::` and `0.0.0.0` makes dual-stack listener reachability predictable, making it straightforward to serve internet radio to IPv6-capable network connections.
