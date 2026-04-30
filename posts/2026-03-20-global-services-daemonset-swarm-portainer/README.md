@@ -4,20 +4,20 @@ Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
 Tags: Portainer, Docker Swarm, Global Service, DaemonSet, Infrastructure
 
-Description: Deploy Docker Swarm global mode services through Portainer to run exactly one container per node across the entire cluster, equivalent to Kubernetes DaemonSets.
+Description: Deploy Docker Swarm global mode services through Portainer to run exactly one container on each available node across the cluster, equivalent to Kubernetes DaemonSets.
 
 ---
 
-A Docker Swarm global service runs exactly one replica on every node in the cluster (or every node that matches a placement constraint). This is equivalent to a Kubernetes DaemonSet. Common use cases include log collectors, metrics exporters, security agents, and network plugins.
+A Docker Swarm global service runs exactly one task on every available node in the cluster (or every available node that matches a placement constraint). This is equivalent to a Kubernetes DaemonSet. Common use cases include log collectors, metrics exporters, security agents, and network plugins.
 
 ## Global vs Replicated Services
 
 | Mode | Behavior |
 |---|---|
 | `replicated` (default) | Run N replicas, scheduler decides placement |
-| `global` | Run exactly one replica on every matching node |
+| `global` | Run exactly one task on every matching available node |
 
-When a new node joins the Swarm, a global service automatically deploys to it. When a node leaves, its replica is removed.
+When a new node joins the Swarm, a global service automatically deploys to it. When a node leaves, its task is removed.
 
 ## Step 1: Deploy a Global Log Collector
 
@@ -27,7 +27,8 @@ In Portainer, create a stack with a global log forwarder (Filebeat example):
 version: "3.8"
 services:
   log-collector:
-    image: docker.elastic.co/beats/filebeat:8.12.0
+    image: docker.elastic.co/beats/filebeat:9.3.4
+    user: root
     # Use global mode to run on every node
     deploy:
       mode: global
@@ -35,9 +36,15 @@ services:
       # Access Docker container logs from the host
       - /var/lib/docker/containers:/var/lib/docker/containers:ro
       - /var/run/docker.sock:/var/run/docker.sock:ro
-      - ./filebeat.yml:/usr/share/filebeat/filebeat.yml:ro
-    environment:
-      - ELASTICSEARCH_HOST=elasticsearch:9200
+      # Use an absolute host path; the same config file must exist on every node
+      - /etc/filebeat/filebeat.yml:/usr/share/filebeat/filebeat.yml:ro
+      - /var/lib/filebeat-data:/usr/share/filebeat/data
+    command:
+      - filebeat
+      - -e
+      - --strict.perms=false
+      - -E
+      - output.elasticsearch.hosts=["elasticsearch:9200"]
 ```
 
 ## Step 2: Global Prometheus Node Exporter
@@ -48,7 +55,7 @@ A classic global service use case - run Node Exporter on every node:
 version: "3.8"
 services:
   node-exporter:
-    image: prom/node-exporter:latest
+    image: quay.io/prometheus/node-exporter:latest
     deploy:
       mode: global
     volumes:
@@ -58,12 +65,12 @@ services:
     command:
       - '--path.procfs=/host/proc'
       - '--path.sysfs=/host/sys'
-      - '--collector.filesystem.mount-points-exclude=^/(sys|proc|dev|host|etc)'
+      - '--path.rootfs=/rootfs'
+      - '--collector.filesystem.mount-points-exclude=^/(dev|proc|sys|var/lib/docker/.+)($|/)'
     ports:
       - target: 9100
         published: 9100
         mode: host    # Publish on each node's IP for Prometheus scraping
-    network_mode: host
 ```
 
 ## Step 3: Restrict Global Service to Specific Nodes
@@ -81,7 +88,7 @@ deploy:
 
 ## Step 4: View Global Service Replicas in Portainer
 
-In Portainer's **Services** view, global services show one replica per active node. The replica count updates automatically as nodes join or leave.
+In Portainer's **Services** view, global services show one task per available node. The task count updates automatically as nodes join or leave.
 
 ## Step 5: Update a Global Service
 
@@ -98,4 +105,4 @@ deploy:
 
 ## Summary
 
-Global services are the Swarm equivalent of Kubernetes DaemonSets. They ensure infrastructure agents like log collectors, metrics exporters, and security scanners run on every node without requiring manual per-node configuration. Portainer's service view shows all global replicas and their health status in a single view.
+Global services are the Swarm equivalent of Kubernetes DaemonSets. They ensure infrastructure agents like log collectors, metrics exporters, and security scanners run on every available node without requiring manual per-node configuration. Portainer's service view shows all global tasks and their status in a single view.
