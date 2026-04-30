@@ -29,6 +29,8 @@ provider "google" {
 ## BigQuery Dataset for Logs
 
 ```hcl
+data "google_client_openid_userinfo" "me" {}
+
 resource "google_bigquery_dataset" "logs" {
   dataset_id  = "cloud_logs"
   description = "Centralized log storage for analysis"
@@ -41,17 +43,18 @@ resource "google_bigquery_dataset" "logs" {
     purpose = "log-analytics"
     managed = "opentofu"
   }
+}
 
-  # Restrict access to authorized users only
-  access {
-    role          = "OWNER"
-    user_by_email = data.google_client_openid_userinfo.me.email
-  }
+resource "google_bigquery_dataset_access" "logs_owner" {
+  dataset_id    = google_bigquery_dataset.logs.dataset_id
+  role          = "OWNER"
+  user_by_email = data.google_client_openid_userinfo.me.email
+}
 
-  access {
-    role           = "READER"
-    group_by_email = var.log_readers_group
-  }
+resource "google_bigquery_dataset_access" "logs_reader" {
+  dataset_id     = google_bigquery_dataset.logs.dataset_id
+  role           = "READER"
+  group_by_email = var.log_readers_group
 }
 ```
 
@@ -72,7 +75,7 @@ resource "google_logging_project_sink" "app_to_bigquery" {
     AND resource.labels.cluster_name="${var.cluster_name}"
   EOT
 
-  # Creates a unique service account for this sink
+  # Returns a Logging-managed writer identity for this sink
   unique_writer_identity = true
 
   bigquery_options {
@@ -80,11 +83,11 @@ resource "google_logging_project_sink" "app_to_bigquery" {
   }
 }
 
-# Grant the sink's service account write access to BigQuery dataset
-resource "google_bigquery_dataset_iam_member" "sink_writer" {
-  dataset_id = google_bigquery_dataset.logs.dataset_id
-  role       = "roles/bigquery.dataEditor"
-  member     = google_logging_project_sink.app_to_bigquery.writer_identity
+# Grant the sink writer identity write access to the BigQuery dataset
+resource "google_bigquery_dataset_access" "sink_writer" {
+  dataset_id    = google_bigquery_dataset.logs.dataset_id
+  role          = "WRITER"
+  user_by_email = replace(google_logging_project_sink.app_to_bigquery.writer_identity, "serviceAccount:", "")
 }
 ```
 
@@ -120,10 +123,10 @@ resource "google_logging_project_sink" "audit_to_bigquery" {
   }
 }
 
-resource "google_bigquery_dataset_iam_member" "audit_sink_writer" {
-  dataset_id = google_bigquery_dataset.audit_logs.dataset_id
-  role       = "roles/bigquery.dataEditor"
-  member     = google_logging_project_sink.audit_to_bigquery.writer_identity
+resource "google_bigquery_dataset_access" "audit_sink_writer" {
+  dataset_id    = google_bigquery_dataset.audit_logs.dataset_id
+  role          = "WRITER"
+  user_by_email = replace(google_logging_project_sink.audit_to_bigquery.writer_identity, "serviceAccount:", "")
 }
 ```
 
@@ -157,35 +160,34 @@ resource "google_logging_organization_sink" "org_to_bigquery" {
   }
 }
 
-resource "google_bigquery_dataset_iam_member" "org_sink_writer" {
-  project    = var.log_project_id
-  dataset_id = google_bigquery_dataset.org_logs.dataset_id
-  role       = "roles/bigquery.dataEditor"
-  member     = google_logging_organization_sink.org_to_bigquery.writer_identity
+resource "google_bigquery_dataset_access" "org_sink_writer" {
+  project       = var.log_project_id
+  dataset_id    = google_bigquery_dataset.org_logs.dataset_id
+  role          = "WRITER"
+  user_by_email = replace(google_logging_organization_sink.org_to_bigquery.writer_identity, "serviceAccount:", "")
 }
 ```
 
-## Saved BigQuery Queries for Log Analysis
+## Reusable BigQuery Procedure for Log Analysis
 
 ```hcl
-# Create saved queries for common log analysis tasks
-resource "google_bigquery_routine" "top_errors" {
-  dataset_id   = google_bigquery_dataset.logs.dataset_id
-  routine_id   = "top_errors_last_24h"
+# Create a reusable procedure for a common audit-log analysis task
+resource "google_bigquery_routine" "top_audit_methods" {
+  dataset_id   = google_bigquery_dataset.audit_logs.dataset_id
+  routine_id   = "top_audit_methods_last_24h"
   routine_type = "PROCEDURE"
   language     = "SQL"
 
   definition_body = <<-EOT
     SELECT
-      jsonPayload.message AS error_message,
+      protoPayload.methodName AS method_name,
       COUNT(*) AS count,
       MIN(timestamp) AS first_seen,
       MAX(timestamp) AS last_seen
-    FROM `${var.project_id}.${google_bigquery_dataset.logs.dataset_id}.*`
+    FROM `${var.project_id}.${google_bigquery_dataset.audit_logs.dataset_id}.cloudaudit_googleapis_com_activity`
     WHERE
-      severity = 'ERROR'
-      AND timestamp > TIMESTAMP_SUB(CURRENT_TIMESTAMP(), INTERVAL 24 HOUR)
-    GROUP BY error_message
+      timestamp > TIMESTAMP_SUB(CURRENT_TIMESTAMP(), INTERVAL 24 HOUR)
+    GROUP BY method_name
     ORDER BY count DESC
     LIMIT 20;
   EOT
@@ -194,4 +196,4 @@ resource "google_bigquery_routine" "top_errors" {
 
 ## Conclusion
 
-GCP Log Sinks to BigQuery in OpenTofu enable powerful SQL-based log analysis at scale. Use partitioned tables to keep query costs low, create organization-level sinks to aggregate logs from all projects into a central dataset, and use unique_writer_identity so each sink has its own service account with minimal permissions. Combine with BigQuery Data Studio or Looker for live log dashboards, and save common analysis queries as BigQuery procedures for team-wide reuse.
+GCP Log Sinks to BigQuery in OpenTofu enable powerful SQL-based log analysis at scale. Use partitioned tables to keep query costs low, create organization-level sinks to aggregate logs from all projects into a central dataset, and use unique_writer_identity so Cloud Logging returns a writer identity you can grant only the destination permissions it needs. Combine with Looker Studio or Looker for live log dashboards, and create reusable BigQuery procedures for team-wide log analysis workflows.
