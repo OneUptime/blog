@@ -43,23 +43,27 @@ IPv6 Header:
 ```text
 Redirect conditions (RFC 4861 Section 8.2):
 
-A router MUST send a Redirect when ALL of the following are true:
+A router SHOULD send a Redirect, subject to rate limiting, when ALL of
+the following are true:
 
-1. The packet being forwarded arrived on the SAME interface it will
-   be forwarded on (both ingress and egress are the same interface)
-   → This means both the sending host and the better next-hop
-     are on the same link
+1. The router is forwarding a packet that is not explicitly addressed
+   to itself
+   → For example, the packet is not source-routed through the router
 
-2. The better next-hop address (Target) is different from the
-   Destination address in the original packet
-   → Exception: if the Destination IS the better next-hop (host
-     is directly on-link), Target = Destination
+2. The Source Address of the forwarded packet identifies a neighbor
+   → The sending host is on the same link as the router
 
-3. The packet is not multicast
+3. The router knows a better first-hop node for the packet's
+   Destination Address on that same link
+   → The better next-hop is on-link to the sending host
 
-4. The router is not forwarding packets to the host via its own
-   address (i.e., the host's traffic arrives from the link where
-   the better route also exists)
+4. The Destination Address of the forwarded packet is not multicast
+
+Target field rules:
+- If the better first-hop is a router, Target = that router's
+  link-local address
+- If the better first-hop is the destination host itself,
+  Target = Destination
 
 Example scenario:
   Host: 2001:db8::100 (gateway = Router-A fe80::1)
@@ -69,7 +73,7 @@ Example scenario:
   Flow:
   1. Host sends to 2001:db8:2::1, via Router-A
   2. Router-A forwards to Router-B (same link)
-  3. Router-A sends Redirect to Host: "use fe80::2 for 2001:db8:2::/64"
+  3. Router-A sends Redirect to Host: "use fe80::2 for 2001:db8:2::1"
   4. Host caches: dest 2001:db8:2::1 → next-hop fe80::2
   5. Future packets skip Router-A and go directly to Router-B
 ```
@@ -77,16 +81,12 @@ Example scenario:
 ## Processing Redirects
 
 ```bash
-# Check the IPv6 destination cache (shows cached redirects)
-
-ip -6 route show cache | grep redirect
-
-# View all redirect entries (next-hop is different from default GW)
+# Show IPv6 cached routes; redirect-learned entries may appear here
 ip -6 route show cache
 
-# Example: a redirect entry shows an alternative next-hop
+# Example: a cached entry can show a destination-specific next-hop
 # 2001:db8:2::1 via fe80::2 dev eth0 src 2001:db8::100
-#   cache  expires 60sec redirect
+#   cache  expires 60sec
 
 # Accept redirects from routers (default behavior)
 cat /proc/sys/net/ipv6/conf/eth0/accept_redirects
@@ -108,22 +108,23 @@ sudo sysctl -w net.ipv6.conf.all.accept_redirects=1
 # 2. Redirect says: "use attacker's address for destination X"
 # 3. Host routes all traffic to X through attacker
 
-# Defense 1: Accept redirects only from current default gateway
-# Linux checks if redirect source is in default router list
+# Defense 1: Accept redirects only from the current first-hop router
+# RFC 4861 requires the redirect source to match the current first-hop
+# router for that destination
 
 # Defense 2: Disable redirects on hosts that don't need them
 sudo sysctl -w net.ipv6.conf.eth0.accept_redirects=0
 
-# Defense 3: Block Redirect messages from untrusted sources in ip6tables
+# Defense 3: On a single-router host, allow Redirects only from that router
 DEFAULT_GW=$(ip -6 route show default | awk '/via/ {print $3; exit}')
 sudo ip6tables -A INPUT -p icmpv6 --icmpv6-type redirect \
     -s "$DEFAULT_GW" -j ACCEPT
 sudo ip6tables -A INPUT -p icmpv6 --icmpv6-type redirect -j DROP
 
-# Defense 4: ND Inspection on switch (validates Redirect source must be
-# a router that previously sent Router Advertisements)
+# Defense 4: Some switches offer ND inspection / IPv6 first-hop security,
+# but Redirect validation support is vendor-specific
 ```
 
 ## Conclusion
 
-ICMPv6 Redirect is a network optimization mechanism that allows routers to inform hosts about better first-hop paths on the same link. The Hop Limit 255 requirement ensures redirects can only come from local-link nodes. The destination cache stores redirect-based routes separately from route-table entries, with shorter expiry times. From a security perspective, Redirect messages should be accepted only from the current default gateway, and on hosts where routing optimization is not needed, redirects can be disabled entirely with `net.ipv6.conf.*.accept_redirects=0`.
+ICMPv6 Redirect is a network optimization mechanism that allows routers to inform hosts about better first-hop paths on the same link. The Hop Limit 255 requirement ensures redirects can only come from local-link nodes. On Linux, redirect-learned next-hops may appear as cached routes rather than persistent route-table entries. From a security perspective, Redirect messages should be accepted only from the current first-hop router for the destination, and on hosts where routing optimization is not needed, redirects can be disabled entirely with `net.ipv6.conf.*.accept_redirects=0`.
