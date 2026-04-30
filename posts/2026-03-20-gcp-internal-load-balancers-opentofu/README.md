@@ -8,21 +8,22 @@ Description: Learn how to create GCP Internal Load Balancers with OpenTofu for d
 
 ## Overview
 
-GCP Internal Load Balancers distribute traffic to backend instances using private IP addresses within your VPC. They're ideal for microservice architectures where services communicate internally. OpenTofu manages the full load balancer stack.
+GCP Internal Load Balancers distribute traffic to backend instances using private IP addresses within your VPC. They're ideal for microservice architectures where services communicate internally. OpenTofu manages the core load balancer resources, but regional internal Application Load Balancers also require a proxy-only subnet and firewall rules that allow health checks and proxy traffic.
 
 ## Step 1: Create Backend Service and Health Check
 
 ```hcl
-# main.tf - Internal HTTP load balancer
+# main.tf - Regional internal HTTP load balancer
 
-resource "google_compute_health_check" "internal_http_hc" {
+resource "google_compute_region_health_check" "internal_http_hc" {
   name               = "internal-app-health-check"
+  region             = "us-central1"
   check_interval_sec = 10
   timeout_sec        = 5
 
   http_health_check {
-    port         = 8080
-    request_path = "/health"
+    port_specification = "USE_SERVING_PORT"
+    request_path       = "/health"
   }
 }
 
@@ -31,6 +32,7 @@ resource "google_compute_region_backend_service" "internal_backend" {
   name                  = "internal-app-backend"
   region                = "us-central1"
   protocol              = "HTTP"
+  port_name             = "app-port"  # app_mig must expose named_port "app-port" on port 8080
   load_balancing_scheme = "INTERNAL_MANAGED"  # Internal Application LB
   timeout_sec           = 30
 
@@ -40,7 +42,7 @@ resource "google_compute_region_backend_service" "internal_backend" {
     capacity_scaler = 1.0
   }
 
-  health_checks = [google_compute_health_check.internal_http_hc.id]
+  health_checks = [google_compute_region_health_check.internal_http_hc.id]
 }
 ```
 
@@ -65,11 +67,22 @@ resource "google_compute_region_target_http_proxy" "internal_http_proxy" {
 ## Step 3: Forwarding Rule
 
 ```hcl
+# Proxy-only subnet required by regional INTERNAL_MANAGED load balancers
+resource "google_compute_subnetwork" "proxy_only_subnet" {
+  name          = "internal-lb-proxy-only"
+  ip_cidr_range = "10.10.0.0/24"
+  region        = "us-central1"
+  purpose       = "REGIONAL_MANAGED_PROXY"
+  role          = "ACTIVE"
+  network       = google_compute_network.vpc.id
+}
+
 # Reserve a static internal IP for the load balancer
 resource "google_compute_address" "internal_lb_ip" {
   name         = "internal-lb-ip"
   subnetwork   = google_compute_subnetwork.app_subnet.id
   address_type = "INTERNAL"
+  purpose      = "SHARED_LOADBALANCER_VIP"
   region       = "us-central1"
 }
 
@@ -77,6 +90,7 @@ resource "google_compute_address" "internal_lb_ip" {
 resource "google_compute_forwarding_rule" "internal_forwarding_rule" {
   name                  = "internal-lb-forwarding-rule"
   region                = "us-central1"
+  depends_on            = [google_compute_subnetwork.proxy_only_subnet]
   load_balancing_scheme = "INTERNAL_MANAGED"
   ip_address            = google_compute_address.internal_lb_ip.id
   ip_protocol           = "TCP"
@@ -85,7 +99,7 @@ resource "google_compute_forwarding_rule" "internal_forwarding_rule" {
   network               = google_compute_network.vpc.self_link
   subnetwork            = google_compute_subnetwork.app_subnet.self_link
 
-  # Allow access from all VMs in the network
+  # Keep access regional unless clients in other VPC regions need to connect
   allow_global_access = false
 }
 ```
@@ -93,6 +107,29 @@ resource "google_compute_forwarding_rule" "internal_forwarding_rule" {
 ## Step 4: Internal TCP/UDP Load Balancer (Pass-Through)
 
 ```hcl
+# Regional backend service for the pass-through ILB
+resource "google_compute_region_health_check" "db_hc" {
+  name   = "internal-db-health-check"
+  region = "us-central1"
+
+  tcp_health_check {
+    port = 5432
+  }
+}
+
+resource "google_compute_region_backend_service" "db_backend" {
+  name                  = "internal-db-backend"
+  region                = "us-central1"
+  protocol              = "TCP"
+  load_balancing_scheme = "INTERNAL"
+  health_checks         = [google_compute_region_health_check.db_hc.id]
+
+  backend {
+    group          = google_compute_region_instance_group_manager.db_mig.instance_group
+    balancing_mode = "CONNECTION"
+  }
+}
+
 # Pass-through internal LB for TCP/UDP (no TLS termination)
 resource "google_compute_forwarding_rule" "tcp_ilb" {
   name                  = "tcp-internal-lb"
@@ -118,4 +155,4 @@ output "internal_lb_ip" {
 
 ## Summary
 
-GCP Internal Load Balancers with OpenTofu enable private service-to-service communication within a VPC. Use INTERNAL_MANAGED for HTTP/HTTPS traffic with URL-based routing, and INTERNAL for pass-through TCP/UDP load balancing. Internal LBs are essential for microservice architectures that require service discovery via stable IP addresses.
+GCP Internal Load Balancers with OpenTofu enable private service-to-service communication within a VPC. Use INTERNAL_MANAGED for HTTP/HTTPS traffic with URL-based routing, and INTERNAL for pass-through TCP/UDP load balancing. Internal LBs are essential for microservice architectures that require service discovery via stable IP addresses. Regional INTERNAL_MANAGED deployments also require a REGIONAL_MANAGED_PROXY subnet, and both load balancer types need firewall rules that allow health checks and backend traffic.
