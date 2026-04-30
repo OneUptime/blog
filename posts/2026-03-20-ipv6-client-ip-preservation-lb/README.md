@@ -12,8 +12,8 @@ When a load balancer accepts an IPv6 client connection and proxies it to a backe
 
 | Method | Works With | Header |
 |---|---|---|
-| X-Forwarded-For | HTTP only | `X-Forwarded-For: 2001:db8::client` |
-| X-Real-IP | HTTP only | `X-Real-IP: 2001:db8::client` |
+| X-Forwarded-For | HTTP only | `X-Forwarded-For: 2001:db8::100` |
+| X-Real-IP | HTTP only | `X-Real-IP: 2001:db8::100` |
 | Proxy Protocol v2 | TCP/HTTP | Binary header (layer 3/4) |
 | Direct Server Return | TCP | No forwarding needed |
 
@@ -23,6 +23,7 @@ When a load balancer accepts an IPv6 client connection and proxies it to a backe
 # /etc/haproxy/haproxy.cfg
 
 frontend ipv6_frontend
+    mode http
     bind [::]:443 ssl crt /etc/ssl/cert.pem
 
     # Add X-Forwarded-For header with real client IPv6
@@ -31,14 +32,15 @@ frontend ipv6_frontend
     default_backend web_backends
 
 backend web_backends
-    # Set X-Real-IP from XFF header
-    http-request set-header X-Real-IP %[req.hdr(X-Forwarded-For)]
-    server web1 [2001:db8::web1]:8080 check
+    mode http
+    # Set X-Real-IP from the client source address
+    http-request set-header X-Real-IP %[src]
+    server web1 ipv6@2001:db8::10:8080 check
 ```
 
 The `X-Forwarded-For` header for an IPv6 client looks like:
 ```text
-X-Forwarded-For: 2001:db8::client, 2001:db8::lb
+X-Forwarded-For: 2001:db8::100
 ```
 
 ## Proxy Protocol v2 for IPv6
@@ -49,25 +51,31 @@ Proxy Protocol v2 works at Layer 4, carrying the original source and destination
 # HAProxy sender (front-end LB)
 
 frontend ipv6_frontend
+    mode http
     bind [::]:443 ssl crt /etc/ssl/cert.pem
     default_backend nginx_backends
 
 backend nginx_backends
+    mode http
     # Send Proxy Protocol to backends
-    server nginx1 [2001:db8::nginx1]:8080 check send-proxy-v2
+    server nginx1 ipv6@2001:db8::20:8080 check send-proxy-v2
 ```
 
 ```nginx
 # nginx receiver: accept Proxy Protocol
-server {
-    listen [::]:8080 proxy_protocol;
+http {
+    # Log shows real client IPv6 after realip processing
+    log_format with_real_ip '$remote_addr - $request';
 
-    # Get real client IPv6 from Proxy Protocol
-    set_real_ip_from [2001:db8::lb]/128;
-    real_ip_header proxy_protocol;
+    server {
+        listen [::]:8080 proxy_protocol;
 
-    # Log shows real client IPv6
-    log_format with_real_ip '$proxy_protocol_addr - $request';
+        # Trust the load balancer that sends Proxy Protocol
+        set_real_ip_from 2001:db8::1;
+        real_ip_header proxy_protocol;
+
+        access_log /var/log/nginx/access.log with_real_ip;
+    }
 }
 ```
 
@@ -76,7 +84,7 @@ server {
 ```nginx
 http {
     # Trust the load balancer's IPv6 address range
-    set_real_ip_from 2001:db8:lb::/64;
+    set_real_ip_from 2001:db8:1::/64;
     real_ip_header X-Forwarded-For;
     real_ip_recursive on;
 
@@ -88,10 +96,10 @@ http {
             proxy_pass http://backends;
 
             # Forward original client IPv6
-            proxy_set_header X-Forwarded-For $proxy_add_x_forwarded_for;
+            proxy_set_header X-Forwarded-For $http_x_forwarded_for;
             proxy_set_header X-Real-IP $remote_addr;
 
-            # For IPv6 in URLs, keep the bracket notation intact
+            # Optionally forward the resolved client IPv6 in a separate header
             proxy_set_header X-Original-IPv6 $remote_addr;
         }
     }
@@ -104,49 +112,45 @@ http {
 
 ```python
 from flask import Flask, request
+from werkzeug.middleware.proxy_fix import ProxyFix
 
 app = Flask(__name__)
+app.wsgi_app = ProxyFix(app.wsgi_app, x_for=1)
 
 @app.route('/')
 def index():
-    # Get real client IPv6 from X-Forwarded-For
-    xff = request.headers.get('X-Forwarded-For')
-    if xff:
-        # First IP in the chain is the original client
-        client_ip = xff.split(',')[0].strip()
-    else:
-        client_ip = request.remote_addr
-
+    # request.remote_addr now reflects the trusted client IP
+    client_ip = request.remote_addr
     return f"Your IPv6: {client_ip}"
 ```
 
 ### Node.js
 
 ```javascript
-app.set('trust proxy', true);
+app.set('trust proxy', 1);
 
 app.get('/', (req, res) => {
-  const clientIP = req.ip;  // Automatically resolves XFF with trust proxy
+  const clientIP = req.ip;  // Uses the client IP from X-Forwarded-For
   res.send(`Your IPv6: ${clientIP}`);
 });
 ```
 
 ## AWS ALB: IPv6 in X-Forwarded-For
 
-AWS ALB automatically adds the client IPv6 to X-Forwarded-For:
+By default, AWS ALB adds the client IPv6 to X-Forwarded-For:
 
 ```bash
-# ALB access log format shows client IPv6
-# 2001:db8::client - example.com "GET / HTTP/1.1" 200 1234 ...
-
 # Application receives:
-# X-Forwarded-For: 2001:db8::client
+# X-Forwarded-For: 2001:db8::100
 # X-Forwarded-Proto: https
+
+# If client port preservation is enabled:
+# X-Forwarded-For: [2001:db8::100]:44321
 ```
 
 ## Cloudflare: Preserving IPv6 Through CDN
 
-Cloudflare adds the original IPv6 in `CF-Connecting-IP`:
+Cloudflare normally adds the original client IP in `CF-Connecting-IP`:
 
 ```nginx
 # Trust Cloudflare and use CF-Connecting-IP
@@ -157,11 +161,13 @@ set_real_ip_from 2606:4700::/32;
 real_ip_header CF-Connecting-IP;
 ```
 
+If Cloudflare Pseudo IPv4 is set to `Overwrite Headers`, the real IPv6 is preserved in `CF-Connecting-IPv6` instead.
+
 ## Logging IPv6 Client IPs
 
 ```nginx
-# nginx log format that captures real IPv6 client
-log_format ipv6_aware '$realip_remote_addr [$time_local] '
+# nginx log format that captures the resolved real IPv6 client
+log_format ipv6_aware '$remote_addr [$time_local] '
                       '"$request" $status $body_bytes_sent '
                       '"$http_referer" "$http_user_agent"';
 
