@@ -56,220 +56,114 @@ Recommended BIOS Settings:
 └── Fan Control: Performance Mode
 ```
 
-For CPU power management on the host OS:
-
-```bash
-# Set CPU governor to performance mode on all nodes
-
-for NODE in harvester-node-01 harvester-node-02 harvester-node-03; do
-    ssh rancher@${NODE} "sudo cpupower frequency-set -g performance"
-done
-
-# Verify
-ssh rancher@192.168.1.11 "cpupower frequency-info | grep 'current policy'"
-```
+For CPU power management on the host OS, use a method that is supported by your Harvester image and hardware vendor, and make sure the change is persisted through Harvester's configuration lifecycle. Harvester's operating system is immutable, so ad-hoc host tuning can be lost after reboot or upgrade if it is not managed persistently.
 
 ## Step 2: Kernel Tuning for Production
 
 ```bash
-# Apply kernel performance tunings on all Harvester nodes
-# Create a sysctl configuration file
+# Harvester uses an immutable OS. Validate runtime tunings first, then persist
+# the equivalent changes through Harvester configuration instead of editing /etc directly.
 
-sudo tee /etc/sysctl.d/99-harvester-production.conf << 'EOF'
-# Network performance
-net.core.rmem_max = 134217728
-net.core.wmem_max = 134217728
-net.ipv4.tcp_rmem = 4096 65536 134217728
-net.ipv4.tcp_wmem = 4096 65536 134217728
-net.core.netdev_max_backlog = 5000
-net.ipv4.tcp_congestion_control = bbr
+sudo sysctl -w net.core.rmem_max=134217728
+sudo sysctl -w net.core.wmem_max=134217728
+sudo sysctl -w net.ipv4.tcp_rmem="4096 65536 134217728"
+sudo sysctl -w net.ipv4.tcp_wmem="4096 65536 134217728"
+sudo sysctl -w net.core.netdev_max_backlog=5000
+sudo sysctl -w net.ipv4.tcp_congestion_control=bbr
+sudo sysctl -w vm.swappiness=10
+sudo sysctl -w vm.dirty_ratio=60
+sudo sysctl -w vm.dirty_background_ratio=5
+sudo sysctl -w vm.min_free_kbytes=65536
+sudo sysctl -w fs.file-max=2097152
+sudo sysctl -w fs.inotify.max_user_instances=8192
+sudo sysctl -w fs.inotify.max_user_watches=524288
 
-# Virtual memory
-vm.swappiness = 10
-vm.dirty_ratio = 60
-vm.dirty_background_ratio = 5
-vm.min_free_kbytes = 65536
-
-# File descriptors
-fs.file-max = 2097152
-fs.inotify.max_user_instances = 8192
-fs.inotify.max_user_watches = 524288
-
-# Hugepages (optional - set based on workload)
-# vm.nr_hugepages = 0
-
-# I/O scheduler (for NVMe drives)
-# Set via udev rules instead
-EOF
-
-# Apply the settings
-sudo sysctl --system
-
-# Set I/O scheduler for NVMe to 'none' (already optimal)
-# For SSDs, use 'mq-deadline'
+# Set I/O scheduler for NVMe to 'none' (already optimal on modern kernels)
 for DISK in $(ls /sys/block/ | grep nvme); do
-    echo none > /sys/block/${DISK}/queue/scheduler
+    echo none | sudo tee /sys/block/${DISK}/queue/scheduler
 done
-
-# Make I/O scheduler persistent
-cat > /etc/udev/rules.d/60-io-scheduler.rules << 'EOF'
-# NVMe drives: use none scheduler (hardware handles queuing)
-ACTION=="add|change", KERNEL=="nvme[0-9]*", ATTR{queue/scheduler}="none"
-# SSD drives: use mq-deadline
-ACTION=="add|change", KERNEL=="sd[a-z]", ATTR{queue/rotational}=="0", ATTR{queue/scheduler}="mq-deadline"
-EOF
 ```
 
 ## Step 3: Longhorn Storage Optimization
 
-```yaml
-# longhorn-production-settings.yaml
-# Production-optimized Longhorn settings
-
----
-# Replica count for data durability
-apiVersion: longhorn.io/v1beta2
-kind: Setting
-metadata:
-  name: default-replica-count
-  namespace: longhorn-system
-spec:
-  value: "3"
-
----
-# Data locality - keep a replica on the VM's node for reads
-apiVersion: longhorn.io/v1beta2
-kind: Setting
-metadata:
-  name: default-data-locality
-  namespace: longhorn-system
-spec:
-  value: "best-effort"
-
----
-# Enable recurring snapshot for data safety
-apiVersion: longhorn.io/v1beta2
-kind: Setting
-metadata:
-  name: recurring-successful-jobs-history-limit
-  namespace: longhorn-system
-spec:
-  value: "3"
-
----
-# Concurrent replica rebuilds (don't overload during node failures)
-apiVersion: longhorn.io/v1beta2
-kind: Setting
-metadata:
-  name: concurrent-replica-rebuild-per-node-limit
-  namespace: longhorn-system
-spec:
-  value: "3"
-
----
-# Storage overprovisioning - allow 200% of physical capacity
-# (because sparse/thin provisioning)
-apiVersion: longhorn.io/v1beta2
-kind: Setting
-metadata:
-  name: storage-over-provisioning-percentage
-  namespace: longhorn-system
-spec:
-  value: "200"
-
----
-# Storage minimal available percentage - keep 25% free
-apiVersion: longhorn.io/v1beta2
-kind: Setting
-metadata:
-  name: storage-minimal-available-percentage
-  namespace: longhorn-system
-spec:
-  value: "25"
-```
-
 ```bash
-kubectl apply -f longhorn-production-settings.yaml
+# Harvester VM volumes use the harvester-longhorn StorageClass.
+kubectl patch storageclass harvester-longhorn --type merge -p \
+  '{"parameters":{"numberOfReplicas":"3","dataLocality":"best-effort"}}'
+
+# Keep successful recurring job history manageable
+kubectl -n longhorn-system patch settings.longhorn.io recurring-successful-jobs-history-limit --type merge -p '{"value":"3"}'
+
+# Concurrent replica rebuilds (don't overload during node failures)
+kubectl -n longhorn-system patch settings.longhorn.io concurrent-replica-rebuild-per-node-limit --type merge -p '{"value":"3"}'
+
+# Storage overprovisioning - allow 200% of physical capacity
+kubectl -n longhorn-system patch settings.longhorn.io storage-over-provisioning-percentage --type merge -p '{"value":"200"}'
+
+# Storage minimal available percentage - keep 25% free
+kubectl -n longhorn-system patch settings.longhorn.io storage-minimal-available-percentage --type merge -p '{"value":"25"}'
 ```
 
 ## Step 4: VM Resource Overcommit Policy
 
-```yaml
-# overcommit-settings.yaml
-# Configure CPU and memory overcommit ratios for VMs
+Harvester exposes cluster-wide overcommit through the `overcommit-config` setting rather than direct edits to the `KubeVirt` custom resource.
 
-apiVersion: kubevirt.io/v1
-kind: KubeVirt
-metadata:
-  name: kubevirt
-  namespace: harvester-system
-spec:
-  configuration:
-    developerConfiguration:
-      # CPU overcommit ratio: 4x physical CPUs available to VMs
-      cpuAllocationRatio: 4
-      # Memory overcommit: allow allocating more memory than physical
-      memoryOvercommitPercentage: 150
-    # Default CPU model for all VMs
-    cpuModel: "host-model"
-    # Enable offline VM snapshot support
-    vmStateStorageClass: "longhorn"
+```bash
+kubectl patch settings.harvesterhci.io overcommit-config --type merge -p \
+  '{"value":"{\"cpu\":400,\"memory\":150,\"storage\":200}"}'
+
+# Verify
+kubectl get settings.harvesterhci.io overcommit-config -o yaml
 ```
 
 ## Step 5: Network Performance Tuning
 
+Harvester manages VM and storage networking through cluster networks and the `storage-network` setting, so change MTU on the Harvester network configuration instead of raw `ethX` devices.
+
 ```bash
-# Enable jumbo frames on storage and VM NICs
-sudo ip link set eth1 mtu 9000  # Storage NIC
-sudo ip link set eth2 mtu 9000  # VM NIC
+# Example: change the built-in mgmt network MTU to 9000
+sudo nmcli con modify bond-mgmt 802-3-ethernet.mtu 9000
+sudo nmcli con modify bridge-mgmt 802-3-ethernet.mtu 9000
+
+# Optional: if mgmt uses a VLAN, update that profile as well
+sudo nmcli con modify vlan-mgmt 802-3-ethernet.mtu 9000
+
+sudo nmcli device reapply mgmt-bo
+sudo nmcli device reapply mgmt-br
+
+# Tell Harvester about the new uplink MTU
+kubectl annotate clusternetwork mgmt network.harvesterhci.io/uplink-mtu="9000" --overwrite
 
 # Verify switch ports also support MTU 9000
-ping -M do -s 8972 10.200.0.12  # Test jumbo frames to node 2
-
-# Enable RSS (Receive Side Scaling) for multi-queue networking
-sudo ethtool -L eth0 combined 8  # Set 8 queues (match CPU count)
-sudo ethtool -L eth1 combined 8
-
-# Enable TCP offloading for performance
-sudo ethtool -K eth0 tso on gso on gro on
-sudo ethtool -K eth1 tso on gso on gro on
+ping -M do -s 8972 10.200.0.12
 ```
 
 ## Step 6: Configure Resource Reservations
 
-Reserve resources for the host OS and Kubernetes system pods:
+Reserve resources for the host OS and Kubernetes system daemons:
 
-```yaml
-# kubelet-config.yaml
-# Reserve resources for system processes
+```bash
+sudo tee /var/lib/rancher/rke2/agent/etc/kubelet.conf.d/90-harvester-reservations.conf << 'EOF'
+apiVersion: kubelet.config.k8s.io/v1beta1
+kind: KubeletConfiguration
+systemReserved:
+  cpu: "1000m"
+  memory: "2Gi"
+  ephemeral-storage: "10Gi"
+kubeReserved:
+  cpu: "1000m"
+  memory: "2Gi"
+  ephemeral-storage: "10Gi"
+evictionHard:
+  memory.available: "500Mi"
+  nodefs.available: "10%"
+  nodefs.inodesFree: "5%"
+cpuManagerPolicy: static
+topologyManagerPolicy: best-effort
+EOF
 
-apiVersion: v1
-kind: ConfigMap
-metadata:
-  name: kubelet-config
-  namespace: kube-system
-data:
-  kubelet: |
-    apiVersion: kubelet.config.k8s.io/v1beta1
-    kind: KubeletConfiguration
-    # Reserve resources for system processes (not allocatable to VMs)
-    systemReserved:
-      cpu: "1000m"
-      memory: "2Gi"
-      ephemeral-storage: "10Gi"
-    # Reserve resources for Kubernetes system pods
-    kubeReserved:
-      cpu: "1000m"
-      memory: "2Gi"
-      ephemeral-storage: "10Gi"
-    # Evict VMs before the node runs out of resources
-    evictionHard:
-      memory.available: "5%"
-      nodefs.available: "10%"
-      nodefs.inodesFree: "5%"
-    # CPU management for better VM performance
-    cpuManagerPolicy: static
-    topologyManagerPolicy: best-effort
+# Restart the appropriate RKE2 service on each node after the file is in place.
+sudo systemctl restart rke2-server  # use rke2-agent on worker-only nodes
 ```
 
 ## Step 7: HA Configuration Validation
@@ -277,10 +171,8 @@ data:
 ```bash
 # Test that the cluster survives a single node failure
 # Identify the current VIP holder
-for NODE in 192.168.1.11 192.168.1.12 192.168.1.13; do
-    ssh rancher@${NODE} "ip addr show | grep 192.168.1.100" 2>/dev/null && \
-        echo "${NODE} holds the VIP" || true
-done
+kubectl -n kube-system get svc ingress-expose \
+    -o jsonpath='{.metadata.annotations.kube-vip\.io/vipHost}'; echo
 
 # Simulate node failure
 ssh rancher@192.168.1.11 "sudo systemctl stop rke2-server"
@@ -310,7 +202,7 @@ avg by (node) (1 - rate(node_cpu_seconds_total{mode="idle"}[5m])) > 0.80
 1 - (node_filesystem_free_bytes{mountpoint="/"} / node_filesystem_size_bytes{mountpoint="/"}) > 0.80
 
 # Longhorn Degraded Volumes
-longhorn_volume_robustness{robustness="degraded"} > 0
+longhorn_volume_robustness{state="degraded"} == 1
 
 # etcd Disk Latency (> 10ms is warning, > 25ms is critical)
 histogram_quantile(0.99, rate(etcd_disk_wal_fsync_duration_seconds_bucket[5m])) > 0.01
