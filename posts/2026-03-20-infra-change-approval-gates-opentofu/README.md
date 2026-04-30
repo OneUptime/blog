@@ -8,7 +8,7 @@ Description: Learn how to implement infrastructure change approval gates with Op
 
 ---
 
-Approval gates ensure that infrastructure changes to production are reviewed and authorized before being applied. GitHub Environments provide a native approval mechanism that pauses CI/CD pipelines until designated reviewers approve.
+Approval gates ensure that infrastructure changes to production are reviewed and authorized before being applied. GitHub Environments provide a native approval mechanism that pauses CI/CD pipelines until one of the designated reviewers approves. For private or internal repositories, required reviewers and wait timers require GitHub Enterprise.
 
 ## Approval Gate Workflow
 
@@ -17,7 +17,7 @@ graph LR
     A[PR merged to main] --> B[Auto-apply to dev]
     B --> C[Auto-apply to staging]
     C --> D{Approval gate}
-    D -->|Approved by infra team| E[Apply to production]
+    D -->|Approved by required reviewer| E[Apply to production]
     D -->|Rejected| F[Stop]
 ```
 
@@ -29,23 +29,13 @@ graph LR
 resource "github_repository_environment" "dev" {
   repository  = var.infra_repo
   environment = "dev"
-
-  # No protection rules for dev - auto-deploy
-  deployment_branch_policy {
-    protected_branches     = false
-    custom_branch_policies = true
-  }
 }
 
 resource "github_repository_environment" "staging" {
   repository  = var.infra_repo
   environment = "staging"
 
-  reviewers {
-    teams = [data.github_team.infrastructure.id]
-  }
-
-  wait_timer = 5  # minutes
+  wait_timer = 5  # minutes; no manual approval required
 
   deployment_branch_policy {
     protected_branches     = true
@@ -65,8 +55,7 @@ resource "github_repository_environment" "production" {
     users = [data.github_user.infra_lead.id]
   }
 
-  # Prevent auto-dismissal of approvals
-  # wait_timer = 0 means no wait - approval is required immediately
+  prevent_self_review = true
 
   deployment_branch_policy {
     protected_branches     = true
@@ -89,87 +78,103 @@ jobs:
     environment: dev
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v6
       - uses: opentofu/setup-opentofu@v1
       - run: tofu init && tofu apply -auto-approve
         working-directory: environments/dev
 
   deploy-staging:
     needs: deploy-dev
-    environment: staging   # No approval required for staging
+    environment: staging   # Wait timer only; no manual approval
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v6
       - uses: opentofu/setup-opentofu@v1
       - run: tofu init && tofu apply -auto-approve
         working-directory: environments/staging
 
-  deploy-production:
+  notify-production-approval:
     needs: deploy-staging
+    runs-on: ubuntu-latest
+    steps:
+      - uses: slackapi/slack-github-action@v3
+        with:
+          webhook: ${{ secrets.SLACK_WEBHOOK }}
+          webhook-type: incoming-webhook
+          payload: |
+            text: "Production deployment waiting for approval"
+            blocks:
+              - type: "section"
+                text:
+                  type: "mrkdwn"
+                  text: "*Production deployment pending approval*\nApprove at: ${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}"
+
+  deploy-production:
+    needs: notify-production-approval
     environment: production   # Requires reviewer approval
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v6
       - uses: opentofu/setup-opentofu@v1
+      - name: Enforce production change window
+        run: |
+          DOW=$(date -u +%u)  # 1=Mon, 7=Sun
+          HOUR=$(date -u +%H)
+
+          # Block deploys on weekends and outside business hours
+          if [ "$DOW" -ge 6 ] || [ "$HOUR" -lt 9 ] || [ "$HOUR" -ge 18 ]; then
+            echo "ERROR: Production deploys blocked outside business hours (Mon-Fri 09:00-18:00 UTC)"
+            exit 1
+          fi
+
+          echo "Change window check passed"
       - run: tofu init && tofu apply -auto-approve
         working-directory: environments/production
 ```
 
 ## Change Freeze Windows
 
-```hcl
-# freeze_check.tf - custom approval policy based on calendar
-resource "null_resource" "change_freeze_check" {
-  count = var.environment == "production" ? 1 : 0
+```yaml
+# .github/workflows/deploy.yml - add before the production apply step
+- name: Enforce production change window
+  run: |
+    DOW=$(date -u +%u)  # 1=Mon, 7=Sun
+    HOUR=$(date -u +%H)
 
-  triggers = { always_run = timestamp() }
+    # Block deploys on weekends and outside business hours
+    if [ "$DOW" -ge 6 ] || [ "$HOUR" -lt 9 ] || [ "$HOUR" -ge 18 ]; then
+      echo "ERROR: Production deploys blocked outside business hours (Mon-Fri 09:00-18:00 UTC)"
+      exit 1
+    fi
 
-  provisioner "local-exec" {
-    command = <<-EOT
-      #!/bin/bash
-      DOW=$(date +%u)  # 1=Mon, 7=Sun
-      HOUR=$(date +%H)
-
-      # Block deploys on weekends and outside business hours
-      if [ "$DOW" -ge 6 ] || [ "$HOUR" -lt 9 ] || [ "$HOUR" -ge 18 ]; then
-        echo "ERROR: Production deploys blocked outside business hours (Mon-Fri 9-18 UTC)"
-        exit 1
-      fi
-
-      echo "Change window check passed"
-    EOT
-  }
-}
+    echo "Change window check passed"
 ```
 
 ## Slack Notification for Pending Approvals
 
 ```yaml
-- name: Notify pending approval
-  if: github.ref == 'refs/heads/main'
-  uses: slackapi/slack-github-action@v1
-  with:
-    payload: |
-      {
-        "text": "🚨 Production deployment waiting for approval",
-        "blocks": [
-          {
-            "type": "section",
-            "text": {
-              "type": "mrkdwn",
-              "text": "*Production deployment pending approval*\nApprove at: ${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}"
-            }
-          }
-        ]
-      }
-  env:
-    SLACK_WEBHOOK_URL: ${{ secrets.SLACK_WEBHOOK }}
+notify-production-approval:
+  needs: deploy-staging
+  runs-on: ubuntu-latest
+  steps:
+    - name: Notify pending approval
+      uses: slackapi/slack-github-action@v3
+      with:
+        webhook: ${{ secrets.SLACK_WEBHOOK }}
+        webhook-type: incoming-webhook
+        payload: |
+          text: "Production deployment waiting for approval"
+          blocks:
+            - type: "section"
+              text:
+                type: "mrkdwn"
+                text: "*Production deployment pending approval*\nApprove at: ${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}"
 ```
 
 ## Best Practices
 
-- Require at least 2 approvers for production - a single approver can be pressured or unavailable.
-- Restrict production deployments to protected branches only - `protected_branches = true` in GitHub Environment.
+- Add multiple required reviewers for production and enable `prevent_self_review = true` - GitHub Environments still proceed after any one required reviewer approves, so use a custom deployment protection rule if you need a strict two-person gate.
+- Restrict production deployments to protected branches only - set `protected_branches = true` and make sure the target branch actually has branch protection rules configured.
 - Send Slack notifications when approvals are pending - reviewers shouldn't have to check GitHub manually.
 - Implement change freeze windows (weekends, holidays) by adding a pre-apply check that validates business hours.
 - Log all approvals with GitHub's built-in deployment history - this creates an audit trail for change management processes.
