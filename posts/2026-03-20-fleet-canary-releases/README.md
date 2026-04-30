@@ -4,11 +4,11 @@ Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
 Tags: Rancher, Fleet, Canary, Kubernetes, GitOps
 
-Description: Guide to implementing canary release deployments using Rancher Fleet for gradual traffic shifting.
+Description: Guide to implementing canary-style cluster rollouts using Rancher Fleet rollout partitions.
 
 ## Introduction
 
-Rancher Fleet is a GitOps continuous delivery solution built into Rancher. It enables deploying applications to hundreds of clusters from a single Git repository, making it ideal for large-scale Kubernetes fleet management.
+Rancher Fleet is a GitOps continuous delivery solution built into Rancher. It enables deploying applications to hundreds of clusters from a single Git repository, making it ideal for large-scale Kubernetes fleet management. For canary-style releases, Fleet uses `rolloutStrategy` partitions to phase deployments across clusters; it does not perform request-level traffic shifting by itself.
 
 ## Prerequisites
 
@@ -23,13 +23,12 @@ Rancher Fleet is a GitOps continuous delivery solution built into Rancher. It en
 
 kubectl get pods -n cattle-fleet-system
 
-# Expected pods:
-# fleet-controller      Running
-# fleet-agent           Running (local cluster agent)
-# gitjob                Running
+# Management cluster should include fleet-controller and gitjob.
+# If the local cluster is also registered as a downstream cluster,
+# you'll also see a fleet-agent pod in this namespace.
 
 # Check CRDs
-kubectl get crds | grep fleet
+kubectl get crds | grep fleet.cattle.io
 ```
 
 ## Step 2: Create a GitRepo Resource
@@ -74,15 +73,15 @@ kubectl get gitrepo my-app-gitops -n fleet-default
 
 ```text
 kubernetes-manifests/
-├── fleet.yaml              # Fleet configuration
-├── apps/
-│   └── my-app/
-│       ├── fleet.yaml      # App-level Fleet config
-│       ├── deployment.yaml
-│       ├── service.yaml
-│       └── overlays/       # Kustomize overlays per env
-│           ├── production/
-│           └── staging/
+└── apps/
+    └── my-app/
+        ├── fleet.yaml      # App-level Fleet config
+        ├── values.yaml
+        └── chart/
+            ├── Chart.yaml
+            └── templates/
+                ├── deployment.yaml
+                └── service.yaml
 ```
 
 ## Step 4: Configure fleet.yaml
@@ -94,36 +93,41 @@ namespace: my-app
 # Helm chart deployment
 helm:
   chart: ./chart              # Relative path to Helm chart
-  version: ">=1.0.0"
   releaseName: my-app
   
   valuesFiles:
   - values.yaml              # Base values
   
-  # Per-cluster value overrides
+  # Base values applied to all targets
   values:
-    replicaCount: 2
     image:
-      tag: latest
+      tag: "1.2.3"
 
-# Kustomize configuration
-# kustomize:
-#   dir: ./kustomize
+# Cluster-based canary rollout across targeted clusters.
+# Label production clusters with release-ring=canary or release-ring=stable.
+rolloutStrategy:
+  maxUnavailablePartitions: 0
+  partitions:
+  - name: staging
+    maxUnavailable: 0
+    clusterSelector:
+      matchLabels:
+        env: staging
+  - name: canary
+    maxUnavailable: 0
+    clusterSelector:
+      matchLabels:
+        env: production
+        release-ring: canary
+  - name: production
+    maxUnavailable: 20%
+    clusterSelector:
+      matchLabels:
+        env: production
+        release-ring: stable
 
 # Target-specific configurations
 targetCustomizations:
-- name: production
-  clusterSelector:
-    matchLabels:
-      env: production
-  helm:
-    values:
-      replicaCount: 5
-      resources:
-        limits:
-          cpu: "2"
-          memory: "2Gi"
-
 - name: staging
   clusterSelector:
     matchLabels:
@@ -135,6 +139,32 @@ targetCustomizations:
         limits:
           cpu: "500m"
           memory: "512Mi"
+
+- name: canary
+  clusterSelector:
+    matchLabels:
+      env: production
+      release-ring: canary
+  helm:
+    values:
+      replicaCount: 1
+      resources:
+        limits:
+          cpu: "500m"
+          memory: "512Mi"
+
+- name: production
+  clusterSelector:
+    matchLabels:
+      env: production
+      release-ring: stable
+  helm:
+    values:
+      replicaCount: 5
+      resources:
+        limits:
+          cpu: "2"
+          memory: "2Gi"
 ```
 
 ## Step 5: Monitor Deployment Status
@@ -146,24 +176,25 @@ kubectl get gitrepo -n fleet-default
 # View bundle status (Fleet unit of deployment)
 kubectl get bundles -n fleet-default
 
-# Detailed bundle status
-kubectl describe bundle my-app-gitops -n fleet-default
+# Bundle names are generated from the GitRepo name and path unless
+# you set "name" in fleet.yaml.
+kubectl describe bundle <bundle-name> -n fleet-default
 
 # Check per-cluster deployment status
 kubectl get bundledeployments -A
 
 # View Fleet agent logs on downstream cluster
-kubectl logs -n cattle-fleet-system   -l app=fleet-agent   --follow
+kubectl logs -n cattle-fleet-system deploy/fleet-agent --follow
 ```
 
 ## Step 6: Configure Private Git Repository Authentication
 
 ```bash
 # For HTTPS authentication
-kubectl create secret generic git-auth   --namespace fleet-default   --from-literal=username=your-username   --from-literal=password=your-personal-access-token
+kubectl create secret generic git-auth   --namespace fleet-default   --type=kubernetes.io/basic-auth   --from-literal=username=your-username   --from-literal=password=your-personal-access-token
 
 # For SSH authentication
-kubectl create secret generic git-ssh   --namespace fleet-default   --from-file=ssh-privatekey=/path/to/private-key   --from-literal=known_hosts="$(ssh-keyscan github.com)"
+kubectl create secret generic git-ssh   --namespace fleet-default   --type=kubernetes.io/ssh-auth   --from-file=ssh-privatekey=/path/to/private-key   --from-literal=known_hosts="$(ssh-keyscan -H github.com)"
 ```
 
 ```yaml
@@ -208,12 +239,13 @@ kubectl describe gitrepo my-app-gitops -n fleet-default
 # Check Events section for errors
 
 # Bundle in Modified/NotReady state
-kubectl get bundledeployments -A -o custom-columns='NAME:.metadata.name,CLUSTER:.metadata.namespace,STATE:.status.display.state'
+kubectl get bundledeployments -A -o custom-columns='NAME:.metadata.name,TARGET_NS:.metadata.namespace,STATE:.status.display.state'
 
-# Force re-sync
-kubectl annotate gitrepo my-app-gitops   fleet.cattle.io/force-sync="$(date)"   -n fleet-default   --overwrite
+# Force re-sync by incrementing spec.forceSyncGeneration
+kubectl patch gitrepo my-app-gitops -n fleet-default --type=merge -p '{"spec":{"forceSyncGeneration":1}}'
+# Increment the value each time you want to force a redeploy
 ```
 
 ## Conclusion
 
-Rancher Fleet provides a scalable GitOps platform that works at the scale of hundreds or thousands of clusters. Its declarative model ensures cluster state always matches the Git repository, providing audit trails and easy rollbacks. Start with a simple single-cluster setup and scale to fleet-wide deployment as your organization grows.
+Rancher Fleet provides a scalable GitOps platform that works at the scale of hundreds or thousands of clusters. Using `rolloutStrategy` partitions, you can stage canary-style cluster rollouts while keeping the desired state in Git. Start with a small set of labeled canary clusters, validate the release, and then continue the rollout to the rest of production.
