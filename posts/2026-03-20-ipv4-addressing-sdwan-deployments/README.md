@@ -4,11 +4,11 @@ Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
 Tags: IPv4, SD-WAN, Network Design, VPN, Cisco Viptela, VMware VeloCloud
 
-Description: Design an IPv4 addressing plan for SD-WAN overlays covering transport (underlay), overlay tunnels, loopback IDs, service-side subnets, and management networks.
+Description: Design an IPv4 addressing plan for SD-WAN overlays covering transport (underlay), overlay/system IDs, optional tunnel subnets, service-side subnets, and management networks.
 
 ## Introduction
 
-SD-WAN creates a virtual overlay over multiple transport links (MPLS, broadband, LTE). IPv4 addressing must cover both the underlay (physical transport) and overlay (virtual tunnel) networks while avoiding conflicts across all sites.
+SD-WAN creates a virtual overlay over multiple transport links (MPLS, broadband, LTE). IPv4 addressing must cover the underlay (physical transport), system/loopback IDs used by the overlay, any numbered tunnel networks the platform uses, and service-side networks while avoiding conflicts across all sites.
 
 ## SD-WAN Addressing Layers
 
@@ -16,7 +16,7 @@ SD-WAN creates a virtual overlay over multiple transport links (MPLS, broadband,
 Layer            Address Space       Purpose
 ───────────────────────────────────────────────────────
 Underlay ISP     203.0.113.0/30      WAN uplinks (public/private)
-Overlay Tunnel   10.255.0.0/16       SD-WAN fabric IPs
+Overlay Tunnel   10.255.0.0/16       Optional tunnel/overlay IPs
 Loopback/System  10.254.0.0/16       Router system IDs
 Service-Side     10.SITE.VLAN.0/24   LAN segments per site
 Management OOB   10.253.0.0/16       Device management
@@ -25,7 +25,7 @@ Management OOB   10.253.0.0/16       Device management
 ## Site Numbering Scheme
 
 ```text
-Site ID: 3-digit number (001–999)
+Site ID: 3-digit number (001–252)
   001  HQ
   002  Branch Chicago
   003  Branch New York
@@ -83,15 +83,19 @@ for site_id, site_name in SITES.items():
 vpn 0
   interface ge0/0
     ip address 203.0.113.2/30
+    no shutdown
     tunnel-interface
+      encapsulation ipsec
       color biz-internet
       allow-service all
+  ip route 0.0.0.0/0 203.0.113.1
 
 ! Service side (LAN)
 vpn 1
   name Service
   interface ge0/1
     ip address 10.2.10.1/24
+    no shutdown
   ip route 0.0.0.0/0 vpn 0
 ```
 
@@ -100,7 +104,7 @@ vpn 1
 ```text
 Before deployment, verify:
 [ ] No site LAN prefix overlaps another site
-[ ] Overlay tunnel space (10.255.x.x) doesn't collide with LAN
+[ ] Optional overlay tunnel space (10.255.x.x, if used) doesn't collide with LAN
 [ ] Loopback IDs are unique across all vEdges
 [ ] AWS/Azure VNet CIDRs are excluded from site range
 [ ] Remote-access VPN pool (if any) is separate
@@ -114,9 +118,10 @@ HQ aggregates:
   Summary to MPLS/internet: 10.0.0.0/8  (entire SD-WAN)
 
 Regional hub:
-  10.1.0.0/20  - Sites 001–015 (if /24 per site per region)
+  10.1.0.0/16, 10.2.0.0/15, 10.4.0.0/14, 10.8.0.0/13
+  - Exact summaries for Sites 001–015
 ```
 
 ## Conclusion
 
-SD-WAN addressing requires coordinating underlay, overlay, LAN service, and management layers. Use a site-ID-embedded scheme (`10.<site>.<vlan>.0/24`) for automatic uniqueness and easy summarization. Document all allocations centrally before onboarding the first edge device.
+SD-WAN addressing requires coordinating underlay, overlay, LAN service, and management layers. Use a site-ID-embedded scheme (`10.<site>.<vlan>.0/24`) for automatic uniqueness and straightforward per-site summarization. Document all allocations centrally before onboarding the first edge device.
