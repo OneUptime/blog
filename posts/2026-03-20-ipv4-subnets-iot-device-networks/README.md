@@ -14,7 +14,7 @@ IoT devices - sensors, cameras, thermostats, industrial controllers - are freque
 
 ```text
 Corporate LAN:   10.1.0.0/16
-IoT Zone:        10.2.0.0/16   (isolated, separate VLAN)
+IoT Zone:        10.2.0.0/16   (isolated, separate VLANs)
 
 IoT Subnets:
   10.2.1.0/24   Building sensors (temperature, humidity)
@@ -29,7 +29,7 @@ IoT Subnets:
 ## Firewall Rules for IoT Zones
 
 ```text
-ALLOW  IoT → Internet (specific destinations only)
+ALLOW  IoT → Internet (specific destinations only, enforced upstream)
 ALLOW  IoT → IoT-gateway (10.2.100.x)
 DENY   IoT → Corporate LAN
 DENY   IoT → IT management (10.1.200.x)
@@ -63,12 +63,14 @@ for cat, (cidr, devices) in IOT_CATEGORIES.items():
 
 ```text
 subnet 10.2.1.0 netmask 255.255.255.0 {
-  range 10.2.1.10 10.2.1.200;
   option routers 10.2.1.1;
   option domain-name-servers 10.2.100.10;   # local resolver only
   default-lease-time 1800;    # 30 min - short for churn
   max-lease-time    3600;
-  deny unknown-clients;       # MAC whitelist required
+  pool {
+    range 10.2.1.10 10.2.1.200;
+    deny unknown-clients;     # requires host declarations for known clients
+  }
 }
 ```
 
@@ -88,10 +90,18 @@ interface Vlan210
  ip access-group IoT-SENSORS-ACL in
 !
 ip access-list extended IoT-SENSORS-ACL
- permit udp 10.2.1.0 0.0.0.255 host 10.2.100.10 eq 1883  ! MQTT
- permit udp 10.2.1.0 0.0.0.255 host 10.2.100.10 eq 8883  ! MQTT-TLS
- deny   ip 10.2.1.0 0.0.0.255 10.1.0.0 0.0.255.255        ! block corp
- permit ip 10.2.1.0 0.0.0.255 any                          ! allow internet
+ remark Allow DNS to local resolver
+ permit udp 10.2.1.0 0.0.0.255 host 10.2.100.10 eq domain
+ permit tcp 10.2.1.0 0.0.0.255 host 10.2.100.10 eq domain
+ remark Allow MQTT to IoT gateway
+ permit tcp 10.2.1.0 0.0.0.255 host 10.2.100.10 eq 1883
+ permit tcp 10.2.1.0 0.0.0.255 host 10.2.100.10 eq 8883
+ remark Block corporate LAN
+ deny   ip 10.2.1.0 0.0.0.255 10.1.0.0 0.0.255.255
+ remark Block other routed IoT subnets
+ deny   ip 10.2.1.0 0.0.0.255 10.2.0.0 0.0.255.255
+ remark Permit remaining traffic toward the upstream firewall
+ permit ip 10.2.1.0 0.0.0.255 any
 ```
 
 ## 802.1X Device Onboarding
@@ -99,7 +109,7 @@ ip access-list extended IoT-SENSORS-ACL
 ```text
 For IoT devices that support 802.1X:
   - Assign to IoT VLAN upon successful EAP authentication
-  - Fall back to a quarantine VLAN for unknown MACs
+  - Fall back to a quarantine VLAN on authentication failure
   - Use RADIUS to apply dynamic VLAN assignment
 
 For devices without 802.1X:
