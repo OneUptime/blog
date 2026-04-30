@@ -75,11 +75,11 @@ fetchIPv4Only('https://api.example.com/status')
 const http = require('http');
 const https = require('https');
 
-// Override the global default agents for all requests
+// Override the global default agents for requests that use the default agent
 http.globalAgent = new http.Agent({ family: 4 });
 https.globalAgent = new https.Agent({ family: 4 });
 
-// Now ALL http/https requests in this process will use IPv4
+// Now http/https requests that use the default global agent will resolve hostnames to IPv4
 const axios = require('axios');
 axios.get('https://api.example.com/').then(r => console.log(r.status));
 ```
@@ -99,8 +99,9 @@ async function fetchWithIPv4DNS(hostname, path) {
             host: ipv4,           // Connect to the IPv4 address directly
             port: 443,
             path,
+            servername: hostname, // Send the original hostname in TLS SNI
             headers: {
-                Host: hostname,   // But send the correct SNI/Host header
+                Host: hostname,   // Keep the HTTP Host header set to the original hostname
             },
         };
 
@@ -122,8 +123,10 @@ fetchWithIPv4DNS('api.example.com', '/health')
 
 ## Method 5: Node.js Environment Variable
 
+This changes the default address order for `dns.lookup()`, but it does not strictly force IPv4-only connections the way `family: 4` does.
+
 ```bash
-# Set DNS_ORDER to prefer IPv4 at the OS level (Node.js 18+)
+# Prefer IPv4 in dns.lookup() process-wide
 
 NODE_OPTIONS="--dns-result-order=ipv4first" node app.js
 ```
@@ -131,7 +134,7 @@ NODE_OPTIONS="--dns-result-order=ipv4first" node app.js
 Or in code:
 
 ```javascript
-// dns.setDefaultResultOrder is available in Node.js 16.4+
+// dns.setDefaultResultOrder is available in Node.js 16.4+ (and 14.18+)
 const dns = require('dns');
 dns.setDefaultResultOrder('ipv4first');
 ```
@@ -152,4 +155,4 @@ req.end();
 
 ## Conclusion
 
-The most reliable way to force IPv4-only HTTP requests in Node.js is to pass `family: 4` to `http.Agent` or `https.Agent`. For global enforcement, override `http.globalAgent` and `https.globalAgent`. In Node.js 16.4+, `dns.setDefaultResultOrder('ipv4first')` provides a process-wide preference without custom agents.
+The most reliable way to force IPv4-only HTTP requests in Node.js is to pass `family: 4` to `http.Agent` or `https.Agent`. For a process-wide default, override `http.globalAgent` and `https.globalAgent`. `dns.setDefaultResultOrder('ipv4first')` provides a process-wide preference without custom agents, but it does not strictly force IPv4-only connections.
