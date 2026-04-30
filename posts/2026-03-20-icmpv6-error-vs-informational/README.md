@@ -4,7 +4,7 @@ Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
 Tags: ICMPv6, Error Messages, Informational Messages, IPv6, RFC 4443
 
-Description: Understand the distinction between ICMPv6 error messages (Types 1-127) and informational messages (Types 128-255), their different rules and behaviors, and why this classification matters for...
+Description: Understand the distinction between ICMPv6 error messages (Types 0-127) and informational messages (Types 128-255), their different rules and behaviors, and why this classification matters for...
 
 ## Introduction
 
@@ -17,21 +17,23 @@ ICMPv6 Error Message rules (RFC 4443):
 
 1. Generated in response to a problem processing an IPv6 packet
 2. MUST include as much of the offending packet as possible
-   (without exceeding 1280 bytes total ICMPv6 message size)
+   (without making the resulting packet exceed the IPv6 minimum MTU of 1280 bytes)
 3. MUST NOT be sent in response to:
-   - An ICMPv6 error message (prevents error loops)
-   - A packet sent to a multicast address (except for Packet Too Big
-     and Parameter Problem with code 2)
-   - A packet that appears to have a forged source (e.g., unspecified
-     address :: as source)
-4. SHOULD be rate-limited to prevent flooding
+   - An ICMPv6 error message or Redirect message (prevents loops)
+   - A packet sent to an IPv6 multicast address (except for Packet Too Big
+     and Parameter Problem with code 2 for certain unrecognized options)
+   - A packet sent as link-layer multicast or broadcast
+     (the same exceptions apply)
+   - A packet whose source does not uniquely identify a single node
+     (e.g., the unspecified address ::)
+4. MUST be rate-limited to prevent flooding
 5. Type range: 0-127
 
 Current error messages:
-  Type 1: Destination Unreachable (Codes 0-7)
-  Type 2: Packet Too Big
+  Type 1: Destination Unreachable (Codes 0-9)
+  Type 2: Packet Too Big (Code 0)
   Type 3: Time Exceeded (Codes 0-1)
-  Type 4: Parameter Problem (Codes 0-2)
+  Type 4: Parameter Problem (Codes 0-10)
 ```
 
 ## Informational Messages (Types 128-255)
@@ -44,7 +46,7 @@ ICMPv6 Informational Message characteristics:
 3. Subject to their own specific rules
 4. Type range: 128-255
 
-Current informational messages:
+Common informational messages:
   Type 128: Echo Request
   Type 129: Echo Reply
   Type 130: Multicast Listener Query (MLD)
@@ -64,17 +66,18 @@ Current informational messages:
 Firewall implications of error vs informational classification:
 
 Error messages:
+  MUST allow: Destination Unreachable (Type 1) - all codes
   MUST allow: Packet Too Big (Type 2) - essential for PMTUD
-  MUST allow: Destination Unreachable (Type 1) - needed for error reporting
-  SHOULD allow: Time Exceeded (Type 3) - needed for traceroute6
-  SHOULD allow: Parameter Problem (Type 4) - needed for error reporting
-  Blocking Type 2 BREAKS PMTUD for all TCP connections
+  MUST allow: Time Exceeded (Type 3, Code 0) - hop limit exceeded in transit
+  MUST allow: Parameter Problem (Type 4, Codes 1-2)
+  SHOULD allow: Time Exceeded (Type 3, Code 1) and Parameter Problem (Type 4, Code 0)
+  Blocking Type 2 breaks classical IPv6 PMTUD and can black-hole TCP connections
 
 Informational messages:
-  NDP types (133-137) MUST be allowed on local link (link-local scope)
-  MLD types (130-132, 143) MUST be allowed for multicast to work
-  Echo (128-129) can be blocked if ping6 not needed (but helpful to allow)
-  NDP on external interfaces should be blocked (not valid cross-router)
+  RS/RA/NS/NA (133-136) are local-link messages and should not be treated as transit traffic
+  Redirect (137) is local-link only and should be policy-controlled
+  MLD types (130-132, 143) are local-link messages required for multicast listener signaling
+  Echo (128-129) are commonly allowed; blocking them can break diagnostics and some connectivity checks
 ```
 
 ## Classification Check in Code
@@ -82,27 +85,30 @@ Informational messages:
 ```python
 def classify_icmpv6(icmp_type: int) -> dict:
     """
-    Classify an ICMPv6 message type and provide firewall guidance.
+    Classify an ICMPv6 message type and provide high-level handling notes.
     """
+    if not 0 <= icmp_type <= 255:
+        raise ValueError("ICMPv6 type must be in range 0..255")
+
     error_messages = {
-        1:  ("Destination Unreachable", "allow"),
+        1:  ("Destination Unreachable", "allow - all codes"),
         2:  ("Packet Too Big",          "MUST allow - breaks PMTUD if blocked"),
-        3:  ("Time Exceeded",           "allow - needed for traceroute6"),
-        4:  ("Parameter Problem",       "allow"),
+        3:  ("Time Exceeded",           "code-specific handling"),
+        4:  ("Parameter Problem",       "code-specific handling"),
     }
 
     informational_messages = {
-        128: ("Echo Request",            "allow if ping6 desired"),
-        129: ("Echo Reply",              "allow if ping6 desired"),
-        130: ("MLD Query",               "allow on local segments"),
-        131: ("MLD Report",              "allow on local segments"),
-        132: ("MLD Done",                "allow on local segments"),
-        133: ("Router Solicitation",     "allow link-local; block on transit"),
-        134: ("Router Advertisement",    "allow link-local; block on transit"),
-        135: ("Neighbor Solicitation",   "allow link-local; block on transit"),
-        136: ("Neighbor Advertisement",  "allow link-local; block on transit"),
-        137: ("Redirect",                "allow link-local; block on transit"),
-        143: ("MLDv2 Report",            "allow on local segments"),
+        128: ("Echo Request",            "policy-dependent; commonly allowed"),
+        129: ("Echo Reply",              "policy-dependent; commonly allowed"),
+        130: ("MLD Query",               "local-link only"),
+        131: ("MLD Report",              "local-link only"),
+        132: ("MLD Done",                "local-link only"),
+        133: ("Router Solicitation",     "local-link only; never transit"),
+        134: ("Router Advertisement",    "local-link only; never transit"),
+        135: ("Neighbor Solicitation",   "local-link only; never transit"),
+        136: ("Neighbor Advertisement",  "local-link only; never transit"),
+        137: ("Redirect Message",        "policy-controlled; local-link only"),
+        143: ("MLDv2 Report",            "local-link only"),
     }
 
     if icmp_type in error_messages:
@@ -116,7 +122,7 @@ def classify_icmpv6(icmp_type: int) -> dict:
     else:
         return {"class": "informational", "name": f"Unknown informational type {icmp_type}", "guidance": "evaluate"}
 
-# Test all known types
+# Test a selection of known types
 
 for t in [1, 2, 3, 4, 128, 129, 133, 134, 135, 136]:
     r = classify_icmpv6(t)
@@ -126,19 +132,19 @@ for t in [1, 2, 3, 4, 128, 129, 133, 134, 135, 136]:
 ## Rate Limiting Error Messages
 
 ```bash
-# Linux automatically rate-limits ICMPv6 error generation
-# Check current rate limit settings
+# Linux automatically rate-limits selected ICMPv6 message types
+# Check current rate limit interval
 cat /proc/sys/net/ipv6/icmp/ratelimit
-# Default: 1000 (milliseconds between ICMPv6 error generation)
+# Minimum spacing between rate-limited ICMPv6 messages to a given peer (milliseconds)
 
-# Check rate limit burst size
+# Check which ICMPv6 types are rate-limited
 cat /proc/sys/net/ipv6/icmp/ratemask
-# Bitmask of message types subject to rate limiting
+# Comma-separated list of ICMPv6 type ranges subject to ratelimit
 
-# View ICMPv6 statistics (includes error generation counts)
+# View ICMPv6 statistics
 cat /proc/net/snmp6 | grep -i icmp
 ```
 
 ## Conclusion
 
-The error/informational classification of ICMPv6 messages has practical implications for both firewall policy and protocol implementation. Error messages (Types 1-127) trigger specific behaviors: rate limiting, anti-loop rules, and inclusion of the offending packet. Informational messages (Types 128-255) include NDP and MLD, which are essential for IPv6 to function at all on a network segment. The most critical rule for firewall administrators: never block ICMPv6 Type 2 (Packet Too Big), as this breaks Path MTU Discovery for all IPv6 TCP connections.
+The error/informational classification of ICMPv6 messages has practical implications for both firewall policy and protocol implementation. Error messages (Types 0-127) trigger specific behaviors: rate limiting, anti-loop rules, and inclusion of the offending packet. Informational messages (Types 128-255) include NDP and MLD, which are essential for IPv6 to function on a network segment. The most critical rule for firewall administrators: do not block ICMPv6 Type 2 (Packet Too Big), as it is required for classical IPv6 Path MTU Discovery and can otherwise black-hole TCP connections.
