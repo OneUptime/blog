@@ -8,7 +8,7 @@ Description: Learn how to use heredoc syntax in OpenTofu to write multi-line str
 
 ---
 
-Heredoc syntax lets you write multi-line strings in HCL without escaping newlines or quotes. Use `<<EOF` (or any identifier) to start a heredoc and `EOF` on a line by itself to end it. The indented form `<<-EOF` strips leading whitespace.
+Heredoc syntax lets you write multi-line strings in HCL without escaping newlines or quotes. Use `<<EOF` (or any identifier) to start a heredoc and `EOF` on a line by itself to end it. The indented form `<<-EOF` trims common leading spaces.
 
 ---
 
@@ -33,14 +33,14 @@ EOF
 
 ## Indented Heredoc (<<-)
 
-The `<<-` form strips leading whitespace, letting you indent the content to match your code:
+The `<<-` form trims common leading spaces, letting you indent the content to match your code:
 
 ```hcl
 resource "aws_instance" "app" {
   ami           = data.aws_ami.amazon_linux.id
   instance_type = "t3.micro"
 
-  # <<- strips the leading spaces from each line
+  # <<- trims the common leading spaces from each line
   user_data = <<-EOT
     #!/bin/bash
     export APP_ENV="${var.environment}"
@@ -51,7 +51,7 @@ resource "aws_instance" "app" {
 }
 ```
 
-The content is treated as if the indentation doesn't exist - each line has leading whitespace trimmed to the level of the least-indented line.
+The content is treated as if the shared indentation doesn't exist - OpenTofu finds the least-indented line and trims that many leading spaces from every line.
 
 ---
 
@@ -107,7 +107,7 @@ resource "aws_iam_policy" "app" {
 }
 ```
 
-Note: For JSON policies, using `jsonencode()` is often cleaner than heredoc JSON.
+Note: For JSON policies, `jsonencode()` is usually better than heredoc JSON, and OpenTofu recommends `jsonencode()` or `yamlencode()` when generating structured content.
 
 ---
 
@@ -185,8 +185,10 @@ resource "kubernetes_config_map" "app" {
 }
 ```
 
+Note: If you're generating YAML from OpenTofu values, `yamlencode()` is usually safer than writing YAML manually in a heredoc.
+
 ---
 
 ## Summary
 
-Heredoc syntax (`<<EOF`/`<<-EOF`) provides a clean way to write multi-line strings in OpenTofu. Use `<<-` to allow indentation in your code. Heredocs support full string interpolation with `${...}`. Use `$${` to include literal dollar signs. Common use cases include EC2 user data scripts, IAM policy documents, YAML configuration, Nginx config, and any other multi-line text content.
+Heredoc syntax (`<<EOF`/`<<-EOF`) provides a clean way to write multi-line strings in OpenTofu. Use `<<-` to keep your configuration indented while trimming common leading spaces. Heredocs support full string interpolation with `${...}`. Use `$${` to include a literal `${` and `%%{` to include a literal `%{`. Common use cases include EC2 user data scripts, Nginx config, and any other multi-line text content. For generated JSON or YAML, prefer `jsonencode()` or `yamlencode()`.
