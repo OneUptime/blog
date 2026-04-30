@@ -23,7 +23,7 @@ resource "google_compute_snapshot" "manual_snapshot" {
   # Optional: snapshot description
   description = "Initial snapshot before major application update"
 
-  # Store snapshot in a specific region (default: multi-region)
+  # Override the project's default snapshot storage location
   storage_locations = ["us-central1"]
 
   labels = {
@@ -43,10 +43,10 @@ resource "google_compute_resource_policy" "daily_snapshot" {
 
   snapshot_schedule_policy {
     schedule {
-      # Take a snapshot every day at 2 AM UTC
+      # Take a snapshot every day at 4 AM UTC
       daily_schedule {
         days_in_cycle = 1
-        start_time    = "02:00"
+        start_time    = "04:00"
       }
     }
 
@@ -63,7 +63,7 @@ resource "google_compute_resource_policy" "daily_snapshot" {
         environment   = "production"
       }
       storage_locations = ["us-central1"]
-      guest_flush       = false  # Set to true for application-consistent snapshots
+      guest_flush       = false  # Set to true after configuring the guest environment
     }
   }
 }
@@ -98,7 +98,7 @@ resource "google_compute_resource_policy" "hourly_snapshot" {
     }
 
     retention_policy {
-      max_retention_days    = 3  # Keep only 72 hourly snapshots
+      max_retention_days    = 3  # Retain hourly snapshots for up to 3 days
       on_source_disk_delete = "APPLY_RETENTION_POLICY"
     }
   }
@@ -120,11 +120,11 @@ resource "google_compute_disk" "restored_disk" {
   name     = "restored-db-disk"
   type     = "pd-ssd"
   zone     = "us-central1-c"
-  size     = 200
+  size     = google_compute_disk.app_disk.size
   snapshot = google_compute_snapshot.manual_snapshot.self_link
 }
 ```
 
 ## Summary
 
-GCP snapshot schedules with OpenTofu automate backup workflows without manual intervention. Daily schedules with 14-day retention are suitable for most workloads, while hourly snapshots with shorter retention protect critical databases. Use `guest_flush = true` for databases to ensure application-consistent snapshots.
+GCP snapshot schedules with OpenTofu automate backup workflows without manual intervention. Daily schedules with 14-day retention are suitable for most workloads, while hourly snapshots with shorter retention protect critical databases. Use `guest_flush = true` only after configuring the guest environment for application-consistent backups.
