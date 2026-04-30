@@ -13,29 +13,22 @@ Description: Learn how to install Portainer CE on Windows Server 2022 to manage 
 - Internet connectivity
 - At least 4 GB RAM
 
-## Step 1: Enable Containers and Hyper-V
+## Step 1: Enable Containers
 
 Open PowerShell as Administrator:
 
 ```powershell
 Install-WindowsFeature -Name Containers -IncludeManagementTools
-Install-WindowsFeature -Name Hyper-V -IncludeAllSubFeature
 Restart-Computer -Force
 ```
 
 ## Step 2: Install Docker
 
-After reboot, install Docker Engine using the official script:
+After reboot, install Docker CE / Moby using the Microsoft-provided script:
 
 ```powershell
 Invoke-WebRequest -UseBasicParsing "https://raw.githubusercontent.com/microsoft/Windows-Containers/Main/helpful_tools/Install-DockerCE/install-docker-ce.ps1" -OutFile install-docker-ce.ps1
 .\install-docker-ce.ps1
-```
-
-Or use winget:
-
-```powershell
-winget install Docker.DockerDesktop
 ```
 
 Verify Docker is running:
@@ -53,7 +46,7 @@ docker volume create portainer_data
 
 ## Step 4: Deploy Portainer CE
 
-For Linux containers mode (recommended, requires WSL2 or Hyper-V):
+For Windows containers mode:
 
 ```powershell
 docker run -d `
@@ -61,21 +54,9 @@ docker run -d `
   -p 9443:9443 `
   --name portainer `
   --restart always `
-  -v /var/run/docker.sock:/var/run/docker.sock `
-  -v portainer_data:/data `
-  portainer/portainer-ce:latest
-```
-
-For Windows containers mode:
-
-```powershell
-docker run -d `
-  -p 9000:9000 `
-  --name portainer `
-  --restart always `
   -v \\.\pipe\docker_engine:\\.\pipe\docker_engine `
   -v portainer_data:C:\data `
-  portainer/portainer-ce:latest
+  portainer/portainer-ce:lts
 ```
 
 ## Step 5: Configure the Firewall
@@ -99,7 +80,7 @@ Create your admin account on first login.
 
 ## Troubleshooting
 
-**Docker daemon not starting:** Ensure Hyper-V or WSL2 is properly configured.
+**Docker daemon not starting:** Ensure the Containers feature is installed and the Docker service is running.
 
 ```powershell
 Get-Service docker | Select-Object Status
@@ -118,11 +99,11 @@ docker logs portainer
 ```powershell
 docker stop portainer
 docker rm portainer
-docker pull portainer/portainer-ce:latest
+docker pull portainer/portainer-ce:lts
 # Re-run the deploy command
 
 ```
 
 ## Conclusion
 
-Portainer on Windows Server 2022 provides a web-based interface for managing Docker containers in Windows environments. Whether running Linux containers via WSL2 or native Windows containers, Portainer simplifies deployment and monitoring from a familiar browser UI.
+Portainer on Windows Server 2022 provides a web-based interface for managing Docker containers in Windows environments. When running native Windows containers, Portainer simplifies deployment and monitoring from a familiar browser UI.
