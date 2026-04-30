@@ -113,8 +113,8 @@ resource "aws_apigatewayv2_authorizer" "jwt" {
   name             = "jwt-authorizer"
 
   jwt_configuration {
-    audience = ["https://api.example.com"]
-    issuer   = "https://cognito-idp.us-east-1.amazonaws.com/${aws_cognito_user_pool.main.id}"
+    audience = [aws_cognito_user_pool_client.main.id]
+    issuer   = "https://${aws_cognito_user_pool.main.endpoint}"
   }
 }
 
@@ -140,6 +140,16 @@ resource "aws_apigatewayv2_stage" "production" {
 
   access_log_settings {
     destination_arn = aws_cloudwatch_log_group.api_gw.arn
+    format = jsonencode({
+      requestId      = "$context.requestId"
+      sourceIp       = "$context.identity.sourceIp"
+      requestTime    = "$context.requestTime"
+      protocol       = "$context.protocol"
+      httpMethod     = "$context.httpMethod"
+      routeKey       = "$context.routeKey"
+      status         = "$context.status"
+      responseLength = "$context.responseLength"
+    })
   }
 
   default_route_settings {
@@ -212,11 +222,11 @@ output "custom_domain_url" {
 
 ## Best Practices
 
-1. **Use HTTP API over REST API** for new projects - it's cheaper and faster
+1. **Use HTTP API over REST API** when you don't need REST-only features - it's cheaper and lower-latency
 2. **Enable access logging** for all stages - critical for debugging production issues
 3. **Set throttling limits** to protect your Lambda functions from traffic spikes
 4. **Use payload format version 2.0** for Lambda integrations - cleaner request format
-5. **Enable X-Ray tracing** for end-to-end latency visibility
+5. **Use CloudWatch metrics** for latency visibility on HTTP APIs
 
 ---
 
