@@ -10,12 +10,12 @@ Description: Configure GraphQL servers to listen on IPv6 addresses using popular
 
 GraphQL servers are HTTP-based, so IPv6 configuration follows standard HTTP server practices. The key is ensuring your HTTP server binds to IPv6 interfaces.
 
-## Express + express-graphql over IPv6
+## Express + graphql-http over IPv6
 
 ```javascript
 // server.js
 const express = require('express');
-const { graphqlHTTP } = require('express-graphql');
+const { createHandler } = require('graphql-http/lib/use/express');
 const { buildSchema } = require('graphql');
 
 const schema = buildSchema(`
@@ -38,21 +38,20 @@ const root = {
     clientIP: (_, context) => context.req.clientIP,
 };
 
-app.use('/graphql', graphqlHTTP((req) => ({
+app.all('/graphql', createHandler({
     schema,
     rootValue: root,
-    graphiql: true,
-    context: { req },
-})));
+    context: (req) => ({ req: req.raw }),
+}));
 
 // Listen on all IPv6 interfaces
-// '::' is the IPv6 equivalent of '0.0.0.0'
+// '::' is the IPv6 unspecified address used for binding
 app.listen(4000, '::', () => {
-    console.log('GraphQL server on http://[::]:4000/graphql');
+    console.log('GraphQL server on http://[::1]:4000/graphql');
 });
 ```
 
-## Apollo Server 4 with IPv6
+## Apollo Server 5 with IPv6
 
 ```javascript
 // apollo-server.js
@@ -83,7 +82,7 @@ const resolvers = {
 const server = new ApolloServer({ typeDefs, resolvers });
 
 async function main() {
-    const { url } = await startStandaloneServer(server, {
+    await startStandaloneServer(server, {
         listen: {
             port: 4000,
             host: '::', // Listen on all IPv6 interfaces
@@ -91,8 +90,7 @@ async function main() {
         context: async ({ req }) => ({ req }),
     });
 
-    console.log(`GraphQL server ready at ${url}`);
-    // URL will show IPv6: http://[::]:4000/
+    console.log('GraphQL server ready on http://[::1]:4000/');
 }
 
 main();
@@ -172,19 +170,22 @@ curl -6 -X POST http://[::1]:4000/graphql \
   -H "Content-Type: application/json" \
   -d '{"query": "{ hello }"}'
 
-# Test against specific IPv6 address
-curl -6 -X POST http://[2001:db8::1]:4000/graphql \
+# Test against your server's IPv6 address
+SERVER_IPV6="2001:db8::1234" # replace with your server's real IPv6 address
+curl -6 -X POST "http://[$SERVER_IPV6]:4000/graphql" \
   -H "Content-Type: application/json" \
   -d '{"query": "{ clientIP }"}'
 
 # Verify IPv6 is used
-curl -6 -v http://[2001:db8::1]:4000/graphql 2>&1 | grep "Connected to"
+curl -6 -v -X POST "http://[$SERVER_IPV6]:4000/graphql" \
+  -H "Content-Type: application/json" \
+  -d '{"query": "{ hello }"}' 2>&1 | grep "Connected to"
 ```
 
 ## Monitoring with OneUptime
 
-Use [OneUptime](https://oneuptime.com) to monitor your GraphQL server's health endpoint over IPv6. Create HTTP monitors that POST a simple `{ __typename }` query to verify the server is responding correctly from IPv6 addresses.
+Use [OneUptime](https://oneuptime.com) to monitor your GraphQL endpoint over IPv6. Create HTTP monitors that POST a simple `{ __typename }` query to verify the server is responding correctly from IPv6 addresses.
 
 ## Conclusion
 
-GraphQL servers over IPv6 just require binding the HTTP server to `::` instead of `0.0.0.0`. In Node.js, pass `'::'` as the host to `listen()`. In Python, set `host="::"` in uvicorn. Client IPv6 addresses are available via the request socket's `remoteAddress` property.
+GraphQL servers over IPv6 usually just require binding the HTTP server to `::` instead of `0.0.0.0`. In Node.js, pass `'::'` as the host to `listen()`. In Python, set `host="::"` in uvicorn. On some operating systems, binding to `::` can also accept IPv4 unless IPv6-only mode is enabled. Client IPv6 addresses are available via the request socket's `remoteAddress` property or FastAPI's `request.client.host`.
