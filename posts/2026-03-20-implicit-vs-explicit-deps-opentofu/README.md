@@ -34,27 +34,57 @@ No extra configuration is needed. This is the preferred and most common form of 
 
 ## Explicit Dependencies with depends_on
 
-An explicit dependency is declared with the `depends_on` meta-argument. Use it when a resource relies on the *side effects* of another resource rather than its attributes - for example, waiting for an IAM policy to propagate before a Lambda function uses it.
+An explicit dependency is declared with the `depends_on` meta-argument. Use it when a resource relies on another object's behavior but does not reference any of that object's data in its arguments - for example, when a policy must be in place before a compute instance starts.
 
 ```hcl
-resource "aws_iam_role_policy_attachment" "lambda_exec" {
-  role       = aws_iam_role.lambda.name
-  policy_arn = "arn:aws:iam::aws:policy/service-role/AWSLambdaBasicExecutionRole"
+resource "aws_iam_role" "app" {
+  name = "app-role"
+
+  assume_role_policy = jsonencode({
+    Version = "2012-10-17"
+    Statement = [{
+      Effect = "Allow"
+      Principal = {
+        Service = "ec2.amazonaws.com"
+      }
+      Action = "sts:AssumeRole"
+    }]
+  })
 }
 
-resource "aws_lambda_function" "processor" {
-  function_name = "data-processor"
-  role          = aws_iam_role.lambda.arn
+resource "aws_iam_instance_profile" "app" {
+  role = aws_iam_role.app.name
+}
 
-  # The function doesn't reference the attachment directly,
-  # but it must exist before the function can execute with the right permissions.
-  depends_on = [aws_iam_role_policy_attachment.lambda_exec]
+resource "aws_iam_role_policy" "app_s3" {
+  name = "app-s3"
+  role = aws_iam_role.app.name
+
+  policy = jsonencode({
+    Version = "2012-10-17"
+    Statement = [{
+      Effect   = "Allow"
+      Action   = ["s3:*"]
+      Resource = "*"
+    }]
+  })
+}
+
+resource "aws_instance" "app" {
+  ami                  = "ami-12345678" # Replace with a valid AMI for your region.
+  instance_type        = "t2.micro"
+  iam_instance_profile = aws_iam_instance_profile.app.name
+
+  # The instance references the instance profile directly,
+  # but if software in the instance needs S3 access during boot,
+  # the policy is a hidden dependency that must exist first.
+  depends_on = [aws_iam_role_policy.app_s3]
 }
 ```
 
 ## Module-Level depends_on
 
-`depends_on` also works at the module level to ensure all resources in a module are created before resources in another module:
+`depends_on` also works at the module level to ensure OpenTofu finishes processing one module before processing another when implicit dependencies are not sufficient:
 
 ```hcl
 module "networking" {
@@ -64,7 +94,8 @@ module "networking" {
 module "compute" {
   source = "./modules/compute"
 
-  # Ensure all networking resources exist before creating any compute resources.
+  # Ensure OpenTofu finishes processing the networking module
+  # before processing any resources or data sources in the compute module.
   # Use this only when implicit dependencies inside the modules are not sufficient.
   depends_on = [module.networking]
 }
@@ -75,13 +106,13 @@ module "compute" {
 | Scenario | Use |
 |---|---|
 | Resource A reads an attribute from resource B | Implicit (attribute reference) |
-| Resource A needs B's side effects (IAM propagation, DNS TTL) | Explicit (`depends_on`) |
-| Module A must finish before module B starts | Explicit (`depends_on` on module) |
-| Data source needs a resource to exist first | Explicit (`depends_on`) |
+| Resource A relies on B's behavior but does not read B's attributes | Explicit (`depends_on`) |
+| Module B must be processed after module A | Explicit (`depends_on` on module) |
+| Data source must wait on a resource it does not reference directly | Explicit (`depends_on`) |
 
 ## Avoiding Unnecessary depends_on
 
-Overusing `depends_on` reduces parallelism and can cause cascading rebuilds. For example:
+Overusing `depends_on` reduces parallelism and can make plans more conservative than necessary. For example:
 
 ```hcl
 # BAD: unnecessary depends_on that prevents parallel creation
@@ -108,4 +139,4 @@ Both implicit and explicit dependencies appear as edges in the graph output.
 
 ## Conclusion
 
-Prefer implicit dependencies expressed through attribute references - they are self-documenting and automatically maintained. Reserve `depends_on` for cases where resource creation order cannot be inferred from attribute references alone, such as IAM propagation delays or cross-module side effects.
+Prefer implicit dependencies expressed through attribute references - they are self-documenting and automatically maintained. Reserve `depends_on` for cases where ordering cannot be inferred from attribute references alone, such as hidden policy dependencies or cross-module ordering requirements.
