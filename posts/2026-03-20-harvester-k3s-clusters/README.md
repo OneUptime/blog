@@ -8,24 +8,25 @@ Description: Learn how to provision lightweight K3s Kubernetes clusters on Harve
 
 ## Introduction
 
-K3s is a lightweight, certified Kubernetes distribution that requires significantly less resources than full Kubernetes. When combined with Harvester as the infrastructure provider, K3s clusters can be quickly provisioned on VMs for development environments, edge computing workloads, or any scenario where a full RKE2 cluster would be overkill. Rancher's K3s provisioning via the Harvester node driver makes this a seamless experience.
+K3s is a lightweight, certified Kubernetes distribution that requires significantly less resources than full Kubernetes. When combined with Harvester as the infrastructure provider, K3s clusters can be quickly provisioned on VMs for development environments, edge computing workloads, or any scenario where a full RKE2 cluster would be overkill. Rancher's Harvester node driver handles the VM provisioning, while Harvester cloud provider and CSI integration for K3s may require additional configuration.
 
 ## K3s vs RKE2 on Harvester
 
 | Feature | K3s | RKE2 |
 |---|---|---|
-| Resource overhead | Very low (~500 MB RAM) | Low (~1 GB RAM) |
+| Resource overhead | Lower (2 GB server minimum) | Higher (4 GB minimum) |
 | Use case | Dev, edge, IoT | Production, compliance |
 | FIPS compliance | No | Yes |
-| CIS hardening | Limited | Full support |
+| CIS hardening | Supported with additional hardening steps | Broad support with security-focused defaults |
 | Setup complexity | Minimal | Moderate |
 
 ## Prerequisites
 
 - Harvester cluster integrated with Rancher
 - Harvester cloud credentials configured in Rancher
-- VM images available in Harvester
-- A network configured for the K3s cluster VMs
+- Cloud images available in Harvester
+- A VLAN network configured for the K3s cluster VMs
+- DHCP or Managed DHCP available on the VLAN network used by the VMs
 
 ## Step 1: Create K3s Cluster via Rancher UI
 
@@ -33,13 +34,14 @@ K3s is a lightweight, certified Kubernetes distribution that requires significan
 2. Click **Create**
 3. Select **RKE2/K3s** (K3s is listed here)
 4. Select **Harvester** as the driver
-5. Toggle to **K3s** instead of RKE2
+5. Select your Harvester cloud credential
+6. Toggle to **K3s** instead of RKE2
 
 ### Cluster Configuration
 
 ```text
 Cluster Name:       dev-k3s-cluster
-Kubernetes:         K3s v1.27.x (latest)
+Kubernetes:         A Rancher-supported K3s version for your Rancher release
 CNI:                Flannel (K3s default, lighter weight)
 ```
 
@@ -53,8 +55,10 @@ Count:              1 (or 3 for HA)
 Roles:              etcd, Control Plane, Worker
 VM CPU:             2 cores
 VM Memory:          4 GB
-VM Image:           ubuntu-22-04-lts
+VM Image:           a supported Ubuntu cloud image
 VM Disk Size:       30 GB
+Network:            default/vlan-100
+SSH User:           ubuntu
 ```
 
 ## Step 2: Create K3s Cluster via Rancher API
@@ -69,10 +73,9 @@ kind: Cluster
 metadata:
   name: dev-k3s-cluster
   namespace: fleet-default
-  annotations:
-    field.cattle.io/description: "Development K3s cluster on Harvester"
-    field.cattle.io/projectId: "local:p-devteam"
 spec:
+  # Rancher cloud credential for Harvester
+  cloudCredentialSecretName: "cattle-global-data:<harvester-cloud-credential-secret>"
   # K3s configuration
   rkeConfig:
     machinePools:
@@ -86,19 +89,17 @@ spec:
           name: k3s-small-node-config
     # K3s-specific install arguments
     machineGlobalConfig:
-      # Disable traefik (will use nginx ingress instead)
-      disable: "traefik"
-      # Disable default storage class (will use Harvester CSI)
-      disable-local-storage: true
+      # Disable packaged components that will be replaced
+      disable:
+        - traefik
+        - local-storage
       # Cluster DNS domain
       cluster-domain: "dev.cluster.local"
     # Upgrade configuration
     upgradeStrategy:
       controlPlaneConcurrency: "1"
       workerConcurrency: "1"
-  kubernetesVersion: "v1.27.9+k3s1"
-  networkConfig:
-    plugin: flannel
+  kubernetesVersion: "<rancher-supported-k3s-version>"
 ```
 
 ```yaml
@@ -111,11 +112,12 @@ metadata:
   name: k3s-small-node-config
   namespace: fleet-default
 spec:
-  clusterName: local
+  clusterName: "<harvester-cluster-name>"
   namespace: default
   # Use a lightweight image
   imageName: default/ubuntu-22-04-lts
-  networkName: default/management
+  # Must be a VLAN network supported by the Harvester node driver
+  networkName: default/vlan-100
   # Smaller resources for dev cluster
   cpuCount: "2"
   memorySize: "4"  # GB
@@ -125,16 +127,11 @@ spec:
   # Minimal cloud-init for K3s nodes
   userData: |
     #cloud-config
+    package_update: true
     packages:
       - qemu-guest-agent
     runcmd:
       - systemctl enable --now qemu-guest-agent
-      # K3s prerequisites
-      - modprobe br_netfilter
-      - modprobe overlay
-      - echo 'br_netfilter' >> /etc/modules-load.d/k3s.conf
-      - echo 'overlay' >> /etc/modules-load.d/k3s.conf
-      - sysctl --system
 ```
 
 ```bash
@@ -142,7 +139,7 @@ kubectl apply -f k3s-small-node-config.yaml
 kubectl apply -f k3s-harvester-cluster.yaml
 
 # Watch the K3s cluster provision
-kubectl get cluster dev-k3s-cluster -n fleet-default -w
+kubectl get clusters.provisioning.cattle.io dev-k3s-cluster -n fleet-default -w
 ```
 
 ## Step 3: Manual K3s Setup on Harvester VMs
@@ -151,61 +148,22 @@ For more control, install K3s manually on Harvester VMs:
 
 ### Create VMs for K3s
 
-```bash
-# Create the K3s server VM
-kubectl apply -f - <<EOF
-apiVersion: kubevirt.io/v1
-kind: VirtualMachine
-metadata:
-  name: k3s-server-01
-  namespace: default
-spec:
-  running: true
-  template:
-    spec:
-      domain:
-        cpu:
-          cores: 4
-        resources:
-          requests:
-            memory: 8Gi
-        machine:
-          type: q35
-        devices:
-          disks:
-            - name: rootdisk
-              bootOrder: 1
-              disk:
-                bus: virtio
-            - name: cloudinit
-              disk:
-                bus: virtio
-          interfaces:
-            - name: default
-              masquerade: {}
-      networks:
-        - name: default
-          pod: {}
-      volumes:
-        - name: rootdisk
-          persistentVolumeClaim:
-            claimName: k3s-server-01-root
-        - name: cloudinit
-          cloudInitNoCloud:
-            userData: |
-              #cloud-config
-              hostname: k3s-server-01
-              users:
-                - name: ubuntu
-                  sudo: ALL=(ALL) NOPASSWD:ALL
-                  ssh_authorized_keys:
-                    - ssh-ed25519 AAAAC3NzaC1... admin@host
-              packages:
-                - qemu-guest-agent
-                - curl
-              runcmd:
-                - systemctl enable --now qemu-guest-agent
-EOF
+Create one or more Harvester VMs from a cloud image, attach them to a VLAN network that provides DHCP (or use Managed DHCP), and make sure `qemu-guest-agent` is installed. For example, the cloud-init data for a K3s server VM can be:
+
+```yaml
+#cloud-config
+hostname: k3s-server-01
+users:
+  - name: ubuntu
+    sudo: ALL=(ALL) NOPASSWD:ALL
+    ssh_authorized_keys:
+      - ssh-ed25519 AAAAC3NzaC1... admin@host
+package_update: true
+packages:
+  - qemu-guest-agent
+  - curl
+runcmd:
+  - systemctl enable --now qemu-guest-agent
 ```
 
 ### Install K3s Server
@@ -215,7 +173,7 @@ EOF
 ssh ubuntu@<k3s-server-ip>
 
 # Install K3s server
-curl -sfL https://get.k3s.io | sh -s - \
+curl -sfL https://get.k3s.io | sh -s - server \
     --cluster-init \
     --token="my-k3s-secret-token" \
     --tls-san="10.0.0.100" \
@@ -223,7 +181,7 @@ curl -sfL https://get.k3s.io | sh -s - \
     --write-kubeconfig-mode=644
 
 # Get the cluster token (needed for joining agents)
-sudo cat /var/lib/rancher/k3s/server/node-token
+sudo cat /var/lib/rancher/k3s/server/token
 ```
 
 ### Install K3s Agent (Worker Nodes)
@@ -250,21 +208,20 @@ curl -sfL https://get.k3s.io | sh -s - server \
 
 ## Step 4: Configure Harvester CSI in K3s
 
-Install the Harvester CSI driver in your K3s cluster for persistent storage:
+Install the Harvester CSI driver in your K3s cluster for persistent storage. For Rancher-provisioned K3s clusters on Harvester, generate the add-on config with the `k3s` provider type, add the generated `cloud-init user data` to the machine pool's **Show Advanced** → **User Data** field before cluster creation, and then install the CSI chart from Rancher or Helm:
 
 ```bash
-# Download the Harvester kubeconfig
-export KUBECONFIG=./harvester.kubeconfig
+# On a machine that can reach the Harvester cluster API
+export KUBECONFIG=/path/to/harvester-kubeconfig
 
-# Create a secret with Harvester connection details
-kubectl create secret generic harvester-csi-controller-sa \
-    --from-file=kubeconfig=./harvester.kubeconfig \
-    -n kube-system
+curl -sfLO \
+  https://raw.githubusercontent.com/harvester/harvester-csi-driver/master/deploy/generate_addon_csi.sh
+chmod +x generate_addon_csi.sh
 
-# Install the Harvester CSI driver (in the guest K3s cluster)
-export KUBECONFIG=./k3s.kubeconfig
+./generate_addon_csi.sh <serviceaccount-name> <namespace> k3s
 
-kubectl apply -f https://raw.githubusercontent.com/harvester/harvester-csi-driver/master/deploy/harvester-csi-driver.yaml
+# After the K3s cluster is ready, install the Harvester CSI Driver chart
+# from the Rancher marketplace or with Helm.
 ```
 
 ## Step 5: Access and Verify the K3s Cluster
@@ -292,4 +249,4 @@ kubectl get svc test-nginx
 
 ## Conclusion
 
-K3s on Harvester provides an excellent platform for development, testing, and edge workloads that don't require the full weight of production RKE2. The lightweight nature of K3s means you can run many more isolated clusters on the same Harvester infrastructure compared to RKE2, making it perfect for giving development teams their own dedicated Kubernetes environments. Rancher's integration with Harvester makes provisioning and managing fleets of K3s clusters simple and consistent.
+K3s on Harvester provides an excellent platform for development, testing, and edge workloads that don't require the full weight of production RKE2. The lightweight nature of K3s means you can run many more isolated clusters on the same Harvester infrastructure compared to RKE2, making it perfect for giving development teams their own dedicated Kubernetes environments. Rancher's Harvester node driver makes VM provisioning straightforward, and with the Harvester CSI and cloud-provider components configured where needed, K3s clusters can be managed consistently alongside RKE2 clusters.
