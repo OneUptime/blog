@@ -15,6 +15,8 @@ In Docker Swarm, deploying the agent as a global service ensures it runs on ever
 ```bash
 # Deploy Portainer Agent as a global service (runs on ALL nodes)
 
+docker network create --driver overlay portainer_agent_network
+
 docker service create \
   --name portainer_agent \
   --network portainer_agent_network \
@@ -38,6 +40,10 @@ services:
     volumes:
       - /var/run/docker.sock:/var/run/docker.sock
       - /var/lib/docker/volumes:/var/lib/docker/volumes
+    ports:
+      - target: 9001
+        published: 9001
+        mode: host
     networks:
       - portainer_agent_network
     deploy:
@@ -90,6 +96,9 @@ services:
       - agent_network
     deploy:
       mode: global   # Run on all Swarm nodes
+      placement:
+        constraints:
+          - node.platform.os == linux
 
 networks:
   agent_network:
