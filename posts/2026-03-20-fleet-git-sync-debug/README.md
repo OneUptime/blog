@@ -39,13 +39,13 @@ kubectl describe gitrepo my-app -n fleet-default
 kubectl get secret <secret-name> -n fleet-default
 
 # Verify secret type and keys
-kubectl get secret github-creds -n fleet-default \
-  -o jsonpath='{.data}' | base64 -d
+kubectl describe secret github-creds -n fleet-default
 
 # Re-create the secret if expired
 kubectl create secret generic github-creds \
   -n fleet-default \
-  --from-literal=username=git \
+  --type=kubernetes.io/basic-auth \
+  --from-literal=username=<github-username> \
   --from-literal=password=<new-github-pat> \
   --dry-run=client -o yaml | kubectl apply -f -
 ```
@@ -55,6 +55,7 @@ For SSH-based repos:
 ```bash
 kubectl create secret generic ssh-key \
   -n fleet-default \
+  --type=kubernetes.io/ssh-auth \
   --from-file=ssh-privatekey=~/.ssh/id_ed25519 \
   --dry-run=client -o yaml | kubectl apply -f -
 ```
@@ -87,7 +88,7 @@ kustomize build ./overlays/production
 
 ```bash
 # List all cluster labels
-kubectl get cluster.fleet.cattle.io -n fleet-default \
+kubectl get clusters.fleet.cattle.io -n fleet-default \
   -o jsonpath='{range .items[*]}{.metadata.name}{": "}{.metadata.labels}{"\n"}{end}'
 
 # Verify the GitRepo selector matches cluster labels
@@ -95,7 +96,7 @@ kubectl get gitrepo my-app -n fleet-default \
   -o jsonpath='{.spec.targets}'
 
 # Check bundle deployments (one per target cluster)
-kubectl get bundledeployment -n fleet-default | grep my-app
+kubectl get bundledeployments.fleet.cattle.io -A | grep my-app
 ```
 
 ---
@@ -105,13 +106,13 @@ kubectl get bundledeployment -n fleet-default | grep my-app
 **Symptom**: Bundle shows `Modified` - cluster state differs from Git
 
 ```bash
-# Check what is different (drift detection)
-kubectl describe bundledeployment <name> -n fleet-default | grep -A 20 "Modified"
+# Check what is different (BundleDeployments live in per-cluster namespaces)
+kubectl describe bundledeployment <name> -n <cluster-namespace> | grep -A 20 "Modified"
 
-# Force re-sync to overwrite manual changes
+# Re-scan the repo after fixing manifests, or after enabling correctDrift
 kubectl patch gitrepo my-app -n fleet-default \
   --type merge \
-  -p '{"metadata":{"annotations":{"fleet.cattle.io/force-sync":"true"}}}'
+  -p "{\"spec\":{\"forceSyncGeneration\":$(date +%s)}}"
 ```
 
 ---
@@ -119,13 +120,21 @@ kubectl patch gitrepo my-app -n fleet-default \
 ## Issue 5: Git Branch or Tag Not Found
 
 ```bash
-# Verify the branch/tag exists in the remote
+# Verify the branch exists in the remote
 git ls-remote https://github.com/my-org/my-repo.git refs/heads/main
+
+# For a tag, check refs/tags/<tag>
+git ls-remote https://github.com/my-org/my-repo.git refs/tags/v1.2.3
 
 # Update the GitRepo branch reference
 kubectl patch gitrepo my-app -n fleet-default \
   --type merge \
   -p '{"spec":{"branch":"main"}}'
+
+# For a tag or pinned commit, use spec.revision instead
+kubectl patch gitrepo my-app -n fleet-default \
+  --type merge \
+  -p '{"spec":{"revision":"v1.2.3"}}'
 ```
 
 ---
@@ -133,11 +142,10 @@ kubectl patch gitrepo my-app -n fleet-default \
 ## Step 6: Force a Manual Sync
 
 ```bash
-# Annotate the GitRepo to force an immediate re-sync
-kubectl annotate gitrepo my-app \
-  -n fleet-default \
-  fleet.cattle.io/manual-sync="$(date +%s)" \
-  --overwrite
+# Increment forceSyncGeneration to force an immediate re-sync
+kubectl patch gitrepo my-app -n fleet-default \
+  --type merge \
+  -p "{\"spec\":{\"forceSyncGeneration\":$(date +%s)}}"
 ```
 
 ---
