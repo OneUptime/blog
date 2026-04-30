@@ -129,7 +129,13 @@ metadata:
   name: frontend
 spec:
   replicas: 1
+  selector:
+    matchLabels:
+      app: frontend
   template:
+    metadata:
+      labels:
+        app: frontend
     spec:
       containers:
         - name: frontend
@@ -144,8 +150,8 @@ spec:
 # apps/frontend/overlays/production/kustomization.yaml
 apiVersion: kustomize.config.k8s.io/v1beta1
 kind: Kustomization
-bases:
-  - ../../base
+resources:
+  - ../../base/deployment.yaml
 patches:
   - patch: |-
       - op: replace
@@ -172,21 +178,24 @@ images:
 
 ## Image Update Automation
 
-```yaml
+```bash
 # Use Flux image automation or manual PRs for image updates
 
 # Recommended: PR-based image updates
 # CI pipeline creates PR to update image tag:
+# git checkout -b chore/update-frontend-$NEW_TAG
 # sed -i "s/newTag: .*/newTag: \"$NEW_TAG\"/" overlays/production/kustomization.yaml
+# git add overlays/production/kustomization.yaml
 # git commit -m "chore: update frontend to $NEW_TAG"
-# gh pr create --base main --title "Deploy frontend $NEW_TAG to production"
+# git push -u origin "$(git branch --show-current)"
+# gh pr create --base main --title "Deploy frontend $NEW_TAG to production" --body "Update frontend image tag to $NEW_TAG."
 ```
 
 ---
 
 ## Secret Management
 
-Never store secrets in Git. Use external secret management:
+Never store plaintext secrets in Git. Use external secret management:
 
 ```yaml
 # Use External Secrets Operator with Vault
@@ -221,28 +230,30 @@ apiVersion: rbac.authorization.k8s.io/v1
 kind: RoleBinding
 metadata:
   name: developer-readonly
+  namespace: app-namespace
 subjects:
   - kind: Group
     name: developers
+    apiGroup: rbac.authorization.k8s.io
 roleRef:
   kind: ClusterRole
   name: view
+  apiGroup: rbac.authorization.k8s.io
 ```
 
 ---
 
 ## Drift Detection and Auto-Remediation
 
-Rancher Fleet automatically detects and corrects drift:
+Rancher Fleet detects drift, and you can enable automatic correction:
 
 ```yaml
-# fleet.yaml
+# gitrepo.yaml
 spec:
   # Automatically revert manual changes to match Git
-  forceSyncGeneration: 1
-
-  # Prune resources deleted from Git
-  prune: true
+  correctDrift:
+    enabled: true
+    force: false
 ```
 
 ---
@@ -251,7 +262,7 @@ spec:
 
 1. **Pin image tags** in production - never use `latest` in prod manifests
 2. **Use PRs for all production changes** - peer review before deployment
-3. **Never store secrets in Git** - use External Secrets or Sealed Secrets
+3. **Never store plaintext secrets in Git** - use External Secrets or Sealed Secrets
 4. **Test in dev/staging first** - enforce environment promotion gates
 5. **Monitor Fleet sync status** - alert on out-of-sync clusters
 6. **Use resource quotas** in Git manifests to prevent runaway resource usage
@@ -266,10 +277,10 @@ spec:
 kubectl get bundles -A
 
 # Check GitRepo sync status
-kubectl get gitrepo -A
+kubectl get gitrepos -A
 
-# Check for drift
-kubectl get bundle -o jsonpath='{.items[*].status.conditions}'
+# Inspect bundle health, including Modified and OutOfSync states
+kubectl get bundles -A -o custom-columns='NAMESPACE:.metadata.namespace,NAME:.metadata.name,STATE:.status.display.state,MESSAGE:.status.display.message'
 ```
 
 ---
