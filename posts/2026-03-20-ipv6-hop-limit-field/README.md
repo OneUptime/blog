@@ -28,13 +28,13 @@ Source sets Hop Limit = 64
 Typical initial values:
   64  - Linux, macOS (most Unix systems)
   128 - Windows
-  255 - Cisco IOS routers (typically)
-  64  - Most network equipment
+  64  - Cisco IOS routers (default for locally originated IPv6 packets)
 
-Minimum required by RFC 8200: routers must forward packets with HL ≥ 1
+RFC 8200 forwarding rule: routers discard packets if HL is 0 when received
+  or becomes 0 after decrementing
 Maximum: 255 (fits in 8 bits)
-Special: 255 is used by NDP to ensure on-link delivery
-  (Router Advertisements always have HL=255)
+Special: 255 is required for Neighbor Discovery validation
+  (Router Advertisements always use HL=255)
 ```
 
 ## Configuring Hop Limit on Linux
@@ -54,24 +54,24 @@ sudo sysctl -w net.ipv6.conf.eth0.hop_limit=64
 # Make permanent
 echo "net.ipv6.conf.all.hop_limit=64" | sudo tee -a /etc/sysctl.conf
 
-# Check the hop limit of packets reaching a destination
+# Map the IPv6 path to a destination
 traceroute6 -n 2001:4860:4860::8888
-# Each line shows the router and remaining hop limit context
+# Each line shows a responding hop and round-trip time
 ```
 
 ## Using Hop Limit for Network Scoping
 
-A special use of Hop Limit is to restrict packet delivery to a specific scope:
+A special use of Hop Limit is to restrict how far a packet can travel:
 
 ```text
-Hop Limit = 1:  Only the directly connected segment (link-scope)
-              → Used for NDP, Router Advertisements, etc.
-              → Routers must NOT forward HL=1 packets
+Hop Limit = 1:  Limits a packet to the local link
+              → Routers decrement it to 0 and discard instead of forwarding
+              → Useful when an application wants link-only reachability
 
-Hop Limit = 255 in received NDP:
+Hop Limit = 255 in received Neighbor Discovery:
               → Verifies the sender is on-link (cannot be spoofed from remote)
-              → Routers decrement HL, so an off-link NDP packet would arrive with HL < 255
-              → Linux kernel enforces: RA/NS/NA/RS MUST have HL=255
+              → Routers decrement HL, so an off-link ND packet would arrive with HL < 255
+              → Receivers validate RA/NS/NA/RS/Redirect packets with HL=255
 ```
 
 ```bash
@@ -103,15 +103,13 @@ def create_ipv6_socket_with_hop_limit(hop_limit: int = 64) -> socket.socket:
 
     return sock
 
-# TTL-scoped multicast
-# Hop Limit = 1  → link-local only
-# Hop Limit = 16 → site-local (organization)
-# Hop Limit = 64 → regional
-# Hop Limit = 128 → continental
-# Hop Limit = 255 → global
+# For IPv6 multicast, the multicast address carries the scope
+# (for example, ff02::/16 link-local and ff05::/16 site-local).
+# IPV6_MULTICAST_HOPS separately limits how many routed hops
+# the traffic may traverse.
 
-# Create a "site-local" multicast sender
-site_multicast_sock = create_ipv6_socket_with_hop_limit(16)
+# Create a unicast sender limited to 16 hops
+limited_unicast_sock = create_ipv6_socket_with_hop_limit(16)
 ```
 
 ## ICMPv6 Time Exceeded
@@ -120,7 +118,7 @@ When a router receives a packet with Hop Limit = 1 (decrements to 0), it sends b
 
 ```bash
 # Simulate a Hop Limit too small
-ping6 -t 3 2001:db8::1  # Sends 3 hops max
+ping -6 -t 3 2001:db8::1  # Sends packets with Hop Limit 3
 
 # traceroute6 uses progressively increasing HL to map the path
 traceroute6 2001:db8::1
