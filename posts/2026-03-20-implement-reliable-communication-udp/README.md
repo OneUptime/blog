@@ -8,7 +8,7 @@ Description: Implement reliable delivery over UDP using sequence numbers, acknow
 
 ## Introduction
 
-UDP provides no reliability guarantees, but you can add exactly as much reliability as your application needs. This gives you more control than TCP: you can choose which messages need acknowledgment, how long to wait before retransmitting, and what to do with out-of-order arrivals. This is why protocols like QUIC and game networking libraries are built on UDP rather than TCP.
+UDP provides no reliability guarantees, but you can add exactly as much reliability as your application needs. This gives you more control than TCP: you can choose which messages need acknowledgment, how long to wait before retransmitting, and what to do with out-of-order arrivals. That is why some protocols and networking libraries build on UDP rather than TCP: QUIC, for example, runs over UDP and implements its own reliability and congestion control.
 
 ## Basic Reliable UDP Pattern
 
@@ -19,7 +19,6 @@ UDP provides no reliability guarantees, but you can add exactly as much reliabil
 import socket
 import struct
 import time
-import threading
 
 TIMEOUT = 0.5  # 500ms retransmit timeout
 MAX_RETRIES = 5
@@ -35,6 +34,8 @@ def pack_packet(seq_num, flags, data=b''):
     return header + data
 
 def unpack_packet(packet):
+    if len(packet) < HEADER_SIZE:
+        raise ValueError("packet too short")
     header = packet[:HEADER_SIZE]
     seq_num, flags = struct.unpack(HEADER_FORMAT, header)
     data = packet[HEADER_SIZE:]
@@ -49,6 +50,8 @@ class ReliableUDP:
         self.sock.bind(local_addr)
         self.sock.settimeout(TIMEOUT)
         self.next_seq = 0
+        self.expected_seq = 0
+        self.last_ack_seq = None
 
     def send_reliable(self, data, remote_addr):
         """Send data and wait for ACK, retransmitting if needed."""
@@ -59,26 +62,37 @@ class ReliableUDP:
         for attempt in range(MAX_RETRIES):
             self.sock.sendto(packet, remote_addr)
             try:
-                resp, _ = self.sock.recvfrom(65535)
+                resp, addr = self.sock.recvfrom(65535)
+                if addr != remote_addr:
+                    continue
                 ack_seq, flags, _ = unpack_packet(resp)
                 if flags & self.ACK and ack_seq == seq:
                     return True  # ACKed
+            except ValueError:
+                continue
             except socket.timeout:
                 print(f"Timeout, retrying (attempt {attempt+1}/{MAX_RETRIES})")
 
         return False  # Failed after max retries
 
     def recv_reliable(self):
-        """Receive data and send ACK."""
+        """Receive data, suppress duplicates, and send ACKs."""
         while True:
             try:
                 packet, addr = self.sock.recvfrom(65535)
                 seq, flags, data = unpack_packet(packet)
                 if flags & self.DATA:
-                    # Send ACK
-                    ack = pack_packet(seq, self.ACK)
-                    self.sock.sendto(ack, addr)
-                    return data, addr
+                    ack_seq = seq if seq == self.expected_seq else self.last_ack_seq
+                    if ack_seq is not None:
+                        # ACK duplicates again so the sender can recover if an ACK was lost.
+                        ack = pack_packet(ack_seq, self.ACK)
+                        self.sock.sendto(ack, addr)
+                    if seq == self.expected_seq:
+                        self.last_ack_seq = seq
+                        self.expected_seq = (self.expected_seq + 1) % (2**32)
+                        return data, addr
+            except ValueError:
+                continue
             except socket.timeout:
                 continue
 ```
@@ -89,13 +103,13 @@ class ReliableUDP:
 # Stop-and-wait limits throughput to 1 packet per RTT
 # Sliding window allows N packets in flight simultaneously
 
-# Window size determines throughput:
-# throughput = window_size * packet_size / RTT
+# Window size roughly bounds throughput:
+# throughput ~= window_size * packet_size / RTT
 
-# For 100ms RTT and 1KB packets:
-# window=1:   8 Kbps
-# window=10:  80 Kbps
-# window=100: 800 Kbps
+# For 100ms RTT and ~1KB packets:
+# window=1:   ~8 Kbps
+# window=10:  ~80 Kbps
+# window=100: ~800 Kbps
 
 class SlidingWindowSender:
     def __init__(self, window_size=10):
@@ -157,4 +171,4 @@ Use TCP or QUIC when:
 
 ## Conclusion
 
-Reliable UDP is not about reimplementing TCP - it is about implementing exactly the reliability your application needs. Stop-and-wait works for low-rate request/response. Sliding window enables higher throughput. Selective acknowledgment (only ACK important packets) works for game state. The key advantage over TCP is granular control: you decide which messages need reliability, how long to wait for ACKs, and how many times to retry before giving up.
+Reliable UDP is not about reimplementing TCP - it is about implementing exactly the reliability your application needs. Stop-and-wait works for low-rate request/response. Sliding window enables higher throughput. Selective reliability (only some messages are acknowledged and retransmitted) works for game state. The key advantage over TCP is granular control: you decide which messages need reliability, how long to wait for ACKs, and how many times to retry before giving up.
