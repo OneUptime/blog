@@ -56,6 +56,13 @@ resource "aws_dx_gateway" "main" {
   amazon_side_asn = 64512
 }
 
+# Associate the Direct Connect gateway with the VPC's virtual private gateway
+resource "aws_dx_gateway_association" "to_vpc" {
+  dx_gateway_id         = aws_dx_gateway.main.id
+  associated_gateway_id = aws_vpn_gateway.vpn_gw.id
+  allowed_prefixes      = [module.vpc.vpc_cidr_block]
+}
+
 # Private virtual interface for VPC access
 resource "aws_dx_private_virtual_interface" "to_vpc" {
   connection_id    = var.dx_connection_id  # Pre-provisioned by AWS
@@ -64,8 +71,8 @@ resource "aws_dx_private_virtual_interface" "to_vpc" {
   address_family   = "ipv4"
   bgp_asn          = 65000  # On-premises ASN
   dx_gateway_id    = aws_dx_gateway.main.id
-  amazon_address   = "169.254.254.1/30"
-  customer_address = "169.254.254.2/30"
+  amazon_address   = "192.168.100.1/30"
+  customer_address = "192.168.100.2/30"
 }
 ```
 
@@ -87,6 +94,25 @@ resource "azurerm_express_route_circuit" "express_route" {
   }
 }
 
+# Azure private peering for the ExpressRoute circuit
+resource "azurerm_express_route_circuit_peering" "private" {
+  peering_type                  = "AzurePrivatePeering"
+  express_route_circuit_name    = azurerm_express_route_circuit.express_route.name
+  resource_group_name           = azurerm_resource_group.rg.name
+  peer_asn                      = 65000
+  primary_peer_address_prefix   = "10.0.0.0/30"
+  secondary_peer_address_prefix = "10.0.0.4/30"
+  vlan_id                       = 200
+}
+
+# ExpressRoute gateways must use the special GatewaySubnet
+resource "azurerm_subnet" "gateway_subnet" {
+  name                 = "GatewaySubnet"
+  resource_group_name  = azurerm_resource_group.rg.name
+  virtual_network_name = azurerm_virtual_network.vnet.name
+  address_prefixes     = ["10.0.255.0/27"]
+}
+
 # ExpressRoute Gateway in VNet
 resource "azurerm_virtual_network_gateway" "express_route_gw" {
   name                = "expressroute-gateway"
@@ -98,10 +124,20 @@ resource "azurerm_virtual_network_gateway" "express_route_gw" {
 
   ip_configuration {
     name                          = "gateway-ip"
-    public_ip_address_id          = azurerm_public_ip.gw.id
     private_ip_address_allocation = "Dynamic"
-    subnet_id                     = azurerm_subnet.gateway.id
+    subnet_id                     = azurerm_subnet.gateway_subnet.id
   }
+}
+
+# Link the VNet gateway to the ExpressRoute circuit
+resource "azurerm_virtual_network_gateway_connection" "express_route" {
+  name                = "expressroute-connection"
+  location            = azurerm_resource_group.rg.location
+  resource_group_name = azurerm_resource_group.rg.name
+
+  type                       = "ExpressRoute"
+  virtual_network_gateway_id = azurerm_virtual_network_gateway.express_route_gw.id
+  express_route_circuit_id   = azurerm_express_route_circuit.express_route.id
 }
 ```
 
@@ -136,13 +172,70 @@ resource "google_compute_router" "vpn_router" {
   region  = "us-central1"
 
   bgp {
-    asn               = 64514
-    advertise_mode    = "CUSTOM"
-    advertised_groups = ["ALL_SUBNETS"]
+    asn = 64514
   }
+}
+
+# Create one tunnel from each HA VPN gateway interface to the matching peer interface
+resource "google_compute_vpn_tunnel" "tunnel1" {
+  name                            = "hybrid-tunnel-1"
+  region                          = "us-central1"
+  vpn_gateway                     = google_compute_ha_vpn_gateway.vpn_gw.id
+  peer_external_gateway           = google_compute_external_vpn_gateway.on_prem.id
+  peer_external_gateway_interface = 0
+  shared_secret                   = var.vpn_shared_secret
+  router                          = google_compute_router.vpn_router.id
+  vpn_gateway_interface           = 0
+}
+
+resource "google_compute_vpn_tunnel" "tunnel2" {
+  name                            = "hybrid-tunnel-2"
+  region                          = "us-central1"
+  vpn_gateway                     = google_compute_ha_vpn_gateway.vpn_gw.id
+  peer_external_gateway           = google_compute_external_vpn_gateway.on_prem.id
+  peer_external_gateway_interface = 1
+  shared_secret                   = var.vpn_shared_secret
+  router                          = google_compute_router.vpn_router.id
+  vpn_gateway_interface           = 1
+}
+
+resource "google_compute_router_interface" "tunnel1" {
+  name       = "router-if-tunnel1"
+  router     = google_compute_router.vpn_router.name
+  region     = "us-central1"
+  ip_range   = "169.254.0.1/30"
+  vpn_tunnel = google_compute_vpn_tunnel.tunnel1.name
+}
+
+resource "google_compute_router_interface" "tunnel2" {
+  name       = "router-if-tunnel2"
+  router     = google_compute_router.vpn_router.name
+  region     = "us-central1"
+  ip_range   = "169.254.1.1/30"
+  vpn_tunnel = google_compute_vpn_tunnel.tunnel2.name
+}
+
+resource "google_compute_router_peer" "tunnel1" {
+  name                      = "peer-tunnel1"
+  router                    = google_compute_router.vpn_router.name
+  region                    = "us-central1"
+  interface                 = google_compute_router_interface.tunnel1.name
+  peer_ip_address           = "169.254.0.2"
+  peer_asn                  = 65000
+  advertised_route_priority = 100
+}
+
+resource "google_compute_router_peer" "tunnel2" {
+  name                      = "peer-tunnel2"
+  router                    = google_compute_router.vpn_router.name
+  region                    = "us-central1"
+  interface                 = google_compute_router_interface.tunnel2.name
+  peer_ip_address           = "169.254.1.2"
+  peer_asn                  = 65000
+  advertised_route_priority = 100
 }
 ```
 
 ## Summary
 
-Hybrid cloud architectures built with OpenTofu bridge on-premises infrastructure and cloud environments with secure, private connectivity. VPN tunnels work for lower-bandwidth scenarios (up to 1.25 Gbps), while dedicated connections (Direct Connect, ExpressRoute, Cloud Interconnect) provide predictable latency and higher throughput for production workloads. BGP routing ensures automatic route propagation when networks change on either side of the connection.
+Hybrid cloud architectures built with OpenTofu bridge on-premises infrastructure and cloud environments with secure, private connectivity. VPN tunnels work well for lower-bandwidth or internet-based hybrid connectivity, while dedicated connections (Direct Connect, ExpressRoute, Cloud Interconnect) provide more predictable latency and higher throughput for production workloads. BGP routing enables automatic route propagation when networks change on either side of the connection.
