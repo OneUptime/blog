@@ -41,10 +41,15 @@ resource "google_privateca_ca_pool" "internal_ca_pool" {
       }
     }
 
-    # Restrict what domains/IPs can appear in certificates
-    allowed_domains_policy {
-      allow_subdomains     = true
-      allowed_domains      = ["internal.example.com", "svc.cluster.local"]
+    # Restrict SANs to internal DNS suffixes
+    identity_constraints {
+      allow_subject_passthrough           = true
+      allow_subject_alt_names_passthrough = true
+
+      cel_expression {
+        expression = "subject_alt_names.all(san, san.type == DNS && (san.value == \"internal.example.com\" || san.value.endsWith(\".internal.example.com\") || san.value == \"svc.cluster.local\" || san.value.endsWith(\".svc.cluster.local\")))"
+        title      = "Restrict internal DNS SANs"
+      }
     }
   }
 }
@@ -107,6 +112,11 @@ resource "google_privateca_certificate_authority" "intermediate_ca" {
   certificate_authority_id = "internal-intermediate-ca"
   location                 = "us-central1"
   type                     = "SUBORDINATE"
+  desired_state            = "ENABLED"  # Activate the subordinate CA so it can issue certs
+
+  subordinate_config {
+    certificate_authority = google_privateca_certificate_authority.root_ca.name
+  }
 
   config {
     subject_config {
@@ -118,7 +128,8 @@ resource "google_privateca_certificate_authority" "intermediate_ca" {
 
     x509_config {
       ca_options {
-        is_ca = true
+        is_ca                       = true
+        zero_max_issuer_path_length = true
       }
 
       key_usage {
@@ -126,6 +137,7 @@ resource "google_privateca_certificate_authority" "intermediate_ca" {
           cert_sign = true
           crl_sign  = true
         }
+        extended_key_usage {}
       }
     }
   }
@@ -141,17 +153,24 @@ resource "google_privateca_certificate_authority" "intermediate_ca" {
 ## Step 4: Issue a Certificate
 
 ```hcl
-# Issue a certificate for a service
+# Generate a key pair and issue a certificate for a service
+resource "tls_private_key" "service_key" {
+  algorithm   = "ECDSA"
+  ecdsa_curve = "P256"
+}
+
 resource "google_privateca_certificate" "service_cert" {
-  pool     = google_privateca_ca_pool.internal_ca_pool.name
-  location = "us-central1"
-  name     = "my-service-cert"
-  lifetime = "2592000s"  # 30 days
+  pool                  = google_privateca_ca_pool.internal_ca_pool.name
+  location              = "us-central1"
+  certificate_authority = google_privateca_certificate_authority.intermediate_ca.certificate_authority_id
+  name                  = "my-service-cert"
+  lifetime              = "2592000s"  # 30 days
 
   config {
     subject_config {
       subject {
-        common_name = "my-service.internal.example.com"
+        common_name  = "my-service.internal.example.com"
+        organization = "Example Corp"
       }
 
       subject_alt_name {
@@ -160,10 +179,13 @@ resource "google_privateca_certificate" "service_cert" {
     }
 
     x509_config {
+      ca_options {
+        is_ca = false
+      }
+
       key_usage {
         base_key_usage {
           digital_signature = true
-          key_encipherment  = true
         }
         extended_key_usage {
           server_auth = true
@@ -171,10 +193,11 @@ resource "google_privateca_certificate" "service_cert" {
         }
       }
     }
-  }
 
-  key_spec {
-    algorithm = "EC_P256_SHA256"
+    public_key {
+      format = "PEM"
+      key    = base64encode(tls_private_key.service_key.public_key_pem)
+    }
   }
 }
 ```
