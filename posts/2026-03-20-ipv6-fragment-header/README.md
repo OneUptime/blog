@@ -21,12 +21,12 @@ The IPv6 Fragment Header (Next Header = 44) enables packet fragmentation. In IPv
 |                         Identification                        |
 +-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+
 
-Next Header:      Protocol of the original (unfragmented) data
+Next Header:      First header in the fragmentable part (for example, UDP/TCP)
 Reserved:         Set to zero, ignored on receive
 Fragment Offset:  Offset of this fragment in units of 8 bytes (13 bits)
 Res:              Reserved bits (2 bits)
 M (More fragments): 1 = more fragments follow, 0 = last fragment
-Identification:   32-bit value unique to this fragmented packet
+Identification:   32-bit value used to match fragments from the same original packet
 ```
 
 ## How IPv6 Fragmentation Works
@@ -36,14 +36,15 @@ Original packet (1600 bytes, MTU = 1500):
 
 IPv6 Header (40) + Extension Headers (0) + UDP (8) + Data (1552) = 1600 bytes
 Path MTU = 1500 bytes
+Maximum fragment data per non-final fragment = floor((1500 - 40 - 8) / 8) × 8 = 1448 bytes
 
-Fragment 1 (1500 bytes):
-  IPv6 Header (40) + Fragment Header (8) + UDP Header (8) + Data (1444 bytes)
+Fragment 1 (1496 bytes):
+  IPv6 Header (40) + Fragment Header (8) + UDP Header (8) + Data (1440 bytes)
   Fragment Offset = 0, M = 1 (more fragments)
 
-Fragment 2 (156 bytes):
-  IPv6 Header (40) + Fragment Header (8) + Data (108 bytes)
-  Fragment Offset = 181 (181 × 8 = 1448, the offset into the original data)
+Fragment 2 (160 bytes):
+  IPv6 Header (40) + Fragment Header (8) + Data (112 bytes)
+  Fragment Offset = 181 (181 × 8 = 1448, the offset into the original fragmentable payload)
   M = 0 (last fragment)
 ```
 
@@ -80,7 +81,7 @@ def fragment_ipv6_packet(
     max_frag_data = mtu - IPV6_HEADER - FRAG_HEADER
     max_frag_data = (max_frag_data // 8) * 8  # Round down to 8-byte boundary
 
-    # Generate a unique Identification for this fragmented packet
+    # Generate an Identification value for this fragmented packet
     identification = struct.unpack("!I", os.urandom(4))[0]
 
     src_bytes = socket.inet_pton(socket.AF_INET6, src)
@@ -120,10 +121,10 @@ def fragment_ipv6_packet(
 
     return fragments
 
-# Example: fragment a 3000-byte UDP datagram
+# Example: fragment a 3072-byte test payload
 
 large_payload = bytes(range(256)) * 12  # 3072 bytes
-frags = fragment_ipv6_packet("2001:db8::1", "2001:db8::2", 17, large_payload)
+frags = fragment_ipv6_packet("2001:db8::1", "2001:db8::2", 253, large_payload)  # 253 = experimentation/testing
 print(f"Original payload: {len(large_payload)} bytes")
 print(f"Number of fragments: {len(frags)}")
 for i, f in enumerate(frags):
@@ -146,7 +147,7 @@ If not all fragments arrive within the timeout:
 
 ```bash
 # Monitor fragment reassembly statistics
-cat /proc/net/snmp6 | grep -i frag
+cat /proc/net/snmp6 | grep -Ei 'frag|reasm'
 
 # Key metrics:
 # Ip6ReasmReqds:   Fragments received for reassembly
