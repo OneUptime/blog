@@ -10,11 +10,11 @@ Description: Learn how to build a Grafana dashboard showing per-container CPU, m
 
 - Prometheus + Grafana + cAdvisor stack running (see prometheus-grafana-portainer guide)
 - Grafana accessible at `http://server:3000`
-- Prometheus data source configured in Grafana
+- Prometheus reachable from Grafana
 
 ## Step 1: Add Prometheus Data Source
 
-In Grafana: **Configuration → Data Sources → Add Data Source → Prometheus**
+In Grafana: **Connections → Add new connection → Prometheus → Add new data source**
 
 ```text
 URL: http://prometheus:9090    (container name if on same network)
@@ -23,14 +23,14 @@ URL: http://prometheus:9090    (container name if on same network)
 Access: Server (default)
 ```
 
-Click **Save & Test** - should show "Data source is working."
+Click **Save & Test** - should show "Successfully queried the Prometheus API."
 
 ## Step 2: Import the cAdvisor Dashboard
 
 The fastest path to container metrics:
 
-1. **Dashboards → Import → Import via grafana.com**
-2. Enter ID: **14282** (cAdvisor Exporter)
+1. **Dashboards → New → Import**
+2. Enter ID: **14282** (Cadvisor exporter)
 3. Select your Prometheus data source
 4. Click **Import**
 
@@ -43,7 +43,7 @@ For a tailored view, create a new dashboard:
 ### Panel 1: Container CPU Usage (%)
 
 ```promql
-sum(rate(container_cpu_usage_seconds_total{name!="", name!~".*POD.*"}[5m])) by (name) * 100
+sum(rate(container_cpu_usage_seconds_total{name!="", name!~".*POD.*"}[$__rate_interval])) by (name) * 100
 ```
 
 - Type: Time series
@@ -63,7 +63,7 @@ container_memory_working_set_bytes{name!="", name!~".*POD.*"}
 ### Panel 3: Container Network Receive Rate
 
 ```promql
-sum(rate(container_network_receive_bytes_total{name!=""}[5m])) by (name)
+sum(rate(container_network_receive_bytes_total{name!=""}[$__rate_interval])) by (name)
 ```
 
 - Type: Time series
@@ -86,8 +86,11 @@ Make the dashboard filterable by container:
 2. Type: Query
 3. Name: `container`
 4. Data Source: Prometheus
-5. Query: `label_values(container_cpu_usage_seconds_total{name!=""}, name)`
-6. Multi-value: ON
+5. Query type: `Label values`
+6. Metric: `container_cpu_usage_seconds_total`
+7. Label: `name`
+8. Regex: `/.+/`
+9. Multi-value: ON
 
 Update panels to use `$container`:
 
@@ -97,19 +100,21 @@ container_memory_working_set_bytes{name=~"$container"}
 
 ## Step 5: Add Alerting to Grafana Panels
 
-In any panel: **Alert → Create alert rule**
+Create the alert rule from a panel query that does not use `$container`, because Grafana evaluates alert rules on the backend.
+
+In the panel menu: **More → New alert rule**
 
 ```text
-Condition: WHEN last() OF A IS ABOVE 80    (CPU > 80%)
+Condition: Reduce last of A, then alert when above 80
 Evaluate every: 1m, for: 5m
 
 Labels:
   severity: warning
-  container: $container
+  container: {{ $labels.name }}
 
 Annotations:
   summary: Container CPU high
-  description: Container {{ $labels.name }} CPU at {{ $values.A }}%
+  description: Container {{ $labels.name }} CPU at {{ $values.A.Value }}%
 ```
 
 ## Useful Queries Reference
@@ -117,13 +122,13 @@ Annotations:
 ```promql
 # Top 5 containers by CPU
 
-topk(5, sum(rate(container_cpu_usage_seconds_total{name!=""}[5m])) by (name) * 100)
+topk(5, sum(rate(container_cpu_usage_seconds_total{name!=""}[$__rate_interval])) by (name) * 100)
 
 # Containers exceeding 1GB RAM
 container_memory_working_set_bytes{name!=""} > 1073741824
 
-# Container restart count (last 5 minutes)
-increase(container_start_time_seconds{name!=""}[5m])
+# Container start-time changes (last 5 minutes)
+changes(container_start_time_seconds{name!=""}[5m])
 
 # Container memory limit utilization (%)
 container_memory_working_set_bytes{name!=""} /
