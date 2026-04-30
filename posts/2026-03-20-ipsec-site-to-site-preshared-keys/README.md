@@ -8,7 +8,7 @@ Description: Configure an IPSec site-to-site VPN tunnel between two Linux hosts 
 
 ## Introduction
 
-IPSec is a suite of protocols that provides cryptographic security for IP communications. A site-to-site IPSec tunnel connects two private networks over the internet, encrypting all traffic between them. StrongSwan is the most widely used open-source IPSec implementation on Linux.
+IPSec is a suite of protocols that provides cryptographic security for IP communications. A site-to-site IPSec tunnel connects two private networks over the internet, encrypting all traffic between them. StrongSwan is a widely used open-source IPSec implementation on Linux. This guide uses StrongSwan's legacy `ipsec.conf`/`ipsec.secrets` configuration backend, which is still supported, though current StrongSwan documentation recommends `swanctl.conf` for new deployments.
 
 ## Network Topology
 
@@ -39,7 +39,8 @@ config setup
 
 conn site-a-to-site-b
     # Authentication method
-    authby=secret               # Use pre-shared key
+    leftauth=psk                # Authenticate Site A with a pre-shared key
+    rightauth=psk               # Require Site B to use a pre-shared key
 
     # Left side (Site A)
     left=203.0.113.1            # Site A's public IP
@@ -59,10 +60,10 @@ conn site-a-to-site-b
     
     # Auto-start the tunnel
     auto=start
-    keyexchange=ikev2            # Use IKEv2 (more secure than IKEv1)
+    keyexchange=ikev2            # Use IKEv2
     type=tunnel
     dpdaction=restart            # Restart tunnel if peer goes down
-    dpdtimeout=30s
+    dpddelay=30s
 ```
 
 Edit `/etc/ipsec.secrets`:
@@ -79,7 +80,8 @@ Edit `/etc/ipsec.secrets`:
 
 ```bash
 conn site-b-to-site-a
-    authby=secret
+    leftauth=psk
+    rightauth=psk
     left=203.0.113.2
     leftsubnet=192.168.2.0/24
     right=203.0.113.1
@@ -102,8 +104,7 @@ conn site-b-to-site-a
 
 ```bash
 # Start StrongSwan
-sudo systemctl start strongswan
-sudo systemctl enable strongswan
+sudo ipsec start
 
 # Check tunnel status
 sudo ipsec status
@@ -117,7 +118,7 @@ ping 192.168.2.1   # From Site A, ping a host in Site B's network
 
 ## Enabling IP Forwarding
 
-For traffic to flow between subnets through the tunnel:
+For traffic to flow between subnets through the tunnel, enable IP forwarding on both gateways. Hosts behind each site must also route the remote subnet via the local IPSec gateway, and any firewall on the gateways must allow forwarded traffic.
 
 ```bash
 sudo sysctl -w net.ipv4.ip_forward=1
@@ -128,9 +129,11 @@ echo "net.ipv4.ip_forward=1" | sudo tee -a /etc/sysctl.d/99-forward.conf
 
 ```bash
 # Watch IKE negotiation in real time
-sudo ipsec stroke loglevel ike 3
+sudo tail -f /var/log/syslog     # Ubuntu/Debian
+# or
+sudo tail -f /var/log/messages   # CentOS/RHEL
 
-# Restart a specific connection
+# Restart StrongSwan and bring the connection up again
 sudo ipsec restart
 sudo ipsec up site-a-to-site-b
 ```
