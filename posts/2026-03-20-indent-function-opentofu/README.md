@@ -36,13 +36,13 @@ locals {
 
 ---
 
-## Embedding JSON in YAML
+## Embedding Multi-line Content in YAML
 
-The most common use case for `indent()` is embedding JSON or multi-line content in YAML:
+The most common use case for `indent()` is embedding multi-line content in YAML:
 
 ```hcl
 locals {
-  inline_policy = jsonencode({
+  inline_policy = yamlencode({
     Version = "2012-10-17"
     Statement = [{
       Effect   = "Allow"
@@ -56,13 +56,13 @@ resource "kubernetes_config_map" "app" {
   metadata { name = "app-config" }
 
   data = {
-    # The YAML indentation is handled by indent()
+    # indent() keeps continuation lines aligned under policy: |
     "policy.yaml" = <<-YAML
       apiVersion: v1
       kind: ConfigMap
       data:
         policy: |
-          ${indent(10, local.inline_policy)}
+          ${indent(4, local.inline_policy)}
     YAML
   }
 }
@@ -78,21 +78,21 @@ variable "environment" {
 }
 
 locals {
-  db_config = jsonencode({
-    host     = aws_db_instance.main.address
-    port     = aws_db_instance.main.port
-    database = var.db_name
+  db_config = yamlencode({
+    environment = var.environment
+    host        = "db.example.internal"
+    port        = 5432
   })
 
-  # Embed the JSON config inside a YAML manifest with proper indentation
+  # Embed the YAML config inside a Secret manifest with proper indentation
   k8s_secret_yaml = <<-YAML
     apiVersion: v1
     kind: Secret
     metadata:
       name: db-config
     stringData:
-      config.json: |
-        ${indent(8, local.db_config)}
+      config.yaml: |
+        ${indent(4, local.db_config)}
   YAML
 }
 ```
