@@ -4,7 +4,7 @@ Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
 Tags: IPv6, Flux CD, GitOps, Kubernetes, Source Controller, DevOps
 
-Description: Configure Flux CD source controllers to sync from Git repositories and Helm registries accessible over IPv6, including GitRepository and HelmRepository resources with IPv6 URLs.
+Description: Configure Flux CD source controllers to sync from Git repositories and Helm repositories accessible over IPv6, including GitRepository and HelmRepository resources with IPv6 URLs.
 
 ## Introduction
 
@@ -19,9 +19,9 @@ kubectl get pods -n flux-system
 
 # Verify source-controller can reach IPv6 endpoints
 kubectl exec -n flux-system deployment/source-controller -- \
-    sh -c "ip -6 addr show && wget -qO- https://ipv6.icanhazip.com" 2>/dev/null || \
+    sh -c "ip -f inet6 addr show && wget -qO- https://ipv6.icanhazip.com" 2>/dev/null || \
     kubectl exec -n flux-system deployment/source-controller -- \
-    ip -6 addr show
+    ip -f inet6 addr show
 
 # Check Flux service endpoints
 kubectl get endpoints -n flux-system
@@ -39,7 +39,7 @@ metadata:
 spec:
   interval: 1m0s
   # IPv6 URL for the Git server
-  url: https://[2001:db8::gitea]/org/my-app.git
+  url: https://[2001:db8::10]/org/my-app.git
   ref:
     branch: main
   secretRef:
@@ -58,7 +58,10 @@ stringData:
   username: git-user
   password: ghp_XXXXXXXXXX  # Personal access token
   # For self-signed TLS:
-  # caFile: <base64-encoded-CA-cert>
+  # ca.crt: |
+  #   -----BEGIN CERTIFICATE-----
+  #   ...
+  #   -----END CERTIFICATE-----
 ```
 
 ```bash
@@ -84,7 +87,7 @@ cat /tmp/flux-deploy-key.pub
 kubectl create secret generic git-ssh-credentials-ipv6 \
     -n flux-system \
     --from-file=identity=/tmp/flux-deploy-key \
-    --from-literal=known_hosts="$(ssh-keyscan -H 2001:db8::gitea 2>/dev/null)"
+    --from-literal=known_hosts="$(ssh-keyscan -6 -H 2001:db8::10 2>/dev/null)"
 ```
 
 ```yaml
@@ -97,7 +100,7 @@ metadata:
 spec:
   interval: 1m0s
   # SSH URL with IPv6 address
-  url: ssh://git@[2001:db8::gitea]/org/my-app.git
+  url: ssh://git@[2001:db8::10]/org/my-app.git
   ref:
     branch: main
   secretRef:
@@ -108,7 +111,7 @@ spec:
 
 ```yaml
 # helmrepo-ipv6.yaml
-apiVersion: source.toolkit.fluxcd.io/v1beta2
+apiVersion: source.toolkit.fluxcd.io/v1
 kind: HelmRepository
 metadata:
   name: my-charts-ipv6
@@ -116,7 +119,7 @@ metadata:
 spec:
   interval: 10m0s
   # Helm repository hosted on an IPv6-accessible server
-  url: https://[2001:db8::charts-server]/charts
+  url: https://[2001:db8::20]/charts
   secretRef:
     name: helm-repo-credentials
 ```
@@ -183,14 +186,15 @@ kubectl logs -n flux-system deployment/source-controller --tail=50 | \
 # If sync fails with "connection refused" or "no route to host":
 # Check source-controller network connectivity
 kubectl exec -n flux-system deployment/source-controller -- \
-    curl -6 -v https://[2001:db8::gitea]/api/v1/repos/org/my-app
+    wget -O- https://[2001:db8::10]/api/v1/repos/org/my-app
 
-# Verify DNS resolves to IPv6 if using hostname
+# Verify hostname resolution inside the source-controller Pod
+# If you expect IPv6, look for an AAAA answer
 kubectl exec -n flux-system deployment/source-controller -- \
-    dig AAAA gitea.example.com +short
+    nslookup gitea.example.com
 
 # Check if certificate validation fails (for self-signed certs)
-# Add caFile to the secret with the CA certificate
+# Add ca.crt to the Secret with the PEM-encoded CA certificate
 ```
 
 ## Conclusion
