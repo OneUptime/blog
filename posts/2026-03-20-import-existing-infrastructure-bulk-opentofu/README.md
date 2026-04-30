@@ -12,7 +12,7 @@ Importing an entire existing environment into OpenTofu can involve hundreds of r
 
 ## Strategy 1: Generate Config from Existing Resources
 
-OpenTofu 1.5+ can generate HCL from imported resources:
+OpenTofu 1.6+ can generate HCL from imported resources as an experimental feature:
 
 ```hcl
 # Step 1: Write import blocks for all resources
@@ -36,7 +36,7 @@ import {
 ```
 
 ```bash
-# Step 2: Generate HCL config for all import blocks
+# Step 2: Generate HCL config for all import blocks into a new file
 tofu plan -generate-config-out=generated.tf
 
 # Step 3: Review the generated config, clean it up, then apply
@@ -45,7 +45,7 @@ tofu apply
 
 ## Strategy 2: Scripted Import Block Generation
 
-For environments with many similar resources, generate import blocks programmatically:
+If you already model these resources with a `for_each` resource, generate import blocks programmatically:
 
 ```bash
 #!/bin/bash
@@ -57,13 +57,17 @@ echo "# Auto-generated import blocks" > import-ec2.tf
 aws ec2 describe-instances \
   --query 'Reservations[].Instances[].[InstanceId, Tags[?Key==`Name`].Value|[0]]' \
   --output text | while IFS=$'\t' read -r id name; do
-    # Convert name to valid HCL identifier
-    resource_name=$(echo "$name" | tr '[:upper:]' '[:lower:]' | tr ' -' '_')
+    # Normalize the tag value into a predictable for_each key
+    key_source=${name:-$id}
+    if [ "$key_source" = "None" ]; then
+      key_source=$id
+    fi
+    resource_key=$(echo "$key_source" | tr '[:upper:]' '[:lower:]' | sed 's/[^a-z0-9_-]/_/g')
 
     cat >> import-ec2.tf << EOF
 
 import {
-  to = aws_instance.instances["${resource_name}"]
+  to = aws_instance.instances["${resource_key}"]
   id = "${id}"
 }
 EOF
@@ -74,7 +78,7 @@ echo "Generated import blocks in import-ec2.tf"
 
 ## Strategy 3: Resource-Type-by-Resource-Type Migration
 
-Organize the import in phases by resource type:
+If you already have matching `resource` blocks, organize the import in phases by resource type:
 
 ```bash
 #!/bin/bash
@@ -97,7 +101,7 @@ tofu import aws_db_instance.main my-app-database
 
 ## Strategy 4: Using AWS Config for Discovery
 
-AWS Config can enumerate all resources in an account:
+AWS Config can enumerate recorded resources of supported types in a region:
 
 ```bash
 # Query all EC2 instances via AWS Config
@@ -126,10 +130,10 @@ tofu plan -out=import-plan.tfplan
 # Count resources needing changes
 tofu show -json import-plan.tfplan | jq '.resource_changes | group_by(.change.actions) | map({action: .[0].change.actions, count: length})'
 
-# Apply only non-destructive changes
+# Apply a specific reconciliation after reviewing the plan
 tofu apply -target=specific.resource.to.fix
 ```
 
 ## Conclusion
 
-Bulk import is most efficient when automated with scripts and the `generate-config-out` feature. Work by resource type in dependency order (networking before compute before services), verify with `tofu plan` after each phase, and expect to spend time reconciling the generated HCL with your intended configuration. The generate-config feature significantly reduces manual HCL writing for large imports.
+Bulk import is most efficient when automated with scripts and the `generate-config-out` feature. Work by resource type in dependency order (networking before compute before services), verify with `tofu plan` after each phase, and expect to spend time reconciling the generated HCL with your intended configuration. The experimental generate-config feature significantly reduces manual HCL writing for large imports.
