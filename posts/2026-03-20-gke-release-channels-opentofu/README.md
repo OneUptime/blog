@@ -8,7 +8,7 @@ Description: Learn how to configure GKE release channels with OpenTofu to automa
 
 ## Overview
 
-GKE Release Channels automate Kubernetes version upgrades by enrolling clusters in one of four channels: Rapid, Regular, Stable, or None (manual). OpenTofu configures the release channel and maintenance windows for controlled upgrade scheduling.
+GKE Release Channels automate Kubernetes version upgrades by enrolling clusters in one of four channels: Rapid, Regular, Stable, or Extended. Standard clusters can also run with no channel, although GKE still upgrades them over time. OpenTofu configures the release channel and maintenance windows to help control upgrade scheduling.
 
 ## Step 1: Configure Release Channel
 
@@ -27,12 +27,12 @@ resource "google_container_cluster" "cluster" {
 
   # Release channel configuration
   release_channel {
-    # Options: RAPID, REGULAR, STABLE, UNSPECIFIED (manual)
+    # Options: RAPID, REGULAR, STABLE, EXTENDED, UNSPECIFIED (no channel)
     channel = "REGULAR"
   }
 
-  # When release channel is set, don't specify min_master_version
-  # GKE manages the version automatically
+  # GKE manages versions automatically within the selected channel
+  # Avoid pinning min_master_version unless you need a specific starting version
 }
 ```
 
@@ -54,7 +54,7 @@ resource "google_container_cluster" "scheduled_cluster" {
     channel = "REGULAR"
   }
 
-  # Schedule upgrades to happen during a maintenance window
+  # Allow applicable automatic maintenance during a maintenance window
   maintenance_policy {
     recurring_window {
       # Allow upgrades on weekends only
@@ -64,7 +64,7 @@ resource "google_container_cluster" "scheduled_cluster" {
       end_time   = "2026-01-17T06:00:00Z"
     }
 
-    # Exclude specific dates from maintenance (e.g., black friday)
+    # Exclude applicable automatic upgrades during specific dates (e.g., black friday)
     maintenance_exclusion {
       exclusion_name = "black-friday-freeze"
       start_time     = "2026-11-25T00:00:00Z"
@@ -114,7 +114,7 @@ resource "google_container_cluster" "env_cluster" {
 ## Step 4: Node Pool Auto-Upgrade
 
 ```hcl
-# Node pool with auto-upgrade tied to cluster release channel
+# Node pool with auto-upgrade enabled for a release-channel cluster
 resource "google_container_node_pool" "auto_upgrade_pool" {
   name     = "auto-upgrade-pool"
   cluster  = google_container_cluster.cluster.name
@@ -122,7 +122,7 @@ resource "google_container_node_pool" "auto_upgrade_pool" {
 
   management {
     auto_repair  = true
-    auto_upgrade = true  # Nodes auto-upgrade to match cluster version
+    auto_upgrade = true  # Enabled by default; nodes auto-upgrade to track the cluster version
   }
 
   autoscaling {
@@ -139,4 +139,4 @@ resource "google_container_node_pool" "auto_upgrade_pool" {
 
 ## Summary
 
-GKE Release Channels with OpenTofu automate Kubernetes version management throughout the cluster lifecycle. Use RAPID for development environments to test new features early, REGULAR for staging, and STABLE for production. Maintenance windows and exclusion periods ensure upgrades happen during acceptable timeframes.
+GKE Release Channels with OpenTofu automate Kubernetes version management throughout the cluster lifecycle. Use RAPID for development environments to test new features early, REGULAR for staging, STABLE for production, or EXTENDED when you need longer support for a minor version. Maintenance windows and exclusion periods help control upgrade timing, but GKE can still perform emergency or mandatory upgrades outside those windows.
