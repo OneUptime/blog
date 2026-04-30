@@ -8,39 +8,37 @@ Description: Learn how to manage your Harvester HCI cluster, virtual machines, a
 
 ## Introduction
 
-Once Harvester is integrated with Rancher, you can access all Harvester management functionality directly from the Rancher dashboard. This eliminates the need to switch between interfaces and provides a unified view of your entire infrastructure - both VMs and Kubernetes clusters. This guide covers the key Harvester management tasks available from Rancher.
+Once Harvester is integrated with Rancher, you can access the main Harvester management functionality directly from the Rancher dashboard. In Rancher 2.10 and later, this access is provided through the Harvester UI Extension. This eliminates the need to switch between interfaces and provides a unified view of your entire infrastructure - both VMs and Kubernetes clusters. This guide covers the key Harvester management tasks available from Rancher.
 
 ## Accessing Harvester from Rancher
 
 ### Navigate to the Harvester Cluster
 
 1. Log into the Rancher dashboard at `https://rancher.company.com`
-2. In the top navigation, click the cluster selector
-3. Select your Harvester cluster (e.g., `local-harvester`)
-4. You are now in the Harvester management context within Rancher
+2. Click the hamburger menu and choose **Virtualization Management**
+3. On the **Harvester Clusters** page, click your imported Harvester cluster (e.g., `local-harvester`)
+4. If Rancher prompts you to install or update the Harvester UI Extension, complete that step first
+5. You are now in the Harvester management context within Rancher
 
-Alternatively, from the main dashboard:
-1. Click **Cluster Management**
-2. Find the Harvester cluster in the list
-3. Click **Explore** to open the cluster management view
+If the Harvester feature flag is disabled, imported Harvester clusters also appear on **Cluster Management**. In that case, you can click **Explore** there to open the cluster view.
 
 ## Managing Virtual Machines
 
 ### View All VMs
 
-From the Harvester context in Rancher:
+From the Harvester cluster view in Rancher:
 
-1. Click **Virtualization Management** in the left sidebar
-2. Select **Virtual Machines**
-3. You see all VMs with their status, resource usage, and node placement
+1. Click **Virtual Machines**
+2. You see all VMs with their status, resource usage, and node placement
 
 ```bash
-# Equivalent kubectl command
+# List all virtual machines
 
 export KUBECONFIG=harvester.kubeconfig
-kubectl get virtualmachineinstances -A \
-    -o custom-columns=\
-'NAME:.metadata.name,NS:.metadata.namespace,STATE:.status.phase,NODE:.status.nodeName,IP:.status.interfaces[0].ipAddress'
+kubectl get vm -A
+
+# For running instances and node placement
+kubectl get vmi -A -o wide
 ```
 
 ### Create a VM from Rancher
@@ -56,23 +54,23 @@ kubectl get virtualmachineinstances -A \
 
 ### Monitor VM Metrics
 
-From the VM details page in Rancher:
+If the `rancher-monitoring` add-on is enabled, from the VM details page in Rancher:
 1. Click on a VM name
-2. Go to the **Metrics** tab
+2. Go to the **VM Metrics** tab
 3. View CPU usage, memory usage, network I/O, and disk I/O
 
 ## Managing VM Images
 
 ### Import Images via Rancher
 
-1. Navigate to **Virtualization Management** → **Images**
+1. In the Harvester cluster view, click **Images**
 2. Click **Create**
 3. Provide the image URL and name
 4. Click **Create**
 
 ```bash
 # Monitor image import progress
-kubectl get virtualmachineimage -n default -w
+kubectl get vmimages -n default -w
 ```
 
 ### Manage Image Lifecycle
@@ -80,19 +78,18 @@ kubectl get virtualmachineimage -n default -w
 From the images list in Rancher:
 - **Delete**: Remove unused images
 - **Download**: Export an image for offline use
-- **Copy URL**: Get the download URL for scripting
 
 ## Managing Volumes and Storage
 
 ### View Volumes
 
-1. Navigate to **Virtualization Management** → **Volumes**
+1. In the Harvester cluster view, click **Volumes**
 2. See all PVCs with size, storage class, and attachment status
 
 ### Create a Volume
 
 1. Click **Create**
-2. Set name, namespace, size, and storage class
+2. Set name, namespace, source, size, and storage class
 3. Click **Create**
 
 ## Managing VM Networks
@@ -100,7 +97,7 @@ From the images list in Rancher:
 ### View Networks
 
 1. Navigate to **Networks** → **VM Networks**
-2. See all NetworkAttachmentDefinitions with their VLAN IDs
+2. See all VM networks and their associated configuration, including VLAN IDs for VLAN networks
 
 ### Create a VLAN Network
 
@@ -115,7 +112,7 @@ From the images list in Rancher:
 
 ### View Node Status
 
-1. Navigate to **Hosts** in Harvester (or **Infrastructure** → **Nodes**)
+1. Navigate to **Hosts** in the Harvester cluster view
 2. See each node with CPU, memory, and storage usage
 
 ```bash
@@ -145,15 +142,17 @@ One of the most powerful features of the Rancher-Harvester integration is cluste
 
 1. In Rancher, navigate to **Cluster Management**
 2. Click **Create**
-3. Select **RKE2/K3s** and choose **Harvester** as the provider
-4. Configure node pools with Harvester VM specifications
+3. Toggle to **RKE2/K3s** and select the **Harvester** node driver
+4. Configure node pools with Harvester VM specifications. Use a cloud image and VLAN network. For RKE2, select **Harvester** as the cloud provider if you want Rancher to deploy the Harvester CSI driver and cloud controller manager automatically.
 5. Click **Create**
 
 Rancher will automatically:
 - Create VMs in Harvester using the Harvester node driver
 - Bootstrap RKE2 or K3s on the VMs
 - Register the cluster with Rancher
-- Configure the Harvester CSI driver for persistent storage
+- For RKE2 clusters using the Harvester cloud provider, deploy the Harvester CSI driver and cloud controller manager
+
+K3s clusters can also be provisioned on Harvester, but Harvester cloud provider integration for K3s requires additional manual steps and is documented as experimental.
 
 ### View Cluster Health Dashboard
 
@@ -176,53 +175,37 @@ For clusters running on Harvester:
 
 ## Using Rancher's Monitoring in Harvester Context
 
-Rancher's Prometheus/Grafana stack can be deployed to monitor Harvester:
+Harvester monitoring is provided by the `rancher-monitoring` add-on, which you can manage from the Rancher-hosted Harvester UI:
 
 ```bash
-# Install Rancher Monitoring on the Harvester cluster
+# Enable monitoring on the Harvester cluster
 # Via Rancher UI:
 # 1. Navigate to the Harvester cluster
-# 2. Click Apps → Charts
-# 3. Find "Monitoring"
-# 4. Click Install
+# 2. Click Advanced → Add-ons
+# 3. Find "rancher-monitoring"
+# 4. Select ⋮ → Enable
 
-# Or via Helm:
-helm repo add rancher-charts https://charts.rancher.io
-helm upgrade --install rancher-monitoring rancher-charts/rancher-monitoring \
-    --namespace cattle-monitoring-system \
-    --create-namespace \
-    --set prometheus.prometheusSpec.retentionSize=10GiB
+# Optional CLI configuration:
+kubectl edit addons.harvesterhci.io -n cattle-monitoring-system rancher-monitoring
 ```
 
 ## Managing RBAC from Rancher
 
-Rancher provides centralized RBAC for Harvester:
+Harvester leverages Rancher's authentication and cluster/project roles for multi-tenancy. Rancher 2.14.1 and later also provide an experimental Harvester RBAC integration with virtualization-specific role templates.
 
 ### Create a Harvester Project
 
 1. Navigate to the Harvester cluster in Rancher
-2. Go to **Cluster** → **Projects/Namespaces**
+2. Go to **Projects/Namespaces**
 3. Click **Create Project**
 4. Assign team members with appropriate roles
 
 ### Assign VM Management Roles
 
-```yaml
-# rancher-harvester-role.yaml
-# Custom role for VM operators
+If the Harvester RBAC integration is installed, assign one of Rancher's built-in virtualization role templates instead of creating custom `kubevirt.io`-only roles:
 
-apiVersion: management.cattle.io/v3
-kind: GlobalRole
-metadata:
-  name: vm-operator
-rules:
-  - apiGroups: ["kubevirt.io"]
-    resources: ["virtualmachines", "virtualmachineinstances"]
-    verbs: ["get", "list", "create", "update", "delete"]
-  - apiGroups: ["harvesterhci.io"]
-    resources: ["virtualmachineimages"]
-    verbs: ["get", "list"]
-```
+- **View Virtualization Resources**: Read-only access to Harvester VM, image, volume, network, and host resources
+- **Manage Virtualization Resources**: Management access to Harvester VM, image, volume, network, and host resources
 
 ## Conclusion
 
