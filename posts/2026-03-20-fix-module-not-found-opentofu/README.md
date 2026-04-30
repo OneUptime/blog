@@ -33,13 +33,16 @@ Most "module not installed" errors require simply running init:
 
 tofu init
 
-# If you added a new module source, init again
+# Re-run init after adding, removing, or changing module blocks
+tofu init
+
+# Use -upgrade only when you want to update already-installed modules
 tofu init -upgrade
 ```
 
 ## Fix 2: Fix Local Module Path
 
-Local paths are relative to the module file containing the `source` argument:
+Local paths are relative to the module where the `module` block is declared:
 
 ```hcl
 # WRONG - path doesn't match directory structure
@@ -56,7 +59,7 @@ module "vpc" {
 ```bash
 # Verify the module directory exists
 ls -la ./modules/vpc/
-# Should contain: main.tf, variables.tf, outputs.tf
+# Should contain the module's .tf or .tofu files, such as main.tf
 ```
 
 ## Fix 3: Fix Git Module Source
@@ -74,11 +77,11 @@ module "vpc" {
 }
 ```
 
-For private repositories, configure Git credentials:
+For private repositories, make sure Git can already authenticate to the repository. SSH keys are often the simplest option:
 
 ```bash
-# Configure git to use your token
-git config --global url."https://oauth2:${GITHUB_TOKEN}@github.com".insteadOf "https://github.com"
+# Verify Git can reach the repository before running OpenTofu
+git ls-remote git@github.com:my-org/tf-modules.git
 tofu init
 ```
 
