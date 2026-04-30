@@ -1,10 +1,10 @@
-# How to Set Up Fleet with Pull Request Previews
+# How to Set Up Fleet for Multi-Cluster GitOps Deployments
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
-Tags: Rancher, Fleet, GitOps, Preview-Environments, Kubernetes
+Tags: Rancher, Fleet, GitOps, Continuous-Delivery, Kubernetes
 
-Description: Guide to creating ephemeral preview environments from pull requests using Rancher Fleet.
+Description: Guide to deploying applications across clusters with Rancher Fleet.
 
 ## Introduction
 
@@ -12,7 +12,7 @@ Rancher Fleet is a GitOps continuous delivery solution built into Rancher. It en
 
 ## Prerequisites
 
-- Rancher v2.6+ with Fleet installed (built-in)
+- Rancher with Continuous Delivery enabled (Fleet comes preinstalled in Rancher)
 - Git repository (GitHub, GitLab, or any Git server)
 - kubectl access to Rancher management cluster
 
@@ -23,10 +23,9 @@ Rancher Fleet is a GitOps continuous delivery solution built into Rancher. It en
 
 kubectl get pods -n cattle-fleet-system
 
-# Expected pods:
-# fleet-controller      Running
-# fleet-agent           Running (local cluster agent)
-# gitjob                Running
+# Expected components include fleet-controller and gitjob pods.
+# If the local cluster is also managed by Fleet, check its agent separately:
+kubectl get pods -n cattle-local-fleet-system -l app=fleet-agent
 
 # Check CRDs
 kubectl get crds | grep fleet
@@ -74,15 +73,15 @@ kubectl get gitrepo my-app-gitops -n fleet-default
 
 ```text
 kubernetes-manifests/
-├── fleet.yaml              # Fleet configuration
-├── apps/
-│   └── my-app/
-│       ├── fleet.yaml      # App-level Fleet config
-│       ├── deployment.yaml
-│       ├── service.yaml
-│       └── overlays/       # Kustomize overlays per env
-│           ├── production/
-│           └── staging/
+└── apps/
+    └── my-app/
+        ├── fleet.yaml      # App-level Fleet config
+        └── chart/
+            ├── Chart.yaml
+            ├── values.yaml
+            └── templates/
+                ├── deployment.yaml
+                └── service.yaml
 ```
 
 ## Step 4: Configure fleet.yaml
@@ -94,12 +93,9 @@ namespace: my-app
 # Helm chart deployment
 helm:
   chart: ./chart              # Relative path to Helm chart
-  version: ">=1.0.0"
   releaseName: my-app
-  
-  valuesFiles:
-  - values.yaml              # Base values
-  
+
+  # Base values from chart/values.yaml are used automatically
   # Per-cluster value overrides
   values:
     replicaCount: 2
@@ -147,7 +143,7 @@ kubectl get gitrepo -n fleet-default
 kubectl get bundles -n fleet-default
 
 # Detailed bundle status
-kubectl describe bundle my-app-gitops -n fleet-default
+kubectl describe bundle my-app-gitops-apps-my-app -n fleet-default
 
 # Check per-cluster deployment status
 kubectl get bundledeployments -A
@@ -160,10 +156,10 @@ kubectl logs -n cattle-fleet-system   -l app=fleet-agent   --follow
 
 ```bash
 # For HTTPS authentication
-kubectl create secret generic git-auth   --namespace fleet-default   --from-literal=username=your-username   --from-literal=password=your-personal-access-token
+kubectl create secret generic git-auth   --namespace fleet-default   --type=kubernetes.io/basic-auth   --from-literal=username=your-username   --from-literal=password=your-personal-access-token
 
 # For SSH authentication
-kubectl create secret generic git-ssh   --namespace fleet-default   --from-file=ssh-privatekey=/path/to/private-key   --from-literal=known_hosts="$(ssh-keyscan github.com)"
+kubectl create secret generic git-ssh   --namespace fleet-default   --type=kubernetes.io/ssh-auth   --from-file=ssh-privatekey=/path/to/private-key   --from-literal=known_hosts="$(ssh-keyscan -H github.com)"
 ```
 
 ```yaml
@@ -210,8 +206,8 @@ kubectl describe gitrepo my-app-gitops -n fleet-default
 # Bundle in Modified/NotReady state
 kubectl get bundledeployments -A -o custom-columns='NAME:.metadata.name,CLUSTER:.metadata.namespace,STATE:.status.display.state'
 
-# Force re-sync
-kubectl annotate gitrepo my-app-gitops   fleet.cattle.io/force-sync="$(date)"   -n fleet-default   --overwrite
+# Force re-sync by incrementing forceSyncGeneration to a higher value
+kubectl patch gitrepo my-app-gitops   -n fleet-default   --type=merge   -p '{"spec":{"forceSyncGeneration":1}}'
 ```
 
 ## Conclusion
