@@ -49,19 +49,13 @@ resource "google_compute_subnetwork" "subnet_b" {
 
 ```hcl
 # VPC peering must be established from BOTH sides
+# Private IPv4 subnet routes are exchanged automatically after both
+# peering configurations exist.
 # Side A: VPC A peers with VPC B
 resource "google_compute_network_peering" "peering_a_to_b" {
   name         = "peering-a-to-b"
   network      = google_compute_network.vpc_a.self_link
   peer_network = google_compute_network.vpc_b.self_link
-
-  # Export custom routes to the peered network
-  export_custom_routes = true
-  import_custom_routes = false
-
-  # Export/import subnet routes with public IPs
-  export_subnet_routes_with_public_ip = true
-  import_subnet_routes_with_public_ip = false
 }
 
 # Side B: VPC B peers with VPC A
@@ -69,12 +63,6 @@ resource "google_compute_network_peering" "peering_b_to_a" {
   name         = "peering-b-to-a"
   network      = google_compute_network.vpc_b.self_link
   peer_network = google_compute_network.vpc_a.self_link
-
-  export_custom_routes = false
-  import_custom_routes = true
-
-  export_subnet_routes_with_public_ip = false
-  import_subnet_routes_with_public_ip = true
 }
 ```
 
@@ -113,8 +101,8 @@ output "peering_b_state" {
 
 ## Peering Limitations
 
-VPC peering is **not transitive**: if VPC-A peers with VPC-B and VPC-B peers with VPC-C, VMs in VPC-A **cannot** communicate with VMs in VPC-C. For transitive connectivity, use Shared VPC or Cloud VPN instead.
+VPC peering is **not transitive**: if VPC-A peers with VPC-B and VPC-B peers with VPC-C, VMs in VPC-A **cannot** communicate with VMs in VPC-C. If VPC-A and VPC-C also need connectivity, create a separate peering connection between them.
 
 ## Summary
 
-GCP VPC Peering with OpenTofu enables private connectivity between VPCs with low latency and no bandwidth limits. Always create peering from both sides and ensure subnet CIDR ranges don't overlap. Add appropriate firewall rules since peering only provides routing, not automatic traffic permission.
+GCP VPC Peering with OpenTofu enables private connectivity between VPCs with low latency and the same throughput and availability as traffic within the same VPC network. Always create peering from both sides and ensure subnet CIDR ranges don't overlap. Add appropriate firewall rules since peering only provides routing, not automatic traffic permission.
