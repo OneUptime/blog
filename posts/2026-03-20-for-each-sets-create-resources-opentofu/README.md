@@ -70,19 +70,16 @@ output "production_role_arn" {
 
 ---
 
-## for_each with a Set Literal
+## for_each with a Set Expression
 
-You can pass a set literal directly when the values are known at write time:
+OpenTofu does not have a set literal syntax, but when the values are known at write time you can pass a set expression directly by wrapping a list literal with `toset()`:
 
 ```hcl
-resource "aws_s3_bucket_cors_rule" "cors" {
-  bucket = aws_s3_bucket.app.id
+resource "aws_iam_user" "service_accounts" {
+  for_each = toset(["deploy", "monitoring", "backup"])   # set built from a list literal
 
-  for_each = toset(["GET", "HEAD", "POST", "PUT"])   # set literal
-
-  # each.key and each.value are both the method name
-  allowed_methods = [each.key]
-  allowed_origins = ["https://example.com"]
+  # each.key and each.value are both the account name
+  name = "app-${each.key}"
 }
 ```
 
@@ -99,15 +96,14 @@ locals {
   ])
 }
 
-resource "aws_security_group_rule" "ssh_access" {
+resource "aws_vpc_security_group_ingress_rule" "ssh_access" {
   for_each = local.management_ips
 
-  type              = "ingress"
+  security_group_id = aws_security_group.bastion.id
+  cidr_ipv4         = "${each.key}/32"   # each.key is the IP
   from_port         = 22
   to_port           = 22
-  protocol          = "tcp"
-  cidr_blocks       = ["${each.key}/32"]   # each.key is the IP
-  security_group_id = aws_security_group.bastion.id
+  ip_protocol       = "tcp"
 
   description = "SSH from ${each.key}"
 }
@@ -123,6 +119,7 @@ Like map-based `for_each`, set-based iteration is stable:
 # Before: 3 domains
 # After: adding "status.example.com"
 variable "allowed_domains" {
+  type    = set(string)
   default = ["example.com", "api.example.com", "admin.example.com", "status.example.com"]
 }
 # OpenTofu only creates the new "status.example.com" record - others are untouched
