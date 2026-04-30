@@ -56,6 +56,7 @@ echo \
 deb-src [signed-by=/etc/apt/keyrings/opentofu.gpg,/etc/apt/keyrings/opentofu-repo.gpg] \
   https://packages.opentofu.org/opentofu/tofu/any/ any main" | \
   sudo tee /etc/apt/sources.list.d/opentofu.list > /dev/null
+sudo chmod a+r /etc/apt/sources.list.d/opentofu.list
 ```
 
 ### Step 4: Install OpenTofu
@@ -71,7 +72,7 @@ If you prefer a direct installation without adding a package repository:
 
 ```bash
 # Set desired version
-TOFU_VERSION="1.9.0"
+TOFU_VERSION="1.11.6"
 
 # Download the binary
 curl -LO "https://github.com/opentofu/opentofu/releases/download/v${TOFU_VERSION}/tofu_${TOFU_VERSION}_linux_amd64.zip"
@@ -95,13 +96,13 @@ rm "tofu_${TOFU_VERSION}_linux_amd64.zip"
 Download and install the .deb package directly:
 
 ```bash
-TOFU_VERSION="1.9.0"
+TOFU_VERSION="1.11.6"
 
 # Download the .deb package
-curl -LO "https://github.com/opentofu/opentofu/releases/download/v${TOFU_VERSION}/tofu_${TOFU_VERSION}_linux_amd64.deb"
+curl -LO "https://github.com/opentofu/opentofu/releases/download/v${TOFU_VERSION}/tofu_${TOFU_VERSION}_amd64.deb"
 
 # Install using dpkg
-sudo dpkg -i "tofu_${TOFU_VERSION}_linux_amd64.deb"
+sudo dpkg -i "tofu_${TOFU_VERSION}_amd64.deb"
 
 # Fix any dependency issues
 sudo apt-get install -f
@@ -114,7 +115,7 @@ sudo apt-get install -f
 tofu version
 
 # Output:
-# OpenTofu v1.9.0
+# OpenTofu v1.11.6
 # on linux_amd64
 ```
 
@@ -152,10 +153,10 @@ tofu apply -auto-approve
 Enable tab completion for the `tofu` command in Bash:
 
 ```bash
-# Add completion to your .bashrc
+# Install shell completion for Bash
 tofu -install-autocomplete
 
-# Reload the shell
+# Reload Bash configuration
 source ~/.bashrc
 ```
 
@@ -163,7 +164,7 @@ source ~/.bashrc
 
 ```bash
 # Update via apt
-sudo apt-get update && sudo apt-get upgrade tofu
+sudo apt-get update && sudo apt-get install -y --only-upgrade tofu
 
 # Check the current version after update
 tofu version
@@ -172,13 +173,16 @@ tofu version
 ## Removing OpenTofu
 
 ```bash
-# Remove the package
+# Remove the package if installed via the APT repository or .deb package
 sudo apt-get remove tofu
 
-# Remove configuration and the repository
+# Remove configuration and the repository if you added it
 sudo apt-get purge tofu
-sudo rm /etc/apt/sources.list.d/opentofu.list
-sudo rm /etc/apt/keyrings/opentofu*.gpg
+sudo rm -f /etc/apt/sources.list.d/opentofu.list
+sudo rm -f /etc/apt/keyrings/opentofu*.gpg
+
+# If you installed the standalone binary, remove it manually
+sudo rm -f /usr/local/bin/tofu
 ```
 
 ## Conclusion
