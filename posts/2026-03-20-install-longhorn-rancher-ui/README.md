@@ -4,34 +4,43 @@ Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
 Tags: Longhorn, Kubernetes, Rancher, Storage, Installation
 
-Description: A complete walkthrough of installing Longhorn distributed storage directly from the Rancher UI using the built-in Apps & Marketplace feature.
+Description: A complete walkthrough of installing Longhorn distributed storage directly from the Rancher UI using Rancher's built-in Apps feature.
 
 ## Introduction
 
-Rancher provides a seamless way to install Longhorn directly from its web UI using the built-in Apps & Marketplace. Since Longhorn is a Rancher/SUSE project, it is a first-class citizen in the Rancher ecosystem with deep integration for installation, monitoring, and management. This guide walks through the Rancher UI installation process step by step.
+Rancher provides a seamless way to install Longhorn directly from its web UI using the built-in Apps feature (called Apps & Marketplace in some Rancher versions). Longhorn was originally developed by Rancher Labs and integrates cleanly with Rancher for installation, monitoring, and management. This guide walks through the Rancher UI installation process step by step.
 
 ## Prerequisites
 
 - Rancher (version 2.5 or later) managing one or more downstream clusters
-- Target Kubernetes cluster running and imported into Rancher
+- Target Kubernetes cluster running and imported into Rancher, on a Longhorn-supported Kubernetes version (current Longhorn releases require Kubernetes v1.25 or later)
 - Node prerequisites met on all cluster nodes:
-  - `open-iscsi` installed and enabled
-  - Sufficient disk space (at least 10 GiB per node)
+  - `open-iscsi` installed and the `iscsid` daemon running
+  - NFSv4 client installed if you plan to use RWX volumes
+  - Host storage path on a supported filesystem such as `ext4` or `xfs`
+  - Sufficient allocatable disk space on the disks Longhorn will use for storage
 - Appropriate Rancher RBAC permissions to install applications
 
 ### Prepare Nodes
 
-Before installation, SSH into each cluster node and install the required packages:
+Before installation, SSH into each cluster node and install the required packages (`nfs-common` / `nfs-utils` is required for RWX volumes):
 
 ```bash
 # Ubuntu/Debian nodes
 
-apt-get install -y open-iscsi nfs-common
+apt-get install -y open-iscsi
 systemctl enable --now iscsid
 
+# Optional, required for RWX volumes
+apt-get install -y nfs-common
+
 # RHEL/CentOS/Rocky nodes
-yum install -y iscsi-initiator-utils nfs-utils
+yum --setopt=tsflags=noscripts install -y iscsi-initiator-utils
+echo "InitiatorName=$(/sbin/iscsi-iname)" > /etc/iscsi/initiatorname.iscsi
 systemctl enable --now iscsid
+
+# Optional, required for RWX volumes
+yum install -y nfs-utils
 ```
 
 ## Step 1: Navigate to the Apps & Marketplace
@@ -49,14 +58,12 @@ systemctl enable --now iscsid
 ## Step 3: Configure the Installation
 
 1. Click **Install** to begin the configuration wizard
-2. On the **Metadata** page:
-   - Select the **Namespace**: `longhorn-system` (create it if it does not exist)
-   - Set the **Name** to `longhorn`
-3. Click **Next** to proceed to the **Values** page
+2. If Rancher prompts for app metadata, keep the default **Namespace** `longhorn-system` and **Name** `longhorn`
+3. Continue to the installation options / values page
 
 ## Step 4: Customize Installation Values
 
-The Values page presents a form-based editor for Longhorn's Helm chart values. Key settings to configure:
+The installation options page presents a form-based editor for Longhorn's Helm chart values. Key settings to configure:
 
 ### Default Settings
 
@@ -64,13 +71,13 @@ The Values page presents a form-based editor for Longhorn's Helm chart values. K
 # These can be set in the Rancher UI form or as raw YAML values
 
 defaultSettings:
-  # Number of replicas for new volumes
+  # Number of replicas for new volumes created through the Longhorn UI
   defaultReplicaCount: 3
 
   # Backup target (leave empty to configure later)
   backupTarget: ""
 
-  # Storage over-provisioning percentage
+  # Example storage over-provisioning percentage
   storageOverProvisioningPercentage: 200
 
   # Minimum available storage (%)
@@ -130,9 +137,8 @@ kubectl get storageclass
 Rancher provides a direct link to the Longhorn UI:
 
 1. In the Rancher UI, navigate to the cluster
-2. Go to **Apps** → **Installed Apps**
-3. Find the `longhorn` entry and click on it
-4. Look for the **Endpoints** section - click the Longhorn UI URL
+2. Open the **Longhorn** entry from the left navigation, or open **Apps** → **Installed Apps** and click the Longhorn app icon
+3. Rancher opens the Longhorn dashboard through its authenticated proxy
 
 Alternatively, use the direct Rancher proxy URL:
 
@@ -144,7 +150,7 @@ https://<rancher-url>/k8s/clusters/<cluster-id>/api/v1/namespaces/longhorn-syste
 
 From the Longhorn UI:
 
-1. Click **Volume** in the left navigation
+1. Click **Volumes** in the left navigation
 2. Click **Create Volume**
 3. Set a name, size (e.g., `1Gi`), and number of replicas
 4. Click **OK**
