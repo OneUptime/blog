@@ -75,7 +75,7 @@ net.ipv6.conf.eth1.forwarding = 1
 
 ## Impact on Router Advertisement Acceptance
 
-When `net.ipv6.conf.all.forwarding=1` is set globally, Linux automatically sets `accept_ra=0` on all interfaces because a router should not reconfigure its own routing from RA. If your Linux router uses its upstream link to receive RA (e.g., from your ISP), override this:
+When `net.ipv6.conf.all.forwarding=1` is set globally, Linux treats interfaces as routers and will not accept Router Advertisements by default. If your Linux router uses its upstream link to receive RA (e.g., from your ISP), override this:
 
 ```bash
 # Allow RA on the WAN interface even when forwarding is enabled
@@ -83,7 +83,7 @@ When `net.ipv6.conf.all.forwarding=1` is set globally, Linux automatically sets 
 sudo sysctl -w net.ipv6.conf.eth0.accept_ra=2
 
 # Persist it
-# net.ipv6.conf.eth0.accept_ra = 2
+net.ipv6.conf.eth0.accept_ra = 2
 ```
 
 ## Verifying Forwarding is Working
@@ -95,26 +95,29 @@ sysctl net.ipv6.conf.all.forwarding
 
 # Test forwarding by pinging through the router from a client
 # On the client (connected to eth0):
-ping6 -I eth0 2001:db8:other-network::1
+ping -6 -I eth0 2001:db8:2::1
 
-# On the router, watch packets arrive and be forwarded:
-sudo tcpdump -i eth0 -n "ip6 and not icmp6[0]=135 and not icmp6[0]=136"
+# On the router, watch packets arrive and leave across interfaces:
+sudo tcpdump -i any -n "ip6 and not icmp6[0]=135 and not icmp6[0]=136"
 ```
 
 ## systemd-networkd Router Configuration
 
-If using systemd-networkd, set forwarding in the `.network` file:
+If using systemd-networkd, enable global forwarding in `networkd.conf` and set RA behavior per interface in the `.network` file:
 
 ```ini
+# /etc/systemd/networkd.conf
+[Network]
+IPv6Forwarding=yes
+
 # /etc/systemd/network/10-router.network
 [Match]
 Name=eth*
 
 [Network]
-IPv6Forwarding=yes
 IPv6AcceptRA=no   # Disable RA acceptance on router interfaces
 ```
 
 ## Summary
 
-Enable IPv6 forwarding with `sysctl -w net.ipv6.conf.all.forwarding=1` and persist it in `/etc/sysctl.d/`. When forwarding is enabled globally, Router Advertisement acceptance is disabled by default - use `accept_ra=2` on WAN interfaces that still need to receive a default route from upstream. Always verify forwarding is active before testing inter-network routing.
+Enable IPv6 forwarding with `sysctl -w net.ipv6.conf.all.forwarding=1` and persist it in `/etc/sysctl.d/`. When forwarding is enabled globally, Linux will not accept Router Advertisements by default - use `accept_ra=2` on WAN interfaces that still need to receive a default route from upstream. Always verify forwarding is active before testing inter-network routing.
