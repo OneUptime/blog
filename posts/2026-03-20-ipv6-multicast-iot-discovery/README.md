@@ -15,17 +15,17 @@ IPv6 replaces IPv4 broadcast with multicast, providing more efficient one-to-man
 | Address | Scope | Purpose |
 |---|---|---|
 | `ff02::1` | Link-local | All nodes on the link |
-| `ff02::2` | Link-local | All routers (RA destination) |
+| `ff02::2` | Link-local | All routers (RS destination) |
 | `ff02::fb` | Link-local | mDNS (Multicast DNS) |
-| `ff02::fd` | Link-local | All RPL nodes |
-| `ff02::1:2` | Link-local | All DHCPv6 servers/relays |
-| `ff02::1:3` | Link-local | All DHCPv6 servers |
-| `ff05::fd` | Site-local | All RPL nodes |
-| `ff03::fd` | Realm-local | Matter/Thread mesh-local |
+| `ff02::fd` | Link-local | All CoAP nodes |
+| `ff02::1a` | Link-local | All RPL nodes |
+| `ff02::1:2` | Link-local | All DHCPv6 relay agents and servers |
+| `ff05::1:3` | Site-local | All DHCPv6 servers |
+| `ff03::1` | Mesh-local (Thread) | All FTDs and MEDs |
 
 ## CoAP Multicast Discovery
 
-CoAP uses `ff02::fd` (All CoAP nodes) for device discovery:
+CoAP uses `ff02::fd` (All CoAP nodes) for link-local device discovery:
 
 ```python
 #!/usr/bin/env python3
@@ -39,19 +39,21 @@ import aiocoap
 async def discover_iot_devices():
     """Send CoAP GET to all-CoAP-nodes multicast address to discover devices."""
     protocol = await aiocoap.Context.create_client_context()
+    interface = "eth0"
 
     # RFC 6690 CoAP resource discovery via /.well-known/core
-    # The CoAP all-nodes multicast address is ff02::fd
+    # The CoAP all-nodes multicast address is ff02::fd.
+    # Link-local multicast usually needs an interface scope.
     request = aiocoap.Message(
         code=aiocoap.GET,
-        uri='coap://[ff02::fd]/.well-known/core',
+        uri=f'coap://[ff02::fd%{interface}]/.well-known/core',
         mtype=aiocoap.NON  # Non-confirmable for multicast
     )
 
     discovered_devices = []
 
     try:
-        # Multicast responses come from individual devices
+        # aiocoap's multicast request interface exposes the first response only.
         response = await asyncio.wait_for(
             protocol.request(request).response,
             timeout=5.0
@@ -92,9 +94,8 @@ sudo tcpdump -i eth0 "ip6 and udp port 5353"
 # mdns_iot_device.py
 # Register an IoT device with mDNS/DNS-SD for discovery
 
-from zeroconf import Zeroconf, ServiceInfo
+from zeroconf import IPVersion, ServiceInfo, Zeroconf
 import socket
-import time
 
 def register_iot_device(
     service_name: str,
@@ -104,7 +105,7 @@ def register_iot_device(
     properties: dict
 ):
     """Register an IoT device service via mDNS."""
-    zeroconf = Zeroconf()
+    zeroconf = Zeroconf(ip_version=IPVersion.V6Only)
 
     # Convert IPv6 address to bytes
     addr_bytes = socket.inet_pton(socket.AF_INET6, ipv6_addr)
@@ -128,7 +129,7 @@ zc = register_iot_device(
     service_name="temp-sensor-1",
     service_type="_coap._udp.local.",
     port=5683,
-    ipv6_addr="2001:db8:iot:1::sensor1",
+    ipv6_addr="2001:db8:1::101",
     properties={"type": "temperature", "unit": "celsius", "location": "room-1"}
 )
 
@@ -151,14 +152,14 @@ ip -6 maddr show eth0
 # inet6 ff02::1:ff00:1 users 1 (Solicited-Node multicast for own address)
 # inet6 ff02::1 users 1 (All nodes)
 # inet6 ff02::fb users 1 (mDNS)
-# inet6 ff02::1:3 users 1 (DHCPv6 all-servers)
+# inet6 ff02::fd users 1 (All CoAP nodes)
 
 # Manually join a multicast group for testing
 sudo ip -6 maddr add ff02::1234 dev eth0
 
-# Monitor MLD reports
-sudo tcpdump -i eth0 "icmp6 and (ip6[40] == 143 or ip6[40] == 130)"
-# Type 130 = MLDv1 Query, 143 = MLDv2 Report
+# Monitor ICMPv6 traffic and look for MLD messages
+sudo tcpdump -i eth0 -vv 'ip6 protochain 58'
+# MLD message types: 130 (Query), 131 (MLDv1 Report), 132 (Done), 143 (MLDv2 Report)
 ```
 
 ## Group Commands with IPv6 Multicast
@@ -166,23 +167,28 @@ sudo tcpdump -i eth0 "icmp6 and (ip6[40] == 143 or ip6[40] == 130)"
 For IoT scenarios like "turn off all lights in Zone 1":
 
 ```python
+import asyncio
+import aiocoap
+
 # Send a CoAP multicast command to all lights in Zone 1
-# Zone 1 uses a site-local multicast address ff05::zone1
+# Zone 1 uses a custom site-local multicast group such as ff05::1234
 async def turn_off_zone_1():
     protocol = await aiocoap.Context.create_client_context()
 
-    # Register multicast group for Zone 1 lights
-    # ff05::1 = site-local all-nodes (or use a custom group)
+    # Send to the custom multicast group used by Zone 1 lights
     request = aiocoap.Message(
         code=aiocoap.PUT,
-        uri='coap://[ff05::1]/lights/zone1',
+        uri='coap://[ff05::1234]/lights/zone1',
         payload=b'{"on": false}',
         mtype=aiocoap.NON  # Non-confirmable for multicast
     )
     # Devices in Zone 1 joined this multicast group during commissioning
-    await protocol.request(request).response
+    try:
+        await asyncio.wait_for(protocol.request(request).response, timeout=1.0)
+    except asyncio.TimeoutError:
+        pass
 ```
 
 ## Conclusion
 
-IPv6 multicast is foundational to IoT efficiency: CoAP discovery uses `ff02::fd`, mDNS uses `ff02::fb`, Neighbor Discovery uses `ff02::2`, and DHCPv6 uses `ff02::1:2`. Understanding these multicast groups and how to monitor them (via `ip -6 maddr show` and `tcpdump`) is essential for troubleshooting IoT device discovery and group communication in IPv6 networks.
+IPv6 multicast is foundational to IoT efficiency: CoAP discovery uses `ff02::fd`, mDNS uses `ff02::fb`, Router Solicitations use `ff02::2`, Router Advertisements use `ff02::1`, and DHCPv6 clients use `ff02::1:2`. Understanding these multicast groups and how to monitor them (via `ip -6 maddr show` and `tcpdump`) is essential for troubleshooting IoT device discovery and group communication in IPv6 networks.
