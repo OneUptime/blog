@@ -49,6 +49,7 @@ graph TD
 ```bash
 # Set up example routes for testing
 
+sudo ip -6 route add ::/0 via fe80::1 dev eth0
 sudo ip -6 route add 2001:db8::/32 via fe80::2 dev eth1
 sudo ip -6 route add 2001:db8:1::/48 via fe80::3 dev eth2
 sudo ip -6 route add 2001:db8:1:10::/64 via fe80::4 dev eth3
@@ -69,30 +70,31 @@ ip -6 route get 2001:db9::1
 
 ## Tie-Breaking When Prefix Lengths are Equal
 
-When two routes have the same prefix length, the router uses **metric** (administrative distance) to choose:
+On Linux, when two routes in the same table have the same prefix length, the lower **metric** is preferred:
 
 ```bash
 # Two equal-length routes with different metrics
-sudo ip -6 route add 2001:db8:1::/48 via fe80::3 dev eth2 metric 100
-sudo ip -6 route add 2001:db8:1::/48 via fe80::5 dev eth4 metric 200
+sudo ip -6 route add 2001:db8:10::/48 via fe80::3 dev eth2 metric 100
+sudo ip -6 route add 2001:db8:10::/48 via fe80::5 dev eth4 metric 200
 
 # The lower metric wins
-ip -6 route show 2001:db8:1::/48
-# 2001:db8:1::/48 via fe80::3 dev eth2 metric 100  ← used
-# 2001:db8:1::/48 via fe80::5 dev eth4 metric 200  ← backup
+ip -6 route show exact 2001:db8:10::/48
+# 2001:db8:10::/48 via fe80::3 dev eth2 metric 100
+# 2001:db8:10::/48 via fe80::5 dev eth4 metric 200
 ```
 
 ## ECMP: Equal-Cost Multipath
 
-If two routes have the same prefix length AND the same metric, both are installed and traffic is load-balanced:
+On Linux, ECMP is configured as a multipath route with multiple `nexthop` entries that share the same prefix and metric:
 
 ```bash
 # Both routes are used (ECMP)
-sudo ip -6 route add 2001:db8:1::/48 via fe80::3 dev eth2 metric 100
-sudo ip -6 route add 2001:db8:1::/48 via fe80::5 dev eth4 metric 100
+sudo ip -6 route add 2001:db8:20::/48 metric 100 \
+    nexthop via fe80::3 dev eth2 weight 1 \
+    nexthop via fe80::5 dev eth4 weight 1
 
-ip -6 route show 2001:db8:1::/48
-# 2001:db8:1::/48 metric 100
+ip -6 route show exact 2001:db8:20::/48
+# 2001:db8:20::/48 metric 100
 #     nexthop via fe80::3 dev eth2 weight 1
 #     nexthop via fe80::5 dev eth4 weight 1
 ```
@@ -106,10 +108,10 @@ A null route (black hole) uses a specific prefix to silently drop traffic - it w
 sudo ip -6 route add blackhole 2001:db8:bad::/48
 
 # Any traffic to 2001:db8:bad:: is dropped, even if a broader route exists
-ip -6 route get 2001:db8:bad::1
+ip -6 route get fibmatch 2001:db8:bad::1
 # blackhole 2001:db8:bad::/48
 ```
 
 ## Summary
 
-IPv6 longest prefix match selects the route with the most bits matching the destination address. Always test route selection with `ip -6 route get <destination>`. When prefix lengths tie, metric wins; when both tie, ECMP load-balances across all matching paths.
+IPv6 longest prefix match selects the route with the most bits matching the destination address. On Linux, test route selection with `ip -6 route get <destination>`; add `fibmatch` when you want to see the matched FIB entry. When prefix lengths tie in the same table, the lower metric wins; ECMP is configured as a multipath route with multiple nexthops.
