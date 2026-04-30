@@ -14,7 +14,7 @@ Hairpin NAT (also called NAT loopback or NAT reflection) allows internal clients
 
 ```text
 Client (192.168.1.50) → DNS returns → 203.0.113.1 (public IP)
-Client sends to 203.0.113.1 → router → drops or sends to ISP (not looped back)
+Client sends to 203.0.113.1 → router → does not loop the traffic back to the internal server
 ```
 
 **With hairpin NAT:**
@@ -33,40 +33,41 @@ Client (192.168.1.50) → 203.0.113.1 → router hairpins → 192.168.1.10 (web 
 # Web server: 192.168.1.10:80
 
 # DNAT: Incoming port 80 → web server (already exists for external access)
-iptables -t nat -A PREROUTING -d 203.0.113.1 -p tcp --dport 80 \
+iptables -t nat -A PREROUTING -i eth1 -d 203.0.113.1 -p tcp --dport 80 \
     -j DNAT --to-destination 192.168.1.10:80
 
 # Hairpin DNAT: Internal clients accessing public IP
 iptables -t nat -A PREROUTING -i eth0 -d 203.0.113.1 -p tcp --dport 80 \
     -j DNAT --to-destination 192.168.1.10:80
 
-# SNAT for hairpin: Masquerade the source so web server replies to router
-iptables -t nat -A POSTROUTING -s 192.168.1.0/24 -d 192.168.1.10 -p tcp --dport 80 \
-    -j MASQUERADE
+# SNAT for hairpin: Rewrite the source to the router's LAN IP so replies return through it
+iptables -t nat -A POSTROUTING -o eth0 -s 192.168.1.0/24 -d 192.168.1.10 -p tcp --dport 80 \
+    -j SNAT --to-source 192.168.1.1
 
 # Forward rule
 iptables -A FORWARD -i eth0 -d 192.168.1.10 -p tcp --dport 80 -j ACCEPT
 ```
 
-The key is the POSTROUTING MASQUERADE rule: it rewrites the source IP so the web server sends replies back to the router (which then forwards to the client) instead of trying to reply directly.
+The key is the POSTROUTING source NAT rule: it rewrites the source IP so the web server sends replies back to the router (which then forwards to the client) instead of trying to reply directly.
 
 ## Hairpin NAT with nftables
 
 ```bash
+# `table inet nat` for stateful NAT requires Linux kernel 5.2+
 table inet nat {
     chain prerouting {
         type nat hook prerouting priority -100;
         # External access
-        iifname "eth1" ip daddr 203.0.113.1 tcp dport 80 dnat to 192.168.1.10:80
+        iifname "eth1" ip daddr 203.0.113.1 tcp dport 80 dnat ip to 192.168.1.10:80
         # Hairpin access from LAN
-        iifname "eth0" ip daddr 203.0.113.1 tcp dport 80 dnat to 192.168.1.10:80
+        iifname "eth0" ip daddr 203.0.113.1 tcp dport 80 dnat ip to 192.168.1.10:80
     }
     chain postrouting {
         type nat hook postrouting priority 100;
         # Standard outbound NAT
         ip saddr 192.168.1.0/24 oifname "eth1" masquerade
-        # Hairpin masquerade
-        ip saddr 192.168.1.0/24 ip daddr 192.168.1.10 tcp dport 80 masquerade
+        # Hairpin SNAT
+        ip saddr 192.168.1.0/24 ip daddr 192.168.1.10 tcp dport 80 oifname "eth0" snat ip to 192.168.1.1
     }
 }
 ```
@@ -74,7 +75,7 @@ table inet nat {
 ## Hairpin NAT on pfSense
 
 1. Go to **System → Advanced → Firewall & NAT**
-2. Under **Network Address Translation**, set **NAT Reflection mode for port forwards**: `Enable (Pure NAT)`
+2. Under **Network Address Translation**, set **NAT Reflection mode for port forwards**: `Pure NAT`
 3. Check **Enable NAT Reflection for 1:1 NAT**
 4. Check **Enable automatic outbound NAT for Reflection**
 5. Click **Save**
@@ -82,13 +83,13 @@ table inet nat {
 ## Hairpin NAT on Cisco
 
 ```cisco
-! NAT loopback on Cisco is automatic when using the ip nat inside/outside model
-! When a packet from inside hits the NAT table for an inside-global address,
-! it is NATted back inside (loopback behavior).
+! Cisco hairpin NAT is platform-specific.
+! Do not assume classic ip nat inside/ip nat outside automatically provides NAT loopback.
+! On IOS/IOS XE, review NAT Virtual Interface (NVI) configurations, which use ip nat enable on participating interfaces.
 
 ! Verify with:
-debug ip nat
 show ip nat translations
+show ip nat statistics
 ```
 
 ## Testing Hairpin NAT
@@ -100,15 +101,15 @@ curl http://203.0.113.1
 
 # If hairpin is not working, try the private IP directly:
 curl http://192.168.1.10
-# This should always work
+# This should work if the service is reachable directly on the LAN
 ```
 
 ## Key Takeaways
 
 - Hairpin NAT allows internal clients to access internal servers via public IP.
-- Requires both DNAT (for port forwarding) and MASQUERADE (for return path).
+- Requires both DNAT (for port forwarding) and source NAT (SNAT or MASQUERADE) for the return path.
 - On pfSense, enable NAT Reflection under System → Advanced → Firewall & NAT.
-- The MASQUERADE in POSTROUTING for internal → internal traffic is the critical step.
+- The source NAT in POSTROUTING for internal → internal traffic is the critical step.
 
 **Related Reading:**
 
