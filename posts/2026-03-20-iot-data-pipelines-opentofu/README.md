@@ -87,6 +87,7 @@ resource "aws_lambda_event_source_mapping" "kinesis" {
   function_name                 = aws_lambda_function.stream_processor.arn
   starting_position             = "LATEST"
   batch_size                    = 100
+  maximum_batching_window_in_seconds = 1
   parallelization_factor        = 2  # 2 concurrent Lambda invocations per shard
   bisect_batch_on_function_error = true
 }
