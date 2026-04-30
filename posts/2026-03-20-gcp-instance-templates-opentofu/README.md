@@ -8,7 +8,7 @@ Description: Learn how to create GCP Compute Engine instance templates with Open
 
 ## Overview
 
-GCP Instance Templates define the configuration for VM instances in Managed Instance Groups (MIGs). They're immutable blueprints that specify machine type, disk, network, and startup scripts. OpenTofu manages template versioning and rollout strategies.
+GCP Instance Templates define the configuration for VM instances in Managed Instance Groups (MIGs). They're immutable blueprints that specify machine type, disk, network, and startup scripts. OpenTofu manages template replacement, while managed instance groups control rollout strategies.
 
 ## Step 1: Basic Instance Template
 
@@ -51,7 +51,7 @@ resource "google_compute_instance_template" "web_template" {
 
   tags = ["web-server", "http-server", "https-server"]
 
-  # Use lifecycle to create before destroying for zero-downtime updates
+  # Use lifecycle so a replacement template exists before the old one is removed
   lifecycle {
     create_before_destroy = true
   }
@@ -64,7 +64,8 @@ resource "google_compute_instance_template" "web_template" {
 # Instance template with Shielded VM and Confidential Computing
 resource "google_compute_instance_template" "secure_template" {
   name_prefix  = "secure-template-"
-  machine_type = "n2d-standard-2"  # AMD required for Confidential VMs
+  machine_type = "n2d-standard-2"  # This example uses AMD SEV on N2D
+  min_cpu_platform = "AMD Milan"
   region       = "us-central1"
 
   disk {
@@ -77,6 +78,10 @@ resource "google_compute_instance_template" "secure_template" {
     subnetwork = google_compute_subnetwork.web_subnet.self_link
   }
 
+  scheduling {
+    on_host_maintenance = "MIGRATE"
+  }
+
   # Enable Shielded VM features
   shielded_instance_config {
     enable_secure_boot          = true
@@ -87,6 +92,7 @@ resource "google_compute_instance_template" "secure_template" {
   # Enable Confidential Computing
   confidential_instance_config {
     enable_confidential_compute = true
+    confidential_instance_type  = "SEV"
   }
 
   lifecycle {
@@ -140,4 +146,4 @@ output "instance_template_self_link" {
 
 ## Summary
 
-GCP Instance Templates with OpenTofu provide immutable VM blueprints for managed instance groups. The `create_before_destroy` lifecycle ensures zero-downtime template updates. Use template versioning through `name_prefix` so new templates get unique names, allowing gradual rollout without breaking existing MIGs.
+GCP Instance Templates with OpenTofu provide immutable VM blueprints for managed instance groups. The `create_before_destroy` lifecycle helps replace templates without removing the old template first. Use `name_prefix` so replacement templates get unique names, then let the managed instance group control how those template changes roll out.
