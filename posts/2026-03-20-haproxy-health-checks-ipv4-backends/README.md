@@ -31,7 +31,8 @@ For application-level health checking:
 ```text
 backend api-servers
     balance roundrobin
-    option httpchk GET /health HTTP/1.1\r\nHost:\ api.internal
+    option httpchk GET /health HTTP/1.1
+    http-check send hdr Host api.internal
     http-check expect status 200
     server api1 10.0.1.10:8080 check
     server api2 10.0.1.11:8080 check
@@ -53,7 +54,7 @@ backend api-servers
 
 ```text
 defaults
-    timeout check 3s      # Max time to wait for a health check response
+    timeout check 3s      # Additional read timeout after the check connection is established
 
 backend api-servers
     balance roundrobin
@@ -74,7 +75,7 @@ backend api-servers
 ```
 
 - `fastinter 1000`: Check every 1 second when transitioning state (faster detection)
-- `downinter 2000`: Check every 2 seconds when server is down (less frequent polling of known-down servers)
+- `downinter 2000`: Check every 2 seconds when the server is fully DOWN
 
 ## External (Agent) Health Check
 
@@ -92,24 +93,25 @@ The agent on port 9999 responds with status strings like `ready`, `drain`, `main
 ```bash
 # View server states via HAProxy socket
 
-echo "show servers state api-servers" | sudo socat stdio /run/haproxy/admin.sock
+echo "show servers state api-servers" | sudo socat /run/haproxy/admin.sock stdio
 ```
 
-Output includes:
-- `2`: UP (running)
-- `0`: DOWN
-- `6`: DRAIN (not accepting new connections)
+Output includes fields such as:
+- `srv_op_state`: `0` = STOPPED (DOWN), `2` = RUNNING (fully UP)
+- `srv_admin_state`: `0x08` = forced DRAIN (stops new load-balanced connections)
 
 ## MySQL/PostgreSQL Custom Health Check
 
 ```text
 backend db-servers
+    mode tcp
     option mysql-check user haproxy
     server db1 10.0.2.10:3306 check
 ```
 
 ```text
 backend pg-servers
+    mode tcp
     option pgsql-check user haproxy
     server pg1 10.0.2.20:5432 check
 ```
