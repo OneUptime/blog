@@ -10,6 +10,7 @@ Description: Use Java DatagramSocket and MulticastSocket for IPv6 UDP communicat
 
 ```java
 import java.net.*;
+import java.nio.charset.StandardCharsets;
 
 public class IPv6UDPServer {
 
@@ -25,12 +26,13 @@ public class IPv6UDPServer {
             DatagramPacket packet = new DatagramPacket(buf, buf.length);
             socket.receive(packet);
 
-            String msg = new String(packet.getData(), 0, packet.getLength());
+            String msg = new String(packet.getData(), 0, packet.getLength(),
+                StandardCharsets.UTF_8);
             System.out.printf("From %s: %s%n",
                 packet.getAddress().getHostAddress(), msg);
 
             // Echo back
-            byte[] reply = ("Echo: " + msg).getBytes();
+            byte[] reply = ("Echo: " + msg).getBytes(StandardCharsets.UTF_8);
             DatagramPacket response = new DatagramPacket(
                 reply, reply.length,
                 packet.getAddress(), packet.getPort());
@@ -44,6 +46,7 @@ public class IPv6UDPServer {
 
 ```java
 import java.net.*;
+import java.nio.charset.StandardCharsets;
 
 public class IPv6UDPClient {
 
@@ -52,8 +55,8 @@ public class IPv6UDPClient {
         DatagramSocket socket = new DatagramSocket(
             new InetSocketAddress("::", 0));
 
-        InetAddress server = InetAddress.getByName("2001:db8::1");
-        byte[] data = "Hello IPv6 UDP".getBytes();
+        InetAddress server = InetAddress.getByName("::1");
+        byte[] data = "Hello IPv6 UDP".getBytes(StandardCharsets.UTF_8);
 
         DatagramPacket packet = new DatagramPacket(data, data.length, server, 9000);
         socket.send(packet);
@@ -66,7 +69,8 @@ public class IPv6UDPClient {
         socket.receive(response);
 
         System.out.println("Response: " +
-            new String(response.getData(), 0, response.getLength()));
+            new String(response.getData(), 0, response.getLength(),
+                StandardCharsets.UTF_8));
 
         socket.close();
     }
@@ -81,16 +85,24 @@ import java.net.*;
 public class IPv6MulticastReceiver {
 
     public static void main(String[] args) throws Exception {
-        // ff02::fb is the mDNS multicast address (link-local scope)
-        InetAddress group = InetAddress.getByName("ff02::fb");
-        NetworkInterface iface = NetworkInterface.getByName("eth0");
+        if (args.length != 1) {
+            System.err.println("Usage: IPv6MulticastReceiver <interface>");
+            return;
+        }
 
-        MulticastSocket socket = new MulticastSocket(5353);
+        // ff12::1234 is a transient, link-local IPv6 multicast group
+        InetAddress group = InetAddress.getByName("ff12::1234");
+        NetworkInterface iface = NetworkInterface.getByName(args[0]);
+        if (iface == null) {
+            throw new IllegalArgumentException("No such interface: " + args[0]);
+        }
+
+        MulticastSocket socket = new MulticastSocket(5000);
 
         // Join the multicast group on the specified interface
-        SocketAddress groupAddr = new InetSocketAddress(group, 5353);
+        SocketAddress groupAddr = new InetSocketAddress(group, 5000);
         socket.joinGroup(groupAddr, iface);
-        System.out.println("Joined ff02::fb on eth0");
+        System.out.println("Joined ff12::1234:5000 on " + iface.getName());
 
         byte[] buf = new byte[1500];
         for (int i = 0; i < 10; i++) {
@@ -110,24 +122,33 @@ public class IPv6MulticastReceiver {
 
 ```java
 import java.net.*;
+import java.nio.charset.StandardCharsets;
 
 public class IPv6MulticastSender {
 
     public static void main(String[] args) throws Exception {
+        if (args.length != 1) {
+            System.err.println("Usage: IPv6MulticastSender <interface>");
+            return;
+        }
+
         MulticastSocket socket = new MulticastSocket();
 
         // Set outgoing interface for multicast
-        NetworkInterface iface = NetworkInterface.getByName("eth0");
+        NetworkInterface iface = NetworkInterface.getByName(args[0]);
+        if (iface == null) {
+            throw new IllegalArgumentException("No such interface: " + args[0]);
+        }
         socket.setNetworkInterface(iface);
-        socket.setTimeToLive(5);  // Max 5 hops
+        socket.setTimeToLive(5);  // Hop limit for multicast traffic
 
-        InetAddress group = InetAddress.getByName("ff02::1");
-        byte[] data = "Announcement".getBytes();
+        InetAddress group = InetAddress.getByName("ff12::1234");
+        byte[] data = "Announcement".getBytes(StandardCharsets.UTF_8);
 
         DatagramPacket packet = new DatagramPacket(data, data.length, group, 5000);
         socket.send(packet);
 
-        System.out.println("Sent multicast to ff02::1");
+        System.out.println("Sent multicast to ff12::1234:5000 on " + iface.getName());
         socket.close();
     }
 }
@@ -138,6 +159,7 @@ public class IPv6MulticastSender {
 ```java
 import java.net.*;
 import java.nio.*;
+import java.nio.charset.StandardCharsets;
 import java.nio.channels.*;
 
 public class NIOIPv6UDP {
@@ -157,7 +179,8 @@ public class NIOIPv6UDP {
 
             byte[] data = new byte[buf.remaining()];
             buf.get(data);
-            System.out.printf("From %s: %s%n", sender, new String(data));
+            System.out.printf("From %s: %s%n", sender,
+                new String(data, StandardCharsets.UTF_8));
 
             // Echo
             buf.rewind();
@@ -169,4 +192,4 @@ public class NIOIPv6UDP {
 
 ## Conclusion
 
-Java's `DatagramSocket` works with IPv6 by binding to `new InetSocketAddress("::", port)`. For multicast, `MulticastSocket.joinGroup(SocketAddress, NetworkInterface)` is the Java 17+ API (the older `joinGroup(InetAddress)` is deprecated for IPv6). NIO's `DatagramChannel.open(StandardProtocolFamily.INET6)` creates IPv6-specific channels. Always specify `StandardProtocolFamily.INET6` for `DatagramChannel` to ensure the channel uses IPv6 rather than defaulting to IPv4.
+Java's `DatagramSocket` can use IPv6 addresses, for example by binding to `new InetSocketAddress("::", port)`. For multicast, prefer `MulticastSocket.joinGroup(SocketAddress, NetworkInterface)`; the older `joinGroup(InetAddress)` is deprecated since Java 14 because it does not let you specify the network interface. NIO's `DatagramChannel.open(StandardProtocolFamily.INET6)` opens an IPv6 channel explicitly. Use `StandardProtocolFamily.INET6` when you need an IPv6 channel; `DatagramChannel.open()` leaves the protocol family platform-dependent and unspecified.
