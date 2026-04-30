@@ -8,30 +8,30 @@ Description: Flush and clear the ARP table on Linux using ip neigh flush to forc
 
 ## Introduction
 
-Flushing the ARP table forces the kernel to re-resolve MAC addresses for all neighbors. This is needed when IP-to-MAC mappings have changed (e.g., a NIC was replaced, a VM migrated, or ARP poisoning occurred). `ip neigh flush` removes dynamic entries while preserving permanent ones.
+Flushing the ARP table forces the kernel to re-resolve MAC addresses as traffic resumes. This is needed when IP-to-MAC mappings have changed (e.g., a NIC was replaced, a VM migrated, or ARP poisoning occurred). Run the flush commands as root or with `sudo`. By default, `ip neigh flush` removes dynamic entries while preserving `permanent` and `noarp` ones.
 
-## Flush All Dynamic ARP Entries
+## Flush All Dynamic Neighbor Entries
 
 ```bash
-# Flush all non-permanent neighbor entries
+# Flush dynamic neighbor entries across all prefixes
 
-ip neigh flush all
+ip neigh flush to all
 
 # Verify the cache is mostly empty
 ip neigh show
 ```
 
-## Flush ARP Table for a Specific Interface
+## Flush Neighbor Table for a Specific Interface
 
 ```bash
-# Flush only eth0's ARP entries
+# Flush only eth0's neighbor entries
 ip neigh flush dev eth0
 ```
 
 ## Flush Only Stale Entries
 
 ```bash
-# Remove only stale (expired) entries
+# Remove only stale entries
 ip neigh flush nud stale
 
 # Remove failed entries
@@ -52,7 +52,7 @@ ip neigh show
 
 # Generate new ARP entries by pinging
 ping -c 1 192.168.1.1
-ip neigh show 192.168.1.1
+ip neigh show to 192.168.1.1
 ```
 
 ## Flush IPv4 ARP Only
@@ -62,13 +62,13 @@ ip neigh show 192.168.1.1
 ip -4 neigh flush dev eth0
 ```
 
-## Flush Everything Including Permanent (Use Caution)
+## Flush All Flushable Entries, Including Permanent Ones (Use Caution)
 
 ```bash
-# Delete all entries including permanent ones
-ip neigh flush all nud all
+# Delete all flushable entries, including permanent ones
+ip neigh flush nud all
 
-# This includes static entries - use with care
+# This includes static entries, but not noarp entries
 ```
 
 ## When to Flush the ARP Cache
@@ -101,4 +101,4 @@ ip neigh del 192.168.1.50 dev eth0
 
 ## Conclusion
 
-`ip neigh flush dev <interface>` clears all dynamic ARP entries for an interface, forcing re-resolution. Use `nud stale` or `nud failed` to flush only specific states. Permanent entries survive flush unless `nud all` is specified. After flushing, new ARP entries are populated as traffic flows.
+`ip neigh flush dev <interface>` clears dynamic neighbor entries for an interface, forcing re-resolution. Use `nud stale` or `nud failed` to flush only specific states. Permanent entries survive the default flush; use `nud all` to include them. `noarp` entries are still excluded. After flushing, new ARP entries are populated as traffic flows.
