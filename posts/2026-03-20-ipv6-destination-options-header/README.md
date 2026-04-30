@@ -4,11 +4,11 @@ Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
 Tags: IPv6, Destination Options, Extension Headers, Networking, Protocol
 
-Description: Understand the IPv6 Destination Options extension header, its two positional meanings in the header chain, and practical options it carries including Home Address and CALIPSO.
+Description: Understand the IPv6 Destination Options extension header, its two positional meanings in the header chain, and practical options it carries including Home Address and Tunnel Encapsulation Limit.
 
 ## Introduction
 
-The Destination Options Header (Next Header = 60) carries information that the final destination (and potentially intermediate routing destinations) needs to process. Unlike the Hop-by-Hop Options Header, Destination Options are ignored by transit routers - they reach the endpoint intact and are processed only by the packet's intended recipient.
+The Destination Options Header (Next Header = 60) carries information that the final destination (and potentially intermediate routing destinations) needs to process. Unlike the Hop-by-Hop Options Header, Destination Options are ignored by ordinary transit routers - they are processed only by the packet's destination node(s).
 
 ## The Two Positions of Destination Options
 
@@ -17,13 +17,14 @@ The Destination Options Header can appear in two places in the extension header 
 ```text
 Position 1: Before the Routing Header
   IPv6 Base → HbH (0) → [Dest Options (60)] → Routing (43) → Fragment (44) → TCP (6)
-  → Processed by each node listed in the Routing Header's address list
-  → Applies to routing waypoints
+  → Processed by the first destination in the IPv6 Destination Address field
+    and any subsequent destinations listed in the Routing Header
+  → Applies to routing destinations
 
-Position 2: After the Routing Header and Fragment Header
+Position 2: After the Routing Header
   IPv6 Base → HbH (0) → Routing (43) → Fragment (44) → [Dest Options (60)] → TCP (6)
   → Processed ONLY by the final destination
-  → Most common placement
+  → Used for options intended only for the final destination
 ```
 
 ## Header Format
@@ -49,8 +50,8 @@ Options within Destination Options use the same TLV encoding as Hop-by-Hop:
 Option Type bits [7:6]:
   00 = skip unknown option, continue
   01 = discard packet silently
-  10 = discard + send ICMPv6 Parameter Problem
-  11 = discard + send ICMPv6 (even to multicast)
+  10 = discard + send ICMPv6 Parameter Problem (even to multicast)
+  11 = discard + send ICMPv6 Parameter Problem only if destination is not multicast
 
 Bit 5: Change flag (0 = immutable, 1 = may change in transit)
 Bits [4:0]: Actual option identifier
@@ -64,29 +65,33 @@ Bits [4:0]: Actual option identifier
 | 0x01 | PadN | Multi-byte padding |
 | 0x04 | Tunnel Encap Limit | Max encapsulation depth |
 | 0xC9 | Home Address (HAO) | IPv6 Mobile IP (RFC 6275) |
-| 0x07 | CALIPSO | Security label (RFC 5570) |
-| 0x26 | SMF_DPD | Simplified Multicast Forwarding |
+| 0x0F | PDM | In-band performance diagnostics (RFC 8250) |
+| 0x8C | Line-Identification Option | Access-line identification in tunneled ND (RFC 6788) |
 
 ## Home Address Option (Mobile IPv6)
 
-The most commonly discussed Destination Option is the Home Address Option (HAO) used in Mobile IPv6. It lets a mobile node use its home address as the source while physically at a care-of address:
+The most commonly discussed Destination Option is the Home Address Option (HAO) used in Mobile IPv6. It lets a mobile node send from its care-of address on the wire while carrying its home address in the option. In Mobile IPv6, the Home Address option itself must appear after any Routing header and before any Fragment, AH, or ESP headers:
 
 ```python
 import struct
 import socket
 
-def build_home_address_option(home_address: str) -> bytes:
+def build_home_address_option(
+    home_address: str,
+    next_header: int = socket.IPPROTO_TCP,
+) -> bytes:
     """
     Build a Destination Options header with the Home Address Option.
     Used in Mobile IPv6 (RFC 6275).
 
     When a mobile node sends from its care-of address,
     it includes its home address in the Home Address Option.
-    The destination processes the option and updates its peer address
-    to the home address for the connection.
+    The correspondent node processes the packet as if the
+    IPv6 Source Address were the home address for this packet.
 
     Args:
         home_address: The mobile node's home address (string)
+        next_header: Next Header value for the header that follows this one
     """
     home_bytes = socket.inet_pton(socket.AF_INET6, home_address)
 
@@ -94,20 +99,18 @@ def build_home_address_option(home_address: str) -> bytes:
     opt_type = 0xC9
     opt_len = 16  # 128-bit IPv6 address
 
-    # Total header = 8 bytes header + 2 (type+len) + 16 (address) = 26 bytes
-    # Round up to 8-byte boundary: 32 bytes (Hdr Ext Len = 3)
-    next_header_placeholder = 0
-    hdr_ext_len = 3  # (3+1)*8 = 32 bytes total
+    # The Home Address option requires 8n+6 alignment. Add a 4-byte PadN
+    # first so the option starts 6 bytes from the start of the header.
+    hdr_ext_len = 2  # (2+1)*8 = 24 bytes total
 
-    header = struct.pack("BB", next_header_placeholder, hdr_ext_len)
+    header = struct.pack("BB", next_header, hdr_ext_len)
+    header += struct.pack("BB", 0x01, 2) + bytes(2)  # PadN: total 4 bytes
     header += struct.pack("BB", opt_type, opt_len)
     header += home_bytes
-    # Pad to 32 bytes: 2 + 2 + 16 = 20, need 12 more bytes
-    header += struct.pack("BB", 0x01, 10) + bytes(10)  # PadN: type=1, len=10, 10 zero bytes
 
     return header
 
-home_opt = build_home_address_option("2001:db8:home::1")
+home_opt = build_home_address_option("2001:db8:1::1")
 print(f"Home Address Option header: {home_opt.hex()}")
 print(f"Length: {len(home_opt)} bytes")
 ```
@@ -137,8 +140,9 @@ def parse_destination_options(header_bytes: bytes) -> list:
         opt_names = {
             0x01: "PadN",
             0x04: "Tunnel Encap Limit",
+            0x0F: "PDM",
+            0x8C: "Line-Identification Option",
             0xC9: "Home Address",
-            0x07: "CALIPSO",
         }
 
         options.append({
@@ -157,17 +161,17 @@ def parse_destination_options(header_bytes: bytes) -> list:
 ## Viewing Destination Options in Traffic
 
 ```bash
-# Capture packets with Destination Options header (Next Header = 60)
+# Packets whose IPv6 base header points directly to Destination Options (60)
 
 sudo tcpdump -i eth0 -vv "ip6[6] == 60"
 
-# Mobile IPv6 traffic (Home Address Option)
-sudo tcpdump -i eth0 -vv "ip6[6] == 60" | grep -A 5 "home address"
+# Packets with a Destination Options header anywhere in the extension chain
+sudo tcpdump -i eth0 -vv "ip6 protochain 60"
 
-# Note: Destination Options in second position (after Routing/Fragment)
-# requires following the extension header chain to find the 60 header
+# Note: "ip6 protochain 60" follows the extension-header chain, so it can
+# match final-destination Destination Options after Routing/Fragment/AH/ESP
 ```
 
 ## Conclusion
 
-The Destination Options Header is a flexible container for per-destination processing instructions. Its two positional semantics (before vs after the Routing Header) allow targeting either routing waypoints or only the final destination. While rarely seen in everyday traffic, it enables important capabilities like Mobile IPv6 Home Address binding, security labeling (CALIPSO), and tunnel encapsulation depth limiting. The TLV option format with explicit action bits for unknown options makes it forward-compatible with future option additions.
+The Destination Options Header is a flexible container for per-destination processing instructions. Its two positional semantics (before vs after the Routing Header) allow targeting either routing destinations or only the final destination. While rarely seen in everyday traffic, it enables important capabilities like Mobile IPv6 Home Address binding, in-band performance diagnostics (PDM), and tunnel encapsulation depth limiting. The TLV option format with explicit action bits for unknown options makes it forward-compatible with future option additions.
