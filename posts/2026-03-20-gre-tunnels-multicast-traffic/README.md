@@ -50,7 +50,7 @@ ip link set gre1 up
 
 ```bash
 # Test multicast group membership through tunnel
-# On receiver side, join a multicast group on gre1
+# If you are using SMCRoute, have smcrouted running and join the group on gre1
 smcroutectl join gre1 239.1.1.1
 
 # Or use Python to test
@@ -66,41 +66,52 @@ print('Joined 239.1.1.1 on gre1')
 ## PIM Sparse Mode Over GRE (FRR)
 
 ```bash
+# Enable kernel multicast forwarding for routing between eth0 and gre1
+sysctl -w net.ipv4.conf.all.mc_forwarding=1
+sysctl -w net.ipv4.conf.eth0.mc_forwarding=1
+sysctl -w net.ipv4.conf.gre1.mc_forwarding=1
+
 # Run PIM over GRE to route multicast through the tunnel
 vtysh << 'EOF'
 conf t
 interface gre1
-  ip pim sparse-mode
+  ip pim
 interface eth0
-  ip pim sparse-mode
+  ip pim
+  ip igmp
 router pim
-  rp 172.16.1.1 224.0.0.0/4   ! RP address
+  rp 172.16.1.1 224.0.0.0/4
 EOF
 ```
 
 ## Static Multicast Routing Over GRE
 
 ```bash
+# Enable kernel multicast forwarding for routing between eth0 and gre1
+sysctl -w net.ipv4.conf.all.mc_forwarding=1
+sysctl -w net.ipv4.conf.eth0.mc_forwarding=1
+sysctl -w net.ipv4.conf.gre1.mc_forwarding=1
+
 # smcroute: simple static multicast routing
 apt install smcroute -y
 
 # /etc/smcroute.conf
+# Join the upstream group on eth0 if IGMP snooping is in use
+mgroup from eth0 group 239.1.1.0/24
 # Route multicast from eth0 out through gre1
 mroute from eth0 group 239.1.1.0/24 to gre1
 
-smcroutectl start
+systemctl restart smcroute.service
 smcroutectl show routes
 ```
 
 ## Testing Multicast Through GRE
 
 ```bash
-# Sender side
-iperf3 -s -u --multicast-ttl 5 &
-iperf3 -c 239.1.1.1 -u --ttl 5 -b 1M
-
-# Or use iperf (v2)
+# Receiver side (iperf2)
 iperf -s -u -B 239.1.1.1 &
+
+# Sender side (iperf2)
 iperf -c 239.1.1.1 -u -T 5 -b 1M
 ```
 
@@ -108,5 +119,6 @@ iperf -c 239.1.1.1 -u -T 5 -b 1M
 
 - Enable multicast on a GRE interface with `ip link set gre1 multicast on` (sets the `MULTICAST` flag).
 - GRE with multicast support encapsulates multicast-destined packets inside unicast GRE frames for transport.
-- Use `smcroute` for simple static multicast forwarding over GRE without a full PIM deployment.
-- For dynamic multicast routing, configure PIM sparse mode on both the GRE and physical interfaces in FRR.
+- Enable Linux multicast forwarding with `net.ipv4.conf.*.mc_forwarding=1` before using PIM or SMCRoute to route multicast.
+- Use `smcrouted`/`smcroute.service` for simple static multicast forwarding over GRE without a full PIM deployment.
+- For dynamic multicast routing in FRR, use `ip pim` on routed interfaces and `ip igmp` on LAN interfaces that face multicast receivers.
