@@ -31,40 +31,40 @@ last_updated: "2026-03-20"
 maintainer: "network-team@example.com"
 
 top_level:
-  prefix: "2001:db8:corp::/48"
+  prefix: "2001:db8:100::/48"
   source: "ISP Example ISP"
   assigned: "2024-01-01"
   rir_allocation: "2001:db8::/32 (ISP)"
 
 subnets:
   - id: "0001"
-    prefix: "2001:db8:corp:1::/64"
+    prefix: "2001:db8:100:1::/64"
     site: "HQ"
     function: "management"
     vlan: 1
-    gateway: "2001:db8:corp:1::1"
+    gateway: "2001:db8:100:1::1"
     dhcp_mode: "stateless (SLAAC + stateless DHCPv6)"
     description: "HQ Management VLAN - network infrastructure"
     status: "active"
     assigned: "2024-01-15"
 
   - id: "0010"
-    prefix: "2001:db8:corp:10::/64"
+    prefix: "2001:db8:100:10::/64"
     site: "HQ"
     function: "users"
     vlan: 10
-    gateway: "2001:db8:corp:10::1"
+    gateway: "2001:db8:100:10::1"
     dhcp_mode: "SLAAC"
     description: "HQ User LAN - employee workstations"
     status: "active"
     assigned: "2024-01-15"
 
   - id: "0020"
-    prefix: "2001:db8:corp:20::/64"
+    prefix: "2001:db8:100:20::/64"
     site: "HQ"
     function: "servers"
     vlan: 20
-    gateway: "2001:db8:corp:20::1"
+    gateway: "2001:db8:100:20::1"
     dhcp_mode: "stateful DHCPv6"
     description: "HQ Server VLAN - application servers"
     status: "active"
@@ -73,19 +73,19 @@ subnets:
 infrastructure:
   loopbacks:
     - device: "core-router-1"
-      address: "2001:db8:corp:ff01::1/128"
+      address: "2001:db8:100:ff01::1/128"
       description: "Core Router 1 loopback"
 
   point_to_point:
     - link: "core-router-1 to edge-router-1"
-      prefix: "2001:db8:corp:f001::/127"
-      side_a: "2001:db8:corp:f001::0"
-      side_b: "2001:db8:corp:f001::1"
+      prefix: "2001:db8:100:f001::2/127"
+      side_a: "2001:db8:100:f001::2"
+      side_b: "2001:db8:100:f001::3"
 
 reserved:
-  - prefix: "2001:db8:corp:ff00::/56"
+  - prefix: "2001:db8:100:ff00::/56"
     purpose: "Infrastructure loopbacks"
-  - prefix: "2001:db8:corp:f000::/56"
+  - prefix: "2001:db8:100:f000::/56"
     purpose: "Point-to-point links"
 ```
 
@@ -138,18 +138,20 @@ Popular IPAM tools with IPv6 support:
 ```bash
 # NetBox: REST API for IPv6 prefix management
 curl -X POST https://netbox.example.com/api/ipam/prefixes/ \
-  -H "Authorization: Token $NETBOX_TOKEN" \
+  -H "Authorization: Bearer $NETBOX_TOKEN" \
   -H "Content-Type: application/json" \
   -d '{
-    "prefix": "2001:db8:corp:10::/64",
-    "site": {"slug": "hq"},
-    "vlan": {"id": 10},
+    "prefix": "2001:db8:100:10::/64",
+    "scope_type": "dcim.site",
+    "scope_id": 1,
+    "vlan": 10,
     "description": "HQ User LAN",
     "status": "active"
   }'
 
 # List all IPv6 prefixes in a parent
-curl "https://netbox.example.com/api/ipam/prefixes/?within=2001:db8:corp::/48&family=6"
+curl -H "Authorization: Bearer $NETBOX_TOKEN" \
+  "https://netbox.example.com/api/ipam/prefixes/?within=2001:db8:100::%2F48&family=6"
 ```
 
 ## Naming Convention for Reverse DNS
@@ -158,12 +160,12 @@ curl "https://netbox.example.com/api/ipam/prefixes/?within=2001:db8:corp::/48&fa
 IPv6 reverse DNS uses ip6.arpa zones.
 Each nibble of the reverse address is a zone level.
 
-For 2001:db8:corp:1::/64:
-  Zone: 1.0.0.0.p.r.o.c.8.b.d.0.1.0.0.2.ip6.arpa
+For 2001:db8:100:1::/64:
+  Zone: 1.0.0.0.0.0.1.0.8.b.d.0.1.0.0.2.ip6.arpa
 
 # BIND zone delegation
-# $ORIGIN 8.b.d.0.1.0.0.2.ip6.arpa.
-# p.r.o.c  NS  ns1.example.com.
+# $ORIGIN 0.0.1.0.8.b.d.0.1.0.0.2.ip6.arpa.
+# 1.0.0.0  NS  ns1.example.com.
 ```
 
 ## Conclusion
