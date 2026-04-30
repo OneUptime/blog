@@ -8,7 +8,7 @@ Description: Connect two geographically separated subnets using a GRE tunnel on 
 
 ## Introduction
 
-GRE tunnels are commonly used to connect subnets at different sites - a classic site-to-site VPN scenario. Each site has a Linux router that creates a GRE tunnel to the other site. The routers forward traffic between local LAN interfaces and the tunnel, with static routes directing inter-site traffic through the tunnel.
+GRE tunnels are commonly used to connect subnets at different sites - a classic site-to-site tunneling scenario. Each site has a Linux router that creates a GRE tunnel to the other site. The routers forward traffic between local LAN interfaces and the tunnel, with static routes directing inter-site traffic through the tunnel.
 
 ## Network Topology
 
@@ -58,14 +58,14 @@ ip route add 192.168.1.0/24 via 172.16.0.1
 
 ## Configure LAN Hosts
 
-Hosts on each LAN need a default gateway pointing to their local router:
+If the Linux router is not already the host's default gateway, add a route for the remote LAN via the local router:
 
 ```bash
-# Host on Site A (192.168.1.10): use Router A as gateway
-ip route add default via 192.168.1.1
+# Host on Site A (192.168.1.10): route Site B through Router A
+ip route add 192.168.2.0/24 via 192.168.1.1
 
-# Host on Site B (192.168.2.10): use Router B as gateway
-ip route add default via 192.168.2.1
+# Host on Site B (192.168.2.10): route Site A through Router B
+ip route add 192.168.1.0/24 via 192.168.2.1
 ```
 
 ## Test End-to-End Connectivity
@@ -95,7 +95,7 @@ iptables -A FORWARD -o gre0 -j ACCEPT
 
 ```bash
 # Prevent TCP fragmentation through the tunnel
-iptables -A FORWARD -o gre0 -p tcp --tcp-flags SYN,RST SYN \
+iptables -t mangle -A FORWARD -o gre0 -p tcp --tcp-flags SYN,RST SYN \
     -j TCPMSS --clamp-mss-to-pmtu
 ```
 
@@ -105,10 +105,9 @@ iptables -A FORWARD -o gre0 -p tcp --tcp-flags SYN,RST SYN \
 # Save sysctl
 echo "net.ipv4.ip_forward = 1" >> /etc/sysctl.d/99-forwarding.conf
 
-# Use systemd-networkd for tunnel and route persistence
-# (see GRE with systemd-networkd guide)
+# Use systemd-networkd .netdev and .network files for tunnel and route persistence
 ```
 
 ## Conclusion
 
-Connecting remote subnets with GRE requires a router at each site with: IP forwarding enabled, a GRE tunnel to the remote router, and a static route for the remote subnet via the tunnel. LAN hosts use their local router as the default gateway. This setup creates transparent inter-site connectivity with no changes required on individual LAN hosts.
+Connecting remote subnets with GRE requires a router at each site with: IP forwarding enabled, a GRE tunnel to the remote router, and a static route for the remote subnet via the tunnel. If the Linux routers are already the LAN hosts' default gateways, no additional host-side routing changes are required; otherwise, add a route for the remote subnet via the local router. This setup creates transparent inter-site connectivity between the two LANs.
