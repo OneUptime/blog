@@ -18,15 +18,15 @@ In Wireshark's capture filter field, enter:
 ether broadcast
 ```
 
-Or, to also capture multicast:
+Or, to also include multicast group traffic:
 
 ```text
 ether multicast
 ```
 
-This limits the capture to only broadcast and multicast frames, reducing capture file size significantly.
+`ether broadcast` captures only Ethernet broadcasts. `ether multicast` captures Ethernet group traffic, which includes multicast and the all-ones broadcast address, reducing capture file size significantly.
 
-## Display Filters for Broadcasts
+## Display Filters for Broadcasts and Discovery Traffic
 
 Once captured, use these display filters in the filter bar:
 
@@ -35,25 +35,25 @@ Once captured, use these display filters in the filter bar:
 
 eth.dst == ff:ff:ff:ff:ff:ff
 
-# ARP broadcasts only
-arp
+# ARP traffic sent as Ethernet broadcasts
+arp && eth.dst == ff:ff:ff:ff:ff:ff
 
-# DHCP broadcasts
-bootp
+# DHCP traffic sent as Ethernet broadcasts
+dhcp && eth.dst == ff:ff:ff:ff:ff:ff
 
-# NetBIOS name service broadcasts
-nbns
+# NetBIOS name service traffic sent as Ethernet broadcasts
+nbns && eth.dst == ff:ff:ff:ff:ff:ff
 
-# mDNS
-mdns
+# mDNS traffic
+dns && udp.port == 5353
 
-# SSDP
-ssdp
+# SSDP discovery traffic
+udp.port == 1900
 ```
 
 ## Finding the Top Broadcast Senders
 
-Navigate to **Statistics > Endpoints** and click the **Ethernet** tab. Sort by **Packets** in the **TX** column - the highest senders are your broadcast sources.
+First apply `eth.dst == ff:ff:ff:ff:ff:ff` in the packet list. Then navigate to **Statistics > Endpoints** and click the **Ethernet** tab. If you open the dialog after applying the display filter, **Limit to display filter** will be set automatically. Sort by **TX Packets** - the highest senders are your top broadcast sources.
 
 For IP-level breakdown, check **Statistics > Conversations > IPv4** and filter for destination `255.255.255.255`.
 
@@ -61,37 +61,37 @@ For IP-level breakdown, check **Statistics > Conversations > IPv4** and filter f
 
 Navigate to **Statistics > IO Graphs**:
 
-1. Add a trace for `eth.dst == ff:ff:ff:ff:ff:ff` with **Packets/s** on the Y-axis
+1. Add a trace for `eth.dst == ff:ff:ff:ff:ff:ff` with **Packets** on the Y-axis
 2. Set the interval to 1 second
 3. Look for sudden spikes indicating storm onset
 
 ## Protocol Breakdown with Statistics > Protocol Hierarchy
 
-Navigate to **Statistics > Protocol Hierarchy** to see which protocols account for the most packets. In a broadcast storm, one protocol (often ARP or NetBIOS) will dominate the hierarchy.
+Navigate to **Statistics > Protocol Hierarchy** to see which protocols account for the most packets in the capture. In a broadcast-heavy capture, one protocol (often ARP or NetBIOS) will usually dominate the hierarchy.
 
 ## Finding the Storm Source
 
 Apply a display filter for the top offending protocol:
 
 ```text
-arp
+arp && eth.dst == ff:ff:ff:ff:ff:ff
 ```
 
-Then navigate to **Statistics > Conversations > Ethernet**. The source MAC sending thousands of ARP requests is the culprit.
+Then navigate to **Statistics > Conversations > Ethernet**. The source MAC sending thousands of ARP requests is likely the culprit.
 
 To confirm it is gratuitous or anomalous:
 
 ```text
-arp.opcode == 1 && arp.src.proto_ipv4 == arp.dst.proto_ipv4
+arp.isgratuitous == 1 && arp.opcode == 1
 ```
 
-This filter matches **gratuitous ARP requests** - a host announcing its own IP, which could indicate IP address conflicts or a loop.
+This filter matches **gratuitous ARP requests** - a host announcing its own IP, which could indicate IP address conflicts or repeated address-defense traffic.
 
 ## Exporting Broadcast Statistics to CSV
 
 For reporting, export statistics:
 
-1. **Statistics > Endpoints** → select Ethernet → click **Copy** → paste to spreadsheet
+1. **Statistics > Endpoints** → select Ethernet → click **Copy** and choose CSV
 
 Or use `tshark` from the command line:
 
