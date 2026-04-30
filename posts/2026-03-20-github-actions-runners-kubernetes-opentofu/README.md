@@ -37,16 +37,16 @@ resource "kubernetes_namespace" "arc_runners" {
   }
 }
 
-# GitHub App credentials secret for ARC
+# GitHub App credentials secret for the runner scale set
 resource "kubernetes_secret" "arc_github_app" {
   metadata {
     name      = "github-app-credentials"
-    namespace = kubernetes_namespace.arc.metadata[0].name
+    namespace = kubernetes_namespace.arc_runners.metadata[0].name
   }
 
   data = {
-    github_app_id              = var.github_app_id
-    github_app_installation_id = var.github_app_installation_id
+    github_app_id              = tostring(var.github_app_id)
+    github_app_installation_id = tostring(var.github_app_installation_id)
     github_app_private_key     = var.github_app_private_key
   }
 }
@@ -57,11 +57,11 @@ resource "helm_release" "arc" {
   namespace  = kubernetes_namespace.arc.metadata[0].name
   repository = "oci://ghcr.io/actions/actions-runner-controller-charts"
   chart      = "gha-runner-scale-set-controller"
-  version    = "0.9.3"
+  version    = "0.14.1"
 
   values = [
     yamlencode({
-      # Enable metrics for HPA
+      # Enable ARC metrics
       metrics = {
         controllerManagerAddr = ":8080"
         listenerAddr          = ":8080"
@@ -82,7 +82,7 @@ resource "helm_release" "runner_scale_set" {
   namespace  = kubernetes_namespace.arc_runners.metadata[0].name
   repository = "oci://ghcr.io/actions/actions-runner-controller-charts"
   chart      = "gha-runner-scale-set"
-  version    = "0.9.3"
+  version    = "0.14.1"
 
   depends_on = [helm_release.arc]
 
@@ -91,6 +91,7 @@ resource "helm_release" "runner_scale_set" {
       githubConfigUrl    = "https://github.com/${var.github_org}"
       githubConfigSecret = kubernetes_secret.arc_github_app.metadata[0].name
 
+      # Optional: this runner group must already exist in GitHub
       runnerGroup = "k8s-runners"
       runnerScaleSetName = "k8s-runners"
 
@@ -98,12 +99,18 @@ resource "helm_release" "runner_scale_set" {
       minRunners = 0
       maxRunners = var.max_runners  # e.g., 20
 
-      # Runner pod template
+      # Let ARC inject the supported DinD pod spec for your Kubernetes version.
+      containerMode = {
+        type = "dind"
+      }
+
+      # Runner pod overrides
       template = {
         spec = {
           containers = [{
-            name  = "runner"
-            image = "ghcr.io/actions/actions-runner:latest"
+            name    = "runner"
+            image   = "ghcr.io/actions/actions-runner:latest"
+            command = ["/home/runner/run.sh"]
 
             resources = {
               requests = {
@@ -114,23 +121,6 @@ resource "helm_release" "runner_scale_set" {
                 cpu    = "2000m"
                 memory = "4Gi"
               }
-            }
-
-            env = [{
-              name  = "DOCKER_HOST"
-              value = "tcp://localhost:2376"
-            }]
-          },
-          # DinD sidecar for Docker builds
-          {
-            name  = "dind"
-            image = "docker:24-dind"
-            securityContext = {
-              privileged = true
-            }
-            resources = {
-              requests = { cpu = "500m", memory = "512Mi" }
-              limits   = { cpu = "2000m", memory = "2Gi" }
             }
           }]
 
@@ -156,7 +146,8 @@ resource "helm_release" "runner_scale_set" {
 ```hcl
 # node_pool.tf - dedicated nodes for CI runners
 
-# EKS node group example
+# EKS node group example. Use Cluster Autoscaler if you want this managed
+# node group to grow from zero when runner pods are pending.
 resource "aws_eks_node_group" "ci_runners" {
   cluster_name    = var.cluster_name
   node_group_name = "ci-runners"
@@ -169,6 +160,10 @@ resource "aws_eks_node_group" "ci_runners" {
     desired_size = 0
     min_size     = 0
     max_size     = var.max_runner_nodes
+  }
+
+  lifecycle {
+    ignore_changes = [scaling_config[0].desired_size]
   }
 
   # Taint nodes so only runner pods schedule here
@@ -189,31 +184,12 @@ resource "aws_eks_node_group" "ci_runners" {
 
 ## Kubernetes RBAC for ARC
 
-```hcl
-# rbac.tf
-resource "kubernetes_cluster_role_binding" "arc" {
-  metadata {
-    name = "arc-runner-controller"
-  }
-
-  role_ref {
-    api_group = "rbac.authorization.k8s.io"
-    kind      = "ClusterRole"
-    name      = "cluster-admin"
-  }
-
-  subject {
-    kind      = "ServiceAccount"
-    name      = "arc"
-    namespace = kubernetes_namespace.arc.metadata[0].name
-  }
-}
-```
+The `gha-runner-scale-set-controller` chart creates the controller `ServiceAccount`, `ClusterRole`, and `ClusterRoleBinding` by default. Avoid adding a separate `cluster-admin` binding unless you have a specific, audited reason to override the chart defaults.
 
 ## Best Practices
 
-- Use GitHub App authentication rather than a Personal Access Token for ARC - GitHub Apps have higher rate limits and more granular permissions.
-- Run ARC runners on dedicated nodes with taints - this prevents CI workloads from competing with production workloads for resources.
+- For repository- or organization-level runners, prefer GitHub App authentication over a classic Personal Access Token - GitHub Apps have more granular permissions and scalable rate limits. Enterprise-level runners still require a personal access token (classic).
+- Run ARC runners on dedicated nodes with taints, and use Cluster Autoscaler if the managed runner node group starts at zero - this prevents CI workloads from competing with production workloads for resources while still allowing on-demand scale-up.
 - Use Docker-in-Docker (DinD) carefully - DinD requires privileged containers. For security, consider Kaniko or Buildah for container builds instead.
-- Set `minRunners = 0` and rely on ARC's scaling - idle runner pods waste compute. ARC scales up within seconds when jobs are queued.
-- Set resource requests and limits on runner pods - without limits, a runaway build can consume all node resources and affect other workloads.
+- Set `minRunners = 0` and rely on ARC's scaling - idle runner pods waste compute. ARC scales runners up on demand when jobs are queued.
+- Set resource requests and limits on runner containers, and if you copy the full documented DinD template, apply limits to the Docker sidecar as well - without limits, a runaway build can consume all node resources and affect other workloads.
