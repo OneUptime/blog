@@ -43,15 +43,20 @@ server.bind(9000, '::');
 const dgram = require('dgram');
 
 const client = dgram.createSocket('udp6');
+const timeout = setTimeout(() => {
+    console.log('Timeout');
+    client.close();
+}, 5000);
 
 // Bind to ephemeral port
 client.bind(0, '::', () => {
     const message = Buffer.from('Hello IPv6 UDP');
-    const server = '2001:db8::1';
+    const server = '::1';
     const port = 9000;
 
     client.send(message, port, server, (err) => {
         if (err) {
+            clearTimeout(timeout);
             console.error('Send failed:', err);
             client.close();
             return;
@@ -61,15 +66,10 @@ client.bind(0, '::', () => {
 });
 
 client.on('message', (msg, rinfo) => {
+    clearTimeout(timeout);
     console.log(`Response from [${rinfo.address}]:${rinfo.port}: ${msg.toString()}`);
     client.close();
 });
-
-// Timeout after 5 seconds
-setTimeout(() => {
-    console.log('Timeout');
-    client.close();
-}, 5000);
 ```
 
 ## IPv6 Multicast
@@ -78,12 +78,17 @@ setTimeout(() => {
 const dgram = require('dgram');
 const os = require('os');
 
-// Find the name of the first non-loopback IPv6-capable interface
-function getIPv6Interface() {
+// Find a scoped IPv6 interface identifier for multicast
+function getIPv6MulticastInterface() {
     const ifaces = os.networkInterfaces();
     for (const [name, addrs] of Object.entries(ifaces)) {
-        if (addrs.some(a => a.family === 'IPv6' && !a.internal)) {
-            return name;
+        const addr = addrs.find(
+            (a) => a.family === 'IPv6' && !a.internal && a.address.startsWith('fe80:')
+        );
+
+        if (addr) {
+            const scope = process.platform === 'win32' ? addr.scopeid : name;
+            return `::%${scope}`;
         }
     }
     return null;
@@ -97,9 +102,11 @@ receiver.on('message', (msg, rinfo) => {
 });
 
 receiver.bind(5000, () => {
-    const ifaceName = getIPv6Interface() || 'eth0';
-    receiver.addMembership('ff02::1', ifaceName);
-    console.log(`Joined ff02::1 on ${ifaceName}`);
+    const iface = getIPv6MulticastInterface();
+    if (!iface) throw new Error('No non-loopback IPv6 interface found');
+
+    receiver.addMembership('ff02::1', iface);
+    console.log(`Joined ff02::1 on ${iface}`);
 });
 ```
 
@@ -107,18 +114,37 @@ receiver.bind(5000, () => {
 
 ```javascript
 const dgram = require('dgram');
+const os = require('os');
+
+function getIPv6MulticastInterface() {
+    const ifaces = os.networkInterfaces();
+    for (const [name, addrs] of Object.entries(ifaces)) {
+        const addr = addrs.find(
+            (a) => a.family === 'IPv6' && !a.internal && a.address.startsWith('fe80:')
+        );
+
+        if (addr) {
+            const scope = process.platform === 'win32' ? addr.scopeid : name;
+            return `::%${scope}`;
+        }
+    }
+    return null;
+}
 
 const sender = dgram.createSocket('udp6');
 
 sender.bind(0, '::', () => {
+    const iface = getIPv6MulticastInterface();
+    if (!iface) throw new Error('No non-loopback IPv6 interface found');
+
     // Set multicast outgoing interface
-    sender.setMulticastInterface('::%eth0');  // interface name
+    sender.setMulticastInterface(iface);
     sender.setMulticastTTL(5);
 
     const msg = Buffer.from('Multicast announcement');
 
     // Send to all-nodes link-local multicast
-    sender.send(msg, 5000, 'ff02::1%eth0', (err) => {
+    sender.send(msg, 5000, 'ff02::1', (err) => {
         if (err) console.error(err);
         else console.log('Multicast sent to ff02::1');
         sender.close();
@@ -134,7 +160,7 @@ const dgram = require('dgram');
 // Handle both IPv4 and IPv6 with two sockets
 function createDualUDPServer(port, onMessage) {
     const v4 = dgram.createSocket('udp4');
-    const v6 = dgram.createSocket('udp6');
+    const v6 = dgram.createSocket({ type: 'udp6', ipv6Only: true });
 
     const handler = (msg, rinfo) => onMessage(msg, rinfo);
 
@@ -191,4 +217,4 @@ setInterval(() => {
 
 ## Conclusion
 
-Node.js `dgram.createSocket('udp6')` creates an IPv6-only UDP socket. Bind to `'::'` to receive from any IPv6 address. Multicast requires joining a group with `addMembership(multicastAddr, ifaceName)` after binding. For multicast sending, use `setMulticastInterface()` to specify the outgoing interface. IPv6 zone IDs in multicast addresses are specified as `'ff02::1%eth0'`. When you need both IPv4 and IPv6 UDP, create two separate sockets - one `'udp4'` and one `'udp6'`.
+Node.js `dgram.createSocket('udp6')` creates an IPv6 UDP socket, but it is not IPv6-only by default when you bind to `'::'`. Bind to `'::'` to receive on all IPv6 addresses, and use `ipv6Only: true` when you need a separate IPv4 socket on the same port. Multicast receivers join a group with `addMembership(multicastAddr, multicastInterface)` after binding, using a scoped IPv6 interface such as `'::%eth0'` (or `'::%2'` on Windows). For multicast sending, use `setMulticastInterface()` to specify the outgoing interface. Explicit zone IDs in scoped multicast addresses look like `'ff02::1%eth0'` on Unix-like systems. When you need both IPv4 and IPv6 UDP, create two separate sockets - one `'udp4'` and one IPv6 socket created with `{ type: 'udp6', ipv6Only: true }`.
