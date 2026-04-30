@@ -107,8 +107,6 @@ console.log(getAllIPv4Addresses(true));
 ```javascript
 const os = require('os');
 
-let previousAddresses = new Set();
-
 function getCurrentIPv4Set() {
     const result = new Set();
     for (const iface of Object.values(os.networkInterfaces())) {
@@ -120,6 +118,9 @@ function getCurrentIPv4Set() {
     }
     return result;
 }
+
+// Start with the current state so the first interval only reports changes.
+let previousAddresses = getCurrentIPv4Set();
 
 // Check for network interface changes every 5 seconds
 setInterval(() => {
@@ -143,8 +144,8 @@ setInterval(() => {
 | `netmask` | Subnet mask (e.g., `255.255.255.0`) |
 | `family` | `'IPv4'` or `'IPv6'` |
 | `mac` | MAC address |
-| `internal` | `true` for loopback |
-| `cidr` | CIDR notation (e.g., `192.168.1.50/24`) |
+| `internal` | `true` for loopback or similar non-remotely-accessible interfaces |
+| `cidr` | CIDR notation (e.g., `192.168.1.50/24`), or `null` if the netmask is invalid |
 
 ## Conclusion
 
