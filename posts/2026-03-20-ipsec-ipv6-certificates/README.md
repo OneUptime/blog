@@ -40,7 +40,7 @@ pki --req --type rsa \
     --in /etc/swanctl/private/gw1.key.pem \
     --dn "C=US, O=Corp VPN, CN=gw1.example.com" \
     --san "gw1.example.com" \
-    --san "2001:db8:gw1::1" \
+    --san "2001:db8:1::1" \
     --outform pem \
     > /tmp/gw1.req.pem
 
@@ -50,7 +50,7 @@ pki --issue --lifetime 365 \
     --cakey /etc/swanctl/private/ca.key.pem \
     --in /tmp/gw1.req.pem --type pkcs10 \
     --san "gw1.example.com" \
-    --san "2001:db8:gw1::1" \
+    --san "2001:db8:1::1" \
     --flag serverAuth --flag ikeIntermediate \
     --outform pem \
     > /etc/swanctl/x509/gw1.cert.pem
@@ -68,7 +68,7 @@ chmod 600 /etc/swanctl/private/*.pem
 # ============================================================
 # Copy to GW2 (securely):
 scp /etc/swanctl/x509ca/ca.cert.pem root@gw2:/etc/swanctl/x509ca/
-scp /tmp/gw2.cert.pem root@gw2:/etc/swanctl/x509/    # (generated separately on GW2)
+scp /tmp/gw2.cert.pem root@gw2:/etc/swanctl/x509/    # Signed from GW2's CSR; copy only the certificate back
 # Note: Private keys NEVER leave the host they were generated on
 ```
 
@@ -80,28 +80,30 @@ scp /tmp/gw2.cert.pem root@gw2:/etc/swanctl/x509/    # (generated separately on 
 connections {
     gw1-to-gw2 {
         version = 2
-        local_addrs  = 2001:db8:gw1::1
-        remote_addrs = 2001:db8:gw2::1
+        local_addrs  = 2001:db8:1::1
+        remote_addrs = 2001:db8:2::1
 
         local {
             auth = pubkey
-            certs = gw1.cert.pem     ! File in /etc/swanctl/x509/
-            id = gw1.example.com     ! Must match certificate CN or SAN
+            # File in /etc/swanctl/x509/
+            certs = gw1.cert.pem
+            # Must match certificate CN or SAN
+            id = gw1.example.com
         }
         remote {
             auth = pubkey
-            id = gw2.example.com     ! Must match GW2's certificate CN or SAN
-            # Alternatively, use ca= to accept any cert signed by our CA:
-            # ca = "C=US, O=Corp VPN, CN=VPN Certificate Authority"
+            # Must match GW2's certificate CN or SAN
+            id = gw2.example.com
+            # Alternatively, use cacerts= to restrict accepted certs to our CA:
+            # cacerts = ca.cert.pem
         }
 
         children {
             site-tunnel {
-                local_ts  = 2001:db8:site1::/48
-                remote_ts = 2001:db8:site2::/48
+                local_ts  = 2001:db8:100::/48
+                remote_ts = 2001:db8:200::/48
                 mode = tunnel
-                esp_proposals = aes256gcm128-prfsha256-ecp256
-                start_action = start
+                esp_proposals = aes256gcm128-ecp256
             }
         }
 
@@ -127,27 +129,28 @@ swanctl --list-certs
 #   validity:  not before Mar 20 00:00:00 2026, not after Mar 20 00:00:00 2027
 
 # List CA certificates
-swanctl --list-certs --ca
+swanctl --list-certs --type x509 --flag ca
 
 # Initiate tunnel
-swanctl --initiate conn:gw1-to-gw2
+swanctl --initiate --child site-tunnel
 ```
 
 ## Certificate Revocation
 
 ```bash
-# Generate Certificate Revocation List (CRL)
-# When a certificate is compromised, revoke it:
-openssl ca -revoke /etc/ssl/certs/compromised-gw.cert.pem \
-    -keyfile /etc/swanctl/private/ca.key.pem \
-    -cert /etc/swanctl/x509ca/ca.cert.pem
+# Generate a CRL containing the compromised certificate
+pki --signcrl \
+    --cacert /etc/swanctl/x509ca/ca.cert.pem \
+    --cakey /etc/swanctl/private/ca.key.pem \
+    --reason key-compromise \
+    --cert /etc/swanctl/x509/compromised-gw.cert.pem \
+    --outform pem \
+    > /etc/swanctl/x509crl/vpn-ca.crl.pem
 
-# Generate updated CRL
-openssl ca -gencrl -out /etc/swanctl/crl/vpn-ca.crl.pem \
-    -keyfile /etc/swanctl/private/ca.key.pem \
-    -cert /etc/swanctl/x509ca/ca.cert.pem
+# Reload credentials so the updated CRL is used
+swanctl --load-creds
 
-# strongSwan automatically checks CRL if present in /etc/swanctl/crl/
+# strongSwan checks CRLs loaded from /etc/swanctl/x509crl/ during certificate validation
 ```
 
 ## Certificate Rotation
@@ -156,16 +159,21 @@ openssl ca -gencrl -out /etc/swanctl/crl/vpn-ca.crl.pem \
 # 30 days before expiry, generate new cert:
 pki --gen --type rsa --size 2048 --outform pem > /etc/swanctl/private/gw1-new.key.pem
 pki --req --type rsa --in /etc/swanctl/private/gw1-new.key.pem \
-    --dn "CN=gw1.example.com" --san "gw1.example.com" --san "2001:db8:gw1::1" \
+    --dn "C=US, O=Corp VPN, CN=gw1.example.com" --san "gw1.example.com" --san "2001:db8:1::1" \
     --outform pem > /tmp/gw1-new.req.pem
-pki --issue --lifetime 365 --cacert ca.cert.pem --cakey ca.key.pem \
+pki --issue --lifetime 365 \
+    --cacert /etc/swanctl/x509ca/ca.cert.pem \
+    --cakey /etc/swanctl/private/ca.key.pem \
     --in /tmp/gw1-new.req.pem --type pkcs10 \
+    --flag serverAuth --flag ikeIntermediate \
     --outform pem > /etc/swanctl/x509/gw1-new.cert.pem
 
 # Update swanctl.conf to reference new cert
-# Reload without disruption
-swanctl --load-creds
-swanctl --initiate conn:gw1-to-gw2   # Rekeys with new cert
+# Reload credentials and connection config
+swanctl --load-all
+# Rekeying does not reauthenticate, so re-establish the IKE SA to use the new cert immediately
+swanctl --terminate --ike gw1-to-gw2
+swanctl --initiate --child site-tunnel
 ```
 
 ## Advantages Over PSK
@@ -180,4 +188,4 @@ swanctl --initiate conn:gw1-to-gw2   # Rekeys with new cert
 
 ## Summary
 
-Certificate-based IPv6 IPsec uses strongSwan's `pki` tool to create a CA, generate per-gateway certificates with IPv6 Subject Alternative Names, and configure `auth = pubkey` with `certs =` in swanctl.conf. Distribute only certificates and the CA cert - never private keys. strongSwan validates certificates against the CA in `/etc/swanctl/x509ca/` and checks CRLs if present. For large deployments, integrate with an enterprise CA (Active Directory, Vault) and use SCEP or EST for automated certificate enrollment.
+Certificate-based IPv6 IPsec uses strongSwan's `pki` tool to create a CA, generate per-gateway certificates with IPv6 Subject Alternative Names, and configure `auth = pubkey` with `certs =` in swanctl.conf. Distribute only certificates and the CA cert - never private keys. strongSwan validates certificates against the CA in `/etc/swanctl/x509ca/` and checks CRLs loaded from `/etc/swanctl/x509crl/`. For large deployments, integrate with an enterprise CA (Active Directory, Vault) and use SCEP or EST for automated certificate enrollment.
