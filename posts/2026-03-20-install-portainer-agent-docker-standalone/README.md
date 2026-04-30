@@ -29,8 +29,6 @@ docker run -d \
 
 ```yaml
 # docker-compose.yml
-version: "3.8"
-
 services:
   portainer_agent:
     image: portainer/agent:latest
@@ -58,19 +56,19 @@ TOKEN=$(curl -s -X POST \
 curl -X POST \
   https://portainer.example.com:9443/api/endpoints \
   -H "Authorization: Bearer $TOKEN" \
-  -H "Content-Type: application/json" \
-  -d '{
-    "Name": "docker-host-01",
-    "EndpointCreationType": 2,
-    "URL": "tcp://192.168.1.50:9001",
-    "GroupID": 1
-  }' \
+  --form "Name=docker-host-01" \
+  --form "EndpointCreationType=2" \
+  --form "URL=192.168.1.50:9001" \
+  --form "TLS=true" \
+  --form "TLSSkipVerify=true" \
+  --form "TLSSkipClientVerify=true" \
+  --form "GroupID=1" \
   --insecure
 ```
 
 ## Secure with Agent Secret
 
-For additional security, configure a shared secret between the agent and server:
+For additional security, if your Portainer Server is configured with `AGENT_SECRET`, configure the same shared secret on the agent:
 
 ```bash
 # Agent with secret
@@ -84,17 +82,17 @@ docker run -d \
   portainer/agent:latest
 ```
 
-When adding the environment in Portainer, enter the same secret in the **Agent secret** field.
+Set the same `AGENT_SECRET` value on the Portainer Server container as well.
 
 ## Verify the Agent is Running
 
 ```bash
-# Check agent container health
+# Check agent container status
 docker ps --filter name=portainer_agent
 docker logs portainer_agent 2>&1 | tail -10
 
-# Test agent port is accessible (run from Portainer server)
-nc -zv 192.168.1.50 9001
+# Test the agent endpoint is reachable (run from Portainer server)
+curl -sk -o /dev/null -w "%{http_code}\n" https://192.168.1.50:9001/ping
 ```
 
 ---
