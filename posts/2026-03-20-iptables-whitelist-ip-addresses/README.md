@@ -8,6 +8,8 @@ Description: Create iptables allowlists to restrict access to services from spec
 
 Whitelisting - allowing only known trusted IPs - is the most restrictive and secure approach to access control. For sensitive services like SSH, admin interfaces, and databases, only accepting connections from specific IPs dramatically reduces attack surface.
 
+These examples use IPv4 with `iptables`; if your host also has IPv6 enabled, apply equivalent rules with `ip6tables` or IPv6 traffic will not be filtered by these rules.
+
 ## Whitelist a Single IP for SSH
 
 ```bash
