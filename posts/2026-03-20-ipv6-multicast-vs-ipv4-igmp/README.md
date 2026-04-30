@@ -18,32 +18,33 @@ MLD is essentially IGMP redesigned as part of ICMPv6 with IPv6 address support.
 
 | Feature | IPv4 IGMP | IPv6 MLD |
 |---|---|---|
-| RFC | RFC 3376 (IGMPv3) | RFC 3810 (MLDv2) |
+| RFC | RFC 9776 (IGMPv3) | RFC 9777 (MLDv2) |
 | Part of | Standalone IP protocol | ICMPv6 (type 130-132, 143) |
 | IP version | IPv4 only | IPv6 only |
 | Message transport | IPv4 with Router Alert option | IPv6 with Hop-by-Hop Router Alert |
 | Group address range | 224.0.0.0/4 | ff00::/8 |
-| ASM range | 224.0.0.0/4 | ff0x::/16 |
-| SSM range | 232.0.0.0/8 | ff3x::/32 |
-| Link-local range | 224.0.0.0/24 | ff02::/16 |
+| ASM range | Any multicast group outside 232.0.0.0/8 | Any multicast group outside ff3x::/32 |
+| SSM range | 232.0.0.0/8 | ff3x::/32 (allocated today from ff3x::/96) |
+| Link-local range | 224.0.0.0/24 | Scope value 0x2 in the multicast address |
 | Source-specific (v3/v2) | IGMPv3 | MLDv2 |
 
 ## Address Range Differences
 
 IPv4 multicast uses Class D addresses (224.0.0.0/4):
 ```text
-224.0.0.0/24     - Link-local (routers don't forward)
-224.0.1.0-238.255.255.255  - Global multicast
+224.0.0.0/24     - Local Network Control Block (routers don't forward)
+224.0.1.0-231.255.255.255, 233.0.0.0-238.255.255.255  - non-SSM multicast space
 232.0.0.0/8      - SSM range
-239.0.0.0/8      - Organization-local (similar to IPv6 site-local)
+239.0.0.0/8      - Administratively scoped multicast
+239.192.0.0/14   - Organization-local scope
 ```
 
 IPv6 multicast uses the ff00::/8 prefix with embedded scope:
 ```text
-ff02::/16        - Link-local (routers don't forward)
-ff05::/16        - Site-local
-ff0e::/16        - Global multicast
-ff3e::/32        - SSM (global scope)
+Scope 0x2        - Link-local multicast scope (for example, ff02::1)
+Scope 0x5        - Site-local multicast scope
+Scope 0xE        - Global multicast scope
+ff3x::/32        - SSM range (allocated today from ff3x::/96)
 ```
 
 ## Key Protocol Differences
@@ -60,19 +61,19 @@ IPv4 Header (proto=2) | IGMP Message
 IPv6 Header | Hop-by-Hop Options (Router Alert) | ICMPv6 (MLD Message)
 ```
 
-The Hop-by-Hop extension header is mandatory for all MLD messages, ensuring routers on the path process the MLD packet even if they're not the IPv6 destination.
+The Hop-by-Hop extension header is mandatory for all MLD messages, ensuring on-link multicast routers examine the MLD packet even if they are not the IPv6 destination.
 
-### 2. Link-Local Source Address Required
+### 2. Link-Local Source Address Requirement
 
 **IGMP**: Uses the interface's IPv4 address as source.
 
-**MLD**: Must use a link-local IPv6 address as source (RFC 3590). This is why MLD works even before an interface gets a global IPv6 address - link-local addresses are always available.
+**MLD**: Normally uses a link-local IPv6 address as source. MLDv2 Reports may use the unspecified address (`::`) before a valid link-local address is available (RFC 3590 / RFC 9777). This is why MLD works even before an interface gets a global IPv6 address.
 
 ```bash
-# Verify MLD reports use link-local source
+# Verify MLDv2 Reports and inspect their source address
 
-tcpdump -i eth0 -n 'icmp6 and ip6[40] == 143' | grep 'fe80'
-# Source should always be a fe80:: address
+tcpdump -i eth0 -n -vv 'ip6 protochain 58 and ip6[48] == 143'
+# Source is usually fe80::/10; during DAD it may be ::
 ```
 
 ### 3. Report Suppression
@@ -83,19 +84,18 @@ tcpdump -i eth0 -n 'icmp6 and ip6[40] == 143' | grep 'fe80'
 
 ### 4. Scope Awareness
 
-**IGMP**: Uses TTL to limit forwarding scope (local-scope groups use TTL=1).
+**IGMP**: IPv4 scope is primarily conveyed by the multicast destination range (for example, 224.0.0.0/24 is never forwarded and 239.0.0.0/8 is administratively scoped). TTL thresholds have also historically been used to limit multicast reach.
 
-**MLD**: Uses the scope field embedded in the multicast address (ff0**2**::/16 = link-local, ff0**5**::/16 = site-local). Routers make forwarding decisions based on the address itself, not packet headers.
+**MLD**: Uses the scope field embedded in the multicast address (scope 0x2 = link-local, scope 0x5 = site-local). Routers make forwarding decisions based on the address itself, not packet headers.
 
 ## Configuring Both in a Dual-Stack Environment
 
 For dual-stack networks, you need both IGMP and MLD:
 
 ```bash
-# Verify both are running on Linux
-# IGMP state
-cat /proc/net/igmp6    # This is actually the IPv6 multicast socket table
-cat /proc/net/igmp     # IPv4 IGMP table
+# Inspect both on Linux
+cat /proc/net/igmp6    # IPv6 multicast groups joined by this host
+cat /proc/net/igmp     # IPv4 IGMP state
 
 # IPv4 multicast groups
 ip maddr show
@@ -108,11 +108,11 @@ ip -6 maddr show
 | Routing Feature | IPv4 | IPv6 |
 |---|---|---|
 | Dense Mode | PIM-DM | PIM-DM (same RFC) |
-| Sparse Mode | PIM-SM | PIM-SM (RFC 7761) |
+| Sparse Mode | PIM-SM (RFC 7761) | PIM-SM (RFC 7761) |
 | Source-Specific | PIM-SSM | PIM-SSM (same concept) |
-| MSDP for RP sync | Yes | Not needed (Embedded RP) |
-| Embedded RP | No | Yes (RFC 3956) |
+| MSDP for RP sync | Yes | No standardized IPv6 equivalent |
+| Embedded RP | No | Optional ASM mechanism (RFC 3956) |
 
 ## Summary
 
-IPv6 MLD and IPv4 IGMP serve the same purpose (multicast group management) but have design differences: MLD is part of ICMPv6 (requires Hop-by-Hop extension header), uses link-local source addresses, supports scope via address embedding, and has no report suppression. IPv6's Embedded RP feature eliminates one of PIM-SM's biggest operational challenges. For new deployments, IPv6 multicast with MLDv2 and PIM-SSM is the recommended approach.
+IPv6 MLD and IPv4 IGMP serve the same purpose (multicast group management) but have design differences: MLD is part of ICMPv6 (requires Hop-by-Hop extension header), normally uses link-local source addresses, supports scope via address embedding, and has no report suppression in MLDv2. IPv6 also has an optional Embedded RP mechanism for some ASM deployments. For source-specific deployments, MLDv2 with PIM-SSM is the relevant standards-based combination.
