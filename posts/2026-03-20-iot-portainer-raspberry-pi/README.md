@@ -40,7 +40,6 @@ services:
     container_name: mosquitto
     ports:
       - "1883:1883"    # MQTT
-      - "8883:8883"    # MQTT over TLS
       - "9001:9001"    # MQTT over WebSockets
     volumes:
       - mosquitto_config:/mosquitto/config
@@ -88,7 +87,7 @@ services:
       - "3000:3000"
     environment:
       - GF_SECURITY_ADMIN_PASSWORD=grafana_password
-      - GF_INSTALL_PLUGINS=grafana-clock-panel,grafana-worldmap-panel
+      - GF_PLUGINS_PREINSTALL=grafana-clock-panel
     volumes:
       - grafana_data:/var/lib/grafana
     depends_on:
@@ -140,7 +139,7 @@ docker restart mosquitto
 
 ## Step 3: Configure Node-RED for MQTT
 
-Access Node-RED at `http://<pi-ip>:1880` and create an MQTT flow:
+Access Node-RED at `http://<pi-ip>:1880`, install `node-red-contrib-influxdb` from **Menu** → **Manage palette** → **Install**, and create an MQTT flow:
 
 1. Drag an **mqtt in** node onto the canvas
 2. Double-click it and set:
@@ -152,13 +151,19 @@ Access Node-RED at `http://<pi-ip>:1880` and create an MQTT flow:
 ```javascript
 // Parse sensor data
 const payload = JSON.parse(msg.payload);
-msg.measurement = "temperature";
-msg.tags = { device: payload.device_id };
-msg.fields = { value: payload.temperature };
+msg.payload = [
+  {
+    temperature: payload.temperature,
+    humidity: payload.humidity
+  },
+  {
+    device: payload.device_id
+  }
+];
 return msg;
 ```
 
-4. Add an **influxdb out** node to write to InfluxDB
+4. Add an **influxdb out** node to write to InfluxDB and set its measurement to `environment`
 5. Deploy the flow
 
 ## Step 4: Configure Grafana Dashboard
@@ -167,8 +172,10 @@ Access Grafana at `http://<pi-ip>:3000`:
 
 1. Add InfluxDB data source:
    - URL: `http://influxdb:8086`
+   - Query language: `Flux`
    - Organization: `homelab`
-   - Token: (get from InfluxDB UI)
+   - Default Bucket: `iot_sensors`
+   - Token: (create or copy an API token from the InfluxDB UI)
 
 2. Create a dashboard with time-series panels for your sensors
 
@@ -192,15 +199,14 @@ mosquitto_pub \
 
 ## Step 6: Add Hardware Sensors
 
-For real sensors connected to Pi's GPIO:
+For real sensors connected to the Pi's I2C bus:
 
 ```yaml
 # Add to your iot-platform stack
 services:
-  # Container with GPIO access for sensor reading
+  # Container with I2C access for sensor reading
   sensor-reader:
     image: python:3.11-slim
-    privileged: true          # Required for GPIO access
     devices:
       - /dev/i2c-1:/dev/i2c-1  # I2C bus for sensors
     volumes:
