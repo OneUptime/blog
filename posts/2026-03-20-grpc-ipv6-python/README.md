@@ -54,11 +54,11 @@ import hello_pb2_grpc
 
 class GreeterServicer(hello_pb2_grpc.GreeterServicer):
     def SayHello(self, request, context):
-        # Get client's IPv6 address from context
+        # Get the client's peer string from context
         peer = context.peer()
         print(f"Request from: {peer}")
         return hello_pb2.HelloReply(
-            message=f"Hello, {request.name}! (your IP: {peer})"
+            message=f"Hello, {request.name}! (peer: {peer})"
         )
 
 def serve():
@@ -82,6 +82,7 @@ if __name__ == "__main__":
 
 ```python
 import grpc
+from concurrent import futures
 
 def serve_with_tls():
     # Load TLS credentials
@@ -98,10 +99,10 @@ def serve_with_tls():
     hello_pb2_grpc.add_GreeterServicer_to_server(GreeterServicer(), server)
 
     # Add TLS port on IPv6
-    server.add_secure_port("[::]:443", server_credentials)
+    server.add_secure_port("[::]:50052", server_credentials)
 
     server.start()
-    print("Secure gRPC server on [::]:443")
+    print("Secure gRPC server on [::]:50052")
     server.wait_for_termination()
 ```
 
@@ -114,8 +115,8 @@ import hello_pb2
 import hello_pb2_grpc
 
 def run():
-    # Connect to IPv6 gRPC server using [addr]:port format
-    ipv6_target = "[2001:db8::1]:50051"
+    # Connect to a local IPv6 gRPC server using [addr]:port format
+    ipv6_target = "[::1]:50051"
 
     with grpc.insecure_channel(ipv6_target) as channel:
         stub = hello_pb2_grpc.GreeterStub(channel)
@@ -161,32 +162,47 @@ if __name__ == "__main__":
 ## Step 6: Extract Client IPv6 Address in Interceptor
 
 ```python
+import grpc
+import hello_pb2
+import hello_pb2_grpc
+from urllib.parse import unquote, urlsplit
+
 class IPv6LoggingInterceptor(grpc.ServerInterceptor):
     def intercept_service(self, continuation, handler_call_details):
-        # Log the peer IPv6 address
-        peer = handler_call_details.invocation_metadata
-        print(f"Incoming connection metadata: {peer}")
-        return continuation(handler_call_details)
+        # invocation_metadata contains request metadata, not the peer address
+        handler = continuation(handler_call_details)
+        if handler is None or handler.unary_unary is None:
+            return handler
 
+        def logging_behavior(request, context):
+            peer = unquote(context.peer())
+            if peer.startswith("ipv6:"):
+                print(f"Incoming IPv6 peer: {peer}")
+            return handler.unary_unary(request, context)
+
+        return grpc.unary_unary_rpc_method_handler(
+            logging_behavior,
+            request_deserializer=handler.request_deserializer,
+            response_serializer=handler.response_serializer,
+        )
+
+# Register it with grpc.server(..., interceptors=[IPv6LoggingInterceptor()])
 # For per-call context:
 class GreeterServicer(hello_pb2_grpc.GreeterServicer):
     def SayHello(self, request, context):
-        # context.peer() returns "ipv6:[2001:db8::1]:12345"
-        peer_address = context.peer()
-        # Parse out the IPv6 address
-        if peer_address.startswith("ipv6:"):
-            # Format: ipv6:[addr]:port
-            addr_part = peer_address[5:]  # Remove "ipv6:"
-            ip = addr_part.rsplit(":", 1)[0].strip("[]")
-            print(f"Client IPv6: {ip}")
+        peer = unquote(context.peer())
+        if peer.startswith("ipv6:"):
+            parsed = urlsplit(f"//{peer[5:]}")
+            print(f"Client IPv6: {parsed.hostname}")
         return hello_pb2.HelloReply(message="Hello!")
 ```
 
 ## Testing
 
 ```bash
-# Test with grpcurl
-grpcurl -plaintext '[2001:db8::1]:50051' helloworld.Greeter/SayHello
+# Test with grpcurl using the proto file from Step 1
+grpcurl -plaintext -import-path . -proto hello.proto \
+  -d '{"name":"World"}' '[::1]:50051' helloworld.Greeter/SayHello
 
 # Or with Python test client
 python client.py
@@ -194,8 +210,8 @@ python client.py
 
 ## Monitoring with OneUptime
 
-Use [OneUptime](https://oneuptime.com) to monitor your Python gRPC service availability over IPv6. Configure TCP monitors on port 50051 at the IPv6 address and set up health check monitors using the gRPC health protocol.
+Use [OneUptime](https://oneuptime.com) to monitor your Python gRPC service availability over IPv6. Configure TCP monitors on port 50051 at the IPv6 address, and if your service exposes the standard gRPC health service, monitor that separately as well.
 
 ## Conclusion
 
-Python gRPC servers bind to IPv6 using `[::]:port` as the address string. Clients connect using `[ipv6addr]:port`. Access client IPv6 addresses via `context.peer()` which returns the address in `ipv6:[addr]:port` format. All Python gRPC features work seamlessly with IPv6.
+Python gRPC servers bind to IPv6 using `[::]:port` as the address string. Clients connect using `[ipv6addr]:port`. Access client peer information via `context.peer()`, which returns a runtime-defined peer string; for IPv6 clients, current `grpcio` uses an `ipv6:` peer URI. The same Python gRPC server, TLS, and asyncio APIs work with IPv6 endpoints.
