@@ -15,12 +15,21 @@ terraform {
   required_providers {
     google = {
       source  = "hashicorp/google"
-      version = "~> 5.0"
+      version = "~> 7.0"
+    }
+    google-beta = {
+      source  = "hashicorp/google-beta"
+      version = "~> 7.0"
     }
   }
 }
 
 provider "google" {
+  project = var.project_id
+  region  = var.region
+}
+
+provider "google-beta" {
   project = var.project_id
   region  = var.region
 }
@@ -52,7 +61,11 @@ resource "google_api_gateway_api" "main" {
   api_id   = "${var.service_name}-api"
   project  = var.project_id
 
-  depends_on = [google_project_service.apigateway]
+  depends_on = [
+    google_project_service.apigateway,
+    google_project_service.servicemanagement,
+    google_project_service.servicecontrol,
+  ]
 }
 
 # API configuration with OpenAPI spec
@@ -64,10 +77,11 @@ resource "google_api_gateway_api_config" "main" {
 
   openapi_documents {
     document {
-      path     = "spec.yaml"
+      path     = "api-spec.yaml"
       contents = base64encode(templatefile("${path.module}/api-spec.yaml", {
+        service_name  = var.service_name
         cloud_run_url = google_cloud_run_v2_service.api.uri
-        project_id    = var.project_id
+        api_audience  = var.api_audience
       }))
     }
   }
@@ -81,6 +95,8 @@ resource "google_api_gateway_api_config" "main" {
   lifecycle {
     create_before_destroy = true
   }
+
+  depends_on = [google_cloud_run_v2_service_iam_member.gateway_invoker]
 }
 
 # Gateway deployment
@@ -99,49 +115,38 @@ resource "google_api_gateway_gateway" "main" {
 
 The OpenAPI spec file (`api-spec.yaml`) defines routes and authentication:
 
-```hcl
-resource "local_file" "api_spec" {
-  filename = "${path.module}/api-spec.yaml"
+```yaml
+swagger: "2.0"
+info:
+  title: "${service_name} API"
+  version: "1.0"
+schemes:
+  - "https"
+produces:
+  - "application/json"
 
-  content = yamlencode({
-    swagger = "2.0"
-    info = {
-      title   = "${var.service_name} API"
-      version = "1.0"
-    }
-    host     = "${var.service_name}-gateway-${var.project_id}.uc.gateway.dev"
-    schemes  = ["https"]
-    produces = ["application/json"]
+# Google Authentication
+securityDefinitions:
+  google_id_token:
+    authorizationUrl: ""
+    flow: "implicit"
+    type: "oauth2"
+    x-google-issuer: "https://accounts.google.com"
+    x-google-jwks_uri: "https://www.googleapis.com/oauth2/v3/certs"
+    x-google-audiences: "${api_audience}"
 
-    # Firebase/Google Authentication
-    securityDefinitions = {
-      google_id_token = {
-        authorizationUrl = ""
-        flow             = "implicit"
-        type             = "oauth2"
-        "x-google-issuer"    = "https://accounts.google.com"
-        "x-google-jwks_uri"  = "https://www.googleapis.com/oauth2/v3/certs"
-        "x-google-audiences" = var.api_audience
-      }
-    }
-
-    paths = {
-      "/users" = {
-        get = {
-          summary     = "List users"
-          operationId = "listUsers"
-          security    = [{ google_id_token = [] }]
-          "x-google-backend" = {
-            address = "${google_cloud_run_v2_service.api.uri}/users"
-          }
-          responses = {
-            "200" = { description = "Success" }
-          }
-        }
-      }
-    }
-  })
-}
+paths:
+  /users:
+    get:
+      summary: "List users"
+      operationId: "listUsers"
+      security:
+        - google_id_token: []
+      x-google-backend:
+        address: "${cloud_run_url}/users"
+      responses:
+        "200":
+          description: "Success"
 ```
 
 ## Service Account for Gateway
@@ -154,9 +159,9 @@ resource "google_service_account" "api_gateway" {
 }
 
 # Allow API Gateway to invoke Cloud Run services
-resource "google_cloud_run_service_iam_member" "gateway_invoker" {
+resource "google_cloud_run_v2_service_iam_member" "gateway_invoker" {
   location = var.region
-  service  = google_cloud_run_v2_service.api.name
+  name     = google_cloud_run_v2_service.api.name
   role     = "roles/run.invoker"
   member   = "serviceAccount:${google_service_account.api_gateway.email}"
 }
@@ -201,13 +206,21 @@ resource "google_monitoring_alert_policy" "gateway_error_rate" {
     condition_threshold {
       filter = <<-EOT
         resource.type="apigateway.googleapis.com/Gateway"
-        AND metric.type="apigateway.googleapis.com/http/response_count"
-        AND metric.labels.response_code_class != "2xx"
+        AND metric.type="apigateway.googleapis.com/proxy/request_count"
+        AND metric.labels.response_code_class = one_of("4xx", "5xx")
+      EOT
+      denominator_filter = <<-EOT
+        resource.type="apigateway.googleapis.com/Gateway"
+        AND metric.type="apigateway.googleapis.com/proxy/request_count"
       EOT
       comparison      = "COMPARISON_GT"
-      threshold_value = 10
+      threshold_value = 0.05
       duration        = "60s"
       aggregations {
+        alignment_period   = "60s"
+        per_series_aligner = "ALIGN_RATE"
+      }
+      denominator_aggregations {
         alignment_period   = "60s"
         per_series_aligner = "ALIGN_RATE"
       }
