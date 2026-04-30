@@ -8,11 +8,11 @@ Description: A comprehensive guide to using cloud-init in Harvester VMs for auto
 
 ## Introduction
 
-Cloud-init is the industry-standard mechanism for initial VM configuration on first boot. In Harvester, cloud-init data is passed to VMs via a virtual CD-ROM drive using the `cloudInitNoCloud` volume source. Cloud-init can configure users, SSH keys, network interfaces, install packages, run commands, write files, and much more - allowing you to create fully configured VMs without manual intervention.
+Cloud-init is the industry-standard mechanism for initial VM configuration on first boot. In Harvester, cloud-init data is passed to VMs through an ephemeral disk attached with the `cloudInitNoCloud` volume source. Cloud-init can configure users, SSH keys, network interfaces, install packages, run commands, write files, and much more - allowing you to create fully configured VMs without manual intervention.
 
 ## Cloud-Init Data Structure
 
-Cloud-init accepts two types of data:
+For NoCloud data in Harvester, you'll typically work with two types of data:
 
 1. **User Data** (`#cloud-config`): YAML configuration for system settings
 2. **Network Data**: Network interface configuration using cloud-init network schema
@@ -20,22 +20,15 @@ Cloud-init accepts two types of data:
 ## Step 1: Basic Cloud-Init Configuration
 
 ```yaml
-# Example cloud-init user data
-
-# Must start with #cloud-config
-
 #cloud-config
 
 # Set the system hostname
 hostname: web-server-01
 
-# Create users and configure authentication
+# Configure the guest user and authentication
 users:
   - name: ubuntu
-    gecos: "Ubuntu Admin"
     sudo: ALL=(ALL) NOPASSWD:ALL
-    shell: /bin/bash
-    groups: sudo, adm, docker
     ssh_authorized_keys:
       - ssh-ed25519 AAAAC3NzaC1lZDI1NTE5... admin@company.com
 
@@ -53,6 +46,7 @@ packages:
   - vim
   - htop
   - jq
+  - ufw
 
 # Ensure packages are updated on first boot
 package_update: true
@@ -84,7 +78,7 @@ metadata:
   name: web-server-01
   namespace: default
 spec:
-  running: true
+  runStrategy: Always
   template:
     spec:
       domain:
@@ -123,7 +117,6 @@ spec:
               users:
                 - name: ubuntu
                   sudo: ALL=(ALL) NOPASSWD:ALL
-                  shell: /bin/bash
                   ssh_authorized_keys:
                     - ssh-ed25519 AAAAC3NzaC1... admin@host
               packages:
@@ -154,7 +147,6 @@ stringData:
     users:
       - name: ubuntu
         sudo: ALL=(ALL) NOPASSWD:ALL
-        shell: /bin/bash
         ssh_authorized_keys:
           - ssh-ed25519 AAAAC3NzaC1... admin@host
     packages:
@@ -194,6 +186,10 @@ Reference the secret in the VM:
 
 ```yaml
 #cloud-config
+users:
+  - name: app
+    system: true
+
 write_files:
   # Write an nginx configuration
   - path: /etc/nginx/conf.d/app.conf
@@ -215,6 +211,7 @@ write_files:
   - path: /etc/app/environment
     permissions: '0600'
     owner: app:app
+    defer: true
     content: |
       APP_ENV=production
       DB_HOST=10.0.100.5
@@ -245,18 +242,27 @@ write_files:
 ```yaml
 #cloud-config
 # Install Docker and configure the daemon
+package_update: true
 packages:
-  - apt-transport-https
   - ca-certificates
   - curl
-  - gnupg
 
 runcmd:
   # Install Docker
-  - curl -fsSL https://download.docker.com/linux/ubuntu/gpg | gpg --dearmor -o /usr/share/keyrings/docker-archive-keyring.gpg
-  - echo "deb [arch=amd64 signed-by=/usr/share/keyrings/docker-archive-keyring.gpg] https://download.docker.com/linux/ubuntu $(lsb_release -cs) stable" | tee /etc/apt/sources.list.d/docker.list
+  - install -m 0755 -d /etc/apt/keyrings
+  - curl -fsSL https://download.docker.com/linux/ubuntu/gpg -o /etc/apt/keyrings/docker.asc
+  - chmod a+r /etc/apt/keyrings/docker.asc
+  - |
+    cat > /etc/apt/sources.list.d/docker.sources <<EOF
+    Types: deb
+    URIs: https://download.docker.com/linux/ubuntu
+    Suites: $(. /etc/os-release && echo "${UBUNTU_CODENAME:-$VERSION_CODENAME}")
+    Components: stable
+    Architectures: $(dpkg --print-architecture)
+    Signed-By: /etc/apt/keyrings/docker.asc
+    EOF
   - apt-get update
-  - apt-get install -y docker-ce docker-ce-cli containerd.io
+  - apt-get install -y docker-ce docker-ce-cli containerd.io docker-buildx-plugin docker-compose-plugin
   - systemctl enable --now docker
   - usermod -aG docker ubuntu
 
@@ -307,7 +313,7 @@ sudo journalctl -u cloud-init -f
 sudo cloud-init status --long
 
 # Re-run cloud-init for testing (use with caution in production)
-sudo cloud-init clean --reboot
+sudo cloud-init clean --logs --reboot
 
 # View the cloud-init output log
 sudo cat /var/log/cloud-init-output.log
@@ -319,4 +325,4 @@ sudo cloud-init status
 
 ## Conclusion
 
-Cloud-init is the most powerful tool for automating VM configuration in Harvester. By embedding your configuration, package installation, and initialization scripts in cloud-init data, you create truly immutable, reproducible VMs that are fully configured from the first boot. Store sensitive cloud-init data in Kubernetes Secrets, use YAML anchors for reusable configuration blocks, and always validate your cloud-init syntax before deploying to production. A well-crafted cloud-init configuration eliminates hours of manual VM setup work.
+Cloud-init is the most powerful tool for automating VM configuration in Harvester. By embedding your configuration, package installation, and initialization scripts in cloud-init data, you create repeatable, reproducible VM provisioning workflows that configure guests from the first boot. Store sensitive cloud-init data in Kubernetes Secrets, use YAML anchors for reusable configuration blocks, and always validate your cloud-init syntax before deploying to production. A well-crafted cloud-init configuration eliminates hours of manual VM setup work.
