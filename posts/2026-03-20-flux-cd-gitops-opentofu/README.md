@@ -8,7 +8,7 @@ Description: Learn how to install Flux CD on Kubernetes using OpenTofu and confi
 
 ---
 
-Flux CD continuously syncs Kubernetes cluster state with Git repositories. OpenTofu provisions the cluster and bootstraps Flux, then Flux takes over to manage application deployments, Helm releases, and configuration changes from Git.
+Flux CD continuously syncs Kubernetes cluster state with Git repositories. OpenTofu provisions the cluster and installs Flux. After the Flux controllers and CRDs are available, Flux takes over to manage application deployments, Helm releases, and configuration changes from Git.
 
 ## Flux GitOps Model
 
@@ -31,7 +31,7 @@ resource "helm_release" "flux" {
   name             = "flux2"
   repository       = "https://fluxcd-community.github.io/helm-charts"
   chart            = "flux2"
-  version          = "2.12.4"
+  version          = "2.18.3"
   namespace        = "flux-system"
   create_namespace = true
 
@@ -59,6 +59,8 @@ resource "helm_release" "flux" {
   ]
 }
 ```
+
+Apply the `helm_release.flux` resource first, then run OpenTofu again to create the Flux custom resources. The `kubernetes_manifest` resource validates CRD schemas during planning, so the Flux CRDs must already exist in the cluster before these resources can be planned successfully.
 
 ## GitRepository Source
 
@@ -99,8 +101,7 @@ resource "kubernetes_manifest" "app_helm_release" {
       interval = "10m"
       chart = {
         spec = {
-          chart   = var.app_name
-          version = ">=1.0.0"
+          chart = "./charts/${var.app_name}"
           sourceRef = {
             kind      = "GitRepository"
             name      = "app-configs"
@@ -114,7 +115,14 @@ resource "kubernetes_manifest" "app_helm_release" {
         image = { tag = var.app_version }
         environment = var.environment
       }
-      # Rollback on failure
+      # Roll back failed upgrades
+      upgrade = {
+        remediation = {
+          retries             = 1
+          remediateLastFailure = true
+          strategy            = "rollback"
+        }
+      }
       rollback = {
         timeout       = "5m"
         cleanupOnFail = true
@@ -168,8 +176,9 @@ resource "kubernetes_manifest" "flux_provider" {
     }
     spec = {
       type      = "slack"
-      channel   = "#deployments-${var.environment}"
-      secretRef = { name = "slack-webhook" }
+      channel   = "deployments-${var.environment}"
+      address   = "https://slack.com/api/chat.postMessage"
+      secretRef = { name = "slack-token" }
     }
   }
 }
@@ -185,7 +194,7 @@ resource "kubernetes_manifest" "flux_alert" {
     spec = {
       eventSeverity = "info"
       eventSources = [
-        { kind = "HelmRelease", name = "*" }
+        { kind = "HelmRelease", name = "*", namespace = var.app_namespace }
         { kind = "Kustomization", name = "*" }
       ]
       providerRef = { name = "slack" }
@@ -196,8 +205,8 @@ resource "kubernetes_manifest" "flux_alert" {
 
 ## Best Practices
 
-- Use `interval: 1m` for GitRepository polling in non-production and `1m` for production to balance responsiveness with API rate limits.
+- Use `interval: 1m` for GitRepository polling when minute-level sync is acceptable, and pair it with webhook receivers in production when you need lower-latency reconciliations.
 - Enable `prune: true` on Kustomizations to automatically delete resources removed from Git.
-- Configure rollback on HelmRelease failures - this prevents broken releases from staying deployed indefinitely.
+- Configure HelmRelease upgrade remediation with rollback - this restores the last known good release instead of leaving failed upgrades in place.
 - Wire Flux notifications to Slack or GitHub commit status - teams need to know when deployments succeed or fail.
 - Use GitHub webhook receivers instead of polling for faster deployments in production - webhooks trigger reconciliation immediately on push.
