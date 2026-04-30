@@ -8,7 +8,7 @@ Description: Learn how to provision and configure Kubernetes ingress controllers
 
 ## What is an Ingress Controller?
 
-A Kubernetes Ingress controller is a component that manages external access to services in a cluster. It reads Ingress resource definitions and configures a load balancer or reverse proxy accordingly. Popular ingress controllers include NGINX, Traefik, and AWS ALB Ingress Controller.
+A Kubernetes Ingress controller is a component that manages external access to services in a cluster. It reads Ingress resource definitions and configures a load balancer or reverse proxy accordingly. Popular ingress controllers include NGINX, Traefik, and the AWS Load Balancer Controller.
 
 OpenTofu (the open-source Terraform fork) can provision both the controller infrastructure and the Kubernetes resources.
 
@@ -24,6 +24,8 @@ ingress/
 
 ## Installing NGINX Ingress Controller via Helm
 
+ingress-nginx remains installable, but the project entered retirement after March 2026 and no longer receives new releases or security fixes.
+
 ```hcl
 resource "helm_release" "nginx_ingress" {
   name             = "nginx-ingress"
@@ -31,7 +33,7 @@ resource "helm_release" "nginx_ingress" {
   chart            = "ingress-nginx"
   namespace        = "ingress-nginx"
   create_namespace = true
-  version          = "4.9.1"
+  version          = "4.15.1"
 
   set {
     name  = "controller.service.type"
@@ -71,12 +73,13 @@ resource "kubernetes_ingress_v1" "app_ingress" {
     name      = "app-ingress"
     namespace = "default"
     annotations = {
-      "kubernetes.io/ingress.class"                = "nginx"
       "nginx.ingress.kubernetes.io/rewrite-target" = "/"
     }
   }
 
   spec {
+    ingress_class_name = "nginx"
+
     rule {
       host = "app.example.com"
       http {
@@ -101,14 +104,17 @@ resource "kubernetes_ingress_v1" "app_ingress" {
 }
 ```
 
-## AWS ALB Ingress Controller
+## AWS Load Balancer Controller
+
+This example assumes you have already created the IAM policy, IAM role, and `aws-load-balancer-controller` ServiceAccount required by the controller installation guide.
 
 ```hcl
-resource "helm_release" "aws_alb_controller" {
+resource "helm_release" "aws_load_balancer_controller" {
   name       = "aws-load-balancer-controller"
   repository = "https://aws.github.io/eks-charts"
   chart      = "aws-load-balancer-controller"
   namespace  = "kube-system"
+  version    = "3.2.2"
 
   set {
     name  = "clusterName"
@@ -132,13 +138,14 @@ resource "helm_release" "aws_alb_controller" {
 ```hcl
 resource "helm_release" "cert_manager" {
   name             = "cert-manager"
-  repository       = "https://charts.jetstack.io"
+  repository       = "oci://quay.io/jetstack/charts"
   chart            = "cert-manager"
   namespace        = "cert-manager"
   create_namespace = true
+  version          = "v1.20.2"
 
   set {
-    name  = "installCRDs"
+    name  = "crds.enabled"
     value = "true"
   }
 }
