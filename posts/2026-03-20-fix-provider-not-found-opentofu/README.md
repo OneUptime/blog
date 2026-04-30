@@ -12,7 +12,7 @@ The "Error: Provider Not Found" error means OpenTofu cannot locate the provider 
 
 ## Common Error Messages
 
-```hcl
+```text
 Error: Required providers are not installed
   The following providers are required by this configuration but are not installed:
   - hashicorp/aws
@@ -26,15 +26,15 @@ Error: Provider "registry.opentofu.org/hashicorp/random" not found
 
 ## Fix 1: Run tofu init
 
-The most common cause is simply that `tofu init` has not been run (or was run with Terraform and the `.terraform` directory contains Terraform provider binaries):
+The most common cause is simply that `tofu init` has not been run yet, or the working directory still has a stale `.terraform` directory from an earlier initialization:
 
 ```bash
 # Download all required providers
 
 tofu init
 
-# If .terraform exists from a Terraform run, clear it first
-rm -rf .terraform .terraform.lock.hcl
+# If .terraform exists from a previous run, clear it first
+rm -rf .terraform
 tofu init
 ```
 
@@ -65,14 +65,14 @@ terraform {
 
 ## Fix 3: Network / Firewall Issues
 
-If the registry is unreachable, set up a local mirror or use environment variables:
+If the registry is unreachable, test connectivity and set up a local mirror:
 
 ```bash
 # Test registry connectivity
-curl -I https://registry.opentofu.org/v1/providers/hashicorp/aws/versions
+curl -sSf https://registry.opentofu.org/v1/providers/hashicorp/aws/versions >/dev/null
 
-# If blocked, configure a mirror in ~/.terraformrc
-cat > ~/.terraformrc <<'EOF'
+# If blocked, configure a mirror in ~/.tofurc
+cat > ~/.tofurc <<'EOF'
 provider_installation {
   network_mirror {
     url     = "https://your-internal-mirror.example.com/providers/"
@@ -84,7 +84,7 @@ EOF
 
 ## Fix 4: Missing Provider in required_providers
 
-If a resource uses a provider that is not declared in `required_providers`, OpenTofu may not download it:
+If a provider is not declared in `required_providers`, OpenTofu falls back to an implied source address of `hashicorp/<LOCAL NAME>`, which can install the wrong provider or fail for third-party providers:
 
 ```hcl
 # Always declare all providers explicitly
@@ -114,13 +114,14 @@ rm -rf ~/.terraform.d/plugin-cache
 tofu init
 
 # Or specify a fresh cache directory
+mkdir -p /tmp/tofu-cache
 export TF_PLUGIN_CACHE_DIR=/tmp/tofu-cache
 tofu init
 ```
 
 ## Fix 6: Lock File Conflicts
 
-If the lock file references a version that no longer exists or was built for a different platform:
+If the lock file's selected version or recorded checksums no longer match what `tofu init` is trying to install:
 
 ```bash
 # Delete the lock file and re-resolve
