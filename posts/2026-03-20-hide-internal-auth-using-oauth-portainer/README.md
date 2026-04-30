@@ -13,7 +13,7 @@ Once OAuth SSO is configured and working reliably, you may want to hide the inte
 ## Prerequisites
 
 - OAuth authentication configured and verified working
-- At least one local admin account as an emergency fallback
+- Access to the initial Portainer administrator account as an emergency fallback
 - Portainer Business Edition
 
 ## Enable Hide Internal Authentication
@@ -31,64 +31,62 @@ Once OAuth SSO is configured and working reliably, you may want to hide the inte
 TOKEN=$(curl -s -X POST \
   https://localhost:9443/api/auth \
   -H "Content-Type: application/json" \
-  -d '{"username":"admin","password":"yourpassword"}' \
+  -d '{"username":"your-initial-admin-username","password":"your-initial-admin-password"}' \
   --insecure | python3 -c "import sys,json; print(json.load(sys.stdin)['jwt'])")
 
-# Enable OAuth and hide the internal login form
+# Retrieve the current settings, then enable OAuth and hide the internal login form
+
+SETTINGS=$(curl -s \
+  https://localhost:9443/api/settings \
+  -H "Authorization: Bearer $TOKEN" \
+  --insecure)
+
+UPDATED_SETTINGS=$(printf '%s' "$SETTINGS" | python3 -c "
+import json, sys
+settings = json.load(sys.stdin)
+settings['AuthenticationMethod'] = 3
+settings['OAuthSettings']['HideInternalAuth'] = True
+json.dump({
+    'AuthenticationMethod': settings['AuthenticationMethod'],
+    'OAuthSettings': settings['OAuthSettings']
+}, sys.stdout)
+")
 
 curl -X PUT \
   https://localhost:9443/api/settings \
   -H "Authorization: Bearer $TOKEN" \
   -H "Content-Type: application/json" \
-  -d '{
-    "AuthenticationMethod": 3,
-    "OAuthSettings": {
-      "ClientID": "your-client-id",
-      "ClientSecret": "your-client-secret",
-      "AuthorizationURI": "https://idp.example.com/oauth/authorize",
-      "AccessTokenURI": "https://idp.example.com/oauth/token",
-      "ResourceURI": "https://idp.example.com/oauth/userinfo",
-      "RedirectURI": "https://portainer.example.com/",
-      "UserIdentifier": "email",
-      "Scopes": "openid profile email",
-      "OAuthAutoCreateUsers": true,
-      "HideInternalAuth": true
-    }
-  }' \
+  -d "$UPDATED_SETTINGS" \
   --insecure
 ```
 
 ## Emergency Access When OAuth is Hidden
 
-When `HideInternalAuth` is true, the internal login form is hidden but can be accessed via a direct URL:
+When `HideInternalAuth` is true, the internal login form is hidden but can still be accessed using Portainer's documented internal authentication URL:
 
 ```text
-https://portainer.example.com/#!/auth
+https://portainer.example.com/#!/internal-auth
 ```
 
-Some versions use a query parameter to bypass the SSO redirect:
+You can then sign in with the initial administrator user that was created during setup.
 
-```text
-https://portainer.example.com/?auth=local
-```
+## Keep the Initial Admin Account Active
 
-## Keep a Local Admin Account Active
-
-Before hiding internal authentication, ensure you have a working local admin account:
+Before hiding internal authentication, ensure the initial administrator account can still authenticate:
 
 ```bash
-# Verify local admin account exists and can authenticate
+# Verify the initial administrator account can still authenticate
 curl -s -X POST \
   https://localhost:9443/api/auth \
   -H "Content-Type: application/json" \
-  -d '{"username":"emergency-admin","password":"strongpassword123!"}' \
+  -d '{"username":"your-initial-admin-username","password":"strongpassword123!"}' \
   --insecure | python3 -c "
 import sys, json
 r = json.load(sys.stdin)
 if 'jwt' in r:
-    print('Emergency admin login: SUCCESS')
+    print('Initial admin login: SUCCESS')
 else:
-    print(f'Emergency admin login: FAILED - {r}')
+    print(f'Initial admin login: FAILED - {r}')
 "
 ```
 
@@ -97,18 +95,30 @@ else:
 After enabling `HideInternalAuth`:
 - The login page shows only the **Login with OAuth** button
 - No username/password fields are displayed
-- Users are automatically redirected to the IdP if clicking the SSO button
+- Users are redirected to the IdP when they click the SSO button
 
 ## Re-Enable Internal Authentication
 
 If you need to re-enable the internal login form:
 
 ```bash
+SETTINGS=$(curl -s \
+  https://localhost:9443/api/settings \
+  -H "Authorization: Bearer $TOKEN" \
+  --insecure)
+
+UPDATED_SETTINGS=$(printf '%s' "$SETTINGS" | python3 -c "
+import json, sys
+settings = json.load(sys.stdin)
+settings['OAuthSettings']['HideInternalAuth'] = False
+json.dump({'OAuthSettings': settings['OAuthSettings']}, sys.stdout)
+")
+
 curl -X PUT \
   https://localhost:9443/api/settings \
   -H "Authorization: Bearer $TOKEN" \
   -H "Content-Type: application/json" \
-  -d '{"OAuthSettings": {"HideInternalAuth": false}}' \
+  -d "$UPDATED_SETTINGS" \
   --insecure
 ```
 
