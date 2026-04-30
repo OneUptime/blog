@@ -8,7 +8,7 @@ Description: Enrich log records with geographic information for IPv6 addresses u
 
 ## Introduction
 
-GeoIP enrichment adds geographic context (country, city, coordinates) to IP addresses in log data. MaxMind's GeoLite2 databases support IPv6 since version 2. This guide covers enrichment at different points in the log pipeline using common tools.
+GeoIP enrichment adds geographic context (country, city, coordinates) to IP addresses in log data. MaxMind's GeoLite2 databases support IPv6 lookups. This guide covers enrichment at different points in the log pipeline using common tools.
 
 ## Step 1: Download MaxMind GeoLite2 Database
 
@@ -17,11 +17,15 @@ GeoIP enrichment adds geographic context (country, city, coordinates) to IP addr
 
 # Download GeoLite2-City database (supports IPv6)
 wget -O /tmp/GeoLite2-City.tar.gz \
-  "https://download.maxmind.com/app/geoip_download?edition_id=GeoLite2-City&license_key=YOUR_KEY&suffix=tar.gz"
+  --user=YOUR_ACCOUNT_ID --password=YOUR_LICENSE_KEY \
+  "https://download.maxmind.com/geoip/databases/GeoLite2-City/download?suffix=tar.gz"
 
 mkdir -p /etc/geoip
 tar -xzf /tmp/GeoLite2-City.tar.gz -C /tmp/
 mv /tmp/GeoLite2-City_*/GeoLite2-City.mmdb /etc/geoip/
+
+# Install the official MaxMind Python client
+python3 -m pip install geoip2
 
 # Verify the database handles IPv6
 python3 -c "
@@ -34,7 +38,9 @@ with geoip2.database.Reader('/etc/geoip/GeoLite2-City.mmdb') as r:
 
 ## Step 2: Elasticsearch Ingest Pipeline for IPv6 GeoIP
 
-```json
+`GeoLite2-City.mmdb` here refers to Elasticsearch's managed GeoIP database, or to a custom `.mmdb` copied to `$ES_CONFIG/ingest-geoip`.
+
+```http
 PUT _ingest/pipeline/geoip-ipv6-pipeline
 {
   "description": "Enrich logs with GeoIP data for IPv6 addresses",
@@ -49,20 +55,29 @@ PUT _ingest/pipeline/geoip-ipv6-pipeline
         "properties": ["continent_name", "country_iso_code", "country_name",
                        "city_name", "region_iso_code", "location"]
       }
-    },
-    {
-      "set": {
-        "if": "ctx.geoip?.location != null",
-        "field": "geoip.location.type",
-        "value": "Point"
-      }
     }
   ]
 }
 ```
 
-```bash
-# Test the pipeline with an IPv6 address
+To index `geoip.location` as a `geo_point`, define it in the destination index mapping rather than writing `geoip.location.type` into the document:
+
+```http
+PUT my-logs
+{
+  "mappings": {
+    "properties": {
+      "geoip": {
+        "properties": {
+          "location": { "type": "geo_point" }
+        }
+      }
+    }
+  }
+}
+```
+
+```http
 POST _ingest/pipeline/geoip-ipv6-pipeline/_simulate
 {
   "docs": [
@@ -102,7 +117,6 @@ class IPv6GeoIPEnricher:
                 "city": response.city.name,
                 "latitude": response.location.latitude,
                 "longitude": response.location.longitude,
-                "is_anonymous_proxy": response.traits.is_anonymous_proxy,
             }
         except geoip2.errors.AddressNotFoundError:
             return {}
@@ -118,11 +132,11 @@ class IPv6GeoIPEnricher:
         # Normalize
         ip = ip.split('%')[0].strip('[]')
 
-        # Skip private/reserved addresses
+        # Skip non-global or multicast addresses
         try:
             addr = ipaddress.ip_address(ip)
-            if addr.is_private or addr.is_loopback or addr.is_link_local:
-                record["geoip"] = {"type": "private"}
+            if not addr.is_global or addr.is_multicast:
+                record["geoip"] = {"type": "special"}
                 return record
         except ValueError:
             return record
@@ -159,16 +173,18 @@ enricher.close()
 filter {
   # First normalize the IP address
   mutate {
-    gsub => ["client_ip", "\\[", ""]
-    gsub => ["client_ip", "\\]", ""]
-    gsub => ["client_ip", "%.*$", ""]  # Strip zone ID
+    gsub => [
+      "client_ip", "\\[", "",
+      "client_ip", "\\]", "",
+      "client_ip", "%.*$", ""
+    ]  # Strip brackets and zone ID
   }
 
   geoip {
     source => "client_ip"
     target => "geoip"
     database => "/etc/geoip/GeoLite2-City.mmdb"
-    # GeoIP2 plugin handles IPv6 automatically
+    # GeoIP filter handles IPv6 automatically
   }
 }
 ```
@@ -182,12 +198,12 @@ filter {
     Match         nginx.*
     Database      /etc/geoip/GeoLite2-City.mmdb
     Lookup_key    client_ip
-    Record        country_code  ${country.iso_code}
-    Record        city          ${city.names.en}
-    Record        latitude      ${location.latitude}
-    Record        longitude     ${location.longitude}
+    Record        country_code  client_ip  %{country.iso_code}
+    Record        city          client_ip  %{city.names.en}
+    Record        latitude      client_ip  %{location.latitude}
+    Record        longitude     client_ip  %{location.longitude}
 ```
 
 ## Conclusion
 
-MaxMind GeoLite2 databases support IPv6 addresses in the same lookup calls as IPv4, making IPv6 GeoIP enrichment straightforward. Always normalize IPv6 addresses (strip zone IDs, brackets) before lookup, and skip private/link-local/loopback addresses that have no geographic meaning. Cache lookup results with `@lru_cache` or equivalent since many log entries will share the same source IPv6 address. Enrich at collection time (Logstash/Fluent Bit) rather than query time for better performance at scale.
+MaxMind GeoLite2 databases support IPv6 addresses in the same lookup calls as IPv4, making IPv6 GeoIP enrichment straightforward. Always normalize IPv6 addresses (strip zone IDs, brackets) before lookup, and skip non-global or multicast addresses that have no geographic meaning. Cache lookup results with `@lru_cache` or equivalent since many log entries will share the same source IPv6 address. Enrich at collection time (Logstash/Fluent Bit) rather than query time for better performance at scale.
