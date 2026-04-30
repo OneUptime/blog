@@ -23,12 +23,15 @@ sudo dnf install nftables -y
 
 # Verify version
 nft --version
-# nftables v0.9.x (Fenrir)
+# Example: nftables v1.x.x
 ```
 
 ## Enable the nftables Service
 
 ```bash
+# Debian/Ubuntu loads /etc/nftables.conf
+# RHEL/CentOS loads scripts referenced from /etc/sysconfig/nftables.conf
+
 # Enable nftables to start at boot
 sudo systemctl enable nftables
 
@@ -45,21 +48,23 @@ sudo systemctl status nftables
 # List all nftables rules
 sudo nft list ruleset
 
-# If empty (fresh install), output will be:
-# (empty)
+# If empty on a fresh install, no rules are currently loaded.
 
 # Check if iptables is also active
 sudo iptables -L
-# On some systems, iptables rules show nf_tables backend
+
+# Check which backend iptables uses
+sudo iptables --version
+# Example: iptables v1.8.x (nf_tables)
 ```
 
 ## nftables vs iptables Conceptual Mapping
 
-```yaml
+```text
 iptables Concept       nftables Equivalent
 --------------------   -----------------------------------------
 Table (filter, nat)    table inet/ip/ip6 <name>
-Chain (INPUT, etc.)    chain <name> { type filter hook input ... }
+Builtin chain (INPUT)  base chain with hook (e.g. chain input { type filter hook input ... })
 Rule (-A INPUT ...)    add rule <table> <chain> <expression>
 ipset                  nftables sets (built-in, no separate tool)
 Multiple tables        Unified: inet handles both IPv4 and IPv6
@@ -68,8 +73,13 @@ Multiple tables        Unified: inet handles both IPv4 and IPv6
 ## Basic nftables Configuration
 
 ```bash
-# Create a basic config file
-sudo tee /etc/nftables.conf << 'EOF'
+# Debian/Ubuntu
+NFT_CONF=/etc/nftables.conf
+
+# RHEL/CentOS
+# NFT_CONF=/etc/nftables/main.nft
+
+sudo tee "$NFT_CONF" << 'EOF'
 #!/usr/sbin/nft -f
 
 flush ruleset
@@ -87,8 +97,11 @@ table inet filter {
         # Drop invalid connections
         ct state invalid drop
 
-        # Allow ICMP (ping)
+        # Allow IPv4 ICMP (ping)
         icmp type echo-request accept
+
+        # Allow ICMPv6 neighbor discovery and ping
+        icmpv6 type { nd-neighbor-solicit, nd-router-advert, nd-neighbor-advert, echo-request } accept
 
         # Allow SSH
         tcp dport 22 accept
@@ -107,8 +120,11 @@ table inet filter {
 }
 EOF
 
+# RHEL/CentOS only, make sure /etc/sysconfig/nftables.conf includes:
+# include "/etc/nftables/main.nft"
+
 # Apply the config
-sudo nft -f /etc/nftables.conf
+sudo nft -f "$NFT_CONF"
 
 # Verify rules loaded
 sudo nft list ruleset
@@ -117,12 +133,18 @@ sudo nft list ruleset
 ## Test Before Enabling at Boot
 
 ```bash
+# Debian/Ubuntu
+NFT_CONF=/etc/nftables.conf
+
+# RHEL/CentOS
+# NFT_CONF=/etc/nftables/main.nft
+
 # Test syntax without applying
-sudo nft -c -f /etc/nftables.conf
+sudo nft -c -f "$NFT_CONF"
 # -c = check only (dry run)
 
 # Apply manually and verify connectivity
-sudo nft -f /etc/nftables.conf
+sudo nft -f "$NFT_CONF"
 ping -c 1 8.8.8.8    # Test outbound
 ssh user@server       # Test SSH (from another window)
 
@@ -134,16 +156,16 @@ sudo systemctl start nftables
 ## Relationship with iptables
 
 ```bash
-# On modern kernels, both iptables and nftables use nf_tables
-# Don't use both simultaneously - pick one
+# On many modern distributions, iptables may use the nf_tables backend
+# Avoid managing the same ruleset with both iptables and nft directly
 
-# Check which tool manages current rules
-sudo iptables -L | head -5
+# Check which backend iptables uses
+sudo iptables --version
 sudo nft list ruleset
 
 # If migrating from iptables, translate existing rules first:
 iptables-translate -A INPUT -p tcp --dport 22 -j ACCEPT
-# Output: nft add rule ip filter INPUT tcp dport 22 accept
+# Output: nft 'add rule ip filter INPUT tcp dport 22 counter accept'
 ```
 
-nftables is the future of Linux packet filtering - it's already the default on Debian 10+, RHEL 8+, and Ubuntu 20.04+, making it the right tool to learn for any new deployment.
+nftables is the future of Linux packet filtering - it is already the default packet-filtering framework on Debian 10+ and RHEL 8+, and the default `iptables` backend on Ubuntu since 20.10, making it the right tool to learn for any new deployment.
