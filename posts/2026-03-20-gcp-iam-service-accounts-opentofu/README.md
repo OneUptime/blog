@@ -12,13 +12,13 @@ GCP Service Accounts are special accounts used by applications and VMs to authen
 
 ## Service Account Types in GCP
 
-GCP has two types of service accounts: user-managed (which you create and manage) and Google-managed (created automatically for GCP services). This guide focuses on user-managed service accounts.
+GCP service accounts fall into two main categories: user-managed service accounts (which you create and manage) and service agents (which Google Cloud creates and manages). Some Google Cloud services also create default service accounts automatically; these are still user-managed service accounts. This guide focuses on user-managed service accounts.
 
 ```mermaid
 graph TD
     A[OpenTofu Config] --> B[Service Account]
     B --> C[Service Account Key<br/>for external use]
-    B --> D[Workload Identity<br/>for GKE/Cloud Run]
+    B --> D[Workload Identity Federation<br/>for GKE]
     B --> E[IAM Bindings<br/>on resources]
 ```
 
@@ -102,35 +102,22 @@ resource "google_pubsub_topic_iam_member" "events_publisher" {
 
 ## Creating Service Account Keys for External Access
 
-Keys should only be used when Workload Identity or Application Default Credentials are not available.
+Keys should only be used when you can't use Workload Identity Federation, an attached service account, or another short-lived credential flow. Also note that `google_service_account_key` stores the private key in OpenTofu state.
 
 ```hcl
 # keys.tf
-# Create a key for the service account (use sparingly - prefer Workload Identity)
+# Create a key for the service account (use sparingly - prefer keyless auth)
 resource "google_service_account_key" "app_backend_key" {
   service_account_id = google_service_account.app_backend.name
   public_key_type    = "TYPE_X509_PEM_FILE"
 }
-
-# Store the key in Secret Manager rather than in state or files
-resource "google_secret_manager_secret" "sa_key" {
-  secret_id = "app-backend-sa-key"
-
-  replication {
-    auto {}
-  }
-}
-
-resource "google_secret_manager_secret_version" "sa_key_version" {
-  secret      = google_secret_manager_secret.sa_key.id
-  # Key is base64-encoded - store as-is
-  secret_data = google_service_account_key.app_backend_key.private_key
-}
 ```
+
+Google Cloud also recommends not storing service account keys in Secret Manager or other cloud-based secret stores.
 
 ## Setting Up Workload Identity for GKE
 
-Workload Identity is the preferred way to grant GKE workloads access to GCP APIs without keys.
+If Workload Identity Federation for GKE is enabled on your cluster, you can let a Kubernetes service account impersonate an IAM service account without creating keys.
 
 ```hcl
 # workload_identity.tf
@@ -142,10 +129,12 @@ resource "google_service_account_iam_member" "workload_identity_binding" {
 }
 ```
 
+You must also annotate the Kubernetes ServiceAccount with `iam.gke.io/gcp-service-account=SERVICE_ACCOUNT_EMAIL` for this binding to work.
+
 ## Best Practices
 
-- Avoid creating service account keys unless absolutely necessary - use Workload Identity or Application Default Credentials instead.
+- Avoid creating service account keys unless absolutely necessary - use attached service accounts, Workload Identity Federation, or other short-lived credential flows instead.
 - Use descriptive `account_id` values that make the purpose obvious in audit logs.
 - Grant roles at the resource level, not project level, wherever possible.
-- Audit service accounts regularly with `gcloud iam service-accounts list` to find unused accounts.
+- Audit service accounts regularly with Policy Intelligence tools such as service account insights to find unused accounts.
 - Disable and then delete service accounts rather than deleting them immediately, in case dependent services need time to migrate.
