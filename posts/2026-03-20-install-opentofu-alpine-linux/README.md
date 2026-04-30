@@ -12,18 +12,18 @@ Alpine Linux is a security-focused, lightweight Linux distribution commonly used
 
 ## Prerequisites
 
-- Alpine Linux 3.17 or later
+- Alpine Linux 3.19 or later for the stable APK repository method
 - Root or `sudo` access
 - Internet connectivity
 
 ## Method 1: Install via APK Repository
 
-Alpine Linux provides OpenTofu through its community repository:
+On Alpine Linux 3.19 and later, OpenTofu is available through the community repository:
 
 ```bash
 # Enable the community repository if not already enabled
-
-echo "https://dl-cdn.alpinelinux.org/alpine/v$(cut -d'.' -f1,2 /etc/alpine-release)/community" >> /etc/apk/repositories
+grep -q '/community$' /etc/apk/repositories || \
+  echo "https://dl-cdn.alpinelinux.org/alpine/v$(cut -d'.' -f1,2 /etc/alpine-release)/community" >> /etc/apk/repositories
 
 # Update the package index
 apk update
@@ -37,21 +37,30 @@ apk add opentofu
 For specific versions or if the package is not in the repository:
 
 ```bash
-TOFU_VERSION="1.9.0"
+TOFU_VERSION="1.11.6"
 
 # Install required tools
 apk add curl unzip
 
+TOFU_ARCH="$(apk --print-arch)"
+case "$TOFU_ARCH" in
+  x86_64) TOFU_ARCH="amd64" ;;
+  aarch64) TOFU_ARCH="arm64" ;;
+  armv7|armhf) TOFU_ARCH="arm" ;;
+  x86) TOFU_ARCH="386" ;;
+  *) echo "Unsupported architecture: $TOFU_ARCH" >&2; exit 1 ;;
+esac
+
 # Download OpenTofu binary
-curl -LO "https://github.com/opentofu/opentofu/releases/download/v${TOFU_VERSION}/tofu_${TOFU_VERSION}_linux_amd64.zip"
+curl -LO "https://github.com/opentofu/opentofu/releases/download/v${TOFU_VERSION}/tofu_${TOFU_VERSION}_linux_${TOFU_ARCH}.zip"
 
 # Extract and install
-unzip "tofu_${TOFU_VERSION}_linux_amd64.zip"
+unzip "tofu_${TOFU_VERSION}_linux_${TOFU_ARCH}.zip"
 mv tofu /usr/local/bin/
 chmod +x /usr/local/bin/tofu
 
 # Clean up
-rm "tofu_${TOFU_VERSION}_linux_amd64.zip"
+rm "tofu_${TOFU_VERSION}_linux_${TOFU_ARCH}.zip"
 ```
 
 ## Using OpenTofu in a Docker Container
@@ -60,10 +69,10 @@ Alpine is commonly used as a Docker base image. Here is a minimal Dockerfile:
 
 ```dockerfile
 # Dockerfile using Alpine as base
-FROM alpine:3.19
+FROM alpine:3.23
 
 # Set OpenTofu version as build argument
-ARG TOFU_VERSION=1.9.0
+ARG TOFU_VERSION=1.11.6
 
 # Install dependencies
 RUN apk add --no-cache \
@@ -71,11 +80,19 @@ RUN apk add --no-cache \
     unzip \
     git \
     openssh-client \
-    && curl -LO "https://github.com/opentofu/opentofu/releases/download/v${TOFU_VERSION}/tofu_${TOFU_VERSION}_linux_amd64.zip" \
-    && unzip "tofu_${TOFU_VERSION}_linux_amd64.zip" \
+    && ARCH="$(apk --print-arch)" \
+    && case "$ARCH" in \
+         x86_64) TOFU_ARCH="amd64" ;; \
+         aarch64) TOFU_ARCH="arm64" ;; \
+         armv7|armhf) TOFU_ARCH="arm" ;; \
+         x86) TOFU_ARCH="386" ;; \
+         *) echo "Unsupported architecture: $ARCH" >&2; exit 1 ;; \
+       esac \
+    && curl -LO "https://github.com/opentofu/opentofu/releases/download/v${TOFU_VERSION}/tofu_${TOFU_VERSION}_linux_${TOFU_ARCH}.zip" \
+    && unzip "tofu_${TOFU_VERSION}_linux_${TOFU_ARCH}.zip" \
     && mv tofu /usr/local/bin/ \
     && chmod +x /usr/local/bin/tofu \
-    && rm "tofu_${TOFU_VERSION}_linux_amd64.zip"
+    && rm "tofu_${TOFU_VERSION}_linux_${TOFU_ARCH}.zip"
 
 # Verify installation
 RUN tofu version
@@ -96,7 +113,7 @@ docker run --rm opentofu-alpine version
 ## Method 3: Using the Official OpenTofu Docker Image
 
 ```bash
-# Pull the official image (based on Alpine)
+# Pull the official image (currently based on Alpine)
 docker pull ghcr.io/opentofu/opentofu:latest
 
 # Run OpenTofu commands
@@ -123,8 +140,8 @@ Alpine uses musl libc instead of glibc. The official OpenTofu binaries are stati
 
 ```bash
 # Verify the binary works with musl libc
-ldd /usr/local/bin/tofu
-# Should show "statically linked" or minimal dependencies
+ldd "$(command -v tofu)"
+# Should report that the binary is statically linked or not a dynamic executable
 ```
 
 ## Quick Test on Alpine
