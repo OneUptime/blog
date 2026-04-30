@@ -8,40 +8,62 @@ Description: Configure GCP Cloud Interconnect VLAN attachments for IPv6 BGP rout
 
 ## Introduction
 
-GCP Cloud Interconnect IPv6 enables private IPv6 connectivity between cloud resources and on-premises or inter-VPC networks. Proper configuration requires setting up dual-stack support, IPv6 BGP sessions, and route advertisement.
+GCP Cloud Interconnect IPv6 enables private IPv6 connectivity between cloud resources and on-premises networks. Proper configuration requires enabling dual-stack on the VLAN attachment, enabling IPv6 route exchange on the BGP session, and configuring route advertisement. If your Google Cloud workloads also need internal IPv6 addresses, their VPC subnets must be dual-stack.
 
 ## Prerequisites
 
-- VPC/VNet with dual-stack (IPv4 + IPv6) subnets
+- A Dedicated or Partner Interconnect VLAN attachment associated with a Cloud Router in the same region
 - An existing GCP account with appropriate IAM permissions
-- IPv6 address space allocated for the connection
+- Dual-stack (IPv4 + IPv6) VPC subnets if the Google Cloud workloads that use the attachment need internal IPv6 addresses
 
 ## Step 1: Verify IPv6 Prerequisites
 
 ```bash
-# Check VPC has IPv6 CIDR
-
-gcloud compute networks subnets list --filter='ipv6AccessType=INTERNAL OR ipv6AccessType=EXTERNAL'
+# Check subnets that already use dual-stack
+gcloud compute networks subnets list \
+    --filter='stackType=IPV4_IPV6' \
+    --format='table(name,region,stackType,ipv6AccessType)'
 ```
 
-## Step 2: Enable IPv6 on the Service
+## Step 2: Enable IPv6 on the VLAN Attachment
 
 ```bash
-# Enable IPv6 on subnet
-gcloud compute networks subnets update my-subnet     --region us-central1     --stack-type IPV4_IPV6     --ipv6-access-type INTERNAL
+# Use the command that matches your attachment type
 
-# Verify
-gcloud compute networks subnets describe my-subnet     --region us-central1     --format="value(ipv6CidrRange)"
+# Dedicated Interconnect VLAN attachment
+gcloud compute interconnects attachments dedicated update my-attachment \
+    --region us-central1 \
+    --stack-type IPV4_IPV6
+
+# Partner Interconnect VLAN attachment
+gcloud compute interconnects attachments partner update my-attachment \
+    --region us-central1 \
+    --stack-type IPV4_IPV6
+
+# Verify the attachment has IPv6 enabled
+gcloud compute interconnects attachments describe my-attachment \
+    --region us-central1 \
+    --format="value(stackType,cloudRouterIpv6Address,customerRouterIpv6Address)"
 ```
 
 ## Step 3: Configure IPv6 BGP
 
-```bash
-# Configure BGP for IPv6 on Cloud Router
-gcloud compute routers create my-router     --region us-central1     --network my-network     --asn 65000
+The example below shows the Dedicated Interconnect `gcloud` flow. For Partner Interconnect, Google automatically adds the Cloud Router interface and BGP peer for the attachment, so enable IPv6 on that existing peer with `gcloud compute routers update-bgp-peer --enable-ipv6`.
 
-# Add IPv6 BGP peer
-gcloud compute routers add-bgp-peer my-router     --region us-central1     --peer-name ipv6-peer     --peer-asn 65001     --peer-ip-address "2001:db8::2"     --interface my-interface     --address "2001:db8::1"
+```bash
+# Dedicated Interconnect: add a router interface for the attachment
+gcloud compute routers add-interface my-router \
+    --region us-central1 \
+    --interface-name my-interface \
+    --interconnect-attachment my-attachment
+
+# Create the BGP peer and enable IPv6 route exchange
+gcloud compute routers add-bgp-peer my-router \
+    --region us-central1 \
+    --peer-name ipv6-peer \
+    --peer-asn 65001 \
+    --interface my-interface \
+    --enable-ipv6
 ```
 
 ## Step 4: Add IPv6 Routes
@@ -58,27 +80,43 @@ gcloud compute routers update-bgp-peer my-router \
 ## Step 5: Test IPv6 Connectivity
 
 ```bash
-# Test from cloud instance
-ping6 -c 3 <on-premises-ipv6-address>
+# Test from a dual-stack cloud instance
+ping -6 -c 3 <on-premises-ipv6-address>
 
 # Verify route is learned
-gcloud compute routers get-status my-router --region us-central1 | grep ipv6
+gcloud compute routers get-status my-router --region us-central1 | grep -i ipv6
 ```
 
 ## Step 6: Terraform Example
 
 ```hcl
-# Terraform for GCP Cloud Interconnect IPv6
+# Terraform for Dedicated Interconnect IPv6
+resource "google_compute_interconnect_attachment" "main" {
+  name         = "my-attachment"
+  region       = var.region
+  type         = "DEDICATED"
+  router       = google_compute_router.main.id
+  interconnect = google_compute_interconnect.main.id
+  stack_type   = "IPV4_IPV6"
+}
+
+resource "google_compute_router_interface" "main" {
+  name                    = "my-interface"
+  router                  = google_compute_router.main.name
+  region                  = var.region
+  interconnect_attachment = google_compute_interconnect_attachment.main.name
+}
+
 resource "google_compute_router_peer" "ipv6_peer" {
-  name            = "ipv6-bgp-peer"
-  router          = google_compute_router.main.name
-  region          = var.region
-  peer_asn        = 65001
-  peer_ip_address = "2001:db8::2"
-  interface       = google_compute_router_interface.main.name
+  name        = "ipv6-bgp-peer"
+  router      = google_compute_router.main.name
+  region      = var.region
+  peer_asn    = 65001
+  interface   = google_compute_router_interface.main.name
+  enable_ipv6 = true
 }
 ```
 
 ## Conclusion
 
-GCP Cloud Interconnect IPv6 requires enabling dual-stack at the subnet level, configuring IPv6 BGP sessions, and adding IPv6 routes in the relevant route tables. Test connectivity end-to-end after configuration. Use Terraform for declarative, repeatable deployments. Monitor IPv6 BGP session state and route advertisement with OneUptime's network health checks.
+GCP Cloud Interconnect IPv6 requires enabling dual-stack on the VLAN attachment, enabling IPv6 route exchange on the BGP session, and advertising the IPv6 prefixes that Cloud Router should announce. If your Google Cloud workloads also need internal IPv6 addresses, use dual-stack subnets. Test connectivity end-to-end after configuration. Use Terraform for declarative, repeatable deployments. Monitor IPv6 BGP session state and route advertisement with OneUptime's network health checks.
