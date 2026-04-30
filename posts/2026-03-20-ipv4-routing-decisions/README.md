@@ -8,32 +8,33 @@ Description: Learn the step-by-step process Linux and other routers use to make 
 
 ## The Routing Decision Process
 
-When a host or router receives a packet, it determines the forwarding path by consulting the routing table. The process is:
+When a host or router receives a packet, it determines the forwarding path by consulting routing policy rules and route tables. The process is:
 
 ```mermaid
 flowchart TD
-    A[Packet arrives] --> B[Is destination local?]
-    B -->|Yes| C[Deliver to local process]
-    B -->|No| D[Look up routing table]
-    D --> E[Find all matching prefixes]
-    E --> F[Select longest prefix match]
-    F --> G{Tie?}
-    G -->|Yes| H[Use route with lowest metric]
-    G -->|No| I[Forward via selected route]
-    H --> I
+    A[Packet arrives] --> B[Check routing policy rules]
+    B --> C[Look up local or selected route table]
+    C --> D[Find all matching prefixes]
+    D --> E[Select longest prefix match]
+    E --> F{Local route?}
+    F -->|Yes| G[Deliver to local process]
+    F -->|No| H{Same prefix length?}
+    H -->|Yes| I[Use route with lowest metric]
+    H -->|No| J[Forward via selected route]
+    I --> J
 ```
 
 ## Step 1: Is the Destination Local?
 
-The kernel first checks if the destination IP is assigned to a local interface:
+On a typical Linux system, route lookup starts with the routing policy database (`ip rule`). The built-in high-priority rule looks up the `local` table first, which contains local and broadcast routes for addresses assigned to the host:
 
 ```bash
 ip route show table local
-# Shows all local IPs (loopback + all interface addresses)
+# Shows local and broadcast routes for addresses on this host
 
 ```
 
-If the destination matches, the packet is delivered locally (no routing needed).
+If the destination matches a `local` route, the packet is delivered locally instead of being forwarded.
 
 ## Step 2: Longest Prefix Match
 
@@ -79,7 +80,7 @@ print(f"Best route: {result[0]} via {result[1]}")
 
 ## Step 3: Tiebreaking with Metrics
 
-When two routes have the **same prefix length**, the route with the **lower metric** wins:
+When two routes in the **same table** have the **same prefix length**, the route with the **lower metric** is preferred:
 
 ```text
 10.0.0.0/24 via 192.168.1.254 metric 100  ← preferred
@@ -93,7 +94,7 @@ ip route show | awk '{print $0}' | grep metric
 
 ## Step 4: Equal-Cost Multi-Path (ECMP)
 
-If two routes have the same prefix length AND same metric, Linux uses ECMP (load balancing):
+If equal-cost paths are configured as a **multipath route**, Linux can use ECMP (load balancing):
 
 ```bash
 ip route add 10.0.0.0/24 nexthop via 192.168.1.254 weight 1 \
@@ -104,7 +105,7 @@ ip route add 10.0.0.0/24 nexthop via 192.168.1.254 weight 1 \
 
 ## Step 5: Source Address Selection
 
-When multiple routes match and a source IP must be chosen, Linux uses the `src` hint:
+Once a route is selected, Linux can use the route's `src` value as the preferred source address:
 
 ```bash
 ip route show
@@ -126,8 +127,8 @@ ip route get 10.1.1.50
 ## Key Takeaways
 
 - Routing uses **longest prefix match** - the most specific route wins.
-- When prefix lengths tie, the **lowest metric** wins.
-- Equal metrics with same prefix enable ECMP load balancing.
+- In the same table, when prefix lengths tie, the **lowest metric** is preferred.
+- ECMP is used when equal-cost nexthops are configured as a multipath route.
 - `ip route get DEST` shows the exact next-hop and source IP Linux will use.
 
 **Related Reading:**
