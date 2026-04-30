@@ -30,36 +30,35 @@ provider "helm" {
   }
 }
 
+provider "kubernetes" {
+  config_path = "~/.kube/config"
+}
+
+resource "kubernetes_namespace" "logging" {
+  metadata {
+    name = "logging"
+  }
+}
+
 # Deploy Fluentd as a DaemonSet (runs on every node)
 
 resource "helm_release" "fluentd" {
   name             = "fluentd"
   repository       = "https://fluent.github.io/helm-charts"
   chart            = "fluentd"
-  namespace        = "logging"
-  create_namespace = true
-  version          = "0.5.2"
+  namespace        = kubernetes_namespace.logging.metadata[0].name
+  create_namespace = false
+  version          = "0.5.3"
 
   values = [
     yamlencode({
-      replicaCount = 1  # DaemonSet manages replicas per node
+      variant = "cloudwatch"
 
-      env = [
-        {
-          name  = "ELASTICSEARCH_HOST"
-          value = var.elasticsearch_endpoint
-        },
-        {
-          name  = "ELASTICSEARCH_PORT"
-          value = "9200"
-        }
-      ]
+      mainConfigMapNameOverride = kubernetes_config_map.fluentd_config.metadata[0].name
 
-      # Use custom fluentd config
-      fileConfigs = {
-        "01_sources.conf"    = file("${path.module}/fluentd/01_sources.conf")
-        "02_filters.conf"    = file("${path.module}/fluentd/02_filters.conf")
-        "03_destinations.conf" = file("${path.module}/fluentd/03_destinations.conf")
+      serviceAccount = {
+        create = false
+        name   = kubernetes_service_account.fluentd.metadata[0].name
       }
 
       resources = {
@@ -85,7 +84,7 @@ resource "helm_release" "fluentd" {
 resource "kubernetes_config_map" "fluentd_config" {
   metadata {
     name      = "fluentd-config"
-    namespace = "logging"
+    namespace = kubernetes_namespace.logging.metadata[0].name
   }
 
   data = {
@@ -98,9 +97,22 @@ resource "kubernetes_config_map" "fluentd_config" {
         tag kubernetes.*
         read_from_head true
         <parse>
-          @type json
-          time_format %Y-%m-%dT%H:%M:%S.%NZ
+          @type multi_format
+          <pattern>
+            format json
+            time_key time
+            time_type string
+            time_format "%Y-%m-%dT%H:%M:%S.%NZ"
+            keep_time_key false
+          </pattern>
+          <pattern>
+            format regexp
+            expression /^(?<time>.+) (?<stream>stdout|stderr)( (.))? (?<log>.*)$/
+            time_format "%Y-%m-%dT%H:%M:%S.%NZ"
+            keep_time_key false
+          </pattern>
         </parse>
+        emit_unmatched_lines true
       </source>
 
       # Enrich with Kubernetes metadata
@@ -129,7 +141,7 @@ resource "kubernetes_config_map" "fluentd_config" {
       <match kubernetes.**>
         @type cloudwatch_logs
         log_group_name "/kubernetes/${var.cluster_name}"
-        log_stream_name_key stream
+        use_tag_as_stream true
         auto_create_stream true
         region ${var.region}
         <buffer>
@@ -149,6 +161,8 @@ resource "kubernetes_config_map" "fluentd_config" {
 ## IAM Role for Fluentd to Write to CloudWatch
 
 ```hcl
+data "aws_caller_identity" "current" {}
+
 # IRSA (IAM Roles for Service Accounts) for Fluentd
 resource "aws_iam_role" "fluentd" {
   name = "fluentd-cloudwatch-role"
@@ -163,6 +177,7 @@ resource "aws_iam_role" "fluentd" {
       Action = "sts:AssumeRoleWithWebIdentity"
       Condition = {
         StringEquals = {
+          "${var.oidc_provider}:aud" = "sts.amazonaws.com"
           "${var.oidc_provider}:sub" = "system:serviceaccount:logging:fluentd"
         }
       }
@@ -194,7 +209,7 @@ resource "aws_iam_role_policy" "fluentd_cloudwatch" {
 resource "kubernetes_service_account" "fluentd" {
   metadata {
     name      = "fluentd"
-    namespace = "logging"
+    namespace = kubernetes_namespace.logging.metadata[0].name
     annotations = {
       "eks.amazonaws.com/role-arn" = aws_iam_role.fluentd.arn
     }
@@ -212,18 +227,18 @@ resource "aws_launch_template" "app_with_fluentd" {
 
   user_data = base64encode(<<-EOT
     #!/bin/bash
-    # Install Fluentd (td-agent)
-    curl -fsSL https://toolbelt.treasuredata.com/sh/install-amazon2-td-agent4.sh | sh
+    # Install Fluentd (fluent-package on Amazon Linux 2023)
+    curl -fsSL https://fluentd.cdn.cncf.io/sh/install-amazon2023-fluent-package6-lts.sh | sh
 
     # Install CloudWatch Logs plugin
-    td-agent-gem install fluent-plugin-cloudwatch-logs
+    fluent-gem install fluent-plugin-cloudwatch-logs
 
     # Configure Fluentd
-    cat > /etc/td-agent/td-agent.conf <<'CONFIG'
+    cat > /etc/fluent/fluentd.conf <<'CONFIG'
     <source>
       @type tail
       path /var/log/app/*.log
-      pos_file /var/log/td-agent/app.log.pos
+      pos_file /var/log/fluent/app.log.pos
       tag app.logs
       <parse>
         @type json
@@ -239,8 +254,8 @@ resource "aws_launch_template" "app_with_fluentd" {
     </match>
     CONFIG
 
-    systemctl start td-agent
-    systemctl enable td-agent
+    systemctl start fluentd
+    systemctl enable fluentd
   EOT
   )
 }
