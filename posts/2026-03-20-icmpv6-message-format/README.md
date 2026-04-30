@@ -8,7 +8,7 @@ Description: Understand the structure of ICMPv6 messages, the common header fiel
 
 ## Introduction
 
-ICMPv6 (Internet Control Message Protocol for IPv6) is defined in RFC 4443 and serves as the diagnostic and control protocol for IPv6, replacing both ICMPv4 and ARP. ICMPv6 carries error messages, informational messages, Neighbor Discovery, Router Discovery, and multicast group management. All ICMPv6 messages share a common 4-byte header, with the remaining structure specific to each message type.
+ICMPv6 (Internet Control Message Protocol for IPv6) is defined in RFC 4443 and serves as the diagnostic and control protocol for IPv6. Neighbor Discovery messages carried in ICMPv6 replace ARP and the IPv4 ICMP Router Discovery/Redirect functions. ICMPv6 carries error messages, informational messages, Neighbor Discovery, Router Discovery, and multicast group management. All ICMPv6 messages share a common 4-byte header, with the remaining structure specific to each message type.
 
 ## ICMPv6 Common Header Structure
 
@@ -35,7 +35,7 @@ Fields:
 ## ICMPv6 Type Registry
 
 ```text
-Error Messages (Types 1-127):
+Error-Class Type Values (0-127):
   Type 1:   Destination Unreachable
   Type 2:   Packet Too Big
   Type 3:   Time Exceeded
@@ -43,18 +43,18 @@ Error Messages (Types 1-127):
   Type 100: Private experimentation
   Type 101: Private experimentation
 
-Informational Messages (Types 128-255):
-  Type 128: Echo Request (ping6)
+Informational Type Values (128-255):
+  Type 128: Echo Request
   Type 129: Echo Reply
-  Type 130: Multicast Listener Query (MLDv1)
-  Type 131: Multicast Listener Report (MLDv1)
-  Type 132: Multicast Listener Done (MLDv1)
+  Type 130: Multicast Listener Query
+  Type 131: Version 1 Multicast Listener Report
+  Type 132: Version 1 Multicast Listener Done
   Type 133: Router Solicitation (NDP)
   Type 134: Router Advertisement (NDP)
   Type 135: Neighbor Solicitation (NDP)
   Type 136: Neighbor Advertisement (NDP)
-  Type 137: Redirect
-  Type 143: MLDv2 Report
+  Type 137: Redirect Message
+  Type 143: Version 2 Multicast Listener Report
 ```
 
 ## Parsing ICMPv6 Messages
@@ -74,8 +74,8 @@ ICMPV6_TYPES = {
     134: "Router Advertisement",
     135: "Neighbor Solicitation",
     136: "Neighbor Advertisement",
-    137: "Redirect",
-    143: "MLDv2 Report",
+    137: "Redirect Message",
+    143: "Version 2 Multicast Listener Report",
 }
 
 ICMPV6_CODES = {
@@ -110,7 +110,7 @@ def parse_icmpv6_header(data: bytes) -> dict:
         "body": data[4:],
     }
 
-# Parse each error type
+# Parse several example ICMPv6 messages
 
 test_messages = [
     (b'\x01\x04\x00\x00' + b'\x00' * 4, "Destination Unreachable, Port Unreachable"),
@@ -135,15 +135,15 @@ ICMPv6 checksum covers:
   1. IPv6 pseudo-header:
      - Source address (128 bits)
      - Destination address (128 bits)
-     - ICMPv6 payload length (32 bits)
+     - Upper-Layer Packet Length / ICMPv6 message length (32 bits)
      - Next Header = 58 (32 bits, zero-padded)
   2. ICMPv6 header (Type + Code + Checksum=0 + Body)
 
 This binds the ICMPv6 message to its IPv6 source and destination,
-preventing spoofed ICMPv6 messages even if IPv6 source address
-verification is not available.
+helping detect misdelivery or corruption of the IPv6 fields used
+for delivery.
 ```
 
 ## Conclusion
 
-ICMPv6 is a fundamental IPv6 protocol that handles error reporting, path discovery, and neighbor/router discovery. Its common 4-byte header (Type, Code, Checksum, Body) provides a consistent structure for all message types. Error messages use Types 1-127, informational messages use Types 128-255. The mandatory checksum covering both the message and the IPv6 pseudo-header provides integrity protection. Understanding the Type/Code taxonomy is essential for writing firewall rules, debugging connectivity, and implementing IPv6 network applications.
+ICMPv6 is a fundamental IPv6 protocol that handles error reporting, path discovery, and neighbor/router discovery. Its common 4-byte header (Type, Code, Checksum) followed by a type-specific body provides a consistent structure for all message types. The high-order bit of the Type field separates error-class values (0-127) from informational values (128-255). The mandatory checksum covering both the message and the IPv6 pseudo-header provides corruption detection. Understanding the Type/Code taxonomy is essential for writing firewall rules, debugging connectivity, and implementing IPv6 network applications.
