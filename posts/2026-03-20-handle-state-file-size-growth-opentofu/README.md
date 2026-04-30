@@ -16,43 +16,60 @@ State files grow over time as resources accumulate. Large state files slow down 
 # Check current state file size
 
 tofu state pull | wc -c
-# Output in bytes; 1MB+ warrants attention, 10MB+ requires action
+# Output in bytes; compare this with your backend limits and plan/apply latency
 
 # Count resources in state
 tofu state list | wc -l
 
 # Find resource types with the most instances
-tofu state list | sed 's/\[.*//' | sort | uniq -c | sort -rn | head -20
+tofu state list | awk -F. '{i=1; while ($i=="module") i+=2; if ($i=="data") {print "data."$(i+1)} else {print $i}}' | sort | uniq -c | sort -rn | head -20
 ```
 
 ## Removing Orphaned Resources
 
-Orphaned resources exist in state but are no longer in HCL. They show as "destroy" in plans.
+Resources that exist in state but are no longer in HCL normally show as "destroy" in plans. If you want them deleted, apply the plan. If you want OpenTofu to forget them without destroying the remote object, use a `removed` block or `tofu state rm`.
 
 ```bash
-# List resources that would be destroyed (check if they're truly orphaned)
-tofu plan | grep "will be destroyed"
+# List resources that OpenTofu plans to destroy
+tofu plan -no-color | grep "will be destroyed"
+```
 
-# Remove a specific orphaned resource from state
+```hcl
+# Preferred: remove from configuration without destroying the live object
+removed {
+  from = aws_cloudwatch_log_group.old_service
+  lifecycle {
+    destroy = false
+  }
+}
+```
+
+```bash
+# CLI alternative: make OpenTofu forget a live object
+
 tofu state rm aws_cloudwatch_log_group.old_service
 
-# Remove multiple orphaned resources
-tofu state rm aws_lambda_function.deprecated[0]
-tofu state rm aws_lambda_function.deprecated[1]
+# Remove multiple resources with indexed addresses
+tofu state rm 'aws_lambda_function.deprecated[0]'
+tofu state rm 'aws_lambda_function.deprecated[1]'
 
-# Use state list and grep to find a set to remove
-tofu state list | grep "deprecated" | xargs -I{} tofu state rm {}
+# Use state list and grep to find a set to remove safely
+tofu state list | grep "deprecated" | while IFS= read -r addr; do
+  tofu state rm "$addr"
+done
 ```
 
 ## Splitting a Large State File
 
-The most effective long-term solution is splitting by component:
+The most effective long-term solution is usually splitting by component. For local state files, `tofu state mv` supports `-state` and `-state-out` to move bindings between files:
 
 ```bash
-# Example: Extract all ECR resources to a new state file
+# Example: Extract all ECR resources to a new local state file
 RESOURCES=$(tofu state list | grep "aws_ecr_")
 SOURCE="terraform.tfstate"
 DEST="ecr/terraform.tfstate"
+
+mkdir -p ecr
 
 for resource in $RESOURCES; do
   echo "Moving: $resource"
@@ -60,34 +77,36 @@ for resource in $RESOURCES; do
 done
 ```
 
+If you use a remote backend, pull the state to local files first and push the reviewed results back carefully, because `-state` and `-state-out` are local-state options.
+
 ## Removing Unused Data Sources
 
-Data sources are stored in state but don't represent real resources. However, they add size.
+Data sources are stored in state but don't represent managed remote objects. However, they add size.
 
 ```bash
-# Data sources appear in state as data.TYPE.NAME
-tofu state list | grep "^data\."
-# Review if all data sources are still referenced in HCL
-# Unused data sources are automatically cleaned on next apply
+# Data sources include a `data.` segment in their address
+tofu state list | grep -E '(^|\.)data\.'
+# Review whether these data blocks are still needed in configuration
+# Data sources removed from configuration are cleaned up on the next plan/apply
 ```
 
 ## Optimizing for_each vs count
 
-Large `count`-based deployments can bloat state with many numbered instances. Converting to `for_each` with meaningful keys doesn't reduce size but makes state more manageable:
+Large multi-instance resources can bloat state whether you use `count` or `for_each`. Converting to `for_each` with meaningful keys doesn't reduce size but makes state more manageable:
 
 ```bash
-# Check count-based resources
-tofu state list | grep "\[0\]"
+# Check resources addressed by numeric indices
+tofu state list | grep -E '\[[0-9]+\]$'
 ```
 
-## State File Compaction
+## State File Rewrites
 
-OpenTofu state files can accumulate historical data from previous operations. Force a clean re-write:
+OpenTofu state snapshots do not accumulate operational history inside the state file itself. `tofu state pull` and `tofu state push` are for manual repair or migration, not routine compaction:
 
 ```bash
-# Pull current state, then push it back (rewrites without history)
+# Pull the current state before any manual repair
 tofu state pull > /tmp/current-state.json
-# Review the JSON to confirm it looks correct
+# Review the JSON carefully; only push it back when you intentionally need a manual fix
 tofu state push /tmp/current-state.json
 ```
 
@@ -95,10 +114,10 @@ tofu state push /tmp/current-state.json
 
 ```bash
 #!/bin/bash
-# monitor_state_size.sh - Alert when state file exceeds threshold
+# monitor_state_size.sh - Alert when state file exceeds an example threshold
 
 STATE_SIZE=$(tofu state pull | wc -c)
-THRESHOLD_MB=5
+THRESHOLD_MB=5 # Example threshold; tune for your backend and workflow
 THRESHOLD_BYTES=$((THRESHOLD_MB * 1024 * 1024))
 
 if [ "$STATE_SIZE" -gt "$THRESHOLD_BYTES" ]; then
@@ -112,4 +131,4 @@ echo "State file size: ${STATE_SIZE} bytes - OK"
 
 ## Conclusion
 
-State file size is best managed proactively: split states by component before they get large, regularly remove orphaned resources, and monitor state size in CI. A state file over 5MB warrants splitting; over 20MB will cause noticeable performance problems. The most durable fix is architectural - properly split states prevent unbounded growth.
+State file size is best managed proactively: split states by component before they get large, remove resources you no longer want OpenTofu to manage, and monitor state size in CI. There is no universal MB threshold; set thresholds based on backend limits and observed plan/apply latency. The most durable fix is architectural - properly split states prevent unbounded growth.
