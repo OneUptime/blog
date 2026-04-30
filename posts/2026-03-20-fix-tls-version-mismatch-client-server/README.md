@@ -43,16 +43,16 @@ TLSV1_ALERT_PROTOCOL_VERSION
 ```bash
 # Test TLS 1.2
 
-openssl s_client -connect example.com:443 -tls1_2 2>&1 | grep "Protocol"
+openssl s_client -connect example.com:443 -tls1_2 </dev/null 2>&1 | grep "Protocol"
 
 # Test TLS 1.3
-openssl s_client -connect example.com:443 -tls1_3 2>&1 | grep "Protocol"
+openssl s_client -connect example.com:443 -tls1_3 </dev/null 2>&1 | grep "Protocol"
 
 # Test TLS 1.0 (old server compatibility check)
-openssl s_client -connect example.com:443 -tls1 2>&1 | grep -E "Protocol|error"
+openssl s_client -connect example.com:443 -tls1 </dev/null 2>&1 | grep -E "Protocol|error"
 
 # Full handshake details
-openssl s_client -connect example.com:443 -debug 2>&1 | head -50
+openssl s_client -connect example.com:443 -debug </dev/null 2>&1 | head -50
 ```
 
 ### Check Server Certificate and TLS Config
@@ -78,11 +78,12 @@ sudo nmap --script ssl-enum-ciphers -p 443 example.com
 ### Fix - Upgrade the Client
 
 ```bash
-# Python - upgrade to TLS 1.2+
-pip install --upgrade requests urllib3
+# Python - confirm the runtime supports TLS 1.2+; upgrade Python/OpenSSL if it does not
+python3 -c "import ssl; print(ssl.OPENSSL_VERSION, ssl.HAS_TLSv1_2)"
+python3 -m pip install --upgrade requests urllib3
 
-# Java - set TLS version
-java -Dhttps.protocols=TLSv1.2,TLSv1.3 MyApp
+# Java - set client TLS versions
+java -Djdk.tls.client.protocols=TLSv1.2,TLSv1.3 MyApp
 
 # Node.js
 node --tls-min-v1.2 app.js
@@ -102,7 +103,7 @@ curl --tlsv1.2 https://example.com
 ```nginx
 # Nginx - enable TLS 1.2 minimum
 ssl_protocols TLSv1.2 TLSv1.3;
-ssl_ciphers ECDHE-ECDSA-AES128-GCM-SHA256:ECDHE-RSA-AES128-GCM-SHA256:...;
+ssl_ciphers ECDHE-ECDSA-AES128-GCM-SHA256:ECDHE-RSA-AES128-GCM-SHA256;
 ```
 
 ```apache
@@ -128,7 +129,15 @@ openssl s_client -connect legacy.example.com:443 -tls1
 
 ```ini
 # /etc/ssl/openssl.cnf
-[system_default_sect]
+openssl_conf = openssl_init
+
+[openssl_init]
+ssl_conf = ssl_configuration
+
+[ssl_configuration]
+system_default = tls_system_default
+
+[tls_system_default]
 MinProtocol = TLSv1.2
 CipherString = DEFAULT@SECLEVEL=2
 ```
@@ -155,20 +164,44 @@ server {
 </VirtualHost>
 ```
 
-### Python Requests (per request)
+### Python Requests (using a custom adapter)
 
 ```python
 import ssl
 import requests
+from urllib3.poolmanager import PoolManager
+from requests.adapters import HTTPAdapter
 
-# Create context requiring TLS 1.2+
+class TLSAdapter(HTTPAdapter):
+    def __init__(self, ssl_context, **kwargs):
+        self.ssl_context = ssl_context
+        super().__init__(**kwargs)
+
+    def init_poolmanager(self, connections, maxsize, block=False, **pool_kwargs):
+        pool_kwargs["ssl_context"] = self.ssl_context
+        self.poolmanager = PoolManager(
+            num_pools=connections,
+            maxsize=maxsize,
+            block=block,
+            **pool_kwargs,
+        )
+
+# Create a session requiring TLS 1.2+
 ctx = ssl.create_default_context()
 ctx.minimum_version = ssl.TLSVersion.TLSv1_2
 
+session = requests.Session()
+session.mount("https://", TLSAdapter(ctx))
+response = session.get("https://example.com")
+
 # For legacy servers needing TLS 1.0 (not recommended)
-ctx.minimum_version = ssl.TLSVersion.TLSv1
-ctx.check_hostname = False
-ctx.verify_mode = ssl.CERT_NONE
+legacy_ctx = ssl.create_default_context()
+legacy_ctx.minimum_version = ssl.TLSVersion.TLSv1
+legacy_ctx.maximum_version = ssl.TLSVersion.TLSv1
+
+legacy_session = requests.Session()
+legacy_session.mount("https://", TLSAdapter(legacy_ctx))
+legacy_response = legacy_session.get("https://legacy.example.com")
 ```
 
 ---
@@ -184,8 +217,9 @@ cat $JAVA_HOME/conf/security/java.security | grep jdk.tls.disabledAlgorithms
 ```
 
 ```java
-// Force TLS version in code
+// Use a TLSv1.2 SSLContext with HttpsURLConnection
 SSLContext ctx = SSLContext.getInstance("TLSv1.2");
+ctx.init(null, null, null);
 HttpsURLConnection.setDefaultSSLSocketFactory(ctx.getSocketFactory());
 ```
 
@@ -195,7 +229,7 @@ HttpsURLConnection.setDefaultSSLSocketFactory(ctx.getSocketFactory());
 
 ```bash
 # Verify server now accepts TLS 1.2
-openssl s_client -connect example.com:443 -tls1_2 2>&1 | grep "Verify return code"
+openssl s_client -connect example.com:443 -tls1_2 </dev/null 2>&1 | grep "Verify return code"
 # Should show: Verify return code: 0 (ok)
 
 # Test HTTPS with curl
