@@ -12,12 +12,13 @@ Portainer stores a full snapshot of each Docker environment in its BoltDB databa
 
 ## What is DockerSnapshotRaw?
 
-`DockerSnapshotRaw` is the raw JSON payload stored in the Portainer database for each environment snapshot. It includes the full output of:
+`DockerSnapshotRaw` is the raw snapshot data stored in the Portainer database for each Docker environment. It includes data fetched from Docker APIs such as:
 - `GET /containers/json?all=1`
 - `GET /images/json`
 - `GET /networks`
 - `GET /volumes`
-- `GET /swarm` (if applicable)
+- `GET /info`
+- `GET /version`
 
 ## Step 1: Measure Snapshot Size
 
@@ -26,9 +27,9 @@ Portainer stores a full snapshot of each Docker environment in its BoltDB databa
 
 docker run --rm -v portainer_data:/data alpine ls -lh /data/portainer.db
 
-# For more detail, use bolt CLI to inspect bucket sizes
-docker run --rm -v portainer_data:/data alpine/bbolt \
-  info /data/portainer.db
+# For more detail, use the bbolt CLI to inspect database stats
+docker run --rm -v portainer_data:/data golang:1.24-alpine \
+  sh -lc 'go run go.etcd.io/bbolt/cmd/bbolt@latest stats /data/portainer.db'
 ```
 
 ## Step 2: Remove Unused Docker Resources
@@ -36,10 +37,11 @@ docker run --rm -v portainer_data:/data alpine/bbolt \
 The fastest way to shrink snapshots is to remove unused resources from Docker:
 
 ```bash
-# Remove all unused resources in one command
+# Remove unused resources in one command
 # WARNING: review what this will delete first
 docker system df            # See what can be freed
-docker system prune -af     # Remove everything unused (including stopped containers)
+docker system prune -af     # Remove unused containers, networks, images, and build cache
+# Add --volumes if you also want to prune anonymous volumes
 ```
 
 ## Step 3: Limit Container Labels
@@ -59,30 +61,54 @@ services:
 
 ## Step 4: Increase Snapshot Interval
 
-More frequent snapshots mean more frequent large writes to BoltDB:
+More frequent snapshots mean more frequent large writes to BoltDB. Portainer's default is `5m`, so use a higher value if you want fewer writes:
 
 ```bash
-# Increase to 5-minute intervals to reduce write frequency
-docker run -d ... portainer/portainer-ce:latest --snapshot-interval 300
+# Increase to 10-minute intervals to reduce write frequency
+IMAGE=$(docker inspect -f '{{.Config.Image}}' portainer)
+docker stop portainer
+docker rm portainer
+docker run -d -p 9443:9443 -p 8000:8000 \
+  --name portainer \
+  --restart=always \
+  -v /var/run/docker.sock:/var/run/docker.sock \
+  -v portainer_data:/data \
+  "$IMAGE" \
+  --snapshot-interval 10m
 ```
 
 ## Step 5: Compact the Database
 
-After cleaning up resources, compact BoltDB to reclaim space:
+Database compaction happens on startup. After cleaning up resources, restart Portainer with `--compact-db` to reclaim space:
 
 ```bash
+IMAGE=$(docker inspect -f '{{.Config.Image}}' portainer)
 docker stop portainer
-docker run --rm -v portainer_data:/data portainer/portainer-ce:latest --compact-db
-docker start portainer
+docker rm portainer
+docker run -d -p 9443:9443 -p 8000:8000 \
+  --name portainer \
+  --restart=always \
+  -v /var/run/docker.sock:/var/run/docker.sock \
+  -v portainer_data:/data \
+  "$IMAGE" \
+  --compact-db
 ```
 
-## Step 6: Use the --hide-label Flag
+## Step 6: Use the --hide-label Flag for UI Filtering
 
-Hide containers with specific labels from Portainer's snapshot entirely:
+Hide containers with specific labels from Portainer's UI. This does not reduce `DockerSnapshotRaw`, but it can make large environments easier to browse:
 
 ```bash
 # Start Portainer hiding containers with the "hide=true" label
-docker run -d ... portainer/portainer-ce:latest \
+IMAGE=$(docker inspect -f '{{.Config.Image}}' portainer)
+docker stop portainer
+docker rm portainer
+docker run -d -p 9443:9443 -p 8000:8000 \
+  --name portainer \
+  --restart=always \
+  -v /var/run/docker.sock:/var/run/docker.sock \
+  -v portainer_data:/data \
+  "$IMAGE" \
   --hide-label hide=true
 ```
 
