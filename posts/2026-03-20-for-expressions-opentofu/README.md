@@ -128,7 +128,7 @@ locals {
 ```hcl
 # After creating subnets with for_each, collect all IDs
 resource "aws_subnet" "private" {
-  for_each = { for s in var.private_subnets : s.name => s }
+  for_each = { for s in local.private_subnets : s.name => s }
 
   vpc_id     = aws_vpc.main.id
   cidr_block = each.value.cidr
@@ -151,6 +151,7 @@ resource "aws_db_subnet_group" "main" {
 
 ```hcl
 variable "enable_detailed_monitoring" { default = false }
+variable "environment" { default = "prod" }
 
 locals {
   instance_tags = merge(
