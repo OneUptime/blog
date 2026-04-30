@@ -16,46 +16,60 @@ IPv6 is supported on Nighthawk (R7000, R8000, RAX series) and Orbi mesh systems.
 Path: Advanced → Advanced Setup → IPv6
 
 Internet Connection Type:
-  Auto Detect (let router choose - recommended)
+  Auto Detect   - let router choose (recommended if unsure)
   or
-  DHCPv6        - for most ISPs with DHCPv6-PD
-  Auto Config   - for SLAAC-only ISPs
-  6to4 Tunnel   - legacy tunnel (avoid)
-  Fixed         - static IPv6 address
+  DHCP          - for native IPv6 from ISPs that use DHCPv6
+  Auto Config   - for native IPv6 that does not use DHCP or PPPoE
+  PPPoE         - only if your ISP uses PPPoE
+  Fixed         - only if your ISP gave you static IPv6 settings
+  6to4 Tunnel   - legacy tunnel (avoid unless required)
 
-DHCPv6 Settings:
-  Prefix delegation: Enable
-  DHCP User Class (Option 15): (leave blank unless ISP requires)
-  DHCP Domain Name: (optional)
+DHCP Settings:
+  IPv6 DNS Address:
+    Get Automatically from ISP
+    or
+    Use These DNS Servers
+      Primary: 2606:4700:4700::1111
+      Secondary: 2001:4860:4860::8888
+  DHCP User Class (If Required): (leave blank unless ISP requires)
+  Domain Name (If Required): (optional)
 
 LAN:
-  IPv6 Mode: Auto      - router assigns prefix automatically
-  Enable RDNSS: Yes    - send DNS servers via RA
-  IPv6 DNS Server 1: 2606:4700:4700::1111
-  IPv6 DNS Server 2: 2001:4860:4860::8888
+  IP Address Assignment:
+    Auto Config      - default; clients use SLAAC
+    or
+    Use DHCP Server  - pass DHCPv6 information to clients
+  Use This Interface ID: (optional)
+  IPv6 Filtering: Secured - default
 ```
 
 ## Orbi Mesh IPv6
 
-Orbi systems use the same Netgear web GUI via `orbilogin.com`.
+Orbi systems use a similar Netgear web GUI via `orbilogin.local` on newer models or `orbilogin.com` on older ones.
 
 ```text
 Path: Advanced → Advanced Setup → IPv6
 
 Orbi-specific notes:
-  - Main Orbi router handles DHCPv6-PD from ISP
-  - Satellite nodes receive IPv6 over backhaul
-  - All nodes share single /64 prefix on LAN
-  - IPv6 Firewall: enabled by default (block inbound)
+  - Main Orbi router handles the WAN IPv6 connection and LAN advertisement
+  - Satellite nodes bridge the same LAN over the backhaul
+  - IPv6 settings are unavailable when the Orbi is in AP mode
+  - IPv6 Filtering defaults to Secured
 
 LAN IPv6 Setup:
-  Advertise IPv6 prefix to LAN: Enable
-  Use DHCP for DNS: Enable (gets DNS from ISP DHCPv6)
+  IPv6 DNS Address:
+    Get Automatically from ISP
+    or
+    Use These DNS Servers
+  IP Address Assignment:
+    Auto Config      - default
+    or
+    Use DHCP Server
 ```
 
 ## Verify Configuration via Router Diagnostics
 
-Use the built-in diagnostics or telnet/SSH where available.
+Use the built-in diagnostics first. Stock Netgear firmware generally does not expose SSH or telnet; shell commands apply only on custom firmware.
 
 ```bash
 # Netgear routers: Advanced → Administration → Diagnostics
@@ -63,22 +77,16 @@ Use the built-in diagnostics or telnet/SSH where available.
 # Ping test to IPv6 address from router GUI:
 
 # Target: 2606:4700:4700::1111
-# Result should show 0% packet loss
+# Result should show replies with no packet loss
 
-# For routers with SSH (R7800, R9000 with custom firmware):
-ssh admin@192.168.1.1
+# On custom firmware only:
+ssh <router-user>@<router-lan-ip>
 
-# Check WAN IPv6
-ip -6 addr show dev eth0
+# Check IPv6 addresses
+ip -6 addr show
 
-# Check prefix delegation
+# Check default IPv6 route
 ip -6 route show
-
-# Check radvd is running
-ps | grep radvd
-
-# Check RA config
-cat /tmp/radvd.conf | head -30
 ```
 
 ## Troubleshoot Common Issues
@@ -86,20 +94,20 @@ cat /tmp/radvd.conf | head -30
 ```bash
 # Issue 1: "No IPv6 connection" in status page
 # Cause: ISP not sending DHCPv6 offers, or wrong connection type
-# Fix: Change from "Auto Detect" to explicit "DHCPv6" mode
-# Then: Power cycle router (not just reboot)
+# Fix: Change from "Auto Detect" to explicit "DHCP" mode
+# Then: Restart the modem and router if the WAN lease does not refresh
 
 # Issue 2: Router has IPv6 but LAN devices don't
-# Check: Is "Enable IPv6 address on LAN" checked?
-# Also verify: Firewall → IPv6 → not blocking RA (ICMPv6 type 134)
+# Check: Is LAN "IP Address Assignment" set to "Auto Config" or "Use DHCP Server"?
+# Also verify: the router is not running in AP mode, where IPv6 settings are disabled
 
 # Issue 3: IPv6 works but slow (MTU issue)
-# Nighthawk with PPPoE: set MTU to 1452
+# Nighthawk with PPPoE: MTU is commonly 1492 unless your ISP specifies otherwise
 # Path: Advanced → Setup → WAN Setup → MTU Size
 
 # Issue 4: IPv6 drops after a few hours (lease renewal)
-# Known issue on R7000 - update to latest firmware
-# Or set shorter DHCP renewal interval
+# Update to the latest firmware and reconnect the WAN link
+# Stock Netgear firmware does not expose DHCPv6 renewal timers
 
 # Check status after changes
 curl -6 https://ifconfig.co
@@ -117,10 +125,10 @@ ip -6 addr show | grep "scope global"
 ip -6 route show default
 
 # Test connectivity
-ping6 -c 4 2606:4700:4700::1111
+ping -6 -c 4 2606:4700:4700::1111
 
 # Test DNS over IPv6
-dig AAAA google.com @2606:4700:4700::1111 +short
+dig -6 AAAA google.com @2606:4700:4700::1111 +short
 
 # Verify internet-facing IPv6
 curl -6 -s https://ifconfig.co
@@ -128,4 +136,4 @@ curl -6 -s https://ifconfig.co
 
 ## Conclusion
 
-Netgear Nighthawk and Orbi routers configure IPv6 under Advanced → Advanced Setup → IPv6. Select DHCPv6 as the connection type for most ISPs; Auto Detect also works for ISPs that use RA announcements. Enable prefix delegation and set up IPv6 LAN advertisement so that LAN devices receive /64 prefixes via SLAAC. Configure Cloudflare or Google IPv6 DNS servers for reliability. Keep the IPv6 firewall enabled - Netgear blocks all inbound by default, which is the correct stance for a home router. If the router acquires IPv6 but LAN devices do not, verify that RA advertisement to LAN is enabled and recheck firewall rules blocking ICMPv6.
+Netgear Nighthawk and Orbi routers configure IPv6 under Advanced → Advanced Setup → IPv6. Select DHCP when your ISP provides native IPv6 over DHCPv6; Auto Detect is the safest choice if you are unsure, and Auto Config is used when the ISP does not use DHCP or PPPoE. When the ISP provides DHCPv6 prefix delegation, Netgear handles the delegated prefix automatically and LAN clients typically use Auto Config/SLAAC unless you choose Use DHCP Server. Configure Cloudflare or Google IPv6 DNS servers if you do not want to use the ISP-provided resolvers. Keep IPv6 Filtering set to Secured, which is Netgear's default. If the router acquires IPv6 but LAN devices do not, verify the LAN IP Address Assignment setting and make sure the router is not running in AP mode.
