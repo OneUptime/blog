@@ -29,11 +29,10 @@ modprobe ah6
 ### Host A: 2001:db8:1::1
 
 Configure IPsec on Host A:
-### Host B: 2001:db8:1::2
 
 ```bash
 # ============================================================
-# On BOTH hosts: create SAs and policies
+# On Host A: create SAs and policies
 # ============================================================
 
 # On Host A: Create outbound SA (A→B)
@@ -44,7 +43,7 @@ ip xfrm state add \
   spi 0xABC123 \
   mode transport \
   aead "rfc4106(gcm(aes))" \
-  0x0102030405060708090a0b0c0d0e0f100102030405 128
+  0x0102030405060708090a0b0c0d0e0f1011121314 128
 
 # On Host A: Create inbound SA (B→A)
 ip xfrm state add \
@@ -54,7 +53,7 @@ ip xfrm state add \
   spi 0xDEF456 \
   mode transport \
   aead "rfc4106(gcm(aes))" \
-  0x1112131415161718191a1b1c1d1e1f201112131415 128
+  0x2122232425262728292a2b2c2d2e2f3031323334 128
 
 # On Host A: Create outbound policy
 ip xfrm policy add \
@@ -81,6 +80,8 @@ ip xfrm policy add \
     mode transport
 ```
 
+### Host B: 2001:db8:1::2
+
 ```bash
 # On Host B: Mirror of Host A's configuration
 # Inbound SA on B = Outbound SA from A (same SPI)
@@ -91,7 +92,7 @@ ip xfrm state add \
   spi 0xABC123 \
   mode transport \
   aead "rfc4106(gcm(aes))" \
-  0x0102030405060708090a0b0c0d0e0f100102030405 128
+  0x0102030405060708090a0b0c0d0e0f1011121314 128
 
 ip xfrm state add \
   src 2001:db8:1::2 \
@@ -100,7 +101,7 @@ ip xfrm state add \
   spi 0xDEF456 \
   mode transport \
   aead "rfc4106(gcm(aes))" \
-  0x1112131415161718191a1b1c1d1e1f201112131415 128
+  0x2122232425262728292a2b2c2d2e2f3031323334 128
 
 ip xfrm policy add \
   src 2001:db8:1::2/128 dst 2001:db8:1::1/128 \
@@ -134,6 +135,8 @@ ssh 2001:db8:1::2
 
 ### /etc/swanctl/conf.d/transport.conf on Host A
 
+On Host B, use the same configuration with the local and remote addresses, IDs, and traffic selectors swapped.
+
 ```text
 connections {
     host-a-to-b {
@@ -155,7 +158,7 @@ connections {
                 local_ts  = 2001:db8:1::1/128[tcp]
                 remote_ts = 2001:db8:1::2/128[tcp]
                 mode = transport
-                esp_proposals = aes256gcm128-prfsha256-ecp256
+                esp_proposals = aes256gcm128-ecp256
                 start_action = trap
             }
         }
@@ -174,9 +177,11 @@ secrets {
 ```
 
 ```bash
-# Load and start
+# On both hosts: load the configuration
 swanctl --load-all
-swanctl --initiate child:transport-tcp
+
+# On Host A: initiate the CHILD_SA
+swanctl --initiate --child transport-tcp
 
 # Verify connection
 swanctl --list-sas
@@ -184,12 +189,18 @@ swanctl --list-sas
 
 ## Persistence: Save xfrm State
 
-Manual `ip xfrm` configs are not persistent. To restore on boot:
+Manual `ip xfrm` configs are not persistent. There is no `ip xfrm state restore` or `ip xfrm policy restore` subcommand. To restore on boot, save each host's `xfrm state add` and `xfrm policy add` commands in a batch file and replay them with `ip -batch`:
 
 ```bash
-# Save
-ip xfrm state list > /etc/ipsec-xfrm-state.conf
-ip xfrm policy list > /etc/ipsec-xfrm-policy.conf
+# Host A example: create a batch file from the commands above
+cat > /etc/ipsec-xfrm.conf << 'EOF'
+xfrm state add src 2001:db8:1::1 dst 2001:db8:1::2 proto esp spi 0xABC123 mode transport aead rfc4106(gcm(aes)) 0x0102030405060708090a0b0c0d0e0f1011121314 128
+xfrm state add src 2001:db8:1::2 dst 2001:db8:1::1 proto esp spi 0xDEF456 mode transport aead rfc4106(gcm(aes)) 0x2122232425262728292a2b2c2d2e2f3031323334 128
+xfrm policy add src 2001:db8:1::1/128 dst 2001:db8:1::2/128 proto tcp dir out tmpl src 2001:db8:1::1 dst 2001:db8:1::2 proto esp mode transport
+xfrm policy add src 2001:db8:1::2/128 dst 2001:db8:1::1/128 proto tcp dir in tmpl src 2001:db8:1::2 dst 2001:db8:1::1 proto esp mode transport
+EOF
+
+# On Host B, create the same file with Host B's mirrored commands from Method 1
 
 # Create systemd service to restore
 cat > /etc/systemd/system/xfrm-restore.service << 'EOF'
@@ -201,16 +212,16 @@ After=network.target
 Type=oneshot
 ExecStart=/sbin/ip xfrm state flush
 ExecStart=/sbin/ip xfrm policy flush
-ExecStart=/bin/sh -c 'ip xfrm state restore < /etc/ipsec-xfrm-state.conf'
-ExecStart=/bin/sh -c 'ip xfrm policy restore < /etc/ipsec-xfrm-policy.conf'
+ExecStart=/sbin/ip -batch /etc/ipsec-xfrm.conf
 RemainAfterExit=yes
 
 [Install]
 WantedBy=multi-user.target
 EOF
+systemctl daemon-reload
 systemctl enable xfrm-restore
 ```
 
 ## Summary
 
-IPsec transport mode for IPv6 on Linux uses `ip xfrm state` (SAs) and `ip xfrm policy` (SPD) commands. Configure matching SA pairs on both hosts (same SPI, key, and algorithm). Use AES-GCM (AEAD) for simplicity and performance. strongSwan with swanctl provides automated IKEv2 negotiation and is preferred over manual xfrm configuration for production use. Verify with `ip xfrm state list` and `tcpdump -i eth0 'ip6 proto 50'` to confirm traffic is encrypted.
+IPsec transport mode for IPv6 on Linux uses `ip xfrm state` (SAs) and `ip xfrm policy` (SPD) commands. Configure matching SA pairs on both hosts so each outbound SA matches the peer's corresponding inbound SA (same SPI, key, and algorithm). Use AES-GCM (AEAD) for simplicity and performance. strongSwan with swanctl provides automated IKEv2 negotiation and is preferred over manual xfrm configuration for production use. Verify with `ip xfrm state list` and `tcpdump -i eth0 'ip6 proto 50'` to confirm traffic is encrypted.
