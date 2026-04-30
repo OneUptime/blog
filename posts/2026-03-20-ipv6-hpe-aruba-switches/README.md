@@ -8,17 +8,17 @@ Description: Configure IPv6 on HPE/Aruba switches including VLAN SVIs, OSPFv3, a
 
 ## Introduction
 
-HPE/Aruba switches running ArubaOS-CX (modern) or ProVision/AdvancedTraffic (legacy) support full IPv6. This guide focuses on ArubaOS-CX (used in Aruba CX 6xxx, 8xxx, and 10xxx series) as it represents the current platform.
+HPE/Aruba switches running ArubaOS-CX (modern) or ArubaOS-Switch/ProVision (legacy) support full IPv6. This guide focuses on ArubaOS-CX (used in Aruba CX 6xxx, 8xxx, and 10xxx series) as it represents the current platform.
 
 ## ArubaOS-CX IPv6 Configuration
 
-### Step 1: Enable IPv6 Routing
+### Step 1: Enter Configuration Mode
 
 ```bash
-# Enable IPv6 unicast routing globally
+# ArubaOS-CX does not require a separate global IPv6 routing enable command.
+# Enter configuration mode and configure IPv6 on the SVI or routed interface.
 
 switch# configure terminal
-switch(config)# ipv6 unicast-routing
 ```
 
 ### Step 2: Configure IPv6 on a VLAN Interface (SVI)
@@ -27,7 +27,6 @@ switch(config)# ipv6 unicast-routing
 # Configure VLAN 100 with IPv6
 switch(config)# interface vlan 100
 switch(config-if-vlan)# ipv6 address 2001:db8:1:100::1/64
-switch(config-if-vlan)# ipv6 enable
 switch(config-if-vlan)# no shutdown
 ```
 
@@ -36,7 +35,7 @@ switch(config-if-vlan)# no shutdown
 ```bash
 # Convert a port to routed mode and assign IPv6
 switch(config)# interface 1/1/1
-switch(config-if)# no switchport
+switch(config-if)# routing
 switch(config-if)# ipv6 address 2001:db8:0:1::1/64
 switch(config-if)# no shutdown
 ```
@@ -46,16 +45,18 @@ switch(config-if)# no shutdown
 ```bash
 # Enable RA on a VLAN interface
 switch(config)# interface vlan 100
-switch(config-if-vlan)# ipv6 nd ra interval 100
+switch(config-if-vlan)# no ipv6 nd suppress-ra
+switch(config-if-vlan)# ipv6 nd ra min-interval 30
+switch(config-if-vlan)# ipv6 nd ra max-interval 100
 switch(config-if-vlan)# ipv6 nd ra lifetime 1800
 
 # Configure prefix advertisement
-switch(config-if-vlan)# ipv6 nd prefix 2001:db8:1:100::/64 valid-lifetime 86400 preferred-lifetime 14400
-switch(config-if-vlan)# ipv6 nd ra m-flag disable
-switch(config-if-vlan)# ipv6 nd ra o-flag disable
+switch(config-if-vlan)# ipv6 nd prefix 2001:db8:1:100::/64 valid 86400 preferred 14400
+switch(config-if-vlan)# no ipv6 nd ra managed-config-flag
+switch(config-if-vlan)# no ipv6 nd ra other-config-flag
 
 # Advertise DNS via RDNSS
-switch(config-if-vlan)# ipv6 nd ra dns-server 2001:db8:1:100::53 lifetime 600
+switch(config-if-vlan)# ipv6 nd ra dns server 2001:db8:1:100::53 lifetime 600
 ```
 
 ### Step 5: Configure Static Routes
@@ -65,7 +66,7 @@ switch(config-if-vlan)# ipv6 nd ra dns-server 2001:db8:1:100::53 lifetime 600
 switch(config)# ipv6 route 2001:db8:2::/48 2001:db8:0:1::2
 
 # Default route
-switch(config)# ipv6 route ::/0 2001:db8:isp::1
+switch(config)# ipv6 route ::/0 2001:db8:ffff::1
 ```
 
 ### Step 6: Configure OSPFv3
@@ -87,55 +88,55 @@ switch(config-if)# ipv6 ospfv3 1 area 0
 
 ```bash
 # Create an IPv6 access control list
-switch(config)# ipv6 access-list IPV6-FILTER
+switch(config)# access-list ipv6 IPV6-FILTER
 
 # Permit ICMPv6 (required for Neighbor Discovery)
-switch(config-ipv6-acl)# permit icmpv6 any any
+switch(config-acl-ipv6)# permit icmpv6 any any
 
 # Permit established TCP
-switch(config-ipv6-acl)# permit tcp any any established
+switch(config-acl-ipv6)# permit tcp any any established
 
 # Deny everything else
-switch(config-ipv6-acl)# deny ipv6 any any
+switch(config-acl-ipv6)# deny any any any
 
 # Apply to interface
 switch(config)# interface 1/1/1
-switch(config-if)# ipv6 access-group IPV6-FILTER in
+switch(config-if)# apply access-list ipv6 IPV6-FILTER in
 ```
 
-## Legacy HPE ProVision/AdvancedTraffic IPv6
+## Legacy HPE ArubaOS-Switch / ProVision IPv6
 
 For older HPE switches (5400, 3800 series):
 
 ```bash
 # Enable IPv6 routing
-switch# ipv6 routing
+switch(config)# ipv6 unicast-routing
 
 # Configure a VLAN with IPv6
-switch# vlan 100
+switch(config)# vlan 100
 switch(vlan-100)# ipv6 address 2001:db8:1:100::1/64
 
 # Add a static route
-switch# ipv6 route ::/0 2001:db8:isp::1
+switch(config)# ipv6 route ::/0 2001:db8:ffff::1
 ```
 
 ## Verification Commands (ArubaOS-CX)
 
 ```bash
 # Show IPv6 interface addresses
-switch# show ipv6 interface brief
+switch# show ipv6 interface 1/1/1
 
 # Show IPv6 routing table
 switch# show ipv6 route
 
 # Show OSPFv3 neighbors
-switch# show ipv6 ospf neighbor
+switch# show ipv6 ospfv3 neighbors
 
 # Show IPv6 neighbor discovery cache
 switch# show ipv6 neighbors
 
 # Show RA configuration
-switch# show ipv6 nd
+switch# show ipv6 nd interface vlan 100
 
 # Ping test
 switch# ping6 2606:4700:4700::1111
@@ -143,4 +144,4 @@ switch# ping6 2606:4700:4700::1111
 
 ## Conclusion
 
-HPE/Aruba ArubaOS-CX switches provide comprehensive IPv6 support through a CLI structure that closely resembles Cisco IOS. Key differences include the `ipv6 enable` command for per-interface IPv6 activation and the `ipv6 ospfv3` syntax for OSPFv3. The switch can serve as a default gateway for IPv6 VLAN segments with integrated RA support, eliminating the need for a separate radvd server.
+HPE/Aruba ArubaOS-CX switches provide comprehensive IPv6 support through a CLI structure that closely resembles Cisco IOS. Key differences include the `routing` command to convert a physical interface into a routed port, `no ipv6 nd suppress-ra` to enable Router Advertisements on an interface, and the `ipv6 ospfv3` syntax for OSPFv3. The switch can serve as a default gateway for IPv6 VLAN segments with integrated RA support, eliminating the need for a separate radvd server.
