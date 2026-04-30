@@ -40,28 +40,38 @@ vrf definition TENANT-A
 interface GigabitEthernet1.100
  encapsulation dot1q 100
  vrf forwarding TENANT-A
- ipv6 address 2001:db8:1:1::1/64
+ ipv6 address 2001:db8:1:100::1/64
 ```
 
 ## VLAN and Prefix Mapping
 
-Map tenant VLANs to their IPv6 prefixes consistently:
+Map tenant VLANs to per-VLAN /64 subnets consistently:
 
 | Tenant | VLAN  | IPv6 Prefix             |
 |--------|-------|-------------------------|
-| A      | 100   | 2001:db8:1::/48         |
-| B      | 200   | 2001:db8:2::/48         |
-| C      | 300   | 2001:db8:3::/48         |
+| A      | 100   | 2001:db8:1:100::/64     |
+| B      | 200   | 2001:db8:2:200::/64     |
+| C      | 300   | 2001:db8:3:300::/64     |
 
 ## BGP Route Leaking for Shared Services
 
-Shared services (DNS, NTP, patch servers) can be exposed to tenants using selective route leaking:
+In MP-BGP-based designs, shared services (DNS, NTP, patch servers) can be exposed to tenants using selective route-target import:
 
-```python
-# Leak shared services prefix into tenant VRFs
-router bgp 65000
- address-family ipv6 vrf TENANT-A
-  import path from default 2001:db8:ffff:10::/64
+```text
+# Import the shared-services VRF into the tenant VRF
+
+vrf definition SHARED-SERVICES
+ rd 65000:100
+ address-family ipv6
+  route-target both 65000:100
+  exit-address-family
+
+vrf definition TENANT-A
+ rd 65000:1
+ address-family ipv6
+  route-target both 65000:1
+  route-target import 65000:100
+  exit-address-family
 ```
 
 ## DHCPv6 for Tenant Address Assignment
