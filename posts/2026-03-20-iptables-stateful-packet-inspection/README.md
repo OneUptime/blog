@@ -12,10 +12,10 @@ Stateful packet inspection (SPI) tracks the state of network connections and aut
 
 | State | Description |
 |---|---|
-| NEW | First packet in a new connection |
-| ESTABLISHED | Part of an already-established connection |
-| RELATED | Related to an established connection (e.g., FTP data channel) |
-| INVALID | Doesn't match any known connection |
+| NEW | Starts a new connection, or a connection only seen in one direction so far |
+| ESTABLISHED | Part of a connection that has seen traffic in both directions |
+| RELATED | Starts a new connection related to an existing one (e.g., FTP data channel) |
+| INVALID | Can't be identified or tracked correctly |
 
 ## Basic Stateful Firewall
 
@@ -25,14 +25,16 @@ Stateful packet inspection (SPI) tracks the state of network connections and aut
 # Without it, you'd need symmetric rules for every service
 sudo iptables -A INPUT -m state --state ESTABLISHED,RELATED -j ACCEPT
 
-# Combined with default deny:
-sudo iptables -P INPUT DROP
-sudo iptables -P OUTPUT DROP
-
 # Allow outbound (and its return traffic will be allowed by the ESTABLISHED rule)
 sudo iptables -A OUTPUT -p tcp --dport 80 -j ACCEPT
 sudo iptables -A OUTPUT -p tcp --dport 443 -j ACCEPT
 sudo iptables -A OUTPUT -p udp --dport 53 -j ACCEPT
+sudo iptables -A OUTPUT -p tcp --dport 53 -j ACCEPT
+
+# Then apply default deny:
+sudo iptables -P INPUT DROP
+sudo iptables -P OUTPUT DROP
+
 # No INPUT rules needed for these - ESTABLISHED handles responses
 ```
 
@@ -56,14 +58,14 @@ sudo iptables -A INPUT -m conntrack --ctstate NEW -p tcp --dport 443 -j ACCEPT
 #!/bin/bash
 # stateful-firewall.sh
 
+# Start permissive so existing sessions are not dropped during rule replacement
+iptables -P INPUT ACCEPT
+iptables -P OUTPUT ACCEPT
+iptables -P FORWARD ACCEPT
+
 # Flush existing rules
 iptables -F
 iptables -X
-
-# Default deny
-iptables -P INPUT DROP
-iptables -P OUTPUT DROP
-iptables -P FORWARD DROP
 
 # === INPUT CHAIN ===
 
@@ -105,13 +107,18 @@ iptables -A OUTPUT -m conntrack --ctstate NEW -p tcp --dport 443 -j ACCEPT
 # Allow NTP
 iptables -A OUTPUT -m conntrack --ctstate NEW -p udp --dport 123 -j ACCEPT
 
+# Default deny
+iptables -P INPUT DROP
+iptables -P OUTPUT DROP
+iptables -P FORWARD DROP
+
 echo "Stateful firewall configured"
 ```
 
 ## Viewing Connection Tracking Table
 
 ```bash
-# Install conntrack tools
+# On Debian/Ubuntu, install conntrack tools
 sudo apt install conntrack -y
 
 # View all tracked connections
@@ -129,14 +136,18 @@ sudo conntrack -C
 
 ## Handling FTP (Connection Tracking Helper)
 
-FTP uses separate control and data connections - the `RELATED` state handles this:
+FTP uses separate control and data connections - with the FTP helper assigned, the data connection can be tracked as `RELATED`:
 
 ```bash
 # Load the FTP connection tracking helper
 sudo modprobe nf_conntrack_ftp
 
-# Now RELATED connections for FTP data channels are automatically allowed
+# On current kernels, explicitly assign the helper to outbound FTP control traffic
+sudo iptables -t raw -A OUTPUT -p tcp --dport 21 -j CT --helper ftp
+
+# Allow RELATED FTP data channels according to your firewall policy
 sudo iptables -A INPUT -m conntrack --ctstate ESTABLISHED,RELATED -j ACCEPT
+sudo iptables -A OUTPUT -m conntrack --ctstate ESTABLISHED,RELATED -j ACCEPT
 ```
 
 Stateful inspection dramatically simplifies firewall rules - you only write rules for initiating new connections, and return traffic is handled automatically by the connection tracking table.
