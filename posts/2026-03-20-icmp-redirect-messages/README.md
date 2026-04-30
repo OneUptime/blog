@@ -25,7 +25,7 @@ ICMP Redirect (Type 5) is sent by a router to a host when it determines that the
 Host (192.168.1.10) sends packet to Router A (192.168.1.1)
 Router A sees: "I can reach 10.20.0.5 via Router B (192.168.1.2)"
 Router A sends: ICMP Redirect to Host, saying "use 192.168.1.2 for 10.20.0.5"
-Host updates its routing cache to use Router B directly
+Host updates its routing information to use Router B directly
 ```
 
 ## Observing ICMP Redirects
@@ -43,15 +43,17 @@ tcpdump -i eth0 -n -v 'icmp[0] = 5'
 ## Linux Response to ICMP Redirects
 
 ```bash
-# Check if Linux accepts ICMP redirects (default: yes for non-routers)
+# Check if Linux accepts ICMP redirects
+# (enabled by default on hosts, disabled when IPv4 forwarding is enabled)
 sysctl net.ipv4.conf.all.accept_redirects
 sysctl net.ipv4.conf.eth0.accept_redirects
 
-# View redirect-modified routing cache
-ip route show cache
+# Show the route Linux will currently use for a destination
+ip route get 10.20.0.5
 
-# See if any cache entries have a redirect (different gateway than main table)
-ip route show cache | grep "via"
+# Compare `ip route get` output before and after a redirect on modern Linux.
+# The IPv4 route cache was removed in Linux 3.6, so `ip route show cache`
+# will not show IPv4 redirect entries on current kernels.
 ```
 
 ## Security: Disabling ICMP Redirects
@@ -65,12 +67,14 @@ sysctl -w net.ipv4.conf.default.accept_redirects=0
 
 # On a router: also disable sending redirects
 sysctl -w net.ipv4.conf.all.send_redirects=0
+sysctl -w net.ipv4.conf.default.send_redirects=0
 
 # Make permanent
 cat >> /etc/sysctl.conf << EOF
 net.ipv4.conf.all.accept_redirects=0
 net.ipv4.conf.default.accept_redirects=0
 net.ipv4.conf.all.send_redirects=0
+net.ipv4.conf.default.send_redirects=0
 EOF
 sysctl -p
 ```
@@ -79,7 +83,7 @@ sysctl -p
 
 ICMP redirects are beneficial in simple networks where hosts have a single default gateway but multiple routers exist on the same subnet. However, in most modern enterprise and cloud networks:
 
-1. ICMP redirects are disabled by default on routers
+1. ICMP redirects are often disabled on routers as a hardening measure
 2. Dynamic routing protocols handle path optimization instead
 3. Host routing tables are configured correctly from the start
 
