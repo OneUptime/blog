@@ -29,14 +29,14 @@ ip -6 addr show
 # Check the MTU as seen by the IPv6 stack
 cat /proc/sys/net/ipv6/conf/eth0/mtu
 
-# Check for any interfaces with MTU below 1280 (breaks IPv6)
+# Check for any interfaces with MTU below 1280 (violates the IPv6 minimum MTU)
 ip link show | awk '
   /^[0-9]+:/ { iface = $2 }
   /mtu/ {
     for(i=1; i<=NF; i++) {
       if ($i == "mtu") {
         mtu = $(i+1)+0
-        if (mtu < 1280) print "WARNING: " iface " MTU=" mtu " < 1280 (IPv6 broken)"
+        if (mtu < 1280) print "WARNING: " iface " MTU=" mtu " < 1280 (below IPv6 minimum)"
       }
     }
   }
@@ -56,12 +56,12 @@ sudo ip link set lo mtu 65536
 # Outer IPv4 header = 20 bytes, so inner IPv6 MTU = 1500 - 20 = 1480
 sudo ip link set sit0 mtu 1480
 
-# For GRE tunnel:
-# GRE overhead = 24 bytes (IPv4 + GRE), inner IPv6 MTU = 1476
+# For basic GRE over IPv4 without checksum/key/sequence options:
+# Outer IPv4 header (20) + base GRE header (4) = 24 bytes, so inner IPv6 MTU = 1476
 sudo ip link set gre0 mtu 1476
 
-# For OpenVPN tunnel (typical):
-# Recommended MTU for VPN to avoid fragmentation
+# For an OpenVPN TUN device (common starting point; actual overhead varies by protocol and options):
+# Lower the MTU as needed to avoid fragmentation
 sudo ip link set tun0 mtu 1420
 
 # Verify the change
@@ -72,13 +72,10 @@ ip link show eth0 | grep mtu
 
 ```bash
 # Method 1: Using /etc/network/interfaces (Debian/Ubuntu)
-# Add to the interface stanza:
-sudo tee -a /etc/network/interfaces << 'EOF'
-
-iface eth0 inet6 static
-    address 2001:db8::1/64
-    mtu 1480
-EOF
+# Add `mtu 1480` to the existing interface stanza, for example:
+# iface eth0 inet6 static
+#     address 2001:db8::1/64
+#     mtu 1480
 
 # Method 2: Using NetworkManager (nmcli)
 nmcli connection modify "Wired connection 1" 802-3-ethernet.mtu 1480
@@ -111,16 +108,16 @@ sudo systemctl restart systemd-networkd
 ```python
 def calculate_tunnel_mtu(outer_link_mtu: int, tunnel_type: str) -> dict:
     """
-    Calculate appropriate inner IPv6 MTU for various tunnel types.
+    Calculate an inner IPv6 MTU using fixed or commonly assumed tunnel overheads.
     """
     overhead = {
         "6in4":        20,   # IPv4 header
-        "6in4-ipsec":  52,   # IPv4 (20) + ESP (8) + IV (16) + ICV (8)
-        "gre":         24,   # IPv4 (20) + GRE (4)
-        "gre-ipsec":   60,   # IPv4 (20) + GRE (4) + ESP (8) + IV (16) + ICV (12)
+        "6in4-ipsec":  52,   # Example ESP-over-IPv4 estimate; actual overhead depends on ESP mode, algorithm, and padding
+        "gre":         24,   # IPv4 (20) + base GRE (4)
+        "gre-ipsec":   60,   # Example GRE-over-IPv4 with ESP estimate; actual overhead depends on GRE/ESP options
         "ipip6":       40,   # IPv6 outer header
-        "openvpn":     74,   # UDP (8) + OpenVPN header (up to 66 bytes typical)
-        "wireguard":   60,   # IPv4 (20) + UDP (8) + WireGuard (32)
+        "openvpn":     74,   # Example over IPv4/UDP; actual overhead varies by mode and options
+        "wireguard":   60,   # IPv4 (20) + UDP (8) + WireGuard data packet overhead (32); use 80 over IPv6
     }
 
     if tunnel_type not in overhead:
@@ -143,4 +140,4 @@ for tunnel in ["6in4", "gre", "wireguard", "openvpn"]:
 
 ## Conclusion
 
-IPv6 MTU configuration on Linux is managed via the `ip link set` command. For physical Ethernet interfaces, the default 1500 bytes is correct. Tunnel interfaces require MTU reduction by the exact overhead of the encapsulation headers. Always verify that the resulting MTU is at least 1280 bytes to satisfy the IPv6 minimum requirement. Use NetworkManager, systemd-networkd, or `/etc/network/interfaces` to persist MTU settings across reboots.
+IPv6 MTU configuration on Linux is managed via the `ip link set` command. For physical Ethernet interfaces, the default 1500 bytes is common and usually correct on standard links. Tunnel interfaces require MTU reduction by the encapsulation overhead, which may vary with the tunnel type and options. Always verify that the resulting MTU is at least 1280 bytes to satisfy the IPv6 minimum requirement. Use NetworkManager, systemd-networkd, or `/etc/network/interfaces` to persist MTU settings across reboots.
