@@ -8,7 +8,7 @@ Description: RFC 1918 defines three blocks of IPv4 address space reserved for pr
 
 ## The Three RFC 1918 Blocks
 
-| Block | Range | CIDR | Default Mask | Size |
+| Block | Range | CIDR | Mask | Size |
 |-------|-------|------|-------------|------|
 | Class A private | 10.0.0.0 – 10.255.255.255 | 10.0.0.0/8 | 255.0.0.0 | 16,777,216 addresses |
 | Class B private | 172.16.0.0 – 172.31.255.255 | 172.16.0.0/12 | 255.240.0.0 | 1,048,576 addresses |
@@ -23,9 +23,16 @@ Before NAT and private addressing, every connected device required a unique publ
 ```python
 import ipaddress
 
+RFC1918_NETWORKS = (
+    ipaddress.IPv4Network("10.0.0.0/8"),
+    ipaddress.IPv4Network("172.16.0.0/12"),
+    ipaddress.IPv4Network("192.168.0.0/16"),
+)
+
 def is_private(ip: str) -> bool:
     """Return True if the IPv4 address is in an RFC 1918 private range."""
-    return ipaddress.IPv4Address(ip).is_private
+    address = ipaddress.IPv4Address(ip)
+    return any(address in network for network in RFC1918_NETWORKS)
 
 # Test cases
 
@@ -35,7 +42,7 @@ addresses = [
     "172.32.0.1",     # NOT private (172.32 is outside 172.16-31)
     "192.168.100.1",
     "8.8.8.8",
-    "203.0.113.5",
+    "203.0.113.5",    # Documentation range, not RFC 1918 private
 ]
 
 for addr in addresses:
@@ -64,7 +71,7 @@ Output:
 ## Routing Considerations
 
 - Private addresses **must not** be advertised to the public internet.
-- ISPs should filter (nullroute) incoming packets with private source addresses.
+- ISPs should filter incoming packets with private source addresses.
 - BGP filtering: add RFC 1918 prefixes to inbound prefix-lists to prevent leaking.
 
 ```bash
