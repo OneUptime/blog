@@ -4,11 +4,11 @@ Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
 Tags: OpenTofu, Terraform, for_each, Filtering, Conditional, HCL
 
-Description: Learn how to filter map and list inputs before passing them to for_each in OpenTofu, creating only the resources that meet your specified criteria.
+Description: Learn how to filter collection inputs before passing them to for_each in OpenTofu, creating only the resources that meet your specified criteria.
 
 ## Introduction
 
-`for_each` creates one resource per element in a map or set. By filtering the collection before passing it to `for_each`, you can create resources selectively based on any condition - environment flags, tier requirements, feature flags, or complex multi-field criteria.
+`for_each` creates one resource per element in a map or set of strings. By filtering the collection before passing it to `for_each`, you can create resources selectively based on any condition - environment flags, tier requirements, feature flags, or complex multi-field criteria.
 
 ## Filtering with if in for Expression
 
@@ -108,7 +108,7 @@ resource "aws_route53_record" "public_services" {
 
 ## Filtering by Value Presence
 
-Create resources only when a specific field is non-null or non-empty.
+Create resources only when a specific field is non-empty.
 
 ```hcl
 variable "certificates" {
@@ -141,7 +141,7 @@ resource "aws_acm_certificate" "managed" {
 }
 ```
 
-## Filtering with contains and length Checks
+## Filtering with lookup and length Checks
 
 ```hcl
 variable "subnets" {
