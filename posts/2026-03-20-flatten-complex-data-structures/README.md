@@ -8,16 +8,16 @@ Description: Learn how to use OpenTofu's flatten() function and for expressions 
 
 ---
 
-Complex variable structures - like a map of lists, or nested objects - often need to be flattened into a simple list or map before they can be used with `for_each` or `dynamic` blocks. OpenTofu provides the `flatten()` function and for expressions to handle this.
+Complex variable structures - like a map of lists, or nested objects - often need to be transformed into a simple list or map before you can iterate over each nested element with `for_each` or `dynamic` blocks. OpenTofu provides the `flatten()` function and for expressions to handle this.
 
 ---
 
 ## The Problem: Nested Structures with for_each
 
-`for_each` requires a flat map or set. Nested structures cause errors:
+`for_each` accepts a map, or a set of strings, with one element per instance. Nested structures like a map of lists often need reshaping first:
 
 ```hcl
-# This won't work with for_each directly
+# This shape needs reshaping before you can create one resource per CIDR
 
 variable "regions" {
   default = {
@@ -47,35 +47,35 @@ locals {
 ## Flatten Map of Lists into a Keyed Map
 
 ```hcl
-variable "region_subnets" {
+variable "az_subnets" {
   default = {
-    "us-east-1" = ["10.0.0.0/24", "10.0.1.0/24"]
-    "us-west-2" = ["10.1.0.0/24", "10.1.1.0/24"]
+    "us-east-1a" = ["10.0.0.0/24", "10.0.1.0/24"]
+    "us-east-1b" = ["10.1.0.0/24", "10.1.1.0/24"]
   }
 }
 
 locals {
-  # Flatten into list of objects with region + cidr
+  # Flatten into list of objects with availability zone + cidr
   subnet_list = flatten([
-    for region, cidrs in var.region_subnets : [
+    for az, cidrs in var.az_subnets : [
       for cidr in cidrs : {
-        region = region
-        cidr   = cidr
+        availability_zone = az
+        cidr              = cidr
       }
     ]
   ])
   # Result:
   # [
-  #   { region = "us-east-1", cidr = "10.0.0.0/24" },
-  #   { region = "us-east-1", cidr = "10.0.1.0/24" },
-  #   { region = "us-west-2", cidr = "10.1.0.0/24" },
-  #   { region = "us-west-2", cidr = "10.1.1.0/24" },
+  #   { availability_zone = "us-east-1a", cidr = "10.0.0.0/24" },
+  #   { availability_zone = "us-east-1a", cidr = "10.0.1.0/24" },
+  #   { availability_zone = "us-east-1b", cidr = "10.1.0.0/24" },
+  #   { availability_zone = "us-east-1b", cidr = "10.1.1.0/24" },
   # ]
 
-  # Convert to map keyed by "region/cidr" for for_each
+  # Convert to map keyed by "availability-zone/cidr" for for_each
   subnet_map = {
     for subnet in local.subnet_list :
-    "${subnet.region}/${subnet.cidr}" => subnet
+    "${subnet.availability_zone}/${subnet.cidr}" => subnet
   }
 }
 
@@ -83,12 +83,12 @@ locals {
 resource "aws_subnet" "regional" {
   for_each = local.subnet_map
 
-  availability_zone = "${each.value.region}a"
+  availability_zone = each.value.availability_zone
   cidr_block        = each.value.cidr
   vpc_id            = aws_vpc.main.id
 
   tags = {
-    Region = each.value.region
+    AvailabilityZone = each.value.availability_zone
   }
 }
 ```
@@ -133,15 +133,14 @@ locals {
   }
 }
 
-resource "aws_security_group_rule" "services" {
+resource "aws_vpc_security_group_ingress_rule" "services" {
   for_each = local.sg_rules_map
 
-  type              = "ingress"
   security_group_id = aws_security_group.main.id
   from_port         = each.value.port
   to_port           = each.value.port
-  protocol          = "tcp"
-  cidr_blocks       = [each.value.source]
+  ip_protocol       = "tcp"
+  cidr_ipv4         = each.value.source
 
   description = "${each.value.service} on port ${each.value.port}"
 }
@@ -161,11 +160,12 @@ locals {
   ])
 }
 
-resource "aws_autoscaling_attachment" "all" {
+resource "aws_lb_target_group_attachment" "all" {
   count = length(local.all_instance_ids)
 
-  autoscaling_group_name = aws_autoscaling_group.main.name
-  lb_target_group_arn    = aws_lb_target_group.main.arn
+  target_group_arn = aws_lb_target_group.main.arn
+  target_id        = local.all_instance_ids[count.index]
+  port             = 80
 }
 ```
 
@@ -212,7 +212,7 @@ output "debug_subnets" {
 ## Best Practices
 
 1. **Use local values** to hold intermediate flattened structures before passing to resources
-2. **Always create a unique key** for the resulting map (e.g., `"${region}/${cidr}"`)
+2. **Always create a unique key** for the resulting map (e.g., `"${availability_zone}/${cidr}"`)
 3. **Test with tofu console** before deploying to verify the structure is correct
 4. **Add type annotations** to variables to help OpenTofu validate inputs
 5. **Comment complex flatten expressions** - they can be hard to read at a glance
