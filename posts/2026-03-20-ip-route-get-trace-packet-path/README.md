@@ -46,10 +46,10 @@ ip route get 192.168.1.50
 ## Trace Path via Specific Interface
 
 ```bash
-# Simulate packet arriving from a specific interface
-ip route get 8.8.8.8 iif eth1
+# Simulate a packet from 10.0.0.5 arriving on eth1
+ip route get 8.8.8.8 from 10.0.0.5 iif eth1
 
-# Shows what route is used for packets arriving from eth1
+# Shows how the kernel would route a packet that arrived on eth1
 ```
 
 ## Trace Path with a Firewall Mark
@@ -78,7 +78,7 @@ ip -4 route get 8.8.8.8
 - `via` - next hop gateway
 - `dev` - outgoing interface
 - `src` - source IP the kernel would use
-- `uid` - user ID making the lookup
+- `uid` - user ID used for the lookup
 
 ## Use Cases
 
