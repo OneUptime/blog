@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
-Tags: Window, Networking, Ipconfig, DNS, Cache, Troubleshooting
+Tags: Windows, Networking, Ipconfig, DNS, Cache, Troubleshooting
 
 Description: Flush the Windows DNS resolver cache using ipconfig /flushdns to clear stale DNS records and force fresh lookups, resolving hostname resolution issues after DNS changes.
 
@@ -30,7 +30,7 @@ Successfully flushed the DNS Resolver Cache.
 - After a website or service has moved to a new IP address
 - After changing the DNS server settings on the adapter
 - When `ping hostname.com` resolves to an old IP
-- After modifying `/etc/hosts` on a Linux system you are testing against
+- After creating a DNS record that previously returned "Name does not exist"
 - After a domain cutover or migration
 
 ## Verifying the Cache is Empty
