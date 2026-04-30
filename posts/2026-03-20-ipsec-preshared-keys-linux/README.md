@@ -7,14 +7,15 @@ Tags: IPsec, PSK, Pre-Shared Keys, strongSwan, Linux, VPN
 Description: Configure IPsec VPN authentication using pre-shared keys (PSK) on Linux with strongSwan, including secure key generation and secrets file management.
 
 Pre-shared keys (PSK) are the simplest authentication method for IPsec. Both sides of the tunnel share the same secret key. While less scalable than certificate-based auth, PSK is easier to configure for a small number of site-to-site tunnels.
+The examples below use strongSwan's legacy `ipsec.conf` / `ipsec.secrets` files and the `ipsec` command. On strongSwan 6.x, this `stroke`-based workflow is deprecated and may not be installed by default; new deployments should prefer `swanctl.conf` and `swanctl`.
 
 ## Generating a Secure Pre-Shared Key
 
 ```bash
-# Generate a strong PSK (32+ characters recommended)
+# Generate a strong PSK (32 random bytes is a good baseline)
 
 openssl rand -base64 32
-# Example output: 7mV8JkXq2nP4bR1hD9cF5wL3yN6tG0sI
+# Example output: lUkSbNdXaqYzehSg7/ppvCg6ndY7LjwZ6BGKuhRGJI0=
 
 # Or use /dev/urandom
 dd if=/dev/urandom bs=32 count=1 2>/dev/null | base64 | tr -d '\n'
@@ -29,10 +30,10 @@ The `ipsec.secrets` file holds authentication credentials:
 ```conf
 # /etc/ipsec.secrets
 
-# Format: local_id remote_id : PSK "secret"
+# Format: [local_id remote_id] : PSK "secret"
 
 # Simple form - any peer can authenticate with this PSK
-%any %any : PSK "your-very-long-random-secret-here"
+: PSK "your-very-long-random-secret-here"
 
 # Specific peer PSK (more secure)
 @gateway-a @gateway-b : PSK "specific-tunnel-secret"
@@ -93,30 +94,35 @@ For multiple site-to-site tunnels with different keys:
 PSK rotation must be coordinated between both sides to avoid downtime:
 
 ```bash
-# Step 1: Add the NEW key to ipsec.secrets alongside the old one
-# Step 2: Update the remote peer's ipsec.secrets to the new key
-# Step 3: Reload strongSwan (new connections use the new key)
-# Step 4: When all tunnels have renegotiated, remove the old key
+# strongSwan can't keep two different PSKs for the same selector pair active
+# in /etc/ipsec.secrets. Replace the PSK on both peers during a change window.
+# Step 1: Update the PSK in ipsec.secrets on both peers
+# Step 2: Reload the secrets on both peers
+# Step 3: Re-establish the tunnel so it authenticates with the new PSK
 
 # Reload secrets without full restart
 sudo ipsec rereadsecrets
+
+# Reconnect the tunnel if you want the new PSK used immediately
+sudo ipsec down psk-tunnel
+sudo ipsec up psk-tunnel
 ```
 
 ## Verifying PSK Authentication
 
 ```bash
-# Enable auth logging to see PSK verification
-sudo ipsec stroke loglevel ike 3
-
 # Bring up the tunnel
 sudo ipsec up psk-tunnel
 
-# Success log message:
-# "authentication of ... with PSK successful"
+# Check detailed SA state
+sudo ipsec statusall
 
-# Failure log message:
-# "AUTH_FAILED notify received ... PSK"
-# → Check that PSK matches on both sides exactly (case-sensitive)
+# On systemd-based installs, inspect recent IKE logs
+sudo journalctl -u strongswan -u strongswan-starter -n 50
+
+# AUTH_FAILED usually means the PSK or peer ID selectors do not match.
+# Check that the PSK matches on both sides exactly and that leftid/rightid
+# match the selectors in /etc/ipsec.secrets.
 ```
 
 ## Best Practices for PSK Security
@@ -130,7 +136,7 @@ openssl rand -base64 48
 # 4. Rotate PSKs annually or after any compromise
 # 5. Use certificate authentication for production if possible
 # 6. Monitor for authentication failures as they may indicate PSK exposure
-sudo journalctl -u strongswan | grep -i "auth.*fail"
+sudo journalctl -u strongswan -u strongswan-starter | grep -Ei "AUTH_FAILED|authentication.*fail"
 ```
 
 PSK authentication is a pragmatic choice for two-site tunnels, but move to certificate authentication when managing more than 5-10 tunnels or when compliance requires it.
