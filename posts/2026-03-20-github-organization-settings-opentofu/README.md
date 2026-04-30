@@ -1,14 +1,14 @@
-# How to Github Organization Settings with OpenTofu on GitHub
+# How to Manage GitHub Organization and Repository Settings with OpenTofu on GitHub
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
 Tags: OpenTofu, GitHub, Infrastructure as Code, GitOps, Automation
 
-Description: Learn how to manage GitHub organization settings with OpenTofu for consistent, version-controlled GitHub organisation management.
+Description: Learn how to manage GitHub organization and repository settings with OpenTofu for consistent, version-controlled GitHub organisation management.
 
 ## Introduction
 
-The GitHub provider enables managing GitHub resources as code. This guide covers configuring organization settings with production-ready settings.
+The GitHub provider enables managing GitHub organization and repository resources as code once it is authenticated with a token, GitHub CLI, or a GitHub App installation. This guide covers production-ready examples for branch protection, teams, Actions secrets, and repository webhooks.
 
 ## Provider Setup
 
@@ -71,7 +71,7 @@ resource "github_team_membership" "platform" {
 resource "github_actions_secret" "deploy_key" {
   repository      = var.repository_name
   secret_name     = "DEPLOY_KEY"
-  plaintext_value = var.deploy_key_value
+  value           = var.deploy_key_value
 }
 
 # Webhook
@@ -96,12 +96,21 @@ resource "github_repository_webhook" "ci" {
 variable "github_org"      { type = string }
 variable "repository_id"   { type = string }
 variable "repository_name" { type = string }
-variable "team_members"    { type = list(string); default = [] }
-variable "deploy_key_value" { type = string; sensitive = true }
+variable "team_members" {
+  type    = list(string)
+  default = []
+}
+variable "deploy_key_value" {
+  type      = string
+  sensitive = true
+}
 variable "webhook_url"     { type = string }
-variable "webhook_secret"  { type = string; sensitive = true }
+variable "webhook_secret" {
+  type      = string
+  sensitive = true
+}
 ```
 
 ## Conclusion
 
-GitHub resources managed with OpenTofu give your organisation a consistent, auditable configuration baseline. Apply branch protection to all production branches, use teams for CODEOWNERS assignments, and store secrets via the Actions secrets API rather than in repository settings UI.
+GitHub organization and repository resources managed with OpenTofu give your organisation a consistent, auditable configuration baseline. Apply branch protection to all production branches, use teams for CODEOWNERS assignments, and store secrets via the Actions secrets API rather than in repository settings UI.
