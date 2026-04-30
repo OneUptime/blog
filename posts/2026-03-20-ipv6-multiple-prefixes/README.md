@@ -25,7 +25,7 @@ ip -6 addr show scope global | grep -A3 "inet6"
 #    valid_lft 86399sec preferred_lft 14399sec
 # inet6 2001:db8:b::100/64 scope global dynamic mngtmpaddr
 #    valid_lft 86399sec preferred_lft 14399sec
-# inet6 fd00::100/64 scope global  ← manual/ULA
+# inet6 fd12:3456:789a::100/64 scope global  ← manual/ULA
 ```
 
 ## Understanding Address Lifetimes
@@ -50,7 +50,7 @@ ip -6 addr show scope global | grep "valid_lft\|preferred_lft"
 
 ```bash
 # Multiple routers or prefixes on the same link
-# Each RA prefix adds a new SLAAC address
+# Each autonomous RA prefix can add a new SLAAC address
 
 # Check how many RAs are being received
 sudo tcpdump -i eth0 -v "ip6 proto 58 and ip6[40] == 134" 2>/dev/null &
@@ -72,14 +72,14 @@ sudo ip6tables -A INPUT -p icmpv6 --icmpv6-type 134 \
 # Add multiple IPv6 addresses to an interface
 sudo ip -6 addr add 2001:db8:a::100/64 dev eth0
 sudo ip -6 addr add 2001:db8:b::100/64 dev eth0
-sudo ip -6 addr add fd00::100/64 dev eth0
+sudo ip -6 addr add fd12:3456:789a::100/64 dev eth0
 
-# Each address needs a route (on-link routes are added automatically)
+# Linux adds on-link prefix routes automatically unless noprefixroute is used
 ip -6 route show | grep eth0
 
-# Add routes for each prefix to be routed correctly
-sudo ip -6 route add 2001:db8:a::/64 dev eth0 src 2001:db8:a::100
-sudo ip -6 route add 2001:db8:b::/64 dev eth0 src 2001:db8:b::100
+# Only add routes manually if automatic prefix routes were disabled
+# sudo ip -6 route add 2001:db8:a::/64 dev eth0 src 2001:db8:a::100
+# sudo ip -6 route add 2001:db8:b::/64 dev eth0 src 2001:db8:b::100
 
 # Verify
 ip -6 addr show dev eth0
@@ -100,9 +100,9 @@ IPv6AcceptRA=yes
 # Static additional addresses
 Address=2001:db8:a::100/64
 Address=2001:db8:b::100/64
-Address=fd00::100/64
+Address=fd12:3456:789a::100/64
 
-# Prefer SLAAC-assigned addresses for routing
+# Disable temporary privacy addresses for stable source selection
 IPv6PrivacyExtensions=no
 ```
 
@@ -156,4 +156,4 @@ ip -6 route show scope link dev eth0 2>/dev/null
 
 ## Conclusion
 
-Multiple IPv6 prefixes on a single host are common and expected in enterprise and multi-homed environments. Monitor addresses with `ip -6 addr show scope global` which shows lifetimes - preferred_lft=0 means deprecated. SLAAC automatically manages address lifetimes from RA prefix options. For static configurations, add all desired addresses with `ip -6 addr add` and corresponding on-link routes are added automatically. Ensure source address selection (RFC 6724) picks the correct address for each destination to avoid asymmetric routing.
+Multiple IPv6 prefixes on a single host are common and expected in enterprise and multi-homed environments. Monitor addresses with `ip -6 addr show scope global` which shows lifetimes - preferred_lft=0 means deprecated. SLAAC automatically manages address lifetimes from RA prefix options. For static configurations, add all desired addresses with `ip -6 addr add` and corresponding on-link routes are added automatically unless `noprefixroute` is used. Ensure source address selection (RFC 6724) picks the correct address for each destination to avoid asymmetric routing.
