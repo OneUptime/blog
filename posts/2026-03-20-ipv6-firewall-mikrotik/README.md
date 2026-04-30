@@ -4,7 +4,7 @@ Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
 Tags: IPv6, MikroTik, RouterOS, Firewall, Ip6tables
 
-Description: Learn how to configure IPv6 firewall rules on MikroTik RouterOS using the /ipv6 firewall filter commands, including input, forward, and output chain rules.
+Description: Learn how to configure IPv6 firewall rules on MikroTik RouterOS using the /ipv6 firewall filter commands, including input and forward chain rules.
 
 ## Overview
 
@@ -35,7 +35,7 @@ MikroTik RouterOS has a dedicated IPv6 firewall filter (`/ipv6 firewall filter`)
 # Drop invalid packets
 /ipv6 firewall filter add chain=input connection-state=invalid action=drop comment="Drop invalid"
 
-# Allow loopback
+# Allow a dedicated loopback interface if you use one
 /ipv6 firewall filter add chain=input in-interface=lo action=accept comment="Allow loopback"
 
 # Allow ICMPv6 essential types
@@ -51,14 +51,17 @@ MikroTik RouterOS has a dedicated IPv6 firewall filter (`/ipv6 firewall filter`)
 # Parameter Problem
 /ipv6 firewall filter add chain=input protocol=icmpv6 icmp-options=4:0-255 action=accept comment="ICMPv6 Parameter Problem"
 
-# NDP - Router and Neighbor messages (link-local only)
-/ipv6 firewall filter add chain=input protocol=icmpv6 icmp-options=133:0-255 src-address=fe80::/10 action=accept comment="Router Solicitation"
-/ipv6 firewall filter add chain=input protocol=icmpv6 icmp-options=134:0-255 src-address=fe80::/10 action=accept comment="Router Advertisement"
-/ipv6 firewall filter add chain=input protocol=icmpv6 icmp-options=135:0-255 src-address=fe80::/10 action=accept comment="Neighbor Solicitation"
-/ipv6 firewall filter add chain=input protocol=icmpv6 icmp-options=136:0-255 src-address=fe80::/10 action=accept comment="Neighbor Advertisement"
+# NDP - Router and Neighbor messages (must stay on-link)
+/ipv6 firewall filter add chain=input protocol=icmpv6 icmp-options=133:0-255 hop-limit=equal:255 action=accept comment="Router Solicitation"
+/ipv6 firewall filter add chain=input protocol=icmpv6 icmp-options=134:0-255 hop-limit=equal:255 action=accept comment="Router Advertisement"
+/ipv6 firewall filter add chain=input protocol=icmpv6 icmp-options=135:0-255 hop-limit=equal:255 action=accept comment="Neighbor Solicitation"
+/ipv6 firewall filter add chain=input protocol=icmpv6 icmp-options=136:0-255 hop-limit=equal:255 action=accept comment="Neighbor Advertisement"
+
+# Allow DHCPv6 client replies if using prefix delegation
+/ipv6 firewall filter add chain=input protocol=udp dst-port=546 src-address=fe80::/10 action=accept comment="DHCPv6 client / PD"
 
 # Allow SSH from management network
-/ipv6 firewall filter add chain=input protocol=tcp dst-port=22 src-address=fd00:mgmt::/48 action=accept comment="SSH from management"
+/ipv6 firewall filter add chain=input protocol=tcp dst-port=22 src-address=fd12:3456:789a::/48 action=accept comment="SSH from management"
 
 # Drop everything else to router
 /ipv6 firewall filter add chain=input action=log log-prefix="IPv6-INPUT-DROP: "
@@ -103,8 +106,8 @@ MikroTik RouterOS has a dedicated IPv6 firewall filter (`/ipv6 firewall filter`)
 
 ```bash
 # Create address list for management
-/ipv6 firewall address-list add list=mgmt address=fd00:mgmt::/48 comment="Management network"
-/ipv6 firewall address-list add list=mgmt address=2001:db8:admin::1/128 comment="Admin workstation"
+/ipv6 firewall address-list add list=mgmt address=fd12:3456:789a::/48 comment="Management network"
+/ipv6 firewall address-list add list=mgmt address=fd12:3456:789b::10/128 comment="Admin workstation"
 
 # Use in firewall rule
 /ipv6 firewall filter add chain=input protocol=tcp dst-port=22 src-address-list=mgmt action=accept comment="SSH from address list"
@@ -114,14 +117,14 @@ MikroTik RouterOS has a dedicated IPv6 firewall filter (`/ipv6 firewall filter`)
 /ipv6 firewall filter add chain=input src-address-list=blocklist6 action=drop comment="Drop blocklist"
 ```
 
-## Rate Limiting IPv6 (Connection Limit)
+## Connection Limits and Connection-Rate Matching
 
 ```bash
 # Limit SSH connections per source
-/ipv6 firewall filter add chain=input protocol=tcp dst-port=22 connection-limit=5,32 action=drop comment="SSH connection limit per /128"
+/ipv6 firewall filter add chain=input protocol=tcp dst-port=22 connection-state=new connection-limit=5,128 action=drop comment="SSH connection limit per /128"
 
-# Rate limit new connections using connection-rate
-/ipv6 firewall filter add chain=input protocol=tcp dst-port=80 connection-state=new connection-rate=100/1s action=drop comment="HTTP rate limit"
+# Match high-rate HTTP connections using connection-rate
+/ipv6 firewall filter add chain=input protocol=tcp dst-port=80 connection-rate=100k-100M action=drop comment="Drop high-rate HTTP connections"
 ```
 
 ## Viewing and Managing Rules
@@ -131,16 +134,16 @@ MikroTik RouterOS has a dedicated IPv6 firewall filter (`/ipv6 firewall filter`)
 /ipv6 firewall filter print
 
 # Remove a rule by number
-/ipv6 firewall filter remove numbers=5
+/ipv6 firewall filter remove 5
 
 # Enable/disable a rule
-/ipv6 firewall filter set numbers=5 disabled=yes
-/ipv6 firewall filter set numbers=5 disabled=no
+/ipv6 firewall filter disable 5
+/ipv6 firewall filter enable 5
 
 # Move rule to different position
-/ipv6 firewall filter move numbers=5 destination=2
+/ipv6 firewall filter move 5 2
 ```
 
 ## Summary
 
-MikroTik RouterOS IPv6 firewall is configured under `/ipv6 firewall filter` with separate INPUT (router protection) and FORWARD (pass-through traffic) chains. Add rules in order: established/related accept, invalid drop, essential ICMPv6 accept (types 1-4 and NDP 133-137 from link-local only), service-specific accept, then drop. Use address lists (`/ipv6 firewall address-list`) for maintainable prefix groups. The forward chain allows IPv6 from LAN to WAN but blocks new connections from WAN to LAN. Always place LOG rules before DROP rules for troubleshooting.
+MikroTik RouterOS IPv6 firewall is configured under `/ipv6 firewall filter` with separate INPUT (router protection) and FORWARD (pass-through traffic) chains. Add rules in order: established/related accept, invalid drop, essential ICMPv6 accept (types 1-4 plus NDP 133-136 with hop-limit 255), service-specific accept, then drop. If the router uses DHCPv6 prefix delegation, allow UDP/546 to the client as well. Use address lists (`/ipv6 firewall address-list`) for maintainable prefix groups. The forward chain allows IPv6 from LAN to WAN but blocks new connections from WAN to LAN. Place LOG rules before DROP rules when you need troubleshooting, but be aware that logging every drop can add CPU load.
