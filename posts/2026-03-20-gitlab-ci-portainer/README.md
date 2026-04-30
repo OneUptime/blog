@@ -36,14 +36,11 @@ services:
     hostname: gitlab.yourdomain.com
     environment:
       GITLAB_OMNIBUS_CONFIG: |
-        external_url 'https://gitlab.yourdomain.com'
-        gitlab_rails['gitlab_email_from'] = 'gitlab@yourdomain.com'
-        gitlab_rails['smtp_enable'] = true
-        nginx['listen_port'] = 80
+        external_url 'http://gitlab.yourdomain.com:8929'
+        gitlab_rails['gitlab_shell_ssh_port'] = 2222
         nginx['listen_https'] = false
     ports:
-      - "8929:80"
-      - "8443:443"
+      - "8929:8929"
       - "2222:22"
     volumes:
       - gitlab_config:/etc/gitlab
@@ -62,29 +59,38 @@ In GitLab: **Settings** > **CI/CD** > **Variables**, add:
 |-----|-------|--------|-----------|
 | `PORTAINER_URL` | `https://portainer.yourdomain.com` | No | No |
 | `PORTAINER_API_KEY` | Your API token | Yes | Yes |
+| `SAFETY_API_KEY` | Your Safety API key | Yes | No |
 | `REGISTRY_URL` | `registry.yourdomain.com` | No | No |
 | `REGISTRY_USER` | Registry username | No | No |
 | `REGISTRY_PASSWORD` | Registry password | Yes | Yes |
-| `STAGING_STACK_ID` | `1` | No | No |
-| `PRODUCTION_STACK_ID` | `2` | No | Yes |
+| `STAGING_ENDPOINT_ID` | `1` | No | No |
+| `STAGING_STACK_ID` | `11` | No | No |
+| `PRODUCTION_ENDPOINT_ID` | `2` | No | Yes |
+| `PRODUCTION_STACK_ID` | `22` | No | Yes |
+| `PORTAINER_STACK_WEBHOOK` | `https://portainer.yourdomain.com/api/stacks/webhooks/<webhook-id>` | Yes | No |
 
 ## Step 3: Complete GitLab CI Pipeline
 
+This example assumes your Portainer stack file uses `${IMAGE_TAG}` in the image reference and that the stack was created from the Web editor or an uploaded Compose file.
+
 ```yaml
-# .gitlab-ci.yml - Complete CI/CD pipeline for Portainer deployments
+# .gitlab-ci.yml - Complete CI/CD pipeline for file-based Portainer stack deployments
 
 # Global defaults
+# Requires a GitLab Runner configured for privileged Docker-in-Docker jobs.
 default:
   image: docker:24-alpine
   services:
     - docker:24-dind
   before_script:
-    - docker login -u "$REGISTRY_USER" -p "$REGISTRY_PASSWORD" "$REGISTRY_URL"
+    - echo "$REGISTRY_PASSWORD" | docker login "$REGISTRY_URL" -u "$REGISTRY_USER" --password-stdin
 
 variables:
+  DOCKER_HOST: "tcp://docker:2375"
   DOCKER_TLS_CERTDIR: ""
   DOCKER_BUILDKIT: "1"
   IMAGE_BASE: "${REGISTRY_URL}/myapp/api"
+  PIP_CACHE_DIR: "$CI_PROJECT_DIR/.cache/pip"
 
 # Stage definitions
 stages:
@@ -110,7 +116,7 @@ unit-tests:
   script:
     - pip install -q -r requirements.txt
     - pip install -q pytest pytest-cov
-    - pytest tests/unit/ -v --junitxml=test-results/unit.xml --cov=src --cov-report=xml
+    - pytest tests/unit/ -v --junitxml=test-results/unit.xml --cov=src --cov-report=term --cov-report=xml
   coverage: '/TOTAL.*\s+(\d+%)$/'
   artifacts:
     reports:
@@ -136,7 +142,7 @@ security-scan:
   before_script: []
   script:
     - pip install -q safety bandit
-    - safety check -r requirements.txt
+    - safety --key "$SAFETY_API_KEY" --stage cicd scan
     - bandit -r src/ -ll
   allow_failure: true
 
@@ -151,6 +157,8 @@ build-image:
       # Build with multiple tags
       IMAGE_TAG="${CI_PIPELINE_IID}-${CI_COMMIT_SHORT_SHA}"
       FULL_IMAGE="${IMAGE_BASE}:${IMAGE_TAG}"
+
+      docker pull ${IMAGE_BASE}:latest || true
 
       docker build \
         --build-arg BUILD_DATE=$(date -u +%Y-%m-%dT%H:%M:%SZ) \
@@ -184,19 +192,29 @@ deploy-to-staging:
     - |
       echo "Deploying ${IMAGE_TAG} to staging..."
 
-      # Update stack via Portainer API
-      RESPONSE=$(curl -s -X PUT \
+      # Update a file-based stack via the Portainer API
+      STACK_FILE_CONTENT=$(curl -fsS \
         -H "X-API-Key: ${PORTAINER_API_KEY}" \
-        -H "Content-Type: application/json" \
-        "${PORTAINER_URL}/api/stacks/${STAGING_STACK_ID}?endpointId=1" \
-        -d "{
-          \"env\": [
-            {\"name\": \"IMAGE_TAG\", \"value\": \"${IMAGE_TAG}\"},
-            {\"name\": \"ENVIRONMENT\", \"value\": \"staging\"}
+        "${PORTAINER_URL}/api/stacks/${STAGING_STACK_ID}/file" |
+        jq -er '.StackFileContent')
+
+      RESPONSE=$(jq -n \
+        --arg stackFileContent "$STACK_FILE_CONTENT" \
+        --arg imageTag "$IMAGE_TAG" \
+        '{
+          StackFileContent: $stackFileContent,
+          Env: [
+            {"name": "IMAGE_TAG", "value": $imageTag},
+            {"name": "ENVIRONMENT", "value": "staging"}
           ],
-          \"prune\": false,
-          \"pullImage\": true
-        }")
+          Prune: false,
+          RepullImageAndRedeploy: true
+        }' |
+        curl -fsS -X PUT \
+          -H "X-API-Key: ${PORTAINER_API_KEY}" \
+          -H "Content-Type: application/json" \
+          "${PORTAINER_URL}/api/stacks/${STAGING_STACK_ID}?endpointId=${STAGING_ENDPOINT_ID}" \
+          --data-binary @-)
 
       echo "$RESPONSE" | jq '.'
 
@@ -221,7 +239,7 @@ integration-tests:
   image: python:3.12-slim
   needs: ["deploy-to-staging"]
   before_script:
-    - pip install -q requests pytest
+    - pip install -q requests pytest pytest-base-url
   script:
     - sleep 30  # Wait for deployment to be ready
     - |
@@ -249,18 +267,28 @@ deploy-to-production:
     - |
       echo "Deploying ${IMAGE_TAG} to PRODUCTION..."
 
-      RESPONSE=$(curl -s -X PUT \
+      STACK_FILE_CONTENT=$(curl -fsS \
         -H "X-API-Key: ${PORTAINER_API_KEY}" \
-        -H "Content-Type: application/json" \
-        "${PORTAINER_URL}/api/stacks/${PRODUCTION_STACK_ID}?endpointId=1" \
-        -d "{
-          \"env\": [
-            {\"name\": \"IMAGE_TAG\", \"value\": \"${IMAGE_TAG}\"},
-            {\"name\": \"ENVIRONMENT\", \"value\": \"production\"}
+        "${PORTAINER_URL}/api/stacks/${PRODUCTION_STACK_ID}/file" |
+        jq -er '.StackFileContent')
+
+      RESPONSE=$(jq -n \
+        --arg stackFileContent "$STACK_FILE_CONTENT" \
+        --arg imageTag "$IMAGE_TAG" \
+        '{
+          StackFileContent: $stackFileContent,
+          Env: [
+            {"name": "IMAGE_TAG", "value": $imageTag},
+            {"name": "ENVIRONMENT", "value": "production"}
           ],
-          \"prune\": false,
-          \"pullImage\": true
-        }")
+          Prune: false,
+          RepullImageAndRedeploy: true
+        }' |
+        curl -fsS -X PUT \
+          -H "X-API-Key: ${PORTAINER_API_KEY}" \
+          -H "Content-Type: application/json" \
+          "${PORTAINER_URL}/api/stacks/${PRODUCTION_STACK_ID}?endpointId=${PRODUCTION_ENDPOINT_ID}" \
+          --data-binary @-)
 
       if echo "$RESPONSE" | jq -e '.Id' > /dev/null; then
         echo "Production deployment successful! Version: ${IMAGE_TAG}"
@@ -278,10 +306,12 @@ deploy-to-production:
       when: manual
 ```
 
-## Step 4: GitLab CI for Portainer Webhook Trigger
+## Step 4: GitLab CI for Git-Based Portainer Webhook Trigger
+
+If the stack was deployed from a Git repository and GitOps webhook updates are enabled in Portainer:
 
 ```yaml
-# Simpler approach using Portainer webhooks
+# Simpler approach using a Portainer stack webhook
 deploy-webhook:
   stage: deploy-staging
   image: alpine:latest
@@ -289,20 +319,20 @@ deploy-webhook:
     - apk add --no-cache curl
   script:
     # Trigger Portainer stack redeploy via webhook
-    - curl -X POST "$PORTAINER_STACK_WEBHOOK"
+    - curl -fsS -X POST "$PORTAINER_STACK_WEBHOOK"
   environment:
     name: staging
   rules:
     - if: $CI_COMMIT_BRANCH == "develop"
 ```
 
-## Step 5: View Deployment History in Portainer
+## Step 5: Verify the Deployment in Portainer
 
 After deployments, check Portainer's:
 - **Stacks** view for current configuration
 - **Container logs** for deployment errors
-- **Stack logs** for service startup issues
+- **Service status** to confirm the new image tag is running
 
 ## Conclusion
 
-GitLab CI/CD + Portainer creates a clean separation: GitLab handles code testing and building, Portainer handles the deployment and container management. The manual approval gate for production prevents accidental deployments. GitLab's environment tracking shows you the current deployed version, and Portainer's stack management lets you roll back by reverting the environment variable change.
+GitLab CI/CD + Portainer creates a clean separation: GitLab handles code testing and building, Portainer handles the deployment and container management. The manual approval gate for production prevents accidental deployments. GitLab's environment tracking shows you the current deployed version, and Portainer's stack management lets you redeploy a previous image tag if you need to roll back.
