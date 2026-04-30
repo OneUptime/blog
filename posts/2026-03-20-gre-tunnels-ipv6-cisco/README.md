@@ -24,8 +24,8 @@ Router-A(config-if)# ipv6 address 2001:db8:link::1/64
 Router-A(config-if)# tunnel source GigabitEthernet0/0
 Router-A(config-if)# tunnel destination 198.51.100.1
 Router-A(config-if)# tunnel mode gre ip              ! Default mode - IPv4 encap
-Router-A(config-if)# ipv6 mtu 1476                  ! 1500 - 24 bytes GRE overhead
-Router-A(config-if)# ipv6 tcp adjust-mss 1436       ! TCP MSS clamping
+Router-A(config-if)# ipv6 mtu 1476                  ! 1500 - 24 bytes GRE/IPv4 overhead
+Router-A(config-if)# ipv6 tcp adjust-mss 1416       ! TCP MSS clamping for 1476-byte IPv6 MTU
 
 ! IPv6 routes over GRE
 Router-A(config)# ipv6 route 2001:db8:siteB::/48 Tunnel0 2001:db8:link::2
@@ -42,7 +42,7 @@ Router-B(config-if)# tunnel source GigabitEthernet0/0
 Router-B(config-if)# tunnel destination 203.0.113.10
 Router-B(config-if)# tunnel mode gre ip
 Router-B(config-if)# ipv6 mtu 1476
-Router-B(config-if)# ipv6 tcp adjust-mss 1436
+Router-B(config-if)# ipv6 tcp adjust-mss 1416
 
 Router-B(config)# ipv6 route 2001:db8:siteA::/48 Tunnel0 2001:db8:link::1
 ```
@@ -83,9 +83,9 @@ Router-A# show ipv6 route ospf
 ## GRE Tunnel MTU Verification
 
 ```text
-! Check effective MTU
-Router-A# show interface Tunnel0 | include MTU
-  MTU 17916 bytes, BW 100 Kbit/sec, DLY 500000 usec
+! Check tunnel transport MTU
+Router-A# show interface Tunnel0 | include transport MTU
+  Tunnel transport MTU 1476 bytes
 
 ! Check IPv6 MTU
 Router-A# show ipv6 interface Tunnel0 | include MTU
@@ -93,7 +93,7 @@ Router-A# show ipv6 interface Tunnel0 | include MTU
 
 ! Test with ping
 Router-A# ping ipv6 2001:db8:link::2 size 1400
-! Success = PMTUD and MTU working
+! Success confirms packets below the configured IPv6 MTU pass
 ```
 
 ## Protect GRE with ACL
@@ -123,18 +123,27 @@ crypto ikev2 proposal IKEV2-PROP
 crypto ikev2 policy IKEV2-POLICY
   proposal IKEV2-PROP
 
-! IPsec protection profile
+crypto ikev2 keyring GRE-KR
+  peer SITE-B
+    address 198.51.100.1
+    pre-shared-key cisco123
+
+crypto ikev2 profile GRE-IKEV2
+  match identity remote address 198.51.100.1
+  authentication remote pre-share
+  authentication local pre-share
+  keyring local GRE-KR
+
 crypto ipsec transform-set GRE-XFORM esp-aes 256 esp-sha256-hmac
-  mode transport   ! Transport mode for GRE
+  mode tunnel
 
-crypto map GRE-MAP 10 ipsec-isakmp
-  set peer 198.51.100.1
+crypto ipsec profile GRE-IPSEC
   set transform-set GRE-XFORM
-  match address PROTECT-GRE-TRAFFIC
+  set ikev2-profile GRE-IKEV2
 
-! Apply to physical interface
-interface GigabitEthernet0/0
-  crypto map GRE-MAP
+! Apply to the tunnel interface
+interface Tunnel0
+  tunnel protection ipsec profile GRE-IPSEC
 ```
 
 ## Verification
@@ -158,10 +167,9 @@ Router-A# ping ipv6 2001:db8:siteB::1 source GigabitEthernet0/1
 ! Success rate is 100 percent (5/5)
 
 ! Debug GRE (lab only)
-Router-A# debug tunnel
 Router-A# debug ip packet detail
 ```
 
 ## Summary
 
-Cisco IOS GRE tunnels for IPv6 use `tunnel mode gre ip` (IPv4 encapsulation) with `ipv6 address` on the tunnel interface. Set `ipv6 mtu 1476` to account for 24-byte GRE overhead and `ipv6 tcp adjust-mss 1436` for TCP flows. Enable keepalives to detect tunnel failures. Run OSPFv3 over GRE for dynamic IPv6 routing. Protect GRE with an ACL restricting protocol 47 (gre) to authorized endpoints, and optionally add IPsec transport mode for encryption.
+Cisco IOS GRE tunnels for IPv6 use `tunnel mode gre ip` (IPv4 encapsulation) with `ipv6 address` on the tunnel interface. Set `ipv6 mtu 1476` to account for 24-byte GRE/IPv4 overhead and `ipv6 tcp adjust-mss 1416` for TCP flows. Enable keepalives to detect tunnel failures. Run OSPFv3 over GRE for dynamic IPv6 routing. Protect GRE with an ACL restricting protocol 47 (gre) to authorized endpoints, and optionally add IPsec tunnel protection for encryption.
