@@ -120,7 +120,7 @@ networks:
 
 ## Step 2: Configure Grafana Datasource Provisioning
 
-After deployment, configure the InfluxDB datasource. Access the Grafana provisioning volume through Portainer:
+After deployment, configure the InfluxDB datasource by adding a provisioning file to the Grafana provisioning volume through Portainer, then restart the Grafana container so it loads the new datasource:
 
 ```yaml
 # /etc/grafana/provisioning/datasources/influxdb.yaml
@@ -161,14 +161,16 @@ from(bucket: "iot-sensors")
 ```
 
 ```flux
-// Device status - last seen within 5 minutes
+// Active device count - readings in the last 5 minutes
 from(bucket: "iot-sensors")
   |> range(start: -5m)
   |> filter(fn: (r) => r._measurement == "sensor_data")
-  |> last()
+  |> filter(fn: (r) => r._field == "temperature")
   |> group(columns: ["device_id"])
-  |> count()
-  |> rename(columns: {_value: "recent_readings"})
+  |> last()
+  |> group()
+  |> count(column: "_value")
+  |> rename(columns: {_value: "active_devices"})
 ```
 
 ## Step 4: Write Sensor Data to InfluxDB
@@ -213,12 +215,10 @@ print("Data written to InfluxDB")
 
 ## Step 5: Configure Data Retention and Downsampling
 
-Set up retention policies to manage storage efficiently:
+Set up retention policies to manage storage efficiently. First create the `iot-sensors-hourly` bucket in InfluxDB with a 1-year retention period, then save the following as an InfluxDB task:
 
 ```flux
-// Create a downsampled bucket for long-term storage
-// Run this in InfluxDB Data Explorer
-
+// Save this as an InfluxDB task after creating the iot-sensors-hourly bucket.
 // Hourly averages for long-term storage (1 year)
 option task = {
     name: "hourly-downsample",
@@ -250,4 +250,4 @@ from(bucket: "iot-sensors")
 
 ## Conclusion
 
-InfluxDB and Grafana deployed via Portainer create a purpose-built IoT observability platform that can handle millions of sensor readings per second while providing beautiful real-time dashboards. InfluxDB's built-in data downsampling and retention policies make it cost-effective for long-term sensor data storage, while Grafana's alerting capabilities ensure that anomalies are detected and teams are notified promptly. Portainer simplifies the ongoing management of both services through a unified interface.
+InfluxDB and Grafana deployed via Portainer create a purpose-built IoT observability platform for storing and visualizing high-volume sensor data while providing beautiful real-time dashboards. InfluxDB tasks and bucket retention policies make it cost-effective for long-term sensor data storage, while Grafana's alerting capabilities ensure that anomalies are detected and teams are notified promptly. Portainer simplifies the ongoing management of both services through a unified interface.
