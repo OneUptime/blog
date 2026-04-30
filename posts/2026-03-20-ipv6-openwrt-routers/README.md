@@ -8,7 +8,7 @@ Description: Configure complete IPv6 support on OpenWrt routers including DHCPv6
 
 ## Introduction
 
-OpenWrt provides a complete IPv6 stack via `odhcp6c` (DHCPv6 client), `odhcpd` (DHCPv6/RA server), and `ip6tables` for firewall. This guide walks through a complete OpenWrt IPv6 setup from ISP connectivity to client distribution.
+OpenWrt provides a complete IPv6 stack via `odhcp6c` (DHCPv6 client), `odhcpd` (DHCPv6/RA server), and `firewall4` (`fw4`) for firewalling. This guide walks through a complete OpenWrt IPv6 setup from ISP connectivity to client distribution.
 
 ## Step 1: Configure WAN IPv6
 
@@ -16,7 +16,7 @@ OpenWrt provides a complete IPv6 stack via `odhcp6c` (DHCPv6 client), `odhcpd` (
 # Edit the WAN6 interface via UCI
 
 uci set network.wan6=interface
-uci set network.wan6.ifname='eth0.2'      # WAN physical interface
+uci set network.wan6.device='eth0.2'      # WAN physical interface
 uci set network.wan6.proto='dhcpv6'
 uci set network.wan6.reqaddress='try'
 uci set network.wan6.reqprefix='auto'     # Request prefix delegation
@@ -28,14 +28,21 @@ For PPPoEv6 ISP connections:
 ```bash
 uci set network.wan.proto='pppoe'
 uci set network.wan.ipv6='1'    # Enable IPv6 over PPPoE
+uci set network.wan6.device='@wan'
 uci commit network
+ifup wan
+ifup wan6
 ```
 
 ## Step 2: Configure LAN IPv6 via odhcpd
 
 ```bash
-# Configure the LAN interface for SLAAC
+# Request a delegated IPv6 prefix for LAN
+uci set network.lan.ip6assign='60'
+
+# Configure the LAN interface for SLAAC and DHCPv6
 uci set dhcp.lan.ra='server'
+uci set dhcp.lan.dhcpv6='server'
 uci set dhcp.lan.ra_slaac='1'
 uci set dhcp.lan.ra_default='1'
 uci set dhcp.lan.ra_maxinterval='100'
@@ -46,7 +53,9 @@ uci set dhcp.lan.ra_lifetime='1800'
 uci add_list dhcp.lan.dns='2606:4700:4700::1111'
 uci add_list dhcp.lan.dns='2001:4860:4860::8888'
 
+uci commit network
 uci commit dhcp
+ifup lan
 /etc/init.d/odhcpd restart
 ```
 
@@ -54,10 +63,10 @@ uci commit dhcp
 
 ```bash
 # The default OpenWrt firewall already has IPv6 rules
-# View current ip6tables rules
-ip6tables -L -n
+# View current firewall4 ruleset
+fw4 print
 
-# Add a custom rule to allow specific inbound IPv6 traffic
+# Add a custom rule to allow specific forwarded IPv6 traffic to LAN clients
 # Edit /etc/config/firewall:
 uci add firewall rule
 uci set firewall.@rule[-1].name='Allow-IPv6-HTTPS-Inbound'
@@ -74,21 +83,17 @@ uci commit firewall
 ## Step 4: Verify Configuration
 
 ```bash
-# Check WAN IPv6 address was assigned
-ifconfig eth0.2 | grep inet6
+# Check WAN6 address and delegated prefix status
+ubus call network.interface.wan6 status
 
-# Check LAN IPv6 address (from prefix delegation)
-ifconfig br-lan | grep inet6
+# Check LAN IPv6 address assignment
+ubus call network.interface.lan status
 
 # Check that odhcpd is advertising RA
 logread | grep odhcpd
 
 # Test IPv6 connectivity from the router
-ping6 -c 3 2606:4700:4700::1111
-
-# View active prefix delegations
-cat /var/state/network   # Or:
-ubus call network.interface.wan6 status
+ping -6 -c 3 2606:4700:4700::1111
 ```
 
 ## Step 5: Verify on LAN Clients
@@ -108,16 +113,17 @@ ip -6 route show default
 # /etc/config/network
 
 config interface 'wan6'
-    option ifname 'eth0.2'
+    option device 'eth0.2'
     option proto 'dhcpv6'
     option reqaddress 'try'
     option reqprefix 'auto'
 
 config interface 'lan'
-    option ifname 'br-lan'
+    option device 'br-lan'
     option proto 'static'
     option ipaddr '192.168.1.1'
     option netmask '255.255.255.0'
+    option ip6assign '60'
     # IPv6 address auto-assigned from delegated prefix
 ```
 
@@ -126,6 +132,7 @@ config interface 'lan'
 
 config dhcp 'lan'
     option interface 'lan'
+    option dhcpv6 'server'
     option ra 'server'
     option ra_slaac '1'
     option ra_default '1'
