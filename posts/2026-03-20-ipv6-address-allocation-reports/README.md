@@ -18,15 +18,18 @@ IPv6 allocation reports give network teams visibility into how address space is 
 
 import pynetbox
 import ipaddress
-from datetime import datetime
+from datetime import datetime, timezone
 from collections import defaultdict
 
 nb = pynetbox.api("http://netbox.internal", token="your-token")
 
+def prefix_length(prefix):
+    return ipaddress.ip_network(str(prefix), strict=False).prefixlen
+
 def generate_allocation_report():
     print("=" * 70)
     print(f"IPv6 Address Allocation Report")
-    print(f"Generated: {datetime.now().strftime('%Y-%m-%d %H:%M UTC')}")
+    print(f"Generated: {datetime.now(timezone.utc).strftime('%Y-%m-%d %H:%M UTC')}")
     print("=" * 70)
 
     # Section 1: Top-level allocation summary
@@ -35,31 +38,37 @@ def generate_allocation_report():
 
     by_length = defaultdict(list)
     for p in all_prefixes:
-        by_length[p.prefix.prefixlen].append(p)
+        by_length[prefix_length(p.prefix)].append(p)
 
     print("\n### Prefix Summary by Length ###")
     for length in sorted(by_length.keys()):
         count = len(by_length[length])
         print(f"  /{length}: {count} prefixes")
 
-    # Section 2: Site allocations
-    print("\n### Site Allocations (/48) ###")
-    print(f"  {'Site':<25} {'Prefix':<35} {'Status':<12} {'/64 Count':>10}")
+    # Section 2: Scope allocations
+    print("\n### Scope Allocations (/48) ###")
+    print(f"  {'Scope':<25} {'Prefix':<35} {'Status':<12} {'/64 Count':>10}")
     print(f"  {'-'*25} {'-'*35} {'-'*12} {'-'*10}")
 
     for p in sorted(by_length.get(48, []), key=lambda x: str(x.prefix)):
-        site = str(p.site) if p.site else "Unassigned"
-        child_64s = len(list(nb.ipam.prefixes.filter(
-            within=str(p.prefix), prefix_length=64)))
-        print(f"  {site:<25} {str(p.prefix):<35} {p.status.value:<12} {child_64s:>10}")
+        scope = str(p.scope) if p.scope else "Unassigned"
+        child_64s = nb.ipam.prefixes.count(
+            within=str(p.prefix), mask_length=64)
+        print(f"  {scope:<25} {str(p.prefix):<35} {p.status.value:<12} {child_64s:>10}")
 
-    # Section 3: Empty prefixes (allocated but no child prefixes)
+    # Section 3: Empty prefixes (allocated but no child prefixes, IP ranges, or IPs)
     print("\n### Potentially Unused /48 Prefixes ###")
     unused = []
     for p in by_length.get(48, []):
-        child_count = len(list(nb.ipam.prefixes.filter(
-            within=str(p.prefix), prefix_length=64)))
-        if child_count == 0 and p.status.value == "active":
+        child_prefix_count = nb.ipam.prefixes.count(within=str(p.prefix))
+        child_range_count = nb.ipam.ip_ranges.count(parent=str(p.prefix))
+        child_ip_count = nb.ipam.ip_addresses.count(parent=str(p.prefix))
+        if (
+            child_prefix_count == 0
+            and child_range_count == 0
+            and child_ip_count == 0
+            and p.status.value == "active"
+        ):
             unused.append(p)
 
     if unused:
@@ -87,6 +96,7 @@ generate_allocation_report()
 
 ```python
 import csv
+import ipaddress
 import pynetbox
 from datetime import datetime
 
@@ -97,19 +107,19 @@ output_file = f"ipv6_report_{datetime.now().strftime('%Y%m%d')}.csv"
 with open(output_file, "w", newline="") as f:
     writer = csv.writer(f)
     writer.writerow([
-        "Prefix", "Prefix Length", "Status", "Site", "VLAN",
+        "Prefix", "Prefix Length", "Status", "Scope", "VLAN",
         "Description", "Used IPs", "Tags", "Created"
     ])
 
     prefixes = nb.ipam.prefixes.filter(family=6, within_include="2001:db8::/32")
     for p in prefixes:
-        ip_count = nb.ipam.ip_addresses.count(parent=str(p.prefix)) \
-                   if p.prefix.prefixlen >= 64 else 0
+        prefix_length = ipaddress.ip_network(str(p.prefix), strict=False).prefixlen
+        ip_count = nb.ipam.ip_addresses.count(parent=str(p.prefix))
         writer.writerow([
             str(p.prefix),
-            p.prefix.prefixlen,
+            prefix_length,
             p.status.value,
-            str(p.site) if p.site else "",
+            str(p.scope) if p.scope else "",
             str(p.vlan) if p.vlan else "",
             p.description or "",
             ip_count,
@@ -132,17 +142,17 @@ from collections import Counter
 nb = pynetbox.api("http://netbox.internal", token="your-token")
 
 prefixes = list(nb.ipam.prefixes.filter(family=6))
-by_site = Counter(str(p.site) for p in prefixes if p.site)
+by_scope = Counter(str(p.scope) for p in prefixes if p.scope)
 by_status = Counter(p.status.value for p in prefixes)
 
 html = f"""<!DOCTYPE html>
 <html><head><title>IPv6 Report</title></head>
 <body>
 <h1>IPv6 Allocation Report</h1>
-<h2>Prefixes by Site</h2>
+<h2>Prefixes by Scope</h2>
 <table border="1">
-<tr><th>Site</th><th>Prefix Count</th></tr>
-{"".join(f"<tr><td>{site}</td><td>{count}</td></tr>" for site, count in by_site.most_common())}
+<tr><th>Scope</th><th>Prefix Count</th></tr>
+{"".join(f"<tr><td>{scope}</td><td>{count}</td></tr>" for scope, count in by_scope.most_common())}
 </table>
 <h2>Prefixes by Status</h2>
 <table border="1">
@@ -158,4 +168,4 @@ print("HTML report: ipv6_report.html")
 
 ## Conclusion
 
-IPv6 allocation reports should answer three questions: what is allocated and to whom (inventory), what is empty or potentially reclaim-able (optimization), and what is the growth trend (capacity planning). Generate reports weekly from IPAM via API rather than manually, and export to CSV for stakeholders who need spreadsheet access. The most actionable report content is the list of /48 prefixes with no child /64 allocations - these are candidates for reclamation or reuse.
+IPv6 allocation reports should answer three questions: what is allocated and to whom (inventory), what is empty or potentially reclaim-able (optimization), and what is the growth trend (capacity planning). Generate reports weekly from IPAM via API rather than manually, and export to CSV for stakeholders who need spreadsheet access. The most actionable report content is the list of /48 prefixes with no child allocations - these are candidates for reclamation or reuse.
