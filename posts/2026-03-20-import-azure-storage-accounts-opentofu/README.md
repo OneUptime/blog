@@ -23,14 +23,14 @@ az storage account show \
     kind: .kind,
     sku: .sku.name,
     access_tier: .accessTier,
-    https_traffic_only: .enableHttpsTrafficOnly,
+    https_traffic_only_enabled: .enableHttpsTrafficOnly,
     min_tls_version: .minimumTlsVersion,
     network_acls: .networkRuleSet
   }'
 
 # List blob containers
 
-az storage container list --account-name $STORAGE --output table
+az storage container list --account-name $STORAGE --auth-mode login --output table
 
 # Get blob service properties
 az storage account blob-service-properties show \
@@ -50,7 +50,7 @@ resource "azurerm_storage_account" "app" {
   access_tier              = "Hot"
 
   # Security settings
-  enable_https_traffic_only       = true
+  https_traffic_only_enabled      = true
   min_tls_version                 = "TLS1_2"
   allow_nested_items_to_be_public = false
 
@@ -76,13 +76,13 @@ resource "azurerm_storage_account" "app" {
 # Import blob containers
 resource "azurerm_storage_container" "app_data" {
   name                  = "app-data"
-  storage_account_name  = azurerm_storage_account.app.name
+  storage_account_id    = azurerm_storage_account.app.id
   container_access_type = "private"
 }
 
 resource "azurerm_storage_container" "backups" {
   name                  = "backups"
-  storage_account_name  = azurerm_storage_account.app.name
+  storage_account_id    = azurerm_storage_account.app.id
   container_access_type = "private"
 }
 ```
@@ -96,15 +96,15 @@ import {
   id = "/subscriptions/SUBSCRIPTION_ID/resourceGroups/my-app-rg/providers/Microsoft.Storage/storageAccounts/myappstorageacct"
 }
 
-# Storage containers use composite ID: STORAGE_ACCOUNT_NAME/CONTAINER_NAME
+# Storage containers use the Resource Manager ID
 import {
   to = azurerm_storage_container.app_data
-  id = "https://myappstorageacct.blob.core.windows.net/app-data"
+  id = "/subscriptions/SUBSCRIPTION_ID/resourceGroups/my-app-rg/providers/Microsoft.Storage/storageAccounts/myappstorageacct/blobServices/default/containers/app-data"
 }
 
 import {
   to = azurerm_storage_container.backups
-  id = "https://myappstorageacct.blob.core.windows.net/backups"
+  id = "/subscriptions/SUBSCRIPTION_ID/resourceGroups/my-app-rg/providers/Microsoft.Storage/storageAccounts/myappstorageacct/blobServices/default/containers/backups"
 }
 ```
 
@@ -113,12 +113,12 @@ import {
 ```hcl
 resource "azurerm_storage_queue" "jobs" {
   name                 = "job-queue"
-  storage_account_name = azurerm_storage_account.app.name
+  storage_account_id   = azurerm_storage_account.app.id
 }
 
 import {
   to = azurerm_storage_queue.jobs
-  id = "https://myappstorageacct.queue.core.windows.net/job-queue"
+  id = "/subscriptions/SUBSCRIPTION_ID/resourceGroups/my-app-rg/providers/Microsoft.Storage/storageAccounts/myappstorageacct/queueServices/default/queues/job-queue"
 }
 ```
 
@@ -150,4 +150,4 @@ resource "azurerm_storage_management_policy" "app" {
 
 ## Conclusion
 
-Azure Storage Account import uses the full ARM resource ID for the account, and blob endpoints for containers and queues. The `network_rules` block is particularly important to get right - a misconfigured network rule can block access to the storage account after the first apply. Always test with a refresh-only plan before applying changes after import.
+Azure Storage Account import uses the full ARM resource ID for the account. When you model containers and queues with `storage_account_id`, import those child resources with their full Resource Manager IDs as well. The `network_rules` block is particularly important to get right - a misconfigured network rule can block access to the storage account after the first apply. Always test with a refresh-only plan before applying changes after import.
