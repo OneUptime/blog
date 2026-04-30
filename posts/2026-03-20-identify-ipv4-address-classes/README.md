@@ -10,21 +10,30 @@ Description: IPv4 address classes (A through E) were the original addressing sch
 
 | Class | Leading Bits | First Octet Range | Default Mask | Use |
 |-------|-------------|------------------|-------------|-----|
-| A | 0xxxxxxx | 1–126 | /8 (255.0.0.0) | Large networks |
+| A | 0xxxxxxx | 0–127 | /8 (255.0.0.0) | Large networks |
 | B | 10xxxxxx | 128–191 | /16 (255.255.0.0) | Medium networks |
 | C | 110xxxxx | 192–223 | /24 (255.255.255.0) | Small networks |
 | D | 1110xxxx | 224–239 | N/A | Multicast |
-| E | 11110xxx | 240–255 | N/A | Reserved/Experimental |
+| E | 1111xxxx | 240–255 | N/A | Reserved/Experimental |
 
-Note: 127.x.x.x is technically Class A but reserved for loopback.
+Note: 0.x.x.x and 127.x.x.x match the Class A bit pattern, but 0.x.x.x is a reserved 0/8 special case and 127.x.x.x is reserved for loopback.
 
 ## Identifying Class by First Octet
 
 ```python
+from ipaddress import AddressValueError, IPv4Address
+
+
 def classify_ipv4(ip: str) -> str:
-    """Return the class (A–E) of an IPv4 address."""
-    first_octet = int(ip.split('.')[0])
-    if 1 <= first_octet <= 126:
+    """Return the class or special reservation of an IPv4 address."""
+    try:
+        first_octet = int(str(IPv4Address(ip)).split('.')[0])
+    except AddressValueError:
+        return 'Invalid'
+
+    if first_octet == 0:
+        return 'Reserved (0/8 special case)'
+    elif 1 <= first_octet <= 126:
         return 'A'
     elif first_octet == 127:
         return 'Loopback (reserved Class A)'
@@ -36,9 +45,6 @@ def classify_ipv4(ip: str) -> str:
         return 'D (Multicast)'
     elif 240 <= first_octet <= 255:
         return 'E (Reserved/Experimental)'
-    else:
-        return 'Invalid'
-
 # Test classification
 
 for ip in ["10.1.2.3", "127.0.0.1", "172.16.0.1",
