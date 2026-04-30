@@ -4,9 +4,9 @@ Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
 Tags: nftables, Linux, Firewall, Security, Management
 
-Description: Safely flush all nftables rules using flush ruleset, flush table, and flush chain commands, with the correct sequence to avoid losing remote access.
+Description: Safely flush all nftables rules using flush ruleset, flush table, and flush chain commands, and use atomic replacement on remote servers to avoid lockouts or unprotected gaps.
 
-Flushing nftables rules removes all or selected firewall rules. Done incorrectly on a remote server, it can lock you out. The correct sequence sets a permissive state before flushing.
+Flushing nftables rules removes all or selected firewall rules. For a full reset, `flush ruleset` removes the hooked base chains and their policies along with the rules. On remote servers, the safer workflow is to load a replacement ruleset atomically instead of leaving the host with an empty firewall.
 
 ## Flush Everything (Complete Reset)
 
@@ -28,20 +28,28 @@ sudo nft list ruleset
 
 ## Safe Flush Procedure for Remote Servers
 
-If your nftables input chain has a DROP policy, flushing rules while keeping the chain can lock you out. The safe approach:
+If you're working over SSH, `flush ruleset` removes the hooked base chains entirely, so a DROP policy does not survive the flush. The safer remote workflow is to replace the ruleset atomically instead of using separate flush and add commands:
 
 ```bash
 #!/bin/bash
-# safe-flush-nft.sh - Flush nftables safely without lockout
+# safe-flush-nft.sh - Replace nftables atomically without a lockout window
 
-# Step 1: Change input policy to ACCEPT before flushing
-# (ensures traffic flows even if chain has no rules)
-sudo nft add chain inet filter input '{ type filter hook input priority 0; policy accept; }'
+sudo tee /tmp/new-rules.nft << 'EOF'
+flush ruleset
 
-# Step 2: Now safe to flush
-sudo nft flush ruleset
+table inet filter {
+    chain input {
+        type filter hook input priority 0; policy drop;
+        iif lo accept
+        ct state established,related accept
+        tcp dport 22 accept
+    }
+}
+EOF
 
-echo "All nftables rules flushed safely"
+sudo nft -f /tmp/new-rules.nft
+
+echo "nftables rules replaced atomically"
 sudo nft list ruleset
 ```
 
@@ -101,7 +109,7 @@ sudo nft add rule inet filter input ct state established,related accept
 sudo nft add rule inet filter input tcp dport 22 accept
 
 # Save the new ruleset
-sudo nft list ruleset > /etc/nftables.conf
+sudo nft list ruleset | sudo tee /etc/nftables.conf > /dev/null
 ```
 
 ## Atomic Flush and Replace
