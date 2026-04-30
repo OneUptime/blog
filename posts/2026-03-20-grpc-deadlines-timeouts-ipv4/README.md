@@ -4,11 +4,11 @@ Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
 Tags: gRPC, IPv4, Deadlines, Timeout, Go, Python, Error Handling
 
-Description: Implement gRPC deadlines and timeouts for IPv4 connections in Go and Python, handle DeadlineExceeded errors, and propagate deadlines across service chains.
+Description: Implement gRPC deadlines and timeouts for gRPC calls to IPv4 endpoints in Go and Python, handle DeadlineExceeded errors, and propagate deadlines across service chains.
 
 ## Introduction
 
-gRPC uses deadlines (an absolute point in time) rather than timeouts (a duration). Every RPC should carry a deadline to prevent resource leaks when the network is slow or a server hangs. Proper deadline propagation is essential in microservice chains.
+gRPC models call limits as deadlines (an absolute point in time), though some language APIs expose them as timeouts (a duration). Every RPC should carry a deadline to prevent resource leaks when the network is slow or a server hangs. Proper deadline propagation is essential in microservice chains.
 
 ## Go - Setting a Deadline
 
@@ -20,9 +20,7 @@ import (
     "log"
     "time"
 
-    "google.golang.org/grpc"
     "google.golang.org/grpc/codes"
-    "google.golang.org/grpc/credentials/insecure"
     "google.golang.org/grpc/status"
     pb "example.com/proto/helloworld"
 )
@@ -40,7 +38,7 @@ func callWithDeadline(client pb.GreeterClient) {
         case codes.Canceled:
             log.Println("RPC was cancelled")
         case codes.Unavailable:
-            log.Println("Server unavailable over IPv4")
+            log.Println("Server unavailable")
         default:
             log.Printf("RPC error: %v", err)
         }
@@ -53,13 +51,13 @@ func callWithDeadline(client pb.GreeterClient) {
 ## Go - Propagating Deadlines Downstream
 
 ```go
-// Middleware: forward the incoming context deadline to downstream calls
+// Handler: forward the incoming context deadline to downstream calls
 func (s *server) ProcessOrder(ctx context.Context,
     req *pb.OrderRequest) (*pb.OrderResponse, error) {
 
     // ctx already carries the caller's deadline
     // Pass it directly to any downstream gRPC call
-    inventoryResp, err := s.inventoryClient.CheckStock(ctx,
+    _, err := s.inventoryClient.CheckStock(ctx,
         &inventorypb.CheckRequest{ItemId: req.ItemId})
     if err != nil {
         return nil, err // deadline propagated automatically
@@ -95,19 +93,21 @@ except grpc.RpcError as e:
         print(f"RPC error: {e.code()} - {e.details()}")
 ```
 
-## Python - Propagating Deadlines with Metadata
+## Python - Propagating Deadlines Downstream
 
 ```python
 def call_downstream(context, stub, request):
     """Forward the incoming RPC deadline to a downstream call."""
-    # context.time_remaining() gives seconds until deadline
+    # context.time_remaining() gives seconds until deadline, or None
+    # if the caller did not set one.
     time_remaining = context.time_remaining()
-    if time_remaining is None or time_remaining <= 0:
+    if time_remaining is not None and time_remaining <= 0:
         context.abort(grpc.StatusCode.DEADLINE_EXCEEDED, "Deadline already exceeded")
-        return
 
     try:
-        return stub.DownstreamCall(request, timeout=time_remaining * 0.9)
+        if time_remaining is None:
+            return stub.DownstreamCall(request)
+        return stub.DownstreamCall(request, timeout=time_remaining)
     except grpc.RpcError as e:
         context.abort(e.code(), e.details())
 ```
@@ -119,6 +119,15 @@ ctx, cancel := context.WithTimeout(context.Background(), 30*time.Second)
 defer cancel()
 
 stream, err := client.FetchStream(ctx, &pb.FetchRequest{})
+if err != nil {
+    if status.Code(err) == codes.DeadlineExceeded {
+        log.Println("Stream setup exceeded the deadline")
+    } else {
+        log.Printf("Stream setup error: %v", err)
+    }
+    return
+}
+
 for {
     msg, err := stream.Recv()
     if err != nil {
@@ -142,4 +151,4 @@ for {
 
 ## Conclusion
 
-Always set deadlines on gRPC calls to prevent goroutine/thread leaks on slow IPv4 paths. Use `context.WithTimeout` in Go and the `timeout` parameter in Python. Propagate the caller's deadline to downstream calls rather than creating a new, longer deadline.
+Always set deadlines on gRPC calls to prevent goroutine/thread leaks on slow or broken network paths. Use `context.WithTimeout` in Go and the `timeout` parameter in Python. Propagate the caller's deadline to downstream calls rather than creating a new, longer deadline.
