@@ -16,8 +16,9 @@ This guide covers the complete setup for multi-cluster deployments, from cluster
 
 - Rancher with Fleet installed
 - Multiple Kubernetes clusters to register
-- Network connectivity between Rancher and downstream clusters
+- Outbound connectivity from downstream clusters to Rancher/Fleet
 - `kubectl` access to the Rancher local cluster
+- `helm` 3 if you plan to use agent-initiated registration via the Fleet API
 - Git repository with application manifests
 
 ## Architecture Overview
@@ -37,7 +38,9 @@ In a Fleet multi-cluster setup:
 3. For importing: copy the `kubectl apply` command shown and run it on the downstream cluster
 4. The cluster will appear in Fleet once the agent connects
 
-### Via Fleet API
+### Via Fleet API (agent-initiated registration)
+
+This flow is different from Rancher's **Import Existing** command. With the Fleet API, you create a `ClusterRegistrationToken`, retrieve the generated `values.yaml`, and install the Fleet agent on the downstream cluster with Helm.
 
 ```yaml
 # cluster-registration-token.yaml
@@ -48,7 +51,7 @@ metadata:
   name: my-token
   namespace: fleet-default
 spec:
-  # Token expires after 24 hours (0 = never expires)
+  # Token expires after 24 hours (<= 0 or unset = never expires)
   ttl: 24h
 ```
 
@@ -56,10 +59,19 @@ spec:
 # Create the registration token
 kubectl apply -f cluster-registration-token.yaml
 
-# Get the registration manifest URL
-kubectl get clusterregistrationtoken my-token \
+# Wait for Fleet to create the registration secret
+while ! kubectl get secret my-token -n fleet-default; do sleep 5; done
+
+# Retrieve the generated agent values
+kubectl get secret my-token \
   -n fleet-default \
-  -o jsonpath='{.status.manifestNamespace}'
+  -o 'jsonpath={.data.values}' | base64 --decode > values.yaml
+
+# Install the Fleet agent using the downstream cluster context
+helm repo add fleet https://rancher.github.io/fleet-helm-charts/
+helm -n cattle-fleet-system install --create-namespace --wait \
+  --values values.yaml \
+  fleet-agent fleet/fleet-agent
 ```
 
 ## Step 2: Label Clusters for Targeting
@@ -67,21 +79,21 @@ kubectl get clusterregistrationtoken my-token \
 ```bash
 # Label all registered clusters appropriately
 # Production US clusters
-kubectl label cluster prod-us-east-1 \
+kubectl label clusters.fleet.cattle.io prod-us-east-1 \
   env=production region=us-east-1 tier=large \
   -n fleet-default
 
-kubectl label cluster prod-us-west-2 \
+kubectl label clusters.fleet.cattle.io prod-us-west-2 \
   env=production region=us-west-2 tier=large \
   -n fleet-default
 
 # Staging clusters
-kubectl label cluster staging-us \
+kubectl label clusters.fleet.cattle.io staging-us \
   env=staging region=us-east-1 tier=medium \
   -n fleet-default
 
 # Development clusters
-kubectl label cluster dev-01 \
+kubectl label clusters.fleet.cattle.io dev-01 \
   env=dev region=us-east-1 tier=small \
   -n fleet-default
 ```
@@ -184,7 +196,8 @@ spec:
   repo: https://github.com/my-org/platform-configs
   branch: main
 
-  # Deploy apps only to production
+  # Deploy app bundles to production and staging;
+  # nested fleet.yaml files can still narrow targets per path
   paths:
     - apps/frontend
     - apps/backend
@@ -196,7 +209,7 @@ spec:
 
 ## Step 6: Implement Progressive Rollouts
 
-Use separate GitRepo resources for staged rollouts:
+Use separate GitRepo resources for a simple staged promotion flow:
 
 ```yaml
 # gitrepo-canary.yaml - Deploy to canary cluster first
@@ -209,8 +222,6 @@ spec:
   repo: https://github.com/my-org/app
   # Deploy from canary branch
   branch: canary
-  paths:
-    - /
   targets:
     - clusterSelector:
         matchLabels:
@@ -225,8 +236,6 @@ metadata:
 spec:
   repo: https://github.com/my-org/app
   branch: main
-  paths:
-    - /
   targets:
     - clusterGroup: all-production
 ```
@@ -238,17 +247,17 @@ spec:
 kubectl get clusters.fleet.cattle.io -A
 
 # Check all GitRepo sync statuses
-kubectl get gitrepo -A
+kubectl get gitrepos.fleet.cattle.io -A
 
 # View bundle deployment status across all clusters
-kubectl get bundledeployments -A
+kubectl get bundledeployments.fleet.cattle.io -A
 
 # Find any failing deployments
-kubectl get bundledeployments -A \
+kubectl get bundledeployments.fleet.cattle.io -A \
   -o jsonpath='{range .items[?(@.status.ready==false)]}{.metadata.name}{" "}{.metadata.namespace}{"\n"}{end}'
 
 # Get a summary of bundle health
-kubectl get bundles -A -o wide
+kubectl get bundles.fleet.cattle.io -A
 ```
 
 ## Conclusion
