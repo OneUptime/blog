@@ -8,7 +8,7 @@ Description: Configure ICMPv6 rate limiting to protect against DoS attacks while
 
 ## Introduction
 
-ICMPv6 rate limiting is essential for protecting against denial-of-service attacks that abuse ICMPv6 (particularly Neighbor Solicitation floods and ping floods). The Linux kernel has built-in ICMPv6 error generation rate limiting, and ip6tables provides per-message-type rate limiting. The goal is to limit excessive ICMPv6 without breaking legitimate protocol operations.
+ICMPv6 rate limiting is essential for protecting against denial-of-service attacks that abuse ICMPv6 (particularly ping floods and excessive ICMPv6 error traffic). The Linux kernel has built-in ICMPv6 error generation rate limiting, and ip6tables provides per-message-type rate limiting. The goal is to limit excessive ICMPv6 without breaking legitimate protocol operations.
 
 ## Kernel ICMPv6 Rate Limiting
 
@@ -18,13 +18,13 @@ Linux automatically rate-limits ICMPv6 error message generation:
 # Check current ICMPv6 rate limit settings
 
 cat /proc/sys/net/ipv6/icmp/ratelimit
-# Default: 1000 (milliseconds between ICMPv6 error sends)
-# = at most 1 error per second per destination
+# Value is the spacing in milliseconds between rate-limited ICMPv6 messages
+# For example, 1000 means at most 1 rate-limited message per second to a peer
 
 # Check which message types are rate-limited
 cat /proc/sys/net/ipv6/icmp/ratemask
-# Bitmask (default 0000001110000000 = types 1, 2, 3 rate-limited)
-# Bit N corresponds to ICMPv6 type N
+# Current kernels expose this as a comma-separated list of type ranges
+# Default: 0-1,3-127 (rate-limit ICMPv6 errors except Packet Too Big, type 2)
 
 # Increase rate limit for high-traffic servers
 # Allow up to 100 ICMPv6 errors per second
@@ -34,8 +34,8 @@ sudo sysctl -w net.ipv6.icmp.ratelimit=10
 # At most 1 error per 10 seconds
 sudo sysctl -w net.ipv6.icmp.ratelimit=10000
 
-# Apply to NDP (Neighbor Discovery) rate limiting
-# These use separate kernel limits
+# Neighbor Discovery does not use separate ICMPv6 rate-limit sysctls
+# These neighbor-cache GC thresholds help limit cache growth during ND churn/floods
 cat /proc/sys/net/ipv6/neigh/default/gc_thresh1
 cat /proc/sys/net/ipv6/neigh/default/gc_thresh2
 cat /proc/sys/net/ipv6/neigh/default/gc_thresh3
@@ -58,31 +58,18 @@ sudo ip6tables -A INPUT -p icmpv6 --icmpv6-type echo-request \
 sudo ip6tables -A INPUT -p icmpv6 --icmpv6-type echo-request \
     -j DROP
 
-# Rate limit Neighbor Solicitation (NS flood protection)
-sudo ip6tables -A INPUT -p icmpv6 --icmpv6-type neighbor-solicitation \
-    -m limit --limit 100/second --limit-burst 200 \
-    -j ACCEPT
-sudo ip6tables -A INPUT -p icmpv6 --icmpv6-type neighbor-solicitation \
-    -j DROP
+# Neighbor Solicitation and Neighbor Advertisement are required for
+# address resolution, Duplicate Address Detection, and reachability checks
+sudo ip6tables -A INPUT -p icmpv6 --icmpv6-type neighbor-solicitation -j ACCEPT
+sudo ip6tables -A INPUT -p icmpv6 --icmpv6-type neighbor-advertisement -j ACCEPT
 
-# Rate limit Neighbor Advertisement
-sudo ip6tables -A INPUT -p icmpv6 --icmpv6-type neighbor-advertisement \
-    -m limit --limit 100/second --limit-burst 200 \
-    -j ACCEPT
-sudo ip6tables -A INPUT -p icmpv6 --icmpv6-type neighbor-advertisement \
-    -j DROP
-
-# IMPORTANT: Never rate-limit Packet Too Big (Type 2)
-# Rate limiting this breaks PMTUD
+# IMPORTANT: Do not drop or blanket rate-limit Packet Too Big (Type 2)
+# Dropping it breaks PMTUD
 sudo ip6tables -A INPUT -p icmpv6 --icmpv6-type packet-too-big -j ACCEPT
 
-# Rate limit Router Advertisement (allow only occasional)
-# RAs from routers come every few seconds to a few minutes
-sudo ip6tables -A INPUT -p icmpv6 --icmpv6-type router-advertisement \
-    -m limit --limit 1/second --limit-burst 5 \
-    -j ACCEPT
-sudo ip6tables -A INPUT -p icmpv6 --icmpv6-type router-advertisement \
-    -j DROP
+# Router Advertisements are required on host interfaces that use SLAAC
+# or learn MTU/default-router information from RA
+sudo ip6tables -A INPUT -p icmpv6 --icmpv6-type router-advertisement -j ACCEPT
 ```
 
 ## Per-Source Rate Limiting with hashlimit
@@ -100,16 +87,8 @@ sudo ip6tables -A INPUT -p icmpv6 --icmpv6-type echo-request \
 sudo ip6tables -A INPUT -p icmpv6 --icmpv6-type echo-request \
     -j DROP
 
-# Per-source rate limit for NS (prevents NS scan attacks)
-sudo ip6tables -A INPUT -p icmpv6 --icmpv6-type neighbor-solicitation \
-    -m hashlimit \
-    --hashlimit-upto 20/second \
-    --hashlimit-burst 50 \
-    --hashlimit-mode srcip \
-    --hashlimit-name icmpv6-ns-in \
-    -j ACCEPT
-sudo ip6tables -A INPUT -p icmpv6 --icmpv6-type neighbor-solicitation \
-    -j DROP
+# Avoid DROP-on-excess rules for Neighbor Solicitation on interfaces
+# that rely on Neighbor Discovery, because they can break ND and DAD
 ```
 
 ## Monitoring ICMPv6 Rates
@@ -152,4 +131,4 @@ def monitor_icmpv6_rate(interval: int = 5) -> dict:
 
 ## Conclusion
 
-ICMPv6 rate limiting requires distinguishing between message types: Packet Too Big (Type 2) should never be rate-limited (it breaks PMTUD), while Echo Request, Neighbor Solicitation, and Neighbor Advertisement can all be safely rate-limited. The kernel's built-in error generation rate limiting (`net.ipv6.icmp.ratelimit`) handles the outbound side. For inbound traffic, ip6tables with the `--limit` or `--hashlimit` module provides per-source or global rate limiting. Always test rate limits under normal production load before applying them to ensure legitimate traffic is not affected.
+ICMPv6 rate limiting requires distinguishing between message types: inbound Packet Too Big (Type 2) messages should not be dropped or blanket rate-limited because they are needed for PMTUD, while Echo Request is usually the safest ICMPv6 message type to rate-limit. Neighbor Solicitation, Neighbor Advertisement, and Router Advertisement are core Neighbor Discovery traffic and should generally be accepted on interfaces that rely on them. The kernel's built-in error generation rate limiting (`net.ipv6.icmp.ratelimit` together with `net.ipv6.icmp.ratemask`) handles outbound error messages. For inbound traffic, ip6tables with the `--limit` or `--hashlimit` module can rate-limit selected message types such as Echo Request. Always test rate limits under normal production load before applying them to ensure legitimate traffic is not affected.
