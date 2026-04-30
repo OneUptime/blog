@@ -8,7 +8,7 @@ Description: Configure containers to use host networking mode in Portainer for m
 
 ---
 
-Host networking mode removes the Docker network namespace isolation - the container shares the host's network stack directly. This provides the best possible network performance but eliminates port mapping and network isolation.
+On supported Docker hosts, host networking mode removes the Docker network namespace isolation - the container shares the host's network stack directly. This provides the best possible network performance but eliminates port mapping and network isolation.
 
 ## When to Use Host Networking
 
@@ -39,41 +39,42 @@ services:
   dpdk-app:
     image: dpdk-app:1.0
     network_mode: host
+    # DPDK requirements vary by driver and device setup
     cap_add:
-      - NET_ADMIN    # Required for network configuration
-      - SYS_RAWIO    # Required for direct memory access
+      - NET_ADMIN
+      - SYS_RAWIO
     volumes:
-      - /dev/hugepages:/dev/hugepages    # DPDK hugepages
+      - /dev/hugepages:/dev/hugepages    # Hugepages for DPDK workloads
 ```
 
 ## Performance Comparison
 
 ```bash
-# Test network throughput with and without host networking
+# Compare the same client workload with and without host networking
 
 # With bridge networking (default)
 docker run --rm networkstatic/iperf3 -c iperf-server
-# Typical: 8-9 Gbps on 10GbE
+# Baseline measurement for your environment
 
 # With host networking
 docker run --rm --network host networkstatic/iperf3 -c iperf-server
-# Typical: 9.5-10 Gbps on 10GbE (5-15% improvement)
+# Host networking removes NAT and userland-proxy overhead; measure the difference on your host
 ```
 
 ## Important Limitations
 
 ```yaml
 # With host networking:
-# 1. No port mapping - this WILL NOT work
+# 1. No port mapping - remove ports: entirely
 services:
   app:
     network_mode: host
-    ports:           # IGNORED with host networking
-      - "8080:8080"
+    # ports:
+    #   - "8080:8080"    # Causes a runtime error in Compose
 
-# 2. Container binds directly to host port 8080
-# 3. Multiple containers cannot use the same host port
-# 4. No Docker DNS service discovery - use IP addresses or /etc/hosts
+# 2. Application traffic uses host port 8080 directly
+# 3. Multiple containers cannot use the same host port on the same host
+# 4. No Docker service-name DNS on a Compose network - use reachable hostnames, IPs, or extra_hosts
 
 # For multiple instances, use different listening ports in the app
 ```
@@ -124,4 +125,4 @@ services:
 
 ## Summary
 
-Host networking mode in Portainer eliminates Docker's network namespace, providing direct access to host network interfaces with minimal overhead. Use it for network tools and high-performance workloads that require direct network access. For most applications, bridge networking with port mapping is more appropriate and provides better isolation.
+Host networking mode in Portainer uses the host's network namespace, providing direct access to host network interfaces with minimal overhead. Use it for network tools and high-performance workloads that require direct network access. For most applications, bridge networking with port mapping is more appropriate and provides better isolation.
