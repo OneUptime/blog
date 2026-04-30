@@ -160,10 +160,10 @@ resource "aws_subnet" "private" {
 # After: 4 buckets (adding "backups")
 variable "s3_buckets" {
   default = {
-    "data-archive" = { versioning = true }
-    "app-uploads"  = { versioning = true }
-    "logs"         = { versioning = false }
-    "backups"      = { versioning = true }   # new entry
+    "data-archive" = { versioning = true, lifecycle = true }
+    "app-uploads"  = { versioning = true, lifecycle = false }
+    "logs"         = { versioning = false, lifecycle = true }
+    "backups"      = { versioning = true, lifecycle = false }   # new entry
   }
 }
 # Result: only "backups" bucket is created - others untouched
