@@ -14,6 +14,7 @@ Go's standard library includes `net/http/httputil.ReverseProxy` which handles mo
 package main
 
 import (
+    "context"
     "log"
     "net"
     "net/http"
@@ -29,40 +30,36 @@ func main() {
         log.Fatal(err)
     }
 
-    proxy := httputil.NewSingleHostReverseProxy(targetURL)
-
-    // Configure the transport to force IPv4
-    proxy.Transport = &http.Transport{
-        DialContext: (&net.Dialer{
-            Timeout:   30 * time.Second,
-            KeepAlive: 30 * time.Second,
-        }).DialContext,
-        // Force IPv4 by using a custom dial function
-        MaxIdleConns:          100,
-        IdleConnTimeout:       90 * time.Second,
-        TLSHandshakeTimeout:   10 * time.Second,
-        ExpectContinueTimeout: 1 * time.Second,
+    dialer := &net.Dialer{
+        Timeout:   30 * time.Second,
+        KeepAlive: 30 * time.Second,
     }
 
-    // Modify the request before forwarding
-    originalDirector := proxy.Director
-    proxy.Director = func(req *http.Request) {
-        originalDirector(req)
-        // Add X-Forwarded-For header
-        if clientIP, _, err := net.SplitHostPort(req.RemoteAddr); err == nil {
-            req.Header.Set("X-Forwarded-For", clientIP)
-        }
-        req.Header.Set("X-Proxy", "go-proxy/1.0")
-    }
-
-    // Custom error handler
-    proxy.ErrorHandler = func(w http.ResponseWriter, r *http.Request, err error) {
-        log.Printf("Proxy error: %v", err)
-        http.Error(w, "Bad Gateway", http.StatusBadGateway)
+    proxy := &httputil.ReverseProxy{
+        Rewrite: func(pr *httputil.ProxyRequest) {
+            pr.SetURL(targetURL)
+            pr.SetXForwarded()
+            pr.Out.Header.Set("X-Proxy", "go-proxy/1.0")
+        },
+        // Configure the transport to force IPv4
+        Transport: &http.Transport{
+            DialContext: func(ctx context.Context, network, addr string) (net.Conn, error) {
+                return dialer.DialContext(ctx, "tcp4", addr)
+            },
+            MaxIdleConns:          100,
+            IdleConnTimeout:       90 * time.Second,
+            TLSHandshakeTimeout:   10 * time.Second,
+            ExpectContinueTimeout: 1 * time.Second,
+        },
+        // Custom error handler
+        ErrorHandler: func(w http.ResponseWriter, r *http.Request, err error) {
+            log.Printf("Proxy error: %v", err)
+            http.Error(w, "Bad Gateway", http.StatusBadGateway)
+        },
     }
 
     // Start proxy server on port 8080
-    log.Println("HTTP Proxy listening on :8080 -> http://127.0.0.1:3000")
+    log.Println("HTTP reverse proxy listening on :8080 -> http://127.0.0.1:3000")
     log.Fatal(http.ListenAndServe(":8080", proxy))
 }
 ```
@@ -139,6 +136,10 @@ type statusResponseWriter struct {
     code int
 }
 
+func (s *statusResponseWriter) Unwrap() http.ResponseWriter {
+    return s.ResponseWriter
+}
+
 func (s *statusResponseWriter) WriteHeader(code int) {
     s.code = code
     s.ResponseWriter.WriteHeader(code)
@@ -147,4 +148,4 @@ func (s *statusResponseWriter) WriteHeader(code int) {
 
 ## Conclusion
 
-Go's `httputil.ReverseProxy` makes building an HTTP proxy straightforward. Customize `Director` to modify request headers before forwarding, `Transport` to control connection pooling and IPv4 forcing, and `ErrorHandler` to return appropriate error responses. For load balancing, maintain a slice of proxies and distribute requests using atomic counters or health-check-based selection.
+Go's `httputil.ReverseProxy` makes building an HTTP proxy straightforward. Customize `Rewrite` to modify outbound requests before forwarding, `Transport` to control connection pooling and IPv4 forcing, and `ErrorHandler` to return appropriate error responses. For load balancing, maintain a slice of proxies and distribute requests using atomic counters or health-check-based selection.
