@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
-Tags: Networking, Subnet Mask, IPv4, Linux, Window, Troubleshooting, CIDR
+Tags: Networking, Subnet Mask, IPv4, Linux, Windows, Troubleshooting, CIDR
 
 Description: Learn how to diagnose and fix incorrect subnet mask configurations on Linux and Windows that cause connectivity failures, wrong routing, and hosts being unreachable.
 
@@ -19,8 +19,8 @@ The subnet mask tells a host which IP addresses are on the same local network vs
 | Scenario | Effect |
 |----------|--------|
 | Mask too narrow (e.g., /30 instead of /24) | Host thinks other local IPs are remote; routes via gateway unnecessarily |
-| Mask too wide (e.g., /16 instead of /24) | Host thinks remote IPs are local; tries ARP instead of routing; fails silently |
-| Wrong mask on gateway | Gateway can't forward packets to correct interface |
+| Mask too wide (e.g., /16 instead of /24) | Host thinks remote IPs are local; tries ARP instead of routing; connectivity fails |
+| Wrong mask on gateway | Gateway misidentifies which destinations are directly connected; forwarding or return traffic may fail |
 
 ---
 
@@ -46,7 +46,7 @@ ip addr show
 # inet 192.168.1.100/16 brd 192.168.255.255 scope global eth0
 # (Should be /24 not /16!)
 
-# Explicit CIDR and netmask view
+# Explicit IPv4/CIDR view
 ip -4 addr show eth0
 
 # Old-style ifconfig
@@ -61,7 +61,7 @@ ifconfig eth0
 ipconfig /all
 
 # PowerShell detailed view
-Get-NetIPAddress -InterfaceAlias "Ethernet" | Select-Object IPAddress, PrefixLength
+Get-NetIPAddress -InterfaceAlias "Ethernet" -AddressFamily IPv4 | Select-Object IPAddress, PrefixLength
 
 # Convert prefix length to mask:
 # /24 = 255.255.255.0
@@ -83,7 +83,7 @@ sudo ip addr del 192.168.1.100/16 dev eth0
 sudo ip addr add 192.168.1.100/24 dev eth0
 
 # Update default route if gateway changed
-sudo ip route add default via 192.168.1.1 dev eth0
+sudo ip route replace default via 192.168.1.1 dev eth0
 ```
 
 ### Permanent Fix (systemd-networkd)
@@ -94,7 +94,8 @@ sudo ip route add default via 192.168.1.1 dev eth0
 Name=eth0
 
 [Network]
-Address=192.168.1.100/24    # Correct /24, not /16
+# Correct /24, not /16
+Address=192.168.1.100/24
 Gateway=192.168.1.1
 DNS=8.8.8.8
 ```
@@ -111,6 +112,7 @@ nmcli connection show
 
 # Fix the subnet mask
 nmcli connection modify "Wired connection 1" \
+    ipv4.method manual \
     ipv4.addresses "192.168.1.100/24" \
     ipv4.gateway "192.168.1.1"
 
@@ -121,9 +123,10 @@ nmcli connection up "Wired connection 1"
 
 ```bash
 # /etc/network/interfaces
+auto eth0
 iface eth0 inet static
     address 192.168.1.100
-    netmask 255.255.255.0    # /24
+    netmask 255.255.255.0
     gateway 192.168.1.1
 ```
 
@@ -141,24 +144,25 @@ iface eth0 inet static
 ### PowerShell Method
 
 ```powershell
-# Get the current IP configuration
-Get-NetIPAddress -InterfaceAlias "Ethernet"
+# Get the current IPv4 configuration
+Get-NetIPAddress -InterfaceAlias "Ethernet" -AddressFamily IPv4
 
 # Remove incorrect configuration
 Remove-NetIPAddress -InterfaceAlias "Ethernet" `
     -IPAddress "192.168.1.100" -Confirm:$false
 
 # Add correct configuration
+# 24 = /24 = 255.255.255.0
 New-NetIPAddress -InterfaceAlias "Ethernet" `
     -IPAddress "192.168.1.100" `
-    -PrefixLength 24 `               # 24 = /24 = 255.255.255.0
+    -PrefixLength 24 `
     -DefaultGateway "192.168.1.1"
 ```
 
 ### netsh Method
 
 ```cmd
-netsh interface ip set address "Ethernet" static 192.168.1.100 255.255.255.0 192.168.1.1
+netsh interface ipv4 set address name="Ethernet" source=static address=192.168.1.100 mask=255.255.255.0 gateway=192.168.1.1
 ```
 
 ---
