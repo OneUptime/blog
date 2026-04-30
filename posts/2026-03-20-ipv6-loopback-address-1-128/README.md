@@ -19,7 +19,7 @@ The IPv6 loopback address `::1/128` is the equivalent of IPv4's `127.0.0.1`. Any
 | IPv4 equivalent | 127.0.0.1 |
 | Forwardable | No |
 | Globally reachable | No |
-| Link-local | No (has its own dedicated range) |
+| Link-local | No (but RFC 4291 treats it as having Link-Local scope) |
 
 ## Verifying the Loopback Interface
 
@@ -32,9 +32,9 @@ ip -6 addr show lo
 # Ping the loopback
 ping6 ::1
 
-# Confirm it's on the lo interface
-ip -6 route show ::1
-# Output: local ::1 via :: dev lo proto kernel metric 256 pref medium
+# Confirm it resolves to the lo interface
+ip -6 route get ::1
+# Output: local ::1 from :: dev lo table local proto kernel src ::1 metric 0 pref medium
 ```
 
 ## Using ::1 in Applications
@@ -61,13 +61,14 @@ client.connect(("::1", 8080, 0, 0))
 ### Differences Between ::1 and 127.0.0.1
 
 ```python
-import socket
+import ipaddress
 
 # Check if an address is the loopback
 def is_loopback(addr: str) -> bool:
     try:
-        import ipaddress
         a = ipaddress.ip_address(addr)
+        if isinstance(a, ipaddress.IPv6Address) and a.ipv4_mapped is not None:
+            return a.ipv4_mapped.is_loopback
         return a.is_loopback
     except ValueError:
         return False
@@ -82,7 +83,7 @@ print(is_loopback("::ffff:127.0.0.1"))  # True (IPv4-mapped loopback)
 ```nginx
 # NGINX - listen on IPv6 loopback only (metrics endpoint)
 server {
-    listen [::1]:9113;     # Prometheus metrics - loopback only
+    listen [::1]:9114;     # Loopback-only reverse proxy
     server_name localhost;
 
     location /metrics {
