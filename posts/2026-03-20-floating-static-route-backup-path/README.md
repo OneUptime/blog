@@ -8,18 +8,18 @@ Description: Configure a floating static route with a higher metric to serve as 
 
 ## Introduction
 
-A floating static route is a static route configured with a higher administrative distance (or metric) than the primary path. Under normal conditions, the primary route is preferred and the floating route is not used. If the primary route disappears from the routing table (due to link failure or dynamic protocol withdrawal), the floating route automatically activates.
+A floating static route is a static route configured with a higher metric than the primary path. On routing stacks that use administrative distance, the same idea is implemented with a higher administrative distance. Under normal conditions, the primary route is preferred and the floating route is not used. If the primary route disappears from the routing table, the floating route automatically activates.
 
 ## How Floating Routes Work
 
-The routing table always installs the route with the lowest metric. By giving the backup route a higher metric, it stays dormant until the primary is gone:
+For identical destination prefixes in the same table, Linux prefers the route with the lower metric. By giving the backup route a higher metric, it stays dormant until the primary is gone:
 
 ```text
 Primary:  10.20.0.0/24 via 192.168.1.1  metric 10   (active)
 Backup:   10.20.0.0/24 via 192.168.2.1  metric 100  (floating, dormant)
 ```
 
-When the primary link fails and the 10.20.0.0/24 via 192.168.1.1 route is removed, Linux automatically installs the backup.
+When the 10.20.0.0/24 via 192.168.1.1 route is removed, Linux automatically uses the backup.
 
 ## Configuring the Primary and Floating Routes
 
@@ -40,18 +40,18 @@ ip route show 10.20.0.0/24
 ## Simulating Failover
 
 ```bash
-# Simulate primary link failure by bringing down eth0
-ip link set eth0 down
+# Simulate primary route withdrawal
+ip route del 10.20.0.0/24 via 192.168.1.1
 
-# The primary route disappears, backup route becomes active
+# The backup route becomes active
 ip route show 10.20.0.0/24
 # 10.20.0.0/24 via 192.168.2.1 dev eth1 metric 100
 
 # Verify connectivity still works through backup
 ping -c 4 10.20.0.5
 
-# Restore the primary link
-ip link set eth0 up
+# Restore the primary route
+ip route add 10.20.0.0/24 via 192.168.1.1 metric 10
 # Primary route returns and takes over automatically
 ```
 
@@ -89,15 +89,16 @@ Metric=100
 
 ## Combining with Dynamic Routing
 
-When using OSPF, a floating static default route can serve as a backup to the OSPF-learned default:
+When using OSPF in FRR, a floating static default route can serve as a backup to the OSPF-learned default:
 
 ```bash
-# OSPF default route has AD 110 in Cisco, but on Linux FRR it has a metric
-# Add a static default with metric higher than OSPF's effective metric
-ip route add default via 203.0.113.1 metric 200
+# In FRR, use administrative distance rather than the Linux kernel metric
+# OSPF routes have distance 110 by default, so set the static route higher
+vtysh -c 'configure terminal' \
+      -c 'ip route 0.0.0.0/0 203.0.113.1 200'
 
-# FRR OSPF will inject a better metric default route when available
-# If OSPF default disappears, the static at metric 200 takes over
+# FRR keeps the static default as a backup
+# If the OSPF default disappears, the distance-200 static route takes over
 ```
 
 ## Monitoring Failover
