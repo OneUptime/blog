@@ -8,7 +8,7 @@ Description: Use ICMPv6 Echo Request and Reply for IPv6 connectivity testing, un
 
 ## Introduction
 
-ICMPv6 Echo Request (Type 128) and Echo Reply (Type 129) are the IPv6 equivalents of ICMP ping. The `ping6` command sends Echo Requests and measures Round Trip Time using the replies. Unlike ICMP for IPv4, ICMPv6 Echo is mandatory for full compliance but optional for basic connectivity. Echo Request/Reply have a simple format with an Identifier, Sequence Number, and optional data payload.
+ICMPv6 Echo Request (Type 128) and Echo Reply (Type 129) are the IPv6 equivalents of ICMP ping. The `ping6` command sends Echo Requests and measures Round Trip Time using the replies. RFC 4443 requires every IPv6 node to implement an ICMPv6 Echo responder, and recommends an application-layer interface for originating Echo Requests and receiving Echo Replies for diagnostics. Echo Request/Reply have a simple format with an Identifier, Sequence Number, and optional data payload.
 
 ## ICMPv6 Echo Message Format
 
@@ -50,20 +50,17 @@ ping6 -c 4 2001:db8::1
 # Set packet size (data bytes; total = 8 ICMPv6 + 40 IPv6 + data_size)
 ping6 -s 1452 2001:db8::1  # 1500-byte total packet
 
-# Test path MTU (no fragmentation + various sizes)
-ping6 -M do -s 1452 2001:db8::1  # DF-equivalent: fail if too big
+# Test path MTU (PMTU checks with various sizes)
+ping6 -M do -s 1452 2001:db8::1  # PMTU check: fail if too big
 ping6 -M do -s 1192 2001:db8::1  # 1240-byte total (fits 1280 min MTU)
 
-# Flood ping (requires root, tests packet rate)
+# Flood ping (typically requires elevated privileges, tests packet rate)
 sudo ping6 -f 2001:db8::1
 
 # Set interval between pings (default 1 second)
 ping6 -i 0.2 2001:db8::1  # 200ms interval
 
-# Set Hop Limit (TTL equivalent)
-ping6 -t 10 2001:db8::1  # Max 10 hops
-
-# Ping link-local address (must specify interface)
+# Ping link-local address (specify the interface to avoid ambiguity)
 ping6 fe80::1%eth0
 
 # Ping multicast (all nodes on link)
@@ -113,38 +110,61 @@ def ping6(destination: str, count: int = 3) -> list:
     identifier = os.getpid() & 0xFFFF
 
     try:
-        s = socket.socket(socket.AF_INET6, socket.SOCK_RAW,
-                         socket.getprotobyname("ipv6-icmp"))
-        s.settimeout(2.0)
+        sockaddr = socket.getaddrinfo(
+            destination, None, socket.AF_INET6, socket.SOCK_RAW, socket.IPPROTO_ICMPV6
+        )[0][4]
 
-        for seq in range(count):
-            timestamp = struct.pack("!d", time.time())
-            payload = build_echo_request(identifier, seq, timestamp)
+        with socket.socket(socket.AF_INET6, socket.SOCK_RAW, socket.IPPROTO_ICMPV6) as s:
+            s.settimeout(2.0)
 
-            # We can't easily inject the checksum here in a raw socket
-            # without IP_HDRINCL; the kernel computes it automatically
-            # for SOCK_RAW with protocol ipv6-icmp
+            for seq in range(count):
+                timestamp = struct.pack("!d", time.time())
+                payload = build_echo_request(identifier, seq, timestamp)
 
-            send_time = time.time()
-            s.sendto(payload, (destination, 0))
+                # For raw ICMPv6 sockets, the kernel computes the checksum.
+                send_time = time.time()
+                s.sendto(payload, sockaddr)
 
-            try:
-                reply, addr = s.recvfrom(1024)
-                rtt = (time.time() - send_time) * 1000
-                results.append({"seq": seq, "rtt_ms": round(rtt, 3), "from": addr[0]})
-            except socket.timeout:
-                results.append({"seq": seq, "rtt_ms": None, "from": None})
+                deadline = send_time + 2.0
+                while True:
+                    remaining = deadline - time.time()
+                    if remaining <= 0:
+                        results.append({"seq": seq, "rtt_ms": None, "from": None})
+                        break
 
-        s.close()
+                    s.settimeout(remaining)
+
+                    try:
+                        reply, addr = s.recvfrom(1024)
+                    except socket.timeout:
+                        results.append({"seq": seq, "rtt_ms": None, "from": None})
+                        break
+
+                    if len(reply) < 8:
+                        continue
+
+                    icmp_type, code, _checksum, reply_id, reply_seq = struct.unpack(
+                        "!BBHHH", reply[:8]
+                    )
+
+                    if icmp_type != 129 or code != 0:
+                        continue
+
+                    if reply_id != identifier or reply_seq != seq:
+                        continue
+
+                    rtt = (time.time() - send_time) * 1000
+                    results.append({"seq": seq, "rtt_ms": round(rtt, 3), "from": addr[0]})
+                    break
     except PermissionError:
-        print("Root required for raw ICMPv6 sockets")
+        print("Root or CAP_NET_RAW is required for raw ICMPv6 sockets")
 
     return results
 
 # Show results
 # results = ping6("2001:db8::1", 3)
 # for r in results:
-#     if r["rtt_ms"]:
+#     if r["rtt_ms"] is not None:
 #         print(f"Reply from {r['from']}: seq={r['seq']} time={r['rtt_ms']}ms")
 #     else:
 #         print(f"Request timeout for seq {r['seq']}")
@@ -152,4 +172,4 @@ def ping6(destination: str, count: int = 3) -> list:
 
 ## Conclusion
 
-ICMPv6 Echo Request/Reply (ping6) is the fundamental IPv6 connectivity test tool. The Identifier and Sequence Number fields allow multiplexing many simultaneous pings and ordering replies. The `-M do` option is especially useful for testing path MTU at different sizes. When testing link-local addresses, always specify the interface with the `%interface` syntax (e.g., `fe80::1%eth0`). Even though filtering ping6 is technically optional, most network administrators should allow Echo Request and Reply through their firewalls as it is the most basic diagnostic tool available.
+ICMPv6 Echo Request/Reply (ping6) is the fundamental IPv6 connectivity test tool. The Identifier and Sequence Number fields allow multiplexing many simultaneous pings and ordering replies. The `-M do` option is especially useful for testing path MTU at different sizes. When testing link-local addresses, specifying the interface with the `%interface` syntax (e.g., `fe80::1%eth0`) is a good way to avoid ambiguity. Firewall policy is deployment-specific, but RFC 4890 recommends allowing IPv6 connectivity checks by default.
