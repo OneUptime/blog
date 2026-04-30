@@ -4,7 +4,7 @@ Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
 Tags: OpenTofu, IAM Roles, AWS, Security, OIDC, Infrastructure as Code
 
-Description: Learn how to manage AWS IAM Roles with OpenTofu - creating service roles, cross-account roles, OIDC federation for CI/CD, permission boundaries, and role chaining patterns.
+Description: Learn how to manage AWS IAM Roles with OpenTofu - creating service roles, cross-account roles, OIDC federation for CI/CD, permission boundaries, and Step Functions execution roles.
 
 ## Introduction
 
@@ -64,11 +64,11 @@ resource "aws_iam_instance_profile" "ec2_app" {
 ## Permission Boundary
 
 ```hcl
-# Permission boundary limits maximum permissions for roles created by developers
+# Permission boundary limits the maximum permissions of application roles in non-production
 
 resource "aws_iam_policy" "developer_boundary" {
   name        = "DeveloperPermissionBoundary"
-  description = "Maximum permissions developers can grant via roles they create"
+  description = "Maximum permissions application roles can receive in non-production"
 
   policy = jsonencode({
     Version = "2012-10-17"
@@ -82,23 +82,12 @@ resource "aws_iam_policy" "developer_boundary" {
             "aws:ResourceTag/Environment" = ["dev", "staging"]
           }
         }
-      },
-      {
-        # Developers cannot escalate beyond boundary
-        Effect    = "Deny"
-        Action    = ["iam:CreateRole", "iam:PutRolePolicy"]
-        Resource  = "*"
-        Condition = {
-          StringNotEquals = {
-            "iam:PermissionsBoundary" = "arn:aws:iam::${data.aws_caller_identity.current.account_id}:policy/DeveloperPermissionBoundary"
-          }
-        }
       }
     ]
   })
 }
 
-# Apply boundary when creating roles
+# Apply boundary when creating the role
 resource "aws_iam_role" "app_service" {
   name                 = "${var.environment}-app-service"
   permissions_boundary = aws_iam_policy.developer_boundary.arn
@@ -153,9 +142,6 @@ resource "aws_iam_openid_connect_provider" "github" {
   url = "https://token.actions.githubusercontent.com"
 
   client_id_list = ["sts.amazonaws.com"]
-
-  # GitHub's OIDC thumbprint - verify at https://token.actions.githubusercontent.com
-  thumbprint_list = ["6938fd4d98bab03faadb97b34396831e3780aea1"]
 }
 
 # Role assumed by GitHub Actions
@@ -196,6 +182,7 @@ resource "aws_iam_role_policy" "github_actions_deploy" {
         Action = [
           "ecr:GetAuthorizationToken",
           "ecr:BatchGetImage",
+          "ecr:BatchCheckLayerAvailability",
           "ecr:PutImage",
           "ecr:InitiateLayerUpload",
           "ecr:UploadLayerPart",
@@ -213,7 +200,7 @@ resource "aws_iam_role_policy" "github_actions_deploy" {
 }
 ```
 
-## Role Chaining for Step Functions
+## Execution Role for Step Functions
 
 ```hcl
 # Step Functions execution role that can invoke Lambda
@@ -247,7 +234,12 @@ resource "aws_iam_role_policy" "step_functions" {
       },
       {
         Effect   = "Allow"
-        Action   = ["xray:PutTraceSegments", "xray:GetSamplingRules"]
+        Action   = [
+          "xray:PutTraceSegments",
+          "xray:PutTelemetryRecords",
+          "xray:GetSamplingRules",
+          "xray:GetSamplingTargets"
+        ]
         Resource = ["*"]
       }
     ]
@@ -257,4 +249,4 @@ resource "aws_iam_role_policy" "step_functions" {
 
 ## Conclusion
 
-IAM Roles with OpenTofu are the foundation of least-privilege access in AWS. Use OIDC federation (GitHub Actions, GitLab, CircleCI) to eliminate static access keys from CI/CD pipelines - tokens are short-lived and scoped to specific repositories. Apply permission boundaries to prevent privilege escalation when teams create their own roles. For cross-account access, always require `sts:ExternalId` to prevent the confused deputy problem. Attach managed policies with `aws_iam_role_policy_attachment` for AWS-managed policies and inline policies with `aws_iam_role_policy` for custom application-specific permissions.
+IAM Roles with OpenTofu are the foundation of least-privilege access in AWS. Use OIDC federation (GitHub Actions, GitLab, CircleCI) to eliminate static access keys from CI/CD pipelines - tokens are short-lived and scoped to specific repositories. Apply permission boundaries to the roles teams create, and pair them with IAM policies that require `iam:PermissionsBoundary` on role-creation APIs, to prevent privilege escalation. For third-party cross-account access, require `sts:ExternalId` to prevent the confused deputy problem. Attach managed policies with `aws_iam_role_policy_attachment` for AWS-managed policies and inline policies with `aws_iam_role_policy` for custom application-specific permissions.
