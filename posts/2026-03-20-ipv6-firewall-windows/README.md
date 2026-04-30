@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
-Tags: IPv6, Window, Firewall, PowerShell, Netsh
+Tags: IPv6, Windows, Firewall, PowerShell, Netsh
 
 Description: Learn how to configure IPv6 firewall rules on Windows using Windows Defender Firewall, PowerShell New-NetFirewallRule, and netsh advfirewall for controlling inbound and outbound IPv6 traffic.
 
@@ -13,20 +13,17 @@ Windows Defender Firewall (formerly Windows Firewall) supports IPv6 natively alo
 ## Checking Current IPv6 Rules
 
 ```powershell
-# PowerShell: List all inbound rules for IPv6
+# PowerShell: List enabled inbound rules from the active store
 
-Get-NetFirewallRule -Direction Inbound |
-  Where-Object { $_.Enabled -eq "True" } |
-  ForEach-Object {
-    $_ | Select-Object DisplayName, Action
-  }
+Get-NetFirewallRule -PolicyStore ActiveStore -Direction Inbound -Enabled True |
+  Select-Object DisplayName, Action
 
-# Show rules with IPv6 address filters
-Get-NetFirewallAddressFilter | Where-Object {
+# Show active address filters that contain IPv6 literals
+Get-NetFirewallAddressFilter -PolicyStore ActiveStore | Where-Object {
   $_.LocalAddress -like "*:*" -or $_.RemoteAddress -like "*:*"
 }
 
-# Netsh: Show all firewall rules
+# Netsh: Show all inbound firewall rules
 netsh advfirewall firewall show rule name=all dir=in
 ```
 
@@ -41,7 +38,7 @@ New-NetFirewallRule `
     -Direction Inbound `
     -Protocol TCP `
     -LocalPort 22 `
-    -RemoteAddress "fd00:mgmt::/48" `
+    -RemoteAddress "fd00:1234:5678::/48" `
     -Action Allow `
     -Profile Any `
     -Enabled True
@@ -52,7 +49,8 @@ New-NetFirewallRule `
     -Direction Inbound `
     -Protocol TCP `
     -LocalPort 443 `
-    -AddressFamily IPv6 `
+    -LocalAddress "::/0" `
+    -RemoteAddress "::/0" `
     -Action Allow `
     -Enabled True
 
@@ -71,24 +69,24 @@ New-NetFirewallRule `
 :: Allow RDP from management IPv6 prefix
 netsh advfirewall firewall add rule name="Allow RDP IPv6 Mgmt" ^
     dir=in action=allow protocol=tcp localport=3389 ^
-    remoteip=fd00:mgmt::/48
+    remoteip=fd00:1234:5678::/48
 
-:: Block all inbound IPv6 except allowed
-netsh advfirewall firewall add rule name="Block All IPv6 Inbound" ^
+:: Block a specific IPv6 prefix
+netsh advfirewall firewall add rule name="Block IPv6 Prefix" ^
     dir=in action=block protocol=any ^
-    remoteip=::/0
+    remoteip=2001:db8:bad::/48
 
 :: Delete a rule
-netsh advfirewall firewall delete rule name="Block All IPv6 Inbound"
+netsh advfirewall firewall delete rule name="Block IPv6 Prefix"
 ```
 
 ## ICMPv6 Rules
 
-Windows needs ICMPv6 for NDP and PMTUD. These are typically already configured:
+Windows uses ICMPv6 for Neighbor Discovery and PMTUD. These are typically already configured:
 
 ```powershell
 # Check existing ICMPv6 rules
-Get-NetFirewallRule | Where-Object { $_.DisplayName -like "*ICMPv6*" } |
+Get-NetFirewallRule -PolicyStore ActiveStore | Where-Object { $_.DisplayName -like "*ICMPv6*" } |
   Select-Object DisplayName, Enabled, Action
 
 # Allow Packet Too Big (required for PMTUD) - should be pre-configured
@@ -100,20 +98,22 @@ New-NetFirewallRule `
     -Action Allow `
     -Enabled True
 
-# Allow Neighbor Discovery (essential)
+# Allow Neighbor Solicitation/Advertisement if needed
 New-NetFirewallRule `
     -DisplayName "Allow ICMPv6 Neighbor Solicitation" `
     -Direction Inbound `
     -Protocol ICMPv6 `
     -IcmpType 135 `
-    -Action Allow
+    -Action Allow `
+    -Enabled True
 
 New-NetFirewallRule `
     -DisplayName "Allow ICMPv6 Neighbor Advertisement" `
     -Direction Inbound `
     -Protocol ICMPv6 `
     -IcmpType 136 `
-    -Action Allow
+    -Action Allow `
+    -Enabled True
 ```
 
 ## Default Profile Settings
@@ -121,10 +121,10 @@ New-NetFirewallRule `
 Windows Firewall applies different rules per network profile:
 
 ```powershell
-# View current profile settings for IPv6
+# View current firewall profile settings
 Get-NetFirewallProfile | Select-Object Name, Enabled, DefaultInboundAction, DefaultOutboundAction
 
-# Set default to block inbound IPv6 on public profile
+# Set the Public profile default inbound action to Block
 Set-NetFirewallProfile -Profile Public -DefaultInboundAction Block
 
 # Enable firewall on all profiles
@@ -141,7 +141,7 @@ netsh advfirewall export "C:\firewall-backup.wfw"
 netsh advfirewall import "C:\firewall-backup.wfw"
 
 # Export via PowerShell to JSON (for audit)
-Get-NetFirewallRule | ConvertTo-Json | Out-File "C:\firewall-rules.json"
+Get-NetFirewallRule -PolicyStore ActiveStore | ConvertTo-Json | Out-File "C:\firewall-rules.json"
 ```
 
 ## Group Policy for IPv6 Firewall (Enterprise)
@@ -149,13 +149,13 @@ Get-NetFirewallRule | ConvertTo-Json | Out-File "C:\firewall-rules.json"
 For domain-joined machines, manage firewall rules via Group Policy:
 
 ```text
-Computer Configuration → Windows Settings → Security Settings →
+Computer Configuration → Policies → Windows Settings → Security Settings →
 Windows Defender Firewall with Advanced Security →
 Inbound Rules → New Rule
 
 Protocol: TCP
 Port: 22
-Remote IP Address: fd00:mgmt::/48  (IPv6 CIDR format)
+Remote IP Address: fd00:1234:5678::/48  (IPv6 CIDR format)
 Action: Allow
 Profile: Domain, Private, Public
 Name: Allow SSH IPv6 Management
@@ -178,4 +178,4 @@ Get-Content "C:\Windows\System32\LogFiles\Firewall\pfirewall.log" |
 
 ## Summary
 
-Windows Firewall IPv6 rules use `New-NetFirewallRule` with `-RemoteAddress "prefix"` for IPv6 CIDR matching and `-AddressFamily IPv6` to restrict rules to IPv6 only. Ensure ICMPv6 Neighbor Discovery (types 133-136) and Packet Too Big (type 2) are allowed - Windows typically pre-configures these. Use `-Profile Any` for rules that should apply regardless of network profile. Export firewall rules with `netsh advfirewall export` for backup and change management. In enterprise environments, use Group Policy to consistently apply IPv6 firewall rules across domain machines.
+Windows Firewall IPv6 rules use `New-NetFirewallRule` with IPv6 values in `-RemoteAddress` and `-LocalAddress` for IPv6 CIDR matching and IPv6-only scoping. Ensure essential ICMPv6 traffic such as Packet Too Big (type 2) and Neighbor Solicitation/Advertisement (types 135/136) is allowed - Windows typically pre-configures these. Use `-Profile Any` for rules that should apply regardless of network profile, and rely on the profile's default inbound action instead of overlapping explicit block-all rules. Export firewall rules with `netsh advfirewall export` for backup and change management. In enterprise environments, use Group Policy to consistently apply IPv6 firewall rules across domain machines.
