@@ -6,7 +6,7 @@ Tags: GCP, Terraform, IPv6, Load Balancer, Global LB, Networking
 
 Description: A guide to creating a GCP Global External Application Load Balancer with IPv6 frontend using Terraform.
 
-GCP's Global External Application Load Balancer automatically supports both IPv4 and IPv6 through its anycast frontend IPs. When you create a global forwarding rule with `ip_version = "IPV6"`, GCP provisions a globally anycast IPv6 address routed to the nearest Google edge PoP.
+GCP's Global External Application Load Balancer can expose both IPv4 and IPv6 anycast frontends. To serve both address families, create separate global forwarding rules: one with `ip_version = "IPV4"` and one with `ip_version = "IPV6"`. When you create the IPv6 global forwarding rule, Google Cloud allocates a `/64` globally anycast IPv6 range for that frontend and routes clients to the nearest Google edge PoP. The load balancer-to-backend connection uses IPv4 by default.
 
 ## Architecture
 
@@ -27,10 +27,11 @@ flowchart LR
 # backend.tf - Backend service pointing to a managed instance group
 
 resource "google_compute_backend_service" "app" {
-  name        = "app-backend"
-  protocol    = "HTTP"
-  port_name   = "http"
-  timeout_sec = 30
+  name                  = "app-backend"
+  protocol              = "HTTP"
+  port_name             = "http"
+  load_balancing_scheme = "EXTERNAL_MANAGED"
+  timeout_sec           = 30
 
   backend {
     group = google_compute_instance_group_manager.app.instance_group
@@ -78,20 +79,22 @@ resource "google_compute_managed_ssl_certificate" "main" {
 
 # IPv4 global anycast frontend
 resource "google_compute_global_forwarding_rule" "ipv4" {
-  name        = "app-fwd-ipv4"
-  target      = google_compute_target_https_proxy.main.id
-  port_range  = "443"
-  ip_version  = "IPV4"
-  ip_protocol = "TCP"
+  name                  = "app-fwd-ipv4"
+  target                = google_compute_target_https_proxy.main.id
+  port_range            = "443"
+  load_balancing_scheme = "EXTERNAL_MANAGED"
+  ip_version            = "IPV4"
+  ip_protocol           = "TCP"
 }
 
 # IPv6 global anycast frontend
 resource "google_compute_global_forwarding_rule" "ipv6" {
-  name        = "app-fwd-ipv6"
-  target      = google_compute_target_https_proxy.main.id
-  port_range  = "443"
-  ip_version  = "IPV6"   # GCP allocates a global anycast IPv6 address
-  ip_protocol = "TCP"
+  name                  = "app-fwd-ipv6"
+  target                = google_compute_target_https_proxy.main.id
+  port_range            = "443"
+  load_balancing_scheme = "EXTERNAL_MANAGED"
+  ip_version            = "IPV6"   # Google Cloud allocates a /64 anycast IPv6 range
+  ip_protocol           = "TCP"
 }
 
 output "lb_ipv4_address" {
@@ -131,8 +134,10 @@ terraform apply
 
 # Get the IPv6 frontend address
 IPV6_IP=$(terraform output -raw lb_ipv6_address)
+DOMAIN_NAME="your-domain.example" # Replace with the value used for var.domain_name
 
-# Test connectivity
+# Google-managed certificates can remain in PROVISIONING until public DNS A/AAAA records point to the load balancer.
+# Test connectivity after the certificate becomes ACTIVE.
 curl -6 "https://[$IPV6_IP]/" -k
 # Or via DNS
 curl -6 "https://${DOMAIN_NAME}/"
