@@ -18,13 +18,13 @@ Configure Apollo Federation gateway and subgraph services to communicate over IP
 
 ## Configuration
 
-Each framework has specific ways to bind to IPv6 interfaces. The general pattern is to use `::` as the bind address, which is the IPv6 equivalent of `0.0.0.0`.
+Each framework has specific ways to bind to IPv6 interfaces. The general pattern is to use `::` as the bind address, which is the IPv6 equivalent of `0.0.0.0`. When you use literal IPv6 addresses in gateway or service URLs, enclose them in square brackets.
 
 ```bash
 # Verify IPv6 is available on your system
 
 ip -6 addr show
-ping6 -c 3 ::1
+ping -6 -c 3 ::1
 ```
 
 ## Step-by-Step Setup
@@ -43,6 +43,19 @@ server.listen(4000, '::', () => {
 ```python
 # Python example
 uvicorn.run(app, host="::", port=4000)
+```
+
+For Apollo Gateway, use bracketed IPv6 literals in subgraph URLs, or use hostnames that resolve to AAAA records:
+
+```javascript
+const gateway = new ApolloGateway({
+    supergraphSdl: new IntrospectAndCompose({
+        subgraphs: [
+            { name: 'users', url: 'http://[2001:db8::10]:4001/graphql' },
+            { name: 'orders', url: 'http://[2001:db8::11]:4002/graphql' },
+        ],
+    }),
+});
 ```
 
 ### 2. Handle IPv6 Addresses in Application Logic
@@ -94,4 +107,4 @@ Use [OneUptime](https://oneuptime.com) to monitor your service's IPv6 endpoints.
 
 ## Conclusion
 
-Configuring How to Handle IPv6 in GraphQL Federation Gateways is primarily about ensuring the server binds to IPv6 interfaces using `::` and that firewalls permit traffic on the required ports. Client IPv6 addresses are then available through standard request handling mechanisms in your application code.
+Configuring How to Handle IPv6 in GraphQL Federation Gateways is primarily about ensuring the server binds to IPv6 interfaces using `::`, that gateway subgraph URLs use bracketed IPv6 literals when configured directly, and that firewalls permit traffic on the required ports. Client IPv6 addresses are then available through standard request handling mechanisms in your application code.
