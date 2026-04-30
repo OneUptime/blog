@@ -67,7 +67,7 @@ void classify_address(const struct sockaddr_in6 *addr6) {
         printf("Link-local: %s\n", ip_str);
 
     } else {
-        printf("Global IPv6: %s\n", ip_str);
+        printf("Other IPv6: %s\n", ip_str);
     }
 }
 ```
@@ -165,17 +165,22 @@ real_ip = normalize_client_address(raw_ip)
 print(f"Client: {real_ip}")  # Shows 192.168.1.5 not ::ffff:192.168.1.5
 ```
 
-## IPv4-Mapped in HTTP Headers
+## IPv4-Mapped in WSGI Environ
 
 ```python
-# In web frameworks, check for IPv4-mapped in X-Forwarded-For and REMOTE_ADDR
+# In WSGI apps, REMOTE_ADDR may be an IPv4-mapped IPv6 address
+import ipaddress
+
 def get_client_ip(environ: dict) -> str:
-    """Get client IP from WSGI environ, stripping IPv4-mapped prefix."""
+    """Get client IP from WSGI environ, normalizing IPv4-mapped IPv6."""
     ip = environ.get('REMOTE_ADDR', '')
-    # Strip ::ffff: prefix (IPv4-mapped IPv6)
-    if ip.startswith('::ffff:'):
-        ip = ip[7:]
-    return ip
+    try:
+        addr = ipaddress.ip_address(ip)
+        if isinstance(addr, ipaddress.IPv6Address) and addr.ipv4_mapped:
+            return str(addr.ipv4_mapped)
+        return str(addr)
+    except ValueError:
+        return ip
 ```
 
 ## Conclusion
