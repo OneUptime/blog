@@ -56,7 +56,7 @@ DHCP=ipv4
 # Static IPv6 for the host (bridge gets the address)
 Address=2001:db8::10/64
 Gateway=2001:db8::1
-# Enable RA acceptance for SLAAC (in addition to static)
+# Optional: accept RAs if you also want RA-learned routes or SLAAC addresses
 IPv6AcceptRA=yes
 ```
 
@@ -77,14 +77,12 @@ iface br0 inet static
     bridge_ports eth0
     bridge_stp off
     bridge_fd 0
+    up ip -6 addr add 2001:db8::10/64 dev br0
+    up ip -6 route add default via 2001:db8::1 dev br0
+    down ip -6 route del default via 2001:db8::1 dev br0 || true
+    down ip -6 addr del 2001:db8::10/64 dev br0 || true
 
-iface br0 inet6 static
-    address 2001:db8::10/64
-    gateway 2001:db8::1
-
-# eth0 becomes a bridge port
-auto eth0
-iface eth0 inet manual
+# eth0 is added to the bridge by bridge_ports; do not configure it separately
 ```
 
 ## KVM VM with Bridge in libvirt XML
@@ -110,19 +108,19 @@ virsh attach-interface myvm bridge br0 \
 ## IPv6 Behavior in Linux Bridges
 
 ```bash
-# Linux bridges forward ALL Ethernet frames including:
+# A plain Linux bridge forwards IPv6 unicast and multicast at L2, including:
 # - IPv6 multicast (ff02::/16) - RAs, NDP, MLD
 # - Unicast IPv6 frames
 
-# Verify bridge is forwarding multicast
+# Inspect the bridge multicast database
 bridge mdb show dev br0
-# Should show IPv6 multicast groups (ff02::*)
+# You may see IPv6 multicast groups here if snooping has learned listeners
 
-# Check sysctl settings - bridges should NOT filter IPv6
+# Check bridge netfilter settings
 sysctl net.bridge.bridge-nf-call-ip6tables
-# If set to 1, ip6tables rules apply to bridged traffic - can break NDP!
+# If set to 1, bridged IPv6 traffic traverses ip6tables and NDP may need explicit allow rules
 
-# Disable bridge netfilter for IPv6 (recommended for pure L2 bridging)
+# Disable bridge netfilter for IPv6 if you want pure L2 bridging
 echo "net.bridge.bridge-nf-call-ip6tables = 0" >> /etc/sysctl.conf
 sysctl -p
 ```
@@ -144,8 +142,8 @@ qemu-system-x86_64 \
     -nographic
 
 # TAP interface appears as a bridge port
-bridge link show br0
-# Should show: tap0 on br0
+ip link show master br0
+# Should show tap0 enslaved to br0
 ```
 
 ## IPv6 Inside KVM Guest Receives from Bridge
@@ -157,10 +155,10 @@ ip -6 addr show
 
 # Verify default route
 ip -6 route show
-# Expected: default via 2001:db8::1 dev eth0
+# Expected: default via fe80::... dev eth0 proto ra
 
 # Test external IPv6 connectivity
-ping6 2001:4860:4860::8888
+ping -6 2001:4860:4860::8888
 
 # If no SLAAC address: check if RAs are reaching the VM
 tcpdump -i eth0 -n "icmp6 and icmp6[0] == 134"  # Inside VM
@@ -170,11 +168,11 @@ tcpdump -i eth0 -n "icmp6 and icmp6[0] == 134"  # Inside VM
 ## NDP Proxy for Bridged VMs
 
 ```bash
-# If VMs are on a different /64 but using IPs from the host's /64
-# Enable NDP proxy so the host responds to neighbor solicitations for VM IPs
+# Not needed for a true same-L2 bridge. Use NDP proxy only if the VM is not
+# actually on the upstream L2 segment but you still want to use an address from that /64
 
-# Enable NDP proxy on the bridge
-sysctl -w net.ipv6.conf.br0.proxy_ndp=1
+# Enable NDP proxy on the upstream interface
+sysctl -w net.ipv6.conf.eth0.proxy_ndp=1
 
 # Add NDP proxy entry for each VM IP
 ip -6 neigh add proxy 2001:db8::100 dev eth0   # Proxy for VM at ::100
@@ -189,4 +187,4 @@ apt-get install -y ndppd
 
 ## Conclusion
 
-Linux bridge networking for KVM VMs provides transparent IPv6 connectivity - all IPv6 traffic including Router Advertisements, NDP, and DHCPv6 passes through the bridge without modification. The key configuration is creating a bridge (`br0`), setting the physical NIC as a bridge port, and assigning the host's IPv6 address to the bridge. KVM VMs connected to this bridge receive SLAAC addresses from the physical router as if they were directly connected. Ensure `net.bridge.bridge-nf-call-ip6tables=0` to prevent ip6tables from interfering with bridged NDP traffic. For VMs needing static IPv6 addresses, configure them inside the guest OS independently of the bridge configuration.
+Linux bridge networking for KVM VMs provides transparent IPv6 connectivity - all IPv6 traffic including Router Advertisements, NDP, and DHCPv6 passes through the bridge without modification. The key configuration is creating a bridge (`br0`), setting the physical NIC as a bridge port, and assigning the host's IPv6 address to the bridge. KVM VMs connected to this bridge receive SLAAC addresses from the physical router as if they were directly connected. If you want bridged IPv6 traffic to bypass ip6tables and behave as a pure L2 bridge, set `net.bridge.bridge-nf-call-ip6tables=0`. For VMs needing static IPv6 addresses, configure them inside the guest OS independently of the bridge configuration.
