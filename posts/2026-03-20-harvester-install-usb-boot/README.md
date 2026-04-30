@@ -18,19 +18,20 @@ USB boot is the most straightforward method to install Harvester on physical ser
   - 8+ CPU cores with virtualization extensions
   - 32 GB+ RAM
   - 250 GB+ SSD for OS
-  - Additional disks for VM storage
+  - A separate data disk for VM storage is recommended
 
 ## Step 1: Download the Harvester ISO
 
 ```bash
-# Download the latest Harvester release
+# Download a supported Harvester release
 
-HARVESTER_VERSION="v1.3.0"
+HARVESTER_VERSION="v1.7.1"
 wget https://releases.rancher.com/harvester/${HARVESTER_VERSION}/harvester-${HARVESTER_VERSION}-amd64.iso
 
 # Verify the SHA512 checksum to ensure file integrity
-wget https://releases.rancher.com/harvester/${HARVESTER_VERSION}/harvester-${HARVESTER_VERSION}-amd64.iso.sha512
-sha512sum -c harvester-${HARVESTER_VERSION}-amd64.iso.sha512
+wget https://releases.rancher.com/harvester/${HARVESTER_VERSION}/harvester-${HARVESTER_VERSION}-amd64.sha512
+grep " harvester-${HARVESTER_VERSION}-amd64\\.iso$" \
+    harvester-${HARVESTER_VERSION}-amd64.sha512 | sha512sum -c -
 ```
 
 ## Step 2: Create a Bootable USB Drive
@@ -48,7 +49,7 @@ lsblk -d -o NAME,SIZE,MODEL
 
 # Write the ISO to the USB drive (replace /dev/sdb with your actual device)
 # WARNING: This will erase all data on the selected device
-sudo dd if=harvester-v1.3.0-amd64.iso \
+sudo dd if=harvester-v1.7.1-amd64.iso \
         of=/dev/sdb \
         bs=4M \
         status=progress \
@@ -68,7 +69,7 @@ diskutil list
 diskutil unmountDisk /dev/diskN
 
 # Write the ISO using dd
-sudo dd if=harvester-v1.3.0-amd64.iso \
+sudo dd if=harvester-v1.7.1-amd64.iso \
         of=/dev/rdiskN \
         bs=4m
 
@@ -83,7 +84,7 @@ Use the free tool **Rufus** to create the bootable USB:
 1. Download [Rufus](https://rufus.ie/) and run it (no installation required)
 2. Under **Device**, select your USB drive
 3. Under **Boot selection**, click **SELECT** and choose the Harvester ISO
-4. Set **Partition scheme** to **GPT** for UEFI systems, or **MBR** for legacy BIOS
+4. Set **Partition scheme** to **GPT**
 5. Leave other settings at defaults
 6. Click **START** and confirm the warning about data erasure
 7. Wait for Rufus to complete the process
@@ -97,7 +98,7 @@ BIOS/UEFI Settings to Configure:
 ├── Virtualization Technology (VT-x / AMD-V)  → ENABLED
 ├── VT-d / IOMMU                               → ENABLED (for PCI passthrough)
 ├── Secure Boot                                → DISABLED
-├── Boot Mode                                  → UEFI (preferred) or Legacy
+├── Boot Mode                                  → UEFI
 ├── Boot Priority                              → USB Drive first
 └── Wake on LAN                               → ENABLED (optional)
 ```
@@ -113,7 +114,7 @@ BIOS/UEFI Settings to Configure:
 1. Insert the USB drive into the server
 2. Power on and press the boot menu key (usually F12)
 3. Select the USB device from the boot menu
-4. The Harvester GRUB menu loads - select **Install Harvester**
+4. The Harvester GRUB menu loads - select **Harvester Installer**
 
 ## Step 5: Navigate the Interactive Installer
 
@@ -138,7 +139,7 @@ Choose **Create a new Harvester cluster** for the first node.
 
 ```yaml
 # Example network configuration during installation
-Interface: eth0 (or bond0 if using bonding)
+Interface: eth0
 IP Configuration: Static
 IP Address: 192.168.1.10
 Subnet Mask: /24 (255.255.255.0)
@@ -173,42 +174,40 @@ Available Disks:
 Select: /dev/sda
 ```
 
-### Set Passwords
+### Set the Node Password
 
 ```text
-Admin Password (UI access):  ●●●●●●●●●●●●
-Confirm Password:             ●●●●●●●●●●●●
-
-Node SSH Password (rancher): ●●●●●●●●●●●●
-Confirm Password:             ●●●●●●●●●●●●
+Node Password (SSH user rancher):  ●●●●●●●●●●●●
+Confirm Password:                   ●●●●●●●●●●●●
 ```
 
 ## Step 6: Confirm and Install
 
 Review the configuration summary and confirm the installation. The installer will:
 
-1. Partition the selected OS disk (creates boot, root, and data partitions)
-2. Format disks with the appropriate filesystems
-3. Install the Harvester OS (openSUSE Leap Micro base)
+1. Partition and format the selected installation disk
+2. Prepare the selected data disk, if configured, for VM storage
+3. Install the Harvester OS
 4. Configure RKE2 Kubernetes
 5. Deploy Harvester system components
-6. Set up Longhorn distributed storage
+6. Deploy Longhorn system components
 7. Reboot the node
 
 **Estimated time: 10–20 minutes**
 
 ## Step 7: Post-Installation Access
 
-After the server reboots, remove the USB drive. The Harvester terminal UI will display the access information:
+After the server reboots, remove the USB drive. The Harvester console will display the management URL and node status:
 
 ```text
-Harvester v1.3.0 installed successfully
+Dashboard URL: https://192.168.1.100
+Node Status:   Ready
+```
 
-  Dashboard URL: https://192.168.1.100
-  Username:      admin
-  Password:      <password set during install>
+Open the dashboard URL in a browser and set the password for the default `admin` user on first login. SSH access uses the `rancher` user and the node password set during installation:
 
-  SSH Access:    ssh rancher@192.168.1.10
+```bash
+ssh rancher@192.168.1.10
 ```
 
 ## Step 8: Verify the Installation
@@ -233,14 +232,14 @@ sudo kubectl --kubeconfig /etc/rancher/rke2/rke2.yaml \
 **USB not detected during boot:**
 - Try a different USB port (prefer USB 2.0 ports for compatibility)
 - Try a different USB drive brand
-- Verify the ISO was written correctly with `md5sum`
+- Verify the ISO checksum with `sha512sum`
 
 **Installation fails partway through:**
 - Check disk health: `smartctl -a /dev/sda`
 - Ensure the OS disk has no existing LVM or RAID metadata: `wipefs -a /dev/sda`
 
 **Node stuck at boot after installation:**
-- Verify UEFI/BIOS boot mode matches what was used during installation
+- Verify the server is configured for UEFI boot and that it matches the mode used during installation
 - Check that the USB drive was removed before reboot
 
 ## Conclusion
