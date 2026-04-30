@@ -8,11 +8,11 @@ Description: Learn how to create GitHub Actions workflows that build Docker imag
 
 ---
 
-GitHub Actions can trigger Portainer deployments via the Portainer API or stack webhooks. This guide covers a complete workflow that builds, tests, and deploys to Portainer.
+GitHub Actions can trigger Portainer deployments via the Portainer API or, on Portainer Business Edition, stack webhooks. This guide covers a complete workflow that builds, tests, and deploys to Portainer.
 
 ## Basic Webhook Deployment Workflow
 
-The simplest approach: trigger a Portainer stack webhook after pushing a new image.
+If you're using a webhook-enabled Portainer Business Edition stack, the simplest approach is to trigger the stack webhook after pushing a new image.
 
 Create `.github/workflows/deploy.yml`:
 
@@ -22,6 +22,10 @@ name: Build and Deploy
 on:
   push:
     branches: [main]
+
+permissions:
+  contents: read
+  packages: write
 
 jobs:
   build-and-deploy:
@@ -68,6 +72,10 @@ on:
   push:
     branches: [main, develop]
 
+permissions:
+  contents: read
+  packages: write
+
 env:
   REGISTRY: ghcr.io
   IMAGE_NAME: ${{ github.repository }}
@@ -107,20 +115,25 @@ jobs:
     environment: staging
     if: github.ref == 'refs/heads/develop' || github.ref == 'refs/heads/main'
     steps:
-      - name: Deploy to staging via Portainer API
+      - name: Redeploy Git-based staging stack via Portainer API
         run: |
-          TOKEN=$(curl -s -X POST "${{ secrets.PORTAINER_URL }}/api/auth" \
+          TOKEN=$(curl -fsS -X POST "${{ secrets.PORTAINER_URL }}/api/auth" \
             -H "Content-Type: application/json" \
             -d '{"Username":"${{ secrets.PORTAINER_USER }}","Password":"${{ secrets.PORTAINER_PASSWORD }}"}' \
             | jq -r .jwt)
 
-          STACK_ID=$(curl -s -H "Authorization: Bearer $TOKEN" \
+          STACK=$(curl -fsS -H "Authorization: Bearer $TOKEN" \
             "${{ secrets.PORTAINER_URL }}/api/stacks" | \
-            jq -r '.[] | select(.Name=="my-app-staging") | .Id')
+            jq -c '.[] | select(.Name=="my-app-staging")')
 
-          curl -fsS -X POST \
+          STACK_ID=$(echo "$STACK" | jq -r .Id)
+          ENDPOINT_ID=$(echo "$STACK" | jq -r .EndpointId)
+
+          curl -fsS -X PUT \
             -H "Authorization: Bearer $TOKEN" \
-            "${{ secrets.PORTAINER_URL }}/api/stacks/${STACK_ID}/images/update?pullImage=true"
+            -H "Content-Type: application/json" \
+            -d '{"RepullImageAndRedeploy":true}' \
+            "${{ secrets.PORTAINER_URL }}/api/stacks/${STACK_ID}/git/redeploy?endpointId=${ENDPOINT_ID}"
 
   smoke-test:
     needs: deploy-staging
@@ -152,6 +165,7 @@ Add secrets to your repository under **Settings > Secrets and variables > Action
 | `PORTAINER_URL` | Portainer instance URL |
 | `PORTAINER_USER` | Portainer admin username |
 | `PORTAINER_PASSWORD` | Portainer admin password |
+| `PORTAINER_WEBHOOK_URL` | Stack webhook for the basic webhook deployment |
 | `PORTAINER_PROD_WEBHOOK_URL` | Stack webhook for production |
 
 ## Using GitHub Environments for Approvals
@@ -164,7 +178,7 @@ Configure required reviewers for the `production` environment:
 
 ## Rollback Workflow
 
-Add a manual rollback workflow triggered from the GitHub Actions UI:
+If you're using a webhook-enabled production stack, add a manual rollback workflow triggered from the GitHub Actions UI:
 
 ```yaml
 name: Rollback
@@ -180,9 +194,8 @@ jobs:
   rollback:
     runs-on: ubuntu-latest
     steps:
-      - name: Update stack and redeploy
+      - name: Roll back production stack
         run: |
-          # Update the stack compose file with the rollback tag
-          # then call the Portainer API to redeploy
-          echo "Rolling back to ${{ github.event.inputs.image_tag }}"
+          curl -fsS -X POST \
+            "${{ secrets.PORTAINER_PROD_WEBHOOK_URL }}?tag=${{ github.event.inputs.image_tag }}"
 ```
