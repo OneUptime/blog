@@ -42,26 +42,26 @@ Internet ← 203.0.113.45 → [Router/NAT] → 192.168.1.0/24 (private)
 
 With IPv6:
 ```text
-Internet ← 2001:db8:home::/56 → [Router] → 2001:db8:home:1::/64
-                                               └─ 2001:db8:home:1::a1b2:c3d4 (laptop)
-                                               └─ 2001:db8:home:1::e5f6:7890 (phone)
+Internet ← 2001:db8:100::/56 → [Router] → 2001:db8:100:1::/64
+                                               └─ 2001:db8:100:1::a1b2:c3d4 (laptop)
+                                               └─ 2001:db8:100:1::e5f6:7890 (phone)
 ```
 
-Your laptop and phone are directly reachable from the internet - no translation layer.
+Your laptop and phone can have globally routable addresses - no translation layer. Whether inbound connections reach them still depends on your router firewall.
 
 ## Does This Mean Home Devices Are Exposed?
 
 Not if the router firewall is configured correctly. The router still provides a firewall that blocks all unsolicited inbound connections. The difference is:
 
-- **IPv4 NAT**: Provides security "accidentally" (no inbound unless explicitly forwarded)
-- **IPv6 Firewall**: Provides security deliberately (explicit block-all-inbound rule)
+- **IPv4 NAT**: Can incidentally block unsolicited inbound traffic unless ports are forwarded
+- **IPv6 Firewall**: Deliberately blocks unsolicited inbound traffic with explicit stateful filtering rules
 
-The end result for security is the same - no unsolicited inbound access. But IPv6 does it through an explicit stateful firewall rather than translation.
+The default outcome can be similar - unsolicited inbound traffic is blocked unless you allow it. But IPv6 does it through an explicit stateful firewall rather than translation.
 
 ## The Benefits of No NAT
 
 **1. True End-to-End Connectivity**
-Protocols that struggle with NAT (SIP/VoIP, gaming, P2P) work seamlessly over IPv6.
+Protocols that struggle with NAT (SIP/VoIP, gaming, P2P) no longer need NAT traversal over IPv6.
 
 **2. No Port Forwarding Complexity**
 Want to run a web server? Add a firewall rule. No NAT table to manage.
@@ -70,17 +70,19 @@ Want to run a web server? Add a firewall rule. No NAT table to manage.
 Each device has a unique IP. You can run HTTPS on port 443 on 100 different home lab servers without conflicts.
 
 **4. Better Performance**
-NAT requires stateful connection tracking. IPv6 routers can forward without maintaining per-flow state.
+IPv6 removes the translation layer. Pure forwarding doesn't need NAT state, though most home gateways still keep state for firewalling.
 
 ## What About Privacy?
 
-IPv6 addresses expose which ISP you use and potentially your rough location (from the prefix). Privacy extensions (RFC 4941) generate random temporary addresses for outbound connections, mitigating tracking by destination servers.
+IPv6 addresses can expose a stable network prefix and make endpoints more distinguishable on the internet. Temporary address extensions (RFC 8981, which obsoletes RFC 4941) generate random temporary addresses for outbound connections, mitigating tracking by destination servers.
 
 ```bash
-# Check if privacy extensions are enabled on Linux
+# Check if temporary address extensions are enabled on Linux
 
-sysctl net.ipv6.conf.eth0.use_tempaddr
-# 2 = enabled, use temporary addresses for outbound
+sysctl net.ipv6.conf.all.use_tempaddr
+# 0 = disabled
+# 1 = enabled, but public addresses are preferred
+# 2 or higher = enabled, and temporary addresses are preferred for outbound connections
 ```
 
 ## NAT66 (IPv6 NAT) - Available But Discouraged
@@ -89,4 +91,4 @@ NAT66 exists (IPv6-to-IPv6 NAT) but is actively discouraged by the IETF (RFC 590
 
 ## Conclusion
 
-IPv6's vast address space makes NAT unnecessary. Every device gets a globally unique address, end-to-end connectivity is restored, and security is maintained through explicit firewall rules. The apparent complexity of home devices being "directly on the internet" is fully managed by your router's stateful IPv6 firewall - just as effective as NAT, but architecturally cleaner.
+IPv6's vast address space makes NAT unnecessary. Home devices can each get a globally unique address, end-to-end connectivity is restored, and security is maintained through explicit firewall rules. The apparent complexity of home devices being "directly on the internet" is fully managed by your router's stateful IPv6 firewall - providing the same default inbound blocking users expect from home NAT, but in a cleaner architecture.
