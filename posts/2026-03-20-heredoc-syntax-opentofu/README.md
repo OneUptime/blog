@@ -8,7 +8,7 @@ Description: A guide to using heredoc syntax in OpenTofu to define multi-line st
 
 ## Introduction
 
-Heredoc syntax in OpenTofu allows you to write multi-line strings without needing to escape newlines or use string concatenation. This is especially useful for inline scripts, JSON documents, YAML content, and any other multi-line text content in your configuration.
+Heredoc syntax in OpenTofu allows you to write multi-line strings without needing to escape newlines or use string concatenation. This is especially useful for inline scripts and other multi-line text content in your configuration. For JSON or YAML documents, OpenTofu recommends using `jsonencode()` or `yamlencode()` instead of manual heredoc strings.
 
 ## Basic Heredoc Syntax
 
@@ -32,7 +32,7 @@ EOF
 ## Indented Heredoc
 
 ```hcl
-# Indented heredoc: <<-IDENTIFIER strips leading whitespace
+# Indented heredoc: <<-IDENTIFIER strips common leading spaces
 resource "aws_instance" "app" {
   ami           = var.ami_id
   instance_type = "t3.micro"
@@ -50,7 +50,7 @@ resource "aws_instance" "app" {
     systemctl enable myapp
     systemctl start myapp
   EOF
-  # Leading whitespace (4 spaces) is stripped from each line
+  # Common leading indentation is stripped from each line
 }
 ```
 
@@ -84,30 +84,28 @@ resource "aws_launch_template" "node" {
 }
 ```
 
-## JSON in Heredoc
+## JSON with `jsonencode()`
 
 ```hcl
 resource "aws_iam_role" "lambda" {
   name = "lambda-execution-role"
 
-  assume_role_policy = <<-JSON
-    {
-      "Version": "2012-10-17",
-      "Statement": [
-        {
-          "Effect": "Allow",
-          "Principal": {
-            "Service": "lambda.amazonaws.com"
-          },
-          "Action": "sts:AssumeRole"
+  assume_role_policy = jsonencode({
+    Version = "2012-10-17"
+    Statement = [
+      {
+        Effect = "Allow"
+        Principal = {
+          Service = "lambda.amazonaws.com"
         }
-      ]
-    }
-  JSON
+        Action = "sts:AssumeRole"
+      }
+    ]
+  })
 }
 ```
 
-## YAML in Heredoc
+## YAML with `yamlencode()`
 
 ```hcl
 resource "kubernetes_config_map" "app" {
@@ -117,18 +115,21 @@ resource "kubernetes_config_map" "app" {
   }
 
   data = {
-    "config.yaml" = <<-YAML
-      app:
-        name: ${var.app_name}
-        version: ${var.app_version}
-        environment: ${var.environment}
-      database:
-        host: ${aws_db_instance.main.address}
-        port: ${aws_db_instance.main.port}
-        name: ${var.db_name}
-      logging:
-        level: ${var.environment == "prod" ? "warn" : "debug"}
-    YAML
+    "config.yaml" = yamlencode({
+      app = {
+        name        = var.app_name
+        version     = var.app_version
+        environment = var.environment
+      }
+      database = {
+        host = aws_db_instance.main.address
+        port = aws_db_instance.main.port
+        name = var.db_name
+      }
+      logging = {
+        level = var.environment == "prod" ? "warn" : "debug"
+      }
+    })
   }
 }
 ```
@@ -136,10 +137,11 @@ resource "kubernetes_config_map" "app" {
 ## Multi-Line Scripts with Heredoc
 
 ```hcl
-resource "null_resource" "setup" {
+resource "terraform_data" "setup" {
   provisioner "local-exec" {
+    interpreter = ["/bin/bash", "-c"]
+
     command = <<-SCRIPT
-      #!/bin/bash
       set -euo pipefail
 
       echo "Setting up environment..."
@@ -154,12 +156,11 @@ resource "null_resource" "setup" {
       kubectl apply -f manifests/rbac.yaml
 
       # Install Helm charts
-      helm repo add stable https://charts.helm.sh/stable
-      helm repo update
-
       helm upgrade --install \
-        ingress-nginx stable/nginx-ingress \
-        --namespace kube-system \
+        ingress-nginx ingress-nginx \
+        --repo https://kubernetes.github.io/ingress-nginx \
+        --namespace ingress-nginx \
+        --create-namespace \
         --set controller.replicaCount=2
 
       echo "Setup complete!"
@@ -194,14 +195,18 @@ variable "nginx_config" {
 locals {
   cloud_init_config = <<-YAML
     #cloud-config
-    package_update: true
-    packages:
-      - nginx
-      - python3
-    runcmd:
-      - systemctl enable nginx
-      - systemctl start nginx
-      - echo "Instance ID: $(curl -s http://169.254.169.254/latest/meta-data/instance-id)" > /var/www/html/index.html
+    ${yamlencode({
+      package_update = true
+      packages = [
+        "nginx",
+        "python3",
+      ]
+      runcmd = [
+        "systemctl enable nginx",
+        "systemctl start nginx",
+        "echo \"Instance ID: $(curl -s http://169.254.169.254/latest/meta-data/instance-id)\" > /var/www/html/index.html",
+      ]
+    })}
   YAML
 }
 
@@ -237,4 +242,4 @@ locals {
 
 ## Conclusion
 
-Heredoc syntax significantly improves the readability of OpenTofu configurations that include multi-line strings. Use the indented heredoc (`<<-`) for configurations embedded inside resource blocks to keep indentation clean. Standard interpolation (`${}`) works inside heredoc strings for dynamic values. For complex templates with conditional logic or loops, consider using the `templatefile()` function with separate template files instead. Heredoc is ideal for user data scripts, inline policies, configuration files, and any other multi-line content that needs to be embedded directly in your HCL.
+Heredoc syntax significantly improves the readability of OpenTofu configurations that include multi-line strings. Use the indented heredoc (`<<-`) for configurations embedded inside resource blocks to keep indentation clean. Standard interpolation (`${}`) works inside heredoc strings for dynamic values. For complex templates with conditional logic or loops, consider using the `templatefile()` function with separate template files instead. For JSON or YAML documents, prefer `jsonencode()` or `yamlencode()` so OpenTofu can guarantee valid syntax. Heredoc is ideal for user data scripts and other plain-text multi-line content that needs to be embedded directly in your HCL.
