@@ -44,20 +44,19 @@ If addresses were assigned with labels:
 
 ```bash
 # Remove all addresses with the label eth0:web
-sudo ip addr flush dev eth0 label eth0:web
+sudo ip -4 addr flush dev eth0 label eth0:web
 ```
 
 ## What Happens After a Flush
 
-- All routes that depended on the removed addresses are automatically removed
-- ARP cache entries for the interface addresses are cleared
-- Any connected-network routes (kernel-generated) disappear
+- Kernel-generated connected routes for the removed subnets disappear
+- Manually added routes, such as a default route, may need to be removed separately
 - The interface remains UP (link state is not affected)
 
 ```bash
 # Confirm routes are also removed
 ip route show
-# Connected routes for the flushed subnet should be gone
+# Kernel-generated connected routes for the flushed subnet should be gone
 ```
 
 ## Re-Assigning After a Flush
@@ -66,7 +65,7 @@ ip route show
 # Flush and immediately assign a new static address
 sudo ip -4 addr flush dev eth0
 sudo ip addr add 192.168.2.100/24 dev eth0
-sudo ip route add default via 192.168.2.1
+sudo ip route add default via 192.168.2.1 dev eth0
 ```
 
 ## Flush During DHCP Reconfiguration
@@ -82,7 +81,7 @@ sudo dhclient -v eth0         # Request a fresh lease
 
 ```bash
 # Flush all IPv4 addresses from ALL interfaces (extreme caution)
-for iface in $(ip link show | awk -F': ' '/^[0-9]+:/{print $2}' | grep -v lo); do
+ip -o -4 addr show | awk '{print $2}' | sort -u | grep -Fxv lo | while read -r iface; do
     sudo ip -4 addr flush dev "$iface"
     echo "Flushed $iface"
 done
@@ -92,4 +91,4 @@ done
 
 ## Conclusion
 
-`ip -4 addr flush dev <interface>` is the clean way to remove all IPv4 addresses from an interface. Unlike deleting individual addresses, it handles all secondaries and labels in one command. Routes that depend on the removed addresses are automatically cleaned up by the kernel.
+`ip -4 addr flush dev <interface>` is the clean way to remove all IPv4 addresses from an interface. Unlike deleting individual addresses, it handles all secondaries and labels in one command. Kernel-generated connected routes for the removed addresses are cleaned up automatically.
