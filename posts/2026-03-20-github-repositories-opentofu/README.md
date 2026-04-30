@@ -8,12 +8,13 @@ Description: Learn how to create and configure GitHub repositories with branch p
 
 ## Introduction
 
-This guide covers How to Create GitHub Repositories with OpenTofu using OpenTofu with practical examples and production-ready configurations.
+This guide covers how to create GitHub repositories with OpenTofu using the GitHub provider, including branch protection and team access.
 
 ## Prerequisites
 
 - OpenTofu v1.6+
-- API credentials for the relevant service
+- A GitHub organization
+- A GitHub personal access token with permission to manage repositories and teams
 - Basic understanding of OpenTofu concepts
 
 ## Step 1: Install and Configure the Provider
@@ -21,24 +22,17 @@ This guide covers How to Create GitHub Repositories with OpenTofu using OpenTofu
 ```hcl
 terraform {
   required_version = ">= 1.6.0"
+
   required_providers {
-    # Provider configuration depends on the specific service
-    # Replace with the actual provider source and version
-    example = {
-      source  = "hashicorp/example"
-      version = "~> 1.0"
+    github = {
+      source  = "integrations/github"
+      version = "~> 6.0"
     }
   }
 }
 
-# Configure the provider with credentials
-
-provider "example" {
-  # Use environment variables for credentials
-  # EXAMPLE_API_KEY, EXAMPLE_TOKEN, etc.
-  
-  # Or specify directly (not recommended for secrets)
-  # api_key = var.api_key
+provider "github" {
+  owner = var.github_owner
 }
 ```
 
@@ -46,20 +40,25 @@ provider "example" {
 
 ```bash
 # Use environment variables for authentication
-export PROVIDER_API_KEY="your-api-key"
-export PROVIDER_TOKEN="your-token"
-export PROVIDER_ORG="your-organization"
+export GITHUB_TOKEN="ghp_your_token"
+export TF_VAR_github_owner="your-organization"
+export TF_VAR_repository_name="platform-infra"
+export TF_VAR_team_name="developers"
 ```
 
 ```hcl
-variable "api_key" {
-  description = "API key for authentication"
+variable "github_owner" {
+  description = "GitHub organization to manage"
   type        = string
-  sensitive   = true
 }
 
-variable "organization" {
-  description = "Organization name or ID"
+variable "repository_name" {
+  description = "Name of the GitHub repository"
+  type        = string
+}
+
+variable "team_name" {
+  description = "GitHub team that should get access to the repository"
   type        = string
 }
 ```
@@ -67,62 +66,66 @@ variable "organization" {
 ## Step 3: Create Basic Resources
 
 ```hcl
-# Example resource creation
-# Replace with actual resource types for the provider
-
-resource "example_project" "main" {
-  name        = "${var.environment}-project"
+resource "github_repository" "main" {
+  name        = var.repository_name
   description = "Managed by OpenTofu"
 
-  tags = {
-    environment = var.environment
-    managed_by  = "opentofu"
-  }
+  visibility             = "private"
+  auto_init              = true
+  delete_branch_on_merge = true
+  allow_merge_commit     = false
+  allow_rebase_merge     = false
+  allow_squash_merge     = true
 }
 
-# Configure access control
-resource "example_team" "developers" {
-  name    = "developers"
-  project = example_project.main.id
-  role    = "contributor"
+resource "github_team" "developers" {
+  name        = var.team_name
+  description = "Repository maintainers"
+  privacy     = "closed"
 }
 ```
 
 ## Step 4: Configure Advanced Settings
 
 ```hcl
-# Monitoring and alerting configuration
-resource "example_alert" "main" {
-  name      = "critical-alert"
-  project   = example_project.main.id
-  severity  = "critical"
-  threshold = 90
+resource "github_branch_default" "main" {
+  repository = github_repository.main.name
+  branch     = "main"
+  rename     = true
+}
 
-  notification {
-    channel = var.notification_channel
+resource "github_branch_protection" "main" {
+  repository_id = github_repository.main.node_id
+  pattern       = github_branch_default.main.branch
+
+  enforce_admins                  = true
+  required_linear_history         = true
+  require_conversation_resolution = true
+
+  required_pull_request_reviews {
+    dismiss_stale_reviews           = true
+    required_approving_review_count = 1
   }
 }
 
-# Backup and retention policies
-resource "example_backup_policy" "main" {
-  name              = "daily-backup"
-  project           = example_project.main.id
-  retention_days    = 30
-  schedule          = "0 2 * * *"  # Daily at 2 AM
+resource "github_team_repository" "developers" {
+  team_id    = github_team.developers.id
+  repository = github_repository.main.name
+  permission = "push"
 }
 ```
 
 ## Step 5: Define Outputs
 
 ```hcl
-output "project_id" {
-  description = "The ID of the created project"
-  value       = example_project.main.id
+output "repository_name" {
+  description = "The name of the created repository"
+  value       = github_repository.main.name
 }
 
-output "project_name" {
-  description = "The name of the created project"
-  value       = example_project.main.name
+output "repository_url" {
+  description = "The HTML URL of the created repository"
+  value       = github_repository.main.html_url
 }
 ```
 
@@ -145,14 +148,14 @@ tofu apply
 ## Common Issues and Solutions
 
 ### Authentication Errors
-Verify API keys are valid and have the required permissions. Check for typos in environment variable names.
+Verify `GITHUB_TOKEN` is set and has permission to manage repositories. If you are assigning team access, the token also needs organization access.
 
 ### Rate Limiting
-Add `depends_on` to serialize resource creation and avoid hitting API rate limits.
+If you hit GitHub API limits, tune the provider's `write_delay_ms`, `read_delay_ms`, `retry_delay_ms`, or `max_retries` settings instead of relying on `depends_on` to serialize resources.
 
 ### Provider Version Conflicts
-Pin to a specific provider version range to ensure reproducible deployments.
+Pin the `integrations/github` provider version and declare it in every module that manages GitHub resources.
 
 ## Conclusion
 
-You have successfully configured How to Create GitHub Repositories with OpenTofu using OpenTofu. This provider enables you to manage all aspects of the service as code, ensuring consistency and enabling GitOps workflows. Always use environment variables or secure secret stores for sensitive credentials.
+You have successfully configured GitHub repositories with OpenTofu. This provider enables you to manage repositories, branch protection, and team permissions as code, ensuring consistency and enabling GitOps workflows.
