@@ -12,8 +12,8 @@ Multi-tenant data centers require IPv6 isolation between tenants while sharing p
 
 - **VRF (Virtual Routing and Forwarding)**: separate routing tables per tenant
 - **VLAN segmentation**: Layer 2 isolation per tenant
-- **Unique /48 per tenant**: non-overlapping IPv6 address space
-- **Policy routing**: inter-tenant traffic must cross a firewall
+- **Dedicated /40 or /48 per tenant**: non-overlapping IPv6 address space
+- **Firewall policy**: inter-tenant traffic must cross a firewall
 
 ## Address Allocation Strategy
 
@@ -21,7 +21,7 @@ Multi-tenant data centers require IPv6 isolation between tenants while sharing p
 ISP assigns: 2001:db8::/32 (or /28 for large DC)
 
 Tenant allocation:
-  Tenant A: 2001:db8:a000::/40 (16 /48s for growth)
+  Tenant A: 2001:db8:a000::/40 (256 /48s for growth)
   Tenant B: 2001:db8:b000::/40
   Tenant C: 2001:db8:c000::/40
 
@@ -31,8 +31,8 @@ Tenant allocation:
   2001:db8:a002::/48 → Tenant A DMZ
 
 Infrastructure:
-  2001:db8:infra::/48 → DC management network
-  2001:db8:transit::/48 → Provider transit links
+  2001:db8:ff00::/48 → DC management network
+  2001:db8:ff01::/48 → Provider transit links
 ```
 
 ## VRF Configuration per Tenant
@@ -48,14 +48,13 @@ vrf context TENANT_A
 
 interface Vlan100
   vrf member TENANT_A
-  ipv6 address 2001:db8:a000::1/48
+  ipv6 address 2001:db8:a000:100::1/64
 
 ! BGP VRF routing
 router bgp 65001
   vrf TENANT_A
     address-family ipv6 unicast
-      network 2001:db8:a000::/48
-      redistribute connected
+      network 2001:db8:a000:100::/64
 ```
 
 ## Linux: Network Namespace per Tenant
@@ -70,13 +69,19 @@ ip netns add tenant_b
 ip link add veth-a-out type veth peer name veth-a-in
 ip link set veth-a-in netns tenant_a
 
+# Configure host-side gateway and bring links up
+ip -6 addr add 2001:db8:a000:100::1/64 dev veth-a-out
+ip link set veth-a-out up
+
 # Configure IPv6 in tenant namespace
-ip netns exec tenant_a ip -6 addr add 2001:db8:a000::2/48 dev veth-a-in
-ip netns exec tenant_a ip -6 route add default via 2001:db8:a000::1
+ip netns exec tenant_a ip link set lo up
+ip netns exec tenant_a ip link set veth-a-in up
+ip netns exec tenant_a ip -6 addr add 2001:db8:a000:100::2/64 dev veth-a-in
+ip netns exec tenant_a ip -6 route add default via 2001:db8:a000:100::1 dev veth-a-in
 
 # Verify isolation
-ip netns exec tenant_a ping6 2001:db8:a000::1
-ip netns exec tenant_a ping6 2001:db8:b000::1  # Should fail - different namespace
+ip netns exec tenant_a ping -6 2001:db8:a000:100::1
+ip netns exec tenant_a ping -6 2001:db8:b000:200::1  # Should fail unless explicit routing/firewall policy is added
 ```
 
 ## Firewall Policies for Tenant Isolation
@@ -94,7 +99,7 @@ ip6tables -A FORWARD -s 2001:db8:b000::/40 -d 2001:db8:a000::/40 -j DROP
 
 # Allow traffic to/from internet
 ip6tables -A FORWARD -s 2001:db8:a000::/40 -j ACCEPT
-ip6tables -A FORWARD -d 2001:db8:a000::/40 -m state --state ESTABLISHED,RELATED -j ACCEPT
+ip6tables -A FORWARD -d 2001:db8:a000::/40 -m conntrack --ctstate ESTABLISHED,RELATED -j ACCEPT
 ```
 
 ## Tenant IPv6 Prefix Advertisement
@@ -106,11 +111,11 @@ cat > /etc/radvd.conf << 'EOF'
 # Tenant A VLAN 100
 interface vlan100 {
     AdvSendAdvert on;
-    AdvManagedFlag on;  # Use DHCPv6 for addresses
+    AdvManagedFlag on;  # Use DHCPv6 for addresses on this VLAN
 
     prefix 2001:db8:a000:100::/64 {
         AdvOnLink on;
-        AdvAutonomous on;
+        AdvAutonomous off;
     };
 };
 
@@ -162,4 +167,4 @@ for alloc in ipam.list_allocations():
 
 ## Conclusion
 
-Multi-tenant IPv6 data center design requires three pillars: unique /40 or /48 prefix blocks per tenant (from a structured /32 allocation), VRF isolation on routing equipment, and firewall enforcement at tenant boundaries. Use VRF-aware routing (Cisco `vrf member`, Juniper routing-instances) to prevent cross-tenant routing at the network layer. Assign VLANs per tenant and configure per-VLAN radvd with tenant-specific prefixes. Block inter-tenant forwarding with ip6tables FORWARD rules, requiring tenant-to-tenant traffic to cross a firewall for security policy enforcement.
+Multi-tenant IPv6 data center design requires three pillars: unique /40 or /48 prefix blocks per tenant (from a structured /32 allocation), VRF isolation on routing equipment, and firewall enforcement at tenant boundaries. Use VRF-aware routing (Cisco `vrf member`, Juniper routing-instances) to prevent cross-tenant routing at the network layer. Assign VLANs per tenant, use a /64 per VLAN, and configure per-VLAN radvd with tenant-specific prefixes. Block inter-tenant forwarding with ip6tables FORWARD rules, requiring tenant-to-tenant traffic to cross a firewall for security policy enforcement.
