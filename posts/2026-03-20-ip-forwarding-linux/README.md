@@ -14,7 +14,6 @@ IP forwarding allows a Linux host to forward packets between network interfaces.
 - Linux routers
 - VPN servers (WireGuard, OpenVPN)
 - Container hosts (Docker, Kubernetes)
-- Bridge setups
 
 ## Checking Current State
 
@@ -74,14 +73,13 @@ echo "net.ipv6.conf.all.forwarding = 1" >> /etc/sysctl.conf
 
 ## Per-Interface Forwarding
 
-You can enable forwarding for specific interfaces only:
+Linux also exposes an interface-specific forwarding control:
 
 ```bash
-# Enable forwarding on eth1 only
+# Enable forwarding on eth1
 sysctl -w net.ipv4.conf.eth1.forwarding=1
 
-# Note: This only works when net.ipv4.ip_forward=0 globally
-# and you selectively enable per interface
+# This controls whether packets received on eth1 can be forwarded
 ```
 
 ## Verifying Forwarding Works
@@ -93,8 +91,8 @@ traceroute 8.8.8.8
 
 # On the Linux router, confirm packets are forwarded
 tcpdump -n -i eth0 'host CLIENT_IP'
-tcpdump -n -i eth1 'host CLIENT_IP'
-# Packets from client should appear on both interfaces
+tcpdump -n -i eth1
+# Client packets should arrive on eth0 and leave via eth1
 ```
 
 ## Common Use Cases
@@ -119,11 +117,11 @@ PostDown = iptables -D FORWARD -i %i -j ACCEPT; iptables -t nat -D POSTROUTING -
 
 ### Docker and Kubernetes
 
-Docker and Kubernetes enable IP forwarding automatically when they start, but you can ensure it persists:
+On Linux, Docker may enable IP forwarding automatically for its default bridge networking, but Kubernetes networking varies by implementation, so you may need to enable it yourself:
 
 ```bash
 echo "net.ipv4.ip_forward = 1" > /etc/sysctl.d/k8s.conf
-sysctl -p /etc/sysctl.d/k8s.conf
+sysctl --system
 ```
 
 ## Key Takeaways
