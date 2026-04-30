@@ -30,12 +30,12 @@ NIC (last 24 bits):   3C:4D:5E
 00:1A:2B:FF:FE:3C:4D:5E  (now 64 bits = EUI-64)
 ```
 
-**Step 4: Flip the Universal/Local (U/L) bit** - bit 7 of the first byte (0-indexed)
+**Step 4: Flip the Universal/Local (U/L) bit** - bit 1 of the first byte (0-indexed from the right)
 ```text
 First byte: 0x00 = 0000 0000
                         ^
-                  bit 7 (U/L bit)
-Flip bit 7: 0000 0010 = 0x02
+                  bit 1 (U/L bit)
+Flip bit 1: 0000 0010 = 0x02
 ```
 
 **Result IID:**
@@ -47,6 +47,8 @@ Flip bit 7: 0000 0010 = 0x02
 ## Complete Python Implementation
 
 ```python
+import ipaddress
+
 def mac_to_modified_eui64(mac_address):
     """
     Convert a MAC address to a Modified EUI-64 Interface Identifier.
@@ -80,11 +82,16 @@ def mac_to_modified_eui64(mac_address):
     return ":".join(groups)
 
 def build_ipv6_address(prefix, mac_address):
-    """Build a full IPv6 SLAAC address from prefix and MAC."""
+    """Build a full IPv6 SLAAC address from a /64 prefix and MAC."""
     iid = mac_to_modified_eui64(mac_address)
-    # Remove trailing :: from prefix if present
-    prefix_clean = prefix.rstrip(":").rstrip("/64").rstrip("/")
-    return f"{prefix_clean}:{iid}"
+    prefix_text = prefix if "/" in prefix else f"{prefix.rstrip(':')}::/64"
+    network = ipaddress.IPv6Network(prefix_text, strict=False)
+
+    if network.prefixlen != 64:
+        raise ValueError("SLAAC requires a /64 prefix")
+
+    iid_int = int.from_bytes(bytes.fromhex(iid.replace(":", "")), "big")
+    return str(ipaddress.IPv6Address(int(network.network_address) | iid_int))
 
 # Examples
 
@@ -106,23 +113,43 @@ for mac in examples:
 # Check which IID your interface uses
 ip -6 addr show dev eth0
 
-# For a link-local address (always EUI-64 on older Linux kernels)
+# For a link-local address (typically EUI-64 on older Linux kernels)
 # fe80::<eui-64-iid>/64
 
 # Get MAC address of interface
 ip link show eth0 | grep "link/ether" | awk '{print $2}'
 
 # Manually verify by running the conversion
-python3 -c "
-mac = '$(ip link show eth0 | grep link/ether | awk '{print $2}')'
-# ... run mac_to_modified_eui64 function
-"
+python3 - <<'PY'
+import re
+import subprocess
 
-# On modern Linux, link-local may use EUI-64 or stable privacy
+def mac_to_modified_eui64(mac_address):
+    mac_clean = mac_address.replace(":", "").replace("-", "").replace(".", "")
+    if len(mac_clean) != 12:
+        raise ValueError("MAC address must be 48 bits (12 hex chars)")
+
+    mac_bytes = bytes.fromhex(mac_clean)
+    eui64_bytes = mac_bytes[:3] + b'\xff\xfe' + mac_bytes[3:]
+    eui64_list = list(eui64_bytes)
+    eui64_list[0] ^= 0x02
+
+    eui64_hex = bytes(eui64_list).hex()
+    groups = [eui64_hex[i:i+4] for i in range(0, 16, 4)]
+    return ":".join(groups)
+
+link_info = subprocess.check_output(["ip", "link", "show", "eth0"], text=True)
+mac = re.search(r"link/ether ([0-9a-f:]{17})", link_info, re.IGNORECASE).group(1)
+print(mac_to_modified_eui64(mac))
+PY
+
+# On modern Linux, link-local may use EUI-64 or RFC 7217-based generation
 # Check the kernel parameter
 cat /proc/sys/net/ipv6/conf/eth0/addr_gen_mode
 # 0 = EUI-64
-# 1 = Stable privacy (RFC 7217)
+# 1 = no link-local address; EUI-64 for SLAAC addresses
+# 2 = stable privacy (RFC 7217) using stable_secret
+# 3 = stable privacy with a random secret if stable_secret is unset
 ```
 
 ## The U/L Bit Flip Explained
@@ -139,14 +166,14 @@ The flip exists because IEEE 802 uses 0 for "global" (OUI-assigned) MACs, but RF
 ## Disabling EUI-64 in Favor of Privacy Addresses
 
 ```bash
-# Switch from EUI-64 to stable privacy addresses
-sudo sysctl -w net.ipv6.conf.eth0.addr_gen_mode=1
+# Switch from EUI-64 to RFC 7217-based address generation
+sudo sysctl -w net.ipv6.conf.eth0.addr_gen_mode=3
 
-# Or use random temporary addresses
+# Or enable temporary privacy addresses
 sudo sysctl -w net.ipv6.conf.eth0.use_tempaddr=2
 
 # Make permanent in sysctl.conf
-echo "net.ipv6.conf.all.addr_gen_mode=1" | sudo tee -a /etc/sysctl.conf
+echo "net.ipv6.conf.all.addr_gen_mode=3" | sudo tee -a /etc/sysctl.conf
 ```
 
 ## Conclusion
