@@ -10,22 +10,22 @@ Description: Learn how to create and manage Fleet GitRepo custom resources to de
 
 The `GitRepo` custom resource is the core building block of Fleet's GitOps workflow. Each GitRepo resource represents a connection between a Git repository and one or more Kubernetes clusters. Fleet continuously monitors these repositories and applies any changes to the target clusters.
 
-This guide covers how to create GitRepo resources using `kubectl`, the Rancher UI, and advanced configurations including namespace management, bundle namespaces, and service account customization.
+This guide covers how to create GitRepo resources using `kubectl`, the Rancher UI, and advanced configurations including workspace selection, target namespace overrides, and cluster targeting.
 
 ## Prerequisites
 
 - Fleet installed in Rancher or standalone Kubernetes
 - `kubectl` configured with cluster access
 - A Git repository with Kubernetes manifests
-- Fleet namespace (`fleet-default` or custom workspace namespace)
+- A Fleet workspace namespace such as `fleet-local`, `fleet-default`, or a custom workspace namespace
 
 ## Understanding GitRepo Namespaces
 
 Fleet uses namespaces as workspaces. The namespace where you create a GitRepo determines its workspace:
 
-- `fleet-local`: For deploying to the local (Rancher) cluster only
-- `fleet-default`: For deploying to all registered downstream clusters
-- Custom namespaces: For specific workspace isolation
+- `fleet-local`: Contains the local cluster by default
+- `fleet-default`: Contains the downstream clusters registered through Rancher by default
+- Custom namespaces: Provide workspace isolation and their own cluster and cluster group scope
 
 ## Creating a Minimal GitRepo
 
@@ -84,9 +84,9 @@ spec:
   # How often to poll for changes
   pollingInterval: 30s
 
-  # Namespace where bundles will be created
-  # (default: same as GitRepo namespace)
-  targetNamespace: ""
+  # Optional: force all namespaced workloads into this namespace
+  # If omitted, Fleet uses namespace settings from fleet.yaml and the manifests
+  # targetNamespace: production-workloads
 
   # Targets define which clusters receive the deployments
   targets:
@@ -106,7 +106,7 @@ kubectl get gitrepo production-apps -n fleet-default -o yaml
 
 ## Configuring the Target Namespace
 
-By default, Fleet deploys resources into their specified namespaces. You can override this:
+By default, Fleet respects namespace settings from `fleet.yaml` and the manifests. You can override them with `targetNamespace`:
 
 ```yaml
 # gitrepo-namespace-override.yaml
@@ -119,8 +119,9 @@ spec:
   repo: https://github.com/my-org/app-configs
   branch: main
 
-  # Force all resources to deploy into this namespace
-  # This overrides namespaces specified in the manifests
+  # Force all namespaced resources to deploy into this namespace
+  # This overrides namespace settings from fleet.yaml and the manifests
+  # If cluster-scoped resources are present, the deployment will fail
   targetNamespace: my-app-namespace
 ```
 
@@ -134,7 +135,7 @@ apiVersion: fleet.cattle.io/v1alpha1
 kind: GitRepo
 metadata:
   name: local-cluster-apps
-  # fleet-local targets the local cluster only
+  # fleet-local contains the local cluster by default
   namespace: fleet-local
 spec:
   repo: https://github.com/my-org/local-configs
@@ -160,12 +161,12 @@ kubectl get gitrepo -n fleet-local
 ### Step 1: Access Continuous Delivery
 
 1. Log into Rancher
-2. From the top menu, select **Continuous Delivery**
-3. Navigate to **Git Repos**
+2. Click ☰ > **Continuous Delivery**
+3. Navigate to **Gitrepos**
 
 ### Step 2: Create New Repository
 
-Click **Add Repository** and provide:
+Create the GitRepo and provide:
 
 - **Name**: `my-app` (must be unique within the namespace)
 - **Repository URL**: `https://github.com/org/repo`
@@ -214,15 +215,17 @@ kubectl apply -f updated-gitrepo.yaml
 
 ## Forcing a GitRepo Resync
 
-To force Fleet to re-pull and re-apply from Git:
+To force Fleet to re-pull and re-apply from Git, increment `spec.forceSyncGeneration`:
 
 ```bash
-# Annotate the GitRepo to force an immediate sync
-kubectl annotate gitrepo production-apps \
+# Increment forceSyncGeneration to force an immediate sync
+kubectl patch gitrepo production-apps \
   -n fleet-default \
-  fleet.cattle.io/commit="" \
-  --overwrite
+  --type=merge \
+  --patch '{"spec":{"forceSyncGeneration":1}}'
 ```
+
+Increase the value again for each subsequent manual resync.
 
 ## Conclusion
 
