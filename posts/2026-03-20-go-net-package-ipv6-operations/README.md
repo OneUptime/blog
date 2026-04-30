@@ -126,21 +126,19 @@ func lookupIPv6(hostname string) ([]net.IP, error) {
 }
 
 func lookupIPv6AAAA(hostname string) ([]string, error) {
-    // Use custom resolver to control behavior
+    // Use a custom resolver and request IPv6 results only
     resolver := &net.Resolver{
-        PreferGo: true,  // Use Go's built-in DNS resolver
+        PreferGo: true,  // Prefer Go's built-in DNS resolver when available
     }
 
-    addrs, err := resolver.LookupIPAddr(context.Background(), hostname)
+    ips, err := resolver.LookupIP(context.Background(), "ip6", hostname)
     if err != nil {
         return nil, err
     }
 
     var result []string
-    for _, addr := range addrs {
-        if addr.IP.To4() == nil {  // IPv6 only
-            result = append(result, addr.IP.String())
-        }
+    for _, ip := range ips {
+        result = append(result, ip.String())
     }
     return result, nil
 }
@@ -219,6 +217,10 @@ func listIPv6Interfaces() {
         for _, addr := range addrs {
             switch v := addr.(type) {
             case *net.IPNet:
+                if v.IP.To4() == nil && v.IP.To16() != nil {
+                    fmt.Printf("%s: %s\n", iface.Name, v)
+                }
+            case *net.IPAddr:
                 if v.IP.To4() == nil && v.IP.To16() != nil {
                     fmt.Printf("%s: %s\n", iface.Name, v)
                 }
