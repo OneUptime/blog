@@ -8,7 +8,7 @@ Description: Learn how to create GCP External HTTP(S) Load Balancers with OpenTo
 
 ## Overview
 
-GCP External HTTP(S) Load Balancer is a global, proxy-based load balancer that distributes traffic across multiple regions. It provides SSL termination, URL-based routing, CDN integration, and Cloud Armor support. OpenTofu manages the full load balancer configuration.
+GCP global external Application Load Balancer is a global, proxy-based Layer 7 load balancer that can distribute traffic across multiple regions. It provides SSL termination, URL-based routing, Cloud CDN integration, and Cloud Armor support. OpenTofu manages the full load balancer configuration.
 
 ## Step 1: Create Backend Buckets and Services
 
@@ -46,6 +46,22 @@ resource "google_compute_backend_service" "web_backend" {
   }
 }
 
+resource "google_compute_backend_service" "api_backend" {
+  name                  = "api-backend-service"
+  protocol              = "HTTP"
+  port_name             = "http"
+  load_balancing_scheme = "EXTERNAL_MANAGED"
+  timeout_sec           = 30
+
+  backend {
+    group                 = google_compute_instance_group_manager.web_mig.instance_group
+    balancing_mode        = "RATE"
+    max_rate_per_instance = 100
+  }
+
+  health_checks = [google_compute_health_check.http_hc.id]
+}
+
 # Backend bucket for static assets
 resource "google_compute_backend_bucket" "static_assets" {
   name        = "static-assets-backend"
@@ -80,6 +96,17 @@ resource "google_compute_url_map" "lb_url_map" {
       paths   = ["/api/*"]
       service = google_compute_backend_service.api_backend.id
     }
+  }
+}
+
+# URL map used by the HTTP proxy to redirect requests to HTTPS
+resource "google_compute_url_map" "https_redirect_map" {
+  name = "web-https-redirect-map"
+
+  default_url_redirect {
+    https_redirect         = true
+    redirect_response_code = "MOVED_PERMANENTLY_DEFAULT"
+    strip_query            = false
   }
 }
 ```
@@ -130,10 +157,12 @@ resource "google_compute_global_forwarding_rule" "https_rule" {
 
 # HTTP forwarding rule (redirect to HTTPS)
 resource "google_compute_global_forwarding_rule" "http_rule" {
-  name       = "http-forwarding-rule"
-  ip_address = google_compute_global_address.lb_ip.id
-  port_range = "80"
-  target     = google_compute_target_http_proxy.http_proxy.id
+  name                  = "http-forwarding-rule"
+  ip_address            = google_compute_global_address.lb_ip.id
+  ip_protocol           = "TCP"
+  port_range            = "80"
+  target                = google_compute_target_http_proxy.http_proxy.id
+  load_balancing_scheme = "EXTERNAL_MANAGED"
 }
 ```
 
@@ -147,4 +176,4 @@ output "load_balancer_ip" {
 
 ## Summary
 
-GCP External HTTPS Load Balancer with OpenTofu provides global traffic distribution with SSL termination and URL-based routing. The combination of Cloud CDN for static assets, path-based routing for APIs, and Google-managed certificates creates a production-ready global web infrastructure.
+GCP global external HTTPS Application Load Balancer with OpenTofu provides global traffic distribution with SSL termination and URL-based routing. The combination of Cloud CDN for static assets, path-based routing for APIs, and Google-managed certificates creates a production-ready global web infrastructure.
