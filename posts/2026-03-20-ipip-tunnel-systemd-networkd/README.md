@@ -32,9 +32,12 @@ Name=ipip1
 Kind=ipip
 
 [Tunnel]
-Local=10.0.0.1      # This host's outer IP
-Remote=10.0.0.2     # Remote tunnel endpoint
+# This host's outer IP
+Local=10.0.0.1
+# Remote tunnel endpoint
+Remote=10.0.0.2
 TTL=255
+Independent=yes
 ```
 
 ### Step 2: Configure the Tunnel Network
@@ -71,6 +74,7 @@ Name=ipip1
 Kind=ipip
 
 [Tunnel]
+Independent=yes
 Local=10.0.0.2
 Remote=10.0.0.1
 TTL=255
@@ -125,10 +129,18 @@ tcpdump -i eth0 -nn proto 4
 # iptables
 iptables -A INPUT -p 4 -j ACCEPT   # IP protocol 4 = IPIP
 iptables -A OUTPUT -p 4 -j ACCEPT
+```
 
+```nft
 # nftables
 table ip filter {
   chain input {
+    type filter hook input priority 0; policy accept;
+    ip protocol 4 accept comment "IPIP tunnels"
+  }
+
+  chain output {
+    type filter hook output priority 0; policy accept;
     ip protocol 4 accept comment "IPIP tunnels"
   }
 }
@@ -137,6 +149,6 @@ table ip filter {
 ## Key Takeaways
 
 - IPIP tunnels use IP protocol 4 (not TCP/UDP); allow proto 4 between endpoints in firewall rules.
-- In systemd-networkd, use `Kind=ipip` in the `.netdev` file with `[Tunnel]` section for Local/Remote IPs.
+- In systemd-networkd, use `Kind=ipip` in the `.netdev` file with a `[Tunnel]` section for Local/Remote IPs, and set `Independent=yes` unless you create the tunnel from an underlying interface with `Tunnel=`.
 - IPIP has lower overhead than GRE but no support for multicast or tunnel keys - use GRE when those are needed.
 - MTU on IPIP tunnels is 20 bytes less than the physical interface (1500-20=1480 for standard Ethernet).
