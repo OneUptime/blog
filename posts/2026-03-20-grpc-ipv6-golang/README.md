@@ -21,6 +21,7 @@ import (
     "net"
 
     "google.golang.org/grpc"
+    "google.golang.org/grpc/reflection"
     pb "example.com/helloworld"
 )
 
@@ -38,6 +39,7 @@ func main() {
 
     s := grpc.NewServer()
     pb.RegisterGreeterServer(s, &server{})
+    reflection.Register(s)
 
     fmt.Printf("gRPC server listening on %s\n", listener.Addr().String())
 
@@ -49,25 +51,33 @@ func main() {
 
 ## Step 2: Listen on Both IPv4 and IPv6 (Dual-Stack)
 
-On Linux, `[::]` typically accepts both IPv4 and IPv6 unless `net.ipv6only` is set:
+On Linux, `net.Listen("tcp", "[::]:50051")` may accept both IPv6 and IPv4-mapped connections depending on the `IPV6_V6ONLY` socket setting (for example, `/proc/sys/net/ipv6/bindv6only`). In Go, `tcp6` is IPv6-only:
 
 ```go
-// Check if dual-stack is working
-listener, err := net.Listen("tcp6", "[::]:50051")
-// tcp6 forces IPv6-only; use "tcp" for dual-stack
-
-// For explicit dual-stack, run two listeners
+// For separate IPv4 and IPv6 listeners, run one of each.
 go func() {
-    ln4, _ := net.Listen("tcp4", "0.0.0.0:50051")
+    ln4, err := net.Listen("tcp4", "0.0.0.0:50051")
+    if err != nil {
+        log.Fatalf("Failed to listen on IPv4: %v", err)
+    }
     s4 := grpc.NewServer()
     pb.RegisterGreeterServer(s4, &server{})
-    s4.Serve(ln4)
+    reflection.Register(s4)
+    if err := s4.Serve(ln4); err != nil {
+        log.Fatalf("Failed to serve IPv4: %v", err)
+    }
 }()
 
-ln6, _ := net.Listen("tcp6", "[::]:50051")
+ln6, err := net.Listen("tcp6", "[::]:50051")
+if err != nil {
+    log.Fatalf("Failed to listen on IPv6: %v", err)
+}
 s6 := grpc.NewServer()
 pb.RegisterGreeterServer(s6, &server{})
-s6.Serve(ln6)
+reflection.Register(s6)
+if err := s6.Serve(ln6); err != nil {
+    log.Fatalf("Failed to serve IPv6: %v", err)
+}
 ```
 
 ## Step 3: gRPC Client Connecting to IPv6
@@ -95,7 +105,7 @@ func main() {
         grpc.WithTransportCredentials(insecure.NewCredentials()),
     )
     if err != nil {
-        log.Fatalf("Failed to connect: %v", err)
+        log.Fatalf("Failed to create client: %v", err)
     }
     defer conn.Close()
 
@@ -117,7 +127,12 @@ func main() {
 ```go
 import (
     "crypto/tls"
+    "log"
+    "net"
+
+    "google.golang.org/grpc"
     "google.golang.org/grpc/credentials"
+    pb "example.com/helloworld"
 )
 
 // Server with TLS on IPv6
@@ -137,19 +152,32 @@ func startTLSServer() {
     s := grpc.NewServer(grpc.Creds(creds))
 
     // Listen on IPv6 with TLS
-    ln, _ := net.Listen("tcp", "[::]:443")
+    ln, err := net.Listen("tcp", "[::]:443")
+    if err != nil {
+        log.Fatal(err)
+    }
     pb.RegisterGreeterServer(s, &server{})
-    s.Serve(ln)
+    if err := s.Serve(ln); err != nil {
+        log.Fatal(err)
+    }
 }
 
 // Client connecting to IPv6 gRPC with TLS
 func connectWithTLS() {
-    creds, _ := credentials.NewClientTLSFromFile("ca.crt", "example.com")
+    // When connecting by IP literal, the server certificate must include that
+    // IPv6 address in a SAN entry.
+    creds, err := credentials.NewClientTLSFromFile("ca.crt", "")
+    if err != nil {
+        log.Fatal(err)
+    }
 
-    conn, _ := grpc.NewClient(
+    conn, err := grpc.NewClient(
         "[2001:db8::1]:443",
         grpc.WithTransportCredentials(creds),
     )
+    if err != nil {
+        log.Fatal(err)
+    }
     defer conn.Close()
 }
 ```
@@ -158,16 +186,18 @@ func connectWithTLS() {
 
 ```go
 import (
+    "google.golang.org/grpc"
     "google.golang.org/grpc/health"
     "google.golang.org/grpc/health/grpc_health_v1"
 )
 
-// Add health check service to your gRPC server
-healthServer := health.NewServer()
-grpc_health_v1.RegisterHealthServer(s, healthServer)
+func addHealthChecks(s *grpc.Server) {
+    healthServer := health.NewServer()
+    grpc_health_v1.RegisterHealthServer(s, healthServer)
 
-// Set service health status
-healthServer.SetServingStatus("greeter", grpc_health_v1.HealthCheckResponse_SERVING)
+    // Set overall server health status.
+    healthServer.SetServingStatus("", grpc_health_v1.HealthCheckResponse_SERVING)
+}
 ```
 
 ## Testing
@@ -176,15 +206,15 @@ healthServer.SetServingStatus("greeter", grpc_health_v1.HealthCheckResponse_SERV
 # Test gRPC server over IPv6 with grpcurl
 
 grpcurl -plaintext '[2001:db8::1]:50051' list
-grpcurl -plaintext '[2001:db8::1]:50051' helloworld.Greeter/SayHello
+grpcurl -plaintext -d '{"name":"World"}' '[2001:db8::1]:50051' helloworld.Greeter/SayHello
 
 # Test health check
-grpcurl -plaintext '[2001:db8::1]:50051' grpc.health.v1.Health/Check
+grpcurl -plaintext -d '{"service":""}' '[2001:db8::1]:50051' grpc.health.v1.Health/Check
 ```
 
 ## Monitoring with OneUptime
 
-Use [OneUptime](https://oneuptime.com) to monitor your gRPC health endpoints over IPv6. Configure TCP port monitors for port 50051 on your IPv6 address and set up custom HTTP monitors for the gRPC health check protocol.
+Use [OneUptime](https://oneuptime.com) to monitor your gRPC service over IPv6. Configure TCP port monitors for port 50051 on your IPv6 address to verify that the service is reachable.
 
 ## Conclusion
 
