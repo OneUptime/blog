@@ -71,23 +71,27 @@ sudo iptables -A INPUT -j DROP
 
 ## Logging Specific Threats
 
-Log specific attack patterns with descriptive prefixes:
+Insert targeted logging rules before broader ACCEPT/DROP rules so they can match first:
 
 ```bash
-# Log port scan attempts (SYN to closed ports)
-sudo iptables -A INPUT -p tcp --syn \
-  -m recent --update --seconds 60 --hitcount 10 --name portscan \
+# Track repeated TCP SYN probes from the same source, then log once they cross the threshold
+sudo iptables -I INPUT 1 -p tcp --syn \
+  -m recent --name portscan --set
+sudo iptables -I INPUT 2 -p tcp --syn \
+  -m recent --rcheck --seconds 60 --hitcount 10 --name portscan \
   -j LOG --log-prefix "PORT-SCAN: " --log-level 4
 
-# Log SSH brute force attempts
-sudo iptables -A INPUT -p tcp --dport 22 -m state --state NEW \
-  -m recent --update --seconds 60 --hitcount 5 --name sshbf \
+# Track repeated new SSH connections, then log once they cross the threshold
+sudo iptables -I INPUT 3 -p tcp --dport 22 -m state --state NEW \
+  -m recent --name sshbf --set
+sudo iptables -I INPUT 4 -p tcp --dport 22 -m state --state NEW \
+  -m recent --rcheck --seconds 60 --hitcount 5 --name sshbf \
   -j LOG --log-prefix "SSH-BRUTE: " --log-level 4
 
-# Log SYN floods
-sudo iptables -A INPUT -p tcp --syn \
+# Sample TCP SYN traffic at a limited rate to avoid log flooding
+sudo iptables -I INPUT 5 -p tcp --syn \
   -m limit --limit 10/s --limit-burst 20 \
-  -j LOG --log-prefix "SYN-FLOOD: "
+  -j LOG --log-prefix "SYN-TRAFFIC: "
 ```
 
 ## Reading iptables Logs
@@ -116,9 +120,12 @@ sudo grep "IPT-DROP-INPUT" /var/log/syslog \
 Configure rsyslog to write iptables logs to a dedicated file:
 
 ```bash
-# /etc/rsyslog.d/iptables.conf
-# :msg, contains, "IPT-" /var/log/iptables.log
-# & stop
+sudo tee /etc/rsyslog.d/iptables.conf > /dev/null <<'EOF'
+if $msg contains "IPT-" then {
+  action(type="omfile" file="/var/log/iptables.log")
+  stop
+}
+EOF
 
 sudo systemctl restart rsyslog
 
@@ -128,10 +135,10 @@ sudo tail -f /var/log/iptables.log
 
 ## Log with NFLOG for Userspace Processing
 
-For more advanced processing (sending to SIEM), use the NFLOG target:
+For more advanced processing (sending to SIEM), replace the `LOG` rule in the earlier examples with the non-terminating `NFLOG` target and keep the separate `DROP` rule:
 
 ```bash
-# Log to netlink group 1 (readable by ulogd2)
+# Replace your LOG rule with NFLOG before the matching DROP rule
 sudo iptables -A INPUT -j NFLOG --nflog-group 1 --nflog-prefix "DROP: "
 
 # Install and configure ulogd2 to forward logs to a database or syslog
