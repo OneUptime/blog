@@ -8,7 +8,7 @@ Description: Learn how to specify custom provider configurations when importing 
 
 ## Introduction
 
-By default, import blocks use the default provider configuration. However, when importing resources that require a specific provider configuration - such as resources in a different AWS account, a specific region, or requiring an IAM role assumption - you can specify the provider with the `provider` argument.
+By default, import blocks use the default provider configuration. However, when importing resources that require a specific provider configuration - such as resources in a different AWS account, a specific region, or requiring an IAM role assumption - you can specify the provider with the `provider` argument. Each `import` block still needs a matching `resource` block unless you generate configuration separately.
 
 ## Basic Provider Specification
 
@@ -34,7 +34,7 @@ import {
 
 resource "aws_instance" "eu_web" {
   provider      = aws.eu_west
-  ami           = "ami-0european01234"
+  ami           = "ami-0123456789abcdef0"
   instance_type = "t3.micro"
 }
 ```
@@ -48,7 +48,7 @@ provider "aws" {
   alias  = "production"
 
   assume_role {
-    role_arn = "arn:aws:iam::PROD_ACCOUNT_ID:role/TerraformAdmin"
+    role_arn = "arn:aws:iam::123456789012:role/TerraformAdmin"
   }
 }
 
@@ -56,7 +56,7 @@ provider "aws" {
 import {
   provider = aws.production
   to       = aws_vpc.prod_main
-  id       = "vpc-0a1b2c3d4e5f6789"
+  id       = "vpc-0123456789abcdef0"
 }
 
 resource "aws_vpc" "prod_main" {
@@ -83,14 +83,24 @@ provider "aws" {
 import {
   provider = aws.primary
   to       = aws_vpc.primary
-  id       = "vpc-east-0a1b2c3d"
+  id       = "vpc-0123456789abcdea0"
+}
+
+resource "aws_vpc" "primary" {
+  provider   = aws.primary
+  cidr_block = "10.0.0.0/16"
 }
 
 # Import from DR region
 import {
   provider = aws.dr
   to       = aws_vpc.dr
-  id       = "vpc-west-0e1f2a3b"
+  id       = "vpc-0123456789abcdeb0"
+}
+
+resource "aws_vpc" "dr" {
+  provider   = aws.dr
+  cidr_block = "10.1.0.0/16"
 }
 ```
 
@@ -110,6 +120,11 @@ import {
   to       = aws_s3_bucket.legacy_data
   id       = "my-legacy-bucket-name"
 }
+
+resource "aws_s3_bucket" "legacy_data" {
+  provider = aws.legacy_account
+  bucket   = "my-legacy-bucket-name"
+}
 ```
 
 ## Azure Multi-Subscription Import
@@ -117,20 +132,26 @@ import {
 ```hcl
 provider "azurerm" {
   features {}
-  subscription_id = "sub-id-1"
+  subscription_id = "00000000-0000-0000-0000-000000000001"
   alias           = "subscription_1"
 }
 
 provider "azurerm" {
   features {}
-  subscription_id = "sub-id-2"
+  subscription_id = "00000000-0000-0000-0000-000000000002"
   alias           = "subscription_2"
 }
 
 import {
   provider = azurerm.subscription_2
   to       = azurerm_resource_group.app
-  id       = "/subscriptions/sub-id-2/resourceGroups/rg-app"
+  id       = "/subscriptions/00000000-0000-0000-0000-000000000002/resourceGroups/rg-app"
+}
+
+resource "azurerm_resource_group" "app" {
+  provider = azurerm.subscription_2
+  name     = "rg-app"
+  location = "West Europe"
 }
 ```
 
@@ -153,6 +174,12 @@ import {
   provider = google.production
   to       = google_storage_bucket.app
   id       = "prod-app-bucket"
+}
+
+resource "google_storage_bucket" "app" {
+  provider = google.production
+  name     = "prod-app-bucket"
+  location = "US"
 }
 ```
 
