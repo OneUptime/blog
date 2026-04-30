@@ -4,11 +4,11 @@ Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
 Tags: Linux, VXLAN, IPv4, Overlay Network, iproute2, Networking
 
-Description: Assign an IPv4 address to a VXLAN interface as the overlay network endpoint IP, enabling host communication within the VXLAN segment.
+Description: Assign an IPv4 address to a VXLAN interface so the host has an overlay IP, enabling host communication within the VXLAN segment.
 
 ## Introduction
 
-A VXLAN interface can operate in two ways: it can have an IP address (for Layer 3 overlay routing) or be added to a bridge (for Layer 2 overlay). This guide covers the IP address assignment approach, where each VTEP host gets an overlay IP that routes over the VXLAN segment.
+A VXLAN interface can operate in two ways: it can have an IP address assigned directly to it so the host can communicate over the overlay, or be added to a bridge for Layer 2 overlay. This guide covers the IP address assignment approach, where each host gets an overlay IP on the VXLAN interface.
 
 ## Create VXLAN and Assign an IP
 
@@ -80,12 +80,14 @@ ip route get 192.168.100.2
 
 ```bash
 # VNI 100 - Overlay subnet A
-ip link add vxlan100 type vxlan id 100 dstport 4789 local 10.0.0.1 dev eth0
+ip link add vxlan100 type vxlan id 100 dstport 4789 \
+    remote 10.0.0.2 local 10.0.0.1 dev eth0
 ip addr add 10.100.0.1/24 dev vxlan100
 ip link set vxlan100 up
 
 # VNI 200 - Overlay subnet B
-ip link add vxlan200 type vxlan id 200 dstport 4789 local 10.0.0.1 dev eth0
+ip link add vxlan200 type vxlan id 200 dstport 4789 \
+    remote 10.0.0.2 local 10.0.0.1 dev eth0
 ip addr add 10.200.0.1/24 dev vxlan200
 ip link set vxlan200 up
 ```
@@ -99,4 +101,4 @@ ip addr del 192.168.100.1/24 dev vxlan0
 
 ## Conclusion
 
-Assigning an IPv4 address to a VXLAN interface creates a routable overlay endpoint. Use a separate overlay subnet that is distinct from the underlay. Each host's VXLAN interface gets a unique IP in the same overlay subnet. VXLAN handles the encapsulation of frames, and the IP address allows standard routing to function over the virtual network.
+Assigning an IPv4 address to a VXLAN interface gives the host a routable IP on the overlay. Use a separate overlay subnet that is distinct from the underlay. Each host's VXLAN interface gets a unique IP in the same overlay subnet. VXLAN handles the encapsulation of frames, and the IP address allows standard routing to function over the virtual network.
