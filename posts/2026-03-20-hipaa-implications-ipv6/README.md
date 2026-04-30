@@ -35,7 +35,7 @@ technology used to transmit or store ePHI.
 # Only allow healthcare application servers in IPv6 subnet
 
 sudo ip6tables -A INPUT -p tcp \
-  -s 2001:db8:healthcare::/48 \
+  -s 2001:db8:100::/48 \
   --dport 8080 \
   -j ACCEPT
 
@@ -59,7 +59,7 @@ sudo ip6tables -L -n -v > /tmp/hipaa_ipv6_acls.txt
 
 # Enable comprehensive IPv6 logging for audit
 sudo ip6tables -A INPUT -p tcp \
-  -d 2001:db8::ehr-server \
+  -d 2001:db8:100::20 \
   -j LOG \
   --log-prefix "HIPAA-EHR-ACCESS: " \
   --log-level 6
@@ -83,9 +83,10 @@ cat /etc/rsyslog.d/hipaa-ipv6.conf
 
 # Enable TLS for all IPv6 ePHI transmission
 # Nginx HTTPS over IPv6
-cat >> /etc/nginx/sites-available/ehr << 'EOF'
+sudo tee -a /etc/nginx/sites-available/ehr > /dev/null << 'EOF'
 server {
-    listen [::]:443 ssl http2;
+    listen [::]:443 ssl;
+    http2 on;
     ssl_protocols TLSv1.2 TLSv1.3;
     ssl_ciphers ECDHE-RSA-AES256-GCM-SHA384:ECDHE-RSA-AES128-GCM-SHA256;
     ...
@@ -112,7 +113,7 @@ IPv6 Risk Assessment for ePHI Systems
 Date: 2026-03-20
 
 1. EHR Server IPv6 Exposure
-   - Address: 2001:db8::ehr
+   - Address: 2001:db8:100::20
    - Public-facing: No (internal only)
    - Firewall controls: ip6tables restricts to healthcare subnet
    - Encryption: TLS 1.3 required
@@ -134,10 +135,10 @@ EOF
 ```text
 HIPAA BAA Considerations for IPv6:
 
-Cloud providers handling ePHI over IPv6 must sign BAA:
-- AWS: Signs BAA, supports IPv6 (ELBs, EC2)
-- Azure: Signs BAA, supports IPv6
-- GCP: Signs BAA, supports IPv6
+Cloud providers handling ePHI over IPv6 must have a BAA in place:
+- AWS: BAA available, supports IPv6 (ELBs, EC2)
+- Azure: BAA available, supports IPv6
+- GCP: BAA available, supports IPv6
 
 BAA should specify:
 - Provider must maintain security controls for IPv6 traffic
@@ -145,7 +146,7 @@ BAA should specify:
 - Audit logs include IPv6 source addresses
 
 Telehealth platforms using IPv6:
-- Video conferencing (WebRTC) over IPv6 - BAA required
+- Video conferencing (WebRTC) over IPv6 - BAA required if the platform handles ePHI
 - All ePHI transmitted via WebRTC must be encrypted (DTLS/SRTP)
 ```
 
@@ -158,15 +159,15 @@ Telehealth platforms using IPv6:
 sudo tcpdump -i eth0 -nn ip6 \
   -w /tmp/hipaa_breach_ipv6_evidence.pcap
 
-# Identify IPv6 source of breach
-sudo grep "2001:" /var/log/nginx/access.log | \
-  awk '{print $1, $7, $9}' | sort | uniq > /tmp/breach_ips.txt
+# Identify IPv6 sources of breach activity
+awk '$1 ~ /:/' /var/log/nginx/access.log | \
+  awk '{print $1, $7, $9}' | sort -u > /tmp/breach_ips.txt
 
-# geolocate IPv6 source (for breach notification geography)
-whois -h whois.arin.net 2001:db8::attacker
+# Look up RIR registration data for an IPv6 source
+whois 2001:db8:100::25
 
 # 60-day notification requirement still applies
 # regardless of whether breach was over IPv4 or IPv6
 ```
 
-HIPAA's technology-neutral approach means IPv6 healthcare networks must implement the same administrative, physical, and technical safeguards as IPv4, with the most common IPv6 gap being incomplete audit logging that fails to capture IPv6-sourced access to ePHI systems.
+HIPAA's technology-neutral approach means IPv6 healthcare networks must implement the same administrative, physical, and technical safeguards as IPv4, with a common IPv6 gap being incomplete audit logging that fails to capture IPv6-sourced access to ePHI systems.
