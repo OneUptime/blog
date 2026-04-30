@@ -4,11 +4,11 @@ Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
 Tags: iptables, FTP, Passive Mode, Nf_conntrack_ftp, Connection Tracking, IPv4
 
-Description: Configure the nf_conntrack_ftp kernel module to automatically track FTP passive data connections through iptables, eliminating the need to open a wide port range.
+Description: Configure the nf_conntrack_ftp kernel module to track FTP passive data connections through iptables, eliminating the need to open a wide port range.
 
 ## Introduction
 
-Without `nf_conntrack_ftp`, iptables has no way to know which ephemeral ports an FTP server will use for passive data connections. The connection tracking helper inspects FTP control traffic and automatically creates RELATED entries for the data connections, so they are accepted without explicit rules for each port.
+Without `nf_conntrack_ftp`, iptables has no way to know which ephemeral ports an FTP server will use for passive data connections. The connection tracking helper inspects FTP control traffic and, once attached to the control connection, creates expectations for the data connections so they are accepted as RELATED without explicit rules for each port.
 
 ## How Connection Tracking Works for FTP
 
@@ -16,9 +16,9 @@ Without `nf_conntrack_ftp`, iptables has no way to know which ephemeral ports an
 1. Client connects to Server:21  →  iptables sees NEW connection
 2. Server sends: 227 Entering Passive Mode (...,117,49)
    → nf_conntrack_ftp parses this response
-   → Creates an EXPECTED entry for Server:30001
+   → Creates an expectation for Server:30001
 3. Client connects to Server:30001  →  iptables sees RELATED connection
-   → Automatically accepted by: -m state --state RELATED -j ACCEPT
+   → Automatically accepted by: -m conntrack --ctstate RELATED -j ACCEPT
 ```
 
 ## Loading the Module
@@ -37,8 +37,9 @@ lsmod | grep conntrack_ftp
 # nf_conntrack_ftp       20480  0
 # nf_conntrack           163840  3 nf_conntrack_ftp,...
 
-# Check for expected FTP connections
-sudo cat /proc/net/nf_conntrack | grep ftp
+# If conntrack-tools is installed and a passive FTP session is active,
+# list FTP expectations
+sudo conntrack -L expect | grep ftp
 ```
 
 ## Making the Module Persistent
@@ -51,9 +52,8 @@ echo "nf_conntrack_ftp" | sudo tee -a /etc/modules
 echo "nf_conntrack_ftp" | sudo tee /etc/modules-load.d/ftp.conf
 
 # systemd-based alternative
-cat > /etc/modules-load.d/nf_conntrack_ftp.conf << 'EOF'
-nf_conntrack_ftp
-EOF
+printf '%s\n' nf_conntrack_ftp | \
+  sudo tee /etc/modules-load.d/nf_conntrack_ftp.conf > /dev/null
 
 # Verify at boot (check after reboot)
 sudo systemctl status systemd-modules-load
@@ -73,33 +73,41 @@ iptables -P OUTPUT ACCEPT
 # Loopback
 iptables -A INPUT -i lo -j ACCEPT
 
+# Explicitly attach the FTP helper on newer kernels
+iptables -t raw -A PREROUTING -p tcp --dport 21 -j CT --helper ftp
+
 # Allow established and related connections (handles FTP data!)
-iptables -A INPUT -m state --state ESTABLISHED,RELATED -j ACCEPT
+iptables -A INPUT -m conntrack --ctstate ESTABLISHED,RELATED -j ACCEPT
 
 # Allow FTP control port
-iptables -A INPUT -p tcp --dport 21 -m state --state NEW -j ACCEPT
+iptables -A INPUT -p tcp --dport 21 -m conntrack --ctstate NEW -j ACCEPT
 
-# No explicit rule needed for passive ports - nf_conntrack_ftp handles them!
+# No explicit INPUT rule needed for passive ports - RELATED covers them
 ```
 
 ## Verifying Connection Tracking
 
 ```bash
-# While an FTP client is connected in passive mode:
-sudo watch -n1 "cat /proc/net/nf_conntrack | grep ftp"
+# With conntrack-tools installed, while an FTP client is connected
+# in passive mode:
+sudo watch -n1 'conntrack -L -o extended -p tcp --dport 21'
+sudo watch -n1 'conntrack -L expect'
 
 # You should see entries like:
-# ipv4 tcp src=client_ip dst=server_ip sport=... dport=21 [ESTABLISHED]
-# ipv4 tcp src=client_ip dst=server_ip sport=... dport=30001 [EXPECTED]
+# tcp      6 ... src=client_ip dst=server_ip sport=... dport=21 ... helper=ftp
+# tcp      6 ... sport=0 dport=30001 ... master-src=client_ip ... dport=21 helper=ftp
 
 # Count active FTP connections tracked:
-sudo cat /proc/net/nf_conntrack | grep -c "dport=21"
+sudo conntrack -L -p tcp --dport 21 | wc -l
 ```
 
 ## Non-Standard FTP Port
 
 ```bash
-# If your FTP server uses a non-standard port, tell the module:
+# If your FTP server uses a non-standard port, explicitly attach the helper:
+sudo iptables -t raw -A PREROUTING -p tcp --dport 2121 -j CT --helper ftp
+
+# If you rely on automatic helper assignment, tell the module the custom port:
 # Unload and reload with custom port
 sudo modprobe -r nf_conntrack_ftp
 sudo modprobe nf_conntrack_ftp ports=2121
@@ -109,32 +117,36 @@ echo "options nf_conntrack_ftp ports=2121" | \
   sudo tee /etc/modprobe.d/nf_conntrack_ftp.conf
 
 # Then allow port 2121 in iptables:
-iptables -A INPUT -p tcp --dport 2121 -m state --state NEW -j ACCEPT
+iptables -A INPUT -p tcp --dport 2121 -m conntrack --ctstate NEW -j ACCEPT
 ```
 
 ## Troubleshooting
 
 ```bash
 # Issue: Passive mode still fails even with module loaded
-# Check if conntrack is tracking:
-sudo cat /proc/net/nf_conntrack | grep ftp
+# Check if the helper is attached and expectations are being created
+# (with conntrack-tools installed):
+sudo conntrack -L -o extended -p tcp --dport 21
+sudo conntrack -L expect
 
 # Issue: RELATED connections not working
-# Verify the module is loaded AND rules include RELATED state:
+# Verify the module is loaded, INPUT accepts ESTABLISHED,RELATED,
+# and the raw table attaches the ftp helper:
 sudo iptables -L INPUT -n | grep RELATED
+sudo iptables -t raw -L PREROUTING -n | grep CT
 
 # Issue: Module loads but PASV still blocked
-# Check if nf_conntrack_helper is enabled (disabled by default in newer kernels)
+# Check if nf_conntrack_helper is enabled if you rely on automatic helper assignment
 sudo sysctl net.netfilter.nf_conntrack_helper
 # If 0, enable:
 sudo sysctl -w net.netfilter.nf_conntrack_helper=1
 echo "net.netfilter.nf_conntrack_helper=1" | sudo tee -a /etc/sysctl.conf
 
-# Alternative: Use CT target to explicitly enable helper for port 21:
+# Preferred on newer kernels: explicitly attach the helper with CT:
 sudo iptables -t raw -A PREROUTING -p tcp --dport 21 \
   -j CT --helper ftp
 ```
 
 ## Conclusion
 
-`nf_conntrack_ftp` eliminates the need for wide passive port range rules. Load it with `modprobe nf_conntrack_ftp`, persist it in `/etc/modules`, and ensure iptables has `-m state --state ESTABLISHED,RELATED -j ACCEPT`. On newer kernels with `nf_conntrack_helper=0`, use the CT target to explicitly attach the FTP helper to port 21 traffic.
+`nf_conntrack_ftp` eliminates the need for wide passive port range rules. Load it with `modprobe nf_conntrack_ftp`, persist it in `/etc/modules`, and ensure iptables has `-m conntrack --ctstate ESTABLISHED,RELATED -j ACCEPT`. On newer kernels, attach the FTP helper explicitly with the raw-table `CT --helper ftp` rule, or enable `nf_conntrack_helper=1` if you prefer automatic helper assignment.
