@@ -8,7 +8,7 @@ Description: Implement IPv6-aware DNS resolution in applications using getaddrin
 
 ## Introduction
 
-IPv6-aware DNS resolution means correctly handling AAAA records alongside A records in application code. Modern applications should implement Happy Eyeballs (RFC 8305) to prefer IPv6 while quickly falling back to IPv4 when IPv6 is unavailable. This guide covers implementing proper DNS resolution across common platforms.
+IPv6-aware DNS resolution means correctly handling AAAA records alongside A records in application code. Modern applications should implement Happy Eyeballs (RFC 8305) so IPv6 and IPv4 can be attempted without long delays when one address family is impaired. This guide covers implementing proper DNS resolution across common platforms.
 
 ## Using getaddrinfo (C/POSIX)
 
@@ -16,6 +16,7 @@ IPv6-aware DNS resolution means correctly handling AAAA records alongside A reco
 #include <sys/socket.h>
 #include <netdb.h>
 #include <arpa/inet.h>
+#include <unistd.h>
 #include <stdio.h>
 #include <string.h>
 
@@ -26,7 +27,7 @@ void resolve_hostname(const char *hostname) {
     memset(&hints, 0, sizeof(hints));
     hints.ai_family   = AF_UNSPEC;        /* Accept IPv4 and IPv6 */
     hints.ai_socktype = SOCK_STREAM;
-    hints.ai_flags    = AI_ADDRCONFIG;    /* Only usable addresses */
+    hints.ai_flags    = AI_ADDRCONFIG;    /* Only configured address families */
 
     int status = getaddrinfo(hostname, NULL, &hints, &result);
     if (status != 0) {
@@ -53,7 +54,7 @@ void resolve_hostname(const char *hostname) {
     freeaddrinfo(result);
 }
 
-/* Prefer IPv6, then IPv4 */
+/* Simple IPv6-first fallback, not full Happy Eyeballs */
 int connect_prefer_ipv6(const char *hostname, const char *port) {
     struct addrinfo hints, *result, *p;
     int sockfd = -1;
@@ -62,13 +63,14 @@ int connect_prefer_ipv6(const char *hostname, const char *port) {
     memset(&hints, 0, sizeof(hints));
     hints.ai_family   = AF_UNSPEC;
     hints.ai_socktype = SOCK_STREAM;
+    hints.ai_flags    = AI_ADDRCONFIG;
 
     if (getaddrinfo(hostname, port, &hints, &result) != 0) return -1;
 
     /* First pass: try IPv6 */
     for (p = result; p != NULL; p = p->ai_next) {
         if (p->ai_family != AF_INET6) continue;
-        sockfd = socket(AF_INET6, SOCK_STREAM, 0);
+        sockfd = socket(p->ai_family, p->ai_socktype, p->ai_protocol);
         if (sockfd < 0) continue;
         if (connect(sockfd, p->ai_addr, p->ai_addrlen) == 0) {
             found_v6 = 1;
@@ -82,7 +84,7 @@ int connect_prefer_ipv6(const char *hostname, const char *port) {
     if (!found_v6) {
         for (p = result; p != NULL; p = p->ai_next) {
             if (p->ai_family != AF_INET) continue;
-            sockfd = socket(AF_INET, SOCK_STREAM, 0);
+            sockfd = socket(p->ai_family, p->ai_socktype, p->ai_protocol);
             if (sockfd < 0) continue;
             if (connect(sockfd, p->ai_addr, p->ai_addrlen) == 0) {
                 found_v4 = 1;
@@ -104,7 +106,6 @@ int connect_prefer_ipv6(const char *hostname, const char *port) {
 ```python
 import asyncio
 import socket
-import ipaddress
 from typing import Optional, Tuple
 
 async def resolve_prefer_ipv6(hostname: str) -> Optional[Tuple[str, int]]:
@@ -112,7 +113,7 @@ async def resolve_prefer_ipv6(hostname: str) -> Optional[Tuple[str, int]]:
     Resolve hostname, preferring IPv6 addresses.
     Returns (address, family) tuple or None.
     """
-    loop = asyncio.get_event_loop()
+    loop = asyncio.get_running_loop()
 
     try:
         # Resolve all addresses
@@ -147,7 +148,10 @@ def check_aaaa_record(hostname: str) -> bool:
     try:
         dns.resolver.resolve(hostname, 'AAAA')
         return True
-    except (dns.resolver.NXDOMAIN, dns.resolver.NoAnswer, dns.exception.Timeout):
+    except (dns.resolver.NXDOMAIN, dns.resolver.NoAnswer):
+        return False
+    except (dns.resolver.NoNameservers, dns.exception.Timeout) as e:
+        print(f"AAAA lookup failed: {e}")
         return False
 
 async def main():
@@ -158,7 +162,7 @@ async def main():
 asyncio.run(main())
 ```
 
-## Node.js: DNS AAAA Resolution
+## Node.js: IPv6-Aware Resolution
 
 ```javascript
 const dns = require('dns').promises;
@@ -166,61 +170,30 @@ const net = require('net');
 
 /**
  * Resolve a hostname with IPv6 preference.
- * Returns the first address, preferring IPv6.
+ * Returns the first address from the system resolver, preferring IPv6.
  */
 async function resolvePreferIPv6(hostname) {
-  try {
-    // Try AAAA first
-    const ipv6Addrs = await dns.resolve6(hostname);
-    if (ipv6Addrs.length > 0) {
-      return { address: ipv6Addrs[0], family: 6 };
-    }
-  } catch (e) {
-    // No AAAA records, fall through to IPv4
-  }
+  const results = await dns.lookup(hostname, {
+    all: true,
+    family: 0,
+    order: 'ipv6first'
+  });
 
-  try {
-    // Fall back to A record
-    const ipv4Addrs = await dns.resolve4(hostname);
-    if (ipv4Addrs.length > 0) {
-      return { address: ipv4Addrs[0], family: 4 };
-    }
-  } catch (e) {
-    // No records at all
+  if (results.length > 0) {
+    return results[0];
   }
 
   throw new Error(`Could not resolve: ${hostname}`);
 }
 
-// Happy Eyeballs-inspired connection
-async function connectHappyEyeballs(hostname, port) {
-  const [v6Result, v4Result] = await Promise.allSettled([
-    dns.resolve6(hostname).then(addrs => ({ address: addrs[0], family: 6 })),
-    dns.resolve4(hostname).then(addrs => ({ address: addrs[0], family: 4 }))
-  ]);
-
-  // Try IPv6 first, then IPv4 with a 250ms delay
-  return new Promise((resolve, reject) => {
-    let connected = false;
-
-    const tryConnect = (addrInfo) => {
-      if (connected) return;
-      const { address } = addrInfo;
-
-      const sock = net.createConnection({ host: address, port, family: addrInfo.family });
-      sock.once('connect', () => {
-        if (!connected) {
-          connected = true;
-          resolve(sock);
-        }
-      });
-      sock.once('error', () => {});
-    };
-
-    if (v6Result.status === 'fulfilled') tryConnect(v6Result.value);
-    setTimeout(() => {
-      if (v4Result.status === 'fulfilled') tryConnect(v4Result.value);
-    }, 250);  // Happy Eyeballs delay
+// Happy Eyeballs-style connection using Node's built-in family autoselection
+function connectHappyEyeballs(hostname, port) {
+  return net.createConnection({
+    host: hostname,
+    port,
+    family: 0,
+    autoSelectFamily: true,
+    autoSelectFamilyAttemptTimeout: 250
   });
 }
 ```
@@ -231,11 +204,11 @@ async function connectHappyEyeballs(hostname, port) {
 # Shell script to check AAAA record before connecting
 check_ipv6_ready() {
     local hostname="$1"
-    if dig AAAA "$hostname" +short | grep -q ":"; then
-        echo "$hostname has AAAA records - IPv6 ready"
+    if dig "$hostname" AAAA +short | grep -q ":"; then
+        echo "$hostname publishes AAAA records"
         return 0
     else
-        echo "$hostname has no AAAA records - IPv4 only"
+        echo "$hostname has no AAAA records"
         return 1
     fi
 }
@@ -246,4 +219,4 @@ check_ipv6_ready "ipv6.google.com"
 
 ## Conclusion
 
-IPv6-aware DNS resolution starts with using `getaddrinfo(AF_UNSPEC)` in C or protocol-agnostic resolver APIs in higher-level languages. Prefer IPv6 by sorting results to put AAAA addresses first, then implement a short fallback delay (Happy Eyeballs, ~250ms) before trying IPv4. Always check `AI_ADDRCONFIG` to avoid returning addresses that can't be used on the current host's network configuration.
+IPv6-aware DNS resolution starts with using `getaddrinfo(AF_UNSPEC)` in C or protocol-agnostic resolver APIs in higher-level languages. A simple IPv6-first fallback works, but full Happy Eyeballs (RFC 8305) sorts candidates, interleaves IPv6 and IPv4 addresses, and staggers connection attempts with a short delay such as 250 ms. When appropriate, use `AI_ADDRCONFIG` to filter out address families that are not configured on the local host.
