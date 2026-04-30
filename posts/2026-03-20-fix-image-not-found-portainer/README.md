@@ -29,9 +29,9 @@ docker pull <image-name>:<tag>
 # Search Docker Hub for the image
 docker search <image-name>
 
-# Or use the Docker Hub API
-curl -s "https://hub.docker.com/v2/repositories/<org>/<image>/tags/?page_size=10" | \
-  python3 -m json.tool | grep "name"
+# Or use the Docker Hub API to list published tags
+curl -s "https://hub.docker.com/v2/namespaces/<org>/repositories/<image>/tags?page_size=10" | \
+  jq -r '.results[].name'
 ```
 
 ## Step 3: Handle Private Registry Authentication
@@ -54,23 +54,23 @@ services:
 
 ## Step 4: Fix AWS ECR Authentication
 
-AWS ECR uses temporary tokens that expire every 12 hours. Automate token refresh:
+AWS ECR uses temporary tokens that expire every 12 hours. If you test pulls with the Docker CLI, get a fresh token:
 
 ```bash
-# Get a fresh ECR login token
+# Get a fresh ECR login token for a direct Docker CLI test
 aws ecr get-login-password --region us-east-1 | \
   docker login --username AWS --password-stdin \
   123456789.dkr.ecr.us-east-1.amazonaws.com
-
-# Add the ECR registry to Portainer with the refreshed token
 ```
+
+In Portainer, add the registry under **Registries > Add Registry > AWS ECR** and enter the registry URL, AWS access key, AWS secret access key, and region instead of pasting a temporary token.
 
 ## Step 5: Handle Rate Limiting on Docker Hub
 
-Docker Hub has pull rate limits for unauthenticated users (100 pulls/6h):
+Docker Hub applies pull rate limits on a 6-hour basis. Unauthenticated users get 100 pulls per IPv4 address or IPv6 /64 subnet, and authenticated Docker Personal users get 200 pulls per 6 hours:
 
 ```bash
-# Check your current rate limit status
+# Check the anonymous pull rate limit status
 TOKEN=$(curl -s "https://auth.docker.io/token?service=registry.docker.io&scope=repository:ratelimitpreview/test:pull" | jq -r .token)
 curl -s --head \
   -H "Authorization: Bearer $TOKEN" \
@@ -78,16 +78,15 @@ curl -s --head \
   grep -i ratelimit
 ```
 
-Add your Docker Hub credentials to Portainer's registry settings to get authenticated pull limits (5000/day).
+Add a Docker Hub account in Portainer using your Docker Hub username and personal access token to authenticate pulls. Docker Pro, Team, and Business accounts have unlimited pull rate.
 
-## Step 6: Check Portainer Network Access
+## Step 6: Check Network Access from the Docker Environment
 
-If Portainer is in a network-restricted environment:
+If the Docker environment Portainer deploys to is network-restricted:
 
 ```bash
-# Test if the Portainer host can reach Docker Hub
-docker run --rm alpine ping -c 3 registry-1.docker.io
+# Test HTTPS connectivity to the Docker registry API
+curl -I https://registry-1.docker.io/v2/
 
-# Test HTTPS connectivity
-docker run --rm alpine sh -c "apk add curl && curl -I https://registry-1.docker.io"
+# A 401 Unauthorized response is expected and confirms the registry is reachable
 ```
