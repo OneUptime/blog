@@ -8,12 +8,12 @@ Description: Learn how to deploy Grafana on Kubernetes using OpenTofu and Helm w
 
 ## Overview
 
-Grafana provides visualization for metrics, logs, and traces. OpenTofu deploys Grafana via the official Helm chart with production-ready configuration including OIDC SSO, pre-provisioned dashboards via ConfigMaps, and multiple data source connections.
+Grafana provides visualization for metrics, logs, and traces. OpenTofu deploys Grafana via the Grafana community Helm chart with production-ready configuration including OIDC SSO, pre-provisioned dashboards via ConfigMaps, and multiple data source connections.
 
 ## Step 1: Deploy Grafana with Helm
 
 ```hcl
-# main.tf - Deploy Grafana via official Helm chart
+# main.tf - Deploy Grafana via the Grafana community Helm chart
 
 resource "random_password" "grafana_admin" {
   length  = 24
@@ -22,14 +22,15 @@ resource "random_password" "grafana_admin" {
 
 resource "helm_release" "grafana" {
   name             = "grafana"
-  repository       = "https://grafana.github.io/helm-charts"
+  repository       = "https://grafana-community.github.io/helm-charts"
   chart            = "grafana"
-  version          = "7.3.0"
+  version          = "12.3.0"
   namespace        = "monitoring"
   create_namespace = true
 
   values = [yamlencode({
-    replicas = 2
+    # Multiple replicas require a shared MySQL or Postgres database for HA.
+    replicas = 1
 
     # Admin credentials
     adminUser     = "admin"
@@ -48,7 +49,7 @@ resource "helm_release" "grafana" {
         root_url = "https://grafana.example.com"
       }
 
-      # OIDC Authentication (e.g., Azure AD)
+      # OIDC Authentication (e.g., Azure AD with groups claim configured)
       "auth.generic_oauth" = {
         enabled               = true
         name                  = "Azure AD"
@@ -64,10 +65,6 @@ resource "helm_release" "grafana" {
 
       users = {
         auto_assign_org_role = "Viewer"
-      }
-
-      alerting = {
-        enabled = true
       }
 
       unified_alerting = {
@@ -103,7 +100,7 @@ resource "helm_release" "grafana" {
       }
     }
 
-    # Pre-provision dashboards from ConfigMaps
+    # Configure a dashboard provider for imported dashboards
     dashboardProviders = {
       "dashboardproviders.yaml" = {
         apiVersion = 1
@@ -117,6 +114,17 @@ resource "helm_release" "grafana" {
             path = "/var/lib/grafana/dashboards/default"
           }
         }]
+      }
+    }
+
+    # Watch labeled ConfigMaps for custom dashboards
+    sidecar = {
+      dashboards = {
+        enabled = true
+        label   = "grafana_dashboard"
+        provider = {
+          folder = "Kubernetes"
+        }
       }
     }
 
@@ -177,4 +185,4 @@ resource "kubernetes_config_map" "custom_dashboard" {
 
 ## Summary
 
-Grafana deployed with OpenTofu provides centralized visualization for metrics from Prometheus, logs from Loki, and traces from Tempo. OIDC authentication with role mapping from Azure AD or Okta groups eliminates local user management. Pre-provisioned dashboards via ConfigMaps ensure consistent monitoring views across environments from the moment Grafana starts.
+Grafana deployed with OpenTofu provides centralized visualization for metrics from Prometheus, logs from Loki, and traces from Tempo. OIDC authentication with role mapping from Azure AD or Okta groups, when the IdP includes group claims, eliminates local user management. Pre-provisioned dashboards via ConfigMaps ensure consistent monitoring views across environments from the moment Grafana starts.
