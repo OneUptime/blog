@@ -14,10 +14,10 @@ MTU (Maximum Transmission Unit) mismatches cause some of the most frustrating ne
 
 ## Understanding MTU Issues
 
-The standard Ethernet MTU is 1500 bytes. When a packet exceeds the MTU of a link, it must be fragmented - or dropped if the DF (Don't Fragment) bit is set. MTU problems occur when:
+The standard Ethernet MTU is 1500 bytes. For IPv4, when a packet exceeds the MTU of a link, it must be fragmented - or dropped if the DF (Don't Fragment) bit is set. IPv6 routers do not fragment packets; they send ICMPv6 "Packet Too Big" instead. MTU problems occur when:
 
 - VPN tunnels add overhead, reducing effective MTU
-- Firewalls block ICMP "packet too big" messages (breaking PMTUD)
+- Firewalls block ICMP "Fragmentation Needed" / "Packet Too Big" messages (breaking PMTUD)
 - Different network segments have different MTUs
 - Jumbo frames are configured on some but not all devices
 
@@ -114,8 +114,9 @@ sudo systemctl restart systemd-networkd
 ### Permanent Fix (NetworkManager)
 
 ```bash
-nmcli connection modify "eth0" 802-3-ethernet.mtu 1400
-nmcli connection up "eth0"
+# Use the NetworkManager connection profile name
+nmcli connection modify "<connection-name>" 802-3-ethernet.mtu 1400
+nmcli connection up "<connection-name>"
 ```
 
 ### Permanent Fix (/etc/network/interfaces)
@@ -158,27 +159,30 @@ MTU = 1420
 When you can't control all endpoints, use TCP MSS clamping to force TCP to use a smaller segment size:
 
 ```bash
-# Clamp MSS to PMTU for all outgoing TCP connections
+# Clamp MSS to PMTU for forwarded TCP traffic through a Linux router/firewall
 sudo iptables -t mangle -A FORWARD -p tcp --tcp-flags SYN,RST SYN \
     -j TCPMSS --clamp-mss-to-pmtu
 
-# Or set an explicit max MSS (1400 for most VPNs)
+# Or set an explicit IPv4 MSS (1360 for a 1400-byte path MTU)
 sudo iptables -t mangle -A FORWARD -p tcp --tcp-flags SYN,RST SYN \
-    -j TCPMSS --set-mss 1400
+    -j TCPMSS --set-mss 1360
 
-# Make persistent
+# Save current rules to a file (example path used by iptables-persistent on Debian/Ubuntu)
 sudo iptables-save > /etc/iptables/rules.v4
 ```
 
 ---
 
-## ICMP "Packet Too Big" Verification
+## ICMP PMTUD Error Verification
 
-MTU problems often come from ICMP being blocked:
+MTU problems often come from PMTUD-related ICMP being blocked:
 
 ```bash
-# Check if ICMP type 3 code 4 (fragmentation needed) is being blocked
+# IPv4: ICMP destination unreachable, fragmentation needed (type 3 code 4)
 sudo tcpdump -i eth0 -n "icmp[0] = 3 and icmp[1] = 4"
+
+# IPv6: ICMPv6 Packet Too Big (type 2)
+sudo tcpdump -i eth0 -n "icmp6 and icmp6[icmp6type] = icmp6-packettoobig"
 
 # If you see these messages but connections still fail,
 # the host or firewall is dropping them before they're processed
@@ -205,7 +209,7 @@ netsh interface ipv4 show subinterfaces
 
 1. **Set consistent MTU** across all devices on a path, including VPN endpoints
 2. **Use TCP MSS clamping** as a safety net when MTU is unpredictable
-3. **Never block ICMP unreachable** messages - they're needed for PMTUD
+3. **Never block PMTUD ICMP messages** - IPv4 uses ICMP unreachable (fragmentation needed), and IPv6 uses ICMPv6 Packet Too Big
 4. **Test with ping -M do** after any network change involving tunnels
 5. **Document MTU settings** in your network runbook for each tunnel type
 
