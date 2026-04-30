@@ -22,6 +22,7 @@ RUN apk add --no-cache \
     git \
     curl \
     bash \
+    procps \
     make \
     gcc \
     musl-dev
@@ -79,9 +80,10 @@ tmp_dir = "/tmp/air"
 
 ## Step 3: Deploy the Go Stack in Portainer
 
+In Portainer, use absolute host paths for `build.context` and bind mounts; relative paths like `.` only work for Git-deployed stacks when relative path volumes are enabled. If your Portainer environment is remote, build the image outside Portainer and replace the `build:` block with an `image:` reference.
+
 ```yaml
 # docker-compose.yml - Go Development Stack
-version: "3.8"
 
 networks:
   go_dev:
@@ -96,7 +98,8 @@ services:
   # Go application with Air hot-reload
   app:
     build:
-      context: .
+      # Replace with the absolute path to your Go project on the Docker host
+      context: /absolute/path/to/your/go/project
       dockerfile: Dockerfile.dev
     container_name: go_app
     restart: unless-stopped
@@ -110,7 +113,7 @@ services:
       - LOG_LEVEL=debug
     volumes:
       # Mount source code
-      - .:/app
+      - /absolute/path/to/your/go/project:/app
       # Cache Go modules
       - go_cache:/go/pkg/mod
     # Use Air for hot-reload
@@ -138,7 +141,6 @@ services:
       - POSTGRES_PASSWORD=devpassword
     volumes:
       - postgres_data:/var/lib/postgresql/data
-      - ./migrations:/migrations
     networks:
       - go_dev
 
@@ -185,7 +187,11 @@ func main() {
     defer db.Close()
 
     // Connect to Redis
-    opt, _ := redis.ParseURL(os.Getenv("REDIS_URL"))
+    opt, err := redis.ParseURL(os.Getenv("REDIS_URL"))
+    if err != nil {
+        logger.Error("failed to parse Redis URL", "error", err)
+        os.Exit(1)
+    }
     rdb := redis.NewClient(opt)
     defer rdb.Close()
 
@@ -195,11 +201,18 @@ func main() {
         os.Exit(1)
     }
 
+    if err := rdb.Ping(context.Background()).Err(); err != nil {
+        logger.Error("redis ping failed", "error", err)
+        os.Exit(1)
+    }
+
     r := chi.NewRouter()
     r.Use(middleware.Logger)
     r.Use(middleware.Recoverer)
 
     r.Get("/health", func(w http.ResponseWriter, r *http.Request) {
+        w.Header().Set("Content-Type", "application/json")
+
         dbStatus := "ok"
         if err := db.PingContext(r.Context()); err != nil {
             dbStatus = "error"
@@ -215,7 +228,10 @@ func main() {
 
     port := ":8080"
     logger.Info("server starting", "port", port)
-    http.ListenAndServe(port, r)
+    if err := http.ListenAndServe(port, r); err != nil {
+        logger.Error("server failed", "error", err)
+        os.Exit(1)
+    }
 }
 ```
 
@@ -261,23 +277,29 @@ docker exec go_app migrate \
     {
       "name": "Connect to Go in Docker",
       "type": "go",
+      "debugAdapter": "dlv-dap",
       "request": "attach",
       "mode": "remote",
-      "remotePath": "/app",
       "port": 2345,
       "host": "127.0.0.1",
-      "apiVersion": 2
+      "substitutePath": [
+        {
+          "from": "${workspaceFolder}",
+          "to": "/app"
+        }
+      ]
     }
   ]
 }
 ```
 
 ```bash
-# Start Delve in the container instead of Air
-docker exec go_app dlv debug ./cmd/server \
+# Attach Delve to the Air-managed process in the running container
+docker exec -d go_app sh -lc 'dlv attach "$(pgrep -f /tmp/air/main)" \
   --headless --listen=:2345 \
   --api-version=2 \
-  --accept-multiclient
+  --accept-multiclient \
+  --continue'
 ```
 
 ## Step 7: Running Tests
