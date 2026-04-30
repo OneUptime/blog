@@ -8,12 +8,12 @@ Description: Test IPv6 network bandwidth and throughput using iperf3 with TCP an
 
 ## Introduction
 
-`iperf3` is the standard tool for measuring network bandwidth between two hosts. It supports IPv6 natively with the `-6` flag. IPv6 bandwidth testing helps verify that your network infrastructure performs as expected over IPv6, identify any throughput differences between IPv4 and IPv6 paths, and validate QoS policies.
+`iperf3` is the standard tool for measuring network bandwidth between two hosts. It supports IPv6 natively, and the `-6` flag forces the use of IPv6. IPv6 bandwidth testing helps verify that your network infrastructure performs as expected over IPv6, identify any throughput differences between IPv4 and IPv6 paths, and validate QoS policies.
 
 ## Setting Up iperf3 Server
 
 ```bash
-# Start iperf3 server on any address (IPv4 and IPv6)
+# Start iperf3 server on the default listen address and port
 
 iperf3 -s
 
@@ -130,11 +130,11 @@ print(f'  Retransmits: {d[\"end\"][\"sum_sent\"][\"retransmits\"]}')
 ## MTU and Jumbo Frame Testing
 
 ```bash
-# Test with specific MTU-sized packets
-iperf3 -c 2001:db8::1 -6 -M 1452  # IPv6 typical MTU
+# TCP test with an MSS that fits a 1500-byte IPv6 path MTU
+iperf3 -c 2001:db8::1 -6 -M 1440
 
-# Test jumbo frames (9000 byte MTU environment)
-iperf3 -c 2001:db8::1 -6 -M 8952
+# TCP test with an MSS that fits a 9000-byte IPv6 jumbo-frame path MTU
+iperf3 -c 2001:db8::1 -6 -M 8940
 
 # Zero-copy mode for maximum performance
 iperf3 -c 2001:db8::1 -6 -Z
