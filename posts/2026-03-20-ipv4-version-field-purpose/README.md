@@ -12,7 +12,7 @@ The Version field is the first 4 bits of every IP packet. It tells the receiving
 
 ## The Version Field in Context
 
-The first byte of an IP header encodes two fields: Version (upper 4 bits) and IHL (lower 4 bits).
+The first byte of an IPv4 header encodes two fields: Version (upper 4 bits) and IHL (lower 4 bits).
 
 ```yaml
 First byte (8 bits):
@@ -52,7 +52,7 @@ def parse_ip_packet(raw_bytes: bytes):
 
 ## Why the Version Field Matters
 
-Network devices encounter mixed IPv4 and IPv6 traffic on the same interface. The version field is the first decision point.
+Network devices encounter mixed IPv4 and IPv6 traffic on the same interface. Once a device is parsing an IP header, the version field is the first decision point.
 
 ```bash
 # Capture only IPv4 traffic (version field = 4)
@@ -62,22 +62,24 @@ tcpdump -n 'ip'
 tcpdump -n 'ip6'
 
 # See the version field in hex dump
-tcpdump -n -XX -c 1 'ip' | head -5
-# First byte will be 0x45 for most IPv4 packets
+tcpdump -n -X -c 1 'ip' | head -5
+# First byte is often 0x45 for IPv4 packets without options
 ```
 
 ## Common Version Field Values
 
 | Value | Protocol | Use |
 |---|---|---|
-| 4 | IPv4 | Standard internet traffic |
-| 6 | IPv6 | Modern internet, required for IoT scale |
-| 5 | ST (Stream) | Obsolete experimental protocol |
-| 7-15 | Various | Reserved or experimental |
+| 4 | IPv4 | Standard IPv4 traffic |
+| 6 | IPv6 | Standard IPv6 traffic |
+| 5 | Reserved (Historic) | Formerly used by ST datagram mode |
+| 7-9 | Reserved (Historic) | Historical assignments, not in current use |
+| 10-14 | Unassigned | Not currently assigned |
+| 15 | Reserved | Reserved |
 
 ## Version Field in Dual-Stack Environments
 
-Dual-stack systems run both IPv4 and IPv6. The kernel inspects the version field to route each packet to the correct IP stack.
+Dual-stack systems run both IPv4 and IPv6. When the IP layer processes a packet, the version field tells it whether to parse an IPv4 header or an IPv6 header.
 
 ```bash
 # Check if a host is dual-stack
@@ -122,16 +124,16 @@ def parse_tunnel_packet(raw_bytes: bytes):
 
 ## How Routers Use the Version Field
 
-When a packet arrives at a router interface:
+Once a router starts parsing an IP header:
 
 1. Read the first byte
 2. Extract the upper 4 bits (version)
 3. If version = 4: parse as IPv4, apply IPv4 forwarding logic
 4. If version = 6: parse as IPv6, apply IPv6 forwarding logic
-5. If unknown: discard the packet (and optionally send ICMP error)
+5. If unknown: discard the packet
 
 The version field must be checked before any other field because the header layouts for IPv4 and IPv6 are completely different - only the version field occupies the same position in both.
 
 ## Summary
 
-The 4-bit Version field is the first thing any IP implementation reads because IPv4 and IPv6 have completely different header structures. For IPv4, version is always 4 (`0x4` in hex), making `0x45` the most common first byte for packets without options. In dual-stack environments, routers and OS kernels use this field to dispatch packets to the correct IP stack. In tunnel protocols like 6in4, there are two version fields - one per layer - and both must be read to fully parse the packet.
+The 4-bit Version field is the first thing any IP implementation reads because IPv4 and IPv6 have completely different header structures. For IPv4, version is always 4 (`0x4` in hex), making `0x45` the most common first byte for packets without options. In dual-stack environments, the IP layer uses this field to dispatch packets to the correct parser. In tunnel protocols like 6in4, there are two version fields - one per layer - and both must be read to fully parse the packet.
