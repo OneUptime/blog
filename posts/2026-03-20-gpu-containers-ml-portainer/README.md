@@ -8,194 +8,152 @@ Description: Configure NVIDIA GPU support in Docker containers managed by Portai
 
 ## Introduction
 
-How to Set Up GPU Containers for ML Workloads in Portainer provides a comprehensive guide to deploying and configuring this technology in a containerized environment managed by Portainer. Whether you're setting up a development environment or production workload, this guide covers everything you need.
+How to Set Up GPU Containers for ML Workloads in Portainer requires NVIDIA drivers and the NVIDIA Container Toolkit on the Docker host before Portainer can deploy GPU-enabled containers. Whether you're setting up a development environment or a production workload, this guide covers the Docker and Portainer pieces needed for a working setup.
 
 ## Prerequisites
 
-- Portainer installed with Docker
-- Adequate hardware resources (CPU/GPU/RAM as needed)
-- Docker and Docker Compose installed
-- Network access to required services
+- Docker Engine installed and working on a Docker Standalone host
+- Portainer connected to that Docker Standalone environment
+- A supported NVIDIA GPU with the NVIDIA driver installed on the host
+- NVIDIA Container Toolkit installed and configured for Docker
+- Sudo or root access on the Docker host
 
 ## Step 1: Prepare Your Environment
 
-Ensure your system meets the requirements:
+Ensure Docker can see the GPU before you deploy through Portainer:
 
 ```bash
-# Check available resources
-
-free -h
-nproc
-df -h
-
-# For GPU workloads, check NVIDIA availability
+# Check that the NVIDIA driver is working on the host
 nvidia-smi
-docker run --rm --gpus all nvidia/cuda:12.0-base-ubuntu22.04 nvidia-smi
+
+# Configure Docker to use the NVIDIA runtime, then restart Docker
+sudo nvidia-ctk runtime configure --runtime=docker
+sudo systemctl restart docker
+
+# Verify GPU access from a container
+sudo docker run --rm --runtime=nvidia --gpus all ubuntu nvidia-smi
 ```
+
+If the NVIDIA Container Toolkit is not installed yet, install it first by following NVIDIA's installation guide for your Linux distribution.
 
 ## Step 2: Create the Stack in Portainer
 
-Navigate to **Stacks** > **Add Stack** and use the following docker-compose.yml:
+Navigate to **Stacks** > **Add Stack** and use the following compose file:
 
 ```yaml
-version: "3.8"
-
 services:
-  app:
-    image: relevant-image:latest
+  ml-app:
+    image: nvidia/cuda:12.9.0-base-ubuntu22.04
     container_name: ml-app
-    restart: always
-    ports:
-      - "8080:8080"
+    command: ["sh", "-c", "nvidia-smi && sleep infinity"]
+    restart: unless-stopped
+    deploy:
+      resources:
+        reservations:
+          devices:
+            - driver: nvidia
+              count: all
+              capabilities: [gpu]
+    environment:
+      NVIDIA_VISIBLE_DEVICES: all
+      NVIDIA_DRIVER_CAPABILITIES: compute,utility
     volumes:
       - app-data:/data
-      - ./models:/models
-    environment:
-      - ENV=production
-      - LOG_LEVEL=info
-    # GPU support (uncomment if needed)
-    # deploy:
-    #   resources:
-    #     reservations:
-    #       devices:
-    #         - driver: nvidia
-    #           count: all
-    #           capabilities: [gpu]
-    healthcheck:
-      test: ["CMD", "curl", "-f", "http://localhost:8080/health"]
-      interval: 30s
-      timeout: 10s
-      retries: 3
-    logging:
-      driver: json-file
-      options:
-        max-size: "100m"
-        max-file: "3"
-    networks:
-      - ml-net
+      - model-cache:/models
 
 volumes:
   app-data:
-
-networks:
-  ml-net:
-    driver: bridge
+    name: ml-app-data
+  model-cache:
+    name: ml-model-cache
 ```
 
 ## Step 3: Configure the Application
 
-Access configuration through Portainer's Configs section:
+For Docker Standalone environments, set application options in the stack file or through Portainer's environment variable form. Portainer's **Configs** section maps to Docker configs, which are only available to Docker Swarm services.
 
 ```yaml
-# Application configuration
-server:
-  host: 0.0.0.0
-  port: 8080
-
-storage:
-  backend: local
-  path: /data
-
-logging:
-  level: INFO
-  format: json
-
-# Database connection (if applicable)
-database:
-  host: postgres
-  port: 5432
-  name: appdb
+# Add or adjust variables under ml-app.environment
+environment:
+  NVIDIA_VISIBLE_DEVICES: all
+  NVIDIA_DRIVER_CAPABILITIES: compute,utility
+  MODEL_DIR: /models
+  DATA_DIR: /data
 ```
 
 ## Step 4: Initialize and Verify
 
-After deployment, verify the service is running:
+After deployment, verify the container is running and has GPU access:
 
 ```bash
-# Check container health
-docker ps | grep ml-app
+# Check that the container is running
+docker ps --filter name=ml-app
 
-# View logs via Portainer or CLI
+# View the startup logs
 docker logs ml-app --tail 50
 
-# Test the API endpoint
-curl http://localhost:8080/health
-
-# Access UI at http://your-server:8080
+# Verify GPU access inside the running container
+docker exec ml-app nvidia-smi
 ```
 
 ## Step 5: Configure Persistent Storage
 
-Ensure data persists across container restarts:
+The named volumes in the stack file already persist data across container restarts. If you need host-path access for models or datasets, replace those named volumes with bind mounts:
 
 ```yaml
-# In docker-compose.yml
+# Under services.ml-app.volumes
 volumes:
-  app-data:
-    driver: local
-    driver_opts:
-      type: none
-      o: bind
-      device: /data/ml-app
+  - /data/ml-app:/data
+  - /data/ml-models:/models
 ```
 
-Create the host directory:
+Create the host directories:
 
 ```bash
-mkdir -p /data/ml-app
-chmod 755 /data/ml-app
+sudo mkdir -p /data/ml-app /data/ml-models
+sudo chmod 755 /data/ml-app /data/ml-models
 ```
 
 ## Step 6: Monitor Performance
 
-Use Portainer's built-in monitoring and set up Prometheus metrics:
+Use Portainer's container statistics for CPU, memory, network, and I/O, and use `nvidia-smi` for GPU utilization and memory usage:
 
-```yaml
-# Add Prometheus metrics scraping
-  prometheus:
-    image: prom/prometheus:latest
-    volumes:
-      - ./prometheus.yml:/etc/prometheus/prometheus.yml
-    ports:
-      - "9090:9090"
+```bash
+# Check GPU utilization on the host
+nvidia-smi
+
+# Or check GPU visibility from inside the container
+docker exec ml-app nvidia-smi
 ```
 
-```yaml
-# prometheus.yml
-global:
-  scrape_interval: 15s
-
-scrape_configs:
-  - job_name: 'ml-app'
-    static_configs:
-      - targets: ['ml-app:8080']
-    metrics_path: /metrics
-```
+If your ML application exposes a Prometheus `/metrics` endpoint, scrape that application endpoint separately. Portainer can show container stats and logs, but it does not create application metrics endpoints for you.
 
 ## Step 7: Backup and Recovery
 
-Configure automated backups via Portainer:
+Back up the named data volume from the Docker host:
 
 ```bash
 #!/bin/bash
-# backup.sh - run as a Portainer Edge Job or scheduled task
+# backup.sh
 
 BACKUP_DIR="/backups/ml-app"
 DATE=$(date +%Y%m%d_%H%M%S)
-mkdir -p $BACKUP_DIR
+mkdir -p "$BACKUP_DIR"
 
-# Backup application data
+# Backup application data from the named volume
 docker run --rm \
-  -v app-data:/source:ro \
-  -v $BACKUP_DIR:/backup \
-  alpine tar czf /backup/app-data-$DATE.tar.gz -C /source .
+  -v ml-app-data:/source:ro \
+  -v "$BACKUP_DIR":/backup \
+  alpine tar czf "/backup/app-data-$DATE.tar.gz" -C /source .
 
 echo "Backup completed: app-data-$DATE.tar.gz"
 
 # Retain last 7 backups
-ls -t $BACKUP_DIR/*.tar.gz | tail -n +8 | xargs rm -f
+ls -1t "$BACKUP_DIR"/*.tar.gz 2>/dev/null | tail -n +8 | xargs -r rm -f
 ```
+
+To restore, create or reuse the target volume and extract the archive into it with a temporary container.
 
 ## Conclusion
 
-How to Set Up GPU Containers for ML Workloads in Portainer using Portainer provides a streamlined approach to deploying and managing sophisticated workloads. Portainer's visual interface reduces operational complexity while its API enables automation and GitOps workflows. This deployment pattern scales from development environments to production clusters, making it suitable for teams at any stage of their containerization journey.
+How to Set Up GPU Containers for ML Workloads in Portainer provides a practical way to deploy and manage GPU-enabled containers once Docker itself has been configured for NVIDIA GPUs. After the host can successfully run `docker run --rm --runtime=nvidia --gpus all ubuntu nvidia-smi`, Portainer can use the same Docker capabilities to deploy and manage GPU-backed ML workloads from its interface.
