@@ -14,7 +14,7 @@ How to Manage Industrial HART Device Data with Portainer covers a specialized de
 
 - Portainer Business Edition with Edge Computing features
 - Docker installed on edge devices
-- Central Portainer server accessible from edge locations
+- Central Portainer server reachable from edge locations on TCP ports 9443 and 8000
 - Appropriate hardware for your edge use case
 
 ## Architecture Overview
@@ -24,7 +24,7 @@ The deployment follows a hub-and-spoke model where central Portainer manages edg
 ```text
 Central Portainer (Cloud/DC)
         |
-   Edge Tunnel (Port 8000)
+ HTTPS Poll (Port 9443) + TLS Tunnel (Port 8000)
         |
   +-----+------+-------+
   |     |      |       |
@@ -50,8 +50,7 @@ cat > /etc/docker/daemon.json << 'EOF'
   "log-opts": {
     "max-size": "10m",
     "max-file": "2"
-  },
-  "storage-driver": "overlay2"
+  }
 }
 EOF
 systemctl restart docker
@@ -60,27 +59,31 @@ systemctl restart docker
 ## Step 2: Register Edge Devices in Portainer
 
 1. Go to **Environments** > **Add Environment**
-2. Select **Edge Agent**
+2. Select **Docker Standalone**, click **Start Wizard**, then choose **Edge Agent Standard**
 3. Configure environment settings:
    - Name: descriptive device name
    - Edge Group: appropriate group
    - Tags: location, type, function
 
-4. Copy the generated edge key
+4. Choose your platform, then copy the generated command
 
-5. Run on the device:
+5. Run it on the device. A typical Docker Standalone command looks like:
 
 ```bash
 # Deploy Portainer Edge Agent
+# Match the agent tag to your Portainer Server version.
+# Add -e EDGE_INSECURE_POLL=1 only if Portainer uses a self-signed certificate.
 docker run -d \
-  --name portainer-agent \
+  --name portainer_edge_agent \
   --restart always \
   -v /var/run/docker.sock:/var/run/docker.sock \
   -v /var/lib/docker/volumes:/var/lib/docker/volumes \
+  -v /:/host \
+  -v portainer_agent_data:/data \
   -e EDGE=1 \
+  -e EDGE_ID="YOUR_EDGE_ID" \
   -e EDGE_KEY="YOUR_EDGE_KEY" \
-  -e EDGE_INSECURE_POLL=1 \
-  portainer/agent:latest
+  portainer/agent:lts
 ```
 
 ## Step 3: Create Application Stack
@@ -89,14 +92,12 @@ Deploy your application via Portainer Edge Stacks:
 
 ```yaml
 # docker-compose.yml
-version: "3.8"
-
 services:
   app:
     image: your-app:latest
     restart: always
     environment:
-      - DEVICE_ID=${HOSTNAME}
+      - DEVICE_ID=${PORTAINER_EDGE_ID}
       - ENV=production
     volumes:
       - app-data:/data
@@ -108,20 +109,18 @@ services:
 
   # Local monitoring agent
   node-exporter:
-    image: prom/node-exporter:latest
-    restart: always
+    image: quay.io/prometheus/node-exporter:latest
+    restart: unless-stopped
+    network_mode: host
     pid: host
     volumes:
-      - /proc:/host/proc:ro
-      - /sys:/host/sys:ro
-      - /:/rootfs:ro
+      - /:/host:ro,rslave
     command:
-      - '--path.procfs=/host/proc'
-      - '--path.rootfs=/rootfs'
-      - '--path.sysfs=/host/sys'
+      - '--path.rootfs=/host'
 
 volumes:
   app-data:
+  cache-data:
 ```
 
 ## Step 4: Configure Edge Groups
@@ -140,7 +139,7 @@ Use Portainer's edge monitoring features:
 - **Last Check-in**: When did each device last contact Portainer?
 - **Container Status**: Are all containers running?
 - **Resource Usage**: CPU/memory utilization per device
-- **Edge Jobs**: Run diagnostic commands across the fleet
+- **Edge Jobs**: Schedule diagnostic or maintenance scripts on supported Docker Standalone edge hosts that use `/etc/cron.d` (beta feature)
 
 ## Step 6: Handle Offline Devices
 
@@ -166,13 +165,13 @@ Rolling updates via Portainer Edge Stacks:
 
 1. Update the image tag in your Edge Stack
 2. Click **Update Stack**
-3. Portainer distributes the update to all devices in the target group
+3. Portainer applies the update to the target devices according to the Edge Stack rollout settings as agents poll in
 4. Monitor rollout progress from the central dashboard
 
 ## Security Considerations
 
-- Enable TLS on the edge tunnel
-- Use separate credentials per edge device
+- Use trusted TLS certificates for the Portainer API and tunnel endpoints
+- Use the unique Edge ID and `EDGE_KEY` generated for each edge device
 - Implement network segmentation
 - Regular certificate rotation
 - Audit log monitoring via Portainer
