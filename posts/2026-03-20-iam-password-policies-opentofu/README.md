@@ -22,7 +22,7 @@ AWS IAM password policies define requirements for passwords created by IAM users
 
 # There is exactly one password policy per AWS account
 resource "aws_iam_account_password_policy" "main" {
-  # Minimum password length (8-128 characters, recommend 14+)
+  # Minimum password length (6-128 characters, recommend 14+)
   minimum_password_length = 14
 
   # Require at least one uppercase letter (A-Z)
@@ -43,15 +43,11 @@ resource "aws_iam_account_password_policy" "main" {
   # Maximum age before password must be changed (1-1095 days)
   max_password_age = 90
 
-  # Minimum age before a password can be changed again
-  # Prevents users from cycling through passwords to reuse old ones
-  minimum_password_age = 1
-
   # Allow users to change their own passwords
   allow_users_to_change_password = true
 
-  # Expire passwords even for accounts with no password expiration
-  # Setting to false keeps passwords non-expiring
+  # If true, an administrator must reset expired passwords
+  # Setting this to false allows self-service password changes after expiry
   hard_expiry = false
 }
 ```
@@ -59,7 +55,8 @@ resource "aws_iam_account_password_policy" "main" {
 ## Step 2: Enforce MFA via IAM Policy
 
 ```hcl
-# Policy that enforces MFA for all actions except managing MFA devices
+# Policy that enforces MFA for most actions while still allowing
+# MFA enrollment and limited account visibility
 # Attach to all IAM users or groups
 resource "aws_iam_policy" "require_mfa" {
   name        = "ForceMFAPolicy"
@@ -74,25 +71,30 @@ resource "aws_iam_policy" "require_mfa" {
         Effect = "Allow"
         Action = [
           "iam:GetAccountPasswordPolicy",
-          "iam:GetAccountSummary",
           "iam:ListVirtualMFADevices"
         ]
         Resource = "*"
       },
       {
+        Sid    = "AllowCreateOwnVirtualMFADevice"
+        Effect = "Allow"
+        Action = [
+          "iam:CreateVirtualMFADevice"
+        ]
+        Resource = "arn:aws:iam::*:mfa/*"
+      },
+      {
         Sid    = "AllowManageOwnMFA"
         Effect = "Allow"
         Action = [
-          "iam:CreateVirtualMFADevice",
+          "iam:DeactivateMFADevice",
           "iam:EnableMFADevice",
+          "iam:GetMFADevice",
           "iam:GetUser",
           "iam:ListMFADevices",
           "iam:ResyncMFADevice"
         ]
-        Resource = [
-          "arn:aws:iam::*:mfa/$${aws:username}",
-          "arn:aws:iam::*:user/$${aws:username}"
-        ]
+        Resource = "arn:aws:iam::*:user/$${aws:username}"
       },
       {
         Sid    = "DenyWithoutMFA"
@@ -103,7 +105,6 @@ resource "aws_iam_policy" "require_mfa" {
           "iam:GetUser",
           "iam:ListMFADevices",
           "iam:ResyncMFADevice",
-          "iam:DeleteVirtualMFADevice",
           "sts:GetSessionToken"
         ]
         Resource = "*"
@@ -119,10 +120,11 @@ resource "aws_iam_policy" "require_mfa" {
 
 # Attach MFA enforcement to all user groups
 resource "aws_iam_group_policy_attachment" "mfa_all_users" {
+  # Replace these with the IAM groups in your account
   for_each = toset([
-    aws_iam_group.developers.name,
-    aws_iam_group.devops.name,
-    aws_iam_group.security.name
+    "developers",
+    "devops",
+    "security"
   ])
 
   group      = each.value
@@ -130,7 +132,11 @@ resource "aws_iam_group_policy_attachment" "mfa_all_users" {
 }
 ```
 
+Like AWS's documented Force MFA pattern, this also blocks first-time and expired-password resets during console sign-in unless you explicitly exempt `iam:ChangePassword` and `iam:GetAccountPasswordPolicy`.
+
 ## Step 3: Monitor Password Policy Compliance
+
+This assumes AWS Config is already enabled with a configuration recorder and delivery channel.
 
 ```hcl
 # AWS Config rule to check password policy compliance
