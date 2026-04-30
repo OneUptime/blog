@@ -73,7 +73,7 @@ locals {
     for pair in local.env_region_pairs :
     "${pair[0]}-${pair[1]}" => { environment = pair[0], region = pair[1] }
   }
-  # {"dev-us-east-1" = {env="dev", region="us-east-1"}, ...}
+  # {"dev-us-east-1" = {environment="dev", region="us-east-1"}, ...}
 }
 
 resource "aws_s3_bucket" "regional_config" {
@@ -101,7 +101,7 @@ variable "team_members" {
 # Flatten nested list of lists into a single list
 locals {
   all_members = flatten([for team, members in var.team_members : members])
-  # ["alice", "bob", "carol", "dave", "eve", "frank"]
+  # ["carol", "dave", "eve", "frank", "alice", "bob"]
 }
 
 # Create IAM users for all team members
@@ -149,13 +149,13 @@ variable "environment_list" {
 }
 
 locals {
-  # toset removes duplicates and sorts
+  # toset removes duplicates and discards ordering
   unique_environments = toset(var.environment_list)
-  # {"dev", "prod", "staging"} - sorted, deduplicated
+  # Set of unique values; order is not preserved
 
-  # tolist ensures list type
+  # tolist converts the set to a list
   env_list = tolist(local.unique_environments)
-  # ["dev", "prod", "staging"]
+  # Example output: ["dev", "prod", "staging"] (order is not guaranteed)
 
   # tomap for explicit map
   env_map = tomap({
