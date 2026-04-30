@@ -8,11 +8,11 @@ Description: Learn how to restrict Grafana access to specific IPv4 addresses and
 
 ---
 
-Restricting Grafana access to specific IPv4 addresses prevents unauthorized users from reaching your monitoring dashboards. This can be done at the Grafana configuration level or via a reverse proxy layer.
+Restricting Grafana access by source IPv4 address helps prevent unauthorized users from reaching your monitoring dashboards. Grafana itself can be bound to a specific IPv4 interface, while source IP allow/deny rules are typically enforced at the reverse proxy or firewall layer.
 
 ## Method 1: Grafana HTTP Binding
 
-Bind Grafana to a specific IPv4 address to prevent access from other interfaces.
+Bind Grafana to a specific IPv4 address to prevent access from other interfaces. This limits which local interface Grafana listens on, but it does not filter client source IP ranges.
 
 ```ini
 # /etc/grafana/grafana.ini
@@ -25,7 +25,7 @@ http_addr = 192.168.1.10
 
 http_port = 3000
 
-# Domain for the Grafana URL (used in email links)
+# Used as part of Grafana's root URL
 domain = grafana.example.com
 ```
 
@@ -43,6 +43,8 @@ Run Grafana on localhost only and expose it through Nginx with IP-based allow/de
 [server]
 http_addr = 127.0.0.1   # Only listen on loopback
 http_port = 3000
+domain = grafana.example.com
+root_url = http://grafana.example.com/
 ```
 
 ```nginx
@@ -67,6 +69,15 @@ server {
         proxy_set_header X-Real-IP $remote_addr;
         proxy_set_header X-Forwarded-For $proxy_add_x_forwarded_for;
     }
+
+    # Proxy Grafana Live WebSocket connections
+    location /api/live/ {
+        proxy_http_version 1.1;
+        proxy_set_header Upgrade $http_upgrade;
+        proxy_set_header Connection "upgrade";
+        proxy_set_header Host $host;
+        proxy_pass http://127.0.0.1:3000;
+    }
 }
 ```
 
@@ -74,15 +85,18 @@ server {
 nginx -t && systemctl reload nginx
 ```
 
-## Method 3: Grafana IP Range Feature (Enterprise)
+## Method 3: Grafana Auth Proxy Whitelist (Proxy IPs Only)
 
-Grafana Enterprise supports IP range restrictions via the `authorized_ip_ranges` setting.
+Grafana does not provide a documented `authorized_ip_ranges` setting for restricting end-user access by client IP. The documented Grafana IP whitelist is `auth.proxy.whitelist`, which only limits which reverse proxy IPs are allowed to send auth headers to Grafana.
 
 ```ini
-# /etc/grafana/grafana.ini (Grafana Enterprise)
-[auth]
-# Restrict login to these IPv4 ranges
-authorized_ip_ranges = 192.168.1.0/24, 10.0.0.0/8
+# /etc/grafana/grafana.ini
+[auth.proxy]
+enabled = true
+header_name = X-WEBAUTH-USER
+
+# Only trust auth proxy headers from these IPs
+whitelist = 127.0.0.1, 192.168.1.10
 ```
 
 ## Method 4: Firewall Rules
@@ -101,6 +115,7 @@ ufw deny 3000
 
 # or with iptables:
 iptables -A INPUT -p tcp --dport 3000 -s 192.168.1.0/24 -j ACCEPT
+iptables -A INPUT -p tcp --dport 3000 -s 203.0.113.5 -j ACCEPT
 iptables -A INPUT -p tcp --dport 3000 -j DROP
 ```
 
@@ -116,7 +131,8 @@ tail -f /var/log/nginx/access.log | awk '$9 == "403"'
 
 ## Key Takeaways
 
-- Set `http_addr` in `grafana.ini` to bind Grafana to an internal IPv4 address only.
+- Set `http_addr` in `grafana.ini` to bind Grafana to an internal IPv4 address only, but use a reverse proxy or firewall for source IP filtering.
 - Use Nginx `allow`/`deny` rules in the reverse proxy for granular IP-based access control.
+- Grafana's documented IP whitelist is `[auth.proxy] whitelist`, which trusts proxy IPs and is not a general client IP allowlist.
 - Firewall rules (ufw/iptables) provide the deepest protection independent of Grafana or Nginx.
 - Always pair IP restrictions with authentication (Grafana login) for defense in depth.
