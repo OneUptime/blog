@@ -13,9 +13,9 @@ For expressions in OpenTofu support an optional `if` clause that filters element
 ## Basic Filtering Syntax
 
 ```hcl
-# List with filter: [for <item> in <collection> : <expression> if <condition>]
+# Tuple with filter: [for <item> in <collection> : <expression> if <condition>]
 
-# Map with filter:  {for <item> in <collection> : <key> => <value> if <condition>}
+# Object with filter: {for <item> in <collection> : <key> => <value> if <condition>}
 
 variable "instances" {
   type = list(object({
@@ -127,8 +127,8 @@ data "aws_subnet" "all" {
 }
 
 locals {
-  # Filter to only private subnets (CIDR in 10.x.x.x range)
-  private_subnet_ids = [
+  # Filter to subnets whose CIDR block is in 10.0.0.0/8
+  ten_range_subnet_ids = [
     for id, subnet in data.aws_subnet.all : id
     if startswith(subnet.cidr_block, "10.")
   ]
