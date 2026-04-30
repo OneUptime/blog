@@ -4,11 +4,11 @@ Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
 Tags: OpenTofu, Secrets Management, Security, Infrastructure as Code, Best Practice
 
-Description: Learn the key strategies for keeping secrets out of OpenTofu configuration files, plan output, and state - including environment variables, secret managers, and sensitive variable marking.
+Description: Learn the key strategies for keeping secrets out of OpenTofu configuration files and routine plan/apply output, and for handling state safely - including environment variables, secret managers, and sensitive variable marking.
 
 ## Introduction
 
-Secrets in OpenTofu configurations are a common source of accidental credential exposure. Hardcoded passwords, API keys, and certificates can leak through version control, plan output, or unencrypted state files. This guide covers the principal strategies to handle secrets safely.
+Secrets in OpenTofu configurations are a common source of accidental credential exposure. Hardcoded passwords, API keys, and certificates can leak through version control, plan output, or unencrypted state files. This guide covers the principal strategies to handle secrets safely. Remember that `sensitive = true` only redacts routine CLI output; it does not stop OpenTofu from storing a value in state.
 
 ## Never Hardcode Secrets
 
@@ -16,6 +16,9 @@ Secrets in OpenTofu configurations are a common source of accidental credential 
 # BAD - never do this
 
 resource "aws_db_instance" "main" {
+  allocated_storage = 20
+  engine            = "postgres"
+  instance_class    = "db.t3.micro"
   username = "admin"
   password = "SuperSecretPassword123!"  # Hardcoded credential!
 }
@@ -27,6 +30,9 @@ variable "db_password" {
 }
 
 resource "aws_db_instance" "main" {
+  allocated_storage = 20
+  engine            = "postgres"
+  instance_class    = "db.t3.micro"
   username = "admin"
   password = var.db_password
 }
@@ -34,7 +40,7 @@ resource "aws_db_instance" "main" {
 
 ## Strategy 1: Environment Variables
 
-Pass secrets as environment variables - they never touch disk:
+Pass secrets as environment variables so they are not hardcoded in configuration files:
 
 ```bash
 # Set before running tofu plan/apply
@@ -56,7 +62,7 @@ In CI/CD pipelines, use the platform's secret store:
 
 ## Strategy 2: Read Secrets from AWS Secrets Manager
 
-Pull secrets at apply time using a data source - no secrets in code:
+Pull secrets at plan/apply time using a data source so they are not hardcoded in code. If you pass them to a normal resource argument, they can still be stored in state:
 
 ```hcl
 # Fetch the secret at runtime
@@ -69,17 +75,17 @@ locals {
 }
 
 resource "aws_db_instance" "main" {
+  allocated_storage = 20
+  engine            = "postgres"
+  instance_class    = "db.t3.micro"
   username = local.db_creds.username
   password = local.db_creds.password
-
-  # Mark sensitive to prevent display in plan output
-  lifecycle {
-    ignore_changes = [password]
-  }
 }
 ```
 
 ## Strategy 3: HashiCorp Vault Provider
+
+Vault keeps the secret out of HCL, but the Vault provider documents that data source values are still written to state and can appear in plan files:
 
 ```hcl
 provider "vault" {
@@ -93,6 +99,9 @@ data "vault_kv_secret_v2" "db" {
 }
 
 resource "aws_db_instance" "main" {
+  allocated_storage = 20
+  engine            = "postgres"
+  instance_class    = "db.t3.micro"
   username = data.vault_kv_secret_v2.db.data["username"]
   password = data.vault_kv_secret_v2.db.data["password"]
 }
@@ -100,7 +109,7 @@ resource "aws_db_instance" "main" {
 
 ## Marking Variables as Sensitive
 
-Always mark secrets as sensitive to suppress them from plan/apply output:
+Mark secrets as sensitive to suppress them from plan/apply output. This redacts routine CLI output only; it does not remove values from state:
 
 ```hcl
 variable "api_key" {
@@ -140,7 +149,7 @@ tofu apply -var-file="secrets.tfvars"
 Use tools like `git-secrets` or `truffleHog` to scan for secrets before they reach the repository:
 
 ```bash
-# Install git-secrets
+# Install git-secrets hooks in this repo
 git secrets --install
 git secrets --register-aws
 
@@ -150,4 +159,4 @@ git secrets --scan-history
 
 ## Conclusion
 
-The safest approach is to never let secrets reach OpenTofu configuration files at all - read them from a secrets manager data source at apply time, or inject them via environment variables. Always mark secret variables and outputs as `sensitive = true`, and use `.gitignore` to exclude any `.tfvars` files containing real credentials.
+The safest approach is to keep secrets out of OpenTofu configuration files, source them from a secrets manager or environment variables, and treat OpenTofu state as sensitive data. Mark secret variables and outputs as `sensitive = true` to redact routine CLI output, and use OpenTofu ephemerality or provider write-only arguments where supported if you need a secret to stay out of state and plan data.
