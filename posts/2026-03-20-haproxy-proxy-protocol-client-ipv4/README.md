@@ -19,7 +19,7 @@ sequenceDiagram
     participant B as Backend
     C->>H: TCP connection
     H->>B: TCP + PROXY header
-    Note over H,B: "PROXY TCP4 203.0.113.50 192.168.1.10 12345 8080\r\n"
+    Note over H,B: "PROXY TCP4 203.0.113.50 203.0.113.10 12345 80\r\n"
     B->>B: Extracts real client IP from PROXY header
     C->>H: Application data
     H->>B: Forwards data
@@ -56,7 +56,7 @@ frontend external_lb
     # Accept PROXY protocol from upstream load balancer
     bind 203.0.113.10:80 accept-proxy
 
-    # Now $src in ACLs and $REMOTE_ADDR contains the real client IP
+    # HAProxy now sees the real client IP as src for ACLs and logging
     mode http
     option forwardfor   # Also add X-Forwarded-For for HTTP backends
 
@@ -94,7 +94,7 @@ server {
     listen 8080 proxy_protocol;
 
     # Use the IP from PROXY protocol header
-    set_real_ip_from 192.168.1.0/24;   # HAProxy's IP
+    set_real_ip_from 192.168.1.0/24;   # Trust HAProxy's IP or subnet
     real_ip_header proxy_protocol;
 
     location / {
@@ -108,13 +108,12 @@ server {
 
 ```bash
 # Manually test PROXY protocol v1
-# Connect to backend and prepend PROXY header
-echo -e "PROXY TCP4 203.0.113.50 192.168.1.10 12345 8080\r\n\
-GET / HTTP/1.0\r\nHost: example.com\r\n\r\n" | \
+# Simulate what HAProxy would send to a backend
+printf 'PROXY TCP4 203.0.113.50 203.0.113.10 12345 80\r\nGET / HTTP/1.0\r\nHost: example.com\r\n\r\n' | \
   nc 192.168.1.10 8080
 
-# Use haproxy's built-in check
-echo "show servers state" | sudo socat stdio /run/haproxy/admin.sock
+# Capture traffic to a v1 backend and confirm the PROXY line is present
+sudo tcpdump -i any -A -s 128 -n host 192.168.1.10 and port 8080
 
 # Check backend logs to see if real client IPs appear
 ssh 192.168.1.10 "tail -f /var/log/nginx/access.log"
