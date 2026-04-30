@@ -162,4 +162,4 @@ aws s3 ls s3://my-app-bucket
 
 ## Conclusion
 
-IAM instance profiles are the secure, recommended way to grant EC2 instances AWS permissions. Credentials are automatically rotated by the metadata service and never stored on disk. Always enforce IMDSv2 to prevent SSRF attacks from accessing instance credentials through the metadata endpoint. Use specific resource ARNs and conditions in policies rather than wildcards to maintain least-privilege access.
+IAM instance profiles are the secure, recommended way to grant EC2 instances AWS permissions. Credentials are automatically rotated by the metadata service and never stored on disk. Always enforce IMDSv2 to add defense in depth against SSRF and related proxy/firewall issues that could expose instance credentials through the metadata endpoint. Use specific resource ARNs and conditions in policies rather than wildcards to maintain least-privilege access.
