@@ -15,15 +15,15 @@ Captive portals intercept unauthenticated users and redirect them to a login pag
 ```text
 IPv6 Captive Portal Issues:
 1. Clients may have multiple IPv6 addresses (SLAAC + DHCPv6 + privacy)
-2. HTTPS sites show certificate errors when redirected
-3. OS captive portal detection uses known IPv6 probe addresses
+2. HTTPS interception breaks TLS and causes certificate errors
+3. OS captive portal detection uses known probe URLs and may prefer IPv6 connectivity
 4. IPv6 traffic may bypass iptables if only IPv4 rules are set
 
 Solutions:
 - Use nftables/ip6tables for IPv6 traffic interception
 - Block direct IPv6 internet access until authenticated
-- Support CAPPORT API (RFC 8910) for smooth portal detection
-- Track sessions by MAC address, not IP
+- Support CAPPORT signaling (RFC 8910) and API (RFC 8908) for smooth portal detection
+- Track sessions at the device or session level rather than assuming a single IP
 ```
 
 ## nftables IPv6 Captive Portal Rules
@@ -31,10 +31,6 @@ Solutions:
 ```bash
 #!/bin/bash
 # ipv6-captive-portal.sh - Set up IPv6 captive portal intercept
-
-PORTAL_IP6="2001:db8::portal"
-PORTAL_PORT="443"
-DNS_IP6="2001:db8::dns"
 
 # Flush existing rules
 
@@ -47,7 +43,7 @@ table ip6 captive_portal {
     # Authenticated clients set (populated by portal)
     set authenticated {
         type ipv6_addr
-        flags interval, timeout
+        flags timeout
         timeout 8h
     }
 
@@ -70,8 +66,8 @@ table ip6 captive_portal {
         # Redirect HTTP to captive portal
         tcp dport 80 redirect to :8080
 
-        # Redirect HTTPS to captive portal (shows cert error - unavoidable)
-        tcp dport 443 dnat to [2001:db8::portal]:443
+        # Do not intercept HTTPS. Point the CAPPORT API and portal hostname
+        # at this gateway's IPv6 address instead.
     }
 
     chain forward {
@@ -104,33 +100,34 @@ echo "IPv6 captive portal rules loaded"
 
 # Get all IPv6 addresses for a MAC (from NDP table)
 CLIENT_MAC="aa:bb:cc:dd:ee:ff"
-CLIENT_IPS=$(ip -6 neigh show | grep "$CLIENT_MAC" | awk '{print $1}')
+CLIENT_IPS=$(ip -6 neigh show | awk -v mac="$CLIENT_MAC" '$5 == mac {print $1}')
 
 # Add all IPv6 addresses for this client
 for IP in $CLIENT_IPS; do
-    nft add element ip6 captive_portal authenticated { $IP }
+    nft add element ip6 captive_portal authenticated { $IP timeout 8h }
     echo "Authenticated IPv6: $IP"
 done
 
 # Remove on logout/expiry (automatic with timeout flag)
 # Or manual removal:
-nft delete element ip6 captive_portal authenticated { 2001:db8::client1 }
+nft delete element ip6 captive_portal authenticated { 2001:db8:100::123 }
 ```
 
-## CAPPORT API for IPv6 (RFC 8910)
+## CAPPORT API for IPv6 (RFC 8908)
 
 ```python
 #!/usr/bin/env python3
 # capport_api.py - CAPPORT API endpoint for IPv6 captive portal
 
-from flask import Flask, request, jsonify, redirect
-import socket
+from flask import Flask, Response, request, redirect
+import json
+import subprocess
 
 app = Flask(__name__)
 
 @app.route('/api/v1/status')
 def captive_status():
-    """CAPPORT API status endpoint (RFC 8910)."""
+    """CAPPORT API status endpoint (RFC 8908)."""
     client_ip = request.remote_addr
 
     # Check if client is authenticated
@@ -138,25 +135,29 @@ def captive_status():
 
     response = {
         "captive": not is_authenticated,
-        "user-portal-url": "https://portal.example.com/login",
-        "can-extend-session": True
+        "user-portal-url": "https://portal.example.com/login"
     }
 
     if is_authenticated:
         response["seconds-remaining"] = get_remaining_seconds(client_ip)
-        response.pop("user-portal-url", None)
+        response["can-extend-session"] = True
+    else:
+        response["can-extend-session"] = False
 
-    return jsonify(response)
+    return Response(
+        json.dumps(response),
+        content_type="application/captive+json",
+        headers={"Cache-Control": "private"}
+    )
 
 def check_auth(ip):
     """Check if IP is in authenticated set."""
-    # Query nftables set
-    import subprocess
     result = subprocess.run(
-        ['nft', 'list', 'set', 'ip6', 'captive_portal', 'authenticated'],
+        ['nft', 'get', 'element', 'ip6', 'captive_portal',
+         'authenticated', '{', ip, '}'],
         capture_output=True, text=True
     )
-    return ip in result.stdout
+    return result.returncode == 0
 
 def get_remaining_seconds(ip):
     """Return session time remaining."""
@@ -186,43 +187,45 @@ def authenticate_user(username, password):
     return True  # Implement actual auth
 
 def authorize_client(client_ip):
-    import subprocess
-    subprocess.run(['nft', 'add', 'element', 'ip6', 'captive_portal',
-                    'authenticated', '{', client_ip, '}'])
+    subprocess.run(
+        ['nft', 'add', 'element', 'ip6', 'captive_portal',
+         'authenticated', '{', client_ip, 'timeout', '8h', '}'],
+        check=True
+    )
 
 if __name__ == '__main__':
-    app.run(host='::', port=443, ssl_context='adhoc')
+    # Use a certificate valid for the hostname advertised via RA/DHCPv6.
+    app.run(host='::', port=443, ssl_context=('portal.crt', 'portal.key'))
 ```
 
 ## RA Options for Captive Portal Detection
 
 ```bash
-# RFC 7710 / RFC 8910: Advertise captive portal URL in RA
+# RFC 8910: Advertise captive portal API URI in RA
 # radvd.conf
 interface wlan0 {
     AdvSendAdvert on;
     # ...
-    prefix 2001:db8:guest::/64 {
+    prefix 2001:db8:100::/64 {
         AdvAutonomous on;
         AdvOnLink on;
     };
-    # Captive Portal URI option (type 37)
-    # Not natively supported in radvd - use patched version or
-    # advertise via DHCPv6 option 114
+    # Captive Portal API URI option (type 37)
+    AdvCaptivePortalAPI "https://portal.example.com/api/v1/status";
 };
 ```
 
 ```bash
 # DHCPv6 captive portal option in ISC DHCP
 # /etc/dhcp/dhcpd6.conf
-option dhcp6.capwap-ac-v6 code 112 = string;
+option dhcp6.captive-portal code 103 = text;
 
-subnet6 2001:db8:guest::/64 {
-    range6 2001:db8:guest::100 2001:db8:guest::200;
+subnet6 2001:db8:100::/64 {
+    range6 2001:db8:100::100 2001:db8:100::200;
     option dhcp6.domain-search "guest.example.com";
-    # option 114: Captive Portal URI
-    option dhcp6.capwap-ac-v6 "https://portal.example.com/api/v1/status";
+    # option 103: Captive Portal API URI
+    option dhcp6.captive-portal "https://portal.example.com/api/v1/status";
 }
 ```
 
-IPv6 captive portals require tracking clients by MAC address rather than IP since each device may have multiple IPv6 addresses, using nftables with named sets for efficient allow-listing, and implementing the CAPPORT API (RFC 8910) to enable smooth captive portal detection in modern operating systems that actively probe for portal presence.
+IPv6 captive portals often need to track clients at the device or session level because each device may use multiple IPv6 addresses, use nftables with named sets for efficient allow-listing, and implement CAPPORT signaling (RFC 8910) together with the CAPPORT API (RFC 8908) to enable smooth captive portal detection in modern operating systems.
