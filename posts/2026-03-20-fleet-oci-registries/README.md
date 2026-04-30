@@ -4,44 +4,41 @@ Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
 Tags: Fleet, GitOps, Rancher, Kubernetes, OCI
 
-Description: Learn how to configure Fleet to deploy applications from OCI (Open Container Initiative) registries, enabling GitOps workflows based on container registries instead of Git.
+Description: Learn how to configure Fleet to use OCI registries for Helm charts and bundle storage, enabling registry-based workflows alongside Git-managed bundles.
 
 ## Introduction
 
-Fleet supports OCI (Open Container Initiative) registries as a source for bundles, in addition to Git repositories. This enables you to package your Kubernetes configurations as OCI artifacts and push them to container registries like Docker Hub, Amazon ECR, Google Artifact Registry, or Harbor. When Fleet detects a new artifact version in the registry, it automatically deploys the updated configuration to your clusters.
+Fleet can work with OCI registries in two supported ways. You can deploy Helm charts stored in OCI registries by creating a `HelmOp` resource, and you can use an OCI registry as the storage backend for bundle content when a `GitRepo` would otherwise store large payloads in etcd. Raw Kubernetes YAML, Kustomize overlays, and `fleet.yaml` bundles still come from Git repositories.
 
 ## Prerequisites
 
-- Fleet installed in Rancher (v0.9+ for OCI support)
-- An OCI-compatible container registry
-- `kubectl` access to Fleet manager
-- `helm` and `oras` CLI tools
+- Fleet installed in Rancher with HelmOps support available
+- An OCI-compatible container registry reachable from the targeted downstream clusters
+- `kubectl` access to the Fleet manager cluster
+- `helm` CLI
 
-## Understanding OCI Bundles in Fleet
+## Understanding OCI Support in Fleet
 
-OCI bundles work similarly to Git-based bundles, but instead of pointing to a Git repository URL, you point Fleet at an OCI registry URL. Fleet pulls the OCI artifact, extracts the Kubernetes manifests, and deploys them.
+Fleet's `GitRepo` resource still points to a Git repository URL. For OCI-hosted Helm charts, Fleet uses the `HelmOp` custom resource instead. If you want to keep Git as the source of truth but offload large bundle contents from etcd, configure `ociRegistrySecret` on the `GitRepo`.
 
-OCI artifacts can contain:
-- Raw Kubernetes YAML files
-- Helm charts
-- Kustomize overlays
-- fleet.yaml configurations
+OCI registries can therefore be used in Fleet for:
+- Helm charts deployed through `HelmOp`
+- Bundle content storage for `GitRepo` resources via `ociRegistrySecret`
 
-## Packaging Manifests as OCI Artifacts
+## Packaging Helm Charts as OCI Artifacts
 
 ### Using Helm to Package and Push
 
 ```bash
 # Package a Helm chart as an OCI artifact
-
 helm package ./my-chart
 
-# Log into OCI registry (example: Docker Hub)
-helm registry login registry-1.docker.io \
+# Log in to the OCI registry (example: Docker Hub)
+echo "$HELM_REGISTRY_PASSWORD" | helm registry login registry-1.docker.io \
   --username my-username \
-  --password my-token
+  --password-stdin
 
-# Push chart to OCI registry
+# Push the chart to the OCI registry
 helm push my-chart-1.0.0.tgz \
   oci://registry-1.docker.io/my-org
 
@@ -50,46 +47,37 @@ helm push my-chart-1.0.0.tgz \
   oci://123456789.dkr.ecr.us-east-1.amazonaws.com/charts
 ```
 
-### Using ORAS to Push Raw Manifests
+### Using OCI Storage for Bundle Content
+
+If your bundle resources are large, configure OCI storage instead of pushing raw manifests with `oras`. After you create the secret, Fleet handles uploading bundle content to the registry for the affected `GitRepo`.
 
 ```bash
-# Install ORAS CLI
-# https://oras.land/docs/installation
-
-# Package directory as OCI artifact
-oras push \
-  registry.example.com/my-org/k8s-configs:v1.0.0 \
-  --artifact-type application/vnd.fleet.bundle.v1 \
-  ./k8s-manifests/:application/yaml
-
-# Push to a private registry with authentication
-oras push \
-  --username myuser \
-  --password mytoken \
-  registry.example.com/k8s-configs:v1.0.0 \
-  ./manifests/
+# Create an OCI storage secret for Fleet bundle content
+# The reference must not use an oci:// prefix
+kubectl -n fleet-default create secret generic ocistorage \
+  --type=fleet.cattle.io/bundle-oci-storage/v1alpha1 \
+  --from-literal=reference=registry.example.com/fleet-content \
+  --from-literal=username=myuser \
+  --from-literal=password=mytoken
 ```
 
-## Creating a GitRepo for OCI Sources
+## Creating a GitRepo Using OCI Storage
 
 ```yaml
-# gitrepo-oci.yaml - Reference an OCI registry as source
+# gitrepo-oci-storage.yaml - Store GitRepo bundle content in an OCI registry
 apiVersion: fleet.cattle.io/v1alpha1
 kind: GitRepo
 metadata:
-  name: my-app-oci
+  name: my-app-git
   namespace: fleet-default
 spec:
-  # OCI URL format: oci://registry/repository:tag
-  repo: oci://registry.example.com/my-org/my-app
+  repo: https://github.com/my-org/my-fleet-configs
+  branch: main
+  paths:
+    - ./clusters/production
 
-  # OCI reference (tag or digest)
-  # Using a digest provides immutable pinning
-  revision: v1.2.0
-  # Or use a digest: sha256:abc123...
-
-  # Authentication secret for private registry
-  clientSecretName: oci-registry-auth
+  # Reference the OCI storage secret created earlier
+  ociRegistrySecret: ocistorage
 
   targets:
     - clusterSelector: {}
@@ -97,14 +85,14 @@ spec:
 
 ## Setting Up OCI Registry Authentication
 
+For private OCI-hosted Helm charts, create a secret with `username` and `password` keys in the same namespace as the `HelmOp`, then reference it with `spec.helmSecretName`.
+
 ### For Docker Hub
 
 ```bash
-# Create secret from Docker config
-kubectl create secret docker-registry oci-registry-auth \
-  --docker-server=registry-1.docker.io \
-  --docker-username=my-username \
-  --docker-password=my-access-token \
+kubectl create secret generic oci-helm-auth \
+  --from-literal=username=my-username \
+  --from-literal=password=my-access-token \
   -n fleet-default
 ```
 
@@ -115,108 +103,106 @@ kubectl create secret docker-registry oci-registry-auth \
 AWS_TOKEN=$(aws ecr get-login-password --region us-east-1)
 
 # Create secret
-kubectl create secret docker-registry ecr-registry-auth \
-  --docker-server=123456789.dkr.ecr.us-east-1.amazonaws.com \
-  --docker-username=AWS \
-  --docker-password="${AWS_TOKEN}" \
+kubectl create secret generic ecr-helm-auth \
+  --from-literal=username=AWS \
+  --from-literal=password="${AWS_TOKEN}" \
   -n fleet-default
 ```
 
 ### For Harbor
 
 ```bash
-# Create secret for Harbor registry
-kubectl create secret docker-registry harbor-registry-auth \
-  --docker-server=harbor.example.com \
-  --docker-username=robot\$my-robot-account \
-  --docker-password=my-robot-token \
+kubectl create secret generic harbor-helm-auth \
+  --from-literal=username=robot\$my-robot-account \
+  --from-literal=password=my-robot-token \
   -n fleet-default
 ```
 
-## GitRepo Using OCI with Helm Charts
+## HelmOp Using OCI with Helm Charts
 
 ```yaml
-# gitrepo-oci-helm.yaml - Deploy Helm chart from OCI registry
+# helmop-oci.yaml - Deploy Helm chart from OCI registry
 apiVersion: fleet.cattle.io/v1alpha1
-kind: GitRepo
+kind: HelmOp
 metadata:
   name: my-helm-app-oci
   namespace: fleet-default
 spec:
-  # Point to OCI-hosted Helm chart
-  repo: oci://registry.example.com/charts/my-app
+  helm:
+    releaseName: my-app
+    repo: oci://registry.example.com/charts/my-app
+    version: "2.x.x"
+    values:
+      replicaCount: 3
 
-  # Chart version to deploy
-  revision: "2.1.0"
+  # Poll for newer matching tags in the OCI registry
+  pollingInterval: 5m
 
-  clientSecretName: harbor-registry-auth
+  # Kubernetes namespace where the chart will be installed
+  namespace: production
 
-  targets:
-    - name: production
-      clusterSelector:
-        matchLabels:
-          env: production
-      helm:
-        values:
-          replicaCount: 3
+  helmSecretName: harbor-helm-auth
 ```
 
 ## Automating OCI Updates in CI/CD
 
-Set up a CI/CD pipeline to push OCI artifacts and update Fleet:
+If your `HelmOp` uses a semantic version constraint and a non-zero `pollingInterval`, Fleet can detect newly published matching OCI tags without patching the resource.
 
 ```yaml
 # .github/workflows/deploy-oci.yml
-name: Package and Deploy via OCI
+name: Package and Push Helm Chart
 
 on:
   push:
     branches: [main]
-    paths: ['k8s/**']
+    paths: ['charts/my-app/**']
 
 jobs:
-  package-and-update:
+  package-and-push:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
 
-      - name: Install ORAS
+      - name: Install Helm
         run: |
-          ORAS_VERSION=1.1.0
-          curl -LO https://github.com/oras-project/oras/releases/download/v${ORAS_VERSION}/oras_${ORAS_VERSION}_linux_amd64.tar.gz
-          tar -xf oras_${ORAS_VERSION}_linux_amd64.tar.gz oras
-          sudo mv oras /usr/local/bin/
+          curl -fsSL -o get_helm.sh https://raw.githubusercontent.com/helm/helm/main/scripts/get-helm-4
+          chmod 700 get_helm.sh
+          ./get_helm.sh
 
-      - name: Push manifests to OCI registry
+      - name: Log in to OCI registry
         run: |
-          oras push \
-            ${{ secrets.REGISTRY }}/k8s-configs:${{ github.sha }} \
-            ${{ secrets.REGISTRY }}/k8s-configs:latest \
-            ./k8s/
+          echo "${{ secrets.REGISTRY_PASSWORD }}" | helm registry login \
+            ${{ secrets.REGISTRY_HOST }} \
+            --username "${{ secrets.REGISTRY_USERNAME }}" \
+            --password-stdin
 
-      - name: Update Fleet GitRepo revision
+      - name: Package chart
+        run: helm package ./charts/my-app --destination ./dist
+
+      - name: Push chart to OCI registry
         run: |
-          # Update the GitRepo to use the new digest
-          kubectl patch gitrepo my-app-oci \
-            -n fleet-default \
-            --type=merge \
-            -p "{\"spec\":{\"revision\":\"${{ github.sha }}\"}}"
+          CHART_PACKAGE=$(ls ./dist/my-app-*.tgz)
+          helm push "${CHART_PACKAGE}" \
+            oci://${{ secrets.REGISTRY_HOST }}/${{ secrets.REGISTRY_NAMESPACE }}
 ```
 
 ## Monitoring OCI-Based Deployments
 
 ```bash
-# Check GitRepo status for OCI source
-kubectl get gitrepo my-app-oci -n fleet-default -o wide
+# Check HelmOp status for OCI-hosted chart
+kubectl get helmops -n fleet-default
 
-# View the current OCI reference being used
-kubectl get gitrepo my-app-oci -n fleet-default \
-  -o jsonpath='{.spec.revision}'
+# View the resolved chart version
+kubectl get helmop my-helm-app-oci -n fleet-default \
+  -o jsonpath='{.status.version}'
+
+# Check GitRepo status when using OCI storage
+kubectl get gitrepo my-app-git -n fleet-default -o wide
 
 # Check bundle deployment status
-kubectl get bundles -n fleet-default | grep my-app-oci
+kubectl get bundles -n fleet-default
 ```
 
 ## Conclusion
 
-OCI registry support in Fleet opens up new possibilities for packaging and distributing Kubernetes configurations. By treating your manifests as versioned OCI artifacts, you get immutable, content-addressed deployments with the same ecosystem of tools used for container images. For organizations that are already deeply integrated with container registries and CI/CD pipelines that build and push images, OCI-based Fleet deployments provide a natural extension of those workflows to Kubernetes configuration management.
+Fleet can integrate with OCI registries for Helm-based deployments and for bundle content storage, but those workflows use different resources. Use `HelmOp` when the source of truth is an OCI-hosted Helm chart, and keep using `GitRepo` for raw YAML, Kustomize, or mixed-content repositories. When Git-based bundles grow large, `ociRegistrySecret` lets Fleet store that content in an OCI registry instead of etcd while preserving the existing Git-driven workflow.
