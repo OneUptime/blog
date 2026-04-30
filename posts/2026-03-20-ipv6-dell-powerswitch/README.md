@@ -4,7 +4,7 @@ Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
 Tags: IPv6, Dell, PowerSwitch, SmartFabric, Networking, Datacenter
 
-Description: Configure IPv6 on Dell PowerSwitch (S-series, Z-series) running SmartFabric OS or Dell OS10 for campus and datacenter IPv6 deployments.
+Description: Configure IPv6 on Dell PowerSwitch (S-series, Z-series) running SmartFabric OS10 (Dell OS10) for campus and datacenter IPv6 deployments.
 
 ## Introduction
 
@@ -25,7 +25,7 @@ switch(config)# ipv6 unicast-routing
 
 ```bash
 # Configure a routed interface
-switch(config)# interface ethernet1/1/1
+switch(config)# interface ethernet 1/1/1
 switch(conf-if-eth1/1/1)# no switchport
 switch(conf-if-eth1/1/1)# ipv6 address 2001:db8:0:1::1/64
 switch(conf-if-eth1/1/1)# no shutdown
@@ -46,14 +46,15 @@ switch(conf-if-vl-100)# no shutdown
 
 ```bash
 # Enable RA and configure on VLAN 100
-switch(conf-if-vl-100)# ipv6 nd ra interval 100
-switch(conf-if-vl-100)# ipv6 nd ra lifetime 1800
+switch(conf-if-vl-100)# ipv6 nd send-ra
+switch(conf-if-vl-100)# ipv6 nd max-ra-interval 100
+switch(conf-if-vl-100)# ipv6 nd ra-lifetime 1800
 switch(conf-if-vl-100)# ipv6 nd managed-config-flag
 # Remove managed flag for pure SLAAC:
 switch(conf-if-vl-100)# no ipv6 nd managed-config-flag
 
 # Add prefix to advertise
-switch(conf-if-vl-100)# ipv6 nd prefix 2001:db8:1:100::/64 valid-lft 86400 preferred-lft 14400
+switch(conf-if-vl-100)# ipv6 nd prefix 2001:db8:1:100::/64 lifetime valid-lifetime 86400 preferred-lifetime 14400
 ```
 
 ## Step 5: Configure Static and Default Routes
@@ -63,24 +64,25 @@ switch(conf-if-vl-100)# ipv6 nd prefix 2001:db8:1:100::/64 valid-lft 86400 prefe
 switch(config)# ipv6 route 2001:db8:2::/48 2001:db8:0:1::2
 
 # Default IPv6 route
-switch(config)# ipv6 route ::/0 2001:db8:isp::1
+switch(config)# ipv6 route ::/0 2001:db8:0:ff::1
 
 # Floating static (backup route with higher administrative distance)
-switch(config)# ipv6 route ::/0 2001:db8:isp2::1 200
+switch(config)# ipv6 route ::/0 2001:db8:0:fe::1 200
 ```
 
 ## Step 6: Configure OSPFv3
 
 ```bash
 # Configure OSPFv3 process
-switch(config)# ipv6 router ospf 1
-switch(config-ipv6-router-ospf-1)# router-id 1.1.1.1
+switch(config)# router ospfv3 1
+switch(config-router-ospfv3-1)# router-id 1.1.1.1
+switch(config-router-ospfv3-1)# exit
 
 # Enable OSPFv3 on interfaces
 switch(config)# interface vlan 100
 switch(conf-if-vl-100)# ipv6 ospf 1 area 0
 
-switch(config)# interface ethernet1/1/1
+switch(config)# interface ethernet 1/1/1
 switch(conf-if-eth1/1/1)# ipv6 ospf 1 area 0
 ```
 
@@ -91,16 +93,17 @@ switch(conf-if-eth1/1/1)# ipv6 ospf 1 area 0
 switch(config)# ipv6 access-list IPV6-PROTECT
 
 # Permit ICMPv6 (required for Neighbor Discovery)
-switch(config-ipv6-acl)# seq 10 permit icmpv6 any any
+switch(conf-ipv6-acl)# seq 10 permit icmp any any
 
-# Permit established TCP
-switch(config-ipv6-acl)# seq 20 permit tcp any any established
+# Permit TCP packets with the ACK bit set
+switch(conf-ipv6-acl)# seq 20 permit tcp any any ack
 
 # Implicit deny at the end
-switch(config-ipv6-acl)# seq 30 deny ipv6 any any count
+switch(conf-ipv6-acl)# seq 30 deny ipv6 any any count
+switch(conf-ipv6-acl)# exit
 
 # Apply to interface
-switch(config)# interface ethernet1/1/1
+switch(config)# interface ethernet 1/1/1
 switch(conf-if-eth1/1/1)# ipv6 access-group IPV6-PROTECT in
 ```
 
@@ -110,14 +113,15 @@ switch(conf-if-eth1/1/1)# ipv6 access-group IPV6-PROTECT in
 # Configure BGP for IPv6
 switch(config)# router bgp 65001
 switch(config-router-bgp-65001)# router-id 10.0.0.1
-switch(config-router-bgp-65001)# !
 switch(config-router-bgp-65001)# address-family ipv6 unicast
-switch(config-router-bgp-65001-af-ipv6-uc)# network 2001:db8::/48
+switch(config-router-bgpv6-af)# network 2001:db8::/48
+switch(config-router-bgpv6-af)# exit
 
 # Configure BGP peer
-switch(config-router-bgp-65001)# neighbor 2001:db8:0:1::2 remote-as 65002
-switch(config-router-bgp-65001)# address-family ipv6 unicast
-switch(config-router-bgp-65001-af-ipv6-uc)# neighbor 2001:db8:0:1::2 activate
+switch(config-router-bgp-65001)# neighbor 2001:db8:0:1::2
+switch(config-router-neighbor)# remote-as 65002
+switch(config-router-neighbor)# address-family ipv6 unicast
+switch(config-router-bgp-neighbor-af)# activate
 ```
 
 ## Verification Commands
@@ -133,13 +137,13 @@ switch# show ipv6 route
 switch# show ipv6 ospf neighbor
 
 # Show BGP IPv6 summary
-switch# show bgp ipv6 unicast summary
+switch# show ip bgp ipv6 unicast summary
 
 # Show IPv6 neighbor table
 switch# show ipv6 neighbors
 
 # Ping with IPv6
-switch# ping ipv6 2606:4700:4700::1111
+switch# ping6 2606:4700:4700::1111
 ```
 
 ## Conclusion
