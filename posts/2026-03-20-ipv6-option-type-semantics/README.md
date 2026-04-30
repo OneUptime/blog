@@ -23,15 +23,16 @@ The 8-bit Option Type byte in IPv6 TLV options is not just an identifier - it en
 Action bits [7:6]:
   00 = Skip this option, continue processing the header
   01 = Discard packet, send nothing
-  10 = Discard packet + send ICMPv6 "Parameter Problem" to source
-  11 = Discard packet + send ICMPv6 "Parameter Problem" even if dst is multicast
+  10 = Discard packet + send ICMPv6 "Parameter Problem" to source, even if dst is multicast
+  11 = Discard packet + send ICMPv6 "Parameter Problem" only if dst is not multicast
 
 Change flag [5]:
   0 = Option data is immutable in transit (OK for AH to cover)
   1 = Option data may change en route (AH treats as zeros when computing ICV)
 
-Option ID [4:0]:
-  5-bit identifier, giving 32 possible option types per action×change combination
+Low-order bits [4:0]:
+  5-bit low-order subfield, giving 32 values per action×change combination
+  The full 8-bit Option Type still identifies the option
   Total possible types: 4 (actions) × 2 (change) × 32 (IDs) = 256 types
 ```
 
@@ -52,8 +53,8 @@ def decode_option_type(option_type_byte: int) -> dict:
     actions = {
         0b00: "skip option and continue processing",
         0b01: "discard the packet silently",
-        0b10: "discard + send ICMPv6 Parameter Problem (code 2) to source",
-        0b11: "discard + send ICMPv6 Parameter Problem even if dst is multicast",
+        0b10: "discard + send ICMPv6 Parameter Problem (code 2) to source, even if dst is multicast",
+        0b11: "discard + send ICMPv6 Parameter Problem (code 2) only if dst is not multicast",
     }
 
     return {
@@ -68,14 +69,14 @@ def decode_option_type(option_type_byte: int) -> dict:
     }
 
 def analyze_options_table():
-    """Analyze all well-known IPv6 option types."""
+    """Analyze a subset of well-known IPv6 option types."""
     known_options = {
         0x00: "Pad1",
         0x01: "PadN",
         0x04: "Tunnel Encap Limit",
         0x05: "Router Alert",
         0x07: "CALIPSO",
-        0x26: "SMF_DPD",
+        0x26: "Quick-Start",
         0xC2: "Jumbo Payload",
         0xC9: "Home Address Option",
     }
@@ -131,13 +132,13 @@ def design_custom_option(
     Args:
         option_id:     Your option's ID (0-31)
         is_mutable:    True if the value might change in transit
-        unknown_action: "skip", "discard", "icmp", "icmp-always"
+        unknown_action: "skip", "discard", "icmp-always", "icmp-unless-multicast"
     """
     action_map = {
-        "skip":        0b00,
-        "discard":     0b01,
-        "icmp":        0b10,
-        "icmp-always": 0b11,
+        "skip":                  0b00,
+        "discard":               0b01,
+        "icmp-always":           0b10,
+        "icmp-unless-multicast": 0b11,
     }
 
     action_bits = action_map[unknown_action]
@@ -162,4 +163,4 @@ type_byte = design_custom_option(
 
 ## Conclusion
 
-IPv6 option type bytes encode three semantic properties: what to do when the option is not recognized (action bits), whether the data can change in transit (change flag), and the option identifier. These properties enable the IPv6 extension header framework to be forward-compatible - new options can be added with a clearly specified behavior for systems that don't yet understand them. When implementing or designing IPv6 options, always choose these bits carefully to ensure correct behavior across the diverse set of nodes a packet may traverse.
+IPv6 option type bytes encode three semantic properties: what to do when the option is not recognized (action bits), whether the data can change in transit (change flag), and the low-order value bits that help form the full 8-bit Option Type. These properties enable the IPv6 extension header framework to be forward-compatible - new options can be added with a clearly specified behavior for systems that don't yet understand them. When implementing or designing IPv6 options, always choose these bits carefully to ensure correct behavior across the diverse set of nodes a packet may traverse.
