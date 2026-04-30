@@ -40,7 +40,7 @@ format(format_string, values...)
 
 ```hcl
 locals {
-  # Pad with spaces (right-align is default for numbers)
+  # Pad with spaces (right-align is default)
   example1 = format("%10s", "hello")    # "     hello"
   example2 = format("%-10s", "hello")   # "hello     " (left-align with -)
   example3 = format("%05d", 42)         # "00042" (zero-pad numbers)
@@ -130,7 +130,7 @@ name2 = format("app-%s", var.environment)
 # - Number formatting (padding, precision)
 # - Hexadecimal output
 # - Complex format strings with many values
-# - Escape sequences
+# - JSON-quoted string output
 ```
 
 ---
