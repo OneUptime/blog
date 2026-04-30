@@ -8,186 +8,112 @@ Description: Learn how to safely remove nodes from a Harvester cluster for decom
 
 ## Introduction
 
-Removing a node from a Harvester cluster requires careful preparation to ensure VMs are migrated, storage data is replicated to remaining nodes, and the Kubernetes and etcd configurations are updated correctly. Improper node removal can result in data loss or cluster instability. This guide covers the complete safe node removal process.
+Removing a node from a Harvester cluster requires careful preparation to ensure VMs are migrated or shut down as needed, storage replicas are evacuated to remaining nodes, and the Harvester and Kubernetes cluster state is updated correctly. Improper node removal can result in data loss or cluster instability. This guide covers the complete safe node removal process.
 
 ## Important Considerations
 
-- **Minimum cluster size**: A 3-node cluster is the minimum for HA. Removing a node from a 3-node cluster leaves you with a single point of failure.
-- **etcd quorum**: Harvester uses etcd for cluster state. You must maintain an odd number of nodes (3, 5, 7) for quorum. Never remove a node that would break quorum.
-- **Storage replicas**: Longhorn volumes default to 3 replicas. Removing a node with replicas will trigger re-replication to remaining nodes.
+- **Minimum cluster size**: A 3-management-node cluster is the minimum HA control plane. If your cluster has three control plane nodes and no worker nodes, add a new node before removing a control plane node.
+- **etcd quorum**: Harvester uses etcd for cluster state. You must maintain an odd number of etcd members (for example, 3, 5, or 7). Never remove a node that would break quorum.
+- **Storage replicas**: The default `harvester-longhorn` StorageClass uses 3 replicas. Removing a node with replicas triggers rebuilding on the remaining schedulable nodes, and volumes can remain degraded if the cluster lacks capacity.
 
 ## Pre-Removal Checklist
 
 ```bash
-# 1. Check cluster node count
+# 1. Review cluster roles and current size
+kubectl get nodes
 
-kubectl get nodes | wc -l
-# Must leave at least 3 nodes after removal
+# If the cluster has three control-plane nodes and no worker nodes,
+# add a new node before removing a control-plane node.
 
 # 2. Check VMs running on the target node
 TARGET_NODE="harvester-node-04"
-kubectl get vmi -A --field-selector spec.nodeName=${TARGET_NODE}
+kubectl get vmi -A \
+    -o custom-columns='NAMESPACE:.metadata.namespace,NAME:.metadata.name,NODE:.status.nodeName,PHASE:.status.phase' \
+    | grep "${TARGET_NODE}" || true
 
-# 3. Check Longhorn replicas on the target node
+# 3. Check Longhorn volume health
+kubectl get volumes.longhorn.io -n longhorn-system \
+    -o custom-columns='NAME:.metadata.name,ROBUSTNESS:.status.robustness'
+
+# 4. Check Longhorn replicas on the target node
 kubectl get replicas.longhorn.io -n longhorn-system \
-    -o json | jq --arg node ${TARGET_NODE} \
-    '.items[] | select(.spec.nodeID == $node) | .metadata.name'
+    -o custom-columns='NAME:.metadata.name,NODE:.spec.nodeID,STATE:.status.currentState' \
+    | grep "${TARGET_NODE}" || true
 
-# 4. Check total cluster storage capacity
-kubectl get node ${TARGET_NODE} \
-    -o jsonpath='{.status.capacity}'
-
-# Ensure remaining nodes have enough storage for all replica data
+# Ensure remaining nodes have enough compute and storage capacity
+# to accept the workload and rebuilt replicas
 ```
 
 ## Step 1: Enable Maintenance Mode
 
-Maintenance mode migrates VMs off the node and stops new scheduling:
+Maintenance mode evacuates workloads from the node and stops new scheduling:
 
 ### Via the UI
 
 1. Navigate to **Hosts** in Harvester
 2. Find the node to remove
 3. Click the **⋮** menu → **Enable Maintenance Mode**
-4. Harvester will live-migrate all VMs off the node
+4. Harvester will evacuate live-migratable VMs from the node. Manually stop any non-migratable VMs if needed.
 5. Wait for the node status to show **Maintenance**
 
-### Via kubectl
+Harvester documents enabling Maintenance Mode from the UI. If your cluster has only two control plane nodes and Maintenance Mode cannot be enabled, use the manual drain flow in Step 2.
+
+## Step 2: Drain the Node
+
+If Maintenance Mode cannot be enabled, use the following manual drain command after completing Step 3:
 
 ```bash
 TARGET_NODE="harvester-node-04"
 
-# Enable maintenance mode via annotation
-kubectl annotate node ${TARGET_NODE} \
-    harvesterhci.io/maintenance-mode="true"
-
-# This triggers VM live migration off the node
-# Monitor VM migrations
-kubectl get vmi -A --field-selector spec.nodeName=${TARGET_NODE} -w
-
-# Wait until no VMs remain on the node
-while kubectl get vmi -A \
-    --field-selector spec.nodeName=${TARGET_NODE} \
-    --no-headers | grep -q "."; do
-    echo "Waiting for VMs to migrate..."
-    sleep 30
-done
-echo "All VMs migrated off ${TARGET_NODE}"
-```
-
-## Step 2: Drain the Node
-
-After VMs are migrated, drain remaining Kubernetes workloads:
-
-```bash
-# Cordon the node (prevent new scheduling)
-kubectl cordon ${TARGET_NODE}
-
-# Drain non-VM workloads
+# Drain the node when Maintenance Mode cannot be used
 kubectl drain ${TARGET_NODE} \
+    --force \
     --ignore-daemonsets \
-    --delete-emptydir-data \
-    --timeout=300s
+    --delete-local-data \
+    --pod-selector='app!=csi-attacher,app!=csi-provisioner'
 
-# Verify no user workloads remain
+# Verify only expected system pods remain on the node
 kubectl get pods -A \
-    --field-selector spec.nodeName=${TARGET_NODE} | grep -v daemonsets
+    --field-selector spec.nodeName=${TARGET_NODE}
 ```
 
 ## Step 3: Evacuate Longhorn Replicas
 
 Before removing the node, evacuate its Longhorn replicas to maintain data redundancy:
 
-```bash
-# Disable disk scheduling on the target node
-kubectl patch node.longhorn.io ${TARGET_NODE} \
-    -n longhorn-system \
-    --type merge \
-    -p '{"spec":{"allowScheduling":false}}'
+1. Open the embedded **Longhorn UI**
+2. Go to **Node**
+3. Select the node to remove, then choose **Edit node and disks**
+4. Set **Node Scheduling** to **Disable**
+5. Set **Evict Requested** to **True**
+6. Save the changes and wait until the node's **Replicas** count reaches `0`
 
-# Evict all replicas from the node
-# This triggers replica rebuilding on other nodes
-kubectl patch node.longhorn.io ${TARGET_NODE} \
-    -n longhorn-system \
-    --type merge \
-    -p '{"spec":{"evictionRequested":true}}'
-
-# Monitor replica evacuation
-# Wait for all replicas to be moved off the node
-watch kubectl get replicas.longhorn.io -n longhorn-system \
-    -o json | jq --arg node ${TARGET_NODE} \
-    '.items | map(select(.spec.nodeID == $node)) | length'
-
-# When the count reaches 0, all replicas have been evacuated
-echo "Waiting for replica evacuation to complete..."
-while [ "$(kubectl get replicas.longhorn.io -n longhorn-system \
-    -o json | jq --arg node ${TARGET_NODE} \
-    '[.items[] | select(.spec.nodeID == $node)] | length')" -gt 0 ]; do
-    sleep 30
-    echo "Still evacuating replicas..."
-done
-echo "All replicas evacuated!"
-```
+If the remaining nodes cannot accept the replicas, some volumes will stay `Degraded` until you add more capacity.
 
 ## Step 4: Remove the Node from the Cluster
 
 ### Via the Harvester UI
 
+Complete Step 5 on the target node before deleting the host from Harvester:
+
 1. Navigate to **Hosts**
-2. Find the node in maintenance mode
+2. Find the node to remove
 3. Click the **⋮** menu → **Delete**
 4. Confirm the deletion
 
-### Via kubectl
+## Step 5: Clean Up the Node
+
+Harvester documents performing this cleanup before deleting the host from the UI:
 
 ```bash
-# Remove the node from Kubernetes
-kubectl delete node ${TARGET_NODE}
+# SSH into the node as root
+ssh root@192.168.1.14
 
-# Remove from Longhorn
-kubectl delete node.longhorn.io ${TARGET_NODE} -n longhorn-system
+# Remove RKE2 services and cluster data
+sudo /opt/rke2/bin/rke2-uninstall.sh
 
-# Remove the RKE2 cluster member (on a surviving node)
-# Get the etcd member ID for the node being removed
-kubectl exec -n kube-system \
-    $(kubectl get pods -n kube-system -l component=etcd \
-        --field-selector spec.nodeName=harvester-node-01 -o name) -- \
-    etcdctl --endpoints=https://127.0.0.1:2379 \
-            --cacert /var/lib/rancher/rke2/server/tls/etcd/server-ca.crt \
-            --cert /var/lib/rancher/rke2/server/tls/etcd/server-client.crt \
-            --key /var/lib/rancher/rke2/server/tls/etcd/server-client.key \
-            member list
-
-# Remove the etcd member
-# Replace MEMBER_ID with the ID shown in the previous command
-kubectl exec -n kube-system \
-    $(kubectl get pods -n kube-system -l component=etcd \
-        --field-selector spec.nodeName=harvester-node-01 -o name) -- \
-    etcdctl --endpoints=https://127.0.0.1:2379 \
-            --cacert /var/lib/rancher/rke2/server/tls/etcd/server-ca.crt \
-            --cert /var/lib/rancher/rke2/server/tls/etcd/server-client.crt \
-            --key /var/lib/rancher/rke2/server/tls/etcd/server-client.key \
-            member remove <MEMBER_ID>
-```
-
-## Step 5: Clean Up the Removed Node
-
-If you plan to reuse the node hardware:
-
-```bash
-# SSH into the removed node (if still accessible)
-ssh rancher@192.168.1.14
-
-# Stop RKE2 services
-sudo systemctl stop rke2-server
-
-# Clean up RKE2 data
-sudo /usr/local/bin/rke2-uninstall.sh
-
-# Or manually clean data directories
-sudo rm -rf /var/lib/rancher/rke2
-sudo rm -rf /etc/rancher/rke2
-sudo rm -rf /run/k3s
+# Shut down the node before deleting it from the Harvester UI
+sudo shutdown now
 ```
 
 ## Step 6: Post-Removal Verification
@@ -196,22 +122,22 @@ sudo rm -rf /run/k3s
 # Verify the node is gone
 kubectl get nodes
 
-# Check etcd cluster is healthy with remaining nodes
-kubectl get componentstatuses
+# Check API server readiness; look for "[+]etcd ok"
+kubectl get --raw='/readyz?verbose'
 
-# Verify Longhorn is rebalancing
+# Verify Longhorn volume robustness
 kubectl get volumes.longhorn.io -n longhorn-system \
-    -o jsonpath='{range .items[*]}{.metadata.name}: {.status.robustness}{"\n"}{end}'
-# All should show: healthy
+    -o custom-columns='NAME:.metadata.name,ROBUSTNESS:.status.robustness'
 
-# Check replica counts are being restored
+# Check remaining replicas
 kubectl get replicas.longhorn.io -n longhorn-system \
     -o custom-columns='NAME:.metadata.name,NODE:.spec.nodeID,STATE:.status.currentState'
 
 # Verify all VMs are running on remaining nodes
-kubectl get vmi -A -o custom-columns='NAME:.metadata.name,NODE:.status.nodeName'
+kubectl get vmi -A \
+    -o custom-columns='NAMESPACE:.metadata.namespace,NAME:.metadata.name,NODE:.status.nodeName,PHASE:.status.phase'
 ```
 
 ## Conclusion
 
-Safely removing a node from a Harvester cluster requires a systematic approach: migrate VMs, evacuate Longhorn replicas, drain Kubernetes workloads, then remove. Rushing any of these steps can result in VM downtime or data loss. The key safeguard is ensuring Longhorn replica evacuation completes before node deletion - this ensures your data has 3 replicas on the remaining nodes before any single node is removed. After removal, Longhorn automatically rebuilds replicas to maintain the configured replica count on the remaining nodes.
+Safely removing a node from a Harvester cluster requires a systematic approach: evacuate Longhorn replicas, migrate or stop VMs, drain workloads when needed, then remove the node. Rushing any of these steps can result in VM downtime or data loss. The key safeguard is ensuring Longhorn replica evacuation completes before node deletion so volumes can rebuild toward their configured replica count on the remaining nodes when enough capacity is available.
