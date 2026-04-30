@@ -4,11 +4,11 @@ Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
 Tags: Java, IPv6, Networking, InetAddress, Socket Programming, Development
 
-Description: Handle, validate, parse, and use IPv6 addresses in Java applications using InetAddress, Inet6Address, and ServerSocket with proper dual-stack configuration.
+Description: Handle, validate, parse, and use IPv6 addresses in Java applications using InetAddress, Inet6Address, and ServerSocket, along with Java's IPv6 address preference settings.
 
 ## Introduction
 
-Java has supported IPv6 since version 1.4 through the `java.net` package. The `InetAddress` and `Inet6Address` classes provide IPv6 parsing and validation, while `ServerSocket` and `Socket` handle IPv6 network connections with dual-stack support.
+Java has supported IPv6 in the `java.net` package since J2SE 1.4, with actual support depending on the underlying operating system. The `InetAddress` and `Inet6Address` classes can parse and inspect IPv6 addresses, while `ServerSocket` and `Socket` can use IPv6 sockets on IPv6-capable systems.
 
 ## Parsing and Validating IPv6 Addresses
 
@@ -20,17 +20,42 @@ import java.net.UnknownHostException;
 public class IPv6Validator {
 
     /**
-     * Check if a string is a valid IPv6 address.
+     * Check if a string is a valid IPv6 literal.
      */
     public static boolean isIPv6(String address) {
-        try {
-            // Strip zone ID if present (e.g., "fe80::1%eth0")
-            String clean = address.contains("%")
-                ? address.substring(0, address.indexOf('%'))
-                : address;
+        if (address == null || address.trim().isEmpty() || !address.contains(":")) {
+            return false;
+        }
 
-            InetAddress addr = InetAddress.getByName(clean);
-            return addr instanceof Inet6Address;
+        try {
+            String literal = address.trim();
+            String zoneId = null;
+
+            if (literal.startsWith("[") && literal.endsWith("]")) {
+                literal = literal.substring(1, literal.length() - 1);
+            }
+
+            int zoneIndex = literal.indexOf('%');
+            if (zoneIndex >= 0) {
+                zoneId = literal.substring(zoneIndex + 1);
+                literal = literal.substring(0, zoneIndex);
+
+                if (zoneId.isEmpty()) {
+                    return false;
+                }
+            }
+
+            InetAddress addr = InetAddress.getByName(literal);
+            if (zoneId == null) {
+                return true;
+            }
+
+            if (!(addr instanceof Inet6Address)) {
+                return false;
+            }
+
+            Inet6Address ipv6 = (Inet6Address) addr;
+            return ipv6.isLinkLocalAddress() || ipv6.isSiteLocalAddress();
         } catch (UnknownHostException e) {
             return false;
         }
@@ -65,9 +90,7 @@ public class IPv6Info {
         System.out.println("Address: " + addr.getHostAddress());
         System.out.println("Is loopback: " + addr.isLoopbackAddress());
         System.out.println("Is link-local: " + addr.isLinkLocalAddress());
-        System.out.println("Is global: " + !addr.isLinkLocalAddress()
-                            && !addr.isLoopbackAddress()
-                            && !addr.isSiteLocalAddress());
+        System.out.println("Is any-local: " + addr.isAnyLocalAddress());
 
         // Get raw bytes (16 bytes for IPv6)
         byte[] bytes = addr.getAddress();
@@ -114,7 +137,8 @@ public class IPv6Server {
     }
 
     private static void handleClient(Socket client) {
-        try (PrintWriter out = new PrintWriter(client.getOutputStream(), true)) {
+        try (Socket socket = client;
+             PrintWriter out = new PrintWriter(socket.getOutputStream(), true)) {
             out.println("Hello from IPv6 Java server");
         } catch (IOException e) {
             System.err.println("Client error: " + e.getMessage());
@@ -131,20 +155,18 @@ import java.io.*;
 
 public class IPv6Client {
     public static void main(String[] args) throws IOException {
-        String serverAddr = "2001:db8::1";
+        String serverAddr = "::1";
         int port = 8080;
 
-        // Connect to IPv6 server
+        // Connect to the local IPv6 server
         InetAddress addr = InetAddress.getByName(serverAddr);
-        Socket socket = new Socket(addr, port);
 
-        System.out.println("Connected to: " + socket.getRemoteSocketAddress());
-
-        BufferedReader in = new BufferedReader(
-            new InputStreamReader(socket.getInputStream()));
-        System.out.println("Server says: " + in.readLine());
-
-        socket.close();
+        try (Socket socket = new Socket(addr, port);
+             BufferedReader in = new BufferedReader(
+                 new InputStreamReader(socket.getInputStream()))) {
+            System.out.println("Connected to: " + socket.getRemoteSocketAddress());
+            System.out.println("Server says: " + in.readLine());
+        }
     }
 }
 ```
@@ -182,16 +204,14 @@ public class IPv6HttpClient {
 
 ## System Property for IPv6 Preference
 
-Java can be configured to prefer IPv6 stack via system properties:
+Java can be configured to prefer IPv6 addresses during name resolution via system properties:
 
 ```bash
-# Prefer IPv6 stack for Java applications
-
+# Prefer IPv6 addresses when a hostname has both A and AAAA records
 java -Djava.net.preferIPv6Addresses=true -jar app.jar
-
-# Or in code
-System.setProperty("java.net.preferIPv6Addresses", "true");
 ```
+
+`java.net.preferIPv6Addresses` is read once at JVM startup, so set it on the command line rather than with `System.setProperty(...)` after the application has started.
 
 ## Formatting IPv6 for URLs
 
@@ -202,10 +222,11 @@ public class IPv6Formatter {
     /**
      * Format an IP address for inclusion in a URL.
      * IPv6 addresses are wrapped in brackets per RFC 2732.
+     * Scoped zone identifiers must use %25 in URIs per RFC 6874.
      */
     public static String formatForUrl(InetAddress addr) {
         if (addr instanceof Inet6Address) {
-            return "[" + addr.getHostAddress() + "]";
+            return "[" + addr.getHostAddress().replace("%", "%25") + "]";
         }
         return addr.getHostAddress();
     }
