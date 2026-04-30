@@ -4,11 +4,11 @@ Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
 Tags: Harvester, Logging, Kubernetes, FluentBit, Elasticsearch, Loki, SUSE Rancher
 
-Description: Learn how to enable and configure Harvester's centralized logging system to collect VM audit logs, system logs, and Kubernetes component logs for compliance and troubleshooting.
+Description: Learn how to enable and configure Harvester's centralized logging system to collect Kubernetes audit logs, system logs, and Kubernetes component logs for compliance and troubleshooting.
 
 ---
 
-Harvester's logging system collects logs from the underlying Kubernetes components, VM audit events, and Harvester system components. Logs can be shipped to Elasticsearch, Loki, Splunk, or other backends.
+Harvester's logging system collects logs from the underlying Kubernetes components and Harvester system components. Kubernetes audit logs can also be shipped to Elasticsearch, Loki, Splunk, or other backends.
 
 ---
 
@@ -16,17 +16,11 @@ Harvester's logging system collects logs from the underlying Kubernetes componen
 
 In the Harvester UI:
 
-1. Go to **Advanced > Monitoring & Logging > Logging**
-2. Click **Enable Logging**
+1. Go to **Advanced > Addons**
+2. Select the **rancher-logging** add-on
+3. Click **⋮ > Enable**
 
-Or via Helm:
-
-```bash
-helm install rancher-logging \
-  rancher-charts/rancher-logging \
-  --namespace cattle-logging-system \
-  --create-namespace
-```
+The `rancher-logging` add-on is the supported way to enable centralized logging in Harvester.
 
 ---
 
@@ -72,53 +66,63 @@ spec:
   filters:
     - record_transformer:
         records:
-          harvester_cluster: "harvester-prod"
-          environment: "production"
+          - harvester_cluster: "harvester-prod"
+          - environment: "production"
   match:
-    - select:
-        namespaces:
-          - harvester-system
-          - longhorn-system
-          - kube-system
+    - select: {}
   globalOutputRefs:
     - harvester-elasticsearch
 ```
 
 ---
 
-## Step 4: Collect VM Audit Logs
+## Step 4: Collect Kubernetes Audit Logs
 
-Enable VM audit log collection via Harvester's event API:
+Harvester routes Kubernetes audit logs through a dedicated `loggingRef`, so use a separate `ClusterOutput` and `ClusterFlow` for audit records:
 
 ```yaml
-# Collect VM lifecycle events (create, delete, migrate)
+# harvester-audit-elasticsearch.yaml
+apiVersion: logging.banzaicloud.io/v1beta1
+kind: ClusterOutput
+metadata:
+  name: harvester-audit-elasticsearch
+  namespace: cattle-logging-system
+spec:
+  elasticsearch:
+    host: elasticsearch.logging.example.com
+    port: 9200
+    scheme: https
+    index_name: harvester-audit-logs
+    user: elastic
+    password:
+      valueFrom:
+        secretKeyRef:
+          name: elastic-creds
+          key: password
+    buffer:
+      flush_interval: 30s
+      chunk_limit_size: 8MB
+  loggingRef: harvester-kube-audit-log-ref
+---
 apiVersion: logging.banzaicloud.io/v1beta1
 kind: ClusterFlow
 metadata:
-  name: vm-audit-logs
+  name: harvester-audit-logs
   namespace: cattle-logging-system
 spec:
-  filters:
-    - grep:
-        regexp:
-          - key: $.kubernetes.namespace_name
-            pattern: default
-  match:
-    - select:
-        labels:
-          app.kubernetes.io/part-of: harvester
   globalOutputRefs:
-    - harvester-elasticsearch
+    - harvester-audit-elasticsearch
+  loggingRef: harvester-kube-audit-log-ref
 ```
 
 ---
 
-## Step 5: Configure Log Rotation
+## Step 5: Configure Log Retention
 
-```yaml
-# Set log retention in Longhorn-backed Elasticsearch
-# Via Elasticsearch ILM policy
-PUT _ilm/policy/harvester-logs-policy
+If your Elasticsearch deployment uses an index template or data stream for Harvester logs, create the policy in Elasticsearch and apply it there.
+
+```http
+PUT /_ilm/policy/harvester-logs-policy
 {
   "policy": {
     "phases": {
@@ -145,6 +149,8 @@ PUT _ilm/policy/harvester-logs-policy
 
 ## Option: Ship to Loki Instead of Elasticsearch
 
+Replace the output reference in your `ClusterFlow` with `harvester-loki` and create this `ClusterOutput`:
+
 ```yaml
 # clusteroutput-loki.yaml
 apiVersion: logging.banzaicloud.io/v1beta1
@@ -155,17 +161,19 @@ metadata:
 spec:
   loki:
     url: http://loki.monitoring.svc.cluster.local:3100
-    labels:
+    extra_labels:
       cluster: harvester-prod
     buffer:
-      flush_interval: 10s
+      timekey: 1m
+      timekey_wait: 30s
+      timekey_use_utc: true
 ```
 
 ---
 
 ## Best Practices
 
-- Enable VM audit logging for compliance - track who created, deleted, or migrated VMs.
+- Enable Kubernetes audit logging for compliance and to track VM-related API actions.
 - Ship logs to a system outside the Harvester cluster for disaster recovery coverage.
 - Add the `harvester_cluster` label to all log records for easy filtering when aggregating multiple Harvester clusters.
 - Set log retention based on your compliance requirements - many regulations require 90-365 days.
