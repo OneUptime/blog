@@ -8,49 +8,50 @@ Description: Learn how to provision GDPR-compliant AWS infrastructure using Open
 
 ---
 
-GDPR requires that personal data of EU residents is processed lawfully, stored securely, and deleted on request. OpenTofu provisions the technical infrastructure for GDPR compliance: EU region enforcement, encryption, access logging, and automated data lifecycle policies.
+GDPR requires that personal data of people in the EU is processed lawfully, stored securely, and deleted when Article 17 applies. OpenTofu can provision technical controls that support a GDPR compliance program: approved-region enforcement, encryption, access logging, and automated data lifecycle policies.
 
 ## GDPR Technical Requirements
 
 ```mermaid
 graph TD
-    A[GDPR Technical Measures] --> B[Data Residency<br/>EU regions only]
+    A[GDPR Technical Measures] --> B[Residency Controls<br/>Approved regions only]
     A --> C[Encryption<br/>At rest and in transit]
     A --> D[Access Controls<br/>Need-to-know basis]
     A --> E[Data Retention<br/>Automated lifecycle]
     A --> F[Right to Erasure<br/>Deletion procedures]
-    A --> G[Audit Trail<br/>Processing records]
+    A --> G[Auditability<br/>Security monitoring]
 ```
 
 ## Data Residency Enforcement
 
 ```hcl
-# providers.tf - enforce EU region for personal data
+# providers.tf - example EU-only residency policy for personal data
 
 provider "aws" {
   alias  = "eu"
-  region = "eu-west-1"  # Ireland - EU region
+  region = var.aws_region
 }
 
 provider "aws" {
   alias  = "eu_backup"
-  region = "eu-central-1"  # Frankfurt - EU region for backups
+  region = "eu-central-1"  # Example secondary EU region for backups
 }
 
-# Prevent accidental deployment to non-EU regions
+# Prevent accidental deployment outside the approved EU regions in this example
 variable "aws_region" {
-  type = string
+  type    = string
+  default = "eu-west-1"
 
   validation {
     condition = contains([
       "eu-west-1",       # Ireland
-      "eu-west-2",       # London
       "eu-west-3",       # Paris
       "eu-central-1",    # Frankfurt
       "eu-north-1",      # Stockholm
       "eu-south-1",      # Milan
+      "eu-south-2",      # Spain
     ], var.aws_region)
-    error_message = "Personal data must be stored in EU AWS regions only (GDPR Art. 44-49)"
+    error_message = "This example allows EU AWS regions only. Transfers outside the EU are governed by GDPR Chapter V (Arts. 44-49)."
   }
 }
 ```
@@ -85,6 +86,7 @@ resource "aws_s3_bucket" "personal_data" {
 }
 
 resource "aws_s3_bucket_server_side_encryption_configuration" "personal_data" {
+  provider = aws.eu
   bucket = aws_s3_bucket.personal_data.id
   rule {
     apply_server_side_encryption_by_default {
@@ -100,6 +102,7 @@ resource "aws_s3_bucket_server_side_encryption_configuration" "personal_data" {
 ```hcl
 # gdpr_lifecycle.tf - automated data deletion (Art. 5, 17)
 resource "aws_s3_bucket_lifecycle_configuration" "personal_data" {
+  provider = aws.eu
   bucket = aws_s3_bucket.personal_data.id
 
   rule {
@@ -111,6 +114,7 @@ resource "aws_s3_bucket_lifecycle_configuration" "personal_data" {
       days = 1095  # 3 years
     }
 
+    # Applies when bucket versioning is enabled
     noncurrent_version_expiration {
       noncurrent_days = 90
     }
@@ -151,19 +155,90 @@ resource "aws_dynamodb_table" "sessions" {
 ## Access Audit Logging
 
 ```hcl
-# gdpr_audit.tf - maintain records of processing (Art. 30)
+# gdpr_audit.tf - audit S3 access to personal data
 resource "aws_s3_bucket" "gdpr_audit_logs" {
   provider = aws.eu
   bucket   = "${var.company}-gdpr-audit-logs"
 }
 
+data "aws_caller_identity" "current" {
+  provider = aws.eu
+}
+
+data "aws_partition" "current" {
+  provider = aws.eu
+}
+
+data "aws_iam_policy_document" "gdpr_audit_logs" {
+  provider = aws.eu
+
+  statement {
+    sid    = "AWSCloudTrailAclCheck"
+    effect = "Allow"
+
+    principals {
+      type        = "Service"
+      identifiers = ["cloudtrail.amazonaws.com"]
+    }
+
+    actions   = ["s3:GetBucketAcl"]
+    resources = [aws_s3_bucket.gdpr_audit_logs.arn]
+
+    condition {
+      test     = "StringEquals"
+      variable = "aws:SourceArn"
+      values = [
+        "arn:${data.aws_partition.current.partition}:cloudtrail:${var.aws_region}:${data.aws_caller_identity.current.account_id}:trail/personal-data-access"
+      ]
+    }
+  }
+
+  statement {
+    sid    = "AWSCloudTrailWrite"
+    effect = "Allow"
+
+    principals {
+      type        = "Service"
+      identifiers = ["cloudtrail.amazonaws.com"]
+    }
+
+    actions = ["s3:PutObject"]
+    resources = [
+      "${aws_s3_bucket.gdpr_audit_logs.arn}/AWSLogs/${data.aws_caller_identity.current.account_id}/*"
+    ]
+
+    condition {
+      test     = "StringEquals"
+      variable = "s3:x-amz-acl"
+      values   = ["bucket-owner-full-control"]
+    }
+
+    condition {
+      test     = "StringEquals"
+      variable = "aws:SourceArn"
+      values = [
+        "arn:${data.aws_partition.current.partition}:cloudtrail:${var.aws_region}:${data.aws_caller_identity.current.account_id}:trail/personal-data-access"
+      ]
+    }
+  }
+}
+
+resource "aws_s3_bucket_policy" "gdpr_audit_logs" {
+  provider = aws.eu
+  bucket   = aws_s3_bucket.gdpr_audit_logs.id
+  policy   = data.aws_iam_policy_document.gdpr_audit_logs.json
+}
+
 resource "aws_cloudtrail" "personal_data_access" {
-  provider   = aws.eu
-  name       = "personal-data-access"
+  provider      = aws.eu
+  depends_on    = [aws_s3_bucket_policy.gdpr_audit_logs]
+  name          = "personal-data-access"
   s3_bucket_name = aws_s3_bucket.gdpr_audit_logs.id
 
   event_selector {
-    read_write_type = "All"
+    read_write_type           = "All"
+    include_management_events = true
+
     data_resource {
       type   = "AWS::S3::Object"
       values = ["${aws_s3_bucket.personal_data.arn}/"]
@@ -197,8 +272,8 @@ resource "aws_lambda_function" "erasure_handler" {
 
 ## Best Practices
 
-- Enforce EU regions through variable validation - GDPR data transfers outside the EU require additional legal basis (Standard Contractual Clauses or adequacy decisions).
-- Use S3 lifecycle policies and DynamoDB TTL for automated personal data expiry - manual deletion is error-prone.
+- If you enforce an EU-only residency policy through variable validation, remember that GDPR transfers outside the EU are governed by adequacy decisions or other Chapter V safeguards.
+- Use S3 lifecycle policies for scheduled retention and DynamoDB TTL for eventual session expiry - DynamoDB TTL deletions are asynchronous, so use explicit deletes for time-sensitive erasure workflows.
 - Tag all resources containing personal data with `GDPR = "true"` and `DataCategory` - this enables targeted audits.
-- Log all access to personal data via CloudTrail data events - Article 30 requires records of processing activities.
-- Build erasure APIs that delete personal data from all storage systems: databases, S3, caches, backups - right to erasure applies to all copies.
+- Log access to S3-stored personal data via CloudTrail data events, and add matching selectors for other stores such as DynamoDB if they contain personal data - this supports security monitoring and accountability, but it does not replace the separate Article 30 record of processing activities.
+- Build erasure APIs that delete personal data from active storage systems: databases, S3, and caches - use explicit deletes for Article 17 requests rather than relying on retention policies or TTL alone.
