@@ -8,7 +8,7 @@ Description: Configure IPv6 addressing, routing, and basic security on Cisco IOS
 
 ## Introduction
 
-Cisco IOS has comprehensive IPv6 support that has been production-ready since IOS 12.4. This guide covers the essential IPv6 configuration tasks on Cisco IOS routers: enabling IPv6, assigning addresses, configuring routing, and applying basic security.
+Cisco IOS has long provided production IPv6 support. This guide covers the essential IPv6 configuration tasks on Cisco IOS routers: enabling IPv6, assigning addresses, configuring routing, and applying basic security.
 
 ## Step 1: Enable IPv6 Unicast Routing
 
@@ -17,6 +17,7 @@ Cisco IOS has comprehensive IPv6 support that has been production-ready since IO
 Router(config)# ipv6 unicast-routing
 
 ! Optionally enable CEF for IPv6 (recommended for performance)
+Router(config)# ip cef
 Router(config)# ipv6 cef
 ```
 
@@ -46,10 +47,10 @@ Router(config-if)# ipv6 address 2001:db8::1/128
 Router(config)# ipv6 route 2001:db8:2::/48 GigabitEthernet0/1 2001:db8:0:1::2
 
 ! Add a default route via a next-hop address
-Router(config)# ipv6 route ::/0 GigabitEthernet0/0 2001:db8:isp::1
+Router(config)# ipv6 route ::/0 GigabitEthernet0/1 2001:db8:0:1::1
 
 ! Floating static route with higher administrative distance for backup
-Router(config)# ipv6 route ::/0 GigabitEthernet0/1 2001:db8:isp2::1 200
+Router(config)# ipv6 route ::/0 GigabitEthernet0/2 2001:db8:0:2::1 200
 ```
 
 ## Step 4: Configure OSPFv3
@@ -77,20 +78,20 @@ Router(config-rtr)# passive-interface Loopback0
 ! IPv6 ACLs use named lists (not numbered like IPv4)
 Router(config)# ipv6 access-list BLOCK-INBOUND
 
-! Permit ICMPv6 (required for IPv6 to function)
+! Permit common ICMPv6 control traffic explicitly
 Router(config-ipv6-acl)# permit icmp any any nd-na
 Router(config-ipv6-acl)# permit icmp any any nd-ns
 Router(config-ipv6-acl)# permit icmp any any router-advertisement
 Router(config-ipv6-acl)# permit icmp any any router-solicitation
 
-! Permit established and related traffic
-Router(config-ipv6-acl)# permit tcp any any established
-
 ! Block specific traffic
-Router(config-ipv6-acl)# deny tcp any host 2001:db8:1:1::web eq 22
+Router(config-ipv6-acl)# deny tcp any host 2001:db8:1:1::10 eq 22
+
+! Permit all other IPv6 traffic
+Router(config-ipv6-acl)# permit ipv6 any any
 
 ! Apply ACL to interface
-Router(config)# interface GigabitEthernet0/0
+Router(config)# interface GigabitEthernet0/1
 Router(config-if)# ipv6 traffic-filter BLOCK-INBOUND in
 ```
 
@@ -105,6 +106,7 @@ Router(config-dhcpv6)# domain-name example.com
 
 ! Apply pool to interface
 Router(config)# interface GigabitEthernet0/0
+Router(config-if)# ipv6 nd managed-config-flag
 Router(config-if)# ipv6 dhcp server LAN-POOL
 ```
 
@@ -144,4 +146,4 @@ Router# write memory
 
 ## Conclusion
 
-Cisco IOS IPv6 configuration follows a logical progression: enable unicast routing globally, assign addresses to interfaces, configure routing (static or dynamic with OSPFv3), apply security with IPv6 ACLs, and verify with the `show ipv6` command family. Always include ICMPv6 permits in ACLs as they are required for basic IPv6 operation including Neighbor Discovery.
+Cisco IOS IPv6 configuration follows a logical progression: enable unicast routing globally, assign addresses to interfaces, configure routing (static or dynamic with OSPFv3), apply security with IPv6 ACLs, and verify with the `show ipv6` command family. When restricting IPv6 with ACLs, make sure the policy still allows required ICMPv6 traffic such as Neighbor Discovery and Path MTU Discovery.
