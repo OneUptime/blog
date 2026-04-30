@@ -69,8 +69,8 @@ frontend http_in
     # 0.0.0.0 = all IPv4 interfaces
     bind 0.0.0.0:80
 
-    # Shorthand (equivalent to 0.0.0.0:80)
-    bind *:80
+    # Equivalent shorthand:
+    # bind *:80
 
     default_backend app_servers
 ```
@@ -80,10 +80,7 @@ frontend http_in
 ```haproxy
 frontend http_in
     # Bind with TCP options
-    bind 203.0.113.10:80 \
-        accept-proxy \        # Accept PROXY protocol headers
-        defer-accept \        # Wait for first data before accepting
-        maxconn 10000         # Max connections this bind accepts
+    bind 203.0.113.10:80 accept-proxy defer-accept maxconn 10000
 
     default_backend app_servers
 ```
@@ -94,9 +91,6 @@ frontend http_in
 frontend https_in
     # Bind with SSL on specific IPv4
     bind 203.0.113.10:443 ssl crt /etc/haproxy/certs/example.pem
-
-    # Redirect HTTP to HTTPS
-    redirect scheme https if !{ ssl_fc }
 
     default_backend app_servers
 ```
@@ -110,11 +104,11 @@ sudo ss -tlnp | grep haproxy
 # Validate configuration before reloading
 sudo haproxy -c -f /etc/haproxy/haproxy.cfg
 
-# Reload HAProxy without dropping connections
+# Reload HAProxy
 sudo systemctl reload haproxy
 
-# Or use the socket interface for zero-downtime reload
-echo "reload" | sudo socat stdio /var/run/haproxy/admin.sock
+# Or perform a seamless reload directly with HAProxy
+sudo haproxy -f /etc/haproxy/haproxy.cfg -p /var/run/haproxy.pid -sf $(cat /var/run/haproxy.pid)
 ```
 
 ## Restricting Bind to Internal Interface Only
