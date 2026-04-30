@@ -13,7 +13,7 @@ A migration checklist provides a shared source of truth for all teams involved i
 ## Pre-Migration Checklist
 
 ### Address Planning
-- [ ] IPv6 address block allocated from RIR or ISP (/32 for organizations, /48–/56 for sites)
+- [ ] IPv6 address block allocated from RIR or ISP (document the actual allocation size; commonly /32 for ISPs/LIRs and /48–/56 for end sites)
 - [ ] Hierarchical addressing scheme designed (region → site → VLAN → host)
 - [ ] Subnets assigned: all VLANs have /64 assignments
 - [ ] Loopback addresses assigned to all routers and key servers
@@ -46,7 +46,7 @@ Use this for each service being migrated:
 - [ ] Load balancer IPv6 VIP configured
 - [ ] Firewall rules permit IPv6 to this service
 - [ ] SSL certificate covers same hostnames (certificates are not IP-version specific)
-- [ ] Application binds to `::` instead of `0.0.0.0`
+- [ ] Application listens on IPv6 (often by binding to `::` or equivalent IPv6 listener configuration)
 - [ ] X-Forwarded-For / X-Real-IP handling updated for IPv6
 - [ ] Health checks updated to use IPv6 endpoints
 
@@ -85,19 +85,26 @@ check() {
 }
 
 echo "=== Network Layer IPv6 Checks ==="
-check "IPv6 enabled on all interfaces" sysctl net.ipv6.conf.all.disable_ipv6
-check "IPv6 default route present" ip -6 route show default
-check "IPv6 DNS works" dig AAAA google.com +short
-check "IPv6 external reach" ping6 -c 2 2001:4860:4860::8888
-check "IPv6 NDP cache populated" ip -6 neigh show
-check "IPv6 forwarding enabled (router)" sysctl -n net.ipv6.conf.all.forwarding
+check "IPv6 enabled on current interfaces" bash -c '
+for f in /proc/sys/net/ipv6/conf/*/disable_ipv6; do
+    case "$f" in
+        */all/disable_ipv6|*/default/disable_ipv6) continue ;;
+    esac
+    [ "$(cat "$f")" = 0 ] || exit 1
+done
+'
+check "IPv6 default route present" bash -c "ip -6 route show default | grep -q ."
+check "AAAA DNS resolution works" bash -c "dig AAAA google.com +short | grep -q ':'"
+check "IPv6 external reach" ping -6 -c 2 2001:4860:4860::8888
+check "IPv6 NDP cache populated" bash -c "ip -6 neigh show | grep -q ."
+check "IPv6 forwarding enabled (router)" bash -c '[ "$(sysctl -qn net.ipv6.conf.all.forwarding)" = 1 ]'
 
 echo ""
 echo "=== Service Layer IPv6 Checks ==="
-# Check each service listens on IPv6
+# Check common service ports; adjust this list for your environment
 
 for port in 80 443 22 25 53; do
-    check "Port $port listening on IPv6" bash -c "ss -tlnp | grep -q '\\[::'$port"
+    check "Port $port listening on IPv6" bash -c "ss -H -lnut6 \"sport = :$port\" | grep -q ."
 done
 
 echo ""
