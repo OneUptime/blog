@@ -18,96 +18,41 @@ graph TD
     C[Option 2: Import Harvester] --> D["Import existing Harvester\ncluster into existing\nRancher instance"]
 ```
 
-Both approaches end with the same result: Rancher managing Harvester, and the ability to provision Kubernetes clusters on Harvester infrastructure.
+Both approaches end with the same result: Rancher managing Harvester. After the Harvester node driver is active in Rancher, you can also provision Kubernetes clusters on Harvester infrastructure.
 
 ## Option 1: Install Rancher on Harvester
 
-This is the recommended approach for new deployments.
+Use a dedicated management cluster for Rancher rather than installing Rancher into the Harvester management cluster itself.
 
 ### Step 1: Create a Dedicated RKE2 Cluster for Rancher
 
-First, create a 3-node RKE2 cluster inside Harvester:
-
-```bash
-# Create 3 VMs for Rancher
-
-for i in 1 2 3; do
-kubectl apply -f - <<EOF
-apiVersion: kubevirt.io/v1
-kind: VirtualMachine
-metadata:
-  name: rancher-node-0${i}
-  namespace: default
-spec:
-  running: true
-  template:
-    spec:
-      domain:
-        cpu:
-          cores: 4
-        resources:
-          requests:
-            memory: 8Gi
-        machine:
-          type: q35
-        devices:
-          disks:
-            - name: rootdisk
-              bootOrder: 1
-              disk:
-                bus: virtio
-            - name: cloudinit
-              disk:
-                bus: virtio
-          interfaces:
-            - name: default
-              masquerade: {}
-      networks:
-        - name: default
-          pod: {}
-      volumes:
-        - name: rootdisk
-          persistentVolumeClaim:
-            claimName: rancher-node-0${i}-root
-        - name: cloudinit
-          cloudInitNoCloud:
-            userData: |
-              #cloud-config
-              hostname: rancher-node-0${i}
-              users:
-                - name: ubuntu
-                  sudo: ALL=(ALL) NOPASSWD:ALL
-                  ssh_authorized_keys:
-                    - ssh-ed25519 AAAAC3... admin@host
-              packages:
-                - qemu-guest-agent
-              runcmd:
-                - systemctl enable --now qemu-guest-agent
-EOF
-done
-```
+First, create three Linux cloud-image VMs in Harvester for the dedicated RKE2 management cluster. Use a cloud image rather than an ISO, allocate at least 4 vCPU and 8 GiB RAM per VM, attach the management network, and inject cloud-init data for SSH access and `qemu-guest-agent`.
 
 ### Step 2: Bootstrap RKE2 on the VMs
 
 ```bash
-# On rancher-node-01 (first node)
-curl -sfL https://get.rke2.io | INSTALL_RKE2_VERSION=v1.27.9+rke2r1 sh -
+# Install RKE2 on each VM
+curl -sfL https://get.rke2.io | sh -
 
-# Configure RKE2 server
+# On rancher-node-01 (first node), configure the initial server
 mkdir -p /etc/rancher/rke2
 cat > /etc/rancher/rke2/config.yaml <<EOF
 token: my-rancher-cluster-token
 tls-san:
-  - 192.168.1.200  # VIP for Rancher cluster
+  - 192.168.1.200  # VIP / fixed registration address for the Rancher cluster
   - rancher.company.com
 EOF
 
 systemctl enable --now rke2-server
 
-# On rancher-node-02 and rancher-node-03 (join nodes)
+# On rancher-node-02 and rancher-node-03 (additional server nodes)
+mkdir -p /etc/rancher/rke2
 cat > /etc/rancher/rke2/config.yaml <<EOF
-server: https://192.168.1.101:9345
+server: https://192.168.1.200:9345
 token: my-rancher-cluster-token
+tls-san:
+  - 192.168.1.200
+  - rancher.company.com
 EOF
 
 systemctl enable --now rke2-server
@@ -119,19 +64,16 @@ systemctl enable --now rke2-server
 # Set kubeconfig for the Rancher cluster
 export KUBECONFIG=/etc/rancher/rke2/rke2.yaml
 
-# Install cert-manager
-kubectl apply -f https://github.com/cert-manager/cert-manager/releases/download/v1.13.2/cert-manager.crds.yaml
-
 helm repo add jetstack https://charts.jetstack.io
 helm repo update
 
 helm install cert-manager jetstack/cert-manager \
     --namespace cert-manager \
     --create-namespace \
-    --version v1.13.2
+    --set crds.enabled=true
 
 # Wait for cert-manager to be ready
-kubectl wait deployment cert-manager -n cert-manager \
+kubectl wait deployment --all -n cert-manager \
     --for=condition=available --timeout=300s
 
 # Add the Rancher Helm repository
@@ -155,31 +97,39 @@ kubectl wait deployment rancher -n cattle-system \
 
 Once Rancher is running, import the Harvester cluster:
 
+If you are using Harvester v1.7 or earlier, ensure only authorized administrators can modify `cluster-registration-url`, or upgrade to v1.8+, before using this registration flow.
+
 ```bash
 # In the Rancher UI:
-# 1. Navigate to Cluster Management
+# 1. Navigate to Virtualization Management
 # 2. Click Import Existing
-# 3. Select Harvester
-# 4. Give it a name (e.g., "local-harvester")
-# 5. Copy the import command shown by Rancher
+# 3. Give it a name (e.g., "local-harvester")
+# 4. Click Create and copy the registration manifest URL shown by Rancher
 
-# The import command looks like:
-kubectl apply -f https://rancher.company.com/v3/import/XXXXX.yaml
+# On a Harvester management node, set the registration URL
+export KUBECONFIG=/etc/rancher/rke2/rke2.yaml
+kubectl apply -f - <<EOF
+apiVersion: harvesterhci.io/v1beta1
+kind: Setting
+metadata:
+  name: cluster-registration-url
+value: https://rancher.company.com/v3/import/XXXXX.yaml
+EOF
 ```
 
 ## Option 2: Import Existing Harvester into Existing Rancher
 
 If you already have both Rancher and Harvester running:
 
-### Step 1: Generate Import Manifest in Rancher
+### Step 1: Generate the Registration URL in Rancher
 
-1. In Rancher, navigate to **Cluster Management**
+1. In Rancher, navigate to **Virtualization Management**
 2. Click **Import Existing**
-3. Select **Harvester**
-4. Enter a cluster name
-5. Copy the generated kubectl command
+3. Enter a cluster name
+4. Click **Create**
+5. Copy the registration manifest URL shown in the guide
 
-### Step 2: Apply the Import Manifest on Harvester
+### Step 2: Apply the Registration URL on Harvester
 
 ```bash
 # SSH into a Harvester node
@@ -188,9 +138,14 @@ ssh rancher@192.168.1.11
 # Set kubeconfig
 export KUBECONFIG=/etc/rancher/rke2/rke2.yaml
 
-# Apply the Rancher import manifest
-# (Replace with the actual URL from step 1)
-kubectl apply -f https://rancher.company.com/v3/import/XXXXX.yaml
+# Set the Rancher registration URL on the Harvester cluster
+kubectl apply -f - <<EOF
+apiVersion: harvesterhci.io/v1beta1
+kind: Setting
+metadata:
+  name: cluster-registration-url
+value: https://rancher.company.com/v3/import/XXXXX.yaml
+EOF
 
 # Wait for the cattle-cluster-agent to connect to Rancher
 kubectl get pods -n cattle-system -w
@@ -201,7 +156,7 @@ kubectl get pods -n cattle-system -w
 After the import:
 
 ```bash
-# In Rancher, the Harvester cluster should appear in Cluster Management
+# In Rancher, the Harvester cluster should appear in Virtualization Management
 # Status should show "Active"
 
 # Verify from the Harvester side
@@ -216,17 +171,11 @@ kubectl get deployment cattle-cluster-agent -n cattle-system
 
 ### Configure the Harvester Cloud Provider
 
-Enable the Harvester cloud provider for RKE2/K3s clusters:
+For RKE2 clusters created with the Harvester node driver in Rancher, select **Harvester** as the cloud provider during cluster creation. Rancher deploys the Harvester cloud provider and CSI driver automatically.
 
-```yaml
-# In Rancher cluster provisioning, add to the cluster config:
-spec:
-  rkeConfig:
-    chartValues:
-      harvester-cloud-provider:
-        cloudConfigPath: /etc/kubernetes/cloud-config
-        clusterName: harvester-infra
-```
+If the Harvester node driver is not active in your Rancher version, enable it first from **Cluster Management** → **Drivers** → **Node Drivers**.
+
+For existing RKE2 clusters already running inside Harvester VMs, import the cluster into Rancher first, then install **Harvester Cloud Provider** and **Harvester CSI Driver** from the cluster's **Apps** → **Charts** page.
 
 ### Set Up VM Images in Rancher
 
