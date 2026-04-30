@@ -41,7 +41,7 @@ sudo iptables -A INPUT -s 203.0.0.0/16 -j DROP
 # REJECT sends an ICMP error back to the sender (faster connection failure for sender)
 # DROP silently discards (harder to detect by attacker, but slower timeout for sender)
 
-# Reject with host-unreachable
+# Reject with host-prohibited
 sudo iptables -A INPUT -s 203.0.113.50 -j REJECT --reject-with icmp-host-prohibited
 
 # Reject TCP with RST
@@ -95,11 +95,11 @@ while read ip; do sudo ipset add blocklist "$ip"; done < bad-ips.txt
 sudo apt install iptables-persistent -y
 sudo netfilter-persistent save
 
-# RHEL/CentOS
+# RHEL/CentOS with iptables-services installed
 sudo service iptables save
 
-# Manual save
-sudo iptables-save > /etc/iptables/rules.v4
+# Manual save to the Debian/Ubuntu IPv4 rules file
+sudo iptables-save -f /etc/iptables/rules.v4
 ```
 
 ## Removing a Block
@@ -124,4 +124,4 @@ sudo iptables -L INPUT -n -v
 sudo iptables -L INPUT -n | grep DROP
 ```
 
-For blocking hundreds of IPs, always use ipset - it uses a hash table for O(1) lookups versus O(n) for individual iptables rules.
+For blocking hundreds of IPs, prefer ipset - IP sets are indexed for very fast matching even when the sets are large, and they avoid long lists of individual iptables rules.
