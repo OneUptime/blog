@@ -4,7 +4,7 @@ Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
 Tags: GitLab, CI/CD, Rancher, Kubernetes, DevOps, Pipeline, Deployment
 
-Description: Learn how to integrate GitLab CI/CD pipelines with Rancher to automate Kubernetes deployments, configure service accounts, and enable seamless GitOps-style delivery.
+Description: Learn how to integrate GitLab CI/CD pipelines with Rancher to automate Kubernetes deployments, configure service accounts, and enable continuous delivery.
 
 ---
 
@@ -14,16 +14,17 @@ GitLab CI/CD combined with Rancher gives you a powerful, self-hosted pipeline th
 
 ## Prerequisites
 
-- A running Rancher instance (v2.7+)
+- A running Rancher instance (v2.9+)
 - GitLab instance or GitLab.com account
 - A Kubernetes cluster imported into Rancher
 - `kubectl` access to the cluster
+- A GitLab Runner configured for Docker-in-Docker in privileged mode
 
 ---
 
-## Step 1: Create a Deployment Service Account in Rancher
+## Step 1: Create a Deployment Service Account in the Cluster
 
-Rancher uses RBAC to control cluster access. Create a dedicated service account for GitLab CI.
+Create a dedicated service account for GitLab CI. If you plan to connect through Rancher's cluster proxy URL (`/k8s/clusters/...`) as shown later in this guide, enable **JWT Authentication** for the cluster in Rancher first. Rancher added downstream service account JWT authentication in v2.9.0.
 
 The following manifest creates a service account and binds it to the `edit` ClusterRole scoped to a specific namespace:
 
@@ -56,7 +57,8 @@ Apply the manifest and extract the token:
 ```bash
 kubectl apply -f gitlab-deploy-sa.yaml
 
-# For Kubernetes 1.24+, create a long-lived token secret
+# Kubernetes 1.24+ no longer auto-creates service account token secrets,
+# so create one if you need a non-expiring token
 kubectl apply -f - <<EOF
 apiVersion: v1
 kind: Secret
@@ -81,7 +83,7 @@ In your GitLab project, go to **Settings > CI/CD > Variables** and add:
 
 | Variable | Value |
 |---|---|
-| `KUBE_SERVER` | Rancher cluster API URL (e.g. `https://rancher.example.com/k8s/clusters/c-xxxxx`) |
+| `KUBE_SERVER` | Rancher cluster proxy URL (e.g. `https://rancher.example.com/k8s/clusters/c-xxxxx`) |
 | `KUBE_TOKEN` | The service account token from Step 1 |
 | `KUBE_NAMESPACE` | `my-app` |
 
@@ -104,12 +106,15 @@ variables:
 
 build:
   stage: build
-  image: docker:24
+  image: docker:24.0.5-cli
   services:
-    - docker:24-dind
+    - docker:24.0.5-dind
+  variables:
+    DOCKER_HOST: tcp://docker:2375
+    DOCKER_TLS_CERTDIR: ""
   script:
     # Log in to the GitLab Container Registry
-    - docker login -u $CI_REGISTRY_USER -p $CI_REGISTRY_PASSWORD $CI_REGISTRY
+    - echo "$CI_REGISTRY_PASSWORD" | docker login $CI_REGISTRY -u $CI_REGISTRY_USER --password-stdin
     # Build and push the image
     - docker build -t $IMAGE_TAG .
     - docker push $IMAGE_TAG
@@ -119,26 +124,18 @@ deploy:
   image: bitnami/kubectl:latest
   script:
     # Configure kubectl to use the Rancher cluster API
-    - kubectl config set-cluster rancher
-        --server=$KUBE_SERVER
-        --insecure-skip-tls-verify=true
-    - kubectl config set-credentials gitlab-deploy
-        --token=$KUBE_TOKEN
-    - kubectl config set-context rancher
-        --cluster=rancher
-        --user=gitlab-deploy
-        --namespace=$KUBE_NAMESPACE
+    - kubectl config set-cluster rancher --server=$KUBE_SERVER --insecure-skip-tls-verify=true
+    - kubectl config set-credentials gitlab-deploy --token=$KUBE_TOKEN
+    - kubectl config set-context rancher --cluster=rancher --user=gitlab-deploy --namespace=$KUBE_NAMESPACE
     - kubectl config use-context rancher
     # Perform a rolling update of the deployment
-    - kubectl set image deployment/my-app
-        app=$IMAGE_TAG
-        -n $KUBE_NAMESPACE
+    - kubectl set image deployment/my-app app=$IMAGE_TAG -n $KUBE_NAMESPACE
     # Wait for rollout to complete
     - kubectl rollout status deployment/my-app -n $KUBE_NAMESPACE
   environment:
     name: production
-  only:
-    - main
+  rules:
+    - if: '$CI_COMMIT_BRANCH == "main"'
 ```
 
 ---
