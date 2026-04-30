@@ -8,7 +8,7 @@ Description: Learn how to configure EC2 Instance Metadata Service with OpenTofu 
 
 ## Introduction
 
-The EC2 Instance Metadata Service (IMDS) provides running instances with configuration data including IAM credentials, region, placement, and tags. IMDSv2 adds a session-oriented request flow that mitigates SSRF attacks. OpenTofu enforces IMDSv2 in launch templates and via account-level defaults.
+The EC2 Instance Metadata Service (IMDS) provides running instances with configuration data including IAM credentials, region, placement, and tags. IMDSv2 adds a session-oriented request flow that mitigates SSRF attacks. With OpenTofu, you can require IMDSv2 in launch templates and set account-level defaults.
 
 ## Enforce IMDSv2 in Launch Template
 
@@ -21,7 +21,7 @@ resource "aws_launch_template" "app" {
   metadata_options {
     http_endpoint               = "enabled"
     http_tokens                 = "required"     # IMDSv2 - session token required
-    http_put_response_hop_limit = 1              # Prevents container workloads from reaching IMDS
+    http_put_response_hop_limit = 1              # Use 2 if containers on the instance need IMDS access
     instance_metadata_tags      = "enabled"      # Expose instance tags via IMDS
   }
 }
@@ -30,7 +30,7 @@ resource "aws_launch_template" "app" {
 ## Account-Level IMDSv2 Default
 
 ```hcl
-# Enforce IMDSv2 as the default for all new instances in the account/region
+# Set IMDSv2 as the default for new instances in the account/region
 
 resource "aws_ec2_instance_metadata_defaults" "require_imdsv2" {
   http_tokens                 = "required"
@@ -109,10 +109,10 @@ resource "aws_instance" "app" {
 }
 ```
 
-## SCP to Enforce IMDSv2 Organization-Wide
+## SCP to Require IMDSv2 on New Instance Launches
 
 ```hcl
-# Organization-level policy requiring IMDSv2 for all RunInstances calls
+# Organization-level policy requiring IMDSv2 and capping hop limit on RunInstances
 resource "aws_organizations_policy" "require_imdsv2" {
   name        = "RequireIMDSv2"
   description = "Require IMDSv2 on all new EC2 instances"
@@ -172,4 +172,4 @@ resource "aws_cloudwatch_metric_alarm" "imdsv1_usage" {
 
 ## Conclusion
 
-IMDSv2 protects against SSRF attacks by requiring a session token for all metadata requests. Enforce it at the launch template level with `http_tokens = "required"` and at the account level with `aws_ec2_instance_metadata_defaults`. Use an SCP to prevent IMDSv1 usage across your organization. Set `http_put_response_hop_limit = 1` for bare-metal workloads and `2` for containerized workloads where containers need metadata access. Monitor `MetadataNoToken` CloudWatch metrics to detect any remaining IMDSv1 callers.
+IMDSv2 protects against SSRF attacks by requiring a session token for all metadata requests. Require it at the launch template level with `http_tokens = "required"` and set account-level defaults with `aws_ec2_instance_metadata_defaults`. Use an SCP to require IMDSv2 on new instance launches across your organization. Set `http_put_response_hop_limit = 1` when only the instance needs IMDS access, and `2` when containerized workloads on the instance need IMDS access. Monitor `MetadataNoToken` CloudWatch metrics to detect any remaining IMDSv1 callers.
