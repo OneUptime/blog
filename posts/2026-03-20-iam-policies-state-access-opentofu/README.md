@@ -12,7 +12,7 @@ State files in an S3 bucket are sensitive - they contain resource IDs, attribute
 
 ## Minimum S3 Permissions for State Operations
 
-OpenTofu needs these S3 actions to read, write, and delete (during moves) state:
+OpenTofu needs these S3 actions to read, write, and delete state objects within the prefix it uses:
 
 ```hcl
 data "aws_iam_policy_document" "opentofu_state" {
@@ -24,7 +24,7 @@ data "aws_iam_policy_document" "opentofu_state" {
     condition {
       test     = "StringLike"
       variable = "s3:prefix"
-      values   = ["${local.state_prefix}/*"]
+      values   = [local.state_prefix, "${local.state_prefix}/*"]
     }
   }
 
@@ -48,6 +48,7 @@ locals {
 statement {
   effect = "Allow"
   actions = [
+    "dynamodb:DescribeTable",
     "dynamodb:GetItem",
     "dynamodb:PutItem",
     "dynamodb:DeleteItem"
@@ -65,9 +66,9 @@ statement {
 statement {
   effect = "Allow"
   actions = [
+    "kms:Encrypt",
     "kms:Decrypt",
-    "kms:GenerateDataKey",
-    "kms:DescribeKey"
+    "kms:GenerateDataKey"
   ]
   resources = [aws_kms_key.state.arn]
 }
@@ -101,11 +102,47 @@ resource "aws_iam_role_policy" "opentofu_state" {
   role   = aws_iam_role.opentofu_ci.id
   policy = data.aws_iam_policy_document.opentofu_state.json
 }
+
+resource "aws_iam_role_policy" "opentofu_lock" {
+  name = "opentofu-lock-access"
+  role = aws_iam_role.opentofu_ci.id
+  policy = jsonencode({
+    Version = "2012-10-17"
+    Statement = [{
+      Effect = "Allow"
+      Action = [
+        "dynamodb:DescribeTable",
+        "dynamodb:GetItem",
+        "dynamodb:PutItem",
+        "dynamodb:DeleteItem"
+      ]
+      Resource = "arn:aws:dynamodb:us-east-1:123456789012:table/opentofu-state-locks"
+    }]
+  })
+}
+
+# Attach this only if the state bucket uses a customer-managed KMS key
+resource "aws_iam_role_policy" "opentofu_kms" {
+  name = "opentofu-kms-access"
+  role = aws_iam_role.opentofu_ci.id
+  policy = jsonencode({
+    Version = "2012-10-17"
+    Statement = [{
+      Effect = "Allow"
+      Action = [
+        "kms:Encrypt",
+        "kms:Decrypt",
+        "kms:GenerateDataKey"
+      ]
+      Resource = "arn:aws:kms:us-east-1:123456789012:key/11111111-2222-3333-4444-555555555555"
+    }]
+  })
+}
 ```
 
 ## Separating Plan and Apply Roles
 
-For stronger security, use separate roles for plan (read-only state) and apply (read-write state):
+For stronger security, use separate roles for plan (read-only state) and apply (read-write state). If your backend uses DynamoDB locking or a customer-managed KMS key, attach those policies to both roles as needed:
 
 ```hcl
 # Plan role: read-only state access
@@ -117,19 +154,29 @@ resource "aws_iam_role_policy" "plan_state" {
     Version = "2012-10-17"
     Statement = [
       {
-        Effect    = "Allow"
-        Actions   = ["s3:ListBucket", "s3:GetObject"]
-        Resources = ["arn:aws:s3:::my-opentofu-state/*", "arn:aws:s3:::my-opentofu-state"]
+        Effect   = "Allow"
+        Action   = "s3:ListBucket"
+        Resource = "arn:aws:s3:::my-opentofu-state"
+        Condition = {
+          StringLike = {
+            "s3:prefix" = "teams/platform/*"
+          }
+        }
+      },
+      {
+        Effect   = "Allow"
+        Action   = "s3:GetObject"
+        Resource = "arn:aws:s3:::my-opentofu-state/teams/platform/*"
       }
     ]
   })
 }
 
-# Apply role: full state read-write plus resource permissions
+# Apply role: state read-write access
 resource "aws_iam_role_policy" "apply_state" {
-  name = "apply-state-write"
-  role = aws_iam_role.opentofu_apply.id
-  # Full S3 + DynamoDB + KMS policy as above
+  name   = "apply-state-write"
+  role   = aws_iam_role.opentofu_apply.id
+  policy = data.aws_iam_policy_document.opentofu_state.json
 }
 ```
 
