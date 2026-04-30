@@ -4,12 +4,14 @@ Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
 Tags: gRPC, Go, IPv4, Microservice, Networking, Kubernetes
 
-Description: Learn how to build a production-ready gRPC microservice in Go that binds to an IPv4 address, with health checking, graceful shutdown, metrics, and Kubernetes deployment configuration.
+Description: Learn how to build a gRPC microservice in Go that binds to an IPv4 address, with health checking, graceful shutdown, reflection, and Kubernetes deployment configuration.
 
 ## Project Structure
 
 ```text
 greeter/
+├── go.mod
+├── go.sum
 ├── proto/hello.proto
 ├── main.go
 ├── Dockerfile
@@ -45,6 +47,7 @@ import (
     "os"
     "os/signal"
     "syscall"
+    "time"
 
     "google.golang.org/grpc"
     "google.golang.org/grpc/health"
@@ -90,8 +93,20 @@ func main() {
     go func() {
         <-stop
         log.Println("shutting down...")
-        hs.SetServingStatus("", grpc_health_v1.HealthCheckResponse_NOT_SERVING)
-        s.GracefulStop()
+        hs.Shutdown()
+
+        done := make(chan struct{})
+        go func() {
+            s.GracefulStop()
+            close(done)
+        }()
+
+        select {
+        case <-done:
+        case <-time.After(10 * time.Second):
+            log.Println("forcing shutdown")
+            s.Stop()
+        }
     }()
 
     log.Printf("gRPC server on %s", addr)
@@ -143,17 +158,17 @@ spec:
             - name: GRPC_ADDR
               value: "0.0.0.0:50051"
           readinessProbe:
-            exec:
-              command: ["/bin/grpc_health_probe", "-addr=:50051"]
+            grpc:
+              port: 50051
             initialDelaySeconds: 5
             periodSeconds: 10
           livenessProbe:
-            exec:
-              command: ["/bin/grpc_health_probe", "-addr=:50051"]
+            grpc:
+              port: 50051
             initialDelaySeconds: 10
             periodSeconds: 15
 ```
 
 ## Conclusion
 
-A production gRPC microservice in Go registers the application servicer, the standard health service, and gRPC reflection. Use `net.Listen("tcp4", addr)` to explicitly restrict to IPv4. Signal handlers set the health status to `NOT_SERVING` before calling `GracefulStop` to drain traffic - this is essential for zero-downtime rolling deployments. Configure Kubernetes readiness and liveness probes using `grpc_health_probe` to integrate with the cluster's health checking infrastructure.
+A gRPC microservice in Go registers the application servicer, the standard health service, and gRPC reflection. Use `net.Listen("tcp4", addr)` to explicitly restrict the listener to IPv4. On shutdown, call `hs.Shutdown()` before `GracefulStop`, and pair `GracefulStop` with a timeout-backed `Stop` fallback so in-flight RPCs can drain without blocking indefinitely. Configure Kubernetes readiness and liveness probes using native gRPC probes to integrate with the cluster's health checking infrastructure.
