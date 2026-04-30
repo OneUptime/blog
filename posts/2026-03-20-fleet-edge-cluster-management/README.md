@@ -59,10 +59,12 @@ spec:
 ```bash
 kubectl apply -f edge-registration-token.yaml
 
-# Get the registration values for edge clusters
-kubectl get clusterregistrationtoken edge-clusters-token \
+# Wait for Fleet to create the token secret, then write the agent values file
+while ! kubectl get secret edge-clusters-token -n fleet-default >/dev/null 2>&1; do sleep 5; done
+
+kubectl get secret edge-clusters-token \
   -n fleet-default \
-  -o jsonpath='{.status.manifestNamespace}'
+  -o jsonpath='{.data.values}' | base64 --decode > values.yaml
 ```
 
 ### Create an Edge Registration Script
@@ -70,45 +72,43 @@ kubectl get clusterregistrationtoken edge-clusters-token \
 ```bash
 #!/bin/bash
 # register-edge-cluster.sh - Run on each edge cluster
-
-FLEET_MANAGER_URL="https://rancher.central.example.com"
-FLEET_TOKEN="your-fleet-token"
-CLUSTER_NAME="${HOSTNAME}"  # Use hostname as cluster name
+# Copy the values.yaml generated from the ClusterRegistrationToken to this cluster first.
+CLUSTER_LABELS="\
+  --set-string labels.site=${HOSTNAME} \
+  --set-string labels.location=${LOCATION:-unknown} \
+  --set-string labels.region=${REGION:-unknown} \
+  --set-string labels.env=production"
 
 # Install Fleet agent
 helm repo add fleet https://rancher.github.io/fleet-helm-charts/
 helm repo update
 
-helm install fleet-agent fleet/fleet-agent \
-  --namespace cattle-fleet-system \
-  --create-namespace \
-  --set apiServerURL="${FLEET_MANAGER_URL}" \
-  --set token="${FLEET_TOKEN}" \
-  --set clusterNamespace="fleet-default" \
-  --set clusterName="${CLUSTER_NAME}" \
-  --set labels.location="${LOCATION:-unknown}" \
-  --set labels.region="${REGION:-unknown}" \
-  --set labels.env="production"
+helm -n cattle-fleet-system install --create-namespace --wait \
+  ${CLUSTER_LABELS} \
+  --values ./values.yaml \
+  fleet-agent fleet/fleet-agent
 ```
 
 ## Step 2: Label Edge Clusters for Targeting
 
 ```bash
 # Label edge clusters with their physical characteristics
-kubectl label cluster store-001-dallas \
+kubectl label clusters.fleet.cattle.io store-001-dallas \
   env=production \
   type=retail-store \
   region=us-south \
   city=dallas \
   tenant=acme-retail \
+  --overwrite \
   -n fleet-default
 
-kubectl label cluster factory-001-seattle \
+kubectl label clusters.fleet.cattle.io factory-001-seattle \
   env=production \
   type=manufacturing \
   region=us-west \
   city=seattle \
   tenant=acme-manufacturing \
+  --overwrite \
   -n fleet-default
 ```
 
@@ -161,7 +161,7 @@ spec:
 # retail-app/fleet.yaml - Edge-optimized configuration
 defaultNamespace: retail-app
 
-targets:
+targetCustomizations:
   - name: retail-stores
     clusterGroup: retail-stores
     helm:
@@ -175,13 +175,13 @@ targets:
             cpu: "200m"
             memory: "256Mi"
 
-        # Edge-specific configuration
+        # Example application values for edge sites
         offline:
           # Cache data locally for offline operation
           cacheEnabled: true
           cacheSize: "1Gi"
 
-        # Sync less frequently to save bandwidth
+        # Example application sync interval for edge sites
         syncIntervalMinutes: 30
 ```
 
@@ -223,7 +223,7 @@ spec:
 
 ## Step 6: Handle Intermittent Connectivity
 
-Fleet agents are designed to operate during connectivity interruptions:
+Fleet agents continue reconciling after connectivity interruptions. Separately, you can tune how often the central Fleet manager polls Git:
 
 ```yaml
 # gitrepo-edge-connectivity.yaml
@@ -236,26 +236,27 @@ spec:
   repo: https://github.com/my-org/edge-configs
   branch: main
 
-  # Increase polling interval to reduce bandwidth usage
-  # Edge clusters may have expensive cellular connections
+  # Increase polling interval to reduce how often the Fleet manager checks Git
   pollingInterval: 5m
 
   targets:
     - clusterGroup: retail-stores
 ```
 
-### Agent Connection Configuration
+### Fleet Manager Connectivity Configuration
 
 ```yaml
-# fleet-agent-values.yaml - Install Fleet agent with edge settings
-# Use during helm install on edge cluster
-agentTLSMode: "system-store"
-
-# Increase reconnect timeout for unreliable networks
-clientTimeout: 30s
-
-# Allow agent to operate offline and reconnect when possible
-checkInInterval: 60s
+# rancher-config.yaml - Configure Fleet install options in Rancher
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: rancher-config
+  namespace: cattle-system
+data:
+  fleet: |
+    agentTLSMode: system-store
+    # Shorter check-ins surface status changes more quickly for edge clusters
+    agentCheckinInterval: 1m
 ```
 
 ## Monitoring Edge Cluster Health
@@ -265,13 +266,13 @@ checkInInterval: 60s
 kubectl get clusters.fleet.cattle.io -n fleet-default \
   -l type=retail-store
 
-# Find disconnected edge clusters
+# List the last check-in time for edge clusters
 kubectl get clusters.fleet.cattle.io -n fleet-default \
   -o jsonpath='{range .items[?(@.status.agent.lastSeen)]}{.metadata.name}: {.status.agent.lastSeen}{"\n"}{end}'
 
-# Check bundle deployment status for retail stores
-kubectl get bundledeployments -n fleet-default \
-  -o jsonpath='{range .items[*]}{.metadata.name}: ready={.status.ready}{"\n"}{end}'
+# Check bundle deployment status across edge cluster namespaces
+kubectl get bundledeployments.fleet.cattle.io -A \
+  -o jsonpath='{range .items[*]}{.metadata.namespace}/{.metadata.name}: ready={.status.ready}{"\n"}{end}'
 ```
 
 ## Scaling Considerations
@@ -291,4 +292,4 @@ kubectl patch deployment fleet-controller \
 
 ## Conclusion
 
-Fleet's architecture makes it uniquely suited for edge cluster management at scale. Its agent-based model means that even clusters with intermittent connectivity will receive and apply updates when they reconnect, and its GitOps foundation ensures that every edge cluster always converges to the desired state defined in Git. For large-scale edge deployments, combining thoughtful labeling strategies, cluster groups, and environment-specific bundle configurations gives you centralized control over thousands of distributed clusters while maintaining the flexibility to customize each site's configuration.
+Fleet's architecture makes it uniquely suited for edge cluster management at scale. Its agent-based model means that even clusters with intermittent connectivity will receive and apply updates when they reconnect, and its GitOps foundation ensures that edge clusters converge back to the desired state defined in Git after connectivity returns. For large-scale edge deployments, combining thoughtful labeling strategies, cluster groups, and environment-specific bundle configurations gives you centralized control over thousands of distributed clusters while maintaining the flexibility to customize each site's configuration.
