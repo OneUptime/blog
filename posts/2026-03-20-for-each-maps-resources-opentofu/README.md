@@ -22,7 +22,7 @@ resource "aws_s3_bucket" "env_buckets" {
     prod    = "myapp-prod-data"
   }
 
-  bucket = each.value  # The value is the bucket name
+  bucket = each.value  # The value is the bucket name; S3 bucket names must be globally unique
   # each.key = "dev", "staging", or "prod"
 }
 
@@ -39,40 +39,38 @@ variable "security_groups" {
   type = map(object({
     description = string
     port        = number
-    cidr_blocks = list(string)
+    cidr_block  = string
   }))
   default = {
     ssh = {
       description = "SSH access"
       port        = 22
-      cidr_blocks = ["10.0.0.0/8"]
+      cidr_block  = "10.0.0.0/8"
     }
     http = {
       description = "HTTP access"
       port        = 80
-      cidr_blocks = ["0.0.0.0/0"]
+      cidr_block  = "0.0.0.0/0"
     }
     https = {
       description = "HTTPS access"
       port        = 443
-      cidr_blocks = ["0.0.0.0/0"]
+      cidr_block  = "0.0.0.0/0"
     }
   }
 }
 
-resource "aws_security_group_rule" "inbound" {
+resource "aws_vpc_security_group_ingress_rule" "inbound" {
   for_each = var.security_groups
 
-  type              = "ingress"
   security_group_id = aws_security_group.main.id
   description       = each.value.description  # From object value
   from_port         = each.value.port
   to_port           = each.value.port
-  protocol          = "tcp"
-  cidr_blocks       = each.value.cidr_blocks
+  ip_protocol       = "tcp"
+  cidr_ipv4         = each.value.cidr_block
 
-  # Use key in resource name
-  # Implicitly: resource is named by each.key
+  # The resource instance is addressed by each.key
 }
 ```
 
@@ -103,11 +101,13 @@ resource "aws_autoscaling_group" "env" {
   for_each = var.environments
 
   name             = "asg-${each.key}"  # asg-dev, asg-prod
+  region           = each.value.region
   min_size         = each.value.count
   max_size         = each.value.count * 2
   desired_capacity = each.value.count
 
-  # ...
+  # launch_template { ... }
+  # availability_zones = ["us-east-1a"]
 }
 ```
 
