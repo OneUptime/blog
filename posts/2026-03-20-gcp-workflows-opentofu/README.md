@@ -19,7 +19,8 @@ resource "google_service_account" "workflows" {
   project      = var.project_id
 }
 
-# Grant permission to invoke Cloud Functions and HTTP endpoints
+# If Cloud Scheduler reuses this service account to start executions, grant it
+# permission to invoke workflows.
 
 resource "google_project_iam_member" "workflows_invoker" {
   project = var.project_id
@@ -27,6 +28,7 @@ resource "google_project_iam_member" "workflows_invoker" {
   member  = "serviceAccount:${google_service_account.workflows.email}"
 }
 
+# Grant permission for the workflow to invoke Cloud Run or Cloud Run functions (2nd gen).
 resource "google_project_iam_member" "workflows_run_invoker" {
   project = var.project_id
   role    = "roles/run.invoker"
@@ -57,7 +59,7 @@ resource "google_workflows_workflow" "order_processor" {
         - validateOrder:
             call: http.post
             args:
-              url: https://api.example.com/validate
+              url: https://${var.region}-${var.project_id}.cloudfunctions.net/validate-order
               auth:
                 type: OIDC
               body:
@@ -74,7 +76,7 @@ resource "google_workflows_workflow" "order_processor" {
         - processPayment:
             call: http.post
             args:
-              url: https://api.example.com/payment
+              url: https://${var.region}-${var.project_id}.cloudfunctions.net/process-payment
               auth:
                 type: OIDC
               body:
@@ -84,7 +86,7 @@ resource "google_workflows_workflow" "order_processor" {
         - sendNotification:
             call: http.post
             args:
-              url: https://api.example.com/notify
+              url: https://${var.region}-${var.project_id}.cloudfunctions.net/send-notification
               auth:
                 type: OIDC
               body:
@@ -128,6 +130,10 @@ resource "google_cloud_scheduler_job" "run_workflow" {
     body = base64encode(jsonencode({
       argument = jsonencode({ orderId = "batch-daily" })
     }))
+
+    headers = {
+      "Content-Type" = "application/json"
+    }
 
     oauth_token {
       service_account_email = google_service_account.workflows.email
