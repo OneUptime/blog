@@ -25,19 +25,17 @@ flowchart TB
 
 ## RPL Routing Protocol
 
-RPL (Routing Protocol for Low-Power and Lossy Networks, RFC 6550) is the standard routing protocol for IPv6 mesh IoT networks. It builds a DODAG (Destination-Oriented Directed Acyclic Graph) rooted at the border router.
+RPL (Routing Protocol for Low-Power and Lossy Networks, RFC 6550) is a standard routing protocol for many IPv6 mesh IoT networks. It builds a DODAG (Destination-Oriented Directed Acyclic Graph) rooted at the border router.
 
 ## Setting Up a Linux-Based Border Router
 
 ```bash
 # Install required packages for an IEEE 802.15.4 based mesh
-
-sudo apt-get install wpan-tools
+sudo apt-get install wpan-tools radvd
 
 # Configure the 802.15.4 interface
 sudo iwpan phy phy0 set channel 0 26
 sudo iwpan dev wpan0 set pan_id 0xabcd
-sudo iwpan dev wpan0 set short_addr 0x0001
 
 # Create 6LoWPAN interface
 sudo ip link add link wpan0 name lowpan0 type lowpan
@@ -69,15 +67,14 @@ sudo systemctl start radvd
 
 ## Configuring an OpenThread Mesh Network
 
-OpenThread provides a production-ready Thread (RPL-based) mesh implementation:
+OpenThread provides a production-ready Thread mesh implementation:
 
 ```bash
-# Install OpenThread CLI for development
-sudo apt-get install openthread-cli
+# Build or flash an OpenThread CLI image such as ot-cli-ftd for your target platform
 
 # On each router node (using OpenThread CLI):
-# 1. Set the same network dataset as the border router
-> dataset set active <hexdump>
+# 1. Set the same active dataset as the existing Thread network
+> dataset set active <hex-encoded-tlvs>
 
 # 2. Start the thread interface
 > ifconfig up
@@ -85,7 +82,7 @@ sudo apt-get install openthread-cli
 
 # 3. Check the device joined the mesh
 > state
-# router
+# child initially, then router or leader after attach completes
 
 # 4. Show routing table
 > router table
@@ -103,11 +100,12 @@ sudo apt-get install openthread-cli
 
 BOARD = iotlab-m3
 USEMODULE += gnrc_ipv6_router_default
-USEMODULE += gnrc_sixlowpan_full
+USEMODULE += gnrc_sixlowpan_default
 USEMODULE += gnrc_rpl
 USEMODULE += auto_init_gnrc_netif
 USEMODULE += gnrc_icmpv6_echo
 USEMODULE += shell
+USEMODULE += shell_cmds_default
 ```
 
 ```c
@@ -115,25 +113,24 @@ USEMODULE += shell
 
 #include "net/gnrc/rpl.h"
 #include "net/gnrc/netif.h"
+#include "shell.h"
 
 int main(void) {
+    char line_buf[SHELL_DEFAULT_BUFSIZE];
+
     // Get the first network interface (IEEE 802.15.4)
     gnrc_netif_t *netif = gnrc_netif_iter(NULL);
 
-    // Initialize RPL with DODAG root at the border router
-    // Instance 0, DODAG root: 2001:db8:1:1::1
-    ipv6_addr_t dodag_id;
-    ipv6_addr_from_str(&dodag_id, "2001:db8:1:1::1");
+    if (netif != NULL) {
+        // On regular mesh nodes, start the RPL thread and join via DIO messages.
+        gnrc_rpl_init(netif->pid);
+    }
 
-    // On non-root nodes, RPL will auto-join the DODAG via DIO messages
-    // On the border router node, initialize as root:
-    // gnrc_rpl_root_init(0, &dodag_id, false, false);
-
-    // On regular mesh nodes, just start listening
-    gnrc_rpl_init(netif->pid);
+    // On the border router node, also initialize the DODAG root with
+    // gnrc_rpl_root_init() after setting the DODAG ID.
 
     // Start the shell for debugging
-    shell_run(NULL, NULL, 0);
+    shell_run(NULL, line_buf, SHELL_DEFAULT_BUFSIZE);
     return 0;
 }
 ```
@@ -154,4 +151,4 @@ traceroute6 2001:db8:1:1::c1
 
 ## Conclusion
 
-IPv6 mesh networks for IoT use 6LoWPAN for header compression, RPL for multi-hop routing, and a border router to bridge the mesh to the broader IPv6 network. Tools like OpenThread and RIOT OS provide production-ready implementations. The key insight is that RPL builds a routing topology automatically based on radio link quality, creating a self-healing mesh that routes around node failures.
+IPv6 mesh networks for IoT use 6LoWPAN for header compression, RPL for multi-hop routing, and a border router to bridge the mesh to the broader IPv6 network. Tools like OpenThread and RIOT OS provide production-ready implementations. The key insight is that RPL builds a routing topology automatically based on its objective function and link metrics, creating a self-healing mesh that routes around node failures.
