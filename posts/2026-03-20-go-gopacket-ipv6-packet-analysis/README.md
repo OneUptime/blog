@@ -11,6 +11,9 @@ Description: Use the Go gopacket library to capture and analyze IPv6 packets fro
 ```bash
 # Install gopacket and libpcap dependency
 
+# Create a module first if you're starting a new project
+go mod init example.com/ipv6-analyzer
+
 go get github.com/google/gopacket
 go get github.com/google/gopacket/pcap
 
@@ -108,17 +111,23 @@ package main
 
 import (
     "fmt"
+    "log"
     "github.com/google/gopacket"
     "github.com/google/gopacket/layers"
     "github.com/google/gopacket/pcap"
 )
 
 func captureNDP(iface string) {
-    handle, _ := pcap.OpenLive(iface, 1600, true, pcap.BlockForever)
+    handle, err := pcap.OpenLive(iface, 1600, true, pcap.BlockForever)
+    if err != nil {
+        log.Fatal("OpenLive:", err)
+    }
     defer handle.Close()
 
     // Capture only ICMPv6
-    handle.SetBPFFilter("icmp6")
+    if err := handle.SetBPFFilter("icmp6"); err != nil {
+        log.Fatal("SetBPFFilter:", err)
+    }
 
     packetSource := gopacket.NewPacketSource(handle, handle.LinkType())
 
@@ -129,7 +138,11 @@ func captureNDP(iface string) {
         }
 
         icmpv6, _ := icmpv6Layer.(*layers.ICMPv6)
-        ipv6, _ := packet.Layer(layers.LayerTypeIPv6).(*layers.IPv6)
+        ipv6Layer := packet.Layer(layers.LayerTypeIPv6)
+        if ipv6Layer == nil {
+            continue
+        }
+        ipv6, _ := ipv6Layer.(*layers.IPv6)
 
         typeName := "Unknown"
         switch icmpv6.TypeCode.Type() {
@@ -153,6 +166,10 @@ func captureNDP(iface string) {
             typeName, ipv6.SrcIP, ipv6.DstIP)
     }
 }
+
+func main() {
+    captureNDP("eth0")
+}
 ```
 
 ## Packet Statistics
@@ -162,7 +179,7 @@ package main
 
 import (
     "fmt"
-    "net"
+    "log"
     "sync"
     "time"
 
@@ -192,7 +209,10 @@ func collectIPv6Stats(iface string, duration time.Duration) *IPv6Stats {
         return stats
     }
     defer handle.Close()
-    handle.SetBPFFilter("ip6")
+    if err := handle.SetBPFFilter("ip6"); err != nil {
+        log.Println("SetBPFFilter:", err)
+        return stats
+    }
 
     stop := time.After(duration)
     packetSource := gopacket.NewPacketSource(handle, handle.LinkType())
@@ -202,7 +222,10 @@ func collectIPv6Stats(iface string, duration time.Duration) *IPv6Stats {
         select {
         case <-stop:
             return stats
-        case packet := <-packetCh:
+        case packet, ok := <-packetCh:
+            if !ok {
+                return stats
+            }
             if ipv6 := packet.Layer(layers.LayerTypeIPv6); ipv6 != nil {
                 ip, _ := ipv6.(*layers.IPv6)
                 stats.mu.Lock()
@@ -230,4 +253,4 @@ func main() {
 
 ## Conclusion
 
-Go's gopacket library provides a powerful API for IPv6 packet capture and analysis. The `layers.LayerTypeIPv6` layer decoder handles all IPv6 header fields, and ICMPv6 analysis enables NDP monitoring. Combined with BPF filters for efficient kernel-level filtering, gopacket is suitable for building production-grade IPv6 monitoring and security tools.
+Go's gopacket library provides a powerful API for IPv6 packet capture and analysis. The `layers.LayerTypeIPv6` decoder handles the base IPv6 header, while related layer decoders can parse extension and upper-layer protocols. Combined with ICMPv6 analysis and BPF filters for efficient kernel-level filtering, gopacket is suitable for building production-grade IPv6 monitoring and security tools.
