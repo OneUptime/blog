@@ -8,18 +8,13 @@ Description: Learn how to generate a Portainer Business Edition support bundle c
 
 ---
 
-When troubleshooting complex issues in Portainer BE, the support team may request a support bundle - a compressed archive containing logs, configuration details, and diagnostic data that helps identify the root cause without requiring direct access to your system.
+When troubleshooting complex issues in Portainer BE, the support team may request a support bundle - a compressed archive of troubleshooting information about your Portainer installation that helps Portainer support investigate the issue.
 
 ## What's in a Support Bundle
 
-A Portainer support bundle typically includes:
-- Portainer application logs
-- Database diagnostic information
-- Environment configuration (sanitized)
-- Version and license information
-- System resource information
+A Portainer support bundle contains diagnostic information about your Portainer installation that can be provided to the Portainer support team to aid in troubleshooting issues.
 
-Sensitive data (passwords, secrets) is excluded or redacted.
+Sensitive data such as passwords and other sensitive credentials is removed before the bundle is generated.
 
 ## Generate a Support Bundle via the UI
 
@@ -27,34 +22,28 @@ Sensitive data (passwords, secrets) is excluded or redacted.
 
 1. Log in as an administrator
 2. Navigate to **Settings**
-3. Scroll to **Support** or **Diagnostics**
-4. Click **Generate Support Bundle**
-5. Download the resulting `.zip` or `.tar.gz` file
-
-### Method 2: Help Menu
-
-Some Portainer BE versions include a support bundle option in the **?** (Help) menu in the top navigation bar.
+3. Scroll to **Portainer support**
+4. Optionally enable **Password Protect** and set a password
+5. Click **Download support bundle** to download the resulting `.tar.gz` file
 
 ## Generate via API
 
 ```bash
-# Authenticate
+# Create an access token in Portainer first:
+# My account -> Access tokens
 
-TOKEN=$(curl -s -X POST \
-  https://localhost:9443/api/auth \
-  -H "Content-Type: application/json" \
-  -d '{"username":"admin","password":"yourpassword"}' \
-  --insecure | python3 -c "import sys,json; print(json.load(sys.stdin)['jwt'])")
+PORTAINER_URL="https://localhost:9443"
+API_KEY="your_portainer_access_token"
 
 # Generate and download support bundle
-curl -X GET \
-  https://localhost:9443/api/system/supportbundle \
-  -H "Authorization: Bearer $TOKEN" \
-  --output portainer_support_bundle_$(date +%Y%m%d_%H%M%S).zip \
+curl -fsS -X POST \
+  "${PORTAINER_URL}/api/support/download" \
+  -H "X-API-Key: ${API_KEY}" \
+  --output "portainer_support_bundle_$(date +%Y%m%d_%H%M%S).tar.gz" \
   --insecure
 
 echo "Support bundle downloaded"
-ls -lh portainer_support_bundle_*.zip
+ls -lh portainer_support_bundle_*.tar.gz
 ```
 
 ## Manual Log Collection
@@ -83,7 +72,7 @@ docker info > "$OUTPUT_DIR/docker_info.txt" 2>&1
 docker stats portainer --no-stream > "$OUTPUT_DIR/container_stats.txt"
 
 # Portainer version via API
-curl -sk https://localhost:9443/api/status > "$OUTPUT_DIR/portainer_status.json"
+curl -sk https://localhost:9443/api/system/status > "$OUTPUT_DIR/portainer_status.json"
 
 # System info
 uname -a > "$OUTPUT_DIR/system_info.txt"
@@ -101,7 +90,7 @@ ls -lh "${OUTPUT_DIR}.tar.gz"
 ## Sharing the Support Bundle
 
 When sending the bundle to Portainer support:
-- Open a ticket at support.portainer.io
+- Open a ticket at https://www.portainer.io/get-support-for-portainer
 - Attach the bundle file (or provide a download link)
 - Include a description of the issue and steps to reproduce
 - Note your Portainer version and deployment type
