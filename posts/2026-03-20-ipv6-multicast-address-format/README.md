@@ -32,7 +32,7 @@ Bit 11 (lowest): T flag  - Transient (1) or Well-known (0)
 Examples: `ff02::1` (all nodes), `ff02::2` (all routers)
 
 **T flag = 1**: Transient/dynamic multicast address (not permanently assigned)
-Example: `ff3e::8000:1` (transient site-local multicast)
+Example: `ff15::1234` (transient site-local multicast)
 
 ## Scope Field (bits 12-15)
 
@@ -41,9 +41,9 @@ The 4-bit scope field determines the reach of the multicast traffic:
 | Scope Value | Name | Description |
 |---|---|---|
 | 0 | Reserved | Not for use |
-| 1 | Interface-local | Loopback only |
+| 1 | Interface-local | Single interface on a node |
 | 2 | Link-local | Single network segment |
-| 3 | Realm-local | Larger than link-local, implementation-defined |
+| 3 | Realm-local | Larger than link-local, defined by the network technology |
 | 4 | Admin-local | Smallest admin-scoped area |
 | 5 | Site-local | Within a site/campus |
 | 8 | Organization-local | Entire organization |
@@ -63,9 +63,9 @@ ff02::a  - EIGRP routers
 ff02::d  - PIM routers
 ff02::fb - mDNS (multicast DNS)
 ff02::1:2 - DHCPv6 relay agents and servers
-ff02::1:3 - DHCPv6 all servers
+ff02::1:3 - LLMNR (Link-Local Multicast Name Resolution)
 ff05::1:3 - DHCPv6 all servers, site-local scope
-ff0e::1  - All nodes, global scope
+ff05::2  - All routers, site-local scope
 ```
 
 ## Constructing Multicast Addresses
@@ -74,7 +74,7 @@ To construct a multicast address:
 
 ```text
 1. Start with: ff
-2. Add flags nibble: 0 (well-known) or 1x (transient, set T bit)
+2. Add flags nibble: 0 for a basic well-known address, or 1 for a basic transient address
 3. Add scope nibble: 2 (link-local), 5 (site-local), e (global)
 4. Add group ID (112 bits)
 
@@ -117,17 +117,18 @@ ip -6 maddr show dev eth0
 
 ## Prefix-Based Multicast (P flag)
 
-RFC 3306 defines prefix-based multicast addresses where the group ID is derived from a unicast prefix:
+RFC 3306 defines prefix-based multicast addresses where the address carries a unicast prefix. RFC 7371 later updated the format to split the next 8 bits into additional flags and reserved bits:
 
 ```text
 Format with P=1, T=1:
-ff3<scope>::<plen><prefix><group>
+|  8 bits  |  4 bits  |  4 bits  |  4 bits  |  4 bits  |  8 bits  |    64 bits     |  32 bits  |
+|  FF      |  flags   |  scope   |  ff2     | reserved | plen     | network prefix | group ID  |
 
 Example: Group for prefix 2001:db8::/32
-ff3e:0030:2001:db8::1
-(scope=e global, plen=0x20=32, prefix=2001:db8, group=1)
+ff3e:0020:2001:db8::1
+(scope=e global, plen=0x20=32, ff2=0, prefix=2001:db8::/32, group=1)
 ```
 
 ## Summary
 
-IPv6 multicast addresses use the `ff00::/8` prefix with flag bits defining whether the address is well-known (T=0) or transient (T=1), and a 4-bit scope field defining traffic reach (link-local=2, site-local=5, global=e). The 112-bit group ID identifies the specific multicast group. Understanding this format is essential for configuring multicast routing, MLD, and network services that use multicast (DHCPv6, NDP, OSPFv3).
+IPv6 multicast addresses use the `ff00::/8` prefix with flag bits defining whether the address is well-known (T=0) or transient (T=1), and a 4-bit scope field defining traffic reach (link-local=2, site-local=5, global=e). The remaining 112 bits identify the specific multicast group, although some standardized formats subdivide that field further. Understanding this format is essential for configuring multicast routing, MLD, and network services that use multicast (DHCPv6, NDP, OSPFv3).
