@@ -8,7 +8,7 @@ Description: Understand how IPv6 prevents overlapping fragment attacks, why RFC 
 
 ## Introduction
 
-IPv4 allowed overlapping fragments, which led to a class of attacks including the Teardrop attack and various intrusion detection evasion techniques. RFC 8200 eliminates this attack surface entirely: if any fragment of an IPv6 packet overlaps with another fragment of the same packet, the entire reassembly buffer must be silently discarded. This rule is simple, unambiguous, and eliminates all overlap-based attacks.
+IPv4 allowed overlapping fragments, which led to a class of attacks including the Teardrop attack and various intrusion detection evasion techniques. RFC 8200 closes this attack surface by requiring reassembly to be abandoned when fragments overlap, while also allowing exact duplicate fragments to be dropped separately as a special case. This rule is simple, unambiguous, and removes the ambiguity that made overlap-based attacks practical.
 
 ## Why Overlapping Fragments Were Dangerous
 
@@ -25,9 +25,10 @@ IDS evasion (Ptacek & Newsham 1998):
   Fragment 2 (overlaps):    overwrite with "GET /attack"
   Result: IDS sees "GET /safe", host sees "GET /attack"
 
-Fragment 0 injection:
-  Attacker sends fragment 0 with forged data
-  Destination may use first-fragment data without receiving all fragments
+Tiny fragment attack:
+  Attacker pushes TCP header fields into a non-zero-offset fragment
+  Filter inspects only fragment 0 and misses the hidden fields
+  Result: Firewall policy can be bypassed
 ```
 
 ## IPv6 RFC 8200 Overlap Rule
@@ -44,23 +45,23 @@ been received for that packet must be discarded."
 
 Additional rule:
   No ICMPv6 error is sent when fragments are discarded for overlap.
-  Overlapping fragments are silently dropped.
-  The source will eventually retransmit (TCP) or accept loss (UDP).
+  Exact duplicate fragments may be dropped separately without killing reassembly.
+  TCP typically retransmits; UDP applications see a dropped datagram unless they retry.
 ```
 
 ## Detecting Overlap Attempts
 
 ```bash
-# Check for fragment overlap indicators in kernel logs
+# Check for fragment overlap indicators in kernel logs (if the stack logs them)
 
 sudo dmesg | grep -i "fragment\|overlap\|frag"
 
-# Watch for reassembly failures (could include overlaps)
-watch -n 1 'cat /proc/net/snmp6 | grep -i reasm'
-# Ip6ReasmFails increasing rapidly may indicate overlap attacks
+# Watch for reassembly failures (includes more than just overlap cases)
+watch -n 1 'grep -i reasm /proc/net/snmp6'
+# Ip6ReasmFails increasing rapidly may indicate malformed or overlapping fragments
 
-# Capture fragments for manual analysis
-sudo tcpdump -i eth0 -w /tmp/fragments.pcap "ip6[6] == 44"
+# Capture packets that contain an IPv6 Fragment header anywhere in the header chain
+sudo tcpdump -i eth0 -w /tmp/fragments.pcap "ip6 protochain 44"
 
 # Analyze with tshark for overlapping fragments
 tshark -r /tmp/fragments.pcap -Y "ipv6.fragment.overlap == 1"
@@ -76,7 +77,7 @@ def check_fragment_overlap(fragments: list) -> bool:
     Each fragment is (offset_bytes, length_bytes).
     Returns True if overlap detected (reassembly must be abandoned).
     """
-    # Build a set of all covered byte positions
+    # Build byte ranges for each fragment
     covered = []
     for offset, length in fragments:
         covered.append((offset, offset + length - 1))
@@ -103,7 +104,7 @@ print(f"Overlapping fragments: {check_fragment_overlap(fragments_overlap)}")
 def reassemble_or_discard(src: str, dst: str, ident: int,
                           fragments: list) -> bytes | None:
     """
-    Attempt reassembly; discard entire buffer if any overlap detected.
+    Attempt reassembly; discard if overlap or incompleteness is detected.
     fragments: list of (offset, more_flag, data) tuples
     """
     frag_ranges = [(offset, len(data)) for offset, _, data in fragments]
@@ -114,7 +115,16 @@ def reassemble_or_discard(src: str, dst: str, ident: int,
 
     # Sort and reassemble
     sorted_frags = sorted(fragments, key=lambda x: x[0])
-    result = bytearray()
+    if not sorted_frags or sorted_frags[0][0] != 0 or sorted_frags[-1][1] != 0:
+        return None  # Missing fragment 0 or final fragment
+
+    expected_offset = 0
+    for offset, more, data in sorted_frags:
+        if offset != expected_offset:
+            return None  # Gap detected
+        expected_offset += len(data)
+
+    result = bytearray(expected_offset)
     for offset, more, data in sorted_frags:
         result[offset:offset + len(data)] = data
 
@@ -124,20 +134,22 @@ def reassemble_or_discard(src: str, dst: str, ident: int,
 ## Comparison: IPv4 vs IPv6 Overlap Handling
 
 ```text
-IPv4 overlap handling (implementation-defined):
-  - RFC 791 does not specify what to do with overlapping fragments
-  - Different OS implementations chose different strategies:
+IPv4 overlap handling (historically permitted):
+  - RFC 791's example reassembly procedure accepts overlaps and uses the more recently arrived data
+  - Later OSes and middleboxes used different strategies:
     - First-wins: Keep first received data for overlapping range
     - Last-wins: Overwrite with latest received data
-    - Result: IDS evasion was possible by targeting the behavior difference
+    - Drop-on-overlap: Treat the packet as invalid
+  - Result: IDS/firewall evasion was possible when devices disagreed
 
 IPv6 overlap handling (RFC 8200, mandatory):
-  - Any overlap → silently discard entire reassembly buffer
-  - No IDS evasion possible: overlapping = invalid = dropped
-  - Consistent across all implementations
+  - Non-duplicate overlap → abandon reassembly and discard received fragments
+  - No ICMP error for this case; exact duplicates may be dropped separately
+  - Overlap-based IDS/firewall evasion at reassembly is removed
+  - Consistent baseline behavior across compliant implementations
   - Attack mitigation at the protocol level, not implementation level
 ```
 
 ## Conclusion
 
-IPv6's overlap prevention rule is a clean security improvement over IPv4. By mandating silent discard of the entire reassembly buffer upon any fragment overlap, RFC 8200 eliminates an entire class of attacks. The rule is easy to implement correctly: compare all fragment ranges before accepting any reassembled data. In practice, legitimate implementations never produce overlapping fragments, so this rule only triggers on malformed or malicious traffic.
+IPv6's overlap prevention rule is a clean security improvement over IPv4. By mandating silent discard of an overlapping fragment set, RFC 8200 removes the ambiguity that made these attacks practical. The rule is easy to implement correctly: compare fragment ranges before accepting any reassembled data, and abandon the packet on any non-duplicate overlap. In practice, legitimate senders do not create overlapping fragments, although exact duplicate fragments can still appear and may be handled as a special case.
