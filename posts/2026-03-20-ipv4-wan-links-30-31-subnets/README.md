@@ -24,7 +24,7 @@ Wasted:    2 addresses (network + broadcast)
 Network:   10.254.0.0/31
 Router A:  10.254.0.0
 Router B:  10.254.0.1
-(No broadcast address!)
+(No subnet broadcast address!)
 Wasted:    0 addresses
 ```
 
@@ -89,8 +89,8 @@ interface GigabitEthernet0/0
  ip address 10.254.0.1 255.255.255.254    ! /31 mask
  no shutdown
 
-! Note: /31 is not supported on all platforms or all IOS versions
-! Check with: ip unnumbered or check vendor docs
+! Note: /31 support varies by platform and software release
+! Verify RFC 3021 /31 support in your vendor's documentation or release notes
 ```
 
 ## Step 4: Allocate WAN Links Systematically
@@ -112,11 +112,11 @@ def allocate_wan_links(base_block, prefix_len, num_links):
         hosts = list(subnet.hosts())
 
         if prefix_len == 31:
-            # /31: use network and broadcast
-            router_a = str(subnet.network_address)
-            router_b = str(subnet.broadcast_address)
+            # /31: hosts() returns both usable addresses
+            router_a = str(hosts[0])
+            router_b = str(hosts[1])
         else:
-            # /30: use first and last host
+            # /30: use the two usable host addresses
             router_a = str(hosts[0])
             router_b = str(hosts[1])
 
@@ -161,15 +161,15 @@ Example:
 
 ## Step 6: Verify WAN Link Configuration
 
-```bash
+```text
 # Verify interface is up and IP is correct
 show interfaces GigabitEthernet0/0
 
 # Ping the other end of the link
-ping 10.254.0.2
+ping <peer-ip>
 
 # Check routing table for the connected route
-show ip route 10.254.0.0 255.255.255.252
+show ip route <wan-subnet> <wan-mask>
 
 # Verify MTU (WAN links should match)
 show interfaces GigabitEthernet0/0 | include MTU
