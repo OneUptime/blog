@@ -12,7 +12,7 @@ Homebrew is the most popular package manager for macOS, making it the easiest an
 
 ## Prerequisites
 
-- macOS 12 (Monterey) or later
+- A Homebrew-supported version of macOS (currently macOS 14 Sonoma or later)
 - Homebrew installed (see https://brew.sh)
 - Xcode Command Line Tools
 
@@ -30,20 +30,13 @@ eval "$(/opt/homebrew/bin/brew shellenv)"
 
 ## Installing OpenTofu via Homebrew
 
-### Method 1: Using the Official Tap
+### Install from Homebrew Core
 
 ```bash
-# Add the OpenTofu tap
-brew tap opentofu/tap
+# Refresh Homebrew metadata
+brew update
 
 # Install OpenTofu
-brew install opentofu
-```
-
-### Method 2: Using the Core Formula (if available)
-
-```bash
-# OpenTofu may be available in homebrew-core
 brew install opentofu
 ```
 
@@ -54,7 +47,7 @@ brew install opentofu
 tofu version
 
 # Output:
-# OpenTofu v1.9.0
+# OpenTofu v1.11.6
 # on darwin_arm64
 
 # Check binary location
@@ -68,23 +61,19 @@ which tofu
 ### For Zsh (default on macOS)
 
 ```bash
-# Install zsh completions
+# Install shell completion
 tofu -install-autocomplete
 
-# Or manually add to .zshrc
-echo 'autoload -U +X bashcompinit && bashcompinit' >> ~/.zshrc
-echo 'complete -o nospace -C /opt/homebrew/bin/tofu tofu' >> ~/.zshrc
-source ~/.zshrc
+# Restart your shell for completion to take effect
 ```
 
 ### For Bash
 
 ```bash
 # If using Bash
-brew install bash-completion@2
-
 tofu -install-autocomplete
-source ~/.bash_profile
+
+# Restart your shell for completion to take effect
 ```
 
 ## Quick Start on macOS
@@ -123,14 +112,13 @@ cat greeting.txt
 ## Managing Multiple Versions with Homebrew
 
 ```bash
-# Install a specific version using tofuenv (recommended for multiple versions)
+# Replace the standalone opentofu formula with tofuenv
+brew uninstall opentofu
 brew install tofuenv
 
-# Or use the Homebrew versioned formula
-brew install opentofu@1.8
-
-# Switch between versions
-brew link --overwrite opentofu@1.8
+# Install and use a specific OpenTofu version
+tofuenv install 1.11.6
+tofuenv use 1.11.6
 ```
 
 ## Updating OpenTofu
@@ -148,9 +136,6 @@ tofu version
 ```bash
 # Remove OpenTofu
 brew uninstall opentofu
-
-# Optionally remove the tap
-brew untap opentofu/tap
 
 # Clean up
 brew cleanup
