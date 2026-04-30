@@ -22,8 +22,14 @@ def resolve_service(hostname: str, retries: int = 5, delay: float = 2.0) -> list
     """
     for attempt in range(1, retries + 1):
         try:
-            results = socket.getaddrinfo(hostname, None, socket.AF_INET)
-            ips = list({r[4][0] for r in results})
+            results = socket.getaddrinfo(
+                hostname,
+                None,
+                family=socket.AF_INET,
+                type=socket.SOCK_STREAM,
+                proto=socket.IPPROTO_TCP,
+            )
+            ips = list(dict.fromkeys(r[4][0] for r in results))
             log.info("Resolved %s → %s", hostname, ips)
             return ips
         except socket.gaierror as e:
@@ -33,7 +39,7 @@ def resolve_service(hostname: str, retries: int = 5, delay: float = 2.0) -> list
                 time.sleep(delay)
     raise RuntimeError(f"Failed to resolve {hostname} after {retries} attempts")
 
-# In Kubernetes, services resolve via their ClusterDNS name
+# In Kubernetes, Services resolve via their cluster DNS name
 
 ips = resolve_service("auth-service.default.svc.cluster.local")
 ```
@@ -59,7 +65,7 @@ db_host, db_port = get_service_address("DB_SERVICE_ADDR", "db.local", 5432)
 auth_host, auth_port = get_service_address("AUTH_SERVICE_ADDR", "auth.local", 8080)
 ```
 
-## Kubernetes: Headless Service + DNS Round-Robin
+## Kubernetes: Headless Service + Client-Side Round-Robin
 
 ```yaml
 # headless-service.yaml
@@ -68,7 +74,7 @@ kind: Service
 metadata:
   name: worker
 spec:
-  clusterIP: None          # Headless - DNS returns all pod IPs
+  clusterIP: None          # Headless - DNS returns the ready pod IPs
   selector:
     app: worker
   ports:
@@ -78,10 +84,17 @@ spec:
 ```python
 import socket
 
-# Headless service returns all pod IPs via DNS A records
-pod_ips = [r[4][0] for r in socket.getaddrinfo(
-    "worker.default.svc.cluster.local", None, socket.AF_INET
-)]
+# Headless service returns the ready pod IPs via DNS A records
+pod_ips = list(dict.fromkeys(
+    r[4][0]
+    for r in socket.getaddrinfo(
+        "worker.default.svc.cluster.local",
+        None,
+        family=socket.AF_INET,
+        type=socket.SOCK_STREAM,
+        proto=socket.IPPROTO_TCP,
+    )
+))
 print("Worker pods:", pod_ips)
 # ['10.244.1.5', '10.244.2.8', '10.244.3.12']
 ```
@@ -90,7 +103,6 @@ print("Worker pods:", pod_ips)
 
 ```python
 import itertools
-import httpx
 
 class ServicePool:
     def __init__(self, service_name: str, port: int):
@@ -102,8 +114,16 @@ class ServicePool:
 
     def refresh(self) -> None:
         import socket
-        self._ips = [r[4][0] for r in
-                     socket.getaddrinfo(self.service_name, None, socket.AF_INET)]
+        self._ips = list(dict.fromkeys(
+            r[4][0]
+            for r in socket.getaddrinfo(
+                self.service_name,
+                None,
+                family=socket.AF_INET,
+                type=socket.SOCK_STREAM,
+                proto=socket.IPPROTO_TCP,
+            )
+        ))
         self._cycle = itertools.cycle(self._ips)
 
     def next_url(self) -> str:
@@ -122,4 +142,4 @@ for _ in range(4):
 
 ## Conclusion
 
-DNS is the standard discovery mechanism in containerised environments - Kubernetes `Service` objects provide stable DNS names that resolve to ClusterIP or individual pod IPs (headless services). Use environment variables for simpler deployments where a central registry is overkill. Always retry DNS lookups at startup to handle services that haven't registered yet. For production clients, combine DNS resolution with health checks and circuit breakers to route around unhealthy instances.
+DNS is the standard discovery mechanism in containerised environments - Kubernetes `Service` objects provide stable DNS names that resolve to a ClusterIP or, for headless services, to the set of ready pod IPs. Use environment variables for simpler deployments where a central registry is overkill. Always retry DNS lookups at startup to handle services that haven't registered yet. For production clients, combine DNS resolution with health checks and circuit breakers to route around unhealthy instances.
