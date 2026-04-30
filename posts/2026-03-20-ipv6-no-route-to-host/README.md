@@ -49,7 +49,7 @@ sudo rdisc6 eth0 2>/dev/null | grep "Router lifetime"
 # Lifetime = 0 means router explicitly says "I'm not a default gateway"
 
 # Re-solicit Router Advertisement
-sudo rdisc6 -m 3 -w 5000 eth0
+sudo rdisc6 -r 3 -w 5000 eth0
 
 # Check accept_ra setting (must be >= 1 for RAs to set default route)
 cat /proc/sys/net/ipv6/conf/eth0/accept_ra
@@ -109,7 +109,7 @@ echo "4. Ping default gateway:"
 gw=$(ip -6 route show default 2>/dev/null | awk '{print $3}' | head -1)
 gw_dev=$(ip -6 route show default 2>/dev/null | awk '{print $5}' | head -1)
 if [ -n "$gw" ]; then
-    ping6 -c 2 -I "$gw_dev" "$gw" > /dev/null 2>&1 && \
+    ping -6 -c 2 -I "$gw_dev" "$gw" > /dev/null 2>&1 && \
         echo "[OK] Gateway $gw is reachable" || \
         echo "[FAIL] Cannot ping gateway $gw"
 else
@@ -118,7 +118,7 @@ fi
 
 echo ""
 echo "5. Ping internet IPv6:"
-ping6 -c 2 2001:4860:4860::8888 > /dev/null 2>&1 && \
+ping -6 -c 2 2001:4860:4860::8888 > /dev/null 2>&1 && \
     echo "[OK] Internet IPv6 reachable" || \
     echo "[FAIL] Cannot reach internet via IPv6"
 ```
