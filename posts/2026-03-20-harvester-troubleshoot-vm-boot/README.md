@@ -12,13 +12,15 @@ VM boot issues in Harvester can range from VMs that never start, to VMs that sta
 
 ## VM Lifecycle States
 
-Before troubleshooting, understand the VM state transitions:
+Before troubleshooting, understand that Harvester surfaces state at multiple layers:
 
 ```text
-VM Created → Pending → Scheduling → Scheduled → Launching → Running
-                  ↓                         ↓
-               Failed                    CrashLoopBackOff
+VirtualMachine: Stopped → Starting → Running
+VirtualMachineInstance: Pending → Scheduling → Scheduled → Running → Succeeded/Failed
+virt-launcher Pod: Pending → Running → Succeeded/Failed
 ```
+
+States like `CrashLoopBackOff` surface on the `virt-launcher` pod or its containers, not on the `VirtualMachine` object itself.
 
 ## Step 1: Check VM and VMI Status
 
@@ -43,9 +45,9 @@ kubectl get events -n default \
 ```
 
 **Common status fields to check:**
-- `status.phase`: Should be `Running` for a healthy VM
-- `status.conditions`: Look for any conditions with `status: False`
-- `status.reason`: Explains why a VM is in an error state
+- `vm.status.printableStatus`: High-level VM state such as `Starting`, `Running`, or `Stopped`
+- `vmi.status.phase`: Should be `Running` for a healthy, booted instance
+- `vmi.status.conditions`: Look for any conditions with `status: "False"` and read the related `reason` and `message`
 
 ## Step 2: Check the virt-launcher Pod
 
@@ -56,17 +58,20 @@ Each running VMI has a corresponding `virt-launcher` pod. This is where most boo
 kubectl get pods -n default -l vm.kubevirt.io/name=ubuntu-web-01
 
 # Check pod status
-kubectl describe pod \
-    $(kubectl get pods -n default -l vm.kubevirt.io/name=ubuntu-web-01 -o name)
+kubectl describe pod -n default \
+    "$(kubectl get pods -n default -l vm.kubevirt.io/name=ubuntu-web-01 \
+        -o jsonpath='{.items[0].metadata.name}')"
 
 # Get pod logs (QEMU/KVM output)
 kubectl logs -n default \
-    $(kubectl get pods -n default -l vm.kubevirt.io/name=ubuntu-web-01 -o name) \
+    "$(kubectl get pods -n default -l vm.kubevirt.io/name=ubuntu-web-01 \
+        -o jsonpath='{.items[0].metadata.name}')" \
     -c compute
 
 # Follow logs in real-time
 kubectl logs -n default \
-    $(kubectl get pods -n default -l vm.kubevirt.io/name=ubuntu-web-01 -o name) \
+    "$(kubectl get pods -n default -l vm.kubevirt.io/name=ubuntu-web-01 \
+        -o jsonpath='{.items[0].metadata.name}')" \
     -c compute -f
 ```
 
@@ -81,7 +86,7 @@ virtctl console ubuntu-web-01 -n default
 # Press Enter if the console shows nothing
 # Use Ctrl+] to exit the console
 
-# For VNC console access
+# For VNC console access (requires remote-viewer on your workstation)
 virtctl vnc ubuntu-web-01 -n default
 ```
 
@@ -95,13 +100,15 @@ virtctl vnc ubuntu-web-01 -n default
 
 ```bash
 # Check why the pod is pending
-kubectl get pod \
-    $(kubectl get pods -n default -l vm.kubevirt.io/name=ubuntu-web-01 -o name | head -1) \
+kubectl get pod -n default \
+    "$(kubectl get pods -n default -l vm.kubevirt.io/name=ubuntu-web-01 \
+        -o jsonpath='{.items[0].metadata.name}')" \
     -o wide
 
 # Check pod events for scheduling failures
-kubectl describe pod \
-    $(kubectl get pods -n default -l vm.kubevirt.io/name=ubuntu-web-01 -o name) | \
+kubectl describe pod -n default \
+    "$(kubectl get pods -n default -l vm.kubevirt.io/name=ubuntu-web-01 \
+        -o jsonpath='{.items[0].metadata.name}')" | \
     grep -A 20 "Events:"
 
 # Common scheduling messages:
@@ -149,13 +156,13 @@ kubectl describe virtualmachineimage ubuntu-22-04-lts -n default | \
 ```
 
 **Fix for boot order issues:**
-```yaml
-# Ensure the disk has bootOrder: 1 set
-# Update the VM spec:
+```bash
+# Ensure the boot disk has bootOrder: 1 set
+# Adjust the disk index if the boot disk is not disks[0]
 kubectl patch vm ubuntu-web-01 -n default \
     --type json \
     -p '[{
-        "op": "replace",
+        "op": "add",
         "path": "/spec/template/spec/domain/devices/disks/0/bootOrder",
         "value": 1
     }]'
@@ -177,9 +184,7 @@ spec:
         firmware:
           bootloader:
             efi:
-              secureBoot: false  # Disable secure boot if not supported by image
-        machine:
-          type: q35  # Required for UEFI
+              secureBoot: false  # Disable secure boot if the image does not support it
 ```
 
 ---
@@ -200,23 +205,20 @@ cat /var/log/cloud-init-output.log
 journalctl -u cloud-init
 
 # Re-run cloud-init (for debugging - don't use in production)
-sudo cloud-init clean --reboot
+sudo cloud-init clean --logs --reboot
 ```
 
 **Validate cloud-init syntax before applying:**
 ```bash
 # Install cloud-init on your workstation for validation
-cloud-init schema --config-file ./my-userdata.yaml
-
-# Or use the cloud-init Python module
-python3 -c "import cloudinit; cloudinit.config.schema.validate_cloudconfig_file('./my-userdata.yaml')"
+cloud-init schema --config-file ./my-userdata.yaml --annotate
 ```
 
 ---
 
-### Issue 4: VM CrashLoopBackOff
+### Issue 4: virt-launcher Pod CrashLoopBackOff
 
-**Symptoms:** VM starts, crashes, and keeps restarting
+**Symptoms:** `virt-launcher` enters `CrashLoopBackOff`, or the VM starts and immediately exits
 
 **Cause:** QEMU/KVM error, hardware emulation issue, or OOM
 
@@ -226,17 +228,21 @@ kubectl get pod -n default -l vm.kubevirt.io/name=ubuntu-web-01
 
 # Get logs from the previous pod run
 kubectl logs -n default \
-    $(kubectl get pods -n default -l vm.kubevirt.io/name=ubuntu-web-01 -o name) \
-    --previous
+    "$(kubectl get pods -n default -l vm.kubevirt.io/name=ubuntu-web-01 \
+        -o jsonpath='{.items[0].metadata.name}')" \
+    -c compute --previous
 
-# Check for OOM events
-dmesg | grep -i oom
+# On the Harvester node hosting the virt-launcher pod, check for OOM events
+sudo dmesg | grep -i oom
 kubectl get events -n default | grep -i oom
 
-# Check for QEMU errors in the virt-handler logs
+# Check for QEMU or node-side virtualization errors in the virt-handler logs
+NODE=$(kubectl get vmi ubuntu-web-01 -n default -o jsonpath='{.status.nodeName}')
+
 kubectl logs -n harvester-system \
-    $(kubectl get pods -n harvester-system -l app=virt-handler \
-        --field-selector spec.nodeName=harvester-node-01 -o name) | \
+    "$(kubectl get pods -n harvester-system -l kubevirt.io=virt-handler \
+        --field-selector spec.nodeName=${NODE} \
+        -o jsonpath='{.items[0].metadata.name}')" | \
     grep -E "ERROR|WARN|panic" | tail -50
 ```
 
@@ -259,7 +265,7 @@ cat /etc/resolv.conf
 # Some cloud images may use eth0 - verify in cloud-init
 
 # Verify the NAD (NetworkAttachmentDefinition) is correct
-kubectl get network-attachment-definitions -n default
+kubectl get network-attachment-definitions.k8s.cni.cncf.io -n default
 
 # Check the VMI for network details
 kubectl get vmi ubuntu-web-01 -n default \
