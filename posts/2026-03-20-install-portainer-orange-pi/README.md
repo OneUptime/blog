@@ -55,7 +55,7 @@ docker run -d \
   --restart=always \
   -v /var/run/docker.sock:/var/run/docker.sock \
   -v portainer_data:/data \
-  portainer/portainer-ce:latest
+  portainer/portainer-ce:lts
 ```
 
 ## Step 5: Open the Portainer Web UI
@@ -70,6 +70,8 @@ Accept the self-signed certificate and set up your admin credentials.
 
 ## Enable Docker on Boot
 
+Docker starts on boot automatically on Debian and Ubuntu, but you can enable it explicitly if needed:
+
 ```bash
 sudo systemctl enable docker
 ```
@@ -78,9 +80,10 @@ The `--restart=always` flag on the Portainer container ensures it starts automat
 
 ## Troubleshooting
 
-**Socket permission error:**
+**Socket permission error:** Re-apply your Docker group membership, then open a new shell or log back in:
 ```bash
-sudo chmod 666 /var/run/docker.sock
+sudo usermod -aG docker $USER
+newgrp docker
 ```
 
 **Wrong architecture image:** Orange Pi 5 uses ARM64 (aarch64). Confirm with:
@@ -88,11 +91,11 @@ sudo chmod 666 /var/run/docker.sock
 uname -m
 ```
 
-Portainer CE's `latest` tag supports multi-arch, so it will pull the correct image automatically.
+Portainer CE supports ARM64 and ARMv7, and Docker will pull the correct `lts` image automatically.
 
 **Port already in use:**
 ```bash
-sudo netstat -tlnp | grep 9443
+sudo ss -tlnp | grep 9443
 ```
 
 Change the port mapping if needed (e.g., `-p 19443:9443`).
@@ -101,7 +104,7 @@ Change the port mapping if needed (e.g., `-p 19443:9443`).
 
 ```bash
 docker stop portainer && docker rm portainer
-docker pull portainer/portainer-ce:latest
+docker pull portainer/portainer-ce:lts
 # Re-run the docker run command
 
 ```
