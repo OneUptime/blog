@@ -57,6 +57,7 @@ resource "aws_ecs_service" "services" {
   name            = each.key                    # "web", "api", "db"
   desired_count   = each.value.count
   cluster         = aws_ecs_cluster.main.id
+  task_definition = aws_ecs_task_definition.services[each.key].arn
 
   tags = {
     Service     = each.key
@@ -115,7 +116,7 @@ resource "aws_s3_bucket" "buckets" {
 }
 ```
 
-Note: `toset()` removes duplicates and loses ordering. Use a map if you need to preserve ordering or have duplicate names.
+Note: `toset()` removes duplicates and loses ordering. If your source data contains duplicates or needs explicit instance identities, build a map with stable, unique keys instead of using a set.
 
 ## for_each with a for Expression
 
@@ -163,8 +164,8 @@ output "bucket_arn_list" {
 With `for_each`, removing a key only affects that one instance:
 
 ```hcl
-# Before: services = ["web", "api", "db"]
-# After:  services = ["web", "db"]          # Remove "api"
+# Before: services = { web = {...}, api = {...}, db = {...} }
+# After:  services = { web = {...}, db = {...} }  # Remove "api"
 
 # OpenTofu will:
 # - Destroy aws_ecs_service.services["api"]
