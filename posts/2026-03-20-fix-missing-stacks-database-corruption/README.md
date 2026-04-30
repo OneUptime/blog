@@ -26,12 +26,15 @@ docker logs portainer 2>&1 | grep -i "bolt\|corrupt\|database\|unexpected"
 ## Step 1: Attempt BoltDB Consistency Check
 
 ```bash
-# Install bolt CLI tool
-go install go.etcd.io/bbolt/cmd/bbolt@latest
+# If database encryption is enabled, use /data/portainer.edb instead of /data/portainer.db
 
-# Or use the Docker image
-docker run --rm -v portainer_data:/data alpine/bbolt \
-  check /data/portainer.db
+# Run the bbolt CLI in a temporary container
+docker run --rm -v portainer_data:/data golang:alpine \
+  sh -lc 'go run go.etcd.io/bbolt/cmd/bbolt@latest check /data/portainer.db'
+
+# Or install the bbolt CLI locally
+go install go.etcd.io/bbolt/cmd/bbolt@latest
+$(go env GOPATH)/bin/bbolt check /path/to/portainer.db
 
 # Output will indicate if the file is consistent or not
 ```
@@ -39,23 +42,26 @@ docker run --rm -v portainer_data:/data alpine/bbolt \
 ## Step 2: Try to Salvage Data from Corrupted DB
 
 ```bash
-# Attempt to export what is still readable from the database
-docker run --rm -v portainer_data:/data alpine/bbolt \
-  pages /data/portainer.db 2>/dev/null | head -50
+# Inspect the page table if the file is still readable
+docker run --rm -v portainer_data:/data golang:alpine \
+  sh -lc 'go run go.etcd.io/bbolt/cmd/bbolt@latest pages /data/portainer.db | head -50'
 
-# If the file is partially readable, try dumping specific buckets
-# The stack bucket in Portainer is named "stacks"
+# If the file opens, list readable top-level buckets
+docker run --rm -v portainer_data:/data golang:alpine \
+  sh -lc 'go run go.etcd.io/bbolt/cmd/bbolt@latest buckets /data/portainer.db'
+
+# Portainer stores stack records in the "stacks" bucket
 ```
 
 ## Step 3: Recover from a Backup
 
-The cleanest recovery path is from a backup:
+The cleanest recovery path is from a raw backup of the `/data` volume. If you used Portainer's built-in `tar.gz` backup feature instead, restore it on a fresh instance during the initial setup flow.
 
 ```bash
 # Stop Portainer
 docker stop portainer
 
-# Restore the backup into the volume
+# Restore a raw /data backup into the volume
 docker run --rm \
   -v portainer_data:/data \
   -v /path/to/backup:/backup \
@@ -79,7 +85,7 @@ The containers and volumes are still running - only the Portainer metadata is lo
 
 ## Step 5: Extract Compose from Running Containers
 
-For stacks not stored in Git, reconstruct the compose from running container labels:
+For stacks not stored in Git, use running container labels as a starting point to reconstruct the compose:
 
 ```bash
 # List all containers with their compose project labels
