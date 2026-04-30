@@ -8,7 +8,7 @@ Description: Find and remove unused Docker volumes in Portainer to reclaim stora
 
 ---
 
-Docker volumes provide persistent storage for containers. Portainer's Volumes section gives you a complete UI for managing named volumes, bind mounts, and external storage backends.
+Docker volumes provide persistent storage for containers. Portainer's Volumes section lets you view, add, remove, and, in some environments, browse Docker volumes. In Portainer, a volume marked as `unused` means Portainer cannot see any applications using it, and that label can also appear on external volumes created outside Portainer.
 
 ## Navigate to Volumes in Portainer
 
@@ -89,11 +89,14 @@ docker run --rm \
 ## Clean Up Unused Volumes
 
 ```bash
-# List volumes not used by any container
+# List volumes not referenced by any container
 docker volume ls -f dangling=true
 
-# Remove all unused volumes (with confirmation prompt)
+# Remove unused anonymous volumes (with confirmation prompt)
 docker volume prune
+
+# Remove unused named and anonymous volumes
+docker volume prune -a
 
 # Check volume disk usage
 docker system df -v
