@@ -4,7 +4,7 @@ Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
 Tags: Flask, Python, IPv4, Networking, WSGI, Configuration
 
-Description: Learn how to configure Flask to listen on all IPv4 interfaces using 0.0.0.0, understand the security implications, and combine it with production WSGI servers like gunicorn and uvicorn.
+Description: Learn how to configure Flask to listen on all IPv4 interfaces using 0.0.0.0, understand the security implications, and combine it with production servers like gunicorn or, with an ASGI adapter, uvicorn.
 
 ## Basic: app.run with host="0.0.0.0"
 
@@ -75,29 +75,31 @@ socket = 0.0.0.0:8000
 protocol = http
 ```
 
-## Production: Flask + FastAPI with uvicorn (ASGI)
+## Production: Flask with uvicorn via an ASGI adapter
+
+```python
+from asgiref.wsgi import WsgiToAsgi
+
+asgi_app = WsgiToAsgi(app)
+```
 
 ```bash
-# For Flask 2+ with ASGI adapter or FastAPI
-uvicorn app:app --host 0.0.0.0 --port 8000 --workers 4
+uvicorn app:asgi_app --host 0.0.0.0 --port 8000 --workers 4
 ```
 
 ## Getting the Client IP Inside Flask
 
 ```python
 from flask import Flask, request
+from werkzeug.middleware.proxy_fix import ProxyFix
 
 app = Flask(__name__)
+app.wsgi_app = ProxyFix(app.wsgi_app, x_for=1)
 
 @app.route("/whoami")
 def whoami():
-    # When behind a proxy (Nginx, AWS ALB), use X-Forwarded-For
-    xff = request.headers.get("X-Forwarded-For")
-    if xff:
-        client_ip = xff.split(",")[0].strip()
-    else:
-        client_ip = request.remote_addr
-    return {"client_ip": client_ip}
+    # Only enable ProxyFix when you are behind exactly one trusted proxy
+    return {"client_ip": request.remote_addr}
 ```
 
 ## Docker Considerations
@@ -118,10 +120,10 @@ services:
   api:
     build: .
     ports:
-      - "5000:5000"   # host:container - publish only to localhost by default
+      - "5000:5000"   # host:container - publish on all host interfaces by default
       # Use "127.0.0.1:5000:5000" to restrict to loopback on the host
 ```
 
 ## Conclusion
 
-In development, `app.run(host="0.0.0.0")` is convenient for testing from other machines on the LAN. In production, run Flask behind a reverse proxy (Nginx, Traefik) that handles TLS, rate limiting, and request buffering, and bind the WSGI server to `127.0.0.1` so only the proxy can reach it. Reserve `0.0.0.0` bindings for containerized deployments where port mapping controls external access. Never run Flask's built-in development server in production.
+In development, `app.run(host="0.0.0.0")` is convenient for testing from other machines on the LAN. In production, run Flask behind a reverse proxy (Nginx, Traefik) that handles TLS, rate limiting, and request buffering, and bind the WSGI server to `127.0.0.1` so only the proxy can reach it. Reserve `0.0.0.0` bindings for containerized deployments where port mapping, host bind addresses, and firewall rules control external access. Never run Flask's built-in development server in production.
