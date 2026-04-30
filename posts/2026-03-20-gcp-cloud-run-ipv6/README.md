@@ -4,11 +4,11 @@ Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
 Tags: GCP, IPv6, Cloud Run, Serverless, Dual-Stack, Google Cloud
 
-Description: Configure Google Cloud Run services to accept IPv6 client connections using Global Load Balancer frontend, and enable VPC connectivity for Cloud Run with IPv6 support.
+Description: Configure Google Cloud Run services to accept IPv6 client connections using a global external Application Load Balancer frontend, and enable Direct VPC egress for Cloud Run with IPv6 support.
 
 ## Introduction
 
-Cloud Run services do not directly expose IPv6 addresses - they receive traffic through Google's global infrastructure. To serve IPv6 clients, you place a Global HTTP(S) Load Balancer in front of Cloud Run using a Serverless Network Endpoint Group (NEG). The load balancer holds the IPv6 VIP and forwards requests to Cloud Run. For outbound IPv6 connectivity from Cloud Run, use VPC egress with a dual-stack VPC.
+Cloud Run services do not directly expose IPv6 addresses - they receive traffic through Google's global infrastructure. To serve IPv6 clients, you place a global external Application Load Balancer in front of Cloud Run using a Serverless Network Endpoint Group (NEG). The load balancer holds the IPv6 frontend and forwards requests to Cloud Run. For outbound IPv6 connectivity from Cloud Run, use Direct VPC egress with a dual-stack subnet.
 
 ## Create Cloud Run Service with IPv6 Frontend
 
@@ -21,7 +21,7 @@ REGION="us-east1"
 gcloud run deploy web-service \
     --project="$PROJECT" \
     --region="$REGION" \
-    --image=gcr.io/cloudrun/hello \
+    --image=us-docker.pkg.dev/cloudrun/container/hello \
     --platform=managed \
     --allow-unauthenticated \
     --port=8080
@@ -36,7 +36,8 @@ gcloud compute network-endpoint-groups create cloud-run-neg \
 # Step 3: Create backend service using the NEG
 gcloud compute backend-services create cloud-run-backend \
     --project="$PROJECT" \
-    --protocol=HTTPS \
+    --load-balancing-scheme=EXTERNAL_MANAGED \
+    --protocol=HTTP \
     --global
 
 gcloud compute backend-services add-backend cloud-run-backend \
@@ -71,7 +72,9 @@ IPV6_ADDR=$(gcloud compute addresses describe cloud-run-ipv6 \
 
 gcloud compute forwarding-rules create cloud-run-ipv6-rule \
     --project="$PROJECT" \
-    --address="$IPV6_ADDR" \
+    --address=cloud-run-ipv6 \
+    --load-balancing-scheme=EXTERNAL_MANAGED \
+    --network-tier=PREMIUM \
     --target-https-proxy=cloud-run-proxy \
     --ports=443 \
     --global
@@ -86,6 +89,7 @@ echo "Cloud Run IPv6 address: $IPV6_ADDR"
 
 variable "project_id" {}
 variable "region" { default = "us-east1" }
+variable "ssl_certificate_id" {}
 
 # Cloud Run service
 resource "google_cloud_run_v2_service" "web" {
@@ -97,7 +101,7 @@ resource "google_cloud_run_v2_service" "web" {
 
   template {
     containers {
-      image = "gcr.io/cloudrun/hello"
+      image = "us-docker.pkg.dev/cloudrun/container/hello"
       ports {
         container_port = 8080
       }
@@ -128,9 +132,10 @@ resource "google_compute_region_network_endpoint_group" "cloud_run" {
 
 # Backend service
 resource "google_compute_backend_service" "cloud_run" {
-  name     = "cloud-run-backend"
-  project  = var.project_id
-  protocol = "HTTPS"
+  name                  = "cloud-run-backend"
+  project               = var.project_id
+  protocol              = "HTTP"
+  load_balancing_scheme = "EXTERNAL_MANAGED"
 
   backend {
     group = google_compute_region_network_endpoint_group.cloud_run.id
@@ -144,6 +149,14 @@ resource "google_compute_url_map" "cloud_run" {
   default_service = google_compute_backend_service.cloud_run.id
 }
 
+# HTTPS proxy using an existing SSL certificate resource
+resource "google_compute_target_https_proxy" "cloud_run" {
+  name             = "cloud-run-proxy"
+  project          = var.project_id
+  url_map          = google_compute_url_map.cloud_run.id
+  ssl_certificates = [var.ssl_certificate_id]
+}
+
 # Global IPv6 address
 resource "google_compute_global_address" "ipv6" {
   name         = "cloud-run-ipv6"
@@ -155,26 +168,21 @@ resource "google_compute_global_address" "ipv6" {
 
 # IPv6 forwarding rule
 resource "google_compute_global_forwarding_rule" "ipv6_https" {
-  name       = "cloud-run-ipv6-https"
-  project    = var.project_id
-  target     = google_compute_target_https_proxy.cloud_run.id
-  port_range = "443"
-  ip_address = google_compute_global_address.ipv6.address
-  ip_version = "IPV6"
+  name                  = "cloud-run-ipv6-https"
+  project               = var.project_id
+  target                = google_compute_target_https_proxy.cloud_run.id
+  port_range            = "443"
+  ip_address            = google_compute_global_address.ipv6.id
+  ip_version            = "IPV6"
+  load_balancing_scheme = "EXTERNAL_MANAGED"
 }
 ```
 
 ## Cloud Run VPC Egress with IPv6
 
 ```bash
-# Enable VPC egress so Cloud Run can reach internal IPv6 resources
-gcloud run services update web-service \
-    --project="$PROJECT" \
-    --region="$REGION" \
-    --vpc-connector=connector-name \
-    --vpc-egress=all-traffic
-
-# Or with Direct VPC Egress (no connector needed)
+# Serverless VPC Access connectors do not support IPv6 traffic.
+# Use Direct VPC egress on a dual-stack subnet instead.
 gcloud run services update web-service \
     --project="$PROJECT" \
     --region="$REGION" \
@@ -182,7 +190,9 @@ gcloud run services update web-service \
     --subnet=subnet-run \
     --vpc-egress=all-traffic
 
-# Cloud Run with Direct VPC in dual-stack subnet can reach IPv6 destinations
+# If the subnet uses external IPv6, grant the Cloud Run service agent
+# roles/compute.publicIpAdmin before deploying the revision.
+# Cloud Run with Direct VPC egress on a dual-stack subnet can send IPv6 traffic.
 ```
 
 ## Verify IPv6 Connectivity
@@ -205,4 +215,4 @@ curl -v --ipv6 https://api.example.com/ 2>&1 | grep "Connected to"
 
 ## Conclusion
 
-Cloud Run services receive IPv6 client connections through a Global HTTP(S) Load Balancer with a Serverless NEG backend. Reserve a global IPv6 address, create an IPv6 forwarding rule pointing to your HTTPS proxy, and configure the URL map to route to a Cloud Run NEG backend. For outbound IPv6, enable Direct VPC Egress on a dual-stack subnet. Add AAAA DNS records pointing to the IPv6 VIP so IPv6 clients resolve your service correctly.
+Cloud Run services receive IPv6 client connections through a global external Application Load Balancer with a Serverless NEG backend. Reserve a global IPv6 address, create an IPv6 forwarding rule pointing to your HTTPS proxy, and configure the URL map to route to a Cloud Run NEG backend. For outbound IPv6, enable Direct VPC egress on a dual-stack subnet. Add AAAA DNS records pointing to the IPv6 VIP so IPv6 clients resolve your service correctly. If you want dual-stack DNS for both IPv4 and IPv6 clients, add a matching A record for the load balancer's IPv4 frontend.
