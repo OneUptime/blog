@@ -19,21 +19,24 @@ RFC 4443 Section 2.4: Do NOT send ICMPv6 errors in response to:
    → Error in response to error = infinite loop
    → Easy check: Type < 128 (error) responding to another Type < 128
 
-2. Packets sent to a multicast or anycast address
+2. ICMPv6 Redirect messages
+   → Redirects are explicitly excluded too
+
+3. Packets sent to a multicast address
    → Exception: Packet Too Big (Type 2) may be sent for multicast
    → Exception: Parameter Problem (Type 4, Code 2) for unrecognized option
-   → Reason: One error message would not reach all senders
+     when the option type's highest-order bits are 10
 
-3. Packets sent as a link-layer multicast or broadcast
-   → Same reason: many senders, one error response
+4. Packets sent as a link-layer multicast
+   → Same exceptions as multicast destination
 
-4. Packets whose source address does not uniquely identify a single node:
+5. Packets sent as a link-layer broadcast
+   → Same exceptions as multicast destination
+
+6. Packets whose source address does not uniquely identify a single node:
    → Unspecified address (::) as source
    → Multicast source address
-   → Anycast source address (ambiguous)
-
-5. Packets sent to a loopback, unspecified, or anycast DESTINATION
-   (when the erroneous packet's source would be unreachable)
+   → Source address known by the sender to be an anycast address
 ```
 
 ## Rules for When TO Generate ICMPv6 Errors
@@ -41,13 +44,13 @@ RFC 4443 Section 2.4: Do NOT send ICMPv6 errors in response to:
 ```text
 RFC 4443: Generate ICMPv6 errors when:
 
-1. A packet CANNOT BE FORWARDED due to routing or MTU issues
-   → Destination Unreachable (Type 1, Code 0 or 3)
-   → Packet Too Big (Type 2)
+1. A packet CANNOT BE DELIVERED for reasons other than congestion
+   → Destination Unreachable (Type 1, Code 0-6, depending on reason)
+   → Packet Too Big (Type 2) for MTU issues
 
 2. A packet EXCEEDS HOP LIMIT
    → Time Exceeded (Type 3, Code 0)
-   → Always sent by the router that decremented to 0
+   → Sent by the router that discards the packet
 
 3. A packet CONTAINS AN INVALID HEADER FIELD
    → Parameter Problem (Type 4, Code 0)
@@ -55,90 +58,207 @@ RFC 4443: Generate ICMPv6 errors when:
 
 4. Fragment reassembly timer expires with incomplete fragments
    → Time Exceeded (Type 3, Code 1)
-   → Only if first fragment (offset=0) was received
+   → Only if the fragment with offset 0 was received
 
-5. An unrecognized extension header is encountered
+5. An unrecognized Next Header type or IPv6 option is encountered
    → Parameter Problem (Type 4, Code 1 or 2)
-   → Depends on option type bits
+   → Code 2 depends on the option type bits
 ```
 
 ## Validating Incoming ICMPv6 Messages
 
 ```python
-import struct
-import socket
 import ipaddress
+import socket
+import struct
 
-def validate_icmpv6_message(
+ICMPV6_NEXT_HEADER = 58
+ICMPV6_REDIRECT = 137
+
+
+def ones_complement_sum(data: bytes) -> int:
+    if len(data) % 2:
+        data += b"\x00"
+
+    total = 0
+    for i in range(0, len(data), 2):
+        total += (data[i] << 8) + data[i + 1]
+        total = (total & 0xFFFF) + (total >> 16)
+
+    return total
+
+
+def icmpv6_checksum(src_addr: str, dst_addr: str, icmpv6_data: bytes) -> int:
+    pseudo_header = (
+        socket.inet_pton(socket.AF_INET6, src_addr)
+        + socket.inet_pton(socket.AF_INET6, dst_addr)
+        + struct.pack("!I3xB", len(icmpv6_data), ICMPV6_NEXT_HEADER)
+    )
+    return (~ones_complement_sum(pseudo_header + icmpv6_data)) & 0xFFFF
+
+
+def extract_invoking_upper_layer(invoking_packet: bytes):
+    """
+    Walk the invoking packet's extension-header chain and return:
+    (upper-layer protocol number, byte offset of the upper-layer header)
+    """
+    if len(invoking_packet) < 40:
+        return None, None
+
+    next_header = invoking_packet[6]
+    offset = 40
+
+    while True:
+        if next_header in (0, 43, 60):  # Hop-by-Hop, Routing, Destination Options
+            if len(invoking_packet) < offset + 2:
+                return None, None
+            header_length = 8 * (invoking_packet[offset + 1] + 1)
+            if len(invoking_packet) < offset + header_length:
+                return None, None
+            next_header = invoking_packet[offset]
+            offset += header_length
+        elif next_header == 44:  # Fragment
+            if len(invoking_packet) < offset + 8:
+                return None, None
+            next_header = invoking_packet[offset]
+            offset += 8
+        elif next_header == 51:  # Authentication Header
+            if len(invoking_packet) < offset + 2:
+                return None, None
+            header_length = 4 * (invoking_packet[offset + 1] + 2)
+            if len(invoking_packet) < offset + header_length:
+                return None, None
+            next_header = invoking_packet[offset]
+            offset += header_length
+        else:
+            return next_header, offset
+
+
+def validate_icmpv6_error_message(
     src_addr: str,
     dst_addr: str,
     icmpv6_data: bytes,
-    arrived_on_multicast: bool = False,
 ) -> dict:
     """
-    Validate an incoming ICMPv6 message per RFC 4443 rules.
-    Returns validation result with reasons for any rejection.
+    Perform basic RFC 4443 / RFC 8200 sanity checks for an ICMPv6 error message.
     """
     errors = []
     warnings = []
 
-    if len(icmpv6_data) < 4:
-        return {"valid": False, "errors": ["Too short (< 4 bytes)"]}
+    if len(icmpv6_data) < 8:
+        return {"valid": False, "errors": ["Too short (< 8 bytes)"], "warnings": []}
 
     icmp_type = icmpv6_data[0]
     icmp_code = icmpv6_data[1]
-    checksum = struct.unpack_from("!H", icmpv6_data, 2)[0]
     is_error_message = icmp_type < 128
 
-    # Validate source address
+    if not is_error_message:
+        warnings.append("This helper is intended for ICMPv6 error messages (type < 128).")
+
     try:
         src = ipaddress.ip_address(src_addr)
-        if src.is_multicast:
-            errors.append(f"Error source is multicast: {src_addr}")
-        if src.is_unspecified:
-            errors.append(f"Error source is unspecified (::): {src_addr}")
-        if src.is_loopback and not ipaddress.ip_address(dst_addr).is_loopback:
-            warnings.append("Source is loopback but destination is not")
-    except ValueError:
-        errors.append(f"Invalid source address: {src_addr}")
-
-    # Check anti-loop rule: error in response to error
-    # (We check if this IS an error and the invoking packet source is error type)
-    if is_error_message and len(icmpv6_data) >= 48:
-        # The invoking packet starts at byte 8 of the error message
-        invoking_icmpv6_type = icmpv6_data[48] if len(icmpv6_data) > 48 else None
-        invoking_next_header = icmpv6_data[14] if len(icmpv6_data) > 14 else None
-        if invoking_next_header == 58 and invoking_icmpv6_type and invoking_icmpv6_type < 128:
-            errors.append("Error message in response to ICMPv6 error (anti-loop violation)")
-
-    # Check for errors sent to multicast destinations
-    try:
         dst = ipaddress.ip_address(dst_addr)
-        if dst.is_multicast and is_error_message:
-            # Only Type 2 and Type 4 Code 2 are allowed to multicast dest
-            if icmp_type not in (2, 4) and not (icmp_type == 4 and icmp_code == 2):
-                errors.append(f"Error type {icmp_type} sent to multicast destination (prohibited)")
-    except ValueError:
-        pass
+    except ValueError as exc:
+        return {"valid": False, "errors": [f"Invalid IP address: {exc}"], "warnings": warnings}
+
+    if src.version != 6 or dst.version != 6:
+        return {"valid": False, "errors": ["Both addresses must be IPv6"], "warnings": warnings}
+
+    if src.is_multicast:
+        errors.append(f"Error source is multicast: {src_addr}")
+    if src.is_unspecified:
+        errors.append(f"Error source is unspecified (::): {src_addr}")
+
+    if icmpv6_checksum(src_addr, dst_addr, icmpv6_data) != 0:
+        errors.append("Invalid ICMPv6 checksum")
+
+    if is_error_message:
+        if len(icmpv6_data) < 48:
+            errors.append("ICMPv6 error does not contain the full invoking IPv6 header")
+        else:
+            invoking_packet = icmpv6_data[8:]
+            invoking_next_header, upper_layer_offset = extract_invoking_upper_layer(invoking_packet)
+
+            if invoking_next_header is None:
+                warnings.append("Could not fully parse the invoking packet's extension-header chain")
+            elif invoking_next_header == ICMPV6_NEXT_HEADER and len(invoking_packet) > upper_layer_offset:
+                invoking_icmpv6_type = invoking_packet[upper_layer_offset]
+                if invoking_icmpv6_type < 128:
+                    errors.append("Error message in response to an ICMPv6 error message (anti-loop violation)")
+                if invoking_icmpv6_type == ICMPV6_REDIRECT:
+                    errors.append("Error message in response to an ICMPv6 Redirect message (prohibited)")
 
     return {
         "valid": len(errors) == 0,
         "icmp_type": icmp_type,
+        "icmp_code": icmp_code,
         "is_error": is_error_message,
         "errors": errors,
         "warnings": warnings,
     }
 
+
+def build_invoking_ipv6_packet(next_header: int, upper_layer: bytes = b"") -> bytes:
+    return (
+        b"\x60\x00\x00\x00"
+        + struct.pack("!HBB", len(upper_layer), next_header, 64)
+        + socket.inet_pton(socket.AF_INET6, "2001:db8::10")
+        + socket.inet_pton(socket.AF_INET6, "2001:db8::20")
+        + upper_layer
+    )
+
+
+def build_icmpv6_error(
+    src_addr: str,
+    dst_addr: str,
+    icmp_type: int,
+    icmp_code: int,
+    invoking_packet: bytes,
+) -> bytes:
+    message = bytes([icmp_type, icmp_code, 0, 0]) + b"\x00\x00\x00\x00" + invoking_packet
+    checksum = icmpv6_checksum(src_addr, dst_addr, message)
+    return message[:2] + struct.pack("!H", checksum) + message[4:]
+
 # Test validation
 
 tests = [
-    ("2001:db8::1", "2001:db8::2", bytes([1, 0, 0, 0, 0, 0, 0, 0]), False),    # Valid
-    ("::",         "2001:db8::2", bytes([1, 0, 0, 0, 0, 0, 0, 0]), False),    # Invalid src
-    ("2001:db8::1", "ff02::1",   bytes([1, 0, 0, 0, 0, 0, 0, 0]), False),    # Error to multicast
+    (
+        "2001:db8::1",
+        "2001:db8::2",
+        build_icmpv6_error(
+            "2001:db8::1",
+            "2001:db8::2",
+            1,
+            0,
+            build_invoking_ipv6_packet(6),
+        ),
+    ),  # Valid
+    (
+        "::",
+        "2001:db8::2",
+        build_icmpv6_error(
+            "::",
+            "2001:db8::2",
+            1,
+            0,
+            build_invoking_ipv6_packet(6),
+        ),
+    ),  # Invalid source
+    (
+        "2001:db8::1",
+        "2001:db8::2",
+        build_icmpv6_error(
+            "2001:db8::1",
+            "2001:db8::2",
+            1,
+            0,
+            build_invoking_ipv6_packet(58, b"\x01\x00\x00\x00"),
+        ),
+    ),  # Error in response to an ICMPv6 error
 ]
 
-for src, dst, data, mcast in tests:
-    result = validate_icmpv6_message(src, dst, data, mcast)
+for src, dst, data in tests:
+    result = validate_icmpv6_error_message(src, dst, data)
     print(f"src={src[:15]}, dst={dst[:15]}: valid={result['valid']}")
     for err in result["errors"]:
         print(f"  ERROR: {err}")
@@ -146,18 +266,21 @@ for src, dst, data, mcast in tests:
 
 ## Rate Limiting Rules
 
-```javascript
+```text
 RFC 4443 Section 2.4: Rate limiting:
 
 "An IPv6 node MUST limit the rate of ICMPv6 error messages it sends."
-"The rate-limiting function MUST allow for at least one error message
- per minute."
+"RFC 4443 recommends a token-bucket mechanism and notes that a simple
+ timer-based implementation is not reasonable."
 
-Linux default: 1 ICMPv6 error per second per destination
+Linux kernel documentation:
 Check: /proc/sys/net/ipv6/icmp/ratelimit (in milliseconds)
-Default: 1000 (1 second = 1000ms between errors)
+Meaning: minimum spacing between rate-limited ICMPv6 messages to a peer
+Kernel-doc default: 100
+Runtime value may be distribution-tuned
+Default ratemask: 0-1,3-127 (rate-limit ICMPv6 errors except Packet Too Big)
 ```
 
 ## Conclusion
 
-ICMPv6 message processing rules exist to prevent error storms and ensure errors are only sent when useful. The anti-loop rule (no error in response to an error) and the multicast restriction (no errors for multicast destinations, except Packet Too Big and Parameter Problem) are the most critical constraints. Rate limiting prevents ICMPv6 from being used as a DoS amplifier. When implementing IPv6 protocol stacks or debugging unusual ICMPv6 behavior, verifying compliance with these rules explains most unexpected behaviors.
+ICMPv6 message processing rules exist to prevent error storms and ensure errors are only sent when useful. The anti-loop rule (no error in response to an ICMPv6 error or Redirect) and the multicast restriction (no errors for multicast destinations, except Packet Too Big and a narrow Parameter Problem Code 2 case) are the most critical constraints. Rate limiting prevents ICMPv6 from being used as a DoS amplifier. When implementing IPv6 protocol stacks or debugging unusual ICMPv6 behavior, verifying compliance with these rules explains most unexpected behaviors.
