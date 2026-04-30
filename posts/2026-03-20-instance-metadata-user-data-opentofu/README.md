@@ -8,7 +8,7 @@ Description: Learn how to configure EC2 instance metadata settings and pass user
 
 ## What is Instance Metadata?
 
-AWS EC2 instance metadata is data about your instance available at `http://169.254.169.254/latest/meta-data/`. It includes the instance ID, AMI ID, network interfaces, IAM role credentials, and more. User data is a startup script passed to the instance at launch and executed by cloud-init.
+AWS EC2 instance metadata is data about your instance available at `http://169.254.169.254/latest/meta-data/`. It includes the instance ID, AMI ID, network interfaces, IAM role credentials, and more. User data is data passed to the instance at launch; on Linux instances, it can be shell scripts or cloud-init directives, and the instance is responsible for interpreting it.
 
 ## Configuring IMDSv2 (Recommended)
 
@@ -40,6 +40,7 @@ resource "aws_instance" "web" {
   user_data = <<-EOT
     #!/bin/bash
     set -e
+    # Example for Ubuntu/Debian-based AMIs
     apt-get update -y
     apt-get install -y nginx
     systemctl enable nginx
@@ -64,19 +65,14 @@ resource "aws_instance" "web" {
 ### Templated User Data
 
 ```hcl
-data "template_file" "user_data" {
-  template = file("${path.module}/scripts/bootstrap.tpl")
-  vars = {
-    environment = var.environment
-    app_version = var.app_version
-    db_endpoint = aws_db_instance.main.endpoint
-  }
-}
-
 resource "aws_instance" "app" {
   ami           = var.ami_id
   instance_type = "t3.micro"
-  user_data     = data.template_file.user_data.rendered
+  user_data = templatefile("${path.module}/scripts/bootstrap.tpl", {
+    environment = var.environment
+    app_version = var.app_version
+    db_endpoint = aws_db_instance.main.endpoint
+  })
 }
 ```
 
@@ -104,7 +100,7 @@ data "cloudinit_config" "server_config" {
 resource "aws_instance" "app" {
   ami           = var.ami_id
   instance_type = "t3.micro"
-  user_data     = data.cloudinit_config.server_config.rendered
+  user_data_base64 = data.cloudinit_config.server_config.rendered
 }
 ```
 
@@ -143,7 +139,7 @@ curl -H "X-aws-ec2-metadata-token: $TOKEN" \
 
 ## Best Practices
 
-1. **Always use IMDSv2** - set `http_tokens = "required"` to prevent SSRF attacks
+1. **Always use IMDSv2** - set `http_tokens = "required"` to add defense in depth against SSRF and related metadata access attacks
 2. **Keep user data idempotent** - scripts should be safe to run multiple times
 3. **Log user data output** - cloud-init logs to `/var/log/cloud-init-output.log`
 4. **Use `user_data_replace_on_change = true`** to force instance replacement when scripts change
