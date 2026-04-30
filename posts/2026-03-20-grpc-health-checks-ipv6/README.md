@@ -63,11 +63,13 @@ health_servicer = health.HealthServicer()
 health_pb2_grpc.add_HealthServicer_to_server(health_servicer, server)
 
 # Set health status
+health_servicer.set("", health_pb2.HealthCheckResponse.SERVING)
 health_servicer.set("helloworld.Greeter", health_pb2.HealthCheckResponse.SERVING)
 
 # Bind on IPv6
 server.add_insecure_port("[::]:50051")
 server.start()
+server.wait_for_termination()
 ```
 
 ## Step 3: Kubernetes Probe Configuration
@@ -89,7 +91,7 @@ spec:
               protocol: TCP
           livenessProbe:
             grpc:
-              # Kubernetes 1.24+ supports native gRPC probes
+              # Native gRPC probes are beta in Kubernetes 1.24-1.26 and stable in 1.27+
               port: 50051
               service: "helloworld.Greeter"
             initialDelaySeconds: 10
@@ -97,6 +99,7 @@ spec:
           readinessProbe:
             grpc:
               port: 50051
+              service: "helloworld.Greeter"
             initialDelaySeconds: 5
             periodSeconds: 5
 ```
@@ -118,8 +121,8 @@ grpc_health_probe -addr '[2001:db8::1]:50051' -service 'helloworld.Greeter'
 # With timeout
 grpc_health_probe -addr '[2001:db8::1]:50051' -connect-timeout 5s -rpc-timeout 5s
 
-# Using grpcurl
-grpcurl -plaintext '[2001:db8::1]:50051' grpc.health.v1.Health/Check
+# Using grpcurl (requires server reflection, or supply descriptors with -proto/-protoset)
+grpcurl -plaintext -d '{"service":"helloworld.Greeter"}' '[2001:db8::1]:50051' grpc.health.v1.Health/Check
 ```
 
 ## Step 5: Dynamic Health Status Updates
@@ -182,8 +185,8 @@ func watchHealth(addr string) {
 
 ## Monitoring with OneUptime
 
-Use [OneUptime](https://oneuptime.com) with TCP monitors to check gRPC health endpoints over IPv6. The TCP check verifies port availability; combine with a custom script monitor using `grpc_health_probe` for full gRPC health protocol testing.
+Use [OneUptime](https://oneuptime.com) with Port monitors to check gRPC endpoints over IPv6. The port check verifies TCP port availability; combine it with a Custom Code monitor that runs `grpc_health_probe` for full gRPC health protocol testing.
 
 ## Conclusion
 
-gRPC health checks over IPv6 require binding the health service on the same IPv6 listener as your main service. Use `grpc_health_probe` or `grpcurl` for testing, Kubernetes native gRPC probes for container health, and the Watch RPC for real-time health monitoring.
+gRPC health checks over IPv6 usually expose the health service on the same IPv6 listener as your main service. Use `grpc_health_probe` or `grpcurl` for testing, Kubernetes native gRPC probes for container health, and the Watch RPC for real-time health monitoring.
