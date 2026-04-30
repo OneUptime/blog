@@ -30,20 +30,24 @@ gcloud compute instance-groups unmanaged create backend-ig \
 gcloud compute instance-groups unmanaged add-instances backend-ig \
   --instances vm-a,vm-b,vm-c \
   --zone us-east1-b
-
-# Define the named port (so the backend service knows the port)
-gcloud compute instance-groups unmanaged set-named-ports backend-ig \
-  --named-ports http:8080 \
-  --zone us-east1-b
 ```
 
 ## Step 2: Create a Health Check
 
 ```bash
-# Create a TCP health check on port 8080
+# Allow Google Cloud health checks to reach backend VMs on port 8080
+gcloud compute firewall-rules create allow-ilb-health-checks \
+  --network my-vpc \
+  --action allow \
+  --direction ingress \
+  --source-ranges 130.211.0.0/22,35.191.0.0/16 \
+  --rules tcp:8080
+
+# Create a regional TCP health check on port 8080
 gcloud compute health-checks create tcp hc-tcp-8080 \
+  --region us-east1 \
   --port 8080 \
-  --check-interval 10 \
+  --check-interval 10s \
   --healthy-threshold 2 \
   --unhealthy-threshold 3
 ```
@@ -51,7 +55,7 @@ gcloud compute health-checks create tcp hc-tcp-8080 \
 ## Step 3: Create a Backend Service
 
 ```bash
-# Create a regional backend service for internal TCP/UDP LB
+# Create a regional backend service for an internal TCP load balancer
 gcloud compute backend-services create internal-bs \
   --load-balancing-scheme INTERNAL \
   --protocol TCP \
@@ -81,7 +85,7 @@ gcloud compute forwarding-rules create internal-fr \
   --region us-east1 \
   --backend-service internal-bs \
   --backend-service-region us-east1 \
-  --ip-address ilb-ip \
+  --address ilb-ip \
   --ip-protocol TCP \
   --ports 8080 \
   --network my-vpc \
@@ -105,9 +109,9 @@ resource "google_compute_forwarding_rule" "internal" {
   name                  = "internal-fr"
   load_balancing_scheme = "INTERNAL"
   backend_service       = google_compute_region_backend_service.main.id
-  ip_address            = google_compute_address.ilb.id
+  ip_address            = google_compute_address.ilb.address
   ip_protocol           = "TCP"
-  all_ports             = true
+  ports                 = ["8080"]
   network               = google_compute_network.vpc.id
   subnetwork            = google_compute_subnetwork.main.id
   region                = "us-east1"
@@ -116,21 +120,23 @@ resource "google_compute_forwarding_rule" "internal" {
 
 ## All-Ports vs Specific Ports
 
-For UDP or to forward all TCP ports to the same backends:
+To forward all TCP ports instead of only port 8080, create the forwarding rule like this. If you want to keep the port-specific rule, use a different reserved IP address.
 
 ```bash
-# Forward all ports (TCP or UDP) to backends
+# Forward all TCP ports to backends
 gcloud compute forwarding-rules create internal-fr-all \
   --load-balancing-scheme INTERNAL \
   --region us-east1 \
   --backend-service internal-bs \
   --backend-service-region us-east1 \
-  --ip-address ilb-ip \
+  --address ilb-ip \
   --ip-protocol TCP \
-  --all-ports \
+  --ports ALL \
   --network my-vpc \
   --subnet my-subnet
 ```
+
+For UDP, create a separate backend service and forwarding rule with `UDP` instead of `TCP`.
 
 ## Conclusion
 
