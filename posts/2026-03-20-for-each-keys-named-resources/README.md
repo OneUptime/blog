@@ -19,7 +19,7 @@ Description: Learn how to use OpenTofu's for_each with map keys to create multip
 | Resource identity | By index (0, 1, 2...) | By key ("web", "api"...) |
 | Add/remove item | Shifts indices, may destroy others | Only affects changed key |
 | Refer to resource | `aws_instance.web[0]` | `aws_instance.web["web"]` |
-| Works with | Numbers, lists | Maps, sets |
+| Works with | Whole numbers | Maps, sets of strings |
 
 ---
 
@@ -150,20 +150,19 @@ resource "aws_route53_record" "servers" {
 ## Dynamic Keys from Data Sources
 
 ```hcl
-# Create security group rules from a data source
+# Create security group ingress rules from a data source
 data "aws_security_groups" "app_tiers" {
   tags = { Tier = "app" }
 }
 
-resource "aws_security_group_rule" "allow_from_app" {
+resource "aws_vpc_security_group_ingress_rule" "allow_from_app" {
   for_each = toset(data.aws_security_groups.app_tiers.ids)
 
-  type                     = "ingress"
-  security_group_id        = aws_security_group.db.id
-  from_port                = 5432
-  to_port                  = 5432
-  protocol                 = "tcp"
-  source_security_group_id = each.key
+  security_group_id            = aws_security_group.db.id
+  from_port                    = 5432
+  to_port                      = 5432
+  ip_protocol                  = "tcp"
+  referenced_security_group_id = each.value
 }
 ```
 
@@ -216,7 +215,7 @@ resource "aws_instance" "web" {
 
 ## Best Practices
 
-1. **Prefer for_each over count** for any resource where the number might change
+1. **Prefer for_each over count** when instances need stable keys or distinct values
 2. **Use meaningful string keys** - they become part of the resource address in state
 3. **Use `toset()`** for simple lists without needing values
 4. **Derive keys from attribute names** that users would recognize (environment names, region names)
@@ -226,7 +225,7 @@ resource "aws_instance" "web" {
 
 ## Conclusion
 
-`for_each` with map keys provides stable, named resource management in OpenTofu. Each resource is identified by its key, making additions and removals safe and predictable. Use it consistently instead of `count` for any collection of similar resources.
+`for_each` with map keys provides stable, named resource management in OpenTofu. Each resource is identified by its key, making additions and removals safe and predictable. Use it instead of `count` when instances need stable, meaningful identities.
 
 ---
 
