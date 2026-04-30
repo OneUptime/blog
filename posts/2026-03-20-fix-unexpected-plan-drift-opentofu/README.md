@@ -4,17 +4,17 @@ Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
 Tags: OpenTofu, Troubleshooting, Drift, Plan Changes, State Management, Infrastructure as Code
 
-Description: Learn how to diagnose and fix unexpected plan changes in OpenTofu caused by infrastructure drift, provider attribute normalization, and out-of-band modifications.
+Description: Learn how to diagnose and fix unexpected plan changes in OpenTofu caused by infrastructure drift, changing data source values, provider attribute normalization, and provider version changes.
 
 ## Introduction
 
-Unexpected plan changes - where OpenTofu wants to modify resources even though you have not changed your configuration - are caused by drift between the recorded state and the actual cloud resource state, or by provider attribute normalization differences.
+Unexpected plan changes - where OpenTofu wants to modify resources even though you have not changed your configuration - can be caused by drift between the recorded state and the actual cloud resource state, provider attribute normalization differences, changes in data source results, or provider version behavior.
 
 ## Types of Unexpected Changes
 
 1. **True drift**: Someone modified the cloud resource outside OpenTofu
 2. **Attribute normalization**: Provider reads a value in a different format than stored
-3. **Computed attribute change**: A computed attribute changed server-side (e.g., updated AMI ID)
+3. **Data source result change**: A referenced value now resolves differently (e.g., a "latest" AMI lookup returns a newer image ID)
 4. **Provider version change**: A newer provider version reads or stores attributes differently
 
 ## Diagnosing Unexpected Changes
@@ -36,7 +36,7 @@ If the drift is intentional (you want to accept the current cloud state):
 # Apply a refresh-only plan to update state with current cloud values
 tofu apply -refresh-only
 
-# Alternatively, refresh state without applying
+# Deprecated shortcut that updates state immediately without a review step
 tofu refresh   # Deprecated in newer versions - use apply -refresh-only
 ```
 
@@ -87,7 +87,7 @@ resource "aws_iam_role_policy" "app" {
 
 When a provider upgrade changes how an attribute is read:
 
-```bash
+```hcl
 # Check what changed between provider versions
 # Review provider changelog for breaking changes
 
@@ -115,4 +115,4 @@ aws cloudtrail lookup-events \
 
 ## Conclusion
 
-Unexpected plan changes fall into drift (accept with `-refresh-only` or re-apply), normalization differences (use `jsonencode`, `ignore_changes`), or provider version changes (check changelogs, update configs). Regular drift monitoring with `tofu plan -refresh-only` in CI keeps surprises small and manageable.
+Unexpected plan changes fall into drift (accept with `-refresh-only` or re-apply), data source-driven changes, normalization differences (use `jsonencode`, `ignore_changes`), or provider version changes (check changelogs, update configs). Regular drift monitoring with `tofu plan -refresh-only` in CI keeps surprises small and manageable.
