@@ -26,14 +26,14 @@ traceroute to 8.8.8.8 (8.8.8.8), 30 hops max, 60 byte packets
 
 ```nginx
 Hop 1 - Your default gateway (local router)
-         Latency should be < 5ms on LAN
+         Latency is usually < 5ms on LAN
          If > 10ms: potential LAN congestion or WiFi issues
 
 Hop 2+ - ISP or upstream routers
-          Latency increases with each hop, but should be gradual
+          End-to-end latency usually trends upward overall, but per-hop RTTs can vary
 
 Last hop - The destination
-            If missing → destination is up but blocks probes
+            If missing → destination or a firewall may not return traceroute replies
 ```
 
 ## Understanding Latency Values (Three per Hop)
@@ -47,11 +47,12 @@ Last hop - The destination
 # All similar → stable link
 # Wide variance (9ms, 50ms, 10ms) → congestion or ICMP deprioritization
 
-# Latency should increase monotonically:
+# Latency does not need to increase monotonically.
+# Look for jumps that persist in later hops:
 # hop 1:  1ms  → OK
 # hop 2:  8ms  → OK (+7ms across ISP link)
 # hop 3: 12ms  → OK (+4ms)
-# hop 4: 150ms → PROBLEM: +138ms sudden jump = slow link here
+# hop 4: 150ms → investigate if later hops stay near 150ms too
 ```
 
 ## What Asterisks Mean
@@ -64,13 +65,13 @@ Last hop - The destination
 # Possible causes:
 # 1. Router rate-limits ICMP TTL Exceeded responses (most common)
 #    → Not a real problem - packets still pass through
-# 2. Router firewall blocks ICMP outbound
+# 2. Router or firewall filters traceroute replies
 # 3. Router is very congested
-# 4. Actual routing problem at this hop
+# 4. Actual routing or reachability problem beyond this hop
 
 # KEY INSIGHT: If hop 4 shows *** but hop 5 replies normally,
-# hop 4 IS working - it just doesn't respond to traceroute probes.
-# Only worry about *** if subsequent hops also fail.
+# the path is still progressing past hop 4.
+# Only worry if the loss continues to the destination or matches a real connectivity problem.
 ```
 
 ## Interpreting Latency Patterns
@@ -82,11 +83,11 @@ Last hop - The destination
  3  72.14.0.1       12ms    +4ms (ISP transit)
  4  8.8.8.8         13ms    +1ms (Google edge)
 
-# Bad path - sudden latency spike:
+# Bad path - sudden latency spike that persists:
  1  192.168.1.1      1ms
  2  10.1.0.1         8ms
- 3  209.0.0.1      180ms  ← PROBLEM LINK between hop 2 and 3
- 4  8.8.8.8        181ms    subsequent hops just add ~1ms
+ 3  209.0.0.1      180ms  ← investigate around this hop if later hops stay high
+ 4  8.8.8.8        181ms    persistent increase suggests an issue before or at hop 3
 
 # Route that gets longer then shorter (MPLS or asymmetric routing):
  3  72.14.0.1      12ms
@@ -103,22 +104,22 @@ traceroute -n 10.50.0.1
  4  * * *
  (stops here)
 
-# Stars where traceroute terminates = routing failure
-# Hop 2 (10.1.0.1) has no route to 10.50.0.1
-# Fix: check routing tables on that router
+# Stars where traceroute terminates can mean filtering or a routing problem
+# From this output alone, you can't prove hop 2 has no route to 10.50.0.1
+# Fix: check routing tables, firewall policy, and another reachability test
 ```
 
 ## Tips for Better Output
 
 ```bash
-# -w sets wait time per probe (default 5s)
-traceroute -w 1 -n 8.8.8.8    # Faster output, gives up sooner
+# -w sets the max wait time for a probe response (default 5s on Linux traceroute)
+traceroute -w 1 -n 8.8.8.8    # Faster output, caps wait sooner
 
 # -q sets number of probes per hop (default 3)
 traceroute -q 1 -n 8.8.8.8    # Only 1 probe per hop - faster
 
-# -I uses ICMP instead of UDP (gets through more firewalls)
+# -I uses ICMP Echo instead of the default UDP probes
 sudo traceroute -I -n 8.8.8.8
 ```
 
-The real skill in reading traceroute is distinguishing between "this router doesn't respond to probes" (harmless stars) and "routing is broken here" (stars at end with no further progress).
+The real skill in reading traceroute is distinguishing between "this router doesn't respond to probes" (often harmless stars) and "the path stops making progress" (which can indicate filtering or a routing problem).
