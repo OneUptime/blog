@@ -8,7 +8,7 @@ Description: Identify TCP MSS mismatches that cause fragmentation and connection
 
 ## Introduction
 
-TCP MSS (Maximum Segment Size) is the largest amount of data that can be carried in a single TCP segment. It is negotiated during the handshake based on the interface MTU (MSS = MTU - 40 bytes for IP+TCP headers). MSS mismatches occur in VPN tunnels, GRE tunnels, and VXLAN overlays where the tunnel adds overhead that reduces the effective MTU.
+TCP MSS (Maximum Segment Size) is the largest amount of data that can be carried in a single TCP segment. It is negotiated during the handshake based on the interface MTU (for IPv4, MSS = MTU - 40 bytes for the fixed IP+TCP headers). MSS mismatches occur in VPN tunnels, GRE tunnels, and VXLAN overlays where the tunnel adds overhead that reduces the effective MTU.
 
 ## How MSS is Negotiated
 
@@ -16,7 +16,7 @@ TCP MSS (Maximum Segment Size) is the largest amount of data that can be carried
 Default Ethernet MTU = 1500 bytes
 MSS = 1500 - 20 (IP header) - 20 (TCP header) = 1460 bytes
 
-VPN Tunnel MTU = 1420 bytes (IPsec adds 80 bytes overhead)
+VPN Tunnel MTU = 1420 bytes (this example assumes 80 bytes of IPsec overhead)
 MSS = 1420 - 20 - 20 = 1380 bytes
 
 Mismatch scenario:
@@ -44,8 +44,8 @@ tcpdump -i eth0 -n -v 'tcp[tcpflags] & tcp-syn != 0' -c 5 2>/dev/null | grep mss
 ```bash
 # Symptom: connections work for small data but fail for large
 # Test: ping with various sizes and DF bit
-ping -s 1432 -M do -c 3 10.20.0.5   # 1432 + 28 header = 1460 bytes (matches typical MSS)
-ping -s 1380 -M do -c 3 10.20.0.5   # Smaller (should work through VPN)
+ping -s 1472 -M do -c 3 10.20.0.5   # 1472 + 28 header = 1500 bytes (full Ethernet MTU)
+ping -s 1392 -M do -c 3 10.20.0.5   # 1392 + 28 header = 1420 bytes (fits this VPN MTU example)
 
 # Check the path MTU
 tracepath 10.20.0.5
@@ -70,11 +70,11 @@ iptables -t mangle -A FORWARD -p tcp --tcp-flags SYN,RST SYN \
 iptables -t mangle -A FORWARD -p tcp --tcp-flags SYN,RST SYN \
   -j TCPMSS --set-mss 1380
 
-# Apply on the VPN/tunnel interface specifically
+# Apply on a specific VPN/tunnel interface (replace tun0 as needed)
 iptables -t mangle -A FORWARD -o tun0 -p tcp --tcp-flags SYN,RST SYN \
-  -j TCPMSS --set-mss 1360   # Conservative value for IPsec
+  -j TCPMSS --set-mss 1380   # Example value for a 1420-byte MTU path
 
-# Save rules
+# Save rules (example for systems using iptables-persistent)
 iptables-save > /etc/iptables/rules.v4
 ```
 
@@ -82,15 +82,15 @@ iptables-save > /etc/iptables/rules.v4
 
 ```bash
 # For the tunnel interface: set MTU to match available space
-ip link set tun0 mtu 1400
+ip link set tun0 mtu 1420
 
 # For the physical interface (less desirable, affects all traffic):
-ip link set eth0 mtu 1400
+ip link set eth0 mtu 1420
 
 # Make persistent (systemd-networkd):
 # /etc/systemd/network/10-vpn.network
 # [Link]
-# MTUBytes=1400
+# MTUBytes=1420
 ```
 
 ## Verifying the Fix
