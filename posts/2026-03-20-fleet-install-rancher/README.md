@@ -16,18 +16,19 @@ This guide walks you through installing and setting up Fleet within Rancher, cov
 
 Before installing Fleet, ensure you have:
 
-- A running Rancher instance (v2.6 or later)
-- Kubernetes clusters registered in Rancher
-- `kubectl` configured with access to your local cluster
+- A running Rancher instance (v2.6 or later) if you are using Fleet through Rancher
+- A Kubernetes cluster available to host the Fleet manager if you are installing Fleet standalone
+- Kubernetes clusters registered in Rancher if you are using the Rancher-integrated workflow
+- `kubectl` configured with access to the cluster where you will install Fleet
 - Helm v3 installed on your workstation
-- Sufficient RBAC permissions in Rancher
+- Sufficient RBAC permissions in Rancher or the target Kubernetes cluster
 
 ## Fleet Architecture Overview
 
 Fleet operates with two primary components:
 
-- **Fleet Manager**: Runs in the Rancher local cluster and coordinates deployments
-- **Fleet Agent**: Runs in each downstream cluster and applies resources
+- **Fleet Manager**: Runs in the management cluster and coordinates deployments
+- **Fleet Agent**: Runs in managed clusters and applies resources
 
 ## Method 1: Enabling Fleet via Rancher UI
 
@@ -39,15 +40,13 @@ Fleet is bundled with Rancher and can be enabled directly from the UI.
 2. Click the **hamburger menu** (top-left)
 3. Select **Continuous Delivery**
 
-If Fleet is not yet activated, Rancher will prompt you to enable it.
+If **Continuous Delivery** is not visible, check whether the `continuous-delivery` feature flag has been disabled.
 
 ### Step 2: Configure Fleet Settings
 
-Navigate to **Continuous Delivery > Advanced > Settings** to configure:
+After opening **Continuous Delivery**, select a workspace such as `fleet-default` or `fleet-local` to manage Git repositories and target clusters.
 
-- Default workspace behavior
-- Git polling intervals
-- Agent deployment options
+If **Continuous Delivery** is hidden, re-enable the `continuous-delivery` feature flag from **Global Settings > Feature Flags**.
 
 ## Method 2: Installing Fleet Standalone with Helm
 
@@ -70,19 +69,16 @@ Fleet requires Custom Resource Definitions to be installed first:
 
 ```bash
 # Install Fleet CRDs into the cluster
-helm install fleet-crd fleet/fleet-crd \
-  --namespace cattle-fleet-system \
-  --create-namespace
+helm -n cattle-fleet-system install --create-namespace --wait fleet-crd \
+  fleet/fleet-crd
 ```
 
 ### Step 3: Install the Fleet Manager
 
 ```bash
 # Install the Fleet controller/manager
-helm install fleet fleet/fleet \
-  --namespace cattle-fleet-system \
-  --create-namespace \
-  --set apiServerURL="https://your-kubernetes-api-server:6443"
+helm -n cattle-fleet-system install --create-namespace --wait fleet \
+  fleet/fleet
 ```
 
 ### Step 4: Verify Fleet Installation
@@ -108,27 +104,44 @@ fleet-gitjob-5c8b9f7d6-k4mnp           1/1     Running   0          2m
 
 ## Method 3: Installing Fleet Agent on Downstream Clusters
 
-If you are managing remote clusters, install the Fleet agent on each downstream cluster.
+If you are using standalone Fleet to manage remote clusters, install the Fleet agent on each downstream cluster. Agent-initiated registration is not commonly used when clusters are added through the Rancher UI.
 
-### Step 1: Get the Fleet Manager URL and Token
+### Step 1: Create a Cluster Registration Token
 
 ```bash
-# Retrieve the Fleet manager server URL
-kubectl get secret -n cattle-fleet-system fleet-controller-bootstrap-token \
-  -o jsonpath='{.data.token}' | base64 -d
+# Create a workspace namespace for downstream cluster registrations
+kubectl create namespace clusters --dry-run=client -o yaml | kubectl apply -f -
+
+# Create a registration token in that namespace
+kubectl apply -f - <<'EOF'
+kind: ClusterRegistrationToken
+apiVersion: "fleet.cattle.io/v1alpha1"
+metadata:
+  name: new-token
+  namespace: clusters
+spec:
+  ttl: 240h
+EOF
+
+# Wait for the generated Secret, then extract the agent values file
+while ! kubectl -n clusters get secret new-token; do sleep 5; done
+kubectl -n clusters get secret new-token \
+  -o 'jsonpath={.data.values}' | base64 --decode > values.yaml
 ```
 
 ### Step 2: Install the Agent
 
 ```bash
 # Install Fleet agent on the downstream cluster
-# Replace API_SERVER_URL and FLEET_TOKEN with your values
-helm install fleet-agent fleet/fleet-agent \
-  --namespace cattle-fleet-system \
-  --create-namespace \
-  --set apiServerURL="https://fleet-manager.example.com" \
-  --set token="<FLEET_TOKEN>" \
-  --set clusterNamespace="fleet-default"
+# Replace with the Fleet manager cluster API server URL and CA data from kubeconfig
+API_SERVER_URL="https://example.com:6443"
+API_SERVER_CA_DATA="LS0tLS1CRUdJTi..."
+
+helm -n cattle-fleet-system install --create-namespace --wait \
+  --values values.yaml \
+  --set apiServerCA="$API_SERVER_CA_DATA" \
+  --set apiServerURL="$API_SERVER_URL" \
+  fleet-agent fleet/fleet-agent
 ```
 
 ## Configuring Fleet After Installation
@@ -144,14 +157,7 @@ kubectl get namespaces | grep cattle-fleet
 
 ### Enabling Fleet in Rancher Feature Flags
 
-For older Rancher versions, enable Fleet via the feature flags API:
-
-```bash
-# Patch the Fleet feature flag to enable it
-kubectl patch feature fleet \
-  --type merge \
-  -p '{"spec": {"value": true}}'
-```
+Continuous Delivery in Rancher is controlled by the `continuous-delivery` feature flag. If it has been disabled, enable it from **Global Settings > Feature Flags** or through the Rancher `/v3/features` API.
 
 ## Verifying the Complete Installation
 
@@ -165,7 +171,7 @@ kubectl get bundles -A
 kubectl get gitrepos -A
 
 # Verify cluster registration
-kubectl get clusters.fleet.cattle.io -n fleet-local
+kubectl get clusters.fleet.cattle.io -A
 ```
 
 ## Troubleshooting Common Installation Issues
@@ -187,8 +193,12 @@ kubectl logs -n cattle-fleet-system -l app=fleet-controller
 If you encounter TLS errors:
 
 ```bash
-# Verify the Fleet CA bundle
-kubectl get secret -n cattle-fleet-system fleet-controller-bootstrap-token -o yaml
+# Check that the API server URL is reachable
+curl -fLk "$API_SERVER_URL/version"
+
+# Decode the CA data used by the agent and validate the certificate chain
+echo "$API_SERVER_CA_DATA" | base64 -d > ca.pem
+curl -fL --cacert ca.pem "$API_SERVER_URL/version"
 ```
 
 ## Conclusion
