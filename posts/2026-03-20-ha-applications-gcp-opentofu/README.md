@@ -8,7 +8,7 @@ Description: Learn how to deploy highly available applications on GCP using Open
 
 ## Overview
 
-High availability on GCP uses Regional Managed Instance Groups to distribute VMs across zones, Global HTTP(S) Load Balancing for anycast routing, and autohealing to replace unhealthy instances. OpenTofu provisions the complete HA architecture.
+High availability on GCP uses Regional Managed Instance Groups to distribute VMs across zones, Global HTTP(S) Load Balancing for anycast routing, and autohealing to replace unhealthy instances. OpenTofu provisions the regional MIG, health checks, autoscaling, and backend service that support the HA architecture.
 
 ## Step 1: Regional Managed Instance Group
 
@@ -48,10 +48,14 @@ resource "google_compute_instance_template" "app" {
   tags = ["ha-app", "allow-health-check"]
 }
 
-# Regional MIG spans all zones in the region automatically
+# By default, a regional MIG distributes instances across 3 selected zones
 resource "google_compute_region_instance_group_manager" "app" {
   name   = "ha-app-rmig"
   region = "us-central1"
+
+  lifecycle {
+    ignore_changes = [target_size]
+  }
 
   base_instance_name = "ha-app"
 
@@ -60,7 +64,7 @@ resource "google_compute_region_instance_group_manager" "app" {
     name              = "primary"
   }
 
-  target_size = 6  # Distributed evenly across zones (3 zones = 2 per zone)
+  target_size = 6  # Initial size; with the default 3-zone distribution this starts at 2 per zone
 
   named_port {
     name = "http"
@@ -136,11 +140,12 @@ resource "google_compute_region_autoscaler" "app" {
 }
 ```
 
-## Step 4: Global Load Balancer Backend
+## Step 4: Global Load Balancer Backend Service
 
 ```hcl
 resource "google_compute_backend_service" "ha_app" {
   name        = "ha-app-backend"
+  port_name   = "http"
   protocol    = "HTTP"
   timeout_sec = 30
 
@@ -164,4 +169,4 @@ resource "google_compute_backend_service" "ha_app" {
 
 ## Summary
 
-Highly available applications on GCP built with OpenTofu use Regional MIGs to automatically distribute instances across all zones in a region. The autohealing policy replaces instances that fail health checks within the `initial_delay_sec` window. The rolling update policy with `max_unavailable_fixed = 0` ensures zero-downtime deployments by requiring all new instances to pass health checks before removing old ones. Global Load Balancing with `connection_draining_timeout_sec` ensures in-flight requests complete before an instance is removed from the backend.
+Highly available applications on GCP built with OpenTofu use Regional MIGs to automatically distribute instances across selected zones in a region. By default, a regional MIG uses 3 zones unless you explicitly choose more or fewer. The autohealing policy starts evaluating health check failures after the `initial_delay_sec` startup window so new instances are not recreated too early. The rolling update policy with `max_unavailable_fixed = 0` and `max_surge_fixed > 0` supports zero-downtime deployments by requiring replacement capacity before old instances are removed. The backend service's `connection_draining_timeout_sec` setting gives in-flight requests time to complete before an instance is removed from the backend.
