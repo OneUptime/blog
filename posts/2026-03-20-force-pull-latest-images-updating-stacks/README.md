@@ -23,8 +23,6 @@ Navigate to **Stacks > Add stack** to create a new stack. You can:
 ```yaml
 # Paste this in the Portainer web editor
 
-version: "3.8"
-
 services:
   web:
     image: nginx:latest
@@ -47,7 +45,7 @@ volumes:
 
 ## Stack from Git Repository
 
-1. Select **Repository** as the build method
+1. Select **Git Repository** as the build method
 2. Enter the repository URL: `https://github.com/org/repo`
 3. Optionally set a branch and compose file path
 4. Enable **GitOps updates** for automatic redeployment
@@ -62,28 +60,26 @@ TOKEN=$(curl -s -X POST \
   -d '{"username":"admin","password":"yourpassword"}' \
   --insecure | python3 -c "import sys,json; print(json.load(sys.stdin)['jwt'])")
 
-# Create a stack with environment variables via API
+# Create a Docker Standalone stack with environment variables via API
 curl -X POST \
-  https://localhost:9443/api/stacks \
+  "https://localhost:9443/api/stacks/create/standalone/string?endpointId=1" \
   -H "Authorization: Bearer $TOKEN" \
   -H "Content-Type: application/json" \
   -d '{
-    "name": "myapp",
-    "stackFileContent": "version: \"3.8\"\nservices:\n  web:\n    image: nginx:latest",
-    "env": [
+    "Name": "myapp",
+    "StackFileContent": "services:\n  web:\n    image: nginx:latest",
+    "Env": [
       {"name": "DB_PASSWORD", "value": "secretpassword"},
       {"name": "APP_ENV", "value": "production"}
-    ],
-    "type": 2,
-    "endpointId": 1
+    ]
   }' \
   --insecure
 ```
 
 ## Auto-Update from Git (Polling)
 
-Configure polling interval in the stack settings:
-- Interval: e.g., `5m` for 5-minute polling
+Configure polling interval in the GitOps update settings:
+- Set the fetch interval to control how often Portainer checks the repository
 - Portainer checks for new commits and redeploys if changes are found
 
 ## Stack Webhook
@@ -93,18 +89,19 @@ Configure polling interval in the stack settings:
 STACK_WEBHOOK_URL="https://portainer.example.com/api/stacks/webhooks/<uuid>"
 
 curl -X POST "$STACK_WEBHOOK_URL"
-# Portainer redeploys the stack with --pull-always
+# By default, Portainer redeploys the stack and pulls the latest image for the same tag
 ```
 
 ## Fix stack.env Not Found
 
 ```bash
 # Error: "stack.env: no such file or directory"
-# Cause: Docker Compose expects a .env file in the same directory as compose.yml
+# Cause: The compose file references env_file: - stack.env, but that file is not available in this deployment context
+# .env and stack.env are different: .env is for variable substitution, while stack.env is Portainer's env_file for Docker Standalone/Podman
 
-# Fix 1: Upload .env file via Portainer UI (Stack > .env file tab)
-# Fix 2: Remove ${VARIABLE} references and use Portainer env vars instead
-# Fix 3: Create the .env file in the Git repository alongside compose.yml
+# Fix 1: On Docker Standalone or Podman, define variables in Portainer or upload a .env file so Portainer can expose them as stack.env
+# Fix 2: On Docker Swarm, remove env_file: - stack.env and define each variable manually in Portainer using ${VARIABLE} in environment:
+# Fix 3: If you want to use a repository-managed env_file instead, reference the actual file name in env_file and keep that file alongside the compose file
 ```
 
 ---
