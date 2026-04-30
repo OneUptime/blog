@@ -19,7 +19,7 @@ graph TD
         AWS_VPC --> AWS_S2["Subnet 2 /64<br/>us-east-1b"]
     end
     subgraph Azure
-        AZ_VNET["VNet gets /48 or bring-your-own"] --> AZ_S1["Subnet 1 /64"]
+        AZ_VNET["VNet uses customer-defined<br/>IPv6 space"] --> AZ_S1["Subnet 1 /64"]
         AZ_VNET --> AZ_S2["Subnet 2 /64"]
     end
     subgraph GCP
@@ -30,7 +30,7 @@ graph TD
 
 ## AWS VPC IPv6
 
-AWS assigns a /56 from their own IPv6 address space to each VPC. You then carve out /64 subnets:
+If you request an Amazon-provided IPv6 CIDR block, AWS assigns a /56 to the VPC. You then carve out /64 subnets:
 
 ```python
 # AWS assigns a /56 like 2600:1f18:1234:5600::/56
@@ -46,7 +46,7 @@ def aws_subnet_plan(vpc_prefix_56):
     vpc = ipaddress.IPv6Network(vpc_prefix_56)
     subnets = list(vpc.subnets(new_prefix=64))
 
-    # AWS us-east-1 has 6 AZs (a-f)
+    # Example grouping by AZ label and subnet role
     az_plan = {
         "us-east-1a Public":   subnets[0],
         "us-east-1b Public":   subnets[1],
@@ -64,7 +64,7 @@ aws_subnet_plan(AWS_VPC_PREFIX)
 
 ## Azure VNet IPv6
 
-Azure supports both Azure-allocated and bring-your-own IPv6 prefixes (BYOIP):
+Azure VNets use customer-defined IPv6 address space, and IPv6 subnets must be exactly /64:
 
 ```bash
 # Azure CLI: create VNet with IPv6
@@ -81,13 +81,14 @@ az network vnet subnet create \
   --name mySubnet \
   --address-prefixes 10.0.1.0/24 "2001:db8:0:1::/64"
 
-# Enable IPv6 on a NIC
-az network nic ip-config update \
+# Add an IPv6 IP configuration to a NIC
+az network nic ip-config create \
   --resource-group myRG \
   --nic-name myNIC \
-  --name ipconfig1 \
+  --name myIPv6config \
   --private-ip-address-version IPv6 \
-  --private-ip-address "2001:db8:0:1::4"
+  --vnet-name myVNet \
+  --subnet mySubnet
 ```
 
 ## GCP VPC IPv6
@@ -95,9 +96,10 @@ az network nic ip-config update \
 GCP supports dual-stack VPCs with per-subnet /64 allocations:
 
 ```bash
-# GCP: create VPC with internal IPv6
+# GCP: create VPC with internal IPv6 ULA enabled
 gcloud compute networks create my-network \
   --subnet-mode=custom \
+  --enable-ula-internal-ipv6 \
   --bgp-routing-mode=regional
 
 # Create dual-stack subnet
@@ -111,12 +113,12 @@ gcloud compute networks subnets create my-subnet \
 # Check assigned IPv6 range
 gcloud compute networks subnets describe my-subnet \
   --region=us-central1 \
-  --format="get(ipv6CidrRange)"
+  --format="get(internalIpv6Prefix)"
 ```
 
 ## Bring Your Own IP (BYOIP) for Multi-Cloud Consistency
 
-For organizations that want consistent IPv6 addressing across clouds:
+For organizations that want consistent IPv6 addressing across clouds, reserve a larger organizational prefix and carve per-cloud blocks from it where the platform supports customer-defined or BYOIP IPv6 space:
 
 ```text
 Organization /40: 2001:db8:a::/40
@@ -156,4 +158,4 @@ resource "aws_subnet" "public_a" {
 
 ## Conclusion
 
-Cloud VPC IPv6 addressing follows the same /64-per-subnet principle as on-premises networks. AWS provides a /56 per VPC (256 subnets), Azure and GCP offer more flexibility with BYOIP. For multi-cloud deployments, using bring-your-own prefixes with a structured organizational hierarchy ensures consistent addressing, simplifies firewall policies, and enables clean routing between cloud regions and on-premises infrastructure.
+Cloud VPC IPv6 addressing follows the same /64-per-subnet principle as on-premises networks. Amazon-provided AWS IPv6 blocks are /56 per VPC (256 /64 subnets), Azure uses customer-defined VNet IPv6 space, and GCP uses /64 IPv6 subnets backed by either internal ULA or external/BYOIP ranges. For multi-cloud deployments, using a structured organizational hierarchy for customer-defined or BYOIP prefixes where supported ensures consistent addressing, simplifies firewall policies, and enables clean routing between cloud regions and on-premises infrastructure.
