@@ -2,55 +2,56 @@
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
-Tags: IPv6, VirtualBox, NAT, NPTv6, Virtual Networking, Desktop Virtualization
+Tags: IPv6, VirtualBox, NAT, NAT66, Virtual Networking, Desktop Virtualization
 
-Description: Configure IPv6 NAT and NAT Network modes in VirtualBox to provide IPv6 connectivity to virtual machines when using ULA prefixes, including NPTv6 translation and port forwarding.
+Description: Configure IPv6 NAT and NAT Network modes in VirtualBox to provide IPv6 connectivity to virtual machines, including configurable IPv6 prefixes, host-side NAT66, and port forwarding.
 
 ## Introduction
 
-VirtualBox's NAT and NAT Network modes provide IPv6 connectivity to VMs when bridged networking is not available or desired. NAT mode uses NPTv6 (Network Prefix Translation) to translate between the VM's private IPv6 prefix and the host's public IPv6 address. NAT Network mode provides DHCPv6 and allows multiple VMs to communicate with each other and the outside world.
+VirtualBox's NAT and NAT Network modes can provide IPv6 connectivity to VMs when bridged networking is not available or desired. In current VirtualBox releases, NAT mode includes IPv6 support in the NAT engine. NAT Network mode can use an IPv6 ULA prefix and router advertisements for SLAAC, allowing multiple VMs on the same NAT Network to communicate with each other and, when a default IPv6 route is advertised, with the outside world.
 
 ## VirtualBox NAT Mode with IPv6
 
 ```bash
-# NAT mode (default VirtualBox network) - single VM, IPv6 via host
+# NAT mode (default VirtualBox network) - single VM
 
-# Check if IPv6 is enabled for NAT on a VM
+# Check the VM's first adapter
 
-VBoxManage showvminfo "MyVM" | grep -E "NIC 1|IPv6"
+VBoxManage showvminfo "MyVM" | grep -E "NIC 1|NAT"
 
-# Enable IPv6 for NAT adapter
+# Attach adapter 1 to NAT
 VBoxManage modifyvm "MyVM" \
     --nic1 nat
 
-# VirtualBox NAT automatically provides IPv6 if the host has IPv6
-# The VM gets:
-# - Link-local: fe80::1/64 (always)
-# - If host has IPv6: the VM can reach IPv6 destinations
+# VirtualBox 7.1 and later add IPv6 support to the NAT engine.
+# Verify IPv6 inside the guest with:
+# ip -6 addr show
+# ip -6 route show
 
-# Port forwarding over IPv6 (NAT mode)
+# Port forwarding with NAT mode
 VBoxManage modifyvm "MyVM" \
-    --natpf1 "ssh-ipv6,tcp,[::1],2222,[],22"
-# Connect: ssh -p 2222 -6 ::1
+    --nat-pf1 "ssh,tcp,127.0.0.1,2222,,22"
+# Connect: ssh -p 2222 127.0.0.1
 ```
 
 ## NAT Network with IPv6
 
 ```bash
-# Create NAT Network with IPv6 DHCP
+# Create NAT Network with IPv6 enabled
 VBoxManage natnetwork add \
     --netname NatNet1 \
     --network "10.0.2.0/24" \
+    --dhcp on \
     --ipv6 on \
-    --ipv6prefix "fd17:625c:f037:cafe::/64" \
+    --ipv6-prefix "fd17:625c:f037:cafe::/64" \
+    --ipv6-default on \
     --enable
 
 # Verify the NAT Network
 VBoxManage natnetwork list
-VBoxManage natnetwork modify NatNet1 --port-forward-6 "ssh6:tcp:[]:2222:[fd17:625c:f037:cafe::100]:22"
 
 # Start the NAT Network
-VBoxManage natnetwork start NatNet1
+VBoxManage natnetwork start --netname NatNet1
 
 # Attach VM to NAT Network
 VBoxManage modifyvm "MyVM" \
@@ -65,42 +66,42 @@ VBoxManage startvm "MyVM" --type headless
 ```bash
 # Inside the VM (connected to NAT Network)
 
-# Check IPv6 address from DHCPv6
+# Check IPv6 address learned via router advertisements (SLAAC)
 ip -6 addr show
 # Expected:
-# inet6 fd17:625c:f037:cafe::100/64 scope global dynamic
+# a global address from fd17:625c:f037:cafe::/64
 
 # Check default route
 ip -6 route show
 # Expected:
-# default via fd17:625c:f037:cafe::1 dev eth0
+# a default IPv6 route via the NAT gateway
 
 # Test IPv6 connectivity
 ping6 fd17:625c:f037:cafe::1    # Gateway
-ping6 2001:4860:4860::8888      # External IPv6 (if host has IPv6)
+ping6 2001:4860:4860::8888      # External IPv6 (if host has IPv6 and --ipv6-default on)
 ```
 
-## NPTv6 for IPv6-to-IPv6 Translation
+## Host-Side NAT66 for IPv6-to-IPv6 Translation
 
 ```bash
-# On the host: configure NPTv6 to translate VirtualBox NAT Network
-# ULA prefix (fd00::/8) to public IPv6 prefix
+# On the host: configure stateful NAT66 to translate the VirtualBox NAT Network
+# ULA prefix to a public IPv6 address
 
 # Enable IPv6 forwarding on host
 sysctl -w net.ipv6.conf.all.forwarding=1
 
-# Install nft or use ip6tables for NPTv6
-# Using nftables (recommended)
+# Using nftables (stateful NAT66)
+# Replace fd17:625c:f037:cafe::100 with the VM's actual IPv6 address.
 cat > /etc/nftables.d/ipv6-nat.nft << 'EOF'
 table ip6 nat {
     chain PREROUTING {
         type nat hook prerouting priority -100;
-        # Translate incoming public IPv6 to ULA for VMs
+        # Translate incoming public IPv6 to the VM
         ip6 daddr 2001:db8::100/128 dnat to fd17:625c:f037:cafe::100
     }
     chain POSTROUTING {
         type nat hook postrouting priority 100;
-        # NPTv6: translate VMs' ULA to public IPv6
+        # Translate the VM's ULA source address to a public IPv6 address
         ip6 saddr fd17:625c:f037:cafe::/64 oifname "eth0" snat to 2001:db8::100
     }
 }
@@ -118,9 +119,12 @@ nft -f /etc/nftables.d/ipv6-nat.nft
 VBoxManage hostonlyif create
 # Returns: Interface 'vboxnet0' was successfully created
 
+# On Linux, macOS, and Solaris, allow the ULA range first:
+# printf '* fd00:1234::/64\n' | sudo tee /etc/vbox/networks.conf
+
 # Configure IPv6 on host-only interface
 VBoxManage hostonlyif ipconfig vboxnet0 \
-    --ipv6 "fd00:vbox::1" \
+    --ipv6 "fd00:1234::1" \
     --netmasklengthv6 64
 
 # Verify
@@ -132,8 +136,7 @@ VBoxManage modifyvm "MyVM" \
     --hostonlyadapter2 vboxnet0
 
 # Inside VM: configure static IPv6 on second adapter
-# ip -6 addr add fd00:vbox::10/64 dev eth1
-# ip -6 route add fd00:vbox::/64 dev eth1
+# ip -6 addr add fd00:1234::10/64 dev eth1
 ```
 
 ## VirtualBox VM with Multiple IPv6 Networks
@@ -147,24 +150,29 @@ VBoxManage modifyvm "MyVM" \
     --nic2 hostonly \
     --hostonlyadapter2 vboxnet0         # Management (host-only IPv6)
 
-# NIC1: DHCP IPv4 + IPv6 from host
-# NIC2: Static IPv6 fd00:vbox::10/64 - direct host access
+# NIC1: NAT
+# NIC2: Static IPv6 fd00:1234::10/64 - direct host access
 ```
 
 ## Testing IPv6 NAT Connectivity
 
 ```bash
-# From host: test NAT Network gateway
-ping6 fd17:625c:f037:cafe::1
+# From host: inspect NAT Network configuration
+VBoxManage list natnetworks
 
 # From VM: test external IPv6 through NAT
-# (only works if host has IPv6 internet)
-curl -6 https://ipv6.google.com/
+# (only works if host has IPv6 internet and the NAT Network advertises a default IPv6 route)
+curl -6 https://www.google.com/
+
+# Add IPv6 port forwarding after identifying the guest's IPv6 address
+# Replace fd17:625c:f037:cafe::100 with the guest's actual IPv6 address.
+VBoxManage natnetwork modify --netname NatNet1 \
+    --port-forward-6 "ssh6:tcp:[]:2222:[fd17:625c:f037:cafe::100]:22"
 
 # Port forward test
 ssh -p 2222 -6 "::1"   # Connect to VM's SSH via IPv6 loop
 
-# Check VirtualBox DHCP leases for NAT Network
+# Check the VM's IPv4 DHCP lease on the NAT Network
 VBoxManage dhcpserver findlease \
     --network=NatNet1 \
     --mac-address=08:00:27:aa:bb:cc
@@ -172,4 +180,4 @@ VBoxManage dhcpserver findlease \
 
 ## Conclusion
 
-VirtualBox provides IPv6 through NAT mode (which relays IPv6 from the host) and NAT Network mode (which includes DHCPv6 and a configurable ULA prefix). The NAT Network mode with `--ipv6 on` and `--ipv6prefix` creates a complete IPv6 subnet with DHCPv6 for VMs. Host-Only networking with IPv6 is the simplest option for host-VM communication using ULA addresses without NAT. For full public IPv6 access, bridged networking is preferred over NAT, as it connects VMs directly to the physical IPv6 network. NPTv6 can be configured on the host using nftables to translate between NAT Network ULA addresses and public IPv6 addresses.
+VirtualBox provides IPv6 through NAT mode and NAT Network mode. The NAT Network mode with `--ipv6 on`, `--ipv6-prefix`, and `--ipv6-default on` creates a complete IPv6 subnet for VMs and uses router advertisements for SLAAC. Host-Only networking with IPv6 is a simple option for host-VM communication, though on Linux, macOS, and Solaris custom IPv6 ranges for host-only adapters require `/etc/vbox/networks.conf`. For full public IPv6 access, bridged networking is preferred over NAT, as it connects VMs directly to the physical IPv6 network. If you need host-side IPv6 address translation for a NAT Network, configure NAT66 rules on the host.
