@@ -21,7 +21,7 @@ docker swarm init --advertise-addr <manager-ip>
 docker swarm join --token <worker-token> <manager-ip>:2377
 
 # Deploy Portainer on Swarm
-curl -L https://downloads.portainer.io/ce2-21/portainer-agent-stack.yml -o portainer-stack.yml
+curl -L https://downloads.portainer.io/ce-lts/portainer-agent-stack.yml -o portainer-stack.yml
 docker stack deploy -c portainer-stack.yml portainer
 ```
 
@@ -53,8 +53,8 @@ docker service rollback myapp
 # View service tasks
 docker service ps myapp
 
-# View service logs
-docker service logs myapp --tail 100 -f
+# View service logs (json-file or journald logging drivers)
+docker service logs --tail 100 -f myapp
 ```
 
 ## Docker Configs and Secrets
@@ -90,7 +90,7 @@ docker node ls
 # Inspect a node
 docker node inspect --pretty <node-id>
 
-# View node resource usage
+# View tasks scheduled on a node
 docker node ps <node-id>
 ```
 
