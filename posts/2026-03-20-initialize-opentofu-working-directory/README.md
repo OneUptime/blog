@@ -8,15 +8,15 @@ Description: A guide to understanding and using the tofu init command to set up 
 
 ## Introduction
 
-`tofu init` is the first command you run when working with any OpenTofu configuration. It prepares your working directory by downloading providers, setting up the backend, and installing modules. Understanding what `init` does helps you troubleshoot issues and configure it for different environments.
+`tofu init` is the first command you run when working with any OpenTofu configuration. It prepares your working directory by downloading providers, setting up the configured backend, and installing modules. Understanding what `init` does helps you troubleshoot issues and configure it for different environments.
 
 ## What tofu init Does
 
 Running `tofu init` performs these tasks:
-1. **Backend initialization**: Sets up remote state storage
+1. **Backend initialization**: Sets up the configured state backend
 2. **Provider installation**: Downloads required provider plugins
 3. **Module installation**: Downloads referenced modules
-4. **Creates .terraform directory**: Stores downloaded plugins and metadata
+4. **Creates .terraform directory**: Stores cached providers, modules, and backend metadata
 
 ## Basic Initialization
 
@@ -33,7 +33,7 @@ tofu init
 # Initializing provider plugins...
 # - Finding hashicorp/aws versions matching "~> 5.0"...
 # - Installing hashicorp/aws v5.30.0...
-# - Installed hashicorp/aws v5.30.0 (signed by a HashiCorp partner, key ID...)
+# - Installed hashicorp/aws v5.30.0
 #
 # Tofu has been successfully initialized!
 ```
@@ -47,23 +47,20 @@ tofu init -upgrade
 # Don't install modules (if you want to skip module download)
 tofu init -get=false
 
-# Don't verify provider signatures
-tofu init -verify-plugins=false  # Not recommended for production
-
 # Use a specific backend config file
 tofu init -backend-config=backend.hcl
 
 # Set backend config values directly
 tofu init -backend-config="bucket=my-state-bucket" -backend-config="key=prod/terraform.tfstate"
 
-# Disable backend initialization (use local state)
+# Skip backend initialization for an already-initialized working directory
 tofu init -backend=false
 
 # Migrate state from one backend to another
 tofu init -migrate-state
 
-# Copy state to new backend instead of migrating
-tofu init -copy-state=false
+# Answer yes to state-copy prompts while migrating to a new backend
+tofu init -force-copy
 
 # Reconfigure backend without migrating state
 tofu init -reconfigure
@@ -122,7 +119,7 @@ ls -la .terraform/
 # │               └── 5.30.0/
 # │                   └── linux_amd64/
 # │                       └── terraform-provider-aws_v5.30.0_x5
-# └── terraform.tfstate  (tracks backend state)
+# └── terraform.tfstate  (stores backend configuration for this working directory)
 
 # .terraform.lock.hcl - Provider version lock file
 cat .terraform.lock.hcl
