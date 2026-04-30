@@ -25,12 +25,14 @@ global
     # log 192.168.1.100:514 local0 notice
 ```
 
-```bash
+```rsyslog
 # /etc/rsyslog.d/49-haproxy.conf
 
-# Write HAProxy local0 messages to a dedicated log file
-if $programname == 'haproxy' then /var/log/haproxy.log
-& stop
+# Write HAProxy messages to a dedicated log file
+if ($programname == "haproxy") then {
+    action(type="omfile" file="/var/log/haproxy.log")
+    stop
+}
 ```
 
 ## HTTP Log Format
@@ -42,7 +44,7 @@ defaults
     mode http
     log global
     option httplog           # Enable detailed HTTP logging
-    option dontlognull       # Skip logging empty (health-check) connections
+    option dontlognull       # Skip logging connections with no data transfer, such as probes
 ```
 
 A typical HTTP log line:
@@ -53,7 +55,7 @@ haproxy[1234]: 203.0.113.10:54321 [19/Mar/2026:12:00:00.123] http_in~ web_server
 
 Field breakdown: `client_ip:port`, `timestamp`, `frontend`, `backend/server`, `timers`, `status`, `bytes`, `termination flags`, `connections`, `request`.
 
-## Custom Log Format with IPv4 Fields
+## Custom Log Format with Client IP Fields
 
 ```haproxy
 global
@@ -63,18 +65,18 @@ defaults
     mode http
     log global
 
-    # Custom log format including client IPv4, method, URL, status, and response time
+    # Custom log format including client IP, frontend/backend names, timers, status, and request line
     log-format "%ci:%cp [%t] %ft %b/%s %Tq/%Tw/%Tc/%Tr/%Ta %ST %B %tsc %{+Q}r"
 ```
 
 Key format specifiers:
-- `%ci` - Client IPv4 address
+- `%ci` - Client source IP address
 - `%cp` - Client port
 - `%ft` - Frontend name
 - `%b/%s` - Backend and server name
 - `%ST` - HTTP status code
-- `%B` - Bytes transferred
-- `%Tr` - Response time from server
+- `%B` - Bytes sent from server to client
+- `%Tr` - Time to receive the complete response headers from the server
 
 ## TCP Mode Logging
 
@@ -91,16 +93,16 @@ frontend db_proxy
     default_backend mysql_cluster
 ```
 
-## Capturing the Real Client IP from X-Forwarded-For
+## Capturing Forwarded Client IP Information from X-Forwarded-For
 
-When HAProxy is behind another load balancer, capture the forwarded IP:
+When HAProxy is behind another trusted load balancer or proxy, capture the forwarded header value:
 
 ```haproxy
 frontend http_in
     bind 0.0.0.0:80
     mode http
 
-    # Capture the X-Forwarded-For header into logs
+    # Capture the X-Forwarded-For header value into logs
     http-request capture req.hdr(X-Forwarded-For) len 40
 
     log-format "%ci [%t] XFF=%[capture.req.hdr(0)] %r %ST"
@@ -116,13 +118,13 @@ tail -f /var/log/haproxy.log
 # Filter for a specific client IPv4 address
 grep "203.0.113.10" /var/log/haproxy.log
 
-# Count requests per client IP
-awk '{print $6}' /var/log/haproxy.log | cut -d: -f1 | sort | uniq -c | sort -rn | head -20
+# Count requests per client IPv4 address from standard HTTP log lines
+grep -oE '([0-9]{1,3}\.){3}[0-9]{1,3}:[0-9]+ \[' /var/log/haproxy.log | cut -d: -f1 | sort | uniq -c | sort -rn | head -20
 ```
 
 ## Key Takeaways
 
 - Use `option httplog` for HTTP mode and `option tcplog` for TCP mode to enable detailed logging.
-- `%ci` is the client IPv4 address field in custom `log-format` strings.
+- `%ci` is the client source IP address field in custom `log-format` strings.
 - Send logs to rsyslog and write a dedicated HAProxy log file for easier analysis.
-- Use `http-request capture` to log custom headers like `X-Forwarded-For`.
+- Use `http-request capture` to log header values like `X-Forwarded-For`.
