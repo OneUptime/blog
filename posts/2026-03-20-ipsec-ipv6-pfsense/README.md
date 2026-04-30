@@ -27,7 +27,7 @@ General Information:
   Key Exchange Version: IKEv2
   Internet Protocol:    IPv6
   Interface:            WAN (or your IPv6 uplink)
-  Remote Gateway:       2001:db8:gw2::1
+  Remote Gateway:       2001:db8:0:2::1
 
 Phase 1 Proposal (Authentication):
   Authentication Method: Mutual PSK
@@ -56,8 +56,8 @@ General Information:
   Mode: Tunnel IPv6
 
 Networks:
-  Local Network:  Network - 2001:db8:site1::/48
-  Remote Network: Network - 2001:db8:site2::/48
+  Local Network:  Network - 2001:db8:1::/48
+  Remote Network: Network - 2001:db8:2::/48
 
 Phase 2 Proposal (SA/Key Exchange):
   Encryption Algorithms: AES256-GCM 128-bit
@@ -69,11 +69,13 @@ Phase 2 Proposal (SA/Key Exchange):
 
 Click **Save** then **Apply Changes**.
 
-Navigate to **VPN → IPsec → Status** and click **Connect P1 and P2s** to initiate.
+Navigate to **Status → IPsec** and click **Connect VPN** to initiate.
 
 ## Firewall Rules for IPsec
 
 ### WAN Rules (allow IKE and ESP)
+
+pfSense automatically adds hidden WAN rules for enabled IPsec tunnels. Add manual WAN rules only if you have disabled auto-added VPN rules under **System → Advanced → Firewall & NAT**.
 
 Navigate to **Firewall → Rules → WAN**:
 
@@ -82,7 +84,7 @@ Add rule:
   Action:     Pass
   Interface:  WAN
   Protocol:   UDP
-  Source:     2001:db8:gw2::1
+  Source:     2001:db8:0:2::1
   Destination: WAN Address (IPv6)
   Dest Port:  500 (IKE)
 
@@ -90,7 +92,7 @@ Add rule:
   Action:     Pass
   Interface:  WAN
   Protocol:   UDP
-  Source:     2001:db8:gw2::1
+  Source:     2001:db8:0:2::1
   Destination: WAN Address (IPv6)
   Dest Port:  4500 (NAT-T)
 
@@ -98,7 +100,7 @@ Add rule:
   Action:     Pass
   Interface:  WAN
   Protocol:   ESP
-  Source:     2001:db8:gw2::1
+  Source:     2001:db8:0:2::1
   Destination: WAN Address (IPv6)
 ```
 
@@ -111,9 +113,11 @@ Add rule:
   Action:     Pass
   Interface:  IPsec
   Protocol:   Any
-  Source:     2001:db8:site2::/48
-  Destination: 2001:db8:site1::/48
+  Source:     2001:db8:2::/48
+  Destination: 2001:db8:1::/48
 ```
+
+Traffic from local hosts to the remote `/48` is still controlled by rules on the local interface, such as **Firewall → Rules → LAN**.
 
 ## CLI Access (SSH)
 
@@ -124,11 +128,11 @@ pfSense runs FreeBSD. You can verify IPsec from the command line:
 
 ssh admin@pfsense.local
 
-# Show IPsec status
-ipsec statusall
+# Show configured connections
+swanctl --list-conns
 
-# Show active connections
-ipsec status
+# Show active IKE and CHILD SAs
+swanctl --list-sas
 
 # Show security associations
 setkey -D   # IPsec SA database
@@ -136,52 +140,49 @@ setkey -D   # IPsec SA database
 # Show security policy database
 setkey -DP  # IPsec SP database
 
-# Check strongSwan logs
-clog /var/log/ipsec.log | tail -50
+# Check IPsec logs
+tail -50 /var/log/ipsec.log
 
 # Monitor IKEv2 negotiation
-tail -f /var/log/ipsec.log | grep -E 'IKE|AUTH|CHILD'
+tail -F /var/log/ipsec.log
 ```
 
 ## IPv6 Routing Through the Tunnel
 
-After the tunnel is up, pfSense should automatically route traffic:
+For **Tunnel IPv6** phase 2 entries, pfSense does not add a normal IPv6 route to the system routing table. Traffic is matched by IPsec security policy entries instead.
 
 ```bash
-# On pfSense CLI: Verify route exists
-netstat -rn -f inet6 | grep site2
-# Should show: 2001:db8:site2::/48  via <tunnel>
+# On pfSense CLI: Verify the IPsec policy selectors
+setkey -DP
 
-# Test connectivity
-ping6 2001:db8:site2::1
+# Test connectivity from the firewall itself by using
+# a source address inside the local Phase 2 network
+ping -6 -S 2001:db8:1::1 2001:db8:2::1
 ```
 
-If routes are missing, add static routes under **System → Routing → Static Routes**:
-
-```text
-Destination Network: 2001:db8:site2::/48 / 48
-Gateway: Create a new IPv6 gateway via Tunnel interface
-```
+Static routes and tunnel-interface gateways apply to **Routed (VTI)** IPsec, not **Tunnel IPv6** policy-based phase 2 entries.
 
 ## Troubleshooting
 
 ```bash
 # From pfSense CLI:
-# Restart IPsec
-service ipsec restart
-# or through web UI: VPN → IPsec → Status → Restart IPsec
+# List the connection names (conX)
+swanctl --list-conns
 
-# View Phase 1 negotiation details
-ipsec statusall | grep -A 10 "site1-to-site2"
+# Manually initiate a tunnel
+swanctl --initiate --child conX
+
+# View active SAs for a specific connection
+swanctl --list-sas --ike conX
 
 # Enable verbose logging
 # In pfSense web UI: VPN → IPsec → Advanced Settings
-# Increase IKE log level to "diag"
+# Set IKE SA, IKE Child SA, and Configuration Backend to "Diag"
 
-# Check for firewall blocking IPsec
-tcpdump -i em0 'udp port 500 or udp port 4500 or proto 50' -n
+# Check for firewall blocking IPsec on the WAN interface
+tcpdump -ni <wan-if> 'udp port 500 or udp port 4500 or proto 50'
 ```
 
 ## Summary
 
-pfSense IPv6 IPsec configuration uses Phase 1 (IKEv2, AES-256, SHA-256, DH group 14) and Phase 2 (Tunnel IPv6, AES-GCM-256) settings in the web UI. Ensure firewall rules allow UDP 500, UDP 4500, and ESP (protocol 50) from the remote gateway's IPv6 address to your WAN IPv6 address. Use the IPsec firewall rule interface to allow tunnel traffic. Monitor from **VPN → IPsec → Status** and from the CLI with `ipsec statusall`. pfSense routes through the tunnel automatically based on Phase 2 network definitions.
+pfSense IPv6 IPsec configuration uses Phase 1 (IKEv2, AES-256, SHA-256, DH group 14) and Phase 2 (Tunnel IPv6, AES256-GCM with no separate Phase 2 hash) settings in the web UI. pfSense automatically adds the outer UDP 500, UDP 4500, and ESP rules unless auto-added VPN rules are disabled. Use the IPsec rules tab for remote-to-local tunnel traffic and the local interface rules for local-to-remote traffic. Monitor from **Status → IPsec** and from the CLI with `swanctl --list-sas` or `setkey -DP`; tunnel mode Phase 2 selectors live in the SPD rather than the normal IPv6 routing table.
