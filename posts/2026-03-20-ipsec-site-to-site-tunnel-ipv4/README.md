@@ -6,7 +6,7 @@ Tags: IPsec, strongSwan, VPN, IPv4, Site-to-Site, Networking
 
 Description: Configure a StrongSwan IPSec site-to-site tunnel between two IPv4 networks using IKEv2 and pre-shared key authentication.
 
-An IPSec site-to-site tunnel encrypts all traffic between two network sites at the IP layer. This guide uses StrongSwan with IKEv2 and PSK on both sides.
+An IPSec site-to-site tunnel encrypts all traffic between two network sites at the IP layer. This guide uses StrongSwan's legacy `ipsec.conf` and `ipsec.secrets` files with IKEv2 and PSK on both sides.
 
 ## Topology
 
@@ -14,7 +14,7 @@ An IPSec site-to-site tunnel encrypts all traffic between two network sites at t
 Site A:               Site B:
 10.1.0.0/24           10.2.0.0/24
 [Gateway A]  <-IPSec-> [Gateway B]
-Public: 1.2.3.4        Public: 5.6.7.8
+Public: 198.51.100.10  Public: 203.0.113.10
 ```
 
 ## Gateway A Configuration
@@ -27,12 +27,12 @@ conn site-to-site
     keyexchange=ikev2
     auto=start
     # Local gateway
-    left=1.2.3.4
+    left=198.51.100.10
     leftsubnet=10.1.0.0/24
     leftid=@gateway-a
     leftauth=psk
     # Remote gateway
-    right=5.6.7.8
+    right=203.0.113.10
     rightsubnet=10.2.0.0/24
     rightid=@gateway-b
     rightauth=psk
@@ -45,7 +45,6 @@ conn site-to-site
     # Dead Peer Detection
     dpdaction=restart
     dpddelay=30s
-    dpdtimeout=90s
 ```
 
 ```conf
@@ -63,11 +62,11 @@ conn site-to-site
     type=tunnel
     keyexchange=ikev2
     auto=start
-    left=5.6.7.8
+    left=203.0.113.10
     leftsubnet=10.2.0.0/24
     leftid=@gateway-b
     leftauth=psk
-    right=1.2.3.4
+    right=198.51.100.10
     rightsubnet=10.1.0.0/24
     rightid=@gateway-a
     rightauth=psk
@@ -77,7 +76,6 @@ conn site-to-site
     lifetime=3600s
     dpdaction=restart
     dpddelay=30s
-    dpdtimeout=90s
 ```
 
 ```conf
@@ -89,7 +87,7 @@ conn site-to-site
 
 ```bash
 # On both gateways
-sudo systemctl restart strongswan
+sudo ipsec restart
 
 # Initiate the tunnel from Gateway A
 sudo ipsec up site-to-site
@@ -99,7 +97,7 @@ sudo ipsec status
 sudo ipsec statusall
 
 # Verify kernel XFRM policies
-sudo ip xfrm policy
+sudo ip xfrm policy list
 ```
 
 ## Test Connectivity
@@ -128,4 +126,4 @@ sudo iptables -A FORWARD -s 10.2.0.0/24 -d 10.1.0.0/24 -j ACCEPT
 sudo sysctl -w net.ipv4.ip_forward=1
 ```
 
-The `!` suffix on the cipher/hash algorithms forces exact algorithm matching rather than allowing negotiation to weaker options, which is a security best practice.
+The `!` suffix on the IKE and ESP proposals tells strongSwan to use only the configured proposals instead of appending its broader default proposal set.
