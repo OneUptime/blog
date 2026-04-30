@@ -12,19 +12,20 @@ When a Linux host generates ICMP Unreachable messages (e.g., for every UDP packe
 
 ## Linux Kernel ICMP Rate Limiting
 
-The kernel controls how often it sends ICMP error messages using two sysctl parameters:
+The kernel controls how often it sends ICMP packets whose types match `icmp_ratemask` using these sysctl parameters:
 
 ```bash
 # View current rate limit settings
 
 sysctl net.ipv4.icmp_ratelimit
-# Default: 1000 (allows burst of this many tokens, refills at 100/sec)
+# Default: 1000 (minimum 1000ms between rate-limited replies to the same target)
+# Separate host-wide caps are controlled by net.ipv4.icmp_msgs_per_sec and net.ipv4.icmp_msgs_burst
 
 sysctl net.ipv4.icmp_ratemask
 # Default: 6168 = bitmask of ICMP types subject to rate limiting
-# 6168 = bits 3,4,5,8,9,11,12 (dest unreachable, redirect, time exceeded, etc.)
+# 6168 = bits 3,4,11,12 (destination unreachable, source quench, time exceeded, parameter problem)
 
-# Set rate limit: 100ms minimum between ICMP error messages
+# Set rate limit: 100ms minimum between rate-limited ICMP replies to the same target
 sysctl -w net.ipv4.icmp_ratelimit=100
 
 # Persist settings
@@ -37,15 +38,15 @@ sysctl -p
 ```bash
 # The bitmask controls WHICH types are rate limited
 # Bit position = ICMP type number
-# Default 6168 = 0001100000011000 in binary
-# Active bits: 3,4,5,11,12 (destination unreachable types + time exceeded)
+# Default 6168 = 0000001100000011000 in binary
+# Active bits: 3,4,11,12 (destination unreachable, source quench, time exceeded, parameter problem)
 
 # To add type 8 (echo request) to the rate-limited types:
 # 6168 + bit 8 (256) = 6424
 sysctl -w net.ipv4.icmp_ratemask=6424
 
-# To rate-limit ALL ICMP error types (recommended for high-traffic servers)
-sysctl -w net.ipv4.icmp_ratemask=65535
+# To rate-limit all ICMP types documented in the kernel mask, set bits 0-18:
+sysctl -w net.ipv4.icmp_ratemask=524287
 ```
 
 ## iptables Rate Limiting for Outbound Unreachables
@@ -69,6 +70,7 @@ iptables -A OUTPUT -p icmp --icmp-type destination-unreachable -j DROP
 ## Per-Source Rate Limiting for Unreachables
 
 ```bash
+# Place these after any INPUT rules that ACCEPT legitimate UDP services.
 # Prevent a single source from triggering mass ICMP unreachables
 # (e.g., scanner hitting many closed UDP ports)
 iptables -A INPUT -p udp \
@@ -79,7 +81,7 @@ iptables -A INPUT -p udp \
   --hashlimit-burst 200 \
   -j ACCEPT
 
-# Excess UDP from same source is dropped silently (no ICMP generated)
+# Any remaining UDP that reaches this rule is dropped silently (no ICMP generated)
 iptables -A INPUT -p udp -j DROP
 ```
 
@@ -87,14 +89,14 @@ iptables -A INPUT -p udp -j DROP
 
 ```bash
 # Check if kernel rate limiting is active
-nstat -a | grep IcmpRateLimit
-# InCsumErrors, RateLimitedOut, etc.
+nstat -az 'IcmpOutRateLimit*'
+# Look for IcmpOutRateLimitGlobal and IcmpOutRateLimitHost
 
 # More detailed kernel ICMP stats
-cat /proc/net/snmp | awk '/^Icmp:/{getline; print}'
+cat /proc/net/snmp | awk '/^Icmp:/{print; getline; print}'
 
-# Watch for OutDestUnreachs and OutTimeExcds counters
-watch -n 1 "nstat -z | grep -E 'IcmpOut|Icmp.*Unreachable'"
+# Watch rate-limit and unreachable counters
+watch -n 1 "nstat -az 'IcmpOutRateLimit*' 'IcmpOutDestUnreachs' 'IcmpOutTimeExcds'"
 ```
 
 ## Conclusion
