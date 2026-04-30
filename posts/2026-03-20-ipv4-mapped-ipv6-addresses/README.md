@@ -62,7 +62,7 @@ def extract_ipv4(mapped_str):
     return addr.ipv4_mapped
 
 # Examples
-print(ipv4_to_mapped("192.168.1.100"))    # ::ffff:192.168.1.100
+print(ipv4_to_mapped("192.168.1.100"))    # ::ffff:c0a8:164
 print(is_ipv4_mapped("::ffff:192.168.1.1"))  # True
 print(is_ipv4_mapped("2001:db8::1"))          # False
 print(extract_ipv4("::ffff:10.0.0.1"))        # 10.0.0.1
@@ -123,18 +123,19 @@ sudo sysctl -w net.ipv6.bindv6only=1
 
 ## Firewall Implications
 
-When filtering IPv4-mapped addresses:
+When applying firewall rules to traffic accepted by a dual-stack socket:
 
 ```bash
 # iptables (IPv4) and ip6tables (IPv6) are separate rule sets
-# A connection from 192.168.1.1 via IPv4-mapped will appear in ip6tables
-# as ::ffff:192.168.1.1 when IPV6_V6ONLY=0
+# IPv4-mapped IPv6 addresses are returned by the socket API, but the
+# on-the-wire packet from 192.168.1.1 is still IPv4 and is filtered by
+# iptables, not ip6tables, when IPV6_V6ONLY=0
 
-# Block an IPv4 address on a dual-stack server using ip6tables
-sudo ip6tables -A INPUT -s ::ffff:192.168.1.100/128 -j DROP
+# Block an IPv4 address on a dual-stack server using iptables
+sudo iptables -A INPUT -s 192.168.1.100 -j DROP
 
-# Or block the entire IPv4-mapped range except loopback
-sudo ip6tables -A INPUT -s ::ffff:0.0.0.0/96 -j DROP
+# Or block an IPv4 subnet on a dual-stack server
+sudo iptables -A INPUT -s 192.168.1.0/24 -j DROP
 ```
 
 ## When to Use IPV6_V6ONLY
