@@ -18,18 +18,18 @@ Backing up Harvester configuration protects your cluster settings, VM definition
 |---|---|---|
 | Cluster state (etcd) | RKE2 etcd snapshots | Every 6 hours |
 | VM disk data | Longhorn volume backups | Daily |
-| VM definitions | kubectl export | Before changes |
-| Network config | kubectl export | Before changes |
-| Harvester settings | kubectl export | Weekly |
+| VM definitions | kubectl get -o yaml | Before changes |
+| Network config | kubectl get -o yaml | Before changes |
+| Harvester settings | kubectl get -o yaml | Weekly |
 
 ---
 
 ## Step 1: Configure etcd Snapshots
 
-Harvester is built on RKE2, so etcd backup configuration is identical to RKE2:
+Harvester management nodes use RKE2, so etcd snapshots are managed with the same `rke2 etcd-snapshot` tooling. If you change the RKE2 config directly on a Harvester node, make sure the change is persisted using Harvester's post-install configuration workflow so it survives reboot:
 
 ```yaml
-# /etc/rancher/rke2/config.yaml (on Harvester server nodes)
+# /etc/rancher/rke2/config.yaml (example RKE2 server config on a Harvester management node)
 
 etcd-snapshot-schedule-cron: "0 */6 * * *"
 etcd-snapshot-retention: 10
@@ -50,22 +50,17 @@ rke2 etcd-snapshot save --name pre-upgrade-$(date +%Y%m%d)
 
 ---
 
-## Step 2: Configure Longhorn Backup for VM Disks
+## Step 2: Configure Backup Target for VM Backups
 
 ```bash
-# Set Longhorn backup target in Harvester
-# Via Harvester UI: Advanced → Backup & Snapshot → Backup Target
+# Set the Harvester backup target used by VM backups
+# Via Harvester UI: Settings → backup-target
 
-# Or via kubectl
-kubectl patch setting -n longhorn-system \
+# Or via kubectl (Harvester setting)
+kubectl patch settings.harvesterhci.io \
   backup-target \
   --type merge \
-  -p '{"value":"s3://harvester-vm-backups@us-west-2/"}'
-
-kubectl patch setting -n longhorn-system \
-  backup-target-credential-secret \
-  --type merge \
-  -p '{"value":"longhorn-backup-s3-secret"}'
+  -p '{"value":"{\"type\":\"s3\",\"endpoint\":\"https://s3.amazonaws.com\",\"accessKeyId\":\"YOUR_ACCESS_KEY\",\"secretAccessKey\":\"YOUR_SECRET_KEY\",\"bucketName\":\"harvester-vm-backups\",\"bucketRegion\":\"us-west-2\",\"cert\":\"\",\"virtualHostedStyle\":false}"}'
 ```
 
 ---
@@ -97,22 +92,24 @@ EOF
 
 ## Step 4: Export VM Configuration Manifests
 
+When you save live objects with `kubectl get -o yaml`, remove `status` and other cluster-generated metadata before reapplying them to another cluster.
+
 ```bash
 # Export all VM definitions
-kubectl get vm -A -o yaml > vm-definitions-$(date +%Y%m%d).yaml
+kubectl get virtualmachine.kubevirt.io -A -o yaml > vm-definitions-$(date +%Y%m%d).yaml
 
 # Export network configurations
-kubectl get networkattachmentdefinition -A -o yaml > networks-$(date +%Y%m%d).yaml
+kubectl get network-attachment-definitions.k8s.cni.cncf.io -A -o yaml > networks-$(date +%Y%m%d).yaml
 
 # Export storage configurations
-kubectl get storageclass -o yaml > storageclasses-$(date +%Y%m%d).yaml
-kubectl get pvc -A -o yaml > pvcs-$(date +%Y%m%d).yaml
+kubectl get storageclasses.storage.k8s.io -o yaml > storageclasses-$(date +%Y%m%d).yaml
+kubectl get persistentvolumeclaims -A -o yaml > pvcs-$(date +%Y%m%d).yaml
 
 # Export Harvester-specific settings
-kubectl get setting -n harvester-system -o yaml > harvester-settings-$(date +%Y%m%d).yaml
+kubectl get settings.harvesterhci.io -o yaml > harvester-settings-$(date +%Y%m%d).yaml
 
 # Export VM images
-kubectl get virtualmachineimage -n harvester-system -o yaml > vm-images-$(date +%Y%m%d).yaml
+kubectl get virtualmachineimages.harvesterhci.io -A -o yaml > vm-images-$(date +%Y%m%d).yaml
 ```
 
 ---
@@ -122,22 +119,33 @@ kubectl get virtualmachineimage -n harvester-system -o yaml > vm-images-$(date +
 ```bash
 #!/bin/bash
 # backup-harvester-config.sh
+# Run this on an admin workstation or automation host with kubectl access to Harvester
 
 BACKUP_DIR="/backup/harvester/$(date +%Y%m%d)"
-mkdir -p $BACKUP_DIR
+mkdir -p "$BACKUP_DIR"
 
 # Export all Harvester resources
-resources=(
-  "virtualmachine"
-  "virtualmachineimage"
-  "networkattachmentdefinition"
-  "storageclass"
-  "clusternetwork"
-  "vlanconfig"
+namespaced_resources=(
+  "virtualmachine.kubevirt.io"
+  "virtualmachineimages.harvesterhci.io"
+  "network-attachment-definitions.k8s.cni.cncf.io"
+  "persistentvolumeclaims"
 )
 
-for resource in "${resources[@]}"; do
-  kubectl get $resource -A -o yaml > "$BACKUP_DIR/${resource}.yaml" 2>/dev/null
+cluster_resources=(
+  "storageclasses.storage.k8s.io"
+  "settings.harvesterhci.io"
+  "clusternetworks.network.harvesterhci.io"
+  "vlanconfigs.network.harvesterhci.io"
+)
+
+for resource in "${namespaced_resources[@]}"; do
+  kubectl get "$resource" -A -o yaml > "$BACKUP_DIR/${resource//./-}.yaml" 2>/dev/null
+  echo "Backed up: $resource"
+done
+
+for resource in "${cluster_resources[@]}"; do
+  kubectl get "$resource" -o yaml > "$BACKUP_DIR/${resource//./-}.yaml" 2>/dev/null
   echo "Backed up: $resource"
 done
 
@@ -146,7 +154,7 @@ tar -czf "/backup/harvester-config-$(date +%Y%m%d).tar.gz" -C "$BACKUP_DIR" .
 echo "Backup complete: /backup/harvester-config-$(date +%Y%m%d).tar.gz"
 ```
 
-Schedule this script as a cron job:
+Schedule this script on the external host that stores the backups:
 
 ```bash
 # /etc/cron.d/harvester-backup
@@ -159,8 +167,10 @@ Schedule this script as a cron job:
 
 Regularly test your backup by restoring to a staging Harvester instance:
 
+Make sure the required VM images exist on the target cluster with the same names before restoring backed-up VMs.
+
 ```bash
-# Restore VM definitions to a new Harvester cluster
+# Restore sanitized VM definitions to a new Harvester cluster
 kubectl apply -f vm-definitions-20260320.yaml
 
 # Restore VM from Longhorn backup
@@ -176,6 +186,7 @@ spec:
     kind: VirtualMachine
     name: my-vm-restored
   virtualMachineBackupName: my-vm-backup-20260320
+  virtualMachineBackupNamespace: default
   newVM: true
 EOF
 ```
