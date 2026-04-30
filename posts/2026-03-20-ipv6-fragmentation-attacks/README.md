@@ -16,8 +16,8 @@ IPv6 handles fragmentation differently from IPv4: only the originating host may 
 |---------|------|------|
 | Who can fragment | Any router | Source host only |
 | Fragment field | Always in IP header | Only in Fragment Extension Header |
-| Minimum MTU | 576 bytes | 1280 bytes |
-| Path MTU Discovery | Optional | Mandatory |
+| Minimum baseline | 576-byte reassembly | 1280-byte link MTU |
+| Path MTU Discovery | Optional | Strongly recommended |
 | Atomic fragment | Not applicable | Fragment offset=0, M=0 |
 
 ## The IPv6 Fragment Header
@@ -42,39 +42,39 @@ When fragmentation is needed, the source adds a Fragment Extension Header:
 
 ### 1. Tiny Fragment Attack
 
-An attacker sends the first fragment so small that the TCP header is split across two fragments. The firewall sees fragment 1 but cannot determine the TCP flags or destination port:
+An attacker sends the first fragment so small that the TCP header is split across two fragments. The firewall sees fragment 1 but cannot determine the TCP flags:
 
 ```text
-Fragment 1: IPv6 + Fragment Header + first 8 bytes of TCP (src/dst port only)
-Fragment 2: Remaining TCP header fields (flags, seq numbers) + payload
+Fragment 1: IPv6 + Fragment Header + first 8 bytes of TCP header
+Fragment 2: Rest of TCP header + payload
 ```
 
 RFC 7112 requires that the first fragment contain the complete upper-layer header - many older devices don't enforce this.
 
 ### 2. Overlapping Fragment Attack
 
-Two fragments have overlapping offsets. Different OSes resolve overlaps differently, allowing payload to reach the destination that bypasses IDS inspection:
+Two fragments have overlapping offsets. This was historically an evasion technique because different reassembly policies could produce different results:
 
 ```text
 Fragment 1: offset=0, length=64  (contains benign data)
 Fragment 2: offset=24 (overlaps with fragment 1) (contains malicious payload)
 ```
 
-Linux and Windows resolve differently, creating evasion opportunities.
+RFC 5722 and RFC 8200 now require compliant IPv6 stacks to silently discard the entire fragment set when any overlap is detected. Older or non-compliant devices may still create evasion opportunities.
 
-### 3. Atomic Fragment Attack (RFC 8021)
+### 3. Atomic Fragment Attack (RFC 6946 / RFC 8021)
 
-An attacker sends a Router Advertisement with MTU < 1280, causing the host to generate "atomic fragments" (Fragment Header with offset=0 and M=0). These can be spoofed to fragment otherwise non-fragmented communications:
+An attacker sends a forged ICMPv6 Packet Too Big message advertising an MTU smaller than 1280, causing some legacy hosts to generate "atomic fragments" (Fragment Header with offset=0 and M=0). These can be used to introduce fragmentation into otherwise non-fragmented communications:
 
 ```bash
-# Detect atomic fragments with tcpdump
+# Detect atomic fragments when the Fragment Header immediately follows the IPv6 header
 
 tcpdump -i eth0 'ip6[6]==44 and (ip6[42:2] & 0xfff9) == 0'
 # ip6[6]==44 = Fragment Header
 # offset=0 and M=0 = atomic fragment
 ```
 
-RFC 8021 documents the atomic fragment vulnerability and recommends never generating them.
+RFC 6946 defines how atomic fragments are processed, and RFC 8021 documents why generating them is harmful.
 
 ### 4. Resource Exhaustion via Incomplete Fragment Sets
 
@@ -92,9 +92,10 @@ Repeat → exhaust kernel memory
 ### tcpdump Detection Rules
 
 ```bash
-# Capture all IPv6 fragmented traffic
-tcpdump -i eth0 'ip6[6]==44'
+# Capture all IPv6 fragmented traffic, even if extension headers precede the Fragment Header
+tcpdump -i eth0 'ip6 protochain 44'
 
+# The following offset-based filters assume the Fragment Header immediately follows the IPv6 header
 # Capture first fragments only (offset=0, M=1)
 tcpdump -i eth0 'ip6[6]==44 and (ip6[42:2] & 0x0001) == 1 and (ip6[42:2] >> 3) == 0'
 
@@ -105,19 +106,21 @@ tcpdump -i eth0 'ip6[6]==44 and (ip6[42:2] >> 3) > 0'
 ### Suricata/Snort Rules
 
 ```text
-# Alert on IPv6 fragments
-alert ipv6 any any -> any any (
-    msg:"IPv6 Fragment Header Detected";
-    ip_proto:44;
+# Alert on IPv6 first fragments
+alert ip ::/0 any -> ::/0 any (
+    msg:"IPv6 First Fragment Detected";
+    fragbits:M;
+    fragoffset:0;
     sid:9000010;
     rev:1;
 )
 
-# Alert on tiny first fragments (potential header split)
-alert ipv6 any any -> any any (
+# Alert on tiny IPv6 first fragments (TCP header may be split)
+alert ip ::/0 any -> ::/0 any (
     msg:"IPv6 Tiny Fragment - Possible Evasion";
-    ip_proto:44;
-    dsize:<48;
+    fragbits:M;
+    fragoffset:0;
+    dsize:<20;
     sid:9000011;
     rev:1;
 )
@@ -127,17 +130,17 @@ alert ipv6 any any -> any any (
 
 ```bash
 # ip6tables: Drop non-initial fragments (cannot inspect transport headers)
-ip6tables -A FORWARD -m frag --fragid 0 --fragmore -j DROP
+ip6tables -A FORWARD -m frag ! --fragfirst -j DROP
 
-# Drop fragments where TCP header might be split across fragments
-# Require first fragment to be large enough to contain full transport header
-ip6tables -A INPUT -m frag --fragfirst --fragmore -m length --length 0:1279 -j DROP
+# Simple TCP-focused heuristic: drop first fragments too short to contain
+# IPv6 + Fragment + minimal TCP header
+ip6tables -A INPUT -m frag --fragfirst --fragmore -m length --length 0:67 -j DROP
 
 # nftables: Block all fragmented IPv6 traffic
-nft add rule ip6 filter input frag exists drop
+nft add rule ip6 filter input exthdr frag exists drop
 
 # Or be selective - block forwarded fragments only
-nft add rule ip6 filter forward frag exists drop
+nft add rule ip6 filter forward exthdr frag exists drop
 ```
 
 ## RFC 7112: Requiring Complete Header Chain in First Fragment
@@ -147,17 +150,30 @@ RFC 7112 (2014) requires that the first fragment of an IPv6 packet contain the c
 ```text
 First Fragment MUST contain:
   IPv6 Header
-  → All Extension Headers (Hop-by-Hop, Routing, etc.)
+  → Any extension headers that appear before fragmentation
   → Fragment Header
-  → At minimum the first upper-layer header (TCP/UDP/ICMPv6)
+  → Any remaining extension headers
+  → The first upper-layer header (TCP/UDP/ICMPv6)
 ```
 
-Security devices SHOULD drop first fragments that don't satisfy this requirement.
+Security devices MAY drop first fragments that don't satisfy this requirement, and many do so by policy.
 
-```bash
+```python
 # Test if your device enforces RFC 7112
-# Send a crafted tiny first fragment and see if it's dropped
-hping3 -6 --ipproto 44 -d 8 <target>   # Requires hping3 with IPv6 support
+# Requires Scapy and root privileges
+from scapy.all import IPv6, IPv6ExtHdrFragment, TCP, send
+
+src = "2001:db8::2"
+target = "2001:db8::1"
+base = IPv6(src=src, dst=target)
+tcp_hdr = bytes((base/TCP(sport=12345, dport=80, flags="S"))[TCP])
+frag_id = 0x12345678
+
+frag1 = IPv6(src=src, dst=target)/IPv6ExtHdrFragment(nh=6, id=frag_id, m=1, offset=0)/tcp_hdr[:8]
+frag2 = IPv6(src=src, dst=target)/IPv6ExtHdrFragment(nh=6, id=frag_id, m=0, offset=1)/tcp_hdr[8:]
+
+send(frag1)
+send(frag2)
 ```
 
 ## Kernel Tuning for Fragment Reassembly Limits
@@ -180,4 +196,4 @@ sysctl -w net.ipv6.ip6frag_low_thresh=1048576
 
 ## Summary
 
-IPv6 fragmentation attacks exploit the Fragment Extension Header to split transport headers across fragments, evade security inspection, or exhaust reassembly buffers. Defend by enforcing RFC 7112 (first fragment must contain complete upper-layer header), dropping non-initial fragments at security boundaries, applying kernel limits on reassembly memory, and alerting on unusual fragment patterns with IDS rules.
+IPv6 fragmentation attacks exploit the Fragment Extension Header to split transport headers across fragments, evade security inspection, or exhaust reassembly buffers. Defend by enforcing RFC 7112 (first fragment must contain the complete header chain through the upper-layer header), dropping non-initial fragments at security boundaries, applying kernel limits on reassembly memory, and alerting on unusual fragment patterns with IDS rules.
