@@ -40,13 +40,17 @@ static_resources:
                   virtual_hosts:
                     - name: grpc_backend
                       domains: ["*"]
-                      cors:
-                        allow_origin_string_match:
-                          - prefix: "*"
-                        allow_methods: GET, PUT, DELETE, POST, OPTIONS
-                        allow_headers: keep-alive,user-agent,cache-control,content-type,content-transfer-encoding,x-accept-content-transfer-encoding,x-accept-response-streaming,x-user-agent,x-grpc-web,grpc-timeout
-                        expose_headers: grpc-status,grpc-message
-                        max_age: "1728000"
+                      typed_per_filter_config:
+                        envoy.filters.http.cors:
+                          "@type": type.googleapis.com/envoy.extensions.filters.http.cors.v3.CorsPolicy
+                          allow_origin_string_match:
+                            - safe_regex:
+                                google_re2: {}
+                                regex: ".*"
+                          allow_methods: "GET, PUT, DELETE, POST, OPTIONS"
+                          allow_headers: "keep-alive,user-agent,cache-control,content-type,content-transfer-encoding,x-accept-content-transfer-encoding,x-accept-response-streaming,x-user-agent,x-grpc-web,grpc-timeout"
+                          expose_headers: "grpc-status,grpc-message"
+                          max_age: "1728000"
                       routes:
                         - match:
                             prefix: "/"
@@ -61,7 +65,7 @@ static_resources:
                       "@type": type.googleapis.com/envoy.extensions.filters.http.grpc_web.v3.GrpcWeb
                   - name: envoy.filters.http.cors
                     typed_config:
-                      "@type": type.googleapis.com/envoy.extensions.filters.http.cors.v3.CorsPolicy
+                      "@type": type.googleapis.com/envoy.extensions.filters.http.cors.v3.Cors
                   - name: envoy.filters.http.router
                     typed_config:
                       "@type": type.googleapis.com/envoy.extensions.filters.http.router.v3.Router
@@ -70,7 +74,11 @@ static_resources:
     - name: grpc_backend
       connect_timeout: 5s
       type: STATIC
-      http2_protocol_options: {}
+      typed_extension_protocol_options:
+        envoy.extensions.upstreams.http.v3.HttpProtocolOptions:
+          "@type": type.googleapis.com/envoy.extensions.upstreams.http.v3.HttpProtocolOptions
+          explicit_http_config:
+            http2_protocol_options: {}
       load_assignment:
         cluster_name: grpc_backend
         endpoints:
@@ -78,7 +86,7 @@ static_resources:
               - endpoint:
                   address:
                     socket_address:
-                      address: "2001:db8:backend::1"  # IPv6 gRPC backend
+                      address: "2001:db8::2"  # IPv6 gRPC backend
                       port_value: 50051
 ```
 
@@ -120,7 +128,7 @@ import { HelloRequest } from './generated/hello_pb';
 // The proxy URL with IPv6 address (browser-side)
 const PROXY_URL = 'https://[2001:db8::1]:8080';
 
-const client = new GreeterClient(PROXY_URL);
+const client = new GreeterClient(PROXY_URL, null, null);
 
 async function sayHello(name: string): Promise<string> {
     const request = new HelloRequest();
@@ -137,22 +145,18 @@ async function sayHello(name: string): Promise<string> {
 sayHello('IPv6 World').then(console.log);
 ```
 
-## Step 4: Nginx as gRPC-Web Proxy
+## Step 4: Nginx for Native gRPC over IPv6
 
-Alternatively, use Nginx with `grpc_pass`:
+Nginx's `grpc_pass` can proxy native gRPC over HTTP/2 on IPv6, but it does not translate the gRPC-Web protocol used by browser clients. For browser-based gRPC-Web traffic, keep Envoy or another proxy that explicitly supports gRPC-Web.
 
 ```nginx
 server {
     listen [::]:8080;
+    http2 on;
 
     location / {
-        # Forward gRPC-Web to backend over IPv6
-        grpc_pass grpc://[2001:db8:backend::1]:50051;
-
-        # CORS headers for browser access
-        add_header 'Access-Control-Allow-Origin' '*' always;
-        add_header 'Access-Control-Allow-Headers' 'grpc-timeout,content-type,x-grpc-web' always;
-        add_header 'Access-Control-Expose-Headers' 'grpc-status,grpc-message' always;
+        # Forward native gRPC to backend over IPv6
+        grpc_pass grpc://[2001:db8::2]:50051;
     }
 }
 ```
@@ -161,20 +165,23 @@ server {
 
 ```bash
 # Test gRPC-Web proxy from command line (simulates browser behavior)
-curl -6 \
+curl -6 -g \
   -H "Content-Type: application/grpc-web+proto" \
   -H "x-grpc-web: 1" \
+  -H "x-user-agent: grpc-web-javascript/0.1" \
   http://[2001:db8::1]:8080/helloworld.Greeter/SayHello \
   --data-binary @request.bin
 
+# request.bin must contain a gRPC-Web framed request body
+
 # Test with grpcurl against the backend directly
-grpcurl -plaintext '[2001:db8:backend::1]:50051' helloworld.Greeter/SayHello
+grpcurl -plaintext -d '{"name":"IPv6 World"}' '[2001:db8::2]:50051' helloworld.Greeter/SayHello
 ```
 
 ## Monitoring with OneUptime
 
-Use [OneUptime](https://oneuptime.com) to monitor your gRPC-Web proxy endpoint over IPv6. Configure HTTP monitors for the proxy's IPv6 address and verify it responds to gRPC-Web requests correctly.
+Use [OneUptime](https://oneuptime.com) to monitor your gRPC-Web proxy endpoint over IPv6. Configure an API or Website monitor for the proxy URL, and use an IP monitor if you also want a direct IPv6 reachability check.
 
 ## Conclusion
 
-gRPC-Web over IPv6 requires an Envoy or Nginx proxy to translate browser HTTP requests to gRPC HTTP/2. Configure the proxy to listen on IPv6 (`[::]:8080`), forward to IPv6 backends, and add CORS headers. Browser clients connect using the standard `http://[ipv6addr]:port` URL format.
+gRPC-Web over IPv6 requires a proxy that explicitly supports gRPC-Web translation, such as Envoy. Configure the proxy to listen on IPv6, forward to IPv6 backends, and add CORS headers. Browser clients connect using the standard `http://[ipv6addr]:port` URL format, while Nginx `grpc_pass` remains useful for native gRPC over HTTP/2.
