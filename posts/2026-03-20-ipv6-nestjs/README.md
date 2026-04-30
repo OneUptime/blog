@@ -50,19 +50,22 @@ bootstrap();
 
 ## Custom Decorator to Extract Client IP
 
+Prefer the framework-populated `req.ip` value. Behind a reverse proxy, enable Express `trust proxy` or Fastify `trustProxy` so it is derived from `X-Forwarded-For`.
+
 ```typescript
 // client-ip.decorator.ts
 import { createParamDecorator, ExecutionContext } from '@nestjs/common';
-import { Request } from 'express';
 
-export function extractClientIP(req: Request): string {
-    const forwarded = req.headers['x-forwarded-for'];
-    if (forwarded) {
-        const first = Array.isArray(forwarded) ? forwarded[0] : forwarded;
-        return first.split(',')[0].trim();
-    }
+type HttpRequestLike = {
+    ip?: string;
+    socket: {
+        remoteAddress?: string;
+    };
+};
 
-    let ip = req.socket.remoteAddress || '';
+export function extractClientIP(req: HttpRequestLike): string {
+    // Prefer req.ip so the adapter can apply trusted proxy settings.
+    let ip = req.ip || req.socket.remoteAddress || '';
 
     // Unwrap IPv4-mapped
     if (ip.startsWith('::ffff:')) {
@@ -74,7 +77,7 @@ export function extractClientIP(req: Request): string {
 
 export const ClientIP = createParamDecorator(
     (data: unknown, ctx: ExecutionContext): string => {
-        const request = ctx.switchToHttp().getRequest<Request>();
+        const request = ctx.switchToHttp().getRequest<HttpRequestLike>();
         return extractClientIP(request);
     },
 );
@@ -150,14 +153,13 @@ import {
 } from '@nestjs/common';
 import { Observable } from 'rxjs';
 import { tap } from 'rxjs/operators';
-import { Request } from 'express';
+import { extractClientIP } from './client-ip.decorator';
 
 @Injectable()
 export class IPv6LoggingInterceptor implements NestInterceptor {
     intercept(context: ExecutionContext, next: CallHandler): Observable<any> {
-        const req = context.switchToHttp().getRequest<Request>();
-        let ip = req.socket.remoteAddress || '';
-        if (ip.startsWith('::ffff:')) ip = ip.slice(7);
+        const req = context.switchToHttp().getRequest();
+        const ip = extractClientIP(req);
 
         const start = Date.now();
 
@@ -184,7 +186,7 @@ await app.listen(3000, '::');
 ```typescript
 // ipv6-allowlist.guard.ts
 import { CanActivate, ExecutionContext, Injectable, ForbiddenException } from '@nestjs/common';
-import { Request } from 'express';
+import { extractClientIP } from './client-ip.decorator';
 
 @Injectable()
 export class IPv6AllowListGuard implements CanActivate {
@@ -194,9 +196,8 @@ export class IPv6AllowListGuard implements CanActivate {
     ]);
 
     canActivate(context: ExecutionContext): boolean {
-        const req = context.switchToHttp().getRequest<Request>();
-        let ip = req.socket.remoteAddress || '';
-        if (ip.startsWith('::ffff:')) ip = ip.slice(7);
+        const req = context.switchToHttp().getRequest();
+        const ip = extractClientIP(req);
 
         if (!this.allowed.has(ip)) {
             throw new ForbiddenException(`Access denied for ${ip}`);
