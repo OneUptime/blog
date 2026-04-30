@@ -31,9 +31,9 @@ resolvers my_dns
     timeout resolve 1s
     timeout retry   1s
 
-    # Cache TTL overrides
-    hold valid      60s    # Keep valid results for 60s even if TTL is shorter
-    hold other      30s    # Keep non-NXDOMAIN error results for 30s
+    # Resolver status hold periods
+    hold valid      60s
+    hold other      30s    # Keep non-NXDOMAIN error statuses for 30s
     hold refused    30s
     hold nx         30s
     hold timeout    30s
@@ -62,8 +62,8 @@ For service discovery via DNS SRV records:
 backend microservice_backend
     balance roundrobin
 
-    # Discover servers via DNS SRV record
-    server-template svc 1-5 _http._tcp.myservice.consul:80 check resolvers my_dns resolve-prefer ipv4
+    # Discover servers via DNS SRV record; SRV answers provide the ports
+    server-template svc 1-5 _http._tcp.myservice.consul check resolvers my_dns resolve-prefer ipv4
     # This creates up to 5 server entries from DNS SRV responses
 ```
 
@@ -106,10 +106,10 @@ Check which IPs have been resolved for servers:
 
 echo "show servers state" | sudo socat stdio /run/haproxy/admin.sock | column -t
 
-# View DNS resolution cache
+# View DNS resolver statistics
 echo "show resolvers" | sudo socat stdio /run/haproxy/admin.sock
 
-# Force re-resolution of a server
+# Change a server's FQDN at runtime
 echo "set server app_servers/app1 fqdn app1.service.internal" | \
   sudo socat stdio /run/haproxy/admin.sock
 ```
@@ -121,7 +121,7 @@ echo "set server app_servers/app1 fqdn app1.service.internal" | \
 echo "show servers state app_servers" | sudo socat stdio /run/haproxy/admin.sock
 
 # Simulate DNS change (update your DNS record)
-# HAProxy should re-resolve after the hold valid timeout expires
+# HAProxy should pick up the new address during a later runtime resolution cycle
 
 # Check HAProxy logs for DNS resolution events
 sudo journalctl -u haproxy -f | grep -i dns
@@ -129,4 +129,4 @@ sudo journalctl -u haproxy -f | grep -i dns
 
 ## Conclusion
 
-HAProxy's dynamic DNS resolution with `resolve-prefer ipv4` ensures your load balancer consistently uses IPv4 addresses for backend servers even in dual-stack environments. Configure the `resolvers` section with appropriate timeouts and hold values, apply `resolvers` and `resolve-prefer ipv4` to each server definition using hostnames, and monitor resolution via the admin socket for operational visibility.
+HAProxy's dynamic DNS resolution with `resolve-prefer ipv4` makes your load balancer prefer IPv4 addresses for backend servers when both A and AAAA records are available in dual-stack environments. Configure the `resolvers` section with appropriate timeouts and hold values, apply `resolvers` and `resolve-prefer ipv4` to each server definition using hostnames, and monitor resolution via the admin socket for operational visibility.
