@@ -8,45 +8,57 @@ Description: Handle, extract, and process IPv6 client addresses in GraphQL middl
 
 ## Extracting IPv6 Addresses from Requests
 
-IPv6 addresses in HTTP requests can come from multiple sources:
+IPv6 addresses in HTTP requests can come from multiple sources. If your app runs behind a proxy, only trust forwarded headers when that proxy is under your control:
 
 ```javascript
 // middleware/clientIP.js
 
-function extractClientIP(req) {
-    // Check forwarded headers (proxy/load balancer)
-    const forwarded = req.headers['x-forwarded-for'];
-    const realIP = req.headers['x-real-ip'];
-
-    if (forwarded) {
-        // X-Forwarded-For can be a comma-separated list
-        // Take the first IP (original client)
-        const firstIP = forwarded.split(',')[0].trim();
-        return normalizeIPv6(firstIP);
+function extractClientIP(req, { trustProxy = false } = {}) {
+    // Express computes req.ip from trusted X-Forwarded-For values
+    if (typeof req.ip === 'string' && req.ip) {
+        return normalizeIPv6(req.ip);
     }
 
-    if (realIP) {
-        return normalizeIPv6(realIP);
+    if (trustProxy) {
+        const forwarded = firstHeaderValue(req.headers['x-forwarded-for']);
+        const realIP = firstHeaderValue(req.headers['x-real-ip']);
+
+        if (forwarded) {
+            // X-Forwarded-For can be a comma-separated list
+            // Take the first IP (original client)
+            const firstIP = forwarded.split(',')[0].trim();
+            return normalizeIPv6(firstIP);
+        }
+
+        if (realIP) {
+            return normalizeIPv6(realIP);
+        }
     }
 
     // Fall back to socket remote address
     // May be IPv4-mapped IPv6: ::ffff:192.168.1.1
-    const socketAddr = req.socket?.remoteAddress || req.connection?.remoteAddress;
+    const socketAddr = req.socket?.remoteAddress;
     return normalizeIPv6(socketAddr);
+}
+
+function firstHeaderValue(value) {
+    return Array.isArray(value) ? value[0] : value;
 }
 
 function normalizeIPv6(addr) {
     if (!addr) return null;
 
+    const normalized = addr.replace(/^\[|\]$/g, '');
+
     // Convert IPv4-mapped IPv6 to plain IPv4
     // ::ffff:192.168.1.1 → 192.168.1.1
-    const ipv4Mapped = addr.match(/^::ffff:(\d+\.\d+\.\d+\.\d+)$/);
+    const ipv4Mapped = normalized.match(/^::ffff:(\d+\.\d+\.\d+\.\d+)$/i);
     if (ipv4Mapped) {
         return ipv4Mapped[1];
     }
 
     // Remove brackets if present (shouldn't happen from socket, but be safe)
-    return addr.replace(/^\[|\]$/g, '');
+    return normalized;
 }
 
 module.exports = { extractClientIP };
@@ -57,6 +69,7 @@ module.exports = { extractClientIP };
 ```javascript
 // apollo-context.js
 const { ApolloServer } = require('@apollo/server');
+const { startStandaloneServer } = require('@apollo/server/standalone');
 const { extractClientIP } = require('./middleware/clientIP');
 
 const server = new ApolloServer({
@@ -65,11 +78,16 @@ const server = new ApolloServer({
     plugins: [
         {
             // Log IPv6 client address for each operation
-            async requestDidStart({ contextValue }) {
+            async requestDidStart() {
+                let operationName = null;
+
                 return {
-                    async willSendResponse({ contextValue, response }) {
+                    async didResolveOperation({ operationName: resolvedOperationName }) {
+                        operationName = resolvedOperationName;
+                    },
+                    async willSendResponse({ contextValue }) {
                         const ip = contextValue.clientIP;
-                        const op = contextValue.operationName;
+                        const op = operationName || 'anonymous';
                         console.log(`GraphQL operation "${op}" from ${ip}`);
                     },
                 };
@@ -97,7 +115,7 @@ function ipv6LoggerMiddleware(req, res, next) {
     const clientIP = extractClientIP(req);
 
     // Check if it's an IPv6 address
-    const isIPv6 = clientIP && clientIP.includes(':');
+    const isIPv6 = Boolean(clientIP && clientIP.includes(':'));
 
     req.clientIP = clientIP;
     req.isIPv6 = isIPv6;
@@ -108,7 +126,7 @@ function ipv6LoggerMiddleware(req, res, next) {
         method: req.method,
         path: req.path,
         clientIP,
-        ipVersion: isIPv6 ? 'IPv6' : 'IPv4',
+        ipVersion: clientIP ? (isIPv6 ? 'IPv6' : 'IPv4') : 'unknown',
     }));
 
     next();
@@ -141,7 +159,7 @@ const resolvers = {
         // IP-based feature flags
         features: (_, __, { clientIP }) => {
             // Enable IPv6-only features for IPv6 clients
-            const isIPv6 = clientIP?.includes(':');
+            const isIPv6 = Boolean(clientIP && clientIP.includes(':'));
             return {
                 newDashboard: true,
                 ipv6Analytics: isIPv6,
@@ -156,16 +174,18 @@ const resolvers = {
 
 ```typescript
 // types/context.ts
+import type { IncomingMessage } from 'node:http';
+import { extractClientIP } from '../middleware/clientIP';
+
 export interface GraphQLContext {
     clientIP: string | null;
     isIPv6: boolean;
     userId?: string;
-    req: import('express').Request;
+    req: IncomingMessage;
 }
 
-function createContext(req: Express.Request): GraphQLContext {
-    const rawIP = req.socket.remoteAddress || '';
-    const clientIP = normalizeIPv6(rawIP);
+export function createContext(req: IncomingMessage): GraphQLContext {
+    const clientIP = extractClientIP(req);
     return {
         clientIP,
         isIPv6: clientIP?.includes(':') ?? false,
@@ -191,12 +211,21 @@ describe('IPv6 address extraction', () => {
         expect(extractClientIP(req)).toBe('192.168.1.1');
     });
 
-    it('uses X-Forwarded-For first', () => {
+    it('uses req.ip when Express has already resolved the client address', () => {
+        const req = {
+            ip: '2001:db8::feed',
+            socket: { remoteAddress: '::1' },
+            headers: { 'x-forwarded-for': '2001:db8::cafe, 10.0.0.1' }
+        };
+        expect(extractClientIP(req)).toBe('2001:db8::feed');
+    });
+
+    it('uses X-Forwarded-For first when proxy headers are trusted', () => {
         const req = {
             socket: { remoteAddress: '::1' },
             headers: { 'x-forwarded-for': '2001:db8::cafe, 10.0.0.1' }
         };
-        expect(extractClientIP(req)).toBe('2001:db8::cafe');
+        expect(extractClientIP(req, { trustProxy: true })).toBe('2001:db8::cafe');
     });
 });
 ```
@@ -207,4 +236,4 @@ Use [OneUptime](https://oneuptime.com) to monitor your GraphQL server from IPv6 
 
 ## Conclusion
 
-Handling IPv6 client addresses in GraphQL middleware requires extracting the address from multiple potential sources (socket, forwarded headers), normalizing IPv4-mapped IPv6 addresses, and passing the IP through the GraphQL context. Always test with actual IPv6 requests to ensure your middleware handles all address formats correctly.
+Handling IPv6 client addresses in GraphQL middleware requires extracting the address from multiple potential sources (socket and, when appropriate, trusted forwarded headers), normalizing IPv4-mapped IPv6 addresses, and passing the IP through the GraphQL context. Always test with actual IPv6 requests to ensure your middleware handles all address formats correctly.
