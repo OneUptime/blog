@@ -94,8 +94,8 @@ def walk_ipv6_headers(packet: bytes) -> list:
     headers.append(("IPv6 Base Header", 0, 40))
     offset = 40
 
-    # Extension headers that have a Next Header + Length field
-    EXTENSION_HEADERS = {0, 43, 44, 50, 51, 60, 135}
+    # Headers that use an 8-octet length field after the Next Header byte
+    EXTENSION_HEADERS = {0, 43, 60, 135}
 
     while next_header != 59 and offset < len(packet):  # 59 = No Next Header
         name = NEXT_HEADER_NAMES.get(next_header, f"Unknown ({next_header})")
@@ -111,12 +111,28 @@ def walk_ipv6_headers(packet: bytes) -> list:
             next_header = packet[offset]
             headers.append(("Fragment Header", offset, 8))
             offset += 8
+        elif next_header == 51:
+            # AH length is stored in 32-bit words, minus 2
+            if offset + 2 > len(packet):
+                break
+            next_header = packet[offset]
+            ext_len = (packet[offset + 1] + 2) * 4
+            if offset + ext_len > len(packet):
+                break
+            headers.append(("AH", offset, ext_len))
+            offset += ext_len
+        elif next_header == 50:
+            # ESP's Next Header is in the ESP trailer, so stop here
+            headers.append(("ESP", offset, len(packet) - offset))
+            break
         elif next_header in EXTENSION_HEADERS:
             # Variable-length extension headers
             if offset + 2 > len(packet):
                 break
             next_header = packet[offset]
             ext_len = (packet[offset + 1] + 1) * 8  # Length in 8-byte units
+            if offset + ext_len > len(packet):
+                break
             headers.append((name, offset, ext_len))
             offset += ext_len
         else:
@@ -137,36 +153,35 @@ def display_chain(packet: bytes):
 ## Reading Next Header with tcpdump
 
 ```bash
-# tcpdump displays the next-header field as "next-header <name>"
+# Verbose output often shows the decoded IPv6 next-header value
 sudo tcpdump -i eth0 -vv ip6 | grep "next-header"
 
-# Example outputs:
+# Example output fragments:
 # next-header TCP (6)
 # next-header UDP (17)
 # next-header ICMPv6 (58)
 # next-header Routing (43)
 # next-header Fragment (44)
 
-# Filter by specific Next Header value
-# IPv6 Next Header field is at offset 6 in the IPv6 header
-sudo tcpdump -i eth0 "ip6[6] == 58"   # ICMPv6 only
-sudo tcpdump -i eth0 "ip6[6] == 6"    # TCP
-sudo tcpdump -i eth0 "ip6[6] == 17"   # UDP
-sudo tcpdump -i eth0 "ip6[6] == 44"   # Fragment Header present
+# Filter by specific protocol/header anywhere in the IPv6 header chain
+# ip6[6] checks only the base IPv6 header, so use ip6 protochain here
+sudo tcpdump -i eth0 "ip6 protochain 58"   # ICMPv6
+sudo tcpdump -i eth0 "ip6 protochain 6"    # TCP
+sudo tcpdump -i eth0 "ip6 protochain 17"   # UDP
+sudo tcpdump -i eth0 "ip6 protochain 44"   # Fragment Header present
 ```
 
 ## No Next Header (59)
 
-When Next Header = 59, it means there is no following header - the IPv6 payload is empty or contains data that has no standard header:
+When Next Header = 59, it means there is no following header. If the IPv6 Payload Length indicates additional octets after that point, receivers must ignore them:
 
 ```bash
 # Capture packets with No Next Header
-sudo tcpdump -i eth0 "ip6[6] == 59"
+sudo tcpdump -i eth0 "ip6 protochain 59"
 
 # This is legitimate for:
-# - IPv6 keep-alive packets with no payload
-# - Privacy (intentionally opaque payload)
-# - Testing
+# - Packets that intentionally have no upper-layer header
+# - Packets where any remaining octets after that point are ignored
 ```
 
 ## Conclusion
