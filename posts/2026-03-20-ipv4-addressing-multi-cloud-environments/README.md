@@ -9,6 +9,7 @@ Description: Design a non-overlapping IPv4 addressing scheme across AWS, Azure, 
 ## Introduction
 
 Multi-cloud architectures require non-overlapping IPv4 CIDRs across all cloud providers and on-premises networks. A single CIDR conflict prevents VPC peering and complicates routing. Planning upfront avoids expensive renumbering.
+This example assumes GCP custom mode VPC networks. Google Cloud auto mode VPC networks use `10.128.0.0/9`, so avoid that range if you need connectivity to default or other auto mode networks.
 
 ## Multi-Cloud Addressing Framework
 
@@ -124,4 +125,4 @@ else:
 
 ## Conclusion
 
-Reserve separate /10 blocks from the 10.0.0.0/8 space for each cloud provider and on-premises. Subdivide each /10 by region. Validate non-overlap programmatically before provisioning peering connections. This structure supports Transit Gateway, Azure VNet peering, and GCP VPC peering without renumbering.
+Reserve separate private CIDR blocks for each cloud provider and on-premises, and subdivide them by region. If GCP default or other auto mode VPC networks are in scope, avoid the `10.128.0.0/9` range that auto mode uses. Validate non-overlap programmatically before provisioning peering connections. With non-overlapping ranges, this structure supports Transit Gateway, Azure VNet peering, and GCP VPC peering without renumbering.
