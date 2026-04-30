@@ -29,9 +29,9 @@ If ICMP is blocked by firewall:
 ```bash
 # Find the maximum MTU that passes without fragmentation
 
-ping -M do -s 1472 192.168.1.10   # 1472 + 28 (IP+ICMP headers) = 1500
-ping -M do -s 1400 192.168.1.10   # Try smaller sizes
-ping -M do -s 1200 192.168.1.10
+ping -M probe -s 1472 192.168.1.10   # 1472 + 28 (IP+ICMP headers) = 1500
+ping -M probe -s 1400 192.168.1.10   # Try smaller sizes
+ping -M probe -s 1200 192.168.1.10
 
 # On macOS
 ping -D -s 1472 192.168.1.10
@@ -107,4 +107,4 @@ netstat -s | grep -i "fragment\|reassemb"
 - PMTUD failures cause TCP connections that establish but stall during data transfer - the classic ICMP black hole.
 - Allow ICMP Type 3 Code 4 ("fragmentation needed") through firewalls; blocking it breaks PMTUD.
 - TCP MSS clamping (`--clamp-mss-to-pmtu`) is preferable to lowering MTU as it only affects TCP.
-- Use `ping -M do -s 1472` to binary search for the effective path MTU between two hosts.
+- Use `ping -M probe -s 1472` to binary search for the effective path MTU between two hosts on current Linux systems.
