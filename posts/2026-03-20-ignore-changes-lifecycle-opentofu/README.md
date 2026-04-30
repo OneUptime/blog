@@ -8,7 +8,7 @@ Description: A guide to using ignore_changes lifecycle in OpenTofu to prevent sp
 
 ## Introduction
 
-The `ignore_changes` lifecycle setting tells OpenTofu to ignore differences for specific attributes when planning changes. This is useful when attributes are managed externally (by autoscalers, external processes, or manual operations) and should not be reverted by OpenTofu.
+The `ignore_changes` lifecycle setting tells OpenTofu to ignore differences for specific attributes when planning changes. This is useful when attributes are managed externally (by autoscalers, external processes, or manual operations) or when a value should only be used during the initial creation of a resource.
 
 ## Basic ignore_changes
 
@@ -19,7 +19,7 @@ resource "aws_instance" "web" {
 
   lifecycle {
     ignore_changes = [
-      ami,  # Don't modify AMI if changed externally
+      ami,  # Keep the original AMI after creation even if var.ami_id changes
       tags  # Ignore tag changes made outside OpenTofu
     ]
   }
@@ -36,6 +36,7 @@ resource "aws_autoscaling_group" "web" {
   min_size         = 2
   max_size         = 10
   desired_capacity = 2
+  vpc_zone_identifier = var.subnet_ids
 
   launch_template {
     id      = aws_launch_template.web.id
@@ -59,12 +60,12 @@ resource "aws_instance" "web" {
   tags = {
     Name        = "web-server"
     Environment = var.environment
-    # CostCenter is added by your tagging automation - ignore it
+    # External automation may also add CostCenter and BackupPolicy tags
   }
 
   lifecycle {
     # Don't overwrite tags added by cost allocation automation
-    ignore_changes = [tags["CostCenter"], tags["AutoScalingGroupName"]]
+    ignore_changes = [tags["CostCenter"], tags["BackupPolicy"]]
   }
 }
 ```
@@ -76,11 +77,12 @@ resource "aws_db_instance" "main" {
   identifier     = "production-db"
   engine         = "postgres"
   instance_class = "db.t3.micro"
+  allocated_storage = 20
   username       = "admin"
-  password       = var.initial_password  # Only used at creation
+  password       = var.initial_password  # Bootstrap password used at creation
 
   lifecycle {
-    # After creation, passwords are rotated externally (e.g., via Secrets Manager rotation)
+    # Prevent later configuration changes from attempting a password update
     ignore_changes = [password]
   }
 }
@@ -89,13 +91,12 @@ resource "aws_db_instance" "main" {
 ### Ignoring Computed Values
 
 ```hcl
-resource "aws_ecs_task_definition" "app" {
-  family                   = "app"
-  container_definitions    = jsonencode([...])
+resource "terraform_data" "created_at" {
+  input = timestamp()
 
   lifecycle {
-    # ECS updates the revision counter - ignore it
-    ignore_changes = [container_definitions]
+    # Keep the initial timestamp taken during creation
+    ignore_changes = [input]
   }
 }
 ```
@@ -106,7 +107,7 @@ resource "aws_ecs_task_definition" "app" {
 # Ignore ALL changes - OpenTofu only manages creation and deletion
 
 resource "aws_instance" "manually_managed" {
-  ami           = "ami-0c55b159cbfafe1f0"
+  ami           = var.ami_id
   instance_type = "t3.micro"
 
   lifecycle {
@@ -115,17 +116,25 @@ resource "aws_instance" "manually_managed" {
 }
 ```
 
-## Nested Attribute Ignoring
+## Ignoring Multiple Attributes
 
 ```hcl
 resource "aws_autoscaling_group" "web" {
-  # ...
+  min_size            = 2
+  max_size            = 10
+  desired_capacity    = 2
+  vpc_zone_identifier = var.subnet_ids
+
+  launch_template {
+    id      = aws_launch_template.web.id
+    version = "$Latest"
+  }
 
   lifecycle {
-    # Ignore specific nested attributes
+    # Ignore multiple attributes managed outside OpenTofu
     ignore_changes = [
-      tag,             # Ignore all tags added by AWS
-      load_balancers,  # Ignore load balancer attachments managed externally
+      desired_capacity,  # Ignore capacity managed by scaling policies
+      load_balancers,  # Ignore Classic Load Balancer attachments managed externally
     ]
   }
 }
@@ -136,7 +145,7 @@ resource "aws_autoscaling_group" "web" {
 ```hcl
 # AVOID: Using ignore_changes to suppress errors
 resource "aws_s3_bucket" "main" {
-  bucket = "my-bucket"
+  bucket_prefix = "my-bucket-"
 
   lifecycle {
     # BAD: Hiding configuration drift instead of fixing it
@@ -151,16 +160,23 @@ resource "aws_s3_bucket" "main" {
 ## Combining with Other Lifecycle Settings
 
 ```hcl
-resource "aws_eks_cluster" "main" {
-  name     = "production"
-  version  = var.kubernetes_version
+resource "aws_autoscaling_group" "web" {
+  name_prefix         = "web-"
+  min_size            = 2
+  max_size            = 10
+  desired_capacity    = 2
+  vpc_zone_identifier = var.subnet_ids
+
+  launch_template {
+    id      = aws_launch_template.web.id
+    version = "$Latest"
+  }
 
   lifecycle {
     create_before_destroy = true
-    prevent_destroy       = true
     ignore_changes = [
-      # EKS can update this during maintenance
-      kubernetes_network_config,
+      # Auto Scaling policies can adjust capacity independently
+      desired_capacity,
     ]
   }
 }
@@ -168,4 +184,4 @@ resource "aws_eks_cluster" "main" {
 
 ## Conclusion
 
-`ignore_changes` bridges the gap between OpenTofu-managed infrastructure and externally-modified attributes. It's particularly valuable for autoscaling groups (managed capacity), password rotation, and resources with attributes modified by other automation. Use it judiciously - overusing it can cause OpenTofu to become unaware of significant drift, undermining the benefits of infrastructure as code. Document why each `ignore_changes` entry exists to help future engineers understand the intent.
+`ignore_changes` bridges the gap between OpenTofu-managed infrastructure and externally-modified attributes. It's particularly valuable for autoscaling groups (managed capacity), one-time bootstrap values such as initial passwords or creation timestamps, and resources with attributes modified by other automation. Use it judiciously - overusing it can cause OpenTofu to become unaware of significant drift, undermining the benefits of infrastructure as code. Document why each `ignore_changes` entry exists to help future engineers understand the intent.
