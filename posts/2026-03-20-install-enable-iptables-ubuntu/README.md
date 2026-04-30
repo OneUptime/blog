@@ -4,21 +4,21 @@ Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
 Tags: iptables, Ubuntu, Linux, Firewall, Security, Installation
 
-Description: Install iptables and iptables-persistent on Ubuntu, understand the default state, and set up a basic working firewall configuration from scratch.
+Description: Install iptables and iptables-persistent on Ubuntu, understand the default state, and set up a basic working IPv4 firewall configuration from scratch.
 
-Ubuntu uses nftables as its default firewall backend on modern versions, but iptables remains widely used and available. This guide shows how to install, verify, and start using iptables on Ubuntu.
+Ubuntu uses nftables as its default firewall backend on modern versions, but iptables remains widely used and available. This guide shows how to install, verify, and start using iptables on Ubuntu. If your host uses IPv6, apply equivalent rules with `ip6tables` as well because `iptables` manages IPv4 rules only.
 
 ## Check iptables Status
 
 ```bash
-# iptables is usually pre-installed on Ubuntu
+# Check whether iptables is already installed
 
 iptables --version
 
 # View current rules (likely empty on fresh install)
 sudo iptables -L -n -v
 
-# Check if iptables or nftables is handling the rules
+# Check which backend the iptables command is using
 sudo iptables --version
 # "nf_tables" backend → using nftables underneath
 # "legacy" → using older iptables backend
@@ -44,10 +44,12 @@ sudo iptables -L INPUT --line-numbers
 sudo iptables -L OUTPUT --line-numbers
 sudo iptables -L FORWARD --line-numbers
 
-# Three default tables:
-# filter (default) - INPUT, FORWARD, OUTPUT chains
-# nat             - PREROUTING, POSTROUTING, OUTPUT chains
-# mangle          - packet modification
+# iptables has five built-in tables:
+# filter   (default) - INPUT, FORWARD, OUTPUT
+# nat                - PREROUTING, INPUT, OUTPUT, POSTROUTING
+# mangle             - PREROUTING, INPUT, FORWARD, OUTPUT, POSTROUTING
+# raw                - PREROUTING, OUTPUT
+# security           - INPUT, FORWARD, OUTPUT
 ```
 
 ## Set Up a Basic Firewall
@@ -67,8 +69,8 @@ sudo iptables -A INPUT -i lo -j ACCEPT
 sudo iptables -A OUTPUT -o lo -j ACCEPT
 
 # Allow established and related connections
-sudo iptables -A INPUT -m state --state ESTABLISHED,RELATED -j ACCEPT
-sudo iptables -A OUTPUT -m state --state ESTABLISHED,RELATED -j ACCEPT
+sudo iptables -A INPUT -m conntrack --ctstate ESTABLISHED,RELATED -j ACCEPT
+sudo iptables -A OUTPUT -m conntrack --ctstate ESTABLISHED,RELATED -j ACCEPT
 
 # Allow SSH from anywhere (change to your IP for security)
 sudo iptables -A INPUT -p tcp --dport 22 -j ACCEPT
@@ -93,6 +95,8 @@ NEVER set default policy to DROP before ensuring SSH is allowed:
 
 ```bash
 # Step 1: Add the allow rules first
+sudo iptables -A INPUT -i lo -j ACCEPT
+sudo iptables -A INPUT -m conntrack --ctstate ESTABLISHED,RELATED -j ACCEPT
 sudo iptables -A INPUT -p tcp --dport 22 -j ACCEPT
 
 # Step 2: Only then set default policy to DROP
@@ -107,7 +111,7 @@ echo "Still connected!"
 
 ```bash
 # Save rules to persist after reboot
-sudo iptables-save > /etc/iptables/rules.v4
+sudo iptables-save -f /etc/iptables/rules.v4
 
 # Or use iptables-persistent
 sudo netfilter-persistent save
@@ -133,4 +137,4 @@ sudo iptables -L INPUT -n -v --line-numbers
 #   45  2340 ACCEPT     tcp  --  *      *       0.0.0.0/0 0.0.0.0/0  tcp dpt:22
 ```
 
-iptables is the foundation of Linux firewalling - even when using UFW or firewalld, those tools generate iptables rules underneath, making iptables knowledge essential.
+iptables is one interface to Linux netfilter firewalling. Higher-level tools like UFW and firewalld manage the same kernel packet-filtering framework, often through nftables on modern systems, so iptables knowledge is still useful.
