@@ -4,13 +4,13 @@ Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
 Tags: GKE, Binary Authorization, Security, OpenTofu, Container Security, Supply Chain
 
-Description: Learn how to configure GKE Binary Authorization with OpenTofu to enforce that only cryptographically verified container images are deployed to your clusters.
+Description: Learn how to configure GKE Binary Authorization with OpenTofu to enforce that deployed images are backed by cryptographically verifiable attestations.
 
 ## Overview
 
-GKE Binary Authorization is a deploy-time security control that ensures only trusted container images are deployed. Images must be signed by authorized attestors before they can run on the cluster, preventing unauthorized or tampered images from being deployed.
+GKE Binary Authorization is a deploy-time security control that helps ensure only trusted container images are deployed. Images must have attestations that are verifiable by authorized attestors before they can run on the cluster, helping prevent unauthorized or tampered images from being deployed. Binary Authorization doesn't enforce init containers.
 
-## Step 1: Enable Binary Authorization API
+## Step 1: Enable Required APIs
 
 ```hcl
 # main.tf - Enable required APIs
@@ -21,6 +21,14 @@ resource "google_project_service" "binary_authorization" {
 
 resource "google_project_service" "container_analysis" {
   service = "containeranalysis.googleapis.com"
+}
+
+resource "google_project_service" "cloud_kms" {
+  service = "cloudkms.googleapis.com"
+}
+
+resource "google_project_service" "gke" {
+  service = "container.googleapis.com"
 }
 ```
 
@@ -38,7 +46,7 @@ resource "google_container_analysis_note" "build_attestor_note" {
   }
 }
 
-# Create the attestor (who can sign images)
+# Create the attestor (used to verify image attestations)
 resource "google_binary_authorization_attestor" "build_attestor" {
   name = "build-verified-attestor"
 
@@ -54,6 +62,14 @@ resource "google_binary_authorization_attestor" "build_attestor" {
       }
     }
   }
+}
+
+# Allow Binary Authorization to read attestations attached to the note
+resource "google_container_analysis_note_iam_member" "build_attestor_note_reader" {
+  project = google_container_analysis_note.build_attestor_note.project
+  note    = google_container_analysis_note.build_attestor_note.name
+  role    = "roles/containeranalysis.notes.occurrences.viewer"
+  member  = "serviceAccount:${google_binary_authorization_attestor.build_attestor.attestation_authority_note[0].delegation_service_account_email}"
 }
 ```
 
@@ -75,6 +91,10 @@ resource "google_kms_crypto_key" "attestor_key" {
     algorithm = "EC_SIGN_P256_SHA256"
   }
 }
+
+data "google_kms_crypto_key_version" "attestor_key_version" {
+  crypto_key = google_kms_crypto_key.attestor_key.id
+}
 ```
 
 ## Step 4: Create Binary Authorization Policy
@@ -82,14 +102,8 @@ resource "google_kms_crypto_key" "attestor_key" {
 ```hcl
 # Binary Authorization policy for the project
 resource "google_binary_authorization_policy" "policy" {
-  admission_whitelist_patterns {
-    # Allow GKE system images
-    name_pattern = "gcr.io/google-containers/*"
-  }
-
-  admission_whitelist_patterns {
-    name_pattern = "gcr.io/gke-release/*"
-  }
+  # Trust Google-managed system images required by GKE
+  global_policy_evaluation_mode = "ENABLE"
 
   # Default rule - require attestation for all other images
   default_admission_rule {
@@ -103,7 +117,7 @@ resource "google_binary_authorization_policy" "policy" {
 
   # Override for specific clusters - allow in development
   cluster_admission_rules {
-    cluster                = "${var.project_id}.us-central1.dev-cluster"
+    cluster                = "us-central1.dev-cluster"
     evaluation_mode        = "ALWAYS_ALLOW"
     enforcement_mode       = "ENFORCED_BLOCK_AND_AUDIT_LOG"
   }
@@ -117,6 +131,7 @@ resource "google_binary_authorization_policy" "policy" {
 resource "google_container_cluster" "secure_cluster" {
   name     = "binauth-cluster"
   location = "us-central1"
+  initial_node_count = 1
 
   binary_authorization {
     evaluation_mode = "PROJECT_SINGLETON_POLICY_ENFORCE"
@@ -128,4 +143,4 @@ resource "google_container_cluster" "secure_cluster" {
 
 ## Summary
 
-GKE Binary Authorization with OpenTofu creates a supply chain security control that ensures only verified container images run in your clusters. The attestor signs images after successful CI/CD pipeline validation, and the admission policy rejects unattested images at deploy time, preventing unauthorized deployments.
+GKE Binary Authorization with OpenTofu creates a supply chain security control that helps ensure only attested workload images are deployed to your clusters. A signer in your CI/CD pipeline signs the image digest to create an attestation, and the attestor stores the public key that Binary Authorization uses to verify it at deploy time. The admission policy rejects images that don't satisfy the required attestation policy, preventing unauthorized deployments.
