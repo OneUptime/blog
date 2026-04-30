@@ -13,9 +13,9 @@ strongSwan is the most widely-used open-source IKEv2 implementation on Linux. It
 ## Installation
 
 ```bash
-# Debian/Ubuntu
+# Debian/Ubuntu (swanctl/charon-systemd backend)
 
-sudo apt install strongswan strongswan-swanctl
+sudo apt install charon-systemd strongswan-swanctl
 
 # RHEL/CentOS/Fedora
 sudo dnf install strongswan
@@ -26,14 +26,15 @@ swanctl --version
 
 ## Configuration with swanctl
 
-strongSwan uses the modern `swanctl.conf` format (replaces legacy ipsec.conf).
+With the `swanctl`/`vici` backend, strongSwan uses the modern `swanctl.conf` format (instead of legacy `ipsec.conf`).
 
 ### Directory Structure
 
 ```text
 /etc/swanctl/
 ├── conf.d/         ← Place .conf files here
-├── x509/           ← Certificate files (PEM)
+├── x509/           ← End-entity certificate files
+├── x509ca/         ← CA certificate files
 ├── private/        ← Private keys
 └── swanctl.conf    ← Main file (or use conf.d/)
 ```
@@ -46,8 +47,8 @@ strongSwan uses the modern `swanctl.conf` format (replaces legacy ipsec.conf).
 connections {
     gw1-to-gw2 {
         version = 2
-        local_addrs  = 2001:db8:gw1::1
-        remote_addrs = 2001:db8:gw2::1
+        local_addrs  = 2001:db8:0:1::1
+        remote_addrs = 2001:db8:0:2::1
 
         local {
             auth = psk
@@ -60,10 +61,10 @@ connections {
 
         children {
             net1-to-net2 {
-                local_ts  = 2001:db8:net1::/48
-                remote_ts = 2001:db8:net2::/48
+                local_ts  = 2001:db8:1::/48
+                remote_ts = 2001:db8:2::/48
                 mode = tunnel
-                esp_proposals = aes256gcm128-prfsha256-ecp256
+                esp_proposals = aes256gcm16-ecp256
                 start_action = start
                 dpd_action = restart
                 rekey_time = 1h
@@ -73,7 +74,6 @@ connections {
 
         proposals = aes256-sha256-ecp256
         dpd_delay = 30s
-        dpd_timeout = 90s
     }
 }
 
@@ -98,13 +98,13 @@ openssl req -x509 -newkey rsa:4096 -keyout ca.key -out ca.crt -days 3650 -nodes 
 openssl req -newkey rsa:2048 -keyout gw1.key -out gw1.csr -nodes \
   -subj "/CN=gw1.example.com"
 openssl x509 -req -in gw1.csr -CA ca.crt -CAkey ca.key -CAcreateserial -out gw1.crt \
-  -days 365 -extfile <(echo "subjectAltName=IP:2001:db8:gw1::1,DNS:gw1.example.com")
+  -days 365 -extfile <(echo "subjectAltName=IP:2001:db8:0:1::1,DNS:gw1.example.com")
 
 # Copy to strongSwan directories
-cp ca.crt /etc/swanctl/x509ca/
-cp gw1.crt /etc/swanctl/x509/
-cp gw1.key /etc/swanctl/private/
-chmod 600 /etc/swanctl/private/gw1.key
+sudo cp ca.crt /etc/swanctl/x509ca/
+sudo cp gw1.crt /etc/swanctl/x509/
+sudo cp gw1.key /etc/swanctl/private/
+sudo chmod 600 /etc/swanctl/private/gw1.key
 ```
 
 ```text
@@ -112,8 +112,8 @@ chmod 600 /etc/swanctl/private/gw1.key
 connections {
     gw1-to-gw2-cert {
         version = 2
-        local_addrs  = 2001:db8:gw1::1
-        remote_addrs = 2001:db8:gw2::1
+        local_addrs  = 2001:db8:0:1::1
+        remote_addrs = 2001:db8:0:2::1
 
         local {
             auth = pubkey
@@ -127,10 +127,10 @@ connections {
 
         children {
             net1-to-net2 {
-                local_ts  = 2001:db8:net1::/48
-                remote_ts = 2001:db8:net2::/48
+                local_ts  = 2001:db8:1::/48
+                remote_ts = 2001:db8:2::/48
                 mode = tunnel
-                esp_proposals = aes256gcm128-prfsha256-ecp256
+                esp_proposals = aes256gcm16-ecp256
                 start_action = start
             }
         }
@@ -146,7 +146,7 @@ connections {
 connections {
     remote-access {
         version = 2
-        local_addrs  = 2001:db8:vpn-gw::1
+        local_addrs  = 2001:db8:0:3::1
         remote_addrs = %any
 
         local {
@@ -163,10 +163,9 @@ connections {
 
         children {
             road-warrior {
-                local_ts  = 2001:db8:corp::/48
-                remote_ts = ::/0
+                local_ts  = 2001:db8:3::/48
                 mode = tunnel
-                esp_proposals = aes256gcm128-prfsha256-ecp256
+                esp_proposals = aes256gcm16-ecp256
                 dpd_action = clear
             }
         }
@@ -178,7 +177,7 @@ connections {
 
 pools {
     ipv6-pool {
-        addrs = 2001:db8:vpn::/64
+        addrs = 2001:db8:4::/64
         dns = 2001:db8::53
     }
 }
@@ -197,17 +196,17 @@ secrets {
 # Load all configuration
 swanctl --load-all
 
-# Show active connections
+# Show loaded connections
 swanctl --list-conns
 
 # Show active SAs
 swanctl --list-sas
 
 # Initiate a connection
-swanctl --initiate conn:gw1-to-gw2
+swanctl --initiate --child net1-to-net2 --ike gw1-to-gw2
 
 # Terminate a connection
-swanctl --terminate conn:gw1-to-gw2
+swanctl --terminate --ike gw1-to-gw2
 
 # Show stats
 swanctl --stats
@@ -243,4 +242,4 @@ tail -f /var/log/charon.log | grep -E 'IKE|AUTH|CHILD'
 
 ## Summary
 
-strongSwan on Linux uses swanctl configuration with `connections{}` blocks defining local/remote addresses, authentication (PSK or certificate), and `children{}` blocks for traffic selectors. For IPv6 site-to-site, set `local_addrs`/`remote_addrs` to IPv6 addresses and `local_ts`/`remote_ts` to IPv6 prefixes. Use `aes256gcm128-prfsha256-ecp256` as the ESP cipher suite and `aes256-sha256-ecp256` for IKE proposals. Manage with `swanctl --load-all` and `swanctl --list-sas`. Monitor issues with `journalctl -u strongswan -f`.
+With the `swanctl`/`vici` backend, strongSwan on Linux uses `connections{}` blocks defining local/remote addresses, authentication (PSK or certificate), and `children{}` blocks for traffic selectors. For IPv6 site-to-site, set `local_addrs`/`remote_addrs` to IPv6 addresses and `local_ts`/`remote_ts` to IPv6 prefixes. Use `aes256gcm16-ecp256` as the ESP proposal and `aes256-sha256-ecp256` for IKE proposals. Manage with `swanctl --load-all` and `swanctl --list-sas`. Monitor issues with `journalctl -u strongswan -f`.
