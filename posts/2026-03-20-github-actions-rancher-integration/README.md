@@ -14,7 +14,7 @@ GitHub Actions is one of the most widely used CI/CD platforms, and pairing it wi
 
 ## Prerequisites
 
-- Rancher v2.7+ managing at least one downstream cluster
+- Rancher v2.9+ managing at least one downstream cluster
 - GitHub repository with Actions enabled
 - `kubectl` access to the cluster
 
@@ -36,7 +36,7 @@ kubectl create rolebinding github-deploy-binding \
   --serviceaccount=my-app:github-deploy \
   --namespace=my-app
 
-# Create a long-lived token (Kubernetes 1.24+)
+# Create a long-lived token Secret (Kubernetes 1.24+)
 kubectl apply -f - <<EOF
 apiVersion: v1
 kind: Secret
@@ -52,18 +52,27 @@ EOF
 Build a minimal kubeconfig and base64-encode it for storage in GitHub Secrets:
 
 ```bash
-TOKEN=$(kubectl get secret github-deploy-token -n my-app \
-  -o jsonpath='{.data.token}' | base64 -d)
+TOKEN_B64=""
+until [ -n "$TOKEN_B64" ]; do
+  TOKEN_B64=$(kubectl get secret github-deploy-token -n my-app \
+    -o jsonpath='{.data.token}')
+  [ -n "$TOKEN_B64" ] || sleep 1
+done
 
-SERVER=$(kubectl config view --minify -o jsonpath='{.clusters[0].cluster.server}')
+TOKEN=$(printf '%s' "$TOKEN_B64" | base64 -d)
 
-cat <<EOF | base64 -w 0 > kubeconfig.b64
+SERVER=$(kubectl config view --raw --flatten --minify \
+  -o jsonpath='{.clusters[0].cluster.server}')
+CA_DATA=$(kubectl config view --raw --flatten --minify \
+  -o jsonpath='{.clusters[0].cluster.certificate-authority-data}')
+
+cat <<EOF | base64 | tr -d '\n' > kubeconfig.b64
 apiVersion: v1
 kind: Config
 clusters:
 - cluster:
     server: $SERVER
-    insecure-skip-tls-verify: true
+    certificate-authority-data: $CA_DATA
   name: rancher
 contexts:
 - context:
@@ -86,14 +95,14 @@ EOF
 In your GitHub repository go to **Settings > Secrets and variables > Actions** and add:
 
 - `KUBECONFIG_DATA` - the base64 content of `kubeconfig.b64`
-- `REGISTRY_USERNAME` - container registry username
-- `REGISTRY_PASSWORD` - container registry password
+
+This workflow pushes to GitHub Container Registry using the repository `GITHUB_TOKEN`, so no extra registry secret is required.
 
 ---
 
 ## Step 3: Write the GitHub Actions Workflow
 
-This workflow builds and pushes a Docker image, then deploys to the Rancher cluster:
+This workflow builds and pushes a Docker image to GitHub Container Registry, then updates an existing Deployment in the Rancher cluster:
 
 ```yaml
 # .github/workflows/deploy.yml
@@ -109,19 +118,23 @@ env:
 jobs:
   build:
     runs-on: ubuntu-latest
+    permissions:
+      contents: read
+      packages: write
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v6
 
       - name: Log in to GitHub Container Registry
-        uses: docker/login-action@v3
+        uses: docker/login-action@v4
         with:
           registry: ghcr.io
           username: ${{ github.actor }}
           password: ${{ secrets.GITHUB_TOKEN }}
 
       - name: Build and push Docker image
-        uses: docker/build-push-action@v5
+        uses: docker/build-push-action@v7
         with:
+          context: .
           push: true
           tags: ${{ env.IMAGE }}
 
@@ -130,7 +143,7 @@ jobs:
     needs: build
     steps:
       - name: Set up kubectl
-        uses: azure/setup-kubectl@v3
+        uses: azure/setup-kubectl@v4
 
       - name: Write kubeconfig
         run: |
@@ -142,9 +155,10 @@ jobs:
         env:
           KUBECONFIG: /tmp/kubeconfig
         run: |
-          # Update the container image
+          # Update the container image. The container name on the left
+          # must match the Deployment spec.
           kubectl set image deployment/my-app \
-            app=${{ env.IMAGE }} \
+            my-app=${{ env.IMAGE }} \
             -n my-app
           # Block until rollout finishes or times out
           kubectl rollout status deployment/my-app \
