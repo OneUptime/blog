@@ -12,28 +12,37 @@ Building OpenTofu from source gives you the ability to run the latest developmen
 
 ## Prerequisites
 
-- Go 1.21 or later
+- Go 1.26.2 to build the current `main` branch, or the version declared in `go.mod` for the release you choose
 - Git
-- Make
+- Make (optional, if you want to use the repository `make build` target)
 - 4 GB RAM (for compilation)
 - Linux or macOS
 
 ## Step 1: Install Go
 
 ```bash
-# Download Go (replace with latest version)
+# Install the Go version required by the branch or tag you plan to build.
+# The current OpenTofu main branch uses Go 1.26.2.
+# Choose the download and install commands for your platform.
+GO_VERSION="1.26.2"
 
-GO_VERSION="1.22.0"
+# Linux AMD64
 curl -LO "https://go.dev/dl/go${GO_VERSION}.linux-amd64.tar.gz"
 
-# Install Go
+# Install Go on Linux
 sudo rm -rf /usr/local/go
 sudo tar -C /usr/local -xzf "go${GO_VERSION}.linux-amd64.tar.gz"
 
-# Add Go to PATH
+# macOS Apple Silicon
+# curl -LO "https://go.dev/dl/go${GO_VERSION}.darwin-arm64.pkg"
+# sudo installer -pkg "go${GO_VERSION}.darwin-arm64.pkg" -target /
+
+# macOS Intel
+# curl -LO "https://go.dev/dl/go${GO_VERSION}.darwin-amd64.pkg"
+# sudo installer -pkg "go${GO_VERSION}.darwin-amd64.pkg" -target /
+
+# Add Go to PATH for the current shell if needed
 export PATH=$PATH:/usr/local/go/bin
-echo 'export PATH=$PATH:/usr/local/go/bin' >> ~/.bashrc
-source ~/.bashrc
 
 # Verify Go installation
 go version
@@ -55,10 +64,10 @@ cd opentofu
 
 ```bash
 # List available tags
-git tag -l | sort -V | tail -20
+git tag -l --sort=-version:refname | head -20
 
 # Checkout a specific release (recommended)
-git checkout v1.9.0
+git checkout v1.11.6
 
 # Or stay on main for the latest development build
 git checkout main
@@ -70,7 +79,7 @@ git checkout main
 # Navigate to the repository root
 cd ~/go/src/github.com/opentofu/opentofu
 
-# Build using Go directly
+# Build using Go directly (this produces a development build)
 go build -o tofu ./cmd/tofu
 
 # Or use Make if available
@@ -88,6 +97,9 @@ sudo chmod +x /usr/local/bin/tofu
 
 # Verify the installation
 tofu version
+
+# A plain go build reports a -dev suffix on tagged releases.
+# Use the release-style build below if you want the tagged version string.
 ```
 
 ## Building for Different Platforms (Cross-Compilation)
@@ -116,16 +128,14 @@ go test ./internal/command/...
 go test -v ./internal/configs/...
 ```
 
-## Building with Version Information
+## Building a Release-Style Binary
 
 ```bash
-# Build with version metadata embedded
-BUILD_VERSION=$(git describe --tags --always)
-BUILD_DATE=$(date -u +%Y-%m-%dT%H:%M:%SZ)
-BUILD_COMMIT=$(git rev-parse --short HEAD)
+# Build a release-style binary from a release tag
+git checkout v1.11.6
 
 go build \
-  -ldflags "-X github.com/opentofu/opentofu/version.dev=no -X github.com/opentofu/opentofu/version.Version=${BUILD_VERSION}" \
+  -ldflags "-X github.com/opentofu/opentofu/version.dev=no" \
   -o tofu \
   ./cmd/tofu
 
@@ -138,7 +148,7 @@ go build \
 ```hcl
 # test.tf
 terraform {
-  required_version = ">= 1.6"
+  required_version = ">= 1.11.6"
 }
 
 output "source_build" {
@@ -154,10 +164,14 @@ tofu apply -auto-approve
 ## Keeping Your Build Up to Date
 
 ```bash
-# Pull latest changes
+# Switch to main to follow the latest development build
 cd ~/go/src/github.com/opentofu/opentofu
+git checkout main
+git pull --ff-only origin main
+
+# Or fetch tags and switch to a newer stable release
 git fetch --tags
-git pull origin main
+# git checkout v1.11.6
 
 # Rebuild
 go build -o tofu ./cmd/tofu
