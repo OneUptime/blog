@@ -34,7 +34,7 @@ networking:
   # Options: SingleStack, PreferDualStack, RequireDualStack
   ipFamilyPolicy: SingleStack
   
-  # IP families (IPv4, IPv6, or both)
+  # IP families (IPv4, IPv6, or both; set both for dual-stack)
   ipFamilies:
     - IPv4
 
@@ -42,15 +42,12 @@ networking:
 service:
   type: ClusterIP
   port: 80
-  # IPv6 cluster IP (leave empty for auto-assign)
-  ipv6ClusterIP: ""
 
 # Ingress configuration
 ingress:
   enabled: false
-  annotations:
-    # IPv6 Nginx annotation
-    nginx.ingress.kubernetes.io/ipv6-enabled: "true"
+  # Add controller-specific annotations only if your ingress implementation requires them
+  annotations: {}
 ```
 
 ## Template for Dual-Stack Services
@@ -70,7 +67,7 @@ spec:
   {{- end }}
   ports:
     - port: {{ .Values.service.port }}
-      targetPort: http
+      targetPort: {{ .Values.service.port }}
   selector:
     {{- include "mychart.selectorLabels" . | nindent 4 }}
 ```
@@ -95,14 +92,18 @@ Wraps IPv6 addresses in brackets.
 {{/* Usage: http://{{ include "mychart.formatIP" .Values.server.host }}:{{ .Values.server.port }}/ */}}
 ```
 
-## Testing with IPv6 Cluster
+## Testing with Dual-Stack Cluster
 
 ```bash
-# Install with IPv6 enabled
-helm install myapp ./mychart   --set networking.ipv6.enabled=true   --set networking.ipFamilyPolicy=PreferDualStack
+# Install with dual-stack enabled
+helm install myapp ./mychart \
+  --set networking.ipv6.enabled=true \
+  --set networking.ipFamilyPolicy=PreferDualStack \
+  --set networking.ipFamilies[0]=IPv4 \
+  --set networking.ipFamilies[1]=IPv6
 
-# Verify service has IPv6 cluster IP
-kubectl get svc myapp -o jsonpath='{.spec.clusterIPs}'
+# Verify service has IPv4 and IPv6 cluster IPs
+kubectl get svc myapp-mychart -o jsonpath='{.spec.clusterIPs}'
 
 # Run helm tests
 helm test myapp
@@ -112,7 +113,7 @@ helm test myapp
 
 ```json
 {
-  "$schema": "http://json-schema.org/schema#",
+  "$schema": "https://json-schema.org/draft-07/schema#",
   "type": "object",
   "properties": {
     "networking": {
@@ -124,6 +125,8 @@ helm test myapp
         },
         "ipFamilies": {
           "type": "array",
+          "minItems": 1,
+          "maxItems": 2,
           "items": {
             "type": "string",
             "enum": ["IPv4", "IPv6"]
