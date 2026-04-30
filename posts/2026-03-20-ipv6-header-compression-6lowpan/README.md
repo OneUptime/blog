@@ -40,11 +40,13 @@ Savings:  4 bytes
 
 ### 2. Next Header Compression
 
-Common next headers (UDP=17, TCP=6, ICMPv6=58) can be compressed using a single bit indicating "use NHC" (Next Header Compression):
+The IPHC `NH` bit indicates whether the IPv6 Next Header field is carried inline or encoded with LOWPAN_NHC. In RFC 6282, LOWPAN_NHC is defined for IPv6 extension headers and UDP:
 
 ```text
 Original: Next Header field = 1 byte (e.g., 0x11 for UDP)
-IPHC:     "TF" bit + NHC header = 1 byte total for common protocols
+IPHC:     NH=1 in LOWPAN_IPHC + 1-byte LOWPAN_NHC encoding follows
+Note:     UDP can then compress its own header further; TCP and ICMPv6 are not
+          compressed by RFC 6282 LOWPAN_NHC
 ```
 
 ### 3. Hop Limit
@@ -61,17 +63,18 @@ Savings: 1 byte for common values
 
 ### 4. Address Compression
 
-Address compression is the biggest win. IPHC uses context information (the shared prefix) to elide address bytes:
+Address compression is the biggest win. IPHC elides the link-local prefix statelessly, or shared routed prefixes via context information:
 
 ```text
 Stateless compression modes:
-- "Fully elided" (SAC=0, SAM=11): Source = link-local from IID (0 bytes inline)
-- "16-bit inline" (SAC=0, SAM=10): Source = prefix + 16-bit short address (2 bytes)
+- "Fully elided" (SAC=0, SAM=11): Source = fe80:: + IID derived from the link layer (0 bytes inline)
+- "16-bit inline" (SAC=0, SAM=10): Source = fe80::0000:00ff:fe00:XXXX (2 bytes inline)
 - "64-bit inline" (SAC=0, SAM=01): Source = prefix + 64-bit IID (8 bytes)
 - "128-bit inline" (SAC=0, SAM=00): Full 16-byte address (16 bytes)
 
 Stateful compression (with context):
-- SAC=1, SAM=11: Address fully elided (0 bytes) using stored context prefix
+- SAC=1, SAM=11: Prefix comes from shared context; IID is derived from the
+  encapsulating header (0 bytes inline)
 ```
 
 ## Practical Compression Example
@@ -82,25 +85,27 @@ A typical sensor-to-gateway UDP packet:
 Uncompressed IPv6+UDP headers: 40 + 8 = 48 bytes
 
 With IPHC compression:
-- IPHC dispatch byte: 2 bytes
+- LOWPAN_IPHC base encoding: 2 bytes
 - Version/TC/FL: elided (all default values)
 - Payload length: elided (inferred from frame size)
-- Next header: compressed (NHC)
-- Hop limit: 1 byte elided (64)
-- Source address: 0 bytes (link-local, fully derived from MAC)
-- Destination address: 2 bytes (short address form)
-- NHC UDP: ports elided (both well-known) = 1 byte
+- Next header: compressed via LOWPAN_NHC
+- Hop limit: elided (64)
+- Source address: 0 bytes (link-local, derived from the encapsulating header)
+- Destination address: 2 bytes (16-bit IID form)
+- UDP LOWPAN_NHC: 1 byte
+- UDP ports: 1 byte if both ports are in the 0xf0b0-0xf0bf compressible range
 - UDP length: elided
-- UDP checksum: 2 bytes or elided
+- UDP checksum: 2 bytes, or 0 bytes only if checksum elision is used with
+  additional integrity protection
 
-Result: ~4-7 bytes for IPv6+UDP headers
-Savings: 41-44 bytes (87-92% compression)
+Result: ~6-8 bytes for IPv6+UDP headers
+Savings: 40-42 bytes (83-88% compression)
 ```
 
 ## 6LoWPAN Packet Capture Analysis
 
 ```bash
-# Capture 6LoWPAN frames on a Linux 802.15.4 interface
+# Capture traffic on a Linux 6LoWPAN interface
 
 sudo tcpdump -i lowpan0 -v
 
@@ -115,15 +120,15 @@ sudo tcpdump -i lowpan0 -v
 
 ## Compression Context
 
-Stateful IPHC uses "contexts" - shared prefix knowledge - for maximum compression:
+Stateful IPHC uses "contexts" - shared prefix knowledge - for maximum compression. Link-local `fe80::/64` uses stateless compression and does not need a shared context:
 
 ```text
-Context 0: fe80::/64 (always available for link-local)
-Context 1: prefix assigned by border router (e.g., 2001:db8:mesh:1::/64)
+Context 0: implied when stateful compression is used without the CID extension
+Context 1: prefix assigned by border router (e.g., 2001:db8:1:1::/64)
 
-With context 1, a global unicast address 2001:db8:mesh:1::1234:5678:9abc:def0
+With context 1, a global unicast address 2001:db8:1:1::1234:5678:9abc:def0
 can be compressed to just the 8-byte IID: 1234:5678:9abc:def0
-or further to 2 bytes if a short address is used.
+or to 2 bytes when the IID follows the 16-bit short-address mapping.
 ```
 
 ## Conclusion
