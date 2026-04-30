@@ -17,195 +17,114 @@ Without dedicated storage network:
   Management traffic + Storage replication + API traffic = Congested management NIC
 
 With dedicated storage network:
-  Management NIC: API traffic, Kubernetes control plane (low bandwidth)
-  Storage NIC:    Longhorn replication traffic (high bandwidth, sustained)
-  VM NIC:         Guest VM traffic (variable)
+  Management network: API traffic, Kubernetes control plane (low bandwidth)
+  Storage network:    Longhorn replication traffic (high bandwidth, sustained)
+  VM network:         Guest VM traffic (variable)
 ```
 
 ## Prerequisites
 
-- Each Harvester node needs a third NIC (in addition to management and VM NICs)
-- A dedicated switch (or VLAN) for storage traffic
-- Storage NICs should be identical across all nodes for consistent performance
-- Recommended: 10 GbE or 25 GbE for storage networks
+- A storage uplink available on each Harvester node for a custom Harvester `ClusterNetwork`
+- A dedicated VLAN ID for storage traffic
+- A storage IP range in IPv4 CIDR format that does not overlap the reserved cluster networks (`10.42.0.0/16`, `10.43.0.0/16`, `10.52.0.0/16`, and `10.53.0.0/16`)
+- The Whereabouts CNI CRDs must be present (`kubectl get crd ippools.whereabouts.cni.cncf.io`)
+- All VMs must be shut down before changing the `storage-network` setting
+- All pods attached to Longhorn volumes must be stopped
+- Any ongoing image uploads or downloads should be completed or deleted
+- Recommended: 10 GbE or 25 GbE for storage traffic
 
 ## Step 1: Plan the Storage Network
 
 ```text
-Storage Network CIDR: 10.200.0.0/24
-Node 1 Storage IP:    10.200.0.11
-Node 2 Storage IP:    10.200.0.12
-Node 3 Storage IP:    10.200.0.13
-MTU:                  9000 (jumbo frames for storage performance)
-NIC:                  eth2 on each node
+Storage VLAN ID:      100
+Cluster Network:      storage
+Storage IP Range:     10.200.0.0/24
+Exclude:              10.200.0.1/32
+MTU:                  9000 (configured on the attached cluster network)
+Uplink NIC:           eth2 on each node
 ```
 
-## Step 2: Configure Storage NICs on Each Node
+Harvester assigns addresses from this range to Longhorn pods on the storage network. You do not configure these as static host IPs on each node.
 
-SSH into each node and configure the storage NIC:
+## Step 2: Configure the Harvester Cluster Network
 
-```bash
-# SSH into Node 1
+Use Harvester's cluster networking primitives for the storage uplink instead of assigning static IP addresses on the hosts.
 
-ssh rancher@192.168.1.11
+1. Navigate to **Networks** → **ClusterNetworks/Configs** and create a custom cluster network named `storage`.
+2. Create a **Network Config** for `storage` that selects all Harvester nodes and uses `eth2` as the storage uplink.
+3. If you plan to use jumbo frames, set the MTU on this network configuration and on the connected switch ports before enabling the storage network.
+4. Verify the network configuration is ready on all nodes before continuing.
 
-# Check available NICs
-ip link show
+## Step 3: Configure Harvester to Use the Storage Network
 
-# Configure the storage NIC with a static IP
-sudo vi /etc/sysconfig/network/ifcfg-eth2
-```
-
-```ini
-# /etc/sysconfig/network/ifcfg-eth2
-# Storage network interface configuration
-
-STARTMODE='auto'
-BOOTPROTO='static'
-IPADDR='10.200.0.11'
-NETMASK='255.255.255.0'
-# No default gateway on storage NIC (traffic stays local)
-# MTU for jumbo frames
-MTU='9000'
-```
-
-```bash
-# Bring up the storage interface
-sudo wicked ifup eth2
-
-# Verify the interface is up with the correct IP
-ip addr show eth2
-
-# Test connectivity to other nodes
-ping -c 3 10.200.0.12
-ping -c 3 10.200.0.13
-```
-
-Repeat on Node 2 (10.200.0.12) and Node 3 (10.200.0.13).
-
-## Step 3: Configure Longhorn to Use the Storage Network
-
-Longhorn uses the `storage-network` setting to direct replication traffic to a specific network interface:
+Harvester manages the underlying Longhorn `storage-network` setting for you. Configure the Harvester setting rather than editing Longhorn directly.
 
 ### Via the Harvester UI
 
-1. Navigate to **Settings** → **Harvester Settings**
-2. Find **Storage Network** and click **Edit**
-3. Enter the storage network CIDR: `10.200.0.0/24`
+1. Navigate to **Advanced** → **Settings** → **storage-network**
+2. Select **Enabled**
+3. Enter the storage VLAN ID (`100`), cluster network (`storage`), IP range (`10.200.0.0/24`), and any required exclude entries
 4. Click **Save**
 
 ### Via kubectl
 
 ```yaml
-# longhorn-storage-network.yaml
-# Configure Longhorn to use the dedicated storage network
+# harvester-storage-network.yaml
+# Configure Harvester to create and manage the Longhorn storage network
 
-apiVersion: longhorn.io/v1beta2
+apiVersion: harvesterhci.io/v1beta1
 kind: Setting
 metadata:
   name: storage-network
-  namespace: longhorn-system
-spec:
-  # CIDR of the storage network
-  # Longhorn will use the NIC with an IP in this range for replication
-  value: "10.200.0.0/24"
+value: '{"vlan":100,"clusterNetwork":"storage","range":"10.200.0.0/24","exclude":["10.200.0.1/32"]}'
 ```
 
 ```bash
-kubectl apply -f longhorn-storage-network.yaml
+kubectl apply -f harvester-storage-network.yaml
 
 # Verify the setting was applied
-kubectl get setting storage-network -n longhorn-system \
-    -o jsonpath='{.spec.value}'
+kubectl get settings.harvesterhci.io storage-network \
+    -o jsonpath='{.value}'
 ```
 
 ### Verify Longhorn Is Using the Storage Network
 
-After applying the setting, Longhorn pods will restart. Verify the network is being used:
+After applying the setting, Harvester stops pods attached to Longhorn volumes, recreates the Longhorn `instance-manager` and `backing-image-manager` pods, and leaves stopped VMs powered off. Verify the network is being used:
 
 ```bash
-# Check Longhorn manager logs for storage network information
-kubectl logs -n longhorn-system \
-    $(kubectl get pods -n longhorn-system -l app=longhorn-manager -o name | head -1) \
-    | grep -i "storage network"
+# Confirm the Harvester setting completed successfully
+# Look for status.conditions[type=configured].status: "True"
+kubectl get settings.harvesterhci.io storage-network -o yaml
 
-# Check the node's storage IP is visible to Longhorn
-kubectl get nodes.longhorn.io -n longhorn-system -o yaml | \
-    grep -A 5 "storageIP"
+# Pick an instance-manager pod, then inspect its network status
+kubectl -n longhorn-system get pods -l longhorn.io/component=instance-manager
+kubectl -n longhorn-system describe pod <instance-manager-pod>
+
+# The storage-network interface should appear as lhnet1
+kubectl -n longhorn-system exec <instance-manager-pod> -- ip addr show lhnet1
 ```
 
 ## Step 4: Configure MTU for Jumbo Frames
 
-Jumbo frames (MTU 9000) significantly improve storage throughput by reducing CPU overhead:
+Jumbo frames (MTU 9000) can improve storage throughput, but in Harvester the storage-network interface inherits its MTU from the attached cluster network. If you need to change the MTU after enabling the storage network, disable the storage network first, update the cluster network MTU, and then re-enable the storage network.
 
 ```bash
-# Verify the switch/physical layer supports jumbo frames
-# (The switch port MTU must also be set to 9000)
-
-# Check current MTU on all nodes
-for NODE in 192.168.1.11 192.168.1.12 192.168.1.13; do
-    echo -n "${NODE} eth2 MTU: "
-    ssh rancher@${NODE} "ip link show eth2 | grep mtu"
-done
-
-# Test jumbo frame connectivity between nodes
-# (packet size 8972 = 9000 - 28 bytes for IP+ICMP headers)
-ping -M do -s 8972 -c 3 10.200.0.12
+# Verify the storage-network interface MTU from a Longhorn instance-manager pod
+kubectl -n longhorn-system exec <instance-manager-pod> -- ip link show lhnet1
 ```
 
-## Step 5: Separate Storage Traffic with Network Policies
+## Step 5: Understand the Isolation Boundary
 
-Additionally, add Kubernetes NetworkPolicies to ensure no VM traffic accidentally routes through the storage network:
-
-```yaml
-# storage-network-policy.yaml
-# Restrict storage namespace traffic to only Longhorn pods
-
-apiVersion: networking.k8s.io/v1
-kind: NetworkPolicy
-metadata:
-  name: longhorn-storage-isolation
-  namespace: longhorn-system
-spec:
-  # Apply to all Longhorn pods
-  podSelector: {}
-  policyTypes:
-    - Ingress
-    - Egress
-  ingress:
-    # Only allow traffic from Longhorn pods and Harvester system
-    - from:
-        - namespaceSelector:
-            matchLabels:
-              kubernetes.io/metadata.name: longhorn-system
-        - namespaceSelector:
-            matchLabels:
-              kubernetes.io/metadata.name: harvester-system
-  egress:
-    - to:
-        - namespaceSelector:
-            matchLabels:
-              kubernetes.io/metadata.name: longhorn-system
-        - namespaceSelector:
-            matchLabels:
-              kubernetes.io/metadata.name: harvester-system
-```
+Harvester isolates Longhorn replication traffic through the custom cluster network, VLAN, and the `storage-network` setting. Standard Kubernetes `NetworkPolicy` objects control Pod-to-Pod traffic on the Kubernetes network, but they do not replace Harvester's storage-network configuration and are not required to route Longhorn replication over the dedicated storage network.
 
 ## Step 6: Monitor Storage Network Performance
 
 ```bash
-# Monitor storage network utilization on each node
-# SSH into a node and run:
-sar -n DEV 1 10 | grep eth2
+# Check interface counters on the storage uplink from a Harvester node
+ip -s link show eth2
 
-# Or use iftop for real-time monitoring
-iftop -i eth2
-
-# Check Longhorn replication status (should see storage IPs in use)
-kubectl get replicas -n longhorn-system -o wide
-
-# Verify no storage traffic is flowing through management NIC
-iftop -i eth0  # Should show minimal traffic during storage operations
+# Check counters on the storage-network interface inside an instance-manager pod
+kubectl -n longhorn-system exec <instance-manager-pod> -- ip -s link show lhnet1
 ```
 
 ## Benchmarking Storage Throughput
@@ -216,19 +135,42 @@ After configuring the storage network, benchmark to verify improvement:
 # Run a Longhorn disk benchmark
 kubectl apply -f - <<EOF
 apiVersion: v1
+kind: PersistentVolumeClaim
+metadata:
+  name: benchmark-pvc
+  namespace: default
+spec:
+  accessModes:
+    - ReadWriteOnce
+  resources:
+    requests:
+      storage: 10Gi
+  storageClassName: harvester-longhorn
+---
+apiVersion: v1
 kind: Pod
 metadata:
   name: storage-benchmark
   namespace: default
 spec:
+  restartPolicy: Never
   containers:
     - name: fio
-      image: nixery.dev/fio
-      command: ["fio", "--name=randwrite", "--ioengine=libaio",
-                "--iodepth=16", "--rw=randwrite", "--bs=4k",
-                "--direct=1", "--size=1G", "--numjobs=4",
-                "--runtime=60", "--time_based", "--group_reporting",
-                "--filename=/mnt/test/testfile"]
+      image: nixery.dev/shell/fio
+      command:
+        - fio
+        - --name=randwrite
+        - --ioengine=libaio
+        - --iodepth=16
+        - --rw=randwrite
+        - --bs=4k
+        - --direct=1
+        - --size=1G
+        - --numjobs=4
+        - --runtime=60
+        - --time_based
+        - --group_reporting
+        - --filename=/mnt/test/testfile
       volumeMounts:
         - mountPath: /mnt/test
           name: test-vol
@@ -236,10 +178,12 @@ spec:
     - name: test-vol
       persistentVolumeClaim:
         claimName: benchmark-pvc
-  restartPolicy: Never
 EOF
+
+# Follow the benchmark output once the pod starts
+kubectl logs -f pod/storage-benchmark
 ```
 
 ## Conclusion
 
-A dedicated storage network is an essential optimization for production Harvester deployments. By directing Longhorn replication traffic to a separate high-bandwidth NIC - ideally with jumbo frames enabled - you eliminate a significant source of network contention. The result is more predictable latency for management operations, better VM network performance, and improved Longhorn replication throughput. Implement the storage network before adding significant VM workloads to avoid disruptive reconfigurations later.
+A dedicated storage network is an essential optimization for production Harvester deployments. By directing Longhorn replication traffic to a separate high-bandwidth network - ideally with jumbo frames enabled on the attached cluster network - you eliminate a significant source of network contention. The result is more predictable latency for management operations, better VM network performance, and improved Longhorn replication throughput. Implement the storage network before adding significant VM workloads to avoid disruptive reconfigurations later.
