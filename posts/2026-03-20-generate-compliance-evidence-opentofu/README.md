@@ -6,7 +6,7 @@ Tags: OpenTofu, Compliance, Evidence Generation, Audit, Infrastructure as Code
 
 Description: Learn how to extract compliance evidence from OpenTofu state files to support security audits and regulatory assessments.
 
-OpenTofu state files contain the current configuration of all managed resources. Auditors often need evidence that specific controls are in place - encryption enabled, logging configured, access restricted. This guide shows how to extract that evidence programmatically from state.
+OpenTofu state files record the current state of managed resources and outputs, along with metadata OpenTofu uses to track them. Auditors often need evidence that specific controls are in place - encryption enabled, logging configured, access restricted. This guide shows how to extract that evidence programmatically from state.
 
 ## Exporting State as JSON
 
@@ -21,9 +21,12 @@ tofu state pull > raw-state.json
 
 ## State JSON Structure
 
+The examples below use the structured output from `tofu show -json`. A simplified example looks like:
+
 ```json
 {
   "format_version": "1.0",
+  "terraform_version": "1.11.0",
   "values": {
     "root_module": {
       "resources": [
@@ -45,12 +48,12 @@ tofu state pull > raw-state.json
 
 ```python
 #!/usr/bin/env python3
-# generate-encryption-evidence.py
+# scripts/generate-encryption-evidence.py
 # Extracts encryption settings from OpenTofu state for audit evidence
 
 import json
 import sys
-from datetime import datetime
+from datetime import datetime, timezone
 
 with open(sys.argv[1]) as f:
     state = json.load(f)
@@ -71,7 +74,7 @@ def get_resources(state):
 resources = get_resources(state)
 
 evidence = {
-    "generated_at": datetime.utcnow().isoformat(),
+    "generated_at": datetime.now(timezone.utc).isoformat(),
     "s3_encryption": [],
     "rds_encryption": [],
     "ebs_encryption": [],
@@ -84,9 +87,14 @@ for r in resources:
     if rtype == "aws_s3_bucket_server_side_encryption_configuration":
         rules = values.get("rule", [])
         for rule in rules:
+            default_encryption = rule.get("apply_server_side_encryption_by_default", {})
+            if isinstance(default_encryption, list):
+                default_encryption = default_encryption[0] if default_encryption else {}
+
             evidence["s3_encryption"].append({
-                "bucket": r["address"],
-                "algorithm": rule.get("apply_server_side_encryption_by_default", [{}])[0].get("sse_algorithm", "NONE"),
+                "address": r["address"],
+                "bucket": values.get("bucket") or values.get("id") or r["address"],
+                "algorithm": default_encryption.get("sse_algorithm", "NONE"),
                 "bucket_key_enabled": rule.get("bucket_key_enabled", False),
             })
 
@@ -113,7 +121,7 @@ print("Compliance evidence written to compliance-evidence.json")
 
 ```python
 #!/usr/bin/env python3
-# evidence-report.py - generate a Markdown compliance evidence report
+# scripts/evidence-report.py - generate a Markdown compliance evidence report
 
 import json, sys
 from datetime import datetime
@@ -158,6 +166,9 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
+      - uses: opentofu/setup-opentofu@v1
+      - name: Initialize OpenTofu
+        run: tofu init -input=false
       - name: Export State
         run: tofu show -json > state.json
       - name: Generate Evidence
