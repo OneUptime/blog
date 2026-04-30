@@ -15,10 +15,10 @@ Extreme Networks switches running ExtremeXOS support IPv6 with a configuration s
 ```bash
 # Enable IPv6 unicast routing
 
-configure forwarding ipv6 enable
+enable ipforwarding ipv6
 
 # Verify
-show forwarding ipv6
+show ipconfig ipv6
 ```
 
 ## Step 2: Configure IPv6 on a VLAN
@@ -29,44 +29,46 @@ Unlike Cisco, Extreme uses VLAN names as the primary identifier:
 # Create VLAN and assign IPv6 address
 create vlan "employee-vlan" tag 100
 configure vlan "employee-vlan" ipaddress 192.168.100.1/24   # IPv4
-configure vlan "employee-vlan" ipv6 address 2001:db8:1:100::1/64 add
+configure vlan "employee-vlan" ipaddress 2001:db8:1:100::1/64
 
 # Enable IPv6 on the VLAN
-enable ipv6 vlan "employee-vlan"
+enable ipforwarding ipv6 vlan "employee-vlan"
 
 # Verify
-show ipv6 vlan "employee-vlan"
+show ipconfig ipv6 vlan "employee-vlan"
 ```
 
 ## Step 3: Configure Router Advertisements
 
 ```bash
 # Enable RA on the VLAN
-configure ipv6 neighbor-discovery vlan "employee-vlan" router-advertisement send enable
+enable router-discovery ipv6 vlan "employee-vlan"
 
-# Set RA interval
-configure ipv6 neighbor-discovery vlan "employee-vlan" router-advertisement interval 100
+# Set RA intervals
+configure vlan "employee-vlan" router-discovery ipv6 max-interval 100
+configure vlan "employee-vlan" router-discovery ipv6 min-interval 33
 
 # Set router lifetime
-configure ipv6 neighbor-discovery vlan "employee-vlan" router-advertisement lifetime 1800
+configure vlan "employee-vlan" router-discovery ipv6 default-lifetime 1800
 
 # Configure the prefix to advertise
-configure ipv6 neighbor-discovery vlan "employee-vlan" router-advertisement prefix 2001:db8:1:100::/64 \
-    valid-lifetime 86400 preferred-lifetime 14400 autonomous on onlink on add
+configure vlan "employee-vlan" router-discovery ipv6 add prefix 2001:db8:1:100::/64
+configure vlan "employee-vlan" router-discovery ipv6 set prefix 2001:db8:1:100::/64 \
+    valid-lifetime 86400 preferred-lifetime 14400 autonomous-flag on onlink-flag on
 
 # Set M and O flags (off for SLAAC)
-configure ipv6 neighbor-discovery vlan "employee-vlan" router-advertisement managed-flag off
-configure ipv6 neighbor-discovery vlan "employee-vlan" router-advertisement other-flag off
+configure vlan "employee-vlan" router-discovery ipv6 managed-config-flag off
+configure vlan "employee-vlan" router-discovery ipv6 other-config-flag off
 ```
 
 ## Step 4: Configure Static IPv6 Routes
 
 ```bash
 # Add a static IPv6 route
-configure iproute add default 2001:db8:isp::1 vr "VR-Default" ipv6
+configure iproute add default 2001:db8:0:ff::1 vr "VR-Default"
 
 # Add a specific route
-configure iproute add 2001:db8:2::/48 2001:db8:0:1::2 vr "VR-Default" ipv6
+configure iproute add 2001:db8:2::/48 2001:db8:0:1::2 vr "VR-Default"
 
 # Verify routing table
 show iproute ipv6
@@ -94,55 +96,58 @@ show ospfv3 route
 
 ```bash
 # Create an IPv6 access list
-create access-list ipv6_protect any icmpv6 type any code any permit
+create access-list ipv6_protect "protocol icmpv6" "permit"
 
 # Block specific traffic
-create access-list ipv6_deny_ssh 2001:db8:bad::/48 any TCP destPort 22 deny
+create access-list ipv6_deny_ssh "source-address 2001:db8:bad::/48;protocol tcp;destination-port 22" "deny"
 
-# Apply to VLAN
-configure access-list add ipv6_protect any first vlan "employee-vlan" ingress
+# Apply to VLAN ingress
+configure access-list add ipv6_deny_ssh first vlan "employee-vlan" ingress
+configure access-list add ipv6_protect last vlan "employee-vlan" ingress
 ```
 
-## Step 7: Configure DHCPv6 Snooping
+## Step 7: Configure DHCPv6 Prefix Delegation Snooping
 
 ```bash
-# Enable DHCPv6 snooping on a VLAN
-configure dhcpv6-snooping vlan "employee-vlan" enable
+# Add the DHCPv6 relay destination
+configure bootprelay ipv6 add 2001:db8:0:200::10 vr "VR-Default"
 
-# Configure trusted ports (uplink to DHCPv6 server)
-configure dhcpv6-snooping port 1 trust-port
-configure dhcpv6-snooping port 2:1 trust-port
+# Enable DHCPv6 relay on the VLAN
+enable bootprelay ipv6 vlan "employee-vlan"
+
+# Enable prefix delegation snooping on the VLAN
+configure bootprelay ipv6 prefix-delegation snooping on vlan "employee-vlan"
 ```
 
 ## Step 8: Save Configuration
 
 ```bash
 # Save configuration
-save config
+save configuration
 ```
 
 ## Verification Commands
 
 ```bash
 # Show all IPv6 addresses
-show ipv6 interface
+show ipconfig ipv6
 
 # Show IPv6 routing table
 show iproute ipv6
 
 # Show IPv6 neighbor table
-show ipv6 neighbors
+show neighbor-discovery cache ipv6
 
 # Show OSPFv3 neighbors
 show ospfv3 neighbor
 
 # Show RA configuration
-show ipv6 neighbor-discovery router-advertisement vlan "employee-vlan"
+show router-discovery ipv6 vlan "employee-vlan"
 
 # Ping test
-ping 2606:4700:4700::1111 vr VR-Default ipv6
+ping vr VR-Default ipv6 2606:4700:4700::1111
 ```
 
 ## Conclusion
 
-ExtremeXOS IPv6 configuration uses VLAN-centric syntax rather than interface-based syntax, reflecting Extreme's network philosophy. Once familiar with the `configure vlan ... ipv6` and `configure ipv6 neighbor-discovery vlan ...` patterns, the remaining features (static routes, OSPFv3, ACLs) follow logically. The `show iproute ipv6` and `show ipv6 neighbors` commands provide the primary verification views for IPv6 connectivity.
+ExtremeXOS IPv6 configuration uses VLAN-centric syntax rather than interface-based syntax, reflecting Extreme's network philosophy. Once familiar with the `configure vlan ... ipaddress`, `enable ipforwarding ipv6`, and `configure vlan ... router-discovery ...` patterns, the remaining features (static routes, OSPFv3, ACLs) follow logically. The `show iproute ipv6` and `show neighbor-discovery cache ipv6` commands provide the primary verification views for IPv6 connectivity.
