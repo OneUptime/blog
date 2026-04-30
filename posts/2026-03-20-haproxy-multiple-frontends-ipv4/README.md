@@ -33,6 +33,7 @@ global
     user haproxy
     group haproxy
     daemon
+    stats socket /var/run/haproxy/admin.sock mode 660 level admin
 
 defaults
     log     global
@@ -65,6 +66,7 @@ frontend api-ssl
 frontend db-proxy
     bind 192.168.1.30:3306
     mode tcp
+    option tcplog
     default_backend mysql_servers
 
 #-----------------------------------------------------------
@@ -125,7 +127,7 @@ frontend stats
 
 ```bash
 # View stats in text form from the CLI
-echo "show stat" | socat stdio /var/run/haproxy/admin.sock | cut -d',' -f1,2,18
+echo "show stat" | socat /var/run/haproxy/admin.sock stdio | cut -d',' -f1,2,18
 ```
 
 ## Key Takeaways
