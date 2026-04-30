@@ -8,7 +8,7 @@ Description: Learn how to install and configure GKE Config Connector with OpenTo
 
 ## Overview
 
-GKE Config Connector is a Kubernetes add-on that lets you manage GCP resources through Kubernetes Custom Resource Definitions (CRDs). It bridges Kubernetes and GCP, allowing teams to declare GCP resources in YAML manifests alongside their Kubernetes workloads.
+Config Connector is available as a GKE add-on that lets you manage GCP resources through Kubernetes Custom Resource Definitions (CRDs). It bridges Kubernetes and GCP, allowing teams to declare GCP resources in YAML manifests alongside their Kubernetes workloads.
 
 ## Step 1: Enable Config Connector on GKE Cluster
 
@@ -19,8 +19,7 @@ resource "google_container_cluster" "config_connector_cluster" {
   name     = "config-connector-cluster"
   location = "us-central1"
 
-  remove_default_node_pool = true
-  initial_node_count       = 1
+  initial_node_count = 1
 
   network    = google_compute_network.vpc.name
   subnetwork = google_compute_subnetwork.subnet.name
@@ -28,6 +27,15 @@ resource "google_container_cluster" "config_connector_cluster" {
   # Workload Identity is required for Config Connector
   workload_identity_config {
     workload_pool = "${var.project_id}.svc.id.goog"
+  }
+
+  # Config Connector requires Kubernetes Engine Monitoring
+  logging_config {
+    enable_components = ["SYSTEM_COMPONENTS"]
+  }
+
+  monitoring_config {
+    enable_components = ["SYSTEM_COMPONENTS"]
   }
 
   # Enable Config Connector add-on
@@ -55,19 +63,42 @@ resource "google_project_iam_member" "config_connector_editor" {
   member  = "serviceAccount:${google_service_account.config_connector_sa.email}"
 }
 
-# Bind Config Connector's Kubernetes SA to the GCP SA
+# Allow Config Connector to publish metrics from the namespace-scoped controller
+resource "google_project_iam_member" "config_connector_metric_writer" {
+  project = var.project_id
+  role    = "roles/monitoring.metricWriter"
+  member  = "serviceAccount:${google_service_account.config_connector_sa.email}"
+}
+
+# Bind Config Connector's namespace-scoped Kubernetes SA to the GCP SA
 resource "google_service_account_iam_member" "config_connector_workload_identity" {
   service_account_id = google_service_account.config_connector_sa.name
   role               = "roles/iam.workloadIdentityUser"
-  member             = "serviceAccount:${var.project_id}.svc.id.goog[cnrm-system/cnrm-controller-manager]"
+  member             = "serviceAccount:${var.project_id}.svc.id.goog[cnrm-system/cnrm-controller-manager-app-namespace]"
 }
 ```
 
 ## Step 3: Configure ConfigConnectorContext
 
 ```hcl
+resource "kubernetes_namespace_v1" "app_namespace" {
+  metadata {
+    name = "app-namespace"
+    annotations = {
+      "cnrm.cloud.google.com/project-id" = var.project_id
+    }
+  }
+}
+
 # Namespace-level Config Connector configuration
 resource "kubernetes_manifest" "config_connector_context" {
+  depends_on = [
+    kubernetes_namespace_v1.app_namespace,
+    google_project_iam_member.config_connector_editor,
+    google_project_iam_member.config_connector_metric_writer,
+    google_service_account_iam_member.config_connector_workload_identity,
+  ]
+
   manifest = {
     apiVersion = "core.cnrm.cloud.google.com/v1beta1"
     kind       = "ConfigConnectorContext"
@@ -77,7 +108,7 @@ resource "kubernetes_manifest" "config_connector_context" {
     }
     spec = {
       googleServiceAccount = google_service_account.config_connector_sa.email
-      requestProjectPolicy = "RESOURCE_PROJECT"
+      stateIntoSpec        = "Absent"
     }
   }
 }
@@ -86,17 +117,16 @@ resource "kubernetes_manifest" "config_connector_context" {
 ## Step 4: Use Config Connector to Create GCP Resources
 
 ```hcl
-# Create a Cloud SQL database via Config Connector CRD (managed by Kubernetes)
+# Create a Cloud SQL instance via Config Connector CRD (managed by Kubernetes)
 resource "kubernetes_manifest" "sql_instance" {
+  depends_on = [kubernetes_manifest.config_connector_context]
+
   manifest = {
     apiVersion = "sql.cnrm.cloud.google.com/v1beta1"
     kind       = "SQLInstance"
     metadata = {
       name      = "my-sql-instance"
       namespace = "app-namespace"
-      annotations = {
-        "cnrm.cloud.google.com/project-id" = var.project_id
-      }
     }
     spec = {
       region          = "us-central1"
@@ -114,4 +144,4 @@ resource "kubernetes_manifest" "sql_instance" {
 
 ## Summary
 
-GKE Config Connector with OpenTofu enables a GitOps-friendly approach to managing GCP resources through Kubernetes CRDs. Teams can declare GCP databases, storage, and services alongside their application YAML manifests. OpenTofu manages the cluster and Config Connector installation, while developers use kubectl to manage application-specific GCP resources.
+GKE Config Connector with OpenTofu enables a GitOps-friendly approach to managing GCP resources through Kubernetes CRDs. Teams can declare GCP databases, storage, and services alongside their application YAML manifests. OpenTofu manages the cluster, IAM bindings, and Config Connector setup, while teams manage application-specific GCP resources through Kubernetes manifests.
