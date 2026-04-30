@@ -8,29 +8,29 @@ Description: Configure Helm to pull charts from repositories hosted on IPv6 serv
 
 ## Introduction
 
-Helm fetches chart packages from HTTP/HTTPS repositories and OCI registries. When chart repositories are hosted on IPv6-addressed servers, Helm connects via IPv6 using bracket notation for literal addresses in URLs. Authentication, TLS verification, and OCI registry access all work identically to IPv4, with the URL being the only IPv6-specific element.
+Helm fetches chart packages from HTTP/HTTPS repositories and OCI registries. When chart repositories are hosted on IPv6-addressed servers, Helm connects via IPv6 using bracket notation for literal IPv6 addresses in URLs. Authentication, TLS verification, and OCI registry access all work identically to IPv4, with the URL or registry host being the only IPv6-specific element.
 
 ## Add a Helm Repository with IPv6 Address
 
 ```bash
 # Add an HTTP Helm repository over IPv6
 
-helm repo add myrepo "http://[2001:db8::chartserver]:8080/charts"
+helm repo add myrepo "http://[2001:db8::10]:8080/charts"
 
 # Add an HTTPS Helm repository over IPv6
-helm repo add myrepo "https://[2001:db8::chartserver]:443/charts"
+helm repo add myrepo "https://[2001:db8::10]:443/charts"
 
 # Add with authentication
-helm repo add private-repo "https://[2001:db8::chartserver]:443/charts" \
+helm repo add private-repo "https://[2001:db8::10]:443/charts" \
     --username myuser \
     --password mypassword
 
 # Add with custom CA certificate (for self-signed certs on IPv6 servers)
-helm repo add secure-repo "https://[2001:db8::chartserver]:443/charts" \
+helm repo add secure-repo "https://[2001:db8::10]:443/charts" \
     --ca-file /etc/ssl/certs/internal-ca.crt
 
 # Skip TLS verification (testing only)
-helm repo add insecure-repo "https://[2001:db8::chartserver]:443/charts" \
+helm repo add insecure-repo "https://[2001:db8::10]:443/charts" \
     --insecure-skip-tls-verify
 
 # Update all repos
@@ -49,61 +49,57 @@ chartmuseum \
     --port 8080 \
     --storage local \
     --storage-local-rootdir /var/chartmuseum \
-    --listen-addr "[::]:8080"    # Listen on all IPv6
+    --listen-host "[::]"    # Listen on all IPv6 interfaces
 
 # Or bind to specific IPv6 address
 chartmuseum \
     --port 8080 \
     --storage local \
     --storage-local-rootdir /var/chartmuseum \
-    --listen-addr "[2001:db8::chartserver]:8080"
+    --listen-host "[2001:db8::10]"
 
-# Push a chart to ChartMuseum over IPv6
-helm push mychart-1.0.0.tgz "http://[2001:db8::chartserver]:8080"
-# or using cm-push plugin:
-helm cm-push mychart/ "http://[2001:db8::chartserver]:8080"
+# Install the ChartMuseum push plugin
+helm plugin install https://github.com/chartmuseum/helm-push
+
+# Push a chart to ChartMuseum over IPv6 using the helm cm-push plugin
+helm cm-push mychart-1.0.0.tgz "http://[2001:db8::10]:8080"
+# Or package and push from a chart directory:
+helm cm-push mychart/ "http://[2001:db8::10]:8080"
 ```
 
 ## OCI Registry Helm Charts over IPv6
 
 ```bash
 # Log in to an OCI registry over IPv6
-helm registry login "[2001:db8::registry]:5000" \
+helm registry login "[2001:db8::20]:5000" \
     --username user \
-    --password password \
-    --insecure   # Only for registries without TLS
+    --password password
+
+# For a plain-HTTP registry, add --plain-http to registry operations.
 
 # Push a chart to OCI registry over IPv6
-helm push mychart-1.0.0.tgz "oci://[2001:db8::registry]:5000/charts"
+helm push mychart-1.0.0.tgz "oci://[2001:db8::20]:5000/charts"
 
 # Pull a chart from OCI registry over IPv6
-helm pull "oci://[2001:db8::registry]:5000/charts/mychart" --version 1.0.0
+helm pull "oci://[2001:db8::20]:5000/charts/mychart" --version 1.0.0
 
 # Install from OCI registry over IPv6
-helm install myrelease "oci://[2001:db8::registry]:5000/charts/mychart" \
+helm install myrelease "oci://[2001:db8::20]:5000/charts/mychart" \
     --version 1.0.0
 
-# List versions in OCI registry over IPv6
-helm show chart "oci://[2001:db8::registry]:5000/charts/mychart"
+# Show chart metadata from OCI registry over IPv6
+helm show chart "oci://[2001:db8::20]:5000/charts/mychart" --version 1.0.0
 ```
 
 ## Helm with Harbor Registry over IPv6
 
 ```bash
-# Harbor (OCI registry) listening on IPv6
-
-# Add Harbor as Helm repo (non-OCI / legacy)
-helm repo add harbor "https://[2001:db8::harbor]:443/chartrepo/myproject" \
-    --username admin \
-    --password harborpassword \
-    --ca-file /etc/ssl/certs/harbor-ca.crt
-
-# OCI-mode with Harbor over IPv6
-helm registry login "[2001:db8::harbor]:443" \
+# Harbor OCI registry over IPv6
+helm registry login "[2001:db8::30]:443" \
     --username admin \
     --password harborpassword
 
-helm install myapp "oci://[2001:db8::harbor]:443/myproject/mychart" \
+helm install myapp "oci://[2001:db8::30]:443/myproject/mychart" \
     --version 2.1.0
 ```
 
@@ -111,6 +107,7 @@ helm install myapp "oci://[2001:db8::harbor]:443/myproject/mychart" \
 
 ```yaml
 # docker-compose.yml for ChartMuseum with IPv6
+# Requires Docker IPv6 support.
 
 services:
   chartmuseum:
@@ -123,10 +120,16 @@ services:
       STORAGE: local
       STORAGE_LOCAL_ROOTDIR: /charts
       PORT: "8080"
-      LISTEN_ADDR: "::"   # Listen on all interfaces
+      LISTEN_HOST: "[::]"   # Listen on all IPv6 interfaces
+    networks:
+      - chartmuseum-net
 
 volumes:
   chartmuseum-data:
+
+networks:
+  chartmuseum-net:
+    enable_ipv6: true
 ```
 
 ## Kubernetes Helm with IPv6 Service
@@ -151,10 +154,11 @@ spec:
 ```
 
 ```bash
-# Access chartmuseum from within the cluster over IPv6
-helm repo add internal "http://chartmuseum.namespace.svc.cluster.local:8080"
+# Access chartmuseum from within the cluster using Service DNS
+NAMESPACE=default
+helm repo add internal "http://chartmuseum.${NAMESPACE}.svc.cluster.local:8080"
 
-# Or via IPv6 service address
+# Or via the primary IPv6 Service address
 CHART_SVC_IP=$(kubectl get svc chartmuseum -o jsonpath='{.spec.clusterIPs[0]}')
 helm repo add internal "http://[$CHART_SVC_IP]:8080"
 ```
@@ -165,7 +169,7 @@ helm repo add internal "http://[$CHART_SVC_IP]:8080"
 # ~/.config/helm/repositories.yaml (or %APPDATA%/helm/repositories.yaml)
 # Helm stores repo configs here
 
-apiVersion: ""
+apiVersion: v1
 generated: "2024-01-01T00:00:00.000000000Z"
 repositories:
   - caFile: ""
@@ -175,7 +179,7 @@ repositories:
     name: myrepo
     pass_credentials_all: false
     password: ""
-    url: https://[2001:db8::chartserver]:443/charts
+    url: https://[2001:db8::10]:443/charts
     username: ""
 ```
 
@@ -191,14 +195,14 @@ helm search repo myrepo/
 # Fetch chart info without installing
 helm show chart myrepo/mychart
 
-# Check helm env for proxy settings (may affect IPv6)
-helm env | grep -i proxy
+# Check proxy settings (may affect IPv6 and NO_PROXY behavior)
+env | grep -iE '^(http|https|no)_proxy='
 
 # Debug connection issues
-helm repo add myrepo "https://[2001:db8::chartserver]:443/charts" \
+helm repo add myrepo "https://[2001:db8::10]:443/charts" \
     --debug 2>&1 | head -30
 ```
 
 ## Conclusion
 
-Helm connects to chart repositories and OCI registries over IPv6 using bracket notation for IPv6 literal addresses in URLs (e.g., `https://[2001:db8::chartserver]:443/charts`). All standard Helm repo operations (`helm repo add`, `helm pull`, `helm install`) accept IPv6 URLs without additional flags. ChartMuseum binds to IPv6 with `--listen-addr "[::]:8080"`. OCI registries accessed via `helm registry login` and `oci://` URLs support IPv6 natively. TLS certificates for IPv6 Helm repos must include the IPv6 address as a Subject Alternative Name. Provide the CA certificate via `--ca-file` when using self-signed certificates on IPv6 endpoints.
+Helm connects to chart repositories and OCI registries over IPv6 using bracket notation for IPv6 literal addresses in URLs (e.g., `https://[2001:db8::10]:443/charts`). Standard Helm repo and OCI operations accept IPv6 addresses; flags such as `--ca-file`, `--insecure-skip-tls-verify`, or `--plain-http` depend on your TLS configuration, not on IPv6 itself. ChartMuseum binds to IPv6 with `--listen-host "[::]"`, and uploads to ChartMuseum use the `helm cm-push` plugin while Helm's built-in `helm push` is for OCI registries. When you connect to a Helm repo or registry by literal IPv6 address, the certificate must include that IP address as an `iPAddress` Subject Alternative Name. Provide the CA certificate via `--ca-file` when using self-signed certificates on IPv6 endpoints.
