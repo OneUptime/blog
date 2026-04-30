@@ -92,11 +92,27 @@ resource "google_cloud_scheduler_job" "http_job" {
 ## Cloud Function Target
 
 ```hcl
+resource "google_cloudfunctions2_function_iam_member" "cleanup_invoker" {
+  project        = google_cloudfunctions2_function.cleanup.project
+  location       = google_cloudfunctions2_function.cleanup.location
+  cloud_function = google_cloudfunctions2_function.cleanup.name
+  role           = "roles/cloudfunctions.invoker"
+  member         = "serviceAccount:${google_service_account.scheduler.email}"
+}
+
+resource "google_cloud_run_service_iam_member" "cleanup_run_invoker" {
+  project  = google_cloudfunctions2_function.cleanup.project
+  location = google_cloudfunctions2_function.cleanup.location
+  service  = google_cloudfunctions2_function.cleanup.name
+  role     = "roles/run.invoker"
+  member   = "serviceAccount:${google_service_account.scheduler.email}"
+}
+
 resource "google_cloud_scheduler_job" "function_job" {
-  name     = "${var.app_name}-function-scheduler"
-  project  = var.project_id
-  region   = var.region
-  schedule = "0 2 * * *"  # daily at 2 AM
+  name      = "${var.app_name}-function-scheduler"
+  project   = var.project_id
+  region    = var.region
+  schedule  = "0 2 * * *"  # daily at 2 AM
   time_zone = "UTC"
 
   http_target {
@@ -135,7 +151,10 @@ resource "google_cloud_scheduler_job" "appengine_job" {
 
 ```hcl
 variable "project_id"  { type = string }
-variable "region"      { type = string  default = "us-central1" }
+variable "region" {
+  type    = string
+  default = "us-central1"
+}
 variable "app_name"    { type = string }
 variable "environment" { type = string }
 
