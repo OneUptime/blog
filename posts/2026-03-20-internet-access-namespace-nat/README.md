@@ -4,11 +4,11 @@ Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
 Tags: Linux, Network Namespaces, NAT, iptables, nftables, Internet Access, Networking
 
-Description: Give a Linux network namespace internet access by enabling IP forwarding on the host and configuring NAT masquerade rules to forward and translate namespace traffic.
+Description: Give a Linux network namespace internet access by enabling IP forwarding on the host and configuring NAT masquerade and forwarding rules so namespace traffic can reach the internet.
 
 ## Introduction
 
-By default, a network namespace has no internet access. To give it internet connectivity, you need to connect it to the host network via a veth pair, enable IP forwarding on the host, and add a NAT masquerade rule so the namespace's private IP is translated to the host's public IP when sending traffic out.
+By default, a newly created network namespace has no internet access. To give it internet connectivity, you need to connect it to the host network via a veth pair, enable IP forwarding on the host, and add a NAT masquerade rule so the namespace's private IP is translated to the address on the host's outbound interface when sending traffic out. If the host firewall drops forwarded traffic, you also need forwarding rules that allow packets between the veth interface and the internet-facing interface.
 
 ## Architecture
 
@@ -58,18 +58,25 @@ sysctl -w net.ipv4.ip_forward=1
 echo "net.ipv4.ip_forward = 1" >> /etc/sysctl.d/99-forwarding.conf
 ```
 
-## Step 4: Add NAT Masquerade Rule
+## Step 4: Add Forwarding and NAT Rules
 
 Using **iptables**:
 
 ```bash
 # Replace eth0 with your actual internet-facing interface
+iptables -A FORWARD -i veth-host -o eth0 -j ACCEPT
+iptables -A FORWARD -i eth0 -o veth-host -m conntrack --ctstate RELATED,ESTABLISHED -j ACCEPT
 iptables -t nat -A POSTROUTING -s 10.0.0.0/24 -o eth0 -j MASQUERADE
 ```
 
 Using **nftables**:
 
 ```bash
+nft add table inet filter
+nft add chain inet filter forward { type filter hook forward priority 0 \; }
+nft add rule inet filter forward iif "veth-host" oif "eth0" accept
+nft add rule inet filter forward iif "eth0" oif "veth-host" ct state related,established accept
+
 nft add table ip nat
 nft add chain ip nat postrouting { type nat hook postrouting priority 100 \; }
 nft add rule ip nat postrouting ip saddr 10.0.0.0/24 oif "eth0" masquerade
@@ -121,6 +128,8 @@ ip netns exec $NS ip link set $NS_VETH up
 ip netns exec $NS ip route add default via 10.0.0.1
 
 sysctl -w net.ipv4.ip_forward=1
+iptables -A FORWARD -i $HOST_VETH -o $INTERNET_IFACE -j ACCEPT
+iptables -A FORWARD -i $INTERNET_IFACE -o $HOST_VETH -m conntrack --ctstate RELATED,ESTABLISHED -j ACCEPT
 iptables -t nat -A POSTROUTING -s 10.0.0.0/24 -o $INTERNET_IFACE -j MASQUERADE
 
 mkdir -p /etc/netns/$NS
@@ -132,4 +141,4 @@ ip netns exec $NS ping -c 3 8.8.8.8 && echo "Internet access working!"
 
 ## Conclusion
 
-Providing internet access to a network namespace requires four components: a veth pair connecting the namespace to the host, IP forwarding enabled on the host, a NAT masquerade rule for the namespace subnet, and DNS configuration. This is exactly the setup Docker uses for containers in the default bridge network mode.
+Providing internet access to a network namespace requires a veth pair connecting the namespace to the host, IP forwarding enabled on the host, a NAT masquerade rule for the namespace subnet, DNS configuration, and forwarding rules if the host firewall blocks routed traffic. This is the same basic pattern Docker uses to provide outbound connectivity for containers on its default bridge network, although Docker implements it with a Linux bridge and additional firewall rules.
