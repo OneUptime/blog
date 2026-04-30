@@ -98,6 +98,11 @@ resource "google_compute_instance" "gcs_script_vm" {
   machine_type = "e2-medium"
   zone         = "us-central1-a"
 
+  depends_on = [
+    google_storage_bucket_object.startup_script,
+    google_storage_bucket_iam_member.startup_script_reader,
+  ]
+
   boot_disk {
     initialize_params {
       image = "debian-cloud/debian-12"
@@ -106,16 +111,17 @@ resource "google_compute_instance" "gcs_script_vm" {
 
   network_interface {
     subnetwork = google_compute_subnetwork.subnet.self_link
+    access_config {}
   }
 
   service_account {
     email  = google_service_account.vm_sa.email
-    scopes = ["cloud-platform"]
+    scopes = ["storage-ro"]
   }
 
   metadata = {
     # GCS URI to startup script - VM downloads and executes it
-    startup-script-url = "gs://my-scripts-bucket/startup/app-setup.sh"
+    startup-script-url = "gs://${google_storage_bucket.scripts_bucket.name}/${google_storage_bucket_object.startup_script.name}"
   }
 }
 
@@ -125,6 +131,13 @@ resource "google_storage_bucket_object" "startup_script" {
   bucket = google_storage_bucket.scripts_bucket.name
   source = "${path.module}/scripts/app-setup.sh"
 }
+
+# Allow the VM service account to read the startup script from GCS
+resource "google_storage_bucket_iam_member" "startup_script_reader" {
+  bucket = google_storage_bucket.scripts_bucket.name
+  role   = "roles/storage.objectViewer"
+  member = "serviceAccount:${google_service_account.vm_sa.email}"
+}
 ```
 
 ## Step 4: Project-Level Metadata
@@ -133,10 +146,10 @@ resource "google_storage_bucket_object" "startup_script" {
 # Set metadata at project level - applies to all VMs
 resource "google_compute_project_metadata" "project_metadata" {
   metadata = {
-    enable-oslogin      = "TRUE"
-    serial-port-logging = "FALSE"
-    # SSH keys for project-level access
-    ssh-keys = "user:${file("~/.ssh/id_rsa.pub")}"
+    enable-oslogin             = "FALSE"
+    serial-port-logging-enable = "false"
+    # SSH keys for project-level access when OS Login is disabled
+    ssh-keys = "user:${file(pathexpand("~/.ssh/id_rsa.pub"))}"
   }
 }
 ```
