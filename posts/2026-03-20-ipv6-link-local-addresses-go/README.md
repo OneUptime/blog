@@ -4,7 +4,7 @@ Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
 Tags: Go, IPv6, Link-Local, Zone ID, Networking, Net/netip
 
-Description: Handle IPv6 link-local addresses in Go, including zone ID management, interface binding, and NDP neighbor discovery.
+Description: Handle IPv6 link-local addresses in Go, including zone ID management, interface binding, and link-local multicast probing.
 
 ## Understanding Link-Local Addresses
 
@@ -57,7 +57,7 @@ func listLinkLocalAddresses() {
                 continue
             }
 
-            if netipAddr.IsLinkLocalUnicast() {
+            if netipAddr.Is6() && netipAddr.IsLinkLocalUnicast() {
                 // Link-local found - format with zone ID
                 fmt.Printf("%s: [%s%%%s]\n",
                     iface.Name, netipAddr, iface.Name)
@@ -85,14 +85,14 @@ import (
 )
 
 func connectLinkLocal(ipv6Addr, ifaceName string, port int) (net.Conn, error) {
-    // Get interface index
+    // Validate the interface and fetch its index
     iface, err := net.InterfaceByName(ifaceName)
     if err != nil {
         return nil, fmt.Errorf("interface %s not found: %w", ifaceName, err)
     }
 
     // Format address with zone ID
-    // Go's net package accepts both interface name and index as zone
+    // Go's net package accepts an RFC 4007 zone in the literal IPv6 address
     addrWithZone := fmt.Sprintf("[%s%%%s]:%d", ipv6Addr, ifaceName, port)
 
     dialer := &net.Dialer{}
@@ -146,7 +146,11 @@ func listenOnLinkLocal(ifaceName string, port int) (net.Listener, error) {
     for _, addr := range addrs {
         switch v := addr.(type) {
         case *net.IPNet:
-            if v.IP.IsLinkLocalUnicast() {
+            if v.IP.To4() == nil && v.IP.IsLinkLocalUnicast() {
+                linkLocalAddr = v.IP.String()
+            }
+        case *net.IPAddr:
+            if v.IP.To4() == nil && v.IP.IsLinkLocalUnicast() {
                 linkLocalAddr = v.IP.String()
             }
         }
@@ -179,9 +183,9 @@ func handleZoneID() {
         panic(err)
     }
 
-    fmt.Println("Full address:", addr)                // fe80::1%eth0
-    fmt.Println("Zone:", addr.Zone())                 // eth0
-    fmt.Println("Without zone:", addr.WithoutZone())  // fe80::1
+    fmt.Println("Full address:", addr)               // fe80::1%eth0
+    fmt.Println("Zone:", addr.Zone())                // eth0
+    fmt.Println("Without zone:", addr.WithZone(""))  // fe80::1
     fmt.Println("Is link-local:", addr.IsLinkLocalUnicast())  // true
 
     // Compare addresses ignoring zone
@@ -193,11 +197,11 @@ func handleZoneID() {
 
     // Without zone: equal
     fmt.Println("Without zone equal:",
-        addr1.WithoutZone() == addr2.WithoutZone())  // true
+        addr1.WithZone("") == addr2.WithZone(""))  // true
 }
 ```
 
-## NDP Discovery Using Link-Local
+## Link-Local Multicast Probe
 
 ```go
 package main
@@ -208,15 +212,15 @@ import (
     "time"
 )
 
-func pingLinkLocalMulticast(ifaceName string) {
+func probeLinkLocalMulticast(ifaceName string) {
     // ff02::1 is the all-nodes multicast address (link-scope)
     allNodes := fmt.Sprintf("ff02::1%%%s", ifaceName)
 
-    // Use raw ping via OS command (requires root for ICMP)
-    // In production, use golang.org/x/net/icmp package
+    // OS ping tools or raw ICMPv6 are better suited for active discovery.
+    // Neighbor Discovery itself uses ICMPv6, not UDP.
     fmt.Printf("Sending to all-nodes multicast: %s\n", allNodes)
 
-    // Alternative: use UDP to trigger NDP
+    // Send a UDP datagram to a link-scope multicast address
     addr := fmt.Sprintf("[%s]:9999", allNodes)
     conn, err := net.Dial("udp6", addr)
     if err != nil {
@@ -226,11 +230,11 @@ func pingLinkLocalMulticast(ifaceName string) {
     defer conn.Close()
 
     conn.SetDeadline(time.Now().Add(2 * time.Second))
-    conn.Write([]byte("NDP-probe"))
-    fmt.Println("Probe sent - check NDP cache with: ip -6 neigh show")
+    conn.Write([]byte("multicast-probe"))
+    fmt.Println("Probe sent - this is multicast probing, not NDP neighbor discovery")
 }
 ```
 
 ## Conclusion
 
-IPv6 link-local addresses in Go require zone IDs (interface names) for all socket operations. The `net/netip` package provides clean zone ID access via `addr.Zone()` and `addr.WithoutZone()`. When connecting or binding to link-local addresses, always include the `%ifname` suffix to specify which interface the address belongs to.
+When you use IPv6 link-local addresses as literal socket addresses in Go, include a zone ID. The `net/netip` package provides clean zone ID access via `addr.Zone()` and `addr.WithZone("")`. When connecting or binding to a link-local address, include the `%ifname` suffix to specify which interface the address belongs to.
