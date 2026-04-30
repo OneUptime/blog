@@ -14,14 +14,14 @@ Description: Learn how to build a Grafana dashboard showing host-level CPU, memo
 
 ## Quick Start: Import Dashboard 1860
 
-The Node Exporter Full dashboard (ID 1860) is the most comprehensive community dashboard:
+The Node Exporter Full dashboard (ID 1860) is a popular community dashboard:
 
-1. In Grafana: **Dashboards → Import**
+1. In Grafana: **Dashboards → New → Import dashboard**
 2. Enter ID: **1860**
 3. Select Prometheus data source
 4. Click **Import**
 
-This provides 40+ panels covering all Node Exporter metrics out of the box.
+This provides a broad set of host-level panels when your Prometheus scrape job uses the default `job_name: node`; some panels also expect the optional `--collector.systemd` and `--collector.processes` collectors.
 
 ## Building a Custom Host Metrics Dashboard
 
@@ -100,11 +100,15 @@ Compare against CPU count: `node_load1 / count(node_cpu_seconds_total{mode="idle
 Add an instance variable to monitor multiple hosts:
 
 1. **Dashboard Settings → Variables → New Variable**
-2. Query: `label_values(node_cpu_seconds_total, instance)`
-3. Name: `instance`
-4. Multi-value: ON
+2. Type: `Query`
+3. Data source: `Prometheus`
+4. Query type: `Label values`
+5. Metric: `node_cpu_seconds_total`
+6. Label: `instance`
+7. Name: `instance`
+8. Multi-value: ON
 
-Update all queries with `{instance="$instance"}`.
+Update all queries to include `instance=~"$instance"` inside their existing label selectors.
 
 ## Alerting Rules
 
@@ -133,4 +137,4 @@ groups:
 
 ## Conclusion
 
-A Node Exporter Grafana dashboard managed via Portainer provides complete visibility into your Docker host hardware health. Pair it with the container metrics dashboard from cAdvisor and you have full-stack observability - from bare-metal CPU registers to individual container process metrics - all maintained through Portainer's stack management.
+A Node Exporter Grafana dashboard managed via Portainer provides complete visibility into your Docker host hardware health. Pair it with the container metrics dashboard from cAdvisor and you have full-stack observability - from host CPU, memory, disk, and network metrics to individual container metrics - all maintained through Portainer's stack management.
