@@ -4,30 +4,30 @@ Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
 Tags: OpenTofu, Troubleshooting, Lock File, Dependency, Error, Infrastructure as Code
 
-Description: Learn how to diagnose and fix the inconsistent dependency lock file error in OpenTofu, which occurs when installed providers do not match the versions recorded in .terraform.lock.hcl.
+Description: Learn how to diagnose and fix the inconsistent dependency lock file error in OpenTofu, which occurs when the provider selections recorded in .terraform.lock.hcl no longer match the current configuration.
 
 ## Introduction
 
-The "inconsistent dependency lock file" error means that the provider versions currently installed in `.terraform/` do not match what is recorded in `.terraform.lock.hcl`. This typically happens when the lock file was committed from one machine and `tofu init` was not run on the current machine.
+The "inconsistent dependency lock file" error means that the provider selections recorded in `.terraform.lock.hcl` do not match the current `required_providers` configuration. This typically happens after changing provider version constraints, adding a new provider, or resolving a merge without re-running `tofu init`.
 
 ## Error Message
 
-```hcl
+```text
 Error: Inconsistent dependency lock file
 
 The following dependency selections recorded in the lock file are inconsistent with the current configuration:
-  - provider registry.opentofu.org/hashicorp/aws: locked version selection 5.38.0 doesn't match the current version constraints "~> 5.0"
+  - provider registry.opentofu.org/hashicorp/aws: locked version selection 5.38.0 doesn't match the current version constraints "~> 4.0"
 
 To update the locked dependency selections to match a changed configuration, run:
   tofu init -upgrade
 ```
 
-## Cause 1: Lock File Out of Sync - Run tofu init
+## Cause 1: Configuration Changed - Run tofu init
 
-The most common cause is that the lock file was updated but `tofu init` was not re-run:
+The most common cause is that `required_providers` or its version constraints changed but `tofu init` was not re-run to update `.terraform.lock.hcl`:
 
 ```bash
-# Re-download providers to match the lock file
+# Refresh provider selections to match the current configuration
 
 tofu init
 
@@ -48,9 +48,9 @@ git add .terraform.lock.hcl
 git commit -m "chore: update dependency lock file"
 ```
 
-## Cause 3: Platform Mismatch
+## Cause 3: Missing Platform Checksums in the Lock File
 
-If the lock file only has checksums for one platform (e.g., macOS) but you are running on Linux in CI:
+A separate but related lock file problem is when the lock file only has checksums for one platform (for example, macOS) but you are running on Linux in CI. This usually causes a provider checksum error during `tofu init`, and you fix it by updating the lock file:
 
 ```bash
 # On macOS (developer machine), add checksums for all target platforms
@@ -70,8 +70,8 @@ git commit -m "chore: add multi-platform provider checksums"
 After merging two branches that each updated `required_providers`, the lock file may conflict:
 
 ```bash
-# Resolve the merge conflict in .terraform.lock.hcl
-# (Accept one version or the newer one)
+# Resolve the merge conflict in required_providers and .terraform.lock.hcl
+# Then re-run init to select a valid provider version
 
 # Re-run init to re-validate
 tofu init
@@ -82,7 +82,7 @@ tofu init -upgrade
 
 ## Cause 5: Manual Edits to the Lock File
 
-Never manually edit `.terraform.lock.hcl`. Always let `tofu init` manage it:
+Never manually edit `.terraform.lock.hcl`. Always let OpenTofu manage it:
 
 ```bash
 # If the lock file is corrupt, delete it and regenerate
@@ -99,16 +99,17 @@ git commit -m "chore: regenerate lock file"
 
 ```bash
 # Always commit the lock file
-echo "# Always commit lock file" >> .gitignore.notes
 # .gitignore should NOT contain .terraform.lock.hcl
+```
 
+```yaml
 # Run init in CI before any plan/apply
 - name: OpenTofu Init
   run: tofu init -lockfile=readonly
-  # -lockfile=readonly fails if lock file doesn't match installed providers
-  # ensuring CI always runs with exactly the pinned versions
+  # -lockfile=readonly prevents updating .terraform.lock.hcl
+  # and fails if the current configuration needs lock file changes
 ```
 
 ## Conclusion
 
-Inconsistent lock file errors are resolved by running `tofu init` to sync installed providers with the lock file. For multi-platform teams, always run `tofu providers lock -platform=...` with all target platforms before committing. Use `-lockfile=readonly` in CI to catch drift early.
+Inconsistent lock file errors are resolved by running `tofu init` to sync `.terraform.lock.hcl` with the current provider requirements. For multi-platform teams, use `tofu providers lock -platform=...` to pre-populate checksums for all target platforms before committing. Use `-lockfile=readonly` in CI to catch unintended lock file changes early.
