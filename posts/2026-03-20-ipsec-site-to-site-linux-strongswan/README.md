@@ -58,7 +58,6 @@ conn site-to-site
     # Dead Peer Detection
     dpdaction=restart
     dpddelay=30s
-    dpdtimeout=120s
 ```
 
 ```conf
@@ -91,7 +90,6 @@ conn site-to-site
     lifetime=1h
     dpdaction=restart
     dpddelay=30s
-    dpdtimeout=120s
 ```
 
 ```conf
@@ -123,10 +121,11 @@ sudo iptables -A FORWARD -s 192.168.2.0/24 -d 192.168.1.0/24 -j ACCEPT
 
 ```bash
 # Start strongSwan
-sudo systemctl enable strongswan
-sudo systemctl start strongswan
+sudo systemctl enable strongswan-starter
+sudo systemctl start strongswan-starter
 
-# Bring up the tunnel
+# auto=start already tries to bring the tunnel up at daemon start.
+# If it is not already established, bring it up manually:
 sudo ipsec up site-to-site
 
 # Check status
@@ -138,17 +137,17 @@ sudo ipsec statusall
 sudo ip xfrm policy
 
 # Test connectivity
-ping 192.168.2.10  # From Gateway A LAN
+ping 192.168.2.10  # From a host on Gateway A's LAN
 ```
 
 ## Troubleshooting
 
 ```bash
 # View IKE negotiation logs
-sudo journalctl -u strongswan -f
+sudo journalctl -u strongswan-starter -f
 
 # Check which IKE version was negotiated
 sudo ipsec status | grep IKEv
 ```
 
-The `!` suffix on cipher algorithms prevents fallback to weaker options, which is a critical security requirement for production IPsec tunnels.
+The `!` suffix on cipher algorithms prevents strongSwan from appending its default proposals, so only the explicitly configured algorithms are accepted.
