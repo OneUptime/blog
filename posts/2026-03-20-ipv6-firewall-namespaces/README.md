@@ -37,6 +37,9 @@ ip netns list
 # Execute command in namespace
 sudo ip netns exec myns COMMAND
 
+# Bring up loopback inside the namespace
+sudo ip netns exec myns ip link set lo up
+
 # Create veth pair
 sudo ip link add veth0 type veth peer name veth1
 
@@ -88,12 +91,9 @@ echo "Testing connectivity..."
 ip netns exec $NS1 ping6 -c 3 2001:db8::2
 echo "Setup complete!"
 
-# Cleanup
-cleanup() {
-    ip netns del $NS1 2>/dev/null
-    ip netns del $NS2 2>/dev/null
-}
-trap cleanup EXIT
+# Cleanup when finished:
+# ip netns del $NS1
+# ip netns del $NS2
 ```
 
 ## Verifying IPv6 Configuration
@@ -118,4 +118,4 @@ Use [OneUptime](https://oneuptime.com) to monitor services running inside networ
 
 ## Conclusion
 
-How to Test IPv6 Firewall Rules in Network Namespaces uses standard Linux  commands with the  subcommand. All IPv6 configuration tools work identically inside namespaces. Network namespaces are an excellent, zero-cost way to test IPv6 configurations before deploying to production.
+How to Test IPv6 Firewall Rules in Network Namespaces uses standard Linux `ip` commands with the `netns` subcommand. IPv6 configuration tools that operate on the current network namespace work identically inside namespaces. Network namespaces are an excellent, zero-cost way to test IPv6 configurations before deploying to production.
