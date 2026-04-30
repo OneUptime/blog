@@ -8,7 +8,7 @@ Description: Learn how to diagnose and fix 'Network is unreachable' errors on Li
 
 ---
 
-"Network is unreachable" is one of the most common Linux networking errors. It means the kernel has no route to the destination - there is no entry in the routing table that matches the target IP, and no default gateway to fall back on. This guide shows how to find and fix the root cause.
+"Network is unreachable" is one of the most common Linux networking errors. It usually means the kernel has no usable route to the destination - there is no entry in the routing table that matches the target IP, and no default gateway to fall back on. This guide shows how to find and fix the root cause.
 
 ---
 
@@ -18,7 +18,7 @@ Description: Learn how to diagnose and fix 'Network is unreachable' errors on Li
 ping 8.8.8.8
 # connect: Network is unreachable
 
-# This means: no route exists in the routing table for 8.8.8.8
+# This usually means: no usable route exists in the routing table for 8.8.8.8
 
 # Either the default route is missing, or no matching route exists
 ```
@@ -34,7 +34,7 @@ ip route show
 # Example output with MISSING default route:
 # 192.168.1.0/24 dev eth0 proto kernel scope link src 192.168.1.100
 
-# No "default via X.X.X.X" entry = all off-subnet traffic fails
+# No "default via X.X.X.X" entry = off-subnet traffic without a more specific route fails
 ```
 
 ---
@@ -120,7 +120,7 @@ iface eth0 inet static
     up ip route add 10.0.0.0/8 via 192.168.1.254
 ```
 
-### /etc/sysconfig/network-scripts/ (RHEL/CentOS)
+### Legacy /etc/sysconfig/network-scripts/ (RHEL/CentOS 7 and similar)
 
 ```bash
 # /etc/sysconfig/network-scripts/ifcfg-eth0
@@ -164,10 +164,9 @@ sudo ip route add default via 192.168.1.1 dev eth0
 ip route show
 # default via 10.8.0.1 dev tun0  ← VPN has replaced default route
 
-# Fix: Add split-tunnel route (keep original default for non-VPN traffic)
-sudo ip route add 0.0.0.0/1 via 10.8.0.1 dev tun0
-sudo ip route add 128.0.0.0/1 via 10.8.0.1 dev tun0
-sudo ip route add 192.168.1.0/24 dev eth0  # Local subnet still accessible
+# Fix: Restore the original default route and add only the VPN subnet you need
+sudo ip route replace default via 192.168.1.1 dev eth0
+sudo ip route add 10.20.0.0/16 via 10.8.0.1 dev tun0
 ```
 
 ### Scenario 4: Route Missing After Docker/KVM Install
@@ -202,14 +201,14 @@ ip route get 10.5.0.1
 1. **Always persist routes** - temporary `ip route add` commands are lost on reboot
 2. **Use `ip route get X.X.X.X`** to verify routing before testing with ping
 3. **Check `ip route show table all`** for routes in non-default tables
-4. **Use `ip route show cache`** to see cached route decisions
+4. **Do not rely on `ip route show cache`** - Linux removed the IPv4 routing cache in kernel 3.6, so use `ip route get` to inspect the route the kernel would choose
 5. **Monitor routing changes** with `ip monitor route` during live troubleshooting
 
 ---
 
 ## Conclusion
 
-"Network is unreachable" means a routing table entry is missing. Use `ip route show` to identify what's absent, `ip route add` to fix it temporarily, and then persist the route in your network configuration for stability across reboots.
+"Network is unreachable" usually means the kernel does not have a usable route for the destination. Use `ip route show` to identify what's absent, `ip route add` to fix it temporarily, and then persist the route in your network configuration for stability across reboots.
 
 ---
 
