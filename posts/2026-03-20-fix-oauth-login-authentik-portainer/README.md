@@ -31,7 +31,7 @@ Note: Portainer's redirect URI is just the root URL with a trailing slash, not a
 In Portainer go to **Settings > Authentication > OAuth**:
 
 ```text
-Authorization URL: https://authentik.example.com/application/o/portainer/authorize/
+Authorization URL: https://authentik.example.com/application/o/authorize/
 Access Token URL:  https://authentik.example.com/application/o/token/
 Resource URL:      https://authentik.example.com/application/o/userinfo/
 Redirect URL:      https://portainer.example.com/
@@ -58,7 +58,7 @@ docker logs portainer 2>&1 | grep -i "oauth\|redirect\|token\|state"
 
 ```bash
 # Test the authorization endpoint is reachable
-curl -I https://authentik.example.com/application/o/portainer/authorize/
+curl -I https://authentik.example.com/application/o/authorize/
 
 # Test the userinfo endpoint
 curl -H "Authorization: Bearer <your-token>" \
@@ -67,15 +67,15 @@ curl -H "Authorization: Bearer <your-token>" \
 
 ## Step 5: Verify Claim Mapping
 
-Portainer uses a specific field from the userinfo response as the user identifier. If set to `email` but Authentik returns `preferred_username`:
+Portainer uses a specific field from the userinfo response as the user identifier. If Portainer is set to `email`, Authentik must return an `email` claim. If it is set to `preferred_username`, Authentik must return that claim from the `profile` scope.
 
-1. In Portainer **Settings > Authentication > OAuth**, change **User Identifier** to `preferred_username` or `sub`.
-2. In Authentik, verify the provider's **Property Mappings** include the field you selected.
+1. In Portainer **Settings > Authentication > OAuth**, set **User Identifier** to a claim that is actually present in the userinfo response, such as `email`, `preferred_username`, or `sub`.
+2. In Authentik, verify the provider has the corresponding scope mappings selected (`email` for `email`, `profile` for `preferred_username`). If you use a custom identifier, verify your custom mapping returns that field.
 
 ## Step 6: Check Authentik Authorization Policy
 
 Ensure the Portainer application in Authentik has a policy allowing your users:
 
-1. In Authentik go to **Applications > Portainer > Policy Bindings**.
-2. Verify that the relevant groups/users have a binding with **Enabled** set.
-3. Test with **Application > Check Access** for a specific user.
+1. In Authentik go to **Applications > Applications > Portainer > Policy/Group/User Bindings**.
+2. Verify that the relevant groups, users, or policies are bound and enabled.
+3. If nothing is bound, all users can access the application by default. If access is restricted, use the application's **Check Access** or **Test** action for a specific user if your Authentik version provides one.
