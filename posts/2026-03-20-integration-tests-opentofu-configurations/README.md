@@ -15,7 +15,7 @@ Infrastructure as Code is code, and code needs tests. Integration tests for Open
 - Provide confidence when refactoring modules
 - Enable CI/CD gates on infrastructure changes
 
-OpenTofu 1.6+ includes a native testing framework that runs actual plan and apply cycles.
+OpenTofu 1.6+ includes a native testing framework that runs actual plan and apply cycles, and OpenTofu 1.8+ adds mock providers for faster plan-only tests.
 
 ## Test File Structure
 
@@ -81,31 +81,27 @@ run "verify_outputs" {
 ## Multi-Run Test Scenarios
 
 ```hcl
-# Test create, then verify idempotency
+# Create shared setup data, then pass it to a second run
 
-run "initial_apply" {
-  command = apply
-
-  variables {
-    instance_count = 2
+run "setup" {
+  module {
+    source = "./setup"
   }
 }
 
-run "verify_idempotent" {
-  command = plan
-
+run "verify_with_setup" {
   variables {
-    instance_count = 2
+    name_prefix = run.setup.name_prefix
   }
 
   assert {
-    condition     = plan.changes.add == 0
-    error_message = "Second apply should produce no changes"
+    condition     = startswith(output.bucket_name, var.name_prefix)
+    error_message = "Bucket name did not use the expected prefix"
   }
 }
 ```
 
-## Setup and Teardown with Provider Overrides
+## Provider Configuration for Test Runs
 
 ```hcl
 provider "aws" {
@@ -114,15 +110,15 @@ provider "aws" {
 
 variables {
   environment = "integration-test"
-  name_prefix = "tftest-${uuid()}"
+  name_prefix = "tftest-${substr(uuid(), 0, 8)}"
 }
 
 run "deploy_and_test" {
   command = apply
 
   assert {
-    condition     = aws_s3_bucket.test.bucket_prefix == var.name_prefix
-    error_message = "Bucket prefix mismatch"
+    condition     = startswith(aws_s3_bucket.test.bucket, var.name_prefix)
+    error_message = "Bucket name did not use the expected prefix"
   }
 }
 ```
@@ -140,10 +136,10 @@ tofu test -filter=tests/vpc_basic.tftest.hcl
 tofu test -verbose
 
 # Run in a specific directory
-tofu test -chdir=modules/vpc
+tofu -chdir=modules/vpc test
 ```
 
-## Using Mock Providers for Speed
+## Using Mock Providers for Speed (OpenTofu 1.8+)
 
 ```hcl
 # tests/unit.tftest.hcl
@@ -181,7 +177,7 @@ run "validate_config" {
 1. **Use unique name prefixes** for test resources to avoid conflicts
 2. **Clean up after tests** - OpenTofu's test runner destroys resources after each run
 3. **Test both happy path and edge cases** (invalid inputs, boundary values)
-4. **Use mock providers** for fast unit tests, real providers for integration tests
+4. **Use mock providers** (OpenTofu 1.8+) for fast unit tests, real providers for integration tests
 5. **Run integration tests in isolated AWS accounts** or separate namespaces
 
 ## Conclusion
