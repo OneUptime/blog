@@ -8,121 +8,139 @@ Description: Learn how to configure the Hetzner Cloud provider in OpenTofu to ma
 
 ## Introduction
 
-This guide covers How to Configure the Hetzner Cloud Provider in OpenTofu using OpenTofu with practical examples and production-ready configurations.
+This guide covers How to Configure the Hetzner Cloud Provider in OpenTofu using practical examples for servers, private networks, and load balancers.
 
 ## Prerequisites
 
-- OpenTofu v1.6+
-- API credentials for the relevant service
+- A current OpenTofu release supported by the provider
+- A Hetzner Cloud API token
 - Basic understanding of OpenTofu concepts
 
 ## Step 1: Install and Configure the Provider
 
 ```hcl
 terraform {
-  required_version = ">= 1.6.0"
   required_providers {
-    # Provider configuration depends on the specific service
-    # Replace with the actual provider source and version
-    example = {
-      source  = "hashicorp/example"
-      version = "~> 1.0"
+    hcloud = {
+      source  = "hetznercloud/hcloud"
+      version = "~> 1.60.0"
     }
   }
-}
-
-# Configure the provider with credentials
-
-provider "example" {
-  # Use environment variables for credentials
-  # EXAMPLE_API_KEY, EXAMPLE_TOKEN, etc.
-  
-  # Or specify directly (not recommended for secrets)
-  # api_key = var.api_key
 }
 ```
 
 ## Step 2: Set Up Authentication
 
 ```bash
-# Use environment variables for authentication
-export PROVIDER_API_KEY="your-api-key"
-export PROVIDER_TOKEN="your-token"
-export PROVIDER_ORG="your-organization"
+# Preferred: use the provider environment variable
+export HCLOUD_TOKEN="your-hetzner-cloud-api-token"
 ```
 
 ```hcl
-variable "api_key" {
-  description = "API key for authentication"
-  type        = string
-  sensitive   = true
-}
-
-variable "organization" {
-  description = "Organization name or ID"
-  type        = string
+provider "hcloud" {
+  # Uses HCLOUD_TOKEN from the environment
 }
 ```
 
 ## Step 3: Create Basic Resources
 
 ```hcl
-# Example resource creation
-# Replace with actual resource types for the provider
+resource "hcloud_network" "main" {
+  name     = "production-network"
+  ip_range = "10.0.0.0/16"
+}
 
-resource "example_project" "main" {
-  name        = "${var.environment}-project"
-  description = "Managed by OpenTofu"
+resource "hcloud_network_subnet" "main" {
+  network_id   = hcloud_network.main.id
+  type         = "cloud"
+  network_zone = "eu-central"
+  ip_range     = "10.0.1.0/24"
+}
 
-  tags = {
-    environment = var.environment
+resource "hcloud_server" "main" {
+  name        = "web-1"
+  image       = "ubuntu-24.04"
+  server_type = "cx23"
+  location    = "nbg1"
+
+  labels = {
+    environment = "production"
     managed_by  = "opentofu"
   }
 }
 
-# Configure access control
-resource "example_team" "developers" {
-  name    = "developers"
-  project = example_project.main.id
-  role    = "contributor"
+resource "hcloud_server_network" "main" {
+  server_id = hcloud_server.main.id
+  subnet_id = hcloud_network_subnet.main.id
+  ip        = "10.0.1.10"
 }
 ```
 
 ## Step 4: Configure Advanced Settings
 
 ```hcl
-# Monitoring and alerting configuration
-resource "example_alert" "main" {
-  name      = "critical-alert"
-  project   = example_project.main.id
-  severity  = "critical"
-  threshold = 90
-
-  notification {
-    channel = var.notification_channel
-  }
+resource "hcloud_load_balancer" "main" {
+  name               = "web-lb"
+  load_balancer_type = "lb11"
+  location           = "nbg1"
 }
 
-# Backup and retention policies
-resource "example_backup_policy" "main" {
-  name              = "daily-backup"
-  project           = example_project.main.id
-  retention_days    = 30
-  schedule          = "0 2 * * *"  # Daily at 2 AM
+resource "hcloud_load_balancer_network" "main" {
+  load_balancer_id = hcloud_load_balancer.main.id
+  subnet_id        = hcloud_network_subnet.main.id
+  ip               = "10.0.1.11"
+}
+
+resource "hcloud_load_balancer_target" "main" {
+  type             = "server"
+  load_balancer_id = hcloud_load_balancer.main.id
+  server_id        = hcloud_server.main.id
+  use_private_ip   = true
+
+  # The private network attachments must exist before using private targets.
+  depends_on = [
+    hcloud_server_network.main,
+    hcloud_load_balancer_network.main,
+  ]
+}
+
+resource "hcloud_load_balancer_service" "main" {
+  load_balancer_id = hcloud_load_balancer.main.id
+  protocol         = "http"
+  listen_port      = 80
+  destination_port = 80
+
+  health_check {
+    protocol = "http"
+    port     = 80
+    interval = 10
+    timeout  = 5
+    retries  = 3
+
+    http {
+      path         = "/"
+      status_codes = ["200"]
+    }
+  }
 }
 ```
 
 ## Step 5: Define Outputs
 
 ```hcl
-output "project_id" {
-  description = "The ID of the created project"
-  value       = example_project.main.id
+output "server_id" {
+  description = "The ID of the created server"
+  value       = hcloud_server.main.id
 }
 
-output "project_name" {
-  description = "The name of the created project"
-  value       = example_project.main.name
+output "network_id" {
+  description = "The ID of the private network"
+  value       = hcloud_network.main.id
+}
+
+output "load_balancer_ipv4" {
+  description = "The public IPv4 address of the load balancer"
+  value       = hcloud_load_balancer.main.ipv4
 }
 ```
 
@@ -145,14 +163,14 @@ tofu apply
 ## Common Issues and Solutions
 
 ### Authentication Errors
-Verify API keys are valid and have the required permissions. Check for typos in environment variable names.
+Verify that `HCLOUD_TOKEN` is set correctly or that the token passed in the provider block is valid.
 
 ### Rate Limiting
-Add `depends_on` to serialize resource creation and avoid hitting API rate limits.
+If you run into API rate limiting, increase the provider `poll_interval` from its default `500ms`.
 
 ### Provider Version Conflicts
-Pin to a specific provider version range to ensure reproducible deployments.
+Pin the `hetznercloud/hcloud` provider in `required_providers` and commit `.terraform.lock.hcl` after `tofu init`.
 
 ## Conclusion
 
-You have successfully configured How to Configure the Hetzner Cloud Provider in OpenTofu using OpenTofu. This provider enables you to manage all aspects of the service as code, ensuring consistency and enabling GitOps workflows. Always use environment variables or secure secret stores for sensitive credentials.
+You have successfully configured the Hetzner Cloud provider in OpenTofu. With the `hcloud` provider, you can manage servers, private networks, and load balancers as code while keeping credentials out of your configuration by using environment variables or other secure secret stores.
