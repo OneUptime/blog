@@ -8,17 +8,17 @@ Description: Learn how to monitor the health of your Harvester cluster including
 
 ## Introduction
 
-Monitoring Harvester cluster health is essential for proactive incident detection and capacity planning. Harvester provides built-in health indicators in the dashboard, and also integrates with Prometheus and Grafana for detailed metrics and alerting. This guide covers key health checks, monitoring setup, and alerting configuration.
+Monitoring Harvester cluster health is essential for proactive incident detection and capacity planning. Harvester provides built-in dashboard metrics and, when the `rancher-monitoring` add-on is enabled, integrates with Prometheus, Grafana, and Alertmanager for detailed metrics and alerting. This guide covers key health checks, monitoring setup, and alerting configuration.
 
 ## Health Indicators in the Harvester Dashboard
 
-The Harvester dashboard provides an at-a-glance health overview:
+When the `rancher-monitoring` add-on is enabled, Harvester provides built-in monitoring views:
 
-1. **Node Status**: Shows each node's state (Ready, NotReady, Maintenance)
-2. **VM Status**: Running, Stopped, Errored VM counts
-3. **Storage Health**: Longhorn volume health and utilization
-4. **Network Status**: Load balancer and network attachment health
-5. **Alerts**: Active alerts from the monitoring stack
+1. **Dashboard Metrics**: Cluster metrics and top 10 most used VM metrics
+2. **VM Metrics**: Per-VM metrics on each VM's details page
+3. **Host Status**: Node readiness and maintenance state on the Hosts page
+4. **Storage Health**: Longhorn volume robustness and storage utilization
+5. **Alerts**: Active alerts in the Alertmanager and Prometheus dashboards
 
 ## Step 1: CLI Health Checks
 
@@ -34,30 +34,31 @@ kubectl get nodes -o wide
 echo "=== Node Resource Utilization ==="
 kubectl top nodes
 
-# Check for any node conditions (MemoryPressure, DiskPressure, etc.)
+# Check for pressure conditions (MemoryPressure, DiskPressure, PIDPressure, etc.)
 kubectl get nodes -o json | jq '.items[] | {
     name: .metadata.name,
-    conditions: [.status.conditions[] | select(.status == "True") | .type]
+    conditions: [.status.conditions[] | select(.type != "Ready" and .status == "True") | .type]
 }'
 
 # ===== CONTROL PLANE HEALTH =====
-echo "=== etcd Health ==="
-kubectl exec -n kube-system \
-    $(kubectl get pods -n kube-system -l component=etcd -o name | head -1) -- \
-    etcdctl endpoint health \
-    --cacert /var/lib/rancher/rke2/server/tls/etcd/server-ca.crt \
-    --cert /var/lib/rancher/rke2/server/tls/etcd/server-client.crt \
-    --key /var/lib/rancher/rke2/server/tls/etcd/server-client.key \
-    --cluster
+echo "=== API Server Readiness (includes etcd check) ==="
+kubectl get --raw='/readyz?verbose'
+
+echo "=== etcd Pod Status ==="
+kubectl get pods -n kube-system -l component=etcd -o wide
 
 # ===== VM HEALTH =====
-echo "=== VM Instance Status ==="
+echo "=== Virtual Machine Status ==="
+kubectl get vm -A -o custom-columns=\
+'NAME:.metadata.name,NS:.metadata.namespace,STATUS:.status.printableStatus,READY:.status.ready'
+
+echo "=== Running VM Instance Placement ==="
 kubectl get vmi -A -o custom-columns=\
 'NAME:.metadata.name,NS:.metadata.namespace,PHASE:.status.phase,NODE:.status.nodeName'
 
 # Count VMs by state
 echo "=== VM Count by State ==="
-kubectl get vmi -A -o json | jq '[.items[].status.phase] | group_by(.) |
+kubectl get vm -A -o json | jq '[.items[].status.printableStatus // "Unknown"] | group_by(.) |
     map({state: .[0], count: length})'
 
 # ===== STORAGE HEALTH =====
@@ -74,9 +75,14 @@ kubectl get volumes.longhorn.io -n longhorn-system \
 
 # ===== STORAGE SPACE =====
 echo "=== Node Storage Utilization ==="
-kubectl get nodes.longhorn.io -n longhorn-system \
-    -o custom-columns=\
-'NODE:.metadata.name,AVAILABLE:.status.diskStatus.default-disk-1.storageAvailable,MAX:.status.diskStatus.default-disk-1.storageMaximum'
+kubectl get nodes.longhorn.io -n longhorn-system -o json | jq '.items[] |
+    .metadata.name as $node |
+    .status.diskStatus | to_entries[] | {
+        node: $node,
+        disk: .key,
+        available: .value.storageAvailable,
+        maximum: .value.storageMaximum
+    }'
 ```
 
 ## Step 2: Create a Health Check Script
@@ -119,10 +125,17 @@ PRESSURE_NODES=$(kubectl get nodes -o json | \
 echo ""
 echo "--- ETCD ---"
 ETCD_HEALTHY=$(kubectl get pods -n kube-system -l component=etcd \
-    --no-headers | grep -c Running)
-ETCD_TOTAL=$(kubectl get nodes --no-headers | wc -l)
-[ $ETCD_HEALTHY -eq $ETCD_TOTAL ] && check_pass "${ETCD_HEALTHY}/${ETCD_TOTAL} etcd pods running" || \
+    --field-selector=status.phase=Running --no-headers | wc -l)
+ETCD_TOTAL=$(kubectl get pods -n kube-system -l component=etcd \
+    --no-headers | wc -l)
+[ $ETCD_TOTAL -gt 0 ] && [ $ETCD_HEALTHY -eq $ETCD_TOTAL ] && check_pass "${ETCD_HEALTHY}/${ETCD_TOTAL} etcd pods running" || \
     check_fail "Only ${ETCD_HEALTHY}/${ETCD_TOTAL} etcd pods running"
+
+if kubectl get --raw='/readyz?verbose' 2>/dev/null | grep -q '\[+\]etcd ok'; then
+    check_pass "Kubernetes API server is ready"
+else
+    check_fail "Kubernetes API server readiness check failed"
+fi
 
 # Check system pods
 echo ""
@@ -140,21 +153,23 @@ LONGHORN_FAILING=$(kubectl get pods -n longhorn-system --no-headers | \
 # Check volumes
 echo ""
 echo "--- STORAGE ---"
-DEGRADED_VOLS=$(kubectl get volumes.longhorn.io -n longhorn-system \
-    --no-headers | grep -v healthy | wc -l)
-TOTAL_VOLS=$(kubectl get volumes.longhorn.io -n longhorn-system \
-    --no-headers | wc -l)
+DEGRADED_VOLS=$(kubectl get volumes.longhorn.io -n longhorn-system -o json | \
+    jq '[.items[] | select(.status.robustness != "healthy")] | length')
+TOTAL_VOLS=$(kubectl get volumes.longhorn.io -n longhorn-system -o json | \
+    jq '.items | length')
 [ $DEGRADED_VOLS -eq 0 ] && check_pass "${TOTAL_VOLS} volumes healthy" || \
     check_warn "${DEGRADED_VOLS}/${TOTAL_VOLS} volumes degraded"
 
 # Check VMs
 echo ""
 echo "--- VIRTUAL MACHINES ---"
-RUNNING_VMS=$(kubectl get vmi -A --no-headers | grep -c Running)
-TOTAL_VMS=$(kubectl get vmi -A --no-headers | wc -l)
-FAILED_VMS=$(kubectl get vmi -A --no-headers | grep -c -E "Failed|Unknown" || true)
+RUNNING_VMS=$(kubectl get vm -A -o json | \
+    jq '[.items[] | select(.status.printableStatus == "Running")] | length')
+TOTAL_VMS=$(kubectl get vm -A -o json | jq '.items | length')
+FAILED_VMS=$(kubectl get vm -A -o json | \
+    jq '[.items[] | select((.status.printableStatus // "Unknown") | test("^(Unknown|Error|Failed)$"))] | length')
 check_pass "${RUNNING_VMS}/${TOTAL_VMS} VMs running"
-[ $FAILED_VMS -eq 0 ] || check_fail "${FAILED_VMS} VMs in Failed/Unknown state"
+[ $FAILED_VMS -eq 0 ] || check_fail "${FAILED_VMS} VMs in Error/Failed/Unknown state"
 
 echo ""
 echo "=================================================="
@@ -164,10 +179,10 @@ exit $ERRORS
 ```
 
 ```bash
-chmod +x harvester-health-check.sh
+install -D -m 0755 harvester-health-check.sh /opt/scripts/harvester-health-check.sh
 
 # Run the health check
-./harvester-health-check.sh
+/opt/scripts/harvester-health-check.sh
 
 # Schedule as a cron job
 echo "*/15 * * * * /opt/scripts/harvester-health-check.sh >> /var/log/harvester-health.log 2>&1" | \
@@ -180,19 +195,19 @@ Monitor these Prometheus metrics for proactive alerts:
 
 ```promql
 # Node CPU utilization (alert if > 80%)
-100 - (avg by (node) (irate(node_cpu_seconds_total{mode="idle"}[5m])) * 100)
+100 - (avg without (cpu, mode) (irate(node_cpu_seconds_total{mode="idle"}[5m])) * 100)
 
 # Node memory utilization (alert if > 90%)
 (1 - (node_memory_MemAvailable_bytes / node_memory_MemTotal_bytes)) * 100
 
-# Longhorn volume degraded (alert if > 0)
-longhorn_volume_robustness == 2  # 2 = degraded, 3 = faulted
+# Longhorn volume degraded or faulted
+longhorn_volume_robustness{state=~"degraded|faulted"} == 1
 
 # Storage free space < 20%
 longhorn_node_storage_usage_bytes / longhorn_node_storage_capacity_bytes > 0.8
 
 # VM in error state
-count by (namespace) (kubevirt_vmi_info{phase="Failed"}) > 0
+count by (namespace) (kubevirt_vmi_info{phase=~"failed|unknown"}) > 0
 ```
 
 ## Conclusion
