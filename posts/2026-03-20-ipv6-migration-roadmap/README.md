@@ -58,8 +58,8 @@ gantt
 **Key Activities:**
 1. Upgrade or replace IPv6-incapable network equipment
 2. Enable IPv6 on core routers and switches
-3. Configure DHCPv6 and SLAAC
-4. Add AAAA records for internal DNS resolvers
+3. Configure Router Advertisements, using SLAAC, DHCPv6, or both as needed
+4. Enable IPv6 on internal DNS resolvers and advertise their IPv6 addresses to clients
 5. Update monitoring tools to handle IPv6
 
 **Milestone:** IPv6 reachable from all internal subnets; monitoring shows IPv6 traffic
@@ -94,7 +94,7 @@ gantt
 4. Document final IPv6 address plan in IPAM
 5. Set IPv4 sunset timeline if business case supports it
 
-**Milestone:** IPv6 carries >50% of traffic; all services have AAAA records
+**Milestone:** IPv6 carries >50% of traffic; all service hostnames publish AAAA records
 
 ## Roadmap Template
 
@@ -123,7 +123,7 @@ gantt
 
 ## Success Criteria
 - Zero service outages caused by IPv6 migration
-- All services respond on AAAA addresses
+- All service hostnames publish AAAA records and are reachable over IPv6
 - IPv6 traffic > 40% of total within 6 months of launch
 - All monitoring alerts work for IPv6 addresses
 ```
