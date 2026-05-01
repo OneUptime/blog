@@ -8,12 +8,11 @@ Description: Enable IPv6 support in the Docker daemon by editing daemon.json, co
 
 ## Introduction
 
-Docker does not enable IPv6 by default. To use IPv6 in containers, you must enable it in the Docker daemon configuration file `/etc/docker/daemon.json`. Once enabled, Docker assigns IPv6 addresses to containers from the configured ULA prefix. The daemon must be restarted after configuration changes for them to take effect.
+Docker does not enable IPv6 on the default bridge network by default. On Linux hosts, to use IPv6 for containers attached to the default `bridge` network, you must enable it in the Docker daemon configuration file `/etc/docker/daemon.json`. If you set `fixed-cidr-v6`, Docker assigns container IPv6 addresses from that subnet; otherwise Docker can choose a ULA prefix automatically. The daemon must be restarted after configuration changes for them to take effect.
 
 ## Enable IPv6 in daemon.json
 
 ```json
-// /etc/docker/daemon.json
 {
   "ipv6": true,
   "fixed-cidr-v6": "fd00:dead:beef::/48",
@@ -64,19 +63,14 @@ docker network inspect bridge | grep -A5 "EnableIPv6"
 ## Verify Configuration
 
 ```bash
-# Check Docker is listening on both IPv4 and IPv6
-ss -tlnp | grep dockerd
-
 # Inspect default bridge network for IPv6
-docker network inspect bridge | python3 -c "
-import json, sys
-data = json.load(sys.stdin)
-print('EnableIPv6:', data[0]['EnableIPv6'])
-print('IPv6Subnet:', data[0]['IPAM']['Config'])
-"
+docker network inspect bridge --format '{{.EnableIPv6}}'
+docker network inspect bridge --format '{{json .IPAM.Config}}'
 
-# Create a container and check IPv6
-docker run --rm alpine ip -6 addr show eth0
+# Run a container on the default bridge and verify IPv6 reachability
+docker run --rm -d --name ipv6-test -p 80:80 traefik/whoami
+curl http://[::1]:80
+docker rm -f ipv6-test
 ```
 
 ## Troubleshooting daemon.json Changes
@@ -92,9 +86,9 @@ journalctl -u docker.service -n 50
 systemctl status docker
 
 # Test IPv6 connectivity from a container
-docker run --rm alpine ping6 -c 3 2001:4860:4860::8888
+docker run --rm alpine ping -6 -c 3 2001:4860:4860::8888
 ```
 
 ## Conclusion
 
-Enable Docker IPv6 by setting `"ipv6": true` and `"fixed-cidr-v6"` in `/etc/docker/daemon.json`, then restart the Docker daemon with `systemctl restart docker`. The `ip6tables` flag enables network isolation rules for IPv6. Use a ULA prefix (`fd00::/8`) for container networks unless you have a routable IPv6 prefix available. Verify with `docker info | grep IPv6` and test with `docker run --rm alpine ping6 2001:4860:4860::8888`.
+Enable Docker IPv6 on the default bridge network by setting `"ipv6": true` in `/etc/docker/daemon.json`. Set `"fixed-cidr-v6"` if you want to choose the subnet explicitly, then restart the Docker daemon with `systemctl restart docker`. The `ip6tables` flag enables network isolation rules for IPv6. Use a ULA prefix (`fd00::/8`) for container networks unless you have a routable IPv6 prefix available. Verify with `docker info | grep -i ipv6` and test with `curl http://[::1]:80` after publishing a container port or with `docker run --rm alpine ping -6 2001:4860:4860::8888`.
