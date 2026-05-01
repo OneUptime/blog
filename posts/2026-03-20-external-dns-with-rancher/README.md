@@ -28,6 +28,8 @@ helm repo update
 ```bash
 # Create an IAM policy allowing Route53 record management
 
+kubectl create namespace external-dns
+
 # Then create a Kubernetes Secret with the credentials
 kubectl create secret generic route53-credentials \
   --from-literal=aws_access_key_id=YOUR_ACCESS_KEY \
@@ -39,10 +41,13 @@ kubectl create secret generic route53-credentials \
 
 ```yaml
 # external-dns-values.yaml
-provider: aws
+provider:
+  name: aws
 
 # AWS Route53 configuration
 env:
+  - name: AWS_DEFAULT_REGION
+    value: us-east-1
   - name: AWS_ACCESS_KEY_ID
     valueFrom:
       secretKeyRef:
@@ -54,9 +59,8 @@ env:
         name: route53-credentials
         key: aws_secret_access_key
 
-aws:
-  region: us-east-1
-  zoneType: public    # "public" or "private"
+extraArgs:
+  aws-zone-type: public    # "public", "private", or omit for both
 
 # Which domains External DNS is allowed to manage
 domainFilters:
@@ -77,8 +81,6 @@ txtOwnerId: "rancher-cluster"   # Unique ID to track owned records
 ## Step 4: Deploy External DNS
 
 ```bash
-kubectl create namespace external-dns
-
 helm install external-dns external-dns/external-dns \
   --namespace external-dns \
   --values external-dns-values.yaml
@@ -117,7 +119,7 @@ spec:
 
 ```bash
 # Check External DNS logs for record creation
-kubectl logs -n external-dns deployment/external-dns | grep "desired change"
+kubectl logs -n external-dns deployment/external-dns | grep -i "desired change"
 
 # Verify the DNS record was created in Route53
 aws route53 list-resource-record-sets \
@@ -129,10 +131,13 @@ aws route53 list-resource-record-sets \
 
 ```yaml
 # Cloudflare provider configuration
-provider: cloudflare
-cloudflare:
-  apiToken: YOUR_CLOUDFLARE_API_TOKEN
-  proxied: false    # Set true to proxy through Cloudflare CDN
+provider:
+  name: cloudflare
+env:
+  - name: CF_API_TOKEN
+    value: YOUR_CLOUDFLARE_API_TOKEN
+extraArgs:
+  cloudflare-proxied: false    # Set true to proxy through Cloudflare CDN
 ```
 
 ## Conclusion
