@@ -8,7 +8,7 @@ Description: Use nmap's UDP scanning capabilities to determine which UDP ports a
 
 ## Introduction
 
-UDP port scanning is fundamentally different from TCP scanning. There is no connection handshake, so determining whether a UDP port is "open" requires either an application-level response or the absence of an ICMP "port unreachable" response. `nmap` handles this complexity with its `-sU` flag, using protocol-specific payloads for known services and ICMP analysis for the rest.
+UDP port scanning is fundamentally different from TCP scanning. There is no connection handshake, so determining whether a UDP port is "open" usually requires either an application-level response or careful interpretation of missing or returned ICMP errors. `nmap` handles this complexity with its `-sU` flag, using protocol-specific payloads for known services and ICMP analysis for the rest.
 
 ## Basic UDP Scan
 
@@ -17,7 +17,7 @@ UDP port scanning is fundamentally different from TCP scanning. There is no conn
 
 sudo nmap -sU 10.20.0.5
 # Scans top 1000 UDP ports
-# Slow: nmap rate-limits to avoid flooding ICMP unreachable responses
+# Slow: many hosts rate-limit ICMP port unreachable responses
 
 # Scan specific UDP ports:
 sudo nmap -sU -p 53,67,123,161,500 10.20.0.5
@@ -36,7 +36,7 @@ UDP port states:
 - open         : Got an application response
 - open|filtered: No response received (could be open OR filtered by firewall)
 - closed       : Received ICMP port unreachable
-- filtered     : Received ICMP admin prohibited or other ICMP error
+- filtered     : Received ICMP admin prohibited or other ICMP unreachable error
 
 Most UDP ports appear as "open|filtered" because:
   - Firewalls often silently drop UDP to unknown ports
@@ -68,12 +68,12 @@ sudo nmap -sU -T4 -p 53,123,161,500,4500 10.20.0.5
 
 ```bash
 # DNS (UDP 53) - verify with dig:
-dig +short @10.20.0.5 google.com
-# Response = port 53 UDP is open
+dig @10.20.0.5 google.com
+# Any DNS reply = port 53 UDP is open
 
-# NTP (UDP 123) - verify with ntpdate:
-ntpdate -q 10.20.0.5
-# Or: ntptrace 10.20.0.5
+# NTP (UDP 123) - verify with sntp:
+sntp 10.20.0.5
+# A time reply = port 123 UDP is open
 
 # SNMP (UDP 161) - verify with snmpwalk:
 snmpwalk -v2c -c public 10.20.0.5 sysDescr
@@ -83,25 +83,26 @@ snmpwalk -v2c -c public 10.20.0.5 sysDescr
 sudo nmap -sU -p 67 --script dhcp-discover 10.20.0.5
 
 # Syslog (UDP 514) - send a test message:
-logger -n 10.20.0.5 -P 514 "test message"
+logger --udp -n 10.20.0.5 -P 514 "test message"
+# Confirm the message arrives on the server
 ```
 
 ## Using nmap Scripts for UDP Services
 
 ```bash
-# DNS version and zone transfer attempt:
-sudo nmap -sU -p 53 --script dns-service-discovery 10.20.0.5
+# DNS NSID and version.bind (if the server exposes them):
+sudo nmap -sU -p 53 --script dns-nsid 10.20.0.5
 
-# SNMP information:
+# SNMP engine information:
 sudo nmap -sU -p 161 --script snmp-info 10.20.0.5
 
-# NTP information (can reveal server mode, peers):
+# NTP time and configuration variables:
 sudo nmap -sU -p 123 --script ntp-info 10.20.0.5
 
 # TFTP enumeration:
 sudo nmap -sU -p 69 --script tftp-enum 10.20.0.5
 
-# List all UDP-related scripts:
+# List script filenames containing "udp":
 ls /usr/share/nmap/scripts/ | grep -i udp
 ```
 
@@ -109,7 +110,7 @@ ls /usr/share/nmap/scripts/ | grep -i udp
 
 ```bash
 # Firewall DROP: nmap sees "open|filtered" (no ICMP reply)
-# Firewall REJECT: nmap sees "closed" or "filtered" (gets ICMP unreachable)
+# Firewall REJECT: nmap sees "closed" or "filtered" depending on the ICMP code returned
 
 # Check if firewall is affecting results by scanning from different location:
 # From inside: sudo nmap -sU -p 53 localhost
@@ -123,4 +124,4 @@ nft list ruleset | grep -E "drop|reject"
 
 ## Conclusion
 
-`nmap -sU` is the standard tool for UDP port discovery, but it requires root privileges and is slow by default due to ICMP rate limiting. Use targeted scans of specific well-known ports rather than full range scans. An "open|filtered" result means the port might be open but isn't definitively confirmed - follow up with service-specific tools like `dig` for DNS or `snmpwalk` for SNMP to confirm open services. Version detection (`-sV`) provides the most reliable results by sending application-specific probes.
+`nmap -sU` is the standard tool for UDP port discovery, but it typically requires root privileges on Linux and is slow by default because many hosts rate-limit ICMP unreachable responses. Use targeted scans of specific well-known ports rather than full range scans. An "open|filtered" result means the port might be open but isn't definitively confirmed - follow up with service-specific tools like `dig` for DNS or `snmpwalk` for SNMP to confirm open services. Version detection (`-sV`) provides the most reliable results by sending application-specific probes.
