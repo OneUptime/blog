@@ -6,7 +6,7 @@ Tags: firewalld, RHEL, Linux, Firewall, Zone, Security
 
 Description: Configure firewalld zones and services on Red Hat Enterprise Linux to manage network access control with a dynamic, zone-based firewall model.
 
-firewalld is the default firewall management tool on RHEL, CentOS, and Fedora. It uses zones to group interfaces with trust levels and services to define port/protocol rules without writing raw iptables commands.
+firewalld is the default firewall management tool on RHEL, CentOS, and Fedora. It uses zones to group interfaces with trust levels and services to define port/protocol rules without writing low-level firewall rules directly.
 
 ## Zone Concepts
 
@@ -15,13 +15,13 @@ firewalld zones define the trust level for network connections:
 ```text
 Zone         Default Behavior
 -----------  -----------------------------------------------
-drop         Drop all incoming; allow outgoing
-block        Reject incoming with ICMP unreachable
+drop         Drop unsolicited incoming; allow outgoing
+block        Reject unsolicited incoming; allow outgoing
 public       Allow SSH, DHCPv6 only (default for new ifaces)
-external     Masquerading for routers; limited access
+external     IPv4 masquerading; allow SSH
 dmz          Allow SSH; limited incoming
 work         Trust some; allow SSH, DHCPv6, ipp-client
-home         Trust local; allow SSH, mDNS, samba-client
+home         Trust local; allow SSH, mDNS, samba-client, DHCPv6
 trusted      Allow all connections
 internal     Same as home
 ```
@@ -48,7 +48,7 @@ sudo firewall-cmd --zone=public --list-all
 
 ## Adding Services to a Zone
 
-Services are named groups of ports/protocols defined in `/usr/lib/firewalld/services/`:
+Predefined services are named groups of ports/protocols defined in `/usr/lib/firewalld/services/`:
 
 ```bash
 # Allow HTTP and HTTPS in the public zone (runtime only)
@@ -126,6 +126,7 @@ Rich rules allow IP-specific access controls:
 
 ```bash
 # Allow SSH only from a specific subnet
+sudo firewall-cmd --zone=public --remove-service=ssh --permanent
 sudo firewall-cmd --zone=public \
   --add-rich-rule='rule family="ipv4" source address="192.168.1.0/24" service name="ssh" accept' \
   --permanent
@@ -135,7 +136,7 @@ sudo firewall-cmd --zone=public \
   --add-rich-rule='rule family="ipv4" source address="10.0.0.5" drop' \
   --permanent
 
-# Rate limit SSH connections
+# Rate limit SSH connections after removing the default SSH service
 sudo firewall-cmd --zone=public \
   --add-rich-rule='rule service name="ssh" accept limit value="4/m"' \
   --permanent
@@ -145,10 +146,10 @@ sudo firewall-cmd --reload
 
 ## Enabling IP Masquerading
 
-Enable masquerading (NAT) for a zone (useful for routers):
+Enable IPv4 masquerading (NAT) for a zone (useful for routers):
 
 ```bash
-# Enable masquerading in the external zone
+# Enable IPv4 masquerading in the external zone
 sudo firewall-cmd --zone=external --add-masquerade --permanent
 sudo firewall-cmd --reload
 
@@ -156,4 +157,4 @@ sudo firewall-cmd --reload
 sudo firewall-cmd --zone=external --query-masquerade
 ```
 
-firewalld's zone model makes it easy to apply different trust levels to different network segments without managing individual iptables rules.
+firewalld's zone model makes it easy to apply different trust levels to different network segments without managing low-level packet-filter rules directly.
