@@ -8,7 +8,7 @@ Description: A detailed explanation of how DNS64 works to synthesize IPv6 AAAA r
 
 ## The Problem DNS64 Solves
 
-When you have an IPv6-only client that needs to connect to an IPv4-only server (like `example.com` which only has an A record), the client cannot make a TCP or UDP connection because it has no IPv4 address. NAT64 can translate the traffic, but the client first needs an IPv6 address to connect to. This is where DNS64 comes in.
+When you have an IPv6-only client that needs to connect to an IPv4-only server (like a hypothetical `ipv4only.example` name that only has an A record), the client cannot make a TCP or UDP connection because it has no IPv4 address. NAT64 can translate the traffic, but the client first needs an IPv6 address to connect to. This is where DNS64 comes in.
 
 DNS64 is a DNS server behavior defined in RFC 6147 that automatically synthesizes AAAA records for IPv4-only domains by embedding their IPv4 addresses into a NAT64 prefix.
 
@@ -16,81 +16,83 @@ DNS64 is a DNS server behavior defined in RFC 6147 that automatically synthesize
 
 ```mermaid
 flowchart TD
-    A[IPv6-only Client] -->|AAAA query for example.com| B[DNS64 Resolver]
+    A[IPv6-only Client] -->|AAAA query for ipv4only.example| B[DNS64 Resolver]
     B -->|AAAA query upstream| C[Authoritative DNS]
-    C -->|No AAAA record, returns A: 93.184.216.34| B
-    B -->|Synthesize: 64:ff9b::93.184.216.34| B
-    B -->|Synthetic AAAA: 64:ff9b::5db8:d822| A
-    A -->|Connect to 64:ff9b::5db8:d822| D[NAT64 Gateway]
-    D -->|Translated IPv4 to 93.184.216.34| E[IPv4 Server]
+    C -->|No AAAA record| B
+    B -->|A query upstream| C
+    C -->|A: 192.0.2.33| B
+    B -->|Synthesize: 64:ff9b::192.0.2.33| B
+    B -->|Synthetic AAAA: 64:ff9b::c000:221| A
+    A -->|Connect to 64:ff9b::c000:221| D[NAT64 Gateway]
+    D -->|Translated IPv4 to 192.0.2.33| E[IPv4 Server]
 ```
 
 ## The Synthesis Algorithm
 
 Given:
 - NAT64 prefix: `64:ff9b::/96`
-- IPv4 address from A record: `93.184.216.34`
+- IPv4 address from A record: `192.0.2.33`
 
 The synthesized AAAA is constructed by:
 1. Taking the 96-bit NAT64 prefix: `64:ff9b:0000:0000:0000:0000`
-2. Appending the 32-bit IPv4 address in hex: `5db8:d822` (93=0x5d, 184=0xb8, 216=0xd8, 34=0x22)
-3. Result: `64:ff9b::5db8:d822`
+2. Appending the 32-bit IPv4 address in hex: `c000:0221` (192=0xc0, 0=0x00, 2=0x02, 33=0x21)
+3. Result: `64:ff9b::c000:221`
 
 ## When Does DNS64 Synthesize?
 
 DNS64 only synthesizes a AAAA record when ALL of the following are true:
 
 1. The client requested a AAAA record (query type AAAA)
-2. The domain has **no** real AAAA record (no native IPv6)
+2. The domain has **no** non-excluded real AAAA record (no usable native IPv6)
 3. The domain **does** have at least one A record
 
-If a real AAAA record exists, DNS64 returns it unchanged - it does **not** override native IPv6 records.
+If a real, non-excluded AAAA record exists, DNS64 returns it unchanged by default - it does **not** override usable native IPv6 records.
 
 ## When Does DNS64 NOT Synthesize?
 
-- Domains with real AAAA records: DNS64 returns the native records as-is
-- DNSSEC-validated responses: DNS64 cannot synthesize without breaking DNSSEC signatures (see RFC 6147 section 5.5)
-- Queries for `PTR` records: reverse DNS synthesis is not performed
-- Special-use addresses (RFC 5735): `127.0.0.0/8`, `10.0.0.0/8`, etc. are excluded by default
+- Domains with non-excluded real AAAA records: DNS64 returns the native records as-is
+- Validating DNS64 with a client requesting end-to-end validation (`DO=1`, `CD=1`): the resolver must not synthesize and must return the data for the client to validate
+- Queries for `PTR` records: DNS64 does not synthesize AAAA data, but it may answer reverse lookups for its `Pref64::/n` space using local `PTR` data or a synthesized `CNAME` to `IN-ADDR.ARPA`
+- With the Well-Known Prefix `64:ff9b::/96`, non-global IPv4 addresses such as `127.0.0.0/8` or `10.0.0.0/8` must not be represented using that prefix
 
 ## Example: Comparing Normal vs DNS64 Resolution
 
 Normal DNS resolution (IPv4-capable client):
 ```text
-; Query: AAAA example.com
+; Query: AAAA ipv4only.example
 ;; ANSWER SECTION:
 ; (empty - no AAAA record)
 
-; Query: A example.com
+; Query: A ipv4only.example
 ;; ANSWER SECTION:
-example.com. 3600 IN A 93.184.216.34
+ipv4only.example. 3600 IN A 192.0.2.33
 ```
 
 DNS64 resolution (IPv6-only client using DNS64 server):
 ```text
-; Query: AAAA example.com → DNS64 synthesizes
+; Query: AAAA ipv4only.example → DNS64 synthesizes
 ;; ANSWER SECTION:
-example.com. 60 IN AAAA 64:ff9b::5db8:d822
+ipv4only.example. 60 IN AAAA 64:ff9b::c000:221
 ```
 
-Note: DNS64 typically uses a short TTL (60 seconds) for synthetic records to prevent stale entries from causing issues when native AAAA records are later added.
+Note: The TTL of a synthesized AAAA record is not fixed at 60 seconds. RFC 6147 specifies using the smaller of the original A record TTL and the zone's SOA TTL from the negative AAAA response; if that SOA TTL is unavailable, the DNS64 should use the A TTL or 600 seconds, whichever is shorter.
 
 ## Custom Prefix Support
 
-DNS64 supports custom NAT64 prefixes, not just the well-known `64:ff9b::/96`. Your DNS64 server must be configured with the same prefix as your NAT64 gateway. The synthesis algorithm adapts based on prefix length:
+DNS64 supports custom NAT64 prefixes, not just the well-known `64:ff9b::/96`. Your DNS64 server must be configured with the same prefix as your NAT64 gateway. Under RFC 6052, valid prefix lengths are `/32`, `/40`, `/48`, `/56`, `/64`, and `/96`:
 
 - `/96` prefix: IPv4 address occupies bits 96–127
 - `/64` prefix: bits 64–71 are zero (reserved), IPv4 is at bits 72–103
-- `/48`, `/40`, `/32` prefixes: similar bit-shifting applies (RFC 6052)
+- `/56`, `/48`, `/40`, `/32` prefixes: similar placement rules apply, with the reserved zero octet still at bits 64–71 (RFC 6052)
 
 ## DNS64 and DNSSEC Compatibility
 
-DNS64 breaks DNSSEC validation for synthesized records because the synthetic AAAA record was not signed by the authoritative server. The recommended approach:
+DNS64 changes the AAAA answer, so a client trying to validate the synthesized AAAA record end-to-end will not be able to validate it as authoritative data from the zone. The recommended approach:
 
-- DNSSEC validation happens **upstream** of the DNS64 resolver
-- The DNS64 resolver itself does not validate; it trusts upstream responses
-- Clients should not perform local DNSSEC validation when using DNS64
+- A validating DNS64 resolver can validate the negative AAAA response and the A response before synthesizing
+- If a client sets both `DO=1` and `CD=1` to validate locally, a validating DNS64 must not synthesize
+- Clients that perform local DNSSEC validation need to be DNS64-aware or rely on a trusted validating DNS64
 
 ## Summary
 
-DNS64 is the DNS companion to NAT64. It intercepts AAAA queries, checks for native IPv6, and synthesizes AAAA records from A records using the NAT64 prefix when no native IPv6 exists. This gives IPv6-only clients an IPv6 address to connect to, which the NAT64 gateway then translates to the real IPv4 destination. Together, NAT64 and DNS64 provide seamless IPv4 internet access for IPv6-only networks.
+DNS64 is the DNS companion to NAT64. It intercepts AAAA queries, checks for usable native IPv6, and synthesizes AAAA records from A records using the NAT64 prefix when no usable native IPv6 exists. This gives IPv6-only clients an IPv6 address to connect to, which the NAT64 gateway then translates to the real IPv4 destination. Together, NAT64 and DNS64 provide seamless IPv4 internet access for IPv6-only networks.
