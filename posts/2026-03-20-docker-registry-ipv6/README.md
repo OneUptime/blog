@@ -8,7 +8,7 @@ Description: Configure Docker to pull and push images from container registries 
 
 ## Introduction
 
-Docker can pull and push images over IPv6 when the registry host resolves to an IPv6 address or when you specify an IPv6 address directly. Running a private registry on an IPv6 address requires binding the registry to an IPv6 interface. Docker's daemon needs IPv6 enabled for proper IPv6 registry communication, and the registry address in image names can include IPv6 addresses using bracket notation.
+Docker can pull and push images over IPv6 when the registry host resolves to an IPv6 address or when you specify an IPv6 address directly. Running a private registry on an IPv6 address requires binding the registry to an IPv6 interface. Docker's `ipv6` daemon setting is for Docker-managed container networking on Linux, and the registry address in image names can include IPv6 addresses using bracket notation.
 
 ## Pull Images from IPv6 Registry
 
@@ -20,26 +20,23 @@ docker pull [2001:db8::1]:5000/myapp:latest
 
 # Pull from a registry with a hostname that resolves to IPv6
 docker pull registry.example.com:5000/myapp:latest
-# (assumes registry.example.com has AAAA record)
+# (assumes registry.example.com has an AAAA record and the host can reach it over IPv6)
 
-# Verify which IP Docker connected to
-docker system info | grep "Registry"
-
-# Force IPv6 DNS resolution for a hostname
-# /etc/docker/daemon.json
-# { "dns": ["2001:4860:4860::8888", "8.8.8.8"] }
+# Test the registry endpoint over IPv6 directly
+curl -6 https://registry.example.com:5000/v2/
+# Use http:// only if the registry is configured as insecure
 ```
 
 ## Run a Private Registry Bound to IPv6
 
 ```bash
-# Run Docker Registry v2 listening on IPv6
+# Run a private registry listening on IPv6
 docker run -d \
     --name registry \
     -p "[::]:5000:5000" \
     -v /data/registry:/var/lib/registry \
     -e REGISTRY_HTTP_ADDR="[::]:5000" \
-    registry:2
+    registry:3
 
 # Verify registry is listening on IPv6
 ss -tlnp6 | grep 5000
@@ -48,6 +45,7 @@ ss -tlnp6 | grep 5000
 curl -6 http://[::1]:5000/v2/
 # {"errors":[{"code":"UNAUTHORIZED"...}]}  or {}
 
+# For a plain HTTP registry, add [::1]:5000 to insecure-registries before pushing or pulling
 # Push an image to local IPv6 registry
 docker tag nginx:latest [::1]:5000/mynginx:latest
 docker push [::1]:5000/mynginx:latest
@@ -59,11 +57,11 @@ docker pull [::1]:5000/mynginx:latest
 ## Registry with TLS and IPv6
 
 ```yaml
-# docker-compose.yaml for private registry with TLS
+# compose.yaml for private registry with TLS
 
 services:
   registry:
-    image: registry:2
+    image: registry:3
     ports:
       - "[::]:443:443"
     environment:
@@ -90,21 +88,19 @@ openssl req -newkey rsa:4096 -nodes \
     -addext "subjectAltName=IP:2001:db8::1,DNS:registry.internal"
 
 # Trust the cert on Docker clients
-sudo mkdir -p /etc/docker/certs.d/[2001:db8::1]:443
-sudo cp registry.crt /etc/docker/certs.d/[2001:db8::1]:443/ca.crt
+# Use the same registry host name in certs.d that you use in image names
+sudo mkdir -p /etc/docker/certs.d/registry.internal
+sudo cp registry.crt /etc/docker/certs.d/registry.internal/ca.crt
 ```
 
 ## Configure insecure-registries for IPv6
 
 ```json
-// /etc/docker/daemon.json - allow insecure HTTP registry over IPv6
 {
-  "ipv6": true,
-  "ip6tables": true,
   "insecure-registries": [
     "[::1]:5000",
     "[2001:db8::1]:5000",
-    "[fd00:registry::1]:5000"
+    "[fd00::1]:5000"
   ]
 }
 ```
@@ -121,4 +117,4 @@ docker pull [2001:db8::1]:5000/myimage:latest
 
 ## Conclusion
 
-Docker registry access over IPv6 uses bracket notation for IPv6 addresses in image names, e.g., `[2001:db8::1]:5000/image:tag`. Run a private registry bound to IPv6 by setting `REGISTRY_HTTP_ADDR=[::]:5000`. Configure `insecure-registries` in `daemon.json` for HTTP-only IPv6 registries. For TLS-secured registries, generate certificates with IPv6 Subject Alternative Names and trust the CA in `/etc/docker/certs.d/[ipv6]:port/`. Ensure the Docker daemon has IPv6 enabled to support IPv6 registry connections.
+Docker registry access over IPv6 uses bracket notation for IPv6 addresses in image names, e.g., `[2001:db8::1]:5000/image:tag`. Run a private registry bound to IPv6 by setting `REGISTRY_HTTP_ADDR=[::]:5000`. Configure `insecure-registries` in `daemon.json` for HTTP-only IPv6 registries. For TLS-secured registries, generate certificates with IPv6 Subject Alternative Names when clients connect by literal address, and trust the CA in `/etc/docker/certs.d/<registry-host>/` or `/etc/docker/certs.d/<registry-host>:<port>/` for non-default ports.
