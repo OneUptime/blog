@@ -59,7 +59,7 @@ ip -6 route show > "$OUTPUT_DIR/ipv6_routes.txt"
 
 # 3. Firewall rules
 sudo ip6tables -L -n -v > "$OUTPUT_DIR/ip6tables_rules.txt" 2>/dev/null || true
-sudo nft list ruleset ip6 > "$OUTPUT_DIR/nftables_ipv6.txt" 2>/dev/null || true
+sudo nft list ruleset > "$OUTPUT_DIR/nftables_ruleset.txt" 2>/dev/null || true
 
 # 4. DNS configuration
 cat /etc/resolv.conf > "$OUTPUT_DIR/dns_config.txt"
@@ -121,20 +121,34 @@ IPv6-enabled infrastructure.
 ## IPv6 Address Inventory Spreadsheet
 
 ```bash
-# Generate IPv6 address inventory for audit
 #!/bin/bash
+# Generate IPv6 address inventory for audit
 echo "Hostname,IPv6 Address,Interface,Scope,DNS AAAA,Notes" > /tmp/ipv6_inventory.csv
 
-# Scan network for IPv6 hosts (if authorized)
-for addr in $(ip -6 neigh show | awk '{print $1}'); do
-    hostname=$(dig -x $addr +short 2>/dev/null | sed 's/\.$//')
-    echo "${hostname:-UNKNOWN},$addr,eth0,global,${hostname:-NONE}," \
+# Inventory known IPv6 neighbors from the local neighbor table
+ip -6 neigh show | awk '$2=="dev"{print $1 "," $3}' | while IFS=, read -r addr iface; do
+    hostname=$(dig -x "$addr" +short 2>/dev/null | sed 's/\.$//')
+    aaaa_records="NONE"
+
+    if [ -n "$hostname" ]; then
+        aaaa_records=$(dig AAAA "$hostname" +short 2>/dev/null | paste -sd ';' -)
+        aaaa_records=${aaaa_records:-NONE}
+    fi
+
+    case "$addr" in
+        fe80:*) scope="link" ;;
+        fc*|fd*) scope="unique-local" ;;
+        ::1) scope="host" ;;
+        *) scope="global" ;;
+    esac
+
+    echo "${hostname:-UNKNOWN},$addr,$iface,$scope,$aaaa_records," \
       >> /tmp/ipv6_inventory.csv
 done
 
 # Check DNS AAAA records for known servers
 for server in web app db mail; do
-    aaaa=$(dig AAAA ${server}.example.com +short 2>/dev/null)
+    aaaa=$(dig AAAA "${server}.example.com" +short 2>/dev/null | paste -sd ';' -)
     echo "${server}.example.com,$aaaa,,,${aaaa:-MISSING},Check AAAA record" \
       >> /tmp/ipv6_inventory.csv
 done
@@ -152,10 +166,14 @@ sudo ip6tables -L INPUT -n | grep -E "ACCEPT|DROP|REJECT"
 
 # Test 2: Verify no unauthorized IPv6 tunnels
 sudo ip tunnel show
-sudo ip link show | grep -i "sit\|6in4\|isatap"
+sudo ip -6 tunnel show
+sudo ip -d link show type sit
+sudo ip -d link show type ip6tnl
+sudo ip -d link show type ip6gre
+sudo ip -d link show type vti6
 
 # Test 3: Verify ICMPv6 Packet Too Big is allowed (PMTU)
-sudo ip6tables -L | grep "icmpv6.*too"
+sudo ip6tables -S | grep -- "--icmpv6-type packet-too-big"
 
 # Test 4: Verify IPv6 logging is configured
 sudo ip6tables -L | grep LOG
