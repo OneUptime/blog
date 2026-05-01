@@ -49,8 +49,9 @@ resource "aws_db_parameter_group" "postgres15" {
   }
 
   parameter {
-    name  = "shared_preload_libraries"
-    value = "pg_stat_statements"
+    name         = "shared_preload_libraries"
+    value        = "pg_stat_statements"
+    apply_method = "pending-reboot"
   }
 
   tags = { Environment = var.environment }
@@ -90,7 +91,7 @@ resource "aws_security_group" "postgres" {
 resource "aws_db_instance" "postgres" {
   identifier = "${var.environment}-postgres"
   engine     = "postgres"
-  engine_version = "15.4"
+  engine_version = "15"  # Let RDS choose a current supported PostgreSQL 15 minor version
 
   instance_class     = var.db_instance_class  # "db.t3.medium"
   allocated_storage  = 100
@@ -101,7 +102,7 @@ resource "aws_db_instance" "postgres" {
 
   db_name  = var.db_name
   username = var.db_username
-  password = var.db_password  # Use OpenTofu write-only (1.10+)
+  password = var.db_password  # Stored in state; use password_wo on OpenTofu 1.11+ to avoid that
 
   db_subnet_group_name   = aws_db_subnet_group.postgres.name
   parameter_group_name   = aws_db_parameter_group.postgres15.name
@@ -194,4 +195,4 @@ resource "aws_secretsmanager_secret_version" "db_password" {
 
 ## Conclusion
 
-A production PostgreSQL deployment on AWS RDS requires subnet groups for placement in private subnets, parameter groups for PostgreSQL configuration, security groups with least-privilege access, KMS encryption, automated backups with appropriate retention, and Multi-AZ for production availability. Store database credentials in AWS Secrets Manager rather than embedding them in application configs. Enable Performance Insights for query performance monitoring without enabling expensive Enhanced Monitoring unless needed.
+A production PostgreSQL deployment on AWS RDS requires subnet groups for placement in private subnets, parameter groups for PostgreSQL configuration, security groups with least-privilege access, KMS encryption, automated backups with appropriate retention, and Multi-AZ for production availability. Store database credentials in AWS Secrets Manager rather than embedding them in application configs, but note that using `password` and `secret_string` here still stores the secret in OpenTofu state. Enable Performance Insights for query performance monitoring, and plan for CloudWatch Database Insights because the Performance Insights console experience reaches end-of-life on June 30, 2026. Enhanced Monitoring remains optional unless you need OS-level metrics.
