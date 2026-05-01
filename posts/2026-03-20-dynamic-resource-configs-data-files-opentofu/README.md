@@ -81,9 +81,9 @@ locals {
 }
 
 resource "aws_route53_record" "records" {
-  # Convert list of records to a map using the name as the key
+  # Convert list of records to a map using a name/type key
   for_each = {
-    for record in local.dns_config.records : record.name => record
+    for record in local.dns_config.records : "${record.name}-${record.type}" => record
   }
 
   zone_id = data.aws_route53_zone.main.zone_id
@@ -115,7 +115,7 @@ locals {
 
 ## Validating Data File Contents
 
-Add validation to catch data file errors early.
+Add a `check` block to surface data file errors during plan or apply.
 
 ```hcl
 locals {
@@ -137,6 +137,8 @@ check "services_have_required_keys" {
 }
 ```
 
+If invalid data should stop the run, use variable validation or a precondition instead of a `check` block.
+
 ## Building Security Group Rules from a Data File
 
 ```hcl
@@ -155,18 +157,21 @@ locals {
 resource "aws_security_group" "app" {
   name   = "app-sg"
   vpc_id = var.vpc_id
+}
 
-  dynamic "ingress" {
-    # Iterate over rules from the data file
-    for_each = local.firewall_rules.ingress
-    content {
-      from_port   = ingress.value.from_port
-      to_port     = ingress.value.to_port
-      protocol    = ingress.value.protocol
-      cidr_blocks = [ingress.value.cidr]
-      description = ingress.value.description
-    }
+resource "aws_vpc_security_group_ingress_rule" "app" {
+  # Build a stable map of rules for for_each
+  for_each = {
+    for rule in local.firewall_rules.ingress :
+    "${rule.protocol}-${rule.from_port}-${rule.to_port}-${rule.cidr}" => rule
   }
+
+  security_group_id = aws_security_group.app.id
+  ip_protocol       = each.value.protocol
+  from_port         = each.value.from_port
+  to_port           = each.value.to_port
+  cidr_ipv4         = each.value.cidr
+  description       = each.value.description
 }
 ```
 
