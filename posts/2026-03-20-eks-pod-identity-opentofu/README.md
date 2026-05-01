@@ -4,7 +4,7 @@ Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
 Tags: OpenTofu, AWS, EKS, Pod Identity, IAM, Kubernetes, Security, Infrastructure as Code
 
-Description: Learn how to configure EKS Pod Identity using OpenTofu as the modern replacement for IRSA, providing simplified IAM role assignment to Kubernetes service accounts.
+Description: Learn how to configure EKS Pod Identity using OpenTofu as a simpler alternative to IRSA for supported EKS workloads, providing simplified IAM role assignment to Kubernetes service accounts.
 
 ## Introduction
 
@@ -14,13 +14,15 @@ EKS Pod Identity is the newer, simplified alternative to IRSA for granting IAM p
 
 - OpenTofu v1.6+
 - EKS cluster version 1.24 or later
+- Linux Amazon EC2 worker nodes (Pod Identity doesn't support Fargate or Windows pods)
 - Pod Identity Agent add-on installed
+- Workload uses a supported AWS SDK version or AWS CLI via the default credential chain
 - AWS credentials with EKS and IAM permissions
 
 ## Step 1: Install the Pod Identity Agent Add-On
 
 ```hcl
-# The Pod Identity Agent must be installed on each node
+# The Pod Identity Agent must be installed on each eligible worker node
 
 # It handles credential injection for pods
 resource "aws_eks_addon" "pod_identity" {
@@ -73,12 +75,19 @@ resource "aws_iam_role_policy" "pod_permissions" {
       {
         Effect = "Allow"
         Action = [
-          "s3:GetObject",
-          "s3:PutObject",
           "s3:ListBucket"
         ]
         Resource = [
-          "arn:aws:s3:::${var.app_bucket}",
+          "arn:aws:s3:::${var.app_bucket}"
+        ]
+      },
+      {
+        Effect = "Allow"
+        Action = [
+          "s3:GetObject",
+          "s3:PutObject"
+        ]
+        Resource = [
           "arn:aws:s3:::${var.app_bucket}/*"
         ]
       },
@@ -104,6 +113,9 @@ resource "aws_eks_pod_identity_association" "app" {
   namespace       = var.kubernetes_namespace
   service_account = var.service_account_name
   role_arn        = aws_iam_role.pod_identity.arn
+
+  # Ensure the service account exists before creating the association
+  depends_on = [kubernetes_service_account.app]
 
   tags = {
     Name        = "${var.cluster_name}-pod-identity"
@@ -134,6 +146,9 @@ resource "kubernetes_service_account" "app" {
 
 ```hcl
 resource "kubernetes_deployment" "app" {
+  # Create pods only after the Pod Identity association exists
+  depends_on = [aws_eks_pod_identity_association.app]
+
   metadata {
     name      = var.app_name
     namespace = var.kubernetes_namespace
