@@ -25,7 +25,7 @@ services:
       - POSTGRES_INITDB_ARGS=--encoding=UTF-8 --locale=C
     volumes:
       - postgres_data:/var/lib/postgresql/data
-      - ./init-scripts:/docker-entrypoint-initdb.d:ro
+      - /path/to/init-scripts:/docker-entrypoint-initdb.d:ro
     ports:
       - "127.0.0.1:5432:5432"
     healthcheck:
@@ -46,7 +46,8 @@ services:
     volumes:
       - pgadmin_data:/var/lib/pgadmin
     depends_on:
-      - postgres
+      postgres:
+        condition: service_healthy
 
 volumes:
   postgres_data:
@@ -84,10 +85,10 @@ CREATE TABLE IF NOT EXISTS app.users (
 
 ## PostgreSQL Configuration Tuning
 
-```ini
-# Custom postgresql.conf settings (mount as volume or use container env)
+```yaml
+# Custom PostgreSQL settings (mount a custom config file or pass -c flags)
 
-# Set via environment-like approach in docker-compose:
+# Set under the postgres service in your Compose/Portainer stack:
 command: >
   postgres
   -c max_connections=100
@@ -116,20 +117,20 @@ services:
 ## Backup and Restore
 
 ```bash
-# Backup (via Portainer exec or host command)
-docker exec postgres pg_dump \
+# Run from the Docker host; replace your-postgres-container with your container name or ID
+docker exec your-postgres-container pg_dump \
   -U appuser \
   -d myapp \
   --format=custom \
   > /backup/myapp-$(date +%Y%m%d).pgdump
 
 # Full cluster backup
-docker exec postgres pg_dumpall \
+docker exec your-postgres-container pg_dumpall \
   -U appuser \
   > /backup/cluster-$(date +%Y%m%d).sql
 
 # Restore
-docker exec -i postgres pg_restore \
+docker exec -i your-postgres-container pg_restore \
   -U appuser \
   -d myapp \
   --clean \
@@ -146,10 +147,10 @@ docker exec -i postgres pg_restore \
 \dt app.*
 
 -- Check table sizes
-SELECT schemaname, tablename, pg_size_pretty(pg_total_relation_size(schemaname||'.'||tablename))
+SELECT schemaname, tablename, pg_size_pretty(pg_total_relation_size(format('%I.%I', schemaname, tablename)::regclass))
 FROM pg_tables
 WHERE schemaname = 'app'
-ORDER BY pg_total_relation_size(schemaname||'.'||tablename) DESC;
+ORDER BY pg_total_relation_size(format('%I.%I', schemaname, tablename)::regclass) DESC;
 
 -- Active connections
 SELECT pid, usename, application_name, state FROM pg_stat_activity;
@@ -157,4 +158,4 @@ SELECT pid, usename, application_name, state FROM pg_stat_activity;
 
 ## Conclusion
 
-PostgreSQL via Portainer, with pgAdmin for browser-based SQL management, creates a complete database development and operations environment. The `pg_isready` healthcheck ensures dependent services wait for PostgreSQL to be fully ready, preventing race conditions on stack deployment.
+PostgreSQL via Portainer, with pgAdmin for browser-based SQL management, creates a complete database development and operations environment. When paired with `depends_on: condition: service_healthy`, the `pg_isready` healthcheck ensures dependent services wait for PostgreSQL to be fully ready, preventing race conditions on stack deployment.
