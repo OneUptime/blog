@@ -16,7 +16,7 @@ AWS Fargate is a serverless compute engine for ECS that removes the need to prov
 - An ECR repository with a container image
 - AWS credentials with ECS, ECR, and IAM permissions
 
-## Step 1: Create Complete Fargate Infrastructure
+## Step 1: Create ECS Cluster and Capacity Providers
 
 ```hcl
 # ECS Cluster with Fargate capacity providers
@@ -49,15 +49,15 @@ resource "aws_ecs_task_definition" "fargate_app" {
   family                   = "${var.project_name}-fargate-app"
   requires_compatibilities = ["FARGATE"]
   network_mode             = "awsvpc"  # Required for Fargate
-  cpu                      = "256"     # 0.25 vCPU (valid: 256, 512, 1024, 2048, 4096)
-  memory                   = "512"     # 512 MB (must be compatible with CPU)
+  cpu                      = "256"     # 0.25 vCPU; use a supported Fargate CPU/memory combination
+  memory                   = "512"     # 512 MiB
 
   execution_role_arn = var.execution_role_arn
   task_role_arn      = var.task_role_arn
 
-  # Fargate platform version
+  # Runtime platform
   runtime_platform {
-    cpu_architecture        = "ARM64"    # Graviton for up to 20% better price/performance
+    cpu_architecture        = "ARM64"    # Graviton; ARM64 on Fargate requires platform version 1.4.0+
     operating_system_family = "LINUX"
   }
 
@@ -87,7 +87,7 @@ resource "aws_ecs_task_definition" "fargate_app" {
           "awslogs-group"         = "/ecs/${var.project_name}"
           "awslogs-region"        = var.region
           "awslogs-stream-prefix" = "fargate"
-          "awslogs-create-group"  = "true"
+          "awslogs-create-group"  = "true"  # Requires logs:CreateLogGroup on the execution role
         }
       }
 
@@ -121,7 +121,6 @@ resource "aws_ecs_service" "fargate" {
 
   capacity_provider_strategy {
     capacity_provider = "FARGATE_SPOT"
-    base              = 0
     weight            = 2  # 2/3 of tasks on Spot
   }
 
@@ -137,14 +136,12 @@ resource "aws_ecs_service" "fargate" {
     container_port   = 8080
   }
 
-  deployment_configuration {
-    minimum_healthy_percent = 100
-    maximum_percent         = 200
+  deployment_minimum_healthy_percent = 100
+  deployment_maximum_percent         = 200
 
-    deployment_circuit_breaker {
-      enable   = true
-      rollback = true
-    }
+  deployment_circuit_breaker {
+    enable   = true
+    rollback = true
   }
 
   enable_execute_command = true
@@ -168,17 +165,17 @@ aws ecs list-tasks \
   --service-name my-project-fargate \
   --desired-status RUNNING
 
-# Check task CPU and memory usage
+# Check service CPU usage in Container Insights
 aws cloudwatch get-metric-statistics \
   --namespace ECS/ContainerInsights \
   --metric-name CpuUtilized \
   --dimensions Name=ClusterName,Value=my-project-fargate Name=ServiceName,Value=my-project-fargate \
-  --start-time $(date -u -d '1 hour ago' +%Y-%m-%dT%H:%M:%S) \
-  --end-time $(date -u +%Y-%m-%dT%H:%M:%S) \
+  --start-time $(date -u -d '1 hour ago' +%Y-%m-%dT%H:%M:%SZ) \
+  --end-time $(date -u +%Y-%m-%dT%H:%M:%SZ) \
   --period 300 \
   --statistics Average
 ```
 
 ## Conclusion
 
-Use ARM64 Fargate tasks when possible-Graviton processors provide up to 20% better price/performance compared to x86. FARGATE_SPOT is ideal for web services, batch workloads, and CI/CD tasks that can handle 2-minute interruption notices; combine it with a small on-demand base to ensure continuity. Container Insights is essential for Fargate since you can't SSH to underlying hosts-it provides the only visibility into task-level CPU, memory, and network metrics.
+Use ARM64 Fargate tasks when possible when your images support it-Graviton can improve price/performance compared to x86. FARGATE_SPOT is ideal for web services, batch workloads, and CI/CD tasks that can handle 2-minute interruption notices; combine it with a small on-demand base to ensure continuity. Container Insights is valuable for Fargate since you can't SSH to underlying hosts-it publishes CPU, memory, and network metrics to CloudWatch, and enhanced observability adds more granular task- and container-level metrics.
