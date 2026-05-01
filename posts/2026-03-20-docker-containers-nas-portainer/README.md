@@ -4,15 +4,15 @@ Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
 Tags: Portainer, NAS, Docker, Container Management, Self-Hosted, Home Lab
 
-Description: Use Portainer to manage Docker containers on any NAS device, covering container lifecycle management, volume management, and log inspection.
+Description: Use Portainer to manage Docker containers on a NAS device running Docker, covering container lifecycle management, volume management, and log inspection.
 
 ## Introduction
 
-NAS devices from Synology, QNAP, ASUSTOR, and others all support Docker, but their native management interfaces are limited. Portainer provides a consistent, powerful management layer that works across all NAS platforms. This guide covers the day-to-day container management tasks you'll perform most often.
+Many NAS devices from Synology, QNAP, ASUSTOR, and others can run Docker containers, but their native management interfaces are limited. Portainer provides a consistent, powerful management layer that works across many NAS platforms. This guide covers the day-to-day container management tasks you'll perform most often.
 
 ## Accessing Your NAS via Portainer
 
-After installing Portainer on your NAS (see platform-specific guides), access it at `http://<nas-ip>:9000`. The home screen shows your Docker environment with a summary of running containers, volumes, images, and networks.
+After installing Portainer on your NAS (see platform-specific guides), access it at `https://<nas-ip>:9443` by default. If you explicitly exposed Portainer's legacy HTTP port during installation, you can also use `http://<nas-ip>:9000`. The home screen shows your Docker environment with a summary of running containers, volumes, images, and networks.
 
 ## Managing the Container Lifecycle
 
@@ -43,8 +43,6 @@ In the **Containers** list:
 For multi-container applications, use **Stacks**:
 
 ```yaml
-version: "3.8"
-
 services:
   # Example: WordPress on NAS
   wordpress:
@@ -57,20 +55,20 @@ services:
       WORDPRESS_DB_PASSWORD: secure_password
       WORDPRESS_DB_NAME: wordpress
     volumes:
-      # Store WordPress files on NAS volume
-      - /volume1/Docker/wordpress:/var/www/html
+      # Store WordPress files on a NAS directory
+      - /path/on/your/nas/wordpress:/var/www/html
     restart: unless-stopped
 
   mariadb:
     image: mariadb:10.11
     environment:
-      MYSQL_DATABASE: wordpress
-      MYSQL_USER: wordpress
-      MYSQL_PASSWORD: secure_password
-      MYSQL_ROOT_PASSWORD: root_secure_password
+      MARIADB_DATABASE: wordpress
+      MARIADB_USER: wordpress
+      MARIADB_PASSWORD: secure_password
+      MARIADB_ROOT_PASSWORD: root_secure_password
     volumes:
-      # Store database on NAS volume
-      - /volume1/Docker/wordpress-db:/var/lib/mysql
+      # Store database on a NAS directory
+      - /path/on/your/nas/wordpress-db:/var/lib/mysql
     restart: unless-stopped
 ```
 
@@ -88,15 +86,15 @@ For NAS users, binding to the NAS filesystem is often preferred for easy access 
 
 ```yaml
 volumes:
-  # Bind mount to NAS share
-  - /volume1/media:/media
-  # Bind mount to NAS config directory
-  - /volume1/Docker/appname:/config
+  # Bind mount to a NAS share
+  - /path/on/your/nas/media:/media
+  # Bind mount to an app config directory on your NAS
+  - /path/on/your/nas/appname:/config
 ```
 
 ### Inspecting Volume Usage
 
-In Portainer, click on a volume to see which containers are using it. This prevents accidental deletion of volumes in use.
+In Portainer, review the volume details and whether the volume is marked `unused` before deleting it. For external volumes, Portainer may have limited usage information.
 
 ## Viewing Logs
 
@@ -110,7 +108,7 @@ Navigate to **Containers**, click on a container name, then click **Logs**:
 ```bash
 # Equivalent Docker CLI command
 
-docker logs <container-name> --tail 100 --follow
+docker logs --tail 100 --follow <container-name>
 ```
 
 ## Monitoring Resource Usage
@@ -128,10 +126,10 @@ For NAS devices with limited RAM, monitor memory usage carefully to avoid the NA
 
 Click on a container, then **Console** to open an interactive terminal:
 
-- Select the shell: `/bin/bash`, `/bin/sh`, or custom
+- Select the shell: `/bin/bash`, `/bin/sh`, `/bin/ash`, or custom
 - Click **Connect**
 
-This is equivalent to `docker exec -it <container> bash`.
+This is equivalent to `docker exec -it <container> /bin/sh` (or whichever shell you selected).
 
 ## Network Management
 
@@ -178,14 +176,14 @@ Map NAS shared folders directly:
 
 ```yaml
 volumes:
-  - /volume1/media:/media:ro        # Read-only media library
-  - /volume1/Docker/config:/config   # Config files (read-write)
-  - /volume1/downloads:/downloads    # Download directory
+  - /path/on/your/nas/media:/media:ro   # Read-only media library
+  - /path/on/your/nas/config:/config    # Config files (read-write)
+  - /path/on/your/nas/downloads:/downloads  # Download directory
 ```
 
 Resource Limits for NAS Containers
 
-NAS devices often have limited resources. Set limits in Portainer:
+NAS devices often have limited resources. If you're deploying a stack in Portainer, you can declare limits in the Compose file:
 
 ```yaml
 services:
@@ -202,4 +200,4 @@ services:
 
 ## Conclusion
 
-Portainer provides a consistent, powerful interface for managing Docker containers on any NAS device. From container lifecycle management to log inspection and resource monitoring, Portainer covers all the day-to-day tasks that NAS users need. Using NAS directories as bind mounts keeps your application data accessible through the NAS filesystem and included in your existing backup jobs.
+Portainer provides a consistent, powerful interface for managing Docker containers on a NAS device running Docker. From container lifecycle management to log inspection and resource monitoring, Portainer covers all the day-to-day tasks that NAS users need. Using NAS directories as bind mounts keeps your application data accessible through the NAS filesystem and included in your existing backup jobs.
