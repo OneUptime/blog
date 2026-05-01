@@ -24,11 +24,11 @@ ip -6 addr show eth0
 # 2. Is there a link-local address?
 ip -6 addr show eth0 | grep "fe80"
 
-# 3. Can the client reach the server?
-ping6 ff02::1:2%eth0  # All DHCP agents multicast
+# 3. Is the on-link DHCPv6 multicast group reachable?
+ping6 -c 1 ff02::1:2%eth0  # All DHCPv6 relay agents and servers
 
 # 4. Is DHCPv6 traffic flowing?
-sudo tcpdump -i eth0 udp port 546 or udp port 547
+sudo tcpdump -i eth0 'udp port 546 or udp port 547'
 ```
 
 ---
@@ -44,11 +44,11 @@ sudo tcpdump -i eth0 udp port 546 or udp port 547
 ```bash
 # Check Router Advertisements - is M flag set?
 rdisc6 eth0
-# Look for: "Managed address configuration: Yes"
+# Look for the RA managed/stateful address configuration flag
 
 # Check DHCPv6 client logs
-journalctl -u systemd-networkd | grep -i dhcp
-journalctl -u wide-dhcpv6-client
+journalctl -u systemd-networkd | grep -i dhcp6
+journalctl -b | grep -Ei 'dhcp6|dhcpv6'
 
 # Manually request an address
 sudo dhclient -6 -v eth0
@@ -57,11 +57,11 @@ sudo dhclient -6 -v eth0
 ### Fixes
 
 ```bash
-# Fix 1: Ensure DHCPv6 client is configured
-sudo systemctl start systemd-networkd
+# Fix 1: Ensure your DHCPv6-capable client is configured and running
+sudo systemctl restart systemd-networkd  # if you use systemd-networkd
 
 # Fix 2: Check RA flags on router
-# Router must have M=1 for stateful DHCPv6
+# Router should advertise M=1 when hosts are expected to use stateful DHCPv6
 
 # Fix 3: Verify server is running
 sudo systemctl status kea-dhcp6-server
@@ -80,13 +80,13 @@ sudo systemctl status isc-dhcp-server6
 
 ```bash
 # On relay host - check if dhcrelay is running
-systemctl status dhcrelay6
+pgrep -af 'dhcrelay.*-6'
 
 # Capture on client-facing interface
-sudo tcpdump -i eth1 udp port 547
+sudo tcpdump -i eth1 'udp port 546 or udp port 547'
 
 # Capture on server-facing interface
-sudo tcpdump -i eth0 udp port 547
+sudo tcpdump -i eth0 'udp port 546 or udp port 547'
 
 # Verify server has subnet matching client prefix
 grep "subnet6" /etc/dhcp/dhcpd6.conf
@@ -95,12 +95,12 @@ grep "subnet6" /etc/dhcp/dhcpd6.conf
 ### Fixes
 
 ```bash
-# Fix 1: Restart relay
-sudo systemctl restart dhcrelay6
+# Fix 1: Restart relay (service name may vary by distro)
+sudo systemctl restart isc-dhcp-relay6
 
-# Fix 2: Allow UDP 547 through firewall
-sudo ip6tables -A FORWARD -p udp --dport 547 -j ACCEPT
-sudo ip6tables -A FORWARD -p udp --sport 547 -j ACCEPT
+# Fix 2: Allow DHCPv6 to the relay/server host firewall
+sudo ip6tables -A INPUT -p udp --dport 547 -j ACCEPT
+sudo ip6tables -A OUTPUT -p udp --sport 547 -j ACCEPT
 
 # Fix 3: Add missing subnet to server config
 # subnet6 2001:db8:2::/64 { range6 ...; }
@@ -121,11 +121,11 @@ sudo ip6tables -A FORWARD -p udp --sport 547 -j ACCEPT
 grep "name-servers\|dns-server" /etc/dhcp/dhcpd6.conf
 grep -A5 "option-data" /etc/kea/kea-dhcp6.conf
 
-# Check client is requesting DNS
-grep "request" /etc/dhcp/dhclient6.conf
+# Check client request policy (ISC dhclient requests DNS by default unless overridden)
+grep "request\|also request" /etc/dhcp/dhclient.conf
 
 # Capture Reply and check for option 23
-sudo tcpdump -i eth0 -vv udp port 546 | grep -A20 "Reply"
+sudo tcpdump -i eth0 -vv udp port 546 | grep -A20 -i "reply"
 ```
 
 ### Fixes
@@ -157,18 +157,20 @@ sudo systemctl restart kea-dhcp6-server
 wc -l /var/lib/dhcp/dhcpd6.leases
 grep "binding state active" /var/lib/dhcp/dhcpd6.leases | wc -l
 
-# Kea - check via REST API
-curl http://localhost:8000/ -d '{"command":"lease6-get-all","service":["dhcp6"]}' | python3 -m json.tool
+# Kea Control Agent/API (requires the lease_cmds hook library)
+curl -X POST -H "Content-Type: application/json" \
+  -d '{"command":"lease6-get-all","service":["dhcp6"]}' \
+  http://localhost:8000/ | python3 -m json.tool
 
 # Check for stale leases (clients that are gone)
-cat /var/lib/dhcp/dhcpd6.leases | grep "ends"
+grep "ends" /var/lib/dhcp/dhcpd6.leases
 ```
 
 ### Fixes
 
 ```bash
 # Expand the address pool
-# subnet6 2001:db8::/32 {
+# subnet6 2001:db8::/64 {
 #   range6 2001:db8::100 2001:db8::5000;
 # }
 
@@ -177,9 +179,9 @@ cat /var/lib/dhcp/dhcpd6.leases | grep "ends"
 # max-lease-time 7200;
 
 # Remove stale leases (ISC DHCP)
-systemctl stop isc-dhcp-server6
+sudo systemctl stop isc-dhcp-server6
 # Edit /var/lib/dhcp/dhcpd6.leases and remove expired entries
-systemctl start isc-dhcp-server6
+sudo systemctl start isc-dhcp-server6
 ```
 
 ---
@@ -194,20 +196,20 @@ systemctl start isc-dhcp-server6
 
 ```bash
 # Check for duplicate leases
-grep -c "ia-na" /var/lib/dhcp/dhcpd6.leases
+awk '/iaaddr / {print $2}' /var/lib/dhcp/dhcpd6.leases | sort | uniq -d
 
 # Use DAD (Duplicate Address Detection)
-ip -6 monitor | grep "dadfailed"
+ip -6 monitor address | grep "dadfailed"
 
-# Check NDP cache for duplicate MACs
-ip -6 neighbor show | sort | uniq -D
+# Watch for a neighbor entry flapping between MAC addresses
+ip -6 monitor neigh
 ```
 
 ### Fix
 
 ```bash
-# Enable DAD on interface
-sysctl net.ipv6.conf.eth0.dad_transmits=1
+# Re-enable DAD on the interface if it was disabled
+sudo sysctl -w net.ipv6.conf.eth0.dad_transmits=1
 
 # On server - clear conflicting lease
 # ISC DHCP: remove the entry from dhcpd6.leases and restart
@@ -219,7 +221,7 @@ sysctl net.ipv6.conf.eth0.dad_transmits=1
 
 ```bash
 # Full DHCPv6 conversation capture
-sudo tcpdump -i eth0 -w /tmp/dhcpv6.pcap udp port 546 or udp port 547
+sudo tcpdump -i eth0 -w /tmp/dhcpv6.pcap 'udp port 546 or udp port 547'
 
 # Read capture
 tcpdump -r /tmp/dhcpv6.pcap -vv
