@@ -15,7 +15,7 @@ DHCPv6 uses two specific UDP ports for communication - port **547** for servers 
 | Port | Role | Direction |
 |------|------|-----------|
 | **UDP 546** | DHCPv6 Client | Receives messages from servers and relay agents |
-| **UDP 547** | DHCPv6 Server / Relay Agent | Receives messages from clients and other relay agents |
+| **UDP 547** | DHCPv6 Server / Relay Agent | Receives messages from clients and relay agents; relay agents also receive from servers and other relay agents |
 
 ## Communication Flow
 
@@ -50,7 +50,7 @@ ss -ulnp | grep 546
 
 ## Firewall Rules for DHCPv6
 
-Firewall rules must explicitly allow DHCPv6 traffic on these ports. Forgetting this is a very common reason DHCPv6 fails silently.
+Firewall rules must allow DHCPv6 traffic on these ports. Forgetting this is a very common reason DHCPv6 fails silently.
 
 ```bash
 # ip6tables: Allow outgoing DHCPv6 client messages (to server port 547)
@@ -100,11 +100,12 @@ table ip6 dhcpv6_rules {
 ## Troubleshooting Port Issues
 
 ```bash
-# Test if the DHCPv6 server port is reachable from a relay agent
+# Send a UDP probe toward the DHCPv6 server port
 # (using nc with IPv6 support)
 nc -6 -u -z 2001:db8::1 547
 echo $?
-# 0 = port reachable, non-zero = blocked
+# A zero exit status only shows that nc completed its local probe attempt;
+# use packet capture or server logs to verify whether the traffic arrived.
 
 # Use tcpdump to confirm traffic is arriving on port 547
 sudo tcpdump -i eth0 -n "udp port 547"
@@ -112,4 +113,4 @@ sudo tcpdump -i eth0 -n "udp port 547"
 
 ## Summary
 
-DHCPv6 client-server communication is strictly partitioned: clients listen on port **546** and servers listen on port **547**. Proper firewall rules must allow traffic in both directions on these ports. Relay agents use port 547 for both receiving from clients and forwarding to servers.
+DHCPv6 client-server communication is strictly partitioned: clients listen on port **546** and servers listen on port **547**. Proper firewall rules must allow traffic in both directions on these ports. Relay agents use port 547 for receiving from clients, servers, and other relay agents, and for forwarding to servers or other relay agents.
