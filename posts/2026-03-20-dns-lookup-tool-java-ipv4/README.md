@@ -21,7 +21,7 @@ public class DnsLookupTool {
 
         for (String target : args) {
             System.out.printf("=== %s ===%n", target);
-            if (looksLikeIP(target)) {
+            if (looksLikeIPv4(target)) {
                 reverseLookup(target);
             } else {
                 forwardLookup(target);
@@ -30,8 +30,28 @@ public class DnsLookupTool {
         }
     }
 
-    private static boolean looksLikeIP(String s) {
-        return s.matches("\\d{1,3}\\.\\d{1,3}\\.\\d{1,3}\\.\\d{1,3}");
+    private static boolean looksLikeIPv4(String s) {
+        String[] parts = s.split("\\.", -1);
+        if (parts.length != 4) {
+            return false;
+        }
+
+        for (String part : parts) {
+            if (part.isEmpty() || part.length() > 3) {
+                return false;
+            }
+            for (int i = 0; i < part.length(); i++) {
+                if (!Character.isDigit(part.charAt(i))) {
+                    return false;
+                }
+            }
+
+            int value = Integer.parseInt(part);
+            if (value < 0 || value > 255) {
+                return false;
+            }
+        }
+        return true;
     }
 
     private static void forwardLookup(String hostname) {
@@ -39,17 +59,18 @@ public class DnsLookupTool {
             InetAddress[] addresses = InetAddress.getAllByName(hostname);
             System.out.printf("Forward lookup for: %s%n", hostname);
 
-            int ipv4Count = 0, ipv6Count = 0;
+            int ipv4Count = 0;
             for (InetAddress addr : addresses) {
                 if (addr instanceof Inet4Address) {
                     System.out.printf("  A record:    %s%n", addr.getHostAddress());
                     ipv4Count++;
-                } else {
-                    System.out.printf("  AAAA record: %s%n", addr.getHostAddress());
-                    ipv6Count++;
                 }
             }
-            System.out.printf("Total: %d IPv4, %d IPv6 addresses%n", ipv4Count, ipv6Count);
+            if (ipv4Count == 0) {
+                System.out.println("  No IPv4 addresses found");
+            } else {
+                System.out.printf("Total: %d IPv4 address%s%n", ipv4Count, ipv4Count == 1 ? "" : "es");
+            }
 
         } catch (UnknownHostException e) {
             System.err.printf("Not found: %s (%s)%n", hostname, e.getMessage());
@@ -61,17 +82,17 @@ public class DnsLookupTool {
             InetAddress addr = InetAddress.getByName(ip);
             System.out.printf("Reverse lookup for: %s%n", ip);
 
-            // getCanonicalHostName() triggers reverse DNS (PTR record)
+            // getCanonicalHostName() performs reverse lookup via the system resolver
             String hostname = addr.getCanonicalHostName();
-            if (hostname.equals(ip)) {
-                System.out.println("  No PTR record found");
+            if (hostname.equals(addr.getHostAddress())) {
+                System.out.println("  No reverse lookup name found");
             } else {
-                System.out.printf("  PTR record: %s%n", hostname);
+                System.out.printf("  Host name:     %s%n", hostname);
             }
 
             // Classify the address
             System.out.printf("  isLoopback:    %b%n", addr.isLoopbackAddress());
-            System.out.printf("  isPrivate:     %b%n", addr.isSiteLocalAddress());
+            System.out.printf("  isSiteLocal:   %b%n", addr.isSiteLocalAddress());
             System.out.printf("  isMulticast:   %b%n", addr.isMulticastAddress());
             System.out.printf("  isReachable:   ");
             System.out.printf("%b%n", addr.isReachable(2000));
@@ -107,7 +128,7 @@ public class CachingDnsResolver {
             return cache.get(hostname);
         }
 
-        // Perform DNS lookup
+        // Perform name lookup
         InetAddress[] addresses = InetAddress.getAllByName(hostname);
         List<String> ipv4s = new ArrayList<>();
         for (InetAddress addr : addresses) {
@@ -127,9 +148,9 @@ public class CachingDnsResolver {
     public static void main(String[] args) throws Exception {
         CachingDnsResolver resolver = new CachingDnsResolver(60);  // 60-second TTL
 
-        // First call: DNS lookup
+        // First call: resolve and populate the application cache
         System.out.println(resolver.resolveIPv4("google.com"));
-        // Second call: cache hit
+        // Second call: application cache hit
         System.out.println(resolver.resolveIPv4("google.com"));
     }
 }
@@ -177,4 +198,4 @@ public class ParallelDnsResolver {
 
 ## Conclusion
 
-Java's `InetAddress.getAllByName()` is the core of DNS resolution. Filter results with `instanceof Inet4Address` for IPv4-only output. `getCanonicalHostName()` triggers PTR (reverse) lookup. For production use, add a TTL-based in-memory cache to avoid redundant DNS queries, and use parallel resolution when processing many hostnames.
+Java's `InetAddress.getAllByName()` is the core name-resolution API used here. Filter results with `instanceof Inet4Address` for IPv4-only output. `getCanonicalHostName()` performs reverse lookup through the system resolver. For production use, add a TTL-based in-memory cache to avoid redundant lookups, and use parallel resolution when processing many hostnames.
