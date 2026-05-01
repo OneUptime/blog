@@ -46,11 +46,7 @@ resource "aws_service_discovery_service" "api" {
       type = "A"  # A records for IP addresses
     }
 
-    routing_policy = "MULTIVALUE"  # Return multiple IPs for load balancing
-  }
-
-  health_check_custom_config {
-    failure_threshold = 1  # Remove from DNS after 1 unhealthy check
+    routing_policy = "MULTIVALUE"  # Return up to eight task IPs per DNS response
   }
 
   tags = {
@@ -71,10 +67,6 @@ resource "aws_service_discovery_service" "worker" {
     }
 
     routing_policy = "MULTIVALUE"
-  }
-
-  health_check_custom_config {
-    failure_threshold = 1
   }
 }
 ```
@@ -119,7 +111,7 @@ import requests
 response = requests.get('http://api.myapp.local:8080/internal/process', timeout=5)
 ```
 
-## Step 5: Optional ALB with Service Discovery Fallback
+## Step 5: Optional ALB with Service Discovery
 
 ```hcl
 # For external traffic: use ALB
@@ -164,14 +156,14 @@ tofu init
 tofu plan
 tofu apply
 
-# Test DNS resolution from within the VPC
+# Launch a test task in the same VPC, then run DNS checks from inside the container
 aws ecs run-task \
   --cluster my-project-cluster \
   --task-definition test-dns \
   --launch-type FARGATE \
-  --network-configuration "awsvpcConfiguration={subnets=[subnet-xxx],securityGroups=[sg-xxx]}"
+  --network-configuration "awsvpcConfiguration={subnets=[subnet-xxx],securityGroups=[sg-xxx],assignPublicIp=DISABLED}"
 ```
 
 ## Conclusion
 
-Service Discovery is ideal for microservices architectures where internal services need to communicate without going through a load balancer. The `MULTIVALUE` routing policy distributes traffic across all healthy task IPs using client-side load balancing. Keep the TTL short (10-30 seconds) so newly registered tasks receive traffic quickly and deregistered tasks stop receiving traffic promptly when tasks are stopped.
+Service Discovery is ideal for microservices architectures where internal services need to communicate without going through a load balancer. The `MULTIVALUE` routing policy returns up to eight task IPs in each DNS response, so clients can distribute requests across the returned endpoints. Keep the TTL short (10-30 seconds) so newly registered tasks receive traffic quickly and stopped tasks drop out of cached DNS responses promptly.
