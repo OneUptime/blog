@@ -8,7 +8,7 @@ Description: A complete guide to upgrading the Elemental OS on registered nodes 
 
 ## Introduction
 
-One of Elemental's most powerful features is its support for zero-downtime, declarative OS upgrades. Rather than manually SSHing into nodes, you create a ManagedOSImage resource that targets specific machines and the Elemental Operator orchestrates the upgrade process, including reboots, in a controlled manner.
+One of Elemental's most powerful features is its support for rolling, declarative OS upgrades. Rather than manually SSHing into nodes, you create a ManagedOSImage resource that targets specific machines and the Elemental Operator orchestrates the upgrade process, including reboots, in a controlled manner.
 
 ## Prerequisites
 
@@ -46,28 +46,25 @@ spec:
   # The new OS container image
   osImage: "my-registry.example.com/elemental-os:v1.1.0"
 
-  # Target all machines, or use a selector for targeted upgrades
-  clusterSelector:
-    matchLabels:
-      # Target clusters with this label
-      environment: production
+  # Target clusters with this label
+  clusterTargets:
+    - clusterSelector:
+        matchLabels:
+          environment: production
 
   # Node selector within the cluster
   nodeSelector:
-    matchLabels:
-      node-role.kubernetes.io/worker: "true"
+    matchExpressions:
+      - key: node-role.kubernetes.io/worker
+        operator: Exists
 
   # Concurrency settings
   concurrency: 2
 
-  # Cordon nodes before upgrade
-  cordon: true
-
   # Drain nodes before upgrade
   drain:
-    enabled: true
     force: false
-    timeout: 300
+    timeout: "300s"
     gracePeriod: 30
     ignoreDaemonSets: true
     deleteLocalData: false
@@ -87,10 +84,10 @@ kubectl get managedosimage -n fleet-default upgrade-to-v1.1.0 --watch
 kubectl describe managedosimage -n fleet-default upgrade-to-v1.1.0
 
 # Check upgrade jobs
-kubectl get jobs -n cattle-system -l upgrade.cattle.io/managed-os-image=upgrade-to-v1.1.0
+kubectl get jobs -n cattle-system -l upgrade.cattle.io/plan=os-upgrader-upgrade-to-v1.1.0
 
 # Watch pods during upgrade
-kubectl get pods -n cattle-system -l upgrade.cattle.io/managed-os-image=upgrade-to-v1.1.0 --watch
+kubectl get pods -n cattle-system -l upgrade.cattle.io/plan=os-upgrader-upgrade-to-v1.1.0 --watch
 ```
 
 ## Step 4: Verify the Upgrade
@@ -100,7 +97,7 @@ kubectl get pods -n cattle-system -l upgrade.cattle.io/managed-os-image=upgrade-
 ssh root@node-ip cat /etc/os-release
 
 # Check via kubectl
-kubectl get node <node-name> -o jsonpath='{.metadata.annotations}'
+kubectl get node <node-name> -o jsonpath='{.status.nodeInfo.osImage}{"\n"}'
 
 # Verify all nodes are at the new version
 kubectl get nodes -o custom-columns=\
@@ -121,47 +118,71 @@ metadata:
 spec:
   osImage: "my-registry.example.com/elemental-os:v1.1.0"
 
+  clusterTargets:
+    - clusterSelector:
+        matchLabels:
+          environment: production
+
   # Only upgrade worker nodes initially
   nodeSelector:
-    matchLabels:
-      node-role.kubernetes.io/worker: "true"
+    matchExpressions:
+      - key: node-role.kubernetes.io/worker
+        operator: Exists
 
   # Upgrade one node at a time
   concurrency: 1
 
-  # Wait 60 seconds between node upgrades
+  # Allow up to 10 minutes for drain to complete
   drain:
-    enabled: true
-    timeout: 600
+    timeout: "600s"
 ```
 
 ## Upgrading via ManagedOSVersionChannel
 
 ```yaml
-# Use version channels for managed rollouts
+# Use a channel to populate ManagedOSVersions
+apiVersion: elemental.cattle.io/v1beta1
+kind: ManagedOSVersionChannel
+metadata:
+  name: elemental-channel
+  namespace: fleet-default
+spec:
+  options:
+    image: registry.suse.com/rancher/elemental-channel:latest
+  type: custom
+---
+# Then reference one of the synced ManagedOSVersions
 apiVersion: elemental.cattle.io/v1beta1
 kind: ManagedOSImage
 metadata:
   name: channel-upgrade
   namespace: fleet-default
 spec:
-  # Reference a version channel instead of a direct image
-  managedOSVersionName: elemental-v1.1.0
+  managedOSVersionName: v2.0.2
+  clusterTargets:
+    - clusterName: my-cluster
 ```
 
 ## Rollback on Failure
 
-Elemental OS uses A/B partition schemes, enabling rollback if an upgrade fails:
+Elemental OS uses an A/B partition scheme with automatic fallback if booting the upgraded system fails. If you need to intentionally revert to an older image, create or update a ManagedOSImage that points to the previous version and set `FORCE=true`, because downgrades are skipped by default:
 
-```bash
-# If a node fails to boot after upgrade, it will auto-rollback
-# To manually trigger rollback on a node:
-ssh root@node-ip grub2-once recovery
-
-# Or trigger rollback via the system
-ssh root@node-ip elemental reset
+```yaml
+apiVersion: elemental.cattle.io/v1beta1
+kind: ManagedOSImage
+metadata:
+  name: rollback-to-v1.0.0
+  namespace: fleet-default
+spec:
+  osImage: "my-registry.example.com/elemental-os:v1.0.0"
+  clusterTargets:
+    - clusterName: my-cluster
+  upgradeContainer:
+    envs:
+      - name: FORCE
+        value: "true"
 ```
 
 ## Conclusion
 
-Elemental's declarative OS upgrade system transforms the traditionally painful process of updating bare metal nodes into a Kubernetes-native operation. ManagedOSImage resources allow you to target specific machines, control upgrade concurrency, and leverage drain/cordon for zero-downtime upgrades. Combined with A/B partition rollback, Elemental OS upgrades are safe, repeatable, and auditable.
+Elemental's declarative OS upgrade system transforms the traditionally painful process of updating bare metal nodes into a Kubernetes-native operation. ManagedOSImage resources allow you to target specific machines, control upgrade concurrency, and leverage drain/cordon settings for controlled rolling upgrades. Combined with Elemental's A/B partitioning and recovery model, Elemental OS upgrades are safe, repeatable, and auditable.
