@@ -46,8 +46,9 @@ data "aws_ami" "amazon_linux" {
 ## Step 2: Look Up a Custom AMI by Tag
 
 ```hcl
-# Find a custom golden image by environment and application tags
+# Find a custom golden image by environment and application tags when enabled
 data "aws_ami" "golden" {
+  count       = var.use_golden_image ? 1 : 0
   most_recent = true
   owners      = [var.aws_account_id]
 
@@ -100,8 +101,8 @@ resource "aws_iam_instance_profile" "ec2" {
 
 ```hcl
 resource "aws_instance" "web" {
-  # Use the custom golden image if available, otherwise fall back to Amazon Linux
-  ami           = var.use_golden_image ? data.aws_ami.golden.id : data.aws_ami.amazon_linux.id
+  # Use the custom golden image when enabled, otherwise use Amazon Linux
+  ami           = var.use_golden_image ? data.aws_ami.golden[0].id : data.aws_ami.amazon_linux.id
   instance_type = "t3.medium"
   subnet_id     = var.subnet_id
 
@@ -119,16 +120,15 @@ resource "aws_instance" "web" {
   }
 
   # User data runs on first boot only
-  user_data = base64encode(<<-EOF
+  user_data = <<-EOF
     #!/bin/bash
-    echo "Instance launched from AMI: ${var.use_golden_image ? data.aws_ami.golden.id : data.aws_ami.amazon_linux.id}"
+    echo "Instance launched from AMI: ${var.use_golden_image ? data.aws_ami.golden[0].id : data.aws_ami.amazon_linux.id}"
     yum update -y
   EOF
-  )
 
   tags = {
     Name        = "web-server"
-    AMI         = var.use_golden_image ? data.aws_ami.golden.id : data.aws_ami.amazon_linux.id
+    AMI         = var.use_golden_image ? data.aws_ami.golden[0].id : data.aws_ami.amazon_linux.id
     Environment = var.environment
   }
 }
@@ -147,7 +147,7 @@ output "ami_used" {
 }
 
 output "golden_ami_name" {
-  value = var.use_golden_image ? data.aws_ami.golden.name : "N/A"
+  value = var.use_golden_image ? data.aws_ami.golden[0].name : "N/A"
 }
 ```
 
@@ -161,4 +161,4 @@ tofu apply
 
 ## Conclusion
 
-You have launched EC2 instances from both AWS-managed and custom golden AMIs using OpenTofu. The `data "aws_ami"` resource with `most_recent = true` ensures your infrastructure always uses the latest approved image without hardcoding AMI IDs, which vary by region. Always store custom AMI IDs in SSM Parameter Store or use consistent tagging for reliable lookups.
+You have launched EC2 instances from both AWS-managed and custom golden AMIs using OpenTofu. The `data "aws_ami"` resource with `most_recent = true` ensures your infrastructure always uses the most recent matching image without hardcoding AMI IDs, which vary by region. Always store custom AMI IDs in SSM Parameter Store or use consistent tagging for reliable lookups.
