@@ -4,128 +4,85 @@ Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
 Tags: Portainer, StackStorm, Automation, Docker, DevOps
 
-Description: Deploy StackStorm event-driven automation platform using Portainer for IT operations automation and ChatOps.
+Description: Deploy StackStorm event-driven automation platform using Portainer for IT operations automation and optional Slack-based ChatOps.
 
 ## Introduction
 
-StackStorm (ST2) is an event-driven automation platform for DevOps and IT operations. It connects sensors (event sources) to actions (automated responses) via rules, with support for workflows, packs (integrations), and ChatOps via Slack/Teams.
+StackStorm (ST2) is an event-driven automation platform for DevOps and IT operations. It connects sensors (event sources) to actions (automated responses) via rules, with support for workflows, packs (integrations), and ChatOps via Slack.
 
 ## Prerequisites
 
 - Portainer installed with Docker
-- At least 2 GB RAM
+- Portainer Business Edition if deploying the official StackStorm Docker stack directly from Git, because it uses relative path volumes
+- At least 2 GB RAM for testing
 
 ## Step 1: Create the Stack in Portainer
 
-Navigate to **Stacks** > **Add Stack**:
+Navigate to **Stacks** > **Add Stack**, select **Git Repository**, and use the official StackStorm Docker deployment:
 
-```yaml
-# docker-compose.yml - StackStorm
-
-version: "3.8"
-
-services:
-  stackstorm:
-    image: stackstorm/stackstorm:3.8.1
-    container_name: stackstorm
-    restart: unless-stopped
-    ports:
-      - "443:443"
-      - "80:80"
-    volumes:
-      - stackstorm_packs:/opt/stackstorm/packs
-      - stackstorm_configs:/opt/stackstorm/configs
-      - stackstorm_log:/var/log/st2
-    environment:
-      - ST2_AUTH_USERNAME=st2admin
-      - ST2_AUTH_PASSWORD=${ST2_PASSWORD}
-      - RABBITMQ_DEFAULT_USER=st2
-      - RABBITMQ_DEFAULT_PASS=${RABBITMQ_PASSWORD}
-    depends_on:
-      - mongo
-      - redis
-      - rabbitmq
-    networks:
-      - st2_net
-
-  mongo:
-    image: mongo:7.0
-    container_name: st2_mongo
-    restart: unless-stopped
-    volumes:
-      - st2_mongo_data:/data/db
-    networks:
-      - st2_net
-
-  redis:
-    image: redis:7-alpine
-    container_name: st2_redis
-    restart: unless-stopped
-    networks:
-      - st2_net
-
-  rabbitmq:
-    image: rabbitmq:3.13-management-alpine
-    container_name: st2_rabbitmq
-    restart: unless-stopped
-    environment:
-      - RABBITMQ_DEFAULT_USER=st2
-      - RABBITMQ_DEFAULT_PASS=${RABBITMQ_PASSWORD}
-    networks:
-      - st2_net
-
-volumes:
-  stackstorm_packs:
-  stackstorm_configs:
-  stackstorm_log:
-  st2_mongo_data:
-
-networks:
-  st2_net:
-    driver: bridge
+```text
+Repository URL: https://github.com/StackStorm/st2-docker
+Repository reference: use the repository's default branch
+Compose path: docker-compose.yml
 ```
+
+The official `st2-docker` compose file uses relative bind mounts under `./files` and `./scripts`, so enable **Relative path volumes** and provide a writable **Local filesystem path** when deploying from Git in Portainer.
 
 ## Step 2: Set Environment Variables in Portainer
 
 ```text
-ST2_PASSWORD=your-st2-admin-password
-RABBITMQ_PASSWORD=your-rabbitmq-password
+ST2_EXPOSE_HTTP=0.0.0.0:80
+
+# Optional: override the StackStorm image tag
+ST2_VERSION=latest
+
+# Optional: enable Slack ChatOps after the initial deployment
+ST2_CHATOPS_ENABLE=1
+HUBOT_ADAPTER=slack
+HUBOT_SLACK_TOKEN=your-slack-bot-token
+ST2_API_KEY=your-st2-chatops-api-key
 ```
 
 ## Step 3: Access the StackStorm UI
 
-Open `https://<host>` and log in with `st2admin` / your ST2 password.
+Open `http://<host>` and log in with `st2admin` / `Ch@ngeMe` unless you changed `files/htpasswd` in the StackStorm deployment repo.
 
 ## Step 4: Use the ST2 CLI
 
 ```bash
-# Authenticate
-docker exec stackstorm st2 auth st2admin -p your-st2-admin-password
+# Find the st2client container
+docker ps --format '{{.Names}}' | grep st2client
 
-# List available packs
-docker exec stackstorm st2 pack list
+# Open a shell in the st2client container
+docker exec -it <st2client-container> bash
+
+# Inside the container, list available packs
+st2 pack list
 
 # Run an action
-docker exec stackstorm st2 run core.local cmd="echo Hello from StackStorm"
+st2 run core.local cmd="echo Hello from StackStorm"
 
 # List triggers
-docker exec stackstorm st2 trigger list
+st2 trigger list
+
+# Optional: create a ChatOps API key, then add it to ST2_API_KEY in Portainer and redeploy
+st2 apikey create -k -m '{"used_by": "st2chatops"}'
 ```
 
 ## Step 5: Install a Pack
 
 ```bash
-# Install the Slack pack for ChatOps
-docker exec stackstorm st2 pack install slack
+# Inside the st2client container, install the Slack integration pack
+st2 pack install slack
 
 # Configure the pack
-docker exec stackstorm st2 pack config slack
+st2 pack config slack
 ```
 
 ## Step 6: Create a Rule
 
 ```bash
-# Create a rule file
+# Inside the st2client container, create a rule file
 cat > /tmp/my_rule.yaml << 'EOF'
 name: "on_timer_hello"
 pack: "default"
@@ -144,10 +101,9 @@ enabled: true
 EOF
 
 # Deploy the rule
-docker cp /tmp/my_rule.yaml stackstorm:/opt/stackstorm/rules/
-docker exec stackstorm st2 rule create /opt/stackstorm/rules/my_rule.yaml
+st2 rule create /tmp/my_rule.yaml
 ```
 
 ## Conclusion
 
-StackStorm's event-driven model works via three components: Sensors (detect events), Triggers (events that rules react to), and Actions (automated tasks). Rules wire triggers to actions with optional criteria filters. Packs bundle sensors, triggers, actions, and rules for specific services (AWS, PagerDuty, Slack, JIRA). StackStorm uses MongoDB for state, RabbitMQ for messaging, and Redis for result caching.
+StackStorm's event-driven model works via three components: Sensors (detect events), Triggers (events that rules react to), and Actions (automated tasks). Rules wire triggers to actions with optional criteria filters. Packs bundle sensors, actions, rules, workflows, and aliases for specific services (AWS, PagerDuty, Slack, Jira). StackStorm uses MongoDB for persistence, RabbitMQ for messaging, and Redis for coordination in the Docker deployment.
