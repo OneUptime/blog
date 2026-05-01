@@ -4,11 +4,11 @@ Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
 Tags: OpenTofu, Terraform, ACM, TLS, AWS, Module, Certificate
 
-Description: Learn how to design a reusable ACM certificate module for OpenTofu that handles certificate request, DNS validation, and automatic renewal configuration.
+Description: Learn how to design a reusable ACM certificate module for OpenTofu that handles certificate requests, DNS validation, and the DNS records ACM reuses for automatic renewal.
 
 ## Introduction
 
-TLS certificate management with ACM involves requesting a certificate, creating DNS validation records, waiting for validation, and wiring the certificate to your load balancer or CloudFront distribution. A certificate module encapsulates this entire lifecycle.
+TLS certificate management with ACM involves requesting a certificate, creating DNS validation records, waiting for validation, and then passing the certificate ARN to your load balancer or, for CloudFront, to a distribution that uses a certificate requested in `us-east-1`. A certificate module encapsulates the request and validation lifecycle and outputs the ARN for downstream resources.
 
 ## variables.tf
 
@@ -16,7 +16,15 @@ TLS certificate management with ACM involves requesting a certificate, creating 
 variable "domain_name"               { type = string }
 variable "subject_alternative_names" { type = list(string); default = [] }
 variable "route53_zone_id"           { type = string }
-variable "validation_method"         { type = string; default = "DNS" }
+variable "validation_method" {
+  type    = string
+  default = "DNS"
+
+  validation {
+    condition     = var.validation_method == "DNS"
+    error_message = "This module only supports DNS validation because it manages Route 53 validation records."
+  }
+}
 variable "environment"               { type = string }
 
 variable "wait_for_validation" {
@@ -33,6 +41,14 @@ variable "tags" { type = map(string); default = {} }
 ```hcl
 locals {
   tags = merge({ Environment = var.environment, ManagedBy = "OpenTofu" }, var.tags)
+
+  validation_records = {
+    for dvo in aws_acm_certificate.main.domain_validation_options : dvo.resource_record_name => {
+      name   = dvo.resource_record_name
+      record = dvo.resource_record_value
+      type   = dvo.resource_record_type
+    }
+  }
 }
 
 # Request the ACM certificate
@@ -45,21 +61,15 @@ resource "aws_acm_certificate" "main" {
   tags = merge(local.tags, { Name = var.domain_name })
 
   lifecycle {
-    # Create a new cert before destroying the old one to avoid downtime
+    # Create a new cert before destroying the old one when replacement is required
     create_before_destroy = true
   }
 }
 
-# Create Route53 DNS validation records for each domain
+# Create Route53 DNS validation records for each unique validation record
 resource "aws_route53_record" "validation" {
-  # One record per unique validation option
-  for_each = {
-    for dvo in aws_acm_certificate.main.domain_validation_options : dvo.domain_name => {
-      name   = dvo.resource_record_name
-      record = dvo.resource_record_value
-      type   = dvo.resource_record_type
-    }
-  }
+  # Wildcard and apex domains can share the same ACM validation CNAME.
+  for_each = local.validation_records
 
   zone_id         = var.route53_zone_id
   name            = each.value.name
@@ -111,11 +121,19 @@ module "cert" {
 
 # Use the certificate in a load balancer listener
 resource "aws_lb_listener" "https" {
-  certificate_arn = module.cert.certificate_arn
-  # ...
+  load_balancer_arn = aws_lb.main.arn
+  port              = 443
+  protocol          = "HTTPS"
+  ssl_policy        = "ELBSecurityPolicy-2016-08"
+  certificate_arn   = module.cert.certificate_arn
+
+  default_action {
+    type             = "forward"
+    target_group_arn = aws_lb_target_group.app.arn
+  }
 }
 ```
 
 ## Conclusion
 
-The certificate module handles the full ACM workflow: request, DNS validation record creation, and validation waiting. The `create_before_destroy` lifecycle rule is critical - without it, replacing a certificate would briefly leave your service without TLS termination. The `wait_for_validation` flag lets you skip blocking in CI pipelines where you know validation will complete later.
+The certificate module handles the ACM request and DNS validation workflow and outputs an ARN for downstream resources. The `create_before_destroy` lifecycle rule is important because it lets OpenTofu create a replacement certificate before removing the old one. The `wait_for_validation` flag lets you skip blocking in CI pipelines that only request the certificate and create validation records, but resources that attach the certificate still need the certificate to reach `ISSUED`.
