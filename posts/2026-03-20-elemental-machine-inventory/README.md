@@ -39,25 +39,25 @@ metadata:
   name: m-abc12345
   namespace: fleet-default
   labels:
-    # Custom labels from MachineRegistration
+    # Custom labels inherited from MachineRegistration
     location: datacenter-1
     role: worker
-    # Hardware labels collected via SMBIOS
+    # Hardware labels templated from SMBIOS data
     serialNumber: "SN1234567"
   annotations:
-    # Registration timestamp
-    elemental.cattle.io/registered: "2026-03-20T10:00:00Z"
+    # System annotations added during registration
+    elemental.cattle.io/auth: tpm
+    elemental.cattle.io/registration-ip: 192.168.122.152
+  ownerReferences:
+    # When adopted, owned by the selector matching this machine to a cluster
+    - apiVersion: elemental.cattle.io/v1beta1
+      controller: true
+      kind: MachineInventorySelector
+      name: my-cluster-selector-abcd1
+      uid: 11111111-2222-3333-4444-555555555555
 spec:
   # TPM hash for secure identification
-  tpmHash: "sha256:abc123..."
-  # Reference to MachineRegistration used
-  machineRegistrationRef:
-    name: my-nodes
-    namespace: fleet-default
-  # When adopted, references the provisioned machine
-  machineRef:
-    name: m-abc12345
-    namespace: fleet-default
+  tpmHash: "abc123..."
 ```
 
 ## Labeling Machines
@@ -98,11 +98,11 @@ kubectl get machineinventory -n fleet-default \
 
 # Find machines NOT yet adopted (available for provisioning)
 kubectl get machineinventory -n fleet-default \
-  -o json | jq '.items[] | select(.spec.machineRef == null) | .metadata.name'
+  -o json | jq -r '.items[] | select(([.metadata.ownerReferences[]? | select(.kind == "MachineInventorySelector")] | length) == 0) | .metadata.name'
 
 # Find adopted machines
 kubectl get machineinventory -n fleet-default \
-  -o jsonpath='{range .items[?(@.spec.machineRef)]}{.metadata.name}{"\n"}{end}'
+  -o json | jq -r '.items[] | select(([.metadata.ownerReferences[]? | select(.kind == "MachineInventorySelector")] | length) > 0) | .metadata.name'
 ```
 
 ## Updating Machine Annotations
@@ -126,12 +126,17 @@ kubectl get machineinventory -n fleet-default -o json > inventory.json
 
 # Generate a CSV report of machines
 kubectl get machineinventory -n fleet-default \
-  -o custom-columns=\
-"NAME:.metadata.name,\
-LOCATION:.metadata.labels.location,\
-ROLE:.metadata.labels.role,\
-ADOPTED:.spec.machineRef.name" \
-  --no-headers | tee inventory-report.csv
+  -o json | jq -r '
+    ["NAME","LOCATION","ROLE","ADOPTED"],
+    (
+      .items[] |
+      [
+        .metadata.name,
+        (.metadata.labels.location // ""),
+        (.metadata.labels.role // ""),
+        (if ([.metadata.ownerReferences[]? | select(.kind == "MachineInventorySelector")] | length) > 0 then "true" else "false" end)
+      ]
+    ) | @csv' > inventory-report.csv
 
 # Count machines by location
 kubectl get machineinventory -n fleet-default \
@@ -141,7 +146,7 @@ kubectl get machineinventory -n fleet-default \
 ## Deleting Machines from Inventory
 
 ```bash
-# Remove a specific machine (will trigger re-provisioning if part of a cluster)
+# Remove a specific machine (if reset is enabled for that machine, deletion triggers the reset workflow)
 kubectl delete machineinventory -n fleet-default m-abc12345
 
 # Remove all machines with a specific label
