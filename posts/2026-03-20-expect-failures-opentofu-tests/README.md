@@ -8,7 +8,7 @@ Description: Learn how to use the `expect_failures` argument in OpenTofu test ru
 
 ## Introduction
 
-`expect_failures` is an argument in `run` blocks that inverts the success condition: the run is marked as **passing** when the listed resources, variables, or data sources raise an error, and **failing** when they do not. It is the primary mechanism for testing error paths in OpenTofu modules.
+`expect_failures` is an argument in `run` blocks that marks the run as **passing** when the listed checkable objects report an error from a custom condition, and **failing** when they do not. It is the primary mechanism for testing error paths in OpenTofu modules.
 
 ## Syntax
 
@@ -20,11 +20,12 @@ run "test_name" {
     # Input designed to trigger a failure
   }
 
-  # List references that should fail
+  # List checkable objects whose custom conditions should fail
   expect_failures = [
     var.some_variable,
     resource_type.resource_name,
     data.data_type.data_name,
+    output.some_output,
     check.check_block_name,
   ]
 }
@@ -76,7 +77,7 @@ run "rejects_oversized_instance_in_dev" {
 
 ## Testing Resource Postconditions
 
-Postconditions fire after apply. To test them, you may need a contrived configuration or a mock that returns unexpected values:
+Postconditions are checked after OpenTofu evaluates the object they belong to. If the condition depends on values that are only known after changes are applied, you need `command = apply` to test them:
 
 ```hcl
 run "postcondition_fires_when_encryption_missing" {
@@ -95,11 +96,15 @@ run "postcondition_fires_when_encryption_missing" {
 
 ## Testing `check` Blocks
 
-OpenTofu `check` blocks (available since 1.5) run assertions after every apply. You can target them with `expect_failures`:
+OpenTofu `check` blocks run assertions at the end of plan and apply operations. You can target them with `expect_failures`:
 
 ```hcl
 # In the module:
 # check "health_endpoint_reachable" {
+#   data "http" "health" {
+#     url = var.health_url
+#   }
+#
 #   assert {
 #     condition     = data.http.health.status_code == 200
 #     error_message = "Health endpoint returned non-200 status"
@@ -142,23 +147,9 @@ run "multiple_validation_failures" {
 
 ## Common Pitfalls
 
-**Do not use `expect_failures` and `assert` together for the same resource.** If a resource is listed in `expect_failures`, the run completes when that resource fails-there is nothing to assert on:
+**`expect_failures` only works for custom conditions.** It can validate failures from variable validations, preconditions, postconditions, output preconditions, and `check` blocks, but it does not cover provider-side validation or generic provider errors.
 
-```hcl
-run "bad_example" {
-  variables { environment = "bad" }
-
-  expect_failures = [var.environment]
-
-  # This assert will never run because the plan stops at the validation error
-  assert {
-    condition     = aws_instance.this.id != ""  # unreachable
-    error_message = "Never reached"
-  }
-}
-```
-
-**Verify the right thing fails.** If a different resource or variable fails instead of the one listed in `expect_failures`, the test will still pass-which may mask a real issue. Be specific with your variable values to trigger exactly one failure path.
+**Verify the right thing fails.** If a different resource or variable fails, OpenTofu reports that unexpected failure and also reports a missing expected failure for the object you listed. Be specific with your variable values so the failing condition is obvious and the resulting diagnostics are easy to interpret.
 
 ## Conclusion
 
