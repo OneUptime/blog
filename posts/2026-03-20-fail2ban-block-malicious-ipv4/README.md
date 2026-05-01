@@ -15,8 +15,20 @@ Fail2Ban monitors log files for failed authentication attempts and automatically
 
 sudo apt install fail2ban -y
 
-# RHEL/CentOS
-sudo yum install epel-release -y && sudo yum install fail2ban -y
+# RHEL 9
+sudo subscription-manager repos --enable codeready-builder-for-rhel-9-$(arch)-rpms
+sudo dnf install https://dl.fedoraproject.org/pub/epel/epel-release-latest-9.noarch.rpm -y
+sudo dnf install fail2ban -y
+
+# CentOS Stream 9
+sudo dnf config-manager --set-enabled crb
+sudo dnf install https://dl.fedoraproject.org/pub/epel/epel{,-next}-release-latest-9.noarch.rpm -y
+sudo dnf install fail2ban -y
+
+# Other RHEL-compatible distributions
+sudo dnf config-manager --set-enabled crb
+sudo dnf install https://dl.fedoraproject.org/pub/epel/epel-release-latest-9.noarch.rpm -y
+sudo dnf install fail2ban -y
 
 # Enable and start
 sudo systemctl enable fail2ban
@@ -45,11 +57,15 @@ findtime = 600
 # Ban after 5 failures
 maxretry = 5
 
+# Force IPv4 bans via iptables
+banaction = iptables-multiport
+banaction_allports = iptables-allports
+
 # Never ban these IPs
 ignoreip = 127.0.0.1/8 192.168.1.0/24
 
-# Action: ban with iptables + send email
-action = %(action_mwl)s
+# Action: ban with iptables
+action = %(action_)s
 ```
 
 ## Enable SSH Protection (sshd jail)
@@ -59,9 +75,10 @@ action = %(action_mwl)s
 
 [sshd]
 enabled  = true
-port     = 22
+port     = ssh
 filter   = sshd
-logpath  = /var/log/auth.log
+logpath  = %(sshd_log)s
+backend  = %(sshd_backend)s
 maxretry = 3
 bantime  = 86400   # 24 hours for SSH attacks
 findtime = 300
@@ -70,12 +87,12 @@ findtime = 300
 ## Enable Additional Service Jails
 
 ```ini
-# Protect Apache from brute force and 404 floods
+# Protect Apache authentication endpoints
 [apache-auth]
 enabled  = true
 port     = http,https
 filter   = apache-auth
-logpath  = /var/log/apache2/error.log
+logpath  = %(apache_error_log)s
 maxretry = 5
 
 # Protect Nginx
@@ -83,15 +100,15 @@ maxretry = 5
 enabled  = true
 port     = http,https
 filter   = nginx-http-auth
-logpath  = /var/log/nginx/error.log
+logpath  = %(nginx_error_log)s
 maxretry = 5
 
 # Protect FTP
 [vsftpd]
 enabled  = true
-port     = ftp,ftp-data,ftps
+port     = ftp,ftp-data,ftps,ftps-data
 filter   = vsftpd
-logpath  = /var/log/vsftpd.log
+logpath  = %(vsftpd_log)s
 maxretry = 3
 ```
 
@@ -100,10 +117,11 @@ maxretry = 3
 For applications with custom log formats:
 
 ```bash
-# /etc/fail2ban/filter.d/myapp.conf
-# [Definition]
-# failregex = ^.* Failed login from <HOST>.*$
-# ignoreregex =
+sudo tee /etc/fail2ban/filter.d/myapp.conf > /dev/null <<'EOF'
+[Definition]
+failregex = ^.* Failed login from <HOST>.*$
+ignoreregex =
+EOF
 
 # Test filter against log file
 sudo fail2ban-regex /var/log/myapp.log /etc/fail2ban/filter.d/myapp.conf
@@ -140,12 +158,12 @@ sudo tail -f /var/log/fail2ban.log
 # Example log output:
 # 2026-03-19 10:15:32 INFO [sshd] Found 1.2.3.4
 # 2026-03-19 10:15:45 NOTICE [sshd] Ban 1.2.3.4
-# 2026-03-19 10:15:45 INFO Creating new jail 'f2b-sshd'
+# 2026-03-19 10:15:45 INFO Creating new jail 'sshd'
 ```
 
-## Permanent Bans for Repeat Offenders
+## Longer Bans for Repeat Offenders
 
-Use a recidive jail to permanently ban IPs that have been banned multiple times:
+Use a recidive jail to ban IPs for longer periods after they have been banned multiple times:
 
 ```ini
 # /etc/fail2ban/jail.local
@@ -153,7 +171,7 @@ Use a recidive jail to permanently ban IPs that have been banned multiple times:
 enabled   = true
 filter    = recidive
 logpath   = /var/log/fail2ban.log
-action    = iptables-allports[name=recidive]
+banaction = %(banaction_allports)s
 bantime   = 604800   # 1 week
 findtime  = 86400
 maxretry  = 3
