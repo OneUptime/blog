@@ -18,14 +18,14 @@ Sonarr monitors RSS feeds and automatically downloads new TV episodes via your d
 
 ## Compose Stack
 
-The key to a working Sonarr setup is mapping both the download directory and the final media directory so Sonarr can perform hardlink moves without copying across filesystems:
+The key to a working Sonarr setup is mounting a single common parent path in both Sonarr and your download client so Sonarr can perform hardlink moves without copying:
 
 ```yaml
 version: "3.8"
 
 services:
   sonarr:
-    image: linuxserver/sonarr:latest
+    image: lscr.io/linuxserver/sonarr:latest
     restart: unless-stopped
     ports:
       - "8989:8989"
@@ -35,9 +35,8 @@ services:
       TZ: America/New_York
     volumes:
       - sonarr_config:/config
-      # Map downloads and media on the same parent path so hardlinks work
-      - /mnt/data/downloads:/downloads
-      - /mnt/data/media/tv:/tv
+      # Mount the common parent path here and in your download client container
+      - /mnt/data:/data
 
 volumes:
   sonarr_config:
@@ -57,7 +56,8 @@ Open `http://<host>:8989` to access the Sonarr UI.
 In Sonarr go to **Settings > Download Clients > Add**:
 
 - Select qBittorrent or Transmission
-- Set **Host** to the container name (e.g., `qbittorrent`) if on the same Docker network
+- Set **Host** to the download client's service or container name (e.g., `qbittorrent`) if both containers are attached to the same Docker network
+- Make sure the download client also mounts `/mnt/data:/data` so Sonarr sees completed downloads at the same container path
 - Set **Port** to the download client's API port
 - Enter credentials and test the connection
 
@@ -65,11 +65,11 @@ In Sonarr go to **Settings > Download Clients > Add**:
 
 1. Go to **Series > Add New**.
 2. Search for a show name.
-3. Set the root folder to `/tv`.
-4. Choose a quality profile and click **Add Series**.
+3. Set the root folder to `/data/media/tv`.
+4. Choose a quality profile, enable **Start search for missing episodes** if desired, and click **Add Series**.
 
-Sonarr will immediately start searching for missing episodes.
+If you enable **Start search for missing episodes**, Sonarr will immediately search for missing episodes. Otherwise it will monitor future releases via RSS.
 
 ## Monitoring
 
-Use OneUptime to monitor `http://<host>:8989/api/v3/health` (include `X-Api-Key` header from Sonarr's settings). This endpoint lists any active health warnings. A non-200 response means Sonarr itself is down.
+Use OneUptime to monitor `http://<host>:8989/ping` for basic availability. If you also want Sonarr health warnings, monitor `http://<host>:8989/api/v3/health` and include the `X-Api-Key` header from Sonarr's settings. The `/api/v3/health` endpoint returns the current health warnings as JSON.
