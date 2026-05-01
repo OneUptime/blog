@@ -4,7 +4,7 @@ Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
 Tags: DHCP, PXE Boot, Network Installation, Sysadmin, Linux
 
-Description: PXE (Pre-boot Execution Environment) uses DHCP options 66 and 67 to deliver TFTP server address and boot filename to network-booting clients, enabling automated OS installation without physical media.
+Description: PXE (Pre-boot Execution Environment) uses DHCP boot parameters such as `next-server` and `filename` to direct network-booting clients to a TFTP server and bootloader, enabling OS installation without physical media.
 
 ## How PXE Boot Works
 
@@ -16,10 +16,10 @@ sequenceDiagram
     participant HTTP
 
     Client->>DHCP: DHCPDISCOVER (PXE client)
-    DHCP->>Client: DHCPOFFER (IP + option 66=TFTP + option 67=pxelinux.0)
-    Client->>TFTP: Download pxelinux.0
-    Client->>TFTP: Download pxelinux.cfg/default
-    Client->>HTTP: Download kernel + initrd
+    DHCP->>Client: DHCPOFFER (IP + next-server + filename)
+    Client->>TFTP: Download bootloader (pxelinux.0 or grubnetx64.efi.signed)
+    Client->>TFTP: Download PXE config
+    Client->>HTTP: Download Ubuntu installer ISO
     Client->>Client: Boot OS installer
 ```
 
@@ -28,26 +28,13 @@ sequenceDiagram
 ```text
 # /etc/dhcp/dhcpd.conf
 
-# TFTP server and boot file for PXE clients
-
-next-server 10.0.0.10;              # TFTP server IP (option 66)
-filename "pxelinux.0";              # Boot filename (option 67)
-
 subnet 10.0.0.0 netmask 255.255.255.0 {
     range 10.0.0.100 10.0.0.150;
     option routers 10.0.0.1;
 
-    # Override for UEFI clients (class-based)
-    class "UEFI-systems" {
-        match if substring(option vendor-class-identifier, 0, 9) = "PXEClient";
-        filename "shimx64.efi";     # UEFI bootloader
-    }
-}
-
-# BIOS PXE clients
-class "BIOS-systems" {
-    match if option vendor-class-identifier = "PXEClient:Arch:00000";
-    filename "pxelinux.0";
+    # Legacy BIOS PXE clients
+    next-server 10.0.0.10;          # TFTP server IP
+    filename "pxelinux.0";          # Initial bootloader
 }
 ```
 
@@ -68,7 +55,7 @@ EOF
 # Install PXE bootloader files
 sudo apt install pxelinux syslinux-common
 sudo cp /usr/lib/PXELINUX/pxelinux.0 /var/lib/tftpboot/
-sudo cp /usr/lib/syslinux/modules/bios/{ldlinux,menu,vesamenu}.c32 /var/lib/tftpboot/
+sudo cp /usr/lib/syslinux/modules/bios/{ldlinux,libcom32,libutil,menu,vesamenu}.c32 /var/lib/tftpboot/
 
 sudo systemctl enable --now tftpd-hpa
 ```
@@ -76,8 +63,8 @@ sudo systemctl enable --now tftpd-hpa
 ## PXE Menu Configuration
 
 ```bash
-mkdir -p /var/lib/tftpboot/pxelinux.cfg
-cat > /var/lib/tftpboot/pxelinux.cfg/default << 'EOF'
+sudo mkdir -p /var/lib/tftpboot/pxelinux.cfg
+sudo tee /var/lib/tftpboot/pxelinux.cfg/default << 'EOF'
 DEFAULT menu.c32
 PROMPT 0
 TIMEOUT 300
@@ -87,7 +74,8 @@ MENU TITLE PXE Boot Menu
 LABEL ubuntu-22.04
     MENU LABEL Ubuntu 22.04 Server Install
     KERNEL ubuntu-22.04/vmlinuz
-    APPEND initrd=ubuntu-22.04/initrd auto url=http://10.0.0.10/preseed/ubuntu.cfg
+    INITRD ubuntu-22.04/initrd
+    APPEND root=/dev/ram0 ramdisk_size=1500000 cloud-config-url=/dev/null ip=dhcp url=http://10.0.0.10/ubuntu-22.04/ubuntu-22.04.5-live-server-amd64.iso
 
 LABEL local
     MENU LABEL Boot from local disk
@@ -95,19 +83,30 @@ LABEL local
 EOF
 ```
 
-## Downloading and Staging Ubuntu Netboot
+## Downloading and Staging Ubuntu Installer Files
 
 ```bash
-# Download Ubuntu netboot files
-mkdir -p /var/lib/tftpboot/ubuntu-22.04
-wget -O /tmp/ubuntu-netboot.tar.gz \
-  http://archive.ubuntu.com/ubuntu/dists/jammy/main/installer-amd64/current/legacy-images/netboot/netboot.tar.gz
-sudo tar xzf /tmp/ubuntu-netboot.tar.gz -C /var/lib/tftpboot/ubuntu-22.04
+# Install a simple HTTP server for the live-server ISO
+sudo apt install apache2
+sudo systemctl enable --now apache2
+
+# Download Ubuntu 22.04 live-server ISO
+sudo mkdir -p /var/lib/tftpboot/ubuntu-22.04 /var/www/html/ubuntu-22.04
+wget -O /tmp/ubuntu-22.04.5-live-server-amd64.iso \
+  https://releases.ubuntu.com/jammy/ubuntu-22.04.5-live-server-amd64.iso
+
+# Extract kernel and initrd for PXE
+sudo mount -o loop /tmp/ubuntu-22.04.5-live-server-amd64.iso /mnt
+sudo cp /mnt/casper/{vmlinuz,initrd} /var/lib/tftpboot/ubuntu-22.04/
+sudo umount /mnt
+
+# Serve the ISO over HTTP so the installer can fetch it
+sudo cp /tmp/ubuntu-22.04.5-live-server-amd64.iso /var/www/html/ubuntu-22.04/
 ```
 
 ## Key Takeaways
 
-- DHCP option 66 (next-server) provides the TFTP server IP; option 67 (filename) provides the boot file path.
-- UEFI clients need different boot files (`shimx64.efi`) than BIOS clients (`pxelinux.0`).
-- Use DHCP classes to serve the right boot file based on the client's vendor class identifier.
-- PXE boot enables automated unattended OS deployment with preseed/kickstart configuration files.
+- `next-server` and `filename` are the DHCP/BOOTP boot parameters most commonly used for PXE. DHCP options 66 and 67 are the corresponding TFTP server name and bootfile name options.
+- Legacy BIOS PXE clients can use `pxelinux.0`; UEFI PXE clients typically use a GRUB EFI binary such as `grubnetx64.efi.signed` and a different boot menu format.
+- On Ubuntu 22.04 Server, stage `vmlinuz` and `initrd` from the live-server ISO and let the installer fetch the ISO over HTTP.
+- PXE boot can be combined with Ubuntu `autoinstall` configuration for unattended deployment.
