@@ -8,13 +8,13 @@ Description: Learn how to deploy Outline, the modern team knowledge base with a 
 
 ---
 
-Outline is a fast, real-time collaborative wiki with a beautiful Notion-inspired editor. It requires PostgreSQL for data, Redis for sessions, and S3-compatible storage for file uploads. MinIO (deployed separately) works well as the S3 backend.
+Outline is a fast, real-time collaborative wiki with a beautiful Notion-inspired editor. It requires PostgreSQL for data and Redis for sessions. For this setup, file uploads use S3-compatible storage, and MinIO (deployed separately) works well as the backend.
 
 ## Prerequisites
 
 - Portainer running
 - MinIO or another S3-compatible store already deployed
-- An OAuth provider configured (Slack, Google, or a custom OIDC provider)
+- A public HTTPS URL for Outline and a supported authentication provider configured (Slack, Google, or a custom OIDC provider)
 - At least 512MB RAM
 
 ## Compose Stack
@@ -52,10 +52,11 @@ services:
       REDIS_URL: redis://redis:6379
       URL: https://outline.example.com
       PORT: 3000
+      FILE_STORAGE: s3
       AWS_ACCESS_KEY_ID: minioadmin
       AWS_SECRET_ACCESS_KEY: minioadmin123
       AWS_REGION: us-east-1
-      AWS_S3_UPLOAD_BUCKET_URL: http://minio:9000
+      AWS_S3_UPLOAD_BUCKET_URL: http://minio.example.com:9000
       AWS_S3_UPLOAD_BUCKET_NAME: outline
       AWS_S3_FORCE_PATH_STYLE: "true"
       # OAuth - configure one provider (example uses Slack)
@@ -75,15 +76,15 @@ volumes:
 
 ## Running Migrations
 
-After first deploy, run database migrations:
+Outline runs database migrations automatically on startup. If you start it with `--no-migrate`, run them manually:
 
 ```bash
-# In Portainer, go to Containers > outline > Exec
+# In Portainer, go to Containers > outline > Console
 
 # Or via docker exec:
-docker exec outline yarn db:migrate
+docker exec <outline-container-name> yarn db:migrate
 ```
 
 ## Monitoring
 
-Use OneUptime to monitor `http://<host>:3101/_health`. Outline returns a JSON health object. Alert on any non-healthy status as Outline downtime affects team knowledge sharing in real time.
+Use OneUptime to monitor `http://<host>:3101/_health`. Outline returns `OK` with HTTP 200 when healthy, and HTTP 500 if the PostgreSQL or Redis checks fail. Alert on non-200 responses as Outline downtime affects team knowledge sharing in real time.
