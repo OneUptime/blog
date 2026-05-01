@@ -14,26 +14,30 @@ Docker Swarm secrets let you store sensitive data - passwords, API keys, certifi
 
 ## How Docker Secrets Work
 
-Secrets are stored encrypted in Raft (the Swarm consensus store) and mounted into containers at `/run/secrets/<secret_name>`. Only services explicitly granted access to a secret can read it. The values are never visible in `docker inspect`, environment listings, or Portainer's UI once created.
+Secrets are stored encrypted in Raft (the Swarm consensus store) and, in Linux containers by default, mounted into containers at `/run/secrets/<secret_name>`. Only services explicitly granted access to a secret can read it. The values are never visible in `docker inspect`, environment listings, or Portainer's UI once created.
 
 ---
 
 ## Step 1: Create Secrets via Portainer UI
 
 1. In Portainer, select your Swarm environment
-2. Navigate to **Swarm > Secrets**
+2. Navigate to **Secrets**
 3. Click **Add secret**
-4. Enter:
+4. Enter, for example:
    - **Name**: `db_password`
-   - **Value**: `my-super-secret-password`
+   - **Secret**: `my-super-secret-password`
 5. Click **Create the secret**
+6. Repeat for any other secrets your stack references, such as `api_key`
 
 Alternatively, use the CLI:
 
 ```bash
 # Create a secret from a string
 
-echo "my-super-secret-password" | docker secret create db_password -
+printf '%s' "my-super-secret-password" | docker secret create db_password -
+
+# Create another secret used by the stack
+printf '%s' "my-api-key-value" | docker secret create api_key -
 
 # Create a secret from a file (e.g., a TLS certificate)
 docker secret create ssl_cert /path/to/cert.pem
@@ -55,28 +59,34 @@ version: "3.8"
 services:
   web:
     image: myapp:latest
-    restart: unless-stopped
     # Grant this service access to specific secrets
     secrets:
-      - db_password
-      - api_key
+      - source: db_password
+        target: db_password
+      - source: api_key
+        target: api_key
     environment:
       # Point the app to the secret file path
       DB_PASSWORD_FILE: /run/secrets/db_password
       API_KEY_FILE: /run/secrets/api_key
     deploy:
       replicas: 3
+      restart_policy:
+        condition: any
 
   db:
     image: postgres:15
-    restart: unless-stopped
     secrets:
-      - db_password
+      - source: db_password
+        target: db_password
     environment:
       # PostgreSQL supports _FILE suffix to read from a file
       POSTGRES_PASSWORD_FILE: /run/secrets/db_password
       POSTGRES_DB: appdb
       POSTGRES_USER: appuser
+    deploy:
+      restart_policy:
+        condition: any
 
 # Reference the secrets created in the Swarm
 secrets:
@@ -90,7 +100,7 @@ secrets:
 
 ## Step 3: Read Secret Values in Your Application Code
 
-Your application reads secrets as plain text files from `/run/secrets/`.
+In Linux containers, your application reads secrets as plain text files from `/run/secrets/`.
 
 ```python
 # Python example: reading a Docker secret
@@ -118,12 +128,12 @@ Docker secrets are immutable - you can't update a secret's value in place. To ro
 
 ```bash
 # Create a new version of the secret
-echo "new-password-value" | docker secret create db_password_v2 -
+printf '%s' "new-password-value" | docker secret create db_password_v2 -
 
-# Update the stack to use the new secret name
-# Edit the Compose file in Portainer to reference db_password_v2
+# Update the stack to reference db_password_v2 as the external source secret
+# while keeping the mounted target path as db_password
 
-# After deployment is stable, remove the old secret
+# After deployment is stable and the old secret is no longer attached, remove it
 docker secret rm db_password
 ```
 
@@ -132,12 +142,12 @@ docker secret rm db_password
 ## Step 5: View Secret Usage in Portainer
 
 In Portainer:
-- **Swarm > Secrets** - shows all secrets and which services use them
-- **Swarm > Services** - each service shows which secrets are mounted
+- **Secrets** - shows the secrets available in the current Swarm environment
+- **Services** - each service shows which secrets are attached
 - Secret values are **never displayed** in the UI - only names and metadata
 
 ---
 
 ## Summary
 
-Docker Swarm secrets managed via Portainer provide encrypted, access-controlled secret distribution across your cluster. Secrets mount as files at `/run/secrets/`, never appear in environment variable listings, and are only accessible to services you explicitly grant them to. Use the `_FILE` environment variable suffix for databases and other apps that support it natively.
+Docker Swarm secrets managed via Portainer provide encrypted, access-controlled secret distribution across your cluster. In Linux containers, secrets mount as files under `/run/secrets/` by default, never appear in environment variable listings, and are only accessible to services you explicitly grant them to. Use the `_FILE` environment variable suffix for databases and other apps that support it natively.
