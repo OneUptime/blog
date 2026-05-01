@@ -8,13 +8,13 @@ Description: Deploy Windows container workloads in Rancher including IIS web ser
 
 ## Introduction
 
-Windows containers enable running legacy Windows applications (.NET Framework, IIS, COM components) in Kubernetes without rewriting them for Linux. Rancher supports Windows containers through Windows worker nodes. This guide covers deploying common Windows workloads.
+Windows containers enable running legacy Windows applications (.NET Framework, IIS, COM components) in Kubernetes without rewriting them for Linux. Rancher supports Windows containers through Windows worker nodes in mixed Linux/Windows clusters. This guide covers deploying common Windows workloads.
 
 ## Key Differences from Linux Containers
 
 - Base images must match the Windows Server version on the node
-- No CPU limits (Windows kernel doesn't support CFS quotas)
-- Flannel VXLAN is required (host-gw mode doesn't work for all Windows scenarios)
+- CPU requests help with scheduling, but Windows can't guarantee a minimum amount of CPU time
+- Use a Windows-supported CNI in Rancher (current RKE2 clusters support Calico or Flannel)
 - Privileged containers are not supported on Windows
 
 ## Step 1: Choose the Correct Base Image
@@ -74,9 +74,12 @@ spec:
       labels:
         app: dotnet-app
     spec:
+      os:
+        name: windows
       # Required: Schedule on Windows nodes only
       nodeSelector:
         kubernetes.io/os: windows
+        node.kubernetes.io/windows-build: "10.0.20348"
       tolerations:
         - key: os
           operator: Equal
@@ -91,20 +94,20 @@ spec:
             requests:
               memory: "512Mi"
               cpu: "250m"
-            # Note: No limits for CPU on Windows
             limits:
               memory: "2Gi"
+              cpu: "1"
           env:
-            - name: ASPNETCORE_ENVIRONMENT
+            - name: APP_ENVIRONMENT
               value: "Production"
-            - name: ConnectionStrings__DefaultConnection
+            - name: DB_CONNECTION_STRING
               valueFrom:
                 secretKeyRef:
                   name: app-secrets
                   key: db-connection
 ```
 
-## Step 4: Configure a Service and Ingress
+## Step 4: Configure a Service
 
 ```yaml
 # windows-service.yaml
@@ -124,7 +127,7 @@ spec:
 ## Step 5: Health Checks for Windows
 
 ```yaml
-# Windows containers use HTTP or TCP health checks
+# Example HTTP probes for a Windows container
 livenessProbe:
   httpGet:
     path: /health
@@ -143,4 +146,4 @@ readinessProbe:
 
 ## Conclusion
 
-Windows containers in Rancher enable running legacy Windows applications in Kubernetes with minimal code changes. The critical requirement is matching your container's base image Windows version to your worker node's OS version-mismatched versions result in container startup failures with cryptic error messages.
+Windows containers in Rancher enable running legacy Windows applications in Kubernetes with minimal code changes. The critical requirement is matching your container image's Windows build to your worker node's OS build; mismatched versions result in container startup failures with cryptic error messages.
