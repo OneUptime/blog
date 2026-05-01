@@ -8,7 +8,7 @@ Description: Guide to deploying Falco runtime security on Rancher for detecting 
 
 ## Introduction
 
-How to Set Up Falco Runtime Security on Rancher is a critical security capability for hardening Rancher-managed Kubernetes environments. This guide provides practical implementation steps for security teams and platform engineers.
+Falco runtime security is a critical capability for hardening Rancher-managed Kubernetes environments. This guide provides practical implementation steps for security teams and platform engineers.
 
 ## Why This Matters
 
@@ -18,13 +18,15 @@ Container and Kubernetes environments face unique security challenges:
 - Supply chain attacks target container images and dependencies
 - Lateral movement is easy in flat networks
 
-How to Set Up Falco Runtime Security on Rancher addresses these challenges by adding defense-in-depth controls.
+Falco runtime security on Rancher addresses these challenges by adding defense-in-depth controls.
+Falco addresses these challenges by monitoring runtime system activity and generating alerts when rules match suspicious behavior.
 
 ## Prerequisites
 
-- Rancher v2.7+ cluster with cluster admin access
-- Kubernetes 1.26+
+- Rancher-managed Kubernetes cluster with Linux worker nodes and cluster admin access
+- `kubectl` configured for the downstream cluster
 - Helm 3.x
+- If Pod Security Admission is enforced, permission to exempt or relax the namespace where Falco runs
 - Understanding of Linux security concepts
 
 ## Step 1: Assess Current Security Posture
@@ -32,64 +34,63 @@ How to Set Up Falco Runtime Security on Rancher addresses these challenges by ad
 ```bash
 # Run a basic security audit
 
+# Check containers explicitly configured to run as UID 0
 kubectl get pods --all-namespaces -o json | jq -r '
-  .items[] | 
-  select(
-    .spec.containers[].securityContext.runAsRoot == true or
-    .spec.containers[].securityContext.privileged == true
-  ) |
-  [.metadata.namespace, .metadata.name] |
-  @csv'
+  .items[]
+  | . as $pod
+  | .spec.containers[]?
+  | select((.securityContext.runAsUser // $pod.spec.securityContext.runAsUser // -1) == 0)
+  | [$pod.metadata.namespace, $pod.metadata.name, .name]
+  | @tsv'
 
-# Check for pods running as root
-kubectl get pods --all-namespaces -o custom-columns='NAMESPACE:.metadata.namespace,NAME:.metadata.name,USER:.spec.securityContext.runAsUser'
+# Check for privileged containers
+kubectl get pods --all-namespaces -o json | jq -r '
+  .items[]
+  | . as $pod
+  | .spec.containers[]?
+  | select((.securityContext.privileged // false) == true)
+  | [$pod.metadata.namespace, $pod.metadata.name, .name]
+  | @tsv'
 
-# Check privileged pods
-kubectl get pods --all-namespaces -o json |   jq -r '.items[] | select(.spec.containers[].securityContext.privileged==true) | 
-  .metadata.namespace + "/" + .metadata.name'
+# Check namespace Pod Security levels
+kubectl get namespaces -L pod-security.kubernetes.io/enforce
 ```
 
 ## Step 2: Configure Security Feature
 
 ```yaml
-# security-feature-config.yaml
-apiVersion: v1
-kind: ConfigMap
-metadata:
-  name: security-config
-  namespace: kube-system
-data:
-  config.yaml: |
-    # Security feature configuration
-    enabled: true
-    level: "strict"
-    
-    # Audit settings
-    audit:
-      enabled: true
-      outputPath: /var/log/security-audit.log
-    
-    # Alert settings
-    alerts:
-      enabled: true
-      webhook: "https://alerts.example.com/security"
+# falco-values.yaml
+tty: true
+
+# Deploy Falcosidekick so Falco alerts can be forwarded downstream.
+falcosidekick:
+  enabled: true
 ```
 
 ## Step 3: Apply Pod Security Standards
 
 ```yaml
 # namespace-security-labels.yaml
-# Label namespace to enforce Pod Security Standards
+# Falco runs as a privileged DaemonSet, so keep it out of restricted namespaces.
+apiVersion: v1
+kind: Namespace
+metadata:
+  name: falco
+  labels:
+    pod-security.kubernetes.io/enforce: privileged
+    pod-security.kubernetes.io/enforce-version: latest
+---
 apiVersion: v1
 kind: Namespace
 metadata:
   name: production
   labels:
-    # Enforce strict Pod Security Standard
     pod-security.kubernetes.io/enforce: restricted
     pod-security.kubernetes.io/enforce-version: latest
     pod-security.kubernetes.io/audit: restricted
+    pod-security.kubernetes.io/audit-version: latest
     pod-security.kubernetes.io/warn: restricted
+    pod-security.kubernetes.io/warn-version: latest
 ```
 
 ## Step 4: Configure Security Context for Workloads
@@ -102,7 +103,14 @@ metadata:
   name: secure-app
   namespace: production
 spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app: secure-app
   template:
+    metadata:
+      labels:
+        app: secure-app
     spec:
       # Pod-level security context
       securityContext:
@@ -115,7 +123,8 @@ spec:
       
       containers:
       - name: app
-        image: registry.example.com/app:latest
+        image: busybox:1.36
+        command: ["sh", "-c", "sleep 3600"]
         
         # Container-level security context
         securityContext:
@@ -124,20 +133,14 @@ spec:
           capabilities:
             drop:
             - ALL            # Drop all Linux capabilities
-            add:
-            - NET_BIND_SERVICE  # Only add what's needed
         
         # Required volume for writable locations
         volumeMounts:
         - name: tmp
           mountPath: /tmp
-        - name: cache
-          mountPath: /app/cache
       
       volumes:
       - name: tmp
-        emptyDir: {}
-      - name: cache
         emptyDir: {}
 ```
 
@@ -145,47 +148,43 @@ spec:
 
 ```bash
 # Install via Helm
-helm repo add security-charts https://charts.example.com/security
+helm repo add falcosecurity https://falcosecurity.github.io/charts
 helm repo update
 
-helm install security-tool security-charts/security-tool   --namespace security-system   --create-namespace   --set rules.enabled=true   --set alerting.enabled=true   --set alerting.slack.webhook=YOUR_WEBHOOK_URL
+helm upgrade --install falco \
+  --namespace falco \
+  --create-namespace \
+  -f falco-values.yaml \
+  falcosecurity/falco
 
-kubectl get pods -n security-system
+kubectl wait pods --for=condition=Ready --all -n falco
+kubectl get pods -n falco
 ```
 
 ## Step 6: Create Alert Rules
 
 ```yaml
-# security-prometheus-rules.yaml
-apiVersion: monitoring.coreos.com/v1
-kind: PrometheusRule
-metadata:
-  name: security-alerts
-  namespace: cattle-monitoring-system
-spec:
-  groups:
-  - name: security.alerts
-    rules:
-    - alert: PrivilegedContainerDetected
-      expr: |
-        kube_pod_container_info{container!=""} * on(pod, namespace)
-        kube_pod_spec_container_security_context_privileged{privileged="true"} > 0
-      for: 0m
-      labels:
-        severity: critical
-      annotations:
-        summary: "Privileged container in {{ $labels.namespace }}/{{ $labels.pod }}"
-    
-    - alert: ContainerRunningAsRoot
-      expr: |
-        kube_pod_container_status_running * on(pod, namespace)
-        kube_pod_container_info{container_id!=""} and
-        kube_pod_spec_container_security_context_run_as_user{run_as_user="0"} > 0
-      for: 5m
-      labels:
-        severity: warning
-      annotations:
-        summary: "Container running as root in {{ $labels.namespace }}"
+# falco-custom-rules.yaml
+customRules:
+  custom-rules.yaml: |-
+    - rule: Write below etc
+      desc: An attempt to write to /etc directory
+      condition: >
+        (evt.type in (open,openat,openat2) and evt.is_open_write=true and fd.typechar='f' and fd.num>=0)
+        and fd.name startswith /etc
+      output: "File below /etc opened for writing | file=%fd.name pcmdline=%proc.pcmdline gparent=%proc.aname[2] ggparent=%proc.aname[3] gggparent=%proc.aname[4] evt_type=%evt.type user=%user.name user_uid=%user.uid user_loginuid=%user.loginuid process=%proc.name proc_exepath=%proc.exepath parent=%proc.pname command=%proc.cmdline terminal=%proc.tty"
+      priority: WARNING
+      tags: [filesystem, mitre_persistence]
+```
+
+```bash
+helm upgrade --install falco \
+  --namespace falco \
+  -f falco-values.yaml \
+  -f falco-custom-rules.yaml \
+  falcosecurity/falco
+
+kubectl wait pods --for=condition=Ready --all -n falco
 ```
 
 ## Step 7: Verify Security Controls
@@ -194,24 +193,35 @@ spec:
 #!/bin/bash
 # security-verification.sh
 
-echo "=== Security Control Verification ==="
+set -euo pipefail
 
-echo "1. Checking for privileged containers..."
-PRIV_COUNT=$(kubectl get pods --all-namespaces -o json |   jq '[.items[].spec.containers[].securityContext.privileged // false | select(.)] | length')
-echo "   Privileged containers: $PRIV_COUNT"
+echo "=== Falco Verification ==="
 
-echo ""
-echo "2. Checking namespaces with Pod Security Standards..."
-kubectl get namespaces -o custom-columns='NAME:.metadata.name,PSS:.metadata.labels[pod-security\.kubernetes\.io/enforce]'
+echo "1. Checking Falco pods..."
+kubectl get pods -n falco
+kubectl wait pods --for=condition=Ready --all -n falco --timeout=120s
 
 echo ""
-echo "3. Checking for host network pods..."
-kubectl get pods --all-namespaces -o json |   jq -r '.items[] | select(.spec.hostNetwork==true) | 
-  .metadata.namespace + "/" + .metadata.name'
+echo "2. Creating a test namespace..."
+kubectl create namespace falco-test --dry-run=client -o yaml | kubectl apply -f -
+kubectl label --overwrite ns falco-test \
+  pod-security.kubernetes.io/enforce=baseline \
+  pod-security.kubernetes.io/enforce-version=latest
+
+echo ""
+echo "3. Triggering a default Falco rule..."
+kubectl create deployment nginx --image=nginx -n falco-test --dry-run=client -o yaml | kubectl apply -f -
+kubectl wait --for=condition=Available deployment/nginx -n falco-test --timeout=120s
+TEST_POD=$(kubectl get pods -n falco-test --selector=app=nginx -o jsonpath='{.items[0].metadata.name}')
+kubectl exec -n falco-test "$TEST_POD" -- cat /etc/shadow >/dev/null
+
+echo ""
+echo "4. Reviewing recent Falco alerts..."
+kubectl logs -l app.kubernetes.io/name=falco -n falco -c falco --since=5m | grep Warning
 
 echo "=== Verification Complete ==="
 ```
 
 ## Conclusion
 
-Implementing How to Set Up Falco Runtime Security on Rancher on Rancher adds an important layer of defense to your Kubernetes security posture. Combine with other security controls (network policies, RBAC, admission webhooks) for comprehensive defense-in-depth. Regular security audits and automated compliance checks ensure controls remain effective over time.
+Implementing Falco runtime security on Rancher adds an important layer of defense to your Kubernetes security posture. Combine with other security controls (network policies, RBAC, admission webhooks) for comprehensive defense-in-depth. Regular security audits and automated compliance checks ensure controls remain effective over time.
