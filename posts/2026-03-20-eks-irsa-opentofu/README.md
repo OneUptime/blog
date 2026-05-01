@@ -8,28 +8,32 @@ Description: Learn how to configure IAM Roles for Service Accounts (IRSA) on EKS
 
 ## Introduction
 
-IRSA enables Kubernetes pods to assume IAM roles using service account tokens projected via the OIDC provider. This is far more secure than attaching policies to node IAM roles, as permissions are scoped to individual service accounts rather than all pods on a node.
+IRSA enables Kubernetes pods to assume IAM roles using service account tokens projected via the OIDC provider. This is more secure than attaching policies to node IAM roles, because permissions can be scoped to individual service accounts rather than all pods on a node. To preserve that isolation, restrict pod access to the node IAM role through IMDS.
 
 ## Prerequisites
 
 - OpenTofu v1.6+
-- An existing EKS cluster with OIDC enabled
+- An existing EKS cluster
 - AWS credentials with IAM and EKS permissions
 
 ## Step 1: Create the OIDC Provider
 
 ```hcl
-# Get the OIDC thumbprint for the cluster's issuer URL
+# Look up the existing EKS cluster
+data "aws_eks_cluster" "main" {
+  name = var.cluster_name
+}
 
+# Get the OIDC thumbprint for the cluster's issuer URL
 data "tls_certificate" "cluster" {
-  url = aws_eks_cluster.main.identity[0].oidc[0].issuer
+  url = data.aws_eks_cluster.main.identity[0].oidc[0].issuer
 }
 
 # Create the OIDC provider for the EKS cluster
 resource "aws_iam_openid_connect_provider" "cluster" {
   client_id_list  = ["sts.amazonaws.com"]
   thumbprint_list = [data.tls_certificate.cluster.certificates[0].sha1_fingerprint]
-  url             = aws_eks_cluster.main.identity[0].oidc[0].issuer
+  url             = data.aws_eks_cluster.main.identity[0].oidc[0].issuer
 
   tags = {
     Name    = "${var.cluster_name}-oidc-provider"
@@ -108,23 +112,17 @@ resource "kubernetes_service_account" "s3_reader" {
 }
 ```
 
-## Step 4: Use the Service Account in a Pod
+## Step 4: Use the Service Account in a Job
 
 ```hcl
-# Pod using the annotated service account to access S3
-resource "kubernetes_deployment" "s3_reader_app" {
+# Job using the annotated service account to access S3
+resource "kubernetes_job_v1" "s3_reader_app" {
   metadata {
     name      = "s3-reader-app"
     namespace = var.namespace
   }
 
   spec {
-    replicas = 2
-
-    selector {
-      match_labels = { app = "s3-reader" }
-    }
-
     template {
       metadata {
         labels = { app = "s3-reader" }
@@ -133,14 +131,18 @@ resource "kubernetes_deployment" "s3_reader_app" {
       spec {
         # Use the IRSA-enabled service account
         service_account_name = kubernetes_service_account.s3_reader.metadata[0].name
+        restart_policy       = "Never"
 
         container {
-          name  = "app"
-          image = "amazon/aws-cli:latest"
-          args  = ["s3", "ls", "s3://${var.data_bucket}/"]
+          name    = "app"
+          image   = "amazon/aws-cli:latest"
+          command = ["aws"]
+          args    = ["s3", "ls", "s3://${var.data_bucket}/"]
         }
       }
     }
+
+    backoff_limit = 1
   }
 }
 ```
@@ -155,4 +157,4 @@ tofu apply
 
 ## Conclusion
 
-IRSA provides least-privilege IAM access for Kubernetes workloads by binding IAM roles to specific service accounts. This eliminates the need to manage AWS credentials as secrets and prevents lateral movement between pods with different permission requirements. Always scope the OIDC condition to a specific namespace and service account name for maximum security.
+IRSA provides least-privilege IAM access for Kubernetes workloads by binding IAM roles to specific service accounts. This eliminates the need to manage AWS credentials as secrets and reduces the blast radius between workloads with different permission requirements, especially when access to the node IAM role is restricted. Always scope the OIDC condition to a specific namespace and service account name for maximum security.
