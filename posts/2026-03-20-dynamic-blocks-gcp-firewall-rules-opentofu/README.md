@@ -22,7 +22,7 @@ variable "firewall_allow_rules" {
   default = [
     { protocol = "tcp", ports = ["443", "80"] },
     { protocol = "tcp", ports = ["8080-8090"] },
-    { protocol = "icmp", ports = [] }
+    { protocol = "icmp", ports = null }
   ]
 }
 
@@ -34,7 +34,7 @@ resource "google_compute_firewall" "app_allow" {
   source_ranges = ["0.0.0.0/0"]
   target_tags   = ["app-server"]
 
-  # Generate one allow block per protocol/port combination
+  # Generate one allow block per rule object
   dynamic "allow" {
     for_each = var.firewall_allow_rules
     content {
@@ -87,7 +87,7 @@ locals {
     "dev" = {
       allow = [
         { protocol = "tcp", ports = ["22", "443", "80", "8080"] },
-        { protocol = "icmp", ports = [] }
+        { protocol = "icmp", ports = null }
       ]
       source_ranges = ["10.0.0.0/8", "172.16.0.0/12"]  # Internal only
     }
@@ -120,7 +120,7 @@ resource "google_compute_firewall" "env_rules" {
 
 ## Service Account Target Filtering
 
-GCP supports targeting firewall rules at specific service accounts. Use a dynamic block to apply rules to multiple service accounts.
+GCP supports targeting firewall rules at specific service accounts. You can still use a dynamic block to generate multiple `allow` rules.
 
 ```hcl
 variable "target_service_accounts" {
@@ -140,9 +140,9 @@ resource "google_compute_firewall" "sa_targeted" {
   network = var.network_self_link
 
   direction = "INGRESS"
-  # Target specific service accounts instead of network tags
+  # When provided, target specific service accounts instead of network tags
   target_service_accounts = length(var.target_service_accounts) > 0 ? var.target_service_accounts : null
-  source_ranges           = length(var.target_service_accounts) > 0 ? null : ["10.0.0.0/8"]
+  source_ranges           = ["10.0.0.0/8"]
 
   dynamic "allow" {
     for_each = var.ingress_allow_rules
