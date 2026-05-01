@@ -4,12 +4,12 @@ Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
 Tags: IPv4, Subnetting, VLAN, Networking, /16, Enterprise
 
-Description: A /16 network can be divided into multiple VLANs by subnetting to /24 (256 VLANs of 254 hosts), /23 (128 VLANs of 510 hosts), or other prefix lengths depending on the density needed.
+Description: A /16 network can be divided into multiple subnets for use as VLANs by subnetting to /24 (256 subnets of 254 hosts), /23 (128 subnets of 510 hosts), or other prefix lengths depending on the density needed.
 
 ## /16 Subnetting Options
 
-| Subnet Prefix | VLANs Created | Hosts per VLAN |
-|--------------|--------------|---------------|
+| Subnet Prefix | Subnets Available | Hosts per Subnet |
+|--------------|-------------------|------------------|
 | /17 | 2 | 32,766 |
 | /18 | 4 | 16,382 |
 | /20 | 16 | 4,094 |
@@ -18,25 +18,25 @@ Description: A /16 network can be divided into multiple VLANs by subnetting to /
 | /24 | 256 | 254 |
 | /26 | 1,024 | 62 |
 
-## Dividing 172.16.0.0/16 into /24 VLANs
+## Dividing 172.16.0.0/16 into /24 Subnets for VLANs
 
 ```python
 import ipaddress
 
 parent = ipaddress.IPv4Network("172.16.0.0/16")
-vlans = list(parent.subnets(new_prefix=24))
-print(f"Total /24 VLANs: {len(vlans)}")
+subnets = list(parent.subnets(new_prefix=24))
+print(f"Total /24 subnets: {len(subnets)}")
 
 # Map VLAN IDs to subnets (VLAN ID = third octet)
 
 vlan_assignments = {
-    10:  ("Servers",    vlans[10]),
-    20:  ("Users-A",    vlans[20]),
-    30:  ("Users-B",    vlans[30]),
-    40:  ("VoIP",       vlans[40]),
-    50:  ("WiFi",       vlans[50]),
-    100: ("Management", vlans[100]),
-    200: ("DMZ",        vlans[200]),
+    10:  ("Servers",    subnets[10]),
+    20:  ("Users-A",    subnets[20]),
+    30:  ("Users-B",    subnets[30]),
+    40:  ("VoIP",       subnets[40]),
+    50:  ("WiFi",       subnets[50]),
+    100: ("Management", subnets[100]),
+    200: ("DMZ",        subnets[200]),
 }
 
 print("\nVLAN Assignments:")
@@ -49,6 +49,8 @@ for vlan_id, (name, subnet) in vlan_assignments.items():
 ## Mixed /23 and /24 Design (VLSM)
 
 ```python
+import ipaddress
+
 # Large user VLANs get /23, small VLANs get /24
 parent = ipaddress.IPv4Network("10.10.0.0/16")
 subnets_23 = list(parent.subnets(new_prefix=23))
@@ -81,7 +83,7 @@ sudo ip addr add 172.16.20.1/24 dev eth0.20   # VLAN 20 gateway
 
 ## Key Takeaways
 
-- A /16 → /24 provides 256 VLANs with 254 hosts each - common enterprise choice.
+- A /16 → /24 provides 256 subnets, often mapped one-per-VLAN, with 254 hosts each - common enterprise choice.
 - Align VLAN IDs with the third octet for intuitive mapping (VLAN 10 = 172.16.10.0/24).
 - Use /23 for high-density user segments and /24 or smaller for servers and management.
-- The entire /16 summarizes to a single route advertisement, keeping BGP/OSPF tables clean.
+- If the VLAN subnets stay contiguous within the /16, they can be summarized upstream as a single route advertisement, keeping BGP/OSPF routing tables cleaner.
