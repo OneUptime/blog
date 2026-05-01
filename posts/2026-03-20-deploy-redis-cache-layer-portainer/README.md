@@ -4,7 +4,7 @@ Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
 Tags: Redis, Cache, Portainer, Docker, Performance, Caching, Database
 
-Description: Deploy Redis as a high-performance in-memory cache layer alongside your application using Portainer stacks, with persistence, authentication, and eviction policy configuration.
+Description: Deploy Redis as a high-performance in-memory cache layer alongside your application using Portainer stacks, with authentication and eviction policy configuration.
 
 ---
 
@@ -15,7 +15,6 @@ Redis is the most widely-used in-memory data store for caching. Deploying it via
 ```yaml
 # redis-cache-stack.yml
 
-version: "3.8"
 services:
   redis:
     image: redis:7.2-alpine
@@ -117,20 +116,20 @@ def get_user_profile(user_id):
 
 ## Step 4: Redis Sentinel for High Availability
 
-For production high-availability Redis:
+For production high-availability Redis, run at least three Sentinel instances and ensure your writable `sentinel.conf` includes the appropriate `sentinel monitor` and `sentinel auth-pass` directives for your deployment:
 
 ```yaml
-# Redis Sentinel setup - 1 primary + 2 replicas + 3 sentinels
+# Redis Sentinel example service definitions
 services:
   redis-primary:
     image: redis:7.2-alpine
-    command: redis-server --requirepass password
+    command: redis-server --requirepass password --masterauth password
     networks:
       - redis-ha
 
   redis-replica:
     image: redis:7.2-alpine
-    command: redis-server --replicaof redis-primary 6379 --requirepass password
+    command: redis-server --replicaof redis-primary 6379 --requirepass password --masterauth password
     depends_on:
       - redis-primary
     networks:
@@ -140,7 +139,7 @@ services:
     image: redis:7.2-alpine
     command: redis-sentinel /etc/redis/sentinel.conf
     volumes:
-      - /opt/redis/sentinel.conf:/etc/redis/sentinel.conf:ro
+      - /opt/redis/sentinel.conf:/etc/redis/sentinel.conf
     networks:
       - redis-ha
 ```
