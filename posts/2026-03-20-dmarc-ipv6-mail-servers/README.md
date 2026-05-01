@@ -8,15 +8,15 @@ Description: Configure DMARC policy records for domains sending email from IPv6 
 
 ## Introduction
 
-DMARC (Domain-based Message Authentication, Reporting, and Conformance) builds on SPF and DKIM to give domain owners control over how their email is treated when authentication fails. For IPv6 mail servers, DMARC is crucial because IPv6 reputation systems are newer and more likely to require strong authentication signals.
+DMARC (Domain-based Message Authentication, Reporting, and Conformance) builds on SPF and DKIM to give domain owners control over how their email is treated when authentication fails. For IPv6 mail servers, DMARC is crucial because receivers evaluate the same domain-aligned authentication signals regardless of whether mail is sent over IPv4 or IPv6.
 
 ## How DMARC Works with IPv6
 
-DMARC validation is independent of IP version. The DMARC policy is evaluated based on:
+DMARC validation is independent of IP version. A message passes DMARC if at least one aligned authentication check succeeds:
 1. **SPF alignment**: The SPF-authenticated domain aligns with the From header domain
 2. **DKIM alignment**: The DKIM-signed domain aligns with the From header domain
 
-For IPv6 senders, SPF must include `ip6:` mechanisms, and DKIM must be configured as covered in prerequisite guides.
+For IPv6 senders, SPF can authorize IPv6 sources with `ip6:` mechanisms or through mechanisms such as `a`, `mx`, or `include` that resolve to IPv6-capable senders, and DKIM must be configured as covered in prerequisite guides.
 
 ## DMARC Record Structure
 
@@ -40,7 +40,7 @@ _dmarc.example.com.  300  IN  TXT  "v=DMARC1; p=none; rua=mailto:dmarc@example.c
 ### Phase 2: Quarantine (p=quarantine)
 
 ```dns
-; Failed messages go to spam folder
+; Failed messages are treated as suspicious, often placed in spam
 _dmarc.example.com.  300  IN  TXT  "v=DMARC1; p=quarantine; pct=25; rua=mailto:dmarc@example.com"
 ```
 
@@ -49,7 +49,7 @@ Increase `pct` from 25 to 100 over several weeks as you verify reports.
 ### Phase 3: Reject (p=reject)
 
 ```dns
-; Failed messages are rejected outright
+; Receiving systems are asked to reject failed messages
 _dmarc.example.com.  300  IN  TXT  "v=DMARC1; p=reject; pct=100; rua=mailto:dmarc@example.com"
 ```
 
@@ -76,8 +76,8 @@ dig TXT _dmarc.example.com +short
 # Expected output:
 # "v=DMARC1; p=reject; pct=100; rua=mailto:dmarc@example.com"
 
-# Test from a specific tool
-curl -s "https://api.mxtoolbox.com/api/v1/lookup/dmarc/example.com" | python3 -m json.tool
+# Query the record through Google's DNS-over-HTTPS JSON API
+curl -s "https://dns.google/resolve?name=_dmarc.example.com&type=TXT" | python3 -m json.tool
 ```
 
 ## Reading DMARC Aggregate Reports
@@ -91,8 +91,8 @@ pip3 install parsedmarc
 # Analyze a DMARC report file
 parsedmarc /path/to/report.xml.gz
 
-# Or set up continuous monitoring with the JSON output
-parsedmarc /path/to/reports/ --json-path /var/log/dmarc/
+# Or configure continuous monitoring with a config file
+parsedmarc -c /etc/parsedmarc.ini
 ```
 
 A typical aggregate report shows:
@@ -114,14 +114,13 @@ A typical aggregate report shows:
 ## Testing End-to-End DMARC Validation
 
 ```bash
-# Send a test email to Google's check-auth service
+# Send a test email to Port25's check-auth service
 swaks --from sender@example.com \
       --to check-auth@verifier.port25.com \
       --server [2001:db8::10]:25 \
       --header "From: sender@example.com"
 
-# The reply will include authentication results:
-# DMARC: pass (p=reject dis=none) header.from=example.com
+# The reply will include SPF, DKIM, and DMARC authentication results
 ```
 
 ## DMARC for Subdomains
@@ -135,4 +134,4 @@ _dmarc.example.com.  300  IN  TXT  "v=DMARC1; p=reject; sp=quarantine; rua=mailt
 
 ## Conclusion
 
-DMARC policy setup for IPv6 mail servers follows the same process as IPv4 - publish a `_dmarc` TXT record, start with `p=none` to collect reports, verify your IPv6 SPF `ip6:` entries and DKIM signatures pass, then progressively enforce `quarantine` and `reject` policies. Proper DMARC is essential for IPv6 mail deliverability to major providers like Google, Microsoft, and Yahoo.
+DMARC policy setup for IPv6 mail servers follows the same process as IPv4 - publish a `_dmarc` TXT record, start with `p=none` to collect reports, verify your SPF policy authorizes your IPv6 senders and your DKIM signatures pass, then progressively enforce `quarantine` and `reject` policies. Proper DMARC is essential for IPv6 mail deliverability to major providers like Google, Microsoft, and Yahoo.
