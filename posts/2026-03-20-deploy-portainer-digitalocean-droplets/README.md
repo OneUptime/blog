@@ -24,6 +24,15 @@ terraform {
   }
 }
 
+variable "do_token" {
+  type      = string
+  sensitive = true
+}
+
+variable "admin_ip" {
+  type = string
+}
+
 provider "digitalocean" {
   token = var.do_token
 }
@@ -43,7 +52,13 @@ resource "digitalocean_droplet" "portainer" {
 
     docker volume create portainer_data
 
-    docker run -d       --name portainer       --restart=always       -p 9000:9000       -p 9443:9443       -v /var/run/docker.sock:/var/run/docker.sock       -v portainer_data:/data       portainer/portainer-ce:latest
+    docker run -d \
+      --name portainer \
+      --restart=always \
+      -p 9443:9443 \
+      -v /var/run/docker.sock:/var/run/docker.sock \
+      -v portainer_data:/data \
+      portainer/portainer-ce:lts
   EOF
 
   tags = ["portainer", "docker"]
@@ -51,7 +66,7 @@ resource "digitalocean_droplet" "portainer" {
 
 resource "digitalocean_ssh_key" "default" {
   name       = "portainer-key"
-  public_key = file("~/.ssh/id_rsa.pub")
+  public_key = file(pathexpand("~/.ssh/id_rsa.pub"))
 }
 ```
 
@@ -79,7 +94,13 @@ resource "digitalocean_firewall" "portainer" {
 
   outbound_rule {
     protocol              = "tcp"
-    port_range            = "all"
+    port_range            = "1-65535"
+    destination_addresses = ["0.0.0.0/0", "::/0"]
+  }
+
+  outbound_rule {
+    protocol              = "udp"
+    port_range            = "1-65535"
     destination_addresses = ["0.0.0.0/0", "::/0"]
   }
 }
@@ -99,4 +120,4 @@ output "portainer_url" {
 
 ## Summary
 
-Use DigitalOcean's `user_data` to install Docker and launch Portainer on first boot. Create a firewall rule allowing port 9443 only from your admin IP. The `digitalocean/digitalocean` OpenTofu provider manages both Droplets and firewall rules. Access Portainer at the output URL once the Droplet finishes initialization (typically 2-3 minutes).
+Use DigitalOcean's `user_data` to install Docker and launch Portainer on first boot. Create a firewall rule allowing port 9443 only from your admin IP while permitting outbound TCP and UDP traffic. The `digitalocean/digitalocean` OpenTofu provider manages both Droplets and firewall rules. Access Portainer at the output URL once the Droplet finishes initialization (typically 2-3 minutes).
