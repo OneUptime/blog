@@ -4,11 +4,11 @@ Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
 Tags: Portainer, Velero, Kubernetes, Backup, Storage, Disaster Recovery
 
-Description: Install Velero on a Kubernetes cluster managed by Portainer to enable namespace-level backups, scheduled snapshots, and cross-cluster migration of workloads.
+Description: Install Velero on a Kubernetes cluster managed by Portainer to enable namespace-level backups, scheduled backups, and cross-cluster migration of workloads.
 
 ---
 
-Velero is the standard tool for Kubernetes cluster backup and restore. It backs up Kubernetes API objects (Deployments, Services, ConfigMaps, Secrets) alongside persistent volume data. With Portainer managing your cluster, you can deploy Velero's supporting components and manage backup schedules through a combination of Portainer's manifest interface and the Velero CLI.
+Velero is the standard tool for Kubernetes cluster backup and restore. It backs up Kubernetes API objects (Deployments, Services, ConfigMaps, Secrets) and can also protect persistent volume data through supported volume snapshots or file-system backup. With Portainer managing your cluster, you can deploy Velero's supporting components and manage backup schedules through a combination of Portainer's manifest interface and the Velero CLI.
 
 ## Architecture
 
@@ -16,14 +16,15 @@ Velero is the standard tool for Kubernetes cluster backup and restore. It backs 
 graph LR
     K8sCluster[K8s Cluster] --> Velero[Velero Pod]
     Velero -->|API objects| S3[(S3 Bucket)]
-    Velero -->|Volume snapshots| CSI[CSI Snapshotter]
+    Velero -->|Volume snapshots| EBS[AWS EBS Snapshots]
 ```
 
 ## Prerequisites
 
 - Portainer connected to a Kubernetes cluster
 - `kubectl` and `velero` CLI installed on your workstation
-- An S3-compatible bucket for backup storage
+- An AWS S3 bucket for backup storage
+- AWS EBS-backed persistent volumes if you want this AWS plugin example to create volume snapshots
 
 ## Step 1: Install Velero CLI
 
@@ -33,8 +34,10 @@ graph LR
 brew install velero
 
 # Linux
-curl -LO https://github.com/vmware-tanzu/velero/releases/latest/download/velero-linux-amd64.tar.gz
-tar xzf velero-linux-amd64.tar.gz && mv velero /usr/local/bin/
+VERSION=v1.17.1
+curl -LO https://github.com/vmware-tanzu/velero/releases/download/$VERSION/velero-$VERSION-linux-amd64.tar.gz
+tar -xzf velero-$VERSION-linux-amd64.tar.gz
+mv velero-$VERSION-linux-amd64/velero /usr/local/bin/velero
 ```
 
 ## Step 2: Create S3 Credentials File
@@ -51,21 +54,21 @@ EOF
 ## Step 3: Install Velero on the Cluster
 
 ```bash
-# Install Velero with the AWS plugin for S3 storage
+# Install Velero with the AWS plugin for S3 storage and EBS volume snapshots
 velero install \
   --provider aws \
-  --plugins velero/velero-plugin-for-aws:v1.9.0 \
+  --plugins velero/velero-plugin-for-aws:v1.13.1 \
   --bucket velero-backups-bucket \
   --backup-location-config region=us-east-1 \
   --snapshot-location-config region=us-east-1 \
   --secret-file /tmp/credentials-velero
 ```
 
-After installation, verify the Velero pods are running via Portainer's **Kubernetes > Namespaces > velero** view.
+After installation, verify the Velero pods are running in Portainer's **Namespaces** view by opening the `velero` namespace.
 
 ## Step 4: Create a Manual Backup via Portainer Manifest
 
-Apply the following manifest through Portainer's **Kubernetes > Advanced Deployment** interface:
+Apply the following manifest through Portainer's **Applications > Create from code > Manifest** workflow:
 
 ```yaml
 # velero-backup.yaml
@@ -109,7 +112,7 @@ spec:
 velero backup get
 
 # Restore a specific backup
-velero restore create --from-backup full-cluster-backup
+velero restore create full-cluster-backup-restore --from-backup full-cluster-backup
 
 # Monitor restore progress
 velero restore describe full-cluster-backup-restore
@@ -117,11 +120,11 @@ velero restore describe full-cluster-backup-restore
 
 ## Monitoring Backup Status
 
-Check backup status through Portainer by viewing the Velero namespace's Backup custom resources, or use the CLI:
+Check backup status through Portainer's **More Resources > Custom Resources** view if it's available in your edition, or use the CLI:
 
 ```bash
 # Check all backup statuses
-velero backup get --all-namespaces
+velero backup get
 
 # View detailed backup description
 velero backup describe full-cluster-backup
@@ -129,4 +132,4 @@ velero backup describe full-cluster-backup
 
 ## Summary
 
-Velero on Portainer-managed Kubernetes provides namespace-level backup, scheduled snapshots, and point-in-time restore capabilities. By combining Velero's Schedule CRDs with Portainer's manifest management, you establish a reliable disaster recovery workflow for production Kubernetes workloads.
+Velero on Portainer-managed Kubernetes provides namespace-level backup, scheduled backups, and restore capabilities. By combining Velero's Schedule CRDs with Portainer's manifest management, you establish a reliable disaster recovery workflow for production Kubernetes workloads.
