@@ -9,11 +9,16 @@ Description: A guide to enabling IPv6 on Linux systems at various levels - kerne
 ## Checking If IPv6 Is Currently Enabled
 
 ```bash
-# Check if IPv6 is disabled at the kernel level
+# Check whether IPv6 is disabled by default for new interfaces
 
-sysctl net.ipv6.conf.all.disable_ipv6
-# 0 = IPv6 enabled (default)
-# 1 = IPv6 disabled
+sysctl net.ipv6.conf.default.disable_ipv6
+# 0 = IPv6 enabled by default for new interfaces
+# 1 = IPv6 disabled by default for new interfaces
+
+# Check whether IPv6 is disabled on a specific interface (e.g., eth0)
+sysctl net.ipv6.conf.eth0.disable_ipv6
+# 0 = IPv6 enabled on eth0
+# 1 = IPv6 disabled on eth0
 
 # Check for an IPv6 address (link-local should always be present if enabled)
 ip -6 addr show | grep 'inet6'
@@ -33,7 +38,7 @@ If IPv6 was disabled via sysctl parameters, re-enable it:
 # Enable IPv6 on all interfaces
 sysctl -w net.ipv6.conf.all.disable_ipv6=0
 
-# Enable IPv6 on the default interface
+# Enable IPv6 by default for new interfaces
 sysctl -w net.ipv6.conf.default.disable_ipv6=0
 
 # Enable on a specific interface (e.g., eth0)
@@ -118,15 +123,15 @@ ip -6 addr show lo | grep '::1'
 # Should show: inet6 ::1/128 scope host
 
 # Step 3: Test local IPv6 connectivity
-ping6 ::1
+ping -6 ::1
 # Should succeed
 
-# Step 4: Check for Router Advertisements (if on a router-connected network)
-rdisc6 eth0
-# Should show RA from default gateway
+# Step 4: Check for a default IPv6 route (if on a router-connected network)
+ip -6 route show default
+# Should show a default route, often learned from Router Advertisements
 
 # Step 5: Test internet IPv6 connectivity
-ping6 2001:4860:4860::8888
+ping -6 2001:4860:4860::8888
 curl -6 https://ipv6.google.com
 ```
 
@@ -148,4 +153,4 @@ ip -6 addr show eth1
 
 ## Summary
 
-Enable IPv6 on Linux by setting `net.ipv6.conf.all.disable_ipv6=0` via sysctl, removing blacklist entries in `/etc/modprobe.d/`, and removing `ipv6.disable=1` from GRUB parameters if present. After enabling, verify that link-local addresses appear on interfaces with `ip -6 addr show`, test loopback with `ping6 ::1`, and confirm internet IPv6 connectivity with `ping6 2001:4860:4860::8888`.
+Enable IPv6 on Linux by setting `net.ipv6.conf.all.disable_ipv6=0` via sysctl, removing blacklist entries in `/etc/modprobe.d/`, and removing `ipv6.disable=1` from GRUB parameters if present. After enabling, verify that link-local addresses appear on interfaces with `ip -6 addr show`, test loopback with `ping -6 ::1`, and confirm internet IPv6 connectivity with `ping -6 2001:4860:4860::8888`.
