@@ -25,8 +25,7 @@ Longhorn's encryption at rest:
 Run these checks on every Kubernetes node:
 
 ```bash
-# Check cryptsetup version (2.0+ required)
-
+# Check cryptsetup is installed
 cryptsetup --version
 
 # Verify dm-crypt kernel module is available
@@ -37,12 +36,9 @@ lsmod | grep dm_crypt
 
 # Load if not already loaded
 modprobe dm_crypt
-
-# Verify the module persists across reboots
-cat /etc/modules | grep dm_crypt
-# If not present:
-echo "dm_crypt" | tee -a /etc/modules
 ```
+
+If `dm_crypt` is not loaded automatically on boot, configure persistent module loading using your Linux distribution's supported mechanism.
 
 ## Setting Up a Global Encryption Secret
 
@@ -60,9 +56,8 @@ kubectl create secret generic longhorn-encryption-global \
   --from-literal=CRYPTO_KEY_PROVIDER="secret" \
   --from-literal=CRYPTO_KEY_CIPHER="aes-xts-plain64" \
   --from-literal=CRYPTO_KEY_HASH="sha256" \
-  --from-literal=CRYPTO_LUKS_CIPHER="aes-xts-plain64" \
-  --from-literal=CRYPTO_LUKS_KEY_SIZE="256" \
-  --from-literal=CRYPTO_LUKS_HASH="sha256"
+  --from-literal=CRYPTO_KEY_SIZE="256" \
+  --from-literal=CRYPTO_PBKDF="argon2i"
 ```
 
 ## Create an Encrypted Default StorageClass
@@ -97,11 +92,14 @@ parameters:
   # Node publish secret
   csi.storage.k8s.io/node-publish-secret-name: "longhorn-encryption-global"
   csi.storage.k8s.io/node-publish-secret-namespace: "longhorn-system"
+  # Node expand secret (used for online expansion)
+  csi.storage.k8s.io/node-expand-secret-name: "longhorn-encryption-global"
+  csi.storage.k8s.io/node-expand-secret-namespace: "longhorn-system"
 ```
 
 ```bash
-# Remove default annotation from existing default class
-kubectl patch storageclass longhorn \
+# If you already have a default StorageClass, remove its default annotation
+kubectl patch storageclass <current-default-storageclass> \
   -p '{"metadata": {"annotations": {"storageclass.kubernetes.io/is-default-class": "false"}}}'
 
 # Apply the new encrypted default class
@@ -157,6 +155,9 @@ spec:
 ```bash
 kubectl apply -f encryption-test.yaml
 
+# Wait for the test pod to become Ready
+kubectl wait --for=condition=Ready pod/encryption-test-pod --timeout=120s
+
 # Verify data is accessible through the pod
 kubectl exec encryption-test-pod -- cat /data/test.txt
 
@@ -165,8 +166,8 @@ kubectl exec encryption-test-pod -- cat /data/test.txt
 kubectl get pod encryption-test-pod -o wide  # Find the node
 
 # On the node:
-ls /dev/mapper/ | grep longhorn
-cryptsetup status /dev/mapper/<device-name>
+ls /dev/mapper/
+cryptsetup status <volume-name>
 ```
 
 ### Verify Encryption at the Block Level
@@ -176,7 +177,7 @@ cryptsetup status /dev/mapper/<device-name>
 # Find the block device used by Longhorn
 ls /dev/longhorn/
 
-# Try to read raw data from the unencrypted block device (should show garbled data)
+# Try to read raw data from the underlying Longhorn block device (should show garbled data)
 dd if=/dev/longhorn/<volume-name> bs=512 count=1024 2>/dev/null | strings | head -20
 # You should see no recognizable text data - confirming encryption works
 ```
@@ -197,26 +198,29 @@ kubectl get pvc --all-namespaces \
 
 ## Integrating with External Key Management (HashiCorp Vault)
 
-For enterprise deployments, integrate with Vault for key management:
+For enterprise deployments, keep Longhorn pointed at a Kubernetes Secret, and use Vault to populate that Secret:
 
 ```yaml
-# vault-crypto-secret.yaml - Reference to Vault for key management
+# longhorn-crypto-secret.yaml - Secret format Longhorn reads
 apiVersion: v1
 kind: Secret
 metadata:
-  name: longhorn-vault-crypto
+  name: longhorn-encryption-global
   namespace: longhorn-system
 stringData:
-  # Use Vault as the key provider
-  CRYPTO_KEY_PROVIDER: "aws"   # or "vault" with external-secrets operator
-  CRYPTO_KEY_VALUE: ""         # Will be populated from Vault via external-secrets
+  CRYPTO_KEY_PROVIDER: "secret"
+  CRYPTO_KEY_CIPHER: "aes-xts-plain64"
+  CRYPTO_KEY_HASH: "sha256"
+  CRYPTO_KEY_SIZE: "256"
+  CRYPTO_PBKDF: "argon2i"
+  CRYPTO_KEY_VALUE: ""  # Populated from Vault via External Secrets Operator
 ```
 
 Use the External Secrets Operator to sync Vault secrets:
 
 ```yaml
-# external-secret-crypto.yaml - Sync encryption key from Vault
-apiVersion: external-secrets.io/v1beta1
+# external-secret-crypto.yaml - Sync the encryption key from Vault
+apiVersion: external-secrets.io/v1
 kind: ExternalSecret
 metadata:
   name: longhorn-crypto-from-vault
@@ -228,10 +232,19 @@ spec:
     kind: ClusterSecretStore
   target:
     name: longhorn-encryption-global
+    template:
+      engineVersion: v2
+      data:
+        CRYPTO_KEY_PROVIDER: "secret"
+        CRYPTO_KEY_CIPHER: "aes-xts-plain64"
+        CRYPTO_KEY_HASH: "sha256"
+        CRYPTO_KEY_SIZE: "256"
+        CRYPTO_PBKDF: "argon2i"
+        CRYPTO_KEY_VALUE: "{{ .passphrase }}"
   data:
-    - secretKey: CRYPTO_KEY_VALUE
+    - secretKey: passphrase
       remoteRef:
-        key: secret/longhorn/encryption
+        key: longhorn/encryption
         property: passphrase
 ```
 
