@@ -4,11 +4,11 @@ Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
 Tags: OpenTofu, Ephemeral Resources, Connection Blocks, SSH, WinRM, HCL, Infrastructure as Code
 
-Description: Learn how to use ephemeral values in connection blocks in OpenTofu to securely pass SSH keys and passwords without storing them in state.
+Description: Learn how to use ephemeral values in connection blocks in OpenTofu so SSH keys and passwords are not stored in plan or state data.
 
 ---
 
-Connection blocks configure how OpenTofu connects to a remote machine for provisioner execution. They support ephemeral values, making them a safe place to supply SSH private keys, passwords, and certificates that should not be stored in state.
+In OpenTofu 1.11 and later, connection blocks configure how OpenTofu connects to a remote machine for provisioner execution. They support ephemeral values, so SSH private keys, passwords, and certificates are not stored in plan or state data, although provisioner logs can still expose connection values.
 
 ---
 
@@ -47,6 +47,8 @@ resource "aws_instance" "app" {
 ---
 
 ## WinRM Connection with Ephemeral Password
+
+WinRM connections can use ephemeral values, but WinRM support is deprecated in OpenTofu v1.12 and planned for removal in v1.13.
 
 ```hcl
 # Fetch Windows administrator password ephemerally
@@ -115,11 +117,15 @@ resource "aws_instance" "private_app" {
 
 ---
 
-## Certificate-Based Authentication
+## SSH Certificate-Based Authentication
 
 ```hcl
-ephemeral "aws_secretsmanager_secret_version" "client_cert" {
-  secret_id = "production/tls/client-certificate"
+ephemeral "aws_secretsmanager_secret_version" "client_certificate" {
+  secret_id = "production/ssh/client-certificate"
+}
+
+ephemeral "aws_secretsmanager_secret_version" "client_private_key" {
+  secret_id = "production/ssh/client-private-key"
 }
 
 resource "null_resource" "tls_configure" {
@@ -128,9 +134,9 @@ resource "null_resource" "tls_configure" {
     user        = "admin"
     host        = var.target_host
 
-    # Certificate and key - neither stored in state
-    certificate = ephemeral.aws_secretsmanager_secret_version.client_cert.secret_string
-    private_key = ephemeral.tls_private_key.client.private_key_pem
+    # SSH certificate and matching private key - neither stored in plan or state
+    certificate = ephemeral.aws_secretsmanager_secret_version.client_certificate.secret_string
+    private_key = ephemeral.aws_secretsmanager_secret_version.client_private_key.secret_string
   }
 
   provisioner "remote-exec" {
@@ -147,7 +153,7 @@ Connection blocks on `null_resource` (or `terraform_data`) also support ephemera
 
 ```hcl
 ephemeral "aws_ssm_parameter" "ssh_password" {
-  name            = "/production/servers/ssh-password"
+  arn             = "arn:aws:ssm:us-east-1:123456789012:parameter/production/servers/ssh-password"
   with_decryption = true
 }
 
@@ -179,19 +185,17 @@ resource "null_resource" "post_deploy" {
 
 When you use ephemeral values in connection blocks:
 
-| Value | Stored in State? |
+| Value | Stored in State or Plan? |
 |---|---|
-| `host` | Yes |
-| `user` | Yes |
 | `private_key` (ephemeral) | No |
 | `password` (ephemeral) | No |
 | `certificate` (ephemeral) | No |
 | `bastion_private_key` (ephemeral) | No |
 
-The connection block's non-secret attributes (host, user, type) are stored, but ephemeral values are not.
+Ephemeral values are never stored in state or plan data. However, provisioner logs can still expose values from a connection block.
 
 ---
 
 ## Summary
 
-Connection blocks support ephemeral values for `private_key`, `password`, `certificate`, and `bastion_private_key`. This allows configuring SSH and WinRM connections with credentials fetched from Secrets Manager, Parameter Store, or Vault without storing those credentials in the state file. Use ephemeral values in connection blocks whenever connecting to remote machines requires secrets.
+In OpenTofu 1.11 and later, connection blocks support ephemeral values for `private_key`, `password`, `certificate`, and `bastion_private_key`. This allows configuring SSH and WinRM connections with credentials fetched from Secrets Manager, Parameter Store, or Vault without storing those credentials in plan or state data. WinRM support is deprecated in OpenTofu v1.12 and planned for removal in v1.13, and provisioner logs can still expose connection values.
