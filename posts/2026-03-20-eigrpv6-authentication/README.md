@@ -26,7 +26,7 @@ Router(config-if)# ipv6 authentication mode eigrp 1 md5
 Router(config-if)# ipv6 authentication key-chain eigrp 1 EIGRP_AUTH
 ```
 
-Both neighbors must use the same key chain name and key string.
+Both neighbors must use matching valid keys; the key strings and send/accept lifetimes must align on both sides.
 
 ## Named EIGRPv6 SHA-256 Authentication
 
@@ -36,7 +36,7 @@ Named EIGRP supports the stronger HMAC-SHA-256 algorithm:
 Router(config)# router eigrp MY_NETWORK
 Router(config-router)# address-family ipv6 unicast autonomous-system 1
 Router(config-router-af)# af-interface GigabitEthernet0/0
-Router(config-router-af-interface)#  authentication mode hmac-sha-256 MySecretKey
+Router(config-router-af-interface)#  authentication mode hmac-sha-256 0 MySecretKey
 Router(config-router-af-interface)#  exit-af-interface
 Router(config-router-af)# exit-address-family
 ```
@@ -50,7 +50,7 @@ The key is specified directly - no separate key chain is needed for SHA-256 in N
 Router(config)# router eigrp MY_NETWORK
 Router(config-router)# address-family ipv6 unicast autonomous-system 1
 Router(config-router-af)# af-interface default
-Router(config-router-af-interface)#  authentication mode hmac-sha-256 SharedPassword
+Router(config-router-af-interface)#  authentication mode hmac-sha-256 0 SharedPassword
 Router(config-router-af-interface)#  exit-af-interface
 
 ! Specific interface override (no authentication on Loopback)
@@ -68,7 +68,7 @@ Router# show ipv6 eigrp interfaces detail | include Auth
 
 ! Verify neighbors still form with authentication
 Router# show ipv6 eigrp neighbors
-! Neighbors should show as Established - if they drop, key mismatch
+! Neighbors should remain in the table - if they disappear, check for key or lifetime mismatch
 
 ! Check for authentication failures in logs
 Router# show logging | include EIGRP | include auth
