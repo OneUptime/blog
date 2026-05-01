@@ -13,8 +13,8 @@ OpenFaaS (Functions as a Service) is an open-source serverless framework that ru
 ## Step 1: Install arkade (OpenFaaS CLI manager)
 
 ```bash
-curl -sLS https://get.arkade.dev | sudo sh
-arkade install faas-cli
+curl -sSL https://get.arkade.dev | sudo -E sh
+arkade get faas-cli
 ```
 
 ## Step 2: Deploy OpenFaaS with Helm
@@ -36,25 +36,24 @@ kubectl create secret generic basic-auth \
   -n openfaas
 
 # Install OpenFaaS
-helm install openfaas openfaas/openfaas \
+helm upgrade --install openfaas openfaas/openfaas \
   --namespace openfaas \
   --set functionNamespace=openfaas-fn \
   --set generateBasicAuth=false \
-  --set gateway.replicas=2 \
-  --set autoscaler.enabled=true
+  --set gateway.replicas=2
 ```
 
 ## Step 3: Access the OpenFaaS Gateway
 
 ```bash
 # Port-forward the gateway
-kubectl port-forward svc/gateway -n openfaas 8080:8080
+kubectl port-forward svc/gateway -n openfaas 8080:8080 &
 
 # Login with faas-cli
-faas-cli login --gateway http://localhost:8080 \
-  --username admin --password "$PASSWORD"
+echo -n "$PASSWORD" | faas-cli login --gateway http://127.0.0.1:8080 \
+  --username admin --password-stdin
 
-# Open the UI at http://localhost:8080/ui/
+# Open the UI at http://127.0.0.1:8080/ui/
 ```
 
 ## Step 4: Deploy a Function from the Store
@@ -65,17 +64,17 @@ faas-cli store list
 
 # Deploy a function from the store
 faas-cli store deploy nodeinfo \
-  --gateway http://localhost:8080
+  --gateway http://127.0.0.1:8080
 
 # Test the function
-curl http://localhost:8080/function/nodeinfo
+curl http://127.0.0.1:8080/function/nodeinfo
 ```
 
 ## Step 5: Create a Custom Function
 
 ```bash
 # Create a new function using the Python template
-faas-cli new my-function --lang python3-http
+faas-cli new my-function --lang python3-http --prefix your-dockerhub-username
 
 # Edit the function handler
 cat > my-function/handler.py << 'EOF'
@@ -90,28 +89,27 @@ def handle(event, context):
 EOF
 
 # Build and deploy
-faas-cli build -f my-function.yml
-faas-cli push -f my-function.yml
-faas-cli deploy -f my-function.yml --gateway http://localhost:8080
+faas-cli build -f stack.yaml
+docker login
+faas-cli push -f stack.yaml
+faas-cli deploy -f stack.yaml --gateway http://127.0.0.1:8080
 ```
 
 ## Step 6: Configure Autoscaling
 
 ```yaml
-# Function deployment with autoscaling annotations
-apiVersion: openfaas.com/v1
-kind: Function
-metadata:
-  name: my-function
-  namespace: openfaas-fn
-  annotations:
-    com.openfaas.scale.min: "1"
-    com.openfaas.scale.max: "10"
-    com.openfaas.scale.factor: "20"
-    com.openfaas.scale.type: "capacity"
-    com.openfaas.scale.target: "50"    # 50 in-flight requests per replica
+# Add autoscaling labels to the function in stack.yaml
+functions:
+  my-function:
+    lang: python3-http
+    handler: ./my-function
+    image: your-dockerhub-username/my-function:latest
+    labels:
+      com.openfaas.scale.min: "1"
+      com.openfaas.scale.max: "10"
+      com.openfaas.scale.factor: "20"
 ```
 
 ## Conclusion
 
-OpenFaaS on Rancher provides an accessible serverless platform that treats any Docker container as a function. Its simplicity and the OpenFaaS Store catalog make it practical for teams that want serverless capabilities without the complexity of Knative. Auto-scaling based on request queue depth ensures efficient resource utilization.
+OpenFaaS on Rancher provides an accessible serverless platform that treats any Docker container as a function. Its simplicity and the OpenFaaS Store catalog make it practical for teams that want serverless capabilities without the complexity of Knative. In Community Edition, legacy auto-scaling based on Prometheus request-rate metrics and per-function min/max replica settings can help improve resource utilization.
