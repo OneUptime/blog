@@ -13,8 +13,6 @@ Node.js with MongoDB is a natural fit for JSON-centric REST APIs. Portainer mana
 ## Compose Stack
 
 ```yaml
-version: "3.8"
-
 services:
   mongo:
     image: mongo:7
@@ -22,11 +20,10 @@ services:
     environment:
       MONGO_INITDB_ROOT_USERNAME: root
       MONGO_INITDB_ROOT_PASSWORD: mongopass    # Change this
-      MONGO_INITDB_DATABASE: nodeapp
     volumes:
       - mongo_data:/data/db
     healthcheck:
-      test: ["CMD", "mongosh", "--eval", "db.adminCommand('ping')"]
+      test: ["CMD-SHELL", "mongosh --username \"$$MONGO_INITDB_ROOT_USERNAME\" --password \"$$MONGO_INITDB_ROOT_PASSWORD\" --authenticationDatabase admin --eval \"db.adminCommand('ping')\""]
       interval: 10s
       timeout: 5s
       retries: 5
@@ -44,9 +41,9 @@ services:
       PORT: 3000
       NODE_ENV: production
     volumes:
-      - ./api:/app
+      - /opt/node-mongo-api:/app   # Host path with package.json and server.js
     working_dir: /app
-    command: sh -c "npm ci --only=production && node server.js"
+    command: sh -c "npm install --omit=dev && node server.js"
 
 volumes:
   mongo_data:
@@ -64,7 +61,9 @@ app.use(express.json());
 
 // Connect with retry logic for container startup
 const connectWithRetry = () => {
-  mongoose.connect(process.env.MONGODB_URI)
+  mongoose.connect(process.env.MONGODB_URI, {
+    serverSelectionTimeoutMS: 5000
+  })
     .then(() => console.log('MongoDB connected'))
     .catch(err => {
       console.error('MongoDB connection error:', err.message);
@@ -100,4 +99,4 @@ app.listen(process.env.PORT || 3000);
 
 ## Monitoring
 
-Use OneUptime to monitor `http://<host>:3000/health`. The endpoint returns `{"status":"healthy"}` when MongoDB is connected. Alert on `503` responses to catch database connection failures before clients experience errors.
+Use OneUptime to monitor `http://<host>:3000/health`. The endpoint returns a `200` response with a JSON body that includes `"status":"healthy"` when MongoDB is connected. Alert on `503` responses to catch database connection failures before clients experience errors.
