@@ -20,21 +20,35 @@ resource "aws_instance" "portainer" {
   instance_type = "t3.small"
   key_name      = aws_key_pair.portainer.key_name
   subnet_id     = aws_subnet.public.id
+  associate_public_ip_address = true
 
   vpc_security_group_ids = [aws_security_group.portainer.id]
 
-  user_data = base64encode(<<-EOF
+  user_data = <<-EOF
     #!/bin/bash
-    yum update -y
-    amazon-linux-extras install docker -y
+    set -e
+
+    if command -v amazon-linux-extras >/dev/null 2>&1; then
+      yum update -y
+      amazon-linux-extras install docker -y
+    else
+      dnf update -y
+      dnf install -y docker
+    fi
+
     systemctl enable --now docker
     usermod -aG docker ec2-user
 
     docker volume create portainer_data
 
-    docker run -d       --name portainer       --restart=always       -p 9000:9000       -p 9443:9443       -v /var/run/docker.sock:/var/run/docker.sock       -v portainer_data:/data       portainer/portainer-ce:latest
+    docker run -d \
+      --name portainer \
+      --restart=always \
+      -p 9443:9443 \
+      -v /var/run/docker.sock:/var/run/docker.sock \
+      -v portainer_data:/data \
+      portainer/portainer-ce:sts
   EOF
-  )
 
   tags = {
     Name = "portainer-host"
@@ -87,23 +101,22 @@ tofu output portainer_ip
 https://<public-ip>:9443
 ```
 
-On first access, set an admin password within 5 minutes (or the instance locks for security).
+Create the admin user within 5 minutes of installation. If you do not, Portainer stops listening until the container is restarted.
 
 ---
 
 ## Persist Portainer Data with EBS
 
-```hcl
-resource "aws_ebs_volume" "portainer_data" {
-  availability_zone = aws_instance.portainer.availability_zone
-  size              = 20
-  type              = "gp3"
-}
+Because `portainer_data` is a Docker volume on the host, it is stored on the instance's EBS-backed root volume. Size that root volume appropriately:
 
-resource "aws_volume_attachment" "portainer_data" {
-  device_name = "/dev/sdf"
-  volume_id   = aws_ebs_volume.portainer_data.id
-  instance_id = aws_instance.portainer.id
+```hcl
+resource "aws_instance" "portainer" {
+  # ...
+
+  root_block_device {
+    volume_size = 20
+    volume_type = "gp3"
+  }
 }
 ```
 
@@ -111,4 +124,4 @@ resource "aws_volume_attachment" "portainer_data" {
 
 ## Summary
 
-Use EC2 `user_data` to install Docker and launch the Portainer container automatically on instance creation. Restrict the security group to allow HTTPS (port 9443) only from trusted CIDRs. Create an EBS volume for durable Portainer data storage. Access the UI at `https://<ec2-ip>:9443` and complete setup within 5 minutes of first boot.
+Use EC2 `user_data` to install Docker and launch the Portainer container automatically on instance creation. Restrict the security group to allow HTTPS (port 9443) only from trusted CIDRs. Because the Portainer Docker volume is stored on the EC2 host, size the instance's EBS-backed root volume appropriately. Access the UI at `https://<ec2-ip>:9443` and create the admin user within 5 minutes of installation.
