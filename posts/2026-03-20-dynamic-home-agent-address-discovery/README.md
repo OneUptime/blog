@@ -8,32 +8,32 @@ Description: Understand the Dynamic Home Agent Address Discovery (DHAAD) mechani
 
 ## Introduction
 
-When a Mobile Node is away from home and needs to register its Care-of Address, it must know the Home Agent's address. Dynamic Home Agent Address Discovery (DHAAD), defined in RFC 3775 and RFC 4067, enables this discovery using anycast addressing.
+When a Mobile Node is away from home and needs to register its Care-of Address, it must know the Home Agent's address. Dynamic Home Agent Address Discovery (DHAAD), defined in RFC 3775 and updated in RFC 6275, enables this discovery using anycast addressing.
 
 ## The Discovery Problem
 
 ```text
-Home Network: 2001:db8:home::/64
+Home Network: 2001:db8:1:1::/64
 
 Mobile Node knows:
-  - Its Home Address: 2001:db8:home::100
-  - Its home prefix: 2001:db8:home::/64
+  - Its Home Address: 2001:db8:1:1::100
+  - Its home prefix: 2001:db8:1:1::/64
 
 Mobile Node does NOT know:
-  - The HA's specific address (e.g., 2001:db8:home::1)
+  - The HA's specific address (e.g., 2001:db8:1:1::1)
   - Whether multiple HAs exist
   - Which HA to use
 ```
 
 ## DHAAD Using the Home Agents Anycast Address
 
-RFC 3775 defines a well-known anycast address structure for Home Agents. The Home Agent Anycast Address is formed from the home prefix with the subnet-router anycast suffix.
+RFC 2526 reserves a well-known anycast identifier for Mobile IPv6 Home Agents. For a /64 home prefix, the Home-Agents anycast address is formed by appending the reserved interface identifier to the home prefix.
 
 ```text
-Home prefix:            2001:db8:home::/64
-HA Anycast Address:     2001:db8:home::fdff:ffff:ffff:fffe
-                        (subnet-router anycast = all 1s in interface ID
-                         per RFC 2526, last 128 addresses)
+Home prefix:            2001:db8:1:1::/64
+HA Anycast Address:     2001:db8:1:1:fdff:ffff:ffff:fffe
+                        (Mobile IPv6 Home-Agents anycast address
+                         per RFC 2526, anycast ID 126)
 ```
 
 ## DHAAD Procedure
@@ -45,8 +45,8 @@ sequenceDiagram
 
     Note over MN: Wants to register but\ndoes not know HA address
 
-    MN->>HA: DHAAD Request\n(dst: home-agents anycast)\n(MH Type 7)
-    HA->>MN: DHAAD Reply\n(list of HA addresses)\n(MH Type 8)
+    MN->>HA: DHAAD Request\n(dst: Home-Agents anycast)\n(ICMPv6 Type 144)
+    HA->>MN: DHAAD Reply\n(list of HA addresses)\n(ICMPv6 Type 145)
 
     Note over MN: Now knows HA address(es)
     MN->>HA: Binding Update\n(to specific HA address)
@@ -54,49 +54,51 @@ sequenceDiagram
 
 ## DHAAD Message Format
 
-### DHAAD Request (MH Type 7)
+### DHAAD Request (ICMPv6 Type 144)
 
 ```text
-Mobility Header (Type 7):
+ICMPv6 Home Agent Address Discovery Request:
+  Type: 144
+  Code: 0
   Reserved: 0
   Identifier: 0x1234  (random, used to match reply)
-  Options:
-    Home Address Option: 2001:db8:home::100 (MN's HoA)
+  Source Address: MN's Care-of Address
+  Destination Address: 2001:db8:1:1:fdff:ffff:ffff:fffe
 ```
 
-### DHAAD Reply (MH Type 8)
+### DHAAD Reply (ICMPv6 Type 145)
 
 ```text
-Mobility Header (Type 8):
+ICMPv6 Home Agent Address Discovery Reply:
+  Type: 145
+  Code: 0
   Reserved: 0
   Identifier: 0x1234  (matches request)
-  Options:
-    Home Address Option: 2001:db8:home::100
+  Source Address: 2001:db8:1:1::1
   HA Addresses:
-    2001:db8:home::1   (primary HA)
-    2001:db8:home::2   (secondary HA, if present)
+    2001:db8:1:1::1   (primary HA)
+    2001:db8:1:1::2   (secondary HA, if present)
 ```
 
-## Fallback: Prefix Anycast Discovery
+## Computing the Home-Agents Anycast Address
 
-If the MN does not have the HA's address configured, it uses the subnet-router anycast address.
+If the MN does not have the HA's address configured, it sends DHAAD to the Mobile IPv6 Home-Agents anycast address for its home /64 prefix.
 
 ```python
 import ipaddress
 
 def compute_ha_anycast_address(home_prefix: str) -> str:
     """
-    Compute the Home Agent anycast address for a given home prefix.
-    Per RFC 2526: interface identifier = 0xFDFFFFFFFFFFFFFF for /64.
+    Compute the Mobile IPv6 Home-Agents anycast address for a /64 home prefix.
+    Per RFC 2526: interface identifier = 0xFDFFFFFFFFFFFFFE for /64.
     """
     network = ipaddress.IPv6Network(home_prefix)
 
-    if network.prefixlen > 64:
-        raise ValueError("Home prefix must be /64 or shorter")
+    if network.prefixlen != 64:
+        raise ValueError("This example expects a /64 home prefix")
 
-    # Subnet-router anycast: network prefix + 0xFDFFFFFFFFFFFFFF
-    # For /64: last 64 bits = 0xFDFFFFFFFFFFFFFF
-    anycast_iid = 0xFDFFFFFFFFFFFFFF
+    # Mobile IPv6 Home-Agents anycast IID for a /64 prefix
+    anycast_iid = 0xFDFFFFFFFFFFFFFE
 
     # Convert network address to integer, add IID
     network_int = int(network.network_address)
@@ -106,46 +108,38 @@ def compute_ha_anycast_address(home_prefix: str) -> str:
 
 # Example usage
 
-prefix = "2001:db8:home::/64"
+prefix = "2001:db8:1:1::/64"
 anycast = compute_ha_anycast_address(prefix)
 print(f"HA Anycast Address: {anycast}")
-# Output: HA Anycast Address: 2001:db8:home:0:fdff:ffff:ffff:fffe
+# Output: HA Anycast Address: 2001:db8:1:1:fdff:ffff:ffff:fffe
 ```
 
 ## Configuring HA to Respond to DHAAD
 
-In the UMIP mip6d configuration:
+In the UMIP mip6d configuration, the documented HA requirement is to enable HA mode and list the home-link interface:
 
 ```bash
 # /etc/mip6d.conf - HA configuration for DHAAD
 NodeConfig HA;
-
-Interface "eth0" {
-    # HA must configure the subnet-router anycast address
-    HaRestartAfterReboot enabled;
-}
-
-# UMIP automatically configures the anycast address
-# and responds to DHAAD requests
-
-# Verify anycast address is configured
-ip -6 addr show dev eth0 | grep anycast
+Interface "eth0";
 ```
+
+UMIP's documentation also notes that the home link needs Router Advertisements with the Home Agent bit and Home Agent Information Option set on HA interfaces.
 
 ## DNS-Based HA Discovery (Alternative)
 
 ```bash
-# Store HA addresses in DNS as AAAA records
-# Mobile Nodes query _mip6._udp.<home-domain> SRV records
+# In Mobile IPv6 bootstrapping, HA discovery can also use DNS SRV records
+# The SRV service name is "mip6" and the protocol name is "ipv6"
 
 # Example DNS zone:
-# _mip6._udp.home.example.com. IN SRV 10 0 0 ha1.home.example.com.
-# ha1.home.example.com.       IN AAAA 2001:db8:home::1
+# _mip6._ipv6.home.example.com. IN SRV 10 0 0 ha1.home.example.com.
+# ha1.home.example.com.         IN AAAA 2001:db8:1:1::1
 
 # MN queries:
-dig SRV _mip6._udp.home.example.com
+dig SRV _mip6._ipv6.home.example.com
 ```
 
 ## Conclusion
 
-DHAAD enables Mobile Nodes to discover Home Agents dynamically using anycast addressing, removing the need for static HA configuration on the MN. The anycast address is deterministically derived from the home prefix. Ensure your Home Agent is properly responding to DHAAD requests - monitor this with OneUptime's UDP/ICMP probes.
+DHAAD enables Mobile Nodes to discover Home Agents dynamically using anycast addressing, removing the need for static HA configuration on the MN. For /64 home prefixes, the Mobile IPv6 Home-Agents anycast address is deterministically derived from the home prefix. Ensure your Home Agent is properly responding to DHAAD requests - monitor this with OneUptime's UDP/ICMP probes.
