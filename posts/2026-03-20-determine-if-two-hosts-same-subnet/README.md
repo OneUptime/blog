@@ -4,11 +4,11 @@ Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
 Tags: IPv4, Subnetting, Networking, Network Diagnostics, Python
 
-Description: Two hosts are on the same subnet if applying the subnet mask to both IP addresses produces the same network address, which can be checked with bitwise AND or Python's ipaddress module.
+Description: Two hosts are on the same subnet for a given prefix length if applying the same subnet mask to both IP addresses produces the same network address, which can be checked with bitwise AND or Python's ipaddress module.
 
 ## The Test: Bitwise AND
 
-Two hosts are on the same subnet if:
+Two hosts are on the same subnet for a given mask if:
 ```text
 IP_A AND mask == IP_B AND mask
 ```
@@ -29,10 +29,12 @@ def same_subnet(ip1: str, ip2: str, prefix: int) -> bool:
     """
     Return True if ip1 and ip2 are in the same /<prefix> network.
     """
+    if not 0 <= prefix <= 32:
+        raise ValueError("prefix must be in the range 0..32")
+
     mask_int = (0xFFFFFFFF >> (32 - prefix)) << (32 - prefix)
-    import socket, struct
-    n1 = struct.unpack("!I", socket.inet_aton(ip1))[0] & mask_int
-    n2 = struct.unpack("!I", socket.inet_aton(ip2))[0] & mask_int
+    n1 = int(ipaddress.IPv4Address(ip1)) & mask_int
+    n2 = int(ipaddress.IPv4Address(ip2)) & mask_int
     return n1 == n2
 
 # Using ipaddress module (simpler)
@@ -73,14 +75,14 @@ A host checks if the destination is on-subnet to decide whether to send directly
 
 ```text
 If (dst_ip AND my_mask) == (my_ip AND my_mask):
-    → Send directly to dst_ip (ARP for MAC)
+    → Send directly to dst_ip (ARP for MAC on Ethernet)
 Else:
     → Send to default gateway
 ```
 
 ## Key Takeaways
 
-- Same subnet test: `ip1 AND mask == ip2 AND mask`.
+- Same subnet test for a given mask: `ip1 AND mask == ip2 AND mask`.
 - The subnet boundary depends on the prefix length; shorter prefixes create larger subnets.
 - Hosts use this test to decide between direct delivery and gateway forwarding.
 - Use Python's `ipaddress.IPv4Address(ip) in ipaddress.IPv4Network(cidr)` for clean checks.
