@@ -14,7 +14,7 @@ Applying infrastructure without knowing the cost is like buying a car without ch
 
 ```mermaid
 graph LR
-    A[tofu plan] --> B[Infracost breakdown]
+    A[OpenTofu code] --> B[Infracost breakdown]
     B --> C[Cost estimate]
     C --> D{Threshold check}
     D -->|Under limit| E[PR approved]
@@ -34,8 +34,9 @@ infracost auth login
 # Get cost breakdown for current directory
 infracost breakdown --path .
 
-# Compare with previous state
-infracost diff --path .
+# Save a baseline, then compare against it after changes
+infracost breakdown --path . --format json --out-file /tmp/infracost-base.json
+infracost diff --path . --compare-to /tmp/infracost-base.json
 
 # Output formats
 infracost breakdown --path . --format table
@@ -53,17 +54,17 @@ projects:
   - path: environments/dev
     name: dev-environment
     terraform_var_files:
-      - environments/dev/terraform.tfvars
+      - terraform.tfvars
 
   - path: environments/staging
     name: staging-environment
     terraform_var_files:
-      - environments/staging/terraform.tfvars
+      - terraform.tfvars
 
   - path: environments/production
     name: production-environment
     terraform_var_files:
-      - environments/production/terraform.tfvars
+      - terraform.tfvars
 ```
 
 ## CI/CD Integration with Cost Gate
@@ -79,20 +80,21 @@ jobs:
   cost:
     runs-on: ubuntu-latest
     permissions:
+      contents: read
       pull-requests: write
 
     steps:
       - uses: actions/checkout@v4
 
       - name: Setup Infracost
-        uses: infracost/actions/setup@v2
+        uses: infracost/actions/setup@v3
         with:
           api-key: ${{ secrets.INFRACOST_API_KEY }}
 
       - name: Checkout base branch for comparison
         uses: actions/checkout@v4
         with:
-          ref: ${{ github.base_ref }}
+          ref: ${{ github.event.pull_request.base.ref }}
           path: base
 
       - name: Generate base cost
@@ -111,11 +113,14 @@ jobs:
 
       - name: Check cost increase threshold
         run: |
-          # Get the diff percentage
-          DIFF=$(infracost diff \
+          infracost diff \
             --path /tmp/pr.json \
             --compare-to /tmp/base.json \
-            --format json | jq '.diffTotalMonthlyCost | tonumber')
+            --format json \
+            --out-file /tmp/infracost.json
+
+          # Get the monthly cost change
+          DIFF=$(jq -r '.diffTotalMonthlyCost' /tmp/infracost.json)
 
           echo "Monthly cost change: $DIFF"
 
@@ -127,28 +132,23 @@ jobs:
 
       - name: Post cost comment to PR
         run: |
-          infracost diff \
-            --path /tmp/pr.json \
-            --compare-to /tmp/base.json \
-            --format diff | \
           infracost comment github \
+            --path /tmp/infracost.json \
             --repo ${{ github.repository }} \
-            --pull-request ${{ github.event.pull_request.number }} \
+            --pull-request ${{ github.event.number }} \
             --github-token ${{ github.token }} \
             --behavior update
 ```
 
 ## Usage-Based Cost Estimates
 
-```hcl
-# infracost_usage.yml - define expected usage for better estimates
-resource "aws_lambda_function" "processor" {
-  # Infracost uses these comments for usage estimates
-  # infracost-usage: {"monthly_requests": 10000000, "average_request_duration_ms": 100}
-  function_name = "data-processor"
-  memory_size   = 512
-  timeout       = 30
-}
+```yaml
+# infracost-usage.yml - define expected usage for better estimates
+version: 0.1
+resource_usage:
+  aws_lambda_function.processor:
+    monthly_requests: 10000000
+    request_duration_ms: 100
 ```
 
 ## Best Practices
@@ -157,4 +157,4 @@ resource "aws_lambda_function" "processor" {
 - Set cost gate thresholds in CI/CD - block PRs that increase monthly spend by more than a defined threshold without manager approval.
 - Use Infracost usage files to estimate variable costs (Lambda invocations, API Gateway calls, data transfer) more accurately.
 - Share cost estimates in team Slack channels for high-cost changes - visibility drives accountability.
-- Compare costs across environments: `infracost diff --path environments/dev --compare-to environments/production` shows how close staging is to production costs.
+- Compare costs across environments by generating JSON baselines for each one, then diffing them: `infracost diff --path /tmp/staging-cost.json --compare-to /tmp/production-cost.json` shows how close staging is to production costs.
