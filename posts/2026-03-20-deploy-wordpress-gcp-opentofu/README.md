@@ -8,7 +8,7 @@ Description: Learn how to deploy a production-ready WordPress site on GCP using 
 
 ## Introduction
 
-Deploying WordPress on GCP with OpenTofu uses Cloud Run for serverless container execution, Cloud SQL for managed MySQL, and Filestore for shared WordPress content. Cloud Run automatically scales to zero when not in use, making it cost-effective for sites with variable traffic.
+Deploying WordPress on GCP with OpenTofu uses Cloud Run for serverless container execution, Cloud SQL for managed MySQL, and Filestore for shared WordPress content. Cloud Run supports scaling to zero when not in use, though this configuration keeps one instance warm to reduce cold starts.
 
 ## VPC and Networking
 
@@ -26,6 +26,21 @@ resource "google_compute_subnetwork" "wordpress" {
   network       = google_compute_network.wordpress.id
   project       = var.project_id
 }
+
+resource "google_compute_global_address" "wordpress_private_ip" {
+  name          = "wordpress-${var.environment}-private-ip"
+  purpose       = "VPC_PEERING"
+  address_type  = "INTERNAL"
+  prefix_length = 16
+  network       = google_compute_network.wordpress.id
+  project       = var.project_id
+}
+
+resource "google_service_networking_connection" "wordpress" {
+  network                 = google_compute_network.wordpress.id
+  service                 = "servicenetworking.googleapis.com"
+  reserved_peering_ranges = [google_compute_global_address.wordpress_private_ip.name]
+}
 ```
 
 ## Cloud SQL MySQL
@@ -36,9 +51,11 @@ resource "google_sql_database_instance" "wordpress" {
   database_version = "MYSQL_8_0"
   region           = var.region
   project          = var.project_id
+  depends_on       = [google_service_networking_connection.wordpress]
 
   settings {
-    tier = "db-g1-small"
+    tier              = "db-custom-2-7680"
+    availability_type = "REGIONAL"
 
     backup_configuration {
       enabled            = true
@@ -72,7 +89,7 @@ resource "google_sql_user" "wordpress" {
 
 ```hcl
 resource "google_secret_manager_secret" "db_password" {
-  secret_id = "wordpress-db-password"
+  secret_id = "wordpress-${var.environment}-db-password"
   project   = var.project_id
 
   replication {
@@ -81,8 +98,20 @@ resource "google_secret_manager_secret" "db_password" {
 }
 
 resource "google_secret_manager_secret_version" "db_password" {
-  secret      = google_secret_manager_secret.db_password.id
+  secret      = google_secret_manager_secret.db_password.name
   secret_data = var.db_password
+}
+
+resource "google_service_account" "wordpress" {
+  account_id   = "wordpress-${var.environment}"
+  display_name = "WordPress Cloud Run service account"
+  project      = var.project_id
+}
+
+resource "google_secret_manager_secret_iam_member" "db_password" {
+  secret_id = google_secret_manager_secret.db_password.id
+  role      = "roles/secretmanager.secretAccessor"
+  member    = "serviceAccount:${google_service_account.wordpress.email}"
 }
 ```
 
@@ -116,9 +145,19 @@ resource "google_cloud_run_v2_service" "wordpress" {
   project  = var.project_id
 
   template {
+    execution_environment = "EXECUTION_ENVIRONMENT_GEN2"
+    service_account       = google_service_account.wordpress.email
+
     scaling {
       min_instance_count = 1
       max_instance_count = 10
+    }
+
+    vpc_access {
+      network_interfaces {
+        network    = google_compute_network.wordpress.name
+        subnetwork = google_compute_subnetwork.wordpress.name
+      }
     }
 
     volumes {
@@ -132,6 +171,10 @@ resource "google_cloud_run_v2_service" "wordpress" {
 
     containers {
       image = "wordpress:6.4-apache"
+
+      ports {
+        container_port = 80
+      }
 
       env {
         name  = "WORDPRESS_DB_HOST"
@@ -164,16 +207,20 @@ resource "google_cloud_run_v2_service" "wordpress" {
       }
     }
   }
+
+  depends_on = [
+    google_secret_manager_secret_version.db_password,
+    google_secret_manager_secret_iam_member.db_password
+  ]
 }
 
 # Allow public access to Cloud Run service
 
-resource "google_cloud_run_service_iam_member" "public" {
-  service  = google_cloud_run_v2_service.wordpress.name
+resource "google_cloud_run_v2_service_iam_member" "public" {
   location = google_cloud_run_v2_service.wordpress.location
+  name     = google_cloud_run_v2_service.wordpress.name
   role     = "roles/run.invoker"
   member   = "allUsers"
-  project  = var.project_id
 }
 ```
 
@@ -193,4 +240,4 @@ output "db_connection_name" {
 
 ## Summary
 
-Deploying WordPress on GCP with OpenTofu uses Cloud Run for serverless container execution with automatic scaling, Cloud SQL for managed MySQL with private networking, Filestore for NFS-based shared content storage, and Secret Manager for database credentials. The private networking setup ensures the database is not accessible from the internet. Cloud Run's pay-per-request billing makes this architecture cost-effective for WordPress sites with variable or low traffic.
+Deploying WordPress on GCP with OpenTofu uses Cloud Run for serverless container execution, Cloud SQL for managed MySQL with private networking, Filestore for NFS-based shared content storage, and Secret Manager for database credentials. The private networking setup ensures the database is not accessible from the internet, while Direct VPC egress lets Cloud Run reach both Cloud SQL and Filestore over internal addresses. Cloud Run's pay-per-request billing remains cost-effective for WordPress sites with variable traffic, though this configuration keeps one minimum instance running to reduce cold starts.
