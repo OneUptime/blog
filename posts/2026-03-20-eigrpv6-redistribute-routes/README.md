@@ -8,7 +8,7 @@ Description: Learn how to redistribute IPv6 static, connected, OSPFv3, and BGP r
 
 ## Overview
 
-Route redistribution into EIGRPv6 requires specifying a metric (or seed metric) since EIGRP uses a composite metric. Without a metric, redistributed routes are not installed (default metric is 0, which EIGRP treats as unreachable).
+Most route redistribution into EIGRPv6 requires specifying a metric (or seed metric) since EIGRP uses a composite metric. Connected routes, static routes with an exit interface, and routes from another EIGRP instance are exceptions because Cisco IOS can derive or copy a metric for them. For other sources, redistributed routes are not installed unless you configure a metric or default metric.
 
 ## Setting a Default Metric for Redistribution
 
@@ -18,12 +18,13 @@ The safest approach is to set a default metric that applies to all redistributed
 ! Classic EIGRPv6
 Router(config)# ipv6 router eigrp 1
 Router(config-rtr)# default-metric 10000 100 255 1 1500
-! Format: bandwidth(kbps) delay(microseconds) reliability load MTU
+! Format: bandwidth(kbps) delay(tens of microseconds) reliability load MTU
 
 ! Named EIGRPv6
 Router(config)# router eigrp MY_NETWORK
 Router(config-router)# address-family ipv6 unicast autonomous-system 1
-Router(config-router-af)# default-metric 10000 100 255 1 1500
+Router(config-router-af)# topology base
+Router(config-router-af-topology)# default-metric 10000 100 255 1 1500
 ```
 
 ## Redistributing Static Routes
@@ -36,7 +37,8 @@ Router(config-rtr)# redistribute static metric 10000 100 255 1 1500
 ! Named EIGRPv6
 Router(config)# router eigrp MY_NETWORK
 Router(config-router)# address-family ipv6 unicast autonomous-system 1
-Router(config-router-af)# redistribute static metric 10000 100 255 1 1500
+Router(config-router-af)# topology base
+Router(config-router-af-topology)# redistribute static metric 10000 100 255 1 1500
 ```
 
 ## Redistributing Connected Routes
@@ -62,14 +64,15 @@ Router(config-rtr)# redistribute ospf 1 include-connected  ! Also include connec
 ! Named EIGRPv6 - redistribute BGP
 Router(config)# router eigrp MY_NETWORK
 Router(config-router)# address-family ipv6 unicast autonomous-system 1
-Router(config-router-af)# redistribute bgp 65001 metric 10000 1000 255 1 1500
+Router(config-router-af)# topology base
+Router(config-router-af-topology)# redistribute bgp 65001 metric 10000 1000 255 1 1500
 ```
 
 ## Using Route Maps for Selective Redistribution
 
 ```text
 ! Create a prefix list for filtering
-Router(config)# ipv6 prefix-list EIGRP_IMPORT seq 10 permit 2001:db8:branch::/48
+Router(config)# ipv6 prefix-list EIGRP_IMPORT seq 10 permit 2001:db8:100::/48
 
 ! Create a route map
 Router(config)# route-map OSPF_TO_EIGRP permit 10
@@ -87,8 +90,8 @@ The 5-part metric specification: `<bandwidth> <delay> <reliability> <load> <MTU>
 | Parameter | Unit | Typical Value | Notes |
 |-----------|------|---------------|-------|
 | Bandwidth | Kbps | 10000 (10 Mbps) | Min bandwidth on the path |
-| Delay | Microseconds | 100 | Cumulative delay |
-| Reliability | 1-255 | 255 | 255 = 100% reliable |
+| Delay | Tens of microseconds | 100 (1 ms) | Cumulative delay |
+| Reliability | 0-255 | 255 | 255 = 100% reliable |
 | Load | 1-255 | 1 | 1 = minimum load |
 | MTU | Bytes | 1500 | Not used in metric calc |
 
@@ -98,7 +101,7 @@ The 5-part metric specification: `<bandwidth> <delay> <reliability> <load> <MTU>
 ! Check that redistributed routes appear as "D EX" in the routing table
 Router-Neighbor# show ipv6 route eigrp
 
-D EX 2001:DB8:BRANCH::/48 [170/30720]   ← External EIGRP route (AD=170)
+D EX 2001:DB8:100::/48 [170/30720]   ← External EIGRP route (AD=170)
      via FE80::2, GigabitEthernet0/0
 
 ! External EIGRP routes have AD 170 (vs 90 for internal)
@@ -109,4 +112,4 @@ Router# show ipv6 eigrp topology | include EX
 
 ## Summary
 
-Redistributing into EIGRPv6 requires a 5-part seed metric. Use `default-metric` to set a global default, or specify the metric per `redistribute` statement. Redistributed routes appear as `D EX` with administrative distance 170. Use route maps to selectively redistribute specific prefixes and prevent route leaks between routing domains.
+Most redistribution into EIGRPv6 requires a 5-part seed metric. Use `default-metric` to set a global default, or specify the metric per `redistribute` statement. Redistributed routes appear as `D EX` with administrative distance 170. Use route maps to selectively redistribute specific prefixes and prevent route leaks between routing domains.
