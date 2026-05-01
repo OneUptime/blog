@@ -76,8 +76,8 @@ sysctl net.ipv6.conf.all.forwarding
 ip -6 route show
 
 # Test forwarding with ping from another host
-# From host A (192.168.1.x network):
-ping6 <address-on-eth1-network>
+# From host A on the source network:
+ping -6 <address-on-eth1-network>
 
 # Check if forwarding is happening with tcpdump on the forwarding host
 tcpdump -i eth0 -n icmp6
@@ -87,11 +87,14 @@ tcpdump -i eth1 -n icmp6
 ## Enabling Forwarding for Specific Interfaces Only
 
 ```bash
-# Note: IPv6 forwarding is global, not per-interface like IPv4
-# However, you can control routing behavior per interface via other means
+# IPv6 forwarding is usually enabled globally:
+sysctl net.ipv6.conf.all.forwarding
 
-# The global setting is all-or-nothing for routing:
-sysctl net.ipv6.conf.all.forwarding   # This is the only forwarding switch
+# If you need to force forwarding on a specific interface, use force_forwarding:
+sysctl -w net.ipv6.conf.eth0.force_forwarding=1
+
+# Inspect per-interface Host/Router behaviour:
+sysctl net.ipv6.conf.eth0.forwarding
 
 # Per-interface behavior can be tuned via:
 sysctl net.ipv6.conf.eth0.accept_ra     # Whether to learn routes from RA
