@@ -8,7 +8,7 @@ Description: The maximum IPv4 packet size is 65,535 bytes as defined by the 16-b
 
 ## Theoretical Maximum
 
-The IPv4 Total Length field is 16 bits, allowing values from 0 to 65,535. Since the minimum IP header is 20 bytes, the maximum payload is 65,515 bytes. This theoretical maximum is rarely used because:
+The IPv4 Total Length field is 16 bits, so an IPv4 datagram can be up to 65,535 bytes long. Since the minimum IP header is 20 bytes, the maximum payload without IP options is 65,515 bytes. This theoretical maximum is rarely used because:
 
 1. Most links have an MTU of 1500 bytes (Ethernet).
 2. Fragmentation reduces throughput and increases reassembly overhead.
@@ -32,8 +32,8 @@ The IPv4 Total Length field is 16 bits, allowing values from 0 to 65,535. Since 
 
 ip link show
 
-# Or with ifconfig
-ifconfig eth0 | grep mtu
+# Or for a specific interface
+ip link show dev eth0
 
 # macOS
 networksetup -getMTU en0
@@ -46,10 +46,10 @@ Path MTU is the smallest MTU along the entire route to a destination. Use PMTUD:
 ```bash
 # Linux: ping with DF set and progressively larger payloads
 # -M do sets DF, -s sets payload size (total packet = s + 28 bytes IP+ICMP overhead)
-ping -M do -s 1472 8.8.8.8   # 1472 + 28 = 1500 (should succeed on Ethernet)
-ping -M do -s 1473 8.8.8.8   # 1501 bytes total - should fail if MTU is 1500
+ping -M do -c 1 -s 1472 8.8.8.8   # 1472 + 28 = 1500 total; succeeds only if the path MTU is at least 1500
+ping -M do -c 1 -s 1473 8.8.8.8   # 1501 bytes total; fails if the path MTU is 1500
 
-# View the cached path MTU to a destination
+# View the resolved route entry, including MTU if the kernel has one recorded
 ip route get 8.8.8.8 | grep -i mtu
 ```
 
@@ -58,18 +58,29 @@ ip route get 8.8.8.8 | grep -i mtu
 ```python
 from scapy.all import IP, ICMP, Raw, sr1
 
-def find_path_mtu(dst: str, max_size: int = 1500, min_size: int = 576) -> int:
-    """Binary search for path MTU to destination."""
+def find_path_mtu(dst: str, max_size: int = 1500, min_size: int = 68) -> int:
+    """Best-effort binary search for path MTU to destination.
+
+    Run with privileges that allow Scapy to send raw packets.
+    """
     low, high = min_size, max_size
     while low < high:
         mid = (low + high + 1) // 2
         payload_size = mid - 28  # 20 IP + 8 ICMP
         pkt = IP(dst=dst, flags="DF") / ICMP() / Raw(b"X" * payload_size)
         reply = sr1(pkt, timeout=2, verbose=False)
-        if reply and reply[ICMP].type in (0, 3):
+
+        if reply is None or not reply.haslayer(ICMP):
+            high = mid - 1
+            continue
+
+        icmp = reply[ICMP]
+        if icmp.type == 0:  # Echo reply
             low = mid  # Packet made it through
+        elif icmp.type == 3 and icmp.code == 4:  # Fragmentation needed, DF set
+            high = mid - 1
         else:
-            high = mid - 1  # Fragmentation needed or no reply
+            high = mid - 1  # No usable PMTU signal from this probe
     return low
 
 pmtu = find_path_mtu("8.8.8.8")
@@ -87,7 +98,7 @@ sudo ip link set eth0 mtu 9000
 
 ## Key Takeaways
 
-- The theoretical IPv4 maximum is 65,535 bytes; practical max on Ethernet is 1500.
+- The theoretical IPv4 maximum is 65,535 bytes; practical max on standard Ethernet is 1500.
 - Path MTU is determined dynamically via PMTUD using the DF flag and ICMP Fragmentation Needed messages.
 - Use jumbo frames (9000 bytes) on dedicated internal networks for throughput gains.
 - Always account for tunnel overhead (IPsec, GRE, VxLAN) which reduces effective payload size.
