@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
-Tags: IPv6, Window, GUI, Network Configuration, Disable IPv6
+Tags: IPv6, Windows, GUI, Network Configuration, Disable IPv6
 
 Description: Step-by-step guide to disabling IPv6 on Windows using the graphical user interface through Network Adapter Properties and Network and Sharing Center.
 
@@ -10,7 +10,7 @@ Description: Step-by-step guide to disabling IPv6 on Windows using the graphical
 
 This is the most direct GUI method to disable IPv6 per adapter:
 
-```sql
+```text
 Steps:
 1. Press Win + R, type: ncpa.cpl, press Enter
    (Opens Network Connections)
@@ -34,18 +34,19 @@ Steps:
 
 ```text
 Steps:
-1. Click Start → Settings → Network & Internet
-   OR right-click the network icon in the system tray
+1. Open "Network and Sharing Center"
+   - Windows 10: Settings → Network & Internet → Status →
+     Network and Sharing Center
+   - Windows 11: Control Panel → Network and Internet →
+     Network and Sharing Center
 
-2. Click "Network and Sharing Center"
+2. Click "Change adapter settings" in the left panel
 
-3. Click "Change adapter settings" in the left panel
+3. Right-click the adapter → Properties
 
-4. Right-click the adapter → Properties
+4. Uncheck "Internet Protocol Version 6 (TCP/IPv6)"
 
-5. Uncheck "Internet Protocol Version 6 (TCP/IPv6)"
-
-6. Click OK
+5. Click OK
 ```
 
 ## Method 3: Windows Settings (Modern UI)
@@ -56,15 +57,17 @@ On Windows 10/11 with the new Settings app:
 Steps:
 1. Start → Settings → Network & Internet
 
-2. Click on your connection type (Ethernet or Wi-Fi)
+2. Open your connection type (Ethernet or Wi-Fi) and then
+   open the connected network's properties
 
-3. Click on the connected network name
+3. Windows Settings lets you edit IPv4/IPv6 addressing,
+   DNS, and network profile settings here
 
-4. Scroll down to find network adapter properties
-   Note: In newer Windows 11, direct IPv6 disable may
-   require the classic Control Panel method above
+4. Windows Settings does NOT provide a general on/off toggle
+   for the IPv6 protocol binding on the adapter
 
-5. For IPv6 toggle, use the classic ncpa.cpl method
+5. To disable IPv6 on the adapter, use the classic
+   ncpa.cpl / Control Panel method above
 ```
 
 ## Verifying IPv6 is Disabled via GUI
@@ -78,21 +81,24 @@ Steps:
 
 3. Look at the disabled adapter's output
    - You should NOT see "IPv6 Address" entries
-   - You may still see "Link-local IPv6 Address : fe80::..."
-     if only the binding was disabled but not the protocol
+   - Other adapters may still show IPv6 addresses,
+     including loopback or tunnel interfaces
 
-4. To confirm no IPv6 traffic:
+4. To test IPv6 connectivity:
    ping -6 google.com
-   Should fail with: "Ping request could not find host"
+   - If another interface still has IPv6 connectivity,
+     this can still succeed
+   - If the disabled adapter was your only active path,
+     the command should fail, but the exact error text varies
 ```
 
 ## What GUI Disable Does vs Registry Disable
 
 | Method | Effect | Restart Needed? |
 |--------|--------|-----------------|
-| Uncheck adapter binding | Disables IPv6 on that adapter only | No |
-| Registry DisabledComponents=0xFF | Disables all IPv6 system-wide | Yes |
-| Both methods combined | Most complete disable | Yes (registry) |
+| Uncheck adapter binding | Unbinds IPv6 from that adapter only | No |
+| Registry DisabledComponents=0xFF | Disables IPv6 on tunnel and nontunnel interfaces, except loopback/internal use | Yes |
+| Both methods combined | Broader disable, but IPv6 loopback/internal use still remains | Yes (registry) |
 
 ## Re-enabling IPv6 via GUI
 
@@ -113,19 +119,22 @@ IPv6 is re-enabled immediately. No restart required.
 
 ```text
 Microsoft notes:
-- Disabling IPv6 is NOT recommended as Windows components
-  rely on IPv6 internally (HomeGroup, DirectAccess, etc.)
+- Disabling or unbinding IPv6 is NOT recommended because
+  Windows is tested with IPv6 enabled, and some components
+  and products expect it to remain functional
 
-- Even with IPv6 disabled at the adapter level, the loopback
-  adapter (::1) and some internal IPv6 communication may remain
+- Even with registry-based disable, the loopback address (::1)
+  and some internal IPv6 communication remain available
 
-- For enterprise environments, use Group Policy to manage
-  IPv6 settings consistently across multiple machines
+- For enterprise environments, Group Policy can be used to
+  manage IPv6 transition technologies such as 6to4, ISATAP,
+  and Teredo across multiple machines
 
 - If troubleshooting IPv6 issues, consider using
-  "Diagnose" option rather than disabling entirely
+  Prefer IPv4 over IPv6 in prefix policies rather than
+  disabling IPv6 entirely
 ```
 
 ## Summary
 
-Disable IPv6 on Windows via GUI by opening **Network Connections** (`ncpa.cpl`), right-clicking the adapter, selecting Properties, and unchecking **Internet Protocol Version 6 (TCP/IPv6)**. This takes effect immediately without a restart and is per-adapter. For system-wide disable including loopback tunnels, use the registry method (`DisabledComponents=0xFF`). Re-enable by checking the checkbox again.
+Disable IPv6 on Windows via GUI by opening **Network Connections** (`ncpa.cpl`), right-clicking the adapter, selecting Properties, and unchecking **Internet Protocol Version 6 (TCP/IPv6)**. This takes effect immediately without a restart and is per-adapter. For broader system-wide interface disable, use the registry method (`DisabledComponents=0xFF`), but note that IPv6 loopback/internal use still remains. Re-enable by checking the checkbox again.
