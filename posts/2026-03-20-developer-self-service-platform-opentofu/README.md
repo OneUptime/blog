@@ -51,6 +51,11 @@ variable "container_image" {
   description = "Full container image URI with tag"
 }
 
+variable "environment" {
+  type        = string
+  description = "Environment name (for example dev or pr-123)"
+}
+
 variable "environment_variables" {
   type        = map(string)
   description = "Non-sensitive environment variables"
@@ -59,13 +64,13 @@ variable "environment_variables" {
 
 variable "cpu" {
   type        = number
-  description = "CPU units (256, 512, 1024, 2048)"
+  description = "CPU units (for example 256, 512, 1024, 2048)"
   default     = 256
 }
 
 variable "memory" {
   type        = number
-  description = "Memory in MB (512, 1024, 2048, 4096)"
+  description = "Memory in MB (valid values depend on CPU; for example 512, 1024, 2048, 4096)"
   default     = 512
 }
 
@@ -145,6 +150,14 @@ resource "aws_ecs_task_definition" "service" {
 # my-service/infra/main.tf
 # This is all a developer needs to write!
 
+variable "environment" {
+  type = string
+}
+
+variable "image_tag" {
+  type = string
+}
+
 terraform {
   required_providers {
     aws = { source = "hashicorp/aws", version = "~> 5.0" }
@@ -160,6 +173,7 @@ terraform {
 module "my_api" {
   source  = "git::https://github.com/my-org/platform-modules.git//services/web-api?ref=v2.1.0"
 
+  environment     = var.environment
   service_name    = "my-api"
   container_image = "123456789012.dkr.ecr.us-east-1.amazonaws.com/my-api:${var.image_tag}"
 
@@ -189,25 +203,53 @@ on:
   pull_request:
     types: [opened, synchronize, closed]
 
+permissions:
+  id-token: write
+  contents: read
+
+env:
+  AWS_REGION: us-east-1
+
 jobs:
   provision:
     if: github.event.action != 'closed'
     runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: infra
     steps:
       - uses: actions/checkout@v4
-      - run: |
-          tofu workspace new pr-${{ github.event.number }} || \
-          tofu workspace select pr-${{ github.event.number }}
-          tofu apply -auto-approve \
-            -var="image_tag=${{ github.sha }}" \
-            -var="environment=pr-${{ github.event.number }}"
+      - uses: opentofu/setup-opentofu@v2
+      - uses: aws-actions/configure-aws-credentials@v6
+        with:
+          role-to-assume: arn:aws:iam::123456789012:role/github-actions-opentofu
+          aws-region: ${{ env.AWS_REGION }}
+      - env:
+          TF_VAR_image_tag: ${{ github.event.pull_request.head.sha }}
+          TF_VAR_environment: pr-${{ github.event.number }}
+        run: |
+          tofu init
+          tofu workspace select -or-create pr-${{ github.event.number }}
+          tofu apply -auto-approve
 
   destroy:
     if: github.event.action == 'closed'
     runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: infra
     steps:
       - uses: actions/checkout@v4
-      - run: |
+      - uses: opentofu/setup-opentofu@v2
+      - uses: aws-actions/configure-aws-credentials@v6
+        with:
+          role-to-assume: arn:aws:iam::123456789012:role/github-actions-opentofu
+          aws-region: ${{ env.AWS_REGION }}
+      - env:
+          TF_VAR_image_tag: ${{ github.event.pull_request.head.sha }}
+          TF_VAR_environment: pr-${{ github.event.number }}
+        run: |
+          tofu init
           tofu workspace select pr-${{ github.event.number }}
           tofu destroy -auto-approve
           tofu workspace select default
