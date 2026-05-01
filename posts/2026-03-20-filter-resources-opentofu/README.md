@@ -4,11 +4,11 @@ Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
 Tags: OpenTofu, Filtering, For Expressions, HCL, Collection, Infrastructure as Code
 
-Description: Learn how to filter resources and collections in OpenTofu using for expressions with conditions, data source filters, and the can() function - selecting only the resources you need.
+Description: Learn how to filter resources and collections in OpenTofu using for expressions with conditions, data source filters, and the try() function - selecting only the resources you need.
 
 ## Introduction
 
-Filtering in OpenTofu means selecting a subset of a collection based on a condition. For expressions with `if` clauses filter lists and maps. Data source filters query AWS/Azure/GCP for resources matching specific criteria. The `can()` function filters out values that would cause errors.
+Filtering in OpenTofu means selecting a subset of a collection based on a condition. For expressions with `if` clauses filter lists and maps. Provider-specific data source filters query AWS/Azure/GCP for resources matching specific criteria. The `try()` function supplies a fallback when optional attributes are missing.
 
 ## Filtering Lists with For Expressions
 
@@ -65,7 +65,7 @@ locals {
 resource "aws_instance" "service" {
   for_each = local.enabled_instances
 
-  ami           = data.aws_ami.latest.id
+  ami           = data.aws_ami.amazon_linux.id
   instance_type = each.value.size
 
   tags = {
@@ -141,7 +141,7 @@ locals {
 }
 ```
 
-## Filtering with can() for Error-Safe Selection
+## Filtering with try() for Error-Safe Selection
 
 ```hcl
 variable "server_configs" {
@@ -155,7 +155,7 @@ locals {
   # Filter to configs that have extra_disk defined
   servers_with_disk = {
     for name, config in var.server_configs : name => config
-    if can(config.extra_disk)  # Only include if extra_disk field exists
+    if try(config.extra_disk != null, false)  # Only include if extra_disk field exists
   }
 }
 ```
@@ -202,4 +202,4 @@ locals {
 
 ## Conclusion
 
-Filtering in OpenTofu uses for expressions with `if` conditions for collection filtering, data source `filter` blocks for querying existing cloud resources, and `can()` for error-safe access to optional fields. Combine multiple conditions with `&&` and `||`. Filter early in `locals` blocks to create clean, pre-filtered collections that your resources and modules can consume without inline conditions.
+Filtering in OpenTofu uses for expressions with `if` conditions for collection filtering, provider-specific data source `filter` blocks for querying existing cloud resources, and `try()` to handle optional attributes safely while building filtered collections. Combine multiple conditions with `&&` and `||`. Filter early in `locals` blocks to create clean, pre-filtered collections that your resources and modules can consume without inline conditions.
