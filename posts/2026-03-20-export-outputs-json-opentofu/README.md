@@ -83,16 +83,16 @@ steps:
   - name: Export outputs
     id: tofu_outputs
     run: |
-      # Export as JSON and store in environment
+      # Export as JSON and store as a step output
       OUTPUTS=$(tofu output -json)
-      echo "outputs=$OUTPUTS" >> $GITHUB_OUTPUT
+      printf 'outputs=%s\n' "$(printf '%s\n' "$OUTPUTS" | jq -c .)" >> "$GITHUB_OUTPUT"
 
       # Extract specific values
-      VPC_ID=$(echo $OUTPUTS | jq -r '.vpc_id.value')
-      ALB_DNS=$(echo $OUTPUTS | jq -r '.load_balancer_dns.value')
+      VPC_ID=$(printf '%s\n' "$OUTPUTS" | jq -r '.vpc_id.value')
+      ALB_DNS=$(printf '%s\n' "$OUTPUTS" | jq -r '.load_balancer_dns.value')
 
-      echo "VPC_ID=$VPC_ID" >> $GITHUB_ENV
-      echo "ALB_DNS=$ALB_DNS" >> $GITHUB_ENV
+      echo "VPC_ID=$VPC_ID" >> "$GITHUB_ENV"
+      echo "ALB_DNS=$ALB_DNS" >> "$GITHUB_ENV"
 
   - name: Deploy application
     run: |
@@ -143,9 +143,9 @@ echo "Configuration created successfully"
 OUTPUTS=$(tofu output -json)
 
 kubectl create configmap infrastructure-config \
-  --from-literal=VPC_ID="$(echo $OUTPUTS | jq -r '.vpc_id.value')" \
-  --from-literal=DB_ENDPOINT="$(echo $OUTPUTS | jq -r '.database_endpoint.value')" \
-  --from-literal=ALB_DNS="$(echo $OUTPUTS | jq -r '.load_balancer_dns.value')" \
+  --from-literal=VPC_ID="$(printf '%s\n' "$OUTPUTS" | jq -r '.vpc_id.value')" \
+  --from-literal=DB_ENDPOINT="$(printf '%s\n' "$OUTPUTS" | jq -r '.database_endpoint.value')" \
+  --from-literal=ALB_DNS="$(printf '%s\n' "$OUTPUTS" | jq -r '.load_balancer_dns.value')" \
   --dry-run=client \
   -o yaml | kubectl apply -f -
 ```
