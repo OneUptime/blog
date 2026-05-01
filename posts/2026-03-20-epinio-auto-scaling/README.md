@@ -1,14 +1,14 @@
-# How to Configure Application Auto-Scaling in Epinio
+# How to Deploy and Scale an Application in Epinio
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
-Tags: Epinio, Auto-Scaling, Kubernetes, HPA, PaaS
+Tags: Epinio, Scaling, Kubernetes, PaaS, Buildpacks
 
-Description: Set up horizontal pod autoscaling for Epinio applications to automatically handle load variations.
+Description: Deploy an application to Epinio and scale it by changing the number of instances.
 
 ## Introduction
 
-How to Configure Application Auto-Scaling in Epinio demonstrates how Epinio simplifies application deployment to Kubernetes. Epinio abstracts away Kubernetes complexity, letting developers focus on code while the platform handles containerization, deployment, and routing automatically.
+How to Deploy and Scale an Application in Epinio demonstrates how Epinio simplifies application deployment to Kubernetes. Epinio abstracts away Kubernetes complexity, letting developers focus on code while the platform handles containerization, deployment, routing, and instance-based scaling.
 
 ## Prerequisites
 
@@ -30,21 +30,22 @@ mkdir my-app && cd my-app
 
 ## Step 2: Create the Application
 
-For this example, we'll create a simple web application:
+For this example, we'll create a simple Node.js web application:
 
 ```bash
-# Create main application file
-cat > app.sh << 'EOF'
-#!/bin/bash
-# Simple HTTP server for demonstration
-while true; do
-  echo -e "HTTP/1.1 200 OK\r\nContent-Type: text/plain\r\n\r\nHello from How to Configure Application Auto-Scaling in Epinio!" | nc -l -p ${PORT:-8080}
-done
+# Create package metadata
+cat > package.json << 'EOF'
+{
+  "name": "my-app",
+  "private": true,
+  "scripts": {
+    "start": "node server.js"
+  }
+}
 EOF
-chmod +x app.sh
 ```
 
-For a language-specific example relevant to this guide:
+Create the application entrypoint:
 
 ```bash
 # Node.js example
@@ -90,7 +91,7 @@ epinio push \
 During push, Epinio will:
 1. Upload source code
 2. Detect the application runtime/language
-3. Run the appropriate buildpack
+3. Run the appropriate buildpacks
 4. Build a container image
 5. Deploy to Kubernetes
 6. Configure routing and TLS
@@ -105,20 +106,19 @@ epinio app show my-app
 epinio app list
 
 # View the application route
-epinio app show my-app | grep Routes
+epinio app show my-app | grep -Eo 'https?://[^[:space:]]+' | head -n1
 ```
 
 ## Step 6: Test the Application
 
 ```bash
 # Get the application URL
-APP_URL=$(epinio app show my-app | grep Routes | awk '{print $2}')
+APP_URL=$(epinio app show my-app | grep -Eo 'https?://[^[:space:]]+' | head -n1)
 
 # Test with curl
-curl ${APP_URL}
+curl "${APP_URL}"
 
-# Or open in browser
-open ${APP_URL}
+# Or paste APP_URL into your browser
 ```
 
 ## Step 7: View Application Logs
@@ -128,7 +128,7 @@ open ${APP_URL}
 epinio app logs my-app
 
 # Follow live logs
-epinio app logs my-app --follow
+epinio app logs --follow my-app
 ```
 
 ## Step 8: Update the Application
@@ -172,4 +172,4 @@ epinio app delete my-app
 
 ## Conclusion
 
-How to Configure Application Auto-Scaling in Epinio with Epinio demonstrates how the platform removes barriers between development and deployment. The simple push workflow means developers can deploy any application to Kubernetes without writing YAML or understanding container orchestration. Epinio's buildpack system automatically detects the runtime, installs dependencies, and creates an optimized container image.
+How to Deploy and Scale an Application in Epinio demonstrates how the platform removes barriers between development and deployment. The simple push workflow means developers can deploy applications to Kubernetes without writing YAML or understanding container orchestration, and scale them by changing the desired instance count. Epinio's buildpack system automatically detects the runtime, installs dependencies, and creates an optimized container image.
