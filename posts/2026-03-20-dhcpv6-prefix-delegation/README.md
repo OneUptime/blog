@@ -8,7 +8,7 @@ Description: Configure DHCPv6 Prefix Delegation (IA_PD) on both server and clien
 
 ## Introduction
 
-DHCPv6 Prefix Delegation (DHCPv6-PD, RFC 3633) allows an upstream DHCPv6 server (typically at an ISP or central router) to delegate an IPv6 prefix to a requesting router (CPE, edge router, or downstream router). The delegated prefix is then used to create sub-prefixes for downstream networks, which are advertised via SLAAC. DHCPv6-PD is the standard mechanism for automatic prefix provisioning in home broadband and enterprise networks.
+DHCPv6 Prefix Delegation (DHCPv6-PD, introduced in RFC 3633 and incorporated into RFC 8415) allows an upstream DHCPv6 server (typically at an ISP or central router) to delegate an IPv6 prefix to a requesting router (CPE, edge router, or downstream router). The delegated prefix is then used to create sub-prefixes for downstream networks, which are advertised via SLAAC. DHCPv6-PD is the standard mechanism for automatic prefix provisioning in home broadband and enterprise networks.
 
 ## IA_PD Message Flow
 
@@ -21,7 +21,7 @@ CPE Router (client)         ISP DHCPv6 Server (delegating router)
      |                              |
      |<-ADVERTISE (IA_PD:prefix)----|  "I can give you 2001:db8:1234::/56"
      |                              |
-     |--REQUEST (IA_PD:confirm)---->|  "I want 2001:db8:1234::/56"
+     |--REQUEST (IA_PD:selected)--->|  "I want 2001:db8:1234::/56"
      |                              |
      |<-REPLY (confirmed IA_PD)-----|  "2001:db8:1234::/56 is yours for T1/T2"
      |                              |
@@ -78,7 +78,12 @@ CPE Router (client)         ISP DHCPv6 Server (delegating router)
 ## Server-Side: ISC dhcpd Prefix Delegation
 
 ```bash
-cat >> /etc/dhcp/dhcpd6.conf << 'EOF'
+cat >> /etc/dhcp/dhcpd.conf << 'EOF'
+# dhcpd needs a subnet6 declaration that matches the
+# server's address on the client-facing link
+subnet6 2001:db8:0:1::/64 {
+}
+
 # Prefix delegation pool
 
 # Delegates /56 prefixes from the range 2001:db8:1234::/48
@@ -98,9 +103,12 @@ EOF
 ```bash
 # Configure dhcpcd to request prefix delegation on WAN interface
 cat > /etc/dhcpcd.conf << 'EOF'
+# Disable Router Advertisement handling globally; enable it only on the WAN
+noipv6rs
+
 # WAN interface (towards ISP/uplink)
 interface eth0
-    ipv6rs          # Accept Router Solicitations
+    ipv6rs          # Solicit and accept Router Advertisements on the WAN
     ia_na           # Request WAN IPv6 address
     ia_pd 1/::/56 eth1/1 eth2/2 eth3/3
     # ^^  ^  ^^^   ^^^    ^^^    ^^^
@@ -136,7 +144,7 @@ interface eth0 {
 
 id-assoc pd 1 {
     # Request /56, use /64 sub-prefixes for each interface
-    prefix ::/56 infinity/infinity;
+    prefix ::/56 infinity;
 
     prefix-interface eth1 {
         sla-id 1;    # Subprefix: delegated_prefix + 01 = ..:1::/64
@@ -151,7 +159,7 @@ id-assoc pd 1 {
 id-assoc na 1 {};
 EOF
 
-sudo systemctl start wide-dhcpv6-client
+sudo dhcp6c -c /etc/wide-dhcpv6/dhcp6c.conf eth0
 ```
 
 ## Sub-Delegating the Prefix
@@ -169,17 +177,19 @@ cat > /etc/radvd.conf << 'EOF'
 interface eth1 {
     AdvSendAdvert on;
     MaxRtrAdvInterval 600;
-    prefix 0:0:0:0::/64 {
+    prefix ::/64 {
         AdvOnLink on;
         AdvAutonomous on;
-        Base6Interface eth0;  # Derive prefix from delegated prefix
-        Base6to4Interface eth0;
+        AdvPreferredLifetime 3600;
+        AdvValidLifetime 7200;
+        DecrementLifetimes on;
+        Base6Interface eth1;  # Advertise the /64 already assigned to eth1
     };
 };
 EOF
 
-# radvd "Base6Interface" uses the prefix assigned to eth0
-# and combines it with the LAN interface identifier
+# radvd "Base6Interface" uses the prefix assigned to eth1.
+# The advertised lifetimes should match the delegated prefix lifetimes.
 
 sudo systemctl restart radvd
 ```
@@ -187,22 +197,22 @@ sudo systemctl restart radvd
 ## Verifying Prefix Delegation
 
 ```bash
-# On the CPE router: check received prefix
-ip -6 route show | grep "proto kernel"
-# 2001:db8:1234:1::/64 dev eth1 proto kernel metric 256
+# On the CPE router: check the delegated prefix from dhcpcd
+dhcpcd -U eth0
+# Should show the DHCPv6 lease contents, including the IA_PD delegation
 
-# Check DHCPv6 lease file for delegated prefix
-cat /var/lib/dhcpcd/dhcpcd.lease6
-# Should show IA_PD with received prefix
+# Verify a delegated /64 was assigned to the LAN interface
+ip -6 addr show dev eth1
+#   inet6 2001:db8:1234:1::1/64 scope global
 
-# On a host connected to eth1:
-ip -6 addr show eth1
+# On a host connected to the LAN:
+ip -6 addr show
 # Should show SLAAC address from delegated prefix:
 # inet6 2001:db8:1234:1::211:22ff:fe33:4455/64 scope global dynamic
 
 # On the server: view delegation leases
 cat /var/lib/kea/dhcp6.leases | grep "prefix"
-# Or: cat /var/lib/dhcpd/dhcpd6.leases | grep "iaprefix"
+# Or: cat /var/lib/dhcp/dhcpd6.leases | grep "iaprefix"
 ```
 
 ## Conclusion
