@@ -94,7 +94,7 @@ resource "aws_route53_record" "from_file" {
 
 ## Alias Records with Dynamic Blocks
 
-For alias records (pointing to AWS resources like ALBs and CloudFront), use a conditional dynamic block.
+For alias records (pointing to AWS resources like ALBs and CloudFront), use a dynamic block to generate the nested `alias` block.
 
 ```hcl
 variable "alias_records" {
@@ -118,10 +118,13 @@ resource "aws_route53_record" "aliases" {
   type    = each.value.type
 
   # Alias block instead of TTL and records
-  alias {
-    name                   = each.value.alias_dns_name
-    zone_id                = each.value.alias_hosted_zone_id
-    evaluate_target_health = each.value.evaluate_target_health
+  dynamic "alias" {
+    for_each = [each.value]
+    content {
+      name                   = alias.value.alias_dns_name
+      zone_id                = alias.value.alias_hosted_zone_id
+      evaluate_target_health = alias.value.evaluate_target_health
+    }
   }
 }
 ```
