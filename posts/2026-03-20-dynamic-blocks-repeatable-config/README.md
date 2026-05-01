@@ -160,30 +160,37 @@ resource "aws_autoscaling_group" "app" {
 Dynamic blocks can be nested:
 
 ```hcl
-variable "listeners" {
-  default = [
-    {
-      port     = 443
-      protocol = "HTTPS"
-      rules = [
-        { path = "/api/*",    target_group = "api-tg" },
-        { path = "/static/*", target_group = "cdn-tg" },
-      ]
+variable "origin_groups" {
+  default = {
+    app = {
+      failover_status_codes = [403, 404, 500, 502]
+      members               = ["primary-app", "failover-app"]
     }
-  ]
+  }
 }
 
-resource "aws_lb_listener" "main" {
-  for_each = { for l in var.listeners : l.port => l }
+resource "aws_cloudfront_distribution" "main" {
+  # origin blocks omitted
 
-  load_balancer_arn = aws_lb.main.arn
-  port              = each.value.port
-  protocol          = each.value.protocol
+  dynamic "origin_group" {
+    for_each = var.origin_groups
+    content {
+      origin_id = origin_group.key
 
-  default_action {
-    type             = "forward"
-    target_group_arn = aws_lb_target_group.default.arn
+      failover_criteria {
+        status_codes = origin_group.value.failover_status_codes
+      }
+
+      dynamic "member" {
+        for_each = origin_group.value.members
+        content {
+          origin_id = member.value
+        }
+      }
+    }
   }
+
+  # ...
 }
 ```
 
@@ -200,11 +207,17 @@ variable "enable_lifecycle" {
 
 resource "aws_s3_bucket" "data" {
   bucket = "my-data-bucket"
+}
 
-  dynamic "lifecycle_rule" {
+resource "aws_s3_bucket_lifecycle_configuration" "data" {
+  bucket = aws_s3_bucket.data.bucket
+
+  dynamic "rule" {
     for_each = var.enable_lifecycle ? [1] : []
     content {
-      enabled = true
+      id     = "expire-after-90-days"
+      status = "Enabled"
+
       expiration {
         days = 90
       }
@@ -218,7 +231,7 @@ resource "aws_s3_bucket" "data" {
 ## Practical Tips
 
 ```hcl
-# Use toset() for lists without duplicates
+# Use toset() for unique values when order does not matter
 dynamic "ingress" {
   for_each = toset([80, 443, 8080])
   content {
@@ -245,7 +258,7 @@ dynamic "ingress" {
 
 ## Best Practices
 
-1. **Use maps over lists** when iteration order matters or you need keys for identification
+1. **Use lists when block order matters, and maps when you need stable keys** for identification
 2. **Name your iterator** explicitly with `iterator =` when nesting or for clarity
 3. **Keep the content block simple** - complex logic belongs in locals or variables
 4. **Combine with for_each** on the resource level for multi-resource + multi-block patterns
@@ -255,7 +268,7 @@ dynamic "ingress" {
 
 ## Conclusion
 
-Dynamic blocks eliminate repetition in nested resource configuration. Use them for security group rules, EBS volumes, listener rules, tags, and any other repeating block pattern. Combined with variables and locals, they make your OpenTofu configurations concise and maintainable.
+Dynamic blocks eliminate repetition in nested resource configuration. Use them for security group rules, EBS volumes, nested block structures, tags, and any other repeating block pattern. Combined with variables and locals, they make your OpenTofu configurations concise and maintainable.
 
 ---
 
