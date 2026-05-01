@@ -79,14 +79,14 @@ iptables -t mangle -L FORWARD -v -n | grep -E "TCPMSS|vxlan"
 ip link set eth0 mtu 9000
 
 # Then VXLAN overlay can use 1500-byte MTU:
-ip link set vxlan10 mtu 1950  # Or keep at 1500 for easy management
+ip link set vxlan10 mtu 1500
 
 # Verify physical interface supports jumbo frames:
 ip link show eth0 | grep mtu
 # Should show: mtu 9000
 
 # Test connectivity with large packets through VXLAN:
-ping -M do -s 1422 -c 3 10.0.10.2  # 1422 + 28 = 1450
+ping -M do -s 1472 -c 3 10.0.10.2  # 1472 + 28 = 1500
 ```
 
 ## Diagnose Fragmentation in VXLAN
@@ -114,7 +114,14 @@ ip -d link show vxlan10
 
 ```bash
 # Docker overlay networks use VXLAN by default
-# Fix MTU in Docker daemon:
+# Set MTU on the overlay network:
+docker network create \
+  --driver overlay \
+  --opt com.docker.network.driver.mtu=1450 \
+  my-overlay-network
+
+# If containers also use Docker's default bridge network,
+# set its MTU separately in the Docker daemon:
 cat > /etc/docker/daemon.json << 'EOF'
 {
   "mtu": 1450
@@ -122,12 +129,6 @@ cat > /etc/docker/daemon.json << 'EOF'
 EOF
 
 systemctl restart docker
-
-# Or per network:
-docker network create \
-  --driver overlay \
-  --opt com.docker.network.driver.mtu=1450 \
-  my-overlay-network
 
 # Verify Docker network MTU:
 docker network inspect my-overlay-network | grep -i mtu
@@ -138,27 +139,33 @@ docker network inspect my-overlay-network | grep -i mtu
 ```bash
 # Flannel VXLAN MTU configuration:
 # Edit ConfigMap:
-kubectl -n kube-system edit configmap kube-flannel-cfg
+kubectl -n kube-flannel edit configmap kube-flannel-cfg
 
-# Find net-conf.json and add/modify:
-# "Backend": {
-#   "Type": "vxlan",
-#   "MTU": 1450
+# Find cni-conf.json and add/modify the delegate MTU:
+# "delegate": {
+#   "hairpinMode": true,
+#   "isDefaultGateway": true,
+#   "mtu": 1450
 # }
 
-# Calico VXLAN MTU:
-kubectl -n calico-system edit felixconfiguration default
-# Set vxlanMTU: 1450
+# Restart flannel to apply updated CNI config:
+kubectl rollout restart daemonset kube-flannel-ds -n kube-flannel
 
-# Or via Calico operator:
-kubectl patch installation default --type merge \
+# Calico operator installation:
+kubectl patch installation.operator.tigera.io default --type merge \
   -p '{"spec":{"calicoNetwork":{"mtu":1450}}}'
 
-# Verify pod interface MTU:
+# Calico manifest installation:
+kubectl patch configmap/calico-config -n kube-system --type merge \
+  -p '{"data":{"veth_mtu":"1450"}}'
+
+kubectl rollout restart daemonset calico-node -n kube-system
+
+# Recreate a pod or start a new one, then verify pod interface MTU:
 kubectl exec <pod-name> -- ip link show eth0 | grep mtu
-# Should show: mtu 1450
+# New pods should show: mtu 1450
 ```
 
 ## Conclusion
 
-VXLAN adds 50 bytes of encapsulation overhead, reducing effective MTU from 1500 to 1450 bytes. Set VXLAN interface MTU to `physical-MTU - 50` and apply TCP MSS clamping to 1410 (VXLAN MTU minus 40). In container environments, configure Docker daemon MTU or the Kubernetes CNI plugin. The ideal solution is enabling jumbo frames on the underlay network, allowing VXLAN to carry full 1500-byte payloads. Monitor `IpReasmFails` to confirm fragmentation is eliminated after applying fixes.
+VXLAN adds 50 bytes of encapsulation overhead, reducing effective MTU from 1500 to 1450 bytes. Set VXLAN interface MTU to `physical-MTU - 50` and apply TCP MSS clamping to 1410 (VXLAN MTU minus 40). In container environments, configure the Docker overlay network MTU or the Kubernetes CNI plugin; if you use Docker's default bridge network, set its MTU separately in the Docker daemon. The ideal solution is enabling jumbo frames on the underlay network, allowing VXLAN to carry full 1500-byte payloads. Monitor `IpFragCreates` and `IpReasmFails` to confirm fragmentation counters stop increasing after applying fixes.
