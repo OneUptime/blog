@@ -8,17 +8,18 @@ Description: Learn how to export Portainer configuration for migration or backup
 
 ---
 
-Exporting and importing Portainer configuration is useful when migrating to new hardware, cloning environments, or setting up disaster recovery. Portainer BE provides API endpoints specifically for this purpose.
+Exporting and importing Portainer configuration is useful when migrating to new hardware, cloning Portainer setups, or setting up disaster recovery. Portainer provides UI and API options for this purpose, and you can also archive the `/data` volume directly when you want a raw filesystem-level backup.
 
-## Export Configuration (Business Edition)
+## Export Configuration
 
 ### Via the UI
 
 1. Log in as an administrator
-2. Navigate to **Settings > Backup & Restore**
-3. Click **Download Backup**
+2. Navigate to **Settings**
+3. Scroll to the **Back up Portainer** section
 4. Optionally set an encryption password
-5. Save the downloaded `.tar.gz` file
+5. Click **Download backup**
+6. Save the downloaded `.tar.gz` file
 
 ### Via the API
 
@@ -36,16 +37,16 @@ curl -X POST \
   https://localhost:9443/api/backup \
   -H "Authorization: Bearer $TOKEN" \
   -H "Content-Type: application/json" \
-  -d '{"password":"export-encryption-key"}' \
+  -d '{"Password":"export-encryption-key"}' \
   --output portainer_export_$(date +%Y%m%d).tar.gz \
   --insecure
 
 echo "Export saved to: portainer_export_$(date +%Y%m%d).tar.gz"
 ```
 
-## Export Configuration (Community Edition)
+## Export Configuration (Manual Volume Backup Alternative)
 
-CE does not have a dedicated export API. Use volume backup instead:
+If you want a raw backup of the Portainer data volume, archive the volume directly:
 
 ```bash
 # Stop Portainer for a consistent export
@@ -61,35 +62,52 @@ docker run --rm \
 # Restart
 docker start portainer
 
-echo "CE export complete"
+echo "Portainer volume export complete"
 ```
 
-## Import Configuration (Business Edition)
+## Import Configuration
 
 ### Via the UI
 
-1. On a fresh Portainer BE installation, go to **Settings > Backup & Restore**
-2. Click **Restore from file**
-3. Select the backup `.tar.gz` file
-4. Enter the decryption password if the export was encrypted
-5. Click **Restore** - Portainer restarts with the imported configuration
+1. Deploy a fresh Portainer instance with an empty data volume
+2. Open the initial setup page
+3. Expand **Restore Portainer from backup**
+4. Click **Select file** and choose the backup `.tar.gz` file
+5. Enter the decryption password if the export was encrypted
+6. Click **Restore Portainer**
 
 ### Via the API
 
 ```bash
+# On a fresh Portainer instance with an empty data volume, build the restore payload
+python3 - <<'PY' > restore_payload.json
+import json
+from pathlib import Path
+import sys
+
+backup_path = Path("portainer_export_20260320.tar.gz")
+json.dump(
+    {
+        "FileContent": list(backup_path.read_bytes()),
+        "FileName": backup_path.name,
+        "Password": "export-encryption-key",
+    },
+    sys.stdout,
+)
+PY
+
 # Import configuration on the target Portainer instance
 curl -X POST \
   https://localhost:9443/api/restore \
-  -H "Content-Type: multipart/form-data" \
-  -F "file=@portainer_export_20260320.tar.gz" \
-  -F "password=export-encryption-key" \
+  -H "Content-Type: application/json" \
+  --data @restore_payload.json \
   --insecure
 ```
 
-## Import Configuration (Community Edition)
+## Import Configuration (Manual Volume Restore Alternative)
 
 ```bash
-# On the new server, create the volume and restore
+# On the new server, create the volume and restore the archived data
 docker volume create portainer_data
 
 docker run --rm \
@@ -106,19 +124,18 @@ docker run -d \
   --restart=always \
   -v /var/run/docker.sock:/var/run/docker.sock \
   -v portainer_data:/data \
-  portainer/portainer-ce:latest
+  portainer/portainer-ce:lts
 ```
 
 ## What Is and Isn't Exported
 
 | Exported | Not Exported |
 |----------|-------------|
-| Users and teams | Container runtime state |
-| Environments/endpoints | Live container logs |
-| Stacks configuration | Image data |
-| Custom templates | Volume data |
-| Access control policies | Secrets values (Swarm) |
-| Settings and preferences | |
+| Users, roles, teams, and API keys | Containers, images, or volumes |
+| Environments, environment groups, and access controls | Application data stored in volumes or bind mounts |
+| Stack definitions, schedules, and webhooks | Docker or Kubernetes configuration outside Portainer's database |
+| Registry definitions, Git credentials, and custom templates | |
+| Settings, SSL certificates, and snapshot metadata | |
 
 ---
 
