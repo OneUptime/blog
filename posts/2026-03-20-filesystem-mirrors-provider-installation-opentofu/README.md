@@ -8,30 +8,28 @@ Description: Learn how to configure OpenTofu filesystem mirrors to install provi
 
 ---
 
-OpenTofu normally downloads providers from the Terraform Registry or OpenTofu Registry over the internet. In air-gapped environments, restricted networks, or for CI/CD performance, you can configure a filesystem mirror to serve providers from a local directory.
+OpenTofu normally downloads providers from provider registries over the internet, typically the public OpenTofu Registry. In air-gapped environments, restricted networks, or for CI/CD performance, you can configure a filesystem mirror to serve providers from a local directory.
 
 ---
 
 ## What is a Filesystem Mirror?
 
-A filesystem mirror is a local directory that contains pre-downloaded provider packages in the format OpenTofu expects. When configured, OpenTofu checks the mirror first before hitting the internet.
+A filesystem mirror is a local directory that contains pre-downloaded provider packages in the format OpenTofu expects. When configured, OpenTofu can install matching providers from the mirror instead of downloading them directly from registries.
 
 ---
 
 ## Mirror Directory Structure
 
-OpenTofu expects a specific directory layout:
+For a zip-based filesystem mirror, OpenTofu expects the packed layout:
 
 ```text
 mirror/
 └── registry.opentofu.org/
     └── hashicorp/
         └── aws/
-            ├── 5.31.0/
-            │   ├── terraform-provider-aws_5.31.0_linux_amd64.zip
-            │   └── terraform-provider-aws_5.31.0_darwin_arm64.zip
-            └── 5.32.0/
-                └── terraform-provider-aws_5.32.0_linux_amd64.zip
+            ├── terraform-provider-aws_5.31.0_linux_amd64.zip
+            ├── terraform-provider-aws_5.31.0_darwin_arm64.zip
+            └── terraform-provider-aws_5.32.0_linux_amd64.zip
 ```
 
 ---
@@ -63,10 +61,10 @@ tofu providers mirror \
 PROVIDER_VERSION="5.31.0"
 MIRROR_DIR="/opt/opentofu/providers"
 
-mkdir -p "$MIRROR_DIR/registry.opentofu.org/hashicorp/aws/$PROVIDER_VERSION"
+mkdir -p "$MIRROR_DIR/registry.opentofu.org/hashicorp/aws"
 
-curl -L "https://releases.hashicorp.com/terraform-provider-aws/${PROVIDER_VERSION}/terraform-provider-aws_${PROVIDER_VERSION}_linux_amd64.zip" \
-  -o "$MIRROR_DIR/registry.opentofu.org/hashicorp/aws/$PROVIDER_VERSION/terraform-provider-aws_${PROVIDER_VERSION}_linux_amd64.zip"
+curl -L "https://github.com/opentofu/terraform-provider-aws/releases/download/v${PROVIDER_VERSION}/terraform-provider-aws_${PROVIDER_VERSION}_linux_amd64.zip" \
+  -o "$MIRROR_DIR/registry.opentofu.org/hashicorp/aws/terraform-provider-aws_${PROVIDER_VERSION}_linux_amd64.zip"
 ```
 
 ---
@@ -80,10 +78,10 @@ curl -L "https://releases.hashicorp.com/terraform-provider-aws/${PROVIDER_VERSIO
 provider_installation {
   filesystem_mirror {
     path    = "/opt/opentofu/providers"
-    include = ["registry.opentofu.org/*/*"]
+    include = ["registry.opentofu.org/hashicorp/*"]
   }
 
-  # Fall back to direct registry for anything not in mirror
+  # Use the mirror for hashicorp providers and direct for everything else
   direct {
     exclude = ["registry.opentofu.org/hashicorp/*"]
   }
@@ -92,10 +90,10 @@ provider_installation {
 
 ### Project-Level Configuration
 
-```hcl
+```bash
 # .terraform.lock.hcl is project-specific
 # Use TF_CLI_CONFIG_FILE for project-level override:
-export TF_CLI_CONFIG_FILE="$PWD/.tofurc"
+export TF_CLI_CONFIG_FILE="$PWD/mirror.tfrc"
 ```
 
 ### Mirror Only (No Internet Fallback)
@@ -124,7 +122,7 @@ on:
     branches: [main]
 
 env:
-  TF_CLI_CONFIG_FILE: /opt/opentofu/.tofurc
+  TF_CLI_CONFIG_FILE: /opt/opentofu/mirror.tfrc
 
 jobs:
   deploy:
@@ -133,12 +131,12 @@ jobs:
     steps:
       - uses: actions/checkout@v4
 
-      - name: Sync provider mirror (daily via cron)
+      - name: Setup OpenTofu
+        uses: opentofu/setup-opentofu@v2
+
+      - name: Sync provider mirror
         run: |
           tofu providers mirror /opt/opentofu/providers
-
-      - name: Setup OpenTofu
-        uses: opentofu/setup-opentofu@v1
 
       - name: Initialize (uses mirror)
         run: tofu init
@@ -173,26 +171,25 @@ provider_installation {
 
 ```bash
 # Initialize with extra verbosity
-TF_LOG=DEBUG tofu init 2>&1 | grep -i "mirror\|installing"
+TF_LOG=DEBUG tofu init 2>&1 | grep -Ei 'filesystem_mirror|provider_installation|installing'
 
-# Expected output:
-# - Installing hashicorp/aws v5.31.0 from filesystem mirror at /opt/opentofu/providers
+# Look for log lines mentioning the mirror path or filesystem_mirror
 ```
 
 ---
 
 ## Lock File and Mirror
 
-After initializing with a mirror, the `.terraform.lock.hcl` file records provider hashes:
+After initializing with a mirror, the `.terraform.lock.hcl` file records provider versions and package checksums:
 
 ```bash
 # Initialize and create lock file
 tofu init
 
 # Lock file records:
-# - exact version
-# - hash of provider binary
-# Subsequent inits validate against this lock file
+# - exact provider version
+# - package checksums in the hashes list
+# Subsequent inits validate downloaded or mirrored packages against this lock file
 ```
 
 ---
