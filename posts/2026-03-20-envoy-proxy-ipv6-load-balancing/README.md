@@ -18,7 +18,8 @@ static_resources:
   - name: ipv6_listener
     address:
       socket_address:
-        # Listen on all IPv6 interfaces (::) - also accepts IPv4 on most systems
+        # Listen on all IPv6 interfaces (::); with ipv4_compat enabled,
+        # also accept IPv4-mapped IPv6 connections.
         address: "::"
         port_value: 8080
         ipv4_compat: true    # Accept IPv4-mapped IPv6 (::ffff:0:0/96)
@@ -51,7 +52,7 @@ static_resources:
   clusters:
   - name: backend_cluster
     connect_timeout: 5s
-    type: STRICT_DNS
+    type: STATIC
     lb_policy: ROUND_ROBIN
 
     load_assignment:
@@ -62,12 +63,12 @@ static_resources:
         - endpoint:
             address:
               socket_address:
-                address: "2001:db8::server1"
+                address: "2001:db8::1"
                 port_value: 8080
         - endpoint:
             address:
               socket_address:
-                address: "2001:db8::server2"
+                address: "2001:db8::2"
                 port_value: 8080
 ```
 
@@ -81,7 +82,26 @@ static_resources:
       socket_address:
         address: "0.0.0.0"
         port_value: 8080
-    filter_chains: *filter_chains_ref
+    filter_chains: &filter_chains_ref
+    - filters:
+      - name: envoy.filters.network.http_connection_manager
+        typed_config:
+          "@type": type.googleapis.com/envoy.extensions.filters.network.http_connection_manager.v3.HttpConnectionManager
+          stat_prefix: ingress_http
+          route_config:
+            name: local_route
+            virtual_hosts:
+            - name: backend
+              domains: ["*"]
+              routes:
+              - match:
+                  prefix: "/"
+                route:
+                  cluster: backend_cluster
+          http_filters:
+          - name: envoy.filters.http.router
+            typed_config:
+              "@type": type.googleapis.com/envoy.extensions.filters.http.router.v3.Router
 
   # IPv6 listener
   - name: ipv6_listener
@@ -89,6 +109,7 @@ static_resources:
       socket_address:
         address: "::"
         port_value: 8080
+        ipv4_compat: false
     filter_chains: *filter_chains_ref
 ```
 
@@ -98,11 +119,15 @@ static_resources:
   clusters:
   - name: ipv6_cluster
     connect_timeout: 5s
-    type: STRICT_DNS
+    lb_policy: ROUND_ROBIN
+    cluster_type:
+      name: envoy.clusters.dns
+      typed_config:
+        "@type": type.googleapis.com/envoy.extensions.clusters.dns.v3.DnsCluster
+        dns_lookup_family: V6_ONLY    # Resolve AAAA records only
+        all_addresses_in_single_endpoint: false    # STRICT_DNS semantics
 
-    # Use IPv6 DNS resolution
-    dns_lookup_family: V6_ONLY    # Force IPv6 DNS
-    # Options: AUTO (default), V4_ONLY, V6_PREFERRED, V6_ONLY, ALL
+    # Options: AUTO (default), V4_ONLY, V6_ONLY, V4_PREFERRED, ALL
 
     load_assignment:
       cluster_name: ipv6_cluster
@@ -111,7 +136,7 @@ static_resources:
         - endpoint:
             address:
               socket_address:
-                # Hostname - Envoy resolves AAAA record due to V6_ONLY
+                # Hostname - Envoy resolves AAAA records due to V6_ONLY
                 address: "backend.internal.example.com"
                 port_value: 8080
 ```
@@ -139,7 +164,7 @@ static_resources:
         - endpoint:
             address:
               socket_address:
-                address: "2001:db8::server1"
+                address: "2001:db8::1"
                 port_value: 80
             health_check_config:
               port_value: 8080    # Health check on different port
@@ -147,7 +172,7 @@ static_resources:
 
 ## xDS API for Dynamic IPv6 Configuration
 
-In production, Envoy typically uses xDS APIs (Istio, Consul) for dynamic configuration. Ensure your control plane provides IPv6 endpoint addresses:
+In production, Envoy typically uses xDS APIs (Istio, Consul) for dynamic configuration. Ensure your control plane provides IPv6 endpoint addresses in its EDS responses:
 
 ```yaml
 # Dynamic cluster via EDS (Endpoint Discovery Service)
@@ -156,7 +181,6 @@ clusters:
 - name: dynamic_ipv6
   connect_timeout: 5s
   type: EDS
-  dns_lookup_family: V6_PREFERRED
   eds_cluster_config:
     eds_config:
       resource_api_version: V3
@@ -164,7 +188,7 @@ clusters:
         api_type: GRPC
         grpc_services:
         - envoy_grpc:
-            cluster_name: xds_cluster
+            cluster_name: xds_cluster    # Management server cluster defined elsewhere
 ```
 
 ## Starting Envoy with IPv6 Config
@@ -179,8 +203,8 @@ ss -6 -tlnp | grep 8080
 # Test IPv6 load balancing
 curl -6 http://[::1]:8080/
 
-# Check Envoy admin for cluster health
-curl http://localhost:9901/clusters | grep -A 5 "backend_cluster"
+# Check Envoy admin for cluster health (requires an admin listener)
+curl http://127.0.0.1:9901/clusters | grep -A 5 "backend_cluster"
 ```
 
 Envoy's native IPv6 support in both listeners and cluster configurations makes it well-suited for cloud-native environments where IPv6 is the preferred networking protocol.
