@@ -13,13 +13,14 @@ AWS Fargate for EKS runs each Kubernetes pod on isolated serverless compute, eli
 ## Prerequisites
 
 - OpenTofu v1.6+
+- AWS CLI and kubectl installed
 - An existing EKS cluster
-- Private subnets (Fargate requires private subnets)
+- Private subnets with NAT gateway access to AWS services and no direct route to an Internet Gateway
 
 ## Step 1: Create the Fargate Pod Execution Role
 
 ```hcl
-# IAM role that Fargate uses to pull container images and write logs
+# IAM role that Fargate uses to pull container images and register with the cluster
 
 resource "aws_iam_role" "fargate" {
   name = "${var.cluster_name}-fargate-pod-execution-role"
@@ -43,7 +44,7 @@ resource "aws_iam_role_policy_attachment" "fargate_execution" {
 ## Step 2: Create Fargate Profiles
 
 ```hcl
-# Fargate profile for the kube-system namespace
+# Fargate profile for CoreDNS in the kube-system namespace
 # Required for CoreDNS to run on Fargate
 resource "aws_eks_fargate_profile" "kube_system" {
   cluster_name           = var.cluster_name
@@ -53,6 +54,9 @@ resource "aws_eks_fargate_profile" "kube_system" {
 
   selector {
     namespace = "kube-system"
+    labels = {
+      "k8s-app" = "kube-dns"
+    }
   }
 
   tags = {
@@ -72,7 +76,7 @@ resource "aws_eks_fargate_profile" "apps" {
     namespace = "apps"
   }
 
-  # Match pods with the fargate=true label in any namespace
+  # Match pods with the compute=fargate label in the default namespace
   selector {
     namespace = "default"
     labels = {
@@ -86,12 +90,12 @@ resource "aws_eks_fargate_profile" "apps" {
 }
 ```
 
-## Step 3: Patch CoreDNS for Fargate
+## Step 3: Restart CoreDNS on Fargate
 
 ```hcl
-# CoreDNS deployment needs to be patched to remove the ec2 annotation
-# so it can run on Fargate
-resource "null_resource" "coredns_fargate_patch" {
+# Restart CoreDNS after creating the Fargate profile
+# so the replacement Pods are scheduled onto Fargate
+resource "null_resource" "coredns_fargate_restart" {
   triggers = {
     fargate_profile = aws_eks_fargate_profile.kube_system.id
   }
@@ -99,10 +103,7 @@ resource "null_resource" "coredns_fargate_patch" {
   provisioner "local-exec" {
     command = <<-EOF
       aws eks update-kubeconfig --region ${var.region} --name ${var.cluster_name}
-      kubectl patch deployment coredns \
-        -n kube-system \
-        --type json \
-        -p='[{"op": "remove", "path": "/spec/template/metadata/annotations/eks.amazonaws.com~1compute-type"}]'
+      kubectl rollout restart -n kube-system deployment coredns
     EOF
   }
 
@@ -113,12 +114,18 @@ resource "null_resource" "coredns_fargate_patch" {
 ## Step 4: Deploy a Pod to Fargate
 
 ```hcl
-# Kubernetes manifest to deploy a pod on Fargate
-# The pod must be in a namespace matching a Fargate profile selector
-resource "kubernetes_deployment" "fargate_app" {
+# Create the namespace matched by the Fargate profile
+resource "kubernetes_namespace_v1" "apps" {
+  metadata {
+    name = "apps"
+  }
+}
+
+# Deploy a workload to the namespace matched by the Fargate profile
+resource "kubernetes_deployment_v1" "fargate_app" {
   metadata {
     name      = "fargate-app"
-    namespace = "apps"  # Matches the Fargate profile selector
+    namespace = kubernetes_namespace_v1.apps.metadata[0].name
   }
 
   spec {
@@ -139,8 +146,12 @@ resource "kubernetes_deployment" "fargate_app" {
           image = "nginx:latest"
 
           resources {
+            limits = {
+              cpu    = "250m"
+              memory = "512Mi"
+            }
             requests = {
-              cpu    = "256m"
+              cpu    = "250m"
               memory = "512Mi"
             }
           }
@@ -161,4 +172,4 @@ tofu apply
 
 ## Conclusion
 
-EKS Fargate profiles enable serverless Kubernetes by routing matched pods to managed compute. Each Fargate pod gets its own isolated kernel, enhancing security isolation. Note that Fargate does not support DaemonSets, privileged containers, or persistent volumes beyond EFS. For stateful workloads, combine Fargate profiles with managed node groups in the same cluster.
+EKS Fargate profiles enable serverless Kubernetes by routing matched pods to managed compute. Each Fargate pod gets its own isolated kernel, enhancing security isolation. Note that Fargate does not support DaemonSets, privileged containers, or Amazon EBS volumes, and persistent storage on Fargate is limited to Amazon EFS with static provisioning. For stateful workloads, combine Fargate profiles with managed node groups in the same cluster.
