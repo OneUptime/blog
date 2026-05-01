@@ -8,7 +8,7 @@ Description: Understand the Discard-Only Address Block 100::/64 (RFC 6666), its 
 
 ## Introduction
 
-`100::/64` is the IPv6 Discard-Only Address Block defined in RFC 6666. Traffic sent to any address in this range should be discarded. It is the IPv6 equivalent of IPv4's `192.0.2.0/24` discard prefix used in Remote Triggered Black Hole (RTBH) filtering. It is forwardable but not globally reachable.
+`100::/64` is the IPv6 Discard-Only Address Block defined in RFC 6666. Addresses in this range are intended for use as discard next-hops in Remote Triggered Black Hole (RTBH) filtering. Unlike IPv6's dedicated discard block, operators have historically used various IPv4 addresses for RTBH, often drawn from private or documentation space. It is forwardable but not globally reachable.
 
 ## Key Properties
 
@@ -19,25 +19,21 @@ Description: Understand the Discard-Only Address Block 100::/64 (RFC 6666), its 
 | Forwardable | Yes (used for RTBH) |
 | Globally Reachable | No |
 | Source | True (allowed, but unusual) |
-| Destination | True (traffic discarded) |
+| Destination | True (valid as an RTBH destination) |
 
 ## Remote Triggered Black Hole (RTBH) Filtering
 
 ```bash
 # The typical RTBH use case:
 
-# 1. Install a null route to 100::/64 on all routers
-ip -6 route add 100::/64 dev null
+# 1. Install a blackhole route to 100::/64 on participating routers
+ip -6 route add blackhole 100::/64
 
-# 2. When under DDoS, advertise the attacked prefix to 100::/64 via BGP
-# Any traffic matching that route gets discarded at all routers
+# 2. When under DDoS, advertise the attacked prefix with a next-hop inside 100::/64
+# Traffic matching that route is then discarded by the installed blackhole route
 
-# Example: attacker targets 2001:db8::victim/128
-# BGP RTBH: advertise 2001:db8::victim/128 → next-hop 100::1
-
-# On all edge routers:
-ip -6 route add blackhole 100::1/128
-# BGP installs route to attacked IP → 100::1 → null
+# Example: attacker targets 2001:db8::100/128
+# BGP RTBH: advertise 2001:db8::100/128 → next-hop 100::1
 ```
 
 ## Python: Detect Discard-Only Addresses
@@ -67,7 +63,9 @@ print(is_discard_only("::1"))           # False
 
 ```bash
 # Cisco IOS-XR: null route for RTBH
-ipv6 route 100::/64 Null0
+router static
+ address-family ipv6 unicast
+  100::/64 null 0
 
 # Juniper Junos
 set routing-options rib inet6.0 static route 100::/64 discard
@@ -78,9 +76,10 @@ ip -6 route add blackhole 100::/64
 # FRR
 ipv6 route 100::/64 Null0
 
-# BGP RTBH community (standard practice)
-# When a prefix is BGP-advertised with community NO_EXPORT + 65535:666
-# all receiving routers set next-hop to 100::1 and install null route
+# BGP RTBH trigger (RFC 7999 BLACKHOLE community)
+# 65535:666 is the well-known BLACKHOLE community.
+# Receiving routers apply local policy to discard traffic for the tagged prefix;
+# NO_EXPORT or NO_ADVERTISE is often added to limit propagation.
 ```
 
 ## Firewall Rules
@@ -113,4 +112,4 @@ for addr, expected in special.items():
 
 ## Conclusion
 
-`100::/64` is a dedicated IPv6 discard block primarily used for RTBH filtering. All routers should have a null route for this prefix. In BGP deployments, RTBH communities trigger null route installation network-wide to discard attack traffic. Monitor your BGP RTBH activations with OneUptime to track DDoS mitigation events.
+`100::/64` is a dedicated IPv6 discard block primarily used for RTBH filtering. Routers participating in an RTBH design typically install a discard or null route for this prefix. In BGP deployments, RTBH communities can trigger local policy that discards attack traffic network-wide. Monitor your BGP RTBH activations with OneUptime to track DDoS mitigation events.
