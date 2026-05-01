@@ -10,7 +10,7 @@ Description: Filter and aggregate IPv6 traffic log data using command-line tools
 
 Log aggregation for IPv6 traffic involves grouping by address, subnet prefix, address category, and time window. Unlike IPv4, IPv6 addresses should be normalized before aggregation to avoid treating different representations of the same address as distinct entries. This guide covers command-line approaches for quick analysis and Python for programmatic aggregation.
 
-## Command-Line Aggregation with awk and grep
+## Command-Line Aggregation with awk
 
 ```bash
 #!/bin/bash
@@ -24,14 +24,30 @@ echo ""
 
 # Count total IPv6 requests
 
-IPV6_COUNT=$(grep -cE '^\[?[0-9a-fA-F]{1,4}:[0-9a-fA-F:]+\]?' "$LOG_FILE" 2>/dev/null || echo 0)
+IPV6_COUNT=$(awk '{
+    ip = $1
+    gsub(/^\[/, "", ip)
+    gsub(/\]$/, "", ip)
+    if (ip ~ /:/) {
+        count++
+    }
+}
+END {
+    print count + 0
+}' "$LOG_FILE")
 echo "Total IPv6 requests: $IPV6_COUNT"
 
 # Top 20 IPv6 source IPs
 echo ""
 echo "--- Top 20 IPv6 Source IPs ---"
-grep -oE '^[0-9a-fA-F:]{3,39}' "$LOG_FILE" | \
-    grep ":" | \
+awk '{
+    ip = $1
+    gsub(/^\[/, "", ip)
+    gsub(/\]$/, "", ip)
+    if (ip ~ /:/) {
+        print ip
+    }
+}' "$LOG_FILE" | \
     sort | uniq -c | sort -rn | head -20
 
 # IPv6 vs IPv4 split
@@ -51,10 +67,20 @@ END {
 # IPv6 requests per hour
 echo ""
 echo "--- IPv6 Requests Per Hour ---"
-grep -E '^[0-9a-fA-F:]{3,39}' "$LOG_FILE" | \
-    grep -oE '\[[0-9]{2}/[A-Za-z]+/[0-9]{4}:[0-9]{2}' | \
-    grep -oE '[0-9]{2}$' | \
-    sort | uniq -c | sort -k2 -n
+awk '{
+    ip = $1
+    gsub(/^\[/, "", ip)
+    gsub(/\]$/, "", ip)
+    if (ip ~ /:/) {
+        hour = substr($4, 2, 14)
+        counts[hour]++
+    }
+}
+END {
+    for (hour in counts) {
+        printf "%7d  %s\n", counts[hour], hour
+    }
+}' "$LOG_FILE" | sort -k2
 ```
 
 ## Python Aggregation Script
@@ -65,12 +91,14 @@ grep -E '^[0-9a-fA-F:]{3,39}' "$LOG_FILE" | \
 
 import re
 import ipaddress
-from collections import defaultdict, Counter
+from collections import Counter
 from datetime import datetime
+
+ULA_NET = ipaddress.ip_network("fc00::/7")
 
 # Nginx access log regex
 LOG_RE = re.compile(
-    r'^(?P<ip>[\[\]0-9a-fA-F:.]+) - \S+ \[(?P<time>[^\]]+)\] '
+    r'^(?P<ip>[\[\]0-9a-fA-F:.%]+) - \S+ \[(?P<time>[^\]]+)\] '
     r'"(?P<method>\S+) (?P<path>\S+)[^"]*" (?P<status>\d+) (?P<bytes>\d+)'
 )
 
@@ -90,9 +118,11 @@ def classify_ipv6(addr: str) -> str:
             return "loopback"
         if ip.is_link_local:
             return "link_local"
-        if ip.is_private:
+        if ip in ULA_NET:
             return "ula"
-        return "global_unicast"
+        if ip.is_global:
+            return "global_unicast"
+        return "special"
     except ValueError:
         return "invalid"
 
@@ -111,10 +141,10 @@ def analyze_log(log_file: str):
     ip_counter = Counter()
     prefix_counter = Counter()
     type_counter = Counter()
-    hourly_counter = defaultdict(Counter)
+    hourly_counter = Counter()
     error_ips = Counter()
 
-    with open(log_file) as f:
+    with open(log_file, encoding="utf-8", errors="replace") as f:
         for line in f:
             m = LOG_RE.match(line)
             if not m:
@@ -125,12 +155,17 @@ def analyze_log(log_file: str):
                 continue  # Skip IPv4 for this analysis
 
             status = int(m.group("status"))
-            hour = m.group("time")[:13]  # "20/Mar/2026:10"
+            try:
+                ts = datetime.strptime(m.group("time"), "%d/%b/%Y:%H:%M:%S %z")
+            except ValueError:
+                continue
+
+            hour = ts.strftime("%Y-%m-%d %H:00 %z")
 
             ip_counter[ip] += 1
             prefix_counter[get_prefix(ip)] += 1
             type_counter[classify_ipv6(ip)] += 1
-            hourly_counter[hour][ip] += 1
+            hourly_counter[hour] += 1
             if status >= 400:
                 error_ips[ip] += 1
 
@@ -147,6 +182,10 @@ def analyze_log(log_file: str):
     for t, count in type_counter.most_common():
         print(f"  {count:6d}  {t}")
 
+    print(f"\nIPv6 Requests Per Hour:")
+    for hour, count in sorted(hourly_counter.items()):
+        print(f"  {count:6d}  {hour}")
+
     print(f"\nTop Error Sources (4xx/5xx):")
     for ip, count in error_ips.most_common(10):
         print(f"  {count:6d}  {ip}")
@@ -157,16 +196,17 @@ if __name__ == "__main__":
     analyze_log(log_file)
 ```
 
-## SQL Aggregation (for Loki/ClickHouse/DuckDB)
+## SQL Aggregation (DuckDB)
 
 ```sql
--- DuckDB / ClickHouse: aggregate IPv6 traffic logs
+INSTALL inet;
+LOAD inet;
 
--- Top IPv6 prefixes by request count (simulate /32 prefix by truncating address)
+-- Top IPv6 /48 prefixes by request count
 SELECT
-    regexp_replace(client_ip, ':[^:]+:[^:]+:[^:]+:[^:]+$', '::') AS prefix_48,
+    network((client_ip || '/48')::INET) AS prefix_48,
     COUNT(*) AS request_count,
-    COUNT(DISTINCT client_ip) AS unique_ips,
+    COUNT(DISTINCT client_ip::INET) AS unique_ips,
     SUM(bytes) AS total_bytes
 FROM nginx_logs
 WHERE client_ip LIKE '%:%'
@@ -176,9 +216,9 @@ LIMIT 20;
 
 -- Hourly IPv6 traffic trend
 SELECT
-    DATE_TRUNC('hour', timestamp) AS hour,
-    COUNT(*) FILTER (WHERE client_ip LIKE '%:%') AS ipv6_requests,
-    COUNT(*) FILTER (WHERE client_ip NOT LIKE '%:%') AS ipv4_requests
+    date_trunc('hour', timestamp) AS hour,
+    SUM(CASE WHEN client_ip LIKE '%:%' THEN 1 ELSE 0 END) AS ipv6_requests,
+    SUM(CASE WHEN client_ip NOT LIKE '%:%' THEN 1 ELSE 0 END) AS ipv4_requests
 FROM nginx_logs
 GROUP BY 1
 ORDER BY 1;
@@ -186,4 +226,4 @@ ORDER BY 1;
 
 ## Conclusion
 
-IPv6 log aggregation requires normalization before grouping to ensure address format variants map to the same key. Python's `ipaddress` module handles normalization reliably and also enables subnet grouping via `ip_network()` with `strict=False`. For command-line analysis of existing logs, `grep` for colon-containing addresses to isolate IPv6 traffic, then pipe through `sort | uniq -c | sort -rn` for quick frequency analysis. Use `/48` prefix grouping to identify organizational-level traffic patterns since IPv6 allocations typically assign a /48 per site.
+IPv6 log aggregation requires normalization before grouping to ensure address format variants map to the same key. Python's `ipaddress` module handles normalization reliably and also enables subnet grouping via `ip_network()` with `strict=False`. For command-line analysis of existing logs, grouping the first field for colon-containing addresses gives a quick frequency summary, but use the Python normalizer when you need exact deduplication across alternate IPv6 spellings. Use a prefix length such as `/48` only when it matches your addressing plan, since IPv6 assignment sizes vary by network.
