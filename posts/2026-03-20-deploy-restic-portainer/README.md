@@ -21,8 +21,6 @@ Navigate to **Stacks** > **Add Stack**:
 ```yaml
 # docker-compose.yml - Restic + REST Server
 
-version: "3.8"
-
 services:
   rest-server:
     image: restic/rest-server:0.13.0
@@ -32,14 +30,9 @@ services:
       - "8000:8000"
     volumes:
       - restic_repos:/data
-      - ./htpasswd:/etc/rest-server/.htpasswd:ro
+      - /opt/restic/htpasswd:/data/.htpasswd:ro
     environment:
       - OPTIONS=--private-repos
-    healthcheck:
-      test: ["CMD", "wget", "--quiet", "--output-document=-", "http://localhost:8000/"]
-      interval: 30s
-      timeout: 10s
-      retries: 3
     networks:
       - restic_net
 
@@ -51,9 +44,9 @@ services:
       - /var/lib/docker/volumes:/source:ro    # Source data to back up
       - restic_cache:/root/.cache/restic
     environment:
-      - RESTIC_REPOSITORY=rest:http://restic:${RESTIC_PASSWORD}@rest-server:8000/backups
-      - RESTIC_PASSWORD=${RESTIC_REPO_PASSWORD}
-    entrypoint: /bin/sh -c "restic snapshots || restic init; while true; do restic backup /source --tag docker-volumes; restic forget --keep-daily 7 --keep-weekly 4 --prune; sleep 86400; done"
+      - RESTIC_REPOSITORY=rest:http://restic:${REST_SERVER_PASSWORD}@rest-server:8000/restic/backups
+      - RESTIC_PASSWORD=${RESTIC_PASSWORD}
+    entrypoint: /bin/sh -c "until restic snapshots || restic init; do sleep 5; done; while true; do restic backup /source --tag docker-volumes; restic forget --keep-daily 7 --keep-weekly 4 --keep-monthly 6 --prune; sleep 86400; done"
     depends_on:
       - rest-server
     networks:
@@ -79,15 +72,15 @@ docker run --rm httpd:alpine htpasswd -Bbn restic your-restic-password > /opt/re
 ## Step 3: Set Environment Variables in Portainer
 
 ```text
-RESTIC_PASSWORD=your-restic-password        # REST Server HTTP auth password
-RESTIC_REPO_PASSWORD=your-repo-encryption-password  # Restic repo encryption key
+REST_SERVER_PASSWORD=your-restic-password   # REST Server HTTP auth password
+RESTIC_PASSWORD=your-repo-encryption-password  # Restic repository encryption password
 ```
 
 ## Step 4: Initialize and Run Backups Manually
 
 ```bash
-# Initialize the repository
-docker exec restic_client restic init
+# Initialize the repository if it does not exist yet
+docker exec restic_client sh -c 'restic snapshots >/dev/null 2>&1 || restic init'
 
 # Run a backup
 docker exec restic_client restic backup /source --tag docker-volumes
@@ -125,4 +118,4 @@ docker exec restic_client restic forget \
 
 ## Conclusion
 
-Restic encrypts all data before sending it to the backend using AES-256-CTR with Poly1305-AES authentication. The `RESTIC_PASSWORD` unlocks the repository encryption; if lost, data is unrecoverable. The REST Server's `--private-repos` flag ensures each user (`/user/repo/path`) can only access their own repositories. For automated backups, replace the sleep loop with a cron-based container like `restic-cron` or a Kubernetes CronJob.
+Restic encrypts all data before sending it to the backend using AES-256-CTR with Poly1305-AES authentication. The `RESTIC_PASSWORD` unlocks the repository encryption; if lost, data is unrecoverable. The REST Server's `--private-repos` flag ensures each user can only access repositories under their own URL prefix, such as `/restic/backups`. This example uses HTTP Basic Authentication over plain HTTP, so add TLS or keep the service on a trusted network before exposing it beyond your LAN. For automated backups, replace the sleep loop with a cron-based container like `restic-cron` or a Kubernetes CronJob.
