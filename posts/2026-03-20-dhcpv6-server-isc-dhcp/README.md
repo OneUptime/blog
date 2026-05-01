@@ -8,7 +8,7 @@ Description: Configure ISC dhcpd as a DHCPv6 server on Linux with subnet definit
 
 ## Introduction
 
-ISC dhcpd (the original ISC DHCP server) supports DHCPv6 via a separate daemon invocation (`dhcpd -6`). While ISC recommends migrating to Kea for new deployments, dhcpd remains widely deployed and its configuration syntax is familiar. This guide covers DHCPv6 configuration with dhcpd including subnet definitions, address pools, host reservations, prefix delegation, and failover considerations.
+ISC dhcpd (the original ISC DHCP server) supports DHCPv6 via a separate daemon invocation (`dhcpd -6`). ISC DHCP is now end-of-life and ISC recommends migrating to Kea for new deployments, but dhcpd remains widely deployed and its configuration syntax is familiar. This guide covers DHCPv6 configuration with dhcpd including subnet definitions, address pools, host reservations, and prefix delegation.
 
 ## Installation
 
@@ -18,7 +18,7 @@ ISC dhcpd (the original ISC DHCP server) supports DHCPv6 via a separate daemon i
 sudo apt-get install isc-dhcp-server
 
 # RHEL/CentOS
-sudo yum install dhcp-server
+sudo dnf install dhcp-server
 
 # Check version
 dhcpd --version
@@ -31,12 +31,12 @@ cat > /etc/dhcp/dhcpd6.conf << 'EOF'
 # DHCPv6 server configuration
 
 # Default and max lease times (seconds)
-default-lease-time 3600;      # 1 hour preferred lifetime
-max-lease-time 86400;         # 24 hour valid lifetime
+default-lease-time 3600;      # 1 hour valid lifetime
+max-lease-time 86400;         # 24 hour maximum valid lifetime
 preferred-lifetime 3000;
 
-# Lease database
-lease-file-name "/var/lib/dhcpd/dhcpd6.leases";
+# DHCPv6 lease database override (Debian/Ubuntu path shown)
+dhcpv6-lease-file-name "/var/lib/dhcp/dhcpd6.leases";
 
 # Log DHCPv6 activity
 log-facility local7;
@@ -56,14 +56,14 @@ subnet6 2001:db8::/64 {
 }
 EOF
 
-# Create empty leases file if it doesn't exist
-sudo touch /var/lib/dhcpd/dhcpd6.leases
+# Create empty leases file if it doesn't exist (Debian/Ubuntu path shown)
+sudo touch /var/lib/dhcp/dhcpd6.leases
 
 # Start DHCPv6 server on eth1
 sudo dhcpd -6 -cf /etc/dhcp/dhcpd6.conf eth1
 
-# Or configure systemd service
-# /etc/default/isc-dhcp-server6:
+# Or configure systemd service on Debian/Ubuntu
+# /etc/default/isc-dhcp-server:
 # INTERFACESv6="eth1"
 sudo systemctl start isc-dhcp-server6
 sudo systemctl enable isc-dhcp-server6
@@ -92,16 +92,15 @@ host printer1 {
 EOF
 
 # Find a client's DUID
-# On Linux client: cat /var/lib/dhcpcd/duid
-# Or check dhcpd lease file: /var/lib/dhcpd/dhcpd6.leases
-#   binding -> client-id -> duid value
+# On Linux clients using dhcpcd: cat /var/lib/dhcpcd/duid
+# Or inspect the DHCPv6 client logs or lease state on the client
 ```
 
 ## Stateless DHCPv6 (INFO-REQUEST only)
 
 ```bash
 # Stateless DHCPv6: provide options without address assignment
-# Used when RA has M=0, O=1
+# Commonly used when RA has M=0, O=1
 cat > /etc/dhcp/dhcpd6.conf << 'EOF'
 # Stateless DHCPv6 server
 # Responds to INFO-REQUEST with DNS/options only (no address assignment)
@@ -122,7 +121,7 @@ EOF
 cat >> /etc/dhcp/dhcpd6.conf << 'EOF'
 
 # Prefix delegation pool
-# Delegates /56 prefixes from the /32 pool
+# Delegates /56 prefixes from the configured range
 prefix6 2001:db8:: 2001:db8:ff:: /56;
 
 # Host-specific prefix delegation
@@ -142,8 +141,8 @@ EOF
 sudo ss -6 -unlp | grep :547
 # udp  UNCONN  0  0  :::547  :::*  users:(("dhcpd",pid=...))
 
-# View active DHCPv6 leases
-cat /var/lib/dhcpd/dhcpd6.leases
+# View active DHCPv6 leases (Debian/Ubuntu path shown)
+cat /var/lib/dhcp/dhcpd6.leases
 
 # Example lease entry:
 # ia-na "\000\001\000\001\256\315\357\001\252\273\314\335\356\377" {
@@ -170,7 +169,7 @@ sudo tcpdump -i eth1 -v "udp port 547"
 ```bash
 # Test configuration syntax
 sudo dhcpd -6 -cf /etc/dhcp/dhcpd6.conf -t
-# Should output: Configuration file errors encountered - or nothing if OK
+# Reports syntax errors if present and exits without opening network sockets
 
 # Common issues:
 
@@ -193,4 +192,4 @@ sudo journalctl -u isc-dhcp-server6
 
 ## Conclusion
 
-ISC dhcpd supports DHCPv6 via `dhcpd -6` with a separate `dhcpd6.conf` configuration file. Key configuration elements are `subnet6` (subnet definition), `range6` (dynamic address pool), and `host` with `fixed-address6` for reservations. Host reservations use DHCPv6 DUID for identification. Stateless DHCPv6 is configured by omitting the `range6` statement. While ISC dhcpd is still widely used, consider migrating to Kea for new deployments as it offers better performance, REST API management, and active development.
+ISC dhcpd supports DHCPv6 via `dhcpd -6` and can use a separate `dhcpd6.conf` configuration file. Key configuration elements are `subnet6` (subnet definition), `range6` (dynamic address pool), and `host` with `fixed-address6` for reservations. Host reservations use DHCPv6 DUID for identification. Stateless DHCPv6 is configured by omitting the `range6` statement. While ISC dhcpd is still widely used, it is end-of-life, so prefer Kea for new deployments because it offers better performance, REST API management, and active development.
