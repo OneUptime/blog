@@ -8,60 +8,60 @@ Description: Learn how to diagnose and fix Portainer Edge Agent connection failu
 
 ---
 
-The Portainer Edge Agent reverses the usual connection direction: it dials out from the remote site to the Portainer server. This makes it ideal for networks without inbound port forwarding, but it requires the server to be publicly reachable on the tunnel port.
+The Portainer Edge Agent reverses the usual connection direction: it dials out from the remote site to the Portainer server. This makes it ideal for networks without inbound port forwarding, but it requires the server to be publicly reachable on both the API port and the tunnel port.
 
 ## How Edge Agent Connections Work
 
 ```mermaid
 graph LR
-    A[Edge Agent] -->|Outbound TCP 8000| B[Portainer Server tunnel port]
-    B --> C[Portainer API]
+    A[Edge Agent] -->|HTTPS 9443 polling| B[Portainer Server API]
+    A -->|TLS tunnel 8000 on demand| C[Portainer Server tunnel port]
 ```
 
-The edge agent connects outbound to the Portainer server's tunnel port (default 8000). The server must have this port publicly accessible.
+The edge agent polls the Portainer server over port 9443 by default and opens a reverse tunnel to port 8000 when Portainer requires it. The server must have both ports publicly accessible.
 
 ## Step 1: Verify the Edge Key
 
-The edge key encodes the Portainer server URL and tunnel port. It is generated when you create a new Edge environment in Portainer. A wrong key causes silent connection failures.
+The edge key encodes the Portainer API URL, tunnel server address, tunnel fingerprint, and environment ID. It is generated when you create a new Edge environment in Portainer. A wrong key prevents the agent from associating with the server.
 
 ```bash
 # On the edge host, verify the agent container started with the correct key
 
 docker logs portainer_edge_agent 2>&1 | head -20
 
-# Look for:
-# level=info msg="Edge key decoded successfully"
-# If you see "Failed to decode edge key", the key is wrong or corrupt
+# Look for edge key decode errors or TLS/connectivity failures early in startup
 ```
 
-## Step 2: Test Tunnel Port Accessibility
+## Step 2: Test Portainer Server Accessibility
 
-From the edge site, verify the Portainer server's tunnel port is reachable:
+From the edge site, verify the Portainer server's API port and tunnel port are reachable:
 
 ```bash
-# Test connectivity to the Portainer tunnel port
-curl -v telnet://portainer-server.example.com:8000
+# Test connectivity to the Portainer API port
+curl -vk https://portainer-server.example.com:9443
 
-# Or with nc
+# Test connectivity to the Portainer tunnel port
 nc -zv portainer-server.example.com 8000
 ```
 
-If this fails, open port 8000 on the Portainer server's firewall.
+If either check fails, open ports 9443 and 8000 on the Portainer server's firewall. If Portainer is using a self-signed certificate, the Edge Agent must be deployed with `-e EDGE_INSECURE_POLL=1`.
 
 ## Step 3: Ensure Portainer Server Has Tunnel Port Exposed
 
-When running Portainer, the tunnel port must be published:
+When running Portainer, the API port and tunnel port must be published:
 
 ```bash
 docker run -d \
   --name portainer \
-  -p 9000:9000 \
+  --restart=always \
   -p 9443:9443 \
-  -p 8000:8000 \    # REQUIRED for Edge Agent connections
+  -p 8000:8000 \
   -v /var/run/docker.sock:/var/run/docker.sock \
   -v portainer_data:/data \
-  portainer/portainer-ce:latest
+  portainer/portainer-ce:lts
 ```
+
+If you still need legacy HTTP access, add `-p 9000:9000`.
 
 ## Step 4: Re-generate the Edge Key
 
@@ -69,22 +69,13 @@ If the key is suspect, delete the edge environment in Portainer, re-create it, a
 
 ## Step 5: Check for Proxy Interference
 
-If the edge site routes traffic through an HTTP proxy, the edge agent needs proxy settings:
-
-```bash
-docker run -d \
-  -e HTTPS_PROXY=http://proxy.corp.example.com:3128 \
-  -e NO_PROXY=localhost,127.0.0.1 \
-  portainer/agent:latest
-```
+If the edge site routes traffic through an HTTP proxy, make sure the proxy is not blocking or intercepting outbound connections from the Edge Agent to the Portainer server on ports 9443 and 8000. If needed, bypass the Portainer host with `NO_PROXY`.
 
 ## Step 6: Verify Agent Logs After Fix
 
 ```bash
-# After correcting the configuration, watch for successful connection
+# After correcting the configuration, watch the agent logs
 docker logs -f portainer_edge_agent
-
-# Successful connection looks like:
-# level=info msg="Connecting to edge server..."
-# level=info msg="Connection to Portainer server established"
 ```
+
+The environment heartbeat in Portainer should return to healthy once the agent can poll successfully and establish the reverse tunnel when needed.
