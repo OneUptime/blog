@@ -4,11 +4,11 @@ Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
 Tags: DHCPv6, Relay, Redundancy, High Availability, Failover, Networking
 
-Description: Configure DHCPv6 relay agents to forward to multiple servers for redundancy and load distribution, with failover behavior on various platforms.
+Description: Configure DHCPv6 relay agents to forward to multiple servers for redundancy, with failover behavior on various platforms.
 
 ## DHCPv6 Multi-Server Relay Behavior
 
-When a relay is configured with multiple servers, it copies each client message and sends it to all configured servers simultaneously. The client uses the first ADVERTISE received:
+When a relay is configured with multiple destination addresses, it forwards each client message to all configured servers. A DHCPv6 client does not simply use the first ADVERTISE received; it collects valid ADVERTISE messages and selects a server based on preference and the advertised parameters:
 
 ```mermaid
 sequenceDiagram
@@ -22,9 +22,9 @@ sequenceDiagram
     R->>S2: RELAY-FORW (copy 2)
     S1->>R: RELAY-REPL (ADVERTISE)
     S2->>R: RELAY-REPL (ADVERTISE)
-    R->>C: ADVERTISE (from S1 - faster)
+    R->>C: ADVERTISE (from S1)
     R->>C: ADVERTISE (from S2)
-    C->>R: REQUEST (for S1's offer)
+    C->>R: REQUEST (for selected offer)
     R->>S1: RELAY-FORW (REQUEST)
     S1->>R: RELAY-REPL (REPLY)
     R->>C: REPLY
@@ -33,16 +33,14 @@ sequenceDiagram
 ## Linux (dhcrelay) - Multiple Servers
 
 ```bash
-# dhcrelay: specify multiple server addresses
+# dhcrelay: specify each upstream destination with -u address%interface
 
 dhcrelay -6 \
     -l eth0 \
-    -u eth1 \
-    2001:db8::dhcp1 \
-    2001:db8::dhcp2
+    -u 2001:db8::10%eth1 \
+    -u 2001:db8::11%eth1
 
-# ISC Kea relay (kea-dhcp-ddns proxy mode)
-# kea-dhcp6.conf - server-side; relay is typically dhcrelay
+# Kea is the DHCPv6 server here; use dhcrelay or a network-device relay agent
 ```
 
 ## Cisco IOS - Multiple Servers
@@ -50,22 +48,19 @@ dhcrelay -6 \
 ```text
 ! Forward to two DHCPv6 servers
 interface GigabitEthernet0/1
- ipv6 dhcp relay destination 2001:db8::dhcp1
- ipv6 dhcp relay destination 2001:db8::dhcp2
+ ipv6 dhcp relay destination 2001:db8::10
+ ipv6 dhcp relay destination 2001:db8::11
 ```
 
 ## Juniper - Server Groups with Redundancy
 
 ```text
-# Junos: server group with multiple servers
-set forwarding-options dhcp-relay v6 server-group PRIMARY-SERVERS 2001:db8::dhcp1
-set forwarding-options dhcp-relay v6 server-group PRIMARY-SERVERS 2001:db8::dhcp2
+# Junos: DHCPv6 server group with multiple servers
+set forwarding-options dhcp-relay dhcpv6 server-group PRIMARY-SERVERS 2001:db8::10
+set forwarding-options dhcp-relay dhcpv6 server-group PRIMARY-SERVERS 2001:db8::11
 
-set forwarding-options dhcp-relay v6 group CLIENTS active-server-group PRIMARY-SERVERS
-
-# Active/backup server group
-set forwarding-options dhcp-relay v6 server-group BACKUP-SERVERS 2001:db8::dhcp3
-set forwarding-options dhcp-relay v6 group CLIENTS backup-server-group BACKUP-SERVERS
+set forwarding-options dhcp-relay dhcpv6 group CLIENTS interface ge-0/0/1.0
+set forwarding-options dhcp-relay dhcpv6 group CLIENTS active-server-group PRIMARY-SERVERS
 ```
 
 ## ISC Kea with HA (High Availability)
@@ -76,6 +71,10 @@ set forwarding-options dhcp-relay v6 group CLIENTS backup-server-group BACKUP-SE
     "Dhcp6": {
         "hooks-libraries": [
             {
+                "library": "/usr/lib/kea/hooks/libdhcp_lease_cmds.so",
+                "parameters": {}
+            },
+            {
                 "library": "/usr/lib/kea/hooks/libdhcp_ha.so",
                 "parameters": {
                     "high-availability": [{
@@ -84,13 +83,15 @@ set forwarding-options dhcp-relay v6 group CLIENTS backup-server-group BACKUP-SE
                         "peers": [
                             {
                                 "name": "server1",
-                                "url": "http://[2001:db8::dhcp1]:8000/",
-                                "role": "primary"
+                                "url": "http://[2001:db8::10]:8000/",
+                                "role": "primary",
+                                "auto-failover": true
                             },
                             {
                                 "name": "server2",
-                                "url": "http://[2001:db8::dhcp2]:8000/",
-                                "role": "standby"
+                                "url": "http://[2001:db8::11]:8000/",
+                                "role": "standby",
+                                "auto-failover": true
                             }
                         ]
                     }]
@@ -108,20 +109,10 @@ set forwarding-options dhcp-relay v6 group CLIENTS backup-server-group BACKUP-SE
 ## MikroTik - Multiple Relay Targets
 
 ```text
-# MikroTik does not support forwarding to multiple servers natively
-# Workaround: use primary and backup with scripting
+# RouterOS supports multiple DHCPv6 relay targets natively
 
 /ipv6 dhcp-relay
-add name=primary-relay interface=ether2 dhcp-server=2001:db8::dhcp1 local-address=2001:db8:1::1
-
-# Script to switch to backup on failure
-/system scheduler
-add name=dhcp-health-check interval=30s on-event={
-    :if ([/ping address=2001:db8::dhcp1 count=3 as-value]->"packet-loss"=100) do={
-        /ipv6 dhcp-relay set primary-relay dhcp-server=2001:db8::dhcp2
-        :log warning "DHCPv6 primary server down, switched to backup"
-    }
-}
+add name=relay1 interface=ether2 dhcp-server=2001:db8::10%ether1,2001:db8::11%ether1 link-address=2001:db8:1::1 disabled=no
 ```
 
 ## Testing Multi-Server Relay Failover
@@ -130,14 +121,14 @@ add name=dhcp-health-check interval=30s on-event={
 #!/bin/bash
 # Test DHCPv6 relay failover
 
-PRIMARY="2001:db8::dhcp1"
-BACKUP="2001:db8::dhcp2"
+PRIMARY="2001:db8::10"
+BACKUP="2001:db8::11"
 
 echo "=== DHCPv6 Multi-Server Relay Test ==="
 
 # Check both servers reachable
 for SERVER in ${PRIMARY} ${BACKUP}; do
-    if ping6 -c 2 -W 2 ${SERVER} &>/dev/null; then
+    if ping -6 -c 2 -W 2 ${SERVER} &>/dev/null; then
         echo "Server ${SERVER}: UP"
     else
         echo "Server ${SERVER}: DOWN"
@@ -148,8 +139,8 @@ done
 echo "Simulating primary server failure..."
 # ip6tables -A INPUT -s ${PRIMARY} -p udp --sport 547 -j DROP  # Block replies
 
-# Test client gets address (should fall back to secondary)
-dhclient -6 -v eth1 2>&1 | grep -E "bound|no DHCP"
+# Test client can still get service from the remaining server
+dhclient -6 -1 -v eth1
 
 # Restore
 # ip6tables -D INPUT -s ${PRIMARY} -p udp --sport 547 -j DROP
@@ -157,4 +148,4 @@ dhclient -6 -v eth1 2>&1 | grep -E "bound|no DHCP"
 
 ## Conclusion
 
-DHCPv6 relay agents forward client messages to all configured servers simultaneously. Clients use the first ADVERTISE response that arrives. For true high availability, use ISC Kea HA mode (hot-standby) which synchronizes lease databases between two servers. When both servers are healthy, the primary handles all requests; on failure, the standby takes over automatically. The relay itself doesn't need changes - it continues forwarding to both addresses.
+DHCPv6 relay agents can forward client messages to all configured servers. Clients select a server from the valid ADVERTISE messages they receive, rather than simply using the first response. For true high availability, use ISC Kea HA mode (hot-standby), which synchronizes lease databases between two servers. When both servers are healthy, the primary responds to DHCP traffic; on failure, the standby takes over automatically. The relay configuration can stay the same because it continues forwarding to all configured destinations.
