@@ -4,11 +4,11 @@ Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
 Tags: Portainer, WireGuard, VPN, Docker, Networking, Self-Hosting, Security
 
-Description: Learn how to deploy a WireGuard VPN server via Portainer using the linuxserver image, which auto-generates peer configurations and QR codes for easy client setup.
+Description: Learn how to deploy a WireGuard VPN server via Portainer using the LinuxServer WireGuard image, which auto-generates peer configurations and QR codes for easy client setup.
 
 ---
 
-WireGuard is a modern, high-performance VPN protocol built into the Linux kernel. The `linuxserver/wireguard` image wraps it with automatic peer configuration generation, making it straightforward to deploy without manual key management.
+WireGuard is a modern, high-performance VPN protocol built into the Linux kernel. The `lscr.io/linuxserver/wireguard` image wraps it with automatic peer configuration generation, making it straightforward to deploy without manual key management.
 
 ## Prerequisites
 
@@ -21,11 +21,10 @@ WireGuard is a modern, high-performance VPN protocol built into the Linux kernel
 The container needs elevated privileges to manage network interfaces. Set `NET_ADMIN` capability and use `sysctls` to enable IP forwarding:
 
 ```yaml
-version: "3.8"
-
 services:
   wireguard:
-    image: linuxserver/wireguard:latest
+    image: lscr.io/linuxserver/wireguard:latest
+    container_name: wireguard
     restart: unless-stopped
     cap_add:
       - NET_ADMIN          # Required to manage network interfaces
@@ -44,6 +43,7 @@ services:
       PEERS: 5                            # Number of peer configs to generate
       PEERDNS: auto
       INTERNAL_SUBNET: 10.13.13.0
+      LOG_CONFS: "true"                   # Write generated peer QR codes to logs
     volumes:
       - wireguard_config:/config
       - /lib/modules:/lib/modules:ro      # Host kernel modules
@@ -75,4 +75,4 @@ Scan the QR code with the WireGuard mobile app to connect instantly.
 
 ## Monitoring
 
-Use OneUptime to create a TCP port monitor on `<host>:51820` (UDP). Additionally, monitor an internal endpoint accessible only via VPN to verify the tunnel is routing traffic correctly. Alert if the VPN endpoint becomes unreachable.
+Use OneUptime to create a port monitor on `<host>:51820/udp`. Additionally, use a custom probe inside the VPN or private network to monitor an internal endpoint accessible only via the tunnel and verify routing is working correctly. Alert if the VPN endpoint becomes unreachable.
