@@ -13,13 +13,11 @@ Wiki.js is a modern, feature-rich wiki built on Node.js. It supports Markdown, W
 ## Prerequisites
 
 - Portainer running
-- At least 512MB RAM
+- At least 1GB RAM
 
 ## Compose Stack
 
 ```yaml
-version: "3.8"
-
 services:
   db:
     image: postgres:16-alpine
@@ -68,18 +66,18 @@ Wiki.js can sync all pages to a Git repository, providing automatic version hist
 3. Configure your repository URL and SSH key or token.
 4. Set the sync interval (e.g., every 5 minutes).
 
-All page edits will be committed to your Git repository automatically.
+New commits are synced to your Git repository on the schedule you configure.
 
 ## Access Control
 
-Wiki.js has granular permissions per page, group, and namespace. Create groups under **Administration > Groups** and assign permissions by path pattern:
+Wiki.js has granular permissions using groups, global permissions, and path-based page rules. Create groups under **Administration > Groups** and assign permissions with page rules such as:
 
 ```text
-/public/*     → Read for guests
-/internal/*   → Read/Write for Staff group only
-/admin/*      → Manage for Administrators only
+Path starts with /public     → Allow Read for Guests
+Path starts with /internal   → Allow Read/Write for Staff group
+Path starts with /admin      → Allow Manage for Administrators
 ```
 
 ## Monitoring
 
-Use OneUptime to monitor `http://<host>:3100` for HTTP 200. Wiki.js serves a login page at the root. Configure an alert so that documentation becomes available again quickly after any outage.
+Use OneUptime to monitor `http://<host>:3100` for HTTP 200. Wiki.js serves its web UI at the root path. Configure an alert so that documentation becomes available again quickly after any outage.
