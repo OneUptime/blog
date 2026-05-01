@@ -8,15 +8,15 @@ Description: Understand the IPv6 documentation address spaces 2001:db8::/32 and 
 
 ## Introduction
 
-RFC 3849 reserves `2001:db8::/32` for use in documentation, books, and examples - similar to IPv4's `192.0.2.0/24`. RFC 9637 allocates the additional `3fff::/20` block for documentation purposes. These addresses must never appear in production configurations.
+RFC 3849 reserves `2001:db8::/32` for use in documentation, books, and examples - similar to IPv4's `192.0.2.0/24`. RFC 9637 allocates the additional `3fff::/20` block for documentation purposes. These addresses must never be used as production addresses and should be filtered from production traffic.
 
 ## Usage in Examples
 
 ```bash
-# CORRECT: Use 2001:db8:: in all documentation/examples
+# CORRECT: Use documentation prefixes in examples
 
 ping6 2001:db8::1
-ssh 2001:db8::server
+ssh 2001:db8::1
 curl http://[2001:db8::1]/
 
 # WRONG: Use real addresses in documentation
@@ -41,20 +41,22 @@ EXAMPLE_BGP_PREFIX = "2001:db8::/32"
 ```python
 import ipaddress
 
+DOCUMENTATION_PREFIXES = (
+    ipaddress.IPv6Network("2001:db8::/32"),
+    ipaddress.IPv6Network("3fff::/20"),
+)
+
 def uses_documentation_address(addr: str) -> bool:
-    """Detect if an address is from the documentation space."""
-    doc_prefixes = [
-        "2001:db8::/32",
-        "3fff::/20",
-    ]
+    """Detect if an IPv6 address or prefix is from the documentation space."""
     try:
-        a = ipaddress.IPv6Address(addr)
-        for prefix in doc_prefixes:
-            if a in ipaddress.IPv6Network(prefix):
-                return True
+        candidate = ipaddress.ip_network(addr, strict=False)
     except ValueError:
-        pass
-    return False
+        return False
+
+    if candidate.version != 6:
+        return False
+
+    return any(candidate.subnet_of(prefix) for prefix in DOCUMENTATION_PREFIXES)
 
 # Use this in config validators
 def validate_production_config(config: dict) -> list:
@@ -74,14 +76,18 @@ def validate_production_config(config: dict) -> list:
 ```bash
 # Documentation addresses should never appear in production traffic
 ip6tables -A INPUT -s 2001:db8::/32 -j DROP
+ip6tables -A INPUT -d 2001:db8::/32 -j DROP
 ip6tables -A INPUT -s 3fff::/20 -j DROP
+ip6tables -A INPUT -d 3fff::/20 -j DROP
 ip6tables -A FORWARD -s 2001:db8::/32 -j DROP
+ip6tables -A FORWARD -d 2001:db8::/32 -j DROP
 ip6tables -A FORWARD -s 3fff::/20 -j DROP
+ip6tables -A FORWARD -d 3fff::/20 -j DROP
 ```
 
 ## The New 3fff::/20 Block
 
-RFC 9637 (2024) allocates `3fff::/20` as an additional documentation space because many tools hard-coded `2001:db8::/32` checks and the larger block allows more diverse example addressing.
+RFC 9637 (2024) allocates `3fff::/20` as an additional documentation space because the original `2001:db8::/32` reservation is too small for many realistic, current deployment scenarios, and the larger block better reflects contemporary allocation models for large networks.
 
 ```python
 DOCUMENTATION_PREFIXES = [
