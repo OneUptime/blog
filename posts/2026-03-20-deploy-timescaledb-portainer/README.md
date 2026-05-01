@@ -4,17 +4,15 @@ Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
 Tags: Portainer, TimescaleDB, PostgreSQL, Time Series, Database, Metric
 
-Description: Learn how to deploy TimescaleDB via Portainer for time-series workloads using PostgreSQL-compatible hypertables and automatic data compression.
+Description: Learn how to deploy TimescaleDB via Portainer for time-series workloads using PostgreSQL-compatible hypertables and automatic columnstore conversion for older data.
 
 ---
 
-TimescaleDB is a PostgreSQL extension that adds hypertables, automatic partitioning, and data compression for time-series workloads. It's fully SQL-compatible, making it a drop-in replacement for PostgreSQL in time-series applications.
+TimescaleDB is a PostgreSQL extension that adds hypertables, automatic partitioning, and columnstore compression for time-series workloads. Because it runs as a PostgreSQL extension, existing PostgreSQL clients and tools continue to work with your time-series data.
 
 ## Stack Definition
 
 ```yaml
-version: "3.8"
-
 services:
   timescaledb:
     image: timescale/timescaledb:latest-pg15
@@ -26,7 +24,6 @@ services:
       - "5432:5432"
     volumes:
       - timescale_data:/var/lib/postgresql/data
-      - ./init.sql:/docker-entrypoint-initdb.d/init.sql:ro
     networks:
       - tsdb_net
     healthcheck:
@@ -58,31 +55,34 @@ networks:
 
 ## Initialization SQL
 
-Create `init.sql` to enable TimescaleDB and create a hypertable:
+After the stack is running, connect to the `metrics` database in pgAdmin and run:
 
 ```sql
 -- Enable the TimescaleDB extension
 CREATE EXTENSION IF NOT EXISTS timescaledb;
 
--- Create a metrics table
+-- Create a metrics hypertable
 CREATE TABLE IF NOT EXISTS sensor_readings (
     time        TIMESTAMPTZ       NOT NULL,
     sensor_id   TEXT              NOT NULL,
     location    TEXT              NOT NULL,
     temperature DOUBLE PRECISION  NULL,
     humidity    DOUBLE PRECISION  NULL
+) WITH (
+    tsdb.hypertable,
+    tsdb.partition_column = 'time',
+    tsdb.segmentby = 'sensor_id',
+    tsdb.orderby = 'time DESC'
 );
 
--- Convert to a hypertable (automatically partitioned by time)
-SELECT create_hypertable('sensor_readings', 'time');
-
 -- Create an index for fast queries by sensor
-CREATE INDEX ON sensor_readings (sensor_id, time DESC);
+CREATE INDEX IF NOT EXISTS sensor_readings_sensor_id_time_idx
+    ON sensor_readings (sensor_id, time DESC);
 ```
 
 ## Inserting and Querying Time-Series Data
 
-Use standard SQL to interact with hypertables:
+Use SQL plus TimescaleDB functions to interact with hypertables:
 
 ```sql
 -- Insert sensor readings
@@ -103,19 +103,14 @@ GROUP BY bucket, sensor_id
 ORDER BY bucket DESC;
 ```
 
-## Enabling Automatic Compression
+## Configuring Automatic Columnstore Conversion
 
-Compress chunks older than 7 days to reduce storage:
+Set the automatic columnstore policy to convert chunks older than 7 days:
 
 ```sql
--- Enable compression on the hypertable
-ALTER TABLE sensor_readings SET (
-    timescaledb.compress,
-    timescaledb.compress_segmentby = 'sensor_id'
-);
-
--- Set a compression policy (runs automatically)
-SELECT add_compression_policy('sensor_readings', INTERVAL '7 days');
+-- Replace the default policy with a 7-day columnstore policy
+CALL remove_columnstore_policy('sensor_readings', if_exists => true);
+CALL add_columnstore_policy('sensor_readings', after => INTERVAL '7 days');
 ```
 
 ## Data Retention Policy
@@ -123,16 +118,16 @@ SELECT add_compression_policy('sensor_readings', INTERVAL '7 days');
 Automatically drop data older than 90 days:
 
 ```sql
-SELECT add_retention_policy('sensor_readings', INTERVAL '90 days');
+SELECT add_retention_policy('sensor_readings', drop_after => INTERVAL '90 days', if_not_exists => true);
 ```
 
 ## Connecting a Python Application
 
-Use `psycopg2` or `asyncpg` since TimescaleDB is PostgreSQL-compatible:
+Use `psycopg2` or `asyncpg` since TimescaleDB is PostgreSQL-compatible. If your Python application runs on the same Docker network, you can use the service name as the host:
 
 ```python
 import psycopg2
-from datetime import datetime
+from datetime import datetime, timezone
 
 conn = psycopg2.connect(
     host="timescaledb",
@@ -145,7 +140,7 @@ conn = psycopg2.connect(
 cur = conn.cursor()
 cur.execute(
     "INSERT INTO sensor_readings (time, sensor_id, location, temperature) VALUES (%s, %s, %s, %s)",
-    (datetime.utcnow(), "sensor-001", "server-room", 22.5)
+    (datetime.now(timezone.utc), "sensor-001", "server-room", 22.5)
 )
 conn.commit()
 ```
@@ -154,9 +149,9 @@ conn.commit()
 
 TimescaleDB works with the standard Grafana PostgreSQL data source. Add it with:
 
-- Host: `timescaledb:5432`
+- Host: `timescaledb:5432` if Grafana runs on the same Docker network, or `localhost:5432` from the Docker host
 - Database: `metrics`
 - User/Password: as configured
-- TLS mode: disable (for internal Docker network)
+- TLS mode: disable (for an internal Docker network or local development)
 
 Use time-series panels with `$__timeFilter(time)` macros for automatic time range filtering.
