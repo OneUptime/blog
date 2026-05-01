@@ -22,8 +22,6 @@ Navigate to **Stacks** > **Add Stack** and use the following configuration:
 ```yaml
 # docker-compose.yml - Redis Cache Layer
 
-version: "3.8"
-
 services:
   redis:
     image: redis:7-alpine
@@ -31,13 +29,18 @@ services:
     restart: unless-stopped
     ports:
       - "6379:6379"
-    command: >
-      redis-server
-      --maxmemory 512mb
-      --maxmemory-policy allkeys-lru
-      --requirepass ${REDIS_PASSWORD}
-      --appendonly no
-      --save ""
+    command:
+      - redis-server
+      - --maxmemory
+      - 512mb
+      - --maxmemory-policy
+      - allkeys-lru
+      - --requirepass
+      - ${REDIS_PASSWORD}
+      - --appendonly
+      - "no"
+      - --save
+      - ""
     volumes:
       - redis_cache_data:/data
     healthcheck:
@@ -56,7 +59,7 @@ services:
     ports:
       - "9121:9121"
     environment:
-      - REDIS_ADDR=redis://redis_cache:6379
+      - REDIS_ADDR=redis://redis:6379
       - REDIS_PASSWORD=${REDIS_PASSWORD}
     depends_on:
       - redis
@@ -88,33 +91,37 @@ REDIS_PASSWORD=your-secure-password-here
 
 ```bash
 # Connect to Redis CLI inside the container
-docker exec -it redis_cache redis-cli -a your-secure-password-here
+docker exec -it redis_cache redis-cli --pass your-secure-password-here
 
-# Test basic cache operations
+# In the Redis CLI
 SET user:1000 '{"name":"Alice","email":"alice@example.com"}' EX 3600
 GET user:1000
 TTL user:1000
 
-# Check memory usage
-INFO memory | grep used_memory_human
+# From another shell, check memory usage
+docker exec redis_cache redis-cli --pass your-secure-password-here INFO memory | grep used_memory_human
 
-# Check hit rate
-INFO stats | grep -E "keyspace_hits|keyspace_misses"
+# From another shell, check hit rate
+docker exec redis_cache redis-cli --pass your-secure-password-here INFO stats | grep -E "keyspace_hits|keyspace_misses"
 ```
 
 ## Step 4: Python Application Integration
 
 ```python
 # pip install redis
-import redis
 import json
+import os
 
-r = redis.Redis(
-    host='localhost',
-    port=6379,
-    password='your-secure-password-here',
+import redis
+
+r = redis.from_url(
+    os.getenv("REDIS_URL", "redis://:your-secure-password-here@localhost:6379/0"),
     decode_responses=True
 )
+
+def fetch_user_from_database(user_id: int) -> dict:
+    """Replace this stub with your database lookup."""
+    return {"id": user_id, "name": "Alice", "email": "alice@example.com"}
 
 def get_user(user_id: int) -> dict:
     """Get user with Redis caching."""
@@ -126,7 +133,7 @@ def get_user(user_id: int) -> dict:
         return json.loads(cached)
 
     # Cache miss - fetch from database
-    user = db.fetch_user(user_id)
+    user = fetch_user_from_database(user_id)
 
     # Store in cache for 1 hour
     r.setex(cache_key, 3600, json.dumps(user))
@@ -163,7 +170,7 @@ services:
   myapp:
     image: myapp:latest
     environment:
-      - REDIS_URL=redis://:${REDIS_PASSWORD}@redis_cache:6379/0
+      - REDIS_URL=redis://:${REDIS_PASSWORD}@redis:6379/0
     networks:
       - cache_net
     depends_on:
@@ -173,4 +180,4 @@ services:
 
 ## Conclusion
 
-Redis configured with `maxmemory` and `allkeys-lru` eviction is ideal for application caching. Disable RDB persistence (`--save ""`) and AOF (`--appendonly no`) for pure cache workloads - this improves performance and reduces disk I/O. Always require authentication with `requirepass`. Monitor the hit rate and eviction rate to tune memory allocation - a hit rate below 90% or high eviction count indicates the cache is too small.
+Redis configured with `maxmemory` and `allkeys-lru` eviction is a strong default for application caching. Disable RDB persistence (`--save ""`) and AOF (`--appendonly no`) for pure cache workloads - this improves performance and reduces disk I/O. Always require authentication with `requirepass`. Monitor the hit rate and eviction rate to tune memory allocation - if the hit rate is lower than expected for your workload or eviction counts stay high, the cache may be too small or your eviction policy and TTLs may need tuning.
