@@ -43,12 +43,12 @@ Both server and client must support Rapid Commit. If the server does not support
 ```text
 # /etc/dhcp/dhcpd6.conf
 
+# Enable Rapid Commit
+option dhcp6.rapid-commit;
+
 subnet6 2001:db8::/32 {
     range6 2001:db8::100 2001:db8::500;
     option dhcp6.name-servers 2001:db8::53;
-
-    # Enable Rapid Commit
-    allow rapid-commit;
 }
 ```
 
@@ -58,7 +58,7 @@ subnet6 2001:db8::/32 {
 # Apply to all subnets
 default-lease-time 86400;
 max-lease-time 172800;
-allow rapid-commit;
+option dhcp6.rapid-commit;
 ```
 
 ---
@@ -84,13 +84,25 @@ allow rapid-commit;
 }
 ```
 
-### Global Rapid Commit in Kea
+### Shared-Network Rapid Commit in Kea
 
 ```json
 {
   "Dhcp6": {
-    "rapid-commit": true,
-    "subnet6": []
+    "shared-networks": [
+      {
+        "name": "example-v6",
+        "rapid-commit": true,
+        "subnet6": [
+          {
+            "subnet": "2001:db8::/32",
+            "pools": [
+              { "pool": "2001:db8::100-2001:db8::500" }
+            ]
+          }
+        ]
+      }
+    ]
   }
 }
 ```
@@ -158,16 +170,16 @@ sudo tcpdump -i eth0 -vv udp port 546 or udp port 547
 1. **Both sides must opt in** - if the client sends Rapid Commit but the server doesn't respond with it, the server should fall back to standard exchange
 2. **Single server environments** - Rapid Commit works best when there's one server (avoids duplicate assignment race conditions)
 3. **HA environments** - ensure both HA nodes are configured identically for Rapid Commit
-4. **Address conflicts** - standard exchange allows Decline; Rapid Commit is faster but offers less time to detect conflicts
+4. **Address conflicts** - clients still perform Duplicate Address Detection and can send Decline after a Reply, but Rapid Commit commits the lease immediately on the server
 
 ---
 
 ## Best Practices
 
-1. **Enable globally** in single-server deployments for maximum benefit
+1. **Enable on all applicable scopes** in single-server deployments for maximum benefit
 2. **Test with packet capture** to confirm the 2-message exchange is occurring
 3. **Monitor lease database** for any duplicate address issues after enabling
-4. **Use with HA** in hot-standby mode only - load-balancing HA may conflict
+4. **Prefer designs where only one server responds** to a given Solicit to reduce unused committed leases
 5. **Enable on both server and client** - half-configured deployments fall back to standard exchange
 
 ---
