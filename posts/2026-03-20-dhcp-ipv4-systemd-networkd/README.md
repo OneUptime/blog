@@ -21,7 +21,7 @@ systemd-networkd's DHCPv4 client is configured through the `[DHCPv4]` and `[Netw
 Name=eth0
 
 [Network]
-DHCP=yes
+DHCP=ipv4
 ```
 
 ---
@@ -33,7 +33,8 @@ DHCP=yes
 Name=eth0
 
 [Network]
-DHCP=ipv4  # Only IPv4 DHCP, not IPv6
+# Only IPv4 DHCP, not IPv6
+DHCP=ipv4
 
 [DHCPv4]
 UseHostname=yes
@@ -55,13 +56,12 @@ Name=eth0
 
 [Network]
 DHCP=ipv4
-
-[DHCPv4]
-UseDNS=no  # Ignore DHCP DNS
-
-[Network]
 DNS=1.1.1.1
 DNS=8.8.8.8
+
+[DHCPv4]
+# Ignore DHCP-provided DNS servers
+UseDNS=no
 ```
 
 ---
@@ -70,14 +70,15 @@ DNS=8.8.8.8
 
 ```ini
 [DHCPv4]
-ClientIdentifier=mac        # Use MAC address (default)
-# ClientIdentifier=duid     # Use DUID (more unique)
-# ClientIdentifier=duid-only
+# Use the interface MAC address as the DHCPv4 client identifier
+ClientIdentifier=mac
+# Default behavior:
+# ClientIdentifier=duid
 ```
 
 ---
 
-## Request Specific Lease Duration
+## Control DHCP Broadcast and Retry Behavior
 
 ```ini
 [DHCPv4]
@@ -87,7 +88,7 @@ MaxAttempts=3
 
 ---
 
-## Static Fallback Address
+## Static Address Alongside DHCP
 
 ```ini
 [Match]
@@ -95,10 +96,8 @@ Name=eth0
 
 [Network]
 DHCP=ipv4
-Address=192.168.1.99/24  # Used if DHCP fails (fallback)
-
-[DHCPv4]
-FallbackLeaseLifetimeSec=300
+# Adds a static address in addition to the DHCP-assigned address
+Address=192.168.1.99/24
 ```
 
 ---
