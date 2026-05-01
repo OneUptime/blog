@@ -16,6 +16,7 @@ If the ring fills up because the CPU can't drain it fast enough, packets are dro
 
 ```bash
 # View current and maximum ring buffer sizes
+# Replace eth0 with your actual interface name, for example enp2s0
 
 ethtool -g eth0
 
@@ -39,50 +40,52 @@ ethtool -g eth0
 ## Step 2: Check for Ring Buffer Drops
 
 ```bash
-# Check if ring buffer drops are occurring
-ethtool -S eth0 | grep -i "drop\|missed\|rx_no_buffer\|rx_fifo"
+# Check standard per-interface drop/error counters
+ip -s -s link show dev eth0
 
-# Common drop counters:
-# rx_dropped: packets dropped due to full receive ring
-# rx_missed_errors: frames missed
-# tx_dropped: packets dropped due to full transmit ring
+# Check driver-exposed counters; names vary by NIC/driver
+ethtool -S eth0 | grep -Ei 'drop|missed|buffer|fifo'
 
-# Also check with netstat
-netstat -i
-# RX-DRP and TX-DRP columns show drops per interface
+# Common counters and what they usually mean:
+# rx_missed_errors: packets the device missed because host buffers were not available
+# rx_fifo_errors: receive FIFO / buffer overrun errors
+# tx_fifo_errors: transmit FIFO underrun / underflow errors
+
+# RX/TX dropped in ip output are interface-level counters and are not specific to ring exhaustion
 ```
 
 ## Step 3: Increase Ring Buffer Sizes
 
 ```bash
-# Increase RX and TX ring to maximum supported size
+# Example: if step 1 showed 4096 as the RX/TX maximum, set both to 4096
 ethtool -G eth0 rx 4096 tx 4096
 
 # Verify change applied
 ethtool -g eth0 | grep "Current hardware" -A5
 ```
 
-## Step 4: Monitor Ring Buffer Utilization
+## Step 4: Monitor Drop Counters Over Time
 
 ```bash
-# Watch drops in real time while generating traffic
-watch -n 1 "ethtool -S eth0 | grep -i drop"
+# Watch driver counters in real time while generating traffic
+watch -n 1 "ethtool -S eth0 | grep -Ei 'drop|missed|buffer|fifo'"
 
-# Use sar to track packet drops over time
+# Use sar to track interface drop/error counters over time
 sar -n EDEV 1 60
 
 # Output:
-# Average:     IFACE    rxerr/s  txerr/s  coll/s  rxdrop/s  txdrop/s
-# Average:      eth0       0.00     0.00    0.00     5.23      0.00
-# rxdrop/s > 0 means ring buffer is overflowing
+# Average:     IFACE    rxerr/s  txerr/s  coll/s  rxdrop/s  txdrop/s  txcarr/s  rxfram/s  rxfifo/s  txfifo/s
+# Average:      eth0       0.00     0.00    0.00     5.23      0.00      0.00      0.00      0.00      0.00
+# rxdrop/s > 0 means the interface/kernel is dropping packets; correlate with ethtool or ip counters to confirm ring pressure
 ```
 
-## Step 5: Tune Ring Buffer with Traffic Shaping
+## Step 5: Tune Ring Buffer Sizes for Latency vs Throughput
 
-Large ring buffers reduce drops but increase latency (more buffering = more queuing delay). For latency-sensitive workloads:
+Large ring buffers can reduce drops during bursts, but they can also increase latency (more buffering = more queuing delay). For latency-sensitive workloads:
 
 ```bash
 # Balance ring size vs latency
+# Example sizes only; use values supported by ethtool -g on your NIC
 # For latency-sensitive (gaming, HFT, real-time control):
 ethtool -G eth0 rx 256 tx 256
 
@@ -97,12 +100,14 @@ ethtool -G eth0 rx 1024 tx 1024
 
 ```bash
 # Method 1: udev rule
+# Replace eth0 and 4096/4096 with your actual interface name and supported ring sizes
 cat > /etc/udev/rules.d/99-ring-buffer.rules << 'EOF'
 ACTION=="add", SUBSYSTEM=="net", KERNEL=="eth0", \
-  RUN+="/sbin/ethtool -G eth0 rx 4096 tx 4096"
+  RUN+="/usr/sbin/ethtool -G %k rx 4096 tx 4096"
 EOF
 
 # Method 2: Systemd service
+# Replace eth0 and 4096/4096 with your actual interface name and supported ring sizes
 cat > /etc/systemd/system/ring-buffer-tuning.service << 'EOF'
 [Unit]
 Description=Set NIC ring buffer sizes
@@ -110,7 +115,7 @@ After=network.target
 
 [Service]
 Type=oneshot
-ExecStart=/sbin/ethtool -G eth0 rx 4096 tx 4096
+ExecStart=/usr/sbin/ethtool -G eth0 rx 4096 tx 4096
 RemainAfterExit=yes
 
 [Install]
@@ -119,9 +124,9 @@ EOF
 
 sudo systemctl enable ring-buffer-tuning
 
-# Method 3: For multiple interfaces
+# Example loop for multiple interfaces; use it in a boot-time script or the service above
 for iface in eth0 eth1; do
-  ethtool -G $iface rx 4096 tx 4096 2>/dev/null && echo "$iface: ring buffer set"
+  /usr/sbin/ethtool -G "$iface" rx 4096 tx 4096 2>/dev/null && echo "$iface: ring buffer set"
 done
 ```
 
@@ -143,4 +148,4 @@ ethtool eth0 | grep -E "Speed|Duplex|Auto"
 
 ## Conclusion
 
-NIC ring buffer drops are a silent source of packet loss on busy servers. Check for drops with `ethtool -S eth0 | grep drop`, increase ring size to hardware maximum with `ethtool -G eth0 rx 4096 tx 4096`, and monitor with `sar -n EDEV`. Persist settings in udev rules or a systemd service. For latency-sensitive workloads, balance ring size with coalescing settings to avoid excessive queuing delay.
+NIC ring buffer drops are a silent source of packet loss on busy servers. Check both standard interface counters with `ip -s -s link show dev eth0` and driver counters with `ethtool -S eth0`, increase ring size toward the hardware maximum reported by `ethtool -g`, and monitor with `sar -n EDEV`. Persist settings in udev rules or a systemd service. For latency-sensitive workloads, balance ring size with coalescing settings to avoid excessive queuing delay.
