@@ -4,11 +4,11 @@ Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
 Tags: Portainer, Docker, Docker Swarm, Monitoring, Prometheus, Grafana, Self-Hosted
 
-Description: Learn how to deploy a complete monitoring stack including Prometheus, Grafana, and Alertmanager on Docker Swarm using Portainer's stack management interface.
+Description: Learn how to deploy a monitoring stack including Prometheus, Grafana, cAdvisor, Node Exporter, and an Alertmanager instance on Docker Swarm using Portainer's stack management interface.
 
 ## Introduction
 
-Running a full monitoring stack on Docker Swarm gives you high availability and scalability for your observability infrastructure. Portainer makes it easy to deploy and manage these stacks with a visual interface. In this guide, you'll deploy Prometheus, Grafana, Node Exporter, cAdvisor, and Alertmanager as a unified monitoring stack on Docker Swarm.
+Running a monitoring stack on Docker Swarm makes it easier to spread observability components across multiple nodes and scale them over time. Portainer makes it easy to deploy and manage these stacks with a visual interface. In this guide, you'll deploy Prometheus, Grafana, Node Exporter, cAdvisor, and Alertmanager as a unified monitoring stack on Docker Swarm.
 
 ## Prerequisites
 
@@ -36,8 +36,8 @@ version: "3.8"
 
 networks:
   monitoring:
-    driver: overlay
-    attachable: true
+    external: true
+    name: monitoring
 
 volumes:
   prometheus_data: {}
@@ -94,6 +94,7 @@ services:
     command:
       - '--path.procfs=/host/proc'
       - '--path.sysfs=/host/sys'
+      - '--path.rootfs=/rootfs'
       - '--collector.filesystem.mount-points-exclude=^/(sys|proc|dev|host|etc)($$|/)'
     volumes:
       - /proc:/host/proc:ro
@@ -108,7 +109,7 @@ services:
 
   # cAdvisor - container metrics
   cadvisor:
-    image: gcr.io/cadvisor/cadvisor:latest
+    image: ghcr.io/google/cadvisor:v0.56.2
     volumes:
       - /:/rootfs:ro
       - /var/run:/var/run:ro
@@ -186,19 +187,19 @@ Click **Deploy the stack** in Portainer. Monitor the deployment under **Services
 ### Step 5: Add Prometheus Data Source in Grafana
 
 1. Log in to Grafana with `admin/securepassword`
-2. Navigate to **Configuration > Data Sources**
-3. Click **Add data source** and select **Prometheus**
+2. Navigate to **Connections > Data sources**
+3. Click **Add new data source** and select **Prometheus**
 4. Set URL: `http://prometheus:9090`
 5. Click **Save & Test**
 
-Import dashboard ID `1860` for Node Exporter Full or `893` for Docker Swarm monitoring.
+Import dashboard ID `1860` for Node Exporter Full or `609` for Docker Swarm & Container Overview.
 
 ## Scaling and High Availability
 
-To scale Grafana for HA, update the stack to use multiple replicas with a shared database:
+To prepare Grafana for HA, run multiple replicas behind a load balancer and move Grafana to a shared database backend:
 
 ```yaml
-# Add to grafana service environment for shared state
+# Add to the grafana service, then increase deploy.replicas above 1
 environment:
   - GF_DATABASE_TYPE=postgres
   - GF_DATABASE_HOST=postgres:5432
@@ -209,4 +210,4 @@ environment:
 
 ## Conclusion
 
-You now have a fully functional monitoring stack running on Docker Swarm managed through Portainer. This setup gives you host-level and container-level metrics across all Swarm nodes, centralized visualization in Grafana, and alerting through Alertmanager. Portainer's stack management makes it easy to update configurations and scale services as your infrastructure grows.
+You now have a fully functional monitoring stack running on Docker Swarm managed through Portainer. This setup gives you host-level and container-level metrics across all Swarm nodes, centralized visualization in Grafana, and an Alertmanager instance that you can wire up with Prometheus alerting rules and receivers. Portainer's stack management makes it easy to update configurations and scale services as your infrastructure grows.
