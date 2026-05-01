@@ -8,7 +8,7 @@ Description: Learn how to configure DynamoDB Time to Live with OpenTofu to autom
 
 ## Introduction
 
-DynamoDB Time to Live (TTL) automatically deletes items from a table after a specified timestamp, without consuming write capacity units. It's ideal for session data, temporary caches, event logs, and any data with a natural expiration. Deleted items also appear in DynamoDB Streams, allowing downstream cleanup in related systems.
+DynamoDB Time to Live (TTL) automatically deletes expired items from a table based on a specified timestamp, without consuming write throughput. It's ideal for session data, temporary caches, event logs, and any data with a natural expiration. If DynamoDB Streams are enabled, deleted items appear as service deletions, allowing downstream cleanup in related systems.
 
 ## Prerequisites
 
@@ -86,6 +86,7 @@ def extend_session(user_id: str, session_id: str, hours: int = 24):
     table.update_item(
         Key={'userId': user_id, 'sessionId': session_id},
         UpdateExpression='SET expiresAt = :ttl',
+        ConditionExpression='attribute_exists(userId) AND attribute_exists(sessionId)',
         ExpressionAttributeValues={':ttl': new_ttl}
     )
 ```
@@ -147,4 +148,4 @@ resource "aws_cloudwatch_metric_alarm" "ttl_deleted_items" {
 
 ## Conclusion
 
-DynamoDB TTL is the most cost-effective way to manage data lifecycle for time-bounded records-deletions are free and happen within 48 hours of the expiry time. Note that TTL is not precise: items may persist for up to 48 hours after the TTL timestamp. Applications must filter expired items in query results if strict expiry is required. Use the stream filter to distinguish TTL deletions (by `dynamodb.amazonaws.com` principal) from application-initiated deletions.
+DynamoDB TTL is the most cost-effective way to manage data lifecycle for time-bounded records-deletions do not consume write throughput in the region where the TTL expiry occurs and typically happen within a few days of the expiry time. Note that TTL is not precise: items may persist after the TTL timestamp until the background deletion process runs. Applications must filter expired items in scan or query results if strict expiry is required. Use the stream filter to distinguish TTL deletions (by `dynamodb.amazonaws.com` principal) from application-initiated deletions.
