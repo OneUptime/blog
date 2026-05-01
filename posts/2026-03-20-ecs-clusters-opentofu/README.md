@@ -8,7 +8,7 @@ Description: Learn how to create Amazon ECS clusters with OpenTofu, including co
 
 ## Introduction
 
-Amazon ECS clusters are logical groupings of tasks and services. A cluster acts as the namespace for your containerized workloads and can mix Fargate and EC2 instances as capacity providers. Creating clusters with OpenTofu enables consistent cluster configuration across environments and integrates with your infrastructure pipeline.
+Amazon ECS clusters are logical groupings of tasks and services. A cluster acts as the namespace for your containerized workloads and can mix Fargate capacity providers with EC2-backed Auto Scaling group capacity providers. Creating clusters with OpenTofu enables consistent cluster configuration across environments and integrates with your infrastructure pipeline.
 
 ## Prerequisites
 
@@ -24,7 +24,7 @@ resource "aws_ecs_cluster" "main" {
   # Enable Container Insights for detailed monitoring
   setting {
     name  = "containerInsights"
-    value = "enabled"  # or "disabled"
+    value = "enabled"  # or "enhanced" / "disabled"
   }
 
   configuration {
@@ -61,14 +61,14 @@ resource "aws_ecs_cluster_capacity_providers" "main" {
   capacity_providers = ["FARGATE", "FARGATE_SPOT"]
 
   default_capacity_provider_strategy {
-    base              = 1       # Minimum guaranteed tasks on FARGATE
-    weight            = 1       # Relative weight for FARGATE
+    base              = 1       # Minimum tasks placed on FARGATE before weight distribution
+    weight            = 1       # Relative weight for FARGATE after the base is satisfied
     capacity_provider = "FARGATE"
   }
 
   # Optional: add FARGATE_SPOT for cost savings
   # default_capacity_provider_strategy {
-  #   weight            = 4     # 80% on FARGATE_SPOT
+  #   weight            = 4     # Roughly 80% of remaining tasks on FARGATE_SPOT
   #   capacity_provider = "FARGATE_SPOT"
   # }
 }
@@ -112,7 +112,7 @@ resource "aws_iam_role_policy_attachment" "ecs_execution" {
   policy_arn = "arn:aws:iam::aws:policy/service-role/AmazonECSTaskExecutionRolePolicy"
 }
 
-# Additional permissions for Secrets Manager
+# Additional permissions for Secrets Manager and Parameter Store
 resource "aws_iam_role_policy" "ecs_execution_secrets" {
   name = "secrets-access"
   role = aws_iam_role.ecs_execution.id
@@ -161,4 +161,4 @@ aws ecs describe-clusters --clusters my-project-cluster
 
 ## Conclusion
 
-ECS clusters are lightweight-their primary purpose is grouping and naming. Container Insights is the most important configuration to enable, as it provides CPU, memory, network, and storage metrics for tasks and services in CloudWatch. The `execute_command_configuration` enables ECS Exec (interactive container access) for debugging, which requires the KMS key and log group to be configured before enabling it on services.
+ECS clusters are lightweight-their primary purpose is grouping and naming. Container Insights is one of the most useful cluster settings to enable, as it provides CPU, memory, network, and storage metrics for tasks and services in CloudWatch. The `execute_command_configuration` sets cluster-level ECS Exec logging and encryption defaults, but you still enable ECS Exec on the service or task itself. When you use `logging = "OVERRIDE"`, the referenced log group must already exist, and a customer-managed KMS key is only required when you want to encrypt the session channel or CloudWatch log group with your own key.
