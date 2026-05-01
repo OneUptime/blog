@@ -29,17 +29,18 @@ resource "google_compute_instance" "portainer" {
 
   network_interface {
     network = "default"
-    access_config {}  # Assigns a public IP
+    access_config {}  # Assigns an ephemeral public IP
   }
 
   metadata_startup_script = <<-EOF
     #!/bin/bash
     apt-get update -y
+    apt-get install -y ca-certificates curl
     curl -fsSL https://get.docker.com | sh
 
     docker volume create portainer_data
 
-    docker run -d       --name portainer       --restart=always       -p 9443:9443       -v /var/run/docker.sock:/var/run/docker.sock       -v portainer_data:/data       portainer/portainer-ce:latest
+    docker run -d       --name portainer       --restart=always       -p 9443:9443       -v /var/run/docker.sock:/var/run/docker.sock       -v portainer_data:/data       portainer/portainer-ce:lts
   EOF
 
   tags = ["portainer"]
@@ -51,6 +52,11 @@ resource "google_compute_instance" "portainer" {
 ## Create Firewall Rule for Portainer
 
 ```hcl
+variable "admin_ip_cidr" {
+  description = "CIDR block allowed to access Portainer"
+  type        = string
+}
+
 resource "google_compute_firewall" "portainer" {
   name    = "allow-portainer"
   network = "default"
