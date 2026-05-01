@@ -8,7 +8,7 @@ Description: Configure Docker Compose services with IPv6 networking, define IPv6
 
 ## Introduction
 
-Docker Compose supports IPv6 networking through the `networks` configuration in `compose.yaml`. You define IPv6 subnets in the network's `ipam` configuration and set `enable_ipv6: true`. Services connected to IPv6 networks receive IPv6 addresses automatically. This enables containerized applications to communicate over IPv6 both within Compose and with external IPv6 networks.
+Docker Compose supports IPv6 networking through the `networks` configuration in `compose.yaml` on Docker daemons running on Linux hosts. You define IPv6 subnets in the network's `ipam` configuration and set `enable_ipv6: true`. Services connected to IPv6 networks receive IPv6 addresses automatically. This enables containerized applications to communicate over IPv6 both within Compose and with external IPv6 networks.
 
 ## Basic Docker Compose with IPv6
 
@@ -24,8 +24,8 @@ networks:
       config:
         - subnet: 172.20.0.0/16
           gateway: 172.20.0.1
-        - subnet: fd00:compose:web::/64
-          gateway: fd00:compose:web::1
+        - subnet: fd00:1234:5678:1::/64
+          gateway: fd00:1234:5678:1::1
 
 services:
   web:
@@ -33,11 +33,11 @@ services:
     networks:
       - webnet
     ports:
-      - "80:80"
-      - "[::]:80:80"  # IPv6 port binding
+      - "80:80"  # Publishes on both IPv4 and IPv6 by default
 
   app:
-    image: myapp:latest
+    image: busybox:1.36
+    command: ["sh", "-c", "tail -f /dev/null"]
     networks:
       - webnet
 ```
@@ -54,16 +54,16 @@ networks:
     ipam:
       config:
         - subnet: 172.21.1.0/24
-        - subnet: fd00:compose:frontend::/64
+        - subnet: fd00:1234:5678:2::/64
 
   backend:
     driver: bridge
     enable_ipv6: true
-    internal: true  # No external access
+    internal: true  # Externally isolated network
     ipam:
       config:
         - subnet: 172.21.2.0/24
-        - subnet: fd00:compose:backend::/64
+        - subnet: fd00:1234:5678:3::/64
 
 services:
   nginx:
@@ -75,7 +75,8 @@ services:
       - "443:443"
 
   api:
-    image: myapi:latest
+    image: busybox:1.36
+    command: ["sh", "-c", "tail -f /dev/null"]
     networks:
       - frontend
       - backend
@@ -107,7 +108,7 @@ networks:
     ipam:
       config:
         - subnet: 172.22.0.0/24
-        - subnet: fd00:compose:app::/64
+        - subnet: fd00:1234:5678:4::/64
 
 services:
   web:
@@ -115,14 +116,14 @@ services:
     networks:
       appnet:
         ipv4_address: 172.22.0.10
-        ipv6_address: fd00:compose:app::10
+        ipv6_address: fd00:1234:5678:4::10
 
   db:
     image: redis:7
     networks:
       appnet:
         ipv4_address: 172.22.0.20
-        ipv6_address: fd00:compose:app::20
+        ipv6_address: fd00:1234:5678:4::20
 ```
 
 ## Verify IPv6 in Running Compose Services
@@ -133,7 +134,7 @@ services:
 docker compose up -d
 
 # Check service IPv6 addresses
-docker compose exec web ip -6 addr show eth0
+docker inspect --format='{{range .NetworkSettings.Networks}}{{.GlobalIPv6Address}}{{end}}' "$(docker compose ps -q web)"
 
 # Inspect the network
 docker network inspect <project>_webnet | python3 -c "
@@ -145,12 +146,12 @@ for name, info in data[0]['Containers'].items():
 "
 
 # Test IPv6 connectivity between services
-docker compose exec web ping6 -c 3 fd00:compose:app::20
+docker compose exec app ping -6 -c 3 web
 
-# Test outbound IPv6 from service
-docker compose exec web curl -6 https://ipv6.google.com/
+# Test IPv6 access to the published service from the host
+curl http://[::1]:80
 ```
 
 ## Conclusion
 
-Configure IPv6 in Docker Compose by setting `enable_ipv6: true` and defining an IPv6 subnet in the `ipam.config` section of each network. Use ULA prefixes (`fd00::/8`) for internal networks. Set `internal: true` on backend networks to prevent external IPv6 access. Assign static IPv6 addresses with `ipv6_address` in the service network config. Test connectivity with `docker compose exec service ping6 target-ipv6`.
+Configure IPv6 in Docker Compose by setting `enable_ipv6: true` and defining an IPv6 subnet in the `ipam.config` section of each network. Use ULA prefixes (`fd00::/8`) for internal networks. Set `internal: true` on backend networks to create an externally isolated network. Assign static IPv6 addresses with `ipv6_address` in the service network config. Test IPv6 connectivity with commands such as `docker compose exec app ping -6 web` and `curl http://[::1]:80`.
