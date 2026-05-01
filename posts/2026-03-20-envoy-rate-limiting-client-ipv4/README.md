@@ -26,6 +26,7 @@ static_resources:
               typed_config:
                 "@type": type.googleapis.com/envoy.extensions.filters.network.http_connection_manager.v3.HttpConnectionManager
                 stat_prefix: ingress_http
+                use_remote_address: true
                 route_config:
                   name: local_route
                   virtual_hosts:
@@ -34,10 +35,10 @@ static_resources:
                       routes:
                         - match: { prefix: "/" }
                           route: { cluster: backend_cluster }
-                          # Per-route rate limit descriptors
+                          # Build a descriptor from the trusted client address
                           rate_limits:
                             - actions:
-                                - remote_address: {}   # Use client IP as key
+                                - remote_address: {}   # Uses Envoy's trusted client address from XFF handling
                 http_filters:
                   # Local rate limit filter (runs in Envoy, no external service)
                   - name: envoy.filters.http.local_ratelimit
@@ -45,7 +46,7 @@ static_resources:
                       "@type": type.googleapis.com/envoy.extensions.filters.http.local_ratelimit.v3.LocalRateLimit
                       stat_prefix: http_local_rate_limiter
 
-                      # Token bucket: 100 requests per second
+                      # Fallback bucket when no client IP descriptor is generated
                       token_bucket:
                         max_tokens: 100
                         tokens_per_fill: 100
@@ -61,6 +62,19 @@ static_resources:
                           numerator: 100
                           denominator: HUNDRED
 
+                      descriptors:
+                        - entries:
+                            - key: remote_address
+                              value: ""   # Blank value creates a dynamic bucket per unique IP
+                          token_bucket:
+                            max_tokens: 100
+                            tokens_per_fill: 100
+                            fill_interval: 1s
+
+                      always_consume_default_token_bucket: false
+                      local_rate_limit_per_downstream_connection: false
+                      max_dynamic_descriptors: 1000
+
                       # Return 429 when rate limited
                       status:
                         code: 429
@@ -72,7 +86,7 @@ static_resources:
 
 ## Per-Route Rate Limits with Remote Rate Limit Service
 
-For per-IP granular limits using an external ratelimit service:
+For per-IP granular limits using an external ratelimit service, `remote_address` is derived from Envoy's trusted client address handling for `x-forwarded-for`:
 
 ```yaml
 http_filters:
@@ -99,7 +113,7 @@ routes:
     route: { cluster: api_cluster }
     rate_limits:
       - actions:
-          - remote_address: {}     # Rate limit key: client IP
+          - remote_address: {}     # Rate limit key: trusted client IP from XFF processing
       - actions:
           - header_value_match:
               descriptor_value: api_endpoint
@@ -111,34 +125,32 @@ routes:
 ## Response Headers for Rate Limit Info
 
 ```yaml
-# Add rate limit headers to responses
+# Emit standard rate limit headers and a local marker
 
+enable_x_ratelimit_headers: DRAFT_VERSION_03
 response_headers_to_add:
-  - header:
-      key: "X-RateLimit-Limit"
-      value: "100"
-  - header:
-      key: "Retry-After"
-      value: "1"
-    keep_empty_value: false
+  - append_action: OVERWRITE_IF_EXISTS_OR_ADD
+    header:
+      key: "x-local-rate-limit"
+      value: "true"
 ```
 
 ## Monitoring Rate Limiting
 
 ```bash
 # View rate limit stats
-curl http://127.0.0.1:9901/stats | grep rate_limit
+curl -s http://127.0.0.1:9901/stats | grep http_local_rate_limit
 
 # Key metrics:
-# http.ingress_http.local_rate_limit.enabled    → requests checked
-# http.ingress_http.local_rate_limit.enforced   → rate limit applied
-# http.ingress_http.local_rate_limit.ok         → requests passed
-# http.ingress_http.local_rate_limit.rate_limited → requests dropped
+# http_local_rate_limiter.http_local_rate_limit.enabled      → requests checked
+# http_local_rate_limiter.http_local_rate_limit.enforced     → rate limit applied
+# http_local_rate_limiter.http_local_rate_limit.ok           → requests passed
+# http_local_rate_limiter.http_local_rate_limit.rate_limited → requests dropped
 
 # Real-time monitoring
-watch -n2 "curl -s http://127.0.0.1:9901/stats | grep local_rate_limit"
+watch -n2 "curl -s http://127.0.0.1:9901/stats | grep http_local_rate_limit"
 ```
 
 ## Conclusion
 
-Envoy local rate limiting via the `envoy.filters.http.local_ratelimit` filter provides per-instance request throttling without external dependencies. Each Envoy instance enforces its own bucket, making it suitable for even traffic distributions. For globally coordinated per-IP limits across multiple Envoy instances, integrate with the Lyft ratelimit service using `envoy.filters.http.ratelimit` with `remote_address` descriptors.
+Envoy local rate limiting via the `envoy.filters.http.local_ratelimit` filter provides per-process request throttling without external dependencies. With descriptor-based matching, you can create a separate local bucket per trusted client IPv4 address on each Envoy process. For globally coordinated per-IP limits across multiple Envoy instances, integrate with the Lyft ratelimit service using `envoy.filters.http.ratelimit` with `remote_address` descriptors.
