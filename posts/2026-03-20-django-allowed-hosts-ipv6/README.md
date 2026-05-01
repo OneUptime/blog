@@ -92,7 +92,9 @@ python manage.py runserver [::1]:8000
 # Run on all IPv6 interfaces
 python manage.py runserver [::]:8000
 
-# ALLOWED_HOSTS must include [::1] and [::] for these to work
+# If you bind to ::, ALLOWED_HOSTS must include the hostname or IPv6
+# literal clients actually use (for example [::1] or [2001:db8::1]),
+# not the bind address [::] itself.
 ```
 
 ## Step 4: NGINX Host Header Forwarding
@@ -100,29 +102,27 @@ python manage.py runserver [::]:8000
 ```nginx
 server {
     listen [::]:80;
-    server_name example.com 2001:db8::1;
+    server_name example.com;
 
     location / {
         proxy_pass http://[::1]:8000;
 
-        # Forward the original host
+        # Forward the original host without the port
         proxy_set_header Host $host;
 
-        # If $host is an IPv6 IP, Django will see it in brackets
-        # NGINX sets $host without brackets for IP addresses!
-        # So in ALLOWED_HOSTS, use the IP without brackets for NGINX proxy:
+        # Forward client IP separately
         proxy_set_header X-Real-IP $remote_addr;
     }
 }
 ```
 
 ```python
-# When behind NGINX proxy, the Host header is the domain name
-# ALLOWED_HOSTS needs the domain, not the raw IP:
+# Match what NGINX forwards in the Host header.
+# Use the domain for domain access and the bracketed IPv6 literal
+# for direct IPv6-literal access:
 ALLOWED_HOSTS = [
     "example.com",
-    "2001:db8::1",   # NGINX sends without brackets in $host
-    "[2001:db8::1]", # Direct access sends with brackets
+    "[2001:db8::1]",
 ]
 ```
 
@@ -134,11 +134,15 @@ ALLOWED_HOSTS = [
 
 # Check what Host header clients are sending
 python manage.py shell
+>>> from django.core.exceptions import DisallowedHost
 >>> from django.test import RequestFactory
 >>> rf = RequestFactory()
 >>> request = rf.get("/", HTTP_HOST="[2001:db8::1]:8000")
->>> from django.utils.http import is_same_domain
 >>> # Check Django validation
+>>> try:
+...     request.get_host()
+... except DisallowedHost as exc:
+...     print(exc)
 >>> from django.conf import settings
 >>> settings.ALLOWED_HOSTS
 ```
@@ -162,8 +166,9 @@ LOGGING = {
 
 ```python
 # tests/test_hosts.py
-from django.test import TestCase, Client
+from django.test import TestCase, Client, override_settings
 
+@override_settings(ALLOWED_HOSTS=["[::1]", "[2001:db8::1]"])
 class IPv6HostHeaderTest(TestCase):
     def test_ipv6_loopback_allowed(self):
         c = Client()
@@ -183,4 +188,4 @@ class IPv6HostHeaderTest(TestCase):
 
 ## Conclusion
 
-Django's `ALLOWED_HOSTS` for IPv6 requires bracket notation: `"[2001:db8::1]"`. The dev server sends the host in bracket notation, while NGINX may strip brackets in `$host`. Use `parse_allowed_hosts()` to dynamically build the list from environment variables. Use OneUptime to continuously check that IPv6 endpoints return 200 and not 400 DisallowedHost errors.
+Django's `ALLOWED_HOSTS` for IPv6 requires bracket notation: `"[2001:db8::1]"`. The dev server and reverse proxies should forward the host Django will validate, so `ALLOWED_HOSTS` matches what Django receives. Use `parse_allowed_hosts()` to dynamically build the list from environment variables. Use OneUptime to continuously check that IPv6 endpoints return 200 and not 400 DisallowedHost errors.
