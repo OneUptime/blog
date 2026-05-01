@@ -56,7 +56,7 @@ VLAN: 10
 Gateway: 10.1.1.1
 DHCP: No (static only)
 DNS: 10.1.0.10, 10.1.0.11
-Usable range: 10.1.1.2 – 10.1.1.254
+Usable range: 10.1.1.2 – 10.1.1.253
 Reserved: 10.1.1.1 (gateway), 10.1.1.254 (reserved)
 Owner: Infrastructure Team
 Date Allocated: 2024-06-01
@@ -76,7 +76,7 @@ db-nyc-01     IN  A    10.1.1.60
 60            IN  PTR  db-nyc-01.prod.example.com.
 ```
 
-When DNS records match IPAM records, you have two independent sources of truth.
+When DNS records match IPAM records, you have two independent validation points for the same assignment.
 
 ## Documenting Reserved Ranges
 
