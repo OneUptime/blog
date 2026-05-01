@@ -21,30 +21,40 @@ services:
   terraria:
     image: ryshe/terraria:tshock-latest
     environment:
-      # World settings
-      - world=/root/.local/share/Terraria/Worlds/MyWorld.wld
-      - worldname=MyWorld
-      - worldsize=3      # 1=small, 2=medium, 3=large
-      - difficulty=0     # 0=classic, 1=expert, 2=master, 3=journey
-      - maxplayers=8
-      - port=7777
-      - password=your_join_password
-      - autocreate=3     # Auto-create if world doesn't exist (size)
+      - WORLD_FILENAME=MyWorld.wld
+      - CONFIGPATH=/config
+    command:
+      - -autocreate
+      - "3"               # 1=small, 2=medium, 3=large
+      - -worldname
+      - MyWorld
+      - -difficulty
+      - "0"               # 0=classic, 1=expert, 2=master, 3=journey
+      - -maxplayers
+      - "8"
+      - -port
+      - "7777"
+      - -password
+      - your_join_password
     volumes:
-      # Persistent world and TShock config
+      # Persistent world, plugins, and TShock config
       - terraria-worlds:/root/.local/share/Terraria/Worlds
-      - terraria-plugins:/plugins
+      - terraria-serverplugins:/tshock/ServerPlugins
       - terraria-config:/config
     ports:
-      - "7777:7777"    # Game port (TCP)
+      - "7777:7777/tcp"
+      - "7777:7777/udp"
     restart: unless-stopped
     tty: true
     stdin_open: true
 
 volumes:
   terraria-worlds:
-  terraria-plugins:
+    name: terraria-worlds
+  terraria-serverplugins:
+    name: terraria-serverplugins
   terraria-config:
+    name: terraria-config
 ```
 
 ## Step 2: Configure TShock
@@ -53,20 +63,22 @@ After first run, configure TShock at `/config/config.json`:
 
 ```json
 {
-  "ServerPassword": "your_join_password",
-  "ServerPort": 7777,
-  "MaxSlots": 8,
-  "DefaultRegistrationGroupName": "default",
-  "DefaultGuestGroupName": "guest",
-  "EnableGeoIP": false,
-  "DisplayIPToAdmins": false,
-  "EnableTokenEndpointAuthentication": false,
-  "RespawnSeconds": 5,
-  "MaxDamage": 1175,
-  "MaxProjDamage": 1175,
-  "SpawnProtection": true,
-  "SpawnProtectionRadius": 10,
-  "EnableWhitelist": false
+  "Settings": {
+    "ServerPassword": "your_join_password",
+    "ServerPort": 7777,
+    "MaxSlots": 8,
+    "DefaultRegistrationGroupName": "default",
+    "DefaultGuestGroupName": "guest",
+    "EnableGeoIP": false,
+    "DisplayIPToAdmins": false,
+    "EnableTokenEndpointAuthentication": false,
+    "RespawnSeconds": 5,
+    "MaxDamage": 1175,
+    "MaxProjDamage": 1175,
+    "SpawnProtection": true,
+    "SpawnProtectionRadius": 10,
+    "EnableWhitelist": false
+  }
 }
 ```
 
@@ -75,39 +87,38 @@ After first run, configure TShock at `/config/config.json`:
 The first time TShock runs, it outputs a setup code. Check the container logs in Portainer:
 
 ```text
-TShock Setup Code: 12345678
+To setup the server, join the game and type /setup 12345678
 ```
 
 Use this code in-game to become an admin:
 ```text
 /setup 12345678
-/user add adminname adminpassword superadmin
+/user add adminname adminpassword owner
+/login adminname adminpassword
+/setup
 ```
 
 ## Step 4: Install TShock Plugins
 
-Copy plugin DLLs to the mounted plugins directory:
+Copy plugin DLLs to the mounted `ServerPlugins` directory:
 
 ```bash
-# Download popular plugins to the mounted plugins directory
-cd /var/lib/docker/volumes/terraria-plugins/_data
+# Copy compatible plugin DLLs to the mounted ServerPlugins directory
+cd /var/lib/docker/volumes/terraria-serverplugins/_data
 
-# AutoRegister - automatically register new players
-wget https://github.com/nicatronTg/AutoRegister/releases/latest/download/AutoRegister.dll
-
-# Essentials - essential commands
-wget https://github.com/nicatronTg/EssentialsPlus/releases/latest/download/EssentialsPlus.dll
+cp /path/to/YourPlugin.dll .
+cp /path/to/AnotherPlugin.dll .
 ```
 
 Restart the container from Portainer to load the new plugins.
 
 ## Step 5: World Backups
 
-Use Portainer's volume backup or a scheduled script:
+Use a scheduled task on the Docker host:
 
 ```bash
 #!/bin/bash
-# terraria-backup.sh - run as a Portainer scheduled job
+# terraria-backup.sh - run as a cron job on the Docker host
 BACKUP_DIR=/opt/terraria/backups
 mkdir -p "$BACKUP_DIR"
 
@@ -115,7 +126,7 @@ mkdir -p "$BACKUP_DIR"
 docker run --rm \
   -v terraria-worlds:/worlds:ro \
   -v "$BACKUP_DIR":/backups \
-  alpine tar czf "/backups/terraria-$(date +%Y%m%d-%H%M%S).tar.gz" /worlds
+  alpine tar czf "/backups/terraria-$(date +%Y%m%d-%H%M%S).tar.gz" -C / worlds
 
 # Keep only the last 14 backups
 ls -t "$BACKUP_DIR"/*.tar.gz | tail -n +15 | xargs -r rm
