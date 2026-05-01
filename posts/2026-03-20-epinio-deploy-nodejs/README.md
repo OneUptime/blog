@@ -34,20 +34,6 @@ For this example, we'll create a simple web application:
 
 ```bash
 # Create main application file
-cat > app.sh << 'EOF'
-#!/bin/bash
-# Simple HTTP server for demonstration
-while true; do
-  echo -e "HTTP/1.1 200 OK\r\nContent-Type: text/plain\r\n\r\nHello from How to Deploy a Node.js Application with Epinio!" | nc -l -p ${PORT:-8080}
-done
-EOF
-chmod +x app.sh
-```
-
-For a language-specific example relevant to this guide:
-
-```bash
-# Node.js example
 cat > server.js << 'EOF'
 const http = require('http');
 const server = http.createServer((req, res) => {
@@ -70,8 +56,8 @@ EOF
 # Target the namespace for deployment
 epinio target my-apps
 
-# Verify namespace is active
-epinio namespace show my-apps
+# Verify the targeted namespace
+epinio target
 ```
 
 ## Step 4: Deploy the Application
@@ -104,21 +90,21 @@ epinio app show my-app
 # List all applications in namespace
 epinio app list
 
-# View the application route
-epinio app show my-app | grep Routes
+# View the application route in the Routes section
+epinio app show my-app
 ```
 
 ## Step 6: Test the Application
 
 ```bash
 # Get the application URL
-APP_URL=$(epinio app show my-app | grep Routes | awk '{print $2}')
+APP_URL=$(epinio app show my-app | awk '/Routes:/{getline; print $2}')
 
 # Test with curl
-curl ${APP_URL}
+curl "${APP_URL}"
 
-# Or open in browser
-open ${APP_URL}
+# Or open in browser on macOS
+open "${APP_URL}"
 ```
 
 ## Step 7: View Application Logs
@@ -128,7 +114,7 @@ open ${APP_URL}
 epinio app logs my-app
 
 # Follow live logs
-epinio app logs my-app --follow
+epinio app logs --follow my-app
 ```
 
 ## Step 8: Update the Application
@@ -138,7 +124,7 @@ epinio app logs my-app --follow
 # Then re-push to update
 epinio push --name my-app
 
-# Epinio performs a rolling update
+# Verify the updated deployment
 epinio app show my-app
 ```
 
