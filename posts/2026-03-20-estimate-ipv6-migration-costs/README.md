@@ -18,7 +18,7 @@ Equipment that cannot be upgraded via firmware to support IPv6 must be replaced:
 
 | Equipment Type | Typical Cost Driver | Notes |
 |---------------|---------------------|-------|
-| Edge routers | $2,000–$50,000/unit | Most equipment > 5 years old needs replacement |
+| Edge routers | $2,000–$50,000/unit | Older equipment is more likely to need replacement; verify vendor IPv6 support |
 | Core switches | $5,000–$100,000/unit | Verify IPv6 hardware forwarding support |
 | Firewalls | $3,000–$50,000/unit | NG firewalls typically support IPv6 |
 | Load balancers | $5,000–$30,000/unit | Check IPv6 VIP and health check support |
@@ -56,7 +56,7 @@ print(f"{'TOTAL':<30} {'':>5} ${total_low:>11,} ${total_high:>11,}")
 
 app_changes = [
     # (service, hours_estimate, hourly_rate)
-    ("API server: bind to :: instead of 0.0.0.0", 8, 150),
+    ("API server: enable IPv6/dual-stack listener configuration", 8, 150),
     ("Auth service: IPv4 hardcoding removal", 40, 150),
     ("Frontend: handle IPv6 in X-Forwarded-For", 16, 150),
     ("Database connection strings: IPv6 support", 8, 150),
@@ -83,7 +83,7 @@ print(f"\n  Total Development: ${total_dev:,}")
 | Infoblox | $20,000–200,000/year depending on scale |
 | phpIPAM (open source) | $0 license + $2,000–5,000 deployment |
 | DNS zone records (AAAA) | $2,000–10,000 one-time engineer time |
-| PTR records for IPv6 | $3,000–8,000 (more complex than IPv4) |
+| PTR records for IPv6 | $3,000–8,000 (nibble-format `ip6.arpa` naming/delegation adds engineer time) |
 
 ### 4. Training
 
