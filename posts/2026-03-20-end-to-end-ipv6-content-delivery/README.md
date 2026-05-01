@@ -6,7 +6,7 @@ Tags: IPv6, CDN, DNS, Origin, End-to-End, Content Delivery
 
 Description: A guide to setting up a complete end-to-end IPv6 content delivery pipeline from DNS resolution through CDN edge to origin server, ensuring IPv6 connectivity at every layer.
 
-End-to-end IPv6 content delivery means every hop in the request chain supports IPv6: the DNS resolver returns AAAA records, the CDN edge accepts IPv6 connections, and the CDN connects to the origin over IPv6. This guide walks through the complete setup.
+End-to-end IPv6 content delivery means every hop in the request chain supports IPv6: the DNS resolver returns AAAA records, the CDN edge accepts IPv6 connections, and the CDN is configured to connect to the origin over IPv6. This guide walks through the complete setup.
 
 ## Architecture Overview
 
@@ -14,7 +14,7 @@ End-to-end IPv6 content delivery means every hop in the request chain supports I
 Client (IPv6)
     ↓ DNS AAAA query
 Recursive Resolver (IPv6 capable)
-    ↓ Returns 2001:db8::cdn AAAA
+    ↓ Returns 2001:db8::100 AAAA
 CDN Edge (IPv6 listener)
     ↓ Connect to origin via IPv6
 Origin Server (IPv6 enabled)
@@ -24,8 +24,9 @@ Origin Server (IPv6 enabled)
 
 ```bash
 # Ensure origin has an IPv6 address
+# Replace eth0 if your origin uses a different interface
 
-ip -6 addr show eth0
+ip -6 addr show dev eth0
 # Must show a global unicast address (2001: or similar)
 
 # Configure nginx to listen on IPv6
@@ -65,12 +66,14 @@ nslookup -type=AAAA origin.example.com
 ### Cloudflare
 
 ```bash
-# Cloudflare connects to origin via IPv6 when AAAA exists
-# Set origin in Cloudflare Dashboard:
-# Name: origin.example.com (has both A and AAAA record)
-# Cloudflare auto-selects IPv6 if available
-
-# Verify in Cloudflare: Network tab → show 'Resolved via IPv6'
+# Cloudflare's IPv6 Compatibility enables IPv6 from clients to Cloudflare's edge.
+# For proxied records that have both IPv4 and IPv6 origin addresses,
+# Cloudflare prefers IPv4 when connecting to the origin.
+# If you need the origin leg to stay on IPv6, use an origin hostname that resolves only to AAAA.
+#
+# Verify:
+# - Network -> IPv6 Compatibility is enabled
+# - dig AAAA example.com returns Cloudflare anycast AAAA records
 ```
 
 ### AWS CloudFront
@@ -81,17 +84,43 @@ resource "aws_cloudfront_distribution" "ipv6_e2e" {
   is_ipv6_enabled = true    # Accept IPv6 from clients
 
   origin {
-    # Hostname with AAAA record - CloudFront connects via IPv6
+    # Hostname with AAAA record - set ip_address_type to control origin connectivity
     domain_name = "origin.example.com"
     origin_id   = "IPv6Origin"
 
     custom_origin_config {
-      http_port  = 80
-      https_port = 443
+      http_port              = 80
+      https_port             = 443
+      ip_address_type        = "ipv6" # Use "dualstack" if the origin publishes both A and AAAA
       origin_protocol_policy = "https-only"
+      origin_ssl_protocols   = ["TLSv1.2"]
     }
   }
-  ...
+
+  default_cache_behavior {
+    allowed_methods        = ["GET", "HEAD"]
+    cached_methods         = ["GET", "HEAD"]
+    target_origin_id       = "IPv6Origin"
+    viewer_protocol_policy = "redirect-to-https"
+
+    forwarded_values {
+      query_string = false
+
+      cookies {
+        forward = "none"
+      }
+    }
+  }
+
+  restrictions {
+    geo_restriction {
+      restriction_type = "none"
+    }
+  }
+
+  viewer_certificate {
+    cloudfront_default_certificate = true
+  }
 }
 ```
 
@@ -104,56 +133,43 @@ resource "fastly_service_vcl" "ipv6_e2e" {
   domain { name = "cdn.example.com" }
 
   backend {
-    # Origin with IPv6 - Fastly connects via IPv6 automatically
+    # Prefer IPv6 when the hostname resolves to both A and AAAA
     address = "origin.example.com"
-    name    = "ipv6_origin"
-    port    = 443
-    use_ssl = true
+    name        = "ipv6_origin"
+    port        = 443
+    use_ssl     = true
+    prefer_ipv6 = true
   }
-  ...
 }
 ```
 
 ## Step 4: CDN Edge IPv6 DNS Records
 
 ```bash
-# CDN automatically provides AAAA for your CDN hostname
-# After pointing cdn.example.com to your CDN:
+# Check that the hostname you published for the CDN resolves to AAAA:
+# - Cloudflare proxied records return Cloudflare anycast AAAA when IPv6 Compatibility is on
+# - CloudFront returns AAAA when is_ipv6_enabled = true
+# - Fastly requires a dualstack hostname or an IPv6-enabled customer-specific hostname
 
 dig AAAA cdn.example.com
-# Cloudflare: 2606:4700::xxxx
-# CloudFront: 2600:9000::xxxx
-# Fastly: 2a04:4e40::xxxx
+# Should return provider-assigned IPv6 anycast addresses
 ```
 
 ## Step 5: Your Domain's DNS Records
 
 ```hcl
-# DNS records: both A and AAAA pointing to CDN
-resource "cloudflare_record" "a" {
-  zone_id = var.zone_id
-  name    = "@"
-  type    = "A"
-  value   = "203.0.113.cdn"  # CDN IPv4
-  proxied = true
-}
-
-resource "cloudflare_record" "aaaa" {
-  zone_id = var.zone_id
-  name    = "@"
-  type    = "AAAA"
-  value   = "2001:db8::cdn"  # CDN IPv6
-  proxied = true
-}
-
-# Or use CNAME to CDN (CDN provides both A and AAAA)
-resource "cloudflare_record" "cname" {
+# Point your public hostname at the CDN hostname instead of hard-coding CDN IPs
+resource "cloudflare_dns_record" "cdn" {
   zone_id = var.zone_id
   name    = "cdn"
   type    = "CNAME"
-  value   = "xxxx.cloudfront.net"
+  content = "d111111abcdef8.cloudfront.net"
   proxied = false
+  ttl     = 1
 }
+
+# At the zone apex, use your DNS provider's ALIAS/ANAME/CNAME-flattening feature
+# instead of hard-coding CDN IPv4 or IPv6 addresses.
 ```
 
 ## Verification: Test End-to-End IPv6
@@ -175,9 +191,12 @@ curl -6 https://example.com/ -D -
 # CloudFront: X-Amz-Cf-Id header
 # Fastly: X-Served-By header
 
-# 4. Verify CDN connects to origin via IPv6
-# Check origin access logs - CDN should connect from IPv6 address
-tail -f /var/log/nginx/access.log | grep "::"
+# 4. Verify how the CDN connects to the origin
+# Check the source address in origin access logs.
+# With CloudFront ip_address_type = "ipv6" (or Fastly prefer_ipv6 = true),
+# the CDN-to-origin source address can appear as IPv6.
+# Cloudflare may still use IPv4 for dual-stack proxied origins.
+tail -f /var/log/nginx/access.log | awk '{print $1}'
 
 # 5. Performance: measure IPv6 connection latency
 curl -6 -w "DNS: %{time_namelookup}s, Connect: %{time_connect}s, TTFB: %{time_starttransfer}s\n" \
@@ -195,4 +214,4 @@ curl -6 -w "DNS: %{time_namelookup}s, Connect: %{time_connect}s, TTFB: %{time_st
 | Client | Gets AAAA? | `dig AAAA example.com` |
 | E2E | Connection via IPv6? | `curl -6 -v https://example.com` |
 
-End-to-end IPv6 content delivery requires IPv6 at every layer - origin server, CDN edge, and DNS - but once properly configured, provides optimal latency for IPv6 clients by leveraging native IPv6 routing across the entire path.
+End-to-end IPv6 content delivery requires IPv6 at every layer - origin server, CDN edge, and DNS - and some providers require explicit settings on the origin leg. Once properly configured, it provides optimal latency for IPv6 clients by leveraging native IPv6 routing across the entire path.
