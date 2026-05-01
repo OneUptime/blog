@@ -55,17 +55,6 @@ resource "aws_ecs_service" "frontend" {
     enabled   = true
     namespace = aws_service_discovery_http_namespace.main.arn
 
-    # The frontend exposes its own endpoint
-    service {
-      port_name      = "http"
-      discovery_name = "frontend"
-
-      client_alias {
-        port     = 80
-        dns_name = "frontend"
-      }
-    }
-
     log_configuration {
       log_driver = "awslogs"
       options = {
@@ -99,7 +88,7 @@ resource "aws_ecs_service" "payments" {
 
     service {
       port_name      = "http"
-      discovery_name = "payments"  # other services call http://payments
+      discovery_name = "payments"  # other services call http://payments:8080
 
       client_alias {
         port     = 8080
