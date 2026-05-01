@@ -12,7 +12,7 @@ How to Deploy Prometheus Stack on Rancher on Rancher gives your team a productio
 
 ## Prerequisites
 
-- Rancher v2.7+ cluster
+- Rancher v2.7+ managing a Kubernetes 1.25+ cluster
 - Helm 3.x
 - Persistent storage (Longhorn)
 - Ingress controller (nginx)
@@ -31,28 +31,36 @@ kubectl annotate namespace prometheus-stack   field.cattle.io/projectId=YOUR_PRO
 ## Step 2: Install with Helm
 
 ```bash
-helm repo add bitnami https://charts.bitnami.com/bitnami
+helm repo add prometheus-community https://prometheus-community.github.io/helm-charts
 helm repo update
 
-helm install prometheus-stack bitnami/prometheus-stack   --namespace prometheus-stack   --set persistence.enabled=true   --set persistence.storageClass=longhorn   --set ingress.enabled=true   --set ingress.hostname=prometheus-stack.example.com   --set ingress.tls=true   --wait
+helm install prometheus-stack prometheus-community/kube-prometheus-stack   --namespace prometheus-stack   -f prometheus-stack-values.yaml   --wait
 ```
 
-## Step 3: Configure Storage
+## Step 3: Configure Values
 
 ```yaml
-# prometheus-stack-pvc.yaml
-apiVersion: v1
-kind: PersistentVolumeClaim
-metadata:
-  name: prometheus-stack-data
-  namespace: prometheus-stack
-spec:
-  accessModes:
-  - ReadWriteOnce
-  resources:
-    requests:
-      storage: 50Gi
-  storageClassName: longhorn
+# prometheus-stack-values.yaml
+prometheus:
+  prometheusSpec:
+    storageSpec:
+      volumeClaimTemplate:
+        spec:
+          storageClassName: longhorn
+          accessModes:
+          - ReadWriteOnce
+          resources:
+            requests:
+              storage: 50Gi
+  ingress:
+    enabled: true
+    ingressClassName: nginx
+    hosts:
+    - prometheus-stack.example.com
+    tls:
+    - secretName: prometheus-stack-tls-secret
+      hosts:
+      - prometheus-stack.example.com
 ```
 
 ## Step 4: Configure TLS Certificate
@@ -91,58 +99,29 @@ spec:
     persistentvolumeclaims: "5"
 ```
 
-## Step 6: Set Up Monitoring
+## Step 6: Verify Monitoring
 
 ```bash
-# Check if metrics endpoint is available
-kubectl exec -n prometheus-stack   $(kubectl get pods -n prometheus-stack -o name | head -1)   -- curl -s http://localhost:9090/metrics | head -20
-
-# Create ServiceMonitor
-kubectl apply -f - << SMEOF
-apiVersion: monitoring.coreos.com/v1
-kind: ServiceMonitor
-metadata:
-  name: prometheus-stack-monitor
-  namespace: prometheus-stack
-  labels:
-    release: prometheus
-spec:
-  selector:
-    matchLabels:
-      app.kubernetes.io/name: prometheus-stack
-  endpoints:
-  - port: http
-    path: /metrics
-    interval: 60s
-SMEOF
+# Verify the Prometheus custom resource and built-in ServiceMonitors
+kubectl get prometheus -n prometheus-stack
+kubectl get servicemonitors -n prometheus-stack
 ```
 
 ## Step 7: Configure Backup Policy
 
 ```yaml
-# Backup using Velero or custom CronJob
-apiVersion: batch/v1
-kind: CronJob
+# Requires Velero to be installed with volume snapshots configured
+apiVersion: velero.io/v1
+kind: Schedule
 metadata:
   name: prometheus-stack-backup
-  namespace: prometheus-stack
+  namespace: velero
 spec:
   schedule: "0 3 * * *"
-  jobTemplate:
-    spec:
-      template:
-        spec:
-          serviceAccountName: backup-sa
-          containers:
-          - name: backup
-            image: bitnami/kubectl:latest
-            command:
-            - sh
-            - -c
-            - |
-              echo "Creating prometheus-stack backup..."
-              kubectl exec -n prometheus-stack                 $(kubectl get pod -n prometheus-stack -l app.kubernetes.io/name=prometheus-stack -o name | head -1)                 -- /opt/bitnami/scripts/prometheus-stack/entrypoint.sh prometheus-stack-backup
-          restartPolicy: OnFailure
+  template:
+    includedNamespaces:
+    - prometheus-stack
+    snapshotVolumes: true
 ```
 
 ## Step 8: Test the Deployment
@@ -154,11 +133,12 @@ kubectl get pods -n prometheus-stack
 # Check ingress
 kubectl get ingress -n prometheus-stack
 
-# Test HTTP response
-curl -L https://prometheus-stack.example.com/
+# Test readiness endpoint
+curl -L https://prometheus-stack.example.com/-/ready
 
 # View application logs
-kubectl logs -n prometheus-stack   $(kubectl get pods -n prometheus-stack -l app.kubernetes.io/name=prometheus-stack -o name | head -1)   --tail=50
+POD_NAME=$(kubectl get pods -n prometheus-stack -l app.kubernetes.io/instance=prometheus-stack -o jsonpath='{.items[0].metadata.name}')
+kubectl logs -n prometheus-stack "$POD_NAME" --tail=50
 ```
 
 ## Upgrading
@@ -166,10 +146,11 @@ kubectl logs -n prometheus-stack   $(kubectl get pods -n prometheus-stack -l app
 ```bash
 # Upgrade to latest version
 helm repo update
-helm upgrade prometheus-stack bitnami/prometheus-stack   --namespace prometheus-stack   --reuse-values
+helm upgrade prometheus-stack prometheus-community/kube-prometheus-stack   --namespace prometheus-stack   --reuse-values   --wait
 
 # Check upgrade status
-kubectl rollout status deployment/prometheus-stack -n prometheus-stack
+helm status prometheus-stack -n prometheus-stack
+kubectl get pods -n prometheus-stack
 ```
 
 ## Conclusion
