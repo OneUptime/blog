@@ -15,10 +15,10 @@ ECS Exec allows you to run interactive commands directly inside running ECS cont
 ## How ECS Exec Works
 
 ```text
-Developer → AWS CLI → SSM Session Manager → ECS Agent → Container
+Developer → AWS CLI → SSM Session Manager → ECS/Fargate Agent → Container
 ```
 
-ECS Exec uses SSM to create a secure channel to the container without any inbound network access. The ECS task requires an IAM role with SSM permissions.
+ECS Exec uses SSM to create a secure channel to the container without any inbound network access. The ECS task uses its task IAM role for the required SSM permissions.
 
 ---
 
@@ -56,6 +56,17 @@ resource "aws_iam_role_policy" "ecs_exec" {
           "ssmmessages:OpenDataChannel"
         ]
         Resource = "*"
+      },
+      # Required only if you use OVERRIDE logging later in this guide
+      {
+        Effect = "Allow"
+        Action = [
+          "logs:DescribeLogGroups",
+          "logs:CreateLogStream",
+          "logs:DescribeLogStreams",
+          "logs:PutLogEvents"
+        ]
+        Resource = "*"
       }
     ]
   })
@@ -88,8 +99,7 @@ resource "aws_ecs_task_definition" "app" {
       essential = true
       portMappings = [{ containerPort = 80 }]
 
-      # Required: enable pseudo-terminal for interactive sessions
-      pseudoTerminal    = true
+      # Recommended: clean up zombie SSM agent child processes
       linuxParameters = {
         initProcessEnabled = true
       }
@@ -120,6 +130,8 @@ resource "aws_ecs_service" "app" {
 ## Step 3: Execute Commands in the Container
 
 ```bash
+# Prereq: AWS CLI v2.3.6+ (or v1.22.3+) and the Session Manager plugin installed locally
+
 # Get the task ARN
 CLUSTER="app-cluster"
 TASK_ARN=$(aws ecs list-tasks --cluster $CLUSTER \
@@ -140,33 +152,24 @@ aws ecs execute-command \
   --task $TASK_ARN \
   --container app \
   --interactive \
-  --command "/bin/bash"
+  --command "/bin/sh"
 
-# Run a one-off command (non-interactive)
+# Run a single command
 aws ecs execute-command \
   --cluster $CLUSTER \
   --task $TASK_ARN \
   --container app \
   --interactive \
-  --command "ps aux"
+  --command "cat /etc/os-release"
 ```
 
 ---
 
-## VPC Endpoint for SSM (Private Subnets)
+## VPC Endpoint for ECS Exec (Private Subnets)
 
-For tasks in private subnets without NAT gateway, add VPC endpoints:
+For tasks in private subnets without a NAT gateway, add the `ssmmessages` interface VPC endpoint. If you use a customer-managed KMS key for ECS Exec encryption, add a `kms` endpoint too.
 
 ```hcl
-resource "aws_vpc_endpoint" "ssm" {
-  vpc_id              = data.aws_vpc.main.id
-  service_name        = "com.amazonaws.us-east-1.ssm"
-  vpc_endpoint_type   = "Interface"
-  subnet_ids          = data.aws_subnets.private.ids
-  security_group_ids  = [aws_security_group.vpc_endpoints.id]
-  private_dns_enabled = true
-}
-
 resource "aws_vpc_endpoint" "ssmmessages" {
   vpc_id              = data.aws_vpc.main.id
   service_name        = "com.amazonaws.us-east-1.ssmmessages"
@@ -181,7 +184,15 @@ resource "aws_vpc_endpoint" "ssmmessages" {
 
 ## Audit Logging for ECS Exec Sessions
 
+For `OVERRIDE` logging, the container image must include `script` and `cat`.
+
 ```hcl
+resource "aws_cloudwatch_log_group" "exec_audit" {
+  name              = "/ecs/exec-audit"
+  retention_in_days = 90
+}
+
+# Update your existing cluster resource to add ECS Exec audit logging
 resource "aws_ecs_cluster" "main" {
   name = "app-cluster"
 
@@ -190,17 +201,10 @@ resource "aws_ecs_cluster" "main" {
       logging = "OVERRIDE"
 
       log_configuration {
-        cloud_watch_log_group_name = "/ecs/exec-audit"
-        s3_bucket_name             = aws_s3_bucket.exec_logs.bucket
-        s3_key_prefix              = "exec-logs/"
+        cloud_watch_log_group_name = aws_cloudwatch_log_group.exec_audit.name
       }
     }
   }
-}
-
-resource "aws_cloudwatch_log_group" "exec_audit" {
-  name              = "/ecs/exec-audit"
-  retention_in_days = 90
 }
 ```
 
@@ -210,14 +214,15 @@ resource "aws_cloudwatch_log_group" "exec_audit" {
 
 ```bash
 # Error: "execute command failed... The execute command requires SSM"
-# Fix: Ensure task role has ssmmessages:* permissions
+# Fix: Ensure the task role has the required ssmmessages permissions and
+# that the task can reach the ssmmessages endpoint
 
-# Check SSM agent status in task
+# Check ExecuteCommandAgent status in the task
 aws ecs describe-tasks --cluster app-cluster --tasks $TASK_ARN \
-  --query 'tasks[0].containers[0].managedAgents'
+  --query 'tasks[0].containers[0].managedAgents[?name==`ExecuteCommandAgent`]'
 
-# Error: "InvalidParameterException: Container does not support exec"
-# Fix: Add initProcessEnabled = true to container linux parameters
+# ECS Exec only applies to new tasks
+# Fix: force a new deployment after enabling execute command on a service
 
 # Check ECS Exec is enabled on service
 aws ecs describe-services --cluster app-cluster --services app-service \
@@ -232,13 +237,13 @@ aws ecs describe-services --cluster app-cluster --services app-service \
 2. **Enable audit logging** to S3/CloudWatch for compliance and security review
 3. **Use initProcessEnabled** to prevent zombie processes in the container
 4. **Disable in production** for highly sensitive workloads - use only for debugging
-5. **Use non-interactive commands** (`--command "ps aux"`) for quick diagnostics without shell access
+5. **Use single-command execs** (`--command "cat /etc/os-release"`) for quick diagnostics without opening a full shell
 
 ---
 
 ## Conclusion
 
-ECS Exec provides a secure, auditability-first approach to container debugging. Enable it in your OpenTofu service configuration, add the required IAM permissions, and use `aws ecs execute-command` to troubleshoot running containers without any network exposure.
+ECS Exec provides a secure, auditability-first approach to container debugging. Enable it in your OpenTofu service configuration, add the required IAM permissions, and use `aws ecs execute-command` to troubleshoot running containers without opening inbound ports.
 
 ---
 
