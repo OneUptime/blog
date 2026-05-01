@@ -30,37 +30,40 @@ mkdir my-app && cd my-app
 
 ## Step 2: Create the Application
 
-For this example, we'll create a simple web application:
+For this example, we'll create a simple Flask web application:
 
 ```bash
 # Create main application file
-cat > app.sh << 'EOF'
-#!/bin/bash
-# Simple HTTP server for demonstration
-while true; do
-  echo -e "HTTP/1.1 200 OK\r\nContent-Type: text/plain\r\n\r\nHello from How to Deploy a Python Application with Epinio!" | nc -l -p ${PORT:-8080}
-done
+cat > app.py << 'EOF'
+import os
+
+from flask import Flask
+
+app = Flask(__name__)
+
+
+@app.route("/")
+def hello():
+    return {
+        "message": "Application deployed via Epinio",
+        "platform": "Epinio",
+    }
+
+
+if __name__ == "__main__":
+    app.run(host="0.0.0.0", port=int(os.environ.get("PORT", 8080)))
 EOF
-chmod +x app.sh
 ```
 
-For a language-specific example relevant to this guide:
+Add the Python dependencies and a Procfile so Epinio can install Flask and start the app correctly:
 
 ```bash
-# Node.js example
-cat > server.js << 'EOF'
-const http = require('http');
-const server = http.createServer((req, res) => {
-  res.writeHead(200, {'Content-Type': 'application/json'});
-  res.end(JSON.stringify({
-    message: 'Application deployed via Epinio',
-    runtime: process.version,
-    timestamp: new Date().toISOString()
-  }));
-});
-server.listen(process.env.PORT || 8080, () => {
-  console.log('Server started');
-});
+cat > requirements.txt << 'EOF'
+Flask
+EOF
+
+cat > Procfile << 'EOF'
+web: python app.py
 EOF
 ```
 
@@ -104,21 +107,21 @@ epinio app show my-app
 # List all applications in namespace
 epinio app list
 
-# View the application route
-epinio app show my-app | grep Routes
+# View the first application route
+epinio app show my-app | awk '/Routes:/{getline; print $2}'
 ```
 
 ## Step 6: Test the Application
 
 ```bash
 # Get the application URL
-APP_URL=$(epinio app show my-app | grep Routes | awk '{print $2}')
+APP_URL=$(epinio app show my-app | awk '/Routes:/{getline; print $2}')
 
 # Test with curl
-curl ${APP_URL}
+curl "$APP_URL"
 
-# Or open in browser
-open ${APP_URL}
+# Or open the URL in your browser
+python3 -m webbrowser "$APP_URL"
 ```
 
 ## Step 7: View Application Logs
