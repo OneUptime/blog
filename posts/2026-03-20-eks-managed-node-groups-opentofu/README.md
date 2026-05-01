@@ -8,13 +8,13 @@ Description: Learn how to create EKS Managed Node Groups with custom instance ty
 
 ## Introduction
 
-EKS Managed Node Groups automate the provisioning and lifecycle management of EC2 nodes in your EKS cluster. AWS handles node patching, draining, and replacement while you retain control over instance types, scaling, and configuration via launch templates.
+EKS Managed Node Groups automate the provisioning and lifecycle management of EC2 nodes in your EKS cluster. AWS handles node draining and replacement, and manages node updates when you update the node group, while you retain control over instance types, scaling, and configuration via launch templates.
 
 ## Prerequisites
 
 - OpenTofu v1.6+
 - An existing EKS cluster
-- AWS credentials with EKS and EC2 permissions
+- AWS credentials with EKS, EC2, and IAM permissions
 
 ## Step 1: Create the Node Group IAM Role
 
@@ -32,11 +32,16 @@ resource "aws_iam_role" "node_group" {
   })
 }
 
-# Required policies for EKS worker nodes
+# Base policies for EKS worker nodes in a simple IPv4 setup
 
 resource "aws_iam_role_policy_attachment" "worker_node" {
   role       = aws_iam_role.node_group.name
   policy_arn = "arn:aws:iam::aws:policy/AmazonEKSWorkerNodePolicy"
+}
+
+resource "aws_iam_role_policy_attachment" "ecr_pull_only" {
+  role       = aws_iam_role.node_group.name
+  policy_arn = "arn:aws:iam::aws:policy/AmazonEC2ContainerRegistryPullOnly"
 }
 
 resource "aws_iam_role_policy_attachment" "cni_policy" {
@@ -44,11 +49,7 @@ resource "aws_iam_role_policy_attachment" "cni_policy" {
   policy_arn = "arn:aws:iam::aws:policy/AmazonEKS_CNI_Policy"
 }
 
-resource "aws_iam_role_policy_attachment" "ecr_readonly" {
-  role       = aws_iam_role.node_group.name
-  policy_arn = "arn:aws:iam::aws:policy/AmazonEC2ContainerRegistryReadOnly"
-}
-
+# Optional: allow Session Manager access to the nodes.
 resource "aws_iam_role_policy_attachment" "ssm" {
   role       = aws_iam_role.node_group.name
   policy_arn = "arn:aws:iam::aws:policy/AmazonSSMManagedInstanceCore"
@@ -127,6 +128,12 @@ resource "aws_eks_node_group" "general" {
   tags = {
     Name = "${var.cluster_name}-general-ng"
   }
+
+  depends_on = [
+    aws_iam_role_policy_attachment.worker_node,
+    aws_iam_role_policy_attachment.cni_policy,
+    aws_iam_role_policy_attachment.ecr_pull_only,
+  ]
 }
 
 # Spot node group for cost-optimized batch workloads
@@ -163,6 +170,12 @@ resource "aws_eks_node_group" "spot" {
   tags = {
     Name = "${var.cluster_name}-spot-ng"
   }
+
+  depends_on = [
+    aws_iam_role_policy_attachment.worker_node,
+    aws_iam_role_policy_attachment.cni_policy,
+    aws_iam_role_policy_attachment.ecr_pull_only,
+  ]
 }
 ```
 
