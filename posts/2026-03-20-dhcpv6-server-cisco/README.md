@@ -37,13 +37,13 @@ ipv6 dhcp pool CLIENTS
  address prefix 2001:db8:1::/64 lifetime 86400 43200
  dns-server 2001:db8:ff::53
  domain-name corp.example.com
- import all
 
 ! Apply the pool to the client-facing interface
 interface GigabitEthernet0/1
  ipv6 address 2001:db8:1::1/64
  ipv6 dhcp server CLIENTS
- ! M=1 O=1 in RA - tells clients to use DHCPv6
+ ipv6 nd prefix default 1800 1800 no-autoconfig
+ ! Disable SLAAC address creation and advertise DHCPv6 state/options
  ipv6 nd managed-config-flag
  ipv6 nd other-config-flag
 ```
@@ -69,7 +69,7 @@ interface GigabitEthernet0/1
 ## DHCPv6 Prefix Delegation
 
 ```cisco
-! Pool for delegating /56 prefixes from a /32 block
+! Pool for delegating /56 prefixes from a /40 block
 ipv6 dhcp pool PD-POOL
  prefix-delegation pool DELEGATED-PREFIXES lifetime 86400 43200
  dns-server 2001:db8:ff::53
@@ -83,26 +83,27 @@ interface GigabitEthernet0/0
 
 ---
 
-## Address Exclusions
+## Reserved Infrastructure Addresses
 
 ```cisco
 ipv6 dhcp pool CLIENTS
  address prefix 2001:db8:1::/64 lifetime 86400 43200
  dns-server 2001:db8:ff::53
 
-! Exclude specific addresses from the pool
-! (Add static assignments for reserved IPs separately)
+! Cisco IOS DHCPv6 does not have an IPv4-style excluded-address command.
+! Reserve infrastructure addresses with static IPv6 assignments instead of
+! relying on DHCPv6 to keep specific individual addresses free.
 ```
 
 ---
 
-## Static Host Reservations
+## Static Prefix Delegation Reservations
 
 ```cisco
-ipv6 dhcp pool CLIENTS
- host 2001:db8:1::10/128
-  duid 0001000128abc123001122334455
-  address 2001:db8:1::10 infinite infinite
+ipv6 dhcp pool PD-POOL
+ ! Reserve a delegated prefix for a specific downstream router DUID
+ prefix-delegation 2001:db8:100:10::/56 0001000128abc123001122334455
+ dns-server 2001:db8:ff::53
 ```
 
 ---
@@ -119,8 +120,8 @@ show ipv6 dhcp pool
 ! Show interface DHCPv6 configuration
 show ipv6 dhcp interface GigabitEthernet0/1
 
-! Show DHCPv6 statistics (messages sent/received)
-show ipv6 dhcp statistics
+! Show the router's DHCPv6 DUID
+show ipv6 dhcp
 
 ! Show conflicts
 show ipv6 dhcp conflict
@@ -141,9 +142,9 @@ Client: FE80::211:22FF:FE33:4455
   Username : unassigned
   VRF : default
   Interface: GigabitEthernet0/1
-  IA NA: IA ID 0x00000001, T1 43200, T2 69120
-    Address: 2001:DB8:1::A
-            preferred lifetime 86400, valid lifetime 86400
+  IA NA: IA ID 0x00000001, T1 21600, T2 34560
+    Address: 2001:DB8:1::D9F7:61C:D803:DCF1
+            preferred lifetime 43200, valid lifetime 86400
             expires at Mar 21 2026 10:00:00
 ```
 
@@ -155,23 +156,23 @@ Client: FE80::211:22FF:FE33:4455
 ! Check if DHCPv6 is listening on the interface
 show ipv6 dhcp interface
 
-! Check RA flags
-show ipv6 interface GigabitEthernet0/1 | include managed
+! Check RA flags and prefix advertisement behavior
+show ipv6 interface GigabitEthernet0/1
 
 ! Clear a specific binding
-clear ipv6 dhcp binding 2001:db8:1::A
+clear ipv6 dhcp binding FE80::211:22FF:FE33:4455
 
 ! Clear all bindings (use with caution)
-clear ipv6 dhcp binding *
+clear ipv6 dhcp binding
 ```
 
 ---
 
 ## Best Practices
 
-1. **Always set RA flags** - `managed-config-flag` for stateful, `other-config-flag` for stateless
-2. **Set appropriate lifetimes** - T1 = 50% of valid lifetime, T2 = 80%
-3. **Use address exclusions** for routers, servers with static addresses
+1. **Set RA behavior appropriately** - use `managed-config-flag` for stateful DHCPv6, `other-config-flag` for stateless DHCPv6, and disable SLAAC address creation for stateful deployments with `ipv6 nd prefix ... no-autoconfig`
+2. **Set appropriate lifetimes** - T1 = 50% of preferred lifetime, T2 = 80% of preferred lifetime
+3. **Use static IPv6 assignments for infrastructure devices** because Cisco IOS DHCPv6 address pools are prefix-based rather than IPv4-style start/end ranges
 4. **Monitor bindings** regularly to detect address exhaustion
 5. **Enable logging** for DHCPv6 events on production routers
 
@@ -179,7 +180,7 @@ clear ipv6 dhcp binding *
 
 ## Conclusion
 
-Cisco IOS provides a full-featured DHCPv6 server capable of stateful address assignment, stateless option delivery, and prefix delegation. Configure the pool, apply it to the interface with correct RA flags, and use `show ipv6 dhcp binding` to verify client assignments.
+Cisco IOS provides a full-featured DHCPv6 server capable of stateful address assignment, stateless option delivery, and prefix delegation. Configure the pool, apply it to the interface with correct RA flags and prefix advertisement behavior, and use `show ipv6 dhcp binding` to verify client assignments.
 
 ---
 
