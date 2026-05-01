@@ -13,7 +13,7 @@ import ipaddress
 
 net = ipaddress.IPv4Network("192.168.1.0/24")
 
-# .hosts() yields all addresses except network and broadcast
+# For a /24, .hosts() yields all usable addresses except network and broadcast
 
 for host in net.hosts():
     print(host)
@@ -120,4 +120,4 @@ def scan_subnet(cidr: str, workers: int = 64) -> list[str]:
 
 ## Conclusion
 
-`IPv4Network.hosts()` returns a lazy iterator over usable addresses (excluding network and broadcast), making it safe for large subnets like `/16` or `/8`. Iterating directly over the network object includes all addresses including network and broadcast. For subnet scans, combine `hosts()` with `concurrent.futures.ThreadPoolExecutor` to probe many hosts in parallel without blocking. Always use `strict=False` when constructing networks from interface addresses that may have host bits set.
+`IPv4Network.hosts()` returns a lazy iterator over usable addresses. In typical IPv4 subnets it excludes the network and broadcast addresses, while `/31` includes both addresses and `/32` returns the single host. Iterating directly over the network object includes all addresses including network and broadcast. For subnet scans, combine `hosts()` with `concurrent.futures.ThreadPoolExecutor` to probe many hosts in parallel. Use `strict=False` when constructing networks from interface addresses that may have host bits set.
