@@ -17,41 +17,46 @@ Navigate to **Stacks > Add Stack** in Portainer and use the following configurat
 ```yaml
 version: "3.8"
 services:
-  app:
-    image: wekan-kanban
-    environment:
-      - DATABASE_URL=postgres://app:password@postgres:5432/appdb
+  wekandb:
+    image: mongo:7
+    container_name: wekan-db
+    command: >-
+      sh -c 'mongod --oplogSize 128 --replSet rs0 --bind_ip_all --quiet & until mongosh --host 127.0.0.1 --quiet --eval "try { const status = rs.status(); quit(status.ok === 1 ? 0 : 1); } catch (e) { if (e.codeName === \"NotYetInitialized\" || e.message.includes(\"no replset config has been received\") || e.message.includes(\"not yet initialized\")) { rs.initiate({ _id: \"rs0\", members: [{ _id: 0, host: \"wekandb:27017\" }] }); quit(1); } quit(1); }" >/dev/null 2>&1; do sleep 2; done; wait'
     volumes:
-      - app-data:/app/data
+      - wekan-db:/data/db
+    healthcheck:
+      test: ["CMD-SHELL", "mongosh --host 127.0.0.1 --quiet --eval 'quit(rs.status().ok === 1 ? 0 : 1)'"]
+      interval: 10s
+      timeout: 5s
+      retries: 10
+    restart: unless-stopped
+    networks:
+      - app-net
+
+  wekan:
+    image: ghcr.io/wekan/wekan:latest
+    container_name: wekan-app
+    environment:
+      - WRITABLE_PATH=/data
+      - MONGO_URL=mongodb://wekandb:27017/wekan
+      - MONGO_OPLOG_URL=mongodb://wekandb:27017/local?replicaSet=rs0
+      - ROOT_URL=http://your-server-ip
+      - METEOR_REACTIVITY_ORDER=oplog,polling
+      - WITH_API=true
+    volumes:
+      - wekan-files:/data
     ports:
-      - "80:80"
+      - "80:8080"
     depends_on:
-      postgres:
+      wekandb:
         condition: service_healthy
     restart: unless-stopped
     networks:
       - app-net
 
-  postgres:
-    image: postgres:16-alpine
-    environment:
-      POSTGRES_DB: appdb
-      POSTGRES_USER: app
-      POSTGRES_PASSWORD: password
-    volumes:
-      - postgres-data:/var/lib/postgresql/data
-    healthcheck:
-      test: ["CMD-SHELL", "pg_isready -U app"]
-      interval: 10s
-      timeout: 5s
-      retries: 5
-    restart: unless-stopped
-    networks:
-      - app-net
-
 volumes:
-  app-data:
-  postgres-data:
+  wekan-db:
+  wekan-files:
 
 networks:
   app-net:
@@ -60,12 +65,12 @@ networks:
 
 ## Configuration
 
-After deployment, access the application at `http://host:80` and complete the initial setup:
+After deployment, access the application at the URL you set in `ROOT_URL` and complete the initial setup:
 
-1. Create the first admin user
-2. Configure your workspace or organization settings
-3. Invite team members via the admin panel
-4. Configure email notifications (SMTP settings)
+1. Visit `/sign-up` to create the first user account. The first registered user becomes the admin.
+2. Create your first board and configure board settings as needed.
+3. Invite team members to boards by email or allow them to self-register.
+4. If you want email notifications, add `MAIL_URL` and `MAIL_FROM` to the stack configuration.
 
 ## Key Features
 
@@ -73,7 +78,7 @@ This application provides:
 
 - **Kanban boards / Project tracking** - visual workflow management
 - **Team collaboration** - assign tasks and track progress
-- **Labels and categories** - organize work by type or priority
+- **Labels and lists** - organize work by type, status, or priority
 - **Due dates and deadlines** - time-based task management
 - **Comments and attachments** - rich context on each task
 
@@ -82,17 +87,16 @@ This application provides:
 Backup the application data:
 
 ```bash
-# Backup PostgreSQL database
+# Backup Wekan MongoDB data
+docker exec wekan-db sh -c 'mongodump --archive --gzip --db=wekan' > wekan-db-$(date +%Y%m%d).archive.gz
 
-docker exec postgres_container pg_dump -U app appdb > backup-$(date +%Y%m%d).sql
-
-# Backup application files
+# Backup uploaded files stored at WRITABLE_PATH=/data
 docker run --rm \
-  -v app-data:/data:ro \
+  -v wekan-files:/data:ro \
   -v /opt/backups:/backups \
-  alpine tar czf "/backups/app-data-$(date +%Y%m%d).tar.gz" /data
+  alpine tar czf "/backups/wekan-files-$(date +%Y%m%d).tar.gz" -C / data
 ```
 
 ## Summary
 
-This self-hosted productivity tool deployed via Portainer gives your team a private, data-owned alternative to SaaS project management platforms. Portainer handles the container lifecycle, and PostgreSQL provides reliable persistent storage for all project data.
+This self-hosted productivity tool deployed via Portainer gives your team a private, data-owned alternative to SaaS project management platforms. Portainer handles the container lifecycle, and MongoDB plus named volumes provide persistent storage for Wekan data and uploaded files.
