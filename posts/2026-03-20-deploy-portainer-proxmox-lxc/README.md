@@ -17,13 +17,16 @@ Proxmox LXC (Linux Containers) provide lightweight virtualization with less over
 Using Proxmox `pct` CLI on the Proxmox host:
 
 ```bash
-# Download Ubuntu 22.04 template if not available
+# Download the current Ubuntu 22.04 template
 
 pveam update
-pveam download local ubuntu-22.04-standard_22.04-1_amd64.tar.zst
+pveam available --section system | grep ubuntu-22.04
+
+# Replace <ubuntu-22.04-template-name> with the filename returned above
+pveam download local <ubuntu-22.04-template-name>
 
 # Create the container
-pct create 101 local:vztmpl/ubuntu-22.04-standard_22.04-1_amd64.tar.zst   --hostname portainer   --memory 2048   --cores 2   --net0 name=eth0,bridge=vmbr0,ip=dhcp   --storage local-lvm   --rootfs local-lvm:8   --unprivileged 1   --features nesting=1  # Required for Docker in LXC
+pct create 101 local:vztmpl/<ubuntu-22.04-template-name>   --hostname portainer   --memory 2048   --cores 2   --net0 name=eth0,bridge=vmbr0,ip=dhcp   --storage local-lvm   --rootfs local-lvm:8   --unprivileged 1   --features nesting=1,keyctl=1  # Required for Docker in an unprivileged LXC
 
 pct start 101
 ```
@@ -54,7 +57,8 @@ pct exec 101 -- bash
 
 # Install Docker
 apt-get update
-curl -fsSL https://get.docker.com | sh
+curl -fsSL https://get.docker.com -o get-docker.sh
+sh get-docker.sh
 
 # Verify
 docker run hello-world
@@ -67,7 +71,7 @@ docker run hello-world
 ```bash
 pct exec 101 -- bash -c '
   docker volume create portainer_data
-  docker run -d     --name portainer     --restart=always     -p 9000:9000     -p 9443:9443     -v /var/run/docker.sock:/var/run/docker.sock     -v portainer_data:/data     portainer/portainer-ce:latest
+  docker run -d     --name portainer     --restart=always     -p 9443:9443     -v /var/run/docker.sock:/var/run/docker.sock     -v portainer_data:/data     portainer/portainer-ce:lts
 '
 ```
 
@@ -84,4 +88,4 @@ pct set 101 --onboot 1
 
 ## Summary
 
-Create a Proxmox LXC container with `--features nesting=1` to enable Docker. Add `lxc.apparmor.profile: unconfined` to the container config file for full Docker functionality. Install Docker inside the container and run Portainer with `--restart=always`. Enable `--onboot 1` to start the container automatically when Proxmox boots.
+Create a Proxmox LXC container with `--features nesting=1,keyctl=1` to enable Docker in an unprivileged container. Add `lxc.apparmor.profile: unconfined` to the container config file for full Docker functionality. Install Docker inside the container and run Portainer with `--restart=always` on port `9443`. Enable `--onboot 1` to start the container automatically when Proxmox boots.
