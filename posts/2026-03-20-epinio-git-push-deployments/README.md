@@ -1,14 +1,14 @@
-# How to Set Up Epinio Git Push Deployments
+# How to Deploy Applications to Epinio with epinio push
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
-Tags: Epinio, Git, CI/CD, Kubernetes, PaaS
+Tags: Epinio, Kubernetes, PaaS, Buildpacks
 
-Description: Configure automated deployments in Epinio triggered by Git pushes using webhooks and CI/CD pipelines.
+Description: Deploy applications to Epinio with the epinio CLI using Epinio's source-to-URL workflow.
 
 ## Introduction
 
-How to Set Up Epinio Git Push Deployments demonstrates how Epinio simplifies application deployment to Kubernetes. Epinio abstracts away Kubernetes complexity, letting developers focus on code while the platform handles containerization, deployment, and routing automatically.
+How to Deploy Applications to Epinio with epinio push demonstrates how Epinio simplifies application deployment to Kubernetes. Epinio abstracts away Kubernetes complexity, letting developers focus on code while the platform handles containerization, deployment, and routing automatically.
 
 ## Prerequisites
 
@@ -30,24 +30,10 @@ mkdir my-app && cd my-app
 
 ## Step 2: Create the Application
 
-For this example, we'll create a simple web application:
+For this example, we'll create a simple Node.js web application:
 
 ```bash
 # Create main application file
-cat > app.sh << 'EOF'
-#!/bin/bash
-# Simple HTTP server for demonstration
-while true; do
-  echo -e "HTTP/1.1 200 OK\r\nContent-Type: text/plain\r\n\r\nHello from How to Set Up Epinio Git Push Deployments!" | nc -l -p ${PORT:-8080}
-done
-EOF
-chmod +x app.sh
-```
-
-For a language-specific example relevant to this guide:
-
-```bash
-# Node.js example
 cat > server.js << 'EOF'
 const http = require('http');
 const server = http.createServer((req, res) => {
@@ -70,17 +56,18 @@ EOF
 # Target the namespace for deployment
 epinio target my-apps
 
-# Verify namespace is active
-epinio namespace show my-apps
+# Verify the targeted namespace
+epinio target
 ```
 
 ## Step 4: Deploy the Application
 
 ```bash
-# Push the application (Epinio auto-detects the runtime)
+# Push the application from the current directory (Epinio auto-detects the runtime)
 epinio push --name my-app
 
 # Or specify options explicitly
+# Replace the route with a hostname that resolves to your ingress controller
 epinio push \
   --name my-app \
   --instances 2 \
@@ -93,32 +80,28 @@ During push, Epinio will:
 3. Run the appropriate buildpack
 4. Build a container image
 5. Deploy to Kubernetes
-6. Configure routing and TLS
+6. Configure routing
 
 ## Step 5: Verify the Deployment
 
 ```bash
-# Check application status
+# Check application status and inspect the Routes section
 epinio app show my-app
 
-# List all applications in namespace
+# List all applications in the targeted namespace
 epinio app list
-
-# View the application route
-epinio app show my-app | grep Routes
 ```
 
 ## Step 6: Test the Application
 
 ```bash
-# Get the application URL
-APP_URL=$(epinio app show my-app | grep Routes | awk '{print $2}')
+# Extract the first application URL
+APP_URL=$(epinio app show my-app | awk '/https?:\\/\\// {print $2; exit}')
 
 # Test with curl
-curl ${APP_URL}
+curl "${APP_URL}"
 
-# Or open in browser
-open ${APP_URL}
+# Or open the URL in your browser
 ```
 
 ## Step 7: View Application Logs
@@ -128,7 +111,7 @@ open ${APP_URL}
 epinio app logs my-app
 
 # Follow live logs
-epinio app logs my-app --follow
+epinio app logs --follow my-app
 ```
 
 ## Step 8: Update the Application
@@ -138,7 +121,7 @@ epinio app logs my-app --follow
 # Then re-push to update
 epinio push --name my-app
 
-# Epinio performs a rolling update
+# Epinio stages the new revision and updates the application deployment
 epinio app show my-app
 ```
 
@@ -172,4 +155,4 @@ epinio app delete my-app
 
 ## Conclusion
 
-How to Set Up Epinio Git Push Deployments with Epinio demonstrates how the platform removes barriers between development and deployment. The simple push workflow means developers can deploy any application to Kubernetes without writing YAML or understanding container orchestration. Epinio's buildpack system automatically detects the runtime, installs dependencies, and creates an optimized container image.
+How to Deploy Applications to Epinio with epinio push demonstrates how the platform removes barriers between development and deployment. The simple push workflow means developers can deploy supported applications to Kubernetes without writing YAML or understanding container orchestration. Epinio's buildpack system automatically detects supported runtimes, installs dependencies when needed, and creates a container image for deployment.
