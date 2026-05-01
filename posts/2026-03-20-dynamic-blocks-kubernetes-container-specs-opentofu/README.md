@@ -103,10 +103,22 @@ variable "volume_mounts" {
 }
 
 resource "kubernetes_deployment" "app" {
-  # ... metadata ...
+  metadata {
+    name      = var.app_name
+    namespace = var.namespace
+  }
+
   spec {
-    # ... replicas, selector ...
+    replicas = var.replicas
+    selector {
+      match_labels = { app = var.app_name }
+    }
+
     template {
+      metadata {
+        labels = { app = var.app_name }
+      }
+
       spec {
         container {
           name  = var.app_name
@@ -143,6 +155,16 @@ resource "kubernetes_deployment" "app" {
             }
           }
         }
+
+        dynamic "volume" {
+          for_each = [for v in var.volume_mounts : v if v.volume_type == "pvc"]
+          content {
+            name = volume.value.name
+            persistent_volume_claim {
+              claim_name = volume.value.source_name
+            }
+          }
+        }
       }
     }
   }
@@ -166,8 +188,22 @@ variable "init_containers" {
 }
 
 resource "kubernetes_deployment" "app" {
+  metadata {
+    name      = var.app_name
+    namespace = var.namespace
+  }
+
   spec {
+    replicas = var.replicas
+    selector {
+      match_labels = { app = var.app_name }
+    }
+
     template {
+      metadata {
+        labels = { app = var.app_name }
+      }
+
       spec {
         # Generate init container blocks for database migrations, etc.
         dynamic "init_container" {
