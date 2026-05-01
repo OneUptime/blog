@@ -8,12 +8,12 @@ Description: Deploy Seldon Core on Rancher to serve machine learning models at s
 
 ## Introduction
 
-Seldon Core is an open-source platform for deploying ML models on Kubernetes. It supports scikit-learn, TensorFlow, PyTorch, and custom models via Docker containers. Key features include A/B testing, canary deployments, explainability with SHAP/LIME, and Prometheus metrics out of the box.
+This guide uses Seldon Core 1, an open-source platform for deploying ML models on Kubernetes. It supports scikit-learn, TensorFlow, PyTorch, and custom models via Docker containers. Key features include A/B testing, canary deployments, explainability via Alibi explainers such as Kernel SHAP and Anchors, and Prometheus metrics out of the box.
 
 ## Prerequisites
 
 - Rancher cluster with at least 4 CPUs and 8GB RAM
-- Istio or Ambassador installed (for routing)
+- Istio or Ambassador installed and configured for Seldon routing (for Istio, this includes the default `istio-system/seldon-gateway` Gateway resource)
 - `helm` and `kubectl`
 
 ## Step 1: Install Seldon Core
@@ -28,19 +28,19 @@ helm install seldon-core seldonio/seldon-core-operator \
   --namespace seldon-system \
   --create-namespace \
   --set usageMetrics.enabled=true \
-  --set istio.enabled=true    # Set false if not using Istio
+  --set istio.enabled=true    # If you use Ambassador, replace this with --set ambassador.enabled=true
 ```
 
 ## Step 2: Verify Installation
 
 ```bash
 kubectl get pods -n seldon-system
-kubectl get crd | grep seldon
+kubectl get crd seldondeployments.machinelearning.seldon.io
 ```
 
 ## Step 3: Deploy a scikit-learn Model
 
-Package your model and deploy it:
+Train and save your model with a scikit-learn version compatible with the installed `SKLEARN_SERVER` image, upload `model.joblib` to the object-store path referenced by `modelUri`, and then deploy it:
 
 ```python
 # train_and_save.py
@@ -68,7 +68,7 @@ spec:
       graph:
         name: classifier
         implementation: SKLEARN_SERVER
-        modelUri: s3://my-models/iris-classifier/v1    # Model stored in S3
+        modelUri: s3://my-models/iris-classifier/v1    # Folder contains model.joblib and must be readable by Seldon
       componentSpecs:
         - spec:
             containers:
@@ -80,18 +80,20 @@ spec:
 ```
 
 ```bash
+kubectl create namespace production
 kubectl apply -f sklearn-deployment.yaml
 ```
 
 ## Step 4: Test the Model
 
 ```bash
-# Get the Seldon service URL
-SELDON_URL=$(kubectl get svc istio-ingressgateway -n istio-system \
-  -o jsonpath='{.status.loadBalancer.ingress[0].ip}')
+# Get the ingress address
+# The example below assumes Istio; if you installed Ambassador, use the Ambassador ingress address instead.
+SELDON_HOST=$(kubectl get svc istio-ingressgateway -n istio-system \
+  -o jsonpath='{.status.loadBalancer.ingress[0].ip}{.status.loadBalancer.ingress[0].hostname}')
 
 # Send a prediction request
-curl -X POST "http://$SELDON_URL/seldon/production/iris-classifier/api/v1.0/predictions" \
+curl -X POST "http://$SELDON_HOST/seldon/production/iris-classifier/api/v1.0/predictions" \
   -H "Content-Type: application/json" \
   -d '{"data": {"ndarray": [[5.1, 3.5, 1.4, 0.2]]}}'
 ```
@@ -104,6 +106,7 @@ apiVersion: machinelearning.seldon.io/v1
 kind: SeldonDeployment
 metadata:
   name: iris-ab-test
+  namespace: production
 spec:
   predictors:
     - name: model-a
@@ -126,11 +129,15 @@ spec:
 
 ```promql
 # Prediction rate per model
-rate(seldon_api_executor_server_requests_seconds_count{service="iris-classifier"}[5m])
+sum by (model_name) (
+  rate(seldon_api_executor_client_requests_seconds_count{deployment_name="iris-classifier"}[5m])
+)
 
 # Model latency p99
 histogram_quantile(0.99,
-  rate(seldon_api_executor_server_requests_seconds_bucket[5m])
+  sum by (le) (
+    rate(seldon_api_executor_client_requests_seconds_bucket{deployment_name="iris-classifier"}[5m])
+  )
 )
 ```
 
