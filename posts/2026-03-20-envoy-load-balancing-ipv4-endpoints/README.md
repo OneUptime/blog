@@ -17,7 +17,7 @@ Envoy supports multiple load balancing algorithms configurable per cluster. Choo
 
 lb_policy: ROUND_ROBIN
 
-# Least Request: route to endpoint with fewest active requests
+# Least Request: pick from a small random subset, then choose the endpoint with fewer active requests
 lb_policy: LEAST_REQUEST
 
 # Random: random selection
@@ -29,7 +29,7 @@ lb_policy: RING_HASH
 # Maglev: Google's consistent hashing algorithm
 lb_policy: MAGLEV
 
-# Weighted Round Robin (custom per-endpoint weights)
+# Weighted endpoint distribution: ROUND_ROBIN + per-endpoint load_balancing_weight
 lb_policy: ROUND_ROBIN
 ```
 
@@ -142,7 +142,7 @@ routes:
       cluster: stateful_cluster
       hash_policy:
         - connection_properties:
-            source_ip: true   # Hash on client IPv4 for IP-based stickiness
+            source_ip: true   # Hash on client source IP for IP-based stickiness
 ```
 
 ## Verifying Load Balancing Distribution
@@ -150,11 +150,18 @@ routes:
 ```bash
 # Send 100 requests and check distribution
 for i in $(seq 1 100); do
-    curl -s http://localhost:8080/backend-id
+    printf '%s\n' "$(curl -s http://localhost:8080/backend-id)"
 done | sort | uniq -c | sort -rn
 
-# View per-endpoint request counts in Envoy stats
-curl http://127.0.0.1:9901/stats | grep "web_cluster.*upstream_rq_total"
+# View per-endpoint request counts from Envoy's admin /clusters endpoint
+curl -s http://127.0.0.1:9901/clusters?format=json | jq '
+  .cluster_statuses[]
+  | select(.name == "web_cluster")
+  | .host_statuses[]
+  | {
+      host: "\(.address.socket_address.address):\(.address.socket_address.port_value)",
+      rq_total: (.stats[] | select(.name == "rq_total") | .value)
+    }'
 ```
 
 ## Conclusion
