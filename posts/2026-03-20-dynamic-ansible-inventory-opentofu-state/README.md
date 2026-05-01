@@ -8,7 +8,7 @@ Description: Learn how to create a dynamic Ansible inventory script that reads d
 
 ## Introduction
 
-A dynamic inventory script queries OpenTofu state at runtime and returns the current hosts and variables in Ansible's expected JSON format. This approach is more robust than generated static files because it always reflects the live state, not a snapshot from the last `tofu output` run.
+A dynamic inventory script queries OpenTofu state at runtime and returns the current hosts and variables in Ansible's expected JSON format. This approach is more robust than generated static files because it always reflects the latest OpenTofu state snapshot, not a previously generated inventory file from the last `tofu output` run.
 
 ## Python Dynamic Inventory Script
 
@@ -45,21 +45,28 @@ def get_tofu_outputs(working_dir=None):
     )
     return json.loads(result.stdout)
 
+def iter_resources(module):
+    """Yield resources from the root module and any child modules."""
+    for resource in module.get("resources", []):
+        yield resource
+    for child in module.get("child_modules", []):
+        yield from iter_resources(child)
+
 def build_inventory(state, outputs):
     """Build Ansible inventory from OpenTofu state and outputs."""
     inventory = {
         "_meta": {"hostvars": {}},
-        "all": {"children": [], "vars": {}},
+        "all": {"children": ["ungrouped"], "hosts": [], "vars": {}},
+        "ungrouped": {"hosts": []},
     }
 
     # Extract EC2 instances from state
     web_hosts = []
     db_hosts = []
 
-    if "values" in state and "root_module" in state["values"]:
-        resources = state["values"]["root_module"].get("resources", [])
-
-        for resource in resources:
+    root_module = state.get("values", {}).get("root_module")
+    if root_module:
+        for resource in iter_resources(root_module):
             if resource["type"] == "aws_instance":
                 attrs = resource["values"]
                 name = attrs.get("tags", {}).get("Name", resource["address"])
@@ -67,6 +74,7 @@ def build_inventory(state, outputs):
                 role = attrs.get("tags", {}).get("Role", "")
 
                 if ip:
+                    inventory["all"]["hosts"].append(name)
                     inventory["_meta"]["hostvars"][name] = {
                         "ansible_host": ip,
                         "private_ip": attrs.get("private_ip"),
@@ -78,6 +86,8 @@ def build_inventory(state, outputs):
                         web_hosts.append(name)
                     elif role == "database":
                         db_hosts.append(name)
+                    else:
+                        inventory["ungrouped"]["hosts"].append(name)
 
     # Add groups
     if web_hosts:
@@ -143,33 +153,51 @@ inventory = ./inventory/opentofu_inventory.py
 private_key_file = ~/.ssh/id_rsa
 remote_user = ubuntu
 host_key_checking = False
-
-[inventory]
-# Cache the inventory for 5 minutes to avoid repeated tofu calls
-cache = yes
-cache_plugin = jsonfile
-cache_connection = /tmp/ansible-inventory-cache
-cache_timeout = 300
 ```
+
+The `script` inventory plugin does not cache results, so if you want to avoid repeated `tofu` calls you need to implement caching in the Python script itself or move this logic into an Ansible inventory plugin.
 
 ## Reading from Remote State via S3
 
 ```python
-# For reading state directly from S3 without running tofu locally
+# Download a raw state snapshot from S3 and convert it to the documented
+# `tofu show -json` format before building inventory.
 import boto3
+import json
+import os
+import subprocess
+import tempfile
 
-def get_state_from_s3(bucket, key, region="us-east-1"):
+def get_state_from_s3(bucket, key, region="us-east-1", working_dir=None):
     s3 = boto3.client("s3", region_name=region)
     response = s3.get_object(Bucket=bucket, Key=key)
-    return json.loads(response["Body"].read())
+    state_path = None
+
+    try:
+        with tempfile.NamedTemporaryFile(mode="wb", delete=False, suffix=".tfstate") as state_file:
+            state_path = state_file.name
+            state_file.write(response["Body"].read())
+
+        result = subprocess.run(
+            ["tofu", "show", "-json", state_path],
+            capture_output=True,
+            text=True,
+            cwd=working_dir or os.environ.get("TF_WORKING_DIR", "."),
+            check=True
+        )
+        return json.loads(result.stdout)
+    finally:
+        if state_path and os.path.exists(state_path):
+            os.unlink(state_path)
 
 # Usage in inventory script
 state = get_state_from_s3(
     bucket=os.environ["TF_STATE_BUCKET"],
-    key=os.environ["TF_STATE_KEY"]
+    key=os.environ["TF_STATE_KEY"],
+    working_dir=os.environ.get("TF_WORKING_DIR")
 )
 ```
 
 ## Conclusion
 
-A dynamic inventory script that reads OpenTofu state eliminates the gap between infrastructure changes and Ansible's view of the world. The script is most useful in environments where infrastructure changes frequently - new servers are automatically discovered without any manual inventory updates. Cache the inventory with `cache_timeout` to avoid calling `tofu show` on every Ansible task.
+A dynamic inventory script that reads OpenTofu state keeps Ansible aligned with the latest OpenTofu state snapshot. The script is most useful in environments where infrastructure changes frequently - new servers are automatically discovered without any manual inventory updates after OpenTofu state has been updated. If repeated OpenTofu calls become expensive, add caching inside the script itself or move the logic into an Ansible inventory plugin that supports caching.
