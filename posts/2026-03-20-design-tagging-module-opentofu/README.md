@@ -77,7 +77,7 @@ locals {
   }
 
   # Final merged tag map
-  tags = merge(local.required_tags, local.optional_tags, var.additional_tags)
+  tags = merge(var.additional_tags, local.optional_tags, local.required_tags)
 }
 ```
 
@@ -130,9 +130,15 @@ resource "aws_instance" "app" {
 }
 
 resource "aws_autoscaling_group" "app" {
-  name     = "${module.tags.name_prefix}-asg"
-  min_size = 1
-  max_size = 5
+  name                = "${module.tags.name_prefix}-asg"
+  min_size            = 1
+  max_size            = 5
+  vpc_zone_identifier = [aws_subnet.app.id]
+
+  launch_template {
+    id      = aws_launch_template.app.id
+    version = aws_launch_template.app.latest_version
+  }
 
   # Use the ASG-specific format for tag propagation
   dynamic "tag" {
@@ -148,7 +154,7 @@ resource "aws_autoscaling_group" "app" {
 
 ## Enforcing Tags with AWS Config
 
-Pair the tagging module with an AWS Config rule check to catch non-compliant resources.
+Pair the tagging module with an AWS Config managed rule to catch non-compliant supported resources.
 
 ```hcl
 resource "aws_config_config_rule" "required_tags" {
