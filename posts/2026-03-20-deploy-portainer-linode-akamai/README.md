@@ -8,7 +8,7 @@ Description: Learn how to create a Linode instance and deploy Portainer CE for m
 
 ---
 
-Linode (now Akamai Cloud) provides reliable, affordable Linux VPS instances. The `linode/linode` OpenTofu provider creates instances and configures firewall rules, while `user_data` bootstraps Docker and Portainer.
+Linode (now Akamai Cloud) provides reliable, affordable Linux VPS instances. The `linode/linode` OpenTofu provider creates instances and configures firewall rules, while a StackScript bootstraps Docker and Portainer on first boot.
 
 ---
 
@@ -19,7 +19,7 @@ terraform {
   required_providers {
     linode = {
       source  = "linode/linode"
-      version = "~> 2.13"
+      version = "~> 3.11"
     }
   }
 }
@@ -40,7 +40,7 @@ resource "linode_instance" "portainer" {
   type       = "g6-nanode-1"  # 1 vCPU, 1 GB RAM - ~$5/month
   image      = "linode/ubuntu22.04"
 
-  authorized_keys = [file("~/.ssh/id_rsa.pub")]
+  authorized_keys = [file(pathexpand("~/.ssh/id_rsa.pub"))]
   root_pass       = var.root_password
 
   stackscript_id   = linode_stackscript.portainer.id
@@ -49,13 +49,21 @@ resource "linode_instance" "portainer" {
 resource "linode_stackscript" "portainer" {
   label       = "install-portainer"
   description = "Installs Docker and Portainer CE"
-  script      = <<-EOF
-    #!/bin/bash
-    apt-get update -y
-    curl -fsSL https://get.docker.com | sh
-    docker volume create portainer_data
-    docker run -d       --name portainer       --restart=always       -p 9443:9443       -v /var/run/docker.sock:/var/run/docker.sock       -v portainer_data:/data       portainer/portainer-ce:latest
-  EOF
+  script      = <<EOF
+#!/bin/bash
+apt-get update -y
+apt-get install -y ca-certificates curl
+curl -fsSL https://get.docker.com -o get-docker.sh
+sh get-docker.sh
+docker volume create portainer_data
+docker run -d \
+  --name portainer \
+  --restart=always \
+  -p 9443:9443 \
+  -v /var/run/docker.sock:/var/run/docker.sock \
+  -v portainer_data:/data \
+  portainer/portainer-ce:sts
+EOF
   images          = ["linode/ubuntu22.04"]
   rev_note        = "Initial version"
 }
@@ -74,7 +82,7 @@ resource "linode_firewall" "portainer" {
     action   = "ACCEPT"
     protocol = "TCP"
     ports    = "9443"
-    ipv4     = [var.admin_ip]
+    ipv4     = ["${var.admin_ip}/32"]
   }
 
   inbound_policy = "DROP"
