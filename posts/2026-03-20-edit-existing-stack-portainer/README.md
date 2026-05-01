@@ -8,22 +8,20 @@ Description: Update the configuration of an existing stack in Portainer using th
 
 ---
 
-Stacks in Portainer are Docker Compose applications deployed and managed through the UI. They provide lifecycle management, environment variable configuration, and Git-based GitOps workflows.
+Stacks in Portainer are Compose-based applications deployed and managed through the UI. How you edit an existing stack depends on how it was deployed: file-based stacks can be updated in the Editor tab, while Git-based stacks must be updated in the repository or detached from Git first. Portainer also provides environment variable management and Git-based GitOps workflows.
 
-## Creating a Stack
+## Editing a Stack
 
-Navigate to **Stacks > Add stack** to create a new stack. You can:
-- Use the **Web editor** to write compose YAML directly
-- **Upload** a docker-compose.yml file
-- Pull from a **Git repository**
-- Start from a **Custom template**
+Navigate to **Stacks** and select the stack you want to update. You can:
+- Use the **Editor** tab to update the compose file for stacks created with the **Web editor** or **Upload**
+- Update **Environment variables** from the same stack view
+- For stacks deployed from a **Git repository**, edit the compose file in Git, then use **Pull and redeploy** or GitOps updates
+- **Detach from Git** if you need to edit a Git-based stack directly in Portainer
 
 ## Stack from Web Editor
 
 ```yaml
-# Paste this in the Portainer web editor
-
-version: "3.8"
+# Edit this in the Portainer Editor tab
 
 services:
   web:
@@ -47,11 +45,11 @@ volumes:
 
 ## Stack from Git Repository
 
-1. Select **Repository** as the build method
-2. Enter the repository URL: `https://github.com/org/repo`
-3. Optionally set a branch and compose file path
-4. Enable **GitOps updates** for automatic redeployment
-5. Click **Deploy the stack**
+1. Update the compose file in your Git repository
+2. Commit and push the change
+3. In Portainer, open the stack and click **Pull and redeploy**, or let **GitOps updates** redeploy it
+4. You can still view and edit the stack's environment variables in Portainer
+5. If you want to edit the compose file directly in Portainer, **Detach from Git** first
 
 ## Environment Variables
 
@@ -62,21 +60,24 @@ TOKEN=$(curl -s -X POST \
   -d '{"username":"admin","password":"yourpassword"}' \
   --insecure | python3 -c "import sys,json; print(json.load(sys.stdin)['jwt'])")
 
-# Create a stack with environment variables via API
-curl -X POST \
-  https://localhost:9443/api/stacks \
+STACK_ID=1
+STACK_FILE_CONTENT=$(curl -s \
+  https://localhost:9443/api/stacks/$STACK_ID/file \
+  -H "Authorization: Bearer $TOKEN" \
+  --insecure | python3 -c "import sys,json; print(json.dumps(json.load(sys.stdin)['StackFileContent']))")
+
+# Update an existing stack's environment variables via API
+curl -X PUT \
+  "https://localhost:9443/api/stacks/$STACK_ID?endpointId=1" \
   -H "Authorization: Bearer $TOKEN" \
   -H "Content-Type: application/json" \
-  -d '{
-    "name": "myapp",
-    "stackFileContent": "version: \"3.8\"\nservices:\n  web:\n    image: nginx:latest",
-    "env": [
-      {"name": "DB_PASSWORD", "value": "secretpassword"},
-      {"name": "APP_ENV", "value": "production"}
-    ],
-    "type": 2,
-    "endpointId": 1
-  }' \
+  -d "{
+    \"stackFileContent\": $STACK_FILE_CONTENT,
+    \"env\": [
+      {\"name\": \"DB_PASSWORD\", \"value\": \"secretpassword\"},
+      {\"name\": \"APP_ENV\", \"value\": \"production\"}
+    ]
+  }" \
   --insecure
 ```
 
@@ -89,22 +90,24 @@ Configure polling interval in the stack settings:
 ## Stack Webhook
 
 ```bash
-# Trigger stack redeployment via webhook
+# Trigger stack redeployment via webhook (Portainer Business Edition)
 STACK_WEBHOOK_URL="https://portainer.example.com/api/stacks/webhooks/<uuid>"
 
 curl -X POST "$STACK_WEBHOOK_URL"
-# Portainer redeploys the stack with --pull-always
+# Portainer redeploys the stack and pulls the latest image for the current tag by default
 ```
 
 ## Fix stack.env Not Found
 
 ```bash
 # Error: "stack.env: no such file or directory"
-# Cause: Docker Compose expects a .env file in the same directory as compose.yml
+# Cause: `stack.env` is a Portainer-generated `env_file` for Docker Standalone/Podman.
+# It is not the same as Docker Compose's `.env` file used for general variable substitution.
 
-# Fix 1: Upload .env file via Portainer UI (Stack > .env file tab)
-# Fix 2: Remove ${VARIABLE} references and use Portainer env vars instead
-# Fix 3: Create the .env file in the Git repository alongside compose.yml
+# Fix 1: Add variables in Portainer's Environment variables section or use Load variables from .env file
+# Fix 2: Use `env_file: - stack.env` only on Docker Standalone or Podman
+# Fix 3: On Docker Swarm, remove `env_file: - stack.env` and define each variable manually in Portainer
+# Fix 4: If you need Compose interpolation for non-environment fields, keep a real `.env` file next to the compose file
 ```
 
 ---
