@@ -13,7 +13,8 @@ EKS logging has two components: control plane logs (API server, audit, scheduler
 ## Prerequisites
 
 - OpenTofu v1.6+
-- An existing EKS cluster with node groups
+- An existing EKS cluster with node groups that is already managed by OpenTofu, or imported into OpenTofu state
+- An IAM OIDC provider associated with the cluster for IAM Roles for Service Accounts (IRSA)
 
 ## Step 1: Enable Control Plane Logging
 
@@ -37,6 +38,8 @@ resource "aws_eks_cluster" "main" {
     "controllerManager", # Controller actions (scaling, garbage collection)
     "scheduler"         # Pod scheduling decisions
   ]
+
+  depends_on = [aws_cloudwatch_log_group.eks_control_plane]
 }
 
 # Set log retention period for cost management
@@ -66,7 +69,8 @@ resource "aws_iam_role" "fluent_bit" {
       }
       Condition = {
         StringEquals = {
-          "${local.oidc_provider}:sub" = "system:serviceaccount:amazon-cloudwatch:fluent-bit"
+          "${replace(aws_iam_openid_connect_provider.cluster.url, "https://", "")}:aud" = "sts.amazonaws.com"
+          "${replace(aws_iam_openid_connect_provider.cluster.url, "https://", "")}:sub" = "system:serviceaccount:amazon-cloudwatch:aws-for-fluent-bit"
         }
       }
     }]
@@ -99,10 +103,11 @@ resource "helm_release" "fluent_bit" {
 
   values = [<<-EOF
     serviceAccount:
+      name: aws-for-fluent-bit
       annotations:
         eks.amazonaws.com/role-arn: ${aws_iam_role.fluent_bit.arn}
 
-    cloudWatch:
+    cloudWatchLogs:
       enabled: true
       region: ${var.region}
       logGroupName: /aws/eks/${var.cluster_name}/pods
@@ -120,7 +125,7 @@ resource "helm_release" "fluent_bit" {
   EOF
   ]
 
-  depends_on = [kubernetes_namespace.cloudwatch]
+  depends_on = [kubernetes_namespace.cloudwatch, aws_cloudwatch_log_group.pod_logs]
 }
 ```
 
