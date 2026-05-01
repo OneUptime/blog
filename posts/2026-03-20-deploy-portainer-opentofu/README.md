@@ -8,7 +8,7 @@ Description: Learn how to deploy Portainer container management UI on AWS using 
 
 ## Introduction
 
-Portainer provides a web-based UI for managing Docker, Kubernetes, and Docker Swarm environments. This guide deploys Portainer Business Edition (or Community Edition) on AWS ECS Fargate with EFS for persistent data and ALB for HTTPS access.
+Portainer provides a web-based UI for managing Docker, Kubernetes, and Docker Swarm environments. This guide deploys Portainer Community Edition (CE) on AWS ECS Fargate with EFS for persistent data and ALB for HTTPS access.
 
 ## EFS for Portainer Data
 
@@ -63,9 +63,12 @@ resource "aws_ecs_task_definition" "portainer" {
     name = "portainer-data"
     efs_volume_configuration {
       file_system_id     = aws_efs_file_system.portainer.id
-      access_point_id    = aws_efs_access_point.portainer.id
       transit_encryption = "ENABLED"
       root_directory     = "/"
+
+      authorization_config {
+        access_point_id = aws_efs_access_point.portainer.id
+      }
     }
   }
 
@@ -74,8 +77,7 @@ resource "aws_ecs_task_definition" "portainer" {
     image = "portainer/portainer-ce:latest"
 
     command = [
-      "--http-disabled",
-      "--admin-password-file", "/run/secrets/portainer-admin-password"
+      "--http-disabled"
     ]
 
     portMappings = [
@@ -88,18 +90,6 @@ resource "aws_ecs_task_definition" "portainer" {
       containerPath = "/data"
       readOnly      = false
     }]
-
-    secrets = [
-      { name = "ADMIN_PASSWORD", valueFrom = aws_secretsmanager_secret.portainer_admin.arn }
-    ]
-
-    healthCheck = {
-      command     = ["CMD-SHELL", "wget --no-verbose --tries=1 --spider https://localhost:9443/ || exit 1"]
-      interval    = 30
-      timeout     = 5
-      retries     = 3
-      startPeriod = 60
-    }
 
     logConfiguration = {
       logDriver = "awslogs"
@@ -147,25 +137,9 @@ resource "aws_lb_listener" "portainer_https" {
 }
 ```
 
-## Admin Password Secret
+## Initial Admin Setup
 
-```hcl
-resource "random_password" "portainer_admin" {
-  length   = 24
-  special  = true
-}
-
-# Portainer expects bcrypt hash for admin password
-
-resource "aws_secretsmanager_secret" "portainer_admin" {
-  name = "/portainer/${var.environment}/admin-password"
-}
-
-resource "aws_secretsmanager_secret_version" "portainer_admin" {
-  secret_id     = aws_secretsmanager_secret.portainer_admin.id
-  secret_string = random_password.portainer_admin.result
-}
-```
+Portainer creates the first admin user on initial access. After the ALB and Route53 record are live, open `https://portainer.${var.domain_name}` and complete the setup flow, or initialize the account through the `POST /api/users/admin/init` API endpoint.
 
 ## Route53 Record
 
@@ -185,4 +159,4 @@ resource "aws_route53_record" "portainer" {
 
 ## Conclusion
 
-Deploying Portainer with OpenTofu provides a centralized management interface for Docker and Kubernetes environments. EFS ensures Portainer's configuration, user accounts, and environment connections persist across task replacements. For managing multiple remote Docker environments, configure the Portainer Edge Agent on remote hosts and connect them via the Edge tunnel port (8000). Disable HTTP access (`--http-disabled`) in production and enforce HTTPS-only connections.
+Deploying Portainer with OpenTofu provides a centralized management interface for Docker and Kubernetes environments. EFS ensures Portainer's configuration, user accounts, and environment connections persist across task replacements. For managing multiple remote Docker environments, configure the Portainer Edge Agent on remote hosts and connect them via the Edge tunnel port (8000). Disable HTTP access (`--http-disabled`) in production, enforce HTTPS-only connections, and complete the initial admin setup after the service becomes reachable.
