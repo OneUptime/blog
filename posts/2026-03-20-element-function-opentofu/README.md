@@ -8,7 +8,7 @@ Description: Learn how to use the element function in OpenTofu to access list it
 
 ---
 
-`element()` retrieves a single element from a list by index. Unlike direct indexing with `[n]`, `element()` wraps around cyclically when the index exceeds the list length - this makes it useful for distributing resources across a fixed set of values like availability zones.
+`element()` retrieves a single element from a list by index. Unlike direct indexing with `list[n]`, `element()` wraps around cyclically when the index is out of range - this makes it useful for distributing resources across a fixed set of values like availability zones.
 
 ---
 
@@ -18,7 +18,7 @@ Description: Learn how to use the element function in OpenTofu to access list it
 element(list, index)
 ```
 
-If `index >= length(list)`, `element()` uses the index modulo the list length.
+For positive out-of-range indices, `element()` uses the index modulo the list length. `element()` also supports negative indices and produces an error if used with an empty list.
 
 ---
 
