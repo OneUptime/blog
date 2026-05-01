@@ -13,10 +13,10 @@ firewalld is the default firewall management tool on CentOS, RHEL, and Fedora. I
 ## firewalld Basic Concepts
 
 ```text
-Zones:          public, internal, trusted, dmz, drop, block, external
+Zones:          public, home, work, internal, trusted, dmz, drop, block, external
 Zone assignment: Interfaces or source addresses → zones
 Rules:          Services, ports, protocols, or rich rules
-Runtime vs Permanent: Changes are runtime unless --permanent flag is used
+Runtime vs Permanent: Without --permanent, changes are runtime-only; reload applies permanent config
 ```
 
 ## Check and Configure firewalld
@@ -29,7 +29,7 @@ systemctl status firewalld
 # Start and enable
 systemctl enable --now firewalld
 
-# Check IPv6 is enabled in backend
+# Check firewalld version and backend
 firewall-cmd --version
 # Note: firewalld uses nftables (backend) by default on RHEL 8+
 grep FirewallBackend /etc/firewalld/firewalld.conf
@@ -66,14 +66,14 @@ Rich rules allow more granular control, including IPv6 source address filtering:
 # Allow SSH only from IPv6 management prefix
 firewall-cmd --permanent --add-rich-rule='
   rule family="ipv6"
-  source address="fd00:mgmt::/48"
+  source address="2001:db8:100::/48"
   service name="ssh"
   accept'
 
 # Allow custom port from specific IPv6 address
 firewall-cmd --permanent --add-rich-rule='
   rule family="ipv6"
-  source address="2001:db8:trusted::1/128"
+  source address="2001:db8:100::10/128"
   port port="9090" protocol="tcp"
   accept'
 
@@ -86,13 +86,13 @@ firewall-cmd --reload
 # Block specific attacker prefix
 firewall-cmd --permanent --add-rich-rule='
   rule family="ipv6"
-  source address="2001:db8:bad::/48"
+  source address="2001:db8:bad0::/48"
   drop'
 
 # Block with logging
 firewall-cmd --permanent --add-rich-rule='
   rule family="ipv6"
-  source address="2001:db8:bad::/48"
+  source address="2001:db8:bad0::/48"
   log prefix="BLOCKED-IPV6: " level="warning"
   drop'
 
@@ -112,7 +112,6 @@ firewall-cmd --permanent --add-rich-rule='
 # Limit ICMP echo
 firewall-cmd --permanent --add-rich-rule='
   rule family="ipv6"
-  protocol value="ipv6-icmp"
   icmp-type name="echo-request"
   limit value="10/s"
   accept'
@@ -127,7 +126,7 @@ firewall-cmd --reload
 firewall-cmd --permanent --new-zone=ipv6-mgmt
 
 # Add your management IPv6 prefix to this zone
-firewall-cmd --permanent --zone=ipv6-mgmt --add-source=fd00:mgmt::/48
+firewall-cmd --permanent --zone=ipv6-mgmt --add-source=2001:db8:100::/48
 
 # Allow services in this zone
 firewall-cmd --permanent --zone=ipv6-mgmt --add-service=ssh
@@ -151,8 +150,8 @@ firewall-cmd --list-rich-rules
 # List all zones with their rules
 firewall-cmd --list-all-zones
 
-# Query if IPv6 specific service is allowed
-firewall-cmd --query-service=ssh --family=ipv6
+# Query if a service is allowed in the current zone
+firewall-cmd --query-service=ssh
 ```
 
 ## Removing Rules
@@ -161,7 +160,7 @@ firewall-cmd --query-service=ssh --family=ipv6
 # Remove a rich rule
 firewall-cmd --permanent --remove-rich-rule='
   rule family="ipv6"
-  source address="2001:db8:bad::/48"
+  source address="2001:db8:bad0::/48"
   drop'
 
 # Remove a service
@@ -170,18 +169,20 @@ firewall-cmd --permanent --remove-service=http
 firewall-cmd --reload
 ```
 
-## ICMPv6 Configuration
+## ICMP Configuration
 
 ```bash
-# Check which ICMP types are blocked/allowed
+# Check which ICMP types are blocked
 firewall-cmd --list-icmp-blocks
 
-# Block specific ICMP types
+# Block ping
 firewall-cmd --permanent --add-icmp-block=echo-request   # Block ping
-firewall-cmd --permanent --add-icmp-block-inversion      # Invert: block all except listed
 
-# List available ICMPv6 types
-firewall-cmd --get-icmptypes | tr ' ' '\n' | grep ipv6
+# Optional: invert handling so only listed ICMP types are accepted
+firewall-cmd --permanent --add-icmp-block-inversion
+
+# List available ICMP types
+firewall-cmd --get-icmptypes
 ```
 
 ## Summary
