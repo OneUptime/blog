@@ -18,7 +18,7 @@ Error: Error acquiring the state lock
 Error message: ConditionalCheckFailedException: The conditional request failed
 Lock Info:
   ID:        a1b2c3d4-e5f6-7890-abcd-ef1234567890
-  Path:      s3://my-state-bucket/prod/app/tofu.tfstate
+  Path:      my-state-bucket/prod/app/tofu.tfstate
   Operation: OperationTypeApply
   Who:       runner@ip-10-0-1-50
   Version:   1.9.0
@@ -89,7 +89,7 @@ aws dynamodb get-item \
 
 ## Preventing Lock Contention
 
-Set a lock timeout in your backend configuration:
+For DynamoDB-based locking, make sure your backend is configured correctly:
 
 ```hcl
 terraform {
@@ -103,6 +103,8 @@ terraform {
 }
 ```
 
+If you want OpenTofu to wait for an existing lock instead of failing immediately, use `-lock-timeout` on commands such as `tofu plan` and `tofu apply`.
+
 In CI/CD, prevent parallel apply jobs from competing for the same lock:
 
 ```yaml
@@ -114,21 +116,7 @@ concurrency:
 
 ## Monitoring for Stale Locks
 
-Set up a CloudWatch alarm for locks older than 30 minutes:
-
-```hcl
-resource "aws_cloudwatch_metric_alarm" "stale_lock" {
-  alarm_name          = "opentofu-stale-state-lock"
-  comparison_operator = "GreaterThanThreshold"
-  evaluation_periods  = 1
-  metric_name         = "ConditionalCheckFailedRequests"
-  namespace           = "AWS/DynamoDB"
-  period              = 1800
-  statistic           = "Sum"
-  threshold           = 3
-  alarm_description   = "Possible stale state lock"
-}
-```
+CloudWatch's `ConditionalCheckFailedRequests` metric can show repeated lock contention, but it does not measure lock age. To detect stale locks, inspect the DynamoDB lock item's `Info` payload and alert on the `Created` timestamp if it exceeds your expected maximum runtime.
 
 ## Conclusion
 
