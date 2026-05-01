@@ -58,7 +58,7 @@ volumes:
 
 ```bash
 # Check the DuckDNS updater logs
-docker logs duckdns -f
+docker logs -f duckdns
 
 # Manual DNS lookup to confirm your domain resolves correctly
 nslookup myserver.duckdns.org
@@ -74,6 +74,12 @@ curl -s https://api.ipify.org
 
 DuckDNS supports the ACME DNS-01 challenge through Traefik, enabling free Let's Encrypt SSL.
 
+Because Traefik and Portainer both attach to the same external Docker network, create it once before deploying the next two stacks:
+
+```bash
+docker network create proxy
+```
+
 ```yaml
 # traefik-duckdns-stack.yml
 version: "3.8"
@@ -86,7 +92,6 @@ services:
     command:
       - "--providers.docker=true"
       - "--providers.docker.exposedbydefault=false"
-      - "--entrypoints.web.address=:80"
       - "--entrypoints.websecure.address=:443"
       # Use DuckDNS DNS challenge for SSL
       - "--certificatesresolvers.duckdns.acme.dnschallenge=true"
@@ -97,7 +102,6 @@ services:
       # Your DuckDNS token for DNS challenge
       DUCKDNS_TOKEN: "your-duckdns-token-here"
     ports:
-      - "80:80"
       - "443:443"
     volumes:
       - /var/run/docker.sock:/var/run/docker.sock:ro
@@ -151,11 +155,10 @@ networks:
 
 ## Step 6: Open Router Port Forwarding
 
-For external access, forward ports 80 and 443 from your router to your server's LAN IP.
+For external access with the DNS-01 configuration above, forward port 443 from your router to your server's LAN IP.
 
 ```text
 Router Port Forwarding:
-  External 80  → Internal 192.168.1.100:80
   External 443 → Internal 192.168.1.100:443
 ```
 
