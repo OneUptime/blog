@@ -8,12 +8,12 @@ Description: Learn how to configure DynamoDB Global Tables with OpenTofu to enab
 
 ## Introduction
 
-DynamoDB Global Tables provides a fully managed, multi-region, multi-active database solution. Each region can accept both reads and writes, and DynamoDB automatically propagates changes across all replicas with sub-second latency. Conflict resolution uses a last-writer-wins approach based on timestamps.
+DynamoDB Global Tables provides a fully managed, multi-region, multi-active database solution. In the default multi-Region eventual consistency (MREC) mode, each region can accept both reads and writes, and DynamoDB automatically propagates changes across all replicas, typically within a second or less. Concurrent updates are resolved with a last-writer-wins approach based on internal timestamps.
 
 ## Prerequisites
 
 - OpenTofu v1.6+
-- AWS credentials with DynamoDB permissions in all target regions
+- AWS credentials with DynamoDB permissions in all target regions, KMS permissions for each customer managed key, and `iam:CreateServiceLinkedRole` permission when creating your first global table in the account
 - DynamoDB tables must use `PAY_PER_REQUEST` or provisioned capacity with auto scaling
 
 ## Step 1: Create Global Table with Replicas
@@ -27,7 +27,7 @@ resource "aws_dynamodb_table" "global" {
   hash_key         = "pk"
   range_key        = "sk"
   stream_enabled   = true
-  stream_view_type = "NEW_AND_OLD_IMAGES"  # Required for global tables
+  stream_view_type = "NEW_AND_OLD_IMAGES"  # Required for MREC global tables
 
   attribute {
     name = "pk"
@@ -45,9 +45,18 @@ resource "aws_dynamodb_table" "global" {
   }
 
   global_secondary_index {
-    name            = "GSI1"
-    hash_key        = "gsi1pk"
-    range_key       = "sk"
+    name = "GSI1"
+
+    key_schema {
+      attribute_name = "gsi1pk"
+      key_type       = "HASH"
+    }
+
+    key_schema {
+      attribute_name = "sk"
+      key_type       = "RANGE"
+    }
+
     projection_type = "ALL"
   }
 
@@ -101,10 +110,18 @@ resource "aws_iam_policy" "dynamodb_global" {
           "dynamodb:BatchGetItem",
           "dynamodb:BatchWriteItem"
         ]
-        Resource = [
-          aws_dynamodb_table.global.arn,
-          "${aws_dynamodb_table.global.arn}/index/*"
-        ]
+        Resource = concat(
+          [
+            aws_dynamodb_table.global.arn,
+            "${aws_dynamodb_table.global.arn}/index/*"
+          ],
+          flatten([
+            for replica_arn in sort([for replica in aws_dynamodb_table.global.replica : replica.arn]) : [
+              replica_arn,
+              "${replica_arn}/index/*"
+            ]
+          ])
+        )
       }
     ]
   })
@@ -142,10 +159,11 @@ tofu apply
 
 # Verify replicas
 aws dynamodb describe-table \
+  --region us-west-2 \
   --table-name my-project-global-table \
   --query 'Table.Replicas'
 ```
 
 ## Conclusion
 
-DynamoDB Global Tables enable active-active multi-region architectures without custom replication code. Direct traffic to the nearest regional endpoint using Route 53 latency-based routing, and design your application to handle eventual consistency-reads from non-writer regions may briefly lag behind. Use separate KMS keys per region for encryption, and ensure all replicas have the same GSI configuration which is enforced automatically by DynamoDB.
+DynamoDB Global Tables enable active-active multi-region architectures without custom replication code. Direct traffic to the nearest regional application endpoint using Route 53 latency-based routing, and have each application stack use its local DynamoDB regional endpoint. In the default MREC mode, design your application to handle eventual consistency because reads in other regions may briefly lag behind writes. Use separate KMS keys per region for encryption, and ensure all replicas have the same GSI configuration which DynamoDB keeps synchronized automatically.
