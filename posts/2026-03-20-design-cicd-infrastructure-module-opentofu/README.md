@@ -2,40 +2,55 @@
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
-Tags: OpenTofu, Terraform, CI/CD, CodePipeline, AWS, Module, DevOps
+Tags: OpenTofu, Terraform, CI/CD, CodeBuild, CodePipeline, AWS, Module, DevOps
 
-Description: Learn how to design a reusable CI/CD infrastructure module for OpenTofu that creates CodePipeline pipelines, CodeBuild projects, and ECR repositories for container workloads.
+Description: Learn how to design a reusable CI/CD infrastructure module for OpenTofu that creates CodeBuild projects and ECR repositories for container workloads, with CodePipeline-compatible source and artifact settings.
 
 ## Introduction
 
-A CI/CD infrastructure module standardizes how teams set up their deployment pipelines. It should create ECR repositories, CodeBuild projects for building and testing, and CodePipeline pipelines for orchestrating deployments with approval gates.
+A CI/CD infrastructure module standardizes how teams set up their build infrastructure. This example creates ECR repositories and a CodeBuild project for building and testing container workloads, with source and artifact settings that plug into CodePipeline-based workflows.
 
 ## variables.tf
 
 ```hcl
-variable "pipeline_name"  { type = string }
-variable "environment"    { type = string }
-variable "github_owner"   { type = string }
-variable "github_repo"    { type = string }
-variable "github_branch"  { type = string; default = "main" }
+variable "pipeline_name" {
+  type = string
+}
+
+variable "environment" {
+  type = string
+}
 
 variable "ecr_repositories" {
-  description = "ECR repositories to create for this pipeline"
+  description = "ECR repositories to create for this build stage"
   type        = list(string)
   default     = []
 }
 
 variable "build_spec" {
-  description = "Path to the buildspec.yml or inline buildspec content"
+  description = "Relative path to the buildspec file or inline buildspec content"
   type        = string
   default     = "buildspec.yml"
 }
 
-variable "compute_type"   { type = string; default = "BUILD_GENERAL1_SMALL" }
-variable "build_image"    { type = string; default = "aws/codebuild/standard:7.0" }
-variable "enable_approval" { type = bool; default = false }
-variable "s3_artifact_bucket" { type = string }
-variable "tags"           { type = map(string); default = {} }
+variable "compute_type" {
+  type    = string
+  default = "BUILD_GENERAL1_SMALL"
+}
+
+variable "build_image" {
+  type    = string
+  default = "aws/codebuild/standard:7.0"
+}
+
+variable "s3_artifact_bucket" {
+  type = string
+}
+
+variable "tags" {
+  type    = map(string)
+  default = {}
+}
 ```
 
 ## main.tf
@@ -63,20 +78,47 @@ resource "aws_ecr_repository" "repos" {
 # IAM role for CodeBuild
 resource "aws_iam_role" "codebuild" {
   name = "${var.pipeline_name}-codebuild-role"
+
   assume_role_policy = jsonencode({
-    Version   = "2012-10-17"
-    Statement = [{ Effect = "Allow"; Principal = { Service = "codebuild.amazonaws.com" }; Action = "sts:AssumeRole" }]
+    Version = "2012-10-17"
+    Statement = [
+      {
+        Effect = "Allow"
+        Principal = {
+          Service = "codebuild.amazonaws.com"
+        }
+        Action = "sts:AssumeRole"
+      }
+    ]
   })
 }
 
 resource "aws_iam_role_policy" "codebuild" {
   role = aws_iam_role.codebuild.id
+
   policy = jsonencode({
     Version = "2012-10-17"
     Statement = [
-      { Effect = "Allow"; Action = ["logs:CreateLogGroup", "logs:CreateLogStream", "logs:PutLogEvents"]; Resource = "*" },
-      { Effect = "Allow"; Action = ["s3:GetObject", "s3:PutObject"]; Resource = "${data.aws_s3_bucket.artifacts.arn}/*" },
-      { Effect = "Allow"; Action = ["ecr:*"]; Resource = "*" }
+      {
+        Effect   = "Allow"
+        Action   = ["logs:CreateLogGroup", "logs:CreateLogStream", "logs:PutLogEvents"]
+        Resource = "*"
+      },
+      {
+        Effect   = "Allow"
+        Action   = ["s3:GetBucketAcl", "s3:GetBucketLocation"]
+        Resource = data.aws_s3_bucket.artifacts.arn
+      },
+      {
+        Effect   = "Allow"
+        Action   = ["s3:GetObject", "s3:GetObjectVersion", "s3:PutObject"]
+        Resource = "${data.aws_s3_bucket.artifacts.arn}/*"
+      },
+      {
+        Effect   = "Allow"
+        Action   = ["ecr:*"]
+        Resource = "*"
+      }
     ]
   })
 }
@@ -94,9 +136,9 @@ resource "aws_codebuild_project" "build" {
     privileged_mode = length(var.ecr_repositories) > 0
 
     dynamic "environment_variable" {
-      for_each = var.ecr_repositories
+      for_each = toset(var.ecr_repositories)
       content {
-        name  = "ECR_REPO_${upper(replace(environment_variable.value, "-", "_"))}"
+        name  = "ECR_REPO_${upper(replace(environment_variable.value, "/[^A-Za-z0-9_]/", "_"))}"
         value = aws_ecr_repository.repos[environment_variable.value].repository_url
       }
     }
@@ -128,4 +170,4 @@ output "codebuild_role_arn"     { value = aws_iam_role.codebuild.arn }
 
 ## Conclusion
 
-This CI/CD module creates the infrastructure plumbing for container pipelines: ECR repositories with vulnerability scanning, CodeBuild with dynamic ECR URL injection, and the IAM roles needed for each service. Teams get a standardized pipeline setup by calling the module with their repository and branch configuration.
+This CI/CD module creates the build-stage plumbing for container workflows: ECR repositories with scan-on-push enabled, CodeBuild with dynamic ECR URL injection, and the IAM role needed for the build service. Teams get a standardized build setup that can be composed into a broader CodePipeline-based deployment workflow.
