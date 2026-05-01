@@ -40,21 +40,18 @@ The safest approach - start with nothing, add only what your app needs:
 
 ```yaml
 # docker-compose.yml - Minimal capabilities
-version: "3.8"
-
 services:
-  # Nginx on port 8080 (non-privileged) - needs almost nothing
+  # Nginx publishing on host port 8080 but listening on port 80 in the container
   nginx:
     image: nginx:alpine
     cap_drop:
       - ALL  # Drop every capability
     cap_add:
-      - NET_BIND_SERVICE  # Only if binding to port < 1024
-      - CHOWN             # If nginx needs to chown files
+      - NET_BIND_SERVICE  # Bind to port 80 in the container
       - SETUID            # To drop from root to nginx user
       - SETGID
     ports:
-      - "8080:8080"
+      - "8080:80"
 
   # API server - read/write data, no special OS operations needed
   api:
@@ -64,24 +61,20 @@ services:
     # No cap_add needed - most apps work fine without any capabilities
     # when running as non-root user on ports > 1024
 
-  # Database - needs more capabilities for memory management
+  # PostgreSQL official image may need a few capabilities during first-start initialization
   postgres:
     image: postgres:15-alpine
     cap_drop:
       - ALL
     cap_add:
-      - CHOWN       # Set ownership on data files
-      - FOWNER      # Access files regardless of owner
+      - CHOWN       # Set ownership on data files during initialization
       - SETUID      # Drop from root to postgres user
       - SETGID
-      - DAC_OVERRIDE  # Required for PostgreSQL initialization
 ```
 
 ## Step 3: Common Capability Requirements by Service Type
 
 ```yaml
-version: "3.8"
-
 services:
   # Reverse proxy (Traefik/Nginx on port 443)
   traefik:
@@ -94,19 +87,22 @@ services:
   # Redis - no special capabilities needed
   redis:
     image: redis:7-alpine
+    user: "redis"
     cap_drop:
       - ALL
-    # Redis on port 6379 as non-root needs zero capabilities
+    # Redis on port 6379 as the image's non-root user needs zero capabilities
 
-  # Pi-hole DNS server
+  # Pi-hole DNS server (without DHCP or NTP features)
   pihole:
     image: pihole/pihole:latest
     cap_drop:
       - ALL
     cap_add:
       - NET_BIND_SERVICE  # DNS on port 53
-      - NET_ADMIN         # iptables manipulation
+      - CHOWN             # Update ownership on logs/databases
       - SYS_NICE          # Priority management
+    # Add NET_ADMIN if DHCP or IPv6 Router Advertisements are enabled
+    # Add SYS_TIME if Pi-hole should set the host clock via NTP
 
   # WireGuard VPN (needs significant capabilities)
   wireguard:
@@ -114,8 +110,8 @@ services:
     cap_drop:
       - ALL
     cap_add:
-      - NET_ADMIN         # Create TUN devices
-      - SYS_MODULE        # Load WireGuard kernel module
+      - NET_ADMIN         # Configure WireGuard interfaces
+      - SYS_MODULE        # Load the WireGuard kernel module if needed
 ```
 
 ## Step 4: Check If Your App Works Without Capabilities
@@ -135,12 +131,12 @@ docker run --rm \
   myapp/api:latest \
   node -e "process.on('uncaughtException', e => console.error(e)); require('./server')"
 
-# Use strace to identify permission denials
+# Use strace to identify EPERM denials (if the image includes strace)
 docker run --rm \
   --cap-drop ALL \
-  --cap-add SYS_PTRACE \
+  --user 1000:1000 \
   myapp/api:latest \
-  strace -e trace=process node server.js 2>&1 | grep EPERM
+  strace -f -e trace=%file,%network,%process node server.js 2>&1 | grep EPERM
 ```
 
 ## Step 5: Remove NET_RAW to Prevent Network Sniffing
@@ -160,10 +156,10 @@ services:
 ```
 
 ```bash
-# Verify NET_RAW is dropped
-docker exec api_container ping google.com
-# Error: ping: permission denied (uses raw ICMP)
-# This confirms NET_RAW was successfully dropped
+# Verify NET_RAW is configured to be dropped
+docker inspect api_container --format '{{.HostConfig.CapDrop}}'
+# Output includes NET_RAW
+# This confirms the container is configured to drop NET_RAW
 ```
 
 ## Step 6: Audit Running Containers for Capability Excess
@@ -177,16 +173,16 @@ docker ps -q | while read id; do
   echo "$name: add=$caps drop=$drop"
 done
 
-# Flag containers with ALL capabilities (no cap_drop ALL)
+# Flag containers that have not dropped all default capabilities
 docker ps -q | while read id; do
   drop=$(docker inspect "$id" --format '{{.HostConfig.CapDrop}}')
   name=$(docker inspect "$id" --format '{{.Name}}')
   if [[ "$drop" != *"ALL"* ]]; then
-    echo "WARNING: $name has not dropped ALL capabilities"
+    echo "WARNING: $name is not using cap_drop: [ALL]"
   fi
 done
 ```
 
 ## Conclusion
 
-Dropping Linux capabilities is one of the most impactful container security hardening steps. The default Docker capability set is already restricted compared to full root, but `cap_drop: [ALL]` followed by adding only what's needed achieves true least privilege. Most modern web applications and databases run perfectly with no capabilities when configured to use non-root users and non-privileged ports. Portainer's stack editor makes it straightforward to update `cap_drop` and `cap_add` settings across all your services.
+Dropping Linux capabilities is one of the most impactful container security hardening steps. The default Docker capability set is already restricted compared to full root, but `cap_drop: [ALL]` followed by adding only what's needed achieves true least privilege. Many modern web applications and API services run perfectly with no capabilities when configured to use non-root users and non-privileged ports, while stateful images often only need a small set during initialization. Portainer's stack editor makes it straightforward to update `cap_drop` and `cap_add` settings across all your services.
