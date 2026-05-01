@@ -13,24 +13,29 @@ Named EIGRP (available since IOS 15.0(1)M) is the modern way to configure EIGRP.
 ## Named EIGRP Configuration for IPv6
 
 ```text
+! Prerequisites: enable IPv6 routing and configure IPv6 on the participating interfaces
+Router(config)# ipv6 unicast-routing
+
 ! Create a named EIGRP process
 Router(config)# router eigrp MY_NETWORK
 
 ! Configure IPv6 unicast address family
 Router(config-router)# address-family ipv6 unicast autonomous-system 1
 
-! Set the Router ID (required for IPv6 if no IPv4 address exists)
+! Set the Router ID (required before EIGRP for IPv6 can run)
 Router(config-router-af)# eigrp router-id 1.1.1.1
 
-! Configure interfaces within the address family
+! Named mode for IPv6 does not use a 'network' statement
+Router(config-router-af)# af-interface default
+Router(config-router-af-interface)#  shutdown
+Router(config-router-af-interface)#  exit-af-interface
+
+! Enable EIGRP on the required interfaces and tune timers
 Router(config-router-af)# af-interface GigabitEthernet0/0
+Router(config-router-af-interface)#  no shutdown
 Router(config-router-af-interface)#  hello-interval 5
 Router(config-router-af-interface)#  hold-time 15
 Router(config-router-af-interface)#  exit-af-interface
-
-! Enable EIGRP on interfaces
-Router(config-router-af)# network 2001:db8:1::/64
-! Note: In named mode, the 'network' statement uses IPv6 prefixes
 
 Router(config-router-af)# exit-address-family
 ```
@@ -48,6 +53,9 @@ Router(config-router-af)# exit-address-family
 ! IPv6 address family
 Router(config-router)# address-family ipv6 unicast autonomous-system 10
 Router(config-router-af)# eigrp router-id 1.1.1.1
+Router(config-router-af)# af-interface GigabitEthernet0/0
+Router(config-router-af-interface)#  no shutdown
+Router(config-router-af-interface)#  exit-af-interface
 Router(config-router-af)# exit-address-family
 ```
 
@@ -75,11 +83,11 @@ Router(config-router-af)# exit-address-family
 ## Authentication in Named EIGRP
 
 ```text
-! Configure SHA-256 authentication (Named mode supports SHA, Classic only supports MD5)
+! Configure HMAC-SHA-256 authentication (Named mode supports SHA, Classic only supports MD5)
 Router(config)# router eigrp MY_NETWORK
 Router(config-router)# address-family ipv6 unicast autonomous-system 1
 Router(config-router-af)# af-interface GigabitEthernet0/0
-Router(config-router-af-interface)#  authentication mode hmac-sha-256 <password>
+Router(config-router-af-interface)#  authentication mode hmac-sha-256 0 <password>
 Router(config-router-af-interface)#  exit-af-interface
 ```
 
@@ -118,4 +126,4 @@ H   Address           Interface      Hold  Uptime   SRTT   RTO  Q  Seq
 
 ## Summary
 
-Named EIGRP provides a unified configuration for all address families under a single process named `router eigrp <name>`. The IPv6 address family is configured in `address-family ipv6 unicast autonomous-system <asn>`. Named mode supports SHA authentication (not just MD5), provides cleaner configuration hierarchy, and allows unified management of dual-stack routing.
+Named EIGRP provides a unified configuration for all address families under a single process named `router eigrp <name>`. The IPv6 address family is configured in `address-family ipv6 unicast autonomous-system <asn>`, and interface participation is controlled in `af-interface` submode rather than with an IPv6 `network` statement. Named mode supports HMAC-SHA-256 authentication in addition to MD5, provides cleaner configuration hierarchy, and allows unified management of dual-stack routing.
