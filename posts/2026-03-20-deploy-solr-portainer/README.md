@@ -26,7 +26,7 @@ version: "3.8"
 
 services:
   solr:
-    image: solr:9.6-slim
+    image: solr:10.0-slim
     container_name: solr
     restart: unless-stopped
     ports:
@@ -35,11 +35,10 @@ services:
       - solr_data:/var/solr
     environment:
       - SOLR_HEAP=512m
-      - SOLR_JAVA_MEM=-Xms512m -Xmx512m
     command:
       - solr-foreground
     healthcheck:
-      test: ["CMD", "curl", "-f", "http://localhost:8983/solr/admin/info/system"]
+      test: ["CMD", "wget", "-q", "-O", "/dev/null", "http://localhost:8983/solr/admin/info/system"]
       interval: 30s
       timeout: 10s
       retries: 5
@@ -58,7 +57,7 @@ networks:
 
 ```bash
 # Create a new Solr core named "products"
-docker exec solr solr create_core -c products
+docker exec solr solr create -c products
 
 # List all cores
 curl http://localhost:8983/solr/admin/cores?action=STATUS
@@ -77,7 +76,7 @@ curl -X POST "http://localhost:8983/solr/products/update/json/docs" \
   ]'
 
 # Commit the changes (make them searchable)
-curl "http://localhost:8983/solr/products/update?commit=true"
+curl -X POST "http://localhost:8983/solr/products/update?commit=true"
 
 # Index from a CSV file
 curl "http://localhost:8983/solr/products/update/csv?commit=true&header=true" \
@@ -126,4 +125,4 @@ Open `http://<host>:8983/solr` to access the Solr Admin UI. Use the **Core Selec
 
 ## Conclusion
 
-Solr uses cores (single search indexes) or collections (SolrCloud distributed indexes). For a single-node deployment, cores are sufficient. The `SOLR_HEAP` env var controls JVM heap size - set it to roughly 50% of available RAM. Use `commit=true` after bulk indexing to make documents searchable immediately, or configure `autoCommit` in `solrconfig.xml` for production workloads.
+Solr uses cores (single search indexes) or collections (SolrCloud distributed indexes). For a single-node deployment, cores are sufficient. The `SOLR_HEAP` env var controls JVM heap size - size it based on your workload and GC behavior rather than a fixed percentage of total RAM. Use `commit=true` after bulk indexing to make documents searchable immediately, or configure `autoCommit` in `solrconfig.xml` for production workloads.
