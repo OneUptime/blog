@@ -8,7 +8,7 @@ Description: Learn how to create dynamic provider configurations in OpenTofu usi
 
 ## Introduction
 
-Dynamic provider configuration in OpenTofu allows you to create provider instances based on data rather than hardcoding each one. Using `for_each` on provider blocks (available in OpenTofu 1.6+) or combining variables with locals enables flexible, data-driven provider setups that scale from a few accounts to many.
+Dynamic provider configuration in OpenTofu allows you to create provider instances based on data rather than hardcoding each one. Using `for_each` on aliased provider blocks (available in OpenTofu 1.6+) or combining variables with locals enables flexible, data-driven provider setups that scale from a few accounts to many.
 
 ## Provider Configuration from Variables
 
@@ -73,15 +73,27 @@ OpenTofu 1.6 introduced `for_each` on provider blocks for dynamic multi-instance
 
 ```hcl
 variable "aws_regions" {
-  type    = set(string)
-  default = ["us-east-1", "us-west-2", "eu-west-1"]
+  type = map(object({
+    vpc_cidr_block = string
+  }))
+  default = {
+    "us-east-1" = {
+      vpc_cidr_block = "10.0.0.0/16"
+    }
+    "us-west-2" = {
+      vpc_cidr_block = "10.1.0.0/16"
+    }
+    "eu-west-1" = {
+      vpc_cidr_block = "10.2.0.0/16"
+    }
+  }
 }
 
 # Create one provider instance per region
 
 provider "aws" {
+  alias    = "by_region"
   for_each = var.aws_regions
-  alias    = each.key
   region   = each.key
 }
 ```
@@ -90,10 +102,13 @@ Then reference them:
 
 ```hcl
 resource "aws_vpc" "regional" {
-  for_each = var.aws_regions
-  provider = aws[each.key]
+  for_each = {
+    for region, config in var.aws_regions : region => config
+    if config != null
+  }
+  provider = aws.by_region[each.key]
 
-  cidr_block = cidrsubnet("10.0.0.0/8", 8, index(tolist(var.aws_regions), each.key))
+  cidr_block = each.value.vpc_cidr_block
 }
 ```
 
@@ -118,8 +133,8 @@ variable "accounts" {
 }
 
 provider "aws" {
+  alias    = "by_account"
   for_each = var.accounts
-  alias    = each.key
   region   = "us-east-1"
 
   assume_role {
@@ -138,16 +153,16 @@ provider "aws" {
 
 ## Conditional Provider Features
 
-Enable or disable provider features based on environment:
+Enable or disable provider features for LocalStack or other AWS-compatible test environments:
 
 ```hcl
 provider "aws" {
   region = var.region
 
-  # Skip validation in test environments for speed
-  skip_credentials_validation = var.environment == "test"
-  skip_requesting_account_id  = var.environment == "test"
-  skip_metadata_api_check     = var.environment == "test"
+  # Skip some AWS API checks when using LocalStack or another test endpoint
+  skip_credentials_validation = var.use_localstack
+  skip_requesting_account_id  = var.use_localstack
+  skip_metadata_api_check     = var.use_localstack
 
   # Use different endpoints in LocalStack/testing
   dynamic "endpoints" {
@@ -163,7 +178,7 @@ provider "aws" {
 
 ## Provider Configuration with Sensitive Data
 
-Use `sensitive` variables and environment variables for credentials:
+Use environment variables for credentials and variables for non-secret provider settings such as profiles:
 
 ```hcl
 # providers.tf
@@ -177,7 +192,7 @@ provider "aws" {
   profile = var.aws_profile != "" ? var.aws_profile : null
 }
 
-# Variables with sensitive credentials
+# Variable for optional profile selection
 variable "aws_profile" {
   type    = string
   default = ""
@@ -187,18 +202,19 @@ variable "aws_profile" {
 ## Validating Provider Configuration
 
 ```hcl
-locals {
-  # Validate region is in approved list
-  valid_regions = ["us-east-1", "us-west-2", "eu-west-1", "ap-southeast-1"]
+variable "region" {
+  type = string
 
-  validate_region = (
-    contains(local.valid_regions, var.region)
-    ? null
-    : tobool("Region ${var.region} is not in approved list: ${join(", ", local.valid_regions)}")
-  )
+  validation {
+    condition = contains(
+      ["us-east-1", "us-west-2", "eu-west-1", "ap-southeast-1"],
+      var.region
+    )
+    error_message = "Region must be one of us-east-1, us-west-2, eu-west-1, or ap-southeast-1."
+  }
 }
 ```
 
 ## Conclusion
 
-Dynamic provider configurations let you drive provider instances from data rather than hardcoding each configuration. Use variables and locals to build provider configurations dynamically, conditional `dynamic` blocks for optional provider features, and `for_each` (OpenTofu 1.6+) to create multiple provider instances from a map or set. This approach is especially valuable for multi-account or multi-region organizations where the number of provider instances grows over time.
+Dynamic provider configurations let you drive provider instances from data rather than hardcoding each configuration. Use variables and locals to build provider configurations dynamically, conditional `dynamic` blocks for optional provider features, and `for_each` on aliased provider blocks (OpenTofu 1.6+) to create multiple provider instances from a map or set. This approach is especially valuable for multi-account or multi-region organizations where the number of provider instances grows over time.
