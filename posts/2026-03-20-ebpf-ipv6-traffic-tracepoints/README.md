@@ -1,20 +1,20 @@
-# How to Monitor IPv6 Traffic with eBPF Tracepoints
+# How to Monitor IPv6 Traffic with eBPF XDP
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
-Tags: eBPF, IPv6, Tracepoints, Linux Kernel, Monitoring
+Tags: eBPF, IPv6, XDP, Linux Kernel, Monitoring
 
-Description: Use eBPF tracepoints and kprobes to monitor IPv6 socket operations, connection events, and packet processing in the Linux kernel.
+Description: Use an eBPF XDP program to inspect IPv6 packets and monitor packet processing in the Linux kernel.
 
 ## Overview
 
-Use eBPF tracepoints and kprobes to monitor IPv6 socket operations, connection events, and packet processing in the Linux kernel.
+Use an eBPF XDP program to inspect IPv6 packets and monitor packet processing in the Linux kernel.
 
 ## Prerequisites
 
-- Linux kernel 5.6+ (for BTF and full eBPF feature support)
-- Clang/LLVM for compiling eBPF C programs
-- Root access or CAP_BPF capability
+- Linux kernel with XDP and eBPF support
+- Clang/LLVM, libbpf headers, iproute2, and bpftool
+- Root access, or the capabilities needed to load BPF programs and configure interfaces (typically CAP_BPF and CAP_NET_ADMIN on newer kernels)
 
 ## IPv6 in eBPF Programs
 
@@ -26,6 +26,7 @@ eBPF programs process IPv6 packets using kernel headers. The IPv6 header is 40 b
 #include <linux/bpf.h>
 #include <linux/if_ether.h>
 #include <linux/ipv6.h>
+#include <bpf/bpf_endian.h>
 #include <bpf/bpf_helpers.h>
 
 SEC("xdp")
@@ -81,7 +82,7 @@ sudo ip link set dev eth0 xdp off
 # List loaded eBPF programs
 sudo bpftool prog list
 
-# Show program details (BTF info)
+# Show program details
 sudo bpftool prog show id <PROG_ID>
 
 # Dump program instructions
@@ -98,17 +99,20 @@ sudo bpftool map dump id <MAP_ID> | grep -A 3 "key"
 ## Testing IPv6 eBPF Programs
 
 ```bash
-# Generate IPv6 test traffic
-ping6 -c 10 2001:db8::1
+# Replace with a reachable IPv6 target in your environment
+TARGET_IPV6=2001:db8::1
 
-# Use hping3 for IPv6 packet generation
-hping3 --ipv6 -S -p 80 2001:db8::1
+# Generate IPv6 test traffic
+ping -6 -c 10 "$TARGET_IPV6"
+
+# Generate IPv6 TCP traffic
+curl -6 -I "http://[$TARGET_IPV6]/"
 
 # Watch bpf_printk output (kernel trace pipe)
-sudo cat /sys/kernel/debug/tracing/trace_pipe
+sudo cat /sys/kernel/tracing/trace_pipe
 
 # Use trace-cmd for structured tracing
-sudo trace-cmd record -e "bpf:*" ping6 -c 5 2001:db8::1
+sudo trace-cmd record -e "bpf:*" ping -6 -c 5 "$TARGET_IPV6"
 sudo trace-cmd report
 ```
 
@@ -118,4 +122,4 @@ Use [OneUptime](https://oneuptime.com) to monitor the network performance metric
 
 ## Conclusion
 
-How to Monitor IPv6 Traffic with eBPF Tracepoints requires understanding IPv6 header structure in C, using XDP or TC hooks for packet interception, and leveraging BPF maps to store IPv6 address state. Always validate packet bounds before accessing headers to avoid eBPF verifier rejections.
+Monitoring IPv6 traffic with eBPF XDP requires understanding IPv6 header structure in C, using an XDP hook for packet interception, and, when needed, leveraging BPF maps to store IPv6 address state. Always validate packet bounds before accessing headers to avoid eBPF verifier rejections.
