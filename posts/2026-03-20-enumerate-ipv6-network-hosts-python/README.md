@@ -29,12 +29,13 @@ import ipaddress
 subnet = ipaddress.IPv6Network("2001:db8:1::/126")
 
 print(f"Network: {subnet}")
-print(f"Hosts: {subnet.num_addresses - 2}")   # Minus network and broadcast
+print(f"Hosts: {subnet.num_addresses - 1}")   # Excludes Subnet-Router anycast
 
 for host in subnet.hosts():
     print(host)
 # 2001:db8:1::1
 # 2001:db8:1::2
+# 2001:db8:1::3
 ```
 
 ## Safe Enumeration with Size Check
@@ -44,12 +45,12 @@ Always check subnet size before iterating:
 ```python
 import ipaddress
 
-MAX_SAFE_HOSTS = 65536  # Only enumerate if fewer than this many hosts
+MAX_SAFE_HOSTS = 65536  # Only enumerate if fewer than this many usable hosts
 
 def safe_enumerate_hosts(network_str: str):
     """Enumerate hosts only if the network is small enough."""
     network = ipaddress.IPv6Network(network_str)
-    host_count = network.num_addresses - 2
+    host_count = network.num_addresses if network.prefixlen >= 127 else network.num_addresses - 1
 
     if host_count > MAX_SAFE_HOSTS:
         raise ValueError(
@@ -96,7 +97,7 @@ def generate_management_addresses(prefix_str: str) -> dict[str, ipaddress.IPv6Ad
     }
 
 # Generate management addresses for a rack subnet
-mgmt = generate_management_addresses("2001:db8:rack1::/64")
+mgmt = generate_management_addresses("2001:db8:1:1::/64")
 for role, addr in mgmt.items():
     print(f"{role:12}: {addr}")
 ```
@@ -143,7 +144,7 @@ def discover_hosts_via_ndp(interface: str) -> list[ipaddress.IPv6Address]:
 #     print(host)
 ```
 
-## Ping6 Sweep for Small Subnets
+## IPv6 Ping Sweep for Small Subnets
 
 For subnets with known patterns (like /120 which has 256 addresses):
 
@@ -161,7 +162,7 @@ def ping6_sweep(network_str: str, timeout: int = 1) -> list[ipaddress.IPv6Addres
 
     def ping_host(addr: ipaddress.IPv6Address) -> ipaddress.IPv6Address | None:
         result = subprocess.run(
-            ["ping6", "-c", "1", "-W", str(timeout), str(addr)],
+            ["ping", "-6", "-c", "1", "-W", str(timeout), str(addr)],
             capture_output=True
         )
         return addr if result.returncode == 0 else None
