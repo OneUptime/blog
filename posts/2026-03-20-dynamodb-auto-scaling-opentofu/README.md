@@ -4,11 +4,11 @@ Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
 Tags: OpenTofu, AWS, DynamoDB, Auto Scaling, Terraform, Infrastructure as Code, NoSQL
 
-Description: Learn how to configure DynamoDB table auto scaling for read and write capacity using OpenTofu, including target tracking policies and CloudWatch alarms.
+Description: Learn how to configure DynamoDB table auto scaling for read and write capacity using OpenTofu, including target tracking policies and the CloudWatch alarms created by Application Auto Scaling.
 
 ---
 
-DynamoDB auto scaling automatically adjusts read and write capacity in response to actual traffic patterns, preventing throttling while minimizing costs. This guide shows how to configure DynamoDB auto scaling using OpenTofu with Application Auto Scaling.
+DynamoDB auto scaling automatically adjusts read and write capacity in response to actual traffic patterns, helping reduce throttling while minimizing costs. This guide shows how to configure DynamoDB auto scaling using OpenTofu with Application Auto Scaling.
 
 ---
 
@@ -43,6 +43,10 @@ resource "aws_dynamodb_table" "main" {
   attribute {
     name = "userId"
     type = "S"
+  }
+
+  lifecycle {
+    ignore_changes = [read_capacity, write_capacity]
   }
 
   tags = {
@@ -140,8 +144,11 @@ resource "aws_dynamodb_table" "with_gsi" {
   }
 
   global_secondary_index {
-    name            = "CustomerIndex"
-    hash_key        = "customerId"
+    name = "CustomerIndex"
+    key_schema {
+      attribute_name = "customerId"
+      key_type       = "HASH"
+    }
     projection_type = "ALL"
     read_capacity   = 5
     write_capacity  = 5
@@ -209,6 +216,29 @@ resource "aws_appautoscaling_policy" "read" {
     target_value = var.target_utilization
   }
 }
+
+resource "aws_appautoscaling_target" "write" {
+  max_capacity       = var.max_write_capacity
+  min_capacity       = var.min_write_capacity
+  resource_id        = "table/${var.table_name}"
+  scalable_dimension = "dynamodb:table:WriteCapacityUnits"
+  service_namespace  = "dynamodb"
+}
+
+resource "aws_appautoscaling_policy" "write" {
+  name               = "WriteAutoScaling-${var.table_name}"
+  policy_type        = "TargetTrackingScaling"
+  resource_id        = aws_appautoscaling_target.write.resource_id
+  scalable_dimension = aws_appautoscaling_target.write.scalable_dimension
+  service_namespace  = aws_appautoscaling_target.write.service_namespace
+
+  target_tracking_scaling_policy_configuration {
+    predefined_metric_specification {
+      predefined_metric_type = "DynamoDBWriteCapacityUtilization"
+    }
+    target_value = var.target_utilization
+  }
+}
 ```
 
 ---
@@ -220,9 +250,9 @@ tofu init
 tofu plan
 tofu apply
 
-# Verify in AWS console
+# Verify table throughput settings
 aws dynamodb describe-table --table-name users | \
-  jq '.Table.BillingModeSummary'
+  jq '.Table.ProvisionedThroughput'
 
 # Check Application Auto Scaling
 aws application-autoscaling describe-scaling-policies \
@@ -233,7 +263,7 @@ aws application-autoscaling describe-scaling-policies \
 
 ## Best Practices
 
-1. **Set target utilization at 70%** - leaves headroom before throttling
+1. **Start with target utilization at 70%** - leaves headroom before throttling
 2. **Use PAY_PER_REQUEST** for unpredictable workloads instead of auto scaling
 3. **Monitor throttled requests** with CloudWatch to tune min/max capacity
 4. **Set scale-out cooldown lower** than scale-in to respond faster to spikes
@@ -243,7 +273,7 @@ aws application-autoscaling describe-scaling-policies \
 
 ## Conclusion
 
-DynamoDB auto scaling with OpenTofu ensures your table handles traffic spikes without over-provisioning. Configure target tracking policies for both read and write capacity, set appropriate min/max bounds, and monitor CloudWatch metrics to optimize your settings.
+DynamoDB auto scaling with OpenTofu helps your table adapt to traffic changes without constant over-provisioning. Configure target tracking policies for both read and write capacity, set appropriate min/max bounds, and monitor CloudWatch metrics to optimize your settings.
 
 ---
 
