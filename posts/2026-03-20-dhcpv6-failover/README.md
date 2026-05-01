@@ -8,7 +8,7 @@ Description: Learn how to configure DHCPv6 failover using Kea's High Availabilit
 
 ---
 
-DHCPv6 failover ensures that if your primary DHCP server goes offline, a secondary server continues to serve address assignments. Unlike DHCPv4 which has a long-standardized failover protocol, DHCPv6 failover is implemented differently - most commonly through Kea's built-in High Availability hook library.
+DHCPv6 failover ensures that if your primary DHCP server goes offline, a secondary server continues to serve address assignments. Kea does not implement the DHCPv6 failover protocol from RFC 8156; instead, it provides high availability through its built-in High Availability (HA) hook library.
 
 ---
 
@@ -22,15 +22,15 @@ Clients
    └─── Standby DHCPv6 Server (hot-standby)
 ```
 
-In **hot-standby** mode, the primary handles all requests. The standby listens and syncs leases. If the primary fails, the standby promotes itself automatically.
+In **hot-standby** mode, the primary handles all requests. The standby does not answer DHCP queries during normal operation; it receives lease updates over the API and begins responding if the primary is considered offline.
 
 ---
 
 ## Prerequisites
 
 - Two Linux servers with Kea DHCPv6 installed
-- Network reachability between both servers on control port (default: 8000)
-- Shared access to lease database (or lease file sync)
+- Network reachability between both servers on the HA/control API port (8000 in this example)
+- Matching `subnet6` and pool configuration on both servers, plus a local control socket for `kea-dhcp6`
 
 ### Install Kea
 
@@ -50,12 +50,19 @@ sudo apt-get install kea-dhcp6-server kea-ctrl-agent
     "interfaces-config": {
       "interfaces": ["eth0"]
     },
+    "control-socket": {
+      "socket-type": "unix",
+      "socket-name": "kea6-ctrl-socket"
+    },
     "lease-database": {
       "type": "memfile",
       "lfc-interval": 3600,
-      "name": "/var/lib/kea/dhcp6.leases"
+      "name": "dhcp6.leases"
     },
     "hooks-libraries": [
+      {
+        "library": "/usr/lib/x86_64-linux-gnu/kea/hooks/libdhcp_lease_cmds.so"
+      },
       {
         "library": "/usr/lib/x86_64-linux-gnu/kea/hooks/libdhcp_ha.so",
         "parameters": {
@@ -110,7 +117,22 @@ The standby configuration is identical except `this-server-name` is `server2`.
 ```json
 {
   "Dhcp6": {
+    "interfaces-config": {
+      "interfaces": ["eth0"]
+    },
+    "control-socket": {
+      "socket-type": "unix",
+      "socket-name": "kea6-ctrl-socket"
+    },
+    "lease-database": {
+      "type": "memfile",
+      "lfc-interval": 3600,
+      "name": "dhcp6.leases"
+    },
     "hooks-libraries": [
+      {
+        "library": "/usr/lib/x86_64-linux-gnu/kea/hooks/libdhcp_lease_cmds.so"
+      },
       {
         "library": "/usr/lib/x86_64-linux-gnu/kea/hooks/libdhcp_ha.so",
         "parameters": {
@@ -140,6 +162,17 @@ The standby configuration is identical except `this-server-name` is `server2`.
           ]
         }
       }
+    ],
+    "subnet6": [
+      {
+        "subnet": "2001:db8::/32",
+        "pools": [
+          { "pool": "2001:db8::100-2001:db8::500" }
+        ],
+        "option-data": [
+          { "name": "dns-servers", "data": "2001:db8::1" }
+        ]
+      }
     ]
   }
 }
@@ -149,7 +182,7 @@ The standby configuration is identical except `this-server-name` is `server2`.
 
 ## Configuring the Kea Control Agent
 
-The control agent exposes the REST API used for HA communication.
+The control agent exposes the REST API used for HA communication and forwards commands to the local DHCPv6 server over its UNIX control socket.
 
 ```json
 {
@@ -159,7 +192,7 @@ The control agent exposes the REST API used for HA communication.
     "control-sockets": {
       "dhcp6": {
         "socket-type": "unix",
-        "socket-name": "/tmp/kea6-ctrl-socket"
+        "socket-name": "kea6-ctrl-socket"
       }
     }
   }
@@ -186,7 +219,7 @@ curl -s -X POST http://localhost:8000/ \
   -H "Content-Type: application/json" \
   -d '{"command":"ha-heartbeat","service":["dhcp6"]}' | python3 -m json.tool
 
-# Expected response shows "state": "hot-standby" on primary
+# Expected response shows a "state" such as "hot-standby" when the HA pair is healthy
 ```
 
 ---
@@ -195,14 +228,14 @@ curl -s -X POST http://localhost:8000/ \
 
 ```bash
 # 1. Verify primary is serving leases
-tcpdump -i eth0 udp port 547
+tcpdump -ni eth0 'udp port 546 or udp port 547'
 
 # 2. Stop primary
 sudo systemctl stop kea-dhcp6-server  # on server1
 
 # 3. Watch standby promote itself
 journalctl -u kea-dhcp6-server -f  # on server2
-# Should show: "partner failure detected, transitioning to partner-down state"
+# Should show a transition to partner-down after the HA failure-detection thresholds are met
 
 # 4. Verify clients still receive leases
 ```
@@ -221,7 +254,7 @@ journalctl -u kea-dhcp6-server -f  # on server2
 
 ## Best Practices
 
-1. **Use a shared lease database** (PostgreSQL/MySQL) for lease consistency across both nodes
+1. **Keep `subnet6` and pool definitions identical on both nodes** - the HA hook synchronizes leases between the paired servers
 2. **Monitor heartbeat delays** - set `max-response-delay` based on your network latency
 3. **Test failover regularly** - simulate primary failure in maintenance windows
 4. **Use the Kea Stork** management UI for visual HA status monitoring
@@ -231,7 +264,7 @@ journalctl -u kea-dhcp6-server -f  # on server2
 
 ## Conclusion
 
-Kea's High Availability hook provides robust DHCPv6 failover with minimal configuration. In hot-standby mode, your standby server automatically takes over within seconds of detecting a primary failure, ensuring continuous IPv6 address assignment for your network.
+Kea's High Availability hook provides robust DHCPv6 failover with minimal configuration. In hot-standby mode, your standby server automatically takes over after the configured HA failure-detection thresholds are met, ensuring continuous IPv6 address assignment for your network.
 
 ---
 
