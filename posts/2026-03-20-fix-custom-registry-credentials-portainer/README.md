@@ -12,29 +12,29 @@ You've added a custom private registry to Portainer with credentials, but when d
 
 ## Common Causes
 
-1. The registry is not enabled for the current environment.
-2. The image URL doesn't match the registry URL exactly.
-3. The stack references a full registry URL but Portainer matches only by hostname.
-4. The registry was added after the environment was created (requires re-assignment).
-5. Credentials are correct but the registry uses an insecure connection.
+1. If you're deploying as a non-admin user, the registry access for the current environment is not configured.
+2. The registry address in Portainer doesn't line up with the host and port used in the image reference.
+3. Multiple registries from the same provider or host are configured, and the wrong credentials are being used during deployment.
+4. Credentials are correct but the registry uses HTTP or an untrusted certificate.
+5. The stored credentials are wrong or expired.
 
-## Fix 1: Ensure the Registry Is Enabled for the Environment
+## Fix 1: Ensure Registry Access Is Configured for the Environment
 
-Registries in Portainer are global, but must be explicitly assigned to each environment:
+Registry access is assigned per environment. If you're deploying as a non-admin user, make sure the registry is accessible in the current environment:
 
-1. Go to **Environments** and select your environment.
-2. Click **Edit**.
-3. Scroll to **Registries** and check that your custom registry is toggled **On**.
-4. Click **Update environment**.
+1. Open the target environment in Portainer.
+2. Go to **Host** or **Swarm** and select **Registries**.
+3. Find your custom registry and click **Manage access**.
+4. Make sure the correct user or team has access, then click **Create access** if needed.
 
 ## Fix 2: Match the Image URL to the Registry URL
 
-The registry URL in Portainer must exactly match the hostname in your image reference:
+The registry entry in Portainer needs to line up with the registry host and port used in your image reference. Image names should use only the registry hostname and optional port, not an `https://` prefix:
 
 ```yaml
 # If your registry is registered as: registry.mycompany.com
 
-# Your image MUST reference the same hostname exactly:
+# Your image MUST use the same registry host and port:
 image: registry.mycompany.com/myteam/myapp:latest
 
 # NOT:
@@ -42,33 +42,28 @@ image: registry.mycompany.com:443/myteam/myapp:latest  # Port mismatch
 image: https://registry.mycompany.com/myteam/myapp:latest  # Protocol prefix
 ```
 
-## Fix 3: Check for Port Mismatches
+## Fix 3: Select the Registry Explicitly During Stack Deployment
 
-```bash
-# Portainer registry URL (what's stored in Portainer):
-registry.mycompany.com:5000
+By default, Portainer uses all configured registries during stack deployment. If you have multiple registries from the same provider or host, explicitly selecting the intended registry can prevent Docker from using the wrong credentials.
 
-# Image reference in your stack:
-registry.mycompany.com:5000/myapp:latest  # Must include the port
-```
+If your registry listens on a non-default port, keep that same port in the image reference, for example `registry.mycompany.com:5000/myapp:latest`.
 
 ## Fix 4: Re-Test Credentials
 
 ```bash
 # Manually test the credentials Portainer is using
-docker login registry.mycompany.com \
-  -u <your-username> \
-  -p <your-password>
+printf '%s\n' "$REGISTRY_PASSWORD" | docker login registry.mycompany.com \
+  --username "$REGISTRY_USERNAME" \
+  --password-stdin
 
 # If this fails, the credentials themselves are wrong
 ```
 
 ## Fix 5: Handle Insecure Registries
 
-If your registry doesn't use HTTPS, Docker rejects it unless configured as insecure:
+If your registry uses plain HTTP or a certificate Docker doesn't trust, configure the Docker daemon on every Swarm/Docker node:
 
 ```json
-// /etc/docker/daemon.json - add to every Swarm/Docker node
 {
   "insecure-registries": ["registry.mycompany.com:5000"]
 }
@@ -82,10 +77,10 @@ sudo systemctl restart docker
 
 ```bash
 # List registries to check their configuration
-curl -H "Authorization: Bearer $PORTAINER_TOKEN" \
-  http://localhost:9000/api/registries | jq '.[] | {id, name, url, authentication}'
+curl -k -H "X-API-Key: $PORTAINER_API_KEY" \
+  https://localhost:9443/api/registries | jq '.[] | {id: .Id, name: .Name, url: .URL, authentication: .Authentication}'
 ```
 
 ## Conclusion
 
-The most common cause of ignored credentials in Portainer is either the registry not being assigned to the environment or an exact URL mismatch. Always verify both the registry assignment and that your image references match the stored registry hostname precisely.
+The most common causes of ignored credentials in Portainer are registry access not being configured for the current environment, a host or port mismatch in the image reference, or the wrong registry being selected during deployment. Always verify registry access, the image's `host[:port]`, and the credentials themselves.
