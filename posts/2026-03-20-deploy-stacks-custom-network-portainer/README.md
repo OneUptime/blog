@@ -13,7 +13,6 @@ Custom network configurations in Portainer stacks let you control service commun
 ## Custom Bridge Network with Subnet
 
 ```yaml
-version: "3.8"
 services:
   webapp:
     image: myapp:1.2.3
@@ -43,7 +42,7 @@ networks:
 
   backend:
     driver: bridge
-    internal: true    # No internet access from backend
+    internal: true    # Externally isolated backend network
     ipam:
       config:
         - subnet: "172.21.0.0/24"
@@ -52,10 +51,15 @@ networks:
 
 ## Connecting Stacks via External Networks
 
-To allow services in different stacks to communicate:
+To allow services in different stacks in the same Docker environment to communicate, deploy the stack that creates the network first, then attach the second stack to it:
 
 ```yaml
 # stack-a.yml
+services:
+  api:
+    image: my-api:1.0
+    networks:
+      - shared-net
 
 networks:
   shared-net:
@@ -63,6 +67,12 @@ networks:
     driver: bridge
 
 # stack-b.yml - connects to the same network
+services:
+  worker:
+    image: my-worker:1.0
+    networks:
+      - shared-net
+
 networks:
   shared-net:
     external: true    # Don't create - use existing
@@ -84,4 +94,4 @@ networks:
 
 ## Summary
 
-Custom network configurations in Portainer stacks enable precise control over service communication. Use `internal: true` for database networks, custom subnets to prevent conflicts, and external networks to connect services across stacks.
+Custom network configurations in Portainer stacks enable precise control over service communication. Use `internal: true` to create externally isolated database networks, custom subnets to prevent conflicts, and external networks to connect services across stacks in the same Docker environment.
