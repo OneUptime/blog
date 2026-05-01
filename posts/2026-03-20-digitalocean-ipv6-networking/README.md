@@ -4,7 +4,7 @@ Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
 Tags: DigitalOcean, IPv6, Droplet, Dual-Stack, Cloud, Networking
 
-Description: Configure IPv6 on DigitalOcean Droplets and Kubernetes clusters, including static IPv6 assignment and firewall rules.
+Description: Configure IPv6 on DigitalOcean Droplets, including enablement, additional IPv6 assignment, DNS, firewall rules, and Terraform configuration.
 
 ## Introduction
 
@@ -13,37 +13,45 @@ DigitalOcean IPv6 Networking covers the provider-specific steps needed to enable
 ## Step 1: Enable IPv6 on the Instance/Resource
 
 ```bash
-# Example commands for DigitalOcean IPv6 Networking
+# Enable IPv6 when creating a Droplet
+doctl compute droplet create ipv6-instance \
+  --size s-1vcpu-1gb \
+  --image ubuntu-22-04-x64 \
+  --region nyc3 \
+  --enable-ipv6
 
-# Enable IPv6 networking at creation time or after
-# (Refer to provider-specific CLI or web console)
-echo "Enabling IPv6 for DigitalOcean IPv6 Networking"
+# Enable IPv6 on an existing Droplet after powering it off
+doctl compute droplet-action enable-ipv6 <droplet-id>
 ```
 
 ## Step 2: Configure the Network Interface
 
 ```bash
-# After enabling IPv6, configure the OS network interface
-# (Linux example)
-ip -6 addr show
+# After enabling IPv6 on an existing Droplet, configure the primary
+# IPv6 address and gateway shown on the Droplet's Networking tab in
+# your OS network configuration, then verify the result.
+ip -6 addr show dev eth0
+ip -6 route show
 
-# If using static IPv6 assignment
-ip -6 addr add 2001:db8::1/64 dev eth0
-ip -6 route add ::/0 via 2001:db8::1 dev eth0
+# To add an additional IPv6 from the Droplet's assigned /124 range:
+ip -6 addr add 2001:db8::2/64 dev eth0
 ```
 
 ## Step 3: Configure Firewall Rules for IPv6
 
 ```bash
 # Allow ICMPv6 (required for IPv6 operation)
-ip6tables -A INPUT -p ipv6-icmp -j ACCEPT
-ip6tables -A OUTPUT -p ipv6-icmp -j ACCEPT
+ip6tables -A INPUT -p icmpv6 -j ACCEPT
+ip6tables -A OUTPUT -p icmpv6 -j ACCEPT
 
 # Allow established connections
-ip6tables -A INPUT -m state --state ESTABLISHED,RELATED -j ACCEPT
+ip6tables -A INPUT -m conntrack --ctstate ESTABLISHED,RELATED -j ACCEPT
 
 # Allow SSH over IPv6
-ip6tables -A INPUT -s 2001:db8:admin::/48 -p tcp --dport 22 -j ACCEPT
+ip6tables -A INPUT -s 2001:db8:100::/48 -p tcp --dport 22 -j ACCEPT
+
+# Allow HTTP health checks over IPv6
+ip6tables -A INPUT -p tcp --dport 80 -j ACCEPT
 
 # Default deny
 ip6tables -P INPUT DROP
@@ -59,21 +67,20 @@ ip6tables -P INPUT DROP
 dig AAAA myhost.example.com
 # Should return the IPv6 address
 
-# Test reverse DNS
+# Test reverse DNS for the primary IPv6 address if PTR is configured
 dig -x 2001:db8::1
 ```
 
 ## Step 5: Test IPv6 Connectivity
 
 ```bash
-# Test outbound IPv6
-curl -6 https://ipv6.google.com/
-ping6 -c 3 2600::
+# Test outbound IPv6 from the Droplet
+ping6 -c 3 2001:4860:4860::8888
 
-# Test inbound IPv6
+# Test inbound IPv6 from another IPv6-capable host
 curl -6 http://[2001:db8::1]/health
 
-# Verify dual-stack (both IPv4 and IPv6 work)
+# Verify dual-stack from another host with both IPv4 and IPv6 connectivity
 curl -4 http://myhost.example.com/health
 curl -6 http://myhost.example.com/health
 ```
@@ -83,20 +90,14 @@ curl -6 http://myhost.example.com/health
 ```terraform
 # Terraform example for DigitalOcean IPv6 Networking
 # Resource with IPv6 enabled
-resource "example_instance" "main" {
-  name = "ipv6-instance"
+resource "digitalocean_droplet" "main" {
+  name   = "ipv6-instance"
+  region = "nyc3"
+  size   = "s-1vcpu-1gb"
+  image  = "ubuntu-22-04-x64"
+  ipv6   = true
 
-  # Enable dual-stack networking
-  ipv6_enabled = true
-
-  network {
-    ipv6_address = "2001:db8::1"
-  }
-
-  tags = {
-    Environment = "production"
-    IPv6        = "enabled"
-  }
+  tags = ["production", "ipv6"]
 }
 ```
 
@@ -110,10 +111,10 @@ ip -6 addr show
 # Issue: No IPv6 connectivity
 # Check routing
 ip -6 route show
-# Verify default route: default via fe80::1 dev eth0
+# Verify the default route points to the IPv6 gateway assigned on the Droplet's Networking tab
 
 # Issue: Can't ping IPv6 address
-# Check if firewall is blocking
+# Check if the firewall is blocking ICMPv6
 ip6tables -L INPUT -n -v
 ```
 
