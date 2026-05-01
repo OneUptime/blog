@@ -4,16 +4,15 @@ Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
 Tags: Portainer, Docker Compose, Health Check, Reliability, Stack, DevOps
 
-Description: Add comprehensive health checks to every service in a Portainer stack to enable reliable startup ordering, automatic failure detection, and self-healing container restarts.
+Description: Add comprehensive health checks to every service in a Portainer stack to improve failure detection and, in Docker Standalone environments, enable reliable startup ordering.
 
 ---
 
-A stack where every service has a health check is significantly more reliable - startup ordering is correct, failed containers are automatically replaced, and Portainer shows accurate health status for all services.
+In Portainer Docker Standalone environments, a stack where every service has a health check is significantly more reliable - Compose can wait for dependencies marked with `service_healthy`, and Portainer shows accurate health status for all services. Health checks do not restart unhealthy containers on their own; restart policies only apply if the container exits.
 
 ## Complete Stack with Health Checks
 
 ```yaml
-version: "3.8"
 services:
   nginx:
     image: nginx:1.25
@@ -47,8 +46,12 @@ services:
 
   database:
     image: postgres:16-alpine
+    environment:
+      POSTGRES_DB: mydb
+      POSTGRES_USER: postgres
+      POSTGRES_PASSWORD: example
     healthcheck:
-      test: ["CMD-SHELL", "pg_isready -U postgres -d mydb"]
+      test: ["CMD-SHELL", "pg_isready -U $${POSTGRES_USER} -d $${POSTGRES_DB}"]
       interval: 10s
       timeout: 5s
       retries: 5
@@ -119,9 +122,9 @@ healthcheck:
 
 In Portainer, click on a container and navigate to the **Inspect** tab to see:
 - Current health status
-- Last N health check results
-- Failure reason (last output from the check command)
+- Recent health check results
+- Failure output (last output from the check command)
 
 ## Summary
 
-Health checks on every service in a Portainer stack enable correct startup ordering, automatic failure detection, and actionable health status in the dashboard. Design meaningful health checks that test actual service functionality (database queries, HTTP endpoints) rather than just checking if the process is running.
+Health checks on every service in a Portainer stack improve failure detection and actionable health status in the dashboard. In Docker Standalone Compose deployments, they can also gate startup ordering with `depends_on.condition: service_healthy`. Health checks do not restart unhealthy containers by themselves. Design meaningful health checks that test actual service functionality (database queries, HTTP endpoints) rather than just checking if the process is running.
