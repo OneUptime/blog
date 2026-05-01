@@ -22,7 +22,10 @@ Docker's `none` network mode creates a container with no network interfaces exce
 ```bash
 # Launch a container with no networking
 
-docker run -it --network none alpine sh
+docker run -d --name my-container --network none alpine tail -f /dev/null
+
+# Open a shell inside the running container
+docker exec -it my-container sh
 
 # Inside the container, only loopback is present
 ip addr show
@@ -60,7 +63,9 @@ sudo ip addr add 172.30.0.1/24 dev veth-host
 # Configure the container end using nsenter
 sudo nsenter -t ${CONTAINER_PID} -n -- ip link set veth-ctr up
 sudo nsenter -t ${CONTAINER_PID} -n -- ip addr add 172.30.0.2/24 dev veth-ctr
-sudo nsenter -t ${CONTAINER_PID} -n -- ip route add default via 172.30.0.1
+
+# Optional: add a default route if the host will forward traffic for the container
+sudo nsenter -t ${CONTAINER_PID} -n -- ip route add default via 172.30.0.1 dev veth-ctr
 ```
 
 ## Verifying the Configuration
@@ -71,21 +76,19 @@ sudo nsenter -t ${CONTAINER_PID} -n -- ip addr show
 sudo nsenter -t ${CONTAINER_PID} -n -- ip route show
 
 # Test connectivity from the host to the container
-ping 172.30.0.2
+ping -c 1 172.30.0.2
 ```
 
 ## Use Case: Custom CNI-Like Setup
 
-This approach mirrors how CNI plugins in Kubernetes configure pod networking - creating veth pairs and using `nsenter` to configure the pod-side interface.
+This approach mirrors the low-level mechanics CNI plugins in Kubernetes use to configure pod networking - creating veth pairs and configuring the pod-side interface inside the target network namespace.
 
 ## Security Considerations
 
 ```bash
-# Block all outbound traffic from the container using iptables
-sudo iptables -I FORWARD -s 172.30.0.2 -j DROP
-
-# Allow only specific destination
-sudo iptables -I FORWARD -s 172.30.0.2 -d 10.0.0.5 -j ACCEPT
+# If the host is forwarding traffic for the container, allow only a specific forwarded destination
+sudo iptables -I FORWARD 1 -s 172.30.0.2 -d 10.0.0.5 -j ACCEPT
+sudo iptables -I FORWARD 2 -s 172.30.0.2 -j DROP
 ```
 
 ## Conclusion
