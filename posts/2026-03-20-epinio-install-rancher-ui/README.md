@@ -4,25 +4,29 @@ Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
 Tags: Epinio, Rancher, Kubernetes, PaaS, Apps
 
-Description: Install and configure Epinio directly from the Rancher UI using the Apps & Marketplace for a seamless developer platform setup.
+Description: Install and configure Epinio directly from the Rancher UI using Apps and Charts for a seamless developer platform setup.
 
 ## Introduction
 
-Rancher's App Marketplace makes installing Epinio as simple as clicking through a wizard. This approach is ideal for platform teams that manage Kubernetes through Rancher and want to offer a PaaS experience to their development teams without command-line tools.
+Rancher's Apps UI makes installing Epinio as simple as clicking through a wizard. This approach is ideal for platform teams that manage Kubernetes through Rancher and want to offer a PaaS experience to their development teams without command-line tools.
 
 ## Prerequisites
 
 - Rancher v2.7+
 - A downstream Kubernetes cluster managed by Rancher
+- A default IngressClass on the target cluster
+- A default StorageClass with dynamic provisioning and ReadWriteMany (RWX) support
 - A wildcard DNS domain pointed to your cluster's ingress IP
 - cert-manager installed on the target cluster
 
-## Step 1: Access Apps & Marketplace
+## Step 1: Access Apps
 
 1. Log into Rancher
 2. Select the target cluster from the cluster selector
-3. Navigate to **Apps** > **Charts** in the left sidebar
-4. Search for **Epinio** in the chart listing
+3. Navigate to **Apps** > **Repositories**
+4. Click **Create** and add the Epinio Helm repository: `https://epinio.github.io/helm-charts`
+5. Navigate to **Apps** > **Charts** in the left sidebar
+6. Search for **Epinio** in the chart listing
 
 ## Step 2: Configure Epinio Installation
 
@@ -34,55 +38,42 @@ In the Epinio chart configuration screen:
 # These are configured through the Rancher UI form:
 
 global:
-  domain: "epinio.example.com"      # Your domain
-  tlsIssuer: "letsencrypt-production"  # Or selfsigned-issuer
+  domain: "example.com"                 # Wildcard-enabled base domain
+  tlsIssuer: "letsencrypt-production"   # Or selfsigned-issuer
+  tlsIssuerEmail: "platform@example.com"
 
-# Storage backend (MinIO is included by default)
-minio:
+# Storage backend (SeaweedFS is included by default)
+seaweedfs:
   enabled: true
-  persistence:
-    size: 20Gi
 ```
 
 ### Advanced Settings
 
 ```yaml
-# Custom container registry settings
+# Persist the built-in container registry
 containerregistry:
   enabled: true
-  persistence:
+  storage:
+    emptyDir: false
     size: 20Gi
-    storageClass: "longhorn"
+    storageClassName: "longhorn"
 
-# Dex (OIDC) configuration for SSO
-dex:
-  enabled: true
-  config:
-    connectors:
-      - type: ldap
-        id: ldap
-        name: "Corporate LDAP"
-        config:
-          host: ldap.example.com:636
+# Use a non-default ingress class
+ingress:
+  ingressClassName: "nginx"
 
-# Resource limits
-epinio-ui:
-  resources:
-    requests:
-      cpu: 100m
-      memory: 256Mi
-    limits:
-      cpu: 500m
-      memory: 512Mi
+server:
+  ingressClassName: "nginx"
 ```
 
 ## Step 3: Install via Rancher UI
 
 1. Click **Install** on the Epinio chart page
-2. Select the **epinio** namespace (or create it)
+2. Select the **epinio** namespace (or create it) and set the app name to **epinio**
 3. Fill in the configuration form:
-   - **Domain**: `epinio.example.com`
+   - **Domain**: `example.com`
    - **TLS Issuer**: `letsencrypt-production`
+   - **TLS Issuer Email**: `platform@example.com`
 4. Click **Next** to review the YAML
 5. Click **Install** to begin installation
 
@@ -105,19 +96,20 @@ kubectl get pods -n epinio --watch
 After installation, get the ingress IP:
 
 ```bash
-# Get the external IP of the ingress controller
-kubectl get svc -n ingress-nginx ingress-nginx-controller \
-  -o jsonpath='{.status.loadBalancer.ingress[0].ip}'
+# Find the external IP of your ingress controller service
+kubectl get svc -A
 ```
 
+Note the `EXTERNAL-IP` of the service that backs your default IngressClass, such as Traefik or `ingress-nginx`.
+
 Configure DNS:
-- `epinio.example.com` → ingress IP
-- `*.epinio.example.com` → ingress IP (wildcard for app domains)
+- `example.com` → ingress IP
+- `*.example.com` → ingress IP
 
 ## Step 6: Access Epinio UI
 
 1. Navigate to `https://epinio.example.com` in your browser
-2. Log in with admin credentials
+2. By default, log in with `admin@epinio.io` and the password `password`, or use the identity provider you configured for Dex
 3. The Epinio dashboard shows namespaces, applications, and services
 
 ## Step 7: Install Epinio CLI for Developers
@@ -129,10 +121,11 @@ curl -fsSL \
   -o /usr/local/bin/epinio
 chmod +x /usr/local/bin/epinio
 
-# Login with Rancher-managed credentials
+# Login with the Epinio API credentials
+# By default, the admin password is `password` unless you changed `api.adminPassword` or `api.users`.
 epinio login https://epinio.example.com \
   --user admin \
-  --password "your-password"
+  --password "your-api-password"
 ```
 
 ## Upgrading Epinio via Rancher UI
