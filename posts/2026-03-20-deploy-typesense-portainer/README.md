@@ -25,7 +25,7 @@ version: "3.8"
 
 services:
   typesense:
-    image: typesense/typesense:0.26.0.rc61
+    image: typesense/typesense:30.2
     container_name: typesense
     restart: unless-stopped
     ports:
@@ -35,13 +35,8 @@ services:
     command: >
       --data-dir /data
       --api-key=${TYPESENSE_API_KEY}
-      --listen-port 8108
+      --api-port 8108
       --enable-cors
-    healthcheck:
-      test: ["CMD", "curl", "-f", "http://localhost:8108/health"]
-      interval: 30s
-      timeout: 10s
-      retries: 3
     networks:
       - typesense_net
 
@@ -56,7 +51,7 @@ networks:
 ## Step 2: Set Environment Variables in Portainer
 
 ```text
-TYPESENSE_API_KEY=your-admin-api-key-min-16-chars
+TYPESENSE_API_KEY=your-bootstrap-admin-api-key
 ```
 
 ## Step 3: Verify the Deployment
@@ -68,7 +63,7 @@ curl http://localhost:8108/health
 
 # Check server version
 curl http://localhost:8108/debug \
-  -H 'X-TYPESENSE-API-KEY: your-admin-api-key'
+  -H 'X-TYPESENSE-API-KEY: your-bootstrap-admin-api-key'
 ```
 
 ## Step 4: Create a Collection and Index Documents
@@ -76,7 +71,7 @@ curl http://localhost:8108/debug \
 ```bash
 # Create a collection (schema)
 curl -X POST http://localhost:8108/collections \
-  -H 'X-TYPESENSE-API-KEY: your-admin-api-key' \
+  -H 'X-TYPESENSE-API-KEY: your-bootstrap-admin-api-key' \
   -H 'Content-Type: application/json' \
   -d '{
     "name": "products",
@@ -92,9 +87,9 @@ curl -X POST http://localhost:8108/collections \
 
 # Index documents (JSONL format)
 curl -X POST "http://localhost:8108/collections/products/documents/import?action=create" \
-  -H 'X-TYPESENSE-API-KEY: your-admin-api-key' \
+  -H 'X-TYPESENSE-API-KEY: your-bootstrap-admin-api-key' \
   -H 'Content-Type: text/plain' \
-  -d '{"id": "1", "name": "Laptop Pro", "price": 1299.99, "category": "Electronics", "rating": 4.8}
+  --data-binary '{"id": "1", "name": "Laptop Pro", "price": 1299.99, "category": "Electronics", "rating": 4.8}
 {"id": "2", "name": "Wireless Mouse", "price": 49.99, "category": "Accessories", "rating": 4.5}
 {"id": "3", "name": "USB-C Hub", "price": 79.99, "category": "Accessories", "rating": 4.3}'
 ```
@@ -104,11 +99,11 @@ curl -X POST "http://localhost:8108/collections/products/documents/import?action
 ```bash
 # Basic search with typo tolerance
 curl "http://localhost:8108/collections/products/documents/search?q=labtop&query_by=name" \
-  -H 'X-TYPESENSE-API-KEY: your-admin-api-key'
+  -H 'X-TYPESENSE-API-KEY: your-bootstrap-admin-api-key'
 
 # Search with facets, filter, and sort
 curl "http://localhost:8108/collections/products/documents/search" \
-  -H 'X-TYPESENSE-API-KEY: your-admin-api-key' \
+  -H 'X-TYPESENSE-API-KEY: your-bootstrap-admin-api-key' \
   -G \
   --data-urlencode "q=wireless" \
   --data-urlencode "query_by=name" \
@@ -125,7 +120,7 @@ import Typesense from 'typesense';
 
 const client = new Typesense.Client({
   nodes: [{ host: 'localhost', port: 8108, protocol: 'http' }],
-  apiKey: 'your-admin-api-key',
+  apiKey: 'your-search-only-or-scoped-search-key',
   connectionTimeoutSeconds: 2,
 });
 
@@ -142,4 +137,4 @@ console.log(searchResults.hits);
 
 ## Conclusion
 
-Typesense stores all data on disk (`/data` volume) and loads the index into memory for fast queries. The `--api-key` is the admin key - generate separate scoped API keys for client-side search to prevent users from modifying collections. Enable `--enable-cors` when Typesense is queried directly from browser JavaScript. For production, generate a read-only scoped key with field-level permissions using the `/keys` endpoint.
+Typesense stores all data on disk (`/data` volume) and loads the index into memory for fast queries. The `--api-key` value is the bootstrap admin key - use the `/keys` endpoint to create a search-only API key, then generate scoped search keys from that search-only key for client-side search so users cannot modify collections. Enable `--enable-cors` when Typesense is queried directly from browser JavaScript. For production, prefer scoped search keys with embedded restrictions such as `filter_by`, `include_fields`, or `exclude_fields`.
