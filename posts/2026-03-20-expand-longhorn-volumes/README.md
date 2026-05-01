@@ -4,7 +4,7 @@ Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
 Tags: Longhorn, Kubernetes, Storage, Volumes, Expansion
 
-Description: Learn how to expand Longhorn volumes online and offline to increase storage capacity for your Kubernetes workloads without downtime.
+Description: Learn how to expand Longhorn volumes online and offline to increase storage capacity for your Kubernetes workloads.
 
 ## Introduction
 
@@ -14,7 +14,7 @@ As applications grow, their storage needs often increase. Longhorn supports volu
 
 - Longhorn installed and volumes running
 - The Longhorn StorageClass must have `allowVolumeExpansion: true` (this is the default)
-- For online expansion: Kubernetes version 1.15 or later
+- For online expansion: Longhorn version 1.4.0 or later
 - The volume must be in **Attached** state for online expansion
 
 ## Verify Volume Expansion is Allowed
@@ -104,12 +104,11 @@ kubectl exec -it <pod-name> -- df -h /data
 1. Open the Longhorn UI
 2. Navigate to **Volume**
 3. Find the target volume
-4. Click the three-dot menu (⋮) next to the volume
-5. Select **Expand Volume**
-6. Enter the new size (must be larger than current)
-7. Click **OK**
+4. Click **Expand**
+5. Enter the new size (must be larger than current)
+6. Click **OK**
 
-After expanding via the UI, Kubernetes will not automatically know about the change. You need to update the PV/PVC to reflect the new size.
+Because this expansion does not go through the CSI PVC flow, Kubernetes will not automatically update the PV/PVC capacity. You need to update the PV/PVC to reflect the new size.
 
 ## Method 3: Expand via Longhorn Volume Custom Resource
 
@@ -124,6 +123,8 @@ kubectl patch volume.longhorn.io my-volume -n longhorn-system \
 kubectl get volume.longhorn.io my-volume -n longhorn-system -w
 ```
 
+Like UI-based expansion, patching the Longhorn Volume CR directly does not automatically update the Kubernetes PV/PVC capacity.
+
 ## Offline Volume Expansion
 
 For volumes not attached to any pod:
@@ -132,8 +133,8 @@ For volumes not attached to any pod:
 # Step 1: Scale down any pods using the volume
 kubectl scale deployment my-app --replicas=0
 
-# Step 2: Wait for the PVC to be released
-kubectl get pvc my-app-data
+# Step 2: Wait for the Longhorn volume to detach
+kubectl get volume.longhorn.io <volume-name> -n longhorn-system -w
 
 # Step 3: Patch the PVC to the new size
 kubectl patch pvc my-app-data \
@@ -174,11 +175,10 @@ kubectl rollout restart deployment my-app
 ### Expansion Fails Due to Insufficient Space
 
 ```bash
-# Check available disk space on nodes
-kubectl describe nodes | grep -A 10 "Allocated resources"
+# Check Longhorn node disk space in the UI: Node > Node Disk
 
-# Check Longhorn node disk space
-kubectl get nodes.longhorn.io -n longhorn-system -o yaml | grep -A 5 storageAvailable
+# Or check the Longhorn data path on the node (default path shown)
+df -h /var/lib/longhorn
 ```
 
 ## Important Notes
@@ -186,7 +186,7 @@ kubectl get nodes.longhorn.io -n longhorn-system -o yaml | grep -A 5 storageAvai
 - Longhorn only supports **expanding** volumes - you cannot shrink a volume
 - Expansion requires that the new size is strictly larger than the current size
 - Online expansion requires the volume to be attached to a node
-- The filesystem is automatically resized as part of the online expansion process
+- For supported Linux filesystems (`ext4` and `xfs`) on volumes using the block device frontend, Longhorn automatically resizes the filesystem during expansion
 
 ## Conclusion
 
