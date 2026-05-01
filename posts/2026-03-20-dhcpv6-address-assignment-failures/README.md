@@ -51,9 +51,9 @@ journalctl -u kea-dhcp6 -n 50 --no-pager
 tail -f /var/log/syslog | grep dhcpd
 
 # Look for these key log entries:
-# "DHCPV6_PACKET_RECEIVED" - server got the Solicit
-# "DHCPV6_NO_SUBNET" - no matching subnet found
-# "DHCPV6_ALLOCATION_FAIL" - pool exhausted
+# "DHCP6_PACKET_RECEIVED" - server got the Solicit
+# "DHCP6_SUBNET_SELECTION_FAILED" - no matching subnet found
+# "ALLOC_ENGINE_V6_ALLOC_FAIL*" - allocation failed (for example, pool exhaustion)
 ```
 
 ## Step 3: Capture Traffic to Verify Exchange
@@ -65,7 +65,7 @@ sudo tcpdump -i eth0 -n -v "udp port 547"
 # On the client, trigger a fresh request
 sudo dhclient -6 -r eth0 && sudo dhclient -6 eth0 -v
 
-# Expected sequence:
+# Typical sequence without Rapid Commit:
 # Client → ff02::1:2: Solicit
 # Server → client: Advertise
 # Client → server: Request
@@ -110,23 +110,25 @@ systemctl restart kea-dhcp6
 
 ## Step 6: Check Subnet Configuration
 
-The client's link-local address must fall within a configured subnet:
+The server must be able to select the correct subnet for the client's link:
 
 ```bash
-# What link-local address is the client using?
-ip -6 addr show dev eth0 | grep "fe80"
+# Check whether the client is on the expected IPv6 link
+ip -6 addr show dev eth0
 
-# The server must have a subnet matching the interface
-# Example: if client is on 2001:db8::/64, server must have that subnet
+# For directly attached clients, Kea should have a matching subnet6 entry
+# with the correct "interface". For relayed clients, match the subnet6 entry
+# against the relay's link-address or interface-id.
+# Example: if the client link is 2001:db8::/64, the server must have that subnet
 ```
 
 ## Step 7: Check Pool Availability
 
 ```bash
-# Kea: check pool statistics
+# Kea: check per-subnet statistics (endpoint depends on your control channel config)
 curl -s -X POST http://localhost:8000/ \
   -H "Content-Type: application/json" \
-  -d '{"command": "statistic-get-all", "service": ["dhcp6"]}' | \
+  -d '{"command": "statistic-get-all", "service": ["dhcp6"], "arguments": {}}' | \
   jq '.[0].arguments | to_entries |
       map(select(.key | startswith("subnet"))) |
       map({key, value: .value[0][0]})'
@@ -137,11 +139,11 @@ curl -s -X POST http://localhost:8000/ \
 | Issue | Symptom | Fix |
 |-------|---------|-----|
 | Server not listening | No packets on port 547 | Check `interfaces-config` in Kea |
-| Pool exhausted | Status code 2 in Reply | Expand pool range or reduce lease time |
-| DUID conflict | Client ignores Reply | Clear old lease files on client |
+| Pool exhausted | `NoAddrsAvail` (status code 2) in Advertise/Reply | Expand pool range or reduce lease time |
+| Server ID / DUID mismatch | Client ignores Advertise/Reply or renewals fail | Verify client/server identifiers; clear stale client lease state if needed |
 | Wrong subnet | No Advertise | Add matching subnet to server config |
 | Firewall blocking | Solicit seen but no Advertise | Add ip6tables rules for port 547 |
 
 ## Summary
 
-DHCPv6 failures are almost always caused by one of five issues: the server is not running, firewall rules block ports 546/547, the server is not configured for the right subnet, the pool is exhausted, or there is a DUID mismatch. Work through this checklist in order and use tcpdump to confirm each step.
+Common DHCPv6 address-assignment failures include the server not running, firewall rules blocking ports 546/547, incorrect subnet selection, pool exhaustion, or client/server identifier mismatches. Work through this checklist in order and use tcpdump to confirm each step.
