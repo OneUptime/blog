@@ -8,7 +8,7 @@ Description: Learn how to build a high-performance event-driven IPv4 server usin
 
 ## What Is epoll?
 
-`epoll` is a Linux kernel I/O event notification mechanism. Unlike `select` (limited to 1024 fds) or `poll` (O(n) scan), `epoll` scales to millions of file descriptors in O(1) time using edge or level triggering.
+`epoll` is a Linux kernel I/O event notification mechanism. Unlike `select()` on Linux, which is limited by `FD_SETSIZE` (typically 1024), or `poll()`, which scans the watched descriptors each time, `epoll` keeps an in-kernel interest list, supports both level-triggered and edge-triggered modes, and is designed to scale well to large numbers of watched file descriptors.
 
 ## Echo Server with select.epoll
 
@@ -91,20 +91,19 @@ finally:
 
 | Feature | select | poll | epoll |
 |---------|--------|------|-------|
-| Max fds | 1024 | unlimited | unlimited |
-| Scan cost | O(n) | O(n) | O(1) |
+| Max fds | `FD_SETSIZE` (1024 on Linux) | No `FD_SETSIZE` limit | No `FD_SETSIZE` limit |
+| Scan cost | O(highest fd) | O(number of fds) | Avoids rescanning all watched fds |
 | Notification | Level | Level | Level or Edge |
 | Platform | POSIX | POSIX | Linux only |
 
 ## Performance Tip: Edge-Triggered Mode
 
 ```python
-# Edge-triggered: epoll only fires when state CHANGES (read → readable)
+# Edge-triggered: epoll only fires when readiness state changes (not readable → readable)
 # You MUST read all available data before returning to epoll.poll()
 epoll.register(conn.fileno(), select.EPOLLIN | select.EPOLLET)
 
-# In the handler, read in a loop until EAGAIN:
-import errno
+# In the handler, read in a loop until recv() raises BlockingIOError (EAGAIN/EWOULDBLOCK):
 while True:
     try:
         chunk = conn.recv(4096)
@@ -117,4 +116,4 @@ while True:
 
 ## Conclusion
 
-`select.epoll` is Linux-only but provides the best performance for servers with thousands of connections. Level-triggered mode (default) fires whenever data is available - simpler to implement. Edge-triggered mode fires only on state changes - requires draining all data in the handler and handling `EAGAIN`. For cross-platform code, use `selectors.DefaultSelector` which uses `epoll` on Linux, `kqueue` on macOS, and falls back to `select` on other platforms. For new Python applications, `asyncio` provides a higher-level API on top of these same OS primitives.
+`select.epoll` is Linux-only but is designed to scale well for servers with many concurrent connections. Level-triggered mode (default) continues reporting readiness while a file descriptor remains ready - simpler to implement. Edge-triggered mode fires only when readiness changes - requires draining all data in the handler and handling `EAGAIN`. For cross-platform code, use `selectors.DefaultSelector`, which picks the most efficient implementation available on the current platform. For new Python applications, `asyncio` provides a higher-level API on top of these same OS primitives.
