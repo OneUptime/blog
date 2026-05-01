@@ -27,10 +27,8 @@ graph TB
 ```yaml
 # manufacturing-edge-stack.yml
 
-version: "3.8"
-
 services:
-  # OPC-UA data collection from PLCs and HMIs
+  # Example custom OPC UA data collection container
   opcua-collector:
     image: industrial/opcua-collector:3.0
     environment:
@@ -42,7 +40,7 @@ services:
     networks:
       - factory-net
 
-  # Modbus collector for legacy equipment
+  # Example custom Modbus collector for legacy equipment
   modbus-collector:
     image: industrial/modbus-collector:2.1
     environment:
@@ -70,6 +68,7 @@ services:
       - DOCKER_INFLUXDB_INIT_MODE=setup
       - DOCKER_INFLUXDB_INIT_USERNAME=admin
       - DOCKER_INFLUXDB_INIT_PASSWORD=factory_pw
+      - DOCKER_INFLUXDB_INIT_ADMIN_TOKEN=factory-admin-token
       - DOCKER_INFLUXDB_INIT_ORG=plant
       - DOCKER_INFLUXDB_INIT_BUCKET=production-data
     volumes:
@@ -78,12 +77,12 @@ services:
     networks:
       - factory-net
 
-  # Edge analytics - detects anomalies locally
+  # Example custom edge analytics container
   edge-analytics:
     image: myregistry/edge-analytics:1.5
     environment:
       - INFLUXDB_URL=http://influxdb:8086
-      - INFLUXDB_TOKEN=your-token
+      - INFLUXDB_TOKEN=factory-admin-token
       - ALERT_THRESHOLD_TEMP=85
       - ALERT_THRESHOLD_VIBRATION=12
     restart: unless-stopped
@@ -101,7 +100,7 @@ networks:
 
 ## Step 2: Configure OPC-UA Node Subscriptions
 
-The OPC-UA collector subscribes to specific PLC nodes by node ID:
+The example OPC-UA collector subscribes to specific PLC nodes by node ID:
 
 ```json
 {
@@ -130,10 +129,10 @@ The OPC-UA collector subscribes to specific PLC nodes by node ID:
 
 ## Step 3: Implement Store-and-Forward
 
-For sites with intermittent cloud connectivity, configure the edge historian to buffer data and forward when connectivity is restored:
+For sites with intermittent cloud connectivity, configure a store-and-forward service to buffer data and forward when connectivity is restored:
 
 ```yaml
-  # Store-and-forward agent
+  # Example custom store-and-forward service
   store-forward:
     image: industrial/store-forward-agent:1.0
     environment:
@@ -150,7 +149,7 @@ For sites with intermittent cloud connectivity, configure the edge historian to 
 
 ## Step 4: Deploy via Portainer Edge Agent
 
-Register the edge compute node with Portainer (see the IoT device management guide), then deploy this stack to the `factory-floor` Edge Group. All factory nodes will receive the same stack, and you can update them centrally from Portainer.
+Register the edge compute node with Portainer by installing the Edge Agent, then deploy this stack as an Edge Stack to the `factory-floor` Edge Group. Edge Groups and Edge Stacks require Portainer Edge Compute features in Business Edition. All factory nodes in that group will receive the same stack, and future updates are applied centrally as each Edge Agent checks in.
 
 ## OT/IT Separation
 
@@ -158,8 +157,9 @@ Keep the OT network isolated from the IT network. The edge compute node sits in 
 
 - Port 1883 (MQTT) - internal to factory-net only
 - Port 8086 (InfluxDB) - internal to factory-net only
+- The edge node still needs outbound access to the Portainer Server on TCP 9443 for the UI/API and TCP 8000 for the Edge Agent tunnel
 - No external ports exposed from OT-facing containers
 
 ## Summary
 
-Portainer Edge Agent gives manufacturing operations teams a practical way to manage containerized workloads on factory floor hardware. Updates are pushed centrally, deployments are consistent across sites, and the edge compute nodes continue operating even when disconnected from the Portainer server.
+Portainer Edge Agent gives manufacturing operations teams a practical way to manage containerized workloads on factory floor hardware. Updates are managed centrally, deployments are consistent across sites, and the edge compute nodes continue operating even when disconnected from the Portainer server.
