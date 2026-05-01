@@ -14,12 +14,11 @@ When Express.js runs behind a reverse proxy, the client IP in `req.ip` is the pr
 
 ```text
 Client 2001:db8::cafe:1
-    → IPv6 Load Balancer (2001:db8::lb)
+    → IPv6 Load Balancer (2001:db8::b10)
     → NGINX Proxy (::1)
     → Express.js
 
-X-Forwarded-For: 2001:db8::cafe:1, 2001:db8::lb
-X-Real-IP: 2001:db8::cafe:1
+X-Forwarded-For: 2001:db8::cafe:1, 2001:db8::b10
 ```
 
 ## Step 1: Trust Proxy Settings
@@ -28,9 +27,9 @@ X-Real-IP: 2001:db8::cafe:1
 const express = require('express');
 const app = express();
 
-// Option 1: Trust 1 hop (most common - direct NGINX proxy)
+// Option 1: Trust 1 hop when Express is directly behind a single proxy
 app.set('trust proxy', 1);
-// req.ip = first untrusted address in X-Forwarded-For
+// Use this only when exactly one trusted proxy sits in front of Express.
 
 // Option 2: Trust a specific IPv6 address
 app.set('trust proxy', '::1');
@@ -39,7 +38,7 @@ app.set('trust proxy', '::1');
 // Option 3: Trust multiple IPv6 addresses/subnets
 app.set('trust proxy', ['::1', '2001:db8::/32', 'loopback']);
 
-// Option 4: Trust a count of hops
+// Option 4: Trust a count of hops (for example, load balancer + NGINX)
 app.set('trust proxy', 2);  // Trust 2 proxy hops
 
 // Option 5: Trust all (dangerous - do not use with public internet)
@@ -68,21 +67,12 @@ function normalizeIPv6(ip) {
 }
 
 function realIPMiddleware(req, res, next) {
-    // With trust proxy set, req.ip is already the real IP
-    // But we also handle the case where it's not set
-    let ip = req.ip;
-
-    if (!ip) {
-        const xff = req.headers['x-forwarded-for'];
-        if (xff) {
-            ip = xff.split(',')[0].trim();
-        } else {
-            ip = req.connection.remoteAddress;
-        }
-    }
+    // With trust proxy configured correctly, req.ip is already the client IP.
+    // Fall back to the socket address if req.ip is unavailable.
+    const ip = req.ip || req.socket.remoteAddress;
 
     req.realIP = normalizeIPv6(ip);
-    req.isIPv6 = isIPv6(req.realIP);
+    req.isIPv6 = req.realIP ? isIPv6(req.realIP) : false;
     next();
 }
 
@@ -101,15 +91,15 @@ app.set('trust proxy', ['::1', 'loopback']);
 
 app.get('/debug-ip', (req, res) => {
     res.json({
-        // With trust proxy, req.ip is the real client IP
+        // With trust proxy configured correctly, req.ip is the client IP
         'req.ip':                  req.ip,
-        'req.ips':                 req.ips,  // Full chain
+        'req.ips':                 req.ips,  // X-Forwarded-For chain
         'x-forwarded-for':         req.headers['x-forwarded-for'],
-        'connection.remoteAddress': req.socket.remoteAddress,
+        'socket.remoteAddress':    req.socket.remoteAddress,
     });
 });
 
-app.listen('[::]:3000', '::');
+app.listen(3000, '::');
 ```
 
 ```bash
@@ -133,7 +123,7 @@ curl -6 http://[::1]:3000/debug-ip
 app.set('trust proxy', true);
 
 // GOOD: Trust only your known IPv6 proxy
-app.set('trust proxy', '2001:db8::proxy');
+app.set('trust proxy', '2001:db8::feed');
 
 // GOOD: Trust only loopback (NGINX on same host)
 app.set('trust proxy', 'loopback');
@@ -143,17 +133,10 @@ const rateLimit = require('express-rate-limit');
 
 const limiter = rateLimit({
     windowMs: 60 * 1000,
-    max: 100,
+    limit: 100,
     // req.ip is correct after trust proxy
-    keyGenerator: (req) => {
-        // For IPv6, rate limit by /64 subnet
-        const ip = req.ip;
-        if (require('net').isIPv6(ip)) {
-            const parts = ip.split(':');
-            return parts.slice(0, 4).join(':') + '::/64';
-        }
-        return ip;
-    },
+    // Apply IPv6 rate limiting to a /64 subnet.
+    ipv6Subnet: 64,
 });
 app.use('/api/', limiter);
 ```
@@ -167,7 +150,7 @@ server {
     location / {
         proxy_pass http://[::1]:3000;
 
-        # Set X-Forwarded-For to real IPv6 client address
+        # Forward the X-Forwarded-For chain, appending the immediate client IP
         proxy_set_header X-Forwarded-For $proxy_add_x_forwarded_for;
         proxy_set_header X-Real-IP $remote_addr;
         proxy_set_header Host $host;
@@ -177,4 +160,4 @@ server {
 
 ## Conclusion
 
-Express.js trust proxy for IPv6 requires listing your IPv6 proxy addresses: `app.set('trust proxy', ['::1', '2001:db8::/32'])`. Once configured, `req.ip` returns the real IPv6 client address from `X-Forwarded-For`. Never use `trust proxy: true` on public servers - restrict to known proxy addresses to prevent IP spoofing. Monitor Express.js with OneUptime to verify correct IP extraction in logs.
+Express.js trust proxy for IPv6 requires listing your trusted IPv6 proxy addresses or setting the correct hop count, such as `app.set('trust proxy', ['::1', '2001:db8::/32'])`. Once configured correctly, `req.ip` returns the client IPv6 address after Express evaluates the trusted proxy chain in `X-Forwarded-For`. Never use `trust proxy: true` on public servers - restrict to known proxy addresses to prevent IP spoofing. Monitor Express.js with OneUptime to verify correct IP extraction in logs.
