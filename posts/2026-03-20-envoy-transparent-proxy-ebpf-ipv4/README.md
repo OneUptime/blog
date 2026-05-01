@@ -4,66 +4,69 @@ Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
 Tags: Envoy, eBPF, Transparent Proxy, IPv4, Linux, Service Mesh, Networking
 
-Description: Learn how to use eBPF-based traffic redirection instead of iptables to set up Envoy as a transparent IPv4 proxy with lower overhead and better observability.
+Description: Learn how to use a cgroup/connect4 eBPF program to redirect IPv4 `connect()` traffic to Envoy, and how that fits with Envoy's original-destination handling on Linux.
 
 ---
 
-Traditional transparent proxy deployments use iptables to redirect traffic to Envoy. eBPF (Extended Berkeley Packet Filter) provides an alternative: attach BPF programs at the socket or cgroup level to redirect packets without the overhead of iptables traversal, enabling faster interception and better telemetry.
+Traditional transparent proxy deployments use iptables to redirect traffic to Envoy. eBPF (Extended Berkeley Packet Filter) provides another building block: attach BPF programs at cgroup socket-address hooks to rewrite `connect()` destinations in-kernel, avoiding iptables rule traversal and enabling custom policy or telemetry through BPF helpers and maps.
 
 ## Why eBPF Over iptables?
 
 | Feature | iptables | eBPF |
 |---------|---------|------|
-| Performance | NAT table overhead | Near-native; no netfilter |
-| Observability | Limited | Rich per-connection metrics |
-| Complexity | Rule ordering matters | Program-based, composable |
-| Connection tracking | Full conntrack | Can bypass conntrack |
+| Interception point | Netfilter rule chains | Programmatic cgroup/socket hooks |
+| Observability | Packet and conntrack counters | Custom telemetry via BPF helpers and maps |
+| Policy model | Rule ordering matters | Program logic and BPF maps |
+| Connection tracking | Common with REDIRECT/NAT | Can avoid the netfilter NAT path |
 
 ## Architecture Overview
 
 ```mermaid
 graph TD
-    A[Application TCP Socket] -->|eBPF sockops program| B[Redirect to Envoy]
+    A[Application connect()] -->|eBPF cgroup/connect4 program| B[Redirect to Envoy 127.0.0.1:15001]
     B --> C[Envoy Listener 15001]
-    C --> D[Original Destination Cluster]
-    D --> E[Upstream Service]
+    C --> D[Original Destination Metadata]
+    D --> E[Original Destination Cluster]
+    E --> F[Upstream Service]
 ```
 
-## eBPF Sock Redirect Program
+## eBPF Connect Redirect Program
 
-The following BPF C program intercepts `connect()` calls and redirects them to Envoy.
+The following BPF C program rewrites IPv4 TCP `connect()` destinations to Envoy.
 
 ```c
 /* transparent_redirect.bpf.c
- * Attach to BPF_PROG_TYPE_SOCK_OPS to intercept IPv4 connections */
+ * Attach to BPF_PROG_TYPE_CGROUP_SOCK_ADDR at cgroup/connect4
+ * to rewrite IPv4 TCP connect() destinations to Envoy. */
 #include <linux/bpf.h>
-#include <bpf/bpf_helpers.h>
+#include <linux/in.h>
+#include <linux/socket.h>
+
 #include <bpf/bpf_endian.h>
-#include <sys/socket.h>
+#include <bpf/bpf_helpers.h>
 
 /* Envoy listener port for transparent proxying */
 #define ENVOY_PORT 15001
 /* Mark used by Envoy to avoid re-interception */
 #define ENVOY_MARK 100
 
-SEC("sockops")
-int transparent_redirect(struct bpf_sock_ops *skops) {
-    /* Only act on IPv4 active connections (TCP SYN sent) */
-    if (skops->op != BPF_SOCK_OPS_ACTIVE_ESTABLISHED_CB)
-        return 0;
-    if (skops->family != AF_INET)
-        return 0;
+SEC("cgroup/connect4")
+int transparent_redirect(struct bpf_sock_addr *ctx) {
+    __u32 mark = 0;
+
+    /* Only act on IPv4 TCP connect() calls */
+    if (ctx->user_family != AF_INET || ctx->type != SOCK_STREAM)
+        return 1;
 
     /* Skip if this is Envoy's own traffic (marked) */
-    if (skops->sk != NULL) {
-        __u32 mark = 0;
-        bpf_getsockopt(skops, SOL_SOCKET, SO_MARK, &mark, sizeof(mark));
-        if (mark == ENVOY_MARK) return 0;
-    }
+    if (bpf_getsockopt(ctx, SOL_SOCKET, SO_MARK, &mark, sizeof(mark)) == 0 &&
+        mark == ENVOY_MARK)
+        return 1;
 
-    /* Redirect non-Envoy IPv4 connections to Envoy's listener */
-    bpf_sock_ops_cb_flags_set(skops, BPF_SOCK_OPS_ALL_CB_FLAGS);
-    return 0;
+    /* Rewrite the destination to Envoy's local listener */
+    ctx->user_ip4 = bpf_htonl(0x7f000001); /* 127.0.0.1 */
+    ctx->user_port = bpf_htons(ENVOY_PORT);
+    return 1;
 }
 
 char _license[] SEC("license") = "GPL";
@@ -73,18 +76,21 @@ char _license[] SEC("license") = "GPL";
 
 ```bash
 # Compile the BPF program
+clang -O2 -g -target bpf -c transparent_redirect.bpf.c -o transparent_redirect.bpf.o
 
-clang -O2 -target bpf -c transparent_redirect.bpf.c -o transparent_redirect.bpf.o
+# Load it as a cgroup/connect4 program
+bpftool prog load transparent_redirect.bpf.o /sys/fs/bpf/transparent_redirect type cgroup/connect4
 
-# Load and attach to the cgroup (for system-wide redirection)
-bpftool prog load transparent_redirect.bpf.o /sys/fs/bpf/transparent_redirect
-bpftool cgroup attach /sys/fs/cgroup/ sock_ops pinned /sys/fs/bpf/transparent_redirect
+# Attach at the cgroup root to affect processes in that hierarchy
+bpftool cgroup attach /sys/fs/cgroup cgroup_inet4_connect pinned /sys/fs/bpf/transparent_redirect
 
 # Verify the program is attached
-bpftool cgroup tree /sys/fs/cgroup/
+bpftool cgroup tree /sys/fs/cgroup
 ```
 
 ## Envoy Configuration for Transparent Proxy
+
+A `cgroup/connect4` rewrite changes where the socket connects, but it does not populate `SO_ORIGINAL_DST` for Envoy. On Linux, Envoy's `original_dst` listener filter expects original-destination metadata that it knows how to read directly: `SO_ORIGINAL_DST` from iptables `REDIRECT`, or from `TPROXY` when the listener is transparent, or metadata/filter state on internal listeners. If you pair eBPF interception with one of those supported metadata sources, the listener and cluster configuration looks like this:
 
 ```yaml
 # envoy-config.yaml
@@ -108,6 +114,7 @@ static_resources:
   clusters:
     - name: original_dst
       type: ORIGINAL_DST
+      lb_policy: CLUSTER_PROVIDED
       connect_timeout: 5s
       upstream_bind_config:
         socket_options:
@@ -119,7 +126,7 @@ static_resources:
 
 ## Key Takeaways
 
-- eBPF `sockops` programs can intercept connections at the socket level before they traverse the network stack.
-- Use `SO_MARK` on Envoy's upstream sockets to prevent re-interception by the BPF program.
-- The `original_dst` listener filter recovers the original destination IP/port after interception.
-- eBPF-based redirection avoids iptables NAT overhead and provides richer observability via BPF maps.
+- eBPF `cgroup/connect4` programs can rewrite IPv4 TCP `connect()` destinations before the connection is established.
+- Use `SO_MARK` on Envoy's upstream sockets to prevent the BPF redirect from re-capturing Envoy's own traffic.
+- On Linux, Envoy's `original_dst` listener filter reads `SO_ORIGINAL_DST` from iptables `REDIRECT`, or from `TPROXY` when the listener is transparent, or metadata/filter state on internal listeners; a `connect4` rewrite alone does not supply that metadata.
+- eBPF-based interception can replace iptables rule traversal for the redirect step and can expose custom telemetry through BPF programs and maps.
