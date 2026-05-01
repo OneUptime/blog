@@ -25,7 +25,7 @@ version: "3.8"
 
 services:
   nocodb:
-    image: nocodb/nocodb:0.209.3
+    image: nocodb/nocodb:latest
     container_name: nocodb
     restart: unless-stopped
     ports:
@@ -79,45 +79,43 @@ NOCODB_DOMAIN=nocodb.yourdomain.com
 
 ## Step 3: Access NocoDB
 
-Open `http://<host>:8080` and create the first super admin account.
+Open `http://<host>:8080/dashboard` and create the first super admin account.
 
 ## Step 4: Connect to an External Database
 
 In the NocoDB UI:
-1. Click **Add New Base**
-2. Select **External DB**
-3. Enter connection details (PostgreSQL, MySQL, SQL Server)
-4. NocoDB auto-discovers all tables and creates views
+1. Click the base name in the left sidebar to open the base homepage
+2. Click **Connect External Data**
+3. Enter connection details for the external database
+4. Click **Test Database Connection**, then **Add Source**
 
 ## Step 5: Use the Auto-Generated REST API
 
 ```bash
-# Get API token from NocoDB UI: Team & Settings > API Tokens
+# Get API token from NocoDB UI: Account Settings > API Tokens
 
 # List records from a table
-curl "http://localhost:8080/api/v1/db/data/noco/{project-id}/{table-name}" \
-  -H "xc-auth: your-api-token"
+curl "http://localhost:8080/api/v3/data/{base-id}/{table-id}/records?pageSize=25" \
+  -H "xc-token: your-api-token"
 
 # Create a record
-curl -X POST "http://localhost:8080/api/v1/db/data/noco/{project-id}/{table-name}" \
-  -H "xc-auth: your-api-token" \
+curl -X POST "http://localhost:8080/api/v3/data/{base-id}/{table-id}/records" \
+  -H "xc-token: your-api-token" \
   -H "Content-Type: application/json" \
-  -d '{"Name": "Alice", "Status": "Active"}'
+  -d '{"fields": {"Name": "Alice", "Status": "Active"}}'
 
 # Search with filters
-curl "http://localhost:8080/api/v1/db/data/noco/{project-id}/{table-name}?where=(Status,eq,Active)&limit=25" \
-  -H "xc-auth: your-api-token"
+curl "http://localhost:8080/api/v3/data/{base-id}/{table-id}/records?where=(Status,eq,Active)&pageSize=25" \
+  -H "xc-token: your-api-token"
 ```
 
 ## Step 6: Export Table Data
 
-```bash
-# Export as CSV
-curl "http://localhost:8080/api/v1/db/data/noco/{project-id}/{table-name}/export/csv" \
-  -H "xc-auth: your-api-token" \
-  -o export.csv
-```
+In the NocoDB UI:
+1. Click the `:` icon in the toolbar
+2. Choose **Download**
+3. Select **CSV**
 
 ## Conclusion
 
-NocoDB stores its own metadata in the `NC_DB` database while connecting to your existing databases as data sources. The `NC_AUTH_JWT_SECRET` secures API tokens. NocoDB supports row-level permissions per view - use shared views for embedding spreadsheets publicly without exposing admin access.
+NocoDB stores its own metadata in the `NC_DB` database while connecting to your existing databases as data sources. The `NC_AUTH_JWT_SECRET` secures authentication and other stored secrets. NocoDB supports row-level permissions per view - use shared views for embedding spreadsheets publicly without exposing admin access.
