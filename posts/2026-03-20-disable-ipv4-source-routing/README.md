@@ -6,7 +6,7 @@ Tags: Linux, Security, IPv4, Source Routing, Sysctl, Hardening
 
 Description: Disable IPv4 source routing options (LSRR and SSRR) on Linux to prevent attackers from manipulating packet paths and bypassing network controls.
 
-IPv4 source routing allows the sender to specify the exact route a packet must take through the network. Attackers exploit this to bypass firewalls, redirect traffic, and conduct spoofing attacks. Disabling it is a mandatory hardening step.
+IPv4 source routing allows the sender to influence part or all of the route a packet takes through the network. Attackers can abuse this to bypass normal routing assumptions, redirect traffic, and conduct spoofing attacks. Disabling acceptance of source-routed packets is a common hardening step.
 
 ## What Is Source Routing?
 
@@ -20,8 +20,8 @@ IP Header Options:
          the exact specified path
 
 Attack uses:
-  - Bypass firewall rules (traffic appears from allowed IP)
-  - Redirect return traffic to attacker
+  - Bypass network controls that assume normal routing paths
+  - Influence traffic forwarding through routers that honor source routes
   - Network topology enumeration
 ```
 
@@ -41,13 +41,15 @@ done
 ## Disable Source Routing via sysctl
 
 ```bash
-# Disable source routing on all interfaces
+# Disable source routing globally and for future interfaces
 sudo sysctl -w net.ipv4.conf.all.accept_source_route=0
 sudo sysctl -w net.ipv4.conf.default.accept_source_route=0
 
-# Also disable on specific interfaces explicitly
-sudo sysctl -w net.ipv4.conf.eth0.accept_source_route=0
-sudo sysctl -w net.ipv4.conf.lo.accept_source_route=0
+# Also disable on all currently present interfaces explicitly
+for iface in /proc/sys/net/ipv4/conf/*; do
+    iface=$(basename "$iface")
+    sudo sysctl -w "net.ipv4.conf.${iface}.accept_source_route=0"
+done
 
 # Verify
 sysctl net.ipv4.conf.all.accept_source_route
@@ -68,21 +70,16 @@ EOF
 sudo sysctl -p /etc/sysctl.d/99-disable-source-routing.conf
 ```
 
-## Block Source Routed Packets with iptables
+## Block Packets with IP Options at the Firewall
 
-For defense-in-depth, also block source-routed packets at the firewall level:
+For defense-in-depth on modern Linux systems, you can also drop IPv4 packets with header options at the firewall level. This is broader than just LSRR and SSRR, but it blocks source-routed packets too:
 
 ```bash
-# Drop packets with LSRR or SSRR options set
-# The --option flag in iptables can match IP options
-
-# Using ipv4options extension (if available)
-sudo iptables -A INPUT -m ipv4options --lsrr -j DROP
-sudo iptables -A INPUT -m ipv4options --ssrr -j DROP
-
-# Alternative: block all packets with IP options (more aggressive)
-# This drops packets with ANY IP option, including legitimate ones
-# sudo iptables -A INPUT -m ipv4options --any-opt -j DROP
+# If you already use an inet/filter nftables ruleset, drop IPv4 packets
+# whose header length indicates IP options are present.
+# IHL 5 means a normal 20-byte IPv4 header; 6-15 means options are present.
+sudo nft add rule inet filter input ip hdrlength 6-15 drop
+sudo nft add rule inet filter forward ip hdrlength 6-15 drop
 ```
 
 ## Verify with a Test Packet (Optional)
@@ -90,16 +87,19 @@ sudo iptables -A INPUT -m ipv4options --ssrr -j DROP
 To test that source routing is blocked, you can craft a source-routed packet:
 
 ```bash
-# Install hping3
-sudo apt install hping3
+# Install Nping (part of the Nmap suite)
+# Debian/Ubuntu example:
+sudo apt install nmap
 
-# Send a packet with loose source routing option
-# (this should be silently dropped if protection is enabled)
-sudo hping3 --lsrr target-ip -c 3
+# Send ICMP probes with loose source routing
+# Replace the route addresses with valid hops in your environment.
+# Many networks drop source-routed traffic before it reaches the target.
+# A host with accept_source_route disabled should not reply.
+sudo nping --icmp --ip-options "L 192.0.2.1 198.51.100.1" target-ip -c 3 --packet-trace
 
-# Check if target received the packet (should not)
+# Use packet capture to confirm the probe carried IPv4 options
 sudo tcpdump -i eth0 -n 'ip[0] & 0xf > 5' -c 5
-# "ip[0] & 0xf > 5" catches packets with IP options
+# "ip[0] & 0xf > 5" matches IPv4 packets whose header includes options
 ```
 
 ## Compliance Requirements
@@ -107,12 +107,12 @@ sudo tcpdump -i eth0 -n 'ip[0] & 0xf > 5' -c 5
 Disabling source routing is required by many security frameworks:
 
 ```bash
-CIS Benchmark for Linux: Controls 3.2.1
-DISA STIG for RHEL: V-72283, V-72285
-NIST 800-53: SC-5 (Denial of Service Protection)
+CIS Benchmarks for Linux distributions include controls for disabling source-routed packets
+DISA STIGs for Linux distributions include checks for accept_source_route
+NIST 800-53: SC-5 is commonly mapped to this control
 
 Check compliance:
 sudo grep -r "accept_source_route" /etc/sysctl.conf /etc/sysctl.d/
 ```
 
-Disabling IPv4 source routing has zero impact on normal network operations and should be treated as a mandatory baseline for any production Linux system.
+Disabling IPv4 source routing usually has little or no impact on normal network operations and is a sensible baseline unless you explicitly depend on source-routed traffic.
