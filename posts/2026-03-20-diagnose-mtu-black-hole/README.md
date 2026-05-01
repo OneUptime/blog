@@ -8,7 +8,7 @@ Description: Diagnose and fix MTU black hole issues where TCP connections establ
 
 ## Introduction
 
-An MTU black hole exists when a router on the path discards oversized packets with DF bit set but does NOT send ICMP Fragmentation Needed messages back to the sender. The sender never learns the correct MTU and continues sending oversized packets - all of which are silently dropped. The result is a TCP connection that completes the handshake (small packets work), but data transfer hangs (large packets are silently dropped).
+An MTU black hole exists when a router on the path discards oversized packets with DF bit set and the needed ICMP Fragmentation Needed message never reaches the sender. The sender never learns the correct MTU and continues sending oversized packets - all of which are silently dropped. The result is a TCP connection that completes the handshake (small packets work), but data transfer hangs (large packets are silently dropped).
 
 ## Classic Black Hole Symptoms
 
@@ -32,8 +32,8 @@ curl -I http://10.20.0.5  # HTTP HEAD - small response
 
 # Step 2: Test large packet delivery:
 ping -M do -s 1472 -c 3 10.20.0.5   # Large + DF bit
-# If times out (no response, no error message): black hole!
-# If error "Frag needed": NOT a black hole (ICMP is working)
+# If times out (no response, no error message): possible black hole / filtered ICMP
+# If error "Frag needed" or "message too long": NOT a black hole (ICMP is working)
 
 # Step 3: Compare different payload sizes:
 ping -M do -s 1472 -c 1 10.20.0.5 && echo "1500 MTU works"
@@ -46,22 +46,13 @@ ping -M do -s 576  -c 1 10.20.0.5 && echo "604 MTU works"
 ## Locate the Black Hole
 
 ```bash
-# Use tracepath to find where MTU changes:
+# Use tracepath to find where path MTU changes:
 tracepath -n 10.20.0.5
-# Shows MTU at each hop; where it decreases = bottleneck
+# Shows the discovered path MTU and prints "pmtu N" when it changes
 
-# Test each hop with large packets:
-traceroute -n 10.20.0.5 | awk '{print $2}' | while read hop; do
-    [ "$hop" = "*" ] && continue
-    RT=$(ping -M do -s 1472 -c 1 -W 1 $hop 2>&1)
-    if echo "$RT" | grep -q "success\|bytes from"; then
-        echo "$hop: Large packets OK"
-    elif echo "$RT" | grep -q "Frag needed"; then
-        echo "$hop: Fragmentation needed (PMTUD working)"
-    else
-        echo "$hop: No response (possible black hole)"
-    fi
-done
+# Optional: if traceroute is installed, use MTU discovery mode:
+traceroute --mtu -n 10.20.0.5
+# Prints F=NUM when a smaller MTU is discovered on the path
 ```
 
 ## Confirm ICMP is Blocked
@@ -71,7 +62,7 @@ done
 tcpdump -i eth0 -n 'icmp' &
 
 # Send oversized packet to destination:
-ping -M do -s 1473 -c 3 10.20.0.5
+ping -M do -s 1472 -c 3 10.20.0.5   # Or use the largest size that fails in Step 3
 
 # Check capture output:
 # If NO ICMP type 3 code 4 arrives: ICMP is being dropped somewhere
@@ -103,7 +94,7 @@ ACTUAL_MTU=$(tracepath -n 10.20.0.5 | grep pmtu | tail -1 | grep -oP 'pmtu \K[0-
 ip link set eth0 mtu $ACTUAL_MTU
 
 # Option 4: Configure application to use small packets
-# For TCP applications: set socket's IP_MTU_DISCOVER to PMTUDISC_DONT
+# For IPv4 TCP applications: set socket's IP_MTU_DISCOVER to IP_PMTUDISC_DONT
 # Allows kernel to fragment (less efficient but works)
 ```
 
