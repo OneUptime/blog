@@ -4,20 +4,20 @@ Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
 Tags: Envoy, DNS, IPv4, Logical DNS, Cluster, Service Mesh, Configuration
 
-Description: Learn how to configure Envoy LOGICAL_DNS clusters to resolve IPv4 service addresses at connect time for services with frequently changing IPs.
+Description: Learn how to configure Envoy LOGICAL_DNS clusters to prefer or require IPv4 DNS results for services whose addresses change over time.
 
 ---
 
-Envoy supports several cluster discovery types. `LOGICAL_DNS` resolves the hostname at connection time (not at cluster creation), making it suitable for services like CDNs or external APIs where IPs change frequently and DNS TTLs are short.
+Envoy supports several cluster discovery types. `LOGICAL_DNS` uses asynchronous DNS refresh like `STRICT_DNS`, but treats the result as a single logical host and uses the first returned IP address when a new connection needs to be initiated. That makes it suitable for services like CDNs or external APIs where DNS answers change over time.
 
 ## STRICT_DNS vs LOGICAL_DNS
 
 | Feature | STRICT_DNS | LOGICAL_DNS |
 |---------|-----------|-------------|
-| Resolution timing | Periodic background refresh | At connection time |
-| Multiple A records | Creates one endpoint per IP | Uses one IP (first returned) |
-| Best for | Internal services with stable IPs | External services, CDNs |
-| DNS TTL respected | Yes | Yes |
+| Resolution timing | Periodic background refresh | Periodic background refresh; new connections use the first returned IP |
+| Multiple A records | Creates one endpoint per IP | Uses the first returned IP for new connections |
+| Best for | Services where all returned IPs should be load balanced | External services, CDNs |
+| DNS TTL respected | Only if `respect_dns_ttl` is enabled | Only if `respect_dns_ttl` is enabled |
 
 ## Configuring a LOGICAL_DNS Cluster
 
@@ -27,11 +27,10 @@ Envoy supports several cluster discovery types. `LOGICAL_DNS` resolves the hostn
 static_resources:
   clusters:
     - name: external_api
-      # LOGICAL_DNS: resolve at connect time; uses first returned IP
+      # LOGICAL_DNS: keep one logical host; new connections use the first IP from the latest DNS result
       type: LOGICAL_DNS
-      dns_lookup_family: V4_PREFERRED   # Prefer IPv4
+      dns_lookup_family: V4_PREFERRED   # Prefer IPv4, fall back to IPv6 if needed
       connect_timeout: 5s
-      lb_policy: ROUND_ROBIN
       load_assignment:
         cluster_name: external_api
         endpoints:
@@ -39,7 +38,7 @@ static_resources:
               - endpoint:
                   address:
                     socket_address:
-                      # Hostname - resolved fresh for each new connection
+                      # Hostname - refreshed asynchronously; new connections use the latest first returned IP
                       address: api.external-service.com
                       port_value: 443
       # TLS configuration for HTTPS to the external service
@@ -53,9 +52,9 @@ static_resources:
 ## When to Use LOGICAL_DNS
 
 Use `LOGICAL_DNS` when:
-- The upstream has a single IP behind a hostname (e.g., a SaaS API).
-- The IP changes frequently and you want DNS to determine the IP per connection.
-- You don't want Envoy to cache a list of IPs from round-robin DNS.
+- The upstream is reached through a hostname, especially when DNS answers can change over time.
+- You want new connections to use the latest first returned address without draining existing connections.
+- You don't want Envoy to treat every IP from round-robin DNS as a separate load-balanced host.
 
 ## Combining LOGICAL_DNS with Health Checks
 
@@ -87,13 +86,13 @@ clusters:
 
 ```bash
 # View active upstream hosts in the cluster
-curl -s http://localhost:9901/clusters | grep payment_service
+curl -s http://localhost:9901/clusters | grep external_api
 
-# Check DNS-related stats
-curl -s http://localhost:9901/stats | grep logical_dns
+# Check service-discovery update stats for the cluster
+curl -s http://localhost:9901/stats | grep 'cluster.external_api.*update_'
 
-# Dump the full cluster status
-curl -s http://localhost:9901/config_dump | python3 -m json.tool | grep -A 10 external_api
+# Dump the full cluster status as JSON
+curl -s 'http://localhost:9901/clusters?format=json&filter=^external_api$' | python3 -m json.tool
 ```
 
 ## Full Listener + LOGICAL_DNS Example
@@ -116,7 +115,9 @@ static_resources:
                       domains: ["*"]
                       routes:
                         - match: { prefix: "/" }
-                          route: { cluster: external_api }
+                          route:
+                            cluster: external_api
+                            host_rewrite_literal: api.service.com
                 http_filters:
                   - name: envoy.filters.http.router
                     typed_config:
@@ -144,7 +145,7 @@ admin:
 
 ## Key Takeaways
 
-- `LOGICAL_DNS` resolves the hostname at connect time, ideal for external services with changing IPs.
-- Set `dns_lookup_family: V4_PREFERRED` or `V4_ONLY` to ensure IPv4 resolution.
-- Unlike `STRICT_DNS`, `LOGICAL_DNS` uses a single resolved IP rather than balancing across all returned IPs.
-- Monitor resolution via the Envoy admin API at `/clusters`.
+- `LOGICAL_DNS` refreshes DNS asynchronously and uses the first returned IP for new connections, making it useful for external services whose DNS answers change over time.
+- Set `dns_lookup_family: V4_ONLY` to require IPv4, or `V4_PREFERRED` to prefer IPv4 and fall back to IPv6.
+- Unlike `STRICT_DNS`, `LOGICAL_DNS` treats the DNS result as a single logical host instead of balancing across all returned IPs.
+- Monitor discovery via `/clusters` and the cluster's `update_*` stats in the Envoy admin API.
