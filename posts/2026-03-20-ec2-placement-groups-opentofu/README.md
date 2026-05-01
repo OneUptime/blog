@@ -38,7 +38,7 @@ resource "aws_instance" "hpc" {
   ami               = data.aws_ami.amazon_linux.id
   instance_type     = "c5n.18xlarge"  # Network-optimized instance
   subnet_id         = var.subnet_id
-  placement_group   = aws_placement_group.cluster.id
+  placement_group   = aws_placement_group.cluster.name
 
   tags = {
     Name = "hpc-node-${count.index + 1}"
@@ -50,7 +50,7 @@ resource "aws_instance" "hpc" {
 
 ```hcl
 # Spread placement group places each instance on distinct hardware
-# Maximum of 7 instances per AZ per spread group
+# Maximum of 7 running instances per AZ per spread group
 # Best for critical applications requiring high availability
 resource "aws_placement_group" "spread" {
   name     = "critical-app-spread"
@@ -63,11 +63,11 @@ resource "aws_placement_group" "spread" {
 }
 
 resource "aws_instance" "critical" {
-  count           = 3  # Max 7 per AZ
+  count           = 3  # Up to 7 running instances per AZ
   ami             = data.aws_ami.amazon_linux.id
   instance_type   = "m5.large"
   subnet_id       = var.subnet_id
-  placement_group = aws_placement_group.spread.id
+  placement_group = aws_placement_group.spread.name
 
   tags = {
     Name = "critical-instance-${count.index + 1}"
@@ -84,7 +84,7 @@ resource "aws_instance" "critical" {
 resource "aws_placement_group" "partition" {
   name            = "kafka-partition"
   strategy        = "partition"
-  partition_count = 3  # Number of partitions (max 7)
+  partition_count = 3  # Number of partitions (up to 7 per AZ)
 
   tags = {
     Name    = "kafka-partition-pg"
@@ -92,20 +92,19 @@ resource "aws_placement_group" "partition" {
   }
 }
 
-# Launch Kafka brokers, specifying which partition each goes into
+# Launch Kafka brokers into the partition placement group
 resource "aws_instance" "kafka" {
   count           = 3
   ami             = data.aws_ami.amazon_linux.id
   instance_type   = "m5.xlarge"
   subnet_id       = var.subnet_id
-  placement_group = aws_placement_group.partition.id
+  placement_group = aws_placement_group.partition.name
 
-  # Each Kafka broker in a separate partition for fault tolerance
-  # partition_number is set in the instance resource (1-indexed)
+  # EC2 attempts to spread instances evenly across partitions,
+  # but does not guarantee perfect distribution.
 
   tags = {
-    Name      = "kafka-broker-${count.index + 1}"
-    Partition = count.index + 1
+    Name = "kafka-broker-${count.index + 1}"
   }
 }
 ```
@@ -114,7 +113,7 @@ resource "aws_instance" "kafka" {
 
 ```hcl
 # Reference a placement group in a launch template
-# for use with Auto Scaling Groups
+# for use with Auto Scaling Groups in a single AZ
 resource "aws_launch_template" "hpc" {
   name          = "hpc-launch-template"
   image_id      = data.aws_ami.amazon_linux.id
@@ -136,4 +135,4 @@ tofu apply
 
 ## Conclusion
 
-EC2 placement groups give you control over instance placement to meet specific performance and availability requirements. Use cluster groups for HPC workloads needing sub-millisecond latency, spread groups for mission-critical single-instance applications, and partition groups for large-scale distributed systems that need rack-level fault tolerance. Note that cluster groups require instances to be in the same AZ and instance type.
+EC2 placement groups give you control over instance placement to meet specific performance and availability requirements. Use cluster groups for HPC workloads needing low-latency, high-throughput networking, spread groups for small sets of mission-critical instances, and partition groups for large-scale distributed systems that need rack-level fault tolerance. Note that cluster groups must stay within a single AZ, and using the same instance type improves the likelihood of a successful launch.
