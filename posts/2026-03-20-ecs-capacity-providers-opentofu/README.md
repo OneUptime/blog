@@ -42,7 +42,7 @@ resource "aws_launch_template" "ecs" {
   metadata_options {
     http_endpoint               = "enabled"
     http_tokens                 = "required"  # IMDSv2
-    http_put_response_hop_limit = 2           # Required for ECS container metadata
+    http_put_response_hop_limit = 2           # Allows IMDSv2 access from containerized workloads
   }
 
   lifecycle {
@@ -152,17 +152,12 @@ resource "aws_ecs_service" "app" {
   cluster         = aws_ecs_cluster.main.id
   task_definition = var.task_definition_arn
   desired_count   = 4
+  depends_on      = [aws_ecs_cluster_capacity_providers.main]
 
   capacity_provider_strategy {
     capacity_provider = aws_ecs_capacity_provider.ec2.name
     base              = 2
     weight            = 3
-  }
-
-  capacity_provider_strategy {
-    capacity_provider = "FARGATE_SPOT"
-    base              = 0
-    weight            = 1  # Burst overflow to Fargate Spot
   }
 
   network_configuration {
@@ -190,4 +185,4 @@ aws ecs describe-capacity-providers \
 
 ## Conclusion
 
-EC2 capacity providers with managed scaling provide the best cost efficiency for workloads that benefit from reserved and savings plan pricing on EC2. Set `target_capacity = 80` to maintain a buffer for fast task placement, and use `managed_termination_protection = ENABLED` to prevent ASG from terminating instances with running ECS tasks. Combine EC2 capacity providers with FARGATE_SPOT in the service strategy for elastic overflow capacity without over-provisioning EC2.
+EC2 capacity providers with managed scaling provide the best cost efficiency for workloads that benefit from reserved and savings plan pricing on EC2. Set `target_capacity = 80` to maintain a buffer for fast task placement, and use `managed_termination_protection = ENABLED` to prevent ASG from terminating instances with running ECS tasks. A cluster can include both EC2 and Fargate capacity providers, but each service strategy must use either Auto Scaling group capacity providers or Fargate capacity providers, not both.
