@@ -47,9 +47,9 @@ www IN AAAA 2001:db8::10
 api IN AAAA 2001:db8::20
 
 ; AAAA for multiple addresses (load balancing)
-cdn IN AAAA 2001:db8:cdn::1
-cdn IN AAAA 2001:db8:cdn::2
-cdn IN AAAA 2001:db8:cdn::3
+cdn IN AAAA 2001:db8:cd0::1
+cdn IN AAAA 2001:db8:cd0::2
+cdn IN AAAA 2001:db8:cd0::3
 ```
 
 ## Step 1: Generate DNSSEC Keys
@@ -59,14 +59,14 @@ cdn IN AAAA 2001:db8:cdn::3
 
 cd /var/named/keys/
 
-# Generate Zone Signing Key (ZSK) - smaller, rotated frequently
+# Generate Zone Signing Key (ZSK) - signs zone data
 dnssec-keygen -a ECDSAP256SHA256 \
               -n ZONE \
               example.com
 
 # Output: Kexample.com.+013+XXXXX.key and .private
 
-# Generate Key Signing Key (KSK) - larger, updated rarely
+# Generate Key Signing Key (KSK) - signs the DNSKEY RRset
 dnssec-keygen -a ECDSAP256SHA256 \
               -n ZONE \
               -f KSK \
@@ -82,24 +82,26 @@ ls -la Kexample.com.*
 
 ```bash
 # Sign the zone with both ZSK and KSK
-# NSEC3 for authenticated denial (recommended)
+# NSEC3 example using current recommended parameters:
+# no salt and no extra iterations
 dnssec-signzone \
     -a \
-    -3 $(head -c 4 /dev/urandom | xxd -p) \
-    -A \
+    -3 - \
+    -H 0 \
     -N INCREMENT \
     -o example.com \
+    -f /var/named/example.com.zone.signed \
     -k /var/named/keys/Kexample.com.+013+YYYYY \
     /var/named/example.com.zone \
     /var/named/keys/Kexample.com.+013+XXXXX
 
-# Output: example.com.zone.signed
+# Output: /var/named/example.com.zone.signed
 
 # Verify signed zone
-dnssec-verify -o example.com example.com.zone.signed
+dnssec-verify -o example.com /var/named/example.com.zone.signed
 
 # Check AAAA record signatures are present
-grep -A2 "AAAA" example.com.zone.signed | grep RRSIG | head -5
+grep -A2 "AAAA" /var/named/example.com.zone.signed | grep RRSIG | head -5
 ```
 
 ## Step 3: BIND Configuration
@@ -110,39 +112,37 @@ grep -A2 "AAAA" example.com.zone.signed | grep RRSIG | head -5
 zone "example.com" {
     type master;
     file "/var/named/example.com.zone.signed";
-
-    // Allow DNSSEC key rollover notifications
-    key-directory "/var/named/keys";
-
-    // Automatic signing (BIND 9.9+)
-    auto-dnssec maintain;
-    inline-signing yes;
 };
 
-// Enable DNSSEC validation globally
+// Only needed if this server also performs recursion
 options {
-    dnssec-validation auto;  // Use IANA trust anchors
-    dnssec-enable yes;
+    dnssec-validation auto;  // Use built-in root trust anchor
 };
 ```
 
-## Step 4: BIND Automatic Signing (BIND 9.9+)
+## Step 4: BIND Automatic Signing (Current BIND 9)
+
+```text
+// As an alternative to manual dnssec-signzone,
+// load the unsigned zone and let BIND maintain the signed copy.
+
+zone "example.com" {
+    type master;
+    file "/var/named/example.com.zone";
+    dnssec-policy default;
+    inline-signing yes;
+};
+```
 
 ```bash
-# With inline-signing, BIND signs zones automatically
-# No manual dnssec-signzone needed
+# Reload the configuration
+rndc reconfig
 
-# Just update the unsigned zone file
-# BIND creates .signed automatically
-
-# Reload the zone
+# After updating the unsigned zone file, reload the zone
 rndc reload example.com
 
 # Check signing status
-rndc signing -status example.com
-# Output:
-# Signing with key: ... (ZSK)
-# Signing with key: ... (KSK) - key signing key
+rndc signing -list example.com
 
 # Verify AAAA records have signatures
 dig +dnssec AAAA www.example.com @localhost | grep -E "AAAA|RRSIG"
@@ -164,9 +164,10 @@ dig +dnssec +multiline AAAA www.example.com @localhost
 dig +dnssec +cd AAAA www.example.com
 # +cd = checking disabled (shows raw answer without local validation)
 
-# Validate via external resolver
-dig @8.8.8.8 +dnssec AAAA www.example.com | grep -E "AAAA|RRSIG|ad"
-# "ad" flag in flags = Authenticated Data (DNSSEC validated)
+# Validate via external resolver after the DS record is published
+# Replace www.example.com with your real public zone name
+dig @8.8.8.8 +dnssec AAAA www.example.com | grep -E "flags:.* ad[ ;]|AAAA|RRSIG"
+# Look for the "ad" flag in the header: Authenticated Data
 ```
 
 ## Automation: Zone Signing Script
@@ -178,19 +179,26 @@ dig @8.8.8.8 +dnssec AAAA www.example.com | grep -E "AAAA|RRSIG|ad"
 ZONE="example.com"
 ZONE_FILE="/var/named/${ZONE}.zone"
 KEY_DIR="/var/named/keys"
-ZSK=$(ls ${KEY_DIR}/K${ZONE}.+013+*.key | grep -v KSK | head -1 | sed 's/\.key//')
-KSK=$(ls ${KEY_DIR}/K${ZONE}.+013+*.key | xargs grep -l "key signing" | head -1 | sed 's/\.key//')
+ZSK=$(grep -l "zone-signing key" "${KEY_DIR}"/K${ZONE}.+013+*.key | head -1 | sed 's/\.key$//')
+KSK=$(grep -l "key-signing key" "${KEY_DIR}"/K${ZONE}.+013+*.key | head -1 | sed 's/\.key$//')
 
 # Increment serial
-SERIAL=$(grep "serial" "${ZONE_FILE}" | awk '{print $1}')
-NEW_SERIAL=$(date +%Y%m%d)01
-sed -i "s/${SERIAL}/${NEW_SERIAL}/" "${ZONE_FILE}"
+SERIAL=$(awk '/serial/ {print $1; exit}' "${ZONE_FILE}")
+TODAY_BASE=$(date +%Y%m%d)00
+if [ "${SERIAL}" -ge "${TODAY_BASE}" ]; then
+    NEW_SERIAL=$((SERIAL + 1))
+else
+    NEW_SERIAL=$((TODAY_BASE + 1))
+fi
+sed -i "0,/${SERIAL}/s//${NEW_SERIAL}/" "${ZONE_FILE}"
 
 # Sign with NSEC3
 dnssec-signzone \
-    -3 $(openssl rand -hex 4) \
-    -A -N INCREMENT \
+    -3 - \
+    -H 0 \
+    -N INCREMENT \
     -o "${ZONE}" \
+    -f "${ZONE_FILE}.signed" \
     -k "${KSK}" \
     "${ZONE_FILE}" \
     "${ZSK}"
@@ -205,4 +213,4 @@ echo "Zone ${ZONE} signed and reloaded (serial: ${NEW_SERIAL})"
 
 ## Conclusion
 
-DNSSEC signing of IPv6 forward zones is straightforward - AAAA records are signed exactly like A records. Use ECDSAP256SHA256 algorithm for modern key generation (smaller, faster than RSA). Enable `inline-signing yes` in BIND to automate re-signing after zone changes. Always use NSEC3 (`-3` flag in `dnssec-signzone`) to prevent zone enumeration - without it, NSEC records reveal all names in the zone. After signing, verify AAAA records have RRSIG records with `dig +dnssec`, and confirm the `ad` (Authenticated Data) flag appears in validating resolver responses.
+DNSSEC signing of IPv6 forward zones is straightforward - AAAA records are signed exactly like A records. Use ECDSAP256SHA256 algorithm for modern key generation (smaller, faster than RSA). In current BIND releases, use `dnssec-policy` with `inline-signing yes` if you want automatic re-signing after zone changes. NSEC3 is optional; if you use it, current guidance is no salt (`-3 -`) and zero additional iterations. After signing, verify AAAA records have RRSIG records with `dig +dnssec`, and confirm the `ad` (Authenticated Data) flag appears in validating resolver responses once the DS record is published and the zone is publicly reachable.
