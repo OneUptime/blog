@@ -30,7 +30,14 @@ data "aws_vpc" "main" {
   tags = { Name = "main" }
 }
 
+data "aws_region" "current" {}
+
 data "aws_subnets" "public" {
+  filter {
+    name   = "vpc-id"
+    values = [data.aws_vpc.main.id]
+  }
+
   filter {
     name   = "tag:Tier"
     values = ["public"]
@@ -38,6 +45,11 @@ data "aws_subnets" "public" {
 }
 
 data "aws_subnets" "private" {
+  filter {
+    name   = "vpc-id"
+    values = [data.aws_vpc.main.id]
+  }
+
   filter {
     name   = "tag:Tier"
     values = ["private"]
@@ -103,6 +115,12 @@ resource "aws_security_group" "ecs_tasks" {
 
 ```hcl
 # alb.tf
+data "aws_acm_certificate" "main" {
+  domain      = "app.example.com"
+  statuses    = ["ISSUED"]
+  most_recent = true
+}
+
 resource "aws_lb" "main" {
   name               = "app-alb"
   internal           = false
@@ -171,6 +189,18 @@ resource "aws_lb_listener" "http_redirect" {
 
 ```hcl
 # ecs.tf
+data "aws_iam_role" "ecs_execution" {
+  name = "ecsTaskExecutionRole"
+}
+
+data "aws_ecr_repository" "app" {
+  name = "app"
+}
+
+resource "aws_cloudwatch_log_group" "app" {
+  name = "/ecs/app"
+}
+
 resource "aws_ecs_cluster" "main" {
   name = "app-cluster"
 
@@ -186,13 +216,12 @@ resource "aws_ecs_task_definition" "app" {
   requires_compatibilities = ["FARGATE"]
   cpu                      = 256
   memory                   = 512
-  execution_role_arn       = aws_iam_role.ecs_execution.arn
-  task_role_arn            = aws_iam_role.ecs_task.arn
+  execution_role_arn       = data.aws_iam_role.ecs_execution.arn
 
   container_definitions = jsonencode([
     {
       name      = "app"
-      image     = "${aws_ecr_repository.app.repository_url}:latest"
+      image     = "${data.aws_ecr_repository.app.repository_url}:latest"
       essential = true
       portMappings = [
         {
@@ -203,8 +232,8 @@ resource "aws_ecs_task_definition" "app" {
       logConfiguration = {
         logDriver = "awslogs"
         options = {
-          "awslogs-group"         = "/ecs/app"
-          "awslogs-region"        = "us-east-1"
+          "awslogs-group"         = aws_cloudwatch_log_group.app.name
+          "awslogs-region"        = data.aws_region.current.name
           "awslogs-stream-prefix" = "ecs"
         }
       }
@@ -260,9 +289,9 @@ output "alb_zone_id" {
 ## Best Practices
 
 1. **Use target_type = "ip"** for Fargate - tasks don't have EC2 instance IDs
-2. **Configure health checks** before deploying - unhealthy tasks will drain and restart
-3. **Use HTTPS with ACM certificates** - never run production on HTTP only
-4. **Deploy tasks to private subnets** - only the ALB needs public access
+2. **Configure health checks** before deploying - tasks that fail the load balancer health check will be stopped and replaced
+3. **Use HTTPS with ACM certificates** - the certificate must be in the same Region as the ALB
+4. **Deploy tasks to private subnets** - only the ALB needs public access, but the tasks still need outbound access through a NAT gateway or the required VPC endpoints
 5. **Enable Container Insights** on ECS clusters for CloudWatch metrics
 
 ---
