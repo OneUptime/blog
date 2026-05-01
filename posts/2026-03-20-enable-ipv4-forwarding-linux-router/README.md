@@ -42,10 +42,10 @@ ip link set eth1 up
 sysctl -w net.ipv4.ip_forward=1
 
 # Permanent
-cat >> /etc/sysctl.conf << 'EOF'
+cat > /etc/sysctl.d/99-ip-forwarding.conf << 'EOF'
 net.ipv4.ip_forward = 1
 EOF
-sysctl -p
+sysctl --system
 ```
 
 ## Step 3: Configure Client Routing
@@ -66,16 +66,16 @@ ip route add 192.168.2.0/24 via 192.168.1.1
 
 ## Step 4: Optional - Configure iptables for Forwarding
 
-By default with no iptables rules, forwarding is allowed. But if iptables has a DROP policy:
+If the FORWARD chain policy is ACCEPT and no firewall rules block it, forwarding works once `net.ipv4.ip_forward` is enabled. But if iptables has a DROP policy:
 
 ```bash
 # Allow forwarding between networks
 iptables -A FORWARD -i eth0 -o eth1 -j ACCEPT
 iptables -A FORWARD -i eth1 -o eth0 -j ACCEPT
 
-# Or use stateful forwarding (more secure)
-iptables -A FORWARD -i eth0 -o eth1 -j ACCEPT
-iptables -A FORWARD -i eth1 -o eth0 -m state --state RELATED,ESTABLISHED -j ACCEPT
+# Or use conntrack-based forwarding (more secure)
+iptables -A FORWARD -i eth0 -o eth1 -m conntrack --ctstate NEW,RELATED,ESTABLISHED -j ACCEPT
+iptables -A FORWARD -i eth1 -o eth0 -m conntrack --ctstate NEW,RELATED,ESTABLISHED -j ACCEPT
 ```
 
 ## Testing Router Connectivity
@@ -97,13 +97,13 @@ traceroute 192.168.2.10
 If the router also has WAN access:
 
 ```bash
-# eth2: WAN interface (e.g., 203.0.113.1 or DHCP)
+# eth2: WAN interface with a dynamic public IP (e.g., via DHCP)
 # Add NAT for both LANs to reach internet
 iptables -t nat -A POSTROUTING -o eth2 -j MASQUERADE
 iptables -A FORWARD -i eth0 -o eth2 -j ACCEPT
 iptables -A FORWARD -i eth1 -o eth2 -j ACCEPT
-iptables -A FORWARD -i eth2 -o eth0 -m state --state RELATED,ESTABLISHED -j ACCEPT
-iptables -A FORWARD -i eth2 -o eth1 -m state --state RELATED,ESTABLISHED -j ACCEPT
+iptables -A FORWARD -i eth2 -o eth0 -m conntrack --ctstate RELATED,ESTABLISHED -j ACCEPT
+iptables -A FORWARD -i eth2 -o eth1 -m conntrack --ctstate RELATED,ESTABLISHED -j ACCEPT
 ```
 
 ## Complete Router Script
