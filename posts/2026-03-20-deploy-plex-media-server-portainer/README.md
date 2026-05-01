@@ -21,15 +21,13 @@ Plex is the most popular self-hosted media streaming platform. It organizes your
 Before deploying, get a one-time claim token to link the server to your account:
 
 1. Log in at `https://plex.tv/claim`.
-2. Copy the token (it expires in 4 minutes, so have the Portainer stack ready).
+2. Copy the token and use it promptly, since claim tokens are temporary.
 
 ## Compose Stack
 
 Mount your media directories as read-only volumes. Plex needs write access to its data directory for thumbnails and databases:
 
 ```yaml
-version: "3.8"
-
 services:
   plex:
     image: plexinc/pms-docker:latest
@@ -67,4 +65,4 @@ With host networking, Plex is at `http://<host-ip>:32400/web`. On first load, if
 
 ## Monitoring
 
-Use OneUptime to monitor `http://<host>:32400/identity`. Plex returns an XML document with the machine identifier when healthy. A non-200 response indicates the server is down. Alert immediately since media streaming failures are very visible to household users.
+Use OneUptime to monitor `http://<host>:32400/identity`. Plex returns identity information including the machine identifier when healthy. A non-200 response indicates the server is down. Alert immediately since media streaming failures are very visible to household users.
