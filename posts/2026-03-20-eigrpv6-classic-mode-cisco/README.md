@@ -27,7 +27,7 @@ Unlike EIGRP for IPv4, classic EIGRPv6 is enabled per-interface (not per-network
 ```text
 ! Step 1: Create the EIGRPv6 process
 Router(config)# ipv6 router eigrp 1
-Router(config-rtr)# eigrp router-id 1.1.1.1    ! Required - no auto-derive from IPv4
+Router(config-rtr)# eigrp router-id 1.1.1.1    ! Set manually if no suitable IPv4-derived router ID exists
 Router(config-rtr)# no shutdown                 ! EIGRPv6 is shutdown by default!
 
 ! Step 2: Enable EIGRPv6 on interfaces
@@ -44,7 +44,7 @@ Router(config-if)# ipv6 eigrp 1
 
 ## Setting the Router ID
 
-EIGRPv6 requires a 32-bit Router ID, just like OSPFv3. If there is no IPv4 address on the router, it must be set manually:
+EIGRPv6 requires a 32-bit Router ID, just like OSPFv3. If there is no suitable IPv4 address on the router, it must be set manually:
 
 ```text
 Router(config)# ipv6 router eigrp 1
@@ -116,11 +116,11 @@ H   Address           Interface      Hold  Uptime   SRTT   RTO  Q  Seq Num
 | Feature | Classic EIGRPv6 | Named EIGRPv6 |
 |---------|----------------|---------------|
 | Configuration | `ipv6 router eigrp` | `router eigrp <name>` + AF |
-| Default state | Shutdown | Active |
+| Default state | Shutdown | Shutdown (address family) |
 | Authentication | MD5 only | MD5 and SHA-256 |
 | Multi-AF | Separate processes | Single process |
 | Recommended for new deployments | No | Yes |
 
 ## Summary
 
-Classic EIGRPv6 uses `ipv6 router eigrp <asn>` and requires `no shutdown` and an explicit `eigrp router-id` to function. EIGRPv6 is enabled per-interface with `ipv6 eigrp <asn>`. For new deployments, prefer Named EIGRP. Classic mode is maintained for backward compatibility with older IOS versions.
+Classic EIGRPv6 uses `ipv6 router eigrp <asn>` and requires `no shutdown` plus a Router ID to function; configure `eigrp router-id` explicitly if no suitable IPv4-derived Router ID is available. EIGRPv6 is enabled per-interface with `ipv6 eigrp <asn>`. For new deployments, prefer Named EIGRP. Classic mode is maintained for backward compatibility with older IOS versions.
