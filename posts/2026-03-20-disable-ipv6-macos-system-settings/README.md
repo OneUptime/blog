@@ -1,12 +1,12 @@
-# How to Disable IPv6 on macOS via System Settings
+# How to Set IPv6 to Link-local Only on macOS via System Settings
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
-Tags: IPv6, macOS, System Settings, Network Configuration, Disable IPv6
+Tags: IPv6, macOS, System Settings, Network Configuration, Link-local only
 
-Description: Step-by-step guide to disabling IPv6 on macOS using the System Settings GUI for both Wi-Fi and Ethernet connections.
+Description: Step-by-step guide to limiting IPv6 to the local network on macOS using the System Settings GUI for both Wi-Fi and Ethernet connections.
 
-## Disable IPv6 via System Settings (macOS Ventura/Sonoma)
+## Set IPv6 to Link-local Only via System Settings (macOS Ventura/Sonoma)
 
 ```sql
 Steps:
@@ -15,23 +15,20 @@ Steps:
 2. In the left sidebar, click "Network"
 
 3. Select your active connection:
-   - Click "Wi-Fi" and click "Details..."
-   - Or click "Ethernet" and click "Details..."
+   - Click "Wi-Fi" and click "Details"
+   - Or click "Ethernet" and click "Details"
 
 4. Click the "TCP/IP" tab
 
 5. Find "Configure IPv6" dropdown
 
 6. Change from "Automatically" to:
-   - "Off" - Disables IPv6 completely on this interface
-   - "Link-local only" - Keeps only link-local (fe80::) addressing
+   - "Link-local only" - Limits IPv6 traffic to the local network
 
 7. Click "OK"
-
-8. The change takes effect immediately (no restart required)
 ```
 
-## Disable IPv6 via System Preferences (macOS Monterey and earlier)
+## Set IPv6 to Link-local Only via System Preferences (macOS Monterey and earlier)
 
 ```sql
 Steps:
@@ -46,48 +43,49 @@ Steps:
 
 5. Click "TCP/IP" tab
 
-6. "Configure IPv6" → select "Off" or "Link-local only"
+6. "Configure IPv6" → select "Link-local only"
 
 7. Click "OK"
 
 8. Click "Apply" in the Network preferences window
 ```
 
-## Disable on Multiple Interfaces
+## Apply on Multiple Interfaces
 
 ```text
-For dual-stack machines, disable on all interfaces:
+For dual-stack machines, repeat the setting on all relevant network services:
 
 1. Repeat the steps above for:
    - Wi-Fi
    - Ethernet (if connected)
-   - Any VPN adapters (Cisco VPN, etc.)
    - Thunderbolt Bridge (if present)
+   - Any other network services that expose TCP/IP settings
 
-Note: Each interface has its own IPv6 setting
+Note: Each network service has its own IPv6 setting
 ```
 
-## Verify IPv6 is Disabled
+## Verify IPv6 is Link-local Only
 
-After disabling via GUI, verify using Terminal:
+After changing the setting via GUI, verify using Terminal:
 
 ```bash
-# Check IPv6 addresses on Wi-Fi (en0)
+# Find the correct interface name for the network service you changed
+networksetup -listallhardwareports
 
+# Check IPv6 addresses on that interface (replace en0 with your interface name)
 ifconfig en0 | grep inet6
 
-# With IPv6 disabled, you should only see (or nothing):
+# With "Link-local only", you should only see link-local addresses, for example:
 # inet6 fe80::1234:5678%en0 prefixlen 64 scopeid 0x4
 
-# If "Off" was selected, no inet6 lines should appear
-# If "Link-local only", only fe80:: should appear
+# Global IPv6 addresses should no longer appear
 
-# Test that global IPv6 is gone
-ping6 2001:4860:4860::8888
-# Should fail: "ping6: UDP connect: No route to host"
+# Optional: test that a global IPv6 route is unavailable
+ping6 -c 3 2001:4860:4860::8888
+# This should fail with a routing error, such as "No route to host"
 ```
 
-## Re-enable IPv6
+## Restore Automatic IPv6 Configuration
 
 ```sql
 Steps:
@@ -97,9 +95,9 @@ Steps:
 
 3. Click OK
 
-IPv6 is re-enabled and will acquire addresses via SLAAC or DHCPv6
+IPv6 is set back to automatic configuration and may acquire addresses via SLAAC or DHCPv6, depending on the network
 ```
 
 ## Summary
 
-Disable IPv6 on macOS via **System Settings → Network → [Interface] Details → TCP/IP → Configure IPv6 → Off**. This takes effect immediately without a restart. For Monterey and earlier, the path is **System Preferences → Network → Advanced → TCP/IP**. To keep link-local-only addressing (needed for some local network features), choose "Link-local only" instead of "Off". Verify with `ifconfig en0 | grep inet6`.
+Set IPv6 to **Link-local only** on macOS via **System Settings → Network → [Interface] Details → TCP/IP → Configure IPv6 → Link-local only**. This is the GUI option that limits IPv6 traffic to the local network. For Monterey and earlier, the path is **System Preferences → Network → Advanced → TCP/IP**. To re-enable automatic IPv6 configuration, select **Automatically**. Verify by finding the correct interface with `networksetup -listallhardwareports`, then checking `ifconfig` output for only `fe80::` addresses.
