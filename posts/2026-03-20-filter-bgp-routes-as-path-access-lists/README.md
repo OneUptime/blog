@@ -36,7 +36,7 @@ ip as-path access-list 1 permit ^65100$
 ip as-path access-list 2 deny _7018_
 ip as-path access-list 2 permit .*
 
-! Permit only directly connected AS (single hop)
+! Permit only single-AS paths (one AS hop away)
 ip as-path access-list 3 permit ^[0-9]+$
 ip as-path access-list 3 deny .*
 
@@ -64,7 +64,7 @@ Apply the access list inbound or outbound using `neighbor X filter-list`:
 
 ```text
 router bgp 65001
- ! Accept only routes from AS 65100 (direct customer)
+ ! Accept only routes originated by AS 65100
  neighbor 10.0.0.1 filter-list 1 in
 
  ! Advertise only our own routes outbound (AS path is empty for local routes)
@@ -75,14 +75,14 @@ router bgp 65001
 
 For more complex filtering, use the AS-path access list as a match condition inside a route map:
 
-```nginx
+```text
 ! Create route map that uses AS-path matching
 route-map FILTER_UPSTREAM permit 10
  match as-path 1
  set local-preference 200
 
 route-map FILTER_UPSTREAM deny 20
- ! Implicitly deny everything not matched above
+ ! Explicit catch-all deny for everything else
 
 ! Apply route map to neighbor inbound
 router bgp 65001
@@ -100,15 +100,15 @@ Router# clear ip bgp 203.0.113.1 soft in
 ! Verify which routes are now accepted
 Router# show ip bgp neighbors 203.0.113.1 routes
 
-! Check filter-list hits
+! Review the configured AS-path access lists
 Router# show ip as-path-access-list
 ```
 
 ## Common Use Cases
 
 - **Customer prefix enforcement:** Only accept routes with the customer's AS as origin (`_65100$`)
-- **Prevent route leaks:** Reject routes with your own AS in the path (`_65001_`)
-- **Transit filtering:** Deny traffic through specific ASes for legal or policy reasons
+- **Own-AS loop defense:** Reject routes with your own AS in the path (`_65001_`) if you have enabled exceptions such as `allowas-in`
+- **Transit filtering:** Avoid routes through specific ASes for legal or policy reasons
 - **Outbound announcement:** Only advertise your own prefixes (`^$` for locally originated)
 
 ## Conclusion
