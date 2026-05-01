@@ -35,7 +35,7 @@ graph LR
 1. Subscriber's device sends IPv4 packet to `8.8.8.8`
 2. B4 (CPE) encapsulates the IPv4 packet inside an IPv6 packet:
    - Outer IPv6 src: B4's IPv6 address
-   - Outer IPv6 dst: AFTR's IPv6 address (learned via DHCPv6 option or DNS)
+   - Outer IPv6 dst: AFTR's IPv6 address (typically discovered via DHCPv6 AFTR-Name and then resolved in DNS, or configured manually)
    - Inner: original IPv4 packet
 3. IPv6 packet travels over the ISP's IPv6-only network
 4. AFTR decapsulates the IPv6 tunnel and extracts the inner IPv4 packet
@@ -50,28 +50,28 @@ graph LR
 | Client IPv4 | Yes (private, behind B4) | No (IPv6-only) |
 | Translation | NAT44 at AFTR | NAT64 at gateway |
 | Tunnel | IPv4-in-IPv6 Softwire | None (native IPv6) |
-| DNS changes | None (normal DNS works) | DNS64 required |
+| DNS changes | None for subscriber apps | DNS64 typically used |
 | Application compat | High (transparent IPv4) | May need adjustments |
 | IPv6-only network? | Yes (access network) | Yes (client network) |
 
 ## AFTR Address Discovery
 
-The B4 needs to know the AFTR's IPv6 address. This is typically provided via:
+The B4 needs the AFTR tunnel endpoint information to build the IPv4-in-IPv6 tunnel. This is typically provided via:
 
-1. **DHCPv6 option 64** (AFTR-Name): ISP sends the AFTR's fully qualified domain name
-2. **Hardcoded in CPE firmware**: Some ISPs configure the AFTR address statically
+1. **DHCPv6 option 64** (AFTR-Name): ISP sends the AFTR's fully qualified domain name, which the B4 then resolves in DNS
+2. **Manual or out-of-band configuration**: Some ISPs configure the AFTR endpoint statically
 
 ## MTU Considerations in DS-Lite
 
-DS-Lite adds a 40-byte IPv6 tunnel header to every IPv4 packet. This reduces the effective MTU for IPv4 traffic:
+DS-Lite adds a 40-byte IPv6 header to every encapsulated IPv4 packet. This reduces the headroom for an unfragmented inner IPv4 packet when the access MTU stays at 1500 bytes:
 
 ```text
 Physical link MTU: 1500 bytes
-IPv6 tunnel header: 40 bytes
-Effective IPv4 MTU: 1460 bytes
+IPv6 encapsulation header: 40 bytes
+Unfragmented inner IPv4 packet size: 1460 bytes
 ```
 
-The B4 must set the IPv4 MTU to 1460 and signal this to clients via DHCP or TCP MSS clamping.
+RFC 6333 recommends increasing the MTU between the B4 and AFTR by at least 40 bytes where possible. If that is not possible, the B4 and AFTR must handle fragmentation and reassembly after encapsulation; some CPEs also advertise a lower MTU or clamp TCP MSS to reduce fragmentation.
 
 ## Advantages of DS-Lite
 
@@ -83,16 +83,16 @@ The B4 must set the IPv4 MTU to 1460 and signal this to clients via DHCP or TCP 
 ## Limitations of DS-Lite
 
 - **CGN issues**: Shared public IPv4 means per-subscriber port limitations
-- **Performance**: Double encapsulation adds latency and CPU overhead
-- **ALG requirements**: FTP, SIP, and similar protocols need Application Layer Gateways at the AFTR
-- **No static IPv4**: Subscribers cannot get a fixed public IPv4 address
+- **Performance**: Encapsulation and centralized NAT add latency and CPU overhead
+- **ALG requirements**: Some NAT-sensitive protocols may need Application Layer Gateways or other NAT traversal help at the AFTR
+- **No dedicated public IPv4 by default**: Subscribers usually share public IPv4 addresses behind CGN
 - **Logging complexity**: NAT logging at AFTR scale is challenging for abuse investigation
 
 ## DS-Lite in Practice
 
-DS-Lite is deployed by many European and Asian ISPs including Deutsche Telekom (Germany), Swisscom, and various Japanese operators. It was one of the first widely deployed IPv6 transition technologies in broadband networks.
+DS-Lite has seen broad deployment in broadband networks. It was one of the first widely deployed IPv4-as-a-service transition technologies for wireline ISPs.
 
-The typical deployment serves millions of subscribers where each B4 gets a unique IPv6 /56 or /64 prefix, and all IPv4 traffic from that subscriber flows through a single Softwire to the AFTR.
+In a typical deployment, the subscriber is provisioned with IPv6 service, and IPv4 traffic is carried through an IPv4-in-IPv6 Softwire between the B4 and the AFTR.
 
 ## Summary
 
