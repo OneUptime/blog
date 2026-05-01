@@ -8,7 +8,7 @@ Description: Learn how to diagnose and fix Portainer agent communication failure
 
 ---
 
-Running the Portainer Agent as a Swarm global service introduces overlay network communication that adds complexity beyond standalone Docker deployments. This guide covers the most common failure patterns.
+Running the legacy Portainer Agent as a Swarm global service introduces overlay network communication that adds complexity beyond standalone Docker deployments. This guide covers the most common failure patterns.
 
 ## Correct Agent Deployment for Swarm
 
@@ -66,14 +66,14 @@ docker service ps portainer_agent_agent
 # Check overlay network encryption status
 docker network inspect portainer_agent_portainer_agent_network | grep -i encrypt
 
-# Test connectivity between nodes
-docker exec -it $(docker ps -q -f name=portainer_agent) \
-  ping -c 3 tasks.portainer_agent_agent
+# Test connectivity to the agent service over the overlay network
+docker run --rm --network portainer_agent_portainer_agent_network \
+  busybox ping -c 3 tasks.agent
 ```
 
 ## Firewall Ports for Swarm Overlay
 
-All Swarm nodes need these ports open between each other:
+All Swarm nodes need these ports open between each other, and the Portainer Server instance must be able to reach the nodes on port `9001`:
 
 ```bash
 # Required Swarm ports
@@ -84,13 +84,15 @@ sudo ufw allow 4789/udp   # Overlay network traffic
 sudo ufw allow 9001/tcp   # Portainer agent
 ```
 
+If the overlay network uses encryption, also allow IP protocol 50 (ESP) between nodes.
+
 ## Verify AGENT_CLUSTER_ADDR
 
 The `AGENT_CLUSTER_ADDR` must resolve to all agent task IPs. Using `tasks.<service-name>` in the overlay network achieves this automatically via Swarm DNS.
 
 ```bash
-# Verify DNS resolution from within the agent container
-docker exec -it $(docker ps -q -f name=portainer_agent) \
-  nslookup tasks.portainer_agent_agent
+# Verify DNS resolution from an attachable container on the overlay network
+docker run --rm --network portainer_agent_portainer_agent_network \
+  busybox nslookup tasks.agent
 # Should return multiple A records, one per node
 ```
