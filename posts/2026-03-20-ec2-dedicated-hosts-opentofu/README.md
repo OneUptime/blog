@@ -14,7 +14,7 @@ EC2 Dedicated Hosts are physical servers fully dedicated to your use. They enabl
 
 - OpenTofu v1.6+
 - AWS credentials with EC2 permissions
-- An existing VPC and subnet
+- An existing VPC and a subnet in the same Availability Zone as the Dedicated Host
 
 ## Step 1: Allocate a Dedicated Host
 
@@ -25,11 +25,12 @@ resource "aws_ec2_host" "dedicated" {
   instance_family   = "c5"         # Instance family supported on this host
   availability_zone = "us-east-1a"
 
-  # auto_placement allows AWS to automatically place instances
-  # on this host when an AZ placement is requested
+  # auto_placement allows untargeted host-tenancy launches
+  # that match this host's configuration
   auto_placement = "on"
 
-  # host_recovery automatically restarts instances if hardware fails
+  # host_recovery can recover supported running instances
+  # onto replacement hardware if the host fails
   host_recovery = "on"
 
   tags = {
@@ -43,9 +44,19 @@ resource "aws_ec2_host" "dedicated" {
 ## Step 2: Launch Instances on the Dedicated Host
 
 ```hcl
+variable "subnet_id" {
+  description = "Subnet ID in the same Availability Zone as the Dedicated Host"
+  type        = string
+}
+
+variable "windows_byol_ami_id" {
+  description = "AMI ID for your eligible Windows Server 2019-or-earlier BYOL image"
+  type        = string
+}
+
 # Launch an instance specifically on the allocated dedicated host
 resource "aws_instance" "byol_server" {
-  ami           = data.aws_ami.windows.id
+  ami           = var.windows_byol_ami_id
   instance_type = "c5.2xlarge"
 
   # Place instance on the specific dedicated host
@@ -64,7 +75,7 @@ resource "aws_instance" "byol_server" {
 
   tags = {
     Name    = "byol-windows-server"
-    License = "Windows-Server-2022"
+    License = "Windows-Server-BYOL"
   }
 }
 ```
@@ -72,11 +83,16 @@ resource "aws_instance" "byol_server" {
 ## Step 3: Use Dedicated Tenancy (Instance-Level)
 
 ```hcl
+variable "amazon_linux_ami_id" {
+  description = "AMI ID for the Amazon Linux dedicated instance"
+  type        = string
+}
+
 # Alternative: dedicated instance (not dedicated host)
 # The instance runs on hardware dedicated to one customer
 # but you don't have visibility into the specific host
 resource "aws_instance" "dedicated_instance" {
-  ami           = data.aws_ami.amazon_linux.id
+  ami           = var.amazon_linux_ami_id
   instance_type = "m5.xlarge"
   subnet_id     = var.subnet_id
 
@@ -87,16 +103,17 @@ resource "aws_instance" "dedicated_instance" {
 }
 ```
 
-## Step 4: Configure Host Resource Groups
+## Step 4: Create a License Manager License Configuration
 
 ```hcl
-# License Manager Host Resource Group for BYOL management
+# Optional: track Dedicated Host BYOL usage with License Manager
 resource "aws_licensemanager_license_configuration" "windows" {
   name                     = "windows-server-licenses"
-  description              = "Windows Server 2022 BYOL licenses"
-  license_counting_type    = "vCPU"
+  description              = "Windows Server 2019-or-earlier BYOL licenses on Dedicated Hosts"
+  license_counting_type    = "Core"
   license_count            = 100
   license_count_hard_limit = true
+  license_rules            = ["#allowedTenancy=EC2-DedicatedHost"]
 
   tags = { Name = "windows-byol-config" }
 }
@@ -105,6 +122,10 @@ resource "aws_licensemanager_license_configuration" "windows" {
 ## Step 5: Outputs
 
 ```hcl
+data "aws_ec2_host" "dedicated" {
+  host_id = aws_ec2_host.dedicated.id
+}
+
 output "dedicated_host_id" {
   description = "ID of the allocated dedicated host"
   value       = aws_ec2_host.dedicated.id
@@ -115,9 +136,9 @@ output "dedicated_host_arn" {
   value       = aws_ec2_host.dedicated.arn
 }
 
-output "available_vcpus" {
-  description = "Available vCPUs on the dedicated host"
-  value       = aws_ec2_host.dedicated.sockets * aws_ec2_host.dedicated.cores_per_socket
+output "total_vcpus" {
+  description = "Total vCPUs on the dedicated host"
+  value       = data.aws_ec2_host.dedicated.total_vcpus
 }
 ```
 
@@ -131,4 +152,4 @@ tofu apply
 
 ## Conclusion
 
-EC2 Dedicated Hosts provide physical server isolation for compliance and BYOL licensing scenarios. The host_recovery feature ensures high availability by automatically restarting instances on replacement hardware if the physical host fails. Be mindful of costs-dedicated hosts are billed per host-hour regardless of whether instances are running on them.
+EC2 Dedicated Hosts provide physical server isolation for compliance and BYOL licensing scenarios. The host_recovery feature can automatically recover supported running instances on replacement hardware if the physical host fails. Be mindful of costs-dedicated hosts are billed per host-hour regardless of whether instances are running on them.
