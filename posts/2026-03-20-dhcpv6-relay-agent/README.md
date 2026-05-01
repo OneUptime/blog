@@ -16,15 +16,15 @@ A DHCPv6 relay agent forwards DHCPv6 messages between clients and a server when 
 DHCPv6 Relay Flow:
 
 Client Network (2001:db8:1::/64)          Server Network
-                                           (2001:db8:server::/64)
+                                           (2001:db8:100::/64)
 
 [Client]                 [Router/Relay]                [DHCPv6 Server]
    |                          |                              |
    |--SOLICIT (ff02::1:2)--->  |                              |
    |  (link-local multicast)  |                              |
    |                          |--RELAY-FORW (unicast)------> |
-   |                          |  src: relay link-local       |
-   |                          |  dst: 2001:db8::server       |
+   |                          |  src: relay global/ULA       |
+   |                          |  dst: 2001:db8:100::1        |
    |                          |  Contains original SOLICIT   |
    |                          |                              |
    |                          |<--RELAY-REPL (unicast)------ |
@@ -40,10 +40,10 @@ Client Network (2001:db8:1::/64)          Server Network
 ```text
 RELAY-FORW Message Format (Type 12):
 
-  hop-count: number of relay agents in chain (max 32)
-  link-address: global address on client-side interface
-                (helps server identify which subnet client is on)
-  peer-address: client's link-local address
+  hop-count: number of relay agents in chain (max 8)
+  link-address: address used by the server to identify the client link
+                (typically a GUA or ULA from the client-facing link)
+  peer-address: client's address (typically link-local initially)
   Options:
     Relay Message option (9): contains original client message
     Interface-ID option (18): identifies client-facing interface
@@ -67,63 +67,47 @@ interface GigabitEthernet0/1
  description Client-facing LAN (2001:db8:1::/64)
  ipv6 address 2001:db8:1::1/64
 
- ! Forward DHCPv6 to server at 2001:db8:server::1
- ipv6 dhcp relay destination 2001:db8:server::1
+ ! Forward DHCPv6 to server at 2001:db8:100::1
+ ipv6 dhcp relay destination 2001:db8:100::1
 
- ! Optional: specify source address for relay messages
- ! (helps server identify which subnet)
- ipv6 dhcp relay destination 2001:db8:server::1 GigabitEthernet0/0
+ ! Optional: specify the source interface for relay messages
+ ipv6 dhcp relay source-interface GigabitEthernet 0/0
 
 ! Verify relay configuration
+show ipv6 dhcp interface GigabitEthernet 0/1
 show ipv6 dhcp relay binding
-show ipv6 dhcp relay statistics
 
 ! Multiple relay destinations (redundant servers):
 interface GigabitEthernet0/1
- ipv6 dhcp relay destination 2001:db8:server::1
- ipv6 dhcp relay destination 2001:db8:server::2  ← secondary server
+ ipv6 dhcp relay destination 2001:db8:100::1
+ ipv6 dhcp relay destination 2001:db8:100::2
 
-! Relay with specific link address (what server sees as client subnet):
+! Relay link-address is carried in the RELAY-FORW message:
 interface GigabitEthernet0/1
- ipv6 dhcp relay destination 2001:db8:server::1
- ! link-address is automatically set to interface's global IPv6
+ ipv6 dhcp relay destination 2001:db8:100::1
+ ! the server uses link-address to identify the client link
 ```
 
 ## Linux dhcrelay DHCPv6 Relay
 
 ```bash
-# Install ISC dhcp-relay
+# Install ISC dhcrelay package
 
 sudo apt-get install isc-dhcp-relay
 
-# Configure relay
-cat > /etc/default/isc-dhcp-relay << 'EOF'
-# DHCPv6 relay configuration
-
-# DHCPv6 server address
-SERVERS="2001:db8:server::1"
-
-# Interfaces to listen on (client-facing)
-INTERFACES="eth1 eth2"
-
-# Additional options
-OPTIONS="-6"  # IPv6 mode
-EOF
-
-# Start relay
-sudo systemctl start isc-dhcp-relay
-sudo systemctl enable isc-dhcp-relay
+# In DHCPv6 mode, use -l for client-facing interfaces and -u for the
+# upstream interface/server.
 
 # Manual invocation for testing:
 sudo dhcrelay -6 \
     -l eth1 \                           # Listen on eth1 (client side)
-    -u 2001:db8:server::1%eth0 \       # Upstream: server address on eth0
+    -u 2001:db8:100::1%eth0 \          # Upstream: server via eth0
     -pf /run/dhcrelay6.pid
 
 # Multiple client interfaces:
 sudo dhcrelay -6 \
     -l eth1 -l eth2 \
-    -u 2001:db8:server::1%eth0
+    -u 2001:db8:100::1%eth0
 ```
 
 ## Linux dhcrelay with Interface-ID Option
@@ -134,7 +118,7 @@ sudo dhcrelay -6 \
 sudo dhcrelay -6 \
     -l eth1 \
     -I \                                # Include Interface-ID option
-    -u 2001:db8:server::1%eth0
+    -u 2001:db8:100::1%eth0
 
 # The Interface-ID helps the server:
 # - Know which interface the client is on
@@ -179,9 +163,12 @@ The DHCPv6 server needs subnet declarations for each client subnet, even if the 
 ## Verifying Relay Operation
 
 ```bash
-# Check relay statistics on Cisco
-show ipv6 dhcp relay statistics
-# Should show increasing RELAY-FORW and RELAY-REPL counters
+# Check relay configuration on Cisco
+show ipv6 dhcp interface GigabitEthernet 0/1
+# Should show the interface in relay mode with the configured destination(s)
+
+show ipv6 dhcp relay binding
+# Shows relayed bindings once clients have active leases
 
 # Check relay statistics on Linux (dhcrelay)
 # (dhcrelay doesn't have a statistics command; use tcpdump)
@@ -197,7 +184,7 @@ sudo tcpdump -i eth1 "udp port 546 or udp port 547" -v
 # (relay unwraps RELAY-REPL to send ADVERTISE/REPLY to client)
 
 # On client: verify address was received
-ip -6 addr show eth0 | grep "scope global dynamic"
+ip -6 addr show dev eth0 | grep "scope global dynamic"
 ```
 
 ## Conclusion
