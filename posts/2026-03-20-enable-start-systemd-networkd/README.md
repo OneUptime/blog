@@ -8,7 +8,7 @@ Description: Enable and start systemd-networkd on Linux to manage network interf
 
 ## Introduction
 
-`systemd-networkd` is a system daemon that manages network interfaces. It reads configuration from `/etc/systemd/network/` and supports static IP, DHCP, VLANs, bridges, bonds, tunnels, and more. It integrates with `systemd-resolved` for DNS and `networkctl` for management.
+`systemd-networkd` is a system daemon that manages network interfaces. It reads `.network` and `.netdev` configuration files, typically from `/etc/systemd/network/`, and supports static IP, DHCP, VLANs, bridges, bonds, tunnels, and more. It integrates with `systemd-resolved` for DNS and `networkctl` for management.
 
 ## Check if systemd-networkd is Running
 
@@ -103,4 +103,4 @@ ln -sf /run/systemd/resolve/stub-resolv.conf /etc/resolv.conf
 
 ## Conclusion
 
-Enabling systemd-networkd requires running `systemctl enable --now systemd-networkd` and creating `.network` files in `/etc/systemd/network/`. Disable NetworkManager if present to avoid conflicts. Use `networkctl list` and `networkctl status` to verify that interfaces are being managed and configured correctly.
+Enabling systemd-networkd requires running `systemctl enable --now systemd-networkd` and creating matching `.network` files, typically in `/etc/systemd/network/`. Disable NetworkManager if present to avoid conflicts. Use `networkctl list` and `networkctl status` to verify that interfaces are being managed and configured correctly.
