@@ -30,8 +30,6 @@ Watchtower checks container labels to determine whether to include or exclude a 
 ```yaml
 # docker-compose.yml
 
-version: '3.8'
-
 services:
   # This container will be auto-updated
   nginx:
@@ -72,7 +70,7 @@ docker run -d \
 ### Method 1: Edit Stack Labels in Portainer
 
 1. Open Portainer → **Stacks**
-2. Select your stack → **Editor**
+2. Select your stack → **Editor** (for stacks deployed with the Web Editor or uploaded; Git-backed stacks must be updated in Git or detached first)
 3. Add the label to the service:
    ```yaml
    labels:
@@ -130,8 +128,12 @@ services:
   watchtower-prod:
     image: containrrr/watchtower
     command: --scope prod
+    volumes:
+      - /var/run/docker.sock:/var/run/docker.sock
     environment:
       - WATCHTOWER_CLEANUP=true
+    labels:
+      - "com.centurylinklabs.watchtower.scope=prod"
 
   app-prod:
     image: myapp:latest
