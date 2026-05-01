@@ -29,7 +29,7 @@ provider "aws" {
 # Allocate an EIP from Amazon's pool
 
 resource "aws_eip" "app_server" {
-  domain = "vpc"  # Required for VPC instances
+  domain = "vpc"  # Allocate a VPC Elastic IP
 
   tags = {
     Name        = "app-server-eip"
@@ -90,9 +90,8 @@ resource "aws_eip" "eni_eip" {
 ```hcl
 # Use BYOIP address pool
 resource "aws_eip" "byoip" {
-  domain              = "vpc"
-  public_ipv4_pool    = var.byoip_pool_id  # Your IP pool ID
-  customer_owned_ipv4_pool = var.coip_pool_id  # For Outposts
+  domain           = "vpc"
+  public_ipv4_pool = var.byoip_pool_id  # Your BYOIP public IPv4 pool ID
 
   tags = {
     Name = "byoip-eip"
@@ -124,10 +123,10 @@ tofu apply
 
 ## Best Practices
 
-- Release EIPs not associated with running instances to avoid charges
+- Release unused EIPs when you no longer need them to avoid unnecessary public IPv4 charges
 - Use EIP associations in destroy/create order with lifecycle settings
 - Consider using `prevent_destroy = true` in lifecycle to avoid accidental release
 
 ## Conclusion
 
-You have successfully created and associated Elastic IP addresses using OpenTofu. EIPs provide stable IP addresses for your instances, enabling DNS records to point to a consistent IP. Remember that AWS charges for EIPs that are allocated but not associated with running instances.
+You have successfully created and associated Elastic IP addresses using OpenTofu. EIPs provide stable IP addresses for your instances, enabling DNS records to point to a consistent IP. Remember that AWS charges for all public IPv4 addresses, including Elastic IPs, whether they are associated or not.
