@@ -21,8 +21,6 @@ services:
     image: varnish:7.4
     command: -p default_keep=300 -p default_grace=3600
     environment:
-      - VARNISH_BACKEND_PORT=8080
-      - VARNISH_BACKEND_IP=webapp
       - VARNISH_SIZE=1G
     volumes:
       - /opt/varnish/default.vcl:/etc/varnish/default.vcl:ro
@@ -72,12 +70,10 @@ sub vcl_recv {
         return(pass);
     }
     
-    # Pass POST requests directly to backend
-    if (req.method == "POST") {
+    # Pass non-GET/HEAD requests directly to backend
+    if (req.method != "GET" && req.method != "HEAD") {
         return(pass);
     }
-    
-    return(hash);
 }
 
 sub vcl_backend_response {
@@ -92,8 +88,6 @@ sub vcl_backend_response {
         set beresp.ttl = 300s;
         set beresp.grace = 3600s;    # Serve stale for 1 hour if backend is down
     }
-    
-    return(deliver);
 }
 
 sub vcl_deliver {
@@ -115,23 +109,30 @@ Purge cached content when data changes:
 
 ```bash
 # Purge a specific URL from Varnish cache
-curl -X PURGE http://varnish/products/123
+curl -X PURGE http://localhost/products/123
 
-# Purge all cached objects (from inside the container)
-docker exec varnish_varnish_1 varnishadm ban req.url ~ .
+# Invalidate all cached objects (from inside the container)
+docker exec <varnish-container-name> varnishadm ban 'obj.http.date ~ .*'
 ```
 
 Add PURGE support to your VCL:
 
 ```vcl
+acl trusted_purgers {
+    "127.0.0.1";
+    "172.16.0.0"/12;
+}
+
 sub vcl_recv {
     if (req.method == "PURGE") {
         # Only allow purge from internal network
-        if (!client.ip ~ trusted_purgers) {
+        if (client.ip !~ trusted_purgers) {
             return(synth(405, "Not allowed."));
         }
         return(purge);
     }
+
+    # Existing caching rules continue below...
 }
 ```
 
@@ -150,4 +151,4 @@ varnishlog -q "ReqMethod eq GET"
 
 ## Summary
 
-Varnish deployed via Portainer provides industrial-strength HTTP caching in front of your web applications. The VCL language gives precise control over caching behavior, and the grace feature keeps serving cached content even when backends are temporarily unavailable. For most web applications, Varnish can serve 80-90% of requests from cache without hitting the backend.
+Varnish deployed via Portainer provides industrial-strength HTTP caching in front of your web applications. The VCL language gives precise control over caching behavior, and the grace feature keeps serving cached content even when backends are temporarily unavailable. For cache-friendly web applications, Varnish can serve a large share of requests from cache without hitting the backend.
