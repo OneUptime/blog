@@ -47,8 +47,8 @@ static_resources:
   clusters:
     - name: backend_service
       type: STRICT_DNS
-      # Use IPv6 DNS resolution
-      dns_lookup_family: V6_ONLY    # or AUTO for dual-stack
+      # Use IPv6-only DNS resolution
+      dns_lookup_family: V6_ONLY    # or ALL for dual-stack
       lb_policy: ROUND_ROBIN
       load_assignment:
         cluster_name: backend_service
@@ -103,6 +103,8 @@ clusters:
 # Sent from xDS management server to Envoy
 
 version_info: "1"
+type_url: type.googleapis.com/envoy.config.endpoint.v3.ClusterLoadAssignment
+nonce: "1"
 resources:
   - "@type": type.googleapis.com/envoy.config.endpoint.v3.ClusterLoadAssignment
     cluster_name: my_service
@@ -114,14 +116,14 @@ resources:
           - endpoint:
               address:
                 socket_address:
-                  address: "2001:db8::backend1"
+                  address: "2001:db8::10"
                   port_value: 8080
               health_check_config:
                 port_value: 8080
           - endpoint:
               address:
                 socket_address:
-                  address: "2001:db8::backend2"
+                  address: "2001:db8::11"
                   port_value: 8080
 ```
 
@@ -196,18 +198,18 @@ docker run -d \
   --sysctl net.ipv6.conf.all.disable_ipv6=0 \
   -p 10000:10000 \
   -v $(pwd)/envoy-ipv6.yaml:/etc/envoy/envoy.yaml \
-  envoyproxy/envoy:v1.28.0
+  envoyproxy/envoy:v1.37.2
 
 # Test IPv6 connectivity through Envoy
 curl -6 http://[::1]:10000/
 
-# Check Envoy admin (IPv6)
-curl http://[::1]:9901/clusters | grep -A 5 "ipv6"
+# Check Envoy admin (local run; the admin listener above binds to ::1)
+curl http://[::1]:9901/clusters | grep -A 5 "backend_service"
 
-# Check listeners
+# Check listeners (local run)
 curl http://[::1]:9901/listeners
 
-# View stats for IPv6 traffic
+# View stats for IPv6 traffic (local run)
 curl http://[::1]:9901/stats | grep "upstream_cx_total"
 ```
 
@@ -218,8 +220,8 @@ curl http://[::1]:9901/stats | grep "upstream_cx_total"
 # AUTO: Try IPv6 first, fall back to IPv4 (default)
 # V4_ONLY: Only resolve IPv4 A records (not AAAA)
 # V6_ONLY: Only resolve IPv6 AAAA queries
-# V4_PREFERRED: Prefer IPv4 but use IPv6 if unavailable
-# ALL: Return both IPv4 and IPv6 addresses
+# V4_PREFERRED: Prefer IPv4 and only use IPv6 if no IPv4 addresses are returned
+# ALL: Return both IPv4 and IPv6 addresses and enable Happy Eyeballs
 
 clusters:
   - name: dual_stack_backend
@@ -227,4 +229,4 @@ clusters:
     dns_lookup_family: ALL    # Use both IPv4 and IPv6 endpoints
 ```
 
-Envoy's IPv6 support is comprehensive - configure listeners to bind to `::` with `ipv4_compat: true` for dual-stack, set `dns_lookup_family` to `V6_ONLY` or `ALL` for clusters requiring IPv6, and include IPv6 addresses directly in static or EDS endpoint configurations.
+Envoy's IPv6 support is comprehensive - configure listeners to bind to `::` with `ipv4_compat: true` for dual-stack, set `dns_lookup_family` to `V6_ONLY` for IPv6-only upstream DNS or `ALL` for dual-stack resolution, and include IPv6 addresses directly in static or EDS endpoint configurations.
