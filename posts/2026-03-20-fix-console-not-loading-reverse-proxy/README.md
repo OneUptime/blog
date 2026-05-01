@@ -65,11 +65,10 @@ If using HAProxy as the load balancer:
 frontend portainer_frontend
     bind *:443 ssl crt /etc/ssl/portainer.pem
     default_backend portainer_backend
-    option http-server-close
 
 backend portainer_backend
     server portainer portainer:9000 check
-    option http-server-close    # Required for WebSocket upgrade
+    option http-server-close    # Recommended for WebSocket handling
     timeout tunnel 3600s        # Keep tunnel open for console sessions
 ```
 
@@ -79,13 +78,11 @@ backend portainer_backend
 <VirtualHost *:443>
     ServerName portainer.example.com
 
+    ProxyPass /api/websocket http://portainer:9000/api/websocket upgrade=websocket
+    ProxyPassReverse /api/websocket http://portainer:9000/api/websocket
     ProxyPass / http://portainer:9000/
     ProxyPassReverse / http://portainer:9000/
-
-    # Required for WebSocket
-    RewriteEngine on
-    RewriteCond %{HTTP:Upgrade} websocket [NC]
-    RewriteRule /(.*) ws://portainer:9000/$1 [P,L]
+    ProxyTimeout 3600
 </VirtualHost>
 ```
 
@@ -97,4 +94,4 @@ After updating the reverse proxy configuration, test the console:
 2. Click the **>_ Console** tab.
 3. Click **Connect**.
 
-You should see a functioning terminal. If the terminal connects but immediately disconnects, increase `proxy_read_timeout`.
+You should see a functioning terminal. If the terminal connects but immediately disconnects, increase the idle timeout on your reverse proxy (`proxy_read_timeout` in Nginx, `timeout tunnel` in HAProxy, or `ProxyTimeout` in Apache).
