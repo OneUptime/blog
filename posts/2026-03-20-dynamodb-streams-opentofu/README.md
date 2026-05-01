@@ -13,7 +13,7 @@ DynamoDB Streams captures a time-ordered sequence of every modification to items
 ## Prerequisites
 
 - OpenTofu v1.6+
-- AWS credentials with DynamoDB and Lambda permissions
+- AWS credentials with IAM, DynamoDB, Lambda, and SQS permissions
 
 ## Step 1: Enable DynamoDB Streams on a Table
 
@@ -41,7 +41,7 @@ resource "aws_dynamodb_table" "events" {
   # KEYS_ONLY        - Only key attributes
   # NEW_IMAGE        - Only new item state
   # OLD_IMAGE        - Only old item state
-  # NEW_AND_OLD_IMAGES - Both states (required for Global Tables)
+  # NEW_AND_OLD_IMAGES - Both states
 
   server_side_encryption {
     enabled = true
@@ -84,16 +84,27 @@ resource "aws_iam_role_policy" "stream_processor_dynamodb" {
 
   policy = jsonencode({
     Version = "2012-10-17"
-    Statement = [{
-      Effect = "Allow"
-      Action = [
-        "dynamodb:GetRecords",
-        "dynamodb:GetShardIterator",
-        "dynamodb:DescribeStream",
-        "dynamodb:ListStreams"
-      ]
-      Resource = aws_dynamodb_table.events.stream_arn
-    }]
+    Statement = [
+      {
+        Effect = "Allow"
+        Action = [
+          "dynamodb:GetRecords",
+          "dynamodb:GetShardIterator",
+          "dynamodb:DescribeStream"
+        ]
+        Resource = aws_dynamodb_table.events.stream_arn
+      },
+      {
+        Effect   = "Allow"
+        Action   = ["dynamodb:ListStreams"]
+        Resource = "*"
+      },
+      {
+        Effect   = "Allow"
+        Action   = ["sqs:SendMessage"]
+        Resource = var.dlq_arn
+      }
+    ]
   })
 }
 
@@ -102,7 +113,7 @@ resource "aws_lambda_function" "stream_processor" {
   function_name    = "${var.project_name}-stream-processor"
   role             = aws_iam_role.stream_processor.arn
   handler          = "index.handler"
-  runtime          = "nodejs20.x"
+  runtime          = "nodejs22.x"
   source_code_hash = filebase64sha256("stream_processor.zip")
 
   environment {
@@ -119,7 +130,7 @@ resource "aws_lambda_function" "stream_processor" {
 resource "aws_lambda_event_source_mapping" "dynamodb_stream" {
   event_source_arn  = aws_dynamodb_table.events.stream_arn
   function_name     = aws_lambda_function.stream_processor.arn
-  starting_position = "LATEST"  # or "TRIM_HORIZON" for all historical records
+  starting_position = "LATEST"  # or "TRIM_HORIZON" for the oldest available records in the stream
 
   batch_size                         = 100
   maximum_batching_window_in_seconds = 5  # Wait up to 5s to accumulate records
@@ -143,7 +154,7 @@ resource "aws_lambda_event_source_mapping" "dynamodb_stream" {
 
   destination_config {
     on_failure {
-      destination_arn = var.dlq_arn  # SQS queue for failed records
+      destination_arn = var.dlq_arn  # Standard SQS queue for discarded batch details
     }
   }
 }
@@ -165,4 +176,4 @@ aws dynamodb describe-table \
 
 ## Conclusion
 
-DynamoDB Streams with Lambda enables real-time event-driven architectures that react to every data change. Use filter criteria to process only relevant event types (INSERT/MODIFY/REMOVE) and reduce Lambda invocations. Enable `ReportBatchItemFailures` so successfully processed records aren't reprocessed when a batch partially fails, and route failed records to an SQS DLQ for investigation and reprocessing.
+DynamoDB Streams with Lambda enables real-time event-driven architectures that react to every data change. Use filter criteria to process only relevant event types (INSERT/MODIFY/REMOVE) and reduce Lambda invocations. Enable `ReportBatchItemFailures` and return partial batch responses from your handler so Lambda can checkpoint to the first failed record instead of treating the whole batch as failed, reducing unnecessary retries. Use an on-failure destination such as a standard SQS queue to capture discarded batch details for investigation and reprocessing.
