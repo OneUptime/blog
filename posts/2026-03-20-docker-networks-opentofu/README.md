@@ -8,13 +8,14 @@ Description: Learn how to create Docker bridge, overlay, and macvlan networks wi
 
 ## Introduction
 
-This guide covers How to Create Docker Networks with OpenTofu using OpenTofu with production-ready configurations, best practices, and practical examples.
+This guide covers how to create Docker bridge, overlay, and macvlan networks with OpenTofu using production-ready configurations, best practices, and practical examples.
 
 ## Prerequisites
 
 - OpenTofu v1.6+
-- Access to a Kubernetes cluster or Docker daemon
-- Relevant provider configured
+- Access to a Docker daemon
+- Docker Swarm initialized if you plan to create overlay networks
+- A Linux host with a valid parent interface if you plan to create macvlan networks
 
 ## Step 1: Configure the Provider
 
@@ -22,32 +23,49 @@ This guide covers How to Create Docker Networks with OpenTofu using OpenTofu wit
 terraform {
   required_version = ">= 1.6.0"
   required_providers {
-    kubernetes = {
-      source  = "hashicorp/kubernetes"
-      version = "~> 2.0"
+    docker = {
+      source  = "kreuzwerker/docker"
+      version = "~> 4.0"
     }
   }
 }
 
-provider "kubernetes" {
-  config_path    = "~/.kube/config"
-  config_context = var.kube_context
+provider "docker" {
+  host = var.docker_host
 }
 ```
 
 ## Step 2: Define Variables
 
 ```hcl
-variable "kube_context" {
-  description = "Kubernetes context to use"
+variable "docker_host" {
+  description = "Docker daemon address"
   type        = string
-  default     = "default"
+  default     = "unix:///var/run/docker.sock"
 }
 
-variable "namespace" {
-  description = "Kubernetes namespace"
+variable "bridge_network_name" {
+  description = "Name of the bridge network"
   type        = string
-  default     = "default"
+  default     = "app-bridge"
+}
+
+variable "overlay_network_name" {
+  description = "Name of the overlay network"
+  type        = string
+  default     = "app-overlay"
+}
+
+variable "macvlan_network_name" {
+  description = "Name of the macvlan network"
+  type        = string
+  default     = "app-macvlan"
+}
+
+variable "macvlan_parent" {
+  description = "Parent interface for the macvlan network, such as eth0 or eth0.10"
+  type        = string
+  default     = "eth0"
 }
 
 variable "environment" {
@@ -57,119 +75,93 @@ variable "environment" {
 }
 ```
 
-## Step 3: Create Core Kubernetes Resources
+## Step 3: Create a Bridge Network
 
 ```hcl
-# Create namespace
+resource "docker_network" "bridge" {
+  name   = var.bridge_network_name
+  driver = "bridge"
 
-resource "kubernetes_namespace" "app" {
-  metadata {
-    name = var.namespace
-    labels = {
-      environment = var.environment
-      managed-by  = "opentofu"
-    }
+  options = {
+    "com.docker.network.bridge.host_binding_ipv4" = "127.0.0.1"
   }
-}
 
-# Resource quota to limit namespace resources
-resource "kubernetes_resource_quota" "app" {
-  metadata {
-    name      = "app-quota"
-    namespace = kubernetes_namespace.app.metadata[0].name
-  }
-  spec {
-    hard = {
-      pods               = "20"
-      requests_cpu       = "4"
-      requests_memory    = "8Gi"
-      limits_cpu         = "8"
-      limits_memory      = "16Gi"
-    }
-  }
-}
-```
-
-## Step 4: Deploy Workloads
-
-```hcl
-resource "kubernetes_deployment" "app" {
-  metadata {
-    name      = "app"
-    namespace = kubernetes_namespace.app.metadata[0].name
-    labels = {
-      app         = "my-app"
-      environment = var.environment
+  ipam_config {
+    subnet   = "172.28.0.0/16"
+    gateway  = "172.28.0.1"
+    ip_range = "172.28.5.0/24"
+    aux_address = {
+      reserved = "172.28.5.254"
     }
   }
 
-  spec {
-    replicas = 3
+  labels {
+    label = "environment"
+    value = var.environment
+  }
 
-    selector {
-      match_labels = {
-        app = "my-app"
-      }
-    }
-
-    template {
-      metadata {
-        labels = {
-          app = "my-app"
-        }
-      }
-
-      spec {
-        container {
-          name  = "app"
-          image = var.container_image
-
-          resources {
-            requests = {
-              cpu    = "100m"
-              memory = "128Mi"
-            }
-            limits = {
-              cpu    = "500m"
-              memory = "512Mi"
-            }
-          }
-
-          liveness_probe {
-            http_get {
-              path = "/health"
-              port = 8080
-            }
-            initial_delay_seconds = 30
-            period_seconds        = 10
-          }
-        }
-      }
-    }
+  labels {
+    label = "managed-by"
+    value = "opentofu"
   }
 }
 ```
 
-## Step 5: Expose the Workload
+## Step 4: Create an Overlay Network
 
 ```hcl
-resource "kubernetes_service" "app" {
-  metadata {
-    name      = "app-service"
-    namespace = kubernetes_namespace.app.metadata[0].name
+resource "docker_network" "overlay" {
+  name       = var.overlay_network_name
+  driver     = "overlay"
+  attachable = true
+
+  ipam_config {
+    subnet   = "10.20.0.0/24"
+    gateway  = "10.20.0.1"
+    ip_range = "10.20.0.128/25"
   }
 
-  spec {
-    selector = {
-      app = "my-app"
-    }
+  labels {
+    label = "environment"
+    value = var.environment
+  }
 
-    port {
-      port        = 80
-      target_port = 8080
-    }
+  labels {
+    label = "managed-by"
+    value = "opentofu"
+  }
+}
+```
 
-    type = "ClusterIP"
+## Step 5: Create a Macvlan Network
+
+```hcl
+resource "docker_network" "macvlan" {
+  name   = var.macvlan_network_name
+  driver = "macvlan"
+
+  options = {
+    parent       = var.macvlan_parent
+    macvlan_mode = "bridge"
+  }
+
+  ipam_config {
+    subnet   = "192.168.50.0/24"
+    gateway  = "192.168.50.1"
+    ip_range = "192.168.50.128/25"
+    aux_address = {
+      host = "192.168.50.10"
+    }
+  }
+
+  labels {
+    label = "environment"
+    value = var.environment
+  }
+
+  labels {
+    label = "managed-by"
+    value = "opentofu"
   }
 }
 ```
@@ -177,12 +169,16 @@ resource "kubernetes_service" "app" {
 ## Step 6: Define Outputs
 
 ```hcl
-output "namespace" {
-  value = kubernetes_namespace.app.metadata[0].name
+output "bridge_network_id" {
+  value = docker_network.bridge.id
 }
 
-output "service_cluster_ip" {
-  value = kubernetes_service.app.spec[0].cluster_ip
+output "overlay_network_id" {
+  value = docker_network.overlay.id
+}
+
+output "macvlan_network_id" {
+  value = docker_network.macvlan.id
 }
 ```
 
@@ -196,12 +192,12 @@ tofu apply
 
 ## Best Practices
 
-- Always specify resource requests and limits for all containers
-- Use namespaces to isolate workloads and apply resource quotas
-- Label all resources for easy selection and management
-- Use liveness and readiness probes to ensure workload health
-- Never run containers as root; use security contexts
+- Use user-defined bridge networks instead of the default `bridge` network
+- Initialize Docker Swarm before creating overlay networks, and keep overlay subnets at `/24` when using the default VIP-based service discovery
+- Use macvlan only when containers need Layer 2 presence on the physical network; it requires a Linux host and a valid parent interface
+- Avoid overlapping Docker, host, and LAN subnets when defining IPAM settings
+- Label networks consistently for easier inspection and lifecycle management
 
 ## Conclusion
 
-You have successfully configured How to Create Docker Networks with OpenTofu using OpenTofu. This approach enables GitOps-style management of Kubernetes resources alongside your infrastructure code. Combine OpenTofu Kubernetes resources with Helm releases for a complete infrastructure-as-code solution.
+You have successfully configured Docker bridge, overlay, and macvlan networks with OpenTofu. This approach lets you manage Docker networking as code, including repeatable IPAM settings and driver-specific options. Combine these network resources with Docker containers, images, and volumes for a complete infrastructure-as-code workflow.
