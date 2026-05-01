@@ -69,12 +69,12 @@ services:
               count: all
               capabilities: [gpu]
     environment:
-      # Number of CPU threads for inference (CPU mode)
+      # Maximum parallel requests each model will process
       - OLLAMA_NUM_PARALLEL=4
       # Keep models in memory (0 = unload after use)
       - OLLAMA_KEEP_ALIVE=5m
       # Host to bind to
-      - OLLAMA_HOST=0.0.0.0
+      - OLLAMA_HOST=0.0.0.0:11434
     healthcheck:
       test: ["CMD", "ollama", "list"]
       interval: 30s
@@ -104,7 +104,7 @@ services:
     environment:
       # Point to Ollama backend
       - OLLAMA_BASE_URL=http://ollama:11434
-      # Disable authentication for internal use (enable for production)
+      # Disable authentication for fresh internal-only installs (enable for production)
       - WEBUI_AUTH=false
       # Default models to show
       - DEFAULT_MODELS=llama3.2:3b
@@ -134,7 +134,7 @@ After deployment, pull models via the Portainer container console:
 
 # Pull popular models
 ollama pull llama3.2:3b        # Fast, 3B parameter model (~2GB)
-ollama pull llama3.2:7b        # Better quality, 7B model (~4GB)
+ollama pull llama3.1:8b        # Better quality, 8B model (~5GB)
 ollama pull mistral:7b          # Great all-around model (~4GB)
 ollama pull codellama:13b       # Excellent for code generation
 ollama pull phi3:mini           # Very fast Microsoft model (~2GB)
@@ -144,7 +144,7 @@ ollama pull deepseek-r1:7b     # Strong reasoning model
 ollama list
 
 # Get model information
-ollama show llama3.2:7b
+ollama show llama3.1:8b
 ```
 
 ## Step 4: Test Ollama API
@@ -176,13 +176,13 @@ curl http://localhost:11434/api/generate \
 curl http://localhost:11434/api/tags
 ```
 
-## Step 5: Configure Model Preloading
+## Step 5: Pre-Pull Models on Startup
 
-Set up automatic model loading on startup:
+Set up automatic model pulling on startup:
 
 ```bash
 #!/bin/bash
-# preload-models.sh - run as entrypoint or init job
+# pull-models.sh - run as entrypoint or helper service
 
 # Wait for Ollama to start
 until ollama list &>/dev/null; do
@@ -190,7 +190,7 @@ until ollama list &>/dev/null; do
   sleep 2
 done
 
-# Preload frequently used models
+# Pull frequently used models
 echo "Pulling required models..."
 ollama pull llama3.2:3b
 ollama pull mistral:7b
@@ -200,7 +200,7 @@ echo "Models ready:"
 ollama list
 ```
 
-Create this as an init container in Portainer:
+Create this as a one-time service in Portainer:
 
 ```yaml
 services:
@@ -257,10 +257,8 @@ services:
   ollama:
     image: ollama/ollama:latest
     environment:
-      # Use all available CPU cores
+      # Limit parallel requests to reduce RAM pressure on CPU-only hosts
       - OLLAMA_NUM_PARALLEL=2
-      # CPU optimization
-      - OLLAMA_NUM_GPU=0  # Force CPU mode
       # Smaller models work better on CPU
     deploy:
       resources:
