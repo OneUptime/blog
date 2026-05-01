@@ -4,15 +4,15 @@ Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
 Tags: EIGRPv6, IPv6, Troubleshooting, Cisco, Routing
 
-Description: Learn how to diagnose and resolve EIGRPv6 neighbor adjacency failures on Cisco routers, including the common shutdown issue, timer mismatches, and AS number conflicts.
+Description: Learn how to diagnose and resolve EIGRPv6 neighbor adjacency failures on Cisco routers, including the common shutdown issue, timer issues, and AS number conflicts.
 
 ## Overview
 
-EIGRPv6 neighbor issues have some unique causes compared to EIGRP for IPv4. The most common are: the process was not brought out of shutdown, the Router ID is missing, or timer/AS number mismatches.
+EIGRPv6 neighbor issues have some unique causes compared to EIGRP for IPv4. The most common are: the process was not brought out of shutdown, the Router ID is missing, or AS number/K-value mismatches.
 
 ## Step 1: Check the Process is Not Shutdown
 
-**This is the #1 EIGRPv6 issue** - EIGRPv6 is shutdown by default in classic mode:
+**This is the #1 EIGRPv6 issue** - EIGRPv6 has a shutdown feature, so the routing process must be brought up with `no shutdown`:
 
 ```text
 ! Check if EIGRPv6 is shutdown
@@ -27,7 +27,7 @@ Router(config)# ipv6 router eigrp 1
 Router(config-rtr)# no shutdown
 ```
 
-In Named mode, this is not an issue as Named EIGRP is active by default.
+In Named mode, this still applies; use `no shutdown` under the IPv6 address-family.
 
 ## Step 2: Verify Router ID is Configured
 
@@ -75,15 +75,16 @@ Router# show ipv6 eigrp
 ! Router B: ipv6 router eigrp 2  ← MISMATCH
 ```
 
-## Step 5: Check Hello/Hold Timer Match
+## Step 5: Check Hello/Hold Timer Settings
 
 ```text
 ! Show timer values per interface
 Router# show ipv6 eigrp interfaces detail
 
-! Look for: Hello-interval 5, Hold-time 15
-
-! If timers differ between neighbors:
+! On typical Ethernet links, common defaults are Hello-interval 5, Hold-time 15
+! EIGRP neighbors can still form if these values differ,
+! but overly aggressive timers can cause flapping.
+! If you change hello-interval, change hold-time as well:
 Router(config)# interface GigabitEthernet0/0
 Router(config-if)# ipv6 hello-interval eigrp 1 5
 Router(config-if)# ipv6 hold-time eigrp 1 15
@@ -114,12 +115,13 @@ Router# show key chain EIGRP_KEY
 ## Step 8: Debug EIGRPv6
 
 ```text
-! Enable EIGRPv6 neighbor debugging (caution: verbose)
-Router# debug ipv6 eigrp neighbor
+! Enable EIGRPv6 debugging (caution: verbose)
+Router# debug ipv6 eigrp
+Router# debug eigrp packet
 
 ! Look for:
-! "Hello" messages being sent and received
-! "Authentication failure" messages
+! Neighbor up/down notifications
+! "invalid authentication" messages
 ! "K value mismatch" messages - K values must match
 
 ! Disable after diagnosis
@@ -133,9 +135,9 @@ Router# no debug all
 | Process shows as DOWN | Shutdown state | `no shutdown` under `ipv6 router eigrp` |
 | No Router ID | IPv6-only router without router-id | `eigrp router-id x.x.x.x` |
 | No neighbors at all | AS number or K-value mismatch | Match AS and K values |
-| Neighbors flapping | Hold timer too short | Increase hold-time |
+| Neighbors flapping | Hello/hold timers set too aggressively | Increase hold-time or restore sane timers |
 | Authentication failure | Key chain mismatch | Verify key strings match |
 
 ## Summary
 
-EIGRPv6 neighbor problems most often trace to: the process is in shutdown state (fix with `no shutdown`), missing Router ID on IPv6-only routers, AS number mismatch, or missing link-local addresses on interfaces. Use `show ipv6 eigrp` and `debug ipv6 eigrp neighbor` to isolate the issue quickly.
+EIGRPv6 neighbor problems most often trace to: the process is in shutdown state (fix with `no shutdown`), missing Router ID on IPv6-only routers, AS number or K-value mismatch, or missing link-local addresses on interfaces. Use `show ipv6 eigrp` and `debug ipv6 eigrp` to isolate the issue quickly.
