@@ -4,96 +4,80 @@ Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
 Tags: Portainer, Docker, Duplicate, Clone, Container
 
-Description: Create a copy of an existing container in Portainer with the same configuration for testing or scaling.
+Description: Create a copy of an existing container in Portainer by duplicating its configuration and adjusting any conflicting host bindings.
 
 ---
 
-Portainer provides a web-based interface for all common container lifecycle operations. Understanding these operations helps you efficiently manage containers without memorizing Docker CLI commands.
+Portainer provides a web-based interface for common container lifecycle operations, including duplicating an existing container configuration. This is useful when you want another container with the same base settings but a different name or non-conflicting host bindings.
 
 ## Via the Portainer UI
 
-Navigate to **Containers** in the left sidebar to see the container list. Each container has action buttons for common operations.
+Navigate to **Containers** in the left sidebar, select the container you want to duplicate, then click **Duplicate/Edit**.
 
 ### Container List Actions
 
 From the container list:
-- Select one or more containers using checkboxes
-- Use the bulk action buttons at the top: **Start**, **Stop**, **Restart**, **Kill**, **Remove**
+- Select the container you want to duplicate
+- Click **Duplicate/Edit**
 
 ### Single Container Actions
 
-Click the container name to open its detail page, then use the action buttons at the top.
+On the duplicate screen:
+- Enter a new container name
+- Review or adjust the copied configuration
+- Change any conflicting host bindings such as published ports if the original container is still running
+- Click **Deploy the container**
 
 ## Via the API
 
 ```bash
-TOKEN=$(curl -s -X POST \
-  https://localhost:9443/api/auth \
+PORTAINER_URL="https://localhost:9443"
+API_KEY="your_portainer_access_token"
+ENDPOINT_ID=1
+CONTAINER_ID="your_existing_container_id"
+
+# Inspect the existing container so you can copy the image and runtime settings you need
+curl -s "${PORTAINER_URL}/api/endpoints/${ENDPOINT_ID}/docker/containers/${CONTAINER_ID}/json" \
+  -H "X-API-Key: ${API_KEY}" \
+  --insecure | python3 -m json.tool
+
+# Create a second container with a new name and equivalent settings
+NEW_CONTAINER_ID=$(curl -s -X POST "${PORTAINER_URL}/api/endpoints/${ENDPOINT_ID}/docker/containers/create?name=my-container-copy" \
+  -H "X-API-Key: ${API_KEY}" \
   -H "Content-Type: application/json" \
-  -d '{"username":"admin","password":"yourpassword"}' \
-  --insecure | python3 -c "import sys,json; print(json.load(sys.stdin)['jwt'])")
+  --data '{
+    "Image": "myimage:latest",
+    "Env": ["APP_ENV=production"],
+    "ExposedPorts": { "80/tcp": {} },
+    "HostConfig": {
+      "PortBindings": { "80/tcp": [{ "HostPort": "8081" }] },
+      "RestartPolicy": { "Name": "unless-stopped" }
+    }
+  }' \
+  --insecure | python3 -c "import sys, json; print(json.load(sys.stdin)['Id'])")
 
-# Get container ID by name
-
-CONTAINER_ID=$(curl -s "https://localhost:9443/api/endpoints/1/docker/containers/json?all=1" \
-  -H "Authorization: Bearer $TOKEN" \
-  --insecure | python3 -c "
-import sys, json
-containers = json.load(sys.stdin)
-for c in containers:
-    if '/my-container' in c.get('Names', []):
-        print(c['Id'][:12])
-")
-echo "Container ID: $CONTAINER_ID"
-
-# Start container
-curl -X POST "https://localhost:9443/api/endpoints/1/docker/containers/${CONTAINER_ID}/start" \
-  -H "Authorization: Bearer $TOKEN" --insecure
-
-# Stop container
-curl -X POST "https://localhost:9443/api/endpoints/1/docker/containers/${CONTAINER_ID}/stop" \
-  -H "Authorization: Bearer $TOKEN" --insecure
-
-# Restart container
-curl -X POST "https://localhost:9443/api/endpoints/1/docker/containers/${CONTAINER_ID}/restart" \
-  -H "Authorization: Bearer $TOKEN" --insecure
-
-# Kill container (SIGKILL)
-curl -X POST "https://localhost:9443/api/endpoints/1/docker/containers/${CONTAINER_ID}/kill" \
-  -H "Authorization: Bearer $TOKEN" --insecure
-
-# Remove container (must be stopped first)
-curl -X DELETE "https://localhost:9443/api/endpoints/1/docker/containers/${CONTAINER_ID}" \
-  -H "Authorization: Bearer $TOKEN" --insecure
-
-# Remove a running container forcibly (equivalent to --force)
-curl -X DELETE "https://localhost:9443/api/endpoints/1/docker/containers/${CONTAINER_ID}?force=true" \
-  -H "Authorization: Bearer $TOKEN" --insecure
-
-# Pause container
-curl -X POST "https://localhost:9443/api/endpoints/1/docker/containers/${CONTAINER_ID}/pause" \
-  -H "Authorization: Bearer $TOKEN" --insecure
-
-# Unpause container
-curl -X POST "https://localhost:9443/api/endpoints/1/docker/containers/${CONTAINER_ID}/unpause" \
-  -H "Authorization: Bearer $TOKEN" --insecure
-
-# Inspect container JSON
-curl -s "https://localhost:9443/api/endpoints/1/docker/containers/${CONTAINER_ID}/json" \
-  -H "Authorization: Bearer $TOKEN" --insecure | python3 -m json.tool
+# Start the duplicate
+curl -X POST "${PORTAINER_URL}/api/endpoints/${ENDPOINT_ID}/docker/containers/${NEW_CONTAINER_ID}/start" \
+  -H "X-API-Key: ${API_KEY}" \
+  --insecure
 ```
 
 ## Duplicate a Container
 
 ```bash
-# Inspect the existing container to get its configuration
-docker inspect my-container --format '{{json .Config}}' | python3 -m json.tool
+# Inspect the existing container so you can copy the image and runtime settings you need
+docker inspect --type=container my-container | python3 -m json.tool
 
-# Create a duplicate with a new name
-docker run -d \
+# Recreate the container with a new name and any non-conflicting host bindings
+docker container create \
   --name my-container-copy \
-  # ... same flags as original ...
+  --restart unless-stopped \
+  -p 8081:80 \
+  -e APP_ENV=production \
   myimage:latest
+
+# Start the duplicate
+docker container start my-container-copy
 ```
 
 ---
