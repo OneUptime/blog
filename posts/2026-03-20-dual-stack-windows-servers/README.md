@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
-Tags: IPv6, IPv4, Dual-Stack, Window, PowerShell
+Tags: IPv6, IPv4, Dual-Stack, Windows, PowerShell
 
 Description: Learn how to configure dual-stack IPv4 and IPv6 networking on Windows Server using PowerShell, netsh, and GUI tools for static and dynamic addressing.
 
@@ -18,7 +18,7 @@ Windows Server supports dual-stack natively. Both IPv4 and IPv6 stacks are insta
 Get-NetIPAddress | Select-Object InterfaceAlias, AddressFamily, IPAddress, PrefixLength
 
 # Show routes for both families
-Get-NetRoute | Select-Object DestinationPrefix, NextHop, RouteMetric | Where-Object DestinationPrefix -match "::"
+Get-NetRoute | Select-Object AddressFamily, DestinationPrefix, NextHop, RouteMetric
 
 # Show DNS servers
 Get-DnsClientServerAddress | Select-Object InterfaceAlias, AddressFamily, ServerAddresses
@@ -34,8 +34,9 @@ Test-NetConnection -ComputerName 2001:4860:4860::8888  # IPv6
 # Get interface index
 $iface = Get-NetAdapter -Name "Ethernet" | Select-Object -ExpandProperty ifIndex
 
-# Remove existing IPv6 address if any
-Remove-NetIPAddress -InterfaceIndex $iface -AddressFamily IPv6 -Confirm:$false -ErrorAction SilentlyContinue
+# Remove existing manually configured IPv6 address if any
+Get-NetIPAddress -InterfaceIndex $iface -AddressFamily IPv6 -PrefixOrigin Manual |
+    Remove-NetIPAddress -Confirm:$false -ErrorAction SilentlyContinue
 
 # Add IPv4 address (if not already set)
 New-NetIPAddress -InterfaceIndex $iface `
@@ -60,27 +61,28 @@ Set-DnsClientServerAddress -InterfaceIndex $iface `
 
 ```cmd
 :: Set IPv4
-netsh interface ipv4 set address "Ethernet" static 192.0.2.10 255.255.255.0 192.0.2.1
+netsh interface ipv4 set address name="Ethernet" source=static address=192.0.2.10 mask=255.255.255.0 gateway=192.0.2.1
 
 :: Set IPv6
-netsh interface ipv6 set address "Ethernet" 2001:db8::10/64
+netsh interface ipv6 add address interface="Ethernet" address=2001:db8::10/64
 
 :: Set IPv6 default gateway
-netsh interface ipv6 add route ::/0 "Ethernet" 2001:db8::1
+netsh interface ipv6 add route prefix=::/0 interface="Ethernet" nexthop=2001:db8::1
 
 :: Set DNS
-netsh interface ipv4 set dns "Ethernet" static 192.0.2.53
-netsh interface ipv6 set dns "Ethernet" static 2001:db8::53
+netsh interface ipv4 set dnsservers name="Ethernet" source=static address=192.0.2.53
+netsh interface ipv6 set dnsservers name="Ethernet" source=static address=2001:db8::53
 ```
 
-## Enable SLAAC and DHCPv6 (Dynamic)
+## Enable SLAAC and Check DHCPv6 State (Dynamic)
 
 ```powershell
 # Allow Router Advertisements (for SLAAC default route and address)
-Set-NetIPv6Protocol -RouterDiscovery Enabled
+Set-NetIPInterface -InterfaceIndex $iface -AddressFamily IPv6 -RouterDiscovery Enabled
 
-# Enable DHCPv6 for interface (complement to SLAAC)
-Set-NetIPInterface -InterfaceIndex $iface -AddressFamily IPv6 -Dhcp Enabled
+# Show whether DHCPv6-managed addressing or other stateful DHCPv6 options are in use
+Get-NetIPInterface -InterfaceIndex $iface -AddressFamily IPv6 |
+    Select-Object InterfaceAlias, RouterDiscovery, ManagedAddressConfiguration, OtherStatefulConfiguration
 
 # Check RA-configured addresses
 Get-NetIPAddress -InterfaceIndex $iface -AddressFamily IPv6 | Where-Object PrefixOrigin -eq "RouterAdvertisement"
@@ -110,9 +112,9 @@ tracert -6 2001:4860:4860::8888
 tracert -4 8.8.8.8
 ```
 
-## Address Preference (RFC 6724)
+## Address Preference
 
-Windows implements RFC 6724 address selection. IPv6 global unicast is preferred:
+Windows uses a prefix policy table for address selection. By default, IPv6 global unicast has higher precedence than IPv4-mapped addresses:
 
 ```powershell
 # View prefix policy table
@@ -121,13 +123,13 @@ netsh interface ipv6 show prefixpolicies
 # Sample output:
 # Precedence  Label  Prefix
 #     50       0      ::1/128          (loopback)
-#     40       1      ::/0             (global IPv6) ← preferred
+#     40       1      ::/0             (global IPv6, preferred)
 #     35       4      ::ffff:0:0/96    (IPv4-mapped)
 #     30       2      2002::/16        (6to4)
 #      5      5      2001::/32        (Teredo)
 
 # Force IPv4 preference (not recommended - workaround for broken IPv6)
-netsh interface ipv6 set prefixpolicy ::ffff:0:0/96 100 4
+netsh interface ipv6 set prefixpolicy prefix=::ffff:0:0/96 precedence=100 label=4
 ```
 
 ## Disable Unnecessary IPv6 Features
@@ -164,15 +166,14 @@ New-NetFirewallRule `
     -Direction Inbound `
     -Protocol TCP `
     -LocalPort 22 `
-    -AddressFamily IPv6 `
-    -RemoteAddress "fd00:mgmt::/48" `
+    -RemoteAddress "fd00:1234::/48" `
     -Action Allow `
     -Enabled True
 ```
 
 ## Server Application Dual-Stack Binding
 
-Most Windows services bind to all addresses by default. Verify:
+Many Windows services bind to all addresses by default. Verify:
 
 ```cmd
 :: Check what ports are listening on IPv6
@@ -185,4 +186,4 @@ netstat -an | findstr "LISTENING" | findstr ":::"
 
 ## Summary
 
-Windows Server dual-stack uses `New-NetIPAddress` for static addressing of both families, with `Set-DnsClientServerAddress` for DNS. Disable tunneling mechanisms (6to4, Teredo, ISATAP) to avoid accidental IPv6 bypass paths. Windows prefers IPv6 by default per RFC 6724 - override only if IPv6 is broken, not as a permanent configuration. Ensure firewall rules cover both address families and verify applications listen on `:::port` for IPv6 alongside `0.0.0.0:port` for IPv4.
+Windows Server dual-stack uses `New-NetIPAddress` for static addressing of both families, with `Set-DnsClientServerAddress` for DNS. Disable tunneling mechanisms (6to4, Teredo, ISATAP) to avoid accidental IPv6 bypass paths when they are not needed. Windows uses prefix policies and prefers IPv6 global unicast by default - override only as a workaround for broken IPv6, not as a permanent configuration. Ensure firewall rules cover both address families and verify whether applications use separate IPv4/IPv6 listeners or an IPv6 listener configured for dual-stack operation.
