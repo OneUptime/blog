@@ -19,7 +19,7 @@ resource "helm_release" "external_secrets" {
   name             = "external-secrets"
   repository       = "https://charts.external-secrets.io"
   chart            = "external-secrets"
-  version          = "0.9.13"
+  version          = "2.4.1"
   namespace        = "external-secrets"
   create_namespace = true
 
@@ -27,6 +27,7 @@ resource "helm_release" "external_secrets" {
     installCRDs = true
 
     replicaCount = 2
+    leaderElect  = true
 
     resources = {
       requests = { cpu = "50m", memory = "64Mi" }
@@ -34,6 +35,7 @@ resource "helm_release" "external_secrets" {
     }
 
     serviceAccount = {
+      name = "external-secrets"
       annotations = {
         "eks.amazonaws.com/role-arn" = aws_iam_role.eso.arn
       }
@@ -105,7 +107,7 @@ resource "kubernetes_manifest" "cluster_secret_store" {
   depends_on = [helm_release.external_secrets]
 
   manifest = {
-    apiVersion = "external-secrets.io/v1beta1"
+    apiVersion = "external-secrets.io/v1"
     kind       = "ClusterSecretStore"
     metadata = {
       name = "aws-secrets-manager"
@@ -138,7 +140,7 @@ resource "kubernetes_manifest" "app_external_secret" {
   depends_on = [kubernetes_manifest.cluster_secret_store]
 
   manifest = {
-    apiVersion = "external-secrets.io/v1beta1"
+    apiVersion = "external-secrets.io/v1"
     kind       = "ExternalSecret"
     metadata = {
       name      = "app-secrets"
@@ -183,7 +185,7 @@ resource "kubernetes_manifest" "app_external_secret" {
 # SecretStore for Azure Key Vault using Workload Identity
 resource "kubernetes_manifest" "azure_secret_store" {
   manifest = {
-    apiVersion = "external-secrets.io/v1beta1"
+    apiVersion = "external-secrets.io/v1"
     kind       = "SecretStore"
     metadata = {
       name      = "azure-keyvault"
@@ -194,6 +196,7 @@ resource "kubernetes_manifest" "azure_secret_store" {
         azurekv = {
           authType = "WorkloadIdentity"
           vaultUrl = "https://${azurerm_key_vault.kv.name}.vault.azure.net"
+          # app-workload-identity-sa must already be configured for Azure Workload Identity
           serviceAccountRef = {
             name = "app-workload-identity-sa"
           }
@@ -206,4 +209,4 @@ resource "kubernetes_manifest" "azure_secret_store" {
 
 ## Summary
 
-External Secrets Operator deployed with OpenTofu provides a Kubernetes-native way to consume secrets from cloud-native secret stores. The operator handles rotation automatically based on the `refreshInterval`, ensuring Kubernetes Pods always use the latest secret values without restarts. Combining ClusterSecretStore for cluster-wide access with namespace-scoped SecretStore for tenant isolation covers most enterprise patterns.
+External Secrets Operator deployed with OpenTofu provides a Kubernetes-native way to consume secrets from cloud-native secret stores. The operator refreshes synced Kubernetes Secrets based on the `refreshInterval`, keeping the in-cluster Secret current with the external store. Pods that consume Secrets through mounted volumes can receive updated values automatically, while workloads that read Secret values from environment variables typically need a restart or rollout to pick up changes. Combining ClusterSecretStore for cluster-wide access with namespace-scoped SecretStore for tenant isolation covers most enterprise patterns.
