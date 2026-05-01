@@ -8,12 +8,13 @@ Description: Learn how to enforce IMDSv2 (Instance Metadata Service version 2) a
 
 ## Introduction
 
-EC2 Instance Metadata Service (IMDS) provides instances with configuration data including IAM credentials, user data, and network information. IMDSv2 adds session-oriented authentication to prevent SSRF attacks from accessing metadata. This guide covers enforcing IMDSv2 with OpenTofu.
+EC2 Instance Metadata Service (IMDS) provides instances with configuration data including IAM credentials, user data, and network information. IMDSv2 adds session-oriented requests to help protect against SSRF attacks accessing metadata. This guide covers enforcing IMDSv2 with OpenTofu.
 
 ## Prerequisites
 
 - OpenTofu v1.6+
-- AWS credentials with EC2 permissions
+- AWS credentials with permissions to manage EC2 and AWS Config
+- AWS Config enabled with a configuration recorder if you use Step 4
 
 ## Step 1: Launch an Instance with IMDSv2 Enforced
 
@@ -32,8 +33,8 @@ resource "aws_instance" "secure" {
     # "optional" allows both IMDSv1 and IMDSv2
     http_tokens = "required"
 
-    # Maximum number of network hops for metadata requests
-    # Set to 1 to prevent containers from accessing host metadata
+    # Maximum number of network hops for the IMDSv2 token response
+    # Use 1 for most workloads; use 2 when containers need IMDS access
     http_put_response_hop_limit = 1
 
     # Allow instance tags to be accessed via metadata endpoint
@@ -82,10 +83,11 @@ resource "aws_launch_template" "secure" {
 }
 ```
 
-## Step 4: Enforce IMDSv2 via AWS Config Rule
+## Step 4: Check IMDSv2 Compliance via AWS Config Rule
 
 ```hcl
 # AWS Config rule to detect non-compliant instances
+# AWS Config must already be enabled with a configuration recorder
 resource "aws_config_config_rule" "imdsv2" {
   name        = "ec2-imdsv2-check"
   description = "Checks that EC2 instances require IMDSv2"
@@ -117,9 +119,13 @@ TOKEN=$(curl -s -X PUT "http://169.254.169.254/latest/api/token" \
 curl -s -H "X-aws-ec2-metadata-token: $TOKEN" \
   http://169.254.169.254/latest/meta-data/instance-id
 
-# Get IAM credentials
+# Get the attached IAM role name
+ROLE_NAME=$(curl -s -H "X-aws-ec2-metadata-token: $TOKEN" \
+  http://169.254.169.254/latest/meta-data/iam/security-credentials/)
+
+# Get IAM credentials for that role
 curl -s -H "X-aws-ec2-metadata-token: $TOKEN" \
-  http://169.254.169.254/latest/meta-data/iam/security-credentials/
+  http://169.254.169.254/latest/meta-data/iam/security-credentials/$ROLE_NAME
 ```
 
 ## Step 6: Deploy
@@ -132,4 +138,4 @@ tofu apply
 
 ## Conclusion
 
-Enforcing IMDSv2 is a security best practice recommended by AWS. It prevents SSRF vulnerabilities from accessing IAM credentials through the metadata endpoint. Set `http_put_response_hop_limit = 1` for most workloads and `2` only when containers need metadata access. Always combine IMDSv2 enforcement with least-privilege IAM policies for defense in depth.
+Enforcing IMDSv2 is a security best practice recommended by AWS. It helps protect against SSRF-based access to IAM credentials through the metadata endpoint. Set `http_put_response_hop_limit = 1` for most workloads and `2` only when containers need metadata access. Always combine IMDSv2 enforcement with least-privilege IAM policies for defense in depth.
