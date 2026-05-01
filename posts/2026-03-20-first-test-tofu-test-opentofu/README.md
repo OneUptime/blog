@@ -8,7 +8,7 @@ Description: A step-by-step guide to writing and running your first infrastructu
 
 ## Introduction
 
-OpenTofu ships with a native testing framework that lets you validate your modules and configurations without deploying to a real cloud account. The `tofu test` command reads `.tftest.hcl` (or `.tofutest.hcl`) files and executes `run` blocks that apply configuration, assert conditions, and then clean up resources automatically.
+OpenTofu ships with a native testing framework that lets you validate your modules and configurations from the CLI. The `tofu test` command reads `.tftest.hcl` files and executes `run` blocks that apply configuration, assert conditions, and then clean up resources automatically.
 
 ## Prerequisites
 
@@ -17,7 +17,7 @@ OpenTofu ships with a native testing framework that lets you validate your modul
 
 ## Your First Module
 
-Start with a simple module that creates a local file-no cloud credentials required.
+Start with a simple module that returns a greeting-no cloud credentials required.
 
 ```hcl
 # modules/greeter/main.tf
@@ -70,14 +70,17 @@ run "greets_with_different_name" {
 Navigate to the module directory and run:
 
 ```bash
+# Initialize the working directory
+tofu init
+
 # Run all tests in the current directory
 tofu test
 
-# Run with verbose output to see each assertion result
+# Run with verbose output to print the plan or state for each run block
 tofu test -verbose
 ```
 
-Expected output:
+Output will look similar to:
 
 ```text
 greeter.tftest.hcl... pass
@@ -91,20 +94,19 @@ Success! 2 passed, 0 failed.
 
 When `tofu test` runs a `run` block it:
 
-1. Initialises a temporary working directory.
-2. Runs `tofu apply` with the supplied variables.
-3. Evaluates every `assert` block; failures are reported but the run continues.
-4. After all run blocks execute, performs a `tofu destroy` to remove any real resources created.
+1. Loads the module and test files from the current directory (or `tests/`).
+2. Runs `tofu apply` with the supplied variables by default, or `tofu plan` if you set `command = plan`.
+3. Evaluates every `assert` block after the plan or apply completes.
+4. When the test run is complete, performs a `tofu destroy` to remove any real resources it created.
 
 ```mermaid
 flowchart TD
-    A[tofu test] --> B[Init working dir]
-    B --> C[Apply config]
-    C --> D{Evaluate asserts}
-    D -->|Pass| E[Next run block]
-    D -->|Fail| F[Record failure]
-    E --> G[Destroy resources]
-    F --> G
+    A[tofu test] --> B[Load test files]
+    B --> C[Apply or plan]
+    C --> D[Evaluate asserts]
+    D --> E[Record result]
+    E --> F[Next run block or cleanup]
+    F --> G[Destroy resources]
     G --> H[Report results]
 ```
 
