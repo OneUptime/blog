@@ -18,7 +18,7 @@ resource "aws_efs_file_system" "app" {
   encrypted      = true
   kms_key_id     = aws_kms_key.efs.arn
 
-  performance_mode = "generalPurpose"  # or "maxIO" for >7000 IOPS
+  performance_mode = "generalPurpose"  # or "maxIO" for highly parallelized workloads that tolerate higher latency
   throughput_mode  = "bursting"        # or "provisioned" or "elastic"
 
   lifecycle_policy {
@@ -225,4 +225,4 @@ mount -a
 
 ## Conclusion
 
-Amazon EFS with OpenTofu provides shared NFS storage for multi-instance and container workloads. Always enable encryption at rest (`encrypted = true`) and enforce encryption in transit via the file system policy (`aws:SecureTransport = false` deny). Use access points to isolate workloads into dedicated directories with controlled POSIX permissions. Enable the EFS lifecycle policy to automatically move infrequently accessed files to EFS-IA (75% cost reduction) and restore them on access with `AFTER_1_ACCESS`.
+Amazon EFS with OpenTofu provides shared NFS storage for multi-instance and container workloads. Always enable encryption at rest (`encrypted = true`) and enforce encryption in transit via the file system policy (`aws:SecureTransport = false` deny). Use access points to isolate workloads into dedicated directories with controlled POSIX permissions. Enable the EFS lifecycle policy to automatically move infrequently accessed files to cost-optimized EFS-IA and restore them on first access with `AFTER_1_ACCESS`.
