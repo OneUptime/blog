@@ -36,6 +36,8 @@ module "vpc" {
   public_subnets   = ["10.0.1.0/24", "10.0.2.0/24"]
   private_subnets  = ["10.0.3.0/24", "10.0.4.0/24"]
   database_subnets = ["10.0.5.0/24", "10.0.6.0/24"]
+
+  enable_nat_gateway = true
 }
 
 resource "aws_security_group" "wordpress" {
@@ -84,6 +86,7 @@ resource "aws_db_instance" "wordpress" {
 
   backup_retention_period = 7
   skip_final_snapshot     = false
+  final_snapshot_identifier = "wordpress-${var.environment}-final"
 
   lifecycle {
     prevent_destroy = true
@@ -133,7 +136,7 @@ resource "aws_ecs_task_definition" "wordpress" {
 
   container_definitions = jsonencode([{
     name  = "wordpress"
-    image = "wordpress:6.4-apache"
+    image = "wordpress:6.9-apache"
 
     environment = [
       { name = "WORDPRESS_DB_HOST", value = aws_db_instance.wordpress.endpoint },
@@ -190,4 +193,4 @@ resource "aws_ecs_service" "wordpress" {
 
 ## Summary
 
-Deploying WordPress on AWS with OpenTofu uses ECS Fargate for containerized compute, RDS MySQL for managed database, EFS for shared `wp-content` storage (enabling multiple container instances), and an Application Load Balancer for traffic distribution. Use write-only attributes for the database password to keep secrets out of state, and add a CloudFront distribution in front of the load balancer for caching and DDoS protection.
+Deploying WordPress on AWS with OpenTofu uses ECS Fargate for containerized compute, RDS MySQL for managed database, EFS for shared `wp-content` storage (enabling multiple container instances), and an Application Load Balancer for traffic distribution. With OpenTofu 1.11+, use write-only attributes for the database password to keep secrets out of state, and add a CloudFront distribution in front of the load balancer for caching and DDoS protection.
