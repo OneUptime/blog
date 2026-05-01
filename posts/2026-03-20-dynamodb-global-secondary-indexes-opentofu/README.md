@@ -8,7 +8,7 @@ Description: Learn how to configure DynamoDB Global Secondary Indexes (GSIs) wit
 
 ## Introduction
 
-DynamoDB Global Secondary Indexes (GSIs) allow you to query data using attributes other than the table's primary key. A GSI has its own partition key and optional sort key, and can include any subset of table attributes as projected attributes. You can add up to 20 GSIs per table, and each GSI can have its own read/write capacity. GSIs are eventually consistent by default and replicate data asynchronously from the base table.
+DynamoDB Global Secondary Indexes (GSIs) allow you to query data using attributes other than the table's primary key. A GSI has its own partition key and optional sort key, and can include projected attributes from the base table. You can add up to 20 GSIs per table by default. GSIs use the same capacity mode as the base table, and on provisioned tables each GSI can have its own read/write capacity settings. Queries against GSIs are eventually consistent only, and DynamoDB replicates data to them asynchronously from the base table.
 
 ## Prerequisites
 
@@ -46,19 +46,31 @@ resource "aws_dynamodb_table" "orders" {
 
   # GSI: Query orders by customer
   global_secondary_index {
-    name            = "CustomerOrders"
-    hash_key        = "customerId"
-    range_key       = "createdAt"
+    name = "CustomerOrders"
+    key_schema {
+      attribute_name = "customerId"
+      key_type       = "HASH"
+    }
+    key_schema {
+      attribute_name = "createdAt"
+      key_type       = "RANGE"
+    }
     projection_type = "ALL"  # ALL, KEYS_ONLY, or INCLUDE
   }
 
   # GSI: Query orders by status
   global_secondary_index {
-    name            = "OrdersByStatus"
-    hash_key        = "status"
-    range_key       = "createdAt"
-    projection_type = "INCLUDE"
-    non_key_attributes = ["orderId", "customerId", "totalAmount"]
+    name = "OrdersByStatus"
+    key_schema {
+      attribute_name = "status"
+      key_type       = "HASH"
+    }
+    key_schema {
+      attribute_name = "createdAt"
+      key_type       = "RANGE"
+    }
+    projection_type    = "INCLUDE"
+    non_key_attributes = ["customerId", "totalAmount"]
   }
 
   tags = {
@@ -94,9 +106,15 @@ resource "aws_dynamodb_table" "products" {
 
   # GSI with separate read/write capacity
   global_secondary_index {
-    name            = "CategoryPrice"
-    hash_key        = "category"
-    range_key       = "price"
+    name = "CategoryPrice"
+    key_schema {
+      attribute_name = "category"
+      key_type       = "HASH"
+    }
+    key_schema {
+      attribute_name = "price"
+      key_type       = "RANGE"
+    }
     projection_type = "ALL"
     read_capacity   = 5  # Independent capacity from base table
     write_capacity  = 2
@@ -114,7 +132,7 @@ tofu apply
 # Query using GSI
 
 aws dynamodb query \
-  --table-name <table-name> \
+  --table-name "myapp-orders" \
   --index-name CustomerOrders \
   --key-condition-expression "customerId = :cid" \
   --expression-attribute-values '{":cid": {"S": "CUST-001"}}'
@@ -122,4 +140,4 @@ aws dynamodb query \
 
 ## Conclusion
 
-Choose `projection_type = "ALL"` when you frequently access many attributes from GSI query results-it avoids costly table fetches but doubles storage. Use `INCLUDE` to project only the attributes your queries need, and `KEYS_ONLY` for aggregate queries that only need IDs. GSI writes consume additional write capacity since every table write that touches indexed attributes also writes to the GSI. Design your GSI partition keys to distribute load evenly-hot partition keys on GSIs cause the same throttling issues as on base tables.
+Choose `projection_type = "ALL"` when you frequently access most attributes from GSI query results; it avoids follow-up reads against the base table but uses the most index storage. Use `INCLUDE` to project only the attributes your queries need, and `KEYS_ONLY` for lookups or counts that only need key attributes. On provisioned tables, GSI updates consume additional write capacity, and in on-demand mode they still increase write cost, because writes that add, change, or remove indexed data also update the GSI. Design your GSI partition keys to distribute load evenly; hot partition keys on GSIs cause the same throttling issues as on base tables.
