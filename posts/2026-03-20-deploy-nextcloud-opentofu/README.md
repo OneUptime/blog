@@ -4,11 +4,11 @@ Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
 Tags: OpenTofu, Nextcloud, File Storage, Collaboration, Self-Hosted
 
-Description: Learn how to deploy Nextcloud on AWS using OpenTofu with RDS, ElastiCache Redis, EFS storage, and ECS Fargate for a production-ready self-hosted cloud storage platform.
+Description: Learn how to deploy Nextcloud on AWS using OpenTofu with RDS, ElastiCache Redis, EFS-backed persistent storage, and ECS Fargate with S3 as the primary object storage backend.
 
 ## Introduction
 
-Nextcloud is a self-hosted cloud platform for file storage, collaboration, and productivity tools. This guide deploys Nextcloud on AWS ECS Fargate with RDS PostgreSQL, ElastiCache Redis for caching, EFS for file storage, and S3 as a primary storage backend.
+Nextcloud is a self-hosted cloud platform for file storage, collaboration, and productivity tools. This guide deploys Nextcloud on AWS ECS Fargate with RDS PostgreSQL, ElastiCache Redis for caching, EFS for persistent Nextcloud application storage, and S3 as a primary object storage backend.
 
 ## S3 as Primary Storage
 
@@ -44,7 +44,7 @@ resource "aws_s3_bucket_server_side_encryption_configuration" "nextcloud" {
 resource "aws_db_instance" "nextcloud" {
   identifier          = "nextcloud-${var.environment}"
   engine              = "postgres"
-  engine_version      = "15.4"
+  engine_version      = "15"
   instance_class      = "db.t3.medium"
   allocated_storage   = 50
   max_allocated_storage = 500
@@ -95,7 +95,7 @@ resource "aws_ecs_task_definition" "nextcloud" {
 
   container_definitions = jsonencode([{
     name  = "nextcloud"
-    image = "nextcloud:28-fpm"
+    image = "nextcloud:33-apache"
 
     environment = [
       { name = "POSTGRES_HOST",     value = aws_db_instance.nextcloud.address },
@@ -106,7 +106,7 @@ resource "aws_ecs_task_definition" "nextcloud" {
       { name = "NEXTCLOUD_TRUSTED_DOMAINS", value = var.nextcloud_hostname },
       { name = "OBJECTSTORE_S3_BUCKET",     value = aws_s3_bucket.nextcloud.id },
       { name = "OBJECTSTORE_S3_REGION",     value = var.aws_region },
-      { name = "OBJECTSTORE_S3_USEPATH_STYLE", value = "true" },
+      { name = "OBJECTSTORE_S3_USEPATH_STYLE", value = "false" },
     ]
 
     secrets = [
@@ -116,7 +116,7 @@ resource "aws_ecs_task_definition" "nextcloud" {
       { name = "NEXTCLOUD_ADMIN_PASSWORD", valueFrom = aws_secretsmanager_secret.admin_password.arn },
     ]
 
-    portMappings = [{ containerPort = 9000, protocol = "tcp" }]  # PHP-FPM port
+    portMappings = [{ containerPort = 80, protocol = "tcp" }]  # Apache HTTP port
 
     logConfiguration = {
       logDriver = "awslogs"
@@ -153,4 +153,4 @@ resource "aws_iam_role_policy" "nextcloud_s3" {
 
 ## Conclusion
 
-Deploying Nextcloud with OpenTofu on AWS creates a scalable, resilient file storage platform. Using S3 as the primary storage backend (via `objectstore` configuration) enables virtually unlimited storage capacity with built-in redundancy. Redis caching dramatically improves performance for concurrent users. The IAM task role approach avoids storing AWS credentials in Nextcloud's configuration.
+Deploying Nextcloud with OpenTofu on AWS creates a scalable, resilient file storage platform. Using S3 as the primary object storage backend (via `objectstore` configuration) enables virtually unlimited storage capacity with built-in redundancy. Redis caching dramatically improves performance for concurrent users. The IAM task role approach avoids storing long-lived AWS access keys in Nextcloud's configuration.
