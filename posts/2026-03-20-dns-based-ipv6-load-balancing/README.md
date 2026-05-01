@@ -12,7 +12,7 @@ DNS-based load balancing distributes traffic across multiple servers by returnin
 
 ## Basic Round-Robin AAAA Load Balancing
 
-Add multiple AAAA records for the same hostname. DNS resolvers return all records; clients cycle through them:
+Add multiple AAAA records for the same hostname. Authoritative servers can return all records, and clients choose which address to try based on their resolver and address-selection behavior:
 
 ```dns
 ; /var/named/example.com.zone
@@ -36,12 +36,12 @@ for i in $(seq 1 5); do
 done
 
 # Observe that the order of addresses changes between queries
-# BIND randomizes the answer order by default (rrset-order random)
+# BIND returns RRsets in random order by default unless rrset-order rules are configured
 ```
 
 ## Configuring BIND for Round-Robin
 
-BIND supports configurable `rrset-order` for controlling DNS record rotation:
+BIND supports configurable `rrset-order` for overriding the default random ordering of AAAA responses:
 
 ```named
 // /etc/named.conf
@@ -58,39 +58,13 @@ options {
 
 ## Weighted DNS Load Balancing with PowerDNS Lua
 
-PowerDNS supports Lua scripting for weighted responses. This enables proportional traffic distribution:
+PowerDNS Authoritative Server supports LUA records for weighted responses. Enable LUA records globally or per zone before using them:
 
-```lua
--- /etc/powerdns/pdns.lua
--- Weighted AAAA load balancing
+```dns
+; example.com zone
+; Requires enable-lua-records=yes or ENABLE-LUA-RECORDS=1
 
--- Define backends with weights
--- Higher weight = more traffic
-local backends = {
-    {addr = "2001:db8::1", weight = 60},  -- 60% of traffic
-    {addr = "2001:db8::2", weight = 30},  -- 30% of traffic
-    {addr = "2001:db8::3", weight = 10},  -- 10% of traffic
-}
-
--- Calculate total weight
-local total = 0
-for _, b in ipairs(backends) do total = total + b.weight end
-
-function preresolve(dq)
-    if dq.qname:equal("www.example.com") and dq.qtype == pdns.AAAA then
-        -- Random weighted selection
-        local rand = math.random(total)
-        local cumulative = 0
-        for _, b in ipairs(backends) do
-            cumulative = cumulative + b.weight
-            if rand <= cumulative then
-                dq:addAnswer(pdns.AAAA, b.addr, 60)
-                return true
-            end
-        end
-    end
-    return false
-end
+www     60      IN  LUA     AAAA    "pickwrandom({{60,'2001:db8::1'},{30,'2001:db8::2'},{10,'2001:db8::3'}})"
 ```
 
 ## Health-Check-Based DNS with nsupdate
@@ -118,13 +92,13 @@ update_dns() {
     done
     update_cmds+="send\n"
 
-    echo -e "$update_cmds" | nsupdate -k /etc/named/update.key
+    printf '%b' "$update_cmds" | nsupdate -k /etc/named/update.key
 }
 
 # Check each backend
 active=()
 for backend in "${BACKENDS[@]}"; do
-    if ping6 -c 2 -W 2 "$backend" &>/dev/null; then
+    if ping -6 -c 2 -W 2 "$backend" &>/dev/null; then
         active+=("$backend")
         echo "Backend $backend: UP"
     else
@@ -149,27 +123,36 @@ Run via cron every minute for basic health-check DNS:
 
 ## Using anycast for IPv6 Load Balancing
 
-For large-scale deployments, anycast routing provides true load balancing:
+For large-scale deployments, anycast routing provides coarse-grained traffic distribution and high availability:
 
 ```bash
 # Multiple servers announce the same IPv6 address via BGP
 # Traffic is routed to the nearest announcing server
 
 # Each server has the same anycast address configured
-ip -6 addr add 2001:db8::service/128 dev lo
+ip -6 addr add 2001:db8:100::53/128 dev lo
 
-# And announces it via BGP (using BIRD as BGP daemon)
-# /etc/bird/bird6.conf
+# And announces it via BGP (using BIRD 2/3 as the BGP daemon)
+# /etc/bird/bird.conf
+protocol static anycast_service {
+    ipv6;
+    route 2001:db8:100::53/128 blackhole;
+}
+
 protocol bgp upstream {
     local as 65001;
-    neighbor 2001:db8::router as 65000;
-    export filter {
-        if net = 2001:db8::service/128 then accept;
-        reject;
+    neighbor 2001:db8:ffff::1 as 65000;
+
+    ipv6 {
+        import none;
+        export filter {
+            if net = 2001:db8:100::53/128 then accept;
+            reject;
+        };
     };
 }
 ```
 
 ## Summary
 
-DNS-based IPv6 load balancing starts with multiple AAAA records (round-robin). For weighted distribution, use PowerDNS Lua scripting. For health-check-based DNS, use a monitoring script with `nsupdate` to add/remove AAAA records based on backend health. For production load balancing at scale, consider DNS as a coarse-grained method and complement it with anycast routing or a proper load balancer (HAProxy, nginx upstream) with full IPv6 support.
+DNS-based IPv6 load balancing starts with multiple AAAA records (round-robin). For weighted distribution, use PowerDNS Authoritative Server LUA records. For health-check-based DNS, use a monitoring script with `nsupdate` to add/remove AAAA records based on backend health. For production load balancing at scale, consider DNS as a coarse-grained method and complement it with anycast routing or a proper load balancer (HAProxy, nginx upstream) with full IPv6 support.
