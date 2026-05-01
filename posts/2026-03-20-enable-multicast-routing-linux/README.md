@@ -16,18 +16,26 @@ Linux supports multicast routing through the kernel's multicast routing subsyste
 # Check if multicast routing is compiled in:
 
 grep -i "CONFIG_IP_MROUTE" /boot/config-$(uname -r)
-# CONFIG_IP_MROUTE=y means it's available
+# CONFIG_IP_MROUTE=y or =m means it's available
 
-# Enable IP forwarding (required for any routing):
+# Enable IP forwarding and multicast forwarding:
 sysctl -w net.ipv4.ip_forward=1
-echo "net.ipv4.ip_forward = 1" >> /etc/sysctl.conf
+sysctl -w net.ipv4.conf.all.mc_forwarding=1
+# Repeat per participating interface:
+sysctl -w net.ipv4.conf.eth0.mc_forwarding=1
+sysctl -w net.ipv4.conf.eth1.mc_forwarding=1
+cat >> /etc/sysctl.conf << 'EOF'
+net.ipv4.ip_forward = 1
+net.ipv4.conf.all.mc_forwarding = 1
+net.ipv4.conf.eth0.mc_forwarding = 1
+net.ipv4.conf.eth1.mc_forwarding = 1
+EOF
 
 # Multicast routing table socket is opened by the routing daemon
-# The kernel module mroute is loaded automatically when daemon runs
 
 # Verify multicast routing is active (once daemon runs):
 cat /proc/net/ip_mr_cache   # Multicast forwarding cache (MFC)
-cat /proc/net/ip_mr_vif     # Virtual interfaces registered with mrouted
+cat /proc/net/ip_mr_vif     # Virtual interfaces registered with the daemon
 ```
 
 ## Simple Static Multicast Routing with smcroute
@@ -60,10 +68,10 @@ systemctl enable smcroute
 smcroutectl add eth0 239.1.1.2 eth1
 
 # Show routing table:
-smcroutectl show
+smcroutectl show routes
 
 # Remove route:
-smcroutectl remove eth0 239.1.1.2
+smcroutectl rem eth0 239.1.1.2 eth1
 ```
 
 ## Dynamic Multicast Routing with pimd (PIM-SM)
@@ -74,18 +82,18 @@ apt-get install pimd    # Debian/Ubuntu
 
 # Configure pimd:
 cat > /etc/pimd.conf << 'EOF'
-# RP (Rendezvous Point) address:
-rp-address 192.168.1.1
+# RP (Rendezvous Point) address for all IPv4 multicast groups:
+rp-address 192.168.1.1 224.0.0.0/4
 
-# Enable PIM on interfaces:
+# Configure PIM on interfaces (use -N if you want only these interfaces):
 phyint eth0 enable
 phyint eth1 enable
 
 # PIM hello interval:
-default-phyint-timer hello-interval 30
+hello-interval 30
 
-# SSM range (Source-Specific Multicast):
-spt-threshold rate 0 packets 0
+# Shared-tree to SPT switchover threshold:
+spt-threshold packets 0 interval 100
 EOF
 
 # Start pimd:
@@ -93,13 +101,13 @@ systemctl start pimd
 systemctl enable pimd
 
 # View PIM neighbor adjacencies:
-pimctl show pim neighbor
+pimctl show neighbor
 
 # View PIM routing table:
-pimctl show pim mroute
+pimctl show mrt
 
-# View multicast forwarding cache:
-pimctl show pim mfc
+# View PIM interfaces and VIFs:
+pimctl show interfaces
 ```
 
 ## Configure Interfaces for Multicast
@@ -112,11 +120,12 @@ ip link set eth0 multicast on
 ip link show eth0 | grep MULTICAST
 # Should show: MULTICAST in flags
 
-# Join multicast group on interface (for static routing):
+# Set the egress interface for locally generated multicast traffic:
 ip route add 239.1.0.0/16 dev eth1
-# Tells kernel: multicast for 239.1.x.x exits via eth1
+# Tells the kernel: multicast for 239.1.x.x exits via eth1
+# This does not join the group or replace the multicast routing daemon
 
-# Add multicast group membership directly:
+# Add multicast group membership directly (0.0.0.0 lets the kernel choose the interface):
 python3 -c "
 import socket, struct
 s = socket.socket(socket.AF_INET, socket.SOCK_DGRAM)
@@ -134,18 +143,18 @@ import time; time.sleep(60)
 ```bash
 # View multicast forwarding cache (kernel):
 cat /proc/net/ip_mr_cache
-# Format: Group Origin In Out TTL Packets Bytes Wrong
+# Header: Group Origin Iif Pkts Bytes Wrong Oifs
 
 # View virtual interfaces (multicast interfaces):
 cat /proc/net/ip_mr_vif
-# Format: Idx Name BytesIn PktsIn BytesOut PktsOut Flags Local Remote
+# Header: Interface BytesIn PktsIn BytesOut PktsOut Flags Local Remote
 
-# Check multicast routing statistics:
+# Check multicast group memberships:
 netstat -g
 
 # Monitor IGMP group memberships:
 cat /proc/net/igmp
-# Format: Device Index Count Querier Group Users Timer Reporter
+# Shows IGMP memberships per interface
 
 # Capture multicast routing activity:
 tcpdump -i any -n 'dst net 224.0.0.0/4'
@@ -191,4 +200,4 @@ for i in range(3):
 
 ## Conclusion
 
-Linux multicast routing requires IP forwarding enabled, a multicast-capable interface (`ip link set eth0 multicast on`), and a routing daemon. Use `smcroute` for simple static multicast forwarding between known interfaces. Use `pimd` for dynamic PIM-SM routing in larger networks with a Rendezvous Point. Monitor with `cat /proc/net/ip_mr_cache` and `ip mroute show`. Always verify that multicast packets are received with the correct TTL - routers decrement TTL by 1, so TTL must be higher than the hop count for packets to reach the receiver.
+Linux multicast routing requires multicast routing support in the kernel, IP forwarding and multicast forwarding enabled, multicast-capable interfaces, and a routing daemon. Use `smcroute` for simple static multicast forwarding between known interfaces. Use `pimd` for dynamic PIM-SM routing in larger networks with a Rendezvous Point. Monitor with `cat /proc/net/ip_mr_cache` and `ip mroute show`. Always verify that multicast packets are received with the correct TTL - routers decrement TTL by 1, so TTL must be higher than the hop count for packets to reach the receiver.
