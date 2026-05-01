@@ -8,7 +8,7 @@ Description: Learn how to create Amazon ECR repositories with lifecycle policies
 
 ## Introduction
 
-Amazon ECR stores Docker container images securely with encryption at rest, image vulnerability scanning, and lifecycle policies to automatically remove old images. Without lifecycle policies, images accumulate indefinitely-lifecycle policies can reduce storage costs by 90% by keeping only the most recent N images per tag pattern or removing untagged images automatically.
+Amazon ECR stores Docker container images securely with encryption at rest, image vulnerability scanning, and lifecycle policies to automatically remove old images. Without lifecycle policies, images accumulate indefinitely-lifecycle policies help control storage costs by keeping only the most recent N images per tag pattern or removing untagged images automatically.
 
 ## Prerequisites
 
@@ -22,11 +22,6 @@ resource "aws_ecr_repository" "app" {
   name                 = "${var.project_name}/app"
   image_tag_mutability = "IMMUTABLE"  # Prevent tag overwrites for reproducibility
 
-  # Enable enhanced scanning (requires Inspector v2)
-  image_scanning_configuration {
-    scan_on_push = true  # Scan each image on push
-  }
-
   encryption_configuration {
     encryption_type = "KMS"
     kms_key         = var.kms_key_arn
@@ -35,6 +30,20 @@ resource "aws_ecr_repository" "app" {
   tags = {
     Name        = "${var.project_name}/app"
     Environment = var.environment
+  }
+}
+
+# Configure scan on push at the registry level (current AWS approach)
+resource "aws_ecr_registry_scanning_configuration" "app" {
+  scan_type = "BASIC"
+
+  rule {
+    scan_frequency = "SCAN_ON_PUSH"
+
+    repository_filter {
+      filter      = aws_ecr_repository.app.name
+      filter_type = "WILDCARD"
+    }
   }
 }
 ```
@@ -83,10 +92,10 @@ resource "aws_ecr_lifecycle_policy" "app" {
         }
         action = { type = "expire" }
       },
-      # Remove any image older than 90 days
+      # Remove images not already covered by higher-priority rules after 90 days
       {
         rulePriority = 20
-        description  = "Remove all images older than 90 days"
+        description  = "Remove images not already covered after 90 days"
         selection = {
           tagStatus   = "any"
           countType   = "sinceImagePushed"
@@ -103,7 +112,8 @@ resource "aws_ecr_lifecycle_policy" "app" {
 ## Step 3: Repository Policy for Cross-Account Access
 
 ```hcl
-# Allow another account (e.g., production) to pull images from this registry
+# Allow other accounts to pull images from this repository.
+# The pulling principal still needs ecr:GetAuthorizationToken via IAM.
 
 resource "aws_ecr_repository_policy" "cross_account" {
   repository = aws_ecr_repository.app.name
@@ -186,4 +196,4 @@ docker push \
 
 ## Conclusion
 
-ECR lifecycle policies are essential cost controls-set them up before your first image push, not after. Use `IMMUTABLE` tags to prevent accidental overwrites of production image tags. Cross-account repository policies allow dev/staging accounts to push images while production accounts only pull, maintaining a clean separation of CI/CD permissions. Enable scan on push and monitor Inspector findings to catch CVEs in your images before deployment.
+ECR lifecycle policies are essential cost controls-set them up before your first image push, not after. Use `IMMUTABLE` tags to prevent accidental overwrites of production image tags. Cross-account repository policies allow staging and production accounts to pull images from this repository, while separate IAM policies control which CI/CD principals can push. Pulling principals still need `ecr:GetAuthorizationToken` via IAM. Enable scan on push and monitor scan findings to catch vulnerabilities in your images before deployment.
