@@ -39,7 +39,7 @@ variable "instance_count" {
 
 variable "database_password" {
   type      = string
-  sensitive = true  # Will be masked in output
+  sensitive = true  # Redacted in plan/apply output, but still stored in state
 }
 ```
 
@@ -55,15 +55,35 @@ tofu apply -auto-approve
 
 ## Complex Types via TF_VAR_
 
+For complex values, declare the variable with a matching type constraint so OpenTofu parses the environment variable as a complex value instead of a plain string.
+
+```hcl
+variable "availability_zones" {
+  type = list(string)
+}
+
+variable "tags" {
+  type = map(string)
+}
+
+variable "server_config" {
+  type = object({
+    instance_type = string
+    count         = number
+    monitoring    = bool
+  })
+}
+```
+
 ```bash
 # List variable
 export TF_VAR_availability_zones='["us-east-1a", "us-east-1b", "us-east-1c"]'
 
 # Map variable
-export TF_VAR_tags='{"Environment": "prod", "Team": "platform"}'
+export TF_VAR_tags='{ Environment = "prod", Team = "platform" }'
 
 # Object variable
-export TF_VAR_server_config='{"instance_type": "t3.large", "count": 4, "monitoring": true}'
+export TF_VAR_server_config='{ instance_type = "t3.large", count = 4, monitoring = true }'
 
 # Apply - reads complex types from env vars
 tofu plan
@@ -85,7 +105,7 @@ jobs:
     steps:
       - uses: actions/checkout@v4
 
-      - uses: opentofu/setup-opentofu@v1
+      - uses: opentofu/setup-opentofu@v2
         with:
           tofu_version: "1.9.0"
 
@@ -127,14 +147,15 @@ tofu apply
 ## Variable Precedence
 
 ```bash
-# Precedence order (last one wins):
-# 1. Default values
-# 2. terraform.tfvars / *.auto.tfvars
-# 3. -var-file flags
-# 4. -var flags
-# 5. TF_VAR_ environment variables (HIGHEST priority for user input)
+# If no value is set from any source, the variable's default is used.
+# Variable loading order (later sources take precedence over earlier ones):
+# 1. TF_VAR_ environment variables
+# 2. terraform.tfvars
+# 3. terraform.tfvars.json
+# 4. *.auto.tfvars / *.auto.tfvars.json (lexical order)
+# 5. -var and -var-file options, in the order provided on the command line
 
-# TF_VAR_ overrides everything else except -var flags
+# -var still takes precedence over TF_VAR_
 export TF_VAR_instance_count=10
 tofu apply -var="instance_count=5"
 # Result: instance_count=5 (-var flag takes precedence over TF_VAR_)
