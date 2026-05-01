@@ -8,19 +8,17 @@ Description: Configure DNS resolution for IPv6 in Docker containers, set IPv6-ca
 
 ## Introduction
 
-Docker containers use an embedded DNS server (127.0.0.11) for service discovery within user-defined networks. This DNS server resolves container names to their IPv6 addresses when IPv6 is enabled on the network. For external DNS resolution, containers use the host's DNS resolver by default. Configuring IPv6-capable DNS servers ensures containers can resolve AAAA records for external hostnames.
+Docker containers use an embedded DNS server (127.0.0.11) for service discovery within user-defined networks. This DNS server can return IPv6 addresses for container names when IPv6 is enabled on the network. Containers on the default `bridge` network inherit the host's DNS settings, while containers on user-defined networks send external lookups to Docker's embedded DNS server, which forwards them to the DNS servers configured on the host. Configuring reachable DNS servers, including IPv6-addressed resolvers when the host has IPv6 connectivity, allows containers to resolve external hostnames and query AAAA records.
 
 ## Configure IPv6 DNS Servers
 
 ```json
-// /etc/docker/daemon.json
 {
   "ipv6": true,
   "ip6tables": true,
-  "fixed-cidr-v6": "fd00:docker::/80",
+  "fixed-cidr-v6": "fd00:dead:beef::/64",
   "dns": [
     "8.8.8.8",
-    "8.8.4.4",
     "2001:4860:4860::8888",
     "2001:4860:4860::8844"
   ]
@@ -34,8 +32,8 @@ sudo systemctl restart docker
 
 docker run --rm alpine cat /etc/resolv.conf
 # nameserver 8.8.8.8
-# nameserver 8.8.4.4
 # nameserver 2001:4860:4860::8888
+# nameserver 2001:4860:4860::8844
 ```
 
 ## Per-Container DNS Configuration
@@ -45,13 +43,13 @@ docker run --rm alpine cat /etc/resolv.conf
 docker run --rm \
     --dns 2606:4700:4700::1111 \
     --dns 2606:4700:4700::1001 \
-    alpine nslookup -type=AAAA google.com
+    alpine sh -c "apk add --no-cache bind-tools -q && dig AAAA google.com +short"
 
 # Use multiple DNS servers (fallback order)
 docker run --rm \
     --dns 2001:4860:4860::8888 \
     --dns 8.8.8.8 \
-    alpine dig AAAA example.com
+    alpine sh -c "apk add --no-cache bind-tools -q && dig AAAA example.com +short"
 
 # Set DNS search domains
 docker run --rm \
@@ -69,23 +67,23 @@ docker network create \
     --driver bridge \
     --ipv6 \
     --subnet 172.20.0.0/24 \
-    --subnet fd00:dns::/64 \
+    --subnet fd00:dead:beef:1::/64 \
     dnstest
 
 # Start two containers
 docker run -d --name server --network dnstest nginx
-docker run -d --name client --network dnstest alpine sleep infinity
+docker run -d --name client --network dnstest alpine tail -f /dev/null
 
 # Test DNS resolution (Docker embedded DNS = 127.0.0.11)
 docker exec client cat /etc/resolv.conf
 # nameserver 127.0.0.11  <-- Docker embedded DNS
 
 # Resolve server name to IPv6
-docker exec client nslookup server
-# Should return IPv6 address (fd00:dns::X)
+docker exec client sh -c "apk add --no-cache bind-tools -q && nslookup -type=AAAA server"
+# Should return IPv6 address (fd00:dead:beef:1::X)
 
 # Or with dig
-docker exec client sh -c "apk add bind-tools -q && dig AAAA server"
+docker exec client sh -c "apk add --no-cache bind-tools -q && dig AAAA server +short"
 
 # Cleanup
 docker rm -f server client
@@ -104,7 +102,7 @@ networks:
     ipam:
       config:
         - subnet: 172.21.0.0/24
-        - subnet: fd00:compose:dns::/64
+        - subnet: fd00:dead:beef:2::/64
 
 services:
   web:
@@ -145,9 +143,9 @@ ping6 -c 3 2001:4860:4860::8888
 # If IPv6 DNS server unreachable, use IPv4 DNS as fallback
 docker run --rm \
     --dns 8.8.8.8 \
-    alpine dig AAAA google.com
+    alpine sh -c "apk add --no-cache bind-tools -q && dig AAAA google.com +short"
 ```
 
 ## Conclusion
 
-Docker containers use `127.0.0.11` as the embedded DNS resolver for container name-to-IPv6 resolution within user-defined networks. Configure external IPv6-capable DNS servers (`2001:4860:4860::8888` for Google) in `daemon.json` under `"dns"` for AAAA record resolution. Per-container DNS overrides with `--dns` allow using different resolvers for specific containers. Docker Compose supports `dns` and `dns_search` under each service. Ensure the host has IPv6 connectivity before adding IPv6 DNS server addresses to `daemon.json`.
+Docker containers on user-defined networks use `127.0.0.11` as the embedded DNS resolver for container name resolution, including IPv6 when enabled. Configure external DNS servers in `daemon.json` under `"dns"` for container name resolution, and use IPv6-addressed resolvers such as `2001:4860:4860::8888` when the host has IPv6 connectivity. Per-container DNS overrides with `--dns` allow using different resolvers for specific containers. Docker Compose supports `dns` and `dns_search` under each service. Ensure the host has IPv6 connectivity before adding IPv6 DNS server addresses to `daemon.json`.
