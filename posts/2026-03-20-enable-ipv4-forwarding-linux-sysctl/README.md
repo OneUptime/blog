@@ -4,11 +4,11 @@ Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
 Tags: Linux, Networking, IPv4, Sysctl, Routing, IP Forwarding
 
-Description: Enable IPv4 packet forwarding on Linux using sysctl to allow the system to act as a router, NAT gateway, or VPN server, and make the change persistent across reboots.
+Description: Enable IPv4 packet forwarding on Linux using sysctl to allow the system to act as a router, NAT gateway, or VPN gateway, and make the change persistent across reboots.
 
 ## Introduction
 
-By default, Linux drops packets that arrive on one interface and need to be forwarded to another - it acts as a host, not a router. Enabling `ip_forward` allows the kernel to route packets between interfaces, which is required for NAT gateways, VPN servers, Docker hosts, and any router role.
+By default, Linux drops packets that arrive on one interface and need to be forwarded to another - it acts as a host, not a router. Enabling `ip_forward` allows the kernel to route packets between interfaces, which is required for NAT gateways, VPN gateways, Docker hosts, and any router role.
 
 ## Checking the Current State
 
@@ -51,31 +51,31 @@ sudo sysctl --system
 sysctl net.ipv4.ip_forward
 ```
 
-Alternatively, uncomment the line in `/etc/sysctl.conf`:
+Alternatively, if your system reads `/etc/sysctl.conf` at boot, uncomment the line there:
 
 ```bash
-sudo sed -i 's/#net.ipv4.ip_forward=1/net.ipv4.ip_forward=1/' /etc/sysctl.conf
+sudo sed -i 's/^[#[:space:]]*net\.ipv4\.ip_forward[[:space:]]*=.*/net.ipv4.ip_forward = 1/' /etc/sysctl.conf
 sudo sysctl -p
 ```
 
 ## Per-Interface Forwarding
 
-To enable forwarding on specific interfaces only:
+To control whether packets received on a specific interface may be forwarded:
 
 ```bash
-# Enable forwarding on eth0 only
+# Allow packets received on eth0 to be forwarded
 sudo sysctl -w net.ipv4.conf.eth0.forwarding=1
 
-# The all/default settings control interfaces not individually specified
+# Set forwarding on all current interfaces
 sudo sysctl -w net.ipv4.conf.all.forwarding=1
 ```
 
 ## Setting Up NAT After Enabling Forwarding
 
-IP forwarding alone is not enough for internet access from behind a Linux router - you also need NAT (masquerade):
+If the upstream network does not have a route back to the downstream subnet, you also need source NAT. For a dynamically assigned WAN IP, `MASQUERADE` is the usual choice:
 
 ```bash
-# After enabling ip_forward, add NAT masquerade rule
+# After enabling ip_forward, add a source NAT rule
 # eth0 = WAN, eth1 = LAN
 sudo iptables -t nat -A POSTROUTING -o eth0 -j MASQUERADE
 sudo iptables -A FORWARD -i eth1 -o eth0 -j ACCEPT
@@ -88,11 +88,11 @@ sudo iptables -A FORWARD -i eth0 -o eth1 -m state --state RELATED,ESTABLISHED -j
 |---|---|
 | Linux router | Yes |
 | NAT gateway / internet sharing | Yes |
-| WireGuard VPN server | Yes |
-| OpenVPN server | Yes |
+| WireGuard VPN server (routing clients) | Yes |
+| OpenVPN server (routing clients) | Yes |
 | Docker (bridge networking) | Yes (Docker enables automatically) |
 | Regular workstation / server | No |
 
 ## Conclusion
 
-Enable IPv4 forwarding with `net.ipv4.ip_forward = 1` in `/etc/sysctl.d/` and apply with `sysctl --system`. Add iptables NAT rules if the system is serving as an internet gateway. This is a prerequisite for any Linux router, VPN endpoint, or container host role.
+Enable IPv4 forwarding with `net.ipv4.ip_forward = 1` in `/etc/sysctl.d/` and apply with `sysctl --system`. Add iptables NAT rules if the system is serving as an internet gateway. This is a prerequisite for any Linux router, VPN gateway, or container host role.
