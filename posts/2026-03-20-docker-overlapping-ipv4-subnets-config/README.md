@@ -4,25 +4,24 @@ Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
 Tags: Docker, Networking, IPv4, Overlapping Subnets, Network Isolation
 
-Description: Manage Docker containers with overlapping IPv4 subnets by using separate bridge networks for isolation, understanding routing behavior, and preventing cross-network communication between...
+Description: Manage Docker network subnet conflicts by using distinct bridge subnets, understanding Docker's overlap checks, and preventing conflicts with host, LAN, or VPN routes.
 
 ## Introduction
 
-Overlapping subnets in Docker occur when two networks share the same or overlapping IP ranges. While Docker isolates bridge networks so containers on different bridges cannot communicate directly, overlapping subnets can cause routing issues on the host. This guide explains how to safely manage this scenario.
+On Linux hosts, subnet conflicts around Docker usually happen when a Docker network overlaps with an existing host, LAN, or VPN route. While Docker isolates bridge networks so containers on different bridges cannot communicate directly, Docker Engine creates non-overlapping local bridge subnets by default. This guide explains how to safely manage this scenario.
 
 ## Why Overlapping Subnets Are Problematic
 
-When two Docker bridge networks have overlapping subnets, the host routing table has two routes for the same CIDR. The kernel uses only one, causing packets destined for one network's containers to be misrouted to the other.
+When you create Docker bridge networks, Docker Engine creates non-overlapping local subnets and rejects overlapping ones. On Linux hosts, the remaining risk is choosing a Docker subnet that overlaps with an external route already present on the host, such as a LAN or VPN.
 
 ```bash
-# Both networks use 172.20.0.0/24 - problematic
+# Docker won't create two bridge networks with the same subnet
 
 docker network create --subnet 172.20.0.0/24 network-a
-docker network create --subnet 172.20.0.0/24 network-b  # conflict!
+docker network create --subnet 172.20.0.0/24 network-b  # fails because the subnet overlaps
 
-# Check the host routing table
-ip route show | grep "172.20.0.0"
-# Only one route exists - Docker created duplicate
+# Also check whether the host already has a route for that subnet
+ip route show | grep "172.20.0.0/24"
 ```
 
 ## Prevention: Use Non-Overlapping Subnets
@@ -39,7 +38,7 @@ docker network create --subnet 172.21.0.0/24 network-b
 When you must connect to an external network that overlaps with a Docker network:
 
 ```bash
-# Rename the Docker network to use a different, safe range
+# Recreate the Docker network to use a different, safe range
 docker network rm network-a
 docker network create --subnet 10.200.0.0/24 network-a
 
@@ -47,39 +46,34 @@ docker network create --subnet 10.200.0.0/24 network-a
 ip route show
 ```
 
-## Isolating Overlapping Networks with Network Namespaces
+## Isolation Limits for Same-Subnet Bridge Networks
 
-For advanced use cases where containers in separate namespaces intentionally have the same IP range (e.g., multi-tenant):
+For advanced multi-tenant use cases, note that Docker's standard bridge driver does not support two local bridge networks with the same IPv4 subnet on a single daemon:
 
 ```bash
-# Create two fully isolated networks with the same subnet
-# They cannot communicate, so overlap is acceptable
+# One bridge network with this subnet is allowed
 docker network create \
   --subnet 192.168.100.0/24 \
-  --opt "com.docker.network.bridge.enable_ip_masquerade=true" \
   tenant-a-network
 
+# A second bridge network with the same subnet is rejected
 docker network create \
   --subnet 192.168.100.0/24 \
-  --opt "com.docker.network.bridge.enable_ip_masquerade=true" \
   tenant-b-network
-
-# Verify both have separate bridge interfaces
-ip link show type bridge | grep br-
 ```
 
-The two bridges are isolated at Layer 2 - containers on `tenant-a-network` cannot reach `tenant-b-network` even with the same IP range.
+User-defined bridge networks are isolated from one another, but Docker does not allow identical bridge subnets on the same Docker Engine host.
 
 ## Checking for Subnet Conflicts
 
 ```bash
 #!/bin/bash
-# List all Docker network subnets to check for overlaps
-docker network ls --format '{{.Name}}' | while read net; do
+# List all Docker network subnets so you can verify there are no overlaps
+docker network ls --format '{{.Name}}' | while read -r net; do
     subnet=$(docker network inspect "$net" \
       --format '{{range .IPAM.Config}}{{.Subnet}}{{end}}' 2>/dev/null)
     [ -n "$subnet" ] && echo "$net: $subnet"
-done | sort -t. -k2,2n
+done | sort
 ```
 
 ## Using Different Address Pools Per Environment
@@ -96,4 +90,4 @@ This prevents Docker from automatically picking subnets that conflict with your 
 
 ## Conclusion
 
-Prevent overlapping Docker subnets by using `default-address-pools` in `daemon.json` to control Docker's allocation range. For multi-tenant isolation where the same subnet must exist in multiple networks, Docker bridge isolation ensures containers cannot cross network boundaries even with identical IP ranges.
+Prevent Docker subnet conflicts by using distinct subnets or `default-address-pools` in `daemon.json` to control Docker's allocation range. Docker bridge networks are isolated from one another, but identical bridge subnets are not supported on a single Docker Engine host.
