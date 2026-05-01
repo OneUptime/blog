@@ -1,24 +1,24 @@
-# How to Use eBPF for IPv6 Load Balancing
+# How to Parse IPv6 Packets with eBPF and XDP
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
-Tags: eBPF, XDP, IPv6, Load Balancing, DNAT
+Tags: eBPF, XDP, IPv6
 
-Description: Implement high-performance IPv6 load balancing using XDP and eBPF DNAT (Destination NAT) without iptables overhead.
+Description: Parse and inspect IPv6 packets in XDP programs using eBPF and kernel headers.
 
 ## Overview
 
-Implement high-performance IPv6 load balancing using XDP and eBPF DNAT (Destination NAT) without iptables overhead.
+Parse and inspect IPv6 packets in XDP programs using eBPF and kernel headers.
 
 ## Prerequisites
 
-- Linux kernel 5.6+ (for BTF and full eBPF feature support)
-- Clang/LLVM for compiling eBPF C programs
-- Root access or CAP_BPF capability
+- Linux kernel with XDP and eBPF support
+- Clang/LLVM and libbpf headers for compiling eBPF C programs
+- Root access, or the capabilities needed to load BPF programs and attach XDP (typically CAP_BPF and CAP_NET_ADMIN on newer kernels, or CAP_SYS_ADMIN on older kernels)
 
 ## IPv6 in eBPF Programs
 
-eBPF programs process IPv6 packets using kernel headers. The IPv6 header is 40 bytes fixed, followed by optional extension headers.
+eBPF programs process IPv6 packets using kernel headers. The base IPv6 header is always 40 bytes, followed by optional extension headers.
 
 ### IPv6 Header Parsing
 
@@ -26,6 +26,7 @@ eBPF programs process IPv6 packets using kernel headers. The IPv6 header is 40 b
 #include <linux/bpf.h>
 #include <linux/if_ether.h>
 #include <linux/ipv6.h>
+#include <bpf/bpf_endian.h>
 #include <bpf/bpf_helpers.h>
 
 SEC("xdp")
@@ -47,8 +48,8 @@ int process_ipv6(struct xdp_md *ctx) {
     if ((void *)(ip6h + 1) > data_end)
         return XDP_PASS;
 
-    // Log source address (first 64 bits)
-    bpf_printk("IPv6 src prefix: %08x:%08x",
+    // Log the first 64 bits of the source address
+    bpf_printk("IPv6 src first 64 bits: %08x:%08x",
                bpf_ntohl(ip6h->saddr.s6_addr32[0]),
                bpf_ntohl(ip6h->saddr.s6_addr32[1]));
 
@@ -63,7 +64,7 @@ char LICENSE[] SEC("license") = "GPL";
 ```bash
 # Compile eBPF program
 
-clang -O2 -target bpf -c program.c -o program.o
+clang -O2 -g -target bpf -c program.c -o program.o
 
 # Load XDP program on interface
 sudo ip link set dev eth0 xdp obj program.o sec xdp
@@ -81,7 +82,7 @@ sudo ip link set dev eth0 xdp off
 # List loaded eBPF programs
 sudo bpftool prog list
 
-# Show program details (BTF info)
+# Show program details
 sudo bpftool prog show id <PROG_ID>
 
 # Dump program instructions
@@ -99,16 +100,16 @@ sudo bpftool map dump id <MAP_ID> | grep -A 3 "key"
 
 ```bash
 # Generate IPv6 test traffic
-ping6 -c 10 2001:db8::1
+ping -6 -c 10 2001:db8::1
 
-# Use hping3 for IPv6 packet generation
-hping3 --ipv6 -S -p 80 2001:db8::1
+# Use Nping for IPv6 TCP packet generation
+nping --tcp -6 -p 80 2001:db8::1
 
-# Watch bpf_printk output (kernel trace pipe)
-sudo cat /sys/kernel/debug/tracing/trace_pipe
+# Watch bpf_printk output
+sudo bpftool prog tracelog
 
 # Use trace-cmd for structured tracing
-sudo trace-cmd record -e "bpf:*" ping6 -c 5 2001:db8::1
+sudo trace-cmd record -e "bpf:*" ping -6 -c 5 2001:db8::1
 sudo trace-cmd report
 ```
 
@@ -118,4 +119,4 @@ Use [OneUptime](https://oneuptime.com) to monitor the network performance metric
 
 ## Conclusion
 
-How to Use eBPF for IPv6 Load Balancing requires understanding IPv6 header structure in C, using XDP or TC hooks for packet interception, and leveraging BPF maps to store IPv6 address state. Always validate packet bounds before accessing headers to avoid eBPF verifier rejections.
+Working with IPv6 in XDP programs requires understanding the IPv6 header structure in C, handling extension headers when you need to inspect beyond the base header, and always validating packet bounds before accessing headers to avoid eBPF verifier rejections.
