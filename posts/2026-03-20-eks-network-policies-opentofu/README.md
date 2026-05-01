@@ -4,22 +4,24 @@ Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
 Tags: OpenTofu, AWS, EKS, Network Policies, Kubernetes, Security, VPC CNI, Infrastructure as Code
 
-Description: Learn how to enable and configure Kubernetes Network Policies on EKS using the VPC CNI network policy controller with OpenTofu to restrict pod-to-pod communication.
+Description: Learn how to enable and configure Kubernetes Network Policies on EKS using the Amazon VPC CNI add-on with OpenTofu to restrict pod-to-pod communication.
 
 ## Introduction
 
-Kubernetes Network Policies define how pods can communicate with each other and external endpoints. On EKS, the Amazon VPC CNI plugin supports network policies natively, enforcing rules at the VPC networking layer without additional CNI plugins.
+Kubernetes Network Policies define how pods can communicate with each other and external endpoints. On EKS, the Amazon VPC CNI plugin supports standard Kubernetes NetworkPolicies on supported Amazon EC2 Linux nodes, enforcing them with eBPF without an additional CNI plugin.
 
 ## Prerequisites
 
 - OpenTofu v1.6+
-- EKS cluster with VPC CNI add-on version 1.14.0+
-- Network policy controller enabled on VPC CNI
+- Amazon EKS cluster on supported Amazon EC2 Linux nodes with a supported Kubernetes/platform version for VPC CNI network policies
+- Linux kernel 5.10+ on worker nodes
+- VPC CNI add-on version 1.21.0+
+- Network policy support enabled on the VPC CNI add-on
 
 ## Step 1: Enable Network Policy Support on VPC CNI
 
 ```hcl
-# Update VPC CNI add-on with network policy controller enabled
+# Update VPC CNI add-on with network policy support enabled
 
 resource "aws_eks_addon" "vpc_cni" {
   cluster_name             = var.cluster_name
@@ -28,7 +30,7 @@ resource "aws_eks_addon" "vpc_cni" {
   service_account_role_arn = aws_iam_role.vpc_cni.arn
   resolve_conflicts_on_update = "OVERWRITE"
 
-  # Enable the network policy controller
+  # Enable network policy support and policy decision logs
   configuration_values = jsonencode({
     enableNetworkPolicy = "true"
     nodeAgent = {
@@ -42,7 +44,7 @@ resource "aws_eks_addon" "vpc_cni" {
 
 ```hcl
 # Deny all ingress and egress by default in the apps namespace
-# This establishes a zero-trust baseline
+# This establishes a default-deny baseline once the policy is enforced
 resource "kubernetes_network_policy" "default_deny" {
   metadata {
     name      = "default-deny-all"
@@ -178,4 +180,4 @@ kubectl -n apps get networkpolicies
 
 ## Conclusion
 
-Kubernetes Network Policies on EKS with the VPC CNI controller provide kernel-level traffic enforcement without additional overhead. Always start with a default-deny policy and explicitly allow required traffic flows. Label your pods consistently to enable precise policy targeting. Use `kubectl describe networkpolicy` to verify policy application and check VPC Flow Logs for enforcement visibility.
+Kubernetes Network Policies on EKS with the VPC CNI add-on provide eBPF-based, kernel-level traffic enforcement on supported EC2 Linux nodes without requiring an additional CNI plugin. Always start with a default-deny policy and explicitly allow required traffic flows. Label your pods consistently to enable precise policy targeting. Use `kubectl describe networkpolicy` to verify policy application and check the VPC CNI network policy logs for enforcement visibility.
