@@ -8,20 +8,23 @@ Description: Learn how to expose Portainer on Kubernetes using NodePort so you c
 
 ## What Is NodePort?
 
-A Kubernetes NodePort service exposes an application on a static port on every node in the cluster. Any traffic to `<NodeIP>:<NodePort>` is forwarded to the service. NodePort values are in the range `30000–32767`.
+A Kubernetes NodePort service exposes an application on a static port on every node in the cluster. Any traffic to `<NodeIP>:<NodePort>` is forwarded to the service. By default, NodePort values are in the range `30000–32767`.
 
 This is the simplest way to expose Portainer without a cloud load balancer.
 
 ## Deploying Portainer with NodePort via Helm
 
 ```bash
-# Install Portainer with NodePort service type
+# Add the Portainer Helm repository
+helm repo add portainer https://portainer.github.io/k8s/
+helm repo update
 
-helm install portainer portainer/portainer \
+# Install Portainer with NodePort service type
+helm upgrade --install portainer portainer/portainer \
   --namespace portainer \
   --create-namespace \
   --set service.type=NodePort \
-  --set service.nodePort=30777 \
+  --set service.httpNodePort=30777 \
   --set service.httpsNodePort=30779
 ```
 
@@ -29,60 +32,9 @@ helm install portainer portainer/portainer \
 
 If you prefer to use a raw Kubernetes manifest:
 
-```yaml
-# portainer-nodeport.yaml
-apiVersion: apps/v1
-kind: Deployment
-metadata:
-  name: portainer
-  namespace: portainer
-spec:
-  replicas: 1
-  selector:
-    matchLabels:
-      app: portainer
-  template:
-    metadata:
-      labels:
-        app: portainer
-    spec:
-      containers:
-        - name: portainer
-          image: portainer/portainer-ce:latest
-          ports:
-            - containerPort: 9000
-            - containerPort: 9443
-            - containerPort: 8000
-          volumeMounts:
-            - name: portainer-data
-              mountPath: /data
-      volumes:
-        - name: portainer-data
-          persistentVolumeClaim:
-            claimName: portainer-data-pvc
----
-apiVersion: v1
-kind: Service
-metadata:
-  name: portainer
-  namespace: portainer
-spec:
-  type: NodePort
-  selector:
-    app: portainer
-  ports:
-    - name: http
-      port: 9000
-      targetPort: 9000
-      nodePort: 30777  # Fixed NodePort for predictable access
-    - name: https
-      port: 9443
-      targetPort: 9443
-      nodePort: 30779
-    - name: edge
-      port: 8000
-      targetPort: 8000
-      nodePort: 30778
+```bash
+# Download Portainer's official NodePort manifest
+curl -L -o portainer-nodeport.yaml https://downloads.portainer.io/ce-lts/portainer.yaml
 ```
 
 ```bash
@@ -97,13 +49,14 @@ kubectl apply -f portainer-nodeport.yaml
 kubectl get nodes -o wide
 
 # Access Portainer at:
+# https://<any-node-ip>:30779
 # http://<any-node-ip>:30777
 ```
 
 ## Changing the NodePort on an Existing Installation
 
 ```bash
-# Patch the service to change the NodePort
+# Patch the service to change the HTTP NodePort
 kubectl patch service portainer \
   --namespace portainer \
   --type='json' \
@@ -115,10 +68,10 @@ kubectl patch service portainer \
 NodePort exposes the service on all nodes. Restrict access with firewall rules:
 
 ```bash
-# Example: Allow only specific IPs to reach NodePort 30777
+# Example: Allow only specific IPs to reach Portainer NodePorts
 # Using iptables (adjust for your firewall tool)
-iptables -A INPUT -p tcp --dport 30777 -s 203.0.113.0/24 -j ACCEPT
-iptables -A INPUT -p tcp --dport 30777 -j DROP
+iptables -A INPUT -p tcp -m multiport --dports 30776,30777,30779 -s 203.0.113.0/24 -j ACCEPT
+iptables -A INPUT -p tcp -m multiport --dports 30776,30777,30779 -j DROP
 ```
 
 ## Conclusion
