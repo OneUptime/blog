@@ -16,11 +16,11 @@ Portainer can expose two web interfaces:
 - **Port 9443**: HTTPS (TLS encrypted) - recommended
 - **Port 9000**: HTTP (unencrypted) - should be disabled in production
 
-The key insight: port 9000 is only accessible if you explicitly map it with `-p 9000:9000` in your Docker run command. Simply omitting this mapping effectively disables HTTP.
+The key insight: omitting `-p 9000:9000` stops Docker from publishing port 9000 on the host, but Portainer's legacy HTTP listener is still enabled unless you explicitly disable it. For a true HTTPS-only setup, omit the port mapping and start Portainer with `--http-disabled`.
 
-## Step 1: Remove HTTP Port Mapping
+## Step 1: Remove HTTP Port Mapping and Disable HTTP
 
-Stop and recreate Portainer without the HTTP port:
+Stop and recreate Portainer without the HTTP port, and explicitly disable Portainer's HTTP listener:
 
 ```bash
 # Stop and remove current container
@@ -36,7 +36,8 @@ docker run -d \
   --restart=always \
   -v /var/run/docker.sock:/var/run/docker.sock \
   -v portainer_data:/data \
-  portainer/portainer-ce:latest
+  portainer/portainer-ce:latest \
+  --http-disabled
 ```
 
 ## Step 2: Block Port 9000 at the Firewall Level
@@ -52,13 +53,12 @@ sudo ufw deny 9000/udp
 sudo ufw status | grep 9000
 ```
 
-## Step 3: Update Portainer Agent Configurations
+## Step 3: Check Agent Connectivity
 
-If you're running Portainer Agent behind the server, ensure agents aren't using HTTP tunnels:
+If you're using Edge Agents, make sure they're already configured for HTTPS before you disable Portainer's HTTP listener. If you also run standard Portainer Agents, they are not affected and use HTTPS on port 9001 by default:
 
 ```bash
-# Verify agents use TLS (port 9001 by default)
-# Portainer Agent runs on port 9001, NOT 9000
+# Standard Portainer Agent communication uses HTTPS on port 9001 by default
 docker ps --filter name=portainer_agent --format "table {{.Names}}\t{{.Ports}}"
 ```
 
@@ -67,7 +67,7 @@ docker ps --filter name=portainer_agent --format "table {{.Names}}\t{{.Ports}}"
 If you're using a reverse proxy, add an explicit HTTP deny rule:
 
 ```nginx
-# Block HTTP access to Portainer backend
+# Block plain HTTP access at the proxy
 server {
     listen 80;
     server_name portainer.example.com;
@@ -103,15 +103,15 @@ curl -k -o /dev/null -w "%{http_code}" https://localhost:9443/
 
 ```yaml
 # docker-compose.yml - HTTP disabled
-version: "3.8"
 
 services:
   portainer:
     image: portainer/portainer-ce:latest
+    command: ["--http-disabled"]
     container_name: portainer
     restart: always
     ports:
-      - "8000:8000"   # Edge agent tunnel
+      - "8000:8000"   # Optional: Edge agent tunnel
       - "9443:9443"   # HTTPS only - port 9000 not exposed
     volumes:
       - /var/run/docker.sock:/var/run/docker.sock
