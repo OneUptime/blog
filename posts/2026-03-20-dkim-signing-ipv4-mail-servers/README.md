@@ -4,11 +4,11 @@ Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
 Tags: DKIM, IPv4, Postfix, Email Security, OpenDKIM, Authentication
 
-Description: Configure OpenDKIM with Postfix to cryptographically sign outbound email from IPv4 servers, improving deliverability and preventing email spoofing.
+Description: Configure OpenDKIM with Postfix to cryptographically sign outbound email from IPv4 servers, improving deliverability and helping receivers detect spoofed messages.
 
 ## Introduction
 
-DKIM (DomainKeys Identified Mail) adds a cryptographic signature to outgoing emails. Receiving servers verify the signature against a public key published in DNS, confirming the mail came from an authorized server and was not tampered with in transit.
+DKIM (DomainKeys Identified Mail) adds a cryptographic signature to outgoing emails. Receiving servers verify the signature against a public key published in DNS, confirming the message was signed for the domain and that the signed portions were not altered after signing.
 
 ## Installing and Configuring OpenDKIM
 
@@ -48,6 +48,9 @@ Socket          local:/var/spool/postfix/opendkim/opendkim.sock
 # Or TCP socket
 # Socket         inet:8891@127.0.0.1
 
+# Allow Postfix to access the UNIX socket via group permissions
+UMask           007
+
 # Log settings
 Syslog          yes
 SyslogSuccess   yes
@@ -84,8 +87,9 @@ mail._domainkey.example.com  example.com:mail:/etc/opendkim/keys/example.com/mai
 
 ```bash
 # Create socket directory with correct permissions
-sudo mkdir -p /var/spool/postfix/opendkim
-sudo chown opendkim:postfix /var/spool/postfix/opendkim
+sudo mkdir -p -m 750 /var/spool/postfix/opendkim
+sudo chown opendkim:opendkim /var/spool/postfix/opendkim
+sudo adduser postfix opendkim
 
 # /etc/postfix/main.cf
 milter_default_action = accept
@@ -95,9 +99,10 @@ non_smtpd_milters = local:/opendkim/opendkim.sock
 ```
 
 ```bash
-# Start OpenDKIM and reload Postfix
-sudo systemctl enable --now opendkim
-sudo systemctl reload postfix
+# Start OpenDKIM and restart Postfix
+sudo systemctl enable opendkim
+sudo systemctl restart opendkim
+sudo systemctl restart postfix
 ```
 
 ## Publishing the DNS Record
@@ -116,17 +121,17 @@ cat /etc/opendkim/keys/example.com/mail.txt
 ## Verifying DKIM
 
 ```bash
-# Send a test email and check headers
-echo "DKIM test" | mail -s "DKIM Test" test@gmail.com
+# Send a test email through Postfix
+printf 'Subject: DKIM Test\nTo: test@gmail.com\n\nDKIM test\n' | /usr/sbin/sendmail -t
 
-# Check mail log for DKIM signature
-sudo tail -f /var/log/mail.log | grep DKIM
+# Check recent OpenDKIM log entries
+sudo grep -i opendkim /var/log/mail.log | tail
 
-# Verify online: send mail to check-auth2@verifier.port25.com
-echo "test" | mail -s "DKIM verify" check-auth2@verifier.port25.com
+# Verify online: send mail to check-auth@verifier.port25.com
+printf 'Subject: DKIM verify\nTo: check-auth@verifier.port25.com\n\nDKIM test\n' | /usr/sbin/sendmail -t
 
-# Query DKIM public key
-dig TXT mail._domainkey.example.com
+# Test DNS key lookup from OpenDKIM
+sudo opendkim-testkey -d example.com -s mail -vvv
 ```
 
 ## Conclusion
