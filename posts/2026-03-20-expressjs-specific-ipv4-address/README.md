@@ -34,7 +34,8 @@ const app = express();
 app.get("/", (req, res) => res.send("Hello"));
 
 const HOST = process.env.HOST || "0.0.0.0";
-const PORT = parseInt(process.env.PORT, 10) || 3000;
+const parsedPort = Number.parseInt(process.env.PORT ?? "", 10);
+const PORT = Number.isNaN(parsedPort) ? 3000 : parsedPort;
 
 app.listen(PORT, HOST, () => {
     console.log(`Server running on ${HOST}:${PORT}`);
@@ -42,7 +43,7 @@ app.listen(PORT, HOST, () => {
 ```
 
 ```bash
-# Bind to all interfaces (default)
+# Bind to all IPv4 interfaces (default)
 
 node app.js
 
@@ -82,7 +83,7 @@ adminServer.listen(3001, "127.0.0.1", () => {
 const express = require("express");
 const app = express();
 
-// Trust the first proxy for X-Forwarded-For (e.g., Nginx)
+// Trust exactly one reverse-proxy hop (for example, a single Nginx layer)
 app.set("trust proxy", 1);
 
 app.get("/whoami", (req, res) => {
@@ -138,4 +139,4 @@ ifaces.forEach(i => console.log(`  ${i.name}: ${i.address} (internal=${i.interna
 
 ## Conclusion
 
-`app.listen(PORT, HOST, callback)` is the only change needed to bind Express to a specific address. Use `process.env.HOST` to make the bind address configurable without code changes. In production, bind to `127.0.0.1` and place Nginx in front to handle TLS, compression, and rate limiting. Set `app.set("trust proxy", 1)` when behind a reverse proxy so `req.ip` returns the real client address from `X-Forwarded-For`.
+`app.listen(PORT, HOST, callback)` is the only change needed to bind Express to a specific address. Use `process.env.HOST` to make the bind address configurable without code changes. If Nginx is on the same host, bind to `127.0.0.1` and place Nginx in front to handle TLS, compression, and rate limiting. Set `app.set("trust proxy", 1)` only when Express is behind exactly one reverse proxy; otherwise configure `trust proxy` to match your actual proxy topology so `req.ip` is derived correctly from `X-Forwarded-For`.
