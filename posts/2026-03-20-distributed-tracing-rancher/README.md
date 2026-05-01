@@ -31,9 +31,10 @@ sequenceDiagram
 Use Jaeger or Tempo. For new deployments, Tempo is recommended:
 
 ```bash
-helm repo add grafana https://grafana.github.io/helm-charts
-helm install tempo grafana/tempo \
+helm repo add grafana-community https://grafana-community.github.io/helm-charts
+helm install tempo grafana-community/tempo \
   --namespace observability \
+  --create-namespace \
   --set tempo.storage.trace.backend=local
 ```
 
@@ -69,6 +70,8 @@ EOF
 
 helm install otel-collector open-telemetry/opentelemetry-collector \
   --namespace observability \
+  --set image.repository=ghcr.io/open-telemetry/opentelemetry-collector-releases/opentelemetry-collector-k8s \
+  --set command.name=otelcol-k8s \
   --values otel-values.yaml
 ```
 
@@ -82,7 +85,7 @@ const { getNodeAutoInstrumentations } = require('@opentelemetry/auto-instrumenta
 
 const sdk = new NodeSDK({
   traceExporter: new OTLPTraceExporter({
-    url: process.env.OTEL_EXPORTER_OTLP_ENDPOINT || 'http://otel-collector:4317',
+    url: process.env.OTEL_EXPORTER_OTLP_ENDPOINT || 'http://otel-collector.observability.svc.cluster.local:4317',
   }),
   // Auto-instrument HTTP, Express, gRPC, database clients
   instrumentations: [getNodeAutoInstrumentations()],
@@ -114,7 +117,7 @@ provider.add_span_processor(BatchSpanProcessor(exporter))
 trace.set_tracer_provider(provider)
 
 # Auto-instrument FastAPI and SQLAlchemy
-FastAPIInstrumentor.instrument()
+FastAPIInstrumentor().instrument()
 SQLAlchemyInstrumentor().instrument()
 ```
 
@@ -135,4 +138,4 @@ env:
 
 ## Conclusion
 
-Distributed tracing in Rancher requires three components working together: application instrumentation (OpenTelemetry SDKs), collection infrastructure (OTel Collector), and storage/visualization (Tempo + Grafana). Auto-instrumentation libraries reduce the code changes needed while still providing rich trace data.
+Distributed tracing in Rancher requires three components working together: application instrumentation (OpenTelemetry SDKs), collection infrastructure (OTel Collector), and a trace backend plus UI (for example, Tempo with Grafana). Auto-instrumentation libraries reduce the code changes needed while still providing rich trace data.
