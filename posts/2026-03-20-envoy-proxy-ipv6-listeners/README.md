@@ -129,12 +129,12 @@ static_resources:
 ## Dual-Stack Cluster
 
 ```yaml
-# Dual-stack cluster: Envoy tries IPv6 first, falls back to IPv4
+# Dual-stack cluster: resolve both IPv6 and IPv4 addresses
 
 clusters:
   - name: dual_stack_cluster
     type: STRICT_DNS
-    dns_lookup_family: AUTO   # Try AAAA first, then A
+    dns_lookup_family: ALL   # Return AAAA and A records; enables Happy Eyeballs
     connect_timeout: 5s
     load_assignment:
       cluster_name: dual_stack_cluster
@@ -176,23 +176,27 @@ clusters:
 
 ## IPv6 in Istio / Service Mesh
 
-When using Envoy as the Istio sidecar, IPv6 is configured via Istio's control plane:
+When using Envoy as the Istio sidecar, dual-stack IPv6 support is enabled in Istio's install configuration:
 
 ```yaml
-# Istio MeshConfig for IPv6 support
-apiVersion: v1
-kind: ConfigMap
+# IstioOperator dual-stack configuration
+apiVersion: install.istio.io/v1alpha1
+kind: IstioOperator
 metadata:
   name: istio
   namespace: istio-system
-data:
-  mesh: |
+spec:
+  meshConfig:
     defaultConfig:
       proxyMetadata:
-        ISTIO_META_DNS_CAPTURE: "true"
-        ISTIO_META_IPV6_SUPPORT: "true"
+        ISTIO_DUAL_STACK: "true"
+  values:
+    pilot:
+      env:
+        ISTIO_DUAL_STACK: "true"
+      ipFamilyPolicy: RequireDualStack
 ```
 
 ## Conclusion
 
-Envoy IPv6 configuration uses `address: "::"` for listener socket addresses and specifies IPv6 addresses directly in cluster endpoint configurations. The `ipv4_compat: true` flag on listeners allows the same socket to accept both IPv4-mapped and native IPv6 connections. For DNS-based clusters, set `dns_lookup_family: AUTO` to prefer IPv6 (AAAA) resolution while falling back to IPv4. In Kubernetes service mesh deployments, ensure the cluster's pod networking supports IPv6 and configure Istio's `ISTIO_META_IPV6_SUPPORT` flag for IPv6-aware routing.
+Envoy IPv6 configuration uses `address: "::"` for listener socket addresses and specifies IPv6 addresses directly in cluster endpoint configurations. The `ipv4_compat: true` flag on listeners allows the same socket to accept both IPv4-mapped and native IPv6 connections. For DNS-based dual-stack clusters, set `dns_lookup_family: ALL` to return both AAAA and A records and let Envoy use Happy Eyeballs for upstream connections. In Kubernetes service mesh deployments, ensure the cluster's pod networking supports dual-stack or IPv6 and enable Istio's documented `ISTIO_DUAL_STACK` settings during installation.
