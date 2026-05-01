@@ -8,12 +8,13 @@ Description: Guide to deploying Nextcloud on Rancher for self-hosted file sync a
 
 ## Introduction
 
-This guide covers deploying unextcloud on Rancher with production-ready configuration including persistent storage, TLS, and monitoring integration.
+This guide covers deploying Nextcloud on Rancher with the official Helm chart and production-ready configuration including persistent storage, TLS, and monitoring integration.
 
 ## Prerequisites
 
 - Rancher v2.7+ with a Kubernetes cluster
-- kubectl and helm configured
+- Kubernetes 1.24+
+- kubectl and Helm 3.7+ configured
 - Ingress controller (nginx or traefik)
 - Persistent storage class (Longhorn recommended)
 - cert-manager for TLS
@@ -23,11 +24,11 @@ This guide covers deploying unextcloud on Rancher with production-ready configur
 ```bash
 # Add the chart repository
 
-helm repo add bitnami https://charts.bitnami.com/bitnami
+helm repo add nextcloud https://nextcloud.github.io/helm/
 helm repo update
 
 # Search for available versions
-helm search repo bitnami/nextcloud --versions | head -5
+helm search repo nextcloud/nextcloud --versions | head -5
 ```
 
 ## Step 2: Create Namespace and Secrets
@@ -37,7 +38,17 @@ helm search repo bitnami/nextcloud --versions | head -5
 kubectl create namespace nextcloud
 
 # Create admin credentials secret
-kubectl create secret generic nextcloud-credentials   --namespace nextcloud   --from-literal=admin-password=$(openssl rand -base64 24)   --from-literal=db-password=$(openssl rand -base64 24)
+kubectl create secret generic nextcloud-secret \
+  --namespace nextcloud \
+  --from-literal=nextcloud-username=admin \
+  --from-literal=nextcloud-password="$(openssl rand -base64 24)"
+
+# Create PostgreSQL credentials secret
+kubectl create secret generic nextcloud-db \
+  --namespace nextcloud \
+  --from-literal=db-username=nextcloud \
+  --from-literal=db-password="$(openssl rand -base64 24)" \
+  --from-literal=postgres-password="$(openssl rand -base64 24)"
 ```
 
 ## Step 3: Configure Values
@@ -59,39 +70,70 @@ persistence:
   storageClass: longhorn
   size: 20Gi
 
+# Nextcloud configuration
+nextcloud:
+  host: nextcloud.example.com
+  trustedDomains:
+    - nextcloud.example.com
+  existingSecret:
+    enabled: true
+    secretName: nextcloud-secret
+
 # Ingress configuration
 ingress:
   enabled: true
-  hostname: nextcloud.example.com
-  ingressClassName: nginx
-  tls: true
-  certManager: true
+  className: nginx
+  tls:
+    - secretName: nextcloud-tls
+      hosts:
+        - nextcloud.example.com
   annotations:
     cert-manager.io/cluster-issuer: letsencrypt-prod
 
-# Database (if applicable)
+# Fix generated URLs when TLS terminates at the ingress controller
+phpClientHttpsFix:
+  enabled: true
+
+# Database
+internalDatabase:
+  enabled: false
+
+externalDatabase:
+  enabled: true
+  type: postgresql
+  database: nextcloud
+  existingSecret:
+    enabled: true
+    secretName: nextcloud-db
+
 postgresql:
   enabled: true
-  auth:
-    password: "${DB_PASSWORD}"
+  global:
+    postgresql:
+      auth:
+        database: nextcloud
+        username: nextcloud
+        existingSecret: nextcloud-db
+        secretKeys:
+          adminPasswordKey: postgres-password
+          userPasswordKey: db-password
   primary:
     persistence:
       enabled: true
       storageClass: longhorn
       size: 10Gi
-
-# Replication for HA
-replicaCount: 2
-podDisruptionBudget:
-  enabled: true
-  minAvailable: 1
 ```
 
 ## Step 4: Install with Helm
 
 ```bash
-# Install unextcloud
-helm install nextcloud bitnami/nextcloud   --namespace nextcloud   --values nextcloud-values.yaml   --version latest   --wait   --timeout 10m
+# Install Nextcloud
+helm install nextcloud nextcloud/nextcloud \
+  --namespace nextcloud \
+  --values nextcloud-values.yaml \
+  --version 9.0.5 \
+  --wait \
+  --timeout 10m
 
 # Verify deployment
 kubectl get pods -n nextcloud
@@ -105,7 +147,8 @@ kubectl get svc -n nextcloud
 kubectl rollout status deployment/nextcloud -n nextcloud
 
 # Get the admin password
-kubectl get secret --namespace nextcloud nextcloud-credentials   -o jsonpath="{.data.admin-password}" | base64 --decode
+kubectl get secret --namespace nextcloud nextcloud-secret \
+  -o jsonpath="{.data.nextcloud-password}" | base64 --decode
 
 # Check ingress is configured
 kubectl get ingress -n nextcloud
@@ -118,6 +161,8 @@ curl -I https://nextcloud.example.com
 
 ```yaml
 # nextcloud-backup-cronjob.yaml
+# Example: back up the Nextcloud data PVC to S3.
+# For a full Nextcloud backup, also back up the database, config, custom_apps, and themes.
 apiVersion: batch/v1
 kind: CronJob
 metadata:
@@ -133,77 +178,82 @@ spec:
         spec:
           containers:
           - name: backup
-            image: amazon/aws-cli:latest
+            image: amazon/aws-cli:2
             command:
             - sh
             - -c
             - |
-              # Backup data to S3
-              aws s3 sync /data s3://app-backups/nextcloud/$(date +%Y%m%d)/
+              # Assumes AWS credentials are already available to the pod.
+              aws s3 sync /var/www/html/data s3://app-backups/nextcloud/$(date +%Y%m%d)/
+            volumeMounts:
+            - name: nextcloud-main
+              mountPath: /var/www/html
+              readOnly: true
           restartPolicy: OnFailure
           volumes:
-          - name: data
+          - name: nextcloud-main
             persistentVolumeClaim:
-              claimName: nextcloud-data
+              claimName: nextcloud-nextcloud
 ```
 
 ## Step 7: Configure Monitoring
 
 ```yaml
-# nextcloud-servicemonitor.yaml
-apiVersion: monitoring.coreos.com/v1
-kind: ServiceMonitor
-metadata:
-  name: nextcloud-metrics
-  namespace: nextcloud
-  labels:
-    release: prometheus
-spec:
-  selector:
-    matchLabels:
-      app.kubernetes.io/name: nextcloud
-  endpoints:
-  - port: metrics
+# nextcloud-monitoring-values.yaml
+metrics:
+  enabled: true
+  https: false
+
+prometheus:
+  serviceMonitor:
+    enabled: true
     interval: 60s
-    path: /metrics
+    labels:
+      release: prometheus
+```
+
+```bash
+helm upgrade nextcloud nextcloud/nextcloud \
+  --namespace nextcloud \
+  --reuse-values \
+  --values nextcloud-monitoring-values.yaml
 ```
 
 ## Step 8: Configure Horizontal Pod Autoscaler
 
 ```yaml
-# nextcloud-hpa.yaml
-apiVersion: autoscaling/v2
-kind: HorizontalPodAutoscaler
-metadata:
-  name: nextcloud-hpa
-  namespace: nextcloud
-spec:
-  scaleTargetRef:
-    apiVersion: apps/v1
-    kind: Deployment
-    name: nextcloud
-  minReplicas: 2
-  maxReplicas: 8
-  metrics:
-  - type: Resource
-    resource:
-      name: cpu
-      target:
-        type: Utilization
-        averageUtilization: 70
-  - type: Resource
-    resource:
-      name: memory
-      target:
-        type: Utilization
-        averageUtilization: 80
+# nextcloud-hpa-values.yaml
+# Requires metrics-server, sticky sessions on the ingress, and storage that supports ReadWriteMany.
+persistence:
+  accessMode: ReadWriteMany
+
+ingress:
+  annotations:
+    cert-manager.io/cluster-issuer: letsencrypt-prod
+    nginx.ingress.kubernetes.io/affinity: cookie
+
+hpa:
+  enabled: true
+  minPods: 2
+  maxPods: 8
+  cputhreshold: 70
+```
+
+```bash
+helm upgrade nextcloud nextcloud/nextcloud \
+  --namespace nextcloud \
+  --reuse-values \
+  --values nextcloud-hpa-values.yaml
 ```
 
 ## Upgrades
 
 ```bash
-# Upgrade unextcloud
-helm upgrade nextcloud bitnami/nextcloud   --namespace nextcloud   --values nextcloud-values.yaml   --reuse-values
+# Upgrade Nextcloud
+helm upgrade nextcloud nextcloud/nextcloud \
+  --namespace nextcloud \
+  --values nextcloud-values.yaml \
+  --reuse-values
 
 # Rollback if needed
 helm rollback nextcloud 1 --namespace nextcloud
@@ -211,4 +261,4 @@ helm rollback nextcloud 1 --namespace nextcloud
 
 ## Conclusion
 
-Deploying unextcloud on Rancher provides a production-ready environment with persistent storage, TLS termination, and autoscaling. Rancher's unified management interface gives operations teams visibility into unextcloud's health while the Helm-based installation makes upgrades and configuration changes straightforward.
+Deploying Nextcloud on Rancher provides a production-ready environment with persistent storage, TLS termination, and autoscaling. Rancher's unified management interface gives operations teams visibility into Nextcloud's health while the Helm-based installation makes upgrades and configuration changes straightforward.
