@@ -8,7 +8,7 @@ Description: A guide to understanding ephemeral resources in OpenTofu, how they 
 
 ## Introduction
 
-Ephemeral resources are a special type of resource introduced in OpenTofu that exist only for the duration of a plan or apply operation. Unlike regular resources (which are persisted to state) or data sources (which store their values in state), ephemeral resources are never written to the state file. They are ideal for short-lived credentials, temporary tokens, and other sensitive values.
+Ephemeral resources are a special type of resource introduced in OpenTofu v1.11 that exist only for the duration of a plan or apply operation. Unlike regular resources (which are persisted to state) or data sources (which store their values in state), ephemeral resources are never written to the state file or plan data. They are ideal for short-lived credentials, temporary tokens, and other sensitive values.
 
 ## The Three Resource Types
 
@@ -29,7 +29,7 @@ data "aws_vpc" "main" {
 # 3. Ephemeral resource: fetches values, NEVER stored in state
 ephemeral "aws_secretsmanager_secret_version" "db_pass" {
   secret_id = "myapp/db-password"
-  # Values available during apply but never written to state
+  # Values available during the current phase but never written to state or plan
 }
 ```
 
@@ -37,20 +37,24 @@ ephemeral "aws_secretsmanager_secret_version" "db_pass" {
 
 ```hcl
 # Ephemeral resources follow this lifecycle:
-# 1. Open: Called at the start of plan or apply to fetch the value
-# 2. Use: Value is available to reference in configuration
-# 3. Close: Called at the end of the operation to clean up / release
+# 1. Validate: OpenTofu validates the configuration first
+# 2. Open: OpenTofu opens the ephemeral resource to fetch the value
+# 3. Close: OpenTofu closes it when the current phase no longer needs it
+#
+# If the configuration is not fully known during planning,
+# OpenTofu can defer opening the ephemeral resource until apply
 
 ephemeral "vault_generic_secret" "app" {
   path = "secret/myapp/config"
   # Opened before any resource that references it
-  # Closed after all referencing operations complete
+  # Closed when the current phase no longer needs it
 }
 
-# Resources that use ephemeral values are processed
-# while the ephemeral resource is still "open"
+# Resources that use ephemeral values must reference them
+# only from write-only attributes
 resource "aws_db_instance" "main" {
-  password = jsondecode(ephemeral.vault_generic_secret.app.data_json).db_password
+  password_wo         = jsondecode(ephemeral.vault_generic_secret.app.data_json).db_password
+  password_wo_version = 1
 }
 ```
 
@@ -61,7 +65,7 @@ resource "aws_db_instance" "main" {
 # - AWS (aws_secretsmanager_secret_version, aws_eks_cluster_auth)
 # - Vault (vault_kv_secret_v2, vault_aws_access_credentials, etc.)
 # - TLS (tls_private_key)
-# - Kubernetes (kubernetes_token_request)
+# - Kubernetes (kubernetes_token_request_v1)
 
 # Example: AWS Secrets Manager
 ephemeral "aws_secretsmanager_secret_version" "config" {
@@ -90,12 +94,13 @@ ephemeral "aws_secretsmanager_secret_version" "secret" {
 
 # Resources can use ephemeral values in write-only attributes
 resource "aws_db_instance" "main" {
-  password = jsondecode(ephemeral.aws_secretsmanager_secret_version.secret.secret_string).password
+  password_wo         = jsondecode(ephemeral.aws_secretsmanager_secret_version.secret.secret_string).password
+  password_wo_version = 1
 }
 
-# Ephemeral locals can reference ephemeral values
+# Locals can reference ephemeral values; the local becomes ephemeral automatically
 locals {
-  ephemeral db_password = jsondecode(
+  db_password = jsondecode(
     ephemeral.aws_secretsmanager_secret_version.secret.secret_string
   ).password
 }
@@ -120,46 +125,52 @@ ephemeral "tls_private_key" "app" {
 # }
 
 # Correct: Use write-only attribute if available
-resource "aws_db_instance" "main" {
-  password = ephemeral.some_secret.value  # OK - password is write-only
+resource "aws_secretsmanager_secret" "app" {
+  name = "myapp/private-key"
 }
 
-# Or: Store derived non-sensitive data
-resource "aws_ssm_parameter" "key_public" {
-  value = ephemeral.tls_private_key.app.public_key_pem  # OK - public key is not sensitive
+resource "aws_secretsmanager_secret_version" "app" {
+  secret_id                = aws_secretsmanager_secret.app.id
+  secret_string_wo         = ephemeral.tls_private_key.app.private_key_pem
+  secret_string_wo_version = 1
 }
+
+# Even non-sensitive values derived from an ephemeral resource stay ephemeral
+# resource "aws_ssm_parameter" "key_public" {
+#   value = ephemeral.tls_private_key.app.public_key_pem  # Error!
+# }
 ```
 
 ## Difference from Sensitive Values
 
 ```hcl
-# sensitive variable: stored in state but redacted from display
+# sensitive variable: stored in state and plan, but redacted from display
 variable "db_password" {
   sensitive = true
-  # Still in state file - just not shown in terminal output
+  # Still stored - just not shown in terminal output
 }
 
 # ephemeral resource: never stored in state
 ephemeral "aws_secretsmanager_secret_version" "db_pass" {
   secret_id = "myapp/db-pass"
-  # NEVER in state file - stronger security guarantee
+  # NEVER in state or plan data - stronger security guarantee
 }
 ```
 
-## Re-evaluation on Every Apply
+## Re-evaluation in Each Phase
 
 ```hcl
-# Unlike data sources (which can be cached), ephemeral resources
-# are re-evaluated on every plan and apply
+# Because ephemeral resources are not stored in state or plans,
+# OpenTofu opens them again in each plan/apply phase where they are needed
 
 ephemeral "vault_aws_access_credentials" "deploy" {
   backend = "aws"
   role    = "deploy"
-  # Gets fresh credentials on EVERY run
-  # Works correctly with credential rotation
+  # Requests fresh credentials each time the phase runs
+  # which works well with credential rotation
 }
 ```
 
 ## Conclusion
 
-Ephemeral resources represent the most secure way to handle sensitive values in OpenTofu. By never writing values to state, they eliminate the risk of secrets appearing in state files, remote state backends, or audit logs. They are re-fetched on every apply, making them naturally compatible with credential rotation. Use ephemeral resources for passwords, API keys, temporary tokens, private keys, and any other sensitive value that should not persist beyond a single deployment operation. As OpenTofu providers add support for ephemeral resources, they will become the standard approach for secrets management in infrastructure as code.
+Ephemeral resources are a secure way to handle sensitive values in OpenTofu. By keeping values out of state and plan data, they reduce the risk of secrets appearing in state files or remote state backends. They are opened again whenever a plan or apply phase needs them, which makes them a good fit for credential rotation. Use ephemeral resources for passwords, API keys, temporary tokens, private keys, and any other sensitive value that should not persist beyond a single deployment operation, but remember that ephemeral values are not a blanket protection against disclosure in console or provisioner output. As OpenTofu providers add support for ephemeral resources and write-only attributes, they will likely become a common approach for secrets management in infrastructure as code.
