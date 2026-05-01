@@ -53,11 +53,14 @@ Address=2001:db8::10/64
 Gateway=2001:db8::1
 DNS=2001:db8::53
 
-# Enable SLAAC for additional IPv6 (optional)
+# Enable SLAAC for an additional IPv6 address (optional)
 IPv6AcceptRA=yes
 
 [IPv6AcceptRA]
-# Accept RA but keep static address too
+# Keep the static gateway and DNS, but still allow SLAAC
+UseGateway=no
+UseDNS=no
+# systemd 246+: do not start DHCPv6 from RA
 DHCPv6Client=no
 ```
 
@@ -98,6 +101,7 @@ network:
   renderer: networkd
   ethernets:
     eth0:
+      accept-ra: false
       addresses:
         - 192.0.2.10/24
         - 2001:db8::10/64
@@ -123,13 +127,11 @@ sudo netplan apply
 
 auto eth0
 iface eth0 inet static
-    address 192.0.2.10
-    netmask 255.255.255.0
+    address 192.0.2.10/24
     gateway 192.0.2.1
 
 iface eth0 inet6 static
-    address 2001:db8::10
-    netmask 64
+    address 2001:db8::10/64
     gateway 2001:db8::1
     autoconf 0
     accept_ra 0
@@ -146,7 +148,7 @@ iface eth0 inet6 static
 # Disable IPv6 on specific interface only (if needed)
 # net.ipv6.conf.eth1.disable_ipv6 = 1
 
-# Accept Router Advertisements (needed for SLAAC/default route via RA)
+# Accept Router Advertisements on hosts; use 2 instead if forwarding is enabled
 net.ipv6.conf.eth0.accept_ra = 1
 
 # Privacy extensions (RFC 4941) - use temporary addresses for outbound
@@ -178,16 +180,15 @@ sudo systemctl restart systemd-resolved
 # Test A and AAAA resolution
 resolvectl query example.com
 
-# Confirm both records returned:
-# example.com: 93.184.216.34       (A)
-# example.com: 2606:2800:220:1:248:1893:25c8:1946  (AAAA)
+# Confirm both A and AAAA records are returned.
 ```
 
 ## Verify Dual-Stack Application Listening
 
 ```bash
 # Check if service listens on both IPv4 and IPv6
-ss -tlnp | grep -E "0\.0\.0\.0|:::|\*:"
+ss -tlnp4
+ss -tlnp6
 
 # Nginx dual-stack: listen on both
 # listen 80;          → IPv4
@@ -209,9 +210,9 @@ ip -6 route show default
 # Should show: default via 2001:db8::1 dev eth0
 
 # Test IPv6 connectivity step by step
-ping6 fe80::1%eth0     # link-local gateway
-ping6 2001:db8::1      # global gateway
-ping6 2001:4860:4860::8888  # external IPv6
+ping -6 fe80::1%eth0     # link-local gateway
+ping -6 2001:db8::1      # global gateway
+ping -6 2001:4860:4860::8888  # external IPv6
 
 # Check for duplicate address (DAD failure)
 ip -6 addr show dev eth0 | grep tentative
