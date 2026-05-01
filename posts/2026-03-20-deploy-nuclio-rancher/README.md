@@ -23,15 +23,7 @@ kubectl create namespace nuclio
 
 # Install Nuclio
 helm install nuclio nuclio/nuclio \
-  --namespace nuclio \
-  --set dashboard.enabled=true \
-  --set registry.secretName=registry-credentials \
-  --set controller.enabled=true \
-  --version 0.14.0
-
-# Wait for deployment
-kubectl rollout status deployment nuclio-controller -n nuclio
-kubectl rollout status deployment nuclio-dashboard -n nuclio
+  --namespace nuclio
 ```
 
 ## Step 2: Configure Container Registry
@@ -45,18 +37,27 @@ kubectl create secret docker-registry registry-credentials \
   --docker-password=your-password
 
 # Configure Nuclio to use registry
-kubectl set env deployment nuclio-controller \
-  -n nuclio \
-  NUCLIO_REGISTRY_URL=registry.example.com
+helm upgrade --install nuclio nuclio/nuclio \
+  --namespace nuclio \
+  --set registry.secretName=registry-credentials \
+  --set registry.pushPullUrl=registry.example.com
+
+# Wait for deployment
+kubectl rollout status deployment nuclio-controller -n nuclio
+kubectl rollout status deployment nuclio-dashboard -n nuclio
 ```
 
 ## Step 3: Install nuctl CLI
 
 ```bash
 # Download nuctl
-curl -OL https://github.com/nuclio/nuclio/releases/download/1.12.0/nuctl-1.12.0-linux-amd64
-chmod +x nuctl-1.12.0-linux-amd64
-sudo mv nuctl-1.12.0-linux-amd64 /usr/local/bin/nuctl
+curl -s https://api.github.com/repos/nuclio/nuclio/releases/latest \
+  | grep -i "browser_download_url.*nuctl.*$(uname)" \
+  | cut -d : -f 2,3 \
+  | tr -d '"' \
+  | wget -O nuctl -qi -
+chmod +x nuctl
+sudo mv nuctl /usr/local/bin/nuctl
 
 nuctl version
 ```
@@ -65,18 +66,16 @@ nuctl version
 
 ```python
 # process_event.py
-import nuclio
-
 def handler(context, event):
-    context.logger.info_with('Processing event', 
-                              body=event.body.decode('utf-8'))
-    
+    message = event.body.decode('utf-8')
+    context.logger.info_with('Processing event', body=message)
+
     # Process the event
-    result = f"Processed: {event.body.decode('utf-8')}"
-    
-    return nuclio.Response(
-        headers={'Content-Type': 'application/text'},
+    result = f"Processed: {message}"
+
+    return context.Response(
         body=result,
+        content_type='text/plain',
         status_code=200
     )
 ```
@@ -86,16 +85,18 @@ def handler(context, event):
 nuctl deploy process-event \
   --namespace nuclio \
   --path process_event.py \
-  --runtime python:3.9 \
+  --runtime python:3.11 \
   --handler process_event:handler \
   --registry registry.example.com \
-  --trigger-name http \
-  --trigger-kind http \
-  --replicas 2
+  --run-registry registry.example.com \
+  --http-trigger-service-type nodePort \
+  --min-replicas 2 \
+  --max-replicas 2
 
 # Test function
 nuctl invoke process-event \
   --namespace nuclio \
+  --via external-ip \
   --method POST \
   --body "test data"
 ```
@@ -104,14 +105,14 @@ nuctl invoke process-event \
 
 ```yaml
 # kafka-function.yaml
-apiVersion: nuclio.io/v1beta1
+apiVersion: nuclio.io/v1
 kind: NuclioFunction
 metadata:
   name: kafka-processor
   namespace: nuclio
 spec:
   description: "Processes Kafka events"
-  runtime: python:3.9
+  runtime: python:3.11
   handler: "kafka_handler:handler"
   
   image: registry.example.com/nuclio/kafka-processor:latest
@@ -145,39 +146,33 @@ spec:
 
 ```python
 # ml_inference.py
-import nuclio
 import numpy as np
 import json
 
-# Load model at startup (warm pod)
-model = None
-
 def init_context(context):
-    global model
-    # Load your ML model here
+    # Load your model once per worker
     context.logger.info("Loading model...")
-    # model = load_model('/models/my_model')
+    # context.user_data.model = load_model('/models/my_model')
+    context.user_data.model = None
     context.logger.info("Model loaded")
 
 def handler(context, event):
-    global model
-    
     # Parse input
     input_data = json.loads(event.body)
     features = np.array(input_data['features'])
-    
+
     # Run inference
-    # prediction = model.predict(features)
+    # prediction = context.user_data.model.predict(features)
     prediction = {"class": "cat", "confidence": 0.95}
-    
-    return nuclio.Response(
+
+    return context.Response(
         body=json.dumps(prediction),
-        headers={'Content-Type': 'application/json'},
+        content_type='application/json',
         status_code=200
     )
 ```
 
-## Step 7: HTTP Trigger with TLS
+## Step 7: HTTP Trigger with Ingress
 
 ```yaml
 # http-function.yaml
@@ -185,15 +180,13 @@ spec:
   triggers:
     http:
       kind: http
-      maxWorkers: 8
+      numWorkers: 8
       attributes:
-        port: 8080
         ingresses:
           main:
             host: api.example.com
             paths:
             - /api/process
-            tlsSecret: api-tls
 ```
 
 ## Monitoring Nuclio
@@ -203,10 +196,11 @@ spec:
 nuctl get functions --namespace nuclio
 
 # View function logs
-nuctl logs kafka-processor --namespace nuclio --follow
+kubectl get pods -n nuclio
+kubectl logs -n nuclio <processor-pod-name> -f
 
 # Access Nuclio dashboard
-kubectl port-forward svc/nuclio-dashboard -n nuclio 8070:8070
+kubectl port-forward -n nuclio $(kubectl get pods -n nuclio -l nuclio.io/app=dashboard -o jsonpath='{.items[0].metadata.name}') 8070:8070
 # Open http://localhost:8070
 ```
 
