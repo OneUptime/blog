@@ -8,7 +8,7 @@ Description: A guide to using ephemeral values in OpenTofu provisioners to pass 
 
 ## Introduction
 
-Provisioners in OpenTofu can reference ephemeral values from ephemeral resources. This ensures that passwords, API keys, SSH keys, and other credentials used during provisioning are never written to the state file, even though they are available to the provisioner during execution.
+In OpenTofu v1.11 and later, provisioners can reference ephemeral values from provider-supported ephemeral resources. This ensures that passwords, API keys, SSH keys, and other credentials used during provisioning are never written to the state file, even though they are available to the provisioner during execution.
 
 ## Basic Ephemeral Value in local-exec Provisioner
 
@@ -36,7 +36,7 @@ ephemeral "aws_secretsmanager_secret_version" "db_creds" {
 }
 
 locals {
-  ephemeral db_config = jsondecode(
+  db_config = jsondecode(
     ephemeral.aws_secretsmanager_secret_version.db_creds.secret_string
   )
 }
@@ -50,10 +50,10 @@ resource "terraform_data" "run_migrations" {
   provisioner "local-exec" {
     # Credentials are ephemeral - not stored anywhere
     command = <<-EOT
-      PGPASSWORD="${local.ephemeral.db_config.password}" psql \
+      PGPASSWORD="${local.db_config.password}" psql \
         --host=${aws_db_instance.main.address} \
         --port=${aws_db_instance.main.port} \
-        --username=${local.ephemeral.db_config.username} \
+        --username=${local.db_config.username} \
         --dbname=${var.db_name} \
         -f ${path.module}/schema.sql
     EOT
@@ -77,15 +77,36 @@ resource "terraform_data" "k8s_setup" {
   provisioner "local-exec" {
     environment = {
       # Ephemeral token used in environment variable
-      KUBE_TOKEN    = ephemeral.aws_eks_cluster_auth.main.token
-      KUBE_HOST     = aws_eks_cluster.main.endpoint
+      KUBE_TOKEN = ephemeral.aws_eks_cluster_auth.main.token
+      KUBE_HOST  = aws_eks_cluster.main.endpoint
+      KUBE_CA    = aws_eks_cluster.main.certificate_authority[0].data
     }
 
     command = <<-EOT
-      kubectl \
-        --token="$KUBE_TOKEN" \
-        --server="$KUBE_HOST" \
-        apply -f ${path.module}/manifests/setup.yaml
+      kubeconfig="$(mktemp)"
+      trap 'rm -f "$kubeconfig"' EXIT
+
+      printf '%s\n' \
+        'apiVersion: v1' \
+        'kind: Config' \
+        'clusters:' \
+        '- name: target' \
+        '  cluster:' \
+        "    server: $KUBE_HOST" \
+        "    certificate-authority-data: $KUBE_CA" \
+        'users:' \
+        '- name: deploy' \
+        '  user:' \
+        "    token: $KUBE_TOKEN" \
+        'contexts:' \
+        '- name: deploy' \
+        '  context:' \
+        '    cluster: target' \
+        '    user: deploy' \
+        'current-context: deploy' \
+        > "$kubeconfig"
+
+      kubectl --kubeconfig="$kubeconfig" apply -f ${path.module}/manifests/setup.yaml
     EOT
   }
 }
@@ -100,7 +121,7 @@ ephemeral "vault_kv_secret_v2" "deploy_creds" {
 }
 
 locals {
-  ephemeral deploy_creds = jsondecode(
+  deploy_creds = jsondecode(
     ephemeral.vault_kv_secret_v2.deploy_creds.data_json
   )
 }
@@ -111,8 +132,8 @@ resource "terraform_data" "deploy_app" {
   provisioner "local-exec" {
     environment = {
       # All credentials are ephemeral
-      REGISTRY_PASSWORD = local.ephemeral.deploy_creds.registry_password
-      DEPLOY_API_KEY    = local.ephemeral.deploy_creds.api_key
+      REGISTRY_PASSWORD = local.deploy_creds.registry_password
+      DEPLOY_API_KEY    = local.deploy_creds.api_key
     }
 
     command = <<-EOT
@@ -138,15 +159,15 @@ resource "aws_instance" "configured" {
   instance_type = "t3.micro"
   key_name      = var.existing_key_name
 
-  connection {
-    type        = "ssh"
-    user        = "ubuntu"
-    # Ephemeral SSH key - not stored in state
-    private_key = ephemeral.vault_kv_secret_v2.ssh_key.data["private_key"]
-    host        = self.public_ip
-  }
-
   provisioner "remote-exec" {
+    connection {
+      type        = "ssh"
+      user        = "ubuntu"
+      # Ephemeral SSH key - not stored in state
+      private_key = ephemeral.vault_kv_secret_v2.ssh_key.data["private_key"]
+      host        = self.public_ip
+    }
+
     inline = [
       "sudo apt-get update -y",
       "sudo apt-get install -y myapp",
@@ -163,23 +184,22 @@ ephemeral "aws_secretsmanager_secret_version" "app_secrets" {
 }
 
 locals {
-  ephemeral app_secrets = jsondecode(
+  app_secrets = jsondecode(
     ephemeral.aws_secretsmanager_secret_version.app_secrets.secret_string
   )
 }
 
 resource "terraform_data" "configure_app" {
-  triggers_replace = sha256(
-    ephemeral.aws_secretsmanager_secret_version.app_secrets.secret_string
-  )
+  # Use a non-secret trigger because ephemeral values can't be used here
+  triggers_replace = filesha256("${path.module}/scripts/configure.sh")
 
   provisioner "local-exec" {
     # Pass secrets as environment variables rather than command args
     # Environment variables are less likely to be logged
     environment = {
-      API_KEY     = local.ephemeral.app_secrets.api_key
-      DB_PASSWORD = local.ephemeral.app_secrets.db_password
-      JWT_SECRET  = local.ephemeral.app_secrets.jwt_secret
+      API_KEY     = local.app_secrets.api_key
+      DB_PASSWORD = local.app_secrets.db_password
+      JWT_SECRET  = local.app_secrets.jwt_secret
     }
 
     command = "${path.module}/scripts/configure.sh"
@@ -215,4 +235,4 @@ resource "terraform_data" "good_practice" {
 
 ## Conclusion
 
-Using ephemeral values in provisioners ensures that secrets like passwords, API keys, and SSH keys are available when needed but never written to OpenTofu's state file. Pass sensitive values through environment variables in provisioners rather than embedding them directly in commands, as environment variables are less likely to be captured in logs. Combine ephemeral resources with `local.ephemeral` locals for clean, readable provisioner configurations that maintain strong security guarantees.
+Using ephemeral values in provisioners ensures that secrets like passwords, API keys, and SSH keys are available when needed but never written to OpenTofu's state file. Pass sensitive values through environment variables in provisioners rather than embedding them directly in commands, as environment variables are less likely to be captured in logs. Combine ephemeral resources with `locals` for clean, readable provisioner configurations that maintain strong security guarantees.
