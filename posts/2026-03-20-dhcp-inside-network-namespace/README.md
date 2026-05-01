@@ -14,19 +14,16 @@ Running DHCP inside a network namespace enables isolated IP management for test 
 
 ```text
 Host
-  └── veth-host (10.0.100.1/24)
-        |
-      Bridge / veth pair
-        |
-  Namespace: dhcp-ns
-  └── veth-ns (DHCP server: 10.0.100.1)
-       └── dnsmasq serves 10.0.100.50-200
-
-  Namespace: client-ns
-  └── veth-client (DHCP client: gets 10.0.100.50)
+  ├── Namespace: dhcp-ns
+  │   └── veth-server (10.0.100.1/24, dnsmasq serves 10.0.100.50-200)
+  │         |
+  │       veth pair
+  │         |
+  └── Namespace: client-ns
+      └── veth-client (DHCP client: gets 10.0.100.50)
 ```
 
-## Step 1: Create Namespaces and veth Pairs
+## Step 1: Create Namespaces and a veth Pair
 
 ```bash
 # Create namespaces
@@ -34,11 +31,7 @@ Host
 ip netns add dhcp-ns
 ip netns add client-ns
 
-# veth pair: host to dhcp-ns
-ip link add veth-dhcp type veth peer name veth-dhcp-ns
-ip link set veth-dhcp-ns netns dhcp-ns
-
-# veth pair: dhcp-ns to client-ns (simulating a shared segment)
+# veth pair: direct link between dhcp-ns and client-ns
 ip link add veth-server type veth peer name veth-client
 ip link set veth-server netns dhcp-ns
 ip link set veth-client netns client-ns
@@ -62,9 +55,10 @@ ip netns exec dhcp-ns dnsmasq \
   --bind-interfaces \
   --dhcp-range=10.0.100.50,10.0.100.200,255.255.255.0,1h \
   --dhcp-option=3,10.0.100.1 \
-  --dhcp-option=6,8.8.8.8 \
+  --dhcp-option=6,10.0.100.1 \
   --no-resolv \
   --pid-file=/run/dnsmasq-dhcp-ns.pid \
+  --dhcp-leasefile=/run/dnsmasq-dhcp-ns.leases \
   --log-facility=/var/log/dnsmasq-dhcp-ns.log
 
 # Verify it's running
@@ -79,7 +73,10 @@ ip netns exec client-ns ip link set veth-client up
 ip netns exec client-ns ip link set lo up
 
 # Request DHCP lease
-ip netns exec client-ns dhclient veth-client
+ip netns exec client-ns dhclient \
+  -pf /run/dhclient-client-ns.pid \
+  -lf /run/dhclient-client-ns.leases \
+  veth-client
 
 # Verify assigned address
 ip netns exec client-ns ip addr show veth-client
@@ -93,14 +90,17 @@ ip netns exec client-ns ip route show
 ip netns exec client-ns ping 10.0.100.1
 
 # View DHCP leases
-ip netns exec dhcp-ns cat /var/lib/misc/dnsmasq.leases
+ip netns exec dhcp-ns cat /run/dnsmasq-dhcp-ns.leases
 ```
 
 ## Cleanup
 
 ```bash
 # Release DHCP lease
-ip netns exec client-ns dhclient -r veth-client
+ip netns exec client-ns dhclient -r \
+  -pf /run/dhclient-client-ns.pid \
+  -lf /run/dhclient-client-ns.leases \
+  veth-client
 
 # Stop dnsmasq
 kill $(cat /run/dnsmasq-dhcp-ns.pid)
