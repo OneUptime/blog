@@ -4,7 +4,7 @@ Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
 Tags: IPv4, Subnetting, Networking, Host Count, CIDR
 
-Description: The number of usable hosts in an IPv4 subnet is 2 to the power of the host bits minus 2, reserving the network address and broadcast address which cannot be assigned to devices.
+Description: For most IPv4 subnets, the number of usable hosts is 2 to the power of the host bits minus 2, reserving the network address and broadcast address which cannot be assigned to devices.
 
 ## The Formula
 
@@ -14,7 +14,7 @@ Total addresses = 2^host_bits
 Usable hosts = 2^host_bits - 2
 ```
 
-The -2 accounts for:
+For standard subnets, the -2 accounts for:
 1. **Network address**: All host bits = 0 (e.g., 192.168.1.0)
 2. **Broadcast address**: All host bits = 1 (e.g., 192.168.1.255)
 
@@ -31,7 +31,7 @@ The -2 accounts for:
 | /28 | 4 | 16 | 14 |
 | /29 | 3 | 8 | 6 |
 | /30 | 2 | 4 | 2 |
-| /31 | 1 | 2 | 2 (RFC 3021, no broadcast) |
+| /31 | 1 | 2 | 2 (RFC 3021 point-to-point, no broadcast) |
 | /32 | 0 | 1 | 1 (host route) |
 
 ## Python Calculation
@@ -77,8 +77,12 @@ for p in [8, 16, 24, 25, 26, 27, 28, 29, 30, 31, 32]:
 import math
 
 def prefix_for_hosts(num_hosts: int) -> int:
-    """Return the smallest prefix that provides enough usable host addresses."""
-    # Need num_hosts usable addresses: 2^n - 2 >= num_hosts
+    """Return the smallest prefix for a standard subnet host requirement."""
+    if not 2 <= num_hosts <= (2 ** 32 - 2):
+        raise ValueError("For standard subnets, num_hosts must be 2..4294967294")
+
+    # For standard subnets, need num_hosts usable addresses: 2^n - 2 >= num_hosts
+    # Handle /31 and /32 separately.
     # So n = ceil(log2(num_hosts + 2))
     host_bits = math.ceil(math.log2(num_hosts + 2))
     return 32 - host_bits
@@ -92,6 +96,6 @@ for required in [2, 10, 50, 100, 254, 500, 1000]:
 ## Key Takeaways
 
 - Usable hosts = 2^(32 − prefix) − 2 for standard subnets.
-- /31 (RFC 3021) provides 2 usable addresses without a broadcast address.
+- /31 (RFC 3021) provides 2 usable addresses on point-to-point links without a broadcast address.
 - /32 is a host route with a single address.
-- Always add 2 to your required host count before calculating the prefix to account for network and broadcast addresses.
+- For standard subnets, add 2 to your required host count before calculating the prefix to account for network and broadcast addresses.
