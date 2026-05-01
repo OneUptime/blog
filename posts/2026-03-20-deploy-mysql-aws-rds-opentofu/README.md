@@ -18,7 +18,7 @@ AWS RDS MySQL provides a managed relational database with automated patching, ba
 resource "aws_db_instance" "mysql" {
   identifier        = "mysql-db"
   engine            = "mysql"
-  engine_version    = "8.0.35"
+  engine_version    = "8.0"
   instance_class    = "db.t3.medium"
   allocated_storage = 50
   storage_type      = "gp3"
@@ -122,4 +122,4 @@ output "mysql_port" {
 
 ## Summary
 
-Create `aws_db_instance` with `engine = "mysql"` and the desired engine version. Set `storage_encrypted = true`, `deletion_protection = true`, and `backup_retention_period >= 7` for production databases. Create a custom `aws_db_parameter_group` for MySQL-specific tuning like `utf8mb4` character set and slow query logging.
+Create `aws_db_instance` with `engine = "mysql"` and a supported engine version. With `auto_minor_version_upgrade = true`, `engine_version = "8.0"` lets RDS use a supported MySQL 8.0 minor version. Set `storage_encrypted = true`, `deletion_protection = true`, and `backup_retention_period >= 7` for production databases. Create a custom `aws_db_parameter_group` for MySQL-specific tuning like `utf8mb4` character set and slow query logging.
