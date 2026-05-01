@@ -8,20 +8,20 @@ Description: Learn how to deploy a multi-service Docker stack on a Swarm cluster
 
 ## What Is a Docker Stack?
 
-A Docker Stack is a group of interrelated services that share dependencies and can be orchestrated and scaled together. In Swarm mode, stacks are defined using Compose v3 files and deployed with `docker stack deploy`.
+A Docker Stack is a group of interrelated services that share dependencies and can be orchestrated and scaled together. In Swarm mode, stacks are defined using the legacy Compose file version 3 format and deployed with `docker stack deploy`.
 
 Portainer gives you a visual interface to manage stacks without touching the CLI.
 
 ## Prerequisites
 
 - Portainer connected to a Docker Swarm endpoint
-- A Compose v3 file for your application
+- A Compose file in the legacy version 3 format for your application
 
 ## Deploying a Stack via the Portainer UI
 
 1. In the Portainer sidebar, go to **Stacks** under your Swarm environment.
 2. Click **Add stack**.
-3. Give the stack a name (lowercase, no spaces).
+3. Give the stack a descriptive name.
 4. Paste your Docker Compose content into the Web editor, or link to a Git repository.
 5. Click **Deploy the stack**.
 
@@ -72,6 +72,8 @@ services:
 ## Equivalent CLI Deployment
 
 ```bash
+# Run these commands on a Swarm manager node
+
 # Deploy a stack using the CLI
 docker stack deploy -c docker-compose.yml my-stack
 
@@ -84,7 +86,7 @@ docker stack services my-stack
 
 ## Updating a Stack
 
-To update an existing stack in Portainer, navigate to **Stacks**, click the stack name, edit the Compose content, and click **Update the stack**. Portainer handles the rolling update automatically.
+To update an existing stack in Portainer, navigate to **Stacks** and click the stack name. If the stack was deployed with the Web editor, edit the Compose content and click **Update the stack**. If it was deployed from Git, update the repository and use Portainer to pull and redeploy the stack, or configure GitOps updates. Docker Swarm then applies the service update behavior defined in the stack, including any `deploy.update_config` settings.
 
 ## Conclusion
 
