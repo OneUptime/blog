@@ -88,6 +88,7 @@ epinio namespace show my-apps
 epinio push --name my-first-app
 
 # With specific options
+# The custom route must resolve to your cluster's ingress IP
 epinio push \
   --name my-first-app \
   --instances 2 \
@@ -110,22 +111,17 @@ epinio app list
 # Show detailed info about your app
 epinio app show my-first-app
 
-# Expected output:
-# Name:         my-first-app
-# Namespace:    my-apps
-# Status:       1/1
-# Routes:       https://my-first-app.epinio.example.com
-# Created:      2026-03-20 10:00:00
+# Look for the status, route, and desired instance count in the output.
 ```
 
 ## Step 5: Access the Application
 
 ```bash
-# Get the application URL
-epinio app show my-first-app | grep Routes
+# Show the application details and note the route in the output
+epinio app show my-first-app
 
-# Test the application
-curl https://my-first-app.epinio.example.com
+# Test the application using that route
+curl https://<your-app-route>
 
 # Expected output:
 # Hello from Epinio!
@@ -136,9 +132,9 @@ curl https://my-first-app.epinio.example.com
 
 ```bash
 # Follow live logs
-epinio app logs my-first-app --follow
+epinio app logs --follow my-first-app
 
-# Get last 100 lines
+# Show application logs
 epinio app logs my-first-app
 ```
 
@@ -183,6 +179,7 @@ epinio app show my-first-app
 epinio app delete my-first-app
 
 # Delete the namespace (removes all apps in it)
+# Confirm the prompt, or add --force to skip confirmation
 epinio namespace delete my-apps
 ```
 
