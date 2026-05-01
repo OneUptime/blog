@@ -4,17 +4,17 @@ Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
 Tags: eBPF, IPv6, Monitoring, Prometheus, Observability
 
-Description: Monitor IPv6 traffic patterns, connection counts, and bandwidth using eBPF tracepoints and TC hooks with Prometheus export.
+Description: Monitor IPv6 traffic patterns, connection counts, and bandwidth using eBPF XDP or TC hooks with Prometheus export.
 
 ## Overview
 
-Monitor IPv6 traffic patterns, connection counts, and bandwidth using eBPF tracepoints and TC hooks with Prometheus export.
+Monitor IPv6 traffic patterns, connection counts, and bandwidth using eBPF XDP or TC hooks with Prometheus export.
 
 ## Prerequisites
 
-- Linux kernel 5.6+ (for BTF and full eBPF feature support)
-- Clang/LLVM for compiling eBPF C programs
-- Root access or CAP_BPF capability
+- Linux kernel with XDP/eBPF support (Linux 5.8+ recommended if you plan to rely on CAP_BPF)
+- Clang/LLVM and libbpf headers for compiling eBPF C programs
+- Root access, or CAP_BPF + CAP_NET_ADMIN for XDP program loading and attachment (add CAP_PERFMON if you rely on bpf_printk for debugging)
 
 ## IPv6 in eBPF Programs
 
@@ -26,6 +26,7 @@ eBPF programs process IPv6 packets using kernel headers. The IPv6 header is 40 b
 #include <linux/bpf.h>
 #include <linux/if_ether.h>
 #include <linux/ipv6.h>
+#include <bpf/bpf_endian.h>
 #include <bpf/bpf_helpers.h>
 
 SEC("xdp")
@@ -63,7 +64,7 @@ char LICENSE[] SEC("license") = "GPL";
 ```bash
 # Compile eBPF program
 
-clang -O2 -target bpf -c program.c -o program.o
+clang -O2 -g -target bpf -c program.c -o program.o
 
 # Load XDP program on interface
 sudo ip link set dev eth0 xdp obj program.o sec xdp
@@ -99,16 +100,16 @@ sudo bpftool map dump id <MAP_ID> | grep -A 3 "key"
 
 ```bash
 # Generate IPv6 test traffic
-ping6 -c 10 2001:db8::1
+ping -6 -c 10 2001:db8::1
 
-# Use hping3 for IPv6 packet generation
-hping3 --ipv6 -S -p 80 2001:db8::1
+# Generate larger IPv6 packets
+ping -6 -s 1200 -c 10 2001:db8::1
 
-# Watch bpf_printk output (kernel trace pipe)
-sudo cat /sys/kernel/debug/tracing/trace_pipe
+# Watch bpf_printk output
+sudo bpftool prog tracelog
 
 # Use trace-cmd for structured tracing
-sudo trace-cmd record -e "bpf:*" ping6 -c 5 2001:db8::1
+sudo trace-cmd record -e bpf_trace:bpf_trace_printk ping -6 -c 5 2001:db8::1
 sudo trace-cmd report
 ```
 
