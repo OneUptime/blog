@@ -17,10 +17,28 @@ ExternalDNS synchronizes Kubernetes Services and Ingresses with DNS providers li
 
 terraform {
   required_providers {
+    aws = {
+      source  = "hashicorp/aws"
+      version = "~> 6.0"
+    }
     helm = {
       source  = "hashicorp/helm"
-      version = "~> 2.12"
+      version = "~> 3.1"
     }
+    kubernetes = {
+      source  = "hashicorp/kubernetes"
+      version = "~> 3.0"
+    }
+    azurerm = {
+      source  = "hashicorp/azurerm"
+      version = "~> 4.0"
+    }
+  }
+}
+
+resource "kubernetes_namespace_v1" "external_dns" {
+  metadata {
+    name = "external-dns"
   }
 }
 
@@ -28,32 +46,38 @@ resource "helm_release" "external_dns" {
   name             = "external-dns"
   repository       = "https://kubernetes-sigs.github.io/external-dns/"
   chart            = "external-dns"
-  version          = "1.14.0"
-  namespace        = "external-dns"
-  create_namespace = true
+  version          = "1.21.1"
+  namespace        = kubernetes_namespace_v1.external_dns.metadata[0].name
 
   values = [yamlencode({
-    provider = "aws"
-
-    aws = {
-      region       = "us-east-1"
-      zoneType     = "public"
+    provider = {
+      name = "aws"
     }
 
-    # Sync policy - sync = create and delete, upsert-only = only create/update
+    env = [{
+      name  = "AWS_DEFAULT_REGION"
+      value = "us-east-1"
+    }]
+
+    # Sync policy - sync = create, update, and delete; upsert-only = only create/update
     policy = "sync"
 
-    # Filter by annotation source
+    # Watch Ingresses and Services for DNS endpoints
     sources = ["ingress", "service"]
 
     # Domain filters - only manage records in these zones
     domainFilters = ["example.com"]
 
     # TXT registry to track ownership
+    registry   = "txt"
     txtOwnerId = "my-cluster"
 
     # Only process resources with this annotation
     annotationFilter = "external-dns.alpha.kubernetes.io/managed=true"
+
+    extraArgs = {
+      "aws-zone-type" = "public"
+    }
 
     serviceAccount = {
       create = true
@@ -74,7 +98,23 @@ resource "helm_release" "external_dns" {
 ## Step 2: IAM Role for Route53 Access (AWS)
 
 ```hcl
-# IAM role with IRSA for ExternalDNS to manage Route53
+# IRSA role for ExternalDNS on an existing EKS cluster
+variable "eks_cluster_name" {
+  type = string
+}
+
+data "aws_eks_cluster" "this" {
+  name = var.eks_cluster_name
+}
+
+data "aws_iam_openid_connect_provider" "eks" {
+  url = data.aws_eks_cluster.this.identity[0].oidc[0].issuer
+}
+
+locals {
+  oidc_provider = replace(data.aws_eks_cluster.this.identity[0].oidc[0].issuer, "https://", "")
+}
+
 resource "aws_iam_role" "external_dns" {
   name = "external-dns-role"
 
@@ -83,7 +123,7 @@ resource "aws_iam_role" "external_dns" {
     Statement = [{
       Effect = "Allow"
       Principal = {
-        Federated = aws_iam_openid_connect_provider.eks.arn
+        Federated = data.aws_iam_openid_connect_provider.eks.arn
       }
       Action = "sts:AssumeRoleWithWebIdentity"
       Condition = {
@@ -105,13 +145,22 @@ resource "aws_iam_role_policy" "external_dns" {
     Statement = [
       {
         Effect   = "Allow"
-        Action   = ["route53:ChangeResourceRecordSets"]
-        Resource = ["arn:aws:route53:::hostedzone/*"]
+        Action = [
+          "route53:ChangeResourceRecordSets",
+          "route53:ListResourceRecordSets"
+        ]
+        Resource = [
+          "arn:aws:route53:::hostedzone/*"
+        ]
       },
       {
-        Effect   = "Allow"
-        Action   = ["route53:ListHostedZones", "route53:ListResourceRecordSets"]
-        Resource = ["*"]
+        Effect = "Allow"
+        Action = [
+          "route53:ListHostedZones"
+        ]
+        Resource = [
+          "*"
+        ]
       }
     ]
   })
@@ -121,28 +170,44 @@ resource "aws_iam_role_policy" "external_dns" {
 ## Step 3: Azure DNS Provider Configuration
 
 ```hcl
-# ExternalDNS with Azure DNS provider
+# ExternalDNS with Azure DNS and Workload Identity
+data "azurerm_client_config" "current" {}
+
+resource "kubernetes_secret_v1" "external_dns_azure" {
+  metadata {
+    name      = "external-dns-azure"
+    namespace = kubernetes_namespace_v1.external_dns.metadata[0].name
+  }
+
+  data = {
+    "azure.json" = jsonencode({
+      tenantId                     = data.azurerm_client_config.current.tenant_id
+      subscriptionId               = data.azurerm_client_config.current.subscription_id
+      resourceGroup                = azurerm_resource_group.rg.name
+      useWorkloadIdentityExtension = true
+    })
+  }
+
+  type = "Opaque"
+}
+
 resource "helm_release" "external_dns_azure" {
   name             = "external-dns"
   repository       = "https://kubernetes-sigs.github.io/external-dns/"
   chart            = "external-dns"
-  version          = "1.14.0"
-  namespace        = "external-dns"
-  create_namespace = true
+  version          = "1.21.1"
+  namespace        = kubernetes_namespace_v1.external_dns.metadata[0].name
+
+  depends_on = [kubernetes_secret_v1.external_dns_azure]
 
   values = [yamlencode({
-    provider = "azure"
-
-    azure = {
-      resourceGroup   = azurerm_resource_group.rg.name
-      tenantId        = data.azurerm_client_config.current.tenant_id
-      subscriptionId  = data.azurerm_client_config.current.subscription_id
-      useManagedIdentityExtension = true
-      userAssignedIdentityID = azurerm_user_assigned_identity.external_dns.client_id
+    provider = {
+      name = "azure"
     }
 
     domainFilters   = ["example.com"]
     policy          = "sync"
+    registry        = "txt"
     txtOwnerId      = "my-cluster"
 
     podLabels = {
@@ -150,10 +215,25 @@ resource "helm_release" "external_dns_azure" {
     }
 
     serviceAccount = {
+      create = true
+      name   = "external-dns"
       annotations = {
         "azure.workload.identity/client-id" = azurerm_user_assigned_identity.external_dns.client_id
       }
     }
+
+    extraVolumes = [{
+      name = "azure-config-file"
+      secret = {
+        secretName = kubernetes_secret_v1.external_dns_azure.metadata[0].name
+      }
+    }]
+
+    extraVolumeMounts = [{
+      name      = "azure-config-file"
+      mountPath = "/etc/kubernetes"
+      readOnly  = true
+    }]
   })]
 }
 ```
@@ -162,7 +242,7 @@ resource "helm_release" "external_dns_azure" {
 
 ```hcl
 # Service with ExternalDNS annotation
-resource "kubernetes_service" "app" {
+resource "kubernetes_service_v1" "app" {
   metadata {
     name      = "my-app"
     namespace = "default"
@@ -187,4 +267,4 @@ resource "kubernetes_service" "app" {
 
 ## Summary
 
-ExternalDNS deployed with OpenTofu automates DNS record management for Kubernetes workloads. Using IRSA on AWS or Workload Identity on Azure provides secure, credential-free access to DNS APIs. The `sync` policy with domain filters and ownership TXT records ensures ExternalDNS only manages records it created, preventing accidental deletion of manually created DNS entries.
+ExternalDNS deployed with OpenTofu automates DNS record management for Kubernetes workloads. Using IRSA on AWS or Workload Identity on Azure provides secure, credential-free access to DNS APIs. With domain filters and TXT ownership records in place, `sync` lets ExternalDNS create, update, and delete the records it owns without taking over unrelated manual records.
