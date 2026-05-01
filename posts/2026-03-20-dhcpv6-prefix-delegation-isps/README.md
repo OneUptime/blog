@@ -42,8 +42,8 @@ Kea is widely used in ISP environments for its performance and scalability:
     },
     "subnet6": [
       {
-        "subnet": "2001:db8::/32",
-        // PD pool: delegate /56 prefixes from the /32 block
+        "subnet": "2001:db8:0:1::/64",
+        // PD pool: delegate /56 prefixes from the /36 block
         "pd-pools": [
           {
             "prefix": "2001:db8:1000::",
@@ -53,7 +53,7 @@ Kea is widely used in ISP environments for its performance and scalability:
         ],
         // Also offer a WAN /128 address to each CPE
         "pools": [
-          { "pool": "2001:db8::1000 - 2001:db8::2000" }
+          { "pool": "2001:db8:0:1::1000 - 2001:db8:0:1::2000" }
         ]
       }
     ]
@@ -63,9 +63,11 @@ Kea is widely used in ISP environments for its performance and scalability:
 
 ## Cisco BNG Configuration
 
-Cisco Broadband Network Gateways use RADIUS-integrated DHCPv6 PD:
+Cisco Broadband Network Gateways support DHCPv6 PD and RADIUS-selected prefixes:
 
 ```text
+ipv6 unicast-routing
+
 ! Define the local DHCPv6 prefix pool
 ipv6 local pool ISP-PD-POOL 2001:db8:1000::/36 56
 
@@ -76,9 +78,9 @@ ipv6 dhcp pool CUSTOMER-PD
 
 ! Apply the DHCPv6 pool to the subscriber-facing interface
 interface GigabitEthernet0/0/0
- ipv6 address 2001:db8::1/32
+ ipv6 address 2001:db8:0:1::1/64
  ipv6 dhcp server CUSTOMER-PD
- ipv6 nd managed-config-flag
+ ipv6 nd other-config-flag
 ```
 
 ## Juniper MX Delegating Router
@@ -88,9 +90,10 @@ interface GigabitEthernet0/0/0
 
 set access address-assignment pool CUSTOMER_PD family inet6
 set access address-assignment pool CUSTOMER_PD family inet6 prefix 2001:db8:1000::/36
-set access address-assignment pool CUSTOMER_PD family inet6 prefix-length 56
+set access address-assignment pool CUSTOMER_PD family inet6 range CUSTOMER_PD_RANGE prefix-length 56
 
 set system services dhcp-local-server dhcpv6 group SUBSCRIBERS
+set system services dhcp-local-server dhcpv6 group SUBSCRIBERS overrides delegated-pool CUSTOMER_PD
 set system services dhcp-local-server dhcpv6 group SUBSCRIBERS interface ge-0/0/0.0
 ```
 
@@ -103,28 +106,28 @@ set system services dhcp-local-server dhcpv6 group SUBSCRIBERS interface ge-0/0/
 | **/60** | Minimal residential - 16 /64 subnets |
 | **/64** | Single-segment residential (not recommended) |
 
-ARIN and RIPE both recommend at minimum /56 for residential customers.
+RIPE-690 recommends /56 for residential customers and /48 for business customers, while ARIN's NRPM uses a recommended /48 provider-assignment unit for IPv6 end sites.
 
 ## Adding a Route for the Delegated Prefix
 
 After delegation, the ISP's BNG must install a route for the delegated prefix pointing to the CPE:
 
 ```bash
-# On a Linux BNG, add a host route for the delegated prefix
-# This is typically automated by the DHCPv6 server hooks
-ip -6 route add 2001:db8:1000::/56 via fe80::cpemac dev eth0
+# On a Linux BNG, add a prefix route for the delegated prefix
+# This is typically automated by the BNG or by lease-triggered scripts
+ip -6 route add 2001:db8:1000::/56 via fe80::1 dev eth0
 
-# Kea can automate this with the radius or run-script hooks
+# Kea hook scripts can trigger the external route automation
 ```
 
 ## Monitoring Prefix Utilization
 
 ```bash
-# Query Kea for all active PD leases
+# Query Kea for active PD leases (requires the lease_cmds hook library)
 curl -s -X POST http://localhost:8000/ \
   -H "Content-Type: application/json" \
   -d '{"command": "lease6-get-all", "service": ["dhcp6"]}' | \
-  jq '[.[] | select(.type == "IA_PD")] | length'
+  jq '[.. | objects | .leases?[]? | select(.type == "IA_PD")] | length'
 ```
 
 ## Summary
