@@ -15,20 +15,20 @@ OpenTofu's `filesystem_mirror` configuration in the CLI configuration file redir
 ```bash
 # Default locations for the CLI configuration file:
 
-# Unix/Linux/macOS: ~/.terraform.rc or ~/.terraformrc
-# Windows: %APPDATA%/terraform.rc
+# Unix/Linux/macOS: ~/.tofurc or $XDG_CONFIG_HOME/opentofu/tofurc
+# Windows: %APPDATA%/tofu.rc
+# Backward-compatible Terraform filenames are also supported:
+#   ~/.terraformrc
+#   %APPDATA%/terraform.rc
 
-# Override with environment variable
-export TF_CLI_CONFIG_FILE=/etc/opentofu/terraform.rc
-
-# Verify the file is recognized
-tofu version  # Shows the config file path if set
+# Override with environment variable (*.tfrc)
+export TF_CLI_CONFIG_FILE=/etc/opentofu/mirror.tfrc
 ```
 
 ## Basic Filesystem Mirror Configuration
 
 ```hcl
-# ~/.terraform.rc
+# ~/.tofurc
 
 provider_installation {
   filesystem_mirror {
@@ -38,16 +38,17 @@ provider_installation {
 ```
 
 ```bash
-# The path must contain providers in the expected structure:
-# <mirror-path>/<hostname>/<namespace>/<type>/<version>/<os>_<arch>/
-# Example:
+# `tofu providers mirror` creates the packed mirror layout:
+# <mirror-path>/<hostname>/<namespace>/<type>/terraform-provider-<type>_<version>_<os>_<arch>.zip
+# It also generates JSON index files for the network mirror protocol.
 /opt/opentofu/provider-mirror/
 └── registry.opentofu.org/
     └── hashicorp/
         └── aws/
-            └── 5.20.1/
-                ├── terraform-provider-aws_5.20.1_linux_amd64.zip
-                └── terraform-provider-aws_5.20.1_darwin_arm64.zip
+            ├── 5.20.1.json
+            ├── index.json
+            ├── terraform-provider-aws_5.20.1_linux_amd64.zip
+            └── terraform-provider-aws_5.20.1_darwin_arm64.zip
 ```
 
 ## Populating the Mirror
@@ -56,6 +57,7 @@ provider_installation {
 # Use tofu providers mirror to populate the directory
 
 # Create a configuration with all needed providers
+mkdir -p /tmp/provider-config
 cat > /tmp/provider-config/versions.tf << 'EOF'
 terraform {
   required_providers {
@@ -91,7 +93,7 @@ tofu providers mirror \
 ## Include and Exclude Patterns
 
 ```hcl
-# ~/.terraform.rc
+# ~/.tofurc
 
 provider_installation {
   # Mirror for specific providers
@@ -116,7 +118,7 @@ provider_installation {
 ## Multiple Mirror Directories
 
 ```hcl
-# ~/.terraform.rc
+# ~/.tofurc
 
 provider_installation {
   # Company-approved providers (highest priority)
@@ -131,7 +133,7 @@ provider_installation {
     include = ["registry.opentofu.org/*/*"]
   }
 
-  # No direct downloads allowed
+  # No direct downloads from registry.opentofu.org
   direct {
     exclude = ["registry.opentofu.org/*/*"]
   }
@@ -148,6 +150,7 @@ find /opt/opentofu/provider-mirror -name "*.zip" | sort
 find /opt/opentofu/provider-mirror -name "*.json" | sort
 
 # Expected output for a correctly populated mirror:
+# /opt/opentofu/provider-mirror/registry.opentofu.org/hashicorp/aws/index.json
 # /opt/opentofu/provider-mirror/registry.opentofu.org/hashicorp/aws/5.20.1.json
 # /opt/opentofu/provider-mirror/registry.opentofu.org/hashicorp/aws/terraform-provider-aws_5.20.1_linux_amd64.zip
 
@@ -155,25 +158,20 @@ find /opt/opentofu/provider-mirror -name "*.json" | sort
 unzip -t /opt/opentofu/provider-mirror/registry.opentofu.org/hashicorp/aws/terraform-provider-aws_5.20.1_linux_amd64.zip
 ```
 
-## Checking Provider Signatures
+## Checking Generated Hash Metadata
 
 ```bash
-# Providers in the mirror include signature verification
-# Check the SHA256SUMS file
+# `tofu providers mirror` generates version-specific JSON metadata with hashes.
+# OpenTofu ignores these JSON files when using the directory as a filesystem mirror.
 cat /opt/opentofu/provider-mirror/registry.opentofu.org/hashicorp/aws/5.20.1.json
 
 # Expected JSON structure:
 # {
-#   "versions": {
-#     "5.20.1": {
-#       "protocols": ["5.0"],
-#       "platforms": [
-#         {
-#           "os": "linux",
-#           "arch": "amd64",
-#           "filename": "terraform-provider-aws_5.20.1_linux_amd64.zip",
-#           "shasum": "abc123..."
-#         }
+#   "archives": {
+#     "linux_amd64": {
+#       "url": "terraform-provider-aws_5.20.1_linux_amd64.zip",
+#       "hashes": [
+#         "h1:..."
 #       ]
 #     }
 #   }
@@ -186,8 +184,7 @@ cat /opt/opentofu/provider-mirror/registry.opentofu.org/hashicorp/aws/5.20.1.jso
 # .github/workflows/opentofu.yml
 - name: Configure OpenTofu mirror
   run: |
-    mkdir -p ~/.terraform.d
-    cat > ~/.terraform.rc << 'EOF'
+    cat > ~/.tofurc << 'EOF'
     provider_installation {
       filesystem_mirror {
         path    = "/opt/opentofu/provider-mirror"
@@ -201,8 +198,6 @@ cat /opt/opentofu/provider-mirror/registry.opentofu.org/hashicorp/aws/5.20.1.jso
 
 - name: OpenTofu Init
   run: tofu init
-  env:
-    TF_CLI_CONFIG_FILE: ~/.terraform.rc
 ```
 
 ## Sharing Mirror via NFS
@@ -214,9 +209,9 @@ cat /opt/opentofu/provider-mirror/registry.opentofu.org/hashicorp/aws/5.20.1.jso
 nas.company.com:/exports/opentofu-providers /opt/opentofu/provider-mirror nfs ro,noatime 0 0
 
 # All machines mount the same read-only mirror
-# Configure ~/.terraform.rc to use /opt/opentofu/provider-mirror
+# Configure ~/.tofurc to use /opt/opentofu/provider-mirror
 ```
 
 ## Conclusion
 
-Filesystem mirrors in OpenTofu work by matching the provider's registry hostname and path in the mirror directory structure. The `tofu providers mirror` command handles the directory structure creation and downloads providers in the correct format including JSON metadata and SHA256 signatures. Use `include` patterns to send only specific providers to the mirror, with a `direct` fallback for providers not in the mirror. For fully offline environments, exclude all providers from `direct` to ensure nothing tries to reach the internet.
+Filesystem mirrors in OpenTofu work by matching the provider's registry hostname and path in the mirror directory structure. The `tofu providers mirror` command handles the directory structure creation and downloads providers in the correct packed format, and also generates JSON metadata with hash information for the network mirror protocol. Use `include` patterns to send only specific providers to the mirror, with a `direct` fallback for providers not in the mirror. For fully offline environments, omit the `direct` installation method entirely or exclude every provider you need from it so nothing tries to reach the internet.
