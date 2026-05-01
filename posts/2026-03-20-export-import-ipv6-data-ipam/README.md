@@ -29,17 +29,21 @@ def export_prefixes_csv(output_file: str):
     with open(output_file, "w", newline="") as f:
         writer = csv.writer(f)
         writer.writerow([
-            "prefix", "prefix_length", "status", "site",
-            "vlan_id", "description", "tags", "custom_field_delegation_source"
+            "prefix", "prefix_length", "status", "vrf_rd",
+            "scope_type", "scope_slug", "vlan_vid", "vlan_group",
+            "description", "tags", "custom_field_delegation_source"
         ])
 
         for prefix in nb.ipam.prefixes.filter(family=6):
             writer.writerow([
                 str(prefix.prefix),
-                prefix.prefix.prefixlen,
+                int(str(prefix.prefix).split("/", 1)[1]),
                 prefix.status.value,
-                str(prefix.site) if prefix.site else "",
+                prefix.vrf.rd if prefix.vrf else "",
+                prefix.scope_type if prefix.scope_type else "",
+                prefix.scope.slug if prefix.scope else "",
                 str(prefix.vlan.vid) if prefix.vlan else "",
+                prefix.vlan.group.slug if prefix.vlan and prefix.vlan.group else "",
                 prefix.description or "",
                 ",".join(t.slug for t in (prefix.tags or [])),
                 prefix.custom_fields.get("delegation_source", "") if prefix.custom_fields else ""
@@ -53,6 +57,7 @@ def export_addresses_json(output_file: str):
     for ip in nb.ipam.ip_addresses.filter(family=6):
         addresses.append({
             "address": str(ip.address),
+            "vrf_rd": ip.vrf.rd if ip.vrf else "",
             "status": ip.status.value,
             "dns_name": str(ip.dns_name) if ip.dns_name else "",
             "description": ip.description or "",
@@ -85,6 +90,19 @@ def normalize_prefix(prefix_str: str) -> str:
     network = ipaddress.ip_network(prefix_str, strict=False)
     return str(network)
 
+def resolve_scope(scope_type: str, scope_slug: str):
+    """Look up a NetBox scope object from exported scope metadata."""
+    endpoint_map = {
+        "dcim.region": nb.dcim.regions,
+        "dcim.sitegroup": nb.dcim.site_groups,
+        "dcim.site": nb.dcim.sites,
+        "dcim.location": nb.dcim.locations,
+    }
+    endpoint = endpoint_map.get(scope_type)
+    if not endpoint or not scope_slug:
+        return None
+    return endpoint.get(slug=scope_slug)
+
 def import_prefixes_from_csv(csv_file: str):
     """Import IPv6 prefixes from CSV into NetBox."""
     created = 0
@@ -96,31 +114,50 @@ def import_prefixes_from_csv(csv_file: str):
         for row in reader:
             try:
                 prefix = normalize_prefix(row["prefix"])
+                vrf_rd = row.get("vrf_rd", "")
 
                 # Skip if already exists
-                existing = nb.ipam.prefixes.filter(prefix=prefix)
-                if list(existing):
+                existing = [
+                    p for p in nb.ipam.prefixes.filter(prefix=prefix)
+                    if (p.vrf.rd if p.vrf else "") == vrf_rd
+                ]
+                if existing:
                     skipped += 1
                     continue
 
                 # Build data dict
                 data = {
                     "prefix": prefix,
-                    "status": row.get("status", "active"),
+                    "status": row.get("status") or "active",
                     "description": row.get("description", ""),
                 }
 
-                # Add site if specified
-                if row.get("site"):
-                    site = nb.dcim.sites.get(name=row["site"])
-                    if site:
-                        data["site"] = site.id
+                # Add VRF if specified
+                if vrf_rd:
+                    vrf = nb.ipam.vrfs.get(rd=vrf_rd)
+                    if vrf:
+                        data["vrf"] = vrf.id
+
+                # Add scope if specified
+                if row.get("scope_type") and row.get("scope_slug"):
+                    scope = resolve_scope(row["scope_type"], row["scope_slug"])
+                    if scope:
+                        data["scope_type"] = row["scope_type"]
+                        data["scope_id"] = scope.id
 
                 # Add VLAN if specified
-                if row.get("vlan_id"):
-                    vlan = nb.ipam.vlans.get(vid=int(row["vlan_id"]))
-                    if vlan:
-                        data["vlan"] = vlan.id
+                if row.get("vlan_vid"):
+                    vlan_filter = {"vid": int(row["vlan_vid"])}
+                    if row.get("vlan_group"):
+                        vlan_filter["group"] = row["vlan_group"]
+
+                    vlans = list(nb.ipam.vlans.filter(**vlan_filter))
+                    if len(vlans) == 1:
+                        data["vlan"] = vlans[0].id
+                    elif len(vlans) > 1:
+                        raise ValueError(
+                            f"Multiple VLANs match vid={row['vlan_vid']}; include vlan_group to disambiguate"
+                        )
 
                 # Add tags
                 if row.get("tags"):
@@ -150,7 +187,7 @@ import pynetbox
 import ipaddress
 
 # phpIPAM API
-PHPIPAM_URL = "http://phpipam.internal"
+PHPIPAM_URL = "https://phpipam.internal"
 PHPIPAM_TOKEN = "your-phpipam-token"
 PHPIPAM_HEADERS = {"phpipam-token": PHPIPAM_TOKEN}
 
@@ -161,8 +198,10 @@ def get_phpipam_ipv6_subnets() -> list:
     """Get all IPv6 subnets from phpIPAM."""
     resp = requests.get(
         f"{PHPIPAM_URL}/api/myapp/subnets/",
-        headers=PHPIPAM_HEADERS
+        headers=PHPIPAM_HEADERS,
+        timeout=30,
     )
+    resp.raise_for_status()
     subnets = resp.json().get("data", [])
     # Filter IPv6 only
     return [s for s in subnets if ":" in s.get("subnet", "")]
@@ -216,13 +255,20 @@ IMPORTED=$(curl -s \
 
 echo "Total IPv6 prefixes in NetBox: $IMPORTED"
 
-# Verify random sample of prefixes are valid
+# Verify a sample page of prefixes are valid
 python3 << 'EOF'
-import requests, ipaddress
+import ipaddress
+import os
 
-resp = requests.get("http://netbox.internal/api/ipam/prefixes/",
-                    params={"family": 6, "limit": 100},
-                    headers={"Authorization": "Token $NETBOX_TOKEN"})
+import requests
+
+resp = requests.get(
+    "http://netbox.internal/api/ipam/prefixes/",
+    params={"family": 6, "limit": 100},
+    headers={"Authorization": f"Token {os.environ['NETBOX_TOKEN']}"},
+    timeout=30,
+)
+resp.raise_for_status()
 invalid = 0
 for prefix in resp.json().get("results", []):
     try:
@@ -236,4 +282,4 @@ EOF
 
 ## Conclusion
 
-IPAM data export and import requires address normalization - always convert IPv6 addresses and prefixes to their canonical form using `ipaddress.ip_network()` before importing to avoid duplicates caused by different representations of the same prefix. For tool migrations, export from the source as CSV/JSON, transform with Python normalization, and import to the target. Validate the import by counting records, checking for invalid formats, and spot-checking a sample of imported entries. Tag imported records with a migration tag for easy identification and cleanup if issues are discovered.
+IPAM data export and import requires address normalization - convert IPv6 prefixes to their canonical form using `ipaddress.ip_network()`, and normalize host addresses with `ipaddress.ip_interface()` when you need to preserve the host bits and prefix length. This avoids duplicates caused by different text representations of the same data. For tool migrations, export from the source as CSV/JSON, transform with Python normalization, and import to the target. Validate the import by counting records, checking for invalid formats, and spot-checking a sample of imported entries. Tag imported records with a migration tag for easy identification and cleanup if issues are discovered.
