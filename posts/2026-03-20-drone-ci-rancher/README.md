@@ -8,7 +8,7 @@ Description: Learn how to deploy Drone CI on a Rancher-managed Kubernetes cluste
 
 ---
 
-Drone CI is a container-native continuous integration platform that runs each pipeline step in its own Docker container. Deployed on Rancher, Drone uses Kubernetes runners to execute pipelines as Kubernetes Jobs.
+Drone CI is a container-native continuous integration platform that runs pipeline steps in containers. Deployed on Rancher, Drone can use the Kubernetes runner to execute pipeline steps as containers inside Kubernetes Pods.
 
 ---
 
@@ -36,10 +36,13 @@ helm repo update
 ```yaml
 # drone-values.yaml
 
+image:
+  tag: "2.20.0"
+
 ingress:
   enabled: true
+  className: nginx
   annotations:
-    kubernetes.io/ingress.class: nginx
     cert-manager.io/cluster-issuer: letsencrypt-prod
   hosts:
     - host: drone.example.com
@@ -83,14 +86,20 @@ kubectl get pods -n drone
 
 ## Step 5: Deploy the Kubernetes Runner
 
+The published `drone-runner-kube` Helm chart is deprecated, but chart version `0.1.10` is still available in `charts.drone.io`; pin the version explicitly if you use Helm.
+
 ```yaml
 # drone-runner-values.yaml
+image:
+  repository: drone/drone-runner-kube
+  tag: "1.0.0-rc.5"
+
 rbac:
   buildNamespaces:
     - drone
 
 env:
-  DRONE_RPC_HOST: "drone.drone.svc.cluster.local"
+  DRONE_RPC_HOST: "drone.drone.svc.cluster.local:8080"
   DRONE_RPC_PROTO: "http"
   DRONE_RPC_SECRET: "your-shared-rpc-secret"    # Must match server RPC secret
   DRONE_NAMESPACE_DEFAULT: "drone"
@@ -100,6 +109,7 @@ env:
 ```bash
 helm install drone-runner-kube drone/drone-runner-kube \
   --namespace drone \
+  --version 0.1.10 \
   --values drone-runner-values.yaml \
   --wait
 ```
@@ -108,13 +118,14 @@ helm install drone-runner-kube drone/drone-runner-kube \
 
 ## Step 6: Create a Drone Pipeline
 
-Add a `.drone.yml` file to your repository:
+Add a `.drone.yml` file to your repository. If you keep the deploy step, bind a service account that can update the target Deployment:
 
 ```yaml
 # .drone.yml
 kind: pipeline
 type: kubernetes
 name: default
+service_account_name: drone-deployer
 
 steps:
   - name: test
@@ -123,9 +134,10 @@ steps:
       - go test ./...
 
   - name: build
-    image: plugins/docker
+    image: plugins/kaniko
     settings:
-      repo: ghcr.io/my-org/my-app
+      registry: ghcr.io
+      repo: my-org/my-app
       tags:
         - latest
         - ${DRONE_COMMIT_SHA:0:8}
@@ -155,9 +167,9 @@ steps:
 curl -L https://github.com/harness/drone-cli/releases/latest/download/drone_linux_amd64.tar.gz | tar zx
 sudo install drone /usr/local/bin
 
-# Configure CLI
+# Configure CLI with a Drone user token
 export DRONE_SERVER=https://drone.example.com
-export DRONE_TOKEN=<your-personal-access-token>
+export DRONE_TOKEN=<your-drone-user-token>
 
 # Add secrets to a repository
 drone secret add \
@@ -179,14 +191,16 @@ drone secret add \
 # Activate the repository in Drone
 drone repo enable my-org/my-app
 
-# Trigger a manual build
-drone build create my-org/my-app --branch main
+# Trigger a manual build through the Drone API
+curl -X POST \
+  -H "Authorization: Bearer ${DRONE_TOKEN}" \
+  "${DRONE_SERVER}/api/repos/my-org/my-app/builds?branch=main"
 ```
 
 ---
 
 ## Best Practices
 
-- Use Kubernetes-native runners (`drone-runner-kube`) rather than Docker runners on Rancher - they integrate naturally with Kubernetes RBAC, resource limits, and namespace isolation.
+- `drone-runner-kube` executes pipeline steps as Kubernetes Pods, but the runner remains in beta and its published Helm chart is deprecated, so pin chart and image versions explicitly if you choose this path on Rancher.
 - Store all secrets in Drone's secret manager or in Kubernetes Secrets - never hardcode credentials in `.drone.yml`.
 - Set `DRONE_RUNNER_CAPACITY` based on your cluster's available CPU and memory to prevent pipeline runs from starving each other.
