@@ -44,16 +44,16 @@ Regional Division (using second octet for region):
 
 ## Step 3: Site Allocation Within a Region
 
-Divide each /16 into /24s (or /20s for large sites) per site:
+Divide each /16 into /24s, /22s, or /20s per site, based on site size:
 
 ```text
 10.1.0.0/16  - Americas
 
-Site Allocation (using third octet for site):
-  10.1.1.0/22   - NYC HQ (4x /24 = 1020 hosts, room to grow)
-  10.1.5.0/22   - Chicago Office
-  10.1.9.0/22   - Dallas Office
-  10.1.13.0/22  - LA Office
+Site Allocation (using /22-aligned third-octet blocks for site):
+  10.1.0.0/22   - NYC HQ (4x /24s worth of address space, room to grow)
+  10.1.4.0/22   - Chicago Office
+  10.1.8.0/22   - Dallas Office
+  10.1.12.0/22  - LA Office
   10.1.100.0/22 - Atlanta Datacenter
 ```
 
@@ -62,14 +62,14 @@ Site Allocation (using third octet for site):
 Divide each site block into functional VLANs:
 
 ```text
-10.1.1.0/22 - NYC HQ (10.1.1.0 - 10.1.4.255)
+10.1.0.0/22 - NYC HQ (10.1.0.0 - 10.1.3.255)
 
 VLAN Allocation:
-  10.1.1.0/24   VLAN 10 - Corporate Users
-  10.1.2.0/24   VLAN 20 - Servers
-  10.1.3.0/24   VLAN 30 - WiFi Clients
-  10.1.4.0/28   VLAN 40 - Network Management
-  (10.1.4.16+)           - Reserved for growth
+  10.1.0.0/24   VLAN 10 - Corporate Users
+  10.1.1.0/24   VLAN 20 - Servers
+  10.1.2.0/24   VLAN 30 - WiFi Clients
+  10.1.3.0/28   VLAN 40 - Network Management
+  (10.1.3.16+)           - Reserved for growth
 ```
 
 ## Step 5: Infrastructure Addressing
@@ -109,14 +109,14 @@ regions = [
 
 # Check for overlaps
 for i, net1 in enumerate(regions):
-    for j, net2 in enumerate(regions):
-        if i != j and net1.overlaps(net2):
+    for net2 in regions[i + 1:]:
+        if net1.overlaps(net2):
             print(f"OVERLAP: {net1} overlaps {net2}")
         else:
             print(f"OK: {net1} and {net2} do not overlap")
 
 # Verify sites fit within region
-nyc = ip_network('10.1.1.0/22')
+nyc = ip_network('10.1.0.0/22')
 americas = ip_network('10.1.0.0/16')
 print(f"NYC subnet fits in Americas: {nyc.subnet_of(americas)}")
 ```
@@ -126,16 +126,16 @@ print(f"NYC subnet fits in Americas: {nyc.subnet_of(americas)}")
 The hierarchical design enables clean route summarization:
 
 ```text
-From Chicago router to internet:
+From the Americas core to the enterprise WAN:
   Advertise: 10.1.0.0/16 (one route for all Americas)
-  Instead of: 10.1.1.0/24, 10.1.5.0/24, 10.1.9.0/24... (individual sites)
+  Instead of: 10.1.0.0/22, 10.1.4.0/22, 10.1.8.0/22... (individual sites)
 
 This reduces:
-- Routing table size on internet-facing routers
-- BGP update frequency when internal routes change
-- OSPF LSA propagation to remote areas
+- Routing table size on WAN/core routers
+- Route update churn when internal site routes change
+- OSPF summary LSA volume to remote areas
 ```
 
 ## Conclusion
 
-A well-designed multi-site IPv4 addressing scheme uses 10.0.0.0/8 with a hierarchical allocation: region (second octet), site (third octet group), and VLAN (last octet). Separate infrastructure addressing (loopbacks, WAN links) into a dedicated block (10.254.0.0/16). The result is a clean, summarizable address plan that scales to hundreds of sites while keeping routing tables small and troubleshooting intuitive.
+A well-designed multi-site IPv4 addressing scheme uses 10.0.0.0/8 with a hierarchical allocation: region (second octet), site (third-octet block), and VLAN (subnets within the site block). Separate infrastructure addressing (loopbacks, WAN links) into a dedicated block (10.254.0.0/16). The result is a clean, summarizable address plan that scales to hundreds of sites while keeping routing tables small and troubleshooting intuitive.
