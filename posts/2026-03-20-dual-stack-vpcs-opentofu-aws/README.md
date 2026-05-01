@@ -13,7 +13,7 @@ Dual-stack VPCs run IPv4 and IPv6 simultaneously, enabling gradual migration to 
 ## Prerequisites
 
 - OpenTofu v1.6+
-- AWS credentials with VPC permissions
+- AWS credentials with VPC permissions and a configured AWS Region
 
 ## Step 1: Create the Dual-Stack VPC
 
@@ -36,14 +36,24 @@ resource "aws_vpc" "dual_stack" {
 ## Step 2: Dual-Stack Public Subnets
 
 ```hcl
+# Use standard Availability Zones for the dual-stack subnets
+data "aws_availability_zones" "available" {
+  state = "available"
+
+  filter {
+    name   = "opt-in-status"
+    values = ["opt-in-not-required"]
+  }
+}
+
 # Public subnets with both IPv4 and IPv6 CIDR blocks
 resource "aws_subnet" "public" {
-  count  = length(var.availability_zones)
+  count  = length(data.aws_availability_zones.available.names)
   vpc_id = aws_vpc.dual_stack.id
 
   cidr_block              = cidrsubnet("10.10.0.0/16", 8, count.index)
   ipv6_cidr_block         = cidrsubnet(aws_vpc.dual_stack.ipv6_cidr_block, 8, count.index)
-  availability_zone       = var.availability_zones[count.index]
+  availability_zone       = data.aws_availability_zones.available.names[count.index]
 
   # Auto-assign both IPv4 public IP and IPv6 on launch
   map_public_ip_on_launch         = true
@@ -60,13 +70,13 @@ resource "aws_subnet" "public" {
 
 ```hcl
 resource "aws_subnet" "private" {
-  count  = length(var.availability_zones)
+  count  = length(data.aws_availability_zones.available.names)
   vpc_id = aws_vpc.dual_stack.id
 
   cidr_block      = cidrsubnet("10.10.0.0/16", 8, count.index + 100)
   ipv6_cidr_block = cidrsubnet(aws_vpc.dual_stack.ipv6_cidr_block, 8, count.index + 100)
 
-  availability_zone               = var.availability_zones[count.index]
+  availability_zone               = data.aws_availability_zones.available.names[count.index]
   assign_ipv6_address_on_creation = true
 
   tags = {
@@ -99,6 +109,9 @@ resource "aws_nat_gateway" "dual_stack" {
   allocation_id = aws_eip.nat.id
   subnet_id     = aws_subnet.public[0].id
   tags          = { Name = "dual-stack-nat" }
+
+  # Ensure the Internet Gateway is attached before creating the public NAT gateway
+  depends_on = [aws_internet_gateway.dual_stack]
 }
 ```
 
@@ -137,6 +150,20 @@ resource "aws_route_table" "private" {
   }
 
   tags = { Name = "dual-stack-private-rt" }
+}
+
+resource "aws_route_table_association" "public" {
+  count = length(data.aws_availability_zones.available.names)
+
+  subnet_id      = aws_subnet.public[count.index].id
+  route_table_id = aws_route_table.public.id
+}
+
+resource "aws_route_table_association" "private" {
+  count = length(data.aws_availability_zones.available.names)
+
+  subnet_id      = aws_subnet.private[count.index].id
+  route_table_id = aws_route_table.private.id
 }
 ```
 
