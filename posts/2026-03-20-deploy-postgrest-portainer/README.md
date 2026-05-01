@@ -22,8 +22,6 @@ Navigate to **Stacks** > **Add Stack**:
 ```yaml
 # docker-compose.yml - PostgREST
 
-version: "3.8"
-
 services:
   postgrest:
     image: postgrest/postgrest:v12.0.2
@@ -49,7 +47,7 @@ services:
     restart: unless-stopped
     volumes:
       - postgres_data:/var/lib/postgresql/data
-      - ./init.sql:/docker-entrypoint-initdb.d/init.sql:ro
+      - /opt/postgrest/init.sql:/docker-entrypoint-initdb.d/init.sql:ro
     environment:
       - POSTGRES_DB=app_db
       - POSTGRES_USER=postgres
@@ -72,7 +70,7 @@ networks:
 
 ## Step 2: Initialize the Database Schema
 
-Create `init.sql` on the host before deploying:
+Create `/opt/postgrest/init.sql` on the Docker host before deploying:
 
 ```sql
 -- Create the API schema
@@ -106,7 +104,7 @@ GRANT USAGE, SELECT ON SEQUENCE api.todos_id_seq TO authenticated;
 ```text
 AUTHENTICATOR_PASSWORD=authenticator-password
 POSTGRES_PASSWORD=your-postgres-password
-JWT_SECRET=your-jwt-secret-min-32-chars
+JWT_SECRET=change-this-jwt-secret-1234567890
 ```
 
 ## Step 4: Query the API
@@ -119,8 +117,28 @@ curl http://localhost:3000/todos
 curl "http://localhost:3000/todos?done=eq.false&order=created_at.desc"
 
 # Create a todo (requires JWT)
-JWT_TOKEN=$(echo -n '{"role":"authenticated"}' | \
-  python3 -c "import sys,jwt; print(jwt.encode(eval(sys.stdin.read()), 'your-jwt-secret', algorithm='HS256'))")
+JWT_SECRET='change-this-jwt-secret-1234567890'
+JWT_TOKEN=$(JWT_SECRET="$JWT_SECRET" python3 - <<'PY'
+import base64
+import hashlib
+import hmac
+import json
+import os
+
+def b64url(data):
+    return base64.urlsafe_b64encode(data).rstrip(b"=").decode()
+
+header = {"alg": "HS256", "typ": "JWT"}
+payload = {"role": "authenticated"}
+signing_input = ".".join([
+    b64url(json.dumps(header, separators=(",", ":")).encode()),
+    b64url(json.dumps(payload, separators=(",", ":")).encode()),
+]).encode()
+signature = b64url(hmac.new(os.environ["JWT_SECRET"].encode(), signing_input, hashlib.sha256).digest())
+
+print(f"{signing_input.decode()}.{signature}")
+PY
+)
 
 curl -X POST http://localhost:3000/todos \
   -H "Authorization: Bearer $JWT_TOKEN" \
@@ -144,4 +162,4 @@ curl http://localhost:3000/ | python3 -m json.tool | head -50
 
 ## Conclusion
 
-PostgREST maps your PostgreSQL schema directly to HTTP endpoints - no application code needed. The `PGRST_DB_SCHEMAS` variable controls which schemas are exposed. All authorization is handled via PostgreSQL roles and Row Level Security (RLS) policies. JWT claims (like `role`) are passed to PostgreSQL as `request.jwt.claims`, enabling per-user row-level access control.
+PostgREST maps your PostgreSQL schema directly to HTTP endpoints - no application code needed. The `PGRST_DB_SCHEMAS` variable controls which schemas are exposed. Authorization is handled through PostgreSQL roles, object privileges, and optional Row Level Security (RLS) policies. JWT claims (like `role`) are exposed to PostgreSQL through `request.jwt.claims`, enabling per-user row-level access control.
