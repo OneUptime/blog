@@ -55,7 +55,7 @@ sequenceDiagram
 
 sudo tcpdump -i eth0 -n 'port 67 or port 68' -w /tmp/dhcp.pcap
 
-# Trigger a DORA exchange (Linux)
+# Trigger a DORA exchange (Linux with ISC dhclient)
 sudo dhclient -v eth0
 
 # Read and display the capture
@@ -66,18 +66,18 @@ tcpdump -r /tmp/dhcp.pcap -v
 
 Display filter for DHCP:
 ```text
-bootp
+dhcp
 ```
 
 You'll see each message type (DHCPDISCOVER, DHCPOFFER, DHCPREQUEST, DHCPACK) with the offered/requested IP and all options.
 
 ## Renewal vs DORA
 
-At 50% of lease time, the client sends a **DHCPREQUEST** directly to the server (unicast) to renew. No new DORA cycle needed unless the server rejects the renewal:
+By default, at 50% of lease time (T1), the client sends a **DHCPREQUEST** directly to the original server (unicast) to renew. No new DORA cycle is needed unless renewal or rebinding fails:
 
 ```text
-T1 (50%): DHCPREQUEST (unicast to server) → DHCPACK
-T2 (87.5%): DHCPREQUEST (broadcast) → DHCPACK or rebind with any server
+T1 (default 50%): DHCPREQUEST (unicast to original server) → DHCPACK
+T2 (default 87.5%): DHCPREQUEST (broadcast) → DHCPACK from any server
 T=expiry: Full DORA cycle restarts
 ```
 
@@ -85,5 +85,5 @@ T=expiry: Full DORA cycle restarts
 
 - DORA = Discover → Offer → Request → Acknowledge - four UDP messages.
 - Client uses 0.0.0.0 as source until the DHCPACK is received and applied.
-- All messages are broadcast (except unicast renewal at T1/T2).
-- `dhclient -v eth0` on Linux shows the full DORA exchange in real-time.
+- DHCPDISCOVER and the selecting-state DHCPREQUEST are usually broadcast; DHCPOFFER and DHCPACK may be broadcast or unicast. T1 renewal is unicast and T2 rebinding is broadcast.
+- `dhclient -v eth0` can show the DORA exchange in real-time on Linux systems that use ISC dhclient.
