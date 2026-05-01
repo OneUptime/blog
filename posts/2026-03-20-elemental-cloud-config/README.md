@@ -8,30 +8,29 @@ Description: A detailed guide to configuring Elemental cloud-config for customiz
 
 ## Introduction
 
-Elemental cloud-config is a YAML-based configuration system (compatible with cloud-init) that runs during OS installation and first boot. It allows you to configure users, SSH keys, network settings, custom scripts, and system services declaratively, ensuring nodes are correctly configured when they join the fleet.
+Elemental cloud-config is a YAML-based configuration system that supports a subset of cloud-init syntax and can also use yip stages. Standard cloud-config entries are applied at boot and re-executed on every boot because Elemental uses yip, and install/reset/upgrade hooks are available through Elemental-specific workflows. It allows you to configure users, SSH keys, network settings, custom scripts, and system services declaratively, ensuring nodes are correctly configured when they join the fleet.
 
 ## Cloud-Config Structure
 
 ```yaml
-# Structure of Elemental cloud-config
+# Example contents of spec.config in a MachineRegistration resource
 
 cloud-config:
   # User accounts
   users: []
   # SSH keys
   ssh_authorized_keys: []
+  # Static hostname
+  hostname: ""
   # Files to create
   write_files: []
   # Commands to run
   runcmd: []
-  # Packages to install (on mutable systems)
-  packages: []
 
 elemental:
   registration: {}
   install: {}
   reset: {}
-  upgrade: {}
 ```
 
 ## Configuring Users and Authentication
@@ -41,19 +40,18 @@ cloud-config:
   users:
     # Configure the root user
     - name: root
-      # bcrypt-hashed password (use: openssl passwd -6 yourpassword)
+      # SHA-512 password hash (use: mkpasswd --method=SHA-512 --rounds=4096)
       passwd: "$6$rounds=4096$saltsalt$hashedpasswordhere"
 
     # Create an admin user
     - name: admin
       groups:
         - wheel
-        - sudo
       shell: /bin/bash
       # Public SSH key for access
       ssh_authorized_keys:
         - "ssh-rsa AAAAB3NzaC1yc2E... admin@example.com"
-      # Lock the password (SSH key only)
+      # Allow password login in addition to SSH keys
       lock_passwd: false
       passwd: "$6$rounds=4096$saltsalt$hashedpasswordhere"
 ```
@@ -62,7 +60,7 @@ cloud-config:
 
 ```yaml
 cloud-config:
-  # Global SSH authorized keys (applied to root)
+  # Global SSH authorized keys (assigned to the first user in users, or root if no users are defined)
   ssh_authorized_keys:
     - "ssh-rsa AAAAB3NzaC1yc2E... ops-team@example.com"
     - "ssh-ed25519 AAAAC3NzaC1lZDI1NTE5... automation@example.com"
@@ -87,13 +85,15 @@ cloud-config:
 ```yaml
 cloud-config:
   write_files:
-    # Custom hostname based on MAC address
+    # Helper script to derive a hostname from the first Ethernet MAC address
     - path: /etc/hostname-script.sh
       content: |
         #!/bin/bash
-        # Generate hostname from MAC address
-        MAC=$(cat /sys/class/net/eth0/address | tr ':' '-')
-        hostnamectl set-hostname "node-${MAC}"
+        IFACE=$(ls /sys/class/net | grep -E '^(en|eth)' | head -n1)
+        if [ -n "${IFACE}" ]; then
+          MAC=$(tr ':' '-' < "/sys/class/net/${IFACE}/address")
+          hostnamectl set-hostname "node-${MAC}"
+        fi
       permissions: "0755"
 
     # Custom network configuration
@@ -130,13 +130,11 @@ cloud-config:
     # Enable NTP
     - timedatectl set-ntp true
 
-    # Configure hostname from hardware serial number
-    - |
-      SERIAL=$(dmidecode -s system-serial-number | tr ' ' '-')
-      hostnamectl set-hostname "node-${SERIAL}"
+    # Configure hostname from DMI serial, when available
+    - sh -c 'if [ -r /sys/class/dmi/id/product_serial ]; then SERIAL=$(tr " " "-" < /sys/class/dmi/id/product_serial); hostnamectl set-hostname "node-${SERIAL}"; fi'
 
-    # Start custom services
-    - systemctl enable --now my-monitoring-agent
+    # Start required services
+    - systemctl enable --now firewalld
 
     # Configure firewall
     - firewall-cmd --permanent --add-port=10250/tcp
@@ -149,6 +147,14 @@ cloud-config:
 ```yaml
 cloud-config:
   write_files:
+    # Create the setup script
+    - path: /usr/local/bin/node-setup.sh
+      content: |
+        #!/bin/bash
+        set -e
+        echo "Node setup complete" > /var/log/node-setup.log
+      permissions: "0755"
+
     # Create a custom systemd service
     - path: /etc/systemd/system/node-setup.service
       content: |
@@ -171,7 +177,7 @@ cloud-config:
   runcmd:
     # Enable the service
     - systemctl daemon-reload
-    - systemctl enable node-setup.service
+    - systemctl enable --now node-setup.service
 ```
 
 ## Elemental-Specific Configuration
@@ -183,29 +189,24 @@ elemental:
     device: /dev/sda
     # Reboot after install
     reboot: true
-    # Additional kernel boot parameters
-    extra-partitions: []
-    # Disable SELinux
-    selinux: false
+    # Enable debug output
+    debug: true
 
   # Configuration applied during reset
   reset:
+    enabled: true
     reboot: true
     reset-persistent: true
-    reset-oem: false
+    reset-oem: true
 ```
 
 ## Validating Cloud-Config
 
 ```bash
-# Validate cloud-config syntax using cloud-init tools
-cloud-init devel schema --config-file cloud-config.yaml
-
-# Or use a linter
-pip install cloud-init
-cloud-init schema --config-file cloud-config.yaml
+# Validate a standalone #cloud-config file (the contents of the cloud-config section)
+cloud-init schema --config-file user-data.yaml --annotate
 ```
 
 ## Conclusion
 
-Elemental cloud-config provides a powerful, declarative way to configure nodes at provisioning time. By combining user management, file creation, command execution, and service configuration, you can ensure every node in your fleet starts with exactly the right configuration. This approach eliminates configuration drift and makes node provisioning fully repeatable.
+Elemental cloud-config provides a powerful, declarative way to configure nodes at provisioning time. By combining user management, file creation, command execution, and service configuration, you can ensure every node in your fleet starts with exactly the right configuration. This approach helps reduce configuration drift and makes node provisioning more repeatable.
