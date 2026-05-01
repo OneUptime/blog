@@ -8,17 +8,19 @@ Description: Learn how to identify, migrate from, and safely replace deprecated 
 
 ## Introduction
 
-Provider resources are deprecated when cloud services introduce better replacements. Deprecated resources continue to work but receive no new features and may be removed in future provider versions. This guide covers how to identify deprecated resources and migrate safely.
+Provider resources can be deprecated when providers or cloud services introduce better replacements. Deprecated resources continue to work but receive no new features and may be removed in future provider versions. This guide covers how to identify deprecated resources and migrate safely.
 
 ## Identifying Deprecated Resources
 
 ```bash
-# Run validate to surface deprecation warnings
+# Run validate to catch configuration issues
 
 tofu validate
 
-# Run plan with upgrade flag to see migration hints
-tofu providers lock -upgrade
+# Update providers within your version constraints, then run plan
+# to surface deprecation warnings and required changes
+tofu init -upgrade
+tofu plan
 
 # Check the provider changelog for removed resources
 # Example for AWS provider:
@@ -27,7 +29,7 @@ tofu providers lock -upgrade
 
 ## Example: CloudFront OAI to OAC Migration
 
-`aws_cloudfront_origin_access_identity` is still functional but OAC is recommended.
+`aws_cloudfront_origin_access_identity` still works, but AWS treats OAI as legacy and recommends OAC for S3 origins.
 
 ```hcl
 # Old approach (OAI) – still works but considered legacy
@@ -43,7 +45,33 @@ resource "aws_cloudfront_origin_access_control" "new" {
   signing_protocol                  = "sigv4"
 }
 
-# Step 2: Update the distribution to use OAC
+# Step 2: Update bucket policy to allow both OAI and OAC during the transition
+resource "aws_s3_bucket_policy" "main" {
+  bucket = aws_s3_bucket.main.id
+  policy = jsonencode({
+    Statement = [
+      {
+        Effect    = "Allow"
+        Principal = { AWS = aws_cloudfront_origin_access_identity.old.iam_arn }
+        Action    = "s3:GetObject"
+        Resource  = "${aws_s3_bucket.main.arn}/*"
+      },
+      {
+        Effect    = "Allow"
+        Principal = { Service = "cloudfront.amazonaws.com" }
+        Action    = "s3:GetObject"
+        Resource  = "${aws_s3_bucket.main.arn}/*"
+        Condition = {
+          StringEquals = {
+            "AWS:SourceArn" = aws_cloudfront_distribution.main.arn
+          }
+        }
+      }
+    ]
+  })
+}
+
+# Step 3: Update the distribution to use OAC
 resource "aws_cloudfront_distribution" "main" {
   origin {
     domain_name              = aws_s3_bucket.main.bucket_regional_domain_name
@@ -55,27 +83,10 @@ resource "aws_cloudfront_distribution" "main" {
   # ...
 }
 
-# Step 3: Update bucket policy to use OAC-style principal
-resource "aws_s3_bucket_policy" "main" {
-  bucket = aws_s3_bucket.main.id
-  policy = jsonencode({
-    Statement = [{
-      Effect    = "Allow"
-      Principal = { Service = "cloudfront.amazonaws.com" }
-      Action    = "s3:GetObject"
-      Resource  = "${aws_s3_bucket.main.arn}/*"
-      Condition = {
-        StringEquals = {
-          "AWS:SourceArn" = aws_cloudfront_distribution.main.arn
-        }
-      }
-    }]
-  })
-}
-
-# Step 4: After verifying OAC works, remove old OAI resource
+# Step 4: After verifying OAC works, remove the temporary OAI bucket-policy
+# statement and the old OAI resource
 # tofu state rm aws_cloudfront_origin_access_identity.old
-# Then delete the resource block from code
+# Then delete the OAI statement and resource block from code
 ```
 
 ## Example: AWS WAF Classic to WAFv2
@@ -86,6 +97,7 @@ resource "aws_s3_bucket_policy" "main" {
 
 # New: WAFv2
 resource "aws_wafv2_web_acl" "main" {
+  # If you use CLOUDFRONT scope, configure the AWS provider in us-east-1.
   name  = "${var.app_name}-waf"
   scope = "CLOUDFRONT"
 
@@ -129,7 +141,7 @@ resource "aws_wafv2_web_acl" "main" {
 tofu plan
 
 # 3. Apply to create the new resource
-tofu apply -target=aws_wafv2_web_acl.main
+tofu apply
 
 # 4. Update references to point to the new resource
 # 5. Apply to update downstream resources
@@ -139,10 +151,11 @@ tofu apply
 # 7. If needed, remove from state without destroying
 tofu state rm aws_waf_web_acl.classic
 
-# 8. Optionally manually destroy the old resource
-aws wafv2 delete-web-acl --id ... --scope REGIONAL --lock-token ...
+# 8. Optionally manually destroy the old WAF Classic resource
+# after disassociating it and removing any rules
+aws waf delete-web-acl --web-acl-id ... --change-token ...
 ```
 
 ## Summary
 
-Handling deprecated resources requires a phased migration: add the replacement resource alongside the old one, verify it works, update all references, then safely remove the deprecated resource from both code and state. Always test in non-production first and use `tofu state rm` to decouple state removal from resource destruction.
+Handling deprecated resources requires a phased migration: add the replacement resource alongside the old one, verify it works, update all references, then safely remove the deprecated resource from both code and state. Always test in non-production first and use `tofu state rm` only when you intentionally want OpenTofu to forget an existing object without destroying it.
