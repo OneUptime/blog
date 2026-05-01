@@ -8,11 +8,11 @@ Description: Configure EfficientIP SOLIDserver for IPv6 IPAM including space man
 
 ## Introduction
 
-EfficientIP SOLIDserver is an enterprise DDI platform with comprehensive IPv6 support including smart folder-based organization, DHCPv6 server, DNS AAAA record management, and REST API automation. This guide covers IPv6 IPAM configuration using the SOLIDserver REST API.
+EfficientIP SOLIDserver is an enterprise DDI platform with comprehensive IPv6 support including space-based organization, DHCPv6 server, DNS AAAA record management, and REST API automation. This guide covers IPv6 IPAM configuration using the SOLIDserver REST API.
 
 ## Step 1: Create IPv6 Space
 
-EfficientIP organizes addresses under "Spaces" (equivalent to VRFs or address domains):
+EfficientIP organizes address plans under "Spaces" (logical address domains):
 
 ```bash
 # Create IPv6 space via REST API
@@ -20,13 +20,10 @@ EfficientIP organizes addresses under "Spaces" (equivalent to VRFs or address do
 curl -u admin:password \
     -H "Content-Type: application/json" \
     -X POST \
-    "https://efficientip.example.com/rest/ip6_block6_add" \
+    "https://efficientip.example.com/api/v2.0/ipam/space/add" \
     -d '{
-        "site_name": "Default",
-        "subnet6_addr": "2001:db8::",
-        "subnet6_prefix": "32",
-        "subnet6_name": "Org IPv6 Allocation",
-        "subnet6_class_name": "block"
+        "space_name": "Corp-IPv6",
+        "space_description": "Primary IPv6 address space"
     }'
 ```
 
@@ -39,7 +36,7 @@ curl -u admin:password \
 import requests
 import base64
 
-EIP_URL = "https://efficientip.example.com/rest"
+EIP_URL = "https://efficientip.example.com/api/v2.0"
 CREDS = base64.b64encode(b"admin:password").decode()
 HEADERS = {
     "Authorization": f"Basic {CREDS}",
@@ -58,44 +55,57 @@ def eip_post(endpoint, data):
     resp.raise_for_status()
     return resp.json()
 
-# Create /48 network
-eip_post("ip6_subnet6_add", {
-    "site_name": "Default",
-    "subnet6_addr": "2001:db8:0001::",
-    "subnet6_prefix": "48",
-    "subnet6_name": "HQ Site",
-    "subnet6_class_name": "network",
-    "subnet6_class_parameters": "site=headquarters|environment=production"
+# Create /32 block in the space
+eip_post("ipam/network6/add", {
+    "space_name": "Corp-IPv6",
+    "network6_addr": "2001:db8::",
+    "network6_prefix": "32",
+    "network6_name": "Org IPv6 Allocation",
+    "network_level": 0,
+    "network6_is_terminal": 0
 })
 
-# Create /64 VLAN subnet
-eip_post("ip6_subnet6_add", {
-    "site_name": "Default",
-    "subnet6_addr": "2001:db8:0001:0001::",
-    "subnet6_prefix": "64",
-    "subnet6_name": "HQ Servers",
-    "subnet6_class_name": "vlan",
-    "subnet6_class_parameters": "vlan_id=10|gateway=2001:db8:0001:0001::1"
+# Create /48 site network
+site_network = eip_post("ipam/network6/add", {
+    "space_name": "Corp-IPv6",
+    "network6_addr": "2001:db8:1::",
+    "network6_prefix": "48",
+    "network6_name": "HQ Site",
+    "network_level": 1,
+    "network6_is_terminal": 0
+})
+site_network_id = int(site_network["data"][0]["network6_id"])
+
+# Create /64 child subnet
+eip_post("ipam/network6/add", {
+    "space_name": "Corp-IPv6",
+    "parent_network6_id": site_network_id,
+    "network6_addr": "2001:db8:1:1::",
+    "network6_prefix": "64",
+    "network6_name": "HQ Servers",
+    "network_level": 2,
+    "network6_is_terminal": 1
 })
 ```
 
 ## Step 3: Configure DHCPv6 Server
 
 ```python
-# Add DHCPv6 range to a /64 subnet
-eip_post("dhcp6_range6_add", {
-    "site_name": "Default",
-    "dhcpscope6_name": "HQ-Servers-Scope",
-    "dhcprange6_start_addr": "2001:db8:0001:0001::1000",
-    "dhcprange6_end_addr": "2001:db8:0001:0001::9fff",
-    "dhcprange6_class_parameters": "lease_time=3600"
+# Create a DHCPv6 scope for the /64 subnet
+eip_post("dhcp/scope6/add", {
+    "server6_name": "primary-dhcpv6",
+    "scope6_name": "HQ-Servers-Scope",
+    "scope6_start_addr": "2001:db8:1:1::",
+    "scope6_prefix": "64",
+    "scope6_space_name": "Corp-IPv6"
 })
 
-# Configure DHCPv6 options for a scope
-eip_post("dhcp6_failover6_add", {
-    "dhcpserver6_name": "primary-dhcpv6",
-    "failover6_type": "primary",
-    "failover6_peer": "secondary-dhcpv6.internal"
+# Add a DHCPv6 range to that scope
+eip_post("dhcp/range6/add", {
+    "server6_name": "primary-dhcpv6",
+    "scope6_name": "HQ-Servers-Scope",
+    "range6_start_addr": "2001:db8:1:1::1000",
+    "range6_end_addr": "2001:db8:1:1::9fff"
 })
 ```
 
@@ -103,30 +113,31 @@ eip_post("dhcp6_failover6_add", {
 
 ```python
 # Create AAAA record
-eip_post("dns_rr_add", {
-    "dnszone_name": "example.com",
-    "rr_name": "server-01",
+eip_post("dns/rr/add", {
+    "server_name": "dns01.example.com",
+    "zone_name": "example.com",
+    "rr_name": "server-01.example.com",
     "rr_type": "AAAA",
-    "value1": "2001:db8:0001:0001::10",
-    "rr_ttl": "300"
+    "rr_value1": "2001:db8:1:1::10",
+    "rr_ttl": 300
 })
 
 # Batch-create AAAA records from allocation list
 servers = [
-    ("web-01", "2001:db8:0001:0001::10"),
-    ("web-02", "2001:db8:0001:0001::11"),
-    ("api-01", "2001:db8:0001:0001::20"),
-    ("db-01",  "2001:db8:0001:0001::30"),
+    ("web-01", "2001:db8:1:1::10"),
+    ("web-02", "2001:db8:1:1::11"),
+    ("api-01", "2001:db8:1:1::20"),
+    ("db-01",  "2001:db8:1:1::30"),
 ]
 
 for name, addr in servers:
-    eip_post("dns_rr_add", {
-        "dnszone_name": "example.com",
-        "rr_name": name,
+    eip_post("dns/rr/add", {
+        "server_name": "dns01.example.com",
+        "zone_name": "example.com",
+        "rr_name": f"{name}.example.com",
         "rr_type": "AAAA",
-        "value1": addr,
-        "rr_ttl": "300",
-        "dns_name": f"{name}.example.com"
+        "rr_value1": addr,
+        "rr_ttl": 300
     })
     print(f"Created AAAA: {name}.example.com -> {addr}")
 ```
@@ -134,43 +145,55 @@ for name, addr in servers:
 ## Step 5: Query IPv6 Utilization
 
 ```python
-# Get subnet utilization report
-subnets = eip_get("ip6_subnet6_list", {
-    "WHERE": "subnet6_addr LIKE '2001:db8:%'",
-    "ORDERBY": "subnet6_addr"
-})
+# Get IPv6 network utilization report
+networks = eip_get("ipam/network6/list", {
+    "where": "space_name='Corp-IPv6'",
+    "orderby": "network6_start_hostaddr",
+    "select": "space_name,network6_start_hostaddr,network6_prefix,network6_name,percent_used"
+})["data"]
 
-print(f"{'Subnet':<35} {'Name':<20} {'Util%':>6}")
+print(f"{'Network':<35} {'Name':<20} {'Used%':>6}")
 print("-" * 65)
-for subnet in subnets:
-    prefix = f"{subnet['subnet6_addr']}/{subnet['subnet6_prefix']}"
-    name = subnet.get("subnet6_name", "")
-    util = subnet.get("subnet6_utilization", "0")
-    print(f"{prefix:<35} {name:<20} {util:>6}%")
+for network in networks:
+    prefix = f"{network['network6_start_hostaddr']}/{network['network6_prefix']}"
+    name = network.get("network6_name", "")
+    used = network.get("percent_used") or "n/a"
+    print(f"{prefix:<35} {name:<20} {used:>6}")
 ```
 
 ## Step 6: IP Address Assignment
 
 ```python
-# Assign next available IPv6 in a subnet
-def get_next_available_ipv6(subnet_addr: str, prefix: str) -> str:
-    result = eip_get("ip6_find_free_address6", {
-        "site_name": "Default",
-        "subnet6_addr": subnet_addr,
-        "subnet6_prefix": prefix,
-        "max_find": "1"
-    })
-    return result[0]["hostaddr"]
+# Inspect the first free IPv6 range in the subnet
+free_ranges = eip_get("ipam/address6/list", {
+    "where": (
+        "space_name='Corp-IPv6' AND "
+        "network6_name='HQ Servers' AND "
+        "address6_type='free'"
+    ),
+    "select": (
+        "space_name,network6_name,address6_type,"
+        "free_start_address6_addr,free_end_address6_addr"
+    ),
+    "orderby": "free_start_address6_addr",
+    "limit": 1
+})["data"]
 
-next_ip = get_next_available_ipv6("2001:db8:0001:0001::", "64")
-eip_post("ip6_address6_add", {
-    "site_name": "Default",
-    "hostaddr": next_ip,
-    "name": "app-server-05",
-    "mac_addr": "aa:bb:cc:dd:ee:ff"
+print(
+    "First free IPv6 range: "
+    f"{free_ranges[0]['free_start_address6_addr']} - "
+    f"{free_ranges[0]['free_end_address6_addr']}"
+)
+
+# Add a specific IPv6 address outside the DHCPv6 pool
+eip_post("ipam/address6/add", {
+    "space_name": "Corp-IPv6",
+    "address6_hostaddr": "2001:db8:1:1::40",
+    "address6_name": "app-server-05",
+    "address6_mac_addr": "aa:bb:cc:dd:ee:ff"
 })
 ```
 
 ## Conclusion
 
-EfficientIP SOLIDserver provides comprehensive IPv6 DDI management through its `ip6_subnet6_*`, `dhcp6_range6_*`, and `dns_rr_add` REST API endpoints. Its class parameter system (`subnet6_class_parameters`) enables rich metadata like VLAN ID, gateway, and environment tagging on IPv6 subnets. The `ip6_find_free_address6` endpoint enables conflict-free automated allocation. EfficientIP is particularly strong for organizations that require integrated DNS and DHCPv6 management alongside IPAM, as all three are managed through the same API and database.
+EfficientIP SOLIDserver provides comprehensive IPv6 DDI management through its `/ipam/network6/*`, `/dhcp/scope6/*`, `/dhcp/range6/*`, and `/dns/rr/add` REST API endpoints. Spaces and network hierarchy fields such as `space_name`, `network_level`, and `network6_is_terminal` are key to modeling IPv6 blocks and subnets accurately. The `/ipam/address6/list` endpoint can expose free IPv6 ranges, while `/ipam/address6/add` records assigned IPv6 addresses in IPAM. EfficientIP is particularly strong for organizations that require integrated DNS and DHCPv6 management alongside IPAM, as all three are managed through the same API and database.
