@@ -44,24 +44,27 @@ iface eth1 inet manual
 nmcli connection add type bond \
   ifname bond0 \
   con-name bond0 \
-  bond.options "mode=active-backup,miimon=100"
+  mode active-backup \
+  miimon 100 \
+  primary eth0
 
-# Add slave interfaces
+# Add bond ports
 nmcli connection add type ethernet \
   ifname eth0 \
-  con-name bond0-slave1 \
-  master bond0
+  con-name bond0-port1 \
+  controller bond0
 
 nmcli connection add type ethernet \
   ifname eth1 \
-  con-name bond0-slave2 \
-  master bond0
+  con-name bond0-port2 \
+  controller bond0
 
 # Set bond to use DHCP
 nmcli connection modify bond0 ipv4.method auto
 
 # Activate
-nmcli connection up bond0
+nmcli connection up bond0-port1
+nmcli connection up bond0-port2
 ```
 
 ### Using systemd-networkd
@@ -113,10 +116,7 @@ Bond=bond0
 cat /proc/net/bonding/bond0
 
 # Verify IP assignment
-ip addr show bond0
-
-# Check DHCP lease
-dhclient -v bond0   # Manual DHCP request
+ip -4 addr show dev bond0
 
 # Test failover: disable primary slave
 ip link set eth0 down
@@ -127,6 +127,6 @@ ip addr show bond0            # IP should still be assigned
 ## Key Takeaways
 
 - DHCP runs on the bond interface, not on individual slave interfaces; slaves have no IPs.
-- In active-backup mode, only the primary slave passes traffic; the secondary takes over on failure.
-- The bond MAC address stays the same across failovers, so the DHCP lease is maintained.
-- Use `miimon=100` (100ms) for fast link failure detection; for switches that support it, use LACP (mode=802.3ad).
+- In active-backup mode, only one slave passes traffic at a time; a backup slave takes over on failure.
+- In the default active-backup configuration, the bond MAC usually stays the same across failovers; with other `fail_over_mac` policies, the bond MAC can change during failover.
+- Use `miimon=100` (100ms) for fast link failure detection; for switches configured for it, use LACP (mode=802.3ad).
