@@ -23,8 +23,8 @@ Documentation address spaces are reserved prefixes that should only appear in do
 # Correct usage in examples:
 
 # DNS zone files
-2001:db8::1    AAAA record for documentation
-2001:db8:1::1  AAAA record for subnet documentation
+example.example.        IN AAAA 2001:db8::1
+subnet-router.example.  IN AAAA 2001:db8:1::1
 
 # Configuration examples
 ip -6 addr add 2001:db8::1/64 dev eth0  # This is an EXAMPLE only
@@ -53,8 +53,8 @@ print(f"3fff::/20 contains {2**(32-20):,} /32 prefixes = 4096")
 example_doc_addresses = [
     "3fff::1",
     "3fff:1::/48",
-    "3fff:1000::/32",
-    "3fff:ffff::/32",
+    "3fff:0abc::/32",
+    "3fff:0fff::/32",
 ]
 for addr in example_doc_addresses:
     net = ipaddress.IPv6Network(addr, strict=False)
@@ -68,7 +68,7 @@ for addr in example_doc_addresses:
 DO:
   - Use 2001:db8::/32 in RFC examples, blog posts, man pages
   - Use 3fff::/20 when you need more address space in documentation
-  - Use AS 65001-65534 (documentation ASN range) in BGP examples
+  - Use AS 64496-64511 or 65536-65551 (documentation ASN ranges) in BGP examples
 
 DO NOT:
   - Deploy 2001:db8::/32 or 3fff::/20 in production routers
@@ -122,7 +122,7 @@ def validate_config_addresses(addresses: list) -> list:
     return [a for a in addresses if is_documentation_address(a)]
 
 # Test
-production_addresses = ["2001:db8::1", "3fff::server", "2001:4860:4860::8888"]
+production_addresses = ["2001:db8::1", "3fff::1", "2001:4860:4860::8888"]
 bad = validate_config_addresses(production_addresses)
 if bad:
     print(f"ERROR: Documentation addresses in config: {bad}")
