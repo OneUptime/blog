@@ -25,9 +25,9 @@ sequenceDiagram
     xDS Control Plane->>Envoy: EDS push: add 10.0.0.6:8080
 ```
 
-## Static EDS Configuration (load_assignment inline)
+## File-Based EDS Configuration (`path_config_source`)
 
-For testing without a control plane, define endpoints inline. This is technically static but uses the EDS data structure.
+For testing without a gRPC control plane, define endpoints in a watched file. This still uses the EDS resource format, but the updates come from the filesystem instead of a management server.
 
 ```yaml
 # envoy-config.yaml
@@ -39,7 +39,7 @@ static_resources:
       connect_timeout: 5s
       eds_cluster_config:
         eds_config:
-          # Use static (inline) endpoint config for testing
+          # Use file-based endpoint config for testing
           resource_api_version: V3
           path_config_source:
             path: /etc/envoy/eds-endpoints.yaml
@@ -83,6 +83,11 @@ static_resources:
     - name: xds_cluster
       type: STATIC
       connect_timeout: 5s
+      typed_extension_protocol_options:
+        envoy.extensions.upstreams.http.v3.HttpProtocolOptions:
+          "@type": type.googleapis.com/envoy.extensions.upstreams.http.v3.HttpProtocolOptions
+          explicit_http_config:
+            http2_protocol_options: {}
       load_assignment:
         cluster_name: xds_cluster
         endpoints:
@@ -110,9 +115,24 @@ admin:
 
 ## Locality-Weighted EDS
 
-EDS supports locality-weighted load balancing to prefer nearby IPv4 endpoints.
+To use locality-weighted load balancing, enable it on the cluster and provide locality weights in the EDS response.
 
 ```yaml
+# envoy-config.yaml
+static_resources:
+  clusters:
+    - name: my_service
+      type: EDS
+      connect_timeout: 5s
+      eds_cluster_config:
+        eds_config:
+          ads: {}
+      common_lb_config:
+        locality_weighted_lb_config: {}
+```
+
+```yaml
+# EDS response
 resources:
   - "@type": type.googleapis.com/envoy.config.endpoint.v3.ClusterLoadAssignment
     cluster_name: my_service
@@ -141,8 +161,8 @@ resources:
 # View all endpoints for a cluster via the admin API
 curl -s http://localhost:9901/clusters | grep my_service
 
-# Full endpoint details in JSON
-curl -s http://localhost:9901/config_dump | python3 -m json.tool | grep -A 20 ClusterLoadAssignment
+# Full endpoint details in JSON (includes EDS state)
+curl -s 'http://localhost:9901/config_dump?include_eds' | python3 -m json.tool | grep -A 20 ClusterLoadAssignment
 ```
 
 ## Key Takeaways
@@ -150,4 +170,4 @@ curl -s http://localhost:9901/config_dump | python3 -m json.tool | grep -A 20 Cl
 - EDS decouples Envoy's endpoint list from its static configuration, enabling dynamic scaling.
 - File-based EDS (`path_config_source`) is useful for testing without a full control plane.
 - Use ADS (`ads: {}`) to receive EDS updates via an existing gRPC stream to the control plane.
-- Locality weighting in EDS allows zone-aware load balancing across IPv4 endpoints.
+- Locality weighting in EDS allows locality-aware load balancing across IPv4 endpoints.
