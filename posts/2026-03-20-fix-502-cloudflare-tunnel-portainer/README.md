@@ -37,7 +37,7 @@ docker logs portainer
 # Verify Portainer is listening on the correct port
 docker inspect portainer | grep -i port
 curl -k https://localhost:9443  # Default HTTPS
-curl http://localhost:9000      # HTTP (older versions)
+curl http://localhost:9000      # HTTP if you explicitly enabled it
 ```
 
 ---
@@ -57,11 +57,11 @@ ingress:
   - hostname: portainer.example.com
     service: https://localhost:9443
     originRequest:
-      noTLSVerify: true  # Required - Portainer uses self-signed cert
+      noTLSVerify: true  # Needed if Portainer is still using its default self-signed cert
   - service: http_status:404
 ```
 
-### Correct tunnel config for Portainer (HTTP on 9000):
+### Correct tunnel config for Portainer (HTTP on 9000, if enabled):
 
 ```yaml
 ingress:
@@ -72,9 +72,9 @@ ingress:
 
 ---
 
-## Step 3: TLS Verification - The Most Common Fix
+## Step 3: TLS Verification - A Common Fix
 
-Portainer uses a self-signed certificate on port 9443. Cloudflare will refuse to connect unless you disable TLS verification:
+Portainer uses a self-signed certificate on port 9443 by default. If you keep that default certificate, `cloudflared` will reject it unless you either trust the certificate with `caPool` or disable verification:
 
 ```yaml
 # config.yml
@@ -82,10 +82,10 @@ ingress:
   - hostname: portainer.example.com
     service: https://localhost:9443
     originRequest:
-      noTLSVerify: true   # <- This is required!
+      noTLSVerify: true   # <- Quick workaround for the default self-signed cert
 ```
 
-Without `noTLSVerify: true`, cloudflared rejects the self-signed cert and returns 502.
+Without `noTLSVerify: true` or a configured `caPool`, cloudflared can reject the self-signed cert and return 502.
 
 ---
 
@@ -100,24 +100,25 @@ docker inspect portainer | grep -i network
 # If cloudflared is in a different network, connect them
 docker network connect portainer_network cloudflared
 
-# Or use host networking for cloudflared
+# Or, if Portainer is published on the host, use host networking for cloudflared
 docker run -d \
   --name cloudflared \
   --network host \
-  cloudflare/cloudflared:latest tunnel run
+  -v ~/.cloudflared:/home/nonroot/.cloudflared \
+  cloudflare/cloudflared:latest tunnel --no-autoupdate run your-tunnel-id
 ```
 
 ---
 
 ## Step 5: Fix the Service URL (Port Mismatch)
 
-Portainer's default ports vary by installation method:
+Portainer and related components use different ports depending on how you configured them:
 
 | Installation | Port | Protocol |
 |-------------|------|----------|
 | Standard Docker | 9443 | HTTPS |
-| Legacy Portainer | 9000 | HTTP |
-| Portainer Agent | 9001 | HTTP |
+| HTTP enabled for legacy compatibility | 9000 | HTTP |
+| Portainer Agent | 9001 | HTTPS |
 | Docker Compose | Varies | Depends |
 
 ```bash
@@ -167,8 +168,6 @@ curl -v http://localhost:9000
 ## Complete Working docker-compose.yml
 
 ```yaml
-version: '3.8'
-
 services:
   portainer:
     image: portainer/portainer-ce:latest
@@ -181,7 +180,7 @@ services:
 
   cloudflared:
     image: cloudflare/cloudflared:latest
-    command: tunnel --config /etc/cloudflared/config.yml run
+    command: tunnel --config /etc/cloudflared/config.yml run YOUR-TUNNEL-ID
     volumes:
       - ./cloudflared:/etc/cloudflared
     depends_on:
@@ -209,17 +208,17 @@ ingress:
 
 ## Best Practices
 
-1. **Always set `noTLSVerify: true`** when targeting Portainer's HTTPS port
+1. **Only set `noTLSVerify: true`** if Portainer is using its default self-signed certificate
 2. **Use service names** (e.g., `portainer:9443`) instead of `localhost` in Docker Compose setups
 3. **Check logs first** - cloudflared logs show the exact rejection reason
-4. **Use HTTP 9000** if you want to avoid TLS complications in internal-only setups
+4. **Use HTTP 9000 only if you enabled it** for legacy or internal-only setups
 5. **Secure with Cloudflare Access** - add authentication in front of the tunnel for production
 
 ---
 
 ## Conclusion
 
-502 errors with Cloudflare Tunnel + Portainer are almost always caused by `noTLSVerify` not being set, a wrong port, or Docker network isolation. Fix the service URL, add `noTLSVerify: true` for HTTPS targets, and restart cloudflared.
+502 errors with Cloudflare Tunnel + Portainer are almost always caused by TLS trust issues, a wrong port, or Docker network isolation. Fix the service URL, trust Portainer's certificate (or temporarily use `noTLSVerify: true` with the default self-signed cert), and restart cloudflared.
 
 ---
 
