@@ -21,24 +21,22 @@ Navigate to **Stacks** > **Add Stack**:
 ```yaml
 # docker-compose.yml - PocketBase
 
-version: "3.8"
-
 services:
   pocketbase:
-    image: ghcr.io/muchobien/pocketbase:0.22.14
+    image: ghcr.io/muchobien/pocketbase:0.37.4
     container_name: pocketbase
     restart: unless-stopped
     ports:
       - "8090:8090"
     volumes:
-      - pocketbase_data:/pb/pb_data
-      - pocketbase_public:/pb/pb_public
-      - pocketbase_migrations:/pb/pb_migrations
+      - pocketbase_data:/pb_data
+      - pocketbase_public:/pb_public
+      - pocketbase_migrations:/pb_migrations
     command:
       - --http=0.0.0.0:8090
-      - --dir=/pb/pb_data
+      - --dir=/pb_data
     healthcheck:
-      test: ["CMD", "wget", "--quiet", "--output-document=-", "http://localhost:8090/api/health"]
+      test: ["CMD", "wget", "--no-verbose", "--tries=1", "--spider", "http://localhost:8090/api/health"]
       interval: 30s
       timeout: 10s
       retries: 3
@@ -62,10 +60,10 @@ Open `http://<host>:8090/_/` to access the Admin UI. On first visit, create your
 ## Step 3: Create a Collection
 
 In the Admin UI:
-1. Click **New collection**
-2. Name it (e.g., `posts`)
-3. Add fields: `title` (text), `content` (editor), `published` (bool)
-4. Configure auth rules
+1. Click **New collection** and create a base collection named `posts`
+2. Add fields: `title` (text), `content` (editor), `published` (bool)
+3. If you want to use the auth examples below, create a second collection named `users` with type **Auth** and password authentication enabled
+4. Configure API rules
 
 ## Step 4: Use the REST API
 
@@ -80,7 +78,7 @@ curl -X POST http://localhost:8090/api/collections/posts/records \
   -H 'Content-Type: application/json' \
   -d '{"title": "Hello World", "content": "My first post", "published": true}'
 
-# Authenticate a user
+# Authenticate a user from the users auth collection
 curl -X POST http://localhost:8090/api/collections/users/auth-with-password \
   -H 'Content-Type: application/json' \
   -d '{"identity": "user@example.com", "password": "your-password"}'
@@ -114,15 +112,19 @@ pb.collection('posts').subscribe('*', (e) => {
 ## Step 6: Backup PocketBase Data
 
 ```bash
-# PocketBase has a built-in backup endpoint
+# PocketBase has a built-in backup endpoint. Use a superuser auth token.
 curl -X POST http://localhost:8090/api/backups \
-  -H 'Authorization: Admin <admin-token>'
+  -H 'Authorization: <superuser-auth-token>' \
+  -H 'Content-Type: application/json' \
+  -d '{"name": "pocketbase_backup.zip"}'
 
-# Or copy the SQLite database file directly
-docker exec pocketbase ls /pb/pb_data/
-docker cp pocketbase:/pb/pb_data/data.db ./pocketbase_backup.db
+# Or copy the entire app data directory directly
+# Stop the container first for transactional safety.
+docker stop pocketbase
+docker cp pocketbase:/pb_data ./pocketbase_pb_data_backup
+docker start pocketbase
 ```
 
 ## Conclusion
 
-PocketBase's SQLite-backed design means zero external database dependencies - the entire application state lives in a single directory. The `pb_data` volume contains `data.db` (the SQLite database) and uploaded files. For production, mount `pb_data` on fast storage (SSD) and back up the directory regularly. PocketBase also supports JS/Go hooks for custom server-side logic via the `pb_hooks` directory.
+PocketBase's SQLite-backed design means zero external database dependencies - the entire application state lives in a single directory. The `pb_data` volume contains the database files and uploaded files. For production, mount `pb_data` on fast storage (SSD) and back up the directory regularly. PocketBase also supports JS/Go hooks for custom server-side logic via the `pb_hooks` directory.
