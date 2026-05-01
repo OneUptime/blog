@@ -6,7 +6,7 @@ Tags: F5, BIG-IP, IPv6, Load Balancing, Enterprise, TMOS
 
 Description: A guide to configuring F5 BIG-IP for IPv6 load balancing including virtual servers, pools, SNAT, and dual-stack deployment.
 
-F5 BIG-IP has supported IPv6 since TMOS 9.x and provides enterprise-grade IPv6 load balancing with full iRules support, profiles, and monitoring. Configuration is done through the TMSH CLI or web interface.
+F5 BIG-IP supports IPv6 and provides enterprise-grade IPv6 load balancing with iRules, profiles, and monitoring. Configuration is done through the TMSH CLI or web interface.
 
 ## BIG-IP IPv6 Prerequisites
 
@@ -15,14 +15,12 @@ F5 BIG-IP has supported IPv6 since TMOS 9.x and provides enterprise-grade IPv6 l
 
 tmsh show sys version
 
-# Verify IPv6 is supported (should be on BIG-IP 9.x+)
-tmsh list sys db ipv6.state
+# Verify the LTM module is provisioned
+tmsh list sys provision
 
-# Enable IPv6 if disabled
-tmsh modify sys db ipv6.state value enable
-
-# Save configuration
-tmsh save sys config
+# Review existing self IPs and routes before adding IPv6 objects
+tmsh list net self
+tmsh list net route
 ```
 
 ## Configure Self IP Addresses (IPv6)
@@ -50,26 +48,26 @@ tmsh create net self ipv6-float \
 # Create a pool with IPv6 members
 tmsh create ltm pool ipv6-pool \
   members add {
-    2001:db8::server1:80 { address 2001:db8::server1 }
-    2001:db8::server2:80 { address 2001:db8::server2 }
+    v6-node-1:80 { address 2001:db8::10 }
+    v6-node-2:80 { address 2001:db8::11 }
   } \
   monitor http
 
-# Or with IPv4 members (dual-stack pool)
-tmsh create ltm pool dual-stack-pool \
+# Or a separate IPv4 pool for IPv4 services
+tmsh create ltm pool ipv4-pool \
   members add {
-    10.0.0.10:80 { address 10.0.0.10 }
-    10.0.0.11:80 { address 10.0.0.11 }
+    app-v4-1:80 { address 10.0.0.10 }
+    app-v4-2:80 { address 10.0.0.11 }
   }
 ```
 
-## Create IPv6 Virtual Server
+## Create Virtual Servers for IPv6 Load Balancing
 
 ```bash
-# IPv6 virtual server forwarding to IPv4 pool (translation)
-tmsh create ltm virtual ipv6-vs \
-  destination [2001:db8::vip]:80 \
-  pool dual-stack-pool \
+# IPv4 virtual server forwarding to an IPv6 pool
+tmsh create ltm virtual ipv4-to-ipv6-vs \
+  destination 203.0.113.20:80 \
+  pool ipv6-pool \
   ip-protocol tcp \
   profiles add {
     http { }
@@ -79,7 +77,7 @@ tmsh create ltm virtual ipv6-vs \
 
 # IPv6-to-IPv6 virtual server
 tmsh create ltm virtual ipv6-to-ipv6-vs \
-  destination [2001:db8::100]:80 \
+  destination 2001:db8::200.80 \
   pool ipv6-pool \
   ip-protocol tcp \
   profiles add { http tcp }
@@ -93,12 +91,12 @@ Source NAT allows backend servers to return traffic through BIG-IP:
 # Create SNAT pool with IPv6 addresses
 tmsh create ltm snatpool ipv6-snat-pool \
   members add {
-    2001:db8::snat-1
-    2001:db8::snat-2
+    2001:db8::201
+    2001:db8::202
   }
 
 # Assign SNAT pool to virtual server
-tmsh modify ltm virtual ipv6-vs \
+tmsh modify ltm virtual ipv6-to-ipv6-vs \
   source-address-translation {
     type snat
     pool ipv6-snat-pool
@@ -107,22 +105,22 @@ tmsh modify ltm virtual ipv6-vs \
 
 ## Dual-Stack Virtual Server
 
-Accept both IPv4 and IPv6 clients on the same service:
+Accept both IPv4 and IPv6 clients on the same application by creating one virtual server per address family:
 
 ```bash
 # IPv4 virtual server
-tmsh create ltm virtual ipv4-vs \
+tmsh create ltm virtual dualstack-ipv4-vs \
   destination 203.0.113.10:443 \
-  pool main-pool \
+  pool ipv4-pool \
   ip-protocol tcp
 
-# IPv6 virtual server (same pool)
-tmsh create ltm virtual ipv6-vs \
-  destination [2001:db8::vip]:443 \
-  pool main-pool \
+# IPv6 virtual server
+tmsh create ltm virtual dualstack-ipv6-vs \
+  destination 2001:db8::300.443 \
+  pool ipv6-pool \
   ip-protocol tcp
 
-# Both virtual servers share the same pool
+# Both virtual servers present the same service over IPv4 and IPv6
 ```
 
 ## IPv6 Monitoring
@@ -134,7 +132,7 @@ tmsh create ltm monitor http ipv6-http-monitor \
   destination *:80 \
   interval 5 \
   timeout 16 \
-  send "GET /health HTTP/1.1\r\nHost: [2001:db8::server]\r\nConnection: close\r\n\r\n" \
+  send "GET /health HTTP/1.0\r\nConnection: close\r\n\r\n" \
   recv "200 OK"
 
 # Apply monitor to pool
@@ -165,16 +163,16 @@ when HTTP_REQUEST {
 
 ```bash
 # Check virtual server status
-tmsh show ltm virtual ipv6-vs
+tmsh show ltm virtual ipv6-to-ipv6-vs
 
 # Check pool member status
 tmsh show ltm pool ipv6-pool members
 
 # Test IPv6 connectivity
-curl -6 http://[2001:db8::vip]/health
+curl -6 http://[2001:db8::200]/health
 
 # Check connection table for IPv6
-tmsh show sys connection cs-server-addr 2001:db8::vip
+tmsh show sys connection cs-server-addr 2001:db8::200
 ```
 
 F5 BIG-IP's comprehensive IPv6 support through TMSH and iRules makes it suitable for enterprise deployments that require sophisticated IPv6 load balancing policies alongside existing IPv4 infrastructure.
