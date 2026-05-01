@@ -4,17 +4,19 @@ Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
 Tags: Epinio, Custom Domain, Kubernetes, SSL, PaaS
 
-Description: Configure custom domains and SSL certificates for Epinio applications using ingress and cert-manager.
+Description: Configure custom domains and TLS certificates for Epinio applications by assigning routes and ensuring DNS and cert-manager are in place.
 
 ## Introduction
 
-How to Set Up a Custom Domain for Epinio Applications demonstrates how Epinio simplifies application deployment to Kubernetes. Epinio abstracts away Kubernetes complexity, letting developers focus on code while the platform handles containerization, deployment, and routing automatically.
+How to Set Up a Custom Domain for Epinio Applications demonstrates how Epinio simplifies application deployment to Kubernetes. Once Epinio, DNS, and cert-manager are in place, assigning a custom domain is as simple as pushing the app with a custom route. Epinio abstracts away Kubernetes complexity, letting developers focus on code while the platform handles containerization, deployment, and routing automatically.
 
 ## Prerequisites
 
 - Epinio installed and accessible
 - Epinio CLI installed and logged in
 - An Epinio namespace created (`epinio namespace create my-apps`)
+- A custom domain or subdomain pointing to the cluster ingress controller
+- cert-manager installed and configured for the cluster
 - Application source code ready
 
 ## Step 1: Prepare Your Application
@@ -34,20 +36,6 @@ For this example, we'll create a simple web application:
 
 ```bash
 # Create main application file
-cat > app.sh << 'EOF'
-#!/bin/bash
-# Simple HTTP server for demonstration
-while true; do
-  echo -e "HTTP/1.1 200 OK\r\nContent-Type: text/plain\r\n\r\nHello from How to Set Up a Custom Domain for Epinio Applications!" | nc -l -p ${PORT:-8080}
-done
-EOF
-chmod +x app.sh
-```
-
-For a language-specific example relevant to this guide:
-
-```bash
-# Node.js example
 cat > server.js << 'EOF'
 const http = require('http');
 const server = http.createServer((req, res) => {
@@ -78,13 +66,14 @@ epinio namespace show my-apps
 
 ```bash
 # Push the application (Epinio auto-detects the runtime)
-epinio push --name my-app
+epinio push --name my-app --path .
 
-# Or specify options explicitly
+# Or specify options explicitly, including a custom route
 epinio push \
   --name my-app \
+  --path . \
   --instances 2 \
-  --route my-app.epinio.example.com
+  --route my-app.example.com
 ```
 
 During push, Epinio will:
@@ -93,7 +82,7 @@ During push, Epinio will:
 3. Run the appropriate buildpack
 4. Build a container image
 5. Deploy to Kubernetes
-6. Configure routing and TLS
+6. Configure routing and, when cert-manager is available and the route resolves to the ingress controller, request TLS certificates for the route
 
 ## Step 5: Verify the Deployment
 
@@ -104,21 +93,20 @@ epinio app show my-app
 # List all applications in namespace
 epinio app list
 
-# View the application route
-epinio app show my-app | grep Routes
+# View the application route(s)
+epinio app show my-app | awk '/Routes:/{flag=1; next} flag && /^[[:space:]]*[0-9]+: / {print}'
 ```
 
 ## Step 6: Test the Application
 
 ```bash
 # Get the application URL
-APP_URL=$(epinio app show my-app | grep Routes | awk '{print $2}')
+APP_URL=$(epinio app show my-app | awk '/Routes:/{flag=1; next} flag && /^[[:space:]]*[0-9]+: https?:\\/\\// {print $2; exit}')
 
 # Test with curl
-curl ${APP_URL}
+curl "${APP_URL}"
 
-# Or open in browser
-open ${APP_URL}
+# Or open the URL in your browser
 ```
 
 ## Step 7: View Application Logs
@@ -128,7 +116,7 @@ open ${APP_URL}
 epinio app logs my-app
 
 # Follow live logs
-epinio app logs my-app --follow
+epinio app logs --follow my-app
 ```
 
 ## Step 8: Update the Application
@@ -136,9 +124,9 @@ epinio app logs my-app --follow
 ```bash
 # Make changes to your application code
 # Then re-push to update
-epinio push --name my-app
+epinio push --name my-app --path .
 
-# Epinio performs a rolling update
+# Epinio rebuilds and redeploys the application
 epinio app show my-app
 ```
 
@@ -172,4 +160,4 @@ epinio app delete my-app
 
 ## Conclusion
 
-How to Set Up a Custom Domain for Epinio Applications with Epinio demonstrates how the platform removes barriers between development and deployment. The simple push workflow means developers can deploy any application to Kubernetes without writing YAML or understanding container orchestration. Epinio's buildpack system automatically detects the runtime, installs dependencies, and creates an optimized container image.
+How to Set Up a Custom Domain for Epinio Applications with Epinio demonstrates how the platform removes barriers between development and deployment. The simple push workflow means developers can deploy applications to Kubernetes without writing YAML or understanding container orchestration, while custom routes let those applications answer on domains you control. When DNS and cert-manager are configured correctly, Epinio can also request certificates for those routes so the application is available over HTTPS.
