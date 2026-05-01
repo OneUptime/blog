@@ -40,7 +40,7 @@ resource "aws_instance" "web" {
   connection {
     type        = "ssh"
     user        = "ubuntu"
-    private_key = file("~/.ssh/deploy_key")
+    private_key = file(pathexpand("~/.ssh/deploy_key"))
     host        = self.public_ip
   }
 }
@@ -58,14 +58,14 @@ resource "aws_instance" "app" {
 
   # Copy entire directory
   provisioner "file" {
-    source      = "app-configs/"
-    destination = "/home/ubuntu/configs"
+    source      = "app-configs"
+    destination = "/home/ubuntu"
   }
 
   connection {
     type        = "ssh"
     user        = "ubuntu"
-    private_key = file("~/.ssh/deploy_key")
+    private_key = file(pathexpand("~/.ssh/deploy_key"))
     host        = self.public_ip
   }
 }
@@ -94,13 +94,13 @@ resource "aws_instance" "app" {
   # Upload rendered template
   provisioner "file" {
     content     = local.app_config
-    destination = "/etc/app/config.conf"
+    destination = "/tmp/app.conf"
   }
 
   connection {
     type        = "ssh"
     user        = "ubuntu"
-    private_key = file("~/.ssh/deploy_key")
+    private_key = file(pathexpand("~/.ssh/deploy_key"))
     host        = self.public_ip
   }
 }
@@ -121,7 +121,7 @@ resource "aws_instance" "server" {
   connection {
     type        = "ssh"
     user        = "ubuntu"
-    private_key = file("~/.ssh/deploy_key")
+    private_key = file(pathexpand("~/.ssh/deploy_key"))
     host        = self.public_ip
   }
 
@@ -147,12 +147,15 @@ resource "aws_instance" "server" {
 resource "aws_instance" "windows" {
   ami           = data.aws_ami.windows.id
   instance_type = "t3.medium"
+  key_name      = aws_key_pair.deploy.key_name
+  get_password_data = true
 
   connection {
     type     = "winrm"
     user     = "Administrator"
-    password = rsadecrypt(self.password_data, file("~/.ssh/deploy_key"))
+    password = rsadecrypt(self.password_data, file(pathexpand("~/.ssh/deploy_key")))
     host     = self.public_ip
+    port     = 5986
     https    = true
     insecure = true
     timeout  = "5m"
@@ -160,7 +163,7 @@ resource "aws_instance" "windows" {
 
   provisioner "file" {
     source      = "scripts/setup.ps1"
-    destination = "C:\\Temp\\setup.ps1"
+    destination = "C:/Temp/setup.ps1"
   }
 }
 ```
@@ -178,17 +181,17 @@ resource "aws_instance" "private_server" {
   connection {
     type        = "ssh"
     user        = "ubuntu"
-    private_key = file("~/.ssh/deploy_key")
+    private_key = file(pathexpand("~/.ssh/deploy_key"))
     host        = self.private_ip
 
     bastion_host        = aws_instance.bastion.public_ip
     bastion_user        = "ubuntu"
-    bastion_private_key = file("~/.ssh/bastion_key")
+    bastion_private_key = file(pathexpand("~/.ssh/bastion_key"))
   }
 
   provisioner "file" {
     source      = "configs/app.conf"
-    destination = "/etc/app/app.conf"
+    destination = "/tmp/app.conf"
   }
 }
 ```
