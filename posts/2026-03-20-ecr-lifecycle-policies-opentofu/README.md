@@ -88,10 +88,24 @@ resource "aws_ecr_lifecycle_policy" "old_images" {
       },
       {
         rulePriority = 2
-        description  = "Expire tagged images older than 90 days"
+        description  = "Expire dev images older than 90 days"
         selection = {
           tagStatus     = "tagged"
-          tagPrefixList = ["dev-", "pr-"]
+          tagPrefixList = ["dev-"]
+          countType     = "sinceImagePushed"
+          countUnit     = "days"
+          countNumber   = 90
+        }
+        action = {
+          type = "expire"
+        }
+      },
+      {
+        rulePriority = 3
+        description  = "Expire PR images older than 90 days"
+        selection = {
+          tagStatus     = "tagged"
+          tagPrefixList = ["pr-"]
           countType     = "sinceImagePushed"
           countUnit     = "days"
           countNumber   = 90
@@ -117,10 +131,10 @@ resource "aws_ecr_lifecycle_policy" "production" {
     rules = [
       {
         rulePriority = 1
-        description  = "Keep latest 5 release images"
+        description  = "Keep latest 5 version-tagged images"
         selection = {
           tagStatus     = "tagged"
-          tagPrefixList = ["v", "release-"]
+          tagPrefixList = ["v"]
           countType     = "imageCountMoreThan"
           countNumber   = 5
         }
@@ -130,11 +144,12 @@ resource "aws_ecr_lifecycle_policy" "production" {
       },
       {
         rulePriority = 2
-        description  = "Keep latest 20 images for any tag"
+        description  = "Keep latest 5 release images"
         selection = {
-          tagStatus   = "tagged"
-          countType   = "imageCountMoreThan"
-          countNumber = 20
+          tagStatus     = "tagged"
+          tagPrefixList = ["release-"]
+          countType     = "imageCountMoreThan"
+          countNumber   = 5
         }
         action = {
           type = "expire"
@@ -148,6 +163,18 @@ resource "aws_ecr_lifecycle_policy" "production" {
           countType   = "sinceImagePushed"
           countUnit   = "days"
           countNumber = 1
+        }
+        action = {
+          type = "expire"
+        }
+      },
+      {
+        rulePriority = 4
+        description  = "Keep latest 20 images for everything else"
+        selection = {
+          tagStatus   = "any"
+          countType   = "imageCountMoreThan"
+          countNumber = 20
         }
         action = {
           type = "expire"
@@ -246,6 +273,8 @@ tofu apply
 aws ecr get-lifecycle-policy --repository-name my-app | jq '.lifecyclePolicyText | fromjson'
 
 # Preview which images would be deleted
+aws ecr start-lifecycle-policy-preview --repository-name my-app
+aws ecr wait lifecycle-policy-preview-complete --repository-name my-app
 aws ecr get-lifecycle-policy-preview --repository-name my-app
 ```
 
