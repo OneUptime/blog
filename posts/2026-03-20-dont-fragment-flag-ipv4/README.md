@@ -22,7 +22,7 @@ In the raw header bytes, the Flags field occupies the top 3 bits of byte offset 
 
 ## Setting the DF Bit with Python (Scapy)
 
-The following script sends a packet with the DF flag set and a payload large enough to trigger an ICMP Fragmentation Needed response on many paths:
+Run the script with privileges that allow raw packet sending. The following script sends an ICMP Echo Request with the DF flag set; if the path MTU is smaller than the packet size, an ICMP Fragmentation Needed response may be returned:
 
 ```python
 from scapy.all import IP, ICMP, Raw, sr1
@@ -45,9 +45,9 @@ else:
 
 PMTUD relies on the DF flag to determine the smallest MTU along a network path:
 
-1. The sender sets DF=1 on all outgoing packets.
+1. The sender starts with a packet size based on the first-hop MTU and sets DF=1 on datagrams sent along that path.
 2. If a router cannot forward the packet without fragmentation, it drops it and returns ICMP type 3 code 4, including the next-hop MTU.
-3. The sender reduces its packet size and retries.
+3. The sender reduces its assumed PMTU and retries with smaller packets.
 4. This continues until packets traverse the path without triggering ICMP responses.
 
 ```mermaid
@@ -63,15 +63,15 @@ sequenceDiagram
 
 ## Checking DF on Linux
 
-You can observe PMTUD in action and view the path MTU cache:
+You can inspect the route lookup and test DF behavior:
 
 ```bash
-# View cached path MTU entries
+# Inspect the route lookup; if PMTU has been learned, the output may include an mtu field
 ip route get 8.8.8.8
 
 # Force PMTUD with ping (Linux)
 ping -M do -s 1400 8.8.8.8
-# -M do sets DF bit; if ICMP Fragmentation Needed is received,
+# -M do sets DF and subjects the probe to PMTU checks; if ICMP Fragmentation Needed is received,
 # ping reports "Frag needed and DF set"
 ```
 
@@ -80,10 +80,10 @@ ping -M do -s 1400 8.8.8.8
 - **ICMP blocking**: Firewalls that block ICMP break PMTUD, causing "black hole" connections where large packets silently disappear.
 - **VPN and tunnels**: Tunneling adds overhead (e.g., IPsec headers), reducing effective MTU. Always account for tunnel overhead when setting MSS clamp values.
 
-Fix ICMP black holes on Linux by clamping TCP MSS:
+Work around ICMP black holes for forwarded TCP traffic on Linux by clamping TCP MSS:
 
 ```bash
-# Clamp MSS to PMTU on the outgoing interface (replace eth0 with your interface)
+# Clamp MSS to PMTU for forwarded TCP SYN packets
 iptables -t mangle -A FORWARD -p tcp --tcp-flags SYN,RST SYN \
   -j TCPMSS --clamp-mss-to-pmtu
 ```
@@ -93,4 +93,4 @@ iptables -t mangle -A FORWARD -p tcp --tcp-flags SYN,RST SYN \
 - The DF flag prevents routers from fragmenting a packet.
 - It is the foundation of Path MTU Discovery.
 - Blocking ICMP Fragmentation Needed messages causes silent connectivity failures.
-- Always clamp TCP MSS on VPN gateways to avoid oversized packets.
+- Clamping TCP MSS can help on VPN gateways when PMTUD is unreliable.
