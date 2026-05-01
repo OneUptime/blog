@@ -4,11 +4,11 @@ Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
 Tags: OpenTofu, Terraform, EKS, Kubernetes, AWS, Module
 
-Description: Learn how to design a production-ready EKS Kubernetes cluster module for OpenTofu with managed node groups, IRSA support, and add-on management.
+Description: Learn how to design a production-ready EKS Kubernetes cluster module for OpenTofu with managed node groups and OIDC outputs for later IRSA setup.
 
 ## Introduction
 
-An EKS cluster module needs to handle the cluster itself, IAM roles for nodes and IRSA, managed node groups, and essential add-ons. A well-structured module makes it easy to deploy consistent Kubernetes clusters across environments.
+An EKS cluster module needs to handle the cluster itself, IAM roles for the control plane and nodes, managed node groups, and often OIDC outputs for later IRSA setup. A well-structured module makes it easy to deploy consistent Kubernetes clusters across environments.
 
 ## Module Structure
 
@@ -16,8 +16,6 @@ An EKS cluster module needs to handle the cluster itself, IAM roles for nodes an
 modules/eks-cluster/
 ├── main.tf
 ├── node-groups.tf
-├── iam.tf
-├── addons.tf
 ├── variables.tf
 └── outputs.tf
 ```
@@ -26,13 +24,22 @@ modules/eks-cluster/
 
 ```hcl
 variable "cluster_name"    { type = string }
-variable "cluster_version" { type = string; default = "1.29" }
+variable "cluster_version" {
+  type    = string
+  default = "1.35"
+}
 variable "environment"     { type = string }
 
 variable "vpc_id"           { type = string }
 variable "subnet_ids"       { type = list(string) }
-variable "cluster_endpoint_public_access"  { type = bool; default = true }
-variable "cluster_endpoint_private_access" { type = bool; default = true }
+variable "cluster_endpoint_public_access" {
+  type    = bool
+  default = true
+}
+variable "cluster_endpoint_private_access" {
+  type    = bool
+  default = true
+}
 variable "cluster_endpoint_public_access_cidrs" {
   type    = list(string)
   default = ["0.0.0.0/0"]
@@ -67,7 +74,10 @@ variable "node_groups" {
   }
 }
 
-variable "tags" { type = map(string); default = {} }
+variable "tags" {
+  type    = map(string)
+  default = {}
+}
 ```
 
 ## main.tf (IAM and Cluster)
@@ -128,7 +138,7 @@ resource "aws_iam_role" "node" {
 resource "aws_iam_role_policy_attachment" "node_policies" {
   for_each = toset([
     "arn:aws:iam::aws:policy/AmazonEKSWorkerNodePolicy",
-    "arn:aws:iam::aws:policy/AmazonEC2ContainerRegistryReadOnly",
+    "arn:aws:iam::aws:policy/AmazonEC2ContainerRegistryPullOnly",
     "arn:aws:iam::aws:policy/AmazonEKS_CNI_Policy",
   ])
   role       = aws_iam_role.node.name
@@ -178,4 +188,4 @@ output "node_role_arn"    { value = aws_iam_role.node.arn }
 
 ## Conclusion
 
-This EKS module handles IAM roles for both the control plane and worker nodes, supports multiple node groups with different configurations, and exports the OIDC issuer for IRSA setup. The node group `for_each` pattern makes it easy to have separate node groups for different workload types (general, GPU, spot).
+This EKS module handles IAM roles for both the control plane and worker nodes, supports multiple node groups with different configurations, and exports the OIDC issuer URL needed for later IRSA setup. The node group `for_each` pattern makes it easy to have separate node groups for different workload types (general, spot).
