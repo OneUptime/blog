@@ -8,7 +8,7 @@ Description: Learn how to create a virtual machine in Proxmox VE and deploy Port
 
 ---
 
-Running Portainer in a Proxmox VM provides full OS isolation and is simpler to configure than LXC for Docker. This guide uses Terraform/OpenTofu with the Proxmox provider or the Proxmox CLI to provision the VM.
+Running Portainer in a Proxmox VM provides full OS isolation and is simpler to configure than LXC for Docker. You can provision the VM with Terraform/OpenTofu or the Proxmox CLI; this guide shows the Proxmox CLI workflow.
 
 ---
 
@@ -39,19 +39,16 @@ qm start 200
 ## Install Docker and Portainer via SSH
 
 ```bash
-# Get the VM IP from Proxmox
-qm agent 200 network-get-interfaces
-
-# SSH into the VM
+# SSH into the VM using the IP assigned by DHCP
 ssh ubuntu@<vm-ip>
 
 # Install Docker
-curl -fsSL https://get.docker.com | sh
+curl -fsSL https://get.docker.com | sudo sh
 sudo usermod -aG docker ubuntu
 
 # Deploy Portainer
-docker volume create portainer_data
-docker run -d   --name portainer   --restart=always   -p 9000:9000   -p 9443:9443   -v /var/run/docker.sock:/var/run/docker.sock   -v portainer_data:/data   portainer/portainer-ce:latest
+sudo docker volume create portainer_data
+sudo docker run -d   --name portainer   --restart=always   -p 9443:9443   -v /var/run/docker.sock:/var/run/docker.sock   -v portainer_data:/data   portainer/portainer-ce:lts
 ```
 
 ---
@@ -59,7 +56,11 @@ docker run -d   --name portainer   --restart=always   -p 9000:9000   -p 9443:944
 ## Create a VM Template for Reuse
 
 ```bash
-# After installing Docker and Portainer:
+# After installing Docker and Portainer, prepare the VM for cloning
+sudo cloud-init clean --machine-id
+sudo poweroff
+
+# After the VM shuts down, convert it to a template
 qm template 200
 
 # Clone from template
@@ -72,11 +73,11 @@ qm start 201
 ## Autostart on Proxmox Boot
 
 ```bash
-qm set 200 --onboot 1
+qm set 201 --onboot 1
 ```
 
 ---
 
 ## Summary
 
-Create a Proxmox VM from a cloud image using `qm create` with cloud-init for SSH key injection. Resize the disk, configure networking, and start the VM. SSH in to install Docker and deploy Portainer. Enable `--onboot 1` for automatic startup. Convert the configured VM to a template for quick provisioning of additional Docker hosts.
+Create a Proxmox VM from a cloud image using `qm create` with cloud-init for SSH key injection. Resize the disk, configure networking, and start the VM. SSH in to install Docker and deploy Portainer over HTTPS on port `9443`. Enable `--onboot 1` for automatic startup on the running VM. If you want to reuse the build, clean cloud-init state, power off the VM, and convert it to a template for quick provisioning of additional Portainer VMs.
