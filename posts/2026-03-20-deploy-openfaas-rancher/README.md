@@ -36,7 +36,6 @@ helm install openfaas openfaas/openfaas \
   --set generateBasicAuth=false \
   --set basic_auth=true \
   --set operator.create=true \
-  --set autoscaler.enabled=true \
   --set clusterRole=true \
   --set gateway.replicas=2
 ```
@@ -58,9 +57,9 @@ kubectl port-forward svc/gateway -n openfaas 8080:8080 &
 curl -sSL https://cli.openfaas.com | sudo sh
 
 # Login to OpenFaaS
-faas-cli login \
+echo -n "$PASSWORD" | faas-cli login \
   --username admin \
-  --password "$PASSWORD" \
+  --password-stdin \
   --gateway http://127.0.0.1:8080
 ```
 
@@ -68,29 +67,32 @@ faas-cli login \
 
 ```bash
 # Create a new function
+export OPENFAAS_PREFIX=registry.example.com/functions
 faas-cli new hello-python \
-  --lang python3 \
+  --lang python3-http \
   --gateway http://127.0.0.1:8080
 ```
 
 ```python
 # hello-python/handler.py
-def handle(req):
-    return "Hello from Rancher OpenFaaS! Input: " + req
+def handle(event, context):
+    return {
+        "statusCode": 200,
+        "body": "Hello from Rancher OpenFaaS! Input: " + str(event.body)
+    }
 ```
 
 ```bash
 # Build and deploy
-export OPENFAAS_PREFIX=registry.example.com/functions
-faas-cli build -f hello-python.yml
-faas-cli push -f hello-python.yml
-faas-cli deploy -f hello-python.yml
+faas-cli build -f stack.yaml
+faas-cli push -f stack.yaml
+faas-cli deploy -f stack.yaml
 ```
 
 ## Step 5: Function YAML Configuration
 
 ```yaml
-# stack.yml
+# stack.yaml
 version: 1.0
 provider:
   name: openfaas
@@ -98,19 +100,18 @@ provider:
 
 functions:
   hello-python:
-    lang: python3
+    lang: python3-http
     handler: ./hello-python
     image: registry.example.com/functions/hello-python:latest
     limits:
-      memory: 128m
+      memory: 128Mi
       cpu: 100m
     requests:
-      memory: 64m
+      memory: 64Mi
       cpu: 50m
     labels:
       com.openfaas.scale.min: "1"
       com.openfaas.scale.max: "10"
-      com.openfaas.scale.zero: "true"
     environment:
       LOG_LEVEL: info
 ```
@@ -127,6 +128,7 @@ metadata:
   annotations:
     nginx.ingress.kubernetes.io/proxy-body-size: "8m"
 spec:
+  ingressClassName: nginx
   rules:
   - host: functions.example.com
     http:
@@ -151,7 +153,7 @@ spec:
 faas-cli list
 
 # View function logs
-faas-cli logs hello-python --follow
+faas-cli logs hello-python
 
 # Invoke function
 echo "test input" | faas-cli invoke hello-python
@@ -159,4 +161,4 @@ echo "test input" | faas-cli invoke hello-python
 
 ## Conclusion
 
-OpenFaaS provides a simple, developer-friendly serverless platform on Rancher. With its CLI, UI, and broad language support, it allows teams to deploy functions quickly without deep Kubernetes expertise. Scale-to-zero reduces costs, and Prometheus metrics integration provides observability out of the box.
+OpenFaaS provides a simple, developer-friendly serverless platform on Rancher. With its CLI, UI, and broad language support, it allows teams to deploy functions quickly without deep Kubernetes expertise. Autoscaling can help handle variable workloads, and Prometheus metrics integration provides observability out of the box.
