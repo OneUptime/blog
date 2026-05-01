@@ -4,11 +4,11 @@ Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
 Tags: OpenTofu, DNS, Terraform, Infrastructure as Code, Route53, Cloudflare, AWS
 
-Description: Learn how to create and manage DNS zones and records on AWS Route53 and Cloudflare using OpenTofu, including A, AAAA, CNAME, MX, and TXT records.
+Description: Learn how to create Route53 hosted zones and manage DNS records on AWS Route53 and Cloudflare using OpenTofu, including A, AAAA, CNAME, MX, and TXT records.
 
 ---
 
-Managing DNS with OpenTofu (the open-source Terraform fork) enables reproducible, version-controlled DNS configurations. This guide covers creating hosted zones and records on AWS Route53 and Cloudflare using OpenTofu providers.
+Managing DNS with OpenTofu (the open-source Terraform fork) enables reproducible, version-controlled DNS configurations. This guide covers creating Route53 hosted zones and records, plus managing records in an existing Cloudflare zone, using OpenTofu providers.
 
 ---
 
@@ -19,9 +19,8 @@ Managing DNS with OpenTofu (the open-source Terraform fork) enables reproducible
 
 brew install opentofu
 
-# Initialize project
+# Create project directory
 mkdir dns-management && cd dns-management
-tofu init
 ```
 
 ---
@@ -36,7 +35,7 @@ terraform {
   required_providers {
     aws = {
       source  = "hashicorp/aws"
-      version = "~> 5.0"
+      version = "~> 6.0"
     }
   }
 }
@@ -150,7 +149,7 @@ terraform {
   required_providers {
     cloudflare = {
       source  = "cloudflare/cloudflare"
-      version = "~> 4.0"
+      version = "~> 5.0"
     }
   }
 }
@@ -164,40 +163,43 @@ variable "cloudflare_api_token" {
 }
 ```
 
-### Cloudflare Zone and Records
+### Cloudflare Records in an Existing Zone
 
 ```hcl
 # Get existing zone
 data "cloudflare_zone" "main" {
-  name = "example.com"
+  filter = {
+    name = "example.com"
+  }
 }
 
 # A Record
-resource "cloudflare_record" "apex" {
+resource "cloudflare_dns_record" "apex" {
   zone_id = data.cloudflare_zone.main.id
-  name    = "@"
+  name    = "example.com"
   type    = "A"
-  value   = "203.0.113.10"
-  ttl     = 300
+  content = "203.0.113.10"
+  ttl     = 1  # Auto TTL when proxied
   proxied = true  # Cloudflare proxy (orange cloud)
 }
 
 # AAAA Record
-resource "cloudflare_record" "apex_ipv6" {
+resource "cloudflare_dns_record" "apex_ipv6" {
   zone_id = data.cloudflare_zone.main.id
-  name    = "@"
+  name    = "example.com"
   type    = "AAAA"
-  value   = "2001:db8::10"
+  content = "2001:db8::10"
   ttl     = 1  # Auto TTL when proxied
   proxied = true
 }
 
 # CNAME
-resource "cloudflare_record" "www" {
+resource "cloudflare_dns_record" "www" {
   zone_id = data.cloudflare_zone.main.id
-  name    = "www"
+  name    = "www.example.com"
   type    = "CNAME"
-  value   = "example.com"
+  content = "example.com"
+  ttl     = 1  # Auto TTL when proxied
   proxied = true
 }
 ```
@@ -252,10 +254,10 @@ dig www.example.com CNAME
 
 ## Best Practices
 
-1. **Use data sources** to reference existing zones rather than managing them in Tofu
+1. **Use data sources** to reference existing zones you do not want OpenTofu to create or manage
 2. **Set appropriate TTLs** - lower for frequently changing records, higher for stable ones
 3. **Use variables** for IP addresses to make the config reusable across environments
-4. **Store state remotely** in S3 or Terraform Cloud for team collaboration
+4. **Store state remotely** in S3 or another supported remote backend for team collaboration
 5. **Tag all resources** for cost allocation and management
 
 ---
