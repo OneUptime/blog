@@ -13,11 +13,11 @@ The Edge Administrator role in Portainer BE allows designated users to manage ed
 ## Edge Administrator Capabilities
 
 Edge Administrators can:
-- View and manage edge environments they're assigned to
+- View and manage all edge environments
 - Generate edge agent deployment scripts
-- Configure edge agent settings
+- Create and manage edge groups
 - View edge environment status and health
-- Manage the Edge waiting room
+- Associate pending devices in the Edge waiting room
 
 Edge Administrators cannot:
 - Manage non-edge environments
@@ -26,42 +26,27 @@ Edge Administrators cannot:
 
 ## Assign Edge Administrator Role
 
-```bash
-TOKEN=$(curl -s -X POST \
-  https://localhost:9443/api/auth \
-  -H "Content-Type: application/json" \
-  -d '{"username":"admin","password":"yourpassword"}' \
-  --insecure | python3 -c "import sys,json; print(json.load(sys.stdin)['jwt'])")
+1. Navigate to **Settings > Edge Compute**
+2. Under **Edge Compute access**, select the user from **Select user(s)**
+3. Click **Create access**
+4. The user is now an Edge Administrator across all Edge environments
 
-# Promote user to Edge Administrator
+## Use Edge Groups with Edge Administrator
 
-# Role 3 is typically the Edge Admin role in Portainer
-curl -X PUT \
-  https://localhost:9443/api/users/8 \
-  -H "Authorization: Bearer $TOKEN" \
-  -H "Content-Type: application/json" \
-  -d '{"Role": 3}' \
-  --insecure
+Edge Groups organize Edge environments, but they do not restrict the Edge Administrator role to specific groups:
 
-echo "User promoted to Edge Administrator"
-```
-
-## Assign Edge Administrator to Edge Groups
-
-Restrict Edge Admins to specific edge groups:
-
-1. Navigate to **Edge > Edge Groups**
+1. Select **Edge Groups**
 2. Create or select an edge group (e.g., "Site-London")
-3. Under **Access**, assign the edge admin user or their team
-4. They can now manage only the environments in this group
+3. Use the group to organize the Edge environments you want to manage together
+4. Edge Administrators still have control across all Edge environments
 
 ## Create Edge Groups via API
 
 ```bash
-# Create an edge group
+# Create a static edge group
 curl -X POST \
   https://localhost:9443/api/edge_groups \
-  -H "Authorization: Bearer $TOKEN" \
+  -H "X-API-Key: your_api_key_here" \
   -H "Content-Type: application/json" \
   -d '{
     "Name": "site-london",
@@ -70,12 +55,10 @@ curl -X POST \
   }' \
   --insecure
 
-# Assign edge admin user (ID 8) as administrator on this group
-curl -X PUT \
-  https://localhost:9443/api/edge_groups/1/access \
-  -H "Authorization: Bearer $TOKEN" \
-  -H "Content-Type: application/json" \
-  -d '{"8": {"RoleID": 1}}' \
+# Inspect the edge group
+curl -X GET \
+  https://localhost:9443/api/edge_groups/1 \
+  -H "X-API-Key: your_api_key_here" \
   --insecure
 ```
 
