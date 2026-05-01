@@ -14,32 +14,32 @@ Distributed tracing helps you understand request flows across microservices. Jae
 
 ```mermaid
 graph LR
-    App[Application] -->|OTLP/Jaeger| Collector[OTel Collector]
-    Collector -->|Jaeger gRPC| Jaeger[Jaeger Backend]
+    App[Application] -->|OTLP| Jaeger[Jaeger all-in-one]
     Jaeger --> UI[Jaeger UI :16686]
 ```
 
 ## Prerequisites
 
 - Portainer with a connected Docker environment
-- Applications instrumented with OpenTelemetry or Jaeger client libraries
+- Applications instrumented with OpenTelemetry and configured to export OTLP traces
 
 ## Step 1: Deploy Jaeger via Portainer Stack
 
 Navigate to **Stacks > Add Stack** in Portainer. Use the following Compose definition for a development/staging setup using Jaeger all-in-one:
 
 ```yaml
-# Jaeger all-in-one stack - suitable for dev and small production setups
+# Jaeger all-in-one stack - suitable for dev, staging, and small single-node evaluations
 
-# For large-scale production, use separate collector/query/ingester components
+# For production, use persistent storage and, at larger scale, separate collector/query/ingester components
 version: "3.8"
 
 services:
   jaeger:
     image: jaegertracing/all-in-one:1.55
     environment:
-      # Use memory storage for dev; switch to Cassandra/Elasticsearch for production
+      # Use memory storage for dev/staging; switch to persistent storage for production
       - COLLECTOR_OTLP_ENABLED=true
+      - COLLECTOR_ZIPKIN_HOST_PORT=:9411
       - SPAN_STORAGE_TYPE=memory
     ports:
       - "6831:6831/udp"   # Jaeger compact thrift (UDP)
@@ -50,6 +50,7 @@ services:
       - "4318:4318"        # OTLP HTTP
       - "14250:14250"      # gRPC for collector
       - "14268:14268"      # HTTP for collector
+      - "14269:14269"      # Admin port: health and metrics
       - "9411:9411"        # Zipkin-compatible endpoint
     restart: unless-stopped
     networks:
@@ -62,7 +63,7 @@ networks:
 
 ## Step 2: Configure Your Application
 
-Set the following environment variables in your application containers (add them via Portainer's environment variable editor):
+Set the following environment variables in your application containers (add them via Portainer's environment variable editor), and make sure those containers are attached to the same Docker network as the `jaeger` service:
 
 ```bash
 # OTLP HTTP exporter - simplest option for most languages
@@ -100,7 +101,7 @@ Open `http://<your-host>:16686` in your browser. You will see:
 
 ## Step 4: Production Storage Backend
 
-For production, replace in-memory storage with Elasticsearch:
+For production, replace in-memory storage with persistent storage such as Elasticsearch:
 
 ```yaml
 # Production Jaeger with Elasticsearch backend
@@ -108,13 +109,33 @@ services:
   jaeger-collector:
     image: jaegertracing/jaeger-collector:1.55
     environment:
+      - COLLECTOR_OTLP_ENABLED=true
+      - COLLECTOR_ZIPKIN_HOST_PORT=:9411
       - SPAN_STORAGE_TYPE=elasticsearch
       - ES_SERVER_URLS=http://elasticsearch:9200
+    ports:
+      - "4317:4317"
+      - "4318:4318"
+      - "14250:14250"
+      - "14268:14268"
+      - "14269:14269"
+      - "9411:9411"
+    depends_on:
+      - elasticsearch
+
+  jaeger-query:
+    image: jaegertracing/jaeger-query:1.55
+    environment:
+      - SPAN_STORAGE_TYPE=elasticsearch
+      - ES_SERVER_URLS=http://elasticsearch:9200
+    ports:
+      - "16686:16686"
+      - "16687:16687"
     depends_on:
       - elasticsearch
 
   elasticsearch:
-    image: elasticsearch:8.12.0
+    image: docker.elastic.co/elasticsearch/elasticsearch:8.12.0
     environment:
       - discovery.type=single-node
       - xpack.security.enabled=false
@@ -127,7 +148,7 @@ volumes:
 
 ## Monitoring Jaeger Health
 
-Jaeger exposes health and metrics endpoints. Monitor them from Portainer or add them to your existing Prometheus scrape config:
+Jaeger all-in-one exposes health and metrics endpoints on its admin port. Monitor them from Portainer or add them to your existing Prometheus scrape config:
 
 ```text
 GET http://jaeger:14269/metrics   # Prometheus metrics
