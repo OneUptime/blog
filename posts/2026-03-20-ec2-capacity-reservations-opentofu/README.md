@@ -8,7 +8,7 @@ Description: Learn how to create EC2 Capacity Reservations using OpenTofu to gua
 
 ## Introduction
 
-EC2 Capacity Reservations reserve EC2 capacity in a specific AZ without long-term commitment. Unlike Reserved Instances, Capacity Reservations ensure you can launch instances when needed-critical for disaster recovery, planned events, or workloads with strict SLAs.
+EC2 Capacity Reservations reserve EC2 capacity in a specific AZ without long-term commitment. Unlike Regional Reserved Instances, Capacity Reservations ensure you can launch instances when needed-critical for disaster recovery, planned events, or workloads with strict SLAs.
 
 ## Prerequisites
 
@@ -34,7 +34,7 @@ resource "aws_ec2_capacity_reservation" "web_tier" {
   # "limited" sets an end time for temporary capacity needs
   end_date_type = "unlimited"
 
-  # Capacity stays available even when no instances are running
+  # Reserve capacity for EBS-optimized instances
   ebs_optimized = true
 
   tags = {
@@ -57,14 +57,15 @@ resource "aws_ec2_capacity_reservation" "event" {
 
   end_date_type = "limited"
   # Reserve capacity only through the event period
-  end_date = "2026-04-01T00:00:00Z"
+  end_date = "2030-04-01T00:00:00Z"
 
   instance_match_criteria = "targeted"  # Instances must opt-in
 
   tags = {
-    Name    = "event-capacity-reservation"
-    Event   = "product-launch"
-    EndDate = "2026-04-01"
+    Name        = "event-capacity-reservation"
+    Event       = "product-launch"
+    EndDate     = "2030-04-01"
+    Environment = var.environment
   }
 }
 ```
@@ -72,7 +73,7 @@ resource "aws_ec2_capacity_reservation" "event" {
 ## Step 3: Launch Instances Using the Reservation
 
 ```hcl
-# Instance that targets a specific capacity reservation
+# Instance that can use a matching open Capacity Reservation
 resource "aws_instance" "reserved" {
   ami           = data.aws_ami.amazon_linux.id
   instance_type = "t3.large"
@@ -80,7 +81,7 @@ resource "aws_instance" "reserved" {
 
   capacity_reservation_specification {
     capacity_reservation_preference = "open"
-    # For targeted reservations, use:
+    # For targeted reservations, replace capacity_reservation_preference with:
     # capacity_reservation_target {
     #   capacity_reservation_id = aws_ec2_capacity_reservation.event.id
     # }
@@ -93,12 +94,27 @@ resource "aws_instance" "reserved" {
 ## Step 4: Create a Capacity Reservation Group
 
 ```hcl
-# Resource group to manage multiple capacity reservations together
+# Capacity Reservation group that can be targeted for instance launches
 resource "aws_resourcegroups_group" "capacity" {
   name        = "capacity-reservation-group"
   description = "Group for production capacity reservations"
 
+  configuration {
+    type = "AWS::EC2::CapacityReservationPool"
+  }
+
+  configuration {
+    type = "AWS::ResourceGroups::Generic"
+
+    parameters {
+      name   = "allowed-resource-types"
+      values = ["AWS::EC2::CapacityReservation"]
+    }
+  }
+
   resource_query {
+    type = "TAG_FILTERS_1_0"
+
     query = jsonencode({
       ResourceTypeFilters = ["AWS::EC2::CapacityReservation"]
       TagFilters = [{
@@ -132,4 +148,4 @@ tofu apply
 
 ## Conclusion
 
-EC2 Capacity Reservations ensure instance availability without requiring long-term financial commitments. Use `open` matching for immediate capacity guarantees and `targeted` when you want precise control over which instances consume the reservation. Combine with Savings Plans or Reserved Instances for cost optimization while maintaining capacity assurance.
+EC2 Capacity Reservations ensure instance availability without requiring long-term financial commitments. Use `open` matching for immediate capacity guarantees and `targeted` when you want precise control over which instances consume the reservation. Combine with Savings Plans or Regional Reserved Instances for cost optimization while maintaining capacity assurance.
