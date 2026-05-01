@@ -4,11 +4,11 @@ Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
 Tags: ARP Spoofing, Security, Scapy, Packet Capture, IPv4, Network Security, Python
 
-Description: Detect ARP spoofing (ARP poisoning) attacks on your IPv4 network by monitoring ARP traffic with Scapy and identifying conflicting MAC-to-IP mappings.
+Description: Detect ARP spoofing (ARP poisoning) attacks on your IPv4 network by monitoring ARP traffic with Scapy and identifying conflicting IP-to-MAC mappings.
 
 ## Introduction
 
-ARP spoofing (also called ARP poisoning) is a man-in-the-middle attack where an attacker sends fake ARP replies to associate their MAC address with a legitimate IP address. This redirects traffic through the attacker's machine. Detecting it requires monitoring the network for conflicting IP-to-MAC mappings.
+ARP spoofing (also called ARP poisoning) is a man-in-the-middle attack where an attacker sends fake ARP packets to associate their MAC address with a legitimate IP address. This redirects traffic through the attacker's machine. Detecting it requires monitoring the network for conflicting IP-to-MAC mappings.
 
 ## How ARP Spoofing Works
 
@@ -51,7 +51,9 @@ class ARPSpoofDetector:
         
         arp = pkt[ARP]
         
-        # Only analyze ARP replies (op=2) and gratuitous ARPs
+        # Monitor ARP requests and replies. ARP requests also assert
+        # sender IP-to-MAC mappings, and gratuitous ARP announcements
+        # are commonly sent as requests.
         # op=1 = request, op=2 = reply
         if arp.op not in (1, 2):
             return
@@ -145,14 +147,15 @@ When spoofing is detected, you can automatically:
 
 ```python
 def respond_to_spoof(self, legitimate_ip, legitimate_mac):
-    """Send ARP replies to correct poisoned caches on the network."""
+    """Broadcast an ARP announcement with the correct mapping."""
     from scapy.all import sendp, ARP, Ether
     
-    # Broadcast the correct mapping to fix poisoned hosts
+    # Broadcast the correct mapping so peers on the local link can
+    # refresh their ARP caches.
     correction = Ether(dst="ff:ff:ff:ff:ff:ff") / ARP(
-        op=2,
-        pdst="255.255.255.255",
-        hwdst="ff:ff:ff:ff:ff:ff",
+        op=1,
+        pdst=legitimate_ip,
+        hwdst="00:00:00:00:00:00",
         psrc=legitimate_ip,
         hwsrc=legitimate_mac
     )
@@ -164,4 +167,4 @@ def respond_to_spoof(self, legitimate_ip, legitimate_mac):
 
 ## Conclusion
 
-ARP spoofing detection by monitoring for IP-MAC conflicts is effective but requires knowing the legitimate MAC for each IP. For production environments, combine this script with Dynamic ARP Inspection (DAI) on managed switches, which validates ARP packets against DHCP snooping bindings at the hardware level.
+ARP spoofing detection by monitoring for IP-MAC conflicts is effective for spotting suspicious changes, but deciding which mapping is legitimate is more reliable when you maintain trusted MACs for critical IPs. For production environments, combine this script with Dynamic ARP Inspection (DAI) on managed switches, which validates ARP packets against DHCP snooping bindings at the switch.
