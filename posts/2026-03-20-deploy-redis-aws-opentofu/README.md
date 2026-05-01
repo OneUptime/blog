@@ -55,11 +55,6 @@ resource "aws_elasticache_parameter_group" "redis7" {
   }
 
   parameter {
-    name  = "activerehashing"
-    value = "yes"
-  }
-
-  parameter {
     name  = "lazyfree-lazy-eviction"
     value = "yes"
   }
@@ -100,7 +95,7 @@ resource "aws_elasticache_replication_group" "redis" {
   # Backups
   snapshot_retention_limit = var.environment == "prod" ? 7 : 0
   snapshot_window          = "03:00-04:00"
-  maintenance_window       = "Mon:04:00-Mon:05:00"
+  maintenance_window       = "mon:04:00-mon:05:00"
 
   # Logging
   log_delivery_configuration {
@@ -142,10 +137,11 @@ resource "aws_elasticache_replication_group" "redis_cluster" {
   security_group_ids = [aws_security_group.redis.id]
 
   engine_version       = "7.1"
-  parameter_group_name = aws_elasticache_parameter_group.redis7.name
+  parameter_group_name = "default.redis7.cluster.on"
 
   at_rest_encryption_enabled = true
   transit_encryption_enabled = true
+  auth_token                 = var.redis_auth_token
 
   tags = { Name = "${var.environment}-redis-cluster" }
 }
@@ -161,7 +157,7 @@ output "redis_primary_endpoint" {
 
 output "redis_reader_endpoint" {
   value       = aws_elasticache_replication_group.redis.reader_endpoint_address
-  description = "Reader endpoint for reads (load balanced)"
+  description = "Reader endpoint for reads (DNS round robin across replicas)"
 }
 
 output "redis_port" {
