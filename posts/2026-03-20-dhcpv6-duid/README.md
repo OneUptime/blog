@@ -8,7 +8,7 @@ Description: Learn what a DHCPv6 DUID is, the different DUID types (DUID-LLT, DU
 
 ---
 
-A DUID (DHCP Unique Identifier) is the DHCPv6 equivalent of a MAC address for DHCP purposes. It uniquely identifies a DHCPv6 client or server and is used by the server to track leases and enforce host-specific configuration. Unlike MAC addresses in DHCPv4, DUIDs persist across interface changes and reboots.
+A DUID (DHCP Unique Identifier) is the identifier DHCPv6 uses for client and server identity. It is used by the server to track leases and enforce host-specific configuration. Unlike identifying a host only by an interface MAC address, a DUID is intended to be stable and reused across restarts.
 
 ---
 
@@ -18,7 +18,7 @@ DHCPv6 defines four DUID types, each with a different format:
 
 ### DUID-LLT (Type 1) - Link-Layer Address Plus Time
 
-The most common type. Generated from a hardware address and the time the DUID was first created.
+A common type. Generated from a hardware address and the time the DUID was first created.
 
 ```text
 Format: 2-byte type | 2-byte hardware type | 4-byte timestamp | N-byte link-layer address
@@ -36,7 +36,7 @@ Example: 00:02:00:00:09:bf:...
 
 ### DUID-LL (Type 3) - Link-Layer Address Only
 
-Similar to DUID-LLT but without the timestamp. Used when stable time is unavailable.
+Similar to DUID-LLT but without the timestamp. Used when the device has a permanently attached link-layer address and wants a DUID without a time field.
 
 ```text
 Format: 2-byte type | 2-byte hardware type | N-byte link-layer address
@@ -45,7 +45,7 @@ Example: 00:03:00:01:00:11:22:33:44:55
 
 ### DUID-UUID (Type 4) - UUID-Based
 
-Based on the system's UUID (RFC 6355). Common on UEFI systems.
+Based on the system's UUID (RFC 6355). Useful when the platform exposes a stable UUID.
 
 ```text
 Format: 2-byte type | 16-byte UUID
@@ -57,21 +57,21 @@ Example: 00:04:00:01:02:03:04:05:06:07:08:09:0a:0b:0c:0d:0e:0f
 ## Viewing Your DUID on Linux
 
 ```bash
-# dhclient stores DUID in lease file
+# wide-dhcpv6 DUID file
 
 cat /var/lib/dhcpv6/dhcp6c_duid
 
-# Or in the dhclient lease file
-cat /var/lib/dhcp/dhclient6.leases | grep duid
+# dhclient stores the DUID in the lease file
+grep -i default-duid /var/lib/dhcp/dhclient6.leases 2>/dev/null
 
-# systemd-networkd DUID
-cat /var/lib/systemd/network/lldp/*.duid 2>/dev/null
+# systemd-networkd
+networkctl status eth0
 
-# wide-dhcpv6 DUID file
+# Hex dump the wide-dhcpv6 DUID file
 xxd /var/lib/dhcpv6/dhcp6c_duid
 ```
 
-### Using ip Command to Find MAC (basis for DUID-LL)
+### Using ip Command to Find MAC (basis for DUID-LL / DUID-LLT)
 
 ```bash
 ip link show eth0 | grep "link/ether"
@@ -83,22 +83,15 @@ ip link show eth0 | grep "link/ether"
 ## Viewing Your DUID on Windows
 
 ```powershell
-# Show DUID used by Windows DHCP client
-ipconfig /all | Select-String "DHCP"
-
-# More detailed DUID info via registry
-Get-ItemProperty "HKLM:\SYSTEM\CurrentControlSet\services\TCPIP6\Parameters" | Select-Object Dhcpv6DUID
-
-# PowerShell - decode DUID bytes
-$duid = (Get-ItemProperty "HKLM:\SYSTEM\CurrentControlSet\services\TCPIP6\Parameters").Dhcpv6DUID
-[System.BitConverter]::ToString($duid)
+# Show the DHCPv6 Client DUID and IAID
+ipconfig /all | Select-String "DUID|IAID"
 ```
 
 ---
 
 ## Configuring Static DUID on Linux (systemd-networkd)
 
-You can pin a DUID in `systemd-networkd` to ensure consistent lease assignment:
+You can choose the DUID type, and if needed pin an exact value, in `systemd-networkd` to ensure consistent lease assignment:
 
 ```ini
 # /etc/systemd/network/10-eth0.network
@@ -109,19 +102,22 @@ Name=eth0
 DHCP=ipv6
 
 [DHCPv6]
-DUID=link-layer-time
-# Or: DUID=link-layer
-# Or: DUID=uuid
-# Or: DUID=vendor
+DUIDType=link-layer-time
+# Or: DUIDType=link-layer
+# Or: DUIDType=uuid
+# Or: DUIDType=vendor
+# To pin the example DUID shown earlier, also set:
+# DUIDRawData=00:01:28:4f:a1:b2:00:11:22:33:44:55
 ```
 
-### Custom DUID via dhclient
+### Choosing DUID Type with dhclient
 
-```text
-# /etc/dhcp/dhclient6.conf
-interface "eth0" {
-    send dhcp6.client-id 00:01:00:01:28:4f:a1:b2:00:11:22:33:44:55;
-}
+```bash
+# Stateful DHCPv6 defaults to DUID-LLT; stateless (-S) defaults to DUID-LL.
+# Override the DUID type explicitly if needed:
+dhclient -6 -D LL eth0
+# Or:
+dhclient -6 -D LLT eth0
 ```
 
 ---
@@ -143,11 +139,17 @@ host webserver01 {
 ```json
 {
   "Dhcp6": {
-    "reservations": [
+    "subnet6": [
       {
-        "duid": "00:01:00:01:28:4f:a1:b2:00:11:22:33:44:55",
-        "ip-addresses": ["2001:db8::10"],
-        "hostname": "webserver01.corp.example.com"
+        "subnet": "2001:db8::/64",
+        "id": 1,
+        "reservations": [
+          {
+            "duid": "00:01:00:01:28:4f:a1:b2:00:11:22:33:44:55",
+            "ip-addresses": ["2001:db8::10"],
+            "hostname": "webserver01.corp.example.com"
+          }
+        ]
       }
     ]
   }
@@ -161,19 +163,19 @@ host webserver01 {
 | Concept | Purpose | Scope | Stability |
 |---------|---------|-------|-----------|
 | DUID | Identifies the DHCPv6 client/server | Device-wide | Persistent across reboots |
-| IAID | Identifies a specific interface/address pool | Per-interface | May change on interface rebind |
+| IAID | Identifies a specific identity association on an interface | Per-interface | Chosen by the client and should remain stable for that IA |
 
-A full DHCPv6 client identifier is the combination of DUID + IAID.
+The DHCPv6 Client Identifier option is the DUID. For actual address or prefix bindings, servers commonly distinguish leases using the tuple DUID + IAID + IA type.
 
 ---
 
 ## Best Practices
 
-1. **Never change a DUID** on production systems - it will cause lease re-assignment
-2. **Use DUID-LL** on virtual machines for portability (no timestamp dependency)
+1. **Avoid changing a DUID** on production systems unless you plan for lease re-assignment
+2. **Be deliberate about DUIDs on cloned virtual machines** to avoid duplicate client identities
 3. **Record DUIDs in your IPAM** for all servers with reserved addresses
 4. **Test reservations** in staging before production deployment
-5. **Use DUID-UUID** on UEFI systems for guaranteed uniqueness
+5. **Use DUID-UUID** on systems with a valid persistent product UUID when a UUID-based identifier fits your environment
 
 ---
 
