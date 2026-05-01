@@ -8,7 +8,7 @@ Description: Learn how to use dynamic blocks in OpenTofu to define AWS route tab
 
 ## Introduction
 
-AWS route tables can contain many routes pointing to different gateways, NAT gateways, VPC peering connections, and transit gateways. Rather than defining each route as a static block, dynamic blocks let you manage routes as data and generate the configuration automatically.
+AWS route tables can contain many routes pointing to different gateways, NAT gateways, VPC peering connections, and transit gateways. Rather than defining each route as a static block, dynamic blocks let you manage routes as data and generate the configuration automatically. When using inline `route` blocks with `aws_route_table`, do not mix them with standalone `aws_route` resources, and remember that an empty dynamic collection does not remove existing inline routes; use `route = []` when you need to clear them.
 
 ## Dynamic Routes in AWS Route Tables
 
