@@ -16,8 +16,7 @@ If a remote state is encrypted, reading it without decryption configuration will
 
 ```text
 Error: Failed to read remote state
-  The remote state file appears to be encrypted and cannot be read.
-  Configure decryption using the remote_state_data_sources block.
+  Unsupported state file format: This state file is encrypted and can not be read without an encryption configuration
 ```
 
 ## Step 1: Ensure the Source Configuration Has Encryption
@@ -29,17 +28,18 @@ The source configuration writes encrypted state:
 
 terraform {
   encryption {
-    key_provider "aws_kms" "state_key" {
+    key_provider "aws_kms" "networking_state_key" {
       kms_key_id = "alias/terraform-networking-state"
       region     = "us-east-1"
+      key_spec   = "AES_256"
     }
 
-    method "aes_gcm" "method" {
-      keys = key_provider.aws_kms.state_key
+    method "aes_gcm" "networking_method" {
+      keys = key_provider.aws_kms.networking_state_key
     }
 
     state {
-      method   = method.aes_gcm.method
+      method   = method.aes_gcm.networking_method
       enforced = true
     }
   }
@@ -58,6 +58,7 @@ terraform {
     key_provider "aws_kms" "app_state_key" {
       kms_key_id = "alias/terraform-app-state"
       region     = "us-east-1"
+      key_spec   = "AES_256"
     }
 
     method "aes_gcm" "app_method" {
@@ -73,8 +74,7 @@ terraform {
     remote_state_data_sources {
       # Default decryption for all terraform_remote_state sources
       default {
-        method   = method.aes_gcm.networking_method
-        enforced = true
+        method = method.aes_gcm.networking_method
       }
     }
 
@@ -82,6 +82,7 @@ terraform {
     key_provider "aws_kms" "networking_state_key" {
       kms_key_id = "alias/terraform-networking-state"
       region     = "us-east-1"
+      key_spec   = "AES_256"
     }
 
     method "aes_gcm" "networking_method" {
@@ -123,11 +124,13 @@ terraform {
     key_provider "aws_kms" "networking_key" {
       kms_key_id = "alias/networking-state"
       region     = "us-east-1"
+      key_spec   = "AES_256"
     }
 
     key_provider "aws_kms" "database_key" {
       kms_key_id = "alias/database-state"
       region     = "us-east-1"
+      key_spec   = "AES_256"
     }
 
     method "aes_gcm" "networking_method" {
@@ -139,15 +142,13 @@ terraform {
     }
 
     remote_state_data_sources {
-      # Configure per data source using the data source address
-      remote_state_data_source "terraform_remote_state.networking" {
-        method   = method.aes_gcm.networking_method
-        enforced = true
+      # Configure per data source using the data source name
+      remote_state_data_source "networking" {
+        method = method.aes_gcm.networking_method
       }
 
-      remote_state_data_source "terraform_remote_state.database" {
-        method   = method.aes_gcm.database_method
-        enforced = true
+      remote_state_data_source "database" {
+        method = method.aes_gcm.database_method
       }
     }
   }
@@ -180,7 +181,7 @@ terraform {
 
 ## IAM Permissions for Cross-Account Remote State
 
-When reading remote state from a different AWS account:
+When reading remote state from a different AWS account, use the source KMS key's key ARN or alias ARN in the consuming configuration, and ensure both the source KMS key policy and the consuming role policy allow access:
 
 ```hcl
 # The consuming role needs KMS permissions for the source account's key
@@ -189,6 +190,7 @@ data "aws_iam_policy_document" "cross_account_kms" {
     effect = "Allow"
     actions = [
       "kms:Decrypt",
+      "kms:GenerateDataKey",
       "kms:DescribeKey"
     ]
     resources = [
