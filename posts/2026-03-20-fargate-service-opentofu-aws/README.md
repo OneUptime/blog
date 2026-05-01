@@ -15,7 +15,7 @@ AWS Fargate is a serverless compute engine for containers that eliminates the ne
 - OpenTofu v1.6+
 - AWS credentials configured
 - ECR repository with a container image
-- Existing VPC with subnets and security groups
+- Existing VPC with subnets, security groups, and an ALB target group configured with `ip` targets
 
 ## Step 1: Create ECS Cluster
 
@@ -44,6 +44,10 @@ resource "aws_ecs_task_definition" "app" {
   cpu                      = "512"       # 0.5 vCPU
   memory                   = "1024"      # 1 GB
 
+  runtime_platform {
+    operating_system_family = "LINUX"
+  }
+
   execution_role_arn = aws_iam_role.ecs_execution.arn
   task_role_arn      = aws_iam_role.ecs_task.arn
 
@@ -70,7 +74,7 @@ resource "aws_ecs_task_definition" "app" {
     logConfiguration = {
       logDriver = "awslogs"
       options = {
-        "awslogs-group"         = "/ecs/my-app"
+        "awslogs-group"         = aws_cloudwatch_log_group.app.name
         "awslogs-region"        = var.aws_region
         "awslogs-stream-prefix" = "ecs"
       }
@@ -114,10 +118,8 @@ resource "aws_ecs_service" "app" {
     container_port   = 8080
   }
 
-  deployment_configuration {
-    maximum_percent         = 200
-    minimum_healthy_percent = 50
-  }
+  deployment_maximum_percent         = 200
+  deployment_minimum_healthy_percent = 50
 
   deployment_controller {
     type = "ECS"
@@ -166,4 +168,4 @@ tofu apply
 
 ## Conclusion
 
-You have successfully deployed a Fargate service using OpenTofu with ECS task definitions, container health checks, CloudWatch logging, and CPU-based auto-scaling. Fargate eliminates infrastructure management overhead while providing the flexibility of containers. Always use private subnets for Fargate tasks and access them through an Application Load Balancer.
+You have successfully deployed a Fargate service using OpenTofu with ECS task definitions, container health checks, CloudWatch logging, and CPU-based auto-scaling. Fargate eliminates infrastructure management overhead while providing the flexibility of containers. For production workloads, prefer private subnets for Fargate tasks and place an Application Load Balancer in front of the service.
