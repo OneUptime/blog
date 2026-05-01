@@ -22,17 +22,17 @@ Machine registration failures are one of the most common issues when deploying E
 ```bash
 # View recent operator logs
 
-kubectl logs -n elemental-system \
+kubectl logs -n cattle-elemental-system \
   -l app=elemental-operator \
   --since=30m
 
 # Stream logs while machine is registering
-kubectl logs -n elemental-system \
+kubectl logs -n cattle-elemental-system \
   -l app=elemental-operator \
   --follow
 
 # Look for specific error patterns
-kubectl logs -n elemental-system \
+kubectl logs -n cattle-elemental-system \
   -l app=elemental-operator \
   --since=1h | grep -i "error\|fail\|warn"
 ```
@@ -45,7 +45,7 @@ kubectl describe machineregistration -n fleet-default my-nodes
 
 # Get status as JSON for detailed inspection
 kubectl get machineregistration -n fleet-default my-nodes \
-  -o jsonpath='{.status}' | jq .
+  -o json | jq '.status'
 
 # Verify registration URL is populated
 kubectl get machineregistration -n fleet-default my-nodes \
@@ -55,6 +55,10 @@ kubectl get machineregistration -n fleet-default my-nodes \
 ## Step 3: Test Registration Endpoint Connectivity
 
 ```bash
+# On the management cluster, get the exact registration URL
+kubectl get machineregistration -n fleet-default my-nodes \
+  -o jsonpath='{.status.registrationURL}'
+
 # From the machine (via serial console or SSH during live boot):
 
 # Test network connectivity
@@ -63,9 +67,12 @@ ping -c 3 rancher.example.com
 # Test HTTPS connectivity
 curl -v https://rancher.example.com
 
+# Test the exact registration endpoint returned above
+curl -v https://rancher.example.com/elemental/registration/TOKEN
+
 # Test with CA certificate
-curl -v --cacert /etc/elemental/registration/ca.crt \
-  https://rancher.example.com/v1/elemental/registration/TOKEN
+curl -v --cacert /tmp/registration-ca.pem \
+  https://rancher.example.com/elemental/registration/TOKEN
 
 # Test DNS resolution
 nslookup rancher.example.com
@@ -75,15 +82,18 @@ dig rancher.example.com
 ## Step 4: Verify Certificate Configuration
 
 ```bash
-# On the management cluster - check CA cert
-kubectl get secret tls-rancher-internal-ca \
+# If Rancher uses a private CA, export the CA bundle Elemental should trust
+kubectl get secret tls-ca \
   -n cattle-system \
-  -o jsonpath='{.data.cacerts\.pem}' | base64 -d | \
-  openssl x509 -text -noout | grep -A 2 "Subject:\|Issuer:\|Not After"
+  -o jsonpath='{.data.cacerts\.pem}' | base64 -d > /tmp/registration-ca.pem
+
+# Or fetch the same CA bundle from Rancher directly
+curl -ksSfL https://rancher.example.com/cacerts \
+  -o /tmp/registration-ca.pem
 
 # Verify the cert in your registration config matches
 openssl x509 -in /tmp/registration-ca.pem -text -noout | \
-  grep -A 2 "Subject:"
+  grep -A 2 "Subject:\|Issuer:\|Not After"
 
 # Test TLS handshake
 openssl s_client -connect rancher.example.com:443 \
@@ -98,8 +108,8 @@ openssl s_client -connect rancher.example.com:443 \
 # Look for elemental registration logs
 
 # Or check after failed boot using rescue mode
-journalctl -u elemental-register --no-pager
-journalctl -u elemental-install --no-pager
+journalctl -u elemental-register.service --no-pager
+journalctl -u elemental-register-install.service --no-pager
 
 # Check system logs
 journalctl -b -p err --no-pager
@@ -108,14 +118,15 @@ journalctl -b -p err --no-pager
 ## Step 6: Debug Cloud-Config Issues
 
 ```bash
-# On the machine, check if cloud-config was applied
-cat /run/elemental/cloud-init.log
+# Inspect the cloud-config stored in MachineRegistration
+kubectl get machineregistration -n fleet-default my-nodes \
+  -o json | jq '.spec.config["cloud-config"]'
 
-# Check cloud-init status
-cloud-init status --long
+# On the installed machine, inspect the generated cloud-config
+sed -n '1,160p' /oem/elemental-cloud-init.yaml
 
-# Validate cloud-config syntax
-cloud-init schema --config-file /oem/registration/config.yaml
+# During live boot, inspect the registration config injected into the seed image
+sed -n '1,160p' /run/initramfs/live/livecd-cloud-config.yaml
 ```
 
 ## Common Issues and Solutions
@@ -123,10 +134,13 @@ cloud-init schema --config-file /oem/registration/config.yaml
 ### Issue: Certificate Authority Not Trusted
 
 ```bash
-# Solution: Regenerate seed image with correct CA cert
-kubectl get secret tls-rancher-internal-ca \
+# Solution: extract the CA bundle the seed image should trust
+kubectl get secret tls-ca \
   -n cattle-system \
   -o jsonpath='{.data.cacerts\.pem}' | base64 -d > correct-ca.pem
+
+# Or pull the same CA bundle from Rancher directly
+curl -ksSfL https://rancher.example.com/cacerts > correct-ca.pem
 
 # Verify the cert is valid
 openssl x509 -in correct-ca.pem -text -noout
@@ -139,12 +153,14 @@ openssl x509 -in correct-ca.pem -text -noout
 kubectl get ingress -n cattle-system
 
 # Verify LoadBalancer IP
-kubectl get svc -n cattle-system rancher \
+kubectl get ingress -n cattle-system rancher \
   -o jsonpath='{.status.loadBalancer.ingress}'
 
 # Test from within cluster
-kubectl run test-curl --rm -it --image=curlimages/curl -- \
-  curl -k https://rancher.example.com/v1/elemental
+REGISTRATION_URL="$(kubectl get machineregistration -n fleet-default my-nodes \
+  -o jsonpath='{.status.registrationURL}')"
+kubectl run test-curl --rm -i --restart=Never --image=curlimages/curl -- \
+  curl -vk "$REGISTRATION_URL"
 ```
 
 ### Issue: Machine Appears with Error
