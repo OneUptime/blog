@@ -8,11 +8,13 @@ Description: Learn how to deploy a React application as a static site on AWS usi
 
 ## Introduction
 
-React applications compiled with `npm run build` produce static files that can be served from S3 + CloudFront at very low cost. This guide deploys a React static site with S3, CloudFront, ACM certificate, and proper cache configurations.
+React applications compiled with `npm run build` produce static files that can be served from S3 + CloudFront at very low cost. This guide deploys a React static site with S3, CloudFront, ACM certificate, and proper cache configurations. This example assumes the production build outputs `index.html` at the root of `build/` and content-hashed assets under `build/static/`.
 
 ## S3 Bucket for Static Files
 
 ```hcl
+data "aws_caller_identity" "current" {}
+
 resource "aws_s3_bucket" "react_app" {
   bucket = "myapp-react-${var.environment}-${data.aws_caller_identity.current.account_id}"
 }
@@ -74,6 +76,10 @@ resource "aws_s3_bucket_policy" "react_app" {
 ## ACM Certificate
 
 ```hcl
+provider "aws" {
+  region = var.aws_region
+}
+
 # Certificate must be in us-east-1 for CloudFront
 provider "aws" {
   alias  = "us-east-1"
@@ -93,6 +99,8 @@ resource "aws_acm_certificate" "react_app" {
 }
 ```
 
+After requesting the certificate, create the ACM DNS validation CNAME records in your DNS provider and wait for the certificate status to become `Issued` before creating or updating the CloudFront distribution.
+
 ## CloudFront Distribution
 
 ```hcl
@@ -101,7 +109,7 @@ resource "aws_cloudfront_distribution" "react_app" {
   is_ipv6_enabled     = true
   default_root_object = "index.html"
   aliases             = [var.domain_name, "www.${var.domain_name}"]
-  price_class         = "PriceClass_100"  # US, Canada, Europe only
+  price_class         = "PriceClass_100"  # US, Canada, Europe, and Israel
 
   origin {
     domain_name              = aws_s3_bucket.react_app.bucket_regional_domain_name
@@ -128,14 +136,7 @@ resource "aws_cloudfront_distribution" "react_app" {
     viewer_protocol_policy = "redirect-to-https"
     compress               = true
 
-    min_ttl     = 31536000  # 1 year for hashed static files
-    default_ttl = 31536000
-    max_ttl     = 31536000
-
-    forwarded_values {
-      query_string = false
-      cookies { forward = "none" }
-    }
+    cache_policy_id = "658327ea-f89d-4fab-a63d-7e88639e58f6"  # Managed-CachingOptimized
   }
 
   # SPA routing: return index.html for 404s
@@ -161,7 +162,17 @@ resource "aws_cloudfront_distribution" "react_app" {
     geo_restriction { restriction_type = "none" }
   }
 }
+
+output "s3_bucket_name" {
+  value = aws_s3_bucket.react_app.bucket
+}
+
+output "cloudfront_distribution_id" {
+  value = aws_cloudfront_distribution.react_app.id
+}
 ```
+
+Point your apex and `www` DNS records at the CloudFront distribution after it is deployed.
 
 ## Deploying React Build Files
 
@@ -169,16 +180,22 @@ resource "aws_cloudfront_distribution" "react_app" {
 # Build the React app
 npm run build
 
-# Sync build files to S3
-aws s3 sync build/ s3://$(tofu output -raw s3_bucket_name)/ \
-  --cache-control "max-age=31536000" \
-  --exclude "index.html"
+# Upload hashed static assets with a 1-year cache policy
+aws s3 sync build/static/ s3://$(tofu output -raw s3_bucket_name)/static/ \
+  --cache-control "public, max-age=31536000, immutable"
 
-# Upload index.html with no-cache (so deploys are instant)
+# Upload non-hashed files with no-cache
+aws s3 cp build/ s3://$(tofu output -raw s3_bucket_name)/ \
+  --recursive \
+  --exclude "index.html" \
+  --exclude "static/*" \
+  --cache-control "no-cache, no-store, must-revalidate"
+
+# Upload index.html with no-cache so browsers revalidate it
 aws s3 cp build/index.html s3://$(tofu output -raw s3_bucket_name)/index.html \
   --cache-control "no-cache, no-store, must-revalidate"
 
-# Invalidate CloudFront cache
+# Invalidate CloudFront cache if you want to purge cached responses immediately
 aws cloudfront create-invalidation \
   --distribution-id $(tofu output -raw cloudfront_distribution_id) \
   --paths "/*"
@@ -186,4 +203,4 @@ aws cloudfront create-invalidation \
 
 ## Summary
 
-Deploying React to S3 + CloudFront with OpenTofu provides global CDN performance at minimal cost. Key points: block all public S3 access and use CloudFront Origin Access Control for security, configure custom error responses to return `index.html` for React Router SPA navigation, set long cache TTLs for content-hashed static assets but no-cache for `index.html`, and always invalidate the CloudFront cache after deploying new build files.
+Deploying React to S3 + CloudFront with OpenTofu provides global CDN performance at minimal cost. Key points: block all public S3 access and use CloudFront Origin Access Control for security, configure custom error responses to return `index.html` for React Router SPA navigation, set long cache headers only for content-hashed `/static/*` assets while using `no-cache` for `index.html` and other non-hashed files, and invalidate CloudFront when you need to purge cached responses immediately.
