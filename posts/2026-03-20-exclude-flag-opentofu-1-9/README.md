@@ -4,22 +4,22 @@ Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
 Tags: OpenTofu, Exclude Flag, OpenTofu 1.9, CLI, Infrastructure as Code
 
-Description: Learn how to use the -exclude flag introduced in OpenTofu 1.9 to skip specific resources during plan and apply operations.
+Description: Learn how to use the -exclude flag introduced in OpenTofu 1.9 to skip specific resources and anything that depends on them during plan and apply operations.
 
 ## Introduction
 
-OpenTofu 1.9 introduced the `-exclude` flag for `tofu plan` and `tofu apply`. While `-target` lets you focus on specific resources, `-exclude` does the opposite - it processes everything except the named resources. This is valuable when you need to apply most of your configuration but skip a problematic or long-running resource.
+OpenTofu 1.9 introduced the `-exclude` flag for `tofu plan` and `tofu apply`. While `-target` lets you focus on specific resources and their dependencies, `-exclude` does the opposite - it focuses on everything except the named resources and anything that depends on them. OpenTofu recommends using resource targeting only in exceptional circumstances, such as recovering from mistakes or working around limitations. This is valuable when you need to apply most of your configuration but skip a problematic or long-running resource.
 
 ## Basic Usage
 
 Exclude a single resource from a plan or apply.
 
 ```bash
-# Plan everything except the RDS instance
+# Plan everything except the RDS instance and anything depending on it
 
 tofu plan -exclude=aws_db_instance.main
 
-# Apply everything except the RDS instance
+# Apply everything except the RDS instance and anything depending on it
 tofu apply -exclude=aws_db_instance.main
 ```
 
@@ -54,7 +54,7 @@ tofu apply -exclude=module.networking.aws_vpc.main
 When iterating on application resources, skip the slow database tier.
 
 ```bash
-# Deploy only application-layer changes
+# Deploy while excluding the database and cache modules
 tofu apply \
   -exclude=module.database \
   -exclude=module.cache \
@@ -66,11 +66,11 @@ tofu apply \
 When a resource is in a bad state and you need to apply other changes:
 
 ```bash
-# Apply all changes except the broken resource
+# Apply all changes except the broken resource and anything depending on it
 tofu apply -exclude=aws_lambda_function.problematic -auto-approve
 
 # Fix the resource separately
-# Then apply it in isolation
+# Then focus on that resource and its dependencies
 tofu apply -target=aws_lambda_function.problematic
 ```
 
@@ -83,15 +83,16 @@ Exclude data sources that make expensive API calls during development.
 tofu plan -exclude=data.aws_ami.latest_amazon_linux
 ```
 
-## Combining -exclude with -target
+## Using -exclude and -target Separately
 
-`-exclude` and `-target` can be used together for precise control.
+`-exclude` and `-target` both activate resource targeting, but OpenTofu does not allow them in the same command.
 
 ```bash
-# Target a module but exclude one resource within it
-tofu plan \
-  -target=module.app \
-  -exclude=module.app.aws_cloudwatch_log_group.verbose_logs
+# Target only the app module
+tofu plan -target=module.app
+
+# Or exclude one resource from an otherwise broader plan
+tofu plan -exclude=module.app.aws_cloudwatch_log_group.verbose_logs
 ```
 
 ## Difference Between -target and -exclude
@@ -99,16 +100,16 @@ tofu plan \
 | Flag | Effect |
 |------|--------|
 | `-target=X` | Only process resource X (and its dependencies) |
-| `-exclude=X` | Process everything except resource X |
+| `-exclude=X` | Process resources other than X and anything that depends on X |
 
-Use `-target` when you want to focus on a small set. Use `-exclude` when you want to apply most of your configuration but skip one or two resources.
+Use `-target` when you want to focus on a small set. Use `-exclude` when you want to apply most of your configuration but skip one or two resources and anything downstream from them.
 
 ## Checking What Would Be Excluded
 
 Use plan first to verify the exclusion before applying.
 
 ```bash
-# Verify the plan without the excluded resources
+# Verify the plan without the excluded resource and its dependents
 tofu plan -exclude=aws_db_instance.main -out=plan.tfplan
 
 # Inspect the plan
@@ -120,4 +121,4 @@ tofu apply plan.tfplan
 
 ## Summary
 
-The `-exclude` flag in OpenTofu 1.9 is the complement to `-target`, letting you skip specific resources while applying the rest of your configuration. It reduces the need for complex workarounds when dealing with slow, broken, or intentionally-deferred resources. Always use a saved plan file with `-exclude` in production to ensure what you reviewed is exactly what gets applied.
+The `-exclude` flag in OpenTofu 1.9 is the complement to `-target`, letting you skip specific resources or modules and anything that depends on them while applying the rest of your configuration. It reduces the need for complex workarounds when dealing with slow, broken, or intentionally-deferred resources, but it should still be reserved for exceptional situations. Always use a saved plan file with `-exclude` in production to ensure what you reviewed is exactly what gets applied.
