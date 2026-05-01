@@ -23,13 +23,16 @@ terraform {
 }
 
 provider "digitalocean" {
-  # Set DIGITALOCEAN_TOKEN env var
-  token = var.do_token
+  # Set DIGITALOCEAN_TOKEN env var. Provide ssh_key_name via
+  # TF_VAR_ssh_key_name or when Terraform prompts for it.
 }
 
-variable "do_token" {
-  type      = string
-  sensitive = true
+variable "ssh_key_name" {
+  type = string
+}
+
+data "digitalocean_ssh_key" "main" {
+  name = var.ssh_key_name
 }
 ```
 
@@ -46,13 +49,13 @@ resource "digitalocean_droplet" "web" {
   # Enable IPv6 on the Droplet
   ipv6 = true
 
-  # Optional: also add to a VPC
-  vpc_uuid = digitalocean_vpc.main.id
+  # Optional: place the Droplet in a specific VPC
+  # vpc_uuid = "your-vpc-uuid"
 
   # SSH key for access
-  ssh_keys = [digitalocean_ssh_key.main.fingerprint]
+  ssh_keys = [data.digitalocean_ssh_key.main.id]
 
-  # User data script to configure the OS for IPv6 if needed
+  # Optional user data to verify IPv6 at boot
   user_data = <<-EOF
     #!/bin/bash
     # Verify IPv6 is configured
@@ -83,7 +86,7 @@ resource "digitalocean_droplet" "app" {
   region = "nyc3"
   ipv6   = true
 
-  ssh_keys = [digitalocean_ssh_key.main.fingerprint]
+  ssh_keys = [data.digitalocean_ssh_key.main.id]
 
   tags = ["app", "ipv6"]
 }
@@ -102,7 +105,7 @@ resource "digitalocean_domain" "main" {
 }
 
 resource "digitalocean_record" "web_aaaa" {
-  domain = digitalocean_domain.main.name
+  domain = digitalocean_domain.main.id
   type   = "AAAA"
   name   = "web"
   value  = digitalocean_droplet.web.ipv6_address
@@ -112,7 +115,7 @@ resource "digitalocean_record" "web_aaaa" {
 # AAAA records for all app Droplets (useful as round-robin)
 resource "digitalocean_record" "app_aaaa" {
   count  = length(digitalocean_droplet.app)
-  domain = digitalocean_domain.main.name
+  domain = digitalocean_domain.main.id
   type   = "AAAA"
   name   = "app"
   value  = digitalocean_droplet.app[count.index].ipv6_address
@@ -120,28 +123,27 @@ resource "digitalocean_record" "app_aaaa" {
 }
 ```
 
-## Step 5: Add a DigitalOcean Load Balancer (IPv4 Only)
+## Step 5: Add a DigitalOcean Load Balancer with Dual-Stack IPv4/IPv6
 
-Note: DigitalOcean's Load Balancer is IPv4-only. For IPv6 exposure, use Cloudflare's IPv6-to-IPv4 proxy in front of the LB, or expose Droplets directly via their IPv6 addresses.
+DigitalOcean external regional Load Balancers support both IPv4-only and dual-stack IPv4/IPv6 networking. Set `network_stack = "DUALSTACK"` if you want the load balancer to accept IPv6 traffic.
 
 ```hcl
-# lb.tf - Load Balancer (IPv4 frontend, backends can have IPv6)
+# lb.tf - External regional Load Balancer with dual-stack IPv4/IPv6
 resource "digitalocean_loadbalancer" "main" {
-  name   = "app-lb"
-  region = "nyc3"
+  name          = "app-lb"
+  region        = "nyc3"
+  network_stack = "DUALSTACK"
 
   forwarding_rule {
-    entry_port      = 443
-    entry_protocol  = "https"
-    target_port     = 80
+    entry_port     = 80
+    entry_protocol = "http"
+    target_port    = 80
     target_protocol = "http"
-    certificate_name = digitalocean_certificate.main.name
   }
 
   healthcheck {
     port     = 80
-    protocol = "http"
-    path     = "/health"
+    protocol = "tcp"
   }
 
   droplet_ids = digitalocean_droplet.app[*].id
