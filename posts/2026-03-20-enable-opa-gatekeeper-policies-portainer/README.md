@@ -8,24 +8,24 @@ Description: Learn how to install OPA Gatekeeper and configure admission control
 
 ## What Is OPA Gatekeeper?
 
-OPA (Open Policy Agent) Gatekeeper is a Kubernetes admission controller that enforces custom policies at the API level. Any request to the Kubernetes API (from Portainer or kubectl) must pass policy checks before being accepted.
+OPA (Open Policy Agent) Gatekeeper is a Kubernetes admission controller that enforces custom policies at the API level. Admission requests that create or update Kubernetes objects (from Portainer or kubectl) must pass policy checks before they are accepted.
 
 ## Installing OPA Gatekeeper
 
 ```bash
 # Install Gatekeeper on your Kubernetes cluster
 
-kubectl apply -f https://raw.githubusercontent.com/open-policy-agent/gatekeeper/v3.14.0/deploy/gatekeeper.yaml
+kubectl apply -f https://raw.githubusercontent.com/open-policy-agent/gatekeeper/v3.22.2/deploy/gatekeeper.yaml
 
 # Verify Gatekeeper is running
 kubectl get pods -n gatekeeper-system
 ```
 
-## Policy 1: Require Resource Limits on All Containers
+## Policy 1: Require Resource Limits on App and Init Containers
 
 ```yaml
 # constraint-template-required-resources.yaml
-apiVersion: templates.gatekeeper.sh/v1beta1
+apiVersion: templates.gatekeeper.sh/v1
 kind: ConstraintTemplate
 metadata:
   name: k8srequiredresources
@@ -34,12 +34,15 @@ spec:
     spec:
       names:
         kind: K8sRequiredResources
+      validation:
+        openAPIV3Schema:
+          type: object
   targets:
     - target: admission.k8s.gatekeeper.sh
       rego: |
         package k8srequiredresources
 
-        # Block pods where containers don't have resource limits
+        # Block pods where app containers don't have resource limits
         violation[{"msg": msg}] {
           container := input.review.object.spec.containers[_]
           not container.resources.limits.cpu
@@ -50,6 +53,18 @@ spec:
           container := input.review.object.spec.containers[_]
           not container.resources.limits.memory
           msg := sprintf("Container <%v> must have memory limits", [container.name])
+        }
+
+        violation[{"msg": msg}] {
+          container := input.review.object.spec.initContainers[_]
+          not container.resources.limits.cpu
+          msg := sprintf("Init container <%v> must have CPU limits", [container.name])
+        }
+
+        violation[{"msg": msg}] {
+          container := input.review.object.spec.initContainers[_]
+          not container.resources.limits.memory
+          msg := sprintf("Init container <%v> must have memory limits", [container.name])
         }
 ---
 # Apply the constraint to all pods
@@ -67,7 +82,7 @@ spec:
 ## Policy 2: Block Privileged Containers
 
 ```yaml
-apiVersion: templates.gatekeeper.sh/v1beta1
+apiVersion: templates.gatekeeper.sh/v1
 kind: ConstraintTemplate
 metadata:
   name: k8spspprivilegedcontainer
@@ -76,6 +91,9 @@ spec:
     spec:
       names:
         kind: K8sPSPPrivilegedContainer
+      validation:
+        openAPIV3Schema:
+          type: object
   targets:
     - target: admission.k8s.gatekeeper.sh
       rego: |
@@ -85,6 +103,18 @@ spec:
           c := input.review.object.spec.containers[_]
           c.securityContext.privileged
           msg := sprintf("Privileged containers are not allowed: <%v>", [c.name])
+        }
+
+        violation[{"msg": msg}] {
+          c := input.review.object.spec.initContainers[_]
+          c.securityContext.privileged
+          msg := sprintf("Privileged init containers are not allowed: <%v>", [c.name])
+        }
+
+        violation[{"msg": msg}] {
+          c := input.review.object.spec.ephemeralContainers[_]
+          c.securityContext.privileged
+          msg := sprintf("Privileged ephemeral containers are not allowed: <%v>", [c.name])
         }
 ---
 apiVersion: constraints.gatekeeper.sh/v1beta1
@@ -101,8 +131,61 @@ spec:
 ## Policy 3: Enforce Approved Image Registries
 
 ```yaml
+apiVersion: templates.gatekeeper.sh/v1
+kind: ConstraintTemplate
+metadata:
+  name: k8sallowedreposv2
+spec:
+  crd:
+    spec:
+      names:
+        kind: K8sAllowedReposv2
+      validation:
+        openAPIV3Schema:
+          type: object
+          properties:
+            allowedImages:
+              type: array
+              items:
+                type: string
+  targets:
+    - target: admission.k8s.gatekeeper.sh
+      rego: |
+        package k8sallowedreposv2
+
+        violation[{"msg": msg}] {
+          container := input.review.object.spec.containers[_]
+          not image_matches(container.image, input.parameters.allowedImages)
+          msg := sprintf("Container <%v> has an invalid image <%v>", [container.name, container.image])
+        }
+
+        violation[{"msg": msg}] {
+          container := input.review.object.spec.initContainers[_]
+          not image_matches(container.image, input.parameters.allowedImages)
+          msg := sprintf("Init container <%v> has an invalid image <%v>", [container.name, container.image])
+        }
+
+        violation[{"msg": msg}] {
+          container := input.review.object.spec.ephemeralContainers[_]
+          not image_matches(container.image, input.parameters.allowedImages)
+          msg := sprintf("Ephemeral container <%v> has an invalid image <%v>", [container.name, container.image])
+        }
+
+        image_matches(image, allowed_images) {
+          allowed := allowed_images[_]
+          not endswith(allowed, "*")
+          allowed == image
+        }
+
+        image_matches(image, allowed_images) {
+          allowed := allowed_images[_]
+          endswith(allowed, "*")
+          prefix := trim_suffix(allowed, "*")
+          startswith(image, prefix)
+        }
+---
 apiVersion: constraints.gatekeeper.sh/v1beta1
-kind: K8sAllowedRepos
+kind: K8sAllowedReposv2
 metadata:
   name: allowed-image-registries
 spec:
@@ -111,9 +194,9 @@ spec:
       - apiGroups: [""]
         kinds: ["Pod"]
   parameters:
-    repos:
-      - "registry.mycompany.com"    # Only allow internal registry
-      - "gcr.io/myproject"          # Allowed GCP project
+    allowedImages:
+      - "registry.mycompany.com/*"  # Only allow internal registry
+      - "gcr.io/myproject/*"        # Allowed GCP project
 ```
 
 ## Applying Policies via Portainer
@@ -121,19 +204,19 @@ spec:
 Deploy Gatekeeper policies as Kubernetes manifests in Portainer:
 
 1. Go to your Kubernetes environment.
-2. Click the kubectl shell icon.
-3. Apply the YAML manifests.
+2. Select **kubectl shell** from the menu.
+3. Apply the YAML manifests with `kubectl apply -f`.
 
-Or use the YAML manifest editor in **Applications**.
+Or use **Applications** > **Create from code** and choose **Manifest**.
 
 ## Testing Policy Enforcement
 
 ```bash
-# This deployment should be DENIED (no resource limits)
-kubectl run test-pod --image=nginx --restart=Never
+# This pod should be DENIED by the resource-limits policy
+kubectl run test-pod --image=registry.mycompany.com/nginx --restart=Never
 
-# Check Gatekeeper audit results
-kubectl get constrainttemplate
+# Check installed templates and the audit status of the constraint
+kubectl get constrainttemplates
 kubectl get k8srequiredresources require-resource-limits \
   -o jsonpath='{.status.totalViolations}'
 ```
@@ -144,7 +227,7 @@ Start in audit mode to see violations without blocking deployments:
 
 ```yaml
 spec:
-  enforcementAction: warn   # "warn" = audit, "deny" = enforce
+  enforcementAction: dryrun   # "dryrun" = audit, "deny" = enforce, "warn" = allow with a warning
 ```
 
 ## Conclusion
