@@ -13,13 +13,13 @@ An ICMP flood (or ping flood) is a denial-of-service attack where an attacker se
 ## Detecting an ICMP Flood
 
 ```bash
-# Check incoming packet rate on an interface
+# Check incoming packet counters on an interface
 
-watch -n 1 "ip -s link show eth0 | grep 'RX packets'"
+watch -n 1 "ip -s link show dev eth0 | grep -A1 'RX:'"
 
-# More detailed: monitor ICMP packet rate with tcpdump
-tcpdump -i eth0 -n icmp 2>/dev/null | \
-  awk '{count++} NR%100==0{print count " ICMP pkts/100 captures"}'
+# More detailed: estimate ICMP echo-request rate with tcpdump
+tcpdump -i eth0 -n -l 'icmp[0]=8' 2>/dev/null | \
+  awk 'BEGIN{t=systime()} {count++; now=systime(); if (now>t) {print count " ICMP echo requests/sec"; count=0; t=now}}'
 
 # Use iftop to see top talkers by IP
 apt install iftop
@@ -35,26 +35,26 @@ tcpdump -i eth0 -n 'icmp[0]=8' -c 1000 | \
 
 # In a flood, you'll see either:
 # - One IP dominating (simple attack)
-# - Thousands of IPs (distributed/amplification attack)
+# - Thousands of IPs (distributed attack or spoofed-source traffic)
 
-# Check if attack is amplification (requests from spoofed source IPs)
-tcpdump -i eth0 -n 'icmp[0]=0' | head -20
-# Replies going OUT = your server is amplifying (source IPs are spoofed)
+# Check whether your host is sending Echo Replies to spoofed requests
+tcpdump -i eth0 -Q out -n 'icmp[0]=0' -c 20
+# A sustained outbound stream of Echo Replies can mean your host is reflecting spoofed Echo Requests.
 ```
 
-## Monitoring with netstat and /proc
+## Monitoring with /proc and nstat
 
 ```bash
-# Check ICMP statistics (includes receive rate)
-cat /proc/net/snmp | grep "Icmp:"
+# Check ICMP statistics (cumulative counters, not rates)
+grep '^Icmp:' /proc/net/snmp
 
 # Watch ICMP counters in real time
-watch -n 1 "cat /proc/net/snmp | grep Icmp:"
-# Look for rapidly increasing InEchos counter
+watch -n 1 "grep '^Icmp:' /proc/net/snmp"
+# Look for a rapidly increasing InEchos counter
 
-# Or use ss + nstat
-nstat -a | grep Icmp
-watch -n 1 "nstat -z | grep -i icmp"
+# Or use nstat
+nstat -a | grep '^Icmp'
+watch -n 1 "nstat -az IcmpInEchos IcmpOutEchoReps"
 ```
 
 ## Setting Up Alerts
@@ -62,12 +62,34 @@ watch -n 1 "nstat -z | grep -i icmp"
 ```bash
 #!/bin/bash
 # Monitor ICMP flood and alert if rate exceeds threshold
-THRESHOLD=1000  # packets per second
+THRESHOLD=1000  # echo requests per second
+
+get_in_echos() {
+    awk '
+        /^Icmp:/ {
+            if (!header_seen) {
+                for (i = 1; i <= NF; i++) {
+                    if ($i == "InEchos") {
+                        col = i
+                        break
+                    }
+                }
+                header_seen = 1
+                next
+            }
+
+            if (col) {
+                print $col
+                exit
+            }
+        }
+    ' /proc/net/snmp
+}
 
 while true; do
-    BEFORE=$(cat /proc/net/snmp | awk '/^Icmp:/{getline; print $3}')
+    BEFORE=$(get_in_echos)
     sleep 1
-    AFTER=$(cat /proc/net/snmp | awk '/^Icmp:/{getline; print $3}')
+    AFTER=$(get_in_echos)
     RATE=$((AFTER - BEFORE))
 
     if [ "$RATE" -gt "$THRESHOLD" ]; then
@@ -84,14 +106,14 @@ done
 iptables -I INPUT -p icmp --icmp-type echo-request -j DROP
 
 # More targeted: block from specific source
-iptables -I INPUT -s 10.50.0.0/24 -p icmp -j DROP
+iptables -I INPUT -s 10.50.0.0/24 -p icmp --icmp-type echo-request -j DROP
 
 # Rate-limit ICMP to 10 pps (prevents floods, allows monitoring)
-iptables -I INPUT -p icmp --icmp-type echo-request \
-  -m limit --limit 10/sec --limit-burst 20 -j ACCEPT
-iptables -A INPUT -p icmp --icmp-type echo-request -j DROP
+iptables -I INPUT 1 -p icmp --icmp-type echo-request \
+  -m limit --limit 10/second --limit-burst 20 -j ACCEPT
+iptables -I INPUT 2 -p icmp --icmp-type echo-request -j DROP
 ```
 
 ## Conclusion
 
-ICMP floods are detectable through packet capture analysis and /proc counters. In a real flood, ICMP packet rates will jump by orders of magnitude above baseline. Immediate mitigation with iptables rate limiting stops the flood while preserving legitimate monitoring pings. For distributed attacks, coordinate with your ISP for upstream filtering or use a DDoS scrubbing service.
+ICMP floods are detectable through packet capture analysis and /proc counters. In a real flood, ICMP packet rates will jump by orders of magnitude above baseline. Immediate host-side mitigation with iptables rate limiting drops excess Echo Requests while preserving legitimate monitoring pings. For distributed attacks, coordinate with your ISP for upstream filtering or use a DDoS scrubbing service.
