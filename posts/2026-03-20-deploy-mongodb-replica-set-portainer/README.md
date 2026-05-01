@@ -4,7 +4,7 @@ Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
 Tags: Portainer, MongoDB, Replica Set, High Availability, Database, Docker
 
-Description: Learn how to deploy a MongoDB replica set with three nodes via Portainer for automatic failover and read scaling.
+Description: Learn how to deploy a MongoDB replica set with three nodes via Portainer for automatic failover and data redundancy.
 
 ---
 
@@ -87,6 +87,8 @@ rs.initiate({
 "
 ```
 
+The `host` values in `rs.initiate()` must be resolvable by the clients that connect to the replica set. The `mongo1`, `mongo2`, and `mongo3` names in this example work for containers on the same Docker network.
+
 ## Verifying Replica Set Status
 
 Check which node is primary and confirm all members are healthy:
@@ -97,14 +99,13 @@ docker exec -it $(docker ps -qf name=mongo1) mongosh --eval "rs.status()" | grep
 
 Expected output shows one `PRIMARY` and two `SECONDARY` members, all with `health: 1`.
 
-## Connecting with Authentication
+## Creating an Admin User
 
-Add an init container or run post-deploy commands to create the admin user on the primary:
+Create the admin user on the primary. Creating a user alone does not enforce access control; to require authentication on the replica set, restart each member with a shared `--keyFile` (or use X.509 internal authentication):
 
 ```bash
 docker exec -it $(docker ps -qf name=mongo1) mongosh --eval "
-use admin
-db.createUser({
+db.getSiblingDB('admin').createUser({
   user: 'admin',
   pwd: 'adminpassword',
   roles: [{ role: 'root', db: 'admin' }]
@@ -112,7 +113,7 @@ db.createUser({
 "
 ```
 
-Your application connection string uses all three hosts for automatic failover:
+When access control is enabled, your application connection string uses all three hosts for automatic failover:
 
 ```text
 mongodb://admin:adminpassword@mongo1:27017,mongo2:27017,mongo3:27017/appdb?replicaSet=rs0&authSource=admin
@@ -137,20 +138,26 @@ If your application container is in the same stack, no port exposure is needed. 
 Use the external connection string with all three ports:
 
 ```text
-mongodb://admin:password@HOST:27017,HOST:27018,HOST:27019/appdb?replicaSet=rs0
+mongodb://admin:adminpassword@HOST:27017,HOST:27018,HOST:27019/appdb?replicaSet=rs0&authSource=admin
 ```
+
+For external clients, the replica set members must also advertise hostnames and ports that those clients can resolve. Port mappings alone are not enough if the replica set was initialized with internal-only names like `mongo1`, `mongo2`, and `mongo3`.
 
 ## Automatic Failover Test
 
 Simulate a primary failure and confirm automatic election:
 
 ```bash
-# Stop the primary node
-
-docker stop $(docker ps -qf name=mongo1)
+# Stop whichever member is currently primary
+for node in mongo1 mongo2 mongo3; do
+  if docker exec $(docker ps -qf name=$node) mongosh --quiet --eval "db.hello().isWritablePrimary" | grep -q true; then
+    docker stop $(docker ps -qf name=$node)
+    break
+  fi
+done
 
 # Within ~10 seconds, check which node became primary
-docker exec -it $(docker ps -qf name=mongo2) mongosh --eval "rs.isMaster().primary"
+docker exec -it $(docker ps -qf name=mongo2) mongosh --quiet --eval "db.hello().primary"
 ```
 
 MongoDB elects a new primary from the remaining two nodes automatically.
