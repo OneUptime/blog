@@ -17,28 +17,27 @@ Kompose is the official tool for converting Docker Compose files to Kubernetes m
 ```bash
 # Install Kompose
 
-curl -L https://github.com/kubernetes/kompose/releases/download/v1.31.2/kompose-linux-amd64 \
+curl -L https://github.com/kubernetes/kompose/releases/download/v1.38.0/kompose-linux-amd64 \
   -o kompose
 chmod +x kompose
+sudo mv ./kompose /usr/local/bin/kompose
 
 # Convert a docker-compose.yml to Kubernetes manifests
 kompose convert -f docker-compose.yml -o ./k8s/
 
 # View generated files
 ls k8s/
-# my-app-deployment.yaml
-# my-app-service.yaml
+# db-data-persistentvolumeclaim.yaml
 # postgres-deployment.yaml
 # postgres-service.yaml
-# postgres-persistentvolumeclaim.yaml
+# web-deployment.yaml
+# web-service.yaml
 ```
 
 ## Example: Docker Compose Input
 
 ```yaml
 # docker-compose.yml (input)
-version: "3.8"
-
 services:
   web:
     image: registry.mycompany.com/web:1.5.0
@@ -52,6 +51,8 @@ services:
 
   postgres:
     image: postgres:15-alpine
+    expose:
+      - "5432"
     environment:
       - POSTGRES_DB=myapp
       - POSTGRES_PASSWORD=secret
@@ -76,23 +77,29 @@ apiVersion: apps/v1
 kind: Deployment
 metadata:
   name: web
+  labels:
+    io.kompose.service: web
 spec:
   replicas: 1
   selector:
     matchLabels:
       io.kompose.service: web
   template:
+    metadata:
+      labels:
+        io.kompose.service: web
     spec:
       containers:
         - name: web
           image: registry.mycompany.com/web:1.5.0
-          ports:
-            - containerPort: 8080
           env:
             - name: DB_HOST
               value: postgres
             - name: DB_PORT
               value: "5432"
+          ports:
+            - containerPort: 8080
+              protocol: TCP
 ```
 
 ## Deploying Converted Manifests via Portainer Terraform
@@ -104,19 +111,22 @@ After converting and customizing the manifests, deploy them to a Kubernetes envi
 # Deploy the converted Kubernetes manifests via Portainer
 
 locals {
-  k8s_manifests = join("---\n", [
-    file("${path.module}/k8s/web-deployment.yaml"),
-    file("${path.module}/k8s/web-service.yaml"),
+  k8s_manifests = join("\n---\n", [
+    file("${path.module}/k8s/db-data-persistentvolumeclaim.yaml"),
     file("${path.module}/k8s/postgres-deployment.yaml"),
     file("${path.module}/k8s/postgres-service.yaml"),
-    file("${path.module}/k8s/postgres-persistentvolumeclaim.yaml"),
+    file("${path.module}/k8s/web-deployment.yaml"),
+    file("${path.module}/k8s/web-service.yaml"),
   ])
 }
 
-resource "portainer_kubernetes_manifest" "app" {
-  endpoint_id = portainer_environment.k8s_prod.id
-  namespace   = "production"
-  manifest    = local.k8s_manifests
+resource "portainer_stack" "app" {
+  name               = "my-app"
+  deployment_type    = "kubernetes"
+  method             = "string"
+  endpoint_id        = portainer_environment.k8s_prod.id
+  namespace          = "production"
+  stack_file_content = local.k8s_manifests
 }
 ```
 
