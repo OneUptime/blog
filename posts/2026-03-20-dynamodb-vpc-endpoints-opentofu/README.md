@@ -8,7 +8,7 @@ Description: Learn how to create DynamoDB Gateway VPC Endpoints with OpenTofu to
 
 ## Introduction
 
-DynamoDB Gateway VPC Endpoints allow EC2 instances, Lambda functions in VPCs, and ECS tasks to communicate with DynamoDB without requiring internet gateways, NAT gateways, or VPN connections. Traffic stays entirely within the AWS network, improving security and reducing data transfer costs.
+DynamoDB Gateway VPC Endpoints allow EC2 instances, Lambda functions in VPCs, and ECS tasks to communicate with DynamoDB without requiring internet gateways, NAT gateways, or VPN connections. Traffic stays within the AWS network without requiring internet or NAT gateways, improving access control and helping avoid NAT gateway charges.
 
 ## Prerequisites
 
@@ -19,9 +19,11 @@ DynamoDB Gateway VPC Endpoints allow EC2 instances, Lambda functions in VPCs, an
 ## Step 1: Create DynamoDB Gateway VPC Endpoint
 
 ```hcl
-# DynamoDB uses a Gateway endpoint (not Interface endpoint)
+# DynamoDB supports both Gateway and Interface endpoints; this example uses a Gateway endpoint
 
-# Gateway endpoints are free - no hourly or data transfer charges
+data "aws_caller_identity" "current" {}
+
+# Gateway endpoints have no additional charge
 resource "aws_vpc_endpoint" "dynamodb" {
   vpc_id            = var.vpc_id
   service_name      = "com.amazonaws.${var.region}.dynamodb"
@@ -34,6 +36,14 @@ resource "aws_vpc_endpoint" "dynamodb" {
   policy = jsonencode({
     Version = "2012-10-17"
     Statement = [
+      {
+        Effect    = "Allow"
+        Principal = "*"
+        Action = [
+          "dynamodb:DescribeEndpoints"
+        ]
+        Resource = "*"
+      },
       {
         Effect    = "Allow"
         Principal = "*"
@@ -62,10 +72,10 @@ resource "aws_vpc_endpoint" "dynamodb" {
 }
 ```
 
-## Step 2: Enforce VPC Endpoint Usage via Bucket Policy
+## Step 2: Enforce VPC Endpoint Usage via IAM Policy
 
 ```hcl
-# IAM policy to deny DynamoDB access unless via VPC endpoint
+# Managed IAM policy to attach to the roles or users that access DynamoDB
 resource "aws_iam_policy" "dynamodb_vpce_only" {
   name        = "${var.project_name}-dynamodb-vpce-only"
   description = "Require VPC endpoint for DynamoDB access"
@@ -150,12 +160,12 @@ tofu init
 tofu plan
 tofu apply
 
-# Test connectivity from within VPC (no public route needed)
-aws dynamodb list-tables \
-  --endpoint-url "https://dynamodb.${AWS_REGION}.amazonaws.com" \
-  --region us-east-1
+# Test connectivity from a subnet whose route table is associated with the endpoint
+aws dynamodb describe-table \
+  --table-name "<project-name>-private-table" \
+  --region "${AWS_REGION}"
 ```
 
 ## Conclusion
 
-DynamoDB Gateway Endpoints are free and should be deployed in every VPC that accesses DynamoDB-they reduce latency, eliminate NAT gateway charges for DynamoDB traffic, and improve security by keeping traffic on the AWS network. Use endpoint policies to restrict which DynamoDB tables are accessible via the endpoint, and add VPC endpoint conditions to IAM policies for defense-in-depth.
+DynamoDB Gateway Endpoints are free and are a good default for VPCs that access DynamoDB-they avoid requiring internet or NAT gateways for DynamoDB access and can eliminate NAT gateway charges for that traffic. Use endpoint policies to restrict which DynamoDB tables are accessible via the endpoint, and add VPC endpoint conditions to IAM or DynamoDB resource-based policies for defense-in-depth.
