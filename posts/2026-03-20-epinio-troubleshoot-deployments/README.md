@@ -4,11 +4,11 @@ Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
 Tags: Epinio, Troubleshooting, Kubernetes, PaaS, Debugging
 
-Description: Debug and resolve common Epinio deployment failures including build errors, resource constraints, and configuration issues.
+Description: Deploy an application with Epinio and inspect it using routes, logs, environment variables, and scaling commands.
 
 ## Introduction
 
-How to Troubleshoot Epinio Application Deployment Failures demonstrates how Epinio simplifies application deployment to Kubernetes. Epinio abstracts away Kubernetes complexity, letting developers focus on code while the platform handles containerization, deployment, and routing automatically.
+How to Troubleshoot Epinio Application Deployment Failures demonstrates the basic Epinio deployment workflow and the commands you can use to inspect an application after deployment. Epinio abstracts away Kubernetes complexity, letting developers focus on code while the platform handles containerization, deployment, and routing automatically.
 
 ## Prerequisites
 
@@ -30,21 +30,7 @@ mkdir my-app && cd my-app
 
 ## Step 2: Create the Application
 
-For this example, we'll create a simple web application:
-
-```bash
-# Create main application file
-cat > app.sh << 'EOF'
-#!/bin/bash
-# Simple HTTP server for demonstration
-while true; do
-  echo -e "HTTP/1.1 200 OK\r\nContent-Type: text/plain\r\n\r\nHello from How to Troubleshoot Epinio Application Deployment Failures!" | nc -l -p ${PORT:-8080}
-done
-EOF
-chmod +x app.sh
-```
-
-For a language-specific example relevant to this guide:
+For this example, we'll create a simple web application using Node.js:
 
 ```bash
 # Node.js example
@@ -105,20 +91,20 @@ epinio app show my-app
 epinio app list
 
 # View the application route
-epinio app show my-app | grep Routes
+epinio app show my-app | grep -E '^[0-9]+: https?://'
 ```
 
 ## Step 6: Test the Application
 
 ```bash
 # Get the application URL
-APP_URL=$(epinio app show my-app | grep Routes | awk '{print $2}')
+APP_URL=$(epinio app show my-app | awk '/^[0-9]+: https?:\\/\\// {print $2; exit}')
 
 # Test with curl
-curl ${APP_URL}
+curl "${APP_URL}"
 
-# Or open in browser
-open ${APP_URL}
+# Or open in browser (macOS example)
+open "${APP_URL}"
 ```
 
 ## Step 7: View Application Logs
@@ -128,7 +114,7 @@ open ${APP_URL}
 epinio app logs my-app
 
 # Follow live logs
-epinio app logs my-app --follow
+epinio app logs --follow my-app
 ```
 
 ## Step 8: Update the Application
@@ -138,7 +124,7 @@ epinio app logs my-app --follow
 # Then re-push to update
 epinio push --name my-app
 
-# Epinio performs a rolling update
+# Check the updated application status
 epinio app show my-app
 ```
 
@@ -172,4 +158,4 @@ epinio app delete my-app
 
 ## Conclusion
 
-How to Troubleshoot Epinio Application Deployment Failures with Epinio demonstrates how the platform removes barriers between development and deployment. The simple push workflow means developers can deploy any application to Kubernetes without writing YAML or understanding container orchestration. Epinio's buildpack system automatically detects the runtime, installs dependencies, and creates an optimized container image.
+How to Troubleshoot Epinio Application Deployment Failures with Epinio demonstrates how the platform removes barriers between development and deployment. The simple push workflow means developers can deploy supported applications to Kubernetes without writing YAML or managing Kubernetes deployment objects directly. For applications that match the available Paketo buildpacks, Epinio can detect the runtime, install dependencies, and create a container image automatically.
