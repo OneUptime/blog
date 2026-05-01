@@ -8,7 +8,7 @@ Description: Configure and use DHCPv6 Relay Option 18 (Interface ID) to identify
 
 ## What is Option 18 (Interface ID)?
 
-DHCPv6 Relay Option 18 (Interface-ID) carries an opaque value inserted by relay agents to identify the interface on which a client's message was received. The DHCPv6 server uses this to:
+DHCPv6 Relay Option 18 (Interface-ID) carries an opaque value inserted by relay agents to identify the interface on which a client's message was received. Many implementations use an interface name, but servers should treat the value as opaque. The DHCPv6 server uses this to:
 - Apply per-interface address pools
 - Implement subscriber-specific policies
 - Track which port/VLAN a client is connected to
@@ -23,7 +23,7 @@ sequenceDiagram
     participant S as DHCPv6 Server
 
     C->>R: SOLICIT
-    R->>S: RELAY-FORW + Option18 "GigE0/1.100"
+    R->>S: RELAY-FORW + Option18 "Gi0/1.100"
     Note over R,S: Option 18 = interface identifier
     S->>R: RELAY-REPL (uses Option 18 for policy)
     R->>C: ADVERTISE (address from VLAN 100 pool)
@@ -32,16 +32,13 @@ sequenceDiagram
 ## Configuring Option 18 on Cisco IOS
 
 ```text
-! Cisco IOS - Interface ID is automatically added (interface name)
+! Cisco IOS XE - relay is enabled on the client-facing interface
 interface GigabitEthernet0/1.100
  encapsulation dot1q 100
  ipv6 address 2001:db8:100::1/64
- ipv6 dhcp relay destination 2001:db8::dhcp-server
- ! Relay automatically adds interface name as Option 18
-
-! To use custom Interface ID:
-ipv6 dhcp relay option interface-id ifname
-! Uses interface name (e.g., "GigabitEthernet0/1.100")
+ ipv6 dhcp relay destination 2001:db8::53
+ ! Cisco IOS XE uses a persistent Interface-ID based on the short form
+ ! of the interface name; no separate Option 18 command is required.
 ```
 
 ## Configuring Option 18 on Juniper
@@ -49,23 +46,23 @@ ipv6 dhcp relay option interface-id ifname
 ```text
 # Juniper - include Interface ID in relay messages
 
-set forwarding-options dhcp-relay v6 group CLIENTS interface-id-option include
-set forwarding-options dhcp-relay v6 group CLIENTS interface ge-0/0/1.100
+set forwarding-options dhcp-relay dhcpv6 group CLIENTS relay-agent-interface-id
+set forwarding-options dhcp-relay dhcpv6 group CLIENTS interface ge-0/0/1.100
 
-# Custom Interface ID format
-set forwarding-options dhcp-relay v6 group CLIENTS interface-id-option ascii-string
+# Optional: use the interface description instead of the default identifier
+set forwarding-options dhcp-relay dhcpv6 group CLIENTS relay-agent-interface-id use-interface-description logical
 ```
 
 ## Linux dhcrelay with Interface ID
 
 ```bash
-# dhcrelay automatically adds interface name as Option 18
+# With one downstream interface, force DHCPv6 Interface-ID (Option 18) with -I
 dhcrelay -6 \
+    -I \
     -l eth0.100 \
-    -u eth1 \
-    2001:db8::dhcp-server
+    -u 2001:db8::53%eth1
 
-# The Interface ID will be "eth0.100" (the interface name)
+# With two or more downstream interfaces, dhcrelay sends Option 18 automatically.
 ```
 
 ## ISC Kea Server Using Interface ID
@@ -77,23 +74,23 @@ dhcrelay -6 \
         "client-classes": [
             {
                 "name": "vlan100-clients",
-                "test": "relay6[0].option[18].hex == 0x47696745302f312e313030"
-                // Hex encoding of "GigE0/1.100"
+                "test": "relay6[0].option[18].hex == 0x4769302f312e313030"
+                // Hex encoding of "Gi0/1.100"
             },
             {
                 "name": "vlan200-clients",
-                "test": "relay6[0].option[18].hex == 0x47696745302f312e323030"
+                "test": "relay6[0].option[18].hex == 0x4769302f312e323030"
             }
         ],
         "subnet6": [
             {
                 "subnet": "2001:db8:100::/64",
-                "client-class": "vlan100-clients",
+                "client-classes": [ "vlan100-clients" ],
                 "pools": [{"pool": "2001:db8:100::100-2001:db8:100::200"}]
             },
             {
                 "subnet": "2001:db8:200::/64",
-                "client-class": "vlan200-clients",
+                "client-classes": [ "vlan200-clients" ],
                 "pools": [{"pool": "2001:db8:200::100-2001:db8:200::200"}]
             }
         ]
@@ -116,7 +113,7 @@ def decode_option18(hex_value: str) -> str:
 
 # Examples from packet captures
 option18_values = [
-    "47696745302f312e313030",    # "GigE0/1.100"
+    "4769302f312e313030",         # "Gi0/1.100"
     "65746830",                   # "eth0"
     "65746830 2e313030",          # "eth0.100"
     "4c454146312d657468312d313030", # "LEAF1-eth1-100"
@@ -137,15 +134,16 @@ tcpdump -i eth1 -n -v 'udp port 547' 2>/dev/null | grep -A 5 "relay"
 tshark -i eth1 -f 'udp port 547' \
     -T fields \
     -e dhcpv6.msgtype \
-    -e dhcpv6.option.value \
+    -e dhcpv6.option.type_str \
+    -e dhcpv6.option.data \
     -Y 'dhcpv6.option.type == 18'
 
 # More readable format
 tshark -i eth1 -f 'udp port 547' \
     -Y 'dhcpv6' \
-    -V 2>/dev/null | grep -A 2 "Interface ID"
+    -V 2>/dev/null | grep -A 2 -E "Interface(-| )ID"
 ```
 
 ## Conclusion
 
-DHCPv6 Option 18 is automatically inserted by relay agents with the relay interface name or a configured identifier. DHCPv6 servers use it to apply per-interface address pools and policies - essential for ISP subscriber management. ISC Kea's client-class expressions `relay6[0].option[18].hex` enable classification by Interface ID. Pair Option 18 with Option 37 (Remote ID) for comprehensive subscriber identification when the relay is behind another relay agent.
+DHCPv6 Option 18 is a relay-supplied opaque identifier. Many relay agents automatically insert it using an interface name or configured value, and DHCPv6 servers use it to apply per-interface address pools and policies - essential for ISP subscriber management. ISC Kea's client-class expressions `relay6[0].option[18].hex` enable classification by Interface ID. Pair Option 18 with Option 37 (Remote ID) when you need both ingress-interface context and a separate subscriber identifier, including chained-relay deployments.
