@@ -14,24 +14,24 @@ Description: Diagnose and fix common DNSSEC problems including SERVFAIL response
 | SERVFAIL after zone update | Unsigned zone pushed over signed |
 | SERVFAIL after nameserver change | DS record not updated |
 | SERVFAIL for AAAA only | Missing RRSIG for AAAA records |
-| NXDOMAIN for existing name | Clock skew - future signature not yet valid |
-| Works without validation (+cd) | Bogus/expired signatures |
+| SERVFAIL on negative answer | Broken NSEC/NSEC3 proof or clock skew |
+| Works without validation (+cdflag) | Bogus/expired signatures |
 
 ## Diagnostic Flowchart
 
 ```mermaid
 flowchart TD
-    A[DNSSEC validation fails] --> B{SERVFAIL or NXDOMAIN?}
+    A[DNSSEC validation fails] --> B{SERVFAIL or unexpected NXDOMAIN?}
     B -->|SERVFAIL| C[Signature problem]
-    B -->|NXDOMAIN| D[NSEC3 denial or clock skew]
+    B -->|NXDOMAIN| D[Check denial-of-existence proof]
     C --> E[Check signature expiry]
     C --> F[Check DS record matches KSK]
     C --> G[Check RRSIG present for all records]
     E --> H[dnssec-signzone to re-sign]
     F --> I[Update DS at registrar]
-    G --> J[Check auto-dnssec or re-sign]
-    D --> K[Check server clock - NTP]
-    D --> L[Check NSEC3 configuration]
+    G --> J[Check dnssec-policy/manual signing or re-sign]
+    D --> K[Check server or resolver clock - NTP]
+    D --> L[Check NSEC/NSEC3 configuration]
 ```
 
 ## Step 1: Identify the Problem with dig
@@ -51,39 +51,45 @@ echo ""
 # 1. Check with validation
 
 echo "1. Query WITH validation:"
-RESULT=$(dig +dnssec +short +comments "${RECORD_TYPE}" "${NAME}" @"${RESOLVER}" 2>&1)
-echo "${RESULT}" | grep -E "status:|flags:|RRSIG|AAAA|A\b" | head -10
+RESULT=$(dig +dnssec +noall +answer +authority +comments "${NAME}" "${RECORD_TYPE}" @"${RESOLVER}" 2>&1)
+echo "${RESULT}" | grep -E "status:|flags:|IN[[:space:]]+${RECORD_TYPE}[[:space:]]|IN[[:space:]]+RRSIG[[:space:]]|IN[[:space:]]+NSEC3?[[:space:]]" | head -10
 
 # 2. Check without validation (bypass)
 echo ""
-echo "2. Query WITHOUT validation (+cd):"
-BYPASS=$(dig +dnssec +cd +short "${RECORD_TYPE}" "${NAME}" @"${RESOLVER}" 2>&1)
-echo "${BYPASS}" | grep -E "status:|flags:|RRSIG|AAAA|A\b" | head -10
+echo "2. Query WITHOUT validation (+cdflag):"
+BYPASS=$(dig +dnssec +cdflag +noall +answer +authority +comments "${NAME}" "${RECORD_TYPE}" @"${RESOLVER}" 2>&1)
+echo "${BYPASS}" | grep -E "status:|flags:|IN[[:space:]]+${RECORD_TYPE}[[:space:]]|IN[[:space:]]+RRSIG[[:space:]]|IN[[:space:]]+NSEC3?[[:space:]]" | head -10
 
 # 3. Check signatures at authoritative server
 echo ""
 echo "3. Query authoritative server directly:"
-AUTH_NS=$(dig +short NS "${ZONE}" | head -1)
+AUTH_NS=$(dig +short NS "${ZONE}" @"${RESOLVER}" | head -1)
 if [ -n "${AUTH_NS}" ]; then
-    dig +dnssec "${RECORD_TYPE}" "${NAME}" @"${AUTH_NS}" | \
-        grep -E "status:|RRSIG|NSEC|flags:" | head -5
+    dig +dnssec +norecurse +noall +answer +authority +comments "${NAME}" "${RECORD_TYPE}" @"${AUTH_NS}" | \
+        grep -E "status:|flags:|IN[[:space:]]+${RECORD_TYPE}[[:space:]]|IN[[:space:]]+RRSIG[[:space:]]|IN[[:space:]]+NSEC3?[[:space:]]" | head -10
 fi
 ```
 
 ## Step 2: Check Signature Expiry
 
 ```bash
-# Check if signatures are expired or about to expire
-dnssec-checkzone -o "${ZONE}" /var/named/"${ZONE}".zone.signed 2>&1 | \
-    grep -i "expired\|expir\|warning"
+ZONE="example.com"
 
-# Show expiration dates of all RRSIGs
-dig +dnssec +multiline DNSKEY "${ZONE}" @localhost | \
-    grep "RRSIG\|expires"
+# Verify the signed zone; expired signatures fail validation
+dnssec-verify -o "${ZONE}" /var/named/"${ZONE}".zone.signed 2>&1 | \
+    grep -i "expired\|signature\|warning\|error"
+
+# Show DNSKEY RRset signature expiration returned by the server
+dig +dnssec +noall +answer "${ZONE}" DNSKEY @localhost | \
+    awk '$4 == "RRSIG" {print $5, $9}' | \
+    while read rtype expiry; do
+        DATE=$(date -d "${expiry:0:8} ${expiry:8:6}" "+%Y-%m-%d %H:%M" 2>/dev/null || echo "${expiry}")
+        echo "${rtype}: expires ${DATE}"
+    done
 
 # Parse RRSIG expiration from zone file
-grep " RRSIG " /var/named/example.com.zone.signed | \
-    awk '{print $5, $7}' | \
+grep " RRSIG " /var/named/"${ZONE}".zone.signed | \
+    awk '{print $5, $9}' | \
     while read rtype expiry; do
         # Convert YYYYMMDDHHMMSS to readable
         DATE=$(date -d "${expiry:0:8} ${expiry:8:6}" "+%Y-%m-%d %H:%M" 2>/dev/null || echo "${expiry}")
@@ -92,8 +98,8 @@ grep " RRSIG " /var/named/example.com.zone.signed | \
 
 # Quick check: find signatures expiring in next 7 days
 CUTOFF=$(date -d "+7 days" +%Y%m%d%H%M%S)
-grep " RRSIG " /var/named/example.com.zone.signed | \
-    awk '{print $7, $5}' | \
+grep " RRSIG " /var/named/"${ZONE}".zone.signed | \
+    awk '{print $9, $5}' | \
     awk -v cutoff="${CUTOFF}" '$1 < cutoff {print "EXPIRING SOON: " $2 " expires " $1}'
 ```
 
@@ -103,27 +109,34 @@ grep " RRSIG " /var/named/example.com.zone.signed | \
 # Compare DS record at parent with local KSK
 ZONE="example.com"
 KEY_DIR="/var/named/keys/${ZONE}"
+RESOLVER="8.8.8.8"
 
 # Get published DS
-PUBLISHED_DS=$(dig +short DS "${ZONE}" @a.gtld-servers.net 2>/dev/null)
+PUBLISHED_DS=$(dig +short DS "${ZONE}" @"${RESOLVER}" 2>/dev/null | sort -u)
 echo "Published DS at parent:"
 echo "${PUBLISHED_DS}"
 echo ""
 
-# Get local DS from KSK
-echo "Local KSK DS records:"
-for keyfile in ${KEY_DIR}/K${ZONE}.+*.key; do
-    # Only KSK (flag 257)
-    if grep -q "257" "${keyfile}"; then
+# Get local DS from KSK (generate the common digest types)
+LOCAL_DS=$(
+    for keyfile in "${KEY_DIR}"/K"${ZONE}".+*.key; do
+        [ -e "${keyfile}" ] || continue
         dnssec-dsfromkey -2 "${keyfile}"
-    fi
-done
+        dnssec-dsfromkey -a SHA-384 "${keyfile}"
+    done | sort -u
+)
+
+echo "Local KSK DS records:"
+printf '%s\n' "${LOCAL_DS}"
 
 # Compare
 if [ -z "${PUBLISHED_DS}" ]; then
     echo "ERROR: No DS record published at parent!"
     echo "ACTION: Submit DS record to registrar"
-elif ! echo "${PUBLISHED_DS}" | grep -qF "$(dnssec-dsfromkey -2 ${KEY_DIR}/K${ZONE}.+013+*.key 2>/dev/null | awk '{print $8}')"; then
+elif [ -z "${LOCAL_DS}" ]; then
+    echo "ERROR: No local KSK-derived DS records found!"
+    echo "ACTION: Check that the KSK files are present in ${KEY_DIR}"
+elif ! grep -Fxf <(printf '%s\n' "${LOCAL_DS}") <(printf '%s\n' "${PUBLISHED_DS}") >/dev/null; then
     echo "ERROR: Published DS does not match local KSK!"
     echo "ACTION: Update DS record at registrar"
 else
@@ -141,27 +154,14 @@ ZONE="example.com"
 ZONE_FILE="/var/named/${ZONE}.zone"
 KEY_DIR="/var/named/keys/${ZONE}"
 
-# Find ZSK and KSK
-ZSK=$(ls ${KEY_DIR}/K${ZONE}.+013+*.key | xargs -I {} bash -c 'grep -l "256 3" {}' | head -1 | sed 's/\.key//')
-KSK=$(ls ${KEY_DIR}/K${ZONE}.+013+*.key | xargs -I {} bash -c 'grep -l "257 3" {}' | head -1 | sed 's/\.key//')
-
-echo "ZSK: ${ZSK}"
-echo "KSK: ${KSK}"
-
-# Increment serial
-sed -i "s/; serial.*/$(date +%Y%m%d01) ; serial/" "${ZONE_FILE}"
-
-# Re-sign with 30-day validity window
+# Re-sign using the keys in KEY_DIR
 dnssec-signzone \
-    -3 - \
-    -H 0 \
-    -e +2592000 \   # 30-day validity
-    -s $(date +%s) \
-    -A -N INCREMENT \
+    -S \
+    -K "${KEY_DIR}" \
+    -N INCREMENT \
     -o "${ZONE}" \
-    -k "${KSK}" \
-    "${ZONE_FILE}" \
-    "${ZSK}"
+    -f "${ZONE_FILE}.signed" \
+    "${ZONE_FILE}"
 
 # Verify
 dnssec-verify -o "${ZONE}" "${ZONE_FILE}.signed" && echo "Zone verified OK"
@@ -176,9 +176,8 @@ rndc reload "${ZONE}"
 # Fix 1: Zone file was replaced without re-signing
 # Symptom: Queries return data but without RRSIG
 # Fix: Re-sign the zone
-dnssec-signzone -3 - -H 0 -A -N INCREMENT -o example.com \
-    -k Kexample.com.+013+KSK /var/named/example.com.zone \
-    Kexample.com.+013+ZSK
+dnssec-signzone -S -K /var/named/keys/example.com -N INCREMENT -o example.com \
+    -f /var/named/example.com.zone.signed /var/named/example.com.zone
 
 # Fix 2: Clock skew - signatures not yet valid
 # Symptom: SERVFAIL but zone looks fine
@@ -187,10 +186,10 @@ timedatectl status | grep "Local time\|NTP"
 # Fix: sync NTP
 chronyc makestep
 
-# Fix 3: AAAA record not signed (only A is)
+# Fix 3: AAAA RRset added after signing
 # Symptom: AAAA queries SERVFAIL, A queries work
 dig +dnssec AAAA www.example.com @localhost | grep RRSIG
-# If no RRSIG for AAAA - zone was partially signed
+# If no RRSIG for the AAAA RRset - the signed zone is stale or incomplete
 # Fix: re-sign with all record types
 
 # Fix 4: BIND not using signed zone
@@ -215,7 +214,7 @@ WARN_DAYS=14  # Alert 14 days before expiry
 
 # Get earliest RRSIG expiry from zone
 EARLIEST=$(grep " RRSIG " /var/named/${ZONE}.zone.signed | \
-    awk '{print $7}' | sort | head -1)
+    awk '{print $9}' | sort | head -1)
 
 EARLIEST_EPOCH=$(date -d "${EARLIEST:0:8} ${EARLIEST:8:6}" +%s 2>/dev/null)
 NOW_EPOCH=$(date +%s)
@@ -232,4 +231,4 @@ echo "OK: ${ZONE} signatures valid for ${DAYS_LEFT} days"
 
 ## Conclusion
 
-DNSSEC troubleshooting starts with `dig +dnssec` (with validation) vs `dig +dnssec +cd` (without validation). If the +cd query succeeds but normal validation fails, signatures are present but invalid - check expiry dates and DS record matching. If both fail, signatures are missing entirely - zone was likely replaced or re-signed without RRSIG records. Always verify after re-signing with `dnssec-verify`. Monitor signature expiry with a cron job alerting 14 days before expiry. For IPv6 zones, pay special attention to AAAA record signatures - they can be accidentally dropped if zone editing tools don't preserve signed zone format.
+DNSSEC troubleshooting starts with `dig +dnssec` (with validation) vs `dig +dnssec +cdflag` (without validation). If the `+cdflag` query succeeds but normal validation fails, signatures are present but invalid - check expiry dates and DS record matching. If both fail, the problem is not validation-only - check whether the authoritative server is serving the expected signed zone and whether RRSIG records are present for the RRset you queried. Always verify after re-signing with `dnssec-verify`. Monitor signature expiry with a cron job alerting 14 days before expiry. For IPv6 zones, pay special attention to AAAA RRsets - validation failures often appear after the unsigned zone was updated without re-signing or the server loaded an unsigned or stale copy of the zone.
