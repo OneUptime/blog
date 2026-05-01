@@ -35,10 +35,10 @@ nft add table ip nat
 nft add chain ip nat prerouting { type nat hook prerouting priority -100 \; }
 
 # Forward port 80 on the public IP to an internal web server at 192.168.1.10:80
-nft add rule ip nat prerouting iif "eth0" tcp dport 80 dnat to 192.168.1.10
+nft add rule ip nat prerouting iifname "eth0" tcp dport 80 dnat to 192.168.1.10
 
 # Forward port 443 to the same internal web server
-nft add rule ip nat prerouting iif "eth0" tcp dport 443 dnat to 192.168.1.10
+nft add rule ip nat prerouting iifname "eth0" tcp dport 443 dnat to 192.168.1.10
 ```
 
 ## DNAT to a Different Port
@@ -47,14 +47,18 @@ You can redirect traffic to a different port on the destination host.
 
 ```bash
 # Forward external port 8080 to internal port 80 on 192.168.1.10
-nft add rule ip nat prerouting iif "eth0" tcp dport 8080 dnat to 192.168.1.10:80
+nft add rule ip nat prerouting iifname "eth0" tcp dport 8080 dnat to 192.168.1.10:80
 ```
 
 ## Allow Forwarding for DNAT Traffic
 
 ```bash
+# Create the filter table and forward chain
+nft add table inet filter
+nft add chain inet filter forward { type filter hook forward priority 0 \; }
+
 # Allow forwarded traffic to the internal server
-nft add rule inet filter forward iif "eth0" oif "eth1" \
+nft add rule inet filter forward iifname "eth0" oifname "eth1" \
     ip daddr 192.168.1.10 tcp dport { 80, 443 } ct state new,established,related accept
 ```
 
@@ -70,17 +74,17 @@ table ip nat {
         type nat hook prerouting priority -100; policy accept;
 
         # Forward HTTP and HTTPS to internal web server
-        iif "eth0" tcp dport { 80, 443 } dnat to 192.168.1.10
+        iifname "eth0" tcp dport { 80, 443 } dnat to 192.168.1.10
 
         # Forward SSH (port 2222 externally) to internal host port 22
-        iif "eth0" tcp dport 2222 dnat to 192.168.1.20:22
+        iifname "eth0" tcp dport 2222 dnat to 192.168.1.20:22
     }
 
     chain postrouting {
         type nat hook postrouting priority 100; policy accept;
 
-        # Masquerade for outbound traffic (needed for return packets)
-        oif "eth0" masquerade
+        # Optional: masquerade outbound traffic on the public interface
+        oifname "eth0" masquerade
     }
 }
 
@@ -89,11 +93,11 @@ table inet filter {
         type filter hook forward priority 0; policy drop;
 
         # Allow forwarded traffic to internal web server
-        iif "eth0" oif "eth1" ip daddr 192.168.1.10 \
+        iifname "eth0" oifname "eth1" ip daddr 192.168.1.10 \
             tcp dport { 80, 443 } ct state new,established,related accept
 
         # Allow SSH port forwarding
-        iif "eth0" oif "eth1" ip daddr 192.168.1.20 \
+        iifname "eth0" oifname "eth1" ip daddr 192.168.1.20 \
             tcp dport 22 ct state new,established,related accept
 
         # Allow established return traffic
@@ -110,9 +114,9 @@ nft list table ip nat
 
 # Test the port forward from an external host
 curl http://<public-ip>
-curl http://<public-ip>:8080
+ssh -p 2222 user@<public-ip>
 ```
 
 ## Conclusion
 
-DNAT with nftables gives you fine-grained control over port forwarding. Use the `prerouting` chain at priority `-100` to intercept packets before the routing decision, and combine with `postrouting masquerade` so return packets are handled correctly. Always add matching `forward` chain rules to permit the redirected traffic.
+DNAT with nftables gives you fine-grained control over port forwarding. Use the `prerouting` chain at priority `-100` to intercept packets before the routing decision, add matching `forward` chain rules to permit the redirected traffic, and use `postrouting` SNAT or masquerade when you also need outbound source NAT on the public interface.
