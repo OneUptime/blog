@@ -8,7 +8,7 @@ Description: Configure Envoy to preserve original client IPv4 addresses using IP
 
 ## Introduction
 
-Without IP transparency, backends see Envoy's IP address rather than the real client IP. Envoy provides multiple mechanisms to preserve client IPv4 addresses depending on the protocol and backend capabilities.
+Without additional forwarding or transparency, backends only see Envoy's source IP on the connection. Envoy provides multiple mechanisms to propagate the original client IPv4 address depending on the protocol and backend capabilities.
 
 ## Method 1: X-Forwarded-For Headers
 
@@ -66,21 +66,21 @@ clusters:
                 address:
                   socket_address: { address: 192.168.1.10, port_value: 8080 }
 
-    # Send PROXY protocol v1 or v2 to backend
-    upstream_bind_config: {}
     transport_socket:
-      name: envoy.transport_sockets.upstream_http_11
-      # For PROXY protocol:
-    typed_extension_protocol_options:
-      envoy.extensions.upstreams.http.v3.HttpProtocolOptions:
-        "@type": type.googleapis.com/envoy.extensions.upstreams.http.v3.HttpProtocolOptions
-        upstream_proxy_protocol_config:
+      name: envoy.transport_sockets.upstream_proxy_protocol
+      typed_config:
+        "@type": type.googleapis.com/envoy.extensions.transport_sockets.proxy_protocol.v3.ProxyProtocolUpstreamTransport
+        config:
           version: V2   # PROXY protocol version 2 (binary)
+        transport_socket:
+          name: envoy.transport_sockets.raw_buffer
+          typed_config:
+            "@type": type.googleapis.com/envoy.extensions.transport_sockets.raw_buffer.v3.RawBuffer
 ```
 
-## Method 3: Accepting PROXY Protocol from Upstream
+## Method 3: Accepting PROXY Protocol from a Downstream Load Balancer
 
-When Envoy sits behind an upstream load balancer sending PROXY protocol:
+When Envoy sits behind a load balancer sending PROXY protocol:
 
 ```yaml
 listeners:
@@ -113,10 +113,11 @@ listeners:
                     "@type": type.googleapis.com/envoy.extensions.filters.http.router.v3.Router
 ```
 
-## Verifying Client IP Forwarding
+## Verifying X-Forwarded-For Forwarding
 
 ```bash
-# Create a debug backend that echoes headers
+# Create a debug backend that echoes headers on port 8081.
+# Point backend_cluster at 127.0.0.1:8081 while testing.
 
 python3 -c "
 from http.server import HTTPServer, BaseHTTPRequestHandler
@@ -127,17 +128,17 @@ class Handler(BaseHTTPRequestHandler):
         self.send_response(200)
         self.send_header('Content-Type', 'application/json')
         self.end_headers()
-        headers = dict(self.headers)
+        headers = {k.lower(): v for k, v in self.headers.items()}
         self.wfile.write(json.dumps(headers).encode())
 
-HTTPServer(('0.0.0.0', 8080), Handler).serve_forever()
+HTTPServer(('0.0.0.0', 8081), Handler).serve_forever()
 " &
 
-# Send request through Envoy
-curl http://localhost:8080/ | jq '."X-Forwarded-For"'
-# Should show the real client IP
+# Send request through Envoy on port 8080
+curl http://localhost:8080/ | jq -r '."x-forwarded-for"'
+# In a local test, this should show 127.0.0.1
 ```
 
 ## Conclusion
 
-Envoy IP transparency can be achieved via `X-Forwarded-For` (HTTP, set `use_remote_address: true`), PROXY protocol to backends (for TCP services), or accepting PROXY protocol from upstream load balancers via the `proxy_protocol` listener filter. Choose XFF for HTTP workloads, PROXY protocol for TCP proxying where HTTP headers are unavailable.
+Envoy can preserve client IPv4 information via `X-Forwarded-For` (HTTP, set `use_remote_address: true`), PROXY protocol to backends that support it, or by accepting PROXY protocol from a fronting load balancer via the `proxy_protocol` listener filter. Choose XFF for HTTP workloads, and choose PROXY protocol when HTTP headers are unavailable or the upstream explicitly expects PROXY protocol metadata.
