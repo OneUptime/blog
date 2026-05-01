@@ -16,8 +16,10 @@ The Portainer Terraform provider's `portainer_stack` resource lets you define Do
 # stacks.tf
 
 resource "portainer_stack" "nginx" {
-  name        = "nginx-proxy"
-  endpoint_id = portainer_environment.production.id
+  name            = "nginx-proxy"
+  deployment_type = "standalone"
+  method          = "string"
+  endpoint_id     = portainer_environment.production.id
 
   # Inline Compose content
   stack_file_content = <<-EOT
@@ -32,12 +34,10 @@ resource "portainer_stack" "nginx" {
   EOT
 
   # Environment variables for the stack
-  env = [
-    {
-      name  = "NGINX_VERSION"
-      value = var.nginx_version
-    }
-  ]
+  env {
+    name  = "NGINX_VERSION"
+    value = var.nginx_version
+  }
 }
 
 variable "nginx_version" {
@@ -49,16 +49,23 @@ variable "nginx_version" {
 
 ```hcl
 resource "portainer_stack" "monitoring" {
-  name        = "monitoring"
-  endpoint_id = portainer_environment.production.id
+  name            = "monitoring"
+  deployment_type = "standalone"
+  method          = "file"
+  endpoint_id     = portainer_environment.production.id
 
   # Load Compose file from disk
-  stack_file_content = file("${path.module}/stacks/monitoring/docker-compose.yml")
+  stack_file_path = "${path.module}/stacks/monitoring/docker-compose.yml"
 
-  env = [
-    { name = "GRAFANA_PASSWORD", value = var.grafana_password },
-    { name = "PROMETHEUS_RETENTION", value = "30d" }
-  ]
+  env {
+    name  = "GRAFANA_PASSWORD"
+    value = var.grafana_password
+  }
+
+  env {
+    name  = "PROMETHEUS_RETENTION"
+    value = "30d"
+  }
 }
 ```
 
@@ -66,8 +73,10 @@ resource "portainer_stack" "monitoring" {
 
 ```hcl
 resource "portainer_stack" "app" {
-  name        = "my-app"
-  endpoint_id = portainer_environment.production.id
+  name            = "my-app"
+  deployment_type = "swarm"
+  method          = "string"
+  endpoint_id     = portainer_environment.production.id
 
   # Use templatefile for dynamic content
   stack_file_content = templatefile("${path.module}/templates/app-compose.tpl", {
@@ -77,9 +86,10 @@ resource "portainer_stack" "app" {
     replicas     = 3
   })
 
-  env = [
-    { name = "IMAGE_TAG", value = var.app_image_tag }
-  ]
+  env {
+    name  = "IMAGE_TAG"
+    value = var.app_image_tag
+  }
 }
 ```
 
@@ -102,8 +112,10 @@ services:
 
 ```hcl
 resource "portainer_stack" "git_app" {
-  name        = "git-backed-app"
-  endpoint_id = portainer_environment.production.id
+  name            = "git-backed-app"
+  deployment_type = "standalone"
+  method          = "repository"
+  endpoint_id     = portainer_environment.production.id
 
   # Deploy from Git repository
   repository_url             = "https://github.com/myorg/my-app"
@@ -111,15 +123,13 @@ resource "portainer_stack" "git_app" {
   file_path_in_repository    = "docker/docker-compose.yml"
 
   # Authentication for private repos
-  repository_authentication = true
-  repository_username       = var.git_username
-  repository_password       = var.git_token
+  git_repository_authentication = true
+  repository_username           = var.git_username
+  repository_password           = var.git_token
 
-  # Enable automatic updates via webhook
-  auto_update = {
-    force_pull_image    = true
-    pull_image          = true
-  }
+  # Enable a GitOps webhook and pull images on redeploy
+  stack_webhook = true
+  pull_image    = true
 }
 ```
 
@@ -128,15 +138,19 @@ resource "portainer_stack" "git_app" {
 ```hcl
 # Deploy infrastructure stacks before application stacks
 resource "portainer_stack" "database" {
-  name               = "database"
-  endpoint_id        = portainer_environment.production.id
-  stack_file_content = file("stacks/database/docker-compose.yml")
+  name            = "database"
+  deployment_type = "standalone"
+  method          = "file"
+  endpoint_id     = portainer_environment.production.id
+  stack_file_path = "${path.module}/stacks/database/docker-compose.yml"
 }
 
 resource "portainer_stack" "application" {
-  name               = "application"
-  endpoint_id        = portainer_environment.production.id
-  stack_file_content = file("stacks/app/docker-compose.yml")
+  name            = "application"
+  deployment_type = "standalone"
+  method          = "file"
+  endpoint_id     = portainer_environment.production.id
+  stack_file_path = "${path.module}/stacks/app/docker-compose.yml"
 
   # Ensure database is deployed first
   depends_on = [portainer_stack.database]
