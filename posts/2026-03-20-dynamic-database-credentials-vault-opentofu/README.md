@@ -14,7 +14,7 @@ Static database passwords stored in configuration files or environment variables
 
 ## Architecture
 
-```hcl
+```text
 Application/OpenTofu → Vault (Database Secrets Engine) → Database
                                                               ↓
                                                    Temporary user created
@@ -95,7 +95,7 @@ terraform {
   required_providers {
     vault = {
       source  = "hashicorp/vault"
-      version = "~> 3.0"
+      version = "~> 5.0"
     }
     postgresql = {
       source  = "cyrilgdn/postgresql"
@@ -108,13 +108,9 @@ provider "vault" {
   address = "https://vault.corp.example.com:8200"
 }
 
-# Get dynamic credentials from Vault
-data "vault_database_secret_backend_dynamic_role" "app" {
-  backend = "database"
-  name    = "app-role"
-}
-
-# Alternative: use generic secret for credentials
+# Read dynamic credentials from Vault
+# Note: vault_generic_secret writes the secret into OpenTofu state and
+# requests a new lease each time the data source is refreshed.
 data "vault_generic_secret" "db_creds" {
   path = "database/creds/app-role"
 }
@@ -134,6 +130,8 @@ provider "postgresql" {
 
 ```hcl
 # Provision DB credentials as Kubernetes secrets
+# Be aware: this stores the credentials in OpenTofu state, and the
+# Kubernetes Secret will not auto-renew when the Vault lease expires.
 resource "kubernetes_secret" "db_credentials" {
   metadata {
     name      = "app-db-credentials"
@@ -156,9 +154,9 @@ resource "kubernetes_secret" "db_credentials" {
 ## MySQL Configuration
 
 ```bash
-# Enable MySQL plugin
+# Configure MySQL connection
 vault write database/config/mysql \
-    plugin_name=mysql-aurora-database-plugin \
+    plugin_name=mysql-database-plugin \
     allowed_roles="mysql-app" \
     connection_url="{{username}}:{{password}}@tcp(mysql.corp.example.com:3306)/" \
     username="vault_admin" \
@@ -209,7 +207,7 @@ vault lease renew database/creds/app-role/xyz789
 
 1. **Use Vault Agent** in applications to handle credential renewal automatically
 2. **Set short TTLs** (1–4 hours) and let Vault handle renewal
-3. **Never log credentials** - Vault audit logs only show lease IDs, not secrets
+3. **Never log credentials** - Vault audit devices HMAC most string values by default, so secret values are not logged in plaintext
 4. **Use separate roles** for each application (principle of least privilege)
 5. **Rotate root credentials** immediately after configuring the database connection
 
@@ -217,7 +215,7 @@ vault lease renew database/creds/app-role/xyz789
 
 ## Conclusion
 
-Vault's database secrets engine eliminates static database passwords from your infrastructure. Dynamic credentials are unique per lease, expire automatically, and are logged for auditability. Integrate with OpenTofu to provision infrastructure with zero hardcoded database secrets.
+Vault's database secrets engine eliminates static database passwords from your infrastructure. Dynamic credentials are unique per lease, expire automatically, and are logged for auditability. Integrate with OpenTofu to provision infrastructure without hardcoding database secrets in your configuration.
 
 ---
 
