@@ -59,21 +59,21 @@ router bgp 65001
  ! Apply inbound filter - only accept valid prefixes from neighbor
  neighbor 203.0.113.1 prefix-list BOGON_BLOCK in
 
- ! Apply outbound filter - only advertise our own prefix to neighbor
+ ! Apply outbound filter - only advertise the intended prefix to neighbor
  neighbor 203.0.113.1 prefix-list OUR_PREFIX out
 ```
 
 Create the outbound filter:
 
 ```text
-! Only advertise your allocated prefix
+! Only advertise the example prefix
 ip prefix-list OUR_PREFIX seq 10 permit 198.51.100.0/24
 ip prefix-list OUR_PREFIX seq 999 deny 0.0.0.0/0 le 32
 ```
 
 ## Step 4: Activate the Filter
 
-After applying a new filter, perform a soft reset to apply it without dropping the BGP session:
+After applying a new filter, perform a soft reset to apply it without dropping the BGP session when the peer supports route refresh:
 
 ```text
 ! Soft reset inbound (re-evaluate received routes against new filter)
@@ -96,17 +96,19 @@ Router# show ip bgp neighbors 203.0.113.1 received-routes
 Router# show ip bgp neighbors 203.0.113.1 routes
 ```
 
+The `received-routes` view is only available when inbound soft reconfiguration is enabled for that neighbor with `neighbor 203.0.113.1 soft-reconfiguration inbound`. That stores unmodified updates and uses additional memory. If you have not enabled inbound soft reconfiguration, use `routes` to verify the prefixes that were accepted.
+
 If `received-routes` shows more entries than `routes`, your filter is working as intended.
 
 ## Prefix List vs Access List for BGP Filtering
 
 | Feature | Prefix List | Access List |
 |---|---|---|
-| Match prefix length | Yes (ge/le) | No |
-| Performance | Faster (binary search) | Slower (linear) |
-| Readability | High | Medium |
-| Recommended for BGP | Yes | No (legacy) |
+| Match prefix length | Yes (`ge`/`le`) | Limited (exact mask or wildcard matching, no `ge`/`le`) |
+| Performance | Better for large lists | Lower for large lists |
+| Readability | High | Lower |
+| Recommended for BGP | Usually yes | Still supported, but less convenient |
 
 ## Conclusion
 
-Prefix lists are the recommended tool for BGP route filtering in Cisco IOS. Create permit/deny entries based on network addresses and prefix lengths, apply them inbound and outbound with `neighbor X.X.X.X prefix-list`, and use `clear ip bgp soft` to activate changes without session disruption.
+Prefix lists are the recommended tool for BGP route filtering in Cisco IOS. Create permit/deny entries based on network addresses and prefix lengths, apply them inbound and outbound with `neighbor X.X.X.X prefix-list`, and use `clear ip bgp soft` to activate changes without session disruption when the peer supports route refresh.
