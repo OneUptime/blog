@@ -8,22 +8,22 @@ Description: Learn how to install the AWS Load Balancer Controller on EKS using 
 
 ## Introduction
 
-The AWS Load Balancer Controller manages ALBs for Kubernetes Ingress resources and NLBs for LoadBalancer-type Services. It replaces the classic in-tree cloud provider and provides modern features like traffic weighting, authentication, and HTTPS redirection.
+The AWS Load Balancer Controller manages ALBs for Kubernetes Ingress resources and NLBs for LoadBalancer-type Services. For load balancing on EKS, it supersedes the legacy in-tree cloud provider behavior that provisions Classic Load Balancers and provides modern features like traffic weighting, authentication, and HTTPS redirection.
 
 ## Prerequisites
 
 - OpenTofu v1.6+
-- An existing EKS cluster with OIDC provider
+- An existing EKS cluster running Kubernetes 1.22+ with an IAM OIDC provider
 - Helm provider configured
-- VPC subnets tagged with EKS cluster tags
+- VPC subnets tagged for public or private load balancers (`kubernetes.io/role/elb` or `kubernetes.io/role/internal-elb`); cluster tags are optional with AWS Load Balancer Controller v2.1.2+
 
 ## Step 1: Create IAM Policy for the Controller
 
 ```hcl
-# Download and create the policy from the official AWS repository
+# Download and create the IAM policy for the controller release you are deploying
 
 data "http" "lbc_policy" {
-  url = "https://raw.githubusercontent.com/kubernetes-sigs/aws-load-balancer-controller/main/docs/install/iam_policy.json"
+  url = "https://raw.githubusercontent.com/kubernetes-sigs/aws-load-balancer-controller/v3.2.2/docs/install/iam_policy.json"
 }
 
 resource "aws_iam_policy" "lbc" {
@@ -36,6 +36,18 @@ resource "aws_iam_policy" "lbc" {
 ## Step 2: Create IRSA Role for the Controller
 
 ```hcl
+data "aws_eks_cluster" "cluster" {
+  name = var.cluster_name
+}
+
+data "aws_iam_openid_connect_provider" "cluster" {
+  url = data.aws_eks_cluster.cluster.identity[0].oidc[0].issuer
+}
+
+locals {
+  oidc_provider = replace(data.aws_eks_cluster.cluster.identity[0].oidc[0].issuer, "https://", "")
+}
+
 resource "aws_iam_role" "lbc" {
   name = "${var.cluster_name}-aws-load-balancer-controller"
 
@@ -45,7 +57,7 @@ resource "aws_iam_role" "lbc" {
       Effect = "Allow"
       Action = "sts:AssumeRoleWithWebIdentity"
       Principal = {
-        Federated = aws_iam_openid_connect_provider.cluster.arn
+        Federated = data.aws_iam_openid_connect_provider.cluster.arn
       }
       Condition = {
         StringEquals = {
@@ -72,11 +84,16 @@ resource "helm_release" "lbc" {
   repository = "https://aws.github.io/eks-charts"
   chart      = "aws-load-balancer-controller"
   namespace  = "kube-system"
-  version    = "1.8.1"
+  version    = "3.2.2"
 
   set {
     name  = "clusterName"
     value = var.cluster_name
+  }
+
+  set {
+    name  = "serviceAccount.name"
+    value = "aws-load-balancer-controller"
   }
 
   set {
@@ -112,7 +129,6 @@ resource "kubernetes_ingress_v1" "app" {
     namespace = "apps"
 
     annotations = {
-      "kubernetes.io/ingress.class"               = "alb"
       "alb.ingress.kubernetes.io/scheme"          = "internet-facing"
       "alb.ingress.kubernetes.io/target-type"     = "ip"
       "alb.ingress.kubernetes.io/certificate-arn" = var.acm_cert_arn
@@ -122,6 +138,8 @@ resource "kubernetes_ingress_v1" "app" {
   }
 
   spec {
+    ingress_class_name = "alb"
+
     rule {
       host = "app.example.com"
       http {
