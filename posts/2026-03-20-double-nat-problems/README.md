@@ -21,11 +21,11 @@ Double NAT occurs when traffic passes through two NAT devices before reaching th
 
 ## Problems Caused by Double NAT
 
-1. **Port forwarding fails** - forwarding on your router goes to its NAT'd IP, not the end host
+1. **Port forwarding gets more complicated** - you usually need matching forwards on both NAT devices, or inbound traffic stops at the upstream router
 2. **VoIP/SIP issues** - SIP ALG interacts badly with nested NAT
 3. **VPN problems** - IPsec/IKE NAT traversal is complicated by double NAT
-4. **Gaming issues** - strict NAT type (Type 3 on PlayStation, NAT D on others)
-5. **UPnP doesn't work** - UPnP only programs one router's port forwards
+4. **Gaming issues** - stricter NAT types are more common (for example, Type 3 on PlayStation or Strict on Xbox)
+5. **UPnP doesn't work** - UPnP on your router only programs one router's port forwards
 
 ## Detecting Double NAT
 
@@ -37,8 +37,8 @@ ip addr show
 # Check the next hop (gateway)
 ip route show default | awk '/default/ {print $3}'
 
-# Trace the path (if second hop is also private, you have double NAT)
-traceroute 8.8.8.8
+# Trace the path numerically (a second private/shared-address hop is a strong clue)
+traceroute -n 8.8.8.8
 
 # Example output showing double NAT:
 # 1. 192.168.1.1  (your router)
@@ -46,27 +46,48 @@ traceroute 8.8.8.8
 # 3. 203.0.113.x  (ISP public IP)
 ```
 
-If hop 2 is a private IP, you are behind double NAT.
+If hop 2 is in RFC1918 private space, or in the CGNAT shared range `100.64.0.0/10`, double NAT or CGNAT is likely. Confirm by checking whether your router's WAN/Internet IP is private or shared instead of public.
 
-```bash
-# Python: Detect double NAT by checking external IP vs gateway
-import subprocess, urllib.request
+```python
+# Python: Flag a likely extra upstream NAT from the first two traceroute hops
+import ipaddress
+import re
+import subprocess
 
-gateway = subprocess.run(
-    ['ip', 'route', 'show', 'default'],
-    capture_output=True, text=True
-).stdout.split()[2]
+private_or_shared = (
+    ipaddress.ip_network('10.0.0.0/8'),
+    ipaddress.ip_network('172.16.0.0/12'),
+    ipaddress.ip_network('192.168.0.0/16'),
+    ipaddress.ip_network('100.64.0.0/10'),  # CGNAT shared space
+)
 
-external_ip = urllib.request.urlopen('https://ifconfig.me').read().decode()
+result = subprocess.run(
+    ['traceroute', '-n', '-m', '3', '8.8.8.8'],
+    capture_output=True,
+    text=True,
+    check=True,
+)
 
-print(f"Gateway: {gateway}")
-print(f"External IP: {external_ip}")
-print(f"Double NAT suspected: gateway is private, external IP is different")
+hops = []
+for line in result.stdout.splitlines():
+    match = re.match(r'\s*\d+\s+(\d+\.\d+\.\d+\.\d+)', line)
+    if match:
+        hops.append(match.group(1))
+
+first_two = hops[:2]
+suspected = len(first_two) == 2 and all(
+    any(ipaddress.ip_address(ip) in network for network in private_or_shared)
+    for ip in first_two
+)
+
+print(f"First two hops: {first_two}")
+print(f"Double NAT suspected: {suspected}")
+print("Note: a private/shared second hop can also indicate CGNAT upstream.")
 ```
 
 ## Fix 1: Enable Bridge/Passthrough Mode on ISP Modem
 
-Most ISP modems support a "bridge mode" that disables their NAT and acts as a pure modem:
+Many ISP modem/router combos support a "bridge mode" that disables their NAT and acts as a pure modem:
 
 1. Log into ISP modem (usually 192.168.0.1 or 192.168.100.1)
 2. Find WAN or Internet settings
@@ -101,16 +122,18 @@ This works but requires configuring both devices.
 ## Verifying Double NAT Is Fixed
 
 ```bash
-# After fix: traceroute should show public IP at hop 2
-traceroute 8.8.8.8
+# After the fix, your router's WAN/Internet IP should be public,
+# or match the public IP reported by an external "what is my IP" service.
+# traceroute -n may also stop showing an extra private/shared-address hop:
+traceroute -n 8.8.8.8
 # 1. 192.168.1.1  (your router)
-# 2. 203.0.113.1  (ISP public IP - no more intermediate private hop)
+# 2. 198.51.100.1 (ISP network; some ISPs may hide or not answer this hop)
 ```
 
 ## Key Takeaways
 
 - Double NAT occurs when two NAT devices are in series on the path to the internet.
-- Detection: check if `traceroute` shows private IPs at two consecutive hops.
+- Detection: check if `traceroute -n` shows private/shared addresses at two consecutive hops, then confirm by checking your router's WAN/Internet IP.
 - Best fix: enable bridge/passthrough mode on the ISP modem.
 - Second best: put your router in the ISP modem's DMZ.
 
