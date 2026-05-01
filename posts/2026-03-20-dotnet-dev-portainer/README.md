@@ -24,8 +24,7 @@ RUN apt-get update && apt-get install -y \
     && rm -rf /var/lib/apt/lists/*
 
 # Install dotnet tools
-RUN dotnet tool install -g dotnet-ef && \
-    dotnet tool install -g dotnet-watch && \
+RUN dotnet tool install -g dotnet-ef --version 8.0.0 && \
     dotnet tool install -g dotnet-outdated-tool
 
 ENV PATH="$PATH:/root/.dotnet/tools"
@@ -33,19 +32,19 @@ ENV PATH="$PATH:/root/.dotnet/tools"
 WORKDIR /app
 
 # Copy project files for dependency restoration
-COPY *.csproj ./
-RUN dotnet restore
+COPY MyApi.csproj ./
+RUN dotnet restore /app/MyApi.csproj
 
 # Copy all source files
 COPY . .
 
 # Expose ports
 EXPOSE 8080    # HTTP
-EXPOSE 8081    # HTTPS
-EXPOSE 5678    # VSDB remote debugger (VS Code)
 ```
 
 ## Step 2: Deploy .NET Stack in Portainer
+
+If Portainer is connected to a remote Docker environment, build the image outside Portainer and replace `build:` with `image:` because Portainer doesn't execute Compose `build` steps on remote environments.
 
 ```yaml
 # docker-compose.yml - .NET Development Stack
@@ -70,7 +69,6 @@ services:
     restart: unless-stopped
     ports:
       - "5000:8080"    # HTTP
-      - "5001:8081"    # HTTPS
     environment:
       - ASPNETCORE_ENVIRONMENT=Development
       - ASPNETCORE_URLS=http://+:8080
@@ -86,8 +84,10 @@ services:
     networks:
       - dotnet_dev
     depends_on:
-      - sqlserver
-      - redis
+      sqlserver:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
 
   # SQL Server
   sqlserver:
@@ -100,6 +100,12 @@ services:
       - ACCEPT_EULA=Y
       - MSSQL_SA_PASSWORD=YourStrong!Passw0rd
       - MSSQL_PID=Developer
+    healthcheck:
+      test: ["CMD-SHELL", "/opt/mssql-tools18/bin/sqlcmd -S localhost -U sa -P \"$${MSSQL_SA_PASSWORD}\" -Q \"SELECT 1\" -No > /dev/null"]
+      interval: 10s
+      timeout: 5s
+      retries: 10
+      start_period: 30s
     volumes:
       - sqlserver_data:/var/opt/mssql
     networks:
@@ -112,6 +118,11 @@ services:
     restart: unless-stopped
     ports:
       - "6379:6379"
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 10s
+      timeout: 3s
+      retries: 5
     volumes:
       - redis_data:/data
     networks:
@@ -132,10 +143,17 @@ services:
 
 ## Step 3: ASP.NET Core Application Setup
 
+```bash
+# Add the extra packages used by this setup
+docker exec dotnet_api dotnet add /app/MyApi.csproj package Microsoft.EntityFrameworkCore.SqlServer --version 8.0.0
+docker exec dotnet_api dotnet add /app/MyApi.csproj package Microsoft.EntityFrameworkCore.Design --version 8.0.0
+docker exec dotnet_api dotnet add /app/MyApi.csproj package Microsoft.Extensions.Caching.StackExchangeRedis --version 8.0.0
+docker exec dotnet_api dotnet add /app/MyApi.csproj package Microsoft.Extensions.Diagnostics.HealthChecks.EntityFrameworkCore --version 8.0.0
+```
+
 ```csharp
 // Program.cs - ASP.NET Core 8 minimal API setup
 using Microsoft.EntityFrameworkCore;
-using StackExchange.Redis;
 
 var builder = WebApplication.CreateBuilder(args);
 
@@ -156,8 +174,7 @@ builder.Services.AddStackExchangeRedisCache(options =>
 
 // Health checks
 builder.Services.AddHealthChecks()
-    .AddSqlServer(builder.Configuration.GetConnectionString("DefaultConnection")!)
-    .AddRedis(builder.Configuration.GetConnectionString("Redis")!);
+    .AddDbContextCheck<AppDbContext>();
 
 var app = builder.Build();
 
@@ -250,7 +267,7 @@ docker exec dotnet_api dotnet ef migrations script \
         "pipeProgram": "docker",
         "pipeArgs": ["exec", "-i", "dotnet_api"],
         "debuggerPath": "/vsdbg/vsdbg",
-        "pipeCwd": "${workspaceRoot}"
+        "pipeCwd": "${workspaceFolder}"
       },
       "sourceFileMap": {
         "/app": "${workspaceFolder}"
@@ -272,7 +289,7 @@ docker exec dotnet_api bash -c \
 # Run all tests
 docker exec dotnet_api dotnet test /app/MyApi.Tests/
 
-# Run with coverage
+# Run with coverage (requires coverlet.collector in the test project)
 docker exec dotnet_api dotnet test /app/MyApi.Tests/ \
   --collect:"XPlat Code Coverage" \
   --results-directory /app/TestResults/
