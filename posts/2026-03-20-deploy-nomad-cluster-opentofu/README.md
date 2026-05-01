@@ -4,7 +4,7 @@ Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
 Tags: OpenTofu, Nomad, Cluster, Container Orchestration, HashiCorp
 
-Description: Learn how to deploy a HashiCorp Nomad cluster on AWS using OpenTofu with Consul integration, ACL bootstrapping, and auto-scaling client nodes for workload orchestration.
+Description: Learn how to deploy a HashiCorp Nomad cluster on AWS using OpenTofu with Consul integration, ACL policy management, and auto-scaling client nodes for workload orchestration.
 
 ## Introduction
 
@@ -162,8 +162,8 @@ locals {
 ```hcl
 provider "nomad" {
   address = "https://nomad.${var.domain_name}:4646"
-  ca_file = file("${path.module}/ca.crt")
-  token   = var.nomad_bootstrap_token
+  ca_file = "${path.module}/ca.crt"
+  secret_id = var.nomad_bootstrap_token
 }
 
 # ACL policy for CI/CD job submission
@@ -226,4 +226,4 @@ job "web-app" {
 
 ## Conclusion
 
-Deploying Nomad with OpenTofu creates a flexible workload orchestration platform alongside Consul for service discovery. The Consul integration is a first-class feature in Nomad's configuration - jobs automatically register with Consul for service discovery and health checking. Use the Nomad provider to manage ACL policies and namespaces, but submit jobs via the Nomad CLI or API during deployments to maintain proper separation between infrastructure and application concerns.
+Deploying Nomad with OpenTofu creates a flexible workload orchestration platform alongside Consul for service discovery. The Consul integration is a first-class feature in Nomad's configuration - services declared in Nomad job `service` blocks can register with Consul for service discovery and health checking. In ACL-enabled environments, service registration also requires the appropriate Consul token or workload identity configuration. Use the Nomad provider to manage ACL policies and namespaces, but submit jobs via the Nomad CLI or API during deployments to maintain proper separation between infrastructure and application concerns.
