@@ -66,7 +66,7 @@ tofu destroy -auto-approve
 ## Destroy a Specific Resource (Targeted Destroy)
 
 ```bash
-# Destroy only one specific resource without affecting others
+# Focus the destroy on one specific resource address
 tofu destroy -target=aws_instance.web
 
 # Destroy a specific resource in a module
@@ -77,6 +77,8 @@ tofu destroy \
   -target=aws_instance.web \
   -target=aws_security_group.web_sg
 ```
+
+`-target` is intended for exceptional situations, and OpenTofu may also include dependencies of the targeted resources in the plan.
 
 ---
 
@@ -93,7 +95,7 @@ tofu destroy \
 
 ## Preventing Accidental Destroy
 
-Use `prevent_destroy` lifecycle to protect critical resources.
+Use `prevent_destroy` lifecycle to help protect critical resources.
 
 ```hcl
 # Protect a production database from accidental destruction
@@ -138,4 +140,4 @@ graph LR
 
 ## Summary
 
-`tofu destroy` is a powerful command that requires care in production. Always run `tofu plan -destroy` first to see exactly what will be removed. Use `-target` to destroy specific resources while preserving others. For critical resources, add `lifecycle { prevent_destroy = true }` to make accidental destruction impossible.
+`tofu destroy` is a powerful command that requires care in production. Always run `tofu plan -destroy` first to see exactly what will be removed. Use `-target` only for exceptional situations when you need to focus on specific resource addresses, keeping in mind that OpenTofu may also include dependencies. For critical resources, add `lifecycle { prevent_destroy = true }` to help block accidental destruction while that setting remains in the configuration.
