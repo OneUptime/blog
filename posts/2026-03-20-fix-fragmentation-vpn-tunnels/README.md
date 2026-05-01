@@ -13,31 +13,30 @@ VPN tunnels add overhead to packets - headers for encapsulation, encryption, and
 ## Understand Tunnel Overhead
 
 ```text
-Protocol Overhead (reduces available packet size):
+Protocol Overhead (IPv4 underlay examples; actual values vary by options and padding):
 
 GRE tunnel:
-  IP header:       20 bytes
-  GRE header:       4 bytes minimum (8 with key/seq)
-  Total overhead:  24-28 bytes
-  Max payload in 1500 MTU network: 1476-1472 bytes
+  Outer IP header: 20 bytes
+  GRE header:       4 bytes minimum (+4 bytes each for checksum, key, or sequence extensions)
+  Total overhead:  24 bytes minimum
+  Max payload in 1500 MTU network: 1476 bytes minimum
 
-IPsec Tunnel Mode (ESP, AES-256-GCM):
-  IP header:       20 bytes
+IPsec Tunnel Mode (ESP, AES-GCM):
+  Outer IP header: 20 bytes
   ESP header:       8 bytes
-  IV (AES):        16 bytes
-  ESP trailer:      2 bytes
+  Explicit IV:      8 bytes
+  ESP trailer:      2 bytes + 0-3 bytes padding
   Auth tag (GCM):  16 bytes
-  Padding (avg):   ~8 bytes
-  Total overhead:  ~70 bytes
-  Max payload:     ~1430 bytes
+  Total overhead:  54-57 bytes
+  Max payload:     1443-1446 bytes
+  NAT-T adds:       8 bytes of outer UDP overhead
 
 WireGuard:
-  IP header:       20 bytes
+  Outer IP header: 20 bytes (IPv4) or 40 bytes (IPv6)
   UDP header:       8 bytes
-  WireGuard header: 32 bytes
-  Auth tag:        16 bytes
-  Total overhead:  ~80 bytes
-  Max payload:     1420 bytes
+  WireGuard data header + tag: 32 bytes
+  Total overhead:  60 bytes (IPv4) or 80 bytes (IPv6)
+  Max payload:     1440 bytes (IPv4) or 1420 bytes (IPv6)
 
 VXLAN:
   Outer IP:        20 bytes
@@ -61,8 +60,8 @@ ip link show gre0
 # Set correct MTU (1500 - 24 = 1476):
 ip link set gre0 mtu 1476
 
-# Permanent (in /etc/network/interfaces or nmcli):
-nmcli connection modify gre-tunnel ip.mtu 1476
+# Permanent with NetworkManager:
+nmcli connection modify gre-tunnel ip-tunnel.mtu 1476
 
 # For ip_gre kernel module:
 ip tunnel add gre0 mode gre remote 10.1.0.2 local 10.1.0.1 ttl 64
@@ -75,9 +74,9 @@ ping -M do -s 1448 remote-host-behind-gre  # 1476 - 28 = 1448
 ## Fix IPsec Tunnel MTU
 
 ```bash
-# IPsec overhead varies by cipher and mode:
-# AES-128-GCM: ~54 bytes overhead
-# AES-256-CBC with SHA-256: ~70 bytes overhead
+# ESP overhead varies by cipher, IP version, padding, and NAT-T use:
+# AES-GCM over IPv4: roughly 54-57 bytes; add 8 bytes if NAT-T is in use
+# AES-CBC/HMAC modes are typically larger because CBC adds a 16-byte IV and block padding
 
 # Set MTU on xfrm interface:
 ip link set xfrm0 mtu 1420   # Conservative value that works for most configs
@@ -88,7 +87,7 @@ ip link set xfrm0 mtu 1420   # Conservative value that works for most configs
 #   my-vpn {
 #     children {
 #       my-child {
-#         # No direct MTU option; use interface MTU instead
+#         # No child-specific MTU field here; set the XFRM interface MTU instead
 #       }
 #     }
 #   }
@@ -97,7 +96,7 @@ ip link set xfrm0 mtu 1420   # Conservative value that works for most configs
 # Reduce MTU on the underlying physical interface (affects all traffic):
 # Don't do this! Use MSS clamping instead for IPsec
 
-# Better: use iptables MSS clamping for IPsec traffic:
+# Better: use iptables TCPMSS rules for IPsec traffic (example fixed MSS value):
 iptables -t mangle -A FORWARD -p tcp --tcp-flags SYN,RST SYN \
   -m policy --pol ipsec --dir in -j TCPMSS --set-mss 1350
 
@@ -108,23 +107,27 @@ iptables -t mangle -A FORWARD -p tcp --tcp-flags SYN,RST SYN \
 ## Fix WireGuard MTU
 
 ```bash
-# WireGuard interface MTU should be:
-# Underlying MTU (e.g., 1500) - WireGuard overhead (80) = 1420
+# WireGuard MTU depends on the outer IP version:
+# IPv4 underlay: 1500 - 60 = 1440
+# IPv6 underlay: 1500 - 80 = 1420
 
 # In WireGuard config (/etc/wireguard/wg0.conf):
 [Interface]
 Address = 10.0.0.1/24
-MTU = 1420    # Add this line
+MTU = 1420    # Conservative value; common for IPv6 underlay
 
 # Or set dynamically:
 ip link set wg0 mtu 1420
 
+# If you omit MTU in wg-quick, it is usually auto-detected from the route to the peer.
+
 # If underlying path MTU is less than 1500 (e.g., PPPoE at 1492):
-# 1492 - 80 = 1412 → use MTU 1412
+# IPv4 underlay: 1492 - 60 = 1432
+# IPv6 underlay: 1492 - 80 = 1412
 
 # Calculate the right MTU:
 UNDERLYING_MTU=1500
-WG_OVERHEAD=80
+WG_OVERHEAD=60   # Use 80 if the outer path to the peer is IPv6
 WG_MTU=$((UNDERLYING_MTU - WG_OVERHEAD))
 echo "Set WireGuard MTU to: $WG_MTU"
 ip link set wg0 mtu $WG_MTU
@@ -137,19 +140,19 @@ ip link set wg0 mtu $WG_MTU
 # Forces TCP to use smaller segments automatically
 
 # For any VPN interface (tun0, wg0, gre0):
-# Clamp MSS for traffic going INTO the VPN:
-iptables -t mangle -A POSTROUTING -o wg0 -p tcp --tcp-flags SYN,RST SYN \
+# Clamp MSS on the tunnel egress interface:
+iptables -t mangle -A FORWARD -o wg0 -p tcp --tcp-flags SYN,RST SYN \
   -j TCPMSS --clamp-mss-to-pmtu
 
-# Clamp MSS for traffic coming FROM the VPN:
-iptables -t mangle -A POSTROUTING -o eth0 -p tcp --tcp-flags SYN,RST SYN \
+# Use the actual tunnel interface that carries the encapsulated traffic:
+iptables -t mangle -A FORWARD -o gre0 -p tcp --tcp-flags SYN,RST SYN \
   -j TCPMSS --clamp-mss-to-pmtu
 
-# Or set explicit MSS value:
-iptables -t mangle -A POSTROUTING -o wg0 -p tcp --tcp-flags SYN,RST SYN \
+# Or set explicit MSS value (IPv4 example for a 1420-byte tunnel MTU):
+iptables -t mangle -A FORWARD -o wg0 -p tcp --tcp-flags SYN,RST SYN \
   -j TCPMSS --set-mss 1380
 
-# Make persistent:
+# Make persistent (Debian/Ubuntu with iptables-persistent):
 iptables-save > /etc/iptables/rules.v4
 ```
 
@@ -159,8 +162,8 @@ iptables-save > /etc/iptables/rules.v4
 # Test that large packets work through tunnel:
 # From host on one side of tunnel to host on other side:
 
-# Should succeed (at path MTU):
-ping -M do -s 1400 10.0.0.2  # Remote host behind VPN
+# Should succeed (below path MTU):
+ping -M do -s 1392 10.0.0.2  # 1420-byte path MTU over IPv4 => 1420 - 28 = 1392
 ping -M do -s 1350 10.0.0.2  # More conservative
 
 # Check TCP MSS in connections through tunnel:
@@ -168,7 +171,7 @@ ss -tin state established | grep mss
 # MSS should be <= 1380 (or your configured value)
 
 # Watch for retransmissions (fragmentation causing drops):
-nstat | grep TcpRetrans  # Should not be increasing during VPN transfer
+nstat -az TcpRetransSegs  # Should not be increasing rapidly during VPN transfer
 ```
 
 ## Conclusion
