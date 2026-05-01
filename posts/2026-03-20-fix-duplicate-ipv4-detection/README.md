@@ -16,7 +16,7 @@ A duplicate IP address occurs when two devices on the same network segment use t
 
 - Intermittent connectivity loss
 - "Address already in use" errors
-- ARP conflicts logged in kernel messages
+- ARP or address-conflict messages in system logs
 - Traffic going to the wrong host
 
 ---
@@ -27,13 +27,11 @@ A duplicate IP address occurs when two devices on the same network segment use t
 
 ```bash
 # Look for ARP conflict messages
-
-dmesg | grep -i "duplicate\|conflict"
-# Example: [1234.567890] IPv4: Gratuitous ARP conflict detected! IP=192.168.1.100
+dmesg | grep -Ei "duplicate|conflict"
 
 # Check /var/log for ARP conflicts
-journalctl -k | grep -i "arp\|duplicate"
-grep -i "duplicate\|conflict" /var/log/syslog
+journalctl -k | grep -Ei "arp|duplicate"
+grep -Ei "duplicate|conflict" /var/log/syslog  # if present
 ```
 
 ### Use arping to Detect Duplicates
@@ -41,7 +39,7 @@ grep -i "duplicate\|conflict" /var/log/syslog
 ```bash
 # Install arping
 sudo apt-get install arping  # Debian/Ubuntu
-sudo dnf install iputils     # RHEL/CentOS
+sudo dnf install iputils     # RHEL/Fedora
 
 # Check for duplicate IP on the network
 # (-D = duplicate address detection mode)
@@ -54,15 +52,15 @@ sudo arping -D -I eth0 -c 3 192.168.1.100
 ### Check ARP Cache for Conflicts
 
 ```bash
-# View ARP table - look for duplicate MACs
-arp -a | sort -k 4
+# View the ARP/neighbor table; repeated checks may show the same IP changing MACs
+arp -an | sort
 
 # Or with ip command
 ip neigh show | sort
 
-# Manually send ARP request
+# Manually send ARP requests
 sudo arping -I eth0 -c 3 192.168.1.100
-# If two different MACs respond, there's a duplicate
+# If two different MACs respond for the same IP, there's a duplicate
 ```
 
 ---
@@ -82,7 +80,7 @@ sudo arping -I eth0 192.168.1.100
 # https://macvendors.com/ or:
 curl "https://api.macvendors.com/00:11:22:33:44:55"
 
-# Scan network to find conflicting host
+# Query that address for MAC/vendor details
 sudo nmap -sn 192.168.1.100
 ```
 
@@ -125,6 +123,7 @@ nmcli connection show
 
 # Modify IP address
 nmcli connection modify "Wired connection 1" \
+    ipv4.method manual \
     ipv4.addresses "192.168.1.200/24"
 
 # Apply
@@ -150,7 +149,7 @@ cat /var/lib/dhcp/dhcpd.leases | grep "192.168.1.100" -A 5
 ### On a Linux DHCP Client
 
 ```bash
-# Release and renew to get a new address
+# On systems that use dhclient, release and renew to get a new address
 sudo dhclient -r eth0  # Release
 sudo dhclient eth0     # Renew
 
@@ -171,27 +170,30 @@ arp -a | findstr "192.168.1.100"
 
 ---
 
-## Enabling ARP Conflict Detection on Linux
+## Related ARP Settings on Linux
 
 ```bash
-# View current ARP settings
+# View related ARP settings
+sysctl net.ipv4.conf.eth0.arp_notify
 sysctl net.ipv4.conf.eth0.arp_announce
-sysctl net.ipv4.conf.eth0.arp_ignore
 
-# Enable gratuitous ARP on IP assignment (announces new IP to network)
-sysctl -w net.ipv4.conf.eth0.arp_announce=2
+# Send gratuitous ARP when the device comes up or its MAC changes
+sudo sysctl -w net.ipv4.conf.eth0.arp_notify=1
 
-# Notify network of new address via gratuitous ARP
+# Prefer the best local source address in ARP requests
+sudo sysctl -w net.ipv4.conf.eth0.arp_announce=2
+
+# Notify neighbors of the address immediately
 sudo arping -A -I eth0 -c 3 192.168.1.100
 ```
 
 ---
 
-## Preventing Future Conflicts
+## Pinning a Neighbor Entry on One Host
 
 ```bash
-# Add static ARP entries for critical servers
-sudo arp -s 192.168.1.1 00:11:22:33:44:55  # Permanent static ARP
+# Pin an IP-to-MAC mapping on this host
+sudo arp -s 192.168.1.1 00:11:22:33:44:55
 
 # Or use ip neigh
 sudo ip neigh add 192.168.1.1 lladdr 00:11:22:33:44:55 dev eth0 nud permanent
@@ -203,9 +205,9 @@ sudo ip neigh add 192.168.1.1 lladdr 00:11:22:33:44:55 dev eth0 nud permanent
 
 ```powershell
 # Check Windows event log for ARP conflicts
-Get-WinEvent -LogName System | Where-Object {
-  $_.Message -match "duplicate\|ARP\|address conflict"
-} | Select-Object TimeCreated, Message
+Get-WinEvent -FilterHashtable @{ LogName='System'; ProviderName='Tcpip' } | Where-Object {
+  $_.Message -match 'duplicate|ARP|address conflict'
+} | Select-Object TimeCreated, Id, Message
 
 # Netsh trace for ARP
 netsh trace start capture=yes tracefile=C:\arp.etl
