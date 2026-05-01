@@ -27,10 +27,11 @@ dig AAAA google.com @8.8.8.8
 dig AAAA google.com @2001:4860:4860::8888
 
 # Look up AAAA and A records together
-dig google.com A AAAA
+dig google.com A google.com AAAA
 
 # Check if hostname has AAAA record
-dig +short AAAA example.com || echo "No AAAA record"
+result=$(dig +short AAAA example.com)
+[ -n "$result" ] && printf '%s\n' "$result" || echo "No AAAA record"
 ```
 
 ## Reverse IPv6 DNS Lookup (PTR)
@@ -90,7 +91,7 @@ check_dns() {
 check_dns "example.com"
 
 # Check TTL for cache invalidation
-dig AAAA example.com | grep "^example.com" | awk '{print "TTL:", $2, "seconds"}'
+dig AAAA example.com +noall +answer | awk 'NR==1 {print "TTL:", $2, "seconds"}'
 ```
 
 ## Diagnosing AAAA Record Issues
@@ -110,8 +111,9 @@ NS=$(dig +short NS example.com | head -1)
 echo "Authoritative NS: $NS"
 dig AAAA example.com @"$NS" +short
 
-# Check for DNSSEC validation of AAAA records
-dig AAAA example.com +dnssec | grep "RRSIG\|NODATA"
+# Request DNSSEC records for the AAAA response
+# If your resolver validates DNSSEC, look for the "ad" flag in the header.
+dig AAAA example.com +dnssec
 ```
 
 ## Batch DNS Lookup Script
