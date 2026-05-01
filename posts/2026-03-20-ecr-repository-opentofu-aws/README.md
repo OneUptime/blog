@@ -115,6 +115,8 @@ resource "aws_ecr_repository_policy" "app" {
 }
 ```
 
+The consuming IAM principal still needs an IAM policy that allows `ecr:GetAuthorizationToken` so it can authenticate before pulling images.
+
 ## Step 5: Create a Public ECR Repository
 
 ```hcl
@@ -154,11 +156,12 @@ tofu init
 tofu plan
 tofu apply
 
-# Login to ECR
+# Login to the private ECR registry
 
-aws ecr get-login-password --region us-east-1 | \
-  docker login --username AWS --password-stdin \
-  $(tofu output -raw repository_url | cut -d/ -f1)
+ECR_REGISTRY=$(tofu output -raw repository_url | cut -d/ -f1)
+
+aws ecr get-login-password --region "$(printf '%s' "$ECR_REGISTRY" | cut -d. -f4)" | \
+  docker login --username AWS --password-stdin "$ECR_REGISTRY"
 ```
 
 ## Conclusion
