@@ -24,6 +24,12 @@ Envoy is configured via a YAML file (or dynamically via xDS APIs). The key compo
 ```yaml
 # envoy.yaml - reverse proxy for an IPv4 backend service
 
+admin:
+  address:
+    socket_address:
+      address: 0.0.0.0          # Admin interface
+      port_value: 9901
+
 static_resources:
   listeners:
     - name: listener_0
@@ -59,7 +65,7 @@ static_resources:
   clusters:
     - name: backend_cluster
       connect_timeout: 5s
-      type: STRICT_DNS               # Resolve DNS to backend IPs
+      type: STATIC                   # Use explicitly configured IPv4 backends
       lb_policy: ROUND_ROBIN         # Load balancing algorithm
       load_assignment:
         cluster_name: backend_cluster
