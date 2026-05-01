@@ -33,7 +33,7 @@ Dual-stack is the simplest and most recommended approach to IPv6 adoption. Every
 
 ## How Address Selection Works
 
-When a client connects to a hostname, the OS resolves both A (IPv4) and AAAA (IPv6) records. RFC 6724 defines the default address selection algorithm - IPv6 global unicast addresses are preferred over IPv4.
+When a client connects to a hostname, the OS resolves both A (IPv4) and AAAA (IPv6) records. RFC 6724 defines the default destination address selection algorithm - with the default policy table, native IPv6 destinations are generally sorted ahead of IPv4-mapped ones when suitable source addresses are available.
 
 ```text
 Client resolves example.com:
@@ -42,14 +42,14 @@ Client resolves example.com:
 
 RFC 6724 preference order (simplified):
   1. ::1/128         (loopback)
-  2. ::/0            (global IPv6) ← preferred
-  3. 2002::/16       (6to4 - lower preference)
-  4. ::ffff:0:0/96   (IPv4-mapped)
+  2. ::/0            (global/native IPv6) ← higher precedence
+  3. ::ffff:0:0/96   (IPv4-mapped)
+  4. 2002::/16       (6to4 - lower precedence)
 
-Result: client connects via IPv6
+Result: client usually connects via IPv6
 ```
 
-Happy Eyeballs (RFC 8305) further improves this by racing IPv4 and IPv6 connections in parallel with a 250 ms delay before starting IPv4. The first to complete wins - ensuring fast failover if IPv6 is broken.
+Happy Eyeballs (RFC 8305) further improves this by staggering connection attempts across address families. A common default is a 250 ms connection-attempt delay, and the first successful connection wins - reducing delays if one family is impaired.
 
 ## Architecture: Protocol Flow
 
@@ -69,7 +69,7 @@ graph TD
 |---|---|
 | Physical/L2 | No changes - Ethernet carries both |
 | Router | Two routing tables (IPv4 RIB, IPv6 RIB) |
-| DNS | A records + AAAA records for all services |
+| DNS | A records + AAAA records for dual-stack services |
 | Firewall | Rules for both address families |
 | DHCP | DHCPv4 + DHCPv6 or SLAAC |
 | BGP | Two AFI/SAFI: IPv4 unicast + IPv6 unicast |
@@ -103,7 +103,7 @@ Keep the parallel IPv4 plan visible for correlation:
 
 ## DNS for Dual-Stack
 
-Every service needs both A and AAAA records:
+Every dual-stack service needs both A and AAAA records:
 
 ```bash
 # Zone file additions
@@ -122,8 +122,8 @@ mail  IN  AAAA  2001:db8::20
 Reverse DNS (PTR) for IPv6 uses ip6.arpa:
 
 ```bash
-# Delegation for 2001:db8::/32 → 0.8.b.d.1.0.0.2.ip6.arpa
-1.0.0.0.0.0.0.0.0.0.0.0.0.0.0.0.0.0.0.0.0.0.0.0.8.b.d.1.0.0.2.ip6.arpa.
+# Reverse zone for 2001:db8::/32 → 8.b.d.0.1.0.0.2.ip6.arpa
+1.0.0.0.0.0.0.0.0.0.0.0.0.0.0.0.0.0.0.0.0.0.0.0.8.b.d.0.1.0.0.2.ip6.arpa.
   IN PTR www.example.com.
 ```
 
@@ -151,22 +151,23 @@ Both protocols need independent routing configuration:
 # OSPF: run OSPFv2 (IPv4) AND OSPFv3 (IPv6) in parallel
 # BGP: enable both IPv4 and IPv6 address families on sessions
 
-# Modern approach - mp-BGP with dual AFI/SAFI on a single session:
-neighbor 192.0.2.1 activate  # IPv4 AFI
+# Modern approach - MP-BGP with dual AFI/SAFI on a single session:
+address-family ipv4 unicast
+  neighbor 192.0.2.1 activate
 address-family ipv6 unicast
-  neighbor 192.0.2.1 activate  # same peer, IPv6 AFI
+  neighbor 192.0.2.1 activate
 ```
 
 ## Operational Checklist
 
-- Both A and AAAA DNS records published for all public services
+- Both A and AAAA DNS records published for all public dual-stack services
 - IPv6 firewall rules created (not just IPv4)
 - Monitoring covers both families (SNMP, ICMP probes, flow data)
 - Security tools (IDS, SIEM) process IPv6 traffic
 - NOC team trained on IPv6 troubleshooting commands
 - BGP prefix filters and route policy updated for IPv6
-- NTP synchronized (critical for RA/DHCPv6 leases and IPsec)
+- NTP synchronized across devices
 
 ## Summary
 
-Dual-stack runs IPv4 and IPv6 on the same infrastructure without translation or tunneling. Both protocols are native citizens on every device. RFC 6724 address selection prefers IPv6 globally; Happy Eyeballs (RFC 8305) provides seamless failover. Plan prefix allocation before deploying, publish AAAA records for all services, and ensure firewall rules, monitoring, and routing cover both address families.
+Dual-stack runs IPv4 and IPv6 on the same infrastructure without translation or tunneling. Both protocols are native citizens on every device. RFC 6724 default policy generally prefers native IPv6 destinations when suitable source addresses are available, and Happy Eyeballs (RFC 8305) reduces delays when one family is impaired. Plan prefix allocation before deploying, publish AAAA records for dual-stack services, and ensure firewall rules, monitoring, and routing cover both address families.
