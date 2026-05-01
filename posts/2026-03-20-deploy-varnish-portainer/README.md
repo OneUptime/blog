@@ -24,7 +24,9 @@ mkdir -p /opt/varnish/conf
 cat > /opt/varnish/conf/default.vcl << 'EOF'
 vcl 4.1;
 
-import std;
+acl purge {
+    "localhost";
+}
 
 # Backend - your application server
 
@@ -45,30 +47,35 @@ sub vcl_recv {
     set req.url = regsuball(req.url, "utm_[a-z]+=[-_A-Za-z0-9]+&?", "");
     set req.url = regsuball(req.url, "[?&]$", "");
 
-    # Do not cache POST/PUT/DELETE requests
+    # Allow local cache purge requests
+    if (req.method == "PURGE") {
+        if (!client.ip ~ purge) {
+            return(synth(405, "Not allowed."));
+        }
+        return(purge);
+    }
+
+    # Do not cache non-GET/HEAD requests
     if (req.method != "GET" && req.method != "HEAD") {
         return(pass);
     }
 
-    # Do not cache requests with Authorization header
-    if (req.http.Authorization) {
+    # Do not cache requests with Authorization or Cookie headers
+    if (req.http.Authorization || req.http.Cookie) {
         return(pass);
     }
 
-    # Do not cache cookies from admin paths
+    # Do not cache admin paths
     if (req.url ~ "^/admin") {
         return(pass);
     }
-
-    return(hash);
 }
 
 sub vcl_backend_response {
-    # Cache successful responses for 5 minutes
+    # Cache cacheable successful responses for 5 minutes
     if (beresp.status == 200) {
         set beresp.ttl = 5m;
         set beresp.grace = 1h;   # Serve stale for 1h while fetching fresh
-        unset beresp.http.Set-Cookie;
     }
 
     # Cache 404s briefly to reduce backend hits
@@ -97,12 +104,11 @@ version: "3.8"
 
 services:
   varnish:
-    image: varnish:7.4-alpine
+    image: varnish:7.7.3-alpine
     container_name: varnish
     restart: unless-stopped
     ports:
       - "80:80"        # Public HTTP (cached)
-      - "6082:6082"    # Varnish CLI management port
     volumes:
       - /opt/varnish/conf/default.vcl:/etc/varnish/default.vcl:ro
     command: >
@@ -111,7 +117,7 @@ services:
       -f /etc/varnish/default.vcl
       -s malloc,512m
       -a 0.0.0.0:80,HTTP
-      -T 0.0.0.0:6082
+      -T 127.0.0.1:6082
     healthcheck:
       test: ["CMD", "varnishstat", "-1", "-f", "MAIN.uptime"]
       interval: 30s
@@ -138,11 +144,11 @@ networks:
 # First request - should be a MISS
 curl -I http://localhost/
 
-# Second request - should be a HIT
+# Second request - should be a HIT for a cacheable response
 curl -I http://localhost/
 # Look for: X-Cache: HIT
 
-# Purge a cached URL
+# Purge a cached URL from a source allowed by the purge ACL
 curl -X PURGE http://localhost/some/page
 
 # Check cache statistics
@@ -152,25 +158,21 @@ docker exec varnish varnishstat -1 -f MAIN.cache_hit,MAIN.cache_miss,MAIN.uptime
 ## Step 4: Reload VCL Without Restart
 
 ```bash
-# Load a new VCL while Varnish is running
-docker exec varnish varnishadm -T localhost:6082 vcl.load new_config /etc/varnish/default.vcl
-docker exec varnish varnishadm -T localhost:6082 vcl.use new_config
-
-# Check which VCL is active
-docker exec varnish varnishadm -T localhost:6082 vcl.list
+# Reload the mounted VCL while Varnish is running
+docker exec varnish varnishreload
 ```
 
 ## Step 5: Monitor Cache Hit Rate
 
 ```bash
 # Live statistics
-docker exec varnish varnishstat -f MAIN.cache_hit,MAIN.cache_miss
+docker exec -it varnish varnishstat -f MAIN.cache_hit,MAIN.cache_miss
 
 # Calculate hit ratio
 docker exec varnish varnishstat -1 -f MAIN.cache_hit,MAIN.cache_miss | \
-  awk 'BEGIN{hits=0;miss=0} /cache_hit/{hits=$1} /cache_miss/{miss=$1} END{print "Hit rate:", hits/(hits+miss)*100"%"}'
+  awk 'BEGIN{hits=0;miss=0} {value=0; for (i=1; i<=NF; i++) if ($i ~ /^[0-9.]+$/) {value=$i; break}} /cache_hit/{hits=value} /cache_miss/{miss=value} END{if (hits+miss == 0) print "Hit rate: 0%"; else printf "Hit rate: %.2f%%\n", hits/(hits+miss)*100}'
 
-# Watch access log with cache status
+# Watch request flow for GET requests
 docker exec varnish varnishlog -g request -q "ReqMethod eq GET" -i ReqURL,VCL_call
 ```
 
