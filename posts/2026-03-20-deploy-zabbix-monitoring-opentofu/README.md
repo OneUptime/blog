@@ -4,7 +4,7 @@ Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
 Tags: OpenTofu, Zabbix, Monitoring, Infrastructure Monitoring, SNMP
 
-Description: Learn how to deploy Zabbix monitoring server on AWS using OpenTofu with RDS MySQL, ECS Fargate, and ALB for enterprise-grade infrastructure monitoring.
+Description: Learn how to deploy Zabbix monitoring server on AWS using OpenTofu with RDS MySQL, ECS Fargate, and Cloud Map service discovery for enterprise-grade infrastructure monitoring.
 
 ## Introduction
 
@@ -38,7 +38,7 @@ resource "aws_db_instance" "zabbix" {
 }
 
 resource "aws_db_parameter_group" "zabbix" {
-  name   = "zabbix-mysql8"
+  name   = "zabbix-mysql8-${var.environment}"
   family = "mysql8.0"
 
   parameter {
@@ -52,13 +52,21 @@ resource "aws_db_parameter_group" "zabbix" {
   }
 
   parameter {
-    name  = "character_set_server"
-    value = "utf8mb4"
+    name         = "log_bin_trust_function_creators"
+    value        = "1"
+    apply_method = "pending-reboot"
   }
 
   parameter {
-    name  = "collation_server"
-    value = "utf8mb4_bin"
+    name         = "character_set_server"
+    value        = "utf8mb4"
+    apply_method = "pending-reboot"
+  }
+
+  parameter {
+    name         = "collation_server"
+    value        = "utf8mb4_bin"
+    apply_method = "pending-reboot"
   }
 }
 ```
@@ -90,7 +98,6 @@ resource "aws_ecs_task_definition" "zabbix_server" {
 
     secrets = [
       { name = "MYSQL_PASSWORD",      valueFrom = aws_secretsmanager_secret.db_password.arn },
-      { name = "MYSQL_ROOT_PASSWORD", valueFrom = aws_secretsmanager_secret.db_root_password.arn },
     ]
 
     portMappings = [{ containerPort = 10051, protocol = "tcp" }]
@@ -138,7 +145,7 @@ resource "aws_ecs_task_definition" "zabbix_web" {
     portMappings = [{ containerPort = 8080, protocol = "tcp" }]
 
     healthCheck = {
-      command     = ["CMD-SHELL", "curl -f http://localhost:8080/ || exit 1"]
+      command     = ["CMD-SHELL", "curl -f http://localhost:8080/ping || exit 1"]
       interval    = 30
       timeout     = 5
       retries     = 3
@@ -181,8 +188,25 @@ resource "aws_service_discovery_service" "zabbix_server" {
     failure_threshold = 1
   }
 }
+
+resource "aws_ecs_service" "zabbix_server" {
+  name            = "zabbix-server-${var.environment}"
+  cluster         = aws_ecs_cluster.monitoring.arn
+  task_definition = aws_ecs_task_definition.zabbix_server.arn
+  desired_count   = 1
+  launch_type     = "FARGATE"
+
+  network_configuration {
+    subnets         = var.private_subnet_ids
+    security_groups = [aws_security_group.zabbix_server.id]
+  }
+
+  service_registries {
+    registry_arn = aws_service_discovery_service.zabbix_server.arn
+  }
+}
 ```
 
 ## Conclusion
 
-Deploying Zabbix with OpenTofu on AWS creates a scalable monitoring platform. The MySQL parameter group tuning is important for Zabbix performance - the default MySQL settings are inadequate for the write-heavy monitoring workload. Use Cloud Map for service discovery between the Zabbix server and web frontend containers. For monitoring agents (Zabbix proxies), deploy them as sidecar containers or separate ECS services in the networks where the monitored hosts reside.
+Deploying Zabbix with OpenTofu on AWS creates a scalable monitoring platform. The MySQL parameter group tuning is important for Zabbix performance - the default MySQL settings are inadequate for the write-heavy monitoring workload. Use Cloud Map for service discovery between the Zabbix server and web frontend containers. For distributed monitoring, deploy Zabbix proxies as separate ECS services in the networks where the monitored hosts reside.
