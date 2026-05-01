@@ -4,11 +4,11 @@ Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
 Tags: DHCPv6, IPv6, Networking, Options, ISC DHCP, Kea, Configuration
 
-Description: A comprehensive reference for DHCPv6 options including DNS servers, domain search, NTP, SNTP, SIP, and custom vendor options - with configuration examples for ISC DHCP and Kea.
+Description: A comprehensive reference for DHCPv6 options including DNS servers, domain search, NTP, SNTP, SIP, and custom and vendor-specific options - with configuration examples for ISC DHCP and Kea.
 
 ---
 
-DHCPv6 options carry configuration data from server to client beyond just the IP address. Unlike DHCPv4 which has a 255-option space, DHCPv6 uses a 16-bit option code space (0–65535), allowing a much richer set of options. This guide covers the most commonly used options and how to configure them.
+DHCPv6 options carry configuration data from server to client beyond just the IP address. Unlike DHCPv4 which uses an 8-bit option code space (0-255), DHCPv6 uses a 16-bit option code space (0-65535), allowing a much richer set of options. This guide covers the most commonly used options and how to configure them.
 
 ---
 
@@ -19,21 +19,21 @@ DHCPv6 options carry configuration data from server to client beyond just the IP
 | 1 | CLIENTID | Client DUID |
 | 2 | SERVERID | Server DUID |
 | 3 | IA_NA | Identity Association for Non-temporary Addresses |
-| 4 | IA_TA | Identity Association for Temporary Addresses |
+| 4 | IA_TA | Obsolete identity association for temporary addresses |
 | 5 | IAADDR | IPv6 address within an IA |
 | 6 | ORO | Options Request Option - list of requested options |
 | 7 | PREFERENCE | Server preference value (0–255) |
 | 11 | AUTH | Authentication |
 | 14 | RAPID_COMMIT | Enable rapid two-message exchange |
+| 21 | sip-server-domain-name | SIP server domain names |
+| 22 | sip-server-address | SIP server addresses |
 | 23 | dns-servers (DNS_SERVERS) | IPv6 DNS recursive name servers |
 | 24 | domain-search (DOMAIN_LIST) | DNS domain search list |
 | 25 | IA_PD | Identity Association for Prefix Delegation |
 | 26 | IAPREFIX | Prefix within an IA_PD |
-| 31 | sntp-servers | SNTP server addresses |
+| 31 | sntp-servers | Legacy SNTP server addresses (deprecated by RFC 5908) |
 | 32 | INFORMATION_REFRESH_TIME | How often to refresh stateless DHCPv6 info |
-| 56 | NTP_SERVER | NTP server addresses |
-| 82 | sip-server-address | SIP server addresses |
-| 83 | sip-server-domain-name | SIP server domain names |
+| 56 | NTP_SERVER | NTP server option (carries NTP server suboptions) |
 
 ---
 
@@ -54,7 +54,7 @@ option dhcp6.name-servers 2001:db8::53, 2001:4860:4860::8888;
 # DNS domain search list (option 24)
 option dhcp6.domain-search "corp.example.com", "internal.example.com";
 
-# SNTP servers (option 31)
+# SNTP servers (option 31; legacy, RFC 5908 prefers option 56)
 option dhcp6.sntp-servers 2001:db8::123;
 
 # Information refresh time (option 32) - for stateless clients
@@ -67,18 +67,16 @@ subnet6 2001:db8::/32 {
     option dhcp6.name-servers 2001:db8:1::53;
 
     # Rapid commit (option 14)
-    allow rapid-commit;
+    option dhcp6.rapid-commit;
 }
 ```
 
-### Custom/Vendor Options
+### Custom Options
 
 ```text
-# Define custom option
-option space custom-vendor;
-option custom-vendor.http-proxy code 1 = string;
-
-option dhcp6.vendor-opts code 17 = string;
+# Define a custom DHCPv6 option
+option dhcp6.http-proxy code 26600 = string;
+option dhcp6.http-proxy "proxy.example.com:8080";
 ```
 
 ---
@@ -120,6 +118,10 @@ option dhcp6.vendor-opts code 17 = string;
           {
             "name": "information-refresh-time",
             "data": "21600"
+          },
+          {
+            "name": "http-proxy",
+            "data": "proxy.example.com:8080"
           }
         ]
       }
@@ -169,11 +171,11 @@ interface "eth0" {
 
 ```ini
 # /etc/systemd/network/10-eth0.network
+[Network]
+DHCP=ipv6
+
 [DHCPv6]
-UseAddress=yes
-UseDNS=yes
-UseDomains=yes
-UseNTP=yes
+RequestOptions=23 24 31 32
 ```
 
 ---
@@ -184,8 +186,8 @@ Option 17 carries vendor-specific information using an enterprise number:
 
 ```text
 # ISC DHCP - Send vendor option
-option dhcp6.vendor-opts 00:00:09:bf:  # Enterprise number 2495
-    00:01:00:04:68:6f:73:74;           # Sub-option 1: "host"
+# Enterprise number 2495, sub-option 1 = "host"
+option dhcp6.vendor-opts 00:00:09:bf:00:01:00:04:68:6f:73:74;
 ```
 
 ---
