@@ -20,15 +20,16 @@ flowchart LR
 
 ## Well-Known NAT64 Prefix
 
-The standard NAT64 prefix is `64:ff9b::/96`. IPv4 addresses are embedded in the last 32 bits:
+The well-known NAT64 prefix is `64:ff9b::/96`. IPv4 addresses are embedded in the last 32 bits:
 - IPv4 `203.0.113.10` → IPv6 `64:ff9b::203.0.113.10` = `64:ff9b::cb00:710a`
 
 ## Deploying Jool (NAT64)
 
-Jool is the most widely used open-source NAT64 implementation for Linux:
+Jool is an open-source NAT64 implementation for Linux:
 
 ```bash
 # Install Jool on Ubuntu/Debian
+apt install linux-headers-$(uname -r)
 
 apt install jool-dkms jool-tools
 
@@ -39,9 +40,9 @@ modprobe jool
 jool instance add "nat64-main" --netfilter --pool6 64:ff9b::/96
 
 # Add IPv4 pool addresses (public IPv4 pool for NAT)
-jool -i nat64-main pool4 add --tcp 203.0.113.0/24
-jool -i nat64-main pool4 add --udp 203.0.113.0/24
-jool -i nat64-main pool4 add --icmp 203.0.113.0/24
+jool -i nat64-main pool4 add --tcp 203.0.113.0/24 1-65535
+jool -i nat64-main pool4 add --udp 203.0.113.0/24 1-65535
+jool -i nat64-main pool4 add --icmp 203.0.113.0/24 0-65535
 
 # Verify the instance is running
 jool instance display
@@ -66,35 +67,37 @@ Configure BIND to synthesize AAAA records for IPv4-only hosts:
 
 ```text
 // /etc/bind/named.conf.options
+acl rfc1918 { 10/8; 192.168/16; 172.16/12; };
+
 options {
     // DNS64 - synthesize AAAA for IPv4-only hosts
     dns64 64:ff9b::/96 {
         clients { any; };
         mapped { !rfc1918; any; };  // Don't synthesize for RFC1918 IPv4
-        exclude { 64:ff9b::/96; };  // Don't re-synthesize existing nat64 addresses
+        exclude { 64:ff9b::/96; ::ffff:0.0.0.0/96; };  // Ignore translated and IPv4-mapped AAAA answers when synthesizing
     };
 
     // Resolver address
-    listen-on-v6 { 2001:db8:dns::1; };
+    listen-on-v6 { 2001:db8:53::1; };
 };
 ```
 
 Restart BIND:
 
 ```bash
-systemctl restart named
+systemctl restart bind9.service
 
 # Test DNS64 synthesis
-dig AAAA google.com @2001:db8:dns::1
-# Expected: 64:ff9b::<google's IPv4> in AAAA response
+dig AAAA ipv4only.arpa +short @2001:db8:53::1
+# Expected: 64:ff9b::c000:aa and 64:ff9b::c000:ab
 ```
 
 ## Routing NAT64 Traffic
 
-Ensure the `64:ff9b::/96` prefix is routed to the NAT64 server:
+Ensure the `64:ff9b::/96` prefix is routed to the NAT64 server inside your ISP:
 
 ```text
-# Announce NAT64 prefix from NAT64 servers via BGP
+# Announce NAT64 prefix from NAT64 servers via internal BGP
 router bgp 65001
  address-family ipv6
   network 64:ff9b::/96
@@ -105,19 +108,19 @@ router bgp 65001
 For ISP scale, run multiple NAT64 instances with anycast:
 
 - Deploy NAT64 servers in each PoP
-- Announce `64:ff9b::/96` from all PoPs via BGP anycast
-- Each server uses a subset of the IPv4 pool
+- Announce `64:ff9b::/96` from all PoPs via internal BGP anycast
+- Each server uses a subset of the IPv4 pool, and those pool addresses route back to the owning server
 
 ## Monitoring NAT64
 
 ```bash
 # Monitor active NAT64 sessions
-jool -i nat64-main session display --numeric | wc -l
+jool -i nat64-main stats display | grep JSTAT_SESSIONS
 
-# Check pool4 utilization
-jool -i nat64-main pool4 display
+# Check pool4 utilization (TCP table shown here)
+jool -i nat64-main pool4 display --tcp
 ```
 
 ## Conclusion
 
-NAT64/DNS64 enables IPv6-only subscribers to reach IPv4 services. Jool provides a production-ready NAT64 implementation for Linux, and BIND's DNS64 support handles automatic AAAA synthesis. For ISP scale, deploy both in anycast configuration across multiple PoPs.
+NAT64/DNS64 enables IPv6-only subscribers to reach IPv4 services. Jool provides a production-ready NAT64 implementation for Linux, and BIND's DNS64 support handles automatic AAAA synthesis. For ISP scale, deploy both across multiple PoPs, anycast the NAT64 prefix inside the ISP, and ensure each translator owns routable pool4 space.
