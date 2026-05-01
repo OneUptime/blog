@@ -25,7 +25,7 @@ resource "aws_instance" "worker" {
     connection {
       type        = "ssh"
       user        = "ec2-user"
-      private_key = file("~/.ssh/worker.pem")
+      private_key = file(pathexpand("~/.ssh/worker.pem"))
       host        = self.public_ip
     }
 
@@ -77,30 +77,35 @@ Using `on_failure = continue` is especially important for destroy-time provision
 - Destroy-time provisioners run **before** the resource is destroyed
 - If the provisioner fails and `on_failure = fail` (default), the resource is NOT destroyed
 - If SSH is unavailable (e.g., instance stopped), provisioner fails unless `on_failure = continue`
-- For complex deregistration workflows, consider using `null_resource` with triggers instead
+- For complex deregistration workflows, consider using `terraform_data` with `input` and `triggers_replace` instead
 
 ---
 
-## Using null_resource for Cleanup Triggers
+## Using terraform_data for Cleanup Triggers
 
 ```hcl
-resource "null_resource" "deregister" {
-  triggers = {
+resource "terraform_data" "deregister" {
+  input = {
     instance_id = aws_instance.worker.id
     private_ip  = aws_instance.worker.private_ip
   }
 
+  triggers_replace = [
+    aws_instance.worker.id,
+    aws_instance.worker.private_ip,
+  ]
+
   provisioner "local-exec" {
     when    = destroy
-    command = "deregister-node.sh ${self.triggers.private_ip}"
+    command = "deregister-node.sh ${self.output.private_ip}"
   }
 }
 ```
 
-Using `null_resource` with `triggers` preserves the values needed for cleanup even after the actual resource is gone.
+Using `terraform_data` with `input` preserves the values needed for cleanup on the cleanup resource itself.
 
 ---
 
 ## Summary
 
-Set `when = destroy` on a provisioner to run it during resource destruction. Always set `on_failure = continue` for destroy-time provisioners unless the provisioner failure should block destruction. Use `null_resource` with `triggers` to capture resource attributes at creation time for use in destroy-time cleanup - this handles cases where the resource's attributes are no longer available at destroy time.
+Set `when = destroy` on a provisioner to run it during resource destruction. Always set `on_failure = continue` for destroy-time provisioners unless the provisioner failure should block destruction. Use `terraform_data` with `input` and `triggers_replace` to capture resource attributes for use in destroy-time cleanup.
