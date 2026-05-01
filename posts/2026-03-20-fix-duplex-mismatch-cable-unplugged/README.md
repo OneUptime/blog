@@ -1,14 +1,14 @@
-# How to Fix 'Network Cable Unplugged' Errors Caused by Duplex Mismatch
+# How to Fix Duplex Mismatch Errors on Ethernet Links
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
 Tags: Duplex Mismatch, Ethernet, ethtool, Network Troubleshooting, Linux, Cisco, Speed
 
-Description: Learn how to diagnose and fix duplex mismatch issues that cause intermittent connectivity, high error rates, and 'network cable unplugged' errors on Ethernet interfaces.
+Description: Learn how to diagnose and fix duplex mismatch issues that cause intermittent connectivity, high error rates, and poor Ethernet performance.
 
 ---
 
-A duplex mismatch occurs when one side of an Ethernet link auto-negotiates to half-duplex while the other side is forced to full-duplex. Symptoms include late collisions, high FCS errors, and intermittent connectivity.
+A duplex mismatch occurs when the two sides of an Ethernet link operate at different duplex settings, commonly when one side is forced and the peer auto-negotiates to half-duplex on 10/100 links. Symptoms include late collisions, high FCS errors, and intermittent connectivity while the link still shows as up.
 
 ## Symptoms of Duplex Mismatch
 
@@ -17,7 +17,7 @@ A duplex mismatch occurs when one side of an Ethernet link auto-negotiates to ha
 - Very slow throughput (< 10% of link speed)
 - High error/collision counters on one side
 - "Late collisions" in interface statistics
-- "Network cable unplugged" flapping on Linux
+- Link stays up, but applications see intermittent timeouts
 ```
 
 ## Diagnosing with ethtool
@@ -30,8 +30,8 @@ ethtool eth0
 # Output:
 # Settings for eth0:
 #   Speed: 100Mb/s
-#   Duplex: Half          ← mismatch if other side is Full
-#   Auto-negotiation: off
+#   Duplex: Half          # mismatch if the peer is forced to Full
+#   Auto-negotiation: on
 #   Link detected: yes
 
 # Check error counters
@@ -42,8 +42,8 @@ ethtool -S eth0 | grep -E "error|collision|miss|drop"
 
 ```bash
 ip -s link show eth0
-# RX errors and TX errors visible
-# High TX errors with low RX errors = duplex mismatch
+# RX and TX error counters are visible
+# Use these counters with ethtool/switch stats; ip -s link alone does not prove duplex mismatch
 ```
 
 ## Fixing on Linux: Force Speed and Duplex
@@ -71,7 +71,7 @@ interface FastEthernet0/1
   no shutdown
 
 ! Verify
-show interface FastEthernet0/1 | include duplex|speed|error
+show interfaces FastEthernet0/1 | include duplex|speed|error
 ```
 
 ## Best Practice: Match Both Sides
@@ -79,11 +79,12 @@ show interface FastEthernet0/1 | include duplex|speed|error
 ```text
 Preferred: Both sides auto-negotiate
   Linux:  ethtool -s eth0 autoneg on
-  Cisco:  speed auto / duplex auto
+  Cisco:  speed auto, duplex auto
 
-Forced (when one side doesn't support autoneg):
-  Linux:  ethtool -s eth0 speed 1000 duplex full autoneg off
-  Cisco:  speed 1000 / duplex full
+Forced (when both sides must be hard-set on 10/100 links):
+  Linux:  ethtool -s eth0 speed 100 duplex full autoneg off
+  Cisco:  speed 100, duplex full
+  Note:   1000BASE-T normally requires auto-negotiation
 ```
 
 ## Checking Interface Errors Over Time
@@ -100,5 +101,5 @@ cat /proc/net/dev | grep eth0
 
 - Duplex mismatch causes late collisions and high error rates; use `ethtool eth0` to verify speed and duplex.
 - The safest fix is to enable auto-negotiation on both sides; avoid mixing forced and auto-negotiated settings.
-- If forced settings are required, both sides must be set to the same speed and duplex explicitly.
-- Use `ethtool -S eth0 | grep collision` to confirm late collisions as evidence of duplex mismatch.
+- If forced settings are required, both sides must be set to the same speed and duplex explicitly, typically on 10/100 links.
+- Use `ethtool -S eth0` only if the driver exposes collision-related counters; counter names vary by driver.
