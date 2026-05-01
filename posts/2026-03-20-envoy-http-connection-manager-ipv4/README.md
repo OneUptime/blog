@@ -20,10 +20,10 @@ static_resources:
     - name: http_listener
       address:
         socket_address:
+          protocol: TCP
           # Bind to all IPv4 interfaces on port 80
           address: 0.0.0.0
           port_value: 80
-          # protocol: TCP is the default; explicitly set for clarity
       filter_chains:
         - filters:
             - name: envoy.filters.network.http_connection_manager
@@ -33,10 +33,10 @@ static_resources:
                 # Prefix used in stats (metrics) for this HCM instance
                 stat_prefix: ingress_http
 
-                # Generate a unique request ID for tracing
+                # Generate x-request-id when one is not already present
                 generate_request_id: true
 
-                # Forward the X-Forwarded-For header with the client's IP
+                # Use the downstream remote address for XFF handling and trusted client detection
                 use_remote_address: true
 
                 # Route configuration
@@ -103,13 +103,13 @@ http_connection_manager:
             inline_string: "[%START_TIME%] \"%REQ(:METHOD)% %REQ(X-ENVOY-ORIGINAL-PATH?:PATH)% %PROTOCOL%\" %RESPONSE_CODE% %BYTES_SENT% \"%DOWNSTREAM_REMOTE_ADDRESS%\"\n"
 ```
 
-## Enabling HTTP/2 Upgrade
+## Accepting HTTP/1.1 and HTTP/2
 
 ```yaml
 http_connection_manager:
   stat_prefix: ingress_http
-  codec_type: AUTO          # Auto-detect HTTP/1.1 or HTTP/2
-  use_remote_address: true  # Populate X-Forwarded-For with client IPv4
+  codec_type: AUTO          # Select HTTP/1.1 or HTTP/2 for each downstream connection
+  use_remote_address: true  # Use the downstream remote address for XFF handling
   route_config: { ... }
   http_filters: [...]
 ```
@@ -134,6 +134,6 @@ virtual_hosts:
 ## Key Takeaways
 
 - Bind the listener `address` to `0.0.0.0` for all IPv4 interfaces or a specific IP.
-- Set `use_remote_address: true` to correctly populate `X-Forwarded-For` with the client's IPv4.
+- Set `use_remote_address: true` on edge listeners so Envoy uses the downstream remote address when handling `X-Forwarded-For` and trusted client detection.
 - The router filter (`envoy.filters.http.router`) must be the last HTTP filter in the chain.
 - Use `stat_prefix` to namespace metrics for multiple HCM instances.
