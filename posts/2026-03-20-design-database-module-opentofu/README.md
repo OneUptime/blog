@@ -4,11 +4,11 @@ Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
 Tags: OpenTofu, Terraform, RDS, AWS, Module, Database, PostgreSQL
 
-Description: Learn how to design a reusable RDS database module for OpenTofu that supports multiple engines, multi-AZ configurations, read replicas, and automated backups.
+Description: Learn how to design a reusable Amazon RDS for PostgreSQL module for OpenTofu that supports multi-AZ configurations, enhanced monitoring, and automated backups.
 
 ## Introduction
 
-A database module should handle the complexity of RDS configuration - subnet groups, parameter groups, security groups, and option groups - while exposing a clean interface for application teams who just need a database with sensible defaults.
+A database module should handle the core RDS configuration - subnet groups, parameter groups, security groups, backups, and monitoring - while exposing a clean interface for application teams who just need a database with sensible defaults.
 
 ## Module Structure
 
@@ -25,41 +25,88 @@ modules/database/
 
 ```hcl
 variable "identifier"       { type = string }
-variable "engine"           { type = string; default = "postgres" }
-variable "engine_version"   { type = string; default = "15.4" }
-variable "instance_class"   { type = string; default = "db.t3.micro" }
-variable "allocated_storage" { type = number; default = 20 }
-variable "max_allocated_storage" { type = number; default = 100 }
+variable "engine_version" {
+  type    = string
+  default = "15.17"
+}
+variable "instance_class" {
+  type    = string
+  default = "db.t3.micro"
+}
+variable "allocated_storage" {
+  type    = number
+  default = 20
+}
+variable "max_allocated_storage" {
+  type    = number
+  default = 100
+}
 
 variable "database_name"   { type = string }
 variable "username"        { type = string }
-variable "password"        { type = string; sensitive = true }
+variable "password" {
+  type      = string
+  sensitive = true
+}
 
 variable "vpc_id"          { type = string }
 variable "subnet_ids"      { type = list(string) }
-variable "allowed_cidr_blocks" { type = list(string); default = [] }
-variable "allowed_security_group_ids" { type = list(string); default = [] }
+variable "allowed_cidr_blocks" {
+  type    = list(string)
+  default = []
+}
+variable "allowed_security_group_ids" {
+  type    = list(string)
+  default = []
+}
 
-variable "multi_az"               { type = bool; default = false }
-variable "deletion_protection"    { type = bool; default = false }
-variable "skip_final_snapshot"    { type = bool; default = true }
-variable "backup_retention_period" { type = number; default = 7 }
-variable "backup_window"          { type = string; default = "03:00-04:00" }
-variable "maintenance_window"     { type = string; default = "sun:04:00-sun:06:00" }
+variable "multi_az" {
+  type    = bool
+  default = false
+}
+variable "deletion_protection" {
+  type    = bool
+  default = false
+}
+variable "skip_final_snapshot" {
+  type    = bool
+  default = true
+}
+variable "backup_retention_period" {
+  type    = number
+  default = 7
+}
+variable "backup_window" {
+  type    = string
+  default = "03:00-04:00"
+}
+variable "maintenance_window" {
+  type    = string
+  default = "sun:04:00-sun:06:00"
+}
 
-variable "performance_insights_enabled" { type = bool; default = false }
-variable "monitoring_interval"          { type = number; default = 0 }
+variable "performance_insights_enabled" {
+  type    = bool
+  default = false
+}
+variable "monitoring_interval" {
+  type    = number
+  default = 0
+}
 
 variable "environment" { type = string }
-variable "tags"        { type = map(string); default = {} }
+variable "tags" {
+  type    = map(string)
+  default = {}
+}
 ```
 
 ## main.tf
 
 ```hcl
 locals {
-  tags = merge({ Environment = var.environment, ManagedBy = "OpenTofu" }, var.tags)
-  family = "${var.engine}${split(".", var.engine_version)[0]}"
+  tags   = merge({ Environment = var.environment, ManagedBy = "OpenTofu" }, var.tags)
+  family = "postgres${split(".", var.engine_version)[0]}"
 }
 
 resource "aws_db_subnet_group" "main" {
@@ -109,12 +156,12 @@ resource "aws_security_group" "db" {
 }
 
 locals {
-  db_port = var.engine == "postgres" ? 5432 : (var.engine == "mysql" ? 3306 : 1433)
+  db_port = 5432
 }
 
 resource "aws_db_instance" "main" {
   identifier             = var.identifier
-  engine                 = var.engine
+  engine                 = "postgres"
   engine_version         = var.engine_version
   instance_class         = var.instance_class
   allocated_storage      = var.allocated_storage
@@ -149,8 +196,16 @@ resource "aws_iam_role" "rds_enhanced_monitoring" {
   name  = "${var.identifier}-rds-monitoring"
 
   assume_role_policy = jsonencode({
-    Version   = "2012-10-17"
-    Statement = [{ Effect = "Allow"; Principal = { Service = "monitoring.rds.amazonaws.com" }; Action = "sts:AssumeRole" }]
+    Version = "2012-10-17"
+    Statement = [
+      {
+        Effect = "Allow"
+        Principal = {
+          Service = "monitoring.rds.amazonaws.com"
+        }
+        Action = "sts:AssumeRole"
+      }
+    ]
   })
 }
 
@@ -174,4 +229,4 @@ output "instance_id"      { value = aws_db_instance.main.id }
 
 ## Conclusion
 
-This database module encapsulates all RDS complexity behind a clean interface. Key design decisions: storage is always encrypted and uses GP3, the security group is managed by the module for consistent access control, and enhanced monitoring is conditionally enabled based on the monitoring_interval variable.
+This PostgreSQL database module encapsulates the core RDS complexity behind a clean interface. Key design decisions: storage is always encrypted and uses GP3, the security group is managed by the module for consistent access control, and enhanced monitoring is conditionally enabled based on the monitoring_interval variable.
