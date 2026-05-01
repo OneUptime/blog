@@ -16,31 +16,31 @@ This guide walks you through installing the Elemental Operator using Helm and ve
 
 Before installing the Elemental Operator, ensure you have:
 
-- A running Rancher instance (v2.7 or later)
+- A running Rancher instance (v2.7 or later) on a management cluster running Kubernetes v1.23 or later
 - `kubectl` configured to access your management cluster
 - `helm` v3.x installed
-- Cert-manager installed in the cluster
+- Cert-manager available in the cluster if it is not already installed as part of your Rancher setup
 
 ### Install Cert-Manager (if not already installed)
 
 ```bash
 # Add the Jetstack Helm repository
 
-helm repo add jetstack https://charts.jetstack.io
+helm repo add jetstack https://charts.jetstack.io --force-update
 helm repo update
 
 # Install cert-manager with CRDs
 helm install cert-manager jetstack/cert-manager \
   --namespace cert-manager \
   --create-namespace \
-  --set installCRDs=true
+  --set crds.enabled=true
 ```
 
 ## Adding the Elemental Helm Repository
 
 ```bash
 # Add the Rancher Elemental Helm chart repository
-helm repo add elemental-operator https://rancher.github.io/elemental-operator/
+helm repo add elemental-operator https://rancher.github.io/elemental-operator/stable/
 
 # Update the local chart index
 helm repo update
@@ -54,54 +54,42 @@ helm search repo elemental-operator
 ### Install with Default Settings
 
 ```bash
-# Create the elemental-system namespace
-kubectl create namespace elemental-system
+# Install the Elemental CRDs
+helm install elemental-operator-crds elemental-operator/elemental-operator-crds \
+  --namespace cattle-elemental-system \
+  --create-namespace
 
 # Install the Elemental Operator
 helm install elemental-operator elemental-operator/elemental-operator \
-  --namespace elemental-system
+  --namespace cattle-elemental-system
 ```
 
 ### Install with Custom Values
 
-For production environments, you may want to customize the installation:
+After installing the CRDs, you can customize the operator installation with supported chart values:
 
 ```bash
 # Install with custom values
 helm install elemental-operator elemental-operator/elemental-operator \
-  --namespace elemental-system \
-  --set image.tag=latest \
-  --set replicas=2 \
-  --set resources.requests.cpu=100m \
-  --set resources.requests.memory=128Mi
+  --namespace cattle-elemental-system \
+  --set debug=true \
+  --set defaultChannels.slMicro62KVM.enabled=true
 ```
 
 Alternatively, create a `values.yaml` file:
 
 ```yaml
 # elemental-values.yaml
-replicas: 2
+debug: true
 
-image:
-  repository: registry.suse.com/rancher/elemental-operator
-  tag: "1.4.0"
-
-resources:
-  requests:
-    cpu: 100m
-    memory: 128Mi
-  limits:
-    cpu: 500m
-    memory: 512Mi
-
-# Enable webhook for validation
-webhook:
-  enabled: true
+defaultChannels:
+  slMicro62KVM:
+    enabled: true
 ```
 
 ```bash
 helm install elemental-operator elemental-operator/elemental-operator \
-  --namespace elemental-system \
+  --namespace cattle-elemental-system \
   --values elemental-values.yaml
 ```
 
@@ -109,7 +97,7 @@ helm install elemental-operator elemental-operator/elemental-operator \
 
 ```bash
 # Check that the operator pod is running
-kubectl get pods -n elemental-system
+kubectl get pods -n cattle-elemental-system
 
 # Expected output:
 # NAME                                   READY   STATUS    RESTARTS   AGE
@@ -119,7 +107,7 @@ kubectl get pods -n elemental-system
 kubectl get crd | grep elemental
 
 # Verify the operator is ready
-kubectl rollout status deployment elemental-operator -n elemental-system
+kubectl rollout status deployment elemental-operator -n cattle-elemental-system
 ```
 
 ## Verifying CRDs
@@ -135,16 +123,17 @@ You should see resources including:
 - `machineregistrations.elemental.cattle.io`
 - `machineinventories.elemental.cattle.io`
 - `machineinventoryselectors.elemental.cattle.io`
-- `machineinventoryselectortemplate.elemental.cattle.io`
+- `machineinventoryselectortemplates.elemental.cattle.io`
+- `managedosimages.elemental.cattle.io`
 - `managedosversionchannels.elemental.cattle.io`
 - `managedosversions.elemental.cattle.io`
-- `managedosimages.elemental.cattle.io`
+- `seedimages.elemental.cattle.io`
 
 ## Checking Operator Logs
 
 ```bash
 # Stream operator logs to verify it started correctly
-kubectl logs -n elemental-system \
+kubectl logs -n cattle-elemental-system \
   -l app=elemental-operator \
   --follow
 ```
@@ -157,20 +146,23 @@ To upgrade to a newer version:
 # Update the Helm repo
 helm repo update
 
+# Upgrade the CRDs
+helm upgrade --install elemental-operator-crds elemental-operator/elemental-operator-crds \
+  --namespace cattle-elemental-system
+
 # Upgrade the operator
-helm upgrade elemental-operator elemental-operator/elemental-operator \
-  --namespace elemental-system \
-  --reuse-values
+helm upgrade --install elemental-operator elemental-operator/elemental-operator \
+  --namespace cattle-elemental-system
 ```
 
 ## Uninstalling the Elemental Operator
 
 ```bash
 # Remove the operator
-helm uninstall elemental-operator -n elemental-system
+helm uninstall elemental-operator -n cattle-elemental-system
 
 # Optionally remove CRDs (warning: this deletes all Elemental resources)
-kubectl get crd | grep elemental.cattle.io | awk '{print $1}' | xargs kubectl delete crd
+helm uninstall elemental-operator-crds -n cattle-elemental-system
 ```
 
 ## Conclusion
