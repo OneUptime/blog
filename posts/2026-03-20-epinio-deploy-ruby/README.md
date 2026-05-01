@@ -2,9 +2,9 @@
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
-Tags: Epinio, Ruby, Kubernetes, PaaS, Rails
+Tags: Epinio, Ruby, Kubernetes, PaaS, Sinatra
 
-Description: Deploy a Ruby on Rails application to Kubernetes using Epinio with Bundler dependency management.
+Description: Deploy a Ruby application to Kubernetes using Epinio with Bundler dependency management.
 
 ## Introduction
 
@@ -30,37 +30,43 @@ mkdir my-app && cd my-app
 
 ## Step 2: Create the Application
 
-For this example, we'll create a simple web application:
+For this example, we'll create a simple Ruby web application:
 
 ```bash
-# Create main application file
-cat > app.sh << 'EOF'
-#!/bin/bash
-# Simple HTTP server for demonstration
-while true; do
-  echo -e "HTTP/1.1 200 OK\r\nContent-Type: text/plain\r\n\r\nHello from How to Deploy a Ruby Application with Epinio!" | nc -l -p ${PORT:-8080}
-done
+# Create Gemfile
+cat > Gemfile << 'EOF'
+source "https://rubygems.org"
+
+ruby "~> 3.3"
+
+gem "puma"
+gem "sinatra"
 EOF
-chmod +x app.sh
-```
 
-For a language-specific example relevant to this guide:
+# Create main application file
+cat > app.rb << 'EOF'
+require "json"
+require "sinatra"
+require "time"
 
-```bash
-# Node.js example
-cat > server.js << 'EOF'
-const http = require('http');
-const server = http.createServer((req, res) => {
-  res.writeHead(200, {'Content-Type': 'application/json'});
-  res.end(JSON.stringify({
-    message: 'Application deployed via Epinio',
-    runtime: process.version,
-    timestamp: new Date().toISOString()
-  }));
-});
-server.listen(process.env.PORT || 8080, () => {
-  console.log('Server started');
-});
+set :bind, "0.0.0.0"
+set :port, ENV.fetch("PORT", "8080").to_i
+
+get "/" do
+  content_type :json
+  {
+    message: "Application deployed via Epinio",
+    runtime: RUBY_VERSION,
+    timestamp: Time.now.utc.iso8601
+  }.to_json
+end
+EOF
+
+# Create Rack configuration
+cat > config.ru << 'EOF'
+require "./app"
+
+run Sinatra::Application
 EOF
 ```
 
@@ -70,8 +76,8 @@ EOF
 # Target the namespace for deployment
 epinio target my-apps
 
-# Verify namespace is active
-epinio namespace show my-apps
+# Show the current target namespace
+epinio target
 ```
 
 ## Step 4: Deploy the Application
@@ -105,20 +111,20 @@ epinio app show my-app
 epinio app list
 
 # View the application route
-epinio app show my-app | grep Routes
+epinio app show my-app | grep -E 'https?://'
 ```
 
 ## Step 6: Test the Application
 
 ```bash
 # Get the application URL
-APP_URL=$(epinio app show my-app | grep Routes | awk '{print $2}')
+APP_URL=$(epinio app show my-app | grep -Eo 'https?://[^[:space:]]+' | head -n1)
 
 # Test with curl
-curl ${APP_URL}
+curl "${APP_URL}"
 
-# Or open in browser
-open ${APP_URL}
+# Print the URL for testing in a browser
+printf '%s\n' "${APP_URL}"
 ```
 
 ## Step 7: View Application Logs
@@ -128,7 +134,7 @@ open ${APP_URL}
 epinio app logs my-app
 
 # Follow live logs
-epinio app logs my-app --follow
+epinio app logs --follow my-app
 ```
 
 ## Step 8: Update the Application
@@ -138,7 +144,7 @@ epinio app logs my-app --follow
 # Then re-push to update
 epinio push --name my-app
 
-# Epinio performs a rolling update
+# Verify the updated application
 epinio app show my-app
 ```
 
@@ -172,4 +178,4 @@ epinio app delete my-app
 
 ## Conclusion
 
-How to Deploy a Ruby Application with Epinio with Epinio demonstrates how the platform removes barriers between development and deployment. The simple push workflow means developers can deploy any application to Kubernetes without writing YAML or understanding container orchestration. Epinio's buildpack system automatically detects the runtime, installs dependencies, and creates an optimized container image.
+How to Deploy a Ruby Application with Epinio demonstrates how the platform removes barriers between development and deployment. The simple push workflow means developers can deploy supported applications to Kubernetes without writing YAML or managing the container orchestration details directly. Epinio's buildpack system automatically detects the runtime, installs dependencies, and creates an optimized container image.
