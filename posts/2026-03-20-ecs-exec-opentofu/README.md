@@ -8,17 +8,22 @@ Description: Learn how to enable and configure ECS Exec with OpenTofu to interac
 
 ## Introduction
 
-ECS Exec uses AWS Systems Manager Session Manager to establish an interactive session directly to a running container. It works with both Fargate and EC2 launch types, requires no inbound security group rules, logs all session activity to CloudWatch and S3 for audit compliance, and doesn't require SSH or exposing container ports.
+ECS Exec uses AWS Systems Manager Session Manager to establish an interactive session directly to a running container. It works with both Fargate and EC2 launch types, requires no inbound security group rules, can log commands and their output to CloudWatch and S3 for audit compliance, and doesn't require SSH or exposing container ports.
 
 ## Prerequisites
 
 - OpenTofu v1.6+
-- An ECS cluster and task with the SSM agent (automatically available in Fargate)
+- An ECS cluster and task with a task IAM role; ECS Exec uses a managed SSM agent that Amazon ECS or AWS Fargate starts inside the container
+- If you're using EC2, an Amazon ECS-optimized AMI released after January 20th, 2021 with agent version 1.50.2+; if you're using Fargate, platform version 1.4.0+ (Linux) or 1.0.0+ (Windows)
+- AWS CLI v1.22.3+ or v2.3.6+ and the Session Manager plugin
+- If you enable CloudWatch or S3 exec logging, the container image must include `script` and `cat`
 - AWS credentials with ECS, SSM, and KMS permissions
 
 ## Step 1: Configure Cluster for ECS Exec
 
 ```hcl
+data "aws_caller_identity" "current" {}
+
 resource "aws_cloudwatch_log_group" "ecs_exec" {
   name              = "/ecs/${var.project_name}/exec"
   retention_in_days = 7
@@ -48,9 +53,9 @@ resource "aws_ecs_cluster" "main" {
         cloud_watch_log_group_name     = aws_cloudwatch_log_group.ecs_exec.name
 
         # Log session activity to S3 for long-term audit
-        s3_bucket_name             = aws_s3_bucket.ecs_exec_audit.id
-        s3_encryption_enabled      = true
-        s3_key_prefix              = "ecs-exec/"
+        s3_bucket_name               = aws_s3_bucket.ecs_exec_audit.bucket
+        s3_bucket_encryption_enabled = true
+        s3_key_prefix                = "ecs-exec/"
       }
     }
   }
@@ -92,21 +97,29 @@ resource "aws_iam_role_policy" "ecs_exec" {
       {
         Effect = "Allow"
         Action = [
-          "s3:AbortMultipartUpload",
-          "s3:GetBucketLocation",
+          "s3:GetBucketLocation"
+        ]
+        Resource = "*"
+      },
+      {
+        Effect = "Allow"
+        Action = [
+          "s3:GetEncryptionConfiguration"
+        ]
+        Resource = aws_s3_bucket.ecs_exec_audit.arn
+      },
+      {
+        Effect = "Allow"
+        Action = [
           "s3:PutObject"
         ]
-        Resource = [
-          aws_s3_bucket.ecs_exec_audit.arn,
-          "${aws_s3_bucket.ecs_exec_audit.arn}/*"
-        ]
+        Resource = "${aws_s3_bucket.ecs_exec_audit.arn}/*"
       },
       # Required if using KMS encryption
       {
         Effect = "Allow"
         Action = [
-          "kms:Decrypt",
-          "kms:GenerateDataKey"
+          "kms:Decrypt"
         ]
         Resource = var.kms_key_arn
       }
@@ -159,7 +172,7 @@ aws ecs execute-command \
   --task $TASK_ID \
   --container app \
   --interactive \
-  --command "/bin/bash"
+  --command "/bin/sh"
 
 # Run a single command
 aws ecs execute-command \
@@ -181,16 +194,17 @@ resource "aws_iam_policy" "ecs_exec_access" {
     Statement = [
       {
         Effect   = "Allow"
-        Action   = ["ecs:ExecuteCommand"]
+        Action   = ["ecs:ExecuteCommand", "ecs:DescribeTasks"]
         Resource = [
           "arn:aws:ecs:${var.region}:${data.aws_caller_identity.current.account_id}:cluster/${var.project_name}-cluster",
           "arn:aws:ecs:${var.region}:${data.aws_caller_identity.current.account_id}:task/${var.project_name}-cluster/*"
         ]
       },
+      # Required if using a customer managed KMS key for ECS Exec
       {
         Effect   = "Allow"
-        Action   = ["ssm:StartSession"]
-        Resource = "arn:aws:ecs:${var.region}:${data.aws_caller_identity.current.account_id}:task/*"
+        Action   = ["kms:GenerateDataKey"]
+        Resource = var.kms_key_arn
       }
     ]
   })
