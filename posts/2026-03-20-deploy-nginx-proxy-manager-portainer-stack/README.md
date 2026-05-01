@@ -65,8 +65,8 @@ Set the password environment variables in Portainer.
 ## Initial Login
 
 1. Open `http://<host>:81`
-2. Default credentials: `admin@example.com` / `changeme`
-3. You'll be prompted to change these on first login.
+2. On first run, create your admin account in the setup screen.
+3. If you set `INITIAL_ADMIN_EMAIL` and `INITIAL_ADMIN_PASSWORD`, Nginx Proxy Manager skips the setup screen and uses those credentials.
 
 ---
 
@@ -75,15 +75,15 @@ Set the password environment variables in Portainer.
 1. Click **Hosts** → **Proxy Hosts** → **Add Proxy Host**.
 2. Enter the **Domain Names** (e.g., `app.example.com`).
 3. Set **Scheme** to `http`, **Forward Hostname/IP** to your container name (e.g., `myapp`), **Forward Port** to `8080`.
-4. Enable **SSL** tab → select **Request a new SSL Certificate** → toggle **Force SSL**.
+4. Enable **SSL** tab → select **Request a new Certificate** → toggle **Force SSL**.
 
 ---
 
 ## Add a Custom Certificate
 
-1. Go to **SSL Certificates** → **Add SSL Certificate**.
-2. Choose **Let's Encrypt** and enter your email and domain.
-3. Nginx Proxy Manager handles ACME challenge and renewal automatically.
+1. Go to **Certificates** → **Add Certificate** → **Custom Certificate**.
+2. Enter a name, then upload your certificate, private key, and intermediate certificate if required.
+3. Nginx Proxy Manager stores the uploaded certificate so you can assign it to proxy hosts.
 
 ---
 
