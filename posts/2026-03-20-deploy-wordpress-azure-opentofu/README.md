@@ -4,7 +4,7 @@ Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
 Tags: OpenTofu, WordPress, Azure, App Service, MySQL, Infrastructure as Code
 
-Description: Learn how to deploy a production-ready WordPress site on Azure using OpenTofu, with App Service for compute, Azure Database for MySQL, and Azure Files for shared storage.
+Description: Learn how to deploy a WordPress site on Azure using OpenTofu, with App Service for compute, Azure Database for MySQL, and Azure Files for shared storage.
 
 ## Introduction
 
@@ -51,8 +51,8 @@ resource "azurerm_mysql_flexible_server" "wordpress" {
   administrator_login    = "wpadmin"
   administrator_password = var.db_password
   sku_name               = "GP_Standard_D2ds_v4"
-  version                = "8.0.21"
-  zone                   = "1"
+  version                = "8.4"
+  public_network_access  = "Enabled"
 
   storage {
     size_gb = 20
@@ -73,6 +73,14 @@ resource "azurerm_mysql_flexible_database" "wordpress" {
   charset             = "utf8mb4"
   collation           = "utf8mb4_unicode_ci"
 }
+
+resource "azurerm_mysql_flexible_server_firewall_rule" "azure_services" {
+  name                = "allow-azure-services"
+  resource_group_name = azurerm_resource_group.wordpress.name
+  server_name         = azurerm_mysql_flexible_server.wordpress.name
+  start_ip_address    = "0.0.0.0"
+  end_ip_address      = "0.0.0.0"
+}
 ```
 
 ## App Service Plan and Web App
@@ -91,10 +99,12 @@ resource "azurerm_linux_web_app" "wordpress" {
   resource_group_name = azurerm_resource_group.wordpress.name
   location            = azurerm_resource_group.wordpress.location
   service_plan_id     = azurerm_service_plan.wordpress.id
+  virtual_network_subnet_id = azurerm_subnet.app.id
 
   site_config {
     application_stack {
-      docker_image_name = "wordpress:6.4-apache"
+      docker_image_name = "wordpress:6.9.4-php8.3-apache"
+      docker_registry_url = "https://index.docker.io"
     }
   }
 
@@ -102,8 +112,17 @@ resource "azurerm_linux_web_app" "wordpress" {
     WORDPRESS_DB_HOST     = "${azurerm_mysql_flexible_server.wordpress.fqdn}:3306"
     WORDPRESS_DB_NAME     = "wordpress"
     WORDPRESS_DB_USER     = "wpadmin"
-    WORDPRESS_DB_PASSWORD = "@Microsoft.KeyVault(SecretUri=${azurerm_key_vault_secret.db_password.id})"
+    WORDPRESS_DB_PASSWORD = var.db_password
     WEBSITES_ENABLE_APP_SERVICE_STORAGE = "false"
+  }
+
+  storage_account {
+    name         = "wp-content"
+    type         = "AzureFiles"
+    account_name = azurerm_storage_account.wordpress.name
+    share_name   = azurerm_storage_share.wordpress.name
+    access_key   = azurerm_storage_account.wordpress.primary_access_key
+    mount_path   = "/var/www/html/wp-content"
   }
 
   identity {
@@ -124,32 +143,51 @@ resource "azurerm_storage_account" "wordpress" {
 }
 
 resource "azurerm_storage_share" "wordpress" {
-  name                 = "wp-content"
-  storage_account_name = azurerm_storage_account.wordpress.name
-  quota                = 100
+  name               = "wp-content"
+  storage_account_id = azurerm_storage_account.wordpress.id
+  quota              = 100
 }
 ```
 
-## Azure CDN for Performance
+## Azure Front Door for Performance
 
 ```hcl
-resource "azurerm_cdn_profile" "wordpress" {
-  name                = "wordpress-${var.environment}-cdn"
+resource "azurerm_cdn_frontdoor_profile" "wordpress" {
+  name                = "wordpress-${var.environment}-fd"
   resource_group_name = azurerm_resource_group.wordpress.name
-  location            = "Global"
-  sku                 = "Standard_Microsoft"
+  sku_name            = "Standard_AzureFrontDoor"
 }
 
-resource "azurerm_cdn_endpoint" "wordpress" {
-  name                = "wordpress-${var.environment}"
-  profile_name        = azurerm_cdn_profile.wordpress.name
-  resource_group_name = azurerm_resource_group.wordpress.name
-  location            = "Global"
+resource "azurerm_cdn_frontdoor_endpoint" "wordpress" {
+  name                     = "wordpress-${var.environment}"
+  cdn_frontdoor_profile_id = azurerm_cdn_frontdoor_profile.wordpress.id
+}
 
-  origin {
-    name      = "wordpress-origin"
-    host_name = azurerm_linux_web_app.wordpress.default_hostname
-  }
+resource "azurerm_cdn_frontdoor_origin_group" "wordpress" {
+  name                     = "wordpress-origin-group"
+  cdn_frontdoor_profile_id = azurerm_cdn_frontdoor_profile.wordpress.id
+
+  load_balancing {}
+}
+
+resource "azurerm_cdn_frontdoor_origin" "wordpress" {
+  name                          = "wordpress-origin"
+  cdn_frontdoor_origin_group_id = azurerm_cdn_frontdoor_origin_group.wordpress.id
+  host_name                     = azurerm_linux_web_app.wordpress.default_hostname
+  origin_host_header            = azurerm_linux_web_app.wordpress.default_hostname
+  certificate_name_check_enabled = true
+}
+
+resource "azurerm_cdn_frontdoor_route" "wordpress" {
+  name                          = "wordpress-route"
+  cdn_frontdoor_endpoint_id     = azurerm_cdn_frontdoor_endpoint.wordpress.id
+  cdn_frontdoor_origin_group_id = azurerm_cdn_frontdoor_origin_group.wordpress.id
+  cdn_frontdoor_origin_ids      = [azurerm_cdn_frontdoor_origin.wordpress.id]
+  patterns_to_match             = ["/*"]
+  supported_protocols           = ["Http", "Https"]
+  forwarding_protocol           = "HttpsOnly"
+  https_redirect_enabled        = true
+  link_to_default_domain        = true
 }
 ```
 
@@ -161,12 +199,12 @@ output "wordpress_url" {
   description = "WordPress site URL"
 }
 
-output "cdn_url" {
-  value       = "https://${azurerm_cdn_endpoint.wordpress.fqdn}"
-  description = "CDN endpoint URL"
+output "frontdoor_url" {
+  value       = "https://${azurerm_cdn_frontdoor_endpoint.wordpress.host_name}"
+  description = "Front Door endpoint URL"
 }
 ```
 
 ## Summary
 
-Deploying WordPress on Azure with OpenTofu uses Azure App Service with Docker for containerized hosting, Azure Database for MySQL Flexible Server for managed database, Azure Files for shared `wp-content` storage, and Azure CDN for content delivery. Store the database password in Azure Key Vault and reference it in App Service settings using Key Vault references rather than hardcoding it in app settings.
+Deploying WordPress on Azure with OpenTofu uses Azure App Service with Docker for containerized hosting, Azure Database for MySQL Flexible Server for managed database, Azure Files mounted into the web app for shared `wp-content` storage, and Azure Front Door Standard for global content delivery. For production, store the database password in Azure Key Vault, grant the web app's managed identity access to the secret, and then use an App Service Key Vault reference instead of setting the password directly in app settings.
