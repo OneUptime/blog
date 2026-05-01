@@ -4,16 +4,16 @@ Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
 Tags: Rancher, RabbitMQ, Kubernetes, Message Queue, Helm, AMQP
 
-Description: Deploy a production-ready RabbitMQ cluster on Rancher using Helm with persistent storage, management UI access, and proper resource configuration.
+Description: Deploy a RabbitMQ cluster on Rancher using Helm with persistent storage, management UI access, and proper resource configuration.
 
 ## Introduction
 
-RabbitMQ is a widely used open-source message broker supporting AMQP, MQTT, and STOMP protocols. Running it on Rancher enables automatic pod recovery, horizontal scaling, and seamless integration with cloud-native applications.
+RabbitMQ is a widely used open-source message broker supporting AMQP, MQTT, and STOMP protocols. Running it on Rancher enables automatic pod recovery, clustered deployment, and seamless integration with cloud-native applications.
 
 ## Prerequisites
 
-- Rancher cluster with at least 3 nodes for HA deployment
-- `helm` and `kubectl` available
+- Rancher-managed Kubernetes cluster with at least 3 worker nodes for a three-node RabbitMQ cluster
+- `helm` 3.8+ and `kubectl` available
 - A StorageClass for persistent volumes
 
 ## Step 1: Add Bitnami Repository
@@ -33,7 +33,7 @@ auth:
   password: "securepassword"
   erlangCookie: "your-erlang-cookie-secret"   # Must be consistent across replicas
 
-replicaCount: 3   # Three-node cluster for HA
+replicaCount: 3   # Three-node cluster layout
 
 persistence:
   enabled: true
@@ -51,9 +51,8 @@ resources:
 metrics:
   enabled: true   # Enable Prometheus metrics endpoint
   serviceMonitor:
-    enabled: false   # Set true if Prometheus Operator is installed
-
-plugins: "rabbitmq_management rabbitmq_peer_discovery_k8s rabbitmq_prometheus"
+    default:
+      enabled: false   # Set true if Prometheus Operator is installed
 ```
 
 ## Step 3: Deploy RabbitMQ
@@ -89,33 +88,46 @@ kubectl port-forward svc/rabbitmq -n messaging 15672:15672
 
 ## Step 6: Create a Test Queue
 
-Use the management CLI to create a queue and verify publishing.
+Use the management HTTP API to create a queue and verify publishing. Keep the port-forward from the previous step running while you execute these commands.
 
 ```bash
-# Exec into a pod to use rabbitmqadmin
-kubectl exec -it rabbitmq-0 -n messaging -- bash
-
 # Declare a test queue
-rabbitmqadmin declare queue name=test-queue durable=true
+curl -u admin:securepassword -H "content-type:application/json" \
+  -X PUT http://127.0.0.1:15672/api/queues/%2F/test-queue \
+  -d '{"auto_delete":false,"durable":true,"arguments":{}}'
+
+# Declare a direct exchange
+curl -u admin:securepassword -H "content-type:application/json" \
+  -X PUT http://127.0.0.1:15672/api/exchanges/%2F/test-exchange \
+  -d '{"type":"direct","auto_delete":false,"durable":true,"internal":false,"arguments":{}}'
+
+# Bind the queue to the exchange
+curl -u admin:securepassword -H "content-type:application/json" \
+  -X POST http://127.0.0.1:15672/api/bindings/%2F/e/test-exchange/q/test-queue \
+  -d '{"routing_key":"test-queue","arguments":{}}'
 
 # Publish a test message
-rabbitmqadmin publish exchange=amq.default routing_key=test-queue payload="Hello, RabbitMQ!"
+curl -u admin:securepassword -H "content-type:application/json" \
+  -X PUT http://127.0.0.1:15672/api/exchanges/%2F/test-exchange/publish \
+  -d '{"properties":{},"routing_key":"test-queue","payload":"Hello, RabbitMQ!","payload_encoding":"string"}'
 
 # Get the message
-rabbitmqadmin get queue=test-queue
+curl -u admin:securepassword -H "content-type:application/json" \
+  -X POST http://127.0.0.1:15672/api/queues/%2F/test-queue/get \
+  -d '{"count":1,"ackmode":"ack_requeue_false","encoding":"auto","truncate":50000}'
 ```
 
 ## Step 7: Configure a Service for Applications
 
-Expose RabbitMQ to other pods in the cluster via the headless service created by the Helm chart.
+Expose RabbitMQ to other pods in the cluster via the ClusterIP service created by the Helm chart.
 
 ```yaml
 # Application environment variable pointing to RabbitMQ
 env:
   - name: RABBITMQ_URL
-    value: "amqp://admin:securepassword@rabbitmq.messaging.svc.cluster.local:5672"
+    value: "amqp://admin:securepassword@rabbitmq.messaging.svc.cluster.local:5672/%2f"
 ```
 
 ## Conclusion
 
-Your RabbitMQ cluster is now running on Rancher with HA enabled through a three-node StatefulSet. The `rabbitmq_peer_discovery_k8s` plugin handles node discovery automatically using Kubernetes service endpoints. Monitor queue depths and message rates through the management UI or Prometheus integration.
+Your RabbitMQ cluster is now running on Rancher as a three-node StatefulSet. The `rabbitmq_peer_discovery_k8s` plugin handles node discovery automatically using the Kubernetes API and the chart's headless service. For queue-level high availability in RabbitMQ 4.x, use replicated data types such as quorum queues or streams. Monitor queue depths and message rates through the management UI or Prometheus integration.
