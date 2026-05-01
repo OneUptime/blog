@@ -8,11 +8,11 @@ Description: Learn how to identify and disable weak TLS cipher suites on Nginx a
 
 ## Why Cipher Suite Selection Matters
 
-Cipher suites define the algorithms used for a TLS session. Weak ciphers like RC4, DES, 3DES, and EXPORT-grade ciphers have known vulnerabilities that allow traffic decryption or manipulation. Modern servers should only accept AEAD (Authenticated Encryption with Associated Data) cipher suites.
+Cipher suites define the algorithms used for a TLS session. In TLS 1.2 and earlier, the suite name also encodes the key exchange and certificate authentication method. Weak ciphers like RC4, DES, 3DES, and EXPORT-grade ciphers have known vulnerabilities that allow traffic decryption or manipulation. Modern servers should only accept AEAD (Authenticated Encryption with Associated Data) cipher suites.
 
 ## Cipher Suite Components
 
-A cipher suite like `ECDHE-RSA-AES256-GCM-SHA384` breaks down as:
+For TLS 1.2 and earlier, a cipher suite like `ECDHE-RSA-AES256-GCM-SHA384` breaks down as:
 - `ECDHE` - Key exchange (Elliptic Curve Diffie-Hellman Ephemeral)
 - `RSA` - Certificate authentication
 - `AES256-GCM` - Encryption algorithm
