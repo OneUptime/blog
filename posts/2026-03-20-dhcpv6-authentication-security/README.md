@@ -4,11 +4,11 @@ Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
 Tags: DHCPv6, IPv6, Security, Authentication, DHCP
 
-Description: Learn how to protect DHCPv6 infrastructure using authentication options to prevent rogue server attacks and unauthorized address assignment.
+Description: Learn how to protect DHCPv6 infrastructure against rogue server attacks using DHCPv6-Shield, monitoring, and the limited authentication mechanisms defined by DHCPv6.
 
 ## Overview
 
-DHCPv6 authentication (defined in RFC 3315, updated by RFC 8415) allows clients and servers to verify the authenticity of DHCPv6 messages. Without authentication, a rogue DHCPv6 server can poison clients with malicious DNS servers or incorrect prefixes.
+DHCPv6 includes an Authentication option in the current base specification (RFC 9915, which obsoletes RFC 8415 and RFC 3315). However, the delayed-authentication mechanism from RFC 3315 is obsolete, and common DHCP implementations generally do not support DHCPv6 Authentication for routine client/server exchanges. Without network protections, a rogue DHCPv6 server can poison clients with malicious DNS servers or incorrect prefixes.
 
 ## Threat Model
 
@@ -23,45 +23,19 @@ graph TD
 
 ## DHCPv6 Authentication Option (Option 11)
 
-The Authentication option uses a shared secret and HMAC-MD5 or HMAC-SHA to sign DHCPv6 messages. Both client and server must share the same secret.
+The Authentication option is a framework for DHCP message authentication. In the current base protocol, the standardized use that remains is Reconfigure Key Authentication Protocol (RKAP) for authenticating Reconfigure messages, and RFC 9915 defines that use with HMAC-MD5.
 
-## ISC DHCP Server Authentication Configuration
+## ISC DHCP Server Authentication Support
 
-```bash
-# /etc/dhcp/dhcpd6.conf
+ISC DHCP 4.4 does not support DHCPv6 Authentication (Option 11), so there is no supported `dhcpd6.conf` syntax to enable general DHCPv6 message authentication on the server.
 
-# Define an authentication key
+## ISC DHCP Client Authentication Support
 
-key "dhcpv6-auth-key" {
-    algorithm hmac-md5;
-    secret "c2VjcmV0a2V5MTIzNDU2Nzg=";  # Base64-encoded shared secret
-}
-
-# Apply authentication to the subnet
-subnet6 2001:db8::/32 {
-    range6 2001:db8::100 2001:db8::200;
-    send dhcp6.authentication 11 1 1 1 "dhcpv6-auth-key";
-}
-```
-
-## ISC DHCP Client Authentication Configuration
-
-```bash
-# /etc/dhcp/dhclient6.conf
-
-# Require authentication from the server
-send dhcp6.authentication 11 1 1 1 "dhcpv6-auth-key";
-require authentication;
-
-key "dhcpv6-auth-key" {
-    algorithm hmac-md5;
-    secret "c2VjcmV0a2V5MTIzNDU2Nzg=";
-}
-```
+ISC DHCP 4.4 likewise does not support DHCPv6 Authentication (Option 11) in `dhclient6.conf`, so `send dhcp6.authentication` and `require authentication` are not valid ISC DHCP client configuration.
 
 ## Alternative: RA-Guard and DHCPv6-Shield
 
-For environments where implementing cryptographic authentication is complex, use network-layer protections:
+For environments where DHCPv6 Authentication is unavailable or impractical, use network-layer protections:
 
 **DHCPv6-Shield (RFC 7610)** - Implemented on managed switches to drop DHCPv6 server messages arriving on untrusted ports.
 
@@ -78,13 +52,13 @@ This ensures only designated uplink ports can carry DHCPv6 server messages.
 
 ## Rogue Server Detection with Monitoring
 
-Even without authentication, monitoring tools can detect rogue DHCPv6 servers:
+Even without DHCPv6 Authentication, monitoring tools can detect rogue DHCPv6 servers:
 
 ```bash
-# Listen for unexpected DHCPv6 Advertise messages on the network
-sudo tcpdump -i eth0 -n "udp port 547" | grep "dhcp6 advertise"
+# Listen for DHCPv6 server messages on the network
+sudo tcpdump -i eth0 -vv -n "udp port 547"
 
-# Alert if Advertise comes from unexpected source addresses
+# Look for DHCPv6 Advertise messages from unexpected source addresses
 # Legitimate server: fe80::1
 # Unexpected: fe80::aaaa:bbbb:cccc:dddd
 ```
@@ -92,7 +66,7 @@ sudo tcpdump -i eth0 -n "udp port 547" | grep "dhcp6 advertise"
 ## Best Practices
 
 1. **Deploy DHCPv6 Guard on all switches** - This is the most practical protection in most environments.
-2. **Use authentication in high-security environments** - HMAC authentication prevents message tampering.
+2. **Use authenticated Reconfigure only when both peers explicitly support it** - DHCPv6 Authentication is not widely implemented for general client/server exchanges.
 3. **Monitor for rogue Advertise messages** - Set up IDS rules to alert on unknown DHCPv6 sources.
 4. **Limit DHCPv6 multicast to known VLANs** - Use VLAN segmentation to reduce exposure.
 5. **Log all DHCPv6 assignments** - Correlate IP assignments with switch port data to detect anomalies.
@@ -102,11 +76,8 @@ sudo tcpdump -i eth0 -n "udp port 547" | grep "dhcp6 advertise"
 ```bash
 # Scan for active DHCPv6 servers on the local link
 sudo nmap -6 --script=broadcast-dhcp6-discover -e eth0
-
-# Or use dhcpv6-tester
-sudo dhcptest --solicit --interface eth0
 ```
 
 ## Summary
 
-DHCPv6 authentication using HMAC protects against rogue server attacks, but in practice, DHCPv6-Guard on managed switches is the most deployable defense. Combine both approaches with active monitoring for a layered security posture.
+DHCPv6 includes an Authentication option, but current standards use it primarily for authenticated Reconfigure support and common DHCP stacks such as ISC DHCP do not implement Option 11 for general use. In practice, DHCPv6 Guard on managed switches plus active monitoring is the most deployable defense against rogue servers.
