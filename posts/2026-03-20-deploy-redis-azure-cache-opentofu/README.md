@@ -22,12 +22,12 @@ resource "azurerm_redis_cache" "app" {
   family              = "C"         # C for Basic/Standard, P for Premium
   capacity            = 1           # 0-6 for C family
 
-  enable_non_ssl_port = false
+  non_ssl_port_enabled = false
   minimum_tls_version = "1.2"
 
   redis_configuration {
     maxmemory_policy   = "allkeys-lru"
-    enable_authentication = true
+    authentication_enabled = true
   }
 
   tags = { Environment = var.environment }
@@ -44,26 +44,23 @@ resource "azurerm_redis_cache" "premium" {
 
   sku_name  = "Premium"
   family    = "P"
-  capacity  = 1          # P1 = 6 GB, P2 = 13 GB, P3 = 26 GB, P4 = 53 GB, P5 = 120 GB
+  capacity  = 1          # P1 = 6 GB per shard, P2 = 13 GB per shard, P3 = 26 GB per shard, P4 = 53 GB per shard, P5 = 120 GB per shard
 
-  enable_non_ssl_port = false
+  non_ssl_port_enabled = false
   minimum_tls_version = "1.2"
 
   shard_count = 2  # Redis clustering - Premium only
 
   redis_configuration {
     maxmemory_policy            = "allkeys-lru"
-    enable_authentication       = true
+    authentication_enabled      = true
 
+    # Choose either RDB or AOF persistence, not both.
     # RDB persistence
     rdb_backup_enabled            = true
     rdb_backup_frequency          = 60  # Minutes
     rdb_backup_max_snapshot_count = 1
     rdb_storage_connection_string = azurerm_storage_account.redis_backup.primary_blob_connection_string
-
-    # AOF persistence
-    aof_backup_enabled            = true
-    aof_storage_connection_string_0 = azurerm_storage_account.redis_backup.primary_blob_connection_string
   }
 
   zones = ["1", "2"]  # Zone redundancy
@@ -83,7 +80,7 @@ resource "azurerm_private_endpoint" "redis" {
 
   private_service_connection {
     name                           = "redis-connection"
-    private_connection_resource_id = azurerm_redis_cache.app.id
+    private_connection_resource_id = azurerm_redis_cache.secure.id
     subresource_names              = ["redisCache"]
     is_manual_connection           = false
   }
@@ -183,4 +180,4 @@ output "redis_connection_string_secret" {
 
 ## Conclusion
 
-Azure Cache for Redis with OpenTofu provides managed Redis with automatic failover. Always use `enable_non_ssl_port = false` and `minimum_tls_version = "1.2"` for production security. Use private endpoints (`public_network_access_enabled = false`) to keep Redis access within the VNet. Store the primary connection string in Azure Key Vault rather than outputting it directly. For high availability, use the Premium tier with zone redundancy (`zones = ["1", "2"]`) and geo-replication for cross-region disaster recovery.
+Azure Cache for Redis with OpenTofu provides managed Redis with automatic failover. Always use `non_ssl_port_enabled = false` and `minimum_tls_version = "1.2"` for production security. Use private endpoints (`public_network_access_enabled = false`) to keep Redis access within the VNet. Store the primary connection string in Azure Key Vault rather than outputting it directly. For high availability, use the Premium tier with zone redundancy (`zones = ["1", "2"]`) and geo-replication for cross-region disaster recovery. Azure Cache for Redis has an announced retirement timeline, and Basic, Standard, and Premium tiers retire on September 30, 2028, so plan long-term deployments and migrations to Azure Managed Redis accordingly.
