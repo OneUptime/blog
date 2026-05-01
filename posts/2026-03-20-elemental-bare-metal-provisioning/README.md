@@ -33,17 +33,16 @@ flowchart TD
 
 ```bash
 # Verify Elemental Operator is running
+kubectl get pods -n cattle-elemental-system
 
-kubectl get pods -n elemental-system
+# Verify the Elemental CRDs are installed
+kubectl get crd \
+  machineregistrations.elemental.cattle.io \
+  machineinventoryselectortemplates.elemental.cattle.io \
+  seedimages.elemental.cattle.io
 
-# Create a dedicated namespace for bare metal nodes
-kubectl create namespace bare-metal-fleet
-
-# Create RBAC for machine management
-kubectl create rolebinding elemental-admin \
-  --clusterrole=admin \
-  --serviceaccount=elemental-system:elemental-operator \
-  --namespace=bare-metal-fleet
+# Elemental registration and cluster resources are typically created in fleet-default
+kubectl get namespace fleet-default
 ```
 
 ## Step 2: Define Server Tiers with MachineRegistrations
@@ -56,7 +55,7 @@ metadata:
   name: control-plane-nodes
   namespace: fleet-default
 spec:
-  machineLabels:
+  machineInventoryLabels:
     role: control-plane
     tier: high-performance
   config:
@@ -64,8 +63,6 @@ spec:
       install:
         device: /dev/nvme0n1  # NVMe for control plane
         reboot: true
-      system-agent:
-        url: "https://rancher.example.com"
 ---
 # worker-registration.yaml
 apiVersion: elemental.cattle.io/v1beta1
@@ -74,7 +71,7 @@ metadata:
   name: worker-nodes
   namespace: fleet-default
 spec:
-  machineLabels:
+  machineInventoryLabels:
     role: worker
     tier: standard
   config:
@@ -88,13 +85,37 @@ spec:
 
 ```yaml
 # bare-metal-cluster.yaml
+apiVersion: elemental.cattle.io/v1beta1
+kind: MachineInventorySelectorTemplate
+metadata:
+  name: cp-selector
+  namespace: fleet-default
+spec:
+  template:
+    spec:
+      selector:
+        matchLabels:
+          role: control-plane
+---
+apiVersion: elemental.cattle.io/v1beta1
+kind: MachineInventorySelectorTemplate
+metadata:
+  name: worker-selector
+  namespace: fleet-default
+spec:
+  template:
+    spec:
+      selector:
+        matchLabels:
+          role: worker
+---
 apiVersion: provisioning.cattle.io/v1
 kind: Cluster
 metadata:
   name: production-bare-metal
   namespace: fleet-default
 spec:
-  kubernetesVersion: v1.28.0+rke2r1
+  kubernetesVersion: v1.34.5+rke2r1
 
   rkeConfig:
     machineGlobalConfig:
@@ -126,23 +147,60 @@ spec:
 
 ## Step 4: Deploy the Seed Images
 
-```bash
-# Build ISOs for each node type
-docker run --privileged --rm \
-  -v $(pwd):/workspace \
-  registry.suse.com/rancher/elemental-toolkit/elemental-cli:latest \
-  build-iso \
-  --config /workspace/cp-config.yaml \
-  --name elemental-cp \
-  registry.suse.com/rancher/sle-micro:latest
+```yaml
+# seed-images.yaml
+apiVersion: elemental.cattle.io/v1beta1
+kind: SeedImage
+metadata:
+  name: control-plane-seed
+  namespace: fleet-default
+spec:
+  type: iso
+  baseImage: registry.suse.com/suse/sl-micro/6.0/baremetal-iso-image:2.1.1-3.36
+  registrationRef:
+    apiVersion: elemental.cattle.io/v1beta1
+    kind: MachineRegistration
+    name: control-plane-nodes
+    namespace: fleet-default
+---
+apiVersion: elemental.cattle.io/v1beta1
+kind: SeedImage
+metadata:
+  name: worker-seed
+  namespace: fleet-default
+spec:
+  type: iso
+  baseImage: registry.suse.com/suse/sl-micro/6.0/baremetal-iso-image:2.1.1-3.36
+  registrationRef:
+    apiVersion: elemental.cattle.io/v1beta1
+    kind: MachineRegistration
+    name: worker-nodes
+    namespace: fleet-default
+```
 
-docker run --privileged --rm \
-  -v $(pwd):/workspace \
-  registry.suse.com/rancher/elemental-toolkit/elemental-cli:latest \
-  build-iso \
-  --config /workspace/worker-config.yaml \
-  --name elemental-worker \
-  registry.suse.com/rancher/sle-micro:latest
+```bash
+# Build and download the ISOs for each node type
+kubectl apply -f seed-images.yaml
+
+kubectl wait --for=condition=Ready seedimage/control-plane-seed \
+  -n fleet-default \
+  --timeout=30m
+
+kubectl wait --for=condition=Ready seedimage/worker-seed \
+  -n fleet-default \
+  --timeout=30m
+
+wget --no-check-certificate \
+  "$(kubectl get seedimage control-plane-seed \
+    -n fleet-default \
+    -o jsonpath='{.status.downloadURL}')" \
+  -O elemental-cp.iso
+
+wget --no-check-certificate \
+  "$(kubectl get seedimage worker-seed \
+    -n fleet-default \
+    -o jsonpath='{.status.downloadURL}')" \
+  -O elemental-worker.iso
 ```
 
 ## Step 5: Boot and Monitor Provisioning
@@ -156,7 +214,7 @@ kubectl get cluster -n fleet-default production-bare-metal --watch
 
 # Check machine adoption
 kubectl get machineinventory -n fleet-default \
-  -o custom-columns='NAME:.metadata.name,ROLE:.metadata.labels.role,ADOPTED:.spec.machineRef.name'
+  -o custom-columns='NAME:.metadata.name,ROLE:.metadata.labels.role,SELECTOR:.metadata.ownerReferences[0].name'
 ```
 
 ## Conclusion
