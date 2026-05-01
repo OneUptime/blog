@@ -8,13 +8,13 @@ Description: Learn how to pull and manage Docker images from public and private 
 
 ## Introduction
 
-This guide covers How to Pull Docker Images with OpenTofu using OpenTofu with production-ready configurations, best practices, and practical examples.
+This guide covers how to pull Docker images with OpenTofu using the Docker provider with production-ready configurations, best practices, and practical examples.
 
 ## Prerequisites
 
 - OpenTofu v1.6+
-- Access to a Kubernetes cluster or Docker daemon
-- Relevant provider configured
+- Access to a Docker daemon
+- If you are using a private registry, authenticate with `docker login` or prepare a Docker config file
 
 ## Step 1: Configure the Provider
 
@@ -22,167 +22,90 @@ This guide covers How to Pull Docker Images with OpenTofu using OpenTofu with pr
 terraform {
   required_version = ">= 1.6.0"
   required_providers {
-    kubernetes = {
-      source  = "hashicorp/kubernetes"
-      version = "~> 2.0"
+    docker = {
+      source  = "kreuzwerker/docker"
+      version = "4.2.0"
     }
   }
 }
 
-provider "kubernetes" {
-  config_path    = "~/.kube/config"
-  config_context = var.kube_context
+provider "docker" {
+  host = var.docker_host
+
+  # Uncomment this block when pulling from a private registry.
+  # registry_auth {
+  #   address     = var.registry_address
+  #   config_file = pathexpand("~/.docker/config.json")
+  # }
 }
 ```
 
 ## Step 2: Define Variables
 
 ```hcl
-variable "kube_context" {
-  description = "Kubernetes context to use"
+variable "docker_host" {
+  description = "Docker daemon endpoint"
   type        = string
-  default     = "default"
+  default     = "unix:///var/run/docker.sock"
 }
 
-variable "namespace" {
-  description = "Kubernetes namespace"
+variable "image_name" {
+  description = "Docker image to pull"
   type        = string
-  default     = "default"
+  default     = "nginx:1.28.0"
 }
 
-variable "environment" {
-  description = "Deployment environment"
+variable "keep_locally" {
+  description = "Keep the image on the host when the resource is destroyed"
+  type        = bool
+  default     = true
+}
+
+variable "registry_address" {
+  description = "Registry address used for private registry authentication"
   type        = string
-  default     = "production"
+  default     = "registry-1.docker.io"
 }
 ```
 
-## Step 3: Create Core Kubernetes Resources
+## Step 3: Read Registry Metadata
 
 ```hcl
-# Create namespace
-
-resource "kubernetes_namespace" "app" {
-  metadata {
-    name = var.namespace
-    labels = {
-      environment = var.environment
-      managed-by  = "opentofu"
-    }
-  }
-}
-
-# Resource quota to limit namespace resources
-resource "kubernetes_resource_quota" "app" {
-  metadata {
-    name      = "app-quota"
-    namespace = kubernetes_namespace.app.metadata[0].name
-  }
-  spec {
-    hard = {
-      pods               = "20"
-      requests_cpu       = "4"
-      requests_memory    = "8Gi"
-      limits_cpu         = "8"
-      limits_memory      = "16Gi"
-    }
-  }
+data "docker_registry_image" "app" {
+  name = var.image_name
 }
 ```
 
-## Step 4: Deploy Workloads
+## Step 4: Pull the Image
 
 ```hcl
-resource "kubernetes_deployment" "app" {
-  metadata {
-    name      = "app"
-    namespace = kubernetes_namespace.app.metadata[0].name
-    labels = {
-      app         = "my-app"
-      environment = var.environment
-    }
-  }
-
-  spec {
-    replicas = 3
-
-    selector {
-      match_labels = {
-        app = "my-app"
-      }
-    }
-
-    template {
-      metadata {
-        labels = {
-          app = "my-app"
-        }
-      }
-
-      spec {
-        container {
-          name  = "app"
-          image = var.container_image
-
-          resources {
-            requests = {
-              cpu    = "100m"
-              memory = "128Mi"
-            }
-            limits = {
-              cpu    = "500m"
-              memory = "512Mi"
-            }
-          }
-
-          liveness_probe {
-            http_get {
-              path = "/health"
-              port = 8080
-            }
-            initial_delay_seconds = 30
-            period_seconds        = 10
-          }
-        }
-      }
-    }
-  }
+resource "docker_image" "app" {
+  name          = data.docker_registry_image.app.name
+  pull_triggers = [data.docker_registry_image.app.sha256_digest]
+  keep_locally  = var.keep_locally
 }
 ```
 
-## Step 5: Expose the Workload
+## Step 5: Add Private Registry Authentication
+
+Add the following block inside `provider "docker"` when using a private registry:
 
 ```hcl
-resource "kubernetes_service" "app" {
-  metadata {
-    name      = "app-service"
-    namespace = kubernetes_namespace.app.metadata[0].name
-  }
-
-  spec {
-    selector = {
-      app = "my-app"
-    }
-
-    port {
-      port        = 80
-      target_port = 8080
-    }
-
-    type = "ClusterIP"
-  }
+registry_auth {
+  address     = var.registry_address
+  config_file = pathexpand("~/.docker/config.json")
 }
 ```
 
 ## Step 6: Define Outputs
 
 ```hcl
-output "namespace" {
-  value = kubernetes_namespace.app.metadata[0].name
+output "image_id" {
+  value = docker_image.app.image_id
 }
 
-output "service_cluster_ip" {
-  value = kubernetes_service.app.spec[0].cluster_ip
+output "repo_digest" {
+  value = docker_image.app.repo_digest
 }
 ```
 
@@ -196,12 +119,12 @@ tofu apply
 
 ## Best Practices
 
-- Always specify resource requests and limits for all containers
-- Use namespaces to isolate workloads and apply resource quotas
-- Label all resources for easy selection and management
-- Use liveness and readiness probes to ensure workload health
-- Never run containers as root; use security contexts
+- Pin images to a specific tag or digest instead of relying on `latest`
+- Use `docker_registry_image` with `pull_triggers` when you want OpenTofu to repull an image after the remote digest changes
+- Keep registry credentials out of your configuration and prefer `docker login` or a Docker config file
+- Use `keep_locally = true` if the image should remain on the host when the OpenTofu resource is destroyed
+- Set the correct `registry_auth.address` value for private registries
 
 ## Conclusion
 
-You have successfully configured How to Pull Docker Images with OpenTofu using OpenTofu. This approach enables GitOps-style management of Kubernetes resources alongside your infrastructure code. Combine OpenTofu Kubernetes resources with Helm releases for a complete infrastructure-as-code solution.
+You have successfully configured how to pull Docker images with OpenTofu using the Docker provider. This approach lets you manage image versions as code and repull images when the remote digest changes. For private registries, add `registry_auth` and reuse your existing Docker credentials.
