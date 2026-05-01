@@ -4,11 +4,11 @@ Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
 Tags: OpenTofu, Infrastructure as Code, Terraform, IaC, DevOps
 
-Description: Learn how to use the OpenTofu -exclude flag to skip specific resources during plan and apply operations, the inverse of the -target flag.
+Description: Learn how to use the OpenTofu -exclude flag to skip specific resources during plan and apply operations, the negative-targeting counterpart to the -target flag.
 
 ## Introduction
 
-The `-exclude` flag (available in OpenTofu 1.9+) is the inverse of `-target`. While `-target` limits operations to specific resources, `-exclude` applies to everything EXCEPT the specified resources. This is useful when you want to apply most of your configuration but skip certain problematic resources.
+The `-exclude` flag (available in OpenTofu 1.9+) is the negative-targeting counterpart to `-target`. While `-target` focuses operations on specific resources and their dependencies, `-exclude` focuses on everything except the specified resources and anything that depends on them. This is useful when you want to apply most of your configuration but skip certain problematic resources.
 
 ## Basic Usage
 
@@ -20,7 +20,7 @@ tofu plan -exclude=aws_instance.web
 # Exclude multiple resources
 tofu plan \
   -exclude=aws_instance.web \
-  -exclude=aws_rds_instance.database
+  -exclude=aws_db_instance.database
 
 # Exclude a module
 tofu plan -exclude=module.monitoring
@@ -84,16 +84,16 @@ tofu apply -exclude=module.shared_security_groups
 
 | Aspect | -target | -exclude |
 |--------|---------|----------|
-| Applies to | ONLY specified resources | Everything EXCEPT specified resources |
+| Applies to | Specified resources and their dependencies | Non-excluded resources, excluding anything that depends on excluded addresses |
 | Use when | Isolating specific resources | Skipping specific resources |
-| Blast radius | Small (targeted) | Large (almost everything) |
+| Blast radius | Small (targeted) | Large (everything else that is not dependent on excluded addresses) |
 
 ## Combining with -target
 
-You can combine `-target` and `-exclude` but it can be confusing - use one or the other:
+You cannot combine `-target` and `-exclude` in the same command - pick one approach:
 
 ```bash
-# Usually avoid combining - pick one approach
+# These options are mutually exclusive
 # -target is more explicit for isolation
 # -exclude is better for "skip this one thing"
 ```
@@ -107,9 +107,10 @@ tofu apply -exclude=module.monitoring
 
 # Verify state is consistent
 tofu plan
-# Should only show the excluded resources as out of sync (if applicable)
+# Should show any remaining changes, including excluded resources
+# and anything affected by them (if applicable)
 ```
 
 ## Conclusion
 
-The `-exclude` flag is OpenTofu's complement to `-target`, offering a "skip this" rather than "only this" approach. Use it when you want to apply most of your configuration but need to temporarily skip a specific resource. Like `-target`, it's an escape hatch rather than a routine workflow tool - always follow up with a full plan to ensure state consistency.
+The `-exclude` flag is OpenTofu's negative-targeting counterpart to `-target`, offering a "skip this" rather than "only this" approach. Use it when you want to apply most of your configuration but need to temporarily skip a specific resource or module. Like `-target`, it's an escape hatch rather than a routine workflow tool - always follow up with a full plan to ensure state consistency.
