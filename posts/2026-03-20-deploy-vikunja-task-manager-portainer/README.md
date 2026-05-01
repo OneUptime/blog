@@ -15,16 +15,21 @@ This guide covers deploying this self-hosted productivity application via Portai
 Navigate to **Stacks > Add Stack** in Portainer and use the following configuration:
 
 ```yaml
-version: "3.8"
 services:
   app:
-    image: vikunja-task-manager
+    image: vikunja/vikunja
     environment:
-      - DATABASE_URL=postgres://app:password@postgres:5432/appdb
+      VIKUNJA_SERVICE_PUBLICURL: "http://<your-server-ip-or-domain>:3456/"
+      VIKUNJA_DATABASE_HOST: postgres
+      VIKUNJA_DATABASE_PASSWORD: password
+      VIKUNJA_DATABASE_TYPE: postgres
+      VIKUNJA_DATABASE_USER: app
+      VIKUNJA_DATABASE_DATABASE: appdb
+      VIKUNJA_SERVICE_SECRET: "<your-random-secret>"
     volumes:
-      - app-data:/app/data
+      - app-data:/app/vikunja/files
     ports:
-      - "80:80"
+      - "3456:3456"
     depends_on:
       postgres:
         condition: service_healthy
@@ -41,7 +46,7 @@ services:
     volumes:
       - postgres-data:/var/lib/postgresql/data
     healthcheck:
-      test: ["CMD-SHELL", "pg_isready -U app"]
+      test: ["CMD-SHELL", "pg_isready -h localhost -U $$POSTGRES_USER"]
       interval: 10s
       timeout: 5s
       retries: 5
@@ -60,12 +65,12 @@ networks:
 
 ## Configuration
 
-After deployment, access the application at `http://host:80` and complete the initial setup:
+After deployment, access the application at `http://<your-server-ip-or-domain>:3456` and complete the initial setup:
 
-1. Create the first admin user
-2. Configure your workspace or organization settings
-3. Invite team members via the admin panel
-4. Configure email notifications (SMTP settings)
+1. Register the first user account
+2. Create your first project or team
+3. Share projects with other users or teams after they create accounts
+4. If you need email notifications, add the appropriate `VIKUNJA_MAILER_*` settings to the stack
 
 ## Key Features
 
@@ -73,7 +78,7 @@ This application provides:
 
 - **Kanban boards / Project tracking** - visual workflow management
 - **Team collaboration** - assign tasks and track progress
-- **Labels and categories** - organize work by type or priority
+- **Labels and filters** - organize work across projects
 - **Due dates and deadlines** - time-based task management
 - **Comments and attachments** - rich context on each task
 
@@ -84,9 +89,9 @@ Backup the application data:
 ```bash
 # Backup PostgreSQL database
 
-docker exec postgres_container pg_dump -U app appdb > backup-$(date +%Y%m%d).sql
+docker exec <postgres-container-name> pg_dump -U app appdb > backup-$(date +%Y%m%d).sql
 
-# Backup application files
+# Backup Vikunja attachment files
 docker run --rm \
   -v app-data:/data:ro \
   -v /opt/backups:/backups \
