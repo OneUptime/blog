@@ -8,7 +8,7 @@ Description: Learn how to enable and verify TCP Selective Acknowledgment (SACK) 
 
 ## What Is TCP SACK?
 
-Without SACK, if a packet is lost, TCP must retransmit all packets from the lost one onward (go-back-N retransmission). With Selective Acknowledgment (RFC 2018), the receiver tells the sender exactly which packets were received (even out-of-order), so the sender only retransmits what's actually missing.
+Without SACK, TCP relies on cumulative acknowledgments, so the sender can usually identify only one lost segment per round trip and may retransmit data less efficiently. With Selective Acknowledgment (RFC 2018), the receiver tells the sender exactly which packets were received (even out-of-order), so the sender only retransmits what's actually missing.
 
 ```mermaid
 sequenceDiagram
@@ -35,9 +35,8 @@ sysctl net.ipv4.tcp_sack
 
 # Expected: net.ipv4.tcp_sack = 1
 
-# Also check related SACK options
+# Also check a related SACK option
 sysctl net.ipv4.tcp_dsack    # Duplicate SACK (D-SACK)
-sysctl net.ipv4.tcp_fack     # Forward Acknowledgment (FACK)
 ```
 
 ## Step 2: Enable SACK If Disabled
@@ -50,7 +49,7 @@ sudo sysctl -w net.ipv4.tcp_sack=1
 sudo sysctl -w net.ipv4.tcp_dsack=1
 
 # Make persistent
-cat >> /etc/sysctl.d/99-tcp-tuning.conf << 'EOF'
+sudo tee -a /etc/sysctl.d/99-tcp-tuning.conf > /dev/null << 'EOF'
 net.ipv4.tcp_sack = 1
 net.ipv4.tcp_dsack = 1
 EOF
@@ -58,20 +57,21 @@ EOF
 
 ## Step 3: Verify SACK Is Negotiated in TCP Handshake
 
-Capture a TCP connection handshake to verify SACK is negotiated:
+Capture a TCP connection handshake to verify SACK is negotiated. Start a new TCP connection while the capture is running:
 
 ```bash
 # Capture SYN and SYN-ACK packets
-sudo tcpdump -i any -c 6 -w /tmp/tcp-sack.pcap \
-  '(tcp[tcpflags] & (tcp-syn|tcp-ack)) != 0'
+sudo tcpdump -i any -c 2 -w /tmp/tcp-sack.pcap \
+  'tcp[tcpflags] & tcp-syn != 0'
 
 # Analyze the capture
 tshark -r /tmp/tcp-sack.pcap -T fields \
-  -e tcp.flags.syn \
-  -e tcp.options.sack_perm \
+  -e tcp.flags.ack \
+  -e tcp.option_kind \
   -Y "tcp.flags.syn == 1"
 
-# Look for tcp.options.sack_perm = 1 in both SYN and SYN-ACK
+# Look for option kind 4 (SACK permitted) in both lines:
+# tcp.flags.ack = 0 is the SYN, tcp.flags.ack = 1 is the SYN-ACK
 # This means both sides support SACK
 ```
 
@@ -79,10 +79,9 @@ Or inspect with tcpdump directly:
 
 ```bash
 # Show SACK option in TCP handshake
-sudo tcpdump -i any -v 'tcp[tcpflags] & tcp-syn != 0 and tcp[tcpflags] & tcp-ack == 0' | \
-  grep -A5 "Flags \[S\]" | head -20
+sudo tcpdump -i any -nn -v -c 2 'tcp[tcpflags] & tcp-syn != 0'
 
-# Look for "options [..., sackOK,...]" in the output
+# Look for "Flags [S]" and "Flags [S.]" lines with "options [..., sackOK,...]"
 ```
 
 ## Step 4: Verify SACK Is Used During Recovery
@@ -94,18 +93,19 @@ To see SACK blocks in action, you need a connection with some packet loss. Simul
 sudo tc qdisc add dev lo root netem loss 5%
 
 # Start iperf3 server
-iperf3 -s &
+iperf3 -s -1 &
 
 # Run client and capture
 sudo tcpdump -i lo -w /tmp/sack-test.pcap port 5201 &
-iperf3 -c 127.0.0.1 -t 10 -b 100M
+iperf3 -c 127.0.0.1 -t 10
 
 # Stop capture
 sudo pkill tcpdump
 
 # Analyze for SACK blocks in the capture
-tshark -r /tmp/sack-test.pcap -Y "tcp.options.sack" \
-  -T fields -e ip.src -e tcp.seq -e tcp.options.sack_le
+tshark -r /tmp/sack-test.pcap -Y "tcp.options.sack.count > 0" \
+  -T fields -e ip.src -e tcp.seq -e tcp.options.sack.count \
+  -e tcp.options.sack_le -e tcp.options.sack_re
 
 # Clean up
 sudo tc qdisc del dev lo root netem
@@ -115,15 +115,15 @@ sudo tc qdisc del dev lo root netem
 
 ```bash
 # View TCP statistics including SACK-related counters
-cat /proc/net/netstat | tr ' ' '\n' | grep -i sack
+nstat -az TcpExtTCPSack* TcpExtTCPSACK* TcpExtTCPDSACK*
 
 # Or use netstat -s
-netstat -s | grep -i sack
+netstat -s | grep -Ei 'sack|dsack'
 
-# Output:
-#     SACKs sent: 12345
-#     SACKs received: 8765
-#     SACKReneg: 0
+# Look for counters such as:
+#     TcpExtTCPSackRecovery
+#     TcpExtTCPDSACKRecv
+#     TCPSACKReneging
 ```
 
 ## Step 6: Disable SACK for Specific Troubleshooting
@@ -139,14 +139,14 @@ sudo sysctl -w net.ipv4.tcp_sack=0
 sudo sysctl -w net.ipv4.tcp_sack=1
 ```
 
-## SACK, DSACK, and FACK Comparison
+## SACK, D-SACK, and RACK Comparison
 
 | Feature | Purpose | Enabled by Default |
 |---|---|---|
 | SACK | Selective retransmission of lost packets | Yes |
 | D-SACK | Report duplicate packets received | Yes |
-| RACK | Recent ACK algorithm for faster loss detection | Yes (kernel 4.19+) |
+| RACK | Recent ACK algorithm for faster loss detection | Yes (current Linux kernels) |
 
 ## Conclusion
 
-TCP SACK is enabled by default on Linux and should always remain enabled. Verify with `sysctl net.ipv4.tcp_sack`, confirm negotiation in TCP handshake captures by looking for the `sackOK` option in SYN packets, and monitor SACK usage with `/proc/net/netstat`. SACK is particularly valuable on WAN links with >0.1% packet loss where basic TCP retransmission performs poorly.
+TCP SACK is enabled by default on Linux and should usually remain enabled. Verify with `sysctl net.ipv4.tcp_sack`, confirm negotiation in TCP handshake captures by looking for the `sackOK` option in the SYN and SYN-ACK packets, and monitor SACK usage with `nstat` or `netstat -s`. SACK is particularly valuable on lossy or high-latency links where cumulative ACK-based recovery is slower.
