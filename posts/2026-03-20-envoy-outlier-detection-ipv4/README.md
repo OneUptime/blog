@@ -29,10 +29,10 @@ static_resources:
         # Detection interval
         interval: 10s
 
-        # Base ejection time (doubles with each ejection)
+        # Base ejection time (multiplied by consecutive ejections)
         base_ejection_time: 30s
 
-        # Max ejection time (caps the exponential backoff)
+        # Max ejection time (caps the increasing ejection duration)
         max_ejection_time: 300s
 
         # Max percentage of endpoints that can be ejected simultaneously
@@ -42,7 +42,7 @@ static_resources:
         success_rate_request_volume: 100
 
         # Minimum number of hosts for success rate analysis
-        success_rate_minimum_hosts: 5
+        success_rate_minimum_hosts: 3
 
         # Eject if success rate is below: mean - (stdev * factor / 1000)
         success_rate_stdev_factor: 1900
@@ -67,9 +67,9 @@ static_resources:
 | Metric | Config Key | Triggers on |
 |---|---|---|
 | Consecutive 5xx | `consecutive_5xx` | N consecutive 5xx responses |
-| Gateway errors | `consecutive_gateway_failure` | N connection failures or 502/503/504 |
-| Local origin failures | `consecutive_local_origin_failure` | TCP connection refused/reset |
-| Success rate | `success_rate_stdev_factor` | Statistical anomaly in error rate |
+| Gateway errors | `consecutive_gateway_failure` | N consecutive 502/503/504 responses; in default mode, local failures count too |
+| Local origin failures | `consecutive_local_origin_failure` | N consecutive local failures such as timeouts/resets (`split_external_local_origin_errors: true`) |
+| Success rate | `success_rate_stdev_factor` | Statistical anomaly in success rate |
 
 ## Aggressive Detection for Databases
 
@@ -85,13 +85,12 @@ clusters:
       # Eject after 3 consecutive failures (strict for DB)
       consecutive_5xx: 3
       consecutive_gateway_failure: 2
-      consecutive_local_origin_failure: 2
       enforcing_consecutive_5xx: 100         # 100% enforcement
       enforcing_consecutive_gateway_failure: 100
 
       interval: 5s
       base_ejection_time: 60s
-      max_ejection_percent: 33               # Never eject more than 1/3
+      max_ejection_percent: 34               # Allows at most 1 of 3 hosts to be ejected
 
     load_assignment:
       cluster_name: database_cluster
@@ -117,16 +116,17 @@ curl http://127.0.0.1:9901/stats | grep outlier_detection
 
 # Key metrics:
 # cluster.backend_cluster.outlier_detection.ejections_active       → currently ejected hosts
-# cluster.backend_cluster.outlier_detection.ejections_total        → total ejections ever
-# cluster.backend_cluster.outlier_detection.ejections_consecutive_5xx
+# cluster.backend_cluster.outlier_detection.ejections_enforced_total       → total enforced ejections
+# cluster.backend_cluster.outlier_detection.ejections_enforced_consecutive_5xx → enforced consecutive 5xx ejections
 
 # Check which endpoints are currently ejected
-curl http://127.0.0.1:9901/clusters | grep -E "health_flags|outlier"
+curl http://127.0.0.1:9901/clusters | grep failed_outlier_check
 
 # Enable outlier detection event logging
-# Add to cluster configuration:
-# outlier_detection:
-#   event_log_path: /var/log/envoy/outlier.log
+# Add to bootstrap configuration:
+# cluster_manager:
+#   outlier_detection:
+#     event_log_path: /var/log/envoy/outlier.log
 ```
 
 ## Conclusion
