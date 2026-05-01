@@ -8,13 +8,13 @@ Description: Learn how to create and manage Docker volumes for persistent data s
 
 ## Introduction
 
-This guide covers How to Create Docker Volumes with OpenTofu using OpenTofu with production-ready configurations, best practices, and practical examples.
+This guide covers how to create Docker volumes with OpenTofu using production-ready configurations, best practices, and practical examples.
 
 ## Prerequisites
 
 - OpenTofu v1.6+
-- Access to a Kubernetes cluster or Docker daemon
-- Relevant provider configured
+- Access to a Docker daemon
+- Permission to access the Docker socket or remote Docker host
 
 ## Step 1: Configure the Provider
 
@@ -22,70 +22,93 @@ This guide covers How to Create Docker Volumes with OpenTofu using OpenTofu with
 terraform {
   required_version = ">= 1.6.0"
   required_providers {
-    kubernetes = {
-      source  = "hashicorp/kubernetes"
-      version = "~> 2.0"
+    docker = {
+      source  = "kreuzwerker/docker"
+      version = "~> 4.0"
     }
   }
 }
 
-provider "kubernetes" {
-  config_path    = "~/.kube/config"
-  config_context = var.kube_context
+provider "docker" {
+  host = "unix:///var/run/docker.sock"
 }
 ```
 
 ## Step 2: Define Variables
 
 ```hcl
-variable "kube_context" {
-  description = "Kubernetes context to use"
+variable "volume_name" {
+  description = "Name of the Docker volume"
   type        = string
-  default     = "default"
+  default     = "app-data"
 }
 
-variable "namespace" {
-  description = "Kubernetes namespace"
+variable "volume_driver" {
+  description = "Docker volume driver"
   type        = string
-  default     = "default"
+  default     = "local"
+}
+
+variable "volume_driver_opts" {
+  description = "Driver-specific options for the volume"
+  type        = map(string)
+  default     = {}
+}
+
+variable "container_name" {
+  description = "Name of the demo container"
+  type        = string
+  default     = "volume-demo"
+}
+
+variable "container_image" {
+  description = "Container image to run"
+  type        = string
+  default     = "nginx:1.27-alpine"
+}
+
+variable "container_mount_path" {
+  description = "Path inside the container where the volume will be mounted"
+  type        = string
+  default     = "/usr/share/nginx/html"
+}
+
+variable "container_port" {
+  description = "Port exposed by the container"
+  type        = number
+  default     = 80
+}
+
+variable "host_port" {
+  description = "Port to publish on the Docker host"
+  type        = number
+  default     = 8080
 }
 
 variable "environment" {
-  description = "Deployment environment"
+  description = "Deployment environment label"
   type        = string
   default     = "production"
 }
 ```
 
-## Step 3: Create Core Kubernetes Resources
+## Step 3: Create Core Docker Resources
 
 ```hcl
-# Create namespace
+resource "docker_volume" "app_data" {
+  name   = var.volume_name
+  driver = var.volume_driver
 
-resource "kubernetes_namespace" "app" {
-  metadata {
-    name = var.namespace
-    labels = {
-      environment = var.environment
-      managed-by  = "opentofu"
-    }
-  }
-}
+  driver_opts = var.volume_driver_opts
 
-# Resource quota to limit namespace resources
-resource "kubernetes_resource_quota" "app" {
-  metadata {
-    name      = "app-quota"
-    namespace = kubernetes_namespace.app.metadata[0].name
+  labels {
+    label = "environment"
+    value = var.environment
   }
-  spec {
-    hard = {
-      pods               = "20"
-      requests_cpu       = "4"
-      requests_memory    = "8Gi"
-      limits_cpu         = "8"
-      limits_memory      = "16Gi"
-    }
+
+  labels {
+    label = "managed-by"
+    value = "opentofu"
   }
 }
 ```
@@ -93,83 +116,26 @@ resource "kubernetes_resource_quota" "app" {
 ## Step 4: Deploy Workloads
 
 ```hcl
-resource "kubernetes_deployment" "app" {
-  metadata {
-    name      = "app"
-    namespace = kubernetes_namespace.app.metadata[0].name
-    labels = {
-      app         = "my-app"
-      environment = var.environment
-    }
-  }
-
-  spec {
-    replicas = 3
-
-    selector {
-      match_labels = {
-        app = "my-app"
-      }
-    }
-
-    template {
-      metadata {
-        labels = {
-          app = "my-app"
-        }
-      }
-
-      spec {
-        container {
-          name  = "app"
-          image = var.container_image
-
-          resources {
-            requests = {
-              cpu    = "100m"
-              memory = "128Mi"
-            }
-            limits = {
-              cpu    = "500m"
-              memory = "512Mi"
-            }
-          }
-
-          liveness_probe {
-            http_get {
-              path = "/health"
-              port = 8080
-            }
-            initial_delay_seconds = 30
-            period_seconds        = 10
-          }
-        }
-      }
-    }
-  }
+resource "docker_image" "app" {
+  name = var.container_image
 }
 ```
 
 ## Step 5: Expose the Workload
 
 ```hcl
-resource "kubernetes_service" "app" {
-  metadata {
-    name      = "app-service"
-    namespace = kubernetes_namespace.app.metadata[0].name
+resource "docker_container" "app" {
+  name  = var.container_name
+  image = docker_image.app.image_id
+
+  ports {
+    internal = var.container_port
+    external = var.host_port
   }
 
-  spec {
-    selector = {
-      app = "my-app"
-    }
-
-    port {
-      port        = 80
-      target_port = 8080
-    }
-
-    type = "ClusterIP"
+  volumes {
+    container_path = var.container_mount_path
+    volume_name    = docker_volume.app_data.name
   }
 }
 ```
@@ -177,12 +143,16 @@ resource "kubernetes_service" "app" {
 ## Step 6: Define Outputs
 
 ```hcl
-output "namespace" {
-  value = kubernetes_namespace.app.metadata[0].name
+output "volume_name" {
+  value = docker_volume.app_data.name
 }
 
-output "service_cluster_ip" {
-  value = kubernetes_service.app.spec[0].cluster_ip
+output "volume_mountpoint" {
+  value = docker_volume.app_data.mountpoint
+}
+
+output "container_id" {
+  value = docker_container.app.id
 }
 ```
 
@@ -196,12 +166,12 @@ tofu apply
 
 ## Best Practices
 
-- Always specify resource requests and limits for all containers
-- Use namespaces to isolate workloads and apply resource quotas
-- Label all resources for easy selection and management
-- Use liveness and readiness probes to ensure workload health
-- Never run containers as root; use security contexts
+- Pin the Docker provider version and review release notes before upgrading
+- Use named volumes for data that must survive container recreation
+- Pass `driver_opts` only when the selected driver and host platform support them
+- Label volumes so they are easier to identify and manage
+- Back up important data before destroying a managed volume
 
 ## Conclusion
 
-You have successfully configured How to Create Docker Volumes with OpenTofu using OpenTofu. This approach enables GitOps-style management of Kubernetes resources alongside your infrastructure code. Combine OpenTofu Kubernetes resources with Helm releases for a complete infrastructure-as-code solution.
+You have successfully configured Docker volumes with OpenTofu. This approach lets you manage the volume, driver options, and consuming containers as code so your Docker environments are reproducible and easier to maintain.
