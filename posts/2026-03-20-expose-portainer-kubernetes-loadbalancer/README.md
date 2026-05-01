@@ -17,6 +17,9 @@ For on-premises clusters, you need MetalLB or a similar bare-metal load balancer
 ```bash
 # Install Portainer with LoadBalancer service type
 
+helm repo add portainer https://portainer.github.io/k8s/
+helm repo update
+
 helm install portainer portainer/portainer \
   --namespace portainer \
   --create-namespace \
@@ -34,13 +37,14 @@ metadata:
   namespace: portainer
   annotations:
     # AWS: Use an internal load balancer (within VPC only)
-    service.beta.kubernetes.io/aws-load-balancer-internal: "true"
-    # GCP: Specify a static IP
-    # cloud.google.com/load-balancer-ip: "34.x.x.x"
+    service.beta.kubernetes.io/aws-load-balancer-scheme: "internal"
+    # GKE 1.29+: Use a reserved static IP address resource
+    # networking.gke.io/load-balancer-ip-addresses: "PORTAINER_IP_RESOURCE_NAME"
 spec:
   type: LoadBalancer
   selector:
-    app: portainer
+    app.kubernetes.io/name: portainer
+    app.kubernetes.io/instance: portainer
   ports:
     - name: http
       port: 9000
@@ -60,6 +64,8 @@ spec:
 kubectl get service portainer --namespace portainer --watch
 
 # Once EXTERNAL-IP is populated, access Portainer at:
+# https://<EXTERNAL-IP>:9443
+# If HTTP is enabled, you can also use:
 # http://<EXTERNAL-IP>:9000
 ```
 
@@ -82,7 +88,7 @@ For bare-metal Kubernetes clusters, use MetalLB to enable LoadBalancer services:
 
 ```bash
 # Install MetalLB
-kubectl apply -f https://raw.githubusercontent.com/metallb/metallb/v0.14.0/config/manifests/metallb-native.yaml
+kubectl apply -f https://raw.githubusercontent.com/metallb/metallb/v0.15.3/config/manifests/metallb-native.yaml
 
 # Create an IP address pool
 cat <<EOF | kubectl apply -f -
@@ -113,6 +119,13 @@ kubectl create secret tls portainer-tls \
   --cert=fullchain.pem \
   --key=privkey.pem \
   --namespace portainer
+
+# Configure Portainer to use the existing TLS secret
+helm upgrade portainer portainer/portainer \
+  --namespace portainer \
+  --reuse-values \
+  --set tls.existingSecret=portainer-tls \
+  --set tls.force=true
 ```
 
 ## Conclusion
