@@ -14,9 +14,18 @@ StatefulSets manage pods that require stable network identities, ordered deploym
 
 ## Create a StatefulSet via Portainer
 
-In Portainer, navigate to the Kubernetes cluster → **Applications** → **Add application** → **Advanced mode** and paste:
+In Portainer, navigate to the Kubernetes cluster → **Applications** → **Create from code** → **Manifest** and paste this into the **Web editor**:
 
 ```yaml
+apiVersion: v1
+kind: Secret
+metadata:
+  name: postgres-secret
+  namespace: default
+type: Opaque
+stringData:
+  password: change-me
+---
 apiVersion: apps/v1
 kind: StatefulSet
 metadata:
@@ -61,6 +70,8 @@ spec:
             storage: 10Gi
 ```
 
+This example assumes your cluster has a default `StorageClass` or matching pre-provisioned `PersistentVolume` available for the claim.
+
 ---
 
 ## Create the Headless Service
@@ -79,7 +90,7 @@ spec:
     - port: 5432
 ```
 
-The headless service gives each pod a stable DNS name: `postgres-0.postgres-headless.default.svc.cluster.local`.
+After you create the headless service, each pod gets a stable DNS name, typically `postgres-0.postgres-headless.default.svc.cluster.local` when the cluster domain is `cluster.local`.
 
 ---
 
@@ -88,9 +99,9 @@ The headless service gives each pod a stable DNS name: `postgres-0.postgres-head
 ```bash
 # Scale via kubectl
 
-kubectl scale statefulset postgres --replicas=3
+kubectl scale statefulsets postgres --replicas=3
 
-# In Portainer: Workloads → StatefulSets → Edit → change replicas
+# In Portainer: Applications → select the application → Edit this application → update `replicas` in the manifest
 ```
 
 StatefulSets scale in order: `postgres-0`, `postgres-1`, `postgres-2`.
@@ -113,4 +124,4 @@ kubectl get pvc -l app=postgres
 
 ## Summary
 
-StatefulSets provide stable pod names (`<name>-0`, `<name>-1`), stable DNS via headless services, and persistent storage through `volumeClaimTemplates`. Deploy them via Portainer's YAML editor with a headless service for DNS. Ordered deployment ensures `postgres-0` is running before `postgres-1` starts. Use StatefulSets for databases, message queues, and any workload needing stable identity.
+StatefulSets provide stable pod names (`<name>-0`, `<name>-1`), stable DNS via headless services, and persistent storage through `volumeClaimTemplates`. Deploy them via Portainer's Web editor with a headless service for DNS. Ordered deployment ensures `postgres-0` is running before `postgres-1` starts. Use StatefulSets for databases, message queues, and any workload needing stable identity.
