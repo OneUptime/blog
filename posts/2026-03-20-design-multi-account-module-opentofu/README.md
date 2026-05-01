@@ -13,52 +13,90 @@ Managing multiple AWS accounts through OpenTofu requires a module that can provi
 ## Provider Configuration for Multi-Account
 
 ```hcl
-# Root configuration: define a provider alias per account
+# Root configuration: define a provider instance per account
+
+terraform {
+  required_providers {
+    aws = {
+      source = "hashicorp/aws"
+    }
+  }
+}
 
 variable "accounts" {
   type = map(object({
-    account_id = string
-    role_name  = string
-    region     = string
+    account_id  = string
+    environment = string
+    role_name   = string
+    region      = string
   }))
 }
 
-# Use provider aliases to target different accounts
+# Use a management-account provider for organization-level resources
 provider "aws" {
-  alias = "management"
+  alias  = "management"
   region = "us-east-1"
 }
 
-# Create one provider per account using assume_role
-# Note: In OpenTofu, providers in modules are still being enhanced;
-# use the root module pattern for multi-account provider aliases
+# Create one provider instance per account using assume_role.
+# Provider configurations stay in the root module and are passed
+# into child modules with the providers meta-argument.
+provider "aws" {
+  alias    = "accounts"
+  for_each = var.accounts
+
+  region = each.value.region
+
+  assume_role {
+    role_arn = "arn:aws:iam::${each.value.account_id}:role/${each.value.role_name}"
+  }
+}
 ```
 
 ## Multi-Account Module Structure
 
 ```hcl
 # modules/account-baseline/main.tf
-# Applied to each AWS account to establish baseline configuration
+# Applied to each AWS account to establish baseline configuration.
+# Reusable child modules declare provider requirements but no provider blocks.
+
+terraform {
+  required_providers {
+    aws = {
+      source = "hashicorp/aws"
+    }
+  }
+}
 
 variable "account_id"   { type = string }
 variable "account_name" { type = string }
 variable "environment"  { type = string }
 
-variable "guardduty_master_account" { type = string; default = "" }
-variable "security_hub_enabled"     { type = bool; default = false }
+variable "guardduty_enabled" {
+  type    = bool
+  default = false
+}
+
+variable "security_hub_enabled" {
+  type    = bool
+  default = false
+}
+
 variable "cloudtrail_bucket"        { type = string }
 
 variable "iam_password_policy" {
   type = object({
-    minimum_length        = number
-    require_symbols       = bool
-    require_numbers       = bool
-    require_uppercase     = bool
-    max_password_age      = number
+    minimum_length         = number
+    require_lowercase      = bool
+    require_symbols        = bool
+    require_numbers        = bool
+    require_uppercase      = bool
+    max_password_age       = number
     password_reuse_prevent = number
   })
   default = {
     minimum_length         = 14
+    require_lowercase      = true
     require_symbols        = true
     require_numbers        = true
     require_uppercase      = true
@@ -82,6 +120,7 @@ variable "cross_account_roles" {
 # Apply IAM password policy
 resource "aws_iam_account_password_policy" "strict" {
   minimum_password_length        = var.iam_password_policy.minimum_length
+  require_lowercase_characters   = var.iam_password_policy.require_lowercase
   require_symbols                = var.iam_password_policy.require_symbols
   require_numbers                = var.iam_password_policy.require_numbers
   require_uppercase_characters   = var.iam_password_policy.require_uppercase
@@ -90,7 +129,7 @@ resource "aws_iam_account_password_policy" "strict" {
   allow_users_to_change_password = true
 }
 
-# EBS default encryption
+# EBS default encryption for the provider's configured region
 resource "aws_ebs_encryption_by_default" "main" {
   enabled = true
 }
@@ -139,9 +178,9 @@ resource "aws_iam_role_policy_attachment" "cross_account" {
   policy_arn = each.value.policy_arn
 }
 
-# Enable GuardDuty if master account is specified
+# Enable a GuardDuty detector in this account and region when requested
 resource "aws_guardduty_detector" "main" {
-  count  = var.guardduty_master_account != "" ? 1 : 0
+  count  = var.guardduty_enabled ? 1 : 0
   enable = true
 }
 ```
@@ -167,4 +206,4 @@ module "account_baseline" {
 
 ## Conclusion
 
-Multi-account modules enable centralized governance across an AWS Organization. By applying the same baseline module to every account, you ensure consistent security controls: password policies, default encryption, public access blocks, and GuardDuty are uniform. Cross-account roles managed through variables make it easy to grant centralized teams access to member accounts.
+Multi-account modules enable centralized governance across an AWS Organization. By applying the same baseline module to every account, you ensure consistent security controls: password policies and public access blocks are standardized, while region-scoped settings such as default EBS encryption and GuardDuty detectors can be applied consistently in the configured region. Cross-account roles managed through variables make it easy to grant centralized teams access to member accounts.
