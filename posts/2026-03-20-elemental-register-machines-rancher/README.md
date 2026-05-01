@@ -14,7 +14,7 @@ Registering Elemental machines with Rancher is the process by which bare metal o
 
 - Elemental Operator installed on the Rancher management cluster
 - A MachineRegistration resource created
-- An Elemental OS image (ISO or network boot) that includes the registration configuration
+- A base Elemental ISO image that can be used to build a SeedImage
 - Physical or virtual machines to register
 
 ## Registration Workflow Overview
@@ -22,53 +22,59 @@ Registering Elemental machines with Rancher is the process by which bare metal o
 ```mermaid
 flowchart LR
     A[Machine Boots] --> B[Reads Registration Config]
-    B --> C[Contacts Rancher API]
+    B --> C[Contacts Registration Endpoint]
     C --> D[Creates MachineInventory]
-    D --> E[OS Installed/Configured]
-    E --> F[Machine Ready for Cluster]
+    D --> E[OS Installed/Rebooted]
+    E --> F[Machine Ready for Cluster Adoption]
 ```
 
 ## Step 1: Prepare the Registration Configuration
 
-Extract the registration URL and CA cert from your MachineRegistration:
+Wait for the MachineRegistration to become ready, then extract the registration URL:
 
 ```bash
-# Get registration URL
+kubectl wait --for=condition=Ready machineregistration/my-nodes \
+  -n fleet-default --timeout=5m
 
 REG_URL=$(kubectl get machineregistration my-nodes \
   -n fleet-default \
   -o jsonpath='{.status.registrationURL}')
 
 echo "Registration URL: $REG_URL"
+```
 
-# Get CA certificate
-kubectl get secret -n cattle-system tls-rancher-internal-ca \
-  -o jsonpath='{.data.cacerts\.pem}' | base64 -d > rancher-ca.pem
+If Rancher uses a private CA, download the same CA bundle Rancher serves to its agents:
+
+```bash
+RANCHER_SERVER=$(printf '%s\n' "$REG_URL" | sed -E 's#(https?://[^/]+).*#\1#')
+curl -fsSL "${RANCHER_SERVER}/cacerts" -o rancher-ca.pem
 ```
 
 ## Step 2: Build the Registration ISO
 
 ```bash
-# Create a registration config file
-cat > registration-config.yaml << EOF
-elemental:
-  registration:
-    uri: "${REG_URL}"
-    ca-cert: |
-$(cat rancher-ca.pem | sed 's/^/      /')
-  install:
-    device: /dev/sda
-    reboot: true
+cat <<'EOF' | kubectl apply -f -
+apiVersion: elemental.cattle.io/v1beta1
+kind: SeedImage
+metadata:
+  name: elemental-registration
+  namespace: fleet-default
+spec:
+  type: iso
+  baseImage: registry.suse.com/suse/sl-micro/6.0/baremetal-iso-image:2.1.1-3.36
+  registrationRef:
+    apiVersion: elemental.cattle.io/v1beta1
+    kind: MachineRegistration
+    name: my-nodes
+    namespace: fleet-default
 EOF
 
-# Build the ISO with registration config embedded
-docker run --privileged --rm \
-  -v $(pwd):/workspace \
-  registry.suse.com/rancher/elemental-toolkit/elemental-cli:latest \
-  build-iso \
-  --config /workspace/registration-config.yaml \
-  --name elemental-registration \
-  registry.suse.com/rancher/sle-micro:latest
+# Wait for the SeedImage pod to become ready, then fetch the download URL
+kubectl wait --for=condition=ready pod/elemental-registration \
+  -n fleet-default --timeout=30m
+
+kubectl get seedimage -n fleet-default elemental-registration \
+  -o jsonpath='{.status.downloadURL}{"\n"}'
 ```
 
 ## Step 3: Boot the Machine
@@ -77,10 +83,10 @@ Boot the target machine from the registration ISO. The machine will:
 
 1. Boot into the live Elemental environment
 2. Read the embedded registration configuration
-3. Contact the Rancher API using the registration URL
-4. Install the OS to the target device
+3. Contact the Rancher registration endpoint and create a MachineInventory
+4. Install the OS to the target device using the MachineRegistration settings
 5. Reboot into the installed OS
-6. Complete registration and appear in MachineInventory
+6. Become ready for cluster adoption once provisioning completes
 
 ## Step 4: Monitor the Registration
 
@@ -106,10 +112,12 @@ kubectl get machineinventory -n fleet-default
 kubectl get machineinventory -n fleet-default \
   -l location=datacenter-1
 
-# Check that the machine reports as adopted
+# Check Ready and AdoptionReady conditions
 kubectl get machineinventory -n fleet-default \
-  -o custom-columns=NAME:.metadata.name,ADOPTED:.spec.machineRef.name
+  -o jsonpath='{range .items[*]}{.metadata.name}{"\t"}{range .status.conditions[*]}{.type}={.status}{" "}{end}{"\n"}{end}'
 ```
+
+Registration is successful when the machine has a `MachineInventory` and its `Ready` condition is `True`. `AdoptionReady` becomes `True` only after a matching selector or cluster adopts the machine.
 
 ## Troubleshooting Registration Issues
 
@@ -117,8 +125,8 @@ kubectl get machineinventory -n fleet-default \
 
 ```bash
 # Check operator logs for registration attempts
-kubectl logs -n elemental-system \
-  -l app=elemental-operator \
+kubectl logs deploy/elemental-operator \
+  -n cattle-elemental-system \
   --since=1h
 
 # Verify the MachineRegistration is ready
@@ -129,8 +137,8 @@ kubectl get machineregistration -n fleet-default my-nodes \
 ### Certificate Errors
 
 ```bash
-# Verify the CA cert is correct
-openssl verify -CAfile rancher-ca.pem rancher-ca.pem
+# Inspect the CA bundle served by Rancher
+openssl x509 -in rancher-ca.pem -noout -subject -issuer -dates
 
 # Test connectivity to registration endpoint
 curl -v --cacert rancher-ca.pem "${REG_URL}"
@@ -141,9 +149,9 @@ curl -v --cacert rancher-ca.pem "${REG_URL}"
 After successful registration:
 
 1. Log into Rancher UI
-2. Navigate to **Cluster Management** > **Advanced** > **Machines**
+2. Navigate to **OS Management** > **Inventory of Machines**
 3. You should see the registered machines listed with their labels and status
 
 ## Conclusion
 
-The Elemental machine registration process automates the onboarding of bare metal and edge nodes into your Rancher-managed infrastructure. Once machines appear in the MachineInventory, they are ready to be provisioned into Kubernetes clusters using MachineInventorySelectors and cluster templates.
+The Elemental machine registration process automates the onboarding of bare metal and edge nodes into your Rancher-managed infrastructure. Once machines are registered in the MachineInventory, they can be matched by MachineInventorySelectors and provisioned into Kubernetes clusters through Rancher.
