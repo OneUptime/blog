@@ -18,18 +18,17 @@ Export your trained model in the TensorFlow SavedModel format:
 # export_model.py - run this in your training environment
 
 import tensorflow as tf
-import numpy as np
 
-# Build and train a simple model (example)
+# Build a simple model (example)
 model = tf.keras.Sequential([
-    tf.keras.layers.Dense(128, activation="relu", input_shape=(784,)),
+    tf.keras.Input(shape=(784,), name="inputs"),
+    tf.keras.layers.Dense(128, activation="relu"),
     tf.keras.layers.Dense(10, activation="softmax")
 ])
-model.compile(optimizer="adam", loss="sparse_categorical_crossentropy")
 
-# Save in SavedModel format - required by TF Serving
+# Export a SavedModel artifact - required by TF Serving
 # Directory structure must follow: /models/<model-name>/<version>/
-model.save("/opt/tf-models/mnist-classifier/1")
+model.export("/opt/tf-models/mnist-classifier/1")
 print("Model exported to /opt/tf-models/mnist-classifier/1")
 ```
 
@@ -37,14 +36,13 @@ print("Model exported to /opt/tf-models/mnist-classifier/1")
 
 ```yaml
 # tensorflow-serving-stack.yml
-version: "3.8"
-
 services:
   tf-serving:
-    image: tensorflow/serving:2.15.0
+    image: tensorflow/serving:2.19.1
     command: >
       --model_config_file=/models/models.config
       --model_config_file_poll_wait_seconds=60
+      --file_system_poll_wait_seconds=60
     volumes:
       # Bind-mount the models directory from the host
       - /opt/tf-models:/models:ro
@@ -57,7 +55,7 @@ services:
 
   # GPU-accelerated TF Serving (alternative service definition)
   # tf-serving-gpu:
-  #   image: tensorflow/serving:2.15.0-gpu
+  #   image: tensorflow/serving:2.19.1-gpu
   #   deploy:
   #     resources:
   #       reservations:
@@ -84,10 +82,6 @@ model_config_list {
     name: "mnist-classifier"
     base_path: "/models/mnist-classifier"
     model_platform: "tensorflow"
-    model_version_policy {
-      # Serve all versions (for A/B testing)
-      all {}
-    }
   }
   config {
     name: "image-classifier"
@@ -107,7 +101,6 @@ model_config_list {
 # predict_rest.py - client code for the REST API
 import requests
 import numpy as np
-import json
 
 # Prepare input data (batch of 2 MNIST-style images)
 input_data = np.random.rand(2, 784).tolist()
@@ -127,7 +120,7 @@ print(f"Predictions: {np.argmax(predictions, axis=1)}")
 ## Step 5: Make Predictions via gRPC
 
 ```python
-# predict_grpc.py - more efficient gRPC client
+# predict_grpc.py - gRPC client example
 import grpc
 import numpy as np
 from tensorflow_serving.apis import predict_pb2, prediction_service_pb2_grpc
@@ -142,29 +135,38 @@ request = predict_pb2.PredictRequest()
 request.model_spec.name = "mnist-classifier"
 request.model_spec.signature_name = "serving_default"
 
-# Add input tensor
+# Add input tensor. The key must match the SavedModel signature.
 input_array = np.random.rand(1, 784).astype(np.float32)
-request.inputs["dense_input"].CopyFrom(
+request.inputs["inputs"].CopyFrom(
     tf.make_tensor_proto(input_array)
 )
 
-# Get prediction (gRPC is ~2x faster than REST for high throughput)
+# Get prediction
 response = stub.Predict(request, timeout=5.0)
 print(response.outputs)
 ```
 
 ## Step 6: Zero-Downtime Model Updates
 
-TF Serving polls the model directory every 60 seconds (as configured above). To update a model:
+TF Serving checks the model directory every 60 seconds (as configured above). To update a model:
 
 1. Copy the new model to `/opt/tf-models/mnist-classifier/2` (increment the version number)
-2. TF Serving automatically loads the new version and serves it
-3. Old versions are unloaded after the new version is healthy
+2. TF Serving automatically discovers and loads the new version
+3. Requests to `/v1/models/mnist-classifier:predict` use the latest available version
 4. No container restart needed - update is seamless
 
 ## Monitoring
 
-TF Serving exposes Prometheus metrics at `/monitoring/prometheus/metrics` on port 8501. Add it to your scrape config to track request rates, latencies, and model loading status.
+If you want Prometheus metrics, create `/opt/tf-models/monitoring.config` on the host with:
+
+```protobuf
+prometheus_config {
+  enable: true
+  path: "/monitoring/prometheus/metrics"
+}
+```
+
+Then add `--monitoring_config_file=/models/monitoring.config` to the TF Serving command. The metrics endpoint is exposed at `/monitoring/prometheus/metrics` on port 8501.
 
 ## Summary
 
