@@ -76,13 +76,12 @@ resource "aws_db_option_group" "mysql8" {
 resource "aws_db_instance" "mysql" {
   identifier        = "${var.environment}-mysql"
   engine            = "mysql"
-  engine_version    = "8.0.35"
+  engine_version    = "8.0"
   instance_class    = var.db_instance_class
 
   allocated_storage     = 100
   max_allocated_storage = 1000
   storage_type          = "gp3"
-  iops                  = 3000  # gp3 baseline IOPS
   storage_encrypted     = true
   kms_key_id            = aws_kms_key.rds.arn
 
@@ -130,11 +129,10 @@ resource "aws_db_instance" "mysql_read_replica" {
   instance_class    = var.read_replica_instance_class
   storage_encrypted = true
 
-  # No db_name, username, password for replica - inherited from primary
+  # No db_name, username, password, or parameter group for same-Region replica - inherited from primary
   publicly_accessible = false
-  multi_az            = false  # Read replicas don't need Multi-AZ
+  multi_az            = false  # Set to true only if you need failover support for the replica itself
 
-  parameter_group_name   = aws_db_parameter_group.mysql8.name
   vpc_security_group_ids = [aws_security_group.mysql.id]
 
   # Read replica backup settings
