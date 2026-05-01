@@ -19,16 +19,16 @@ docker network create \
     --driver bridge \
     --ipv6 \
     --subnet 172.20.0.0/24 \
-    --subnet fd00:static::/64 \
+    --subnet fd12:3456:789a::/64 \
     --gateway 172.20.0.1 \
-    --gateway fd00:static::1 \
+    --gateway fd12:3456:789a::1 \
     static-net
 
 # Assign static IPv6 to a container
 docker run -d \
     --name web \
     --network static-net \
-    --ip6 fd00:static::10 \
+    --ip6 fd12:3456:789a::10 \
     nginx:latest
 
 # Assign both static IPv4 and IPv6
@@ -36,15 +36,15 @@ docker run -d \
     --name db \
     --network static-net \
     --ip 172.20.0.20 \
-    --ip6 fd00:static::20 \
+    --ip6 fd12:3456:789a::20 \
     postgres:15
 
 # Verify addresses
-docker inspect web --format "{{.NetworkSettings.Networks.static-net.GlobalIPv6Address}}"
-# Output: fd00:static::10
+docker inspect web --format '{{(index .NetworkSettings.Networks "static-net").GlobalIPv6Address}}'
+# Output: fd12:3456:789a::10
 
-docker inspect db --format "{{.NetworkSettings.Networks.static-net.GlobalIPv6Address}}"
-# Output: fd00:static::20
+docker inspect db --format '{{(index .NetworkSettings.Networks "static-net").GlobalIPv6Address}}'
+# Output: fd12:3456:789a::20
 ```
 
 ## Static IPv6 in Docker Compose
@@ -60,8 +60,8 @@ networks:
       config:
         - subnet: 172.20.0.0/24
           gateway: 172.20.0.1
-        - subnet: fd00:static::/64
-          gateway: fd00:static::1
+        - subnet: fd12:3456:789a::/64
+          gateway: fd12:3456:789a::1
 
 services:
   nginx:
@@ -69,7 +69,7 @@ services:
     networks:
       appnet:
         ipv4_address: 172.20.0.10
-        ipv6_address: fd00:static::10
+        ipv6_address: fd12:3456:789a::10
     ports:
       - "80:80"
 
@@ -78,15 +78,15 @@ services:
     networks:
       appnet:
         ipv4_address: 172.20.0.20
-        ipv6_address: fd00:static::20
+        ipv6_address: fd12:3456:789a::20
 
   app:
     image: myapp:latest
     networks:
       - appnet
     environment:
-      - REDIS_HOST=fd00:static::20
-      - NGINX_HOST=fd00:static::10
+      - REDIS_HOST=fd12:3456:789a::20
+      - NGINX_HOST=fd12:3456:789a::10
 ```
 
 ## Test Static IPv6 Connectivity
@@ -96,44 +96,41 @@ services:
 docker compose up -d
 
 # Verify static addresses
-docker compose exec nginx ip -6 addr show eth0
-# Should show: fd00:static::10/64
+docker inspect "$(docker compose ps -q nginx)" --format '{{range .NetworkSettings.Networks}}{{.GlobalIPv6Address}}{{end}}'
+# Output: fd12:3456:789a::10
 
-docker compose exec redis ip -6 addr show eth0
-# Should show: fd00:static::20/64
-
-# Test connectivity using static IPv6
-docker compose exec app ping6 -c 3 fd00:static::20
+docker inspect "$(docker compose ps -q redis)" --format '{{range .NetworkSettings.Networks}}{{.GlobalIPv6Address}}{{end}}'
+# Output: fd12:3456:789a::20
 
 # Connect to Redis using static IPv6
-docker compose exec app redis-cli -h fd00:static::20 ping
+docker compose exec redis redis-cli -h fd12:3456:789a::20 ping
 # Output: PONG
 ```
 
 ## Limitations and Considerations
 
 ```bash
-# Static IPv6 ONLY works on user-defined networks
-# The default bridge network does NOT support static IPv6 assignment
+# Static IPv6 assignment with --ip6 requires a user-defined network
+# The examples above use a user-defined bridge network
 
-# Verify network type
+# Verify the example network uses the bridge driver
 docker network inspect static-net | grep '"Driver"'
-# Must show: "Driver": "bridge" (user-defined)
+# Should show: "Driver": "bridge"
 
 # The --ip6 address must be within the subnet
-# This will FAIL if address is outside the subnet:
+# This will FAIL because the address is outside the subnet:
 docker run --rm \
     --network static-net \
-    --ip6 fd00:other::99 \  # Wrong subnet! Will fail
+    --ip6 fd12:3456:789b::99 \
     alpine echo "test"
 
-# Always reserve .1 address for gateway
-# Reserve range for Docker (auto-assigned) vs static
-# Example: fd00:static::1 = gateway
-#          fd00:static::2 to ::9 = Docker auto-assigned
-#          fd00:static::10 to ::99 = manually assigned
+# Reserve the configured gateway address
+# If you want Docker's dynamic allocation separated from manual addresses,
+# configure an IPAM allocation range with --ip-range or ipam.config[].ip_range
+# Example: fd12:3456:789a::1 = gateway
+#          fd12:3456:789a::10 and ::20 = manually assigned
 ```
 
 ## Conclusion
 
-Assign static IPv6 addresses to Docker containers with `--ip6 <address>` in `docker run` or `ipv6_address` in Docker Compose network config. The address must be within the network's configured IPv6 subnet and the network must be a user-defined bridge (not the default bridge). Reserve a range within your subnet for static assignments to avoid conflicts with Docker's auto-assigned addresses. Static IPv6 addresses are useful for services referenced by address in configuration files or environment variables.
+Assign static IPv6 addresses to Docker containers with `--ip6 <address>` in `docker run` or `ipv6_address` in Docker Compose network config. The address must be within the network's configured IPv6 subnet and the network must be a user-defined network (not the default bridge). Plan static assignments carefully, and if you want Docker's dynamic allocation kept in a separate pool, configure an IPAM allocation range. Static IPv6 addresses are useful for services referenced by address in configuration files or environment variables.
