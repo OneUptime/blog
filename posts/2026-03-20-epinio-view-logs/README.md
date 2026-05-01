@@ -33,15 +33,16 @@ mkdir my-app && cd my-app
 For this example, we'll create a simple web application:
 
 ```bash
-# Create main application file
-cat > app.sh << 'EOF'
-#!/bin/bash
-# Simple HTTP server for demonstration
-while true; do
-  echo -e "HTTP/1.1 200 OK\r\nContent-Type: text/plain\r\n\r\nHello from How to View Application Logs in Epinio!" | nc -l -p ${PORT:-8080}
-done
+# Create package definition
+cat > package.json << 'EOF'
+{
+  "name": "my-app",
+  "version": "1.0.0",
+  "scripts": {
+    "start": "node server.js"
+  }
+}
 EOF
-chmod +x app.sh
 ```
 
 For a language-specific example relevant to this guide:
@@ -78,13 +79,13 @@ epinio namespace show my-apps
 
 ```bash
 # Push the application (Epinio auto-detects the runtime)
-epinio push --name my-app
+epinio push --name my-app --path .
 
 # Or specify options explicitly
 epinio push \
   --name my-app \
-  --instances 2 \
-  --route my-app.epinio.example.com
+  --path . \
+  --instances 2
 ```
 
 During push, Epinio will:
@@ -105,20 +106,23 @@ epinio app show my-app
 epinio app list
 
 # View the application route
-epinio app show my-app | grep Routes
+epinio app show my-app | grep "Active Routes" -A 1
 ```
 
 ## Step 6: Test the Application
 
 ```bash
-# Get the application URL
-APP_URL=$(epinio app show my-app | grep Routes | awk '{print $2}')
+# Get the application hostname from the Active Routes section
+APP_HOST=$(epinio app show my-app | awk -F'|' '/Active Routes/{getline; gsub(/^ +| +$/, "", $3); print $3}')
+
+# Build the application URL
+APP_URL="https://${APP_HOST}"
 
 # Test with curl
-curl ${APP_URL}
+curl "${APP_URL}"
 
-# Or open in browser
-open ${APP_URL}
+# Or open in browser on macOS
+open "${APP_URL}"
 ```
 
 ## Step 7: View Application Logs
@@ -128,7 +132,7 @@ open ${APP_URL}
 epinio app logs my-app
 
 # Follow live logs
-epinio app logs my-app --follow
+epinio app logs --follow my-app
 ```
 
 ## Step 8: Update the Application
@@ -136,9 +140,9 @@ epinio app logs my-app --follow
 ```bash
 # Make changes to your application code
 # Then re-push to update
-epinio push --name my-app
+epinio push --name my-app --path .
 
-# Epinio performs a rolling update
+# Epinio restages and redeploys the application
 epinio app show my-app
 ```
 
@@ -172,4 +176,4 @@ epinio app delete my-app
 
 ## Conclusion
 
-How to View Application Logs in Epinio with Epinio demonstrates how the platform removes barriers between development and deployment. The simple push workflow means developers can deploy any application to Kubernetes without writing YAML or understanding container orchestration. Epinio's buildpack system automatically detects the runtime, installs dependencies, and creates an optimized container image.
+How to View Application Logs in Epinio with Epinio demonstrates how the platform removes barriers between development and deployment. The simple push workflow means developers can deploy supported applications to Kubernetes without writing YAML or understanding container orchestration. Epinio's buildpack system automatically detects the runtime, installs dependencies, and creates an optimized container image.
