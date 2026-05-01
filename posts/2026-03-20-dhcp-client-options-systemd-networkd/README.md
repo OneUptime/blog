@@ -8,7 +8,7 @@ Description: Learn how to configure DHCP client behavior in systemd-networkd, in
 
 ---
 
-systemd-networkd includes a built-in DHCP client. Client behavior is controlled through the `[DHCP]` section in `.network` files.
+systemd-networkd includes built-in DHCPv4 and DHCPv6 clients. DHCPv4 client behavior is controlled through the `[DHCPv4]` section in `.network` files.
 
 ## Basic DHCP Configuration
 
@@ -19,7 +19,7 @@ systemd-networkd includes a built-in DHCP client. Client behavior is controlled 
 Name=eth0
 
 [Network]
-DHCP=yes           # Enable DHCP for IPv4 (and IPv6)
+DHCP=yes           # Enable DHCPv4 and DHCPv6 client support
 # Or:
 # DHCP=ipv4        # IPv4 only
 # DHCP=ipv6        # IPv6 only
@@ -35,8 +35,8 @@ Name=eth0
 [Network]
 DHCP=yes
 
-[DHCP]
-# Client identifier: mac (default) or duid
+[DHCPv4]
+# Client identifier: mac or duid (duid is the default)
 ClientIdentifier=mac
 
 # Hostname to send to DHCP server
@@ -70,12 +70,10 @@ Name=eth0
 [Network]
 DHCP=yes
 Address=10.0.0.100/24   # Always assign this static IP in addition to DHCP
-
-[DHCP]
-UseDNS=no               # Ignore DHCP DNS
-
-[DNS]
 DNS=8.8.8.8             # Use static DNS
+
+[DHCPv4]
+UseDNS=no               # Ignore DHCP DNS
 ```
 
 ## DHCP with Static Routes Override
@@ -84,7 +82,7 @@ DNS=8.8.8.8             # Use static DNS
 [Network]
 DHCP=yes
 
-[DHCP]
+[DHCPv4]
 UseRoutes=no    # Ignore routes from DHCP
 
 [Route]
@@ -95,27 +93,27 @@ Gateway=192.168.1.254   # Use this static default route instead
 ## DHCP Client ID (DUID)
 
 ```ini
-[DHCP]
-# Use DUID (DHCPv6-style identifier for DHCPv4)
+[DHCPv4]
+# Use a DUID-based client identifier for DHCPv4
 ClientIdentifier=duid
 
-# Or specify raw DHCP option 60 vendor class
+# Or specify DHCP option 60 vendor class identifier
 VendorClassIdentifier=MyApp/1.0
 ```
 
 ## DHCP Anonymization
 
 ```ini
-[DHCP]
-# Randomize client ID to avoid tracking (privacy)
+[DHCPv4]
+# Use the DHCP anonymity profile defined by RFC 7844
 Anonymize=yes
 ```
 
 ## Rapid Commit (Option 80)
 
 ```ini
-[DHCP]
-# Enable DHCP rapid commit (2-way instead of 4-way handshake)
+[DHCPv4]
+# Enable DHCPv4 rapid commit (2-way instead of 4-way handshake)
 RapidCommit=yes
 ```
 
@@ -136,7 +134,7 @@ networkctl renew eth0
 
 ## Key Takeaways
 
-- The `[DHCP]` section in `.network` files controls all DHCP client behavior in systemd-networkd.
+- The `[DHCPv4]` section in `.network` files controls DHCPv4 client behavior in systemd-networkd.
 - Use `UseDNS=no`, `UseRoutes=no`, `UseGateway=no` to selectively ignore DHCP-provided values.
-- `Hostname=` sends a specific hostname to the DHCP server for DNS registration.
+- `Hostname=` sends a specific hostname to the DHCP server.
 - Use `networkctl renew eth0` to manually trigger a DHCP lease renewal without restarting networkd.
