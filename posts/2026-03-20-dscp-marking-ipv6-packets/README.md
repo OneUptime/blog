@@ -8,7 +8,7 @@ Description: Configure DSCP marking for IPv6 packets on Linux using ip6tables, n
 
 ---
 
-DSCP (Differentiated Services Code Point) marking sets priority bits in the IPv6 Traffic Class field to signal routers and switches how to handle packets. Properly marking IPv6 traffic enables QoS enforcement throughout the network path.
+DSCP (Differentiated Services Code Point) marking sets the DSCP bits in the IPv6 Traffic Class field to signal routers and switches how to handle packets. Properly marking IPv6 traffic enables QoS enforcement throughout the network path.
 
 ## DSCP Marking with ip6tables (mangle table)
 
@@ -30,10 +30,10 @@ sudo ip6tables -t mangle -A PREROUTING \
   -p udp --dport 10000:20000 \
   -j DSCP --set-dscp 46
 
-# Mark video conferencing with AF41
-sudo ip6tables -t mangle -A PREROUTING \
+# Mark locally generated UDP traffic from the current user with AF41
+sudo ip6tables -t mangle -A OUTPUT \
   -p udp \
-  -m owner --uid-owner zoom \
+  -m owner --uid-owner "$(id -u)" \
   -j DSCP --set-dscp-class AF41
 
 # Mark interactive traffic (SSH) with AF31
@@ -41,7 +41,7 @@ sudo ip6tables -t mangle -A PREROUTING \
   -p tcp --dport 22 \
   -j DSCP --set-dscp-class AF31
 
-# Mark bulk data with AF11 (low priority)
+# Mark bulk data with AF11
 sudo ip6tables -t mangle -A PREROUTING \
   -p tcp --dport 8080:8090 \
   -j DSCP --set-dscp-class AF11
@@ -78,8 +78,8 @@ table ip6 mangle {
     chain postrouting {
         type filter hook postrouting priority mangle; policy accept;
 
-        # Re-mark ICMP6 as highest priority (CS7)
-        ip6 nexthdr icmpv6 ip6 dscp set cs7
+        # Re-mark ICMPv6 as highest priority (CS7)
+        meta l4proto ipv6-icmp ip6 dscp set cs7
     }
 }
 ```
@@ -97,19 +97,16 @@ sudo nft list ruleset
 # Install iproute2
 sudo apt install iproute2 -y
 
-# Add dsmark qdisc for DSCP marking
-sudo tc qdisc add dev eth0 root dsmark \
-  indices 64 default_index 0
+# Attach a clsact qdisc so filters can run on egress
+sudo tc qdisc replace dev eth0 clsact
 
-# Mark IPv6 traffic with DSCP EF (46)
-# Using u32 filter to match IPv6 Traffic Class field
-# IPv6 header: offset 0, Traffic Class starts at bit 4
+# Mark IPv6 SIP traffic with DSCP CS5 (40) on egress
+# pedit writes the IPv6 Traffic Class byte; retain 0xfc preserves ECN bits
 
-sudo tc filter add dev eth0 parent 1:0 \
-  protocol ipv6 u32 \
-  match ip6 protocol 17 0xff \
-  match ip6 dport 5060 0xffff \
-  action dsmark mask 0x3 value 0xb8  # EF = 0xb8 in TC byte
+sudo tc filter add dev eth0 egress protocol ipv6 flower \
+  ip_proto udp \
+  dst_port 5060 \
+  action pedit ex munge ip6 traffic_class set 0xa0 retain 0xfc
 ```
 
 ## Python Script for DSCP Policy Management
@@ -158,18 +155,18 @@ for rule in DSCP_RULES:
 sudo tcpdump -i eth0 -nn ip6 -v | grep "class 0x"
 
 # Filter for specific DSCP values
-# DSCP EF = 0x2e in Traffic Class field
-sudo tcpdump -i eth0 -nn "ip6[1] & 0xfc == 0xb8"  # EF marking
+# DSCP EF = 46 (0x2e)
+sudo tcpdump -i eth0 -nn "ip6 and (ip6[0:2] & 0x0fc0 == 0x0b80)"  # EF marking
 
 # Use tshark for structured output
 sudo tshark -i eth0 -f "ip6" \
   -T fields \
-  -e ip6.src \
-  -e ip6.dsfield.dscp \
-  -e ip.proto | head -20
+  -e ipv6.src \
+  -e ipv6.tclass.dscp \
+  -e ipv6.nxt | head -20
 
 # Verify marking is preserved through router
 # (Check at destination that DSCP was not remarked)
 ```
 
-DSCP marking for IPv6 using ip6tables or nftables enables end-to-end QoS differentiation from the traffic source, with EF marking for VoIP RTP streams and CS values for signaling and network control being the most common and impactful marking policies to implement.
+DSCP marking for IPv6 using ip6tables, nftables, or tc enables end-to-end QoS differentiation on Linux hosts and routers, with EF marking for VoIP RTP streams and CS values for signaling and network control being common and impactful marking policies to implement.
