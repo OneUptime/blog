@@ -8,7 +8,7 @@ Description: Learn how to diagnose and fix authentication failures during tofu a
 
 ## Introduction
 
-Authentication failures during `tofu apply` are among the most common errors. They manifest as `InvalidClientTokenId`, `AccessDenied`, `UnauthorizedOperation`, or `403 Forbidden` errors and can be caused by expired credentials, wrong profiles, or missing IAM permissions.
+Authentication and authorization failures during `tofu apply` are among the most common errors. They manifest as `InvalidClientTokenId`, `AccessDenied`, `UnauthorizedOperation`, or `403 Forbidden` errors and can be caused by expired credentials, wrong profiles, or missing IAM permissions.
 
 ## Diagnosing Authentication Errors
 
@@ -44,11 +44,11 @@ tofu apply
 # Specify the profile in the provider block
 provider "aws" {
   region  = "us-east-1"
-  profile = "production"  # Must exist in ~/.aws/config
+  profile = "production"  # Must exist in your AWS shared config or credentials files
 }
 ```
 
-Or override at the command line:
+Or set it at the command line instead of in the provider block:
 
 ```bash
 AWS_PROFILE=production tofu apply
@@ -60,7 +60,7 @@ An `AccessDenied` error means the identity is authenticated but lacks the requir
 
 ```bash
 # Find what action was denied
-TF_LOG=DEBUG tofu apply 2>&1 | grep "AccessDenied\|is not authorized"
+TF_LOG=DEBUG tofu apply 2>&1 | grep -E "AccessDenied|is not authorized"
 # Look for: User: arn:aws:iam::... is not authorized to perform: ec2:CreateVpc
 ```
 
@@ -107,21 +107,21 @@ export ARM_TENANT_ID="00000000-0000-0000-0000-000000000000"
 export ARM_SUBSCRIPTION_ID="00000000-0000-0000-0000-000000000000"
 ```
 
-## Fix 6: OIDC Token Expiry in CI/CD
+## Fix 6: Short-Lived AWS Session in CI/CD
 
-OIDC tokens used for GitHub Actions are short-lived. If your apply takes longer than the token lifetime:
+GitHub Actions OIDC exchanges the workflow's OIDC token for temporary AWS credentials. Make sure the workflow or job grants `id-token: write`, and if your apply can run longer than the default one-hour role session, increase the role session duration up to the role's maximum session duration:
 
 ```yaml
 # .github/workflows/infra.yml
 - name: Configure AWS Credentials
-  uses: aws-actions/configure-aws-credentials@v4
+  uses: aws-actions/configure-aws-credentials@v6
   with:
     role-to-assume: arn:aws:iam::123456789012:role/github-actions-role
     aws-region: us-east-1
-    # Role session duration - increase if apply takes a long time
-    role-duration-seconds: 3600
+    # Increase beyond the 1-hour default if your apply runs longer
+    role-duration-seconds: 7200
 ```
 
 ## Conclusion
 
-Authentication failures break down into: expired credentials (refresh them), wrong profile (check provider configuration), missing IAM permissions (examine the error for the denied action), or CI/CD token expiry (increase session duration). Enable `TF_LOG=DEBUG` to expose the exact API error message that reveals which case you are facing.
+Authentication and authorization failures break down into: expired credentials (refresh them), wrong profile (check provider configuration), missing IAM permissions (examine the error for the denied action), or expired CI/CD role sessions (increase the role session duration). Enable `TF_LOG=DEBUG` to expose the exact API error message that reveals which case you are facing.
