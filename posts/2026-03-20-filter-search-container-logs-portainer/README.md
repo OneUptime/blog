@@ -8,17 +8,22 @@ Description: Filter Docker container logs in Portainer by time range, line count
 
 ---
 
-Portainer provides powerful tools for container observability including real-time statistics, log streaming, and interactive console access from the browser.
+Portainer provides powerful tools for container observability including real-time statistics, log viewing with search and filtering, and interactive console access from the browser.
 
 ## Container Stats in Portainer
 
 Navigate to **Containers > [Container Name] > Stats** to view:
-- Real-time CPU usage (%)
-- Memory usage and limits
-- Network I/O (bytes in/out)
-- Disk I/O (read/write)
+- CPU usage
+- Memory usage
+- Network usage (RX/TX)
+- I/O usage
+- Processes running in the container
 
 ## Viewing Logs
+
+In Portainer, navigate to **Containers > [Container Name] > Logs**. Use the **Search** box to find matching entries, enable **Filter search results** to show only matching lines, use the **Date picker** to narrow the time range, and adjust **Lines** to control how many log lines are returned.
+
+For the equivalent Docker CLI commands:
 
 ```bash
 # Access container logs via Docker CLI
@@ -76,7 +81,6 @@ location / {
     proxy_pass https://localhost:9443;
     proxy_buffering off;           # Critical for log streaming
     proxy_cache off;
-    proxy_set_header X-Accel-Buffering no;  # Disable nginx buffering
     
     # WebSocket support for console
     proxy_http_version 1.1;
@@ -98,7 +102,7 @@ location / {
     
     proxy_http_version 1.1;
     proxy_set_header Upgrade $http_upgrade;
-    proxy_set_header Connection $connection_upgrade;
+    proxy_set_header Connection "upgrade";
     proxy_set_header Host $host;
     
     # Increase timeout for long console sessions
