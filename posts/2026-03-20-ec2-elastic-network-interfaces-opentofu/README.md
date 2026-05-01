@@ -8,7 +8,7 @@ Description: Learn how to create and attach EC2 Elastic Network Interfaces (ENIs
 
 ## Introduction
 
-Elastic Network Interfaces (ENIs) are virtual network cards that you can create independently and attach to EC2 instances. They retain their attributes when detached and can be moved between instances, making them useful for high-availability appliances, multi-homed instances, and static IP failover.
+Elastic Network Interfaces (ENIs) are virtual network cards that you can create independently and attach to EC2 instances. They retain their attributes when detached and can be moved between instances in the same Availability Zone, making them useful for high-availability appliances, multi-homed instances, and static IP failover.
 
 ## Prerequisites
 
@@ -27,7 +27,7 @@ resource "aws_network_interface" "primary" {
 
   security_groups = [aws_security_group.app.id]
 
-  # Disable source/destination check for NAT or routing appliances
+  # Leave source/destination check enabled unless this ENI is used for NAT or routing appliances
   source_dest_check = true
 
   tags = {
@@ -63,26 +63,26 @@ resource "aws_network_interface" "data" {
 ## Step 3: Launch an Instance and Attach ENIs
 
 ```hcl
-# Launch instance with primary ENI attached directly
+# Launch instance with the management ENI as the primary interface
 resource "aws_instance" "multi_homed" {
   ami           = data.aws_ami.amazon_linux.id
   instance_type = "t3.medium"
 
-  # Attach the management ENI as eth0 (primary interface)
-  network_interface {
+  # Attach the management ENI as the primary interface
+  primary_network_interface {
     network_interface_id = aws_network_interface.management.id
-    device_index         = 0  # eth0 - primary interface
-  }
-
-  # Attach the data ENI as eth1 (secondary interface)
-  network_interface {
-    network_interface_id = aws_network_interface.data.id
-    device_index         = 1  # eth1 - secondary interface
   }
 
   tags = {
     Name = "multi-homed-instance"
   }
+}
+
+# Attach the data ENI as the secondary interface
+resource "aws_network_interface_attachment" "data" {
+  instance_id          = aws_instance.multi_homed.id
+  network_interface_id = aws_network_interface.data.id
+  device_index         = 1
 }
 ```
 
@@ -137,4 +137,4 @@ tofu apply
 
 ## Conclusion
 
-Elastic Network Interfaces provide flexible networking for EC2 instances, enabling management separation, network appliance configurations, and elastic IP failover. For high-availability patterns, create ENIs with attached EIPs in your configuration-when an instance fails, terminate it and launch a replacement that reattaches the same ENI, preserving IP addresses and security group settings.
+Elastic Network Interfaces provide flexible networking for EC2 instances, enabling management separation, network appliance configurations, and elastic IP failover. For high-availability patterns, create ENIs with attached EIPs in your configuration-when an instance fails, terminate it and launch a replacement in the same Availability Zone that reattaches the same ENI, preserving IP addresses and security group settings.
