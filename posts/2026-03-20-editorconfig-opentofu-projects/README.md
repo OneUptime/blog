@@ -8,7 +8,7 @@ Description: Learn how to configure EditorConfig for OpenTofu projects to ensure
 
 ## Introduction
 
-EditorConfig sets editor-independent code style preferences that apply regardless of which editor team members use. For OpenTofu projects, it enforces the 2-space indentation, LF line endings, and UTF-8 encoding expected by `tofu fmt`, reducing the frequency of unnecessary formatting changes.
+EditorConfig sets editor-independent code style preferences that apply regardless of which editor team members use. For OpenTofu projects, it helps enforce the 2-space indentation used by `tofu fmt`, along with UTF-8 encoding and LF line endings that match OpenTofu's documented conventions, reducing the frequency of unnecessary formatting changes.
 
 ## Basic .editorconfig for OpenTofu
 
@@ -30,7 +30,7 @@ trim_trailing_whitespace = true
 insert_final_newline = true
 
 # OpenTofu/Terraform files - 2-space indentation
-[*.tf]
+[*.{tf,tofu}]
 indent_style = space
 indent_size = 2
 end_of_line = lf
@@ -77,7 +77,8 @@ end_of_line = lf
 
 # Markdown documentation
 [*.md]
-trim_trailing_whitespace = false  # Trailing spaces are intentional in Markdown
+# Trailing spaces are sometimes intentional in Markdown
+trim_trailing_whitespace = false
 indent_style = space
 indent_size = 2
 
@@ -88,14 +89,14 @@ indent_style = tab
 
 ## VS Code Integration
 
-EditorConfig support requires the EditorConfig extension:
+EditorConfig support requires the EditorConfig extension, and OpenTofu projects work best with the OpenTofu extension:
 
 ```json
 // .vscode/extensions.json - recommend extensions to team
 {
   "recommendations": [
     "editorconfig.editorconfig",
-    "hashicorp.terraform",  // Works with OpenTofu too
+    "opentofu.vscode-opentofu",
     "ms-azuretools.vscode-docker"
   ]
 }
@@ -106,16 +107,10 @@ EditorConfig support requires the EditorConfig extension:
 {
   "editor.formatOnSave": true,
   "editor.rulers": [120],
-  "[terraform]": {
-    "editor.defaultFormatter": "hashicorp.terraform",
-    "editor.formatOnSave": true
-  },
-  "terraform.languageServer.enable": true,
-  "terraform.languageServer.path": "/usr/local/bin/terraform-ls",
-  "files.associations": {
-    "*.tf": "terraform",
-    "*.tfvars": "terraform",
-    "*.hcl": "hcl"
+  "[opentofu][opentofu-vars]": {
+    "editor.defaultFormatter": "opentofu.vscode-opentofu",
+    "editor.formatOnSave": true,
+    "editor.formatOnSaveMode": "file"
   },
   "files.trimTrailingWhitespace": true,
   "files.insertFinalNewline": true
@@ -124,18 +119,11 @@ EditorConfig support requires the EditorConfig extension:
 
 ## JetBrains IDE (IntelliJ, GoLand)
 
-JetBrains IDEs support EditorConfig natively:
+JetBrains IDEs support EditorConfig natively. For `.tf`, `.tfvars`, and `.hcl` files, install the Terraform and HCL plugin:
 
-1. Settings → Editor → Code Style → Enable EditorConfig support
-2. The `.editorconfig` file in the project root applies automatically
-
-```ini
-# Additional JetBrains-specific settings
-[*.tf]
-ij_terraform_hcl_space_before_assign_operator = true
-ij_terraform_hcl_space_after_assign_operator = true
-ij_terraform_hcl_indent_before_blocks = true
-```
+1. Settings → Plugins → Marketplace → install `Terraform and HCL`
+2. Settings → Editor → Code Style → Enable EditorConfig support
+3. The `.editorconfig` file in the project root applies automatically
 
 ## Validating EditorConfig Configuration
 
@@ -144,10 +132,10 @@ ij_terraform_hcl_indent_before_blocks = true
 npm install -g eclint
 
 # Check all files
-eclint check '**/*.tf' '**/*.tfvars' '**/*.hcl'
+eclint check '**/*.tf' '**/*.tofu' '**/*.tfvars' '**/*.hcl'
 
 # Fix violations automatically
-eclint fix '**/*.tf'
+eclint fix '**/*.tf' '**/*.tofu'
 ```
 
 ## Pre-commit Integration
@@ -156,10 +144,10 @@ eclint fix '**/*.tf'
 # .pre-commit-config.yaml
 repos:
   - repo: https://github.com/editorconfig-checker/editorconfig-checker.python
-    rev: "2.7.3"
+    rev: "3.6.1"
     hooks:
       - id: editorconfig-checker
-        args: [--exclude, ".terraform/.*"]
+        args: [--exclude, '\.terraform/.*']
 ```
 
 ## .gitattributes for Consistent Line Endings
@@ -168,6 +156,7 @@ repos:
 # .gitattributes
 # Normalize line endings in git
 *.tf    text eol=lf
+*.tofu  text eol=lf
 *.tfvars text eol=lf
 *.hcl   text eol=lf
 *.yml   text eol=lf
@@ -189,4 +178,4 @@ repos:
 
 ## Conclusion
 
-EditorConfig works silently in the background to ensure consistent code style across team members using different editors. The key settings for OpenTofu are 2-space indentation (matching `tofu fmt`), LF line endings (important on Windows machines), and UTF-8 encoding. Pair it with `tofu fmt` in pre-commit hooks - EditorConfig handles the settings inside the editor, while `tofu fmt` corrects formatting when code is committed.
+EditorConfig works silently in the background to ensure consistent code style across team members using different editors. The key settings for OpenTofu are 2-space indentation (matching `tofu fmt`), UTF-8 encoding, and LF line endings as the idiomatic convention, even though OpenTofu also accepts CRLF. Pair it with `tofu fmt` in pre-commit hooks - EditorConfig handles the settings inside the editor, while `tofu fmt` corrects formatting when code is committed.
