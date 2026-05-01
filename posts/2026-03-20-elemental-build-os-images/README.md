@@ -8,7 +8,7 @@ Description: A comprehensive guide to building custom Elemental OS images using 
 
 ## Introduction
 
-Elemental OS images are immutable, container-based operating system images built on top of SLE Micro or openSUSE MicroOS. These images are designed for edge and bare metal deployments where consistency and reproducibility are critical. The elemental-toolkit provides the tooling to build, customize, and publish OS images.
+Elemental OS images are immutable, container-based operating system images built from standard OCI images. The base image can be any Linux distribution compatible with the chosen Elemental flavor. These images are designed for edge and bare metal deployments where consistency and reproducibility are critical. The elemental-toolkit provides the tooling to build, customize, and publish OS images.
 
 ## Prerequisites
 
@@ -19,14 +19,16 @@ Elemental OS images are immutable, container-based operating system images built
 ## Installing the Elemental CLI
 
 ```bash
-# Install via package manager (openSUSE/SUSE)
+# Run the CLI as a container
+docker run -it --rm \
+  ghcr.io/rancher/elemental-toolkit/elemental-cli:latest \
+  version
 
-zypper install elemental
-
-# Or run as a container
-docker run --privileged --rm -it \
-  registry.suse.com/rancher/elemental-toolkit/elemental-cli:latest \
-  --help
+# Or build the CLI from source
+git clone https://github.com/rancher/elemental-toolkit
+cd elemental-toolkit
+make build-cli
+./build/elemental version
 ```
 
 ## Understanding Elemental Image Layers
@@ -34,10 +36,10 @@ docker run --privileged --rm -it \
 Elemental OS images are built as OCI container images with a specific layer structure:
 
 ```text
-Base OS Layer (SLE Micro / openSUSE MicroOS)
-    └── System Extensions (packages, configs)
-        └── Elemental Agent Layer
-            └── Custom Packages/Configuration
+Base OS Layer (compatible Linux distribution)
+    └── Required boot components (kernel, initrd, grub2, dracut)
+        └── Elemental toolkit components
+            └── Custom packages and configuration
 ```
 
 ## Building a Basic OS Image
@@ -46,30 +48,89 @@ Base OS Layer (SLE Micro / openSUSE MicroOS)
 
 ```dockerfile
 # Dockerfile.elemental
-# Start from the official Elemental base image
-FROM registry.suse.com/rancher/sle-micro:latest
+# Start from the official Elemental toolkit image
+ARG OS_IMAGE=registry.opensuse.org/opensuse/tumbleweed
+ARG OS_VERSION=latest
+FROM ghcr.io/rancher/elemental-toolkit/elemental-cli:latest AS toolkit
+FROM ${OS_IMAGE}:${OS_VERSION}
 
-# Install additional packages
-RUN zypper --non-interactive install \
+ARG REPO=my-registry.example.com/elemental-os
+ARG VERSION=v1.0.0
+ENV REPO=${REPO}
+ENV VERSION=${VERSION}
+
+# Install the packages required to make the image bootable with Elemental
+RUN ARCH=$(uname -m); \
+    if [[ "${ARCH}" != "riscv64" ]]; then \
+      ADD_PKGS+=" shim"; \
+      [[ "${ARCH}" == "aarch64" ]] && ARCH="arm64"; \
+    fi; \
+    zypper --non-interactive removerepo repo-update || true; \
+    zypper --non-interactive --gpg-auto-import-keys install --no-recommends -- \
+    kernel-default \
+    device-mapper \
+    dracut \
+    grub2 \
+    grub2-${ARCH}-efi \
+    haveged \
+    systemd \
+    NetworkManager \
+    openssh-server \
+    openssh-clients \
+    timezone \
+    parted \
+    e2fsprogs \
+    dosfstools \
+    mtools \
+    xorriso \
+    findutils \
+    gptfdisk \
+    rsync \
+    squashfs \
+    lvm2 \
+    tar \
+    gzip \
     vim \
+    which \
+    less \
+    sudo \
     curl \
+    sed \
+    iproute2 \
+    podman \
+    audit \
+    patterns-microos-selinux \
+    btrfsprogs \
+    btrfsmaintenance \
+    snapper \
+    xterm-resize \
     htop \
-    && zypper clean -a
+    ${ADD_PKGS} && \
+    zypper clean --all
+
+# Add the Elemental CLI and initialize the bootable image
+COPY --from=toolkit /usr/bin/elemental /usr/bin/elemental
+RUN systemctl enable NetworkManager.service && \
+    systemctl enable sshd.service && \
+    systemd-sysusers && \
+    elemental --debug init --force
 
 # Copy custom configuration files
 COPY custom-config/ /etc/
 
-# Install custom monitoring agent
-RUN curl -fsSL https://get.custom-agent.io | sh
-
 # Set OS release information
-ARG IMAGE_TAG=latest
-RUN echo "IMAGE_TAG=${IMAGE_TAG}" >> /etc/os-release
+RUN echo IMAGE_REPO=\"${REPO}\"             >> /etc/os-release && \
+    echo IMAGE_TAG=\"${VERSION}\"           >> /etc/os-release && \
+    echo IMAGE=\"${REPO}:${VERSION}\"       >> /etc/os-release && \
+    echo TIMESTAMP="`date +'%Y%m%d%H%M%S'`" >> /etc/os-release && \
+    echo GRUB_ENTRY_NAME=\"Elemental\"      >> /etc/os-release
 ```
 
 ```bash
 # Build the container image
 docker build \
+  --build-arg REPO=my-registry.example.com/elemental-os \
+  --build-arg VERSION=v1.0.0 \
   -t my-registry.example.com/elemental-os:v1.0.0 \
   -f Dockerfile.elemental \
   .
@@ -91,9 +152,10 @@ metadata:
   namespace: fleet-default
 spec:
   # Sync interval
-  syncInterval: "1h"
+  syncInterval: 1h
   type: custom
   options:
+    # Custom syncer image that outputs ManagedOSVersion JSON to /data/output
     image: "my-registry.example.com/elemental-os-channel:latest"
 ```
 
@@ -104,17 +166,16 @@ spec:
 apiVersion: elemental.cattle.io/v1beta1
 kind: ManagedOSVersion
 metadata:
+  labels:
+    elemental.cattle.io/channel: my-os-channel
   name: elemental-v1.0.0
   namespace: fleet-default
 spec:
+  metadata:
+    displayName: Custom Elemental OS v1.0.0
+    upgradeImage: "my-registry.example.com/elemental-os:v1.0.0"
   type: container
   version: "v1.0.0"
-  minVersion: "0.0.0"
-  # The OS container image
-  metadata:
-    upgradeImage: "my-registry.example.com/elemental-os:v1.0.0"
-    # Cloud-config applied during upgrade
-    cloudConfig: ""
 ```
 
 ## Customizing the OS Build
@@ -122,32 +183,28 @@ spec:
 ### Adding Custom Packages
 
 ```dockerfile
-# Install enterprise monitoring stack
-FROM registry.suse.com/rancher/sle-micro:latest
+FROM my-registry.example.com/elemental-os:v1.0.0
 
 # Add custom repository
 RUN zypper addrepo https://packages.example.com/repo my-repo
 
-# Install monitoring packages
+# Install additional packages
 RUN zypper --non-interactive --gpg-auto-import-keys install \
-    prometheus-node-exporter \
-    filebeat \
+    jq \
+    tcpdump \
     && zypper clean -a
-
-# Configure node exporter to start on boot
-RUN systemctl enable prometheus-node-exporter
 ```
 
 ### Adding Custom Systemd Services
 
 ```dockerfile
-FROM registry.suse.com/rancher/sle-micro:latest
+FROM my-registry.example.com/elemental-os:v1.0.0
 
 # Copy custom systemd unit
 COPY my-service.service /etc/systemd/system/
 
 # Enable the service
-RUN systemctl enable my-service
+RUN systemctl enable my-service.service
 ```
 
 ## Building ISO Images
@@ -156,12 +213,14 @@ To create bootable ISO images for initial provisioning:
 
 ```bash
 # Use the elemental CLI to build an ISO
-docker run --privileged --rm -v $(pwd):/workspace \
-  registry.suse.com/rancher/elemental-toolkit/elemental-cli:latest \
+docker run --rm -ti -v $(pwd):/build \
+  ghcr.io/rancher/elemental-toolkit/elemental-cli:latest \
+  --debug \
   build-iso \
   --name elemental-custom \
-  --local \
-  my-registry.example.com/elemental-os:v1.0.0
+  --bootloader-in-rootfs \
+  -o /build \
+  docker:my-registry.example.com/elemental-os:v1.0.0
 
 # The ISO will be created in the current directory
 ls -la elemental-custom.iso
