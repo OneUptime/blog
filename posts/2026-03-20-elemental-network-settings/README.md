@@ -8,11 +8,11 @@ Description: Configure network settings for Elemental nodes including static IPs
 
 ## Introduction
 
-Proper network configuration is essential for Elemental nodes, especially in edge environments where DHCP may not be available or where specific network topologies are required. Elemental supports full NetworkManager-based network configuration through cloud-config, allowing you to define static IPs, bonded interfaces, VLANs, and custom DNS settings.
+Proper network configuration is essential for Elemental nodes, especially in edge environments where DHCP may not be available or where specific network topologies are required. Elemental supports full NetworkManager-based network configuration through cloud-config, allowing you to define static IPs, bonded interfaces, VLANs, and custom DNS settings. When you add these snippets to a MachineRegistration, they are applied to the installed system after installation and reboot; if you need custom networking while booting the installation ISO itself, use the same cloud-config in a SeedImage instead.
 
 ## Basic DHCP Configuration (Default)
 
-By default, Elemental nodes use DHCP. This is configured automatically during registration. No additional steps are needed for DHCP environments.
+By default, Elemental nodes use DHCP on Ethernet interfaces through NetworkManager. No additional cloud-config is typically needed for DHCP environments.
 
 ## Configuring Static IP Addresses
 
@@ -54,7 +54,7 @@ cloud-config:
 ```yaml
 cloud-config:
   write_files:
-    # Bond master connection
+    # Bond controller connection
     - path: /etc/NetworkManager/system-connections/bond0.nmconnection
       content: |
         [connection]
@@ -74,29 +74,33 @@ cloud-config:
         dns=10.0.1.1;
       permissions: "0600"
 
-    # Bond slave 1
+    # Bond port 1
     - path: /etc/NetworkManager/system-connections/eth0-bond.nmconnection
       content: |
         [connection]
-        id=eth0-bond-slave
+        id=eth0-bond-port
         type=ethernet
         interface-name=eth0
-        master=bond0
-        slave-type=bond
+        controller=bond0
+        port-type=bond
         autoconnect=true
       permissions: "0600"
 
-    # Bond slave 2
+    # Bond port 2
     - path: /etc/NetworkManager/system-connections/eth1-bond.nmconnection
       content: |
         [connection]
-        id=eth1-bond-slave
+        id=eth1-bond-port
         type=ethernet
         interface-name=eth1
-        master=bond0
-        slave-type=bond
+        controller=bond0
+        port-type=bond
         autoconnect=true
       permissions: "0600"
+
+  runcmd:
+    - nmcli connection reload
+    - nmcli connection up bond0
 ```
 
 ## Configuring VLANs
@@ -121,6 +125,10 @@ cloud-config:
         method=manual
         address1=172.16.100.50/24,172.16.100.1
       permissions: "0600"
+
+  runcmd:
+    - nmcli connection reload
+    - nmcli connection up vlan100
 ```
 
 ## Configuring Custom DNS
@@ -128,39 +136,42 @@ cloud-config:
 ```yaml
 cloud-config:
   write_files:
-    # Custom resolv.conf
-    - path: /etc/resolv.conf
+    # DHCP on eth0 with custom DNS servers
+    - path: /etc/NetworkManager/system-connections/eth0-dns.nmconnection
       content: |
-        # Primary DNS
-        nameserver 10.0.0.1
-        # Secondary DNS
-        nameserver 8.8.8.8
-        # Search domains
-        search example.com internal.example.com
-      permissions: "0644"
+        [connection]
+        id=eth0-custom-dns
+        type=ethernet
+        interface-name=eth0
+        autoconnect=true
+        autoconnect-priority=100
 
-    # Disable systemd-resolved interference
-    - path: /etc/NetworkManager/conf.d/dns.conf
-      content: |
-        [main]
-        dns=none
-      permissions: "0644"
+        [ipv4]
+        method=auto
+        ignore-auto-dns=true
+        dns=10.0.0.1;8.8.8.8;
+        dns-search=example.com;internal.example.com;
+
+        [ipv6]
+        method=auto
+        ignore-auto-dns=true
+      permissions: "0600"
+
+  runcmd:
+    - nmcli connection reload
+    - nmcli connection up eth0-custom-dns
 ```
 
 ## Setting Static Hostname
 
 ```yaml
-cloud-config:
-  runcmd:
-    # Set static hostname
-    - hostnamectl set-hostname node-datacenter1-001
+# Include under spec in your MachineRegistration
 
-    # Or derive hostname from hardware info
-    - |
-      SERIAL=$(dmidecode -s system-serial-number | tr ' ' '-' | tr '[:upper:]' '[:lower:]')
-      hostnamectl set-hostname "node-${SERIAL}"
+# For a single node, you can use a fixed value such as node-datacenter1-001.
+# For shared registrations, use a template so each node gets a unique hostname.
+machineName: "node-${System Information/Serial Number}"
 ```
 
 ## Conclusion
 
-Elemental's cloud-config networking support gives you full control over node network configuration at provisioning time. Whether you need simple static IPs, complex bonded interfaces for high availability, or VLAN segmentation, NetworkManager profiles deployed via cloud-config provide a reliable and reproducible approach to network setup across your entire edge fleet.
+Elemental's cloud-config networking support gives you full control over node network configuration on the installed system. Whether you need simple static IPs, complex bonded interfaces for high availability, or VLAN segmentation, NetworkManager profiles deployed via cloud-config provide a reliable and reproducible approach to network setup across your entire edge fleet. If you need those settings during live ISO boot, place them in a SeedImage rather than a MachineRegistration.
