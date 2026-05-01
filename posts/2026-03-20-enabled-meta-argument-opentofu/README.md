@@ -8,7 +8,7 @@ Description: A guide to using the enabled meta-argument in OpenTofu to condition
 
 ## Introduction
 
-The `enabled` meta-argument in OpenTofu provides a clean way to conditionally include or exclude resources from your configuration. When `enabled = false`, OpenTofu skips the resource entirely during plan and apply operations. This is more expressive than the `count = 0` pattern and clearly communicates intent.
+Introduced in OpenTofu v1.11, the `enabled` meta-argument provides a clean way to conditionally include or exclude single resources, data sources, or modules from your configuration. When `enabled = false`, OpenTofu excludes the object from the configuration. Disabled resources evaluate to `null`, so any attribute access must be guarded. This is more expressive than the `count = 0` pattern and clearly communicates intent.
 
 ## Basic enabled Usage
 
@@ -19,13 +19,15 @@ variable "create_bastion" {
 }
 
 resource "aws_instance" "bastion" {
-  enabled = var.create_bastion  # Skip this resource if false
-
   ami           = var.ami_id
   instance_type = "t3.micro"
 
   tags = {
     Name = "bastion-host"
+  }
+
+  lifecycle {
+    enabled = var.create_bastion # Skip this resource if false
   }
 }
 ```
@@ -45,11 +47,13 @@ resource "aws_instance" "bastion_old" {
 
 # New pattern: enabled for clarity
 resource "aws_instance" "bastion_new" {
-  enabled = var.create_bastion
-
   ami           = var.ami_id
   instance_type = "t3.micro"
   # Accessing: aws_instance.bastion_new.id (no index needed)
+
+  lifecycle {
+    enabled = var.create_bastion
+  }
 }
 ```
 
@@ -62,8 +66,6 @@ variable "environment" {
 
 # Only create enhanced monitoring in production
 resource "aws_cloudwatch_metric_alarm" "cpu_high" {
-  enabled = var.environment == "prod"
-
   alarm_name          = "cpu-utilization-high"
   comparison_operator = "GreaterThanThreshold"
   evaluation_periods  = 2
@@ -74,14 +76,20 @@ resource "aws_cloudwatch_metric_alarm" "cpu_high" {
   threshold           = 80
 
   alarm_actions = [aws_sns_topic.alerts.arn]
+
+  lifecycle {
+    enabled = var.environment == "prod"
+  }
 }
 
 # Only enable WAF in staging and production
 resource "aws_wafv2_web_acl_association" "app" {
-  enabled = contains(["staging", "prod"], var.environment)
-
   resource_arn = aws_lb.app.arn
   web_acl_arn  = aws_wafv2_web_acl.app.arn
+
+  lifecycle {
+    enabled = contains(["staging", "prod"], var.environment)
+  }
 }
 ```
 
@@ -104,22 +112,28 @@ variable "features" {
 }
 
 resource "aws_flow_log" "vpc" {
-  enabled = var.features.enable_vpc_flow_logs
-
   vpc_id          = aws_vpc.main.id
   traffic_type    = "ALL"
   iam_role_arn    = aws_iam_role.flow_log.arn
   log_destination = aws_cloudwatch_log_group.flow_log.arn
+
+  lifecycle {
+    enabled = var.features.enable_vpc_flow_logs
+  }
 }
 
 resource "aws_guardduty_detector" "main" {
-  enabled = var.features.enable_guardduty
-
   finding_publishing_frequency = "FIFTEEN_MINUTES"
+
+  lifecycle {
+    enabled = var.features.enable_guardduty
+  }
 }
 
 resource "aws_securityhub_account" "main" {
-  enabled = var.features.enable_security_hub
+  lifecycle {
+    enabled = var.features.enable_security_hub
+  }
 }
 ```
 
@@ -133,14 +147,20 @@ variable "use_existing_vpc" {
 
 # Only fetch existing VPC if we're using it
 data "aws_vpc" "existing" {
-  enabled = var.use_existing_vpc
   id      = var.existing_vpc_id
+
+  lifecycle {
+    enabled = var.use_existing_vpc
+  }
 }
 
 # Create new VPC only if not using existing
 resource "aws_vpc" "new" {
-  enabled    = !var.use_existing_vpc
   cidr_block = var.vpc_cidr
+
+  lifecycle {
+    enabled = !var.use_existing_vpc
+  }
 }
 ```
 
@@ -159,7 +179,6 @@ variable "backup_retention_days" {
 }
 
 resource "aws_backup_plan" "main" {
-  enabled = var.enable_backup
   name    = "main-backup-plan"
 
   rule {
@@ -171,15 +190,22 @@ resource "aws_backup_plan" "main" {
       delete_after = var.backup_retention_days
     }
   }
+
+  lifecycle {
+    enabled = var.enable_backup
+  }
 }
 
 resource "aws_backup_selection" "main" {
-  enabled      = var.enable_backup
   iam_role_arn = aws_iam_role.backup.arn
   name         = "main-selection"
   plan_id      = aws_backup_plan.main.id
 
   resources = ["*"]
+
+  lifecycle {
+    enabled = var.enable_backup
+  }
 }
 ```
 
@@ -193,15 +219,34 @@ variable "enabled" {
 }
 
 resource "aws_cloudwatch_dashboard" "main" {
-  enabled        = var.enabled
   dashboard_name = "main-dashboard"
-  dashboard_body = jsonencode({...})
+  dashboard_body = jsonencode({
+    widgets = [
+      {
+        type   = "text"
+        x      = 0
+        y      = 0
+        width  = 24
+        height = 3
+        properties = {
+          markdown = "# Monitoring"
+        }
+      }
+    ]
+  })
+
+  lifecycle {
+    enabled = var.enabled
+  }
 }
 
 # Root module calling the monitoring module
 module "monitoring" {
-  source  = "./modules/monitoring"
-  enabled = var.environment == "prod"
+  source = "./modules/monitoring"
+
+  lifecycle {
+    enabled = var.environment == "prod"
+  }
 }
 ```
 
@@ -209,17 +254,20 @@ module "monitoring" {
 
 ```hcl
 resource "aws_instance" "bastion" {
-  enabled       = var.create_bastion
   ami           = var.ami_id
   instance_type = "t3.micro"
+
+  lifecycle {
+    enabled = var.create_bastion
+  }
 }
 
 # Output is null when resource is disabled
 output "bastion_ip" {
-  value = aws_instance.bastion.public_ip
+  value = aws_instance.bastion != null ? aws_instance.bastion.public_ip : null
 }
 ```
 
 ## Conclusion
 
-The `enabled` meta-argument makes conditional resource creation more expressive and readable than the `count = 0` pattern. It clearly communicates that a resource exists in configuration but is intentionally disabled, rather than creating zero instances of a multi-instance resource. Use `enabled` for feature flags, environment-specific resources, and optional infrastructure components. Resources with `enabled = false` are completely skipped during plan and apply, and their outputs return `null`.
+The `enabled` meta-argument, introduced in OpenTofu v1.11, makes conditional resource creation more expressive and readable than the `count = 0` pattern. It clearly communicates that a resource exists in configuration but is intentionally disabled, rather than creating zero instances of a multi-instance resource. Use `enabled` for feature flags, environment-specific resources, and optional infrastructure components. Resources, data sources, and modules with `enabled = false` are excluded from the configuration, and references to disabled resources should guard attribute access because the resource evaluates to `null`.
