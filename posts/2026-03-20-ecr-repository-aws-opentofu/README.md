@@ -4,7 +4,7 @@ Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
 Tags: OpenTofu, AWS, ECR, Docker, Container Registry
 
-Description: Learn how to create an AWS ECR repository with OpenTofu including lifecycle policies, cross-account access, image scanning, and pull-through cache configuration.
+Description: Learn how to create an AWS ECR repository with OpenTofu including lifecycle policies, cross-account access, image scanning, and encryption.
 
 ## Introduction
 
@@ -22,8 +22,7 @@ resource "aws_ecr_repository" "app" {
   }
 
   encryption_configuration {
-    encryption_type = "KMS"
-    kms_key         = aws_kms_key.ecr.arn
+    encryption_type = "KMS"  # Uses the AWS managed KMS key for Amazon ECR by default
   }
 
   tags = {
@@ -93,6 +92,8 @@ resource "aws_ecr_repository_policy" "app" {
 }
 ```
 
+The IAM principal in each allowed account also needs `ecr:GetAuthorizationToken` in an IAM policy before it can authenticate to the registry and pull images.
+
 ## Outputs
 
 ```hcl
@@ -106,15 +107,20 @@ After creating the repository, push images using the AWS CLI:
 
 ```bash
 # Authenticate Docker with ECR
+AWS_REGION=us-east-1
+AWS_ACCOUNT_ID=123456789012
+REPOSITORY_NAME=myapp  # Must match var.repository_name
 
-aws ecr get-login-password --region us-east-1 \
+aws ecr get-login-password --region "$AWS_REGION" \
   | docker login --username AWS --password-stdin \
-    $(aws sts get-caller-identity --query Account --output text).dkr.ecr.us-east-1.amazonaws.com
+    "$AWS_ACCOUNT_ID.dkr.ecr.$AWS_REGION.amazonaws.com"
 
 # Build and push
-docker build -t myapp:v1.0.0 .
-docker tag myapp:v1.0.0 123456789012.dkr.ecr.us-east-1.amazonaws.com/myapp:v1.0.0
-docker push 123456789012.dkr.ecr.us-east-1.amazonaws.com/myapp:v1.0.0
+docker build -t "$REPOSITORY_NAME:v1.0.0" .
+docker tag "$REPOSITORY_NAME:v1.0.0" \
+  "$AWS_ACCOUNT_ID.dkr.ecr.$AWS_REGION.amazonaws.com/$REPOSITORY_NAME:v1.0.0"
+docker push \
+  "$AWS_ACCOUNT_ID.dkr.ecr.$AWS_REGION.amazonaws.com/$REPOSITORY_NAME:v1.0.0"
 ```
 
 ## Conclusion
