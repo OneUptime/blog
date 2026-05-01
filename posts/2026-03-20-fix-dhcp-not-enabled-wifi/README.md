@@ -8,14 +8,14 @@ Description: Learn how to fix the 'DHCP is not enabled for WiFi' error message t
 
 ## What Causes This Error?
 
-This error appears when the WiFi adapter is configured to use a static (manual) IP address instead of DHCP. The Windows troubleshooter detects this and reports it as the likely cause of connectivity issues.
+This error usually appears when the WiFi adapter is configured to use a manual IP address instead of obtaining one automatically with DHCP. The Windows troubleshooter reports it when the adapter is not set to automatic IP assignment.
 
 ## Step 1: Re-enable DHCP via Settings
 
 1. Settings → Network & Internet → WiFi
-2. Click the connected network → Properties
-3. Under IP settings, click **Edit**
-4. Change from **Manual** to **Automatic (DHCP)**
+2. Click **Manage known networks** → select the WiFi network
+3. Next to **IP assignment**, click **Edit**
+4. Change to **Automatic (DHCP)**
 5. Click Save
 
 ## Step 2: Re-enable DHCP via PowerShell
@@ -25,17 +25,17 @@ This error appears when the WiFi adapter is configured to use a static (manual) 
 
 # Re-enable DHCP for Wi-Fi adapter
 
-Set-NetIPInterface -InterfaceAlias "Wi-Fi" -Dhcp Enabled
+Set-NetIPInterface -InterfaceAlias "Wi-Fi" -AddressFamily IPv4 -Dhcp Enabled
 
 # Clear any static DNS settings
 Set-DnsClientServerAddress -InterfaceAlias "Wi-Fi" -ResetServerAddresses
 
 # Release and renew
-ipconfig /release
-ipconfig /renew
+ipconfig /release "Wi-Fi"
+ipconfig /renew "Wi-Fi"
 
 # Verify DHCP is now used
-Get-NetIPInterface -InterfaceAlias "Wi-Fi" | Select-Object Dhcp
+Get-NetIPInterface -InterfaceAlias "Wi-Fi" -AddressFamily IPv4 | Select-Object Dhcp
 # Should show: Enabled
 ```
 
@@ -43,24 +43,24 @@ Get-NetIPInterface -InterfaceAlias "Wi-Fi" | Select-Object Dhcp
 
 ```cmd
 REM Re-enable DHCP for Wi-Fi
-netsh interface ip set address name="Wi-Fi" dhcp
-netsh interface ip set dns name="Wi-Fi" dhcp
+netsh interface ipv4 set address name="Wi-Fi" source=dhcp
+netsh interface ipv4 set dnsservers name="Wi-Fi" source=dhcp
 
 REM Verify
-netsh interface ip show config name="Wi-Fi"
+netsh interface ipv4 show config name="Wi-Fi"
 REM Should show: "DHCP Enabled: Yes"
 ```
 
 ## Step 4: Check Group Policy (Corporate Networks)
 
-On domain-joined machines, group policy may force static IPs:
+On domain-joined machines, review applied policies if the setting keeps changing back after you re-enable DHCP:
 
 ```cmd
-REM Check applied group policies
-gpresult /r | findstr /i "ip\|network"
+REM Save an HTML report of applied Group Policy
+gpresult /h gp-report.html
 ```
 
-Contact your IT administrator if group policy is forcing a static IP.
+Open `gp-report.html` and contact your IT administrator if a policy or logon/startup script is reapplying the adapter settings.
 
 ## Step 5: Reset Adapter and Renew
 
@@ -80,4 +80,4 @@ ipconfig /all
 
 ## Conclusion
 
-"DHCP is not enabled" means the WiFi adapter has a static IP configured. Fix via Settings → Network → WiFi → Properties → IP settings → Automatic (DHCP), or via PowerShell with `Set-NetIPInterface -Dhcp Enabled`. On corporate/domain machines, verify group policy isn't enforcing static IPs. After enabling DHCP, run `ipconfig /renew` to obtain a new address from the DHCP server.
+"DHCP is not enabled" usually means the WiFi adapter is not set to obtain an IP address automatically. Fix via Settings → Network & Internet → WiFi → Manage known networks → IP assignment → Automatic (DHCP), or via PowerShell with `Set-NetIPInterface -AddressFamily IPv4 -Dhcp Enabled`. On corporate/domain machines, verify a policy or script isn't reapplying the settings. After enabling DHCP, run `ipconfig /renew` to obtain a new address from the DHCP server.
