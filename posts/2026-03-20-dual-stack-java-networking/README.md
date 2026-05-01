@@ -8,7 +8,7 @@ Description: Build dual-stack Java applications that handle both IPv4 and IPv6 c
 
 ## Dual-Stack Server with [::] Binding
 
-On Linux, binding to `[::]` typically accepts both IPv4 and IPv6 (controlled by `net.ipv6.bindv6only`):
+On Linux, binding to `[::]` typically accepts both IPv4 and IPv6 when the JVM is using IPv6 sockets and the kernel allows dual-stack sockets (`net.ipv6.bindv6only=0`):
 
 ```java
 import java.io.*;
@@ -18,19 +18,12 @@ public class DualStackServer {
 
     static String describeClient(InetAddress addr) {
         if (addr instanceof Inet6Address) {
-            byte[] b = addr.getAddress();
-            // Detect IPv4-mapped: ::ffff:x.x.x.x
-            boolean mapped = true;
-            for (int i = 0; i < 10; i++) {
-                if (b[i] != 0) { mapped = false; break; }
-            }
-            if (mapped && (b[10] & 0xff) == 0xff && (b[11] & 0xff) == 0xff) {
-                return String.format("IPv4-via-dual-stack (%d.%d.%d.%d)",
-                    b[12] & 0xff, b[13] & 0xff, b[14] & 0xff, b[15] & 0xff);
-            }
             return "IPv6 " + addr.getHostAddress();
         }
-        return "IPv4 " + addr.getHostAddress();
+        if (addr instanceof Inet4Address) {
+            return "IPv4 " + addr.getHostAddress();
+        }
+        return addr.getHostAddress();
     }
 
     public static void main(String[] args) throws IOException {
@@ -47,50 +40,112 @@ public class DualStackServer {
 }
 ```
 
-## Happy Eyeballs - Connecting to IPv6 First
+## Happy Eyeballs - Staggering IPv6 and IPv4
 
-Happy Eyeballs (RFC 8305) attempts IPv6 first, with IPv4 as fallback after a 250ms delay:
+A Happy Eyeballs-style connector starts one address family first, then starts the other shortly after instead of waiting for the first family to fail. This simplified example starts IPv6 first and begins IPv4 fallback after a 250ms delay:
 
 ```java
+import java.io.*;
 import java.net.*;
 import java.util.*;
 import java.util.concurrent.*;
+import java.util.concurrent.atomic.*;
 
 public class HappyEyeballs {
 
+    private static void tryAddresses(
+        List<InetAddress> addresses,
+        int port,
+        int timeoutMillis,
+        CompletableFuture<Socket> winner,
+        AtomicReference<IOException> lastFailure) {
+
+        for (InetAddress address : addresses) {
+            Socket socket = new Socket();
+            try {
+                socket.connect(new InetSocketAddress(address, port), timeoutMillis);
+                if (winner.complete(socket)) {
+                    System.out.println("Connected via "
+                        + (address instanceof Inet6Address ? "IPv6: " : "IPv4: ")
+                        + address.getHostAddress());
+                    return;
+                }
+                socket.close();
+                return;
+            } catch (IOException e) {
+                lastFailure.set(e);
+                try {
+                    socket.close();
+                } catch (IOException ignored) {
+                }
+            }
+        }
+    }
+
     public static Socket connect(String hostname, int port) throws Exception {
-        // Resolve all addresses
         InetAddress[] all = InetAddress.getAllByName(hostname);
 
         List<InetAddress> v6 = new ArrayList<>();
         List<InetAddress> v4 = new ArrayList<>();
 
-        for (InetAddress a : all) {
-            if (a instanceof Inet6Address) v6.add(a);
-            else v4.add(a);
-        }
-
-        // Try IPv6 first
-        if (!v6.isEmpty()) {
-            try {
-                Socket s = new Socket();
-                s.connect(new InetSocketAddress(v6.get(0), port), 3000);
-                System.out.println("Connected via IPv6: " + v6.get(0).getHostAddress());
-                return s;
-            } catch (Exception e) {
-                System.out.println("IPv6 failed, trying IPv4: " + e.getMessage());
+        for (InetAddress address : all) {
+            if (address instanceof Inet6Address) {
+                v6.add(address);
+            } else if (address instanceof Inet4Address) {
+                v4.add(address);
             }
         }
 
-        // Fall back to IPv4
-        if (!v4.isEmpty()) {
-            Socket s = new Socket();
-            s.connect(new InetSocketAddress(v4.get(0), port), 3000);
-            System.out.println("Connected via IPv4: " + v4.get(0).getHostAddress());
-            return s;
+        int racers = (v6.isEmpty() ? 0 : 1) + (v4.isEmpty() ? 0 : 1);
+        if (racers == 0) {
+            throw new ConnectException("No address available for " + hostname);
         }
 
-        throw new ConnectException("No address available for " + hostname);
+        ScheduledExecutorService executor = Executors.newScheduledThreadPool(racers);
+        CompletableFuture<Socket> winner = new CompletableFuture<>();
+        AtomicReference<IOException> lastFailure = new AtomicReference<>();
+        AtomicInteger remaining = new AtomicInteger(racers);
+
+        Runnable finish = () -> {
+            if (remaining.decrementAndGet() == 0 && !winner.isDone()) {
+                IOException failure = lastFailure.get();
+                winner.completeExceptionally(
+                    failure != null ? failure : new ConnectException("No address available for " + hostname));
+            }
+        };
+
+        if (!v6.isEmpty()) {
+            executor.execute(() -> {
+                try {
+                    tryAddresses(v6, port, 3000, winner, lastFailure);
+                } finally {
+                    finish.run();
+                }
+            });
+        }
+
+        if (!v4.isEmpty()) {
+            long v4DelayMillis = v6.isEmpty() ? 0 : 250;
+            executor.schedule(() -> {
+                try {
+                    tryAddresses(v4, port, 3000, winner, lastFailure);
+                } finally {
+                    finish.run();
+                }
+            }, v4DelayMillis, TimeUnit.MILLISECONDS);
+        }
+
+        try {
+            return winner.get();
+        } catch (ExecutionException e) {
+            Throwable cause = e.getCause();
+            if (cause instanceof Exception) {
+                throw (Exception) cause;
+            }
+            throw new IOException(cause);
+        } finally {
+            executor.shutdownNow();
+        }
     }
 
     public static void main(String[] args) throws Exception {
@@ -108,41 +163,18 @@ import java.net.*;
 
 public class IPVersionDetector {
 
-    public static boolean hasIPv6Connectivity() {
-        try {
-            // Try to connect to a well-known IPv6 address
-            Socket s = new Socket();
-            s.connect(new InetSocketAddress("2001:4860:4860::8888", 53), 2000);
-            s.close();
-            return true;
-        } catch (Exception e) {
-            return false;
+    public static String ipVersion(InetAddress address) {
+        if (address instanceof Inet6Address) return "IPv6";
+        if (address instanceof Inet4Address) return "IPv4";
+        return "unknown";
+    }
+
+    public static void main(String[] args) throws Exception {
+        try (Socket s = new Socket()) {
+            s.connect(new InetSocketAddress("example.com", 80), 3000);
+            System.out.println("Connected over: " + ipVersion(s.getInetAddress()));
+            System.out.println("Remote: " + s.getRemoteSocketAddress());
         }
-    }
-
-    public static boolean hasIPv4Connectivity() {
-        try {
-            Socket s = new Socket();
-            s.connect(new InetSocketAddress("8.8.8.8", 53), 2000);
-            s.close();
-            return true;
-        } catch (Exception e) {
-            return false;
-        }
-    }
-
-    public static String detectConnectivity() {
-        boolean v4 = hasIPv4Connectivity();
-        boolean v6 = hasIPv6Connectivity();
-
-        if (v4 && v6) return "dual-stack";
-        if (v6) return "IPv6-only";
-        if (v4) return "IPv4-only";
-        return "no connectivity";
-    }
-
-    public static void main(String[] args) {
-        System.out.println("Connectivity: " + detectConnectivity());
     }
 }
 ```
@@ -160,12 +192,12 @@ public class DualStackHTTP {
         HttpClient client = HttpClient.newBuilder()
             .version(HttpClient.Version.HTTP_2)
             .connectTimeout(Duration.ofSeconds(10))
-            // Java HttpClient uses system DNS which returns both A and AAAA records
             .build();
 
-        // URL with IPv6 literal requires brackets
+        // For dual-stack hostnames, Java resolves A and AAAA records through its normal name service.
+        // If you use an IPv6 literal directly in a URI, it must be enclosed in brackets.
         HttpRequest request = HttpRequest.newBuilder()
-            .uri(URI.create("http://[2001:db8::1]:8080/health"))
+            .uri(URI.create("https://example.com/"))
             .GET()
             .build();
 
@@ -180,4 +212,4 @@ public class DualStackHTTP {
 
 ## Conclusion
 
-Dual-stack Java applications work by binding servers to `[::]` which handles both IP versions. Detect IPv4-mapped addresses (`::ffff:x.x.x.x`) on dual-stack servers for accurate client IP logging. The Happy Eyeballs pattern improves connection time by preferring IPv6 with an IPv4 fallback. Java 11's `HttpClient` resolves hostnames through the system DNS, automatically using AAAA records when IPv6 is available. Use `java.net.preferIPv6Addresses=true` as a JVM system property to globally prefer IPv6 in DNS resolution order.
+Dual-stack Java applications can bind servers to `[::]` to accept both IP versions when the OS and JVM are using dual-stack IPv6 sockets. In Java, inspect `Inet4Address` versus `Inet6Address` to log which family a client connection used. A Happy Eyeballs-style race improves connection time by staggering IPv6 and IPv4 attempts instead of waiting for one family to fail completely. Java 11's `HttpClient` uses normal JVM name resolution for dual-stack hostnames, and `java.net.preferIPv6Addresses=true` changes the JVM's address preference while `java.net.preferIPv6Addresses=system` preserves the order returned by the operating system.
