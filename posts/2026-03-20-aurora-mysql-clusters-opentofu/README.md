@@ -73,8 +73,7 @@ resource "aws_db_parameter_group" "aurora_mysql" {
 resource "aws_rds_cluster" "aurora_mysql" {
   cluster_identifier      = "${var.project_name}-aurora-mysql"
   engine                  = "aurora-mysql"
-  engine_version          = "8.0.mysql_aurora.3.04.0"
-  availability_zones      = ["us-east-1a", "us-east-1b", "us-east-1c"]
+  engine_version          = "8.0.mysql_aurora.3.04.6"
 
   database_name   = var.database_name
   master_username = var.master_username
@@ -97,7 +96,7 @@ resource "aws_rds_cluster" "aurora_mysql" {
   skip_final_snapshot = false
   final_snapshot_identifier = "${var.project_name}-aurora-mysql-final"
 
-  enabled_cloudwatch_logs_exports = ["audit", "error", "general", "slowquery"]
+  enabled_cloudwatch_logs_exports = ["error", "slowquery"]
 
   tags = {
     Name        = "${var.project_name}-aurora-mysql"
@@ -125,7 +124,7 @@ resource "aws_rds_cluster_instance" "writer" {
   monitoring_interval             = 60
   monitoring_role_arn             = var.monitoring_role_arn
 
-  auto_minor_version_upgrade = true
+  auto_minor_version_upgrade = false
 
   tags = {
     Name = "${var.project_name}-aurora-mysql-writer"
@@ -149,6 +148,7 @@ resource "aws_rds_cluster_instance" "reader" {
   performance_insights_enabled = true
   monitoring_interval          = 60
   monitoring_role_arn          = var.monitoring_role_arn
+  auto_minor_version_upgrade   = false
 
   tags = {
     Name = "${var.project_name}-aurora-mysql-reader-${count.index + 1}"
