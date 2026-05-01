@@ -19,7 +19,7 @@ terraform {
   required_providers {
     vultr = {
       source  = "vultr/vultr"
-      version = "~> 2.19"
+      version = "~> 2.31"
     }
   }
 }
@@ -42,9 +42,10 @@ resource "vultr_startup_script" "portainer" {
   script = base64encode(<<-EOF
     #!/bin/bash
     apt-get update -y
+    apt-get install -y ca-certificates curl
     curl -fsSL https://get.docker.com | sh
     docker volume create portainer_data
-    docker run -d       --name portainer       --restart=always       -p 9443:9443       -v /var/run/docker.sock:/var/run/docker.sock       -v portainer_data:/data       portainer/portainer-ce:latest
+    docker run -d       --name portainer       --restart=always       -p 9443:9443       -v /var/run/docker.sock:/var/run/docker.sock       -v portainer_data:/data       portainer/portainer-ce:lts
   EOF
   )
 }
@@ -56,13 +57,13 @@ resource "vultr_instance" "portainer" {
   label      = "portainer"
 
   ssh_key_ids     = [vultr_ssh_key.default.id]
-  startup_id      = vultr_startup_script.portainer.id
+  script_id       = vultr_startup_script.portainer.id
   firewall_group_id = vultr_firewall_group.portainer.id
 }
 
 resource "vultr_ssh_key" "default" {
   name    = "portainer-key"
-  ssh_key = file("~/.ssh/id_rsa.pub")
+  ssh_key = file(pathexpand("~/.ssh/id_rsa.pub"))
 }
 ```
 
