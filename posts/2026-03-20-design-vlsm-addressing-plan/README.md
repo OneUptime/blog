@@ -25,7 +25,7 @@ Requirements:
 - Management: 14 hosts
 - WAN Link: 2 hosts
 
-Parent block: `192.168.20.0/24`
+Parent block: `192.168.20.0/23`
 
 ```python
 import ipaddress, math
@@ -39,10 +39,11 @@ def design_vlsm(parent: str, segments: list) -> None:
     sorted_segs = sorted(segments, key=lambda x: x[1], reverse=True)
 
     print(f"Parent Block: {parent_net}\n")
-    print(f"{'Segment':18s} {'Subnet':18s} {'Mask':16s} {'First':14s} {'Last':14s} {'Hosts':>6}")
-    print("-" * 95)
+    print(f"{'Segment':18s} {'Subnet':18s} {'Mask':16s} {'Broadcast':15s} {'First':14s} {'Last':14s} {'Hosts':>6}")
+    print("-" * 111)
 
     pointer = int(parent_net.network_address)
+    parent_end = int(parent_net.broadcast_address)
 
     for name, hosts_needed in sorted_segs:
         # Find required prefix
@@ -54,10 +55,14 @@ def design_vlsm(parent: str, segments: list) -> None:
         if pointer % size != 0:
             pointer = ((pointer // size) + 1) * size
 
+        # Check that the subnet still fits inside the parent block
+        if pointer + size - 1 > parent_end:
+            raise ValueError(f"Segment {name!r} does not fit inside parent block {parent_net}")
+
         subnet = ipaddress.IPv4Network(f"{ipaddress.IPv4Address(pointer)}/{prefix}")
         host_list = list(subnet.hosts())
 
-        print(f"{name:18s} {str(subnet):18s} {str(subnet.netmask):16s} "
+        print(f"{name:18s} {str(subnet):18s} {str(subnet.netmask):16s} {str(subnet.broadcast_address):15s} "
               f"{str(host_list[0]):14s} {str(host_list[-1]):14s} {len(host_list):>6}")
 
         pointer = int(subnet.broadcast_address) + 1
@@ -71,7 +76,7 @@ segments = [
     ("WAN Link",           2),
 ]
 
-design_vlsm("192.168.20.0/24", segments)
+design_vlsm("192.168.20.0/23", segments)
 ```
 
 ## Verify Total Space Used
@@ -87,7 +92,7 @@ def total_addresses_needed(segments: list) -> int:
     return total
 
 needed = total_addresses_needed(segments)
-parent = ipaddress.IPv4Network("192.168.20.0/24")
+parent = ipaddress.IPv4Network("192.168.20.0/23")
 print(f"\nTotal addresses needed: {needed}")
 print(f"Parent block size:      {parent.num_addresses}")
 print(f"Utilization: {100*needed/parent.num_addresses:.1f}%")
@@ -99,7 +104,7 @@ print(f"Utilization: {100*needed/parent.num_addresses:.1f}%")
 2. **Check fit before allocating**: Verify remaining space can accommodate the segment.
 3. **Leave growth room**: Add 20-50% buffer to host estimates.
 4. **Document everything**: Record each allocation in an IPAM tool.
-5. **Use classless routing**: OSPF or BGP must be used - RIPv1 cannot handle VLSM.
+5. **Use classless routing**: RIPv1 cannot handle VLSM because it does not advertise subnet masks.
 
 ## Key Takeaways
 
