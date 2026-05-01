@@ -8,14 +8,14 @@ Description: Diagnose and fix common Docker IPv6 networking problems including c
 
 ## Introduction
 
-Docker IPv6 issues commonly fall into four categories: daemon configuration not enabling IPv6, containers not receiving addresses, routing failures preventing internet access, and ip6tables rules blocking traffic. Systematic diagnosis starting from daemon config through network inspection to container-level testing quickly identifies the root cause.
+Docker IPv6 issues commonly fall into four categories: default bridge configuration not enabling IPv6, containers not receiving addresses on IPv6-enabled networks, routing failures preventing internet access, and Docker-managed IPv6 firewall rules not being applied. Systematic diagnosis starting from daemon config through network inspection to container-level testing quickly identifies the root cause.
 
 ## Diagnostic Checklist
 
 ```bash
 #!/bin/bash
-echo "=== 1. Check Docker daemon IPv6 config ==="
-docker info 2>/dev/null | grep -E "IPv6|ip6tables"
+echo "=== 1. Check Docker daemon IPv6 status ==="
+docker info 2>/dev/null | grep -i "IPv6"
 
 echo ""
 echo "=== 2. Check daemon.json ==="
@@ -57,12 +57,13 @@ docker network inspect mynet | grep -A5 "IPAM"
 # If no IPv6 subnet in Config, add one
 
 # Fix: Recreate network with IPv6
+docker network disconnect -f mynet mycontainer
 docker network rm mynet
 docker network create \
     --driver bridge \
     --ipv6 \
     --subnet 172.20.0.0/24 \
-    --subnet fd00:fix::/64 \
+    --subnet fd00:20::/64 \
     mynet
 
 # Reconnect container
@@ -83,29 +84,30 @@ docker exec mycontainer ip -6 route show default
 
 # Diagnosis 2: Check host IPv6 forwarding
 cat /proc/sys/net/ipv6/conf/all/forwarding
-# Must be 1 for container IPv6 routing
+# Must be 1 for container IPv6 routing; Docker normally enables this on Linux when it starts
 
 # Fix: Enable IPv6 forwarding
 sudo sysctl -w net.ipv6.conf.all.forwarding=1
 echo "net.ipv6.conf.all.forwarding=1" | sudo tee -a /etc/sysctl.d/99-docker-ipv6.conf
 
-# Diagnosis 3: Check ip6tables MASQUERADE
+# Diagnosis 3: Check Docker-managed IPv6 NAT rules
 sudo ip6tables -t nat -L POSTROUTING -n
-# Should show MASQUERADE rule for container subnet
+# Bridge networks rely on Docker-managed masquerading rules for outbound access
 
-# Fix: Add masquerade rule if missing
-sudo ip6tables -t nat -A POSTROUTING -s fd00:fix::/64 ! -o br-<bridge-id> -j MASQUERADE
+# Fix: Ensure Docker is managing IPv6 firewall rules
+cat /etc/docker/daemon.json
+# Ensure: "ip6tables": true
+sudo systemctl restart docker
 ```
 
 ## Fix: IPv6 Not Working After Daemon Restart
 
 ```bash
-# Docker ip6tables rules are flushed on restart
-# Check ip6tables state after restart
+# If IPv6 breaks after a daemon restart, check whether Docker recreated its ip6tables rules
 
-# Bad: ip6tables rules missing
+# Bad: Docker-managed ip6tables rules missing
 sudo ip6tables -L DOCKER -n
-# If empty after restart, ip6tables=true may not be set
+# If the chain is missing or empty on an iptables-backed setup, ip6tables=true may not be set
 
 # Fix: Confirm daemon.json
 cat /etc/docker/daemon.json
@@ -135,19 +137,24 @@ docker inspect container2 --format "{{range \$k, \$v := .NetworkSettings.Network
 # Step 3: Test ping
 docker exec container1 ping6 -c 3 "$C2_IPV6"
 
-# Step 4: Check ip6tables ICC (inter-container communication)
-sudo ip6tables -L DOCKER -n | grep "$C2_IPV6"
+# Step 4: Check whether ICC (inter-container communication) is disabled on the network
+docker network inspect shared-net \
+    --format '{{ index .Options "com.docker.network.bridge.enable_icc" }}'
 
 # Fix: Enable ICC on the network
+docker network disconnect -f shared-net container1
+docker network disconnect -f shared-net container2
 docker network rm shared-net
 docker network create \
     --driver bridge \
     --ipv6 \
-    --subnet fd00:icc::/64 \
+    --subnet fd00:30::/64 \
     --opt com.docker.network.bridge.enable_icc=true \
     shared-net
+docker network connect shared-net container1
+docker network connect shared-net container2
 ```
 
 ## Conclusion
 
-Debug Docker IPv6 by checking in order: daemon.json has `"ipv6": true` and `"ip6tables": true`, the network has `EnableIPv6: true` with an IPv6 subnet, host has `net.ipv6.conf.all.forwarding=1`, ip6tables has MASQUERADE for outbound, and containers are on the same network for inter-container communication. The most common issue is missing `"ipv6": true` in daemon.json - without it, no Docker network or container receives IPv6 addresses.
+Debug Docker IPv6 by checking in order: for the default bridge, daemon.json has `"ipv6": true`; Docker is managing IPv6 firewall rules with `"ip6tables": true`; the network has `EnableIPv6: true` with an IPv6 subnet; the host has `net.ipv6.conf.all.forwarding=1`; and containers that need to communicate are on the same network. A common issue on the default bridge is missing `"ipv6": true` in daemon.json, while user-defined bridge networks need `--ipv6` when the network is created.
