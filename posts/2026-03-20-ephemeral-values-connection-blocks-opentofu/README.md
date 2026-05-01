@@ -4,25 +4,29 @@ Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
 Tags: OpenTofu, Ephemeral Values, Connection Blocks, Provisioner, SSH, Infrastructure as Code, DevOps
 
-Description: A guide to using ephemeral values in connection blocks in OpenTofu to securely manage SSH keys and passwords without persisting them in state.
+Description: A guide to using ephemeral values in connection blocks in OpenTofu to securely manage SSH keys and passwords without persisting them in state or plan.
 
 ## Introduction
 
-Connection blocks in OpenTofu define how provisioners connect to remote machines. Using ephemeral values for connection credentials (SSH private keys, passwords, bastion host keys) ensures these sensitive values are used during provisioning but never written to the state file.
+Connection blocks in OpenTofu define how provisioners connect to remote machines. In OpenTofu v1.11 and later, you can use ephemeral values for connection credentials (SSH private keys, passwords, bastion host keys) so they are used during provisioning but never written to the state or plan.
 
-## Basic Ephemeral SSH Key in Connection Block
+## Basic Ephemeral SSH Private Key in Connection Block
 
 ```hcl
-# Generate an ephemeral SSH key for provisioning
-
-ephemeral "tls_private_key" "provisioner" {
-  algorithm = "ED25519"
+variable "provisioner_public_key" {
+  type = string
 }
 
-# Add the public key to the instance
+variable "provisioner_private_key" {
+  type      = string
+  sensitive = true
+  ephemeral = true
+}
+
+# Register the public key with AWS
 resource "aws_key_pair" "provisioner" {
   key_name   = "temp-provisioner-${var.deployment_id}"
-  public_key = ephemeral.tls_private_key.provisioner.public_key_openssh
+  public_key = var.provisioner_public_key
 }
 
 resource "aws_instance" "web" {
@@ -33,8 +37,8 @@ resource "aws_instance" "web" {
   connection {
     type        = "ssh"
     user        = "ubuntu"
-    # Private key is ephemeral - not stored in state
-    private_key = ephemeral.tls_private_key.provisioner.private_key_openssh
+    # Private key is ephemeral - not stored in state or plan
+    private_key = var.provisioner_private_key
     host        = self.public_ip
   }
 
@@ -64,7 +68,7 @@ resource "aws_instance" "app" {
   connection {
     type        = "ssh"
     user        = "ec2-user"
-    # Key fetched from Vault, not stored in state
+    # Key fetched from Vault, not stored in state or plan
     private_key = ephemeral.vault_kv_secret_v2.ssh_key.data["private_key"]
     host        = self.private_ip
   }
@@ -90,7 +94,7 @@ resource "aws_instance" "windows" {
   connection {
     type     = "winrm"
     user     = "Administrator"
-    # Password ephemeral - not in state
+    # Password ephemeral - not in state or plan
     password = jsondecode(
       ephemeral.aws_secretsmanager_secret_version.windows_admin.secret_string
     ).password
@@ -148,26 +152,31 @@ resource "aws_instance" "private_server" {
 }
 ```
 
-## Dynamic SSH Key Generation per Deployment
+## Dynamic Key Pair Registration per Deployment
 
 ```hcl
-# Generate unique key per deployment for maximum security
+# Use a unique key pair name per deployment
+variable "deploy_public_key" {
+  type = string
+}
+
+variable "deploy_private_key" {
+  type      = string
+  sensitive = true
+  ephemeral = true
+}
+
 resource "terraform_data" "deployment_id" {
-  input = uuid()
+  input = var.deployment_id
 }
 
-ephemeral "tls_private_key" "deploy" {
-  algorithm = "RSA"
-  rsa_bits  = 4096
-}
-
-# Temporary key pair - add to instance at creation
+# Register the public key with AWS for this deployment
 resource "aws_key_pair" "deploy" {
   key_name   = "deploy-${terraform_data.deployment_id.output}"
-  public_key = ephemeral.tls_private_key.deploy.public_key_openssh
+  public_key = var.deploy_public_key
 
   lifecycle {
-    # Clean up key pair after deployment
+    # Register the replacement key pair before removing the old one
     create_before_destroy = true
   }
 }
@@ -180,7 +189,7 @@ resource "aws_instance" "configured" {
   connection {
     type        = "ssh"
     user        = "ubuntu"
-    private_key = ephemeral.tls_private_key.deploy.private_key_openssh
+    private_key = var.deploy_private_key
     host        = self.public_ip
     timeout     = "5m"
   }
@@ -193,7 +202,7 @@ resource "aws_instance" "configured" {
 }
 ```
 
-## Null Resource with Ephemeral Connection
+## terraform_data with Ephemeral Connection
 
 ```hcl
 # Run configuration after instance is ready
@@ -229,4 +238,4 @@ resource "terraform_data" "configure_instance" {
 
 ## Conclusion
 
-Using ephemeral values in connection blocks prevents SSH private keys and passwords from being written to the state file - a critical security improvement. Every time OpenTofu runs, it fetches fresh credentials from your secrets management system, uses them for provisioning, and discards them. This approach works well with secrets rotation, as each deployment automatically picks up current credentials. Combine ephemeral SSH keys with short-lived key pairs (deleted after provisioning) for maximum security in production environments.
+Using ephemeral values in connection blocks prevents SSH private keys and passwords from being written to the state or plan - a critical security improvement. When OpenTofu needs connection credentials during provisioning, it can fetch or accept them ephemerally, use them, and discard them. This approach works well with secrets rotation, as each deployment automatically picks up current credentials from your secrets management system or ephemeral input values. Combine ephemeral connection credentials with short-lived key pairs for maximum security in production environments. Also note that resource-level connection blocks do not automatically trigger provisioner log suppression, so avoid logging credential material from your provisioners.
