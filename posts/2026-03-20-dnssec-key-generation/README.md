@@ -1,30 +1,30 @@
-# How to Generate DNSSEC Keys for IPv6 Zones
+# How to Generate DNSSEC Keys for Zones with IPv6 Records
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
 Tags: DNSSEC, Key Generation, BIND, OpenDNSSEC, DNS Security, IPv6
 
-Description: Generate DNSSEC Zone Signing Keys (ZSK) and Key Signing Keys (KSK) for IPv6 DNS zones using dnssec-keygen and OpenDNSSEC with modern algorithm selection.
+Description: Generate DNSSEC Zone Signing Keys (ZSK) and Key Signing Keys (KSK) for DNS zones that contain IPv6 (AAAA) records using dnssec-keygen and OpenDNSSEC with modern algorithm selection.
 
 ## Key Types and Roles
 
 | Key Type | Purpose | Size | Rotation |
 |---|---|---|---|
 | ZSK (Zone Signing Key) | Signs zone records (A, AAAA, MX, etc.) | 256-bit ECDSA | Every 90 days |
-| KSK (Key Signing Key) | Signs the ZSK (DNSKEY record) | 256-bit ECDSA | Every 1-2 years |
+| KSK (Key Signing Key) | Signs the DNSKEY RRset | 256-bit ECDSA | Every 1-2 years |
 
-The KSK creates a trust anchor chain: parent zone has DS record → DS points to KSK → KSK signs DNSKEY → DNSKEY contains ZSK → ZSK signs zone records.
+The KSK creates a trust anchor chain: parent zone has DS record → DS points to KSK → KSK signs the DNSKEY RRset (which contains the KSK and ZSK) → ZSK signs zone records.
 
 ## Algorithm Selection
 
 | Algorithm | Number | Size | Recommendation |
 |---|---|---|---|
-| ECDSAP256SHA256 | 13 | 256-bit | Recommended (fast, small) |
+| ECDSAP256SHA256 | 13 | 256-bit | Recommended for new deployments |
 | ECDSAP384SHA384 | 14 | 384-bit | Higher security |
-| Ed25519 | 15 | 256-bit | Modern, very fast |
+| Ed25519 | 15 | 256-bit | Recommended where supported |
 | RSASHA256 | 8 | 2048-bit | Legacy, still common |
 
-ECDSA algorithms produce smaller keys and signatures than RSA, which reduces DNS response sizes - important for IPv6 zones with large AAAA records.
+ECDSA algorithms produce smaller keys and signatures than RSA, which reduces DNS response sizes - important for zones with large AAAA records.
 
 ## Generating Keys with dnssec-keygen
 
@@ -72,7 +72,7 @@ cat Kexample.com.+013+YYYYY.key
 ## Generating Ed25519 Keys (Modern)
 
 ```bash
-# Ed25519 - algorithm 15, fastest signing
+# Ed25519 - algorithm 15, compact DNSKEY and signatures
 # Supported in BIND 9.12+, Knot DNS 2.7+
 
 # ZSK with Ed25519
@@ -111,12 +111,11 @@ dnssec-keygen \
                 <Denial>P14D</Denial>
             </Validity>
             <Jitter>PT12H</Jitter>
-            <InceptionOffset>-PT3600S</InceptionOffset>
+            <InceptionOffset>PT3600S</InceptionOffset>
         </Signatures>
 
         <Denial>
             <NSEC3>
-                <OptOut/>
                 <Resalt>P100D</Resalt>
                 <Hash>
                     <Algorithm>1</Algorithm>  <!-- SHA-1 for NSEC3 hash -->
@@ -164,12 +163,12 @@ dnssec-keygen \
 ```
 
 ```bash
-# OpenDNSSEC: add zone and generate keys
-ods-ksmutil zone add --zone example.com --policy default
-ods-ksmutil key generate --zone example.com --interval P1Y
+# OpenDNSSEC: import the policy and add the zone
+ods-enforcer policy import
+ods-enforcer zone add -z example.com -p default
 
 # List generated keys
-ods-ksmutil key list --zone example.com
+ods-enforcer key list -z example.com -d
 ```
 
 ## Key Security Best Practices
@@ -186,11 +185,12 @@ tar czf /secure-backup/example.com-keys-$(date +%Y%m%d).tar.gz \
 # Verify backup integrity
 sha256sum /secure-backup/example.com-keys-*.tar.gz
 
-# For production: store KSK private key in HSM (Hardware Security Module)
-# Using PKCS#11 interface
-dnssec-keygen -a ECDSAP256SHA256 -n ZONE -f KSK \
-    -E pkcs11 \
-    -s "pkcs11:token=example;object=ksk-key" \
+# For production: keep the KSK private key in an HSM and reference it from BIND
+# Using a PKCS#11 URI
+dnssec-keyfromlabel \
+    -a ECDSAP256SHA256 \
+    -l "pkcs11:token=example;object=ksk-key;pin-value=1234" \
+    -f KSK \
     example.com
 ```
 
@@ -206,10 +206,18 @@ KEY_DIR="/var/named/keys/${ZONE}"
 echo "=== DNSSEC Keys for ${ZONE} ==="
 echo ""
 
-for keyfile in ${KEY_DIR}/K${ZONE}.+*.key; do
+shopt -s nullglob
+keyfiles=("${KEY_DIR}"/K"${ZONE}".+*.key)
+
+if [ ${#keyfiles[@]} -eq 0 ]; then
+    echo "No DNSSEC public keys found in ${KEY_DIR}"
+    exit 1
+fi
+
+for keyfile in "${keyfiles[@]}"; do
     KEYID=$(basename "${keyfile}" .key | awk -F+ '{print $3}')
-    FLAGS=$(awk '{print $4}' "${keyfile}")
-    ALGO=$(awk '{print $6}' "${keyfile}")
+    FLAGS=$(awk '$1 !~ /^;/ && $3 == "DNSKEY" {print $4; exit}' "${keyfile}")
+    ALGO=$(awk '$1 !~ /^;/ && $3 == "DNSKEY" {print $6; exit}' "${keyfile}")
 
     case "${FLAGS}" in
         256) TYPE="ZSK" ;;
@@ -226,11 +234,11 @@ for keyfile in ${KEY_DIR}/K${ZONE}.+*.key; do
     esac
 
     echo "Key ID: ${KEYID} | Type: ${TYPE} | Algorithm: ${ALGO_NAME}"
-    ls -la "${KEY_DIR}/K${ZONE}.+*+${KEYID}."*
+    ls -la "${KEY_DIR}"/K"${ZONE}".+*+"${KEYID}".*
     echo ""
 done
 ```
 
 ## Conclusion
 
-DNSSEC key generation starts with choosing the right algorithm - ECDSAP256SHA256 (algorithm 13) is the current recommendation, offering small key sizes, fast signing, and wide support. Generate separate ZSK and KSK per zone using `dnssec-keygen`, using the `-f KSK` flag to mark key signing keys. Store private key files with strict permissions (600) and back them up immediately. For production deployments, use OpenDNSSEC for automated key lifecycle management or an HSM for KSK storage. Ed25519 (algorithm 15) is the most modern option for new deployments where all resolvers support it.
+DNSSEC key generation starts with choosing the right algorithm - ECDSAP256SHA256 (algorithm 13) is the current recommendation for new deployments, offering small key sizes and wide support. Generate separate ZSK and KSK per zone using `dnssec-keygen`, using the `-f KSK` flag to mark key signing keys. Store private key files with strict permissions (600) and back them up immediately. For production deployments, use OpenDNSSEC for automated key lifecycle management or an HSM for KSK storage. Ed25519 (algorithm 15) is a compact modern option where your signing tools, authoritative servers, and validators support it.
