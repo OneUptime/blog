@@ -8,7 +8,7 @@ Description: Learn how to configure DynamoDB server-side encryption with custome
 
 ## Introduction
 
-DynamoDB encrypts all data at rest by default using AWS-owned keys. For compliance requirements or key management control, you can use AWS-managed keys (aws/dynamodb) or customer-managed KMS keys (CMK). CMKs provide key rotation control, detailed CloudTrail audit logging, and the ability to revoke access by disabling the key.
+DynamoDB encrypts all data at rest by default using an AWS owned key. For compliance requirements or key management control, you can use the AWS managed key (`aws/dynamodb`) or a customer-managed key. Customer-managed keys provide key rotation control, detailed CloudTrail audit logging, and the ability to revoke access by disabling the key.
 
 ## Prerequisites
 
@@ -23,41 +23,6 @@ resource "aws_kms_key" "dynamodb" {
   deletion_window_in_days = 30
   enable_key_rotation     = true
 
-  policy = jsonencode({
-    Version = "2012-10-17"
-    Statement = [
-      {
-        Sid    = "Enable IAM User Permissions"
-        Effect = "Allow"
-        Principal = {
-          AWS = "arn:aws:iam::${data.aws_caller_identity.current.account_id}:root"
-        }
-        Action   = "kms:*"
-        Resource = "*"
-      },
-      {
-        Sid    = "Allow DynamoDB to use the key"
-        Effect = "Allow"
-        Principal = {
-          Service = "dynamodb.amazonaws.com"
-        }
-        Action = [
-          "kms:DescribeKey",
-          "kms:CreateGrant",
-          "kms:Decrypt",
-          "kms:GenerateDataKey"
-        ]
-        Resource = "*"
-        Condition = {
-          StringEquals = {
-            "kms:CallerAccount"   = data.aws_caller_identity.current.account_id
-            "kms:ViaService"      = "dynamodb.${var.region}.amazonaws.com"
-          }
-        }
-      }
-    ]
-  })
-
   tags = {
     Name    = "${var.project_name}-dynamodb-key"
     Purpose = "DynamoDB"
@@ -70,7 +35,7 @@ resource "aws_kms_alias" "dynamodb" {
 }
 ```
 
-## Step 2: Create DynamoDB Table with CMK Encryption
+## Step 2: Create DynamoDB Table with Customer-Managed Key Encryption
 
 ```hcl
 resource "aws_dynamodb_table" "encrypted" {
@@ -95,12 +60,12 @@ resource "aws_dynamodb_table" "encrypted" {
 
   tags = {
     Name      = "${var.project_name}-encrypted-table"
-    Encrypted = "CMK"
+    Encrypted = "CustomerManagedKey"
   }
 }
 ```
 
-## Step 3: Migrate Existing Table to CMK Encryption
+## Step 3: Migrate Existing Table to Customer-Managed Key Encryption
 
 ```bash
 # You can change encryption type for existing tables without downtime
@@ -118,7 +83,7 @@ aws dynamodb describe-table \
 ## Step 4: Grant Application Access to Encrypted Table
 
 ```hcl
-# Application IAM role needs both DynamoDB and KMS permissions
+# Application IAM role needs DynamoDB permissions and KMS permissions scoped to DynamoDB
 resource "aws_iam_role_policy" "app_dynamodb" {
   name = "dynamodb-encrypted-access"
   role = var.application_role_name
@@ -139,14 +104,22 @@ resource "aws_iam_role_policy" "app_dynamodb" {
         Resource = aws_dynamodb_table.encrypted.arn
       },
       {
-        # Required for operations on CMK-encrypted tables
+        # Required for DynamoDB to use the customer-managed key on this role's behalf
         Effect = "Allow"
         Action = [
-          "kms:GenerateDataKey",
+          "kms:Encrypt",
           "kms:Decrypt",
-          "kms:DescribeKey"
+          "kms:ReEncrypt*",
+          "kms:GenerateDataKey*",
+          "kms:DescribeKey",
+          "kms:CreateGrant"
         ]
         Resource = aws_kms_key.dynamodb.arn
+        Condition = {
+          StringLike = {
+            "kms:ViaService" = "dynamodb.*.amazonaws.com"
+          }
+        }
       }
     ]
   })
@@ -168,4 +141,4 @@ aws dynamodb describe-table \
 
 ## Conclusion
 
-Customer-managed KMS keys for DynamoDB provide the highest level of control over encryption, including the ability to audit all key usage via CloudTrail and revoke access by disabling the key. The encryption is transparent to applications-no code changes required-but applications need both DynamoDB and KMS permissions when using CMKs. Enable key rotation annually to limit the blast radius of key compromise.
+Customer-managed keys for DynamoDB provide the highest level of control over encryption, including the ability to audit key usage via CloudTrail and revoke access by disabling the key. The encryption is transparent to applications-no code changes required-but the IAM principals that create or access the table need both DynamoDB permissions and KMS permissions when using customer-managed keys. Enable automatic key rotation to limit the blast radius of key compromise.
