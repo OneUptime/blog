@@ -4,7 +4,7 @@ Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
 Tags: Epinio, .NET, Kubernetes, PaaS, CSharp
 
-Description: Build and deploy a .NET Core application to Kubernetes using Epinio's .NET buildpack.
+Description: Build and deploy an ASP.NET Core application to Kubernetes using Epinio and Paketo buildpacks.
 
 ## Introduction
 
@@ -14,8 +14,8 @@ How to Deploy a .NET Application with Epinio demonstrates how Epinio simplifies 
 
 - Epinio installed and accessible
 - Epinio CLI installed and logged in
+- A .NET SDK installed locally
 - An Epinio namespace created (`epinio namespace create my-apps`)
-- Application source code ready
 
 ## Step 1: Prepare Your Application
 
@@ -24,8 +24,8 @@ How to Deploy a .NET Application with Epinio demonstrates how Epinio simplifies 
 
 mkdir my-app && cd my-app
 
-# Initialize the application
-# (Language-specific initialization commands here)
+# Initialize a minimal ASP.NET Core app
+dotnet new web
 ```
 
 ## Step 2: Create the Application
@@ -33,34 +33,19 @@ mkdir my-app && cd my-app
 For this example, we'll create a simple web application:
 
 ```bash
-# Create main application file
-cat > app.sh << 'EOF'
-#!/bin/bash
-# Simple HTTP server for demonstration
-while true; do
-  echo -e "HTTP/1.1 200 OK\r\nContent-Type: text/plain\r\n\r\nHello from How to Deploy a .NET Application with Epinio!" | nc -l -p ${PORT:-8080}
-done
-EOF
-chmod +x app.sh
-```
+# Replace Program.cs with a minimal API
+cat > Program.cs << 'EOF'
+var builder = WebApplication.CreateBuilder(args);
+var app = builder.Build();
 
-For a language-specific example relevant to this guide:
+app.MapGet("/", () => new
+{
+  message = "Application deployed via Epinio",
+  framework = System.Runtime.InteropServices.RuntimeInformation.FrameworkDescription,
+  timestamp = System.DateTimeOffset.UtcNow
+});
 
-```bash
-# Node.js example
-cat > server.js << 'EOF'
-const http = require('http');
-const server = http.createServer((req, res) => {
-  res.writeHead(200, {'Content-Type': 'application/json'});
-  res.end(JSON.stringify({
-    message: 'Application deployed via Epinio',
-    runtime: process.version,
-    timestamp: new Date().toISOString()
-  }));
-});
-server.listen(process.env.PORT || 8080, () => {
-  console.log('Server started');
-});
+app.Run("http://0.0.0.0:8080");
 EOF
 ```
 
@@ -77,14 +62,16 @@ epinio namespace show my-apps
 ## Step 4: Deploy the Application
 
 ```bash
-# Push the application (Epinio auto-detects the runtime)
-epinio push --name my-app
+# Push the application (Epinio auto-detects the .NET app)
+epinio push --name my-app --path .
 
 # Or specify options explicitly
+# Make sure the custom route resolves to your Epinio ingress.
 epinio push \
   --name my-app \
+  --path . \
   --instances 2 \
-  --route my-app.epinio.example.com
+  --route my-app.example.com
 ```
 
 During push, Epinio will:
@@ -93,7 +80,7 @@ During push, Epinio will:
 3. Run the appropriate buildpack
 4. Build a container image
 5. Deploy to Kubernetes
-6. Configure routing and TLS
+6. Configure routing and the related TLS resources
 
 ## Step 5: Verify the Deployment
 
@@ -104,21 +91,21 @@ epinio app show my-app
 # List all applications in namespace
 epinio app list
 
-# View the application route
-epinio app show my-app | grep Routes
+# Print the first application route
+epinio app show my-app | awk '/^[[:space:]]*[0-9]+: https?:\\/\\// {print $2; exit}'
 ```
 
 ## Step 6: Test the Application
 
 ```bash
 # Get the application URL
-APP_URL=$(epinio app show my-app | grep Routes | awk '{print $2}')
+APP_URL=$(epinio app show my-app | awk '/^[[:space:]]*[0-9]+: https?:\\/\\// {print $2; exit}')
 
 # Test with curl
-curl ${APP_URL}
+curl "${APP_URL}"
 
-# Or open in browser
-open ${APP_URL}
+# Print the URL so you can open it in a browser
+echo "${APP_URL}"
 ```
 
 ## Step 7: View Application Logs
@@ -136,9 +123,9 @@ epinio app logs my-app --follow
 ```bash
 # Make changes to your application code
 # Then re-push to update
-epinio push --name my-app
+epinio push --name my-app --path .
 
-# Epinio performs a rolling update
+# Epinio rebuilds and redeploys the application
 epinio app show my-app
 ```
 
@@ -172,4 +159,4 @@ epinio app delete my-app
 
 ## Conclusion
 
-How to Deploy a .NET Application with Epinio with Epinio demonstrates how the platform removes barriers between development and deployment. The simple push workflow means developers can deploy any application to Kubernetes without writing YAML or understanding container orchestration. Epinio's buildpack system automatically detects the runtime, installs dependencies, and creates an optimized container image.
+How to Deploy a .NET Application with Epinio demonstrates how the platform removes barriers between development and deployment. The simple push workflow means developers can deploy supported applications to Kubernetes without writing YAML or understanding container orchestration. Epinio uses Cloud Native Buildpacks to detect the application type, install dependencies, and build a container image.
