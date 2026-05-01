@@ -20,7 +20,7 @@ variable "nsg_security_rules" {
     priority                   = number
     direction                  = string  # Inbound or Outbound
     access                     = string  # Allow or Deny
-    protocol                   = string  # Tcp, Udp, Icmp, *
+    protocol                   = string  # Tcp, Udp, Icmp, Esp, Ah, *
     source_port_range          = string
     destination_port_range     = string
     source_address_prefix      = string
