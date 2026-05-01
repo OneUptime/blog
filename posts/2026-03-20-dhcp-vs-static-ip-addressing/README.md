@@ -13,8 +13,8 @@ Description: DHCP automates IP assignment for client devices while static IP pro
 | Configuration | Automatic | Manual |
 | Address stability | May change on renewal | Always the same |
 | Management overhead | Low (central server) | High (per device) |
-| DNS entry stability | Requires dynamic DNS | Fixed |
-| Failure mode | DHCP server outage = no IP | No single point of failure |
+| DNS entry stability | Usually needs DNS updates or reservations | Fixed |
+| Failure mode | Outage can block new leases or renewals | No DHCP server dependency |
 | Best for | Client devices, IoT, laptops | Servers, routers, printers |
 
 ## When to Use DHCP
@@ -53,7 +53,7 @@ def ip_strategy(device_type: str) -> str:
     static_devices = {"server", "router", "firewall", "dns", "ntp"}
 
     device_lower = device_type.lower()
-    if device_lower in dhcp_devices:
+    if device_lower in dhcp_devices or device_lower.startswith("iot"):
         return "DHCP (dynamic)"
     elif device_lower in reservation_devices:
         return "DHCP Reservation (fixed via DHCP)"
@@ -70,5 +70,5 @@ for device in ["laptop", "server", "printer", "router", "iot_sensor", "web_app"]
 
 - DHCP for client devices; static or reservation for servers and infrastructure.
 - DHCP reservations are the best practice for shared devices (printers, cameras) that need a predictable IP without manual configuration.
-- A DHCP server outage affects only DHCP clients; static IP devices are unaffected.
+- A DHCP server outage primarily affects clients that need a new lease or whose lease expires; static IP devices are unaffected by DHCP availability.
 - Maintain an IPAM database regardless of which method you use.
