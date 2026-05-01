@@ -30,7 +30,7 @@ docker login registry.example.com
 docker pull registry.example.com/private/image:tag
 ```
 
-In Portainer: **Images > Pull image** - enter the image name and tag, optionally select a registry.
+In Portainer: **Images** - select the registry, enter the image name, and click **Pull the image**. Use **Advanced mode** for a custom registry URL and port.
 
 ## Build Images
 
@@ -45,7 +45,7 @@ docker build -f Dockerfile.prod -t myapp:prod .
 docker build --build-arg NODE_ENV=production -t myapp:prod .
 ```
 
-In Portainer: **Images > Build image** - paste Dockerfile content or upload a file.
+In Portainer: **Images > Build a new image** - use the web editor to paste Dockerfile content or upload a Dockerfile file.
 
 ## Import/Export Images
 
@@ -58,6 +58,8 @@ docker save myapp:latest | gzip > myapp-latest.tar.gz
 docker load < myapp-latest.tar
 docker load -i myapp-latest.tar.gz
 ```
+
+In Portainer: **Images > select the image > Export this image** to download a tar archive. To import an image, use **Images > Import** and upload a `.tar`, `.tar.gz`, `.tar.bz2`, or `.tar.xz` file.
 
 ## Tag Images
 
@@ -76,7 +78,7 @@ docker push registry.example.com/myapp:v2.0.0
 # Remove a specific image
 docker rmi myapp:old
 
-# Remove all dangling images (untagged layers)
+# Remove all dangling images
 docker image prune
 
 # Remove all unused images (not referenced by any container)
@@ -89,8 +91,8 @@ docker system df
 ## Identify Outdated Images
 
 ```bash
-# Check if a newer digest exists for an image
-docker pull nginx:latest 2>&1 | grep -E "Pull complete|up to date"
+# Pull the tag again to see whether Docker downloads a newer image
+docker pull nginx:latest
 
 # View image creation date
 docker inspect nginx:latest --format '{{.Created}}'
