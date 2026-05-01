@@ -1,14 +1,14 @@
-# How to Bind Services to Applications in Epinio
+# How to Deploy Applications in Epinio
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
-Tags: Epinio, Service, Kubernetes, PaaS, Database
+Tags: Epinio, Kubernetes, PaaS, Buildpacks, Deployment
 
-Description: Connect databases and other services to Epinio applications using service bindings for seamless integration.
+Description: Deploy applications to Kubernetes with Epinio using its simple push workflow and buildpack-based staging.
 
 ## Introduction
 
-How to Bind Services to Applications in Epinio demonstrates how Epinio simplifies application deployment to Kubernetes. Epinio abstracts away Kubernetes complexity, letting developers focus on code while the platform handles containerization, deployment, and routing automatically.
+How to Deploy Applications in Epinio demonstrates how Epinio simplifies application deployment to Kubernetes. Epinio abstracts away Kubernetes complexity, letting developers focus on code while the platform handles containerization, deployment, and routing automatically.
 
 ## Prerequisites
 
@@ -31,20 +31,6 @@ mkdir my-app && cd my-app
 ## Step 2: Create the Application
 
 For this example, we'll create a simple web application:
-
-```bash
-# Create main application file
-cat > app.sh << 'EOF'
-#!/bin/bash
-# Simple HTTP server for demonstration
-while true; do
-  echo -e "HTTP/1.1 200 OK\r\nContent-Type: text/plain\r\n\r\nHello from How to Bind Services to Applications in Epinio!" | nc -l -p ${PORT:-8080}
-done
-EOF
-chmod +x app.sh
-```
-
-For a language-specific example relevant to this guide:
 
 ```bash
 # Node.js example
@@ -83,8 +69,8 @@ epinio push --name my-app
 # Or specify options explicitly
 epinio push \
   --name my-app \
-  --instances 2 \
-  --route my-app.epinio.example.com
+  --path . \
+  --instances 2
 ```
 
 During push, Epinio will:
@@ -105,20 +91,20 @@ epinio app show my-app
 epinio app list
 
 # View the application route
-epinio app show my-app | grep Routes
+epinio app show my-app | awk '/Routes:/{getline; print}'
 ```
 
 ## Step 6: Test the Application
 
 ```bash
 # Get the application URL
-APP_URL=$(epinio app show my-app | grep Routes | awk '{print $2}')
+APP_URL=$(epinio app show my-app | awk '/Routes:/{getline; print $2}')
 
 # Test with curl
-curl ${APP_URL}
+curl "$APP_URL"
 
-# Or open in browser
-open ${APP_URL}
+# Print the URL and open it in your browser
+echo "$APP_URL"
 ```
 
 ## Step 7: View Application Logs
@@ -128,7 +114,7 @@ open ${APP_URL}
 epinio app logs my-app
 
 # Follow live logs
-epinio app logs my-app --follow
+epinio app logs --follow my-app
 ```
 
 ## Step 8: Update the Application
@@ -138,7 +124,7 @@ epinio app logs my-app --follow
 # Then re-push to update
 epinio push --name my-app
 
-# Epinio performs a rolling update
+# Epinio restages and redeploys the application
 epinio app show my-app
 ```
 
@@ -172,4 +158,4 @@ epinio app delete my-app
 
 ## Conclusion
 
-How to Bind Services to Applications in Epinio with Epinio demonstrates how the platform removes barriers between development and deployment. The simple push workflow means developers can deploy any application to Kubernetes without writing YAML or understanding container orchestration. Epinio's buildpack system automatically detects the runtime, installs dependencies, and creates an optimized container image.
+How to Deploy Applications in Epinio with Epinio demonstrates how the platform removes barriers between development and deployment. The simple push workflow means developers can deploy supported applications to Kubernetes without writing YAML or understanding container orchestration. Epinio's buildpack system automatically detects the runtime, installs dependencies when needed, and creates a container image for the application.
