@@ -68,14 +68,16 @@ kubectl config view --minify | grep namespace
 kubectl config set-context --current --namespace=default
 ```
 
-## Portainer Namespace Visibility Modes
+## Portainer Namespace Access
 
-Portainer has two modes for namespace visibility:
+Portainer namespace visibility is controlled by roles and namespace assignments, not by a shared or isolated visibility toggle.
 
-- **Shared mode**: Users see all namespaces they have access to.
-- **Isolated mode**: Users only see their own namespaces.
+- **Environment administrators** can access the full environment.
+- **Operators** and **Helpdesk** users can access all non-system namespaces.
+- **Standard** and **Read-Only** users typically see the `default` namespace plus any namespaces assigned to them.
+- **Namespace Operator** users are limited to the namespaces assigned to them.
 
-Configure this in **Environments > Edit > Namespace access mode**.
+Manage namespace access from **Namespaces > Manage access**. Kubernetes RBAC must be enabled for namespace access control to work in Portainer.
 
 ## Filtering Events by Namespace
 
@@ -83,12 +85,11 @@ When debugging, filtering events by namespace is critical:
 
 ```bash
 # View recent events in a specific namespace
-kubectl get events --namespace=production \
-  --sort-by='.lastTimestamp' | tail -20
+kubectl events --namespace=production
 
 # Filter events by type
-kubectl get events --namespace=production \
-  --field-selector=type=Warning
+kubectl events --namespace=production \
+  --types=Warning
 ```
 
 ## Conclusion
