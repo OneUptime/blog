@@ -83,9 +83,9 @@ resource "aws_rds_cluster" "main" {
 }
 ```
 
-## Important Limitation: No Interpolation of Other Resources
+## Important Limitation: No References to Other Resources or Data Sources
 
-Destroy-time provisioners cannot reference other resources or data sources-only `self` references are allowed. This is because during destroy, other resources may have already been removed from state:
+Destroy-time provisioners should avoid direct references to other resources or data sources. Use `self` for the resource being destroyed, and pass in any additional context through variables instead:
 
 ```hcl
 provisioner "remote-exec" {
@@ -103,9 +103,9 @@ provisioner "remote-exec" {
 provisioner "local-exec" {
   when = destroy
 
-  # INVALID: Cannot reference other resources
+  # INVALID: Avoid referencing other resources directly during destroy
   # command = "deregister --cluster=${aws_ecs_cluster.main.name} --service=${self.id}"
-  # Use variables instead
+  # Pass the needed value in via a variable instead
   command = "deregister --cluster=${var.cluster_name} --service=${self.id}"
 }
 ```
@@ -122,14 +122,14 @@ provisioner "remote-exec" {
   on_failure = continue
 
   inline = [
-    "sudo /opt/app/graceful-shutdown.sh || true",
+    "sudo /opt/app/graceful-shutdown.sh",
   ]
 }
 ```
 
-## Destroy-Time Provisioners with `terraform destroy`
+## Destroy-Time Provisioners with `tofu destroy`
 
-Destroy-time provisioners run during `tofu destroy`, `tofu apply` when a resource is being replaced, and when you manually taint and re-apply a resource.
+Destroy-time provisioners run during `tofu destroy` and during `tofu apply` when a resource is being replaced. However, they do not run for tainted resources, and they do not run during replacement if `create_before_destroy = true`.
 
 ## Conclusion
 
