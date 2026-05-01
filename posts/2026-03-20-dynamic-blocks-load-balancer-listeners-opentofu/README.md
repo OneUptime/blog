@@ -21,9 +21,9 @@ variable "listener_rules" {
     target_group_arn = string
   }))
   default = [
-    { priority = 10, path_prefix = "/api/*",     target_group_arn = "" },
-    { priority = 20, path_prefix = "/admin/*",   target_group_arn = "" },
-    { priority = 30, path_prefix = "/static/*",  target_group_arn = "" }
+    { priority = 10, path_prefix = "/api/*",     target_group_arn = "arn:aws:elasticloadbalancing:us-east-1:123456789012:targetgroup/api/1234567890abcdef" },
+    { priority = 20, path_prefix = "/admin/*",   target_group_arn = "arn:aws:elasticloadbalancing:us-east-1:123456789012:targetgroup/admin/1234567890abcdef" },
+    { priority = 30, path_prefix = "/static/*",  target_group_arn = "arn:aws:elasticloadbalancing:us-east-1:123456789012:targetgroup/static/1234567890abcdef" }
   ]
 }
 
@@ -58,8 +58,8 @@ variable "weighted_targets" {
     weight           = number
   }))
   default = [
-    { target_group_arn = "", weight = 90 },  # Stable version
-    { target_group_arn = "", weight = 10 }   # Canary version
+    { target_group_arn = "arn:aws:elasticloadbalancing:us-east-1:123456789012:targetgroup/stable/1234567890abcdef", weight = 90 },  # Stable version
+    { target_group_arn = "arn:aws:elasticloadbalancing:us-east-1:123456789012:targetgroup/canary/1234567890abcdef", weight = 10 }   # Canary version
   ]
 }
 
