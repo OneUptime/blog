@@ -87,7 +87,7 @@ metadata:
   namespace: dev-alice
 subjects:
   - kind: User
-    name: alice@example.com    # Rancher username or SSO identity
+    name: alice@example.com    # Authenticated username used by the cluster
     apiGroup: rbac.authorization.k8s.io
 roleRef:
   kind: ClusterRole
@@ -97,7 +97,7 @@ roleRef:
 
 ## Step 5: Apply Network Policy
 
-Isolate development namespaces from production:
+Assuming your CNI plugin supports NetworkPolicy enforcement, restrict outbound traffic from development namespaces:
 
 ```yaml
 # dev-network-policy.yaml
@@ -121,18 +121,20 @@ spec:
     - ports:
         - port: 53        # Allow DNS
           protocol: UDP
+        - port: 53
+          protocol: TCP
 ```
 
 ## Step 6: Automate with Rancher Projects
 
-In Rancher UI, create a Project called "Development" and add all dev namespaces to it. Configure project-level resource quotas that apply automatically to all member namespaces.
+In Rancher UI, create a Project called "Development" and add all dev namespaces to it. Configure a project-level resource quota with both a Project Limit for the whole project and a Namespace Default Limit that Rancher propagates to namespaces in the project.
 
 ```bash
-# Via Rancher API - assign namespace to project
+# Via kubectl - assign an existing namespace to a Rancher project
 kubectl annotate namespace dev-alice \
   field.cattle.io/projectId="c-m-abc123:p-xxxxx"
 ```
 
 ## Conclusion
 
-Development namespaces in Rancher balance isolation with access. Resource quotas prevent individual developers from consuming shared cluster resources, RBAC limits access to appropriate namespaces, and network policies ensure development traffic doesn't accidentally reach production services.
+Development namespaces in Rancher balance isolation with access. Resource quotas prevent individual developers from consuming shared cluster resources, RBAC limits access to appropriate namespaces, and network policies help ensure development traffic doesn't accidentally reach production services.
