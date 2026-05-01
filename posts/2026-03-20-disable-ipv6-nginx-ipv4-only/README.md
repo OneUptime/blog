@@ -4,11 +4,11 @@ Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
 Tags: Linux, Nginx, IPv4, IPv6, Web Server, Networking
 
-Description: Disable IPv6 in Nginx configuration and force it to accept connections only over IPv4 by removing IPv6 listen directives and optionally disabling IPv6 at the OS level.
+Description: Disable IPv6 in Nginx configuration and force it to accept connections only over IPv4 by removing IPv6 listen directives and optionally disabling IPv6 on interfaces at the OS level.
 
 ## Introduction
 
-Nginx listens on IPv6 when `listen [::]:80` directives are present. Removing these directives forces IPv4-only operation. For a complete IPv6 disable, also remove IPv6 from OS-level network configuration. This is useful in environments where IPv6 is not deployed or not desired.
+Nginx listens on IPv6 when `listen [::]:80` directives are present. Removing these directives forces IPv4-only operation. For a broader system-wide IPv6 disable, also change the OS-level IPv6 configuration. This is useful in environments where IPv6 is not deployed or not desired.
 
 ## Remove IPv6 Listen Directives
 
@@ -104,7 +104,7 @@ server {
 ## System-Wide IPv6 Disable (Optional)
 
 ```bash
-# This prevents any process (including Nginx) from using IPv6
+# This disables IPv6 on interfaces system-wide
 cat > /etc/sysctl.d/99-no-ipv6.conf << 'EOF'
 net.ipv6.conf.all.disable_ipv6 = 1
 net.ipv6.conf.default.disable_ipv6 = 1
@@ -128,4 +128,4 @@ curl -4 https://example.com/
 
 ## Conclusion
 
-Disable IPv6 in Nginx by removing all `listen [::]:` directives from server blocks. Only IPv4 `listen` directives should remain. Verify with `ss -6tlnp | grep nginx` (expect no output) and `ss -4tlnp | grep nginx` (expect listening ports). For a complete system-wide disable, also set `net.ipv6.conf.all.disable_ipv6=1` via sysctl.
+Disable IPv6 in Nginx by removing all `listen [::]:` directives from server blocks. Only IPv4 `listen` directives should remain. Verify with `ss -6tlnp | grep nginx` (expect no output) and `ss -4tlnp | grep nginx` (expect listening ports). For a broader system-wide IPv6 disable, also apply the `disable_ipv6` sysctl settings shown above.
