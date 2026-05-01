@@ -62,7 +62,7 @@ sudo tcpdump -i eth0 host 10.0.0.5 and \(port 80 or port 443\)
 sudo tcpdump -i eth0 src net 10.0.0.0/24 and dst port 80
 
 # Database traffic from app servers to DB
-sudo tcpdump -i eth0 src net 10.0.1.0/24 and dst 10.0.2.5 and port 5432
+sudo tcpdump -i eth0 src net 10.0.1.0/24 and dst 10.0.2.5 and dst port 5432
 ```
 
 ---
@@ -79,7 +79,7 @@ sudo tcpdump -i eth0 ip6
 # IPv6 from a specific host
 sudo tcpdump -i eth0 ip6 and src 2001:db8::10
 
-# IPv6 to a specific network
+# IPv6 to/from a specific network
 sudo tcpdump -i eth0 ip6 and net 2001:db8::/32
 ```
 
@@ -89,15 +89,15 @@ sudo tcpdump -i eth0 ip6 and net 2001:db8::/32
 
 ```bash
 # TCP from a host
-sudo tcpdump -i eth0 tcp and host 10.0.0.5
+sudo tcpdump -i eth0 tcp and src 10.0.0.5
 
 # UDP from a host
 sudo tcpdump -i eth0 udp and src 10.0.0.5
 
 # ICMP from a host
-sudo tcpdump -i eth0 icmp and host 10.0.0.5
+sudo tcpdump -i eth0 icmp and src 10.0.0.5
 
-# Non-TCP from a host (UDP + ICMP)
+# Non-TCP traffic to/from a host
 sudo tcpdump -i eth0 not tcp and host 10.0.0.5
 ```
 
@@ -109,7 +109,7 @@ sudo tcpdump -i eth0 not tcp and host 10.0.0.5
 # Don't resolve IPs or port names (faster, clearer)
 sudo tcpdump -i eth0 -nn host 10.0.0.5
 
-# Show full packet content as hex + ASCII
+# Show packet contents as hex + ASCII (including link-level header)
 sudo tcpdump -i eth0 -XX host 10.0.0.5
 
 # Show verbose output
@@ -131,25 +131,25 @@ tcpdump -r /tmp/capture.pcap -nn host 10.0.0.5
 
 ```bash
 # Debug: Is traffic reaching the server?
-sudo tcpdump -i eth0 -nn dst 10.0.0.5 and port 8080
+sudo tcpdump -i eth0 -nn dst 10.0.0.5 and dst port 8080
 
 # Debug: What is the server responding with?
-sudo tcpdump -i eth0 -nn src 10.0.0.5 and port 8080
+sudo tcpdump -i eth0 -nn src 10.0.0.5 and src port 8080
 
-# Debug: TLS handshake failures
+# Debug: TCP connection attempts on 443
 sudo tcpdump -i eth0 -nn host 10.0.0.5 and port 443 and \
-  'tcp[13] & 2 != 0'  # SYN packets
+  'tcp[13] & 2 != 0'  # packets with the SYN bit set
 
 # Monitor database connections from app tier
 sudo tcpdump -i eth0 -nn \
-  src net 10.0.1.0/24 and dst 10.0.2.10 and port 5432
+  src net 10.0.1.0/24 and dst 10.0.2.10 and dst port 5432
 
 # Watch for connection resets
 sudo tcpdump -i eth0 -nn \
   'tcp[tcpflags] & (tcp-rst) != 0' and host 10.0.0.5
 
 # Monitor DNS queries from a specific host
-sudo tcpdump -i eth0 -nn src 10.0.0.5 and udp port 53
+sudo tcpdump -i eth0 -nn src 10.0.0.5 and udp dst port 53
 ```
 
 ---
@@ -174,7 +174,7 @@ sudo tcpdump -i eth0 -nn src 10.0.0.5 and udp port 53
 1. **Always use `-nn`** - skips DNS resolution for faster output and clearer IPs
 2. **Save to file with `-w`** for complex analysis in Wireshark
 3. **Limit capture size** with `-c 1000` to avoid filling disk
-4. **Use `-s 0`** to capture full packet payload: `tcpdump -s 0 -i eth0 host X`
+4. **Use `-s 0`** to use tcpdump's default 262144-byte snaplen and avoid truncated captures: `tcpdump -s 0 -i eth0 host X`
 5. **Run as root or with sudo** - pcap requires privileged access
 
 ---
