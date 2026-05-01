@@ -43,20 +43,16 @@ fi
 from scapy.all import ARP, Ether, srp
 
 def detect_duplicate_ip(target_ip, iface='eth0'):
-    """Send gratuitous ARP and collect all replies to find duplicates."""
-    pkt = Ether(dst='ff:ff:ff:ff:ff:ff') / ARP(
-        op=1,
-        psrc=target_ip,   # Sender IP = target (gratuitous)
-        pdst=target_ip    # Target IP = same
-    )
+    """Send an ARP request and collect replies for a target IP."""
+    pkt = Ether(dst='ff:ff:ff:ff:ff:ff') / ARP(pdst=target_ip)
     results, _ = srp(pkt, timeout=2, iface=iface, verbose=False)
     
-    macs = [rcv[ARP].hwsrc for _, rcv in results]
+    macs = sorted({rcv[ARP].hwsrc for _, rcv in results})
     
     if len(macs) == 0:
-        print(f"{target_ip}: No host found")
+        print(f"{target_ip}: No ARP reply received")
     elif len(macs) == 1:
-        print(f"{target_ip}: Owned by {macs[0]}")
+        print(f"{target_ip}: Reply from {macs[0]}")
     else:
         print(f"DUPLICATE IP DETECTED: {target_ip}")
         for mac in macs:
@@ -69,15 +65,16 @@ detect_duplicate_ip('192.168.1.50')
 
 ```bash
 #!/bin/bash
-# Detect MAC flapping in ARP table (sign of duplicate IPs)
-PREV=""
+# Detect IP-to-MAC changes in the ARP table (possible duplicate IPs)
+declare -A PREV
 while true; do
-    CURR=$(ip neigh show | awk '{print $1, $5}' | sort)
-    if [ -n "$PREV" ] && [ "$CURR" != "$PREV" ]; then
-        echo "$(date): ARP table changed!"
-        diff <(echo "$PREV") <(echo "$CURR")
-    fi
-    PREV="$CURR"
+    while read -r ip mac; do
+        if [ -n "${PREV[$ip]}" ] && [ "${PREV[$ip]}" != "$mac" ]; then
+            echo "$(date): Possible duplicate IP for $ip"
+            echo "  was ${PREV[$ip]}, now $mac"
+        fi
+        PREV["$ip"]="$mac"
+    done < <(ip neigh show | awk '/lladdr/ {print $1, $5}')
     sleep 5
 done
 ```
@@ -96,26 +93,23 @@ Wireshark automatically flags ARP packets where the same IP claims different MAC
 
 ```python
 from scapy.all import ARP, Ether, srp
-import ipaddress
 from collections import defaultdict
 
 def scan_for_duplicates(subnet='192.168.1.0/24', iface='eth0'):
-    """ARP scan entire subnet and report duplicate IPs."""
-    network = ipaddress.ip_network(subnet)
-    
+    """ARP scan a subnet and report IPs answered by multiple MAC addresses."""
     # Broadcast ARP request to entire subnet
-    pkt = Ether(dst='ff:ff:ff:ff:ff:ff') / ARP(pdst=str(subnet))
+    pkt = Ether(dst='ff:ff:ff:ff:ff:ff') / ARP(pdst=subnet)
     results, _ = srp(pkt, timeout=3, iface=iface, verbose=False)
     
-    ip_mac = defaultdict(list)
+    ip_mac = defaultdict(set)
     for _, rcv in results:
-        ip_mac[rcv[ARP].psrc].append(rcv[ARP].hwsrc)
+        ip_mac[rcv[ARP].psrc].add(rcv[ARP].hwsrc)
     
     for ip, macs in ip_mac.items():
         if len(macs) > 1:
-            print(f"DUPLICATE: {ip} claimed by: {', '.join(set(macs))}")
+            print(f"DUPLICATE: {ip} claimed by: {', '.join(sorted(macs))}")
         else:
-            print(f"OK: {ip} → {macs[0]}")
+            print(f"OK: {ip} → {next(iter(macs))}")
 
 scan_for_duplicates('192.168.1.0/24')
 ```
@@ -125,7 +119,7 @@ scan_for_duplicates('192.168.1.0/24')
 1. Identify both hosts claiming the IP (using the methods above)
 2. Determine which host should own the IP
 3. On the conflicting host: change IP or enable DHCP
-4. Clear ARP cache on affected hosts: `ip neigh flush all`
+4. Clear ARP cache on affected hosts: `ip -4 neigh flush all`
 5. Add static DHCP reservations to prevent recurrence
 
 ## Key Takeaways
