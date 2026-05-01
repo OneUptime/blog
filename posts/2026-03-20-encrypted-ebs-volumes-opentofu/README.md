@@ -8,7 +8,7 @@ Description: Learn how to create encrypted EBS volumes using AWS KMS customer-ma
 
 ## Introduction
 
-EBS encryption uses AWS KMS to encrypt data at rest, data in transit between the instance and the volume, snapshots, and volumes restored from snapshots. You can use AWS-managed keys or customer-managed KMS keys (CMKs) for greater control over key policies and rotation.
+EBS encryption uses AWS KMS to encrypt data at rest, data in transit between the instance and the volume, snapshots, and volumes restored from snapshots. You can use the AWS managed key for EBS (`aws/ebs`) or a customer-managed KMS key for greater control over key policies and rotation.
 
 ## Prerequisites
 
@@ -27,35 +27,6 @@ resource "aws_kms_key" "ebs" {
   # Enable automatic annual key rotation
   enable_key_rotation = true
 
-  # Key policy granting EC2 service access for EBS operations
-  policy = jsonencode({
-    Version = "2012-10-17"
-    Statement = [
-      {
-        Sid    = "Enable IAM User Permissions"
-        Effect = "Allow"
-        Principal = {
-          AWS = "arn:aws:iam::${data.aws_caller_identity.current.account_id}:root"
-        }
-        Action   = "kms:*"
-        Resource = "*"
-      },
-      {
-        Sid    = "Allow EC2 to use the key"
-        Effect = "Allow"
-        Principal = {
-          Service = "ec2.amazonaws.com"
-        }
-        Action = [
-          "kms:Decrypt",
-          "kms:GenerateDataKeyWithoutPlaintext",
-          "kms:CreateGrant"
-        ]
-        Resource = "*"
-      }
-    ]
-  })
-
   tags = {
     Name    = "ebs-encryption-key"
     Purpose = "EBS"
@@ -68,16 +39,16 @@ resource "aws_kms_alias" "ebs" {
 }
 ```
 
-## Step 2: Enable Default EBS Encryption for the Account
+## Step 2: Enable Default EBS Encryption for the Region
 
 ```hcl
-# Enable account-wide EBS encryption with the CMK
+# Enable region-wide EBS encryption with the customer-managed KMS key
 # All new EBS volumes will be encrypted automatically
 resource "aws_ebs_encryption_by_default" "enabled" {
   enabled = true
 }
 
-# Set the CMK as the default encryption key for the account
+# Set the customer-managed KMS key as the default encryption key for the region
 resource "aws_ebs_default_kms_key" "default" {
   key_arn = aws_kms_key.ebs.arn
 }
@@ -110,10 +81,10 @@ resource "aws_ebs_volume" "encrypted_data" {
 ```hcl
 resource "aws_launch_template" "encrypted" {
   name          = "encrypted-root-template"
-  image_id      = data.aws_ami.amazon_linux.id
+  image_id      = "resolve:ssm:/aws/service/ami-amazon-linux-latest/al2023-ami-kernel-default-x86_64"
   instance_type = "t3.medium"
 
-  # Encrypted root volume using CMK
+  # Encrypted root volume using a customer-managed KMS key
   block_device_mappings {
     device_name = "/dev/xvda"
     ebs {
@@ -165,4 +136,4 @@ tofu apply
 
 ## Conclusion
 
-EBS encryption with customer-managed KMS keys gives you full control over the encryption keys protecting your data. Enable account-level default encryption to ensure all new volumes are encrypted without relying on developers to remember. Regularly rotate keys and monitor KMS API calls via CloudTrail to detect unauthorized access attempts.
+EBS encryption with customer-managed KMS keys gives you full control over the encryption keys protecting your data. Enable Region-level default encryption to ensure all new volumes are encrypted without relying on developers to remember. Regularly rotate keys and monitor KMS API calls via CloudTrail to detect unauthorized access attempts.
