@@ -4,7 +4,7 @@ Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
 Tags: Portainer, Factorio, Game Server, Docker, Self-Hosted
 
-Description: Set up a dedicated Factorio server using Portainer with automatic updates and save game persistence.
+Description: Set up a dedicated Factorio server using Portainer with persistent saves and optional mod updates on start.
 
 ## Introduction
 
@@ -13,17 +13,19 @@ Running your own dedicated game server gives you full control over game settings
 ## Prerequisites
 
 - Portainer installed with Docker
-- At least 4-8 GB RAM (varies by game and player count)
-- Adequate disk space (10-50 GB)
-- Required ports open in firewall: 34197:34197/udp 27015:27015/udp
+- At least 4 GB RAM (8 GB recommended for larger factories)
+- At least 3 GB of disk space, plus room for saves and mods
+- Required ports open in firewall: 34197/udp and, if you want remote RCON access, 27015/tcp
 
 ## Step 1: Open Required Firewall Ports
 
 ```bash
 # Open game server ports
 
-ufw allow 34197:34197/udp 27015:27015/udp
-ufw reload
+sudo ufw allow 34197/udp
+# Optional: open RCON for remote administration
+sudo ufw allow 27015/tcp
+sudo ufw reload
 ```
 
 ## Step 2: Deploy via Portainer Stack
@@ -31,27 +33,18 @@ ufw reload
 Create a new stack in Portainer > Stacks > Add Stack:
 
 ```yaml
-# docker-compose.yml for Game Server
-version: "3.8"
-
 services:
   game-server:
     image: factoriotools/factorio:stable
     container_name: game-server
     restart: unless-stopped
     ports:
-      - "34197:34197/udp 27015:27015/udp"
+      - "34197:34197/udp"
+      # Optional: expose RCON for remote administration
+      - "27015:27015/tcp"
     volumes:
       # Persist game world and configuration data
-      - factorio-data:/game-data
-    environment:
-      TOKEN=your-factorio-token UPDATE_MODS_ON_START=true
-    healthcheck:
-      test: ["CMD", "true"]
-      interval: 60s
-      timeout: 30s
-      retries: 3
-      start_period: 300s
+      - factorio-data:/factorio
     logging:
       driver: json-file
       options:
@@ -62,16 +55,16 @@ services:
   game-backup:
     image: alpine:latest
     container_name: game-backup
-    restart: "no"
+    restart: unless-stopped
     volumes:
-      - factorio-data:/game-data:ro
+      - factorio-data:/factorio:ro
       - backup-data:/backups
     command: >
       sh -c "
         while true; do
-          DATE=\$(date +%Y%m%d_%H%M%S);
-          tar czf /backups/world-\$DATE.tar.gz -C /game-data .;
-          echo 'Backup created: world-'\$DATE'.tar.gz';
+          DATE=$(date +%Y%m%d_%H%M%S);
+          tar czf /backups/world-$DATE.tar.gz -C /factorio .;
+          echo 'Backup created: world-'$DATE'.tar.gz';
           ls -t /backups/*.tar.gz | tail -n +8 | xargs rm -f;
           sleep 21600;
         done
@@ -90,18 +83,20 @@ networks:
 
 ## Step 3: Configure Server Settings
 
-Access the container via Portainer's console to configure settings:
+Access the container via Portainer's console to inspect the generated configuration:
 
 ```bash
 # Access container console via Portainer
 # Portainer > Containers > game-server > Console
 
-# View server logs
-docker logs game-server -f --tail 100
+# View the generated configuration files
+ls /factorio/config
 
-# Check server status
-docker stats game-server
+# Review the main server settings file
+cat /factorio/config/server-settings.json
 ```
+
+After editing the file, restart the container from Portainer or from the Docker host with `docker restart game-server`.
 
 ## Step 4: Monitor Server Performance
 
@@ -111,26 +106,25 @@ Track server performance through Portainer:
 2. Click **Stats** to view real-time CPU/memory usage
 3. Check **Logs** for server output and errors
 
-Optimal resource usage:
-- CPU: Below 80% under normal load
-- Memory: Configure server RAM to 70-80% of available
+General resource guidance:
+- CPU: Watch for sustained spikes during autosaves or large factory updates
+- Memory: Leave headroom for the host OS and other containers
 - Network: Monitor for unusual traffic spikes
 
-## Step 5: Configure Automatic Updates
+## Step 5: Configure Mod Updates
 
-Many game server images support automatic updates:
+The `factoriotools/factorio` image can update installed mods on server start when you provide your Factorio credentials:
 
 ```yaml
-# Add to environment variables
+# Add to environment variables if you use mods
 environment:
-  - AUTO_UPDATE=true
-  - AUTO_REBOOT=true
-  - CRON_AUTO_UPDATE="0 4 * * *"  # Update daily at 4 AM
+  USERNAME: your-factorio-username
+  TOKEN: your-factorio-token
+  UPDATE_MODS_ON_START: "true"
+  UPDATE_IGNORE: mod1,mod2
 ```
 
-Configure restart policy in Portainer:
-1. Go to **Containers** > edit container
-2. Set **Restart Policy** to "Unless stopped"
+Keep `restart: unless-stopped` in the stack file rather than editing the container directly, so Portainer keeps the stack definition consistent.
 
 ## Step 6: Set Up Player Backups
 
@@ -141,12 +135,12 @@ Automate world backups to prevent data loss:
 # Manual backup trigger
 BACKUP_DIR="/game-backups"
 DATE=$(date +%Y%m%d_%H%M%S)
-mkdir -p $BACKUP_DIR
+mkdir -p "$BACKUP_DIR"
 
 docker run --rm \
-  -v factorio-data:/game-data:ro \
-  -v $BACKUP_DIR:/backup \
-  alpine tar czf /backup/world-$DATE.tar.gz -C /game-data .
+  -v factorio-data:/factorio:ro \
+  -v "$BACKUP_DIR":/backup \
+  alpine tar czf /backup/world-"$DATE".tar.gz -C /factorio .
 
 echo "Backup saved: $BACKUP_DIR/world-$DATE.tar.gz"
 ```
@@ -156,14 +150,14 @@ echo "Backup saved: $BACKUP_DIR/world-$DATE.tar.gz"
 Admin commands and management:
 
 ```bash
-# Connect to server console (if supported)
-docker attach game-server
+# Show available RCON commands (2.0.18+)
+docker exec game-server rcon /h
 
-# Restart server without full container restart
-docker exec game-server /restart-server.sh
+# Show the current admins list
+docker exec game-server rcon /admins
 
-# Check connected players (if applicable)
-docker logs game-server | grep "connected" | tail -20
+# Follow recent server logs
+docker logs --tail 20 --follow game-server
 ```
 
 ## Security Considerations
