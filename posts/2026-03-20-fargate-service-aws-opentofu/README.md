@@ -4,7 +4,7 @@ Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
 Tags: OpenTofu, AWS, Fargate, ECS, Serverless Containers
 
-Description: Learn how to deploy a serverless container service on AWS Fargate with OpenTofu including service discovery, auto scaling, and capacity provider strategies.
+Description: Learn how to deploy a serverless container service on AWS Fargate with OpenTofu including ALB integration, auto scaling, and capacity provider strategies.
 
 ## Introduction
 
@@ -46,6 +46,10 @@ resource "aws_ecs_task_definition" "app" {
   memory                   = var.task_memory  # e.g., 512, 1024, 2048
   execution_role_arn       = aws_iam_role.ecs_execution.arn
   task_role_arn            = aws_iam_role.ecs_task.arn
+
+  runtime_platform {
+    operating_system_family = "LINUX"
+  }
 
   container_definitions = jsonencode([{
     name      = var.service_name
@@ -94,6 +98,7 @@ resource "aws_ecs_service" "app" {
   cluster         = aws_ecs_cluster.main.id
   task_definition = aws_ecs_task_definition.app.arn
   desired_count   = var.desired_count
+  depends_on      = [aws_ecs_cluster_capacity_providers.main]
 
   capacity_provider_strategy {
     capacity_provider = "FARGATE"
@@ -118,7 +123,7 @@ resource "aws_ecs_service" "app" {
   }
 
   lifecycle {
-    ignore_changes = [task_definition, desired_count]
+    ignore_changes = [desired_count]
   }
 }
 
