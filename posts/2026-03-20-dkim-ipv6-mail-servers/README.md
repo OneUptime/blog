@@ -8,7 +8,7 @@ Description: Configure DKIM signing with OpenDKIM for IPv6 mail servers to authe
 
 ## Introduction
 
-DKIM (DomainKeys Identified Mail) adds a cryptographic signature to outbound email, allowing receiving servers to verify the message was sent from an authorized server and hasn't been tampered with. DKIM itself is protocol-agnostic - it works the same over IPv4 and IPv6 - but is especially important for IPv6 senders since IPv6 IP reputation is newer and less established.
+DKIM (DomainKeys Identified Mail) adds a cryptographic signature to outbound email, allowing receiving servers to verify the message was signed by the sending domain and hasn't been tampered with. DKIM itself is protocol-agnostic - it works the same over IPv4 and IPv6 - but is especially important for IPv6 senders since IPv6 IP reputation is newer and less established.
 
 ## Installing OpenDKIM
 
@@ -17,8 +17,8 @@ DKIM (DomainKeys Identified Mail) adds a cryptographic signature to outbound ema
 
 sudo apt update && sudo apt install -y opendkim opendkim-tools
 
-# RHEL/CentOS
-sudo yum install -y opendkim
+# RHEL/CentOS with EPEL enabled
+sudo dnf install -y opendkim opendkim-tools
 ```
 
 ## Generating DKIM Key Pairs
@@ -59,14 +59,14 @@ Domain                example.com
 Selector              mail
 KeyFile               /etc/opendkim/keys/example.com/mail.private
 
-# Trusted hosts - include your IPv6 addresses
-TrustedHosts          /etc/opendkim/trusted.hosts
+# Internal hosts - include your IPv6 addresses
+InternalHosts         /etc/opendkim/trusted.hosts
 
 # Socket for Postfix integration
 Socket                inet:8891@localhost
 ```
 
-Configure trusted hosts to include your IPv6 server:
+Configure internal hosts to include your IPv6 server or network:
 
 ```bash
 sudo tee /etc/opendkim/trusted.hosts << 'EOF'
@@ -118,11 +118,11 @@ After publishing the DNS record, send a test email and verify DKIM:
 
 ```bash
 # Send test email to a verification service
-echo "DKIM test" | mail -s "DKIM IPv6 Test" check-auth@verifier.port25.com
+echo "DKIM test" | mail -s "DKIM IPv6 Test" autoreply@dmarctest.org
 
 # Or use swaks to send from the IPv6 address
 swaks --from sender@example.com \
-      --to check-auth@verifier.port25.com \
+      --to autoreply@dmarctest.org \
       --server [2001:db8::10]:25
 
 # Check the Authentication-Results header in the reply
@@ -164,4 +164,4 @@ SigningTable    refile:/etc/opendkim/signing.table
 
 ## Conclusion
 
-DKIM configuration for IPv6 mail servers is identical to IPv4 - the signing process is at the application layer and protocol-agnostic. The key distinction is ensuring your `TrustedHosts` includes IPv6 addresses so the milter signs messages from your IPv6 Postfix instance correctly.
+DKIM configuration for IPv6 mail servers is identical to IPv4 - the signing process is at the application layer and protocol-agnostic. The key distinction is ensuring your `InternalHosts` includes any IPv6 clients or networks that should be treated as internal so the milter signs those messages correctly.
