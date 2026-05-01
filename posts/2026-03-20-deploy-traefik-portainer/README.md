@@ -19,7 +19,7 @@ version: "3.8"
 
 services:
   traefik:
-    image: traefik:v3.0
+    image: traefik:v3.6
     container_name: traefik
     restart: unless-stopped
     security_opt:
@@ -32,17 +32,14 @@ services:
     volumes:
       - /etc/localtime:/etc/localtime:ro
       - /var/run/docker.sock:/var/run/docker.sock:ro
-      - traefik_config:/etc/traefik
-      - traefik_data:/data
+      - /opt/traefik/data:/data
     command:
       # API and Dashboard
-      - "--api.dashboard=true"
+      - "--api=true"
       # Providers
       - "--providers.docker=true"
       - "--providers.docker.exposedbydefault=false"
       - "--providers.docker.network=proxy"
-      - "--providers.file.directory=/etc/traefik/dynamic"
-      - "--providers.file.watch=true"
       # Entrypoints
       - "--entrypoints.web.address=:80"
       - "--entrypoints.web.http.redirections.entrypoint.to=websecure"
@@ -69,20 +66,16 @@ networks:
   proxy:
     name: proxy
     external: true
-
-volumes:
-  traefik_config:
-  traefik_data:
 ```
 
 ## Environment Variables
 
 ```text
 ACME_EMAIL = admin@yourdomain.com
-TRAEFIK_DASHBOARD_USERS = admin:$$apr1$$HASH_HERE
+TRAEFIK_DASHBOARD_USERS = admin:$$2y$$HASH_HERE
 ```
 
-Generate the password hash: `htpasswd -nb admin yourpassword` (escape `$` to `$$` in compose).
+Generate the password hash: `htpasswd -nbB admin yourpassword | sed -e s/\\$/\\$\\$/g`
 
 ## Prerequisites: Create the Proxy Network
 
@@ -99,8 +92,9 @@ Or in Portainer: **Networks → Add Network → Name: proxy, Driver: bridge**
 ```bash
 # On the Docker host
 
-touch /var/lib/docker/volumes/traefik_traefik_data/_data/acme.json
-chmod 600 /var/lib/docker/volumes/traefik_traefik_data/_data/acme.json
+mkdir -p /opt/traefik/data
+touch /opt/traefik/data/acme.json
+chmod 600 /opt/traefik/data/acme.json
 ```
 
 ## Deploy the Stack
@@ -135,7 +129,7 @@ networks:
 ## Updating Traefik
 
 1. **Stacks → traefik → Editor**
-2. Change `traefik:v3.0` to `traefik:v3.1`
+2. Change `traefik:v3.6` to the newer supported `traefik:v3.x` tag you want to deploy
 3. Click **Update the Stack**
 
 Traefik restarts with the new version; all routes resume immediately because configuration is stored in labels and `acme.json`.
