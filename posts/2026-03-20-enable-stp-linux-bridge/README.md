@@ -14,53 +14,49 @@ Spanning Tree Protocol (STP) prevents network loops in bridged networks by block
 
 ```bash
 # Enable STP on the bridge
-
-ip link set br0 type bridge stp_state 1
+ip link set dev br0 type bridge stp_state 1
 
 # Verify STP is enabled
-cat /sys/class/net/br0/bridge/stp_state
-# 1 = enabled
-
-# Or check bridge details
-bridge link show
+ip -d link show dev br0
+# Look for: bridge ... stp_state 1
 ```
 
 ## STP States and Timing
 
-After enabling STP, ports go through multiple states before forwarding:
+After enabling STP, ports that are allowed to forward go through multiple states before reaching forwarding:
 
 | State | Duration | Description |
 |---|---|---|
-| Blocking | Until elected | Won't forward, won't learn |
+| Blocking | Until topology changes | Won't forward, won't learn |
 | Listening | 15 seconds | Participates in STP election |
 | Learning | 15 seconds | Learns MAC addresses, no forwarding |
 | Forwarding | Active | Fully active, forwards traffic |
 
-Total delay: up to 30 seconds before traffic flows!
+Total delay: up to 30 seconds before a port reaches forwarding with default timers!
 
 ## Configure STP Timers
 
 ```bash
 # Set bridge priority (lower = more likely to be root bridge)
-echo 4096 > /sys/class/net/br0/bridge/priority
+ip link set dev br0 type bridge priority 4096
 
-# Set forward delay (seconds in listening + learning states)
-echo 4 > /sys/class/net/br0/bridge/forward_delay
+# Set forward delay (seconds spent in each of the listening and learning states)
+ip link set dev br0 type bridge forward_delay 4
 
 # Set hello time (seconds between STP BPDUs)
-echo 2 > /sys/class/net/br0/bridge/hello_time
+ip link set dev br0 type bridge hello_time 2
 
 # Set max age (time to hold BPDU info)
-echo 12 > /sys/class/net/br0/bridge/max_age
+ip link set dev br0 type bridge max_age 12
 ```
 
-## Check STP State via brctl
+## Check STP State via brctl (Legacy)
 
 ```bash
 # Install bridge-utils
 apt install bridge-utils
 
-# Show STP state and bridge info
+# brctl is obsolete; prefer ip/bridge from iproute2 on modern systems
 brctl showstp br0
 
 # Example output shows each port's STP state
@@ -69,21 +65,23 @@ brctl showstp br0
 ## Configure with Netplan
 
 ```yaml
-bridges:
-  br0:
-    interfaces: [eth0, eth1]
-    addresses: [192.168.1.100/24]
-    parameters:
-      stp: true
-      forward-delay: 4
-      hello-time: 2
-      max-age: 12
-      priority: 4096
+network:
+  version: 2
+  bridges:
+    br0:
+      interfaces: [eth0, eth1]
+      addresses: [192.168.1.100/24]
+      parameters:
+        stp: true
+        forward-delay: 4
+        hello-time: 2
+        max-age: 12
+        priority: 4096
 ```
 
 ## Rapid STP (RSTP)
 
-The Linux bridge implements STP (802.1D) which has slow convergence. For faster convergence (1-2 seconds), consider using Rapid STP (RSTP/802.1w). The Linux kernel bridge does not fully implement RSTP, but you can use Open vSwitch for RSTP support.
+The Linux bridge's built-in spanning tree support uses classic STP timings. For faster convergence, consider Rapid STP (RSTP/802.1w) in a switch implementation that supports it, such as Open vSwitch.
 
 ## When to Use STP
 
@@ -94,9 +92,9 @@ The Linux bridge implements STP (802.1D) which has slow convergence. For faster 
 ## When NOT to Use STP
 
 - Single bridge with single uplink (no loops possible)
-- KVM hypervisor with VMs (no loops, just overhead)
-- Environments where the 30s startup delay is unacceptable
+- Simple KVM bridge setups with no redundant Layer 2 paths
+- Environments where classic STP convergence delay is unacceptable
 
 ## Conclusion
 
-Enable STP with `ip link set br0 type bridge stp_state 1` when your bridge is part of a topology with redundant paths. STP prevents broadcast storms but adds 30 seconds of startup delay. Tune `forward_delay` down to 4 seconds (minimum recommended) to reduce startup time while maintaining loop protection.
+Enable STP with `ip link set dev br0 type bridge stp_state 1` when your bridge is part of a topology with redundant paths. STP prevents broadcast storms but can add up to 30 seconds of convergence delay with default timers. Tune `forward_delay` down from the default 15 seconds if you need faster convergence, but keep it within the valid 2-30 second range.
