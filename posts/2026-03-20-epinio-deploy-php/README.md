@@ -30,37 +30,36 @@ mkdir my-app && cd my-app
 
 ## Step 2: Create the Application
 
-For this example, we'll create a simple web application:
+For this example, we'll create a simple PHP application with Composer metadata:
 
 ```bash
-# Create main application file
-cat > app.sh << 'EOF'
-#!/bin/bash
-# Simple HTTP server for demonstration
-while true; do
-  echo -e "HTTP/1.1 200 OK\r\nContent-Type: text/plain\r\n\r\nHello from How to Deploy a PHP Application with Epinio!" | nc -l -p ${PORT:-8080}
-done
+# Create Composer metadata
+cat > composer.json << 'EOF'
+{
+  "name": "example/my-app",
+  "description": "Minimal PHP app for Epinio",
+  "require": {
+    "php": ">=8.1"
+  }
+}
 EOF
-chmod +x app.sh
 ```
 
-For a language-specific example relevant to this guide:
+For the application itself:
 
 ```bash
-# Node.js example
-cat > server.js << 'EOF'
-const http = require('http');
-const server = http.createServer((req, res) => {
-  res.writeHead(200, {'Content-Type': 'application/json'});
-  res.end(JSON.stringify({
-    message: 'Application deployed via Epinio',
-    runtime: process.version,
-    timestamp: new Date().toISOString()
-  }));
-});
-server.listen(process.env.PORT || 8080, () => {
-  console.log('Server started');
-});
+# PHP example
+cat > index.php << 'EOF'
+<?php
+declare(strict_types=1);
+
+header('Content-Type: application/json');
+
+echo json_encode([
+    'message' => 'Application deployed via Epinio',
+    'runtime' => PHP_VERSION,
+    'timestamp' => date(DATE_ATOM),
+], JSON_PRETTY_PRINT | JSON_UNESCAPED_SLASHES) . PHP_EOL;
 EOF
 ```
 
@@ -70,21 +69,24 @@ EOF
 # Target the namespace for deployment
 epinio target my-apps
 
-# Verify namespace is active
+# Verify the targeted namespace
+epinio target
+
+# Inspect the namespace
 epinio namespace show my-apps
 ```
 
 ## Step 4: Deploy the Application
 
 ```bash
-# Push the application (Epinio auto-detects the runtime)
+# Push the application (Epinio auto-detects the PHP runtime)
 epinio push --name my-app
 
 # Or specify options explicitly
 epinio push \
   --name my-app \
   --instances 2 \
-  --route my-app.epinio.example.com
+  --route my-app.<your-system-domain>
 ```
 
 During push, Epinio will:
@@ -104,21 +106,21 @@ epinio app show my-app
 # List all applications in namespace
 epinio app list
 
-# View the application route
-epinio app show my-app | grep Routes
+# View the application route shown under Active Routes
+epinio app show my-app --no-colors | grep 'Active Routes' -A 1
 ```
 
 ## Step 6: Test the Application
 
 ```bash
-# Get the application URL
-APP_URL=$(epinio app show my-app | grep Routes | awk '{print $2}')
+# Get the first application route from Active Routes
+APP_HOST=$(epinio app show my-app --no-colors | awk -F'|' '/Active Routes/{getline; gsub(/^[[:space:]]+|[[:space:]]+$/, "", $3); print $3; exit}')
+APP_URL="https://${APP_HOST}"
 
 # Test with curl
-curl ${APP_URL}
+curl "$APP_URL"
 
-# Or open in browser
-open ${APP_URL}
+# Or open the URL in your browser
 ```
 
 ## Step 7: View Application Logs
@@ -138,7 +140,7 @@ epinio app logs my-app --follow
 # Then re-push to update
 epinio push --name my-app
 
-# Epinio performs a rolling update
+# Epinio deploys the updated application
 epinio app show my-app
 ```
 
@@ -172,4 +174,4 @@ epinio app delete my-app
 
 ## Conclusion
 
-How to Deploy a PHP Application with Epinio with Epinio demonstrates how the platform removes barriers between development and deployment. The simple push workflow means developers can deploy any application to Kubernetes without writing YAML or understanding container orchestration. Epinio's buildpack system automatically detects the runtime, installs dependencies, and creates an optimized container image.
+How to Deploy a PHP Application with Epinio with Epinio demonstrates how the platform removes barriers between development and deployment. The simple push workflow means developers can deploy supported PHP applications to Kubernetes without writing YAML or understanding container orchestration. Epinio's buildpack system automatically detects the PHP runtime, installs Composer dependencies, and creates an optimized container image.
