@@ -4,15 +4,15 @@ Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
 Tags: DHCPv6, IPv6, Privacy, DUID, RFC 7844
 
-Description: Understand the privacy implications of DHCPv6, including DUID tracking, address stability issues, and how RFC 7844 anonymous stateless profiles help protect user identity.
+Description: Understand the privacy implications of DHCPv6, including DUID tracking, address stability issues, and how RFC 7844 anonymity profiles help protect user identity.
 
 ## Overview
 
-DHCPv6 introduces privacy concerns that do not exist in the same form with DHCPv4 or SLAAC. Clients expose persistent identifiers (DUIDs) in every DHCPv6 message, enabling cross-network tracking. RFC 7844 defines anonymity profiles to mitigate this.
+DHCPv6 has privacy considerations that differ from DHCPv4 and SLAAC. Clients often expose persistent identifiers (DUIDs) in most DHCPv6 messages, enabling cross-network tracking. RFC 7844 defines anonymity profiles to mitigate this.
 
 ## Why DHCPv6 Has Privacy Issues
 
-When a DHCPv6 client sends a Solicit or Request, it includes a **DUID** (DHCP Unique Identifier) in the Client Identifier option. DUIDs are often based on the MAC address or a UUID tied to the hardware.
+When a DHCPv6 client sends a Solicit or Request, it includes a **DUID** (DHCP Unique Identifier) in the Client Identifier option. DUIDs are often based on the MAC address or a UUID associated with the system.
 
 ```text
 # Typical DUID-LL (type 3) based on MAC address
@@ -22,7 +22,7 @@ Client Identifier: 00:03:00:01:aa:bb:cc:dd:ee:ff
                    type  hw   MAC address
 ```
 
-This DUID is the same on every network the client visits, allowing any network operator to:
+A stable DUID is typically reused on every network the client visits, allowing any network operator to:
 - Track a device across different locations
 - Correlate visits to the same hotspot over time
 - Link DHCPv6 requests to a specific device or user
@@ -32,47 +32,43 @@ This DUID is the same on every network the client visits, allowing any network o
 RFC 7844 defines "anonymity profiles" that minimize the information revealed in DHCP messages.
 
 Key recommendations for DHCPv6:
-1. Use a randomly generated DUID (DUID-UUID with random UUID) per network
-2. Do not include the Client FQDN (hostname) option
-3. Do not include the User Class option
-4. Use a Rapid Commit if supported to reduce message exposure
-5. Request only necessary options
+1. With MAC randomization, use a DUID-LL derived from the current link-layer address; without MAC randomization, generate a new randomized DUID-LLT when attaching to a new link
+2. Omit the Client Identifier in stateless Information-request messages when possible
+3. Do not include the Client FQDN (hostname) option
+4. Do not include the User Class or Vendor Class options
+5. Request only necessary options, avoid sending previous option values as hints, and minimize fingerprinting in the ORO
 
 ## Configuring an Anonymous DUID on Linux
 
-By default, `dhclient` stores a persistent DUID. You can override it with a random one per connection:
+By default, ISC `dhclient` stores a persistent DUID in its lease database. Its documented options let you choose DUID-LL or DUID-LLT, but it does not provide a one-line RFC 7844 anonymity mode by itself:
 
 ```bash
-# Generate a random DUID-UUID for privacy
-python3 -c "
-import uuid, struct
-u = uuid.uuid4()
-# DUID type 4 (UUID) = 0x0004
-duid = b'\x00\x04' + u.bytes
-print(':'.join(f'{b:02x}' for b in duid))
-"
+# Stateless DHCPv6 (-S) uses Information-request; dhclient uses DUID-LL by default here
+dhclient -6 -S -D LL eth0
 
-# Set a random DUID in dhclient config
-# /etc/dhcp/dhclient.conf
-send dhcp6.client-id 00:04:<random-uuid-bytes>;
+# Stateful DHCPv6 uses DUID-LLT by default; -D can force the choice explicitly
+dhclient -6 -D LLT eth0
 ```
 
 ## NetworkManager and Privacy
 
-NetworkManager supports RFC 7844 anonymity profiles:
+NetworkManager can reduce DHCPv6 tracking exposure by combining MAC randomization with DHCP settings:
 
 ```bash
-# Enable anonymity profile for a connection via nmcli
-nmcli connection modify "MyWifi" ipv6.dhcp-iaid "stable-privacy"
+# Use a per-network Wi-Fi MAC address
+nmcli connection modify "MyWifi" 802-11-wireless.cloned-mac-address "stable-ssid"
 
-# Or use temporary random DUID
-nmcli connection modify "MyWifi" ipv6.dhcp-duid "ll"  # link-local based
+# Use a DHCPv6 DUID derived from the current link-layer address
+nmcli connection modify "MyWifi" ipv6.dhcp-duid "ll"
+
+# Suppress sending the hostname in DHCPv6
+nmcli connection modify "MyWifi" ipv6.dhcp-send-hostname "no"
 
 # Alternatively, edit the connection file
 # /etc/NetworkManager/system-connections/MyWifi.nmconnection
 [ipv6]
-dhcp-duid=stable-privacy
-dhcp-iaid=stable-privacy
+dhcp-duid=ll
+dhcp-send-hostname=false
 ```
 
 ## IPv6 Address Stability vs. Privacy
@@ -82,22 +78,22 @@ Even with DHCPv6, the assigned address may be stable and trackable. RFC 8064 and
 - A persistent lease means the same address is renewed each time
 - This enables long-term tracking even without the DUID
 
-To mitigate: configure shorter lease times or use privacy addresses on the operating system level alongside DHCPv6.
+To mitigate: use temporary privacy addresses when the network also offers SLAAC, and remember that shorter DHCPv6 lease times do not remove DUID-based tracking.
 
 ## Information Exposed in DHCPv6 Messages
 
 | DHCPv6 Option | Privacy Risk | Recommendation |
 |---------------|-------------|----------------|
-| Client Identifier (DUID) | Persistent device fingerprint | Use random DUID per network |
+| Client Identifier (DUID) | Persistent device fingerprint | Use DUID-LL with randomized MACs, or fresh randomized DUID-LLT on link changes |
 | Client FQDN (option 39) | Reveals hostname | Suppress in privacy mode |
-| User Class (option 15) | Reveals OS/vendor | Suppress in privacy mode |
+| User Class (option 15) | Reveals client or application class | Suppress in privacy mode |
 | Vendor Class (option 16) | Reveals device type | Suppress in privacy mode |
 | Requested Options | Fingerprints implementation | Minimize to essential options |
 
 ## ISP Logging Considerations
 
-ISPs log DHCPv6 assignments including DUIDs. This creates a permanent record linking a DUID to an IPv6 prefix. From a compliance standpoint (GDPR, etc.), ISPs must treat DUIDs as personal data.
+Access providers often log DHCPv6 assignments including DUIDs. This can create a long-lived record linking a device identifier to an IPv6 prefix or address over time.
 
 ## Summary
 
-DHCPv6 privacy risks stem primarily from the persistent DUID included in every message. RFC 7844 defines anonymity profiles that randomize identifiers and minimize option exposure. Users and administrators should configure random DUIDs and suppress hostname options in environments where tracking is a concern.
+DHCPv6 privacy risks stem primarily from the stable DUID used in most messages. RFC 7844 defines anonymity profiles that synchronize DHCP identifiers with link-layer changes and minimize option exposure. Users and administrators should reduce persistent identifiers and suppress hostname options in environments where tracking is a concern.
