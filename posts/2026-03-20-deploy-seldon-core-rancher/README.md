@@ -14,15 +14,22 @@ Seldon Core is an open-source platform for deploying, scaling, and monitoring ma
 
 ```bash
 # Add Seldon charts repository
-
 helm repo add seldonio https://storage.googleapis.com/seldon-charts
 helm repo update
 
-# Create namespace
+# Create namespaces
 kubectl create namespace seldon-system
+kubectl create namespace ml-models
 
 # Install Seldon Core
-helm install seldon-core seldonio/seldon-core-operator   --namespace seldon-system   --set usageMetrics.enabled=true   --set istio.enabled=false   --set ambassador.enabled=false   --set executor.defaultEnvSecretRefName=seldon-init-container-secret   --version 1.15.0
+# Optional for private object storage:
+# --set predictiveUnit.defaultEnvSecretRefName=seldon-init-container-secret
+helm install seldon-core-operator seldonio/seldon-core-operator \
+  --namespace seldon-system \
+  --version 1.19.0 \
+  --set usageMetrics.enabled=true \
+  --set istio.enabled=false \
+  --set ambassador.enabled=false
 
 # Verify installation
 kubectl get pods -n seldon-system
@@ -43,18 +50,22 @@ spec:
   predictors:
   - name: default
     replicas: 2
+    componentSpecs:
+    - spec:
+        containers:
+        - name: classifier
+          resources:
+            limits:
+              cpu: "1"
+              memory: "1Gi"
+            requests:
+              cpu: "100m"
+              memory: "256Mi"
     graph:
-      children: []
-      implementation: SKLEARN_SERVER
-      modelUri: s3://ml-models/iris-classifier/v1.0
       name: classifier
-      resources:
-        limits:
-          cpu: "1"
-          memory: "1Gi"
-        requests:
-          cpu: "100m"
-          memory: "256Mi"
+      implementation: SKLEARN_SERVER
+      modelUri: gs://seldon-models/v1.19.0/sklearn/iris
+      children: []
     traffic: 100
 ```
 
@@ -104,13 +115,14 @@ spec:
       name: classifier
       implementation: TENSORFLOW_SERVER
       modelUri: s3://ml-models/resnet50/v1
+      children: []
       parameters:
+      - name: signature_name
+        type: STRING
+        value: serving_default
       - name: model_name
         type: STRING
         value: resnet50
-      - name: model_version
-        type: STRING
-        value: "1"
     componentSpecs:
     - spec:
         containers:
@@ -135,26 +147,28 @@ spec:
   predictors:
   - name: default
     graph:
-      name: combiner
-      type: COMBINER
+      name: feature-transformer
+      type: MODEL
+      implementation: SKLEARN_SERVER
+      modelUri: s3://ml-models/fraud/transformer
       children:
-      - name: feature-transformer
-        implementation: SKLEARN_SERVER
-        modelUri: s3://ml-models/fraud/transformer
-        children:
-        - name: fraud-detector
-          implementation: XGBOOST_SERVER
-          modelUri: s3://ml-models/fraud/detector
+      - name: fraud-detector
+        type: MODEL
+        implementation: XGBOOST_SERVER
+        modelUri: s3://ml-models/fraud/detector
+        children: []
 ```
 
 ## Step 6: Test the Deployment
 
 ```bash
-# Get the service endpoint
-ENDPOINT=$(kubectl get svc -n ml-models   iris-classifier-default   -o jsonpath='{.spec.clusterIP}')
+# Because Istio and Ambassador are disabled, port-forward the predictor service
+kubectl port-forward -n ml-models svc/iris-classifier-default 8000:8000
 
-# Make a prediction request
-curl -X POST "http://${ENDPOINT}/api/v1.0/predictions"   -H "Content-Type: application/json"   -d '{"data": {"ndarray": [[5.1, 3.5, 1.4, 0.2]]}}'
+# In another terminal, make a prediction request
+curl -X POST "http://127.0.0.1:8000/api/v1.0/predictions" \
+  -H "Content-Type: application/json" \
+  -d '{"data": {"ndarray": [[5.1, 3.5, 1.4, 0.2]]}}'
 
 # Response:
 # {"data": {"names": ["setosa", "versicolor", "virginica"],
@@ -164,9 +178,9 @@ curl -X POST "http://${ENDPOINT}/api/v1.0/predictions"   -H "Content-Type: appli
 ## Monitoring with Prometheus
 
 ```yaml
-# seldon-monitor.yaml
+# seldon-podmonitor.yaml
 apiVersion: monitoring.coreos.com/v1
-kind: ServiceMonitor
+kind: PodMonitor
 metadata:
   name: seldon-models
   namespace: ml-models
@@ -176,7 +190,7 @@ spec:
   selector:
     matchLabels:
       app.kubernetes.io/managed-by: seldon-core
-  endpoints:
+  podMetricsEndpoints:
   - port: metrics
     interval: 30s
     path: /prometheus
