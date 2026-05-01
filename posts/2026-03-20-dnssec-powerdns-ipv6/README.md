@@ -12,7 +12,7 @@ PowerDNS Authoritative Server offers built-in DNSSEC support with easy key manag
 
 ## Prerequisites
 
-- PowerDNS Authoritative Server 4.5+
+- PowerDNS Authoritative Server 5.0+
 - A zone with AAAA records already loaded
 - Root or sudo access
 
@@ -21,15 +21,12 @@ PowerDNS Authoritative Server offers built-in DNSSEC support with easy key manag
 Edit `/etc/powerdns/pdns.conf`:
 
 ```bash
-# IPv6 listen address (:: means all IPv6 interfaces)
+# Listen on all IPv4 and IPv6 interfaces
 
 local-address=0.0.0.0, ::
 
 # Bind to port 53 explicitly
 local-port=53
-
-# Enable DNSSEC
-enable-lua-records=yes
 ```
 
 ## Step 2: Enable DNSSEC on a Zone
@@ -37,71 +34,69 @@ enable-lua-records=yes
 PowerDNS uses `pdnsutil` to manage DNSSEC keys and policies:
 
 ```bash
-# Secure the zone - PowerDNS generates KSK and ZSK automatically
-sudo pdnsutil secure-zone example.com
+# Secure the zone - PowerDNS generates a default CSK automatically
+sudo pdnsutil zone secure example.com
 
 # Verify the zone is secured and keys are created
-sudo pdnsutil show-zone example.com
+sudo pdnsutil zone show example.com
 ```
 
 ## Step 3: Review the Generated Keys
 
 ```bash
 # List all DNSSEC keys for the zone
-sudo pdnsutil list-keys example.com
+sudo pdnsutil zone list-keys example.com
 
-# Output shows key IDs, algorithms, and key types (KSK/ZSK)
-# Example output:
-# example.com. 257 3 13 <KSK public key data>  # KSK
-# example.com. 256 3 13 <ZSK public key data>  # ZSK
+# Output shows key IDs, algorithms, and status
+# By default, PowerDNS creates a single CSK using algorithm 13 (ECDSAP256SHA256)
 ```
 
 ## Step 4: Rectify the Zone
 
-After securing a zone, rectify it so all records have correct hashes and ordering:
+After securing a zone, rectify it so PowerDNS updates the backend fields needed for DNSSEC:
 
 ```bash
-# Rectify ensures NSEC/NSEC3 records are correct
-sudo pdnsutil rectify-zone example.com
+# Rectify updates the auth and ordername fields used for DNSSEC processing
+sudo pdnsutil zone rectify example.com
 
 # Check for any issues
-sudo pdnsutil check-zone example.com
+sudo pdnsutil zone check example.com
 ```
 
 ## Step 5: Export DS Records for the Parent Zone
 
 ```bash
-# Export the DS record to send to your registrar
-sudo pdnsutil show-zone example.com | grep "DS:"
+# Show the zone's DNSSEC details, including DS and DNSKEY material
+sudo pdnsutil zone show example.com
 
-# Or export in zone-file format
-sudo pdnsutil export-zone-ds example.com
+# Or export DS records directly to send to your registrar
+sudo pdnsutil zone export-ds example.com
 ```
 
 ## Step 6: Add AAAA Records via the API or CLI
 
 ```bash
 # Add an AAAA record using pdnsutil
-sudo pdnsutil add-record example.com www AAAA 300 "2001:db8:1::10"
+sudo pdnsutil rrset add example.com www.example.com AAAA 300 "2001:db8:1::10"
 
-# Add a record for the nameserver itself
-sudo pdnsutil add-record example.com ns1 AAAA 300 "2001:db8:1::1"
+# Add a record for the nameserver host
+sudo pdnsutil rrset add example.com ns1.example.com AAAA 300 "2001:db8:1::1"
 
 # Rectify again after adding records
-sudo pdnsutil rectify-zone example.com
+sudo pdnsutil zone rectify example.com
 ```
 
 ## Step 7: Verify DNSSEC Over IPv6
 
 ```bash
-# Query your PowerDNS server directly over IPv6
-dig +dnssec AAAA www.example.com @2001:db8:1::1
+# Query your PowerDNS server directly over IPv6 and request DNSSEC records
+dig +dnssec +norecurse AAAA www.example.com @2001:db8:1::1
 
-# Check that the AD flag is set in the response
-# Look for "RRSIG AAAA" in the answer section
+# Check for the AA flag and an accompanying RRSIG AAAA in the answer section
+# The AD flag is normally set by a validating recursive resolver, not an authoritative server
 
-# Use delv for thorough DNSSEC validation
-delv @2001:db8:1::1 AAAA www.example.com
+# Use delv with a validating resolver for end-to-end DNSSEC validation
+delv AAAA www.example.com
 ```
 
 ## Using the PowerDNS API
