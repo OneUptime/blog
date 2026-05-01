@@ -4,59 +4,91 @@ Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
 Tags: Elemental, USB Boot, Edge, Kubernetes, Provisioning
 
-Description: Create bootable USB drives with Elemental registration images for provisioning bare metal nodes without network boot infrastructure.
+Description: Create bootable USB drives with Elemental seed images for provisioning bare metal nodes without network boot infrastructure.
 
 ## Introduction
 
-USB boot is the simplest provisioning method for Elemental, requiring no special network infrastructure. You create a bootable USB drive containing the Elemental OS image and registration configuration, insert it into a machine, boot, and the machine provisions itself automatically. This approach is ideal for remote sites, retail locations, or any environment without PXE infrastructure.
+USB boot is the simplest provisioning method for Elemental, requiring no special network boot infrastructure. You create a bootable USB drive from an Elemental seed image, insert it into a machine, boot, and the machine provisions itself automatically. This approach is ideal for remote sites, retail locations, or any environment without PXE infrastructure.
 
 ## Prerequisites
 
 - A USB drive (8 GB or larger)
-- Elemental CLI or Docker
-- Registration URL from your MachineRegistration
+- `kubectl` access to a Rancher management cluster with OS Manager installed
+- Target machines with TPM 2.0, or `config.elemental.registration.emulate-tpm: true` for systems without TPM
+- Network connectivity from the target machine to Rancher during registration
+- `wget`
 - `dd` utility (Linux/macOS) or Rufus (Windows)
 
-## Step 1: Gather Registration Information
-
-```bash
-# Get registration URL
-
-REG_URL=$(kubectl get machineregistration my-nodes \
-  -n fleet-default \
-  -o jsonpath='{.status.registrationURL}')
-
-# Get CA certificate
-kubectl get secret tls-rancher-internal-ca \
-  -n cattle-system \
-  -o jsonpath='{.data.cacerts\.pem}' | base64 -d > /tmp/ca.pem
-
-echo "Registration URL: $REG_URL"
-```
-
-## Step 2: Create Registration Configuration
+## Step 1: Create the MachineRegistration
 
 ```yaml
-# usb-registration-config.yaml
-cloud-config:
-  users:
-    - name: root
-      passwd: "$6$rounds=4096$salt$hashedpassword"
-  ssh_authorized_keys:
-    - "ssh-rsa AAAAB3... admin@example.com"
+# registration.yaml
+apiVersion: elemental.cattle.io/v1beta1
+kind: MachineRegistration
+metadata:
+  name: my-nodes
+  namespace: fleet-default
+spec:
+  config:
+    cloud-config:
+      users:
+        - name: root
+          passwd: "$6$rounds=4096$salt$hashedpassword"
+          ssh_authorized_keys:
+            - "ssh-rsa AAAAB3... admin@example.com"
+    elemental:
+      install:
+        device: /dev/sda
+        reboot: true
+        debug: false
+```
 
-elemental:
-  registration:
-    uri: "https://rancher.example.com/v1/elemental/registration/your-token"
-    ca-cert: |
-      -----BEGIN CERTIFICATE-----
-      MIIDXTCCAkWgAwIBAgIJ...
-      -----END CERTIFICATE-----
+```bash
+kubectl apply -f registration.yaml
 
-  install:
-    device: /dev/sda
-    reboot: true
-    debug: false
+kubectl get machineregistration my-nodes \
+  -n fleet-default \
+  -o jsonpath='{.status.registrationURL}{"\n"}'
+```
+
+## Step 2: Create the SeedImage Resources
+
+### Build ISO for USB
+
+```yaml
+# seedimage-iso.yaml
+apiVersion: elemental.cattle.io/v1beta1
+kind: SeedImage
+metadata:
+  name: elemental-usb-iso
+  namespace: fleet-default
+spec:
+  type: iso
+  baseImage: registry.suse.com/suse/sl-micro/6.0/baremetal-iso-image:2.1.1-3.36
+  registrationRef:
+    apiVersion: elemental.cattle.io/v1beta1
+    kind: MachineRegistration
+    name: my-nodes
+    namespace: fleet-default
+```
+
+### Build Raw Disk Image (Better for USB)
+
+```yaml
+# seedimage-raw.yaml
+apiVersion: elemental.cattle.io/v1beta1
+kind: SeedImage
+metadata:
+  name: elemental-usb-raw
+  namespace: fleet-default
+spec:
+  type: raw
+  baseImage: registry.suse.com/suse/sl-micro/6.0/baremetal-os-container:2.1.1-3.29
+  registrationRef:
+    apiVersion: elemental.cattle.io/v1beta1
+    kind: MachineRegistration
+    name: my-nodes
+    namespace: fleet-default
 ```
 
 ## Step 3: Build the USB Image
@@ -64,15 +96,17 @@ elemental:
 ### Build ISO for USB
 
 ```bash
-# Build ISO with embedded registration config
-docker run --privileged --rm \
-  -v $(pwd):/workspace \
-  registry.suse.com/rancher/elemental-toolkit/elemental-cli:latest \
-  build-iso \
-  --config /workspace/usb-registration-config.yaml \
-  --output /workspace/ \
-  --name elemental-usb \
-  registry.suse.com/rancher/sle-micro:latest
+kubectl apply -f seedimage-iso.yaml
+
+kubectl wait --for=condition=ready pod \
+  -n fleet-default elemental-usb-iso
+
+# If Rancher uses a self-signed certificate, add --no-check-certificate to wget
+wget \
+  "$(kubectl get seedimage elemental-usb-iso \
+    -n fleet-default \
+    -o jsonpath='{.status.downloadURL}')" \
+  -O elemental-usb.iso
 
 ls -lh elemental-usb.iso
 ```
@@ -80,15 +114,17 @@ ls -lh elemental-usb.iso
 ### Build Raw Disk Image (Better for USB)
 
 ```bash
-# Build raw disk image optimized for USB
-docker run --privileged --rm \
-  -v $(pwd):/workspace \
-  registry.suse.com/rancher/elemental-toolkit/elemental-cli:latest \
-  build-disk \
-  --config /workspace/usb-registration-config.yaml \
-  --output /workspace/ \
-  --name elemental-usb \
-  registry.suse.com/rancher/sle-micro:latest
+kubectl apply -f seedimage-raw.yaml
+
+kubectl wait --for=condition=ready pod \
+  -n fleet-default elemental-usb-raw
+
+# If Rancher uses a self-signed certificate, add --no-check-certificate to wget
+wget \
+  "$(kubectl get seedimage elemental-usb-raw \
+    -n fleet-default \
+    -o jsonpath='{.status.downloadURL}')" \
+  -O elemental-usb.raw
 ```
 
 ## Step 4: Write to USB Drive
@@ -99,11 +135,11 @@ docker run --privileged --rm \
 # Find the USB device
 lsblk
 
-# Write ISO to USB (CAUTION: verify the device path!)
-sudo dd if=elemental-usb.iso of=/dev/sdX bs=4M status=progress oflag=sync
+# Write raw disk image to USB (CAUTION: verify the device path!)
+sudo dd if=elemental-usb.raw of=/dev/sdX bs=4M status=progress conv=fsync
 
-# Or write raw disk image
-sudo dd if=elemental-usb.raw of=/dev/sdX bs=4M status=progress oflag=sync
+# Or write the ISO seed image instead
+sudo dd if=elemental-usb.iso of=/dev/sdX bs=4M status=progress conv=fsync
 
 # Sync and eject
 sync
@@ -119,7 +155,10 @@ diskutil list
 # Unmount (but don't eject)
 diskutil unmountDisk /dev/diskX
 
-# Write image (note: rdisk for faster writes)
+# Write raw disk image (note: rdisk for faster writes)
+sudo dd if=elemental-usb.raw of=/dev/rdiskX bs=4m
+
+# Or write the ISO seed image instead
 sudo dd if=elemental-usb.iso of=/dev/rdiskX bs=4m
 
 # Eject
@@ -130,7 +169,7 @@ diskutil eject /dev/diskX
 
 ```powershell
 # Using dd for Windows
-.\dd.exe if=elemental-usb.iso of=\\.\PhysicalDriveX bs=4M
+.\dd.exe if=elemental-usb.raw of=\\.\PhysicalDriveX bs=4M
 
 # Or use Rufus (GUI tool):
 # 1. Open Rufus
@@ -143,17 +182,17 @@ diskutil eject /dev/diskX
 ## Step 5: Boot the Machine
 
 1. Insert the USB drive into the target machine
-2. Enter BIOS/UEFI settings (usually F2, F10, F12, or Del)
+2. Enter BIOS/UEFI settings (usually F2, F10, F12, or Del) and ensure the machine is set to boot with UEFI
 3. Set USB as the first boot device
 4. Save and reboot
-5. The machine boots Elemental, installs to /dev/sda, and reboots
+5. The machine boots the Elemental seed image, installs to /dev/sda, and reboots
 6. After reboot, the machine registers with Rancher
 
 ## Step 6: Monitor Registration
 
 ```bash
 # Watch for the machine to appear in inventory
-kubectl get machineinventory -n fleet-default --watch
+kubectl get machineinventories -n fleet-default --watch
 
 # Once registered, verify the machine
 kubectl describe machineinventory -n fleet-default <machine-name>
@@ -166,7 +205,7 @@ For large deployments, create multiple identical USB drives:
 ```bash
 # Write to multiple USB drives in parallel
 for device in /dev/sdb /dev/sdc /dev/sdd; do
-  sudo dd if=elemental-usb.iso of=$device bs=4M status=progress &
+  sudo dd if=elemental-usb.raw of=$device bs=4M status=progress conv=fsync &
 done
 
 # Wait for all to complete
@@ -176,4 +215,4 @@ echo "All USB drives written"
 
 ## Conclusion
 
-USB boot provides a simple, reliable provisioning method for Elemental nodes that doesn't require any network boot infrastructure. By creating standardized USB images with embedded registration configuration, field technicians can provision nodes at remote locations with just a USB drive and no additional tooling. Once the USB is inserted and the machine boots, the entire provisioning process is automated.
+USB boot provides a simple, reliable provisioning method for Elemental nodes that doesn't require any network boot infrastructure. By creating standardized USB seed images tied to a `MachineRegistration`, field technicians can provision nodes at remote locations with just a USB drive and no PXE setup. Once the USB is inserted and the machine boots, the entire provisioning process is automated.
