@@ -15,8 +15,6 @@ Assigning static IPs to Docker Compose services is useful when other systems ref
 ```yaml
 # docker-compose.yml
 
-version: "3.8"
-
 services:
   nginx:
     image: nginx:alpine
@@ -52,10 +50,10 @@ networks:
 ```bash
 docker compose up -d
 
-# Verify each service's IP
-docker compose exec nginx hostname -I     # Should show 192.168.50.10
-docker compose exec postgres hostname -I  # Should show 192.168.50.20
-docker compose exec redis hostname -I     # Should show 192.168.50.30
+# Verify each service's IP from the Docker host
+docker inspect --format='{{range .NetworkSettings.Networks}}{{.IPAddress}}{{end}}' "$(docker compose ps -q nginx)"     # Should show 192.168.50.10
+docker inspect --format='{{range .NetworkSettings.Networks}}{{.IPAddress}}{{end}}' "$(docker compose ps -q postgres)"  # Should show 192.168.50.20
+docker inspect --format='{{range .NetworkSettings.Networks}}{{.IPAddress}}{{end}}' "$(docker compose ps -q redis)"     # Should show 192.168.50.30
 ```
 
 ## Connecting Services to Multiple Networks with Different Static IPs
@@ -91,7 +89,7 @@ The specified `ipv4_address` must:
 
 ## Referencing Services by Name Instead
 
-Static IPs are often unnecessary - Docker Compose creates DNS entries for each service name:
+Static IPs are often unnecessary - Docker Compose creates DNS entries for each service name on the same network:
 
 ```yaml
 services:
@@ -101,8 +99,8 @@ services:
       CACHE_HOST: redis
 ```
 
-Use `ipv4_address` only when external systems need a fixed IP or when DNS resolution is not possible.
+Use `ipv4_address` only when external systems need a fixed IP or when service-name DNS resolution on a shared Docker network is not possible.
 
 ## Conclusion
 
-Use `ipv4_address` under the service's network attachment to assign static IPs in Docker Compose. Always define a matching `subnet` in the network IPAM block. Prefer name-based resolution for service-to-service communication and reserve static IPs for cases where a fixed address is genuinely required.
+Use `ipv4_address` under the service's network attachment to assign static IPs in Docker Compose. Always define a matching `subnet` in the network IPAM block. Prefer name-based resolution for service-to-service communication on a shared Compose network and reserve static IPs for cases where a fixed address is genuinely required.
