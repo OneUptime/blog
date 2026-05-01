@@ -8,18 +8,18 @@ Description: Configure a VLAN subinterface to obtain its IP address automaticall
 
 ## Introduction
 
-When a DHCP server serves a VLAN, your VLAN subinterface can obtain its IP, gateway, and DNS settings automatically. This is common in enterprise environments where DHCP is scoped per VLAN. This guide shows how to configure DHCP on VLAN interfaces using different methods.
+When DHCP service is available for a VLAN, your VLAN subinterface can obtain its IP, gateway, and DNS settings automatically. This is common in enterprise environments where DHCP is scoped per VLAN, often through a DHCP relay. This guide shows how to configure DHCP on VLAN interfaces using different methods.
 
 ## Prerequisites
 
-- VLAN interface created (e.g., `eth0.100`)
-- A DHCP server on VLAN 100
+- Parent interface and VLAN ID identified (e.g., `eth0` and VLAN `100`)
+- A DHCP server or DHCP relay reachable on VLAN 100
 - Root access
 
 ## Method 1: Using dhclient (Temporary)
 
 ```bash
-# Bring up the VLAN interface first
+# Bring up the parent and VLAN interface first
 
 ip link set eth0 up
 ip link set eth0.100 up
@@ -77,6 +77,7 @@ ip addr show eth0.100
 nmcli connection add \
     type vlan \
     con-name "vlan100-dhcp" \
+    ifname eth0.100 \
     dev eth0 \
     id 100 \
     ipv4.method auto
@@ -113,6 +114,15 @@ Id=100
 ```
 
 ```ini
+# /etc/systemd/network/20-eth0.network
+[Match]
+Name=eth0
+
+[Network]
+VLAN=eth0.100
+```
+
+```ini
 # /etc/systemd/network/20-vlan100.network
 [Match]
 Name=eth0.100
@@ -142,4 +152,4 @@ resolvectl status eth0.100
 
 ## Conclusion
 
-DHCP on VLAN interfaces works by bringing up the subinterface and running a DHCP client against it. Use `dhclient` for quick testing, or configure persistent DHCP through your distribution's network manager (Netplan, nmcli, or systemd-networkd). The DHCP server must be reachable through the VLAN and the switch must be configured to serve DHCP on that VLAN ID.
+DHCP on VLAN interfaces works by bringing up the subinterface and running a DHCP client against it. Use `dhclient` for quick testing, or configure persistent DHCP through your distribution's network manager (Netplan, nmcli, or systemd-networkd). The DHCP server or relay must be reachable through the VLAN, and the switch port must be configured to carry that tagged VLAN.
