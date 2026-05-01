@@ -8,7 +8,7 @@ Description: Learn how to detect if your ISP is placing you behind Carrier-Grade
 
 ## What Is CGNAT?
 
-Carrier-Grade NAT (CGNAT), also called Large-Scale NAT (LSN), is NAT performed by your ISP before traffic reaches your home router. Your ISP assigns you a **shared private IP** from the 100.64.0.0/10 range (RFC 6598) instead of a public IP.
+Carrier-Grade NAT (CGNAT), also called Large-Scale NAT (LSN), is NAT performed by your ISP before traffic reaches your home router. Many ISPs assign you a **shared address** from the 100.64.0.0/10 range (RFC 6598) instead of a public IPv4 address.
 
 ```text
 [Your PC]          [Your Router]    [ISP CGNAT]       [Internet]
@@ -27,10 +27,9 @@ This range is specifically reserved for ISP CGNAT use and is not routable on the
 
 ## Method 1: Check Your Router's WAN IP
 
-```bash
+```python
 # Check if your router's WAN IP is in 100.64.0.0/10
-
-# From inside your network, check the gateway IP assigned by ISP
+# Look up the WAN/Internet IP in your router UI, then test it
 
 import ipaddress
 
@@ -60,11 +59,11 @@ print(f"{wan_ip}: {is_cgnat(wan_ip)}")
 # Get your router's WAN IP (varies by router)
 # Many routers expose this at 192.168.1.1 under WAN settings
 
-# Get external IP (what the internet sees)
-curl -s https://ifconfig.me
+# Get external IPv4 (what the internet sees for IPv4)
+curl -4 -s https://ifconfig.me/ip
 
-# If router WAN IP ≠ external IP: you're behind NAT (CGNAT or double NAT)
-# If router WAN IP = external IP: you have a public IP
+# If router WAN IPv4 ≠ external IPv4: you're behind upstream NAT (CGNAT or double NAT)
+# If router WAN IPv4 = external IPv4: you have a public IPv4
 ```
 
 ## Method 3: traceroute Analysis
@@ -74,14 +73,14 @@ curl -s https://ifconfig.me
 traceroute 8.8.8.8
 
 # Indicators of CGNAT:
-# - First hop: your router (192.168.1.1)
-# - Second hop: 100.64.x.x (CGNAT shared space)
-# - Third+ hop: ISP infrastructure
+# - First hop: your router (often 192.168.1.1)
+# - An early ISP-side hop in 100.64.x.x strongly suggests CGNAT
+# - Some ISPs hide or filter these hops, so traceroute alone is not definitive
 
 # Example CGNAT traceroute:
 # 1. 192.168.1.1
-# 2. 100.64.1.1     ← CGNAT device
-# 3. 203.0.113.1    ← ISP public IP
+# 2. 100.64.1.1     ← shared address space inside ISP
+# 3. 203.0.113.1    ← ISP infrastructure / public side
 ```
 
 ## Method 4: Try Port Forwarding Test
@@ -94,28 +93,29 @@ python3 -m http.server 8080
 # Then test from outside (use your phone on mobile data)
 curl http://YOUR_EXTERNAL_IP:8080
 
-# If you can't reach it even with correct port forwarding, you're likely behind CGNAT
+# If you can't reach it even with correct port forwarding and host firewall rules,
+# you're likely behind CGNAT or another upstream NAT
 ```
 
 ## What CGNAT Prevents
 
 - Hosting public servers (web, game, VPN)
 - Port forwarding that works from outside the ISP network
-- Getting a consistent public IP for DNS
+- Pointing a public DNS A record directly at your home connection
 - Running a personal VPN server
 
 ## Workarounds for CGNAT
 
 1. **Request a public IP from ISP** - many offer it as an upgrade
-2. **Use a VPN with port forwarding** - e.g., Mullvad, AirVPN offer port forwarding through their servers
+2. **Use a VPN with port forwarding** - some providers, such as AirVPN, offer port forwarding through their servers
 3. **Use a cloud relay** - route traffic through a VPS (frp, ngrok, bore)
-4. **IPv6** - IPv6 bypasses CGNAT entirely (each device gets a global IPv6)
+4. **IPv6** - IPv6 can avoid IPv4 CGNAT for IPv6 traffic, though inbound access still depends on firewall rules
 
 ## Key Takeaways
 
-- CGNAT uses the 100.64.0.0/10 range (RFC 6598 shared address space).
-- If your router's WAN IP is in 100.64.0.0/10 or differs from your external IP, you're behind CGNAT.
-- traceroute showing 100.64.x.x as an early hop confirms CGNAT.
+- CGNAT commonly uses the 100.64.0.0/10 range (RFC 6598 shared address space).
+- If your router's WAN IPv4 is in 100.64.0.0/10, you're behind CGNAT. If it differs from your external IPv4, you're behind upstream NAT (CGNAT or double NAT).
+- traceroute showing 100.64.x.x as an early hop strongly suggests CGNAT.
 - Contact your ISP for a public IP, or use cloud relay/IPv6 as workarounds.
 
 **Related Reading:**
