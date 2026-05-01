@@ -13,8 +13,9 @@ The Kubernetes Cluster Autoscaler automatically adjusts the number of nodes in a
 ## Prerequisites
 
 - OpenTofu v1.6+
-- An existing EKS cluster with managed node groups
+- An existing EKS cluster with managed node groups and an IAM OIDC provider associated with the cluster
 - Helm provider configured
+- A Cluster Autoscaler chart version that matches your EKS cluster's Kubernetes minor version
 
 ## Step 1: Create IRSA Role for Cluster Autoscaler
 
@@ -75,7 +76,8 @@ resource "aws_iam_role_policy" "cluster_autoscaler" {
         Resource = ["*"]
         Condition = {
           StringEquals = {
-            "autoscaling:ResourceTag/kubernetes.io/cluster/${var.cluster_name}" = "owned"
+            "aws:ResourceTag/k8s.io/cluster-autoscaler/enabled"             = "true"
+            "aws:ResourceTag/k8s.io/cluster-autoscaler/${var.cluster_name}" = "owned"
           }
         }
       }
@@ -86,8 +88,10 @@ resource "aws_iam_role_policy" "cluster_autoscaler" {
 
 ## Step 2: Tag Node Group ASGs for Discovery
 
+For EKS managed node groups, apply the discovery tags to the underlying Auto Scaling Groups, because tags on the `aws_eks_node_group` resource don't propagate to those ASGs.
+
 ```hcl
-# Add required tags to the node group for autoscaler discovery
+# Create the managed node group
 resource "aws_eks_node_group" "app" {
   cluster_name    = var.cluster_name
   node_group_name = "app"
@@ -102,10 +106,42 @@ resource "aws_eks_node_group" "app" {
     max_size     = 20
   }
 
-  tags = {
-    # Required for Cluster Autoscaler ASG discovery
-    "k8s.io/cluster-autoscaler/${var.cluster_name}" = "owned"
-    "k8s.io/cluster-autoscaler/enabled"             = "true"
+  lifecycle {
+    # Allow Cluster Autoscaler to change desired size without OpenTofu reverting it.
+    ignore_changes = [scaling_config[0].desired_size]
+  }
+}
+
+# Add required tags to the underlying ASG for autoscaler discovery
+resource "aws_autoscaling_group_tag" "cluster_autoscaler_enabled" {
+  for_each = toset([
+    for asg in flatten([
+      for node_group_resource in aws_eks_node_group.app.resources : node_group_resource.autoscaling_groups
+    ]) : asg.name
+  ])
+
+  autoscaling_group_name = each.value
+
+  tag {
+    key                 = "k8s.io/cluster-autoscaler/enabled"
+    value               = "true"
+    propagate_at_launch = false
+  }
+}
+
+resource "aws_autoscaling_group_tag" "cluster_autoscaler_cluster" {
+  for_each = toset([
+    for asg in flatten([
+      for node_group_resource in aws_eks_node_group.app.resources : node_group_resource.autoscaling_groups
+    ]) : asg.name
+  ])
+
+  autoscaling_group_name = each.value
+
+  tag {
+    key                 = "k8s.io/cluster-autoscaler/${var.cluster_name}"
+    value               = "owned"
+    propagate_at_launch = false
   }
 }
 ```
@@ -119,6 +155,7 @@ resource "helm_release" "cluster_autoscaler" {
   repository = "https://kubernetes.github.io/autoscaler"
   chart      = "cluster-autoscaler"
   namespace  = "kube-system"
+  # Chart 9.37.0 deploys Cluster Autoscaler v1.30.0.
   version    = "9.37.0"
 
   set {
@@ -129,6 +166,11 @@ resource "helm_release" "cluster_autoscaler" {
   set {
     name  = "awsRegion"
     value = var.region
+  }
+
+  set {
+    name  = "rbac.serviceAccount.name"
+    value = "cluster-autoscaler"
   }
 
   set {
@@ -147,7 +189,10 @@ resource "helm_release" "cluster_autoscaler" {
     value = "10m"
   }
 
-  depends_on = [aws_eks_node_group.app]
+  depends_on = [
+    aws_autoscaling_group_tag.cluster_autoscaler_enabled,
+    aws_autoscaling_group_tag.cluster_autoscaler_cluster
+  ]
 }
 ```
 
@@ -159,8 +204,8 @@ tofu plan
 tofu apply
 
 # Verify autoscaler is running
-kubectl -n kube-system get pods -l app.kubernetes.io/name=cluster-autoscaler
-kubectl -n kube-system logs -l app.kubernetes.io/name=cluster-autoscaler --tail=50
+kubectl -n kube-system get pods -l app.kubernetes.io/instance=cluster-autoscaler
+kubectl -n kube-system logs -l app.kubernetes.io/instance=cluster-autoscaler --tail=50
 ```
 
 ## Conclusion
