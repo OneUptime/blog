@@ -39,12 +39,9 @@ TOKEN=$(curl -s -X POST \
 curl -X POST \
   https://localhost:9443/api/endpoints \
   -H "Authorization: Bearer $TOKEN" \
-  -H "Content-Type: application/json" \
-  -d '{
-    "Name": "my-environment",
-    "EndpointCreationType": 1,
-    "URL": "unix:///var/run/docker.sock"
-  }' \
+  --form "Name=my-environment" \
+  --form "EndpointCreationType=1" \
+  --form "URL=tcp://10.0.7.10:2375" \
   --insecure
 
 # List all environments
@@ -58,15 +55,15 @@ for e in envs:
 "
 ```
 
-## Environment Types Reference
+## EndpointCreationType Reference
 
 | Type | Value | Description |
 |------|-------|-------------|
-| Docker standalone (socket) | 1 | Local Docker via socket |
+| Docker standalone | 1 | Docker environment via socket or TCP API |
 | Agent | 2 | Remote via Portainer Agent |
 | Azure ACI | 3 | Azure Container Instances |
-| Docker standalone (API) | 4 | Remote Docker via TCP |
-| Kubernetes | 7 | K8s via agent or kubeconfig |
+| Edge agent | 4 | Remote via Portainer Edge Agent |
+| Kubernetes (local) | 5 | Local Kubernetes environment |
 
 ## Verify the Connection
 
@@ -81,7 +78,12 @@ import sys, json
 envs = json.load(sys.stdin)
 for e in envs:
     status = e.get('Status', 0)
-    status_str = 'Online' if status == 1 else 'Offline'
+    if status == 1:
+        status_str = 'Online'
+    elif status == 2:
+        status_str = 'Offline'
+    else:
+        status_str = 'Unknown'
     print(f'{e[\"Name\"]}: {status_str}')
 "
 ```
