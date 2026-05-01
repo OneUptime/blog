@@ -39,6 +39,7 @@ filter {
   # GeoIP enrichment
   geoip {
     source => "client_ip"
+    ecs_compatibility => disabled
     target => "geoip"
     fields => ["city_name", "country_name", "country_code2", "location"]
   }
@@ -92,13 +93,17 @@ PUT _index_template/nginx-access
 
 client_ip: "10.1.0.0/16"
 
-# Top error-generating IPs
-status_code >= 400 | stats count() by client_ip | sort count desc | limit 20
+# ES|QL - top error-generating IPs
+FROM "nginx-access-*"
+| WHERE status_code >= 400
+| STATS error_count = COUNT(*) BY client_ip
+| SORT error_count DESC
+| LIMIT 20
 
-# Traffic from specific country
+# KQL - traffic from specific country
 geoip.country_code2: "CN"
 
-# Requests in last 15 minutes
+# KQL - requests in last 15 minutes
 @timestamp >= now-15m and status_code: 200
 ```
 
@@ -120,7 +125,8 @@ Create these visualizations in **Visualize Library**:
    - Color by: Count
 
 4. **Gauge** - Error rate percentage
-   - Total = count all, Error = count where status ≥ 400
+   - Metric: Formula `count(kql='status_code >= 400') / count()`
+   - Value format: Percent
 
 ## Conclusion
 
