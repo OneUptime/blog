@@ -8,32 +8,29 @@ Description: Learn how to deploy Vaultwarden, the lightweight self-hosted Bitwar
 
 ---
 
-Vaultwarden is a community-written Bitwarden server implementation in Rust. It uses a fraction of the resources of the official server while remaining fully compatible with all official Bitwarden clients (browser extensions, mobile apps, desktop apps).
+Vaultwarden is a community-written Bitwarden server implementation in Rust. It uses a fraction of the resources of the official server while remaining compatible with official Bitwarden clients (browser extensions, mobile apps, desktop apps).
 
 ## Prerequisites
 
 - Portainer running
-- HTTPS is required for the Bitwarden clients to work (use a reverse proxy)
-- At least 128MB RAM
+- HTTPS is effectively required for Bitwarden clients on a public domain (use a reverse proxy)
 
 ## Compose Stack
 
 ```yaml
-version: "3.8"
-
 services:
   vaultwarden:
     image: vaultwarden/server:latest
     restart: unless-stopped
     ports:
-      - "8188:80"
+      - "127.0.0.1:8188:80"
     environment:
-      # Admin panel at /admin - use a strong random token
-      ADMIN_TOKEN: "changeme-use-openssl-rand-hex-32"
-      # Required for WebSocket live sync
-      WEBSOCKET_ENABLED: "true"
+      # Admin panel at /admin - use a long random token
+      ADMIN_TOKEN: "changeme-use-openssl-rand-base64-32"
+      # Enable WebSocket notifications
+      ENABLE_WEBSOCKET: "true"
       # Set your domain - HTTPS is required for clients
-      DOMAIN: https://vault.example.com
+      DOMAIN: "https://vault.example.com"
       # Disable open registration after creating your account
       SIGNUPS_ALLOWED: "true"
     volumes:
@@ -47,7 +44,7 @@ volumes:
 
 1. In Portainer go to **Stacks > Add Stack**.
 2. Name it `vaultwarden`.
-3. Generate a strong `ADMIN_TOKEN` with `openssl rand -hex 32`.
+3. Generate a strong `ADMIN_TOKEN` with `openssl rand -base64 32`.
 4. Set `DOMAIN` to your HTTPS URL.
 5. Click **Deploy the stack**.
 
@@ -58,6 +55,17 @@ Vaultwarden must be accessed over HTTPS. Add a minimal Nginx reverse proxy confi
 ```nginx
 # /etc/nginx/sites-available/vaultwarden
 
+map $http_upgrade $connection_upgrade {
+    default upgrade;
+    ''      "";
+}
+
+server {
+    listen 80;
+    server_name vault.example.com;
+    return 301 https://$host$request_uri;
+}
+
 server {
     listen 443 ssl;
     server_name vault.example.com;
@@ -66,17 +74,17 @@ server {
     ssl_certificate /etc/letsencrypt/live/vault.example.com/fullchain.pem;
     ssl_certificate_key /etc/letsencrypt/live/vault.example.com/privkey.pem;
 
+    client_max_body_size 525M;
+    proxy_http_version 1.1;
+
     location / {
         proxy_pass http://127.0.0.1:8188;
+        proxy_set_header Upgrade $http_upgrade;
+        proxy_set_header Connection $connection_upgrade;
         proxy_set_header Host $host;
         proxy_set_header X-Real-IP $remote_addr;
-    }
-
-    # WebSocket endpoint for live sync
-    location /notifications/hub {
-        proxy_pass http://127.0.0.1:3012;
-        proxy_set_header Upgrade $http_upgrade;
-        proxy_set_header Connection "upgrade";
+        proxy_set_header X-Forwarded-For $proxy_add_x_forwarded_for;
+        proxy_set_header X-Forwarded-Proto $scheme;
     }
 }
 ```
@@ -89,4 +97,4 @@ server {
 
 ## Monitoring
 
-Use OneUptime to monitor `https://vault.example.com/alive`. Vaultwarden returns an empty `200 OK` on this endpoint. Downtime means all clients lose vault access, so configure a low-latency alert.
+Use OneUptime to monitor `https://vault.example.com/alive`. Vaultwarden returns `200 OK` with a timestamp body on this endpoint and uses it for its own healthcheck. Downtime means all clients lose vault access, so configure a low-latency alert.
