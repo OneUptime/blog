@@ -4,32 +4,30 @@ Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
 Tags: OpenTofu, Output, Ephemeral, Security, Infrastructure as Code, DevOps
 
-Description: A guide to using ephemeral outputs in OpenTofu to expose temporary values that are never stored in the state file.
+Description: A guide to using ephemeral outputs in OpenTofu child modules to pass temporary values that are never stored in state or plan data.
 
 ## Introduction
 
-Ephemeral outputs in OpenTofu (introduced in 1.11) are output values that exist only during the plan/apply execution and are never written to the state file. Unlike sensitive outputs (which are stored in state but masked in display), ephemeral outputs are truly transient - they cannot be persisted.
+Ephemeral outputs in OpenTofu (introduced in 1.11) are child-module output values that exist only during a single `tofu` execution and are never written to state or plan data. Unlike sensitive outputs (which are stored in state but masked in display), ephemeral outputs are truly transient - they cannot be persisted.
 
 ## Declaring Ephemeral Outputs
 
 ```hcl
-# outputs.tf
+# modules/secret-reader/outputs.tf
+# Ephemeral outputs are only valid in child modules.
 
-output "temporary_token" {
-  description = "Temporary authentication token (not stored in state)"
-  value       = ephemeral.vault_secret.app_token.data.token
-  ephemeral   = true  # Never written to state
+output "db_password" {
+  description = "Database password fetched by an ephemeral resource"
+  value       = ephemeral.aws_secretsmanager_secret_version.db.secret_string
+  ephemeral   = true
+  sensitive   = true
 }
 
 output "session_credentials" {
-  description = "Temporary AWS session credentials (not stored in state)"
-  value = {
-    access_key    = ephemeral.aws_temporary_credentials.main.access_key
-    secret_key    = ephemeral.aws_temporary_credentials.main.secret_key
-    session_token = ephemeral.aws_temporary_credentials.main.session_token
-  }
-  ephemeral = true
-  sensitive = true  # Also mask from display
+  description = "Temporary AWS session credentials fetched from Secrets Manager"
+  value       = jsondecode(ephemeral.aws_secretsmanager_secret_version.aws_creds.secret_string)
+  ephemeral   = true
+  sensitive   = true
 }
 ```
 
@@ -44,38 +42,40 @@ output "db_password" {
   # ^ In state file, but masked in terminal output
 }
 
-# Ephemeral output: NEVER stored in state
-output "vault_token" {
-  value     = data.vault_generic_secret.app.data.token
-  ephemeral = true
-  sensitive = true  # Also mask from display
-  # ^ NOT in state file, only exists during execution
+# Child-module ephemeral output: NEVER stored in state or plan data
+output "session_credentials" {
+  value       = jsondecode(ephemeral.aws_secretsmanager_secret_version.aws_creds.secret_string)
+  ephemeral   = true
+  sensitive   = true  # Also mask from display
+  # ^ Only valid in a child module and only exists during the current run
 }
 ```
 
 ## Using Ephemeral Outputs Between Modules
 
 ```hcl
-# When an output is ephemeral, it can only be used by resources
-# that also support ephemeral values (providers, provisioners, etc.)
+# When an output is ephemeral, it can only be used in
+# contexts that also support ephemeral values.
 
-# modules/vault-auth/outputs.tf
-output "access_token" {
-  value     = vault_approle_auth_login.main.client_token
-  ephemeral = true
-  sensitive = true
+# modules/secret-management/outputs.tf
+output "secrets" {
+  value       = jsondecode(ephemeral.aws_secretsmanager_secret_version.secret_retrieval.secret_string)
+  ephemeral   = true
+  sensitive   = true
 }
 ```
 
 ```hcl
-# root/main.tf - Using ephemeral module output
-module "vault_auth" {
-  source = "./modules/vault-auth"
+# root/main.tf - Using an ephemeral child-module output
+module "secret_management" {
+  source = "./modules/secret-management"
 }
 
 # Use ephemeral output in a provider configuration
-provider "vault" {
-  token = module.vault_auth.access_token  # Ephemeral value
+provider "aws" {
+  alias      = "dev-access"
+  access_key = module.secret_management.secrets["access_key"]
+  secret_key = module.secret_management.secrets["secret_key"]
 }
 ```
 
@@ -83,57 +83,61 @@ provider "vault" {
 
 ```hcl
 # Ephemeral outputs CANNOT be used in:
-# 1. Regular resource attributes stored in state
-# 2. Data source attributes that are stored in state
-# 3. Non-ephemeral local values
+# 1. Root module outputs
+# 2. Regular resource attributes stored in state
+# 3. Regular data source arguments
 # 4. Non-ephemeral output values
 
-# This would fail:
+# This would fail because `content` is a normal resource argument:
 # resource "local_file" "token" {
-#   content = output.temporary_token  # Can't use ephemeral in state-stored resource
+#   content = module.secret_management.secrets["access_key"]
 # }
 
 # Ephemeral values can be used in:
-# - Provider configurations
-# - Provisioner connection blocks
-# - Provisioner inline commands
 # - Ephemeral resources
-# - Ephemeral locals
+# - Ephemeral variables
+# - Ephemeral outputs
+# - Locals
+# - Provider configurations
+# - Provisioners
+# - Resource connection blocks
+# - Resource write-only attributes
 ```
 
 ## Ephemeral Output Use Cases
 
 ```hcl
 # Use case 1: Dynamic provider credentials
-output "aws_temp_credentials" {
-  value = {
-    access_key = vault_aws_access_credentials.main.access_key
-    secret_key = vault_aws_access_credentials.main.secret_key
-    token      = vault_aws_access_credentials.main.security_token
-  }
-  ephemeral = true
-  sensitive = true
+provider "aws" {
+  alias      = "dev-access"
+  access_key = module.secret_management.secrets["access_key"]
+  secret_key = module.secret_management.secrets["secret_key"]
 }
 
-# Use case 2: One-time setup tokens
-output "setup_token" {
-  value     = random_password.setup.result
-  ephemeral = true
-  # Used once for initial setup, should not be persisted
+# Use case 2: Passing secrets into a write-only attribute
+resource "aws_ssm_parameter" "store_ephemeral" {
+  provider         = aws.dev-access
+  name             = "parameter_from_ephemeral_value"
+  type             = "SecureString"
+  value_wo         = jsonencode(module.secret_management.secrets)
+  value_wo_version = 1
 }
 
-# Use case 3: Short-lived certificates
-output "client_certificate" {
-  value = {
-    cert    = tls_locally_signed_cert.client.cert_pem
-    key     = tls_private_key.client.private_key_pem
-    ca_cert = tls_self_signed_cert.ca.cert_pem
+# Use case 3: Provisioners that need temporary values
+resource "aws_ssm_parameter" "provisioner_example" {
+  provider         = aws.dev-access
+  name             = "parameter_for_provisioner_example"
+  type             = "SecureString"
+  value_wo         = jsonencode(module.secret_management.secrets)
+  value_wo_version = 1
+
+  provisioner "local-exec" {
+    when    = create
+    command = "echo ephemeral value from module: #${jsonencode(module.secret_management.secrets)}#"
   }
-  ephemeral = true
-  sensitive = true
 }
 ```
 
 ## Conclusion
 
-Ephemeral outputs provide the strongest security guarantee for truly transient values - they are provably not stored in state. This is essential for temporary credentials, one-time tokens, and other values that should exist only for the duration of a deployment. Use ephemeral outputs for any value that would be a security risk if persisted, and combine them with ephemeral variables and resources for a comprehensive ephemeral secret management strategy.
+Ephemeral outputs provide the strongest security guarantee for truly transient values because OpenTofu does not store them in state or plan data. In practice, they are most useful in child modules, where they can pass temporary credentials or secrets into other ephemeral contexts such as providers, provisioners, connection blocks, and write-only attributes. Use ephemeral outputs for values that would be a security risk if persisted, and combine them with ephemeral variables and resources for a comprehensive ephemeral secret management strategy.
