@@ -19,22 +19,19 @@ Disabling IPv6 is sometimes necessary for:
 ## Temporary Disable (Until Reboot)
 
 ```bash
-# Disable IPv6 on all interfaces immediately
+# Disable IPv6 on all current interfaces and set the default for future interfaces
 
 sysctl -w net.ipv6.conf.all.disable_ipv6=1
 
-# Disable on the default profile for new interfaces
-sysctl -w net.ipv6.conf.default.disable_ipv6=1
+# Or disable on a specific interface only (e.g., eth0)
+# sysctl -w net.ipv6.conf.eth0.disable_ipv6=1
 
-# Disable on a specific interface (e.g., eth0)
-sysctl -w net.ipv6.conf.eth0.disable_ipv6=1
-
-# Also disable on loopback (may affect some services)
-sysctl -w net.ipv6.conf.lo.disable_ipv6=1
+# Optional: if you disabled only selected interfaces and also want to remove ::1
+# sysctl -w net.ipv6.conf.lo.disable_ipv6=1
 
 # Verify IPv6 addresses are removed
 ip -6 addr show
-# Should return empty or only show ::1 if lo isn't disabled
+# Should be empty if loopback is disabled; otherwise ::1 may remain
 ```
 
 ## Permanent Disable via /etc/sysctl.conf
@@ -52,9 +49,9 @@ EOF
 # Apply immediately
 sysctl -p /etc/sysctl.conf
 
-# Verify
-sysctl net.ipv6.conf.all.disable_ipv6
-# Should return: 1
+# Verify the settings were loaded
+sysctl net.ipv6.conf.all.disable_ipv6 net.ipv6.conf.default.disable_ipv6 net.ipv6.conf.lo.disable_ipv6
+# Each should return = 1
 ```
 
 ## Permanent Disable via /etc/sysctl.d/
@@ -81,7 +78,7 @@ ip -6 addr show
 
 ## Disabling IPv6 on Ubuntu
 
-Ubuntu uses netplan for network management. To disable IPv6 there:
+Ubuntu systems that use netplan can also disable IPv6 on a specific interface there:
 
 ```yaml
 # /etc/netplan/00-installer-config.yaml
@@ -92,7 +89,7 @@ network:
     eth0:
       dhcp4: true
       dhcp6: false      # Disable DHCPv6
-      link-local: []    # Remove link-local IPv6 generation
+      link-local: []    # Disable link-local addresses on this interface
       accept-ra: false  # Don't accept Router Advertisements
 ```
 
@@ -102,24 +99,27 @@ netplan apply
 
 ## Disabling IPv6 on RHEL/CentOS/Fedora
 
-For RHEL-based systems, also update the NIC configuration:
+For RHEL-based systems, you can either use sysctl or disable IPv6 in the NetworkManager connection profile:
 
 ```bash
 # Method 1: sysctl (universal)
-echo 'net.ipv6.conf.all.disable_ipv6 = 1' > /etc/sysctl.d/99-disable-ipv6.conf
+cat > /etc/sysctl.d/99-disable-ipv6.conf << 'EOF'
+net.ipv6.conf.all.disable_ipv6 = 1
+net.ipv6.conf.default.disable_ipv6 = 1
+EOF
 sysctl --system
 
-# Method 2: NetworkManager
-nmcli connection modify eth0 ipv6.method "disabled"
-nmcli connection up eth0
+# Method 2: NetworkManager connection profile
+nmcli connection modify "<connection-name>" ipv6.method "disabled"
+nmcli connection up "<connection-name>"
 ```
 
 ## Verifying IPv6 Is Disabled
 
 ```bash
-# Check sysctl parameter
-sysctl net.ipv6.conf.all.disable_ipv6
-# Should be: 1
+# Check sysctl parameters
+sysctl net.ipv6.conf.all.disable_ipv6 net.ipv6.conf.default.disable_ipv6
+# Both should be: 1
 
 # Check no IPv6 addresses are configured
 ip -6 addr show
@@ -129,8 +129,9 @@ ip -6 addr show
 ss -6 -tlnp
 # Should be empty
 
-# Test that IPv6 DNS resolution doesn't work
-dig AAAA google.com @::1 2>&1 | grep -E 'error|refused|failed'
+# Check no IPv6 routes remain
+ip -6 route show
+# Should be empty (except possibly loopback routes if lo isn't disabled)
 ```
 
 ## Re-enabling IPv6
@@ -138,8 +139,9 @@ dig AAAA google.com @::1 2>&1 | grep -E 'error|refused|failed'
 If you need to re-enable IPv6 later:
 
 ```bash
-# Remove the sysctl.d file
-rm /etc/sysctl.d/99-disable-ipv6.conf
+# Remove or comment out any persistent disable_ipv6 settings first
+rm -f /etc/sysctl.d/99-disable-ipv6.conf
+# If you added settings to /etc/sysctl.conf, remove or comment them out there too
 
 # Re-enable immediately
 sysctl -w net.ipv6.conf.all.disable_ipv6=0
@@ -151,4 +153,4 @@ sysctl --system
 
 ## Summary
 
-Disable IPv6 on Linux with `sysctl -w net.ipv6.conf.all.disable_ipv6=1` for immediate effect, and create `/etc/sysctl.d/99-disable-ipv6.conf` for persistence across reboots. Apply with `sysctl --system`. Verify with `ip -6 addr show` (should be empty). Note that disabling IPv6 may affect services using `::1` for loopback communication, so test your applications after disabling.
+Disable IPv6 on Linux with `sysctl -w net.ipv6.conf.all.disable_ipv6=1` for immediate effect on current interfaces and as the default for future interfaces, and create `/etc/sysctl.d/99-disable-ipv6.conf` for persistence across reboots. Apply with `sysctl --system`. Verify with `ip -6 addr show` and `ip -6 route show`. Note that disabling IPv6 may affect services using `::1` for loopback communication, so test your applications after disabling.
