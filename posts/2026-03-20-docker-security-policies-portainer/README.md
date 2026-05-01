@@ -4,18 +4,19 @@ Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
 Tags: Portainer, Security, Docker, Policies, Container Security
 
-Description: Learn how to configure comprehensive Docker security policies in Portainer to enforce a secure baseline for all container deployments.
+Description: Learn how to configure comprehensive Docker security policies in Portainer to enforce a secure baseline for container deployments managed through Portainer.
 
 ## Overview of Docker Security Policies in Portainer
 
-Portainer's environment security settings let administrators define a security baseline that non-admin users cannot override. These policies are enforced at the API level - even if a user crafts a direct Docker API call, Portainer rejects it.
+Portainer's environment security settings let administrators define a security baseline that non-admin users cannot override. Portainer API access is scoped to the user's permissions, so requests made through Portainer are subject to the same restrictions.
 
 ## Accessing Security Settings
 
 1. Go to **Environments** in Portainer.
 2. Select your Docker environment.
-3. Click **Edit**.
-4. Scroll to the **Security** section.
+3. Open the **Host** or **Swarm** page for that environment.
+4. Click the **Setup** tab.
+5. Scroll to the **Docker Security Settings** section.
 
 ## Recommended Security Policy Configuration
 
@@ -23,29 +24,26 @@ Portainer's environment security settings let administrators define a security b
 
 Privileged containers have full access to the host kernel. Disable for all non-admin users:
 
-```yaml
+```bash
 # What a privileged container can do (and why it's dangerous)
 
 docker run --privileged ubuntu \
   mount /dev/sda1 /mnt  # Mount host disk
 ```
 
-Toggle: **Allow containers to run in privileged mode** → **OFF**
+Toggle: **Disable privileged mode for non-administrators** → **ON**
 
-### Disable Host Namespace Access
+### Disable Host PID Namespace Access
 
-Prevent access to host-level namespaces:
+Prevent non-admin users from running containers in the host PID namespace:
 
-Toggle **OFF**:
-- Allow container to use the host PID namespace
-- Allow container to use the host IPC namespace
-- Allow container to use the host network mode
+Toggle: **Disable the use of host PID 1 for non-administrators** → **ON**
 
 ### Disable Bind Mounts
 
 Prevent host filesystem exposure via bind mounts.
 
-Toggle: **Allow bind mounts** → **OFF**
+Toggle: **Disable bind mounts for non-administrators** → **ON**
 
 ### Restrict Docker Socket Access
 
@@ -58,16 +56,16 @@ docker run -v /var/run/docker.sock:/var/run/docker.sock ubuntu
 
 ## Applying Linux Capabilities Restrictions
 
-Use Seccomp profiles and capability restrictions for additional hardening:
+Use Docker's default seccomp profile and capability restrictions for additional hardening:
 
 ```yaml
 # docker-compose.yml with restricted capabilities
 services:
   app:
     image: my-app:latest
+    # Docker applies the default seccomp profile unless you override it
     security_opt:
       - no-new-privileges:true     # Prevent privilege escalation
-      - seccomp:default            # Apply default seccomp profile
     cap_drop:
       - ALL                        # Drop ALL capabilities
     cap_add:
@@ -79,7 +77,7 @@ services:
 
 ## Per-User Policy Exceptions
 
-For trusted power users who legitimately need elevated capabilities, grant them admin role or create specific service accounts.
+For trusted power users who legitimately need elevated capabilities, grant them administrator access to that environment or create specific service accounts.
 
 ## Auditing Policy Compliance
 
@@ -94,9 +92,9 @@ docker inspect $(docker ps -q) | \
 
 # Check for bind mounts
 docker inspect $(docker ps -q) | \
-  jq '[.[] | select(.HostConfig.Binds != null) | {name: .Name, binds: .HostConfig.Binds}]'
+  jq '[.[] | {name: .Name, binds: [.Mounts[]? | select(.Type == "bind") | {source: .Source, destination: .Destination, rw: .RW}]} | select(.binds | length > 0)]'
 ```
 
 ## Conclusion
 
-Docker security policies in Portainer provide a centrally managed, enforceable security baseline for all container deployments. Implement these settings on day one and audit regularly to catch any containers that were deployed before policies were enabled.
+Docker security policies in Portainer provide a centrally managed, enforceable security baseline for container deployments managed through Portainer. Implement these settings on day one and audit regularly to catch any containers that were deployed before policies were enabled.
