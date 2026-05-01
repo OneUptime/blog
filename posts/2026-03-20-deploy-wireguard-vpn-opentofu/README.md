@@ -26,7 +26,7 @@ data "aws_ami" "ubuntu" {
 
   filter {
     name   = "name"
-    values = ["ubuntu/images/hvm-ssd/ubuntu-22.04-amd64-server-*"]
+    values = ["ubuntu/images/hvm-ssd/ubuntu-jammy-22.04-amd64-server-*"]
   }
 
   filter {
@@ -104,7 +104,7 @@ terraform {
   required_providers {
     wireguard = {
       source  = "OJFord/wireguard"
-      version = "~> 0.3"
+      version = "~> 0.4"
     }
   }
 }
@@ -118,7 +118,7 @@ resource "wireguard_asymmetric_key" "clients" {
   for_each = toset(var.client_names)
 }
 
-# Store server private key securely
+# Store server private key in Secrets Manager
 resource "aws_secretsmanager_secret" "server_private_key" {
   name = "/wireguard/${var.environment}/server-private-key"
 }
@@ -137,17 +137,20 @@ resource "aws_secretsmanager_secret_version" "server_private_key" {
 apt-get update -y
 apt-get install -y wireguard
 
+install -d -m 700 /etc/wireguard
+primary_iface="$(ip route show default | awk '/default/ {print $5; exit}')"
+
 # Configure IP forwarding
 echo 'net.ipv4.ip_forward=1' >> /etc/sysctl.d/wireguard.conf
 sysctl -p /etc/sysctl.d/wireguard.conf
 
-cat > /etc/wireguard/wg0.conf << 'WGCONF'
+cat > /etc/wireguard/wg0.conf << WGCONF
 [Interface]
 PrivateKey = ${server_private_key}
 Address = 10.200.0.1/24
 ListenPort = ${listen_port}
-PostUp = iptables -A FORWARD -i %i -j ACCEPT; iptables -A FORWARD -o %i -j ACCEPT; iptables -t nat -A POSTROUTING -o eth0 -j MASQUERADE
-PostDown = iptables -D FORWARD -i %i -j ACCEPT; iptables -D FORWARD -o %i -j ACCEPT; iptables -t nat -D POSTROUTING -o eth0 -j MASQUERADE
+PostUp = iptables -A FORWARD -i %i -j ACCEPT; iptables -A FORWARD -o %i -j ACCEPT; iptables -t nat -A POSTROUTING -o $primary_iface -j MASQUERADE
+PostDown = iptables -D FORWARD -i %i -j ACCEPT; iptables -D FORWARD -o %i -j ACCEPT; iptables -t nat -D POSTROUTING -o $primary_iface -j MASQUERADE
 
 %{ for peer in peers ~}
 [Peer]
@@ -155,6 +158,7 @@ PublicKey = ${peer.public_key}
 AllowedIPs = ${peer.ip}/32
 %{ endfor ~}
 WGCONF
+chmod 600 /etc/wireguard/wg0.conf
 
 systemctl enable wg-quick@wg0
 systemctl start wg-quick@wg0
@@ -171,7 +175,7 @@ output "client_configs" {
       [Interface]
       PrivateKey = ${key.private_key}
       Address = ${var.client_ips[name]}/24
-      DNS = ${aws_instance.wireguard.private_ip}
+      DNS = ${cidrhost(var.vpc_cidr, 2)}
 
       [Peer]
       PublicKey = ${wireguard_asymmetric_key.server.public_key}
@@ -185,4 +189,4 @@ output "client_configs" {
 
 ## Conclusion
 
-Deploying WireGuard with OpenTofu provides a modern, performant VPN for private VPC access. The wireguard provider generates cryptographic key pairs as managed resources, ensuring keys are properly stored (server private key in Secrets Manager) while client configs can be securely distributed. Set `source_dest_check = false` on the EC2 instance to allow it to forward traffic to other VPC resources.
+Deploying WireGuard with OpenTofu provides a modern, performant VPN for private VPC access. The wireguard provider generates cryptographic key pairs as managed resources, and this example also writes the server private key to Secrets Manager for retrieval on the AWS side. Because provider-generated private keys, Secrets Manager secret values, and `user_data` contents are still present in OpenTofu state or instance metadata, protect your state backend and instance access accordingly. Set `source_dest_check = false` on the EC2 instance to allow it to forward traffic to other VPC resources.
