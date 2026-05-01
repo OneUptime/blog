@@ -10,8 +10,8 @@ Description: Learn how to diagnose and fix DNS resolution failures on IPv4 netwo
 
 ```cmd
 REM Test if DNS is the problem (not connectivity)
-ping 8.8.8.8        REM Works = IP connectivity is fine
-ping google.com     REM Fails = DNS is broken
+ping 8.8.8.8        REM Works = basic IP connectivity is fine
+ping google.com     REM If this fails with "could not find host", DNS is likely broken
 
 REM Basic DNS test
 nslookup google.com
@@ -26,13 +26,13 @@ ipconfig /all | findstr "DNS Server"
 
 REM Linux
 cat /etc/resolv.conf
-systemd-resolve --status | grep "DNS Servers"
+resolvectl status | grep "DNS Servers"
 
 REM macOS
 scutil --dns | grep nameserver
 ```
 
-If the DNS server IP is wrong (e.g., 0.0.0.0, 169.254.x.x, or blank), that's the root cause.
+If the DNS server IP is wrong (e.g., 0.0.0.0, 169.254.x.x, or blank), that's likely the root cause.
 
 ## Step 2: Test DNS Server Directly
 
@@ -57,16 +57,12 @@ dig @8.8.8.8 google.com | grep "Query time"
 REM Windows
 ipconfig /flushdns
 REM Output: "Successfully flushed the DNS Resolver Cache"
-
-REM Restart DNS Client service
-net stop dnscache
-net start dnscache
 ```
 
 ```bash
 # Linux (systemd-resolved)
-sudo systemd-resolve --flush-caches
-sudo systemd-resolve --statistics | grep "Current Cache Size"
+sudo resolvectl flush-caches
+sudo resolvectl statistics
 
 # nscd (older systems)
 sudo service nscd restart
@@ -91,27 +87,26 @@ Get-DnsClientServerAddress -InterfaceAlias "Ethernet"
 ```
 
 ```bash
-# Linux - edit /etc/resolv.conf
+# Linux - temporary test on systems that manage /etc/resolv.conf directly
 sudo tee /etc/resolv.conf << 'EOF'
 nameserver 8.8.8.8
 nameserver 8.8.4.4
-options ndots:5
 EOF
 
 # Or use NetworkManager
-nmcli con mod "Wired connection 1" ipv4.dns "8.8.8.8 8.8.4.4"
+nmcli con mod "Wired connection 1" ipv4.ignore-auto-dns yes ipv4.dns "8.8.8.8 8.8.4.4"
 nmcli con up "Wired connection 1"
 ```
 
 ## Step 5: Check for DNS Hijacking or Split Horizon Issues
 
 ```bash
-# Verify DNS responses are legitimate
+# Request DNSSEC records; on a validating resolver, look for the AD flag
 dig google.com +dnssec
 
 # Check if ISP is hijacking NXDOMAIN responses
 nslookup nonexistent-domain-12345.com 8.8.8.8
-# Should return NXDOMAIN, not a redirect page
+# Should return NXDOMAIN / Non-existent domain, not an address
 
 # Test from router vs direct
 nslookup google.com 192.168.1.1    # Router DNS
@@ -153,4 +148,4 @@ journalctl -u dnsmasq -n 50
 
 ## Conclusion
 
-DNS failures are diagnosed by confirming IP connectivity works (`ping 8.8.8.8`) while name resolution fails (`ping google.com`). Fix by flushing caches (`ipconfig /flushdns` on Windows, `systemd-resolve --flush-caches` on Linux), switching to reliable public DNS servers (8.8.8.8 or 1.1.1.1) via PowerShell or `nmcli`, and checking `/etc/hosts` for conflicting entries. Always test with `nslookup` specifying the DNS server explicitly to isolate whether the issue is the server choice or the network path.
+DNS failures are diagnosed by confirming IP connectivity works (`ping 8.8.8.8`) while name resolution fails (`ping google.com`). Fix by flushing caches (`ipconfig /flushdns` on Windows, `resolvectl flush-caches` on Linux), switching to reliable public DNS servers (8.8.8.8 or 1.1.1.1) via PowerShell or `nmcli`, and checking `/etc/hosts` for conflicting entries. Always test with `nslookup` specifying the DNS server explicitly to isolate whether the issue is the server choice or the network path.
