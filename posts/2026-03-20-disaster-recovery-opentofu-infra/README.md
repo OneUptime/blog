@@ -13,15 +13,17 @@ OpenTofu's greatest disaster recovery advantage is that infrastructure is define
 ## What to Protect for DR
 
 ```text
-1. Configuration files          → Git repository (replicated automatically)
-2. State files                  → S3 with cross-region replication
+1. Configuration files          → Git remote / mirror
+2. State files                  → S3 with versioning and cross-region replication
 3. State lock table             → DynamoDB (replicate or accept re-creation)
 4. Secrets                      → AWS Secrets Manager with cross-region replication
-5. Provider credentials         → IAM roles (tied to AWS, recreate in DR region)
+5. Provider credentials         → IAM roles / STS (global IAM, prefer Regional STS endpoints)
 6. Provider binaries            → Use plugin cache or private mirror
 ```
 
 ## Cross-Region State Replication
+
+Enable versioning on both buckets first; live replication only covers new and updated objects after the rule is created.
 
 ```hcl
 # Replicate state bucket to a DR region
@@ -30,15 +32,22 @@ resource "aws_s3_bucket_replication_configuration" "state_dr" {
   bucket = aws_s3_bucket.state.id
   role   = aws_iam_role.replication.arn
 
+  depends_on = [
+    aws_s3_bucket_versioning.state,
+    aws_s3_bucket_versioning.state_dr,
+  ]
+
   rule {
     id     = "state-dr-replication"
     status = "Enabled"
+
+    filter {}
 
     destination {
       bucket        = aws_s3_bucket.state_dr.arn
       storage_class = "STANDARD_IA"  # Cost-optimized for DR
 
-      # Use same KMS key in DR region (or a DR-region key)
+      # Use a KMS key in the DR region for replica encryption
       encryption_configuration {
         replica_kms_key_id = aws_kms_key.state_dr.arn
       }
@@ -55,6 +64,8 @@ resource "aws_s3_bucket" "state_dr" {
 
 ## Versioning for State Rollback
 
+Enable versioning on both source and DR buckets so you can recover older state versions and satisfy S3 replication requirements:
+
 ```hcl
 resource "aws_s3_bucket_versioning" "state" {
   bucket = aws_s3_bucket.state.id
@@ -62,9 +73,17 @@ resource "aws_s3_bucket_versioning" "state" {
     status = "Enabled"
   }
 }
+
+resource "aws_s3_bucket_versioning" "state_dr" {
+  provider = aws.dr_region
+  bucket   = aws_s3_bucket.state_dr.id
+  versioning_configuration {
+    status = "Enabled"
+  }
+}
 ```
 
-Restore a previous state version:
+Inspect and download a previous state version before restoring it:
 
 ```bash
 # List state file versions
@@ -109,20 +128,21 @@ set -euo pipefail
 DR_REGION="us-west-2"
 STATE_BUCKET="my-opentofu-state-dr"
 
-echo "Step 1: Verify DR state is accessible"
-aws s3 ls "s3://${STATE_BUCKET}/prod-dr/" --region "$DR_REGION"
+echo "Step 1: Verify DR bucket is accessible"
+aws s3 ls "s3://${STATE_BUCKET}" --region "$DR_REGION"
 
 echo "Step 2: Initialize DR configuration"
 cd environments/prod-dr
 tofu init \
+  -reconfigure \
   -backend-config="bucket=${STATE_BUCKET}" \
   -backend-config="region=${DR_REGION}"
 
 echo "Step 3: Plan DR environment"
-tofu plan -var="region=${DR_REGION}"
+tofu plan
 
 echo "Step 4: Apply DR environment (requires human confirmation)"
-# tofu apply -var="region=${DR_REGION}"
+# tofu apply
 ```
 
 ## RTO/RPO Targets
@@ -141,9 +161,9 @@ cd environments/prod-dr
 tofu plan   # Verify the config is current and valid
 
 # Full DR test (quarterly): apply everything in the DR region
-tofu apply -var="environment=prod-dr"
+tofu apply
 # Verify the application works, then destroy DR resources
-tofu destroy -var="environment=prod-dr"
+tofu destroy
 ```
 
 ## Conclusion
