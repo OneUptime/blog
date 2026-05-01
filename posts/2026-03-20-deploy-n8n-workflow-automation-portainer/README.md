@@ -13,16 +13,14 @@ n8n is a powerful self-hosted workflow automation tool similar to Zapier and Mak
 ## Prerequisites
 
 - Portainer running
-- At least 512MB RAM
-- A domain for the `N8N_HOST` setting
+- Enough RAM for your workload
+- A domain and reverse proxy for the `N8N_HOST` and `WEBHOOK_URL` settings
 
 ## Compose Stack
 
-n8n can use SQLite for small deployments, but PostgreSQL is recommended for production to handle concurrent workflow executions:
+n8n can use SQLite for small deployments, but PostgreSQL is a better fit for production deployments:
 
 ```yaml
-version: "3.8"
-
 services:
   postgres:
     image: postgres:16-alpine
@@ -35,7 +33,7 @@ services:
       - n8n_db:/var/lib/postgresql/data
 
   n8n:
-    image: n8nio/n8n:latest
+    image: docker.n8n.io/n8nio/n8n
     restart: unless-stopped
     depends_on:
       - postgres
@@ -46,14 +44,13 @@ services:
       N8N_PORT: 5678
       N8N_PROTOCOL: https
       WEBHOOK_URL: https://n8n.example.com/
+      N8N_PROXY_HOPS: 1
+      N8N_RUNNERS_ENABLED: "true"
       DB_TYPE: postgresdb
       DB_POSTGRESDB_HOST: postgres
       DB_POSTGRESDB_DATABASE: n8n
       DB_POSTGRESDB_USER: n8n
       DB_POSTGRESDB_PASSWORD: n8npass    # Must match postgres service
-      N8N_BASIC_AUTH_ACTIVE: "true"
-      N8N_BASIC_AUTH_USER: admin
-      N8N_BASIC_AUTH_PASSWORD: adminpass  # Change this
     volumes:
       - n8n_data:/home/node/.n8n
 
@@ -66,19 +63,19 @@ volumes:
 
 1. In Portainer go to **Stacks > Add Stack**.
 2. Name it `n8n`.
-3. Update all passwords and set `N8N_HOST` to your domain.
+3. Update all passwords and set `N8N_HOST` and `WEBHOOK_URL` to your domain.
 4. Click **Deploy the stack**.
 
-Open `http://<host>:5678` and log in.
+Open `https://n8n.example.com` and create your owner account.
 
 ## Example Workflow: HTTP Webhook to Slack
 
 Create a simple workflow that sends a Slack message when an HTTP webhook is triggered:
 
-1. Add a **Webhook** trigger node - copy the generated URL.
-2. Add a **Slack** node with your OAuth token.
+1. Add a **Webhook** trigger node - copy the production URL.
+2. Add a **Slack** node with Slack credentials.
 3. Set the Slack message to `{{ $json.body.message }}`.
-4. Activate the workflow.
+4. Publish the workflow.
 
 Test by POSTing to the webhook URL:
 
@@ -90,4 +87,4 @@ curl -X POST https://n8n.example.com/webhook/your-uuid \
 
 ## Monitoring
 
-Use OneUptime to monitor `http://<host>:5678/healthz`. n8n returns `{"status":"ok"}` when healthy. Alert on any failure as workflow automations stop running when n8n is down.
+Use OneUptime to monitor `https://n8n.example.com/healthz/readiness`. Alert on any non-200 response, as this endpoint checks that n8n is reachable and its database is ready.
