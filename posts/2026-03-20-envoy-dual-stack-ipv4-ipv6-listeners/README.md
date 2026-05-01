@@ -8,7 +8,7 @@ Description: Learn how to configure Envoy listeners that accept both IPv4 and IP
 
 ---
 
-Dual-stack deployments serve both IPv4 and IPv6 clients simultaneously. Envoy supports this by binding listeners to `0.0.0.0` (IPv4), `::` (IPv6), or by using `::` with IPv4-mapped addresses on Linux.
+Dual-stack deployments serve both IPv4 and IPv6 clients simultaneously. Envoy supports this by binding listeners to `0.0.0.0` (IPv4), `::` (IPv6), or by using `::` with `ipv4_compat: true` so IPv4 clients arrive as IPv4-mapped IPv6 addresses.
 
 ## Option 1: Separate Listeners per Protocol
 
@@ -88,7 +88,7 @@ listeners:
             typed_config:
               "@type": type.googleapis.com/envoy.extensions.filters.network.http_connection_manager.v3.HttpConnectionManager
               stat_prefix: dual_stack
-              use_remote_address: true   # Correctly extract IPv4 from mapped address
+              use_remote_address: true   # Trust the directly connected client address instead of X-Forwarded-For
               route_config:
                 virtual_hosts:
                   - name: app
@@ -104,7 +104,7 @@ listeners:
 
 ## Backends: IPv4 Upstream from a Dual-Stack Listener
 
-Regardless of which protocol the client uses, the upstream cluster uses IPv4.
+Regardless of which protocol the client uses, Envoy can still connect to an IPv4 upstream.
 
 ```yaml
 clusters:
@@ -125,8 +125,9 @@ clusters:
 ## Verifying Dual-Stack Listening
 
 ```bash
-# Check Envoy is listening on both IPv4 and IPv6
-ss -tlnp | grep envoy
+# Inspect the listening socket(s). With separate listeners, expect both 0.0.0.0:8080 and [::]:8080.
+# With ipv4_compat: true, Linux may show only the IPv6 listener even though it also accepts IPv4.
+ss -tlnp | grep ':8080'
 
 # Test IPv4 connection
 curl -4 http://127.0.0.1:8080/
@@ -139,5 +140,5 @@ curl -6 http://[::1]:8080/
 
 - Separate listeners for IPv4 (`0.0.0.0`) and IPv6 (`::`) is the clearest dual-stack approach.
 - `ipv4_compat: true` on an IPv6 listener accepts IPv4 clients via mapped addresses on Linux.
-- Set `use_remote_address: true` to correctly log the IPv4 address of clients connecting via mapped IPv6.
-- Upstream clusters remain IPv4-only - Envoy handles protocol translation between listener and cluster.
+- Set `use_remote_address: true` on edge listeners when Envoy should trust the directly connected client address instead of X-Forwarded-For.
+- Upstream clusters can remain IPv4-only because Envoy proxies the downstream connection to a separate upstream connection.
