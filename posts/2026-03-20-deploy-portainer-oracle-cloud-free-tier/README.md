@@ -8,7 +8,7 @@ Description: Learn how to deploy Portainer CE on Oracle Cloud's Always Free tier
 
 ---
 
-Oracle Cloud's Always Free tier includes two AMD micro VMs (1 vCPU, 1 GB RAM each) or up to 4 Arm-based Ampere A1 instances (4 vCPU, 24 GB total). This makes it one of the most generous free cloud tiers for self-hosted Docker workloads.
+Oracle Cloud's Always Free tier includes up to two AMD micro VMs (1 OCPU, 1 GB RAM each) or up to four Arm-based Ampere A1 instances, with 4 OCPUs and 24 GB of memory total across them. This makes it one of the most generous free cloud tiers for self-hosted Docker workloads.
 
 ---
 
@@ -19,7 +19,7 @@ terraform {
   required_providers {
     oci = {
       source  = "oracle/oci"
-      version = "~> 5.0"
+      version = "~> 8.0"
     }
   }
 }
@@ -29,7 +29,7 @@ provider "oci" {
   user_ocid        = var.user_ocid
   fingerprint      = var.fingerprint
   private_key_path = var.private_key_path
-  region           = "us-ashburn-1"
+  region           = var.region
 }
 ```
 
@@ -60,7 +60,7 @@ resource "oci_core_instance" "portainer" {
   }
 
   metadata = {
-    ssh_authorized_keys = file("~/.ssh/id_rsa.pub")
+    ssh_authorized_keys = file(pathexpand("~/.ssh/id_rsa.pub"))
     user_data = base64encode(<<-EOF
       #!/bin/bash
       apt-get update -y
@@ -83,6 +83,12 @@ resource "oci_core_security_list" "portainer" {
   vcn_id         = oci_core_vcn.main.id
   display_name   = "portainer-sl"
 
+  egress_security_rules {
+    protocol    = "all"
+    destination = "0.0.0.0/0"
+    stateless   = false
+  }
+
   ingress_security_rules {
     protocol  = "6"  # TCP
     source    = var.admin_ip_cidr
@@ -99,4 +105,4 @@ resource "oci_core_security_list" "portainer" {
 
 ## Summary
 
-Oracle Cloud's Always Free A1 Flex instances (ARM-based) provide generous compute for Portainer. Use `shape = "VM.Standard.A1.Flex"` and allocate up to 4 OCPUs and 24 GB RAM across free instances. Pass a `user_data` bootstrap script to install Docker and Portainer. Configure security list ingress rules to allow port 9443 from your admin CIDR.
+Oracle Cloud's Always Free A1 Flex instances (ARM-based) provide generous compute for Portainer. Use `shape = "VM.Standard.A1.Flex"` in your tenancy's home region and allocate up to 4 OCPUs and 24 GB RAM across free instances. Pass a `user_data` bootstrap script to install Docker and Portainer. Configure security list rules to allow outbound access and restrict inbound port 9443 to your admin CIDR.
