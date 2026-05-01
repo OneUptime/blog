@@ -14,17 +14,17 @@ Benefits on LAN:
 - Fewer frames to transmit the same data → lower CPU overhead
 - Fewer interrupts per MB of data
 - Higher throughput for large bulk transfers (NFS, iSCSI, backups)
-- Typically 10-20% throughput improvement for large transfers
+- Can improve bulk-transfer throughput when every device in the path is configured for the larger MTU
 
-**Important**: Jumbo frames only work on LAN. All devices in the path (NICs, switches) must support the same MTU.
+**Important**: Jumbo frames are usually practical only on controlled local networks. All devices in the path (NICs, switches, and any routed hops) must support the chosen MTU.
 
 ## Step 1: Verify Hardware Support
 
 ```bash
 # Check maximum MTU supported by the NIC
 
-ip link show eth0
-# look for "maxmtu XXXXX" field (if present)
+ip -d link show eth0
+# look for "minmtu" / "maxmtu" fields (if present)
 
 # Check with ethtool
 ethtool -i eth0
@@ -45,16 +45,16 @@ sudo ip link set eth0 mtu 9000
 ip link show eth0 | grep mtu
 # should show: mtu 9000
 
-# Test with a large ping (9000 - 28 bytes header = 8972 bytes payload)
+# Test with a large IPv4 ping (9000 - 28 bytes header = 8972 bytes payload)
 ping -M do -s 8972 192.168.1.1
-# If successful, jumbo frames are working end-to-end
+# If successful from both endpoints, jumbo frames are working end-to-end
 ```
 
 ## Step 3: Make MTU Persistent
 
 ```bash
 # Method 1: /etc/network/interfaces (Debian/Ubuntu with ifupdown)
-cat >> /etc/network/interfaces << 'EOF'
+sudo tee -a /etc/network/interfaces > /dev/null << 'EOF'
 auto eth0
 iface eth0 inet static
     address 192.168.1.10
@@ -64,11 +64,11 @@ iface eth0 inet static
 EOF
 
 # Method 2: NetworkManager (most modern systems)
-nmcli connection modify "Wired connection 1" 802-3-ethernet.mtu 9000
-nmcli connection up "Wired connection 1"
+sudo nmcli connection modify "Wired connection 1" 802-3-ethernet.mtu 9000
+sudo nmcli connection up "Wired connection 1"
 
 # Method 3: netplan (Ubuntu 18.04+)
-cat > /etc/netplan/01-netcfg.yaml << 'EOF'
+sudo tee /etc/netplan/01-netcfg.yaml > /dev/null << 'EOF'
 network:
   version: 2
   ethernets:
@@ -76,7 +76,9 @@ network:
       dhcp4: false
       addresses:
         - 192.168.1.10/24
-      gateway4: 192.168.1.1
+      routes:
+        - to: default
+          via: 192.168.1.1
       mtu: 9000
 EOF
 sudo netplan apply
@@ -86,43 +88,44 @@ sudo netplan apply
 
 All switches in the path must support jumbo frames. Example for common platforms:
 
-**Cisco Catalyst IOS:**
+**Cisco Catalyst (platform-dependent):**
 ```text
-! Enable jumbo frames globally (some models)
+! Many Catalyst platforms use a global jumbo MTU command
 system mtu jumbo 9000
 
-! Or per-interface
+! Cisco IOS XE 17.1.1+ also supports per-port MTU on supported hardware
 interface GigabitEthernet1/0/1
  mtu 9000
 ```
 
-**Arista EOS:**
+**Arista EOS (routed interface example):**
 ```text
 interface Ethernet1
-   mtu 9214
+   no switchport
+   mtu 9000
 ```
 
 **Linux bridge:**
 ```bash
-# Set MTU on the bridge interface
-ip link set br0 mtu 9000
-ip link set eth0 mtu 9000    # Also set on bridge member interfaces
-ip link set eth1 mtu 9000
+# Set MTU on bridge member interfaces, then on the bridge itself
+sudo ip link set eth0 mtu 9000
+sudo ip link set eth1 mtu 9000
+sudo ip link set br0 mtu 9000
 ```
 
 ## Step 5: Verify End-to-End Jumbo Frame Support
 
 ```bash
 # Test jumbo ping to remote host (must have jumbo frames configured)
-# -M do = don't fragment, -s 8972 = 8972 byte payload (+ 28 header = 9000)
+# -M do = set DF, -s 8972 = 8972 byte payload (+ 28 bytes IPv4+ICMP header = 9000)
 ping -M do -s 8972 192.168.1.100
 
-# If ping fails with "Message too long", jumbo frames are not configured
-# on an intermediate device
+# Run the test from both endpoints. If you get "Message too long",
+# the path MTU is smaller somewhere along the path.
 
 # Trace the MTU along the path
 tracepath -n 192.168.1.100
-# Shows the effective MTU at each hop
+# Can help identify where the discovered path MTU drops
 
 # Test throughput improvement
 # Before jumbo frames:
@@ -136,15 +139,17 @@ iperf3 -c 192.168.1.100 -t 30
 Jumbo frames provide the most benefit for storage protocols:
 
 ```bash
-# NFS mount with jumbo frames
-# Ensure both NFS server and client have MTU 9000 on storage interface
-mount -t nfs -o rsize=65536,wsize=65536 192.168.1.200:/data /mnt/data
+# NFS with jumbo frames
+# Ensure both NFS server and client have MTU 9000 on the storage interface.
+# No jumbo-frame-specific mount option is required.
+sudo mount -t nfs 192.168.1.200:/data /mnt/data
 
 # iSCSI with jumbo frames
-# Configure iSCSI to use the jumbo frame interface
-iscsiadm -m node --op=update -n node.conn[0].iscsi.MaxXmitDataSegmentLength -v 65536
+# iSCSI also uses the interface MTU; no special iSCSI payload setting is
+# required just to enable jumbo frames. Verify the storage NIC is set correctly.
+ip link show eth1 | grep mtu
 ```
 
 ## Conclusion
 
-Jumbo frames improve bulk transfer throughput on LANs by reducing per-packet overhead. Enable with `ip link set eth0 mtu 9000`, verify with a large fragmentation-forbidden ping, and persist through NetworkManager, netplan, or `/etc/network/interfaces`. Ensure all switches in the path are also configured for jumbo frames - a single standard-MTU device in the path will cause large packets to be fragmented or dropped.
+Jumbo frames improve bulk transfer throughput on controlled local networks by reducing per-packet overhead. Enable with `ip link set eth0 mtu 9000`, verify with a large fragmentation-forbidden ping, and persist through NetworkManager, netplan, or `/etc/network/interfaces`. Ensure all switches in the path are also configured for jumbo frames - a single smaller-MTU device in the path will break end-to-end jumbo-frame traffic.
