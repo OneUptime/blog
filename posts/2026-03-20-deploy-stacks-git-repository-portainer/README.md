@@ -26,30 +26,31 @@ Portainer can fetch your Docker Compose file directly from a Git repository and 
 For private repositories, enable authentication:
 
 1. Toggle **Authentication** to On.
-2. Choose the credential type:
-   - **Username/password**: Use a personal access token as the password.
-   - **SSH key**: Paste your SSH private key.
+2. Choose the authorization type required by your Git host.
+   - For GitHub, GitLab, and Bitbucket Cloud, Portainer expects **Basic** authorization even when you use a personal access token.
+3. Enter your credentials:
+   - **Username / Personal Access Token**: Use your Git username and a token with access to the repository.
 
 ```bash
-# For GitHub, use a Personal Access Token (PAT) as the password
+# For GitHub, use a Personal Access Token (PAT) over HTTPS
 
 # Username: your-github-username
-# Password: ghp_yourpersonalaccesstoken
+# Password: <your-personal-access-token>
 
-# For GitLab, use a Deploy Token
+# For GitLab, a Deploy Token can be used over HTTPS
 # Username: deploy-token-username
 # Password: <deploy-token-value>
+# Scope: read_repository
 ```
 
 ## Reference Formats
 
-Portainer accepts various Git reference formats:
+Portainer accepts Git references such as branches and tags:
 
 ```bash
 refs/heads/main              # Branch
 refs/heads/develop           # Another branch
 refs/tags/v2.0.0             # Tag
-abc123def456                 # Specific commit SHA
 ```
 
 ## Compose File Path Options
@@ -75,25 +76,25 @@ Deploy the production stack using `docker-compose.prod.yml` as the Compose file 
 
 ## Viewing the Current Git State
 
-After deployment, Portainer shows:
-- Which Git ref (branch/tag/commit) is deployed.
-- When the last update occurred.
-- A link to view changes.
+After deployment, Portainer lets you:
+- Reconfigure GitOps updates for the stack.
+- Manually **Pull and redeploy** the stack.
+- View and edit the stack's environment variables.
 
 ## Redeploying After a Git Push
 
 When you push changes to the configured branch:
 
-- **With polling enabled**: Portainer auto-detects within the polling interval (default: 5 minutes).
-- **With webhooks enabled**: Git triggers Portainer immediately.
+- **With polling enabled**: Portainer checks for changes within the configured fetch interval.
+- **With webhooks enabled**: A webhook call can trigger Portainer to check for updates on demand.
 - **Manual**: Click **Pull and redeploy** in the Portainer UI.
 
 ```bash
 # Manually trigger a stack redeploy via Portainer API
-curl -X POST "${PORTAINER_URL}/api/stacks/${STACK_ID}/git/redeploy?endpointId=${ENDPOINT_ID}" \
-  -H "Authorization: Bearer ${API_TOKEN}" \
+curl -X PUT "${PORTAINER_URL}/api/stacks/${STACK_ID}/git/redeploy?endpointId=${ENDPOINT_ID}" \
+  -H "X-API-Key: ${API_TOKEN}" \
   -H "Content-Type: application/json" \
-  -d '{"pullImage": true}'
+  -d '{"RepullImageAndRedeploy": true}'
 ```
 
 ## Conclusion
