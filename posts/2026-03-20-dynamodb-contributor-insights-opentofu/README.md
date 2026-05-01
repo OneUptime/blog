@@ -8,12 +8,12 @@ Description: Learn how to enable DynamoDB Contributor Insights with OpenTofu to 
 
 ## Introduction
 
-DynamoDB Contributor Insights analyzes table and index traffic patterns to identify the most frequently accessed partition keys, enabling detection of hot partitions that degrade performance. It reports which items drive the most read and write traffic, helping optimize data models and distribution strategies.
+DynamoDB Contributor Insights analyzes table and index traffic patterns to identify the most frequently accessed partition keys, enabling detection of hot partitions that degrade performance. It reports which items drive the most combined read and write traffic, helping optimize data models and distribution strategies.
 
 ## Prerequisites
 
 - OpenTofu v1.6+
-- AWS credentials with DynamoDB and CloudWatch permissions
+- AWS credentials with permissions for DynamoDB Contributor Insights, CloudWatch dashboards and alarms, and `iam:CreateServiceLinkedRole` the first time you enable Contributor Insights
 
 ## Step 1: Enable Contributor Insights on DynamoDB Table
 
@@ -40,9 +40,18 @@ resource "aws_dynamodb_table" "monitored" {
   }
 
   global_secondary_index {
-    name            = "GSI1"
-    hash_key        = "gsi1pk"
-    range_key       = "sk"
+    name = "GSI1"
+
+    key_schema {
+      attribute_name = "gsi1pk"
+      key_type       = "HASH"
+    }
+
+    key_schema {
+      attribute_name = "sk"
+      key_type       = "RANGE"
+    }
+
     projection_type = "ALL"
   }
 
@@ -63,18 +72,24 @@ resource "aws_dynamodb_table" "monitored" {
 
 resource "aws_dynamodb_contributor_insights" "table" {
   table_name = aws_dynamodb_table.monitored.name
+  mode       = "ACCESSED_AND_THROTTLED_KEYS"
 }
 
 # Enable Contributor Insights on the GSI as well
 resource "aws_dynamodb_contributor_insights" "gsi" {
   table_name = aws_dynamodb_table.monitored.name
   index_name = "GSI1"
+  mode       = "ACCESSED_AND_THROTTLED_KEYS"
 }
 ```
 
-## Step 2: CloudWatch Dashboard for Contributor Insights
+## Step 2: CloudWatch Dashboard and Alarm for Related DynamoDB Metrics
+
+Contributor Insights graphs are viewed on the DynamoDB table's **Monitor** tab or in CloudWatch Contributor Insights. The dashboard below complements them with table-level throughput and throttling metrics.
 
 ```hcl
+data "aws_region" "current" {}
+
 resource "aws_cloudwatch_dashboard" "dynamodb_insights" {
   dashboard_name = "${var.project_name}-dynamodb-insights"
 
@@ -83,8 +98,9 @@ resource "aws_cloudwatch_dashboard" "dynamodb_insights" {
       {
         type = "metric"
         properties = {
-          title  = "Top Partition Keys (Reads)"
+          title  = "Consumed Read Capacity Units"
           period = 300
+          region = data.aws_region.current.name
           metrics = [
             ["AWS/DynamoDB", "ConsumedReadCapacityUnits",
              "TableName", aws_dynamodb_table.monitored.name]
@@ -98,6 +114,7 @@ resource "aws_cloudwatch_dashboard" "dynamodb_insights" {
         properties = {
           title  = "Throttled Requests"
           period = 60
+          region = data.aws_region.current.name
           metrics = [
             ["AWS/DynamoDB", "ReadThrottleEvents",
              "TableName", aws_dynamodb_table.monitored.name],
@@ -112,7 +129,7 @@ resource "aws_cloudwatch_dashboard" "dynamodb_insights" {
   })
 }
 
-# Alarm for throttling which indicates hot partitions
+# Complementary alarm: throttling can indicate hot partitions or insufficient capacity
 resource "aws_cloudwatch_metric_alarm" "throttle_alarm" {
   alarm_name          = "${var.project_name}-dynamodb-throttles"
   comparison_operator = "GreaterThanThreshold"
@@ -127,7 +144,7 @@ resource "aws_cloudwatch_metric_alarm" "throttle_alarm" {
     TableName = aws_dynamodb_table.monitored.name
   }
 
-  alarm_description = "DynamoDB read throttles detected - possible hot partition"
+  alarm_description = "DynamoDB read throttles detected - possible hot partition or insufficient capacity"
   alarm_actions     = [var.sns_topic_arn]
 }
 ```
