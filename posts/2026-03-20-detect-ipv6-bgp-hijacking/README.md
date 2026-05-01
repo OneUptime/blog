@@ -12,15 +12,15 @@ BGP hijacking occurs when an attacker announces your IPv6 prefixes from an unaut
 
 ## Detection Method 1: RPKI Validation
 
-The most reliable automated defense is RPKI - any announcement from an unauthorized AS appears as INVALID:
+RPKI lets you validate a prefix/origin pair against published ROAs. With a covering ROA, an announcement from an unauthorized AS shows up as `invalid_asn`; without a covering ROA, the result is `unknown`:
 
 ```bash
-# Check if your prefix is currently announced with correct origin
+# Check whether your authorized prefix/origin pair is RPKI-valid
 
-curl "https://stat.ripe.net/data/rpki-validation/data.json?resource=AS64496&prefix=2001:db8::/32"
+curl "https://stat.ripe.net/data/rpki-validation/data.json?resource=64496&prefix=2001:db8::/32"
 
-# Use the RIPE BGPmon API to check for unexpected origins
-curl "https://stat.ripe.net/data/routing-status/data.json?resource=2001:db8::/32"
+# Use RIPEstat routing-status to check current exact-prefix origins and more specifics
+curl "https://stat.ripe.net/data/routing-status/data.json?resource=2001:db8::/32&min_peers_seeing=1"
 ```
 
 ## Detection Method 2: RIPE RIS BGP Monitoring
@@ -29,61 +29,69 @@ RIPE Routing Information Service (RIS) collects BGP data from route collectors w
 
 ```python
 import requests
-import json
 
-def check_bgp_origins(prefix):
-    """Check all ASes currently announcing a prefix via RIPE RIS."""
+def check_bgp_announcements(prefix):
+    """Check exact-prefix origins and more-specifics via RIPE RIS."""
     url = "https://stat.ripe.net/data/routing-status/data.json"
-    params = {"resource": prefix}
+    params = {"resource": prefix, "min_peers_seeing": 1}
 
     response = requests.get(url, params=params, timeout=30)
-    data = response.json()
+    data = response.json().get("data", {})
 
-    origins = data.get("data", {}).get("origins", [])
-    print(f"Current announced origins for {prefix}:")
+    origins = data.get("origins", [])
+    more_specifics = data.get("more_specifics", [])
+
+    print(f"Current exact-prefix origins for {prefix}:")
     for origin in origins:
         asn = origin.get("origin", "Unknown")
-        visibility = origin.get("visibility", 0)
-        print(f"  AS{asn}: {visibility:.1f}% visibility")
+        print(f"  AS{asn}")
 
-    return origins
+    if more_specifics:
+        print("Currently announced more-specifics:")
+        for route in more_specifics:
+            print(f"  {route.get('prefix', '')} via AS{route.get('origin', 'Unknown')}")
+
+    return origins, more_specifics
 
 # Check your prefix
-origins = check_bgp_origins("2001:db8::/32")
+origins, more_specifics = check_bgp_announcements("2001:db8::/32")
 
-# Alert if unexpected ASN is announcing
+# Alert if an unexpected ASN is announcing the exact prefix
 authorized_asns = {"64496", "64497"}
 for origin in origins:
     asn = str(origin.get("origin", ""))
     if asn not in authorized_asns:
         print(f"ALERT: Unauthorized AS{asn} announcing your prefix!")
+
+# Alert if an unexpected ASN is announcing a more specific prefix
+for route in more_specifics:
+    asn = str(route.get("origin", ""))
+    if asn not in authorized_asns:
+        print(f"ALERT: Unauthorized AS{asn} announcing more specific {route.get('prefix', '')}!")
 ```
 
 ## Detection Method 3: BGPStream
 
-BGPStream is a framework for real-time BGP data processing:
+BGPStream is a framework for real-time and historical BGP data processing:
 
 ```python
 # Install: pip install pybgpstream
-from pybgpstream import BGPStream
+import pybgpstream
 
-stream = BGPStream(
-    from_time="2026-03-19 00:00:00",
-    until_time="2026-03-19 01:00:00",
+stream = pybgpstream.BGPStream(
+    from_time="2026-03-19 00:00:00 UTC",
+    until_time="2026-03-19 01:00:00 UTC",
     collectors=["rrc00", "rrc01", "route-views2"],
-    record_type="updates"
+    record_type="updates",
+    filter="prefix exact 2001:db8::/32 and ipversion 6"
 )
 
-stream.add_filter("prefix", "2001:db8::/32")
-
-for rec in stream.records():
-    for elem in rec:
-        if elem.type in ("A", "W"):  # Announcement or Withdrawal
-            prefix = elem.fields.get("prefix", "")
-            as_path = elem.fields.get("as-path", "")
-            peer_asn = elem.peer_asn
-            origin_asn = as_path.split()[-1] if as_path else "unknown"
-            print(f"{elem.type} | {prefix} | path: {as_path} | origin: {origin_asn}")
+for elem in stream:
+    if elem.type in ("A", "W"):  # Announcement or Withdrawal
+        prefix = elem.fields.get("prefix", "")
+        as_path = elem.fields.get("as-path", "")
+        origin_asn = as_path.split()[-1] if as_path else "unknown"
+        print(f"{elem.type} | {prefix} | path: {as_path} | origin: {origin_asn}")
 ```
 
 ## Detection Method 4: Traceroute-Based Detection
@@ -92,46 +100,52 @@ If you control both endpoints, regular traceroutes reveal unexpected path change
 
 ```bash
 # Traceroute to your own IPv6 prefix from an external vantage point
-traceroute6 -n 2001:db8::1
+traceroute -6 -n 2001:db8::1
 
 # Or use RIPE Atlas for global vantage points
 # Atlas probe measurement can be created via API
 
-# Alert if AS path changes unexpectedly
-# Compare hop 1,2,3 ASNs with known expected path
+# Alert if the path changes unexpectedly
+# Compare hop IPs and their mapped ASNs with a known-good baseline
 ```
 
 ## Automated Alert Script
 
 ```bash
 #!/bin/bash
-# bgp-hijack-check.sh - Run every 5 minutes via cron
+# bgp-hijack-check.sh - Run after each new RIS snapshot (00:00, 08:00, 16:00 UTC)
 
 PREFIX="2001:db8::/32"
-AUTHORIZED_ASN="64496"
+AUTHORIZED_ASNS="64496 64497"
 ALERT_EMAIL="noc@example.com"
 
-# Query RIPE stat for current origin
-ORIGINS=$(curl -s "https://stat.ripe.net/data/routing-status/data.json?resource=$PREFIX" \
+# Query RIPEstat routing-status for current exact-prefix origins and more specifics
+ANNOUNCEMENTS=$(curl -s "https://stat.ripe.net/data/routing-status/data.json?resource=$PREFIX&min_peers_seeing=1" \
   | python3 -c "
 import sys, json
-data = json.load(sys.stdin)
-for o in data.get('data', {}).get('origins', []):
-    print(o.get('origin', ''))
+data = json.load(sys.stdin).get('data', {})
+for o in data.get('origins', []):
+    print(o.get('origin', ''), '$PREFIX', sep='|')
+for route in data.get('more_specifics', []):
+    print(route.get('origin', ''), route.get('prefix', ''), sep='|')
 ")
 
-# Check each origin against authorized list
-for asn in $ORIGINS; do
-  if [ "$asn" != "$AUTHORIZED_ASN" ]; then
-    echo "ALERT: BGP Hijack detected! AS$asn announcing $PREFIX" | \
-      mail -s "BGP Hijack Alert" $ALERT_EMAIL
-  fi
-done
+# Check each observed announcement against the authorized list
+while IFS='|' read -r asn seen_prefix; do
+  [ -n "$asn" ] || continue
+  case " $AUTHORIZED_ASNS " in
+    *" $asn "*) ;;
+    *)
+      echo "ALERT: Unexpected AS$asn announcing $seen_prefix related to $PREFIX" | \
+        mail -s "BGP Hijack Alert" "$ALERT_EMAIL"
+      ;;
+  esac
+done <<< "$ANNOUNCEMENTS"
 ```
 
 ## Monitoring with OneUptime
 
-Use [OneUptime](https://oneuptime.com) to monitor external reachability of your IPv6 addresses from multiple geographic locations. A sudden change in ping latency or packet loss from specific regions often indicates a BGP hijack in progress.
+Use [OneUptime](https://oneuptime.com) to monitor external reachability of your IPv6 addresses from multiple geographic locations. Reachability changes from specific regions can be a useful supporting signal, but they are not specific to BGP hijacks and should be correlated with control-plane data from RIS or BGPStream.
 
 ## Conclusion
 
