@@ -4,11 +4,11 @@ Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
 Tags: OpenTofu, Environment Variable, TF_VAR, TF_LOG, TF_WORKSPACE, Configuration, Infrastructure as Code
 
-Description: Learn about all OpenTofu environment variables including TF_VAR_, TF_LOG, TF_WORKSPACE, TF_CLI_ARGS, and TF_DATA_DIR, and how to use them effectively in local development and CI/CD pipelines.
+Description: Learn about common OpenTofu environment variables including TF_VAR_, TF_LOG, TF_WORKSPACE, TF_CLI_ARGS, and TF_DATA_DIR, and how to use them effectively in local development and CI/CD pipelines.
 
 ---
 
-OpenTofu reads a set of environment variables to control its behavior without requiring command-line flags. Understanding all available variables helps configure CI/CD pipelines cleanly and enables flexible local development workflows.
+OpenTofu reads a set of environment variables to control its behavior without requiring command-line flags. Understanding the most commonly used variables helps configure CI/CD pipelines cleanly and enables flexible local development workflows.
 
 ## OpenTofu Environment Variables Overview
 
@@ -21,7 +21,7 @@ graph TD
     A --> F[File Paths<br/>TF_DATA_DIR, TF_PLUGIN_CACHE_DIR]
 ```
 
-## Complete Variable Reference
+## Common Variable Reference
 
 ```bash
 # Input variables
@@ -29,18 +29,16 @@ graph TD
 TF_VAR_<name>=value          # Map to input variable declarations
 
 # Logging control
-TF_LOG=TRACE|DEBUG|INFO|WARN|ERROR|OFF
+TF_LOG=TRACE|DEBUG|INFO|WARN|ERROR|JSON|off
 TF_LOG_CORE=DEBUG            # Log level for OpenTofu core only
 TF_LOG_PROVIDER=TRACE        # Log level for provider plugins only
-TF_LOG_PATH=/path/to/file    # Write logs to file instead of stderr
-TF_LOG_PATH_CORE=...         # Core logs to specific file
-TF_LOG_PATH_PROVIDER=...     # Provider logs to specific file
+TF_LOG_PATH=/path/to/file    # Write enabled logs to file instead of stderr
 
 # Workspace
 TF_WORKSPACE=production      # Select workspace at startup
 
 # CLI argument injection
-TF_CLI_ARGS="-compact-warnings"
+TF_CLI_ARGS="-no-color"
 TF_CLI_ARGS_plan="-parallelism=20"
 TF_CLI_ARGS_apply="-auto-approve"
 
@@ -49,22 +47,22 @@ TF_ENCRYPTION=<hcl_config>
 
 # Directory configuration
 TF_DATA_DIR=./.terraform-custom    # Override .terraform directory location
-TF_PLUGIN_CACHE_DIR=~/.tofu-cache  # Share provider cache across workspaces
+TF_PLUGIN_CACHE_DIR=~/.tofu-cache  # Share provider cache across configurations
 
 # CI/CD behavior
 TF_INPUT=false               # Fail on missing input variables (no prompts)
-TF_IN_AUTOMATION=true        # Enables more concise output for CI/CD
+TF_IN_AUTOMATION=true        # Adjusts human-readable output for automation
 ```
 
 ## TF_IN_AUTOMATION
 
 ```bash
-# When set, OpenTofu adjusts output for CI/CD:
+# When set to any non-empty value, OpenTofu adjusts human-readable output for CI/CD:
 # - Suppresses suggestions to run follow-up commands
-# - Removes interactive prompts
-# - More machine-readable output format
+# - Makes wrapped automation output less noisy
+# - Does not disable prompts; use TF_INPUT=false for that
 
-export TF_IN_AUTOMATION=true
+export TF_IN_AUTOMATION=1
 tofu plan -out=plan.tfplan
 # Output: changes only, no "Run `tofu apply` to create these changes" suggestions
 ```
@@ -72,12 +70,12 @@ tofu plan -out=plan.tfplan
 ## TF_CLI_ARGS for Default Flags
 
 ```bash
-# Add flags to all invocations of a command
-export TF_CLI_ARGS="-compact-warnings"
+# Add shared flags to OpenTofu commands
+export TF_CLI_ARGS="-no-color"
 
 # Add flags to specific commands
-export TF_CLI_ARGS_plan="-parallelism=20 -refresh=false"
-export TF_CLI_ARGS_apply="-parallelism=20"
+export TF_CLI_ARGS_plan="-parallelism=20 -refresh=false -compact-warnings"
+export TF_CLI_ARGS_apply="-parallelism=20 -compact-warnings"
 export TF_CLI_ARGS_init="-upgrade"
 
 # Multiple args require space separation (not separate exports)
@@ -111,8 +109,8 @@ mkdir -p ~/.opentofu-plugin-cache
 export TF_PLUGIN_CACHE_DIR="$HOME/.opentofu-plugin-cache"
 
 # All subsequent tofu init calls share the cache
-cd environments/dev && tofu init   # Downloads providers
-cd environments/staging && tofu init  # Uses cached providers
+(cd environments/dev && tofu init)      # Downloads providers
+(cd environments/staging && tofu init)  # Uses cached providers
 ```
 
 ## Complete CI/CD Environment Setup
@@ -139,7 +137,7 @@ jobs:
       TF_LOG_PATH: /tmp/tofu.log
 
       # Performance - cache providers
-      TF_PLUGIN_CACHE_DIR: ~/.opentofu-plugin-cache
+      TF_PLUGIN_CACHE_DIR: ${{ runner.temp }}/opentofu-plugin-cache
 
       # Variables from secrets
       TF_VAR_environment: ${{ github.ref_name == 'main' && 'production' || 'staging' }}
@@ -154,15 +152,18 @@ jobs:
       - uses: actions/checkout@v4
 
       - name: Setup OpenTofu
-        uses: opentofu/setup-opentofu@v1
+        uses: opentofu/setup-opentofu@v2
         with:
           tofu_version: "1.6.x"
 
       - name: Cache providers
         uses: actions/cache@v4
         with:
-          path: ~/.opentofu-plugin-cache
+          path: ${{ runner.temp }}/opentofu-plugin-cache
           key: tofu-providers-${{ hashFiles('.terraform.lock.hcl') }}
+
+      - name: Create plugin cache directory
+        run: mkdir -p "$TF_PLUGIN_CACHE_DIR"
 
       - name: Init
         run: tofu init
@@ -185,7 +186,7 @@ jobs:
 # ~/.zshrc or ~/.bashrc - development defaults
 
 # OpenTofu behavior
-export TF_IN_AUTOMATION=false  # Allow interactive prompts locally
+unset TF_IN_AUTOMATION  # Use normal local output behavior
 export TF_PLUGIN_CACHE_DIR="$HOME/.opentofu-plugin-cache"
 
 # Provider cache directory
@@ -195,8 +196,8 @@ mkdir -p "$HOME/.opentofu-plugin-cache"
 # export TF_LOG=DEBUG
 # export TF_LOG_PATH=/tmp/tofu-debug.log
 
-# Default workspace for local development
-export TF_WORKSPACE=dev
+# Avoid setting TF_WORKSPACE persistently in your shell profile
+# tofu workspace select dev
 
 # Common variable defaults for development
 export TF_VAR_environment=dev
@@ -205,8 +206,8 @@ export TF_VAR_region=us-east-1
 
 ## Best Practices
 
-- Set `TF_INPUT=false` and `TF_IN_AUTOMATION=true` in all CI/CD pipelines - this prevents hung pipelines waiting for user input and produces cleaner output.
-- Use `TF_PLUGIN_CACHE_DIR` to share provider binaries across workspaces - this is especially valuable in CI/CD where each run downloads providers fresh without caching.
+- Set `TF_INPUT=false` and `TF_IN_AUTOMATION=true` in CI/CD pipelines - `TF_INPUT=false` prevents hung pipelines waiting for input, and `TF_IN_AUTOMATION=true` removes follow-up command suggestions.
+- Use `TF_PLUGIN_CACHE_DIR` to share provider binaries across configurations - this is especially valuable in CI/CD where each run downloads providers fresh without caching.
 - Set `TF_WORKSPACE` in CI/CD to select the target environment rather than running `tofu workspace select` - it's more declarative and easier to review in workflow files.
 - Never set `TF_CLI_ARGS_apply=-auto-approve` in CI/CD without also requiring approval gates via GitHub Environments or similar - auto-approve bypasses all human review.
 - Document all environment variables your configuration expects in README.md or CONTRIBUTING.md so new team members and CI/CD setup are straightforward.
