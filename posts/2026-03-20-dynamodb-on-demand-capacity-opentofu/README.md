@@ -8,7 +8,7 @@ Description: Learn how to configure DynamoDB On-Demand capacity mode with OpenTo
 
 ## Introduction
 
-DynamoDB On-Demand capacity mode automatically scales to handle any traffic level without capacity planning. You pay per request ($0.25 per million write request units, $0.05 per million read request units in us-east-1) rather than provisioning fixed capacity. On-Demand is ideal for new tables with unknown traffic, spiky workloads, development/test environments, and applications where over-provisioning costs are a concern. The trade-off is higher per-request cost compared to Provisioned mode for consistently high-traffic tables.
+DynamoDB On-Demand capacity mode automatically scales without capacity planning. You pay per request ($0.625 per million write request units, $0.125 per million read request units for DynamoDB Standard tables in us-east-1) rather than provisioning fixed capacity. On-Demand is ideal for new tables with unknown traffic, spiky workloads, development/test environments, and applications where over-provisioning costs are a concern. The trade-off is that Provisioned mode can be more cost-effective for steady, predictable traffic.
 
 ## Prerequisites
 
@@ -40,9 +40,15 @@ resource "aws_dynamodb_table" "events" {
   }
 
   global_secondary_index {
-    name            = "EventsByType"
-    hash_key        = "eventType"
-    range_key       = "timestamp"
+    name = "EventsByType"
+    key_schema {
+      attribute_name = "eventType"
+      key_type       = "HASH"
+    }
+    key_schema {
+      attribute_name = "timestamp"
+      key_type       = "RANGE"
+    }
     projection_type = "ALL"
     # No read/write_capacity needed in PAY_PER_REQUEST mode
   }
@@ -106,4 +112,4 @@ tofu apply -var="billing_mode=PROVISIONED"
 
 ## Conclusion
 
-Switch from On-Demand to Provisioned once your traffic patterns become predictable-Provisioned mode with Auto Scaling is typically 70-80% cheaper than On-Demand at steady-state traffic. After switching from On-Demand to Provisioned, DynamoDB sets initial capacity to the last 30-minute peak from On-Demand mode-review and adjust if needed. On-Demand tables can throttle requests if traffic increases more than 2x the previous peak within 30 minutes; pre-warming isn't possible, so build retry logic with exponential backoff into your application.
+Switch from On-Demand to Provisioned once your traffic patterns become predictable-Provisioned mode with Auto Scaling can be more cost-effective than On-Demand for steady-state traffic, but compare both pricing models for your workload. When switching from On-Demand to Provisioned, DynamoDB says the table delivers throughput consistent with the previous peak reached while it was in On-Demand mode, but you should still choose initial capacity for the table and any GSIs based on CloudWatch consumption metrics and set it high enough to handle traffic during the transition. On-Demand tables can throttle requests if traffic increases more than 2x the previous peak within 30 minutes; for planned spikes, either pre-warm the table or space traffic growth over at least 30 minutes, and build retry logic with exponential backoff into your application.
