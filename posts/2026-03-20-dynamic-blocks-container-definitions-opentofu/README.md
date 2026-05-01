@@ -1,14 +1,14 @@
-# How to Use Dynamic Blocks for Container Definitions in OpenTofu
+# How to Use Structured Data for Container Definitions in OpenTofu
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
 Tags: OpenTofu, Terraform, AWS, ECS, Container, Dynamic Blocks, Fargate
 
-Description: Learn how to use dynamic blocks in OpenTofu to build ECS task definition container definitions from structured variable data, supporting sidecars and multi-container tasks.
+Description: Learn how to use structured data in OpenTofu to build ECS task definition container definitions, using `jsonencode` for container definitions and dynamic blocks for repeatable nested blocks like volumes.
 
 ## Introduction
 
-AWS ECS task definitions support multiple containers - the main application container plus sidecars like log collectors, service mesh proxies, and secret injectors. Dynamic blocks let you build these container definitions from a structured list rather than a hard-coded JSON blob.
+AWS ECS task definitions support multiple containers - the main application container plus sidecars like log collectors, service mesh proxies, and secret injectors. In OpenTofu, `container_definitions` is a JSON string, so the usual pattern is to build container definitions as native values and serialize them with `jsonencode` rather than maintain a hard-coded JSON blob. Dynamic blocks remain useful for repeatable nested resource blocks such as `volume`.
 
 ## Single Container with Dynamic Environment Variables
 
@@ -68,7 +68,7 @@ resource "aws_ecs_task_definition" "app" {
 
 ## Multi-Container Task with Sidecar Pattern
 
-Use a list of container definitions to support sidecars like Datadog, Envoy, or Fluent Bit.
+Use a list of container definitions and `jsonencode` to support sidecars like Datadog, Envoy, or Fluent Bit.
 
 ```hcl
 variable "sidecar_containers" {
@@ -129,20 +129,19 @@ resource "aws_ecs_task_definition" "app" {
 }
 ```
 
-## Dynamic Port Mappings
+## Structured Port Mappings
 
-For services that expose multiple ports, use a dynamic approach for port mapping definitions.
+For services that expose multiple ports, define port mappings as structured data. For Fargate tasks using `awsvpc`, only specify `containerPort`.
 
 ```hcl
 variable "port_mappings" {
   type = list(object({
     containerPort = number
-    hostPort      = number
     protocol      = string
   }))
   default = [
-    { containerPort = 8080, hostPort = 8080, protocol = "tcp" },
-    { containerPort = 8443, hostPort = 8443, protocol = "tcp" }
+    { containerPort = 8080, protocol = "tcp" },
+    { containerPort = 8443, protocol = "tcp" }
   ]
 }
 
@@ -158,4 +157,4 @@ locals {
 
 ## Conclusion
 
-Building ECS container definitions with dynamic data rather than static JSON strings makes your task definitions versionable, reviewable, and composable. The sidecar pattern is particularly powerful - define the base application container in your module, and let callers inject additional sidecars through variables without modifying the core module logic.
+Building ECS container definitions with structured data rather than static JSON strings makes your task definitions versionable, reviewable, and composable. The sidecar pattern is particularly powerful - define the base application container in your module, and let callers inject additional sidecars through variables without modifying the core module logic. Use `jsonencode` for `container_definitions` themselves, and reserve dynamic blocks for repeatable nested task definition blocks like `volume`.
