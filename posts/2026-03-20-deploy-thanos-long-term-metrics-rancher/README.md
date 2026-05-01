@@ -8,7 +8,7 @@ Description: Deploy Thanos on Rancher to extend Prometheus with long-term metric
 
 ## Introduction
 
-Prometheus has a limited local retention window (typically 15 days due to storage constraints). Thanos extends Prometheus with unlimited long-term storage by uploading metric blocks to object storage (S3, GCS, or Azure Blob), and provides a unified query interface across multiple Prometheus instances.
+Prometheus has a limited local retention window (15 days by default unless you change retention settings). Thanos extends Prometheus with potentially unlimited long-term storage by uploading metric blocks to object storage (S3, GCS, or Azure Blob), and provides a unified query interface across multiple Prometheus instances.
 
 ## Thanos Architecture
 
@@ -24,7 +24,7 @@ graph TD
 
 ## Prerequisites
 
-- Prometheus already running in the cluster
+- Prometheus already running in the cluster through Rancher Monitoring / `kube-prometheus-stack`
 - S3-compatible object storage bucket
 - `helm` and `kubectl` configured
 
@@ -50,7 +50,7 @@ stringData:
     type: S3
     config:
       bucket: my-thanos-metrics
-      endpoint: s3.amazonaws.com
+      endpoint: s3.us-east-1.amazonaws.com
       region: us-east-1
       access_key: YOUR_ACCESS_KEY
       secret_key: YOUR_SECRET_KEY
@@ -62,29 +62,40 @@ kubectl apply -f thanos-objstore-secret.yaml
 
 ## Step 3: Configure Prometheus with Thanos Sidecar
 
-Add the Thanos sidecar to your existing Prometheus deployment:
+If Prometheus is managed by Rancher Monitoring / `kube-prometheus-stack`, add the Thanos sidecar to your existing Prometheus deployment:
 
 ```yaml
 # prometheus-values.yaml (additions for Thanos)
 prometheus:
+  thanosService:
+    enabled: true
+
   prometheusSpec:
+    enableAdminAPI: true
+    externalLabels:
+      cluster: my-rancher-cluster
     thanos:
-      baseImage: quay.io/thanos/thanos
-      version: v0.35.0
+      image: quay.io/thanos/thanos:v0.39.2
+      version: v0.39.2
       objectStorageConfig:
-        name: thanos-objstore-secret
-        key: objstore.yml
+        existingSecret:
+          name: thanos-objstore-secret
+          key: objstore.yml
 ```
 
 ## Step 4: Deploy Thanos Components
 
 ```yaml
 # thanos-values.yaml
+existingObjstoreSecret: thanos-objstore-secret
+
 query:
   enabled: true
   replicaCount: 2
-  stores:
-    - thanos-storegateway.monitoring.svc.cluster.local:10901
+  dnsDiscovery:
+    enabled: true
+    sidecarsService: rancher-monitoring-thanos-discovery # Replace if your Prometheus release name differs
+    sidecarsNamespace: monitoring
 
 queryFrontend:
   enabled: true
@@ -94,20 +105,12 @@ storegateway:
   persistence:
     enabled: true
     size: 20Gi
-  objstoreConfig:
-    existingSecret:
-      name: thanos-objstore-secret
-      key: objstore.yml
 
 compactor:
   enabled: true
   retentionResolutionRaw: 90d    # Keep raw data for 90 days
   retentionResolution5m: 1y      # Keep 5m downsampled data for 1 year
   retentionResolution1h: 10y     # Keep 1h downsampled data for 10 years
-  objstoreConfig:
-    existingSecret:
-      name: thanos-objstore-secret
-      key: objstore.yml
 ```
 
 ```bash
@@ -131,4 +134,4 @@ datasources:
 
 ## Conclusion
 
-Thanos on Rancher provides unlimited metric retention through object storage, global query federation across multiple Prometheus instances, and intelligent downsampling to keep long-term queries fast. The compactor handles block consolidation automatically, keeping object storage costs manageable.
+Thanos on Rancher provides long-term metric retention through object storage, global query federation across multiple Prometheus instances, and intelligent downsampling to keep long-term queries fast. The compactor handles block consolidation automatically, keeping object storage costs manageable.
