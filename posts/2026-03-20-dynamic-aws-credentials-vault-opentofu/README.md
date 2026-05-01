@@ -14,7 +14,7 @@ Long-lived AWS access keys are a security liability. HashiCorp Vault's AWS secre
 
 ## Architecture
 
-```hcl
+```text
 OpenTofu → Vault (AWS Secrets Engine) → AWS IAM → Temporary Credentials
                                                          ↓
                                               OpenTofu uses creds
@@ -119,11 +119,11 @@ terraform {
   required_providers {
     vault = {
       source  = "hashicorp/vault"
-      version = "~> 3.0"
+      version = "~> 5.0"
     }
     aws = {
       source  = "hashicorp/aws"
-      version = "~> 5.0"
+      version = "~> 6.0"
     }
   }
 }
@@ -137,7 +137,7 @@ provider "vault" {
 data "vault_aws_access_credentials" "deploy" {
   backend = "aws"
   role    = "opentofu-deploy"
-  type    = "iam_user"
+  type    = "creds"
 }
 
 provider "aws" {
@@ -187,6 +187,9 @@ on:
 
 jobs:
   deploy:
+    permissions:
+      contents: read
+      id-token: write
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
@@ -202,7 +205,7 @@ jobs:
             aws/creds/opentofu-deploy secret_key | AWS_SECRET_ACCESS_KEY
 
       - name: Setup OpenTofu
-        uses: opentofu/setup-opentofu@v1
+        uses: opentofu/setup-opentofu@v2
 
       - name: OpenTofu Apply
         run: |
