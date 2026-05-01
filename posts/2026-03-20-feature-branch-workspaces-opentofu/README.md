@@ -12,9 +12,12 @@ Feature branch infrastructure gives each developer or feature branch its own iso
 
 ## Understanding OpenTofu Workspaces
 
-Each workspace has its own state file, so `tofu apply` in the `feature-login` workspace creates resources completely separate from the `main` workspace.
+Each workspace has its own state, so `tofu apply` in the `feature-login` workspace manages a separate state from the `default` workspace. To keep the underlying resources separate, use the workspace name in resource names, tags, or other unique inputs.
 
 ```bash
+# Initialize the working directory first
+tofu init
+
 # Create a workspace for a feature branch
 
 tofu workspace new feature-user-auth
@@ -44,9 +47,10 @@ terraform {
   }
 
   backend "s3" {
-    bucket = "my-tofu-state"
-    key    = "feature-env/terraform.tfstate"  # Workspace name is appended automatically
-    region = "us-east-1"
+    bucket               = "my-tofu-state"
+    key                  = "terraform.tfstate"
+    workspace_key_prefix = "feature-env"  # Non-default workspaces use feature-env/<workspace>/terraform.tfstate
+    region               = "us-east-1"
   }
 }
 
@@ -105,7 +109,7 @@ variable "workspace_configs" {
 
 locals {
   # Determine config based on workspace prefix
-  workspace_type = startswith(terraform.workspace, "feature-") ? "feature" : "default"
+  workspace_type = startswith(terraform.workspace, "feature-") || startswith(terraform.workspace, "pr-") ? "feature" : "default"
   config         = var.workspace_configs[local.workspace_type]
 }
 ```
@@ -118,6 +122,13 @@ name: Preview Environment
 on:
   pull_request:
     types: [opened, synchronize, reopened, closed]
+
+permissions:
+  id-token: write
+  contents: read
+
+env:
+  IMAGE_TAG: ${{ github.event.pull_request.head.sha }}
 
 jobs:
   deploy-preview:
@@ -133,29 +144,49 @@ jobs:
           aws-region: us-east-1
 
       - name: Setup OpenTofu
-        uses: opentofu/setup-opentofu@v1
+        uses: opentofu/setup-opentofu@v2
+
+      - name: Initialize OpenTofu
+        run: tofu init -input=false
+        working-directory: infrastructure
 
       - name: Create or switch workspace
         run: |
           WORKSPACE="pr-${{ github.event.pull_request.number }}"
-          tofu workspace select $WORKSPACE || tofu workspace new $WORKSPACE
+          tofu workspace select -or-create "$WORKSPACE"
         working-directory: infrastructure
 
       - name: Deploy preview environment
-        run: tofu apply -auto-approve -var="app_image=${{ env.IMAGE_TAG }}"
+        run: tofu apply -auto-approve -var="app_image=${IMAGE_TAG}"
         working-directory: infrastructure
 
   destroy-preview:
     if: github.event.action == 'closed'
     runs-on: ubuntu-latest
     steps:
+      - uses: actions/checkout@v4
+
+      - name: Configure AWS credentials
+        uses: aws-actions/configure-aws-credentials@v4
+        with:
+          role-to-assume: ${{ secrets.AWS_DEPLOY_ROLE_ARN }}
+          aws-region: us-east-1
+
+      - name: Setup OpenTofu
+        uses: opentofu/setup-opentofu@v2
+
+      - name: Initialize OpenTofu
+        run: tofu init -input=false
+        working-directory: infrastructure
+
       - name: Destroy preview environment
         run: |
           WORKSPACE="pr-${{ github.event.pull_request.number }}"
-          tofu workspace select $WORKSPACE
+          tofu workspace select "$WORKSPACE"
           tofu destroy -auto-approve
           tofu workspace select default
-          tofu workspace delete $WORKSPACE
+          tofu workspace delete "$WORKSPACE"
+        working-directory: infrastructure
 ```
 
 ## Best Practices
