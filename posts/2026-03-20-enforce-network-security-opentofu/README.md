@@ -4,7 +4,7 @@ Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
 Tags: OpenTofu, Network Security, Security Group, NACLs, VPC, AWS Config, Infrastructure as Code
 
-Description: Learn how to enforce network security policies using OpenTofu, including security group validation, VPC flow logs, AWS Config network rules, and default VPC remediation.
+Description: Learn how to enforce network security policies using OpenTofu, including security group validation, VPC flow logs, AWS Config network rules, and default VPC guardrails.
 
 ---
 
@@ -35,10 +35,11 @@ variable "allowed_cidr_blocks" {
       for cidr in var.allowed_cidr_blocks :
       !contains(["0.0.0.0/0", "::/0"], cidr) || var.environment == "dev"
     ])
-    error_message = "Open CIDRs (0.0.0.0/0) are not allowed in non-dev environments"
+    error_message = "Open CIDRs (0.0.0.0/0 or ::/0) are not allowed in non-dev environments"
   }
 }
 
+# Pass an explicit application VPC ID from your networking layer.
 resource "aws_security_group" "app" {
   name        = "${var.environment}-app"
   description = "Application tier security group"
@@ -47,7 +48,7 @@ resource "aws_security_group" "app" {
   lifecycle {
     precondition {
       condition = var.vpc_id != ""
-      error_message = "VPC ID is required - never use the default VPC"
+      error_message = "VPC ID is required"
     }
   }
 }
@@ -117,7 +118,7 @@ resource "aws_config_config_rule" "no_unrestricted_rdp" {
     source_identifier = "RESTRICTED_INCOMING_TRAFFIC"
   }
   input_parameters = jsonencode({
-    blockedPort1 = "3389"
+    blockedPorts = "3389"
   })
 }
 
@@ -138,36 +139,18 @@ resource "aws_config_config_rule" "vpc_flow_logs_enabled" {
 }
 ```
 
-## Remediate Default VPC
+## Manage the Default VPC
 
 ```hcl
-# Remove default VPCs across all regions (security best practice)
+# Manage the default VPC in the current region and tag it as deprecated.
 resource "aws_default_vpc" "default" {
-  lifecycle {
-    prevent_destroy = false
-  }
-
-  # Tag as deprecated to indicate it should not be used
   tags = {
     Name       = "DO-NOT-USE-default-vpc"
     Deprecated = "true"
   }
 }
-
-# Use a null_resource with CLI to remove the default VPC
-resource "null_resource" "remove_default_vpc" {
-  provisioner "local-exec" {
-    command = <<-EOT
-      DEFAULT_VPC=$(aws ec2 describe-vpcs \
-        --filters "Name=isDefault,Values=true" \
-        --query "Vpcs[0].VpcId" \
-        --output text)
-      if [ "$DEFAULT_VPC" != "None" ]; then
-        aws ec2 delete-vpc --vpc-id $DEFAULT_VPC
-      fi
-    EOT
-  }
-}
+# If you choose to delete the default VPC, use the AWS CLI workflow
+# separately in each region after removing dependent resources.
 ```
 
 ## Best Practices
