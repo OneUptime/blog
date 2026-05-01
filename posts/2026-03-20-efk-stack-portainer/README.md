@@ -41,11 +41,7 @@ services:
     networks:
       - efk_net
     healthcheck:
-      test:
-        [
-          "CMD-SHELL",
-          "curl -s http://localhost:9200/_cluster/health | grep -q green",
-        ]
+      test: ["CMD", "curl", "-fsS", "http://localhost:9200/_cluster/health?wait_for_status=yellow&timeout=5s"]
       interval: 30s
       timeout: 10s
       retries: 10
@@ -100,9 +96,10 @@ networks:
 FROM fluent/fluentd:v1.16-debian-1
 
 USER root
-RUN gem install fluent-plugin-elasticsearch \
-    fluent-plugin-record-modifier \
-    fluent-plugin-concat
+RUN gem install elasticsearch --no-document --version 8.11.0 && \
+    gem install fluent-plugin-elasticsearch --no-document --version 5.4.3 && \
+    gem install fluent-plugin-record-modifier --no-document && \
+    gem install fluent-plugin-concat --no-document
 
 USER fluent
 ```
@@ -122,14 +119,9 @@ USER fluent
   key_name log
   reserve_data true
   remove_key_name_field false
+  emit_invalid_record_to_error false
   <parse>
-    @type multi_format
-    <pattern>
-      format json
-    </pattern>
-    <pattern>
-      format none
-    </pattern>
+    @type json
   </parse>
 </filter>
 
@@ -156,7 +148,7 @@ USER fluent
 
   <buffer>
     @type file
-    path /var/log/fluentd-buffers/docker.buffer
+    path /tmp/fluentd-buffers/docker.buffer
     flush_mode interval
     retry_type exponential_backoff
     flush_interval 5s
@@ -181,11 +173,12 @@ services:
     logging:
       driver: fluentd
       options:
-        fluentd-address: fluentd:24224   # Fluentd endpoint
+        fluentd-address: localhost:24224 # Docker daemon connects to the host port
         tag: docker.api                   # Log tag for routing
         fluentd-async: "true"             # Don't block if Fluentd is slow
-        fluentd-retry-wait: 1s
-        fluentd-max-retries: 30
+        fluentd-retry-wait: "1s"
+        fluentd-max-retries: "30"
+        labels: service,environment
     labels:
       - "service=api"
       - "environment=production"
@@ -195,35 +188,38 @@ services:
     logging:
       driver: fluentd
       options:
-        fluentd-address: fluentd:24224
+        fluentd-address: localhost:24224
         tag: docker.worker
         fluentd-async: "true"
+        labels: service,environment
+    labels:
+      - "service=worker"
+      - "environment=production"
 ```
 
-## Step 4: Create Kibana Index Pattern and Dashboard
+## Step 4: Create Kibana Data View and Dashboard
 
 ```bash
-# Create Elasticsearch index pattern via API
-curl -s -X POST \
-  "http://localhost:5601/api/saved_objects/index-pattern" \
+# Create Kibana data view via API
+DATA_VIEW_ID=$(
+  curl -s -X POST \
+  "http://localhost:5601/api/data_views/data_view" \
   -H "kbn-xsrf: true" \
   -H "Content-Type: application/json" \
   -d '{
-    "attributes": {
+    "data_view": {
       "title": "docker-logs-*",
       "timeFieldName": "@timestamp"
     }
-  }'
+  }' | jq -r '.data_view.id'
+)
 
-# Set as default index pattern
-INDEX_ID=$(curl -s "http://localhost:5601/api/saved_objects/index-pattern?search=docker-logs-*" | \
-  jq -r '.saved_objects[0].id')
-
+# Set as default data view
 curl -s -X POST \
-  "http://localhost:5601/api/kibana/settings/defaultIndex" \
+  "http://localhost:5601/api/data_views/default" \
   -H "kbn-xsrf: true" \
   -H "Content-Type: application/json" \
-  -d "{\"value\": \"$INDEX_ID\"}"
+  -d "{\"data_view_id\": \"$DATA_VIEW_ID\", \"force\": true}"
 ```
 
 ## Step 5: Useful Kibana Queries (KQL)
@@ -232,7 +228,7 @@ curl -s -X POST \
 # In Kibana Discover, use KQL queries:
 
 # All errors from the API service
-container_name: "api" AND level: "error"
+service: "api" AND level: "error"
 
 # HTTP 5xx errors
 status: [500 TO 599]
@@ -250,26 +246,10 @@ status: [500 TO 599]
 ## Step 6: Set Up Kibana Alerting
 
 ```bash
-# Create alert for high error rate (Kibana API)
-curl -s -X POST \
-  "http://localhost:5601/api/alerting/rule" \
-  -H "kbn-xsrf: true" \
-  -H "Content-Type: application/json" \
-  -d '{
-    "name": "High Error Rate",
-    "rule_type_id": ".es-query",
-    "schedule": {"interval": "1m"},
-    "params": {
-      "index": ["docker-logs-*"],
-      "timeField": "@timestamp",
-      "esQuery": "{\"query\":{\"match\":{\"level\":\"error\"}}}",
-      "timeWindowSize": 5,
-      "timeWindowUnit": "m",
-      "thresholdComparator": ">",
-      "threshold": [100]
-    },
-    "actions": []
-  }'
+# Kibana alerting requires Elastic Stack security, TLS between Kibana and
+# Elasticsearch, and a persistent xpack.encryptedSavedObjects.encryptionKey.
+# With the development configuration in this guide (xpack.security.enabled=false),
+# enable those settings first before calling /api/alerting/rule.
 ```
 
 ## Conclusion
