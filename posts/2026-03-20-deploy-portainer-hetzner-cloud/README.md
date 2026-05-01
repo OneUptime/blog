@@ -19,7 +19,7 @@ terraform {
   required_providers {
     hcloud = {
       source  = "hetznercloud/hcloud"
-      version = "~> 1.45"
+      version = "~> 1.60"
     }
   }
 }
@@ -36,7 +36,7 @@ provider "hcloud" {
 ```hcl
 resource "hcloud_server" "portainer" {
   name        = "portainer"
-  server_type = "cpx11"  # 2 vCPU, 2 GB RAM - ~€3.85/month
+  server_type = "cpx11"  # 2 vCPU, 2 GB RAM
   image       = "ubuntu-22.04"
   location    = "nbg1"  # Nuremberg, Germany
 
@@ -50,7 +50,13 @@ resource "hcloud_server" "portainer" {
 
     docker volume create portainer_data
 
-    docker run -d       --name portainer       --restart=always       -p 9443:9443       -v /var/run/docker.sock:/var/run/docker.sock       -v portainer_data:/data       portainer/portainer-ce:latest
+    docker run -d \
+      --name portainer \
+      --restart=always \
+      -p 9443:9443 \
+      -v /var/run/docker.sock:/var/run/docker.sock \
+      -v portainer_data:/data \
+      portainer/portainer-ce:lts
   EOF
 }
 
@@ -98,4 +104,4 @@ output "portainer_url" {
 
 ## Summary
 
-Use the `hetznercloud/hcloud` provider to provision a `cpx11` server (or larger for heavier workloads). Pass a bash startup script via `user_data` to install Docker and Portainer on boot. Create a Hetzner Firewall resource to restrict port 9443 to your admin IP. Hetzner is an excellent choice for cost-effective self-hosted Portainer deployments in Europe.
+Use the `hetznercloud/hcloud` provider to provision a `cpx11` server (or larger for heavier workloads). Pass a bash startup script via `user_data` to install Docker and Portainer CE LTS on boot. Create a Hetzner Firewall resource to restrict port 9443 to your admin IP. Hetzner is an excellent choice for cost-effective self-hosted Portainer deployments in Europe.
