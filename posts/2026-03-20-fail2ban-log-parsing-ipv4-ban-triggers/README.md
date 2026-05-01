@@ -8,7 +8,7 @@ Description: Configure Fail2Ban to parse application logs for failed IPv4 authen
 
 ## Introduction
 
-Fail2Ban monitors log files for patterns indicating brute-force or abuse attempts from IPv4 addresses. When a threshold is exceeded, it triggers an action - typically an `iptables` DROP rule - to block the offending IP for a configurable duration.
+Fail2Ban monitors log files for patterns indicating brute-force or abuse attempts from IPv4 addresses. When a threshold is exceeded, it triggers an action - typically an `iptables` rule - to block the offending IP for a configurable duration.
 
 ## Install Fail2Ban
 
@@ -39,20 +39,20 @@ usedns   = warn
 enabled  = true
 port     = ssh
 filter   = sshd
-logpath  = /var/log/auth.log
+logpath  = %(sshd_log)s
 maxretry = 3
 bantime  = 86400      # 24 hours for SSH
 
 [nginx-http-auth]
 enabled  = true
 filter   = nginx-http-auth
-logpath  = /var/log/nginx/error.log
+logpath  = %(nginx_error_log)s
 maxretry = 5
 
 [nginx-limit-req]
 enabled  = true
 filter   = nginx-limit-req
-logpath  = /var/log/nginx/error.log
+logpath  = %(nginx_error_log)s
 maxretry = 10
 ```
 
@@ -67,11 +67,11 @@ before = common.conf
 [Definition]
 _daemon = myapp
 
-failregex = ^%(_prefix_line)s.*LOGIN FAILED.*from <HOST>
-            ^%(_prefix_line)s.*Authentication failed for .* from <HOST>
-            ^<HOST> - .* "POST /api/auth HTTP/.*" 401
+failregex = ^%(__prefix_line)s.*LOGIN FAILED.*?from <IP4>$
+            ^%(__prefix_line)s.*Authentication failed for .*? from <IP4>$
+            ^<IP4> - .* "POST /api/auth HTTP/\S+" 401(?: .*)?$
 
-ignoreregex = ^<HOST> - .* "GET /health HTTP/.*" 200
+ignoreregex = ^<IP4> - .* "GET /health HTTP/\S+" 200(?: .*)?$
 ```
 
 ## Custom Jail for Application
@@ -82,12 +82,13 @@ ignoreregex = ^<HOST> - .* "GET /health HTTP/.*" 200
 [myapp-auth]
 enabled  = true
 filter   = myapp-auth
-logpath  = /var/log/myapp/access.log
-port     = 8080
+logpath  = /var/log/myapp/app.log
+           /var/log/myapp/access.log
+port     = 8080,8443
 maxretry = 10
 findtime = 300
 bantime  = 7200
-action   = iptables-multiport[name=myapp, port="8080,8443"]
+action   = iptables[type=multiport, name=myapp, port="8080,8443"]
 ```
 
 ## Test Your Filter
@@ -106,7 +107,7 @@ fail2ban-regex -v /var/log/auth.log /etc/fail2ban/filter.d/sshd.conf
 # Show status of all jails
 fail2ban-client status
 
-# Show banned IPs for a jail
+# Show status and banned IPs for a jail
 fail2ban-client status sshd
 
 # Manually ban an IP
@@ -127,7 +128,7 @@ fail2ban-client reload
 [persistent-ban]
 enabled  = true
 filter   = sshd
-logpath  = /var/log/auth.log
+logpath  = %(sshd_log)s
 maxretry = 1
 bantime  = -1         # -1 = permanent ban
 action   = iptables[name=persistent, port=ssh]
@@ -136,4 +137,4 @@ action   = iptables[name=persistent, port=ssh]
 
 ## Conclusion
 
-Fail2Ban parses IPv4 addresses from log files using regex filters and bans them via iptables when failure thresholds are exceeded. Write custom filters using `<HOST>` as the IPv4 capture placeholder and test them with `fail2ban-regex` before activating. Use `bantime = -1` for permanent bans of highly abusive IPs and always whitelist your own management IPs with `ignoreip`.
+Fail2Ban parses IPv4 addresses from log files using regex filters and bans them via iptables when failure thresholds are exceeded. Write custom filters using `<IP4>` as the IPv4 capture placeholder and test them with `fail2ban-regex` before activating. Use `bantime = -1` for permanent bans of highly abusive IPs and always whitelist your own management IPs with `ignoreip`.
