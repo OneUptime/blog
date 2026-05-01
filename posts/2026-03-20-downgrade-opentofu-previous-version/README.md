@@ -29,7 +29,7 @@ tofuenv list-remote | head -20
 
 ## Option 1: Downgrade Using tofuenv
 
-tofuenv is the recommended tool for managing multiple OpenTofu versions.
+tofuenv is a common tool for managing multiple OpenTofu versions.
 
 ```bash
 # Install a specific older version
@@ -50,7 +50,7 @@ tofu version
 ```bash
 # Download the specific version from OpenTofu releases
 TOFU_VERSION="1.7.3"
-OS="linux_amd64"   # change to linux_arm64, darwin_amd64, etc.
+OS="linux_amd64"   # Linux example; use the matching asset name for your platform
 
 curl -LO "https://github.com/opentofu/opentofu/releases/download/v${TOFU_VERSION}/tofu_${TOFU_VERSION}_${OS}.zip"
 
@@ -74,14 +74,15 @@ If you installed OpenTofu via a package manager, you may be able to install an o
 
 ```bash
 # Ubuntu/Debian - install a specific version via apt
-sudo apt list --installed opentofu
-sudo apt install opentofu=1.7.3
+sudo apt list --installed tofu
+sudo apt-get install tofu=1.7.3
 
-# If the version isn't in apt's cache, use the manual download above
+# If the version isn't available in your configured repo, use the manual download above
 
 # macOS with Homebrew
-brew install opentofu@1.7.3
-brew link opentofu@1.7.3 --force
+brew unlink opentofu
+brew version-install opentofu@1.7.3
+brew link --force opentofu@1.7.3
 ```
 
 ---
@@ -91,7 +92,7 @@ brew link opentofu@1.7.3 --force
 ```bash
 # If you use asdf for version management
 asdf install opentofu 1.7.3
-asdf global opentofu 1.7.3
+asdf set -u opentofu 1.7.3
 
 # Verify
 tofu version
@@ -101,18 +102,11 @@ tofu version
 
 ## Handle State File Compatibility
 
-If you've already run `tofu apply` with the newer version, the state file may have been upgraded. Check if the downgrade is state-compatible.
+If you've already run `tofu apply` with the newer version, the downgrade is not guaranteed to be state-compatible. Later OpenTofu releases can introduce features or state snapshot formats that older versions cannot read.
 
 ```bash
-# Check the current state version
-cat terraform.tfstate | python3 -c "import sys,json; d=json.load(sys.stdin); print('State version:', d.get('version'))"
-
-# OpenTofu state format versions:
-# version 4 - compatible with v1.6+
-# If state was modified by a newer version, you may see errors
-
 # Back up state before downgrading
-cp terraform.tfstate terraform.tfstate.bak.$(date +%Y%m%d)
+tofu state pull > terraform.tfstate.bak.$(date +%Y%m%d)
 ```
 
 ---
@@ -124,7 +118,7 @@ cp terraform.tfstate terraform.tfstate.bak.$(date +%Y%m%d)
 tofu version
 
 # 2. Reinitialize the working directory
-tofu init -upgrade
+tofu init
 
 # 3. Run plan to verify state is compatible
 tofu plan
