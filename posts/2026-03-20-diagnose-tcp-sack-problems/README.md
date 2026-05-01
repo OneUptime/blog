@@ -8,7 +8,7 @@ Description: Diagnose TCP SACK negotiation failures, SACK scoreboard issues, and
 
 ## Introduction
 
-TCP Selective Acknowledgment (SACK) allows a receiver to acknowledge non-contiguous blocks of received data. Without SACK, the sender must retransmit everything from the first lost packet forward. With SACK, only the missing segments are retransmitted. This makes a significant difference on lossy links. SACK problems arise when one side doesn't support it, when middleboxes strip SACK options, or when the SACK scoreboard becomes inconsistent.
+TCP Selective Acknowledgment (SACK) allows a receiver to acknowledge non-contiguous blocks of received data. Without SACK, the sender can only infer loss from cumulative ACKs, which makes recovery from multiple losses less efficient and can require extra RTTs or unnecessary retransmissions. With SACK, the sender can retransmit only the missing segments. This makes a significant difference on lossy links. SACK problems arise when one side doesn't support it, when middleboxes strip SACK options, or when the SACK scoreboard becomes inconsistent.
 
 ## Verifying SACK is Enabled
 
@@ -18,13 +18,13 @@ TCP Selective Acknowledgment (SACK) allows a receiver to acknowledge non-contigu
 sysctl net.ipv4.tcp_sack
 # 1 = enabled (default), 0 = disabled
 
-# Check SACK FACK (Forward ACK) - additional SACK optimization
+# Check tcp_fack (legacy compatibility knob)
 sysctl net.ipv4.tcp_fack
-# Deprecated in kernel 4.15+, replaced by improved SACK handling
+# Legacy option in modern kernels; it has no effect anymore
 
 # Check DSACK (Duplicate SACK) - detect spurious retransmissions
 sysctl net.ipv4.tcp_dsack
-# 1 = enabled (default)
+# 1 = enabled
 ```
 
 ## Check if SACK is Being Negotiated
@@ -39,25 +39,27 @@ tcpdump -i eth0 -n 'tcp[tcpflags] & tcp-syn != 0' -v 2>/dev/null | head -30
 # Look at "TCP Options" in packet details
 # Should show: SACK permitted option (kind=4, len=2)
 
-# If SYN has sackOK but SYN-ACK doesn't: remote disabled SACK
-# Both must advertise sackOK in SYN/SYN-ACK for SACK to be used
+# SACK-permitted is direction-specific:
+# If SYN has sackOK but SYN-ACK doesn't, SACK is negotiated for client-to-server
+# data only, not for server-to-client data
 ```
 
 ## Check SACK Statistics
 
 ```bash
 # SACK-related kernel counters
-nstat -a | grep -i sack
+nstat -az | grep -i sack
 
 # Key counters:
-# TcpExtTCPSACKReneging  → Receiver "reneged" SACK (said received, now says missing)
-#                          Indicates buggy middlebox or broken implementation
-# TcpExtTCPSACKReorder   → Reordering detected via SACK blocks
-# TcpExtTCPSACKDiscard   → SACK blocks discarded (out of order, overlap)
-# TcpExtTCPSackFailures  → Sender failed to retransmit per SACK hint
-# TcpExtTCPSACKShifted   → SACK coalescing happened
-# TcpExtTCPDSACKOfoRecv  → DSACK for out-of-order received (spurious retransmit detection)
-# TcpExtTCPDSACKRecv     → DSACK received (we sent something spuriously)
+# TcpExtTCPSACKReneging  → Sender inferred reneging: data reported in SACK was not
+#                          cumulatively ACKed and had to be retransmitted
+# TcpExtTCPSACKReorder   → Reordering detected using SACK information
+# TcpExtTCPSACKDiscard   → Invalid SACK blocks discarded
+# TcpExtTCPSackFailures  → SACK-based loss recovery/disorder handling still ended
+#                          in retransmission timeout
+# TcpExtTCPSackShifted   → SACK processing shifted skb data in the retransmit queue
+# TcpExtTCPDSACKOfoRecv  → DSACK received for an out-of-order duplicate packet
+# TcpExtTCPDSACKRecv     → DSACK received for a duplicate packet that was already ACKed
 
 # Monitor over time during a transfer:
 watch -n 2 'nstat -z | grep -i sack'
@@ -66,21 +68,22 @@ watch -n 2 'nstat -z | grep -i sack'
 ## SACK Reneging Problem
 
 ```bash
-# SACK reneging: receiver told us it has data, then claims it doesn't
-# This causes sender to retransmit data receiver already has
+# SACK reneging: receiver reported data in SACK, then later no longer reports it
+# This forces the sender to retransmit data it previously believed was queued
 
 # Symptoms:
 # TcpExtTCPSACKReneging counter increasing
 # Performance degradation on high-BDP links
-# Wireshark shows ACK going backwards
+# Wireshark shows previously reported SACK blocks disappearing or shrinking
 
 # Wireshark detection:
-# Statistics → Expert Information → look for "SACK reneging"
+# Follow the TCP stream and inspect SACK blocks over time
+# Look for previously reported SACK ranges disappearing before cumulative ACK advances
 
 # Causes:
-# - Buggy middle boxes (firewalls, proxies modifying ACK numbers)
+# - Buggy middle boxes (firewalls, proxies mangling TCP options or sequence state)
 # - Memory pressure on receiver causing buffer contents to be freed
-# - Some NAT devices
+# - Some NAT or WAN optimization devices
 
 # Fix: if reneging is from middlebox:
 # Bypass the middlebox for this traffic path
@@ -94,16 +97,17 @@ sysctl -w net.ipv4.tcp_sack=0
 # The SACK scoreboard tracks which segments were received out of order
 # Problems occur when the scoreboard is wrong
 
-# Enable detailed TCP tracing to see SACK scoreboard:
-# (requires kernel debug build or eBPF)
-bpftrace -e 'kprobe:tcp_sacktag_walk_frag { printf("SACK tag: %s\n", comm); }'
+# Enable detailed TCP tracing to see SACK scoreboard activity:
+# (requires bpftrace, root, and a probe name present on your kernel)
+bpftrace -l 'kprobe:tcp_sack*'
+bpftrace -e 'kprobe:tcp_sacktag_walk { printf("SACK tag: %s\n", comm); }'
 
 # Simpler: watch SACK events with tcpdump
 tcpdump -i eth0 -n -v host 10.20.0.5 2>/dev/null | grep -i sack
 
 # SACK block format in tcpdump output:
-# sack 1 {1001:1500} = one SACK block, bytes 1001-1500 received
-# sack 2 {2001:2500}{3001:3500} = two blocks (gap between 1500-2001 and 2500-3001)
+# sack 1 {1001:1500} = one SACK block, sequence range [1001,1500) received
+# sack 2 {2001:2500}{3001:3500} = two blocks (gaps [1500,2001) and [2500,3001))
 ```
 
 ## Performance Comparison With/Without SACK
@@ -124,7 +128,8 @@ iperf3 -c 10.20.0.5 -t 30 2>&1 | grep sender
 sysctl -w net.ipv4.tcp_sack=0
 iperf3 -c 10.20.0.5 -t 30 2>&1 | grep sender
 
-# On 1% loss: SACK typically delivers 40-60% better throughput
+# On lossy paths, SACK usually delivers better throughput; exact gains depend on
+# RTT, congestion window size, and the loss pattern
 # Clean up:
 tc qdisc del dev eth0 root
 sysctl -w net.ipv4.tcp_sack=1
@@ -132,4 +137,4 @@ sysctl -w net.ipv4.tcp_sack=1
 
 ## Conclusion
 
-SACK is critical for performance on any link with packet loss. Verify both endpoints negotiate SACK in the handshake. Monitor `TcpExtTCPSACKReneging` - any non-zero value indicates a buggy middlebox stripping or modifying TCP options. DSACK counters tell you whether spurious retransmissions are occurring. Only disable SACK as a last resort; the performance cost on any path with >0.1% loss is significant.
+SACK is important for performance on lossy paths. Verify what was negotiated in the handshake, and remember that SACK-permitted is direction-specific. Monitor `TcpExtTCPSACKReneging` - rising values mean the sender inferred that previously SACKed data later went missing, which can be caused by receiver memory pressure or middlebox interference. DSACK counters help confirm duplicate delivery and spurious retransmissions. Only disable SACK as a last resort; performance on lossy or high-BDP paths can degrade noticeably without it.
