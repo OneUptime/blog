@@ -26,9 +26,10 @@ helm repo update
 ## Step 2: Create Object Storage Secret
 
 ```bash
+kubectl get namespace observability >/dev/null 2>&1 || kubectl create namespace observability
 kubectl create secret generic tempo-s3-credentials \
-  --from-literal=access_key_id=YOUR_ACCESS_KEY \
-  --from-literal=secret_access_key=YOUR_SECRET_KEY \
+  --from-literal=S3_ACCESS_KEY=YOUR_ACCESS_KEY \
+  --from-literal=S3_SECRET_KEY=YOUR_SECRET_KEY \
   -n observability
 ```
 
@@ -37,47 +38,46 @@ kubectl create secret generic tempo-s3-credentials \
 ```yaml
 # tempo-values.yaml
 
-tempo:
-  storage:
-    trace:
-      backend: s3
-      s3:
-        bucket: my-tempo-traces
-        endpoint: s3.amazonaws.com
-        region: us-east-1
-        access_key: ${S3_ACCESS_KEY}
-        secret_key: ${S3_SECRET_KEY}
+global:
+  extraArgs:
+    - "-config.expand-env=true"
+  extraEnvFrom:
+    - secretRef:
+        name: tempo-s3-credentials
 
-  ingester:
-    replicas: 3
+storage:
+  trace:
+    backend: s3
+    s3:
+      bucket: my-tempo-traces
+      endpoint: s3.amazonaws.com
+      region: us-east-1
+      access_key: ${S3_ACCESS_KEY}
+      secret_key: ${S3_SECRET_KEY}
+
+ingester:
+  replicas: 3
+  config:
     trace_idle_period: 30s
     max_block_bytes: 1073741824   # 1GB blocks
 
-  distributor:
-    replicas: 2
-    receivers:
-      otlp:
-        protocols:
-          grpc:
-            endpoint: 0.0.0.0:4317
-          http:
-            endpoint: 0.0.0.0:4318
-      jaeger:
-        protocols:
-          thrift_http:
-            endpoint: 0.0.0.0:14268
+distributor:
+  replicas: 2
 
-  compactor:
+traces:
+  otlp:
+    grpc:
+      enabled: true
+    http:
+      enabled: true
+  jaeger:
+    thriftHttp:
+      enabled: true
+
+compactor:
+  config:
     compaction:
       block_retention: 168h    # Keep traces for 7 days
-
-resources:
-  requests:
-    memory: "512Mi"
-    cpu: "250m"
-  limits:
-    memory: "2Gi"
-    cpu: "1"
 ```
 
 ## Step 4: Deploy Tempo
@@ -95,43 +95,49 @@ helm install tempo grafana/tempo-distributed \
 kubectl get pods -n observability | grep tempo
 
 # Verify ingester is ready
-kubectl logs -n observability tempo-ingester-0 | grep "starting ingester"
+kubectl rollout status statefulset/tempo-ingester -n observability
 ```
 
 ## Step 6: Configure Grafana Data Source
 
-Add Tempo as a data source in Grafana for trace visualization:
+If you provision Grafana data sources from files, add Tempo as a data source for trace visualization:
 
 ```yaml
-# Grafana data source ConfigMap
-apiVersion: v1
-kind: ConfigMap
-metadata:
-  name: grafana-datasources
-  namespace: observability
-data:
-  datasources.yaml: |
-    apiVersion: 1
-    datasources:
-      - name: Tempo
-        type: tempo
-        url: http://tempo-query-frontend.observability.svc.cluster.local:3100
-        jsonData:
-          httpMethod: GET
-          tracesToLogsV2:
-            datasourceUid: loki    # Link traces to Loki logs
-            tags: ['service.name', 'pod']
+# Grafana data source provisioning file
+apiVersion: 1
+datasources:
+  - name: Tempo
+    type: tempo
+    uid: tempo
+    access: proxy
+    url: http://tempo-query-frontend.observability.svc.cluster.local:3200
+    jsonData:
+      tracesToLogsV2:
+        datasourceUid: loki    # Must match the uid of your Loki data source
+        spanStartTimeShift: -2s
+        spanEndTimeShift: 2s
+        filterByTraceID: true
+        filterBySpanID: false
+        tags:
+          - key: service.name
+            value: service_name
+          - key: namespace
 ```
 
 ## Step 7: Send Traces via OpenTelemetry
 
 ```yaml
-# Configure OTel Collector to forward to Tempo
+# Add this to an existing OTel Collector config to forward traces to Tempo
 exporters:
   otlp/tempo:
     endpoint: tempo-distributor.observability.svc.cluster.local:4317
     tls:
       insecure: true
+
+service:
+  pipelines:
+    traces:
+      exporters: [otlp/tempo]
 ```
 
 ## Conclusion
