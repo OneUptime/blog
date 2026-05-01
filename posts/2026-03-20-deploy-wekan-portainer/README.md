@@ -25,7 +25,7 @@ version: "3.8"
 
 services:
   wekan:
-    image: ghcr.io/wekan/wekan:v7.55
+    image: ghcr.io/wekan/wekan:latest
     container_name: wekan
     restart: unless-stopped
     ports:
@@ -33,7 +33,10 @@ services:
     volumes:
       - wekan_files:/data
     environment:
+      - METEOR_REACTIVITY_ORDER=oplog,polling
+      - WRITABLE_PATH=/data
       - MONGO_URL=mongodb://wekan_mongo:27017/wekan
+      - MONGO_OPLOG_URL=mongodb://wekan_mongo:27017/local?replicaSet=rs0
       - ROOT_URL=http://${WEKAN_DOMAIN}:8080
       - WITH_API=true
       - BROWSER_POLICY_ENABLED=true
@@ -47,12 +50,37 @@ services:
       - wekan_net
 
   wekan_mongo:
-    image: mongo:7.0
+    image: mongo:7
     container_name: wekan_mongo
     restart: unless-stopped
     volumes:
       - wekan_mongo_data:/data/db
-    command: mongod --oplogSize 128
+    command: >
+      sh -c '
+        mongod --oplogSize 128 --replSet rs0 --bind_ip_all --quiet &
+        until mongosh --host 127.0.0.1 --quiet --eval "
+          try {
+            const status = rs.status();
+            quit(status.ok === 1 ? 0 : 1);
+          } catch (e) {
+            if (
+              e.codeName === \"NotYetInitialized\" ||
+              e.message.includes(\"no replset config has been received\") ||
+              e.message.includes(\"not yet initialized\")
+            ) {
+              rs.initiate({
+                _id: \"rs0\",
+                members: [{ _id: 0, host: \"wekan_mongo:27017\" }]
+              });
+              quit(1);
+            }
+            quit(1);
+          }
+        " >/dev/null 2>&1; do
+          sleep 2
+        done
+        wait
+      '
     healthcheck:
       test: ["CMD", "mongosh", "--eval", "db.adminCommand('ping')"]
       interval: 30s
@@ -78,7 +106,7 @@ WEKAN_DOMAIN=wekan.yourdomain.com
 
 ## Step 3: Access Wekan
 
-Open `http://<host>:8080` and register. The first registered user becomes the admin.
+Open `http://wekan.yourdomain.com:8080` (or whatever exact `ROOT_URL` you configured) and register. The first registered user becomes the admin.
 
 ## Step 4: Create a Board
 
@@ -116,14 +144,21 @@ curl -X POST "http://localhost:8080/api/boards/<board-id>/lists/<list-id>/cards"
 
 ```bash
 # Backup MongoDB
-docker exec wekan_mongo mongodump --out /tmp/wekan_backup
-docker cp wekan_mongo:/tmp/wekan_backup ./wekan_backup_$(date +%Y%m%d)
+docker stop wekan
+docker exec wekan_mongo rm -rf /data/dump
+docker exec wekan_mongo mongodump -o /data/dump
+docker cp wekan_mongo:/data/dump ./dump
+mv ./dump ./wekan_backup_$(date +%Y%m%d)
+docker start wekan
 
 # Restore
-docker cp ./wekan_backup_20240101 wekan_mongo:/tmp/restore_backup
-docker exec wekan_mongo mongorestore /tmp/restore_backup
+docker stop wekan
+docker exec wekan_mongo rm -rf /data/dump
+docker cp ./wekan_backup_20240101 wekan_mongo:/data/dump
+docker exec wekan_mongo mongorestore --drop --dir=/data/dump
+docker start wekan
 ```
 
 ## Conclusion
 
-Wekan requires `ROOT_URL` to be set to the exact URL used to access the application - incorrect values cause login and redirect issues. The `--oplogSize 128` MongoDB flag limits the oplog to 128 MB for single-node deployments. For production, configure SMTP via `MAIL_URL=smtp://user:pass@host:port` and `MAIL_FROM=noreply@yourdomain.com` for email notifications.
+Wekan requires `ROOT_URL` to be set to the exact URL used to access the application - incorrect values cause login, redirect, translation, and upload issues. For MongoDB-backed deployments, enable a single-node replica set and set `MONGO_OPLOG_URL` so Wekan can use the oplog for real-time updates; `--oplogSize 128` sets the oplog size to 128 MB when that replica set is first initialized. For production, configure SMTP via `MAIL_URL=smtp://user:pass@host:port` and `MAIL_FROM=noreply@yourdomain.com` for email notifications.
