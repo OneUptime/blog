@@ -91,22 +91,22 @@ resource "aws_security_group" "web" {
 ```hcl
 variable "routes" {
   type = list(object({
-    cidr   = string
-    target = string
+    cidr_block = string
+    gateway_id = string
   }))
 }
 
 resource "aws_route_table" "main" {
   vpc_id = aws_vpc.main.id
 
-  # Custom iterator name: "route" instead of default "routes"
+  # Custom iterator name: "route_entry" instead of default "route"
   dynamic "route" {
     for_each = var.routes
-    iterator = route  # Explicit iterator name
+    iterator = route_entry  # Explicit iterator name
 
     content {
-      cidr_block = route.value.cidr
-      gateway_id = route.value.target
+      cidr_block = route_entry.value.cidr_block
+      gateway_id = route_entry.value.gateway_id
     }
   }
 }
@@ -124,7 +124,7 @@ data "aws_iam_policy_document" "s3_access" {
   dynamic "statement" {
     for_each = var.s3_buckets
     content {
-      sid    = "Allow${title(statement.value)}"
+      sid    = "AllowBucket${statement.key}"
       effect = "Allow"
       actions = [
         "s3:GetObject",
@@ -148,10 +148,11 @@ variable "data_volumes" {
     device_name = string
     size        = number
     type        = string
+    iops        = number
   }))
   default = [
-    { device_name = "/dev/sdb", size = 100, type = "gp3" },
-    { device_name = "/dev/sdc", size = 200, type = "io2" }
+    { device_name = "/dev/sdb", size = 100, type = "gp3", iops = 3000 },
+    { device_name = "/dev/sdc", size = 200, type = "io2", iops = 1000 }
   ]
 }
 
@@ -165,16 +166,17 @@ resource "aws_instance" "data" {
       device_name = ebs_block_device.value.device_name
       volume_size = ebs_block_device.value.size
       volume_type = ebs_block_device.value.type
+      iops        = ebs_block_device.value.iops
       encrypted   = true
     }
   }
 }
 ```
 
-## Dynamic Kubernetes Labels and Tolerations
+## Kubernetes Labels and Dynamic Tolerations
 
 ```hcl
-variable "node_labels" {
+variable "pod_labels" {
   type = map(string)
   default = {
     "role"        = "worker"
@@ -190,14 +192,28 @@ variable "tolerations" {
   }))
 }
 
-resource "kubernetes_deployment" "app" {
+resource "kubernetes_deployment_v1" "app" {
   metadata {
-    name = "myapp"
+    name   = "myapp"
+    labels = var.pod_labels
   }
 
   spec {
+    selector {
+      match_labels = var.pod_labels
+    }
+
     template {
+      metadata {
+        labels = var.pod_labels
+      }
+
       spec {
+        container {
+          name  = "myapp"
+          image = "nginx:1.21.6"
+        }
+
         dynamic "toleration" {
           for_each = var.tolerations
           content {
@@ -238,4 +254,4 @@ resource "aws_security_group" "web" {
 
 ## Conclusion
 
-Dynamic blocks eliminate repetitive nested block definitions by generating them from collections at plan time. They use the same `for_each` syntax as resources, supporting lists, maps, and sets. The iterator variable (defaulting to the block type name, or customizable with `iterator`) provides access to `key` and `value` in each iteration. Use dynamic blocks for security group rules, IAM policy statements, EBS volumes, Kubernetes tolerations, and any other resource with variable numbers of repeated nested blocks. For conditional inclusion of a single optional block, use `for_each = condition ? [1] : []`.
+Dynamic blocks eliminate repetitive nested block definitions by generating them from collections at plan time. They use a similar `for_each` form to resources, but can iterate over any collection or structural value, including lists, maps, and sets. The iterator variable (defaulting to the block type name, or customizable with `iterator`) provides access to `key` and `value` in each iteration. Use dynamic blocks for security group rules, IAM policy statements, EBS volumes, Kubernetes tolerations, and any other resource with variable numbers of repeated nested blocks. For conditional inclusion of a single optional block, use `for_each = condition ? [1] : []`.
