@@ -15,28 +15,29 @@ Rust is a multiplayer survival game known for its brutal gameplay and active mod
 ```yaml
 # rust-stack.yml
 
-version: "3.8"
-
 services:
   rust:
     image: didstopia/rust-server:latest
+    container_name: rust-server
     environment:
       # Server identity
-      - RUST_SERVER_STARTUP_ARGUMENTS=-batchmode -load +server.port 28015 +server.queryport 28016
+      - RUST_SERVER_STARTUP_ARGUMENTS=-batchmode -load -nographics +server.secure 1
+      - RUST_SERVER_IDENTITY=rust
       - RUST_SERVER_NAME=My Rust Server
       - RUST_SERVER_DESCRIPTION=A Rust server powered by Portainer
       - RUST_SERVER_URL=https://example.com
       - RUST_SERVER_BANNER_URL=https://example.com/banner.png
       # Connection settings
       - RUST_SERVER_PORT=28015
-      - RUST_QUERY_PORT=28016
+      - RUST_SERVER_QUERYPORT=28017
+      - RUST_RCON_WEB=1
       - RUST_RCON_PORT=28016
       - RUST_RCON_PASSWORD=rcon_password_here
       - RUST_SERVER_MAXPLAYERS=100
       # World settings
       - RUST_SERVER_WORLDSIZE=4000    # Map size in meters
       - RUST_SERVER_SEED=12345        # Random seed for world generation
-      - RUST_SERVER_SAVEINTERVAL=300  # Save every 5 minutes
+      - RUST_SERVER_SAVE_INTERVAL=300 # Save every 5 minutes
       # uMod/Oxide plugin framework
       - RUST_OXIDE_ENABLED=1
       # Auto-update
@@ -45,13 +46,13 @@ services:
     volumes:
       - rust-data:/steamcmd/rust
     ports:
-      - "28015:28015/tcp"
       - "28015:28015/udp"
-      - "28016:28016/udp"    # Query port
+      - "28017:28017/udp"    # Query port
     restart: unless-stopped
 
 volumes:
   rust-data:
+    name: rust-data
 ```
 
 ## Step 2: Configure the Server
@@ -59,20 +60,15 @@ volumes:
 After first boot, edit `/steamcmd/rust/server/rust/cfg/server.cfg`:
 
 ```bash
-# server.cfg
 server.hostname "My Rust Server"
 server.description "A community Rust server. Join our Discord!"
 server.url "https://discord.gg/yourserver"
 server.maxplayers 100
 server.worldsize 4000
 server.seed 12345
-
-# Gameplay settings
 server.pvp true
-decay.scale 0.5              # Half decay rate
-airdrop.min_players 25       # Airdrops start at 25 players
-
-# Anti-cheat
+decay.scale 0.5
+airdrop.min_players 25
 antihack.enabled true
 antihack.speedhack_protection 1
 ```
@@ -86,46 +82,46 @@ Place plugin `.cs` files in the plugins directory:
 # Download popular plugins
 
 # Kits - predefined item kits
-wget -O /var/lib/docker/volumes/rust-data/_data/oxide/plugins/Kits.cs \
-  https://umod.org/plugins/Kits.cs
+docker exec rust-server sh -lc \
+  'curl -fsSL https://umod.org/plugins/Kits.cs -o /steamcmd/rust/oxide/plugins/Kits.cs'
 
 # Clans - team/clan system
-wget -O /var/lib/docker/volumes/rust-data/_data/oxide/plugins/Clans.cs \
-  https://umod.org/plugins/Clans.cs
+docker exec rust-server sh -lc \
+  'curl -fsSL https://umod.org/plugins/Clans.cs -o /steamcmd/rust/oxide/plugins/Clans.cs'
 ```
 
 Plugins auto-reload when files are placed in the directory.
 
 ## Step 4: Set Up Scheduled Wipes
 
-Rust servers typically wipe on a schedule. Create a wipe script as a Portainer scheduled job:
+Rust servers typically wipe on a schedule. If you're using Portainer Edge Jobs on a Docker Standalone environment, you can run a wipe script like this:
 
 ```bash
 #!/bin/bash
-# rust-wipe.sh - run monthly via Portainer scheduled job
+# rust-wipe.sh - run monthly via a Portainer Edge Job
 
 # Stop server gracefully
-docker stop rust_rust_1
+docker stop rust-server
 
 # Delete world data (keeps player data/blueprints)
-rm -f /var/lib/docker/volumes/rust-data/_data/server/rust/user.seed.map
-rm -f /var/lib/docker/volumes/rust-data/_data/server/rust/user.seed.db
+docker run --rm -v rust-data:/data alpine sh -c \
+  'rm -f /data/server/rust/*.map /data/server/rust/*.sav*'
 
-# Update the map seed for the new wipe
-# This triggers a fresh procedural map generation on next start
+# If you want a new seed, update RUST_SERVER_SEED in Portainer before restarting
+# A changed seed triggers a fresh procedural map generation on next boot
 
 # Restart server
-docker start rust_rust_1
+docker start rust-server
 echo "Wipe completed. Server restarting."
 ```
 
 ## Step 5: Monitor via RCON
 
 ```bash
-# Connect to RCON and run server commands
-rcon -H localhost -P 28016 -p rcon_password_here status
-rcon -H localhost -P 28016 -p rcon_password_here server.save
-rcon -H localhost -P 28016 -p rcon_password_here say "Server will restart in 10 minutes!"
+# Use the image's bundled RCON relay to run server commands
+docker exec rust-server rcon status
+docker exec rust-server rcon server.save
+docker exec rust-server rcon say "Server will restart in 10 minutes!"
 ```
 
 ## Summary
