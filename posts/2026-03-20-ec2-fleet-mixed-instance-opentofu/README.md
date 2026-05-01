@@ -8,12 +8,13 @@ Description: Learn how to create EC2 Fleet with a mix of On-Demand and Spot inst
 
 ## Introduction
 
-EC2 Fleet is the evolution of Spot Fleet, providing a unified API to launch both On-Demand and Spot instances in a single request. By combining instance types and purchase options, you can achieve optimal cost and availability for diverse workloads.
+EC2 Fleet lets you launch both On-Demand and Spot instances in a single request. AWS recommends EC2 Fleet over Spot Fleet, which is based on a legacy API with no planned investment. By combining instance types and purchase options, you can achieve optimal cost and availability for diverse workloads.
 
 ## Prerequisites
 
 - OpenTofu v1.6+
 - AWS credentials with EC2 Fleet permissions
+- The `AWSServiceRoleForEC2Fleet` service-linked role for `request` or `maintain` fleets
 
 ## Step 1: Create an EC2 Fleet with Mixed Instances
 
@@ -23,9 +24,7 @@ resource "aws_ec2_fleet" "mixed" {
 
   # Base capacity uses On-Demand for reliability
   on_demand_options {
-    allocation_strategy = "lowest-price"
-    # Minimum baseline On-Demand instances to keep running
-    min_target_capacity = 2
+    allocation_strategy = "lowestPrice"
   }
 
   # Additional capacity uses Spot for cost savings
@@ -36,9 +35,8 @@ resource "aws_ec2_fleet" "mixed" {
 
   target_capacity_specification {
     default_target_capacity_type = "spot"
-    on_demand_target_capacity    = 2    # Guaranteed On-Demand instances
-    spot_target_capacity         = 8    # Additional Spot instances
-    total_target_capacity        = 10   # Total desired capacity
+    on_demand_target_capacity    = 2    # Guaranteed On-Demand units
+    total_target_capacity        = 10   # Remaining 8 units are launched as Spot
   }
 
   launch_template_config {
@@ -111,6 +109,7 @@ resource "aws_launch_template" "app" {
     # Configure instance for fleet membership
     yum install -y amazon-ssm-agent
     systemctl enable amazon-ssm-agent
+    systemctl start amazon-ssm-agent
   EOF
   )
 
@@ -130,15 +129,44 @@ resource "aws_cloudwatch_metric_alarm" "fleet_capacity" {
   alarm_name          = "ec2-fleet-capacity-shortfall"
   comparison_operator = "LessThanThreshold"
   evaluation_periods  = 2
-  metric_name         = "TargetCapacityFulfillment"
-  namespace           = "AWS/EC2Fleet"
-  period              = 300
-  statistic           = "Average"
   threshold           = 0.9  # Alert if less than 90% fulfilled
-  alarm_description   = "EC2 Fleet is below target capacity"
+  alarm_description   = "EC2 Fleet is below 90% of target capacity"
 
-  dimensions = {
-    FleetId = aws_ec2_fleet.mixed.id
+  metric_query {
+    id          = "e1"
+    expression  = "m1/m2"
+    label       = "TargetCapacityFulfillment"
+    return_data = true
+  }
+
+  metric_query {
+    id = "m1"
+
+    metric {
+      metric_name = "FulfilledCapacity"
+      namespace   = "AWS/EC2Spot"
+      period      = 300
+      stat        = "Average"
+
+      dimensions = {
+        FleetRequestId = aws_ec2_fleet.mixed.id
+      }
+    }
+  }
+
+  metric_query {
+    id = "m2"
+
+    metric {
+      metric_name = "TargetCapacity"
+      namespace   = "AWS/EC2Spot"
+      period      = 300
+      stat        = "Average"
+
+      dimensions = {
+        FleetRequestId = aws_ec2_fleet.mixed.id
+      }
+    }
   }
 }
 ```
@@ -153,4 +181,4 @@ tofu apply
 
 ## Conclusion
 
-EC2 Fleet with mixed instance types and purchase options provides an excellent balance of cost savings and reliability. The `price-capacity-optimized` Spot allocation strategy selects pools with the lowest price AND highest capacity, reducing interruption rates. Always diversify across at least 4-5 instance types to maximize capacity availability.
+EC2 Fleet with mixed instance types and purchase options provides an excellent balance of cost savings and reliability. The `price-capacity-optimized` Spot allocation strategy first identifies pools with high capacity availability and then selects the lowest-priced pools among them, reducing interruption rates. Diversifying across multiple instance types and Availability Zones can improve capacity availability.
