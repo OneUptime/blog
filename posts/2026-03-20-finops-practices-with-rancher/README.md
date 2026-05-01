@@ -4,7 +4,7 @@ Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
 Tags: Rancher, FinOps, Cost Optimization, Cloud, Kubernetes, Chargeback
 
-Description: Implement FinOps practices with Rancher including cost allocation, chargeback/showback reporting, rightsizing automation, budget enforcement, and building a culture of cost awareness across...
+Description: Implement FinOps practices with Rancher including cost allocation, chargeback/showback reporting, rightsizing automation, quota-based guard rails, and building a culture of cost awareness across...
 
 ## Introduction
 
@@ -16,7 +16,7 @@ FinOps (Financial Operations) for Kubernetes applies financial accountability pr
 |---|---|
 | Crawl | Visibility: see costs per cluster |
 | Walk | Allocation: costs per namespace/team + showback |
-| Run | Optimization: automated rightsizing + budget enforcement |
+| Run | Optimization: automated rightsizing + quota-based guard rails |
 
 ## Step 1: Cost Allocation Labels
 
@@ -25,17 +25,19 @@ Consistent labels are the foundation of cost allocation:
 ```yaml
 # Labeling standard - enforce via admission webhook
 
-# Every deployment MUST have these labels:
+# Put allocation labels on the Pod template so workload costs can be attributed correctly:
 
-metadata:
-  labels:
-    team: "payments"              # Team responsible
-    cost-center: "CC-1042"        # Finance cost center
-    environment: "production"     # prod/staging/dev
-    product: "checkout-service"   # Business product
-    application: "api"            # Technical component
+spec:
+  template:
+    metadata:
+      labels:
+        team: "payments"              # Team responsible
+        cost-center: "CC-1042"        # Finance cost center
+        environment: "production"     # prod/staging/dev
+        product: "checkout-service"   # Business product
+        application: "api"            # Technical component
 
-# LimitRange to ensure resources have requests (required for cost allocation)
+# LimitRange to set default requests when workloads omit them
 apiVersion: v1
 kind: LimitRange
 metadata:
@@ -60,48 +62,51 @@ from datetime import datetime, timedelta
 
 OPENCOST_URL = "http://opencost.opencost.svc:9003"
 
-def get_team_costs(window: str = "30d") -> pd.DataFrame:
-    """Get costs aggregated by team label"""
+def get_team_costs(window: str = "lastmonth") -> pd.DataFrame:
+    """Get costs aggregated by the team label."""
     resp = requests.get(
-        f"{OPENCOST_URL}/model/allocation/query",
+        f"{OPENCOST_URL}/allocation",
         params={
-            'window': window,
-            'aggregate': 'label:team',
-            'accumulate': 'true'
-        }
+            "window": window,
+            "aggregate": "label:team",
+        },
+        timeout=30,
     )
+    resp.raise_for_status()
     data = resp.json()
 
     rows = []
-    for allocation_set in data['data']:
-        for team, allocation in allocation_set['sets'][0]['allocations'].items():
-            rows.append({
-                'team': team,
-                'cpu_cost': round(allocation['cpuCost'], 2),
-                'memory_cost': round(allocation['ramCost'], 2),
-                'storage_cost': round(allocation['pvCost'], 2),
-                'network_cost': round(allocation['networkCost'], 2),
-                'total_cost': round(allocation['totalCost'], 2),
-                'cpu_efficiency': round(allocation.get('cpuEfficiency', 0) * 100, 1),
-                'memory_efficiency': round(allocation.get('ramEfficiency', 0) * 100, 1)
-            })
+    for team, allocation in (data.get("data") or [{}])[0].items():
+        rows.append({
+            "team": team,
+            "cpu_cost": round(allocation.get("cpuCost", 0), 2),
+            "memory_cost": round(allocation.get("ramCost", 0), 2),
+            "storage_cost": round(allocation.get("pvCost", 0), 2),
+            "network_cost": round(allocation.get("networkCost", 0), 2),
+            "total_cost": round(allocation.get("totalCost", 0), 2),
+            "avg_cpu_cores": round(allocation.get("cpuCoreUsageAverage", 0), 3),
+            "avg_memory_gib": round(allocation.get("ramByteUsageAverage", 0) / (1024 ** 3), 2),
+        })
 
-    return pd.DataFrame(rows).sort_values('total_cost', ascending=False)
+    df = pd.DataFrame(rows)
+    if df.empty:
+        return df
+    return df.sort_values("total_cost", ascending=False)
 
-# Generate monthly chargeback
-df = get_team_costs('30d')
+# Generate the previous calendar month's chargeback report
+df = get_team_costs("lastmonth")
 print(df.to_string(index=False))
 
-# Export to finance team
-df.to_csv(f'chargeback-{datetime.now().strftime("%Y-%m")}.csv', index=False)
+report_month = (datetime.now().replace(day=1) - timedelta(days=1)).strftime("%Y-%m")
+df.to_csv(f"chargeback-{report_month}.csv", index=False)
 ```
 
-## Step 3: Budget Enforcement
+## Step 3: Budget Guard Rails
 
 ```yaml
 # ResourceQuota as budget guard rail
-# Calculate max resources based on budget
-# $500/month budget → ~16 vCPU + 32GB RAM at $0.031/vCPU-hr
+# Translate a team's budget into conservative CPU and memory ceilings
+# using your own provider's rates. ResourceQuota enforces resources, not dollars.
 
 apiVersion: v1
 kind: ResourceQuota
@@ -113,13 +118,12 @@ metadata:
     cost-center: "CC-2024"
 spec:
   hard:
-    requests.cpu: "16"        # $500 ÷ ($0.031 × 730h) ≈ 22 vCPU
-    requests.memory: "32Gi"   # $500 ÷ ($0.004 × 730h) ≈ 171 GB
-    # Conservative limits to leave headroom
+    requests.cpu: "16"        # Example conservative CPU reservation ceiling
+    requests.memory: "32Gi"   # Example conservative memory reservation ceiling
 ```
 
 ```yaml
-# Rancher Project-level budget controls
+# Rancher Project-level resource quotas
 # Configure via Rancher UI: Cluster > Projects > {Project} > Resource Quotas
 
 # Or via Rancher API:
@@ -127,7 +131,9 @@ apiVersion: management.cattle.io/v3
 kind: Project
 metadata:
   name: frontend-team
+  namespace: c-m-abcde
 spec:
+  clusterName: c-m-abcde
   displayName: "Frontend Team"
   resourceQuota:
     limit:
@@ -141,6 +147,7 @@ spec:
 ```bash
 #!/bin/bash
 # rightsize_report.sh - Identify overprovisioned workloads
+# Requires the autoscaling.k8s.io/v1 VPA CRD and recommender to be installed
 
 echo "=== Rightsizing Report ==="
 echo "Generated: $(date)"
@@ -152,8 +159,7 @@ kubectl get namespaces -o name | while read ns; do
   [[ "$NS" == kube-* || "$NS" == cattle-* || "$NS" == rancher-* ]] && continue
 
   # Get VPA recommendations
-  vpas=$(kubectl get vpa -n "$NS" -o json 2>/dev/null)
-  if [ -z "$vpas" ]; then continue; fi
+  vpas=$(kubectl get vpa -n "$NS" -o json 2>/dev/null) || continue
 
   echo "$vpas" | jq -r --arg ns "$NS" '
     .items[] |
@@ -167,33 +173,27 @@ done
 ## Step 5: Spot/Preemptible Instances for Non-Prod
 
 ```yaml
-# Node pool for spot instances (dev/test workloads)
+# Machine pools reference provider-specific machine configs.
+# For the non-prod EC2 machine config, enable Request Spot Instance
+# and set the maximum hourly price.
 apiVersion: provisioning.cattle.io/v1
 kind: Cluster
 spec:
   rkeConfig:
     machinePools:
-      # On-demand for production workloads
       - name: prod-workers
         quantity: 5
-        roles: [worker]
-        nodeConfig:
-          instanceType: m5.2xlarge
-          spotPrice: ""    # On-demand
+        workerRole: true
+        machineConfigRef:
+          kind: Amazonec2Config
+          name: prod-ondemand-workers
 
-      # Spot for dev/test (60-80% cost reduction)
       - name: dev-spot-workers
         quantity: 10
-        roles: [worker]
-        nodeConfig:
-          instanceType: m5.2xlarge
-          spotPrice: "0.15"    # Bid price
-        labels:
-          workload-type: "non-critical"
-        taints:
-          - key: spot
-            value: "true"
-            effect: NoSchedule
+        workerRole: true
+        machineConfigRef:
+          kind: Amazonec2Config
+          name: dev-spot-workers
 ```
 
 ## Step 6: FinOps Dashboard
@@ -201,18 +201,19 @@ spec:
 ```yaml
 # Grafana dashboard panels for FinOps visibility
 panels:
-  - title: "Monthly Spend by Team"
+  - title: "Monthly CPU + Memory Cost by Namespace"
     type: barchart
     targets:
       - expr: |
-          sum by (label_team) (
-            container_cpu_allocation{label_team!=""} * on(node) group_left()
-            node_cpu_hourly_cost
+          sum by (namespace) (
+            container_cpu_allocation * on (node) group_left() node_cpu_hourly_cost
+            +
+            container_memory_allocation_bytes * on (node) group_left() node_ram_hourly_cost / (1024 * 1024 * 1024)
           ) * 730
 
-  - title: "Cost Efficiency by Namespace"
+  - title: "CPU Request Utilization by Namespace"
     type: table
-    # Shows: actual usage vs. requested (waste percentage)
+    # Shows actual CPU usage as a percentage of requested CPU
     targets:
       - expr: |
           (
@@ -220,15 +221,17 @@ panels:
             /
             sum by (namespace) (kube_pod_container_resource_requests{resource="cpu"})
           ) * 100
-        legendFormat: "CPU Efficiency %"
+        legendFormat: "CPU Request Utilization %"
 
-  - title: "Idle Resources Cost"
+  - title: "Approx. Idle Requested CPU Cores"
     type: stat
     targets:
       - expr: |
-          sum(kube_pod_container_resource_requests{resource="cpu"})
-          - sum(rate(container_cpu_usage_seconds_total[1h]))
-          # × hourly cost × 730 hours
+          clamp_min(
+            sum(container_cpu_allocation)
+            - sum(rate(container_cpu_usage_seconds_total[1h])),
+            0
+          )
 ```
 
 ## FinOps Maturity Checklist
@@ -236,13 +239,13 @@ panels:
 - Labels: team, cost-center, environment on all resources
 - OpenCost deployed with cloud provider pricing
 - Monthly chargeback report delivered to finance
-- Budget quotas enforced via ResourceQuota
+- Quota-based budget guard rails in place
 - VPA recommendations reviewed and applied quarterly
 - Spot instances for dev/test (target: 50% of non-prod on spot)
 - Idle resources reviewed and cleaned up monthly
 - FinOps review meeting with team leads monthly
-- Cost metrics in team-level Grafana dashboards
+- Cost metrics in namespace-level Grafana dashboards
 
 ## Conclusion
 
-FinOps with Rancher transforms Kubernetes cost management from invisible to accountable. The key steps are consistent labeling for allocation, OpenCost for measurement, chargeback reports for team accountability, and ResourceQuotas for budget enforcement. The biggest cultural shift is making teams see their own costs-once teams see that a forgotten development deployment costs $500/month, they clean it up. Monthly FinOps review meetings with cost data create the organizational feedback loop that drives continuous optimization.
+FinOps with Rancher transforms Kubernetes cost management from invisible to accountable. The key steps are consistent labeling for allocation, OpenCost for measurement, chargeback reports for team accountability, and quota-based guard rails with ResourceQuotas and Rancher project quotas. The biggest cultural shift is making teams see their own costs-once teams see that a forgotten development deployment costs $500/month, they clean it up. Monthly FinOps review meetings with cost data create the organizational feedback loop that drives continuous optimization.
