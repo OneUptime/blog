@@ -8,13 +8,11 @@ Description: Configure BGP EVPN with VXLAN over an IPv6 underlay on Arista EOS s
 
 ## IPv6 Underlay on Arista EOS
 
-Arista EOS supports IPv6 underlay for VXLAN via IS-IS or OSPFv3:
+Beginning with EOS 4.24.1F, Arista EOS supports an IPv6 underlay for EVPN VXLAN using IS-IS or OSPFv3. VXLAN routing over an IPv6 underlay is supported beginning with EOS 4.27.2F:
 
 ```text
 ! Arista EOS - Leaf switch configuration
 ! Enable VXLAN and EVPN
-daemon Snmp
-!
 service routing protocols model multi-agent
 
 ! Loopback for VTEP
@@ -74,6 +72,7 @@ router bgp 65001
 ! VXLAN interface sourced from IPv6 loopback
 interface Vxlan1
    vxlan source-interface Loopback0
+   vxlan encapsulation ipv6
    vxlan udp-port 4789
    !
    ! Map VLANs to VNIs
@@ -86,7 +85,7 @@ interface Vxlan1
 
 ## EVPN MAC/VRF Configuration
 
-```bash
+```text
 ! EVPN MAC-VRF for VLAN 100
 router bgp 65001
    !
@@ -136,7 +135,7 @@ ip virtual-router mac-address 00:1c:73:00:00:01
 
 ```text
 ! VXLAN status
-show vxlan interface
+show interfaces vxlan 1
 show vxlan vtep
 show vxlan address-table
 
@@ -162,31 +161,25 @@ ping vrf tenant1 2001:db8:100::2
 ```python
 # Arista CloudVision EVPN provisioning script
 
-import requests
-import json
+from cvprac.cvp_client import CvpClient
 
-CVP_HOST = "https://[2001:db8::cvp]"
-TOKEN = "your-api-token"
+CVP_NODES = ["cvp.example.com"]
+USERNAME = "cvp_user"
+PASSWORD = "cvp_password"
 
 def create_vxlan_vlan(vlan_id, vni):
-    """Create VLAN to VNI mapping via CVP REST API"""
-    payload = {
-        "configlets": [
-            {
-                "name": f"VXLAN-VLAN-{vlan_id}",
-                "config": f"vxlan vlan {vlan_id} vni {vni}"
-            }
-        ]
-    }
-    resp = requests.post(
-        f"{CVP_HOST}/cvpInfo/getCvpInfo.do",
-        headers={"Authorization": f"Bearer {TOKEN}"},
-        json=payload,
-        verify=False,
+    """Create a configlet that adds a VLAN-to-VNI mapping on Vxlan1."""
+    client = CvpClient()
+    client.connect(CVP_NODES, USERNAME, PASSWORD)
+
+    configlet_name = f"VXLAN-VLAN-{vlan_id}"
+    configlet_body = (
+        "interface Vxlan1\n"
+        f"   vxlan vlan {vlan_id} vni {vni}\n"
     )
-    return resp.json()
+    return client.api.add_configlet(configlet_name, configlet_body)
 ```
 
 ## Conclusion
 
-Arista EOS supports IPv6 underlay for EVPN VXLAN using IS-IS multi-topology or OSPFv3. The `multi-agent` routing model is required to enable BGP EVPN and VXLAN simultaneously. BGP sessions peer over IPv6 loopbacks, and `address-family evpn` activates the EVPN control plane. Virtual anycast gateways with `ip address virtual` and `ipv6 address virtual` provide distributed routing with a consistent gateway MAC across all leaf nodes.
+Arista EOS supports IPv6 underlay for EVPN VXLAN using IS-IS or OSPFv3. The `multi-agent` routing model is required to enable BGP EVPN and VXLAN simultaneously, and `vxlan encapsulation ipv6` is required on the VTEP when the underlay is IPv6. BGP sessions peer over IPv6 loopbacks, and `address-family evpn` activates the EVPN control plane. Virtual anycast gateways with `ip address virtual` and `ipv6 address virtual` provide distributed routing with a consistent gateway MAC across all leaf nodes.
