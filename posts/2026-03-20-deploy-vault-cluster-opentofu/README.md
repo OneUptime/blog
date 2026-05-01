@@ -63,6 +63,11 @@ resource "aws_iam_role_policy" "vault_kms" {
     ]
   })
 }
+
+resource "aws_iam_instance_profile" "vault" {
+  name = "vault-cluster-${var.environment}"
+  role = aws_iam_role.vault.name
+}
 ```
 
 ## EC2 Instances (3-node cluster)
@@ -82,7 +87,7 @@ resource "aws_instance" "vault" {
     volume_size           = 50
     volume_type           = "gp3"
     encrypted             = true
-    delete_on_termination = false  # Keep data volume on instance replacement
+    delete_on_termination = false  # Preserve the old data volume after termination; reattach it separately on replacement
   }
 
   user_data = templatefile("${path.module}/vault-init.sh.tpl", {
@@ -91,7 +96,7 @@ resource "aws_instance" "vault" {
     aws_region     = var.aws_region
     cluster_name   = "vault-${var.environment}"
     node_index     = count.index
-    all_node_ips   = []  # Will be set after creation via SSM
+    all_node_ips   = []  # Placeholder kept empty when Vault uses auto_join for peer discovery
   })
 
   tags = {
@@ -118,7 +123,7 @@ locals {
       node_id = "vault-${var.environment}-node-INDEX"
 
       retry_join {
-        auto_join             = "provider=aws tag_key=VaultCluster tag_value=vault-${var.environment}"
+        auto_join             = "provider=aws region=${var.aws_region} tag_key=VaultCluster tag_value=vault-${var.environment}"
         auto_join_scheme      = "https"
         leader_tls_servername = "vault.${var.domain_name}"
       }
@@ -168,6 +173,17 @@ resource "aws_lb_target_group" "vault" {
     path              = "/v1/sys/health"
     healthy_threshold = 3
     interval          = 10
+  }
+}
+
+resource "aws_lb_listener" "vault" {
+  load_balancer_arn = aws_lb.vault.arn
+  port              = 8200
+  protocol          = "TCP"
+
+  default_action {
+    type             = "forward"
+    target_group_arn = aws_lb_target_group.vault.arn
   }
 }
 
