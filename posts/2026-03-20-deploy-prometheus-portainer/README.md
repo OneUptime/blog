@@ -20,18 +20,15 @@ services:
     command:
       - '--config.file=/etc/prometheus/prometheus.yml'
       - '--storage.tsdb.path=/prometheus'
-      - '--storage.tsdb.retention.time=30d'
-      - '--storage.tsdb.retention.size=10GB'
       - '--web.enable-lifecycle'       # Enable /-/reload endpoint
-      - '--web.enable-admin-api'       # Enable admin API
     volumes:
-      - ./prometheus.yml:/etc/prometheus/prometheus.yml:ro
-      - ./rules:/etc/prometheus/rules:ro
+      - /path/to/prometheus/prometheus.yml:/etc/prometheus/prometheus.yml:ro
+      - /path/to/prometheus/rules:/etc/prometheus/rules:ro
       - prometheus_data:/prometheus
     ports:
       - "9090:9090"
     healthcheck:
-      test: ["CMD-SHELL", "curl -s http://localhost:9090/-/healthy | grep -q Healthy"]
+      test: ["CMD", "/bin/promtool", "check", "healthy", "--url", "http://localhost:9090"]
       interval: 10s
       retries: 5
 
@@ -42,7 +39,7 @@ services:
       - '--config.file=/etc/alertmanager/alertmanager.yml'
       - '--storage.path=/alertmanager'
     volumes:
-      - ./alertmanager.yml:/etc/alertmanager/alertmanager.yml:ro
+      - /path/to/alertmanager/alertmanager.yml:/etc/alertmanager/alertmanager.yml:ro
       - alertmanager_data:/alertmanager
     ports:
       - "9093:9093"
@@ -63,6 +60,12 @@ global:
   external_labels:
     environment: production
     region: us-east
+
+storage:
+  tsdb:
+    retention:
+      time: 30d
+      size: 10GB
 
 # Alert rules
 rule_files:
@@ -136,8 +139,8 @@ groups:
 ```yaml
 # alertmanager.yml
 global:
-  smtp_smarthost: smtp.gmail.com:587
-  smtp_from: alerts@yourdomain.com
+  smtp_smarthost: 'smtp.gmail.com:587'
+  smtp_from: 'alerts@yourdomain.com'
 
 route:
   group_by: ['alertname', 'severity']
@@ -147,18 +150,23 @@ route:
   receiver: 'default'
   routes:
     - matchers:
-        - severity=critical
+        - severity="critical"
       receiver: 'pagerduty'
 
 receivers:
   - name: 'default'
     email_configs:
       - to: 'team@yourdomain.com'
-        auth_password: ${SMTP_PASSWORD}
+        auth_username: 'alerts@yourdomain.com'
+        auth_password: 'your-app-password'
+
+  - name: 'pagerduty'
+    pagerduty_configs:
+      - routing_key: 'your-pagerduty-routing-key'
 
   - name: 'slack'
     slack_configs:
-      - api_url: ${SLACK_WEBHOOK_URL}
+      - api_url: 'https://hooks.slack.com/services/your/webhook/path'
         channel: '#alerts'
 ```
 
@@ -169,7 +177,7 @@ receivers:
 curl -s -X POST http://localhost:9090/-/reload
 
 # Verify configuration
-docker exec prometheus promtool check config /etc/prometheus/prometheus.yml
+docker exec -it <prometheus-container-name> /bin/promtool check config /etc/prometheus/prometheus.yml
 ```
 
 ## Conclusion
