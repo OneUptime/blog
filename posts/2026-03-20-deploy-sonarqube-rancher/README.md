@@ -8,15 +8,18 @@ Description: Step-by-step guide to deploying SonarQube on Rancher for continuous
 
 ## Introduction
 
-How to Deploy SonarQube on Rancher on Rancher gives your team a production-ready deployment with enterprise-grade cluster management, monitoring, and access control. This guide walks through a complete setup.
+Deploying SonarQube on a Rancher-managed Kubernetes cluster gives your team centralized cluster management, monitoring, and access control. This guide walks through a complete setup.
 
 ## Prerequisites
 
-- Rancher v2.7+ cluster
+- Rancher-managed Kubernetes cluster
 - Helm 3.x
 - Persistent storage (Longhorn)
-- Ingress controller (nginx)
+- Ingress controller
 - cert-manager
+- Prometheus Operator
+- Velero (optional, for the backup policy in Step 7)
+- External database for production deployments
 
 ## Step 1: Prepare Namespace
 
@@ -25,34 +28,42 @@ kubectl create namespace sonarqube
 
 # Configure project in Rancher
 
-kubectl annotate namespace sonarqube   field.cattle.io/projectId=YOUR_PROJECT_ID
+kubectl annotate namespace sonarqube \
+  field.cattle.io/projectId=YOUR_CLUSTER_ID:YOUR_PROJECT_ID
 ```
 
 ## Step 2: Install with Helm
 
 ```bash
-helm repo add bitnami https://charts.bitnami.com/bitnami
+helm repo add sonarqube https://SonarSource.github.io/helm-chart-sonarqube
 helm repo update
 
-helm install sonarqube bitnami/sonarqube   --namespace sonarqube   --set persistence.enabled=true   --set persistence.storageClass=longhorn   --set ingress.enabled=true   --set ingress.hostname=sonarqube.example.com   --set ingress.tls=true   --wait
+export MONITORING_PASSCODE="change-this-passcode"
+
+# For production, also configure jdbcOverwrite.* to use your external database.
+helm upgrade --install sonarqube sonarqube/sonarqube \
+  --namespace sonarqube \
+  --set community.enabled=true \
+  --set monitoringPasscode=$MONITORING_PASSCODE \
+  --set persistence.enabled=true \
+  --set persistence.storageClass=longhorn \
+  --set persistence.size=50Gi \
+  --set ingress.enabled=true \
+  --set ingress.hosts[0].name=sonarqube.example.com \
+  --set ingress.tls[0].secretName=sonarqube-tls-secret \
+  --set ingress.tls[0].hosts[0]=sonarqube.example.com \
+  --set prometheusMonitoring.podMonitor.enabled=true \
+  --wait
 ```
 
 ## Step 3: Configure Storage
 
 ```yaml
-# sonarqube-pvc.yaml
-apiVersion: v1
-kind: PersistentVolumeClaim
-metadata:
-  name: sonarqube-data
-  namespace: sonarqube
-spec:
-  accessModes:
-  - ReadWriteOnce
-  resources:
-    requests:
-      storage: 50Gi
-  storageClassName: longhorn
+# values-storage.yaml
+persistence:
+  enabled: true
+  storageClass: longhorn
+  size: 50Gi
 ```
 
 ## Step 4: Configure TLS Certificate
@@ -94,55 +105,31 @@ spec:
 ## Step 6: Set Up Monitoring
 
 ```bash
-# Check if metrics endpoint is available
-kubectl exec -n sonarqube   $(kubectl get pods -n sonarqube -o name | head -1)   -- curl -s http://localhost:9090/metrics | head -20
+# Verify the PodMonitor created by the Helm chart
+kubectl get podmonitor -n sonarqube
 
-# Create ServiceMonitor
-kubectl apply -f - << SMEOF
-apiVersion: monitoring.coreos.com/v1
-kind: ServiceMonitor
-metadata:
-  name: sonarqube-monitor
-  namespace: sonarqube
-  labels:
-    release: prometheus
-spec:
-  selector:
-    matchLabels:
-      app.kubernetes.io/name: sonarqube
-  endpoints:
-  - port: http
-    path: /metrics
-    interval: 60s
-SMEOF
+# In another terminal, check the metrics endpoint while port-forward is running
+kubectl port-forward -n sonarqube svc/sonarqube-sonarqube 9000:9000
+curl -s -H "X-Sonar-Passcode: $MONITORING_PASSCODE" \
+  http://127.0.0.1:9000/api/monitoring/metrics | head -20
 ```
 
 ## Step 7: Configure Backup Policy
 
 ```yaml
-# Backup using Velero or custom CronJob
-apiVersion: batch/v1
-kind: CronJob
+# Backup the namespace with Velero.
+# Back up the SonarQube database separately with its native tooling.
+apiVersion: velero.io/v1
+kind: Schedule
 metadata:
   name: sonarqube-backup
-  namespace: sonarqube
+  namespace: velero
 spec:
   schedule: "0 3 * * *"
-  jobTemplate:
-    spec:
-      template:
-        spec:
-          serviceAccountName: backup-sa
-          containers:
-          - name: backup
-            image: bitnami/kubectl:latest
-            command:
-            - sh
-            - -c
-            - |
-              echo "Creating sonarqube backup..."
-              kubectl exec -n sonarqube                 $(kubectl get pod -n sonarqube -l app.kubernetes.io/name=sonarqube -o name | head -1)                 -- /opt/bitnami/scripts/sonarqube/entrypoint.sh sonarqube-backup
-          restartPolicy: OnFailure
+  template:
+    includedNamespaces:
+    - sonarqube
+    ttl: 168h0m0s
 ```
 
 ## Step 8: Test the Deployment
@@ -166,12 +153,15 @@ kubectl logs -n sonarqube   $(kubectl get pods -n sonarqube -l app.kubernetes.io
 ```bash
 # Upgrade to latest version
 helm repo update
-helm upgrade sonarqube bitnami/sonarqube   --namespace sonarqube   --reuse-values
+helm upgrade sonarqube sonarqube/sonarqube \
+  --namespace sonarqube \
+  --reuse-values \
+  --set monitoringPasscode=$MONITORING_PASSCODE
 
 # Check upgrade status
-kubectl rollout status deployment/sonarqube -n sonarqube
+kubectl rollout status statefulset/sonarqube-sonarqube -n sonarqube
 ```
 
 ## Conclusion
 
-How to Deploy SonarQube on Rancher on Rancher benefits from centralized management, unified monitoring, and enterprise RBAC. The Helm-based installation makes configuration management straightforward, while Rancher's project system enables multi-team governance of the deployment.
+Deploying SonarQube on Rancher benefits from centralized management, unified monitoring, and project-based access control. The Helm-based installation makes configuration management straightforward, while Rancher's project system enables multi-team governance of the deployment.
