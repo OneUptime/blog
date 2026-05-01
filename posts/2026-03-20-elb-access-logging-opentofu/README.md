@@ -4,14 +4,17 @@ Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
 Tags: OpenTofu, AWS, ELB, ALB, NLB, Access Logging, Observability, Infrastructure as Code
 
-Description: Learn how to enable access logging for AWS Application Load Balancers and Network Load Balancers using OpenTofu to capture detailed request records for troubleshooting and compliance.
+Description: Learn how to enable access logging for AWS Application Load Balancers and Network Load Balancers using OpenTofu to capture detailed ALB request records and NLB TLS connection records for troubleshooting and compliance.
 
-ELB access logs capture detailed request information including client IP, request paths, response codes, latency, and backend instance responses. Managing log configuration in OpenTofu ensures every load balancer in your environment has logging enabled consistently.
+ALB access logs capture detailed request information including client IP, request paths, response codes, latency, and target responses. NLB access logs capture TLS connection details. Managing log configuration in OpenTofu ensures every load balancer in your environment has logging enabled consistently.
 
 ## ALB Access Logging
 
 ```hcl
-# S3 bucket to store ALB access logs
+# S3 bucket to store load balancer access logs
+
+data "aws_caller_identity" "current" {}
+data "aws_region" "current" {}
 
 resource "aws_s3_bucket" "alb_logs" {
   bucket = "alb-access-logs-${data.aws_caller_identity.current.account_id}"
@@ -36,8 +39,7 @@ resource "aws_s3_bucket_lifecycle_configuration" "alb_logs" {
   }
 }
 
-# ALB requires a specific bucket policy to allow ELB service to write logs
-data "aws_elb_service_account" "main" {}
+# Bucket policy to allow ALB and NLB log delivery
 
 resource "aws_s3_bucket_policy" "alb_logs" {
   bucket = aws_s3_bucket.alb_logs.id
@@ -46,25 +48,42 @@ resource "aws_s3_bucket_policy" "alb_logs" {
     Version = "2012-10-17"
     Statement = [
       {
+        Sid       = "AllowALBLogDelivery"
         Effect    = "Allow"
-        Principal = { AWS = data.aws_elb_service_account.main.arn }
+        Principal = { Service = "logdelivery.elasticloadbalancing.amazonaws.com" }
         Action    = "s3:PutObject"
-        Resource  = "${aws_s3_bucket.alb_logs.arn}/alb/*"
+        Resource  = "${aws_s3_bucket.alb_logs.arn}/alb/AWSLogs/${data.aws_caller_identity.current.account_id}/*"
       },
       {
-        Effect    = "Allow"
-        Principal = { Service = "delivery.logs.amazonaws.com" }
-        Action    = "s3:PutObject"
-        Resource  = "${aws_s3_bucket.alb_logs.arn}/alb/*"
-        Condition = {
-          StringEquals = { "s3:x-amz-acl" = "bucket-owner-full-control" }
-        }
-      },
-      {
+        Sid       = "AllowNLBLogDeliveryAclCheck"
         Effect    = "Allow"
         Principal = { Service = "delivery.logs.amazonaws.com" }
         Action    = "s3:GetBucketAcl"
         Resource  = aws_s3_bucket.alb_logs.arn
+        Condition = {
+          StringEquals = {
+            "aws:SourceAccount" = data.aws_caller_identity.current.account_id
+          }
+          ArnLike = {
+            "aws:SourceArn" = "arn:aws:logs:${data.aws_region.current.name}:${data.aws_caller_identity.current.account_id}:*"
+          }
+        }
+      },
+      {
+        Sid       = "AllowNLBLogDeliveryWrite"
+        Effect    = "Allow"
+        Principal = { Service = "delivery.logs.amazonaws.com" }
+        Action    = "s3:PutObject"
+        Resource  = "${aws_s3_bucket.alb_logs.arn}/nlb/AWSLogs/${data.aws_caller_identity.current.account_id}/*"
+        Condition = {
+          StringEquals = {
+            "s3:x-amz-acl"      = "bucket-owner-full-control"
+            "aws:SourceAccount" = data.aws_caller_identity.current.account_id
+          }
+          ArnLike = {
+            "aws:SourceArn" = "arn:aws:logs:${data.aws_region.current.name}:${data.aws_caller_identity.current.account_id}:*"
+          }
+        }
       }
     ]
   })
@@ -84,6 +103,8 @@ resource "aws_lb" "main" {
     enabled = true
   }
 
+  depends_on = [aws_s3_bucket_policy.alb_logs]
+
   tags = {
     Environment = var.environment
   }
@@ -94,6 +115,7 @@ resource "aws_lb" "main" {
 
 ```hcl
 # Network Load Balancer with access logging
+# NLB access logs are created only for TLS listeners
 resource "aws_lb" "nlb" {
   name               = "production-nlb"
   internal           = false
@@ -108,10 +130,12 @@ resource "aws_lb" "nlb" {
 
   # Enable cross-zone load balancing
   enable_cross_zone_load_balancing = true
+
+  depends_on = [aws_s3_bucket_policy.alb_logs]
 }
 ```
 
-## Athena Table for Log Analysis
+## Athena Named Query for Log Analysis
 
 ```hcl
 resource "aws_athena_database" "alb_logs" {
@@ -119,6 +143,7 @@ resource "aws_athena_database" "alb_logs" {
   bucket = aws_s3_bucket.alb_logs.id
 }
 
+# Stores the CREATE TABLE statement as a named query to run in Athena
 resource "aws_athena_named_query" "create_table" {
   name      = "create-alb-logs-table"
   database  = aws_athena_database.alb_logs.name
@@ -134,9 +159,9 @@ resource "aws_athena_named_query" "create_table" {
       target_ip          string,
       target_port        int,
       request_processing_time double,
-      target_processing_time  double,
+      target_processing_time double,
       response_processing_time double,
-      elb_status_code    string,
+      elb_status_code    int,
       target_status_code string,
       received_bytes     bigint,
       sent_bytes         bigint,
@@ -145,12 +170,26 @@ resource "aws_athena_named_query" "create_table" {
       request_proto      string,
       user_agent         string,
       ssl_cipher         string,
-      ssl_protocol       string
+      ssl_protocol       string,
+      target_group_arn   string,
+      trace_id           string,
+      domain_name        string,
+      chosen_cert_arn    string,
+      matched_rule_priority string,
+      request_creation_time string,
+      actions_executed   string,
+      redirect_url       string,
+      lambda_error_reason string,
+      target_port_list   string,
+      target_status_code_list string,
+      classification     string,
+      classification_reason string,
+      conn_trace_id      string
     )
     ROW FORMAT SERDE 'org.apache.hadoop.hive.serde2.RegexSerDe'
     WITH SERDEPROPERTIES (
       'serialization.format' = '1',
-      'input.regex' = '([^ ]*) ([^ ]*) ([^ ]*) ([^ ]*):([0-9]*) ([^ ]*)[:-]([0-9]*) ([-.0-9]*) ([-.0-9]*) ([-.0-9]*) (|[-0-9]*) (-|[-0-9]*) ([-0-9]*) ([-0-9]*) "([^ ]*) (.*) (- |[^ ]*)" "([^"]*)" ([A-Z0-9-_]+) ([A-Za-z0-9.-]*)'
+      'input.regex' = '([^ ]*) ([^ ]*) ([^ ]*) ([^ ]*):([0-9]*) ([^ ]*)[:-]([0-9]*) ([-.0-9]*) ([-.0-9]*) ([-.0-9]*) (|[-0-9]*) (-|[-0-9]*) ([-0-9]*) ([-0-9]*) \"([^ ]*) (.*) (- |[^ ]*)\" \"([^\"]*)\" ([A-Z0-9-_]+) ([A-Za-z0-9.-]*) ([^ ]*) \"([^\"]*)\" \"([^\"]*)\" \"([^\"]*)\" ([-.0-9]*) ([^ ]*) \"([^\"]*)\" \"([^\"]*)\" \"([^ ]*)\" \"([^\\s]+?)\" \"([^\\s]+)\" \"([^ ]*)\" \"([^ ]*)\" ?([^ ]*)? ?( .*)?'
     )
     LOCATION 's3://${aws_s3_bucket.alb_logs.id}/alb/';
   EOT
@@ -199,4 +238,4 @@ resource "aws_cloudwatch_metric_alarm" "alb_latency" {
 
 ## Conclusion
 
-ELB access logging in OpenTofu ensures every load balancer has consistent log collection. Store logs in a dedicated S3 bucket with lifecycle rules to manage cost, use Athena for ad-hoc SQL analysis of access patterns, and combine with CloudWatch metrics alarms for real-time alerting on error rates and latency. For ALBs, always configure the S3 bucket policy to allow the regional ELB service account to write logs.
+ELB access logging in OpenTofu ensures every load balancer has consistent log collection. Store logs in a dedicated S3 bucket with lifecycle rules to manage cost, use Athena named queries for ad-hoc SQL analysis of ALB access patterns, and combine with CloudWatch metrics alarms for real-time alerting on error rates and latency. For ALBs, configure the S3 bucket policy for the ELB log delivery service, and for NLB access logs include the required `delivery.logs.amazonaws.com` permissions and a TLS listener.
