@@ -83,7 +83,7 @@ resource "aws_lb_target_group" "app" {
   port        = 8080
   protocol    = "HTTP"
   vpc_id      = var.vpc_id
-  target_type = "ip"  # Required for Fargate awsvpc mode
+  target_type = "ip"  # Required for ECS services using awsvpc network mode
 
   health_check {
     enabled             = true
@@ -169,6 +169,11 @@ resource "aws_lb_listener_rule" "admin" {
     }
   }
 
+  action {
+    type             = "forward"
+    target_group_arn = var.admin_target_group_arn
+  }
+
   condition {
     path_pattern {
       values = ["/admin/*"]
@@ -192,4 +197,4 @@ aws elbv2 describe-load-balancers \
 
 ## Conclusion
 
-Set `deregistration_delay` to a value lower than your connection timeout (30-60 seconds is typical) to minimize request failures during deployments. The ALB performs health checks using the `health_check.path` endpoint-ensure this endpoint responds quickly and doesn't require database connectivity for accurate health assessment. Use `ELBSecurityPolicy-TLS13-1-2-2021-06` to enforce TLS 1.3 while maintaining TLS 1.2 compatibility for older clients.
+Set `deregistration_delay` to a value that covers your longest expected in-flight requests; 30-60 seconds is typical for many HTTP workloads, but increase it for long-lived uploads or streaming responses. The ALB performs health checks using the `health_check.path` endpoint. Ensure this endpoint responds quickly and reflects whether the task is ready to serve traffic. Use `ELBSecurityPolicy-TLS13-1-2-2021-06` to enforce TLS 1.3 while maintaining TLS 1.2 compatibility for older clients.
