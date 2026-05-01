@@ -8,17 +8,27 @@ Description: Learn how to create a production-grade EKS cluster with a custom VP
 
 ## Introduction
 
-Creating an EKS cluster with a custom VPC gives you full control over networking, subnet sizing, and CIDR allocation. Proper subnet tagging is required for Kubernetes to discover subnets for load balancers and node groups. This guide covers a complete production-ready setup.
+Creating an EKS cluster with a custom VPC gives you full control over networking, subnet sizing, and CIDR allocation. Proper subnet tagging is important for Kubernetes to discover subnets for load balancers. This guide covers a complete production-ready setup.
 
 ## Prerequisites
 
 - OpenTofu v1.6+
 - AWS credentials with EKS, EC2, and IAM permissions
+- AWS CLI v2.12.3+ installed and configured
 - `kubectl` installed
 
 ## Step 1: Create VPC with Required Subnet Tags
 
 ```hcl
+data "aws_availability_zones" "available" {
+  state = "available"
+
+  filter {
+    name   = "opt-in-status"
+    values = ["opt-in-not-required"]
+  }
+}
+
 module "vpc" {
   source  = "registry.opentofu.org/terraform-aws-modules/vpc/aws"
   version = "~> 5.0"
@@ -26,14 +36,16 @@ module "vpc" {
   name = "${var.cluster_name}-vpc"
   cidr = "10.0.0.0/16"
 
-  azs             = data.aws_availability_zones.available.names
+  azs             = slice(data.aws_availability_zones.available.names, 0, 3)
   private_subnets = ["10.0.1.0/24", "10.0.2.0/24", "10.0.3.0/24"]
   public_subnets  = ["10.0.101.0/24", "10.0.102.0/24", "10.0.103.0/24"]
 
-  enable_nat_gateway = true
-  single_nat_gateway = false  # One NAT per AZ for HA
+  enable_nat_gateway   = true
+  single_nat_gateway   = false
+  one_nat_gateway_per_az = true  # One NAT per AZ for HA
 
-  # Required tags for EKS to discover subnets
+  # Subnet tags for load balancer auto-discovery.
+  # The cluster tag is retained for compatibility with older controllers.
   private_subnet_tags = {
     "kubernetes.io/cluster/${var.cluster_name}" = "shared"
     "kubernetes.io/role/internal-elb"           = "1"
@@ -136,9 +148,9 @@ tofu apply
 
 # Configure kubectl
 aws eks update-kubeconfig --region us-east-1 --name my-cluster
-kubectl get nodes
+kubectl get svc
 ```
 
 ## Conclusion
 
-You have created a production-grade EKS cluster with a custom VPC in private subnets with proper Kubernetes subnet tags. The cluster has both private and public API endpoint access, control plane logging enabled, and a custom service CIDR. Add managed node groups or Fargate profiles in subsequent steps to run your workloads.
+You have created a production-grade EKS cluster with a custom VPC in private subnets and subnet tags for Kubernetes load balancer discovery. The cluster has both private and public API endpoint access, control plane logging enabled, and a custom service CIDR. Add managed node groups or Fargate profiles in subsequent steps to run your workloads.
