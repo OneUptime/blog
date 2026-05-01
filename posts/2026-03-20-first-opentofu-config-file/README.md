@@ -12,7 +12,7 @@ OpenTofu uses HashiCorp Configuration Language (HCL) to define infrastructure as
 
 ## Understanding HCL Basics
 
-An OpenTofu configuration consists of one or more `.tf` files containing:
+An OpenTofu configuration consists of one or more `.tf` or `.tofu` files containing:
 - **Blocks**: Named containers for configuration (`terraform`, `provider`, `resource`, `variable`, `output`)
 - **Arguments**: Key-value pairs within blocks
 - **Expressions**: Values computed from other values
@@ -43,7 +43,7 @@ terraform {
 # The local provider works with local files - no credentials needed
 provider "local" {}
 
-# A resource block creates an infrastructure object
+# A resource block declares a managed object
 # Format: resource "<TYPE>" "<NAME>"
 resource "local_file" "greeting" {
   # Arguments configure the resource
@@ -100,7 +100,7 @@ provider "aws" {
 # resource "<PROVIDER>_<TYPE>" "<LOCAL_NAME>"
 resource "aws_instance" "web_server" {
   # Configuration arguments
-  ami           = "ami-0c55b159cbfafe1f0"
+  ami           = "resolve:ssm:/aws/service/ami-amazon-linux-latest/al2023-ami-kernel-default-x86_64"
   instance_type = "t2.micro"
 
   # Tags are common for resource organization
