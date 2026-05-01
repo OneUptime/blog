@@ -119,7 +119,7 @@ nsenter --net=/var/run/netns/ns1 -- ip route show
 NS="ns1"
 
 # Run a series of commands inside the namespace
-ip netns exec $NS bash << 'EOF'
+ip netns exec "$NS" env NS="$NS" bash << 'EOF'
 # Bring up loopback
 ip link set lo up
 
