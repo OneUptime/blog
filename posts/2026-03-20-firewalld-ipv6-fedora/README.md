@@ -8,14 +8,14 @@ Description: Learn how to configure IPv6 firewall policies on Fedora using firew
 
 ## Overview
 
-Fedora uses firewalld with the nftables backend as its default firewall on recent releases. IPv6 support is built in and works alongside IPv4 through the same zone-based policy model. Fedora's firewalld configuration is the same as CentOS/RHEL but with more up-to-date features and the nftables backend enabled by default.
+Fedora uses firewalld with the nftables backend as its default firewall on recent releases. IPv6 support is built in and works alongside IPv4 through the same zone-based policy model. Fedora uses the same zone model and rich rule syntax as CentOS/RHEL, though package versions and defaults can differ by release.
 
 ## Verify nftables Backend
 
 ```bash
-# Fedora 34+ uses nftables backend by default
+# Fedora 32+ uses nftables backend by default
 
-cat /etc/firewalld/firewalld.conf | grep FirewallBackend
+grep '^FirewallBackend=' /etc/firewalld/firewalld.conf
 # FirewallBackend=nftables
 
 # Verify nftables is being used
@@ -41,26 +41,18 @@ firewall-cmd --zone=public --list-all
 
 ## IPv6 Rich Rules on Fedora
 
-Rich rules on Fedora support the same syntax as CentOS:
+Rich rules on Fedora support the same syntax as CentOS/RHEL:
 
 ### Allow IPv6 Service from Specific Prefix
 
 ```bash
 # Allow HTTPS from corporate IPv6 network only
-firewall-cmd --permanent --add-rich-rule='
-  rule family="ipv6"
-  source address="2001:db8:corp::/48"
-  service name="https"
-  accept'
+firewall-cmd --permanent --add-rich-rule='rule family="ipv6" source address="2001:db8:100::/48" service name="https" accept'
 
 # Allow SSH from management IPv6 prefix
-firewall-cmd --permanent --add-rich-rule='
-  rule family="ipv6"
-  source address="fd00:mgmt::/48"
-  service name="ssh"
-  accept'
+firewall-cmd --permanent --add-rich-rule='rule family="ipv6" source address="fd12:3456:789a::/48" service name="ssh" accept'
 
-# Remove SSH from public zone (now restricted to management only)
+# Remove SSH from the default zone (now restricted to management only)
 firewall-cmd --permanent --remove-service=ssh
 
 firewall-cmd --reload
@@ -68,7 +60,7 @@ firewall-cmd --reload
 
 ### Custom Service Definitions
 
-Fedora supports custom service files for IPv6-specific services:
+Fedora supports custom service files that you can reference from IPv6 rich rules:
 
 ```bash
 # Create a custom service definition
@@ -81,11 +73,11 @@ cat > /etc/firewalld/services/my-api-ipv6.xml << 'EOF'
 </service>
 EOF
 
-# Reload to pick up new service
+# Reload to pick up the new service definition
 firewall-cmd --reload
 
-# Allow the custom service
-firewall-cmd --permanent --add-service=my-api-ipv6
+# Allow the custom service for IPv6 only
+firewall-cmd --permanent --add-rich-rule='rule family="ipv6" service name="my-api-ipv6" accept'
 firewall-cmd --reload
 ```
 
@@ -93,18 +85,10 @@ firewall-cmd --reload
 
 ```bash
 # Rate limit incoming SSH connections (4 per minute)
-firewall-cmd --permanent --add-rich-rule='
-  rule family="ipv6"
-  service name="ssh"
-  limit value="4/m"
-  accept'
+firewall-cmd --permanent --add-rich-rule='rule family="ipv6" service name="ssh" limit value="4/m" accept'
 
 # Rate limit HTTP to prevent abuse
-firewall-cmd --permanent --add-rich-rule='
-  rule family="ipv6"
-  port port="80" protocol="tcp"
-  limit value="100/s"
-  accept'
+firewall-cmd --permanent --add-rich-rule='rule family="ipv6" port port="80" protocol="tcp" limit value="100/s" accept'
 
 firewall-cmd --reload
 ```
@@ -113,11 +97,7 @@ firewall-cmd --reload
 
 ```bash
 # Block and log traffic from a specific IPv6 prefix
-firewall-cmd --permanent --add-rich-rule='
-  rule family="ipv6"
-  source address="2001:db8:attacker::/32"
-  log prefix="BLOCKED-IPv6-ATTACKER " level="warning" limit value="1/s"
-  drop'
+firewall-cmd --permanent --add-rich-rule='rule family="ipv6" source address="2001:db8:bad::/48" log prefix="BLOCKED-IPv6-ATTACKER " level="warning" limit value="1/s" drop'
 
 firewall-cmd --reload
 
@@ -129,14 +109,10 @@ journalctl -k | grep "BLOCKED-IPv6-ATTACKER"
 
 ```bash
 # Allow Cockpit web interface over IPv6 from management network
-firewall-cmd --permanent --add-rich-rule='
-  rule family="ipv6"
-  source address="fd00:mgmt::/48"
-  service name="cockpit"
-  accept'
+firewall-cmd --permanent --add-rich-rule='rule family="ipv6" source address="fd12:3456:789a::/48" service name="cockpit" accept'
 
 # Allow DNS resolver queries over IPv6 (if running a resolver)
-firewall-cmd --permanent --add-service=dns
+firewall-cmd --permanent --add-rich-rule='rule family="ipv6" service name="dns" accept'
 
 firewall-cmd --reload
 ```
@@ -144,19 +120,15 @@ firewall-cmd --reload
 ## Checking Rule Status
 
 ```bash
-# List rich rules
+# List rich rules in the default zone
 firewall-cmd --list-rich-rules
 
-# List all active rules in all zones
+# List everything added for or enabled in all zones
 firewall-cmd --list-all-zones
 
-# Test if a packet from specific source would be accepted
-firewall-cmd --query-rich-rule='
-  rule family="ipv6"
-  source address="fd00:mgmt::/48"
-  service name="ssh"
-  accept'
-# Returns: yes or no
+# Check whether a specific rich rule has been added
+firewall-cmd --query-rich-rule='rule family="ipv6" source address="fd12:3456:789a::/48" service name="ssh" accept'
+# Exit status 0 means the rule is present; 1 means it is not
 
 # Show nftables rules generated by firewalld
 nft list ruleset | grep -A 10 'INPUT'
@@ -178,4 +150,4 @@ firewall-cmd --runtime-to-permanent
 
 ## Summary
 
-Fedora's firewalld with nftables backend supports IPv6 rich rules with the same syntax as CentOS/RHEL. Key operations: use `family="ipv6"` in rich rules for IPv6-specific policies, `source address="prefix"` for source filtering, and `limit value="N/t"` for rate limiting. Custom service XML files in `/etc/firewalld/services/` allow defining named services. Always use `--permanent` for persistent rules and `firewall-cmd --reload` to apply. View generated nftables rules with `nft list ruleset` to understand exactly what the firewall is doing at the kernel level.
+Fedora's firewalld with nftables backend supports IPv6 rich rules with the same syntax as CentOS/RHEL. Key operations: use `family="ipv6"` in rich rules for IPv6-specific policies, `source address="prefix"` for source filtering, and `limit value="N/t"` for rate limiting. Custom service XML files in `/etc/firewalld/services/` allow defining named services that can be referenced from rich rules or enabled in a zone. Always use `--permanent` for persistent rules and `firewall-cmd --reload` to apply. View generated nftables rules with `nft list ruleset` to understand exactly what the firewall is doing at the kernel level.
