@@ -8,19 +8,19 @@ Description: Learn how to fix environment variable handling issues when running 
 
 ---
 
-Synology NAS devices run a customized version of DSM (DiskStation Manager) with a modified Docker package. Environment variables in Portainer on Synology can behave unexpectedly due to DSM's string handling and limited shell environment.
+Synology NAS devices run DSM (DiskStation Manager). On DSM 6.2 this is exposed through Synology's Docker package, while DSM 7.2 and later renamed it to Container Manager. When you use Portainer on top of this environment, most environment variable issues come from Docker and Compose interpolation, precedence, or how the values are entered in Portainer.
 
 ## Common Issues on Synology
 
-- Special characters in env vars cause silent failures
-- Variables set in Portainer are not visible inside containers
-- Multi-line values are silently truncated
-- Variables with `$` signs are interpolated unexpectedly
+- Variables set in Portainer are not referenced correctly in the Compose file
+- `environment` values override values loaded from `env_file`
+- Unescaped `$` signs are interpolated unexpectedly in Compose-based stacks
+- Sensitive values are hard-coded in the stack instead of being loaded from a file or secret store
 
 ## Step 1: Verify Variables Are Set Correctly
 
 ```bash
-# SSH into your Synology (enable SSH in DSM Control Panel > Terminal)
+# SSH into your Synology (enable SSH in DSM if needed)
 
 # Check if a container received its env vars
 docker exec <container-name> env | sort
@@ -28,66 +28,63 @@ docker exec <container-name> env | sort
 # If the variable is missing or has wrong value, the issue is in how it was set
 ```
 
-## Step 2: Avoid Special Characters in Variable Values
+## Step 2: Handle Special Characters in Variable Values
 
-Portainer on Synology passes env vars through DSM's Docker manager. Characters that need escaping:
+Portainer does not require you to remove special characters, but Docker Compose does interpolate `$VARIABLE` and `${VARIABLE}` in Compose values. If you need a literal dollar sign, escape it in the Compose file or store the value in an `.env` file and quote it correctly:
 
-```bash
-# Problematic: passwords with special characters
-DB_PASS=p@$$w0rd!          # $ signs cause issues
+```text
+# compose.yaml value: $$ becomes a literal $
+DB_PASS: "p@$$w0rd!"      # final value: p@$w0rd!
 
-# Safer: use only alphanumeric and limited special chars
-DB_PASS=pAtSword123        # Works reliably
-
-# If you must use special characters, use an .env file or Docker secrets
+# .env value: single quotes keep the value literal
+DB_PASS='p@$w0rd!'
 ```
+
+For actual secrets, prefer a supported secrets mechanism when available.
 
 ## Step 3: Use Stack Files Instead of Container UI
 
-For complex environment configurations, use a stack (Compose file) instead of the container creation UI:
+For multi-container apps or when you need Compose features like `env_file` and interpolation, use a stack (Compose file) instead of the container creation UI:
 
 ```yaml
 # Place this in Portainer's stack editor
-version: "3.8"
 services:
   myapp:
     image: myimage:latest
     environment:
-      # Portainer's stack editor handles env vars more reliably than the container UI
+      # Use Compose variables so values can come from Portainer or an uploaded .env file
       DB_HOST: "postgres"
       DB_PORT: "5432"
-      DB_PASS: "your-password"
+      DB_PASS: "${DB_PASS}"
 ```
 
-## Step 4: Use .env Files for Sensitive Values
+## Step 4: Use .env Files Instead of Hard-Coding Values
 
-For sensitive values, place an `.env` file in the Portainer stack storage directory:
+For values you do not want hard-coded in the stack file, use Portainer's **Load variables from .env file** option and reference them from the Compose file:
 
 ```bash
-# Create an env file on the Synology volume
-cat > /volume1/docker/myapp.env << 'EOF'
-DB_PASS=supersecret
-API_KEY=abc123
-EOF
-
-# Reference it in the stack
-# Note: on Synology this must be an absolute path
+# Example .env file to upload in Portainer
+DB_PASS='supersecret'
+API_KEY='abc123'
 ```
 
-## Step 5: Fix DSM Docker Package Version
+Keep `DB_PASS: "${DB_PASS}"` and `API_KEY: "${API_KEY}"` in the stack. For actual secrets, prefer a supported secrets mechanism when available.
 
-Older DSM Docker packages have bugs with env var handling. Update via DSM:
+## Step 5: Update Docker or Container Manager
+
+Synology renamed the package from **Docker** to **Container Manager** in DSM 7.2. Keep the package current via DSM:
 
 1. Open **Package Center**.
-2. Find **Docker**.
+2. Find **Docker** on DSM 6.2 or **Container Manager** on DSM 7.2 and later.
 3. Click **Update** if available.
 
-## Step 6: Check for Variable Shadowing
+## Step 6: Check Variable Precedence
 
-DSM containers inherit some environment variables from the DSM host. Verify no shadowing:
+Containers do not automatically inherit arbitrary DSM host environment variables, but the same variable name can still be defined in multiple places. Verify no precedence issue:
 
 ```bash
 docker exec <container-name> env | grep -i your_variable_name
-# If you see unexpected values, DSM may be injecting conflicting variables
-# Prefix your variable names to avoid conflicts: APP_DB_HOST instead of DB_HOST
+# If you see an unexpected value, check your Compose file next
+# environment: overrides env_file:, and both override image ENV when explicitly set
+# Prefix your variable names to avoid collisions: APP_DB_HOST instead of DB_HOST
 ```
