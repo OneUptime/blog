@@ -8,7 +8,7 @@ Description: Diagnose and fix DNS resolution failures caused by systemd-resolved
 
 ## Introduction
 
-`systemd-resolved` is the default DNS stub resolver on Ubuntu, Debian, Fedora, and other modern Linux distributions. It handles DNS caching, DNSSEC validation, and DNS-over-TLS. Misconfiguration or service failures cause all DNS resolution to stop working for applications on the system. This guide covers diagnosing and fixing the most common systemd-resolved problems.
+`systemd-resolved` is the local DNS resolver on Ubuntu and many other modern Linux distributions. It handles DNS caching and can provide DNSSEC validation and DNS-over-TLS. Misconfiguration or service failures can break DNS resolution for many applications on the system. This guide covers diagnosing and fixing the most common systemd-resolved problems.
 
 ## Quick Diagnosis
 
@@ -23,8 +23,8 @@ resolvectl status
 
 # Test if it's working:
 resolvectl query google.com
-# If this works but dig doesn't: /etc/resolv.conf issue
-# If this fails: systemd-resolved internal issue
+# If this works but dig doesn't: likely /etc/resolv.conf issue
+# If this fails: likely a systemd-resolved, configuration, or upstream DNS issue
 
 # Check for error messages:
 journalctl -u systemd-resolved --since "1 hour ago" | tail -30
@@ -33,11 +33,11 @@ journalctl -u systemd-resolved --since "1 hour ago" | tail -30
 ## Fix: Broken /etc/resolv.conf Symlink
 
 ```bash
-# Most common issue: /etc/resolv.conf not pointing to systemd-resolved
+# On systems using the local systemd-resolved stub, /etc/resolv.conf may not point to it
 
 # Check current state:
 ls -la /etc/resolv.conf
-# Should be a symlink to: /run/systemd/resolve/stub-resolv.conf
+# Should usually be a symlink to: /run/systemd/resolve/stub-resolv.conf
 # Or contain: nameserver 127.0.0.53
 
 # If not a symlink, check what's there:
@@ -49,7 +49,7 @@ ln -sf /run/systemd/resolve/stub-resolv.conf /etc/resolv.conf
 
 # Alternative: write static content pointing to resolved stub:
 cat > /etc/resolv.conf << 'EOF'
-# This file is managed by systemd-resolved
+# Static resolv.conf pointing to the systemd-resolved stub
 nameserver 127.0.0.53
 options edns0 trust-ad
 search .
@@ -68,8 +68,8 @@ journalctl -u systemd-resolved -n 50
 
 # Common causes:
 # Port 53 conflict (another process using port 53):
-ss -ulnp | grep :53
-# If something else is using 53: conflict with systemd-resolved's stub listener
+ss -ltnup | grep ':53'
+# If something else is listening on 53/TCP or 53/UDP: conflict with systemd-resolved's stub listener
 
 # Disable conflicting DNS:
 # If dnsmasq or bind is also running:
@@ -95,15 +95,14 @@ cat > /etc/systemd/resolved.conf << 'EOF'
 [Resolve]
 DNS=1.1.1.1 8.8.8.8
 FallbackDNS=9.9.9.9
-Domains=~.   # Use for all domains
 EOF
 
 systemctl restart systemd-resolved
 
-# Per-interface DNS (overrides global):
+# Per-interface DNS (used for that link and matching domains):
 resolvectl dns eth0 10.20.0.1 10.20.0.2
 resolvectl domain eth0 company.internal
-# Or permanently via /etc/systemd/network/eth0.network
+# Or permanently via /etc/systemd/network/eth0.network if you use systemd-networkd
 
 # Verify:
 resolvectl status eth0
@@ -112,8 +111,8 @@ resolvectl status eth0
 ## Fix: DNSSEC Validation Failures
 
 ```bash
-# DNSSEC can cause SERVFAIL for valid domains if resolver has clock skew
-# or if the domain's DNSSEC is broken:
+# If DNSSEC is enabled, it can cause SERVFAIL for otherwise valid domains
+# if the resolver has clock skew or the domain's DNSSEC is broken:
 
 # Check DNSSEC setting:
 resolvectl status | grep -i dnssec
@@ -136,16 +135,17 @@ resolvectl query example.com
 ## Fix: DNS Resolution in Containers
 
 ```bash
-# Docker containers may not use systemd-resolved automatically
+# Docker containers do not use the host's local systemd-resolved stub directly
 # Check Docker's DNS configuration:
 cat /etc/docker/daemon.json
-# If empty or no "dns" key: Docker uses host's resolv.conf
+# Containers on the default bridge copy the host's resolv.conf
+# Containers on custom networks use Docker's embedded DNS
 
-# Tell Docker to use the systemd-resolved stub:
+# Configure Docker to use reachable upstream DNS servers:
+# Do not use 127.0.0.53 here: inside a container namespace it points to the container itself
 cat > /etc/docker/daemon.json << 'EOF'
 {
-  "dns": ["127.0.0.53"],
-  "dns-search": []
+  "dns": ["1.1.1.1", "8.8.8.8"]
 }
 EOF
 systemctl restart docker
@@ -166,10 +166,11 @@ journalctl -u systemd-resolved -f &
 dig google.com
 resolvectl log-level info  # Restore to normal
 
-# Check DNSSEC validation status for a domain:
-resolvectl query --type=DNSSEC example.com
+# Check whether a domain answer was DNSSEC-authenticated:
+resolvectl query example.com
+# Look for: Data is authenticated: yes
 ```
 
 ## Conclusion
 
-systemd-resolved issues typically fall into three categories: broken `/etc/resolv.conf` symlink (fix with `ln -sf /run/systemd/resolve/stub-resolv.conf /etc/resolv.conf`), wrong DNS server configured (fix in `/etc/systemd/resolved.conf`), and DNSSEC validation failures (disable with `DNSSEC=no` while investigating). Use `resolvectl status` to see the current effective configuration and `resolvectl statistics` to monitor cache performance. For persistent configuration, always edit `/etc/systemd/resolved.conf` and restart the service.
+systemd-resolved issues typically fall into three categories: broken `/etc/resolv.conf` stub configuration (often fixed with `ln -sf /run/systemd/resolve/stub-resolv.conf /etc/resolv.conf`), wrong DNS server configured (fix in `/etc/systemd/resolved.conf`), and DNSSEC validation failures when DNSSEC is enabled (disable with `DNSSEC=no` while investigating). Use `resolvectl status` to see the current effective configuration and `resolvectl statistics` to monitor cache performance. For persistent global configuration, edit `/etc/systemd/resolved.conf` or a drop-in and restart the service; for per-interface DNS, use your network manager or `systemd-networkd` configuration.
