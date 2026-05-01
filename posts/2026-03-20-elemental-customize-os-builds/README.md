@@ -8,7 +8,7 @@ Description: Extend the base Elemental OS image with custom packages, configurat
 
 ## Introduction
 
-Elemental OS images are standard OCI container images, which means you can extend them using standard Dockerfile syntax. This flexibility allows you to install custom software, add configuration files, integrate monitoring agents, and configure system services - all while maintaining the immutable, reproducible properties that make Elemental reliable at scale.
+Elemental OS images are standard OCI container images, which means you can extend them using standard Dockerfile syntax. This flexibility allows you to install custom software, add configuration files, integrate monitoring agents, and configure system services - all while maintaining the immutable, reproducible properties that make Elemental reliable at scale. To keep customized images bootable and upgradeable, preserve the Elemental image metadata in `/etc/os-release` and rerun `elemental init` after changing the filesystem.
 
 ## Customization Strategies
 
@@ -24,25 +24,30 @@ Elemental OS images are standard OCI container images, which means you can exten
 ```dockerfile
 # Dockerfile.elemental-custom
 
-FROM registry.suse.com/rancher/sle-micro:latest
+FROM registry.suse.com/suse/sl-micro/6.1/baremetal-os-container:latest
 
 # Install monitoring and operations tools
 RUN zypper --non-interactive install \
-    vim \
     curl \
     jq \
-    htop \
-    prometheus-node-exporter \
+    prometheus-node_exporter \
     && zypper clean -a
 
 # Enable node exporter on boot
-RUN systemctl enable prometheus-node-exporter
+RUN systemctl enable prometheus-node_exporter
+
+ARG IMAGE_REPO=my-registry.example.com/elemental-os
+ARG IMAGE_TAG=v1.2.0
+RUN sed -i -e "s|^IMAGE_REPO=.*|IMAGE_REPO=\"${IMAGE_REPO}\"|g" /etc/os-release && \
+    sed -i -e "s|^IMAGE_TAG=.*|IMAGE_TAG=\"${IMAGE_TAG}\"|g" /etc/os-release && \
+    sed -i -e "s|^IMAGE=.*|IMAGE=\"${IMAGE_REPO}:${IMAGE_TAG}\"|g" /etc/os-release && \
+    elemental init --force elemental-rootfs,grub-config,dracut-config,cloud-config-essentials,elemental-setup
 ```
 
 ### Adding Custom Systemd Services
 
 ```dockerfile
-FROM registry.suse.com/rancher/sle-micro:latest
+FROM registry.suse.com/suse/sl-micro/6.1/baremetal-os-container:latest
 
 # Copy custom service files
 COPY systemd/my-agent.service /etc/systemd/system/
@@ -53,19 +58,26 @@ RUN chmod +x /usr/local/bin/my-agent.sh
 
 # Enable the service
 RUN systemctl enable my-agent.service
+
+ARG IMAGE_REPO=my-registry.example.com/elemental-os
+ARG IMAGE_TAG=v1.2.0
+RUN sed -i -e "s|^IMAGE_REPO=.*|IMAGE_REPO=\"${IMAGE_REPO}\"|g" /etc/os-release && \
+    sed -i -e "s|^IMAGE_TAG=.*|IMAGE_TAG=\"${IMAGE_TAG}\"|g" /etc/os-release && \
+    sed -i -e "s|^IMAGE=.*|IMAGE=\"${IMAGE_REPO}:${IMAGE_TAG}\"|g" /etc/os-release && \
+    elemental init --force elemental-rootfs,grub-config,dracut-config,cloud-config-essentials,elemental-setup
 ```
 
 ### Multi-Stage Build for Size Optimization
 
 ```dockerfile
 # Build stage: compile custom tools
-FROM golang:1.21 AS builder
+FROM golang:1.26 AS builder
 WORKDIR /app
 COPY my-tool/ .
 RUN go build -o /usr/local/bin/my-tool ./cmd/my-tool
 
 # Final image: only runtime artifacts
-FROM registry.suse.com/rancher/sle-micro:latest
+FROM registry.suse.com/suse/sl-micro/6.1/baremetal-os-container:latest
 
 # Copy compiled binary from builder
 COPY --from=builder /usr/local/bin/my-tool /usr/local/bin/my-tool
@@ -74,12 +86,19 @@ COPY --from=builder /usr/local/bin/my-tool /usr/local/bin/my-tool
 COPY my-tool.service /etc/systemd/system/
 RUN chmod +x /usr/local/bin/my-tool && \
     systemctl enable my-tool.service
+
+ARG IMAGE_REPO=my-registry.example.com/elemental-os
+ARG IMAGE_TAG=v1.2.0
+RUN sed -i -e "s|^IMAGE_REPO=.*|IMAGE_REPO=\"${IMAGE_REPO}\"|g" /etc/os-release && \
+    sed -i -e "s|^IMAGE_TAG=.*|IMAGE_TAG=\"${IMAGE_TAG}\"|g" /etc/os-release && \
+    sed -i -e "s|^IMAGE=.*|IMAGE=\"${IMAGE_REPO}:${IMAGE_TAG}\"|g" /etc/os-release && \
+    elemental init --force elemental-rootfs,grub-config,dracut-config,cloud-config-essentials,elemental-setup
 ```
 
 ## Adding Custom Configuration Files
 
 ```dockerfile
-FROM registry.suse.com/rancher/sle-micro:latest
+FROM registry.suse.com/suse/sl-micro/6.1/baremetal-os-container:latest
 
 # Sysctl tuning for Kubernetes nodes
 COPY sysctl-kubernetes.conf /etc/sysctl.d/99-kubernetes.conf
@@ -90,31 +109,41 @@ COPY chrony.conf /etc/chrony.conf
 # Custom SSH daemon config
 COPY sshd-custom.conf /etc/ssh/sshd_config.d/10-custom.conf
 
-# Firewall rules
+# Firewall setup script
 COPY firewall-rules.sh /usr/local/bin/firewall-setup.sh
 RUN chmod +x /usr/local/bin/firewall-setup.sh
 
-# Apply configurations
-RUN sysctl --system || true
+ARG IMAGE_REPO=my-registry.example.com/elemental-os
+ARG IMAGE_TAG=v1.2.0
+RUN sed -i -e "s|^IMAGE_REPO=.*|IMAGE_REPO=\"${IMAGE_REPO}\"|g" /etc/os-release && \
+    sed -i -e "s|^IMAGE_TAG=.*|IMAGE_TAG=\"${IMAGE_TAG}\"|g" /etc/os-release && \
+    sed -i -e "s|^IMAGE=.*|IMAGE=\"${IMAGE_REPO}:${IMAGE_TAG}\"|g" /etc/os-release && \
+    elemental init --force elemental-rootfs,grub-config,dracut-config,cloud-config-essentials,elemental-setup
 ```
 
 ## Integrating Monitoring Agents
 
 ```dockerfile
-FROM registry.suse.com/rancher/sle-micro:latest
+FROM registry.suse.com/suse/sl-micro/6.1/baremetal-os-container:latest
 
-# Install Datadog agent
-ARG DD_AGENT_VERSION=7.50.0
-RUN curl -fsSL https://s3.amazonaws.com/dd-agent/packages/datadog-agent-${DD_AGENT_VERSION}.x86_64.rpm \
-    -o /tmp/dd-agent.rpm && \
-    rpm -i /tmp/dd-agent.rpm && \
-    rm /tmp/dd-agent.rpm
+# Install Datadog agent from the official SUSE repository
+RUN rpm --import https://keys.datadoghq.com/DATADOG_RPM_KEY_CURRENT.public && \
+    zypper --non-interactive addrepo --refresh https://yum.datadoghq.com/suse/stable/7 datadog && \
+    zypper --non-interactive install datadog-agent && \
+    zypper clean -a
 
 # Copy Datadog config
 COPY datadog.yaml /etc/datadog-agent/datadog.yaml
 
 # Enable Datadog
 RUN systemctl enable datadog-agent
+
+ARG IMAGE_REPO=my-registry.example.com/elemental-os
+ARG IMAGE_TAG=v1.2.0
+RUN sed -i -e "s|^IMAGE_REPO=.*|IMAGE_REPO=\"${IMAGE_REPO}\"|g" /etc/os-release && \
+    sed -i -e "s|^IMAGE_TAG=.*|IMAGE_TAG=\"${IMAGE_TAG}\"|g" /etc/os-release && \
+    sed -i -e "s|^IMAGE=.*|IMAGE=\"${IMAGE_REPO}:${IMAGE_TAG}\"|g" /etc/os-release && \
+    elemental init --force elemental-rootfs,grub-config,dracut-config,cloud-config-essentials,elemental-setup
 ```
 
 ## Building and Publishing
@@ -122,13 +151,15 @@ RUN systemctl enable datadog-agent
 ```bash
 # Build with version tag
 docker build \
+  --build-arg IMAGE_REPO=my-registry.example.com/elemental-os \
+  --build-arg IMAGE_TAG=v1.2.0 \
   -t my-registry.example.com/elemental-os:v1.2.0 \
   -f Dockerfile.elemental-custom \
   .
 
 # Run basic verification
 docker run --rm my-registry.example.com/elemental-os:v1.2.0 \
-  bash -c "prometheus-node-exporter --version && my-tool --version"
+  sh -c "grep '^IMAGE=' /etc/os-release && elemental --help >/dev/null"
 
 # Push to registry
 docker push my-registry.example.com/elemental-os:v1.2.0
@@ -157,11 +188,22 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Log in to registry
+        uses: docker/login-action@v3
+        with:
+          registry: my-registry.example.com
+          username: ${{ secrets.REGISTRY_USERNAME }}
+          password: ${{ secrets.REGISTRY_PASSWORD }}
 
       - name: Build OS image
         run: |
           VERSION=$(git describe --tags --always)
           docker build \
+            --build-arg IMAGE_REPO=my-registry.example.com/elemental-os \
+            --build-arg IMAGE_TAG=${VERSION} \
             -t my-registry.example.com/elemental-os:${VERSION} \
             -f Dockerfile.elemental-custom \
             .
