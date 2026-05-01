@@ -8,22 +8,25 @@ Description: Learn how to configure DHCPv6 host reservations to assign fixed IPv
 
 ## Overview
 
-DHCPv6 reservations allow you to pin a specific IPv6 address to a particular client. Unlike DHCPv4 where MAC addresses are used, DHCPv6 reservations are based on the client's **DUID** (DHCP Unique Identifier) or, in some implementations, the hardware address directly.
+DHCPv6 reservations allow you to pin a specific IPv6 address to a particular client. Unlike many DHCPv4 setups where reservations are keyed to MAC addresses, DHCPv6 reservations are usually based on the client's **DUID** (DHCP Unique Identifier) or, in some implementations, the hardware address directly.
 
 ## Finding a Client's DUID
 
-Before creating a reservation, you need the client's DUID:
+Before creating a reservation, you need the client's DUID. On Linux, common ways to find it include:
 
 ```bash
-# On the DHCPv6 client (Linux), find the DUID from the lease file
+# On systems using ISC dhclient, inspect common lease database locations
+grep -R -E "dhcp6.client-id|default-duid" /var/lib/dhcp/ /var/lib/dhclient/ 2>/dev/null
 
-cat /var/lib/dhclient/dhclient6.leases | grep "dhcp6.client-id"
+# Or read the dedicated dhclient DUID file if your distribution stores one
+cat /var/lib/dhcp/dhclient6.duid 2>/dev/null
+cat /var/lib/dhclient/dhclient6.duid 2>/dev/null
 
-# Or from systemd-networkd
-cat /var/lib/systemd/network/*.lease | grep DUID
+# On systemd-networkd, check whether a DUID is explicitly configured
+grep -R "DUID" /etc/systemd/networkd.conf /etc/systemd/network/*.network 2>/dev/null
 
-# View the DUID stored by dhclient directly
-cat /var/lib/dhclient/dhclient6.duid
+# For any DHCPv6 client, capture a renew and inspect the Client Identifier option
+sudo tcpdump -vv -i eth0 port 546 or port 547
 ```
 
 ## ISC Kea DHCPv6 Reservation Configuration
@@ -68,7 +71,7 @@ For legacy ISC DHCP server:
 
 # Define a host reservation using the client's DUID
 host webserver {
-    # DUID-LLT type (00:01) followed by hardware type and address
+    # DUID-LLT type (00:01) followed by hardware type, time, and address
     host-identifier option dhcp6.client-id
         00:01:00:01:12:34:56:78:aa:bb:cc:dd:ee:ff;
 
@@ -99,10 +102,10 @@ sudo dhclient -6 eth0
 ip -6 addr show dev eth0 | grep "2001:db8::10"
 ```
 
-On Kea, check the lease database:
+On Kea, check the lease database through the Control Agent with the `lease_cmds` hook library enabled:
 
 ```bash
-# Query Kea's lease database via REST API
+# Query Kea's lease database via the Control Agent
 curl -s -X POST http://localhost:8000/ \
   -H "Content-Type: application/json" \
   -d '{"command": "lease6-get-by-duid",
@@ -131,4 +134,4 @@ In Kea, reservations can be placed at the global level (for all subnets) or with
 
 ## Summary
 
-DHCPv6 reservations use the client's DUID to map a fixed IPv6 address. Both Kea and ISC DHCP support this, with Kea offering more flexibility including hardware address matching and global reservations. Always verify the DUID from the client lease file before creating a reservation.
+DHCPv6 reservations use the client's DUID to map a fixed IPv6 address. Both Kea and ISC DHCP support this, with Kea offering more flexibility including hardware address matching and global reservations. Always verify the DUID from the client itself, or from a captured DHCPv6 exchange, before creating a reservation.
