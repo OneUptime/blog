@@ -20,35 +20,32 @@ This is a significant security risk in multi-tenant Portainer deployments.
 
 1. Go to **Environments** in Portainer.
 2. Select your Docker environment.
-3. Click **Edit**.
-4. Under **Security**, find **Allow host PID** (or similar).
-5. Toggle it **Off**.
-6. Click **Update environment**.
+3. Open **Setup**.
+4. Under **Docker Security Settings**, enable **Disable the use of host PID 1 for non-administrators**.
+5. Click **Save settings**.
 
 ## Why This Matters
 
-Consider this scenario: a developer deploys the `nsenter` tool in a container with host PID access:
+Consider this scenario: a developer deploys a container with host PID access and enough additional privileges to run `nsenter`:
 
 ```bash
-# What an attacker could do with hostPID=true
-
-docker run -it --pid=host ubuntu nsenter -t 1 -m -u -i -n -p -- bash
-# This gives root shell on the host!
+# Inside a sufficiently privileged container that already uses --pid=host
+nsenter -t 1 -m -u -i -n -p -- bash
+# This can enter the host namespaces and provide host-level access
 ```
 
-Portainer's setting prevents non-admin users from enabling `hostPID` through the UI or API.
+Portainer's setting prevents non-admin users from requesting host PID access through Portainer.
 
 ## Corresponding Kubernetes Setting
 
-In Kubernetes environments, you can enforce this via Pod Security Standards or Portainer's cluster policies:
+In Kubernetes environments, you can enforce this via Pod Security Admission labels or Portainer's Kubernetes security policies:
 
 ```yaml
-# Kubernetes: Block hostPID via Pod Security Standards
-# Label the namespace to use the "restricted" security policy
-kubectl label namespace production \
+# Kubernetes: block host namespaces, including hostPID
+kubectl label --overwrite namespace production \
   pod-security.kubernetes.io/enforce=restricted
 
-# The restricted policy blocks hostPID=true at the API level
+# Pod Security Admission enforces this at the API level
 ```
 
 ## Checking for Containers Using Host PID
@@ -74,15 +71,15 @@ docker inspect $(docker ps -q) | \
 For maximum security, disable all these for non-admin users:
 
 ```text
-Settings > Environments > [Env] > Security:
-☒ Allow privileged mode
-☒ Allow bind mounts
-☒ Allow host PID
-☒ Allow host IPC
-☒ Allow host network
-☒ Allow sysctl settings
+Environments > [Env] > Setup > Docker Security Settings:
+☒ Disable privileged mode for non-administrators
+☒ Disable bind mounts for non-administrators
+☒ Disable the use of host PID 1 for non-administrators
+☒ Disable device mappings for non-administrators
+☒ Disable container capabilities for non-administrators
+☒ Disable sysctl settings for non-administrators
 ```
 
 ## Conclusion
 
-Disabling host PID access is a simple configuration change in Portainer that prevents a significant container escape vector. Along with disabling privileged mode, bind mounts, and host networking, it forms a comprehensive container security baseline for shared Portainer environments.
+Disabling host PID access is a simple configuration change in Portainer that reduces a significant host-exposure risk. Along with disabling privileged mode, bind mounts, device mappings, extra container capabilities, and sysctl settings, it forms a stronger container security baseline for shared Portainer environments.
