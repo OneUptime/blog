@@ -4,25 +4,23 @@ Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
 Tags: Portainer, Docker, Filtering, Labels, Operation, DevOps
 
-Description: Learn how to filter containers by running status, labels, and names in Portainer to quickly find specific containers in environments with many running workloads.
+Description: Learn how to search containers in Portainer and use Docker-compatible filters for running status, labels, and names to quickly find specific workloads.
 
 ---
 
-This guide shows you how to accomplish this common container management task in Portainer, including both the UI approach and the equivalent command-line method.
+This guide shows you how to find containers in Portainer and use Docker-compatible filters for exact status-, label-, and name-based matching.
 
 ## Using the Portainer UI
 
-Navigate to **Containers** in the left sidebar. The container list view provides search and filter options at the top of the page.
+Navigate to **Containers** in the left sidebar. The container list view includes a search box at the top of the page, and you can open a container to inspect its labels in the details view.
 
 ### Filtering Options
 
-The Portainer container list supports filtering by:
-- **Status**: Running, Stopped, Exited, Paused
-- **Name**: Search by container name substring
-- **Stack**: Filter by stack name
-- **Labels**: Filter by container labels (available in container details)
+In Portainer, you can use:
+- **Search**: Narrow the visible container list from the search box
+- **Container details**: Open a container to view its status, labels, ports, and other metadata
 
-Click the **Filter** button or search box to apply your criteria. The container list updates in real time.
+For exact status- and label-based filtering, use the Docker CLI or the Portainer API shown below.
 
 ## Using the Docker CLI
 
@@ -36,13 +34,13 @@ docker ps --filter "status=running"
 # Filter by label key=value
 docker ps --filter "label=com.docker.compose.service=webapp"
 
-# Filter by stack name (using Compose label)
+# Filter by Compose project name
 docker ps --filter "label=com.docker.compose.project=my-stack"
 
 # Filter by image name
 docker ps --filter "ancestor=nginx:1.25"
 
-# Multiple filters (AND condition)
+# Combine status and label filters
 docker ps --filter "status=running" --filter "label=environment=production"
 
 # Format the output to show specific fields
@@ -69,13 +67,13 @@ services:
 
 With these labels, you can filter by:
 ```bash
-# Find all production containers
+# Find running production containers
 docker ps --filter "label=environment=production"
 
-# Find all containers owned by the backend team
+# Find running containers owned by the backend team
 docker ps --filter "label=team=backend"
 
-# Find containers needing backup
+# Find running containers needing backup
 docker ps --filter "label=backup=required"
 ```
 
@@ -84,18 +82,22 @@ docker ps --filter "label=backup=required"
 For integration with monitoring tools or dashboards:
 
 ```python
+import json
 import requests
 
 headers = {"X-API-Key": "your-api-token"}
 
-# Get containers with specific label via Portainer API
+# Get running containers with a specific label via Portainer's Docker API proxy
 response = requests.get(
     "https://portainer.example.com/api/endpoints/1/docker/containers/json",
     headers=headers,
     params={
-        "all": "false",  # Only running containers
-        "filters": '{"label": ["environment=production"]}'
-    }
+        "all": "true",
+        "filters": json.dumps({
+            "status": ["running"],
+            "label": ["environment=production"],
+        }),
+    },
 )
 
 containers = response.json()
@@ -105,4 +107,4 @@ for c in containers:
 
 ## Summary
 
-Portainer's container filtering UI and Docker's filter flags both support filtering by status and labels. Consistent label conventions across your stacks make it significantly easier to find, manage, and audit specific container groups. Use the Portainer API for programmatic filtering in automation and monitoring tools.
+Portainer's Containers view lets you search the list and inspect container details, while Docker's filter flags and Portainer's Docker API proxy support exact filtering by status and labels. Consistent label conventions across your stacks make it significantly easier to find, manage, and audit specific container groups. Use the Portainer API for programmatic filtering in automation and monitoring tools.
