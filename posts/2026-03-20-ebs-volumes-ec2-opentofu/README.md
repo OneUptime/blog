@@ -13,12 +13,31 @@ Amazon EBS (Elastic Block Store) provides persistent block storage for EC2 insta
 ## Prerequisites
 
 - OpenTofu v1.6+
-- AWS credentials with EC2 and EBS permissions
+- AWS credentials with EC2 and EBS permissions (and KMS permissions if you use a customer managed key)
 - An existing EC2 instance or subnet
 
 ## Step 1: Launch an EC2 Instance
 
 ```hcl
+variable "subnet_id" {
+  type = string
+}
+
+variable "kms_key_arn" {
+  type    = string
+  default = null
+}
+
+data "aws_ami" "amazon_linux" {
+  most_recent = true
+  owners      = ["amazon"]
+
+  filter {
+    name   = "name"
+    values = ["al2023-ami-2023.*-x86_64"]
+  }
+}
+
 resource "aws_instance" "database" {
   ami           = data.aws_ami.amazon_linux.id
   instance_type = "m5.xlarge"
@@ -47,7 +66,7 @@ resource "aws_ebs_volume" "database_data" {
   availability_zone = aws_instance.database.availability_zone
   type              = "io2"
   size              = 500   # 500 GiB
-  iops              = 16000 # Up to 64,000 IOPS for io2
+  iops              = 16000
   encrypted         = true
   kms_key_id        = var.kms_key_arn
 
@@ -77,7 +96,7 @@ resource "aws_ebs_volume" "database_logs" {
 resource "aws_ebs_volume" "database_backup" {
   availability_zone = aws_instance.database.availability_zone
   type              = "st1"  # Throughput-optimized HDD
-  size              = 2000   # 2 TiB for backup storage
+  size              = 2000   # 2000 GiB for backup storage
 
   tags = {
     Name    = "database-backup-volume"
@@ -89,9 +108,9 @@ resource "aws_ebs_volume" "database_backup" {
 ## Step 3: Attach Volumes to the Instance
 
 ```hcl
-# Attach the data volume as /dev/sdb
+# Attach the data volume as /dev/sdf
 resource "aws_volume_attachment" "data" {
-  device_name = "/dev/sdb"
+  device_name = "/dev/sdf"
   volume_id   = aws_ebs_volume.database_data.id
   instance_id = aws_instance.database.id
 
@@ -100,41 +119,43 @@ resource "aws_volume_attachment" "data" {
 }
 
 resource "aws_volume_attachment" "logs" {
-  device_name = "/dev/sdc"
+  device_name = "/dev/sdg"
   volume_id   = aws_ebs_volume.database_logs.id
   instance_id = aws_instance.database.id
 }
 
 resource "aws_volume_attachment" "backup" {
-  device_name = "/dev/sdd"
+  device_name = "/dev/sdh"
   volume_id   = aws_ebs_volume.database_backup.id
   instance_id = aws_instance.database.id
 }
 ```
 
-## Step 4: Format and Mount via User Data
+## Step 4: Format and Mount After Attachment
 
-```hcl
-# User data script to format and mount the attached volumes
-locals {
-  user_data = <<-EOF
-    #!/bin/bash
-    # Wait for volumes to be available
-    sleep 10
+On Nitro-based instances such as `m5.xlarge`, attached EBS volumes are exposed as NVMe devices inside the operating system, so identify the actual device names before formatting them.
 
-    # Format and mount data volume
-    mkfs -t xfs /dev/sdb
-    mkdir -p /data
-    mount /dev/sdb /data
-    echo '/dev/sdb /data xfs defaults 0 0' >> /etc/fstab
+```bash
+# Identify the attached EBS volumes and their actual device names.
+lsblk -o NAME,SIZE,SERIAL,MOUNTPOINT
 
-    # Format and mount log volume
-    mkfs -t xfs /dev/sdc
-    mkdir -p /logs
-    mount /dev/sdc /logs
-    echo '/dev/sdc /logs xfs defaults 0 0' >> /etc/fstab
-  EOF
-}
+# Replace the device names below with the actual unmounted EBS volumes from lsblk.
+sudo mkfs -t xfs /dev/nvme1n1
+sudo mkdir -p /data
+sudo mount /dev/nvme1n1 /data
+echo "UUID=$(sudo blkid -s UUID -o value /dev/nvme1n1) /data xfs defaults,nofail 0 2" | sudo tee -a /etc/fstab
+
+sudo mkfs -t xfs /dev/nvme2n1
+sudo mkdir -p /logs
+sudo mount /dev/nvme2n1 /logs
+echo "UUID=$(sudo blkid -s UUID -o value /dev/nvme2n1) /logs xfs defaults,nofail 0 2" | sudo tee -a /etc/fstab
+
+sudo mkfs -t xfs /dev/nvme3n1
+sudo mkdir -p /backup
+sudo mount /dev/nvme3n1 /backup
+echo "UUID=$(sudo blkid -s UUID -o value /dev/nvme3n1) /backup xfs defaults,nofail 0 2" | sudo tee -a /etc/fstab
+
+sudo mount -a
 ```
 
 ## Step 5: Outputs
