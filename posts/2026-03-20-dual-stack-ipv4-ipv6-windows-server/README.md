@@ -83,11 +83,11 @@ Get-NetIPAddress -InterfaceAlias "Ethernet" | Format-Table
 Test-NetConnection -ComputerName 8.8.8.8 -InformationLevel Detailed
 
 # Test IPv6 connectivity
-Test-NetConnection -ComputerName 2001:4860:4860::8888 -InformationLevel Detailed
+Test-NetConnection -ComputerName "2001:4860:4860::8888" -InformationLevel Detailed
 
 # Ping with specific protocol
-ping -4 8.8.8.8
-ping -6 2001:4860:4860::8888
+ping /4 8.8.8.8
+ping /6 2001:4860:4860::8888
 
 # Check DNS resolution
 Resolve-DnsName google.com -Type A     # IPv4
@@ -102,10 +102,10 @@ Resolve-DnsName google.com -Type AAAA  # IPv6
 netsh interface ipv6 show prefixpolicies
 
 # To prefer IPv4 over IPv6 (not recommended long-term):
-# Set prefix policies or use:
-New-Item -Path "HKLM:\SYSTEM\CurrentControlSet\Services\Tcpip6\Parameters" -Force
-Set-ItemProperty -Path "HKLM:\SYSTEM\CurrentControlSet\Services\Tcpip6\Parameters" `
-  -Name "DisabledComponents" -Value 0x20   # Prefer IPv4 over IPv6
+# Set the DisabledComponents registry value to 0x20 and restart the server.
+New-Item -Path "HKLM:\SYSTEM\CurrentControlSet\Services\Tcpip6\Parameters" -Force | Out-Null
+New-ItemProperty -Path "HKLM:\SYSTEM\CurrentControlSet\Services\Tcpip6\Parameters" `
+  -Name "DisabledComponents" -PropertyType DWord -Value 0x20 -Force
 ```
 
 ## Firewall Configuration
@@ -122,4 +122,4 @@ New-NetFirewallRule -DisplayName "Allow ICMPv6" `
 
 ## Conclusion
 
-Windows Server dual-stack configuration requires assigning both IPv4 and IPv6 addresses to the same adapter. Use `New-NetIPAddress` for both address families. Windows prefers IPv6 by default when available - applications receive connections on both protocols without modification. Verify connectivity with `Test-NetConnection` for both IPv4 (-ComputerName with IPv4) and IPv6 (-ComputerName with IPv6) addresses.
+Windows Server dual-stack configuration requires assigning both IPv4 and IPv6 addresses to the same adapter. Use `New-NetIPAddress` for both address families. Windows prefers IPv6 by default when available, but applications still need separate IPv4/IPv6 listeners or a dual-stack socket configuration to accept connections on both protocols. Verify connectivity with `Test-NetConnection` for both IPv4 (-ComputerName with IPv4) and IPv6 (-ComputerName with IPv6) addresses.
