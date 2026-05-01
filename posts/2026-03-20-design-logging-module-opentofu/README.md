@@ -4,11 +4,11 @@ Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
 Tags: OpenTofu, Terraform, CloudWatch Logs, S3, AWS, Module, Logging
 
-Description: Learn how to design a reusable logging module for OpenTofu that creates CloudWatch log groups, S3 log buckets, and log export configurations with retention policies.
+Description: Learn how to design a reusable logging module for OpenTofu that creates CloudWatch log groups, optional S3 archival buckets, and metric filters with retention policies.
 
 ## Introduction
 
-A logging module standardizes log infrastructure: CloudWatch log groups with appropriate retention periods, S3 archival buckets for long-term storage, log group subscriptions for log aggregation, and metric filters for extracting signals from log data.
+A logging module standardizes log infrastructure: CloudWatch log groups with appropriate retention periods, optional S3 archival buckets for long-term storage, and metric filters for extracting signals from log data.
 
 ## variables.tf
 
@@ -26,8 +26,8 @@ variable "log_groups" {
   default = {}
 }
 
-variable "enable_s3_export" { type = bool; default = false }
-variable "s3_export_days"   { type = number; default = 90 }
+variable "enable_s3_archive" { type = bool; default = false }
+variable "s3_archive_days"   { type = number; default = 90 }
 
 variable "metric_filters" {
   type = map(object({
@@ -71,13 +71,13 @@ resource "aws_cloudwatch_log_group" "groups" {
 # S3 bucket for log archival
 
 resource "aws_s3_bucket" "logs" {
-  count  = var.enable_s3_export ? 1 : 0
+  count  = var.enable_s3_archive ? 1 : 0
   bucket = "${var.service_name}-${var.environment}-logs-${data.aws_caller_identity.current.account_id}"
   tags   = local.tags
 }
 
 resource "aws_s3_bucket_lifecycle_configuration" "logs" {
-  count  = var.enable_s3_export ? 1 : 0
+  count  = var.enable_s3_archive ? 1 : 0
   bucket = aws_s3_bucket.logs[0].id
 
   rule {
@@ -85,12 +85,12 @@ resource "aws_s3_bucket_lifecycle_configuration" "logs" {
     status = "Enabled"
 
     transition {
-      days          = var.s3_export_days
+      days          = var.s3_archive_days
       storage_class = "GLACIER"
     }
 
     expiration {
-      days = var.s3_export_days * 4  # Delete after 4x the transition period
+      days = var.s3_archive_days * 4  # Delete after 4x the transition period
     }
   }
 }
@@ -125,7 +125,7 @@ output "log_group_arns" {
 }
 
 output "s3_log_bucket" {
-  value = var.enable_s3_export ? aws_s3_bucket.logs[0].bucket : null
+  value = var.enable_s3_archive ? aws_s3_bucket.logs[0].bucket : null
 }
 ```
 
@@ -144,12 +144,12 @@ module "logging" {
     "errors"      = { retention_days = 365 }
   }
 
-  enable_s3_export = true
+  enable_s3_archive = true
 
   metric_filters = {
     "error-count" = {
       log_group_name   = "errors"
-      pattern          = "[ERROR]"
+      pattern          = "ERROR"
       metric_namespace = "Application/Logs"
       metric_name      = "ErrorCount"
       metric_value     = "1"
