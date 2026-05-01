@@ -8,7 +8,7 @@ Description: Learn how to deploy the ELK Stack (Elasticsearch, Logstash, Kibana)
 
 ---
 
-The ELK Stack provides centralized logging, search, and visualization for distributed systems. Deploying it with OpenTofu via Helm ensures consistent configuration across environments and makes it easy to tune resource limits and storage per environment.
+The ELK Stack provides centralized logging, search, and visualization for distributed systems. Deploying it with OpenTofu via Helm ensures consistent configuration across environments and makes it easy to tune resource limits and storage per environment. The snippets below target the final published Elastic Helm chart release, 8.5.1.
 
 ## ELK Architecture
 
@@ -49,7 +49,7 @@ resource "helm_release" "elasticsearch" {
         }
       }
 
-      # JVM heap must be half of memory limit
+      # Keep JVM heap at or below 50% of the memory available to the container
       esJavaOpts = var.environment == "production" ? "-Xmx2g -Xms2g" : "-Xmx1g -Xms1g"
 
       volumeClaimTemplate = {
@@ -59,7 +59,7 @@ resource "helm_release" "elasticsearch" {
             storage = var.environment == "production" ? "100Gi" : "10Gi"
           }
         }
-        storageClassName = "gp3"
+        storageClassName = var.storage_class_name
       }
 
       # Security
@@ -91,8 +91,9 @@ resource "helm_release" "kibana" {
 
       ingress = {
         enabled = true
+        className = "nginx"
+        pathtype  = "ImplementationSpecific"
         annotations = {
-          "kubernetes.io/ingress.class"              = "nginx"
           "cert-manager.io/cluster-issuer"           = "letsencrypt-prod"
           "nginx.ingress.kubernetes.io/ssl-redirect" = "true"
         }
@@ -139,13 +140,61 @@ resource "helm_release" "logstash" {
             elasticsearch {
               hosts    => ["https://elasticsearch-master:9200"]
               index    => "logs-%{[kubernetes][namespace]}-%{+YYYY.MM.dd}"
-              user     => "${ELASTICSEARCH_USERNAME}"
-              password => "${ELASTICSEARCH_PASSWORD}"
-              ssl      => true
-              cacert   => "/usr/share/logstash/config/certs/ca.crt"
+              user     => "$${ELASTICSEARCH_USERNAME}"
+              password => "$${ELASTICSEARCH_PASSWORD}"
+              ssl_enabled => true
+              ssl_certificate_authorities => ["/usr/share/logstash/config/certs/ca.crt"]
             }
           }
         EOT
+      }
+
+      extraEnvs = [
+        {
+          name = "ELASTICSEARCH_USERNAME"
+          valueFrom = {
+            secretKeyRef = {
+              name = "elasticsearch-master-credentials"
+              key  = "username"
+            }
+          }
+        },
+        {
+          name = "ELASTICSEARCH_PASSWORD"
+          valueFrom = {
+            secretKeyRef = {
+              name = "elasticsearch-master-credentials"
+              key  = "password"
+            }
+          }
+        }
+      ]
+
+      secretMounts = [
+        {
+          name       = "elasticsearch-master-certs"
+          secretName = "elasticsearch-master-certs"
+          path       = "/usr/share/logstash/config/certs"
+        }
+      ]
+
+      extraPorts = [
+        {
+          name          = "beats"
+          containerPort = 5044
+        }
+      ]
+
+      service = {
+        type = "ClusterIP"
+        ports = [
+          {
+            name       = "beats"
+            port       = 5044
+            protocol   = "TCP"
+            targetPort = 5044
+          }
+        ]
       }
 
       resources = {
@@ -154,6 +203,8 @@ resource "helm_release" "logstash" {
       }
     })
   ]
+
+  depends_on = [helm_release.elasticsearch]
 }
 ```
 
@@ -172,12 +223,18 @@ resource "helm_release" "filebeat" {
       filebeatConfig = {
         "filebeat.yml" = <<-EOT
           filebeat.inputs:
-          - type: container
+          - type: filestream
+            id: kubernetes-container-logs
+            prospector.scanner.symlinks: true
+            parsers:
+              - container:
+                  stream: all
+                  format: auto
             paths:
               - /var/log/containers/*.log
             processors:
               - add_kubernetes_metadata:
-                  host: ${NODE_NAME}
+                  host: $${NODE_NAME}
                   matchers:
                     - logs_path:
                         logs_path: "/var/log/containers/"
@@ -190,13 +247,15 @@ resource "helm_release" "filebeat" {
       tolerations = [{ operator = "Exists" }]  # Run on all nodes
     })
   ]
+
+  depends_on = [helm_release.logstash]
 }
 ```
 
 ## Best Practices
 
-- Set JVM heap to 50% of the Elasticsearch pod memory limit - `esJavaOpts = "-Xmx2g -Xms2g"` when memory limit is 4Gi.
-- Use `gp3` storage class for Elasticsearch - it's faster than `gp2` at the same price.
+- Set JVM heap to no more than 50% of the Elasticsearch container memory limit - `esJavaOpts = "-Xmx2g -Xms2g"` when the memory limit is 4Gi.
+- On AWS, `gp3` is a good default storage class for Elasticsearch because it offers more predictable performance and up to 20% lower cost per GiB than `gp2`.
 - Deploy 3 Elasticsearch nodes in production with an odd number to maintain quorum.
 - Set index lifecycle management (ILM) policies in Kibana to automatically delete old indices and control storage costs.
 - Use separate Logstash nodes for parsing heavy-volume logs rather than having Filebeat write directly to Elasticsearch.
