@@ -8,37 +8,47 @@ Description: Monitor the health and state of Elemental-managed nodes using Ranch
 
 ## Introduction
 
-Monitoring the state of Elemental machines is essential for maintaining a healthy edge or bare metal fleet. The Elemental Operator exposes machine state through Kubernetes resource conditions, which can be queried directly, integrated with monitoring systems, or used to trigger automated remediation.
+Monitoring the state of Elemental machines is essential for maintaining a healthy edge or bare metal fleet. The Elemental Operator exposes machine status through Kubernetes resource conditions, which can be queried directly, integrated with monitoring systems, or used to trigger automated remediation.
 
-## Understanding Machine States
+## Understanding Machine Conditions
 
-Elemental machines can be in these states:
+`MachineInventory` does not expose a single phase field. Instead, it reports conditions that reflect registration, provisioning, and adoption progress:
 
-| State | Description |
-|-------|-------------|
-| Pending | Registered but not yet adopted by a cluster |
-| Adopted | Member of a Kubernetes cluster |
-| Ready | Healthy and accepting workloads |
-| NotReady | Unhealthy or unreachable |
-| Resetting | Undergoing a reset operation |
-| Upgrading | OS upgrade in progress |
+| Condition | Description |
+|-----------|-------------|
+| Ready | Machine has been registered and provisioned with an Elemental OS |
+| AdoptionReady | Machine has been adopted by a `MachineInventorySelector` to become part of a cluster |
 
 ## Querying Machine State
 
 ```bash
-# Get all machines with their current state
-
+# Get all machines with their Ready and AdoptionReady conditions
 kubectl get machineinventory -n fleet-default \
-  -o custom-columns=\
-'NAME:.metadata.name,\
-ADOPTED:.spec.machineRef.name,\
-AGE:.metadata.creationTimestamp'
+  -o json | jq -r '
+    ["NAME", "READY", "ADOPTION_READY", "CREATED"],
+    (
+      .items[] | [
+        .metadata.name,
+        ((.status.conditions // [] | map(select(.type == "Ready") | .status) | first) // "Unknown"),
+        ((.status.conditions // [] | map(select(.type == "AdoptionReady") | .status) | first) // "Unknown"),
+        .metadata.creationTimestamp
+      ]
+    ) | @tsv'
 
-# Get machines in error state
+# Get machines that are not Ready
 kubectl get machineinventory -n fleet-default \
-  -o json | jq '.items[] | select(.status.conditions[] | .type == "Ready" and .status == "False") | {name: .metadata.name, reason: .status.conditions[] | select(.type == "Ready") | .reason}'
+  -o json | jq '
+    .items[]
+    | (.status.conditions // [] | map(select(.type == "Ready")) | first) as $ready
+    | select($ready == null or $ready.status != "True")
+    | {
+        name: .metadata.name,
+        status: ($ready.status // "Unknown"),
+        reason: ($ready.reason // "MissingReadyCondition"),
+        message: ($ready.message // "Ready condition not present")
+      }'
 
-# Watch for state changes
+# Watch MachineInventory objects for changes
 kubectl get machineinventory -n fleet-default --watch
 ```
 
@@ -49,18 +59,54 @@ kubectl get machineinventory -n fleet-default --watch
 kubectl get machineinventory -n fleet-default \
   -o json | jq '.items[] | {
     name: .metadata.name,
-    conditions: .status.conditions | map({type, status, reason, message})
+    conditions: (.status.conditions // [] | map({type, status, reason, message}))
   }'
 
 # Check a specific machine's conditions
 kubectl get machineinventory -n fleet-default m-abc12345 \
-  -o jsonpath='{.status.conditions}' | jq .
+  -o json | jq '.status.conditions'
 ```
 
 ## Setting Up Prometheus Monitoring
 
+`MachineInventory` is a custom resource, so expose its conditions through kube-state-metrics custom resource state metrics before alerting on them.
+
 ```yaml
-# prometheus-rules.yaml
+# machineinventory-metrics.yaml
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: kube-state-metrics-custom-resource-state-config
+  namespace: monitoring
+data:
+  config.yaml: |
+    kind: CustomResourceStateMetrics
+    spec:
+      resources:
+        - groupVersionKind:
+            group: elemental.cattle.io
+            version: v1beta1
+            kind: MachineInventory
+          labelsFromPath:
+            name: [metadata, name]
+            namespace: [metadata, namespace]
+          metrics:
+            - name: machineinventory_condition
+              help: "Elemental MachineInventory status conditions"
+              each:
+                type: Gauge
+                gauge:
+                  path: [status, conditions]
+                  labelsFromPath:
+                    type: [type]
+                    reason: [reason]
+                    status: [status]
+                  valueFrom: [status]
+---
+# Mount this ConfigMap into kube-state-metrics and run it with:
+# --custom-resource-state-config-file=/etc/kube-state-metrics/custom-resource-state/config.yaml
+# and RBAC that allows it to list/watch customresourcedefinitions.apiextensions.k8s.io
+# and machineinventories.elemental.cattle.io
 apiVersion: monitoring.coreos.com/v1
 kind: PrometheusRule
 metadata:
@@ -71,85 +117,93 @@ spec:
     - name: elemental.machines
       interval: 60s
       rules:
-        # Alert when machines go offline
+        # Alert when MachineInventory objects are not Ready
         - alert: ElementalMachineNotReady
           expr: |
-            kube_customresource_elemental_machine_inventory_status_condition{
-              condition="Ready",
-              status="False"
-            } == 1
+            kube_customresource_machineinventory_condition{
+              customresource_group="elemental.cattle.io",
+              customresource_version="v1beta1",
+              customresource_kind="MachineInventory",
+              type="Ready"
+            } == 0
           for: 5m
           labels:
             severity: warning
           annotations:
             summary: "Elemental machine {{ $labels.name }} is not ready"
-            description: "Machine has been in NotReady state for more than 5 minutes"
+            description: "MachineInventory Ready condition has not been true for more than 5 minutes"
 ```
 
 ## Monitoring with kubectl Plugins
 
 ```bash
-# Install krew for kubectl plugins
+# Install the resource-capacity plugin with Krew
 kubectl krew install resource-capacity
 
-# View resource usage across all machines
+# View pod resource requests and limits across cluster nodes
 kubectl resource-capacity --pods --sort cpu.limit
 
 # Create a simple dashboard script
-cat > /usr/local/bin/elemental-status << 'EOF'
+cat > ./elemental-status << 'EOF'
 #!/bin/bash
 echo "=== Elemental Fleet Status ==="
 echo ""
 echo "Total machines:"
-kubectl get machineinventory -n fleet-default --no-headers | wc -l
+kubectl get machineinventory -n fleet-default -o json | jq '.items | length'
 
 echo ""
 echo "Adopted machines:"
 kubectl get machineinventory -n fleet-default \
-  -o json | jq '[.items[] | select(.spec.machineRef != null)] | length'
+  -o json | jq '[.items[] | select(any(.status.conditions[]?; .type == "AdoptionReady" and .status == "True"))] | length'
 
 echo ""
-echo "Available (not adopted):"
+echo "Waiting for adoption:"
 kubectl get machineinventory -n fleet-default \
-  -o json | jq '[.items[] | select(.spec.machineRef == null)] | length'
+  -o json | jq '[.items[] | select((any(.status.conditions[]?; .type == "AdoptionReady" and .status == "True")) | not)] | length'
 
 echo ""
-echo "Machines by location:"
+echo "Machines by location label (if present):"
 kubectl get machineinventory -n fleet-default \
-  -o json | jq '[.items[].metadata.labels.location] | group_by(.) | map({location: .[0], count: length})'
+  -o json | jq '[.items[] | (.metadata.labels.location // "unlabeled")] | group_by(.) | map({location: .[0], count: length})'
 EOF
-chmod +x /usr/local/bin/elemental-status
+chmod +x ./elemental-status
 ```
 
 ## Grafana Dashboard Integration
 
 ```bash
-# Export machine inventory metrics for Grafana
-# Create a custom metrics exporter script
-cat > /usr/local/bin/elemental-metrics-exporter << 'EOF'
+# Write machine inventory metrics for node_exporter's textfile collector
+# Run node_exporter with --collector.textfile.directory=/var/lib/node_exporter/textfile_collector
+cat > ./elemental-metrics-exporter << 'EOF'
 #!/bin/bash
-# Export Elemental metrics in Prometheus format
+set -euo pipefail
 
-NAMESPACE=fleet-default
-TOTAL=$(kubectl get machineinventory -n $NAMESPACE --no-headers | wc -l)
-ADOPTED=$(kubectl get machineinventory -n $NAMESPACE -o json | jq '[.items[] | select(.spec.machineRef != null)] | length')
-AVAILABLE=$((TOTAL - ADOPTED))
+NAMESPACE=${NAMESPACE:-fleet-default}
+TEXTFILE_DIR=${TEXTFILE_DIR:-/var/lib/node_exporter/textfile_collector}
+mkdir -p "$TEXTFILE_DIR"
 
-echo "# HELP elemental_machines_total Total number of registered Elemental machines"
-echo "# TYPE elemental_machines_total gauge"
-echo "elemental_machines_total ${TOTAL}"
-echo ""
-echo "# HELP elemental_machines_adopted Number of machines adopted by a cluster"
-echo "# TYPE elemental_machines_adopted gauge"
-echo "elemental_machines_adopted ${ADOPTED}"
-echo ""
-echo "# HELP elemental_machines_available Number of available (not adopted) machines"
-echo "# TYPE elemental_machines_available gauge"
-echo "elemental_machines_available ${AVAILABLE}"
+TOTAL=$(kubectl get machineinventory -n "$NAMESPACE" -o json | jq '.items | length')
+ADOPTED=$(kubectl get machineinventory -n "$NAMESPACE" -o json | jq '[.items[] | select(any(.status.conditions[]?; .type == "AdoptionReady" and .status == "True"))] | length')
+UNADOPTED=$((TOTAL - ADOPTED))
+TMP_FILE=$(mktemp "${TEXTFILE_DIR}/elemental-machines.prom.XXXXXX")
+
+cat > "$TMP_FILE" <<METRICS
+# HELP elemental_machines_total Total number of registered Elemental machines
+# TYPE elemental_machines_total gauge
+elemental_machines_total ${TOTAL}
+# HELP elemental_machines_adopted Number of machines adopted by a selector
+# TYPE elemental_machines_adopted gauge
+elemental_machines_adopted ${ADOPTED}
+# HELP elemental_machines_unadopted Number of machines not yet adopted by a selector
+# TYPE elemental_machines_unadopted gauge
+elemental_machines_unadopted ${UNADOPTED}
+METRICS
+
+mv "$TMP_FILE" "${TEXTFILE_DIR}/elemental-machines.prom"
 EOF
-chmod +x /usr/local/bin/elemental-metrics-exporter
+chmod +x ./elemental-metrics-exporter
 ```
 
 ## Conclusion
 
-Monitoring Elemental machine state through Kubernetes conditions, custom scripts, and Prometheus integration gives you comprehensive visibility into your edge fleet. By setting up alerts for machines that fail to register or become unhealthy, you can proactively address issues before they impact workloads. The Kubernetes-native approach means your existing monitoring stack can be extended to cover your entire bare metal and edge fleet.
+Monitoring Elemental machine state through Kubernetes conditions, custom scripts, and Prometheus integration gives you comprehensive visibility into your edge fleet. By setting up alerts for machines that remain unready or fail adoption, you can proactively address issues before they impact workloads. The Kubernetes-native approach means your existing monitoring stack can be extended to cover your entire bare metal and edge fleet.
