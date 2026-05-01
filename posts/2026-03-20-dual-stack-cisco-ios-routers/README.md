@@ -93,6 +93,9 @@ Router(config-rtr)# exit
 Router(config)# interface GigabitEthernet0/0
 Router(config-if)# ipv6 ospf 1 area 0
 Router(config-if)# exit
+Router(config)# interface GigabitEthernet0/1
+Router(config-if)# ipv6 ospf 1 area 0
+Router(config-if)# exit
 ```
 
 ## DHCPv4 and DHCPv6 Server
@@ -116,7 +119,7 @@ Router(config-dhcpv6)# exit
 ! Apply DHCPv6 to interface
 Router(config)# interface GigabitEthernet0/0
 Router(config-if)# ipv6 dhcp server LAN_V6
-Router(config-if)# ipv6 nd other-config-flag    ! RA with DHCPv6 info
+Router(config-if)# ipv6 nd managed-config-flag  ! RA for stateful DHCPv6 addressing
 Router(config-if)# exit
 ```
 
@@ -138,4 +141,4 @@ Router(config-ipv6-acl)# deny ipv6 any any log
 
 ## Conclusion
 
-Cisco IOS dual-stack requires `ipv6 unicast-routing` globally, then both `ip address` and `ipv6 address` on each interface. Separate routing protocols handle each family: OSPFv2 for IPv4, OSPFv3 for IPv6. ACLs are also separate (`ip access-list` vs `ipv6 access-list`). Verify both stacks with `show ip interface brief` and `show ipv6 interface brief`. Dual-stack on IOS is transparent to connected hosts - they see both IPv4 and IPv6 gateways automatically.
+Cisco IOS dual-stack requires `ipv6 unicast-routing` globally, then both `ip address` and `ipv6 address` on each interface. Separate routing protocols handle each family: OSPFv2 for IPv4, OSPFv3 for IPv6. ACLs are also separate (`ip access-list` vs `ipv6 access-list`). Verify both stacks with `show ip interface brief` and `show ipv6 interface brief`. Connected hosts can use both stacks when the LAN provides IPv4 gateway information (for example, via DHCPv4 or static configuration) and IPv6 router advertisements.
