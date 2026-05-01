@@ -13,13 +13,13 @@ EIGRPv6 verification involves checking three data structures: the neighbor table
 ## Primary Verification Commands
 
 ```text
-! Show EIGRPv6 process and neighbors
-Router# show ipv6 eigrp
+! Show IPv6 routing protocol processes (including EIGRPv6)
+Router# show ipv6 protocols
 
 ! Show neighbor table
 Router# show ipv6 eigrp neighbors
 
-! Show topology table (all routes including backup paths)
+! Show topology table (feasible successors by default; use all-links for non-feasible paths)
 Router# show ipv6 eigrp topology
 
 ! Show EIGRPv6 routes in the IPv6 routing table
@@ -78,12 +78,12 @@ D   2001:DB8:1::/48 [90/28160]
      via FE80::2, GigabitEthernet0/0   ← Best path (Successor)
 D   2001:DB8:2::/48 [90/30720]
      via FE80::3, GigabitEthernet0/1
-D EX 2001:DB8:EXTERN::/48 [170/30720]  ← External EIGRP route
+EX  2001:DB8:E::/48 [170/30720]        ← External EIGRP route
      via FE80::2, GigabitEthernet0/0
 ```
 
 - **D** = EIGRP internal route (AD = 90)
-- **D EX** = EIGRP external route (AD = 170)
+- **EX** = EIGRP external route (AD = 170)
 - **[90/28160]** = [Administrative distance / composite metric]
 
 ## Verifying Feasible Successors (Fast Failover)
@@ -107,4 +107,4 @@ IPv6-EIGRP (AS 1): Topology entry for 2001:DB8:1::/48
 
 ## Summary
 
-EIGRPv6 verification uses three tables: `show ipv6 eigrp neighbors` for adjacency state, `show ipv6 eigrp topology` for all known paths including backup Feasible Successors, and `show ipv6 route eigrp` for installed routes. Always check the topology table to confirm Feasible Successors exist for critical routes - their presence enables instant failover without DUAL queries.
+EIGRPv6 verification uses three tables: `show ipv6 eigrp neighbors` for adjacency state, `show ipv6 eigrp topology` for successor and Feasible Successor paths by default, and `show ipv6 route eigrp` for installed routes. Use `show ipv6 eigrp topology all-links` when you need to inspect non-feasible alternatives as well. Always check the topology table to confirm Feasible Successors exist for critical routes - their presence enables instant failover without DUAL queries.
