@@ -8,7 +8,7 @@ Description: Learn how to implement DNS-based failover using Route 53 health che
 
 ---
 
-DNS failover routes traffic to a secondary endpoint when the primary becomes unhealthy. Route 53 health checks monitor the primary endpoint and automatically update DNS to point to the secondary within the TTL window.
+DNS failover routes traffic to a secondary endpoint when the primary becomes unhealthy. With Route 53 failover records, Route 53 answers DNS queries with the primary or secondary record based on health, and clients observe the change as cached DNS answers expire.
 
 ## DNS Failover Architecture
 
@@ -26,7 +26,7 @@ graph TD
 ```hcl
 # failover.tf
 
-# Health check on primary endpoint
+# Application-level health check on the primary endpoint
 
 resource "aws_route53_health_check" "primary" {
   fqdn              = "primary.${var.domain_name}"
@@ -61,7 +61,7 @@ resource "aws_route53_record" "primary" {
   }
 }
 
-# Secondary failover record - no health check needed
+# Secondary failover record - explicit health check optional
 resource "aws_route53_record" "secondary" {
   provider = aws.secondary_region
 
@@ -85,7 +85,7 @@ resource "aws_route53_record" "secondary" {
 ## Multi-Region Active-Active with Latency Routing
 
 ```hcl
-# Latency-based routing sends users to the closest region
+# Latency-based routing sends users to the lowest-latency region
 resource "aws_route53_record" "us_east" {
   zone_id        = aws_route53_zone.main.zone_id
   name           = "api.${var.domain_name}"
@@ -128,7 +128,7 @@ resource "aws_route53_record" "eu_west" {
 ## Failover Alarm
 
 ```hcl
-# Alert when failover occurs
+# Alert when the primary health check goes unhealthy
 resource "aws_cloudwatch_metric_alarm" "failover_triggered" {
   alarm_name          = "dns-failover-triggered"
   comparison_operator = "LessThanThreshold"
@@ -143,15 +143,15 @@ resource "aws_cloudwatch_metric_alarm" "failover_triggered" {
     HealthCheckId = aws_route53_health_check.primary.id
   }
 
-  alarm_description = "Primary endpoint is unhealthy - DNS failover active"
+  alarm_description = "Primary endpoint health check is unhealthy - failover conditions detected"
   alarm_actions     = [aws_sns_topic.incidents.arn]
 }
 ```
 
 ## Best Practices
 
-- Set health check `failure_threshold = 3` and `request_interval = 30` - this gives a 90-second failover window, balancing speed and false positives.
-- Use `evaluate_target_health = true` on alias records - Route 53 won't return an unhealthy target group.
-- Set DNS TTL to 60 seconds for failover records - lower TTL means faster client-side failover.
-- Configure CloudWatch alarms on health check status - you want to know when failover activates.
+- Set health check `failure_threshold = 3` and `request_interval = 30` - this requires three failed 30-second observations before Route 53 marks the health check unhealthy, balancing speed and false positives.
+- Use `evaluate_target_health = true` on alias records - for ALB and NLB targets, Route 53 can stop answering with a load balancer when it is considered unhealthy.
+- Alias records to AWS resources inherit the target's TTL - for ELB-backed aliases, that's 60 seconds, while non-alias failover records should use a low TTL for faster client-side failover.
+- Configure CloudWatch alarms on health check status - you want to know when failover conditions begin.
 - Test failover regularly by temporarily blocking the health check endpoint - don't wait for a real outage to discover issues.
