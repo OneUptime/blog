@@ -8,7 +8,7 @@ Description: Set up DevSpace for collaborative Kubernetes development in Rancher
 
 ## Introduction
 
-DevSpace is a developer tool for Kubernetes that provides hot reloading, file sync, and multi-service development workflows. Unlike Skaffold and Tilt, DevSpace has built-in support for team workflows, namespace isolation per developer, and deep Helm chart integration.
+DevSpace is a developer tool for Kubernetes that provides hot reloading, file sync, multi-service development workflows, and Helm integration. It also lets teams target different clusters and namespaces from the same project configuration.
 
 ## Step 1: Install DevSpace
 
@@ -17,10 +17,20 @@ DevSpace is a developer tool for Kubernetes that provides hot reloading, file sy
 
 brew install devspace
 
-# Linux/macOS via curl
+# macOS (Intel) via curl
+curl -L -o devspace \
+  "https://github.com/loft-sh/devspace/releases/latest/download/devspace-darwin-amd64"
+sudo install -c -m 0755 devspace /usr/local/bin
+
+# macOS (Apple Silicon) via curl
+curl -L -o devspace \
+  "https://github.com/loft-sh/devspace/releases/latest/download/devspace-darwin-arm64"
+sudo install -c -m 0755 devspace /usr/local/bin
+
+# Linux (AMD64) via curl
 curl -L -o devspace \
   "https://github.com/loft-sh/devspace/releases/latest/download/devspace-linux-amd64"
-chmod +x devspace && sudo mv devspace /usr/local/bin
+sudo install -c -m 0755 devspace /usr/local/bin
 ```
 
 ## Step 2: Initialize DevSpace in Your Project
@@ -81,13 +91,10 @@ DevSpace supports per-developer namespaces for isolation:
 
 ```yaml
 # devspace.yaml additions
-vars:
-  DEVELOPER_NAME:
-    default: ""    # Set via --var flag
-
 pipelines:
   dev:
     run: |-
+      build_images myapp
       create_deployments myapp
       start_dev myapp
 
@@ -97,8 +104,8 @@ localRegistry:
 
 ```bash
 # Each developer deploys to their own namespace
-devspace dev --var DEVELOPER_NAME=alice --namespace dev-alice
-devspace dev --var DEVELOPER_NAME=bob   --namespace dev-bob
+devspace dev --namespace dev-alice
+devspace dev --namespace dev-bob
 ```
 
 ## Step 4: Start Development Mode
@@ -117,7 +124,8 @@ devspace dev --kube-context rancher-dev-cluster --namespace myapp-dev
 ## Step 5: Deploy to Staging/Production
 
 ```bash
-# Deploy to staging (builds optimized image, no dev overrides)
+# After defining environment-specific profiles in devspace.yaml
+# Deploy to staging
 devspace deploy --profile staging --kube-context rancher-staging
 
 # Deploy to production
@@ -126,4 +134,4 @@ devspace deploy --profile production --kube-context rancher-production
 
 ## Conclusion
 
-DevSpace on Rancher provides a production-grade inner development loop with built-in team workflows. Namespace isolation prevents developers from interfering with each other, while file sync and hot reloading minimize iteration time. The Helm integration means development configuration stays consistent with production deployments.
+DevSpace on Rancher provides a production-grade inner development loop for shared Kubernetes clusters. Namespace isolation helps prevent developers from interfering with each other, while file sync and hot reloading minimize iteration time. The Helm integration means development configuration can stay consistent with production deployments.
