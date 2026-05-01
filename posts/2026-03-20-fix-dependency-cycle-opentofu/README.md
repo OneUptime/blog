@@ -24,12 +24,12 @@ Error: Cycle: aws_security_group.app, aws_security_group.db
 Use `tofu graph` to visualize the dependency graph and locate the cycle:
 
 ```bash
-# Generate the dependency graph
+# Generate the dependency graph and highlight cycle edges
 
-tofu graph | dot -Tsvg -o graph.svg
+tofu graph -draw-cycles | dot -Tsvg -o graph.svg
 
-# Or pipe to a text format for terminal review
-tofu graph 2>&1 | grep -A 5 "security_group"
+# Or inspect the DOT output in the terminal
+tofu graph -draw-cycles | grep -A 5 "security_group"
 ```
 
 ## Common Causes
@@ -61,7 +61,7 @@ resource "aws_security_group" "db" {
 }
 ```
 
-### Fix: Use aws_security_group_rule Separately
+### Fix: Use aws_vpc_security_group_ingress_rule Separately
 
 ```hcl
 # Create the security groups without inline rules
@@ -78,22 +78,20 @@ resource "aws_security_group" "db" {
 }
 
 # Add the cross-references as separate rule resources
-resource "aws_security_group_rule" "db_from_app" {
-  type                     = "ingress"
-  from_port                = 5432
-  to_port                  = 5432
-  protocol                 = "tcp"
-  security_group_id        = aws_security_group.db.id
-  source_security_group_id = aws_security_group.app.id
+resource "aws_vpc_security_group_ingress_rule" "app_from_db" {
+  security_group_id            = aws_security_group.app.id
+  referenced_security_group_id = aws_security_group.db.id
+  from_port                    = 5432
+  to_port                      = 5432
+  ip_protocol                  = "tcp"
 }
 
-resource "aws_security_group_rule" "app_to_db" {
-  type                     = "egress"
-  from_port                = 5432
-  to_port                  = 5432
-  protocol                 = "tcp"
-  security_group_id        = aws_security_group.app.id
-  source_security_group_id = aws_security_group.db.id
+resource "aws_vpc_security_group_ingress_rule" "db_from_app" {
+  security_group_id            = aws_security_group.db.id
+  referenced_security_group_id = aws_security_group.app.id
+  from_port                    = 443
+  to_port                      = 443
+  ip_protocol                  = "tcp"
 }
 ```
 
@@ -118,20 +116,65 @@ module "module_b" {
 ```hcl
 # WRONG - explicit depends_on creating a cycle
 resource "aws_iam_role" "app" {
+  name = "app-role"
+  assume_role_policy = jsonencode({
+    Version = "2012-10-17"
+    Statement = [{
+      Effect = "Allow"
+      Action = "sts:AssumeRole"
+      Principal = {
+        Service = "ec2.amazonaws.com"
+      }
+    }]
+  })
+
   depends_on = [aws_iam_role_policy.app]  # Policy already depends on role
 }
 
 resource "aws_iam_role_policy" "app" {
+  name = "app-policy"
   role = aws_iam_role.app.id
+  policy = jsonencode({
+    Version = "2012-10-17"
+    Statement = [{
+      Effect   = "Allow"
+      Action   = ["s3:ListAllMyBuckets"]
+      Resource = "*"
+    }]
+  })
 }
+```
 
+```hcl
 # CORRECT - remove the unnecessary depends_on
 resource "aws_iam_role" "app" {
   name = "app-role"
-  # No explicit depends_on needed
+  assume_role_policy = jsonencode({
+    Version = "2012-10-17"
+    Statement = [{
+      Effect = "Allow"
+      Action = "sts:AssumeRole"
+      Principal = {
+        Service = "ec2.amazonaws.com"
+      }
+    }]
+  })
+}
+
+resource "aws_iam_role_policy" "app" {
+  name = "app-policy"
+  role = aws_iam_role.app.id
+  policy = jsonencode({
+    Version = "2012-10-17"
+    Statement = [{
+      Effect   = "Allow"
+      Action   = ["s3:ListAllMyBuckets"]
+      Resource = "*"
+    }]
+  })
 }
 ```
 
 ## Conclusion
 
-Dependency cycles are solved by breaking the circular reference. For security groups, use separate `aws_security_group_rule` resources instead of inline rules. For modules, extract shared resources into a third module that both modules depend on. Remove unnecessary `depends_on` that creates artificial cycles.
+Dependency cycles are solved by breaking the circular reference. For security groups, use separate `aws_vpc_security_group_ingress_rule` or `aws_vpc_security_group_egress_rule` resources instead of inline rules. For modules, extract shared resources into a third module that both modules depend on. Remove unnecessary `depends_on` that creates artificial cycles.
