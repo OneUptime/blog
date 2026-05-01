@@ -8,16 +8,16 @@ Description: Learn how to fix Docker container health status not displaying corr
 
 ---
 
-Portainer displays container health status (Healthy/Unhealthy/Starting) based on Docker's built-in HEALTHCHECK instruction. When health status shows as "N/A" or is missing, the issue is either in the healthcheck definition or in Portainer's snapshot timing.
+Portainer displays container health status (Healthy/Unhealthy/Starting) based on Docker's built-in HEALTHCHECK instruction. When health status shows as "N/A" or is missing, first verify that the container has a healthcheck configured and that Portainer has had time to refresh its environment snapshot.
 
 ## Step 1: Verify the Container Has a Healthcheck
 
 ```bash
-# Check if the container image has a healthcheck defined
+# Check if the container has a healthcheck configured
 
 docker inspect <container-name> --format '{{json .Config.Healthcheck}}'
 
-# If output is "null", the image has no HEALTHCHECK defined
+# If output is "null", the container has no healthcheck configured
 # You need to add one via Portainer or Compose
 ```
 
@@ -26,7 +26,6 @@ docker inspect <container-name> --format '{{json .Config.Healthcheck}}'
 Add a healthcheck to your Compose stack:
 
 ```yaml
-version: "3.8"
 services:
   webapp:
     image: nginx:alpine
@@ -53,19 +52,24 @@ docker inspect <container-name> --format '{{range .State.Health.Log}}{{.Output}}
 
 ## Step 4: Fix Snapshot Delay in Portainer
 
-Portainer polls container status every 60 seconds. Health status changes may not appear immediately:
+Portainer snapshots environment data on an interval that defaults to 5 minutes. Dashboard health status changes may not appear immediately:
 
 ```bash
 # Force a snapshot refresh by restarting Portainer
 docker restart portainer
 
-# Or reduce the snapshot interval
-docker run ... portainer/portainer-ce:latest --snapshot-interval 30
+# Or recreate Portainer with a shorter snapshot interval (default: 5m)
+docker stop portainer
+docker rm portainer
+docker run -d -p 8000:8000 -p 9443:9443 --name portainer --restart=always \
+  -v /var/run/docker.sock:/var/run/docker.sock \
+  -v portainer_data:/data \
+  portainer/portainer-ce:sts --snapshot-interval 30s
 ```
 
 ## Step 5: Fix Healthcheck Command Errors
 
-If health shows "Unhealthy," debug the actual check command:
+If health shows "Unhealthy," debug the actual check command. The healthcheck runs inside the container, so the binary used by the check must exist in the image:
 
 ```bash
 # Run the healthcheck command manually inside the container
