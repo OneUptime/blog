@@ -8,13 +8,13 @@ Description: Learn how to configure the OpenTofu Docker provider to manage conta
 
 ## Introduction
 
-This guide covers How to Configure the Docker Provider in OpenTofu using OpenTofu with production-ready configurations, best practices, and practical examples.
+This guide covers how to configure the Docker provider in OpenTofu with practical examples and common best practices.
 
 ## Prerequisites
 
 - OpenTofu v1.6+
-- Access to a Kubernetes cluster or Docker daemon
-- Relevant provider configured
+- Access to a Docker daemon
+- Permission to access the Docker socket or remote Docker host
 
 ## Step 1: Configure the Provider
 
@@ -22,32 +22,61 @@ This guide covers How to Configure the Docker Provider in OpenTofu using OpenTof
 terraform {
   required_version = ">= 1.6.0"
   required_providers {
-    kubernetes = {
-      source  = "hashicorp/kubernetes"
-      version = "~> 2.0"
+    docker = {
+      source  = "kreuzwerker/docker"
+      version = "~> 4.2"
     }
   }
 }
 
-provider "kubernetes" {
-  config_path    = "~/.kube/config"
-  config_context = var.kube_context
+provider "docker" {
+  host = var.docker_host
 }
 ```
 
 ## Step 2: Define Variables
 
 ```hcl
-variable "kube_context" {
-  description = "Kubernetes context to use"
+variable "docker_host" {
+  description = "Docker daemon endpoint. On Windows use npipe:////./pipe/docker_engine."
   type        = string
-  default     = "default"
+  default     = "unix:///var/run/docker.sock"
 }
 
-variable "namespace" {
-  description = "Kubernetes namespace"
+variable "container_name" {
+  description = "Name of the Docker container"
   type        = string
-  default     = "default"
+  default     = "app"
+}
+
+variable "container_image" {
+  description = "Container image to run"
+  type        = string
+  default     = "nginx:latest"
+}
+
+variable "container_port" {
+  description = "Port exposed by the container image"
+  type        = number
+  default     = 80
+}
+
+variable "host_port" {
+  description = "Port exposed on the Docker host"
+  type        = number
+  default     = 8080
+}
+
+variable "network_name" {
+  description = "Docker network name"
+  type        = string
+  default     = "app-network"
+}
+
+variable "volume_name" {
+  description = "Docker volume name"
+  type        = string
+  default     = "app-data"
 }
 
 variable "environment" {
@@ -57,35 +86,39 @@ variable "environment" {
 }
 ```
 
-## Step 3: Create Core Kubernetes Resources
+## Step 3: Create Core Docker Resources
 
 ```hcl
-# Create namespace
+resource "docker_image" "app" {
+  name = var.container_image
+}
 
-resource "kubernetes_namespace" "app" {
-  metadata {
-    name = var.namespace
-    labels = {
-      environment = var.environment
-      managed-by  = "opentofu"
-    }
+resource "docker_network" "app" {
+  name   = var.network_name
+  driver = "bridge"
+
+  labels {
+    label = "environment"
+    value = var.environment
+  }
+
+  labels {
+    label = "managed-by"
+    value = "opentofu"
   }
 }
 
-# Resource quota to limit namespace resources
-resource "kubernetes_resource_quota" "app" {
-  metadata {
-    name      = "app-quota"
-    namespace = kubernetes_namespace.app.metadata[0].name
+resource "docker_volume" "app" {
+  name = var.volume_name
+
+  labels {
+    label = "environment"
+    value = var.environment
   }
-  spec {
-    hard = {
-      pods               = "20"
-      requests_cpu       = "4"
-      requests_memory    = "8Gi"
-      limits_cpu         = "8"
-      limits_memory      = "16Gi"
-    }
+
+  labels {
+    label = "managed-by"
+    value = "opentofu"
   }
 }
 ```
@@ -93,59 +126,33 @@ resource "kubernetes_resource_quota" "app" {
 ## Step 4: Deploy Workloads
 
 ```hcl
-resource "kubernetes_deployment" "app" {
-  metadata {
-    name      = "app"
-    namespace = kubernetes_namespace.app.metadata[0].name
-    labels = {
-      app         = "my-app"
-      environment = var.environment
-    }
+resource "docker_container" "app" {
+  name  = var.container_name
+  image = docker_image.app.image_id
+
+  restart = "unless-stopped"
+
+  env = [
+    "APP_ENV=${var.environment}"
+  ]
+
+  networks_advanced {
+    name = docker_network.app.name
   }
 
-  spec {
-    replicas = 3
+  volumes {
+    volume_name    = docker_volume.app.name
+    container_path = "/data"
+  }
 
-    selector {
-      match_labels = {
-        app = "my-app"
-      }
-    }
+  labels {
+    label = "environment"
+    value = var.environment
+  }
 
-    template {
-      metadata {
-        labels = {
-          app = "my-app"
-        }
-      }
-
-      spec {
-        container {
-          name  = "app"
-          image = var.container_image
-
-          resources {
-            requests = {
-              cpu    = "100m"
-              memory = "128Mi"
-            }
-            limits = {
-              cpu    = "500m"
-              memory = "512Mi"
-            }
-          }
-
-          liveness_probe {
-            http_get {
-              path = "/health"
-              port = 8080
-            }
-            initial_delay_seconds = 30
-            period_seconds        = 10
-          }
-        }
-      }
-    }
+  labels {
+    label = "managed-by"
+    value = "opentofu"
   }
 }
 ```
@@ -153,23 +160,38 @@ resource "kubernetes_deployment" "app" {
 ## Step 5: Expose the Workload
 
 ```hcl
-resource "kubernetes_service" "app" {
-  metadata {
-    name      = "app-service"
-    namespace = kubernetes_namespace.app.metadata[0].name
+resource "docker_container" "app" {
+  name  = var.container_name
+  image = docker_image.app.image_id
+
+  restart = "unless-stopped"
+
+  ports {
+    internal = var.container_port
+    external = var.host_port
   }
 
-  spec {
-    selector = {
-      app = "my-app"
-    }
+  env = [
+    "APP_ENV=${var.environment}"
+  ]
 
-    port {
-      port        = 80
-      target_port = 8080
-    }
+  networks_advanced {
+    name = docker_network.app.name
+  }
 
-    type = "ClusterIP"
+  volumes {
+    volume_name    = docker_volume.app.name
+    container_path = "/data"
+  }
+
+  labels {
+    label = "environment"
+    value = var.environment
+  }
+
+  labels {
+    label = "managed-by"
+    value = "opentofu"
   }
 }
 ```
@@ -177,12 +199,24 @@ resource "kubernetes_service" "app" {
 ## Step 6: Define Outputs
 
 ```hcl
-output "namespace" {
-  value = kubernetes_namespace.app.metadata[0].name
+output "container_name" {
+  value = docker_container.app.name
 }
 
-output "service_cluster_ip" {
-  value = kubernetes_service.app.spec[0].cluster_ip
+output "container_id" {
+  value = docker_container.app.id
+}
+
+output "network_name" {
+  value = docker_network.app.name
+}
+
+output "volume_name" {
+  value = docker_volume.app.name
+}
+
+output "published_port" {
+  value = var.host_port
 }
 ```
 
@@ -196,12 +230,12 @@ tofu apply
 
 ## Best Practices
 
-- Always specify resource requests and limits for all containers
-- Use namespaces to isolate workloads and apply resource quotas
-- Label all resources for easy selection and management
-- Use liveness and readiness probes to ensure workload health
-- Never run containers as root; use security contexts
+- Pin image tags instead of relying on `latest` in production
+- Use named networks and volumes for predictable connectivity and persistence
+- Label resources for easier operations and cleanup
+- Use restart policies that match the behavior of your containers
+- Prefer non-root container images and set `user` when the image supports it
 
 ## Conclusion
 
-You have successfully configured How to Configure the Docker Provider in OpenTofu using OpenTofu. This approach enables GitOps-style management of Kubernetes resources alongside your infrastructure code. Combine OpenTofu Kubernetes resources with Helm releases for a complete infrastructure-as-code solution.
+You have successfully configured the Docker provider in OpenTofu. This approach lets you manage Docker images, containers, networks, and volumes alongside the rest of your infrastructure code. Combine Docker resources with other OpenTofu providers to build reproducible local, CI, or remote-host environments.
