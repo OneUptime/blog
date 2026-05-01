@@ -8,7 +8,7 @@ Description: Learn how to create and manage EC2 Launch Templates with OpenTofu t
 
 ## Introduction
 
-EC2 Launch Templates provide a reusable, versioned configuration for launching EC2 instances. They replace the older Launch Configurations and support more features including multiple network interfaces, mixed instance types, and partial overrides. This guide covers creating launch templates with OpenTofu.
+EC2 Launch Templates provide a reusable, versioned configuration for launching EC2 instances. AWS recommends them over the older Launch Configurations, and they support more features including multiple network interfaces, mixed instance types, and partial overrides. This guide covers creating launch templates with OpenTofu.
 
 ## Prerequisites
 
@@ -99,25 +99,78 @@ resource "aws_launch_template" "app" {
     Name = "app-launch-template"
   }
 
-  lifecycle {
-    create_before_destroy = true
-  }
 }
 ```
 
 ## Step 2: Create a New Version of the Template
 
 ```hcl
-# Launch templates are versioned; create a new version with updated AMI
-resource "aws_launch_template" "app_v2" {
+# Launch templates are versioned; update the existing resource and apply again
+# to create a new version with an updated instance type
+resource "aws_launch_template" "app" {
   name        = "app-launch-template"
-  description = "Version 2 with updated instance type"
+  description = "Launch template for application servers"
 
+  # Use the latest Amazon Linux AMI
   image_id      = data.aws_ami.amazon_linux.id
   instance_type = "t3.large"  # Upgraded instance type
 
-  # Inherit other settings from the default version
-  # by only specifying changed values
+  key_name      = var.key_pair_name
+
+  monitoring {
+    enabled = true
+  }
+
+  metadata_options {
+    http_endpoint               = "enabled"
+    http_tokens                 = "required"
+    http_put_response_hop_limit = 1
+  }
+
+  block_device_mappings {
+    device_name = "/dev/xvda"
+    ebs {
+      volume_size           = 30
+      volume_type           = "gp3"
+      encrypted             = true
+      delete_on_termination = true
+    }
+  }
+
+  iam_instance_profile {
+    name = var.instance_profile_name
+  }
+
+  network_interfaces {
+    associate_public_ip_address = false
+    security_groups             = [var.security_group_id]
+    delete_on_termination       = true
+  }
+
+  user_data = base64encode(templatefile("${path.module}/userdata.sh", {
+    environment = var.environment
+    app_version = var.app_version
+  }))
+
+  tag_specifications {
+    resource_type = "instance"
+    tags = {
+      Name        = "app-server"
+      Environment = var.environment
+    }
+  }
+
+  tag_specifications {
+    resource_type = "volume"
+    tags = {
+      Name        = "app-server-volume"
+      Environment = var.environment
+    }
+  }
+
+  tags = {
+    Name = "app-launch-template"
+  }
 }
 ```
 
@@ -173,4 +226,4 @@ tofu apply
 
 ## Conclusion
 
-EC2 Launch Templates are the recommended way to define instance configurations in AWS. They support versioning so you can roll back changes, work with Auto Scaling Groups and Spot Fleets, and allow partial overrides at launch time. Always use `create_before_destroy` in your lifecycle block to prevent downtime during template updates.
+EC2 Launch Templates are the recommended way to define instance configurations in AWS. They support versioning so you can roll back changes, work with Auto Scaling Groups and Spot Fleets, and allow partial overrides at launch time. When you update an `aws_launch_template` resource and apply again, OpenTofu creates a new launch template version, and existing instances keep using the version they were launched with until you update the Auto Scaling Group or replace the instance.
