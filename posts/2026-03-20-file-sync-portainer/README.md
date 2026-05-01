@@ -4,7 +4,7 @@ Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
 Tags: Portainer, Docker, Self-Hosted, Nextcloud, File Sync, Cloud Storage
 
-Description: Deploy Nextcloud as a self-hosted Dropbox/Google Drive alternative using Portainer with automatic SSL and mobile sync support.
+Description: Deploy Nextcloud as a self-hosted Dropbox/Google Drive alternative using Portainer with optional Traefik-based SSL and mobile sync support.
 
 ## Introduction
 
@@ -15,20 +15,21 @@ Nextcloud is the most popular self-hosted file sync and share platform. It offer
 - Portainer installed and running
 - At least 2GB RAM (4GB recommended)
 - Sufficient storage for files
-- A domain name with SSL (or use local network)
+- A domain name and reverse proxy such as Traefik for automatic SSL (or remove the Traefik labels and HTTPS-specific settings for local-only access)
 
 ## Step 1: Prepare Storage
 
 ```bash
-# Create Nextcloud data directories
+# Create Nextcloud config and app directories
 
-sudo mkdir -p /opt/nextcloud/{data,config,apps}
+sudo mkdir -p /opt/nextcloud/{config,apps}
 sudo chown -R www-data:www-data /opt/nextcloud
 sudo chmod -R 750 /opt/nextcloud
 
-# For external storage (large drives)
+# Create the main data directory on your large disk
 sudo mkdir -p /mnt/data/nextcloud
-sudo chown www-data:www-data /mnt/data/nextcloud
+sudo chown -R www-data:www-data /mnt/data/nextcloud
+sudo chmod -R 750 /mnt/data/nextcloud
 ```
 
 ## Step 2: Deploy Nextcloud Stack in Portainer
@@ -75,13 +76,13 @@ services:
     networks:
       - nextcloud_network
     healthcheck:
-      test: ["CMD", "redis-cli", "ping"]
+      test: ["CMD", "redis-cli", "-a", "redis_password_here", "ping"]
       interval: 10s
       retries: 5
 
   # Nextcloud application
   nextcloud:
-    image: nextcloud:27-apache
+    image: nextcloud:33-apache
     container_name: nextcloud
     restart: unless-stopped
     depends_on:
@@ -105,6 +106,10 @@ services:
       # Trusted domains (your server IP and domain)
       - NEXTCLOUD_TRUSTED_DOMAINS=cloud.yourdomain.com 192.168.1.100
 
+      # Reverse proxy settings for HTTPS deployments (adjust TRUSTED_PROXIES to your proxy network)
+      - TRUSTED_PROXIES=172.16.0.0/12
+      - OVERWRITEPROTOCOL=https
+
       # Redis configuration
       - REDIS_HOST=nextcloud_redis
       - REDIS_HOST_PORT=6379
@@ -113,6 +118,7 @@ services:
       # PHP settings
       - PHP_MEMORY_LIMIT=1024M
       - PHP_UPLOAD_LIMIT=10G
+      - APACHE_BODY_LIMIT=10737418240
 
       # SMTP configuration
       - SMTP_HOST=smtp.gmail.com
@@ -135,15 +141,16 @@ services:
       - "traefik.http.routers.nextcloud.rule=Host(`cloud.yourdomain.com`)"
       - "traefik.http.routers.nextcloud.entrypoints=websecure"
       - "traefik.http.routers.nextcloud.tls.certresolver=letsencrypt"
+      - "traefik.http.routers.nextcloud.middlewares=nextcloud-dav@docker"
       - "traefik.http.services.nextcloud.loadbalancer.server.port=80"
       # Nextcloud CalDAV/CardDAV redirects
-      - "traefik.http.middlewares.nextcloud-dav.redirectregex.regex=https://(.*)/.well-known/(card|cal)dav"
-      - "traefik.http.middlewares.nextcloud-dav.redirectregex.replacement=https://$${1}/remote.php/dav/"
+      - "traefik.http.middlewares.nextcloud-dav.redirectregex.regex=https://(.*)/.well-known/(?:card|cal)dav"
+      - "traefik.http.middlewares.nextcloud-dav.redirectregex.replacement=https://$${1}/remote.php/dav"
       - "traefik.http.middlewares.nextcloud-dav.redirectregex.permanent=true"
 
   # Nextcloud Cron job for background tasks
   nextcloud_cron:
-    image: nextcloud:27-apache
+    image: nextcloud:33-apache
     container_name: nextcloud_cron
     restart: unless-stopped
     depends_on:
@@ -183,7 +190,7 @@ docker exec -u www-data nextcloud php occ background:cron
 docker exec -u www-data nextcloud php occ config:system:set \
   memcache.local --value='\OC\Memcache\APCu'
 
-# Configure Redis for distributed caching
+# Configure Redis for file locking
 docker exec -u www-data nextcloud php occ config:system:set \
   memcache.locking --value='\OC\Memcache\Redis'
 
@@ -213,12 +220,11 @@ docker exec -u www-data nextcloud php occ app:enable files_external
 
 # Add S3 storage via config
 docker exec -u www-data nextcloud php occ files_external:create \
-  --user admin \
-  "S3 Storage" \
+  /S3-Storage \
   amazons3 \
-  amazons3::accesskey \
+  builtin::builtin \
+  --user admin \
   --config bucket=my-nextcloud-bucket \
-  --config hostname=s3.amazonaws.com \
   --config region=us-east-1 \
   --config key=ACCESS_KEY_ID \
   --config secret=SECRET_ACCESS_KEY
@@ -240,8 +246,12 @@ docker exec -u www-data nextcloud php occ maintenance:mode --on
 docker exec nextcloud_db pg_dump -U nextcloud nextcloud | \
   gzip > "$BACKUP_DIR/db_$DATE.sql.gz"
 
-# Backup config
+# Backup config and custom apps
 tar -czf "$BACKUP_DIR/config_$DATE.tar.gz" /opt/nextcloud/config
+tar -czf "$BACKUP_DIR/apps_$DATE.tar.gz" /opt/nextcloud/apps
+
+# Backup user data
+tar -czf "$BACKUP_DIR/data_$DATE.tar.gz" /mnt/data/nextcloud
 
 # Disable maintenance mode
 docker exec -u www-data nextcloud php occ maintenance:mode --off
