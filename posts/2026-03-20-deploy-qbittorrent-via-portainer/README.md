@@ -4,7 +4,7 @@ Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
 Tags: Portainer, qBittorrent, Docker, Self-Hosting, Download Client, BitTorrent
 
-Description: Learn how to deploy qBittorrent via Portainer using the linuxserver image with a web UI, proper download volume mapping, and VPN-through-container support.
+Description: Learn how to deploy qBittorrent via Portainer using the LinuxServer.io image with a web UI and proper download volume mapping.
 
 ---
 
@@ -18,11 +18,9 @@ qBittorrent is a popular open-source BitTorrent client with a built-in web UI, m
 ## Compose Stack
 
 ```yaml
-version: "3.8"
-
 services:
   qbittorrent:
-    image: linuxserver/qbittorrent:latest
+    image: lscr.io/linuxserver/qbittorrent:latest
     restart: unless-stopped
     ports:
       - "8080:8080"       # Web UI
@@ -73,7 +71,7 @@ Sonarr and Radarr will automatically assign these categories when adding downloa
 In Sonarr or Radarr go to **Settings > Download Clients > Add**:
 
 - **Type**: qBittorrent
-- **Host**: `qbittorrent` (container name if on same network) or host IP
+- **Host**: `qbittorrent` (service name if on the same Docker network) or host IP
 - **Port**: `8080`
 - **Category**: `tv-sonarr` or `movies-radarr`
 
