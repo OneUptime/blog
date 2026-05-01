@@ -4,11 +4,11 @@ Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
 Tags: OpenTofu, AWS, DynamoDB, PITR, Backup, Disaster Recovery, Terraform
 
-Description: Learn how to enable and manage DynamoDB Point-in-Time Recovery (PITR) using OpenTofu to protect your data with continuous backups and restore to any point within 35 days.
+Description: Learn how to enable and manage DynamoDB Point-in-Time Recovery (PITR) using OpenTofu to protect your data with continuous backups and restore to any point within a configurable 1 to 35 day recovery window.
 
 ---
 
-DynamoDB Point-in-Time Recovery (PITR) provides continuous backups of your DynamoDB table data. It allows you to restore your table to any point in time within the last 35 days, protecting against accidental writes, deletes, or application bugs.
+DynamoDB Point-in-Time Recovery (PITR) provides continuous backups of your DynamoDB table data. It allows you to restore your table to any point in time within its configured recovery window (35 days by default), protecting against accidental writes, deletes, or application bugs.
 
 ---
 
@@ -30,7 +30,8 @@ resource "aws_dynamodb_table" "users" {
   }
 
   point_in_time_recovery {
-    enabled = true
+    enabled                 = true
+    recovery_period_in_days = 35
   }
 
   tags = {
@@ -42,6 +43,12 @@ resource "aws_dynamodb_table" "users" {
 ```
 
 ### Enable PITR on Existing Table
+
+If the table already exists, import it into OpenTofu state before applying the PITR change:
+
+```bash
+tofu import aws_dynamodb_table.orders orders
+```
 
 ```hcl
 resource "aws_dynamodb_table" "orders" {
@@ -55,7 +62,8 @@ resource "aws_dynamodb_table" "orders" {
   }
 
   point_in_time_recovery {
-    enabled = true
+    enabled                 = true
+    recovery_period_in_days = 35
   }
 }
 ```
@@ -72,6 +80,7 @@ aws dynamodb describe-continuous-backups --table-name users \
 # Expected output:
 # {
 #   "PointInTimeRecoveryStatus": "ENABLED",
+#   "RecoveryPeriodInDays": 35,
 #   "EarliestRestorableDateTime": "2026-02-13T...",
 #   "LatestRestorableDateTime": "2026-03-20T..."
 # }
@@ -107,7 +116,7 @@ aws dynamodb describe-table --table-name users-restored-20260320 \
 
 ## Combining PITR with On-Demand Backups
 
-Use both PITR and scheduled on-demand backups for defense in depth:
+Use PITR for continuous recovery, and create on-demand backups separately for ad hoc snapshots:
 
 ```hcl
 # PITR for continuous protection
@@ -122,51 +131,75 @@ resource "aws_dynamodb_table" "critical" {
   }
 
   point_in_time_recovery {
-    enabled = true
-  }
-}
-
-# Manual on-demand backup (snapshot)
-resource "aws_dynamodb_backup" "weekly" {
-  table_name  = aws_dynamodb_table.critical.name
-  backup_name = "transactions-weekly-${formatdate("YYYYMMDD", timestamp())}"
-
-  lifecycle {
-    create_before_destroy = true
+    enabled                 = true
+    recovery_period_in_days = 35
   }
 }
 ```
 
+```bash
+# Create an on-demand backup when you need a snapshot
+aws dynamodb create-backup \
+  --table-name transactions \
+  --backup-name transactions-20260320
+```
+
 ---
 
-## CloudWatch Monitoring for Backup Status
+## CloudWatch Monitoring for AWS Backup Jobs
+
+If you schedule on-demand backups with AWS Backup, alarm on failed backup jobs:
 
 ```hcl
-resource "aws_cloudwatch_metric_alarm" "pitr_status" {
-  alarm_name          = "dynamodb-pitr-disabled"
-  comparison_operator = "LessThanThreshold"
+resource "aws_cloudwatch_metric_alarm" "backup_jobs_failed" {
+  alarm_name          = "aws-backup-failed-jobs"
+  comparison_operator = "GreaterThanThreshold"
   evaluation_periods  = 1
-  metric_name         = "SuccessfulRequestLatency"
-  namespace           = "AWS/DynamoDB"
+  metric_name         = "NumberOfBackupJobsFailed"
+  namespace           = "AWS/Backup"
   period              = 300
-  statistic           = "SampleCount"
-  threshold           = 1
-  alarm_description   = "Alert if DynamoDB is not receiving requests (proxy for health check)"
-
-  dimensions = {
-    TableName = aws_dynamodb_table.critical.name
-    Operation = "GetItem"
-  }
+  statistic           = "Sum"
+  threshold           = 0
+  alarm_description   = "Alert when AWS Backup reports failed backup jobs"
+  treat_missing_data  = "notBreaching"
 }
 ```
 
 ---
 
-## PITR with AWS Backup Service
+## Scheduled On-Demand Backups with AWS Backup
 
-For centralized backup management across services, use AWS Backup:
+For centralized management of scheduled on-demand backups across services, use AWS Backup after opting DynamoDB into AWS Backup for that account and Region:
 
 ```hcl
+data "aws_iam_policy_document" "backup_assume_role" {
+  statement {
+    effect = "Allow"
+
+    principals {
+      type        = "Service"
+      identifiers = ["backup.amazonaws.com"]
+    }
+
+    actions = ["sts:AssumeRole"]
+  }
+}
+
+resource "aws_iam_role" "backup" {
+  name               = "dynamodb-backup-role"
+  assume_role_policy = data.aws_iam_policy_document.backup_assume_role.json
+}
+
+resource "aws_iam_role_policy_attachment" "backup" {
+  role       = aws_iam_role.backup.name
+  policy_arn = "arn:aws:iam::aws:policy/service-role/AWSBackupServiceRolePolicyForBackup"
+}
+
+resource "aws_kms_key" "backup" {
+  description             = "KMS key for DynamoDB backups"
+  deletion_window_in_days = 7
+}
+
 resource "aws_backup_plan" "dynamodb" {
   name = "dynamodb-backup-plan"
 
@@ -205,9 +238,9 @@ PITR pricing is based on table size:
 
 | Factor | Cost |
 |--------|------|
-| PITR storage | ~$0.20 per GB per month |
-| Data restore | Free |
-| Cross-region restore | Standard data transfer rates |
+| PITR storage | Charged per GB of table data and local secondary indexes per month |
+| Data restore | Charged per GB restored |
+| Cross-region restore | Destination restore charges plus inter-Region data transfer out |
 
 ---
 
@@ -215,15 +248,15 @@ PITR pricing is based on table size:
 
 1. **Enable PITR on all production tables** - the cost is minimal compared to data loss risk
 2. **Test restores regularly** - run quarterly restore drills to validate your recovery process
-3. **Monitor earliest restorable time** - if it's older than 35 days, your window has expired
+3. **Monitor earliest restorable time** - make sure it reaches your configured recovery window, especially after disabling and re-enabling PITR
 4. **Use separate restored table name** - never restore over an existing production table
-5. **Combine with on-demand backups** for long-term archival beyond 35 days
+5. **Combine with on-demand backups** for long-term archival beyond your PITR window
 
 ---
 
 ## Conclusion
 
-DynamoDB PITR is a one-line addition to any OpenTofu configuration that provides continuous protection with 35 days of recovery window. Enable it on all production tables, and pair it with AWS Backup for long-term archival.
+DynamoDB PITR is a small OpenTofu change that provides continuous protection with a configurable 1 to 35 day recovery window. Enable it on production tables, and pair it with AWS Backup or on-demand backups for longer-term retention.
 
 ---
 
