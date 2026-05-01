@@ -44,12 +44,12 @@ resource "aws_efs_file_system" "main" {
 
 ## Create Mount Targets
 
-Mount targets are created in each AZ/subnet where instances need to mount EFS:
+Mount targets are created in each Availability Zone where instances need to mount EFS. Provide one subnet ID per AZ:
 
 ```hcl
-# Create mount targets in each private subnet
+# Create one mount target per Availability Zone
 resource "aws_efs_mount_target" "main" {
-  for_each = toset(data.aws_subnets.private.ids)
+  for_each = toset(var.private_subnet_ids)
 
   file_system_id  = aws_efs_file_system.main.id
   subnet_id       = each.value
@@ -149,7 +149,7 @@ resource "aws_instance" "app" {
       ${aws_efs_file_system.main.id}:/ /mnt/app
 
     # Add to fstab for persistent mount
-    echo "${aws_efs_file_system.main.id}:/ /mnt/efs efs defaults,tls 0 0" >> /etc/fstab
+    echo "${aws_efs_file_system.main.id}:/ /mnt/efs efs _netdev,tls 0 0" >> /etc/fstab
   EOF
 
   depends_on = [aws_efs_mount_target.main]
@@ -168,6 +168,7 @@ resource "aws_ecs_task_definition" "app" {
   cpu                      = 512
   memory                   = 1024
   execution_role_arn       = aws_iam_role.ecs_execution.arn
+  task_role_arn            = aws_iam_role.ecs_task.arn
 
   volume {
     name = "shared-storage"
