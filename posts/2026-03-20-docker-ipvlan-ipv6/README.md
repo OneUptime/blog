@@ -16,6 +16,7 @@ IPvlan is a Docker network driver that gives containers direct L2 (Ethernet) or 
 # L2 mode: containers are on the same L2 segment as the host
 
 # All containers share the parent interface's MAC address
+# Replace the 2001:db8::/32 documentation prefix with your real IPv6 prefix in production
 
 docker network create \
     --driver ipvlan \
@@ -23,24 +24,30 @@ docker network create \
     --opt parent=eth0 \
     --ipv6 \
     --subnet 192.168.1.0/24 \
-    --subnet 2001:db8:lan::/64 \
+    --subnet 2001:db8:1::/64 \
     --gateway 192.168.1.1 \
-    --gateway 2001:db8:lan::1 \
+    --gateway 2001:db8:1::1 \
     ipvlan-l2-net
 
-# Run container
+# Run containers
 docker run -d \
     --name web-l2 \
     --network ipvlan-l2-net \
-    --ip6 2001:db8:lan::30 \
+    --ip6 2001:db8:1::30 \
+    nginx:latest
+
+docker run -d \
+    --name peer-l2 \
+    --network ipvlan-l2-net \
+    --ip6 2001:db8:1::31 \
     nginx:latest
 
 # Verify IPv6
-docker exec web-l2 ip -6 addr show eth0
-# inet6 2001:db8:lan::30/64 scope global
+docker inspect --format '{{range .NetworkSettings.Networks}}{{.GlobalIPv6Address}}{{end}}' web-l2
+# 2001:db8:1::30
 
 # Confirm shared MAC (same as host eth0)
-docker exec web-l2 ip link show eth0
+docker inspect --format '{{range .NetworkSettings.Networks}}{{.MacAddress}}{{end}}' web-l2
 cat /sys/class/net/eth0/address
 # Both should show same MAC
 ```
@@ -50,6 +57,7 @@ cat /sys/class/net/eth0/address
 ```bash
 # L3 mode: Docker acts as an IPv6 router between containers and external networks
 # Requires adding a route on the upstream router
+# Replace the 2001:db8::/32 documentation prefix with your real IPv6 prefix in production
 
 docker network create \
     --driver ipvlan \
@@ -57,22 +65,22 @@ docker network create \
     --opt parent=eth0 \
     --ipv6 \
     --subnet 192.168.100.0/24 \
-    --subnet 2001:db8:containers::/64 \
+    --subnet 2001:db8:100::/64 \
     ipvlan-l3-net
 
 # NOTE: L3 mode has NO gateway - routing is handled by ipvlan driver
 # The upstream router needs a route:
-# ip -6 route add 2001:db8:containers::/64 via <host-eth0-ipv6>
+# ip -6 route add 2001:db8:100::/64 via <host-eth0-ipv6>
 
 # Run container in L3 mode
 docker run -d \
     --name web-l3 \
     --network ipvlan-l3-net \
-    --ip6 2001:db8:containers::10 \
+    --ip6 2001:db8:100::10 \
     nginx:latest
 
-# Container can reach internet if upstream router has the route
-docker exec web-l3 ping6 -c 3 2001:4860:4860::8888
+# Container can reach external IPv6 destinations if upstream router has the route
+docker exec web-l3 curl -6 -s https://ipv6.icanhazip.com
 ```
 
 ## Docker Compose with IPvlan
@@ -91,21 +99,21 @@ networks:
       config:
         - subnet: 192.168.1.0/24
           gateway: 192.168.1.1
-        - subnet: 2001:db8:lan::/64
-          gateway: 2001:db8:lan::1
+        - subnet: 2001:db8:1::/64
+          gateway: 2001:db8:1::1
 
 services:
   web:
     image: nginx:latest
     networks:
       ipvlan-net:
-        ipv6_address: 2001:db8:lan::40
+        ipv6_address: 2001:db8:1::40
 
   api:
     image: myapi:latest
     networks:
       ipvlan-net:
-        ipv6_address: 2001:db8:lan::41
+        ipv6_address: 2001:db8:1::41
 ```
 
 ## IPvlan vs Macvlan Comparison
@@ -127,18 +135,18 @@ VLAN support         Yes                 Yes
 
 ```bash
 # Test container-to-container
-docker exec web-l2 ping6 -c 3 2001:db8:lan::31
+docker exec web-l2 curl -6 -I http://[2001:db8:1::31]
 
 # Test container-to-internet (L2 mode)
 docker exec web-l2 curl -6 -s https://ipv6.icanhazip.com
 
 # Test container-to-host (L2 mode has same isolation issue as macvlan)
-# Use a separate ipvlan interface on host for host access:
-sudo ip link add ipvlan-host link eth0 type ipvlan mode l2
-sudo ip -6 addr add 2001:db8:lan::1 dev ipvlan-host
+# Use a separate ipvlan interface on host for host access with an unused IPv6 in the subnet:
+sudo ip link add link eth0 name ipvlan-host type ipvlan mode l2
+sudo ip -6 addr add 2001:db8:1::254/64 dev ipvlan-host
 sudo ip link set ipvlan-host up
 ```
 
 ## Conclusion
 
-Docker IPvlan networks support IPv6 in both L2 mode (containers on same L2 as host) and L3 mode (Docker routes IPv6 between containers and upstream router). IPvlan shares the host's MAC address, making it compatible with cloud environments that restrict per-interface MAC addresses (unlike Macvlan). L3 mode is preferred for routing-heavy setups and requires adding a route on the upstream router pointing to the container IPv6 subnet via the host's IPv6 address.
+Docker IPvlan networks support IPv6 in both L2 mode (containers on same L2 as host) and L3 mode (Docker routes IPv6 between containers and upstream router). IPvlan shares the host's MAC address, making it compatible with cloud environments that restrict per-interface MAC addresses (unlike Macvlan). L3 mode is preferred for routing-heavy setups and requires adding a route on the upstream router pointing to the container IPv6 subnet via the host's IPv6 address. When you adapt these examples for real deployments, replace the `2001:db8::/32` documentation prefix with a valid IPv6 prefix for your environment.
