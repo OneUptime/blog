@@ -23,15 +23,17 @@ In Portainer go to **Environments** and look at the status indicators. A red dot
 
 ## Step 2: Verify the Endpoint URL
 
-In Portainer go to **Environments > Select Environment > Edit**. Check that the URL and port match the current agent address:
+In Portainer go to **Environments > Select Environment > Edit**. Check that the address and port match the current agent address. For Portainer Agent environments, do not include a protocol in the **Environment URL** field:
 
 ```bash
-# On the agent host, confirm the agent is listening
+# On the agent host, confirm the agent container is running
+docker ps --filter "name=portainer_agent"
 
-docker ps | grep portainer_agent
-# Note the mapped port
+# Confirm which host port is mapped to the agent's port 9001
+docker port portainer_agent 9001
 
 # Confirm the IP has not changed
+# Replace eth0 with your actual network interface name
 ip addr show eth0 | grep "inet "
 ```
 
@@ -41,9 +43,9 @@ From the Portainer server, test direct connectivity:
 
 ```bash
 # Replace with your actual agent IP and port
-curl -k https://<agent-ip>:9001/ping
+curl -k -s -o /dev/null -w "%{http_code}\n" https://<agent-ip>:9001/ping
 
-# Expected: {"status":"OK"}
+# Expected: 204
 # If connection refused: agent is down or port changed
 # If timeout: firewall blocking
 ```
@@ -56,14 +58,24 @@ To prevent future failures caused by IP changes:
 # Set a static IP on Ubuntu (netplan)
 # /etc/netplan/00-installer-config.yaml
 network:
+  version: 2
   ethernets:
+    # Replace eth0 with your actual interface name
     eth0:
       dhcp4: false
       addresses:
         - 192.168.1.50/24
-      gateway4: 192.168.1.1
+      routes:
+        - to: default
+          via: 192.168.1.1
       nameservers:
         addresses: [1.1.1.1, 8.8.8.8]
+```
+
+Then apply the change:
+
+```bash
+sudo netplan apply
 ```
 
 Or configure a DHCP reservation for the host's MAC address in your router.
@@ -74,7 +86,7 @@ If the IP changed, update it in Portainer:
 
 1. Go to **Environments > Select the failing environment**.
 2. Click **Edit**.
-3. Update the **Environment URL** to the new IP/hostname.
+3. Update the **Environment URL** to the new IP/hostname and port. Do not include `https://`.
 4. Click **Update Environment**.
 
 ## Step 6: Restart the Agent
