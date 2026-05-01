@@ -51,9 +51,8 @@ env:
   DRONE_GITHUB_SERVER: https://github.com
 
 # Reference credentials from the Kubernetes secret
-envFrom:
-  - secretRef:
-      name: drone-secrets
+extraSecretNamesForEnvFrom:
+  - drone-secrets
 
 persistentVolume:
   enabled: true
@@ -70,14 +69,75 @@ helm install drone drone/drone \
 
 ## Step 3: Deploy Drone Kubernetes Runner
 
-The Kubernetes runner executes each pipeline step as a pod:
+The Kubernetes runner executes each pipeline step as a pod. Install it with Kubernetes manifests and keep the runner and pipeline pods in the `drone` namespace:
 
 ```bash
-helm install drone-runner-kube drone/drone-runner-kube \
-  --namespace drone \
-  --set env.DRONE_RPC_HOST=drone-drone.drone.svc.cluster.local \
-  --set env.DRONE_RPC_PROTO=http \
-  --set env.DRONE_RPC_SECRET=<same-rpc-secret>
+kubectl apply -f - <<'EOF'
+apiVersion: v1
+kind: ServiceAccount
+metadata:
+  name: drone-runner-kube
+  namespace: drone
+---
+kind: Role
+apiVersion: rbac.authorization.k8s.io/v1
+metadata:
+  name: drone-runner-kube
+  namespace: drone
+rules:
+  - apiGroups: [""]
+    resources: ["secrets"]
+    verbs: ["create", "delete"]
+  - apiGroups: [""]
+    resources: ["pods", "pods/log"]
+    verbs: ["get", "create", "delete", "list", "watch", "update"]
+---
+kind: RoleBinding
+apiVersion: rbac.authorization.k8s.io/v1
+metadata:
+  name: drone-runner-kube
+  namespace: drone
+subjects:
+  - kind: ServiceAccount
+    name: drone-runner-kube
+    namespace: drone
+roleRef:
+  kind: Role
+  name: drone-runner-kube
+  apiGroup: rbac.authorization.k8s.io
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: drone-runner-kube
+  namespace: drone
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app: drone-runner-kube
+  template:
+    metadata:
+      labels:
+        app: drone-runner-kube
+    spec:
+      serviceAccountName: drone-runner-kube
+      containers:
+        - name: runner
+          image: drone/drone-runner-kube:latest
+          env:
+            - name: DRONE_RPC_HOST
+              value: drone.drone.svc.cluster.local:8080
+            - name: DRONE_RPC_PROTO
+              value: http
+            - name: DRONE_RPC_SECRET
+              valueFrom:
+                secretKeyRef:
+                  name: drone-secrets
+                  key: DRONE_RPC_SECRET
+            - name: DRONE_NAMESPACE_DEFAULT
+              value: drone
+EOF
 ```
 
 ---
@@ -140,11 +200,11 @@ steps:
 
 ## Step 5: Add Secrets in Drone UI
 
-In the Drone UI, go to your repository settings and add organization or repository secrets:
+In the Drone UI, go to your repository settings and add repository secrets. If you want shared secrets across repositories, create organization secrets separately with the Drone CLI or API:
 
 - `docker_username` / `docker_password`
-- `kube_token` - the Rancher service account token
-- `kube_server` - Rancher cluster API URL
+- `kube_token` - a Kubernetes API bearer token with permission to update the target deployment
+- `kube_server` - Kubernetes API URL for the Rancher-managed cluster
 
 ---
 
@@ -152,4 +212,4 @@ In the Drone UI, go to your repository settings and add organization or reposito
 
 - Use **per-repo secrets** for application credentials and **org-level secrets** for shared infrastructure tokens.
 - Set resource limits on the Kubernetes runner so pipeline pods don't starve production workloads.
-- Enable Drone's **branch protection** filters to prevent untrusted forks from accessing secrets.
+- Keep secrets unavailable to pull requests from forks; Drone repository secrets are not exposed to pull requests by default.
