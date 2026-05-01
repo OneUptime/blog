@@ -8,7 +8,7 @@ Description: Learn how to configure and manage a DHCPv6 client on Windows using 
 
 ---
 
-Windows has built-in DHCPv6 client support since Windows Vista. When IPv6 is enabled on a network adapter, Windows automatically attempts to acquire configuration from a DHCPv6 server. This guide covers how to configure, verify, and troubleshoot DHCPv6 client behavior on Windows.
+Windows has built-in DHCPv6 client support. When IPv6 is enabled on a network adapter, Windows can use router advertisements and DHCPv6 to obtain IPv6 addressing and other configuration such as DNS. This guide covers how to configure, verify, and troubleshoot DHCPv6 client behavior on Windows.
 
 ---
 
@@ -17,7 +17,7 @@ Windows has built-in DHCPv6 client support since Windows Vista. When IPv6 is ena
 - Windows 10, 11, or Windows Server 2016+
 - Administrator privileges
 - IPv6-enabled network adapter
-- DHCPv6 server available on the network
+- IPv6 router advertisements and a DHCPv6 server available on the network
 
 ---
 
@@ -54,11 +54,17 @@ netsh interface ipv6 show dnsservers
 ### Enable DHCPv6 on an Interface
 
 ```cmd
-:: Set interface to use DHCPv6
-netsh interface ipv6 set interface "Ethernet" dhcp=enabled
+:: Enable router discovery on the interface
+netsh interface ipv6 set interface interface="Ethernet" routerdiscovery=enabled
+
+:: Allow DHCPv6-managed address configuration
+netsh interface ipv6 set interface interface="Ethernet" managedaddress=enabled
+
+:: Allow other stateful DHCPv6 configuration such as DNS
+netsh interface ipv6 set interface interface="Ethernet" otherstateful=enabled
 
 :: Set DNS to automatic
-netsh interface ipv6 set dnsservers "Ethernet" source=dhcp
+netsh interface ipv6 set dnsservers name="Ethernet" source=dhcp
 ```
 
 ### Release and Renew DHCPv6 Lease
@@ -70,7 +76,7 @@ ipconfig /release6
 :: Renew IPv6 address (request new DHCPv6 lease)
 ipconfig /renew6
 
-:: Show full IPv6 configuration including DHCPv6 lease info
+:: Show full IPv6 configuration and DHCPv6 client details
 ipconfig /all
 ```
 
@@ -100,21 +106,23 @@ Get-NetAdapter | Select-Object Name, Status, MacAddress
 # Get current IP interface settings
 Get-NetIPInterface -AddressFamily IPv6
 
-# Enable DHCP on an interface
-Set-NetIPInterface -InterfaceAlias "Ethernet" -AddressFamily IPv6 -Dhcp Enabled
+# Enable router discovery and DHCPv6-related settings on an interface
+Set-NetIPInterface -InterfaceAlias "Ethernet" -AddressFamily IPv6 -RouterDiscovery Enabled
+Set-NetIPInterface -InterfaceAlias "Ethernet" -AddressFamily IPv6 -ManagedAddressConfiguration Enabled
+Set-NetIPInterface -InterfaceAlias "Ethernet" -AddressFamily IPv6 -OtherStatefulConfiguration Enabled
 
-# Remove static IPv6 address (if set)
-Remove-NetIPAddress -InterfaceAlias "Ethernet" -AddressFamily IPv6 -Confirm:$false
+# Remove manually assigned IPv6 addresses (if set)
+Get-NetIPAddress -InterfaceAlias "Ethernet" -AddressFamily IPv6 -PrefixOrigin Manual | Remove-NetIPAddress -Confirm:$false
 
-# Set DNS to DHCP-assigned
+# Reset DNS to the default server addresses
 Set-DnsClientServerAddress -InterfaceAlias "Ethernet" -ResetServerAddresses
 ```
 
-### View DHCP Lease Information
+### View DHCPv6-Related Configuration
 
 ```powershell
-# Show DHCP lease details
-Get-NetIPConfiguration -InterfaceAlias "Ethernet"
+# Show detailed IP configuration
+Get-NetIPConfiguration -InterfaceAlias "Ethernet" -Detailed
 
 # Show detailed DNS client settings
 Get-DnsClient -InterfaceAlias "Ethernet"
@@ -125,7 +133,7 @@ Get-DnsClientGlobalSetting
 
 ---
 
-## Verifying DHCPv6 Lease
+## Verifying DHCPv6 Configuration
 
 ```cmd
 :: Full network configuration details
@@ -177,8 +185,8 @@ Restart-Service -Name Dhcp
 # Check Windows Event Log for DHCP events
 Get-WinEvent -LogName System | Where-Object { $_.ProviderName -match "Dhcp" } | Select-Object -First 20
 
-# Test if router is advertising DHCPv6
-netsh interface ipv6 show route
+# Check IPv6 router discovery and DHCPv6-related interface flags
+Get-NetIPInterface -InterfaceAlias "Ethernet" -AddressFamily IPv6 | Select-Object InterfaceAlias, Dhcp, RouterDiscovery, ManagedAddressConfiguration, OtherStatefulConfiguration
 ```
 
 ---
@@ -187,7 +195,7 @@ netsh interface ipv6 show route
 
 1. **Keep Windows updated** - DHCPv6 client improvements ship with Windows updates
 2. **Use static ULA addresses** for servers; use DHCPv6 for clients needing managed addresses
-3. **Verify DNS** is received via DHCPv6 with `ipconfig /all`
+3. **Verify DNS** configuration with `ipconfig /all`
 4. **Test with ping -6** after any configuration change
 5. **Use Event Viewer** to diagnose DHCP client service failures
 
@@ -195,7 +203,7 @@ netsh interface ipv6 show route
 
 ## Conclusion
 
-Windows provides robust DHCPv6 client support through built-in services. Whether you use the GUI, `netsh`, or PowerShell, enabling and managing DHCPv6 is straightforward. Always verify your assigned IPv6 address and DNS settings after configuration.
+Windows provides robust DHCPv6 client support through built-in services. Whether you use the GUI, `netsh`, or PowerShell, Windows provides built-in tools for DHCPv6 client configuration and troubleshooting. Always verify your assigned IPv6 address and DNS settings after configuration.
 
 ---
 
