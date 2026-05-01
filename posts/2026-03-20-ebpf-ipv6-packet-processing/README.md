@@ -13,11 +13,18 @@ eBPF (extended Berkeley Packet Filter) runs sandboxed programs in the Linux kern
 ## IPv6 Header Structure
 
 ```c
-// IPv6 header layout (RFC 8200)
+// Linux UAPI IPv6 header layout (<linux/ipv6.h>)
 struct ipv6hdr {
-    __u8    priority:4,     // Traffic class high nibble
-            version:4;      // IP version (6)
-    __u8    flow_lbl[3];    // Flow label
+#if defined(__LITTLE_ENDIAN_BITFIELD)
+    __u8    priority:4,
+            version:4;
+#elif defined(__BIG_ENDIAN_BITFIELD)
+    __u8    version:4,
+            priority:4;
+#else
+#error  "Please fix <asm/byteorder.h>"
+#endif
+    __u8    flow_lbl[3];    // Remaining traffic class + flow label bits
     __be16  payload_len;    // Payload length
     __u8    nexthdr;        // Next header type (TCP=6, UDP=17, ICMPv6=58)
     __u8    hop_limit;      // Hop limit (TTL equivalent)
@@ -29,16 +36,19 @@ struct ipv6hdr {
 ## Basic IPv6 Packet Parser (TC BPF)
 
 ```c
-// ipv6_parser.c - TC BPF program for IPv6 packet parsing
+//go:build ignore
+
+// ipv6_parser.c - TC/TCX BPF program for IPv6 packet parsing
 #include <linux/bpf.h>
 #include <linux/if_ether.h>
 #include <linux/ipv6.h>
+#include <linux/pkt_cls.h>
 #include <linux/tcp.h>
 #include <linux/udp.h>
 #include <bpf/bpf_helpers.h>
 #include <bpf/bpf_endian.h>
 
-// Map to count packets per destination IPv6 prefix
+// Map to count packets per destination IPv6 address
 struct {
     __uint(type, BPF_MAP_TYPE_HASH);
     __type(key, struct in6_addr);
@@ -65,17 +75,22 @@ int ipv6_packet_counter(struct __sk_buff *skb) {
     if ((void *)(ip6h + 1) > data_end)
         return TC_ACT_OK;
 
-    // Log source and destination addresses
-    bpf_printk("IPv6 src: %x:%x:%x", ip6h->saddr.s6_addr32[0],
-               ip6h->saddr.s6_addr32[1], ip6h->saddr.s6_addr32[2]);
+    struct in6_addr dst = ip6h->daddr;
+
+    // Log the next-header field for quick debugging
+    bpf_printk("IPv6 nexthdr=%d", ip6h->nexthdr);
 
     // Increment counter for destination address
-    __u64 *count = bpf_map_lookup_elem(&ipv6_counter, &ip6h->daddr);
+    __u64 *count = bpf_map_lookup_elem(&ipv6_counter, &dst);
     if (count) {
         __sync_fetch_and_add(count, 1);
     } else {
         __u64 initial = 1;
-        bpf_map_update_elem(&ipv6_counter, &ip6h->daddr, &initial, BPF_NOEXIST);
+        if (bpf_map_update_elem(&ipv6_counter, &dst, &initial, BPF_NOEXIST) != 0) {
+            count = bpf_map_lookup_elem(&ipv6_counter, &dst);
+            if (count)
+                __sync_fetch_and_add(count, 1);
+        }
     }
 
     return TC_ACT_OK;
@@ -95,20 +110,21 @@ clang -O2 -g -target bpf \
 
 # Load with tc (Traffic Control)
 sudo tc qdisc add dev eth0 clsact
-sudo tc filter add dev eth0 ingress bpf obj ipv6_parser.o sec tc direct-action
+sudo tc filter add dev eth0 ingress bpf object-file ipv6_parser.o section tc direct-action
 
 # Verify it's loaded
 sudo tc filter show dev eth0 ingress
 ```
 
-## Go-Based eBPF Loader (cilium/ebpf)
+## Go-Based eBPF Loader (cilium/ebpf with TCX)
+
+The `link` package attaches `tc` programs through TCX on Linux 6.6 and newer. For classic TC attachment on older kernels, use the `tc` command shown above.
 
 ```go
 // main.go
 package main
 
 import (
-    "encoding/binary"
     "fmt"
     "net"
     "time"
@@ -117,7 +133,7 @@ import (
     "github.com/cilium/ebpf/link"
 )
 
-//go:generate go run github.com/cilium/ebpf/cmd/bpf2go -cc clang IPv6Counter ipv6_parser.c
+//go:generate go tool bpf2go -tags linux IPv6Counter ipv6_parser.c -- -I/usr/include/x86_64-linux-gnu
 
 func main() {
     // Load the compiled eBPF objects
@@ -128,8 +144,15 @@ func main() {
     defer objs.Close()
 
     // Attach to network interface
-    iface, _ := net.InterfaceByName("eth0")
-    l, err := link.AttachTCIngress(iface, objs.Ipv6PacketCounter, &link.TCOptions{})
+    iface, err := net.InterfaceByName("eth0")
+    if err != nil {
+        panic(err)
+    }
+    l, err := link.AttachTCX(link.TCXOptions{
+        Program:   objs.Ipv6PacketCounter,
+        Interface: iface.Index,
+        Attach:    ebpf.AttachTCXIngress,
+    })
     if err != nil {
         panic(err)
     }
@@ -137,6 +160,7 @@ func main() {
 
     // Read packet counts
     ticker := time.NewTicker(5 * time.Second)
+    defer ticker.Stop()
     for range ticker.C {
         var key [16]byte
         var value uint64
@@ -145,6 +169,9 @@ func main() {
         for iter.Next(&key, &value) {
             ip := net.IP(key[:])
             fmt.Printf("Destination %s: %d packets\n", ip, value)
+        }
+        if err := iter.Err(); err != nil {
+            panic(err)
         }
     }
 }
@@ -159,21 +186,32 @@ __u8 parse_ipv6_extensions(void *data, void *data_end, __u8 nexthdr, __u32 *offs
     while (nexthdr == 0   ||  // Hop-by-Hop Options
            nexthdr == 43  ||  // Routing Header
            nexthdr == 44  ||  // Fragment Header
+           nexthdr == 51  ||  // Authentication Header
            nexthdr == 60  ||  // Destination Options
            nexthdr == 135 ||  // Mobility Header
            nexthdr == 139 ||  // HIP
            nexthdr == 140) {  // Shim6
-        // Extension headers start with next-header + length
-        struct {
-            __u8 nexthdr;
-            __u8 hdrlen;  // Length in 8-byte units, excluding first 8 bytes
-        } *exthdr = (void *)((__u8 *)data + *offset);
+        struct ipv6_opt_hdr *exthdr = (void *)((__u8 *)data + *offset);
+        __u8 hdr_type = nexthdr;
+        __u32 hdrlen;
 
         if ((void *)(exthdr + 1) > data_end)
             return 0;  // Failed to parse
 
         nexthdr = exthdr->nexthdr;
-        *offset += (exthdr->hdrlen + 1) * 8;
+
+        if (hdr_type == 44) {
+            hdrlen = 8;  // Fragment header is always 8 bytes
+        } else if (hdr_type == 51) {
+            hdrlen = (exthdr->hdrlen + 2) * 4;  // AH length is in 32-bit words minus 2
+        } else {
+            hdrlen = (exthdr->hdrlen + 1) * 8;
+        }
+
+        if ((void *)((__u8 *)exthdr + hdrlen) > data_end)
+            return 0;
+
+        *offset += hdrlen;
 
         if (*offset > 256)  // Prevent infinite loops
             return 0;
