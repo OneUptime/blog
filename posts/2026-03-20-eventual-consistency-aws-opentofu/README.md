@@ -8,11 +8,11 @@ Description: Learn how to handle AWS eventual consistency issues in OpenTofu whe
 
 ## Introduction
 
-AWS is an eventually consistent system. When you create an IAM role, it may take seconds to propagate globally. When you create a security group, it may not be immediately visible to another API call. OpenTofu may receive success from the creation API but then fail on subsequent operations that depend on the resource being fully available.
+Some AWS control plane APIs are eventually consistent. IAM changes are not always immediately visible across AWS endpoints, and the Amazon EC2 API documents eventual consistency for resources such as security groups. OpenTofu may receive success from the creation API but then fail on subsequent operations that depend on the resource being fully available.
 
 ## IAM Propagation Delay
 
-IAM changes can take 5-10 seconds to propagate globally.
+IAM changes are not always immediately visible across AWS endpoints.
 
 ```hcl
 resource "aws_iam_role" "lambda" {
@@ -44,28 +44,16 @@ resource "time_sleep" "iam_propagation" {
 resource "aws_lambda_function" "app" {
   depends_on    = [time_sleep.iam_propagation]
   function_name = "${var.app_name}-function"
+  filename      = "build/function.zip"
+  handler       = "index.handler"
+  runtime       = "nodejs20.x"
   role          = aws_iam_role.lambda.arn
-  # ...
 }
 ```
 
-## S3 Bucket Policy Consistency
+## S3 Object Consistency
 
-S3 bucket policies have eventual consistency. Applying a bucket policy and immediately reading from the bucket can fail.
-
-```hcl
-resource "aws_s3_bucket_policy" "main" {
-  bucket = aws_s3_bucket.main.id
-  policy = jsonencode({ ... })
-}
-
-# Wait for policy to take effect before any Lambda or other resources
-# that need to read from the bucket
-resource "time_sleep" "bucket_policy" {
-  depends_on = [aws_s3_bucket_policy.main]
-  create_duration = "5s"
-}
-```
+Amazon S3 object operations are strongly consistent. For normal object PUT, GET, and LIST workflows, adding `time_sleep` to work around a read-after-write delay is unnecessary.
 
 ## Using the time Provider
 
@@ -74,61 +62,39 @@ terraform {
   required_providers {
     time = {
       source  = "hashicorp/time"
-      version = "~> 0.9"
+      version = "~> 0.13"
     }
   }
 }
 ```
 
-## Retry Logic in null_resource
+## Retry Logic with terraform_data
 
-For critical operations, add polling until the resource is actually available.
+For critical operations, prefer polling until the resource is actually available.
 
 ```hcl
-resource "null_resource" "verify_iam_ready" {
+resource "terraform_data" "verify_iam_ready" {
   depends_on = [aws_iam_role.app]
 
-  triggers = {
-    role_arn = aws_iam_role.app.arn
-  }
+  triggers_replace = [aws_iam_role.app.arn]
 
   provisioner "local-exec" {
-    command = <<-SCRIPT
-      # Verify the role is accessible before proceeding
-      MAX_ATTEMPTS=12
-      ATTEMPT=0
-      until aws iam get-role --role-name "${aws_iam_role.app.name}" --query 'Role.Arn' --output text 2>/dev/null; do
-        ATTEMPT=$((ATTEMPT + 1))
-        if [[ $ATTEMPT -ge $MAX_ATTEMPTS ]]; then
-          echo "IAM role not available after $MAX_ATTEMPTS attempts"
-          exit 1
-        fi
-        echo "Waiting for IAM role to be available (attempt $ATTEMPT)..."
-        sleep 5
-      done
-      echo "IAM role confirmed available"
-    SCRIPT
+    command = "aws iam wait role-exists --role-name ${aws_iam_role.app.name}"
   }
 }
 ```
 
-## CloudFront and DNS Propagation
+## CloudFront Deployment
 
 ```hcl
-# CloudFront distributions take 5-15 minutes to deploy globally
+# CloudFront distributions can take several minutes to deploy
 resource "aws_cloudfront_distribution" "main" {
   # ...
-}
-
-# If downstream resources need the CloudFront domain immediately,
-# add a wait after the distribution becomes enabled
-resource "time_sleep" "cloudfront_propagation" {
-  depends_on = [aws_cloudfront_distribution.main]
-  # CloudFront status changes to "Deployed" before this matters,
-  # but DNS propagation for Route53 alias records takes additional time
-  create_duration = "30s"
+  wait_for_deployment = true
 }
 ```
+
+Route 53 record propagation is a separate step. If a downstream operation depends on the DNS change itself, verify that change with Route 53 rather than adding an arbitrary sleep after the CloudFront distribution resource.
 
 ## Addressing Race Conditions in Parallel Creates
 
@@ -146,13 +112,16 @@ resource "time_sleep" "shared_iam_ready" {
 
 # All Lambda functions wait for IAM to be ready
 resource "aws_lambda_function" "functions" {
-  for_each   = var.functions
-  depends_on = [time_sleep.shared_iam_ready]
-  role       = local.iam_role_arn
-  # ...
+  for_each      = var.functions
+  depends_on    = [time_sleep.shared_iam_ready]
+  function_name = "${var.app_name}-${each.key}"
+  filename      = each.value.filename
+  handler       = each.value.handler
+  runtime       = each.value.runtime
+  role          = local.iam_role_arn
 }
 ```
 
 ## Summary
 
-AWS eventual consistency requires explicit delays after IAM, S3 policy, and DNS changes. The `time_sleep` resource from the HashiCorp time provider adds deterministic waits, while `null_resource` with polling provides adaptive waits for unpredictable propagation times. Always add these waits when resources depend on recently modified IAM, policies, or DNS records.
+AWS eventual consistency shows up most often in control plane operations such as IAM and parts of EC2. The `time_sleep` resource from the HashiCorp time provider adds deterministic waits when a provider does not model the dependency, while `terraform_data` with polling or CLI waiters can verify that a resource is actually visible before downstream operations depend on it. Not every AWS service fits this pattern: Amazon S3 object operations are strongly consistent.
