@@ -99,7 +99,7 @@ print("Model trained and saved")
 
 ```python
 import joblib
-from scapy.all import sniff, IP
+from scapy.all import sniff, IP, TCP, UDP
 from datetime import datetime
 
 # Load saved model and scaler
@@ -107,6 +107,33 @@ model = joblib.load('anomaly_model.pkl')
 scaler = joblib.load('anomaly_scaler.pkl')
 
 anomaly_count = 0
+
+def extract_features(pkt):
+    """Extract numeric features from an IPv4 packet for ML analysis."""
+    if not pkt.haslayer(IP):
+        return None
+    
+    ip = pkt[IP]
+    features = {
+        'proto': ip.proto,
+        'ttl': ip.ttl,
+        'ip_len': ip.len,
+        'flags': int(ip.flags),
+        'sport': 0,
+        'dport': 0,
+        'tcp_flags': 0,
+        'payload_len': len(ip.payload)
+    }
+    
+    if pkt.haslayer(TCP):
+        features['sport'] = pkt[TCP].sport
+        features['dport'] = pkt[TCP].dport
+        features['tcp_flags'] = int(pkt[TCP].flags)
+    elif pkt.haslayer(UDP):
+        features['sport'] = pkt[UDP].sport
+        features['dport'] = pkt[UDP].dport
+    
+    return features
 
 def detect_anomaly(pkt):
     """Callback function: score each packet for anomaly."""
@@ -120,7 +147,7 @@ def detect_anomaly(pkt):
     X_scaled = scaler.transform(X)
     
     prediction = model.predict(X_scaled)[0]   # -1 = anomaly, 1 = normal
-    anomaly_score = model.score_samples(X_scaled)[0]
+    anomaly_score = model.decision_function(X_scaled)[0]
     
     if prediction == -1:
         anomaly_count += 1
@@ -134,9 +161,9 @@ sniff(filter="ip", prn=detect_anomaly, store=False)
 
 ## Interpreting Results
 
-- **Anomaly score < -0.1**: Highly anomalous packet
-- **Anomaly score near 0**: Borderline
-- **Anomaly score > 0**: Normal traffic
+- **Anomaly score < 0**: Packet classified as anomalous
+- **Anomaly score near 0**: Borderline or close to the model threshold
+- **Anomaly score > 0**: Packet classified as normal
 
 Tune the `contamination` parameter based on your false positive rate.
 
