@@ -8,13 +8,13 @@ Description: Learn what a DHCPv6 IAID is, how it differs from a DUID, and how Id
 
 ---
 
-In DHCPv6, an IAID (Identity Association Identifier) is a 32-bit number that uniquely identifies a collection of IPv6 addresses or prefixes assigned to a specific interface on a DHCPv6 client. While the DUID identifies the client device, the IAID identifies a specific interface or address group on that device.
+In DHCPv6, an IAID (Identity Association Identifier) is a 32-bit number that identifies a specific Identity Association (IA) on a DHCPv6 client. While the DUID identifies the client device, the IAID identifies a particular IA that carries addresses or delegated prefixes on that device.
 
 ---
 
 ## What is an Identity Association (IA)?
 
-An Identity Association (IA) is the binding between a DHCPv6 client's interface and the addresses or prefixes assigned by the server. There are three IA types:
+An Identity Association (IA) is the construct through which a DHCPv6 client and server identify, group, and manage a set of related IPv6 addresses or delegated prefixes. There are three IA types:
 
 | IA Type | Name | Purpose |
 |---------|------|---------|
@@ -29,45 +29,32 @@ An Identity Association (IA) is the binding between a DHCPv6 client's interface 
 | Concept | Scope | Stability | Purpose |
 |---------|-------|-----------|---------|
 | DUID | Entire device | Persistent | Identifies the client/server |
-| IAID | Per interface | Per-interface | Identifies an address group |
+| IAID | Per IA type on a client | Client-defined | Identifies an IA |
 
-A client with two interfaces (eth0, eth1) has one DUID but two IAIDs (one per interface).
+A client with two interfaces (eth0, eth1) often uses one DUID plus distinct IAIDs for the IAs associated with those interfaces.
 
 ---
 
 ## How IAIDs Are Generated
 
+RFC 8415 leaves IAID selection to the client implementation, as long as the IAID is unique among IAs of the same type on that client.
+
 ### Linux (systemd-networkd)
 
-systemd-networkd generates the IAID from the interface index by default:
+systemd-networkd chooses the IAID internally unless you set `IAID=` explicitly in the `[DHCPv6]` section.
 
-```bash
-# View interface index
+### Linux (wide-dhcpv6-client / dhcp6c)
 
-ip link show eth0 | head -1
-# 2: eth0: ...
-
-# The IAID is typically the interface index (decimal to hex)
-# eth0 with index 2 → IAID = 0x00000002
-```
-
-### Linux (dhclient)
-
-dhclient generates IAIDs from the interface's hardware address:
-
-```bash
-# View dhclient leases with IAID
-cat /var/lib/dhcp/dhclient6.leases | grep ia-na
-```
+`dhcp6c` uses the numeric IDs from `send ia-na ID;` and `send ia-pd ID;` as the IAIDs for those IAs, with matching `id-assoc` blocks.
 
 ### Windows
 
 Windows generates IAIDs automatically. View them via:
 
 ```powershell
-# View IAID in use
+# View DHCPv6-managed IPv6 addresses on an interface
 netsh interface ipv6 show addresses
-# The "Dhcp" prefix addresses are associated with an IAID internally
+# Standard netsh output does not display the IAID itself
 ```
 
 ---
@@ -89,15 +76,15 @@ IAID=1
 
 ### Why Pin the IAID?
 
-If `systemd-networkd` regenerates the IAID (e.g., after hardware changes), the server sees it as a new client and issues a new address. Pinning the IAID ensures stable address assignments.
+If the IAID changes, the server sees it as a different IA and may issue a different address or delegated prefix. Pinning the IAID helps keep server-side lease tracking and reservations stable.
 
 ---
 
-## Configuring IAID in dhclient
+## Configuring IAID in wide-dhcpv6-client (dhcp6c)
 
 ```text
-# /etc/dhcp/dhclient6.conf
-interface "eth0" {
+# /etc/wide-dhcpv6/dhcp6c.conf
+interface eth0 {
     # IA_NA with IAID 1
     send ia-na 1;
     # IA_PD with IAID 2 (for prefix delegation)
@@ -185,14 +172,14 @@ Kea DHCPv6 automatically tracks IAID per client:
 sudo tcpdump -i eth0 -vv udp port 546 or udp port 547
 
 # In Wireshark, filter:
-# dhcpv6.iaaddr.iaid
+# dhcpv6.iaid
 
 # Check systemd-networkd IAID
 journalctl -u systemd-networkd | grep -i iaid
 
-# Force IAID regeneration by removing lease cache
-rm /var/lib/systemd/network/*.lease
-sudo systemctl restart systemd-networkd
+# After changing IAID=, reload the .network file and reconfigure the link
+sudo networkctl reload
+sudo networkctl reconfigure eth0
 ```
 
 ---
@@ -200,16 +187,16 @@ sudo systemctl restart systemd-networkd
 ## Best Practices
 
 1. **Pin IAIDs in production** to ensure stable address assignments after reboots or hardware changes
-2. **Use separate IAIDs** for each interface on multi-homed systems
+2. **Use distinct IAIDs** for different IAs of the same type on multi-homed systems
 3. **Use IA_PD** only on gateway/CPE devices that need prefix delegation
-4. **Document DUID+IAID pairs** in your IPAM for server-side reservation management
+4. **Document DUID + IA type + IAID tuples** in your IPAM for server-side reservation management
 5. **Test IAID persistence** by rebooting a client and verifying it receives the same address
 
 ---
 
 ## Conclusion
 
-IAIDs are the per-interface half of DHCPv6 client identity - paired with the DUID to form the full client identifier for lease tracking. Understanding IAIDs is essential when configuring prefix delegation, multi-interface hosts, or stable address reservations.
+IAIDs are the client-chosen identifiers for DHCPv6 Identity Associations. Paired with the DUID and IA type, they let servers track address and prefix leases over time. Understanding IAIDs is essential when configuring prefix delegation, multi-interface hosts, or stable address reservations.
 
 ---
 
