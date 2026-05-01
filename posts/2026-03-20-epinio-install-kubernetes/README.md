@@ -12,11 +12,13 @@ Epinio is a developer-friendly PaaS (Platform as a Service) built on Kubernetes.
 
 ## Prerequisites
 
-- Kubernetes cluster (v1.24+)
+- Kubernetes cluster (v1.20-v1.28)
 - `kubectl` configured for the cluster
 - `helm` v3.x installed
-- A wildcard domain or ingress controller
-- cert-manager (optional but recommended)
+- A wildcard-enabled domain that points to your ingress controller
+- A default `IngressClass`
+- A default `StorageClass`
+- cert-manager (required for the TLS setup used below)
 
 ## Step 1: Install Required Dependencies
 
@@ -26,10 +28,10 @@ Epinio is a developer-friendly PaaS (Platform as a Service) built on Kubernetes.
 helm repo add jetstack https://charts.jetstack.io
 helm repo update
 
-helm install cert-manager jetstack/cert-manager \
+helm upgrade --install cert-manager jetstack/cert-manager \
   --namespace cert-manager \
   --create-namespace \
-  --set installCRDs=true
+  --set crds.enabled=true
 ```
 
 ### Install an Ingress Controller
@@ -40,12 +42,16 @@ helm install cert-manager jetstack/cert-manager \
 helm repo add ingress-nginx https://kubernetes.github.io/ingress-nginx
 helm repo update
 
-helm install ingress-nginx ingress-nginx/ingress-nginx \
+helm upgrade --install ingress-nginx ingress-nginx/ingress-nginx \
   --namespace ingress-nginx \
-  --create-namespace
+  --create-namespace \
+  --set controller.ingressClassResource.default=true
 
 # Get the external IP
 kubectl get svc -n ingress-nginx ingress-nginx-controller
+
+# Verify a default StorageClass exists
+kubectl get storageclass
 ```
 
 ## Step 2: Add the Epinio Helm Repository
@@ -76,17 +82,21 @@ helm install epinio epinio/epinio \
 ```yaml
 # epinio-values.yaml
 global:
-  # Your wildcard domain (e.g., *.epinio.example.com)
+  # Base domain backed by a wildcard DNS record
   domain: epinio.example.com
   # TLS configuration
   tlsIssuer: letsencrypt-production
+  tlsIssuerEmail: user@example.com
 
-# Enable S3-compatible storage
+# Use external S3-compatible storage
+seaweedfs:
+  enabled: false
+
 s3:
   endpoint: s3.amazonaws.com
   bucket: my-epinio-bucket
   region: us-west-2
-  accessKeyId: "your-access-key"
+  accessKeyID: "your-access-key"
   secretAccessKey: "your-secret-key"
 
 # Configure internal container registry
@@ -117,18 +127,14 @@ epinio version
 ## Step 5: Login to Epinio
 
 ```bash
-# Get the Epinio admin password
-EPINIO_PASSWORD=$(kubectl get secret epinio-creds \
-  -n epinio \
-  -o jsonpath='{.data.password}' | base64 -d)
-
-# Login
+# Login with the default admin user
 epinio login https://epinio.epinio.example.com \
   --user admin \
-  --password "${EPINIO_PASSWORD}"
+  --password password \
+  --trust-ca
 
 # Verify login
-epinio info
+epinio settings show
 ```
 
 ## Step 6: Verify Installation
@@ -154,13 +160,27 @@ epinio app list
 mkdir hello-world && cd hello-world
 cat > app.rb << 'EOF'
 require 'sinatra'
+configure { set :server, :puma }
+
 get '/' do
   "Hello from Epinio!\n"
 end
 EOF
 
+cat > Gemfile << 'EOF'
+source 'https://rubygems.org'
+
+gem 'puma'
+gem 'sinatra'
+EOF
+
+cat > config.ru << 'EOF'
+require './app'
+run Sinatra::Application
+EOF
+
 # Push the application
-epinio push --name hello-world
+epinio push --name hello-world --path .
 
 # Check deployment
 epinio app show hello-world
