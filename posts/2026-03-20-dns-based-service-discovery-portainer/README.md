@@ -8,18 +8,18 @@ Description: Use Docker's built-in DNS resolver and custom DNS configurations in
 
 ---
 
-Docker provides automatic DNS-based service discovery for containers on the same network. Services can reference each other by container name or service name without hardcoding IP addresses.
+Docker provides automatic DNS-based service discovery for containers on the same user-defined network. Services can reference each other by container name or service name without hardcoding IP addresses.
 
 ## How Docker DNS Works
 
-Every Docker network has an embedded DNS resolver at `127.0.0.11`. When a container makes a DNS query for another container's name, Docker resolves it to the container's IP on that network.
+Containers attached to a user-defined network use Docker's embedded DNS resolver at `127.0.0.11`. When a container makes a DNS query for another container's name or service name, Docker resolves it to the container's IP on that network.
 
 ```bash
-# From inside a container, these all work if services are on the same network:
+# From inside a container on the same user-defined network:
 
-curl http://database:5432     # Resolves to postgres container IP
-curl http://redis:6379        # Resolves to redis container IP
-curl http://api:8080          # Resolves to api container IP
+PGPASSWORD=password psql -h database -U myapp -d mydb   # Connects to the Postgres service by service name
+redis-cli -h cache ping                                 # Connects to the Redis service by service name
+curl http://api:8080                                    # Connects to the API service by service name
 ```
 
 ## Same-Network Service Discovery
@@ -27,7 +27,6 @@ curl http://api:8080          # Resolves to api container IP
 Services on the same custom Docker network discover each other automatically:
 
 ```yaml
-version: "3.8"
 services:
   api:
     image: myapi:1.2.3
@@ -43,6 +42,7 @@ services:
     environment:
       - POSTGRES_USER=myapp
       - POSTGRES_PASSWORD=password
+      - POSTGRES_DB=mydb
     networks:
       - app-net
 
@@ -58,7 +58,7 @@ networks:
 
 ## Aliases for Flexible DNS Names
 
-Assign multiple DNS names to a container using network aliases:
+Assign multiple DNS names to a service using network aliases:
 
 ```yaml
 services:
@@ -82,7 +82,9 @@ networks:
   shared-services:
     name: shared-services-network
     driver: bridge
+```
 
+```yaml
 # Stack B - joins the shared network
 networks:
   shared-services:
@@ -92,7 +94,7 @@ networks:
 
 ## DNS Aliases for Blue/Green Deployments
 
-Use aliases to enable zero-downtime cutover:
+Use aliases to simplify cutover between versions:
 
 ```yaml
 services:
@@ -101,12 +103,12 @@ services:
     networks:
       app-net:
         aliases:
-          - app    # Swap this alias from app-v1 to app-v2 during cutover
+          - app    # Move this alias during cutover; don't assign it to both versions at once
 ```
 
 ## Custom DNS Resolvers
 
-Override DNS for containers that need external resolution:
+Set custom DNS servers and search domains for containers that need external name resolution:
 
 ```yaml
 services:
@@ -121,4 +123,4 @@ services:
 
 ## Summary
 
-Docker's built-in DNS resolver provides automatic service discovery for containers on the same network. Use custom networks instead of the default bridge for reliable DNS resolution, network aliases for flexible hostname assignment, and external networks to connect services across Portainer stacks.
+Docker's built-in DNS resolver provides automatic service discovery for containers on the same user-defined network. Use custom networks instead of the default bridge for reliable DNS resolution, network aliases for flexible hostname assignment, and external networks to connect services across Portainer stacks.
