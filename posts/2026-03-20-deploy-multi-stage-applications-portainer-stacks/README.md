@@ -4,7 +4,7 @@ Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
 Tags: Portainer, Docker Compose, Multi-Stage, Stack, Microservice, DevOps
 
-Description: Deploy complex multi-stage applications using Portainer stacks where builds, migrations, and serving happen in coordinated Docker Compose service groups.
+Description: Deploy complex multi-stage applications using Portainer stacks where initialization, migrations, and serving happen in coordinated Docker Compose service groups.
 
 ---
 
@@ -12,7 +12,7 @@ This guide shows how to use this Docker Compose feature in Portainer stacks to s
 
 ## Overview
 
-Portainer's stack editor supports the full Docker Compose specification. Features like profiles, extension fields, and YAML anchors work directly in the Portainer stack editor without any special configuration.
+On Docker Standalone environments, Portainer deploys stacks with Docker Compose. Standard Compose syntax such as profiles, extension fields, and YAML anchors can be used directly in the stack editor. On Docker Swarm, Portainer deploys stacks with `docker stack deploy`, which uses the legacy Compose v3 format rather than the full Compose Specification.
 
 ## Practical Example
 
@@ -23,12 +23,10 @@ Profiles let you define services that are only started in specific scenarios:
 ```yaml
 # stack with profiles
 
-version: "3.8"
 services:
   # Always started
   webapp:
     image: myapp:1.2.3
-    profiles: []    # No profile = always active
 
   # Only started with --profile debug
   debug-tools:
@@ -44,7 +42,7 @@ services:
       - "9090:9090"
 ```
 
-In Portainer, set the COMPOSE_PROFILES environment variable:
+For Compose-based deployments, enable profiles with the standard `COMPOSE_PROFILES` environment variable:
 ```text
 COMPOSE_PROFILES=monitoring,debug
 ```
@@ -67,7 +65,6 @@ x-resource-limits: &resource-limits
         memory: 512M
         cpus: "0.5"
 
-version: "3.8"
 services:
   api-service-1:
     image: myapi:1.2.3
@@ -95,7 +92,6 @@ x-deploy-info:
   last-updated: "2026-03-20"
   documentation: "https://wiki.example.com/deployments/myapp"
 
-version: "3.8"
 services:
   webapp:
     image: myapp:1.2.3
@@ -107,17 +103,18 @@ services:
 
 ### Multi-Stage Application Example
 
-Deploy a complete multi-stage application flow:
+On Docker Standalone environments, you can model a complete multi-stage application flow like this:
 
 ```yaml
-version: "3.8"
 services:
   # Stage 1: Database
   database:
     image: postgres:16-alpine
     healthcheck:
-      test: ["CMD-SHELL", "pg_isready"]
+      test: ["CMD-SHELL", "pg_isready -U postgres"]
       interval: 10s
+      timeout: 5s
+      retries: 5
 
   # Stage 2: Migrations (run after DB is ready)
   migrations:
@@ -133,6 +130,11 @@ services:
     depends_on:
       migrations:
         condition: service_completed_successfully
+    healthcheck:
+      test: ["CMD", "python", "-c", "import urllib.request; urllib.request.urlopen('http://127.0.0.1:8080/')"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
     ports:
       - "8080:8080"
 
@@ -148,8 +150,8 @@ services:
 
 ## Deploying in Portainer
 
-Paste the compose YAML directly into Portainer's stack editor at **Stacks > Add Stack > Web Editor**. Portainer handles YAML anchors, profiles, and extension fields transparently - they're all valid Docker Compose syntax that Portainer passes to Docker's Compose engine.
+On Docker Standalone environments, paste the Compose YAML directly into Portainer's stack editor at **Stacks > Add stack > Web editor**. On Docker Swarm environments, Portainer uses `docker stack deploy`, so features from the full Compose Specification, such as profiles and `depends_on` conditions, should be avoided in Swarm stack definitions.
 
 ## Summary
 
-Docker Compose features like profiles, YAML anchors, and extension fields all work seamlessly in Portainer's stack editor. Use profiles for environment-specific service activation, YAML anchors to eliminate configuration duplication, and extension fields for metadata annotation. These features make large, complex stacks more maintainable.
+On Docker Standalone environments, Compose features like profiles, YAML anchors, and extension fields can make Portainer stacks more maintainable. Use profiles for environment-specific service activation, YAML anchors to eliminate configuration duplication, and extension fields for metadata annotation. For staged startup flows, pair `depends_on` conditions with explicit healthchecks, and check Swarm compatibility before reusing the same stack definition there.
