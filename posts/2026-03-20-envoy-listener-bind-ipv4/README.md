@@ -24,7 +24,7 @@ static_resources:
       address:
         socket_address:
           protocol: TCP
-          address: 203.0.113.10   # Specific IPv4 address (use 0.0.0.0 for all)
+          address: 203.0.113.10   # Example IPv4; replace with an address assigned to the host (use 0.0.0.0 for all)
           port_value: 8080
 
       filter_chains:
@@ -80,11 +80,12 @@ admin:
 ```yaml
 static_resources:
   listeners:
+    # Add matching cluster definitions under static_resources.clusters
     # Public listener
     - name: public_listener
       address:
         socket_address:
-          address: 203.0.113.10
+          address: 203.0.113.10  # Replace with an IPv4 assigned to the public interface
           port_value: 80
       filter_chains:
         - filters:
@@ -109,7 +110,7 @@ static_resources:
     - name: admin_listener
       address:
         socket_address:
-          address: 10.0.0.1    # Internal interface only
+          address: 10.0.0.1    # Replace with an IPv4 assigned to the internal interface
           port_value: 8080
       filter_chains:
         - filters:
@@ -141,19 +142,19 @@ envoy --mode validate -c /etc/envoy/envoy.yaml
 # Start Envoy
 envoy -c /etc/envoy/envoy.yaml
 
-# Or via Docker
+# Or via Docker with host networking (Linux, or Docker Desktop 4.34+ with host networking enabled)
 docker run -d --name envoy \
-  -p 8080:8080 \
+  --network host \
   -v /etc/envoy/envoy.yaml:/etc/envoy/envoy.yaml:ro \
-  envoyproxy/envoy:v1.29-latest \
+  envoyproxy/envoy:v1.38-latest \
   -c /etc/envoy/envoy.yaml
 
 # Verify listener is bound
-sudo ss -tlnp | grep envoy
+sudo ss -tlnp | grep ':8080'
 
 # Check Envoy admin API
-curl http://127.0.0.1:9901/listeners
-# Expected: main_listener::203.0.113.10:8080
+curl -s http://127.0.0.1:9901/listeners?format=json
+# Expected: listener_statuses includes main_listener with local_address 203.0.113.10:8080
 ```
 
 ## Conclusion
