@@ -10,44 +10,55 @@ Description: Require edge agents to use Portainer-generated edge IDs rather than
 
 Portainer Edge Agents enable management of remote environments that are behind NAT, firewalls, or have limited connectivity. The Edge Agent establishes an outbound connection to the Portainer server, eliminating the need for inbound firewall rules.
 
+To enforce Portainer-generated Edge IDs, go to **Settings** > **Edge Compute**, enable **Enforce use of Portainer generated Edge ID**, and save the change. With this enabled, the Edge ID used by an Edge Agent deployment must already exist in Portainer's database in order to connect.
+
 ## How Edge Agent Works
 
 ```mermaid
 flowchart LR
-    A[Edge Device] -->|Outbound WSS| B[Portainer Server :8000]
-    B -->|Commands| A
-    A -->|Status/Snapshots| B
+    A[Edge Device] -->|Outbound HTTPS poll| B[Portainer Server :9443]
+    A -->|Outbound TLS tunnel when required| C[Portainer Tunnel :8000]
+    B -->|Schedules / status| A
+    C -->|Interactive management| A
 ```
 
-The Edge Agent initiates all connections outbound to the Portainer server on port 8000 (WebSocket Secure), so no inbound ports need to be opened on the edge network.
+In standard mode, the Edge Agent polls Portainer over HTTPS on the UI/API port and opens a TLS tunnel to port 8000 only when interactive access is required. In async mode, only the UI/API port is required and no tunnel is opened. No inbound ports need to be opened on the edge network.
 
-## Generate Edge Deployment Script
+## Generate Edge Deployment Values
 
 ```bash
-TOKEN=$(curl -s -X POST \
+# Remove --insecure if Portainer uses a publicly trusted certificate.
+TOKEN=$(curl -sS -X POST \
   https://portainer.example.com:9443/api/auth \
   -H "Content-Type: application/json" \
-  -d '{"username":"admin","password":"yourpassword"}' \
+  -d '{"Username":"admin","Password":"yourpassword"}' \
   --insecure | python3 -c "import sys,json; print(json.load(sys.stdin)['jwt'])")
 
-# Create an edge environment and get the deployment script
+# Create a Docker Standalone Edge environment and capture the generated Edge ID / Edge Key.
+# For async mode, add: --form "EdgeAsyncMode=true"
 
-curl -X POST \
+EDGE_ENV=$(curl -sS -X POST \
   https://portainer.example.com:9443/api/endpoints \
   -H "Authorization: Bearer $TOKEN" \
-  -H "Content-Type: application/json" \
-  -d '{
-    "Name": "edge-site-01",
-    "EndpointCreationType": 4,
-    "EdgeCheckinInterval": 30
-  }' \
-  --insecure
+  --form "Name=edge-site-01" \
+  --form "EndpointCreationType=4" \
+  --form "URL=/var/run/docker.sock" \
+  --form "ContainerEngine=docker" \
+  --form "EdgeCheckinInterval=30" \
+  --insecure)
+
+EDGE_ID=$(printf '%s' "$EDGE_ENV" | python3 -c "import sys,json; print(json.load(sys.stdin)['EdgeID'])")
+EDGE_KEY=$(printf '%s' "$EDGE_ENV" | python3 -c "import sys,json; print(json.load(sys.stdin)['EdgeKey'])")
 ```
 
 ## Standard Mode Installation
 
 ```bash
-# Standard mode - agent polls frequently (real-time management)
+# Match the agent tag to your Portainer Server release.
+PORTAINER_AGENT_TAG=lts
+
+# Standard mode - interactive management over the reverse tunnel
+# Add -e EDGE_INSECURE_POLL=1 if Portainer uses a self-signed certificate
 docker run -d \
   --name portainer_edge_agent \
   --restart=always \
@@ -58,14 +69,18 @@ docker run -d \
   -e EDGE=1 \
   -e EDGE_ID="${EDGE_ID}" \
   -e EDGE_KEY="${EDGE_KEY}" \
-  -e EDGE_INSECURE_POLL=0 \
-  portainer/agent:latest
+  portainer/agent:${PORTAINER_AGENT_TAG}
 ```
 
 ## Async Mode Installation
 
 ```bash
-# Async mode - less frequent polling, suitable for limited bandwidth
+# Async mode requires Portainer Business Edition.
+PORTAINER_AGENT_TAG=lts
+
+# Async mode - snapshot-based management for limited bandwidth
+# Ping, snapshot, and command intervals are configured in Portainer
+# Add -e EDGE_INSECURE_POLL=1 if Portainer uses a self-signed certificate
 docker run -d \
   --name portainer_edge_agent \
   --restart=always \
@@ -77,26 +92,20 @@ docker run -d \
   -e EDGE_ID="${EDGE_ID}" \
   -e EDGE_KEY="${EDGE_KEY}" \
   -e EDGE_ASYNC=1 \
-  -e EDGE_CHECKIN_INTERVAL=30 \
-  -e EDGE_SNAPSHOT_INTERVAL=60 \
-  portainer/agent:latest
+  portainer/agent:${PORTAINER_AGENT_TAG}
 ```
 
 ## ARM / Windows Variations
 
 ```bash
-# ARM64 (Raspberry Pi 4, Apple M1)
-docker pull portainer/agent:latest  # Multi-arch: automatically uses ARM64
+PORTAINER_AGENT_TAG=lts
 
-# Windows (Docker Desktop or Docker Engine for Windows)
-docker run -d \
-  --name portainer_edge_agent \
-  --restart=always \
-  -e EDGE=1 \
-  -e EDGE_ID="${EDGE_ID}" \
-  -e EDGE_KEY="${EDGE_KEY}" \
-  -v //./pipe/docker_engine://./pipe/docker_engine \
-  portainer/agent:latest
+# ARM64 (Raspberry Pi 4, Apple Silicon running Linux containers)
+docker pull portainer/agent:${PORTAINER_AGENT_TAG}  # Multi-arch image
+
+# Windows
+# Use URL=//./pipe/docker_engine when creating the environment via the API, then
+# use the Windows-specific deployment command generated by Portainer.
 ```
 
 ## Verify Edge Agent Connection
