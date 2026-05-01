@@ -4,7 +4,7 @@ Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
 Tags: Go, DNS, IPv4, Networking, Resolver, Net package
 
-Description: Learn how to build a DNS resolver in Go that performs IPv4 A record lookups, with caching, custom DNS servers, and timeout handling.
+Description: Learn how to build a DNS resolver in Go that performs IPv4 lookups, with caching, custom DNS servers, and timeout handling.
 
 ## Simple DNS Resolver
 
@@ -19,21 +19,19 @@ import (
     "time"
 )
 
-// ResolveARecord looks up IPv4 A records for a hostname
+// ResolveARecord looks up IPv4 addresses for a hostname
 func ResolveARecord(hostname string) ([]string, error) {
     ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
     defer cancel()
 
-    ips, err := net.DefaultResolver.LookupIPAddr(ctx, hostname)
+    ips, err := net.DefaultResolver.LookupIP(ctx, "ip4", hostname)
     if err != nil {
         return nil, fmt.Errorf("lookup %s: %w", hostname, err)
     }
 
     var ipv4s []string
-    for _, addr := range ips {
-        if addr.IP.To4() != nil {
-            ipv4s = append(ipv4s, addr.IP.String())
-        }
+    for _, ip := range ips {
+        ipv4s = append(ipv4s, ip.String())
     }
 
     if len(ipv4s) == 0 {
@@ -85,7 +83,7 @@ func NewCachingResolver(dnsServer string, ttl time.Duration) *CachingResolver {
         PreferGo: true,
         Dial: func(ctx context.Context, network, address string) (net.Conn, error) {
             d := net.Dialer{Timeout: 3 * time.Second}
-            return d.DialContext(ctx, "udp", dnsServer)
+            return d.DialContext(ctx, network, dnsServer)
         },
     }
     return &CachingResolver{
@@ -108,16 +106,18 @@ func (cr *CachingResolver) Resolve(hostname string) ([]string, error) {
     ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
     defer cancel()
 
-    addrs, err := cr.resolver.LookupIPAddr(ctx, hostname)
+    addrs, err := cr.resolver.LookupIP(ctx, "ip4", hostname)
     if err != nil {
         return nil, err
     }
 
     var ips []string
-    for _, a := range addrs {
-        if a.IP.To4() != nil {
-            ips = append(ips, a.IP.String())
-        }
+    for _, ip := range addrs {
+        ips = append(ips, ip.String())
+    }
+
+    if len(ips) == 0 {
+        return nil, fmt.Errorf("no A records for %s", hostname)
     }
 
     // Store in cache
@@ -132,7 +132,7 @@ func (cr *CachingResolver) Resolve(hostname string) ([]string, error) {
 }
 
 func main() {
-    // Use Cloudflare's DNS with 60-second TTL
+    // Use Cloudflare's DNS with a 60-second cache TTL
     resolver := NewCachingResolver("1.1.1.1:53", 60*time.Second)
 
     for i := 0; i < 3; i++ {
@@ -172,7 +172,7 @@ func ResolveBulk(hostnames []string) map[string][]string {
             ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
             defer cancel()
 
-            addrs, err := net.DefaultResolver.LookupIPAddr(ctx, hostname)
+            addrs, err := net.DefaultResolver.LookupIP(ctx, "ip4", hostname)
             if err != nil {
                 mu.Lock()
                 results[hostname] = nil
@@ -181,10 +181,8 @@ func ResolveBulk(hostnames []string) map[string][]string {
             }
 
             var ips []string
-            for _, a := range addrs {
-                if a.IP.To4() != nil {
-                    ips = append(ips, a.IP.String())
-                }
+            for _, ip := range addrs {
+                ips = append(ips, ip.String())
             }
             mu.Lock()
             results[hostname] = ips
@@ -207,4 +205,4 @@ func main() {
 
 ## Conclusion
 
-Building a DNS resolver in Go uses `net.DefaultResolver.LookupIPAddr` for basic lookups and `net.Resolver` with a custom `Dial` function for custom DNS servers. Always wrap lookups in a context with a timeout. Add a simple in-memory cache with TTL to avoid redundant lookups in high-frequency applications.
+Building a DNS resolver in Go uses `net.DefaultResolver.LookupIP` with `ip4` for basic IPv4 lookups and `net.Resolver` with a custom `Dial` function for custom DNS servers. Always wrap lookups in a context with a timeout. Add a simple in-memory cache with a fixed TTL to avoid redundant lookups in high-frequency applications.
