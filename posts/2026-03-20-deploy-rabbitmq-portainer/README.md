@@ -11,20 +11,14 @@ Description: Learn how to deploy RabbitMQ via Portainer with management UI, pers
 **Stacks → Add Stack → rabbitmq**
 
 ```yaml
-version: "3.8"
-
 services:
   rabbitmq:
     image: rabbitmq:3.13-management-alpine
     restart: unless-stopped
-    environment:
-      - RABBITMQ_DEFAULT_USER=${RABBITMQ_USER}
-      - RABBITMQ_DEFAULT_PASS=${RABBITMQ_PASSWORD}
-      - RABBITMQ_DEFAULT_VHOST=/
     volumes:
       - rabbitmq_data:/var/lib/rabbitmq
-      - ./rabbitmq.conf:/etc/rabbitmq/rabbitmq.conf:ro
-      - ./definitions.json:/etc/rabbitmq/definitions.json:ro
+      - /opt/rabbitmq/rabbitmq.conf:/etc/rabbitmq/rabbitmq.conf:ro
+      - /opt/rabbitmq/definitions.json:/etc/rabbitmq/definitions.json:ro
     ports:
       - "5672:5672"     # AMQP port
       - "15672:15672"   # Management UI
@@ -40,6 +34,8 @@ volumes:
 
 ## Environment Variables
 
+These credentials match the pre-loaded administrator user in `definitions.json`.
+
 ```text
 RABBITMQ_USER = admin
 RABBITMQ_PASSWORD = secure-rabbitmq-password
@@ -48,13 +44,14 @@ RABBITMQ_PASSWORD = secure-rabbitmq-password
 ## RabbitMQ Configuration
 
 ```ini
-# rabbitmq.conf
+# /opt/rabbitmq/rabbitmq.conf
 
 # Networking
 listeners.tcp.default = 5672
 
-# Management plugin
-management.load_definitions = /etc/rabbitmq/definitions.json
+# Definitions import
+definitions.import_backend = local_filesystem
+definitions.local.path = /etc/rabbitmq/definitions.json
 
 # Memory
 vm_memory_high_watermark.absolute = 512MB
@@ -78,14 +75,14 @@ log.console.level = info
   "vhosts": [{"name": "/"}],
   "users": [
     {
-      "name": "appuser",
-      "password_hash": "...",
+      "name": "admin",
+      "password_hash": "kI3GCmGbBFbPrZcy3lTZuEChjRJ4zPJ+YTpdV3UIa986plsN",
       "hashing_algorithm": "rabbit_password_hashing_sha256",
-      "tags": ""
+      "tags": ["administrator"]
     }
   ],
   "permissions": [
-    {"user": "appuser", "vhost": "/", "configure": ".*", "write": ".*", "read": ".*"}
+    {"user": "admin", "vhost": "/", "configure": ".*", "write": ".*", "read": ".*"}
   ],
   "exchanges": [
     {"name": "events", "vhost": "/", "type": "topic", "durable": true, "auto_delete": false}
@@ -118,7 +115,7 @@ services:
   worker:
     image: myworker:latest
     environment:
-      - RABBITMQ_URL=amqp://${RABBITMQ_USER}:${RABBITMQ_PASSWORD}@rabbitmq:5672/
+      - RABBITMQ_URL=amqp://${RABBITMQ_USER}:${RABBITMQ_PASSWORD}@rabbitmq:5672/%2f
     depends_on:
       rabbitmq:
         condition: service_healthy
