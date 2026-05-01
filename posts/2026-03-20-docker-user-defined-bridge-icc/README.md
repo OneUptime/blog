@@ -8,7 +8,7 @@ Description: Enable reliable inter-container communication using Docker user-def
 
 ## Introduction
 
-Docker's default bridge network (`docker0`) supports inter-container communication via IP addresses, but it lacks automatic DNS resolution. User-defined bridge networks solve this by providing built-in DNS so containers can reach each other by name - a critical feature for microservices.
+Docker's default bridge network (`bridge`, backed by the `docker0` interface) supports inter-container communication via IP addresses, but it lacks automatic DNS resolution. User-defined bridge networks solve this by providing built-in DNS so containers can reach each other by name - a critical feature for microservices.
 
 ## Default Bridge vs User-Defined Bridge
 
@@ -42,10 +42,11 @@ docker run -d \
   postgres:15
 
 # Run an app container on the same network
+# Use container name for DNS resolution
 docker run -d \
   --name api \
   --network app-network \
-  -e DB_HOST=postgres \   # Use container name for DNS resolution
+  -e DB_HOST=postgres \
   myapp:latest
 ```
 
@@ -55,8 +56,6 @@ The `api` container can reach `postgres` by name - Docker's embedded DNS resolve
 
 ```yaml
 # docker-compose.yml
-version: "3.8"
-
 services:
   db:
     image: postgres:15
@@ -92,9 +91,9 @@ networks:
 ## Verifying DNS Resolution
 
 ```bash
-# Test name resolution inside a container
-docker exec -it api sh -c "nslookup db"
-docker exec -it api sh -c "ping -c 3 db"
+# Test name resolution from another container on the same network
+docker run --rm --network app-network busybox nslookup postgres
+docker run --rm --network app-network busybox ping -c 3 postgres
 ```
 
 ## Connecting a Running Container to a Network
@@ -122,9 +121,15 @@ docker network ls
 Containers on separate user-defined networks cannot communicate by default:
 
 ```bash
-# This will fail - different networks
-docker run --network net1 --name c1 busybox
-docker run --network net2 --name c2 busybox ping c1  # unreachable
+# Create two isolated user-defined bridge networks
+docker network create net1
+docker network create net2
+
+# Start a container on net1
+docker run -d --network net1 --name c1 busybox sleep 3600
+
+# This will fail because c1 is not attached to net2
+docker run --rm --network net2 busybox ping -c 3 c1
 ```
 
 This isolation enforces the principle of least privilege between services.
