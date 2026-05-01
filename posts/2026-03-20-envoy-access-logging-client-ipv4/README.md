@@ -9,15 +9,16 @@ Description: Learn how to configure Envoy access logging to capture client IPv4 
 ---
 
 Envoy's access logging provides per-request visibility into traffic flowing through the proxy. Capturing the client's IPv4 address in logs is essential for security auditing, debugging, and traffic analysis.
+When Envoy sits behind another proxy or load balancer, make sure your `use_remote_address`, `xff_num_trusted_hops`, or Proxy Protocol settings match your trust model, because the downstream remote address can be inferred from X-Forwarded-For or Proxy Protocol.
 
 ## Access Log Command Operators
 
-Key operators for IPv4 client information:
+Key operators for client IP information:
 
 | Operator | Description |
 |----------|-------------|
 | `%DOWNSTREAM_REMOTE_ADDRESS%` | Client IP and port |
-| `%DOWNSTREAM_REMOTE_ADDRESS_WITHOUT_PORT%` | Client IP only |
+| `%DOWNSTREAM_REMOTE_ADDRESS_WITHOUT_PORT%` | Client IP address only |
 | `%DOWNSTREAM_LOCAL_ADDRESS%` | Local (Envoy) IP and port |
 | `%REQ(X-FORWARDED-FOR)%` | X-Forwarded-For header value |
 | `%RESPONSE_CODE%` | HTTP response status code |
@@ -59,7 +60,7 @@ http_connection_manager:
           json_format:
             timestamp: "%START_TIME%"
             client_ip: "%DOWNSTREAM_REMOTE_ADDRESS_WITHOUT_PORT%"
-            client_port: "%DOWNSTREAM_REMOTE_ADDRESS%"
+            client_port: "%DOWNSTREAM_REMOTE_PORT%"
             method: "%REQ(:METHOD)%"
             path: "%REQ(X-ENVOY-ORIGINAL-PATH?:PATH)%"
             protocol: "%PROTOCOL%"
@@ -127,7 +128,7 @@ filters:
 
 ## Key Takeaways
 
-- `%DOWNSTREAM_REMOTE_ADDRESS_WITHOUT_PORT%` gives the client IPv4 without the port number.
+- `%DOWNSTREAM_REMOTE_ADDRESS_WITHOUT_PORT%` gives the client IP address without the port number.
 - Use JSON log format for structured logging that integrates cleanly with log aggregation tools.
 - Filter access logs by `status_code_filter` to reduce log volume on high-traffic proxies.
 - TCP proxy access logs use the same format operators but exclude HTTP-specific fields.
