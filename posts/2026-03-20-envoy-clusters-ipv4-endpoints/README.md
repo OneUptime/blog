@@ -8,7 +8,7 @@ Description: Configure Envoy clusters to define IPv4 upstream endpoints with loa
 
 ## Introduction
 
-In Envoy, a "cluster" defines a group of upstream servers (endpoints) that receive proxied requests. Each endpoint is an IPv4 address:port pair. Clusters control load balancing policy, health checking, TLS settings, and connection pool behavior.
+In Envoy, a "cluster" defines a group of upstream servers (endpoints) that receive proxied requests. In this guide, each upstream endpoint is either an IPv4 address:port pair or a hostname that resolves to IPv4 addresses. Clusters control load balancing policy, health checking, TLS settings, and connection pool behavior.
 
 ## Static Cluster with IPv4 Endpoints
 
@@ -64,7 +64,7 @@ clusters:
         explicit_http_config:
           http2_protocol_options: {}
 
-    # Connection pool tuning
+    # Upstream connection/request limits
     circuit_breakers:
       thresholds:
         - priority: DEFAULT
@@ -84,7 +84,7 @@ clusters:
                     port_value: 9090
 ```
 
-## DNS-Based Cluster (STRICT_DNS)
+## DNS-Based Cluster (Strict DNS Semantics)
 
 Resolve hostnames to IPv4 addresses at runtime:
 
@@ -92,11 +92,15 @@ Resolve hostnames to IPv4 addresses at runtime:
 clusters:
   - name: dynamic_service
     connect_timeout: 5s
-    # STRICT_DNS: continuously resolve hostname, use ALL returned A records
-    type: STRICT_DNS
 
-    # Prefer IPv4 over IPv6 (dns_lookup_family)
-    dns_lookup_family: V4_ONLY
+    cluster_type:
+      name: envoy.clusters.dns
+      typed_config:
+        "@type": type.googleapis.com/envoy.extensions.clusters.dns.v3.DnsCluster
+        # Resolve only IPv4 addresses
+        dns_lookup_family: V4_ONLY
+        # false = each resolved address becomes its own host (STRICT_DNS behavior)
+        all_addresses_in_single_endpoint: false
 
     lb_policy: ROUND_ROBIN
 
@@ -107,7 +111,7 @@ clusters:
             - endpoint:
                 address:
                   socket_address:
-                    address: my-service.internal   # Resolved to IPv4
+                    address: my-service.internal   # Resolved to IPv4 addresses
                     port_value: 8080
 ```
 
@@ -124,13 +128,13 @@ clusters:
     health_checks:
       - timeout: 5s
         interval: 10s
-        unhealthy_threshold: 3   # Mark unhealthy after 3 failures
-        healthy_threshold: 2      # Mark healthy after 2 successes
+        unhealthy_threshold: 3
+        healthy_threshold: 2      # After becoming unhealthy, require 2 successes to recover
         http_health_check:
           path: /health
           expected_statuses:
             - start: 200
-              end: 299
+              end: 300
 
     load_assignment:
       cluster_name: healthy_service
@@ -167,4 +171,4 @@ curl http://127.0.0.1:9901/config_dump | jq '.configs[] | select(.["@type"] | co
 
 ## Conclusion
 
-Envoy clusters define IPv4 upstream endpoints with precise control over load balancing, health checking, and connection behavior. Use `STATIC` type for known IPs, `STRICT_DNS` for hostname-based discovery with V4_ONLY resolution, and configure `circuit_breakers` for connection pool limits. The admin API at `/clusters` provides real-time visibility into endpoint health and traffic statistics.
+Envoy clusters define IPv4 upstream endpoints with precise control over load balancing, health checking, and connection behavior. Use `STATIC` type for known IPs, and a DNS cluster with strict-DNS semantics for hostname-based discovery with `V4_ONLY` resolution. Configure `circuit_breakers` for upstream connection and request limits. The admin API at `/clusters` provides real-time visibility into endpoint health and traffic statistics.
