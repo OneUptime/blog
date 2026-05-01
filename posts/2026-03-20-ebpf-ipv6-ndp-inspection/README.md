@@ -14,18 +14,21 @@ Inspect and monitor IPv6 Neighbor Discovery Protocol (NDP) traffic using eBPF to
 
 - Linux kernel 5.6+ (for BTF and full eBPF feature support)
 - Clang/LLVM for compiling eBPF C programs
-- Root access or CAP_BPF capability
+- Root access (or equivalent capabilities to load BPF programs and attach XDP on the target interface)
 
 ## IPv6 in eBPF Programs
 
-eBPF programs process IPv6 packets using kernel headers. The IPv6 header is 40 bytes fixed, followed by optional extension headers.
+eBPF programs process IPv6 packets using kernel headers. The IPv6 header is a fixed 40 bytes, followed by optional extension headers. NDP uses ICMPv6, so an NDP inspector must parse the IPv6 header and then the ICMPv6 header.
 
-### IPv6 Header Parsing
+### IPv6 and NDP Parsing
 
 ```c
 #include <linux/bpf.h>
 #include <linux/if_ether.h>
+#include <linux/in.h>
 #include <linux/ipv6.h>
+#include <linux/icmpv6.h>
+#include <bpf/bpf_endian.h>
 #include <bpf/bpf_helpers.h>
 
 SEC("xdp")
@@ -47,8 +50,23 @@ int process_ipv6(struct xdp_md *ctx) {
     if ((void *)(ip6h + 1) > data_end)
         return XDP_PASS;
 
-    // Log source address (first 64 bits)
-    bpf_printk("IPv6 src prefix: %08x:%08x",
+    // This minimal example expects ICMPv6 immediately after the IPv6 header.
+    if (ip6h->nexthdr != IPPROTO_ICMPV6 || ip6h->hop_limit != 255)
+        return XDP_PASS;
+
+    // Parse ICMPv6 header
+    struct icmp6hdr *icmp6h = (void *)(ip6h + 1);
+    if ((void *)(icmp6h + 1) > data_end)
+        return XDP_PASS;
+
+    // NDP message types occupy the ICMPv6 range 133-137 and use code 0.
+    if (icmp6h->icmp6_type < 133 || icmp6h->icmp6_type > 137 ||
+        icmp6h->icmp6_code != 0)
+        return XDP_PASS;
+
+    // Log the NDP message type and source address prefix
+    bpf_printk("NDP type %u src prefix: %08x:%08x",
+               icmp6h->icmp6_type,
                bpf_ntohl(ip6h->saddr.s6_addr32[0]),
                bpf_ntohl(ip6h->saddr.s6_addr32[1]));
 
@@ -63,10 +81,10 @@ char LICENSE[] SEC("license") = "GPL";
 ```bash
 # Compile eBPF program
 
-clang -O2 -target bpf -c program.c -o program.o
+clang -O2 -g -target bpf -c program.c -o program.o
 
 # Load XDP program on interface
-sudo ip link set dev eth0 xdp obj program.o sec xdp
+sudo ip link set dev eth0 xdp object program.o section xdp
 
 # Verify
 sudo ip link show dev eth0
@@ -95,20 +113,22 @@ sudo bpftool map dump id <MAP_ID>
 sudo bpftool map dump id <MAP_ID> | grep -A 3 "key"
 ```
 
+This minimal example assumes ICMPv6 follows the fixed IPv6 header directly. If extension headers may be present in your environment, walk them before accessing `struct icmp6hdr`.
+
 ## Testing IPv6 eBPF Programs
 
 ```bash
 # Generate IPv6 test traffic
-ping6 -c 10 2001:db8::1
+ping -6 -c 10 2001:db8::1
 
-# Use hping3 for IPv6 packet generation
-hping3 --ipv6 -S -p 80 2001:db8::1
+# Generate additional IPv6 traffic
+nc -6 -vz 2001:db8::1 80
 
-# Watch bpf_printk output (kernel trace pipe)
-sudo cat /sys/kernel/debug/tracing/trace_pipe
+# Watch bpf_printk output (TraceFS trace_pipe)
+sudo cat /sys/kernel/tracing/trace_pipe
 
 # Use trace-cmd for structured tracing
-sudo trace-cmd record -e "bpf:*" ping6 -c 5 2001:db8::1
+sudo trace-cmd record -e "bpf:*" ping -6 -c 5 2001:db8::1
 sudo trace-cmd report
 ```
 
@@ -118,4 +138,4 @@ Use [OneUptime](https://oneuptime.com) to monitor the network performance metric
 
 ## Conclusion
 
-How to Write eBPF Programs for IPv6 NDP Inspection requires understanding IPv6 header structure in C, using XDP or TC hooks for packet interception, and leveraging BPF maps to store IPv6 address state. Always validate packet bounds before accessing headers to avoid eBPF verifier rejections.
+How to Write eBPF Programs for IPv6 NDP Inspection requires understanding IPv6 and ICMPv6 header structure in C, using XDP or TC hooks for packet interception, and leveraging BPF maps to store neighbor state. Always validate packet bounds before accessing headers to avoid eBPF verifier rejections, and account for IPv6 extension headers if ICMPv6 is not immediately after the fixed IPv6 header.
