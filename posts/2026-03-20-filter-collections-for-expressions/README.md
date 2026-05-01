@@ -56,10 +56,10 @@ locals {
 ```hcl
 variable "instances" {
   default = [
-    { name = "web-1",  type = "t3.medium", enabled = true  },
-    { name = "web-2",  type = "t3.medium", enabled = false },
-    { name = "db-1",   type = "r5.large",  enabled = true  },
-    { name = "cache-1",type = "r5.large",  enabled = true  },
+    { name = "web-1",   type = "t3.medium", enabled = true,  ip = "10.0.1.10" },
+    { name = "web-2",   type = "t3.medium", enabled = false, ip = "10.0.1.11" },
+    { name = "db-1",    type = "r5.large",  enabled = true,  ip = "10.0.2.10" },
+    { name = "cache-1", type = "r5.large",  enabled = true,  ip = "10.0.3.10" },
   ]
 }
 
@@ -153,7 +153,7 @@ data "aws_subnet" "details" {
 locals {
   # Only private subnets
   private_subnet_ids = [for id, subnet in data.aws_subnet.details : id
-    if subnet.tags["Tier"] == "private"]
+    if lookup(subnet.tags, "Tier", "") == "private"]
 }
 ```
 
