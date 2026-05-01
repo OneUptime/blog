@@ -33,7 +33,7 @@ resource "helm_release" "istio_base" {
   name             = "istio-base"
   repository       = "https://istio-release.storage.googleapis.com/charts"
   chart            = "base"
-  version          = "1.20.2"
+  version          = "1.29.2"
   namespace        = "istio-system"
   create_namespace = true
 
@@ -48,25 +48,24 @@ resource "helm_release" "istiod" {
   name       = "istiod"
   repository = "https://istio-release.storage.googleapis.com/charts"
   chart      = "istiod"
-  version    = "1.20.2"
+  version    = "1.29.2"
   namespace  = "istio-system"
 
   values = [
     yamlencode({
-      pilot = {
-        resources = {
-          requests = { cpu = "200m", memory = "200Mi" }
-        }
-        autoscaleEnabled = true
-        autoscaleMin     = 1
-        autoscaleMax     = 5
+      resources = {
+        requests = { cpu = "200m", memory = "200Mi" }
       }
 
+      autoscaleEnabled = true
+      autoscaleMin     = 1
+      autoscaleMax     = 5
+
       meshConfig = {
-        # Enable access logging
+        # Enable proxy access logging
         accessLogFile = "/dev/stdout"
 
-        # Set default mTLS mode
+        # Set default proxy tracing sampling (1%)
         defaultConfig = {
           tracing = {
             sampling = 1.0
@@ -93,7 +92,7 @@ resource "helm_release" "istio_ingress" {
   name       = "istio-ingressgateway"
   repository = "https://istio-release.storage.googleapis.com/charts"
   chart      = "gateway"
-  version    = "1.20.2"
+  version    = "1.29.2"
   namespace  = "istio-ingress"
 
   create_namespace = true
@@ -102,10 +101,9 @@ resource "helm_release" "istio_ingress" {
     yamlencode({
       service = {
         type = "LoadBalancer"
-        annotations = {
-          "service.beta.kubernetes.io/aws-load-balancer-type" = "nlb"
-          "service.beta.kubernetes.io/aws-load-balancer-scheme" = "internet-facing"
-        }
+      }
+      autoscaling = {
+        enabled = false
       }
       replicaCount = var.environment == "production" ? 3 : 2
     })
@@ -142,10 +140,10 @@ resource "kubernetes_namespace" "monitoring" {
 ## PeerAuthentication for mTLS
 
 ```hcl
-# mtls.tf
+# mtls.tf - apply after the Istio CRDs exist
 resource "kubernetes_manifest" "peer_authentication_strict" {
   manifest = {
-    apiVersion = "security.istio.io/v1beta1"
+    apiVersion = "security.istio.io/v1"
     kind       = "PeerAuthentication"
     metadata = {
       name      = "default"
@@ -153,7 +151,7 @@ resource "kubernetes_manifest" "peer_authentication_strict" {
     }
     spec = {
       mtls = {
-        mode = "STRICT"  # Enforce mTLS cluster-wide
+        mode = "STRICT"  # Enforce mTLS mesh-wide from the root namespace
       }
     }
   }
@@ -165,10 +163,10 @@ resource "kubernetes_manifest" "peer_authentication_strict" {
 ## Gateway and VirtualService
 
 ```hcl
-# gateway.tf
+# gateway.tf - apply after the Istio CRDs exist
 resource "kubernetes_manifest" "gateway" {
   manifest = {
-    apiVersion = "networking.istio.io/v1beta1"
+    apiVersion = "networking.istio.io/v1"
     kind       = "Gateway"
     metadata = {
       name      = "app-gateway"
@@ -192,11 +190,13 @@ resource "kubernetes_manifest" "gateway" {
       }]
     }
   }
+
+  depends_on = [helm_release.istio_ingress]
 }
 
 resource "kubernetes_manifest" "virtual_service" {
   manifest = {
-    apiVersion = "networking.istio.io/v1beta1"
+    apiVersion = "networking.istio.io/v1"
     kind       = "VirtualService"
     metadata = {
       name      = "app"
@@ -215,13 +215,15 @@ resource "kubernetes_manifest" "virtual_service" {
       }]
     }
   }
+
+  depends_on = [kubernetes_manifest.gateway]
 }
 ```
 
 ## Best Practices
 
 - Install Istio in the order: base (CRDs) → istiod → gateways - use `depends_on` to enforce this.
-- Enable `STRICT` mTLS mode at the mesh level and use `PERMISSIVE` temporarily during migration to avoid breaking existing traffic.
+- Enable `STRICT` mTLS mode with a `PeerAuthentication` in the root namespace, and use `PERMISSIVE` temporarily during migration to avoid breaking existing traffic.
 - Set sidecar proxy resource limits - without them, proxies consume unbounded memory on high-traffic services.
-- Use `kubernetes_manifest` for Istio CRD resources (Gateway, VirtualService, PeerAuthentication) - these aren't covered by standard Kubernetes providers.
-- Pin Helm chart versions and test Istio upgrades in staging first - Istio upgrades can break traffic routing if versions are mismatched.
+- Use `kubernetes_manifest` for Istio custom resources after the Istio CRDs already exist - on a fresh cluster, apply the Helm releases first and then apply the Istio custom resources in a second run.
+- Pin supported Helm chart versions and test Istio upgrades in staging first - Istio upgrades can break traffic routing if versions are mismatched.
