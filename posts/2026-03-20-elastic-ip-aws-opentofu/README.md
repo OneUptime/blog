@@ -14,7 +14,7 @@ Elastic IPs (EIPs) are static public IPv4 addresses that persist independently o
 
 ```hcl
 resource "aws_eip" "web" {
-  domain = "vpc"  # Required for VPC usage (always use this)
+  domain = "vpc"  # Explicitly allocate a VPC Elastic IP
 
   tags = {
     Name        = "${var.name}-eip"
@@ -40,9 +40,6 @@ resource "aws_eip" "nat" {
   domain = "vpc"
 
   tags = { Name = "${var.name}-nat-eip-${count.index + 1}" }
-
-  # Ensure the VPC and IGW exist before allocating
-  depends_on = [aws_internet_gateway.main]
 }
 
 resource "aws_nat_gateway" "main" {
@@ -51,12 +48,15 @@ resource "aws_nat_gateway" "main" {
   subnet_id     = aws_subnet.public[count.index].id
 
   tags = { Name = "${var.name}-nat-${count.index + 1}" }
+
+  # Ensure the Internet Gateway exists before creating the public NAT Gateway
+  depends_on = [aws_internet_gateway.main]
 }
 ```
 
-## Important: EIPs Are Charged When Unattached
+## Important: Elastic IPs Incur Public IPv4 Charges
 
-AWS charges for EIPs that are allocated but not associated with a running resource. Always ensure an EIP is attached after creation, and release unused EIPs:
+AWS charges for Elastic IP addresses whether they are associated or disassociated. AWS also charges for other public IPv4 addresses, including the public IPv4 addresses assigned to running instances. Always release unused EIPs:
 
 ```hcl
 # Best practice: output the EIP so you can track and monitor it
@@ -73,21 +73,21 @@ output "web_eip" {
 resource "aws_network_interface" "web" {
   subnet_id       = aws_subnet.public.id
   security_groups = [aws_security_group.web.id]
+  private_ips     = ["10.0.0.10"]
 }
 
 resource "aws_eip" "web_ni" {
   domain                    = "vpc"
   network_interface         = aws_network_interface.web.id
-  associate_with_private_ip = aws_network_interface.web.private_ip
+  associate_with_private_ip = "10.0.0.10"
 }
 
 resource "aws_instance" "web" {
   ami           = data.aws_ami.ubuntu.id
   instance_type = "t3.micro"
 
-  network_interface {
+  primary_network_interface {
     network_interface_id = aws_network_interface.web.id
-    device_index         = 0
   }
 }
 ```
@@ -101,4 +101,4 @@ output "eip_allocation_id" { value = aws_eip.web.id }
 
 ## Conclusion
 
-Elastic IPs are a simple but essential tool for maintaining stable IP addresses in AWS. Attach them to instances or NAT Gateways, export their addresses as outputs, and whitelist them in upstream systems. Avoid leaving EIPs unattached-they incur charges even when idle.
+Elastic IPs are a simple but essential tool for maintaining stable IP addresses in AWS. Attach them to instances or NAT Gateways, export their addresses as outputs, and whitelist them in upstream systems. Release Elastic IPs you no longer need-they incur hourly public IPv4 charges whether attached or idle.
