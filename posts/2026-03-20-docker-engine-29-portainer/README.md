@@ -4,19 +4,19 @@ Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
 Tags: Portainer, Docker, Troubleshooting, Docker Engine 29, Compatibility
 
-Description: Resolve compatibility issues between Portainer and Docker Engine 29, including API version mismatches, deprecated features, and configuration changes.
+Description: Resolve Docker Engine 29.0.0 compatibility issues with Portainer by updating to a supported Portainer release and checking related Docker 29 behavior.
 
 ## Introduction
 
-Docker Engine 29 introduced changes to the API, networking defaults, and deprecated several older behaviors. If you upgraded to Docker Engine 29.x and are experiencing Portainer issues - errors in the UI, missing containers, network creation failures - this guide covers the known compatibility issues and their fixes.
+Docker Engine 29.0.0 introduced breaking changes that prevented older Portainer versions from connecting to Docker Standalone environments. If you upgraded Docker and Portainer no longer loads your environment, this guide covers the supported versions, the official fix, and a few related checks that are relevant on Docker Engine 29.
 
 ## Known Issues with Docker Engine 29 and Portainer
 
-1. API version negotiation changes
-2. Default bridge network behavior changes
-3. `--network-alias` deprecation warnings appearing in Portainer
-4. IPv6 now enabled by default, causing unexpected network behavior
-5. BuildKit changes affecting image builds from Portainer
+1. Docker Standalone environments not loading after upgrading to Docker Engine 29.0.0
+2. Portainer releases older than 2.33.5 LTS / 2.36.0 STS lacking the Docker 29 compatibility fix
+3. Portainer Server and Agent version mismatches after an upgrade
+4. Images or containers appearing to go missing after switching storage backends
+5. Remote Compose deployments with `build:` steps failing for reasons separate from Docker 29 compatibility
 
 ## Step 1: Check Your Docker Engine Version
 
@@ -28,159 +28,138 @@ docker version
 # Example output:
 # Server: Docker Engine - Community
 #  Engine:
-#   Version:          29.0.1
-#   API version:      1.45 (minimum version 1.24)
+#   Version:          29.0.0
+#   API version:      1.52 (minimum version 1.44)
 ```
 
 ## Step 2: Verify Portainer Version Compatibility
 
-Portainer releases track Docker API versions. Check the compatibility matrix:
+Portainer publishes supported Docker versions on its requirements page and documents this specific issue in its known-issues section. Docker Engine 29.0.0 compatibility was fixed in Portainer 2.33.5 LTS / 2.36.0 STS. Newer Portainer releases list newer Docker 29.x versions as tested.
 
 ```bash
-# Check running Portainer version
-docker exec portainer /app/portainer --version
+# If you use a pinned image tag, inspect the running image reference
+docker inspect --format '{{.Config.Image}}' portainer
 
-# Or via the UI: Help → About
+# Otherwise, use the UI: Help → About to confirm the exact Portainer version
 
-# Portainer 2.21+ supports Docker Engine 29 API
+# Docker Engine 29.0.0 support was fixed in Portainer 2.33.5 LTS / 2.36.0 STS
 # If you're on an older version, update Portainer
 ```
 
 ## Step 3: Update Portainer to Latest
 
 ```bash
-# Pull the latest Portainer image
-docker pull portainer/portainer-ce:latest
+# Pull the current Portainer CE LTS image
+docker pull portainer/portainer-ce:lts
 
 # Stop and remove old container
 docker stop portainer
 docker rm portainer
 
-# Restart with latest image (data volume preserved)
+# Restart with the updated image (data volume preserved)
 docker run -d \
-  -p 9000:9000 \
   -p 9443:9443 \
-  --name portainer \
-  --restart=unless-stopped \
+  -p 8000:8000 \
+  --name=portainer \
+  --restart=always \
   -v /var/run/docker.sock:/var/run/docker.sock \
   -v portainer_data:/data \
-  portainer/portainer-ce:latest
+  portainer/portainer-ce:lts
 ```
 
-## Step 4: Fix IPv6 Issues
+If you still need legacy HTTP access, add `-p 9000:9000` to the `docker run` command.
 
-Docker Engine 29 enables IPv6 by default. This can cause network creation to fail in Portainer if IPv6 is not configured on the host:
+## Step 4: Update the Portainer Agent If You Use One
+
+If you use the Portainer Agent, keep the agent version aligned with the Portainer Server version:
 
 ```bash
-# Check if IPv6 is causing issues
-docker network create test-net 2>&1
+# Pull the current Portainer Agent LTS image
+docker pull portainer/agent:lts
 
-# Disable IPv6 in Docker daemon if not needed
-cat > /etc/docker/daemon.json << 'EOF'
-{
-  "ipv6": false
-}
-EOF
+# Stop and remove the old agent
+docker stop portainer_agent
+docker rm portainer_agent
 
-sudo systemctl restart docker
+# Restart the agent with the updated image
+docker run -d \
+  -p 9001:9001 \
+  --name portainer_agent \
+  --restart=always \
+  -v /var/run/docker.sock:/var/run/docker.sock \
+  -v /var/lib/docker/volumes:/var/lib/docker/volumes \
+  portainer/agent:lts
 ```
 
-If you need IPv6 support:
+If you set `AGENT_SECRET` previously, include the same `-e AGENT_SECRET=...` value when recreating the agent.
+
+## Step 5: Check Portainer Logs
+
+If the environment still does not load, review Portainer's logs before changing daemon settings:
 
 ```bash
-# Configure proper IPv6 in Docker daemon
-cat > /etc/docker/daemon.json << 'EOF'
-{
-  "ipv6": true,
-  "fixed-cidr-v6": "fd00::/80"
-}
-EOF
+# Check Portainer logs
+docker logs --tail 100 portainer
 
-sudo systemctl restart docker
+# If you're using the Portainer Agent, check it too
+docker logs --tail 100 portainer_agent
 ```
 
-## Step 5: Fix BuildKit Issues
+## Step 6: Test the Docker API Directly
 
-Docker Engine 29 uses BuildKit by default for all builds. Some Portainer image build workflows may encounter issues:
+Docker Engine 29 raised the minimum API version, and the original Portainer compatibility problem was in how older Portainer releases handled Docker 29. Testing the socket directly helps separate a Docker problem from a Portainer problem:
 
 ```bash
-# In the Docker daemon config, you can control BuildKit behavior
-cat > /etc/docker/daemon.json << 'EOF'
+# Query the Docker API directly over the local Unix socket
+curl --unix-socket /var/run/docker.sock \
+  http://localhost/v1.52/version
+```
+
+If this responds but Portainer still cannot load the environment, update Portainer to a fixed release.
+
+## Step 7: Check for Storage Backend Changes
+
+Docker Engine 29 uses the containerd image store by default on fresh installs. On upgraded hosts, Docker stays on the older storage backend unless you explicitly enable the containerd snapshotter. If you switch storage backends, existing images and containers from the other backend become hidden until you switch back.
+
+```bash
+# Check the current storage backend
+docker info -f '{{ .DriverStatus }}'
+```
+
+If you intentionally want to enable the containerd image store on an upgraded host, add the documented feature flag to your existing `/etc/docker/daemon.json`:
+
+```json
 {
   "features": {
-    "buildkit": true
-  },
+    "containerd-snapshotter": true
+  }
+}
+```
+
+```bash
+sudo systemctl restart docker
+```
+
+## Step 8: Treat Remote Compose Build Failures Separately
+
+If image builds fail from a remote Docker environment, treat that as a separate Portainer limitation rather than a Docker Engine 29 compatibility issue. Portainer documents this for Compose deployments that include a `build:` step. The stable workaround is:
+
+1. Build the image outside Portainer using Docker or CI
+2. Push the image to a registry or load it onto the remote host
+3. Update the Compose file to reference the built image instead of `build:`
+
+## Step 9: Only Apply Docker Daemon Settings You Actually Need
+
+Portainer does not require a special Docker Engine 29 compatibility `daemon.json`. Only use documented daemon settings for an intentional behavior change. For example, builder garbage collection is valid but optional:
+
+```json
+{
   "builder": {
     "gc": {
       "defaultKeepStorage": "20GB",
       "enabled": true
     }
   }
-}
-EOF
-
-sudo systemctl restart docker
-```
-
-In Portainer, when building images:
-1. Go to **Images** → **Build**
-2. If you see BuildKit-related errors, check the **Advanced** options
-3. Ensure the Dockerfile syntax is compatible with BuildKit
-
-## Step 6: Fix Container Stats Errors
-
-Docker Engine 29 changed the stats API format. If Portainer shows "Unable to retrieve container stats":
-
-```bash
-# Test the stats API directly
-curl --unix-socket /var/run/docker.sock \
-  http://localhost/v1.45/containers/portainer/stats?stream=false | jq .
-
-# If this works but Portainer doesn't show stats, update Portainer
-```
-
-## Step 7: Fix Network Listing Issues
-
-Docker Engine 29 changed how networks with `--internal` flag are reported:
-
-```bash
-# List networks via API directly to compare
-curl --unix-socket /var/run/docker.sock \
-  http://localhost/v1.45/networks | jq '.[].Name'
-
-# If some networks appear in API but not in Portainer
-# This is a Portainer version issue - update to 2.21+
-```
-
-## Step 8: Fix Image Pull Errors
-
-Docker Engine 29 introduced stricter image registry authentication handling:
-
-```bash
-# Test image pull via CLI to isolate the issue
-docker pull nginx:latest
-
-# If CLI pull works but Portainer fails
-# Check Portainer registry credentials: Settings → Registries
-# Re-enter credentials for any configured registries
-```
-
-## Step 9: Configure Docker Daemon for Portainer Compatibility
-
-Create an optimized `/etc/docker/daemon.json` for use with Portainer on Docker Engine 29:
-
-```json
-{
-  "log-driver": "json-file",
-  "log-opts": {
-    "max-size": "10m",
-    "max-file": "3"
-  },
-  "storage-driver": "overlay2",
-  "features": {
-    "buildkit": true
-  },
-  "live-restore": true
 }
 ```
 
@@ -190,4 +169,4 @@ sudo systemctl restart docker
 
 ## Conclusion
 
-Docker Engine 29 compatibility with Portainer is primarily addressed by updating Portainer to version 2.21 or later, which was built to support the Docker Engine 29 API. IPv6 default enablement and BuildKit changes are the most common secondary causes of unexpected behavior - both are easily addressed with daemon configuration changes.
+Docker Engine 29 compatibility with Portainer is primarily a Portainer version support issue, not an IPv6 or stats-format problem. The documented fix for the Docker Engine 29.0.0 breakage is to update Portainer to 2.33.5 LTS / 2.36.0 STS or later. Separately, Docker Engine 29 changes storage behavior on fresh installs, and Portainer still has a distinct limitation around remote Compose `build:` steps.
