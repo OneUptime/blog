@@ -102,7 +102,7 @@ doc = {
 resp = es.index(index="network-logs-2026.03.20", document=doc)
 print(f"Indexed: {resp['_id']}")
 
-# Index with full-form IPv6 (Elasticsearch normalizes automatically)
+# Index with full-form IPv6 and an IPv4-mapped IPv6 address
 doc2 = {
     "@timestamp": datetime.now(timezone.utc).isoformat(),
     "client_ip": "2001:0db8:0000:0000:0000:0000:0000:0001",  # Full form
@@ -151,12 +151,25 @@ GET /network-logs-*/_search
     "bool": {
       "filter": [
         {
-          "terms": {
-            "client_ip": [
-              "2001:db8::/32",
-              "fd00::/8",
-              "::1/128"
-            ]
+          "bool": {
+            "should": [
+              {
+                "term": {
+                  "client_ip": "2001:db8::/32"
+                }
+              },
+              {
+                "term": {
+                  "client_ip": "fd00::/8"
+                }
+              },
+              {
+                "term": {
+                  "client_ip": "::1/128"
+                }
+              }
+            ],
+            "minimum_should_match": 1
           }
         },
         {
@@ -180,21 +193,17 @@ GET /network-logs-*/_search
 {
   "size": 0,
   "aggs": {
-    "top_clients": {
-      "terms": {
+    "top_client_prefixes": {
+      "ip_prefix": {
         "field": "client_ip",
-        "size": 20
-      }
-    },
-    "response_codes": {
-      "terms": {
-        "field": "response_code"
+        "prefix_length": 48,
+        "is_ipv6": true,
+        "append_prefix_length": true
       },
       "aggs": {
-        "by_ip": {
+        "response_codes": {
           "terms": {
-            "field": "client_ip",
-            "size": 10
+            "field": "response_code"
           }
         }
       }
@@ -224,7 +233,12 @@ def query_ipv6_subnet(es_client, index, subnet: str, hours: int = 24):
         },
         "size": 0
     }
-    resp = es_client.search(index=index, body=query)
+    resp = es_client.search(
+        index=index,
+        query=query["query"],
+        aggs=query["aggs"],
+        size=query["size"],
+    )
     hits = resp["hits"]["total"]["value"]
     unique = resp["aggregations"]["unique_clients"]["value"]
     total_bytes = resp["aggregations"]["total_bytes"]["value"]
@@ -238,4 +252,4 @@ query_ipv6_subnet(es, "network-logs-*", "2001:db8::/32")
 
 ## Conclusion
 
-Elasticsearch's native `ip` field type handles IPv6 addresses transparently, supporting both compressed and full notation, IPv4-mapped addresses, and CIDR range queries via `term` filters. Use index templates to enforce consistent mapping across rolling indices. CIDR queries with the `ip` field type are particularly powerful for subnet-based filtering - they outperform scripted or keyword-based approaches for large log volumes.
+Elasticsearch's native `ip` field type handles IPv6 addresses transparently, supporting both compressed and full notation, IPv4-mapped addresses, and CIDR range queries via `term` filters. Use index templates to enforce consistent mapping across rolling indices. CIDR queries with the `ip` field type are particularly useful for subnet-based filtering and avoid the extra complexity of scripted or keyword-based workarounds for large log volumes.
