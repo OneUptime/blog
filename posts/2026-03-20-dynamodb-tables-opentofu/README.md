@@ -48,9 +48,15 @@ resource "aws_dynamodb_table" "main" {
 
   # Global Secondary Index for querying by customer
   global_secondary_index {
-    name            = "CustomerIdIndex"
-    hash_key        = "customerId"
-    range_key       = "createdAt"
+    name = "CustomerIdIndex"
+    key_schema {
+      attribute_name = "customerId"
+      key_type       = "HASH"
+    }
+    key_schema {
+      attribute_name = "createdAt"
+      key_type       = "RANGE"
+    }
     projection_type = "ALL"  # Include all attributes
   }
 
@@ -62,7 +68,7 @@ resource "aws_dynamodb_table" "main" {
     non_key_attributes = ["totalAmount", "items"]
   }
 
-  # Server-side encryption with AWS managed key
+  # Server-side encryption; omit kms_key_arn to use the default KMS-managed DynamoDB key
   server_side_encryption {
     enabled     = true
     kms_key_arn = var.kms_key_arn  # Optional: use customer-managed key
@@ -98,6 +104,10 @@ resource "aws_dynamodb_table" "sessions" {
 
   read_capacity  = 10
   write_capacity = 5
+
+  lifecycle {
+    ignore_changes = [read_capacity]
+  }
 
   # TTL to auto-expire sessions
   ttl {
@@ -160,4 +170,4 @@ aws dynamodb describe-table --table-name my-project-orders
 
 ## Conclusion
 
-DynamoDB table design requires careful planning of access patterns before creation-secondary indexes cannot be changed after creation without rebuilding the table. Use `PAY_PER_REQUEST` for unpredictable or spiky workloads, and provisioned capacity with auto scaling for steady, predictable loads. Always enable point-in-time recovery and encryption for production tables.
+DynamoDB table design requires careful planning of access patterns before creation-local secondary indexes cannot be changed after table creation, while global secondary indexes can be added or deleted later. Use `PAY_PER_REQUEST` for unpredictable or spiky workloads, and provisioned capacity with auto scaling for steady, predictable loads. Always enable point-in-time recovery for production tables, and choose the appropriate KMS key option for your encryption requirements.
