@@ -64,7 +64,7 @@ services:
     command: >
       redis-sentinel /etc/redis/sentinel.conf
     volumes:
-      - ./sentinel.conf:/etc/redis/sentinel.conf
+      - /data/redis-sentinel/sentinel1:/etc/redis
     networks:
       - redis_net
     depends_on:
@@ -76,7 +76,7 @@ services:
     image: redis:7.2-alpine
     command: redis-sentinel /etc/redis/sentinel.conf
     volumes:
-      - ./sentinel.conf:/etc/redis/sentinel.conf
+      - /data/redis-sentinel/sentinel2:/etc/redis
     networks:
       - redis_net
     depends_on:
@@ -86,7 +86,7 @@ services:
     image: redis:7.2-alpine
     command: redis-sentinel /etc/redis/sentinel.conf
     volumes:
-      - ./sentinel.conf:/etc/redis/sentinel.conf
+      - /data/redis-sentinel/sentinel3:/etc/redis
     networks:
       - redis_net
     depends_on:
@@ -102,9 +102,9 @@ networks:
     driver: bridge
 ```
 
-## Sentinel Configuration File
+## Sentinel Configuration Files
 
-Create `sentinel.conf` on the host before deploying:
+Create `/data/redis-sentinel/sentinel1/sentinel.conf`, `/data/redis-sentinel/sentinel2/sentinel.conf`, and `/data/redis-sentinel/sentinel3/sentinel.conf` on the Docker host before deploying. Each file should have the same contents, and the mounted directories must be writable by the `redis` user in the container:
 
 ```conf
 sentinel resolve-hostnames yes
@@ -115,7 +115,7 @@ sentinel failover-timeout mymaster 10000
 sentinel parallel-syncs mymaster 1
 ```
 
-The quorum value `2` means at least two Sentinels must agree before initiating a failover.
+The quorum value `2` means at least two Sentinels must agree that the primary is down before it is marked objectively down; the failover itself still requires authorization from a Sentinel majority.
 
 ## Verifying the Setup
 
@@ -151,7 +151,8 @@ master = sentinel.master_for('mymaster', socket_timeout=0.1)
 slave  = sentinel.slave_for('mymaster',  socket_timeout=0.1)
 
 master.set('key', 'value')
-value = slave.get('key')
+value = master.get('key')
+slave.ping()
 ```
 
 ## Testing Failover
@@ -165,7 +166,7 @@ docker stop $(docker ps -qf name=redis-primary)
 # Watch Sentinel logs for failover event
 docker logs -f $(docker ps -qf name=sentinel1) 2>&1 | grep "switch-master"
 
-# After ~10 seconds, query which node is now primary
+# After failover completes, query which node is now primary
 docker exec -it $(docker ps -qf name=sentinel1) \
   redis-cli -p 26379 sentinel get-master-addr-by-name mymaster
 ```
