@@ -8,7 +8,7 @@ Description: Enable TCP BBR congestion control on Linux and configure it optimal
 
 ## Introduction
 
-BBR (Bottleneck Bandwidth and RTT) is Google's TCP congestion control algorithm, available in Linux kernel 4.9+. Unlike loss-based algorithms (CUBIC, Reno), BBR estimates the true available bandwidth and minimum path RTT to set its sending rate. This makes it dramatically more effective on long-distance or lossy links where packet loss occurs even without congestion.
+BBR (Bottleneck Bandwidth and RTT) is Google's TCP congestion control algorithm, available in Linux kernel 4.9+ when the kernel is built with BBR support. Unlike pure loss-based algorithms (CUBIC, Reno), BBR models available bandwidth and minimum path RTT to guide its sending rate. This can make it substantially more effective on long-distance or lossy links where packet loss occurs even without congestion.
 
 ## Prerequisites and Installation
 
@@ -18,14 +18,15 @@ BBR (Bottleneck Bandwidth and RTT) is Google's TCP congestion control algorithm,
 uname -r
 # Should show 4.9 or higher
 
-# Load the BBR module
-modprobe tcp_bbr
-
-# Verify BBR is available
+# Verify whether BBR is already available
 sysctl net.ipv4.tcp_available_congestion_control | grep bbr
 
-# If BBR not listed: kernel is too old, or module not compiled
-# Solution: upgrade kernel or compile with CONFIG_TCP_CONG_BBR=m
+# If BBR is not listed, try loading the module and check again
+modprobe tcp_bbr
+sysctl net.ipv4.tcp_available_congestion_control | grep bbr
+
+# If BBR is still not listed: kernel is too old, or BBR was not enabled
+# Solution: upgrade kernel or build with CONFIG_TCP_CONG_BBR=y or CONFIG_TCP_CONG_BBR=m
 ```
 
 ## Enabling BBR
@@ -34,7 +35,7 @@ sysctl net.ipv4.tcp_available_congestion_control | grep bbr
 # Enable BBR as the default congestion control
 sysctl -w net.ipv4.tcp_congestion_control=bbr
 
-# BBR requires the fq (Fair Queue) pacing scheduler for best results
+# For best results, pair BBR with the fq (Fair Queue) qdisc
 sysctl -w net.core.default_qdisc=fq
 
 # Verify both settings
@@ -51,23 +52,23 @@ net.ipv4.tcp_congestion_control=bbr
 EOF
 sysctl -p
 
-# Auto-load module on boot
+# On Debian/Ubuntu, auto-load the module on boot if BBR is built as a module
 echo "tcp_bbr" >> /etc/modules
 ```
 
-## Why BBR Needs the fq Qdisc
+## Why fq Helps BBR
 
-BBR controls sending rate through pacing - sending packets at a calculated rate rather than bursting them all at once. The `fq` (Fair Queue) qdisc implements per-flow pacing at the kernel level:
+BBR controls sending rate through pacing - sending packets at a calculated rate rather than bursting them all at once. On Linux 4.20+ BBR no longer strictly requires the `fq` qdisc to function, but `fq` remains a strong default because it implements per-flow pacing efficiently:
 
 ```bash
 # Check current qdisc on each interface
 tc qdisc show dev eth0
 
-# Apply fq qdisc manually if needed
+# On single-queue interfaces, apply fq manually if needed
 tc qdisc replace dev eth0 root fq
 
-# The sysctl net.core.default_qdisc=fq applies to all new interfaces
-# Existing interfaces may need manual tc qdisc replace
+# The sysctl net.core.default_qdisc=fq affects qdiscs created after the setting changes
+# Physical multiqueue NICs keep mq as the root qdisc and use the default qdisc for its leaves
 ```
 
 ## Verifying BBR is Active
@@ -75,16 +76,16 @@ tc qdisc replace dev eth0 root fq
 ```bash
 # Confirm BBR is running on active connections
 ss -tin state established | grep "bbr"
-# Look for: "cc:bbr" in the output
+# Look for a TCP info line that begins with "bbr"
 
 # More detailed BBR statistics
 ss -tin state established | head -5
 # Output includes:
-# cubic, reno, or bbr in the cc: field
-# pacing_rate: shows BBR's current pacing rate
+# the congestion control name at the start of the TCP info line
+# pacing_rate shows BBR's current pacing rate
 
 # Monitor BBR congestion window during a transfer
-watch -n 0.5 'ss -tin state established | grep -E "cc:|cwnd|pacing"'
+watch -n 0.5 'ss -tin state established | grep -E "bbr|cwnd|pacing_rate"'
 ```
 
 ## BBR Performance Testing
@@ -100,9 +101,10 @@ sysctl -w net.ipv4.tcp_congestion_control=bbr
 iperf3 -c 10.20.0.5 -t 30
 echo "BBR result above"
 
-# For high-latency links (simulate with tc netem):
+# Quick egress-side simulation with tc netem
+# For realistic TCP results, place netem on the receiver ingress path
 tc qdisc add dev eth0 root netem delay 100ms loss 1%
-iperf3 -c 10.20.0.5 -t 30   # Much better with BBR on lossy/latency path
+iperf3 -c 10.20.0.5 -t 30   # Compare the new-connection result with BBR vs CUBIC
 tc qdisc del dev eth0 root
 ```
 
@@ -123,4 +125,4 @@ Keep CUBIC for:
 
 ## Conclusion
 
-BBR is now the recommended congestion control for most internet-facing services. Enabling it takes two sysctl settings: `tcp_congestion_control=bbr` and `default_qdisc=fq`. The performance improvement is most dramatic on high-latency or lossy paths - expect 3-10× throughput improvement compared to CUBIC on satellite or transcontinental links.
+BBR is a widely used congestion control option for internet-facing Linux systems. Enabling it usually means setting `tcp_congestion_control=bbr`, and many deployments also pair it with `default_qdisc=fq` for pacing behavior. The largest gains tend to show up on high-latency or random-loss paths, but the exact improvement depends on the workload and network path.
