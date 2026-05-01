@@ -71,6 +71,10 @@ on:
 jobs:
   detect-drift:
     runs-on: ubuntu-latest
+    permissions:
+      contents: read
+      id-token: write
+      issues: write
     strategy:
       matrix:
         environment: [dev, staging, prod]
@@ -79,9 +83,11 @@ jobs:
         working-directory: environments/${{ matrix.environment }}
 
     steps:
-      - uses: actions/checkout@v4
-      - uses: opentofu/setup-opentofu@v1
-      - uses: aws-actions/configure-aws-credentials@v4
+      - uses: actions/checkout@v6
+      - uses: opentofu/setup-opentofu@v2
+        with:
+          tofu_wrapper: false
+      - uses: aws-actions/configure-aws-credentials@v6
         with:
           role-to-assume: ${{ vars.AWS_ROLE_ARN }}
           aws-region: us-east-1
@@ -91,13 +97,20 @@ jobs:
       - name: Detect Drift
         id: drift
         run: |
+          set +e
           tofu plan -refresh-only -detailed-exitcode -no-color 2>&1 | tee drift-output.txt
-          echo "exit_code=$?" >> $GITHUB_OUTPUT
-        continue-on-error: true
+          exit_code=$?
+          set -e
+
+          echo "exit_code=$exit_code" >> "$GITHUB_OUTPUT"
+
+          if [ "$exit_code" -eq 1 ]; then
+            exit 1
+          fi
 
       - name: Alert on Drift
         if: steps.drift.outputs.exit_code == '2'
-        uses: actions/github-script@v7
+        uses: actions/github-script@v9
         with:
           script: |
             // Create a GitHub issue for drift detection
@@ -123,6 +136,9 @@ DRIFT_EXIT_CODE=$?
 
 if [ "$DRIFT_EXIT_CODE" -eq 2 ]; then
   echo "DRIFT DETECTED - investigation required"
+  exit 1
+elif [ "$DRIFT_EXIT_CODE" -eq 1 ]; then
+  echo "OpenTofu plan failed"
   exit 1
 elif [ "$DRIFT_EXIT_CODE" -eq 0 ]; then
   echo "No drift detected"
