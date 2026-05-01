@@ -36,6 +36,12 @@ Define import blocks for the resources you want to import.
 ```hcl
 # imports.tf
 
+# If this configuration does not already declare the provider,
+# add it so OpenTofu can generate configuration for imports.
+provider "aws" {
+  region = "us-east-1"
+}
+
 # Import an S3 bucket
 import {
   id = "my-existing-bucket"
@@ -81,7 +87,7 @@ cat generated.tf
 resource "aws_s3_bucket" "main" {
   bucket        = "my-existing-bucket"
   force_destroy = false
-  # ... all attributes populated from the real resource
+  # ... generated arguments based on the real resource
 }
 
 resource "aws_vpc" "main" {
@@ -125,8 +131,8 @@ tofu plan  # should show only imports, no creates/destroys
 # Apply the imports
 tofu apply
 
-# After successful import, remove the import blocks
-# They are only needed once
+# After successful import, you can remove the import blocks
+# or leave them as a record of the resource's origin
 ```
 
 ## Step 6: Bulk Import with for_each
@@ -169,7 +175,7 @@ aws_db_instance             DB instance identifier
 aws_iam_role                role name
 aws_lambda_function         function name
 azurerm_resource_group      /subscriptions/{sub}/resourceGroups/{name}
-google_storage_bucket       project/location/bucket-name
+google_storage_bucket       project/bucket-name
 ```
 
 ## Summary
