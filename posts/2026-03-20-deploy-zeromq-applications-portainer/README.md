@@ -92,7 +92,7 @@ while True:
 
 ## Push/Pull Worker Pool
 
-For task distribution, use PUSH/PULL to distribute work across workers:
+For task distribution in a Docker Swarm environment managed by Portainer, use PUSH/PULL to distribute work across workers:
 
 ```yaml
 # zeromq-worker-pool-stack.yml
@@ -117,8 +117,10 @@ services:
       - ZMQ_VENTILATOR=tcp://task-ventilator:5556
       - ZMQ_RESULT_SINK=tcp://task-ventilator:5557
     deploy:
+      mode: replicated
       replicas: 4    # 4 parallel workers
-    restart: unless-stopped
+      restart_policy:
+        condition: any
     networks:
       - zmq-workers
 
@@ -156,11 +158,11 @@ while True:
 
 ## Port Considerations
 
-ZeroMQ applications use configurable TCP ports. When deploying multiple stacks with ZeroMQ, use different port ranges to avoid conflicts:
+ZeroMQ applications use configurable TCP ports. If you publish ZeroMQ ports to the host, use different host port ranges to avoid conflicts. Containers on separate Docker networks can reuse the same internal ports:
 
 - Stack A: ports 5555-5560
 - Stack B: ports 5565-5570
 
 ## Summary
 
-ZeroMQ applications deployed via Portainer use direct socket communication between containers on the same Docker network. Unlike AMQP-based brokers, ZeroMQ requires no central message broker, making it extremely low-latency. Scale the worker pool using Portainer's service scaling features to handle varying workloads.
+ZeroMQ applications deployed via Portainer use direct socket communication between containers on the same Docker network. Unlike AMQP-based brokers, ZeroMQ requires no central message broker, making it extremely low-latency. In Docker Swarm, scale the worker pool using Portainer's service scaling features to handle varying workloads.
