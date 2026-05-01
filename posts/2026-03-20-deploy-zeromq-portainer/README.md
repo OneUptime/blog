@@ -20,14 +20,15 @@ ZeroMQ (ZMQ) is a lightweight, high-performance messaging library that runs insi
 
 ## Step 1: Build Application Images with ZeroMQ
 
-Create a `Dockerfile` for your ZeroMQ service:
+Create a `Dockerfile` in each service directory. For example, the publisher image:
 
 ```dockerfile
-# Dockerfile - Python service with ZeroMQ
+# publisher/Dockerfile - Python service with ZeroMQ
 
 FROM python:3.12-slim
 
 WORKDIR /app
+ENV PYTHONUNBUFFERED=1
 RUN pip install pyzmq
 
 COPY publisher.py .
@@ -54,6 +55,7 @@ while True:
     }
     # Topic-based routing: "orders " prefix
     socket.send_string(f"orders {json.dumps(event)}")
+    print(f"Published event: {event}")
     time.sleep(1)
 ```
 
@@ -61,26 +63,31 @@ while True:
 # subscriber.py - ZeroMQ PUB/SUB subscriber
 import zmq
 import json
+import os
 
 context = zmq.Context()
 socket = context.socket(zmq.SUB)
 socket.connect("tcp://publisher:5556")
 socket.setsockopt_string(zmq.SUBSCRIBE, "orders")  # Subscribe to "orders" topic
 
-print("Subscriber connected, waiting for messages...")
+subscriber_id = os.getenv("SUBSCRIBER_ID", "1")
+print(f"Subscriber {subscriber_id} connected, waiting for messages...")
 
 while True:
     message = socket.recv_string()
     topic, data = message.split(" ", 1)
     event = json.loads(data)
-    print(f"Received {topic}: {event}")
+    print(f"Subscriber {subscriber_id} received {topic}: {event}")
 ```
+
+Use the same base Dockerfile in the subscriber directory, but copy `subscriber.py` and run `python subscriber.py`.
 
 ## Step 2: Create the Stack in Portainer
 
+If you are deploying to a remote Docker environment in Portainer, build and push the images first, then replace the `build:` sections below with `image:` references because Portainer does not execute Compose `build:` steps for remote environments.
+
 ```yaml
-# docker-compose.yml - ZeroMQ PUB/SUB Architecture
-version: "3.8"
+# compose.yaml - ZeroMQ PUB/SUB architecture
 
 services:
   publisher:
@@ -90,7 +97,7 @@ services:
     container_name: zmq_publisher
     restart: unless-stopped
     expose:
-      - "5556"    # PUB socket (do not expose externally)
+      - "5556"    # PUB socket for internal container-to-container traffic
     networks:
       - zmq_net
 
@@ -172,17 +179,19 @@ docker logs zmq_publisher --tail 10
 docker logs zmq_subscriber_1 --tail 10
 
 # Test ZeroMQ port from inside the network
-docker exec zmq_subscriber_1 python3 -c "
+docker exec zmq_subscriber_1 python -c "
 import zmq
 ctx = zmq.Context()
 s = ctx.socket(zmq.SUB)
+s.setsockopt_string(zmq.SUBSCRIBE, 'orders')
 s.connect('tcp://publisher:5556')
-s.setsockopt_string(zmq.SUBSCRIBE, '')
-msg = s.recv_string(flags=zmq.NOBLOCK)
-print('Received:', msg)
+if s.poll(5000):
+    print('Received:', s.recv_string())
+else:
+    print('No message received within 5 seconds')
 "
 ```
 
 ## Conclusion
 
-ZeroMQ runs inside application processes with no separate broker, making it extremely fast (millions of messages/second) and operationally simple. Use PUB/SUB for broadcasting events to multiple consumers, PUSH/PULL for distributing work across a pool of workers, and REQ/REP for synchronous request-reply RPCs. In Docker environments, use Docker service names as ZeroMQ endpoints - subscribers `connect()` to publishers and workers `connect()` to task producers. Never expose ZeroMQ ports externally; keep them within Docker networks.
+ZeroMQ runs inside application processes with no separate broker, making it operationally simple and capable of very high throughput. Use PUB/SUB for broadcasting events to multiple consumers, PUSH/PULL for distributing work across a pool of workers, and REQ/REP for synchronous request-reply RPCs. In Docker environments, use Docker service names as ZeroMQ endpoints - subscribers `connect()` to publishers and workers `connect()` to task producers. Prefer keeping ZeroMQ ports on internal Docker networks unless external clients need access.
