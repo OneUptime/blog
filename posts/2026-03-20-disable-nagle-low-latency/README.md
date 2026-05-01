@@ -4,11 +4,11 @@ Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
 Tags: TCP, Nagle Algorithm, TCP_NODELAY, Low Latency, Linux, Performance
 
-Description: Disable Nagle's algorithm using TCP_NODELAY in various programming languages and server configurations to eliminate 40ms packet coalescing delays for interactive applications.
+Description: Disable Nagle's algorithm using TCP_NODELAY in various programming languages and server configurations to reduce latency for interactive applications that send small TCP messages.
 
 ## Introduction
 
-Disabling Nagle's algorithm (setting TCP_NODELAY) tells the TCP stack to send data immediately rather than waiting to accumulate a full segment. This is the standard configuration for any interactive, real-time, or low-latency application. The trade-off is more small packets on the network, but for applications that send small messages and wait for responses, the latency savings are significant.
+Disabling Nagle's algorithm (setting TCP_NODELAY) tells the TCP stack not to delay small writes in hopes of sending fewer packets. This is a common configuration for interactive or latency-sensitive applications. The trade-off is more small packets on the network, but for applications that send small messages and wait for responses, the latency savings can be significant.
 
 ## Disabling in Python
 
@@ -26,6 +26,13 @@ nodelay = s.getsockopt(socket.IPPROTO_TCP, socket.TCP_NODELAY)
 print(f"TCP_NODELAY = {nodelay}")  # Should print 1
 
 # Method 2: In a server with accepted connections
+def handle_connection(conn):
+    try:
+        # Application logic goes here
+        pass
+    finally:
+        conn.close()
+
 server = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
 server.setsockopt(socket.SOL_SOCKET, socket.SO_REUSEADDR, 1)
 server.bind(('0.0.0.0', 8080))
@@ -48,7 +55,7 @@ const server = net.createServer((socket) => {
     console.log('Client connected, Nagle disabled');
 
     socket.on('data', (data) => {
-        socket.write(data);  // Echo: sends immediately, no coalescing delay
+        socket.write(data);  // Echo: write with Nagle disabled
     });
 });
 
@@ -57,7 +64,7 @@ server.listen(8080);
 // Client: disable Nagle
 const client = net.createConnection({ host: '10.20.0.5', port: 8080 }, () => {
     client.setNoDelay(true);
-    client.write('Hello');  // Sent immediately
+    client.write('Hello');  // Write with Nagle disabled
 });
 ```
 
@@ -67,21 +74,25 @@ const client = net.createConnection({ host: '10.20.0.5', port: 8080 }, () => {
 package main
 
 import (
-    "net"
     "fmt"
+    "net"
 )
 
 func main() {
-    // Dial with TCP_NODELAY
+    // Go already defaults to TCP_NODELAY on *net.TCPConn,
+    // but you can set it explicitly.
     conn, err := net.Dial("tcp", "10.20.0.5:8080")
     if err != nil {
         panic(err)
     }
+    defer conn.Close()
 
     // Type assertion to access SetNoDelay
     tcpConn, ok := conn.(*net.TCPConn)
     if ok {
-        tcpConn.SetNoDelay(true)  // Disable Nagle
+        if err := tcpConn.SetNoDelay(true); err != nil {
+            panic(err)
+        }
         fmt.Println("TCP_NODELAY enabled")
     }
 }
@@ -90,53 +101,36 @@ func main() {
 ## Disabling in Server Configuration
 
 ```nginx
-# nginx: disable Nagle for all connections (already default for most responses)
-# nginx uses TCP_NOPUSH and TCP_CORK instead of managing Nagle directly
-# But for proxy connections:
-proxy_socket_keepalive on;
-# For upstream connections, nginx handles Nagle automatically
+# nginx: enable TCP_NODELAY where nginx supports it
+tcp_nodelay on;
+# proxy_socket_keepalive controls SO_KEEPALIVE, not Nagle's algorithm
 ```
 
 ```ini
-# PostgreSQL server: disable Nagle for client connections
-# postgresql.conf:
+# PostgreSQL does not expose a postgresql.conf setting for TCP_NODELAY.
+# tcp_keepalives_idle tunes TCP keepalive and is unrelated to Nagle's algorithm.
 tcp_keepalives_idle = 60
-# PostgreSQL automatically disables Nagle for its protocol connections
+# PostgreSQL itself sets TCP_NODELAY on its TCP sockets in code.
 ```
 
 ## Redis and Databases
 
 ```bash
-# Redis uses TCP_NODELAY by default
-# Check redis configuration
-redis-cli config get tcp-keepalive
-
-# Verify TCP_NODELAY in use via ss
-ss -tin state established 'dport = :6379' | grep nodelay
+# Redis sets TCP_NODELAY on accepted client connections by default.
+# There is no redis.conf setting to toggle TCP_NODELAY.
+# tcp-keepalive configures SO_KEEPALIVE, which is a different socket option.
+redis-cli CONFIG GET tcp-keepalive
 ```
 
 ## System-Wide Approach
 
-There is no sysctl to disable Nagle globally for all connections - it must be done per-socket. However, you can patch your application or use LD_PRELOAD to intercept socket calls:
+There is no supported system-wide switch to disable Nagle for every application socket - TCP_NODELAY is a per-socket option. If you need it, set it in application code or in a library/framework that owns the socket.
 
 ```bash
-# For testing only: intercept socket creation with LD_PRELOAD
-# This is a debugging technique, not for production
-cat > /tmp/nodelay.c << 'EOF'
-#include <netinet/tcp.h>
-#include <sys/socket.h>
-
-int setsockopt(int fd, int level, int optname, const void *optval, socklen_t optlen) {
-    extern int __real_setsockopt(int, int, int, const void *, socklen_t);
-    if (level == IPPROTO_TCP && optname == TCP_NODELAY) {
-        int enable = 1;
-        return __real_setsockopt(fd, level, TCP_NODELAY, &enable, sizeof(enable));
-    }
-    return __real_setsockopt(fd, level, optname, optval, optlen);
-}
-EOF
+# No global sysctl flips TCP_NODELAY on for every TCP socket.
+# Set it in the application, client library, or server handling the connection.
 ```
 
 ## Conclusion
 
-Disabling Nagle's algorithm for interactive applications is straightforward - set TCP_NODELAY on each connected socket after creation. For client code, set it before or right after connect(). For server code, set it on each accepted connection. Every major language's networking library provides a direct method for this. The 40ms latency improvement for request-response protocols is immediate and measurable.
+Disabling Nagle's algorithm for interactive applications is straightforward - set TCP_NODELAY on each connected socket that needs low-latency writes. For client code, set it after creating the socket and before sending latency-sensitive data. For server code, set it on each accepted connection. Every major language's networking library provides a direct method for this, although some runtimes such as Go already default TCP connections to no delay. The latency improvement can be measurable for small request-response exchanges, but the exact gain depends on the TCP stack, delayed ACK behavior, and traffic pattern.
