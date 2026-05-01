@@ -43,7 +43,7 @@ IPv4 path:
   Laptop → ISP-A → Transit-B → Server   (higher latency)
 
 Result:
-  - TCP connections via IPv6 succeed (preferred by RFC 6724)
+  - TCP connections via IPv6 succeed (often selected first by RFC 6724 policy)
   - Intermittent timeout appears on "slow" IPv4 fallback
   - User reports: "website loads slowly sometimes"
   - Root cause: asymmetric path quality, not a bug
@@ -54,10 +54,10 @@ Result:
 | Item | IPv4 | IPv6 | Notes |
 |---|---|---|---|
 | Default route ACL | 0.0.0.0/0 | ::/0 | Both need explicit block-then-permit |
-| Bogon prefixes | RFC 1918, 127.x, etc. | ::/8, fc00::/7, 2001:db8::/32 | Different bogon lists |
+| Special-use / bogon prefixes | RFC 1918, 127.0.0.0/8, etc. | fc00::/7, fe80::/10, 2001:db8::/32 | Different special-use / bogon lists |
 | ICMP filtering | ICMP types 3,11,12 | ICMPv6 types 1,2,3,4,133-137 | IPv6 has more required types |
 | Fragment handling | Fragment offset | Extension headers | Different mechanisms |
-| Loopback | 127.0.0.1/8 | ::1/128 | Both must be allowed on lo |
+| Loopback | 127.0.0.0/8 | ::1/128 | Both must be allowed on lo |
 
 ## BGP Prefix Lists
 
@@ -101,7 +101,7 @@ Prevention:
 # 1. Both A and AAAA records for all services
 # 2. PTR records in both in-addr.arpa and ip6.arpa
 # 3. Split-horizon DNS must cover both families
-# 4. Internal resolvers must forward both record types
+# 4. Internal resolvers must answer or forward both A and AAAA queries
 
 # Common mistake: only A records in internal DNS
 # Effect: internal hosts resolve AAAA for external sites
@@ -124,8 +124,8 @@ SNMP, NetFlow/IPFIX, and syslog must all capture both families:
 nfdump -r /var/cache/nfdump/nfcapd.current -s record/bytes -n 10 -o "fmt:%sa %da %pr %byt" | grep ":"
 
 # SNMP: ifInOctets counts all traffic regardless of IP version
-# But per-protocol counters need IPv6 MIBs (IP-MIB, IPV6-MIB)
-snmpwalk -v2c -c public router 1.3.6.1.2.1.55   # IPv6 MIB
+# But per-protocol counters live in IP-MIB (with some older agents also exposing IPV6-MIB)
+snmpwalk -v2c -c public router 1.3.6.1.2.1.4.31   # IP-MIB ipSystemStatsTable / ipIfStatsTable
 
 # Monitoring alert: if IPv6 traffic drops to zero on a dual-stack link
 # while IPv4 traffic continues → likely an IPv6 configuration event
@@ -137,10 +137,10 @@ Operations teams need to be trained on IPv6 equivalents of every IPv4 tool:
 
 | IPv4 Command | IPv6 Equivalent |
 |---|---|
-| `ping`        | `ping6` / `ping -6` |
-| `traceroute`  | `traceroute6` / `traceroute -6` |
+| `ping`        | `ping -6` |
+| `traceroute`  | `traceroute -6` / `traceroute6` |
 | `arp -n`      | `ip -6 neigh` / NDP |
-| `netstat -rn` | `netstat -rn -f inet6` |
+| `netstat -rn` | `ip -6 route` |
 | `tcpdump host x.x.x.x` | `tcpdump ip6 and host 2001:db8::1` |
 | `nmap 10.0.0.0/24` | `nmap -6 2001:db8::/64` |
 
