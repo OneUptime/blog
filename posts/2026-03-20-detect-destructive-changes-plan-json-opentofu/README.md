@@ -86,11 +86,13 @@ jobs:
     outputs:
       has_destructive: ${{ steps.check.outputs.has_destructive }}
     steps:
+      - uses: actions/checkout@v6
+      - uses: opentofu/setup-opentofu@v2
       - name: Plan and Export JSON
         run: |
           tofu init
           tofu plan -out=tfplan
-          tofu show -json tfplan > plan.json
+          tofu show -json -plan=tfplan > plan.json
 
       - name: Check for Destructive Changes
         id: check
@@ -101,13 +103,28 @@ jobs:
             echo "has_destructive=true" >> $GITHUB_OUTPUT
           fi
 
+      - name: Upload Saved Plan
+        uses: actions/upload-artifact@v4
+        with:
+          name: tfplan
+          path: tfplan
+
   apply:
     needs: plan
     runs-on: ubuntu-latest
-    environment: ${{ needs.plan.outputs.has_destructive == 'true' && 'production-destructive' || 'production' }}
+    environment:
+      name: ${{ needs.plan.outputs.has_destructive == 'true' && 'production-destructive' || 'production' }}
     steps:
+      - uses: actions/checkout@v6
+      - uses: opentofu/setup-opentofu@v2
+      - name: Download Saved Plan
+        uses: actions/download-artifact@v5
+        with:
+          name: tfplan
+      - name: Reinitialize Working Directory
+        run: tofu init
       - name: Apply
-        run: tofu apply -auto-approve tfplan
+        run: tofu apply tfplan
 ```
 
 The `production-destructive` environment can be configured in GitHub with required reviewers, forcing a human approval before destructive changes proceed.
@@ -123,7 +140,7 @@ PROTECTED_TYPES = {
     "aws_rds_cluster",
     "aws_s3_bucket",
     "google_sql_database_instance",
-    "azurerm_sql_server",
+    "azurerm_mssql_server",
 }
 
 for change in plan.get("resource_changes", []):
