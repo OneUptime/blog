@@ -8,13 +8,16 @@ Description: Learn how to enable envelope encryption for Kubernetes Secrets in E
 
 ## Introduction
 
-By default, Kubernetes Secrets are stored in base64-encoded format in etcd-not encrypted. EKS envelope encryption uses AWS KMS to encrypt the envelope encryption key that protects Secrets, providing a strong security layer for credentials, tokens, and certificates stored as Kubernetes Secrets.
+Kubernetes Secrets store their data as base64-encoded values, not as encrypted values by themselves. On Amazon EKS, clusters running Kubernetes 1.28 or later already use default envelope encryption for all Kubernetes API data with an AWS owned key. Using your own AWS KMS key adds a customer-managed layer for Secrets stored in etcd.
 
 ## Prerequisites
 
 - OpenTofu v1.6+
+- AWS CLI v2 configured for your target region
+- kubectl configured for the cluster
 - AWS credentials with EKS and KMS permissions
-- Note: Encryption can be enabled at cluster creation or enabled later but cannot be disabled once enabled
+- If you scope down the KMS key policy, allow `kms:DescribeKey` and `kms:CreateGrant` for the IAM principal that creates or updates the cluster
+- Note: EKS 1.28+ already uses default envelope encryption. This guide shows how to use your own customer managed KMS key, and once that key is associated it cannot be disabled or changed later
 
 ## Step 1: Create a KMS Key for Secrets Encryption
 
@@ -26,33 +29,8 @@ resource "aws_kms_key" "eks_secrets" {
   deletion_window_in_days = 30
   enable_key_rotation     = true
 
-  # Key policy must allow the EKS service and authorized users
-  policy = jsonencode({
-    Version = "2012-10-17"
-    Statement = [
-      {
-        Sid    = "Enable IAM User Permissions"
-        Effect = "Allow"
-        Principal = {
-          AWS = "arn:aws:iam::${data.aws_caller_identity.current.account_id}:root"
-        }
-        Action   = "kms:*"
-        Resource = "*"
-      },
-      {
-        Sid    = "Allow EKS to use this key"
-        Effect = "Allow"
-        Principal = {
-          AWS = aws_iam_role.eks_cluster.arn
-        }
-        Action = [
-          "kms:Decrypt",
-          "kms:GenerateDataKey"
-        ]
-        Resource = "*"
-      }
-    ]
-  })
+  # If you omit the policy, AWS KMS attaches the default key policy.
+  # That lets IAM policies and KMS grants control access to the key.
 
   tags = {
     Name    = "${var.cluster_name}-secrets-encryption"
@@ -109,25 +87,23 @@ resource "aws_eks_cluster" "main" {
 ## Step 3: Enable Encryption on an Existing Cluster
 
 ```hcl
-# Use the AWS CLI to enable encryption on an existing cluster
-# This cannot be done via the aws_eks_cluster resource after creation
-# but can be done via AWS CLI or SDK
+# If the cluster is already managed by OpenTofu, add the encryption_config
+# block from Step 2 to the existing aws_eks_cluster resource and apply again.
+# The AWS provider will call AssociateEncryptionConfig for the update.
 
-resource "null_resource" "enable_encryption" {
-  triggers = {
-    cluster_name = var.cluster_name
-    kms_key_arn  = aws_kms_key.eks_secrets.arn
-  }
+encryption_config {
+  resources = ["secrets"]
 
-  provisioner "local-exec" {
-    command = <<-EOF
-      aws eks associate-encryption-config \
-        --cluster-name ${var.cluster_name} \
-        --encryption-config '[{"resources":["secrets"],"provider":{"keyArn":"${aws_kms_key.eks_secrets.arn}"}}]' \
-        --region ${var.region}
-    EOF
+  provider {
+    key_arn = aws_kms_key.eks_secrets.arn
   }
 }
+```
+
+```bash
+# Re-encrypt existing secrets with the new key after the cluster update completes
+kubectl get secrets --all-namespaces -o json \
+  | kubectl annotate --overwrite -f - kms-encryption-timestamp="$(date -u +%FT%TZ)"
 ```
 
 ## Step 4: Verify Encryption is Working
@@ -137,12 +113,13 @@ resource "null_resource" "enable_encryption" {
 kubectl create secret generic test-secret \
   --from-literal=password=mysecretpassword
 
-# Verify it's encrypted (should show kms provider in etcd)
-kubectl describe secret test-secret
+# Confirm the secret is readable through the Kubernetes API
+kubectl get secret test-secret
 
-# Check cluster encryption config
+# Check the cluster encryption config
 aws eks describe-cluster \
   --name my-cluster \
+  --region us-west-2 \
   --query 'cluster.encryptionConfig'
 ```
 
@@ -156,4 +133,4 @@ tofu apply
 
 ## Conclusion
 
-EKS envelope encryption protects Kubernetes Secrets using AWS KMS, ensuring that even if etcd storage were compromised, secrets would remain encrypted. Once enabled, encryption cannot be disabled, so plan your KMS key management carefully-including key rotation policies, backup, and cross-account access if needed. Monitor KMS API call volumes in CloudTrail as each secret creation or retrieval generates KMS API calls.
+EKS envelope encryption with a customer managed KMS key protects Kubernetes Secrets at rest in etcd while giving you control over the key used for that protection. On Kubernetes 1.28 and later, EKS already enables default envelope encryption with an AWS owned key, and associating your own KMS key replaces that with a customer managed key for your cluster. Once enabled, that customer managed key association cannot be disabled or changed later, so plan key rotation, deletion protection, and cross-account access carefully. Monitor CloudTrail and KMS usage when you use your own key.
