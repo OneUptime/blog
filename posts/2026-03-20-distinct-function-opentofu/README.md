@@ -61,7 +61,7 @@ resource "aws_instance" "app" {
 
 ---
 
-## Combining Multiple Tag Lists
+## Combining Multiple Instance ID Lists
 
 ```hcl
 module "web" {
@@ -85,7 +85,7 @@ locals {
 
 ---
 
-## Deduplicating from for_each
+## Deduplicating with a for Expression
 
 ```hcl
 variable "services" {
