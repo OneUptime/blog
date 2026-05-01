@@ -8,84 +8,45 @@ Description: Configure IPv6 support on Ubiquiti UniFi access points and controll
 
 ---
 
-Ubiquiti UniFi networks support IPv6 through the UniFi Network Controller. You configure IPv6 at the network level, and UniFi APs automatically forward RA messages and DHCPv6 to wireless clients. The USG or UDM router handles prefix delegation from the ISP.
+Ubiquiti UniFi networks support IPv6 through the UniFi Network application. You configure IPv6 on both the WAN and the LAN network, and UniFi APs bridge RA messages and DHCPv6 traffic to wireless clients. The USG or UDM gateway handles prefix delegation from the ISP.
 
 ## UniFi Controller IPv6 Configuration
 
-```sql
-UniFi Controller: Settings > Networks > [Select Network] > IPv6
+```text
+UniFi Network:
+- WAN: Settings > Internet > [Select WAN] > IPv6 Configuration
+- LAN/VLAN: Settings > Networks > [Select Network] > IPv6
 
-Options:
-- DHCPv6: USG/UDM requests prefix from ISP via DHCPv6-PD
-- Static: Manual prefix assignment
-- SLAAC only: Router advertisements without DHCPv6
-- None: Disable IPv6
+Supported WAN IPv6 methods:
+- SLAAC
+- DHCPv6
+- Static
+
+Supported LAN IPv6 interface types:
+- Prefix Delegation
+- Static
 
 Recommended for most deployments:
-- IPv6 Interface Type: Prefix Delegation
-- Prefix Delegation Size: /64 (per network)
-- DHCPv6 Start/Stop: ::2 to ::7d1
+- WAN IPv6 Configuration: DHCPv6
+- WAN Prefix Delegation Size: Match the ISP assignment (commonly /48 or /56)
+- LAN IPv6 Interface Type: Prefix Delegation
+- Client Address Assignment: SLAAC, or DHCPv6 with Allow SLAAC for mixed clients
 ```
 
 ## UniFi USG IPv6 Configuration via JSON Override
 
-```json
-// /usr/lib/unifi/data/sites/default/config.gateway.json
-// IPv6 prefix delegation from ISP
-
-{
-  "interfaces": {
-    "ethernet": {
-      "eth0": {
-        "description": "WAN",
-        "dhcpv6-pd": {
-          "pd": {
-            "0": {
-              "interface": {
-                "eth1": {
-                  "host-address": "::1",
-                  "no-dns": "''"
-                }
-              },
-              "prefix-length": "/48"
-            }
-          },
-          "rapid-commit": "enable"
-        }
-      },
-      "eth1": {
-        "description": "LAN",
-        "ipv6": {
-          "address": {
-            "autoconf": "''"
-          },
-          "dup-addr-detect-transmits": 1,
-          "router-advert": {
-            "cur-hop-limit": 64,
-            "managed-flag": "false",
-            "max-interval": 30,
-            "name-server": "2001:4860:4860::8888",
-            "other-config-flag": "false",
-            "prefix": {
-              "::/64": {
-                "autonomous-flag": "true",
-                "on-link-flag": "true",
-                "valid-lifetime": 2592000
-              }
-            },
-            "send-advert": "true"
-          }
-        }
-      }
-    }
-  }
-}
+```text
+Legacy USG note:
+- `config.gateway.json` applies only to USG-era gateways.
+- The override should mirror EdgeOS/VyOS DHCPv6-PD settings on the WAN and a delegated /64 on each LAN.
+- Request the ISP-delegated size on the WAN (often /48 or /56), then assign a unique prefix ID per LAN network.
+- Prefer the UniFi Network UI for WAN DHCPv6 and LAN Prefix Delegation when those options are available.
 ```
 
 ## UniFi Dream Machine (UDM) IPv6 Setup
 
 ```bash
-# SSH into UDM
+# SSH into UDM if SSH is enabled
 
 ssh root@192.168.1.1
 
@@ -93,56 +54,56 @@ ssh root@192.168.1.1
 ip -6 addr show
 ip -6 route show
 
-# Check prefix delegation received from ISP
-journalctl -u odhcp6c -f
-
-# Verify IPv6 on LAN bridge
+# Verify IPv6 on the default LAN bridge
 ip -6 addr show br0
 
-# Check RA daemon status
-ps aux | grep radvd
+# Capture Router Advertisements on the LAN bridge
+tcpdump -i br0 -nn 'icmp6 and ip6[40] == 134' -c 3
 
-# Manually test RA on LAN interface
-radvdump -i br0 2>/dev/null | head -30
-
-# View IPv6 DHCP leases
-cat /var/lib/misc/dnsmasq.leases | grep -v "^#"
+# View lease information in the UniFi UI
+# UniFi Network 7.4+: Settings > Networks > IP Leases
 ```
 
 ## UniFi IPv6 Firewall Rules
 
 ```text
-UniFi Controller > Settings > Firewall & Security > IPv6
+UniFi Network 9.x:
+- Settings > Zones > Create Policy
+- or Settings > Policy Table > Create New Policy
 
-Rule 1: Allow Established/Related
-- Action: Accept
-- IPv6 Protocol: All
-- State: Established, Related
+Built-in External -> Other Zones policies already provide:
+- Allow Return Traffic (established/related)
+- Block Invalid Traffic
+- Block All Traffic
 
-Rule 2: Allow ICMPv6
-- Action: Accept
-- IPv6 Protocol: ICMPv6
-- ICMPv6 Type: All
+Add custom IPv6 policies only when needed:
+Policy 1: Allow ICMPv6 from External to Gateway
+- IP Version: IPv6
+- Protocol: ICMP
+- Source Zone: External
+- Destination Zone: Gateway
+- Action: Allow
 
-Rule 3: Allow DHCPv6
-- Action: Accept
-- IPv6 Protocol: UDP
+Policy 2: Allow DHCPv6 replies from External to Gateway
+- IP Version: IPv6
+- Protocol: UDP
+- Source Zone: External
+- Destination Zone: Gateway
+- Source Port: 547
 - Destination Port: 546
-
-Rule 4: Block all other inbound
-- Action: Drop
-- Direction: In
+- Action: Allow
 ```
 
 ```bash
-# Via CLI on USG/UDM - view IPv6 firewall rules
-show ipv6 firewall name WAN6_LOCAL statistics
+# Via CLI on USG - view IPv6 firewall rules
+show firewall ipv6name WAN6_LOCAL statistics
 
 # Add rule via VyOS CLI (USG)
 configure
 set firewall ipv6-name WAN6_LOCAL rule 10 action accept
 set firewall ipv6-name WAN6_LOCAL rule 10 protocol icmpv6
-commit; save
+commit
+save
 ```
 
 ## Verify Wi-Fi Clients Get IPv6
@@ -150,44 +111,43 @@ commit; save
 ```bash
 # On a connected Wi-Fi client
 # macOS
-networksetup -getinfo Wi-Fi | grep "IPv6"
+ifconfig en0 | grep inet6
 # Should show:
-# IPv6 Address: 2001:db8:1234::/64 derived address
+# a global unicast address from the delegated /64
 
 # Windows
 netsh interface ipv6 show addresses
-# Should show global unicast address
+# Should show a global unicast address
 
 # Linux/Android
-ip -6 addr show wlan0
+ip -6 addr show
 
 # Test IPv6 connectivity
-ping6 2606:4700:4700::1111    # Cloudflare DNS
-curl -6 https://ipv6.google.com/  # IPv6 internet
+ping -6 2606:4700:4700::1111    # Cloudflare DNS
+curl -6 https://cloudflare.com >/dev/null
 
-# Speed test via IPv6
-curl -6 https://speed.cloudflare.com/cdn-cgi/trace | grep ip
+# Verify public IPv6 source address
+curl -6 https://cloudflare.com/cdn-cgi/trace | grep '^ip='
 ```
 
 ## UniFi IPv6 Troubleshooting
 
 ```bash
-# Check if prefix delegation is working
+# Check DHCPv6 client logs on a USG/legacy VyOS-style gateway
 ssh root@usg-ip
-show dhcpv6-pd leases
+show log dhcpv6 client interface eth0
 
 # Debug RA not reaching clients
-tcpdump -i eth1 -nn icmp6 and \(ip6[40]==133 or ip6[40]==134\)
+tcpdump -i eth1 -nn 'icmp6 and (ip6[40]==133 or ip6[40]==134)'
 # 133 = Router Solicitation, 134 = Router Advertisement
 
-# Check Wi-Fi association and IPv6 in UniFi logs
-grep -i "ipv6\|slaac\|dhcpv6" /var/log/messages
+# Check gateway logs for IPv6 messages
+grep -Ei 'ipv6|slaac|dhcpv6' /var/log/messages
 
 # UniFi AP SSH debug
-ssh admin@ap-ip
-iwconfig ath0  # Check wireless interface
-brctl show     # Verify bridge setup
+ssh <username>@ap-ip
 ip -6 addr show
+grep -Ei 'ipv6|dhcpv6|icmp6' /var/log/messages
 ```
 
-UniFi IPv6 deployment works best with ISP prefix delegation (DHCPv6-PD) configured on the WAN interface, which automatically sub-delegates /64 prefixes to each LAN network. Wireless clients receive IPv6 addresses via SLAAC from the RA broadcast forwarded through the UniFi APs acting as transparent L2 bridges.
+UniFi IPv6 deployment works best with ISP prefix delegation (DHCPv6-PD) configured on the WAN interface, which lets the gateway assign a unique /64 to each LAN network when the LAN Interface Type is Prefix Delegation. Wireless clients receive IPv6 addresses via SLAAC from Router Advertisement messages bridged through the UniFi APs acting as transparent L2 bridges.

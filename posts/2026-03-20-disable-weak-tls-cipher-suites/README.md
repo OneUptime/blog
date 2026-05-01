@@ -8,7 +8,7 @@ Description: Learn how to identify and disable weak TLS cipher suites on Nginx a
 
 ## Why Cipher Suite Selection Matters
 
-Cipher suites define the encryption algorithms used for a TLS session. Weak ciphers like RC4, DES, 3DES, and EXPORT-grade ciphers have known vulnerabilities that allow traffic decryption or manipulation. Modern servers should only accept AEAD (Authenticated Encryption with Associated Data) cipher suites.
+Cipher suites define the algorithms used for a TLS session. Weak ciphers like RC4, DES, 3DES, and EXPORT-grade ciphers have known vulnerabilities that allow traffic decryption or manipulation. Modern servers should only accept AEAD (Authenticated Encryption with Associated Data) cipher suites.
 
 ## Cipher Suite Components
 
@@ -16,7 +16,7 @@ A cipher suite like `ECDHE-RSA-AES256-GCM-SHA384` breaks down as:
 - `ECDHE` - Key exchange (Elliptic Curve Diffie-Hellman Ephemeral)
 - `RSA` - Certificate authentication
 - `AES256-GCM` - Encryption algorithm
-- `SHA384` - HMAC for message integrity
+- `SHA384` - PRF hash in TLS 1.2; GCM provides record integrity
 
 ## Step 1: Audit Current Cipher Suites
 
@@ -25,17 +25,18 @@ Check which ciphers your server currently accepts:
 ```bash
 # Using testssl.sh (recommended)
 
-wget https://testssl.sh/testssl.sh && chmod +x testssl.sh
+git clone --depth 1 https://github.com/testssl/testssl.sh.git
+cd testssl.sh
 ./testssl.sh example.com
 
 # Using nmap
 nmap --script ssl-enum-ciphers -p 443 example.com
 
 # Quick check with openssl (shows negotiated cipher only)
-openssl s_client -connect example.com:443 2>/dev/null | grep Cipher
+openssl s_client -connect example.com:443 -servername example.com < /dev/null 2>/dev/null | grep Cipher
 ```
 
-Look for ciphers rated "WEAK", "INSECURE", or "CBC" in the testssl.sh output.
+Look for RC4, DES/3DES, EXPORT, MD5, or CBC-based suites if your goal is an AEAD-only configuration.
 
 ## Step 2: Configure Strong Cipher Suites in Nginx
 
@@ -45,11 +46,11 @@ Look for ciphers rated "WEAK", "INSECURE", or "CBC" in the testssl.sh output.
 # TLS protocols (disable TLS 1.0 and 1.1)
 ssl_protocols TLSv1.2 TLSv1.3;
 
-# Strong TLS 1.2 cipher suites (TLS 1.3 suites are automatically secure)
-# These are ECDHE/DHE with AESGCM or CHACHA20 (AEAD ciphers only)
-ssl_ciphers 'ECDHE-ECDSA-AES128-GCM-SHA256:ECDHE-RSA-AES128-GCM-SHA256:ECDHE-ECDSA-AES256-GCM-SHA384:ECDHE-RSA-AES256-GCM-SHA384:ECDHE-ECDSA-CHACHA20-POLY1305:ECDHE-RSA-CHACHA20-POLY1305:DHE-RSA-AES128-GCM-SHA256:DHE-RSA-AES256-GCM-SHA384';
+# Strong TLS 1.2 cipher suites (TLS 1.3 ciphersuites are configured separately)
+# These are ECDHE with AES-GCM or CHACHA20-POLY1305 (AEAD ciphers only)
+ssl_ciphers 'ECDHE-ECDSA-AES128-GCM-SHA256:ECDHE-RSA-AES128-GCM-SHA256:ECDHE-ECDSA-AES256-GCM-SHA384:ECDHE-RSA-AES256-GCM-SHA384:ECDHE-ECDSA-CHACHA20-POLY1305:ECDHE-RSA-CHACHA20-POLY1305';
 
-# Do NOT prefer server ciphers for TLS 1.3 (let client choose best AEAD)
+# Leave TLS 1.2 cipher ordering to the client
 ssl_prefer_server_ciphers off;
 ```
 
@@ -60,15 +61,15 @@ ssl_prefer_server_ciphers off;
 
 SSLProtocol all -SSLv3 -TLSv1 -TLSv1.1
 
-# AEAD cipher suites only - no CBC, no RC4, no export
-SSLCipherSuite ECDHE-ECDSA-AES128-GCM-SHA256:ECDHE-RSA-AES128-GCM-SHA256:ECDHE-ECDSA-AES256-GCM-SHA384:ECDHE-RSA-AES256-GCM-SHA384:ECDHE-ECDSA-CHACHA20-POLY1305:ECDHE-RSA-CHACHA20-POLY1305:DHE-RSA-AES128-GCM-SHA256:DHE-RSA-AES256-GCM-SHA384
+# Strong TLS 1.2 cipher suites; TLS 1.3 ciphersuites are configured separately
+SSLCipherSuite ECDHE-ECDSA-AES128-GCM-SHA256:ECDHE-RSA-AES128-GCM-SHA256:ECDHE-ECDSA-AES256-GCM-SHA384:ECDHE-RSA-AES256-GCM-SHA384:ECDHE-ECDSA-CHACHA20-POLY1305:ECDHE-RSA-CHACHA20-POLY1305
 
 SSLHonorCipherOrder off
 ```
 
 ## Step 4: Ciphers to Explicitly Disable
 
-The following cipher categories should never be in a production configuration:
+The following cipher categories should not be enabled on a typical public web server:
 
 ```bash
 # Ciphers to avoid (using OpenSSL exclusion syntax with !):
@@ -78,12 +79,12 @@ The following cipher categories should never be in a production configuration:
 # !RC4     - RC4 (statistical bias, NOMORE attack)
 # !DES     - DES (56-bit, brute-forceable)
 # !3DES    - Triple DES (SWEET32 attack, 64-bit blocks)
-# !MD5     - MD5 HMAC (collision attacks)
+# !MD5     - MD5-based suites (legacy/insecure)
 # !PSK     - Pre-shared key (usually unused)
 # !SRP     - Secure Remote Password (usually unused)
 
-# Comprehensive exclusion list for Nginx:
-ssl_ciphers 'ECDHE-ECDSA-AES128-GCM-SHA256:ECDHE-RSA-AES128-GCM-SHA256:ECDHE-ECDSA-AES256-GCM-SHA384:ECDHE-RSA-AES256-GCM-SHA384:!aNULL:!eNULL:!EXPORT:!RC4:!DES:!3DES:!MD5:!PSK';
+# Example TLS 1.2 cipher string for Nginx:
+ssl_ciphers 'ECDHE-ECDSA-AES128-GCM-SHA256:ECDHE-RSA-AES128-GCM-SHA256:ECDHE-ECDSA-AES256-GCM-SHA384:ECDHE-RSA-AES256-GCM-SHA384:ECDHE-ECDSA-CHACHA20-POLY1305:ECDHE-RSA-CHACHA20-POLY1305:!aNULL:!eNULL:!EXPORT:!RC4:!DES:!3DES:!MD5:!PSK:!SRP';
 ```
 
 ## Step 5: Test After Changes
@@ -97,12 +98,16 @@ sudo apache2ctl configtest && sudo systemctl reload apache2
 # Test with testssl.sh - look for no "WEAK" or "INSECURE" ciphers
 ./testssl.sh example.com
 
-# Verify weak ciphers are rejected
-openssl s_client -connect example.com:443 -cipher RC4-SHA 2>&1 | grep -i error
-# Should output: no cipher can be selected
+# Verify legacy TLS 1.2 CBC suites are rejected
+openssl s_client -connect example.com:443 -servername example.com -tls1_2 \
+  -cipher 'ECDHE-ECDSA-AES128-SHA:ECDHE-RSA-AES128-SHA' < /dev/null 2>&1 | \
+  grep -Ei 'alert|handshake failure|Cipher is \(NONE\)|no cipher'
+# Should fail because only AEAD TLS 1.2 suites are enabled
 
 # Verify strong ciphers are accepted
-openssl s_client -connect example.com:443 -cipher ECDHE-RSA-AES256-GCM-SHA384 2>&1 | \
+openssl s_client -connect example.com:443 -servername example.com -tls1_2 \
+  -cipher 'ECDHE-ECDSA-AES256-GCM-SHA384:ECDHE-RSA-AES256-GCM-SHA384:ECDHE-ECDSA-AES128-GCM-SHA256:ECDHE-RSA-AES128-GCM-SHA256' \
+  < /dev/null 2>&1 | \
   grep "Cipher is"
 ```
 
@@ -122,4 +127,4 @@ The "Modern" profile supports only TLS 1.3; "Intermediate" supports TLS 1.2 and 
 
 ## Conclusion
 
-Disabling weak TLS cipher suites reduces attack surface significantly. Configure Nginx or Apache to use only AEAD cipher suites (AESGCM and CHACHA20-POLY1305), disable TLS 1.0 and 1.1, and exclude `aNULL`, `eNULL`, `EXPORT`, `RC4`, `DES`, `3DES`, and `MD5` explicitly. Use testssl.sh to audit your configuration and the Mozilla SSL Configuration Generator for ready-to-use hardened configurations.
+Disabling weak TLS cipher suites reduces attack surface significantly. Configure Nginx or Apache to use only AEAD cipher suites (AES-GCM and CHACHA20-POLY1305), disable TLS 1.0 and 1.1, and exclude `aNULL`, `eNULL`, `EXPORT`, `RC4`, `DES`, `3DES`, and `MD5` explicitly. Use testssl.sh to audit your configuration and the Mozilla SSL Configuration Generator for ready-to-use hardened configurations.

@@ -8,7 +8,7 @@ Description: Learn how to write your first infrastructure test using OpenTofu's 
 
 ---
 
-OpenTofu 1.6+ includes a native testing framework (`tofu test`) that lets you write automated tests for your infrastructure code. Tests verify that your OpenTofu configurations produce the expected resources and outputs without requiring a full deploy to validate correctness.
+OpenTofu 1.6+ includes a native testing framework (`tofu test`) that lets you write automated tests for your infrastructure code. With `command = plan`, tests can validate configuration before deployment, and with `command = apply`, they can create temporary infrastructure, run assertions, and then clean it up. OpenTofu 1.8+ also adds mock providers for faster offline-style unit tests.
 
 ---
 
@@ -16,8 +16,8 @@ OpenTofu 1.6+ includes a native testing framework (`tofu test`) that lets you wr
 
 `tofu test` is OpenTofu's built-in testing command that:
 - Runs `.tftest.hcl` test files
-- Creates real infrastructure, runs assertions, then destroys it
-- Supports mock providers for fast unit tests
+- Can run `plan`-based tests or `apply` tests that create and destroy infrastructure
+- Supports mock providers for fast unit tests in OpenTofu 1.8+
 - Validates module outputs and resource attributes
 
 ---
@@ -40,6 +40,14 @@ my-module/
 
 ```hcl
 # tests/unit.tftest.hcl
+
+# Requires OpenTofu 1.8+ for mock_provider
+mock_provider "aws" {}
+
+variables {
+  bucket_name       = "my-production-bucket"
+  enable_versioning = true
+}
 
 # Test that the S3 bucket has the expected name and versioning
 
@@ -97,6 +105,9 @@ output "bucket_arn" {
 ```hcl
 # tests/s3.tftest.hcl
 
+# Requires OpenTofu 1.8+ for mock_provider
+mock_provider "aws" {}
+
 # Set variables for all runs in this file
 variables {
   bucket_name       = "test-bucket-opentofu"
@@ -146,8 +157,8 @@ tofu test
 # Run specific test file
 tofu test -filter=tests/s3.tftest.hcl
 
-# Run specific test by name
-tofu test -run=bucket_is_created_with_correct_name
+# Run multiple specific test files
+tofu test -filter=tests/unit.tftest.hcl -filter=tests/integration.tftest.hcl
 
 # Verbose output
 tofu test -verbose
@@ -208,9 +219,9 @@ run "test_with_mock" {
 
 ## Best Practices
 
-1. **Use `command = plan`** for unit tests - faster and doesn't require AWS credentials
-2. **Use `command = apply`** only for integration tests that need real infrastructure
-3. **Use mock providers** for truly offline tests in CI where no cloud access is available
+1. **Use `command = plan`** for unit tests - faster, but pair it with mock providers or provider overrides if you need the test to run fully offline
+2. **Use `command = apply`** only for integration tests that need real infrastructure and valid provider configuration
+3. **Use mock providers** in OpenTofu 1.8+ for truly offline tests in CI where no cloud access is available
 4. **Test edge cases** - empty inputs, maximum values, and boundary conditions
 5. **Run tests in CI** on every pull request before allowing merges
 

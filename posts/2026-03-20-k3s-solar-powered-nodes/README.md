@@ -53,11 +53,11 @@ disable:
 kubelet-arg:
   - "max-pods=20"
   - "system-reserved=cpu=200m,memory=256Mi"
-  # More aggressive eviction to avoid high CPU load draining battery
+  # More aggressive eviction to avoid memory or disk pressure on constrained nodes
   - "eviction-hard=memory.available<100Mi,nodefs.available<10%"
   - "cpu-manager-policy=static"
 
-# Reduce K3s's own polling frequency to save CPU
+# Limit controller concurrency to reduce background CPU work
 kube-controller-manager-arg:
   - "concurrent-service-syncs=1"
   - "concurrent-deployment-syncs=1"
@@ -65,7 +65,7 @@ kube-controller-manager-arg:
 
 ## Step 2: Create Power State ConfigMap
 
-Track and communicate power state to workloads:
+Track and communicate power state to workloads and automation:
 
 ```yaml
 # power-state-configmap.yaml
@@ -79,7 +79,7 @@ data:
   battery-percent: "85"
   solar-input-watts: "45"
   power-budget-watts: "15"
-  last-updated: "2024-03-15T10:00:00Z"
+  last-updated: "2026-03-15T10:00:00Z"
 ```
 
 ## Step 3: Deploy Power Monitor DaemonSet
@@ -104,11 +104,13 @@ spec:
     spec:
       nodeSelector:
         node-type: solar
-      serviceAccountName: power-monitor-sa
       containers:
         - name: power-monitor
           image: myregistry/power-monitor:v1
           imagePullPolicy: IfNotPresent
+          ports:
+            - name: metrics
+              containerPort: 9100
           env:
             - name: NODE_NAME
               valueFrom:
@@ -143,7 +145,7 @@ spec:
 
 ## Step 4: Implement Power-Aware Workload Scheduling
 
-Use PriorityClasses to prioritize critical workloads:
+Use PriorityClasses to express workload importance to the scheduler and your power-management automation:
 
 ```yaml
 # priority-classes.yaml
@@ -157,25 +159,25 @@ value: 1000000
 globalDefault: false
 description: "Critical workloads that run even on minimum power"
 ---
-# High: runs on normal and high battery
+# High: important workloads that should out-rank normal workloads
 apiVersion: scheduling.k8s.io/v1
 kind: PriorityClass
 metadata:
   name: solar-high
 value: 100000
 globalDefault: false
-description: "Important workloads, suspended on critical battery"
+description: "Important workloads that should out-rank normal workloads"
 ---
-# Normal: default priority
+# Normal: default priority for workloads that can be reduced first
 apiVersion: scheduling.k8s.io/v1
 kind: PriorityClass
 metadata:
   name: solar-normal
 value: 10000
 globalDefault: true
-description: "Normal workloads, suspended on low battery"
+description: "Default priority for workloads that can be reduced first"
 ---
-# Background: only runs when battery is full
+# Background: lowest priority batch work when excess power is available
 apiVersion: scheduling.k8s.io/v1
 kind: PriorityClass
 metadata:
@@ -183,7 +185,7 @@ metadata:
 value: -10
 preemptionPolicy: Never
 globalDefault: false
-description: "ML training or batch processing only when fully charged"
+description: "Batch processing with the lowest scheduling priority"
 ```
 
 ## Step 5: Power-Adaptive Deployments
@@ -196,7 +198,13 @@ metadata:
   name: weather-sensor-collector
 spec:
   replicas: 1
+  selector:
+    matchLabels:
+      app: weather-sensor-collector
   template:
+    metadata:
+      labels:
+        app: weather-sensor-collector
     spec:
       priorityClassName: solar-critical
       nodeSelector:
@@ -213,11 +221,16 @@ spec:
               cpu: 100m
               memory: 128Mi
           env:
-            - name: POWER_SAVE_MODE
-              valueFrom:
-                configMapKeyRef:
-                  name: power-state
-                  key: state
+            - name: POWER_STATE_FILE
+              value: /etc/power-state/state
+          volumeMounts:
+            - name: power-state
+              mountPath: /etc/power-state
+              readOnly: true
+      volumes:
+        - name: power-state
+          configMap:
+            name: power-state
 ```
 
 ## Step 6: Power Management Controller
@@ -236,7 +249,7 @@ BATTERY_THRESHOLD_CRITICAL=15  # Percent
 BATTERY_PERCENT=$(cat /sys/class/power_supply/battery/capacity 2>/dev/null || echo "50")
 
 # Update the power-state ConfigMap
-kubectl patch configmap power-state \
+kubectl -n default patch configmap power-state \
   --type merge \
   -p "{\"data\":{
     \"battery-percent\": \"$BATTERY_PERCENT\",
@@ -249,7 +262,7 @@ if [ "$BATTERY_PERCENT" -lt "$BATTERY_THRESHOLD_CRITICAL" ]; then
   echo "CRITICAL power state: scaling down non-critical workloads"
   kubectl scale deployment weather-display --replicas=0 -n default
   kubectl scale deployment data-aggregator --replicas=0 -n default
-  kubectl patch configmap power-state --type merge \
+  kubectl -n default patch configmap power-state --type merge \
     -p '{"data":{"state":"critical"}}'
 
 elif [ "$BATTERY_PERCENT" -lt "$BATTERY_THRESHOLD_LOW" ]; then
@@ -257,7 +270,7 @@ elif [ "$BATTERY_PERCENT" -lt "$BATTERY_THRESHOLD_LOW" ]; then
   echo "LOW power state: reducing workloads"
   kubectl scale deployment weather-display --replicas=1 -n default
   kubectl scale deployment ml-inference --replicas=0 -n default
-  kubectl patch configmap power-state --type merge \
+  kubectl -n default patch configmap power-state --type merge \
     -p '{"data":{"state":"low-power"}}'
 
 else
@@ -266,16 +279,16 @@ else
   kubectl scale deployment weather-display --replicas=1 -n default
   kubectl scale deployment data-aggregator --replicas=1 -n default
   kubectl scale deployment ml-inference --replicas=1 -n default
-  kubectl patch configmap power-state --type merge \
+  kubectl -n default patch configmap power-state --type merge \
     -p '{"data":{"state":"normal"}}'
 fi
 ```
 
-## Step 7: Configure System Sleep During Night Hours
+## Step 7: Configure Night-Hour Low-Power Scheduling
 
 ```bash
 # /usr/local/bin/solar-schedule.sh
-# Put the system in low-power mode at night
+# Scale non-essential workloads down at night
 
 SUNRISE_HOUR=6    # 6 AM
 SUNSET_HOUR=20    # 8 PM
@@ -296,18 +309,21 @@ fi
 ## Step 8: Monitor Energy Efficiency
 
 ```bash
-# Create a Prometheus metrics endpoint for power telemetry
+# If you're using Prometheus Operator, create a PodMonitor for the power telemetry endpoint
 kubectl apply -f - <<'EOF'
 apiVersion: monitoring.coreos.com/v1
-kind: ServiceMonitor
+kind: PodMonitor
 metadata:
   name: power-monitor
   namespace: monitoring
 spec:
+  namespaceSelector:
+    matchNames:
+      - default
   selector:
     matchLabels:
       app: power-monitor
-  endpoints:
+  podMetricsEndpoints:
     - port: metrics
       interval: 60s  # Less frequent scraping to save power
 EOF
@@ -315,4 +331,4 @@ EOF
 
 ## Conclusion
 
-K3s on solar-powered nodes requires thoughtful power management at multiple levels: hardware selection for low consumption, K3s configuration to minimize idle overhead, priority-based workload scheduling to protect critical functions, and automated scaling based on battery state. The lightweight nature of K3s makes it uniquely suitable for solar-powered deployments where minimizing power consumption while maximizing computational capability is essential. With proper configuration, a single 200W solar panel and 100Ah battery bank can reliably power a K3s node running IoT workloads 24/7 in most geographic locations.
+K3s on solar-powered nodes requires thoughtful power management at multiple levels: hardware selection for low consumption, K3s configuration to minimize idle overhead, priority-based workload scheduling to protect critical functions, and automated scaling based on battery state. The lightweight nature of K3s makes it uniquely suitable for solar-powered deployments where minimizing power consumption while maximizing computational capability is essential. With proper configuration, a single 200W solar panel and 100Ah battery bank can be enough for some low-power K3s edge deployments, but required solar and battery capacity depends heavily on geography, season, autonomy targets, and total system load.

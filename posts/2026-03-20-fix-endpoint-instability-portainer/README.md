@@ -12,19 +12,19 @@ Endpoint instability - environments that randomly go offline and come back - is 
 
 ## Understanding Endpoint Health Checks
 
-Portainer polls each endpoint every `--snapshot-interval` seconds (default 60s). If a snapshot fails or times out, the endpoint shows as offline. Repeated failures create the "flapping" behavior.
+Portainer takes environment snapshots on the interval configured by `--snapshot-interval` (default `5m`). If Portainer cannot reach the environment reliably during these checks, you will typically see snapshot errors in the logs alongside online/offline flapping.
 
 ## Step 1: Check Snapshot Errors in Logs
 
 ```bash
 # Look for snapshot-related errors
 
-docker logs portainer 2>&1 | grep -i "snapshot\|endpoint\|error" | tail -50
+docker logs portainer 2>&1 | grep -Ei "snapshot|environment|error" | tail -50
 
 # Common error patterns:
-# "error creating snapshot" → agent unreachable during snapshot
-# "context deadline exceeded" → snapshot timed out
-# "connection reset by peer" → agent connection dropped
+# "environment snapshot error" or "Unable to create snapshot" → Portainer could not complete the snapshot
+# "context deadline exceeded" → the environment did not respond before the timeout
+# "connection reset by peer" → the TCP connection was closed mid-request
 ```
 
 ## Step 2: Check Agent Host Resource Usage
@@ -45,15 +45,18 @@ journalctl -u docker --since "1 hour ago" | tail -30
 Reduce polling frequency to give stressed hosts more breathing room:
 
 ```bash
-# Restart Portainer with a longer snapshot interval (5 minutes)
+# Recreate Portainer with a longer snapshot interval (10 minutes)
+docker stop portainer
+docker rm portainer
 docker run -d \
   --name portainer \
   --restart=always \
-  -p 9000:9000 \
+  -p 8000:8000 \
+  -p 9443:9443 \
   -v /var/run/docker.sock:/var/run/docker.sock \
   -v portainer_data:/data \
-  portainer/portainer-ce:latest \
-  --snapshot-interval 300
+  portainer/portainer-ce:lts \
+  --snapshot-interval 10m
 ```
 
 ## Step 4: Check Network Quality
@@ -64,30 +67,40 @@ Intermittent packet loss between Portainer and the agent causes timeout failures
 # Run a prolonged ping to measure packet loss
 ping -c 100 <agent-host-ip>
 
-# Check for MTU issues (especially common on VPN or overlay networks)
+# Linux: test a 1500-byte IPv4 path MTU (1472-byte payload + 28-byte headers)
 ping -M do -s 1472 <agent-host-ip>
 ```
 
-If packet loss is above 1%, investigate the network path. MTU mismatches cause TCP connections to hang silently.
+Any persistent packet loss is worth investigating. MTU mismatches can lead to dropped or black-holed packets and stalled TCP connections.
 
 ## Step 5: Check Agent Health Loop
 
 ```bash
-# Tail agent logs looking for repeated errors
-docker logs -f portainer_agent 2>&1 | grep -i error
+# Check agent logs for repeated connection errors
+docker logs portainer_agent 2>&1 | grep -Ei "error|timeout|reset|tls" | tail -50
 
-# If you see repeated "error processing snapshot" messages,
-# the agent itself is struggling - check its resource usage
+# If you see repeated timeout, TLS, or reset errors,
+# check the agent's current resource usage
 docker stats portainer_agent --no-stream
 ```
 
 ## Step 6: Upgrade Agent Version
 
-Stability issues are sometimes caused by agent bugs that have been fixed in newer versions:
+Stability issues are sometimes caused by agent bugs or by version mismatches between the Portainer Server and the agent. Keep the agent version aligned with the Portainer Server version:
 
 ```bash
-# Pull latest agent
-docker pull portainer/agent:latest
-docker stop portainer_agent && docker rm portainer_agent
-# Redeploy agent with the same configuration
+docker stop portainer_agent
+docker rm portainer_agent
+
+# Example shown for the current LTS channel - use the same channel or exact version as your Portainer Server
+docker pull portainer/agent:lts
+
+# If your Portainer Server uses AGENT_SECRET, add: -e AGENT_SECRET=<same-secret>
+docker run -d \
+  -p 9001:9001 \
+  --name portainer_agent \
+  --restart=always \
+  -v /var/run/docker.sock:/var/run/docker.sock \
+  -v /var/lib/docker/volumes:/var/lib/docker/volumes \
+  portainer/agent:lts
 ```

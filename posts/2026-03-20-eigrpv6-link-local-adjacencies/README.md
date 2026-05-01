@@ -51,7 +51,7 @@ The `via FE80::2` notation with the interface name `GigabitEthernet0/0` is the s
 ```text
 ! Ensure the interface has a link-local address
 Router# show ipv6 interface GigabitEthernet0/0 | include link-local
-  IPv6 is enabled, link-local address is FE80::1 [TENTATIVE]
+  IPv6 is enabled, link-local address is FE80::1
 
 ! If no link-local address:
 Router(config)# interface GigabitEthernet0/0
@@ -82,18 +82,18 @@ Router# show ipv6 interface GigabitEthernet0/0 | include ff02::a
 ! Step 4: Check for firewall blocking protocol 88
 ! EIGRPv6 uses IP protocol 88 - not TCP/UDP
 
-! Step 5: Verify hello/hold timer match
+! Step 5: Verify hello/hold timer settings
 Router# show ipv6 eigrp interfaces detail
-! Check: Hello interval and Hold time on both sides must match
+! Check: Hello/Hold timers do not have to match, but they should be set appropriately for the link
 ```
 
 ## EIGRPv6 Multicast Addresses
 
 | Address | Purpose |
 |---------|---------|
-| `ff02::a` | All EIGRP routers (Hello, Query, Reply packets) |
+| `ff02::a` | All EIGRP routers (Hello packets and other multicast EIGRP packets sent on the link) |
 
-EIGRPv6 also uses unicast for Update and Acknowledgment packets once the neighbor relationship is established.
+EIGRPv6 also uses unicast for neighbor-specific packets such as Acknowledgments and Replies. Updates can be either unicast or multicast, depending on the event.
 
 ## Summary
 

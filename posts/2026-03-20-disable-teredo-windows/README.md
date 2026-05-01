@@ -2,13 +2,13 @@
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
-Tags: IPv6, Teredo, Window, Security, NAT Bypass
+Tags: IPv6, Teredo, Windows, Security, NAT Bypass
 
 Description: Learn how to permanently disable Teredo on Windows to prevent IPv6 connectivity leaks through NAT, including netsh commands, PowerShell, Group Policy, and registry methods.
 
 ## Overview
 
-Teredo is enabled or dormant by default on Windows Vista through Windows 10. When active, it creates IPv6 connectivity through NAT by tunneling over UDP port 3544, bypassing IPv4 firewalls that don't inspect UDP payloads for IPv6 content. Disabling Teredo is a security hardening step recommended by NIST, NSA, and CIS benchmarks for enterprise environments.
+Teredo is an IPv6 transition technology included in Windows. Current Microsoft guidance for supported Windows versions says ISATAP and Teredo are disabled by default. When enabled, Teredo creates IPv6 connectivity through NAT by tunneling IPv6 over UDP port 3544. If your environment does not use it, disabling it removes an unnecessary transition mechanism.
 
 ## Verify Teredo Is Active
 
@@ -16,7 +16,7 @@ Teredo is enabled or dormant by default on Windows Vista through Windows 10. Whe
 netsh interface teredo show state
 ```
 
-Teredo is a threat if state is `client` or `probe`:
+If `Type` is `client`, `enterpriseclient`, or `natawareclient`, Teredo is enabled and should be disabled if you do not need it:
 ```text
 Type              : client            ← ACTIVE - needs to be disabled
 Server Name       : teredo.ipv6.microsoft.com
@@ -28,9 +28,9 @@ Local mapping     : 192.168.1.10:32000
 Client Refresh    : No
 ```
 
-If state is `dormant`, Teredo is installed but inactive (native IPv6 present). Still disable it:
+If `State` is `dormant`, Teredo is idle but still present. Still disable it if your goal is to remove the transition mechanism:
 ```text
-Type              : dormant           ← inactive but can become active
+State             : dormant           ← inactive but can become active
 ```
 
 ## Disable Teredo: netsh Method
@@ -74,7 +74,7 @@ Get-NetIsatapConfiguration | Select-Object State
 
 ## Persistent Disable via Registry
 
-Registry method survives some resets and is useful for scripted hardening:
+Registry method applies at the OS level and is useful for scripted hardening:
 
 ```powershell
 # Registry path for IPv6 transition components
@@ -82,8 +82,9 @@ $regPath = "HKLM:\SYSTEM\CurrentControlSet\Services\Tcpip6\Parameters"
 
 # Bit flags for DisabledComponents:
 # 0x01 = disable IPv6 on tunnel interfaces (6to4, ISATAP, Teredo)
+# 0x02 = disable 6to4
+# 0x04 = disable ISATAP
 # 0x08 = disable Teredo
-# 0x20 = disable 6to4
 # 0xFF = disable all IPv6 (not recommended unless IPv6 truly not needed)
 
 # Disable only tunneling (keep native IPv6)
@@ -121,7 +122,7 @@ Computer Configuration →
     → State: Disabled
 ```
 
-GPO path (ADMX): `HKLM\Software\Policies\Microsoft\Windows\TCPIP\v6Transition`
+Policy registry key: `HKLM\Software\Policies\Microsoft\Windows\TCPIP\v6Transition`
 
 ## PowerShell Script for Mass Deployment
 
@@ -143,13 +144,13 @@ if (-not (Test-Path $regPath)) {
 }
 Set-ItemProperty -Path $regPath -Name "DisabledComponents" -Value 0x01 -Type DWord
 
-# Windows Firewall - block UDP 3544
+# Optional Windows Firewall defense-in-depth: block the standard Teredo server/relay port
 New-NetFirewallRule -DisplayName "Block Teredo UDP 3544 Outbound" `
     -Direction Outbound -Protocol UDP -RemotePort 3544 `
     -Action Block -Enabled True -Profile Any -ErrorAction SilentlyContinue
 
 New-NetFirewallRule -DisplayName "Block Teredo UDP 3544 Inbound" `
-    -Direction Inbound -Protocol UDP -LocalPort 3544 `
+    -Direction Inbound -Protocol UDP -RemotePort 3544 `
     -Action Block -Enabled True -Profile Any -ErrorAction SilentlyContinue
 
 # Log result
@@ -169,13 +170,13 @@ Write-Output $host_result
 Get-NetTeredoConfiguration | Select-Object Type
 # Type: Disabled
 
-# Confirm no 2001:0: addresses (Teredo range)
-Get-NetIPAddress | Where-Object { $_.IPAddress -match "^2001:0:" }
+# Confirm no Teredo addresses remain (Teredo uses 2001::/32)
+Get-NetIPAddress | Where-Object { $_.IPAddress -match "^2001:(0|0000):" }
 # Should return nothing
 
-# Confirm no Teredo interface in adapter list
-Get-NetAdapter | Where-Object { $_.InterfaceDescription -like "*Teredo*" }
-# Should return nothing
+# Confirm netsh also reports Teredo disabled
+netsh interface teredo show state
+# Expected: Type : disabled
 
 # Test: IPv6 connectivity still works via native (if available)
 Test-NetConnection -ComputerName "ipv6.google.com" -Port 443

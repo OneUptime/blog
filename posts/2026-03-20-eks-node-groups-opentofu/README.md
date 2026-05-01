@@ -20,7 +20,7 @@ Amazon EKS managed node groups simplify Kubernetes worker node management by han
 resource "aws_eks_cluster" "main" {
   name     = "production"
   role_arn = aws_iam_role.eks_cluster.arn
-  version  = "1.29"
+  version  = "1.35"
 
   vpc_config {
     subnet_ids              = concat(data.aws_subnets.private.ids, data.aws_subnets.public.ids)
@@ -78,7 +78,7 @@ resource "aws_iam_role_policy_attachment" "node_policies" {
   for_each = toset([
     "arn:aws:iam::aws:policy/AmazonEKSWorkerNodePolicy",
     "arn:aws:iam::aws:policy/AmazonEKS_CNI_Policy",
-    "arn:aws:iam::aws:policy/AmazonEC2ContainerRegistryReadOnly"
+    "arn:aws:iam::aws:policy/AmazonEC2ContainerRegistryPullOnly"
   ])
 
   role       = aws_iam_role.node_group.name
@@ -99,7 +99,7 @@ resource "aws_eks_node_group" "general" {
   subnet_ids      = data.aws_subnets.private.ids
 
   instance_types = ["t3.medium"]
-  ami_type       = "AL2_x86_64"
+  ami_type       = "AL2023_x86_64_STANDARD"
   capacity_type  = "ON_DEMAND"
   disk_size      = 50
 
@@ -147,7 +147,7 @@ resource "aws_eks_node_group" "spot" {
   }
 
   labels = {
-    "node.kubernetes.io/lifecycle" = "spot"
+    capacity = "spot"
   }
 
   taint {
@@ -274,10 +274,10 @@ kubectl get nodes --show-labels
 
 ## Best Practices
 
-1. **Use private subnets** for node groups - only the control plane needs public access
+1. **Use private subnets** for node groups and restrict public API endpoint access where possible
 2. **Enable IMDSv2** via launch template for improved security
 3. **Mix On-Demand and Spot** - on-demand for system workloads, spot for batch/workers
-4. **Configure cluster autoscaler** or Karpenter to manage desired_size automatically
+4. **Configure cluster autoscaler** to manage desired_size automatically
 5. **Pin EKS version** and test upgrades in staging before production
 
 ---
