@@ -4,7 +4,7 @@ Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
 Tags: Rancher, WordPress, CMS, Kubernetes, Helm
 
-Description: Complete guide to deploying WordPress with MySQL on Rancher for scalable web content management.
+Description: Complete guide to deploying WordPress with MariaDB on Rancher for scalable web content management.
 
 ## Introduction
 
@@ -15,8 +15,10 @@ This guide covers deploying WordPress on Rancher with production-ready configura
 - Rancher v2.7+ with a Kubernetes cluster
 - kubectl and helm configured
 - Ingress controller (nginx or traefik)
-- Persistent storage class (Longhorn recommended)
+- Persistent storage class with ReadWriteMany support for multi-replica WordPress (Longhorn recommended)
 - cert-manager for TLS
+- Prometheus Operator or Rancher Monitoring for ServiceMonitor resources
+- metrics-server if you plan to use HPA
 
 ## Step 1: Add Helm Repository
 
@@ -36,8 +38,12 @@ helm search repo bitnami/wordpress --versions | head -5
 # Create dedicated namespace
 kubectl create namespace wordpress
 
-# Create admin credentials secret
-kubectl create secret generic wordpress-credentials   --namespace wordpress   --from-literal=admin-password=$(openssl rand -base64 24)   --from-literal=db-password=$(openssl rand -base64 24)
+# Create application credentials secret
+kubectl create secret generic wordpress-credentials \
+  --namespace wordpress \
+  --from-literal=wordpress-password="$(openssl rand -base64 24)" \
+  --from-literal=mariadb-root-password="$(openssl rand -base64 24)" \
+  --from-literal=mariadb-password="$(openssl rand -base64 24)"
 ```
 
 ## Step 3: Configure Values
@@ -53,10 +59,16 @@ resources:
     cpu: "500m"
     memory: "512Mi"
 
+# WordPress admin credentials
+wordpressUsername: admin
+existingSecret: wordpress-credentials
+
 # Persistent storage
 persistence:
   enabled: true
   storageClass: longhorn
+  accessModes:
+    - ReadWriteMany
   size: 20Gi
 
 # Ingress configuration
@@ -65,7 +77,6 @@ ingress:
   hostname: wordpress.example.com
   ingressClassName: nginx
   tls: true
-  certManager: true
   annotations:
     cert-manager.io/cluster-issuer: letsencrypt-prod
 
@@ -73,18 +84,21 @@ ingress:
 mariadb:
   enabled: true
   auth:
-    rootPassword: "${DB_ROOT_PASSWORD}"
-    password: "${DB_PASSWORD}"
+    existingSecret: wordpress-credentials
   primary:
     persistence:
       enabled: true
       storageClass: longhorn
       size: 10Gi
 
-# Replication for HA
-replicaCount: 2
-podDisruptionBudget:
+# Monitoring
+metrics:
   enabled: true
+
+# Application replicas and disruption budget
+replicaCount: 2
+pdb:
+  create: true
   minAvailable: 1
 ```
 
@@ -105,8 +119,9 @@ kubectl get svc -n wordpress
 # Check all pods are running
 kubectl rollout status deployment/wordpress -n wordpress
 
-# Get the admin password
-kubectl get secret --namespace wordpress wordpress-credentials   -o jsonpath="{.data.admin-password}" | base64 --decode
+# Get the WordPress admin password
+kubectl get secret --namespace wordpress wordpress-credentials \
+  -o jsonpath="{.data.wordpress-password}" | base64 --decode
 
 # Check ingress is configured
 kubectl get ingress -n wordpress
@@ -139,13 +154,17 @@ spec:
             - sh
             - -c
             - |
-              # Backup data to S3
-              aws s3 sync /data s3://app-backups/wordpress/$(date +%Y%m%d)/
+              # Backup WordPress content to S3
+              aws s3 sync /bitnami/wordpress s3://app-backups/wordpress/$(date +%Y%m%d)/
+            volumeMounts:
+            - name: data
+              mountPath: /bitnami/wordpress
+              subPath: wordpress
           restartPolicy: OnFailure
           volumes:
           - name: data
             persistentVolumeClaim:
-              claimName: wordpress-data
+              claimName: wordpress
 ```
 
 ## Step 7: Configure Monitoring
@@ -158,11 +177,13 @@ metadata:
   name: wordpress-metrics
   namespace: wordpress
   labels:
-    release: prometheus
+    release: prometheus # Update if your Prometheus instance selects different ServiceMonitor labels
 spec:
   selector:
     matchLabels:
+      app.kubernetes.io/instance: wordpress
       app.kubernetes.io/name: wordpress
+      app.kubernetes.io/component: metrics
   endpoints:
   - port: metrics
     interval: 60s
