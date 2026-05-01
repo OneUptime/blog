@@ -4,23 +4,23 @@ Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
 Tags: OpenTofu, Docker Hub, OCI Registry, Provider Distribution, Public Registry
 
-Description: Learn how to use Docker Hub as an OCI registry for distributing OpenTofu providers and modules, leveraging Docker Hub's public and private repository infrastructure.
+Description: Learn how to use Docker Hub as an OCI registry for storing OpenTofu provider mirrors and distributing OpenTofu modules, leveraging Docker Hub's public and private repository infrastructure.
 
 ## Introduction
 
-Docker Hub is OCI-compliant and can store OCI artifacts alongside container images. While ECR, ACR, or GCR are typically preferred for enterprise use, Docker Hub is useful for open-source OpenTofu providers and public modules that need to be freely accessible without cloud provider accounts. Docker Hub's free tier allows public repositories with unlimited pulls.
+Docker Hub is OCI-compliant and can store OCI artifacts alongside container images. OpenTofu can install module packages directly from OCI registries, and can use OCI registries as provider mirrors. While ECR, ACR, or GCR are typically preferred for enterprise use, Docker Hub is useful for open-source provider mirrors and public modules that need to be freely accessible without cloud provider accounts. Docker Hub's Personal plan allows unlimited public repositories, although Docker documents pull limits of 100 pulls per 6 hours for anonymous image pulls and 200 pulls per 6 hours for authenticated Personal users.
 
 ## Docker Hub Repository Setup
 
 ```bash
 # Login to Docker Hub
 
-docker login docker.io \
+echo "$DOCKERHUB_TOKEN" | docker login \
   --username "$DOCKERHUB_USERNAME" \
-  --password "$DOCKERHUB_TOKEN"
+  --password-stdin
 
-# Create repositories via Docker Hub UI or CLI
-# (Repositories are auto-created on first push)
+# Create repositories via the Docker Hub UI if you want to control
+# visibility and description before the first push
 
 # For organizations, use organization namespaces:
 # docker.io/mycompany/opentofu-provider-myprovider
@@ -37,37 +37,48 @@ set -euo pipefail
 DOCKERHUB_USER="${DOCKERHUB_USERNAME}"
 PROVIDER_NAME="myprovider"
 VERSION="1.0.0"
-REGISTRY="docker.io"
+REGISTRY="registry-1.docker.io"
+LAYOUT_DIR="tmp-layout"
 
 # Login
-echo "$DOCKERHUB_TOKEN" | docker login "$REGISTRY" \
+echo "$DOCKERHUB_TOKEN" | oras login "$REGISTRY" \
   -u "$DOCKERHUB_USER" --password-stdin
 
-# Build provider
-mkdir -p dist/
-for OS in linux darwin windows; do
-  for ARCH in amd64 arm64; do
-    GOOS=$OS GOARCH=$ARCH go build \
-      -o "dist/terraform-provider-${PROVIDER_NAME}_${VERSION}_${OS}_${ARCH}"
-    zip "dist/terraform-provider-${PROVIDER_NAME}_${VERSION}_${OS}_${ARCH}.zip" \
-      "dist/terraform-provider-${PROVIDER_NAME}_${VERSION}_${OS}_${ARCH}"
-  done
+# OpenTofu provider mirrors require an OCI image index where each platform
+# is pushed as a separate manifest. Assume dist/ already contains the
+# per-platform provider zip packages, for example:
+# dist/terraform-provider-myprovider_1.0.0_linux_amd64.zip
+# dist/terraform-provider-myprovider_1.0.0_linux_arm64.zip
+# dist/terraform-provider-myprovider_1.0.0_darwin_arm64.zip
+# dist/terraform-provider-myprovider_1.0.0_windows_amd64.zip
+rm -rf "$LAYOUT_DIR"
+mkdir -p "$LAYOUT_DIR"
+
+for TARGET in linux_amd64 linux_arm64 darwin_arm64 windows_amd64; do
+  OS="${TARGET%_*}"
+  ARCH="${TARGET#*_}"
+
+  oras push \
+    --artifact-type application/vnd.opentofu.provider-target \
+    --artifact-platform "${OS}/${ARCH}" \
+    --oci-layout "${LAYOUT_DIR}:${TARGET}" \
+    "dist/terraform-provider-${PROVIDER_NAME}_${VERSION}_${TARGET}.zip:archive/zip"
 done
 
-cd dist/
-sha256sum *.zip > "terraform-provider-${PROVIDER_NAME}_${VERSION}_SHA256SUMS"
-gpg --detach-sign "terraform-provider-${PROVIDER_NAME}_${VERSION}_SHA256SUMS"
+oras manifest index create \
+  --artifact-type "application/vnd.opentofu.provider" \
+  --oci-layout "${LAYOUT_DIR}:${VERSION}" \
+  linux_amd64 \
+  linux_arm64 \
+  darwin_arm64 \
+  windows_amd64
 
-# Push to Docker Hub
+# Push the version tag to Docker Hub
 REPO="${REGISTRY}/${DOCKERHUB_USER}/opentofu-provider-${PROVIDER_NAME}"
 
-oras push "${REPO}:${VERSION}" \
-  --config /dev/null:application/vnd.opentofu.provider.config.v1+json \
-  "terraform-provider-${PROVIDER_NAME}_${VERSION}_linux_amd64.zip:application/vnd.opentofu.provider.v1.linux.amd64" \
-  "terraform-provider-${PROVIDER_NAME}_${VERSION}_linux_arm64.zip:application/vnd.opentofu.provider.v1.linux.arm64" \
-  "terraform-provider-${PROVIDER_NAME}_${VERSION}_darwin_arm64.zip:application/vnd.opentofu.provider.v1.darwin.arm64" \
-  "terraform-provider-${PROVIDER_NAME}_${VERSION}_SHA256SUMS:application/vnd.opentofu.provider.v1.shasums" \
-  "terraform-provider-${PROVIDER_NAME}_${VERSION}_SHA256SUMS.sig:application/vnd.opentofu.provider.v1.shasums.sig"
+oras cp \
+  --from-oci-layout "${LAYOUT_DIR}:${VERSION}" \
+  "${REPO}:${VERSION}"
 
 echo "Pushed: ${REPO}:${VERSION}"
 ```
@@ -82,39 +93,40 @@ MODULE_DIR="${1:?Usage: $0 <module-dir> <version>}"
 VERSION="${2:?}"
 DOCKERHUB_USER="${DOCKERHUB_USERNAME}"
 MODULE_NAME=$(basename "$MODULE_DIR")
+REGISTRY="registry-1.docker.io"
+REPO="${REGISTRY}/${DOCKERHUB_USER}/opentofu-module-${MODULE_NAME}"
+ARCHIVE="${MODULE_NAME}-${VERSION}.zip"
 
-echo "$DOCKERHUB_TOKEN" | docker login docker.io -u "$DOCKERHUB_USER" --password-stdin
+echo "$DOCKERHUB_TOKEN" | oras login "$REGISTRY" \
+  -u "$DOCKERHUB_USER" --password-stdin
 
-tar -czf "${MODULE_NAME}-${VERSION}.tgz" \
-  --exclude='.terraform' \
-  --exclude='*.tfstate*' \
-  --exclude='.git' \
-  -C "$MODULE_DIR" .
+(
+  cd "$MODULE_DIR"
+  zip -r "../${ARCHIVE}" . \
+    -x '.terraform/*' '*.tfstate*' '.git/*'
+)
 
-REPO="docker.io/${DOCKERHUB_USER}/opentofu-module-${MODULE_NAME}"
-
-oras push "${REPO}:${VERSION}" \
-  --config /dev/null:application/vnd.opentofu.module.config.v1+json \
-  "${MODULE_NAME}-${VERSION}.tgz:application/vnd.opentofu.module.v1.tar+gzip"
+oras push \
+  --artifact-type=application/vnd.opentofu.modulepkg \
+  "${REPO}:${VERSION}" \
+  "${ARCHIVE}:archive/zip"
 
 # Tag as latest
-oras tag "docker.io" \
-  "${DOCKERHUB_USER}/opentofu-module-${MODULE_NAME}:${VERSION}" \
-  "${DOCKERHUB_USER}/opentofu-module-${MODULE_NAME}:latest"
+oras tag "${REPO}:${VERSION}" latest
 
-rm "${MODULE_NAME}-${VERSION}.tgz"
-echo "Module available at: ${REPO}:${VERSION}"
+rm "${ARCHIVE}"
+echo "Module available at: oci://${REPO}?tag=${VERSION}"
 ```
 
 ## Configuring OpenTofu to Use Docker Hub
 
 ```hcl
-# ~/.terraform.rc - for public Docker Hub repositories (no auth needed)
+# ~/.tofurc - for public Docker Hub repositories (no auth needed)
 
 provider_installation {
   oci_mirror {
-    url     = "oci://docker.io/mycompany"
-    include = ["registry.opentofu.org/mycompany/*"]
+    repository_template = "registry-1.docker.io/mycompany/opentofu-provider-${type}"
+    include             = ["registry.opentofu.org/mycompany/*"]
   }
 
   direct {
@@ -124,11 +136,12 @@ provider_installation {
 ```
 
 ```hcl
-# For private Docker Hub repositories, add credentials
-credentials "docker.io" {
-  # Docker Hub uses token-based auth
-  # Set via DOCKERHUB_TOKEN environment variable
-  # or docker login configures ~/.docker/config.json
+# For private Docker Hub repositories, OpenTofu can reuse
+# ~/.docker/config.json written by docker login/oras login,
+# or you can set explicit OCI credentials:
+oci_credentials "registry-1.docker.io" {
+  username = "mycompany"
+  password = "dckr_pat_..."
 }
 ```
 
@@ -137,7 +150,7 @@ credentials "docker.io" {
 ```hcl
 # Reference a public module from Docker Hub
 module "vpc" {
-  source = "oci://docker.io/mycompany/opentofu-module-vpc:1.0.0"
+  source = "oci://registry-1.docker.io/mycompany/opentofu-module-vpc?tag=1.0.0"
 
   name = "production"
   cidr = "10.0.0.0/16"
@@ -175,28 +188,46 @@ jobs:
 
       - name: Install oras
         run: |
-          curl -LO https://github.com/oras-project/oras/releases/download/v1.1.0/oras_1.1.0_linux_amd64.tar.gz
-          tar -xzf oras_1.1.0_linux_amd64.tar.gz
+          curl -LO https://github.com/oras-project/oras/releases/download/v1.3.0/oras_1.3.0_linux_amd64.tar.gz
+          tar -xzf oras_1.3.0_linux_amd64.tar.gz
           sudo mv oras /usr/local/bin/
 
       - name: Login to Docker Hub
         run: |
           echo "${{ secrets.DOCKERHUB_TOKEN }}" | \
-            docker login -u "${{ secrets.DOCKERHUB_USERNAME }}" --password-stdin
+            oras login registry-1.docker.io -u "${{ secrets.DOCKERHUB_USERNAME }}" --password-stdin
 
       - name: Build and push provider
         run: |
           VERSION="${{ steps.version.outputs.version }}"
           make package VERSION="$VERSION"
-          cd dist/
 
-          oras push "docker.io/${{ secrets.DOCKERHUB_USERNAME }}/opentofu-provider-myprovider:${VERSION}" \
-            --config /dev/null:application/vnd.opentofu.provider.config.v1+json \
-            "terraform-provider-myprovider_${VERSION}_linux_amd64.zip:application/vnd.opentofu.provider.v1.linux.amd64" \
-            "terraform-provider-myprovider_${VERSION}_SHA256SUMS:application/vnd.opentofu.provider.v1.shasums"
+          rm -rf tmp-layout
+          for target in linux_amd64 linux_arm64 darwin_arm64 windows_amd64; do
+            os="${target%_*}"
+            arch="${target#*_}"
+
+            oras push \
+              --artifact-type application/vnd.opentofu.provider-target \
+              --artifact-platform "${os}/${arch}" \
+              --oci-layout "tmp-layout:${target}" \
+              "dist/terraform-provider-myprovider_${VERSION}_${target}.zip:archive/zip"
+          done
+
+          oras manifest index create \
+            --artifact-type "application/vnd.opentofu.provider" \
+            --oci-layout "tmp-layout:${VERSION}" \
+            linux_amd64 \
+            linux_arm64 \
+            darwin_arm64 \
+            windows_amd64
+
+          oras cp \
+            --from-oci-layout "tmp-layout:${VERSION}" \
+            "registry-1.docker.io/${{ secrets.DOCKERHUB_USERNAME }}/opentofu-provider-myprovider:${VERSION}"
 
       - name: Update Docker Hub description
-        uses: peter-evans/dockerhub-description@v4
+        uses: peter-evans/dockerhub-description@v5
         with:
           username: ${{ secrets.DOCKERHUB_USERNAME }}
           password: ${{ secrets.DOCKERHUB_TOKEN }}
@@ -207,20 +238,22 @@ jobs:
 ## Docker Hub Rate Limits
 
 ```bash
-# Docker Hub rate limits anonymous pulls: 100 pulls/6 hours
-# Authenticated pulls: 200 pulls/6 hours
-# Docker Hub Pro/Team: unlimited pulls
+# Docker Hub pull limits for image pulls:
+# Anonymous: 100 pulls/6 hours per IPv4 address or IPv6 /64 subnet
+# Authenticated Personal: 200 pulls/6 hours
+# Authenticated Pro/Team/Business: unlimited
 
-# Always authenticate in CI/CD to avoid rate limits
-docker login docker.io \
+# Authenticate in CI/CD when interacting with Docker Hub
+echo "$DOCKERHUB_TOKEN" | docker login \
   --username "$DOCKERHUB_USERNAME" \
-  --password "$DOCKERHUB_TOKEN"
+  --password-stdin
 
 # Check your current rate limit status
-TOKEN=$(curl -s "https://auth.docker.io/token?service=registry.docker.io&scope=repository:ratelimitpreview/test:pull" | jq -r .token)
-curl -s --head -H "Authorization: Bearer $TOKEN" https://registry-1.docker.io/v2/ratelimitpreview/test/manifests/latest | grep -i ratelimit
+TOKEN=$(curl "https://auth.docker.io/token?service=registry.docker.io&scope=repository:ratelimitpreview/test:pull" | jq -r .token)
+curl --head -H "Authorization: Bearer $TOKEN" \
+  https://registry-1.docker.io/v2/ratelimitpreview/test/manifests/latest | grep -i ratelimit
 ```
 
 ## Conclusion
 
-Docker Hub works as an OCI registry for OpenTofu providers and modules, with the main advantage being free public repositories accessible without cloud provider accounts. Use Docker Hub for open-source providers that anyone should be able to use without authentication. For enterprise use with private repositories, the Docker Hub Pro plan removes rate limits. In CI/CD pipelines, always authenticate even for public repositories to avoid anonymous pull rate limits.
+Docker Hub works as an OCI registry for OpenTofu modules and as a mirror target for OpenTofu providers, with the main advantage being public repositories accessible without cloud provider accounts. Use Docker Hub for open-source provider mirrors and public modules that anyone should be able to consume without authentication. For higher documented pull limits on Docker Hub, Pro, Team, and Business plans provide unlimited authenticated pulls, while Personal accounts and anonymous users remain rate-limited.
