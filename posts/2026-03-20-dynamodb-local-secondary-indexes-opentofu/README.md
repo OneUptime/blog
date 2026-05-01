@@ -8,7 +8,7 @@ Description: Learn how to configure DynamoDB Local Secondary Indexes (LSIs) with
 
 ## Introduction
 
-DynamoDB Local Secondary Indexes (LSIs) share the same partition key as the base table but provide alternative sort keys for querying within a partition. Unlike GSIs, LSIs are strongly consistent by default (same partition means same shard), must be defined at table creation time (cannot be added later), and consume the base table's capacity. You can have up to 5 LSIs per table, and they're ideal when you need multiple sort orders for the same partition key.
+DynamoDB Local Secondary Indexes (LSIs) share the same partition key as the base table but provide alternative sort keys for querying within a partition. Unlike GSIs, LSIs support strongly consistent reads, must be defined at table creation time (cannot be added later), and consume the base table's capacity. You can have up to 5 LSIs per table, and they're ideal when you need multiple sort orders for the same partition key.
 
 ## Prerequisites
 
@@ -51,7 +51,7 @@ resource "aws_dynamodb_table" "user_activity" {
     projection_type = "ALL"
   }
 
-  # LSI: Sort user activities by type, then by timestamp
+  # LSI: Sort user activities by type
   local_secondary_index {
     name            = "UserActivityByType"
     range_key       = "activityType"
@@ -89,4 +89,4 @@ aws dynamodb query \
 
 ## Conclusion
 
-LSIs must be defined at table creation-unlike GSIs they cannot be added afterward, making schema design more critical upfront. LSIs are strongly consistent because they co-locate with the base table partition, making them preferable over GSIs when strong consistency is required. The 10 GB item collection limit per partition key applies to the total size of all items across the table and all its LSIs with that partition key-monitor item collection sizes to avoid `ItemCollectionSizeLimitExceededException` errors.
+LSIs must be defined at table creation-unlike GSIs they cannot be added afterward, making schema design more critical upfront. LSIs support strongly consistent reads when you set `ConsistentRead` to true, making them preferable over GSIs when strong consistency is required. The 10 GB item collection limit per partition key applies to the total size of all items across the table and all its LSIs with that partition key-monitor item collection sizes to avoid `ItemCollectionSizeLimitExceededException` errors.
