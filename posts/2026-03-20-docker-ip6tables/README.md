@@ -8,15 +8,16 @@ Description: Enable and configure ip6tables in Docker to provide IPv6 network is
 
 ## Introduction
 
-When `ip6tables` is enabled in Docker's `daemon.json`, Docker automatically manages `ip6tables` rules to provide network isolation for IPv6 containers. Without `ip6tables`, all containers on all Docker networks can reach each other over IPv6, defeating network isolation. Docker creates chains like `DOCKER` and `DOCKER-ISOLATION-STAGE-1` in ip6tables to enforce per-network isolation rules.
+When IPv6 is enabled for Docker bridge networking, Docker automatically manages `ip6tables` rules to provide IPv6 network isolation and port mapping. `ip6tables` is enabled by default, but you can set it explicitly in `daemon.json`. If you disable `ip6tables`, Docker stops creating most of its IPv6 firewall rules, which can break expected network isolation and container connectivity. On current Docker Engine releases using the iptables firewall backend, Docker creates chains such as `DOCKER-USER`, `DOCKER-FORWARD`, and `DOCKER`.
 
 ## Enable ip6tables in daemon.json
 
+`/etc/docker/daemon.json`
+
 ```json
-// /etc/docker/daemon.json
 {
   "ipv6": true,
-  "fixed-cidr-v6": "fd00:dead:beef::/80",
+  "fixed-cidr-v6": "fd00:dead:beef::/64",
   "ip6tables": true
 }
 ```
@@ -27,47 +28,49 @@ sudo systemctl restart docker
 # Verify ip6tables rules are being managed by Docker
 
 sudo ip6tables -L DOCKER -n
-# Should show DOCKER chain with per-network rules
+# Should show the DOCKER chain with Docker-managed rules
 
 sudo ip6tables -L FORWARD -n
-# Should show DOCKER-USER and DOCKER-ISOLATION chains
+# Should show jumps to Docker-managed chains such as DOCKER-USER and DOCKER-FORWARD
 ```
 
 ## View Docker-Managed ip6tables Rules
 
 ```bash
-# List all ip6tables rules in all tables
-sudo ip6tables -L -n -v
+# Dump all ip6tables rules across available tables
+sudo ip6tables-save
 
 # List Docker-specific chains
+sudo ip6tables -L DOCKER-USER -n -v
+sudo ip6tables -L DOCKER-FORWARD -n -v
 sudo ip6tables -L DOCKER -n -v
-sudo ip6tables -L DOCKER-ISOLATION-STAGE-1 -n -v
-sudo ip6tables -L DOCKER-ISOLATION-STAGE-2 -n -v
 
-# Nat table (for masquerading IPv6 outbound traffic)
+# Nat table (for Docker-managed port mapping and masquerading in nat mode)
 sudo ip6tables -t nat -L -n -v
 
-# Docker IPv6 MASQUERADE rule
+# Docker IPv6 MASQUERADE/SNAT rules
 sudo ip6tables -t nat -L POSTROUTING -n -v
-# Shows: MASQUERADE for container IPv6 prefix
+# In the default nat gateway mode, should show Docker-managed MASQUERADE/SNAT rules
 ```
 
 ## Add Custom ip6tables Rules
 
 ```bash
 # Docker creates a DOCKER-USER chain for custom rules
-# Always add custom rules to DOCKER-USER so they persist
+# Add custom rules to DOCKER-USER so they run before Docker's own forwarding rules
+# Use one example pattern at a time, not all of them together
 
-# Block inbound IPv6 from specific range
-sudo ip6tables -I DOCKER-USER -s 2001:db8:blocked::/48 -j DROP
+# Example: block inbound IPv6 from a specific range to the container subnet
+sudo ip6tables -I DOCKER-USER -s 2001:db8:ffff::/48 -d fd00:dead:beef::/64 -j DROP
 
-# Allow only specific IPv6 prefix to reach containers
-sudo ip6tables -I DOCKER-USER -s 2001:db8:trusted::/48 -j ACCEPT
-sudo ip6tables -A DOCKER-USER -s "::/0" -j DROP
+# Example: allow only a specific IPv6 prefix to reach containers
+sudo ip6tables -I DOCKER-USER -s 2001:db8:100::/48 -d fd00:dead:beef::/64 -j ACCEPT
+sudo ip6tables -A DOCKER-USER -d fd00:dead:beef::/64 -j DROP
 
-# Rate limit IPv6 connections
-sudo ip6tables -I DOCKER-USER -m limit --limit 100/s --limit-burst 200 -j ACCEPT
-sudo ip6tables -A DOCKER-USER -j DROP
+# Example: rate limit IPv6 packets to the container subnet
+sudo ip6tables -I DOCKER-USER 1 -p tcp -d fd00:dead:beef::/64 -m conntrack --ctstate ESTABLISHED,RELATED -j ACCEPT
+sudo ip6tables -I DOCKER-USER 2 -p tcp -d fd00:dead:beef::/64 -m limit --limit 100/second --limit-burst 200 -j ACCEPT
+sudo ip6tables -A DOCKER-USER -p tcp -d fd00:dead:beef::/64 -j DROP
 
 # View DOCKER-USER rules
 sudo ip6tables -L DOCKER-USER -n -v
@@ -79,7 +82,7 @@ sudo ip6tables -L DOCKER-USER -n -v
 # Install iptables-persistent
 sudo apt-get install iptables-persistent
 
-# Save current rules (includes ip6tables)
+# Save current rules, including custom DOCKER-USER ip6tables rules
 sudo netfilter-persistent save
 
 # Rules saved to:
@@ -87,37 +90,38 @@ sudo netfilter-persistent save
 # /etc/iptables/rules.v6
 
 # Verify saved ip6tables rules
-cat /etc/iptables/rules.v6
+sudo cat /etc/iptables/rules.v6
 
 # Restore manually if needed
-sudo ip6tables-restore < /etc/iptables/rules.v6
+sudo ip6tables-restore /etc/iptables/rules.v6
 ```
 
 ## Troubleshoot ip6tables Issues
 
 ```bash
 # Problem: IPv6 container traffic not isolated between networks
-# Check: ip6tables is not enabled
-docker info | grep -i "ip6tables"
+# Check: ip6tables is explicitly disabled in daemon.json
+sudo test -f /etc/docker/daemon.json && sudo grep -n '"ip6tables"' /etc/docker/daemon.json
 
-# If not shown, enable in daemon.json and restart
+# If the file or key is absent, the default is true
+# If the key is set to false, change it to true or remove it
 
 # Problem: Container cannot reach IPv6 internet
-# Check FORWARD chain default policy
-sudo ip6tables -L FORWARD --policy
+# Check FORWARD chain policy and Docker-managed jumps
+sudo ip6tables -L FORWARD -n -v
 
-# If DROP, Docker should add ACCEPT rules - verify Docker chain
-sudo ip6tables -L FORWARD -n | grep DOCKER
+# Verify Docker's forwarding chain
+sudo ip6tables -L DOCKER-FORWARD -n -v
 
-# Check if MASQUERADE is in place for outbound
-sudo ip6tables -t nat -L POSTROUTING -n | grep fd00
+# Check if MASQUERADE/SNAT is in place for outbound traffic in nat mode
+sudo ip6tables -t nat -L POSTROUTING -n | grep -E 'MASQUERADE|SNAT'
 
 # Problem: Custom rules disappear after Docker restart
 # Always use DOCKER-USER chain, not DOCKER chain
-# Docker flushes and re-creates DOCKER chain on restart
-# DOCKER-USER is preserved
+# Docker re-creates its own chains on restart
+# Persist your custom DOCKER-USER rules separately with netfilter-persistent
 ```
 
 ## Conclusion
 
-Enable `ip6tables` in Docker's `daemon.json` to get automatic IPv6 network isolation between Docker networks. Docker manages `DOCKER`, `DOCKER-ISOLATION-STAGE-1`, and `DOCKER-ISOLATION-STAGE-2` chains automatically. Add custom rules to the `DOCKER-USER` chain which Docker preserves across restarts. Persist rules using `netfilter-persistent save`. Without `ip6tables` enabled, Docker networks have no IPv6 isolation, creating security risks in multi-tenant environments.
+Enable `ip6tables` in Docker's `daemon.json`, or leave the default enabled setting in place, to get Docker-managed IPv6 network isolation and port mapping for bridge networks. Docker manages chains such as `DOCKER-USER`, `DOCKER-FORWARD`, and `DOCKER` automatically when using the iptables firewall backend. Add custom rules to the `DOCKER-USER` chain and persist those rules using `netfilter-persistent save`. If you disable `ip6tables`, Docker stops creating most IPv6 firewall rules, which can remove expected isolation and break parts of container networking.
