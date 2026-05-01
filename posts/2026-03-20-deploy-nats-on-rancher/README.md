@@ -27,19 +27,21 @@ helm repo update
 ```yaml
 # nats-values.yaml
 
-cluster:
-  enabled: true
-  replicas: 3    # Three-node cluster
+config:
+  cluster:
+    enabled: true
+    replicas: 3    # Three-node cluster
 
-nats:
   jetstream:
     enabled: true    # Enable persistent messaging
-    fileStorage:
+    fileStore:
       enabled: true
-      size: 20Gi
-      storageDirectory: /data/jetstream
-      storageClassName: longhorn
+      dir: /data/jetstream
+      pvc:
+        size: 20Gi
+        storageClassName: longhorn
 
+container:
   resources:
     requests:
       memory: "128Mi"
@@ -48,7 +50,7 @@ nats:
       memory: "512Mi"
       cpu: "500m"
 
-exporter:
+promExporter:
   enabled: true    # Prometheus metrics exporter
 ```
 
@@ -65,27 +67,25 @@ helm install nats nats/nats \
 ## Step 4: Verify Cluster
 
 ```bash
-# Check pods
-kubectl get pods -n messaging -l app.kubernetes.io/name=nats
+# Check NATS server pods
+kubectl get pods -n messaging -l app.kubernetes.io/component=nats
 
-# Check NATS cluster status
-kubectl exec -it nats-0 -n messaging -- \
-  nats-server --version
+# Wait for the StatefulSet to become ready
+kubectl rollout status statefulset/nats -n messaging
 ```
 
 ## Step 5: Test Publish/Subscribe
 
-Use the NATS CLI to test messaging.
+Use the NATS CLI from the `nats-box` deployment that the chart installs by default.
 
 ```bash
-# Install the NATS CLI (from inside a pod or locally)
-kubectl exec -it nats-0 -n messaging -- sh
+# Subscribe in one terminal
+kubectl exec -it deployment/nats-box -n messaging -- \
+  nats sub test.subject
 
-# Subscribe to a subject
-nats sub test.subject --server nats://localhost:4222 &
-
-# Publish a message
-nats pub test.subject "Hello from NATS!" --server nats://localhost:4222
+# Publish from another terminal
+kubectl exec -it deployment/nats-box -n messaging -- \
+  nats pub test.subject "Hello from NATS!"
 ```
 
 ## Step 6: Create a JetStream Stream
@@ -93,15 +93,16 @@ nats pub test.subject "Hello from NATS!" --server nats://localhost:4222
 JetStream adds persistence and replay capabilities to NATS subjects.
 
 ```bash
-# Create a durable stream
-nats stream add EVENTS \
+# Create a stream
+kubectl exec -it deployment/nats-box -n messaging -- \
+  nats stream add EVENTS \
   --subjects "events.*" \
   --storage file \
   --replicas 3 \
   --max-msgs=-1 \
   --max-bytes=-1 \
   --max-age=24h \
-  --server nats://nats.messaging.svc.cluster.local:4222
+  --defaults
 ```
 
 ## Step 7: Connect Applications
@@ -115,4 +116,4 @@ env:
 
 ## Conclusion
 
-NATS is running on Rancher with clustering and JetStream persistence. Its lightweight nature (under 100MB memory for a basic cluster) makes it suitable for edge deployments and high-frequency microservice communication. The built-in Prometheus exporter enables metric collection without additional configuration.
+NATS is running on Rancher with clustering and JetStream persistence. Its lightweight nature makes it suitable for edge deployments and high-frequency microservice communication. The Prometheus exporter exposes metrics for collection when enabled.
