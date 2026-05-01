@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
-Tags: IPv6, Window, Teredo, ISATAP, 6to4, Security
+Tags: IPv6, Windows, Teredo, ISATAP, 6to4, Security
 
 Description: Learn how to disable Teredo, ISATAP, and 6to4 IPv6 transition technologies on Windows to reduce attack surface, prevent unexpected tunnel traffic, and avoid connectivity issues on native...
 
@@ -26,15 +26,15 @@ netsh interface teredo show state
 ```
 
 ```powershell
-# Disable via registry (persistent across reboots)
+# Disable via registry (takes effect after restart)
 
 Set-ItemProperty `
     -Path "HKLM:\SYSTEM\CurrentControlSet\Services\Tcpip6\Parameters" `
     -Name DisabledComponents `
     -Value 0x08 `
     -Type DWord
-# Bit 3 (0x08) disables preferred IPv6 source; bit 6 (0x40) disables Teredo
-# Use 0x40 for Teredo-only disable
+# Bit 3 (0x08) disables Teredo
+# Restart Windows after changing DisabledComponents
 ```
 
 ## Disable 6to4
@@ -78,14 +78,14 @@ Write-Host "6to4: disabled"
 netsh interface isatap set state disabled
 Write-Host "ISATAP: disabled"
 
-# Also disable via registry (bits 4, 5, 6 for ISATAP, 6to4, Teredo)
+# Also disable all IPv6 tunnel interfaces via registry (takes effect after restart)
 $regPath = "HKLM:\SYSTEM\CurrentControlSet\Services\Tcpip6\Parameters"
 if (-not (Test-Path $regPath)) {
     New-Item -Path $regPath -Force | Out-Null
 }
-# 0x70 = ISATAP(0x10) + 6to4(0x20) + Teredo(0x40)
-Set-ItemProperty -Path $regPath -Name DisabledComponents -Value 0x70 -Type DWord
-Write-Host "Registry DisabledComponents set to 0x70 (tunnels disabled)"
+# 0x01 disables all IPv6 tunnel interfaces, including 6to4, ISATAP, and Teredo
+Set-ItemProperty -Path $regPath -Name DisabledComponents -Value 0x01 -Type DWord
+Write-Host "Registry DisabledComponents set to 0x01 (all IPv6 tunnel interfaces disabled after restart)"
 
 Write-Host ""
 Write-Host "Verification:"
@@ -114,8 +114,8 @@ Settings to configure:
 
 ```powershell
 # Check all tunnel adapters
-Get-NetAdapter | Where-Object {
-    $_.InterfaceDescription -match "Tunnel|Teredo|ISATAP|6to4|Microsoft 6to4"
+Get-NetAdapter -IncludeHidden | Where-Object {
+    $_.Status -eq "Up" -and $_.InterfaceDescription -match "Tunnel|Teredo|ISATAP|6to4|Microsoft 6to4"
 }
 
 # Should show no active tunnel adapters
@@ -137,4 +137,4 @@ netsh interface isatap show state
 
 ## Summary
 
-Disable legacy IPv6 transition technologies on Windows with `netsh interface teredo/6to4/isatap set state disabled`. For persistent disable across reboots, set the `DisabledComponents` registry value to `0x70` (bits for ISATAP, 6to4, and Teredo). Use Group Policy for enterprise-wide deployment. These tunnels are unnecessary on native dual-stack networks and should be disabled to reduce attack surface and prevent unexpected traffic patterns.
+Disable legacy IPv6 transition technologies on Windows with `netsh interface teredo/6to4/isatap set state disabled`. For registry-based persistence, set the `DisabledComponents` registry value to `0x01` to disable all IPv6 tunnel interfaces, including 6to4, ISATAP, and Teredo, and then restart Windows. Use Group Policy for enterprise-wide deployment. These tunnels are unnecessary on native dual-stack networks and should be disabled to reduce attack surface and prevent unexpected traffic patterns.
