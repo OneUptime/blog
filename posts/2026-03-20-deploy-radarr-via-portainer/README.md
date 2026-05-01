@@ -18,14 +18,12 @@ Radarr is the movie counterpart to Sonarr. It monitors release groups, automatic
 
 ## Compose Stack
 
-Use the same parent mount path trick as Sonarr so Radarr can hardlink completed downloads into the movies directory without copying:
+Use a single shared `/data` mount so Radarr and your download client see the same filesystem and Radarr can hardlink completed downloads into the movie library without copying:
 
 ```yaml
-version: "3.8"
-
 services:
   radarr:
-    image: linuxserver/radarr:latest
+    image: lscr.io/linuxserver/radarr:latest
     restart: unless-stopped
     ports:
       - "7878:7878"
@@ -35,8 +33,7 @@ services:
       TZ: America/New_York
     volumes:
       - radarr_config:/config
-      - /mnt/data/downloads:/downloads    # Where download client puts files
-      - /mnt/data/media/movies:/movies    # Final movie library location
+      - /mnt/data:/data    # Use /data/downloads and /data/media/movies inside Radarr
 
 volumes:
   radarr_config:
@@ -53,7 +50,7 @@ Open `http://<host>:7878`.
 
 ## Connecting Prowlarr as Indexer Manager
 
-If you have Prowlarr running, sync all your indexers to Radarr automatically:
+If you have Prowlarr running, sync your indexers to Radarr automatically:
 
 1. In Prowlarr go to **Settings > Apps > Add Application**.
 2. Choose Radarr.
@@ -61,7 +58,7 @@ If you have Prowlarr running, sync all your indexers to Radarr automatically:
 4. Paste the **API Key** from Radarr's **Settings > General**.
 5. Click **Test** then **Save**.
 
-All Prowlarr indexers will immediately appear in Radarr.
+After you save, Prowlarr will sync indexers to Radarr so you do not need to configure each one manually in Radarr.
 
 ## Quality Profiles
 
