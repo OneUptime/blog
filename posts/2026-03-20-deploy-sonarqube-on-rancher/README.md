@@ -12,6 +12,8 @@ SonarQube is the leading platform for continuous code quality and security analy
 
 ## Step 1: Deploy SonarQube with Helm
 
+Use a PostgreSQL service that already exists in your cluster or a managed PostgreSQL instance, then point SonarQube at it with JDBC settings.
+
 ```bash
 helm repo add sonarqube https://SonarSource.github.io/helm-chart-sonarqube
 helm repo update
@@ -20,11 +22,15 @@ helm repo update
 ```yaml
 # sonarqube-values.yaml
 
-sonarqube:
-  edition: "community"
+community:
+  enabled: true
+
+# Required for SonarQube liveness/readiness probes
+monitoringPasscode: "change-this-passcode"
 
 ingress:
   enabled: true
+  ingressClassName: nginx
   hosts:
     - name: sonarqube.example.com
       path: /
@@ -34,22 +40,19 @@ ingress:
         - sonarqube.example.com
   annotations:
     cert-manager.io/cluster-issuer: letsencrypt-prod
-    kubernetes.io/ingress.class: nginx
+    nginx.ingress.kubernetes.io/proxy-body-size: "64m"
+
+jdbcOverwrite:
+  enabled: true
+  jdbcUrl: "jdbc:postgresql://postgresql.example.internal:5432/sonarqube"
+  jdbcUsername: sonar
+  jdbcSecretName: sonarqube-db
+  jdbcSecretPasswordKey: jdbc-password
 
 persistence:
   enabled: true
   storageClass: longhorn
-  size: 20Gi    # SonarQube analysis data
-
-postgresql:
-  enabled: true
-  postgresqlUsername: sonar
-  postgresqlPassword: "sonarpassword"
-  postgresqlDatabase: sonarqube
-  persistence:
-    enabled: true
-    storageClass: longhorn
-    size: 20Gi
+  size: 20Gi    # Elasticsearch indexes for faster restarts
 
 resources:
   requests:
@@ -67,6 +70,9 @@ initSysctl:
 
 ```bash
 kubectl create namespace sonarqube
+kubectl create secret generic sonarqube-db \
+  --from-literal=jdbc-password='sonarpassword' \
+  -n sonarqube
 helm install sonarqube sonarqube/sonarqube \
   --namespace sonarqube \
   --values sonarqube-values.yaml
@@ -100,13 +106,14 @@ stage('SonarQube Analysis') {
                 sonar-scanner \
                     -Dsonar.projectKey=my-project \
                     -Dsonar.sources=src \
-                    -Dsonar.host.url=https://sonarqube.example.com \
-                    -Dsonar.login=$SONAR_TOKEN
+                    -Dsonar.host.url=$SONAR_HOST_URL \
+                    -Dsonar.token=$SONAR_AUTH_TOKEN
             '''
         }
     }
 }
 
+// Requires a SonarQube webhook pointing to <yourJenkinsInstance>/sonarqube-webhook/
 stage('Quality Gate') {
     steps {
         timeout(time: 5, unit: 'MINUTES') {
