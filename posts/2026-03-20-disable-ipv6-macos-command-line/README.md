@@ -4,55 +4,55 @@ Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
 Tags: IPv6, macOS, Networksetup, Terminal, Disable IPv6
 
-Description: Learn how to disable IPv6 on macOS using the networksetup command from Terminal, including disabling on all interfaces and making changes persistent.
+Description: Learn how to disable IPv6 on macOS using the networksetup command from Terminal, including disabling it on multiple network services and re-applying the setting at boot if needed.
 
 ## Disable IPv6 with networksetup
 
 ```bash
 # Disable IPv6 on Wi-Fi
 
-networksetup -setv6off Wi-Fi
+sudo networksetup -setv6off Wi-Fi
 
 # Disable IPv6 on Ethernet
-networksetup -setv6off Ethernet
+sudo networksetup -setv6off Ethernet
 
 # Disable on Thunderbolt Bridge
-networksetup -setv6off "Thunderbolt Bridge"
+sudo networksetup -setv6off "Thunderbolt Bridge"
 
 # List all network services to find names
 networksetup -listallnetworkservices
 ```
 
-## Disable IPv6 on All Interfaces
+## Disable IPv6 on All Network Services
 
 ```bash
 #!/bin/bash
 # Disable IPv6 on all network services
 
+if [[ $EUID -ne 0 ]]; then
+    echo "Run this script with sudo."
+    exit 1
+fi
+
 echo "Disabling IPv6 on all network services..."
 
 # Get list of all network services
 networksetup -listallnetworkservices | tail -n +2 | while IFS= read -r service; do
-    # Skip lines starting with * (disabled interfaces)
+    # Skip lines starting with * (disabled network services)
     [[ "$service" == \** ]] && continue
 
     echo "Disabling IPv6 on: $service"
     networksetup -setv6off "$service" 2>/dev/null
 done
 
-echo "Done. Verifying..."
-networksetup -listallnetworkservices | tail -n +2 | while IFS= read -r service; do
-    [[ "$service" == \** ]] && continue
-    status=$(networksetup -getv6additional "$service" 2>/dev/null)
-    echo "$service: $status"
-done
+echo "Done."
 ```
 
 ## Set Link-Local Only (Partial Disable)
 
 ```bash
 # Keep link-local IPv6 but disable global IPv6 on Wi-Fi
-networksetup -setv6linklocal Wi-Fi
+sudo networksetup -setv6linklocal Wi-Fi
 
 # This is useful when:
 # - You need link-local for local network discovery
@@ -62,30 +62,28 @@ networksetup -setv6linklocal Wi-Fi
 ## Verify IPv6 is Disabled
 
 ```bash
-# Check IPv6 configuration for Wi-Fi
-networksetup -getv6additional Wi-Fi
-# Output: IPv6: Off
+# Map the network service to its device name first
+networksetup -listallhardwareports
 
-# Check via ifconfig
-ifconfig en0 | grep inet6
-# Should be empty (no inet6 lines) when disabled
+# Replace enX with the device name for the service you changed
+ifconfig enX | grep inet6
 
 # Confirm no global IPv6 routing
 ping6 2001:4860:4860::8888
-# Should fail when IPv6 is disabled
+# If no other active service has IPv6 connectivity, this should fail
 ```
 
 ## Re-enable IPv6
 
 ```bash
 # Re-enable automatic IPv6 on Wi-Fi
-networksetup -setv6automatic Wi-Fi
+sudo networksetup -setv6automatic Wi-Fi
 
 # Re-enable on Ethernet
-networksetup -setv6automatic Ethernet
+sudo networksetup -setv6automatic Ethernet
 
-# Verify addresses are assigned (may take a moment)
-ifconfig en0 | grep inet6
+# Replace enX with the device name for the service you changed
+ifconfig enX | grep inet6
 ```
 
 ## Using scutil for Advanced IPv6 Control
@@ -100,10 +98,10 @@ scutil --nwi
 # These are read-only views; use networksetup for changes
 ```
 
-## Persistent Disable via launchd (for headless/server macOS)
+## Re-apply at Boot via launchd (Optional, for headless/server macOS)
 
 ```bash
-# Create a LaunchDaemon to disable IPv6 at boot
+# Create a LaunchDaemon to re-apply the IPv6 setting at boot
 sudo tee /Library/LaunchDaemons/com.local.disable-ipv6.plist << 'EOF'
 <?xml version="1.0" encoding="UTF-8"?>
 <!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN"
@@ -129,4 +127,4 @@ sudo launchctl load /Library/LaunchDaemons/com.local.disable-ipv6.plist
 
 ## Summary
 
-Disable IPv6 on macOS via command line with `networksetup -setv6off "Wi-Fi"` and `networksetup -setv6off "Ethernet"`. Use `networksetup -listallnetworkservices` to find exact interface names. For partial disable keeping link-local, use `networksetup -setv6linklocal`. Re-enable with `networksetup -setv6automatic`. For persistent disable across reboots on server macOS, use a LaunchDaemon.
+Disable IPv6 on macOS via command line with `sudo networksetup -setv6off "Wi-Fi"` and `sudo networksetup -setv6off "Ethernet"`. Use `networksetup -listallnetworkservices` to find exact network service names. For partial disable keeping link-local, use `sudo networksetup -setv6linklocal`. Re-enable with `sudo networksetup -setv6automatic`. If you need the setting re-applied automatically at boot on headless or managed Macs, use a LaunchDaemon.
