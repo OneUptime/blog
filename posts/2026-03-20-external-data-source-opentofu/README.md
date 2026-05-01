@@ -27,7 +27,7 @@ terraform {
 
 ```hcl
 data "external" "git_commit" {
-  program = ["bash", "-c", "git log -1 --format='{\"sha\":\"%H\",\"short_sha\":\"%h\"}'"]
+  program = ["bash", "-c", "python3 -c 'import json,sys; json.load(sys.stdin)' >/dev/null && git log -1 --format='{\"sha\":\"%H\",\"short_sha\":\"%h\"}'"]
 }
 
 output "git_sha" {
@@ -78,6 +78,13 @@ result = subprocess.run(
     capture_output=True, text=True
 )
 
+if result.returncode != 0:
+    print(
+        f"Error running aws ec2 describe-instances: {result.stderr.strip()}",
+        file=sys.stderr,
+    )
+    sys.exit(result.returncode)
+
 instance_ids = result.stdout.strip().split()
 
 # Output must be a flat map of strings
@@ -110,25 +117,28 @@ output "instance_count" {
 #!/bin/bash
 # scripts/get_git_info.sh
 
+set -euo pipefail
+
 # Read JSON from stdin
 INPUT=$(cat)
 
 # Extract fields from JSON
-BRANCH=$(echo "$INPUT" | python3 -c "import json,sys; d=json.load(sys.stdin); print(d.get('branch', 'HEAD'))")
+BRANCH=$(printf '%s' "$INPUT" | python3 -c "import json,sys; d=json.load(sys.stdin); print(d.get('branch', 'HEAD'))")
 
 # Get git information
-SHA=$(git rev-parse ${BRANCH} 2>/dev/null || echo "unknown")
-SHORT_SHA=$(git rev-parse --short ${BRANCH} 2>/dev/null || echo "unknown")
-MESSAGE=$(git log -1 --format='%s' ${BRANCH} 2>/dev/null || echo "unknown")
+SHA=$(git rev-parse --verify --end-of-options "${BRANCH}^{commit}" 2>/dev/null || echo "unknown")
+
+if [ "$SHA" = "unknown" ]; then
+  SHORT_SHA="unknown"
+  MESSAGE="unknown"
+else
+  SHORT_SHA=$(git rev-parse --short "$SHA")
+  MESSAGE=$(git log -1 --format=%s "$SHA")
+fi
 
 # Output flat JSON string map
-cat <<JSON
-{
-  "sha": "${SHA}",
-  "short_sha": "${SHORT_SHA}",
-  "message": "${MESSAGE}"
-}
-JSON
+SHA="$SHA" SHORT_SHA="$SHORT_SHA" MESSAGE="$MESSAGE" \
+  python3 -c 'import json, os, sys; json.dump({"sha": os.environ["SHA"], "short_sha": os.environ["SHORT_SHA"], "message": os.environ["MESSAGE"]}, sys.stdout)'
 ```
 
 ```hcl
@@ -174,6 +184,12 @@ locals {
 
 INPUT=$(cat)
 
+# Validate the JSON query input
+if ! printf '%s' "$INPUT" | python3 -c "import json,sys; json.load(sys.stdin)" >/dev/null; then
+    echo "Error: invalid JSON input" >&2
+    exit 1
+fi
+
 # Attempt the operation
 RESULT=$(some_command 2>&1)
 EXIT_CODE=$?
@@ -185,9 +201,9 @@ if [ $EXIT_CODE -ne 0 ]; then
 fi
 
 # Write JSON result to stdout
-echo "{\"result\": \"$RESULT\"}"
+RESULT="$RESULT" python3 -c 'import json, os, sys; json.dump({"result": os.environ["RESULT"]}, sys.stdout)'
 ```
 
 ## Conclusion
 
-The `external` data source provides a flexible escape hatch for querying data that isn't available through standard OpenTofu providers. Every plan and apply executes the external program, so scripts must be fast and idempotent. The most important constraint is that the program must output a flat JSON object where all values are strings. Prefer native provider data sources when available, and use the external data source for custom data needs that require running external scripts or programs.
+The `external` data source provides a flexible escape hatch for querying data that isn't available through standard OpenTofu providers. OpenTofu re-runs the external program when it refreshes the data source, and it may defer the read until apply if the inputs are not yet known, so scripts must be fast and idempotent. The most important constraint is that the program must output a flat JSON object where all values are strings. Prefer native provider data sources when available, and use the external data source for custom data needs that require running external scripts or programs.
