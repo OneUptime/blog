@@ -9,15 +9,16 @@ Description: Configure AWS Route 53 for DNS-based IPv4 load balancing using weig
 ## Introduction
 
 Route 53 DNS-based load balancing distributes traffic by returning different IPv4 addresses in DNS responses. It operates at the DNS level - no single load balancer proxy handles all traffic. It supports weighted, latency-based, geolocation, failover, and multivalue routing policies.
+Each routing policy below is a separate example for a record name and type, not a stack of settings to apply together.
 
-## Weighted Routing (Round Robin with Control)
+## Weighted Routing (Proportional DNS Responses)
 
-Distribute traffic proportionally based on weights:
+Distribute DNS responses proportionally based on weights:
 
 ```bash
 HOSTED_ZONE_ID="Z1234567890ABC"
 
-# Create server 1 record with weight 70 (70% of traffic)
+# Create server 1 record with weight 70 (~70% of DNS responses)
 
 aws route53 change-resource-record-sets \
   --hosted-zone-id $HOSTED_ZONE_ID \
@@ -35,7 +36,7 @@ aws route53 change-resource-record-sets \
     }]
   }'
 
-# Create server 2 record with weight 30 (30% of traffic)
+# Create server 2 record with weight 30 (~30% of DNS responses)
 aws route53 change-resource-record-sets \
   --hosted-zone-id $HOSTED_ZONE_ID \
   --change-batch '{
@@ -149,9 +150,22 @@ aws route53 change-resource-record-sets \
 
 ## Multivalue Answer Routing
 
-Return up to 8 healthy IPs per query:
+Create one multivalue record per endpoint; Route 53 can return up to 8 healthy records per response:
 
 ```bash
+# Create a health check for this endpoint
+HC_ID_SERVER3=$(aws route53 create-health-check \
+  --caller-reference "$(date +%s)-server3" \
+  --health-check-config '{
+    "IPAddress": "203.0.113.12",
+    "Port": 80,
+    "Type": "HTTP",
+    "ResourcePath": "/health",
+    "RequestInterval": 30,
+    "FailureThreshold": 3
+  }' \
+  --query 'HealthCheck.Id' --output text)
+
 aws route53 change-resource-record-sets \
   --hosted-zone-id $HOSTED_ZONE_ID \
   --change-batch "{
@@ -162,7 +176,7 @@ aws route53 change-resource-record-sets \
         \"Type\": \"A\",
         \"SetIdentifier\": \"server3\",
         \"MultiValueAnswer\": true,
-        \"HealthCheckId\": \"$HC_ID\",
+        \"HealthCheckId\": \"$HC_ID_SERVER3\",
         \"TTL\": 60,
         \"ResourceRecords\": [{\"Value\": \"203.0.113.12\"}]
       }
@@ -194,4 +208,4 @@ dig app.example.com @8.8.8.8 +short
 
 ## Conclusion
 
-Route 53 weighted routing distributes traffic proportionally (use weights 0–255 or any integer). Latency-based routing sends clients to the lowest-latency region. Failover routing requires health checks on the primary record. Use multivalue answer routing as a basic round-robin across up to 8 IPs with health checking. Keep TTLs at 60s or lower for faster failover responsiveness.
+Route 53 weighted routing distributes DNS responses proportionally using weights from 0 to 255. Latency-based routing sends clients to the configured AWS Region with the lowest latency. Failover routing uses a health check on the primary record; the secondary record can optionally have one. Use multivalue answer routing for approximate DNS-level load distribution across up to 8 healthy records, with one multivalue record per endpoint. Keep TTLs at 60s or lower for faster failover responsiveness.
