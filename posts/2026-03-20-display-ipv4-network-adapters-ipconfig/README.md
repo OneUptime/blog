@@ -2,13 +2,13 @@
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
-Tags: Window, Networking, Ipconfig, IPv4, Network Diagnostics
+Tags: Windows, Networking, Ipconfig, IPv4, Network Diagnostics
 
-Description: Use ipconfig and ipconfig /all to display IPv4 addresses, subnet masks, gateways, and DNS servers for all network adapters on Windows.
+Description: Use ipconfig and ipconfig /all to display IPv4 addresses, subnet masks, gateways, and, with /all, DNS servers for network adapters on Windows.
 
 ## Introduction
 
-`ipconfig` is the standard Windows command for displaying network adapter configuration. It shows assigned IPv4 addresses, subnet masks, default gateways, and DHCP lease information for all adapters in a single output.
+`ipconfig` is the standard Windows command for displaying network adapter configuration. Used without parameters, it shows assigned IPv4 and IPv6 addresses, subnet masks, and default gateways for all adapters in a single output.
 
 ## Basic ipconfig
 
@@ -59,18 +59,18 @@ ipconfig | findstr "IPv4"
 :: Show only the gateway
 ipconfig | findstr "Default Gateway"
 
-:: Show MAC addresses and IPs from /all
-ipconfig /all | findstr /i "Physical\|IPv4\|Gateway"
+:: Show MAC addresses, IPv4 addresses, and gateways from /all
+ipconfig /all | findstr /i /c:"Physical Address" /c:"IPv4" /c:"Default Gateway"
 ```
 
 ## Displaying a Specific Adapter
 
 ```cmd
-:: Show full details for just the Ethernet adapter
+:: Page through full details and navigate to the Ethernet adapter section
 ipconfig /all | more
 :: Navigate to the Ethernet section
 
-:: Or use PowerShell for specific adapter
+:: Or use PowerShell for a specific adapter
 Get-NetIPAddress -InterfaceAlias "Ethernet" -AddressFamily IPv4
 ```
 
@@ -90,8 +90,8 @@ ipconfig /all
 
 Get-NetIPAddress -AddressFamily IPv4 | Select-Object InterfaceAlias, IPAddress, PrefixLength, SuffixOrigin
 
-# Show adapter with gateway
-Get-NetRoute -AddressFamily IPv4 | Where-Object {$_.NextHop -ne "0.0.0.0"} | Select-Object InterfaceAlias, NextHop, RouteMetric
+# Show default gateway by adapter
+Get-NetRoute -AddressFamily IPv4 -DestinationPrefix "0.0.0.0/0" | Select-Object InterfaceAlias, NextHop, RouteMetric
 ```
 
 ## Exporting ipconfig Output
