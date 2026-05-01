@@ -26,7 +26,7 @@ tcpdump -i eth0 "udp port 3544" -n
 # Detect GRE
 tcpdump -i eth0 "proto gre" -n
 
-# Capture and analyze 6to4 (destination 192.88.99.0/24)
+# Capture and analyze legacy 6to4 relay anycast traffic (192.88.99.0/24; commonly 192.88.99.1)
 tcpdump -i eth0 "dst net 192.88.99.0/24" -n
 
 # Save for analysis
@@ -43,7 +43,7 @@ nfdump -r /var/cache/nfdump/nfcapd.current \
 
 # Find UDP 3544 (Teredo) flows
 nfdump -r /var/cache/nfdump/nfcapd.current \
-    "proto udp and dport 3544"
+    "proto udp and dst port 3544"
 
 # Find GRE (proto 47) flows
 nfdump -r /var/cache/nfdump/nfcapd.current \
@@ -51,7 +51,7 @@ nfdump -r /var/cache/nfdump/nfcapd.current \
 
 # Summary: which hosts are sending tunnel traffic?
 nfdump -r /var/cache/nfdump/nfcapd.current \
-    -s srcip/bytes "proto 41 or proto 47 or (proto udp and dport 3544)"
+    -s srcip/bytes "proto 41 or proto 47 or (proto udp and dst port 3544)"
 ```
 
 ## Snort / Suricata Rules
@@ -75,8 +75,11 @@ alert ip $HOME_NET any -> $EXTERNAL_NET any (msg:"GRE tunnel outbound"; ip_proto
 ## Host-Based Detection: Linux
 
 ```bash
-# List all tunnel interfaces
+# List configured tunnel interfaces with an IPv4 outer header
 ip tunnel show
+
+# List configured tunnel interfaces with an IPv6 outer header
+ip -6 tunnel show
 
 # Example - unauthorized tunnel found:
 # sit1: ipv6/ip  remote 203.0.113.1  local 10.0.5.22  ttl 64
@@ -90,14 +93,14 @@ ip link show type gretap
 # Check loaded tunnel modules
 lsmod | grep -E "^(sit|ip_gre|ip6_gre|ip6_tunnel)"
 
-# Find processes using tunnel interfaces
-# (tunnels are created by root - check recent root commands)
+# Correlate tunnel changes with recent admin activity
+# (last shows logins; ausearch shows audited iproute2 commands)
 last -n 20
 ausearch -c "ip" --start today  # If auditd is running
 
-# Cron job to alert on tunnel creation
+# Cron job to alert on tunnel changes
 cat > /etc/cron.d/check-tunnels << 'EOF'
-*/5 * * * * root ip tunnel show | grep -v "^lo" | grep -v "^ip6tnl0" > /tmp/tunnels-now.txt && diff /tmp/tunnels-baseline.txt /tmp/tunnels-now.txt | mail -s "ALERT: Tunnel change detected" security@example.com
+*/5 * * * * root ( ip tunnel show; ip -6 tunnel show ) > /tmp/tunnels-now.txt && [ -f /tmp/tunnels-baseline.txt ] && ! cmp -s /tmp/tunnels-baseline.txt /tmp/tunnels-now.txt && diff -u /tmp/tunnels-baseline.txt /tmp/tunnels-now.txt | mail -s "ALERT: Tunnel change detected" security@example.com
 EOF
 ```
 
@@ -105,7 +108,7 @@ EOF
 
 ```powershell
 # List tunnel adapters
-Get-NetAdapter | Where-Object { $_.InterfaceDescription -like "*tunnel*" }
+Get-NetAdapter -IncludeHidden | Where-Object { $_.InterfaceDescription -like "*tunnel*" }
 
 # Check specific tunnel states
 Get-NetTeredoConfiguration | Select-Object Type
@@ -141,18 +144,18 @@ $report = foreach ($computer in $computers) {
     }
 }
 $report | Where-Object { $_.Teredo -ne "Disabled" -or $_.'6to4' -ne "Disabled" } |
-    Export-Csv /tmp/tunnel-audit.csv
+    Export-Csv "$env:TEMP\tunnel-audit.csv" -NoTypeInformation
 ```
 
 ## DNS Monitoring for ISATAP
 
-ISATAP clients query for `isatap.<domain>` to find the router:
+ISATAP deployments commonly use `isatap.<domain>` to publish the Potential Router List, but RFC 5214 treats this as a convention rather than a requirement:
 
 ```bash
 # Capture DNS queries for "isatap"
 tcpdump -i eth0 "port 53" -A | grep -i "isatap"
 
-# On BIND - check query logs for isatap
+# On BIND - check query logs for isatap (adjust the path for your named configuration)
 grep -i "isatap" /var/log/named/query.log
 
 # Suricata DNS rule
@@ -163,6 +166,7 @@ alert dns $HOME_NET any -> any 53 (msg:"ISATAP router discovery query"; dns.quer
 
 ```text
 # Splunk SPL - find protocol 41 flows from NetFlow
+# (field names may vary by NetFlow add-on or sourcetype)
 index=netflow proto=41
 | stats count, sum(bytes) as total_bytes by src_ip, dest_ip
 | sort - total_bytes
@@ -176,4 +180,4 @@ index=netflow proto=17 dest_port=3544
 
 ## Summary
 
-Detect unauthorized IPv6 tunnels through multiple layers: network capture (`tcpdump "proto 41"`, `udp port 3544`, `proto gre`), NetFlow queries for protocol 41/47 flows, Snort/Suricata rules for tunnel protocols, host auditing (`ip tunnel show` on Linux, `Get-NetTeredoConfiguration` on Windows), and SIEM correlation. Set up automated baselines and alert on changes. Focus detection on protocol 41 (6in4/SIT/6to4), UDP 3544 (Teredo), and GRE (protocol 47). Any internal host originating these protocols without explicit authorization should trigger investigation.
+Detect unauthorized IPv6 tunnels through multiple layers: network capture (`tcpdump "proto 41"`, `udp port 3544`, `proto gre`), NetFlow queries for protocol 41/47 flows, Snort/Suricata rules for tunnel protocols, host auditing (`ip tunnel show` / `ip -6 tunnel show` on Linux, `Get-NetTeredoConfiguration` on Windows), and SIEM correlation. Set up automated baselines and alert on changes. Focus detection on protocol 41 (6in4/SIT/6to4), UDP 3544 (Teredo), and GRE (protocol 47). Any internal host originating these protocols without explicit authorization should trigger investigation.
