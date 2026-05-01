@@ -78,12 +78,8 @@ tofu version
 # Uninstall current version
 brew uninstall opentofu
 
-# Install specific older version
-# If versioned formula exists
-brew install opentofu@1.8
-
-# Or use a specific commit (advanced)
-brew install https://raw.githubusercontent.com/opentofu/homebrew-tap/COMMIT_SHA/Formula/opentofu.rb
+# Install a specific older version into your own tap
+brew version-install opentofu@1.8.5
 ```
 
 ## Downgrade on Windows (via Chocolatey)
@@ -117,12 +113,12 @@ tofu version
 After downgrading, you may need to handle state file version compatibility:
 
 ```bash
-# Check the state file version
-cat terraform.tfstate | jq '.terraform_version'
+# For local state only, check the OpenTofu version recorded in the state
+jq '.terraform_version' terraform.tfstate
 
-# If state was created with newer version, you may need to
-# manually adjust the version string (use with caution)
-# This is generally not recommended - prefer maintaining version consistency
+# Downgrades within OpenTofu v1.x are not guaranteed.
+# If an older release cannot read the current state, restore from backup
+# or use a compatible OpenTofu version instead of editing the state JSON by hand.
 ```
 
 ## Pinning Versions to Prevent Accidental Upgrades
