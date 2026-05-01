@@ -20,7 +20,7 @@ sudo apt install unbound
 # RHEL/CentOS
 sudo dnf install unbound
 
-# Verify version (DNS64 requires Unbound 1.4.9+)
+# Verify version (DNS64 is available in Unbound 1.5.0+)
 unbound --version
 ```
 
@@ -40,17 +40,14 @@ server:
     access-control: 0.0.0.0/0 allow
     access-control: ::/0 allow
 
-    # Enable recursion
-    do-recursion: yes
-
     # DNS64 configuration
     dns64-prefix: 64:ff9b::/96
 
     # Modules including dns64
     module-config: "dns64 validator iterator"
 
-    # DNSSEC validation (set to "off" if dns64 synthesis fails with DNSSEC)
-    # val-permissive-mode: yes
+    # DNSSEC validation stays enabled on the resolver; validating clients
+    # should use a trusted path to the DNS64 resolver or perform DNS64 locally
 
     # Logging
     verbosity: 1
@@ -82,11 +79,12 @@ sudo ss -ulnp | grep :53
 ```bash
 # Test against the DNS64 server
 dig @127.0.0.1 AAAA ipv4only.arpa.
-# Expected: 64:ff9b::c000:200 (synthesized from 192.0.2.0)
+# Expected synthesized answers include:
+# 64:ff9b::c000:aa and 64:ff9b::c000:ab
 
-# Test a domain with only A record:
-dig @127.0.0.1 A example.com       # Returns IPv4
-dig @127.0.0.1 AAAA example.com    # Returns 64:ff9b::<ipv4>
+# Compare the original A records with the synthesized AAAA records:
+dig @127.0.0.1 A ipv4only.arpa.       # Returns 192.0.0.170 and 192.0.0.171
+dig @127.0.0.1 AAAA ipv4only.arpa.    # Returns synthesized 64:ff9b::/96 answers
 
 # Test a domain with real AAAA record (should NOT be synthesized):
 dig @127.0.0.1 AAAA google.com
@@ -111,7 +109,7 @@ host -t AAAA ipv4only.arpa. 2001:db8::5
 
 # Test end-to-end from IPv6-only host:
 # With DNS pointing to DNS64 server:
-curl -6 https://ipv4only.example.com/    # Should work via NAT64!
+curl -6 http://<ipv4-only-hostname>/    # Replace with a real hostname that only has A records
 ```
 
 ## Conclusion
