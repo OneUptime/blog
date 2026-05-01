@@ -40,7 +40,7 @@ export TF_CLI_ARGS_apply="-parallelism=5"
 
 ## Fix 2: Split Configuration into Smaller Applies
 
-Apply large configurations in logical groups with pauses between them:
+OpenTofu recommends breaking very large infrastructure into smaller configurations that can be applied independently. If you need a temporary workaround, apply logical groups with pauses between them:
 
 ```bash
 # Apply infrastructure foundation first
@@ -61,21 +61,22 @@ The AWS provider has configurable retry behavior:
 provider "aws" {
   region = "us-east-1"
 
-  # Retry up to 10 times with exponential backoff
-  retry_mode     = "adaptive"
-  max_retries    = 10
+  # Increase retries for throttling and transient failures
+  retry_mode  = "standard"
+  max_retries = 10
 }
 ```
 
 ## Fix 4: GCP-Specific: Manage Quota
 
 ```bash
-# Check current quota usage
-gcloud compute project-info describe --project my-project \
-  --format="json(quotas)" | \
-  jq '.quotas[] | select(.metric | contains("OPERATIONS"))'
+# View Compute Engine API quota usage and limits
+# Requires the gcloud alpha component
+gcloud alpha services quota list \
+  --service=compute.googleapis.com \
+  --consumer=projects/my-project
 
-# Request quota increase in GCP Console or via API
+# Request quota increase in GCP Console
 # https://console.cloud.google.com/iam-admin/quotas
 ```
 
@@ -98,7 +99,7 @@ resource "aws_iam_role_policy_attachment" "app" {
 
 ## Fix 6: Stagger Large for_each Creates
 
-When creating many resources with `for_each`, the provider creates them all at once. Break them into batches:
+When creating many resources from a single `for_each` or `count` block, OpenTofu can still apply multiple instances concurrently. Break them into batches:
 
 ```hcl
 # Use count with batch logic to stagger creation
@@ -106,9 +107,14 @@ variable "instance_count" {
   default = 50
 }
 
+locals {
+  batch_1_count = floor(var.instance_count / 2)
+  batch_2_count = var.instance_count - local.batch_1_count
+}
+
 # Create in two batches separated by a delay
 resource "aws_instance" "batch_1" {
-  count         = var.instance_count / 2
+  count         = local.batch_1_count
   ami           = data.aws_ami.amazon_linux.id
   instance_type = "t3.micro"
 }
@@ -120,7 +126,7 @@ resource "time_sleep" "batch_delay" {
 
 resource "aws_instance" "batch_2" {
   depends_on    = [time_sleep.batch_delay]
-  count         = var.instance_count / 2
+  count         = local.batch_2_count
   ami           = data.aws_ami.amazon_linux.id
   instance_type = "t3.micro"
 }
@@ -128,4 +134,4 @@ resource "aws_instance" "batch_2" {
 
 ## Conclusion
 
-API rate limiting is solved primarily by reducing parallelism and splitting large configurations into smaller applies. Enable provider-level retry configuration for AWS, and use `time_sleep` resources to add deliberate delays between rate-sensitive operations. For persistent quota issues, request a quota increase from your cloud provider.
+API rate limiting is solved primarily by reducing parallelism and splitting large configurations into smaller configurations or staged applies. Enable provider-level retry configuration for AWS, and use `time_sleep` resources to add deliberate delays between rate-sensitive operations. For persistent quota issues, request a quota increase from your cloud provider.
