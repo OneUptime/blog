@@ -20,7 +20,7 @@ Docker named volumes backed by NFS allow multiple containers - even on different
 ## Prerequisites
 
 - An NFS server accessible from all cluster nodes
-- NFS client packages installed on host nodes: `apt install nfs-common`
+- NFS client packages installed on host nodes, for example `apt install nfs-common` on Debian/Ubuntu
 
 ## Step 1: Verify NFS Access
 
@@ -49,13 +49,17 @@ services:
       - shared-media:/usr/share/nginx/html/media:ro
     deploy:
       replicas: 3
-    restart: unless-stopped
+      restart_policy:
+        condition: any
 
   media-processor:
-    image: my-media-processor:latest
+    image: alpine:3.20
+    command: ["sh", "-c", "while true; do sleep 3600; done"]
     volumes:
       - shared-media:/data/media
-    restart: unless-stopped
+    deploy:
+      restart_policy:
+        condition: any
 
 volumes:
   shared-media:
@@ -67,7 +71,7 @@ volumes:
       device: ":/exports/shared-media"
 ```
 
-## Step 3: NFS Volume with Authentication Options
+## Step 3: NFS Volume with Additional Mount Options
 
 For NFS servers requiring specific mount options:
 
@@ -76,8 +80,8 @@ volumes:
   app-data:
     driver: local
     driver_opts:
-      type: nfs4
-      o: "addr=192.168.1.100,nfsvers=4.1,rw,hard,intr,timeo=600,retrans=2"
+      type: nfs
+      o: "addr=192.168.1.100,nfsvers=4.1,rw,hard,timeo=600,retrans=2"
       device: ":/exports/app-data"
 ```
 
@@ -89,16 +93,16 @@ Common NFS mount options:
 | `rw` | Read-write |
 | `ro` | Read-only |
 | `hard` | Retry indefinitely on server failure |
-| `soft` | Return error after timeout |
-| `noatime` | Skip access time updates (performance) |
+| `soft` | Return an error after retries instead of retrying indefinitely |
+| `timeo=600` | Set the client timeout to 60 seconds |
 
 ## Step 4: Deploy via Portainer
 
-Paste the stack YAML in **Stacks > Add Stack** and click **Deploy the stack**. Portainer creates the NFS-backed volume on first deploy. All containers in the stack that reference `shared-media` will mount the same NFS path.
+Paste the stack YAML in **Stacks > Add stack** and click **Deploy the stack**. When a service using `shared-media` starts on a node, Docker creates the local volume definition there and mounts the referenced NFS export. All containers in the stack that reference `shared-media` will mount the same NFS path.
 
 ## Step 5: Verify the Volume
 
-After deployment, check the volume from Portainer's terminal:
+After deployment, check the volume from a shell on a node running a task that uses the volume:
 
 ```bash
 docker volume inspect <stack-name>_shared-media
@@ -107,7 +111,7 @@ docker volume inspect <stack-name>_shared-media
 
 ## Step 6: NFS Performance Considerations
 
-- Use `noatime,nodiratime` to reduce unnecessary NFS writes
+- Adjust metadata caching options such as `actimeo` or `lookupcache` only when faster cross-client visibility is worth the extra NFS traffic
 - For databases, avoid NFS - use local volumes with placement constraints instead
 - For large media files, consider object storage (MinIO) rather than NFS
 
