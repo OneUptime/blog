@@ -12,7 +12,8 @@ NVIDIA Triton Inference Server is a high-performance inference platform that sup
 
 ## Prerequisites
 
-- NVIDIA GPU with driver 525 or later
+- Portainer connected to a Docker Standalone environment
+- NVIDIA GPU with a Triton 24.01-compatible driver (545+ generally; supported data center GPU driver branches also work)
 - NVIDIA Container Toolkit installed on the host
 - Model repository prepared in Triton's expected format
 
@@ -43,6 +44,7 @@ Create a model config:
 
 name: "mnist-classifier"
 platform: "tensorflow_savedmodel"
+max_batch_size: 32
 
 # Input tensor definition
 input [
@@ -89,7 +91,6 @@ services:
     command: >
       tritonserver
       --model-repository=/models
-      --strict-model-config=false
       --log-verbose=1
     volumes:
       - /opt/triton-models:/models:ro
@@ -105,7 +106,7 @@ services:
               count: all
               capabilities: [gpu]
     restart: unless-stopped
-    shm_size: "1gb"    # Shared memory for fast GPU-CPU data transfer
+    shm_size: "1gb"    # Recommended shared memory size for Triton containers
     ulimits:
       memlock: -1
       stack: 67108864
@@ -123,12 +124,17 @@ After deployment, verify models are loaded successfully:
 
 ```bash
 # Check which models are loaded and their status
-curl http://localhost:8000/v2/models
+curl -X POST http://localhost:8000/v2/repository/index \
+  -H "Content-Type: application/json" \
+  -d '{"ready": true}'
 
-# Check a specific model
+# Expected READY entry:
+# [{"name":"mnist-classifier","version":"1","state":"READY","reason":""}]
+
+# Check a specific model's metadata
 curl http://localhost:8000/v2/models/mnist-classifier
 
-# Expected response for a ready model:
+# Expected response from the metadata endpoint:
 # {"name":"mnist-classifier","versions":["1"],"platform":"tensorflow_savedmodel","inputs":[...],"outputs":[...]}
 ```
 
@@ -162,9 +168,9 @@ print(f"Predicted class: {predicted_class}")
 Triton exports Prometheus metrics on port 8002. Key metrics include:
 
 - `nv_inference_request_success` - successful inference requests
-- `nv_inference_queue_duration_us` - time requests spend in the queue
-- `nv_gpu_utilization` - GPU utilization percentage
-- `nv_gpu_memory_used_bytes` - GPU memory consumption
+- `nv_inference_queue_duration_us` - cumulative queue time in microseconds
+- `nv_gpu_utilization` - GPU utilization rate (0.0-1.0)
+- `nv_gpu_memory_used_bytes` - used GPU memory in bytes
 
 Add to your Prometheus scrape config:
 
