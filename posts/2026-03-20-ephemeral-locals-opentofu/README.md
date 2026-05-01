@@ -4,11 +4,11 @@ Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
 Tags: OpenTofu, Local, Ephemeral, Security, Infrastructure as Code, DevOps
 
-Description: A guide to using ephemeral local values in OpenTofu to compute and pass temporary values without storing them in state.
+Description: A guide to using ephemeral local values in OpenTofu to compute and pass temporary values without storing them in state or plan files.
 
 ## Introduction
 
-Ephemeral locals in OpenTofu (introduced in 1.11) are local values derived from ephemeral sources (like ephemeral variables or resources). Like ephemeral variables, ephemeral locals are not stored in the state file, making them safe for working with temporary credentials and sensitive computed values.
+Ephemeral locals in OpenTofu (introduced in 1.11) are local values derived from ephemeral sources (like ephemeral variables or resources). Like other ephemeral values, they are not stored in state or plan files, making them safe for working with temporary credentials and sensitive computed values.
 
 ## Declaring Ephemeral Locals
 
@@ -40,6 +40,18 @@ locals {
 When a local value references an ephemeral source, it automatically becomes ephemeral:
 
 ```hcl
+variable "aws_access_key_id" {
+  type      = string
+  ephemeral = true
+  sensitive = true
+}
+
+variable "aws_secret_access_key" {
+  type      = string
+  ephemeral = true
+  sensitive = true
+}
+
 variable "aws_session_token" {
   type      = string
   ephemeral = true
@@ -64,53 +76,62 @@ locals {
 ## Using Ephemeral Locals in Providers
 
 ```hcl
-variable "vault_role_id" {
-  type      = string
-  ephemeral = true
-}
-
-variable "vault_secret_id" {
+variable "aws_access_key_id" {
   type      = string
   ephemeral = true
   sensitive = true
 }
 
+variable "aws_secret_access_key" {
+  type      = string
+  ephemeral = true
+  sensitive = true
+}
+
+variable "aws_region" {
+  type = string
+}
+
 locals {
-  # Compute vault auth token from ephemeral credentials
+  # Compute provider auth configuration from ephemeral credentials
   # This is ephemeral because its sources are ephemeral
-  vault_auth = {
-    role_id   = var.vault_role_id
-    secret_id = var.vault_secret_id
+  aws_provider_auth = {
+    access_key = var.aws_access_key_id
+    secret_key = var.aws_secret_access_key
   }
 }
 
 # Use ephemeral local in provider configuration
-provider "vault" {
-  address = "https://vault.example.com"
-
-  auth_login_approle {
-    role_id   = local.vault_auth.role_id
-    secret_id = local.vault_auth.secret_id
-  }
+provider "aws" {
+  region     = var.aws_region
+  access_key = local.aws_provider_auth.access_key
+  secret_key = local.aws_provider_auth.secret_key
 }
 ```
 
 ## Practical Example: Dynamic Configuration
 
 ```hcl
-# Get temporary credentials from an ephemeral resource
-ephemeral "aws_temporary_credentials" "deploy" {
-  role_arn    = "arn:aws:iam::123456789012:role/DeployRole"
-  duration    = "1h"
+variable "secret_manager_arn" {
+  type = string
+}
+
+variable "aws_region" {
+  type = string
+}
+
+variable "aws_account_id" {
+  type = string
+}
+
+# Read temporary configuration from an ephemeral resource
+ephemeral "aws_secretsmanager_secret_version" "deploy" {
+  secret_id = var.secret_manager_arn
 }
 
 locals {
   # Build AWS credential configuration (ephemeral)
-  aws_creds = {
-    access_key    = ephemeral.aws_temporary_credentials.deploy.access_key
-    secret_key    = ephemeral.aws_temporary_credentials.deploy.secret_key
-    session_token = ephemeral.aws_temporary_credentials.deploy.session_token
-  }
+  aws_creds = jsondecode(ephemeral.aws_secretsmanager_secret_version.deploy.secret_string)
 
   # Build API endpoint configuration
   deploy_config = {
@@ -126,8 +147,8 @@ locals {
 ```hcl
 # Ephemeral locals CANNOT be used in:
 # 1. Regular resource attributes that persist to state
-# 2. Non-ephemeral outputs
-# 3. Data sources that store results in state
+# 2. Root module outputs, or child module outputs not marked ephemeral
+# 3. Data sources and other non-ephemeral contexts
 
 # This would fail:
 # resource "local_file" "config" {
@@ -136,11 +157,13 @@ locals {
 
 # Ephemeral locals CAN be used in:
 # 1. Provider configurations
-# 2. Provisioner connection blocks and inline commands
-# 3. Ephemeral resource arguments
-# 4. Ephemeral output values
+# 2. Provisioners and resource connection blocks
+# 3. Resource write-only attributes
+# 4. Ephemeral resource arguments
+# 5. Child module outputs marked ephemeral
+# 6. Other locals and ephemeral variables
 ```
 
 ## Conclusion
 
-Ephemeral locals extend the ephemeral ecosystem by allowing you to compute derived values from ephemeral sources without persisting them to state. This is essential for building authentication flows, credential pipelines, and temporary configuration computation that should remain truly transient. By understanding ephemeral propagation - where accessing an ephemeral source makes the derived value ephemeral - you can build secure, zero-persistence secret handling pipelines in OpenTofu.
+Ephemeral locals extend the ephemeral ecosystem by allowing you to compute derived values from ephemeral sources without persisting them to state or plan. This is essential for building authentication flows, credential pipelines, and temporary configuration computation that should remain truly transient. By understanding ephemeral propagation - where accessing an ephemeral source makes the derived value ephemeral - you can build secure, zero-persistence secret handling pipelines in OpenTofu.
