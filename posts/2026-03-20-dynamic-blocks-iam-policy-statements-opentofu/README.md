@@ -58,7 +58,7 @@ resource "aws_iam_policy" "app" {
 
 ## Dynamic Statements with Conditions
 
-For policies that require conditions (e.g., MFA enforcement, IP restrictions), use nested dynamic blocks.
+For policies that require conditions (e.g., denying requests without MFA or restricting access by IP), use nested dynamic blocks.
 
 ```hcl
 variable "conditional_statements" {
@@ -75,15 +75,15 @@ variable "conditional_statements" {
   }))
   default = [
     {
-      sid       = "AllowWithMFA"
-      effect    = "Allow"
+      sid       = "DenyWithoutMFA"
+      effect    = "Deny"
       actions   = ["iam:*"]
       resources = ["*"]
       conditions = [
         {
           test     = "BoolIfExists"
           variable = "aws:MultiFactorAuthPresent"
-          values   = ["true"]
+          values   = ["false"]
         }
       ]
     }
@@ -113,9 +113,9 @@ data "aws_iam_policy_document" "mfa_policy" {
 }
 ```
 
-## Dynamic Principal Blocks for Resource Policies
+## Dynamic Statement Blocks for Assume Role Policies
 
-For S3 bucket policies or KMS key policies with multiple principals, use dynamic blocks.
+For IAM role trust policies with multiple trusted principals, use dynamic blocks.
 
 ```hcl
 variable "trusted_roles" {
@@ -131,7 +131,7 @@ variable "trusted_accounts" {
 }
 
 data "aws_iam_policy_document" "assume_role" {
-  # One statement per trusted role type
+  # One statement per trusted principal type
   dynamic "statement" {
     for_each = length(var.trusted_roles) > 0 ? [1] : []
     content {
