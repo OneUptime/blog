@@ -8,16 +8,15 @@ Description: Configure dual-stack sockets using the IPV6_V6ONLY socket option to
 
 ## Introduction
 
-The `IPV6_V6ONLY` socket option controls whether an IPv6 socket also accepts IPv4 connections via IPv4-mapped IPv6 addresses (e.g., `::ffff:192.168.1.1`). When set to 0, a single IPv6 socket can serve both IPv4 and IPv6 clients. When set to 1, only IPv6 connections are accepted. The default varies by operating system.
+The `IPV6_V6ONLY` socket option controls whether an IPv6 socket also accepts IPv4 connections via IPv4-mapped IPv6 addresses (e.g., `::ffff:192.168.1.1`). When set to 0, a single IPv6 socket can serve both IPv4 and IPv6 clients. When set to 1, only IPv6 connections are accepted. RFC 3493 specifies a default of 0, but the actual default varies by operating system.
 
 ## OS Default Behavior
 
 | OS | Default IPV6_V6ONLY |
 |----|---------------------|
-| Linux | 0 (dual-stack by default) |
-| macOS/BSDs | 1 (IPv6-only by default) |
-| Windows | 1 (IPv6-only by default) |
-| Solaris | 0 |
+| Linux | 0 by default (dual-stack; controlled by `/proc/sys/net/ipv6/bindv6only`) |
+| Windows (Vista and later) | 1 (IPv6-only by default) |
+| FreeBSD/OpenBSD | 1 (IPv6-only by default) |
 
 ## Checking and Setting IPV6_V6ONLY in C
 
@@ -26,6 +25,7 @@ The `IPV6_V6ONLY` socket option controls whether an IPv6 socket also accepts IPv
 #include <netinet/in.h>
 #include <stdio.h>
 #include <string.h>
+#include <unistd.h>
 
 int create_ipv6_socket(int port, int v6only) {
     int sockfd = socket(AF_INET6, SOCK_STREAM, 0);
@@ -34,9 +34,13 @@ int create_ipv6_socket(int port, int v6only) {
     /* Read current IPV6_V6ONLY value */
     int current_v6only;
     socklen_t optlen = sizeof(current_v6only);
-    getsockopt(sockfd, IPPROTO_IPV6, IPV6_V6ONLY,
-               &current_v6only, &optlen);
-    printf("Default IPV6_V6ONLY: %d\n", current_v6only);
+    if (getsockopt(sockfd, IPPROTO_IPV6, IPV6_V6ONLY,
+                   &current_v6only, &optlen) < 0) {
+        perror("getsockopt IPV6_V6ONLY");
+        close(sockfd);
+        return -1;
+    }
+    printf("Current IPV6_V6ONLY: %d\n", current_v6only);
 
     /* Set IPV6_V6ONLY:
      * v6only = 1: IPv6 only (reject IPv4-mapped connections)
@@ -45,11 +49,18 @@ int create_ipv6_socket(int port, int v6only) {
     if (setsockopt(sockfd, IPPROTO_IPV6, IPV6_V6ONLY,
                    &v6only, sizeof(v6only)) < 0) {
         perror("setsockopt IPV6_V6ONLY");
+        close(sockfd);
+        return -1;
     }
 
     /* Bind and listen */
     int reuse = 1;
-    setsockopt(sockfd, SOL_SOCKET, SO_REUSEADDR, &reuse, sizeof(reuse));
+    if (setsockopt(sockfd, SOL_SOCKET, SO_REUSEADDR,
+                   &reuse, sizeof(reuse)) < 0) {
+        perror("setsockopt SO_REUSEADDR");
+        close(sockfd);
+        return -1;
+    }
 
     struct sockaddr_in6 addr;
     memset(&addr, 0, sizeof(addr));
@@ -59,9 +70,14 @@ int create_ipv6_socket(int port, int v6only) {
 
     if (bind(sockfd, (struct sockaddr *)&addr, sizeof(addr)) < 0) {
         perror("bind");
+        close(sockfd);
         return -1;
     }
-    listen(sockfd, 5);
+    if (listen(sockfd, 5) < 0) {
+        perror("listen");
+        close(sockfd);
+        return -1;
+    }
 
     printf("Server created with IPV6_V6ONLY=%d on port %d\n", v6only, port);
     return sockfd;
@@ -75,6 +91,8 @@ int main(void) {
     int ipv6_only_server = create_ipv6_socket(8081, 1);
 
     /* Accept loop would go here */
+    if (dual_stack_server >= 0) close(dual_stack_server);
+    if (ipv6_only_server >= 0) close(ipv6_only_server);
     return 0;
 }
 ```
@@ -90,6 +108,8 @@ IPv6 socket sees: ::ffff:192.168.1.5
 ```
 
 ```c
+#include <arpa/inet.h>
+
 /* When accepting, check if client is IPv4-mapped */
 struct sockaddr_in6 client_addr;
 socklen_t len = sizeof(client_addr);
@@ -150,11 +170,11 @@ test_sock.close()
 
 ## Best Practices
 
-**For public-facing servers**: Use dual-stack (`IPV6_V6ONLY=0`) with a single IPv6 socket that also accepts IPv4 via IPv4-mapped addresses. Simpler to manage.
+**For public-facing servers**: Dual-stack (`IPV6_V6ONLY=0`) can simplify deployment with a single listening socket, but separate IPv4 and IPv6 sockets are often used for maximum portability and clearer policy control.
 
 **For IPv6-only deployments**: Explicitly set `IPV6_V6ONLY=1` to avoid ambiguity and ensure no IPv4 fallback.
 
-**For portability**: Explicitly set `IPV6_V6ONLY` in your code rather than relying on OS defaults, since defaults differ between Linux (0) and macOS/Windows (1).
+**For portability**: Explicitly set `IPV6_V6ONLY` in your code rather than relying on OS defaults, since defaults differ between Linux (0) and platforms such as Windows, FreeBSD, and OpenBSD (1).
 
 ```c
 /* Explicitly set for portability - don't rely on OS default */
