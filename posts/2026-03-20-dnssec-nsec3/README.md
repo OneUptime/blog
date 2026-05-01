@@ -4,18 +4,18 @@ Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
 Tags: DNSSEC, NSEC3, DNS, IPv6, Zone Enumeration Prevention, Security
 
-Description: Configure DNSSEC NSEC3 authenticated denial of existence to prevent zone enumeration of IPv6 DNS zones, with correct parameter selection and operational considerations.
+Description: Configure DNSSEC NSEC3 authenticated denial of existence to make trivial zone walking harder for IPv6 DNS zones, with correct parameter selection and operational considerations.
 
 ## NSEC vs NSEC3
 
 | Feature | NSEC | NSEC3 |
 |---|---|---|
-| Zone enumeration | Yes (walks chain) | No (hashed names) |
-| Performance | Slightly faster | Minimal overhead |
+| Zone enumeration | Yes (walks chain) | Not direct, but hashed names can still be brute-forced |
+| Performance | Slightly faster | More CPU and signing overhead |
 | Response size | Smaller | Slightly larger |
-| Recommendation | Avoid for public zones | Use for public zones |
+| Recommendation | Good default for most zones | Use when obscuring owner names or Opt-Out is needed |
 
-NSEC creates a linked chain of all names, enabling "zone walking" to enumerate every hostname. NSEC3 hashes domain names before linking, preventing enumeration while still providing authenticated denial.
+NSEC creates a linked chain of all names, enabling "zone walking" to enumerate every hostname. NSEC3 hashes domain names before linking, which prevents trivial plaintext zone walking while still allowing authenticated denial. It does not stop offline guessing of predictable names.
 
 ## NSEC3 Parameters
 
@@ -28,9 +28,9 @@ Example:
 
 Parameters:
   hash-alg:   1 = SHA-1 (only option currently)
-  flags:      0 = normal, 1 = Opt-Out (skip unsigned delegations)
+  flags:      Must be 0 in NSEC3PARAM; Opt-Out is signaled on NSEC3 records
   iterations: Number of extra SHA-1 hash iterations (0 recommended)
-  salt:       Random salt (- = empty, recommended per RFC 9276)
+  salt:       Hex salt value (- = empty, recommended per RFC 9276)
 ```
 
 ## RFC 9276 Security Considerations
@@ -38,25 +38,26 @@ Parameters:
 RFC 9276 (2022) updated NSEC3 recommendations:
 
 ```text
-Old recommendation: iterations=10-150, salt=random
+Older deployments often used non-zero iterations and random salts
 Current recommendation (RFC 9276):
   - iterations = 0 (higher iterations don't significantly improve security)
   - salt = empty (-) (salts complicate key rollover without security benefit)
 
-Reasoning: NSEC3 hash cracking is bounded by GPU speed, not iteration count.
-Modern GPUs can crack billions of SHA-1 per second regardless of iterations.
+Reasoning: extra iterations increase CPU cost for authoritative servers and validators,
+but do little to protect guessable names from determined offline attacks.
 ```
 
 ## Signing a Zone with NSEC3
 
 ```bash
 # Sign with NSEC3 - RFC 9276 recommended parameters
+# -3 - enables NSEC3 with an empty salt
+# -H 0 uses zero additional iterations
 
 dnssec-signzone \
-    -3 - \          # -3 enables NSEC3, "-" = empty salt
-    -H 0 \          # 0 hash iterations
-    -A \            # Sign NSEC3 records
-    -N INCREMENT \  # Auto-increment serial
+    -3 - \
+    -H 0 \
+    -N INCREMENT \
     -o example.com \
     -k Kexample.com.+013+KSK_ID \
     /var/named/example.com.zone \
@@ -74,39 +75,38 @@ grep " NSEC3 " example.com.zone.signed | head -3
 ## BIND: Configure NSEC3 for Auto-Signed Zones
 
 ```text
-// /etc/named.conf - Configure NSEC3 for auto-signed zone
+// /etc/named.conf - Configure NSEC3 for an auto-signed zone
+
+dnssec-policy "nsec3-rfc9276" {
+    nsec3param iterations 0 optout no salt-length 0;
+};
 
 zone "example.com" {
     type master;
     file "/var/named/example.com.zone";
     key-directory "/var/named/keys/example.com";
-    auto-dnssec maintain;
+    dnssec-policy "nsec3-rfc9276";
     inline-signing yes;
-
-    // NSEC3 configuration
-    // Set via rndc command after zone is loaded
 };
 ```
 
 ```bash
-# Set NSEC3 parameters for BIND inline-signed zone
-rndc signing -nsec3param 1 0 0 - example.com
+# Reload BIND after adding the policy
+rndc reconfig
 
-# Parameters: <hash-alg> <flags> <iterations> <salt>
-# 1 = SHA-1, 0 = no opt-out, 0 = no iterations, - = empty salt
-
-# Verify NSEC3 is active
-rndc signing -status example.com | grep -i nsec
+# Verify the apex publishes NSEC3PARAM
+dig NSEC3PARAM example.com @localhost
+# example.com. 3600 IN NSEC3PARAM 1 0 0 -
 
 # Test: query for non-existent name - should get NSEC3 denial
-dig +dnssec A nonexistent.example.com @localhost
-# Should return NXDOMAIN + NSEC3 record proving it doesn't exist
+dig +dnssec +multiline A nonexistent.example.com @localhost
+# Should return NXDOMAIN + NSEC3 records proving it doesn't exist
 ```
 
 ## NSEC3 Opt-Out for Large Zones
 
 ```bash
-# Opt-Out (flag=1): skip NSEC3 records for unsigned delegations
+# Opt-Out omits NSEC3 records for insecure delegations
 # Useful for zones with many insecure delegations (e.g., TLD zones)
 
 # Sign with Opt-Out
@@ -114,15 +114,17 @@ dnssec-signzone \
     -3 - \
     -H 0 \
     -A \
-    -A \          # -A twice enables Opt-Out behavior
     -N INCREMENT \
     -o example.com \
     -k Kexample.com.+013+KSK_ID \
     /var/named/example.com.zone \
     Kexample.com.+013+ZSK_ID
 
-# NSEC3PARAM with Opt-Out flag:
-# example.com. IN NSEC3PARAM 1 1 0 -
+# The apex NSEC3PARAM RR still uses flags=0:
+# example.com. IN NSEC3PARAM 1 0 0 -
+#
+# Opt-Out is visible on the NSEC3 RRs themselves:
+# <hash>.example.com. IN NSEC3 1 1 0 - <next_hash> NS SOA RRSIG
 #                                ^ flag=1 = Opt-Out enabled
 ```
 
@@ -142,29 +144,15 @@ dig +dnssec +multiline AAAA doesnotexist.example.com @localhost
 # <hash>.example.com. 3600 IN RRSIG NSEC3 ...
 # <hash>.example.com. 3600 IN NSEC3 1 0 0 - <nexthash> AAAA MX ...
 
-# The two NSEC3 records prove:
+# In this kind of response, the NSEC3 records prove:
 # 1. The queried name doesn't exist (no hash between two adjacent hashes)
 # 2. The wildcard doesn't exist
 
-# Attempt zone walking (should fail with NSEC3)
-python3 << 'EOF'
-# NSEC3 hashes are opaque - you cannot iterate through them
-# to discover zone contents. This is the security benefit.
-import hashlib
-import base64
-
-def nsec3_hash(name, salt=b'', iterations=0):
-    """Compute NSEC3 hash for a domain name."""
-    x = name.lower().encode() + salt
-    for _ in range(iterations + 1):
-        x = hashlib.sha1(x).digest()
-    return base64.b32encode(x).decode().lower()
-
-# Even knowing the hash function, you'd need to brute-force all possible names
-print(nsec3_hash("www.example.com"))
-print(nsec3_hash("doesnotexist.example.com"))
-# Hashes reveal nothing about the zone contents
-EOF
+# Compute hashes correctly when troubleshooting
+# NSEC3 makes direct plaintext zone walking harder, but predictable names
+# can still be guessed offline.
+nsec3hash - 1 0 www.example.com.
+nsec3hash - 1 0 doesnotexist.example.com.
 ```
 
 ## Migrating from NSEC to NSEC3
@@ -177,25 +165,24 @@ ZONE="example.com"
 
 # Current state: zone uses NSEC
 # Target: migrate to NSEC3
+# If the zone is signed with RSASHA1 (algorithm 5), roll to
+# RSASHA1-NSEC3-SHA1 (algorithm 7) before enabling NSEC3.
 
-# Step 1: Add NSEC3PARAM to unsigned zone file
-# (BIND will pick this up with inline-signing)
-rndc signing -nsec3param 1 0 0 - "${ZONE}"
+# Step 1: Update the zone's dnssec-policy to include:
+# nsec3param iterations 0 optout no salt-length 0;
+rndc reconfig
 
 # Step 2: Verify migration
 sleep 5  # Allow BIND to re-sign
 dig NSEC3PARAM "${ZONE}" @localhost
-# Should return NSEC3PARAM record
+# Should return the apex NSEC3PARAM record
 
-dig NSEC3 "${ZONE}" @localhost
-# Should return hashed NSEC3 records
-
-dig +dnssec NSEC "${ZONE}" @localhost
-# Should return NXDOMAIN (no NSEC records after migration)
+dig +dnssec +multiline AAAA "doesnotexist.${ZONE}" @localhost
+# Should return NXDOMAIN with NSEC3 records in the authority section
 
 echo "Migration complete - zone now uses NSEC3"
 ```
 
 ## Conclusion
 
-NSEC3 is the recommended denial of existence mechanism for public IPv6 DNS zones because it prevents zone enumeration. Use RFC 9276 parameters: `iterations=0` and empty salt (`-`). Configure BIND inline-signed zones with `rndc signing -nsec3param 1 0 0 - zonename`. Verify with `dig +dnssec AAAA nonexistent.zone` - the NXDOMAIN response should contain NSEC3 records rather than NSEC records. Use Opt-Out (flag=1) only for zones with many unsigned delegations (like TLDs), not for leaf zones like `example.com`. NSEC3 does not provide perfect security against offline hash cracking, but eliminates trivial zone walking.
+NSEC3 is not the default best choice for every public IPv6 DNS zone. For most zones, NSEC is simpler and cheaper; use NSEC3 when you specifically want to make trivial plaintext zone walking harder or need Opt-Out for extremely large zones with many unsigned delegations. When you do use NSEC3, RFC 9276 recommends `iterations=0` and empty salt (`-`). In current BIND, configure that through `dnssec-policy` with `nsec3param iterations 0 optout no salt-length 0;`. Verify with `dig +dnssec AAAA nonexistent.zone` - the NXDOMAIN response should contain NSEC3 records rather than NSEC records. Use Opt-Out only for very large delegation-heavy zones. NSEC3 does not stop offline guessing of predictable names, but it does eliminate the trivial plaintext NSEC chain walk.
