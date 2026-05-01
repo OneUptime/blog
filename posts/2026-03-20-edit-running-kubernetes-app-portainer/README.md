@@ -11,18 +11,18 @@ Description: Learn how to update a running Kubernetes application's configuratio
 1. Select your Kubernetes environment.
 2. Go to **Applications** in the sidebar.
 3. Find and click the application you want to edit.
-4. Click **Edit** (pencil icon) or the **Edit this application** button.
+4. Click **Edit this application** or **Edit external application**.
 
-You'll return to the same form used during deployment, pre-populated with the current configuration.
+What you can edit depends on how the application was originally deployed. Applications deployed from a form reopen the same form with the current configuration, while applications deployed from the Web Editor can be updated by editing the manifest directly.
 
 ## What You Can Edit
 
-- **Image tag**: Update to a new version.
-- **Replica count**: Scale up or down.
+- **Image**: Update to a new image or tag.
+- **Instance count**: Scale up or down.
 - **Environment variables**: Add, remove, or change values.
-- **Resource limits**: Adjust CPU and memory.
-- **Volume mounts**: Add new persistent volumes.
-- **Service configuration**: Change service type or port mappings.
+- **Resource requests and limits**: Adjust CPU and memory.
+- **Persisted folders**: Add or change persistent storage.
+- **Service publishing**: Change service type or published ports.
 
 ## Updating the Container Image
 
@@ -30,9 +30,9 @@ The most common edit is deploying a new image version:
 
 1. Open the application edit form.
 2. Change the **Image** field from `myapp:1.0.0` to `myapp:2.0.0`.
-3. Click **Update the application**.
+3. Click **Update application**.
 
-Portainer triggers a Kubernetes rolling update automatically.
+If the application is backed by a Kubernetes Deployment and the change updates the pod template, Kubernetes performs a rolling update automatically.
 
 ## Equivalent CLI Commands
 
@@ -57,11 +57,11 @@ kubectl set env deployment/my-app \
 
 ## Editing via YAML (Advanced Mode)
 
-For full control, switch to the YAML editor in Portainer:
+For full control, use the application's **YAML** tab in Portainer Business Edition:
 
-1. Click the **Advanced** or **YAML** toggle.
-2. Edit the raw Kubernetes manifest.
-3. Click **Update**.
+1. Open the application details page and select the **YAML** tab.
+2. Edit the generated Kubernetes manifest.
+3. Click **Apply changes**.
 
 ```bash
 # Direct YAML editing via CLI
@@ -102,4 +102,4 @@ kubectl rollout history deployment/my-app --namespace=production
 
 ## Conclusion
 
-Portainer makes editing running Kubernetes applications straightforward with its form-based interface. For common changes like image updates and scaling, the UI is fast and intuitive. For complex changes, the built-in YAML editor provides the full power of kubectl.
+Portainer makes editing running Kubernetes applications straightforward with its form-based interface. For common changes like image updates and scaling, the UI is fast and intuitive. For complex changes, the YAML editor in Portainer Business Edition lets you edit the generated manifest directly.
