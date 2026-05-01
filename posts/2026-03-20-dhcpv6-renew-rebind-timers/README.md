@@ -25,25 +25,27 @@ sequenceDiagram
     Client->>Server1: Request
     Server1->>Client: Reply (lease granted)
     Note over Client: Wait until T1 expires
-    Client->>Server1: Renew (unicast)
+    Client->>Server1: Renew
     Server1->>Client: Reply (lease extended)
     Note over Client: If no reply, wait until T2 expires
     Client->>Server2: Rebind (multicast ff02::1:2)
     Server2->>Client: Reply (lease extended by any server)
 ```
 
+Under current DHCPv6 rules in RFC 9915, clients send DHCPv6 messages to `ff02::1:2`; Renew is still tied to the original server by the Server Identifier option, while Rebind can be answered by any available server.
+
 ## Timer Definitions
 
-| Timer | Default | Purpose |
+| Timer | Typical Recommendation | Purpose |
 |-------|---------|---------|
-| **T1** | 0.5 × valid lifetime | Time after which client sends Renew to the original server via unicast |
-| **T2** | 0.8 × valid lifetime | Time after which client sends Rebind to any server via multicast |
+| **T1** | Server-selected; often 0.5 × shortest preferred lifetime | Time after which client sends Renew to the original server |
+| **T2** | Server-selected; often 0.8 × shortest preferred lifetime | Time after which client sends Rebind to any server |
 | **Preferred Lifetime** | - | After this, address becomes deprecated (still usable but new connections avoided) |
 | **Valid Lifetime** | - | After this, address is fully expired and removed |
 
-## Viewing Timer Values on Linux
+## Viewing Lifetimes and Lease Timers on Linux
 
-The `ip` command shows the current state of DHCPv6-assigned addresses, including their lifetimes.
+The `ip` command shows IPv6 address lifetimes. T1 and T2 are tracked by the DHCPv6 client rather than exposed by `ip` itself.
 
 ```bash
 # Show IPv6 address details including preferred and valid lifetimes
@@ -55,10 +57,10 @@ ip -6 addr show dev eth0
 #    valid_lft 3600sec preferred_lft 1800sec
 ```
 
-To inspect DHCPv6 lease files managed by `dhclient`:
+If you're using ISC `dhclient`, inspect its lease file. The exact path depends on the distribution and the `-lf` setting:
 
 ```bash
-# View the current DHCPv6 lease file
+# Example lease file path on some systems
 cat /var/lib/dhclient/dhclient6.leases
 
 # Fields of interest:
@@ -78,27 +80,27 @@ On the server side, you can explicitly set T1 and T2 per subnet or globally:
 default-lease-time 3600;       # Valid lifetime = 3600s
 preferred-lifetime 2700;       # Preferred lifetime = 2700s
 
-subnet6 2001:db8::/32 {
+subnet6 2001:db8::/64 {
     range6 2001:db8::100 2001:db8::200;
 
-    # T1: client renews at 1800s (50% of valid lifetime)
-    # T2: client rebinds at 2880s (80% of valid lifetime)
-    option dhcp-renewal-time 1800;
-    option dhcp-rebinding-time 2880;
+    # T1: 1350s (50% of the 2700s preferred lifetime)
+    # T2: 2160s (80% of the 2700s preferred lifetime)
+    option dhcp-renewal-time 1350;
+    option dhcp-rebinding-time 2160;
 }
 ```
 
 ## What Happens When T2 Expires Without Reply
 
-If neither the original server nor any other server responds before the valid lifetime expires, the client must stop using the address. It will then start a new SARR (Solicit-Advertise-Request-Reply) exchange to obtain fresh addresses.
+If neither the original server nor any other server responds before the valid lifetime expires, the client must stop using the address or prefix. If it still needs configuration, it then starts a new SARR (Solicit-Advertise-Request-Reply) exchange to obtain fresh addresses or prefixes.
 
 ## Best Practices
 
-- **Set T1 to 50% of valid lifetime** - This is the RFC 8415 recommendation and provides ample time for renewal before expiry.
-- **Set T2 to 80% of valid lifetime** - Gives the client a window to try any available server before the lease expires.
+- **Set T1 to about 50% of the shortest preferred lifetime** - This is the RFC 9915 recommendation and provides ample time for renewal before expiry.
+- **Set T2 to about 80% of the shortest preferred lifetime** - Gives the client a window to try any available server before the lease expires.
 - **Keep valid lifetime longer than preferred lifetime** - This allows for graceful deprecation without abrupt disconnection.
 - **Monitor renewal failures** - If clients are consistently hitting T2 before renewing, your primary DHCPv6 server may be unreachable or overloaded.
 
 ## Summary
 
-DHCPv6 T1 and T2 timers provide a two-stage safety net for lease renewal. T1 initiates a unicast renewal with the original server, and T2 triggers a multicast rebind to any available server. Proper timer configuration ensures address stability and smooth failover behavior in production IPv6 networks.
+DHCPv6 T1 and T2 timers provide a two-stage safety net for lease renewal. T1 initiates renewal with the original server, and T2 triggers a rebind that can be answered by any available server. Proper timer configuration ensures address stability and smooth failover behavior in production IPv6 networks.
