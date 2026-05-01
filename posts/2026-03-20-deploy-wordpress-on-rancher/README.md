@@ -4,18 +4,13 @@ Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
 Tags: Rancher, WordPress, Kubernetes, Helm, MySQL, Content Management
 
-Description: Deploy WordPress on Rancher with persistent storage, MySQL database, autoscaling, and Ingress for a production-ready CMS on Kubernetes.
+Description: Deploy WordPress on Rancher with persistent storage, MySQL database, and Ingress for a production-ready CMS on Kubernetes.
 
 ## Introduction
 
 WordPress is the world's most popular CMS. While it wasn't designed for containerization, modern Helm charts make it practical to run on Rancher with proper persistent storage for uploads and a dedicated MySQL database.
 
 ## Step 1: Deploy WordPress with Helm
-
-```bash
-helm repo add bitnami https://charts.bitnami.com/bitnami
-helm repo update
-```
 
 ```yaml
 # wordpress-values.yaml
@@ -36,6 +31,8 @@ ingress:
 persistence:
   enabled: true
   storageClass: longhorn
+  accessModes:
+    - ReadWriteMany
   size: 20Gi    # For media uploads
 
 mariadb:
@@ -59,13 +56,13 @@ resources:
     memory: "1Gi"
     cpu: "500m"
 
-replicaCount: 2    # Two WordPress replicas for HA
+replicaCount: 2    # Requires shared ReadWriteMany storage
 ```
 
 ```bash
 kubectl create namespace wordpress
 
-helm install wordpress bitnami/wordpress \
+helm install wordpress oci://registry-1.docker.io/bitnamicharts/wordpress \
   --namespace wordpress \
   --values wordpress-values.yaml
 ```
@@ -83,41 +80,43 @@ kubectl get pvc -n wordpress
 kubectl get ingress -n wordpress
 ```
 
-## Step 3: Configure Object Storage for Media
+## Step 3: Configure Shared Storage for Media
 
-For multi-replica deployments, media uploads must be stored in shared object storage (not local filesystem):
-
-```bash
-# Install the WP Offload Media plugin (S3) inside WordPress admin
-# Or configure directly via wp-config.php
-
-kubectl exec -it wordpress-pod -n wordpress -- \
-  wp option update uploads_use_yearmonth_folders 0
-```
+For multi-replica deployments, `wp-content/uploads` needs shared storage. With the Bitnami chart, that means using a `ReadWriteMany` volume for `wp-content/uploads` or offloading media to S3-compatible object storage with a plugin configured in WordPress.
 
 ## Step 4: Configure WordPress for Kubernetes
 
 ```yaml
 # Add to wordpress-values.yaml
+wordpressTablePrefix: wp_
+wordpressScheme: https
+wordpressExtraConfigContent: |
+  define('FORCE_SSL_ADMIN', true);
+
 extraEnvVars:
-  - name: WORDPRESS_TABLE_PREFIX
-    value: wp_
-  - name: WORDPRESS_SKIP_INSTALL
-    value: "no"
-  # Required for reverse proxy deployments
-  - name: WORDPRESS_EXTRA_WP_CONFIG_CONTENT
-    value: |
-      define('FORCE_SSL_ADMIN', true);
-      if (strpos($_SERVER['HTTP_X_FORWARDED_PROTO'], 'https') !== false) {
-        $_SERVER['HTTPS'] = 'on';
-      }
+  # Required when TLS terminates at the Ingress
+  - name: WORDPRESS_ENABLE_REVERSE_PROXY
+    value: "yes"
 ```
 
 ## Step 5: Set Up Backups
 
 ```bash
-# Create a CronJob for WordPress database backup
+# Create a PVC and CronJob for WordPress database backups
 kubectl apply -f - << 'EOF'
+apiVersion: v1
+kind: PersistentVolumeClaim
+metadata:
+  name: wordpress-backups
+  namespace: wordpress
+spec:
+  accessModes:
+    - ReadWriteOnce
+  storageClassName: longhorn
+  resources:
+    requests:
+      storage: 20Gi
+---
 apiVersion: batch/v1
 kind: CronJob
 metadata:
@@ -131,18 +130,25 @@ spec:
         spec:
           containers:
             - name: backup
-              image: bitnami/mariadb:latest
+              image: bitnami/mariadb:12.0.2-debian-12-r0
               command:
                 - /bin/bash
-                - -c
+                - -ec
                 - >
                   mysqldump -h wordpress-mariadb -u wordpress
-                  -pdbpassword wordpress |
-                  aws s3 cp - s3://my-backups/wordpress-$(date +%Y%m%d).sql
-          restartPolicy: Never
+                  -pdbpassword wordpress >
+                  /backups/wordpress-$(date +%Y%m%d).sql
+              volumeMounts:
+                - name: backups
+                  mountPath: /backups
+          restartPolicy: OnFailure
+          volumes:
+            - name: backups
+              persistentVolumeClaim:
+                claimName: wordpress-backups
 EOF
 ```
 
 ## Conclusion
 
-WordPress on Rancher is production-ready with the Bitnami Helm chart handling most configuration. The key challenge for scaled deployments is shared media storage-use S3 offloading for any deployment with more than one WordPress replica, as the local filesystem cannot be shared between pods.
+WordPress on Rancher is production-ready with the Bitnami Helm chart handling most configuration. The key challenge for scaled deployments is shared media storage-use a `ReadWriteMany` volume or S3-compatible offloading for any deployment with more than one WordPress replica, as the local filesystem cannot be shared between pods.
