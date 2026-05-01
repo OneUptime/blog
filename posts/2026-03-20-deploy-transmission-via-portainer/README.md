@@ -18,11 +18,9 @@ Transmission is a lightweight, fast BitTorrent client with low resource usage, m
 ## Compose Stack
 
 ```yaml
-version: "3.8"
-
 services:
   transmission:
-    image: linuxserver/transmission:latest
+    image: lscr.io/linuxserver/transmission:latest
     restart: unless-stopped
     ports:
       - "9091:9091"       # Web UI and RPC API
@@ -50,29 +48,38 @@ volumes:
 3. Set `USER`, `PASS`, and update volume paths.
 4. Click **Deploy the stack**.
 
-Open `http://<host>:9091` and log in with the credentials you set.
+Open `http://<host>:9091/transmission/web/` and log in with the credentials you set.
 
 ## Configuring Speed Limits
 
-Transmission supports scheduled speed limits (e.g., full speed at night). In the web UI go to **Edit > Preferences > Speed**:
+Transmission supports scheduled speed limits (e.g., full speed at night). In the web UI open **Edit preferences** and use the **Speed** section:
 
 - Enable **Alternative Speed Limits** for throttled daytime speeds
-- Set **Scheduled Hours** to automatically switch between normal and alternative limits
+- Set **Scheduled times** to automatically switch between normal and alternative limits
 
 ## RPC API Usage
 
 Automation scripts can control Transmission via its JSON-RPC API:
 
 ```bash
-# Add a torrent by URL using curl
+# Get the session header, then add a torrent by URL using curl
+
+SESSION_ID=$(
+  curl -s -D - -o /dev/null \
+    -u admin:changeme \
+    http://localhost:9091/transmission/rpc \
+  | awk -F': ' '/^X-Transmission-Session-Id:/ {print $2}' \
+  | tr -d '\r'
+)
 
 curl -s \
   -u admin:changeme \
-  -H "X-Transmission-Session-Id: $(curl -s -u admin:changeme http://localhost:9091/transmission/rpc | grep -oP 'X-Transmission-Session-Id: \K[^<]+')" \
-  -d '{"method":"torrent-add","arguments":{"filename":"https://example.com/file.torrent"}}' \
+  -H "Content-Type: application/json" \
+  -H "X-Transmission-Session-Id: $SESSION_ID" \
+  -d '{"jsonrpc":"2.0","method":"torrent_add","params":{"filename":"https://example.com/file.torrent"},"id":1}' \
   http://localhost:9091/transmission/rpc
 ```
 
 ## Monitoring
 
-Use OneUptime to monitor `http://<host>:9091/transmission/web/` for HTTP 200. Transmission downtime halts automated downloads, so configure an alert with a short check interval.
+Use OneUptime to monitor `http://<host>:9091/transmission/web/` for HTTP 200. If you enabled `USER` and `PASS`, configure HTTP Basic authentication in the monitor so the check can authenticate successfully. Transmission downtime halts automated downloads, so configure an alert with a short check interval.
