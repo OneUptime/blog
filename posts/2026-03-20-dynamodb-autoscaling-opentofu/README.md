@@ -33,9 +33,23 @@ resource "aws_dynamodb_table" "scalable" {
   read_capacity  = 5
   write_capacity = 5
 
+  # Prevent OpenTofu from resetting capacities after auto scaling adjusts them
+  lifecycle {
+    ignore_changes = [
+      read_capacity,
+      write_capacity,
+      global_secondary_index,
+    ]
+  }
+
   global_secondary_index {
-    name            = "StatusIndex"
-    hash_key        = "id"
+    name = "StatusIndex"
+
+    key_schema {
+      attribute_name = "id"
+      key_type       = "HASH"
+    }
+
     projection_type = "KEYS_ONLY"
     read_capacity   = 5
     write_capacity  = 5
@@ -119,7 +133,7 @@ resource "aws_appautoscaling_policy" "table_write" {
 ## Step 4: Scale GSI Capacity Too
 
 ```hcl
-# GSI read capacity must be scaled separately
+# GSI read and write capacity must be scaled separately
 resource "aws_appautoscaling_target" "gsi_read" {
   max_capacity       = 100
   min_capacity       = 5
@@ -142,6 +156,29 @@ resource "aws_appautoscaling_policy" "gsi_read" {
     target_value = 70.0
   }
 }
+
+resource "aws_appautoscaling_target" "gsi_write" {
+  max_capacity       = 50
+  min_capacity       = 5
+  resource_id        = "table/${aws_dynamodb_table.scalable.name}/index/StatusIndex"
+  scalable_dimension = "dynamodb:index:WriteCapacityUnits"
+  service_namespace  = "dynamodb"
+}
+
+resource "aws_appautoscaling_policy" "gsi_write" {
+  name               = "${var.project_name}-gsi-write-scaling"
+  policy_type        = "TargetTrackingScaling"
+  resource_id        = aws_appautoscaling_target.gsi_write.resource_id
+  scalable_dimension = aws_appautoscaling_target.gsi_write.scalable_dimension
+  service_namespace  = aws_appautoscaling_target.gsi_write.service_namespace
+
+  target_tracking_scaling_policy_configuration {
+    predefined_metric_specification {
+      predefined_metric_type = "DynamoDBWriteCapacityUtilization"
+    }
+    target_value = 70.0
+  }
+}
 ```
 
 ## Step 5: Deploy
@@ -151,7 +188,7 @@ tofu init
 tofu plan
 tofu apply
 
-# View current capacity
+# View recent scaling activities
 aws application-autoscaling describe-scaling-activities \
   --service-namespace dynamodb \
   --resource-id "table/my-project-scalable-table"
@@ -159,4 +196,4 @@ aws application-autoscaling describe-scaling-activities \
 
 ## Conclusion
 
-DynamoDB Auto Scaling with a 70% utilization target provides a balance between cost and performance headroom. For tables with highly bursty traffic, consider using `PAY_PER_REQUEST` mode instead since auto scaling has a response lag of a few minutes. Always configure auto scaling on GSIs separately-GSI capacity is independent of table capacity and throttles independently.
+DynamoDB Auto Scaling with a 70% utilization target provides a balance between cost and performance headroom. For tables with highly bursty traffic, consider using `PAY_PER_REQUEST` mode instead since auto scaling has a response lag of a few minutes. Always configure auto scaling on GSIs separately for both read and write capacity because GSI capacity is independent of table capacity and throttles independently.
