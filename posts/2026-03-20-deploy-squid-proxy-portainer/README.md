@@ -20,7 +20,7 @@ Squid is a caching and forwarding HTTP proxy. It reduces bandwidth usage by cach
 Before deploying, create the Squid configuration file on the host:
 
 ```bash
-mkdir -p /opt/squid/conf
+mkdir -p /opt/squid/conf /opt/squid/passwords
 cat > /opt/squid/conf/squid.conf << 'EOF'
 # /etc/squid/squid.conf
 
@@ -30,14 +30,32 @@ acl localnet src 10.0.0.0/8
 acl localnet src 172.16.0.0/12
 acl localnet src 192.168.0.0/16
 acl SSL_ports port 443
+acl Safe_ports port 80
+acl Safe_ports port 21
+acl Safe_ports port 443
+acl Safe_ports port 563
+acl Safe_ports port 70
+acl Safe_ports port 210
+acl Safe_ports port 1025-65535
+acl Safe_ports port 280
+acl Safe_ports port 488
+acl Safe_ports port 591
+acl Safe_ports port 777
 acl CONNECT method CONNECT
+
+# Only allow requests to known-safe ports
+http_access deny !Safe_ports
+
+# Block CONNECT on non-SSL ports
+http_access deny CONNECT !SSL_ports
+
+# Only allow Cache Manager access from localhost
+http_access allow localhost manager
+http_access deny manager
 
 # Allow local networks to use the proxy
 http_access allow localnet
 http_access allow localhost
-
-# Block CONNECT on non-SSL ports
-http_access deny CONNECT !SSL_ports
 
 # Deny everything else
 http_access deny all
@@ -65,17 +83,16 @@ Navigate to **Stacks** > **Add Stack**:
 
 ```yaml
 # docker-compose.yml - Squid Proxy
-version: "3.8"
-
 services:
   squid:
-    image: ubuntu/squid:latest
+    image: ubuntu/squid:6.6-24.04_beta
     container_name: squid
     restart: unless-stopped
     ports:
       - "3128:3128"    # HTTP proxy port
     volumes:
       - /opt/squid/conf/squid.conf:/etc/squid/squid.conf:ro
+      - /opt/squid/passwords:/etc/squid/passwords:ro
       - squid_cache:/var/spool/squid
       - squid_logs:/var/log/squid
     healthcheck:
@@ -118,14 +135,20 @@ docker exec squid squidclient -h localhost -p 3128 mgr:info | grep -E "Requests|
 export http_proxy=http://squid-host:3128
 export https_proxy=http://squid-host:3128
 curl https://example.com
+```
 
-# Python requests
+```python
 import requests
 proxies = {'http': 'http://squid-host:3128', 'https': 'http://squid-host:3128'}
 r = requests.get('https://api.example.com/data', proxies=proxies)
+```
 
-# Docker pull through proxy
-docker pull --env HTTP_PROXY=http://squid-host:3128 alpine
+```bash
+# Run a container with proxy environment variables
+docker run --rm \
+  -e HTTP_PROXY=http://squid-host:3128 \
+  -e HTTPS_PROXY=http://squid-host:3128 \
+  alpine wget -O- http://example.com
 ```
 
 ## Step 5: Add Authentication
@@ -134,17 +157,30 @@ For controlled access, add basic authentication:
 
 ```bash
 # Create password file on host
-mkdir -p /opt/squid/passwords
-docker run --rm ubuntu/squid htpasswd -bc /opt/squid/passwords/squid_users proxyuser securepassword
+printf 'proxyuser:%s\n' "$(openssl passwd -apr1 'securepassword')" > /opt/squid/passwords/squid_users
 ```
 
-Add to `squid.conf`:
+Replace the access section in `squid.conf` with:
 
 ```text
 auth_param basic program /usr/lib/squid/basic_ncsa_auth /etc/squid/passwords/squid_users
+auth_param basic children 5
 auth_param basic realm Squid Proxy
 acl authenticated proxy_auth REQUIRED
-http_access allow authenticated
+
+http_access deny !Safe_ports
+http_access deny CONNECT !SSL_ports
+http_access allow localhost manager
+http_access deny manager
+http_access allow localnet authenticated
+http_access allow localhost
+http_access deny all
+```
+
+Then reload Squid:
+
+```bash
+docker exec squid squid -k reconfigure
 ```
 
 ## Step 6: Monitor Cache Hit Rate
@@ -154,10 +190,10 @@ http_access allow authenticated
 docker exec squid squidclient -h localhost -p 3128 mgr:counters | \
   grep -E "client_http|cache_hit"
 
-# Or via cachemgr HTTP interface (add to squid.conf: http_access allow localhost)
-curl http://localhost:3128/squid-internal-mgr/info
+# Or inspect the Cache Manager menu from inside the container
+docker exec squid squidclient -h localhost -p 3128 mgr:menu
 ```
 
 ## Conclusion
 
-Squid caches HTTP/HTTPS content, reducing bandwidth for environments with many clients accessing the same external resources (e.g., container image pulls, package downloads). The `cache_mem` parameter controls RAM used for hot objects, while `cache_dir ufs` stores larger objects on disk. Monitor the cache hit ratio - below 50% suggests most content is not cacheable, and you should review whether the cache is beneficial for your workload.
+Squid caches cacheable HTTP content and forwards HTTPS using CONNECT tunnels. The `cache_mem` parameter controls RAM used for hot objects, while `cache_dir ufs` stores larger objects on disk. Monitor the HTTP cache hit ratio - below 50% suggests most content is not cacheable, and you should review whether the cache is beneficial for your workload. If most of your traffic is HTTPS, caching that content requires TLS interception (SSL Bump), which this guide does not configure.
