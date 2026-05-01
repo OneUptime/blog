@@ -8,7 +8,7 @@ Description: Configure Docker bridge networks for IPv6, understand the differenc
 
 ## Introduction
 
-The Docker bridge driver is the default network driver and the most common for container networking. Docker creates a virtual bridge interface (like `docker0` for the default bridge) and connects containers through veth pairs. Bridges support IPv6 when `ipv6` is enabled in `daemon.json` and when subnets are specified. User-defined bridges offer better IPv6 support with DNS resolution and configurable subnets.
+The Docker bridge driver is the default network driver and the most common for container networking. Docker creates a virtual bridge interface (like `docker0` for the default bridge) and connects containers through veth pairs. The default bridge supports IPv6 when `ipv6` is enabled in `daemon.json`, while user-defined bridges enable IPv6 with `docker network create --ipv6`. User-defined bridges offer better DNS resolution between containers and configurable IPv4/IPv6 subnets.
 
 ## Default Bridge with IPv6
 
@@ -18,7 +18,7 @@ The Docker bridge driver is the default network driver and the most common for c
 # /etc/docker/daemon.json:
 # {
 #   "ipv6": true,
-#   "fixed-cidr-v6": "fd00:bridge::/80",
+#   "fixed-cidr-v6": "fd00:dead:beef:1::/64",
 #   "ip6tables": true
 # }
 
@@ -26,16 +26,16 @@ sudo systemctl restart docker
 
 # Verify docker0 bridge has IPv6
 ip -6 addr show docker0
-# inet6 fd00:bridge::1/80 scope global
+# inet6 fd00:dead:beef:1::1/64 scope global
 
 # Run container on default bridge
-docker run -d --name test nginx
+docker run -d --name test busybox sleep 3600
 
 # Check container IPv6
-docker exec test ip -6 addr show eth0
-# inet6 fd00:bridge::2/80 scope global
+docker inspect -f '{{range .NetworkSettings.Networks}}{{.GlobalIPv6Address}}{{end}}' test
+# fd00:dead:beef:1::2
 
-# Note: default bridge containers cannot resolve each other by name
+# Note: default bridge containers cannot resolve each other by name by default
 # Use user-defined bridges for DNS between containers
 ```
 
@@ -47,17 +47,17 @@ docker network create \
     --driver bridge \
     --ipv6 \
     --subnet 172.18.0.0/24 \
-    --subnet fd00:userbridge::/64 \
+    --subnet fd00:dead:beef:2::/64 \
     --gateway 172.18.0.1 \
-    --gateway fd00:userbridge::1 \
+    --gateway fd00:dead:beef:2::1 \
     mybridge
 
 # Run containers on user-defined bridge
 docker run -d --name web --network mybridge nginx
-docker run -d --name api --network mybridge myapp
+docker run -d --name api --network mybridge busybox sleep 3600
 
 # DNS resolution works in user-defined bridges
-docker exec api ping6 web  # Resolves 'web' to IPv6 address!
+docker exec api ping6 -c 1 web  # Resolves 'web' over IPv6 via Docker's embedded DNS
 
 # Verify bridge interface
 ip -6 addr show br-$(docker network inspect mybridge --format "{{.Id}}" | head -c 12)
@@ -71,7 +71,7 @@ docker network create \
     --driver bridge \
     --ipv6 \
     --subnet 172.19.0.0/24 \
-    --subnet fd00:optbridge::/64 \
+    --subnet fd00:dead:beef:3::/64 \
     --opt com.docker.network.bridge.name=br-custom \
     --opt com.docker.network.bridge.enable_ip_masquerade=true \
     --opt com.docker.network.bridge.enable_icc=true \
@@ -81,7 +81,7 @@ docker network create \
 # com.docker.network.bridge.name: custom Linux bridge name
 # enable_ip_masquerade: enable IP masquerade for outbound traffic
 # enable_icc: allow inter-container communication
-# host_binding_ipv4: host IP to bind published ports
+# host_binding_ipv4: default host address for published ports
 
 # View the bridge kernel interface
 ip link show br-custom
@@ -101,21 +101,15 @@ ip link show type bridge
 bridge fdb show br br-$(docker network inspect mybridge \
     --format "{{.Id}}" | head -c 12)
 
-# Check veth pairs connected to bridge
-ip link show | grep "veth" | head -10
+# Show interfaces attached to the bridge
+ip link show master br-$(docker network inspect mybridge \
+    --format "{{.Id}}" | head -c 12)
 
-# Find which container owns a veth pair
-for veth in $(ls /sys/class/net | grep veth); do
-    PID=$(docker inspect $(docker ps -q) --format \
-        "{{.Id}} {{.Name}}" 2>/dev/null | while read id name; do
-        if ls /proc/$(docker inspect --format "{{.State.Pid}}" "$id" 2>/dev/null)/net/if_inet6 2>/dev/null | xargs -I{} grep -l "$veth" 2>/dev/null | grep -q .; then
-            echo "$name"
-        fi
-    done)
-    echo "veth: $veth -> container: ${PID:-unknown}"
-done
+# List containers attached to the bridge and their addresses
+docker network inspect mybridge --format \
+    '{{range .Containers}}{{println .Name .IPv4Address .IPv6Address}}{{end}}'
 ```
 
 ## Conclusion
 
-Docker bridge networks support IPv6 through both the default bridge (configured via `fixed-cidr-v6` in `daemon.json`) and user-defined bridges (with explicit `--subnet <ipv6-cidr>` on network create). User-defined bridges are preferred for IPv6 because they support DNS resolution between containers by container name, whereas the default bridge requires manual IP addressing. Set `enable_ip_masquerade=true` for outbound IPv6 internet access from containers. User-defined bridges also allow containers to be connected and disconnected at runtime without restart.
+Docker bridge networks support IPv6 through both the default bridge (configured via `ipv6` in `daemon.json`, optionally with `fixed-cidr-v6` for an explicit prefix) and user-defined bridges (created with `--ipv6`, optionally with an explicit IPv6 `--subnet`). User-defined bridges are preferred for IPv6 because they support DNS resolution between containers by container name, whereas the default bridge requires containers to communicate by IP address unless you use the legacy `--link` option. `enable_ip_masquerade` is enabled by default on bridge networks and provides masqueraded outbound connectivity. User-defined bridges also allow containers to be connected and disconnected at runtime without restart.
