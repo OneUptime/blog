@@ -12,9 +12,10 @@ Mandatory resource tagging is one of the most impactful governance controls in c
 
 ## Layer 1: Provider default_tags (AWS)
 
-The most reliable enforcement - tags applied automatically at the provider level:
+The most reliable baseline for supported tagged resources - tags applied automatically at the provider level, with exceptions such as `aws_autoscaling_group`:
 
 ```hcl
+variable "aws_region"   { type = string }
 variable "environment" { type = string }
 variable "team"        { type = string }
 variable "cost_center" { type = string }
@@ -22,7 +23,7 @@ variable "cost_center" { type = string }
 provider "aws" {
   region = var.aws_region
 
-  # These tags are applied to ALL resources automatically
+  # These tags are applied automatically to supported tagged resources
   default_tags {
     tags = {
       Environment = var.environment
@@ -69,13 +70,15 @@ taggable_resources := {
     "aws_eks_cluster", "aws_vpc", "aws_lambda_function"
 }
 
-deny[msg] {
-    resource := input.resource_changes[_]
+deny contains msg if {
+    some resource in input.resource_changes
     resource.type in taggable_resources
-    resource.change.actions[_] in {"create", "update"}
 
-    present := {tag | resource.change.after.tags[tag]}
-    missing  := required_tags - present
+    some action in resource.change.actions
+    action in {"create", "update"}
+
+    present := {tag | resource.change.after.tags_all[tag]}
+    missing := required_tags - present
     count(missing) > 0
 
     msg := sprintf("Resource '%s' missing required tags: %v", [resource.address, missing])
@@ -84,29 +87,50 @@ deny[msg] {
 
 ```bash
 # Run policy check before apply
+tofu plan -out=tfplan.binary
 tofu show -json tfplan.binary > tfplan.json
 conftest test tfplan.json --policy policies/
 ```
 
 ## Layer 4: AWS Tag Policies (Organization Level)
 
+In AWS provider 6.22.0+, define required tag keys at the AWS Organization level and set `tag_policy_compliance = "error"` in your existing `aws` provider to fail plans that miss them:
+
 ```hcl
-# Enforce tag policies at the AWS Organization level
+# Define required tags at the AWS Organization level
 resource "aws_organizations_policy" "tagging" {
   name        = "RequiredTags"
   type        = "TAG_POLICY"
-  description = "Enforce required tags on all resources"
+  description = "Require standard tags on supported resources"
 
   content = jsonencode({
     tags = {
       Environment = {
+        report_required_tag_for = {
+          "@@assign" = ["ec2:instance", "rds:db", "s3:bucket", "lambda:function"]
+        }
         tag_key = { "@@assign" = "Environment" }
         tag_value = {
           "@@assign" = ["dev", "staging", "prod"]
         }
-        enforced_for = {
-          "@@assign" = ["ec2:instance", "rds:db", "s3:bucket"]
+      }
+      Team = {
+        report_required_tag_for = {
+          "@@assign" = ["ec2:instance", "rds:db", "s3:bucket", "lambda:function"]
         }
+        tag_key = { "@@assign" = "Team" }
+      }
+      CostCenter = {
+        report_required_tag_for = {
+          "@@assign" = ["ec2:instance", "rds:db", "s3:bucket", "lambda:function"]
+        }
+        tag_key = { "@@assign" = "CostCenter" }
+      }
+      ManagedBy = {
+        report_required_tag_for = {
+          "@@assign" = ["ec2:instance", "rds:db", "s3:bucket", "lambda:function"]
+        }
+        tag_key = { "@@assign" = "ManagedBy" }
       }
     }
   })
@@ -115,18 +139,17 @@ resource "aws_organizations_policy" "tagging" {
 
 ## Automated Tag Remediation
 
-For resources that slip through without tags, automate detection and notification:
+For resources that slip through with missing tags, automate detection and notification:
 
 ```bash
 #!/bin/bash
-# find-untagged.sh - find resources missing required tags
-aws resourcegroupstaggingapi get-resources \
-  --tag-filters "Key=ManagedBy" \
-  --resource-type-filters ec2:instance \
-  --query "ResourceTagMappingList[?Tags[?Key=='Environment']==null].ResourceARN" \
+# find-missing-environment.sh - find EC2 instances missing the Environment tag
+aws resource-explorer-2 search \
+  --query-string "resourcetype:ec2:instance -tag.key:Environment" \
+  --query "Resources[].Arn" \
   --output text
 ```
 
 ## Conclusion
 
-Enforcing tagging policies requires multiple complementary layers: provider `default_tags` ensures tags are applied even when developers forget, variable validation ensures valid tag values, OPA policies block deployments with missing tags, and AWS Tag Policies enforce compliance at the organization level. Together they make it nearly impossible to deploy untagged resources.
+Enforcing tagging policies requires multiple complementary layers: provider `default_tags` applies baseline tags on supported resources, variable validation ensures valid tag values, OPA policies block deployments with missing tags, and AWS Tag Policies define organization-wide required tag keys that the AWS provider can enforce during plan and apply. Together they make it much harder to deploy resources with missing or inconsistent tags.
