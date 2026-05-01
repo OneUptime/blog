@@ -37,10 +37,10 @@ resource "aws_s3_bucket" "app_data" {
 Running the same configuration multiple times produces the same result.
 
 ```bash
-# First run: creates the bucket
+# First run: after approval, creates the bucket
 tofu apply  # 1 resource created
 
-# Second run: nothing to do
+# Second run: no changes needed
 tofu apply  # No changes
 
 # This is idempotency - repeated application has no additional effect
@@ -50,7 +50,7 @@ tofu apply  # No changes
 
 Infrastructure changes go through the same review process as code.
 
-```hcl
+```text
 Git workflow for infrastructure:
 
 feature/add-caching-layer branch
@@ -86,7 +86,7 @@ resource "aws_subnet" "public" {
 resource "aws_instance" "web" {
   # Implicitly depends on aws_subnet.public
   subnet_id = aws_subnet.public.id  # OpenTofu creates subnet first
-  ami       = "ami-0c55b159cbfafe1f0"
+  ami       = var.ami_id
   instance_type = "t3.micro"
 }
 ```
@@ -108,14 +108,14 @@ resource "aws_instance" "web" {
 # Use it many times
 module "web_us_east" {
   source        = "./modules/web-server"
-  ami           = "ami-0abc123"
+  ami           = var.ami
   instance_type = "t3.medium"
   subnet_id     = aws_subnet.east.id
 }
 
 module "web_us_west" {
   source        = "./modules/web-server"
-  ami           = "ami-0def456"
+  ami           = var.ami
   instance_type = "t3.medium"
   subnet_id     = aws_subnet.west.id
 }
@@ -125,10 +125,10 @@ module "web_us_west" {
 
 OpenTofu maintains a state file that maps your HCL configuration to real cloud resources.
 
-```yaml
+```text
 HCL Configuration         State File              Cloud
 -----------------         ----------              -----
-aws_s3_bucket.app  →→→→  id: "my-app-data"  →→→→  S3 Bucket
+aws_s3_bucket.app_data  →→→→  id: "my-app-data"  →→→→  S3 Bucket
                           arn: "arn:aws:..."         my-app-data
                           region: "us-east-1"
 ```
