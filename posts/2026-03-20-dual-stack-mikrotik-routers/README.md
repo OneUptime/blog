@@ -13,12 +13,13 @@ MikroTik RouterOS supports dual-stack through parallel IPv4 and IPv6 configurati
 ## Check IPv6 Package
 
 ```text
-# Verify IPv6 package is installed
+# Verify RouterOS package state and IPv6 settings
 
 /system package print
+/ipv6 settings print
 
-# If not listed, install from System Packages
-# Winbox: System → Packages → Check for Updates or install IPv6 package
+# On current RouterOS 7 releases, IPv6 is included in the main routeros package.
+# If IPv6 is disabled system-wide, enable it in /ipv6 settings before continuing.
 ```
 
 ## Interface Addressing
@@ -29,10 +30,10 @@ MikroTik RouterOS supports dual-stack through parallel IPv4 and IPv6 configurati
 /ip address add address=10.0.0.1/24  interface=ether2-lan comment="LAN IPv4"
 
 # Add IPv6 addresses
-/ipv6 address add address=2001:db8:wan::1/64 interface=ether1-wan advertise=no
-/ipv6 address add address=2001:db8:lan::1/64 interface=ether2-lan advertise=yes
+/ipv6 address add address=2001:db8:0:1::1/64 interface=ether1-wan advertise=no
+/ipv6 address add address=2001:db8:1::1/64 interface=ether2-lan advertise=yes
 
-# The 'advertise=yes' enables Router Advertisement on LAN interface
+# The 'advertise=yes' flag adds this prefix to Router Advertisement on the LAN interface
 
 # View addresses
 /ip address print
@@ -46,7 +47,7 @@ MikroTik RouterOS supports dual-stack through parallel IPv4 and IPv6 configurati
 /ip route add dst-address=0.0.0.0/0 gateway=192.0.2.254
 
 # IPv6 default route
-/ipv6 route add dst-address=::/0 gateway=2001:db8:wan::254
+/ipv6 route add dst-address=::/0 gateway=2001:db8:0:1::254
 
 # Verify
 /ip route print
@@ -61,7 +62,7 @@ MikroTik RouterOS supports dual-stack through parallel IPv4 and IPv6 configurati
     ra-interval=60s-200s \
     ra-lifetime=600s \
     advertise-dns=yes \
-    dns=2001:db8:lan::53 \
+    dns-servers=2001:db8:1::53 \
     managed-address-configuration=no \
     other-configuration=no
 
@@ -78,10 +79,13 @@ MikroTik RouterOS supports dual-stack through parallel IPv4 and IPv6 configurati
 
 ```text
 # Create DHCPv6 pool
-/ipv6 pool add name=v6-pool prefix=2001:db8:lan::/48 prefix-length=64
+/ipv6 pool add name=v6-address-pool prefix=2001:db8:1::100/120 prefix-length=128
+
+# If hosts should request IPv6 addresses via DHCPv6, set the M flag on the same LAN interface
+/ipv6 nd set [find interface=ether2-lan] managed-address-configuration=yes
 
 # Create DHCPv6 server on LAN
-/ipv6 dhcp-server add name=dhcpv6-lan interface=ether2-lan address-pool=v6-pool \
+/ipv6 dhcp-server add name=dhcpv6-lan interface=ether2-lan address-pool=v6-address-pool \
     preference=255
 
 # View DHCPv6 leases
@@ -105,19 +109,19 @@ MikroTik RouterOS supports dual-stack through parallel IPv4 and IPv6 configurati
 
 # Allow management SSH from specific prefix
 /ipv6 firewall filter add chain=input protocol=tcp dst-port=22 \
-    src-address=fd00:mgmt::/48 action=accept comment="Allow SSH management"
+    src-address=2001:db8:1::/64 action=accept comment="Allow SSH management"
 
 # Drop invalid
 /ipv6 firewall filter add chain=input connection-state=invalid action=drop
 
-# Default drop
+# Default drop for traffic to the router
 /ipv6 firewall filter add chain=input action=drop comment="Default drop"
-/ipv6 firewall filter add chain=forward src-address=!2001:db8:lan::/48 action=drop comment="Block non-LAN forward"
+/ipv6 firewall filter add chain=forward src-address=!2001:db8:1::/64 action=drop comment="Block non-LAN forward"
 
 # IPv4 firewall (parallel - mirror rules)
 /ip firewall filter add chain=input connection-state=established,related action=accept
 /ip firewall filter add chain=input protocol=icmp action=accept
-/ip firewall filter add chain=input src-address=192.168.0.0/16 protocol=tcp dst-port=22 action=accept
+/ip firewall filter add chain=input src-address=10.0.0.0/24 protocol=tcp dst-port=22 action=accept
 /ip firewall filter add chain=input connection-state=invalid action=drop
 /ip firewall filter add chain=input action=drop
 ```
@@ -126,19 +130,23 @@ MikroTik RouterOS supports dual-stack through parallel IPv4 and IPv6 configurati
 
 ```text
 # RouterOS 7 - new BGP implementation
+/routing bgp instance add name=dualstack as=65001
+
 /routing bgp connection add \
     name=upstream-v4 \
     remote.address=192.0.2.2 \
     remote.as=65002 \
+    instance=dualstack \
     local.role=ebgp \
-    address-families=ip
+    afi=ip
 
 /routing bgp connection add \
     name=upstream-v6 \
-    remote.address=2001:db8:peer::2 \
+    remote.address=2001:db8:0:1::2 \
     remote.as=65002 \
+    instance=dualstack \
     local.role=ebgp \
-    address-families=ipv6
+    afi=ipv6
 
 # View BGP sessions
 /routing bgp session print
@@ -172,4 +180,4 @@ MikroTik RouterOS supports dual-stack through parallel IPv4 and IPv6 configurati
 
 ## Summary
 
-MikroTik RouterOS dual-stack uses parallel `/ip` and `/ipv6` command trees for addressing, routing, firewall, and DHCP. Add IPv6 addresses with `/ipv6 address add`, configure RA with `/ipv6 nd add` (set `advertise=yes` on LAN-facing interfaces), and add the IPv6 default route with `/ipv6 route add`. Create matching firewall rules under `/ipv6 firewall filter` alongside the existing `/ip firewall filter` rules. Use RouterOS 7's new `/routing bgp connection` for dual-stack BGP with `address-families=ip` and `address-families=ipv6`.
+MikroTik RouterOS dual-stack uses parallel `/ip` and `/ipv6` command trees for addressing, routing, firewall, and DHCP. Add IPv6 addresses with `/ipv6 address add`, configure RA with `/ipv6 nd add` (set `advertise=yes` on LAN-facing addresses so the prefix is advertised), and add the IPv6 default route with `/ipv6 route add`. Create matching firewall rules under `/ipv6 firewall filter` alongside the existing `/ip firewall filter` rules. Use RouterOS 7's `/routing bgp connection` for dual-stack BGP with `afi=ip` and `afi=ipv6`, and define a BGP instance or template with the local AS first.
