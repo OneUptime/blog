@@ -8,7 +8,7 @@ Description: A guide to using ephemeral resources in OpenTofu to obtain and use 
 
 ## Introduction
 
-Ephemeral resources in OpenTofu are a special type of resource that exist only during the plan/apply lifecycle and are never written to state. They are ideal for obtaining temporary credentials, short-lived tokens, and other sensitive values that should not persist beyond a single operation.
+Ephemeral resources in OpenTofu (available in v1.11 and later) are a special type of resource that exist only during the current plan/apply operation and are never written to state. They are ideal for obtaining temporary credentials, short-lived tokens, and other sensitive values that should not persist beyond a single operation.
 
 ## What Makes Ephemeral Resources Different
 
@@ -17,23 +17,24 @@ Ephemeral resources in OpenTofu are a special type of resource that exist only d
 
 data "aws_secretsmanager_secret_version" "db_pass" {
   secret_id = "myapp/db-password"
-  # Value is stored in terraform.tfstate - SECURITY RISK
+  # Value is stored in OpenTofu state - SECURITY RISK
 }
 
 # Ephemeral resource: values NOT stored in state
 ephemeral "aws_secretsmanager_secret_version" "db_pass" {
   secret_id = "myapp/db-password"
-  # Value is used during apply but never written to state
+  # Value is used during the current operation but never written to state
 }
 ```
 
 ## Vault Temporary Credentials
 
 ```hcl
-# Generate temporary AWS credentials from Vault
+# Generate temporary AWS STS credentials from Vault
 ephemeral "vault_aws_access_credentials" "deploy" {
   backend = "aws"
   role    = "deploy-role"
+  type    = "sts"
   ttl     = "1h"
 }
 
@@ -61,28 +62,37 @@ ephemeral "aws_secretsmanager_secret_version" "db_password" {
 }
 
 resource "aws_db_instance" "main" {
-  identifier = "myapp-${var.environment}"
-  engine     = "postgres"
+  identifier          = "myapp-${var.environment}"
+  engine              = "postgres"
+  instance_class      = "db.t3.micro"
+  allocated_storage   = 20
+  username            = "appadmin"
+  skip_final_snapshot = true
 
-  # Password used during creation but not stored in state
-  password = jsondecode(
+  # Password is passed through a write-only attribute and not stored in state
+  password_wo = jsondecode(
     ephemeral.aws_secretsmanager_secret_version.db_password.secret_string
   ).password
-
-  lifecycle {
-    ignore_changes = [password]  # Don't track password changes in state
-  }
+  password_wo_version = 1
 }
 ```
 
 ## Kubernetes Service Account Token
 
 ```hcl
-# Ephemeral Kubernetes token for authentication
-ephemeral "kubernetes_token_request" "deploy" {
+# Service account that will receive the temporary token
+resource "kubernetes_service_account_v1" "deploy" {
   metadata {
-    name      = "deploy-token"
+    name      = "deploy"
     namespace = "default"
+  }
+}
+
+# Request a short-lived Kubernetes token
+ephemeral "kubernetes_token_request_v1" "deploy" {
+  metadata {
+    name      = kubernetes_service_account_v1.deploy.metadata[0].name
+    namespace = kubernetes_service_account_v1.deploy.metadata[0].namespace
   }
 
   spec {
@@ -91,15 +101,24 @@ ephemeral "kubernetes_token_request" "deploy" {
   }
 }
 
-# Use token to authenticate external service registration
-resource "consul_service" "k8s_app" {
-  name    = "my-app"
-  address = var.cluster_endpoint
-  port    = 443
+# Use the token to configure a scoped Kubernetes provider
+provider "kubernetes" {
+  alias                  = "deploy"
+  host                   = var.cluster_endpoint
+  cluster_ca_certificate = file(var.cluster_ca_certificate_path)
+  token                  = ephemeral.kubernetes_token_request_v1.deploy.token
+}
 
-  meta = {
-    # Token available during apply but not in state
-    auth_token = ephemeral.kubernetes_token_request.deploy.token
+resource "kubernetes_config_map_v1" "app" {
+  provider = kubernetes.deploy
+
+  metadata {
+    name      = "my-app-config"
+    namespace = "default"
+  }
+
+  data = {
+    environment = var.environment
   }
 }
 ```
@@ -112,38 +131,26 @@ ephemeral "tls_private_key" "provisioner" {
   algorithm = "ED25519"
 }
 
-# Add public key to instance for provisioning
-resource "aws_key_pair" "provisioner" {
-  key_name   = "provisioner-${var.deployment_id}"
-  public_key = ephemeral.tls_private_key.provisioner.public_key_openssh
+# Store the private key without persisting it in state
+resource "aws_secretsmanager_secret" "provisioner_key" {
+  name = "myapp/${var.deployment_id}/provisioner-ssh-key"
 }
 
-resource "aws_instance" "web" {
-  ami      = var.ami_id
-  key_name = aws_key_pair.provisioner.key_name
-
-  connection {
-    type        = "ssh"
-    user        = "ubuntu"
-    private_key = ephemeral.tls_private_key.provisioner.private_key_openssh
-    host        = self.public_ip
-  }
-
-  provisioner "remote-exec" {
-    inline = [
-      "sudo apt-get update",
-      "sudo apt-get install -y nginx",
-    ]
-  }
+resource "aws_secretsmanager_secret_version" "provisioner_key" {
+  secret_id                = aws_secretsmanager_secret.provisioner_key.id
+  secret_string_wo         = ephemeral.tls_private_key.provisioner.private_key_openssh
+  secret_string_wo_version = 1
 }
 ```
 
 ## OIDC Tokens for CI/CD
 
 ```hcl
-# Get ephemeral OIDC token for authentication
-ephemeral "github_actions_oidc_token" "aws" {
-  audience = "sts.amazonaws.com"
+# CI injects the short-lived OIDC token at runtime
+variable "github_actions_oidc_token" {
+  type      = string
+  sensitive = true
+  ephemeral = true
 }
 
 # Configure AWS provider with OIDC (no long-lived credentials)
@@ -151,9 +158,9 @@ provider "aws" {
   region = var.region
 
   assume_role_with_web_identity {
-    role_arn                = "arn:aws:iam::${var.account_id}:role/GitHubActionsRole"
-    web_identity_token      = ephemeral.github_actions_oidc_token.aws.token
-    session_name            = "github-actions-deploy"
+    role_arn           = "arn:aws:iam::${var.account_id}:role/GitHubActionsRole"
+    web_identity_token = var.github_actions_oidc_token
+    session_name       = "github-actions-deploy"
   }
 }
 ```
@@ -161,33 +168,33 @@ provider "aws" {
 ## Checking State for Sensitive Data
 
 ```bash
-# With regular data sources, sensitive values appear in state
-cat terraform.tfstate | grep -i password  # DANGEROUS
+# With regular data sources, secret values can appear in state
+tofu state pull | grep -i password
 
-# With ephemeral resources, no sensitive data in state
-# Safe to inspect state file
+# Ephemeral resource values do not appear in state, although other
+# sensitive fields still can
 tofu state show aws_db_instance.main
-# password field will show null or be absent
+# write-only fields are null if shown at all; the secret value is not persisted
 ```
 
 ## Ephemeral Resource Lifecycle
 
 ```hcl
 # Ephemeral resources:
-# 1. Are fetched/created at the start of plan/apply
-# 2. Their values are available during the operation
-# 3. Are explicitly closed/released at the end of the operation
-# 4. Are NEVER written to the state file
-# 5. Are re-fetched on every plan/apply (not cached)
+# 1. Are opened during the current plan/apply phase when fully known
+# 2. Their values are available only during the current operation
+# 3. Are closed when they are no longer needed in that phase
+# 4. Are NEVER written to state or plan
+# 5. May be deferred to apply if dependencies are unknown during planning
 
 ephemeral "vault_kv_secret_v2" "app_secrets" {
   mount = "secret"
   name  = "myapp/${var.environment}"
-  # Values available during this apply
-  # Will be re-fetched on next apply
+  # Values are available only for the current operation
+  # OpenTofu may defer opening until apply if dependencies are unknown
 }
 ```
 
 ## Conclusion
 
-Ephemeral resources solve the fundamental security problem with traditional data sources: sensitive values being persisted to state files. By using ephemeral resources for temporary credentials, API tokens, and passwords, you ensure that these values are only available during the apply operation and are never written to disk. This makes your infrastructure deployments more secure, especially in environments where state files are stored remotely and accessible to multiple team members. Use ephemeral resources whenever you need to use sensitive credentials to configure resources but don't want those credentials to persist in state.
+Ephemeral resources solve the fundamental security problem with traditional data sources: sensitive values being persisted to state files. By using ephemeral resources for temporary credentials, API tokens, and passwords, you ensure that these values are available only during the current OpenTofu operation and are never written to state or plan. This makes your infrastructure deployments more secure, especially in environments where state files are stored remotely and accessible to multiple team members. Use ephemeral resources whenever you need to use sensitive credentials to configure resources but don't want those credentials to persist in state.
