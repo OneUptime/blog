@@ -89,7 +89,7 @@ resource "aws_elasticache_parameter_group" "redis7" {
 
   parameter {
     name  = "timeout"
-    value = "300"  # Connection timeout in seconds
+    value = "300"  # Idle client timeout in seconds
   }
 }
 ```
