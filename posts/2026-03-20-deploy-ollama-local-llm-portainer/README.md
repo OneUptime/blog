@@ -8,7 +8,7 @@ Description: Deploy Ollama via Portainer to run large language models locally wi
 
 ---
 
-Ollama lets you run LLMs like Llama 3, Mistral, Gemma, and Phi locally with a simple REST API that mirrors the OpenAI interface. Deploying it via Portainer gives your team a shared, managed LLM inference service that keeps data on-premises.
+Ollama lets you run LLMs like Llama 3, Mistral, Gemma, and Phi locally with a simple REST API and an OpenAI-compatible endpoint. Deploying it via Portainer gives your team a shared, managed LLM inference service that keeps data on-premises.
 
 ## Step 1: Deploy Ollama via Portainer Stack
 
@@ -21,7 +21,7 @@ version: "3.8"
 
 services:
   ollama:
-    image: ollama/ollama:0.1.27
+    image: ollama/ollama
     volumes:
       # Persist downloaded models - models can be several GB
       - ollama-data:/root/.ollama
@@ -39,12 +39,12 @@ networks:
     driver: bridge
 ```
 
-For GPU-accelerated inference, add NVIDIA device configuration:
+For GPU-accelerated inference on Docker Standalone with NVIDIA GPUs, add NVIDIA device configuration:
 
 ```yaml
 services:
   ollama:
-    image: ollama/ollama:0.1.27
+    image: ollama/ollama
     volumes:
       - ollama-data:/root/.ollama
     ports:
@@ -68,15 +68,15 @@ After deploying, pull a model via the Portainer container console or via the API
 ```bash
 # Pull Llama 3 8B (4.7GB download)
 curl http://localhost:11434/api/pull \
-  -d '{"name": "llama3"}'
+  -d '{"model": "llama3"}'
 
 # Pull Mistral 7B
 curl http://localhost:11434/api/pull \
-  -d '{"name": "mistral"}'
+  -d '{"model": "mistral"}'
 
 # Pull a smaller model for resource-constrained environments
 curl http://localhost:11434/api/pull \
-  -d '{"name": "phi3:mini"}'
+  -d '{"model": "phi3:mini"}'
 
 # List downloaded models
 curl http://localhost:11434/api/tags
@@ -92,8 +92,8 @@ from openai import OpenAI
 
 # Point the OpenAI client at your local Ollama instance
 client = OpenAI(
-    base_url="http://localhost:11434/v1",
-    api_key="ollama"   # API key is not validated, any value works
+    base_url="http://localhost:11434/v1/",
+    api_key="ollama"   # required but ignored
 )
 
 response = client.chat.completions.create(
@@ -129,8 +129,8 @@ for chunk in response:
 Manage multiple models from a single Ollama instance:
 
 ```bash
-# The Ollama container auto-selects the GPU when multiple models are loaded
-# Models are loaded on demand and unloaded after a period of inactivity
+# Ollama can keep multiple models loaded if they fit in available memory
+# By default, models stay loaded for 5 minutes after use
 
 # Customize model parameters with a Modelfile
 cat > /tmp/custom-llama3.modelfile << 'EOF'
@@ -145,19 +145,20 @@ PARAMETER top_p 0.9
 PARAMETER num_ctx 4096
 EOF
 
-# Create the custom model via the API
-curl http://localhost:11434/api/create \
-  -d "$(jq -Rs '{name: "devops-llama3", modelfile: .}' /tmp/custom-llama3.modelfile)"
+# Create the custom model from the container console
+ollama create devops-llama3 -f /tmp/custom-llama3.modelfile
 ```
 
 ## Step 5: Resource Planning
 
-| Model | RAM Required | GPU VRAM | Inference Speed (CPU) |
-|-------|-------------|----------|----------------------|
-| phi3:mini (3.8B) | 4GB | 4GB | ~10 tokens/s |
-| mistral (7B) | 8GB | 8GB | ~5 tokens/s |
-| llama3 (8B) | 8GB | 8GB | ~5 tokens/s |
-| llama3:70b | 40GB | 40GB | ~1 token/s |
+Actual memory usage depends on quantization, context length, concurrent requests, and whether the model is fully loaded on the GPU.
+
+| Model | Approx. model size | Default context window | Notes |
+|-------|--------------------|------------------------|-------|
+| phi3:mini (3.8B) | 2.2GB | 4K | Smallest option in this list |
+| mistral (7B) | 4.4GB | 32K | Good general-purpose 7B model |
+| llama3 (8B) | 4.7GB | 8K | Default `llama3` tag |
+| llama3:70b | 40GB | 8K | Requires a high-memory host or GPU |
 
 ## Summary
 
