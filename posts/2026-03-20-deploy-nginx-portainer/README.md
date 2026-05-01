@@ -25,8 +25,9 @@ Port Mapping:
   Host: 80  → Container: 80/tcp
   Host: 443 → Container: 443/tcp
 Volumes:
-  /opt/nginx/html  → /usr/share/nginx/html  (bind mount)
-  /opt/nginx/conf  → /etc/nginx/conf.d       (bind mount)
+  /opt/nginx/html   → /usr/share/nginx/html  (bind mount)
+  /opt/nginx/conf.d → /etc/nginx/conf.d      (bind mount)
+  /opt/nginx/ssl    → /etc/nginx/ssl         (bind mount)
 ```
 
 ## Deploy via Portainer Stack
@@ -34,8 +35,6 @@ Volumes:
 **Stacks → Add Stack → nginx**
 
 ```yaml
-version: "3.8"
-
 services:
   nginx:
     image: nginx:alpine
@@ -45,22 +44,16 @@ services:
       - "443:443"
     volumes:
       # Static content
-      - nginx_html:/usr/share/nginx/html
+      - /opt/nginx/html:/usr/share/nginx/html
       # Custom config files
-      - ./conf.d:/etc/nginx/conf.d:ro
+      - /opt/nginx/conf.d:/etc/nginx/conf.d:ro
       # SSL certificates
-      - ./ssl:/etc/nginx/ssl:ro
-      # Access logs
-      - nginx_logs:/var/log/nginx
-
-volumes:
-  nginx_html:
-  nginx_logs:
+      - /opt/nginx/ssl:/etc/nginx/ssl:ro
 ```
 
 ## Custom Nginx Configuration
 
-Create `/opt/nginx/conf.d/default.conf` on the host:
+Create `/opt/nginx/conf.d/default.conf` on the host, place your site files in `/opt/nginx/html`, and store your certificate and key as `/opt/nginx/ssl/cert.pem` and `/opt/nginx/ssl/key.pem`:
 
 ```nginx
 # /opt/nginx/conf.d/default.conf
@@ -74,8 +67,9 @@ server {
 }
 
 server {
-    listen 443 ssl http2;
+    listen 443 ssl;
     server_name yourdomain.com;
+    http2 on;
 
     # SSL certificates
     ssl_certificate /etc/nginx/ssl/cert.pem;
@@ -121,7 +115,7 @@ server {
 ## Verifying the Deployment
 
 ```bash
-# Check Nginx is running
+# Check Nginx config
 docker exec nginx nginx -t
 # Expected: nginx: the configuration file /etc/nginx/nginx.conf syntax is ok
 
@@ -142,11 +136,11 @@ docker exec nginx nginx -s reload
 
 ## Common Base Images
 
-| Image | Size | Use Case |
-|-------|------|---------|
-| `nginx:alpine` | ~25MB | Production (smallest) |
-| `nginx:latest` | ~180MB | Production (Debian-based) |
-| `nginx:1.26-alpine` | ~25MB | Pinned version |
+| Image | Approx. Compressed Size (amd64) | Use Case |
+|-------|-------------------------------|---------|
+| `nginx:alpine` | ~26MB | Production (smallest) |
+| `nginx:latest` | ~63MB | Production (Debian-based) |
+| `nginx:1.30.0-alpine` | ~26MB | Pinned version |
 
 ## Conclusion
 
