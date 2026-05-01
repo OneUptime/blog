@@ -30,21 +30,7 @@ mkdir my-app && cd my-app
 
 ## Step 2: Create the Application
 
-For this example, we'll create a simple web application:
-
-```bash
-# Create main application file
-cat > app.sh << 'EOF'
-#!/bin/bash
-# Simple HTTP server for demonstration
-while true; do
-  echo -e "HTTP/1.1 200 OK\r\nContent-Type: text/plain\r\n\r\nHello from How to Configure Epinio Namespaces!" | nc -l -p ${PORT:-8080}
-done
-EOF
-chmod +x app.sh
-```
-
-For a language-specific example relevant to this guide:
+For this example, we'll create a simple Node.js web application:
 
 ```bash
 # Node.js example
@@ -71,7 +57,7 @@ EOF
 epinio target my-apps
 
 # Verify namespace is active
-epinio namespace show my-apps
+epinio target
 ```
 
 ## Step 4: Deploy the Application
@@ -105,20 +91,19 @@ epinio app show my-app
 epinio app list
 
 # View the application route
-epinio app show my-app | grep Routes
+epinio app show my-app | awk '/^[[:space:]]*[0-9]+: https?:\/\// { print $2 }'
 ```
 
 ## Step 6: Test the Application
 
 ```bash
 # Get the application URL
-APP_URL=$(epinio app show my-app | grep Routes | awk '{print $2}')
+APP_URL=$(epinio app show my-app | awk '/^[[:space:]]*[0-9]+: https?:\/\// { print $2; exit }')
 
 # Test with curl
-curl ${APP_URL}
+curl "${APP_URL}"
 
-# Or open in browser
-open ${APP_URL}
+# Or paste the URL into your browser
 ```
 
 ## Step 7: View Application Logs
@@ -128,7 +113,7 @@ open ${APP_URL}
 epinio app logs my-app
 
 # Follow live logs
-epinio app logs my-app --follow
+epinio app logs --follow my-app
 ```
 
 ## Step 8: Update the Application
@@ -138,7 +123,7 @@ epinio app logs my-app --follow
 # Then re-push to update
 epinio push --name my-app
 
-# Epinio performs a rolling update
+# Verify the updated deployment
 epinio app show my-app
 ```
 
