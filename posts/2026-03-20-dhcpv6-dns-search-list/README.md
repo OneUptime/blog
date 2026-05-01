@@ -43,7 +43,7 @@ subnet6 2001:db8::/32 {
 ```text
 # /etc/dhcp/dhcpd6.conf
 class "servers" {
-    match if substring(option dhcp6.client-id, 0, 3) = "server";
+    match if substring(option dhcp6.client-id, 0, 6) = "server";
 }
 
 subnet6 2001:db8::/32 {
@@ -68,8 +68,17 @@ subnet6 2001:db8::/32 {
 ```json
 {
   "Dhcp6": {
+    "interfaces-config": {
+      "interfaces": [ "eth0" ]
+    },
+    "lease-database": {
+      "type": "memfile",
+      "persist": true,
+      "name": "/var/lib/kea/dhcp6.leases"
+    },
     "subnet6": [
       {
+        "id": 1,
         "subnet": "2001:db8::/32",
         "pools": [
           { "pool": "2001:db8::100-2001:db8::200" }
@@ -94,7 +103,7 @@ subnet6 2001:db8::/32 {
 
 ```bash
 sudo kea-dhcp6 -t /etc/kea/kea-dhcp6.conf
-sudo systemctl restart kea-dhcp6-server
+sudo systemctl restart kea-dhcp6
 ```
 
 ---
@@ -103,12 +112,11 @@ sudo systemctl restart kea-dhcp6-server
 
 ```powershell
 # Set domain search list for DHCPv6 scope
-Set-DhcpServerv6OptionValue -ScopeId "2001:db8::" `
-    -OptionId 24 `
-    -Value "corp.example.com", "internal.example.com"
+Set-DhcpServerv6OptionValue -Prefix 2001:db8:: `
+    -DomainSearchList "corp.example.com", "internal.example.com"
 
 # Verify the option
-Get-DhcpServerv6OptionValue -ScopeId "2001:db8::" -OptionId 24
+Get-DhcpServerv6OptionValue -Prefix 2001:db8:: -OptionId 24
 ```
 
 ---
@@ -161,7 +169,7 @@ sudo tcpdump -i eth0 -v udp port 546 or udp port 547
 
 | Problem | Likely Cause | Solution |
 |---------|-------------|----------|
-| Search list not applied | Client not requesting option 24 | Add `request dhcp6.domain-search` to client config |
+| Search list not applied | Client request list omits option 24 | Include `domain-search` in the client request list (ISC `dhclient`: `also request domain-search;`) |
 | Wrong domains returned | Wrong pool configuration | Check subnet-specific option overrides |
 | Resolution fails | DNS servers unreachable | Verify `dns-servers` option is also correct |
 | Search list ignored on Windows | DHCP client service issue | Restart DHCP service, renew with `ipconfig /renew6` |
