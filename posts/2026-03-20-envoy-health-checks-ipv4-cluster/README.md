@@ -45,7 +45,7 @@ static_resources:
             # Expected HTTP status code range
             expected_statuses:
               - start: 200
-                end: 299
+                end: 300
 
             # Custom host header for virtual-hosted backends
             host: health-check.internal
@@ -117,7 +117,7 @@ clusters:
         healthy_threshold: 1
 
         grpc_health_check:
-          service_name: ""    # Empty = check all services
+          service_name: ""    # Empty = overall server health
 
     load_assignment:
       cluster_name: grpc_service
@@ -153,17 +153,19 @@ load_assignment:
 curl http://127.0.0.1:9901/clusters | grep -E "health_flags|::cx_|::rq_"
 
 # Health flag values:
-# /healthy  → healthy
+# healthy → healthy
 # /failed_active_hc → failed active health check
-# /pending_active_hc → health check in progress
+# /pending_active_hc → awaiting the first active health check
 
 # View health check stats
-curl http://127.0.0.1:9901/stats | grep health_check
+curl http://127.0.0.1:9901/stats | grep -E "cluster.web_cluster.health_check|cluster.web_cluster.membership_(healthy|degraded)"
 
 # Key metrics:
+# cluster.web_cluster.health_check.attempt
 # cluster.web_cluster.health_check.success
 # cluster.web_cluster.health_check.failure
-# cluster.web_cluster.health_check.degraded
+# cluster.web_cluster.membership_healthy
+# cluster.web_cluster.membership_degraded
 ```
 
 ## Conclusion
