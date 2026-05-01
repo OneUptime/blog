@@ -14,7 +14,7 @@ Environment promotion pipelines ensure infrastructure changes are validated in l
 
 ```mermaid
 graph LR
-    PR[Pull Request] --> DEV[Plan + Apply Dev]
+    MAIN[Push to main] --> DEV[Plan + Apply Dev]
     DEV --> TEST[Automated Tests]
     TEST --> STAGING[Plan + Apply Staging]
     STAGING --> APPROVE[Human Approval]
@@ -32,6 +32,10 @@ on:
   push:
     branches: [main]
 
+permissions:
+  contents: read
+  id-token: write
+
 jobs:
   deploy-dev:
     runs-on: ubuntu-latest
@@ -40,9 +44,9 @@ jobs:
       run:
         working-directory: environments/dev
     steps:
-      - uses: actions/checkout@v4
-      - uses: opentofu/setup-opentofu@v1
-      - uses: aws-actions/configure-aws-credentials@v4
+      - uses: actions/checkout@v6
+      - uses: opentofu/setup-opentofu@v2
+      - uses: aws-actions/configure-aws-credentials@v6
         with:
           role-to-assume: ${{ vars.AWS_DEV_ROLE_ARN }}
           aws-region: us-east-1
@@ -53,7 +57,7 @@ jobs:
     needs: deploy-dev
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v6
       - name: Run infrastructure tests
         run: |
           # Test endpoints, connectivity, and health checks
@@ -68,9 +72,9 @@ jobs:
       run:
         working-directory: environments/staging
     steps:
-      - uses: actions/checkout@v4
-      - uses: opentofu/setup-opentofu@v1
-      - uses: aws-actions/configure-aws-credentials@v4
+      - uses: actions/checkout@v6
+      - uses: opentofu/setup-opentofu@v2
+      - uses: aws-actions/configure-aws-credentials@v6
         with:
           role-to-assume: ${{ vars.AWS_STAGING_ROLE_ARN }}
           aws-region: us-east-1
@@ -86,9 +90,9 @@ jobs:
       run:
         working-directory: environments/prod
     steps:
-      - uses: actions/checkout@v4
-      - uses: opentofu/setup-opentofu@v1
-      - uses: aws-actions/configure-aws-credentials@v4
+      - uses: actions/checkout@v6
+      - uses: opentofu/setup-opentofu@v2
+      - uses: aws-actions/configure-aws-credentials@v6
         with:
           role-to-assume: ${{ vars.AWS_PROD_ROLE_ARN }}
           aws-region: us-east-1
