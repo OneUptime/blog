@@ -21,10 +21,12 @@ variable "enable_waf" {
 }
 
 resource "aws_wafv2_web_acl" "main" {
-  enabled = var.enable_waf
-
   name  = "myapp-waf"
   scope = "REGIONAL"
+
+  lifecycle {
+    enabled = var.enable_waf
+  }
 
   default_action {
     allow {}
@@ -57,13 +59,16 @@ output "log_group_arn_old" {
 
 # New pattern with enabled
 resource "aws_cloudwatch_log_group" "app" {
-  enabled = var.enable_logging
-  name    = "/myapp/application"
+  name = "/myapp/application"
+
+  lifecycle {
+    enabled = var.enable_logging
+  }
 }
 
 # Reference is clean - no index needed
 output "log_group_arn" {
-  value = aws_cloudwatch_log_group.app.arn
+  value = aws_cloudwatch_log_group.app != null ? aws_cloudwatch_log_group.app.arn : null
 }
 ```
 
@@ -78,11 +83,14 @@ variable "enable_monitoring" {
 }
 
 module "prometheus" {
-  source  = "./modules/prometheus"
-  enabled = var.enable_monitoring
+  source = "./modules/prometheus"
 
   cluster_name = var.cluster_name
   namespace    = "monitoring"
+
+  lifecycle {
+    enabled = var.enable_monitoring
+  }
 }
 ```
 
@@ -97,17 +105,21 @@ variable "environment" {
 
 resource "aws_shield_protection" "main" {
   # Only enable DDoS protection in production (it costs $3000/month)
-  enabled = var.environment == "prod"
-
   name         = "myapp-shield"
   resource_arn = aws_lb.main.arn
+
+  lifecycle {
+    enabled = var.environment == "prod"
+  }
 }
 
 resource "aws_backup_plan" "daily" {
   # Enable backups in prod and staging, skip in dev
-  enabled = contains(["prod", "staging"], var.environment)
-
   name = "myapp-${var.environment}-backup"
+
+  lifecycle {
+    enabled = contains(["prod", "staging"], var.environment)
+  }
 
   rule {
     rule_name         = "daily"
@@ -138,14 +150,19 @@ variable "features" {
 }
 
 resource "aws_wafv2_web_acl" "main" {
-  enabled = var.features.waf
+  lifecycle {
+    enabled = var.features.waf
+  }
   # ...
 }
 
 resource "aws_cloudwatch_log_group" "enhanced" {
-  enabled           = var.features.enhanced_logging
   name              = "/myapp/enhanced"
   retention_in_days = 90
+
+  lifecycle {
+    enabled = var.features.enhanced_logging
+  }
 }
 ```
 
