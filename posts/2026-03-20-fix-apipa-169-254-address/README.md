@@ -2,15 +2,15 @@
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
-Tags: APIPA, 169.254, DHCP, Window, Troubleshooting
+Tags: APIPA, 169.254, DHCP, Windows, Troubleshooting
 
-Description: Learn how to fix the issue where your network adapter gets a 169.254.x.x APIPA address instead of a proper DHCP-assigned IP, indicating DHCP failure.
+Description: Learn how to fix the issue where your network adapter gets a 169.254.x.x APIPA address instead of a proper DHCP-assigned IP, typically indicating a DHCP problem.
 
 ## What Is APIPA?
 
-APIPA (Automatic Private IP Addressing) is a fallback mechanism. When a device cannot contact a DHCP server after 60-90 seconds of trying, Windows/macOS/Linux automatically assigns itself an address in the 169.254.0.0/16 range.
+APIPA (Automatic Private IP Addressing) is an IPv4 link-local fallback mechanism. On a DHCP-enabled Windows adapter, if Windows cannot obtain an IP address from DHCP, it can assign itself an address in the 169.254.0.0/16 link-local block.
 
-A 169.254.x.x address means DHCP has failed completely.
+A 169.254.x.x address on a DHCP-enabled adapter usually means Windows could not get an IP address from the DHCP server or router.
 
 ## Step 1: Confirm APIPA Address
 
@@ -18,7 +18,7 @@ A 169.254.x.x address means DHCP has failed completely.
 ipconfig /all
 REM Look for:
 REM "Autoconfiguration IPv4 Address: 169.254.x.x"
-REM This confirms DHCP failure
+REM On a DHCP-enabled adapter, this usually indicates DHCP failure
 ```
 
 ## Step 2: Check Physical Connectivity
@@ -28,8 +28,8 @@ REM Verify link is up (cable connected / WiFi associated)
 netsh interface show interface
 REM Should show "Connected" status
 
-REM For WiFi, verify association
-netsh wlan show interfaces | findstr "State\|SSID"
+REM For WiFi, verify association and check the State and SSID fields
+netsh wlan show interfaces
 ```
 
 ## Step 3: Force DHCP Renewal
@@ -44,15 +44,18 @@ ipconfig /all
 ## Step 4: Check DHCP Server
 
 ```bash
-# On Linux/router: Check if DHCP server is running
+# On Linux/router: check whether the DHCP service is running
+# Service names vary by distro and DHCP server package
 
 systemctl status isc-dhcp-server
+systemctl status dhcpd
 systemctl status dnsmasq
 
-# Check if DHCP server is listening on the correct interface
-ss -ulnp | grep 67
+# Check whether the DHCP server is listening on UDP port 67
+ss -ulnp '( sport = :67 )'
 
-# Test DHCP from command line
+# If dhclient is installed, request a lease and watch the exchange
+# Replace eth0 with your actual interface name
 sudo dhclient -v eth0
 ```
 
@@ -60,28 +63,25 @@ sudo dhclient -v eth0
 
 ```bash
 # DHCP uses UDP ports 67 (server) and 68 (client)
-# Verify firewall isn't blocking these
+# On a DHCP server, allow inbound UDP 67
+# On a DHCP client, allow inbound UDP 68
 
 # Linux iptables
-sudo iptables -L INPUT -n | grep -E "67|68"
+sudo iptables -S INPUT | grep -E -- "--dport (67|68)"
 
-# Allow DHCP
+# Example rules
 sudo iptables -I INPUT -p udp --dport 67 -j ACCEPT
 sudo iptables -I INPUT -p udp --dport 68 -j ACCEPT
 ```
 
-## Step 6: Disable APIPA (Windows) and Use Static IP
+## Step 6: Use Static IP as a Temporary Workaround
 
 ```cmd
-REM Disable APIPA (Windows will fail silently instead of using 169.254.x.x)
-REM Run Registry Editor
-reg add "HKLM\SYSTEM\CurrentControlSet\Services\Tcpip\Parameters\Interfaces\{GUID}" /v IPAutoconfigurationEnabled /t REG_DWORD /d 0 /f
-
-REM Better approach: set static IP as a working alternative
-netsh interface ip set address name="Ethernet" static 192.168.1.100 255.255.255.0 192.168.1.1
-netsh interface ip set dns name="Ethernet" static 8.8.8.8
+REM Set a temporary static IP while you investigate DHCP
+netsh interface ipv4 set address name="Ethernet" source=static address=192.168.1.100 mask=255.255.255.0 gateway=192.168.1.1 store=persistent
+netsh interface ipv4 set dnsservers name="Ethernet" source=static address=8.8.8.8 register=primary
 ```
 
 ## Conclusion
 
-169.254.x.x addresses mean DHCP is failing. Check physical connectivity first, then run `ipconfig /release && /renew`, verify the DHCP server is running with `systemctl status isc-dhcp-server`, and check for firewall rules blocking UDP 67/68. If DHCP is consistently unreliable, use a static IP as a workaround while investigating the DHCP server.
+169.254.x.x addresses on a DHCP-enabled adapter usually mean Windows could not get an IP address from DHCP. Check physical connectivity first, then run `ipconfig /release` and `ipconfig /renew`, verify the DHCP server is running with `systemctl status isc-dhcp-server`, and check for firewall rules blocking UDP 67/68. If DHCP is consistently unreliable, use a static IP as a temporary workaround while you investigate the DHCP server.
