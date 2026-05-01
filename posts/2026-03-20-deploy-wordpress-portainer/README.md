@@ -11,11 +11,9 @@ Description: Learn how to deploy WordPress with MySQL and Redis cache via Portai
 **Stacks → Add Stack → wordpress**
 
 ```yaml
-version: "3.8"
-
 services:
   wordpress:
-    image: wordpress:6.5-apache
+    image: wordpress:6.9-apache
     restart: unless-stopped
     environment:
       - WORDPRESS_DB_HOST=mysql:3306
@@ -23,7 +21,6 @@ services:
       - WORDPRESS_DB_USER=${MYSQL_USER}
       - WORDPRESS_DB_PASSWORD=${MYSQL_PASSWORD}
       - WORDPRESS_TABLE_PREFIX=wp_
-      - WORDPRESS_DEBUG=false
     volumes:
       - wordpress_data:/var/www/html
       - ./wordpress-conf/uploads.ini:/usr/local/etc/php/conf.d/uploads.ini:ro
@@ -35,8 +32,10 @@ services:
       - "traefik.enable=true"
       - "traefik.http.routers.wordpress.rule=Host(`blog.yourdomain.com`)"
       - "traefik.http.routers.wordpress.entrypoints=websecure"
+      - "traefik.http.routers.wordpress.tls=true"
       - "traefik.http.routers.wordpress.tls.certresolver=letsencrypt"
       - "traefik.http.services.wordpress.loadbalancer.server.port=80"
+      - "traefik.docker.network=proxy"
     depends_on:
       mysql:
         condition: service_healthy
@@ -82,11 +81,11 @@ networks:
 ## Environment Variables
 
 ```text
-MYSQL_DATABASE = wordpress
-MYSQL_USER = wp_user
-MYSQL_PASSWORD = wp-db-password
-MYSQL_ROOT_PASSWORD = root-password
-REDIS_PASSWORD = redis-password
+MYSQL_DATABASE=wordpress
+MYSQL_USER=wp_user
+MYSQL_PASSWORD=wp-db-password
+MYSQL_ROOT_PASSWORD=root-password
+REDIS_PASSWORD=redis-password
 ```
 
 ## PHP Configuration
@@ -135,11 +134,14 @@ curl -O https://raw.githubusercontent.com/wp-cli/builds/gh-pages/phar/wp-cli.pha
 chmod +x wp-cli.phar
 mv wp-cli.phar /usr/local/bin/wp
 
+# If the console is opened as root, allow WP-CLI in the container shell
+export WP_CLI_ALLOW_ROOT=1
+
 # Common WP-CLI commands
 wp core version
 wp plugin list
 wp user list
-wp cache flush    # Flush Redis cache
+wp cache flush    # Flush the object cache
 wp search-replace 'http://old-domain.com' 'https://new-domain.com'
 ```
 
@@ -147,10 +149,10 @@ wp search-replace 'http://old-domain.com' 'https://new-domain.com'
 
 ```bash
 # Backup files and database
-docker exec mysql mysqldump -u root -p"${MYSQL_ROOT_PASSWORD}" wordpress \
+docker exec -i <mysql-container-name> sh -c 'exec mysqldump -u"$MYSQL_USER" -p"$MYSQL_PASSWORD" "$MYSQL_DATABASE"' \
   > /backup/wp-db-$(date +%Y%m%d).sql
 
-docker cp wordpress:/var/www/html/wp-content \
+docker cp <wordpress-container-name>:/var/www/html/wp-content \
   /backup/wp-content-$(date +%Y%m%d)
 ```
 
@@ -158,7 +160,7 @@ docker cp wordpress:/var/www/html/wp-content \
 
 | Plugin | Purpose |
 |--------|---------|
-| Redis Object Cache | Database query caching |
+| Redis Object Cache | Persistent object caching |
 | LiteSpeed Cache | Full-page caching (if using LiteSpeed) |
 | WP Super Cache | Static HTML caching |
 | Imagify | Image compression |
