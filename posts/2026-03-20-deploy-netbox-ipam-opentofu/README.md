@@ -44,7 +44,7 @@ resource "aws_elasticache_replication_group" "netbox" {
   num_cache_clusters         = 1
   engine_version             = "7.0"
   at_rest_encryption_enabled = true
-  transit_encryption_enabled = false  # NetBox doesn't support Redis TLS by default
+  transit_encryption_enabled = false  # Set REDIS_SSL and REDIS_CACHE_SSL if you enable Redis TLS
 
   subnet_group_name  = aws_elasticache_subnet_group.main.name
   security_group_ids = [aws_security_group.redis.id]
@@ -74,7 +74,7 @@ resource "aws_ecs_task_definition" "netbox" {
   container_definitions = jsonencode([
     {
       name  = "netbox"
-      image = "netboxcommunity/netbox:v3.7"
+      image = "netboxcommunity/netbox:v3.7.8"
       essential = true
 
       environment = [
@@ -89,9 +89,6 @@ resource "aws_ecs_task_definition" "netbox" {
         { name = "REDIS_CACHE_PORT", value = "6379" },
         { name = "CORS_ORIGIN_ALLOW_ALL", value = "True" },
         { name = "TIME_ZONE",        value = "UTC" },
-        { name = "EMAIL_SERVER",     value = "email-smtp.${var.aws_region}.amazonaws.com" },
-        { name = "EMAIL_PORT",       value = "587" },
-        { name = "EMAIL_FROM",       value = "netbox@${var.domain_name}" },
       ]
 
       secrets = [
@@ -128,8 +125,12 @@ resource "aws_ecs_task_definition" "netbox" {
     {
       # NetBox worker for background tasks
       name  = "netbox-worker"
-      image = "netboxcommunity/netbox:v3.7"
+      image = "netboxcommunity/netbox:v3.7.8"
       essential = true
+      dependsOn = [{
+        containerName = "netbox"
+        condition     = "HEALTHY"
+      }]
       command = ["/opt/netbox/venv/bin/python", "/opt/netbox/netbox/manage.py", "rqworker"]
 
       environment = [
@@ -149,6 +150,15 @@ resource "aws_ecs_task_definition" "netbox" {
 ## Using the NetBox Provider for IP Management
 
 ```hcl
+terraform {
+  required_providers {
+    netbox = {
+      source  = "registry.terraform.io/e-breuninger/netbox"
+      version = "~> 3.8.0"
+    }
+  }
+}
+
 provider "netbox" {
   server_url = "https://${var.netbox_hostname}"
   api_token  = var.netbox_api_token
