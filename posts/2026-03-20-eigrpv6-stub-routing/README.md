@@ -27,9 +27,10 @@ With stub routing:
 | Option | Routes Advertised | Description |
 |--------|-----------------|-------------|
 | `stub connected` | Connected only | Only directly connected routes |
-| `stub static` | Static + Connected | Static and connected routes |
+| `stub static` | Static only | Only static routes |
 | `stub summary` | Summary routes | Only summary routes |
-| `stub receive-only` | None | Accepts but never advertises |
+| `stub redistributed` | Redistributed only | Only redistributed routes |
+| `stub receive-only` | None | Accepts routes but advertises none |
 | `stub` (default) | Connected + Summary | Default stub behavior |
 
 ## Classic EIGRPv6 Stub Configuration (Spoke Router)
@@ -48,6 +49,7 @@ Router-Spoke(config-rtr)# no shutdown
 Router-Spoke(config)# router eigrp MY_WAN
 Router-Spoke(config-router)# address-family ipv6 unicast autonomous-system 1
 Router-Spoke(config-router-af)# eigrp stub connected
+Router-Spoke(config-router-af)# no shutdown
 Router-Spoke(config-router-af)# exit-address-family
 ```
 
@@ -62,21 +64,18 @@ The hub router does not need special configuration to recognize stub routers. EI
 Router-Hub# show ipv6 eigrp neighbors detail
 
 IPv6-EIGRP neighbors for process 1
-  Address: FE80::spoke
+  Address: FE80::2
     Interface: GigabitEthernet0/1, Hold 14, SRTT 8 ms
-    Stub Peer Advertising [CONNECTED] Routes
+    Stub Peer Advertising (CONNECTED) Routes
     Suppressing queries
-    ↑ "Stub Peer" and "Suppressing queries" confirm stub recognition
 
-! On the spoke router - verify stub mode is active
-Router-Spoke# show ipv6 eigrp
-
-IPv6-EIGRP AS 1
-...
-Stub: connected
+! On the spoke router - confirm the stub command is configured
+Router-Spoke# show running-config | section ipv6 router eigrp
+ipv6 router eigrp 1
+ eigrp stub connected
 ```
 
-## Receive-Only Stub (Summary Routes)
+## Receive-Only Stub (No Routes Advertised)
 
 A receive-only stub accepts all EIGRP routes but advertises nothing:
 
@@ -91,14 +90,14 @@ Router-Spoke(config-rtr)# no shutdown
 
 ```text
 ! Before stub: hub queries all spokes on failure
-! After stub: hub resolves locally without querying stubs
+! After stub: hub does not query stub spokes
 
 ! Measure EIGRP query scope
-Router-Hub# debug ipv6 eigrp fsm
+Router-Hub# debug eigrp packet query
 ! Count how many "Query" messages are sent to each neighbor
 ! With stub neighbors, spoke interfaces show "Suppressing queries"
 ```
 
 ## Summary
 
-EIGRPv6 stub routing reduces DUAL query scope in hub-and-spoke deployments. Configure `eigrp stub connected` on spoke routers. The hub automatically suppresses queries to stub neighbors, resulting in faster convergence. Use `show ipv6 eigrp neighbors detail` on the hub to confirm stubs are recognized with "Suppressing queries" in the output.
+EIGRPv6 stub routing reduces DUAL query scope in hub-and-spoke deployments. Configure `eigrp stub connected` on spoke routers. The hub automatically suppresses queries to stub neighbors, resulting in faster convergence. Use `show ipv6 eigrp neighbors detail` on classic EIGRPv6 hubs, or `show eigrp address-family ipv6 1 neighbors detail` in named mode, to confirm stubs are recognized with "Suppressing queries" in the output.
