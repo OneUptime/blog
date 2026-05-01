@@ -11,8 +11,6 @@ Description: Learn how to deploy Redis via Portainer with password authenticatio
 **Stacks → Add Stack → redis**
 
 ```yaml
-version: "3.8"
-
 services:
   redis:
     image: redis:7.2-alpine
@@ -29,10 +27,11 @@ services:
       retries: 5
 
   redis-commander:
-    image: rediscommander/redis-commander:latest
+    image: ghcr.io/joeferner/redis-commander:latest
     restart: unless-stopped
     ports:
       - "8082:8081"
+    user: redis
     environment:
       - REDIS_HOSTS=local:redis:6379:0:${REDIS_PASSWORD}
     depends_on:
@@ -64,7 +63,7 @@ Key Redis settings explained:
 For a read-through cache (no persistence needed):
 
 ```yaml
-command: redis-server --requirepass ${REDIS_PASSWORD} --maxmemory 512mb --maxmemory-policy allkeys-lru --save ""
+command: ["redis-server", "--requirepass", "${REDIS_PASSWORD}", "--maxmemory", "512mb", "--maxmemory-policy", "allkeys-lru", "--save", ""]
 ```
 
 ## Connecting from Application Services
@@ -83,9 +82,8 @@ services:
 ## Redis Operations via Portainer Console
 
 ```bash
-# Connect to Redis CLI
-
-docker exec -it redis redis-cli -a "${REDIS_PASSWORD}"
+# In the Redis container console in Portainer, run:
+redis-cli -a "${REDIS_PASSWORD}"
 
 # Test connection
 PING
@@ -96,7 +94,7 @@ SET mykey "hello"
 GET mykey
 
 # Set with expiry (30 seconds)
-SETEX session:user123 30 '{"userId":123}'
+SET session:user123 '{"userId":123}' EX 30
 
 # View all keys (avoid in production)
 KEYS *
@@ -138,14 +136,19 @@ environment:
 
 ```bash
 # Trigger RDB snapshot
-docker exec redis redis-cli -a "${REDIS_PASSWORD}" BGSAVE
+docker exec <redis-container-name> redis-cli -a "${REDIS_PASSWORD}" BGSAVE
 
-# Copy snapshot from container
-docker cp redis:/data/dump.rdb /backup/redis-dump-$(date +%Y%m%d).rdb
+# Copy the RDB snapshot from the container
+docker cp <redis-container-name>:/data/dump.rdb /backup/redis-dump-$(date +%Y%m%d).rdb
 
-# Restore
-docker cp /backup/redis-dump-20260320.rdb redis:/data/dump.rdb
-docker restart redis
+# If appendonly is enabled, also copy the AOF directory
+docker cp <redis-container-name>:/data/appendonlydir /backup/redis-appendonly-$(date +%Y%m%d)
+
+# Restore the matching RDB and AOF backup set
+docker stop <redis-container-name>
+docker cp /backup/redis-dump-20260320.rdb <redis-container-name>:/data/dump.rdb
+docker cp /backup/redis-appendonly-20260320/. <redis-container-name>:/data/appendonlydir/
+docker start <redis-container-name>
 ```
 
 ## Conclusion
