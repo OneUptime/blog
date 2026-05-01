@@ -8,14 +8,12 @@ Description: Configure custom IPv4 subnets for Docker Compose services using the
 
 ## Introduction
 
-Docker Compose automatically creates a network for each project, but the default subnet is random. Defining custom networks in the `networks:` section of your Compose file ensures consistent, predictable IP addressing and enables network-tier isolation.
+Docker Compose automatically creates a network for each project, but the default subnet is automatically assigned. Defining custom networks in the `networks:` section of your Compose file ensures consistent, predictable IP addressing and enables network-tier isolation.
 
 ## Basic Custom Network in Docker Compose
 
 ```yaml
 # docker-compose.yml
-
-version: "3.8"
 
 services:
   web:
@@ -62,18 +60,19 @@ In this configuration:
 ```bash
 docker compose up -d
 
-# Verify network and container IPs
+# Verify containers and their attached networks
 docker compose ps
-docker network inspect $(docker compose config --format json | python3 -m json.tool | grep -o '"[^"]*_frontend"')
+docker inspect --format='{{.Name}} {{range $name, $network := .NetworkSettings.Networks}}{{printf "%s=%s " $name $network.IPAddress}}{{end}}' \
+  $(docker compose ps -q web app db)
 ```
 
 ## Checking Service IPs
 
 ```bash
 # Show IP addresses of running services
-docker compose exec web hostname -I
-docker compose exec app hostname -I
-docker compose exec db hostname -I
+docker inspect --format='web: {{range $name, $network := .NetworkSettings.Networks}}{{printf "%s=%s " $name $network.IPAddress}}{{end}}' "$(docker compose ps -q web)"
+docker inspect --format='app: {{range $name, $network := .NetworkSettings.Networks}}{{printf "%s=%s " $name $network.IPAddress}}{{end}}' "$(docker compose ps -q app)"
+docker inspect --format='db: {{range $name, $network := .NetworkSettings.Networks}}{{printf "%s=%s " $name $network.IPAddress}}{{end}}' "$(docker compose ps -q db)"
 ```
 
 ## Using External Networks
