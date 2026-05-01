@@ -8,7 +8,7 @@ Description: Learn how to configure ECS Container Insights with OpenTofu to coll
 
 ## Introduction
 
-ECS Container Insights uses CloudWatch to collect granular metrics for ECS clusters, services, and individual tasks including CPU utilization, memory utilization, network I/O, and storage I/O. Unlike basic CloudWatch metrics, Container Insights provides task-level granularity and enables alerting on individual service or task performance.
+ECS Container Insights uses CloudWatch to collect granular metrics for ECS clusters, services, and tasks including CPU, memory, network I/O, and storage I/O. Unlike standard Amazon ECS service metrics, Container Insights adds task-level telemetry plus network and storage metrics in the `ECS/ContainerInsights` namespace.
 
 ## Prerequisites
 
@@ -44,45 +44,98 @@ resource "aws_ecs_account_setting_default" "container_insights" {
 ## Step 2: CloudWatch Alarms Using Container Insights Metrics
 
 ```hcl
-# Alert when service CPU exceeds 80%
+# Alert when service CPU usage exceeds 80%
 resource "aws_cloudwatch_metric_alarm" "ecs_cpu_high" {
   alarm_name          = "${var.project_name}-ecs-cpu-high"
   comparison_operator = "GreaterThanThreshold"
   evaluation_periods  = 3
-  metric_name         = "CpuUtilized"
-  namespace           = "ECS/ContainerInsights"
-  period              = 300
-  statistic           = "Average"
   threshold           = 80.0
 
-  dimensions = {
-    ClusterName = aws_ecs_cluster.main.name
-    ServiceName = "${var.project_name}-app"
+  metric_query {
+    id          = "cpu_usage_percent"
+    expression  = "cpu_utilized / cpu_reserved * 100"
+    label       = "CPU usage (%)"
+    return_data = true
   }
 
-  alarm_description = "ECS service CPU utilization above 80%"
+  metric_query {
+    id = "cpu_utilized"
+    metric {
+      metric_name = "CpuUtilized"
+      namespace   = "ECS/ContainerInsights"
+      period      = 300
+      stat        = "Average"
+      dimensions = {
+        ClusterName = aws_ecs_cluster.main.name
+        ServiceName = "${var.project_name}-app"
+      }
+    }
+  }
+
+  metric_query {
+    id = "cpu_reserved"
+    metric {
+      metric_name = "CpuReserved"
+      namespace   = "ECS/ContainerInsights"
+      period      = 300
+      stat        = "Average"
+      dimensions = {
+        ClusterName = aws_ecs_cluster.main.name
+        ServiceName = "${var.project_name}-app"
+      }
+    }
+  }
+
+  alarm_description = "ECS service CPU usage above 80%"
   alarm_actions     = [var.sns_topic_arn]
   ok_actions        = [var.sns_topic_arn]
 
   treat_missing_data = "notBreaching"
 }
 
-# Alert when service memory exceeds 85%
+# Alert when service memory usage exceeds 85%
 resource "aws_cloudwatch_metric_alarm" "ecs_memory_high" {
   alarm_name          = "${var.project_name}-ecs-memory-high"
   comparison_operator = "GreaterThanThreshold"
   evaluation_periods  = 3
-  metric_name         = "MemoryUtilized"
-  namespace           = "ECS/ContainerInsights"
-  period              = 300
-  statistic           = "Average"
-  threshold           = var.memory_threshold_mb  # Absolute MB threshold
+  threshold           = 85.0
 
-  dimensions = {
-    ClusterName = aws_ecs_cluster.main.name
-    ServiceName = "${var.project_name}-app"
+  metric_query {
+    id          = "memory_usage_percent"
+    expression  = "memory_utilized / memory_reserved * 100"
+    label       = "Memory usage (%)"
+    return_data = true
   }
 
+  metric_query {
+    id = "memory_utilized"
+    metric {
+      metric_name = "MemoryUtilized"
+      namespace   = "ECS/ContainerInsights"
+      period      = 300
+      stat        = "Average"
+      dimensions = {
+        ClusterName = aws_ecs_cluster.main.name
+        ServiceName = "${var.project_name}-app"
+      }
+    }
+  }
+
+  metric_query {
+    id = "memory_reserved"
+    metric {
+      metric_name = "MemoryReserved"
+      namespace   = "ECS/ContainerInsights"
+      period      = 300
+      stat        = "Average"
+      dimensions = {
+        ClusterName = aws_ecs_cluster.main.name
+        ServiceName = "${var.project_name}-app"
+      }
+    }
+  }
+
+  alarm_description = "ECS service memory usage above 85%"
   alarm_actions = [var.sns_topic_arn]
 }
 
@@ -130,11 +183,11 @@ resource "aws_cloudwatch_dashboard" "ecs_insights" {
             ["ECS/ContainerInsights", "CpuUtilized",
              "ClusterName", aws_ecs_cluster.main.name,
              "ServiceName", "${var.project_name}-app",
-             { stat = "Average", yAxis = "left", label = "CPU (cores)" }],
+             { stat = "Average", yAxis = "left", label = "CPU units" }],
             ["ECS/ContainerInsights", "MemoryUtilized",
              "ClusterName", aws_ecs_cluster.main.name,
              "ServiceName", "${var.project_name}-app",
-             { stat = "Average", yAxis = "right", label = "Memory (MB)" }]
+             { stat = "Average", yAxis = "right", label = "Memory (MiB)" }]
           ]
         }
       },
@@ -170,11 +223,11 @@ resource "aws_cloudwatch_dashboard" "ecs_insights" {
             ["ECS/ContainerInsights", "NetworkRxBytes",
              "ClusterName", aws_ecs_cluster.main.name,
              "ServiceName", "${var.project_name}-app",
-             { stat = "Sum", label = "Network In" }],
+             { stat = "Average", label = "Network In (B/s)" }],
             ["ECS/ContainerInsights", "NetworkTxBytes",
              "ClusterName", aws_ecs_cluster.main.name,
              "ServiceName", "${var.project_name}-app",
-             { stat = "Sum", label = "Network Out" }]
+             { stat = "Average", label = "Network Out (B/s)" }]
           ]
         }
       }
@@ -195,12 +248,12 @@ aws cloudwatch get-metric-statistics \
   --namespace ECS/ContainerInsights \
   --metric-name CpuUtilized \
   --dimensions Name=ClusterName,Value=my-project-cluster Name=ServiceName,Value=my-project-app \
-  --start-time $(date -u -d '1 hour ago' +%Y-%m-%dT%H:%M:%S) \
-  --end-time $(date -u +%Y-%m-%dT%H:%M:%S) \
+  --start-time $(date -u -d '1 hour ago' +%Y-%m-%dT%H:%M:%SZ) \
+  --end-time $(date -u +%Y-%m-%dT%H:%M:%SZ) \
   --period 300 \
   --statistics Average
 ```
 
 ## Conclusion
 
-Container Insights is essential for ECS Fargate workloads where you can't access underlying EC2 instances-it's the only way to get task-level CPU and memory metrics. Note that Container Insights charges for custom CloudWatch metrics ($0.30/metric/month); monitor the metric count if cost is a concern. Alert on `RunningTaskCount` dropping below expected values-this catches service degradation that pure CPU/memory metrics miss.
+Container Insights is especially useful for ECS Fargate workloads where you can't access underlying EC2 instances, because it gives you built-in task, service, and cluster telemetry in CloudWatch. Note that standard Container Insights metrics are billed as custom CloudWatch metrics, and the feature also stores performance log events in CloudWatch Logs; check current CloudWatch pricing for your Region if cost is a concern. Alert on `RunningTaskCount` dropping below expected values-this catches service degradation that pure CPU and memory thresholds can miss.
