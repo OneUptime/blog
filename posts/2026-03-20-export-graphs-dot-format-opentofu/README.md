@@ -21,7 +21,7 @@ tofu graph > infrastructure.dot
 tofu graph -type=apply > apply-graph.dot
 
 # Export the destroy graph
-tofu graph -type=destroy-plan > destroy-graph.dot
+tofu graph -type=plan-destroy > destroy-graph.dot
 ```
 
 ## Understanding the DOT File Structure
@@ -34,13 +34,13 @@ digraph {
     newrank  = "true"
 
     subgraph "root" {
-        # Node declarations
+        // Node declarations
         "[root] aws_vpc.main (expand)" [label = "aws_vpc.main", shape = "box"]
         "[root] aws_subnet.public (expand)" [label = "aws_subnet.public", shape = "box"]
         "[root] aws_instance.web (expand)" [label = "aws_instance.web", shape = "box"]
         "[root] provider[\"registry.opentofu.org/hashicorp/aws\"]" [label = "provider...", shape = "diamond"]
 
-        # Edge declarations (dependencies)
+        // Edge declarations (dependencies)
         "[root] aws_subnet.public (expand)" -> "[root] aws_vpc.main (expand)"
         "[root] aws_instance.web (expand)" -> "[root] aws_subnet.public (expand)"
     }
@@ -51,14 +51,14 @@ Each `->` indicates a dependency: the left node depends on the right node.
 
 ## Exporting with Module Context
 
-For configurations with modules, include module subgraphs in the export:
+For configurations with modules, export the full graph to include module subgraphs:
 
 ```bash
 # Export graph including all module nodes
-tofu graph -draw-cycles > full-graph.dot
+tofu graph > full-graph.dot
 ```
 
-The `-draw-cycles` flag highlights any circular dependency cycles, making them easier to spot visually.
+If you need to diagnose a circular dependency, add `-draw-cycles` to highlight cycle edges in the DOT output.
 
 ## Customizing DOT Output with Post-Processing
 
@@ -70,7 +70,6 @@ Enhance the raw DOT output before rendering - for example, color nodes by resour
 # Reads a tofu graph DOT file from stdin and adds color coding by resource type
 
 import sys
-import re
 
 COLOR_MAP = {
     "aws_vpc":         "lightblue",
@@ -86,8 +85,8 @@ for line in sys.stdin:
     colored = line
     for resource_prefix, color in COLOR_MAP.items():
         if resource_prefix in line and "label" in line:
-            # Add fillcolor and style to matching node declarations
-            colored = line.rstrip() + f' fillcolor="{color}" style="filled"\n'
+            # Add a second DOT attribute list to matching node declarations
+            colored = line.rstrip("\n") + f' [fillcolor = "{color}", style = "filled"]\n'
             break
     print(colored, end="")
 ```
@@ -125,6 +124,7 @@ Add graph export to your CI pipeline for documentation or diff reviews:
 - name: Export Dependency Graph
   run: |
     tofu init -backend=false
+    mkdir -p artifacts
     tofu graph > artifacts/graph.dot
     dot -Tsvg artifacts/graph.dot -o artifacts/graph.svg
 
