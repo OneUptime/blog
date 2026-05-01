@@ -4,18 +4,18 @@ Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
 Tags: OpenTofu, OpenVPN, VPN, Network Security, AWS
 
-Description: Learn how to deploy OpenVPN Access Server on AWS EC2 using OpenTofu for enterprise-grade VPN with user management, MFA support, and web-based client distribution.
+Description: Learn how to deploy OpenVPN Access Server on AWS EC2 using OpenTofu for a managed VPN with user management, MFA support, and web-based client distribution.
 
 ## Introduction
 
-OpenVPN Access Server provides a full-featured VPN with a web-based admin console, user management, and automatic client configuration distribution. This guide deploys OpenVPN Access Server on EC2 using the official AMI with proper IAM, security groups, and persistent configuration storage.
+OpenVPN Access Server provides a full-featured VPN with a web-based admin console, user management, and automatic client configuration distribution. This guide deploys OpenVPN Access Server on EC2 using the official AMI with security groups, Elastic IP addressing, and routed access to VPC resources.
 
 ## Data Source for Official OpenVPN AMI
 
 ```hcl
 data "aws_ami" "openvpn" {
   most_recent = true
-  owners      = ["679593333241"]  # OpenVPN Inc. AWS account
+  owners      = ["aws-marketplace"]  # AWS Marketplace verified provider alias
 
   filter {
     name   = "name"
@@ -49,27 +49,28 @@ resource "aws_instance" "openvpn" {
   # OpenVPN requires source/dest check disabled
   source_dest_check = false
 
-  # OpenVPN license acceptance - required for non-free usage
-  # The AMI handles this via the marketplace subscription
-
   user_data = <<-EOF
     #!/bin/bash
     # Wait for OpenVPN to be configured
     sleep 30
 
-    # Set admin password
-    echo "openvpn:${var.openvpn_admin_password}" | chpasswd
+    cd /usr/local/openvpn_as/scripts
 
-    # Configure basic settings via sacli
-    /usr/local/openvpn_as/scripts/sacli --key "vpn.server.routing.private_network.0" \
+    # Reset the default admin account as a local Access Server administrator
+    ./sacli --user "openvpn" --key "prop_superuser" --value "true" UserPropPut
+    ./sacli --user "openvpn" --key "user_auth_type" --value "local" UserPropPut
+    ./sacli --user "openvpn" --new_pass "${var.openvpn_admin_password}" SetLocalPassword
+
+    # Route the VPC CIDR through the VPN
+    ./sacli --key "vpn.server.routing.private_network.0" \
       --value "${var.vpc_cidr}" ConfigPut
 
-    # Enable routing to private networks
-    /usr/local/openvpn_as/scripts/sacli --key "vpn.client.routing.reroute_dns" \
+    # Keep internet traffic local to the client (split tunnel)
+    ./sacli --key "vpn.client.routing.reroute_gw" \
       --value "false" ConfigPut
 
     # Restart service to apply config
-    /usr/local/openvpn_as/scripts/sacli start
+    ./sacli start
   EOF
 
   tags = {
@@ -180,4 +181,4 @@ resource "aws_route53_record" "vpn" {
 
 ## Conclusion
 
-OpenVPN Access Server on EC2 provides a feature-rich VPN with user self-service client download, web-based management, and LDAP/AD integration capabilities. The Elastic IP ensures a stable endpoint even after instance replacements. For production use, enable MFA through the admin console and consider using an RDS backend for HA configurations. The `source_dest_check = false` setting is essential for the server to forward traffic to VPC resources.
+OpenVPN Access Server on EC2 provides a feature-rich VPN with user self-service client download, web-based management, and LDAP/AD integration capabilities. The Elastic IP ensures a stable endpoint even after instance replacements. For production use, enable MFA through the admin console and consider using an RDS backend for HA configurations. The `source_dest_check = false` setting is essential when the instance must route VPN client subnets to VPC resources.
