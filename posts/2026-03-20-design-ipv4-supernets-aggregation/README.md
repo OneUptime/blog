@@ -20,7 +20,7 @@ Subnets:        Supernet:
 
 ## Step 1: Requirements for Clean Supernetting
 
-For a set of networks to aggregate cleanly into a supernet:
+For a set of equal-sized networks to aggregate cleanly into a single supernet:
 1. Networks must be contiguous (no gaps)
 2. The block must start on a power-of-2 boundary
 3. The total number of networks must be a power of 2
@@ -69,7 +69,7 @@ design_allocation('10.1.0.0/16', 21, 24)
 ```text
 ! Method 1: Aggregate with summary-only (suppress more-specifics)
 router bgp 65001
-  network 10.1.0.0 mask 255.255.0.0   ! Announce the supernet
+  ! Requires component routes for 10.1.0.0/16 to already be in the BGP table
   aggregate-address 10.1.0.0 255.255.0.0 summary-only
 
 ! Method 2: Aggregate with a static Null0 route
@@ -87,53 +87,71 @@ ip prefix-list AGGREGATE seq 5 permit 10.1.0.0/16 le 16
 
 ```text
 ! At an OSPF Area Border Router (ABR)
-! Summarize all area 1 routes (10.1.0.0/21 through 10.1.7.0/21) into one /18
+! Summarize all area 1 routes (10.1.0.0/21 through 10.1.56.0/21) into one /18
 
 router ospf 1
   ! Summarize to single prefix when entering area 0
   area 1 range 10.1.0.0 255.255.192.0    ! 10.1.0.0/18 summarizes 64x/24s
 
-  ! Only advertise the summary if at least one component route exists
-  area 1 range 10.1.0.0 255.255.192.0 not-advertise  ! suppress (use when not needed)
+  ! Alternative: suppress the Type 3 summary LSA for this range
+  area 1 range 10.1.0.0 255.255.192.0 not-advertise
 ```
 
 ## Step 5: Supernet Planning Calculator
 
 ```python
-from ipaddress import ip_network, collapse_addresses
+from ipaddress import ip_address, ip_network, collapse_addresses
 
 def supernet_planner(owned_networks, target_prefix_len=None):
     """
-    Given a set of owned networks, calculate the supernet and
+    Given a set of owned networks, calculate the covering supernet and
     determine if any address space is wasted.
     """
     nets = [ip_network(n) for n in owned_networks]
     collapsed = list(collapse_addresses(nets))
+    owned_set = set(nets)
+
+    min_ip = min(int(n.network_address) for n in collapsed)
+    max_ip = max(int(n.broadcast_address) for n in collapsed)
+
+    if target_prefix_len is None:
+        target_prefix_len = 32 - (min_ip ^ max_ip).bit_length()
+
+    candidate = ip_network(f"{ip_address(min_ip)}/{target_prefix_len}", strict=False)
 
     print(f"Owned networks: {owned_networks}")
     print(f"Collapsed: {[str(n) for n in collapsed]}")
+    print(f"Candidate supernet: {candidate}")
 
-    for net in collapsed:
-        # Check how many smaller nets are in this collapsed prefix
-        subnets_of_common_size = list(net.subnets(new_prefix=max(n.prefixlen for n in nets)))
-        owned_in_this = [s for s in subnets_of_common_size if any(s == owned for owned in nets)]
-        wasted = len(subnets_of_common_size) - len(owned_in_this)
+    owned_space = sum(n.num_addresses for n in collapsed)
+    wasted = candidate.num_addresses - owned_space
 
-        if wasted > 0:
-            print(f"WARNING: {net} contains {wasted} unowned subnets "
-                  f"(advertising this supernet includes space you don't own)")
+    if wasted > 0:
+        common_prefix_len = max(n.prefixlen for n in nets)
+        missing = []
+
+        if all(n.prefixlen == common_prefix_len for n in nets):
+            missing = [
+                str(s) for s in candidate.subnets(new_prefix=common_prefix_len)
+                if s not in owned_set
+            ]
+
+        if missing:
+            print(f"WARNING: {candidate} includes unowned space: {missing}")
+        else:
+            print(f"WARNING: {candidate} includes {wasted} unowned addresses")
 
 supernet_planner([
     '10.1.0.0/24', '10.1.1.0/24', '10.1.2.0/24', '10.1.3.0/24'
 ])
-# Clean: 10.1.0.0/22 with 0 waste
+# Clean: candidate supernet is 10.1.0.0/22 with 0 waste
 
 supernet_planner([
     '10.1.0.0/24', '10.1.1.0/24', '10.1.3.0/24'
 ])
-# WARNING: 10.1.0.0/22 includes 10.1.2.0/24 which you don't own
+# WARNING: 10.1.0.0/22 includes unowned space: ['10.1.2.0/24']
 ```
 
 ## Conclusion
 
-IPv4 supernets enable route aggregation by covering multiple smaller prefixes with a single larger prefix. Design address blocks in powers of 2 starting at aligned boundaries to enable clean aggregation. Configure BGP aggregation with `aggregate-address ... summary-only` to suppress more-specifics, and OSPF summarization with `area X range` at ABRs. Always verify with Python's `collapse_addresses()` that your aggregate doesn't accidentally include address space you don't own.
+IPv4 supernets enable route aggregation by covering multiple smaller prefixes with a single larger prefix. Design address blocks in powers of 2 starting at aligned boundaries to enable clean aggregation. Configure BGP aggregation with `aggregate-address ... summary-only` to suppress more-specifics, and OSPF summarization with `area X range` at ABRs. Always verify with Python that your aggregate doesn't accidentally include address space you don't own.
