@@ -28,7 +28,8 @@ router bgp 65100
  ! Point to the customer edge router on the other side of the /30
  neighbor 203.0.113.2 remote-as 65200
 
- ! Advertise the ISP's upstream block
+ ! Advertise the ISP's upstream block.
+ ! The prefix must already exist in the local routing table.
  network 198.51.100.0 mask 255.255.255.0
 
 ISP(config-router)# end
@@ -45,15 +46,16 @@ router bgp 65200
  ! Point to the ISP peer
  neighbor 203.0.113.1 remote-as 65100
 
- ! Advertise the customer's public prefix
- network 203.0.114.0 mask 255.255.255.0
+ ! Advertise the customer's public prefix.
+ ! The prefix must already exist in the local routing table.
+ network 192.0.2.0 mask 255.255.255.0
 
 CE(config-router)# end
 ```
 
 ## Step 3: Add MD5 Authentication (Recommended)
 
-BGP sessions should always be authenticated to prevent hijacking:
+BGP sessions are often authenticated to make spoofing harder:
 
 ```text
 ! On ISP router
@@ -88,18 +90,13 @@ The session is established and one prefix has been received from the ISP.
 ## Step 6: Verify Received Routes
 
 ```text
-CE# show ip bgp neighbors 203.0.113.1 received-routes
+CE# show ip bgp neighbors 203.0.113.1 routes
 
    Network          Next Hop            Metric LocPrf Weight Path
 *  198.51.100.0/24  203.0.113.1              0              0 65100 i
 ```
 
-Activate `soft-reconfiguration inbound` on the neighbor if received-routes shows nothing:
-
-```text
-CE(config-router)# neighbor 203.0.113.1 soft-reconfiguration inbound
-CE# clear ip bgp 203.0.113.1 soft in
-```
+The `routes` view shows the prefixes received from the ISP and accepted by the local BGP process.
 
 ## Step 7: Confirm Route Is in the Routing Table
 
@@ -118,7 +115,7 @@ Administrative distance 20 confirms this is an eBGP-learned route.
 | TTL | Default TTL=1 (direct connection required) |
 | Next-hop | eBGP sets next-hop to the peer's IP |
 | AD | Administrative distance is 20 |
-| AS-path | Peer's AS is prepended to the path |
+| AS-path | Advertising router prepends its own AS to the path |
 
 ## Conclusion
 
