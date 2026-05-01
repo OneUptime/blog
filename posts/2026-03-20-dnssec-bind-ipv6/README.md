@@ -28,36 +28,19 @@ sudo nano /etc/bind/named.conf.options
 
 ```text
 options {
-    // Listen on all IPv6 addresses (::) and IPv4 (0.0.0.0)
+    // Listen on all IPv6 and IPv4 interfaces
     listen-on-v6 { any; };
     listen-on { any; };
-
-    // Allow recursive queries from your network
-    allow-recursion { 192.168.0.0/16; 2001:db8::/32; };
-
-    // Enable DNSSEC validation
-    dnssec-validation auto;
 };
 ```
 
 ## Step 2: Generate DNSSEC Keys
 
-Generate a Key Signing Key (KSK) and a Zone Signing Key (ZSK) for your zone:
-
-```bash
-# Navigate to the zone key directory
-cd /etc/bind/keys
-
-# Generate the Zone Signing Key (ZSK) using ECDSA P-256
-dnssec-keygen -a ECDSAP256SHA256 -n ZONE example.com
-
-# Generate the Key Signing Key (KSK) with the -f KSK flag
-dnssec-keygen -a ECDSAP256SHA256 -f KSK -n ZONE example.com
-```
+With `dnssec-policy default`, `named` generates and manages the zone's signing keys automatically when the zone is loaded or reloaded, so you do not run `dnssec-keygen` manually for this workflow.
 
 ## Step 3: Configure the Zone for DNSSEC
 
-Update your zone configuration to include the keys directory:
+Update your zone configuration to enable automatic signing, and ensure `named` can write to the zone file location and the key directory:
 
 ```text
 // /etc/bind/named.conf.local
@@ -65,11 +48,11 @@ zone "example.com" {
     type master;
     file "/etc/bind/zones/db.example.com";
 
-    // Enable inline signing - BIND signs records automatically
+    // Enable automatic DNSSEC signing
     dnssec-policy default;
     inline-signing yes;
 
-    // Directory where DNSSEC keys are stored
+    // Directory where generated DNSSEC keys are stored
     key-directory "/etc/bind/keys";
 };
 ```
@@ -78,7 +61,7 @@ zone "example.com" {
 
 Your zone file should include IPv6 addresses for your hosts:
 
-```bash
+```text
 ; /etc/bind/zones/db.example.com
 $ORIGIN example.com.
 $TTL 300
@@ -111,21 +94,21 @@ sudo named-checkconf
 # Check the zone file syntax
 sudo named-checkzone example.com /etc/bind/zones/db.example.com
 
-# Reload BIND to apply changes
+# Reload BIND to apply changes and start automatic signing
 sudo rndc reload
 ```
 
 ## Step 6: Verify DNSSEC is Working
 
 ```bash
-# Query for AAAA record with DNSSEC data (AD flag indicates authenticated data)
-dig +dnssec AAAA www.example.com @2001:db8:1::1
+# Query the authoritative server over IPv6 and look for an RRSIG covering the AAAA answer
+dig +dnssec @2001:db8:1::1 www.example.com AAAA
 
-# Check for RRSIG record (proof of signing)
-dig RRSIG AAAA www.example.com @2001:db8:1::1
+# Query through a validating resolver; if your resolver validates DNSSEC, the response includes the AD flag
+dig +dnssec www.example.com AAAA
 
-# Verify DS record exists in parent zone
-dig DS example.com @2001:db8:1::1
+# Verify the DS record is visible after publishing it in the parent zone
+dig +dnssec example.com DS
 ```
 
 ## Monitoring with OneUptime
@@ -134,4 +117,4 @@ After configuring DNSSEC, monitor your DNS resolution over IPv6 using [OneUptime
 
 ## Conclusion
 
-Configuring DNSSEC with BIND for IPv6 involves listening on IPv6 interfaces, generating signing keys, and enabling inline signing. Always verify that AAAA records carry valid RRSIG signatures and publish DS records to your registrar to complete the chain of trust.
+Configuring DNSSEC with BIND for IPv6 involves listening on IPv6 interfaces and enabling automatic signing for the zone. Always verify that AAAA records carry valid RRSIG signatures and publish DS records to your registrar to complete the chain of trust.
