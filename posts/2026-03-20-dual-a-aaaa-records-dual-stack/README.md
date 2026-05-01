@@ -12,7 +12,7 @@ Dual-stack means a service is reachable over both IPv4 and IPv6. For clients to 
 
 ## Correct Dual-Stack DNS Configuration
 
-Both A and AAAA records should coexist for the same hostname with matching TTLs:
+Both A and AAAA records should coexist for the same hostname. Keeping their TTLs aligned is a good operational practice:
 
 ```dns
 ; /var/named/example.com.zone
@@ -29,7 +29,7 @@ mail    3600    IN  AAAA    2001:db8::100
 @       3600    IN  A       93.184.216.34
 @       3600    IN  AAAA    2001:db8::1
 
-; Name server glue records (dual-stack NS)
+; Address records for an in-zone name server host
 ns1     3600    IN  A       93.184.216.200
 ns1     3600    IN  AAAA    2001:db8::200
 ```
@@ -41,9 +41,6 @@ ns1     3600    IN  AAAA    2001:db8::200
 
 dig A www.example.com +short
 dig AAAA www.example.com +short
-
-# Alternatively, check both with a single ANY query
-dig ANY www.example.com
 
 # Script to audit all hostnames for dual-stack completeness
 for HOST in www mail api ftp; do
@@ -63,28 +60,28 @@ done
 
 ## TTL Consistency Between A and AAAA
 
-Both records should have the same TTL. Mismatched TTLs cause inconsistent behavior when records are cached and refreshed at different times:
+It is usually best to give both records the same TTL. Mismatched TTLs can cause A and AAAA answers to be cached and refreshed at different times:
 
 ```dns
-; CORRECT: Matching TTLs
+; GOOD PRACTICE: Matching TTLs
 www     3600    IN  A       93.184.216.34
 www     3600    IN  AAAA    2001:db8::1
 
-; INCORRECT: Mismatched TTLs
+; LESS CONSISTENT: Mismatched TTLs
 www     300     IN  A       93.184.216.34
 www     86400   IN  AAAA    2001:db8::1
 ```
 
 ## How Happy Eyeballs Uses Dual-Stack Records
 
-Modern clients use the Happy Eyeballs algorithm (RFC 8305) when both A and AAAA records exist. The algorithm:
+Many modern clients use the Happy Eyeballs algorithm (RFC 8305) when both A and AAAA records exist. The algorithm:
 
-1. Issues AAAA and A queries simultaneously (or slightly offset)
-2. Prefers the AAAA response if it arrives first and connects successfully
-3. Falls back to A records if IPv6 connectivity fails within ~250ms
-4. Result: Fastest connection wins, users never notice the difference
+1. Sends AAAA and A queries very close together, typically AAAA first and then A immediately after
+2. Starts connection attempts as soon as one address family is available instead of waiting for both answers
+3. Gives IPv6 a slight preference, but starts additional attempts after a short delay if needed
+4. Uses the first successful connection and cancels the others
 
-This means dual-stack records give the performance benefits of IPv6 while maintaining IPv4 fallback safety.
+This means dual-stack records let modern clients take advantage of IPv6 while maintaining IPv4 fallback safety.
 
 ## Handling Load-Balanced Services
 
@@ -132,11 +129,11 @@ curl -4 https://www.example.com/
 # Test IPv6 connectivity via AAAA record
 curl -6 https://www.example.com/
 
-# Test that Happy Eyeballs picks IPv6 when available
+# See which address family curl actually used
 curl -v https://www.example.com/ 2>&1 | grep "Connected to"
-# Should show an IPv6 address if available
+# This may show either an IPv6 or IPv4 address, depending on which connection succeeds first
 ```
 
 ## Summary
 
-Proper dual-stack DNS requires both A and AAAA records with matching TTLs for every hostname. Audit your zones to find hostnames missing either record type. With both records present, modern clients use Happy Eyeballs to automatically prefer IPv6 while falling back to IPv4 when needed - providing the best experience for all clients without any additional configuration.
+Proper dual-stack DNS requires both A and AAAA records for every hostname that should be reachable over both IPv4 and IPv6. Audit your zones to find hostnames missing either record type. Keeping TTLs aligned is a good operational practice, and with both records present, modern clients can use Happy Eyeballs to give IPv6 a slight preference while still falling back to IPv4 when needed - providing the best experience for all clients without any additional configuration.
