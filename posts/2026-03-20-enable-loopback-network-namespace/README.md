@@ -59,8 +59,8 @@ ip netns exec testns ip addr show lo
 # Test ping to localhost inside the namespace
 ip netns exec testns ping -c 3 127.0.0.1
 
-# Test ping to the loopback address
-ip netns exec testns ping -c 3 lo
+# Test ping to localhost name resolution over IPv4
+ip netns exec testns ping -c 3 -4 localhost
 ```
 
 ## Why Loopback Matters for Services
@@ -84,7 +84,7 @@ Include loopback setup in every namespace initialization script:
 
 ```bash
 #!/bin/bash
-# namespace-init.sh: Initialize a new namespace with loopback and a veth
+# namespace-init.sh: Initialize a new namespace with loopback
 
 NS_NAME=${1:-"ns1"}
 
@@ -100,4 +100,4 @@ ip netns exec "$NS_NAME" ip addr show lo
 
 ## Conclusion
 
-Enabling the loopback interface with `ip link set lo up` is a mandatory first step when configuring any network namespace. Without it, processes cannot communicate on `127.0.0.1`, services may fail to start, and inter-process communication within the namespace is broken. Always include this step in namespace setup scripts before configuring any other interfaces.
+Enabling the loopback interface with `ip link set lo up` is a common early step when configuring a network namespace. Without it, processes cannot communicate on `127.0.0.1` or `localhost`, and services that bind to loopback may fail to start. Include this step in namespace setup scripts before starting loopback-bound services or testing local connectivity.
