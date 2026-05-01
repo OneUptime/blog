@@ -8,7 +8,7 @@ Description: Display the contents of the Windows DNS resolver cache using ipconf
 
 ## Introduction
 
-The Windows DNS resolver cache stores the results of recent DNS lookups. Displaying the cache lets you see which records are cached, what TTL remains, and identify incorrect entries that might be causing connectivity issues.
+The Windows DNS resolver cache stores entries preloaded from the local Hosts file and the results of recent DNS lookups. Displaying the cache lets you see which records are cached, what TTL remains, and identify incorrect entries that might be causing connectivity issues.
 
 ## Displaying the DNS Cache
 
@@ -46,13 +46,13 @@ The cache can be very long. Filter for a specific hostname:
 
 ```cmd
 :: Find a specific entry
-ipconfig /displaydns | findstr /i "google.com"
+ipconfig /displaydns | findstr /i /c:"google.com"
 
 :: Show only A record lines
-ipconfig /displaydns | findstr "A (Host)"
+ipconfig /displaydns | findstr /c:"A (Host)"
 
 :: Count total cached entries
-ipconfig /displaydns | findstr /c:"Record Name"
+ipconfig /displaydns | findstr /c:"Record Name" | find /c "Record Name"
 ```
 
 ## Using PowerShell for Structured Cache Viewing
@@ -74,11 +74,11 @@ Get-DnsClientCache | Sort-Object TimeToLive | Select-Object Entry, Data, TimeToL
 
 ## Finding Negative Cache Entries
 
-Negative entries (NXDOMAIN responses) show `Record Type . . . : 0` or have no A record data. These indicate DNS queries that returned "not found":
+Negative cache entries represent cached negative DNS responses such as `NotExist` or `NoRecords`. In `ipconfig /displaydns`, you may also see `Name does not exist` for the cached name:
 
 ```powershell
 # Find negative cache entries
-Get-DnsClientCache | Where-Object {$_.DataLength -eq 0}
+Get-DnsClientCache -Status NotExist,NoRecords
 ```
 
 ## Exporting the Cache to CSV
@@ -91,14 +91,15 @@ Get-DnsClientCache | Select-Object Entry, Type, TimeToLive, Data |
 
 ## Identifying Stale Entries
 
-If a TTL is very high (e.g., 3600+) and you recently changed the DNS record:
+If a TTL is still high (for example, above 3600 seconds) after you recently changed the DNS record:
 
-```cmd
-:: Find entries with TTL > 1 hour
-ipconfig /displaydns | findstr "Time To Live"
+```powershell
+# Find entries with TTL greater than 1 hour
+Get-DnsClientCache | Where-Object {$_.TimeToLive -gt 3600} |
+    Select-Object Entry, Type, TimeToLive, Data | Format-Table
 ```
 
-If you see old IPs in the Data field, flush and re-resolve:
+If you see old IPs in the `Data` field, flush the cache and verify the current DNS answer from the server:
 
 ```cmd
 ipconfig /flushdns
