@@ -8,7 +8,7 @@ Description: Learn how to access and interpret user activity audit logs in Porta
 
 ## What Are Portainer Audit Logs?
 
-Portainer Business Edition includes comprehensive audit logging that records:
+Portainer Business Edition includes authentication and activity logs that record:
 
 - User login and logout events.
 - Container start, stop, delete operations.
@@ -20,24 +20,25 @@ Portainer Business Edition includes comprehensive audit logging that records:
 ## Accessing Audit Logs in Portainer BE
 
 1. Log in to Portainer as an administrator.
-2. Go to **Settings > Authentication logs** or **Logs** (depends on version).
-3. View the chronological activity feed.
+2. From the menu, expand **Logs** and select **Authentication** or **Activity**.
+3. View the chronological log feed.
 
 ## What Each Log Entry Contains
 
+Authentication log entries returned by the API contain fields like:
+
 ```json
 {
-  "timestamp": "2026-03-20T14:32:45Z",
+  "id": 42,
+  "timestamp": 1774017165,
   "username": "alice.smith",
-  "userRole": "Standard User",
-  "context": "endpoint/production",
-  "action": "Container Start",
-  "resourceType": "Container",
-  "resourceId": "abc123def456",
-  "payload": "{\"containerName\": \"my-app\"}",
-  "result": "success"
+  "origin": "203.0.113.10",
+  "context": 1,
+  "type": 1
 }
 ```
+
+Activity log entries include fields such as `action`, `context`, `timestamp`, `username`, and an inspectable `payload`.
 
 ## Filtering Audit Logs
 
@@ -45,39 +46,43 @@ Use the filter options in Portainer to narrow down logs by:
 
 - **Username**: Track specific user actions.
 - **Time range**: Focus on a specific period.
-- **Action type**: Filter by operation (start, stop, deploy).
+- **Search keyword**: Search for events or operations such as logins, start, stop, or deploy.
 - **Environment**: Focus on a specific cluster.
 
 ## Exporting Audit Logs via API
 
 ```bash
-# Export audit logs via the Portainer API
+# View authentication logs
 
-curl -s "https://portainer.mycompany.com/api/auth/logs" \
-  -H "Authorization: Bearer ${ADMIN_TOKEN}" | jq '.'
+curl -s "https://portainer.mycompany.com/api/useractivity/authlogs" \
+  -H "X-API-Key: ${PORTAINER_API_KEY}" | jq '.'
 
-# Filter by username
-curl -s "https://portainer.mycompany.com/api/auth/logs?username=alice" \
-  -H "Authorization: Bearer ${ADMIN_TOKEN}" | jq '.'
+# Filter activity logs by username
+curl -s "https://portainer.mycompany.com/api/useractivity/logs?username=alice" \
+  -H "X-API-Key: ${PORTAINER_API_KEY}" | jq '.'
 
-# Export all logs to a file
-curl -s "https://portainer.mycompany.com/api/logs" \
-  -H "Authorization: Bearer ${ADMIN_TOKEN}" \
-  -o portainer-audit-$(date +%Y%m%d).json
+# Export activity logs as CSV
+curl -s "https://portainer.mycompany.com/api/useractivity/logs.csv" \
+  -H "X-API-Key: ${PORTAINER_API_KEY}" \
+  -o portainer-activity-$(date +%Y%m%d).csv
 ```
 
 ## Setting Up External Audit Log Forwarding
 
-For long-term retention, forward Portainer logs to an external system:
+For long-term retention, Portainer 2.20 and later can stream authentication and activity logs to an external SIEM system in Syslog format:
 
 ```bash
-# Forward Portainer container logs to syslog
-docker run -d \
+# Stream Portainer auth and activity logs to syslog
+docker run -d -p 8000:8000 -p 9443:9443 \
   --name portainer \
-  --log-driver syslog \
-  --log-opt syslog-address=udp://siem.mycompany.com:514 \
-  --log-opt tag="portainer" \
-  portainer/portainer-be:latest
+  --restart=always \
+  -v /var/run/docker.sock:/var/run/docker.sock \
+  -v portainer_data:/data \
+  portainer/portainer-ee:lts \
+  --syslog-address=siem.mycompany.com \
+  --syslog-port=514 \
+  --syslog-protocol=udp \
+  --syslog-source-hostname="portainer"
 ```
 
 ## Automating Compliance Reports
@@ -87,23 +92,24 @@ docker run -d \
 # Generate weekly security report
 
 PORTAINER_URL="https://portainer.mycompany.com"
-API_TOKEN="${PORTAINER_API_TOKEN}"
-WEEK_AGO=$(date -d "7 days ago" +%Y-%m-%dT%H:%M:%SZ 2>/dev/null || \
-           date -v-7d +%Y-%m-%dT%H:%M:%SZ)
+API_KEY="${PORTAINER_API_KEY}"
+ADMIN_USERNAME="${PORTAINER_ADMIN_USERNAME:-admin}"
+WEEK_AGO=$(date -d "7 days ago" +%s 2>/dev/null || \
+           date -v-7d +%s)
 
-# Get all admin actions in the past week
-ADMIN_ACTIONS=$(curl -s "${PORTAINER_URL}/api/logs?since=${WEEK_AGO}&role=admin" \
-  -H "Authorization: Bearer ${API_TOKEN}")
+# Get recent actions by the admin user in the past week
+ADMIN_ACTIONS=$(curl -s "${PORTAINER_URL}/api/useractivity/logs?after=${WEEK_AGO}&username=${ADMIN_USERNAME}&limit=1000" \
+  -H "X-API-Key: ${API_KEY}")
 
 # Count by action type
 echo "=== Admin Actions This Week ==="
-echo "$ADMIN_ACTIONS" | jq '[.[] | .action] | group_by(.) | .[] | {action: .[0], count: length}'
+echo "$ADMIN_ACTIONS" | jq '[.logs[] | .action] | group_by(.) | .[] | {action: .[0], count: length}'
 
-# Count failed login attempts
+# Count failed login attempts (type 2 = failure)
 echo "=== Failed Login Attempts ==="
-curl -s "${PORTAINER_URL}/api/auth/logs?since=${WEEK_AGO}" \
-  -H "Authorization: Bearer ${API_TOKEN}" | \
-  jq '[.[] | select(.result == "failure")] | length'
+curl -s "${PORTAINER_URL}/api/useractivity/authlogs?after=${WEEK_AGO}&limit=1000" \
+  -H "X-API-Key: ${API_KEY}" | \
+  jq '[.[] | select(.type == 2)] | length'
 ```
 
 ## Key Audit Events to Monitor
