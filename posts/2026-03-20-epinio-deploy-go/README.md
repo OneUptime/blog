@@ -15,6 +15,7 @@ How to Deploy a Go Application with Epinio demonstrates how Epinio simplifies ap
 - Epinio installed and accessible
 - Epinio CLI installed and logged in
 - An Epinio namespace created (`epinio namespace create my-apps`)
+- Go installed locally
 - Application source code ready
 
 ## Step 1: Prepare Your Application
@@ -24,8 +25,8 @@ How to Deploy a Go Application with Epinio demonstrates how Epinio simplifies ap
 
 mkdir my-app && cd my-app
 
-# Initialize the application
-# (Language-specific initialization commands here)
+# Initialize the Go module
+go mod init example.com/my-app
 ```
 
 ## Step 2: Create the Application
@@ -34,33 +35,30 @@ For this example, we'll create a simple web application:
 
 ```bash
 # Create main application file
-cat > app.sh << 'EOF'
-#!/bin/bash
-# Simple HTTP server for demonstration
-while true; do
-  echo -e "HTTP/1.1 200 OK\r\nContent-Type: text/plain\r\n\r\nHello from How to Deploy a Go Application with Epinio!" | nc -l -p ${PORT:-8080}
-done
-EOF
-chmod +x app.sh
-```
+cat > main.go << 'EOF'
+package main
 
-For a language-specific example relevant to this guide:
+import (
+  "fmt"
+  "log"
+  "net/http"
+  "os"
+)
 
-```bash
-# Node.js example
-cat > server.js << 'EOF'
-const http = require('http');
-const server = http.createServer((req, res) => {
-  res.writeHead(200, {'Content-Type': 'application/json'});
-  res.end(JSON.stringify({
-    message: 'Application deployed via Epinio',
-    runtime: process.version,
-    timestamp: new Date().toISOString()
-  }));
-});
-server.listen(process.env.PORT || 8080, () => {
-  console.log('Server started');
-});
+func main() {
+  port := os.Getenv("PORT")
+  if port == "" {
+    port = "8080"
+  }
+
+  http.HandleFunc("/", func(w http.ResponseWriter, r *http.Request) {
+    w.Header().Set("Content-Type", "text/plain; charset=utf-8")
+    fmt.Fprintln(w, "Hello from How to Deploy a Go Application with Epinio!")
+  })
+
+  log.Printf("listening on :%s", port)
+  log.Fatal(http.ListenAndServe(":"+port, nil))
+}
 EOF
 ```
 
@@ -71,7 +69,7 @@ EOF
 epinio target my-apps
 
 # Verify namespace is active
-epinio namespace show my-apps
+epinio target
 ```
 
 ## Step 4: Deploy the Application
@@ -81,10 +79,11 @@ epinio namespace show my-apps
 epinio push --name my-app
 
 # Or specify options explicitly
+# Replace the custom route with a hostname that resolves to your cluster ingress
 epinio push \
   --name my-app \
   --instances 2 \
-  --route my-app.epinio.example.com
+  --route my-app.example.com
 ```
 
 During push, Epinio will:
@@ -105,20 +104,19 @@ epinio app show my-app
 epinio app list
 
 # View the application route
-epinio app show my-app | grep Routes
+epinio app show my-app
 ```
 
 ## Step 6: Test the Application
 
 ```bash
-# Get the application URL
-APP_URL=$(epinio app show my-app | grep Routes | awk '{print $2}')
+# Test the default route
+curl https://my-app.<your-epinio-domain>
 
-# Test with curl
-curl ${APP_URL}
+# If you used the custom route example above
+curl https://my-app.example.com
 
-# Or open in browser
-open ${APP_URL}
+# Or open the route shown by epinio app show my-app in your browser
 ```
 
 ## Step 7: View Application Logs
@@ -128,7 +126,7 @@ open ${APP_URL}
 epinio app logs my-app
 
 # Follow live logs
-epinio app logs my-app --follow
+epinio app logs --follow my-app
 ```
 
 ## Step 8: Update the Application
@@ -138,7 +136,7 @@ epinio app logs my-app --follow
 # Then re-push to update
 epinio push --name my-app
 
-# Epinio performs a rolling update
+# Verify the updated deployment
 epinio app show my-app
 ```
 
