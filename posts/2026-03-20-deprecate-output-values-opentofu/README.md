@@ -8,7 +8,7 @@ Description: A guide to deprecating output values in OpenTofu modules to communi
 
 ## Introduction
 
-When maintaining OpenTofu modules, you may need to rename outputs, change their structure, or remove them entirely. The `deprecated` attribute on output blocks (added in OpenTofu 1.9) allows you to signal that an output is being phased out, giving consumers time to migrate.
+When maintaining OpenTofu modules, you may need to rename outputs, change their structure, or remove them entirely. The `deprecated` argument on module output blocks (added in OpenTofu 1.10) allows you to signal that an output is being phased out, giving consumers time to migrate.
 
 ## Declaring Deprecated Outputs
 
@@ -20,7 +20,7 @@ When maintaining OpenTofu modules, you may need to rename outputs, change their 
 output "id" {
   description = "DEPRECATED: Use vpc_id instead"
   value       = aws_vpc.this.id
-  deprecated  = "Use the 'vpc_id' output instead. The 'id' output will be removed in module version 3.0."
+  deprecated  = "Use the 'vpc_id' output instead. The 'id' output will be removed in module version 2.0.0."
 }
 
 # NEW: Replacement output
@@ -37,13 +37,16 @@ When a consumer uses the deprecated output, OpenTofu shows a warning:
 ```bash
 tofu plan
 
-# Warning: Use of deprecated output
+# Warning: Value derived from a deprecated source
 #
-#   on main.tf line 25, in module "vpc":
-#   25:   vpc_id = module.vpc.id
+#   on main.tf line 8, in resource "aws_security_group" "web":
+#    8:   vpc_id = module.vpc.id
 #
-# Use the 'vpc_id' output instead. The 'id' output will be removed
-# in module version 3.0.
+# This value is derived from module.vpc.id, which is deprecated with
+# the following message:
+#
+# Use the 'vpc_id' output instead. The 'id' output will be removed in
+# module version 2.0.0.
 ```
 
 ## Common Deprecation Patterns
@@ -123,7 +126,7 @@ output "bucket_name" {
 ```hcl
 # version.tf
 terraform {
-  required_version = ">= 1.9.0"
+  required_version = ">= 1.10.0"
 }
 
 # CHANGELOG in the module repository:
@@ -164,4 +167,4 @@ resource "aws_security_group" "web" {
 
 ## Conclusion
 
-Deprecating outputs with clear migration messages allows module consumers to update at their own pace before breaking changes are introduced. The `deprecated` attribute provides a standardized way to communicate these changes. Always include a clear migration path and version timeline in the deprecation message, and maintain the deprecated output until the major version removes it.
+Deprecating outputs with clear migration messages allows module consumers to update at their own pace before breaking changes are introduced. The `deprecated` argument provides a standardized way to communicate these changes. Always include a clear migration path and version timeline in the deprecation message, and maintain the deprecated output until the major version removes it.
