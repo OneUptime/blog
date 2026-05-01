@@ -21,8 +21,6 @@ OpenVPN is battle-tested and widely supported across all platforms. The `kyleman
 OpenVPN needs the `NET_ADMIN` capability and a TUN device. Initialize the PKI before first start:
 
 ```yaml
-version: "3.8"
-
 services:
   openvpn:
     image: kylemanna/openvpn:latest
@@ -38,14 +36,15 @@ services:
 
 volumes:
   openvpn_data:
+    name: openvpn_data
 ```
 
 ## Initializing the PKI
 
-Before deploying via Portainer, run these one-time init commands. Replace `vpn.example.com` with your server's public hostname:
+Before deploying via Portainer, run these one-time init commands against the same Docker volume the stack uses. Replace `vpn.example.com` with your server's public hostname:
 
 ```bash
-# Step 1: Generate the server configuration and PKI
+# Step 1: Generate the server configuration
 
 docker run --rm -v openvpn_data:/etc/openvpn kylemanna/openvpn \
   ovpn_genconfig -u udp://vpn.example.com
@@ -76,4 +75,4 @@ Import `clientname.ovpn` into the OpenVPN client app on any device.
 
 ## Monitoring
 
-Use OneUptime to monitor the host's public IP on port `1194` UDP. Because UDP monitoring can be tricky, also set up a secondary HTTP monitor pointing to an internal resource accessible only via VPN. If that secondary monitor fails, the VPN tunnel is down.
+Use OneUptime to monitor the host's public IP on port `1194` UDP. Because UDP monitoring can be tricky, also set up a secondary HTTP monitor to an internal resource using a OneUptime custom probe inside the private network. If that secondary monitor fails, investigate the VPN tunnel or the internal target.
