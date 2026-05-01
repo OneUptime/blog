@@ -15,10 +15,9 @@ Squid is a widely-used proxy caching server that reduces internet bandwidth usag
 ```yaml
 # squid-stack.yml
 
-version: "3.8"
 services:
   squid:
-    image: ubuntu/squid:5.7-22.04_beta
+    image: ubuntu/squid:6.6-24.04_edge
     volumes:
       - /opt/squid/squid.conf:/etc/squid/squid.conf:ro
       - squid-cache:/var/spool/squid
@@ -42,10 +41,17 @@ Create `/opt/squid/squid.conf`:
 # Network Access Control
 acl localnet src 172.16.0.0/12   # Docker networks
 acl localnet src 10.0.0.0/8      # Private networks
-acl SSL_ports port 443
+acl SSL_ports port 443 8443
 acl Safe_ports port 80 443 8080 8443
 
+# Restrict cache manager access and unsafe destination ports
+http_access allow manager localhost
+http_access deny manager
+http_access deny !Safe_ports
+http_access deny CONNECT !SSL_ports
+
 # Allow local networks through the proxy
+http_access allow localhost
 http_access allow localnet
 http_access deny all
 
@@ -81,41 +87,42 @@ services:
     environment:
       - HTTP_PROXY=http://squid:3128
       - HTTPS_PROXY=http://squid:3128
-      - NO_PROXY=localhost,127.0.0.1,*.internal.example.com
+      - NO_PROXY=localhost,127.0.0.1,.internal.example.com
 ```
 
-Or set globally via Docker daemon configuration to apply to all containers:
+Or configure the Docker daemon to use a proxy for image pulls and other daemon-originated traffic:
 
-```json
-// /etc/systemd/system/docker.service.d/proxy.conf
+```ini
+# /etc/systemd/system/docker.service.d/http-proxy.conf
 [Service]
 Environment="HTTP_PROXY=http://squid-host:3128"
 Environment="HTTPS_PROXY=http://squid-host:3128"
 ```
 
-## Registry Pull Cache (Edge Sites)
+Reload systemd and restart Docker after creating the drop-in file.
 
-Configure Docker to use Squid for registry pulls to reduce bandwidth at edge sites:
+## Registry Pulls at Edge Sites
+
+Use a registry mirror for actual Docker Hub pull-through caching. If you also want Docker daemon traffic to egress through Squid, configure both in `daemon.json`:
 
 ```json
-// /etc/docker/daemon.json
 {
-  "registry-mirrors": [],
+  "registry-mirrors": ["https://mirror.company.example"],
   "proxies": {
-    "default": {
-      "httpProxy": "http://squid:3128",
-      "httpsProxy": "http://squid:3128",
-      "noProxy": "localhost,internal.registry.example.com"
-    }
+    "http-proxy": "http://squid-host:3128",
+    "https-proxy": "http://squid-host:3128",
+    "no-proxy": "localhost,127.0.0.1,internal.registry.example.com"
   }
 }
 ```
 
+Restart Docker after editing `daemon.json`.
+
 ## Monitor Cache Usage
 
 ```bash
-# Check cache statistics from Portainer console
-squidclient -h localhost -p 3128 mgr:info | grep -E "Hits|Misses|Hit ratio"
+# Check recent HIT/MISS entries from Portainer console
+grep -E 'TCP_(HIT|MISS|MEM_HIT)' /var/log/squid/access.log | tail -n 20
 
 # View access log
 tail -f /var/log/squid/access.log
@@ -123,15 +130,15 @@ tail -f /var/log/squid/access.log
 
 ## SSL Bump for HTTPS Caching
 
-For caching HTTPS content (requires certificate injection into clients):
+For inspecting and potentially caching HTTPS content (requires a Squid build with OpenSSL/`ssl_bump` support, certificate database initialization, and client trust of the Squid CA):
 
 ```conf
 # SSL configuration (advanced - requires client trust of Squid CA cert)
-https_port 3129 intercept ssl-bump cert=/etc/squid/squid.pem
+http_port 3129 ssl-bump tls-cert=/etc/squid/squid.pem generate-host-certificates=on dynamic_cert_mem_cache_size=4MB
 ssl_bump server-first all
 sslcrtd_program /usr/lib/squid/security_file_certgen -s /var/lib/squid/ssl_db -M 4MB
 ```
 
 ## Summary
 
-Squid deployed via Portainer provides bandwidth savings and access control for containerized workloads. It's particularly valuable at edge sites with limited internet bandwidth, reducing repetitive downloads of large container images and common HTTP resources.
+Squid deployed via Portainer provides bandwidth savings and access control for containerized workloads. It's particularly valuable at edge sites with limited internet bandwidth for repetitive HTTP downloads; for container image pull-through caching, pair it with a registry mirror and optionally route Docker daemon traffic through Squid.
