@@ -20,7 +20,7 @@ Windows Server includes a built-in DHCP server role that supports both DHCPv4 an
 2. Select **Role-based or feature-based installation**
 3. Choose **DHCP Server**
 4. Complete the wizard and click **Install**
-5. After installation, click **Complete DHCP configuration** to authorize the server in Active Directory
+5. After installation, click **Complete DHCP configuration** to create the DHCP security groups and, if the server is domain-joined, authorize the server in Active Directory
 
 ### Using PowerShell
 
@@ -29,7 +29,11 @@ Windows Server includes a built-in DHCP server role that supports both DHCPv4 an
 
 Install-WindowsFeature -Name DHCP -IncludeManagementTools
 
-# Authorize the DHCP server in Active Directory
+# Create DHCP security groups and reload the service
+netsh dhcp add securitygroups
+Restart-Service -Name DHCPServer
+
+# If the server is domain-joined, authorize it in Active Directory
 Add-DhcpServerInDC -DnsName "dhcpserver.corp.example.com" -IPAddress 192.168.1.10
 
 # Notify Server Manager that DHCP post-install config is done
@@ -49,8 +53,8 @@ Set-ItemProperty -Path "HKLM:\SOFTWARE\Microsoft\ServerManager\Roles\12" `
 4. Set **Prefix**: `2001:db8:1::`
 5. Set **Prefix Length**: `64`
 6. Set **Preference**: `0` (default)
-7. Configure Start/End address if needed (optional exclusions)
-8. Set lease duration: T1 = 4 days, T2 = 6.4 days, Valid = 8 days
+7. Configure exclusions if needed
+8. Set lifetimes as needed. Defaults are Preferred = 8 days, T1 = 4 days, T2 = 6.4 days, Valid = 12 days
 9. Activate the scope
 
 ### Using PowerShell
@@ -72,15 +76,15 @@ Get-DhcpServerv6Scope
 
 ```powershell
 # Set DNS servers (option 23)
-Set-DhcpServerv6OptionValue -ScopeId "2001:db8:1::" `
+Set-DhcpServerv6OptionValue -Prefix "2001:db8:1::" `
     -DnsServer "2001:db8:ff::53", "2001:4860:4860::8888"
 
 # Set DNS domain search list (option 24)
-Set-DhcpServerv6OptionValue -ScopeId "2001:db8:1::" `
+Set-DhcpServerv6OptionValue -Prefix "2001:db8:1::" `
     -DomainSearchList "corp.example.com", "internal.example.com"
 
 # Verify options
-Get-DhcpServerv6OptionValue -ScopeId "2001:db8:1::"
+Get-DhcpServerv6OptionValue -Prefix "2001:db8:1::"
 ```
 
 ---
@@ -104,7 +108,7 @@ Get-DhcpServerv6ExclusionRange -Prefix "2001:db8:1::"
 ```powershell
 # Reserve a specific address for a client by DUID
 Add-DhcpServerv6Reservation -Prefix "2001:db8:1::" `
-    -ClientDuid "0001000128abc123001122334455" `
+    -ClientDuid "00-01-00-01-28-AB-C1-23-00-11-22-33-44-55" `
     -Iaid 1 `
     -IPAddress "2001:db8:1::10" `
     -Name "webserver01"
@@ -143,18 +147,18 @@ Get-DhcpServerv6ScopeStatistics -Prefix "2001:db8:1::"
 
 ---
 
-## Configuring DHCP Failover (Windows Server 2016+)
+## Configuring DHCPv6 High Availability (Windows Server 2016+)
 
-Windows Server DHCPv6 does not natively support DHCPv6 failover like DHCPv4. Use split scope as a workaround:
+Windows Server DHCPv6 does not natively support DHCPv6 failover like DHCPv4. For stateless DHCPv6, use two servers with identical option configuration. For stateful DHCPv6, use identical scopes with non-overlapping exclusion ranges as a workaround:
 
 ```powershell
-# Server 1: lower half of addresses
+# Server 1: serve the lower half of the /64 by excluding the upper half
 Add-DhcpServerv6ExclusionRange -Prefix "2001:db8:1::" `
-    -StartRange "2001:db8:1::201" -EndRange "2001:db8:1::3ff"
+    -StartRange "2001:db8:1:0:8000::" -EndRange "2001:db8:1:0:ffff:ffff:ffff:ffff"
 
-# Server 2: upper half
+# Server 2: serve the upper half of the /64 by excluding the lower half
 Add-DhcpServerv6ExclusionRange -Prefix "2001:db8:1::" `
-    -StartRange "2001:db8:1::100" -EndRange "2001:db8:1::200"
+    -StartRange "2001:db8:1::" -EndRange "2001:db8:1:0:7fff:ffff:ffff:ffff"
 ```
 
 ---
@@ -169,10 +173,10 @@ Get-Service -Name DHCPServer
 Restart-Service -Name DHCPServer
 
 # Check Windows Event Log for DHCP events
-Get-WinEvent -LogName "Microsoft-Windows-DHCP-Server/Operational" | `
+Get-WinEvent -LogName "Microsoft-Windows-DHCP Server Events/Operational" | `
     Select-Object -First 20 | Format-List
 
-# Check if server is authorized
+# Check if a domain-joined server is authorized
 Get-DhcpServerInDC
 ```
 
@@ -180,7 +184,7 @@ Get-DhcpServerInDC
 
 ## Best Practices
 
-1. **Authorize the server in AD** before it serves leases
+1. **Authorize the server in AD** before it serves leases if it is domain-joined
 2. **Configure exclusions** for static IP ranges before activating scopes
 3. **Set DNS options** - clients need name servers to function
 4. **Monitor scope utilization** with `Get-DhcpServerv6ScopeStatistics`
