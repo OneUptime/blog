@@ -16,7 +16,7 @@ Description: Display and interpret the Windows IPv4 routing table using route pr
 route print
 ```
 
-The output has three sections:
+The output includes these main sections, plus a **Persistent Routes** section if any persistent routes are configured:
 1. **Interface List**: network adapters and their interface indices
 2. **IPv4 Route Table**: all IPv4 routes
 3. **IPv6 Route Table**: all IPv6 routes
@@ -48,8 +48,8 @@ Network Destination  Netmask        Gateway       Interface   Metric
 | Network Destination | Target network or host |
 | Netmask | Subnet mask for the destination |
 | Gateway | Next-hop IP (`On-link` = directly connected) |
-| Interface | Local IP used to reach the gateway |
-| Metric | Route cost (lower = more preferred) |
+| Interface | Local IP address of the interface used for the route |
+| Metric | Route cost (among equally specific routes, lower = more preferred) |
 
 ## Important Standard Routes
 
@@ -64,13 +64,15 @@ Network Destination  Netmask        Gateway       Interface   Metric
 
 ```cmd
 :: Show only the default route
-route print | findstr "0.0.0.0"
+route print 0.0.0.0
 
 :: Show routes for a specific subnet
-route print | findstr "10.0.0"
+route print 10.*
+```
 
-:: Show persistent routes only
-route print | findstr /i "persistent"
+```powershell
+# Show persistent IPv4 routes only
+Get-NetRoute -AddressFamily IPv4 -PolicyStore PersistentStore
 ```
 
 ## Viewing Persistent Routes
@@ -86,7 +88,7 @@ Persistent Routes:
 ## PowerShell Alternative
 
 ```powershell
-# Show IPv4 routing table with full details
+# Show IPv4 routing table
 
 Get-NetRoute -AddressFamily IPv4 | Sort-Object RouteMetric | Format-Table
 
