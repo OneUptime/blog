@@ -4,7 +4,7 @@ Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
 Tags: Envoy, Reverse Proxy, IPv4, HTTP, Service Mesh, Load Balancing
 
-Description: Configure Envoy as a reverse proxy that accepts HTTP/HTTPS traffic and forwards requests to IPv4 backend services with path-based routing.
+Description: Configure Envoy as a reverse proxy that accepts HTTP traffic and forwards requests to IPv4 backend services with path-based routing.
 
 ## Introduction
 
@@ -29,6 +29,7 @@ static_resources:
                 "@type": type.googleapis.com/envoy.extensions.filters.network.http_connection_manager.v3.HttpConnectionManager
                 stat_prefix: ingress_http
                 codec_type: AUTO
+                use_remote_address: true
                 access_log:
                   - name: envoy.access_loggers.stdout
                     typed_config:
@@ -114,7 +115,7 @@ admin:
 
 ## Adding Request Headers
 
-Add forwarding headers via `request_headers_to_add`:
+Use `request_headers_to_add` for custom headers. Envoy manages `X-Forwarded-For` and `X-Forwarded-Proto` automatically, and `use_remote_address: true` is recommended when Envoy is acting as an edge reverse proxy:
 
 ```yaml
 routes:
@@ -122,12 +123,8 @@ routes:
     route: { cluster: web_cluster }
     request_headers_to_add:
       - header:
-          key: "X-Forwarded-For"
-          value: "%DOWNSTREAM_REMOTE_ADDRESS_WITHOUT_PORT%"
-        keep_empty_value: true
-      - header:
-          key: "X-Forwarded-Proto"
-          value: "http"
+          key: "X-Proxy-By"
+          value: "envoy"
 ```
 
 ## Testing the Reverse Proxy
@@ -143,7 +140,7 @@ curl http://localhost:8080/static/logo.png
 curl http://localhost:8080/
 
 # View routing table
-curl http://127.0.0.1:9901/config_dump | jq '.configs[].dynamic_route_configs'
+curl -s 'http://127.0.0.1:9901/config_dump?resource=static_route_configs' | jq '.configs[0].static_route_configs'
 
 # View traffic stats
 curl http://127.0.0.1:9901/stats | grep cluster.*upstream_rq_total
@@ -151,4 +148,4 @@ curl http://127.0.0.1:9901/stats | grep cluster.*upstream_rq_total
 
 ## Conclusion
 
-Envoy as a reverse proxy uses declarative YAML to define routes, clusters, and filters. Path-based routing with `prefix` matches routes to specific IPv4 backend clusters, `prefix_rewrite` transforms paths before forwarding, and `ROUND_ROBIN`/`LEAST_REQUEST` algorithms distribute load across endpoints. The admin API at port 9901 provides real-time introspection of routing decisions and backend health.
+Envoy as a reverse proxy uses declarative YAML to define routes, clusters, and filters. Path-based routing with `prefix` matches routes to specific IPv4 backend clusters, `prefix_rewrite` transforms paths before forwarding, and `ROUND_ROBIN`/`LEAST_REQUEST` algorithms distribute load across endpoints. The admin API at port 9901 provides real-time introspection of the loaded routing configuration, traffic stats, and backend health.
