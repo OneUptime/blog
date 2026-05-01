@@ -1,14 +1,14 @@
-# How to Docker Compose Stacks with OpenTofu
+# How to Manage Docker Resources with OpenTofu
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
 Tags: OpenTofu, Docker, Container, Infrastructure as Code, DevOps
 
-Description: Learn how to docker compose stacks with OpenTofu using the Docker provider for local and remote container management.
+Description: Learn how to manage Docker resources with OpenTofu using the Docker provider for local and remote Docker host management.
 
 ## Introduction
 
-The OpenTofu Docker provider manages Docker resources declaratively. This is useful for local development environments, testing infrastructure, and managing Docker hosts in production.
+The OpenTofu Docker provider manages Docker resources declaratively, such as images, containers, networks, and volumes. This is useful for local development environments, testing infrastructure, and managing local or remote Docker hosts.
 
 ## Provider Setup
 
@@ -17,7 +17,7 @@ terraform {
   required_providers {
     docker = {
       source  = "kreuzwerker/docker"
-      version = "~> 3.0"
+      version = "4.2.0"
     }
   }
 }
@@ -79,11 +79,23 @@ resource "docker_volume" "data" {
 ```hcl
 variable "app_name"       { type = string }
 variable "image_name"     { type = string }
-variable "image_tag"      { type = string; default = "latest" }
+variable "image_tag" {
+  type    = string
+  default = "latest"
+}
 variable "container_name" { type = string }
-variable "container_port" { type = number; default = 8080 }
-variable "host_port"      { type = number; default = 8080 }
-variable "environment"    { type = string; default = "development" }
+variable "container_port" {
+  type    = number
+  default = 8080
+}
+variable "host_port" {
+  type    = number
+  default = 8080
+}
+variable "environment" {
+  type    = string
+  default = "development"
+}
 ```
 
 ## Conclusion
