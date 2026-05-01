@@ -26,7 +26,7 @@ version: "3.8"
 
 services:
   nats:
-    image: nats:2.10-alpine
+    image: nats:2.14-alpine
     container_name: nats
     restart: unless-stopped
     ports:
@@ -74,14 +74,14 @@ curl http://localhost:8222/jsz
 
 ```bash
 # Install nats CLI
-curl -L https://github.com/nats-io/natscli/releases/latest/download/nats-linux-amd64.zip \
-  -o nats.zip && unzip nats.zip && sudo mv nats /usr/local/bin/
+curl -L https://github.com/nats-io/natscli/releases/download/v0.4.0/nats-0.4.0-linux-amd64.zip \
+  -o nats.zip && unzip nats.zip && sudo install nats-0.4.0-linux-amd64/nats /usr/local/bin/nats
 
-# Connect and publish a message
-nats pub test.subject "Hello NATS!" --server nats://localhost:4222
-
-# Subscribe to messages
+# Subscribe in one terminal
 nats sub test.subject --server nats://localhost:4222
+
+# Publish from another terminal
+nats pub test.subject "Hello NATS!" --server nats://localhost:4222
 ```
 
 ## Step 4: JetStream Streams and Consumers
@@ -100,6 +100,8 @@ nats consumer add ORDERS order-processor \
   --filter "orders.created" \
   --ack explicit \
   --deliver all \
+  --pull \
+  --defaults \
   --server nats://localhost:4222
 
 # Publish to the stream
@@ -121,16 +123,17 @@ import nats
 async def main():
     nc = await nats.connect("nats://localhost:4222")
 
+    # Create JetStream context
+    js = nc.jetstream()
+
     # Publish
-    await nc.publish("orders.created", b'{"id": "1234"}')
+    await js.publish("orders.created", b'{"id": "1234"}')
 
     # Subscribe
     async def message_handler(msg):
         print(f"Received on {msg.subject}: {msg.data.decode()}")
         await msg.ack()
 
-    # Create JetStream context
-    js = nc.jetstream()
     await js.subscribe("orders.>", cb=message_handler, durable="my-consumer")
 
     await asyncio.sleep(5)
@@ -146,7 +149,7 @@ For production, enable token or credentials authentication:
 ```yaml
 services:
   nats:
-    image: nats:2.10-alpine
+    image: nats:2.14-alpine
     command: >
       -js
       -sd /data
