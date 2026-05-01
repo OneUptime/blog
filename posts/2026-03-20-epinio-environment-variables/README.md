@@ -30,21 +30,7 @@ mkdir my-app && cd my-app
 
 ## Step 2: Create the Application
 
-For this example, we'll create a simple web application:
-
-```bash
-# Create main application file
-cat > app.sh << 'EOF'
-#!/bin/bash
-# Simple HTTP server for demonstration
-while true; do
-  echo -e "HTTP/1.1 200 OK\r\nContent-Type: text/plain\r\n\r\nHello from How to Configure Epinio Application Environment Variables!" | nc -l -p ${PORT:-8080}
-done
-EOF
-chmod +x app.sh
-```
-
-For a language-specific example relevant to this guide:
+For this example, we'll create a simple Node.js web application:
 
 ```bash
 # Node.js example
@@ -70,8 +56,8 @@ EOF
 # Target the namespace for deployment
 epinio target my-apps
 
-# Verify namespace is active
-epinio namespace show my-apps
+# Verify the targeted namespace
+epinio target
 ```
 
 ## Step 4: Deploy the Application
@@ -81,6 +67,7 @@ epinio namespace show my-apps
 epinio push --name my-app
 
 # Or specify options explicitly
+# Replace the custom route with a domain that resolves to your Epinio ingress controller
 epinio push \
   --name my-app \
   --instances 2 \
@@ -103,22 +90,18 @@ epinio app show my-app
 
 # List all applications in namespace
 epinio app list
-
-# View the application route
-epinio app show my-app | grep Routes
 ```
 
 ## Step 6: Test the Application
 
 ```bash
-# Get the application URL
-APP_URL=$(epinio app show my-app | grep Routes | awk '{print $2}')
+# Show the application details and note the first value under Active Routes
+epinio app show my-app
 
-# Test with curl
-curl ${APP_URL}
+# Test with curl (replace <route> with the value from Active Routes)
+curl -k https://<route>
 
-# Or open in browser
-open ${APP_URL}
+# Or open https://<route> in your browser
 ```
 
 ## Step 7: View Application Logs
@@ -138,7 +121,7 @@ epinio app logs my-app --follow
 # Then re-push to update
 epinio push --name my-app
 
-# Epinio performs a rolling update
+# Epinio restages the application and updates the deployment
 epinio app show my-app
 ```
 
