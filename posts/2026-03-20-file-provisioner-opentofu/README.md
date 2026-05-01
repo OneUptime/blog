@@ -17,7 +17,7 @@ resource "aws_instance" "web" {
   ami           = "ami-0abcdef1234567890"
   instance_type = "t3.micro"
 
-  # SSH connection is required for the file provisioner
+  # A connection is required for the file provisioner; this example uses SSH
   connection {
     type        = "ssh"
     user        = "ubuntu"
@@ -56,13 +56,13 @@ provisioner "file" {
 
 ## Uploading a Directory
 
-When `source` points to a directory, its entire contents are copied recursively:
+When `source` points to a directory, OpenTofu copies it recursively. With `ssh`, the destination directory must already exist, and a trailing slash on `source` means "copy the directory contents into the destination":
 
 ```hcl
 provisioner "file" {
-  # Copies everything inside scripts/ to /tmp/scripts/ on the remote host
+  # Copies everything inside scripts/ into the existing /tmp directory on the remote host
   source      = "${path.module}/scripts/"
-  destination = "/tmp/scripts"
+  destination = "/tmp"
 }
 ```
 
@@ -132,7 +132,7 @@ provisioner "remote-exec" {
 
 ## Limitations
 
-- The `file` provisioner does not support wildcards in the `source` argument.
+- The `source` argument accepts a single file or directory path, not a wildcard pattern.
 - Binary files are supported; the file is transferred byte-for-byte.
 - Very large directories may be slow to transfer over the SSH connection.
 
