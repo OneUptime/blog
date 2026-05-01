@@ -13,13 +13,16 @@ EC2 Instance Connect provides a secure way to connect to instances using short-l
 ## Prerequisites
 
 - OpenTofu v1.6+
+- AWS CLI v2 installed locally
 - AWS credentials with EC2 permissions
-- EC2 Instance Connect pre-installed on the AMI (included in Amazon Linux 2 and Ubuntu 20.04+)
+- EC2 Instance Connect pre-installed on the AMI (included in AL2023, current Amazon Linux 2 AMIs, and Ubuntu 20.04+)
 
 ## Step 1: Configure IAM Policy for Instance Connect
 
 ```hcl
 # IAM policy granting permission to use Instance Connect
+
+data "aws_caller_identity" "current" {}
 
 data "aws_iam_policy_document" "instance_connect" {
   statement {
@@ -35,6 +38,22 @@ data "aws_iam_policy_document" "instance_connect" {
       test     = "StringEquals"
       variable = "ec2:osuser"
       values   = ["ec2-user"]  # OS username to connect as
+    }
+  }
+
+  statement {
+    sid    = "AllowOpenTunnel"
+    effect = "Allow"
+    actions = [
+      "ec2-instance-connect:OpenTunnel"
+    ]
+    resources = [
+      aws_ec2_instance_connect_endpoint.private.arn
+    ]
+    condition {
+      test     = "NumericEquals"
+      variable = "ec2-instance-connect:remotePort"
+      values   = ["22"]
     }
   }
 
@@ -55,6 +74,8 @@ resource "aws_iam_policy" "instance_connect" {
 }
 ```
 
+Attach this policy to the IAM user or role that will initiate the SSH connection.
+
 ## Step 2: Create an Instance Connect Endpoint
 
 ```hcl
@@ -62,6 +83,7 @@ resource "aws_iam_policy" "instance_connect" {
 # without requiring public IPs or a bastion host
 resource "aws_ec2_instance_connect_endpoint" "private" {
   subnet_id          = var.private_subnet_id
+  ip_address_type    = "ipv4"
   security_group_ids = [aws_security_group.instance_connect.id]
 
   # Preserve client IP for connection tracking
@@ -113,6 +135,16 @@ resource "aws_security_group" "instance" {
 
 ```hcl
 # Instance Connect works without a traditional key pair
+data "aws_ami" "amazon_linux" {
+  most_recent = true
+  owners      = ["amazon"]
+
+  filter {
+    name   = "name"
+    values = ["amzn2-ami-hvm-*-x86_64-gp2"]
+  }
+}
+
 resource "aws_instance" "no_keypair" {
   ami             = data.aws_ami.amazon_linux.id
   instance_type   = "t3.micro"
@@ -120,8 +152,6 @@ resource "aws_instance" "no_keypair" {
 
   # No key_name needed - Instance Connect handles authentication
   vpc_security_group_ids = [aws_security_group.instance.id]
-
-  iam_instance_profile = aws_iam_instance_profile.ssm.name
 
   tags = {
     Name = "no-keypair-instance"
@@ -136,6 +166,7 @@ resource "aws_instance" "no_keypair" {
 aws ec2-instance-connect ssh \
   --instance-id i-0123456789abcdef0 \
   --os-user ec2-user \
+  --connection-type eice \
   --region us-east-1
 ```
 
