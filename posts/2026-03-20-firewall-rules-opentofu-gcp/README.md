@@ -21,7 +21,7 @@ terraform {
   required_providers {
     google = {
       source  = "hashicorp/google"
-      version = "~> 5.0"
+      version = "~> 7.0"
     }
   }
 }
@@ -32,6 +32,15 @@ provider "google" {
 }
 
 variable "project_id" {}
+
+variable "vpc_subnet_cidrs" {
+  type = list(string)
+}
+
+resource "google_compute_network" "main" {
+  name                    = "main-vpc"
+  auto_create_subnetworks = false
+}
 ```
 
 ---
@@ -81,8 +90,8 @@ resource "google_compute_firewall" "allow_internal" {
     protocol = "icmp"
   }
 
-  source_ranges = [google_compute_network.main.subnetworks_self_links[0]]
-  description   = "Allow all internal traffic within VPC"
+  source_ranges = var.vpc_subnet_cidrs
+  description   = "Allow all internal traffic from the VPC subnet CIDR ranges"
 }
 ```
 
@@ -153,6 +162,11 @@ resource "google_service_account" "app" {
   display_name = "App Service Account"
 }
 
+resource "google_service_account" "db" {
+  account_id   = "db-service-account"
+  display_name = "DB Service Account"
+}
+
 resource "google_compute_firewall" "allow_app" {
   name    = "allow-app-to-db"
   network = google_compute_network.main.name
@@ -164,8 +178,8 @@ resource "google_compute_firewall" "allow_app" {
 
   # Source: instances using the app service account
   source_service_accounts = [google_service_account.app.email]
-  # Target: instances with the db-server tag
-  target_tags = ["db-server"]
+  # Target: instances using the db service account
+  target_service_accounts = [google_service_account.db.email]
 }
 ```
 
@@ -208,7 +222,7 @@ tofu plan
 tofu apply
 
 # List all firewall rules in project
-gcloud compute firewall-rules list --format="table(name,direction,priority,network,allowed)"
+gcloud compute firewall-rules list --format="table(name,direction,priority,network,allowed[].map().firewall_rule().list():label=ALLOW,denied[].map().firewall_rule().list():label=DENY)"
 
 # Describe a specific rule
 gcloud compute firewall-rules describe allow-http-https
@@ -221,7 +235,7 @@ gcloud compute ssh web-server-instance --command "curl -I https://api.internal"
 
 ## Best Practices
 
-1. **Use target tags** to apply rules to specific instance groups, not all instances
+1. **Use target tags** to apply rules to specific instances, not all instances
 2. **Prefer service accounts** over tags for production - they are more secure and auditable
 3. **Use priority** to control rule evaluation order (lower = higher priority)
 4. **Log firewall actions** with logging metadata for security auditing
