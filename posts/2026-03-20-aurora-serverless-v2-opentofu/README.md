@@ -8,13 +8,13 @@ Description: Learn how to deploy Aurora Serverless v2 with OpenTofu to automatic
 
 ## Introduction
 
-Aurora Serverless v2 scales database capacity in fine-grained increments (0.5 Aurora Capacity Units) within seconds, eliminating the need to provision for peak capacity. It integrates with Aurora's Multi-AZ architecture, supports read replicas, and works with all Aurora features including Performance Insights, IAM auth, and RDS Proxy.
+Aurora Serverless v2 scales database capacity in fine-grained increments (0.5 Aurora Capacity Units) based on workload demand, eliminating the need to provision for peak capacity. It integrates with Aurora's Multi-AZ architecture, supports read replicas, and works with many Aurora features including Performance Insights, IAM auth, and RDS Proxy.
 
 ## Prerequisites
 
 - OpenTofu v1.6+
 - AWS credentials with RDS/Aurora permissions
-- Aurora Serverless v2 supported engine versions (Aurora MySQL 8.0.23+, Aurora PostgreSQL 13.6+)
+- Aurora Serverless v2 supported Aurora PostgreSQL engine version for your AWS Region
 
 ## Step 1: Create Aurora Serverless v2 Cluster
 
@@ -22,6 +22,7 @@ Aurora Serverless v2 scales database capacity in fine-grained increments (0.5 Au
 resource "aws_rds_cluster" "serverless_v2" {
   cluster_identifier = "${var.project_name}-aurora-serverless-v2"
   engine             = "aurora-postgresql"
+  engine_mode        = "provisioned"
   engine_version     = "16.1"
 
   database_name   = var.database_name
@@ -108,7 +109,7 @@ resource "aws_rds_cluster_instance" "serverless_reader" {
 ## Step 3: Monitor ACU Utilization
 
 ```hcl
-# Alert when approaching maximum ACU capacity
+# Alert when the writer instance is approaching maximum ACU capacity
 resource "aws_cloudwatch_metric_alarm" "aurora_capacity_high" {
   alarm_name          = "${var.project_name}-aurora-capacity-high"
   comparison_operator = "GreaterThanThreshold"
@@ -120,15 +121,15 @@ resource "aws_cloudwatch_metric_alarm" "aurora_capacity_high" {
   threshold           = var.max_capacity * 0.8  # Alert at 80% of max
 
   dimensions = {
-    DBClusterIdentifier = aws_rds_cluster.serverless_v2.cluster_identifier
+    DBInstanceIdentifier = aws_rds_cluster_instance.serverless_writer.identifier
   }
 
   alarm_actions = [var.sns_topic_arn]
 }
 
-# Alert on ACU scaling frequency
-resource "aws_cloudwatch_metric_alarm" "aurora_scaling_rate" {
-  alarm_name          = "${var.project_name}-aurora-scaling-rate"
+# Alert when writer ACU utilization stays high
+resource "aws_cloudwatch_metric_alarm" "aurora_acu_utilization_high" {
+  alarm_name          = "${var.project_name}-aurora-acu-utilization-high"
   comparison_operator = "GreaterThanThreshold"
   evaluation_periods  = 3
   metric_name         = "ACUUtilization"
@@ -138,7 +139,7 @@ resource "aws_cloudwatch_metric_alarm" "aurora_scaling_rate" {
   threshold           = 90  # Alert when ACU utilization > 90%
 
   dimensions = {
-    DBClusterIdentifier = aws_rds_cluster.serverless_v2.cluster_identifier
+    DBInstanceIdentifier = aws_rds_cluster_instance.serverless_writer.identifier
   }
 }
 ```
@@ -150,11 +151,11 @@ tofu init
 tofu plan
 tofu apply
 
-# Monitor capacity
+# Monitor writer capacity
 aws cloudwatch get-metric-statistics \
   --namespace AWS/RDS \
   --metric-name ServerlessDatabaseCapacity \
-  --dimensions Name=DBClusterIdentifier,Value=my-project-aurora-serverless-v2 \
+  --dimensions Name=DBInstanceIdentifier,Value=my-project-serverless-writer \
   --start-time $(date -u -d '1 hour ago' +%Y-%m-%dT%H:%M:%S) \
   --end-time $(date -u +%Y-%m-%dT%H:%M:%S) \
   --period 300 \
@@ -163,4 +164,4 @@ aws cloudwatch get-metric-statistics \
 
 ## Conclusion
 
-Aurora Serverless v2 eliminates capacity planning by scaling in sub-second increments based on actual workload. Set `min_capacity` to a value that allows fast scaling without cold start delays (0.5 ACU is fine for dev, but 2+ ACUs are recommended for production to avoid slow scale-up). Monitor `ServerlessDatabaseCapacity` to tune the min/max range and ensure cost efficiency.
+Aurora Serverless v2 eliminates capacity planning by scaling in fine-grained 0.5-ACU increments based on actual workload. Set `min_capacity` to a value that allows fast scaling (0.5 ACU is fine for dev, but a higher minimum can reduce slow scale-up for bursty production workloads). Monitor `ServerlessDatabaseCapacity` and `ACUUtilization` to tune the min/max range and ensure cost efficiency.
