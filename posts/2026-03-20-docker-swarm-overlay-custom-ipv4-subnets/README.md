@@ -8,7 +8,7 @@ Description: Configure Docker Swarm overlay networks with custom IPv4 subnets fo
 
 ## Introduction
 
-Docker Swarm uses two overlay networks by default: `ingress` (for published ports) and `docker_gwbridge` (for external connectivity). Customizing their subnets and creating custom overlay networks with specific subnets prevents IP conflicts in complex environments.
+Docker Swarm creates two important built-in networks by default: `ingress` (an overlay network for published ports) and `docker_gwbridge` (a bridge network that connects swarm overlay networks to the host's physical network). Customizing their subnets and creating custom overlay networks with specific subnets prevents IP conflicts in complex environments.
 
 ## Initializing Swarm with Custom Subnets
 
@@ -25,12 +25,12 @@ The `--default-addr-pool` sets the parent range; `--default-addr-pool-mask-lengt
 
 ## Customizing the ingress Network
 
-The default `ingress` network uses `10.0.0.0/24`. To change it:
+The automatically created `ingress` network may use a subnet that conflicts with your environment. To change it, remove any services that publish ports first, then recreate it:
 
 ```bash
 # Remove the existing ingress network
 docker network rm ingress
-# You will be warned that published services will be unavailable temporarily
+# Docker warns before removing the routing-mesh network
 
 # Recreate with a custom subnet
 docker network create \
@@ -75,7 +75,7 @@ services:
       replicas: 3
 
   api:
-    image: my-api:latest
+    image: nginx:alpine
     networks:
       - frontend-overlay
       - backend-overlay
@@ -105,13 +105,13 @@ docker stack deploy -c docker-stack.yml myapp
 ## Verifying Overlay Network Connectivity
 
 ```bash
-# Check services are running on all nodes
-docker service ls
-docker service ps web
+# Check that the stack services are running and where tasks were placed
+docker stack services myapp
+docker service ps myapp_web
 
-# Test service resolution from within a container
-docker exec -it $(docker ps -q --filter name=myapp_web) \
-  nslookup api
+# Run this on a node that currently has a myapp_web task
+docker exec -it "$(docker ps -q --filter is-task=true --filter name=myapp_web | head -n 1)" \
+  nslookup myapp_api
 
 # Check VXLAN tunnels
 ip link show type vxlan
@@ -120,7 +120,7 @@ ip link show type vxlan
 ## Monitoring Overlay Network Traffic
 
 ```bash
-# Capture VXLAN traffic on the host interface
+# Replace eth0 with the interface carrying swarm data-path traffic
 sudo tcpdump -i eth0 -n "udp port 4789"
 ```
 
