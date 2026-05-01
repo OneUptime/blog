@@ -8,23 +8,36 @@ Description: Learn how to configure and tune CoreDNS on EKS using OpenTofu to op
 
 ## Introduction
 
-CoreDNS is the default DNS server for Kubernetes clusters, handling service discovery and external DNS resolution for pods. On EKS, it runs as a managed add-on. This guide covers deploying, tuning, and customizing CoreDNS configuration for production workloads.
+CoreDNS is the default DNS server for Kubernetes clusters, handling service discovery and external DNS resolution for pods. On EKS, you can run it as an Amazon EKS add-on, which this guide uses. This guide covers deploying, tuning, and customizing CoreDNS configuration for production workloads.
 
 ## Prerequisites
 
 - OpenTofu v1.6+
 - An existing EKS cluster
-- Helm provider and Kubernetes provider configured
+- AWS provider configured
+- `kubectl` configured for the cluster
 
 ## Step 1: Deploy CoreDNS as an EKS Add-On
 
 ```hcl
 # Deploy CoreDNS via the EKS managed add-on
 
+data "aws_eks_cluster" "this" {
+  name = var.cluster_name
+}
+
+data "aws_eks_addon_version" "coredns" {
+  addon_name         = "coredns"
+  kubernetes_version = data.aws_eks_cluster.this.version
+  most_recent        = true
+}
+
 resource "aws_eks_addon" "coredns" {
-  cluster_name             = var.cluster_name
-  addon_name               = "coredns"
-  addon_version            = data.aws_eks_addon_version.coredns.version
+  cluster_name                = var.cluster_name
+  addon_name                  = "coredns"
+  addon_version               = data.aws_eks_addon_version.coredns.version
+  configuration_values        = jsonencode(local.coredns_config)
+  resolve_conflicts_on_create = "OVERWRITE"
   resolve_conflicts_on_update = "OVERWRITE"
 
   tags = {
@@ -34,43 +47,19 @@ resource "aws_eks_addon" "coredns" {
 }
 ```
 
-## Step 2: Scale CoreDNS for Production
+## Step 2: Tune CoreDNS Resources for Production
 
 ```hcl
-# CoreDNS deployment patch to scale for production traffic
-resource "kubernetes_deployment" "coredns_patch" {
-  metadata {
-    name      = "coredns"
-    namespace = "kube-system"
-  }
-
-  spec {
-    # Scale to at least 2 replicas for HA, more for large clusters
-    replicas = max(2, ceil(var.expected_node_count / 10))
-
-    selector {
-      match_labels = { "k8s-app" = "kube-dns" }
-    }
-
-    template {
-      metadata {
-        labels = { "k8s-app" = "kube-dns" }
+# These values become part of aws_eks_addon.coredns.configuration_values.
+locals {
+  coredns_config_base = {
+    resources = {
+      requests = {
+        cpu    = "100m"
+        memory = "70Mi"
       }
-
-      spec {
-        container {
-          name = "coredns"
-
-          resources {
-            requests = {
-              cpu    = "100m"
-              memory = "70Mi"
-            }
-            limits = {
-              memory = "170Mi"
-            }
-          }
-        }
+      limits = {
+        memory = "170Mi"
       }
     }
   }
@@ -80,15 +69,10 @@ resource "kubernetes_deployment" "coredns_patch" {
 ## Step 3: Customize CoreDNS Configuration
 
 ```hcl
-# Update the CoreDNS ConfigMap with custom configuration
-resource "kubernetes_config_map" "coredns" {
-  metadata {
-    name      = "coredns"
-    namespace = "kube-system"
-  }
-
-  data = {
-    Corefile = <<-EOF
+# Extend the add-on configuration with a custom Corefile.
+locals {
+  coredns_config_with_corefile = merge(local.coredns_config_base, {
+    corefile = <<-EOF
       .:53 {
           errors
           health {
@@ -119,41 +103,24 @@ resource "kubernetes_config_map" "coredns" {
           }
       }
     EOF
-  }
+  })
 }
 ```
 
-## Step 4: Configure HPA for CoreDNS
+## Step 4: Configure EKS-Managed CoreDNS Autoscaling
+
+CoreDNS autoscaling requires an EKS platform version and CoreDNS add-on version that support the feature.
 
 ```hcl
-# Horizontal Pod Autoscaler for CoreDNS based on CPU
-resource "kubernetes_horizontal_pod_autoscaler_v2" "coredns" {
-  metadata {
-    name      = "coredns"
-    namespace = "kube-system"
-  }
-
-  spec {
-    scale_target_ref {
-      api_version = "apps/v1"
-      kind        = "Deployment"
-      name        = "coredns"
+# Enable EKS-managed autoscaling instead of a separate Kubernetes HPA.
+locals {
+  coredns_config = merge(local.coredns_config_with_corefile, {
+    autoScaling = {
+      enabled     = true
+      minReplicas = 2
+      maxReplicas = 10
     }
-
-    min_replicas = 2
-    max_replicas = 10
-
-    metric {
-      type = "Resource"
-      resource {
-        name = "cpu"
-        target {
-          type                = "Utilization"
-          average_utilization = 70
-        }
-      }
-    }
-  }
+  })
 }
 ```
 
@@ -163,6 +130,9 @@ resource "kubernetes_horizontal_pod_autoscaler_v2" "coredns" {
 tofu init
 tofu plan
 tofu apply
+
+# Verify the CoreDNS rollout completed
+kubectl rollout status deployment/coredns --namespace kube-system
 
 # Verify CoreDNS is running
 kubectl -n kube-system get pods -l k8s-app=kube-dns
@@ -174,4 +144,4 @@ kubectl run dns-test --image=busybox --rm -it --restart=Never -- nslookup kubern
 
 ## Conclusion
 
-Properly tuned CoreDNS is critical for cluster-wide service discovery performance. Scale CoreDNS replicas with cluster size, enable caching to reduce upstream DNS load, and configure custom forwarding rules for hybrid environments. Monitor CoreDNS metrics via Prometheus (`coredns_dns_requests_total`) to detect DNS bottlenecks before they impact application performance.
+Properly tuned CoreDNS is critical for cluster-wide service discovery performance. Use EKS-managed autoscaling, enable caching to reduce upstream DNS load, and configure custom forwarding rules for hybrid environments. Monitor CoreDNS metrics via Prometheus (`coredns_dns_requests_total`) to detect DNS bottlenecks before they impact application performance.
