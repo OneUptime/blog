@@ -75,6 +75,78 @@ locals {
     Environment = var.environment
     ManagedBy   = "OpenTofu"
   }, var.tags)
+
+  ingress_ipv4_rules = {
+    for rule in flatten([
+      for rule_index, rule in var.ingress_rules : [
+        for cidr in rule.cidr_blocks : {
+          key         = "ingress-ipv4-${rule_index}-${md5(cidr)}"
+          description = rule.description
+          from_port   = rule.from_port
+          to_port     = rule.to_port
+          protocol    = rule.protocol
+          cidr_ipv4   = cidr
+        }
+      ]
+    ]) : rule.key => rule
+  }
+
+  ingress_ipv6_rules = {
+    for rule in flatten([
+      for rule_index, rule in var.ingress_rules : [
+        for cidr in rule.ipv6_cidr_blocks : {
+          key         = "ingress-ipv6-${rule_index}-${md5(cidr)}"
+          description = rule.description
+          from_port   = rule.from_port
+          to_port     = rule.to_port
+          protocol    = rule.protocol
+          cidr_ipv6   = cidr
+        }
+      ]
+    ]) : rule.key => rule
+  }
+
+  ingress_source_sg_rules = {
+    for rule_index, rule in var.ingress_rules :
+    "ingress-sg-${rule_index}" => rule
+    if rule.source_security_group_id != null
+  }
+
+  ingress_self_rules = {
+    for rule_index, rule in var.ingress_rules :
+    "ingress-self-${rule_index}" => rule
+    if rule.self
+  }
+
+  egress_ipv4_rules = {
+    for rule in flatten([
+      for rule_index, rule in var.egress_rules : [
+        for cidr in rule.cidr_blocks : {
+          key         = "egress-ipv4-${rule_index}-${md5(cidr)}"
+          description = rule.description
+          from_port   = rule.from_port
+          to_port     = rule.to_port
+          protocol    = rule.protocol
+          cidr_ipv4   = cidr
+        }
+      ]
+    ]) : rule.key => rule
+  }
+
+  egress_ipv6_rules = {
+    for rule in flatten([
+      for rule_index, rule in var.egress_rules : [
+        for cidr in rule.ipv6_cidr_blocks : {
+          key         = "egress-ipv6-${rule_index}-${md5(cidr)}"
+          description = rule.description
+          from_port   = rule.from_port
+          to_port     = rule.to_port
+          protocol    = rule.protocol
+          cidr_ipv6   = cidr
+        }
+      ]
+    ]) : rule.key => rule
+  }
 }
 
 resource "aws_security_group" "main" {
@@ -82,37 +154,73 @@ resource "aws_security_group" "main" {
   description = var.description
   vpc_id      = var.vpc_id
 
-  dynamic "ingress" {
-    for_each = var.ingress_rules
-    content {
-      description              = ingress.value.description
-      from_port                = ingress.value.from_port
-      to_port                  = ingress.value.to_port
-      protocol                 = ingress.value.protocol
-      cidr_blocks              = length(ingress.value.cidr_blocks) > 0 ? ingress.value.cidr_blocks : null
-      ipv6_cidr_blocks         = length(ingress.value.ipv6_cidr_blocks) > 0 ? ingress.value.ipv6_cidr_blocks : null
-      source_security_group_id = ingress.value.source_security_group_id
-      self                     = ingress.value.self
-    }
-  }
-
-  dynamic "egress" {
-    for_each = var.egress_rules
-    content {
-      description      = egress.value.description
-      from_port        = egress.value.from_port
-      to_port          = egress.value.to_port
-      protocol         = egress.value.protocol
-      cidr_blocks      = length(egress.value.cidr_blocks) > 0 ? egress.value.cidr_blocks : null
-      ipv6_cidr_blocks = length(egress.value.ipv6_cidr_blocks) > 0 ? egress.value.ipv6_cidr_blocks : null
-    }
-  }
-
   tags = local.tags
+}
 
-  lifecycle {
-    create_before_destroy = true
-  }
+resource "aws_vpc_security_group_ingress_rule" "ipv4" {
+  for_each = local.ingress_ipv4_rules
+
+  security_group_id = aws_security_group.main.id
+  description       = each.value.description
+  cidr_ipv4         = each.value.cidr_ipv4
+  from_port         = each.value.protocol == "-1" ? null : each.value.from_port
+  to_port           = each.value.protocol == "-1" ? null : each.value.to_port
+  ip_protocol       = each.value.protocol
+}
+
+resource "aws_vpc_security_group_ingress_rule" "ipv6" {
+  for_each = local.ingress_ipv6_rules
+
+  security_group_id = aws_security_group.main.id
+  description       = each.value.description
+  cidr_ipv6         = each.value.cidr_ipv6
+  from_port         = each.value.protocol == "-1" ? null : each.value.from_port
+  to_port           = each.value.protocol == "-1" ? null : each.value.to_port
+  ip_protocol       = each.value.protocol
+}
+
+resource "aws_vpc_security_group_ingress_rule" "source_sg" {
+  for_each = local.ingress_source_sg_rules
+
+  security_group_id            = aws_security_group.main.id
+  description                  = each.value.description
+  referenced_security_group_id = each.value.source_security_group_id
+  from_port                    = each.value.protocol == "-1" ? null : each.value.from_port
+  to_port                      = each.value.protocol == "-1" ? null : each.value.to_port
+  ip_protocol                  = each.value.protocol
+}
+
+resource "aws_vpc_security_group_ingress_rule" "self" {
+  for_each = local.ingress_self_rules
+
+  security_group_id            = aws_security_group.main.id
+  description                  = each.value.description
+  referenced_security_group_id = aws_security_group.main.id
+  from_port                    = each.value.protocol == "-1" ? null : each.value.from_port
+  to_port                      = each.value.protocol == "-1" ? null : each.value.to_port
+  ip_protocol                  = each.value.protocol
+}
+
+resource "aws_vpc_security_group_egress_rule" "ipv4" {
+  for_each = local.egress_ipv4_rules
+
+  security_group_id = aws_security_group.main.id
+  description       = each.value.description
+  cidr_ipv4         = each.value.cidr_ipv4
+  from_port         = each.value.protocol == "-1" ? null : each.value.from_port
+  to_port           = each.value.protocol == "-1" ? null : each.value.to_port
+  ip_protocol       = each.value.protocol
+}
+
+resource "aws_vpc_security_group_egress_rule" "ipv6" {
+  for_each = local.egress_ipv6_rules
+
+  security_group_id = aws_security_group.main.id
+  description       = each.value.description
+  cidr_ipv6         = each.value.cidr_ipv6
+  from_port         = each.value.protocol == "-1" ? null : each.value.from_port
+  to_port           = each.value.protocol == "-1" ? null : each.value.to_port
+  ip_protocol       = each.value.protocol
 }
 ```
 
@@ -129,12 +237,16 @@ module "app_sg" {
   ingress_rules = [
     {
       description = "HTTPS from internet"
-      from_port   = 443; to_port = 443; protocol = "tcp"
+      from_port   = 443
+      to_port     = 443
+      protocol    = "tcp"
       cidr_blocks = ["0.0.0.0/0"]
     },
     {
       description              = "App port from ALB"
-      from_port                = 8080; to_port = 8080; protocol = "tcp"
+      from_port                = 8080
+      to_port                  = 8080
+      protocol                 = "tcp"
       source_security_group_id = module.alb_sg.security_group_id
     }
   ]
@@ -151,4 +263,4 @@ output "security_group_name" { value = aws_security_group.main.name }
 
 ## Conclusion
 
-This security group module uses dynamic blocks to handle any number of rules, and the `optional()` type constraints provide sensible defaults so callers only specify what they need. The `create_before_destroy` lifecycle rule prevents service interruptions when security groups need to be replaced.
+This security group module expands each logical rule into dedicated security group rule resources, and the `optional()` type constraints provide sensible defaults so callers only specify what they need. Using `aws_vpc_security_group_ingress_rule` and `aws_vpc_security_group_egress_rule` follows the provider's current best practice while still supporting CIDR ranges, security group references, and IPv4/IPv6 traffic sources.
