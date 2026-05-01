@@ -8,30 +8,28 @@ Description: Learn how to deploy Pi-hole, the network-wide ad blocker, via Porta
 
 ---
 
-Pi-hole acts as a DNS sinkhole for your entire network, blocking ads and trackers before they reach any device. Running it in Docker via Portainer makes it easy to update, back up, and restart without touching the host network configuration.
+Pi-hole acts as a DNS sinkhole for your entire network, blocking ads and trackers before they reach any device. Running it in Docker via Portainer makes it easy to update, back up, and restart.
 
 ## Prerequisites
 
 - Portainer running on a Linux host
 - Port `53` (DNS) available (stop `systemd-resolved` if it occupies port 53)
-- A static IP for the Pi-hole container
+- A static IP or DHCP reservation for the Pi-hole host
 
 ## Freeing Port 53 on Ubuntu/Debian
 
-Ubuntu uses `systemd-resolved` which binds to port 53. Disable the stub listener first:
+Ubuntu and Debian can use `systemd-resolved` which binds to port 53. Disable the stub listener first:
 
 ```bash
-# Edit resolved config to disable the stub DNS listener
-
-sudo sed -i 's/#DNSStubListener=yes/DNSStubListener=no/' /etc/systemd/resolved.conf
+# Disable the stub DNS listener and point resolv.conf at systemd-resolved's upstream view
+sudo sh -c 'mkdir -p /etc/systemd/resolved.conf.d && printf "[Resolve]\nDNSStubListener=no\n" | tee /etc/systemd/resolved.conf.d/no-stub.conf'
+sudo sh -c 'rm -f /etc/resolv.conf && ln -s /run/systemd/resolve/resolv.conf /etc/resolv.conf'
 sudo systemctl restart systemd-resolved
 ```
 
 ## Compose Stack
 
 ```yaml
-version: "3.8"
-
 services:
   pihole:
     image: pihole/pihole:latest
@@ -42,28 +40,21 @@ services:
       - "8053:80/tcp"    # Pi-hole admin UI
     environment:
       TZ: America/New_York
-      WEBPASSWORD: yourpassword    # Change this - admin UI password
-      PIHOLE_DNS_: 1.1.1.1;8.8.8.8  # Upstream DNS servers
-      DNSMASQ_LISTENING: all
+      FTLCONF_webserver_api_password: "yourpassword"  # Change this - admin UI password
+      FTLCONF_dns_upstreams: "1.1.1.1;8.8.8.8"        # Upstream DNS servers
+      FTLCONF_dns_listeningMode: "ALL"
     volumes:
       - pihole_data:/etc/pihole
-      - dnsmasq_data:/etc/dnsmasq.d
-    # Run with host network mode for best DNS compatibility
-    # Alternatively use port mappings as shown above
-    dns:
-      - 127.0.0.1
-      - 1.1.1.1
 
 volumes:
   pihole_data:
-  dnsmasq_data:
 ```
 
 ## Deploying
 
 1. In Portainer go to **Stacks > Add Stack**.
 2. Name it `pihole`.
-3. Set `WEBPASSWORD` and your `TZ`.
+3. Set `FTLCONF_webserver_api_password` and your `TZ`.
 4. Click **Deploy the stack**.
 
 Access the admin interface at `http://<host>:8053/admin`.
@@ -85,4 +76,4 @@ Run **Tools > Update Gravity** after adding lists.
 
 ## Monitoring
 
-Use OneUptime to monitor `http://<host>:8053/admin/api.php`. Pi-hole returns a JSON object with query statistics. A non-200 response or empty body means the admin interface is down. Also set a DNS monitor to verify that Pi-hole is resolving queries correctly.
+Use OneUptime to monitor `http://<host>:8053/admin/` for the web interface. Pi-hole v6 also exposes a REST API at `http://<host>:8053/api/`; for example, `GET /api/stats/summary` returns overview metrics, though password-protected instances may require authentication. Also set a DNS monitor to verify that Pi-hole is resolving queries correctly.
