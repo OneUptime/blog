@@ -17,17 +17,17 @@ TCP window size controls how much data can be in flight between sender and recei
 The TCP receive window limits how much unacknowledged data the sender can transmit:
 
 ```text
-Throughput = Window Size / Round Trip Time (RTT)
+Throughput (bytes/sec) = Window Size / Round Trip Time (RTT)
 
 Example:
-- Window = 64KB (65535 bytes)
+- Window = 65,535 bytes
 - RTT = 100ms
-- Max throughput = 65535 / 0.1 = ~5.2 Mbps
+- Max throughput = 65535 / 0.1 = ~655 KB/s (~5.2 Mbps)
 
 With window scaling:
-- Window = 4MB
+- Window = 4,194,304 bytes (4 MiB)
 - RTT = 100ms
-- Max throughput = 4,194,304 / 0.1 = ~335 Mbps
+- Max throughput = 4,194,304 / 0.1 = ~41.9 MB/s (~335 Mbps)
 ```
 
 ---
@@ -39,8 +39,8 @@ With window scaling:
 
 ss -tni
 
-# Output includes:
-# rcv_space:43690   rcv_ssthresh:87380   send_queue:0
+# Output includes fields such as:
+# wscale:7,7   rcv_space:43690   rcv_ssthresh:87380   snd_wnd:65535
 
 # Show detailed TCP info for active connections
 ss -tnip | head -20
@@ -69,14 +69,15 @@ sudo tcpdump -i eth0 -w /tmp/tcp_capture.pcap tcp and host 10.0.0.1
 ```text
 10:00:01.123456 IP 10.0.0.2.54321 > 10.0.0.1.80: Flags [P.], seq 1:1461, ack 1, win 502, length 1460
 
-# win 502 = window size of 502 * window_scale_factor bytes
+# win 502 = raw advertised TCP window field; actual window is 502 * 2^shift_count
+# only after window scaling is negotiated, and SYN/SYN-ACK windows are never scaled
 ```
 
 ---
 
 ## Detecting Zero Window Events
 
-A zero window (ZWP - Zero Window Probe) means the receiver's buffer is full and the sender must stop:
+A zero window means the receiver is advertising a window of 0, so the sender must stop sending new data. A Zero Window Probe (ZWP) is a separate probe packet sent by the sender while waiting for the window to reopen:
 
 ```bash
 # Filter for zero window in tcpdump
@@ -101,7 +102,7 @@ sudo tcpdump -i eth0 -vv 'tcp[14:2] = 0'
 
 ## Checking TCP Window Scaling
 
-Window scaling (RFC 1323) extends window size beyond 65535 bytes. Verify it's enabled:
+Window scaling (RFC 7323) extends window size beyond 65535 bytes. Verify it's enabled:
 
 ```bash
 # Check kernel TCP window scaling setting
@@ -178,7 +179,7 @@ echo ""
 echo "=== Active TCP Connections with Window Info ==="
 ss -tni | grep -A1 "ESTAB" | head -40
 echo ""
-echo "=== Zero Window events (last 60s) ==="
+echo "=== Zero Window packets observed over the next 5s ==="
 sudo timeout 5 tcpdump -i any -nn 'tcp[14:2] = 0' 2>/dev/null | head -10
 ```
 
@@ -187,7 +188,7 @@ sudo timeout 5 tcpdump -i any -nn 'tcp[14:2] = 0' 2>/dev/null | head -10
 ## Best Practices
 
 1. **Enable TCP window scaling** - essential for any link with BDP > 64KB
-2. **Use BBR or CUBIC** congestion control on Linux for better window management
+2. **Use BBR or CUBIC** congestion control on Linux when appropriate for better congestion control behavior
 3. **Set socket buffers** appropriately for your workload
 4. **Monitor Zero Window events** - they indicate bottlenecks at the receiver
 5. **Capture both sides** of a slow connection to determine if sender or receiver is limiting throughput
