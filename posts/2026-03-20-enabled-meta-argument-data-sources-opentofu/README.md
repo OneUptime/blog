@@ -8,7 +8,7 @@ Description: A guide to using the enabled meta-argument with data sources in Ope
 
 ## Introduction
 
-The `enabled` meta-argument works with data sources just as it does with resources. When `enabled = false`, the data source is not queried during plan and apply operations, and its attributes return `null`. This is useful for conditionally fetching data only when certain features are active.
+In OpenTofu v1.11 and later, the `enabled` meta-argument works with data sources just as it does with resources, but it is configured inside a `lifecycle` block. When `enabled = false`, the data source is not queried during plan and apply operations, and the data resource evaluates to `null`. This is useful for conditionally fetching data only when certain features are active.
 
 ## Basic enabled with Data Sources
 
@@ -21,14 +21,20 @@ variable "use_existing_vpc" {
 # Only query existing VPC if we're using one
 
 data "aws_vpc" "existing" {
-  enabled = var.use_existing_vpc
   id      = var.existing_vpc_id
+
+  lifecycle {
+    enabled = var.use_existing_vpc
+  }
 }
 
 # Create new VPC when not using existing
 resource "aws_vpc" "new" {
-  enabled    = !var.use_existing_vpc
   cidr_block = var.vpc_cidr
+
+  lifecycle {
+    enabled = !var.use_existing_vpc
+  }
 }
 
 locals {
@@ -52,8 +58,11 @@ variable "db_password_direct" {
 
 # Only fetch from Secrets Manager if using it
 data "aws_secretsmanager_secret_version" "db_password" {
-  enabled   = var.use_secrets_manager
   secret_id = "myapp/db-password"
+
+  lifecycle {
+    enabled = var.use_secrets_manager
+  }
 }
 
 locals {
@@ -76,20 +85,28 @@ variable "features" {
 
 # Only fetch WAF ACL if WAF feature is enabled
 data "aws_wafv2_web_acl" "existing" {
-  enabled = var.features.enable_waf
-  name    = "shared-web-acl"
-  scope   = "REGIONAL"
+  name  = "shared-web-acl"
+  scope = "REGIONAL"
+
+  lifecycle {
+    enabled = var.features.enable_waf
+  }
 }
 
 # Only fetch GuardDuty detector if feature is enabled
 data "aws_guardduty_detector" "main" {
-  enabled = var.features.enable_guardduty
+  lifecycle {
+    enabled = var.features.enable_guardduty
+  }
 }
 
 resource "aws_wafv2_web_acl_association" "app" {
-  enabled      = var.features.enable_waf
   resource_arn = aws_lb.app.arn
   web_acl_arn  = data.aws_wafv2_web_acl.existing.arn
+
+  lifecycle {
+    enabled = var.features.enable_waf
+  }
 }
 ```
 
@@ -103,15 +120,21 @@ variable "environment" {
 # Only look up existing ACM certificate in production
 # (dev/staging use self-signed or Let's Encrypt)
 data "aws_acm_certificate" "app" {
-  enabled = var.environment == "prod"
-  domain  = "app.example.com"
+  domain   = "app.example.com"
   statuses = ["ISSUED"]
+
+  lifecycle {
+    enabled = var.environment == "prod"
+  }
 }
 
 # Only query existing Route53 zone in non-local environments
 data "aws_route53_zone" "main" {
-  enabled = contains(["staging", "prod"], var.environment)
   name    = "example.com"
+
+  lifecycle {
+    enabled = contains(["staging", "prod"], var.environment)
+  }
 }
 ```
 
@@ -130,13 +153,19 @@ variable "cluster_name" {
 
 # Avoid querying a cluster that doesn't exist yet
 data "aws_eks_cluster" "existing" {
-  enabled = var.cluster_exists && var.cluster_name != ""
   name    = var.cluster_name != "" ? var.cluster_name : "placeholder"
+
+  lifecycle {
+    enabled = var.cluster_exists && var.cluster_name != ""
+  }
 }
 
 data "aws_eks_cluster_auth" "existing" {
-  enabled = var.cluster_exists && var.cluster_name != ""
   name    = var.cluster_name != "" ? var.cluster_name : "placeholder"
+
+  lifecycle {
+    enabled = var.cluster_exists && var.cluster_name != ""
+  }
 }
 ```
 
@@ -149,8 +178,11 @@ variable "use_custom_kms_key" {
 }
 
 data "aws_kms_key" "custom" {
-  enabled  = var.use_custom_kms_key
-  key_id   = var.kms_key_alias
+  key_id = var.kms_key_alias
+
+  lifecycle {
+    enabled = var.use_custom_kms_key
+  }
 }
 
 resource "aws_s3_bucket_server_side_encryption_configuration" "app" {
@@ -175,13 +207,19 @@ variable "storage_backend" {
 }
 
 data "aws_s3_bucket" "storage" {
-  enabled = var.storage_backend == "s3"
   bucket  = var.s3_bucket_name
+
+  lifecycle {
+    enabled = var.storage_backend == "s3"
+  }
 }
 
 data "google_storage_bucket" "storage" {
-  enabled = var.storage_backend == "gcs"
   name    = var.gcs_bucket_name
+
+  lifecycle {
+    enabled = var.storage_backend == "gcs"
+  }
 }
 
 locals {
@@ -195,4 +233,4 @@ locals {
 
 ## Conclusion
 
-The `enabled` meta-argument on data sources prevents unnecessary queries to cloud APIs when the data isn't needed. This is particularly useful for multi-environment configurations where some infrastructure only exists in certain environments, feature flags that control which external services are used, and avoiding errors when querying resources that may not exist yet. When a data source has `enabled = false`, all its attributes return `null`, so use null coalescing or conditional expressions when consuming the data.
+The `enabled` meta-argument on data sources prevents unnecessary queries to cloud APIs when the data isn't needed. This is particularly useful for multi-environment configurations where some infrastructure only exists in certain environments, feature flags that control which external services are used, and avoiding errors when querying resources that may not exist yet. When a data source has `enabled = false`, the data resource evaluates to `null`, so use conditional expressions or `try()` when consuming its attributes.
