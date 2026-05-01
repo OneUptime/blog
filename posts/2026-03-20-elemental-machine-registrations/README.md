@@ -22,10 +22,10 @@ This guide explains the structure of a MachineRegistration and walks through cre
 
 The `MachineRegistration` resource defines:
 
-- **Registration configuration**: URL and credentials for machines to use when registering
-- **Machine labels**: Labels applied to registered machines in the inventory
-- **Cloud-config**: Initial OS configuration applied during registration
-- **RBAC**: Permissions for machines to interact with the API
+- **Registration configuration**: Endpoint and authentication settings used during machine onboarding
+- **Machine inventory labels and annotations**: Metadata applied to the `MachineInventory` created for each registered machine
+- **Cloud-config**: OS configuration injected into the node and evaluated after reboot
+- **Installation settings**: Target device and install behavior such as reboot or debug output
 
 ## Creating a Basic MachineRegistration
 
@@ -39,32 +39,26 @@ metadata:
   name: my-nodes
   namespace: fleet-default
 spec:
-  # Labels applied to machines that register using this endpoint
-  machineLabels:
-    element.cattle.io/os.management: managedosversionchannel
+  # Labels applied to the MachineInventory created for this endpoint
+  machineInventoryLabels:
     location: datacenter-1
     role: worker
+    environment: production
 
-  # Cloud-config applied to the registering machine
+  # Cloud-config injected into the registering machine
   config:
     cloud-config:
       users:
         - name: root
           passwd: "$6$rounds=4096$randomsalt$hashedpassword"
 
-    # Elemental-specific registration configuration
     elemental:
-      registration:
-        # The operator will populate this URL automatically
-        uri: ""
-        # CA certificate bundle for TLS verification
-        ca-cert: ""
       install:
         # Device to install the OS onto
         device: /dev/sda
         # Reboot after installation
         reboot: true
-        # PowerOff after installation (mutually exclusive with reboot)
+        # Power off after installation
         poweroff: false
 ```
 
@@ -72,13 +66,16 @@ spec:
 # Apply the MachineRegistration
 kubectl apply -f machine-registration.yaml
 
+# Wait for the registration endpoint to become ready
+kubectl wait --for=condition=Ready machineregistration/my-nodes -n fleet-default
+
 # Check registration status
-kubectl get machineregistration -n fleet-default my-nodes -o yaml
+kubectl get machineregistration my-nodes -n fleet-default -o yaml
 ```
 
 ## Retrieving the Registration URL
 
-After creating the MachineRegistration, the operator generates a registration endpoint URL:
+After the MachineRegistration becomes `Ready`, the operator exposes a registration endpoint URL and token:
 
 ```bash
 # Get the registration URL
@@ -92,7 +89,7 @@ kubectl get machineregistration my-nodes -n fleet-default \
 
 ## Advanced MachineRegistration Configuration
 
-### With System Agent Options
+### With Device Selector Options
 
 ```yaml
 apiVersion: elemental.cattle.io/v1beta1
@@ -101,29 +98,25 @@ metadata:
   name: edge-nodes
   namespace: fleet-default
 spec:
-  machineLabels:
+  machineInventoryLabels:
     location: factory-floor
     tier: edge
 
   config:
     elemental:
       install:
-        device: /dev/nvme0n1
         reboot: true
-        # Configure system partitions
-        partitions:
-          persistent:
-            size: 50000  # MB
-          recovery:
-            size: 4096
-
-      # System agent configuration for Rancher connectivity
-      system-agent:
-        url: "https://rancher.example.com"
-        token: "your-rancher-token"
-        values:
-          server-url: "https://rancher.example.com"
-          token: "your-cluster-token"
+        debug: true
+        # Select a target disk dynamically
+        device-selector:
+          - key: Size
+            operator: Lt
+            values:
+              - 100Gi
+          - key: Size
+            operator: Gt
+            values:
+              - 30Gi
 ```
 
 ### With Hardware Label Collection
@@ -137,12 +130,12 @@ metadata:
 spec:
   # Collect hardware info as labels
   machineInventoryLabels:
-    # CPU info
-    cpuModel: "${System Information/Manufacturer}"
-    # Memory size
-    totalMemory: "${Memory Device/Size}"
+    # CPU model
+    cpuModel: "${CPU/Processor/Model}"
+    # Total physical memory in bytes
+    totalMemoryBytes: "${Memory/TotalPhysicalBytes}"
     # Serial number
-    serialNumber: "${System Information/Serial Number}"
+    serialNumber: "${Product/SerialNumber}"
 ```
 
 ## Verifying Machine Registration
