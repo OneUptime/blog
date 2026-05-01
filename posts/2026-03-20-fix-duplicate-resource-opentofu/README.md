@@ -129,9 +129,10 @@ tofu plan
 # Shows: aws_instance.web has moved to aws_instance.web_primary
 
 tofu apply
-# After apply, remove the moved block
+# Keep the moved block to preserve the refactoring history.
+# Remove it only when you're certain all relevant states have applied the move.
 ```
 
 ## Conclusion
 
-Duplicate resource errors are fixed by removing or renaming one of the conflicting declarations. When renaming a resource that has existing state, use `tofu state mv` or the declarative `moved` block to update the state reference without destroying and re-creating the resource. Always run `tofu validate` after merging branches to catch duplicates early.
+Duplicate resource errors are fixed by removing or renaming one of the conflicting declarations. When renaming a resource that has existing state, use `tofu state mv` or the declarative `moved` block to update the state reference without destroying and re-creating the resource. Keep `moved` blocks until you're sure all relevant states have applied the refactor, because removing them too early is a breaking change. Always run `tofu validate` after merging branches to catch duplicates early.
