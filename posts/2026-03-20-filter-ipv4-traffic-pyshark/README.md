@@ -9,8 +9,8 @@ Description: Learn how to use Wireshark display filters in PyShark to selectivel
 ## PyShark Display Filters vs BPF Filters
 
 PyShark supports two filtering mechanisms:
-- **BPF filters** (`bpf_filter`): Applied at capture time in the kernel (fast, limited syntax)
-- **Display filters** (`display_filter`): Applied after capture using Wireshark's full filter syntax (slower but more expressive)
+- **BPF filters** (`bpf_filter`): Applied at capture time by the capture engine, typically in the kernel (fast, limited syntax)
+- **Display filters** (`display_filter`): Applied by Wireshark/TShark using its full filter syntax (slower but more expressive)
 
 ## Basic Display Filter Usage
 
@@ -57,7 +57,7 @@ import pyshark
 # TCP traffic on a specific port
 cap = pyshark.LiveCapture(
     interface="eth0",
-    display_filter="tcp.port == 443"
+    display_filter="ip and tcp.port == 443"
 )
 
 for pkt in cap.sniff_continuously(packet_count=15):
@@ -73,19 +73,19 @@ import pyshark
 # Traffic between two specific hosts
 cap = pyshark.LiveCapture(
     interface="eth0",
-    display_filter="ip.src == 10.0.0.1 and ip.dst == 10.0.0.2"
+    display_filter="(ip.src == 10.0.0.1 and ip.dst == 10.0.0.2) or (ip.src == 10.0.0.2 and ip.dst == 10.0.0.1)"
 )
 
 # HTTP or HTTPS traffic from a specific host
 cap = pyshark.LiveCapture(
     interface="eth0",
-    display_filter="ip.src == 10.0.0.5 and (tcp.dport == 80 or tcp.dport == 443)"
+    display_filter="ip.src == 10.0.0.5 and (tcp.dstport == 80 or tcp.dstport == 443)"
 )
 
-# All DNS queries
+# All IPv4 DNS queries
 cap = pyshark.LiveCapture(
     interface="eth0",
-    display_filter="dns and udp.dport == 53"
+    display_filter="ip and dns.flags.response == 0"
 )
 ```
 
@@ -97,7 +97,7 @@ import pyshark
 # Apply display filter when reading an existing PCAP
 cap = pyshark.FileCapture(
     "/path/to/capture.pcap",
-    display_filter="http.request.method == GET"
+    display_filter='ip and http.request.method == "GET"'
 )
 
 for pkt in cap:
@@ -112,12 +112,12 @@ cap.close()
 ```python
 import pyshark
 
-# BPF filter applied by kernel (fast pre-filter)
+# BPF filter applied by the capture engine (fast pre-filter)
 # Display filter applied by TShark (detailed post-filter)
 cap = pyshark.LiveCapture(
     interface="eth0",
-    bpf_filter="tcp port 80 or tcp port 443",   # Fast kernel filter
-    display_filter="http.response.code == 200"   # Detailed filter
+    bpf_filter="tcp port 80 or tcp port 443",   # Fast capture-time filter
+    display_filter="ip and http.response.code == 200"   # Detailed filter
 )
 
 for pkt in cap.sniff_continuously(packet_count=10):
