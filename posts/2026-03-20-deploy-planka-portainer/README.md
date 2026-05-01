@@ -4,11 +4,11 @@ Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
 Tags: Portainer, Planka, Kanban, Docker, Self-Hosted
 
-Description: Deploy Planka open-source Kanban board using Portainer as a self-hosted Trello alternative for project management.
+Description: Deploy Planka Kanban board using Portainer as a self-hosted Trello alternative for project management.
 
 ## Introduction
 
-Planka is a fast, open-source Kanban board built with React and Node.js, backed by PostgreSQL. It is a self-hosted alternative to Trello with boards, lists, cards, labels, members, and real-time updates.
+Planka is a fast, self-hosted Kanban board built with React and Node.js, backed by PostgreSQL. It is a self-hosted alternative to Trello with boards, lists, cards, labels, members, and real-time updates.
 
 ## Prerequisites
 
@@ -21,11 +21,9 @@ Navigate to **Stacks** > **Add Stack**:
 ```yaml
 # docker-compose.yml - Planka
 
-version: "3.8"
-
 services:
   planka:
-    image: ghcr.io/plankanban/planka:1.23.1
+    image: ghcr.io/plankanban/planka:latest
     container_name: planka
     restart: unless-stopped
     ports:
@@ -37,7 +35,7 @@ services:
     environment:
       - DATABASE_URL=postgresql://planka:${DB_PASSWORD}@planka_postgres/planka
       - SECRET_KEY=${SECRET_KEY}
-      - BASE_URL=http://${PLANKA_DOMAIN}:1337
+      - BASE_URL=${BASE_URL}
       - DEFAULT_ADMIN_EMAIL=${ADMIN_EMAIL}
       - DEFAULT_ADMIN_PASSWORD=${ADMIN_PASSWORD}
       - DEFAULT_ADMIN_NAME=Admin
@@ -81,8 +79,8 @@ networks:
 
 ```text
 DB_PASSWORD=your-postgres-password
-SECRET_KEY=your-random-64-char-secret
-PLANKA_DOMAIN=planka.yourdomain.com
+SECRET_KEY=your-random-128-char-hex-secret
+BASE_URL=http://your-server-ip-or-domain:1337
 ADMIN_EMAIL=admin@yourdomain.com
 ADMIN_PASSWORD=your-admin-password
 ```
@@ -94,7 +92,7 @@ openssl rand -hex 64
 
 ## Step 3: Access Planka
 
-Open `http://<host>:1337` and log in with your `DEFAULT_ADMIN_EMAIL` and `DEFAULT_ADMIN_PASSWORD`.
+Open the URL you set in `BASE_URL` and log in with the email and password you set in `ADMIN_EMAIL` and `ADMIN_PASSWORD`.
 
 ## Step 4: Create a Project and Board
 
@@ -107,11 +105,19 @@ Open `http://<host>:1337` and log in with your `DEFAULT_ADMIN_EMAIL` and `DEFAUL
 
 ```bash
 # Backup PostgreSQL database
-docker exec planka_postgres pg_dump -U planka planka > planka_backup.sql
+docker exec planka_postgres pg_dump -U planka -d planka > planka_backup.sql
+
+# Backup user avatars
+docker run --rm --volumes-from planka -v "$(pwd)":/backup alpine \
+  tar czf /backup/planka_user_avatars.tar.gz -C /app/public/user-avatars .
+
+# Backup project background images
+docker run --rm --volumes-from planka -v "$(pwd)":/backup alpine \
+  tar czf /backup/planka_project_background_images.tar.gz -C /app/public/project-background-images .
 
 # Backup file attachments
-docker run --rm -v planka_attachments:/data -v $(pwd):/backup alpine \
-  tar czf /backup/planka_attachments.tar.gz -C /data .
+docker run --rm --volumes-from planka -v "$(pwd)":/backup alpine \
+  tar czf /backup/planka_attachments.tar.gz -C /app/private/attachments .
 ```
 
 ## Conclusion
