@@ -42,7 +42,18 @@ ingress:
 persistence:
   enabled: true
   storageClass: longhorn
-  size: 500Gi    # Storage for uploaded files
+  size: 500Gi    # Persistent volume for Nextcloud
+
+internalDatabase:
+  enabled: false
+
+externalDatabase:
+  enabled: true
+  type: postgresql
+  host: nextcloud-postgresql:5432    # If the Helm release name is nextcloud
+  database: nextcloud
+  user: nextcloud
+  password: "dbpassword"
 
 postgresql:
   enabled: true
@@ -74,60 +85,61 @@ helm install nextcloud nextcloud/nextcloud \
   --values nextcloud-values.yaml
 ```
 
-## Step 2: Configure External Object Storage
+## Step 2: Configure S3-Compatible Object Storage as Primary Storage
 
-For large deployments, offload files to S3 instead of local PVCs:
+For large deployments, configure S3-compatible object storage as Nextcloud's primary storage before users upload data:
+
+```yaml
+# Add under the existing nextcloud: block in nextcloud-values.yaml
+objectStore:
+  s3:
+    enabled: true
+    bucket: nextcloud-data
+    region: us-east-1
+    accessKey: ACCESS_KEY
+    secretKey: SECRET_KEY
+    # host: s3.amazonaws.com   # Only required for non-AWS S3 endpoints
+    # port: "443"
+    # ssl: true
+```
 
 ```bash
-# Configure S3-compatible external storage via Nextcloud admin
-kubectl exec -it nextcloud-pod -n nextcloud -- \
-  php occ config:system:set objectstore class --value='\OC\Files\ObjectStore\S3'
-
-kubectl exec -it nextcloud-pod -n nextcloud -- \
-  php occ config:system:set objectstore arguments \
-    --value='{"bucket":"nextcloud-data","region":"us-east-1","key":"ACCESS_KEY","secret":"SECRET_KEY"}'
+helm upgrade nextcloud nextcloud/nextcloud \
+  --namespace nextcloud \
+  --values nextcloud-values.yaml
 ```
 
 ## Step 3: Configure Background Jobs
 
-```bash
-# Set up cron for background jobs
-kubectl apply -f - << 'EOF'
-apiVersion: batch/v1
-kind: CronJob
-metadata:
-  name: nextcloud-cron
-  namespace: nextcloud
-spec:
-  schedule: "*/5 * * * *"
-  jobTemplate:
-    spec:
-      template:
-        spec:
-          containers:
-            - name: cron
-              image: nextcloud:latest
-              command: ["php", "-f", "/var/www/html/cron.php"]
-              volumeMounts:
-                - name: nextcloud-data
-                  mountPath: /var/www/html
-          restartPolicy: Never
-EOF
+```yaml
+# Add to nextcloud-values.yaml
+cronjob:
+  enabled: true
+  type: sidecar
 ```
 
-## Step 4: Enable High-Performance Storage (Redis)
+```bash
+helm upgrade nextcloud nextcloud/nextcloud \
+  --namespace nextcloud \
+  --values nextcloud-values.yaml
+```
+
+## Step 4: Enable Redis for Caching and File Locking
+
+```yaml
+# Add to nextcloud-values.yaml
+redis:
+  enabled: true
+  auth:
+    password: "redispassword"
+```
 
 ```bash
-# Deploy Redis for Nextcloud transactional file locking
-helm install redis bitnami/redis \
+helm upgrade nextcloud nextcloud/nextcloud \
   --namespace nextcloud \
-  --set auth.password=redispassword
-
-# Configure Nextcloud to use Redis
-kubectl exec -it nextcloud-pod -n nextcloud -- \
-  php occ config:system:set redis host --value=redis-master.nextcloud.svc.cluster.local
+  --values nextcloud-values.yaml
 ```
 
 ## Conclusion
 
-Nextcloud on Rancher provides a self-hosted collaboration platform with full data sovereignty. The combination of S3 external storage for files and Redis for locking enables horizontal scaling of the Nextcloud application tier while maintaining data consistency.
+Nextcloud on Rancher provides a self-hosted collaboration platform with full data sovereignty. The combination of S3-compatible primary object storage and Redis for caching and locking helps support larger deployments while maintaining data consistency.
