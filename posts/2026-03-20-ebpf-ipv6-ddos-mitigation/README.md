@@ -4,17 +4,17 @@ Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
 Tags: eBPF, XDP, IPv6, DDoS, Security
 
-Description: Build XDP-based DDoS mitigation programs that drop malicious IPv6 packets at line rate before they reach the kernel network stack.
+Description: Inspect IPv6 packets with XDP as a foundation for IPv6 DDoS mitigation before they reach the kernel network stack.
 
 ## Overview
 
-Build XDP-based DDoS mitigation programs that drop malicious IPv6 packets at line rate before they reach the kernel network stack.
+Inspect IPv6 packets with XDP as a foundation for IPv6 DDoS mitigation before they reach the kernel network stack.
 
 ## Prerequisites
 
-- Linux kernel 5.6+ (for BTF and full eBPF feature support)
+- Linux kernel 5.8+ recommended (for modern BTF/libbpf workflows and CAP_BPF support)
 - Clang/LLVM for compiling eBPF C programs
-- Root access or CAP_BPF capability
+- Root access, or the combination of CAP_BPF and CAP_NET_ADMIN
 
 ## IPv6 in eBPF Programs
 
@@ -27,6 +27,7 @@ eBPF programs process IPv6 packets using kernel headers. The IPv6 header is 40 b
 #include <linux/if_ether.h>
 #include <linux/ipv6.h>
 #include <bpf/bpf_helpers.h>
+#include <bpf/bpf_endian.h>
 
 SEC("xdp")
 int process_ipv6(struct xdp_md *ctx) {
@@ -61,9 +62,9 @@ char LICENSE[] SEC("license") = "GPL";
 ### Loading with ip
 
 ```bash
-# Compile eBPF program
+# Compile eBPF program with BTF debug info
 
-clang -O2 -target bpf -c program.c -o program.o
+clang -O2 -g --target=bpf -c program.c -o program.o
 
 # Load XDP program on interface
 sudo ip link set dev eth0 xdp obj program.o sec xdp
@@ -99,16 +100,16 @@ sudo bpftool map dump id <MAP_ID> | grep -A 3 "key"
 
 ```bash
 # Generate IPv6 test traffic
-ping6 -c 10 2001:db8::1
+ping -6 -c 10 <TARGET_IPV6>
 
-# Use hping3 for IPv6 packet generation
-hping3 --ipv6 -S -p 80 2001:db8::1
+# Use nping for IPv6 TCP SYN packet generation
+nping --tcp -6 -p 80 --flags syn <TARGET_IPV6>
 
 # Watch bpf_printk output (kernel trace pipe)
-sudo cat /sys/kernel/debug/tracing/trace_pipe
+sudo cat /sys/kernel/tracing/trace_pipe
 
 # Use trace-cmd for structured tracing
-sudo trace-cmd record -e "bpf:*" ping6 -c 5 2001:db8::1
+sudo trace-cmd record -e "bpf:*" ping -6 -c 5 <TARGET_IPV6>
 sudo trace-cmd report
 ```
 
@@ -118,4 +119,4 @@ Use [OneUptime](https://oneuptime.com) to monitor the network performance metric
 
 ## Conclusion
 
-How to Use eBPF for IPv6 DDoS Mitigation requires understanding IPv6 header structure in C, using XDP or TC hooks for packet interception, and leveraging BPF maps to store IPv6 address state. Always validate packet bounds before accessing headers to avoid eBPF verifier rejections.
+Using eBPF as a foundation for IPv6 DDoS mitigation requires understanding IPv6 header structure in C, using XDP or TC hooks for packet interception, and leveraging BPF maps to store IPv6 address state. Always validate packet bounds before accessing headers to avoid eBPF verifier rejections.
