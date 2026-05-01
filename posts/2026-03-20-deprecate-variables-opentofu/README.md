@@ -8,7 +8,7 @@ Description: A guide to deprecating OpenTofu variables using the deprecated attr
 
 ## Introduction
 
-When maintaining OpenTofu modules, you sometimes need to rename variables, merge them into a new structure, or remove them entirely. The `deprecated` attribute (added in OpenTofu 1.9) allows you to mark variables as deprecated with a message explaining what users should do instead.
+When maintaining OpenTofu modules, you sometimes need to rename variables, merge them into a new structure, or remove them entirely. The `deprecated` attribute (introduced experimentally in OpenTofu 1.10 and stable in 1.11+) allows you to mark variables as deprecated with a message explaining what users should do instead.
 
 ## The deprecated Attribute
 
@@ -35,17 +35,19 @@ variable "server_config" {
 
 ## Deprecation Warning Output
 
-When a deprecated variable is used, OpenTofu shows a warning:
+When a caller passes a deprecated module variable, OpenTofu shows a warning:
 
 ```bash
-tofu plan -var="old_instance_type=t3.small"
+tofu plan
 
-# Warning: Use of deprecated input variable
+# Warning: Variable marked as deprecated by the module author
 
 #
-#   on variables.tf line 1, in variable "old_instance_type":
-#    1: variable "old_instance_type" {
+#   on main.tf line 3, in module "compute":
+#    3:   old_instance_type = "t3.small"
 #
+# Variable "old_instance_type" is marked as deprecated with the
+# following message:
 # Use 'server_config.instance_type' instead. This variable will be
 # removed in v2.0.
 ```
@@ -74,15 +76,11 @@ variable "instance_type" {
 # NEW - replacement variable
 variable "server" {
   type = object({
-    instance_type = string
-    count         = number
-    disk_gb       = number
+    instance_type = optional(string)
+    count         = optional(number, 1)
+    disk_gb       = optional(number, 20)
   })
-  default = {
-    instance_type = "t3.micro"
-    count         = 1
-    disk_gb       = 20
-  }
+  default = {}
 }
 ```
 
@@ -117,6 +115,7 @@ resource "aws_instance" "app" {
 ```hcl
 variable "database_password" {
   type       = string
+  default    = null
   sensitive  = true
   deprecated = <<-EOT
     The 'database_password' input variable is deprecated.
@@ -148,7 +147,7 @@ variable "database_secret_arn" {
 ```hcl
 # version.tf in your module
 terraform {
-  required_version = ">= 1.9.0"  # Required for deprecated attribute support
+  required_version = ">= 1.10.0"  # Required for deprecated attribute support
 }
 
 # CHANGELOG.md entries to accompany deprecations
