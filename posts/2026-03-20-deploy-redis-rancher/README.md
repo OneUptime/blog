@@ -26,30 +26,17 @@ helm repo update
 ```yaml
 # redis-values.yaml
 
-architecture: replication   # Deploy with 1 master + 2 replicas
+architecture: replication   # Deploy 3 Redis nodes managed by Sentinel (1 master + 2 replicas after election)
 
 auth:
   enabled: true
   password: ""              # Auto-generated; retrieve with kubectl get secret
 
-master:
-  persistence:
-    enabled: true
-    storageClass: longhorn
-    size: 10Gi
-  resources:
-    requests:
-      cpu: 250m
-      memory: 256Mi
-    limits:
-      cpu: 1000m
-      memory: 1Gi
-
 replica:
-  replicaCount: 2
+  replicaCount: 3
   persistence:
     enabled: true
-    storageClass: longhorn
+    storageClass: longhorn   # Replace if your cluster uses a different StorageClass
     size: 10Gi
   resources:
     requests:
@@ -69,7 +56,7 @@ sentinel:
 metrics:
   enabled: true
   serviceMonitor:
-    enabled: true
+    enabled: true            # Requires Prometheus Operator CRDs
     namespace: monitoring
 ```
 
@@ -107,17 +94,22 @@ kubectl get secret redis \
 ## Step 5: Connect to Redis
 
 ```bash
-# Connect to the Redis master
-kubectl exec -it redis-master-0 -n redis -- \
-  redis-cli -a $(
-    kubectl get secret redis -n redis \
-    -o jsonpath='{.data.redis-password}' | base64 -d
-  )
+# Discover the current Redis master through Sentinel
+REDIS_PASSWORD=$(kubectl get secret redis -n redis \
+  -o jsonpath='{.data.redis-password}' | base64 -d)
+MASTER_HOST=$(kubectl exec -n redis redis-node-0 -- \
+  redis-cli -a "$REDIS_PASSWORD" -p 26379 SENTINEL get-master-addr-by-name mymaster | sed -n '1p')
+MASTER_PORT=$(kubectl exec -n redis redis-node-0 -- \
+  redis-cli -a "$REDIS_PASSWORD" -p 26379 SENTINEL get-master-addr-by-name mymaster | sed -n '2p')
 
-# Test basic operations
-127.0.0.1:6379> SET mykey "hello"
-127.0.0.1:6379> GET mykey
-127.0.0.1:6379> INFO replication
+# Connect to the current Redis master
+kubectl exec -it redis-node-0 -n redis -- \
+  redis-cli -h "$MASTER_HOST" -p "$MASTER_PORT" -a "$REDIS_PASSWORD"
+
+# In redis-cli:
+SET mykey "hello"
+GET mykey
+INFO replication
 ```
 
 ---
@@ -126,28 +118,28 @@ kubectl exec -it redis-master-0 -n redis -- \
 
 ```bash
 # Connect to Sentinel and verify master discovery
-kubectl exec -it redis-node-0 -n redis -- \
-  redis-cli -p 26379 SENTINEL masters
+REDIS_PASSWORD=$(kubectl get secret redis -n redis \
+  -o jsonpath='{.data.redis-password}' | base64 -d)
+kubectl exec -n redis redis-node-0 -- \
+  redis-cli -a "$REDIS_PASSWORD" -p 26379 SENTINEL masters
 
 # Expected output includes:
 # name: mymaster
-# ip: 10.x.x.x
-# port: 6379
-# flags: master
+# ... the current master hostname or IP ...
+# ... port 6379 ...
+# ... flags: master ...
 ```
 
 ---
 
 ## Step 7: Connect from an Application
 
-When Redis Sentinel is enabled, applications connect through Sentinel for automatic failover:
+When Redis Sentinel is enabled, use a Sentinel-aware client library so the application can discover the current master automatically:
 
 ```bash
-# Create a connection secret for applications
+# Create a connection secret for Sentinel-aware applications
 kubectl create secret generic redis-connection \
   --namespace default \
-  --from-literal=host="redis.redis.svc.cluster.local" \
-  --from-literal=port="6379" \
   --from-literal=sentinel-hosts="redis.redis.svc.cluster.local:26379" \
   --from-literal=sentinel-master="mymaster" \
   --from-literal=password="$(
@@ -160,11 +152,16 @@ Use the secret in your application deployment:
 
 ```yaml
 env:
-  - name: REDIS_HOST
+  - name: REDIS_SENTINEL_HOSTS
     valueFrom:
       secretKeyRef:
         name: redis-connection
-        key: host
+        key: sentinel-hosts
+  - name: REDIS_SENTINEL_MASTER_SET
+    valueFrom:
+      secretKeyRef:
+        name: redis-connection
+        key: sentinel-master
   - name: REDIS_PASSWORD
     valueFrom:
       secretKeyRef:
@@ -197,24 +194,21 @@ rate(redis_keyspace_hits_total[5m]) /
 
 ```yaml
 # For pure caching (no persistence needed - faster, lower storage cost)
-master:
-  persistence:
-    enabled: false
 replica:
   persistence:
     enabled: false
 
-# For session storage or queue (AOF persistence for durability)
-master:
-  extraFlags:
-    - "--appendonly yes"
-    - "--appendfsync everysec"
+# For session storage or queues, keep AOF enabled.
+# The Bitnami chart enables this in commonConfiguration by default.
+commonConfiguration: |-
+  appendonly yes
+  save ""
 ```
 
 ---
 
 ## Best Practices
 
-- Enable Redis Sentinel (`sentinel.enabled: true`) for production deployments - it provides automatic failover without requiring application-level cluster awareness.
+- Enable Redis Sentinel (`sentinel.enabled: true`) for production deployments when you need automatic failover, and use a Sentinel-aware client library to follow master changes.
 - Use a dedicated namespace for Redis and restrict network access using NetworkPolicy.
-- For caching workloads, disable persistence to improve write performance and reduce storage costs; for session storage or queues, enable AOF persistence.
+- For caching workloads, disable persistence to improve write performance and reduce storage costs; for session storage or queues, keep the default AOF configuration in place for durability.
