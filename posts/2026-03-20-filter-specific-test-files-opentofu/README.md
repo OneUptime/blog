@@ -4,11 +4,11 @@ Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
 Tags: OpenTofu, Testing, Filter, CI/CD, Infrastructure as Code
 
-Description: Learn how to use the `-filter` flag in OpenTofu to run specific test files or individual test cases instead of the full test suite.
+Description: Learn how to use the `-filter` flag in OpenTofu to run specific test files instead of the full test suite.
 
 ## Introduction
 
-As your infrastructure codebase grows, so does the number of test files. Running the entire test suite on every change is slow and wasteful. OpenTofu's `-filter` flag lets you target specific test files or even individual `run` blocks, making your feedback loop dramatically faster.
+As your infrastructure codebase grows, so does the number of test files. Running the entire test suite on every change is slow and wasteful. OpenTofu's `-filter` flag lets you target specific test files, making your feedback loop dramatically faster.
 
 ## Basic File Filtering
 
@@ -25,18 +25,18 @@ tofu test \
   -filter=tests/iam_roles.tftest.hcl
 ```
 
-The path is relative to the current working directory (or the `-test-directory` if set).
+The path is relative to the current working directory, even if you also set `-test-directory`.
 
-## Filtering by Run Block Name
+## Run Block Scope
 
-Append `::run_block_name` to filter down to a specific `run` block within a file:
+The `-filter` flag works at the test-file level. It does not support a `file::run_block_name` syntax to run a single `run` block.
 
 ```bash
-# Run only the "creates_bucket_with_versioning" block in the S3 test file
-tofu test -filter=tests/s3_bucket.tftest.hcl::creates_bucket_with_versioning
+# Run only the dedicated test file for this scenario
+tofu test -filter=tests/s3_bucket_versioning.tftest.hcl
 ```
 
-This is especially useful when debugging a failing test-you can run just the one broken case without executing the entire file.
+If you need that level of isolation while debugging, move the scenario into its own test file and filter that file instead. This is especially useful when debugging a failing test-you can run only the file that contains the broken scenario instead of the entire suite.
 
 ## Practical CI/CD Patterns
 
@@ -85,7 +85,7 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
-      - uses: opentofu/setup-opentofu@v1
+      - uses: opentofu/setup-opentofu@v2
         with:
           tofu_version: "1.7.0"
 
@@ -115,12 +115,12 @@ Before filtering, it helps to know what test files and run blocks exist. A quick
 
 ```bash
 # List all test files
-find . -name "*.tftest.hcl" -o -name "*.tofutest.hcl"
+find . -type f \( -name "*.tftest.hcl" -o -name "*.tftest.json" -o -name "*.tofutest.hcl" -o -name "*.tofutest.json" \)
 
-# List all run block names across all test files
+# List all run block names across HCL-based test files
 grep -r '^run "' . --include="*.tftest.hcl" --include="*.tofutest.hcl"
 ```
 
 ## Conclusion
 
-The `-filter` flag turns `tofu test` from an all-or-nothing command into a precision tool. Use it in your editor integration for instant feedback, in CI to run only affected tests, and during debugging to isolate a single failing scenario.
+The `-filter` flag turns `tofu test` from an all-or-nothing command into a precision tool. Use it in your editor integration for instant feedback, in CI to run only affected tests, and during debugging to isolate a smaller subset of your suite.
