@@ -8,7 +8,7 @@ Description: Learn how to deploy a Redis Cluster with multiple nodes via Portain
 
 ## Redis Cluster Architecture
 
-Redis Cluster distributes data across multiple nodes using hash slots. A minimum cluster requires 6 nodes: 3 primaries and 3 replicas.
+Redis Cluster distributes data across multiple nodes using hash slots. A production deployment is typically 6 nodes: 3 primaries and 3 replicas. The minimum cluster that works as expected requires at least 3 primary nodes.
 
 ```text
 Primary 1 (slots 0-5460)      ← Replica 1
@@ -21,74 +21,114 @@ Primary 3 (slots 10923-16383) ← Replica 3
 **Stacks → Add Stack → redis-cluster**
 
 ```yaml
-version: "3.8"
-
 services:
   redis-1:
     image: redis:7.2-alpine
     restart: unless-stopped
-    command: redis-server /etc/redis/redis.conf
+    command: >
+      redis-server
+      --port 7001
+      --cluster-enabled yes
+      --cluster-config-file /data/nodes.conf
+      --cluster-node-timeout 5000
+      --appendonly yes
+      --requirepass your-cluster-password
+      --masterauth your-cluster-password
+      --bind 0.0.0.0
+      --protected-mode no
+      --dir /data
     volumes:
       - redis1_data:/data
-      - ./redis-cluster.conf:/etc/redis/redis.conf:ro
-    ports:
-      - "7001:7001"
-      - "17001:17001"    # Cluster bus port (service port + 10000)
 
   redis-2:
     image: redis:7.2-alpine
     restart: unless-stopped
-    command: redis-server /etc/redis/redis.conf
+    command: >
+      redis-server
+      --port 7001
+      --cluster-enabled yes
+      --cluster-config-file /data/nodes.conf
+      --cluster-node-timeout 5000
+      --appendonly yes
+      --requirepass your-cluster-password
+      --masterauth your-cluster-password
+      --bind 0.0.0.0
+      --protected-mode no
+      --dir /data
     volumes:
       - redis2_data:/data
-      - ./redis-cluster.conf:/etc/redis/redis.conf:ro
-    ports:
-      - "7002:7001"
-      - "17002:17001"
 
   redis-3:
     image: redis:7.2-alpine
     restart: unless-stopped
-    command: redis-server /etc/redis/redis.conf
+    command: >
+      redis-server
+      --port 7001
+      --cluster-enabled yes
+      --cluster-config-file /data/nodes.conf
+      --cluster-node-timeout 5000
+      --appendonly yes
+      --requirepass your-cluster-password
+      --masterauth your-cluster-password
+      --bind 0.0.0.0
+      --protected-mode no
+      --dir /data
     volumes:
       - redis3_data:/data
-      - ./redis-cluster.conf:/etc/redis/redis.conf:ro
-    ports:
-      - "7003:7001"
-      - "17003:17001"
 
   redis-4:
     image: redis:7.2-alpine
     restart: unless-stopped
-    command: redis-server /etc/redis/redis.conf
+    command: >
+      redis-server
+      --port 7001
+      --cluster-enabled yes
+      --cluster-config-file /data/nodes.conf
+      --cluster-node-timeout 5000
+      --appendonly yes
+      --requirepass your-cluster-password
+      --masterauth your-cluster-password
+      --bind 0.0.0.0
+      --protected-mode no
+      --dir /data
     volumes:
       - redis4_data:/data
-      - ./redis-cluster.conf:/etc/redis/redis.conf:ro
-    ports:
-      - "7004:7001"
-      - "17004:17001"
 
   redis-5:
     image: redis:7.2-alpine
     restart: unless-stopped
-    command: redis-server /etc/redis/redis.conf
+    command: >
+      redis-server
+      --port 7001
+      --cluster-enabled yes
+      --cluster-config-file /data/nodes.conf
+      --cluster-node-timeout 5000
+      --appendonly yes
+      --requirepass your-cluster-password
+      --masterauth your-cluster-password
+      --bind 0.0.0.0
+      --protected-mode no
+      --dir /data
     volumes:
       - redis5_data:/data
-      - ./redis-cluster.conf:/etc/redis/redis.conf:ro
-    ports:
-      - "7005:7001"
-      - "17005:17001"
 
   redis-6:
     image: redis:7.2-alpine
     restart: unless-stopped
-    command: redis-server /etc/redis/redis.conf
+    command: >
+      redis-server
+      --port 7001
+      --cluster-enabled yes
+      --cluster-config-file /data/nodes.conf
+      --cluster-node-timeout 5000
+      --appendonly yes
+      --requirepass your-cluster-password
+      --masterauth your-cluster-password
+      --bind 0.0.0.0
+      --protected-mode no
+      --dir /data
     volumes:
       - redis6_data:/data
-      - ./redis-cluster.conf:/etc/redis/redis.conf:ro
-    ports:
-      - "7006:7001"
-      - "17006:17001"
 
 volumes:
   redis1_data:
@@ -101,18 +141,21 @@ volumes:
 
 ## Redis Cluster Configuration File
 
+The stack above passes these settings inline. If you prefer a `redis-cluster.conf` file, use the equivalent configuration below:
+
 ```text
 # redis-cluster.conf
 
 port 7001
 cluster-enabled yes
-cluster-config-file nodes.conf
+cluster-config-file /data/nodes.conf
 cluster-node-timeout 5000
 appendonly yes
 requirepass your-cluster-password
 masterauth your-cluster-password
 bind 0.0.0.0
 protected-mode no
+dir /data
 ```
 
 ## Initialize the Cluster
@@ -123,8 +166,8 @@ After deploying the stack, initialize the cluster from one of the nodes:
 # Via Portainer exec on redis-1 container
 redis-cli -a your-cluster-password \
   --cluster create \
-  <HOST_IP>:7001 <HOST_IP>:7002 <HOST_IP>:7003 \
-  <HOST_IP>:7004 <HOST_IP>:7005 <HOST_IP>:7006 \
+  redis-1:7001 redis-2:7001 redis-3:7001 \
+  redis-4:7001 redis-5:7001 redis-6:7001 \
   --cluster-replicas 1 \
   --cluster-yes
 ```
@@ -133,7 +176,7 @@ redis-cli -a your-cluster-password \
 
 ```bash
 redis-cli -a your-cluster-password \
-  -h <HOST_IP> -p 7001 \
+  -h redis-1 -p 7001 \
   cluster info
 
 # Expected: cluster_state:ok, cluster_slots_assigned:16384
@@ -145,8 +188,8 @@ redis-cli -a your-cluster-password \
 services:
   app:
     environment:
-      # Most Redis clients support cluster mode URLs
-      - REDIS_CLUSTER_NODES=host:7001,host:7002,host:7003
+      # Most Redis clients accept a seed list of cluster nodes
+      - REDIS_CLUSTER_NODES=redis-1:7001,redis-2:7001,redis-3:7001
       - REDIS_PASSWORD=your-cluster-password
 ```
 
@@ -155,9 +198,9 @@ For Node.js (ioredis):
 ```javascript
 const Redis = require('ioredis');
 const cluster = new Redis.Cluster([
-  { port: 7001, host: process.env.HOST_IP },
-  { port: 7002, host: process.env.HOST_IP },
-  { port: 7003, host: process.env.HOST_IP },
+  { port: 7001, host: 'redis-1' },
+  { port: 7001, host: 'redis-2' },
+  { port: 7001, host: 'redis-3' },
 ], {
   redisOptions: { password: process.env.REDIS_PASSWORD }
 });
@@ -165,7 +208,7 @@ const cluster = new Redis.Cluster([
 
 ## Simpler Alternative: Redis Sentinel
 
-For failover without data sharding, Redis Sentinel is simpler:
+For failover without data sharding, Redis Sentinel is simpler. You still need at least three Sentinel instances and a writable `sentinel.conf` mounted into each one:
 
 ```yaml
 services:
@@ -176,11 +219,25 @@ services:
     image: redis:7.2-alpine
     command: redis-server --replicaof redis-primary 6379
 
-  sentinel:
+  sentinel-1:
     image: redis:7.2-alpine
-    command: redis-sentinel /etc/redis/sentinel.conf
+    command: redis-server /etc/redis/sentinel.conf --sentinel
+    volumes:
+      - /absolute/path/on/host/sentinel-1.conf:/etc/redis/sentinel.conf
+
+  sentinel-2:
+    image: redis:7.2-alpine
+    command: redis-server /etc/redis/sentinel.conf --sentinel
+    volumes:
+      - /absolute/path/on/host/sentinel-2.conf:/etc/redis/sentinel.conf
+
+  sentinel-3:
+    image: redis:7.2-alpine
+    command: redis-server /etc/redis/sentinel.conf --sentinel
+    volumes:
+      - /absolute/path/on/host/sentinel-3.conf:/etc/redis/sentinel.conf
 ```
 
 ## Conclusion
 
-Redis Cluster via Portainer provides horizontal scaling and high availability for production cache workloads. For most small-to-medium applications, Redis Sentinel (primary + replica + sentinel) is simpler to configure and sufficient for failover needs. Use full cluster mode when you need data partitioning across multiple nodes for capacity or performance.
+Redis Cluster via Portainer provides horizontal scaling and high availability for production cache workloads. For most small-to-medium applications, Redis Sentinel (a primary, one or more replicas, and at least three Sentinel instances) is simpler to configure and sufficient for failover needs. Use full cluster mode when you need data partitioning across multiple nodes for capacity or performance.
