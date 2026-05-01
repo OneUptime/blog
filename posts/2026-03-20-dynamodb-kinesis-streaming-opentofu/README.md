@@ -8,7 +8,7 @@ Description: Learn how to stream DynamoDB table changes to Amazon Kinesis Data S
 
 ## Introduction
 
-DynamoDB Kinesis Data Streaming captures item-level changes and delivers them to a Kinesis Data Stream, offering advantages over native DynamoDB Streams: data retention up to 365 days (vs 24 hours), fan-out to multiple consumers, and integration with Kinesis analytics services. Use it for audit trails, real-time analytics pipelines, and long-retention CDC.
+DynamoDB Kinesis Data Streaming captures item-level changes and delivers them to a Kinesis Data Stream, offering advantages over native DynamoDB Streams: data retention up to 365 days (vs 24 hours), fan-out to multiple consumers, and integration with services such as Amazon Managed Service for Apache Flink. Use it for audit trails, real-time analytics pipelines, and long-retention CDC.
 
 ## Prerequisites
 
@@ -23,9 +23,9 @@ resource "aws_kinesis_stream" "dynamodb_changes" {
   shard_count      = 2  # Each shard handles up to 1 MB/s write, 2 MB/s read
   retention_period = 168  # 7 days (up to 8760 hours = 365 days)
 
-  # Enhanced fan-out for low-latency consumers
+  # Choose provisioned or on-demand capacity mode
   stream_mode_details {
-    stream_mode = "PROVISIONED"  # or ON_DEMAND for auto-scaling shards
+    stream_mode = "PROVISIONED"  # or ON_DEMAND for automatically managed capacity
   }
 
   encryption_type = "KMS"
@@ -104,8 +104,8 @@ resource "aws_iam_role_policy" "kinesis_consumer" {
       {
         Effect   = "Allow"
         Action   = ["kinesis:GetRecords", "kinesis:GetShardIterator",
-                    "kinesis:DescribeStream", "kinesis:ListShards",
-                    "kinesis:ListStreams"]
+                    "kinesis:DescribeStream", "kinesis:DescribeStreamSummary",
+                    "kinesis:ListShards", "kinesis:SubscribeToShard"]
         Resource = aws_kinesis_stream.dynamodb_changes.arn
       },
       {
@@ -129,7 +129,7 @@ resource "aws_lambda_event_source_mapping" "kinesis_dynamodb" {
   starting_position = "LATEST"
 
   batch_size                         = 100
-  parallelization_factor             = 2  # Up to 10 concurrent shards per shard
+  parallelization_factor             = 2  # Up to 10 concurrent batches per shard
   bisect_batch_on_function_error     = true
   maximum_record_age_in_seconds      = 86400  # 1 day
 }
@@ -149,4 +149,4 @@ aws dynamodb describe-kinesis-streaming-destination \
 
 ## Conclusion
 
-DynamoDB Kinesis streaming is preferable to native DynamoDB Streams when you need longer data retention, multiple consumers reading the same stream independently, or integration with Kinesis Data Analytics for real-time SQL queries. The trade-off is additional cost for the Kinesis stream-evaluate whether the 24-hour retention of native DynamoDB Streams is sufficient for your use case before choosing Kinesis streaming.
+DynamoDB Kinesis streaming is preferable to native DynamoDB Streams when you need longer data retention, multiple consumers reading the same stream independently, or integration with Amazon Managed Service for Apache Flink for real-time SQL and stream processing. The trade-off is additional cost for the Kinesis stream-evaluate whether the 24-hour retention of native DynamoDB Streams is sufficient for your use case before choosing Kinesis streaming.
