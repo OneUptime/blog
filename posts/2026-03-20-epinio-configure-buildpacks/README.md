@@ -4,11 +4,11 @@ Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
 Tags: Epinio, Buildpacks, Kubernetes, PaaS, Configuration
 
-Description: Configure and manage buildpacks in Epinio to control how applications are detected, built, and packaged.
+Description: Use Epinio's buildpack-based deployment workflow to detect, build, and package applications for Kubernetes.
 
 ## Introduction
 
-How to Configure Epinio Buildpacks demonstrates how Epinio simplifies application deployment to Kubernetes. Epinio abstracts away Kubernetes complexity, letting developers focus on code while the platform handles containerization, deployment, and routing automatically.
+How to Configure Epinio Buildpacks demonstrates how Epinio's buildpack-based workflow simplifies application deployment to Kubernetes. Epinio abstracts away Kubernetes complexity, letting developers focus on code while the platform handles containerization, deployment, and routing automatically.
 
 ## Prerequisites
 
@@ -30,24 +30,26 @@ mkdir my-app && cd my-app
 
 ## Step 2: Create the Application
 
-For this example, we'll create a simple web application:
+For this example, we'll create a simple Node.js web application:
 
 ```bash
-# Create main application file
-cat > app.sh << 'EOF'
-#!/bin/bash
-# Simple HTTP server for demonstration
-while true; do
-  echo -e "HTTP/1.1 200 OK\r\nContent-Type: text/plain\r\n\r\nHello from How to Configure Epinio Buildpacks!" | nc -l -p ${PORT:-8080}
-done
+# Create package metadata so the Node.js buildpack can detect the app
+cat > package.json << 'EOF'
+{
+  "name": "my-app",
+  "version": "1.0.0",
+  "private": true,
+  "scripts": {
+    "start": "node server.js"
+  }
+}
 EOF
-chmod +x app.sh
 ```
 
 For a language-specific example relevant to this guide:
 
 ```bash
-# Node.js example
+# Create the application server
 cat > server.js << 'EOF'
 const http = require('http');
 const server = http.createServer((req, res) => {
@@ -105,20 +107,19 @@ epinio app show my-app
 epinio app list
 
 # View the application route
-epinio app show my-app | grep Routes
+epinio app show my-app | grep -A 1 '^Routes:'
 ```
 
 ## Step 6: Test the Application
 
 ```bash
 # Get the application URL
-APP_URL=$(epinio app show my-app | grep Routes | awk '{print $2}')
+APP_URL=$(epinio app show my-app | awk '/^Routes:/{getline; print $2; exit}')
 
 # Test with curl
-curl ${APP_URL}
+curl "$APP_URL"
 
-# Or open in browser
-open ${APP_URL}
+# Or open the URL in your browser manually
 ```
 
 ## Step 7: View Application Logs
@@ -128,7 +129,7 @@ open ${APP_URL}
 epinio app logs my-app
 
 # Follow live logs
-epinio app logs my-app --follow
+epinio app logs --follow my-app
 ```
 
 ## Step 8: Update the Application
@@ -138,7 +139,7 @@ epinio app logs my-app --follow
 # Then re-push to update
 epinio push --name my-app
 
-# Epinio performs a rolling update
+# Epinio deploys the updated application revision
 epinio app show my-app
 ```
 
@@ -172,4 +173,4 @@ epinio app delete my-app
 
 ## Conclusion
 
-How to Configure Epinio Buildpacks with Epinio demonstrates how the platform removes barriers between development and deployment. The simple push workflow means developers can deploy any application to Kubernetes without writing YAML or understanding container orchestration. Epinio's buildpack system automatically detects the runtime, installs dependencies, and creates an optimized container image.
+How to Configure Epinio Buildpacks demonstrates how Epinio's buildpack-based workflow removes barriers between development and deployment. The simple push workflow means developers can deploy supported applications to Kubernetes without writing YAML or understanding container orchestration. Epinio's buildpack system automatically detects the runtime, installs dependencies, and creates an optimized container image.
