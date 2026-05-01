@@ -22,12 +22,11 @@ listen = 203.0.113.10
 # Listen on multiple IPv4 addresses
 listen = 203.0.113.10, 10.0.0.1
 
-# Listen on all IPv4 interfaces (without IPv6)
-listen = *   # This is the default (also listens on ::)
+# Listen on all interfaces (IPv4 and IPv6) - default
+listen = *, ::
 
 # To listen on IPv4 only (not IPv6):
-listen = *    # Then disable IPv6 at OS level, or:
-# listen = 0.0.0.0   # Explicit IPv4 wildcard
+listen = *
 ```
 
 ## Disabling IPv6 in Dovecot
@@ -35,14 +34,11 @@ listen = *    # Then disable IPv6 at OS level, or:
 ```bash
 # /etc/dovecot/dovecot.conf
 
-# Only listen on IPv4 (use 0.0.0.0 wildcard)
-listen = 0.0.0.0
+# Only listen on IPv4
+listen = *
 
 # Alternatively, list specific IPv4 addresses
 listen = 203.0.113.10
-
-# Force IPv4 for outgoing connections (e.g., LMTP delivery)
-# Set in protocol lmtp section:
 ```
 
 ## Port-Specific Listener Configuration
@@ -52,11 +48,11 @@ listen = 203.0.113.10
 
 service imap-login {
     inet_listener imap {
-        address = 203.0.113.10    # IMAP port 143
+        listen = 203.0.113.10    # IMAP port 143
         port = 143
     }
     inet_listener imaps {
-        address = 203.0.113.10    # IMAP SSL port 993
+        listen = 203.0.113.10    # IMAP SSL port 993
         port = 993
         ssl = yes
     }
@@ -64,11 +60,11 @@ service imap-login {
 
 service pop3-login {
     inet_listener pop3 {
-        address = 203.0.113.10    # POP3 port 110
+        listen = 203.0.113.10    # POP3 port 110
         port = 110
     }
     inet_listener pop3s {
-        address = 203.0.113.10    # POP3 SSL port 995
+        listen = 203.0.113.10    # POP3 SSL port 995
         port = 995
         ssl = yes
     }
@@ -76,7 +72,7 @@ service pop3-login {
 
 service managesieve-login {
     inet_listener sieve {
-        address = 10.0.0.1        # Sieve on internal IP only
+        listen = 10.0.0.1        # Sieve on internal IP only
         port = 4190
     }
 }
@@ -88,8 +84,8 @@ service managesieve-login {
 # /etc/dovecot/conf.d/10-ssl.conf
 
 ssl = required    # Require SSL for all connections
-ssl_cert = </etc/letsencrypt/live/mail.example.com/fullchain.pem
-ssl_key  = </etc/letsencrypt/live/mail.example.com/privkey.pem
+ssl_server_cert_file = /etc/letsencrypt/live/mail.example.com/fullchain.pem
+ssl_server_key_file  = /etc/letsencrypt/live/mail.example.com/privkey.pem
 
 # Modern TLS protocols only
 ssl_min_protocol = TLSv1.2
@@ -100,7 +96,10 @@ ssl_cipher_list = ECDHE-ECDSA-AES128-GCM-SHA256:ECDHE-RSA-AES128-GCM-SHA256
 
 ```bash
 # Check Dovecot configuration
-sudo dovecot -n | grep -E "listen|address|port"
+sudo doveconf -n | grep -E "listen|port|ssl"
+
+# Reload Dovecot
+sudo systemctl reload dovecot
 
 # Verify ports are listening on correct IP
 sudo ss -tlnp | grep dovecot
@@ -112,11 +111,8 @@ sudo ss -tlnp | grep dovecot
 
 # Test IMAP connection
 openssl s_client -connect 203.0.113.10:993 -servername mail.example.com
-
-# Reload Dovecot
-sudo systemctl reload dovecot
 ```
 
 ## Conclusion
 
-Dovecot's `listen` directive and `inet_listener` address parameters control which IPv4 interfaces serve IMAP and POP3. Set `listen = 203.0.113.10` for server-wide IPv4 restriction, or configure individual `address` fields per service in `10-master.conf` for granular control. Enable SSL on ports 993 and 995 with modern TLS protocols for all production mail servers.
+Dovecot's `listen` directive and per-service `inet_listener` `listen` parameters control which IPv4 interfaces serve IMAP and POP3. Set `listen = 203.0.113.10` for server-wide IPv4 restriction, or configure individual `listen` fields per service in `10-master.conf` for granular control. Enable SSL on ports 993 and 995 with modern TLS protocols for all production mail servers.
