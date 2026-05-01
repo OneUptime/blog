@@ -8,7 +8,7 @@ Description: Publish Docker container ports on IPv6 addresses, configure port bi
 
 ## Introduction
 
-Docker port publishing (`-p` / `--publish`) binds container ports to the host's network interfaces. By default, ports bind to both IPv4 (`0.0.0.0`) and IPv6 (`::`) when IPv6 is enabled. You can explicitly bind ports to specific IPv6 addresses using `[IPv6]:host_port:container_port` syntax. Understanding Docker's port binding behavior with IPv6 is important for controlling which interfaces accept connections.
+Docker port publishing (`-p` / `--publish`) binds container ports to the host's network interfaces. Docker's IPv6 networking support applies to Docker daemons running on Linux hosts. When you publish a port without specifying a host address, Docker publishes it on all host addresses (`0.0.0.0` and `::`). You can explicitly bind ports to specific IPv6 addresses using `[IPv6]:host_port:container_port` syntax. Understanding Docker's port binding behavior with IPv6 is important for controlling which interfaces accept connections.
 
 ## Basic IPv6 Port Publishing
 
@@ -42,6 +42,7 @@ docker run -d \
     nginx:latest
 
 # Bind to specific IPv6 address only
+# Replace 2001:db8::1 with an IPv6 address assigned to the host
 docker run -d \
     -p "[2001:db8::1]:80:80" \
     --name web-specific \
@@ -110,24 +111,24 @@ for port, bindings in ports.items():
 ## IPv6 Port Binding with userland-proxy
 
 ```bash
-# By default, Docker uses userland-proxy for port binding
-# The proxy handles IPv6 -> container translation
+# With userland-proxy enabled (the default), Docker can map host IPv6
+# addresses to a container's IPv4 address on an IPv4-only bridge network
 
 # Check if userland-proxy is running
-ps aux | grep docker-proxy
+ps aux | grep [d]ocker-proxy
 
-# To disable userland-proxy (uses iptables directly):
+# To disable userland-proxy:
 # daemon.json:
 # { "userland-proxy": false }
 
-# With userland-proxy disabled, Docker uses ip6tables NAT
-# to redirect IPv6 ports directly
+# With userland-proxy disabled, published ports are handled by
+# Docker's firewall/NAT rules instead of a docker-proxy process
 
-# Verify with netstat
+# Verify with ss
 ss -tlnp | grep :80
-# Shows: [::]:80 or 0.0.0.0:80 depending on configuration
+# You may see docker-proxy listening when userland-proxy is enabled
 ```
 
 ## Conclusion
 
-Docker publishes container ports on IPv6 using `[::]:port:container_port` syntax. By default, `-p 80:80` binds to both `0.0.0.0:80` (IPv4) and `[::]:80` (IPv6) when IPv6 is enabled. Use explicit `[IPv6]:host_port:container_port` format to bind to specific IPv6 addresses or the IPv6 wildcard only. Verify port bindings with `docker port <container>` and check actual listening sockets with `ss -tlnp6`. The userland-proxy process handles the IPv6-to-container packet forwarding.
+Docker publishes container ports on IPv6 using `[IPv6]:host_port:container_port` syntax. On Docker Engine for Linux, `-p 80:80` publishes to all host addresses by default, which typically appears as `0.0.0.0:80` and `[::]:80`. Use explicit `[IPv6]:host_port:container_port` format to bind to specific IPv6 addresses or the IPv6 wildcard only. Verify port bindings with `docker port <container>` and check actual listening sockets with `ss -tlnp6`. When `userland-proxy` is enabled, host IPv6 addresses can map to a container's IPv4 address on an IPv4-only bridge network.
