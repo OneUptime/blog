@@ -13,12 +13,17 @@ Portainer provides powerful tools for container observability including real-tim
 ## Container Stats in Portainer
 
 Navigate to **Containers > [Container Name] > Stats** to view:
-- Real-time CPU usage (%)
-- Memory usage and limits
-- Network I/O (bytes in/out)
-- Disk I/O (read/write)
+- CPU usage
+- Memory usage
+- Network usage (RX/TX)
+- I/O usage
+- Processes running in the container
 
 ## Viewing Logs
+
+In Portainer, navigate to **Containers > [Container Name] > Logs**. You can use the date picker, line limit, timestamps, wrapping, and auto refresh options, then click **Download logs** to save the log output.
+
+If you have host access, the Docker CLI provides the same underlying logs:
 
 ```bash
 # Access container logs via Docker CLI
@@ -76,7 +81,6 @@ location / {
     proxy_pass https://localhost:9443;
     proxy_buffering off;           # Critical for log streaming
     proxy_cache off;
-    proxy_set_header X-Accel-Buffering no;  # Disable nginx buffering
     
     # WebSocket support for console
     proxy_http_version 1.1;
@@ -98,7 +102,7 @@ location / {
     
     proxy_http_version 1.1;
     proxy_set_header Upgrade $http_upgrade;
-    proxy_set_header Connection $connection_upgrade;
+    proxy_set_header Connection "upgrade";
     proxy_set_header Host $host;
     
     # Increase timeout for long console sessions
