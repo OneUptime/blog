@@ -8,14 +8,14 @@ Description: Learn how to eliminate configuration duplication across environment
 
 ## Introduction
 
-One of Terragrunt's core value propositions is helping teams maintain DRY (Don't Repeat Yourself) infrastructure configurations. Without it, you end up copy-pasting backend configs and provider blocks across dozens of modules. This guide shows the main DRY techniques.
+One of Terragrunt's core value propositions is helping teams maintain DRY (Don't Repeat Yourself) infrastructure configurations. Without it, you end up copy-pasting backend configs and provider blocks across dozens of root modules. This guide shows the main DRY techniques.
 
 ## The Problem: Repeated Backend Configuration
 
-Without Terragrunt, every module requires its own backend block:
+Without Terragrunt, every root module requires its own backend block:
 
 ```hcl
-# Repeated in every module - hard to maintain
+# Repeated in every root module - hard to maintain
 
 terraform {
   backend "s3" {
@@ -28,19 +28,19 @@ terraform {
 }
 ```
 
-## Solution: Shared Remote State via Root terragrunt.hcl
+## Solution: Shared Remote State via a Root `root.hcl`
 
-Define the backend once and have Terragrunt inject it into every module:
+Define the backend once and have Terragrunt inject it into every unit:
 
 ```hcl
-# Root terragrunt.hcl
+# Root root.hcl
 terraform_binary = "tofu"
 
 remote_state {
   backend = "s3"
   config = {
     bucket         = "my-opentofu-state-${local.account_id}"
-    # path_relative_to_include() gives each module a unique state key
+    # path_relative_to_include() gives each unit a unique state key
     key            = "${path_relative_to_include()}/tofu.tfstate"
     region         = local.aws_region
     encrypt        = true
@@ -53,8 +53,9 @@ remote_state {
 }
 
 locals {
-  # Read common variables from a YAML file
+  # Read shared and environment-specific variables from YAML files
   common_vars = yamldecode(file(find_in_parent_folders("common_vars.yaml")))
+  env_vars    = yamldecode(file(find_in_parent_folders("env_vars.yaml")))
   aws_region  = local.common_vars.aws_region
   account_id  = local.common_vars.account_id
 }
@@ -82,7 +83,7 @@ instance_size: t3.large
 ```hcl
 # environments/prod/eks/terragrunt.hcl
 include "root" {
-  path = find_in_parent_folders()
+  path = find_in_parent_folders("root.hcl")
 }
 
 # Read variables from multiple layers and merge them
@@ -107,7 +108,7 @@ inputs = merge(local.all_vars, {
 Instead of repeating provider configuration, generate it from the root config:
 
 ```hcl
-# Root terragrunt.hcl - generate provider.tf in every module
+# Root root.hcl - generate provider.tf in every unit
 generate "provider" {
   path      = "provider.tf"
   if_exists = "overwrite_terragrunt"
@@ -141,19 +142,19 @@ EOF
 ```text
 infrastructure/
 ├── common_vars.yaml          # Shared across all environments
-├── terragrunt.hcl            # Root config: backend, provider generation
+├── root.hcl                  # Root config: backend, provider generation
 ├── environments/
 │   ├── dev/
 │   │   ├── env_vars.yaml     # Dev-specific values
-│   │   ├── terragrunt.hcl    # Includes root
 │   │   ├── vpc/
 │   │   │   └── terragrunt.hcl
 │   │   └── eks/
 │   │       └── terragrunt.hcl
 │   └── prod/
 │       ├── env_vars.yaml
-│       ├── terragrunt.hcl
-│       └── vpc/
+│       ├── vpc/
+│       │   └── terragrunt.hcl
+│       └── eks/
 │           └── terragrunt.hcl
 └── modules/
     ├── vpc/
@@ -162,4 +163,4 @@ infrastructure/
 
 ## Conclusion
 
-Terragrunt's DRY patterns - shared backend config via `remote_state`, generated provider files via `generate`, and layered YAML variable files - dramatically reduce the amount of boilerplate in large OpenTofu projects. A change to the shared backend configuration propagates automatically to every module the next time it is initialized.
+Terragrunt's DRY patterns - shared backend config via `remote_state`, generated provider files via `generate`, and layered YAML variable files - dramatically reduce the amount of boilerplate in large OpenTofu projects. A change to the shared backend configuration propagates automatically to every unit the next time it is initialized.
