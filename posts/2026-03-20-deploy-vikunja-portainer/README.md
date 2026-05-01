@@ -13,6 +13,7 @@ Vikunja is an open-source to-do app and project manager with lists, kanban board
 ## Prerequisites
 
 - Portainer installed with Docker
+- A host directory for Vikunja files that is writable by UID `1000` (for example `/opt/vikunja/files`)
 
 ## Step 1: Create the Stack in Portainer
 
@@ -21,25 +22,23 @@ Navigate to **Stacks** > **Add Stack**:
 ```yaml
 # docker-compose.yml - Vikunja
 
-version: "3.8"
-
 services:
   vikunja:
-    image: vikunja/vikunja:0.23.0
+    image: vikunja/vikunja
     container_name: vikunja
     restart: unless-stopped
     ports:
       - "3456:3456"
     volumes:
-      - vikunja_files:/app/vikunja/files
+      - /opt/vikunja/files:/app/vikunja/files
     environment:
       VIKUNJA_DATABASE_HOST: vikunja_postgres
       VIKUNJA_DATABASE_PASSWORD: ${DB_PASSWORD}
       VIKUNJA_DATABASE_TYPE: postgres
       VIKUNJA_DATABASE_USER: vikunja
       VIKUNJA_DATABASE_DATABASE: vikunja
-      VIKUNJA_SERVICE_JWTSECRET: ${JWT_SECRET}
-      VIKUNJA_SERVICE_FRONTENDURL: http://${VIKUNJA_DOMAIN}:3456
+      VIKUNJA_SERVICE_SECRET: ${VIKUNJA_SERVICE_SECRET}
+      VIKUNJA_SERVICE_PUBLICURL: ${VIKUNJA_SERVICE_PUBLICURL}
       VIKUNJA_MAILER_ENABLED: "false"
     depends_on:
       vikunja_postgres:
@@ -66,7 +65,6 @@ services:
       - vikunja_net
 
 volumes:
-  vikunja_files:
   vikunja_postgres_data:
 
 networks:
@@ -78,36 +76,40 @@ networks:
 
 ```text
 DB_PASSWORD=your-postgres-password
-JWT_SECRET=your-jwt-secret-min-32-chars
-VIKUNJA_DOMAIN=vikunja.yourdomain.com
+VIKUNJA_SERVICE_SECRET=generate-a-long-random-secret
+VIKUNJA_SERVICE_PUBLICURL=http://vikunja.yourdomain.com:3456
 ```
 
 ## Step 3: Access Vikunja
 
-Open `http://<host>:3456` and register a new user account.
+Open the URL you set in `VIKUNJA_SERVICE_PUBLICURL` and register a new user account.
 
 ## Step 4: Use the REST API
 
 ```bash
-# Get an auth token
-curl -X POST http://localhost:3456/api/v1/login \
+# Get a JWT auth token
+curl -X POST http://vikunja.yourdomain.com:3456/api/v1/login \
   -H 'Content-Type: application/json' \
   -d '{"username": "your-username", "password": "your-password"}'
 
-# Create a project (list)
-curl -X POST http://localhost:3456/api/v1/projects \
+# Create a project
+curl -X PUT http://vikunja.yourdomain.com:3456/api/v1/projects \
   -H 'Authorization: Bearer <token>' \
   -H 'Content-Type: application/json' \
   -d '{"title": "My Project"}'
 
 # Create a task
-curl -X PUT http://localhost:3456/api/v1/projects/1/tasks \
+curl -X PUT http://vikunja.yourdomain.com:3456/api/v1/projects/1/tasks \
   -H 'Authorization: Bearer <token>' \
   -H 'Content-Type: application/json' \
   -d '{"title": "My First Task", "due_date": "2024-12-31T00:00:00Z"}'
 
-# List tasks in a project
-curl http://localhost:3456/api/v1/projects/1/tasks \
+# Get the project views so you have a view ID
+curl http://vikunja.yourdomain.com:3456/api/v1/projects/1/views \
+  -H 'Authorization: Bearer <token>'
+
+# List tasks in a project using a view ID from the previous response
+curl http://vikunja.yourdomain.com:3456/api/v1/projects/1/views/1/tasks \
   -H 'Authorization: Bearer <token>'
 ```
 
@@ -115,14 +117,14 @@ curl http://localhost:3456/api/v1/projects/1/tasks \
 
 ```bash
 # Vikunja supports CALDAV for calendar clients
-# Connect at: http://localhost:3456/dav/principals/<username>/
+# Connect at: http://vikunja.yourdomain.com:3456/dav/principals/<username>/
 
-# For Thunderbird/Nextcloud Tasks, use:
-# Server: http://localhost:3456/dav/
+# For a CalDAV client, use:
+# Server: http://vikunja.yourdomain.com:3456/dav/principals/<username>/
 # Username: your-username
-# Password: your-password
+# Password: your-password, a dedicated CalDAV token, or an API token with the CalDAV permission group
 ```
 
 ## Conclusion
 
-Vikunja combines the `vikunja/vikunja` image (which includes both the API backend and the web frontend) into a single container. The `VIKUNJA_SERVICE_FRONTENDURL` must match your actual URL for links in notifications to work correctly. Enable SMTP via `VIKUNJA_MAILER_*` environment variables for email notifications and password reset functionality.
+Vikunja combines the `vikunja/vikunja` image (which includes both the API backend and the web frontend) into a single container. The `VIKUNJA_SERVICE_PUBLICURL` must match your actual URL for links in notifications and communication between the API and frontend to work correctly. Enable SMTP via `VIKUNJA_MAILER_*` environment variables for email notifications and password reset functionality.
