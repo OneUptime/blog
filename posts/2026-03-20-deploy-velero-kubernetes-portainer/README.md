@@ -19,10 +19,10 @@ Velero is an open-source tool for safely backing up and restoring Kubernetes clu
 ## Step 1: Install the Velero CLI
 
 ```bash
-# Download Velero CLI (Linux/macOS)
+# Download Velero CLI (Linux x86_64)
 
-VERSION=v1.13.2
-curl -L https://github.com/vmware-tanzu/velero/releases/download/${VERSION}/velero-${VERSION}-linux-amd64.tar.gz \
+VERSION=v1.18.0
+curl -L https://github.com/velero-io/velero/releases/download/${VERSION}/velero-${VERSION}-linux-amd64.tar.gz \
   -o velero.tar.gz
 tar -xzf velero.tar.gz
 sudo mv velero-${VERSION}-linux-amd64/velero /usr/local/bin/
@@ -45,10 +45,11 @@ EOF
 ```bash
 velero install \
   --provider aws \
-  --plugins velero/velero-plugin-for-aws:v1.9.2 \
+  --plugins velero/velero-plugin-for-aws:v1.14.0 \
   --bucket my-velero-backups \
   --backup-location-config region=us-east-1 \
   --snapshot-location-config region=us-east-1 \
+  --use-node-agent \
   --secret-file /tmp/credentials-velero
 ```
 
@@ -56,16 +57,17 @@ For MinIO (S3-compatible):
 ```bash
 velero install \
   --provider aws \
-  --plugins velero/velero-plugin-for-aws:v1.9.2 \
+  --plugins velero/velero-plugin-for-aws:v1.14.0 \
   --bucket velero-backups \
-  --backup-location-config region=minio,s3ForcePathStyle=true,s3Url=http://minio:9000 \
+  --backup-location-config region=minio,s3ForcePathStyle=true,s3Url=http://<minio-endpoint>:9000 \
   --use-volume-snapshots=false \
+  --use-node-agent \
   --secret-file /tmp/credentials-velero
 ```
 
 ## Step 4: Manage Velero via Portainer
 
-In Portainer, navigate to your Kubernetes cluster and go to **Applications**. You will see the `velero` namespace with:
+In Portainer, navigate to your Kubernetes cluster and go to **Applications**, then filter to the `velero` namespace. You will see:
 - `velero` deployment (the main Velero server)
 - `node-agent` DaemonSet (for file-system based volume backups)
 
@@ -82,7 +84,7 @@ velero backup create app-backup --include-namespaces production
 
 # Create a scheduled backup (every night at 1:00 AM UTC)
 velero schedule create nightly-backup \
-  --schedule="0 1 * * *" \
+  --schedule="CRON_TZ=UTC 0 1 * * *" \
   --include-namespaces production,staging \
   --ttl 720h   # Keep for 30 days
 
@@ -116,11 +118,11 @@ velero restore describe <restore-name>
 kubectl annotate pod -n production <pod-name> \
   backup.velero.io/backup-volumes=data-volume
 
-# Or enable for all pods in a deployment
-kubectl annotate deployment -n production myapp \
-  backup.velero.io/backup-volumes=data-volume
+# Or annotate the pod template in a deployment so new pods are backed up
+kubectl patch deployment -n production myapp --type merge \
+  -p '{"spec":{"template":{"metadata":{"annotations":{"backup.velero.io/backup-volumes":"data-volume"}}}}}'
 ```
 
 ## Conclusion
 
-Velero backs up Kubernetes resource manifests (YAML) to object storage and optionally snapshots persistent volumes via CSI or cloud-native volume snapshots. The `node-agent` DaemonSet enables file-system level backup (`--use-restic` or `--use-node-agent`) when CSI snapshots are unavailable. Schedule backups with appropriate TTL (time-to-live) to manage storage costs. Test restores regularly to verify backup validity.
+Velero backs up Kubernetes resource manifests (YAML) to object storage and optionally snapshots persistent volumes via CSI or cloud-native volume snapshots. The `node-agent` DaemonSet enables file-system level backup via `--use-node-agent` when CSI or native volume snapshots are unavailable. The older restic-based backup path is deprecated in current Velero releases. Schedule backups with appropriate TTL (time-to-live) to manage storage costs. Test restores regularly to verify backup validity.
