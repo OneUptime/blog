@@ -97,6 +97,7 @@ resource "aws_db_instance" "dr_replica" {
   instance_class = "db.t3.large"
 
   # During failover, this will be promoted to a standalone instance
+  final_snapshot_identifier = "app-dr-replica-final"
   skip_final_snapshot = false
 
   lifecycle {
@@ -139,6 +140,10 @@ resource "aws_s3_bucket_versioning" "dr" {
 # Replication configuration
 resource "aws_s3_bucket_replication_configuration" "primary_to_dr" {
   provider = aws.primary
+  depends_on = [
+    aws_s3_bucket_versioning.primary,
+    aws_s3_bucket_versioning.dr
+  ]
   role     = aws_iam_role.s3_replication.arn
   bucket   = aws_s3_bucket.primary.id
 
