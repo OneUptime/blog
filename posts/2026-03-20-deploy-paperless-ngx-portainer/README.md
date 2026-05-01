@@ -4,7 +4,7 @@ Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
 Tags: Portainer, Paperless-ngx, Document Management, Docker, Self-Hosting, OCR
 
-Description: Learn how to deploy Paperless-ngx, the document management system with OCR, via Portainer with a full stack including PostgreSQL, Redis, and Gotenberg.
+Description: Learn how to deploy Paperless-ngx, the document management system with OCR, via Portainer with a full stack including PostgreSQL and Redis.
 
 ---
 
@@ -19,8 +19,6 @@ Paperless-ngx scans, OCRs, and indexes your documents, making them full-text sea
 ## Compose Stack
 
 ```yaml
-version: "3.8"
-
 services:
   broker:
     image: redis:7-alpine
@@ -51,8 +49,8 @@ services:
       PAPERLESS_DBHOST: db
       PAPERLESS_DBPASS: paperlesspass     # Must match db service
       PAPERLESS_OCR_LANGUAGE: eng
-      PAPERLESS_SECRET_KEY: changeme-very-long-random-string
-      PAPERLESS_URL: http://paperless.example.com:8000
+      PAPERLESS_SECRET_KEY: changeme-very-long-random-string  # Change this
+      PAPERLESS_URL: http://<host>:8000  # Replace <host> with your server IP or hostname
       PAPERLESS_ADMIN_USER: admin
       PAPERLESS_ADMIN_PASSWORD: adminpass # Change this
       PAPERLESS_ADMIN_MAIL: admin@example.com
@@ -73,15 +71,15 @@ volumes:
 
 1. In Portainer go to **Stacks > Add Stack**.
 2. Name it `paperless`.
-3. Update passwords and create the host directories for `export` and `consume`.
+3. Update the passwords, `PAPERLESS_SECRET_KEY`, and `PAPERLESS_URL`, then create the host directories for `export` and `consume`.
 4. Click **Deploy the stack**.
 
-Open `http://<host>:8000` and log in with the admin credentials.
+Open `http://<host>:8000` and log in with the admin credentials you set.
 
 ## Consuming Documents
 
-Drop any PDF, image, or document into the `/mnt/paperless/consume` directory. Paperless-ngx will automatically detect, OCR, classify, and index it within a few minutes.
+Drop any PDF or image file into the `/mnt/paperless/consume` directory. Paperless-ngx will automatically detect it, OCR it when needed, classify it, and index it within a few minutes.
 
 ## Monitoring
 
-Use OneUptime to monitor `http://<host>:8000` for HTTP 200. Paperless-ngx downtime means document ingestion stops. Configure an alert so paper documents are not lost if the container crashes.
+Use OneUptime to monitor `http://<host>:8000` for HTTP 200. Paperless-ngx downtime means document ingestion pauses until the service is restored. Configure an alert so you can restart the stack promptly if a container crashes.
