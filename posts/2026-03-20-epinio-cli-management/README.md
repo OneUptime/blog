@@ -30,21 +30,22 @@ mkdir my-app && cd my-app
 
 ## Step 2: Create the Application
 
-For this example, we'll create a simple web application:
+For this example, we'll create a simple Node.js web application:
 
 ```bash
-# Create main application file
-cat > app.sh << 'EOF'
-#!/bin/bash
-# Simple HTTP server for demonstration
-while true; do
-  echo -e "HTTP/1.1 200 OK\r\nContent-Type: text/plain\r\n\r\nHello from How to Use Epinio CLI for Application Management!" | nc -l -p ${PORT:-8080}
-done
+# Create package manifest
+cat > package.json << 'EOF'
+{
+  "name": "my-app",
+  "private": true,
+  "scripts": {
+    "start": "node server.js"
+  }
+}
 EOF
-chmod +x app.sh
 ```
 
-For a language-specific example relevant to this guide:
+Then add the application entrypoint:
 
 ```bash
 # Node.js example
@@ -83,8 +84,8 @@ epinio push --name my-app
 # Or specify options explicitly
 epinio push \
   --name my-app \
-  --instances 2 \
-  --route my-app.epinio.example.com
+  --path . \
+  --instances 2
 ```
 
 During push, Epinio will:
@@ -104,21 +105,24 @@ epinio app show my-app
 # List all applications in namespace
 epinio app list
 
-# View the application route
-epinio app show my-app | grep Routes
+# View the application routes
+epinio app show my-app
 ```
 
 ## Step 6: Test the Application
 
 ```bash
-# Get the application URL
-APP_URL=$(epinio app show my-app | grep Routes | awk '{print $2}')
+# Get the first application route
+APP_ROUTE=$(epinio app show my-app | awk -F'|' '/Routes/{getline; gsub(/^[[:space:]]+|[[:space:]]+$/, "", $3); print $3; exit}')
 
 # Test with curl
-curl ${APP_URL}
+curl "https://${APP_ROUTE}"
 
-# Or open in browser
-open ${APP_URL}
+# Or open in a browser on Linux
+xdg-open "https://${APP_ROUTE}"
+
+# Or open in a browser on macOS
+open "https://${APP_ROUTE}"
 ```
 
 ## Step 7: View Application Logs
@@ -138,7 +142,7 @@ epinio app logs my-app --follow
 # Then re-push to update
 epinio push --name my-app
 
-# Epinio performs a rolling update
+# Epinio rebuilds and redeploys the application
 epinio app show my-app
 ```
 
