@@ -166,4 +166,4 @@ temporal workflow describe --workflow-id order-workflow-1 --address localhost:72
 
 ## Conclusion
 
-Temporal persists every workflow step in PostgreSQL, enabling automatic retries and resumption after failures - your worker code doesn't need retry logic. The `auto-setup` image handles database schema migration on first run. The `temporalio/ui` container provides the web interface for monitoring. For production, set `TEMPORAL_TLS_*` environment variables to enable mTLS between workers and the server.
+Temporal persists workflow execution state and event history in PostgreSQL, enabling durable execution and resumption after failures. Retries can be configured through Temporal retry policies instead of custom workflow retry loops. The `auto-setup` image handles database schema migration on first run. The `temporalio/ui` container provides the web interface for monitoring. For production, configure TLS/mTLS in Temporal Server, and set the UI container's `TEMPORAL_TLS_*` environment variables if it connects to a TLS-enabled Temporal frontend.
