@@ -4,16 +4,17 @@ Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
 Tags: OpenTofu, AWS, DynamoDB, Backup, PITR, Disaster Recovery, Infrastructure as Code
 
-Description: Learn how to enable DynamoDB point-in-time recovery and configure AWS Backup for DynamoDB tables using OpenTofu for comprehensive data protection.
+Description: Learn how to enable DynamoDB point-in-time recovery and configure AWS Backup backup plans for DynamoDB tables using OpenTofu for comprehensive data protection.
 
 ## Introduction
 
-DynamoDB offers two backup mechanisms: Point-in-Time Recovery (PITR), which enables continuous backups with second-level granularity for the past 35 days, and On-Demand Backups via AWS Backup for long-term retention. Both are fully managed with no performance impact on the table.
+DynamoDB offers two backup mechanisms: Point-in-Time Recovery (PITR), which enables continuous backups with second-level granularity for up to 35 days, and AWS Backup for scheduled or on-demand backups with long-term retention. Both are fully managed with no performance impact on the table.
 
 ## Prerequisites
 
 - OpenTofu v1.6+
 - AWS credentials with DynamoDB and AWS Backup permissions
+- If you plan to transition DynamoDB backups to cold storage, ensure AWS Backup advanced DynamoDB backup features are enabled in the target AWS Region
 
 ## Step 1: Enable PITR on DynamoDB Table
 
@@ -35,7 +36,8 @@ resource "aws_dynamodb_table" "main" {
   }
 
   # Enable point-in-time recovery
-  # Allows restore to any second within the past 35 days
+  # Allows restore to any second within the configured recovery period
+  # 35 days is the default and maximum retention period
   point_in_time_recovery {
     enabled = true
   }
@@ -73,7 +75,7 @@ resource "aws_iam_role" "backup" {
 
 resource "aws_iam_role_policy_attachment" "backup_dynamodb" {
   role       = aws_iam_role.backup.name
-  policy_arn = "arn:aws:iam::aws:policy/AWSBackupServiceRolePolicyForBackup"
+  policy_arn = "arn:aws:iam::aws:policy/service-role/AWSBackupServiceRolePolicyForBackup"
 }
 
 # Backup vault for DynamoDB backups
@@ -106,8 +108,9 @@ resource "aws_backup_plan" "dynamodb" {
     schedule          = "cron(0 3 1 * ? *)"  # First day of each month
 
     lifecycle {
-      cold_storage_after = 30   # Move to cold storage after 30 days
-      delete_after       = 365  # Retain for 1 year
+      cold_storage_after                      = 30    # Move to cold storage after 30 days
+      opt_in_to_archive_for_supported_resources = true
+      delete_after                            = 365   # Retain for 1 year
     }
   }
 }
@@ -155,4 +158,4 @@ aws dynamodb describe-continuous-backups \
 
 ## Conclusion
 
-Enable PITR on all production DynamoDB tables-it has no performance impact and protects against accidental data deletion or corruption with second-level recovery granularity. Supplement PITR with AWS Backup for long-term retention beyond 35 days and for compliance requirements that mandate immutable backup storage. Tag all tables with `Backup = enabled` to automatically include them in backup plans without per-table configuration.
+Enable PITR on all production DynamoDB tables-it has no performance impact and protects against accidental data deletion or corruption with second-level recovery granularity. Supplement PITR with AWS Backup for long-term retention beyond 35 days and for compliance requirements that mandate immutable backup storage when combined with AWS Backup Vault Lock. Tag all tables with `Backup = enabled` to automatically include them in backup plans without per-table configuration.
