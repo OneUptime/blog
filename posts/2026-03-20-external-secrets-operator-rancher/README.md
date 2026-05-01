@@ -8,7 +8,7 @@ Description: Install and configure the External Secrets Operator in Rancher to s
 
 ## Introduction
 
-Storing secrets directly in Kubernetes poses risks: etcd encryption is often disabled, RBAC misconfiguration can expose secrets, and secrets are base64 encoded (not encrypted). The External Secrets Operator (ESO) solves this by syncing secrets from external, dedicated secret stores into Kubernetes Secrets automatically.
+Storing secrets directly in Kubernetes poses risks: by default, Secrets are stored unencrypted in etcd unless encryption at rest is enabled, RBAC misconfiguration can expose secrets, and secrets are base64 encoded (not encrypted). The External Secrets Operator (ESO) solves this by syncing secrets from external, dedicated secret stores into Kubernetes Secrets automatically.
 
 ## Prerequisites
 
@@ -29,12 +29,12 @@ helm install external-secrets external-secrets/external-secrets \
 
 ## Step 2: Configure AWS Secrets Manager Backend
 
-Create an IAM role or user with read access to specific secrets, then configure ESO:
+Create AWS credentials with read access to specific secrets, then configure ESO:
 
 ```yaml
 # aws-secretstore.yaml
 
-apiVersion: external-secrets.io/v1beta1
+apiVersion: external-secrets.io/v1
 kind: ClusterSecretStore
 metadata:
   name: aws-secretsmanager
@@ -65,7 +65,7 @@ An ExternalSecret defines which external secret to sync and what Kubernetes Secr
 
 ```yaml
 # database-external-secret.yaml
-apiVersion: external-secrets.io/v1beta1
+apiVersion: external-secrets.io/v1
 kind: ExternalSecret
 metadata:
   name: database-credentials
@@ -84,7 +84,7 @@ spec:
   data:
     - secretKey: DB_PASSWORD       # Key in the Kubernetes Secret
       remoteRef:
-        key: /production/myapp/database    # Path in AWS Secrets Manager
+        key: /production/myapp/database    # Secret name in AWS Secrets Manager
         property: password                  # JSON field within the secret
 
     - secretKey: DB_USERNAME
@@ -105,7 +105,7 @@ kubectl describe externalsecret database-credentials -n production
 
 ```yaml
 # vault-secretstore.yaml
-apiVersion: external-secrets.io/v1beta1
+apiVersion: external-secrets.io/v1
 kind: ClusterSecretStore
 metadata:
   name: vault-backend
@@ -118,10 +118,16 @@ spec:
       auth:
         kubernetes:
           mountPath: kubernetes
-          role: external-secrets    # Vault role with appropriate policies
+          role: external-secrets    # Vault role with appropriate policies and audience
           serviceAccountRef:
             name: external-secrets
             namespace: external-secrets
+            audiences:
+              - vault
+```
+
+```bash
+kubectl apply -f vault-secretstore.yaml
 ```
 
 ## Step 5: Use the Secret in a Deployment
