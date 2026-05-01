@@ -21,7 +21,7 @@ graph LR
 
 ## Step 1: Deploy Restic REST Server via Portainer
 
-Go to **Stacks > Add Stack** in Portainer:
+Go to **Stacks > Add Stack** in Portainer, and make sure the Docker host already has a TLS certificate and key available at `/opt/restic-rest/certs`:
 
 ```yaml
 # restic-rest-server-stack.yml
@@ -32,13 +32,15 @@ services:
   restic-rest:
     image: restic/rest-server:latest
     environment:
-      # Enable authentication - create htpasswd users separately
-      - OPTIONS=--htpasswd-file /data/.htpasswd --tls
+      # Enable TLS and use the mounted certificate and key
+      - OPTIONS=--tls --tls-cert /certs/fullchain.pem --tls-key /certs/privkey.pem --tls-min-ver 1.3
     ports:
       - "8000:8000"   # Restic REST API endpoint
     volumes:
       # Repository data storage
       - restic-data:/data
+      # TLS certificate and key on the Docker host
+      - /opt/restic-rest/certs:/certs:ro
     restart: unless-stopped
 
 volumes:
@@ -47,11 +49,11 @@ volumes:
 
 ## Step 2: Create Repository Users
 
-Access the container via Portainer's **Console** tab and generate an htpasswd entry:
+Access the container via Portainer's **Console** tab and create a backup user:
 
 ```bash
 # Inside the container - create a backup user
-htpasswd -B -c /data/.htpasswd backupuser
+create_user backupuser backup-password
 ```
 
 ## Step 3: Initialize the Repository from a Client
@@ -60,43 +62,38 @@ From any host running the Restic CLI:
 
 ```bash
 # Initialize a new repository against the REST server
-export RESTIC_REPOSITORY=rest:https://backupuser:password@<server-ip>:8000/myrepo
+export RESTIC_REPOSITORY=rest:https://backupuser:backup-password@<server-name-or-ip>:8000/myrepo
 export RESTIC_PASSWORD=encryption-passphrase
 
-restic init
+# If the server certificate is already trusted by the client, you can omit --cacert
+restic --cacert /path/to/ca.crt init
 ```
 
 ## Step 4: Run Backups
 
 ```bash
 # Back up /opt/appdata to the remote repository
-restic backup /opt/appdata
+restic --cacert /path/to/ca.crt backup /opt/appdata
 
 # List available snapshots
-restic snapshots
+restic --cacert /path/to/ca.crt snapshots
 
 # Restore a specific snapshot
-restic restore latest --target /tmp/restore
+restic --cacert /path/to/ca.crt restore latest --target /tmp/restore
 ```
 
-## Step 5: Automate with Portainer Cron Jobs
+## Step 5: Automate with Portainer Edge Jobs
 
-Create a wrapper script on each client host and schedule it via a Portainer stack using a cron-style container:
+If your client host is managed as a Portainer Edge environment, create a wrapper script and schedule it as an Edge Job:
 
-```yaml
-services:
-  restic-backup:
-    image: restic/restic:latest
-    environment:
-      - RESTIC_REPOSITORY=rest:https://backupuser:password@restic-rest:8000/myrepo
-      - RESTIC_PASSWORD=encryption-passphrase
-    command: >
-      sh -c "restic backup /data &&
-             restic forget --keep-daily 7 --keep-weekly 4 --prune"
-    volumes:
-      - /opt/appdata:/data:ro
-    # Restart policy = no for one-shot containers
-    restart: "no"
+```bash
+#!/bin/sh
+export RESTIC_REPOSITORY=rest:https://backupuser:backup-password@<server-name-or-ip>:8000/myrepo
+export RESTIC_PASSWORD=encryption-passphrase
+
+# If the server certificate is already trusted by the client, you can omit --cacert
+restic --cacert /path/to/ca.crt backup /opt/appdata
+restic --cacert /path/to/ca.crt forget --keep-daily 7 --keep-weekly 4 --prune
 ```
 
 ## Managing Retention
@@ -105,7 +102,7 @@ Restic's `forget` and `prune` commands implement retention policies:
 
 ```bash
 # Keep 7 daily, 4 weekly, 6 monthly snapshots; remove the rest
-restic forget --keep-daily 7 --keep-weekly 4 --keep-monthly 6 --prune
+restic --cacert /path/to/ca.crt forget --keep-daily 7 --keep-weekly 4 --keep-monthly 6 --prune
 ```
 
 ## Summary
