@@ -14,28 +14,30 @@ EC2 hibernation saves the instance RAM contents to the root EBS volume, allowing
 
 - OpenTofu v1.6+
 - AWS credentials with EC2 permissions
-- Root EBS volume must have enough free space to store RAM contents
-- Instance type must support hibernation (most general purpose, memory optimized, and compute optimized types)
+- Hibernation must be enabled at launch; you cannot turn it on for an existing instance
+- The AMI must support hibernation
+- Root EBS volume must be large enough to store RAM contents and expected OS/application usage
+- Instance family must support hibernation for the exact instance type you choose
 
 ## Step 1: Enable Hibernation on an EC2 Instance
 
 ```hcl
 resource "aws_instance" "hibernatable" {
-  ami           = data.aws_ami.amazon_linux.id
-  instance_type = "t3.medium"  # Must support hibernation
+  ami           = data.aws_ami.amazon_linux.id  # Must be an HVM AMI that supports hibernation
+  instance_type = "t3.medium"  # Verify that this instance type supports hibernation
   subnet_id     = var.subnet_id
 
-  # Hibernation requires an encrypted root volume
+  # Hibernation requires an encrypted EBS root volume
   root_block_device {
     volume_type           = "gp3"
-    # Volume size must exceed RAM size to store hibernation image
-    # t3.medium has 4 GiB RAM, so 30 GiB provides ample space
+    # Volume size must be large enough for RAM contents plus OS/application usage
+    # t3.medium has 4 GiB RAM, so 30 GiB provides ample headroom for a typical setup
     volume_size           = 30
-    encrypted             = true  # Required for hibernation
+    encrypted             = true  # Explicitly satisfies the encryption prerequisite
     delete_on_termination = true
   }
 
-  # Enable hibernation
+  # Must be enabled when the instance is launched
   hibernation = true
 
   # IMDSv2 enforced for security
@@ -54,16 +56,17 @@ resource "aws_instance" "hibernatable" {
 ## Step 2: Use Hibernation with a Launch Template
 
 ```hcl
-# Launch template with hibernation for Auto Scaling Groups
+# Launch template with hibernation enabled for instances launched from the template
 
-# Note: ASGs must be configured to stop instances for scale-in
-# hibernation is for individual instance suspend/resume
+# Note: Do not rely on hibernation for instances managed by an Auto Scaling group.
+# Auto Scaling can mark a hibernated instance unhealthy and replace it.
 resource "aws_launch_template" "hibernate" {
   name          = "hibernate-launch-template"
   image_id      = data.aws_ami.amazon_linux.id
   instance_type = "m5.large"
 
-  # Hibernation requires encrypted root volume
+  # Hibernation requires an encrypted root volume, and the device name
+  # must match the AMI root device name
   block_device_mappings {
     device_name = "/dev/xvda"
     ebs {
@@ -95,10 +98,12 @@ aws ec2 stop-instances \
   --hibernate \
   --region us-east-1
 
-# Check hibernation state
+# Check whether hibernation was initiated
 aws ec2 describe-instances \
   --instance-ids i-0123456789abcdef0 \
-  --query 'Reservations[0].Instances[0].StateReason.Message'
+  --query 'Reservations[0].Instances[0].StateReason.Code' \
+  --output text \
+  --region us-east-1
 
 # Start the instance (resumes from hibernate)
 aws ec2 start-instances \
@@ -109,9 +114,9 @@ aws ec2 start-instances \
 ## Step 4: Verify Hibernation Prerequisites
 
 ```hcl
-# Ensure root volume size is large enough for the instance RAM
+# Estimate a root volume size that leaves headroom beyond instance RAM
 locals {
-  # Map of instance types to RAM sizes (GiB)
+  # Example map of selected instance types to RAM sizes (GiB)
   instance_ram = {
     "t3.medium"  = 4
     "t3.large"   = 8
@@ -120,12 +125,13 @@ locals {
     "m5.2xlarge" = 32
   }
 
-  required_root_size = local.instance_ram[var.instance_type] + 10
+  # AWS requires enough room for RAM contents plus expected OS/application usage
+  recommended_root_size = local.instance_ram[var.instance_type] + 10
 }
 
-output "minimum_root_volume_size" {
-  description = "Minimum EBS root volume size for hibernation"
-  value       = "${local.required_root_size} GiB"
+output "recommended_root_volume_size" {
+  description = "Example EBS root volume size target for hibernation"
+  value       = "${local.recommended_root_size} GiB"
 }
 ```
 
@@ -139,4 +145,4 @@ tofu apply
 
 ## Conclusion
 
-EC2 hibernation is a powerful feature for workloads with long initialization times or pre-warmed caches. The instance resumes within seconds rather than minutes because only the memory state must be restored. Remember that instances cannot be hibernated if they have been running for more than 60 days, and hibernation is not supported for bare metal instances or instances with more than 150 GiB of RAM.
+EC2 hibernation is a powerful feature for workloads with long initialization times or pre-warmed caches. The instance can often resume more quickly than a full boot because its memory state is restored. Remember that AWS does not support keeping an instance hibernated for more than 60 days, and hibernation is not supported for bare metal instances or Linux instances with 150 GiB or more of RAM.
