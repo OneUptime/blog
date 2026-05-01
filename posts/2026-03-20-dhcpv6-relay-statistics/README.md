@@ -10,31 +10,27 @@ Description: Monitor DHCPv6 relay statistics across platforms including message 
 
 | Platform | Command | Key Metrics |
 |---|---|---|
-| Linux dhcrelay | Via syslog | SOLICIT, REQUEST counts |
-| Cisco IOS | show ipv6 dhcp relay statistics | Bindings, drops |
-| Juniper | show dhcp v6 relay statistics | Messages, errors |
-| ISC Kea | REST API | Per-subnet counters |
-| Windows Server | netsh dhcp show statistics | Leases, messages |
+| Linux dhcrelay | Logs / journald (no built-in stats command) | Custom log-derived counters |
+| Cisco IOS XR | show dhcp ipv6 relay statistics | RX, TX, drops |
+| Juniper | show dhcpv6 relay statistics | Messages, errors, drops |
+| ISC Kea DHCPv6 | HTTP control API | Global pkt6 counters, per-subnet lease counters |
 
-## Cisco IOS/IOS-XE Statistics
+## Cisco IOS XR Statistics
 
 ```text
 ! Show relay message statistics
-show ipv6 dhcp relay statistics
+show dhcp ipv6 relay statistics
 
 ! Sample output:
-! Packets relayed:
-!   Received:        1523   Total:       1523
-!   Forwarded:       1519   Dropped:        4
-!   SOLICIT:          387   ADVERTISE:      387
-!   REQUEST:          387   REPLY:          387
-!   RENEW:            123   RELEASE:         89
+!                   VRF                     |      RX       |      TX       |       DR      |
+! -------------------------------------------------------------------------------------------
+! default                                  |          241  |            5  |          236  |
+
+! Show detailed statistics
+show dhcp ipv6 relay statistics detail
 
 ! Reset counters
-clear ipv6 dhcp relay statistics
-
-! Show per-interface
-show ipv6 dhcp interface GigabitEthernet0/1
+clear dhcp ipv6 relay statistics
 ```
 
 ## Juniper Relay Statistics
@@ -42,51 +38,58 @@ show ipv6 dhcp interface GigabitEthernet0/1
 ```text
 # Show DHCPv6 relay statistics
 
-show dhcp v6 relay statistics
+show dhcpv6 relay statistics
 
 # Output fields:
-# Messages sent to server:    1200
-# Messages sent to client:    1198
-# Messages dropped:               2
-# SOLICIT:                      400
-# ADVERTISE:                    400
-# REQUEST:                      400
-# REPLY:                        398
-# RENEW:                        100
-# RELEASE:                       56
+# DHCPv6 Packets dropped:
+#   Total                       2
+# Messages received:
+#   DHCPV6_SOLICIT            400
+#   DHCPV6_REQUEST            400
+#   DHCPV6_RENEW              100
+#   DHCPV6_RELAY_REPL         398
+# Messages sent:
+#   DHCPV6_RELAY_FORW         900
+#   DHCPV6_RELAY_REPL         398
+# Packets forwarded:
+#   FWD REQUEST               400
+#   FWD REPLY                 398
 
 # Clear statistics
-clear dhcp v6 relay statistics all
+clear dhcpv6 relay statistics
 
-# Per-group statistics
-show dhcp v6 relay statistics group CLIENTS
+# Per-routing-instance statistics
+show dhcpv6 relay statistics routing-instance CLIENTS
 ```
 
-## ISC Kea Statistics via REST API
+## ISC Kea DHCPv6 Statistics via HTTP Control API
 
 ```python
 #!/usr/bin/env python3
-# kea-relay-stats.py - Query Kea DHCP6 statistics via REST API
+# kea-relay-stats.py - Query Kea DHCPv6 statistics via HTTP control API
 
 import requests
-import json
 
-KEA_API = "http://[2001:db8::dhcp-server]:8000"
+KEA_API = "http://[2001:db8::1]:8000"
 
 def get_kea_stats():
     resp = requests.post(
         f"{KEA_API}/",
         json={
             "command": "statistic-get-all",
-            "service": ["dhcp6"],
             "arguments": {}
-        }
+        },
+        timeout=10,
     )
+    resp.raise_for_status()
     data = resp.json()
 
-    stats = data[0].get("arguments", {})
+    if isinstance(data, list):
+        data = data[0]
 
-    # DHCPv6 relay-relevant statistics
+    stats = data.get("arguments", {})
+
+    # DHCPv6 server-side counters relevant to relayed environments
     relay_stats = {
         "pkt6-received": stats.get("pkt6-received", [[0]])[0][0],
         "pkt6-solicit-received": stats.get("pkt6-solicit-received", [[0]])[0][0],
@@ -109,34 +112,50 @@ if __name__ == "__main__":
 #!/usr/bin/env python3
 # dhcpv6-relay-exporter.py - Prometheus exporter for DHCPv6 relay stats
 
-from prometheus_client import start_http_server, Gauge, Counter
+from prometheus_client import start_http_server, Counter
 import subprocess
 import time
 import re
+from datetime import datetime, timezone
+
+DHCRELAY_UNIT = 'isc-dhcp-relay6'  # Adjust to match your distro's systemd unit name.
 
 # Metrics
 relay_received = Counter('dhcpv6_relay_received_total', 'Messages received from clients', ['message_type'])
 relay_forwarded = Counter('dhcpv6_relay_forwarded_total', 'Messages forwarded to server')
 relay_dropped = Counter('dhcpv6_relay_dropped_total', 'Messages dropped')
+last_checked = None
 
 def collect_dhcrelay_stats():
-    """Parse dhcrelay syslog for statistics"""
-    # In production, use journalctl to parse dhcrelay output
+    """Parse DHCPv6 relay logs for custom counters."""
+    global last_checked
+    now = datetime.now(timezone.utc)
+    since = last_checked.isoformat() if last_checked else '1 minute ago'
+
+    # Example for deployments that log per-packet relay events.
     result = subprocess.run(
-        ['journalctl', '-u', 'isc-dhcp-relay6', '--since', '1 minute ago', '--no-pager'],
+        ['journalctl', '-u', DHCRELAY_UNIT, '--since', since, '--no-pager'],
         capture_output=True, text=True
     )
 
+    if result.returncode != 0:
+        return
+
     solicit_count = len(re.findall(r'RELAY-FORW.*SOLICIT', result.stdout))
     request_count = len(re.findall(r'RELAY-FORW.*REQUEST', result.stdout))
+    forwarded_count = solicit_count + request_count
     drop_count = len(re.findall(r'drop', result.stdout, re.IGNORECASE))
 
     if solicit_count > 0:
         relay_received.labels(message_type='solicit').inc(solicit_count)
     if request_count > 0:
         relay_received.labels(message_type='request').inc(request_count)
+    if forwarded_count > 0:
+        relay_forwarded.inc(forwarded_count)
     if drop_count > 0:
         relay_dropped.inc(drop_count)
+
+    last_checked = now
 
 def main():
     start_http_server(9200)
@@ -156,18 +175,17 @@ if __name__ == '__main__':
 # Prometheus queries for DHCPv6 relay monitoring
 
 # Message rate per type
-rate(dhcpv6_relay_received_total[5m])
+sum by (message_type) (rate(dhcpv6_relay_received_total[5m]))
+
+# Total forwarded rate
+sum(rate(dhcpv6_relay_forwarded_total[5m]))
 
 # Drop rate (alert if > 1%)
 rate(dhcpv6_relay_dropped_total[5m]) /
-rate(dhcpv6_relay_received_total[5m]) * 100
+sum(rate(dhcpv6_relay_received_total[5m])) * 100
 
-# Active DHCP bindings (from Kea)
-kea_dhcp6_subnet_assigned_addresses
-
-# Relay-forward to relay-reply ratio (should be ~1)
-rate(pkt6_relay_forw_sent_total[5m]) /
-rate(pkt6_relay_repl_received_total[5m])
+# Drop events per second
+rate(dhcpv6_relay_dropped_total[5m])
 ```
 
 ## Alerting on Relay Issues
@@ -178,13 +196,13 @@ groups:
   - name: dhcpv6-relay
     rules:
       - alert: DHCPv6RelayDropsHigh
-        expr: rate(dhcpv6_relay_dropped_total[5m]) > 10
+        expr: (rate(dhcpv6_relay_dropped_total[5m]) / sum(rate(dhcpv6_relay_received_total[5m])) * 100 > 1) and (sum(rate(dhcpv6_relay_received_total[5m])) > 0)
         for: 2m
         annotations:
-          summary: "DHCPv6 relay dropping {{ $value }} msgs/s"
+          summary: "DHCPv6 relay drop rate is {{ $value }}%"
 
       - alert: DHCPv6RelayNoTraffic
-        expr: rate(dhcpv6_relay_received_total[15m]) == 0
+        expr: sum(rate(dhcpv6_relay_received_total[15m])) == 0
         for: 10m
         annotations:
           summary: "DHCPv6 relay receiving no traffic - clients may not be getting addresses"
@@ -192,4 +210,4 @@ groups:
 
 ## Conclusion
 
-DHCPv6 relay statistics reveal address assignment health at a glance. Cisco and Juniper provide per-interface relay counters via CLI. ISC Kea exposes rich per-subnet statistics via REST API. Export these metrics to Prometheus for time-series monitoring and alerting. Key alert conditions: high drop rates (> 1%), no traffic (relay daemon stopped), and RELAY-FORW without RELAY-REPL (server unreachable). A healthy relay shows balanced SOLICIT/ADVERTISE/REQUEST/REPLY ratios.
+DHCPv6 relay statistics reveal forwarding health at a glance. Cisco IOS XR and Juniper provide relay counters via CLI. ISC Kea exposes server-side DHCPv6 packet counters and per-subnet lease statistics via its HTTP control API. Export custom relay metrics to Prometheus for time-series monitoring and alerting. Key alert conditions: high drop rates (> 1%) and no traffic when traffic is expected. A healthy relay shows steady receive and forward counts with minimal drops.
