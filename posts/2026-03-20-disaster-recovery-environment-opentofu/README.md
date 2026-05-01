@@ -48,7 +48,7 @@ resource "aws_backup_plan" "production" {
     completion_window = 180
 
     lifecycle {
-      cold_storage_after = 30   # move to cold after 30 days
+      cold_storage_after = 30   # move supported resource backups to cold after 30 days
       delete_after       = 365  # keep 1 year of weekly backups
     }
   }
@@ -100,7 +100,7 @@ resource "aws_db_instance" "main" {
   }
 }
 
-# Cross-region snapshot copy
+# Cross-region automated backup replication
 
 resource "aws_db_instance_automated_backups_replication" "dr" {
   source_db_instance_arn = aws_db_instance.main.arn
@@ -119,35 +119,46 @@ OpenTofu configurations are themselves the DR plan - any environment can be recr
 export AWS_DEFAULT_REGION=us-west-2  # switch to DR region
 
 # 1. Create the networking layer
-cd environments/prod-dr/networking
-tofu init && tofu apply -var-file=dr.tfvars
+tofu -chdir=environments/prod-dr/networking init
+tofu -chdir=environments/prod-dr/networking apply -var-file=dr.tfvars
 
 # 2. Restore RDS from latest backup
-tofu apply -var="restore_from_snapshot=myapp-prod-db-2026-03-19"
+tofu -chdir=environments/prod-dr/database init
+tofu -chdir=environments/prod-dr/database apply -var-file=dr.tfvars -var="restore_from_snapshot=myapp-prod-db-2026-03-19"
 
 # 3. Deploy all application components
-cd environments/prod-dr/applications
-tofu init && tofu apply -var-file=dr.tfvars
+tofu -chdir=environments/prod-dr/applications init
+tofu -chdir=environments/prod-dr/applications apply -var-file=dr.tfvars
 
 # 4. Validate health checks
-tofu output application_urls
+tofu -chdir=environments/prod-dr/applications output application_urls
 ```
 
 ## Recovery Testing Automation
 
 ```hcl
 resource "aws_lambda_function" "dr_test" {
-  function_name = "myapp-dr-recovery-test"
-  description   = "Monthly DR test: restore backup and validate application"
-  runtime       = "python3.11"
-  handler       = "dr_test.handler"
-  role          = aws_iam_role.dr_test.arn
-  timeout       = 600
+  function_name    = "myapp-dr-recovery-test"
+  description      = "Monthly DR test: restore backup and validate application"
+  filename         = "${path.module}/dr_test.zip"
+  runtime          = "python3.11"
+  handler          = "dr_test.handler"
+  role             = aws_iam_role.dr_test.arn
+  source_code_hash = filebase64sha256("${path.module}/dr_test.zip")
+  timeout          = 600
 }
 
 resource "aws_cloudwatch_event_rule" "monthly_dr_test" {
   name                = "monthly-dr-test"
   schedule_expression = "cron(0 2 1 * ? *)"  # 1st of every month
+}
+
+resource "aws_lambda_permission" "allow_eventbridge" {
+  statement_id  = "AllowExecutionFromEventBridge"
+  action        = "lambda:InvokeFunction"
+  function_name = aws_lambda_function.dr_test.function_name
+  principal     = "events.amazonaws.com"
+  source_arn    = aws_cloudwatch_event_rule.monthly_dr_test.arn
 }
 
 resource "aws_cloudwatch_event_target" "dr_test" {
