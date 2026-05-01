@@ -25,8 +25,6 @@ resource "aws_appautoscaling_target" "ecs_service" {
   resource_id        = "service/${var.ecs_cluster_name}/${var.ecs_service_name}"
   scalable_dimension = "ecs:service:DesiredCount"
   service_namespace  = "ecs"
-
-  depends_on = [var.ecs_service_arn]
 }
 ```
 
@@ -44,7 +42,7 @@ resource "aws_appautoscaling_policy" "ecs_cpu" {
     predefined_metric_specification {
       predefined_metric_type = "ECSServiceAverageCPUUtilization"
     }
-    target_value       = 70.0  # Scale when CPU exceeds 70%
+    target_value       = 70.0  # Keep average CPU utilization near 70%
     scale_in_cooldown  = 300   # Wait 5 minutes before scaling in
     scale_out_cooldown = 60    # Wait 1 minute before scaling out again
   }
@@ -87,7 +85,7 @@ resource "aws_appautoscaling_policy" "ecs_alb_requests" {
       predefined_metric_type = "ALBRequestCountPerTarget"
       resource_label         = "${var.alb_arn_suffix}/${var.target_group_arn_suffix}"
     }
-    target_value       = 1000  # Scale when requests per task exceed 1000/minute
+    target_value       = 1000  # Target 1000 requests per target per minute
     scale_in_cooldown  = 300
     scale_out_cooldown = 30    # Scale out quickly for traffic spikes
   }
