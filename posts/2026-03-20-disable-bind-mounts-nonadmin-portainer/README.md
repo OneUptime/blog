@@ -10,63 +10,57 @@ Description: Learn how to prevent non-administrator Portainer users from creatin
 
 Bind mounts let a container access host filesystem directories directly. In the wrong hands, this is a serious security risk:
 
-- A developer could mount `/etc/passwd` and read system credentials.
-- A malicious container could mount `/var/run/docker.sock` and escape the container.
-- A mount on `/` gives the container full read access to the host.
+- A developer could mount `/etc/passwd` and read host account information.
+- A malicious container could mount `/var/run/docker.sock` and gain control of the Docker daemon.
+- A mount on `/` can give the container broad access to the host filesystem, often with write access unless mounted read-only.
 
-Portainer allows administrators to disable bind mount capability for non-admin users.
+Portainer allows administrators to disable bind mounts for non-admin users in Docker Standalone and Docker Swarm environments.
 
 ## Disabling Bind Mounts in Portainer
 
-### For Docker Standalone/Swarm Environments
+### For Docker Standalone and Docker Swarm Environments
 
-1. In Portainer, go to **Environments**.
-2. Click on your Docker environment.
-3. Click **Edit**.
-4. Under **Security** or **Policies**, find **Allow bind mounts**.
-5. Toggle it **Off**.
-6. Click **Update environment**.
+1. In Portainer, open your Docker environment.
+2. For Docker Standalone, expand **Host** and click **Setup**. For Docker Swarm, expand **Swarm** and click **Setup**.
+3. In **Docker Security Settings**, enable **Disable bind mounts for non-administrators**.
 
 ### For Kubernetes Environments
 
-1. Go to the Kubernetes environment settings.
-2. Under **Cluster > Setup**, find the **Security** section.
-3. Disable **Allow users to use bind mounts** or similar options.
+Portainer's current Kubernetes environment setup does not expose an equivalent per-user bind mount toggle. Kubernetes environments use different controls, such as **Security constraints** and namespace restrictions.
 
 ## What Happens When Bind Mounts Are Disabled
 
-Non-admin users who attempt to create a container with a bind mount will see an error:
-
-```text
-Error: Bind mounts are not allowed for this environment.
-```
+When this setting is enabled, Portainer removes the option to attach to a host file system path for non-admin users and rejects bind mount attempts made through Portainer.
 
 Admins can still create bind mounts - the restriction applies only to standard users.
 
-## Allowing Specific Named Volumes Instead
+## Using Named Volumes Instead
 
 Redirect users from bind mounts to named volumes, which are safer:
 
 ```yaml
-# Container with a named volume (allowed)
+# Container with a named volume
 
 services:
   app:
     image: myapp:latest
     volumes:
-      - app-data:/data          # Named volume - SAFE
+      - app-data:/data
 
-# Instead of a bind mount (blocked)
-      # - /host/path:/data      # Bind mount - BLOCKED
+    # Instead of a bind mount (blocked in Portainer for non-admin users)
+    # - /host/path:/data
+
+volumes:
+  app-data:
 ```
 
 ## Verifying the Restriction via API
 
 ```bash
 # Attempt to create a container with a bind mount as a non-admin user
-# Should return an authorization error
+# Portainer access tokens are sent in the X-API-Key header
 curl -X POST "${PORTAINER_URL}/api/endpoints/1/docker/containers/create" \
-  -H "Authorization: Bearer ${NON_ADMIN_TOKEN}" \
+  -H "X-API-Key: ${NON_ADMIN_API_KEY}" \
   -H "Content-Type: application/json" \
   -d '{
     "Image": "nginx:alpine",
@@ -74,7 +68,7 @@ curl -X POST "${PORTAINER_URL}/api/endpoints/1/docker/containers/create" \
       "Binds": ["/host/path:/container/path"]
     }
   }'
-# Expected: 403 Forbidden or authorization error
+# Expected: Portainer rejects the request for a non-admin user when bind mounts are disabled.
 ```
 
 ## When to Allow Bind Mounts
@@ -86,10 +80,10 @@ Bind mounts are legitimate in some scenarios:
 - Monitoring agents that need `/proc` or `/sys` access.
 
 In these cases, consider:
-1. Restricting bind mounts to specific, approved paths.
-2. Using trusted (admin) users for these deployments.
+1. Using trusted (admin) users for these deployments.
+2. Making the bind mount read-only when possible.
 3. Deploying log agents via DaemonSets with appropriate privileges.
 
 ## Conclusion
 
-Disabling bind mounts for non-admin users in Portainer prevents a class of container escape and privilege escalation attacks. Combined with restricting host networking and privileged mode, this forms a strong baseline security posture for multi-user Portainer installations.
+Disabling bind mounts for non-admin users in Portainer prevents a class of container escape and privilege escalation attacks. Combined with Portainer's other Docker security settings, such as restricting privileged mode and device mappings, this forms a strong baseline security posture for multi-user Portainer installations.
