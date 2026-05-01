@@ -4,11 +4,11 @@ Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
 Tags: Docker, Networking, Host Network, IPv4, Performance, Container
 
-Description: Configure Docker containers to use the host network mode, sharing the host's IPv4 stack directly for maximum performance and simplified port management, with security trade-offs explained.
+Description: Configure Docker containers to use host network mode for direct IPv4 access, with performance benefits, platform caveats, and security trade-offs explained.
 
 ## Introduction
 
-Docker's `host` network mode removes the container's network namespace and shares the Docker host's network stack directly. The container binds ports on the host's IP addresses without NAT, eliminating network overhead and simplifying firewall rules.
+On Linux, Docker's `host` network mode makes the container share the Docker host's network namespace directly. The container doesn't get its own IP address, and any ports it opens are exposed on the host without NAT or port mapping, which can reduce networking overhead and simplify firewall rules.
 
 ## Running a Container in Host Network Mode
 
@@ -27,21 +27,19 @@ curl http://localhost:80
 ## Verifying the Container Uses Host Networking
 
 ```bash
-# The container should show the host's IP, not a container IP
-docker exec nginx-host hostname -I
-# Output: same as `hostname -I` on the host itself
+# Confirm Docker attached the container to the host network
+docker inspect -f '{{.HostConfig.NetworkMode}}' nginx-host
+# Output: host
 
-# Port 80 is bound on the host interface
-ss -tlnp | grep :80
-# Shows nginx binding to 0.0.0.0:80
+# Port 80 is listening on the host network stack
+sudo ss -tlnp | grep ':80 '
+# Shows a listener on port 80 on the host
 ```
 
 ## Docker Compose with Host Network
 
 ```yaml
 # docker-compose.yml
-version: "3.8"
-
 services:
   app:
     image: my-high-performance-app:latest
@@ -49,9 +47,9 @@ services:
     # No ports: section needed or allowed in host mode
 ```
 
-Note: `ports:` mappings are ignored in `host` network mode.
+Note: In Docker Compose, `ports:` mappings must not be used with `network_mode: host`; Compose returns a runtime error.
 
-## Use Cases for Host Networking
+## Use Cases for Host Networking on Linux
 
 | Use Case | Reason |
 |---|---|
@@ -62,9 +60,9 @@ Note: `ports:` mappings are ignored in `host` network mode.
 
 ## Security Trade-offs
 
-Host network mode removes container network isolation:
+Host network mode reduces container network isolation:
 - Any port the container opens is directly on the host
-- Container can access all host network interfaces
+- On Linux, the container can access all host network interfaces
 - A compromised container has full host network access
 
 Use host mode only for trusted, internal workloads where network performance is critical.
@@ -72,15 +70,15 @@ Use host mode only for trusted, internal workloads where network performance is 
 ## Checking Available Host Interfaces from Container
 
 ```bash
-# From within a host-networked container
-docker exec nginx-host ip addr show
-# Shows all host interfaces (eth0, lo, docker0, etc.)
+# From within a host-networked container on Linux
+docker exec nginx-host cat /proc/net/dev
+# Lists the interfaces visible in the shared network namespace
 ```
 
 ## Linux vs. Docker Desktop (macOS/Windows)
 
-Host network mode only works as expected on **Linux**. On Docker Desktop (macOS and Windows), Docker runs inside a VM, so `--network host` gives the container the VM's network stack, not the actual macOS or Windows host.
+Host network mode works natively on **Linux**. On Docker Desktop, host networking is supported in Docker Desktop 4.34 and later as an opt-in feature, but it is not equivalent to Linux host networking: it operates at layer 4, supports TCP and UDP only, does not provide direct access to the host's network interfaces, and only works with Linux containers.
 
 ## Conclusion
 
-`--network host` eliminates Docker NAT and connects the container directly to the host's IPv4 stack. Use it for high-performance, low-latency applications or network tools. Be aware of the security implications and restrict use to trusted, well-monitored workloads.
+On Linux, `--network host` removes Docker NAT and connects the container directly to the host network stack. On Docker Desktop 4.34 and later, the feature is available with layer-4-only limitations. Use it for high-performance, low-latency applications or network tools. Be aware of the security implications and restrict use to trusted, well-monitored workloads.
