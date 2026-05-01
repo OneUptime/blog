@@ -28,7 +28,7 @@ netstat -rn -f inet   # IPv4 routes
 netstat -rn -f inet6  # IPv6 routes
 
 # Test connectivity
-ping -4 8.8.8.8
+ping 8.8.8.8
 ping6 2001:4860:4860::8888
 
 # DNS resolution - both families
@@ -72,30 +72,31 @@ networksetup -getdnsservers "Ethernet"
 ```text
 System Settings → Network → [Interface] → Details → TCP/IP
 
-IPv4 tab:
+IPv4:
   Configure IPv4:  Manually
   IP Address:      192.0.2.10
   Subnet Mask:     255.255.255.0
   Router:          192.0.2.1
 
-IPv6 tab:
+IPv6:
   Configure IPv6:  Manually
   IPv6 Address:    2001:db8::10
   Prefix Length:   64
   Router:          2001:db8::1
 
-DNS tab:
+System Settings → Network → [Interface] → Details → DNS
+
+DNS:
   DNS Servers:     192.0.2.53
                    2001:db8::53
 ```
 
 ## Verify Address Selection
 
-macOS implements RFC 6724 - IPv6 is preferred for connections to dual-stack hosts:
+macOS follows RFC 6724 default address selection. When both A and AAAA records are available and IPv6 connectivity is usable, IPv6 generally has higher precedence than IPv4:
 
 ```bash
-# Check what address macOS will use for a destination
-# (uses getaddrinfo internally - check with scutil)
+# Inspect resolver configuration used by lookups
 scutil --dns
 
 # Check active connections - which family is being used
@@ -119,8 +120,6 @@ ifconfig en0 inet6
 # Addresses with "autoconf" are stable SLAAC addresses
 
 # Privacy extensions are enabled by default in macOS
-# To check status (macOS does not expose a direct sysctl like Linux)
-# Use: networksetup -getv6automatic "Wi-Fi"
 ```
 
 ## Multiple IPv6 Addresses
@@ -159,11 +158,11 @@ sudo pfctl -s info | grep Status
 # Check for IPv6 default route
 netstat -rn -f inet6 | grep default
 
-# No default route? Check RA is being received:
-# Open Wireless Diagnostics → Sniffer, capture on en0, filter for ICMPv6 type 134
+# No default route? If you're troubleshooting Wi-Fi, use Wireless Diagnostics → Window → Sniffer
+# and inspect the capture for ICMPv6 Router Advertisement (type 134) traffic
 
-# Test PMTUD (Packet Too Big)
-ping6 -s 1400 2001:4860:4860::8888
+# Probe MTU issues with an unfragmented IPv6 packet
+ping6 -D -s 1452 2001:4860:4860::8888
 
 # Check DNS is returning AAAA:
 dig AAAA example.com @2001:db8::53
@@ -175,4 +174,4 @@ sudo killall -HUP mDNSResponder
 
 ## Summary
 
-macOS dual-stack is enabled by default for dynamic (SLAAC + DHCPv4) environments. Use `networksetup -setmanual` and `networksetup -setv6manual` for static addressing, or configure through System Settings → Network → TCP/IP. macOS prefers IPv6 per RFC 6724 and uses temporary privacy addresses (RFC 4941) for outbound connections. Use `curl -4/-6` to test which family is being used, and `netstat -rn -f inet6` to verify the IPv6 default route is present.
+macOS dual-stack is enabled by default for dynamic (SLAAC + DHCPv4) environments. Use `networksetup -setmanual` and `networksetup -setv6manual` for static addressing, or configure through System Settings → Network → TCP/IP. macOS follows RFC 6724 default address selection and generally prefers IPv6 when both families are available and usable, and it uses temporary privacy addresses (RFC 4941) for outbound connections. Use `curl -4/-6` to test which family is being used, and `netstat -rn -f inet6` to verify the IPv6 default route is present.
