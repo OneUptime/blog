@@ -57,6 +57,7 @@ spec:
             - --master_addr=$(MASTER_ADDR)
             - --master_port=23456
             - train_ddp.py
+            - --data-path=/data/imagenet
             - --epochs=100
             - --batch-size=1024
             resources:
@@ -89,6 +90,9 @@ spec:
             - --master_addr=$(MASTER_ADDR)
             - --master_port=23456
             - train_ddp.py
+            - --data-path=/data/imagenet
+            - --epochs=100
+            - --batch-size=1024
             resources:
               limits:
                 nvidia.com/gpu: "4"
@@ -104,63 +108,90 @@ spec:
 
 ```python
 # train_ddp.py
+import argparse
+import os
+
 import torch
 import torch.distributed as dist
 import torch.nn as nn
 from torch.nn.parallel import DistributedDataParallel as DDP
+from torch.utils.data import DataLoader
 from torch.utils.data.distributed import DistributedSampler
-import torchvision.models as models
-import argparse
+from torchvision import datasets, models, transforms
 
-def setup(rank, world_size):
-    dist.init_process_group("nccl")
+def setup():
+    dist.init_process_group(backend="nccl")
 
 def train(args):
     # Initialize distributed training
-    setup(int(os.environ['RANK']), int(os.environ['WORLD_SIZE']))
-    
-    local_rank = int(os.environ['LOCAL_RANK'])
+    setup()
+
+    local_rank = args.local_rank
+    if local_rank is None:
+        local_rank = int(os.getenv("LOCAL_RANK", 0))
     torch.cuda.set_device(local_rank)
-    
+
     # Create model and move to GPU
-    model = models.resnet50(pretrained=False)
-    model = model.cuda(local_rank)
-    model = DDP(model, device_ids=[local_rank])
-    
+    model = models.resnet50(weights=None).cuda(local_rank)
+    model = DDP(model, device_ids=[local_rank], output_device=local_rank)
+
     # Create distributed sampler for data
-    train_dataset = load_dataset(args.data_path)
-    train_sampler = DistributedSampler(train_dataset)
-    train_loader = torch.utils.data.DataLoader(
+    transform = transforms.Compose([
+        transforms.Resize(256),
+        transforms.CenterCrop(224),
+        transforms.ToTensor(),
+        transforms.Normalize(
+            mean=[0.485, 0.456, 0.406],
+            std=[0.229, 0.224, 0.225],
+        ),
+    ])
+    train_dataset = datasets.ImageFolder(args.data_path, transform=transform)
+    train_sampler = DistributedSampler(
+        train_dataset,
+        num_replicas=dist.get_world_size(),
+        rank=dist.get_rank(),
+        shuffle=True,
+    )
+    train_loader = DataLoader(
         train_dataset,
         batch_size=args.batch_size,
         sampler=train_sampler,
         num_workers=4,
         pin_memory=True
     )
-    
+
     optimizer = torch.optim.SGD(model.parameters(), lr=0.1 * dist.get_world_size())
     criterion = nn.CrossEntropyLoss().cuda(local_rank)
-    
+
     for epoch in range(args.epochs):
         train_sampler.set_epoch(epoch)
-        
-        for batch_idx, (data, target) in enumerate(train_loader):
-            data, target = data.cuda(local_rank), target.cuda(local_rank)
-            
+
+        for data, target in train_loader:
+            data = data.cuda(local_rank, non_blocking=True)
+            target = target.cuda(local_rank, non_blocking=True)
+
             optimizer.zero_grad()
             output = model(data)
             loss = criterion(output, target)
             loss.backward()
             optimizer.step()
-        
-        if local_rank == 0:
+
+        if dist.get_rank() == 0:
             print(f"Epoch {epoch}: loss={loss.item():.4f}")
-    
+
     # Save model only from rank 0
     if dist.get_rank() == 0:
         torch.save(model.module.state_dict(), 'resnet50_distributed.pth')
-    
+
     dist.destroy_process_group()
+
+if __name__ == "__main__":
+    parser = argparse.ArgumentParser()
+    parser.add_argument("--data-path", default="/data/imagenet")
+    parser.add_argument("--epochs", type=int, default=100)
+    parser.add_argument("--batch-size", type=int, default=1024)
+    parser.add_argument("--local-rank", "--local_rank", type=int, default=None)
+    train(parser.parse_args())
 ```
 
 ## Step 4: TensorFlow Distributed Training
@@ -229,7 +260,7 @@ spec:
 ## Step 5: Configure NCCL for Multi-Node
 
 ```yaml
-# nccl-config.yaml
+# Add these env vars under your training container spec
 spec:
   template:
     spec:
@@ -243,9 +274,7 @@ spec:
         - name: NCCL_IB_DISABLE
           value: "1"              # Set to 0 if InfiniBand available
         - name: NCCL_P2P_DISABLE
-          value: "0"              # Enable P2P for same-node GPUs
-        - name: NCCL_TIMEOUT
-          value: "1800"           # 30 min timeout
+          value: "0"              # Leave P2P enabled for same-node GPUs
 ```
 
 ## Monitoring Distributed Jobs
@@ -262,12 +291,15 @@ kubectl logs -n ml-training \
   -l training.kubeflow.org/job-name=resnet-distributed-training \
   --all-containers --follow
 
-# Monitor GPU utilization across nodes
-kubectl exec -n gpu-operator \
+# Inspect GPU utilization metrics from DCGM Exporter
+kubectl port-forward -n gpu-operator \
   $(kubectl get pods -n gpu-operator -l app=nvidia-dcgm-exporter -o name | head -1) \
-  -- nvidia-smi dmon -s pu -d 5
+  9400:9400
+
+# In another terminal
+curl -s http://127.0.0.1:9400/metrics | grep DCGM_FI_DEV_GPU_UTIL
 ```
 
 ## Conclusion
 
-Distributed training on Rancher enables training large models that would be impossible or impractical on a single GPU. By combining the PyTorch DDP or TF MirroredStrategy with Kubeflow Training Operators, you get fault-tolerant distributed training with automatic restart on failure. Proper NCCL configuration and GPU-aware scheduling are key to efficient multi-node training.
+Distributed training on Rancher enables training large models that would be impossible or impractical on a single GPU. By combining PyTorch DDP or TensorFlow ParameterServerStrategy with Kubeflow Training Operators, you get fault-tolerant distributed training with automatic restart on failure. Proper NCCL configuration and GPU-aware scheduling are key to efficient multi-node training.
