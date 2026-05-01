@@ -70,7 +70,7 @@ tofu apply destroy-plan.tfplan
 ## Destroying Environments
 
 ```bash
-# Destroy a specific workspace
+# Destroy resources in a specific workspace
 tofu workspace select staging
 tofu destroy -auto-approve
 tofu workspace select default
@@ -114,14 +114,14 @@ output "files_created" {
 tofu init && tofu apply -auto-approve
 
 # Verify resources exist
-ls *.txt
+find . -maxdepth 1 -name "*.txt"
 tofu state list
 
 # Destroy everything
 tofu destroy -auto-approve
 
 # Verify destruction
-ls *.txt  # Should show no files
+find . -maxdepth 1 -name "*.txt"  # Should show no files
 tofu state list  # Should show empty state
 ```
 
@@ -166,7 +166,7 @@ jobs:
       - uses: actions/checkout@v4
 
       - name: Setup OpenTofu
-        uses: opentofu/setup-opentofu@v1
+        uses: opentofu/setup-opentofu@v2
         with:
           tofu_version: "1.9.0"
 
