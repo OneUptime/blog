@@ -63,7 +63,7 @@ resource "aws_route53_record" "www" {
   records = ["app.${var.domain_name}"]
 }
 
-# Multiple A records (round-robin)
+# Multiple A records (simple routing with multiple values)
 resource "aws_route53_record" "api" {
   zone_id = aws_route53_zone.public.zone_id
   name    = "api.${var.domain_name}"
@@ -75,6 +75,8 @@ resource "aws_route53_record" "api" {
 
 ### Weighted Routing (Blue/Green)
 
+These weighted records are an alternative to the simple `app` record above - Route53 does not allow weighted and non-weighted records with the same name and type in the same hosted zone.
+
 ```hcl
 resource "aws_route53_record" "blue" {
   zone_id        = aws_route53_zone.public.zone_id
@@ -83,7 +85,7 @@ resource "aws_route53_record" "blue" {
   set_identifier = "blue"
 
   weighted_routing_policy {
-    weight = var.blue_weight  # 90 = 90% of traffic
+    weight = var.blue_weight  # Relative weight: 90 out of a total of 100
   }
 
   alias {
@@ -100,7 +102,7 @@ resource "aws_route53_record" "green" {
   set_identifier = "green"
 
   weighted_routing_policy {
-    weight = var.green_weight  # 10 = 10% of traffic
+    weight = var.green_weight  # Relative weight: 10 out of a total of 100
   }
 
   alias {
@@ -195,4 +197,4 @@ output "gcp_dns_nameservers" {
 
 ## Conclusion
 
-DNS management with OpenTofu enables version-controlled, peer-reviewed DNS changes. AWS Route53 supports advanced routing policies (weighted, latency, failover) with health checks. Azure DNS and GCP Cloud DNS provide simpler record management with high availability. Always output nameservers after creating hosted zones - these must be configured at your domain registrar to activate the zone. Use private hosted zones for internal service discovery within VPCs.
+DNS management with OpenTofu enables version-controlled, peer-reviewed DNS changes. AWS Route53 supports advanced routing policies (weighted, latency, failover) with health checks. Azure DNS and GCP Cloud DNS provide simpler record management with high availability. Always output nameservers after creating public zones - if the domain is registered elsewhere, these must be configured at your domain registrar or parent DNS zone to delegate the domain or subdomain. Use private hosted zones for internal service discovery within VPCs.
