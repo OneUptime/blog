@@ -64,12 +64,12 @@ sudo nano /etc/dovecot/conf.d/10-ssl.conf
 ```
 
 ```ini
-# Enable SSL
+# Require SSL/TLS for authentication
 ssl = required
 
 # Certificate and key paths
-ssl_cert = </etc/letsencrypt/live/mail.example.com/fullchain.pem
-ssl_key = </etc/letsencrypt/live/mail.example.com/privkey.pem
+ssl_server_cert_file = /etc/letsencrypt/live/mail.example.com/fullchain.pem
+ssl_server_key_file = /etc/letsencrypt/live/mail.example.com/privkey.pem
 
 # Modern cipher settings
 ssl_min_protocol = TLSv1.2
@@ -132,12 +132,12 @@ sudo systemctl restart dovecot
 
 # Check listening ports include IPv6
 ss -tlnp | grep -E ':143|:993|:110|:995'
-# Should show :::143, :::993, etc.
+# Should show IPv6 listeners for these ports, such as [::]:143 or :::143
 
 # Test IPv6 IMAP connection
 openssl s_client -connect [2001:db8::10]:993
 
-# Test unencrypted (STARTTLS) IMAP on IPv6
+# Test IMAP STARTTLS on IPv6
 openssl s_client -connect [2001:db8::10]:143 -starttls imap
 ```
 
@@ -145,7 +145,7 @@ openssl s_client -connect [2001:db8::10]:143 -starttls imap
 
 Configure your email client (Thunderbird, Apple Mail, etc.) with:
 
-- **Server**: `[2001:db8::10]` or `mail.example.com` (if AAAA record exists)
+- **Server**: `2001:db8::10` or `mail.example.com` (if AAAA record exists)
 - **IMAP port**: 993 (SSL) or 143 (STARTTLS)
 - **POP3 port**: 995 (SSL) or 110 (STARTTLS)
 
