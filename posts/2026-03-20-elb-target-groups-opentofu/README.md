@@ -4,17 +4,17 @@ Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
 Tags: OpenTofu, AWS, ELB, Target Groups, Load Balancing, Health Check, Infrastructure as Code
 
-Description: Learn how to configure Elastic Load Balancing target groups with OpenTofu for ALB, NLB, and GWLB, including health checks, stickiness, and target registration.
+Description: Learn how to configure Elastic Load Balancing target groups with OpenTofu for ALB and NLB use cases, including health checks, stickiness, Lambda targets, and target registration.
 
 ## Introduction
 
-ELB target groups define where load balancers route requests and how they check target health. Target groups support EC2 instances, IP addresses, Lambda functions, or other ALBs as targets. Each target group has its own health check configuration, deregistration delay, and load balancing algorithm. Understanding target group configuration is fundamental to building resilient load-balanced applications on AWS.
+ELB target groups define where load balancers route requests and how they check target health. Depending on the load balancer type, target groups support EC2 instances, IP addresses, Lambda functions, or another ALB as targets. Each target group has its own health check configuration and deregistration delay, and ALB target groups can also set a load balancing algorithm. Understanding target group configuration is fundamental to building resilient load-balanced applications on AWS.
 
 ## Prerequisites
 
 - OpenTofu v1.6+
-- An Application Load Balancer, Network Load Balancer, or Gateway Load Balancer
-- AWS credentials with EC2 and ELB permissions
+- An Application Load Balancer or Network Load Balancer, depending on the target group type you are configuring
+- AWS credentials with EC2, ELB, and Lambda permissions
 
 ## Step 1: ALB Target Group (Instance Type)
 
@@ -75,7 +75,7 @@ resource "aws_lb_target_group" "fargate" {
     protocol            = "HTTP"
   }
 
-  # Use least outstanding requests for better distribution with variable response times
+  # Use least outstanding requests when requests vary in complexity or targets differ in processing capability
   load_balancing_algorithm_type = "least_outstanding_requests"
 
   tags = {
@@ -84,7 +84,7 @@ resource "aws_lb_target_group" "fargate" {
 }
 ```
 
-## Step 3: NLB Target Group with TCP Health Check
+## Step 3: NLB TLS Target Group with HTTPS Health Check
 
 ```hcl
 resource "aws_lb_target_group" "nlb" {
@@ -121,7 +121,7 @@ resource "aws_lb_target_group" "lambda" {
   name        = "${var.project_name}-lambda-tg"
   target_type = "lambda"
 
-  # Health checks are managed through Lambda's own execution success
+  # Health checks are disabled by default for Lambda target groups
   health_check {
     enabled = false
   }
@@ -178,4 +178,4 @@ aws elbv2 describe-target-group-attributes \
 
 ## Conclusion
 
-Set `deregistration_delay` to a value slightly longer than your application's longest request timeout to ensure in-flight requests complete before a target is removed during deployments. Use `target_type = "ip"` for containerized workloads (ECS, EKS) since containers don't have stable instance IDs. The `least_outstanding_requests` algorithm outperforms round-robin for workloads with variable response times, such as ML inference endpoints or database-heavy operations.
+Set `deregistration_delay` to a value slightly longer than your application's longest request timeout to ensure in-flight requests complete before a target is removed during deployments. Use `target_type = "ip"` for Fargate tasks and other workloads that are registered directly by IP address rather than stable instance IDs. The `least_outstanding_requests` algorithm is commonly used for workloads with variable request complexity or targets with different processing capability.
