@@ -13,13 +13,13 @@ DNS64 is a DNS server feature that synthesizes AAAA records when a domain has on
 ## How DNS64 Works
 
 ```nginx
-IPv6-only client requests: AAAA google.com
+IPv6-only client requests: AAAA h2.example.com
 DNS64 server:
-  1. Queries upstream for AAAA google.com → no result
-  2. Queries upstream for A google.com    → 172.217.0.0
-  3. Synthesizes: 64:ff9b::172.217.0.0   (NAT64 prefix + IPv4)
-  4. Returns AAAA 64:ff9b::ac:d9:0:0
-Client connects to 64:ff9b::ac:d9:0:0 → NAT64 → 172.217.0.0
+  1. Queries upstream for AAAA h2.example.com → no result
+  2. Queries upstream for A h2.example.com    → 192.0.2.1
+  3. Synthesizes: 64:ff9b::192.0.2.1         (NAT64 prefix + IPv4)
+  4. Returns AAAA 64:ff9b::c000:201
+Client connects to 64:ff9b::c000:201 → NAT64 → 192.0.2.1
 ```
 
 ## BIND Configuration
@@ -35,20 +35,20 @@ options {
         # Which clients get DNS64 synthesis
         clients { any; };
 
-        # Excluded prefixes (no synthesis for these - they have real AAAA)
-        # exclude { ::ffff:0:0/96; 64:ff9b::/96; };
+        # Ignore these AAAA ranges if they already exist, and synthesize from A records instead
+        # exclude { 64:ff9b::/96; ::ffff:0:0/96; };
 
         # Mapped: apply synthesis only to these IPv4 ranges
-        # mapped { !RFC1918-RANGES; any; };
-        # Uncomment above to skip NAT64 for RFC1918 addresses
+        # mapped { !10.0.0.0/8; !172.16.0.0/12; !192.168.0.0/16; any; };
+        # Uncomment above to skip the Well-Known Prefix for RFC1918 addresses
 
-        break-dnssec yes;    # Allow DNSSEC-signed records to be synthesized
+        break-dnssec yes;    # Synthesize even if DNSSEC validation would otherwise fail
     };
 
-    # Forwarders for upstream resolution
+    # Forwarders for upstream resolution (reachable over IPv6)
     forwarders {
-        8.8.8.8;
-        8.8.4.4;
+        2001:4860:4860::8888;
+        2001:4860:4860::8844;
     };
 
     forward only;
@@ -75,10 +75,10 @@ acl "rfc1918" {
 options {
     dns64 64:ff9b::/96 {
         clients { any; };
-        mapped { !rfc1918; any; };   # Don't synthesize for private IPs
+        mapped { !rfc1918; any; };   # Don't synthesize the Well-Known Prefix for private IPs
         break-dnssec yes;
     };
-    forwarders { 8.8.8.8; 8.8.4.4; };
+    forwarders { 2001:4860:4860::8888; 2001:4860:4860::8844; };
     forward only;
     recursion yes;
 };
@@ -94,7 +94,7 @@ sudo ss -ulnp | grep :53
 sudo ss -tlnp | grep :53
 
 # Check BIND logs
-sudo journalctl -u bind9 -f
+sudo journalctl -u bind9 -u named -f
 ```
 
 ## Testing DNS64
@@ -102,20 +102,16 @@ sudo journalctl -u bind9 -f
 ```bash
 # From DNS64 server itself:
 dig AAAA ipv4only.arpa @127.0.0.1
-# Should return: 64:ff9b::c000:200 (synthesized for 192.0.2.0)
+# With 64:ff9b::/96, should return synthesized AAAA records such as:
+# 64:ff9b::c000:aa and 64:ff9b::c000:ab
 
-# For a real IPv4-only domain (example):
-dig AAAA example.com @127.0.0.1
-# If example.com has only A record:
-# Returns AAAA 64:ff9b::<ipv4_in_hex>
-
-# Compare with real DNS:
-dig A example.com @8.8.8.8      # Returns real IPv4
-dig AAAA example.com @127.0.0.1 # Returns synthesized IPv6
+# Compare the underlying A records with the synthesized AAAA records:
+dig A ipv4only.arpa @127.0.0.1
+dig AAAA ipv4only.arpa @127.0.0.1
 
 # Test from IPv6-only client (set DNS to DNS64 server):
 # /etc/resolv.conf
-# nameserver 2001:db8::dns64server
+# nameserver 2001:db8::5
 ```
 
 ## Client Configuration
@@ -130,4 +126,4 @@ nameserver 2001:db8::5    # Your DNS64 server IPv6 address
 
 ## Conclusion
 
-BIND's `dns64` directive synthesizes AAAA records using the NAT64 prefix when only A records exist. Configure `dns64 64:ff9b::/96 { clients { any; }; }` and set `break-dnssec yes` to allow synthesis of DNSSEC-signed records. Exclude RFC1918 addresses from synthesis using the `mapped` option. Test with `dig AAAA` against the DNS64 server and verify synthesized addresses use the `64:ff9b::` prefix.
+BIND's `dns64` directive synthesizes AAAA records using the NAT64 prefix when only A records exist. Configure `dns64 64:ff9b::/96 { clients { any; }; }` and, if you need synthesis when DNSSEC validation would otherwise block it, set `break-dnssec yes`. Exclude RFC1918 addresses from synthesis using the `mapped` option. Test with `dig AAAA ipv4only.arpa` against the DNS64 server and verify synthesized addresses use the `64:ff9b::` prefix.
