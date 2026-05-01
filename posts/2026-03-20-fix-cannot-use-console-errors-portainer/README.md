@@ -76,7 +76,6 @@ location / {
     proxy_pass https://localhost:9443;
     proxy_buffering off;           # Critical for log streaming
     proxy_cache off;
-    proxy_set_header X-Accel-Buffering no;  # Disable nginx buffering
     
     # WebSocket support for console
     proxy_http_version 1.1;
@@ -98,7 +97,7 @@ location / {
     
     proxy_http_version 1.1;
     proxy_set_header Upgrade $http_upgrade;
-    proxy_set_header Connection $connection_upgrade;
+    proxy_set_header Connection "upgrade";
     proxy_set_header Host $host;
     
     # Increase timeout for long console sessions
