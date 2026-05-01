@@ -122,13 +122,22 @@ def live_capture_to_csv(interface, output_csv, packet_limit=1000):
         count = 0
         for pkt in cap.sniff_continuously(packet_count=packet_limit):
             try:
+                src_port = ''
+                dst_port = ''
+                if hasattr(pkt, 'tcp'):
+                    src_port = pkt.tcp.srcport
+                    dst_port = pkt.tcp.dstport
+                elif hasattr(pkt, 'udp'):
+                    src_port = pkt.udp.srcport
+                    dst_port = pkt.udp.dstport
+
                 row = {
                     'timestamp': pkt.sniff_time.isoformat(),
                     'src_ip': pkt.ip.src,
                     'dst_ip': pkt.ip.dst,
                     'protocol': pkt.highest_layer,
-                    'src_port': getattr(pkt.tcp, 'srcport', getattr(pkt.udp, 'srcport', '')),
-                    'dst_port': getattr(pkt.tcp, 'dstport', getattr(pkt.udp, 'dstport', '')),
+                    'src_port': src_port,
+                    'dst_port': dst_port,
                     'length': pkt.length
                 }
                 writer.writerow(row)
@@ -148,7 +157,6 @@ live_capture_to_csv("eth0", "live_capture.csv", packet_limit=500)
 
 ```python
 import pandas as pd
-import matplotlib.pyplot as plt
 
 # Load the exported CSV
 df = pd.read_csv("packets.csv")
@@ -171,4 +179,4 @@ print(traffic_by_minute)
 
 ## Conclusion
 
-PyShark leverages Wireshark's dissection engine to provide rich protocol parsing in Python, making it the most comprehensive option for exporting structured packet data to CSV. The CSV output integrates directly with pandas, Excel, Grafana, or any data analysis tool.
+PyShark leverages Wireshark's dissection engine to provide rich protocol parsing in Python, making it the most comprehensive option for exporting structured packet data to CSV. The CSV output integrates directly with pandas, Excel, or other data analysis tools.
