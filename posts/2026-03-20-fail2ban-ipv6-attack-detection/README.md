@@ -4,41 +4,39 @@ Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
 Tags: IPv6, Fail2Ban, Security, Brute Force, Linux
 
-Description: Configure Fail2Ban to detect and block brute force attacks from IPv6 addresses by using ip6tables actions, writing IPv6-compatible filters, and tuning ban policies for IPv6 subnets.
+Description: Configure Fail2Ban to detect and block brute force attacks from IPv6 addresses by using IPv6-capable firewall actions, writing IPv6-compatible filters, and tuning ignore lists for IPv6 prefixes.
 
 ## Introduction
 
-Fail2Ban monitors log files for failed authentication attempts and blocks source IPs using firewall rules. IPv6 support requires ip6tables actions (or nftables) since the default `iptables` action only handles IPv4. This guide covers enabling IPv6 support, configuring jails for IPv6, and writing IPv6-aware filters.
+Fail2Ban monitors log files for failed authentication attempts and blocks source IPs using firewall rules. IPv6 support requires an IPv6-capable ban action. In current Fail2Ban releases, the `iptables` action family switches to `ip6tables` automatically for IPv6 bans, and `nftables` can handle both address families in one ruleset. This guide covers enabling IPv6 support, configuring jails for IPv6, and writing IPv6-aware filters.
 
 ## Step 1: Check Fail2Ban IPv6 Readiness
 
 ```bash
-# Check current Fail2Ban version (>= 0.10 for IPv6 support)
+# Check current Fail2Ban version (>= 0.10 for IPv6 host matching)
 
-fail2ban-client version
+fail2ban-client -V
+
+# Check whether IPv6 is allowed (default: allowipv6 = auto)
+grep -n "^#\\?allowipv6" /etc/fail2ban/fail2ban.conf
 
 # Check available actions
-ls /etc/fail2ban/action.d/ | grep -E "ip6tables|nftables"
+ls /etc/fail2ban/action.d/ | grep -E "^(iptables|nftables)"
 
-# Verify ip6tables is available
-which ip6tables && ip6tables -L -n | head -5
+# Verify either ip6tables or nft is available
+command -v ip6tables || command -v nft
 ```
 
-## Step 2: Configure ip6tables Action
+## Step 2: Verify the Firewall Action Supports IPv6
 
-```ini
-# /etc/fail2ban/action.d/ip6tables-multiport.local
-# Override default to add IPv6 support
-
-[Init]
-# ip6tables action uses ip6tables command
-```
-
-The built-in `ip6tables-multiport` action in Fail2Ban 0.10+ handles IPv6. Verify:
+The built-in `iptables` action family in current Fail2Ban releases handles IPv6 through its `[Init?family=inet6]` section, which switches the command to `ip6tables`. Verify:
 
 ```bash
-# Check the action handles IPv6
-cat /etc/fail2ban/action.d/ip6tables-multiport.conf | head -20
+# Check the iptables action switches to ip6tables for IPv6 bans
+grep -n "family=inet6" /etc/fail2ban/action.d/iptables.conf
+
+# If you prefer nftables, verify it uses an inet table by default
+grep -n "table_family = inet" /etc/fail2ban/action.d/nftables.conf
 ```
 
 ## Step 3: Configure Jails for IPv6
@@ -52,17 +50,18 @@ bantime  = 3600
 findtime = 600
 maxretry = 5
 
-# Enable both IPv4 and IPv6 ban actions
-banaction = iptables-multiport
-banaction_allports = iptables-allports
+# Use current iptables actions
+banaction = iptables[type=multiport]
+banaction_allports = iptables[type=allports]
 
-# For IPv6 support, use dual-stack actions
-# Fail2Ban >= 0.10 auto-detects IP version
+# Fail2Ban 0.10+ matches IPv6 addresses, and the iptables action
+# switches to ip6tables automatically for IPv6 bans when allowipv6 is enabled
 
 [sshd]
 enabled  = true
 port     = ssh
 filter   = sshd
+# Debian/Ubuntu path; adjust for other distributions
 logpath  = /var/log/auth.log
 maxretry = 3
 # Ban for 24 hours after 3 failed attempts
@@ -85,21 +84,20 @@ maxretry = 2
 
 ## Step 4: Write IPv6-Compatible Filters
 
-Fail2Ban filters use Python regex patterns. IPv6 addresses contain colons, so patterns need updating:
+Fail2Ban filters use Python regex patterns. Built-in filters such as `sshd`, `nginx-http-auth`, and `nginx-botsearch` already support IPv6 when they use `<HOST>` or `<ADDR>`. Only custom filters that hard-code IPv4 dotted-decimal patterns need updating:
 
 ```ini
 # /etc/fail2ban/filter.d/sshd-ipv6.conf
-# Extended sshd filter that explicitly handles IPv6
+# Example custom sshd filter using <HOST>; no IPv6-specific regex is required
+
+[INCLUDES]
+before = common.conf
 
 [Definition]
-# Matches both IPv4 and IPv6 failed SSH attempts
 _daemon = sshd
 
-# IPv4: standard dotted-decimal
-# IPv6: hex groups separated by colons
-failregex = ^%(__prefix_line)s(?:error: PAM: )?[aA]uthentication (?:failure|error|failed) for .* from <HOST>\s*$
-            ^%(__prefix_line)sFailed \S+ for (?:invalid user )?(?P<user>.+?) from <HOST>(?: port \d+)?(?: ssh\d*)?\s*$
-            ^%(__prefix_line)sUser .+ from <HOST> not allowed because not listed in AllowUsers\s*$
+failregex = ^%(__prefix_line)sFailed \S+ for .* from <HOST>(?: port \d+)?(?: ssh\d*)?(?: \[preauth\])?\s*$
+            ^%(__prefix_line)sUser .+ from <HOST> not allowed because not listed in AllowUsers(?: \[preauth\])?\s*$
 
 # <HOST> in Fail2Ban matches both IPv4 and IPv6 addresses
 
@@ -108,10 +106,10 @@ ignoreregex =
 
 ```ini
 # /etc/fail2ban/filter.d/nginx-ipv6.conf
-# Nginx 4xx error filter for IPv6
+# Example custom Nginx access-log filter using <HOST>
 
 [Definition]
-failregex = ^<HOST> .+"(GET|POST|HEAD|PUT|DELETE) .+\s+(400|401|403|404|429)\s
+failregex = ^<HOST> \S+ \S+ \[[^]]+\] "(?:GET|POST|HEAD|PUT|DELETE) [^"]+ HTTP/\d\.\d" (?:400|401|403|404|429) \d+
 
 ignoreregex =
 ```
@@ -120,26 +118,25 @@ ignoreregex =
 
 ```ini
 # /etc/fail2ban/jail.local - add IPv6 whitelist
+# Example prefixes: loopback, RFC1918, ULA, and a documentation-only management subnet
 
 [DEFAULT]
 ignoreip = 127.0.0.1/8 ::1
            10.0.0.0/8 172.16.0.0/12 192.168.0.0/16
-           # ULA (internal)
            fc00::/7
-           # Your management subnet
-           2001:db8:admin::/48
+           2001:db8:100::/48
 ```
 
 ## Step 6: Test and Monitor IPv6 Bans
 
 ```bash
-# Test a filter against a log file
-fail2ban-regex /var/log/auth.log /etc/fail2ban/filter.d/sshd.conf
+# Test the built-in sshd filter against a log file
+fail2ban-regex /var/log/auth.log sshd
 
 # Manually test an IPv6 log line
 fail2ban-regex \
     "Mar 20 10:00:00 host sshd[1234]: Failed password for root from 2001:db8::1 port 54321 ssh2" \
-    /etc/fail2ban/filter.d/sshd.conf
+    sshd
 
 # Check current bans (includes IPv6)
 fail2ban-client status sshd
@@ -161,12 +158,12 @@ ip6tables -L f2b-sshd -n -v
 # /etc/fail2ban/jail.local
 
 [DEFAULT]
-banaction = nftables-multiport
-banaction_allports = nftables-allports
+banaction = nftables[type=multiport]
+banaction_allports = nftables[type=allports]
 ```
 
 nftables handles IPv4 and IPv6 in the same ruleset, simplifying dual-stack ban management.
 
 ## Conclusion
 
-Fail2Ban supports IPv6 brute force detection through its `<HOST>` placeholder in filter regexes, which matches both IPv4 and IPv6 addresses. Use `ip6tables-multiport` or `nftables` ban actions for IPv6 blocking. Whitelist internal IPv6 prefixes (ULA `fc00::/7`, loopback `::1`) in `ignoreip` to prevent accidental self-blocking. Test filters with `fail2ban-regex` against real log lines containing IPv6 addresses to verify detection before enabling in production.
+Fail2Ban supports IPv6 brute force detection through its `<HOST>` placeholder in filter regexes, which matches both IPv4 and IPv6 addresses. Use an IPv6-capable ban action such as `iptables[type=multiport]` or `nftables[type=multiport]` for IPv6 blocking. Whitelist internal IPv6 prefixes (ULA `fc00::/7`, loopback `::1`) in `ignoreip` to prevent accidental self-blocking. Test filters with `fail2ban-regex` against real log lines containing IPv6 addresses to verify detection before enabling in production.
