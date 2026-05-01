@@ -4,7 +4,7 @@ Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
 Tags: DHCP, Rogue Server, Network Security, Monitoring, Sysadmin
 
-Description: Rogue DHCP servers can redirect client traffic by providing malicious gateway or DNS addresses, and can be detected using network scanning tools, dhcp-probe, and DHCP server logs.
+Description: Rogue DHCP servers can redirect client traffic by providing malicious gateway or DNS addresses, and can be detected using network scanning tools, dhcp-probe, and DHCP traffic captures or client logs.
 
 ## Why Rogue DHCP Servers Are Dangerous
 
@@ -19,7 +19,7 @@ A rogue DHCP server can:
 ```bash
 # Broadcast DHCP discover and collect all responses
 
-# Run from a client that currently has no DHCP lease
+# Run from a host on the local broadcast domain you want to test
 sudo nmap --script broadcast-dhcp-discover -e eth0
 
 # If you see more than one DHCP server IP in the output, there's a rogue
@@ -34,40 +34,40 @@ sudo nmap --script broadcast-dhcp-discover -e eth0
 ```bash
 sudo apt install dhcp-probe
 
-# Configuration: /etc/dhcp-probe.cf
-# Specify the IP of your legitimate DHCP server
+# Configuration: /etc/dhcp_probe.cf
+# Specify each authorized DHCP server with a legal_server entry
+# legal_server 10.0.0.53
 # dhcp-probe will alert if any other server responds
 
 # Run
-sudo dhcp_probe -c /etc/dhcp-probe.cf eth0
+sudo dhcp_probe -c /etc/dhcp_probe.cf eth0
 
 # Alert via email when rogue detected
-# In /etc/dhcp-probe.cf:
+# In /etc/dhcp_probe.cf:
 # alert_program_name /usr/local/bin/dhcp-alert.sh
 ```
 
 ## Detection Method 3: tcpdump Passive Monitoring
 
 ```bash
-# Capture DHCP offer packets (src port 67)
-sudo tcpdump -i eth0 -n 'port 67 and src port 67' \
-    -l 2>/dev/null | grep "DHCP Offer"
+# Capture DHCP replies from servers (offers, ACKs, and NAKs come from UDP 67)
+sudo tcpdump -i eth0 -n -vv 'udp and src port 67 and dst port 68'
 
-# Or with tshark
-tshark -i eth0 -Y "bootp.option.dhcp == 2" \
-    -T fields -e ip.src -e bootp.ip.your \
-    -e bootp.option.server_id
+# Or with tshark, show only DHCPOFFER packets
+sudo tshark -i eth0 -Y "dhcp.option.dhcp == 2" \
+    -T fields -e ip.src -e dhcp.ip.your \
+    -e dhcp.option.dhcp_server_id
 ```
 
 ## Detection Method 4: DHCP Log Analysis
 
 ```bash
-# Watch for DHCPOFFER from unexpected server IPs
-journalctl -u isc-dhcp-server -n 100 | grep DHCPOFFER
+# If your DHCP client logs to the systemd journal, inspect recent DHCP-related entries
+journalctl -b | grep -i dhcp
 
-# Check client logs for unexpected DHCP server
-dhclient -v eth0 2>&1 | grep "DHCPOFFER from"
-# Should show only your authorized server IP
+# Or run the ISC DHCP client once, verbosely, to see which server answered
+dhclient -1 -v eth0 2>&1 | grep "DHCPOFFER from"
+# Only your authorized server IPs should appear
 ```
 
 ## Python: Automated Rogue Detection
@@ -115,5 +115,5 @@ Once detected:
 
 - `nmap --script broadcast-dhcp-discover` reveals all DHCP servers responding on the segment.
 - `dhcp-probe` provides continuous automated monitoring for rogue servers.
-- DHCP snooping on switches is the definitive prevention mechanism.
+- DHCP snooping on managed switches is the standard prevention mechanism.
 - When a rogue is found, trace it via ARP and switch MAC address tables to find the physical port.
