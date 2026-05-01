@@ -12,18 +12,22 @@ Docker supports HTTP/HTTPS proxy configuration for both the Docker daemon (for p
 
 ## Configure Proxy for Docker Daemon
 
+Method 1: `daemon.json` (Docker 23.0+)
+
 ```json
-// /etc/docker/daemon.json or systemd override
-// Method 1: daemon.json (Docker 23.0+)
 {
-  "ipv6": true,
-  "ip6tables": true,
   "proxies": {
     "http-proxy": "http://proxy.example.com:3128",
     "https-proxy": "http://proxy.example.com:3128",
     "no-proxy": "localhost,127.0.0.1,::1,fd00::/8,192.168.0.0/16"
   }
 }
+```
+
+After saving `/etc/docker/daemon.json`, restart Docker:
+
+```bash
+sudo systemctl restart docker
 ```
 
 ```bash
@@ -41,7 +45,7 @@ sudo systemctl daemon-reload
 sudo systemctl restart docker
 
 # Verify proxy settings applied
-docker info | grep -i proxy
+sudo systemctl show --property=Environment docker
 ```
 
 ## Proxy Environment Variables for Containers
@@ -52,14 +56,14 @@ docker run --rm \
     -e HTTP_PROXY=http://proxy.example.com:3128 \
     -e HTTPS_PROXY=http://proxy.example.com:3128 \
     -e NO_PROXY="localhost,::1,fd00::/8" \
-    alpine curl -s https://example.com/
+    alpine sh -c 'env | grep -i _PROXY'
 
 # For lowercase variants (some tools prefer lowercase)
 docker run --rm \
     -e http_proxy=http://proxy.example.com:3128 \
     -e https_proxy=http://proxy.example.com:3128 \
     -e no_proxy="localhost,::1,fd00::/8" \
-    alpine curl -s https://example.com/
+    alpine sh -c 'env | grep -i _PROXY'
 ```
 
 ## Docker Compose with Proxy Settings
@@ -92,22 +96,10 @@ services:
 ## Proxy for Docker Builds (Build-Time)
 
 ```dockerfile
-# Dockerfile - pass proxy settings during build
+# Dockerfile - build args are enough for proxy configuration
 FROM ubuntu:22.04
 
-ARG HTTP_PROXY
-ARG HTTPS_PROXY
-ARG NO_PROXY
-
-ENV HTTP_PROXY=$HTTP_PROXY
-ENV HTTPS_PROXY=$HTTPS_PROXY
-ENV NO_PROXY=$NO_PROXY
-
 RUN apt-get update && apt-get install -y curl
-
-# Clear proxy for runtime (if not needed)
-ENV HTTP_PROXY=""
-ENV HTTPS_PROXY=""
 ```
 
 ```bash
@@ -122,7 +114,7 @@ docker build \
 ## IPv6 NO_PROXY Configuration
 
 ```bash
-# NO_PROXY must include IPv6 ranges to bypass proxy for local/container traffic
+# Include IPv6 ranges in NO_PROXY to bypass proxy for local/container traffic
 # Include:
 # - ::1 (IPv6 loopback)
 # - fd00::/8 (ULA for Docker networks)
@@ -134,8 +126,8 @@ NO_PROXY_VALUE="localhost,127.0.0.1,::1,fd00::/8,10.0.0.0/8,172.16.0.0/12,192.16
 docker run --rm \
     -e NO_PROXY="$NO_PROXY_VALUE" \
     -e HTTPS_PROXY=http://proxy.example.com:3128 \
-    alpine curl -v https://fd00:docker::10/api/
-# Should connect directly (bypassing proxy) for fd00:docker::10
+    curlimages/curl -v http://[fd00::10]/api/
+# Should connect directly (bypassing proxy) for fd00::10
 ```
 
 ## Conclusion
