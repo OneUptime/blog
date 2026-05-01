@@ -28,11 +28,11 @@ graph LR
 ## Checking Current Configuration
 
 ```text
-! Check whether directed broadcast is enabled on an interface
-show running-config interface GigabitEthernet0/1 | include directed-broadcast
+! Check the operational state on an interface
+show ip interface GigabitEthernet0/1
 ```
 
-If the command returns no output, directed broadcast is **disabled** (default since IOS 12.0). If you see `ip directed-broadcast`, it is enabled.
+If the output shows `Directed broadcast forwarding is disabled`, the interface is protected. If it shows `Directed broadcast forwarding is enabled`, directed broadcast is enabled on that interface.
 
 ## Disabling Directed Broadcast on an Interface
 
@@ -48,50 +48,54 @@ interface GigabitEthernet0/2
  no ip directed-broadcast
 ```
 
-## Applying Globally with a Script
+## Applying at Scale
 
-For large deployments, apply to all interfaces using a TCL script or EEM applet:
+For large deployments, push the interface-level configuration with your automation tooling; Cisco IOS does not provide a global `no ip directed-broadcast` command:
 
 ```text
-! IOS TCL script to disable directed broadcast on all interfaces
-tclsh
-foreach iface [exec "show interfaces | include ^[A-Z]"] {
-    ios_config "interface $iface" "no ip directed-broadcast"
-}
+interface GigabitEthernet0/0
+ no ip directed-broadcast
+
+interface GigabitEthernet0/1
+ no ip directed-broadcast
+
+interface GigabitEthernet0/2
+ no ip directed-broadcast
 ```
 
 ## Verifying the Change
 
 ```text
-! Confirm no interfaces have directed broadcast enabled
-show running-config | include directed-broadcast
+! Confirm each routed interface shows directed broadcast disabled
+show ip interface GigabitEthernet0/0
+show ip interface GigabitEthernet0/1
+show ip interface GigabitEthernet0/2
 ```
 
-If the output is empty, no interfaces are exposing this vulnerability.
+Each interface should show `Directed broadcast forwarding is disabled`.
 
 ## When Directed Broadcast Is Intentionally Needed
 
-The most legitimate use case is **Wake-on-LAN** across subnets. If you need it, enable it only on the specific interface facing the target subnet, and consider an ACL to limit which source addresses can send directed broadcasts:
+The most legitimate use case is **Wake-on-LAN** across subnets. If you need it, enable it only on the specific interface facing the target subnet, and use an ACL to limit which packets can be translated to Layer 2 broadcasts:
 
 ```text
-! Create an ACL allowing WoL broadcasts only from management VLAN
-ip access-list extended DIRECTED-BCAST-ACL
- permit udp 10.0.0.0 0.0.0.255 255.255.255.255 0.0.0.0 eq 9
- deny   ip any any
+! Create a numbered ACL allowing WoL only from the management VLAN
+access-list 101 permit udp 10.0.0.0 0.0.0.255 host 192.168.50.255 eq 9
 
-! Apply to specific interface - enable directed broadcast with ACL filter
+! Apply to the specific interface facing the target subnet
 interface GigabitEthernet0/2
- ip directed-broadcast DIRECTED-BCAST-ACL
+ ip directed-broadcast 101
 ```
 
 ## Additional Hardening: Block Smurf at the Border
 
-Even with directed broadcasts disabled internally, block ICMP echo to broadcast addresses at the perimeter:
+If you want defense in depth, block ICMP echo requests to each local subnet's directed-broadcast address at the perimeter:
 
-```nginx
-! Block ICMP echo requests to broadcast at the upstream interface
+```text
+! Block ICMP echo requests to directed-broadcast addresses at the upstream interface
 ip access-list extended ANTI-SMURF
- deny   icmp any 192.168.0.0 0.0.255.255 echo
+ deny   icmp any host 192.168.10.255 echo
+ deny   icmp any host 192.168.20.255 echo
  permit ip any any
 
 interface GigabitEthernet0/0
