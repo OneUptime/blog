@@ -34,20 +34,6 @@ For this example, we'll create a simple web application:
 
 ```bash
 # Create main application file
-cat > app.sh << 'EOF'
-#!/bin/bash
-# Simple HTTP server for demonstration
-while true; do
-  echo -e "HTTP/1.1 200 OK\r\nContent-Type: text/plain\r\n\r\nHello from How to Scale Applications in Epinio!" | nc -l -p ${PORT:-8080}
-done
-EOF
-chmod +x app.sh
-```
-
-For a language-specific example relevant to this guide:
-
-```bash
-# Node.js example
 cat > server.js << 'EOF'
 const http = require('http');
 const server = http.createServer((req, res) => {
@@ -64,13 +50,32 @@ server.listen(process.env.PORT || 8080, () => {
 EOF
 ```
 
+To make the start command explicit:
+
+```bash
+# Optional: add package metadata and an explicit start command
+cat > package.json << 'EOF'
+{
+  "name": "my-app",
+  "version": "1.0.0",
+  "private": true,
+  "scripts": {
+    "start": "node server.js"
+  }
+}
+EOF
+```
+
 ## Step 3: Target Your Namespace
 
 ```bash
 # Target the namespace for deployment
 epinio target my-apps
 
-# Verify namespace is active
+# Verify the targeted namespace
+epinio target
+
+# Inspect the namespace
 epinio namespace show my-apps
 ```
 
@@ -84,7 +89,7 @@ epinio push --name my-app
 epinio push \
   --name my-app \
   --instances 2 \
-  --route my-app.epinio.example.com
+  --route my-app.<your-system-domain>
 ```
 
 During push, Epinio will:
@@ -104,21 +109,21 @@ epinio app show my-app
 # List all applications in namespace
 epinio app list
 
-# View the application route
-epinio app show my-app | grep Routes
+# View the application route shown under Active Routes
+epinio app show my-app --no-colors | grep 'Active Routes' -A 1
 ```
 
 ## Step 6: Test the Application
 
 ```bash
-# Get the application URL
-APP_URL=$(epinio app show my-app | grep Routes | awk '{print $2}')
+# Get the first application route from Active Routes
+APP_HOST=$(epinio app show my-app --no-colors | awk -F'|' '/Active Routes/{getline; gsub(/^[[:space:]]+|[[:space:]]+$/, "", $3); print $3; exit}')
+APP_URL="https://${APP_HOST}"
 
 # Test with curl
-curl ${APP_URL}
+curl "$APP_URL"
 
-# Or open in browser
-open ${APP_URL}
+# Or open the URL in your browser
 ```
 
 ## Step 7: View Application Logs
@@ -128,7 +133,7 @@ open ${APP_URL}
 epinio app logs my-app
 
 # Follow live logs
-epinio app logs my-app --follow
+epinio app logs --follow my-app
 ```
 
 ## Step 8: Update the Application
@@ -138,7 +143,7 @@ epinio app logs my-app --follow
 # Then re-push to update
 epinio push --name my-app
 
-# Epinio performs a rolling update
+# Epinio deploys the updated application
 epinio app show my-app
 ```
 
@@ -172,4 +177,4 @@ epinio app delete my-app
 
 ## Conclusion
 
-How to Scale Applications in Epinio with Epinio demonstrates how the platform removes barriers between development and deployment. The simple push workflow means developers can deploy any application to Kubernetes without writing YAML or understanding container orchestration. Epinio's buildpack system automatically detects the runtime, installs dependencies, and creates an optimized container image.
+How to Scale Applications in Epinio with Epinio demonstrates how the platform removes barriers between development and deployment. The simple push workflow means developers can deploy supported applications to Kubernetes without writing YAML or understanding container orchestration. Epinio's buildpack system automatically detects the runtime, installs dependencies, and creates an optimized container image.
