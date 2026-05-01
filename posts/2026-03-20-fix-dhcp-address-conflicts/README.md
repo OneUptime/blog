@@ -10,7 +10,7 @@ Description: DHCP address conflicts occur when two devices use the same IP simul
 
 1. A static IP was assigned to a host that overlaps with the DHCP pool.
 2. DHCP server leased an IP that another device already had configured statically.
-3. A stale lease was assigned to a new device while the original device was offline.
+3. A stale lease was assigned to a new device and the original device later came back online.
 4. Multiple DHCP servers handed out the same address.
 
 ## ISC dhcpd: Built-in Conflict Detection
@@ -28,25 +28,24 @@ ping-timeout 1;
 ## Detecting Active Conflicts
 
 ```bash
-# On Linux: check ARP table for duplicate IPs
-arp -n | sort | uniq -w16 -d
-
-# Scan subnet for duplicate IPs with nmap
-nmap -sn 192.168.1.0/24 --open | grep -E "192\.168\.1\." > /tmp/hosts.txt
-# Look for same IP appearing twice
-
-# arping to identify which MAC has an IP
+# Probe the conflicted IP directly and note which MAC address replies
 sudo arping -I eth0 192.168.1.50
+
+# Scan the local subnet and map IPs to MAC addresses
+sudo arp-scan --interface=eth0 192.168.1.0/24
+
+# Optional: list live hosts on the subnet for cross-checking
+nmap -sn 192.168.1.0/24
 ```
 
 ## Finding Conflicted Leases
 
 ```bash
-# ISC dhcpd: look for conflict entries in lease file
-grep -i "conflict\|decline" /var/lib/dhcp/dhcpd.leases
+# ISC dhcpd: look for abandoned leases in the lease file
+grep -B1 -A6 "binding state abandoned;" /var/lib/dhcp/dhcpd.leases
 
 # Also check DHCP server logs
-journalctl -u isc-dhcp-server | grep -i "DHCPDECLINE\|conflict"
+journalctl -u isc-dhcp-server | grep -i "DHCPDECLINE\|abandon"
 ```
 
 ## Resolving Conflicts
@@ -54,12 +53,11 @@ journalctl -u isc-dhcp-server | grep -i "DHCPDECLINE\|conflict"
 ### Step 1: Identify Both Devices
 
 ```bash
-# Find the MAC address for each IP claiming the address
-sudo arping -D -I eth0 192.168.1.50
-# -D = duplicate address detection mode; exits with non-zero if duplicate detected
+# arping shows which MAC address replies for the conflicted IP
+sudo arping -I eth0 192.168.1.50
 
-# Find which devices have a given IP
-sudo arp-scan --interface=eth0 192.168.1.50
+# Scan the subnet and filter for the conflicted IP
+sudo arp-scan --interface=eth0 192.168.1.0/24 | grep -F "192.168.1.50"
 ```
 
 ### Step 2: Remove Stale Leases
@@ -68,7 +66,7 @@ sudo arp-scan --interface=eth0 192.168.1.50
 # Edit dhcpd.leases to remove the conflicted lease
 sudo systemctl stop isc-dhcp-server
 sudo vi /var/lib/dhcp/dhcpd.leases
-# Remove or comment out the conflicted lease block
+# Remove the current lease declaration for the conflicted IP
 sudo systemctl start isc-dhcp-server
 ```
 
@@ -87,19 +85,19 @@ subnet 192.168.1.0 netmask 255.255.255.0 {
 ## Windows Server: View and Resolve Conflicts
 
 ```powershell
-# View conflicted leases
-Get-DhcpServerv4Conflict -ScopeId 192.168.1.0
+# View declined (bad) leases
+Get-DhcpServerv4Lease -ScopeId 192.168.1.0 -BadLeases
 
-# Remove a conflicted record
-Remove-DhcpServerv4Conflict -ScopeId 192.168.1.0 -IPAddress 192.168.1.50
+# Remove declined (bad) leases in the scope
+Remove-DhcpServerv4Lease -ScopeId 192.168.1.0 -BadLeases
 
 # Enable conflict detection (number of pings before offering)
-Set-DhcpServerv4Scope -ScopeId 192.168.1.0 -ConflictDetectionAttempts 1
+Set-DhcpServerSetting -ConflictDetectionAttempts 1
 ```
 
 ## Key Takeaways
 
 - Conflicts most commonly occur when static IPs overlap with the DHCP pool.
-- Enable conflict detection (`ping-check true` in dhcpd) to prevent re-offering in-use addresses.
-- Use `arping -D` to detect duplicate addresses on the network.
-- Best practice: keep static IP ranges (1–49) completely separate from the DHCP pool (50–254).
+- Enable conflict detection (`ping-check true` in dhcpd) to reduce the chance of re-offering in-use addresses.
+- Use `arping` and `arp-scan` to identify which MAC address is answering for the conflicted IP.
+- Best practice: keep statically assigned addresses completely separate from the DHCP pool.
