@@ -26,8 +26,7 @@ log_level = "info"
 inet = "0.0.0.0:1491"
 tcp_timeout = 300
 
-[channel.auth]
-password = "SecurePassword"
+auth_password = "SecurePassword"
 
 [store]
 [store.kv]
@@ -45,8 +44,6 @@ Navigate to **Stacks** > **Add Stack**:
 ```yaml
 # docker-compose.yml - Sonic Search
 
-version: "3.8"
-
 services:
   sonic:
     image: valeriansaliou/sonic:v1.4.9
@@ -57,11 +54,6 @@ services:
     volumes:
       - /opt/sonic/config.cfg:/etc/sonic.cfg:ro
       - sonic_data:/var/lib/sonic/store
-    healthcheck:
-      test: ["CMD-SHELL", "echo 'START search SecurePassword' | nc -w3 localhost 1491 | grep -q 'STARTED'"]
-      interval: 30s
-      timeout: 10s
-      retries: 3
     networks:
       - sonic_net
 
@@ -73,7 +65,7 @@ networks:
     driver: bridge
 ```
 
-## Step 3: Set Environment Variables in Portainer
+## Step 3: Update the Password Before Deploying
 
 Update the password in the `config.cfg` file on the host before deploying.
 
@@ -87,7 +79,7 @@ nc localhost 1491
 
 # Authenticate and start an ingest session
 START ingest SecurePassword
-# Returns: STARTED ingest protocol(1) backend(sonic)
+# Returns: STARTED ingest protocol(1) buffer(20000)
 
 # Push data (collection, bucket, object_id, text)
 PUSH messages default 1 "hello world this is a test message"
@@ -96,15 +88,15 @@ PUSH messages default 3 "sonic is a fast search backend"
 QUIT
 ```
 
-## Step 5: Search via the Query Channel
+## Step 5: Search via the Search Channel
 
 ```bash
 nc localhost 1491
 START search SecurePassword
-# Query: QUERY collection bucket terms [LIMIT(n)] [OFFSET(n)]
+# Query: QUERY <collection> <bucket> "<terms>" [LIMIT(<count>)] [OFFSET(<count>)] [LANG(<locale>)]
 QUERY messages default "search"
 # Returns: PENDING <event_id>
-# Then: EVENT QUERY <event_id> "3" "2"  (matched object IDs)
+# Then, for example: EVENT QUERY <event_id> 2 3  (matched object IDs)
 QUIT
 ```
 
@@ -122,7 +114,7 @@ with IngestClient("localhost", 1491, "SecurePassword") as ingest:
 # Search
 with SearchClient("localhost", 1491, "SecurePassword") as search:
     results = search.query("messages", "default", "search engine", limit=10)
-    print(results)  # ['1', '2'] - returns object IDs
+    print(results)  # ['1'] - returns object IDs
 ```
 
 ## Step 7: Consolidate the Index
@@ -137,4 +129,4 @@ QUIT
 
 ## Conclusion
 
-Sonic stores the search index in two parts: a key-value store (RocksDB) for forward lookup and an FST (Finite State Transducer) for reverse lookup. The authentication password in `config.cfg` is set under `[channel.auth]`. Sonic returns object IDs from search queries - your application maps these IDs back to actual content. It is ideal for lightweight, low-memory search in applications that don't need Elasticsearch's aggregation capabilities.
+Sonic stores its index in a RocksDB-backed key-value store and uses an FST (Finite State Transducer) for word suggestions and typo correction. The authentication password in `config.cfg` is set with `auth_password` under `[channel]`. Sonic returns object IDs from search queries - your application maps these IDs back to actual content. It is ideal for lightweight, low-memory search in applications that don't need Elasticsearch's aggregation capabilities.
