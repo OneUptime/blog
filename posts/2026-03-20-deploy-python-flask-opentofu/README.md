@@ -12,7 +12,7 @@ Python Flask applications can be deployed serverlessly using AWS Lambda with API
 
 ## Option 1: Serverless Deployment with Lambda
 
-Use Mangum to wrap Flask as an ASGI/WSGI handler for Lambda.
+Use Flask with the `asgiref` `WsgiToAsgi` adapter, then wrap the ASGI app with Mangum for Lambda.
 
 ```hcl
 # Package the Flask app as a ZIP
@@ -27,7 +27,7 @@ resource "aws_lambda_function" "flask_app" {
   function_name    = "myapp-flask-${var.environment}"
   filename         = data.archive_file.flask_app.output_path
   source_code_hash = data.archive_file.flask_app.output_base64sha256
-  handler          = "app.handler"  # app.py, handler function (Mangum)
+  handler          = "app.handler"  # app.py exports handler = Mangum(WsgiToAsgi(app))
   runtime          = "python3.11"
   role             = aws_iam_role.lambda.arn
   timeout          = 30
@@ -35,7 +35,7 @@ resource "aws_lambda_function" "flask_app" {
 
   environment {
     variables = {
-      FLASK_ENV           = var.environment
+      APP_ENV             = var.environment
       DATABASE_URL        = "postgresql://..."  # use SSM in production
       SECRET_KEY_ARN      = aws_secretsmanager_secret.flask_key.arn
     }
@@ -68,7 +68,7 @@ resource "aws_apigatewayv2_integration" "flask_lambda" {
 
 resource "aws_apigatewayv2_route" "flask_proxy" {
   api_id    = aws_apigatewayv2_api.flask.id
-  route_key = "ANY /{proxy+}"
+  route_key = "$default"
   target    = "integrations/${aws_apigatewayv2_integration.flask_lambda.id}"
 }
 
@@ -79,6 +79,13 @@ resource "aws_apigatewayv2_stage" "flask" {
 
   access_log_settings {
     destination_arn = aws_cloudwatch_log_group.api_gateway.arn
+    format = jsonencode({
+      requestId      = "$context.requestId"
+      httpMethod     = "$context.httpMethod"
+      routeKey       = "$context.routeKey"
+      status         = "$context.status"
+      responseLength = "$context.responseLength"
+    })
   }
 }
 
@@ -87,7 +94,7 @@ resource "aws_lambda_permission" "api_gateway" {
   action        = "lambda:InvokeFunction"
   function_name = aws_lambda_function.flask_app.function_name
   principal     = "apigateway.amazonaws.com"
-  source_arn    = "${aws_apigatewayv2_api.flask.execution_arn}/*/*"
+  source_arn    = "${aws_apigatewayv2_api.flask.execution_arn}/*/$default"
 }
 ```
 
@@ -110,7 +117,7 @@ resource "aws_ecs_task_definition" "flask" {
     # Dockerfile CMD: gunicorn --workers 4 --bind 0.0.0.0:8000 app:app
 
     environment = [
-      { name = "FLASK_ENV",     value = var.environment },
+      { name = "APP_ENV",       value = var.environment },
       { name = "WORKERS",       value = "4" },
     ]
 
@@ -150,7 +157,7 @@ resource "aws_cloudwatch_metric_alarm" "flask_errors" {
   alarm_name          = "myapp-flask-5xx-errors"
   comparison_operator = "GreaterThanThreshold"
   evaluation_periods  = 2
-  metric_name         = "5XXError"
+  metric_name         = "5xx"
   namespace           = "AWS/ApiGateway"
   period              = 60
   statistic           = "Sum"
@@ -159,7 +166,7 @@ resource "aws_cloudwatch_metric_alarm" "flask_errors" {
   alarm_actions       = [aws_sns_topic.alerts.arn]
 
   dimensions = {
-    ApiName = aws_apigatewayv2_api.flask.name
+    ApiId = aws_apigatewayv2_api.flask.id
     Stage   = aws_apigatewayv2_stage.flask.name
   }
 }
@@ -167,4 +174,4 @@ resource "aws_cloudwatch_metric_alarm" "flask_errors" {
 
 ## Summary
 
-Flask applications deploy well on both AWS Lambda (via Mangum WSGI wrapper) for low-cost serverless operation, and ECS Fargate with Gunicorn for production-grade performance. Use Lambda for simple APIs with low-to-medium traffic and cost optimization, and ECS for applications requiring consistent performance, long-running requests, or WebSocket support. Both approaches use Secrets Manager for sensitive configuration and CloudWatch for logging and monitoring.
+Flask applications deploy well on both AWS Lambda (via `WsgiToAsgi` plus Mangum) for low-cost serverless operation, and ECS Fargate with Gunicorn for production-grade performance. Use Lambda for simple APIs with low-to-medium traffic and cost optimization, and ECS for applications requiring consistent performance, long-running requests, or WebSocket support. Both approaches can use Secrets Manager for sensitive configuration and CloudWatch for logging and monitoring.
