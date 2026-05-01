@@ -8,12 +8,12 @@ Description: Learn how to create ECS services with OpenTofu for long-running con
 
 ## Introduction
 
-ECS Services maintain a desired number of task replicas running, handle rolling deployments, integrate with load balancers, and restart failed tasks. They support FARGATE and EC2 launch types, deployment circuit breakers for automatic rollback on failures, and blue/green deployments via CodeDeploy.
+ECS Services maintain a desired number of task replicas running, handle rolling deployments, integrate with load balancers, and restart failed tasks. They support FARGATE and EC2 launch types, deployment circuit breakers for automatic rollback on failed rolling deployments, and blue/green deployments via CodeDeploy.
 
 ## Prerequisites
 
 - OpenTofu v1.6+
-- An ECS cluster, task definition, and VPC with subnets
+- An ECS cluster, task definition, VPC with subnets, and an ALB target group using the `ip` target type
 - AWS credentials with ECS and EC2 permissions
 
 ## Step 1: Create ECS Fargate Service
@@ -34,14 +34,12 @@ resource "aws_ecs_service" "app" {
   }
 
   # Rolling deployment configuration
-  deployment_configuration {
-    minimum_healthy_percent = 100  # Never reduce below 100% during deployment
-    maximum_percent         = 200  # Allow up to 200% during rollout
+  deployment_minimum_healthy_percent = 100  # Never reduce below 100% during deployment
+  deployment_maximum_percent         = 200  # Allow up to 200% during rollout
 
-    deployment_circuit_breaker {
-      enable   = true   # Auto-detect failed deployments
-      rollback = true   # Automatically roll back on failure
-    }
+  deployment_circuit_breaker {
+    enable   = true   # Auto-detect failed deployments
+    rollback = true   # Automatically roll back on failure
   }
 
   # Wait for load balancer health checks before marking deployment complete
@@ -53,8 +51,8 @@ resource "aws_ecs_service" "app" {
     container_port   = 8080
   }
 
-  # Spread tasks across AZs for high availability
-  placement_constraints {}
+  # Keep the service balanced across AZs for higher availability
+  availability_zone_rebalancing = "ENABLED"
 
   # ECS Exec for debugging
   enable_execute_command = true
@@ -107,7 +105,7 @@ resource "aws_security_group" "ecs_tasks" {
 
 ```hcl
 resource "aws_ecs_service" "app_with_spot" {
-  name            = "${var.project_name}-app"
+  name            = "${var.project_name}-app-spot"
   cluster         = var.ecs_cluster_id
   task_definition = var.task_definition_arn
   desired_count   = 4
@@ -122,7 +120,7 @@ resource "aws_ecs_service" "app_with_spot" {
   capacity_provider_strategy {
     capacity_provider = "FARGATE_SPOT"
     base              = 0
-    weight            = 4  # 80% of tasks on Spot
+    weight            = 4  # Prefer Spot for most of the remaining tasks
   }
 
   network_configuration {
@@ -131,14 +129,12 @@ resource "aws_ecs_service" "app_with_spot" {
     assign_public_ip = false
   }
 
-  deployment_configuration {
-    minimum_healthy_percent = 50
-    maximum_percent         = 200
+  deployment_minimum_healthy_percent = 50
+  deployment_maximum_percent         = 200
 
-    deployment_circuit_breaker {
-      enable   = true
-      rollback = true
-    }
+  deployment_circuit_breaker {
+    enable   = true
+    rollback = true
   }
 
   load_balancer {
@@ -167,7 +163,7 @@ aws ecs describe-services \
   --services my-project-app \
   --query 'services[0].{Status: status, Running: runningCount, Desired: desiredCount, Pending: pendingCount}'
 
-# Force new deployment (to pick up new task definition revision)
+# Force new deployment (for example, to restart tasks that use the same image tag)
 aws ecs update-service \
   --cluster my-project-cluster \
   --service my-project-app \
@@ -176,4 +172,4 @@ aws ecs update-service \
 
 ## Conclusion
 
-The deployment circuit breaker is the most important ECS service feature to enable-it automatically rolls back deployments where tasks fail to start or health checks fail, preventing prolonged outages from bad deployments. Use `ignore_changes = [desired_count]` so auto-scaling policies can adjust task count without triggering Terraform drift detection. FARGATE_SPOT can reduce compute costs by 60-70% for fault-tolerant services that can handle interruptions.
+The deployment circuit breaker is the most important ECS service feature to enable for rolling deployments because it automatically rolls back deployments where tasks fail to start or health checks fail, preventing prolonged outages from bad deployments. Use `ignore_changes = [desired_count]` so auto-scaling policies can adjust task count without triggering OpenTofu drift detection. FARGATE_SPOT can reduce compute costs by up to 70% for fault-tolerant services that can handle interruptions.
