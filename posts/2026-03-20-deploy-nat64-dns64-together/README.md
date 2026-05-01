@@ -37,19 +37,19 @@ apt install jool-dkms jool-tools
 modprobe jool
 
 # Create a NAT64 instance
-jool instance add --iptables
-
-# Set the NAT64 prefix (well-known: 64:ff9b::/96)
-jool pool6 add 64:ff9b::/96
+# If you also need to translate non-global IPv4 destinations, use a network-specific /96 instead of 64:ff9b::/96.
+jool instance add --iptables --pool6 64:ff9b::/96
 
 # Add IPv4 pool - replace with your public IPv4 range
-jool pool4 add --tcp 203.0.113.0/28
-jool pool4 add --udp 203.0.113.0/28
-jool pool4 add --icmp 203.0.113.0/28
+jool pool4 add --tcp 203.0.113.0/28 61001-65535
+jool pool4 add --udp 203.0.113.0/28 61001-65535
+jool pool4 add --icmp 203.0.113.0/28 0-65535
 
 # Configure iptables to route traffic through Jool
 ip6tables -t mangle -A PREROUTING -d 64:ff9b::/96 -j JOOL --instance default
-iptables -t mangle -A PREROUTING -d 203.0.113.0/28 -j JOOL --instance default
+iptables -t mangle -A PREROUTING -d 203.0.113.0/28 -p tcp --dport 61001:65535 -j JOOL --instance default
+iptables -t mangle -A PREROUTING -d 203.0.113.0/28 -p udp --dport 61001:65535 -j JOOL --instance default
+iptables -t mangle -A PREROUTING -d 203.0.113.0/28 -p icmp -j JOOL --instance default
 
 # Enable forwarding
 sysctl -w net.ipv6.conf.all.forwarding=1
@@ -64,17 +64,25 @@ On the DNS64 resolver host (or the same host):
 # Install BIND
 apt install bind9
 
-# Add DNS64 configuration to named.conf.options
-cat >> /etc/bind/named.conf.options << 'EOF'
+# Replace named.conf.options with a minimal DNS64 resolver configuration
+cat > /etc/bind/named.conf.options << 'EOF'
+options {
+    directory "/var/cache/bind";
+    dnssec-validation auto;
+    statistics-file "/var/cache/bind/named.stats";
+
+    allow-recursion { 2001:db8:100::/64; localhost; localnets; };
+    allow-query-cache { 2001:db8:100::/64; localhost; localnets; };
+
     dns64 64:ff9b::/96 {
-        clients { any; };
-        mapped { any; };
-        exclude { 10.0.0.0/8; 172.16.0.0/12; 192.168.0.0/16; };
+        clients { 2001:db8:100::/64; localhost; localnets; };
+        mapped { !10.0.0.0/8; !172.16.0.0/12; !192.168.0.0/16; any; };
     };
+};
 EOF
 
 # Restart BIND
-systemctl restart bind9
+named-checkconf && systemctl restart bind9
 ```
 
 ## Step 3: Configure IPv6-Only Clients
@@ -82,7 +90,10 @@ systemctl restart bind9
 Configure IPv6-only clients to use the DNS64 resolver. The simplest approach is via DHCPv6 or Router Advertisements:
 
 ```bash
-# radvd configuration to advertise DNS64 resolver via RDNSS (RFC 6106)
+# Install radvd
+apt install radvd
+
+# radvd configuration to advertise the client prefix and DNS64 resolver via RDNSS (RFC 8106)
 # /etc/radvd.conf
 cat > /etc/radvd.conf << 'EOF'
 interface eth0 {
@@ -90,11 +101,11 @@ interface eth0 {
     MinRtrAdvInterval 3;
     MaxRtrAdvInterval 10;
 
-    RDNSS 2001:db8::dns64server {
-        AdvRDNSSLifetime 300;
+    RDNSS 2001:db8:100::53 {
+        AdvRDNSSLifetime 1800;
     };
 
-    prefix 2001:db8:clients::/64 {
+    prefix 2001:db8:100::/64 {
         AdvOnLink on;
         AdvAutonomous on;
     };
@@ -109,29 +120,29 @@ systemctl restart radvd
 From an IPv6-only client:
 
 ```bash
-# Step 1: Verify DNS64 resolves IPv4-only domains to 64:ff9b:: addresses
-dig AAAA example.com @2001:db8::dns64server
+# Step 1: Verify DNS64 synthesizes AAAA records for an IPv4-only test name
+dig +short AAAA ipv4only.arpa @2001:db8:100::53
 
 # Step 2: Verify NAT64 translates traffic
-# Ping an IPv4-only address via the NAT64 prefix
+# Ping a known reachable IPv4 address via the NAT64 prefix
 ping6 64:ff9b::8.8.8.8
 
-# Step 3: Test a real domain name resolution and connection
-curl -6 http://example.com
+# Step 3: Test an IPv4-only HTTP service by name
+curl -6 http://http.badssl.com
 ```
 
 ## Step 5: Monitor the Deployment
 
 ```bash
 # Check NAT64 session table to confirm active translations
-jool session display --tcp | head -20
+jool session display --tcp --numeric | head -20
 
-# Check DNS64 query statistics
-rndc stats && grep dns64 /var/named/data/named_stats.txt
+# Dump BIND statistics
+rndc stats && tail -50 /var/cache/bind/named.stats
 
-# Test from multiple clients
-for CLIENT in 2001:db8:clients::1 2001:db8:clients::2; do
-    ping6 -c 3 -I $CLIENT 64:ff9b::8.8.8.8
+# Test multiple synthesized destinations
+for TARGET in 64:ff9b::8.8.8.8 64:ff9b::1.1.1.1; do
+    ping6 -c 3 "$TARGET"
 done
 ```
 
@@ -140,9 +151,9 @@ done
 | Symptom | Likely Cause | Fix |
 |---|---|---|
 | DNS64 returns synthesized AAAA but ping fails | NAT64 gateway not reachable | Check route to NAT64 gateway from client |
-| DNS64 returns native AAAA for IPv4-only domain | Wrong DNS server used | Verify client is using DNS64 resolver |
+| DNS64 returns no synthesized AAAA for `ipv4only.arpa` | Wrong DNS server used or DNS64 not enabled | Verify client is using the DNS64 resolver and that the `dns64` block is loaded |
 | NAT64 translates but no response | IPv4 pool exhausted or blocked | Check pool4, check upstream IPv4 firewall |
-| Connection hangs after TCP handshake | MTU issue | Set tunnel MTU to 1480, enable TCP MSS clamping |
+| Connection hangs after TCP handshake | MTU issue | Verify PMTUD is working, allow ICMPv6 Packet Too Big, and apply TCP MSS clamping if needed |
 
 ## Ensuring the Prefix Is Consistent
 
@@ -150,7 +161,7 @@ The single most important requirement is that DNS64 and NAT64 use **identical pr
 
 ```bash
 # Verify NAT64 prefix
-jool pool6 display
+jool global display | grep pool6
 # Output: 64:ff9b::/96
 
 # Verify DNS64 prefix in BIND
@@ -160,4 +171,4 @@ grep dns64 /etc/bind/named.conf.options
 
 ## Summary
 
-Deploying NAT64+DNS64 together requires: a NAT64 gateway (Jool recommended), a DNS64 resolver (BIND, Unbound, or CoreDNS), consistent prefix configuration between both, and clients configured to use the DNS64 resolver. Test end-to-end with `dig AAAA` followed by a `ping6` or `curl` to confirm full connectivity.
+Deploying NAT64+DNS64 together requires: a NAT64 gateway (Jool recommended), a DNS64 resolver (BIND, Unbound, or CoreDNS), consistent prefix configuration between both, and clients configured to use the DNS64 resolver. Test end-to-end with `dig AAAA ipv4only.arpa` followed by a `ping6` or an application test against an IPv4-only service to confirm full connectivity.
