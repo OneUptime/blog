@@ -13,16 +13,15 @@ Prowlarr acts as a single place to manage all your indexers (torrent sites and U
 ## Prerequisites
 
 - Portainer running
-- Sonarr and/or Radarr already deployed on the same Docker network
+- Sonarr and/or Radarr already deployed
+- A shared external Docker network already created and attached to your *arr containers (for example, `media_network`)
 
 ## Compose Stack
 
 ```yaml
-version: "3.8"
-
 services:
   prowlarr:
-    image: linuxserver/prowlarr:latest
+    image: lscr.io/linuxserver/prowlarr:latest
     restart: unless-stopped
     ports:
       - "9696:9696"
@@ -32,10 +31,18 @@ services:
       TZ: America/New_York
     volumes:
       - prowlarr_config:/config
+    networks:
+      - media_network
 
 volumes:
   prowlarr_config:
+
+networks:
+  media_network:
+    external: true
 ```
+
+Replace `media_network` with the name of the shared Docker network already used by Sonarr and Radarr.
 
 ## Deploying
 
@@ -61,12 +68,12 @@ In Prowlarr go to **Settings > Apps**:
 
 App:            Sonarr (or Radarr)
 Prowlarr Server: http://prowlarr:9696
-App Server:     http://sonarr:8989
-API Key:        <copy from Sonarr's Settings > General>
+Application Server: http://sonarr:8989 (or http://radarr:7878)
+API Key:            <copy from Sonarr's or Radarr's Settings > General>
 Sync Level:     Full Sync
 ```
 
-After saving, all indexers in Prowlarr propagate to every connected application instantly.
+After saving, Prowlarr syncs matching indexers to each connected application based on that app's supported categories.
 
 ## FlareSolverr Integration
 
@@ -81,9 +88,11 @@ Many indexers use Cloudflare challenges. Add FlareSolverr to bypass them:
       - "8191:8191"
     environment:
       LOG_LEVEL: info
+    networks:
+      - media_network
 ```
 
-Then in Prowlarr go to **Settings > Indexers > Add Proxy** and set the FlareSolverr URL to `http://flaresolverr:8191`.
+Then in Prowlarr go to **Settings > Indexer Proxies**, add a FlareSolverr proxy with the URL `http://flaresolverr:8191`, and assign a tag to the proxy. Add the same tag to each indexer that should use FlareSolverr. Prowlarr only uses the proxy when Cloudflare is detected and the proxy/indexer tags match.
 
 ## Monitoring
 
