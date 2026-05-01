@@ -13,7 +13,7 @@ EBS snapshots are incremental backups stored in S3. AWS Data Lifecycle Manager (
 ## Prerequisites
 
 - OpenTofu v1.6+
-- AWS credentials with EC2 and DLM permissions
+- AWS credentials with EC2, IAM, and DLM permissions
 
 ## Step 1: Create a Manual EBS Snapshot
 
@@ -22,7 +22,7 @@ EBS snapshots are incremental backups stored in S3. AWS Data Lifecycle Manager (
 
 resource "aws_ebs_snapshot" "manual" {
   volume_id   = var.volume_id
-  description = "Pre-migration snapshot - $(timestamp)"
+  description = "Pre-migration snapshot"
 
   tags = {
     Name        = "pre-migration-snapshot"
