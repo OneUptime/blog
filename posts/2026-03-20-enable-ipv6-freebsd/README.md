@@ -16,7 +16,7 @@ ifconfig -a | grep inet6
 # Show IPv6 on a specific interface
 ifconfig em0 | grep inet6
 
-# Check if IPv6 is enabled in the kernel
+# Check IPv6 forwarding and Router Advertisement settings
 sysctl net.inet6.ip6.forwarding
 sysctl net.inet6.ip6.accept_rtadv
 
@@ -34,7 +34,6 @@ cat >> /etc/rc.conf << 'EOF'
 # Enable IPv6 with SLAAC on em0
 ifconfig_em0_ipv6="inet6 accept_rtadv"
 rtsold_enable="YES"
-rtsold_flags="-aF"
 EOF
 
 # Apply without reboot
@@ -55,19 +54,24 @@ EOF
 
 # Apply
 service netif restart
+service routing restart
 ```
 
 ## Configure IPv6 Immediately with ifconfig
 
 ```bash
+# Enable IPv6 on the interface
+ifconfig em0 inet6 -ifdisabled
+
 # Add a static IPv6 address (temporary, not persistent)
-ifconfig em0 inet6 2001:db8::10 prefixlen 64
+ifconfig em0 inet6 2001:db8::10 prefixlen 64 alias
 
 # Add default IPv6 route
 route -6 add default 2001:db8::1
 
-# Enable SLAAC on an interface
+# Enable SLAAC on an interface and request Router Advertisements
 ifconfig em0 inet6 accept_rtadv
+rtsol em0
 
 # Verify
 ifconfig em0 | grep inet6
@@ -85,6 +89,11 @@ echo 'net.inet6.ip6.forwarding=1' >> /etc/sysctl.conf
 
 # Or in /etc/rc.conf (recommended)
 echo 'ipv6_gateway_enable="YES"' >> /etc/rc.conf
+
+# If this system must both forward IPv6 and receive SLAAC,
+# allow Router Advertisements while forwarding
+sysctl -w net.inet6.ip6.rfc6204w3=1
+echo 'net.inet6.ip6.rfc6204w3=1' >> /etc/sysctl.conf
 ```
 
 ## Configure IPv6 DNS
@@ -121,4 +130,4 @@ host -t AAAA google.com
 
 ## Summary
 
-Enable IPv6 on FreeBSD by adding `ifconfig_em0_ipv6="inet6 accept_rtadv"` and `rtsold_enable="YES"` to `/etc/rc.conf` for SLAAC, or `ifconfig_em0_ipv6="inet6 2001:db8::10 prefixlen 64"` and `ipv6_defaultrouter="2001:db8::1"` for static configuration. Enable immediately with `ifconfig em0 inet6 <addr> prefixlen <n>`. Enable forwarding with `ipv6_gateway_enable="YES"` in `rc.conf`. Verify with `ifconfig -a | grep inet6` and `ping6 ::1`.
+Enable IPv6 on FreeBSD by adding `ifconfig_em0_ipv6="inet6 accept_rtadv"` and `rtsold_enable="YES"` to `/etc/rc.conf` for SLAAC, or `ifconfig_em0_ipv6="inet6 2001:db8::10 prefixlen 64"` and `ipv6_defaultrouter="2001:db8::1"` for static configuration. Enable immediately with `ifconfig em0 inet6 -ifdisabled` followed by `ifconfig em0 inet6 <addr> prefixlen <n> alias`, or use `ifconfig em0 inet6 accept_rtadv` with `rtsol em0` for immediate SLAAC. Enable forwarding with `ipv6_gateway_enable="YES"` in `rc.conf`; if the system must also receive SLAAC while forwarding, set `net.inet6.ip6.rfc6204w3=1`. Verify with `ifconfig -a | grep inet6` and `ping6 ::1`.
