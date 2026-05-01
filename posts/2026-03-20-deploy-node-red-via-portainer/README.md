@@ -13,11 +13,10 @@ Node-RED is a visual flow-based programming tool ideal for IoT automation, home 
 ## Prerequisites
 
 - Portainer running
-- At least 256MB RAM
 
 ## Compose Stack
 
-Node-RED stores flows and credentials on disk. Mount a named volume and set `settings.js` to encrypt credentials:
+Node-RED stores flows and credentials on disk. Mount a named volume and pass the credential secret in as an environment variable:
 
 ```yaml
 version: "3.8"
@@ -31,7 +30,7 @@ services:
     environment:
       TZ: America/New_York
       # Set a credential secret to encrypt stored passwords
-      NODE_RED_CREDENTIAL_SECRET: changeme-long-secret
+      NODE_RED_CREDENTIAL_SECRET: ${NODE_RED_CREDENTIAL_SECRET}
     volumes:
       - nodered_data:/data
     user: "1000:1000"   # Run as non-root
@@ -44,38 +43,39 @@ volumes:
 
 1. In Portainer go to **Stacks > Add Stack**.
 2. Name it `nodered`.
-3. Set `NODE_RED_CREDENTIAL_SECRET` to a strong random string.
+3. In Portainer's environment variables section, set `NODE_RED_CREDENTIAL_SECRET` to a strong random string.
 4. Click **Deploy the stack**.
 
 Open `http://<host>:1880` to access the Node-RED editor.
 
 ## Securing the Editor
 
-By default, Node-RED has no authentication. Enable it by editing `settings.js` inside the container:
+By default, Node-RED has no authentication. Enable it by editing `/data/settings.js` inside the container:
 
 ```javascript
-// In /data/settings.js, uncomment and configure:
+// In /data/settings.js, add or update:
+credentialSecret: process.env.NODE_RED_CREDENTIAL_SECRET,
 adminAuth: {
     type: "credentials",
     users: [{
         username: "admin",
-        // Generate hash: node -e "console.log(require('bcryptjs').hashSync('yourpassword', 8))"
-        password: "$2a$08$...",
+        // Generate hash from a shell in the container: npx node-red admin hash-pw
+        password: "$2b$08$...",
         permissions: "*"
     }]
-}
+},
 ```
 
 Restart the container in Portainer after editing.
 
 ## Installing Extra Nodes
 
-Install community nodes via the **Manage Palette** menu in the editor, or via exec:
+Install community nodes via the **Manage Palette** menu in the editor, or from a shell in the container:
 
 ```bash
-# Install dashboard UI nodes via exec in Portainer
-
-docker exec -it nodered npm install @flowfuse/node-red-dashboard
+# Install dashboard UI nodes from a shell in Portainer
+cd /data
+npm install @flowfuse/node-red-dashboard
 # Then restart the container via Portainer
 ```
 
