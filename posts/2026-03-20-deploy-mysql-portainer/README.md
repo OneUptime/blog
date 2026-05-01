@@ -4,15 +4,13 @@ Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
 Tags: Portainer, MySQL, Database, Docker, Deployment
 
-Description: Learn how to deploy MySQL via Portainer with persistent data volumes, secure environment variable management, and proper backup strategies.
+Description: Learn how to deploy MySQL via Portainer with persistent data volumes, environment variable management, and proper backup strategies.
 
 ## MySQL via Portainer Stack
 
 **Stacks → Add Stack → mysql**
 
 ```yaml
-version: "3.8"
-
 services:
   mysql:
     image: mysql:8.0
@@ -25,10 +23,10 @@ services:
     volumes:
       # Persistent data (must survive container recreation)
       - mysql_data:/var/lib/mysql
-      # Optional: custom config
-      - ./mysql-conf:/etc/mysql/conf.d:ro
-      # Optional: initialization scripts
-      - ./init-scripts:/docker-entrypoint-initdb.d:ro
+      # Optional: custom config (use an absolute host path in Portainer's web editor)
+      - /path/on/host/mysql-conf:/etc/mysql/conf.d:ro
+      # Optional: initialization scripts (use an absolute host path in Portainer's web editor)
+      - /path/on/host/init-scripts:/docker-entrypoint-initdb.d:ro
     ports:
       # Expose only on localhost for security
       - "127.0.0.1:3306:3306"
@@ -55,18 +53,18 @@ MYSQL_USER = appuser
 MYSQL_PASSWORD = app-database-password
 ```
 
-Never hardcode passwords in the stack definition.
+Avoid hardcoding passwords in the stack definition. For Docker Swarm deployments, prefer Docker secrets with MySQL's `*_FILE` variables for production credentials.
 
 ## MySQL Custom Configuration
 
-Create `mysql-conf/custom.cnf`:
+Create `/path/on/host/mysql-conf/custom.cnf`:
 
 ```ini
 [mysqld]
 # InnoDB settings
 
 innodb_buffer_pool_size = 256M
-innodb_log_file_size = 64M
+innodb_redo_log_capacity = 128M
 innodb_flush_log_at_trx_commit = 2
 
 # Connection settings
@@ -86,10 +84,10 @@ long_query_time = 2
 
 ## Initialization Scripts
 
-SQL scripts in `/docker-entrypoint-initdb.d/` run on first start:
+SQL scripts in the host directory mounted to `/docker-entrypoint-initdb.d/` run when MySQL initializes a fresh data directory:
 
 ```sql
--- init-scripts/01-init.sql
+-- /path/on/host/init-scripts/01-init.sql
 CREATE DATABASE IF NOT EXISTS myapp CHARACTER SET utf8mb4 COLLATE utf8mb4_unicode_ci;
 GRANT ALL PRIVILEGES ON myapp.* TO 'appuser'@'%';
 
@@ -126,30 +124,30 @@ services:
 **Backup** using Portainer's exec:
 
 ```bash
-# Via Portainer: Containers → mysql → Console
+# Via Portainer: Containers → your MySQL container → Console
 mysqldump -u root -p"${MYSQL_ROOT_PASSWORD}" --all-databases > /tmp/backup.sql
 
 # Copy out of container (from host)
-docker cp mysql:/tmp/backup.sql /backup/mysql-$(date +%Y%m%d).sql
+docker cp <mysql-container-name>:/tmp/backup.sql /backup/mysql-$(date +%Y%m%d).sql
 ```
 
 **Restore**:
 
 ```bash
-docker cp /backup/mysql-20260320.sql mysql:/tmp/restore.sql
-docker exec mysql bash -c 'mysql -u root -p"${MYSQL_ROOT_PASSWORD}" < /tmp/restore.sql'
+docker cp /backup/mysql-20260320.sql <mysql-container-name>:/tmp/restore.sql
+docker exec <mysql-container-name> sh -c 'mysql -u root -p"$MYSQL_ROOT_PASSWORD" < /tmp/restore.sql'
 ```
 
 ## Verifying the Deployment
 
 ```bash
-# Test connection from host
-docker exec mysql mysql -u root -p"${MYSQL_ROOT_PASSWORD}" -e "SHOW DATABASES;"
+# Test connection by running the MySQL client inside the container
+docker exec <mysql-container-name> sh -c 'mysql -u root -p"$MYSQL_ROOT_PASSWORD" -e "SHOW DATABASES;"'
 
 # Check data directory size
-docker exec mysql du -sh /var/lib/mysql
+docker exec <mysql-container-name> du -sh /var/lib/mysql
 ```
 
 ## Conclusion
 
-Deploying MySQL via Portainer is straightforward with Docker volumes ensuring data persistence. The critical best practices are using Portainer's environment variable management for passwords (never hardcode credentials in stack definitions), and configuring the data volume correctly so data survives stack updates and container recreations.
+Deploying MySQL via Portainer is straightforward with Docker volumes ensuring data persistence. The critical best practices are avoiding hardcoded credentials in stack definitions and configuring the data volume correctly so data survives stack updates and container recreations.
