@@ -36,7 +36,7 @@ version: "3.8"
 
 services:
   opensearch:
-    image: opensearchproject/opensearch:2.14.0
+    image: opensearchproject/opensearch:3.6.0
     container_name: opensearch
     restart: unless-stopped
     ports:
@@ -68,15 +68,16 @@ services:
       - opensearch_net
 
   opensearch-dashboards:
-    image: opensearchproject/opensearch-dashboards:2.14.0
+    image: opensearchproject/opensearch-dashboards:3.6.0
     container_name: opensearch_dashboards
     restart: unless-stopped
     ports:
       - "5601:5601"
     environment:
       - OPENSEARCH_HOSTS=["https://opensearch:9200"]
-      - OPENSEARCH_USERNAME=admin
-      - OPENSEARCH_PASSWORD=${OPENSEARCH_ADMIN_PASSWORD}
+      - OPENSEARCH_SSL_VERIFICATIONMODE=none
+      - OPENSEARCH_USERNAME=kibanaserver
+      - OPENSEARCH_PASSWORD=kibanaserver
     depends_on:
       opensearch:
         condition: service_healthy
@@ -114,7 +115,7 @@ curl -k -u admin:Admin@123Secure! https://localhost:9200/_cat/indices?v
 ```bash
 # Index a document
 curl -k -u admin:Admin@123Secure! \
-  -X POST "https://localhost:9200/my-index/_doc/1" \
+  -X PUT "https://localhost:9200/my-index/_doc/1" \
   -H 'Content-Type: application/json' \
   -d '{"title": "OpenSearch is great", "timestamp": "2024-01-01T00:00:00Z"}'
 
@@ -131,4 +132,4 @@ Open `http://<host>:5601` and log in with username `admin` and your `OPENSEARCH_
 
 ## Conclusion
 
-OpenSearch uses HTTPS and the security plugin by default in versions 2.x+. The `OPENSEARCH_INITIAL_ADMIN_PASSWORD` env var sets the admin user password on first run. For single-node deployments set `discovery.type=single-node` to avoid cluster bootstrap issues. The `vm.max_map_count=262144` kernel parameter is mandatory - without it, OpenSearch will fail to start.
+OpenSearch uses HTTPS and the security plugin by default. In OpenSearch 2.12 and later, the `OPENSEARCH_INITIAL_ADMIN_PASSWORD` env var is required on first run and sets the demo admin user password. For single-node deployments set `discovery.type=single-node` to avoid cluster bootstrap issues. The `vm.max_map_count=262144` kernel parameter is mandatory - without it, OpenSearch will fail to start.
