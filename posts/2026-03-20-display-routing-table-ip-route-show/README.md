@@ -47,7 +47,7 @@ default via 192.168.1.1 dev eth0 proto dhcp src 192.168.1.100 metric 100
 ## Filtering by Destination
 
 ```bash
-# Show only routes matching a specific destination
+# Show only routes matching a specific prefix
 ip route show 10.0.0.0/8
 
 # Show the route that would be used to reach a host
@@ -85,8 +85,8 @@ ip -4 route show
 ## Verbose Output
 
 ```bash
-# Show detailed route entries including protocol and flags
-ip route show verbose
+# Show more detailed route entries
+ip -details route show
 ```
 
 ## Checking Route Counts
