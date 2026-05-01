@@ -8,7 +8,7 @@ Description: Configure ISC DHCP server to provide both DHCPv4 and DHCPv6 address
 
 ## Introduction
 
-Dual-stack networks need both IPv4 address assignment (DHCPv4) and IPv6 address assignment (DHCPv6 stateful or stateless). These run as separate processes but on the same server. You can also combine DHCPv6 with SLAAC (Stateless Address Autoconfiguration) using Router Advertisements.
+Dual-stack networks need both IPv4 address assignment (DHCPv4) and IPv6 address assignment (DHCPv6 stateful or stateless). These run as separate `dhcpd` processes on the same server. You can also combine DHCPv6 with SLAAC (Stateless Address Autoconfiguration) using Router Advertisements.
 
 ## DHCPv4 Configuration
 
@@ -34,9 +34,7 @@ subnet 10.0.0.0 netmask 255.255.255.0 {
 
 # DHCPv6 server
 
-authoritative;
-
-# Preferred and valid lifetimes
+# Valid lifetime defaults and limits
 default-lease-time 86400;
 max-lease-time 604800;
 
@@ -56,16 +54,13 @@ subnet6 2001:db8:1234:1::/64 {
 ## Starting Both DHCP Daemons
 
 ```bash
-# Start DHCPv4
+# Debian/Ubuntu packaging uses one service name for both instances.
+# Configure the interfaces in /etc/default/isc-dhcp-server:
+# INTERFACESv4="eth0"
+# INTERFACESv6="eth0"
+
+# Start the service, which launches separate dhcpd -4 and dhcpd -6 processes
 sudo systemctl enable --now isc-dhcp-server
-
-# Start DHCPv6 (separate daemon or same daemon with -6 flag)
-sudo systemctl enable --now isc-dhcp-server6
-
-# Or with ISC DHCP 4.4+, both in same process:
-# Use -4 and -6 flags or configure in /etc/default/isc-dhcp-server:
-# INTERFACES_V4="eth0"
-# INTERFACES_V6="eth0"
 ```
 
 ## DHCPv6 Stateless with SLAAC (Recommended)
@@ -88,7 +83,6 @@ interface eth0 {
     prefix 2001:db8:1234:1::/64 {
         AdvOnLink on;
         AdvAutonomous on;     # SLAAC
-        AdvRouterAddr on;
     };
 };
 ```
@@ -112,12 +106,11 @@ sudo cat /var/lib/dhcp/dhcpd.leases
 # View DHCPv6 leases
 sudo cat /var/lib/dhcp/dhcpd6.leases
 
-# Check active leases
-sudo dhcp-lease-list     # DHCPv4
-sudo dhcp-lease-list --v6  # DHCPv6 (if supported)
+# Check active DHCPv4 leases
+sudo dhcp-lease-list
 
-# Restart both servers after config changes
-sudo systemctl restart isc-dhcp-server isc-dhcp-server6
+# Restart both DHCP instances after config changes
+sudo systemctl restart isc-dhcp-server
 ```
 
 ## Testing Dual-Stack Assignment
@@ -127,15 +120,16 @@ sudo systemctl restart isc-dhcp-server isc-dhcp-server6
 sudo dhclient -4 eth0
 ip -4 address show eth0  # Should show 10.0.0.x
 
-# Test DHCPv6 (from a client)
+# Test stateful DHCPv6 (from a client)
 sudo dhclient -6 eth0
 ip -6 address show eth0  # Should show 2001:db8:... address
 
-# Test SLAAC
-sudo rdisc6 eth0       # Listen for Router Advertisements
+# Test stateless DHCPv6 + SLAAC
+sudo dhclient -6 -S eth0   # Request DHCPv6 information only
+sudo rdisc6 eth0           # Listen for Router Advertisements
 ip -6 address show eth0 | grep "scope global"  # Shows SLAAC address
 ```
 
 ## Conclusion
 
-Dual-stack DHCP requires separate DHCPv4 (`dhcpd`) and DHCPv6 (`dhcpd6`) processes. For stateful DHCPv6, configure a `range6` in `dhcpd6.conf`. For stateless DHCPv6 (DNS only, addresses from SLAAC), set `AdvManagedFlag off` and `AdvOtherConfigFlag on` in `radvd.conf`. Both approaches allow IPv4 addresses to continue coming from DHCPv4 while IPv6 addresses come from either DHCPv6 or SLAAC.
+Dual-stack DHCP requires separate DHCPv4 and DHCPv6 `dhcpd` processes. For stateful DHCPv6, configure a `range6` in `dhcpd6.conf`. For stateless DHCPv6 (DNS only, addresses from SLAAC), set `AdvManagedFlag off` and `AdvOtherConfigFlag on` in `radvd.conf`. Both approaches allow IPv4 addresses to continue coming from DHCPv4 while IPv6 addresses come from either DHCPv6 or SLAAC.
