@@ -32,26 +32,33 @@ ping 192.168.1.1
 ## Step 2: Run the Windows Network Troubleshooter
 
 ```cmd
-REM Launch network diagnostics
-msdt.exe -id NetworkDiagnosticsNetworkAdapter
+REM Open troubleshooting settings
+start ms-settings:troubleshoot
 
-REM Or via Settings:
+REM Windows 11:
 REM Settings → System → Troubleshoot → Other troubleshooters
-REM → Internet Connections → Run
+REM Open Get Help and run the Network and Internet troubleshooter
+
+REM Windows 10:
+REM Settings → Network & Internet → Status → Network troubleshooter
 ```
 
-Windows will often automatically fix this by resetting the adapter or DHCP client.
+Windows will often automatically fix this by resetting the adapter or renewing DHCP settings.
 
 ## Step 3: Reset TCP/IP Stack
 
 ```cmd
-REM Run as Administrator - fixes corrupted TCP/IP stack
+REM Run as Administrator - resets Winsock and the TCP/IP stack
 netsh winsock reset
 netsh int ip reset
 netsh int ipv6 reset
-ipconfig /flushdns
+
+REM If the adapter uses DHCP, renew the lease
 ipconfig /release
 ipconfig /renew
+
+REM Clear the DNS client resolver cache
+ipconfig /flushdns
 
 REM Reboot after these commands
 shutdown /r /t 0
@@ -67,8 +74,7 @@ Windows can power off network adapters to save energy, which drops the gateway:
 Get-NetAdapter | Select-Object Name, Status
 
 # Disable power management via PowerShell
-$adapter = Get-NetAdapter -Name "Ethernet"
-$adapter | Set-NetAdapterPowerManagement -AllowComputerToTurnOffDevice Disabled
+Disable-NetAdapterPowerManagement -Name "Ethernet"
 
 # Or via Device Manager:
 # devmgmt.msc → Network Adapters → [Adapter] → Properties
@@ -80,12 +86,13 @@ $adapter | Set-NetAdapterPowerManagement -AllowComputerToTurnOffDevice Disabled
 ```powershell
 # If DHCP consistently fails to provide a gateway, set it manually
 # First remove any existing IP configuration
-Remove-NetIPAddress -InterfaceAlias "Ethernet" -Confirm:$false
+Remove-NetIPAddress -InterfaceAlias "Ethernet" -AddressFamily IPv4 -Confirm:$false
 Remove-NetRoute -InterfaceAlias "Ethernet" -DestinationPrefix "0.0.0.0/0" -Confirm:$false
 
 # Set static IP with gateway
 New-NetIPAddress -InterfaceAlias "Ethernet" `
     -IPAddress 192.168.1.50 `
+    -AddressFamily IPv4 `
     -PrefixLength 24 `
     -DefaultGateway 192.168.1.1
 
@@ -109,8 +116,8 @@ REM Or: Uninstall device → Reboot (Windows reinstalls automatically)
 ```
 
 ```powershell
-# Check driver version via PowerShell
-Get-NetAdapter | Select-Object Name, DriverVersion, DriverDate
+# Show driver version and date via PowerShell
+Get-NetAdapter -Name "*" | Format-Table -View Driver
 
 # Roll back driver if issue started after update:
 # Device Manager → [Adapter] → Properties → Driver → Roll Back Driver
@@ -133,4 +140,4 @@ REM Find "DHCP Client" → Restart
 
 ## Conclusion
 
-"Default gateway is not available" is fixed by running `netsh winsock reset && netsh int ip reset` followed by a reboot, disabling adapter power management, setting a static gateway if DHCP is unreliable, and updating the NIC driver. Always verify the fix with `ping [gateway-ip]` - if that succeeds, internet routing is restored.
+"Default gateway is not available" is often resolved by resetting Winsock and the TCP/IP stack, rebooting, disabling adapter power management, setting a static gateway if DHCP is unreliable, and updating the NIC driver. Always verify the local network path with `ping [gateway-ip]` - if that succeeds, your PC can reach the router and you can continue testing DNS and internet access.
