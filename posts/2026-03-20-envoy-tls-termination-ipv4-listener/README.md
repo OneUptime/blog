@@ -58,10 +58,6 @@ static_resources:
                       routes:
                         - match: { prefix: "/" }
                           route: { cluster: backend_cluster }
-                          request_headers_to_add:
-                            - header:
-                                key: "X-Forwarded-Proto"
-                                value: "https"
                 http_filters:
                   - name: envoy.filters.http.router
                     typed_config:
@@ -114,6 +110,11 @@ admin:
 Multiple certificates using SNI:
 
 ```yaml
+listener_filters:
+  - name: envoy.filters.listener.tls_inspector
+    typed_config:
+      "@type": type.googleapis.com/envoy.extensions.filters.listener.tls_inspector.v3.TlsInspector
+
 filter_chains:
   - filter_chain_match:
       server_names: ["api.example.com"]
@@ -148,7 +149,7 @@ filter_chains:
 openssl s_client -connect 203.0.113.10:443 -servername example.com
 
 # Check TLS version and cipher
-curl -v https://203.0.113.10/ --resolve example.com:443:203.0.113.10 2>&1 | \
+curl -v https://example.com/ --resolve example.com:443:203.0.113.10 2>&1 | \
   grep -E "SSL|TLS|cipher"
 
 # View TLS stats in Envoy admin
@@ -157,4 +158,4 @@ curl http://127.0.0.1:9901/stats | grep ssl
 
 ## Conclusion
 
-Envoy TLS termination is configured via `DownstreamTlsContext` in the `transport_socket` field of a filter chain. Use `tls_minimum_protocol_version: TLSv1_2` and modern cipher suites for security. SNI-based certificate selection via `filter_chain_match.server_names` allows hosting multiple HTTPS domains on a single IPv4 address without reloading Envoy.
+Envoy TLS termination is configured via `DownstreamTlsContext` in the `transport_socket` field of a filter chain. Use `tls_minimum_protocol_version: TLSv1_2` and modern cipher suites for security. SNI-based certificate selection via `filter_chain_match.server_names` allows hosting multiple HTTPS domains on a single IPv4 address. Automatic certificate rotation without restarting Envoy requires SDS or reloading the relevant listener configuration.
