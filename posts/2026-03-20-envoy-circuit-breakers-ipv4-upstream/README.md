@@ -17,6 +17,12 @@ Circuit breakers are configured in the `circuit_breakers` field of a cluster:
 ```yaml
 # /etc/envoy/envoy.yaml
 
+admin:
+  address:
+    socket_address:
+      address: 127.0.0.1
+      port_value: 9901
+
 static_resources:
   clusters:
     - name: api_service
@@ -58,13 +64,14 @@ Circuit breaker overflows are tracked in Envoy stats:
 ```bash
 # Check circuit breaker overflow counters
 
-curl http://127.0.0.1:9901/stats | grep circuit_breakers
+curl -s http://127.0.0.1:9901/stats | grep -E 'cluster\.api_service\.(circuit_breakers\.default\.cx_open|upstream_(cx_overflow|rq_pending_overflow|rq_active_overflow|rq_retry_overflow))'
 
 # Key metrics:
-# cluster.api_service.circuit_breakers.default.cx_open         → connections CB open
-# cluster.api_service.upstream_cx_overflow                     → connection overflows
-# cluster.api_service.upstream_rq_pending_overflow             → pending request overflows
-# cluster.api_service.upstream_rq_retry_overflow               → retry overflows
+# cluster.api_service.circuit_breakers.default.cx_open         → connection breaker at capacity (1=open, 0=closed)
+# cluster.api_service.upstream_cx_overflow                     → max_connections overflow
+# cluster.api_service.upstream_rq_pending_overflow             → max_pending_requests overflow
+# cluster.api_service.upstream_rq_active_overflow              → max_requests overflow
+# cluster.api_service.upstream_rq_retry_overflow               → max_retries overflow
 
 # Watch in real-time
 watch -n2 "curl -s http://127.0.0.1:9901/stats | grep 'api_service.upstream_rq_pending_overflow'"
@@ -106,7 +113,7 @@ clusters:
 
     # Passive outlier detection
     outlier_detection:
-      consecutive_5xx: 5              # Eject after 5 consecutive 5xx errors
+      consecutive_5xx: 5              # In default mode, eject after 5 consecutive 5xx or local-origin failures
       interval: 10s                   # Check interval
       base_ejection_time: 30s         # Minimum ejection duration
       max_ejection_percent: 50        # Max % of endpoints that can be ejected
@@ -131,4 +138,4 @@ clusters:
 
 ## Conclusion
 
-Envoy circuit breakers in the `circuit_breakers.thresholds` block set limits on connections, pending requests, active requests, and retries per cluster. Set values based on your backend capacity and SLA requirements. Monitor `upstream_rq_pending_overflow` and `upstream_cx_overflow` metrics to tune thresholds, and combine with outlier detection for automatic removal of failing endpoints.
+Envoy circuit breakers in the `circuit_breakers.thresholds` block set limits on connections, pending requests, active requests, and retries per cluster. Set values based on your backend capacity and SLA requirements. Monitor `upstream_cx_overflow`, `upstream_rq_pending_overflow`, `upstream_rq_active_overflow`, and `upstream_rq_retry_overflow` metrics to tune thresholds, and combine with outlier detection for automatic removal of failing endpoints.
