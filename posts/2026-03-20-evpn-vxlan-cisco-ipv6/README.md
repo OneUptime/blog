@@ -34,13 +34,15 @@ graph TB
 ! Enable required features
 feature ospfv3
 feature bgp
+feature vn-segment
+feature interface-vlan
 feature vn-segment-vlan-based
 feature nv overlay
+nv overlay evpn
 
 ! IPv6 loopback for VTEP source
 interface loopback0
   ipv6 address 2001:db8:1::1/128
-  ip router ospf 1 area 0  ! Also run OSPFv2 if needed
   ipv6 router ospfv3 1 area 0
 
 ! Spine-facing interface
@@ -69,6 +71,11 @@ router bgp 65001
     update-source loopback0
     address-family l2vpn evpn
       send-community extended
+  vrf tenant1
+    address-family ipv4 unicast
+      advertise l2vpn evpn
+    address-family ipv6 unicast
+      advertise l2vpn evpn
 
 ! Note: BGP sessions use IPv6 loopbacks
 ! EVPN NLRIs are L2VPN address family (AF independent of underlay)
@@ -110,9 +117,20 @@ vrf context tenant1
   vni 50001
   rd auto
   address-family ipv4 unicast
+    route-target both auto
     route-target both auto evpn
   address-family ipv6 unicast
+    route-target both auto
     route-target both auto evpn
+
+! L3 VNI SVI required for symmetric IRB
+interface vlan3001
+  no shutdown
+  vrf member tenant1
+  ip forward
+  ipv6 address use-link-local-only
+  no ip redirects
+  no ipv6 redirects
 ```
 
 ## SVI for Distributed Anycast Gateway
@@ -141,12 +159,13 @@ show nve peers detail
 show bgp l2vpn evpn
 show bgp l2vpn evpn summary
 
-! Check VNI to VLAN mapping
-show vxlan interface
+! Check VNI state
+show nve vni
 
 ! Verify MAC/IP table
 show mac address-table
 show ip arp vrf tenant1
+show ipv6 neighbor vrf tenant1
 
 ! Ping over VXLAN
 ping 10.100.0.2 vrf tenant1
