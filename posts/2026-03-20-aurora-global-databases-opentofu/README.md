@@ -4,11 +4,11 @@ Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
 Tags: OpenTofu, AWS, Aurora, Global Database, Disaster Recovery, Multi-Region, Infrastructure as Code
 
-Description: Learn how to deploy Aurora Global Databases with OpenTofu to achieve sub-second cross-region replication and enable fast disaster recovery with RPOs under 1 second.
+Description: Learn how to deploy Aurora Global Databases with OpenTofu to achieve typical cross-region replication latency under 1 second and enable fast disaster recovery with RPOs measured in seconds.
 
 ## Introduction
 
-Aurora Global Databases replicate data from a primary region to up to five secondary regions with typical latency under 1 second, using dedicated infrastructure that doesn't impact the primary cluster's performance. In disaster scenarios, a secondary cluster can be promoted to primary in under 1 minute, achieving RPO near zero and RTO under 1 minute.
+Aurora Global Databases replicate data from a primary region to up to 10 secondary regions with typical latency under 1 second, using dedicated infrastructure that has little performance impact on the primary cluster. In disaster scenarios, you can perform a cross-region failover to a secondary cluster, with RPO typically measured in seconds and RTO in the order of minutes.
 
 ## Prerequisites
 
@@ -55,16 +55,13 @@ resource "aws_rds_cluster" "primary" {
   skip_final_snapshot     = false
   final_snapshot_identifier = "${var.project_name}-primary-final"
 
-  # Enable global database - must be AFTER creating the global cluster
-  global_cluster_identifier = aws_rds_global_cluster.main.id
-
   tags = {
     Name   = "${var.project_name}-aurora-primary"
     Region = "us-east-1"
   }
 
   lifecycle {
-    ignore_changes = [replication_source_identifier]
+    ignore_changes = [global_cluster_identifier]
   }
 }
 
@@ -85,11 +82,11 @@ resource "aws_rds_cluster_instance" "primary" {
 
 ```hcl
 resource "aws_rds_global_cluster" "main" {
-  global_cluster_identifier = "${var.project_name}-global-cluster"
-  engine                    = "aurora-postgresql"
-  engine_version            = "16.1"
+  provider = aws.primary
+
+  global_cluster_identifier    = "${var.project_name}-global-cluster"
   source_db_cluster_identifier = aws_rds_cluster.primary.arn
-  force_destroy             = false
+  force_destroy                = false
 }
 ```
 
@@ -147,14 +144,16 @@ resource "aws_rds_cluster_instance" "secondary" {
 }
 ```
 
-## Step 5: Failover (Manual Promotion)
+## Step 5: Failover (Managed Failover)
 
 ```bash
-# In a DR scenario, promote the secondary to primary
+# In a DR scenario, perform a managed failover to promote the secondary to primary
 
-aws rds failover-global-cluster \
+aws rds --region eu-west-1 \
+  failover-global-cluster \
   --global-cluster-identifier my-project-global-cluster \
-  --target-db-cluster-identifier arn:aws:rds:eu-west-1:123456789:cluster:my-project-aurora-secondary
+  --target-db-cluster-identifier arn:aws:rds:eu-west-1:123456789012:cluster:my-project-aurora-secondary \
+  --allow-data-loss
 ```
 
 ## Step 6: Deploy
@@ -167,4 +166,4 @@ tofu apply
 
 ## Conclusion
 
-Aurora Global Databases provide the lowest possible RPO for cross-region database replication with sub-second lag. The dedicated replication infrastructure uses physical replication rather than logical, avoiding any performance impact on the primary cluster. For failover testing, AWS supports managed planned failovers that swap primary and secondary roles without data loss-test this regularly to validate your DR runbook.
+Aurora Global Databases provide sub-second cross-region replication lag and lower RPO/RTO than traditional replication solutions. The dedicated replication infrastructure uses storage-level replication rather than database-engine replication, keeping the performance impact on the primary cluster low. For planned regional rotation or failback testing, AWS supports switchovers that swap primary and secondary roles without data loss; test this regularly to validate your DR runbook.
