@@ -8,18 +8,18 @@ Description: Configure Microsoft Exchange Server to send and receive email over 
 
 ---
 
-Exchange Server supports IPv6 for SMTP, as well as client access protocols. Proper IPv6 configuration enables Exchange to receive inbound email from IPv6 senders and deliver outbound mail to IPv6-capable recipients.
+Exchange Server supports IPv6 for SMTP, as well as client access protocols, when IPv4 is also installed and enabled on the Exchange server. Proper IPv6 configuration enables Exchange to receive inbound email from IPv6 senders and deliver outbound mail to IPv6-capable recipients.
 
 ## Exchange Server IPv6 Overview
 
 ```text
 Exchange IPv6 requires:
 - Windows Server with IPv6 enabled
-- Exchange 2013/2016/2019 (full IPv6 support)
+- Exchange Server 2016/2019/SE with IPv4 also enabled
 - DNS: AAAA record for mail server
 - DNS: MX record pointing to mail server FQDN
-- Reverse DNS (PTR) for IPv6 sending address
-- IP allow lists and spam filter updates for IPv6
+- Reverse DNS (PTR) for the public IPv6 sending address
+- If using Edge Transport connection filtering, update IPv6 allow/block lists
 ```
 
 ## Configuring Receive Connectors for IPv6
@@ -27,104 +27,98 @@ Exchange IPv6 requires:
 ```powershell
 # Open Exchange Management Shell
 
-# Check existing receive connectors
+# Check existing receive connectors and bindings
+Get-ReceiveConnector | Select Name, Bindings, RemoteIPRanges
 
-Get-ReceiveConnector | Select Name, Bindings
+# On Mailbox servers, the default Frontend connector already listens on
+# all available IPv4 and IPv6 addresses by default.
+Get-ReceiveConnector "Default Frontend EXCHANGE-SERVER" `
+  | Select Name, Bindings, RemoteIPRanges
 
-# Set Internet receive connector to listen on IPv6
-Set-ReceiveConnector "Default Frontend EXCHANGE-SERVER" `
-  -Bindings "[::]:25","0.0.0.0:25"
-
-# Or create new IPv6 receive connector
+# If you need a separate connector for a specific IPv6 source range
 New-ReceiveConnector `
-  -Name "IPv6 Internet Receive" `
+  -Name "IPv6 Scoped Receive" `
   -Server EXCHANGE-SERVER `
+  -TransportRole FrontendTransport `
+  -Usage Custom `
   -Bindings "[::]:25" `
-  -Usage Internet `
-  -RemoteIPRanges "::-ffff:ffff:ffff:ffff:ffff:ffff:ffff:ffff"
+  -RemoteIPRanges "2001:db8:100::/48" `
+  -PermissionGroups AnonymousUsers
 
 # Verify connector binding
-Get-ReceiveConnector "Default Frontend EXCHANGE-SERVER" | Select Bindings
+Get-ReceiveConnector "IPv6 Scoped Receive" | Select Name, Bindings, RemoteIPRanges
 ```
 
 ## Configuring Send Connectors for IPv6
 
 ```powershell
-# Enable IPv6 on outbound delivery
-# Note: Exchange uses OS preferences for IPv4/IPv6
+# Check current send connector configuration
+Get-SendConnector | Select Name, AddressSpaces, DNSRoutingEnabled, SmartHosts
 
-# Check current send connector
-Get-SendConnector | Select Name, AddressSpaces, SourceTransportServers
+# DNS routing is the default. Ensure the Exchange server can resolve
+# external MX records and AAAA records for IPv6-capable destinations.
 
-# For IPv6 outbound: ensure OS prefers IPv6 for external delivery
-# Check /etc/hosts equivalent in Windows for mail relay
-
-# Prefer IPv6 for outbound (via OS registry on Windows)
-# Or configure smart host using IPv6-capable host
+# Or configure a smart host. Smart host routing requires DNSRoutingEnabled $false.
 Set-SendConnector "Internet Send Connector" `
-  -SmartHosts "[2001:db8::relay.example.com]"
+  -DNSRoutingEnabled $false `
+  -SmartHosts "relay.example.com"
 ```
 
 ## DNS Configuration for IPv6 Email
 
-```bash
+```text
 # DNS records required for IPv6 email:
 
 # A record (IPv4)
 mail.example.com. IN A 203.0.113.1
 
 # AAAA record (IPv6)
-mail.example.com. IN AAAA 2001:db8::mail
+mail.example.com. IN AAAA 2001:db8::25
 
 # MX record (points to FQDN, not IP)
 example.com. IN MX 10 mail.example.com.
 
-# PTR record for IPv6 (reverse DNS - required for deliverability)
+# PTR record for IPv6 (reverse DNS - important for deliverability)
 # Contact your ISP/upstream provider for IPv6 PTR delegation
-1.0.0.0.0.0.0.0.0.0.0.0.0.0.0.0.8.b.d.0.1.0.0.2.ip6.arpa. IN PTR mail.example.com.
+5.2.0.0.0.0.0.0.0.0.0.0.0.0.0.0.0.0.0.0.0.0.0.0.8.b.d.0.1.0.0.2.ip6.arpa. IN PTR mail.example.com.
 
 # SPF record (include IPv6)
-example.com. IN TXT "v=spf1 a mx ip4:203.0.113.1 ip6:2001:db8::mail/128 ~all"
+example.com. IN TXT "v=spf1 a mx ip4:203.0.113.1 ip6:2001:db8::25 ~all"
 ```
 
 ## Exchange Client Access over IPv6
 
 ```powershell
-# Configure OWA (Outlook Web App) for IPv6
-# IIS binding - add IPv6 to Default Website
-New-WebBinding `
-  -Name "Default Web Site" `
-  -Protocol "https" `
-  -IPAddress "::" `
-  -Port 443
+# Check IIS HTTPS bindings for Exchange client access
+Get-WebBinding -Name "Default Web Site" -Protocol "https" |
+  Select protocol, bindingInformation
 
 # Exchange Web Services (EWS) over IPv6
-# Follows IIS bindings automatically
+# Uses the same IIS HTTPS binding
 
 # ActiveSync over IPv6
-# Follows IIS bindings
+# Uses the same IIS HTTPS binding
 
-# Verify IIS bindings
-Get-WebBinding -Name "Default Web Site" |
-  Select bindingInformation
+# If the site is bound to *:443:, IIS listens on all IP addresses for HTTPS,
+# so OWA, EWS, and ActiveSync can be reached over IPv6 through the same binding.
 ```
 
 ## Spam and IP Reputation for IPv6
 
 ```powershell
-# Add IPv6 IP Allow List to avoid false positives
+# Connection filtering cmdlets are available on Edge Transport servers only.
 Set-IPBlockListConfig -Enabled $true
 Set-IPAllowListConfig -Enabled $true
 
 # Add trusted IPv6 range to IP Allow List
 Add-IPAllowListEntry `
-  -IPRange "2001:db8:trusted::/48" `
+  -IPRange "2001:db8:100::/48" `
   -Comment "Trusted IPv6 sending range"
 
-# Check Content Filter for IPv6 issues
-Get-ContentFilterConfig | Select BypassedRecipients, BypassedSenders
+# Review configured allow list entries
+Get-IPAllowListEntry
 
-# Enable connection filtering for IPv6
+# Enable IP Block list providers if you use them
 Set-IPBlockListProvidersConfig -Enabled $true
 ```
 
@@ -132,22 +126,17 @@ Set-IPBlockListProvidersConfig -Enabled $true
 
 ```bash
 # Test SMTP over IPv6
-telnet [2001:db8::mail-server] 25
-# OR
-nc -6 2001:db8::mail-server 25
-
-# Send test email via IPv6 SMTP
-swaks --to test@recipient.com \
-  --from sender@example.com \
-  --server [2001:db8::mail-server]:25 \
-  --protocol ESMTP
+nc -6 2001:db8::25 25
 
 # Verify email headers for IPv6
 # Received: from [2001:db8::sender] by mail.example.com
-
-# Check Exchange logs for IPv6 connections
-Get-EventLog -LogName "Application" -Source "*MSExchange*" |
-  Where-Object Message -match "2001:"
 ```
 
-Exchange Server's IPv6 support through receive connector bindings and DNS AAAA records enables full participation in IPv6 email delivery, with the critical requirements being reverse DNS PTR records for the sending IPv6 address and SPF record updates to include the IPv6 sending address.
+```powershell
+# The Default Frontend receive connector logs SMTP sessions by default.
+# Check the receive protocol logs for IPv6 client addresses.
+Get-ChildItem "$env:ExchangeInstallPath\TransportRoles\Logs\FrontEnd\ProtocolLog\SmtpReceive\*.log" |
+  Select-String "2001:" | Select-Object -First 20
+```
+
+Exchange Server's IPv6 support relies on dual-stack Windows networking, correct Receive connector and IIS bindings, and valid DNS AAAA, MX, and SPF records. Reverse DNS for the public IPv6 sending address is strongly recommended for outbound deliverability.
