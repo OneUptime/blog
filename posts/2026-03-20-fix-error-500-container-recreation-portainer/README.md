@@ -8,18 +8,18 @@ Description: Learn how to diagnose and fix HTTP 500 errors that occur when recre
 
 ---
 
-A 500 Internal Server Error during container recreation in Portainer is a server-side failure. The error originates from Docker's API - Portainer is surfacing a failure from the Docker daemon. The real cause is almost always in the Docker daemon response.
+A 500 Internal Server Error during container recreation in Portainer is a server-side failure. In many cases, Portainer is surfacing an error returned by the Docker engine. The useful detail is usually in the Docker error message returned in the API response or Portainer logs.
 
 ## Step 1: Check Portainer Logs for the Actual Error
 
 ```bash
-# Enable debug logging and look for the Docker API error
+# Check the Portainer container logs for related errors
 
-docker logs portainer 2>&1 | grep -A 5 "error\|500" | tail -50
-
-# For more detail, restart Portainer with debug logging
-docker run ... portainer/portainer-ce:latest --log-level DEBUG
+PORTAINER_CONTAINER=portainer
+docker container logs "$PORTAINER_CONTAINER" 2>&1 | grep -Ei "error|500" | tail -50
 ```
+
+If you need more detail, enable debug logging in Portainer Settings or recreate the Portainer container with the documented `--log-level DEBUG` flag.
 
 ## Step 2: Identify the Docker API Error
 
@@ -29,20 +29,23 @@ Common underlying errors:
 
 | Docker Error | Cause |
 |---|---|
-| `container name already in use` | Old container not fully removed |
-| `network not found` | Referenced network was deleted |
+| `container name already in use` | Existing container still has the name, or a duplicate was given the same name |
+| `network not found` | Referenced network was deleted or renamed |
 | `volume not found` | Named volume referenced in config no longer exists |
-| `port already allocated` | Another container took the port |
-| `bind source path does not exist` | Host bind mount path missing |
+| `port already allocated` | Another container or process is already using the port |
+| `bind source path does not exist` | Host bind mount path is missing |
 
 ## Step 3: Fix "Container Name Already in Use"
 
 ```bash
 # List all containers including stopped ones
-docker ps -a | grep <container-name>
+CONTAINER_NAME=my-container
+docker ps -a | grep "$CONTAINER_NAME"
 
-# Remove the stopped container with the conflicting name
-docker rm <old-container-name>
+# If you are duplicating a container, give the copy a new name in Portainer.
+# If an old stopped container still owns the name, remove it:
+OLD_CONTAINER_NAME=my-container
+docker rm "$OLD_CONTAINER_NAME"
 
 # Then retry creation in Portainer
 ```
@@ -54,27 +57,26 @@ docker rm <old-container-name>
 docker network ls
 
 # Recreate the missing network
-docker network create <missing-network-name>
+MISSING_NETWORK_NAME=my-network
+docker network create "$MISSING_NETWORK_NAME"
 
 # Or update the container config in Portainer to use an existing network
 ```
+
+If the original network used a custom driver, subnet, or other options, recreate it with the same settings instead of only reusing the name.
 
 ## Step 5: Fix Missing Bind Mount Path
 
 ```bash
 # Create the missing host directory
-sudo mkdir -p /path/to/missing/directory
-sudo chown 1000:1000 /path/to/missing/directory
+MISSING_HOST_PATH=/path/to/missing/directory
+sudo mkdir -p "$MISSING_HOST_PATH"
 
 # Then retry container creation in Portainer
 ```
 
-## Step 6: Clear the Container Recreation Cache
+Make sure the directory permissions and ownership match the user your container runs as.
 
-Portainer caches the container configuration for duplication. If the cached config has invalid entries, clear it by refreshing the environment snapshot:
+## Step 6: Retry the Recreate or Duplicate Action
 
-```bash
-docker restart portainer
-```
-
-Then try recreating the container from the fresh snapshot.
+After correcting the underlying Docker error, retry the action in Portainer. If the UI still shows a 500, check the failing API response and Portainer logs again for the next Docker error in the chain.
