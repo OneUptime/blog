@@ -8,17 +8,17 @@ Description: Use Docker Compose extension fields (x- prefix) in Portainer stacks
 
 ---
 
-This guide shows how to use this Docker Compose feature in Portainer stacks to simplify and standardize your deployments.
+This guide shows how to use Docker Compose extension fields and YAML anchors in Portainer stacks to simplify and standardize your deployments.
 
 ## Overview
 
-Portainer's stack editor supports the full Docker Compose specification. Features like profiles, extension fields, and YAML anchors work directly in the Portainer stack editor without any special configuration.
+On Docker Standalone environments, Portainer deploys stacks with Docker Compose semantics, so features like extension fields and YAML anchors work in the stack editor without any special configuration. On Docker Swarm environments, Portainer uses `docker stack deploy`, which relies on the legacy Compose file version 3 format rather than the full Compose Specification.
 
 ## Practical Example
 
 ### Docker Compose Profiles
 
-Profiles let you define services that are only started in specific scenarios:
+Profiles let you define services that are only started in specific scenarios. This is a Docker Compose feature for standalone deployments:
 
 ```yaml
 # stack with profiles
@@ -28,7 +28,6 @@ services:
   # Always started
   webapp:
     image: myapp:1.2.3
-    profiles: []    # No profile = always active
 
   # Only started with --profile debug
   debug-tools:
@@ -44,9 +43,12 @@ services:
       - "9090:9090"
 ```
 
-In Portainer, set the COMPOSE_PROFILES environment variable:
+When you run the same file with Docker Compose, enable profiles with:
 ```text
-COMPOSE_PROFILES=monitoring,debug
+docker compose --profile monitoring --profile debug up
+
+# or
+COMPOSE_PROFILES=monitoring,debug docker compose up
 ```
 
 ### YAML Anchors and Aliases
@@ -136,20 +138,20 @@ services:
     ports:
       - "8080:8080"
 
-  # Stage 4: Load balancer (run after app is healthy)
+  # Stage 4: Load balancer (run after app starts)
   nginx:
     image: nginx:1.25-alpine
     depends_on:
       app:
-        condition: service_healthy
+        condition: service_started
     ports:
       - "80:80"
 ```
 
 ## Deploying in Portainer
 
-Paste the compose YAML directly into Portainer's stack editor at **Stacks > Add Stack > Web Editor**. Portainer handles YAML anchors, profiles, and extension fields transparently - they're all valid Docker Compose syntax that Portainer passes to Docker's Compose engine.
+Paste the compose YAML directly into Portainer's stack editor at **Stacks > Add Stack > Web Editor**. YAML anchors and `x-` extension fields are valid Compose/YAML syntax and work directly in stack files. Keep in mind that Compose feature support varies by deployment target: Docker Standalone uses Docker Compose behavior, while Docker Swarm stacks are deployed with `docker stack deploy`.
 
 ## Summary
 
-Docker Compose features like profiles, YAML anchors, and extension fields all work seamlessly in Portainer's stack editor. Use profiles for environment-specific service activation, YAML anchors to eliminate configuration duplication, and extension fields for metadata annotation. These features make large, complex stacks more maintainable.
+YAML anchors and extension fields are a practical way to reduce duplication in Portainer stack files. If you're deploying to Docker Standalone, you can also use Docker Compose features like profiles and `depends_on` conditions. On Docker Swarm, Portainer relies on `docker stack deploy`, so not every modern Compose feature is available.
