@@ -4,19 +4,26 @@ Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
 Tags: OpenTofu, Terraform, Route53, DNS, AWS, Module
 
-Description: Learn how to design a reusable DNS module for OpenTofu that manages Route53 zones, records, and health checks from structured configuration data.
+Description: Learn how to design a reusable DNS module for OpenTofu that manages Route53 zones and records, and can associate records with optional health checks from structured configuration data.
 
 ## Introduction
 
-A DNS module centralizes zone and record management, making it easy to maintain consistent DNS configurations across services and environments. It should support A, CNAME, MX, TXT records, alias records for AWS resources, and optional health checks.
+A DNS module centralizes zone and record management, making it easy to maintain consistent DNS configurations across services and environments. It should support A, CNAME, MX, TXT records, alias records for AWS resources, and optional Route53 health check associations.
 
 ## variables.tf
 
 ```hcl
 variable "zone_name"   { type = string }
 variable "environment" { type = string }
-variable "private_zone" { type = bool; default = false }
-variable "vpc_id"      { type = string; default = "" }
+variable "private_zone" {
+  type    = bool
+  default = false
+}
+
+variable "vpc_id" {
+  type    = string
+  default = ""
+}
 
 variable "records" {
   description = "DNS records to create in the zone"
@@ -24,6 +31,7 @@ variable "records" {
     type    = string
     ttl     = optional(number, 300)
     values  = optional(list(string), [])
+    health_check_id = optional(string)
     alias = optional(object({
       name                   = string
       zone_id                = string
@@ -33,7 +41,10 @@ variable "records" {
   default = {}
 }
 
-variable "tags" { type = map(string); default = {} }
+variable "tags" {
+  type    = map(string)
+  default = {}
+}
 ```
 
 ## main.tf
@@ -47,13 +58,20 @@ resource "aws_route53_zone" "main" {
   name = var.zone_name
 
   dynamic "vpc" {
-    for_each = var.private_zone && var.vpc_id != "" ? [1] : []
+    for_each = var.private_zone ? [1] : []
     content {
       vpc_id = var.vpc_id
     }
   }
 
   tags = local.tags
+
+  lifecycle {
+    precondition {
+      condition     = !var.private_zone || var.vpc_id != ""
+      error_message = "vpc_id must be set when private_zone is true."
+    }
+  }
 }
 
 # Separate alias records from standard records
@@ -69,8 +87,9 @@ resource "aws_route53_record" "standard" {
   zone_id = aws_route53_zone.main.zone_id
   name    = each.key == "@" ? var.zone_name : "${each.key}.${var.zone_name}"
   type    = each.value.type
-  ttl     = each.value.ttl
-  records = each.value.values
+  health_check_id = each.value.health_check_id
+  ttl             = each.value.ttl
+  records         = each.value.values
 }
 
 resource "aws_route53_record" "alias" {
@@ -79,6 +98,7 @@ resource "aws_route53_record" "alias" {
   zone_id = aws_route53_zone.main.zone_id
   name    = each.key == "@" ? var.zone_name : "${each.key}.${var.zone_name}"
   type    = each.value.type
+  health_check_id = each.value.health_check_id
 
   alias {
     name                   = each.value.alias.name
@@ -134,4 +154,4 @@ output "zone_arn"         { value = aws_route53_zone.main.arn }
 
 ## Conclusion
 
-This DNS module handles all common record types and separates alias from standard records since they have different configurations. The `@` convention for apex records makes the configuration readable. Expose the name servers output so callers can update their domain registrar delegation.
+This DNS module handles all common record types and separates alias from standard records since they have different configurations. The `@` convention for apex records makes the configuration readable. For public zones, expose the name servers output so callers can update their domain registrar delegation.
