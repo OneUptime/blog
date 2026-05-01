@@ -8,7 +8,7 @@ Description: Configure Envoy proxy to accept QUIC/HTTP3 connections on IPv6 and 
 
 ## Prerequisites
 
-- Envoy 1.20+ (QUIC support improved in 1.20+)
+- A current Envoy release with downstream HTTP/3 support
 - TLS certificate and key
 - IPv6 available on your host
 
@@ -17,18 +17,20 @@ Description: Configure Envoy proxy to accept QUIC/HTTP3 connections on IPv6 and 
 ```mermaid
 graph LR
     A[Client IPv6] -->|QUIC/UDP 443| B[Envoy Listener]
-    B -->|HTTP/2| C[Backend Service]
+    B -->|HTTP/1.1| C[Backend Service]
     B -->|Fallback TCP| D[Same Backend]
 ```
 
 ## Step 1: Install Envoy
 
 ```bash
-# Install via official distributions
+# Install from the official apt repository
 
-sudo apt-get install apt-transport-https gnupg2 curl lsb-release
-curl -sL 'https://deb.dl.getenvoy.io/public/gpg.8115BA8E629CC074.key' | sudo gpg --dearmor -o /usr/share/keyrings/getenvoy-keyring.gpg
-sudo apt-get update && sudo apt-get install getenvoy-envoy
+sudo apt-get install curl gpg lsb-release
+sudo mkdir -p /etc/apt/keyrings
+curl -fsSL https://apt.envoyproxy.io/signing.key | sudo gpg --dearmor -o /etc/apt/keyrings/envoy-keyring.gpg
+echo "deb [arch=$(dpkg --print-architecture) signed-by=/etc/apt/keyrings/envoy-keyring.gpg] https://apt.envoyproxy.io $(lsb_release -cs) main" | sudo tee /etc/apt/sources.list.d/envoy.list
+sudo apt-get update && sudo apt-get install envoy
 
 envoy --version
 ```
@@ -86,7 +88,7 @@ static_resources:
                     typed_config:
                       "@type": type.googleapis.com/envoy.extensions.filters.http.router.v3.Router
 
-    # TCP/HTTP2 fallback listener on IPv6
+    # TCP fallback listener on IPv6
     - name: tcp_listener_ipv6
       address:
         socket_address:
@@ -142,7 +144,7 @@ static_resources:
                   address:
                     socket_address:
                       # IPv6 backend
-                      address: "2001:db8:backend::1"
+                      address: "2001:db8::10"
                       port_value: 8080
 
 admin:
@@ -162,13 +164,13 @@ envoy --config-path /etc/envoy/envoy.yaml --mode validate
 envoy --config-path /etc/envoy/envoy.yaml
 
 # Test HTTP/3 over IPv6
-curl -6 --http3 https://[2001:db8::1]/ -v
+curl -6 --http3-only --resolve example.com:443:[2001:db8::1] https://example.com/ -v
 
 # Check Envoy admin stats
-curl http://[::1]:9901/stats | grep quic
+curl -g http://[::1]:9901/stats | grep quic
 
 # View QUIC-specific metrics
-curl http://[::1]:9901/stats | grep -E "quic|http3"
+curl -g http://[::1]:9901/stats | grep -E "quic|http3"
 ```
 
 ## Monitoring
