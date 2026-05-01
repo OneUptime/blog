@@ -28,6 +28,11 @@ variable "environment" {
   type = string
 }
 
+variable "external_id" {
+  type    = string
+  default = null
+}
+
 locals {
   account_ids = {
     development = "111111111111"
@@ -90,13 +95,13 @@ provider "aws" {
 
 # Use provider aliases in resources
 resource "aws_s3_bucket" "primary" {
-  provider = aws.primary
-  bucket   = "data-primary"
+  provider      = aws.primary
+  bucket_prefix = "data-primary-"
 }
 
 resource "aws_s3_bucket" "dr" {
-  provider = aws.dr
-  bucket   = "data-dr-replica"
+  provider      = aws.dr
+  bucket_prefix = "data-dr-replica-"
 }
 ```
 
@@ -129,7 +134,7 @@ provider "aws" {
 ## Best Practices
 
 - Use role assumption rather than environment-specific access keys - it's more secure and easier to audit.
-- Set `external_id` on assume_role configurations to prevent confused deputy attacks.
-- Use `default_tags` in the provider to ensure all resources in an environment have consistent tags.
+- Set `external_id` when a third party is assuming the role, to help prevent confused deputy attacks.
+- Use `default_tags` in the provider to ensure resources that support tagging in an environment have consistent tags.
 - Pass provider configuration through variables rather than hard-coding account IDs and role ARNs in provider blocks.
 - Use separate provider configurations per environment directory rather than complex conditional logic in a single config.
