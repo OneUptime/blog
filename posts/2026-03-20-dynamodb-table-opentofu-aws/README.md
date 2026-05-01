@@ -64,7 +64,7 @@ resource "aws_dynamodb_table" "users" {
     projection_type = "ALL"  # Project all attributes
   }
 
-  # Time To Live - auto-delete expired items
+  # Time To Live - expired items are typically deleted within a few days
   ttl {
     attribute_name = "expiresAt"
     enabled        = true
@@ -124,6 +124,10 @@ resource "aws_dynamodb_table" "high_throughput" {
   attribute {
     name = "id"
     type = "S"
+  }
+
+  lifecycle {
+    ignore_changes = [read_capacity]
   }
 }
 
