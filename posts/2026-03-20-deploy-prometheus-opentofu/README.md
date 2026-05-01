@@ -12,7 +12,7 @@ Prometheus is the industry-standard metrics collection and alerting system for c
 
 ## Prerequisites
 
-This guide assumes you have a running Kubernetes cluster. OpenTofu will use the Helm provider to deploy the `kube-prometheus-stack` chart, which includes Prometheus, Alertmanager, and a set of pre-built dashboards.
+This guide assumes you have a running Kubernetes 1.25+ cluster. OpenTofu will use the Helm provider to deploy the `kube-prometheus-stack` chart, which includes Prometheus, Alertmanager, and a set of pre-built dashboards.
 
 ## Provider Configuration
 
@@ -23,17 +23,17 @@ terraform {
   required_providers {
     helm = {
       source  = "hashicorp/helm"
-      version = "~> 2.12"
+      version = "~> 3.1"
     }
     kubernetes = {
       source  = "hashicorp/kubernetes"
-      version = "~> 2.24"
+      version = "~> 3.1"
     }
   }
 }
 
 provider "helm" {
-  kubernetes {
+  kubernetes = {
     host                   = var.cluster_endpoint
     cluster_ca_certificate = base64decode(var.cluster_ca_cert)
     token                  = var.cluster_token
@@ -51,7 +51,7 @@ provider "kubernetes" {
 
 ```hcl
 # namespace.tf
-resource "kubernetes_namespace" "monitoring" {
+resource "kubernetes_namespace_v1" "monitoring" {
   metadata {
     name = "monitoring"
     labels = {
@@ -69,8 +69,8 @@ resource "helm_release" "kube_prometheus_stack" {
   name       = "kube-prometheus-stack"
   repository = "https://prometheus-community.github.io/helm-charts"
   chart      = "kube-prometheus-stack"
-  version    = "55.5.0"
-  namespace  = kubernetes_namespace.monitoring.metadata[0].name
+  version    = "84.4.0"
+  namespace  = kubernetes_namespace_v1.monitoring.metadata[0].name
 
   # Wait for all pods to be ready
   wait    = true
@@ -114,6 +114,9 @@ resource "helm_release" "kube_prometheus_stack" {
 
       alertmanager = {
         alertmanagerSpec = {
+          useExistingSecret = true
+          configSecret      = kubernetes_secret_v1.alertmanager_config.metadata[0].name
+
           storage = {
             volumeClaimTemplate = {
               spec = {
@@ -148,10 +151,10 @@ resource "helm_release" "kube_prometheus_stack" {
 ```hcl
 # alertmanager_config.tf
 # Deploy a custom Alertmanager configuration as a Kubernetes secret
-resource "kubernetes_secret" "alertmanager_config" {
+resource "kubernetes_secret_v1" "alertmanager_config" {
   metadata {
-    name      = "alertmanager-kube-prometheus-stack-alertmanager"
-    namespace = kubernetes_namespace.monitoring.metadata[0].name
+    name      = "kube-prometheus-stack-alertmanager-config"
+    namespace = kubernetes_namespace_v1.monitoring.metadata[0].name
   }
 
   data = {
@@ -164,7 +167,7 @@ resource "kubernetes_secret" "alertmanager_config" {
         group_by = ["alertname", "severity"]
         routes = [
           {
-            match    = { severity = "critical" }
+            matchers = ["severity = \"critical\""]
             receiver = "pagerduty"
           }
         ]
