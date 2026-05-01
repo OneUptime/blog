@@ -8,7 +8,7 @@ Description: Learn how to automatically create DNS records for Kubernetes servic
 
 ---
 
-ExternalDNS is a Kubernetes add-on that automatically creates DNS records when services or Ingress resources are created. Deploying ExternalDNS with OpenTofu and the right IAM permissions means Kubernetes manages its own DNS entries.
+ExternalDNS is a Kubernetes add-on that automatically creates DNS records when services or Ingress resources are created. Deploying ExternalDNS with OpenTofu and the right provider credentials or IAM permissions means Kubernetes manages its own DNS entries.
 
 ## ExternalDNS Architecture
 
@@ -57,8 +57,8 @@ resource "aws_iam_role" "externaldns" {
       Action = "sts:AssumeRoleWithWebIdentity"
       Condition = {
         StringEquals = {
-          "${var.oidc_provider_url}:sub" = "system:serviceaccount:kube-system:external-dns"
-          "${var.oidc_provider_url}:aud" = "sts.amazonaws.com"
+          "${replace(var.oidc_provider_url, "https://", "")}:sub" = "system:serviceaccount:kube-system:external-dns"
+          "${replace(var.oidc_provider_url, "https://", "")}:aud" = "sts.amazonaws.com"
         }
       }
     }]
@@ -84,19 +84,23 @@ resource "helm_release" "external_dns" {
 
   values = [
     yamlencode({
-      provider = "aws"
-
-      aws = {
-        region       = var.aws_region
-        zoneType     = "public"  # or "private"
-        preferCNAME  = false
+      provider = {
+        name = "aws"
       }
+
+      env = [{
+        name  = "AWS_DEFAULT_REGION"
+        value = var.aws_region
+      }]
 
       # Only manage records for specified domain
       domainFilters = [var.domain_name]
 
-      # Use this annotation on services/ingresses to trigger DNS creation
-      annotationFilter = "external-dns.alpha.kubernetes.io/hostname"
+      # Chart 1.14.3 passes provider and filter settings via CLI args
+      extraArgs = [
+        "--aws-zone-type=public", # or private
+        "--annotation-filter=external-dns.alpha.kubernetes.io/hostname",
+      ]
 
       # Sync interval
       interval = "1m"
@@ -108,6 +112,7 @@ resource "helm_release" "external_dns" {
       txtOwnerId = var.cluster_name
 
       serviceAccount = {
+        name = "external-dns"
         annotations = {
           "eks.amazonaws.com/role-arn" = aws_iam_role.externaldns.arn
         }
@@ -154,10 +159,13 @@ resource "kubernetes_ingress_v1" "app" {
     namespace = "apps"
     annotations = {
       "external-dns.alpha.kubernetes.io/hostname" = "app.${var.domain_name}"
-      "kubernetes.io/ingress.class"               = "nginx"
     }
   }
-  # ...
+
+  spec {
+    ingress_class_name = "nginx"
+    # ...
+  }
 }
 ```
 
