@@ -4,7 +4,7 @@ Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
 Tags: OpenTofu, AWS, ECS, Task Definition, Fargate, Container Configuration, Infrastructure as Code
 
-Description: Learn how to create ECS task definitions with OpenTofu for Fargate and EC2 launch types, including container definitions, environment variables from Secrets Manager, and health checks.
+Description: Learn how to create ECS task definitions with OpenTofu for Fargate, including container definitions, environment variables from Secrets Manager and Parameter Store, and health checks.
 
 ## Introduction
 
@@ -14,6 +14,7 @@ ECS task definitions are blueprints for running containerized applications, defi
 
 - OpenTofu v1.6+
 - An ECR repository with a pushed container image
+- An ECS task execution role with permission to pull images, write logs, and read any referenced Secrets Manager secrets or SSM parameters
 - AWS credentials with ECS and IAM permissions
 
 ## Step 1: Create Fargate Task Definition
@@ -26,7 +27,7 @@ resource "aws_ecs_task_definition" "app" {
   cpu                      = "512"     # 0.5 vCPU
   memory                   = "1024"    # 1 GB
 
-  execution_role_arn = var.execution_role_arn  # For ECR pull and CloudWatch logs
+  execution_role_arn = var.execution_role_arn  # For ECR pull, CloudWatch logs, and retrieving referenced secrets/parameters
   task_role_arn      = aws_iam_role.task.arn   # For application permissions
 
   container_definitions = jsonencode([
@@ -53,11 +54,11 @@ resource "aws_ecs_task_definition" "app" {
       secrets = [
         {
           name      = "DATABASE_PASSWORD"
-          valueFrom = "arn:aws:secretsmanager:${var.region}:${data.aws_caller_identity.current.account_id}:secret:${var.project_name}/${var.environment}/db-password"
+          valueFrom = var.database_password_secret_arn
         },
         {
           name      = "API_KEY"
-          valueFrom = "arn:aws:ssm:${var.region}:${data.aws_caller_identity.current.account_id}:parameter/${var.project_name}/${var.environment}/secrets/API_KEY"
+          valueFrom = var.api_key_parameter_arn
         }
       ]
 
@@ -131,7 +132,7 @@ resource "aws_iam_role_policy" "task" {
         Action   = ["s3:GetObject", "s3:PutObject"]
         Resource = "${var.s3_bucket_arn}/*"
       },
-      # Required for ECS Exec
+      # Required for ECS Exec; secret injection uses the task execution role
       {
         Effect = "Allow"
         Action = [
@@ -204,7 +205,7 @@ tofu init
 tofu plan
 tofu apply
 
-# Describe the latest task definition revision
+# Describe the latest ACTIVE task definition revision
 
 aws ecs describe-task-definition \
   --task-definition my-project-app \
@@ -213,4 +214,4 @@ aws ecs describe-task-definition \
 
 ## Conclusion
 
-Task definitions use JSON container definitions with specific field names that differ from Docker Compose-use `essential: true` only for the primary container, `essential: false` for sidecars that shouldn't kill the task if they crash. Always define `healthCheck` with an appropriate `startPeriod` to prevent tasks from being marked unhealthy during startup. Use the `secrets` array for sensitive values-they're injected at container start without appearing in CloudWatch logs or environment variable listings.
+Task definitions use JSON container definitions with specific field names that differ from Docker Compose-set `essential: false` for sidecars that shouldn't stop the task if they crash, and keep at least one container essential. Always define `healthCheck` with an appropriate `startPeriod` to prevent tasks from being marked unhealthy during startup. Use the `secrets` array for sensitive values so they aren't stored in plaintext in the task definition-the values are injected into the container as environment variables at start, and the task execution role must be allowed to read the referenced secrets or parameters.
