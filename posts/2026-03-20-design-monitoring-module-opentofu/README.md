@@ -13,9 +13,18 @@ A monitoring module should create a consistent observability setup: CloudWatch a
 ## variables.tf
 
 ```hcl
-variable "service_name"  { type = string }
-variable "environment"   { type = string }
-variable "enabled"       { type = bool; default = true }
+variable "service_name" {
+  type = string
+}
+
+variable "environment" {
+  type = string
+}
+
+variable "enabled" {
+  type    = bool
+  default = true
+}
 
 variable "alarm_email_endpoints" {
   type    = list(string)
@@ -38,7 +47,10 @@ variable "alarms" {
   default = {}
 }
 
-variable "tags" { type = map(string); default = {} }
+variable "tags" {
+  type    = map(string)
+  default = {}
+}
 ```
 
 ## main.tf
@@ -91,7 +103,7 @@ resource "aws_cloudwatch_dashboard" "service" {
   dashboard_name = "${var.service_name}-${var.environment}"
 
   dashboard_body = jsonencode({
-    widgets = [
+    widgets = length(aws_cloudwatch_metric_alarm.alarms) > 0 ? [
       {
         type       = "alarm"
         properties = {
@@ -99,7 +111,7 @@ resource "aws_cloudwatch_dashboard" "service" {
           alarms = [for alarm in aws_cloudwatch_metric_alarm.alarms : alarm.arn]
         }
       }
-    ]
+    ] : []
   })
 }
 ```
@@ -137,7 +149,7 @@ module "monitoring" {
       threshold           = 10
       evaluation_periods  = 2
       period              = 60
-      alarm_description   = "More than 10 5xx errors in 1 minute"
+      alarm_description   = "More than 10 ELB-generated 5xx errors for 2 consecutive minutes"
       dimensions = { LoadBalancer = var.alb_arn_suffix }
     }
   }
