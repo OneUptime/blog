@@ -8,7 +8,7 @@ Description: Learn how to use dynamic blocks in OpenTofu to propagate tags consi
 
 ## Introduction
 
-Consistent tagging is essential for cost allocation, security compliance, and resource management. While most AWS resources accept a simple `tags` map, some resources (like Auto Scaling Groups with `propagate_at_launch`) require dynamic tag blocks. OpenTofu's dynamic blocks make this pattern clean and reusable.
+Consistent tagging is essential for cost allocation, security compliance, and resource management. While most AWS resources accept a simple `tags` map, some resources (like Auto Scaling Groups with `propagate_at_launch`) require individual `tag` blocks instead. OpenTofu's dynamic blocks make this pattern clean and reusable.
 
 ## Standard Tag Map Propagation
 
@@ -119,7 +119,7 @@ resource "aws_autoscaling_group" "app" {
 }
 ```
 
-## ECS Task Definition Tag Propagation
+## ECS Service Tag Propagation
 
 ECS services support propagating tags from service to tasks.
 
