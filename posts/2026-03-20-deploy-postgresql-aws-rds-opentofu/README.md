@@ -4,11 +4,11 @@ Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
 Tags: OpenTofu, AWS, RDS, PostgreSQL, Database, Infrastructure as Code
 
-Description: Learn how to provision a PostgreSQL RDS instance with extensions, parameter groups, and enhanced monitoring using OpenTofu.
+Description: Learn how to provision a PostgreSQL RDS instance with a custom parameter group, `pg_stat_statements`, and enhanced monitoring using OpenTofu.
 
 ---
 
-AWS RDS PostgreSQL provides a fully managed PostgreSQL database with automated backups, patching, and optional Multi-AZ. OpenTofu lets you declare every aspect of the PostgreSQL configuration as code.
+AWS RDS PostgreSQL provides a fully managed PostgreSQL database with automated backups, patching, and optional Multi-AZ. OpenTofu lets you declare the RDS instance and core PostgreSQL configuration as code.
 
 ---
 
@@ -18,7 +18,7 @@ AWS RDS PostgreSQL provides a fully managed PostgreSQL database with automated b
 resource "aws_db_instance" "postgres" {
   identifier        = "postgres-db"
   engine            = "postgres"
-  engine_version    = "15.4"
+  engine_version    = "15.17"
   instance_class    = "db.t3.medium"
   allocated_storage = 100
   storage_type      = "gp3"
@@ -128,4 +128,4 @@ output "postgres_connection_string" {
 
 ## Summary
 
-Create `aws_db_instance` with `engine = "postgres"`, `storage_encrypted = true`, and Performance Insights enabled for query analysis. Use a custom `aws_db_parameter_group` to load `pg_stat_statements` and configure slow query logging. Enable enhanced monitoring with `monitoring_interval = 60` for per-instance OS metrics.
+Create `aws_db_instance` with `engine = "postgres"`, `storage_encrypted = true`, and Performance Insights enabled for query analysis. Use a custom `aws_db_parameter_group` to configure slow query logging and keep `pg_stat_statements` explicit. Enable enhanced monitoring with `monitoring_interval = 60` for per-instance OS metrics.
