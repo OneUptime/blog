@@ -4,15 +4,15 @@ Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
 Tags: IPv4, QoS, DSCP, Networking, DiffServ, Traffic Management
 
-Description: The DSCP field occupies the top 6 bits of the IPv4 ToS byte and allows routers to classify and prioritize traffic, enabling differentiated forwarding behaviors for voice, video, and data applications.
+Description: DSCP occupies the top 6 bits of the IPv4 DS field (historically the ToS byte) and allows routers to classify and prioritize traffic, enabling differentiated forwarding behaviors for voice, video, and data applications.
 
 ## DSCP Basics
 
-Differentiated Services Code Point (DSCP) is a 6-bit field defined in RFC 2474. It replaced the original IPv4 Precedence and ToS flags. Routers read the DSCP value and apply a Per-Hop Behavior (PHB) that determines queue priority, drop probability, and bandwidth allocation.
+Differentiated Services Code Point (DSCP) is a 6-bit field defined in RFC 2474. It redefined the IPv4 ToS octet as the DS field and preserved IP Precedence compatibility through class-selector codepoints. Routers read the DSCP value and apply a Per-Hop Behavior (PHB) that determines queue priority, drop probability, and bandwidth allocation.
 
 ## Key PHB Classes
 
-| DSCP Name | Value | ToS Byte | Use Case |
+| DSCP Name | Value | DS Field (ECN=00) | Use Case |
 |-----------|-------|----------|----------|
 | Default (DF) | 0 | 0x00 | Best effort |
 | Expedited Forwarding (EF) | 46 | 0xB8 | VoIP, real-time |
@@ -84,7 +84,7 @@ iptables -t mangle -A OUTPUT -p udp --dport 10000:20000 \
 ## Verifying DSCP Markings
 
 ```bash
-# Show DSCP value in tcpdump output
+# Show the DS field / ToS byte in tcpdump output
 tcpdump -i eth0 -v -n 'udp' | grep tos
 
 # tshark: extract DSCP from captured traffic
@@ -93,7 +93,7 @@ tshark -i eth0 -T fields -e ip.dsfield.dscp -Y "ip"
 
 ## Key Takeaways
 
-- DSCP is a 6-bit field using the top 6 bits of the IPv4 ToS byte.
+- DSCP uses the top 6 bits of the IPv4 DS field (historically the ToS byte).
 - EF (46) is for real-time traffic; AF classes for elastic traffic; CS6/CS7 for control plane.
 - Mark DSCP at the application or network edge; routers use the value for queue scheduling.
 - Use `setsockopt(IP_TOS)` in applications and `iptables -j DSCP` for system-wide marking.
