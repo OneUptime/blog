@@ -33,29 +33,7 @@ graph TD
 resource "aws_kms_key" "app" {
   description             = "KMS key for ${var.environment} application data"
   deletion_window_in_days = 30
-  enable_key_rotation     = true  # Rotate annually
-
-  policy = jsonencode({
-    Version = "2012-10-17"
-    Statement = [
-      {
-        Sid       = "AllowAccount"
-        Effect    = "Allow"
-        Principal = { AWS = "arn:aws:iam::${data.aws_caller_identity.current.account_id}:root" }
-        Action    = "kms:*"
-        Resource  = "*"
-      },
-      {
-        Sid    = "AllowServiceUse"
-        Effect = "Allow"
-        Principal = {
-          Service = ["s3.amazonaws.com", "rds.amazonaws.com", "secretsmanager.amazonaws.com"]
-        }
-        Action = ["kms:GenerateDataKey*", "kms:Decrypt", "kms:Encrypt"]
-        Resource = "*"
-      }
-    ]
-  })
+  enable_key_rotation     = true  # Default automatic rotation period is 365 days
 
   tags = {
     Environment = var.environment
@@ -81,11 +59,11 @@ resource "aws_s3_bucket_server_side_encryption_configuration" "app" {
       sse_algorithm     = "aws:kms"
       kms_master_key_id = aws_kms_key.app.arn
     }
-    bucket_key_enabled = true  # Reduce KMS API calls and costs
+    bucket_key_enabled = true  # Can reduce AWS KMS request costs by up to 99%
   }
 }
 
-# Deny non-encrypted uploads and non-HTTPS requests
+# Deny non-TLS requests and uploads that don't use the expected KMS key
 resource "aws_s3_bucket_policy" "enforce_tls_and_encryption" {
   bucket = aws_s3_bucket.app.id
 
@@ -103,14 +81,14 @@ resource "aws_s3_bucket_policy" "enforce_tls_and_encryption" {
         }
       },
       {
-        Sid       = "DenyUnencryptedObjectUploads"
+        Sid       = "DenyObjectsThatAreNotSSEKMSWithSpecificKey"
         Effect    = "Deny"
         Principal = "*"
         Action    = "s3:PutObject"
         Resource  = "${aws_s3_bucket.app.arn}/*"
         Condition = {
-          StringNotEquals = {
-            "s3:x-amz-server-side-encryption" = "aws:kms"
+          ArnNotEqualsIfExists = {
+            "s3:x-amz-server-side-encryption-aws-kms-key-id" = aws_kms_key.app.arn
           }
         }
       }
@@ -123,25 +101,20 @@ resource "aws_s3_bucket_policy" "enforce_tls_and_encryption" {
 
 ```hcl
 resource "aws_db_instance" "main" {
-  identifier     = "${var.environment}-database"
-  engine         = "postgres"
+  identifier           = "${var.environment}-database"
+  engine               = "postgres"
+  engine_version       = "16"
+  parameter_group_name = aws_db_parameter_group.ssl_required.name
 
   # Encryption at rest
   storage_encrypted = true
   kms_key_id        = aws_kms_key.app.arn
-
-  lifecycle {
-    precondition {
-      condition     = var.storage_encrypted
-      error_message = "Database storage encryption is required in all environments"
-    }
-  }
 }
 
 # Enforce SSL for RDS connections
 resource "aws_db_parameter_group" "ssl_required" {
   name   = "${var.environment}-postgres-ssl"
-  family = "postgres15"
+  family = "postgres16"
 
   parameter {
     name  = "rds.force_ssl"
@@ -193,8 +166,8 @@ resource "aws_config_config_rule" "ebs_encrypted" {
 
 ## Best Practices
 
-- Enable EBS encryption by default at the account level - it protects all new volumes without per-resource configuration.
-- Use KMS customer-managed keys (CMKs) for sensitive data so you control the key lifecycle and rotation.
-- Enable `bucket_key_enabled = true` on S3 SSE-KMS to reduce KMS API calls by 99% and lower costs.
+- Enable EBS encryption by default in each Region - it protects all new volumes and snapshot copies in that Region without per-resource configuration.
+- Use customer-managed KMS keys for sensitive data so you control the key lifecycle and rotation.
+- Enable `bucket_key_enabled = true` on S3 SSE-KMS to reduce AWS KMS request costs by up to 99% and lower request traffic to AWS KMS.
 - Use S3 bucket policies to deny unencrypted uploads and non-TLS requests - defense in depth against misconfiguration.
-- Enable key rotation on all KMS keys - annual rotation limits the exposure window if a key is compromised.
+- Enable automatic rotation on symmetric customer-managed KMS keys that support it - the default rotation period is 365 days and it is transparent to integrated AWS services.
