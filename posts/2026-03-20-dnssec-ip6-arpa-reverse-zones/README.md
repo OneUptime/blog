@@ -57,7 +57,6 @@ $TTL 3600
 
 import ipaddress
 import re
-import sys
 
 def ipv6_to_arpa(addr: str) -> str:
     """Convert IPv6 address to nibble-format for ip6.arpa."""
@@ -72,6 +71,8 @@ def zone_name_for_prefix(prefix: str) -> str:
     """Get the ip6.arpa zone name for a given prefix."""
     net = ipaddress.ip_network(prefix, strict=False)
     prefix_len = net.prefixlen
+    if prefix_len % 4 != 0:
+        raise ValueError("ip6.arpa zone cuts must align on nibble boundaries")
     nibbles_count = prefix_len // 4  # Each nibble = 4 bits
     full_hex = net.network_address.exploded.replace(":", "")
     relevant_nibbles = full_hex[:nibbles_count]
@@ -108,14 +109,11 @@ for line in forward_zone.strip().splitlines():
 ## BIND Configuration for ip6.arpa Zones
 
 ```text
-// /etc/named.conf - Configure ip6.arpa reverse zone
+// /etc/named.conf - Serve the signed ip6.arpa reverse zone
 
 zone "1.0.0.0.8.b.d.0.1.0.0.2.ip6.arpa" {
-    type master;
+    type primary;
     file "/var/named/2001db81-48.reverse.signed";
-    key-directory "/var/named/keys";
-    auto-dnssec maintain;
-    inline-signing yes;
 };
 ```
 
@@ -127,24 +125,24 @@ ZONE="1.0.0.0.8.b.d.0.1.0.0.2.ip6.arpa"
 KEY_DIR="/var/named/keys"
 
 # ZSK
-dnssec-keygen -a ECDSAP256SHA256 -n ZONE "${ZONE}"
+dnssec-keygen -K "${KEY_DIR}" -a ECDSAP256SHA256 -n ZONE "${ZONE}"
 
 # KSK
-dnssec-keygen -a ECDSAP256SHA256 -n ZONE -f KSK "${ZONE}"
+dnssec-keygen -K "${KEY_DIR}" -a ECDSAP256SHA256 -n ZONE -f KSK "${ZONE}"
 
 # Sign the reverse zone
 dnssec-signzone \
-    -3 $(openssl rand -hex 4) \
+    -3 "$(openssl rand -hex 4)" \
     -A -N INCREMENT \
+    -K "${KEY_DIR}" -S \
     -o "${ZONE}" \
-    -k "${KEY_DIR}/K${ZONE}.+013+KSK_ID" \
-    "/var/named/2001db81-48.reverse" \
-    "${KEY_DIR}/K${ZONE}.+013+ZSK_ID"
+    -f "/var/named/2001db81-48.reverse.signed" \
+    "/var/named/2001db81-48.reverse"
 
-# Verify PTR records have signatures
-grep -A2 "PTR" 2001db81-48.reverse.signed | grep RRSIG | head -3
+# Verify the signed zone
+dnssec-verify -o "${ZONE}" "/var/named/2001db81-48.reverse.signed"
 
-# Test lookup
+# Test that the signed PTR record is being served
 dig +dnssec PTR \
     0.1.0.0.0.0.0.0.0.0.0.0.0.0.0.0.0.0.0.0.1.0.0.0.8.b.d.0.1.0.0.2.ip6.arpa \
     @localhost
@@ -157,8 +155,8 @@ dig +dnssec PTR \
 # They configure NS and DS records for your ip6.arpa zone
 
 # Submit DS record to RIR via their portal
-# Extract DS record from KSK:
-dnssec-dsfromkey K${ZONE}.+013+KSK_ID.key
+# Extract DS record from the signed zone's DNSKEY RRset:
+dnssec-dsfromkey -f "/var/named/2001db81-48.reverse.signed" "${ZONE}"
 
 # Output example:
 # 1.0.0.0.8.b.d.0.1.0.0.2.ip6.arpa IN DS 12345 13 2 <hash>
@@ -173,15 +171,16 @@ dig DS 1.0.0.0.8.b.d.0.1.0.0.2.ip6.arpa @a.ip6-servers.arpa
 ## Verify Reverse DNSSEC
 
 ```bash
-# Test full DNSSEC chain for PTR record
+# Query the PTR record with DNSSEC records included
 dig +dnssec PTR \
     0.1.0.0.0.0.0.0.0.0.0.0.0.0.0.0.0.0.0.0.1.0.0.0.8.b.d.0.1.0.0.2.ip6.arpa
 
-# Check for 'ad' flag (Authenticated Data)
+# Check for the 'ad' flag when querying a validating resolver
 # And RRSIG record alongside PTR
 
-# Reverse lookup with validation
-host -t PTR 2001:db8:1::10
+# Validate the record end-to-end
+delv PTR \
+    0.1.0.0.0.0.0.0.0.0.0.0.0.0.0.0.0.0.0.0.1.0.0.0.8.b.d.0.1.0.0.2.ip6.arpa
 
 # DNSViz visualization (shows full DNSSEC chain)
 # https://dnsviz.net/ - enter the ip6.arpa zone name
@@ -189,4 +188,4 @@ host -t PTR 2001:db8:1::10
 
 ## Conclusion
 
-DNSSEC signing of ip6.arpa reverse zones follows the same process as forward zones. The key consideration is the zone name: convert your IPv6 prefix to nibble-format ip6.arpa notation (nibbles reversed, dotted). Generate separate ZSK and KSK per zone, sign with `dnssec-signzone -3` (NSEC3), and configure BIND with `auto-dnssec maintain; inline-signing yes` for automatic re-signing. Submit the KSK's DS record to your RIR or ISP to complete the DNSSEC chain. Verify with `dig +dnssec PTR` and check for the `ad` flag in responses from validating resolvers.
+DNSSEC signing of ip6.arpa reverse zones follows the same process as forward zones. The key consideration is the zone name: convert your IPv6 prefix to nibble-format ip6.arpa notation (nibbles reversed, dotted) and delegate on nibble boundaries. Generate separate ZSK and KSK per zone, sign with `dnssec-signzone -3` (NSEC3), and configure BIND to serve the signed zone. Submit the zone's DS record to your RIR or ISP to complete the DNSSEC chain. Verify with `dig +dnssec PTR`, `delv`, and the `ad` flag in responses from validating resolvers.
