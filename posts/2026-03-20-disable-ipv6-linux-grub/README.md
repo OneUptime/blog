@@ -11,7 +11,7 @@ Description: Learn how to permanently disable IPv6 on Linux by adding the ipv6.d
 The GRUB method disables IPv6 at the kernel level before the networking stack initializes - it is the most complete way to disable IPv6. The sysctl method can disable it after boot, but some kernel internals may still be IPv6-aware.
 
 Use the GRUB method when:
-- You need IPv6 completely absent from the kernel
+- You need IPv6 disabled as early as possible during boot
 - sysctl changes aren't surviving reboots consistently
 - You need to disable IPv6 before any init scripts run
 
@@ -23,12 +23,10 @@ Use the GRUB method when:
 vim /etc/default/grub
 
 # Find the line:
-# GRUB_CMDLINE_LINUX_DEFAULT="quiet splash"
-# Or:
 # GRUB_CMDLINE_LINUX=""
 
 # Add ipv6.disable=1 to the options:
-# GRUB_CMDLINE_LINUX_DEFAULT="quiet splash ipv6.disable=1"
+# GRUB_CMDLINE_LINUX="ipv6.disable=1"
 
 # After editing, update GRUB
 update-grub
@@ -49,14 +47,20 @@ vim /etc/default/grub
 # Modify GRUB_CMDLINE_LINUX to include ipv6.disable=1
 # GRUB_CMDLINE_LINUX="crashkernel=auto rhgb quiet ipv6.disable=1"
 
-# Regenerate GRUB config for BIOS systems
+# Regenerate GRUB config
 grub2-mkconfig -o /boot/grub2/grub.cfg
 
-# Or for UEFI systems
+# On RHEL 9.3+ systems using BLS snippets, use:
+grub2-mkconfig -o /boot/grub2/grub.cfg --update-bls-cmdline
+
+# On older UEFI RHEL/CentOS systems, the output path may be:
 grub2-mkconfig -o /boot/efi/EFI/redhat/grub.cfg
 
 # Verify
 grep ipv6 /boot/grub2/grub.cfg
+
+# Or, on older UEFI RHEL/CentOS systems:
+grep ipv6 /boot/efi/EFI/redhat/grub.cfg
 
 # Reboot
 reboot
@@ -67,14 +71,14 @@ reboot
 ```bash
 # grubby modifies the bootloader directly (RHEL 8+)
 
-# Add ipv6.disable=1 to the default kernel
-grubby --update-kernel=DEFAULT --args="ipv6.disable=1"
+# Add ipv6.disable=1 to all boot entries
+grubby --update-kernel=ALL --args="ipv6.disable=1"
 
 # Verify the change
-grubby --info=DEFAULT | grep args
+grubby --info=ALL | grep ipv6.disable
 
 # To remove the parameter later
-grubby --update-kernel=DEFAULT --remove-args="ipv6.disable=1"
+grubby --update-kernel=ALL --remove-args="ipv6.disable=1"
 
 # Reboot
 reboot
@@ -85,11 +89,14 @@ reboot
 If you need to edit GRUB entries directly (e.g., for a specific kernel only):
 
 ```bash
-# View current GRUB entries
+# View current GRUB entries (Ubuntu/Debian)
 grep -E 'menuentry|linux' /boot/grub/grub.cfg | head -20
 
+# Or on RHEL/CentOS/Fedora
+grep -E 'menuentry|linux' /boot/grub2/grub.cfg | head -20
+
 # The managed way is through /etc/default/grub
-# Direct edits to grub.cfg are overwritten by update-grub
+# Direct edits to grub.cfg are overwritten by update-grub or grub2-mkconfig
 ```
 
 ## Verifying IPv6 is Disabled After Reboot
@@ -107,28 +114,27 @@ ip -6 addr show
 lsmod | grep ipv6
 # ipv6 module may still be present but disabled
 
-# Check sysctl
+# Check sysctl (useful context, but /proc/cmdline is the authoritative check here)
 sysctl net.ipv6.conf.all.disable_ipv6
-# Should return 1
 ```
 
-## Difference: ipv6.disable=1 vs ipv6.disable_ipv6_mod=1
+## Difference: ipv6.disable=1 vs ipv6.disable_ipv6=1
 
 ```text
 ipv6.disable=1:
-  - Completely disables the IPv6 stack
-  - IPv6 addresses not assigned
+  - Disables IPv6 functionality in the kernel
+  - No IPv6 addresses are added to interfaces
   - IPv6 socket operations fail
 
-ipv6.disable_ipv6_mod=1:
-  - Prevents loading of IPv6 as a module
-  - If already compiled in, has no effect
-  - Less effective than ipv6.disable=1
+ipv6.disable_ipv6=1:
+  - Disables IPv6 on all interfaces
+  - No IPv6 addresses are added to interfaces
+  - More limited than ipv6.disable=1
 ```
 
 ## Ubuntu Automatic Kernel Updates
 
-On Ubuntu, `update-grub` is run automatically when a new kernel is installed. As long as the `GRUB_CMDLINE_LINUX_DEFAULT` entry in `/etc/default/grub` is correct, the parameter persists across kernel upgrades.
+On Ubuntu, `update-grub` is run automatically when a new kernel is installed. As long as the `GRUB_CMDLINE_LINUX` entry in `/etc/default/grub` is correct, the parameter persists across kernel upgrades.
 
 ```bash
 # Verify after kernel update
@@ -140,12 +146,16 @@ grep CMDLINE /etc/default/grub
 
 ```bash
 # Edit /etc/default/grub and remove ipv6.disable=1
-sed -i 's/ ipv6.disable=1//' /etc/default/grub
+vim /etc/default/grub
 
 # Update GRUB
 update-grub  # Ubuntu/Debian
 # or
 grub2-mkconfig -o /boot/grub2/grub.cfg  # RHEL
+# or on RHEL 9.3+
+grub2-mkconfig -o /boot/grub2/grub.cfg --update-bls-cmdline
+# or on older UEFI RHEL/CentOS systems
+grub2-mkconfig -o /boot/efi/EFI/redhat/grub.cfg
 
 # Reboot
 reboot
@@ -153,4 +163,4 @@ reboot
 
 ## Summary
 
-Disable IPv6 via GRUB by adding `ipv6.disable=1` to `GRUB_CMDLINE_LINUX` in `/etc/default/grub`, then running `update-grub` (Ubuntu) or `grub2-mkconfig` (RHEL). On RHEL, `grubby --update-kernel=DEFAULT --args="ipv6.disable=1"` is a convenient alternative. Verify after reboot with `cat /proc/cmdline` and `ip -6 addr show`. This is the most complete method to disable IPv6 at the kernel level.
+Disable IPv6 via GRUB by adding `ipv6.disable=1` to `GRUB_CMDLINE_LINUX` in `/etc/default/grub`, then running `update-grub` (Ubuntu) or `grub2-mkconfig` (RHEL). On RHEL, `grubby --update-kernel=ALL --args="ipv6.disable=1"` is a convenient alternative. Verify after reboot with `cat /proc/cmdline` and `ip -6 addr show`. This is the most complete method to disable IPv6 at the kernel level.
