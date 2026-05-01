@@ -8,49 +8,74 @@ Description: Learn how to design a reusable S3 storage module for OpenTofu with 
 
 ## Introduction
 
-An S3 storage module should create buckets with security best practices by default: encryption, blocked public access, versioning, and lifecycle rules. It should let callers opt into specific configurations without needing to understand the underlying AWS resources.
+An S3 storage module should create buckets with security best practices by default, such as encryption and blocked public access. It should let callers opt into versioning and lifecycle rules without needing to understand the underlying AWS resources.
 
 ## variables.tf
 
 ```hcl
-variable "bucket_name"  { type = string }
-variable "environment"  { type = string }
-variable "purpose"      { type = string; default = "general" }
+variable "bucket_name" { type = string }
+variable "environment" { type = string }
 
-variable "versioning_enabled" { type = bool; default = false }
-variable "force_destroy"      { type = bool; default = false }
+variable "purpose" {
+  type    = string
+  default = "general"
+}
+
+variable "versioning_enabled" {
+  type    = bool
+  default = false
+}
+
+variable "force_destroy" {
+  type    = bool
+  default = false
+}
 
 variable "server_side_encryption" {
   type    = string
   default = "AES256"  # "AES256" or "aws:kms"
+
+  validation {
+    condition     = contains(["AES256", "aws:kms"], var.server_side_encryption)
+    error_message = "server_side_encryption must be AES256 or aws:kms."
+  }
 }
-variable "kms_key_id" { type = string; default = null }
+
+variable "kms_key_id" {
+  type    = string
+  default = null
+}
 
 variable "lifecycle_rules" {
   type = list(object({
-    id                            = string
-    enabled                       = bool
-    prefix                        = optional(string, "")
-    transition_days               = optional(number)
-    transition_storage_class      = optional(string)
-    expiration_days               = optional(number)
-    noncurrent_expiration_days    = optional(number)
+    id                       = string
+    enabled                  = bool
+    prefix                   = optional(string, "")
+    transition_days          = optional(number)
+    transition_storage_class = optional(string)
+    expiration_days          = optional(number)
   }))
   default = []
+
+  validation {
+    condition = alltrue([
+      for rule in var.lifecycle_rules :
+      (rule.transition_days == null && rule.transition_storage_class == null) ||
+      (rule.transition_days != null && rule.transition_storage_class != null)
+    ])
+    error_message = "Each lifecycle rule must set both transition_days and transition_storage_class together."
+  }
 }
 
-variable "cors_rules" {
-  type = list(object({
-    allowed_headers = list(string)
-    allowed_methods = list(string)
-    allowed_origins = list(string)
-    max_age_seconds = number
-  }))
-  default = []
+variable "bucket_policy_json" {
+  type    = string
+  default = ""
 }
 
-variable "bucket_policy_json" { type = string; default = "" }
-variable "tags" { type = map(string); default = {} }
+variable "tags" {
+  type    = map(string)
+  default = {}
+}
 ```
 
 ## main.tf
@@ -92,7 +117,7 @@ resource "aws_s3_bucket_server_side_encryption_configuration" "main" {
   rule {
     apply_server_side_encryption_by_default {
       sse_algorithm     = var.server_side_encryption
-      kms_master_key_id = var.kms_key_id
+      kms_master_key_id = var.server_side_encryption == "aws:kms" ? var.kms_key_id : null
     }
     bucket_key_enabled = var.server_side_encryption == "aws:kms"
   }
@@ -149,4 +174,4 @@ output "bucket_regional_domain_name" { value = aws_s3_bucket.main.bucket_regiona
 
 ## Conclusion
 
-This S3 module enforces security best practices by default - public access is always blocked, encryption is always enabled, and versioning can be toggled. Lifecycle rules with dynamic blocks handle any number of transition and expiration policies. The bucket policy is optional and passed as a pre-rendered JSON string for maximum flexibility.
+This S3 module enforces security best practices by default - public access is always blocked and encryption is always enabled, while versioning remains configurable. Lifecycle rules with dynamic blocks handle any number of lifecycle rules with optional transition and expiration policies. The bucket policy is optional and passed as a pre-rendered JSON string for flexibility.
