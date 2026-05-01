@@ -8,7 +8,7 @@ Description: Learn how to use dynamic blocks in OpenTofu to generate AWS securit
 
 ## Introduction
 
-AWS security groups often require many ingress and egress rules. Defining each rule as a static block leads to verbose, repetitive HCL. Dynamic blocks let you generate these rules programmatically from a list or map, keeping your configuration concise and maintainable.
+AWS security groups often require many ingress and egress rules. If you manage rules inline on `aws_security_group`, defining each rule as a static block leads to verbose, repetitive HCL. Dynamic blocks let you generate these rules programmatically from a list or map, keeping your configuration concise and maintainable. For new configurations, the AWS provider recommends dedicated `aws_vpc_security_group_ingress_rule` and `aws_vpc_security_group_egress_rule` resources, but dynamic blocks remain useful when you intentionally manage inline rules.
 
 ## Basic Dynamic Ingress Rules
 
@@ -110,8 +110,8 @@ resource "aws_security_group" "app" {
       description = ingress.value.description
 
       # Use CIDR blocks if provided, otherwise use security group reference
-      cidr_blocks              = length(ingress.value.cidr_blocks) > 0 ? ingress.value.cidr_blocks : null
-      source_security_group_id = ingress.value.source_security_group != "" ? ingress.value.source_security_group : null
+      cidr_blocks     = length(ingress.value.cidr_blocks) > 0 ? ingress.value.cidr_blocks : null
+      security_groups = ingress.value.source_security_group != "" ? [ingress.value.source_security_group] : null
     }
   }
 }
@@ -122,6 +122,16 @@ resource "aws_security_group" "app" {
 For more granular control, define ingress and egress rules independently.
 
 ```hcl
+variable "ingress_rules" {
+  type = list(object({
+    from_port   = number
+    to_port     = number
+    protocol    = string
+    cidr_blocks = list(string)
+    description = string
+  }))
+}
+
 locals {
   # Default egress rules applied to all security groups
   default_egress_rules = [
@@ -172,4 +182,4 @@ resource "aws_security_group" "restricted" {
 
 ## Conclusion
 
-Dynamic blocks for AWS security groups eliminate copy-paste rule definitions and make your security policies data-driven. Store the rule lists in variables or YAML files, and the same security group resource definition handles any number of rules cleanly. This pattern also makes it straightforward to add or remove rules through variable changes rather than HCL edits.
+Dynamic blocks for inline AWS security group rules eliminate copy-paste rule definitions and make your security policies data-driven. Store the rule lists in variables or YAML files, and the same `aws_security_group` resource definition can handle any number of inline rules cleanly. This pattern also makes it straightforward to add or remove rules through variable changes rather than HCL edits. If you are starting fresh, prefer the dedicated `aws_vpc_security_group_ingress_rule` and `aws_vpc_security_group_egress_rule` resources that the AWS provider now recommends.
