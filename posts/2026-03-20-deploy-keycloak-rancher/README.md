@@ -8,7 +8,7 @@ Description: Complete guide to deploying Keycloak identity and access management
 
 ## Introduction
 
-This guide covers deploying ukeycloak on Rancher with production-ready configuration including persistent storage, TLS, and monitoring integration.
+This guide covers deploying Keycloak on Rancher with production-ready configuration including persistent storage, TLS, and monitoring integration.
 
 ## Prerequisites
 
@@ -90,8 +90,8 @@ podDisruptionBudget:
 ## Step 4: Install with Helm
 
 ```bash
-# Install ukeycloak
-helm install keycloak bitnami/keycloak   --namespace keycloak   --values keycloak-values.yaml   --version latest   --wait   --timeout 10m
+# Install Keycloak
+helm install keycloak bitnami/keycloak   --namespace keycloak   --values keycloak-values.yaml   --wait   --timeout 10m
 
 # Verify deployment
 kubectl get pods -n keycloak
@@ -102,7 +102,7 @@ kubectl get svc -n keycloak
 
 ```bash
 # Check all pods are running
-kubectl rollout status deployment/keycloak -n keycloak
+kubectl rollout status statefulset/keycloak -n keycloak
 
 # Get the admin password
 kubectl get secret --namespace keycloak keycloak-credentials   -o jsonpath="{.data.admin-password}" | base64 --decode
@@ -180,7 +180,7 @@ metadata:
 spec:
   scaleTargetRef:
     apiVersion: apps/v1
-    kind: Deployment
+    kind: StatefulSet
     name: keycloak
   minReplicas: 2
   maxReplicas: 8
@@ -202,7 +202,7 @@ spec:
 ## Upgrades
 
 ```bash
-# Upgrade ukeycloak
+# Upgrade Keycloak
 helm upgrade keycloak bitnami/keycloak   --namespace keycloak   --values keycloak-values.yaml   --reuse-values
 
 # Rollback if needed
@@ -211,4 +211,4 @@ helm rollback keycloak 1 --namespace keycloak
 
 ## Conclusion
 
-Deploying ukeycloak on Rancher provides a production-ready environment with persistent storage, TLS termination, and autoscaling. Rancher's unified management interface gives operations teams visibility into ukeycloak's health while the Helm-based installation makes upgrades and configuration changes straightforward.
+Deploying Keycloak on Rancher provides a production-ready environment with persistent storage, TLS termination, and autoscaling. Rancher's unified management interface gives operations teams visibility into Keycloak's health while the Helm-based installation makes upgrades and configuration changes straightforward.
