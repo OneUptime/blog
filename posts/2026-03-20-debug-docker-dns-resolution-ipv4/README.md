@@ -91,7 +91,8 @@ docker exec my-container ss -ulnp | grep 53
 docker exec my-container dig @127.0.0.11 other-container
 
 # Check iptables rules redirecting to Docker's DNS proxy
-sudo iptables -t nat -L OUTPUT -n -v | grep 53
+# (these rules live in the container's network namespace, not on the host)
+sudo nsenter -t $(docker inspect -f '{{.State.Pid}}' my-container) -n iptables -t nat -L OUTPUT -n -v
 ```
 
 ## Step 6: Diagnose ndots Setting
@@ -103,7 +104,7 @@ The `ndots` option in `resolv.conf` controls how many dots a name must have befo
 docker exec my-container cat /etc/resolv.conf | grep ndots
 
 # Reduce ndots for faster resolution in containers
-docker run --dns-opt ndots:1 -d my-image
+docker run --dns-option ndots:1 -d my-image
 ```
 
 ## Common DNS Failure Scenarios
@@ -112,7 +113,7 @@ docker run --dns-opt ndots:1 -d my-image
 |---|---|---|
 | Container names don't resolve | Containers on different networks or on default bridge | Move to same user-defined network |
 | External names fail | Wrong nameserver in resolv.conf | Set `--dns` or fix `daemon.json` |
-| Intermittent resolution failures | `ndots` too high causing extra queries | Set `--dns-opt ndots:1` |
+| Intermittent resolution failures | `ndots` too high causing extra queries | Set `--dns-option ndots:1` |
 | All resolution fails | Docker embedded DNS not running | Restart Docker daemon |
 
 ## Conclusion
