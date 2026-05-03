@@ -85,7 +85,7 @@ Login with `elastic` user and the `ELASTIC_PASSWORD`.
 
 ## First Steps in Kibana
 
-1. **Stack Management → Index Patterns → Create index pattern**
+1. **Stack Management → Data Views → Create data view**
 2. Enter: `logs-*` or `metrics-*` (depends on your data)
 3. Select the time field: `@timestamp`
 4. Go to **Discover** to explore your data
@@ -109,17 +109,18 @@ Kibana includes sample datasets for testing:
 
 ## Securing Kibana Access
 
-For production, put Kibana behind Nginx or Traefik:
+For production, put Kibana behind Nginx or Traefik. Remove the published port mapping so Kibana is only reachable from other containers on the same Docker network — keep `SERVER_HOST` at its default (`0.0.0.0`) so the reverse proxy container can reach it via the service name:
 
 ```yaml
 kibana:
-  environment:
-    # Disable direct port exposure
-    - SERVER_HOST=127.0.0.1    # Only accessible from Nginx
-  # Remove public port binding
+  # Remove the public port binding:
+  # ports:
+  #   - "5601:5601"
+  expose:
+    - "5601"
 ```
 
-Add Nginx proxy host in NPM pointing to `http://kibana:5601`.
+Add an Nginx proxy host in NPM pointing to `http://kibana:5601` on the shared Docker network.
 
 ## Conclusion
 
