@@ -55,19 +55,18 @@ Write `/config/configuration.yml` into the `authelia_config` volume before start
 ```yaml
 # /config/configuration.yml
 
-jwt_secret: a_very_long_random_secret_here   # Change this
-
-default_redirection_url: https://auth.example.com
-
 server:
-  host: 0.0.0.0
-  port: 9091
+  address: 'tcp://0.0.0.0:9091/'
 
 log:
   level: info
 
 totp:
   issuer: example.com
+
+identity_validation:
+  reset_password:
+    jwt_secret: a_very_long_random_secret_here   # Change this
 
 authentication_backend:
   file:
@@ -80,15 +79,20 @@ access_control:
       policy: two_factor
 
 session:
-  name: authelia_session
   secret: another_long_random_secret        # Change this
   expiration: 1h
   inactivity: 5m
+  cookies:
+    - name: authelia_session
+      domain: example.com
+      authelia_url: https://auth.example.com
+      default_redirection_url: https://example.com
   redis:
     host: redis
     port: 6379
 
 storage:
+  encryption_key: a_random_storage_encryption_key   # Change this (min 20 chars)
   local:
     path: /config/db.sqlite3
 
@@ -106,7 +110,7 @@ Create `/config/users_database.yml` to define users:
 users:
   admin:
     displayname: "Admin User"
-    # Generate a password hash: authelia hash-password 'yourpassword'
+    # Generate a password hash: docker run --rm authelia/authelia:latest authelia crypto hash generate argon2 --password 'yourpassword'
     password: "$argon2id$v=19$m=65536,t=1,p=8$..."
     email: admin@example.com
     groups:
