@@ -39,8 +39,10 @@ helm repo update
 Pulsar uses TLS for broker-to-broker and client-to-broker communication.
 
 ```bash
-# Generate self-signed certificates for development
+# Create the namespace first so the secret has a place to live
+kubectl create namespace messaging
 
+# Generate self-signed certificates for development
 openssl req -x509 -newkey rsa:4096 -keyout key.pem \
   -out cert.pem -days 365 -nodes \
   -subj "/CN=pulsar.messaging.svc.cluster.local"
@@ -92,8 +94,6 @@ proxy:
 ## Step 4: Deploy Pulsar
 
 ```bash
-kubectl create namespace messaging
-
 helm install pulsar apache/pulsar \
   --namespace messaging \
   --values pulsar-values.yaml \
