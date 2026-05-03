@@ -79,7 +79,7 @@ if echo "$CURRENT" | grep -q "Env";       Environment = "production"
 then                                      Team        = "platform"   # added
   aws ec2 create-tags --tags ...        }
 else                                  }
-  aws ec2 add-tags --tags ...
+  aws ec2 create-tags --tags ...
 fi                                    tofu apply
                                       # OpenTofu determines what changed
                                       # and makes the minimum API call
