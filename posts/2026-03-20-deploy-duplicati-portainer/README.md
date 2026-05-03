@@ -75,16 +75,22 @@ Open `http://<host>:8200` in your browser. Enter the password you set in `DUPLIC
 
 ## Step 5: Back Up to S3-Compatible Storage
 
-For S3 or S3-compatible destinations (MinIO, Backblaze B2):
+For Amazon S3:
 
 ```text
 Destination URL format:
-s3://s3.amazonaws.com/my-bucket/backups/?auth-username=AKIAXXXXXX&auth-password=YOUR_SECRET
+s3://my-bucket/backups/?auth-username=AKIAXXXXXX&auth-password=YOUR_SECRET&s3-location-constraint=us-east-1
+```
+
+For S3-compatible destinations (MinIO, etc.), add `s3-server-name`:
+
+```text
+s3://my-bucket/backups/?auth-username=ACCESS_KEY&auth-password=SECRET_KEY&s3-server-name=minio.example.com
 ```
 
 For Backblaze B2:
 ```text
-b2://account_id:application_key@bucket-name/path
+b2://bucket-name/path?auth-username=ACCOUNT_ID&auth-password=APPLICATION_KEY
 ```
 
 ## Step 6: Test Restore
@@ -103,9 +109,10 @@ docker exec duplicati duplicati-cli help
 
 # List backups via CLI (requires server to be running)
 docker exec duplicati duplicati-cli list \
-  "s3://s3.amazonaws.com/my-bucket/backups/" \
+  "s3://my-bucket/backups/" \
   --auth-username=AKIAXXXXXX \
   --auth-password=YOUR_SECRET \
+  --s3-location-constraint=us-east-1 \
   --encryption-module=aes \
   --passphrase="your-encryption-passphrase"
 ```
