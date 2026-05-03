@@ -31,7 +31,7 @@ brew install mtr
 mtr -6 2001:4860:4860::8888
 
 # Force IPv6 for a dual-stack hostname
-mtr --ipv6 ipv6.google.com
+mtr --inet6 ipv6.google.com
 
 # Disable DNS resolution for faster results
 mtr -6 -n 2001:4860:4860::8888
