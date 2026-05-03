@@ -64,7 +64,7 @@ TOKEN=$(curl -s -X POST \
 
 # Create a stack with environment variables via API
 curl -X POST \
-  https://localhost:9443/api/stacks \
+  "https://localhost:9443/api/stacks/create/standalone/string?endpointId=1" \
   -H "Authorization: Bearer $TOKEN" \
   -H "Content-Type: application/json" \
   -d '{
@@ -73,9 +73,7 @@ curl -X POST \
     "env": [
       {"name": "DB_PASSWORD", "value": "secretpassword"},
       {"name": "APP_ENV", "value": "production"}
-    ],
-    "type": 2,
-    "endpointId": 1
+    ]
   }' \
   --insecure
 ```
@@ -93,7 +91,7 @@ Configure polling interval in the stack settings:
 STACK_WEBHOOK_URL="https://portainer.example.com/api/stacks/webhooks/<uuid>"
 
 curl -X POST "$STACK_WEBHOOK_URL"
-# Portainer redeploys the stack with --pull-always
+# Portainer redeploys the stack containers with the latest image of the same tag
 ```
 
 ## Fix stack.env Not Found
@@ -102,7 +100,7 @@ curl -X POST "$STACK_WEBHOOK_URL"
 # Error: "stack.env: no such file or directory"
 # Cause: Docker Compose expects a .env file in the same directory as compose.yml
 
-# Fix 1: Upload .env file via Portainer UI (Stack > .env file tab)
+# Fix 1: Add variables in the Portainer UI Environment variables section (use "Load variables from .env file" to upload a .env)
 # Fix 2: Remove ${VARIABLE} references and use Portainer env vars instead
 # Fix 3: Create the .env file in the Git repository alongside compose.yml
 ```
