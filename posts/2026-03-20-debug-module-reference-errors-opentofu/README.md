@@ -15,14 +15,14 @@ Module reference errors occur when a calling module accesses an output that the 
 ```hcl
 Error: Unsupported attribute
   on main.tf line 25, in resource "aws_instance" "web":
-  module.vpc.subnet_id has no attribute "subnet_id".
-  The module "vpc" does not have an output named "subnet_id".
+  25:   subnet_id = module.vpc.subnet_id
+  This object does not have an attribute named "subnet_id".
 
 Error: Missing required argument
   on main.tf line 12, in module "vpc":
   The argument "vpc_cidr" is required, but no definition was found.
 
-Error: Unexpected value
+Error: Unsupported argument
   on main.tf line 14, in module "vpc":
   14:   extra_arg = "value"
   An argument named "extra_arg" is not expected here.
