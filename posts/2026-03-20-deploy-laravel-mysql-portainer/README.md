@@ -13,8 +13,6 @@ Laravel with MySQL is the dominant PHP web framework stack. A proper containeriz
 ## Compose Stack
 
 ```yaml
-version: "3.8"
-
 services:
   mysql:
     image: mysql:8.0
@@ -52,11 +50,16 @@ services:
     volumes:
       - ./app:/var/www/html
     working_dir: /var/www/html
+    # Install required extensions + Composer, run migrations, then start PHP-FPM.
+    # For real deployments, bake these steps into a custom Dockerfile instead.
     command: >
-      sh -c "composer install --no-dev &&
+      sh -c "apk add --no-cache git unzip curl &&
+             docker-php-ext-install pdo_mysql &&
+             curl -sS https://getcomposer.org/installer | php -- --install-dir=/usr/local/bin --filename=composer &&
+             composer install --no-dev --no-interaction &&
              php artisan migrate --force &&
              php artisan config:cache &&
-             php-fpm"
+             exec php-fpm"
 
   nginx:
     image: nginx:alpine
@@ -82,8 +85,11 @@ services:
     volumes:
       - ./app:/var/www/html
     working_dir: /var/www/html
-    # Process queue jobs continuously
-    command: php artisan queue:work --tries=3
+    # Install pdo_mysql, then process queue jobs continuously.
+    # The vendor directory is shared with php-fpm via the bind mount.
+    command: >
+      sh -c "docker-php-ext-install pdo_mysql &&
+             exec php artisan queue:work --tries=3"
 
 volumes:
   mysql_data:
