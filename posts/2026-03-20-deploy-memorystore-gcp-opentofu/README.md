@@ -132,7 +132,7 @@ resource "google_redis_cluster" "main" {
   replica_count = 1
 
   # Node type
-  node_type = "REDIS_STANDARD_SMALL"  # or REDIS_HIGHMEM_MEDIUM/LARGE
+  node_type = "REDIS_STANDARD_SMALL"  # or REDIS_SHARED_CORE_NANO / REDIS_HIGHMEM_MEDIUM / REDIS_HIGHMEM_XLARGE
 
   # TLS
   transit_encryption_mode = "TRANSIT_ENCRYPTION_MODE_SERVER_AUTHENTICATION"
