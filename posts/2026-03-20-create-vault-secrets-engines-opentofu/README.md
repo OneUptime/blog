@@ -28,7 +28,7 @@ resource "vault_mount" "kv" {
 resource "vault_kv_secret_backend_v2" "config" {
   mount                      = vault_mount.kv.path
   max_versions               = 10
-  delete_version_after       = "768h"  # 32 days
+  delete_version_after       = 2764800  # 32 days (in seconds)
   cas_required               = false
 }
 ```
@@ -40,8 +40,8 @@ resource "vault_kv_secret_backend_v2" "config" {
 resource "vault_mount" "pki_root" {
   path                      = "pki"
   type                      = "pki"
-  default_lease_ttl_seconds = 86400    # 1 day
-  max_lease_ttl_seconds     = 87600    # ~10 years
+  default_lease_ttl_seconds = 86400      # 1 day
+  max_lease_ttl_seconds     = 315360000  # ~10 years
 }
 
 resource "vault_pki_secret_backend_root_cert" "root" {
@@ -63,8 +63,8 @@ resource "vault_pki_secret_backend_root_cert" "root" {
 resource "vault_mount" "pki_int" {
   path                      = "pki_int"
   type                      = "pki"
-  default_lease_ttl_seconds = 86400    # 1 day
-  max_lease_ttl_seconds     = 43800    # 5 years
+  default_lease_ttl_seconds = 86400      # 1 day
+  max_lease_ttl_seconds     = 157680000  # 5 years
 }
 
 resource "vault_pki_secret_backend_intermediate_cert_request" "int" {
