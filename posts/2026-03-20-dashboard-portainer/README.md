@@ -30,13 +30,11 @@ networks:
     driver: bridge
 
 volumes:
-  homarr_config:
-  homarr_icons:
-  homarr_data:
+  homarr_appdata:
 
 services:
   homarr:
-    image: ghcr.io/ajnart/homarr:latest
+    image: ghcr.io/homarr-labs/homarr:latest
     container_name: homarr
     restart: unless-stopped
     ports:
@@ -44,14 +42,12 @@ services:
     volumes:
       # Docker socket for container status integration
       - /var/run/docker.sock:/var/run/docker.sock:ro
-      # Persistent storage
-      - homarr_config:/app/data/configs
-      - homarr_icons:/app/public/icons
-      - homarr_data:/data
+      # Persistent storage (database, configs, icons)
+      - homarr_appdata:/appdata
     environment:
       - TZ=America/New_York
-      # Enable authentication
-      - DEFAULT_COLOR_SCHEME=dark
+      # Required: generate with `openssl rand -hex 32`
+      - SECRET_ENCRYPTION_KEY=replace_with_a_64_character_hex_string
     networks:
       - dashboard_network
     labels:
