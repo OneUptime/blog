@@ -41,7 +41,8 @@ sudo journalctl -u strongswan -f
 # /etc/strongswan.d/charon.conf
 charon {
     filelog {
-        /var/log/charon.log {
+        charon {
+            path = /var/log/charon.log
             default = 1
             ike = 3
             knl = 2
