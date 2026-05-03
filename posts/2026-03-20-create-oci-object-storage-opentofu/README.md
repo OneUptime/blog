@@ -96,12 +96,12 @@ resource "oci_objectstorage_preauthrequest" "upload" {
   namespace    = data.oci_objectstorage_namespace.ns.namespace
   bucket       = oci_objectstorage_bucket.data.name
   name         = "upload-par"
-  access_type  = "AnyObjectWrite"
+  access_type  = "AnyObjectReadWrite"
   time_expires = "2026-12-31T00:00:00Z"  # ISO 8601 expiry
 }
 
 output "par_url" {
-  value     = oci_objectstorage_preauthrequest.upload.full_path
+  value     = "https://objectstorage.${var.region}.oraclecloud.com${oci_objectstorage_preauthrequest.upload.access_uri}"
   sensitive = true
 }
 ```
