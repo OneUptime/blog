@@ -13,26 +13,20 @@ Uptime Kuma provides beautiful status pages, multi-type monitoring (HTTP, TCP, D
 ## Prerequisites
 
 - Portainer running
-- At least 256MB RAM
+- Access to a Portainer environment where you can deploy stacks
 
 ## Compose Stack
 
 ```yaml
-version: "3.8"
-
 services:
   uptime-kuma:
-    image: louislam/uptime-kuma:latest
+    image: louislam/uptime-kuma:2
     restart: unless-stopped
     ports:
       - "3001:3001"
     volumes:
       # Persist the SQLite database and configuration
       - uptime_kuma_data:/app/data
-    # Required on some systems for proper DNS resolution inside container
-    dns:
-      - 1.1.1.1
-      - 8.8.8.8
 
 volumes:
   uptime_kuma_data:
@@ -41,8 +35,8 @@ volumes:
 ## Deploying
 
 1. In Portainer go to **Stacks > Add Stack**.
-2. Name it `uptime-kuma`.
-3. Click **Deploy the stack**.
+2. Name it `uptime-kuma` and select **Web editor**.
+3. Paste the compose file above and click **Deploy the stack**.
 
 Open `http://<host>:3001` and create your admin account on first visit.
 
@@ -56,7 +50,7 @@ In the Uptime Kuma UI click **Add New Monitor**:
 | TCP Port | Non-HTTP services | `db-host:5432` |
 | DNS | Name resolution | Verify `A` record for domain |
 | Ping | Host availability | `192.168.1.1` |
-| Docker Container | Local containers | Select from list |
+| Docker Container | Local containers | Mount `/var/run/docker.sock:/var/run/docker.sock` first |
 
 ## Setting Up Notifications
 
