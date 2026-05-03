@@ -36,28 +36,26 @@ global:
 
   ingress:
     class: nginx
-    configureCertmanager: true
+    configureCertmanager: false   # Using our own ClusterIssuer
     annotations:
       cert-manager.io/cluster-issuer: letsencrypt-prod
 
-  postgresql:
+  psql:
     host: postgres.databases.svc.cluster.local
     port: 5432
-    database: gitlab
+    database: gitlabhq_production
     username: gitlab
-    password: gitlabpassword
+    password:
+      useSecret: true
+      secret: gitlab-postgres-password
+      key: postgres-password
 
-  object_store:
-    enabled: true
-    connection:
-      secret: gitlab-s3-connection
-      key: connection
-
-  gitaly:
-    enabled: true
-    persistence:
-      storageClass: longhorn
-      size: 100Gi    # Storage for Git repositories
+  appConfig:
+    object_store:
+      enabled: true
+      connection:
+        secret: gitlab-s3-connection
+        key: connection
 
 certmanager:
   install: false    # Use existing cert-manager
@@ -69,7 +67,7 @@ nginx-ingress:
 postgresql:
   install: false
 
-# Resource limits
+# Resource limits and Gitaly persistence
 gitlab:
   webservice:
     resources:
@@ -83,6 +81,9 @@ gitlab:
         memory: 1Gi
         cpu: 500m
   gitaly:
+    persistence:
+      storageClass: longhorn
+      size: 100Gi    # Storage for Git repositories
     resources:
       requests:
         memory: 600Mi
@@ -96,6 +97,11 @@ kubectl create namespace gitlab
 
 kubectl create secret generic gitlab-s3-connection \
   --from-file=connection=s3-config.yml \
+  -n gitlab
+
+# Create the external PostgreSQL password secret referenced in values
+kubectl create secret generic gitlab-postgres-password \
+  --from-literal=postgres-password=gitlabpassword \
   -n gitlab
 ```
 
