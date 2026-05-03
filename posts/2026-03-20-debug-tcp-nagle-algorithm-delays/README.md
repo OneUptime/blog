@@ -8,7 +8,7 @@ Description: Identify and debug latency issues caused by the TCP Nagle algorithm
 
 ## Introduction
 
-Nagle's algorithm improves network efficiency by coalescing multiple small writes into a single TCP segment. While beneficial for bulk transfers, it introduces up to one RTT of latency for interactive applications that send small amounts of data and then wait for a response. This 40ms "Nagle delay" (triggered by the 200ms delayed ACK on the receiver) can make applications feel sluggish.
+Nagle's algorithm improves network efficiency by coalescing multiple small writes into a single TCP segment. While beneficial for bulk transfers, it introduces up to one RTT of latency for interactive applications that send small amounts of data and then wait for a response. This 40ms "Nagle delay" (triggered by the receiver's delayed ACK, which on Linux defaults to TCP_DELACK_MIN of 40ms and is capped at TCP_DELACK_MAX of 200ms) can make applications feel sluggish.
 
 ## Understanding the Nagle Delay
 
@@ -41,7 +41,7 @@ tshark -r /tmp/nagle_test.pcap -T fields \
   -e frame.time_delta \
   -e tcp.len \
   -Y "tcp.len < 100 and tcp.len > 0" 2>/dev/null | \
-  awk '$1 > 0.030 {print "40ms+ gap:", $1"s", "len="$2"B"}'
+  awk '$1 > 0.040 {print "40ms+ gap:", $1"s", "len="$2"B"}'
 ```
 
 ## Checking if Nagle is Active
@@ -53,7 +53,9 @@ ss -tin state established | grep nodelay
 # No "nodelay" = Nagle is ENABLED (default)
 
 # For a specific process's sockets
-ss -tinp state established | grep "pid=$(pgrep myapp)" | grep nodelay
+# Note: `ss -i` prints the nodelay flag on the indented info line below the
+# connection/PID line, so use `grep -A1` to include that following line.
+ss -tinp state established | grep -A1 "pid=$(pgrep myapp)" | grep nodelay
 ```
 
 ## Testing the Nagle Delay
