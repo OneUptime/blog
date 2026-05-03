@@ -62,7 +62,7 @@ Frame N
    ├─ Destination: 5f00:2:3:0:e001::
    └─ Routing Header (Type 4)
       ├─ Next Header: TCP (6)
-      ├─ Hdr Ext Len: 4  (4×8 + 8 = 40 bytes)
+      ├─ Hdr Ext Len: 6  (6×8 + 8 = 56 bytes)
       ├─ Routing Type: Segment Routing (4)
       ├─ Segments Left: 1
       ├─ Last Entry: 2
