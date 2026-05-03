@@ -80,22 +80,17 @@ The subnet group must include subnets in at least 2 AZs for Multi-AZ to work.
 
 ## Monitoring Failover Events
 
+RDS does not publish a CloudWatch metric for failovers. Instead, subscribe to the `failover` event category via an RDS event subscription that publishes to SNS.
+
 ```hcl
-resource "aws_cloudwatch_metric_alarm" "rds_failover" {
-  alarm_name          = "rds-failover"
-  metric_name         = "RDSFailoverCount"
-  namespace           = "AWS/RDS"
-  period              = 300
-  evaluation_periods  = 1
-  threshold           = 1
-  comparison_operator = "GreaterThanOrEqualToThreshold"
-  statistic           = "Sum"
+resource "aws_db_event_subscription" "rds_failover" {
+  name      = "rds-failover"
+  sns_topic = aws_sns_topic.alerts.arn
 
-  dimensions = {
-    DBInstanceIdentifier = aws_db_instance.main.identifier
-  }
+  source_type = "db-instance"
+  source_ids  = [aws_db_instance.main.identifier]
 
-  alarm_actions = [aws_sns_topic.alerts.arn]
+  event_categories = ["failover", "failure", "availability"]
 }
 ```
 
@@ -116,4 +111,4 @@ aws rds describe-events   --source-identifier main-db   --source-type db-instanc
 
 ## Summary
 
-Set `multi_az = true` on `aws_db_instance` to enable synchronous standby replication in a second AZ. Ensure the `aws_db_subnet_group` includes subnets in at least two AZs. The endpoint address stays the same during failover - RDS updates the DNS record to point to the new primary. Monitor failovers with CloudWatch Events and test periodically with a manual reboot failover.
+Set `multi_az = true` on `aws_db_instance` to enable synchronous standby replication in a second AZ. Ensure the `aws_db_subnet_group` includes subnets in at least two AZs. The endpoint address stays the same during failover - RDS updates the DNS record to point to the new primary. Monitor failovers with an RDS event subscription on the `failover` category and test periodically with a manual reboot failover.
