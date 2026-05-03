@@ -8,78 +8,67 @@ Description: Learn how to manage Kubernetes helm charts with OpenTofu for declar
 
 ## Introduction
 
-Managing Kubernetes resources with OpenTofu lets you declare them in HCL alongside your cloud infrastructure. This guide covers the complete configuration for this Kubernetes resource type.
+Managing Helm charts with OpenTofu lets you declare releases in HCL alongside your cloud infrastructure. This guide covers the complete configuration for the `helm_release` resource.
 
 ## Provider Setup
 
 ```hcl
-provider "kubernetes" {
-  config_path    = "~/.kube/config"
-  config_context = var.kube_context
+provider "helm" {
+  kubernetes {
+    config_path    = "~/.kube/config"
+    config_context = var.kube_context
+  }
 }
 ```
 
-Resource Configuration
+## Resource Configuration
 
 ```hcl
-resource "kubernetes_namespace" "app" {
-  metadata {
-    name = var.namespace
+resource "helm_release" "app" {
+  name             = var.release_name
+  repository       = var.chart_repository
+  chart            = var.chart_name
+  version          = var.chart_version
+  namespace        = var.namespace
+  create_namespace = true
 
-    labels = {
-      app         = var.app_name
-      environment = var.environment
-      managed-by  = "opentofu"
-    }
-  }
-}
+  values = [
+    file("${path.module}/values.yaml")
+  ]
 
-# Example Kubernetes resource for this topic
-
-resource "kubernetes_deployment" "app" {
-  metadata {
-    name      = var.app_name
-    namespace = kubernetes_namespace.app.metadata[0].name
+  set {
+    name  = "image.repository"
+    value = var.image_repository
   }
 
-  spec {
-    replicas = var.replica_count
+  set {
+    name  = "image.tag"
+    value = var.image_tag
+  }
 
-    selector {
-      match_labels = {
-        app = var.app_name
-      }
-    }
+  set {
+    name  = "replicaCount"
+    value = var.replica_count
+  }
 
-    template {
-      metadata {
-        labels = {
-          app = var.app_name
-        }
-      }
+  set {
+    name  = "resources.requests.cpu"
+    value = var.cpu_request
+  }
 
-      spec {
-        container {
-          name  = var.app_name
-          image = "${var.image_repository}:${var.image_tag}"
+  set {
+    name  = "resources.requests.memory"
+    value = var.memory_request
+  }
 
-          port {
-            container_port = var.container_port
-          }
+  set {
+    name  = "resources.limits.cpu"
+    value = var.cpu_limit
+  }
 
-          resources {
-            requests = {
-              cpu    = var.cpu_request
-              memory = var.memory_request
-            }
-            limits = {
-              cpu    = var.cpu_limit
-              memory = var.memory_limit
-            }
-          }
-        }
-      }
-    }
+  set {
+    name  = "resources.limits.memory"
+    value = var.memory_limit
   }
 }
 ```
@@ -87,20 +76,66 @@ resource "kubernetes_deployment" "app" {
 ## Variables
 
 ```hcl
-variable "namespace"          { type = string }
-variable "app_name"           { type = string }
-variable "environment"        { type = string }
-variable "kube_context"       { type = string; default = "default" }
-variable "replica_count"      { type = number; default = 2 }
-variable "image_repository"   { type = string }
-variable "image_tag"          { type = string; default = "latest" }
-variable "container_port"     { type = number; default = 8080 }
-variable "cpu_request"        { type = string; default = "100m" }
-variable "memory_request"     { type = string; default = "128Mi" }
-variable "cpu_limit"          { type = string; default = "500m" }
-variable "memory_limit"       { type = string; default = "512Mi" }
+variable "kube_context" {
+  type    = string
+  default = "default"
+}
+
+variable "release_name" {
+  type = string
+}
+
+variable "chart_repository" {
+  type = string
+}
+
+variable "chart_name" {
+  type = string
+}
+
+variable "chart_version" {
+  type = string
+}
+
+variable "namespace" {
+  type = string
+}
+
+variable "image_repository" {
+  type = string
+}
+
+variable "image_tag" {
+  type    = string
+  default = "latest"
+}
+
+variable "replica_count" {
+  type    = number
+  default = 2
+}
+
+variable "cpu_request" {
+  type    = string
+  default = "100m"
+}
+
+variable "memory_request" {
+  type    = string
+  default = "128Mi"
+}
+
+variable "cpu_limit" {
+  type    = string
+  default = "500m"
+}
+
+variable "memory_limit" {
+  type    = string
+  default = "512Mi"
+}
 ```
 
 ## Conclusion
 
-Kubernetes resources managed with OpenTofu benefit from the same plan/apply workflow as cloud infrastructure. Always set resource requests and limits, use namespaces for isolation, and leverage OpenTofu's ability to reference Kubernetes outputs in subsequent cloud resource configurations.
+Helm releases managed with OpenTofu benefit from the same plan/apply workflow as cloud infrastructure. Pin chart versions for reproducibility, set resource requests and limits via `set` blocks or a `values.yaml` file, and leverage OpenTofu's ability to reference Helm release outputs in subsequent cloud resource configurations.
