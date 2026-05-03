@@ -66,7 +66,7 @@ resource "azurerm_kubernetes_cluster" "main" {
     os_disk_type         = "Ephemeral"
     vnet_subnet_id       = var.node_subnet_id
     type                 = "VirtualMachineScaleSets"
-    enable_auto_scaling  = true
+    auto_scaling_enabled = true
     min_count            = 2
     max_count            = 5
     only_critical_addons_enabled = true  # Taint: CriticalAddonsOnly
@@ -96,7 +96,6 @@ resource "azurerm_kubernetes_cluster" "main" {
   }
 
   azure_active_directory_role_based_access_control {
-    managed                = true
     azure_rbac_enabled     = true
     admin_group_object_ids = [var.aks_admin_group_id]
   }
@@ -121,10 +120,10 @@ resource "azurerm_kubernetes_cluster_node_pool" "general" {
   vm_size               = "Standard_D4s_v3"
   vnet_subnet_id        = var.node_subnet_id
 
-  enable_auto_scaling = true
-  min_count           = var.environment == "production" ? 2 : 1
-  max_count           = 10
-  node_count          = var.environment == "production" ? 3 : 1
+  auto_scaling_enabled = true
+  min_count            = var.environment == "production" ? 2 : 1
+  max_count            = 10
+  node_count           = var.environment == "production" ? 3 : 1
 
   os_disk_type = "Ephemeral"
 
@@ -148,10 +147,10 @@ resource "azurerm_kubernetes_cluster_node_pool" "spot" {
   eviction_policy = "Delete"
   spot_max_price  = -1  # Pay market price
 
-  enable_auto_scaling = true
-  min_count           = 0
-  max_count           = 20
-  node_count          = 1
+  auto_scaling_enabled = true
+  min_count            = 0
+  max_count            = 20
+  node_count           = 1
 
   node_labels = {
     "kubernetes.azure.com/scalesetpriority" = "spot"
@@ -166,10 +165,10 @@ resource "azurerm_kubernetes_cluster_node_pool" "gpu" {
   vm_size               = "Standard_NC6s_v3"
   vnet_subnet_id        = var.node_subnet_id
 
-  enable_auto_scaling = true
-  min_count           = 0
-  max_count           = 5
-  node_count          = 0
+  auto_scaling_enabled = true
+  min_count            = 0
+  max_count            = 5
+  node_count           = 0
 
   node_labels = {
     "workload-type"           = "gpu"
