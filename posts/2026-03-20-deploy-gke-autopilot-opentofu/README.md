@@ -162,14 +162,16 @@ resource "kubernetes_deployment" "app" {
     template {
       metadata {
         labels = { app = "my-app" }
-        annotations = {
-          # Request Autopilot Spot pods for cost savings
-          "autopilot.gke.io/spot" = "true"
-        }
       }
 
       spec {
         service_account_name = var.k8s_service_account
+
+        # Request Autopilot Spot Pods for cost savings.
+        # GKE automatically applies the matching toleration on Autopilot.
+        node_selector = {
+          "cloud.google.com/gke-spot" = "true"
+        }
 
         container {
           name  = "app"
@@ -213,6 +215,6 @@ output "workload_identity_pool" {
 
 - Use Workload Identity instead of service account keys - Autopilot enforces this by default.
 - Set explicit resource requests on all containers - Autopilot uses these to provision the right node size and to bill correctly.
-- Use `autopilot.gke.io/spot = "true"` annotations on non-critical workloads to reduce costs by up to 70%.
+- Use the `cloud.google.com/gke-spot = "true"` nodeSelector on non-critical workloads to run them as Spot Pods and reduce costs by up to 70%.
 - Enable Binary Authorization for production clusters to ensure only verified container images run.
 - Choose a regional cluster (specify region, not zone) for automatic multi-zone distribution without extra configuration.
