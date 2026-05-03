@@ -63,8 +63,8 @@ metrics:
     namespace: monitoring
 
 # Pod disruption budget - keep at least 2 replicas available
-podDisruptionBudget:
-  enabled: true
+pdb:
+  create: true
   minAvailable: 2
 ```
 
@@ -111,7 +111,7 @@ kubectl get secret mongodb \
 ```bash
 # Connect via kubectl exec
 kubectl exec -it mongodb-0 -n mongodb -- \
-  mongosh --username root --password $(
+  mongosh admin --authenticationDatabase admin --username root --password $(
     kubectl get secret mongodb -n mongodb \
     -o jsonpath='{.data.mongodb-root-password}' | base64 -d
   )
@@ -126,7 +126,8 @@ kubectl exec -it mongodb-0 -n mongodb -- \
 
 ```bash
 kubectl exec -it mongodb-0 -n mongodb -- \
-  mongosh --username root --password <root-password> \
+  mongosh admin --authenticationDatabase admin \
+  --username root --password <root-password> \
   --eval "rs.status()"
 
 # Expected output shows:
@@ -180,9 +181,9 @@ spec:
             - name: backup
               image: bitnami/mongodb:latest
               command:
-                - mongodump
-                - --uri=mongodb://root:$(MONGODB_ROOT_PASSWORD)@mongodb:27017/admin
-                - --out=/backup/$(date +%Y%m%d)
+                - /bin/sh
+                - -c
+                - mongodump --uri="mongodb://root:${MONGODB_ROOT_PASSWORD}@mongodb:27017/admin" --out=/backup/$(date +%Y%m%d)
               env:
                 - name: MONGODB_ROOT_PASSWORD
                   valueFrom:
