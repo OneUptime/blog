@@ -50,7 +50,7 @@ flowchart LR
     A[tofu apply] --> B[Create Resource]
     B --> C{Resource Created?}
     C -->|Yes| D[Run creation-time provisioners]
-    C -->|No| E[Mark resource as tainted]
+    C -->|No| E[Error: creation failed]
     D --> F{Provisioner success?}
     F -->|Yes| G[Resource is ready]
     F -->|No| H[Mark resource as tainted]
