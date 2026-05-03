@@ -21,15 +21,15 @@ resource "azurerm_kubernetes_cluster" "main" {
   kubernetes_version  = var.kubernetes_version
 
   default_node_pool {
-    name                = "system"
-    node_count          = 1
-    vm_size             = "Standard_D2s_v3"
-    os_disk_size_gb     = 128
-    vnet_subnet_id      = var.node_subnet_id
-    type                = "VirtualMachineScaleSets"
-    enable_auto_scaling = true
-    min_count           = 1
-    max_count           = 3
+    name                 = "system"
+    node_count           = 1
+    vm_size              = "Standard_D2s_v3"
+    os_disk_size_gb      = 128
+    vnet_subnet_id       = var.node_subnet_id
+    type                 = "VirtualMachineScaleSets"
+    auto_scaling_enabled = true
+    min_count            = 1
+    max_count            = 3
 
     upgrade_settings {
       max_surge = "10%"
@@ -48,7 +48,6 @@ resource "azurerm_kubernetes_cluster" "main" {
   }
 
   azure_active_directory_role_based_access_control {
-    managed                = true
     azure_rbac_enabled     = true
     admin_group_object_ids = var.aks_admin_group_ids
   }
@@ -72,7 +71,7 @@ resource "azurerm_kubernetes_cluster_node_pool" "apps" {
   kubernetes_cluster_id = azurerm_kubernetes_cluster.main.id
   vm_size               = "Standard_D4s_v3"
   vnet_subnet_id        = var.node_subnet_id
-  enable_auto_scaling   = true
+  auto_scaling_enabled  = true
   min_count             = 2
   max_count             = 10
 
@@ -100,10 +99,22 @@ resource "azurerm_role_assignment" "aks_acr_pull" {
 ## Outputs
 
 ```hcl
-output "cluster_name"           { value = azurerm_kubernetes_cluster.main.name }
-output "kube_config"            { value = azurerm_kubernetes_cluster.main.kube_config_raw; sensitive = true }
-output "cluster_identity"       { value = azurerm_kubernetes_cluster.main.identity[0].principal_id }
-output "oidc_issuer_url"        { value = azurerm_kubernetes_cluster.main.oidc_issuer_url }
+output "cluster_name" {
+  value = azurerm_kubernetes_cluster.main.name
+}
+
+output "kube_config" {
+  value     = azurerm_kubernetes_cluster.main.kube_config_raw
+  sensitive = true
+}
+
+output "cluster_identity" {
+  value = azurerm_kubernetes_cluster.main.identity[0].principal_id
+}
+
+output "oidc_issuer_url" {
+  value = azurerm_kubernetes_cluster.main.oidc_issuer_url
+}
 ```
 
 ## Conclusion
