@@ -122,8 +122,16 @@ resource "aws_route_table_association" "private" {
 # variables.tf
 variable "name"        { type = string }
 variable "environment" { type = string }
-variable "vpc_cidr"    { type = string; default = "10.0.0.0/16" }
-variable "az_count"    { type = number; default = 2 }
+
+variable "vpc_cidr" {
+  type    = string
+  default = "10.0.0.0/16"
+}
+
+variable "az_count" {
+  type    = number
+  default = 2
+}
 
 # outputs.tf
 output "vpc_id" {
