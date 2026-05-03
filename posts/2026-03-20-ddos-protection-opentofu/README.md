@@ -142,7 +142,7 @@ resource "google_compute_security_policy" "ddos" {
 
   # Throttle at edge before reaching backends
   rule {
-    action   = "throttle"
+    action   = "rate_based_ban"
     priority = 1000
 
     match {
