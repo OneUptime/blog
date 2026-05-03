@@ -53,8 +53,12 @@ systemctl restart systemd-networkd
 
 ```bash
 # "Failed to open configuration file"
+# Cause: File is unreadable (permissions) or path does not exist
+# Fix: Check file mode, ownership, and that the path is correct
+
+# "Failed to parse" / "Invalid section header"
 # Cause: Syntax error in .network or .netdev file
-# Fix: Check file syntax with networkctl verify
+# Fix: Reload and watch the journal for the offending line number
 
 # "Could not find matching network"
 # Cause: No .network file matches the interface
@@ -71,16 +75,20 @@ systemctl restart systemd-networkd
 
 ## Validating Configuration Files
 
+systemd-networkd does not ship a standalone "verify" subcommand. To validate
+`.network` and `.netdev` files, reload them and watch the journal — the parser
+prints the file and line number for any syntax errors.
+
 ```bash
-# Check all .network and .netdev files for syntax errors
-networkctl verify
+# Reload config files and watch for parse errors
+networkctl reload
+journalctl -u systemd-networkd -n 50 --no-pager
 
-# Output shows warnings and errors:
-# /etc/systemd/network/10-eth0.network: OK
-# /etc/systemd/network/bad.network: [Match] section is missing
+# Show the merged configuration that applies to an interface
+networkctl cat eth0
 
-# Check a specific file
-networkctl verify /etc/systemd/network/10-eth0.network
+# Show all drop-ins and the resulting effective config
+networkctl status eth0
 ```
 
 ## Viewing Interface Status
@@ -98,9 +106,9 @@ networkctl list
 # Show detailed status for one interface
 networkctl status eth0
 
-# Degraded: interface is up but missing some configuration (e.g., no default route)
-# Configuring: still waiting for DHCP
-# Configured: fully configured
+# Operational "degraded": link has carrier and a link-local address, but no routable address
+# Setup "configuring": configuration is still being retrieved or applied (e.g., waiting for DHCP)
+# Setup "configured": link has been configured successfully
 ```
 
 ## Reloading Without Restart
@@ -116,8 +124,11 @@ networkctl reconfigure eth0
 ## Correlating with Kernel Messages
 
 ```bash
-# View kernel network events alongside networkd logs
-journalctl -k -u systemd-networkd -b | grep -E "eth0|bond|vxlan"
+# View kernel and networkd entries together. Use "+" so journalctl
+# treats the two match groups as a logical OR (AND would yield nothing,
+# since kernel records are not tagged with a systemd unit).
+journalctl -b _TRANSPORT=kernel + _SYSTEMD_UNIT=systemd-networkd.service \
+  | grep -E "eth0|bond|vxlan"
 
 # Check for kernel errors
 dmesg | grep -E "eth0|nf_|bond" | tail -20
@@ -127,5 +138,5 @@ dmesg | grep -E "eth0|nf_|bond" | tail -20
 
 - `journalctl -u systemd-networkd -f` provides real-time network configuration log monitoring.
 - Enable debug logging with `SYSTEMD_LOG_LEVEL=debug` in a systemd override file to see detailed DHCP and routing events.
-- `networkctl verify` validates all `.network` and `.netdev` files for syntax errors before applying them.
-- `networkctl list` shows operational status; `degraded` means the interface is up but not fully configured.
+- To validate `.network` and `.netdev` files, run `networkctl reload` and watch the journal — there is no standalone verify subcommand.
+- `networkctl list` shows operational status; `degraded` means the interface has carrier and a link-local address but no routable address.
