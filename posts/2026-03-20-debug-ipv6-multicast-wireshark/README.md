@@ -48,10 +48,10 @@ pim.type == 1
 pim.type == 3
 
 # Show traffic to a specific IPv6 multicast group
-ipv6.dst == ff3e::db8:stream
+ipv6.dst == ff3e::db8:1
 
 # Show all IPv6 multicast traffic
-ipv6.dst matches "^ff"
+ipv6.dst == ff00::/8
 
 # Show NDP (Neighbor Discovery) including solicited-node multicast
 icmpv6.type == 135 or icmpv6.type == 136
@@ -74,7 +74,7 @@ In Wireshark, MLDv2 Version 2 Membership Reports (type 143) contain group record
 
 ```wireshark
 # Filter for MLDv2 reports with a specific group
-icmpv6.type == 143 and ipv6.dst == ff3e::db8:stream
+icmpv6.type == 143 and ipv6.dst == ff3e::db8:1
 
 # Filter for MLDv2 reports in INCLUDE mode (SSM joins)
 icmpv6.type == 143 and icmpv6.mldr.mar.record_type == 1
@@ -112,17 +112,17 @@ pim.type == 3
 
 ```wireshark
 # Follow a specific multicast stream
-ipv6.dst == ff3e::db8:stream and ip6.hop_limit > 1
+ipv6.dst == ff3e::db8:1 and ipv6.hlim > 1
 
 # Check for multicast traffic that isn't forwarded (TTL/hop limit = 1)
-ipv6.dst matches "^ff" and ipv6.hlim == 1
+ipv6.dst == ff00::/8 and ipv6.hlim == 1
 
 # Find multicast traffic arriving with wrong scope
 # (e.g., link-local multicast arriving on a routed interface)
-ipv6.dst matches "^ff02" and ipv6.hlim > 1
+ipv6.dst == ff02::/16 and ipv6.hlim > 1
 
 # Detect multicast flooding (unexpected ports receiving multicast)
-ipv6.dst == ff3e::db8:stream
+ipv6.dst == ff3e::db8:1
 ```
 
 ## Wireshark Statistics for Multicast Analysis
@@ -167,4 +167,4 @@ Create a Wireshark profile for IPv6 multicast:
 
 ## Summary
 
-Wireshark's display filter language makes IPv6 multicast debugging efficient. Use `icmpv6.type == 130/131/132/143` for MLD messages, `pim` for PIM protocol, and `ipv6.dst matches "^ff"` for all multicast traffic. Analyze MLDv2 group records to understand source-specific joins, and use tshark for scripted multicast flow analysis.
+Wireshark's display filter language makes IPv6 multicast debugging efficient. Use `icmpv6.type == 130/131/132/143` for MLD messages, `pim` for PIM protocol, and `ipv6.dst == ff00::/8` for all multicast traffic. Analyze MLDv2 group records to understand source-specific joins, and use tshark for scripted multicast flow analysis.
