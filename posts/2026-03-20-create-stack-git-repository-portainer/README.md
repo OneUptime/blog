@@ -64,18 +64,16 @@ TOKEN=$(curl -s -X POST \
 
 # Create a stack with environment variables via API
 curl -X POST \
-  https://localhost:9443/api/stacks \
+  "https://localhost:9443/api/stacks/create/standalone/string?endpointId=1" \
   -H "Authorization: Bearer $TOKEN" \
   -H "Content-Type: application/json" \
   -d '{
-    "name": "myapp",
-    "stackFileContent": "version: \"3.8\"\nservices:\n  web:\n    image: nginx:latest",
-    "env": [
+    "Name": "myapp",
+    "StackFileContent": "services:\n  web:\n    image: nginx:latest",
+    "Env": [
       {"name": "DB_PASSWORD", "value": "secretpassword"},
       {"name": "APP_ENV", "value": "production"}
-    ],
-    "type": 2,
-    "endpointId": 1
+    ]
   }' \
   --insecure
 ```
