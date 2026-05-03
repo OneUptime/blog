@@ -34,7 +34,7 @@ chmod 600 /opt/portainer/certs/portainer.key
 
 ## Start Portainer with Custom SSL Certificate
 
-Mount the certs directory and pass the `--ssl`, `--sslcert`, and `--sslkey` flags:
+Mount the certs directory and pass the `--sslcert` and `--sslkey` flags:
 
 ```bash
 # Run Portainer with custom SSL certificate
@@ -47,7 +47,6 @@ docker run -d \
   -v portainer_data:/data \
   -v /opt/portainer/certs:/certs:ro \
   portainer/portainer-ce:latest \
-  --ssl \
   --sslcert /certs/portainer.crt \
   --sslkey /certs/portainer.key
 ```
@@ -71,7 +70,6 @@ services:
       - portainer_data:/data
       - /opt/portainer/certs:/certs:ro    # Mount certs read-only
     command:
-      - --ssl
       - --sslcert
       - /certs/portainer.crt
       - --sslkey
