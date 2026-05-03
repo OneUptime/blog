@@ -33,8 +33,8 @@ services:
       - duplicati-config:/config
       # Source data to back up - adjust to your actual data paths
       - /opt/appdata:/source:ro
-      # Temporary backup working directory
-      - /tmp/duplicati-backups:/backups
+      # Local backup destination (optional - only needed if backing up to a local directory)
+      - /opt/duplicati-backups:/backups
     restart: unless-stopped
 
 volumes:
@@ -76,7 +76,7 @@ environment:
   - PUID=1000
   - PGID=1000
   - TZ=UTC
-  - DUPLICATI_WEBSERVICE_PASSWORD=your-ui-password
+  - DUPLICATI__WEBSERVICE_PASSWORD=your-ui-password
 ```
 
 Pass S3 credentials as Duplicati advanced options or use an IAM instance role instead of static keys.
