@@ -22,12 +22,13 @@ services:
       - ELASTIC_PASSWORD=${ELASTIC_PASSWORD}
     volumes:
       - ./logstash-pipeline:/usr/share/logstash/pipeline:ro
-      - ./logstash-config:/usr/share/logstash/config:ro
+      - ./logstash-config/logstash.yml:/usr/share/logstash/config/logstash.yml:ro
       - logstash_data:/usr/share/logstash/data
     ports:
-      - "5000:5000/tcp"     # Beats input
-      - "5000:5000/udp"
-      - "5044:5044"         # Filebeat input
+      - "5000:5000/tcp"     # TCP JSON input
+      - "5000:5000/udp"     # UDP JSON input
+      - "5044:5044"         # Beats input (Filebeat)
+      - "12201:12201/udp"   # GELF input
       - "9600:9600"         # Logstash monitoring API
     networks:
       - elastic
@@ -52,7 +53,7 @@ input {
     port => 5044
   }
 
-  # Also accept direct syslog input
+  # Accept JSON over TCP/UDP
   tcp {
     port => 5000
     codec => json_lines
@@ -61,6 +62,11 @@ input {
   udp {
     port => 5000
     codec => json
+  }
+
+  # Receive GELF logs (e.g. from Docker's gelf logging driver)
+  gelf {
+    port => 12201
   }
 }
 
@@ -113,7 +119,7 @@ Create `logstash-config/logstash.yml`:
 
 ```yaml
 http.host: "0.0.0.0"
-xpack.monitoring.enabled: false    # Disable if no X-Pack monitoring
+monitoring.enabled: false    # Disable legacy X-Pack monitoring collection
 path.config: /usr/share/logstash/pipeline
 ```
 
@@ -127,7 +133,7 @@ services:
     logging:
       driver: "gelf"
       options:
-        gelf-address: "udp://logstash:5000"
+        gelf-address: "udp://logstash:12201"
         tag: "myapp"
 ```
 
