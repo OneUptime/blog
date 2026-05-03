@@ -132,10 +132,8 @@ resource "aws_ecs_service" "app" {
     container_port   = var.container_port
   }
 
-  deployment_configuration {
-    minimum_healthy_percent = 100
-    maximum_percent         = 200
-  }
+  deployment_minimum_healthy_percent = 100
+  deployment_maximum_percent         = 200
 
   # Allow ECS to update the task definition revision
   lifecycle {
