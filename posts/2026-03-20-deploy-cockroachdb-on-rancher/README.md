@@ -81,14 +81,14 @@ kubectl get pods -n cockroachdb -w
 kubectl describe statefulset cockroachdb -n cockroachdb
 ```
 
-## Step 5: Initialize the Cluster
+## Step 5: Verify Cluster Initialization
 
-After pods are running, initialize the CockroachDB cluster.
+The Helm chart automatically runs a post-install Job (named `cockroachdb-init`) that initializes the cluster when `statefulset.replicas` is greater than 1. Confirm it completed successfully.
 
 ```bash
-# Run the cluster initialization job
-kubectl create -f https://raw.githubusercontent.com/cockroachdb/helm-charts/master/cockroachdb/templates/job.init.yaml \
-  --namespace cockroachdb
+# Check that the init job finished
+kubectl get jobs -n cockroachdb
+kubectl logs -l job-name=cockroachdb-init -n cockroachdb
 ```
 
 ## Step 6: Access the Admin UI
@@ -98,14 +98,15 @@ CockroachDB includes a web-based admin console. Port-forward to access it locall
 ```bash
 # Forward port 8080 to access the admin UI
 kubectl port-forward svc/cockroachdb-public 8080 -n cockroachdb
-# Open http://localhost:8080 in your browser
+# Open https://localhost:8080 in your browser (TLS is enabled)
 ```
 
 ## Step 7: Create a Database User
 
 ```bash
-# Connect to the running CockroachDB pod
-kubectl exec -it cockroachdb-0 -n cockroachdb -- ./cockroach sql --insecure
+# Connect to the running CockroachDB pod (TLS is enabled, so use --certs-dir)
+kubectl exec -it cockroachdb-0 -n cockroachdb -- \
+  ./cockroach sql --certs-dir=/cockroach/cockroach-certs --host=cockroachdb-public
 
 -- Inside the SQL shell, create a database and user
 CREATE DATABASE myapp;
