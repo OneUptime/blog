@@ -110,7 +110,7 @@ provision_team(client, 'production', 'payments-team', [
 ```bash
 #!/bin/bash
 # cleanup_stale_resources.sh
-# Remove pods that have been in failed/completed state for >24h
+# Delete completed jobs older than 24h and pods in Failed phase across all namespaces
 
 NAMESPACES=$(kubectl get namespaces -o jsonpath='{.items[*].metadata.name}')
 
@@ -128,7 +128,8 @@ for ns in $NAMESPACES; do
     fi
   done
 
-  # Delete crash-looping pods
+  # Delete pods in Failed phase (note: CrashLoopBackOff pods stay in Running phase
+  # and will not match this selector — handle those separately if needed)
   kubectl get pods -n "$ns" --field-selector=status.phase=Failed \
     -o jsonpath='{.items[*].metadata.name}' | \
   xargs -r kubectl delete pod -n "$ns"
