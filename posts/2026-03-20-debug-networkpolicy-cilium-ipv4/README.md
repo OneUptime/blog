@@ -25,19 +25,21 @@ cilium connectivity test
 
 ## Step 2: Check Endpoint Policy Status
 
+In Cilium 1.15 and later, the in-agent CLI is `cilium-dbg` (it was renamed from `cilium`).
+
 ```bash
 # List all Cilium endpoints (one per pod)
 kubectl exec -n kube-system $(kubectl get pods -n kube-system -l k8s-app=cilium -o name | head -1) \
-  -- cilium endpoint list
+  -- cilium-dbg endpoint list
 
 # Get detailed policy info for a specific endpoint
 # First get the endpoint ID (number shown in endpoint list)
 kubectl exec -n kube-system <cilium-pod-on-target-node> \
-  -- cilium endpoint get <ENDPOINT_ID>
+  -- cilium-dbg endpoint get <ENDPOINT_ID>
 
 # Check allowed identities and policies
 kubectl exec -n kube-system <cilium-pod-on-target-node> \
-  -- cilium policy get
+  -- cilium-dbg policy get
 ```
 
 ## Step 3: Use Hubble for Real-Time Flow Observation
@@ -61,27 +63,25 @@ hubble observe --from-pod production/my-app --follow
 hubble observe --to-pod production/database --follow
 
 # Filter by IPv4 address
-hubble observe --ip-src 10.244.1.5 --follow
+hubble observe --from-ip 10.244.1.5 --follow
 ```
 
-## Step 4: Policy Trace
+## Step 4: Inspect Policy Selectors and Identities
 
-Cilium can simulate what would happen to a specific packet:
+The `cilium policy trace` command was removed in modern Cilium releases. To understand which identities a policy applies to, inspect the cached selector-to-identity mapping. Combined with `hubble observe` from Step 3, this lets you verify policy enforcement between two workloads:
 
 ```bash
-# Trace traffic from pod A to pod B
+# Show cached selectors and the identities they currently match
 kubectl exec -n kube-system <cilium-pod> \
-  -- cilium policy trace \
-  --src-k8s-pod production:my-app \
-  --dst-k8s-pod production:database \
-  --dport 5432 \
-  --protocol tcp
+  -- cilium-dbg policy selectors
 
-# Expected output shows: ALLOWED or DENIED with reason
-# Example:
-# Final verdict: ALLOWED
-# Resolving egress policy for source endpoint 1234
-# Resolving ingress policy for destination endpoint 5678
+# List all known identities and their labels
+kubectl exec -n kube-system <cilium-pod> \
+  -- cilium-dbg identity list
+
+# Inspect a specific identity (the IDs appear in endpoint list output)
+kubectl exec -n kube-system <cilium-pod> \
+  -- cilium-dbg identity get <IDENTITY_ID>
 ```
 
 ## Step 5: Check Cilium NetworkPolicy Translation
@@ -89,11 +89,11 @@ kubectl exec -n kube-system <cilium-pod> \
 ```bash
 # View how Kubernetes NetworkPolicies are translated to Cilium policies
 kubectl exec -n kube-system <cilium-pod> \
-  -- cilium policy get
+  -- cilium-dbg policy get
 
 # View the policy for a specific endpoint
 kubectl exec -n kube-system <cilium-pod-on-node> \
-  -- cilium endpoint get <ENDPOINT_ID> -o json | \
+  -- cilium-dbg endpoint get <ENDPOINT_ID> -o json | \
   jq '.status.policy'
 ```
 
@@ -102,11 +102,11 @@ kubectl exec -n kube-system <cilium-pod-on-node> \
 ```bash
 # Monitor dropped packets in real time
 kubectl exec -n kube-system <cilium-pod> \
-  -- cilium monitor --type drop
+  -- cilium-dbg monitor --type drop
 
 # Filter for specific pod
 kubectl exec -n kube-system <cilium-pod> \
-  -- cilium monitor --related-to <ENDPOINT_ID>
+  -- cilium-dbg monitor --related-to <ENDPOINT_ID>
 
 # Output shows:
 # xx drop (Policy denied) flow 0x0 to endpoint 1234, ...
