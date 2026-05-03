@@ -25,8 +25,10 @@ version: "3.8"
 
 services:
   jupyterhub:
-    image: jupyterhub/jupyterhub:4.0
-    command: jupyterhub -f /srv/jupyterhub/jupyterhub_config.py
+    image: jupyterhub/jupyterhub:5.0
+    # The base image does not include DockerSpawner or OAuthenticator,
+    # so install them before launching the hub.
+    command: sh -c "pip install --no-cache-dir dockerspawner oauthenticator && jupyterhub -f /srv/jupyterhub/jupyterhub_config.py"
     volumes:
       # Configuration file
       - /opt/jupyterhub/jupyterhub_config.py:/srv/jupyterhub/jupyterhub_config.py:ro
@@ -63,7 +65,8 @@ from dockerspawner import DockerSpawner
 c.JupyterHub.spawner_class = DockerSpawner
 
 # User notebook image - customize with your required libraries
-c.DockerSpawner.image = "jupyter/datascience-notebook:latest"
+# The Jupyter Docker Stacks images are now published to quay.io
+c.DockerSpawner.image = "quay.io/jupyter/datascience-notebook:latest"
 
 # Persist user home directories
 c.DockerSpawner.notebook_dir = "/home/jovyan/work"
@@ -95,7 +98,7 @@ Build a custom image with your team's required libraries:
 
 ```dockerfile
 # datascience-custom.Dockerfile
-FROM jupyter/datascience-notebook:latest
+FROM quay.io/jupyter/datascience-notebook:latest
 
 # Install additional Python packages for your team
 RUN pip install --no-cache-dir \
