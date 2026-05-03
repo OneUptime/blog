@@ -24,7 +24,7 @@ The default Corefile looks like:
 .:53 {
     errors
     health {
-       laiveness
+       lameduck 5s
     }
     ready
     kubernetes cluster.local in-addr.arpa ip6.arpa {
