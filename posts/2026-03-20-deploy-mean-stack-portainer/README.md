@@ -67,10 +67,7 @@ const app = express();
 app.use(express.json());
 
 // Connect to MongoDB using the container name
-mongoose.connect(process.env.MONGODB_URI, {
-  useNewUrlParser: true,
-  useUnifiedTopology: true,
-});
+mongoose.connect(process.env.MONGODB_URI);
 
 // Health check endpoint
 app.get('/api/health', (req, res) => {
