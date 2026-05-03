@@ -102,8 +102,11 @@ import requests
 # Set before making requests
 os.environ['SSLKEYLOGFILE'] = '/tmp/tls-keys.log'
 
-# Note: Python's ssl module doesn't honor SSLKEYLOGFILE by default
-# Use requests with custom SSL context or patch ssl module
+# Python 3.8+ ssl.create_default_context() honors SSLKEYLOGFILE automatically.
+# requests >= 2.30 (with urllib3 >= 2.0) also reads SSLKEYLOGFILE in
+# create_urllib3_context(), so no custom SSL context is needed on modern stacks.
+# Legacy urllib3 1.x does NOT honor it - upgrade urllib3 or build a custom
+# SSLContext and set context.keylog_filename explicitly.
 
 # Alternative: Use mitmproxy for Python request interception
 # pip install mitmproxy
@@ -141,15 +144,15 @@ Specific API calls:
 http2.headers.path contains "/api/"
 
 Response codes:
-http2.headers.status == "200"
-http2.headers.status == "500"
+http2.headers.status == 200
+http2.headers.status == 500
 
 Request bodies (POST data):
 http2 and http2.type == 0    → DATA frames containing body
 
-Timing analysis:
-Statistics → HTTP2 → Requests
-Shows request/response pairs with timing
+Frame-type breakdown:
+Statistics → HTTP2
+Shows counts per HTTP/2 frame type (HEADERS, DATA, etc.)
 ```
 
 ## Step 7: Security Considerations
