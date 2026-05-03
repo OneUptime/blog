@@ -150,20 +150,18 @@ resource "azurerm_mssql_database" "app" {
   sku_name  = "GP_Gen5_2"
 
   geo_backup_enabled = true  # Cross-region backup
-}
 
-resource "azurerm_mssql_database_backup_short_term_retention_policy" "app" {
-  database_id     = azurerm_mssql_database.app.id
-  retention_days  = 35  # 1-35 days
-  backup_interval_in_hours = 12  # 12 or 24
-}
+  short_term_retention_policy {
+    retention_days           = 35  # 1-35 days
+    backup_interval_in_hours = 12  # 12 or 24
+  }
 
-resource "azurerm_mssql_database_backup_long_term_retention_policy" "app" {
-  database_id        = azurerm_mssql_database.app.id
-  weekly_retention   = "P1M"   # 1 month
-  monthly_retention  = "P12M"  # 12 months
-  yearly_retention   = "P7Y"   # 7 years
-  week_of_year       = 1       # First week of the year for yearly backup
+  long_term_retention_policy {
+    weekly_retention  = "P1M"   # 1 month
+    monthly_retention = "P12M"  # 12 months
+    yearly_retention  = "P7Y"   # 7 years
+    week_of_year      = 1       # First week of the year for yearly backup
+  }
 }
 ```
 
