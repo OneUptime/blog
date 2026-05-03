@@ -64,7 +64,7 @@ tcpdump -i eth0 -n -X 'udp port 5000' | head -100
 # For RTP streams: check RTP sequence numbers
 # RTP header: first 4 bytes include sequence number at offset 2
 # Wireshark does this automatically for RTP:
-# Statistics → RTP → RTP Streams → click stream → Analyze
+# Telephony → RTP → RTP Streams → click stream → Analyze
 
 # Check for reordering in iperf3 UDP:
 iperf3 -c 10.20.0.5 -u -b 100M -t 30
