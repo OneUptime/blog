@@ -55,8 +55,8 @@ resources:
     cpu: "2"
 
 extraEnvVars:
-  - name: KC_PROXY
-    value: "edge"    # Behind reverse proxy
+  - name: KC_PROXY_HEADERS
+    value: "xforwarded"    # Behind reverse proxy (X-Forwarded-* headers)
   - name: KC_HOSTNAME_STRICT
     value: "false"
 ```
@@ -104,9 +104,9 @@ curl -X POST \
 ```
 
 Map Keycloak groups to Rancher cluster roles:
-- `cluster-admins` → `cluster-admin`
+- `cluster-admins` → `cluster-owner`
 - `developers` → `view`
-- `ops-team` → `cluster-operator`
+- `ops-team` → `cluster-member`
 
 ## Step 5: Configure Social Login
 
