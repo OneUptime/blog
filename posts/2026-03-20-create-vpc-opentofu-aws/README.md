@@ -19,6 +19,10 @@ variable "vpc_cidr" {
   default = "10.0.0.0/16"
 }
 
+variable "environment" {
+  default = "dev"
+}
+
 resource "aws_vpc" "main" {
   cidr_block           = var.vpc_cidr
   enable_dns_hostnames = true
