@@ -21,8 +21,9 @@ helm repo update
 # jenkins-values.yaml
 
 controller:
-  adminUser: admin
-  adminPassword: "securepassword"
+  admin:
+    username: admin
+    password: "securepassword"
 
   ingress:
     enabled: true
@@ -34,11 +35,6 @@ controller:
       - secretName: jenkins-tls
         hosts:
           - jenkins.example.com
-
-  persistence:
-    enabled: true
-    storageClass: longhorn
-    size: 50Gi    # Jenkins config and job history
 
   resources:
     requests:
@@ -56,6 +52,11 @@ controller:
     - pipeline-github-lib:latest
     - prometheus:latest
     - blueocean:latest
+
+persistence:
+  enabled: true
+  storageClass: longhorn
+  size: 50Gi    # Jenkins config and job history
 
 agent:
   enabled: true
