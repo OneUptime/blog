@@ -79,11 +79,16 @@ resource "aws_instance" "web" {
 
 ## Fix 3: Handling Data Source Failures Gracefully
 
-Use `try()` or `lookup()` to handle cases where the data source may fail:
+A data source read failure aborts the plan before any expression referencing its attributes is evaluated, so `try()` cannot suppress the error. Make the data source itself conditional with `count` and pick a fallback in a local:
 
 ```hcl
-# Null resource as a fallback when data source might not exist
+variable "use_custom_ami" {
+  type    = bool
+  default = false
+}
+
 data "aws_ami" "custom" {
+  count       = var.use_custom_ami ? 1 : 0
   most_recent = true
   owners      = ["self"]
 
@@ -93,9 +98,9 @@ data "aws_ami" "custom" {
   }
 }
 
-# Use try() to fall back to a default AMI if the custom one doesn't exist
+# Fall back to a default AMI when the custom one is not requested
 locals {
-  ami_id = try(data.aws_ami.custom.id, data.aws_ami.amazon_linux.id)
+  ami_id = var.use_custom_ami ? data.aws_ami.custom[0].id : data.aws_ami.amazon_linux.id
 }
 ```
 
