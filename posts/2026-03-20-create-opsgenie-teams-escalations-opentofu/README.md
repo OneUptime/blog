@@ -64,39 +64,40 @@ resource "opsgenie_user" "bob" {
 
 ```hcl
 resource "opsgenie_schedule" "backend_oncall" {
-  name        = "Backend On-Call"
-  description = "Weekly rotation for backend team"
-  timezone    = "America/New_York"
-  enabled     = true
+  name          = "Backend On-Call"
+  description   = "Weekly rotation for backend team"
+  timezone      = "America/New_York"
+  enabled       = true
   owner_team_id = opsgenie_team.backend.id
+}
 
-  rotation {
-    name      = "Primary Rotation"
-    type      = "weekly"
-    length    = 1
-    start_date = "2024-01-01T09:00:00Z"
+resource "opsgenie_schedule_rotation" "backend_primary" {
+  schedule_id = opsgenie_schedule.backend_oncall.id
+  name        = "Primary Rotation"
+  type        = "weekly"
+  length      = 1
+  start_date  = "2024-01-01T09:00:00Z"
 
-    participant {
-      type = "user"
-      id   = opsgenie_user.alice.id
-    }
+  participant {
+    type = "user"
+    id   = opsgenie_user.alice.id
+  }
 
-    participant {
-      type = "user"
-      id   = opsgenie_user.bob.id
-    }
+  participant {
+    type = "user"
+    id   = opsgenie_user.bob.id
+  }
 
-    time_restriction {
-      type = "weekday-and-time-of-day"
+  time_restriction {
+    type = "weekday-and-time-of-day"
 
-      restriction {
-        start_day  = "monday"
-        end_day    = "friday"
-        start_hour = 9
-        start_min  = 0
-        end_hour   = 18
-        end_min    = 0
-      }
+    restriction {
+      start_day  = "monday"
+      end_day    = "friday"
+      start_hour = 9
+      start_min  = 0
+      end_hour   = 18
+      end_min    = 0
     }
   }
 }
@@ -110,7 +111,7 @@ resource "opsgenie_escalation" "backend" {
   description   = "Escalation policy for backend services"
   owner_team_id = opsgenie_team.backend.id
 
-  rule {
+  rules {
     condition   = "if-not-acked"
     notify_type = "default"
     delay       = 0  # Notify immediately
@@ -121,7 +122,7 @@ resource "opsgenie_escalation" "backend" {
     }
   }
 
-  rule {
+  rules {
     condition   = "if-not-acked"
     notify_type = "default"
     delay       = 30  # Escalate after 30 minutes
@@ -132,7 +133,7 @@ resource "opsgenie_escalation" "backend" {
     }
   }
 
-  rule {
+  rules {
     condition   = "if-not-closed"
     notify_type = "default"
     delay       = 60  # Final escalation after 60 minutes
@@ -156,7 +157,7 @@ resource "opsgenie_team_routing_rule" "backend" {
   criteria {
     type = "match-all-conditions"
 
-    condition {
+    conditions {
       field          = "tags"
       operation      = "contains"
       expected_value = "team:backend"
@@ -185,11 +186,10 @@ resource "opsgenie_team_routing_rule" "backend" {
 
 ```hcl
 resource "opsgenie_api_integration" "prometheus" {
-  name             = "Prometheus Alertmanager"
-  type             = "Prometheus"
-  owner_team_id    = opsgenie_team.backend.id
-  enabled          = true
-  send_alert_actions = true
+  name          = "Prometheus Alertmanager"
+  type          = "Prometheus"
+  owner_team_id = opsgenie_team.backend.id
+  enabled       = true
 
   responders {
     type = "schedule"
