@@ -42,8 +42,7 @@ resource "aws_db_instance" "replica_us_west" {
   storage_encrypted   = true
 
   deletion_protection = true
-  skip_final_snapshot = false
-  final_snapshot_identifier = "app-replica-final-snapshot"
+  skip_final_snapshot = true  # Read replicas never take final snapshots
 }
 ```
 
@@ -116,10 +115,6 @@ resource "google_sql_database_instance" "cross_region_replica" {
   master_instance_name = google_sql_database_instance.primary.name
   deletion_protection  = true
 
-  replica_configuration {
-    failover_target = false
-  }
-
   settings {
     tier = "db-n1-standard-2"
   }
@@ -151,11 +146,11 @@ resource "azurerm_mssql_failover_group" "geo_replica" {
 
   read_write_endpoint_failover_policy {
     mode          = "Automatic"
-    grace_minutes = 30
+    grace_minutes = 60  # Azure requires a minimum of 60 minutes
   }
 }
 ```
 
 ## Summary
 
-Database replication for DR configured with OpenTofu provides options across a spectrum of cost and RPO. RDS cross-region read replicas achieve typically under 5 second lag with asynchronous replication. Aurora Global Database provides under 1 second replication with the ability to fail over with RPO measured in seconds. Azure SQL Failover Groups with automatic policy handle failover decisions programmatically based on configurable grace periods.
+Database replication for DR configured with OpenTofu provides options across a spectrum of cost and RPO. RDS cross-region read replicas achieve typically under 5 second lag with asynchronous replication. Aurora Global Database provides typically under 1 second cross-region replication lag with the ability to fail over with RPO measured in seconds. Azure SQL Failover Groups with automatic policy handle failover decisions programmatically based on configurable grace periods.
