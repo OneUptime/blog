@@ -81,7 +81,7 @@ storage_config = {
     "project": 1,    # Project ID
     "bucket": "ml-datasets",
     "prefix": "annotation-tasks/",
-    "endpoint_url": "http://minio:9000",
+    "s3_endpoint": "http://minio:9000",
     "aws_access_key_id": "ml-admin",
     "aws_secret_access_key": "secure_password_here",
     "region_name": "us-east-1",
@@ -89,7 +89,7 @@ storage_config = {
 }
 
 response = requests.post(
-    f"{LABEL_STUDIO_URL}/api/storages/s3",
+    f"{LABEL_STUDIO_URL}/api/storages/s3/",
     json=storage_config,
     headers=headers
 )
@@ -162,7 +162,7 @@ print(f"Exported {len(response.content)} bytes of annotations")
 Supported export formats:
 - **JSON** - Label Studio native format
 - **COCO** - Object detection (bounding boxes)
-- **Pascal VOC** - XML format for image classification
+- **Pascal VOC** - XML format for object detection and image segmentation
 - **CSV** - Simple tabular format for text classification
 - **YOLO** - For YOLO object detection models
 
@@ -171,18 +171,24 @@ Supported export formats:
 Connect your model to Label Studio for active learning - automatically prioritizing the most uncertain samples for annotation:
 
 ```python
-# Submit predictions back to Label Studio to guide annotators
-predictions = [
-    {
-        "model_version": "classifier-v1",
-        "score": 0.45,    # Low confidence - annotators should review this
-        "result": [{"type": "choices", "value": {"choices": ["Neutral"]}}]
-    }
-]
+# Submit a prediction back to Label Studio to guide annotators
+prediction = {
+    "task": task_id,
+    "model_version": "classifier-v1",
+    "score": 0.45,    # Low confidence - annotators should review this
+    "result": [
+        {
+            "from_name": "sentiment",
+            "to_name": "text",
+            "type": "choices",
+            "value": {"choices": ["Neutral"]}
+        }
+    ]
+}
 
 requests.post(
-    f"{LABEL_STUDIO_URL}/api/tasks/{task_id}/predictions",
-    json={"predictions": predictions},
+    f"{LABEL_STUDIO_URL}/api/predictions/",
+    json=prediction,
     headers=headers
 )
 ```
