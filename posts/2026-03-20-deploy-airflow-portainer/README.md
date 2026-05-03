@@ -164,8 +164,8 @@ docker exec airflow_scheduler airflow dags list
 # Trigger a DAG manually
 docker exec airflow_scheduler airflow dags trigger hello_world
 
-# Check task logs
-docker exec airflow_scheduler airflow tasks logs hello_world say_hello <execution_date>
+# Check task logs from the logs volume
+docker exec airflow_scheduler ls /opt/airflow/logs/dag_id=hello_world/
 ```
 
 ## Conclusion
