@@ -28,7 +28,11 @@ services:
       - mysql_data:/var/lib/mysql
 
   php-apache:
-    image: php:8.2-apache
+    # Build a custom image based on php:8.2-apache with PDO MySQL installed
+    image: lamp-php-apache:latest
+    build:
+      context: .
+      dockerfile: Dockerfile.php
     restart: unless-stopped
     depends_on:
       - mysql
@@ -37,10 +41,6 @@ services:
     volumes:
       # Mount your PHP application code
       - ./app:/var/www/html
-    # Install PDO MySQL extension for database connectivity
-    build:
-      context: .
-      dockerfile: Dockerfile.php
 
 volumes:
   mysql_data:
