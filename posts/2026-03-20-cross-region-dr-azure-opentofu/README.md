@@ -70,9 +70,7 @@ resource "azurerm_mssql_failover_group" "app" {
     grace_minutes = 60  # Automatic failover after 60 minutes
   }
 
-  readonly_endpoint_failover_policy {
-    mode = "Enabled"
-  }
+  readonly_endpoint_failover_policy_enabled = true
 }
 ```
 
