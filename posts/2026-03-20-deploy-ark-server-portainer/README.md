@@ -8,7 +8,7 @@ Description: Deploy a dedicated ARK: Survival Evolved or ARK: Survival Ascended 
 
 ---
 
-ARK: Survival Evolved (and its Unreal Engine 5 successor ARK: Survival Ascended) supports dedicated servers that you can run on your own hardware. This guide covers deploying ARK via Portainer with the popular `acemod/ark` Docker image.
+ARK: Survival Evolved (and its Unreal Engine 5 successor ARK: Survival Ascended) supports dedicated servers that you can run on your own hardware. This guide covers deploying ARK: Survival Evolved via Portainer with the popular `thmhoag/arkserver` Docker image, which wraps the community-maintained `arkmanager` (`ark-server-tools`).
 
 ## Step 1: Deploy ARK Server Stack
 
@@ -21,7 +21,7 @@ version: "3.8"
 
 services:
   ark:
-    image: acemod/ark:latest
+    image: thmhoag/arkserver:latest
     environment:
       - am_ark_SessionName=My ARK Server
       - am_serverMap=TheIsland     # Map: TheIsland, Ragnarok, Aberration, etc.
@@ -49,7 +49,7 @@ volumes:
 
 ## Step 2: Configure Game Settings
 
-Edit `/ark/ShooterGame/Saved/Config/LinuxServer/GameUserSettings.ini`:
+Edit `/ark/server/ShooterGame/Saved/Config/LinuxServer/GameUserSettings.ini`:
 
 ```ini
 [ServerSettings]
@@ -98,11 +98,12 @@ For running multiple ARK maps in a cluster (players can transfer between maps):
 
 ```yaml
   ark-ragnarok:
-    image: acemod/ark:latest
+    image: thmhoag/arkserver:latest
     environment:
       - am_serverMap=Ragnarok
       - am_ark_SessionName=My ARK Cluster - Ragnarok
-      - am_arkcluster_ClusterDirOverride=/cluster
+      - am_arkopt_clusterid=my-ark-cluster
+      - am_arkopt_ClusterDirOverride=/cluster
     volumes:
       - ark-ragnarok-data:/ark
       - ark-cluster:/cluster    # Shared cluster directory
