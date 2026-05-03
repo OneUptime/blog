@@ -47,7 +47,7 @@ kubectl logs -n ingress-nginx \
 
 ## Step 3: Inspect the Controller ConfigMap
 
-NGINX Ingress requires explicit configuration to listen on IPv6.
+NGINX Ingress listens on IPv6 by default (`use-ipv6` defaults to `true`), but verify the ConfigMap to make sure it has not been disabled.
 
 ```bash
 # View the current ConfigMap
