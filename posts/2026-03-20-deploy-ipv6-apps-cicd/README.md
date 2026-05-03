@@ -123,9 +123,12 @@ jobs:
       - name: Verify IPv6 Service Endpoints
         run: |
           # Wait for LoadBalancer to provision
+          # kubectl JSONPath does not support regex, so emit one IP per line
+          # and grep for IPv6 addresses (those containing a colon).
           for i in $(seq 1 30); do
             IPV6_LB=$(kubectl get svc myapp \
-              -o jsonpath='{.status.loadBalancer.ingress[?(@.ip =~ ":")].ip}' 2>/dev/null)
+              -o jsonpath='{range .status.loadBalancer.ingress[*]}{.ip}{"\n"}{end}' \
+              2>/dev/null | grep ':' | head -n1)
             if [ -n "$IPV6_LB" ]; then
               echo "IPv6 LoadBalancer: $IPV6_LB"
               break
@@ -145,8 +148,9 @@ jobs:
       - name: Run post-deploy IPv6 smoke tests
         run: |
           # Run smoke tests via IPv6
+          # ipFamilies lists IPv6 first, so clusterIPs[0] is the IPv6 address.
           python3 -m pytest tests/smoke_tests.py \
-            --cluster-ipv6=$(kubectl get svc myapp -o jsonpath='{.spec.clusterIPs[1]}') \
+            --cluster-ipv6=$(kubectl get svc myapp -o jsonpath='{.spec.clusterIPs[0]}') \
             -v
 ```
 
@@ -170,8 +174,8 @@ deploy_to_k8s_ipv6:
     # Verify dual-stack service
     - |
       kubectl get svc myapp -o yaml
-      # Check for IPv6 ClusterIP
-      IPV6_CLUSTER_IP=$(kubectl get svc myapp -o jsonpath='{.spec.clusterIPs[1]}')
+      # Check for IPv6 ClusterIP. ipFamilies lists IPv6 first, so clusterIPs[0] is IPv6.
+      IPV6_CLUSTER_IP=$(kubectl get svc myapp -o jsonpath='{.spec.clusterIPs[0]}')
       echo "IPv6 ClusterIP: $IPV6_CLUSTER_IP"
       test -n "$IPV6_CLUSTER_IP"
   only:
