@@ -136,13 +136,21 @@ Use MinIO lifecycle rules to automatically clean up old artifacts:
 
 # Delete objects in ml-artifacts bucket older than 90 days
 mc ilm rule add \
-  --expiry-days 90 \
+  --expire-days 90 \
   local/ml-artifacts
 
-# Transition old model versions to cheaper storage after 30 days
+# Transition old model versions to a remote tier after 30 days.
+# First create the remote tier (e.g., AWS S3 Glacier), then reference it by name.
+mc ilm tier add s3 local GLACIER_TIER \
+  --endpoint https://s3.amazonaws.com \
+  --access-key AKIA... \
+  --secret-key ... \
+  --bucket my-glacier-bucket \
+  --storage-class GLACIER
+
 mc ilm rule add \
   --transition-days 30 \
-  --transition-storage-class GLACIER \
+  --transition-tier GLACIER_TIER \
   local/ml-models
 ```
 
