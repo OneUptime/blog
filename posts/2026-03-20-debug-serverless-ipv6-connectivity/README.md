@@ -19,7 +19,7 @@ ip -6 addr show
 ping6 -c 3 ::1
 
 # Install required dependencies
-pip install ipaddress netaddr  # Python
+pip install netaddr            # Python (ipaddress is in the stdlib since 3.3)
 # or
 npm install ipaddr.js          # JavaScript
 ```
@@ -28,7 +28,6 @@ npm install ipaddr.js          # JavaScript
 
 ```python
 import ipaddress
-from typing import Optional
 
 def check_ipv6_subnet(client_ip: str, allowed_prefix: str) -> bool:
     """Check if an IPv6 address is within an allowed subnet."""
@@ -41,7 +40,7 @@ def check_ipv6_subnet(client_ip: str, allowed_prefix: str) -> bool:
 
 # Example usage
 allowed_networks = [
-    "2001:db8:trusted::/48",
+    "2001:db8:abcd::/48",
     "::1/128",
     "fe80::/10",
 ]
@@ -54,8 +53,8 @@ def is_allowed(client_ip: str) -> bool:
     return False
 
 # Tests
-print(is_allowed("2001:db8:trusted::1"))   # True
-print(is_allowed("2001:db8:unknown::1"))   # False
+print(is_allowed("2001:db8:abcd::1"))      # True
+print(is_allowed("2001:db8:1234::1"))      # False
 print(is_allowed("::1"))                   # True
 ```
 
@@ -115,4 +114,4 @@ def log_ipv6_access(client_ip: str, allowed: bool):
 
 ## Conclusion
 
-Debug Serverless IPv6 Connectivity Issues requires understanding IPv6 address structure, CIDR notation, and address classification. Use Python's  module for validation and subnet matching. Log all IPv6 access attempts for security auditing. Monitor your implementation with OneUptime to detect access pattern anomalies.
+Debug Serverless IPv6 Connectivity Issues requires understanding IPv6 address structure, CIDR notation, and address classification. Use Python's `ipaddress` module for validation and subnet matching. Log all IPv6 access attempts for security auditing. Monitor your implementation with OneUptime to detect access pattern anomalies.
