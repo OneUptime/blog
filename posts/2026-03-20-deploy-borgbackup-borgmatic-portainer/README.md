@@ -43,8 +43,10 @@ checks:
     frequency: 2 weeks
 
 # Send result to monitoring endpoint
-on_error:
-  - echo "Borgmatic backup FAILED" | curl -X POST https://your-alert-webhook -d @-
+commands:
+  - after: error
+    run:
+      - echo "Borgmatic backup FAILED" | curl -X POST https://your-alert-webhook -d @-
 ```
 
 ## Step 2: Deploy Borgmatic via Portainer Stack
@@ -61,7 +63,7 @@ services:
     environment:
       - TZ=UTC
       # Run backups at 02:00 daily
-      - BORGMATIC_CRON=0 2 * * *
+      - BACKUP_CRON=0 2 * * *
     volumes:
       # Borgmatic config
       - /opt/borgmatic/config.yaml:/etc/borgmatic.d/config.yaml:ro
@@ -84,7 +86,8 @@ After deploying, use Portainer's **Console** to run the one-time init command:
 
 ```bash
 # Initialize a new Borg repository
-borgmatic init --encryption repokey-blake2
+# (use 'borgmatic init' for borgmatic versions older than 1.9.0)
+borgmatic repo-create --encryption repokey-blake2
 ```
 
 Borg will prompt for a passphrase. Store this passphrase securely - without it, you cannot restore.
@@ -116,7 +119,8 @@ borgmatic extract --archive latest --path /mnt/source/important-data
 Borgmatic supports monitoring integrations. Add to the hooks section:
 
 ```yaml
-healthchecks: https://hc-ping.com/your-check-uuid
+healthchecks:
+  ping_url: https://hc-ping.com/your-check-uuid
 # Or use ntfy for push notifications
 ntfy:
   topic: backup-alerts
