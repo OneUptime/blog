@@ -15,14 +15,15 @@ Running your own dedicated game server gives you full control over game settings
 - Portainer installed with Docker
 - At least 4-8 GB RAM (varies by game and player count)
 - Adequate disk space (10-50 GB)
-- Required ports open in firewall: 27015:27015/udp 27015:27015/tcp
+- Required ports open in firewall: 27015/udp and 27015/tcp
 
 ## Step 1: Open Required Firewall Ports
 
 ```bash
 # Open game server ports
 
-ufw allow 27015:27015/udp 27015:27015/tcp
+ufw allow 27015/udp
+ufw allow 27015/tcp
 ufw reload
 ```
 
@@ -40,12 +41,15 @@ services:
     container_name: game-server
     restart: unless-stopped
     ports:
-      - "27015:27015/udp 27015:27015/tcp"
+      - "27015:27015/udp"
+      - "27015:27015/tcp"
     volumes:
       # Persist game world and configuration data
-      - cs2-data:/game-data
+      - cs2-data:/home/steam/cs2-dedicated
     environment:
-      CS2_TOKEN=your-token CS2_MAXPLAYERS=10 CS2_CFG_URL=https://example.com/server.cfg
+      SRCDS_TOKEN: your-token
+      CS2_MAXPLAYERS: 10
+      CS2_CFG_URL: https://example.com/server.cfg
     healthcheck:
       test: ["CMD", "true"]
       interval: 60s
@@ -69,9 +73,9 @@ services:
     command: >
       sh -c "
         while true; do
-          DATE=\$(date +%Y%m%d_%H%M%S);
-          tar czf /backups/world-\$DATE.tar.gz -C /game-data .;
-          echo 'Backup created: world-'\$DATE'.tar.gz';
+          DATE=$$(date +%Y%m%d_%H%M%S);
+          tar czf /backups/world-$$DATE.tar.gz -C /game-data .;
+          echo 'Backup created: world-'$$DATE'.tar.gz';
           ls -t /backups/*.tar.gz | tail -n +8 | xargs rm -f;
           sleep 21600;
         done
