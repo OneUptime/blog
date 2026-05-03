@@ -26,7 +26,7 @@ tshark -i eth0 -f 'ip6 proto 50' -w /tmp/esp-capture.pcap
 tshark -i eth0 -f 'ip6 proto 50 or udp port 500 or udp port 4500' -w /tmp/ipsec.pcap
 
 # Initiate tunnel (in another terminal)
-swanctl --initiate conn:my-vpn
+swanctl --initiate --child my-vpn
 
 # Then stop capture
 # Ctrl+C
@@ -54,7 +54,7 @@ isakmp
 
 ### IKEv2 Exchange Sequence
 
-In a successful negotiation you should see:
+In a successful initial negotiation (per RFC 7296) you should see two exchanges - the first Child SA is established inside IKE_AUTH:
 
 ```text
 No.  Source          Dest            Protocol    Info
@@ -62,6 +62,11 @@ No.  Source          Dest            Protocol    Info
 2    gw2             gw1             ISAKMP      IKE_SA_INIT Response
 3    gw1             gw2             ISAKMP      IKE_AUTH Request
 4    gw2             gw1             ISAKMP      IKE_AUTH Response
+```
+
+CREATE_CHILD_SA exchanges appear later, only when rekeying the IKE SA, rekeying a Child SA, or creating an additional Child SA:
+
+```text
 5    gw1             gw2             ISAKMP      CREATE_CHILD_SA Request
 6    gw2             gw1             ISAKMP      CREATE_CHILD_SA Response
 ```
@@ -102,18 +107,20 @@ If you have the ESP keys (e.g., from strongSwan log or XFRM state), Wireshark ca
 ### Get Keys from strongSwan
 
 ```bash
-# Enable key logging in strongSwan
-# /etc/strongswan.d/charon.conf
+# Enable verbose IKE logging in strongSwan (named-section format, 5.7+)
+# /etc/strongswan.d/charon-logging.conf
 charon {
     filelog {
-        /var/log/charon.log {
-            default = 2
-            knl = 3   # Kernel/XFRM messages include keys
+        charon {
+            path = /var/log/charon.log
+            default = 1
+            ike = 4   # level 4 ("private") logs sensitive material such as DH/keys
+            knl = 2
         }
     }
 }
 
-# Or extract from xfrm state
+# Or extract the installed SA keys from the kernel directly (most reliable)
 ip xfrm state list
 # Shows: enc aes key=0x...   auth sha256 key=0x...
 ```
