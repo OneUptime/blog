@@ -23,7 +23,8 @@ variable "my_var" {
     condition = <boolean expression using var.my_var>
 
     # error_message: shown when condition is false
-    # Must be a non-empty string ending with a period or exclamation mark
+    # Should be a non-empty string; OpenTofu recommends full sentences ending
+    # with a period, exclamation mark, or question mark
     error_message = "Clear description of what's wrong and how to fix it."
   }
 }
@@ -141,10 +142,20 @@ variable "database_password" {
 
 ## Referencing Other Variables in Conditions
 
-Note: As of OpenTofu 1.9, validation conditions can only reference `var.<name>` (the variable being validated), not other variables. Use `precondition` blocks in resources for cross-variable checks.
+Note: As of OpenTofu 1.9, validation conditions can reference other variables, locals, and data sources in addition to `var.<name>` (the variable being validated). On older versions that only allowed self-references, use `precondition` blocks in resources for cross-variable checks.
 
 ```hcl
-# For cross-variable validation, use preconditions in resources
+# Cross-variable validation directly in the variable block (OpenTofu 1.9+)
+variable "instance_type" {
+  type = string
+
+  validation {
+    condition     = var.environment == "production" ? var.instance_type != "t3.micro" : true
+    error_message = "Production deployments cannot use t3.micro - use at least t3.small."
+  }
+}
+
+# Equivalent check using a precondition on a resource
 resource "aws_instance" "web" {
   # ...
 
