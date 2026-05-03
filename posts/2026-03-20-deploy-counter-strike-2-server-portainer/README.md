@@ -22,7 +22,7 @@ services:
     image: joedwards32/cs2:latest
     environment:
       # Steam Game Server Account token - get one at steamcommunity.com/dev/managegameservers
-      - CS2_GSLT=your_game_server_login_token
+      - SRCDS_TOKEN=your_game_server_login_token
       # Server settings
       - CS2_SERVERNAME=My CS2 Server | Portainer
       - CS2_PW=join_password
@@ -56,7 +56,7 @@ CS2 requires a GSLT for public server registration:
 1. Go to `https://steamcommunity.com/dev/managegameservers`
 2. Log in with your Steam account
 3. App ID: `730` (CS2)
-4. Copy the generated token to `CS2_GSLT` in your stack
+4. Copy the generated token to `SRCDS_TOKEN` in your stack
 
 ## Step 3: Configure Competitive Settings
 
@@ -88,9 +88,8 @@ mp_buy_anywhere 0
 Enable Steam Workshop maps:
 
 ```bash
-# Add workshop collection ID to environment
+# Add workshop collection ID to environment (uses the same SRCDS_TOKEN from Step 1)
 - CS2_HOST_WORKSHOP_COLLECTION=your_workshop_collection_id
-- STEAM_ACCOUNT=your_gslt_token
 ```
 
 ## Step 5: Monitor Server Status
