@@ -110,7 +110,7 @@ dependency "networking" {
   }
   # Only use mocks for plan and validate, NOT apply
   mock_outputs_allowed_terraform_commands = ["plan", "validate"]
-  mock_outputs_merge_strategy_with_state  = "shallow_merge"
+  mock_outputs_merge_strategy_with_state  = "shallow"
 }
 ```
 
