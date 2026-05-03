@@ -50,8 +50,8 @@ services:
     ports:
       - "3000:3000"
     environment:
-      # Point React to the backend API
-      REACT_APP_API_URL: http://backend:5000/api
+      # Point React to the backend API (browser hits the host-exposed port)
+      REACT_APP_API_URL: http://localhost:5000/api
     volumes:
       - ./frontend:/app
     command: sh -c "npm install && npm start"
