@@ -45,7 +45,7 @@ resource "datadog_dashboard" "service_overview" {
   title        = "[${var.environment}] Service Overview"
   description  = "Key metrics for the ${var.environment} environment"
   layout_type  = "ordered"
-  reflow_type  = "fixed"
+  reflow_type  = "auto"
 
   # Timeseries widget - request rate
   widget {
@@ -97,9 +97,9 @@ resource "datadog_dashboard" "service_overview" {
         }
       }
 
-      autoscale  = true
-      precision  = 2
-      unit       = "ms"
+      autoscale   = true
+      precision   = 2
+      custom_unit = "ms"
     }
   }
 
