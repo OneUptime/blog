@@ -51,7 +51,7 @@ resource "aws_s3_bucket_server_side_encryption_configuration" "data" {
       # kms_master_key_id = aws_kms_key.s3.arn
     }
 
-    # Prevent unencrypted uploads
+    # Use an S3 Bucket Key to reduce SSE-KMS request costs
     bucket_key_enabled = true
   }
 }
@@ -80,6 +80,9 @@ resource "aws_s3_bucket_lifecycle_configuration" "data" {
   rule {
     id     = "transition-and-expire"
     status = "Enabled"
+
+    # Empty filter applies the rule to all objects in the bucket
+    filter {}
 
     # Move objects to cheaper storage after 30 days
     transition {
