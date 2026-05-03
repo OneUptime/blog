@@ -54,7 +54,7 @@ ip igmp snooping vlan 20 querier version 2
 ## Step 3: Capture Querier Election Traffic
 
 ```bash
-# Watch for IGMP General Query messages (dst 224.0.0.1 or 224.0.0.22)
+# Watch for IGMP General Query messages (dst 224.0.0.1, the all-systems group)
 sudo tcpdump -i eth0 -n -v "ip proto 2 and dst 224.0.0.1"
 ```
 
@@ -62,7 +62,7 @@ If you see Queries arriving from two different source IPs, a querier election is
 
 ## Step 4: Check for Version Mismatches
 
-An IGMPv3-only router will not respond to IGMPv2 queries, and vice versa:
+Mixed IGMP versions on a segment can cause membership reports to be misinterpreted - an IGMPv2-only router will not understand IGMPv3 reports, and IGMPv3 hosts may not downgrade to v2 reports as expected:
 
 ```bash
 # Check what version of IGMP messages are arriving
