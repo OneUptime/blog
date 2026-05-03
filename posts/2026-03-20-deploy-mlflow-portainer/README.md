@@ -23,7 +23,7 @@ services:
     command: >
       mlflow server
       --backend-store-uri postgresql://mlflow:mlflow_pw@postgres:5432/mlflow
-      --artifact-root s3://mlflow-artifacts
+      --default-artifact-root s3://mlflow-artifacts
       --host 0.0.0.0
       --port 5000
     environment:
