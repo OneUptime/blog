@@ -79,7 +79,7 @@ spec:
           sysctl -w net.ipv4.neigh.default.gc_thresh3=100000
       containers:
       - name: pause
-        image: gcr.io/google_containers/pause:3.1
+        image: registry.k8s.io/pause:3.9
 ```
 
 ## Debugging ARP for a Specific Pod
