@@ -70,4 +70,4 @@ Jellyfin has no mandatory account link. Create local users under **Dashboard > U
 
 ## Monitoring
 
-Use OneUptime to monitor `http://<host>:8096/health`. Jellyfin returns `{"Status":"Healthy"}` when operating normally. Alert on any unhealthy status to catch database corruption or storage issues early.
+Use OneUptime to monitor `http://<host>:8096/health`. Jellyfin returns the plain text `Healthy` with HTTP 200 when operating normally. Alert on any unhealthy status to catch database corruption or storage issues early.
