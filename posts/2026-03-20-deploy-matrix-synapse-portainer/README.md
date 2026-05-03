@@ -76,7 +76,7 @@ database:
   args:
     user: synapse
     password: synapsepass
-    database: synapse
+    dbname: synapse
     host: postgres
     cp_min: 5
     cp_max: 10
