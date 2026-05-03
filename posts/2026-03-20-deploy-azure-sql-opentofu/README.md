@@ -61,9 +61,12 @@ resource "azurerm_mssql_database" "main" {
   max_size_gb = var.environment == "prod" ? 500 : 32
 
   # Backup settings
-  geo_backup_enabled              = var.environment == "prod"
-  zone_redundant                  = var.environment == "prod"
-  backup_retention_period_in_days = 7
+  geo_backup_enabled = var.environment == "prod"
+  zone_redundant     = var.environment == "prod"
+
+  short_term_retention_policy {
+    retention_days = 7
+  }
 
   # Maintenance
   maintenance_configuration_name = "SQL_Default"
