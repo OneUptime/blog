@@ -19,7 +19,7 @@ version: "3.8"
 
 services:
   ghost:
-    image: ghost:5-alpine
+    image: ghost:6-alpine
     restart: unless-stopped
     environment:
       # URL (must match your domain exactly)
@@ -56,6 +56,7 @@ services:
 
   ghost-db:
     image: mysql:8.0
+    container_name: ghost-db
     restart: unless-stopped
     environment:
       - MYSQL_DATABASE=${MYSQL_DATABASE}
@@ -116,7 +117,7 @@ The admin panel is at `https://blog.yourdomain.com/ghost`:
 ```bash
 # Via Portainer: Stacks > ghost > Editor
 
-# Change: ghost:5-alpine → ghost:5.x.y-alpine (specific version)
+# Change: ghost:6-alpine → ghost:6.x.y-alpine (specific version)
 # Click: Update the Stack
 
 # Ghost will apply database migrations automatically on first start of new version
