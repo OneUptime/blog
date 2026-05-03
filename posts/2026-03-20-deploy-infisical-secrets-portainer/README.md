@@ -34,7 +34,7 @@ services:
     environment:
       NODE_ENV: production
       ENCRYPTION_KEY: "your-32-char-encryption-key-here"   # generate with: openssl rand -hex 16
-      AUTH_SECRET: "your-auth-secret-here"                  # generate with: openssl rand -hex 32
+      AUTH_SECRET: "your-auth-secret-here"                  # generate with: openssl rand -base64 32
       DB_CONNECTION_URI: "postgresql://infisical:infisical-db-password@db:5432/infisical"
       REDIS_URL: "redis://redis:6379"
       SITE_URL: "https://infisical.example.com"
@@ -132,24 +132,27 @@ services:
 
 ```python
 # app.py - fetching secrets from Infisical using the Python SDK
-from infisical_client import ClientSettings, InfisicalClient, GetSecretOptions
+from infisical_sdk import InfisicalSDKClient
 
-# Initialize the Infisical client
-client = InfisicalClient(ClientSettings(
+# Initialize the Infisical client against your self-hosted instance
+client = InfisicalSDKClient(host="http://infisical:8080")
+
+# Authenticate with a machine identity using Universal Auth
+client.auth.universal_auth.login(
     client_id="your-machine-identity-client-id",
-    client_secret="your-machine-identity-client-secret",
-    site_url="http://infisical:8080"   # your self-hosted Infisical URL
-))
+    client_secret="your-machine-identity-client-secret"
+)
 
 # Fetch a specific secret
-secret = client.getSecret(options=GetSecretOptions(
-    environment="production",
+secret = client.secrets.get_secret_by_name(
+    secret_name="DB_PASSWORD",
     project_id="your-project-id",
-    secret_name="DB_PASSWORD"
-))
+    environment_slug="prod",
+    secret_path="/"
+)
 
 db_password = secret.secretValue
-print(f"Database password loaded from Infisical")
+print("Database password loaded from Infisical")
 ```
 
 ---
