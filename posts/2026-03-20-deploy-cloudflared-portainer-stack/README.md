@@ -61,7 +61,7 @@ Set `TUNNEL_TOKEN` in the Portainer stack **Environment variables** section.
 
 ## Verify Tunnel Status
 
-In the Portainer container logs:
+In the cloudflared container logs:
 ```text
 2024-01-01T12:00:00Z INF Starting tunnel tunnelID=abc123...
 2024-01-01T12:00:01Z INF Connection registered connIndex=0 ip=198.41.192.7
