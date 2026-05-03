@@ -91,8 +91,8 @@ variable "retention_days" {
   type = number
 
   validation {
-    condition = contains([1, 3, 5, 7, 14, 30, 60, 90, 120, 150, 180, 365, 400, 545, 731, 1827, 3653], var.retention_days)
-    error_message = "Log retention must be one of the CloudWatch valid values: 1, 3, 5, 7, 14, 30, 60, 90, 120, 150, 180, 365, 400, 545, 731, 1827, or 3653 days."
+    condition = contains([1, 3, 5, 7, 14, 30, 60, 90, 120, 150, 180, 365, 400, 545, 731, 1096, 1827, 2192, 2557, 2922, 3288, 3653], var.retention_days)
+    error_message = "Log retention must be one of the CloudWatch valid values: 1, 3, 5, 7, 14, 30, 60, 90, 120, 150, 180, 365, 400, 545, 731, 1096, 1827, 2192, 2557, 2922, 3288, or 3653 days."
   }
 }
 ```
@@ -110,8 +110,8 @@ variable "kms_key_id" {
   default = null
 
   # Validate that kms_key_id is provided when encryption is enabled
-  # Note: validations can't reference other variables directly, but they can
-  # reference the current variable
+  # Note: as of OpenTofu 1.9, validations can reference other variables, locals,
+  # and data sources in addition to the current variable
   validation {
     condition     = var.kms_key_id == null || can(regex("^arn:aws:kms:", var.kms_key_id))
     error_message = "kms_key_id must be a valid KMS key ARN (starting with 'arn:aws:kms:') or null."
