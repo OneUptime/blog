@@ -21,7 +21,7 @@ Error: Invalid count argument
   The "count" value depends on resource attributes that cannot be determined
   until apply.
 
-Error: Index value required
+Error: Invalid index
   on main.tf line 20: The given key does not identify an element in this
   collection value.
 ```
