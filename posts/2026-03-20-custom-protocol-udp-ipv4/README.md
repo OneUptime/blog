@@ -14,7 +14,7 @@ UDP is connectionless and unreliable - packets may arrive out of order, be dupli
 - **Sequence numbers** - detect reordering and duplicates
 - **Max size** - UDP payload should stay under 1400 bytes to avoid fragmentation
 
-## Wire Format (16-byte header)
+## Wire Format (12-byte header)
 
 ```text
 +------+------+--------+--------+--------+----------+
