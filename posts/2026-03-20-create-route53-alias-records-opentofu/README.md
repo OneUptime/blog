@@ -117,7 +117,7 @@ resource "aws_route53_record" "api_us_east" {
   }
 }
 
-# Failover record
+# Secondary region in eu-west-1
 resource "aws_route53_record" "api_eu_west" {
   zone_id        = data.aws_route53_zone.main.zone_id
   name           = "api.example.com"
