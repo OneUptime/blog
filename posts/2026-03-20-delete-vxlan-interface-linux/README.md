@@ -32,8 +32,8 @@ ip link set vxlan10 nomaster
 ip link del vxlan10
 
 # Verify
-bridge link show br-vxlan   # vxlan10 should no longer appear
-ip link show vxlan10        # Should show error
+ip link show master br-vxlan   # vxlan10 should no longer appear
+ip link show vxlan10           # Should show error
 ```
 
 ## Bringing Down and Deleting
@@ -98,7 +98,7 @@ nmcli connection delete vxlan10-connection
 ip link show vxlan10
 
 # Not in bridge
-bridge link show br-vxlan
+ip link show master br-vxlan
 
 # No FDB entries for deleted interface
 bridge fdb show | grep vxlan10
