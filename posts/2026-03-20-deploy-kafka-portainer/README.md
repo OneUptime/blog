@@ -37,12 +37,13 @@ services:
       KAFKA_GROUP_INITIAL_REBALANCE_DELAY_MS: 0
       KAFKA_LOG_RETENTION_HOURS: 168    # 7 days
       KAFKA_LOG_RETENTION_BYTES: 1073741824    # 1GB per partition
+      KAFKA_LOG_DIRS: /var/lib/kafka/data
     volumes:
       - kafka_data:/var/lib/kafka/data
     ports:
       - "9092:9092"    # Broker port
     healthcheck:
-      test: ["CMD-SHELL", "kafka-topics.sh --bootstrap-server localhost:9092 --list"]
+      test: ["CMD-SHELL", "/opt/kafka/bin/kafka-topics.sh --bootstrap-server localhost:9092 --list"]
       interval: 30s
       timeout: 10s
       retries: 5
@@ -68,22 +69,22 @@ volumes:
 ```bash
 # Create a topic
 
-kafka-topics.sh --create \
+/opt/kafka/bin/kafka-topics.sh --create \
   --bootstrap-server localhost:9092 \
   --topic my-topic \
   --partitions 3 \
   --replication-factor 1
 
 # List topics
-kafka-topics.sh --list --bootstrap-server localhost:9092
+/opt/kafka/bin/kafka-topics.sh --list --bootstrap-server localhost:9092
 
 # Produce a test message
-echo "Hello Kafka" | kafka-console-producer.sh \
+echo "Hello Kafka" | /opt/kafka/bin/kafka-console-producer.sh \
   --bootstrap-server localhost:9092 \
   --topic my-topic
 
 # Consume messages
-kafka-console-consumer.sh \
+/opt/kafka/bin/kafka-console-consumer.sh \
   --bootstrap-server localhost:9092 \
   --topic my-topic \
   --from-beginning
@@ -104,14 +105,14 @@ services:
 
 ```bash
 # Set topic retention (via Portainer exec)
-kafka-configs.sh --bootstrap-server localhost:9092 \
+/opt/kafka/bin/kafka-configs.sh --bootstrap-server localhost:9092 \
   --entity-type topics \
   --entity-name my-topic \
   --alter \
   --add-config retention.ms=86400000    # 24 hours
 
 # View topic configuration
-kafka-configs.sh --bootstrap-server localhost:9092 \
+/opt/kafka/bin/kafka-configs.sh --bootstrap-server localhost:9092 \
   --entity-type topics \
   --entity-name my-topic \
   --describe
