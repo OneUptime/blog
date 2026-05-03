@@ -62,12 +62,12 @@ nc -zv -w 5 <agent-ip> 9001
 The Portainer Agent exposes an HTTPS API. Test it directly:
 
 ```bash
-# Test agent API endpoint (-k skips TLS verification)
-curl -k https://<agent-ip>:9001/ping
+# Test agent API endpoint (-k skips TLS verification, -i shows headers)
+curl -ki https://<agent-ip>:9001/ping
 
-# Expected: {"status":"OK"}
-# 000 (curl: (7) Failed to connect): TCP connection failed
-# SSL error: TLS certificate mismatch
+# Expected: HTTP/2 204 (empty body — /ping is an unauthenticated health check)
+# curl: (7) Failed to connect: TCP connection failed
+# curl: (35) SSL error: TLS handshake failed
 ```
 
 ## Step 5: Inspect TLS Certificate
