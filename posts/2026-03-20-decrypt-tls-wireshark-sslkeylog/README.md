@@ -23,7 +23,7 @@ google-chrome &
 firefox &
 
 # Windows (Command Prompt)
-set SSLKEYLOGFILE=C:	ls-keys.log
+set SSLKEYLOGFILE=C:\tls-keys.log
 "C:\Program Files\Google\Chrome\Application\chrome.exe"
 ```
 
@@ -83,17 +83,14 @@ tshark -r capture.pcap   -o "tls.keylog_file:/tmp/tls-keys.log"   -Y "http"   -T
 - The key log file contains session secrets - store securely and delete after use
 - Never use SSLKEYLOGFILE in production environments
 - Only works with TLS clients that support it (Chrome, Firefox, curl, Python requests)
-- Does not work if the server is using certificate pinning on the client
+- Does not work for applications whose TLS stack does not expose session keys (e.g., many native mobile apps, older Java/.NET runtimes)
 
 ---
 
 ## Enable in curl and Python
 
 ```bash
-# curl (requires curl 8.6+)
-curl -v --sslkeylogfile /tmp/tls-keys.log https://api.example.com/
-
-# Older curl versions: use environment variable
+# curl (requires curl 7.58.0+ with a supported TLS backend such as OpenSSL, GnuTLS, or wolfSSL)
 SSLKEYLOGFILE=/tmp/tls-keys.log curl -v https://api.example.com/
 
 # Python requests (via urllib3 keylog)
