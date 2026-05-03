@@ -158,7 +158,7 @@ write_api.write(bucket="metrics", record=point)
 
 In Grafana, add InfluxDB as a data source:
 
-1. Go to **Configuration > Data Sources > Add data source**.
+1. Go to **Connections > Data sources > Add new data source**.
 2. Select **InfluxDB** and choose query language **Flux**.
 3. Set URL to `http://influxdb:8086`.
 4. Set organization, token, and default bucket.
