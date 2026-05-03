@@ -163,6 +163,7 @@ resource "google_project_iam_member" "gke_nodes" {
 # outputs.tf
 output "cluster_name"     { value = google_container_cluster.main.name }
 output "cluster_endpoint" { value = google_container_cluster.main.endpoint }
+output "region"           { value = var.region }
 output "cluster_ca_cert"  {
   value     = google_container_cluster.main.master_auth[0].cluster_ca_certificate
   sensitive = true
