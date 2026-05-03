@@ -146,7 +146,7 @@ docker exec artemis /var/lib/artemis-instance/bin/artemis queue stat \
 ## Step 5: Java Client Example
 
 ```java
-// Maven dependency: org.apache.activemq:activemq-client:5.18.0
+// Maven dependency: org.apache.activemq:activemq-client:6.1.4
 import org.apache.activemq.ActiveMQConnectionFactory;
 import jakarta.jms.*;
 
