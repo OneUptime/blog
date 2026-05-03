@@ -8,7 +8,7 @@ Description: Step-by-step guide to deploying GitLab CE or EE on Rancher for self
 
 ## Introduction
 
-This guide covers deploying ugitlab on Rancher with production-ready configuration including persistent storage, TLS, and monitoring integration.
+This guide covers deploying GitLab on Rancher with production-ready configuration including persistent storage, TLS, and monitoring integration.
 
 ## Prerequisites
 
@@ -23,11 +23,11 @@ This guide covers deploying ugitlab on Rancher with production-ready configurati
 ```bash
 # Add the chart repository
 
-helm repo add bitnami https://charts.bitnami.com/bitnami
+helm repo add gitlab https://charts.gitlab.io/
 helm repo update
 
 # Search for available versions
-helm search repo bitnami/gitlab --versions | head -5
+helm search repo gitlab/gitlab --versions | head -5
 ```
 
 ## Step 2: Create Namespace and Secrets
@@ -90,8 +90,8 @@ podDisruptionBudget:
 ## Step 4: Install with Helm
 
 ```bash
-# Install ugitlab
-helm install gitlab bitnami/gitlab   --namespace gitlab   --values gitlab-values.yaml   --version latest   --wait   --timeout 10m
+# Install GitLab
+helm install gitlab gitlab/gitlab   --namespace gitlab   --values gitlab-values.yaml   --wait   --timeout 10m
 
 # Verify deployment
 kubectl get pods -n gitlab
@@ -202,8 +202,8 @@ spec:
 ## Upgrades
 
 ```bash
-# Upgrade ugitlab
-helm upgrade gitlab bitnami/gitlab   --namespace gitlab   --values gitlab-values.yaml   --reuse-values
+# Upgrade GitLab
+helm upgrade gitlab gitlab/gitlab   --namespace gitlab   --values gitlab-values.yaml   --reuse-values
 
 # Rollback if needed
 helm rollback gitlab 1 --namespace gitlab
@@ -211,4 +211,4 @@ helm rollback gitlab 1 --namespace gitlab
 
 ## Conclusion
 
-Deploying ugitlab on Rancher provides a production-ready environment with persistent storage, TLS termination, and autoscaling. Rancher's unified management interface gives operations teams visibility into ugitlab's health while the Helm-based installation makes upgrades and configuration changes straightforward.
+Deploying GitLab on Rancher provides a production-ready environment with persistent storage, TLS termination, and autoscaling. Rancher's unified management interface gives operations teams visibility into GitLab's health while the Helm-based installation makes upgrades and configuration changes straightforward.
