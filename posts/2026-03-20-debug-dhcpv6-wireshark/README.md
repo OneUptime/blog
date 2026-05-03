@@ -43,7 +43,7 @@ Frame 1: DHCPv6 Solicit
 Frame 2: DHCPv6 Advertise
   Source: fe80::server → Destination: fe80::1
   Message Type: Advertise (2)
-  Options: IA_NA (Address: 2001:db8::100, T1: 1800, T2: 2880)
+  Options: IA_NA (Address: 2001:db8::100, T1: 1350, T2: 2160)
            Server Identifier (DUID)
 
 Frame 3: DHCPv6 Request
@@ -86,7 +86,7 @@ tshark -r /tmp/dhcpv6.pcap -Y dhcpv6 \
   -T fields \
   -e frame.number \
   -e dhcpv6.msgtype \
-  -e dhcpv6.ia_na.addr \
+  -e dhcpv6.iaaddr.ip \
   -e dhcpv6.status_code
 
 # Output:
