@@ -68,7 +68,7 @@ EOF
         "type": "host-local",
         "ranges": [
           [{"subnet": "10.85.0.0/16"}],
-          [{"subnet": "fd00:crio::/64"}]
+          [{"subnet": "fd00:cafe::/64"}]
         ],
         "routes": [
           {"dst": "0.0.0.0/0"},
@@ -91,16 +91,24 @@ EOF
 
 ```bash
 # Install CRI-O (Ubuntu example for Kubernetes 1.29)
-OS="xUbuntu_22.04"
-VERSION="1.29"
+KUBERNETES_VERSION=v1.29
+CRIO_VERSION=v1.29
 
-echo "deb https://download.opensuse.org/repositories/devel:/kubic:/libcontainers:/stable/$OS/ /" \
-  > /etc/apt/sources.list.d/devel:kubic:libcontainers:stable.list
+apt-get update -y
+apt-get install -y software-properties-common curl gpg
+mkdir -p /etc/apt/keyrings
 
-echo "deb https://download.opensuse.org/repositories/devel:/kubic:/libcontainers:/stable:/cri-o:/$VERSION/$OS/ /" \
-  > /etc/apt/sources.list.d/devel:kubic:libcontainers:stable:cri-o:$VERSION.list
+curl -fsSL https://pkgs.k8s.io/core:/stable:/$KUBERNETES_VERSION/deb/Release.key \
+  | gpg --dearmor -o /etc/apt/keyrings/kubernetes-apt-keyring.gpg
+echo "deb [signed-by=/etc/apt/keyrings/kubernetes-apt-keyring.gpg] https://pkgs.k8s.io/core:/stable:/$KUBERNETES_VERSION/deb/ /" \
+  > /etc/apt/sources.list.d/kubernetes.list
 
-apt-get update && apt-get install -y cri-o cri-o-runc
+curl -fsSL https://download.opensuse.org/repositories/isv:/cri-o:/stable:/$CRIO_VERSION/deb/Release.key \
+  | gpg --dearmor -o /etc/apt/keyrings/cri-o-apt-keyring.gpg
+echo "deb [signed-by=/etc/apt/keyrings/cri-o-apt-keyring.gpg] https://download.opensuse.org/repositories/isv:/cri-o:/stable:/$CRIO_VERSION/deb/ /" \
+  > /etc/apt/sources.list.d/cri-o.list
+
+apt-get update && apt-get install -y cri-o
 
 systemctl enable --now crio
 ```
@@ -115,8 +123,8 @@ nodeRegistration:
 apiVersion: kubeadm.k8s.io/v1beta3
 kind: ClusterConfiguration
 networking:
-  serviceSubnet: "10.96.0.0/16,fd00:svc::/108"
-  podSubnet: "10.85.0.0/16,fd00:crio::/48"
+  serviceSubnet: "10.96.0.0/16,fd00:abcd::/108"
+  podSubnet: "10.85.0.0/16,fd00:cafe::/48"
 ```
 
 ```bash
@@ -131,7 +139,7 @@ kubeadm init --config kubeadm-config.yaml
 net-conf.json: |
   {
     "Network": "10.85.0.0/16",
-    "IPv6Network": "fd00:crio::/48",
+    "IPv6Network": "fd00:cafe::/48",
     "EnableIPv6": true,
     "EnableNFTables": false,
     "Backend": {
