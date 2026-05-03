@@ -98,7 +98,8 @@ resource "azurerm_linux_function_app" "func" {
 
   app_settings = {
     "FUNCTIONS_WORKER_RUNTIME"       = "python"
-    "WEBSITE_RUN_FROM_PACKAGE"       = "1"
+    "SCM_DO_BUILD_DURING_DEPLOYMENT" = "true"
+    "ENABLE_ORYX_BUILD"              = "true"
     "AzureWebJobsDisableHomepage"    = "true"
     "DATABASE_URL"                   = var.database_url
   }
