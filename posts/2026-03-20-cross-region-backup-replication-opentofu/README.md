@@ -48,7 +48,7 @@ resource "aws_backup_plan" "with_dr" {
 
     lifecycle {
       cold_storage_after = 30
-      delete_after       = 90
+      delete_after       = 120
     }
 
     # Copy to DR region
@@ -57,7 +57,7 @@ resource "aws_backup_plan" "with_dr" {
 
       lifecycle {
         cold_storage_after = 30
-        delete_after       = 90
+        delete_after       = 120
       }
     }
   }
@@ -98,12 +98,6 @@ resource "aws_dlm_lifecycle_policy" "cross_region" {
 
         retain_rule {
           interval      = 14  # Keep 14 days in DR region
-          interval_unit = "DAYS"
-        }
-
-        # Optionally deprecate old copies
-        deprecate_rule {
-          interval      = 14
           interval_unit = "DAYS"
         }
       }
