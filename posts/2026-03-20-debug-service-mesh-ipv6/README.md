@@ -101,7 +101,7 @@ POD_NS=$(kubectl get pod <pod-name> -o jsonpath='{.metadata.namespace}')
 NODE=$(kubectl get pod <pod-name> -o jsonpath='{.spec.nodeName}')
 
 # Get container PID on the node
-kubectl debug node/$NODE -it --image=nicolaka/netshoot -- \
+kubectl debug node/$NODE -it --profile=sysadmin --image=nicolaka/netshoot -- \
   chroot /host bash -c \
   "CONTAINER_ID=\$(crictl pods --name <pod-name> -q); \
    PID=\$(crictl inspectp \$CONTAINER_ID | python3 -m json.tool | grep '\"pid\"' | head -1 | awk '{print \$2}' | tr -d ','); \
@@ -125,7 +125,7 @@ kubectl exec <pod-name> -c app -- cat /etc/resolv.conf
 # Test direct DNS query to kube-dns/CoreDNS over IPv6
 kubectl exec <pod-name> -c app -- \
   dig AAAA my-service.default.svc.cluster.local \
-  @fd00:svc::a   # CoreDNS service IPv6
+  @fd00::a   # CoreDNS service IPv6
 
 # Check CoreDNS is listening on IPv6
 kubectl get svc -n kube-system kube-dns \
@@ -143,7 +143,7 @@ kubectl exec <pod-name> -c app -- \
 
 # Test connectivity to specific IPv6 endpoint
 kubectl exec <pod-name> -c app -- \
-  ping6 -c 3 fd00::10
+  ping -6 -c 3 fd00::10
 
 # Test service IPv6 ClusterIP directly
 SVC_IPV6=$(kubectl get svc my-service -o jsonpath='{.spec.clusterIPs[1]}')
@@ -168,7 +168,7 @@ kubectl get networkpolicy -A
 # NetworkPolicy may need to allow ICMPv6 type 135/136 (NDP)
 
 # Fix 5: Check node-level ip6tables
-kubectl debug node/<node-name> -it --image=nicolaka/netshoot -- \
+kubectl debug node/<node-name> -it --profile=sysadmin --image=nicolaka/netshoot -- \
   chroot /host ip6tables -L FORWARD -n
 ```
 
