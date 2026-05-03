@@ -68,8 +68,10 @@ openssl s_client -connect [2001:db8::1]:443 -tls1_3 2>&1 | grep "Protocol\|ALPN"
 # Expected: Protocol : TLSv1.3
 # If TLS 1.3 not supported, QUIC cannot work
 
-# Check ALPN negotiation - should include h3
-openssl s_client -connect [2001:db8::1]:443 -alpn h3 2>&1 | grep -E "ALPN|Protocol"
+# Note: ALPN h3 is only negotiated over QUIC (UDP), not TCP.
+# openssl s_client uses TCP, so use curl --http3 to verify h3 ALPN.
+# Over TCP, you can confirm h2/http1.1 ALPN as a baseline:
+openssl s_client -connect [2001:db8::1]:443 -alpn h2,http/1.1 2>&1 | grep -E "ALPN|Protocol"
 ```
 
 ## Step 5: Packet Capture for QUIC Analysis
