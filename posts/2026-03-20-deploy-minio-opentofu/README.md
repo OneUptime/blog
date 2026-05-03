@@ -69,9 +69,12 @@ resource "aws_ecs_task_definition" "minio" {
     name = "minio-data"
     efs_volume_configuration {
       file_system_id     = aws_efs_file_system.minio.id
-      access_point_id    = aws_efs_access_point.minio.id
       transit_encryption = "ENABLED"
       root_directory     = "/"
+      authorization_config {
+        access_point_id = aws_efs_access_point.minio.id
+        iam             = "DISABLED"
+      }
     }
   }
 
@@ -150,7 +153,7 @@ resource "aws_lb_target_group" "minio_console" {
   target_type = "ip"
 
   health_check {
-    path = "/minio/health/ready"
+    path = "/minio/health/live"
   }
 }
 ```
