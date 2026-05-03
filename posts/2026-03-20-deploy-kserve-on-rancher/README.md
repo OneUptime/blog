@@ -82,6 +82,8 @@ spec:
 
 ## Step 4: Canary Deployment
 
+Apply the updated InferenceService (same name) with the new `storageUri` and `canaryTrafficPercent`. KServe retains the previous revision as the default and routes the specified percentage of traffic to the new revision.
+
 ```yaml
 # canary-inference.yaml
 apiVersion: serving.kserve.io/v1beta1
@@ -91,17 +93,10 @@ metadata:
   namespace: production
 spec:
   predictor:
-    canaryTrafficPercent: 20    # Send 20% to new model
-    containers:
-      - name: kserve-container
-        image: kserve/sklearnserver:v0.12.0
-        args:
-          - --model_name=iris-v2
-          - --model_dir=/mnt/models
-    # Canary model
-    canary:
-      sklearn:
-        storageUri: "s3://my-models/sklearn/iris-v2"
+    canaryTrafficPercent: 20    # Send 20% to new revision
+    serviceAccountName: kserve-s3
+    sklearn:
+      storageUri: "s3://my-models/sklearn/iris-v2"
 ```
 
 ## Step 5: Test Inference
@@ -121,7 +116,7 @@ curl -X POST "${ISVC_URL}/v1/models/sklearn-iris:predict" \
 ## Step 6: Add Explainability
 
 ```yaml
-# Add SHAP explainer to InferenceService
+# Add Alibi explainer to InferenceService
 spec:
   explainer:
     alibi:
