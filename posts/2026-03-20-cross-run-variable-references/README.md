@@ -33,9 +33,9 @@ run "create_vpc" {
 run "create_subnets" {
   command = apply
 
-  # Reference the VPC created in the previous run
+  # Reference the VPC created in the previous run via its output
   variables {
-    vpc_id   = run.create_vpc.aws_vpc.main.id
+    vpc_id   = run.create_vpc.vpc_id
     vpc_cidr = "10.0.0.0/16"
   }
 
@@ -117,4 +117,4 @@ run "verify_before_destroy" {
 
 ## Summary
 
-Reference values from a previous `run` block using `run.<block_label>.<resource_type>.<resource_name>.<attribute>` or `run.<block_label>.<output_name>` for module outputs. This enables multi-step test workflows where later runs validate behavior that depends on resources from earlier runs. Use `variables {}` blocks at the test file or run block level to inject test-specific values.
+Reference values from a previous `run` block using `run.<block_label>.<output_name>`. Cross-run references can only access outputs exposed by the configuration, so any value you need in a later run must be declared as an output. This enables multi-step test workflows where later runs validate behavior that depends on resources from earlier runs. Use `variables {}` blocks at the test file or run block level to inject test-specific values.
