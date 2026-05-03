@@ -35,15 +35,15 @@ Client holds the connection forever (unless keepalives are enabled)
 # may be half-open
 ss -tn state established | awk '{print $4, $5}'
 
-# Check if keepalive timers are running (shows "timer:keepalive")
-ss -tnop | grep timer:keepalive
+# Check if keepalive timers are running (output shows "timer:(keepalive,...)")
+ss -tnop | grep "timer:(keepalive"
 
 # Connections without keepalive timers are at risk of being half-open
 ss -tnop | grep -v "timer:"
 
 # Check how long connections have been established
 ss -tn -o state established
-# Look for "timer:keepalive" with high elapsed time
+# Look for "timer:(keepalive,...)" with long expire time on idle connections
 ```
 
 ## Testing for Half-Open Connections
