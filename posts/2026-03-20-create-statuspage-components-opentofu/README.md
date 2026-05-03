@@ -14,7 +14,7 @@ Statuspage communicates service health to customers during incidents. Managing c
 terraform {
   required_providers {
     statuspage = {
-      source  = "TomTom/statuspage"
+      source  = "sbecker59/statuspage"
       version = "~> 1.0"
     }
   }
@@ -25,76 +25,71 @@ provider "statuspage" {
 }
 ```
 
-## Creating Component Groups
-
-```hcl
-# Create a page reference (page must exist already)
-
-data "statuspage_page" "main" {
-  page_id = var.statuspage_page_id
-}
-
-# Group components by service area
-resource "statuspage_component_group" "api" {
-  page_id     = data.statuspage_page.main.id
-  name        = "API Services"
-  description = "Public API endpoints"
-}
-
-resource "statuspage_component_group" "infrastructure" {
-  page_id     = data.statuspage_page.main.id
-  name        = "Infrastructure"
-  description = "Core infrastructure components"
-}
-
-resource "statuspage_component_group" "third_party" {
-  page_id     = data.statuspage_page.main.id
-  name        = "Third-Party Services"
-  description = "External service dependencies"
-}
-```
-
 ## Creating Components
+
+Components are created first; the page must already exist and its ID is passed in via a variable.
 
 ```hcl
 resource "statuspage_component" "api_v1" {
-  page_id     = data.statuspage_page.main.id
-  group_id    = statuspage_component_group.api.id
+  page_id     = var.statuspage_page_id
   name        = "REST API v1"
   description = "Public REST API - authentication, data access, and user management"
-  status      = "operational"  # operational, degraded_performance, partial_outage, major_outage
+  status      = "operational"  # operational, under_maintenance, degraded_performance, partial_outage, major_outage
 }
 
 resource "statuspage_component" "api_v2" {
-  page_id     = data.statuspage_page.main.id
-  group_id    = statuspage_component_group.api.id
+  page_id     = var.statuspage_page_id
   name        = "REST API v2"
   description = "Next-generation REST API with enhanced performance"
   status      = "operational"
 }
 
 resource "statuspage_component" "webhooks" {
-  page_id     = data.statuspage_page.main.id
-  group_id    = statuspage_component_group.api.id
+  page_id     = var.statuspage_page_id
   name        = "Webhooks"
   description = "Outbound webhook delivery"
   status      = "operational"
 }
 
 resource "statuspage_component" "database" {
-  page_id     = data.statuspage_page.main.id
-  group_id    = statuspage_component_group.infrastructure.id
+  page_id     = var.statuspage_page_id
   name        = "Database"
   description = "Primary database cluster"
   status      = "operational"
 }
 
 resource "statuspage_component" "cdn" {
-  page_id     = data.statuspage_page.main.id
-  group_id    = statuspage_component_group.infrastructure.id
+  page_id     = var.statuspage_page_id
   name        = "CDN"
   description = "Content delivery network"
   status      = "operational"
+}
+```
+
+## Creating Component Groups
+
+Group membership is declared on the group resource via the `components` attribute, which takes a set of component IDs.
+
+```hcl
+resource "statuspage_component_group" "api" {
+  page_id     = var.statuspage_page_id
+  name        = "API Services"
+  description = "Public API endpoints"
+  components  = [
+    statuspage_component.api_v1.id,
+    statuspage_component.api_v2.id,
+    statuspage_component.webhooks.id,
+  ]
+}
+
+resource "statuspage_component_group" "infrastructure" {
+  page_id     = var.statuspage_page_id
+  name        = "Infrastructure"
+  description = "Core infrastructure components"
+  components  = [
+    statuspage_component.database.id,
+    statuspage_component.cdn.id,
+  ]
 }
 ```
 
@@ -114,11 +109,17 @@ locals {
 resource "statuspage_component" "api" {
   for_each = local.api_components
 
-  page_id     = data.statuspage_page.main.id
-  group_id    = statuspage_component_group.api.id
+  page_id     = var.statuspage_page_id
   name        = each.key
   description = each.value
   status      = "operational"
+}
+
+resource "statuspage_component_group" "api_group" {
+  page_id     = var.statuspage_page_id
+  name        = "API Services"
+  description = "Public API endpoints"
+  components  = [for c in statuspage_component.api : c.id]
 }
 ```
 
