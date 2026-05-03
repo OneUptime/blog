@@ -32,7 +32,8 @@ kubectl get pods -n fission
 
 ```bash
 # macOS
-brew install fission
+curl -Lo fission https://github.com/fission/fission/releases/latest/download/fission-darwin-amd64 \
+  && chmod +x fission && sudo mv fission /usr/local/bin/
 
 # Linux
 curl -Lo fission https://github.com/fission/fission/releases/latest/download/fission-linux-amd64 \
@@ -50,7 +51,7 @@ Environments are pre-warmed container pools for each language runtime:
 # Create a Node.js environment
 fission environment create \
   --name nodejs \
-  --image fission/node-env \
+  --image ghcr.io/fission/node-env \
   --mincpu 40 \
   --maxcpu 200 \
   --minmemory 64 \
@@ -60,8 +61,8 @@ fission environment create \
 # Create a Python environment
 fission environment create \
   --name python \
-  --image fission/python-env \
-  --builder fission/python-builder
+  --image ghcr.io/fission/python-env \
+  --builder ghcr.io/fission/python-builder
 ```
 
 ## Step 4: Deploy a Function
