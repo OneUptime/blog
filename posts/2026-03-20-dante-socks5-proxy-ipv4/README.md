@@ -36,7 +36,7 @@ internal: eth1 port = 1080
 clientmethod: none
 
 # SOCKS authentication method
-method: none username
+socksmethod: none username
 
 # Client rules (who can connect to Dante)
 client pass {
@@ -65,7 +65,7 @@ internal: 0.0.0.0 port = 1080
 clientmethod: none
 
 # Require username/password authentication for SOCKS
-method: username
+socksmethod: username
 
 client pass {
     from: 0.0.0.0/0 to: 0.0.0.0/0
@@ -74,7 +74,7 @@ client pass {
 socks pass {
     from: 0.0.0.0/0 to: 0.0.0.0/0
     protocol: tcp
-    method: username
+    socksmethod: username
 }
 
 socks block {
@@ -94,7 +94,7 @@ sudo useradd -r -s /sbin/nologin proxyuser2
 sudo passwd proxyuser2
 ```
 
-Dante uses PAM or system users for `method: username`.
+Dante's `socksmethod: username` reads the system password files (`/etc/passwd`/`/etc/shadow`) directly. For PAM-based authentication, use `socksmethod: pam.username` instead.
 
 ## Start Dante
 
@@ -172,4 +172,4 @@ sudo tail -f /var/log/danted.log
 
 ## Conclusion
 
-Dante SOCKS5 proxy uses `method: username` for authentication with system users. Define `client pass` rules for who can connect, and `socks pass`/`socks block` rules for what destinations are reachable. Test with `curl --socks5 host:port`. SOCKS5 is protocol-agnostic, making it useful for proxying SSH, FTP, database connections, and other non-HTTP protocols.
+Dante SOCKS5 proxy uses `socksmethod: username` for authentication with system users. Define `client pass` rules for who can connect, and `socks pass`/`socks block` rules for what destinations are reachable. Test with `curl --socks5 host:port`. SOCKS5 is protocol-agnostic, making it useful for proxying SSH, FTP, database connections, and other non-HTTP protocols.
