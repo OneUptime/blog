@@ -26,13 +26,11 @@ version: "3.8"
 
 services:
   huginn:
-    image: ghcr.io/huginn/huginn:latest
+    image: ghcr.io/huginn/huginn-single-process:latest
     container_name: huginn
     restart: unless-stopped
     ports:
       - "3000:3000"
-    volumes:
-      - huginn_data:/var/lib/mysql
     environment:
       - RAILS_ENV=production
       - DATABASE_ADAPTER=mysql2
@@ -41,12 +39,12 @@ services:
       - DATABASE_NAME=huginn
       - DATABASE_USERNAME=huginn
       - DATABASE_PASSWORD=${DB_PASSWORD}
-      - SECRET_TOKEN=${SECRET_TOKEN}
+      - APP_SECRET_TOKEN=${APP_SECRET_TOKEN}
       - INVITATION_CODE=${INVITATION_CODE}
       - DOMAIN=localhost:3000
       - EMAIL_FROM_ADDRESS=huginn@yourdomain.com
       - SMTP_DOMAIN=yourdomain.com
-      - SMTP_HOST=${SMTP_HOST}
+      - SMTP_SERVER=${SMTP_SERVER}
       - SMTP_PORT=587
       - SMTP_AUTHENTICATION=plain
       - SMTP_USER_NAME=${SMTP_USER}
@@ -77,7 +75,6 @@ services:
       - huginn_net
 
 volumes:
-  huginn_data:
   huginn_mysql_data:
 
 networks:
@@ -90,9 +87,9 @@ networks:
 ```text
 DB_PASSWORD=your-db-password
 MYSQL_ROOT_PASSWORD=your-mysql-root-password
-SECRET_TOKEN=your-100-char-random-secret
+APP_SECRET_TOKEN=your-128-char-random-secret
 INVITATION_CODE=your-invite-code
-SMTP_HOST=smtp.yourdomain.com
+SMTP_SERVER=smtp.yourdomain.com
 SMTP_USER=noreply@yourdomain.com
 SMTP_PASSWORD=your-smtp-password
 ```
@@ -124,11 +121,11 @@ Change the admin password immediately after first login.
   "mode": "on_change",
   "extract": {
     "title": {
-      "css": ".storylink",
+      "css": ".titleline > a",
       "value": "string(.)"
     },
     "url": {
-      "css": ".storylink",
+      "css": ".titleline > a",
       "value": "@href"
     }
   }
