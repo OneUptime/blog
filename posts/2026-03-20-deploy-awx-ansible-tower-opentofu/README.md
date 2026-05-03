@@ -117,7 +117,7 @@ resource "kubernetes_secret" "awx_db" {
     username = "awx"
     password = random_password.db_password.result
     sslmode  = "prefer"
-    type     = "managed"
+    type     = "unmanaged"
   }
 
   depends_on = [helm_release.awx_operator]
@@ -133,12 +133,10 @@ resource "kubernetes_manifest" "awx" {
       namespace = "awx"
     }
     spec = {
-      service_type            = "ClusterIP"
-      hostname                = var.awx_hostname
-      admin_email             = var.awx_admin_email
-      external_database       = true
-      external_db_secret_name = kubernetes_secret.awx_db.metadata[0].name
-      postgres_label_selector = "app.kubernetes.io/instance=awx"
+      service_type                  = "ClusterIP"
+      hostname                      = var.awx_hostname
+      admin_email                   = var.awx_admin_email
+      postgres_configuration_secret = kubernetes_secret.awx_db.metadata[0].name
       web_resource_requirements = {
         requests = { memory = "1Gi", cpu = "500m" }
         limits   = { memory = "2Gi", cpu = "1000m" }
