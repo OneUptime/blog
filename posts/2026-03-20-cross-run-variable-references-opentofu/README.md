@@ -117,9 +117,9 @@ run "verify_dns" {
 }
 ```
 
-## Referencing Outputs vs Attributes
+## Exposing Resource Attributes Through Outputs
 
-You can reference both `output` values and plan-time resource attributes:
+Cross-run references go through module outputs only. To expose a resource attribute from a previous run, declare it as an output in the module being tested:
 
 ```hcl
 run "create_bucket" {
@@ -133,7 +133,7 @@ run "configure_replication" {
     # Reference a module output from the previous run
     source_bucket_id  = run.create_bucket.bucket_id
 
-    # Reference a module output that itself references a resource attribute
+    # Reference a module output that itself exposes a resource attribute
     source_bucket_arn = run.create_bucket.bucket_arn
   }
 }
