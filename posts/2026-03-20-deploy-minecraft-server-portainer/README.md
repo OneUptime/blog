@@ -34,7 +34,7 @@ services:
       # Server properties
       - MAX_PLAYERS=20
       - DIFFICULTY=normal
-      - GAMEMODE=survival
+      - MODE=survival
       - SERVER_NAME=My Portainer Server
       - MOTD=A Minecraft server deployed with Portainer!
       - PVP=true
@@ -76,7 +76,7 @@ wget -O /opt/minecraft/plugins/EssentialsX.jar \
 
 # LuckPerms - permissions management
 wget -O /opt/minecraft/plugins/LuckPerms.jar \
-  https://ci.luckperms.net/job/LuckPerms/lastSuccessfulBuild/artifact/bukkit/loader/build/libs/LuckPerms-Bukkit-5.4.137.jar
+  https://ci.lucko.me/job/LuckPerms/lastSuccessfulBuild/artifact/bukkit/loader/build/libs/LuckPerms-Bukkit-5.5.42.jar
 ```
 
 ## Step 3: Manage the Server via RCON
@@ -85,7 +85,7 @@ Send admin commands without accessing the container console:
 
 ```bash
 # Connect to the RCON console via the docker exec or a client
-docker exec -it minecraft_minecraft_1 rcon-cli
+docker exec -it minecraft-minecraft-1 rcon-cli
 
 # Or use the mcrcon client
 # mcrcon -H localhost -P 25575 -p rcon_secure_password "list"
@@ -119,7 +119,7 @@ The image exposes a health check endpoint. Monitor it with Portainer's health ch
 
 ```bash
 # Check if the server accepts connections
-docker exec minecraft_minecraft_1 mc-monitor status --host localhost
+docker exec minecraft-minecraft-1 mc-monitor status --host localhost
 ```
 
 ## Version Updates
