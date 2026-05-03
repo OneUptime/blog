@@ -89,24 +89,26 @@ resource "aws_route53_record" "cert_validation" {
 ```hcl
 # dns_cloudflare.tf
 data "cloudflare_zone" "main" {
-  name = var.domain_name
+  filter = {
+    name = var.domain_name
+  }
 }
 
 # Apex domain - CNAME flattening handles this at Cloudflare
-resource "cloudflare_record" "apex" {
-  zone_id = data.cloudflare_zone.main.id
+resource "cloudflare_dns_record" "apex" {
+  zone_id = data.cloudflare_zone.main.zone_id
   name    = "@"
   type    = "CNAME"
-  value   = var.cdn_hostname  # e.g., d1234.cloudfront.net or pages.dev
+  content = var.cdn_hostname  # e.g., d1234.cloudfront.net or pages.dev
   proxied = var.enable_cloudflare_proxy
   ttl     = 1
 }
 
-resource "cloudflare_record" "www" {
-  zone_id = data.cloudflare_zone.main.id
+resource "cloudflare_dns_record" "www" {
+  zone_id = data.cloudflare_zone.main.zone_id
   name    = "www"
   type    = "CNAME"
-  value   = var.domain_name
+  content = var.domain_name
   proxied = var.enable_cloudflare_proxy
   ttl     = 1
 }
