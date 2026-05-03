@@ -39,7 +39,8 @@ tcpdump -i eth0 -n 'udp port 546 or udp port 547'
 radvd -d5  # Debug radvd to see sent RAs
 
 # Check if client received RA with M/O flags
-ip netns exec client-ns ndp -a  # On macOS style
+# On macOS:
+ndp -a
 # On Linux client:
 ip -6 neigh show
 ```
@@ -118,10 +119,10 @@ nft list ruleset | grep -A 2 "547"
 
 ```bash
 # Debug dhcrelay
-dhcrelay -6 -d -f \
+# In DHCPv6 mode, upstream uses -u [address%]ifname form
+dhcrelay -6 -d \
     -l eth0 \
-    -u eth1 \
-    2001:db8::dhcp-server 2>&1 | grep -E "RELAY|recv|send"
+    -u 2001:db8::1%eth1 2>&1 | grep -E "RELAY|recv|send"
 
 # Debug Cisco relay (IOS)
 debug ipv6 dhcp relay
