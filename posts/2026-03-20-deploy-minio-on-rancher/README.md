@@ -25,8 +25,8 @@ mode: distributed    # Enable distributed mode for HA
 replicas: 4          # Minimum 4 for distributed mode
 drivesPerNode: 2     # 2 drives per node (8 total drives)
 
-# Erasure coding: 4+2 configuration (4 data, 2 parity)
-# Can lose 2 nodes and still function
+# Erasure coding: with 8 drives, MinIO defaults to EC:4 (4 data, 4 parity)
+# Can lose up to 4 drives and still function
 
 persistence:
   enabled: true
@@ -81,9 +81,9 @@ kubectl get pods -n minio
 kubectl exec -it minio-0 -n minio -- \
   mc admin info local/
 
-# View erasure set configuration
+# View server, pool, and erasure set details
 kubectl exec -it minio-0 -n minio -- \
-  mc admin heal --all local/
+  mc admin info --json local/
 ```
 
 ## Step 3: Create Buckets and Policies
@@ -97,8 +97,8 @@ mc mb myminio/mlflow-artifacts
 mc mb myminio/application-backups
 mc mb myminio/log-archive
 
-# Create a bucket policy for read-only access
-mc policy set download myminio/mlflow-artifacts
+# Allow anonymous read-only (download) access on a bucket
+mc anonymous set download myminio/mlflow-artifacts
 ```
 
 ## Step 4: Create Service Account for Applications
@@ -114,7 +114,7 @@ mc admin policy attach myminio readwrite --user=myapp
 ```bash
 # Auto-delete objects older than 90 days in the log archive
 mc ilm rule add \
-  --expiry-days "90" \
+  --expire-days 90 \
   myminio/log-archive
 ```
 
