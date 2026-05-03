@@ -61,22 +61,23 @@ tshark -r /tmp/dhcp.pcap -T fields \
     -e frame.time \
     -e ip.src \
     -e ip.dst \
-    -e bootp.option.dhcp \
-    -e bootp.ip.your \
-    -e bootp.option.server_id \
-    -Y "bootp"
+    -e dhcp.option.dhcp \
+    -e dhcp.ip.your \
+    -e dhcp.option.dhcp_server_id \
+    -Y "dhcp"
 ```
 
 ## Python: Parse DHCP Packets from pcap
 
 ```python
-from scapy.all import rdpcap, BOOTP, DHCP
+from scapy.all import rdpcap, IP, BOOTP, DHCP
 
 pcap = rdpcap("/tmp/dhcp.pcap")
 
 for pkt in pcap:
     if pkt.haslayer(DHCP):
-        msg_type = dict(pkt[DHCP].options).get("message-type", 0)
+        opts = dict(o for o in pkt[DHCP].options if isinstance(o, tuple) and len(o) == 2)
+        msg_type = opts.get("message-type", 0)
         type_names = {1:"Discover", 2:"Offer", 3:"Request",
                       4:"Decline", 5:"ACK", 6:"NAK", 7:"Release"}
         print(f"DHCP {type_names.get(msg_type, msg_type)}: "
