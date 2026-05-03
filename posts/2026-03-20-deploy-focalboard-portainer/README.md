@@ -105,8 +105,8 @@ curl -X POST http://localhost:8000/api/v2/login \
   -H 'Content-Type: application/json' \
   -d '{"type": "normal", "username": "admin", "password": "your-password"}'
 
-# List boards
-curl http://localhost:8000/api/v2/boards \
+# List boards in a team (use team ID "0" in personal-server mode)
+curl http://localhost:8000/api/v2/teams/0/boards \
   -H 'Authorization: Bearer <token>'
 ```
 
