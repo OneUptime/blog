@@ -27,19 +27,25 @@ tcpdump -i any -n ip6
 # MLD uses ICMPv6 - filter by destination (multicast)
 tcpdump -i eth0 -n 'ip6 and icmp6'
 
-# More specific: capture only MLD query and report messages
-# ICMPv6 type is at byte offset 40 (after 40-byte IPv6 header)
-# Type 130 = General Query, 131 = Report, 132 = Done, 143 = v2 Report
-tcpdump -i eth0 -n 'icmp6 and (ip6[40] == 130 or ip6[40] == 131 or ip6[40] == 132 or ip6[40] == 143)'
+# More specific: capture only MLD query and report messages.
+# RFC 2710 / RFC 3810 require MLD messages to carry an IPv6 Hop-by-Hop
+# Options header with the Router Alert option, so the ICMPv6 header
+# starts at byte offset 48 (40-byte IPv6 header + 8-byte HBH option),
+# not 40. ip6[40] is the HBH Next Header field (58 = ICMPv6) and
+# ip6[48] is the ICMPv6 type. (libpcap's icmp6/icmp6[icmp6type]
+# primitives do not chase IPv6 extension headers, so the explicit
+# byte offsets are required.)
+# Type 130 = General Query, 131 = v1 Report, 132 = Done, 143 = v2 Report
+tcpdump -i eth0 -n 'ip6[40] == 58 and (ip6[48] == 130 or ip6[48] == 131 or ip6[48] == 132 or ip6[48] == 143)'
 
 # Capture MLD queries only
-tcpdump -i eth0 -n 'icmp6 and ip6[40] == 130'
+tcpdump -i eth0 -n 'ip6[40] == 58 and ip6[48] == 130'
 
 # Capture MLD reports only
-tcpdump -i eth0 -n 'icmp6 and (ip6[40] == 131 or ip6[40] == 143)'
+tcpdump -i eth0 -n 'ip6[40] == 58 and (ip6[48] == 131 or ip6[48] == 143)'
 
 # Verbose output showing full MLD details
-tcpdump -i eth0 -vvn 'icmp6 and ip6[40] == 130'
+tcpdump -i eth0 -vvn 'ip6[40] == 58 and ip6[48] == 130'
 ```
 
 ## Capturing PIM Messages
@@ -51,18 +57,21 @@ tcpdump -i eth0 -n 'ip6 proto 103'
 # PIM with verbose decode
 tcpdump -i eth0 -vvn 'ip6 proto 103'
 
-# PIM Hello messages (type byte after PIM header = 0)
-tcpdump -i eth0 -n 'ip6 proto 103 and ip6[41] == 0'
+# PIM Hello messages. Per RFC 7761, byte 0 of the PIM header packs
+# Version (high 4 bits) and Type (low 4 bits); byte 1 is Reserved.
+# With no IPv6 extension headers, the PIM header starts at byte 40,
+# so mask the low nibble of ip6[40] to test the type.
+tcpdump -i eth0 -n 'ip6 proto 103 and (ip6[40] & 0x0f) == 0'
 
 # Capture PIM Register messages (type 1)
-tcpdump -i eth0 -n 'ip6 proto 103 and ip6[41] == 1'
+tcpdump -i eth0 -n 'ip6 proto 103 and (ip6[40] & 0x0f) == 1'
 ```
 
 ## Capturing Traffic to Specific Multicast Groups
 
 ```bash
 # Capture traffic to a specific multicast group
-tcpdump -i eth0 -n 'ip6 dst ff3e::db8:stream'
+tcpdump -i eth0 -n 'ip6 dst ff3e::db8:1234'
 
 # Capture traffic to all link-local multicast groups
 tcpdump -i eth0 -n 'ip6 dst net ff02::/16'
@@ -82,8 +91,8 @@ tcpdump -i eth0 -n 'icmp6 and (ip6[40] == 135 or ip6[40] == 136)'
 # Capture to file with timestamps
 tcpdump -i eth0 -n -w /tmp/multicast.pcap 'ip6 multicast'
 
-# Capture with timestamp precision
-tcpdump -i eth0 -n -tttt -w /tmp/multicast.pcap 'ip6 multicast'
+# Capture with nanosecond timestamp precision (libpcap >= 1.5)
+tcpdump -i eth0 -n --time-stamp-precision=nano -w /tmp/multicast.pcap 'ip6 multicast'
 
 # Limit capture size to 100MB
 tcpdump -i eth0 -n -C 100 -w /tmp/multicast.pcap 'ip6 multicast'
@@ -98,14 +107,15 @@ tcpdump -i eth0 -n -c 10000 -w /tmp/multicast.pcap 'ip6 and icmp6'
 # Read a saved capture file
 tcpdump -r /tmp/multicast.pcap -n
 
-# Apply filter to saved capture
-tcpdump -r /tmp/multicast.pcap -n 'ip6[40] == 130'
+# Apply filter to saved capture (MLD General Query: HBH next header
+# is ICMPv6 (58) and the ICMPv6 type byte at offset 48 is 130)
+tcpdump -r /tmp/multicast.pcap -n 'ip6[40] == 58 and ip6[48] == 130'
 
 # Extract MLD queries from capture
-tcpdump -r /tmp/multicast.pcap -n 'icmp6 and ip6[40] == 130' | head -20
+tcpdump -r /tmp/multicast.pcap -n 'ip6[40] == 58 and ip6[48] == 130' | head -20
 
 # Count MLD queries
-tcpdump -r /tmp/multicast.pcap -n 'icmp6 and ip6[40] == 130' | wc -l
+tcpdump -r /tmp/multicast.pcap -n 'ip6[40] == 58 and ip6[48] == 130' | wc -l
 ```
 
 ## Diagnosing Common Issues with tcpdump
@@ -114,11 +124,11 @@ tcpdump -r /tmp/multicast.pcap -n 'icmp6 and ip6[40] == 130' | wc -l
 
 ```bash
 # On the receiver: check if multicast is arriving at eth0
-tcpdump -i eth0 -n 'ip6 dst ff3e::db8:stream'
+tcpdump -i eth0 -n 'ip6 dst ff3e::db8:1234'
 # No output = traffic not arriving at this interface
 
 # Check on the uplink (WAN) interface
-tcpdump -i eth1 -n 'ip6 dst ff3e::db8:stream'
+tcpdump -i eth1 -n 'ip6 dst ff3e::db8:1234'
 ```
 
 ### MLD reports not being generated
@@ -126,8 +136,8 @@ tcpdump -i eth1 -n 'ip6 dst ff3e::db8:stream'
 ```bash
 # Verify the host is sending MLD reports after joining
 # Start capture first, then join the group
-tcpdump -i eth0 -n 'icmp6 and ip6[40] == 143' &
-python3 join_mcast.py ff3e::db8:test eth0
+tcpdump -i eth0 -n 'ip6[40] == 58 and ip6[48] == 143' &
+python3 join_mcast.py ff3e::db8:5678 eth0
 # Should see an MLD v2 Report immediately
 ```
 
@@ -135,11 +145,11 @@ python3 join_mcast.py ff3e::db8:test eth0
 
 ```bash
 # Capture queries and responses together
-tcpdump -i eth0 -n 'icmp6 and (ip6[40] == 130 or ip6[40] == 143)' \
+tcpdump -i eth0 -n 'ip6[40] == 58 and (ip6[48] == 130 or ip6[48] == 143)' \
     -l | awk '{
     if ($0 ~ /multicast listener query/)
         print "QUERY: " $0
-    else if ($0 ~ /MLDv2/)
+    else if ($0 ~ /multicast listener report/)
         print "REPORT: " $0
 }'
 ```
@@ -148,7 +158,7 @@ tcpdump -i eth0 -n 'icmp6 and (ip6[40] == 130 or ip6[40] == 143)' \
 
 ```bash
 # Monitor MLD membership changes in real-time
-tcpdump -i eth0 -n 'icmp6 and (ip6[40] == 131 or ip6[40] == 132 or ip6[40] == 143)' \
+tcpdump -i eth0 -n 'ip6[40] == 58 and (ip6[48] == 131 or ip6[48] == 132 or ip6[48] == 143)' \
     -l | while read line; do echo "$(date +%H:%M:%S) $line"; done
 
 # Count multicast packets per group
@@ -161,4 +171,4 @@ tcpdump -i eth0 -n 'ip6[24] == 0xff' -vv 2>/dev/null | grep -E 'hlim|dst ff'
 
 ## Summary
 
-`tcpdump` with IPv6 multicast filters enables rapid diagnosis of multicast issues. Use `icmp6 and ip6[40] == 130` for MLD queries, `ip6[40] == 143` for MLDv2 reports, and `ip6 proto 103` for PIM. Filter by destination group with `ip6 dst ff3e::stream`. Save captures to `.pcap` files for detailed analysis in Wireshark. The one-liner monitoring scripts provide continuous visibility into multicast membership changes.
+`tcpdump` with IPv6 multicast filters enables rapid diagnosis of multicast issues. Because MLD packets carry a Hop-by-Hop Router Alert option, use `ip6[40] == 58 and ip6[48] == 130` for MLD queries and `ip6[48] == 143` for MLDv2 reports; use `ip6 proto 103` for PIM. Filter by destination group with `ip6 dst <group>`. Save captures to `.pcap` files for detailed analysis in Wireshark. The one-liner monitoring scripts provide continuous visibility into multicast membership changes.
