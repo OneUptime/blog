@@ -25,7 +25,7 @@ Crossplane manages cloud infrastructure as Kubernetes custom resources. For IPv6
 ```yaml
 # vpc-ipv6.yaml
 
-apiVersion: ec2.aws.crossplane.io/v1beta1
+apiVersion: ec2.aws.upbound.io/v1beta1
 kind: VPC
 metadata:
   name: my-ipv6-vpc
@@ -34,14 +34,12 @@ spec:
     region: us-east-1
     cidrBlock: 10.0.0.0/16
     # Enable IPv6 CIDR block assignment
-    amazonProvidedIpv6CidrBlock: true
+    assignGeneratedIpv6CidrBlock: true
     enableDnsHostnames: true
     enableDnsSupport: true
     tags:
-      - key: Name
-        value: my-ipv6-vpc
-      - key: ipv6-enabled
-        value: "true"
+      Name: my-ipv6-vpc
+      ipv6-enabled: "true"
   providerConfigRef:
     name: aws-provider
 ```
@@ -50,7 +48,7 @@ spec:
 
 ```yaml
 # subnet-ipv6.yaml
-apiVersion: ec2.aws.crossplane.io/v1beta1
+apiVersion: ec2.aws.upbound.io/v1beta1
 kind: Subnet
 metadata:
   name: my-ipv6-subnet
@@ -83,11 +81,11 @@ spec:
   resources:
     - name: vpc
       base:
-        apiVersion: ec2.aws.crossplane.io/v1beta1
+        apiVersion: ec2.aws.upbound.io/v1beta1
         kind: VPC
         spec:
           forProvider:
-            amazonProvidedIpv6CidrBlock: true
+            assignGeneratedIpv6CidrBlock: true
       patches:
         - type: FromCompositeFieldPath
           fromFieldPath: spec.region
@@ -95,7 +93,7 @@ spec:
 
     - name: subnet
       base:
-        apiVersion: ec2.aws.crossplane.io/v1beta1
+        apiVersion: ec2.aws.upbound.io/v1beta1
         kind: Subnet
         spec:
           forProvider:
@@ -121,6 +119,8 @@ spec:
     plural: xdualstacknetworks
   versions:
     - name: v1alpha1
+      served: true
+      referenceable: true
       schema:
         openAPIV3Schema:
           type: object
