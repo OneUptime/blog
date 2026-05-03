@@ -23,6 +23,11 @@ services:
     command: redis-server --appendonly yes
     volumes:
       - redis-data:/data
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
     restart: unless-stopped
     networks:
       - celery-net
@@ -124,6 +129,8 @@ def send_email(to, subject, body):
 
 ```python
 # celeryconfig.py
+import os
+
 broker_url = os.environ.get("CELERY_BROKER_URL", "redis://localhost:6379/0")
 result_backend = os.environ.get("CELERY_RESULT_BACKEND", "redis://localhost:6379/1")
 
