@@ -63,7 +63,7 @@ spec:
     spec:
       containers:
         - name: mlflow
-          image: ghcr.io/mlflow/mlflow:v2.12.0
+          image: ghcr.io/mlflow/mlflow:v2.12.1
           command:
             - mlflow
             - server
