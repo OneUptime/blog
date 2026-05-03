@@ -36,7 +36,7 @@ strace -r ./my_server       # relative time since last call
 
 ```bash
 # Trace only socket-related system calls (reduces noise)
-strace -e trace=network ./my_server
+strace -e trace=%network ./my_server
 
 # Commonly useful network syscalls
 strace -e trace=socket,bind,listen,accept,accept4,connect,\
@@ -105,7 +105,7 @@ strace -e trace=socket,connect,send,recv,close -s 512 curl http://example.com 2>
 Expected output pattern:
 ```text
 socket(AF_INET, SOCK_STREAM, IPPROTO_TCP) = 3
-connect(3, {sa_family=AF_INET, sin_port=htons(80), sin_addr=inet_addr("93.184.216.34")}, 16) = 0
+connect(3, {sa_family=AF_INET, sin_port=htons(80), sin_addr=inet_addr("172.66.147.243")}, 16) = 0
 send(3, "GET / HTTP/1.1\r\nHost: example.com\r\n...", 76, MSG_NOSIGNAL) = 76
 recv(3, "HTTP/1.1 200 OK\r\n...", 16384, 0) = 1256
 close(3) = 0
@@ -129,4 +129,4 @@ Example output:
 
 ## Conclusion
 
-`strace -e trace=network` filters output to socket-related system calls, reducing noise from unrelated I/O. The return value after `=` shows success (fd or 0) or failure (-1 followed by the errno name). Use `-T` to measure time spent in each call - a blocking `accept4` or `connect` with a large duration points to a timeout or connection issue. Use `-f` to follow forked child processes in multi-process servers. Combine `strace` with `ss -tlnp` (to see what is bound) and `tcpdump` (to see what actually goes on the wire) for complete socket debugging coverage.
+`strace -e trace=%network` filters output to socket-related system calls, reducing noise from unrelated I/O. The return value after `=` shows success (fd or 0) or failure (-1 followed by the errno name). Use `-T` to measure time spent in each call - a blocking `accept4` or `connect` with a large duration points to a timeout or connection issue. Use `-f` to follow forked child processes in multi-process servers. Combine `strace` with `ss -tlnp` (to see what is bound) and `tcpdump` (to see what actually goes on the wire) for complete socket debugging coverage.
