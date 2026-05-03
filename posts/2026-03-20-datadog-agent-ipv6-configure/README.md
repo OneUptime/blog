@@ -59,23 +59,21 @@ Metrics collected include:
 init_config:
 
 instances:
-  # Monitor an IPv6 HTTP endpoint
+  # Monitor an IPv6 HTTP endpoint - using an IPv6 literal in the URL
+  # ensures the HTTP check connects over IPv6.
   - name: "IPv6 Web Server Check"
     url: "http://[2001:db8::10]:80/"
     timeout: 5
-    # Force IPv6 connection
-    ip_version: "ipv6"
     tags:
       - "env:production"
       - "ip_family:ipv6"
 
-  # Monitor an IPv6 HTTPS endpoint
+  # Monitor an HTTPS endpoint - resolves over IPv6 when the host has IPv6
+  # connectivity and the target hostname has an AAAA record.
   - name: "IPv6 HTTPS Check"
     url: "https://www.example.com/"
     timeout: 10
-    # Prefer IPv6 (falls back to IPv4 if unavailable)
-    ip_version: "ipv6"
-    ssl_verify: true
+    tls_verify: true
 ```
 
 ## Step 4: Custom Check for IPv6 Connectivity
@@ -164,4 +162,4 @@ datadog-agent check http_check
 datadog-agent check ipv6_connectivity
 ```
 
-The Datadog Agent's HTTP check with `ip_version: ipv6` and custom check capabilities make it straightforward to build comprehensive IPv6 monitoring coverage alongside standard infrastructure metrics.
+The Datadog Agent's HTTP check (using IPv6-literal URLs) and custom check capabilities make it straightforward to build comprehensive IPv6 monitoring coverage alongside standard infrastructure metrics.
