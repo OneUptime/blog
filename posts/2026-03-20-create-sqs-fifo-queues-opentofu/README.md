@@ -133,8 +133,7 @@ resource "aws_lambda_event_source_mapping" "orders" {
   function_name    = aws_lambda_function.process_orders.arn
 
   # FIFO-specific settings
-  batch_size                         = 10
-  maximum_batching_window_in_seconds = 0  # Process immediately
+  batch_size = 10
 
   # Report individual message failures (partial batch responses)
   function_response_types = ["ReportBatchItemFailures"]
