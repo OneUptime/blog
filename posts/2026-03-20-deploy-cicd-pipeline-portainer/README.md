@@ -65,10 +65,12 @@ STACK_ID=$(curl -s -H "Authorization: Bearer $TOKEN" \
   jq -r '.[] | select(.Name=="my-app") | .Id')
 
 # Update the stack (pulls latest images and redeploys)
+# endpointId is the environment ID (find it under Environments in the UI)
+ENDPOINT_ID=1
 curl -s -X PUT \
   -H "Authorization: Bearer $TOKEN" \
   -H "Content-Type: application/json" \
-  https://portainer.example.com/api/stacks/$STACK_ID/git/redeploy \
+  "https://portainer.example.com/api/stacks/$STACK_ID/git/redeploy?endpointId=$ENDPOINT_ID" \
   -d '{"pullImage": true, "prune": false}'
 ```
 
@@ -84,6 +86,7 @@ IMAGE_NAME="myregistry.example.com/my-app"
 IMAGE_TAG="${CI_COMMIT_SHA:-latest}"
 PORTAINER_URL="https://portainer.example.com"
 STACK_NAME="my-app"
+ENDPOINT_ID="${PORTAINER_ENDPOINT_ID:-1}"
 
 # Build and push the image
 docker build -t "$IMAGE_NAME:$IMAGE_TAG" .
@@ -104,10 +107,12 @@ STACK_ID=$(curl -s -H "Authorization: Bearer $TOKEN" \
   "$PORTAINER_URL/api/stacks" | \
   jq -r --arg name "$STACK_NAME" '.[] | select(.Name==$name) | .Id')
 
-# Trigger redeploy
-curl -s -X POST \
+# Trigger redeploy (pulls latest images and redeploys the stack)
+curl -s -X PUT \
   -H "Authorization: Bearer $TOKEN" \
-  "$PORTAINER_URL/api/stacks/$STACK_ID/images/update?pullImage=true"
+  -H "Content-Type: application/json" \
+  "$PORTAINER_URL/api/stacks/$STACK_ID/git/redeploy?endpointId=$ENDPOINT_ID" \
+  -d '{"pullImage": true, "prune": false}'
 
 echo "Deployment complete"
 ```
