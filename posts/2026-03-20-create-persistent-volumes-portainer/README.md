@@ -55,7 +55,7 @@ spec:
     storage: 100Gi
   accessModes:
     - ReadWriteOnce            # Single node only
-  persistentVolumeReclaimPolicy: Delete
+  persistentVolumeReclaimPolicy: Retain  # Local volumes only support Retain
   storageClassName: local-ssd
   local:
     path: /mnt/disks/ssd1     # Path on the specific node
