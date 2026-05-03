@@ -35,8 +35,8 @@ spec:
 ## Step 2: Test DNS Resolution for IPv6 (AAAA Records)
 
 ```bash
-# Run a debug pod to test DNS
-kubectl run dns-test --image=busybox:1.36 --restart=Never -- sleep 3600
+# Run a debug pod to test DNS (netshoot includes both nslookup and dig)
+kubectl run dns-test --image=nicolaka/netshoot --restart=Never -- sleep 3600
 
 # Exec into the pod and test DNS
 kubectl exec -it dns-test -- nslookup -type=AAAA <service-name>.<namespace>.svc.cluster.local
