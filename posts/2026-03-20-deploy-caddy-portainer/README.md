@@ -81,7 +81,7 @@ app.yourdomain.com {
     }
 }
 
-# API with rate limiting
+# API with rate limiting (requires third-party plugin, see below)
 api.yourdomain.com {
     reverse_proxy api-service:8080
 
@@ -94,6 +94,16 @@ api.yourdomain.com {
         }
     }
 }
+```
+
+The `rate_limit` directive is **not** built into standard Caddy. It is provided by the third-party module [`github.com/mholt/caddy-ratelimit`](https://github.com/mholt/caddy-ratelimit) and the official `caddy:2-alpine` image will reject the Caddyfile with an "unknown directive: rate_limit" error. To use it, build a custom image with `xcaddy`:
+
+```dockerfile
+FROM caddy:2-builder-alpine AS builder
+RUN xcaddy build --with github.com/mholt/caddy-ratelimit
+
+FROM caddy:2-alpine
+COPY --from=builder /usr/bin/caddy /usr/bin/caddy
 ```
 
 Caddy automatically:
@@ -151,7 +161,7 @@ echo | openssl s_client -servername portainer.yourdomain.com \
 
 # Test HTTP to HTTPS redirect
 curl -I http://portainer.yourdomain.com
-# Expected: 301 Moved Permanently → https://
+# Expected: 308 Permanent Redirect → https://
 ```
 
 ## Conclusion
