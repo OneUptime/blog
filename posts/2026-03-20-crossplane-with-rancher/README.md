@@ -24,8 +24,7 @@ helm repo update
 
 helm install crossplane crossplane-stable/crossplane \
   --namespace crossplane-system \
-  --create-namespace \
-  --set args='{"--enable-composition-revisions"}'
+  --create-namespace
 ```
 
 ## Step 2: Verify Crossplane is Running
@@ -45,7 +44,7 @@ kind: Provider
 metadata:
   name: upbound-provider-aws-s3
 spec:
-  package: xpkg.upbound.io/upbound/provider-aws-s3:v1.0.0
+  package: xpkg.upbound.io/upbound/provider-aws-s3:v2.5.3
 ```
 
 ```bash
@@ -113,7 +112,23 @@ kubectl describe bucket my-app-data-bucket
 
 ## Step 6: Create a Composition for Self-Service Databases
 
-Compositions create higher-level abstractions for platform teams to offer to developers:
+Compositions create higher-level abstractions for platform teams to offer to developers. Crossplane v2 requires Compositions to use `mode: Pipeline` with composition functions, so first install the patch-and-transform function:
+
+```yaml
+# function-patch-and-transform.yaml
+apiVersion: pkg.crossplane.io/v1
+kind: Function
+metadata:
+  name: function-patch-and-transform
+spec:
+  package: xpkg.crossplane.io/crossplane-contrib/function-patch-and-transform:v0.10.4
+```
+
+```bash
+kubectl apply -f function-patch-and-transform.yaml
+```
+
+Then define the Composition:
 
 ```yaml
 # database-composition.yaml
@@ -125,18 +140,26 @@ spec:
   compositeTypeRef:
     apiVersion: platform.example.org/v1alpha1
     kind: Database
-  resources:
-    - name: rds-instance
-      base:
-        apiVersion: rds.aws.upbound.io/v1beta1
-        kind: Instance
-        spec:
-          forProvider:
-            region: us-east-1
-            engine: postgres
-            engineVersion: "15"
-            instanceClass: db.t3.medium
-            allocatedStorage: 20
+  mode: Pipeline
+  pipeline:
+    - step: patch-and-transform
+      functionRef:
+        name: function-patch-and-transform
+      input:
+        apiVersion: pt.fn.crossplane.io/v1beta1
+        kind: Resources
+        resources:
+          - name: rds-instance
+            base:
+              apiVersion: rds.aws.upbound.io/v1beta1
+              kind: Instance
+              spec:
+                forProvider:
+                  region: us-east-1
+                  engine: postgres
+                  engineVersion: "15"
+                  instanceClass: db.t3.medium
+                  allocatedStorage: 20
 ```
 
 ## Conclusion
