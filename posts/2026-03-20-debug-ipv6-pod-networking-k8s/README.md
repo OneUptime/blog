@@ -37,8 +37,8 @@ kubectl get pod <pod-name> -o jsonpath='{.status.podIPs}'
 If the pod has no IPv6 address, check the CNI configuration:
 
 ```bash
-# View CNI config on the node
-cat /etc/cni/net.d/*.conf
+# View CNI config on the node (modern CNIs use .conflist; older ones use .conf)
+cat /etc/cni/net.d/*.conflist /etc/cni/net.d/*.conf 2>/dev/null
 ```
 
 ## Step 2: Test IPv6 Connectivity from a Pod
