@@ -35,7 +35,7 @@ spec:
     cidrBlock: 10.0.0.0/16
     # Enable IPv6 CIDR block assignment
     amazonProvidedIpv6CidrBlock: true
-    enableDnsHostnames: true
+    enableDnsHostNames: true
     enableDnsSupport: true
     tags:
       - key: Name
@@ -61,7 +61,7 @@ spec:
       name: my-ipv6-vpc
     cidrBlock: 10.0.1.0/24
     # IPv6 CIDR for this subnet (auto-assigned from VPC's /56)
-    ipv6CidrBlock: ""  # Set after VPC IPv6 CIDR is assigned
+    ipv6CIDRBlock: ""  # Set after VPC IPv6 CIDR is assigned
     assignIpv6AddressOnCreation: true
     availabilityZone: us-east-1a
   providerConfigRef:
