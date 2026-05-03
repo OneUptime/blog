@@ -263,10 +263,10 @@ for version in latest_versions:
 curl -s http://mlflow.example.com/health
 
 # View experiments via CLI
-mlflow experiments list   --tracking-uri http://mlflow.example.com
+mlflow experiments search   --tracking-uri http://mlflow.example.com
 
-# Count runs per experiment
-mlflow runs list   --experiment-name "classification-experiments"   --tracking-uri http://mlflow.example.com
+# Count runs per experiment (use experiment ID from the search above)
+mlflow runs list   --experiment-id 1   --tracking-uri http://mlflow.example.com
 ```
 
 ## Conclusion
