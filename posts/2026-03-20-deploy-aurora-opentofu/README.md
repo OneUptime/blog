@@ -42,8 +42,8 @@ resource "aws_rds_cluster" "main" {
   skip_final_snapshot       = var.environment != "prod"
   final_snapshot_identifier = var.environment == "prod" ? "${var.environment}-aurora-final" : null
 
-  # Enable auto minor version upgrades
-  enable_http_endpoint = false  # Data API (optional)
+  # Data API (optional HTTP endpoint)
+  enable_http_endpoint = false
 
   tags = {
     Name        = "${var.environment}-aurora"
