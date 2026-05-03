@@ -46,7 +46,6 @@ resource "aws_secretsmanager_secret_version" "backstage_secrets" {
     GITHUB_TOKEN              = var.github_token
     GITHUB_CLIENT_ID          = var.github_oauth_client_id
     GITHUB_CLIENT_SECRET      = var.github_oauth_client_secret
-    BACKEND_SECRET            = random_password.backend_secret.result
     POSTGRES_PASSWORD         = random_password.db_password.result
   })
 }
@@ -92,14 +91,12 @@ resource "aws_ecs_task_definition" "backstage" {
         valueFrom = "${aws_secretsmanager_secret.backstage_secrets.arn}:GITHUB_CLIENT_SECRET::" },
       { name = "GITHUB_TOKEN",
         valueFrom = "${aws_secretsmanager_secret.backstage_secrets.arn}:GITHUB_TOKEN::" },
-      { name = "APP_CONFIG_backend_auth_keys",
-        valueFrom = "${aws_secretsmanager_secret.backstage_secrets.arn}:BACKEND_SECRET::" },
     ]
 
     portMappings = [{ containerPort = 7007, protocol = "tcp" }]
 
     healthCheck = {
-      command     = ["CMD-SHELL", "curl -f http://localhost:7007/healthcheck || exit 1"]
+      command     = ["CMD-SHELL", "curl -f http://localhost:7007/.backstage/health/v1/readiness || exit 1"]
       interval    = 30
       timeout     = 5
       retries     = 3
@@ -123,25 +120,31 @@ resource "aws_ecs_task_definition" "backstage" {
 ```dockerfile
 # Dockerfile for Backstage
 
-FROM node:18-bookworm-slim AS packages
+FROM node:22-bookworm-slim AS packages
 WORKDIR /app
 COPY package.json yarn.lock ./
+COPY .yarn ./.yarn
+COPY .yarnrc.yml ./
+COPY backstage.json ./
 COPY packages packages
+COPY plugins plugins
 RUN find packages -mindepth 2 -maxdepth 2 \! -name "package.json" -exec rm -rf {} \+
 
-FROM node:18-bookworm-slim AS build
+FROM node:22-bookworm-slim AS build
 WORKDIR /app
 COPY --from=packages /app .
-RUN yarn install --frozen-lockfile --network-timeout 600000
+RUN yarn install --immutable
 
 COPY . .
 RUN yarn tsc && yarn build:backend
 
-FROM node:18-bookworm-slim
+FROM node:22-bookworm-slim
 WORKDIR /app
+COPY --from=build /app/.yarn ./.yarn
+COPY --from=build /app/.yarnrc.yml ./
 COPY --from=build /app/packages/backend/dist/bundle.tar.gz .
 RUN tar xzf bundle.tar.gz && rm bundle.tar.gz
-RUN yarn install --frozen-lockfile --production --network-timeout 600000
+RUN yarn workspaces focus --all --production
 
 USER node
 EXPOSE 7007
