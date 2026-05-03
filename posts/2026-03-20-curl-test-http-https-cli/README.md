@@ -107,7 +107,7 @@ curl -I --http2 https://example.com
 # Save response body to a file, show progress
 curl -o output.html https://example.com
 
-# Silent download with output filename derived from URL
+# Download with output filename derived from URL
 curl -O https://example.com/file.tar.gz
 ```
 
