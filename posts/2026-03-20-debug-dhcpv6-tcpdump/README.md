@@ -38,7 +38,7 @@ sudo tcpdump -r /tmp/dhcpv6_capture.pcap -v -n
 When a DHCPv6 exchange occurs, you will see output similar to:
 
 ```text
-# Solicit from client to All-DHCPv6-Servers multicast
+# Solicit from client to All_DHCP_Relay_Agents_and_Servers multicast
 12:00:01.001 IP6 fe80::aabb:ccff:fedd:1234.546 > ff02::1:2.547:
   dhcp6 solicit
 
