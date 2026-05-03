@@ -79,10 +79,6 @@ resource "google_sql_database_instance" "replica" {
   database_version     = "POSTGRES_15"
   master_instance_name = google_sql_database_instance.main.name
 
-  replica_configuration {
-    failover_target = false
-  }
-
   settings {
     tier              = "db-custom-1-3840"
     availability_type = "ZONAL"
