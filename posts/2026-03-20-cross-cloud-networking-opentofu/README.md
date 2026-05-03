@@ -121,6 +121,15 @@ resource "google_compute_forwarding_rule" "udp500" {
   region      = var.gcp_region
 }
 
+resource "google_compute_forwarding_rule" "udp4500" {
+  name        = "gcp-vpn-udp4500"
+  ip_protocol = "UDP"
+  port_range  = "4500"
+  ip_address  = google_compute_address.vpn.address
+  target      = google_compute_vpn_gateway.main.id
+  region      = var.gcp_region
+}
+
 resource "google_compute_vpn_tunnel" "to_aws" {
   name          = "gcp-to-aws-tunnel"
   peer_ip       = aws_vpn_connection.to_gcp.tunnel1_address
@@ -133,6 +142,7 @@ resource "google_compute_vpn_tunnel" "to_aws" {
   depends_on = [
     google_compute_forwarding_rule.esp,
     google_compute_forwarding_rule.udp500,
+    google_compute_forwarding_rule.udp4500,
   ]
 }
 
