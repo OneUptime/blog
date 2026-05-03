@@ -26,6 +26,8 @@ services:
   prometheus:
     image: prom/prometheus:latest
     restart: unless-stopped
+    ports:
+      - "9090:9090"
     command:
       - '--config.file=/etc/prometheus/prometheus.yml'
       - '--storage.tsdb.path=/prometheus'
@@ -38,6 +40,8 @@ services:
   loki:
     image: grafana/loki:3.0.0
     restart: unless-stopped
+    ports:
+      - "3100:3100"
     command: -config.file=/etc/loki/local-config.yaml
     volumes:
       - loki_data:/loki
