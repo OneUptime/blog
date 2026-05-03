@@ -117,21 +117,23 @@ Open `http://<host>` and register your first admin user.
 Baserow auto-generates a REST API for every table:
 
 ```bash
-# Get your API token
+# Get a JWT (valid for 60 minutes, refreshable)
 curl -X POST http://baserow.yourdomain.com/api/user/token-auth/ \
   -H 'Content-Type: application/json' \
-  -d '{"username": "admin@example.com", "password": "your-password"}'
+  -d '{"email": "admin@example.com", "password": "your-password"}'
 
 # List rows from a table (table ID from URL)
 curl http://baserow.yourdomain.com/api/database/rows/table/1/ \
-  -H 'Authorization: Token <your-token>'
+  -H 'Authorization: JWT <your-jwt>'
 
 # Create a row
 curl -X POST http://baserow.yourdomain.com/api/database/rows/table/1/ \
-  -H 'Authorization: Token <your-token>' \
+  -H 'Authorization: JWT <your-jwt>' \
   -H 'Content-Type: application/json' \
   -d '{"Name": "Alice", "Status": "Active"}'
 ```
+
+For long-lived programmatic access, create a **Database Token** in the Baserow UI under your workspace settings and authenticate with `Authorization: Token <database-token>` instead.
 
 ## Conclusion
 
