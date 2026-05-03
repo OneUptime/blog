@@ -53,6 +53,10 @@ loki:
           prefix: loki_index_
           period: 24h
 
+  # Retention
+  limits_config:
+    retention_period: 744h    # 31 days
+
 singleBinary:
   replicas: 1    # Single binary mode for small clusters
   # Use loki-distributed chart for production
@@ -63,10 +67,6 @@ read:
   replicas: 3
 backend:
   replicas: 3
-
-# Retention
-limits_config:
-  retention_period: 744h    # 31 days
 ```
 
 ```bash
