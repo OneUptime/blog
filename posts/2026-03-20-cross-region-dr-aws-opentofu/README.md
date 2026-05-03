@@ -74,6 +74,12 @@ resource "aws_s3_bucket_replication_configuration" "to_dr" {
   bucket   = aws_s3_bucket.primary.id
   role     = aws_iam_role.replication.arn
 
+  # Versioning must be enabled on both buckets before replication can be configured
+  depends_on = [
+    aws_s3_bucket_versioning.primary,
+    aws_s3_bucket_versioning.dr,
+  ]
+
   rule {
     id     = "replicate-all"
     status = "Enabled"
