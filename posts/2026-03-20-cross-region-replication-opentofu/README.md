@@ -147,7 +147,7 @@ resource "azurerm_mssql_failover_group" "app" {
 resource "google_storage_bucket" "multi_region" {
   name          = "${var.project_id}-data-global"
   location      = "US"  # Multi-region: US, EU, ASIA
-  storage_class = "MULTI_REGIONAL"
+  storage_class = "STANDARD"
 
   uniform_bucket_level_access = true
   public_access_prevention    = "enforced"
@@ -157,20 +157,18 @@ resource "google_storage_bucket" "multi_region" {
   }
 
   # Turbo replication for sub-15 minute recovery
-  # (requires dual-region bucket with custom_placement_config)
+  # (requires a dual-region bucket - see example below)
 }
 
 # Dual-region with Turbo Replication
 resource "google_storage_bucket" "dual_region" {
   name          = "${var.project_id}-data-dual"
-  location      = "NAM4"  # Dual-region: Iowa + South Carolina
+  location      = "NAM4"  # Predefined dual-region: Iowa + South Carolina
   storage_class = "STANDARD"
 
   uniform_bucket_level_access = true
 
-  custom_placement_config {
-    data_locations = ["US-CENTRAL1", "US-EAST1"]
-  }
+  rpo = "ASYNC_TURBO"  # Turbo Replication for sub-15 minute RPO
 }
 ```
 
