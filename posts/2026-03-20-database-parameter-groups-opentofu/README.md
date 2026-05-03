@@ -27,7 +27,7 @@ resource "aws_db_parameter_group" "postgres" {
 
   parameter {
     name  = "shared_buffers"
-    value = "262144"  # 256MB in 8KB pages
+    value = "262144"  # 2GB in 8KB pages
   }
 
   parameter {
