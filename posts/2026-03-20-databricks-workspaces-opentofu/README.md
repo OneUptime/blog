@@ -23,7 +23,7 @@ terraform {
     }
     databricks = {
       source  = "databricks/databricks"
-      version = "~> 1.36"
+      version = "~> 1.50"
     }
   }
 }
@@ -129,7 +129,7 @@ resource "databricks_cluster_policy" "standard" {
   definition = jsonencode({
     "spark_version" = {
       type  = "fixed"
-      value = "13.3.x-scala2.12"
+      value = "15.4.x-scala2.12"
     }
     "node_type_id" = {
       type     = "allowlist"
@@ -155,7 +155,7 @@ resource "databricks_cluster_policy" "standard" {
 # A shared interactive cluster for data engineers
 resource "databricks_cluster" "shared" {
   cluster_name            = "shared-engineering-cluster"
-  spark_version           = "13.3.x-scala2.12"
+  spark_version           = "15.4.x-scala2.12"
   node_type_id            = "i3.xlarge"
   autotermination_minutes = 120
 
