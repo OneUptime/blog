@@ -23,31 +23,28 @@ mkdir -p /opt/borgmatic/config /opt/borgmatic/ssh
 # Create borgmatic config
 
 cat > /opt/borgmatic/config/config.yaml << 'EOF'
-location:
-    source_directories:
-        - /backup/source
-    repositories:
-        - path: ssh://user@backup-server:22/~/backups/myserver
-          label: remote
+source_directories:
+    - /backup/source
 
-storage:
-    encryption_passphrase: "your-encryption-passphrase"
-    compression: zstd,3
-    archive_name_format: '{hostname}-{now:%Y-%m-%dT%H:%M:%S}'
+repositories:
+    - path: ssh://user@backup-server:22/~/backups/myserver
+      label: remote
 
-retention:
-    keep_daily: 7
-    keep_weekly: 4
-    keep_monthly: 6
+encryption_passphrase: "your-encryption-passphrase"
+compression: zstd,3
+archive_name_format: '{hostname}-{now:%Y-%m-%dT%H:%M:%S}'
 
-consistency:
-    checks:
-        - name: repository
-        - name: archives
-          frequency: 2 weeks
+keep_daily: 7
+keep_weekly: 4
+keep_monthly: 6
+
+checks:
+    - name: repository
+    - name: archives
+      frequency: 2 weeks
 EOF
 
-# Set strict permissions (borgmatic requires 0600)
+# Set strict permissions (borgmatic warns on insecure permissions)
 chmod 600 /opt/borgmatic/config/config.yaml
 
 # Copy SSH key for the backup server
@@ -75,11 +72,7 @@ services:
       - borgmatic_cache:/root/.cache/borg
     environment:
       - TZ=UTC
-      - BORGMATIC_CRON_MINUTE=0
-      - BORGMATIC_CRON_HOUR=2
-      - BORGMATIC_CRON_DAY=*
-      - BORGMATIC_CRON_MONTH=*
-      - BORGMATIC_CRON_WEEKDAY=*
+      - BACKUP_CRON=0 2 * * *
     networks:
       - borgmatic_net
 
@@ -96,7 +89,7 @@ networks:
 On the first run, initialize the repository:
 
 ```bash
-docker exec borgmatic borgmatic init --encryption repokey-blake2
+docker exec borgmatic borgmatic repo-create --encryption repokey-blake2
 ```
 
 ## Step 4: Run a Manual Backup
