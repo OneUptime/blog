@@ -45,16 +45,13 @@ kubectl logs -n ingress-nginx -l app.kubernetes.io/name=ingress-nginx --tail=50
 ## Step 3: Validate the Ingress Spec
 
 ```yaml
-## Common mistakes to check:
+# Common mistakes to check:
 apiVersion: networking.k8s.io/v1
 kind: Ingress
 metadata:
   name: api-ingress
-  annotations:
-#    # Ensure ingressClassName matches your controller
-
-    kubernetes.io/ingress.class: "nginx"
 spec:
+  ingressClassName: nginx   # Must match an installed IngressClass
   rules:
     - host: api.example.com   # Must match DNS/request hostname
       http:
