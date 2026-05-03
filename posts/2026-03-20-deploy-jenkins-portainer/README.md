@@ -21,8 +21,6 @@ services:
     ports:
       - "8080:8080"     # Jenkins Web UI
       - "50000:50000"   # Agent connection port
-    environment:
-      - JAVA_OPTS=-Djenkins.install.runSetupWizard=false    # Skip setup wizard
     volumes:
       - jenkins_home:/var/jenkins_home
       - /var/run/docker.sock:/var/run/docker.sock    # Docker builds
@@ -58,8 +56,8 @@ Create a `Dockerfile` in your Git repository:
 ```dockerfile
 FROM jenkins/jenkins:lts-jdk21
 
-# Disable setup wizard
-ENV JAVA_OPTS -Djenkins.install.runSetupWizard=false
+# Disable setup wizard (configure admin via JCasC / Groovy init script instead)
+ENV JAVA_OPTS=-Djenkins.install.runSetupWizard=false
 
 # Install plugins from plugins.txt
 COPY plugins.txt /usr/share/jenkins/ref/plugins.txt
