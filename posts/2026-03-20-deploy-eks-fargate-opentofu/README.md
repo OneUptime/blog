@@ -181,10 +181,11 @@ resource "aws_iam_role" "app_service_account" {
 }
 ```
 
-## Logging with FireLens on Fargate
+## Logging with Fluent Bit on Fargate
 
 ```hcl
-# Fargate logs go to CloudWatch via aws-for-fluent-bit sidecar
+# EKS Fargate has a built-in Fluent Bit log router (not a sidecar).
+# It's configured via a ConfigMap named "aws-logging" in the "aws-observability" namespace.
 # Configure the Fargate profile logging
 resource "aws_eks_fargate_profile" "apps_with_logging" {
   cluster_name           = aws_eks_cluster.main.name
@@ -226,5 +227,5 @@ resource "aws_iam_role_policy" "fargate_cloudwatch_logs" {
 - Create a Fargate profile for `kube-system` first - CoreDNS must run on Fargate in Fargate-only clusters and requires a patch to remove the EC2 annotation.
 - Use private subnets only - Fargate pods don't support public subnets.
 - Use IRSA instead of environment variables for AWS credentials - it's the secure, auditable approach.
-- Fargate doesn't support DaemonSets - deploy logging agents as sidecars using FireLens or aws-for-fluent-bit.
-- Right-size pod resource requests carefully - Fargate allocates vCPU and memory based on the highest request in the pod spec.
+- Fargate doesn't support DaemonSets - use the built-in Fluent Bit log router (configured via a ConfigMap in the `aws-observability` namespace) instead of running per-node logging agents.
+- Right-size pod resource requests carefully - Fargate sums the requests across all long-running containers in the pod (Init containers use the max), adds 256 MB for Kubernetes components, then rounds up to the nearest supported vCPU/memory combination.
