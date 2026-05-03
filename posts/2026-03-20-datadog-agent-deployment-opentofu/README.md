@@ -137,7 +137,7 @@ resource "datadog_monitor" "high_cpu" {
 
   query = "avg(last_5m):avg:system.cpu.user{env:${var.environment}} by {host} > 80"
 
-  thresholds = {
+  monitor_thresholds {
     critical = 80
     warning  = 70
   }
