@@ -85,7 +85,7 @@ fission function create \
   --maxscale 5
 
 # Create HTTP route
-fission route create \
+fission httptrigger create \
   --method GET \
   --url /hello \
   --function hello
@@ -119,7 +119,7 @@ fission function create \
   --env nodejs \
   --code greet.js
 
-fission route create \
+fission httptrigger create \
   --method GET \
   --url /greet \
   --function greet
@@ -129,13 +129,13 @@ fission route create \
 
 ```bash
 # Run function every 5 minutes
-fission timer create \
+fission timetrigger create \
   --name data-collector \
   --function hello \
   --cron "*/5 * * * *"
 
 # List all triggers
-fission timer list
+fission timetrigger list
 ```
 
 ## Step 6: Message Queue Triggers (Kafka)
