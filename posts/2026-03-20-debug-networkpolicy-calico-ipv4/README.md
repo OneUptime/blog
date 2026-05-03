@@ -16,8 +16,8 @@ Calico must be configured to enforce NetworkPolicy. Verify calico-node is runnin
 kubectl get pods -n kube-system -l k8s-app=calico-node
 # All pods should be Running and Ready
 
-kubectl get pods -n calico-system -l app=calico-node
-# Or in calico-system namespace depending on installation
+kubectl get pods -n calico-system -l k8s-app=calico-node
+# Or in calico-system namespace depending on installation (Tigera Operator)
 
 ```
 
@@ -83,7 +83,7 @@ sudo iptables -L -n -v | grep -i "DROP\|REJECT"
 
 ```yaml
 # calico-logging-policy.yaml - log dropped packets
-apiVersion: crd.projectcalico.org/v1
+apiVersion: projectcalico.org/v3
 kind: GlobalNetworkPolicy
 metadata:
   name: log-dropped-packets
@@ -120,7 +120,7 @@ SERVER_IP=$(kubectl get pod server -n production -o jsonpath='{.status.podIP}')
 
 # Test from client to server
 kubectl exec client -n production -- wget -qO- --timeout=5 http://$SERVER_IP
-# If blocked: "Connection refused" (policy) or "timeout" (no route)
+# If blocked: "timeout" (policy silently dropping packets) or "Connection refused" (no listener on the port)
 ```
 
 ## Verifying with Calico Diagnostics
