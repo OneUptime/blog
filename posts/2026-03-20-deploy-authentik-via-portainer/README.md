@@ -98,4 +98,4 @@ Access the setup wizard at `http://<host>:9000/if/flow/initial-setup/`.
 
 ## Monitoring
 
-OneUptime can monitor `http://<host>:9000/-/health/ready/`. Authentik returns `200 OK` when both the server and worker are healthy. Set up an alert for any downtime since SSO failures cascade to all protected applications.
+OneUptime can monitor `http://<host>:9000/-/health/ready/`. Authentik returns `204 No Content` when the database and Redis are reachable, and `503` if either is down. Set up an alert for any downtime since SSO failures cascade to all protected applications.
