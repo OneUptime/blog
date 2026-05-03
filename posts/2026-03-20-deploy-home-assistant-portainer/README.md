@@ -72,4 +72,4 @@ In Portainer navigate to the `homeassistant` stack, click **Editor**, change `st
 
 ## Monitoring
 
-Add an HTTP monitor in OneUptime pointing to `http://<host>:8123/api/`. Home Assistant returns `{"message": "API running."}` on this endpoint when healthy. Alert on any downtime to catch issues with your smart home hub before automations start failing.
+Add an HTTP monitor in OneUptime pointing to `http://<host>:8123/api/`. The `/api/` endpoint requires authentication, so create a Long-Lived Access Token under your Home Assistant user profile and send it as `Authorization: Bearer <token>` on the monitor request. With a valid token, Home Assistant returns `{"message": "API running."}` when healthy. Alert on any downtime to catch issues with your smart home hub before automations start failing.
