@@ -63,7 +63,8 @@ nft list chain ip6 filter INPUT | grep 4789
 
 # Check if the kernel is listening on UDP 4789
 ss -ulnp | grep 4789
-# Expected: udp  UNCONN  0  0  *:4789  *:*  users:(("vxlan",pid=...))
+# Expected: udp  UNCONN  0  0  *:4789  *:*
+# (no user process is shown because VXLAN sockets are opened by the kernel module, not a userspace process)
 ```
 
 ## Step 3: Inspect FDB Table
@@ -146,7 +147,7 @@ vtysh -c "show bgp l2vpn evpn route"
 vtysh -c "show bgp l2vpn evpn vni 100"
 
 # Show locally advertised routes
-vtysh -c "show bgp l2vpn evpn route local"
+vtysh -c "show bgp l2vpn evpn route self-originate"
 ```
 
 ## Common Issues and Fixes
