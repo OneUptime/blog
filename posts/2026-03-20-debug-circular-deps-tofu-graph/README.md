@@ -21,12 +21,12 @@ This tells you the two resources form a cycle, but not *why*. Use `tofu graph` t
 ## Generating a Cycle-Annotated Graph
 
 ```bash
-# -draw-cycles highlights cyclic edges with a red dashed line
+# -draw-cycles highlights cyclic edges with a thick red line
 
 tofu graph -draw-cycles | dot -Tsvg -o cycle-graph.svg
 ```
 
-Open the SVG in a browser - cycle edges appear as dashed red arrows. Trace them to find which attribute references are creating the loop.
+Open the SVG in a browser - cycle edges appear as thick red arrows. Trace them to find which attribute references are creating the loop.
 
 ## Common Causes and Fixes
 
@@ -88,11 +88,11 @@ Find cycles manually by looking for back-edges in the DOT file:
 ```bash
 tofu graph -draw-cycles > cycle.dot
 
-# Look for dashed-style edges which indicate cycle arrows
-grep "style" cycle.dot
+# Look for red-colored edges which indicate cycle arrows
+grep "color" cycle.dot
 ```
 
-DOT output from `-draw-cycles` adds `[style=dashed color=red]` attributes to edges that are part of cycles.
+DOT output from `-draw-cycles` adds `[color = "red", penwidth = "2.0"]` attributes to edges that are part of cycles.
 
 ## Using depends_on to Control Order Without Data Cycles
 
