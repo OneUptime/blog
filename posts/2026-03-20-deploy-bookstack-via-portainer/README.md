@@ -82,8 +82,8 @@ For teams with existing LDAP/Active Directory, configure LDAP auth via environme
 AUTH_METHOD: ldap
 LDAP_SERVER: ldap://your-ldap-server
 LDAP_BASE_DN: dc=example,dc=com
-LDAP_ATTRIBUTE_ID: uid
-LDAP_ATTRIBUTE_EMAIL: mail
+LDAP_ID_ATTRIBUTE: uid
+LDAP_EMAIL_ATTRIBUTE: mail
 ```
 
 ## Monitoring
