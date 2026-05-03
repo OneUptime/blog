@@ -39,10 +39,12 @@ Ephemeral containers attach to a running pod without creating a copy:
 
 ```bash
 # Add a debug container to a running pod (non-destructive, no restart)
+# --image=nicolaka/netshoot: networking debug image
+# --target=myapp: share the main container's process namespace
 kubectl debug -it pod/myapp-7d4f9b6c-xkv8p \
   -n production \
-  --image=nicolaka/netshoot \    # Networking debug image
-  --target=myapp                  # Target the main container's process namespace
+  --image=nicolaka/netshoot \
+  --target=myapp
 
 # nicolaka/netshoot has: curl, tcpdump, dig, netstat, traceroute, nmap, etc.
 ```
