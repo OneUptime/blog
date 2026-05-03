@@ -15,7 +15,7 @@ Linkerd is a lightweight, ultra-fast service mesh for Kubernetes that focuses on
 - Portainer CE or Business Edition installed on Kubernetes
 - kubectl CLI installed locally
 - Linkerd CLI installed: `curl --proto '=https' --tlsv1.2 -sSfL https://run.linkerd.io/install | sh`
-- Kubernetes 1.21+ cluster with at least 2 CPU cores and 4 GB RAM
+- Kubernetes 1.22+ cluster with at least 2 CPU cores and 4 GB RAM
 
 ## Step 1: Add the Linkerd Helm Repository
 
@@ -46,6 +46,7 @@ metadata:
   labels:
     linkerd.io/is-control-plane: "true"
     config.linkerd.io/admission-webhooks: disabled
+    linkerd.io/control-plane-ns: linkerd
 ---
 apiVersion: v1
 kind: Namespace
@@ -79,6 +80,7 @@ kind: Secret
 metadata:
   name: linkerd-identity-issuer
   namespace: linkerd
+type: kubernetes.io/tls
 data:
   # base64-encoded certificate content
   tls.crt: <base64-issuer-crt>
@@ -107,13 +109,15 @@ Install the Linkerd control plane via Portainer Helm:
 # Control plane configuration
 controllerReplicas: 1
 
-# Identity configuration - reference the certificates we created
+# Trust anchor (root CA) PEM - top-level value
+identityTrustAnchorsPEM: |
+  # Your root CA certificate PEM content (contents of ca.crt)
+
+# Identity configuration - the issuer cert/key are read from the
+# linkerd-identity-issuer Secret of type kubernetes.io/tls created above
 identity:
   issuer:
     scheme: kubernetes.io/tls
-    tls:
-      crtPEM: |
-        # Your issuer certificate PEM content
 
 # Proxy configuration
 proxy:
@@ -218,4 +222,4 @@ linkerd viz routes deployments/my-app -n production
 
 ## Conclusion
 
-Linkerd deployed via Portainer provides an excellent balance of simplicity and power for Kubernetes service mesh adoption. Its lightweight Rust-based proxy ensures minimal overhead, while Portainer's interface makes deployment and certificate management accessible to teams that prefer visual management over raw CLI operations. With automatic mTLS, golden metrics (latency, traffic, errors, saturation), and a clean dashboard, Linkerd is an excellent choice for organizations prioritizing operational simplicity.
+Linkerd deployed via Portainer provides an excellent balance of simplicity and power for Kubernetes service mesh adoption. Its lightweight Rust-based proxy ensures minimal overhead, while Portainer's interface makes deployment and certificate management accessible to teams that prefer visual management over raw CLI operations. With automatic mTLS, golden metrics (success rate, request rate, and latency), and a clean dashboard, Linkerd is an excellent choice for organizations prioritizing operational simplicity.
