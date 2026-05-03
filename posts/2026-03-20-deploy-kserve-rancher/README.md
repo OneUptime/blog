@@ -8,13 +8,14 @@ Description: Step-by-step guide to deploying KServe on Rancher for standardized,
 
 ## Introduction
 
-This guide covers How to Deploy KServe on Rancher in a production Rancher environment, with practical examples and best practices.
+This guide covers deploying KServe in a production Rancher environment, with practical examples and best practices.
 
 ## Prerequisites
 
-- Rancher v2.7+ with a working Kubernetes cluster
-- kubectl and helm configured
+- Rancher v2.7+ with a working Kubernetes cluster (Kubernetes 1.24+)
+- kubectl and Helm 3 configured
 - Persistent storage (Longhorn or NFS recommended)
+- KServe also requires cert-manager, Istio (for the default Serverless mode) and Knative Serving as dependencies — these are installed in Step 1
 
 ## Architecture Overview
 
@@ -22,18 +23,50 @@ Deploying this component on Rancher follows Kubernetes-native patterns: using He
 
 ## Step 1: Install via Helm
 
+KServe ships its charts on an OCI registry (`oci://ghcr.io/kserve/charts`) and requires cert-manager, Istio and Knative Serving for the default Serverless mode. The example below pins to KServe v0.14.1, the latest stable release at the time of writing.
+
 ```bash
-# Add the appropriate Helm repository
-
-helm repo add stable https://charts.helm.sh/stable
-helm repo update
-
-# Create namespace
+# Application namespace for your inference workloads
 kubectl create namespace mlops
 
-# Install with custom values
-helm install deploy-kserve-rancher stable/chart-name   --namespace mlops   --set persistence.enabled=true   --set persistence.storageClass=longhorn
+# 1. Install Istio (required for Serverless mode)
+helm repo add istio https://istio-release.storage.googleapis.com/charts
+helm repo update
+helm install istio-base istio/base -n istio-system --create-namespace --wait \
+  --version 1.20.4 --set defaultRevision=default
+helm install istiod istio/istiod -n istio-system --wait --version 1.20.4
+helm install istio-ingressgateway istio/gateway -n istio-system --version 1.20.4
+
+# 2. Install cert-manager (required by KServe webhooks)
+helm repo add jetstack https://charts.jetstack.io
+helm repo update
+helm install cert-manager jetstack/cert-manager \
+  --namespace cert-manager --create-namespace \
+  --version v1.15.1 --set crds.enabled=true
+
+# 3. Install Knative Serving via the Knative Operator (Serverless mode)
+helm install knative-operator --namespace knative-serving --create-namespace --wait \
+  https://github.com/knative/operator/releases/download/knative-v1.14.5/knative-operator-v1.14.5.tgz
+kubectl apply -f - <<EOF
+apiVersion: operator.knative.dev/v1beta1
+kind: KnativeServing
+metadata:
+  name: knative-serving
+  namespace: knative-serving
+spec:
+  version: "1.13.1"
+EOF
+
+# 4. Install KServe CRDs and controller
+helm install kserve-crd oci://ghcr.io/kserve/charts/kserve-crd \
+  --version v0.14.1 --namespace kserve --create-namespace --wait
+helm install kserve oci://ghcr.io/kserve/charts/kserve \
+  --version v0.14.1 --namespace kserve --wait \
+  --set kserve.controller.deploymentMode=Serverless \
+  --set kserve.modelmesh.enabled=false
 ```
+
+For RawDeployment mode (no Knative/Istio dependency), pass `--set kserve.controller.deploymentMode=RawDeployment` and skip the Knative install above.
 
 ## Step 2: Configure Storage
 
@@ -160,4 +193,4 @@ kubectl label namespace mlops   field.cattle.io/projectId=YOUR_PROJECT_ID
 
 ## Conclusion
 
-Deploying How to Deploy KServe on Rancher on Rancher provides a production-ready ML infrastructure component with enterprise-grade management capabilities. Combine with Rancher's monitoring, logging, and access control features for a complete MLOps platform.
+Deploying KServe on Rancher provides a production-ready ML infrastructure component with enterprise-grade management capabilities. Combine with Rancher's monitoring, logging, and access control features for a complete MLOps platform.
