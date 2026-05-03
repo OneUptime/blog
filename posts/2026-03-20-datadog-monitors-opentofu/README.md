@@ -75,7 +75,7 @@ resource "datadog_monitor" "api_latency" {
   type    = "metric alert"
   message = "API P99 latency is above 1s for {{service.name}}. @pagerduty-${var.environment}"
 
-  query = "percentile(last_10m):p99:trace.web.request{env:${var.environment}} by {service} > 1"
+  query = "avg(last_10m):p99:trace.web.request{env:${var.environment}} by {service} > 1"
 
   monitor_thresholds {
     critical = 1       # 1 second
