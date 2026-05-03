@@ -75,7 +75,7 @@ Install MariaDB using the values file you created.
 helm install mariadb bitnami/mariadb \
   --namespace databases \
   --values mariadb-values.yaml \
-  --version 18.0.0
+  --version 23.0.1
 ```
 
 ## Step 5: Verify the Deployment
@@ -90,7 +90,7 @@ kubectl get pods -n databases
 kubectl get pvc -n databases
 
 # View logs to confirm startup
-kubectl logs -n databases deployment/mariadb -f
+kubectl logs -n databases statefulset/mariadb -f
 ```
 
 ## Step 6: Connect to MariaDB
