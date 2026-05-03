@@ -111,6 +111,7 @@ resource "google_dns_record_set" "failover" {
           load_balancer_type = "regionalL4ilb"
           ip_address         = google_compute_forwarding_rule.primary.ip_address
           port               = "443"
+          ip_protocol        = "tcp"
           region             = "us-central1"
           network_url        = google_compute_network.vpc.id
         }
@@ -135,7 +136,7 @@ resource "google_cloud_scheduler_job" "sql_backup" {
   region   = "us-central1"
 
   http_target {
-    uri         = "https://sqladmin.googleapis.com/sql/v1/projects/${var.project_id}/instances/${google_sql_database_instance.primary.name}/export"
+    uri         = "https://sqladmin.googleapis.com/v1/projects/${var.project_id}/instances/${google_sql_database_instance.primary.name}/export"
     http_method = "POST"
 
     body = base64encode(jsonencode({
