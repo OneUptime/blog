@@ -94,8 +94,8 @@ spec:
 ## Step 6: Set Up Monitoring
 
 ```bash
-# Check if metrics endpoint is available
-kubectl exec -n jenkins   $(kubectl get pods -n jenkins -o name | head -1)   -- curl -s http://localhost:9090/metrics | head -20
+# Check if metrics endpoint is available (requires the Jenkins Prometheus plugin)
+kubectl exec -n jenkins   $(kubectl get pods -n jenkins -o name | head -1)   -- curl -s http://localhost:8080/prometheus | head -20
 
 # Create ServiceMonitor
 kubectl apply -f - << SMEOF
@@ -112,7 +112,7 @@ spec:
       app.kubernetes.io/name: jenkins
   endpoints:
   - port: http
-    path: /metrics
+    path: /prometheus
     interval: 60s
 SMEOF
 ```
@@ -141,7 +141,8 @@ spec:
             - -c
             - |
               echo "Creating jenkins backup..."
-              kubectl exec -n jenkins                 $(kubectl get pod -n jenkins -l app.kubernetes.io/name=jenkins -o name | head -1)                 -- /opt/bitnami/scripts/jenkins/entrypoint.sh jenkins-backup
+              POD=$(kubectl get pod -n jenkins -l app.kubernetes.io/name=jenkins -o name | head -1)
+              kubectl exec -n jenkins $POD -- tar czf - /bitnami/jenkins > /backup/jenkins-$(date +%Y%m%d).tar.gz
           restartPolicy: OnFailure
 ```
 
