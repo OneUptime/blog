@@ -83,16 +83,14 @@ sudo nft delete chain inet filter mychain
 
 ## Delete an Entire Table
 
-Tables must be empty (all chains deleted first) to be deleted:
+Unlike chains, a table can be deleted even if it contains chains, rules, and sets - `nft delete table` removes the table along with all its contents in one atomic operation:
 
 ```bash
-# Option 1: Flush the entire table first, then delete
-sudo nft flush table inet filter
+# Delete the table and everything in it
 sudo nft delete table inet filter
 
-# Option 2: Combined flush and delete
-sudo nft delete table inet filter
-# Note: on some versions, flush is required first
+# Optional: flush first if you want to clear contents but keep the table
+sudo nft flush table inet filter
 ```
 
 ## Atomic Rule Deletion with a Script
