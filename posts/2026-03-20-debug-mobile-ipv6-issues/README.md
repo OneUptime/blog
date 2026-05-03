@@ -72,7 +72,7 @@ ip -6 neigh add proxy 2001:db8:home::100 dev eth0
 
 ```bash
 # On the HA: verify the tunnel interface exists for the MN
-ip tunnel show | grep -i "mip\|mobile"
+ip -6 tunnel show | grep -i "mip\|mobile"
 
 # Test tunnel connectivity
 ping6 -I mip6-tunnel 2001:db8:home::100
@@ -114,7 +114,7 @@ sudo swanctl --list-sas
 | Symptom | Likely Cause | Fix |
 |---|---|---|
 | BU silently dropped | No IPsec SA | Check/reinitiate IKE SA |
-| BA status 133 | Not home subnet | MN's HoA prefix mismatch |
+| BA status 132 | Not home subnet | MN's HoA prefix mismatch |
 | BA status 135 | Sequence out of window | Restart MN mip6d daemon |
 | No proxy NDP entry | UMIP not adding it | Verify `proxy_ndp=1` sysctl |
 | Tunnel drops packets | MTU mismatch | Set tunnel MTU to 1280 |
