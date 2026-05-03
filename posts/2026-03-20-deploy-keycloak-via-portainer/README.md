@@ -48,6 +48,7 @@ services:
       KC_DB_PASSWORD: keycloakpass       # Must match postgres service
       KC_HOSTNAME: keycloak.example.com  # Your actual hostname
       KC_HTTP_ENABLED: "true"
+      KC_HEALTH_ENABLED: "true"          # Enables /health endpoints
       KEYCLOAK_ADMIN: admin
       KEYCLOAK_ADMIN_PASSWORD: adminpass # Change this
     # Start in production mode
