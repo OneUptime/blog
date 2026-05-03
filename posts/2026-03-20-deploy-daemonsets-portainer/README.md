@@ -44,8 +44,6 @@ spec:
       labels:
         app: log-collector
     spec:
-      # Required to access host log files
-      hostNetwork: false
       containers:
         - name: fluentd
           image: fluent/fluentd-kubernetes-daemonset:v1-debian-elasticsearch
@@ -64,9 +62,10 @@ spec:
             - name: varlibdockercontainers
               mountPath: /var/lib/docker/containers
               readOnly: true
-      # Tolerate all node taints so the agent runs everywhere
+      # Also schedule on control-plane nodes
       tolerations:
         - key: node-role.kubernetes.io/control-plane
+          operator: Exists
           effect: NoSchedule
       volumes:
         - name: varlog
