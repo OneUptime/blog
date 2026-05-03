@@ -38,11 +38,11 @@ route delete 0.0.0.0 mask 0.0.0.0
 
 ## Deleting All Routes to a Network
 
-Using a wildcard - the `*` pattern matches any mask:
+Using a wildcard - `*` matches any string in the destination, and `?` matches any single character:
 
 ```cmd
-:: Delete all routes to 10.0.0.0 regardless of mask
-route delete 10.0.0.0
+:: Delete all routes whose destination begins with 10.
+route delete 10.*
 ```
 
 ## Verifying the Deletion
