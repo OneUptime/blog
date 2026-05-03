@@ -58,9 +58,9 @@ tofu graph -type=plan
 tofu graph -type=apply
 
 # Show the destroy graph
-tofu graph -type=destroy-plan
+tofu graph -type=plan-destroy
 
-# Show just the resource configuration graph (no provider nodes)
+# Show the graph for a refresh-only plan
 tofu graph -type=plan-refresh-only
 ```
 
