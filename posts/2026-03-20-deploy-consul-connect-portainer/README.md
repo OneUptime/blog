@@ -144,7 +144,17 @@ Create a Consul configuration file for enabling Connect:
 
 ## Step 3: Deploy a Service with Consul Connect Sidecar
 
-Deploy application services with Consul Connect sidecars via Portainer:
+The official `envoyproxy/envoy` image does not ship the `consul` binary, and the `hashicorp/consul` image does not ship Envoy. To run `consul connect envoy` you need an image that contains both. Build one with a multi-stage Dockerfile and push it to your registry:
+
+```dockerfile
+# Dockerfile for a combined consul + envoy sidecar image
+FROM hashicorp/consul:1.17.0 AS consul
+FROM envoyproxy/envoy:v1.27.0
+COPY --from=consul /bin/consul /bin/consul
+ENTRYPOINT ["consul", "connect", "envoy"]
+```
+
+Then deploy application services with the combined sidecar image via Portainer:
 
 ```yaml
 # app-stack.yaml - Application stack with Consul Connect
@@ -175,12 +185,10 @@ services:
     networks:
       - consul-mesh
 
-  # Envoy sidecar proxy for web service
+  # Envoy sidecar proxy for web service (custom image with consul + envoy)
   web-proxy:
-    image: envoyproxy/envoy:v1.27.0
+    image: your-registry/consul-envoy:1.17.0-v1.27.0
     command: >
-      /usr/local/bin/consul
-      connect envoy
       -sidecar-for=web
       -grpc-addr=consul-agent:8502
     depends_on:
@@ -198,10 +206,8 @@ services:
 
   # Envoy sidecar proxy for api service
   api-proxy:
-    image: envoyproxy/envoy:v1.27.0
+    image: your-registry/consul-envoy:1.17.0-v1.27.0
     command: >
-      /usr/local/bin/consul
-      connect envoy
       -sidecar-for=api
       -grpc-addr=consul-agent:8502
     depends_on:
@@ -251,14 +257,26 @@ Create service definitions for Consul service discovery:
 
 ## Step 5: Configure Intentions (Access Control)
 
-Set up Consul intentions to control which services can communicate:
+Set up Consul intentions to control which services can communicate. The legacy `consul intention create` CLI was deprecated in Consul 1.9.0 in favor of managing a `service-intentions` config entry. Write the intentions to a file and apply them with `consul config write`:
+
+```hcl
+# intentions/api.hcl - allow web -> api, deny everything else by default
+Kind = "service-intentions"
+Name = "api"
+Sources = [
+  {
+    Name   = "web"
+    Action = "allow"
+  },
+  {
+    Name   = "*"
+    Action = "deny"
+  },
+]
+```
 
 ```bash
-# Allow web to communicate with api
-consul intention create web api
-
-# Deny all other service-to-service communication by default
-consul intention create -deny "*" "*"
+consul config write intentions/api.hcl
 ```
 
 Or via the Consul UI (accessible at port 8500):
@@ -282,10 +300,6 @@ global:
     enabled: true
     verify: true
 
-  # Enable Connect (service mesh)
-  connect:
-    enabled: true
-
   # Enable metrics
   metrics:
     enabled: true
@@ -296,7 +310,7 @@ server:
   storage: 10Gi
 
 connectInject:
-  # Automatically inject Connect sidecars
+  # Enable the service mesh and automatically inject Connect sidecars
   enabled: true
   default: true
   metrics:
