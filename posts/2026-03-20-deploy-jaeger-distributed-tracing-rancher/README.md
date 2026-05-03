@@ -24,7 +24,7 @@ Jaeger is an open-source distributed tracing system originally built by Uber. It
 helm repo add jetstack https://charts.jetstack.io
 helm install cert-manager jetstack/cert-manager \
   --namespace cert-manager --create-namespace \
-  --set installCRDs=true
+  --set crds.enabled=true
 
 # Install Jaeger Operator
 helm repo add jaegertracing https://jaegertracing.github.io/helm-charts
@@ -104,20 +104,22 @@ Use OpenTelemetry SDK to send traces to Jaeger:
 
 ```python
 # Python OpenTelemetry instrumentation
+# Jaeger natively supports OTLP since v1.35, so use the OTLP exporter.
+# The opentelemetry-exporter-jaeger packages were removed in OTel Python 1.22.
 from opentelemetry import trace
-from opentelemetry.exporter.jaeger.thrift import JaegerExporter
+from opentelemetry.exporter.otlp.proto.grpc.trace_exporter import OTLPSpanExporter
 from opentelemetry.sdk.trace import TracerProvider
 from opentelemetry.sdk.trace.export import BatchSpanProcessor
 
-# Configure the Jaeger exporter
-jaeger_exporter = JaegerExporter(
-    agent_host_name="jaeger-dev-agent.observability.svc.cluster.local",
-    agent_port=6831,
+# Configure the OTLP exporter pointed at the Jaeger collector's OTLP gRPC port
+otlp_exporter = OTLPSpanExporter(
+    endpoint="http://jaeger-dev-collector.observability.svc.cluster.local:4317",
+    insecure=True,
 )
 
 # Set up the tracer provider
 provider = TracerProvider()
-provider.add_span_processor(BatchSpanProcessor(jaeger_exporter))
+provider.add_span_processor(BatchSpanProcessor(otlp_exporter))
 trace.set_tracer_provider(provider)
 
 tracer = trace.get_tracer("my-service")
