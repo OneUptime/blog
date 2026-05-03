@@ -170,7 +170,7 @@ services:
     logging:
       driver: loki
       options:
-        loki-url: "http://loki:3100/loki/api/v1/push"
+        loki-url: "http://localhost:3100/loki/api/v1/push"
         loki-external-labels: "container_name={{.Name}},job=docker"
 ```
 
