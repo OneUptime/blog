@@ -62,6 +62,8 @@ volumes:
 # app/main.py
 
 from fastapi import FastAPI
+from fastapi.responses import JSONResponse
+from sqlalchemy import text
 from sqlalchemy.ext.asyncio import create_async_engine
 import os
 
@@ -74,10 +76,13 @@ async def health():
     """Health check endpoint for monitoring."""
     try:
         async with engine.connect() as conn:
-            await conn.execute("SELECT 1")
+            await conn.execute(text("SELECT 1"))
         return {"status": "healthy", "database": "connected"}
     except Exception as e:
-        return {"status": "unhealthy", "database": str(e)}, 503
+        return JSONResponse(
+            status_code=503,
+            content={"status": "unhealthy", "database": str(e)},
+        )
 
 @app.get("/docs-url")
 async def root():
