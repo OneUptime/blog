@@ -65,7 +65,7 @@ resource "mongodbatlas_advanced_cluster" "main" {
       }
 
       analytics_specs {
-        instance_size = var.environment == "prod" ? "M10" : null
+        instance_size = "M10"
         node_count    = var.environment == "prod" ? 1 : 0
       }
 
@@ -105,7 +105,7 @@ resource "mongodbatlas_advanced_cluster" "main" {
 
 resource "mongodbatlas_network_peering" "aws" {
   project_id             = mongodbatlas_project.main.id
-  container_id           = mongodbatlas_advanced_cluster.main.replication_specs[0].region_configs[0].provider_name
+  container_id           = one(values(mongodbatlas_advanced_cluster.main.replication_specs[0].container_id))
   accepter_region_name   = var.aws_region
   aws_account_id         = var.aws_account_id
   route_table_cidr_block = var.vpc_cidr
