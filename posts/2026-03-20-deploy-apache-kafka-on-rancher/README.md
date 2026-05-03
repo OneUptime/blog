@@ -28,31 +28,40 @@ helm repo update
 ```yaml
 # kafka-values.yaml
 
-kraft:
-  enabled: true   # Use KRaft mode (no ZooKeeper required)
+# KRaft mode is the default (and only) mode in modern Bitnami Kafka chart
+# releases (chart 32.x / Kafka 4.x), so no ZooKeeper is required.
 
-replicaCount: 3   # Three broker/controller replicas
+controller:
+  replicaCount: 3   # Three combined controller+broker nodes (controllerOnly: false by default)
 
-persistence:
-  enabled: true
-  storageClass: "longhorn"
-  size: 50Gi
+  persistence:
+    enabled: true
+    storageClass: "longhorn"
+    size: 50Gi
 
-resources:
-  requests:
-    memory: "1Gi"
-    cpu: "500m"
-  limits:
-    memory: "4Gi"
-    cpu: "2"
+  resources:
+    requests:
+      memory: "1Gi"
+      cpu: "500m"
+    limits:
+      memory: "4Gi"
+      cpu: "2"
 
-# Kafka broker configuration
-config: |
-  log.retention.hours=168
-  log.retention.bytes=1073741824
-  num.partitions=3
-  default.replication.factor=3
-  min.insync.replicas=2
+  # Additional server.properties entries, merged on top of the chart-generated config.
+  overrideConfiguration:
+    log.retention.hours: 168
+    log.retention.bytes: 1073741824
+    num.partitions: 3
+    default.replication.factor: 3
+    min.insync.replicas: 2
+
+# By default the chart enables SASL_PLAINTEXT on the 9092 client listener.
+# Switch it to PLAINTEXT so the tutorial commands below work without configuring
+# SASL credentials. For production, keep the default SASL_PLAINTEXT (or SASL_SSL)
+# and configure clients with the auto-generated credentials.
+listeners:
+  client:
+    protocol: PLAINTEXT
 
 metrics:
   kafka:
