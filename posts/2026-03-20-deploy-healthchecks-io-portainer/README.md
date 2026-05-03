@@ -34,6 +34,7 @@ services:
 
   healthchecks:
     image: healthchecks/healthchecks:latest
+    container_name: healthchecks
     restart: unless-stopped
     depends_on:
       - db
