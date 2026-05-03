@@ -106,49 +106,46 @@ spec:
 # pipeline.py - Simple ML pipeline
 import kfp
 from kfp import dsl
+from kfp.dsl import Input, Output, Dataset, Model
 
 @dsl.component(base_image='python:3.9')
-def download_data(url: str, output_path: str):
+def download_data(url: str, dataset: Output[Dataset]):
     import urllib.request
-    urllib.request.urlretrieve(url, output_path)
+    urllib.request.urlretrieve(url, dataset.path)
 
 @dsl.component(base_image='python:3.9',
                packages_to_install=['scikit-learn', 'pandas'])
-def train_model(data_path: str, model_path: str) -> float:
+def train_model(dataset: Input[Dataset], model: Output[Model]) -> float:
     import pickle
     import pandas as pd
     from sklearn.ensemble import RandomForestClassifier
     from sklearn.model_selection import train_test_split
-    
-    df = pd.read_csv(data_path)
+
+    df = pd.read_csv(dataset.path)
     X = df.drop('target', axis=1)
     y = df['target']
-    
-    X_train, X_test, y_train, y_test = train_test_split(X, y, test_size=0.2)
-    
-    model = RandomForestClassifier(n_estimators=100)
-    model.fit(X_train, y_train)
-    
-    accuracy = model.score(X_test, y_test)
-    
-    with open(model_path, 'wb') as f:
-        pickle.dump(model, f)
-    
-    return accuracy
 
-@dsl.pipeline(name='ML Training Pipeline')
-def ml_pipeline(dataset_url: str = 'https://example.com/data.csv'):
-    download_task = download_data(
-        url=dataset_url,
-        output_path='/tmp/data.csv'
-    )
-    
+    X_train, X_test, y_train, y_test = train_test_split(X, y, test_size=0.2)
+
+    clf = RandomForestClassifier(n_estimators=100)
+    clf.fit(X_train, y_train)
+
+    accuracy = clf.score(X_test, y_test)
+
+    with open(model.path, 'wb') as f:
+        pickle.dump(clf, f)
+
+    return float(accuracy)
+
+@dsl.pipeline(name='ml-training-pipeline')
+def ml_pipeline(dataset_url: str = 'https://example.com/data.csv') -> float:
+    download_task = download_data(url=dataset_url)
+
     train_task = train_model(
-        data_path=download_task.output,
-        model_path='/tmp/model.pkl'
+        dataset=download_task.outputs['dataset']
     )
-    
-    print(f"Model accuracy: {train_task.output}")
+
+    return train_task.output
 
 # Compile and upload
 if __name__ == '__main__':
