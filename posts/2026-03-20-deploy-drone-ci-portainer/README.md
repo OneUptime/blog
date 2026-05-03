@@ -121,7 +121,7 @@ In Drone UI or via CLI:
 
 ```bash
 # Install Drone CLI
-go install github.com/harness/drone-cli/drone@latest
+go install github.com/drone/drone-cli/drone@latest
 
 # Export credentials
 export DRONE_SERVER=https://drone.yourdomain.com
