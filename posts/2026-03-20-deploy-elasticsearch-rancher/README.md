@@ -55,7 +55,7 @@ spec:
             privileged: true
       containers:
         - name: pause
-          image: gcr.io/google_containers/pause
+          image: registry.k8s.io/pause:3.10
       tolerations:
         - operator: Exists
 EOF
@@ -168,8 +168,7 @@ resources:
 
 ingress:
   enabled: true
-  annotations:
-    kubernetes.io/ingress.class: nginx
+  className: nginx
   hosts:
     - host: kibana.example.com
       paths:
