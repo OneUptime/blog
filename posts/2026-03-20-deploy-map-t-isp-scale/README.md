@@ -31,42 +31,29 @@ MAP-T Domain Parameters:
 Subscriber 1:
   IPv6 Prefix: 2001:db8:map:0001::/56
   IPv4 address: 203.0.113.1
-  Port range: Ports 1024-1279 (PSID=0)
+  PSID: 0 (one of 256 PSIDs sharing 203.0.113.1)
+  Port ranges: 63 disjoint 4-port ranges (e.g., 1024-1027, 2048-2051, 3072-3075, ...)
+  (A=0 excluded so well-known ports 0-1023 are never allocated)
 ```
 
 ## Deploying MAP-T Border Relay (BR)
 
-The BR handles translation between the MAP-T IPv6 domain and the IPv4 internet:
+The BR handles translation between the MAP-T IPv6 domain and the IPv4 internet. Jool (RFC 7915 SIIT + RFC 6146 NAT64) does not implement MAP-T (RFC 7599) and has no PSID-based port-sharing logic, so production BRs use VPP's MAP-T plugin or vendor hardware (Cisco, Juniper). VPP example:
 
 ```bash
-# Install MAP-T support via Jool (SIIT)
+# Install VPP and load the map plugin
+apt install vpp vpp-plugin-core
 
-apt install jool-dkms jool-tools
-modprobe jool_siit
-
-# Configure SIIT instance for MAP-T translation
-jool_siit instance add "mapt-br" --iptables
-
-# Add translation pool
-jool_siit -i mapt-br eamt add 2001:db8:map::/48 203.0.113.0/24
+# In vppctl: configure the MAP-T domain matching the parameters above
+vppctl <<'EOF'
+map add domain ip4-pfx 203.0.113.0/24 ip6-pfx 2001:db8:map::/48 \
+    ip6-src 2001:db8:br::1/128 ea-bits-len 16 psid-offset 6 psid-len 8 mapt
+EOF
 ```
 
 ## CE (Customer Edge) Configuration on Linux
 
-The CE converts private IPv4 to public IPv4+port via IPv6:
-
-```bash
-# Configure MAP-T CE - uses iproute2 tunnel
-ip tunnel add mapt mode ip6tnl \
-    local 2001:db8:map:0001::1 \
-    remote 2001:db8:br::1 \
-    mode ip4ip6
-
-ip link set mapt up
-ip route add 0.0.0.0/0 dev mapt
-```
-
-For OpenWRT CEes, MAP-T is supported via the `map` package:
+The CE translates private IPv4 to public IPv4+port via IPv6. MAP-T is stateless translation (not encapsulation), so iproute2's `ip tunnel` modes do not configure it; mainline Linux has no native MAP-T mode. Production CEs typically run OpenWRT (or vendor firmware) with the `map` package:
 
 ```text
 opkg install map
@@ -79,7 +66,7 @@ config rule
     option ip4prefixlen '24'
     option ip6prefix '2001:db8:map::'
     option ip6prefixlen '48'
-    option ealen '8'
+    option ealen '16'
     option offset '6'
 ```
 
@@ -88,20 +75,22 @@ config rule
 Verify that a subscriber's port range is correctly computed:
 
 ```python
-# Calculate MAP-T port range from PSID
+# Calculate MAP-T port ranges from PSID (RFC 7597 section 5.1)
+# Port = [A bits | PSID bits | M bits], where a + psid_len + m = 16
 def calculate_map_t_ports(psid: int, psid_len: int, offset: int = 6) -> list:
     """
-    Calculate allowed port range for a given PSID.
-    offset: bits reserved before PSID (typically 6)
+    Calculate allowed port ranges for a given PSID.
+    offset: number of high-order A bits (typically 6, so A=0 covers ports
+    0-1023 and is excluded to keep well-known ports off the subscriber).
     """
     ports = []
-    a_bits = 16 - offset - psid_len  # bits per port range
-    for a in range(2**a_bits):
-        port_start = (a << (psid_len + offset)) | (psid << offset)
-        ports.append((port_start, port_start + (2**offset) - 1))
+    m_bits = 16 - offset - psid_len  # bits per contiguous port range
+    for a in range(1, 2**offset):  # A=0 excluded (well-known ports)
+        port_start = (a << (psid_len + m_bits)) | (psid << m_bits)
+        ports.append((port_start, port_start + (2**m_bits) - 1))
     return ports
 
-# Subscriber with PSID=5, psid_len=8
+# Subscriber with PSID=5, psid_len=8 (so a=6, m=2 -> 4-port ranges)
 ranges = calculate_map_t_ports(psid=5, psid_len=8)
 for start, end in ranges[:5]:
     print(f"Port range: {start}-{end}")
@@ -118,4 +107,4 @@ for start, end in ranges[:5]:
 
 ## Conclusion
 
-MAP-T provides stateless IPv4/IPv6 translation for ISPs, eliminating the need for per-session NAT state at scale. The algorithmic mapping between IPv6 prefixes and IPv4 addresses makes the BR (Border Relay) simple and highly scalable. MAP-T is particularly suited for large ISPs managing thousands of concurrent sessions.
+MAP-T provides stateless IPv4/IPv6 translation for ISPs, eliminating the need for per-session NAT state at scale. The algorithmic mapping between IPv6 prefixes and IPv4 addresses makes the BR (Border Relay) simple and highly scalable. MAP-T is particularly suited for large ISPs managing millions of subscribers and concurrent sessions.
