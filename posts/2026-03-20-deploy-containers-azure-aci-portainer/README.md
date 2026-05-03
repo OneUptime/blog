@@ -17,31 +17,24 @@ Azure Container Instances (ACI) is a serverless container service that runs cont
 
 ## Connecting Portainer to Azure ACI
 
-Portainer can manage ACI deployments using Docker's Azure context integration:
+Portainer talks to Azure Resource Manager directly using a service principal, so no extra Docker context setup is required on the Portainer host (Docker's own ACI context integration was retired in November 2023).
 
-### Step 1: Install Docker ACI Context on Portainer Server
+### Step 1: Create an Azure Service Principal
 
-```bash
-# Install the Docker ACI integration (on the Portainer host)
-
-docker context create aci my-aci-context \
-  --subscription-id <your-subscription-id> \
-  --resource-group <your-resource-group> \
-  --location eastus
-
-# Verify the context was created
-docker context ls
-```
+In the Azure Portal, register an application under **Microsoft Entra ID > App registrations**, then create a client secret under **Certificates & secrets**. Grant the service principal the **Contributor** role on the resource group where containers will be deployed.
 
 ### Step 2: Add the ACI Environment in Portainer
 
 1. In Portainer, go to **Environments > Add environment**.
-2. Select **Azure ACI** as the environment type.
-3. Enter your Azure credentials:
+2. Select **Azure ACI** as the environment type and click **Start Wizard**.
+3. Enter your Azure details:
+   - **Name** (a label for the environment)
    - **Subscription ID**
+   - **Tenant ID**
+   - **Client ID** (Application ID of the registered app)
+   - **Client Secret** (Authentication Key)
    - **Resource group**
-   - **Region**
-   - **Client ID and Secret** (from an Azure Service Principal)
+   - **Location** (e.g. `eastus`)
 4. Click **Connect**.
 
 ## Deploying a Container to ACI via Portainer
@@ -68,7 +61,7 @@ az container create \
   --cpu 1 \
   --memory 1 \
   --ports 80 \
-  --ip-address public \
+  --ip-address Public \
   --location eastus
 
 # Check deployment status
