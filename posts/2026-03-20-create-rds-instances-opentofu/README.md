@@ -153,11 +153,27 @@ resource "aws_secretsmanager_secret_version" "db_password" {
 ## Outputs
 
 ```hcl
-output "db_endpoint"   { value = aws_db_instance.main.endpoint; sensitive = true }
-output "db_address"    { value = aws_db_instance.main.address; sensitive = true }
-output "db_port"       { value = aws_db_instance.main.port }
-output "db_name"       { value = aws_db_instance.main.db_name }
-output "db_arn"        { value = aws_db_instance.main.arn }
+output "db_endpoint" {
+  value     = aws_db_instance.main.endpoint
+  sensitive = true
+}
+
+output "db_address" {
+  value     = aws_db_instance.main.address
+  sensitive = true
+}
+
+output "db_port" {
+  value = aws_db_instance.main.port
+}
+
+output "db_name" {
+  value = aws_db_instance.main.db_name
+}
+
+output "db_arn" {
+  value = aws_db_instance.main.arn
+}
 ```
 
 ## Conclusion
