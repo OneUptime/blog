@@ -34,8 +34,7 @@ services:
       - discovery.seed_hosts=es02,es03
       - cluster.initial_master_nodes=es01,es02,es03
       - bootstrap.memory_lock=true
-      - xpack.security.enabled=true
-      - ELASTIC_PASSWORD=${ELASTIC_PASSWORD}
+      - xpack.security.enabled=false
       - "ES_JAVA_OPTS=-Xms1g -Xmx1g"
     ulimits:
       memlock:
@@ -58,8 +57,7 @@ services:
       - discovery.seed_hosts=es01,es03
       - cluster.initial_master_nodes=es01,es02,es03
       - bootstrap.memory_lock=true
-      - xpack.security.enabled=true
-      - ELASTIC_PASSWORD=${ELASTIC_PASSWORD}
+      - xpack.security.enabled=false
       - "ES_JAVA_OPTS=-Xms1g -Xmx1g"
     ulimits:
       memlock:
@@ -80,8 +78,7 @@ services:
       - discovery.seed_hosts=es01,es02
       - cluster.initial_master_nodes=es01,es02,es03
       - bootstrap.memory_lock=true
-      - xpack.security.enabled=true
-      - ELASTIC_PASSWORD=${ELASTIC_PASSWORD}
+      - xpack.security.enabled=false
       - "ES_JAVA_OPTS=-Xms1g -Xmx1g"
     ulimits:
       memlock:
@@ -97,8 +94,6 @@ services:
     restart: unless-stopped
     environment:
       - ELASTICSEARCH_HOSTS=http://es01:9200
-      - ELASTICSEARCH_USERNAME=kibana_system
-      - ELASTICSEARCH_PASSWORD=${KIBANA_PASSWORD}
     ports:
       - "5601:5601"
     networks:
@@ -119,7 +114,7 @@ networks:
 ```bash
 # Check cluster health
 
-curl -u elastic:${ELASTIC_PASSWORD} http://localhost:9200/_cluster/health?pretty
+curl http://localhost:9200/_cluster/health?pretty
 
 # Healthy cluster output:
 # "cluster_name": "es-docker-cluster",
@@ -128,15 +123,14 @@ curl -u elastic:${ELASTIC_PASSWORD} http://localhost:9200/_cluster/health?pretty
 # "number_of_data_nodes": 3
 
 # List nodes
-curl -u elastic:${ELASTIC_PASSWORD} http://localhost:9200/_cat/nodes?v
+curl http://localhost:9200/_cat/nodes?v
 ```
 
 ## Index with Replication
 
 ```bash
-# Create an index with 1 primary shard and 2 replicas (1 on each other node)
-curl -u elastic:${ELASTIC_PASSWORD} \
-  -X PUT "http://localhost:9200/my-logs" \
+# Create an index with 3 primary shards and 1 replica each (6 shards total, distributed across nodes)
+curl -X PUT "http://localhost:9200/my-logs" \
   -H "Content-Type: application/json" \
   -d '{
     "settings": {
@@ -146,7 +140,7 @@ curl -u elastic:${ELASTIC_PASSWORD} \
   }'
 
 # Check shard allocation
-curl -u elastic:${ELASTIC_PASSWORD} http://localhost:9200/_cat/shards/my-logs?v
+curl http://localhost:9200/_cat/shards/my-logs?v
 ```
 
 ## Scaling: Adding a 4th Node
