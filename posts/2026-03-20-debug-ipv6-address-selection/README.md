@@ -10,7 +10,7 @@ Description: Diagnose and fix IPv6 source and destination address selection prob
 
 | Symptom | Likely Cause |
 |---|---|
-| Wrong source address in connections | Rule 5/8 mismatch, policy table label issue |
+| Wrong source address in connections | Rule 6/8 mismatch, policy table label issue |
 | IPv4 used when IPv6 expected | gai.conf precedence, missing AAAA record |
 | IPv6 used when IPv4 expected | Default RFC 6724 preference not overridden |
 | ULA address used for global destination | Missing label 13 on fc00::/7 |
@@ -98,7 +98,8 @@ ip -6 addr show | grep "inet6" | while read -r line; do
     scope=$(echo "$line" | awk '{print $4}')
     flags=$(echo "$line" | awk '{print $5}')
     deprecated=""
-    [ "$flags" = "deprecated" ] && deprecated="(DEPRECATED - Rule 3 skips this)"
+    temp=""
+    [ "$flags" = "deprecated" ] && deprecated="(DEPRECATED - Rule 3 avoids this)"
     [ "$flags" = "temporary" ] && temp="(temporary - Rule 7 prefers this)"
     echo "  ${addr} scope=${scope} ${deprecated}${temp}"
 done
@@ -203,8 +204,11 @@ rm -f /etc/gai.conf
 
 # Fix 5: ULA used for global destination - check label 13 scope
 # ULA fc00::/7 label 13 should NOT match global ::/0 label 1
-# If it does, someone modified the policy table
-ip addrlabel flush  # restore kernel defaults
+# If it does, someone modified the policy table. Re-add the RFC 6724
+# default entry rather than flushing (ip addrlabel flush empties the
+# table entirely and does NOT restore kernel defaults).
+ip addrlabel del prefix fc00::/7 2>/dev/null
+ip addrlabel add prefix fc00::/7 label 13
 ```
 
 ## Conclusion
