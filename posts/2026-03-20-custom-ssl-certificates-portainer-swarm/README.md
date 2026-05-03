@@ -42,10 +42,9 @@ services:
       - -H
       - tcp://tasks.agent:9001
       - --tlsskipverify
-      - --ssl
-      - --sslcert
+      - --tlscert
       - /run/secrets/portainer_cert   # Swarm secrets are mounted here
-      - --sslkey
+      - --tlskey
       - /run/secrets/portainer_key
     ports:
       - "9443:9443"
