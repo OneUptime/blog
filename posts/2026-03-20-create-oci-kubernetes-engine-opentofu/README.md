@@ -108,14 +108,17 @@ kubectl get nodes
 
 ## Using Managed Node Pools with Auto-Scaling
 
-```hcl
-resource "oci_containerengine_node_pool" "autoscaling" {
-  # ...
-  node_config_details {
-    size = 3
+Cluster autoscaling on OKE is enabled by deploying the Cluster Autoscaler as a managed cluster add-on. Pass the node pool OCID and the desired min/max range via the `nodes` configuration key.
 
-    # Enable the OCI Cluster Autoscaler
-    is_pv_encryption_in_transit_enabled = true
+```hcl
+resource "oci_containerengine_addon" "cluster_autoscaler" {
+  cluster_id                       = oci_containerengine_cluster.main.id
+  addon_name                       = "ClusterAutoscaler"
+  remove_addon_resources_on_delete = true
+
+  configurations {
+    key   = "nodes"
+    value = "1:5:${oci_containerengine_node_pool.workers.id}"
   }
 }
 ```
