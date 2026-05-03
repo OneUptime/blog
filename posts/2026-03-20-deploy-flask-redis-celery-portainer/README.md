@@ -33,7 +33,6 @@ services:
     environment:
       CELERY_BROKER_URL: redis://redis:6379/0
       CELERY_RESULT_BACKEND: redis://redis:6379/1
-      FLASK_ENV: production
       FLASK_SECRET_KEY: changeme-random-secret
     volumes:
       - ./app:/app
@@ -52,7 +51,7 @@ services:
       - ./app:/app
     working_dir: /app
     # Start a Celery worker consuming from the default queue
-    command: sh -c "pip install -r requirements.txt && celery -A tasks worker --loglevel=info"
+    command: sh -c "pip install -r requirements.txt && celery -A app.celery worker --loglevel=info"
 
   celery-beat:
     image: python:3.12-slim
@@ -65,7 +64,7 @@ services:
       - ./app:/app
     working_dir: /app
     # Celery Beat schedules periodic tasks
-    command: sh -c "pip install -r requirements.txt && celery -A tasks beat --loglevel=info"
+    command: sh -c "pip install -r requirements.txt && celery -A app.celery beat --loglevel=info"
 
 volumes:
   redis_data:
