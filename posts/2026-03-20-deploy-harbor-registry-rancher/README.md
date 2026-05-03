@@ -34,7 +34,7 @@ kubectl annotate namespace harbor-registry   field.cattle.io/projectId=YOUR_PROJ
 helm repo add bitnami https://charts.bitnami.com/bitnami
 helm repo update
 
-helm install harbor-registry bitnami/harbor-registry   --namespace harbor-registry   --set persistence.enabled=true   --set persistence.storageClass=longhorn   --set ingress.enabled=true   --set ingress.hostname=harbor-registry.example.com   --set ingress.tls=true   --wait
+helm install harbor-registry bitnami/harbor   --namespace harbor-registry   --set persistence.enabled=true   --set persistence.persistentVolumeClaim.registry.storageClass=longhorn   --set persistence.persistentVolumeClaim.jobservice.storageClass=longhorn   --set persistence.persistentVolumeClaim.database.storageClass=longhorn   --set persistence.persistentVolumeClaim.redis.storageClass=longhorn   --set persistence.persistentVolumeClaim.trivy.storageClass=longhorn   --set exposureType=ingress   --set ingress.core.hostname=harbor-registry.example.com   --set ingress.core.tls=true   --wait
 ```
 
 ## Step 3: Configure Storage
@@ -166,10 +166,10 @@ kubectl logs -n harbor-registry   $(kubectl get pods -n harbor-registry -l app.k
 ```bash
 # Upgrade to latest version
 helm repo update
-helm upgrade harbor-registry bitnami/harbor-registry   --namespace harbor-registry   --reuse-values
+helm upgrade harbor-registry bitnami/harbor   --namespace harbor-registry   --reuse-values
 
 # Check upgrade status
-kubectl rollout status deployment/harbor-registry -n harbor-registry
+kubectl rollout status deployment/harbor-registry-core -n harbor-registry
 ```
 
 ## Conclusion
