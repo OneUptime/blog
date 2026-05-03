@@ -41,14 +41,19 @@ ip route get 10.20.0.1 from 192.168.5.10
 
 ## Querying a Specific Table
 
-```bash
-# Look up a route in a specific routing table
-ip route get 10.20.0.1 table main
-ip route get 10.20.0.1 table 100
-ip route get 10.20.0.1 table local
+`ip route get` does not accept a `table` argument - it always performs a full lookup that follows the kernel's policy rules. To inspect a specific table, use `ip route show`:
 
-# Show all routing tables
+```bash
+# Show routes in a specific routing table
+ip route show table main
+ip route show table 100
+ip route show table local
+
+# Show routes from all tables and filter for a destination
 ip route show table all | grep "10.20.0.1"
+
+# To make `ip route get` consult a non-main table, use `from` to match a rule
+ip route get 10.20.0.1 from 192.168.5.10
 ```
 
 ## Specifying the Input Interface
