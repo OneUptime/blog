@@ -13,7 +13,7 @@ Directus is an open-source headless CMS and data platform that wraps any SQL dat
 ## Prerequisites
 
 - Portainer installed with Docker
-- At least 1 GB RAM
+- At least 2 GB RAM
 
 ## Step 1: Create the Stack in Portainer
 
