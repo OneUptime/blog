@@ -57,7 +57,7 @@ After setup, go to **Settings > DNS settings** and set upstream resolvers. Use e
 ```text
 # Cloudflare DNS-over-HTTPS
 
-https://dns.cloudflare.com/dns-query
+https://cloudflare-dns.com/dns-query
 
 # Google DNS-over-HTTPS
 https://dns.google/dns-query
