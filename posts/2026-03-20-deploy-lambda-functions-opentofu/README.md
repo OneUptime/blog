@@ -94,10 +94,10 @@ resource "aws_lambda_function" "main" {
   filename         = data.archive_file.lambda.output_path
   source_code_hash = data.archive_file.lambda.output_base64sha256
 
-  runtime = var.runtime  # "python3.12", "nodejs20.x", "java21"
+  runtime = var.runtime  # "python3.12", "nodejs22.x", "java21"
   handler = var.handler  # "index.handler", "main.lambda_handler"
 
-  memory_size = var.memory_size  # 128–10240 MB
+  memory_size = var.memory_size  # 128–32768 MB
   timeout     = var.timeout      # 1–900 seconds
 
   environment {
@@ -159,9 +159,11 @@ resource "aws_lambda_function" "main" {
 resource "aws_lambda_alias" "live" {
   name             = "live"
   function_name    = aws_lambda_function.main.function_name
-  function_version = aws_lambda_function.main.version
+  function_version = var.stable_version  # e.g. "5" - the previously deployed stable version
 
-  # Gradual canary traffic shifting
+  # Gradual canary traffic shifting - send a slice of traffic to the newly published version.
+  # The key in additional_version_weights MUST be different from function_version above,
+  # otherwise the Lambda API rejects the alias with InvalidParameterValueException.
   routing_config {
     additional_version_weights = {
       (aws_lambda_function.main.version) = var.canary_weight  # e.g. 0.1 for 10%
