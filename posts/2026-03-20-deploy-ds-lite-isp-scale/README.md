@@ -24,21 +24,24 @@ flowchart LR
 
 ## Deploying the AFTR
 
-Use `aftr` software (from the ISC) or a hardware implementation. Here's a Linux AFTR using Jool:
+Use `aftr` software (from the ISC) or a hardware implementation. Here's a Linux AFTR using the ISC AFTR daemon:
 
 ```bash
-# Install Jool with MAP/DS-Lite support
+# Install ISC AFTR (build from source: https://www.isc.org/aftr/)
+# Note: ISC AFTR is reference software; for production-scale traffic,
+# use a carrier-grade implementation (Cisco, Juniper, A10, VPP, etc.).
 
-apt install jool-dkms jool-tools
+# AFTR daemon configuration (/etc/aftr.conf)
+cat > /etc/aftr.conf <<'EOF'
+address endpoint 2001:db8:aftr::1
+pool 203.0.113.0/24
+acl6 2001:db8::/32
+EOF
 
-# Load softwire module
-modprobe jool_siit
+# Start the AFTR daemon
+aftr -c /etc/aftr.conf
 
-# Create DS-Lite AFTR instance
-jool_siit instance add "aftr" --iptables
-
-# Configure the softwire pool (shared IPv4 pool for NAPT)
-# IPv4 pool for customer NAPT
+# NAPT for the shared IPv4 pool on egress
 iptables -t nat -A POSTROUTING -o eth0 -j MASQUERADE
 # (For production, use a dedicated public IPv4 pool)
 ```
@@ -49,9 +52,9 @@ iptables -t nat -A POSTROUTING -o eth0 -j MASQUERADE
 ! Cisco IOS DS-Lite AFTR configuration
 ipv6 unicast-routing
 
-! DS-Lite virtual interface
+! DS-Lite virtual interface (IPv4-in-IPv6 softwire)
 interface Virtual-Template1 type tunnel
- tunnel mode ipv6ip
+ tunnel mode ipv6
  tunnel source 2001:db8:aftr::1
 
 ! NAT pool for customer IPv4 traffic
@@ -111,7 +114,7 @@ For ISP-scale deployment:
 - Deploy multiple AFTR nodes in anycast configuration
 - Each AFTR handles a subset of the shared IPv4 pool
 - Use ECMP to distribute B4 tunnels across AFTR nodes
-- Size AFTR nodes for NAT state: plan for ~10,000 sessions per subscriber
+- Size AFTR nodes for NAT state: plan for ~1,000-2,000 sessions per subscriber (RFC 6888 baseline)
 
 ## Monitoring AFTR
 
