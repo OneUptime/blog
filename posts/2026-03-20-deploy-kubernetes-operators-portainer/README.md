@@ -99,7 +99,7 @@ Install the Zalando Postgres Operator and create a cluster:
 apiVersion: acid.zalan.do/v1
 kind: postgresql
 metadata:
-  name: acid-production-db
+  name: production-db
   namespace: production
 spec:
   teamId: "production"
