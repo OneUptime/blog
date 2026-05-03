@@ -83,7 +83,7 @@ sudo iptables -t nat -L PREROUTING -n --line-numbers
 sudo iptables -t nat -D PREROUTING 2
 
 # Delete by specification from NAT
-sudo iptables -t nat -D PREROUTING -p tcp --dport 8080 -j DNAT --to 192.168.1.100:80
+sudo iptables -t nat -D PREROUTING -p tcp --dport 8080 -j DNAT --to-destination 192.168.1.100:80
 ```
 
 ## Verify After Deletion
