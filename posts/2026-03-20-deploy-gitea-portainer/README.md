@@ -32,7 +32,8 @@ services:
       - GITEA__server__DOMAIN=gitea.yourdomain.com
       - GITEA__server__SSH_DOMAIN=gitea.yourdomain.com
       - GITEA__server__HTTP_PORT=3000
-      - GITEA__server__SSH_PORT=22
+      - GITEA__server__SSH_PORT=2222
+      - GITEA__server__SSH_LISTEN_PORT=22
       - GITEA__server__ROOT_URL=https://gitea.yourdomain.com/
       - GITEA__mailer__ENABLED=true
       - GITEA__mailer__SMTP_ADDR=smtp.gmail.com
@@ -118,7 +119,7 @@ Host gitea.yourdomain.com
 
 ## Gitea Actions (CI/CD)
 
-Gitea Actions is compatible with GitHub Actions workflows. Enable in app.ini:
+Gitea Actions is compatible with GitHub Actions workflows. Enabled by default since Gitea 1.21, but can be explicitly set via environment variable on the gitea service:
 
 ```text
 GITEA__actions__ENABLED=true
