@@ -32,7 +32,7 @@ flowchart LR
 
 ## Border Relay (BR) Deployment
 
-The BR decapsulates IPv4-in-IPv6 and performs NAPT from the shared pool:
+The BR is stateless: it decapsulates IPv4-in-IPv6 from the CE and forwards the IPv4 packets to the IPv4 internet (NAPT is performed by the CE before encapsulation, not by the BR):
 
 ```bash
 # Configure MAP-E BR as an IPv6 tunnel endpoint on Linux
@@ -45,9 +45,9 @@ ip -6 tunnel add map-e-br mode ip4ip6 \
 
 ip link set map-e-br up
 
-# Add IP masquerade for the public IPv4 pool
-iptables -t nat -A POSTROUTING -o eth0 \
-    -s 203.0.113.0/24 -j MASQUERADE
+# Enable forwarding so decapsulated IPv4 packets reach the IPv4 internet
+sysctl -w net.ipv4.ip_forward=1
+sysctl -w net.ipv6.conf.all.forwarding=1
 ```
 
 ## Customer Edge (CE) Configuration
@@ -69,7 +69,7 @@ config interface 'map'
     option ip4prefixlen '24'
     option ip6prefix '2001:db8:map::'         # ISP's MAP domain prefix
     option ip6prefixlen '48'
-    option ealen    '8'                       # EA-bits length
+    option ealen    '16'                      # EA-bits length (8 IPv4-suffix + 8 PSID)
     option offset   '6'
     option legacymap '0'
 ```
@@ -85,7 +85,7 @@ ISPs can push MAP-E rules to CPEs via DHCPv6 options (S46 options, RFC 7598):
       {
         "name": "s46-cont-mape",
         "code": 94,
-        "data": "rule-type=MAP-E,br=2001:db8:br::1,ip6prefix=2001:db8:map::/48,ip4prefix=203.0.113.0/24,ea-len=8,offset=6"
+        "data": "rule-type=MAP-E,br=2001:db8:br::1,ip6prefix=2001:db8:map::/48,ip4prefix=203.0.113.0/24,ea-len=16,offset=6"
       }
     ]
   }
@@ -106,10 +106,11 @@ tcpdump -i eth0 'ip6 proto 4' -c 10
 python3 -c "
 psid = 3
 psid_len = 8
-offset = 6
-for a in range(2**(16 - offset - psid_len)):
-    port_start = (a << (psid_len + offset)) | (psid << offset)
-    print(f'{port_start}-{port_start + (2**offset) - 1}')
+offset = 6                     # PSID offset (A bits) per RFC 7597
+m = 16 - offset - psid_len     # bits for port within set
+for a in range(2**offset):
+    port_start = (a << (psid_len + m)) | (psid << m)
+    print(f'{port_start}-{port_start + (2**m) - 1}')
 " | head -5
 ```
 
