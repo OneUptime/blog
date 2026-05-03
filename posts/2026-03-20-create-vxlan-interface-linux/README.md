@@ -97,7 +97,7 @@ Name=vxlan0
 Kind=vxlan
 
 [VXLAN]
-Id=100
+VNI=100
 Remote=10.0.0.2
 Local=10.0.0.1
 DestinationPort=4789
