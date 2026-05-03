@@ -80,14 +80,15 @@ resource "aws_iam_role" "opentofu_deploy" {
 # Create a VPC in the networking account
 resource "aws_vpc" "shared" {
   provider   = aws.networking
-  cidr_block = "10.0.0.0/8"
+  cidr_block = "10.0.0.0/16"
   tags = { Name = "shared-network-vpc" }
 }
 
-# Create an application resource in the prod account
-resource "aws_ecs_cluster" "prod_app" {
-  provider = aws.prod
-  name     = "prod-application"
+# Create a VPC in the prod account
+resource "aws_vpc" "prod_app" {
+  provider   = aws.prod
+  cidr_block = "10.1.0.0/16"
+  tags = { Name = "prod-application-vpc" }
 }
 
 # Cross-account VPC peering: networking → prod
