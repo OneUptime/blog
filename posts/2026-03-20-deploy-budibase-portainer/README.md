@@ -26,7 +26,7 @@ version: "3.8"
 
 services:
   budibase:
-    image: budibase/budibase:2.27.4
+    image: budibase/budibase:3.37.2
     container_name: budibase
     restart: unless-stopped
     ports:
@@ -101,9 +101,9 @@ curl -X POST http://budibase-host/api/global/auth/default/login \
   -H 'Content-Type: application/json' \
   -d '{"username": "admin@yourdomain.com", "password": "your-password"}'
 
-# List applications
-curl http://budibase-host/api/applications \
-  -H 'x-budibase-auth: <token>'
+# List applications via the Public API (requires an API key generated from the Budibase portal)
+curl http://budibase-host/api/public/v1/applications \
+  -H 'x-budibase-api-key: <your-api-key>'
 ```
 
 ## Conclusion
