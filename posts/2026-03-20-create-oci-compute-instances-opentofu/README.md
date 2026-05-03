@@ -85,7 +85,7 @@ output "instance_public_ip" {
 | VM.Standard.E4.Flex | AMD, flexible OCPUs/memory |
 | VM.Standard.A1.Flex | ARM (Ampere), 4 Always Free OCPUs available |
 | VM.Standard3.Flex | Intel, flexible OCPUs/memory |
-| VM.DenseIO2.8 | NVMe local SSD |
+| VM.DenseIO.E4.Flex | AMD, NVMe local SSD |
 
 ## Free Tier Instance (Always Free)
 
