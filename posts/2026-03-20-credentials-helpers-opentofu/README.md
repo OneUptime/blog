@@ -30,14 +30,20 @@ This is fine for local development but unsuitable for CI/CD where the token must
 
 ## Using a Credentials Helper Program
 
-A credentials helper is any executable that accepts a hostname on stdin and prints a JSON object containing `token` to stdout:
+A credentials helper is any executable invoked as `terraform-credentials-<NAME> [args...] <verb> <hostname>`, where `<verb>` is `get`, `store`, or `forget`. For the `get` verb, the helper prints a JSON object containing `token` to stdout:
 
 ```bash
 #!/bin/bash
 # /usr/local/bin/tofu-cred-helper
-# Reads the hostname from the first argument and returns a token
+# Invoked as: terraform-credentials-<NAME> [args...] <verb> <hostname>
 
-HOSTNAME="$1"
+VERB="$1"
+HOSTNAME="$2"
+
+# Only the "get" verb returns credentials; ignore "store" and "forget".
+if [ "$VERB" != "get" ]; then
+  exit 0
+fi
 
 case "$HOSTNAME" in
   "registry.opentofu.org")
