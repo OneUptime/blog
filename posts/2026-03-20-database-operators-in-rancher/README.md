@@ -108,13 +108,13 @@ For MySQL, the Percona XtraDB Cluster Operator provides multi-primary replicatio
 
 ```bash
 # Deploy the Percona MySQL operator
-kubectl apply -f https://raw.githubusercontent.com/percona/percona-xtradb-cluster-operator/main/deploy/bundle.yaml \
+kubectl apply --server-side -f https://raw.githubusercontent.com/percona/percona-xtradb-cluster-operator/main/deploy/bundle.yaml \
   --namespace databases
 ```
 
 ## Operator Lifecycle Management via Rancher Apps
 
-Rancher's Apps & Marketplace integrates with OLM (Operator Lifecycle Manager). Navigate to **Apps > Charts** in Rancher UI and search for your database operator to install it graphically with version management.
+Rancher's Apps & Marketplace is built on Helm 3 and provides a curated catalog of charts you can install graphically with version management. Navigate to **Apps > Charts** in the Rancher UI and search for your database operator's Helm chart to install it.
 
 ## Conclusion
 
