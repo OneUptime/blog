@@ -116,7 +116,7 @@ data "aws_subnets" "private_a" {
     values = ["private"]
   }
   filter {
-    name   = "availabilityZone"
+    name   = "availability-zone"
     values = ["us-east-1a"]
   }
 }
@@ -127,7 +127,7 @@ data "aws_subnets" "private_b" {
     values = ["private"]
   }
   filter {
-    name   = "availabilityZone"
+    name   = "availability-zone"
     values = ["us-east-1b"]
   }
 }
