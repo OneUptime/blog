@@ -22,11 +22,11 @@ Edge sites in remote locations often have limited bandwidth - satellite links, c
 Choose the smallest viable base image for your containers:
 
 ```dockerfile
-# Instead of full Ubuntu (77MB compressed):
+# Instead of full Ubuntu (~28MB compressed, ~77MB on disk):
 
 FROM ubuntu:22.04
 
-# Use Alpine (3.5MB compressed):
+# Use Alpine (~3.4MB compressed):
 FROM alpine:3.19
 
 # Or distroless for runtime-only (smaller, more secure):
@@ -103,7 +103,7 @@ WORKDIR /app
 
 # Copy dependency files first - these change rarely
 COPY package*.json ./
-RUN npm ci --only=production
+RUN npm ci --omit=dev
 
 # Copy app code last - this changes frequently but reuses the npm layer
 COPY src/ ./src/
