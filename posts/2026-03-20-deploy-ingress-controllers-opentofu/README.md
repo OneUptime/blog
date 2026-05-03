@@ -49,7 +49,7 @@ resource "helm_release" "nginx_ingress" {
         }
 
         config = {
-          use-real-ip       = "true"
+          enable-real-ip       = "true"
           proxy-real-ip-cidr = "0.0.0.0/0"
           use-forwarded-headers = "true"
         }
@@ -66,10 +66,7 @@ resource "helm_release" "nginx_ingress" {
           limits   = { cpu = "500m", memory = "300Mi" }
         }
 
-        podDisruptionBudget = {
-          enabled      = true
-          minAvailable = 1
-        }
+        minAvailable = 1
       }
     })
   ]
@@ -159,13 +156,14 @@ resource "kubernetes_ingress_v1" "app" {
     name      = "app-ingress"
     namespace = var.app_namespace
     annotations = {
-      "kubernetes.io/ingress.class"                = "nginx"
       "nginx.ingress.kubernetes.io/ssl-redirect"   = "true"
       "cert-manager.io/cluster-issuer"             = "letsencrypt-prod"
     }
   }
 
   spec {
+    ingress_class_name = "nginx"
+
     tls {
       hosts       = [var.app_domain]
       secret_name = "${var.app_name}-tls"
