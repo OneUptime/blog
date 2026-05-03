@@ -69,11 +69,18 @@ Download mods from the Factorio mod portal and place them in the mods directory:
 # The mods directory is at /factorio/mods/ in the volume
 # Download mods via the Factorio Mod Portal API
 
-MOD_NAME="angels-refining"
+MOD_NAME="angelsrefining"
 MOD_VERSION="0.12.2"
 
-# Download via Factorio API (requires Factorio account token)
-wget "https://mods.factorio.com/api/downloads/data/mods/45/angels-refining_0.12.2.zip" \
+# 1. Query the mod portal API to get the download_url for the desired release
+# 2. Append https://mods.factorio.com to download_url, plus your Factorio.com
+#    username and token as query parameters
+FACTORIO_USERNAME="your_factorio_com_username"
+FACTORIO_TOKEN="your_factorio_com_token"
+DOWNLOAD_PATH=$(curl -s "https://mods.factorio.com/api/mods/${MOD_NAME}/full" \
+  | jq -r ".releases[] | select(.version==\"${MOD_VERSION}\") | .download_url")
+
+wget "https://mods.factorio.com${DOWNLOAD_PATH}?username=${FACTORIO_USERNAME}&token=${FACTORIO_TOKEN}" \
   -O /var/lib/docker/volumes/factorio-data/_data/mods/${MOD_NAME}_${MOD_VERSION}.zip
 ```
 
@@ -83,7 +90,7 @@ Create a `mod-list.json` to enable specific mods:
 {
   "mods": [
     {"name": "base", "enabled": true},
-    {"name": "angels-refining", "enabled": true},
+    {"name": "angelsrefining", "enabled": true},
     {"name": "bobores", "enabled": true}
   ]
 }
@@ -112,7 +119,7 @@ Access the Factorio server console via Portainer's container console to run admi
 /ban PlayerName reason      # Ban a player
 /kick PlayerName reason     # Kick a player  
 /promote PlayerName         # Promote to admin
-/save manual-save-001       # Manually save the game
+/server-save                # Manually save the game (admins only)
 ```
 
 ## Summary
