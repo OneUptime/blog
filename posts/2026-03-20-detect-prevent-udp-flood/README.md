@@ -39,10 +39,10 @@ cat /proc/interrupts | grep eth0 | awk '{print $NF, $(NF-1)}'
 ## Rate Limiting with iptables
 
 ```bash
-# Limit UDP packets to 1000 per second from any single source:
+# Limit total UDP packets to 1000 per second across all sources (global token bucket):
 iptables -I INPUT -p udp -m limit --limit 1000/s --limit-burst 2000 -j ACCEPT
 iptables -A INPUT -p udp -j DROP
-# CAUTION: This limits all UDP. Adjust limits based on legitimate traffic.
+# CAUTION: -m limit is a single global counter, not per-source. Adjust limits based on legitimate traffic.
 
 # More targeted: rate limit UDP to specific ports under attack:
 iptables -I INPUT -p udp --dport 53 -m limit --limit 5000/s --limit-burst 10000 -j ACCEPT
@@ -87,8 +87,8 @@ iptables -A INPUT -p udp --dport 11211 -j DROP # Memcached
 
 ```bash
 # Reduce ICMP port unreachable rate (reduces amplification from our end):
-sysctl -w net.ipv4.icmp_ratelimit=1000     # Max 1000 ICMP/sec
-sysctl -w net.ipv4.icmp_msgs_per_sec=1000
+sysctl -w net.ipv4.icmp_ratelimit=1000     # Min 1000ms between ICMP responses to the same target
+sysctl -w net.ipv4.icmp_msgs_per_sec=1000  # Max 1000 ICMP/sec total from this host
 
 # Increase network receive buffers to absorb bursts:
 sysctl -w net.core.rmem_max=134217728      # 128 MB
@@ -111,7 +111,7 @@ sysctl -w net.ipv4.conf.default.rp_filter=1
 # For large-scale attacks, mitigation must happen upstream:
 
 # AWS: Enable Shield Advanced for automatic UDP flood protection
-# GCP: Cloud Armor rules for UDP flood
+# GCP: Cloud Armor Advanced Network DDoS Protection (L3/L4) for UDP floods
 # CloudFlare: Magic Transit for network-layer DDoS protection
 
 # BGP Blackholing (last resort for large attacks):
