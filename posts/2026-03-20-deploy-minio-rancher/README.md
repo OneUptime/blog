@@ -8,7 +8,7 @@ Description: Guide to deploying MinIO distributed object storage on Rancher as a
 
 ## Introduction
 
-This guide covers deploying uminio on Rancher with production-ready configuration including persistent storage, TLS, and monitoring integration.
+This guide covers deploying MinIO on Rancher with production-ready configuration including persistent storage, TLS, and monitoring integration.
 
 ## Prerequisites
 
@@ -37,7 +37,7 @@ helm search repo bitnami/minio --versions | head -5
 kubectl create namespace minio
 
 # Create admin credentials secret
-kubectl create secret generic minio-credentials   --namespace minio   --from-literal=admin-password=$(openssl rand -base64 24)   --from-literal=db-password=$(openssl rand -base64 24)
+kubectl create secret generic minio-credentials   --namespace minio   --from-literal=root-user=admin   --from-literal=root-password=$(openssl rand -base64 24)
 ```
 
 ## Step 3: Configure Values
@@ -69,29 +69,24 @@ ingress:
   annotations:
     cert-manager.io/cluster-issuer: letsencrypt-prod
 
-# Database (if applicable)
-postgresql:
-  enabled: true
-  auth:
-    password: "${DB_PASSWORD}"
-  primary:
-    persistence:
-      enabled: true
-      storageClass: longhorn
-      size: 10Gi
+# Authentication (use the secret created in Step 2)
+auth:
+  existingSecret: minio-credentials
 
 # Replication for HA
-replicaCount: 2
+mode: distributed
+statefulset:
+  replicaCount: 4
 podDisruptionBudget:
-  enabled: true
+  create: true
   minAvailable: 1
 ```
 
 ## Step 4: Install with Helm
 
 ```bash
-# Install uminio
-helm install minio bitnami/minio   --namespace minio   --values minio-values.yaml   --version latest   --wait   --timeout 10m
+# Install minio
+helm install minio bitnami/minio   --namespace minio   --values minio-values.yaml   --wait   --timeout 10m
 
 # Verify deployment
 kubectl get pods -n minio
@@ -102,10 +97,10 @@ kubectl get svc -n minio
 
 ```bash
 # Check all pods are running
-kubectl rollout status deployment/minio -n minio
+kubectl rollout status statefulset/minio -n minio
 
 # Get the admin password
-kubectl get secret --namespace minio minio-credentials   -o jsonpath="{.data.admin-password}" | base64 --decode
+kubectl get secret --namespace minio minio-credentials   -o jsonpath="{.data.root-password}" | base64 --decode
 
 # Check ingress is configured
 kubectl get ingress -n minio
@@ -140,6 +135,9 @@ spec:
             - |
               # Backup data to S3
               aws s3 sync /data s3://app-backups/minio/$(date +%Y%m%d)/
+            volumeMounts:
+            - name: data
+              mountPath: /data
           restartPolicy: OnFailure
           volumes:
           - name: data
@@ -180,9 +178,9 @@ metadata:
 spec:
   scaleTargetRef:
     apiVersion: apps/v1
-    kind: Deployment
+    kind: StatefulSet
     name: minio
-  minReplicas: 2
+  minReplicas: 4
   maxReplicas: 8
   metrics:
   - type: Resource
@@ -202,7 +200,7 @@ spec:
 ## Upgrades
 
 ```bash
-# Upgrade uminio
+# Upgrade minio
 helm upgrade minio bitnami/minio   --namespace minio   --values minio-values.yaml   --reuse-values
 
 # Rollback if needed
@@ -211,4 +209,4 @@ helm rollback minio 1 --namespace minio
 
 ## Conclusion
 
-Deploying uminio on Rancher provides a production-ready environment with persistent storage, TLS termination, and autoscaling. Rancher's unified management interface gives operations teams visibility into uminio's health while the Helm-based installation makes upgrades and configuration changes straightforward.
+Deploying MinIO on Rancher provides a production-ready environment with persistent storage, TLS termination, and autoscaling. Rancher's unified management interface gives operations teams visibility into MinIO's health while the Helm-based installation makes upgrades and configuration changes straightforward.
