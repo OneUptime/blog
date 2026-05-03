@@ -126,7 +126,7 @@ resource "oci_load_balancer_rule_set" "https_redirect" {
     }
     redirect_uri {
       protocol = "HTTPS"
-      port     = "443"
+      port     = 443
     }
     response_code = 301
   }
