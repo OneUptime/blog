@@ -63,19 +63,18 @@ TOKEN=$(curl -s -X POST \
   --insecure | python3 -c "import sys,json; print(json.load(sys.stdin)['jwt'])")
 
 # Create a stack with environment variables via API
+# type=2 (compose), method=string, and endpointId are query parameters
 curl -X POST \
-  https://localhost:9443/api/stacks \
+  "https://localhost:9443/api/stacks?type=2&method=string&endpointId=1" \
   -H "Authorization: Bearer $TOKEN" \
   -H "Content-Type: application/json" \
   -d '{
-    "name": "myapp",
-    "stackFileContent": "version: \"3.8\"\nservices:\n  web:\n    image: nginx:latest",
-    "env": [
+    "Name": "myapp",
+    "StackFileContent": "version: \"3.8\"\nservices:\n  web:\n    image: nginx:latest",
+    "Env": [
       {"name": "DB_PASSWORD", "value": "secretpassword"},
       {"name": "APP_ENV", "value": "production"}
-    ],
-    "type": 2,
-    "endpointId": 1
+    ]
   }' \
   --insecure
 ```
@@ -93,7 +92,10 @@ Configure polling interval in the stack settings:
 STACK_WEBHOOK_URL="https://portainer.example.com/api/stacks/webhooks/<uuid>"
 
 curl -X POST "$STACK_WEBHOOK_URL"
-# Portainer redeploys the stack with --pull-always
+# Portainer redeploys the stack using its current configuration.
+# To force pulling the latest images, send {"pullImage": true} as a JSON body
+# (Business Edition), or enable "Re-pull image" in the stack's automatic
+# updates settings.
 ```
 
 ## Fix stack.env Not Found
