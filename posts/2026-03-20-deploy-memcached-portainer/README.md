@@ -138,9 +138,9 @@ scrape_configs:
 
 Key metrics to watch:
 - `memcached_current_bytes` - bytes currently used
-- `memcached_limit_maxbytes` - total cache size
+- `memcached_limit_bytes` - total cache size
 - `memcached_items_evicted_total` - evictions (increase memory if high)
-- `memcached_get_hit_ratio` - cache hit rate (target > 90%)
+- `memcached_commands_total{command="get",status="hit"}` and `{status="miss"}` - compute hit rate as `hits / (hits + misses)` (target > 90%)
 
 ## Step 6: Production Configuration
 
