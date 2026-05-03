@@ -103,8 +103,8 @@ An organization can further sub-delegate zones to departments or sites:
 ; Organization zone: e.f.a.c.8.b.d.0.1.0.0.2.ip6.arpa
 ; Delegate 2001:db8:cafe:1::/64 to department's DNS
 
-; The /64 relative to this zone is d.c.b.a (the /48 prefix is the zone name)
-; 2001:db8:cafe:1::/64 → last nibbles: 1.0.0.0 relative to the /48 zone
+; A /64 adds 4 nibbles (the subnet ID, reversed) on top of the /48 zone name
+; 2001:db8:cafe:1::/64 → subnet ID 0001 → reversed nibbles: 1.0.0.0
 1.0.0.0     IN  NS  dept-ns1.org.example.com.
 1.0.0.0     IN  NS  dept-ns2.org.example.com.
 ```
