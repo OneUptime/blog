@@ -95,7 +95,7 @@ spec:
 
 ```bash
 # Check if metrics endpoint is available
-kubectl exec -n grafana   $(kubectl get pods -n grafana -o name | head -1)   -- curl -s http://localhost:9090/metrics | head -20
+kubectl exec -n grafana   $(kubectl get pods -n grafana -o name | head -1)   -- curl -s http://localhost:3000/metrics | head -20
 
 # Create ServiceMonitor
 kubectl apply -f - << SMEOF
@@ -141,7 +141,7 @@ spec:
             - -c
             - |
               echo "Creating grafana backup..."
-              kubectl exec -n grafana                 $(kubectl get pod -n grafana -l app.kubernetes.io/name=grafana -o name | head -1)                 -- /opt/bitnami/scripts/grafana/entrypoint.sh grafana-backup
+              kubectl exec -n grafana                 $(kubectl get pod -n grafana -l app.kubernetes.io/name=grafana -o name | head -1)                 -- tar -czf /tmp/grafana-backup.tar.gz -C /opt/bitnami/grafana data
           restartPolicy: OnFailure
 ```
 
