@@ -28,6 +28,7 @@ version: "3.8"
 services:
   elasticsearch:
     image: docker.elastic.co/elasticsearch/elasticsearch:8.12.0
+    container_name: elasticsearch
     restart: unless-stopped
     environment:
       - node.name=elasticsearch
@@ -58,7 +59,7 @@ services:
       - ./logstash-pipeline:/usr/share/logstash/pipeline:ro
     ports:
       - "5044:5044"     # Filebeat input
-      - "5000:5000"     # Syslog input
+      - "5000:5000/udp" # GELF input
     depends_on:
       elasticsearch:
         condition: service_healthy
@@ -96,6 +97,9 @@ input {
   beats {
     port => 5044
   }
+  gelf {
+    port => 5000
+  }
 }
 
 filter {
@@ -115,7 +119,6 @@ output {
     hosts => ["http://elasticsearch:9200"]
     user => "elastic"
     password => "${ELASTIC_PASSWORD}"
-    index => "docker-logs-%{+YYYY.MM.dd}"
     ilm_enabled => true
     ilm_rollover_alias => "docker-logs"
     ilm_policy => "7-days-default"
@@ -166,7 +169,7 @@ services:
     logging:
       driver: "gelf"
       options:
-        gelf-address: "udp://elk-logstash:5000"
+        gelf-address: "udp://logstash:5000"
         tag: "nginx"
 ```
 
