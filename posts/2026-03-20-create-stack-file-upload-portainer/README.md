@@ -64,7 +64,7 @@ TOKEN=$(curl -s -X POST \
 
 # Create a stack with environment variables via API
 curl -X POST \
-  https://localhost:9443/api/stacks \
+  "https://localhost:9443/api/stacks/create/standalone/string?endpointId=1" \
   -H "Authorization: Bearer $TOKEN" \
   -H "Content-Type: application/json" \
   -d '{
@@ -73,9 +73,7 @@ curl -X POST \
     "env": [
       {"name": "DB_PASSWORD", "value": "secretpassword"},
       {"name": "APP_ENV", "value": "production"}
-    ],
-    "type": 2,
-    "endpointId": 1
+    ]
   }' \
   --insecure
 ```
@@ -93,7 +91,8 @@ Configure polling interval in the stack settings:
 STACK_WEBHOOK_URL="https://portainer.example.com/api/stacks/webhooks/<uuid>"
 
 curl -X POST "$STACK_WEBHOOK_URL"
-# Portainer redeploys the stack with --pull-always
+# Portainer pulls the latest image of the same tag and redeploys the stack
+# Use ?pullimage=false to redeploy without pulling, or ?tag=<newtag> to update the image tag
 ```
 
 ## Fix stack.env Not Found
