@@ -65,8 +65,7 @@ Configure a Samba WINS server to replace broadcast-based resolution:
 sudo tee -a /etc/samba/smb.conf << 'EOF'
 [global]
    wins support = yes
-   wins server = 192.168.1.10
-   name resolve order = wins bcast hosts
+   name resolve order = wins host bcast
 EOF
 
 sudo systemctl restart smbd nmbd
