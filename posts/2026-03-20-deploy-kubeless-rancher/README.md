@@ -96,10 +96,10 @@ metadata:
   name: hello-http
   namespace: default
 spec:
-  routeServiceName: hello
-  servicePort: 8080
+  function-name: hello
+  host-name: functions.example.com
   path: /hello
-  cors: true
+  cors-enable: true
 ```
 
 ```bash
