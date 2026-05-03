@@ -25,7 +25,7 @@ Knative extends Kubernetes to provide serverless workloads with automatic scalin
 kubectl apply -f https://github.com/knative/operator/releases/download/knative-v1.12.0/operator.yaml
 
 # Verify operator is running
-kubectl get pods -n knative-operator
+kubectl get deployment knative-operator
 ```
 
 ## Step 2: Install Knative Serving
@@ -52,7 +52,7 @@ spec:
 
 ```bash
 kubectl apply -f knative-serving.yaml
-kubectl wait ks/knative-serving \
+kubectl wait knativeserving/knative-serving \
   --for=condition=Ready \
   --timeout=10m \
   --namespace=knative-serving
