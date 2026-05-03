@@ -108,24 +108,20 @@ resource "datadog_service_level_objective" "api_uptime" {
 
 ## SLO Alert (Error Budget Burn Rate)
 
-Alert when the error budget is being consumed too fast:
+Alert when the error budget is being consumed too fast. Burn rate alerts are created using the `datadog_monitor` resource with `type = "slo alert"` and a `burn_rate()` query referencing the SLO ID:
 
 ```hcl
-resource "datadog_slo_alert" "burn_rate_high" {
-  slo_id       = datadog_service_level_objective.api_availability.id
-  name         = "[${var.environment}] API SLO - High Burn Rate"
-  type         = "burn_rate"
-  message      = "Error budget is burning too fast for the API availability SLO. @pagerduty-${var.environment}"
-  slo_timeframe = "30d"
+resource "datadog_monitor" "burn_rate_high" {
+  name    = "[${var.environment}] API SLO - High Burn Rate"
+  type    = "slo alert"
+  message = "Error budget is burning too fast for the API availability SLO. @pagerduty-${var.environment}"
 
-  thresholds {
-    timeframe = "1h"
-    value     = 14.4  # 14.4x burn rate = will exhaust monthly budget in 2 days
-  }
+  # 14.4x burn rate over a 1h long window with a 5m short window
+  # will exhaust a 30-day error budget in ~2 days.
+  query = "burn_rate(\"${datadog_service_level_objective.api_availability.id}\").over(\"30d\").long_window(\"1h\").short_window(\"5m\") > 14.4"
 
-  thresholds {
-    timeframe = "5m"
-    value     = 14.4
+  monitor_thresholds {
+    critical = 14.4
   }
 
   tags = ["env:${var.environment}", "managed-by:opentofu"]
