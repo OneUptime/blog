@@ -118,4 +118,4 @@ Use [OneUptime](https://oneuptime.com) to monitor services running inside networ
 
 ## Conclusion
 
-How to Debug IPv6 Issues in Network Namespaces uses standard Linux  commands with the  subcommand. All IPv6 configuration tools work identically inside namespaces. Network namespaces are an excellent, zero-cost way to test IPv6 configurations before deploying to production.
+Debugging IPv6 issues in network namespaces uses standard Linux `ip` commands with the `netns` subcommand. All IPv6 configuration tools work identically inside namespaces. Network namespaces are an excellent, zero-cost way to test IPv6 configurations before deploying to production.
