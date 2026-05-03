@@ -8,7 +8,7 @@ Description: Create an 802.1Q VLAN subinterface on a Linux physical interface, a
 
 ## Introduction
 
-Linux supports 802.1Q VLAN tagging natively through the kernel's `vlan` module. A VLAN subinterface tags all outgoing frames with a VLAN ID and accepts only frames with that tag, enabling a single physical NIC to participate in multiple VLANs.
+Linux supports 802.1Q VLAN tagging natively through the kernel's `8021q` module. A VLAN subinterface tags all outgoing frames with a VLAN ID and accepts only frames with that tag, enabling a single physical NIC to participate in multiple VLANs.
 
 ## Creating a VLAN Subinterface
 
@@ -125,4 +125,4 @@ sudo ip link del eth0.10
 
 ## Conclusion
 
-Linux VLAN subinterfaces require only the kernel `vlan` module (built into all modern kernels) and the `ip link add ... type vlan` command. Ensure the connected switch port is configured as a trunk, and use Netplan or `/etc/network/interfaces` for persistence.
+Linux VLAN subinterfaces require only the kernel `8021q` module (built into all modern kernels and auto-loaded by `ip link add ... type vlan`) and the `ip link add ... type vlan` command. Ensure the connected switch port is configured as a trunk, and use Netplan or `/etc/network/interfaces` for persistence.
