@@ -76,7 +76,7 @@ ip -d link show type gre
 ip -d link show type gretap
 
 # Delete all GRE tunnels
-ip -d link show type gre | grep "^[0-9]" | awk '{print $2}' | tr -d ':' | while read iface; do
+ip -d link show type gre | grep "^[0-9]" | awk '{print $2}' | tr -d ':' | cut -d'@' -f1 | while read iface; do
   echo "Deleting $iface"
   ip link del "$iface"
 done
