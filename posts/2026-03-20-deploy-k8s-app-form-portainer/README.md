@@ -82,6 +82,9 @@ spec:
     matchLabels:
       app: web-nginx
   template:
+    metadata:
+      labels:
+        app: web-nginx
     spec:
       containers:
         - name: web-nginx
