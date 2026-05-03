@@ -25,7 +25,7 @@ resource "aws_secretsmanager_secret" "gossip_key" {
 
 resource "aws_secretsmanager_secret_version" "gossip_key" {
   secret_id     = aws_secretsmanager_secret.gossip_key.id
-  secret_string = base64encode(random_bytes.gossip_key.base64)
+  secret_string = random_bytes.gossip_key.base64
 }
 ```
 
@@ -186,7 +186,7 @@ resource "aws_security_group" "consul_server" {
 ```hcl
 provider "consul" {
   address    = "https://consul.${var.domain_name}:8501"
-  ca_file    = file("${path.module}/ca.crt")
+  ca_pem     = file("${path.module}/ca.crt")
   token      = var.consul_bootstrap_token
   datacenter = var.datacenter
 }
