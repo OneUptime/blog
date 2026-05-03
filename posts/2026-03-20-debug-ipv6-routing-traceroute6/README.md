@@ -65,8 +65,12 @@ traceroute6 -m 20 2001:4860:4860::8888
 # Use a specific source address (useful on multi-homed hosts)
 traceroute6 -s 2001:db8::2 2001:4860:4860::8888
 
-# Use UDP instead of ICMPv6 (default is UDP on Linux)
+# Use UDP to a fixed destination port (default 53) instead of the
+# default UDP method that increments ports starting at 33434
 traceroute6 -U 2001:4860:4860::8888
+
+# Use ICMPv6 ECHO probes instead of UDP
+traceroute6 -I 2001:4860:4860::8888
 
 # Use TCP SYN probes (port 80) - useful when ICMP is filtered
 traceroute6 -T -p 80 2001:4860:4860::8888
@@ -74,8 +78,11 @@ traceroute6 -T -p 80 2001:4860:4860::8888
 # Disable DNS resolution for faster output
 traceroute6 -n 2001:4860:4860::8888
 
-# Set probe packet size
+# Send 1 probe per hop and 1 probe at a time (less aggressive)
 traceroute6 -q 1 -N 1 2001:4860:4860::8888
+
+# Set probe packet size (positional argument after the host)
+traceroute6 2001:4860:4860::8888 1280
 ```
 
 ## Diagnosing Asymmetric Routing
