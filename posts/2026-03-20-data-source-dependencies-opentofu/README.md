@@ -51,7 +51,7 @@ resource "aws_iam_role_policy_attachment" "attach" {
   policy_arn = "arn:aws:iam::aws:policy/ReadOnlyAccess"
 }
 
-# This data source looks up the role by name.
+# This data source looks up the policy by ARN.
 # Without depends_on, it might run before the attachment is complete.
 data "aws_iam_policy" "role_policies" {
   depends_on = [aws_iam_role_policy_attachment.attach]   # wait for attachment
