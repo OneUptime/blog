@@ -40,7 +40,7 @@ provider "datadog" {
 ```hcl
 # log_pipelines.tf
 
-resource "datadog_logs_pipeline" "nginx" {
+resource "datadog_logs_custom_pipeline" "nginx" {
   name       = "Nginx Access Logs"
   is_enabled = true
   filter {
@@ -82,7 +82,7 @@ resource "datadog_logs_pipeline" "nginx" {
 ## Create a Log Processing Pipeline with Category Processor
 
 ```hcl
-resource "datadog_logs_pipeline" "app_logs" {
+resource "datadog_logs_custom_pipeline" "app_logs" {
   name       = "Application Logs"
   is_enabled = true
 
@@ -142,6 +142,11 @@ resource "datadog_logs_index" "main" {
   daily_limit    = 150000000
 
   retention_days = 15
+
+  # Required: defines which logs flow into this index
+  filter {
+    query = "*"
+  }
 
   # Exclude health check logs from being indexed
   exclusion_filter {
