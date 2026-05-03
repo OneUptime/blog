@@ -45,10 +45,11 @@ EXPOSE 80
 ```dockerfile
 # Add to Dockerfile for custom app pool settings
 RUN powershell -NoProfile -Command \
+    New-WebAppPool -Name "MyApp"; \
     Set-WebConfiguration system.applicationHost/applicationPools/add[@name="MyApp"]/processModel \
         -Value @{userName=""; password=""; identityType="ApplicationPoolIdentity"}; \
     Set-ItemProperty "IIS:\AppPools\MyApp" "managedRuntimeVersion" "v4.0"; \
-    Set-WebSite -Name "MyApp" -ApplicationPool "MyApp"
+    Set-ItemProperty "IIS:\Sites\MyApp" -Name applicationPool -Value "MyApp"
 ```
 
 ## Step 3: Deploy to Rancher
