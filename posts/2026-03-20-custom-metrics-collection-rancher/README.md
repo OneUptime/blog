@@ -18,7 +18,7 @@ Add a Prometheus metrics endpoint to your application. Here's an example using t
 # app.py - Flask application with custom metrics
 
 from flask import Flask, request
-from prometheus_client import Counter, Histogram, Gauge, generate_latest, CONTENT_TYPE_LATEST
+from prometheus_client import Counter, Histogram, Gauge, start_http_server
 import time
 
 app = Flask(__name__)
@@ -42,10 +42,8 @@ ACTIVE_USERS = Gauge(
     'Number of currently active users'
 )
 
-@app.route('/metrics')
-def metrics():
-    """Prometheus metrics endpoint"""
-    return generate_latest(), 200, {'Content-Type': CONTENT_TYPE_LATEST}
+# Start a dedicated metrics HTTP server on port 9090 (scraped by Prometheus)
+start_http_server(9090)
 
 @app.before_request
 def start_timer():
