@@ -89,6 +89,7 @@ resource "aws_ecs_task_definition" "keycloak" {
       { name = "KC_HEALTH_ENABLED",      value = "true" },
       { name = "KC_METRICS_ENABLED",     value = "true" },
       { name = "KC_LOG_LEVEL",           value = "INFO" },
+      { name = "KEYCLOAK_ADMIN",         value = "admin" },
     ]
 
     secrets = [
@@ -101,11 +102,6 @@ resource "aws_ecs_task_definition" "keycloak" {
         valueFrom = aws_secretsmanager_secret.admin_password.arn
       }
     ]
-
-    environment = concat(
-      [{ name = "KEYCLOAK_ADMIN", value = "admin" }],
-      # ... other env vars above
-    )
 
     portMappings = [{ containerPort = 8080, protocol = "tcp" }]
 
