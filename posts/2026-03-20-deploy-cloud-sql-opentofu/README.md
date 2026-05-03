@@ -147,7 +147,9 @@ resource "google_project_iam_member" "db_client" {
 
 # IAM user in Cloud SQL
 resource "google_sql_user" "iam_user" {
-  name     = google_service_account.db_client.email
+  # For Postgres, GCP requires omitting the ".gserviceaccount.com" suffix
+  # from the service account email due to database username length limits.
+  name     = trimsuffix(google_service_account.db_client.email, ".gserviceaccount.com")
   instance = google_sql_database_instance.main.name
   type     = "CLOUD_IAM_SERVICE_ACCOUNT"
 }
@@ -163,10 +165,6 @@ resource "google_sql_database_instance" "read_replica" {
   region               = var.replica_region  # Can be different region
   database_version     = google_sql_database_instance.main.database_version
   master_instance_name = google_sql_database_instance.main.name
-
-  replica_configuration {
-    failover_target = false
-  }
 
   settings {
     tier = var.replica_tier
