@@ -156,7 +156,7 @@ docker exec mongodb mongorestore \
 
 ## Memory Tuning
 
-MongoDB's WiredTiger cache defaults to 50% of RAM - 1GB. Limit it for containers:
+MongoDB's WiredTiger cache defaults to the larger of 50% of (RAM - 1GB) or 256MB. Limit it for containers:
 
 ```yaml
 command: mongod --auth --wiredTigerCacheSizeGB 1
