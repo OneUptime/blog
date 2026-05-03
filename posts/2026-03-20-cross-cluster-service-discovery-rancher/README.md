@@ -20,9 +20,9 @@ By default, Kubernetes DNS is scoped to a single cluster. Cross-cluster service 
 
 ---
 
-## Step 1: Install Submariner via Rancher UI
+## Step 1: Install the Submariner CLI
 
-Rancher includes a Submariner integration. In the Rancher UI, go to **Cluster Management > Multi-cluster Management > Submariner**. Alternatively, use `subctl`:
+Modern Rancher releases do not ship a first-class Submariner UI, so the supported workflow is to drive Submariner directly with the `subctl` CLI against your Rancher-managed kubeconfigs:
 
 ```bash
 # Install the subctl CLI
