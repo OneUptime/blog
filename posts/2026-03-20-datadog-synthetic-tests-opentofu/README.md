@@ -116,9 +116,8 @@ resource "datadog_synthetics_test" "user_workflow" {
       target   = "200"
     }
     extracted_value {
-      name   = "AUTH_TOKEN"
-      type   = "http_body"
-      field  = "token"
+      name = "AUTH_TOKEN"
+      type = "http_body"
       parser {
         type  = "json_path"
         value = "$.token"
