@@ -74,8 +74,8 @@ show segment-routing srv6 locator
 # Show all SRv6 SIDs
 show segment-routing srv6 sid
 
-# Show IS-IS SRv6 advertisement
-show isis segment-routing srv6 adjacency
+# Show IS-IS SRv6 locator advertisements
+show isis segment-routing srv6 locators
 
 # Show SRv6 forwarding table
 show segment-routing srv6 forwarding
@@ -95,7 +95,10 @@ traceroute srv6-te policy POLICY-TO-R3
 segment-routing
  traffic-eng
   policy POLICY-VIA-R2
-   binding-sid address 5f00:1:0:fc00::
+   srv6
+    locator MAIN
+    binding-sid dynamic behavior ub6-insert-reduced
+   !
    color 100 end-point ipv6 5f00:3::
    candidate-paths
     preference 100
@@ -105,6 +108,8 @@ segment-routing
    !
   !
   segment-list R1-R2-R3
+   srv6
+   !
    index 10 address ipv6 5f00:2:0:e001::
    index 20 address ipv6 5f00:3:0:e000::
   !
