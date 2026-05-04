@@ -48,47 +48,47 @@ provider "spacelift" {
 }
 ```
 
-Now create a stack with continuous drift detection enabled:
+Now create a stack and attach a drift detection integration to it:
 
 ```hcl
 # stack.tf
 resource "spacelift_stack" "production" {
-  name        = "production-infra"
-  repository  = "my-org/infra-repo"
-  branch      = "main"
+  name         = "production-infra"
+  repository   = "my-org/infra-repo"
+  branch       = "main"
   project_root = "environments/production"
 
   # Use OpenTofu instead of Terraform
-  opentofu_version = "1.7.0"
+  terraform_version       = "1.7.0"
+  terraform_workflow_tool = "OPEN_TOFU"
 
-  # Enable automatic drift detection every 24 hours
   autodeploy           = false
   enable_local_preview = true
+}
 
-  # Schedule a drift detection run every day at midnight
-  drift_detection {
-    reconcile = false  # alert only; set true to auto-remediate
-    schedule  = ["0 0 * * *"]
-  }
+# Schedule a drift detection run every day at midnight
+resource "spacelift_drift_detection" "production" {
+  stack_id  = spacelift_stack.production.id
+  reconcile = false  # alert only; set true to auto-remediate
+  schedule  = ["0 0 * * *"]
 }
 ```
 
 ## Using env0 for Continuous Validation
 
-env0 provides a `drift-detection` feature that works with OpenTofu environments. Configure it via a `env0.yml` in your repository:
+env0 provides a drift detection feature that works with OpenTofu environments. It can be enabled from the environment Settings tab in the UI, or declaratively through the env0 Terraform provider:
 
-```yaml
-# env0.yml
-version: 1
-environments:
-  production:
-    workspace: production
-    terraformVersion: "1.7.0"  # env0 detects OpenTofu automatically
-    driftDetection:
-      enabled: true
-      # Run every 6 hours
-      cron: "0 */6 * * *"
-      autoApproveApply: false
+```hcl
+resource "env0_environment_drift_detection" "production" {
+  environment_id = env0_environment.production.id
+
+  # Run every 6 hours (sub-daily schedules require an Enterprise plan;
+  # the scheduler runs hourly, so the minute field is ignored).
+  cron = "0 */6 * * *"
+
+  # DISABLED, CODE_TO_CLOUD, CLOUD_TO_CODE, or SMART_REMEDIATION.
+  auto_drift_remediation = "DISABLED"
+}
 ```
 
 ## Best Practices for Continuous Validation
