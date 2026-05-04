@@ -90,9 +90,11 @@ Phase 4: Verify all clients migrated
   arp -a | grep "192.168.1" | wc -l   (should be 0)
 
 Phase 5: Remove old primary address
+  ! Cisco IOS requires secondaries to be removed before the primary
+  no ip address 10.1.0.1 255.255.255.0 secondary
   no ip address 192.168.1.1 255.255.255.0
-  Make 10.1.0.1 the primary:
-  ip address 10.1.0.1 255.255.255.0   (removes secondary, promotes it)
+  ! Configure 10.1.0.1 as the new primary
+  ip address 10.1.0.1 255.255.255.0
 ```
 
 ## Step 5: Secondary Addresses with OSPF
