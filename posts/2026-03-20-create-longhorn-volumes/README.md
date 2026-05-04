@@ -114,10 +114,10 @@ metadata:
 spec:
   size: "10737418240"  # 10 GiB in bytes
   numberOfReplicas: 3
-  dataLocality: disabled
-  accessMode: rwo        # ReadWriteOnce
+  frontend: blockdev     # blockdev, iscsi, nvmf, or ublk
+  dataLocality: disabled # disabled, best-effort, or strict-local
+  accessMode: rwo        # rwo, rwop, or rwx
   encrypted: false
-  fsType: ext4
 ```
 
 ```bash
@@ -177,7 +177,7 @@ kubectl get pvc -l app=database
 
 ## Creating ReadWriteMany Volumes
 
-For workloads that need shared access across multiple pods, use ReadWriteMany (requires NFS provisioner component):
+For workloads that need shared access across multiple pods, use ReadWriteMany. Longhorn implements RWX by exporting the volume from a share-manager pod over NFSv4, so each node must have an NFSv4 client installed (for example, the `nfs-common` package on Debian/Ubuntu or `nfs-utils` on RHEL/SUSE):
 
 ```yaml
 # rwx-pvc.yaml - ReadWriteMany PVC for shared storage
