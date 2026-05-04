@@ -69,7 +69,7 @@ ip route add default via 192.168.10.254 vrf customer-a
 # Execute a command within a specific VRF context
 ip vrf exec customer-a ping 10.50.0.1
 
-# Test DNS resolution within VRF
+# Test HTTP connectivity within VRF
 ip vrf exec customer-a curl http://10.50.0.1
 
 # Open a bash shell in VRF context (useful for testing)
