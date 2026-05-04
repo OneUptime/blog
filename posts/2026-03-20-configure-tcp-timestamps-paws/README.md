@@ -25,14 +25,14 @@ They serve two purposes:
 
 sysctl net.ipv4.tcp_timestamps
 # 0 = disabled
-# 1 = enabled (default)
-# 2 = enabled, but no timestamp on loopback
+# 1 = enabled with random per-connection offsets (default)
+# 2 = enabled, but without random offsets
 ```
 
 ## Step 2: Enable TCP Timestamps
 
 ```bash
-# Enable timestamps (required for window scaling and PAWS)
+# Enable timestamps (required for PAWS)
 sudo sysctl -w net.ipv4.tcp_timestamps=1
 
 # Make persistent
