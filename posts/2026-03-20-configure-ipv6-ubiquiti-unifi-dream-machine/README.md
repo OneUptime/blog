@@ -64,9 +64,9 @@ DNS Server: [auto from ISP or custom]
 For home labs with multiple VLANs, each can get its own /64 from the delegated prefix:
 
 ```text
-LAN (VLAN 1):   2001:db8::/64   (from /56 delegation)
-IoT (VLAN 10):  2001:db8:10::/64
-Lab (VLAN 20):  2001:db8:20::/64
+LAN (VLAN 1):   2001:db8:0:00::/64   (from 2001:db8::/56 delegation)
+IoT (VLAN 10):  2001:db8:0:10::/64
+Lab (VLAN 20):  2001:db8:0:20::/64
 ```
 
 Configure each VLAN in **Settings → Networks** with Prefix Delegation selected.
