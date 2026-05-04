@@ -81,7 +81,8 @@ networks:
   swarm-overlay:
     driver: overlay
     attachable: true
-    encrypted: true
+    driver_opts:
+      encrypted: "true"
 ```
 
 ## Step 3: Connect Services to Networks
@@ -129,10 +130,8 @@ Add network encryption and security settings:
 networks:
   secure-overlay:
     driver: overlay
-    # Encrypt all overlay network traffic
-    encrypted: true
     driver_opts:
-      # Use IPsec for encryption
+      # Encrypt all overlay network traffic with IPsec
       encrypted: "true"
 ```
 
@@ -176,14 +175,14 @@ services:
   # Network traffic monitoring
   ntopng:
     image: ntop/ntopng:latest
-    ports:
-      - "3000:3000"
     volumes:
       - ntopng-data:/var/lib/ntopng
     cap_add:
       - NET_ADMIN
       - NET_RAW
-    network_mode: host  # Required for traffic inspection
+    # Host networking is required for traffic inspection;
+    # ntopng's web UI is reachable on the host's port 3000
+    network_mode: host
 ```
 
 ## Common Network Patterns
@@ -203,7 +202,7 @@ networks:
 networks:
   presentation: {}   # Web/UI layer
   business: {}       # API/Logic layer
-  data: {}           # DB layer (internal only)
+  data:              # DB layer (internal only)
     internal: true
 ```
 
