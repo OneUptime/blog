@@ -8,7 +8,7 @@ Description: Configure SR-IOV (Single Root I/O Virtualization) in Rancher for ha
 
 ## Introduction
 
-SR-IOV allows a single physical NIC to present multiple virtual functions (VFs) to the OS, each behaving like an independent NIC. Pods attached to SR-IOV VFs bypass the kernel networking stack entirely, achieving near bare-metal network performance-critical for telco, financial trading, and HPC workloads.
+SR-IOV allows a single physical NIC to present multiple virtual functions (VFs) to the OS, each behaving like an independent NIC. Pods attached to SR-IOV VFs bypass the host's CNI overlay and software switching, achieving near bare-metal network performance-critical for telco, financial trading, and HPC workloads. (Pairing VFs with a userspace driver such as DPDK/vfio-pci can additionally bypass the kernel networking stack entirely.)
 
 ## Prerequisites
 
@@ -69,7 +69,7 @@ data:
           "selectors": {
             "vendors": ["8086"],
             "devices": ["154c", "10ed"],
-            "drivers": ["i40evf", "ixgbevf"]
+            "drivers": ["i40evf", "iavf", "ixgbevf"]
           }
         }
       ]
@@ -84,7 +84,7 @@ git clone https://github.com/k8snetworkplumbingwg/sriov-cni.git
 cd sriov-cni && make build
 
 # Deploy as DaemonSet to install CNI binary on all nodes
-kubectl apply -f deployments/sriov-cni-daemonset.yaml
+kubectl apply -f images/sriov-cni-daemonset.yaml
 ```
 
 ## Step 4: Create NetworkAttachmentDefinition for SR-IOV
