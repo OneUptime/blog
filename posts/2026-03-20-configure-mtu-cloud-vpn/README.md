@@ -13,8 +13,8 @@ Cloud VPN connections use IPsec tunnels that add overhead to every packet, reduc
 ## IPsec VPN Overhead Calculation
 
 ```text
-IPsec tunnel overhead (transport mode ESP with AES-GCM-128):
-  Original IP header:    20 bytes (preserved or new)
+IPsec tunnel overhead (tunnel mode ESP with AES-GCM-128):
+  New outer IP header:  20 bytes
   ESP header:            8 bytes
   IV (nonce):           8 bytes
   ICV (auth tag):       16 bytes
