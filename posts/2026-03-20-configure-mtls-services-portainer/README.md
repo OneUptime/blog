@@ -68,7 +68,7 @@ openssl x509 -req -days 365 -in client/client.csr \
 
 ## Step 3: Store Certificates as Docker Secrets via Portainer
 
-In Portainer, navigate to **Secrets** > **Add Secret**:
+In Portainer, navigate to **Secrets** > **Add secret** (this menu is only available on Docker Swarm environments):
 
 1. Create secret `ca-cert` with `ca/ca.crt` content
 2. Create secret `server-cert` with `server/server.crt` content
@@ -76,7 +76,38 @@ In Portainer, navigate to **Secrets** > **Add Secret**:
 4. Create secret `client-cert` with `client/client.crt` content
 5. Create secret `client-key` with `client/client.key` content
 
-Or create them via the Docker CLI:
+Also create a Docker config for the NGINX server block. From **Configs** > **Add config**, create `nginx-mtls-config` with the following content:
+
+```nginx
+server {
+    listen 443 ssl;
+    server_name service-a;
+
+    # Server certificate and key
+    ssl_certificate /etc/nginx/certs/server.crt;
+    ssl_certificate_key /etc/nginx/certs/server.key;
+
+    # CA certificate for client verification
+    ssl_client_certificate /etc/nginx/certs/ca.crt;
+
+    # Require client certificate (mTLS)
+    ssl_verify_client on;
+
+    # TLS 1.2 and 1.3 only
+    ssl_protocols TLSv1.2 TLSv1.3;
+    ssl_ciphers HIGH:!aNULL:!MD5;
+
+    location / {
+        return 200 "Hello from service-a - client authenticated\n";
+    }
+
+    location /health {
+        return 200 "healthy\n";
+    }
+}
+```
+
+Or create the secrets and config via the Docker CLI:
 
 ```bash
 # Create Docker secrets for certificate management
@@ -85,6 +116,9 @@ docker secret create server-cert server/server.crt
 docker secret create server-key server/server.key
 docker secret create client-cert client/client.crt
 docker secret create client-key client/client.key
+
+# Create the NGINX config (assumes you saved the server block above to nginx.conf)
+docker config create nginx-mtls-config nginx.conf
 ```
 
 ## Step 4: Deploy Services with mTLS via Portainer Stack
@@ -154,33 +188,7 @@ secrets:
 
 configs:
   nginx-mtls-config:
-    content: |
-      server {
-          listen 443 ssl;
-          server_name service-a;
-          
-          # Server certificate and key
-          ssl_certificate /etc/nginx/certs/server.crt;
-          ssl_certificate_key /etc/nginx/certs/server.key;
-          
-          # CA certificate for client verification
-          ssl_client_certificate /etc/nginx/certs/ca.crt;
-          
-          # Require client certificate (mTLS)
-          ssl_verify_client on;
-          
-          # TLS 1.2 and 1.3 only
-          ssl_protocols TLSv1.2 TLSv1.3;
-          ssl_ciphers HIGH:!aNULL:!MD5;
-          
-          location / {
-              return 200 "Hello from service-a - client authenticated\n";
-          }
-          
-          location /health {
-              return 200 "healthy\n";
-          }
-      }
+    external: true
 
 networks:
   secure-mesh:
@@ -238,9 +246,10 @@ curl -v \
   --key /certs/client.key \
   https://service-a/health
 
-# Test without client cert - should fail with 400
+# Test without client cert - should fail with NGINX status 496
 curl -v --cacert /certs/ca.crt https://service-a/health
-# Expected: 400 Bad Request - No required SSL certificate was sent
+# Expected: 400 Bad Request, with NGINX returning the non-standard 496
+# status code internally (No required SSL certificate was sent)
 ```
 
 ## Step 7: Certificate Rotation
@@ -266,20 +275,21 @@ fi
 
 ## Monitoring Certificate Expiry
 
-Track certificate expiry through Portainer's environment variables:
+Track certificate expiry by exposing Prometheus metrics with a maintained exporter such as `enix/x509-certificate-exporter`. Add it to your monitoring stack and scrape the exposed metrics with Prometheus, then alert via Alertmanager (Slack, PagerDuty, etc.):
 
 ```yaml
 # Add to your monitoring stack
   cert-monitor:
-    image: nimbustech/cert-monitor:latest
-    environment:
-      - CERT_PATH=/certs/server.crt
-      - WARN_DAYS=30
-      - CRITICAL_DAYS=7
-      - WEBHOOK_URL=${SLACK_WEBHOOK_URL}
+    image: enix/x509-certificate-exporter:latest
+    command:
+      - --watch-file=/certs/server.crt
+    ports:
+      - "9793:9793"
     volumes:
       - ./certs:/certs:ro
 ```
+
+The exporter publishes metrics like `x509_cert_not_after` (Unix timestamp of expiry) on port 9793 at `/metrics`, which Prometheus can scrape and Alertmanager can use to fire warnings well before a certificate expires.
 
 ## Conclusion
 
