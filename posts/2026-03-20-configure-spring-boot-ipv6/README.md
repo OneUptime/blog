@@ -15,9 +15,11 @@ Spring Boot embeds Tomcat, Jetty, or Netty as the web server. All three support 
 ```properties
 # application.properties
 
-# Bind to all interfaces including IPv6 (default behavior)
+# Bind to all IPv4 interfaces (IPv4 wildcard only)
 
 server.address=0.0.0.0
+
+# Leave server.address unset to use the underlying server default (typically 0.0.0.0)
 
 # To bind to IPv6 only
 # server.address=::
@@ -84,7 +86,7 @@ public class NettyConfig {
 ```java
 // IpController.java
 import org.springframework.web.bind.annotation.*;
-import javax.servlet.http.HttpServletRequest;
+import jakarta.servlet.http.HttpServletRequest;
 import java.net.InetAddress;
 
 @RestController
@@ -166,4 +168,4 @@ ss -lntp | grep :8080
 
 ## Conclusion
 
-Spring Boot binds to all interfaces by default, including IPv6. For explicit IPv6-only binding, set `server.address=::` in `application.properties` or programmatically via `TomcatServletWebServerFactory`. Normalize IPv4-mapped IPv6 addresses in client IP extraction code. Monitor Spring Boot with OneUptime's HTTP checks targeting IPv6 addresses.
+When `server.address` is unset, Spring Boot delegates to the embedded server's default, which is typically the IPv4 wildcard (`0.0.0.0`). To accept IPv6 (and, on a dual-stack JVM, IPv4 via IPv4-mapped addresses), set `server.address=::` in `application.properties` or programmatically via `TomcatServletWebServerFactory`. Normalize IPv4-mapped IPv6 addresses in client IP extraction code. Monitor Spring Boot with OneUptime's HTTP checks targeting IPv6 addresses.
