@@ -131,6 +131,7 @@ sudo systemctl status my-app
 
 # Test from inside the service's environment
 sudo -u service-user env http_proxy=http://proxy.corp.example.com:3128 \
+  https_proxy=http://proxy.corp.example.com:3128 \
   curl -I https://example.com
 
 # Check journal for proxy-related messages
