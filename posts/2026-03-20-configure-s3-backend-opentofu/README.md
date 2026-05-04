@@ -124,6 +124,7 @@ The AWS identity running OpenTofu needs these permissions:
     {
       "Effect": "Allow",
       "Action": [
+        "dynamodb:DescribeTable",
         "dynamodb:GetItem",
         "dynamodb:PutItem",
         "dynamodb:DeleteItem"
@@ -175,7 +176,7 @@ terraform {
 # Verify state is accessible
 tofu state list
 
-# Show current backend configuration
+# Force re-initialization of the backend, ignoring any existing configuration
 tofu init -reconfigure
 
 # Check the S3 bucket directly
