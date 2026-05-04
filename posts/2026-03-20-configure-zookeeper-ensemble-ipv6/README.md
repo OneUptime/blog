@@ -37,10 +37,14 @@ initLimit=10
 # Sync limit - max ticks between requests and responses
 syncLimit=5
 
-# Ensemble members (use IPv6 addresses with brackets or hostnames)
-server.1=2001:db8::1:2888:3888
-server.2=2001:db8::2:2888:3888
-server.3=2001:db8::3:2888:3888
+# Ensemble members (IPv6 literals MUST be wrapped in brackets so the
+# parser can separate the address from the peer/election ports)
+server.1=[2001:db8::1]:2888:3888
+server.2=[2001:db8::2]:2888:3888
+server.3=[2001:db8::3]:2888:3888
+
+# Whitelist 4-letter commands (disabled by default since 3.5.3)
+4lw.commands.whitelist=stat,ruok,conf,isro,mntr,srvr
 
 # Enable admin server on IPv6
 admin.serverAddress=2001:db8::1
@@ -153,7 +157,7 @@ sudo ip6tables -A INPUT -p tcp --dport 2888 -j ACCEPT  # Follower-to-leader
 sudo ip6tables -A INPUT -p tcp --dport 3888 -j ACCEPT  # Leader election
 sudo ip6tables -A INPUT -p tcp --dport 8080 -j ACCEPT  # Admin server
 
-sudo ip6tables-save > /etc/ip6tables/rules.v6
+sudo ip6tables-save > /etc/iptables/rules.v6
 ```
 
 ZooKeeper ensemble configuration for IPv6 is straightforward with the `clientPortAddress` directive and JVM IPv6 preference flags, making it suitable as a coordination service for Kafka, HBase, and other IPv6-enabled distributed systems.
