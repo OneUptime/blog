@@ -18,10 +18,12 @@ Description: Use the nmtui text user interface to configure static and DHCP IPv4
 sudo nmtui
 ```
 
-You will see three options:
+You will see the following options:
 - **Edit a connection**
 - **Activate a connection**
 - **Set system hostname**
+- **Radio** (toggle Wi-Fi/WWAN on or off)
+- **Quit**
 
 ## Editing a Connection for Static IPv4
 
@@ -47,7 +49,7 @@ You will see three options:
 After editing:
 1. Select **Activate a connection** from the main menu
 2. Select the connection you edited
-3. Press Enter to activate (or `A` for activate)
+3. Press Enter to activate (the highlighted button toggles between **Activate** and **Deactivate** depending on the current state)
 
 Or from the command line:
 
