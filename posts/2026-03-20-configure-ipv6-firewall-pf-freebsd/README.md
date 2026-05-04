@@ -46,7 +46,7 @@ pass quick inet6 proto icmp6 icmp6-type {
     echoreq echorep    # ping6
     routeradv routersol  # RA/RS
     neighbradv neighbrsol  # NDP (NA/NS)
-    redirect           # ICMPv6 redirect
+    redir              # ICMPv6 redirect
 }
 
 # Allow inbound established/related
@@ -64,16 +64,16 @@ pass in on $ext_if inet6 proto tcp to port 443
 
 ```bash
 # Allow traffic from a specific IPv6 address
-pass in inet6 from 2001:db8::trusted
+pass in inet6 from 2001:db8::1
 
 # Block an IPv6 address
-block in quick inet6 from 2001:db8::bad:actor
+block in quick inet6 from 2001:db8::bad:1
 
 # Allow from a subnet
 pass in inet6 from 2001:db8::/32
 
 # Block an entire subnet
-block in quick inet6 from 2001:db8:blocked::/48
+block in quick inet6 from 2001:db8:dead::/48
 ```
 
 ## IPv6 NAT (Not Typical)
@@ -106,7 +106,7 @@ pass quick inet6 proto icmp6 icmp6-type {
     echoreq echorep
     routersol routeradv
     neighbrsol neighbradv
-    redirect
+    redir
 }
 ```
 
