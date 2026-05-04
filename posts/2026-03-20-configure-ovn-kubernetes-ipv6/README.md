@@ -15,11 +15,12 @@ OVN-Kubernetes uses Open Virtual Network (OVN) and Open vSwitch (OVS) to provide
 ```bash
 # Clone OVN-Kubernetes
 
-git clone https://github.com/ovn-org/ovn-kubernetes.git
+git clone https://github.com/ovn-kubernetes/ovn-kubernetes.git
 cd ovn-kubernetes
 
-# Install with dual-stack support
-kubectl apply -f dist/images/ovn-kubernetes.yaml
+# Install with dual-stack support via the Helm chart
+helm install ovn-kubernetes ./helm/ovn-kubernetes \
+  --namespace ovn-kubernetes --create-namespace
 ```
 
 ## Step 2: ConfigMap for Dual-Stack
@@ -32,22 +33,18 @@ metadata:
   name: ovn-config
   namespace: ovn-kubernetes
 data:
-  # Enable IPv6
-  v6cidr: "fd00:10:244::/48"
-  v4cidr: "10.244.0.0/16"
-
-  # Service subnets
-  v6servicecidr: "fd00:10:96::/108"
-  v4servicecidr: "10.96.0.0/12"
-
-  # Enable dual-stack
-  enable_ipv6: "true"
-  enable_ipv4: "true"
-
-  # OVN northbound database
+  # Cluster (pod) network: comma-separated for dual-stack.
+  # The optional trailing /host-subnet-length sets per-node subnet size.
   net_cidr: "10.244.0.0/16/24,fd00:10:244::/48/64"
-  svc_cidr: "10.96.0.0/12,fd00:10:96::/108"
+
+  # Service network: comma-separated for dual-stack.
+  svc_cidr: "10.96.0.0/16,fd00:10:96::/112"
+
+  k8s_apiserver: "https://kubernetes.default.svc:443"
+  mtu: "1400"
 ```
+
+OVN-Kubernetes infers IP family from the CIDR strings — providing both an IPv4 and an IPv6 CIDR in `net_cidr` and `svc_cidr` enables dual-stack.
 
 ## Step 3: Verify OVN IPv6 Logical Network
 
@@ -148,4 +145,4 @@ kubectl logs -n ovn-kubernetes -l app=ovnkube-node --tail=50 | grep -i ipv6
 
 ## Conclusion
 
-OVN-Kubernetes provides a full SDN with native IPv6 support. Configure dual-stack by setting both `v4cidr`/`v6cidr` in the ConfigMap. OVN logical switches, routers, and load balancers all support IPv6 addresses. Standard Kubernetes NetworkPolicy with IPv6 `ipBlock` CIDRs works natively. Monitor OVN-Kubernetes agent health, OVN northbound database status, and OVS flow tables with OneUptime.
+OVN-Kubernetes provides a full SDN with native IPv6 support. Configure dual-stack by passing comma-separated IPv4 and IPv6 ranges in the `net_cidr` and `svc_cidr` keys of the `ovn-config` ConfigMap. OVN logical switches, routers, and load balancers all support IPv6 addresses. Standard Kubernetes NetworkPolicy with IPv6 `ipBlock` CIDRs works natively. Monitor OVN-Kubernetes agent health, OVN northbound database status, and OVS flow tables with OneUptime.
