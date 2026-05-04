@@ -30,7 +30,7 @@ rsync -avz -e ssh \
 rsync -avz \
   -e "ssh -6" \
   /local/data/ \
-  user@2001:db8::1:/remote/data/
+  user@'[2001:db8::1]':/remote/data/
 ```
 
 ## SSH Config for Easier rsync
@@ -174,7 +174,7 @@ sudo ip6tables -A INPUT -p tcp --dport 873 -j ACCEPT
 # Restrict to specific subnet
 sudo ip6tables -A INPUT -p tcp -s 2001:db8::/32 --dport 873 -j ACCEPT
 
-sudo ip6tables-save > /etc/ip6tables/rules.v6
+sudo ip6tables-save > /etc/iptables/rules.v6
 ```
 
 rsync's native IPv6 support through SSH and the rsync daemon makes it a reliable and efficient tool for file synchronization and backup operations across IPv6 networks.
