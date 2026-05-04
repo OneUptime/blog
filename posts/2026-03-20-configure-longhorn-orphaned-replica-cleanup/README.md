@@ -47,13 +47,13 @@ ls -la /var/lib/longhorn/replicas/
 
 # Compare with active replicas in Kubernetes
 kubectl get replicas.longhorn.io -n longhorn-system \
-  -o jsonpath='{.items[*].spec.dataPath}' | tr ' ' '\n'
+  -o jsonpath='{.items[*].spec.dataDirectoryName}' | tr ' ' '\n'
 
 # Find directories not in the Kubernetes replica list
 diff \
   <(ls /var/lib/longhorn/replicas/ | sort) \
   <(kubectl get replicas.longhorn.io -n longhorn-system \
-    -o jsonpath='{.items[*].spec.dataPath}' | tr ' ' '\n' | xargs -I{} basename {} | sort)
+    -o jsonpath='{.items[*].spec.dataDirectoryName}' | tr ' ' '\n' | sort)
 ```
 
 ## Configuring Automatic Orphan Cleanup
@@ -62,13 +62,13 @@ diff \
 
 ```bash
 # Enable automatic orphaned replica cleanup
-kubectl patch settings.longhorn.io orphan-auto-deletion \
+kubectl patch settings.longhorn.io orphan-resource-auto-deletion \
   -n longhorn-system \
   --type merge \
   -p '{"value": "true"}'
 
 # Verify the setting
-kubectl get settings.longhorn.io orphan-auto-deletion \
+kubectl get settings.longhorn.io orphan-resource-auto-deletion \
   -n longhorn-system -o yaml
 ```
 
@@ -90,7 +90,7 @@ kubectl get orphans.longhorn.io -n longhorn-system
 
 # Get detailed information about each orphan
 kubectl get orphans.longhorn.io -n longhorn-system \
-  -o custom-columns="NAME:.metadata.name,NODE:.spec.nodeID,PATH:.spec.parameters.diskPath,SIZE:.status.parameters.diskSpaceUsageInBytes"
+  -o custom-columns="NAME:.metadata.name,NODE:.spec.nodeID,TYPE:.spec.orphanType,DISK:.spec.parameters.DiskName,PATH:.spec.parameters.DiskPath,DATA:.spec.parameters.DataName"
 ```
 
 ### Deleting Specific Orphans
@@ -127,9 +127,9 @@ If you need to manually clean up orphaned directories (use with caution):
 
 echo "=== Longhorn Orphan Detection ==="
 
-# Get all active replica paths from Kubernetes
+# Get all active replica directory names from Kubernetes
 ACTIVE_PATHS=$(kubectl get replicas.longhorn.io -n longhorn-system \
-  -o jsonpath='{.items[*].spec.dataPath}' 2>/dev/null | tr ' ' '\n')
+  -o jsonpath='{.items[*].spec.dataDirectoryName}' 2>/dev/null | tr ' ' '\n')
 
 # Check each disk directory on this node
 DISK_PATH="/var/lib/longhorn/replicas"
@@ -155,16 +155,6 @@ done
 2. **Ensure nodes are online** before deleting volumes
 3. **Monitor disk usage** - sudden drops in available space may indicate orphan accumulation
 4. **Enable auto-deletion** in production environments
-
-### Configure Delete Confirmation
-
-```bash
-# Ensure volumes are not deleted if volumes are attached
-kubectl patch settings.longhorn.io deleting-confirmation-flag \
-  -n longhorn-system \
-  --type merge \
-  -p '{"value": "true"}'
-```
 
 ## Monitoring for Orphaned Data
 
