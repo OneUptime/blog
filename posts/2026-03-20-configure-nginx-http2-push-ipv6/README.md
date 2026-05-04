@@ -10,6 +10,8 @@ Description: Configure Nginx HTTP/2 server push on IPv6-enabled servers to proac
 
 HTTP/2 Server Push allows Nginx to proactively send resources (CSS, JavaScript, fonts) to clients before they request them, reducing round-trips. Configuring this on IPv6-enabled Nginx servers combines HTTP/2 push with IPv6 listener configuration.
 
+> **Important:** HTTP/2 Server Push has been deprecated. The `http2_push`, `http2_push_preload`, and `http2_max_concurrent_pushes` directives were made obsolete in Nginx 1.25.1 (June 2023) and are ignored with a warning in newer versions. Major browsers also stopped honoring server pushes (Chrome disabled it by default in Chrome 106, late 2022). The examples below require Nginx older than 1.25.1; for modern deployments, prefer `103 Early Hints` and `Link: rel=preload` headers instead.
+
 ## Prerequisites
 
 HTTP/2 requires TLS. Ensure your server has a valid certificate:
@@ -118,8 +120,9 @@ curl -6 -o /dev/null -s \
   https://yourdomain.com/
 
 # Use h2load for HTTP/2 performance testing with IPv6
+# (HTTP/2 is the default for HTTPS via ALPN; use --alpn-list=h2 to force it)
 h2load \
-  --h2 \
+  --alpn-list=h2 \
   -n 1000 \
   -c 10 \
   -m 10 \
@@ -164,9 +167,10 @@ tail -f /var/log/nginx/access.log | grep "HTTP/2"
 
 ```nginx
 # Add to nginx.conf for timing metrics
+# $http2 is set to the negotiated protocol (e.g. "h2") or empty otherwise
 log_format http2_format '$remote_addr [$time_local] '
                         '"$request" $status $body_bytes_sent '
-                        '"$http2" $http2_stream_id';
+                        '"$http2" $request_time';
 
 access_log /var/log/nginx/http2.log http2_format;
 ```
