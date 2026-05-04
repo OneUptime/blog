@@ -100,12 +100,12 @@ cat /sys/class/net/br0/bridge/multicast_snooping
 # Enable IGMP snooping:
 echo 1 > /sys/class/net/br0/bridge/multicast_snooping
 
-# Or via bridge command:
-bridge link set dev br0 flood off
+# Or via ip command:
+ip link set dev br0 type bridge mcast_snooping 1
 
-# Set IGMP query interval (in deciseconds):
-echo 1000 > /sys/class/net/br0/bridge/multicast_query_interval
-# 1000 deciseconds = 100 seconds
+# Set IGMP query interval (in centiseconds, 1/100 second):
+echo 12500 > /sys/class/net/br0/bridge/multicast_query_interval
+# 12500 centiseconds = 125 seconds (kernel default)
 
 # Enable multicast querier:
 echo 1 > /sys/class/net/br0/bridge/multicast_querier
@@ -117,13 +117,15 @@ bridge mdb show
 # Via ip command:
 ip mdb show dev br0
 
-# Persist via systemd-networkd:
-cat > /etc/systemd/network/10-br0.network << 'EOF'
-[Match]
+# Persist via systemd-networkd (MulticastSnooping= belongs in a .netdev file):
+cat > /etc/systemd/network/10-br0.netdev << 'EOF'
+[NetDev]
 Name=br0
+Kind=bridge
 
 [Bridge]
 MulticastSnooping=yes
+MulticastQuerier=yes
 EOF
 ```
 
@@ -139,13 +141,13 @@ ovs-vsctl set bridge br0 mcast_snooping_enable=true
 ovs-appctl mcast-snooping/show br0
 
 # Output format:
-# port  VLAN  GROUP           uptime
-# eth1  10    239.1.1.1       00:02:30
+# port  VLAN  GROUP           Age
+# eth1  10    239.1.1.1       150
 
-# Disable flooding of unknown multicast:
-ovs-vsctl set bridge br0 flood-vlans=""
+# Disable flooding of unregistered multicast on the bridge:
+ovs-vsctl set bridge br0 other_config:mcast-snooping-disable-flood-unregistered=true
 # Or per port:
-ovs-vsctl set port eth2 other-config:mcast-snooping-flood=false
+ovs-vsctl set port eth2 other_config:mcast-snooping-flood=false
 
 # Check OVS version supports mcast snooping:
 ovs-vsctl --version
