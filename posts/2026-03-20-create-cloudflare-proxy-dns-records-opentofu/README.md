@@ -39,7 +39,7 @@ data "cloudflare_zone" "main" {
 resource "cloudflare_record" "www" {
   zone_id = data.cloudflare_zone.main.id
   name    = "www"
-  value   = var.origin_ip
+  content = var.origin_ip
   type    = "A"
   proxied = true   # Route through Cloudflare - enables DDoS protection, WAF, caching
   ttl     = 1      # TTL is managed by Cloudflare when proxied (set to 1 = Auto)
@@ -50,7 +50,7 @@ resource "cloudflare_record" "www" {
 resource "cloudflare_record" "mail" {
   zone_id = data.cloudflare_zone.main.id
   name    = "mail"
-  value   = var.mail_server_ip
+  content = var.mail_server_ip
   type    = "A"
   proxied = false  # DNS only - mail servers cannot be proxied
   ttl     = 300
@@ -63,7 +63,7 @@ resource "cloudflare_record" "mail" {
 resource "cloudflare_record" "api" {
   zone_id = data.cloudflare_zone.main.id
   name    = "api"
-  value   = "api.example-origin.com"
+  content = "api.example-origin.com"
   type    = "CNAME"
   proxied = true
   ttl     = 1
@@ -73,7 +73,7 @@ resource "cloudflare_record" "api" {
 resource "cloudflare_record" "apex" {
   zone_id = data.cloudflare_zone.main.id
   name    = "example.com"
-  value   = "loadbalancer.us-east-1.elb.amazonaws.com"
+  content = "loadbalancer.us-east-1.elb.amazonaws.com"
   type    = "CNAME"
   proxied = true
   ttl     = 1
@@ -103,7 +103,7 @@ resource "cloudflare_record" "proxied" {
 
   zone_id = data.cloudflare_zone.main.id
   name    = each.key
-  value   = each.value
+  content = each.value
   type    = "A"
   proxied = true
   ttl     = 1
@@ -114,7 +114,7 @@ resource "cloudflare_record" "unproxied" {
 
   zone_id = data.cloudflare_zone.main.id
   name    = each.key
-  value   = each.value
+  content = each.value
   type    = "A"
   proxied = false
   ttl     = 300
@@ -158,7 +158,7 @@ resource "cloudflare_tunnel" "main" {
 resource "cloudflare_record" "tunnel" {
   zone_id = data.cloudflare_zone.main.id
   name    = "internal"
-  value   = "${cloudflare_tunnel.main.id}.cfargotunnel.com"
+  content = "${cloudflare_tunnel.main.id}.cfargotunnel.com"
   type    = "CNAME"
   proxied = true
   ttl     = 1
