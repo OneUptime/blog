@@ -29,7 +29,7 @@ http_port [::]:3128
 http_port 3128
 
 # Or listen on specific IPv6 address
-# http_port [2001:db8::proxy]:3128
+# http_port [2001:db8::1]:3128
 
 # Transparent proxy on IPv6 (requires ip6tables REDIRECT)
 # http_port [::]:3129 intercept
@@ -68,7 +68,7 @@ dns_v4_first off
 # dns_v4_first on
 
 # Bind outbound connections to specific IPv6 address
-# tcp_outgoing_address 2001:db8::proxy
+# tcp_outgoing_address 2001:db8::1
 
 # DNS servers (prefer IPv6 resolvers)
 dns_nameservers 2606:4700:4700::1111 2606:4700:4700::1001 8.8.8.8
@@ -103,7 +103,7 @@ access_log /var/log/squid/access.log combined
 
 ```bash
 # Validate configuration
-squid -k check
+squid -k parse
 
 # Start Squid
 systemctl enable --now squid
@@ -112,7 +112,7 @@ systemctl enable --now squid
 ss -lntp | grep :3128
 
 # Test with IPv6 client
-curl -6 -x http://[2001:db8::proxy]:3128 http://example.com/
+curl -6 -x http://[2001:db8::1]:3128 http://example.com/
 curl -6 -x http://[::1]:3128 http://ipv6.google.com/
 
 # Test HTTPS via IPv6 proxy
