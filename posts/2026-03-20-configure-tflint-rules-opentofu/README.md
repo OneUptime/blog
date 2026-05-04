@@ -37,7 +37,7 @@ plugin "aws" {
 
 rule "terraform_comment_syntax" {
   enabled = true
-  # Enforce // and # comments instead of /* */
+  # Enforce # comments (the idiomatic Terraform style) instead of // or /* */
 }
 
 rule "terraform_deprecated_index" {
@@ -117,7 +117,7 @@ rule "terraform_naming_convention" {
   }
 
   # Locals: snake_case
-  local {
+  locals {
     format = "snake_case"
   }
 
@@ -140,12 +140,11 @@ rule "terraform_naming_convention" {
 # List all available rules: tflint --format=json 2>&1 | jq '.rules[].name'
 
 # These are enabled by the AWS plugin by default:
-# aws_instance_invalid_type
-# aws_instance_previous_type (warning: t2 -> use t3)
+# aws_instance_previous_type (disallow previous-generation instance types like t1.micro)
 # aws_db_instance_invalid_engine
-# aws_db_instance_invalid_engine_version
+# aws_db_instance_invalid_type
 # aws_elasticache_cluster_invalid_type
-# aws_lambda_function_invalid_runtime
+# aws_lambda_function_deprecated_runtime
 # aws_iam_policy_sid_invalid_characters
 
 # Disable specific AWS rules if needed:
