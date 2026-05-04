@@ -69,17 +69,13 @@ resource "alicloud_oss_bucket" "with_lifecycle" {
 
   lifecycle_rule {
     id      = "archive-old-logs"
+    prefix  = "logs/"
     enabled = true
-
-    filter {
-      prefix = "logs/"
-    }
 
     # Move to IA storage after 30 days
     transitions {
-      created_before_date = null
-      days                = 30
-      storage_class       = "IA"
+      days          = 30
+      storage_class = "IA"
     }
 
     # Move to Archive after 90 days
@@ -114,23 +110,19 @@ resource "alicloud_oss_bucket" "encrypted" {
 
 ```hcl
 resource "alicloud_oss_bucket_replication" "dr" {
-  bucket = alicloud_oss_bucket.data.bucket
+  bucket                        = alicloud_oss_bucket.data.bucket
+  action                        = "ALL"  # ALL, PUT, DELETE, or ABORT
+  historical_object_replication = "enabled"
 
-  rule {
-    action {
-      replica_kms_key_id = ""
-      sse_kms_encrypted_objects_status = "Disabled"
+  destination {
+    bucket   = alicloud_oss_bucket.dr.bucket
+    location = "oss-cn-shanghai"
+  }
+
+  source_selection_criteria {
+    sse_kms_encrypted_objects {
+      status = "Disabled"
     }
-    destination {
-      bucket   = alicloud_oss_bucket.dr.bucket
-      location = "oss-cn-shanghai"
-    }
-    source_selection_criteria {
-      sse_kms_encrypted_objects {
-        status = "Disabled"
-      }
-    }
-    status = "Enabled"
   }
 }
 ```
