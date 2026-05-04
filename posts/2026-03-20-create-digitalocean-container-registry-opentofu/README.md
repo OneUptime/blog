@@ -32,11 +32,11 @@ output "server_url" {
 
 | Tier | Storage | Price |
 |---|---|---|
-| Starter | 500 MB | Free |
-| Basic | 5 GB | $5/month |
-| Professional | 100 GB | $20/month |
+| Starter | 500 MiB | Free |
+| Basic | 5 GiB | $5/month |
+| Professional | 100 GiB | $20/month |
 
-## Configuring Garbage Collection
+## Generating Docker Credentials
 
 ```hcl
 resource "digitalocean_container_registry_docker_credentials" "main" {
@@ -107,9 +107,9 @@ resource "digitalocean_app" "api" {
       http_port          = 8080
 
       image {
-        # Reference the DOCR registry created above
+        # Reference the DOCR registry created above. The `registry` field
+        # must be left empty for DOCR; the registry is implied by your account.
         registry_type = "DOCR"
-        registry      = digitalocean_container_registry.main.name
         repository    = "myapp"
         tag           = var.image_tag
       }
