@@ -73,7 +73,12 @@ resource "helm_release" "consul" {
 
       connectInject = {
         enabled = true
-        default = false  # Opt-in per namespace
+        default = true  # Inject all pods in namespaces matching the selector below
+
+        namespaceSelector = <<-EOT
+          matchLabels:
+            consul.hashicorp.com/connect-inject: "true"
+        EOT
 
         transparentProxy = {
           defaultEnabled = true
