@@ -61,7 +61,7 @@ systemctl restart postgresql
 
 # Verify PostgreSQL is now listening on IPv6
 ss -6 -tlnp | grep 5432
-# Expected: tcp6  LISTEN  0  128  [::]:5432  [::]:*  users:(("postgres"...))
+# Expected: LISTEN 0 128 [::]:5432 [::]:* users:(("postgres",...))
 
 # Or use netstat
 netstat -6 -tlnp | grep 5432
@@ -90,8 +90,8 @@ grep -i 'listen\|binding' /var/log/postgresql/postgresql-*.log
 ss -tlnp | grep postgres
 
 # Expected output for listen_addresses = '*':
-# tcp  LISTEN  0  128  0.0.0.0:5432  ...    (IPv4 all)
-# tcp  LISTEN  0  128  [::]:5432     ...    (IPv6 all)
+# LISTEN 0 128 0.0.0.0:5432 0.0.0.0:* users:...    (IPv4 all)
+# LISTEN 0 128 [::]:5432    [::]:*    users:...    (IPv6 all)
 ```
 
 ## Dynamic Configuration Check
