@@ -33,8 +33,7 @@ Requires `roles/compute.xpnAdmin` at the organization level:
 ORG_ID="123456789"
 HOST_PROJECT="network-host-project"
 
-gcloud compute shared-vpc enable $HOST_PROJECT \
-  --organization=$ORG_ID
+gcloud compute shared-vpc enable $HOST_PROJECT
 ```
 
 Or using resource management:
