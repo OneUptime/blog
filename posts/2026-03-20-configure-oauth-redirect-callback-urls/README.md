@@ -25,7 +25,7 @@ The redirect URL is your Portainer's public-facing URL:
 https://portainer.example.com/
 ```
 
-Note the trailing slash - it's required by Portainer. Without it, you'll get a `redirect_uri_mismatch` error.
+Portainer's UI uses `http://yourportainer.com/` (with trailing slash) as the placeholder, and this value is passed straight through to the OAuth flow. The `redirect_uri_mismatch` error is returned by your OAuth provider when the URI you send does not match what's registered there byte-for-byte - so whatever form you choose (with or without trailing slash), it must match exactly on both sides.
 
 ## Common Redirect URL Formats
 
