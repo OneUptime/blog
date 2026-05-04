@@ -59,10 +59,10 @@ metadata:
   name: my-volume-backup-20260320
   namespace: longhorn-system
 spec:
-  # Reference to the Longhorn snapshot to back up
+  # Reference to the Longhorn snapshot to back up (the volume is derived from the snapshot)
   snapshotName: my-volume-snapshot-20260320
-  # The volume this backup belongs to
-  volume: my-longhorn-volume
+  # Optional: "incremental" (default) or "full"
+  backupMode: incremental
   # Optional labels for organization
   labels:
     type: manual
@@ -143,7 +143,7 @@ kubectl get backups.longhorn.io -n longhorn-system
 # Check backup details including size and completion time
 kubectl describe backup.longhorn.io <backup-name> -n longhorn-system
 
-# Check backup jobs running
+# List backup volumes (one entry per volume that has backups in the backup store)
 kubectl get backupvolumes.longhorn.io -n longhorn-system
 ```
 
@@ -180,7 +180,8 @@ curl -X POST http://longhorn-frontend.longhorn-system.svc/v1/backupvolumes/<volu
 # Navigate to Backup in the Longhorn UI
 # Select a backup and use "Check Integrity" if available
 
-# Alternatively, test restore in a non-production namespace
+# Alternatively, test restore in a non-production namespace using a CSI VolumeSnapshot
+# that references the Longhorn backup, then create a PVC from that VolumeSnapshot.
 kubectl apply -f - <<EOF
 apiVersion: v1
 kind: PersistentVolumeClaim
@@ -194,10 +195,10 @@ spec:
   resources:
     requests:
       storage: 10Gi
-  dataSourceRef:
-    apiGroup: longhorn.io
-    kind: BackupVolume
-    name: my-volume-backup
+  dataSource:
+    apiGroup: snapshot.storage.k8s.io
+    kind: VolumeSnapshot
+    name: my-volume-backup-snapshot
 EOF
 ```
 
