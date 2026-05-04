@@ -42,15 +42,12 @@ resource "google_memcache_instance" "cache" {
 
   memcache_version = "MEMCACHE_1_6_15"
 
-  networks {
-    modes   = ["DISCOVERY"]
-    network = "projects/${var.project_id}/global/networks/${google_compute_network.main.name}"
-  }
+  authorized_network = "projects/${var.project_id}/global/networks/${google_compute_network.main.name}"
 
   memcache_parameters {
     params = {
       "listen-backlog" = "4096"
-      "max_item_size"  = "8388608"  # 8 MB
+      "max-item-size"  = "8388608"  # 8 MB
     }
   }
 
@@ -121,10 +118,7 @@ resource "google_memcache_instance" "envs" {
 
   memcache_version = "MEMCACHE_1_6_15"
 
-  networks {
-    modes   = ["DISCOVERY"]
-    network = "projects/${var.project_id}/global/networks/${google_compute_network.main.name}"
-  }
+  authorized_network = "projects/${var.project_id}/global/networks/${google_compute_network.main.name}"
 }
 ```
 
