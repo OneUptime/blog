@@ -38,8 +38,9 @@ http {
 
 # /etc/nginx/sites-available/default (server block)
 server {
-    listen [::]:443 ssl http2;
-    listen 443 ssl http2;
+    listen [::]:443 ssl;
+    listen 443 ssl;
+    http2 on;
 
     server_name yourdomain.example.com;
 
@@ -118,17 +119,17 @@ openssl x509 -in /etc/letsencrypt/live/yourdomain.example.com/cert.pem \
   -noout -text | grep "OCSP"
 
 # Expected output like:
-# OCSP - URI:http://r3.o.letsencrypt.org
+# OCSP - URI:http://r3.o.lencr.org
 
 # Test reachability of the OCSP responder over IPv6
-curl -6 http://r3.o.letsencrypt.org
+curl -6 http://r3.o.lencr.org
 # (May return an error as it's an OCSP endpoint, but connection itself should work)
 
 # Direct OCSP query
 openssl ocsp \
   -issuer /etc/letsencrypt/live/yourdomain.example.com/chain.pem \
   -cert   /etc/letsencrypt/live/yourdomain.example.com/cert.pem \
-  -url    http://r3.o.letsencrypt.org \
+  -url    http://r3.o.lencr.org \
   -text
 ```
 
@@ -137,7 +138,7 @@ openssl ocsp \
 | Issue | Cause | Fix |
 |-------|-------|-----|
 | No OCSP response in handshake | Server can't reach OCSP URL | Check IPv6 outbound routing and DNS |
-| OCSP response expired | Caching too long | Reduce `ssl_stapling_verify_depth` or cache TTL |
+| OCSP response expired | Server can't refresh OCSP | Ensure outbound reachability to the responder, or pre-fetch and load with `ssl_stapling_file` |
 | Resolver errors in Nginx | IPv6 resolver not configured | Add IPv6 resolver addresses |
 | Chain verification failed | Missing `ssl_trusted_certificate` | Set the CA chain file |
 
