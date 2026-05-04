@@ -91,8 +91,8 @@ output "instance_public_ip" {
 
 ```hcl
 resource "alicloud_security_group" "web" {
-  name   = "web-sg"
-  vpc_id = alicloud_vpc.main.id
+  security_group_name = "web-sg"
+  vpc_id              = alicloud_vpc.main.id
 }
 
 resource "alicloud_security_group_rule" "http" {
