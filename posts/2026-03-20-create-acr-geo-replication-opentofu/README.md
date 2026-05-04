@@ -27,6 +27,8 @@ provider "azurerm" {
 
 ## ACR with Geo-Replication
 
+Geo-replication is configured through the `georeplications` block on the `azurerm_container_registry` resource itself - there is no separate replication resource. The Premium SKU is required.
+
 ```hcl
 resource "azurerm_resource_group" "registry" {
   name     = "registry-rg"
@@ -42,46 +44,36 @@ resource "azurerm_container_registry" "global" {
   sku                 = "Premium"
   admin_enabled       = false
 
+  # Replicate to West Europe with zone redundancy
+  georeplications {
+    location                = "westeurope"
+    zone_redundancy_enabled = true
+
+    tags = {
+      Region = "westeurope"
+    }
+  }
+
+  # Replicate to Southeast Asia
+  georeplications {
+    location                = "southeastasia"
+    zone_redundancy_enabled = false  # Zone redundancy not available in all regions
+  }
+
+  # Replicate to Australia East
+  georeplications {
+    location = "australiaeast"
+  }
+
   tags = {
     Environment = "production"
   }
 }
-
-# Replicate to West Europe
-resource "azurerm_container_registry_replication" "europe" {
-  name                    = "westeurope"
-  resource_group_name     = azurerm_resource_group.registry.name
-  container_registry_name = azurerm_container_registry.global.name
-  location                = "westeurope"
-
-  # Zone redundancy in this replica
-  zone_redundancy_enabled = true
-
-  tags = {
-    Region = "westeurope"
-  }
-}
-
-# Replicate to Southeast Asia
-resource "azurerm_container_registry_replication" "asia" {
-  name                    = "southeastasia"
-  resource_group_name     = azurerm_resource_group.registry.name
-  container_registry_name = azurerm_container_registry.global.name
-  location                = "southeastasia"
-
-  zone_redundancy_enabled = false  # Zone redundancy not available in all regions
-}
-
-# Replicate to Australia East
-resource "azurerm_container_registry_replication" "australia" {
-  name                    = "australiaeast"
-  resource_group_name     = azurerm_resource_group.registry.name
-  container_registry_name = azurerm_container_registry.global.name
-  location                = "australiaeast"
-}
 ```
 
-## Multiple Replicas with for_each
+## Multiple Replicas with dynamic Blocks
+
+When the list of replica regions grows, use a `dynamic` block to generate the `georeplications` blocks from a map.
 
 ```hcl
 locals {
@@ -94,18 +86,24 @@ locals {
   }
 }
 
-resource "azurerm_container_registry_replication" "replicas" {
-  for_each = local.replica_regions
+resource "azurerm_container_registry" "global" {
+  name                = "myappregistryglobal"
+  resource_group_name = azurerm_resource_group.registry.name
+  location            = azurerm_resource_group.registry.location
+  sku                 = "Premium"
+  admin_enabled       = false
 
-  name                    = each.key
-  resource_group_name     = azurerm_resource_group.registry.name
-  container_registry_name = azurerm_container_registry.global.name
-  location                = each.key
+  dynamic "georeplications" {
+    for_each = local.replica_regions
 
-  zone_redundancy_enabled = each.value.zone_redundancy
+    content {
+      location                = georeplications.key
+      zone_redundancy_enabled = georeplications.value.zone_redundancy
 
-  tags = {
-    Region = each.key
+      tags = {
+        Region = georeplications.key
+      }
+    }
   }
 }
 ```
@@ -149,4 +147,4 @@ resource "azurerm_role_assignment" "aks_pull" {
 
 ## Conclusion
 
-ACR geo-replication in OpenTofu ensures fast container image pulls from any region and provides registry resilience. Use for_each to manage multiple replica regions uniformly, enable zone redundancy in regions that support it for within-region HA, and grant AcrPull to each regional AKS cluster's kubelet identity. The single login_server URL works globally - Azure routes pull requests to the nearest replica automatically.
+ACR geo-replication in OpenTofu ensures fast container image pulls from any region and provides registry resilience. Use a dynamic `georeplications` block to manage multiple replica regions uniformly, enable zone redundancy in regions that support it for within-region HA, and grant AcrPull to each regional AKS cluster's kubelet identity. The single login_server URL works globally - Azure routes pull requests to the nearest replica automatically.
