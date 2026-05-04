@@ -46,7 +46,7 @@ replicaof 2001:db8::1 6379
 # /etc/redis/sentinel.conf (on each Sentinel node)
 
 # Sentinel bind address
-bind 2001:db8::sentinel1 ::1
+bind 2001:db8::10 ::1
 port 26379
 
 # Monitor the primary Redis (using IPv6 address)
@@ -63,7 +63,7 @@ sentinel failover-timeout mymaster 60000
 sentinel parallel-syncs mymaster 1
 
 # Announce the Sentinel's own IPv6 address to peers
-sentinel announce-ip 2001:db8::sentinel1
+sentinel announce-ip 2001:db8::10
 sentinel announce-port 26379
 ```
 
@@ -96,16 +96,16 @@ redis-cli -h 2001:db8::1 SET test "ipv6-works"
 redis-cli -h 2001:db8::1 GET test
 
 # Connect to Sentinel
-redis-cli -h 2001:db8::sentinel1 -p 26379
+redis-cli -h 2001:db8::10 -p 26379
 
 # Get primary information from Sentinel
-redis-cli -h 2001:db8::sentinel1 -p 26379 SENTINEL get-master-addr-by-name mymaster
+redis-cli -h 2001:db8::10 -p 26379 SENTINEL get-master-addr-by-name mymaster
 
 # Check Sentinel state
-redis-cli -h 2001:db8::sentinel1 -p 26379 SENTINEL masters
+redis-cli -h 2001:db8::10 -p 26379 SENTINEL masters
 
 # View replicas
-redis-cli -h 2001:db8::sentinel1 -p 26379 SENTINEL replicas mymaster
+redis-cli -h 2001:db8::10 -p 26379 SENTINEL replicas mymaster
 ```
 
 ## Python Redis Client with Sentinel over IPv6
@@ -116,9 +116,9 @@ from redis.sentinel import Sentinel
 # Configure Sentinel with IPv6 addresses
 sentinel = Sentinel(
     [
-        ('2001:db8::sentinel1', 26379),
-        ('2001:db8::sentinel2', 26379),
-        ('2001:db8::sentinel3', 26379),
+        ('2001:db8::10', 26379),
+        ('2001:db8::11', 26379),
+        ('2001:db8::12', 26379),
     ],
     socket_timeout=0.1
 )
@@ -143,7 +143,7 @@ redis-cli -h 2001:db8::1 DEBUG SLEEP 30
 sudo tail -f /var/log/redis/sentinel.log
 
 # Verify new primary after failover
-redis-cli -h 2001:db8::sentinel1 -p 26379 \
+redis-cli -h 2001:db8::10 -p 26379 \
   SENTINEL get-master-addr-by-name mymaster
 ```
 
@@ -155,7 +155,7 @@ sudo ip6tables -A INPUT -p tcp --dport 6379 -j ACCEPT
 # Sentinel port
 sudo ip6tables -A INPUT -p tcp --dport 26379 -j ACCEPT
 
-sudo ip6tables-save > /etc/ip6tables/rules.v6
+sudo ip6tables-save > /etc/iptables/rules.v6
 ```
 
 Redis Sentinel's bind and announce address configuration provides complete IPv6 support for high-availability Redis deployments, enabling automatic failover on IPv6 networks with the same reliability as IPv4 configurations.
