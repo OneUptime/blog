@@ -43,11 +43,8 @@ resource "google_secret_manager_secret" "db_password" {
     service     = "database"
   }
 
-  # Automatic deletion of old versions after 30 days
-  rotation {
-    rotation_period    = "2592000s"  # 30 days
-    next_rotation_time = "2025-01-01T00:00:00Z"
-  }
+  # Automatic destruction of disabled secret versions after 30 days
+  version_destroy_ttl = "2592000s"  # 30 days
 }
 
 # Create the first version (actual secret value)
@@ -145,7 +142,7 @@ resource "google_secret_manager_secret" "app_secrets" {
 resource "google_secret_manager_secret_iam_binding" "app_access" {
   for_each  = local.app_secrets
   project   = var.project_id
-  secret_id = each.key
+  secret_id = google_secret_manager_secret.app_secrets[each.key].secret_id
   role      = "roles/secretmanager.secretAccessor"
 
   members = [
