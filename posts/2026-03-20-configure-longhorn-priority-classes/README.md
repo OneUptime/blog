@@ -42,7 +42,7 @@ apiVersion: scheduling.k8s.io/v1
 kind: PriorityClass
 metadata:
   name: longhorn-critical
-# Value between node-critical (2000001000) and system-cluster-critical (2000000000)
+# Value below system-cluster-critical (2000000000) and system-node-critical (2000001000)
 # This ensures Longhorn is protected but won't preempt critical system pods
 value: 1000000
 globalDefault: false
@@ -62,16 +62,13 @@ kubectl apply -f longhorn-priority-class.yaml
 # longhorn-values.yaml - Set priority class for all Longhorn components
 longhornManager:
   # Use the system-node-critical built-in class
-  priorityClass:
-    name: "system-node-critical"
+  priorityClass: "system-node-critical"
 
 longhornDriver:
-  priorityClass:
-    name: "system-node-critical"
+  priorityClass: "system-node-critical"
 
 longhornUI:
-  priorityClass:
-    name: "longhorn-critical"
+  priorityClass: "longhorn-critical"
 ```
 
 ```bash
