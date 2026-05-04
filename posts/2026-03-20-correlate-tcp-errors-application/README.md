@@ -47,7 +47,7 @@ diff /tmp/before.txt /tmp/after.txt | grep "^>"
 # TcpAttemptFails       → SYN sent, got RST or ICMP unreachable (connection refused)
 # TcpEstabResets        → RST received on ESTABLISHED connection (reset by peer)
 # TcpRetransSegs        → Retransmissions (loss/congestion)
-# TcpTimeouts           → RTO expired (serious: connection likely failed)
+# TcpExtTCPTimeouts     → RTO expired (serious: connection likely failed)
 # TcpExtTCPSynRetrans   → SYN retransmits (remote not responding)
 ```
 
