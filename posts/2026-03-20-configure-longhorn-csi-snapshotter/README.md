@@ -12,7 +12,7 @@ The Kubernetes CSI Snapshotter is an external controller that works alongside CS
 
 ## Prerequisites
 
-- Longhorn v1.1.0 or later
+- Longhorn v1.3.0 or later (required for `type: snap`; earlier versions only support `type: bak`)
 - Kubernetes v1.20 or later
 - `kubectl` cluster access
 
