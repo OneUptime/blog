@@ -18,8 +18,7 @@ The OSS (Object Storage Service) backend stores OpenTofu state in Alibaba Cloud'
 aliyun oss mb oss://my-terraform-state --region cn-hangzhou
 
 # Enable versioning
-aliyun oss bucket-versioning --method put oss://my-terraform-state \
-  --configuration '<?xml version="1.0" encoding="UTF-8"?><VersioningConfiguration><Status>Enabled</Status></VersioningConfiguration>'
+aliyun oss bucket-versioning --method put oss://my-terraform-state enabled
 ```
 
 ## Step 2: Create Table Store for Locking (Optional)
@@ -52,9 +51,6 @@ terraform {
 
     # Optional: server-side encryption
     encrypt = true
-
-    # Optional: KMS key
-    # kms_key_id = "your-kms-key-id"
 
     # Optional: endpoint
     # endpoint = "oss-cn-hangzhou.aliyuncs.com"
@@ -147,20 +143,7 @@ terraform {
 }
 ```
 
-For KMS-based encryption:
-
-```hcl
-terraform {
-  backend "oss" {
-    region     = "cn-hangzhou"
-    bucket     = "my-terraform-state"
-    prefix     = "terraform/state"
-    key        = "prod.tfstate"
-    encrypt    = true
-    kms_key_id = "your-kms-key-id"  # Use KMS CMK
-  }
-}
-```
+The OSS backend's `encrypt` argument enables server-side encryption with OSS-managed keys (SSE-OSS). The backend itself does not expose a KMS key argument; if you need SSE-KMS for state objects, configure default bucket-level encryption on the OSS bucket using the OSS console or `aliyun oss bucket-encryption` so that all written objects (including state) are encrypted with your KMS CMK.
 
 ## Organizing Multiple State Files
 
