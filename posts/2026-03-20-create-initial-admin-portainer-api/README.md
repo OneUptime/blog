@@ -36,11 +36,23 @@ curl -X POST "http://localhost:9000/api/users/admin/init" \
     "Password": "YourStr0ngP@ssword!"
   }'
 
-# Response on success:
-# {"jwt": "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9..."}
+# Response on success (the created User object):
+# {"Id": 1, "Username": "admin", "Role": 1, ...}
 ```
 
-The response includes a JWT token for immediate use in further API calls.
+The minimum password length is 12 characters. The init endpoint does not return a JWT — to obtain one for follow-up API calls, authenticate against `/api/auth` with the same credentials:
+
+```bash
+curl -X POST "http://localhost:9000/api/auth" \
+  -H "Content-Type: application/json" \
+  -d '{
+    "Username": "admin",
+    "Password": "YourStr0ngP@ssword!"
+  }'
+
+# Response:
+# {"jwt": "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9..."}
+```
 
 ## Full Automation Script
 
@@ -62,15 +74,19 @@ done
 
 # Initialize the admin user
 echo "Creating admin user..."
-JWT=$(curl -sf -X POST "${PORTAINER_URL}/api/users/admin/init" \
+if ! curl -sf -X POST "${PORTAINER_URL}/api/users/admin/init" \
   -H "Content-Type: application/json" \
-  -d "{\"Username\":\"${ADMIN_USER}\",\"Password\":\"${ADMIN_PASS}\"}" \
-  | jq -r '.jwt')
-
-if [ -z "$JWT" ]; then
+  -d "{\"Username\":\"${ADMIN_USER}\",\"Password\":\"${ADMIN_PASS}\"}" > /dev/null; then
   echo "Error: Failed to create admin user (window may have expired)"
   exit 1
 fi
+
+# Authenticate to obtain a JWT for subsequent API calls
+echo "Authenticating..."
+JWT=$(curl -sf -X POST "${PORTAINER_URL}/api/auth" \
+  -H "Content-Type: application/json" \
+  -d "{\"Username\":\"${ADMIN_USER}\",\"Password\":\"${ADMIN_PASS}\"}" \
+  | jq -r '.jwt')
 
 echo "Admin user created. JWT: ${JWT:0:30}..."
 
@@ -79,14 +95,15 @@ curl -s -X PUT "${PORTAINER_URL}/api/settings" \
   -H "Authorization: Bearer ${JWT}" \
   -H "Content-Type: application/json" \
   -d '{
-    "enableTelemetry": false,
-    "authenticationMethod": 1
+    "AuthenticationMethod": 1
   }'
 
 echo "Portainer initialized successfully."
 ```
 
 ## Using with Docker Compose
+
+The official `portainer/portainer-ce` image is built `FROM scratch` and contains only the Portainer binary — no shell, no `curl`, no `wget`. That makes container-internal `HEALTHCHECK` impractical, so let the init container poll for readiness itself before posting:
 
 ```yaml
 # docker-compose.yml with init container
@@ -99,27 +116,25 @@ services:
       - "9000:9000"
     volumes:
       - portainer_data:/data
-    healthcheck:
-      test: ["CMD", "curl", "-f", "http://localhost:9000/api/system/status"]
-      interval: 5s
-      retries: 10
 
   portainer-init:
     image: curlimages/curl:latest
     depends_on:
-      portainer:
-        condition: service_healthy
+      - portainer
     environment:
       - ADMIN_PASS=${PORTAINER_ADMIN_PASS}
     command: >
-      sh -c "curl -X POST http://portainer:9000/api/users/admin/init
+      sh -c "until curl -sf http://portainer:9000/api/system/status > /dev/null; do sleep 2; done
+        && curl -X POST http://portainer:9000/api/users/admin/init
         -H 'Content-Type: application/json'
-        -d '{\"Username\":\"admin\",\"Password\":\"'${ADMIN_PASS}'\"}'
+        -d '{\"Username\":\"admin\",\"Password\":\"'\"$$ADMIN_PASS\"'\"}'
         && echo 'Admin created'"
 
 volumes:
   portainer_data:
 ```
+
+Note the `$$ADMIN_PASS` — this escapes the variable from Compose-time interpolation so it's expanded by the container's shell at runtime against the value injected via `environment:`.
 
 ## Conclusion
 
