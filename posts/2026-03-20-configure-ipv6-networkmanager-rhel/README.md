@@ -124,7 +124,7 @@ nmcli connection modify eth0 \
 
 # Add a specific IPv6 static route
 nmcli connection modify eth0 \
-    ipv6.routes "2001:db8:remote::/48 2001:db8::gateway"
+    ipv6.routes "2001:db8:remote::/48 2001:db8::1"
 
 nmcli connection up eth0
 ```
