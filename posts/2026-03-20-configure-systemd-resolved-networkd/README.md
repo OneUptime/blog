@@ -43,7 +43,7 @@ DNSSEC=yes
 # DNS-over-TLS
 DNSOverTLS=opportunistic
 
-# Cache size
+# Enable DNS caching (boolean or "no-negative")
 Cache=yes
 ```
 
@@ -86,8 +86,9 @@ Domains=~internal.company.com
 # Test resolution via resolved
 resolvectl query google.com
 
-# Test with a specific server
-resolvectl query --server 8.8.8.8 example.com
+# Test with a specific server (resolvectl always uses resolved's
+# configured servers; use dig to query a specific server directly)
+dig @8.8.8.8 example.com
 
 # Show per-interface DNS configuration
 resolvectl status
@@ -112,11 +113,11 @@ resolvectl statistics
 ## DNSSEC Status
 
 ```bash
-# Check DNSSEC status
-resolvectl dnssec
+# Check DNSSEC mode for an interface
+resolvectl dnssec eth0
 
-# Query with DNSSEC validation details
-resolvectl query --set-dnssec=yes example.com
+# Query with DNSSEC validation enabled
+resolvectl query --validate=yes example.com
 ```
 
 ## Conclusion
