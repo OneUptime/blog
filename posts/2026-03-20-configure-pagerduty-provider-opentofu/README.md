@@ -15,10 +15,9 @@ The Pagerduty provider for OpenTofu enables managing Pagerduty resources with th
 ```hcl
 terraform {
   required_providers {
-    # Replace with the actual provider source
-    provider_name = {
-      source  = "provider-namespace/provider-name"
-      version = "~> 1.0"
+    pagerduty = {
+      source  = "PagerDuty/pagerduty"
+      version = "~> 3.0"
     }
   }
   required_version = ">= 1.6.0"
@@ -27,32 +26,39 @@ terraform {
 
 ## Authentication
 
-Most providers read credentials from environment variables:
+The PagerDuty provider reads its API token from the `PAGERDUTY_TOKEN` environment variable. Generate a token from the PagerDuty web UI under **Integrations -> API Access Keys**.
 
 ```bash
-# Set provider credentials via environment variables
-
-export PROVIDER_API_KEY="your-api-key"
-export PROVIDER_API_SECRET="your-api-secret"
+# Set the PagerDuty API token via environment variable
+export PAGERDUTY_TOKEN="your-api-token"
 ```
 
 ```hcl
-provider "provider_name" {
-  # Credentials are read from environment variables
-  # api_key = var.api_key  # Alternative: inline (not recommended)
+provider "pagerduty" {
+  # token is read from the PAGERDUTY_TOKEN environment variable
+  # token = var.pagerduty_token  # Alternative: inline (not recommended)
 }
 ```
 
 ## Example Resource
 
 ```hcl
-# Example resource demonstrating provider usage
-resource "provider_example_resource" "main" {
-  name = "${var.name}-${var.environment}"
+# Create a user and an escalation policy that pages them
+resource "pagerduty_user" "engineer" {
+  name  = "${var.name}-${var.environment}"
+  email = "engineer@example.com"
+}
 
-  tags = {
-    environment = var.environment
-    managed_by  = "opentofu"
+resource "pagerduty_escalation_policy" "main" {
+  name      = "${var.name}-${var.environment}-escalation"
+  num_loops = 2
+
+  rule {
+    escalation_delay_in_minutes = 10
+    target {
+      type = "user_reference"
+      id   = pagerduty_user.engineer.id
+    }
   }
 }
 ```
@@ -67,7 +73,7 @@ variable "environment" { type = string }
 ## Outputs
 
 ```hcl
-output "resource_id" { value = provider_example_resource.main.id }
+output "escalation_policy_id" { value = pagerduty_escalation_policy.main.id }
 ```
 
 ## Best Practices
