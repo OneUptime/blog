@@ -8,17 +8,16 @@ Description: Learn how to configure and use the Datadog Monitors provider in Ope
 
 ## Introduction
 
-The Datadog Monitors provider for OpenTofu enables managing Datadog Monitors resources with the same plan/apply workflow as your cloud infrastructure. This guide covers authentication, basic resource configuration, and production best practices.
+The Datadog provider for OpenTofu enables managing Datadog monitors with the same plan/apply workflow as your cloud infrastructure. This guide covers authentication, basic resource configuration, and production best practices.
 
 ## Provider Installation
 
 ```hcl
 terraform {
   required_providers {
-    # Replace with the actual provider source
-    provider_name = {
-      source  = "provider-namespace/provider-name"
-      version = "~> 1.0"
+    datadog = {
+      source  = "DataDog/datadog"
+      version = "~> 3.0"
     }
   }
   required_version = ">= 1.6.0"
@@ -27,33 +26,45 @@ terraform {
 
 ## Authentication
 
-Most providers read credentials from environment variables:
+The Datadog provider reads credentials from environment variables:
 
 ```bash
 # Set provider credentials via environment variables
 
-export PROVIDER_API_KEY="your-api-key"
-export PROVIDER_API_SECRET="your-api-secret"
+export DD_API_KEY="your-api-key"
+export DD_APP_KEY="your-app-key"
 ```
 
 ```hcl
-provider "provider_name" {
-  # Credentials are read from environment variables
-  # api_key = var.api_key  # Alternative: inline (not recommended)
+provider "datadog" {
+  # Credentials are read from DD_API_KEY and DD_APP_KEY by default.
+  # api_key = var.datadog_api_key  # Alternative: inline (not recommended)
+  # app_key = var.datadog_app_key
+  # api_url = "https://api.datadoghq.eu/"  # Override for non-US sites
 }
 ```
 
 ## Example Resource
 
 ```hcl
-# Example resource demonstrating provider usage
-resource "provider_example_resource" "main" {
-  name = "${var.name}-${var.environment}"
+# Metric alert monitor that triggers on high CPU usage
+resource "datadog_monitor" "main" {
+  name    = "${var.name}-${var.environment} high CPU"
+  type    = "metric alert"
+  message = "CPU is high on {{host.name}}. Notify: @ops-team"
+  query   = "avg(last_5m):avg:system.cpu.user{env:${var.environment}} by {host} > 90"
 
-  tags = {
-    environment = var.environment
-    managed_by  = "opentofu"
+  monitor_thresholds {
+    warning  = 80
+    critical = 90
   }
+
+  include_tags = true
+
+  tags = [
+    "environment:${var.environment}",
+    "managed_by:opentofu",
+  ]
 }
 ```
 
@@ -67,7 +78,7 @@ variable "environment" { type = string }
 ## Outputs
 
 ```hcl
-output "resource_id" { value = provider_example_resource.main.id }
+output "resource_id" { value = datadog_monitor.main.id }
 ```
 
 ## Best Practices
@@ -79,4 +90,4 @@ output "resource_id" { value = provider_example_resource.main.id }
 
 ## Conclusion
 
-Managing Datadog Monitors resources with OpenTofu brings the same consistency and auditability to SaaS tooling as you get with cloud infrastructure. Start by codifying your most critical resources and gradually expand coverage over time.
+Managing Datadog monitors with OpenTofu brings the same consistency and auditability to SaaS tooling as you get with cloud infrastructure. Start by codifying your most critical monitors and gradually expand coverage over time.
