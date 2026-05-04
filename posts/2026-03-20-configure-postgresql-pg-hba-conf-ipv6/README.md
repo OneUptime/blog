@@ -29,16 +29,16 @@ Description: A detailed reference for configuring PostgreSQL's pg_hba.conf to al
 host    all          all          ::1/128                  trust
 
 # Allow specific database from IPv6 subnet
-host    myapp_db     myapp_user   2001:db8:app::/48        scram-sha-256
+host    myapp_db     myapp_user   2001:db8:abcd::/48       scram-sha-256
 
 # Allow from specific IPv6 host
-host    all          all          2001:db8::admin/128      md5
+host    all          all          2001:db8::dba/128        md5
 
 # Allow all IPv6 addresses (not recommended for production)
 host    all          all          ::/0                     md5
 
 # Reject from specific IPv6 range
-host    all          all          2001:db8:blocked::/48    reject
+host    all          all          2001:db8:bad::/48        reject
 ```
 
 ## Authentication Methods for IPv6
@@ -54,7 +54,7 @@ host    all          all          2001:db8::/32            md5
 host    all          all          2001:db8::/32            scram-sha-256
 
 # reject: explicitly deny connection
-host    all          all          2001:db8:untrusted::/48  reject
+host    all          all          2001:db8:dead::/48       reject
 
 # cert: require SSL certificate
 hostssl all          all          2001:db8::/32            cert
@@ -91,13 +91,13 @@ local   myapp_db        myapp_user                              peer
 host    all             all             ::1/128                 scram-sha-256
 
 # Application servers (IPv6 subnet)
-hostssl myapp_db        myapp_user      2001:db8:app::/48       scram-sha-256
+hostssl myapp_db        myapp_user      2001:db8:abcd::/48      scram-sha-256
 
 # Read replicas (IPv6)
 hostssl myapp_db        repl_user       2001:db8:db::/64        scram-sha-256
 
 # DBA access (specific IPv6 address, restricted to specific DB)
-hostssl all             dba_user        2001:db8::admin/128     scram-sha-256
+hostssl all             dba_user        2001:db8::dba/128       scram-sha-256
 
 # Deny all others (optional, PostgreSQL denies by default after no match)
 host    all             all             ::/0                    reject
@@ -106,17 +106,14 @@ host    all             all             ::/0                    reject
 ## Apply and Verify Changes
 
 ```bash
-# Test pg_hba.conf syntax (PostgreSQL 10+)
+# Reload pg_hba.conf via SQL (sends SIGHUP, does not validate syntax beforehand)
 psql -U postgres -c "SELECT pg_reload_conf();"
 
-# Or check by running pg_hba_check
-# (no built-in check tool, reload and check logs)
-
-# Reload PostgreSQL (no restart needed for pg_hba.conf)
+# Or reload via systemd (no restart needed for pg_hba.conf)
 systemctl reload postgresql
 
-# View effective pg_hba.conf rules
-psql -U postgres -c "TABLE pg_hba_file_rules;"
+# Validate rules: pg_hba_file_rules (PostgreSQL 10+) shows any parse errors in the 'error' column
+psql -U postgres -c "SELECT line_number, type, database, user_name, address, auth_method, error FROM pg_hba_file_rules;"
 
 # Or with more detail
 psql -U postgres -c "
