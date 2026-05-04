@@ -27,32 +27,30 @@ Each network function node must own a SID and configure the corresponding End.X 
 
 ```bash
 # On the IDS node (5f00:svc:1::/48 is IDS locator)
-
+# After inspection, End.X forwards to the FW next-hop
 ip -6 addr add 5f00:svc:1::1/128 dev lo
 ip -6 route add 5f00:svc:1:0:e001::/128 \
-  encap seg6local action End.X \
-  nh6 fe80::fw1 \    # After inspection, forward to FW
+  encap seg6local action End.X nh6 fe80::fw1 \
   dev eth0
 
 # On the Firewall node
+# After filtering, End.X forwards to the LB next-hop
 ip -6 addr add 5f00:svc:2::1/128 dev lo
 ip -6 route add 5f00:svc:2:0:e001::/128 \
-  encap seg6local action End.X \
-  nh6 fe80::lb1 \    # After filtering, forward to LB
+  encap seg6local action End.X nh6 fe80::lb1 \
   dev eth0
 
 # On the Load Balancer node
+# After load balancing decision, End.X forwards to the App next-hop
 ip -6 addr add 5f00:svc:3::1/128 dev lo
 ip -6 route add 5f00:svc:3:0:e001::/128 \
-  encap seg6local action End.X \
-  nh6 fe80::app1 \   # After load balancing decision, forward to App
+  encap seg6local action End.X nh6 fe80::app1 \
   dev eth0
 
 # On the Application Server (final decap)
 ip -6 addr add 5f00:app:1::1/128 dev lo
 ip -6 route add 5f00:app:1:0:e000::/128 \
-  encap seg6local action End.DT6 \
-  vrftable 100 \
+  encap seg6local action End.DT6 vrftable 100 \
   dev lo
 ```
 
@@ -60,15 +58,11 @@ ip -6 route add 5f00:app:1:0:e000::/128 \
 
 ```bash
 # Ingress router: apply service chain to incoming traffic
-# All traffic from 2001:db8:clients::/48 goes through full chain
-
+# All traffic to 2001:db8:app::/48 goes through full chain
+# Segment list (visit order): IDS -> Firewall -> Load Balancer -> Application
 ip -6 route add 2001:db8:app::/48 \
   encap seg6 mode encap \
-  segs \
-    5f00:svc:1:0:e001::,\   # IDS
-    5f00:svc:2:0:e001::,\   # Firewall
-    5f00:svc:3:0:e001::,\   # Load Balancer
-    5f00:app:1:0:e000::     # Application delivery
+  segs 5f00:svc:1:0:e001::,5f00:svc:2:0:e001::,5f00:svc:3:0:e001::,5f00:app:1:0:e000:: \
   dev eth0
 ```
 
@@ -115,7 +109,7 @@ SERVICES=(
 )
 
 for svc in "${SERVICES[@]}"; do
-  addr="${svc%%:*}"
+  addr="${svc%:*}"
   name="${svc##*:}"
   if ping6 -c 2 -W 2 "$addr" > /dev/null 2>&1; then
     echo "OK: $name ($addr)"
