@@ -130,7 +130,7 @@ resource "azurerm_role_assignment" "admin" {
 ```hcl
 locals {
   secrets = {
-    "database-host"     = aws_db_instance.main.fqdn
+    "database-host"     = azurerm_postgresql_flexible_server.main.fqdn
     "database-name"     = var.db_name
     "database-username" = var.db_username
     "redis-host"        = azurerm_redis_cache.main.hostname
@@ -158,9 +158,8 @@ resource "azurerm_monitor_diagnostic_setting" "key_vault" {
     category = "AuditEvent"
   }
 
-  metric {
+  enabled_metric {
     category = "AllMetrics"
-    enabled  = true
   }
 }
 ```
