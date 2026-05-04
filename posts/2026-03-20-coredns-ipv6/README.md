@@ -65,7 +65,7 @@ kubectl -n kube-system edit configmap coredns
 
 ```bash
 # Deploy a test pod for DNS testing
-kubectl run dnstest --image=busybox --command -- sleep infinity
+kubectl run dnstest --image=alpine --command -- sleep infinity
 
 # Test A record resolution
 kubectl exec dnstest -- nslookup kubernetes.default.svc.cluster.local
@@ -161,9 +161,9 @@ kubectl exec dnstest -- sh -c "
     dig AAAA myservice.default.svc.cluster.local @10.96.0.10
 "
 
-# Check CoreDNS readiness
+# Check CoreDNS readiness (ready plugin listens on 8181 by default)
 kubectl -n kube-system exec deployment/coredns -- \
-    wget -qO- http://localhost:8080/ready
+    wget -qO- http://localhost:8181/ready
 # Output: OK
 ```
 
