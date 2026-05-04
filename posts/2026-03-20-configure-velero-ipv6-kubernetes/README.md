@@ -16,7 +16,7 @@ Velero is the standard tool for Kubernetes cluster backup and disaster recovery.
 # Verify IPv6 Kubernetes cluster is running
 
 kubectl get nodes -o wide
-# Check for IPv6 addresses in the NODE_IPS column
+# Check for IPv6 addresses in the INTERNAL-IP column
 
 # Verify pod IPv6 connectivity
 kubectl run test --rm -it --image=alpine -- ping6 -c 3 2001:4860:4860::8888
@@ -99,7 +99,7 @@ velero install \
   --secret-file /tmp/credentials-velero \
   --use-volume-snapshots=false \
   --backup-location-config \
-    region=minio,s3ForcePathStyle=true,s3Url=http://[2001:db8::minio]:9000 \
+    region=minio,s3ForcePathStyle=true,s3Url=http://[2001:db8::1]:9000 \
   --image velero/velero:v1.12.0
 
 # Verify installation
@@ -167,7 +167,7 @@ velero restore logs <restore-name>
 # Test connectivity from Velero pod to MinIO over IPv6
 kubectl exec -n velero \
   $(kubectl get pod -n velero -l app.kubernetes.io/name=velero -o name | head -1) \
-  -- curl -6 http://[2001:db8::minio]:9000
+  -- curl -6 http://[2001:db8::1]:9000
 
 # Check Velero logs for connectivity issues
 kubectl logs -n velero \
