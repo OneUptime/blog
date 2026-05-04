@@ -53,12 +53,12 @@ curl -X POST \
 Standard users only see environments they're explicitly granted access to:
 
 ```bash
-# Grant user ID 5 access to environment ID 1 as Standard User (role 4)
+# Grant user ID 5 access to environment ID 1 as Standard User (role 3)
 curl -X PUT \
   https://localhost:9443/api/endpoints/1/useraccesspolicies \
   -H "Authorization: Bearer $TOKEN" \
   -H "Content-Type: application/json" \
-  -d '{"5": {"RoleID": 4}}' \
+  -d '{"5": {"RoleID": 3}}' \
   --insecure
 ```
 
@@ -81,13 +81,13 @@ curl -X PUT \
   https://localhost:9443/api/endpoints/1/useraccesspolicies \
   -H "Authorization: Bearer $TOKEN" \
   -H "Content-Type: application/json" \
-  -d '{"5": {"RoleID": 4}}' --insecure   # Standard User on dev
+  -d '{"5": {"RoleID": 3}}' --insecure   # Standard User on dev
 
 curl -X PUT \
   https://localhost:9443/api/endpoints/2/useraccesspolicies \
   -H "Authorization: Bearer $TOKEN" \
   -H "Content-Type: application/json" \
-  -d '{"5": {"RoleID": 3}}' --insecure   # Helpdesk on production
+  -d '{"5": {"RoleID": 2}}' --insecure   # Helpdesk on production
 ```
 
 ---
