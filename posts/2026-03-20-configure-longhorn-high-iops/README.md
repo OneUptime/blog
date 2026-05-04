@@ -54,10 +54,8 @@ parameters:
   numberOfReplicas: "3"
   # Keep a replica local to reduce read latency
   dataLocality: "best-effort"
-  # Only use NVMe-tagged disks for replicas
+  # Only use NVMe-tagged disks for replicas (Longhorn disk tag, not a k8s label)
   diskSelector: "nvme"
-  # Only place replicas on tagged nodes
-  nodeSelector: "storage-type=nvme"
   # XFS is often better for database workloads
   fsType: "xfs"
   staleReplicaTimeout: "30"
@@ -93,13 +91,15 @@ parameters:
 ## Tune Longhorn Global Settings for Performance
 
 ```bash
-# Disable automatic snapshot cleanup during I/O to prevent latency spikes
+# Disable automatic snapshot cleanup after replica rebuilds to prevent
+# latency spikes (default is "true"; set to "false" to disable)
 kubectl patch settings.longhorn.io auto-cleanup-system-generated-snapshot \
   -n longhorn-system \
   --type merge \
-  -p '{"value": "true"}'
+  -p '{"value": "false"}'
 
-# Reduce replica sync timeout for faster failure detection
+# Shorten the wait before replenishing a degraded replica so volumes
+# return to full redundancy faster
 kubectl patch settings.longhorn.io replica-replenishment-wait-interval \
   -n longhorn-system \
   --type merge \
@@ -149,10 +149,10 @@ spec:
             - -c
             - shared_buffers=256MB
             - -c
-            # Use sequential scan for large tables
+            # Hint the planner about total memory available for caching
             - effective_cache_size=512MB
             - -c
-            # Tune checkpoints for fewer write amplifications
+            # Spread checkpoint writes to reduce I/O bursts
             - checkpoint_completion_target=0.9
           resources:
             requests:
