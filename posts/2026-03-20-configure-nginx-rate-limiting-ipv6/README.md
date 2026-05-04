@@ -24,7 +24,7 @@ http {
             limit_req zone=general burst=20 nodelay;
             limit_req_status 429;
 
-            proxy_pass http://[2001:db8::backend]:3000;
+            proxy_pass http://[2001:db8::1]:3000;
         }
     }
 }
@@ -80,7 +80,7 @@ http {
     # Higher rate for trusted IPv6 ranges
     geo $trusted_client {
         default     0;
-        2001:db8:trusted::/48   1;
+        2001:db8:abcd::/48   1;
         ::1         1;
     }
 
@@ -91,12 +91,12 @@ http {
         location /api/ {
             # Skip rate limiting for trusted IPv6 clients
             if ($trusted_client = 1) {
-                proxy_pass http://[2001:db8::backend]:3000;
+                proxy_pass http://[2001:db8::1]:3000;
                 break;
             }
 
             limit_req zone=all_clients burst=10 nodelay;
-            proxy_pass http://[2001:db8::backend]:3000;
+            proxy_pass http://[2001:db8::1]:3000;
         }
     }
 }
@@ -117,12 +117,12 @@ http {
             error_page 429 /rate-limit-exceeded.json;
 
             location = /rate-limit-exceeded.json {
+                default_type application/json;
                 return 429 '{"error": "Too Many Requests", "retry_after": 60}';
-                add_header Content-Type application/json;
-                add_header Retry-After 60;
+                add_header Retry-After 60 always;
             }
 
-            proxy_pass http://[2001:db8::backend]:3000;
+            proxy_pass http://[2001:db8::1]:3000;
         }
     }
 }
