@@ -21,19 +21,17 @@ Kong API Gateway sits in front of your services and handles routing, authenticat
 When running Kong via Docker or environment variables, set the proxy and admin listeners to dual-stack addresses.
 
 ```bash
-# Docker run example with dual-stack listeners
-
+# Docker run example with dual-stack listeners.
+# KONG_PROXY_LISTEN holds both the plain HTTP and the `ssl` entries on IPv4 and IPv6.
+# KONG_ADMIN_LISTEN handles the Admin API on both stacks.
 docker run -d --name kong \
   -e KONG_DATABASE=off \
   -e KONG_DECLARATIVE_CONFIG=/kong/kong.yml \
-  # Listen on both IPv4 and IPv6 for proxy traffic
-  -e KONG_PROXY_LISTEN="0.0.0.0:8000, [::]:8000" \
-  # Admin API on both stacks
+  -e KONG_PROXY_LISTEN="0.0.0.0:8000, [::]:8000, 0.0.0.0:8443 ssl, [::]:8443 ssl" \
   -e KONG_ADMIN_LISTEN="0.0.0.0:8001, [::]:8001" \
-  # HTTPS proxy on both stacks
-  -e KONG_PROXY_LISTEN_SSL="0.0.0.0:8443, [::]:8443" \
   -p 8000:8000 \
   -p 8001:8001 \
+  -p 8443:8443 \
   kong:3.6
 ```
 
@@ -44,11 +42,8 @@ Edit `/etc/kong/kong.conf` to add IPv6 to all listener directives.
 ```ini
 # /etc/kong/kong.conf
 
-# Proxy listens on IPv4 and IPv6
-proxy_listen = 0.0.0.0:8000 reuseport backlog=16384, [::]:8000 reuseport backlog=16384
-
-# SSL proxy listens on both stacks
-proxy_listen_ssl = 0.0.0.0:8443, [::]:8443
+# Proxy listens on IPv4 and IPv6, with SSL entries appended via the `ssl` suffix
+proxy_listen = 0.0.0.0:8000 reuseport backlog=16384, [::]:8000 reuseport backlog=16384, 0.0.0.0:8443 ssl, [::]:8443 ssl
 
 # Admin API on both stacks (restrict in production)
 admin_listen = 127.0.0.1:8001, [::1]:8001
@@ -115,7 +110,7 @@ curl -6 -H "Host: myservice.example.com" \
 Kong's rate-limiting plugin can key on IPv6 client addresses automatically.
 
 ```bash
-# Apply rate limiting globally, keyed by consumer IP
+# Apply rate limiting globally, keyed by client IP (supports both IPv4 and IPv6).
 curl -X POST http://[::1]:8001/plugins \
   -H "Content-Type: application/json" \
   -d '{
@@ -123,7 +118,6 @@ curl -X POST http://[::1]:8001/plugins \
     "config": {
       "minute": 100,
       "hour": 5000,
-      # Use remote IP (supports both IPv4 and IPv6)
       "policy": "local",
       "limit_by": "ip"
     }
