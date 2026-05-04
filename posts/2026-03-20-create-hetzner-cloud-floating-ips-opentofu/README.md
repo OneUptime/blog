@@ -12,10 +12,10 @@ Floating IPs in Hetzner Cloud are static public IP addresses that can be assigne
 
 ```hcl
 resource "hcloud_floating_ip" "web" {
-  type      = "ipv4"        # ipv4 or ipv6
-  location  = "nbg1"        # Home location for unassigned IP
-  name      = "web-floating-ip"
-  description = "Public IP for web server failover"
+  type          = "ipv4"        # ipv4 or ipv6
+  home_location = "nbg1"        # Home location for unassigned IP
+  name          = "web-floating-ip"
+  description   = "Public IP for web server failover"
 
   labels = {
     managed_by = "opentofu"
@@ -99,9 +99,9 @@ tofu apply -var="active_server_id=<standby-server-id>"
 
 ```hcl
 resource "hcloud_floating_ip" "web_v6" {
-  type     = "ipv6"
-  location = "nbg1"
-  name     = "web-floating-ipv6"
+  type          = "ipv6"
+  home_location = "nbg1"
+  name          = "web-floating-ipv6"
 }
 ```
 
