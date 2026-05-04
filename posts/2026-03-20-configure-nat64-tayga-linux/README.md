@@ -136,8 +136,8 @@ ip link show nat64
 # From an IPv6-only client, ping an IPv4 address via the NAT64 prefix
 ping6 64:ff9b::8.8.8.8
 
-# Check Tayga's dynamic address mapping table
-tayga --config /etc/tayga.conf --show-dynamic-pool
+# Check Tayga's dynamic address mappings (stored in the data-dir)
+cat /var/db/tayga/dynamic.map
 ```
 
 ## Comparison: Tayga vs Jool
