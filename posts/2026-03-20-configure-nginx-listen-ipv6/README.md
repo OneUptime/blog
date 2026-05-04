@@ -10,19 +10,22 @@ Description: Learn how to configure Nginx to accept connections on IPv6 addresse
 
 ```nginx
 # nginx.conf or site configuration
+# These are alternative listen patterns - pick the one(s) that match your needs.
+# A single server block cannot bind both the IPv6 wildcard [::] and specific
+# IPv6 addresses on the same port at the same time.
 
 server {
     # Listen on IPv6 loopback
     listen [::1]:80;
 
-    # Listen on a specific IPv6 address
-    listen [2001:db8::10]:80;
+    # Or listen on a specific IPv6 address
+    # listen [2001:db8::10]:80;
 
-    # Listen on all IPv6 addresses
-    listen [::]:80;
+    # Or listen on all IPv6 addresses (ipv6only=on is the default since nginx 1.3.4)
+    # listen [::]:80;
 
-    # Listen on all IPv6 with ipv6only (only IPv6, not IPv4)
-    listen [::]:80 ipv6only=on;
+    # Or listen on all IPv6 with ipv6only explicit (only IPv6, not IPv4)
+    # listen [::]:80 ipv6only=on;
 
     server_name example.com;
     root /var/www/html;
