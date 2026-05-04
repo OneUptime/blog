@@ -57,8 +57,11 @@ sudo iptables -A INPUT -d 224.0.0.0/4 -j DROP
 On a Linux router or multicast proxy, enable IP forwarding and allow multicast in the FORWARD chain:
 
 ```bash
-# Enable IP multicast forwarding
-echo 1 | sudo tee /proc/sys/net/ipv4/conf/all/mc_forwarding
+# Enable IP forwarding so the FORWARD chain applies to multicast packets.
+# Note: actually routing multicast across subnets also requires a multicast
+# routing daemon (e.g. smcroute, pimd, mrouted), which sets mc_forwarding
+# automatically via MRT_INIT - the mc_forwarding sysctl itself is read-only.
+echo 1 | sudo tee /proc/sys/net/ipv4/ip_forward
 
 # Allow multicast forwarding between eth0 and eth1
 sudo iptables -A FORWARD -i eth0 -o eth1 -d 224.0.0.0/4 -j ACCEPT
