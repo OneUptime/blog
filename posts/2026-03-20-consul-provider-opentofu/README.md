@@ -8,12 +8,13 @@ Description: Learn how to configure the HashiCorp Consul provider in OpenTofu to
 
 ## Introduction
 
-This guide covers How to Configure the Consul Provider in OpenTofu using OpenTofu with practical examples and production-ready configurations.
+This guide covers how to configure the HashiCorp Consul provider in OpenTofu with practical examples and production-ready configurations. The provider lets you manage Consul KV data, catalog entries, ACLs, and service-mesh configuration entries with the same plan/apply workflow you use for the rest of your infrastructure.
 
 ## Prerequisites
 
 - OpenTofu v1.6+
-- API credentials for the relevant service
+- A running Consul server (v1.9+ for service-intentions config entries) reachable from where you run OpenTofu
+- A Consul ACL token with sufficient privileges to manage the resources below
 - Basic understanding of OpenTofu concepts
 
 ## Step 1: Install and Configure the Provider
@@ -22,23 +23,21 @@ This guide covers How to Configure the Consul Provider in OpenTofu using OpenTof
 terraform {
   required_version = ">= 1.6.0"
   required_providers {
-    # Provider configuration depends on the specific service
-    # Replace with the actual provider source and version
-    example = {
-      source  = "hashicorp/example"
-      version = "~> 1.0"
+    consul = {
+      source  = "hashicorp/consul"
+      version = "~> 2.20"
     }
   }
 }
 
-# Configure the provider with credentials
+# Configure the provider. Address and token can also come from
+# the CONSUL_HTTP_ADDR and CONSUL_HTTP_TOKEN environment variables.
 
-provider "example" {
-  # Use environment variables for credentials
-  # EXAMPLE_API_KEY, EXAMPLE_TOKEN, etc.
-  
-  # Or specify directly (not recommended for secrets)
-  # api_key = var.api_key
+provider "consul" {
+  address    = "consul.example.com:8500"
+  scheme     = "https"
+  datacenter = "dc1"
+  # token = var.consul_token  # Prefer CONSUL_HTTP_TOKEN env var
 }
 ```
 
@@ -46,85 +45,110 @@ provider "example" {
 
 ```bash
 # Use environment variables for authentication
-export PROVIDER_API_KEY="your-api-key"
-export PROVIDER_TOKEN="your-token"
-export PROVIDER_ORG="your-organization"
+export CONSUL_HTTP_ADDR="https://consul.example.com:8500"
+export CONSUL_HTTP_TOKEN="00000000-0000-0000-0000-000000000000"
+export CONSUL_HTTP_SSL_VERIFY="true"
+export CONSUL_NAMESPACE="default"  # Only required for Consul Enterprise
 ```
 
 ```hcl
-variable "api_key" {
-  description = "API key for authentication"
+variable "consul_address" {
+  description = "Address of the Consul HTTP API"
   type        = string
-  sensitive   = true
 }
 
-variable "organization" {
-  description = "Organization name or ID"
+variable "consul_token" {
+  description = "ACL token used to authenticate with Consul"
   type        = string
+  sensitive   = true
 }
 ```
 
 ## Step 3: Create Basic Resources
 
 ```hcl
-# Example resource creation
-# Replace with actual resource types for the provider
+# Write a small set of KV pairs
+resource "consul_keys" "app" {
+  key {
+    path  = "app/config/feature_flag"
+    value = "true"
+  }
 
-resource "example_project" "main" {
-  name        = "${var.environment}-project"
-  description = "Managed by OpenTofu"
-
-  tags = {
-    environment = var.environment
-    managed_by  = "opentofu"
+  key {
+    path  = "app/config/log_level"
+    value = "info"
   }
 }
 
-# Configure access control
-resource "example_team" "developers" {
-  name    = "developers"
-  project = example_project.main.id
-  role    = "contributor"
+# Register an external service in the Consul catalog
+resource "consul_node" "external" {
+  name    = "external-api"
+  address = "10.0.1.50"
+}
+
+resource "consul_service" "external_api" {
+  name    = "billing-api"
+  node    = consul_node.external.name
+  port    = 443
+  tags    = ["external", "https"]
 }
 ```
 
 ## Step 4: Configure Advanced Settings
 
 ```hcl
-# Monitoring and alerting configuration
-resource "example_alert" "main" {
-  name      = "critical-alert"
-  project   = example_project.main.id
-  severity  = "critical"
-  threshold = 90
+# Define an ACL policy granting read access to the app/ KV prefix
+resource "consul_acl_policy" "app_read" {
+  name        = "app-read"
+  description = "Read access to app/ KV prefix"
+  datacenters = ["dc1"]
 
-  notification {
-    channel = var.notification_channel
-  }
+  rules = <<-RULE
+    key_prefix "app/" {
+      policy = "read"
+    }
+  RULE
 }
 
-# Backup and retention policies
-resource "example_backup_policy" "main" {
-  name              = "daily-backup"
-  project           = example_project.main.id
-  retention_days    = 30
-  schedule          = "0 2 * * *"  # Daily at 2 AM
+# Issue an ACL token bound to that policy
+resource "consul_acl_token" "app" {
+  description = "Token for the app service"
+  policies    = [consul_acl_policy.app_read.name]
+  local       = true
+}
+
+# Define a service-intentions config entry (Consul 1.9+)
+# This replaces the deprecated consul_intention resource.
+resource "consul_config_entry_service_intentions" "billing" {
+  name = "billing-api"
+
+  sources {
+    name   = "web"
+    action = "allow"
+  }
+
+  sources {
+    name   = "*"
+    action = "deny"
+  }
 }
 ```
 
 ## Step 5: Define Outputs
 
 ```hcl
-output "project_id" {
-  description = "The ID of the created project"
-  value       = example_project.main.id
+output "app_token_accessor_id" {
+  description = "Accessor ID of the app ACL token"
+  value       = consul_acl_token.app.accessor_id
 }
 
-output "project_name" {
-  description = "The name of the created project"
-  value       = example_project.main.name
+output "billing_service_id" {
+  description = "ID of the registered billing-api service"
+  value       = consul_service.external_api.id
 }
 ```
+
+The token's secret value is not stored in state. To retrieve it for distribution to a client, use the `consul_acl_token_secret_id` data source.
 
 ## Step 6: Deploy
 
@@ -145,7 +169,7 @@ tofu apply
 ## Common Issues and Solutions
 
 ### Authentication Errors
-Verify API keys are valid and have the required permissions. Check for typos in environment variable names.
+Verify `CONSUL_HTTP_TOKEN` is valid and has not been revoked, and that `CONSUL_HTTP_ADDR` points to the correct agent. Ensure the token's attached policies grant the capabilities required by the resources you manage (for example, `acl = "write"` to manage policies and tokens).
 
 ### Rate Limiting
 Add `depends_on` to serialize resource creation and avoid hitting API rate limits.
@@ -155,4 +179,4 @@ Pin to a specific provider version range to ensure reproducible deployments.
 
 ## Conclusion
 
-You have successfully configured How to Configure the Consul Provider in OpenTofu using OpenTofu. This provider enables you to manage all aspects of the service as code, ensuring consistency and enabling GitOps workflows. Always use environment variables or secure secret stores for sensitive credentials.
+You have successfully configured the HashiCorp Consul provider in OpenTofu. This provider enables you to manage Consul KV data, catalog entries, ACL policies and tokens, and service-mesh configuration entries as code, ensuring consistency and enabling GitOps workflows. Always use environment variables or secure secret stores for sensitive credentials such as `CONSUL_HTTP_TOKEN`.
