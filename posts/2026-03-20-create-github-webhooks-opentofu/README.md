@@ -96,10 +96,23 @@ resource "github_repository_webhook" "ci" {
 variable "github_org"      { type = string }
 variable "repository_id"   { type = string }
 variable "repository_name" { type = string }
-variable "team_members"    { type = list(string); default = [] }
-variable "deploy_key_value" { type = string; sensitive = true }
-variable "webhook_url"     { type = string }
-variable "webhook_secret"  { type = string; sensitive = true }
+
+variable "team_members" {
+  type    = list(string)
+  default = []
+}
+
+variable "deploy_key_value" {
+  type      = string
+  sensitive = true
+}
+
+variable "webhook_url" { type = string }
+
+variable "webhook_secret" {
+  type      = string
+  sensitive = true
+}
 ```
 
 ## Conclusion
