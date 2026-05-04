@@ -38,7 +38,7 @@ resource "azurerm_redis_cache" "main" {
   location            = azurerm_resource_group.cache.location
   resource_group_name = azurerm_resource_group.cache.name
 
-  sku_name = "Premium"  # Basic, Standard, Premium, Enterprise
+  sku_name = "Premium"  # Basic, Standard, Premium
   family   = "P"        # C for Basic/Standard, P for Premium
   capacity = 1          # 0-6 for C, 1-5 for P
 
@@ -46,7 +46,7 @@ resource "azurerm_redis_cache" "main" {
   minimum_tls_version = "1.2"
 
   redis_configuration {
-    maxmemory_reserved  = 2   # Percentage of memory reserved for non-cache
+    maxmemory_reserved  = 2   # Megabytes reserved for non-cache usage
     maxmemory_delta     = 2
     maxmemory_policy    = "allkeys-lru"
     maxfragmentationmemory_reserved = 2
