@@ -137,22 +137,16 @@ kubectl patch settings.longhorn.io backup-target-credential-secret \
 5. Enter: `longhorn-backup-azure`
 6. Click **Save**
 
-## Using Azure Managed Identity (AKS)
+## Granting RBAC Access (AKS)
 
-For AKS clusters with workload identity configured, use managed identities to avoid storing keys:
+Longhorn's Azure Blob backup driver currently authenticates only with a Shared Key (`AZBLOB_ACCOUNT_KEY`); native Azure Managed Identity / Workload Identity support for the backup target is not available in current releases (it is tracked as an open feature request). The account key created in Step 1 is therefore required even on AKS. You can still grant data-plane RBAC roles to operators or other workloads that interact with the same storage account:
 
 ```bash
-# Assign Storage Blob Data Contributor role to the managed identity
+# Grant Storage Blob Data Contributor on the storage account (e.g. to an operator principal)
 az role assignment create \
-  --assignee <managed-identity-client-id> \
+  --assignee <principal-or-managed-identity-client-id> \
   --role "Storage Blob Data Contributor" \
   --scope "/subscriptions/<sub-id>/resourceGroups/longhorn-backup-rg/providers/Microsoft.Storage/storageAccounts/$STORAGE_ACCOUNT_NAME"
-
-# Configure Longhorn to use managed identity
-# Use the environment credential (no explicit keys needed)
-kubectl create secret generic longhorn-backup-azure-mi \
-  -n longhorn-system \
-  --from-literal=AZBLOB_ACCOUNT_NAME="$STORAGE_ACCOUNT_NAME"
 ```
 
 ## Verify the Backup Target
@@ -243,4 +237,4 @@ az storage account management-policy create \
 
 ## Conclusion
 
-Azure Blob Storage provides a highly available and cost-effective backup target for Longhorn. Its seamless integration with AKS through managed identities eliminates the need to manage credentials manually. By combining recurring backup jobs with Azure's built-in lifecycle management policies, you can automate both the backup process and long-term cost optimization.
+Azure Blob Storage provides a highly available and cost-effective backup target for Longhorn. Storage account access keys must be stored as a Kubernetes secret since the backup driver currently relies on Shared Key authentication. By combining recurring backup jobs with Azure's built-in lifecycle management policies, you can automate both the backup process and long-term cost optimization.
