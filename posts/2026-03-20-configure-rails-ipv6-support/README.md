@@ -102,7 +102,7 @@ end
 # Model with validation
 class Session < ApplicationRecord
   validates :ip_address, format: {
-    with: /\A(\d{1,3}\.){3}\d{1,3}|([0-9a-f:]+)\z/i,
+    with: /\A((\d{1,3}\.){3}\d{1,3}|[0-9a-f:]+)\z/i,
     message: "must be a valid IP address"
   }
 end
