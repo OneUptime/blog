@@ -22,8 +22,8 @@ ListenAddress 2001:db8::10
 # ListenAddress ::
 
 # Multiple listen addresses (IPv4 and IPv6)
-ListenAddress 2001:db8::10
-ListenAddress 0.0.0.0
+# ListenAddress 2001:db8::10
+# ListenAddress 0.0.0.0
 
 # Set address family
 AddressFamily any    # Both IPv4 and IPv6 (default)
@@ -46,7 +46,7 @@ AddressFamily inet6
 ListenAddress 2001:db8::10
 
 # Or all IPv6 interfaces
-ListenAddress ::
+# ListenAddress ::
 
 Port 22
 
