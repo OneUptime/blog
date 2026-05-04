@@ -43,10 +43,12 @@ metadata:
   name: issue-investigation-20260320
   namespace: longhorn-system
 spec:
-  # Description of the issue for context
+  # A brief description of the issue (required)
   description: "Volume attachment failures on node worker-node-1 after upgrade"
-  # Set to false to keep the bundle after download
-  nodeID: ""   # Empty means collect from all nodes
+  # Optional issue URL (e.g., a GitHub issue link)
+  issueURL: ""
+  # Optional preferred responsible controller node ID (leave empty to let Longhorn choose)
+  nodeID: ""
 ```
 
 ```bash
@@ -70,9 +72,10 @@ kubectl get supportbundle.longhorn.io issue-investigation-20260320 \
 # Port-forward the Longhorn frontend
 kubectl port-forward -n longhorn-system svc/longhorn-frontend 8080:80
 
-# Download via the URL shown in the UI or the downloadURL from above
+# Download via the URL shown in the UI or the downloadURL from above.
+# The endpoint format is /v1/supportbundles/${ID}/${BUNDLE_NAME}/download
 curl -o longhorn-support-bundle.zip \
-  "http://localhost:8080/v1/supportbundles/issue-investigation-20260320/bundleName.zip"
+  "http://localhost:8080/v1/supportbundles/${BUNDLE_ID}/${BUNDLE_NAME}/download"
 ```
 
 ## Configuring Support Bundle Settings
@@ -94,17 +97,18 @@ kubectl patch settings.longhorn.io support-bundle-manager-image \
 ### Configure Failed Bundle Auto Cleanup
 
 ```bash
-# Set how long failed bundles are kept before auto-deletion (hours)
-kubectl patch settings.longhorn.io support-bundle-failed-limit \
+# Set how many failed support bundles to retain in the cluster
+# (set to 0 to have Longhorn automatically purge all failed bundles)
+kubectl patch settings.longhorn.io support-bundle-failed-history-limit \
   -n longhorn-system \
   --type merge \
-  -p '{"value": "24"}'
+  -p '{"value": "1"}'
 
-# Set node collection timeout
+# Set the timeout for collecting node bundles (in minutes; default is 30)
 kubectl patch settings.longhorn.io support-bundle-node-collection-timeout \
   -n longhorn-system \
   --type merge \
-  -p '{"value": "120"}'  # 2 minutes per node
+  -p '{"value": "60"}'  # 60 minutes
 ```
 
 ## Automating Diagnostic Collection
