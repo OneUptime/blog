@@ -42,10 +42,6 @@ sysctl net.ipv4.tcp_fastopen
 echo "net.ipv4.tcp_fastopen = 3" | \
   sudo tee -a /etc/sysctl.d/99-tfo.conf
 
-# Also tune the TFO cookie size (in bytes, default 8)
-echo "net.ipv4.tcp_fastopen_key = 1" | \
-  sudo tee -a /etc/sysctl.d/99-tfo.conf
-
 sudo sysctl -p /etc/sysctl.d/99-tfo.conf
 ```
 
