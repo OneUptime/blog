@@ -75,7 +75,7 @@ config rule
     option name         Allow-HTTPS-HomeServer
     option src          wan
     option dest         lan
-    option dest_ip      2001:db8:home::10    # Your server's IPv6 address
+    option dest_ip      2001:db8:abcd::10    # Your server's IPv6 address
     option dest_port    443
     option proto        tcp
     option target       ACCEPT
@@ -101,7 +101,7 @@ ufw default deny incoming
 ufw default allow outgoing
 
 # Allow SSH (from local network only)
-ufw allow from 2001:db8:home::/64 to any port 22
+ufw allow from 2001:db8:abcd::/64 to any port 22
 
 # Allow HTTPS inbound
 ufw allow 443/tcp
@@ -145,13 +145,13 @@ If you detect suspicious IPv6 sources:
 
 ```bash
 # Block a specific IPv6 address
-ip6tables -A INPUT -s 2001:bad:address::1 -j DROP
+ip6tables -A INPUT -s 2001:db8:bad::1 -j DROP
 
 # Block an entire prefix
-ip6tables -A INPUT -s 2001:bad:prefix::/48 -j DROP
+ip6tables -A INPUT -s 2001:db8:bad::/48 -j DROP
 
 # Make persistent on OpenWRT via /etc/firewall.user:
-ip6tables -A INPUT -s 2001:bad:prefix::/48 -j DROP
+ip6tables -A INPUT -s 2001:db8:bad::/48 -j DROP
 ```
 
 ## Conclusion
