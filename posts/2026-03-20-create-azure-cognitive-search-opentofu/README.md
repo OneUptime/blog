@@ -42,7 +42,7 @@ resource "azurerm_search_service" "main" {
 
   # Scaling: replicas for availability, partitions for storage/throughput
   replica_count   = 2  # 2 replicas for HA
-  partition_count = 1  # 1 partition = 15 GB storage
+  partition_count = 1  # standard (S1) partition: up to 160 GB on services created after April 3, 2024 in supported regions (25 GB on older services)
 
   # Disable public network access
   public_network_access_enabled = false
@@ -50,7 +50,7 @@ resource "azurerm_search_service" "main" {
   # Disable API key authentication (use RBAC only)
   local_authentication_enabled = false
 
-  authentication_failure_mode = "http403"  # or http401
+  authentication_failure_mode = "http403"  # or "http401WithBearerChallenge"
 
   tags = {
     Environment = "production"
@@ -73,7 +73,7 @@ resource "azurerm_search_service" "high_capacity" {
 
   # Up to 12 replicas and 12 partitions
   replica_count   = 3   # 3 replicas for read scaling
-  partition_count = 3   # 3 partitions = 450 GB storage
+  partition_count = 3   # standard3 (S3) partition: up to 1 TB on services created after April 3, 2024 in supported regions (200 GB on older services)
 
   hosting_mode = "default"  # or "highDensity" for standard3 - more indexes per partition
 }
