@@ -23,12 +23,11 @@ netsh interface ipv6 show prefixpolicies
 ::         40      1  ::/0
 ::         35      4  ::ffff:0:0/96
 ::         30      2  2002::/16
-::         20      3  2001::/32
-::         10      5  fc00::/7
-::          5      5  ::/96
-::          3     13  2001:20::/28
+::          5      5  2001::/32
+::          3     13  fc00::/7
 ::          1     11  fec0::/10
 ::          1     12  3ffe::/16
+::          1      3  ::/96
 ```
 
 ## Understanding Prefix Policy Fields
