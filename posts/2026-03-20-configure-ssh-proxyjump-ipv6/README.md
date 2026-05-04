@@ -18,8 +18,8 @@ ssh -J user@2001:db8::1 admin@2001:db8::100
 # Multiple jump hosts (chained)
 ssh -J user@2001:db8::1,user@2001:db8::2 admin@2001:db8::100
 
-# Explicit port on jump host
-ssh -J user@2001:db8::1:22 admin@2001:db8::100
+# Explicit port on jump host (IPv6 literal must be in square brackets when a port is specified)
+ssh -J user@[2001:db8::1]:22 admin@2001:db8::100
 
 # Force IPv6 on jump
 ssh -J user@2001:db8::1 -6 admin@destination.internal
@@ -67,13 +67,13 @@ Host app-server-2
 Host internal-server
     HostName 2001:db8::100
     User admin
-    ProxyCommand ssh -6 -W %h:%p user@2001:db8::1
+    ProxyCommand ssh -6 -W [%h]:%p user@2001:db8::1
 
 # With agent forwarding through the jump
 Host internal-server
     HostName 2001:db8::100
     User admin
-    ProxyCommand ssh -A -6 -W %h:%p jumpuser@2001:db8::1
+    ProxyCommand ssh -A -6 -W [%h]:%p jumpuser@2001:db8::1
 ```
 
 ## Agent Forwarding with ProxyJump
@@ -132,13 +132,14 @@ Host final-server
 
 ```bash
 # Local port forward via jump host to internal service
+# (IPv6 destinations in -L must be enclosed in square brackets)
 ssh -J jumpuser@2001:db8::1 \
-    -L 8080:2001:db8::100:80 \
+    -L 8080:[2001:db8::100]:80 \
     -N admin@2001:db8::100
 
 # Access database behind jump host
 ssh -J jumpuser@2001:db8::1 \
-    -L 5432:2001:db8::100:5432 \
+    -L 5432:[2001:db8::100]:5432 \
     -N db-user@2001:db8::100
 ```
 
@@ -163,4 +164,4 @@ ssh -J jumpuser@2001:db8::1 \
 
 ## Summary
 
-Configure SSH ProxyJump for IPv6 with `ssh -J jumpuser@2001:db8::1 admin@2001:db8::100` or set `ProxyJump bastion` in `~/.ssh/config`. Chain multiple jumps with `ssh -J hop1,hop2 destination`. Use `ProxyCommand ssh -6 -W %h:%p user@jump` for SSH < 7.3. Set `AddressFamily inet6` on both the jump host and destination entries in config. All SSH features (SCP, rsync, port forwarding, agent forwarding) work through ProxyJump. Debug with `ssh -vv`.
+Configure SSH ProxyJump for IPv6 with `ssh -J jumpuser@2001:db8::1 admin@2001:db8::100` or set `ProxyJump bastion` in `~/.ssh/config`. Chain multiple jumps with `ssh -J hop1,hop2 destination`. Use `ProxyCommand ssh -6 -W [%h]:%p user@jump` for SSH < 7.3 (square brackets around `%h` are required when the destination is an IPv6 literal). Set `AddressFamily inet6` on both the jump host and destination entries in config. All SSH features (SCP, rsync, port forwarding, agent forwarding) work through ProxyJump. Debug with `ssh -vv`.
