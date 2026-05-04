@@ -22,10 +22,10 @@ net.ipv6.conf.<interface>.use_tempaddr
 ## Values Explained
 
 ```bash
-# -1 = Disabled (kernel bootstrap default on some builds)
-#  0 = Disabled (explicit disable)
+# -1 = Disabled (default for point-to-point and loopback devices)
+#  0 = Disabled (default for most devices)
 #  1 = Enabled: generate temporary addresses, but PREFER the stable/public address
-#  2 = Enabled: generate temporary addresses, PREFER temporary address (RFC 4941 recommended)
+# >1 = Enabled: generate temporary addresses, PREFER temporary address (RFC 4941 recommended)
 
 # Check current value
 sysctl net.ipv6.conf.eth0.use_tempaddr
@@ -114,4 +114,4 @@ nmcli connection show eth0 | grep privacy
 
 ## Summary
 
-The `use_tempaddr` sysctl controls IPv6 privacy extensions: `0` disables temporary addresses (use on servers), `1` generates them but prefers stable addresses, `2` generates and prefers temporary addresses for outgoing connections (RFC 4941 compliant, use on workstations/desktops). Always set both `all` and `default` for consistent behavior. Combine with `addr_gen_mode=1` (RFC 7217) for comprehensive IPv6 privacy.
+The `use_tempaddr` sysctl controls IPv6 privacy extensions: `0` disables temporary addresses (use on servers), `1` generates them but prefers stable addresses, `2` generates and prefers temporary addresses for outgoing connections (RFC 4941 compliant, use on workstations/desktops). Always set both `all` and `default` for consistent behavior. Combine with `addr_gen_mode=3` (RFC 7217 stable privacy addresses) for comprehensive IPv6 privacy.
