@@ -78,7 +78,7 @@ spec:
         - name: portainer-agent
           image: portainer/agent:latest
           env:
-            # Set the Kubernetes API server URL
+            # Expose the pod's own IP to the agent for cluster communication
             - name: KUBERNETES_POD_IP
               valueFrom:
                 fieldRef:
