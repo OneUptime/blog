@@ -8,7 +8,7 @@ Description: Configure Nginx stream module to load balance UDP traffic across mu
 
 ## Introduction
 
-Nginx supports UDP load balancing through its `stream` module, introduced in version 1.9.0. This enables balancing DNS queries, game server traffic, VoIP (SIP/RTP), and any other UDP-based protocol across multiple backend servers. Unlike TCP load balancing where a connection maps to a backend session, UDP load balancing maps individual datagrams - requiring careful configuration for stateful protocols.
+Nginx supports UDP load balancing through its `stream` module. The stream module was introduced in version 1.9.0 (TCP only), and UDP support was added in version 1.9.13. This enables balancing DNS queries, game server traffic, VoIP (SIP/RTP), and any other UDP-based protocol across multiple backend servers. Unlike TCP load balancing where a connection maps to a backend session, UDP load balancing maps individual datagrams - requiring careful configuration for stateful protocols.
 
 ## Prerequisites
 
@@ -18,7 +18,7 @@ Nginx supports UDP load balancing through its `stream` module, introduced in ver
 nginx -V 2>&1 | grep stream
 # Should show: --with-stream
 
-# Check nginx version (need 1.9.0+ for UDP stream):
+# Check nginx version (need 1.9.13+ for UDP stream):
 nginx -v
 
 # Install nginx with stream module if needed (Ubuntu):
@@ -110,8 +110,9 @@ stream {
         listen 27015 udp reuseport;   # reuseport: better multi-core distribution
         proxy_pass game_servers;
         proxy_timeout 60s;            # Game session timeout
-        proxy_responses 0;            # Don't wait for specific number of responses
-        # proxy_responses 0 means: forward all responses until timeout
+        # Omit proxy_responses to allow unlimited responses until timeout.
+        # (proxy_responses 0 means "no response expected" / fire-and-forget,
+        # which would terminate the session early - not what we want for games.)
     }
 }
 ```
