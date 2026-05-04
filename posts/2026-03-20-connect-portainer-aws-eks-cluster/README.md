@@ -49,20 +49,26 @@ for e in envs:
 
 ## Installing the Portainer Agent (for Cloud K8s)
 
-For EKS, AKS, and GKE environments, deploy the agent via Helm:
+For EKS, AKS, and GKE environments, deploy the agent by applying the official YAML manifest published by Portainer:
 
 ```bash
-# Add the Portainer Helm repository
-helm repo add portainer https://portainer.github.io/k8s/
-helm repo update
+# Standard agent (LoadBalancer) — Portainer Server reaches the agent over the public LB
+kubectl apply -n portainer \
+  -f https://downloads.portainer.io/ce-lts/portainer-agent-k8s-lb.yaml
 
-# Install the Portainer Agent
-helm install portainer-agent portainer/portainer-agent \
-  -n portainer \
-  --create-namespace \
-  --set env.serverAddress="wss://portainer.example.com" \
-  --set env.edgeId="<your-edge-id>" \
-  --set env.edgeKey="<your-edge-key>"
+# Or use NodePort if you do not want a cloud LoadBalancer
+# kubectl apply -n portainer \
+#   -f https://downloads.portainer.io/ce-lts/portainer-agent-k8s-nodeport.yaml
+```
+
+For an Edge Agent (recommended when Portainer Server cannot reach the cluster directly), first create an Edge environment in Portainer to obtain the `EDGE_ID` and `EDGE_KEY`, then:
+
+```bash
+curl -L https://downloads.portainer.io/ce-lts/portainer-agent-edge-k8s.yaml \
+  -o portainer-agent-edge-k8s.yaml
+
+# Edit the manifest and set EDGE_ID and EDGE_KEY in the portainer-agent-edge ConfigMap/Secret
+kubectl apply -f portainer-agent-edge-k8s.yaml
 ```
 
 ## Best Practices
