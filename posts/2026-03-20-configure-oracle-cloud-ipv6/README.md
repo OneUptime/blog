@@ -24,7 +24,7 @@ oci network vcn create \
 # Add IPv6 CIDR to existing VCN
 oci network vcn add-ipv6-vcn-cidr \
   --vcn-id "ocid1.vcn.oc1...." \
-  --ipv6-cidr-type ORACLE_ALLOCATED
+  --is-oracle-gua-allocation-enabled true
 ```
 
 ## Terraform: VCN with IPv6
@@ -43,7 +43,7 @@ resource "oci_core_subnet" "public" {
   vcn_id            = oci_core_vcn.main.id
   display_name      = "public-subnet"
   cidr_block        = "10.0.1.0/24"
-  ipv6cidr_block    = "${substr(oci_core_vcn.main.ipv6cidr_blocks[0], 0, length(oci_core_vcn.main.ipv6cidr_blocks[0]) - 2)}64::/64"
+  ipv6cidr_block    = cidrsubnet(oci_core_vcn.main.ipv6cidr_blocks[0], 8, 0)
   route_table_id    = oci_core_route_table.public.id
   security_list_ids = [oci_core_security_list.public.id]
 }
@@ -110,7 +110,7 @@ resource "oci_core_security_list" "public" {
   vcn_id         = oci_core_vcn.main.id
   display_name   = "public-sl"
 
-  # Allow inbound HTTP/HTTPS from IPv6
+  # Allow inbound HTTPS from IPv6
   ingress_security_rules {
     protocol    = "6"  # TCP
     source      = "::/0"
