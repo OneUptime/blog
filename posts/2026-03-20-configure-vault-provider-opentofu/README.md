@@ -15,10 +15,9 @@ The Vault provider for OpenTofu enables managing Vault resources with the same p
 ```hcl
 terraform {
   required_providers {
-    # Replace with the actual provider source
-    provider_name = {
-      source  = "provider-namespace/provider-name"
-      version = "~> 1.0"
+    vault = {
+      source  = "hashicorp/vault"
+      version = "~> 4.0"
     }
   }
   required_version = ">= 1.6.0"
@@ -27,33 +26,41 @@ terraform {
 
 ## Authentication
 
-Most providers read credentials from environment variables:
+The Vault provider reads connection details from environment variables:
 
 ```bash
-# Set provider credentials via environment variables
+# Set Vault connection details via environment variables
 
-export PROVIDER_API_KEY="your-api-key"
-export PROVIDER_API_SECRET="your-api-secret"
+export VAULT_ADDR="https://vault.example.com:8200"
+export VAULT_TOKEN="s.your-vault-token"
 ```
 
 ```hcl
-provider "provider_name" {
-  # Credentials are read from environment variables
-  # api_key = var.api_key  # Alternative: inline (not recommended)
+provider "vault" {
+  # address and token are read from VAULT_ADDR and VAULT_TOKEN
+  # address = var.vault_address  # Alternative: inline (not recommended for token)
 }
 ```
 
 ## Example Resource
 
 ```hcl
-# Example resource demonstrating provider usage
-resource "provider_example_resource" "main" {
-  name = "${var.name}-${var.environment}"
+# Enable a KV v2 secrets engine and write a secret
+resource "vault_mount" "kv" {
+  path        = "${var.name}-${var.environment}"
+  type        = "kv"
+  options     = { version = "2" }
+  description = "KV v2 store managed by OpenTofu"
+}
 
-  tags = {
+resource "vault_kv_secret_v2" "example" {
+  mount = vault_mount.kv.path
+  name  = "app/config"
+
+  data_json = jsonencode({
     environment = var.environment
     managed_by  = "opentofu"
-  }
+  })
 }
 ```
 
@@ -67,7 +74,7 @@ variable "environment" { type = string }
 ## Outputs
 
 ```hcl
-output "resource_id" { value = provider_example_resource.main.id }
+output "mount_path" { value = vault_mount.kv.path }
 ```
 
 ## Best Practices
