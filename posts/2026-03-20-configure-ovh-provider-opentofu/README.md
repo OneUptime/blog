@@ -15,10 +15,9 @@ The Ovh provider for OpenTofu enables managing Ovh resources with the same plan/
 ```hcl
 terraform {
   required_providers {
-    # Replace with the actual provider source
-    provider_name = {
-      source  = "provider-namespace/provider-name"
-      version = "~> 1.0"
+    ovh = {
+      source  = "ovh/ovh"
+      version = "~> 2.0"
     }
   }
   required_version = ">= 1.6.0"
@@ -27,33 +26,34 @@ terraform {
 
 ## Authentication
 
-Most providers read credentials from environment variables:
+The OVH provider reads credentials from environment variables. Generate an application key, application secret, and consumer key from the OVHcloud API token creation page (e.g. `https://api.ovh.com/createToken/` for the `ovh-eu` endpoint).
 
 ```bash
-# Set provider credentials via environment variables
+# Set OVH credentials via environment variables
 
-export PROVIDER_API_KEY="your-api-key"
-export PROVIDER_API_SECRET="your-api-secret"
+export OVH_ENDPOINT="ovh-eu"
+export OVH_APPLICATION_KEY="your-application-key"
+export OVH_APPLICATION_SECRET="your-application-secret"
+export OVH_CONSUMER_KEY="your-consumer-key"
 ```
 
 ```hcl
-provider "provider_name" {
-  # Credentials are read from environment variables
-  # api_key = var.api_key  # Alternative: inline (not recommended)
+provider "ovh" {
+  # Credentials are read from the OVH_* environment variables
+  # endpoint = "ovh-eu"  # Alternative: inline (not recommended)
 }
 ```
 
 ## Example Resource
 
 ```hcl
-# Example resource demonstrating provider usage
-resource "provider_example_resource" "main" {
-  name = "${var.name}-${var.environment}"
-
-  tags = {
-    environment = var.environment
-    managed_by  = "opentofu"
-  }
+# Create an A record on an OVH-managed DNS zone
+resource "ovh_domain_zone_record" "main" {
+  zone      = var.zone
+  subdomain = "${var.name}-${var.environment}"
+  fieldtype = "A"
+  ttl       = 3600
+  target    = "203.0.113.10"
 }
 ```
 
@@ -62,12 +62,13 @@ resource "provider_example_resource" "main" {
 ```hcl
 variable "name"        { type = string }
 variable "environment" { type = string }
+variable "zone"        { type = string }
 ```
 
 ## Outputs
 
 ```hcl
-output "resource_id" { value = provider_example_resource.main.id }
+output "record_id" { value = ovh_domain_zone_record.main.id }
 ```
 
 ## Best Practices
