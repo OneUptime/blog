@@ -32,7 +32,7 @@ ifconfig_em0_ipv6="inet6 accept_rtadv"
 rtsold_enable="YES"
 rtsold_flags="-aF"
 # -a: auto-detect interfaces
-# -F: flush existing default route before accepting new one from RA
+# -F: explicitly configure the kernel to accept RAs and disable IPv6 forwarding
 EOF
 
 # Apply
@@ -62,10 +62,11 @@ ifconfig em0 | grep inet6
 ```bash
 # rtsold flags:
 # -a     = auto-detect interfaces (don't need to specify interface)
-# -F     = flush existing routes before processing RA
-# -d     = debug output
+# -F     = force kernel to accept RAs and disable IPv6 forwarding
+# -d     = enable debugging
+# -D     = enable more debugging
 # -f     = foreground (don't daemonize)
-# -v     = verbose output
+# -1     = send only one solicitation per interface and exit
 
 # Example with interface specified explicitly
 rtsold em0
@@ -111,7 +112,7 @@ net.inet6.ip6.prefer_tempaddr=1
 EOF
 
 # Verify temporary addresses are generated after SLAAC
-ifconfig em0 | grep 'inet6.*tempaddr'
+ifconfig em0 | grep 'inet6.*temporary'
 ```
 
 ## Combine SLAAC with Static DNS
