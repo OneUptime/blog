@@ -135,7 +135,7 @@ sudo systemctl start phc2sys
 
 ```bash
 # Check PTP traffic on IPv6
-sudo tcpdump -i eth0 -n ip6 and udp port 319 or udp port 320
+sudo tcpdump -i eth0 -n 'ip6 and (udp port 319 or udp port 320)'
 
 # PTP uses:
 # UDP port 319 for event messages (Sync, Delay_Req)
@@ -155,7 +155,8 @@ PTP uses specific multicast addresses for IPv6:
 
 ```bash
 # PTP primary multicast address for IPv6
-FF0E::181    # PTP domain 0 (all nodes)
+FF0E::181    # PTP primary multicast (all PTP nodes; domain is set in the message header)
+FF02::6B     # PTP peer delay multicast (link-local, used in P2P delay mechanism)
 
 # Check if multicast is working
 ip -6 maddr show eth0 | grep "FF0E"
