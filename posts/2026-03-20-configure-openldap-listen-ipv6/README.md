@@ -83,7 +83,7 @@ In slapd.conf or via cn=config, add access rules that cover IPv6:
 # slapd.conf style access control
 # Allow IPv6 subnet to read the directory
 access to *
-  by peername.ip="2001:db8::/32" read
+  by peername.ipv6="2001:db8::%ffff:ffff::" read
   by self write
   by anonymous auth
   by * none
@@ -98,12 +98,12 @@ dn: olcDatabase={1}mdb,cn=config
 changetype: modify
 replace: olcAccess
 olcAccess: {0}to attrs=userPassword
-  by peername.ip="2001:db8::/32" auth
+  by peername.ipv6="2001:db8::%ffff:ffff::" auth
   by self write
   by anonymous auth
   by * none
 olcAccess: {1}to *
-  by peername.ip="2001:db8::/32" read
+  by peername.ipv6="2001:db8::%ffff:ffff::" read
   by self write
   by * none
 EOF
@@ -116,7 +116,7 @@ sudo ldapmodify -Y EXTERNAL -H ldapi:/// -f /tmp/acl_ipv6.ldif
 
 ```bash
 # Test LDAP search from an IPv6 address
-ldapsearch -H ldap://[2001:db8::1] \
+ldapsearch -x -H ldap://[2001:db8::1] \
   -b "dc=example,dc=com" \
   -D "cn=admin,dc=example,dc=com" \
   -w adminpassword \
@@ -144,7 +144,7 @@ sudo ip6tables -A INPUT -p tcp --dport 636 -j ACCEPT  # LDAPS
 sudo ip6tables -A INPUT -p tcp -s 2001:db8::/32 --dport 389 -j ACCEPT
 
 # Save rules
-sudo ip6tables-save > /etc/ip6tables/rules.v6
+sudo ip6tables-save > /etc/iptables/rules.v6
 ```
 
 ## Monitoring OpenLDAP IPv6 Connections
