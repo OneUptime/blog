@@ -71,7 +71,7 @@ resource "aws_budgets_budget" "environment" {
 
   cost_filter {
     name   = "TagKeyValue"
-    values = ["user:Environment$${each.key}"]
+    values = ["user:Environment${"$"}${each.key}"]
   }
 
   notification {
@@ -111,7 +111,7 @@ resource "aws_cloudwatch_metric_alarm" "monthly_billing" {
   }
 
   alarm_actions = [aws_sns_topic.billing_alerts.arn]
-  alarm_description = "Monthly AWS charges exceeded $${var.billing_alarm_threshold}"
+  alarm_description = "Monthly AWS charges exceeded ${"$"}${var.billing_alarm_threshold}"
 }
 ```
 
