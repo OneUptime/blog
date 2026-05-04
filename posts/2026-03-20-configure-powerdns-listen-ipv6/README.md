@@ -33,10 +33,10 @@ local-address=0.0.0.0, ::
 local-port=53
 
 # Allow AXFR (zone transfer) to secondary servers including IPv6
-allow-axfr-ips=2001:db8::secondary-ns, 192.0.2.0/24
+allow-axfr-ips=2001:db8::2, 192.0.2.0/24
 
 # Allow DNS notify from primaries
-allow-notify-from=2001:db8::primary-ns, 192.0.2.0/24
+allow-notify-from=2001:db8::1, 192.0.2.0/24
 ```
 
 ## Configuring PowerDNS Recursor for IPv6
@@ -52,9 +52,10 @@ local-address=0.0.0.0, ::
 # Allow queries from IPv6 clients
 allow-from=127.0.0.0/8, ::1/128, 192.168.0.0/16, 10.0.0.0/8, 2001:db8::/32, fd00::/8
 
-# Use IPv6 for outbound queries to authoritative servers
-query-local-address=0.0.0.0
-query-local-address6=::
+# Use IPv4 and IPv6 for outbound queries to authoritative servers
+# Since Recursor 4.4, query-local-address accepts both IPv4 and IPv6
+# (the legacy query-local-address6 setting is deprecated)
+query-local-address=0.0.0.0, ::
 
 # Enable IPv6 for recursive queries
 # (enabled by default in recent versions, but explicit is safer)
@@ -64,9 +65,9 @@ query-local-address6=::
 
 ```bash
 # Check pdns configuration syntax
-pdns_server --config-check
-# or for Recursor
-pdns_recursor --config-check
+pdns_server --config=check
+# or for Recursor (requires Recursor 4.8.0+)
+pdns_recursor --config=check
 
 # Restart PowerDNS Authoritative Server
 systemctl restart pdns
@@ -108,8 +109,8 @@ ip6tables -A INPUT -p tcp --dport 53 -j ACCEPT
 ip6tables -A INPUT -p udp --sport 53 -j ACCEPT
 ip6tables -A INPUT -p tcp --sport 53 -j ACCEPT
 
-# Save rules
-ip6tables-save > /etc/ip6tables/rules.v6
+# Save rules (path used by iptables-persistent on Debian/Ubuntu)
+ip6tables-save > /etc/iptables/rules.v6
 ```
 
 ## Monitoring IPv6 Queries in PowerDNS
