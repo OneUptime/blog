@@ -52,27 +52,25 @@ Send SNMP traps to your NMS when events occur:
 Router(config)# snmp-server host 192.168.1.100 version 2c public
 
 ! Enable specific trap categories
-Router(config)# snmp-server enable traps snmp authentication    ! Auth failures
-Router(config)# snmp-server enable traps linkdown              ! Interface down
-Router(config)# snmp-server enable traps linkup                ! Interface up
-Router(config)# snmp-server enable traps bgp                   ! BGP state changes
-Router(config)# snmp-server enable traps ospf                  ! OSPF events
+Router(config)# snmp-server enable traps snmp authentication linkdown linkup    ! Auth failures and interface up/down
+Router(config)# snmp-server enable traps bgp                                    ! BGP state changes
+Router(config)# snmp-server enable traps ospf                                   ! OSPF events
 
 ! Set the trap source interface (use loopback for consistency)
 Router(config)# snmp-server trap-source Loopback0
 ```
 
-## Step 4: Limit SNMP to Specific Interfaces
+## Step 4: Restrict SNMP Access With a Named ACL
 
-Restrict which interfaces respond to SNMP queries:
+Restrict which source IPs can poll the device via SNMP:
 
 ```text
-! Only respond to SNMP queries on the management interface
-Router(config)# snmp-server trap-source GigabitEthernet0/0
+! Restrict SNMP polling to specific NMS source IPs using a named ACL
 Router(config)# ip access-list standard SNMP_ACCESS
 Router(config-std-nacl)# permit 192.168.1.100
 Router(config-std-nacl)# permit 192.168.1.101
 Router(config-std-nacl)# deny any log
+Router(config)# exit
 Router(config)# snmp-server community Net0ps_M0n!t0r RO SNMP_ACCESS
 ```
 
