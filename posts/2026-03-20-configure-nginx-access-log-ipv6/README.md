@@ -16,11 +16,12 @@ Nginx captures IPv6 client addresses in the `$remote_addr` variable. However, lo
 # /etc/nginx/nginx.conf
 
 http {
-    # Standard combined log format - works with IPv6 automatically
+    # Custom format equivalent to the built-in combined format
     # $remote_addr shows IPv6 address like 2001:db8::1
-    log_format combined '$remote_addr - $remote_user [$time_local] '
-                        '"$request" $status $body_bytes_sent '
-                        '"$http_referer" "$http_user_agent"';
+    # Note: 'combined' is predefined by nginx and cannot be redefined
+    log_format main '$remote_addr - $remote_user [$time_local] '
+                    '"$request" $status $body_bytes_sent '
+                    '"$http_referer" "$http_user_agent"';
 
     # Enhanced format with more IPv6-relevant fields
     log_format enhanced '$remote_addr '
@@ -70,7 +71,7 @@ When behind a load balancer, IPv6 addresses in X-Forwarded-For headers need prop
 
 # Set trusted IPv6 proxies
 
-set_real_ip_from 2001:db8:lb::/48;  # IPv6 load balancer subnet
+set_real_ip_from 2001:db8::/48;  # IPv6 load balancer subnet
 set_real_ip_from 127.0.0.1;
 set_real_ip_from ::1;
 
