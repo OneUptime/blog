@@ -106,8 +106,7 @@ If you don't specify a VPC, resources are placed in the region's default VPC. Yo
 
 ```hcl
 data "digitalocean_vpc" "default" {
-  region  = "nyc3"
-  default = true
+  region = "nyc3"
 }
 
 resource "digitalocean_droplet" "dev" {
