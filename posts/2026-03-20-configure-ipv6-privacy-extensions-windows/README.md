@@ -17,11 +17,14 @@ netsh interface ipv6 show privacy
 
 # Output:
 # Temporary Address Parameters
-# -----------------------------
-# Use Temporary Addresses         : enabled
-# Maximum Lifetime (days)         : 7
-# Preferred Lifetime (days)       : 1
-# Regenerate Time (seconds)       : 5
+# ----------------------------------------------
+# Use Temporary Addresses                  : enabled
+# Duplicate Address Detection Attempts     : 3
+# Maximum Valid Lifetime                   : 7d
+# Maximum Preferred Lifetime               : 1d
+# Regenerate Time                          : 5s
+# Maximum Random Time                      : 10m
+# Random Time                              : 1m
 ```
 
 ## Enable/Disable Privacy Extensions via netsh
@@ -34,7 +37,7 @@ netsh interface ipv6 set privacy state=enabled
 netsh interface ipv6 set privacy state=disabled
 
 :: Enable with custom lifetimes
-netsh interface ipv6 set privacy state=enabled maxdadattempts=3
+netsh interface ipv6 set privacy state=enabled maxvalidlifetime=7d maxpreferredlifetime=1d
 
 :: Show current settings
 netsh interface ipv6 show privacy
@@ -96,7 +99,8 @@ Get-NetIPAddress -AddressFamily IPv6 |
 # First, get interface index
 Get-NetAdapter | Select-Object Name, InterfaceIndex
 
-# Set privacy for specific interface via netsh
+# Example: configure other per-interface IPv6 settings via netsh
+# (privacy extensions themselves are not per-interface on Windows)
 netsh interface ipv6 set interface "Ethernet" `
     routerdiscovery=enabled
 
