@@ -41,7 +41,7 @@ resource "linode_object_storage_key" "app" {
   bucket_access {
     bucket_name = linode_object_storage_bucket.assets.label
     cluster     = linode_object_storage_bucket.assets.cluster
-    permissions = "read_write"  # read_only, write_only, read_write
+    permissions = "read_write"  # read_only, read_write
   }
 }
 
