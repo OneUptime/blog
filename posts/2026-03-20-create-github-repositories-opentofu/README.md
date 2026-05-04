@@ -27,7 +27,7 @@ provider "github" {
 }
 ```
 
-Resource Configuration
+## Resource Configuration
 
 ```hcl
 # Branch protection example
@@ -69,9 +69,9 @@ resource "github_team_membership" "platform" {
 
 # Actions secret
 resource "github_actions_secret" "deploy_key" {
-  repository      = var.repository_name
-  secret_name     = "DEPLOY_KEY"
-  plaintext_value = var.deploy_key_value
+  repository  = var.repository_name
+  secret_name = "DEPLOY_KEY"
+  value       = var.deploy_key_value
 }
 
 # Webhook
@@ -96,10 +96,22 @@ resource "github_repository_webhook" "ci" {
 variable "github_org"      { type = string }
 variable "repository_id"   { type = string }
 variable "repository_name" { type = string }
-variable "team_members"    { type = list(string); default = [] }
-variable "deploy_key_value" { type = string; sensitive = true }
 variable "webhook_url"     { type = string }
-variable "webhook_secret"  { type = string; sensitive = true }
+
+variable "team_members" {
+  type    = list(string)
+  default = []
+}
+
+variable "deploy_key_value" {
+  type      = string
+  sensitive = true
+}
+
+variable "webhook_secret" {
+  type      = string
+  sensitive = true
+}
 ```
 
 ## Conclusion
