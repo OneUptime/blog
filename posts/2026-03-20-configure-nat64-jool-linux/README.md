@@ -55,7 +55,8 @@ Jool uses "instances" to define NAT64 translation configurations. Each instance 
 
 ```bash
 # Create a NAT64 instance named "default" in the current namespace
-jool instance add --iptables
+# --pool6 is mandatory for NAT64 and sets the translation prefix
+jool instance add --iptables --pool6 64:ff9b::/96
 
 # Verify the instance was created
 jool instance display
@@ -63,14 +64,14 @@ jool instance display
 
 ## Configuring the IPv6 Prefix (Pool6)
 
-Pool6 is the NAT64 prefix that embeds IPv4 addresses. Use the well-known prefix `64:ff9b::/96` or your own:
+Pool6 is the NAT64 prefix that embeds IPv4 addresses. In Jool 4.x, pool6 is a global configuration field rather than its own database, so it is set at instance creation via `--pool6` (as above) and can be updated later through the `global` command:
 
 ```bash
-# Set the NAT64 prefix to the well-known 64:ff9b::/96
-jool pool6 add 64:ff9b::/96
+# Update the NAT64 prefix on the existing instance (e.g., to your own prefix)
+jool global update pool6 64:ff9b::/96
 
-# Verify pool6 configuration
-jool pool6 display
+# Verify the pool6 configuration
+jool global display | grep pool6
 ```
 
 ## Configuring the IPv4 Address Pool (Pool4)
