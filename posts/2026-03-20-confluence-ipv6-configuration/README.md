@@ -135,7 +135,7 @@ sudo ip6tables -A INPUT -p tcp \
   -s 2001:db8:internal::/48 \
   --dport 8090 -j ACCEPT
 
-sudo ip6tables-save > /etc/ip6tables/rules.v6
+sudo ip6tables-save > /etc/iptables/rules.v6
 ```
 
 ## Verify IPv6 Access
