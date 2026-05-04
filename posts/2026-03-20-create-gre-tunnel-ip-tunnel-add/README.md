@@ -27,11 +27,11 @@ Host A (10.0.0.1 public) ---[GRE tunnel]--- Host B (10.0.0.2 public)
 
 ```bash
 # Create GRE tunnel interface named gre1 on Host A
-
+# local = this host's public IP, remote = remote host's public IP, ttl = TTL for encapsulated packets
 sudo ip tunnel add gre1 mode gre \
-  local 10.0.0.1 \      # This host's public IP
-  remote 10.0.0.2 \     # Remote host's public IP
-  ttl 255               # TTL for encapsulated packets
+  local 10.0.0.1 \
+  remote 10.0.0.2 \
+  ttl 255
 
 # Bring up the tunnel interface
 sudo ip link set gre1 up
@@ -44,9 +44,10 @@ sudo ip addr add 172.16.0.1/30 dev gre1
 
 ```bash
 # Create GRE tunnel interface on Host B (mirror configuration)
+# local = Host B's public IP, remote = Host A's public IP
 sudo ip tunnel add gre1 mode gre \
-  local 10.0.0.2 \      # Host B's public IP
-  remote 10.0.0.1 \     # Host A's public IP
+  local 10.0.0.2 \
+  remote 10.0.0.1 \
   ttl 255
 
 sudo ip link set gre1 up
