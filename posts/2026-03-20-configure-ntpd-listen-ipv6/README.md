@@ -40,15 +40,15 @@ The `interface` directive in ntp.conf controls which interfaces ntpd listens on:
 interface listen 2001:db8::1
 
 # Option 3: Listen on all IPv6 interfaces
-interface listen ::
+interface listen ipv6
 
 # Option 4: Explicitly disable IPv4, listen only on IPv6
-interface ignore 0.0.0.0
-interface listen ::
+interface ignore ipv4
+interface listen ipv6
 
 # Option 5: Dual-stack (explicit)
-interface listen 0.0.0.0
-interface listen ::
+interface listen ipv4
+interface listen ipv6
 ```
 
 ## Full ntp.conf Example for Dual-Stack
