@@ -107,7 +107,7 @@ tls-auth-clients yes
 ```bash
 # Firewall: allow Redis only from specific IPv6 subnet
 ip6tables -A INPUT -p tcp --dport 6379 \
-    -s 2001:db8:app::/48 -j ACCEPT
+    -s 2001:db8:abcd::/48 -j ACCEPT
 ip6tables -A INPUT -p tcp --dport 6379 -j DROP
 ```
 
