@@ -101,13 +101,16 @@ After creating the instance, configure the VLAN interface with cloud-init:
 ```hcl
 resource "linode_instance" "app" {
   # ...
-  user_data = <<-EOT
-    #cloud-config
-    runcmd:
-      # Ensure the VLAN interface (eth1) is up
-      - ip link set eth1 up
-      - ip addr add 10.0.0.10/24 dev eth1
-  EOT
+  metadata {
+    user_data = base64encode(<<-EOT
+      #cloud-config
+      runcmd:
+        # Ensure the VLAN interface (eth1) is up
+        - ip link set eth1 up
+        - ip addr add 10.0.0.10/24 dev eth1
+    EOT
+    )
+  }
 }
 ```
 
