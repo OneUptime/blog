@@ -25,7 +25,7 @@ https_port [::]:443 accel vhost \
   key=/etc/squid/server.key
 
 # Backend (origin) server - IPv6 or IPv4
-cache_peer 2001:db8::backend parent 8080 0 no-query originserver \
+cache_peer 2001:db8::1 parent 8080 0 no-query originserver \
   name=backend1 login=PASS
 
 # Or IPv4 backend
@@ -79,7 +79,7 @@ acl_uses_indirect_client on
 
 ```squid
 # Add X-Forwarded-For with client's IPv6 address to backend requests
-request_header_add X-Forwarded-For %[src] all
+request_header_add X-Forwarded-For "%>a" all
 
 # Forward client IP to backend (for logging)
 forwarded_for on
@@ -89,17 +89,17 @@ forwarded_for on
 
 ```squid
 # Round-robin across multiple IPv6 backends
-cache_peer 2001:db8::backend1 parent 8080 0 no-query originserver \
+cache_peer 2001:db8::1 parent 8080 0 no-query originserver \
   round-robin weight=1 name=be1
 
-cache_peer 2001:db8::backend2 parent 8080 0 no-query originserver \
+cache_peer 2001:db8::2 parent 8080 0 no-query originserver \
   round-robin weight=1 name=be2
 
-cache_peer 2001:db8::backend3 parent 8080 0 no-query originserver \
+cache_peer 2001:db8::3 parent 8080 0 no-query originserver \
   round-robin weight=2 name=be3   # Higher weight = more traffic
 
 # Failover configuration
-cache_peer 2001:db8::backup parent 8080 0 no-query originserver \
+cache_peer 2001:db8::ff parent 8080 0 no-query originserver \
   no-digest no-netdb-exchange allow-miss \
   max-conn=100 name=backup
 ```
@@ -112,7 +112,7 @@ squidclient -h ::1 mgr:info | grep -E "Hits|Miss|Request"
 
 # Cache hit ratio for IPv6 traffic
 tail -1000 /var/log/squid/access.log | \
-  awk '$4 ~ /TCP_HIT|TCP_MISS/ {hits[$4]++} END {
+  awk '{split($4, a, "/"); hits[a[1]]++} END {
     total = hits["TCP_HIT"] + hits["TCP_MISS"]
     if (total > 0) printf "Hit ratio: %.1f%%\n", hits["TCP_HIT"]/total*100
   }'
