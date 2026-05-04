@@ -22,13 +22,13 @@ Description: Create a Docker macvlan network that allows containers to appear as
 # eth0 is the host's physical interface connected to the LAN
 
 # The parent subnet is 192.168.1.0/24 with gateway 192.168.1.1
-# We give containers IPs from 192.168.1.200-220
+# We give containers IPs from 192.168.1.208-192.168.1.223 (a /28 block of 16 addresses)
 
 docker network create \
   --driver macvlan \
   --subnet 192.168.1.0/24 \
   --gateway 192.168.1.1 \
-  --ip-range 192.168.1.200/28 \
+  --ip-range 192.168.1.208/28 \
   --opt parent=eth0 \
   lan-macvlan
 ```
@@ -36,7 +36,7 @@ docker network create \
 ## Running a Container on the macvlan Network
 
 ```bash
-# Container gets an IP from 192.168.1.200-215
+# Container gets an IP from 192.168.1.208-192.168.1.223
 docker run -d \
   --name nginx-lan \
   --network lan-macvlan \
@@ -80,7 +80,7 @@ networks:
       config:
         - subnet: 192.168.1.0/24
           gateway: 192.168.1.1
-          ip_range: 192.168.1.200/28
+          ip_range: 192.168.1.208/28
 ```
 
 ## Using a VLAN Subinterface as Parent
