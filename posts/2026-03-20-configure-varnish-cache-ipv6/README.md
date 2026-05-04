@@ -17,11 +17,11 @@ Varnish Cache is a high-performance HTTP accelerator. Configuring it for IPv6 in
 
 # Listen on all interfaces including IPv6
 
-VARNISH_LISTEN_ADDRESS=::
+VARNISH_LISTEN_ADDRESS=[::]
 VARNISH_LISTEN_PORT=80
 
 # Or specific IPv6 address
-# VARNISH_LISTEN_ADDRESS=2001:db8::1
+# VARNISH_LISTEN_ADDRESS=[2001:db8::1]
 
 # Backend timeout
 VARNISH_TIMEOUT_CONNECT=5
@@ -66,6 +66,13 @@ vcl 4.1;
 import std;
 import directors;
 
+# ACL of clients allowed to issue PURGE requests
+acl purge {
+    "127.0.0.1";
+    "::1";
+    "2001:db8::"/32;
+}
+
 # Backend definition with IPv6 address
 backend web1 {
     .host = "2001:db8::10";
@@ -104,10 +111,8 @@ sub vcl_recv {
 
     # Handle PURGE requests
     if (req.method == "PURGE") {
-        # Only allow purge from localhost or internal IPv6 subnet
-        if (!std.ip(client.ip, "::1") &&
-            !std.ip(client.ip, "2001:db8::") &&
-            client.ip != "127.0.0.1") {
+        # Only allow purge from clients matching the purge ACL
+        if (!(client.ip ~ purge)) {
             return (synth(405, "Not allowed."));
         }
         return (purge);
@@ -189,7 +194,7 @@ sudo ip6tables -A INPUT -p tcp --dport 80 -j ACCEPT
 # Management port (restrict to localhost only)
 sudo ip6tables -A INPUT -p tcp -s ::1 --dport 6082 -j ACCEPT
 
-sudo ip6tables-save > /etc/ip6tables/rules.v6
+sudo ip6tables-save > /etc/iptables/rules.v6
 ```
 
 Varnish Cache's IPv6 support through its listen address configuration and VCL backend definitions enables powerful HTTP caching for IPv6 web traffic with the same performance characteristics as IPv4 caching deployments.
