@@ -79,10 +79,11 @@ resource "hcloud_server" "web" {
 
 ## Placement Group Limitations
 
-- Maximum of **10 servers** per placement group.
-- Servers must be in the **same location** (datacenter) as the placement group.
-- Placement groups can only be assigned at server **creation time** - you cannot add an existing server to a placement group.
-- If no suitable physical host with available capacity exists, the server creation may fail. Hetzner recommends not creating more than 10 servers in a single group.
+- Maximum of **10 servers** per placement group (type `spread`).
+- Up to **50 placement groups** per project, and a server can belong to only **one** placement group at a time.
+- Existing servers can be added to a placement group, but they must be **powered off** first.
+- Servers in the same group are not required to be in the same location, but the `spread` type only protects against single-host failures, so it is best suited for servers in the same location.
+- If no suitable physical host with available capacity exists, the server creation may fail.
 
 ## Checking Placement Group Usage
 
@@ -102,10 +103,7 @@ output "server_placement_groups" {
 resource "hcloud_load_balancer_target" "web" {
   load_balancer_id = hcloud_load_balancer.web.id
   type             = "label_selector"
-
-  label_selector {
-    selector = "role=web"
-  }
+  label_selector   = "role=web"
 }
 ```
 
