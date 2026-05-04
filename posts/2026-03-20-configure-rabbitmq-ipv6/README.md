@@ -8,19 +8,19 @@ Description: Learn how to configure RabbitMQ to listen on IPv6 addresses for AMQ
 
 ## RabbitMQ IPv6 Configuration File
 
-```erlang
-%% /etc/rabbitmq/rabbitmq.conf
+```ini
+# /etc/rabbitmq/rabbitmq.conf
 
-%% Listen on specific IPv6 address
+# Listen on specific IPv6 address
 listeners.tcp.1 = 2001:db8::10:5672
 
-%% Listen on IPv6 loopback
+# Listen on IPv6 loopback
 listeners.tcp.2 = ::1:5672
 
-%% Listen on all IPv6 interfaces
-%% listeners.tcp.1 = :::5672
+# Listen on all IPv6 interfaces
+# listeners.tcp.1 = :::5672
 
-%% Management plugin (HTTP API + UI)
+# Management plugin (HTTP API + UI)
 management.tcp.ip = 2001:db8::10
 management.tcp.port = 15672
 ```
@@ -71,19 +71,25 @@ curl -6 -u guest:guest http://[2001:db8::10]:15672/api/overview
 
 ## RabbitMQ Cluster with IPv6
 
-```erlang
-%% /etc/rabbitmq/rabbitmq.conf
+Set the node name (use FQDN or hostname, not an IP) via `RABBITMQ_NODENAME` or in `/etc/rabbitmq/rabbitmq-env.conf`:
 
-%% Node name with IPv6 (use FQDN or hostname, not IP in node name)
-nodename = rabbit@node1.example.com
+```bash
+# /etc/rabbitmq/rabbitmq-env.conf
+NODENAME=rabbit@node1.example.com
+```
 
-%% Cluster formation peer discovery
+Then configure clustering and the distribution listener in `rabbitmq.conf`:
+
+```ini
+# /etc/rabbitmq/rabbitmq.conf
+
+# Cluster formation peer discovery
 cluster_formation.peer_discovery_backend = rabbit_peer_discovery_classic_config
 cluster_formation.classic_config.nodes.1 = rabbit@node1.example.com
 cluster_formation.classic_config.nodes.2 = rabbit@node2.example.com
 cluster_formation.classic_config.nodes.3 = rabbit@node3.example.com
 
-%% Distribution listener (inter-node)
+# Distribution listener (inter-node)
 distribution.listener.interface = 2001:db8::10
 distribution.listener.port_range.min = 25672
 distribution.listener.port_range.max = 25672
