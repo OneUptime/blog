@@ -16,7 +16,7 @@ A dedicated backup server reachable only over IPv6 adds a security layer to your
 # Verify the backup server has a public IPv6 address
 
 ip -6 addr show | grep "scope global"
-# Expected: 2001:db8::backup/64
+# Expected: 2001:db8::1/64
 
 # Set a static hostname
 hostnamectl set-hostname backup.example.com
@@ -32,7 +32,7 @@ sudo chmod 700 /home/backupuser/.ssh
 ```bash
 # /etc/ssh/sshd_config
 # Listen on IPv6 only for backup server
-ListenAddress 2001:db8::backup
+ListenAddress 2001:db8::1
 
 # Restrict access to backup user only
 AllowUsers backupuser
@@ -66,10 +66,10 @@ ssh-keygen -t ed25519 \
 # Copy the public key to the backup server
 ssh-copy-id -i ~/.ssh/backup_key.pub \
   -o "AddressFamily inet6" \
-  backupuser@[2001:db8::backup]
+  backupuser@[2001:db8::1]
 
 # Test connection
-ssh -6 -i ~/.ssh/backup_key backupuser@[2001:db8::backup] "echo Connected"
+ssh -6 -i ~/.ssh/backup_key backupuser@[2001:db8::1] "echo Connected"
 ```
 
 ## Restricting What Clients Can Do (Forced Commands)
@@ -120,7 +120,7 @@ sudo ip6tables -A INPUT -p tcp --dport 22 -j ACCEPT
 sudo ip6tables -A INPUT -i lo -j ACCEPT
 
 # Save rules
-sudo ip6tables-save > /etc/ip6tables/rules.v6
+sudo ip6tables-save > /etc/iptables/rules.v6
 sudo systemctl enable netfilter-persistent
 ```
 
@@ -131,7 +131,7 @@ sudo systemctl enable netfilter-persistent
 #!/bin/bash
 # /usr/local/bin/backup-to-ipv6-server.sh
 
-BACKUP_SERVER="2001:db8::backup"
+BACKUP_SERVER="2001:db8::1"
 BACKUP_USER="backupuser"
 SSH_KEY="$HOME/.ssh/backup_key"
 REMOTE_PATH="/backups/$(hostname)"
@@ -153,11 +153,11 @@ rsync -avz \
 #!/bin/bash
 # Check backup disk usage on the IPv6 backup server
 ssh -6 -i ~/.ssh/backup_key \
-  backupuser@[2001:db8::backup] \
+  backupuser@[2001:db8::1] \
   "df -h /backups && du -sh /backups/*"
 
 # Alert if disk usage exceeds threshold
-USAGE=$(ssh -6 backupuser@[2001:db8::backup] "df /backups | tail -1 | awk '{print $5}' | tr -d '%'")
+USAGE=$(ssh -6 backupuser@[2001:db8::1] "df /backups | tail -1 | awk '{print \$5}' | tr -d '%'")
 if [ "$USAGE" -gt 80 ]; then
   echo "WARNING: Backup server disk at ${USAGE}% - $(date)" | \
     mail -s "Backup Server Disk Alert" admin@example.com
