@@ -108,10 +108,21 @@ kubectl label cluster.fleet.cattle.io/production \
   -n fleet-default
 ```
 
-Update the `GitRepo` targets to match:
+Update the `GitRepo` targets to match. Note that `targets` in `GitRepo` only selects clusters — per-target Helm value overrides belong in `fleet.yaml` under `targetCustomizations`:
 
 ```yaml
+# In gitrepo-my-app.yaml:
 targets:
+  - name: production-us
+    clusterSelector:
+      matchLabels:
+        env: production
+        region: us-east
+```
+
+```yaml
+# In k8s/fleet.yaml, override Helm values for that target:
+targetCustomizations:
   - name: production-us
     clusterSelector:
       matchLabels:
@@ -148,6 +159,7 @@ For private GitHub repos, create a secret with credentials and reference it in t
 ```bash
 kubectl create secret generic github-creds \
   --namespace fleet-default \
+  --type=kubernetes.io/basic-auth \
   --from-literal=username=git \
   --from-literal=password=<github-pat>
 ```
