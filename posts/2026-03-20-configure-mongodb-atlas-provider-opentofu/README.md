@@ -15,10 +15,9 @@ The Mongodb Atlas provider for OpenTofu enables managing Mongodb Atlas resources
 ```hcl
 terraform {
   required_providers {
-    # Replace with the actual provider source
-    provider_name = {
-      source  = "provider-namespace/provider-name"
-      version = "~> 1.0"
+    mongodbatlas = {
+      source  = "mongodb/mongodbatlas"
+      version = "~> 1.24"
     }
   }
   required_version = ">= 1.6.0"
@@ -27,19 +26,20 @@ terraform {
 
 ## Authentication
 
-Most providers read credentials from environment variables:
+The provider reads credentials from environment variables:
 
 ```bash
-# Set provider credentials via environment variables
+# Set MongoDB Atlas API credentials via environment variables
 
-export PROVIDER_API_KEY="your-api-key"
-export PROVIDER_API_SECRET="your-api-secret"
+export MONGODB_ATLAS_PUBLIC_KEY="your-public-key"
+export MONGODB_ATLAS_PRIVATE_KEY="your-private-key"
 ```
 
 ```hcl
-provider "provider_name" {
+provider "mongodbatlas" {
   # Credentials are read from environment variables
-  # api_key = var.api_key  # Alternative: inline (not recommended)
+  # public_key  = var.public_key   # Alternative: inline (not recommended)
+  # private_key = var.private_key
 }
 ```
 
@@ -47,8 +47,9 @@ provider "provider_name" {
 
 ```hcl
 # Example resource demonstrating provider usage
-resource "provider_example_resource" "main" {
-  name = "${var.name}-${var.environment}"
+resource "mongodbatlas_project" "main" {
+  name   = "${var.name}-${var.environment}"
+  org_id = var.org_id
 
   tags = {
     environment = var.environment
@@ -62,12 +63,13 @@ resource "provider_example_resource" "main" {
 ```hcl
 variable "name"        { type = string }
 variable "environment" { type = string }
+variable "org_id"      { type = string }
 ```
 
 ## Outputs
 
 ```hcl
-output "resource_id" { value = provider_example_resource.main.id }
+output "project_id" { value = mongodbatlas_project.main.id }
 ```
 
 ## Best Practices
