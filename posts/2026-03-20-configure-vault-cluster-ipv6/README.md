@@ -187,7 +187,7 @@ sudo ip6tables -A INPUT -p tcp --dport 8200 -j ACCEPT
 # Vault cluster communication
 sudo ip6tables -A INPUT -p tcp --dport 8201 -j ACCEPT
 
-sudo ip6tables-save > /etc/ip6tables/rules.v6
+sudo ip6tables-save > /etc/iptables/rules.v6
 ```
 
 HashiCorp Vault's configurable listener and cluster address settings make it straightforward to deploy a highly available secrets management cluster on IPv6 infrastructure with full TLS mutual authentication.
