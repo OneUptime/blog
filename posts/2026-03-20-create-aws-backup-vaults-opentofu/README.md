@@ -109,9 +109,10 @@ resource "aws_backup_vault_lock_configuration" "compliance" {
   min_retention_days = 7
   max_retention_days = 365
 
-  # changeable_for_days: Grace period to modify lock configuration
-  # Set to 0 to make it immediately permanent (irreversible)
-  # Set to 1-3 for initial setup with ability to correct
+  # changeable_for_days: Cooling-off period before the lock becomes immutable.
+  # Must be 3 or greater (AWS enforces a minimum 72-hour grace period).
+  # Omit this argument entirely to create the lock in governance mode
+  # (which can be removed by users with sufficient IAM permissions).
   changeable_for_days = 3
 }
 ```
