@@ -33,7 +33,7 @@ jobs:
       - uses: actions/checkout@v4
 
       - name: Setup OpenTofu
-        uses: opentofu/setup-opentofu@v1
+        uses: opentofu/setup-opentofu@v2
 
       - name: tofu init and apply
         id: tofu
@@ -57,16 +57,15 @@ jobs:
 
       - name: Write inventory
         run: |
-          echo '${{ needs.provision.outputs.web_ips }}' |             jq -r '.[] | "[web]
-" + .' > inventory.ini
+          echo '${{ needs.provision.outputs.web_ips }}' | jq -r '"[web]", .[]' > inventory.ini
 
       - name: Wait for SSH
         run: |
-          ansible all -i inventory.ini -m wait_for_connection             --timeout 120             -e "ansible_user=ubuntu ansible_ssh_private_key_file=~/.ssh/key.pem"
+          ansible all -i inventory.ini -m wait_for_connection -a "timeout=120" -e "ansible_user=ubuntu ansible_ssh_private_key_file=~/.ssh/key.pem"
 
       - name: Run playbook
         run: |
-          ansible-playbook -i inventory.ini playbooks/configure.yml             -e "ansible_user=ubuntu"             --private-key ~/.ssh/key.pem
+          ansible-playbook -i inventory.ini playbooks/configure.yml -e "ansible_user=ubuntu" --private-key ~/.ssh/key.pem
 ```
 
 ---
