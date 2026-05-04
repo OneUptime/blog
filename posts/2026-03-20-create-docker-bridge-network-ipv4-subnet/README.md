@@ -30,7 +30,7 @@ docker network inspect my-app-network
 Restrict which IPs Docker assigns from the subnet:
 
 ```bash
-# Subnet /24, but only assign IPs from .128 to .191
+# Subnet /24, but only assign IPs from .128 to .255
 docker network create \
   --driver bridge \
   --subnet 192.168.100.0/24 \
