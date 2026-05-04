@@ -43,29 +43,25 @@ With separate binds:
 ```haproxy
 frontend https_v4v6
     # Single HTTPS socket for both versions
-    bind [::]:443 v4v6 ssl crt /etc/ssl/haproxy/example.pem
-
-    ssl-default-bind-options ssl-min-ver TLSv1.2
+    bind [::]:443 v4v6 ssl crt /etc/ssl/haproxy/example.pem ssl-min-ver TLSv1.2
     mode http
 
     default_backend secure_backend
 ```
 
-## ACLs with v4v6 (IPv4-Mapped Addresses)
+## ACLs with v4v6
 
 ```haproxy
 frontend http_v4v6
     bind [::]:80 v4v6
 
-    # With v4v6, IPv4 addresses appear as ::ffff:A.B.C.D
-    acl is_ipv4_mapped src ::ffff:0.0.0.0/96
-    acl is_pure_ipv6 src 2001:db8::/32
-
-    # Internal IPv4 range (in IPv4-mapped format)
-    acl is_internal_v4 src ::ffff:192.168.0.0/112
-    # ::ffff:192.168.0.0/112 = ::ffff:192.168.0.0 to ::ffff:192.168.255.255
+    # With v4v6, IPv4 clients may be logged as ::ffff:A.B.C.D,
+    # but plain IPv4 ACLs still match those connections.
+    acl is_internal_v4 src 192.168.0.0/16
+    acl is_example_ipv6_prefix src 2001:db8::/32
 
     use_backend internal_backend if is_internal_v4
+    use_backend ipv6_only_backend if is_example_ipv6_prefix
     default_backend public_backend
 ```
 
@@ -77,11 +73,11 @@ frontend http_dual
     bind [::]:80
 
     # ACLs work with real addresses
-    acl is_ipv6 src 2001:db8::/32
+    acl is_example_ipv6_prefix src 2001:db8::/32
     acl is_ipv4_internal src 192.168.0.0/16
 
     use_backend internal if is_ipv4_internal
-    use_backend ipv6_only_backend if is_ipv6
+    use_backend ipv6_only_backend if is_example_ipv6_prefix
     default_backend public_backend
 ```
 
@@ -90,9 +86,9 @@ frontend http_dual
 | Scenario | Use v4v6 | Use Separate Binds |
 |----------|----------|--------------------|
 | Simple setup | Yes | Yes |
-| ACLs based on source IP | Avoid | Recommended |
-| Logging real IPs | Complex | Simple |
-| System-level bindv6only=1 | Won't work | Use separate |
+| ACLs based on source IP | Works, but mapped addresses are less clear | Recommended |
+| Logging real IPs | IPv4 appears as `::ffff:A.B.C.D` | Simple |
+| System-level bindv6only=1 | Can be useful | Yes |
 | Prefer simplicity | Yes | - |
 
 ## Test Dual-Stack Configuration
@@ -106,12 +102,13 @@ haproxy -c -f /etc/haproxy/haproxy.cfg
 curl -4 http://example.com/
 
 # Test IPv6 connection
-curl -6 http://[2001:db8::10]/
+curl -6 http://example.com/
 
-# Check log for correct IP capture
-tail -f /var/log/haproxy.log | grep -E '\[.*:.*\]|::ffff'
+# Inspect the client address field in the log
+# v4v6 may show IPv4 clients as ::ffff:A.B.C.D
+tail -f /var/log/haproxy.log
 ```
 
 ## Summary
 
-HAProxy provides two approaches for dual-stack: `bind [::]:80 v4v6` (single socket for both, IPv4 appears as `::ffff:A.B.C.D`), or separate `bind *:80` and `bind [::]:80` (recommended for clean IP handling in ACLs and logs). Use `v4v6` for simple setups; use separate binds when you need IP-based ACLs or clean logging. Both methods work for HTTPS by appending `ssl crt /path/to/cert.pem`.
+HAProxy provides two approaches for dual-stack: `bind [::]:80 v4v6` (single socket for both, IPv4 may appear as `::ffff:A.B.C.D` in logs), or separate `bind *:80` and `bind [::]:80` (recommended for cleaner logging and clearer address-family handling). Use `v4v6` for a simpler single-socket setup or when you need to override IPv6-only default bind behavior per listener. Both methods work for HTTPS by appending `ssl crt /path/to/cert.pem`.
