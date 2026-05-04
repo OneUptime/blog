@@ -95,13 +95,19 @@ forward-zone:
     forward-addr: 2001:db8:1::53        # Internal DNS over IPv6
     forward-addr: 192.168.1.53          # Fallback IPv4
 
-# Forward all queries to upstream resolvers
+# Forward all queries to upstream resolvers over DNS-over-TLS.
+# forward-tls-upstream applies to every forward-addr in this zone, so
+# all addresses must support DoT and be reached on port 853 with the
+# correct TLS authentication name for certificate validation.
+server:
+    tls-cert-bundle: "/etc/ssl/certs/ca-certificates.crt"
+
 forward-zone:
     name: "."
-    forward-addr: 2606:4700:4700::1111  # Cloudflare IPv6
-    forward-addr: 2606:4700:4700::1001
-    forward-addr: 8.8.8.8
-    forward-tls-upstream: yes           # DNS-over-TLS if supported
+    forward-tls-upstream: yes
+    forward-addr: 2606:4700:4700::1111@853#one.one.one.one  # Cloudflare IPv6
+    forward-addr: 2606:4700:4700::1001@853#one.one.one.one
+    forward-addr: 8.8.8.8@853#dns.google                    # Google DoT
 ```
 
 ## Step 4: Root Hints
