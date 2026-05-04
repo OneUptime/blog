@@ -30,17 +30,16 @@ TOKEN=$(curl -s -X POST \
   -d '{"username":"admin","password":"yourpassword"}' \
   --insecure | python3 -c "import sys,json; print(json.load(sys.stdin)['jwt'])")
 
-# Create an edge environment and get the deployment script
+# Create an edge environment and get the EdgeID/EdgeKey for the deployment
 
 curl -X POST \
   https://portainer.example.com:9443/api/endpoints \
   -H "Authorization: Bearer $TOKEN" \
-  -H "Content-Type: application/json" \
-  -d '{
-    "Name": "edge-site-01",
-    "EndpointCreationType": 4,
-    "EdgeCheckinInterval": 30
-  }' \
+  -F "Name=edge-site-01" \
+  -F "EndpointCreationType=4" \
+  -F "URL=https://portainer.example.com:9443" \
+  -F "EdgeTunnelServerAddress=portainer.example.com:8000" \
+  -F "EdgeCheckinInterval=30" \
   --insecure
 ```
 
