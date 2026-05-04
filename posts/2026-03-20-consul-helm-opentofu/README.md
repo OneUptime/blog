@@ -106,15 +106,50 @@ resource "helm_release" "consul" {
 }
 ```
 
-## Step 2: Enable Service Mesh for a Namespace
+## Step 2: Enable Service Mesh for a Workload
 
 ```hcl
-# Label namespace to enable Consul Connect injection
+# Create the application namespace
 resource "kubernetes_namespace" "app" {
   metadata {
     name = "production"
-    labels = {
-      "consul.hashicorp.com/connect-inject" = "true"
+  }
+}
+
+# Opt a pod into Consul Connect injection via pod annotation.
+# With connectInject.default = false, each pod opts in by setting
+# the consul.hashicorp.com/connect-inject annotation to "true".
+resource "kubernetes_deployment" "frontend" {
+  metadata {
+    name      = "frontend-service"
+    namespace = kubernetes_namespace.app.metadata[0].name
+  }
+
+  spec {
+    replicas = 2
+
+    selector {
+      match_labels = {
+        app = "frontend-service"
+      }
+    }
+
+    template {
+      metadata {
+        labels = {
+          app = "frontend-service"
+        }
+        annotations = {
+          "consul.hashicorp.com/connect-inject" = "true"
+        }
+      }
+
+      spec {
+        container {
+          name  = "frontend"
+          image = "nginx:1.27"
+        }
+      }
     }
   }
 }
