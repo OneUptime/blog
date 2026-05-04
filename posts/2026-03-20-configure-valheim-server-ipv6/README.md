@@ -94,10 +94,8 @@ sudo systemctl enable --now valheim
 ## Firewall Rules for Valheim IPv6
 
 ```bash
-# Valheim uses ports 2456-2458 (UDP)
+# Valheim uses ports 2456-2458 (UDP only)
 sudo ip6tables -A INPUT -p udp --dport 2456:2458 -j ACCEPT
-# Valheim also uses TCP on same ports
-sudo ip6tables -A INPUT -p tcp --dport 2456:2458 -j ACCEPT
 
 sudo ip6tables-save > /etc/ip6tables/rules.v6
 ```
@@ -151,4 +149,4 @@ top -p $(pgrep valheim_server)
 sudo tcpdump -i eth0 -n ip6 and udp and port 8765 -v
 ```
 
-Valheim dedicated servers work with IPv6 infrastructure through the underlying system networking, and configuring firewall rules on both UDP and TCP ports 2456-2458 ensures players on IPv6-only connections can join your Viking world.
+Valheim dedicated servers work with IPv6 infrastructure through the underlying system networking, and configuring firewall rules on UDP ports 2456-2458 ensures players on IPv6-only connections can join your Viking world.
