@@ -127,7 +127,7 @@ resource "aws_kinesis_firehose_delivery_stream" "from_kinesis" {
     prefix     = "raw/"
     buffering_size     = 64
     buffering_interval = 300
-    compression_format = "SNAPPY"
+    compression_format = "Snappy"
   }
 }
 ```
