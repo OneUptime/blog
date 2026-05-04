@@ -86,11 +86,6 @@ resource "azurerm_container_registry" "private" {
       action   = "Allow"
       ip_range = var.ci_cd_ip_range  # Allow CI/CD runners
     }
-
-    virtual_network {
-      action    = "Allow"
-      subnet_id = azurerm_subnet.aks.id
-    }
   }
 }
 
@@ -150,7 +145,7 @@ resource "azurerm_container_registry_task" "purge_untagged" {
     task_content = base64encode(<<-TASK
       version: v1.1.0
       steps:
-        - cmd: acr purge --filter '*:.*' --untagged --ago 7d
+        - cmd: acr purge --filter '.*:.*' --untagged --ago 7d
           timeout: 3600
     TASK
     )
