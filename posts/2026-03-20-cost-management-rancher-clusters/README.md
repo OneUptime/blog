@@ -22,6 +22,7 @@ helm install opencost opencost/opencost \
   --namespace opencost \
   --create-namespace \
   --set opencost.prometheus.internal.enabled=false \
+  --set opencost.prometheus.external.enabled=true \
   --set opencost.prometheus.external.url=http://prometheus.monitoring.svc:9090
 
 # Access OpenCost UI
@@ -33,35 +34,44 @@ kubectl port-forward svc/opencost 9003:9003 -n opencost
 ```yaml
 # opencost-values.yaml
 opencost:
-  cloudProviderApiKey: ""
-  cloudCostLabel: "team"     # Group costs by 'team' label
+  # Enable cloud cost ingestion (CUR/billing data)
+  cloudCost:
+    enabled: true
 
-  # AWS pricing configuration
-  cloudIntegration:
-    aws:
-      enabled: true
-      region: us-east-1
-      # Spot instance pricing
-      spotDataBucket: my-spot-data-feed-bucket
-      spotDataPrefix: cost-data/
-      projectID: "123456789012"
+  # AWS cloud integration (inline JSON; alternatively reference a Secret via cloudIntegrationSecret)
+  cloudIntegrationJSON: |
+    {
+      "aws": [
+        {
+          "athenaBucketName": "s3://my-cur-bucket",
+          "athenaRegion": "us-east-1",
+          "athenaDatabase": "athenacurcfn_my_cur",
+          "athenaTable": "my_cur",
+          "projectID": "123456789012",
+          "serviceKeyName": "AKIA...",
+          "serviceKeySecret": "secret"
+        }
+      ]
+    }
 
-  # Custom pricing for bare-metal
-  customPricesEnabled: true
-  customPrices:
-    cpu: "0.031611"       # $ per vCPU hour
-    memory: "0.004237"    # $ per GB RAM hour
-    storage: "0.00005479" # $ per GB disk hour
+  # Custom pricing for bare-metal (overrides cloud pricing)
+  customPricing:
+    enabled: true
+    provider: custom
+    costModel:
+      CPU: "0.031611"       # $ per vCPU hour
+      RAM: "0.004237"       # $ per GB RAM hour
+      storage: "0.00005479" # $ per GB disk hour
 ```
 
 ## Step 3: Track Costs per Team/Namespace
 
 ```bash
 # Query OpenCost API for namespace costs
-curl http://localhost:9003/model/allocation/query \
+curl http://localhost:9003/allocation \
   -d 'window=7d' \
   -d 'aggregate=namespace' \
-  -d 'accumulate=false' | jq '.data[].sets[].allocations | to_entries[] | {
+  -d 'accumulate=false' | jq '.data[] | to_entries[] | {
     namespace: .key,
     cpu_cost: .value.cpuCost,
     memory_cost: .value.ramCost,
@@ -69,9 +79,9 @@ curl http://localhost:9003/model/allocation/query \
   }'
 
 # Team cost breakdown (group by label)
-curl http://localhost:9003/model/allocation/query \
+curl http://localhost:9003/allocation \
   -d 'window=30d' \
-  -d 'aggregate=label:team' | jq '.data[].sets[].allocations'
+  -d 'aggregate=label:team' | jq '.data[]'
 ```
 
 ## Step 4: Right-Size Pod Resources
@@ -170,8 +180,8 @@ spec:
       rules:
         - alert: NamespaceCostExceedsBudget
           expr: |
-            sum(container_cpu_usage_seconds_total{namespace=~"team-.*"}) by (namespace)
-            * 0.031611 * 730 > 1000
+            sum(rate(container_cpu_usage_seconds_total{namespace=~"team-.*"}[5m])) by (namespace)
+            * 730 * 0.031611 > 1000
           for: 1h
           annotations:
             summary: "Namespace {{ $labels.namespace }} monthly CPU cost exceeds $1000"
