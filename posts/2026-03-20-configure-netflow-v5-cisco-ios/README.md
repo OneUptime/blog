@@ -67,8 +67,8 @@ Router(config)# ip flow-cache timeout active 5
 ! Set inactive flow timeout (export idle flows after this many seconds)
 Router(config)# ip flow-cache timeout inactive 60
 
-! Show current flow cache settings
-Router# show ip flow-cache timeout
+! Show current flow cache settings (timeouts appear in the cache header)
+Router# show running-config | include flow-cache
 ```
 
 ## Step 4: Verify NetFlow Is Capturing Flows
