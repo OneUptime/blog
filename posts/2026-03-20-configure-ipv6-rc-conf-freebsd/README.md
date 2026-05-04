@@ -34,7 +34,7 @@ ipv6_gateway_enable="YES"
 
 # Router Solicitation daemon (sends RS, processes RA for SLAAC)
 rtsold_enable="YES"
-rtsold_flags="-aF"   # -a: autodetect interfaces, -F: flush existing routes
+rtsold_flags="-aF"   # -a: autoprobe interfaces, -F: configure kernel to accept RAs and disable IPv6 forwarding
 ```
 
 ## SLAAC Configuration
@@ -77,10 +77,10 @@ cat >> /etc/rc.conf << 'EOF'
 ipv6_gateway_enable="YES"
 
 # Upstream interface: static + accept RA for default route
-ifconfig_em0_ipv6="inet6 2001:db8:upstream::1 prefixlen 64 accept_rtadv"
+ifconfig_em0_ipv6="inet6 2001:db8:1::1 prefixlen 64 accept_rtadv"
 
 # Downstream interface: static address
-ifconfig_em1_ipv6="inet6 2001:db8:downstream::1 prefixlen 64"
+ifconfig_em1_ipv6="inet6 2001:db8:2::1 prefixlen 64"
 
 # Send Router Advertisements on downstream
 rtadvd_enable="YES"
@@ -97,7 +97,7 @@ service rtadvd start
 ```bash
 # Static routes
 ipv6_static_routes="remote"
-ipv6_route_remote="2001:db8:remote::/48 2001:db8::gateway"
+ipv6_route_remote="2001:db8:1::/48 2001:db8::1"
 
 # Network start order
 network_interfaces="lo0 em0 em1"
