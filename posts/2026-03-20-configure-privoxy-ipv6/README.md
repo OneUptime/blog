@@ -29,7 +29,7 @@ listen-address [::]:8118
 # listen-address [::1]:8118
 
 # Or bind to specific IPv6 address
-# listen-address [2001:db8::proxy]:8118
+# listen-address [2001:db8::1]:8118
 
 # Also listen on IPv4
 listen-address 0.0.0.0:8118
@@ -57,13 +57,13 @@ deny-access ::/0
 # /etc/privoxy/config
 
 # Forward all traffic through an upstream SOCKS5 proxy on IPv6
-forward-socks5t / [2001:db8::socks]:1080 .
+forward-socks5t / [2001:db8::1]:1080 .
 
 # Forward specific domains through IPv6 proxy
 forward-socks5t .onion [::1]:9050 .
 
-# Direct connection for internal IPv6 addresses
-forward 2001:db8:internal::/48 .
+# Direct connection (no parent proxy) for internal hosts
+forward .internal/ .
 ```
 
 ## Step 4: Filtering Rules for IPv6
@@ -102,7 +102,7 @@ ss -lntp | grep :8118
 
 # Test from IPv6 client
 curl -6 -x http://[::1]:8118 http://example.com/
-curl -6 -x http://[2001:db8::proxy]:8118 https://privacy-test.example.com/
+curl -6 -x http://[2001:db8::1]:8118 https://privacy-test.example.com/
 
 # Check logs for IPv6 client addresses
 tail -f /var/log/privoxy/logfile
