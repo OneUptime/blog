@@ -31,17 +31,18 @@ server {
 ## Understanding ipv6only Parameter
 
 ```nginx
-# ipv6only=on (recommended for dual-stack):
+# ipv6only=on (the Nginx default since 0.7.42):
 # [::]:80 accepts ONLY IPv6 connections
 # 0.0.0.0:80 accepts ONLY IPv4 connections
 # Both listeners can coexist on the same port
 
-# ipv6only=off (or omitted) on Linux:
-# [::]:80 may accept BOTH IPv4 and IPv6 connections
-# (depends on net.ipv6.bindv6only kernel setting)
-# This can cause "Address already in use" errors
+# ipv6only=off:
+# [::]:80 accepts BOTH IPv6 and IPv4-mapped IPv4 connections
+# This will conflict with a separate listen 0.0.0.0:80 and
+# cause "Address already in use" errors on nginx start
 
-# Best practice: Always use ipv6only=on for explicit dual-stack
+# Best practice: rely on the default (or set ipv6only=on explicitly)
+# and use a separate listen 0.0.0.0:80 for IPv4
 ```
 
 ## Full Dual-Stack HTTPS Configuration
@@ -59,8 +60,9 @@ server {
 
 server {
     # HTTPS dual-stack
-    listen 443 ssl http2;
-    listen [::]:443 ssl http2 ipv6only=on;
+    listen 443 ssl;
+    listen [::]:443 ssl ipv6only=on;
+    http2 on;   # use the http2 directive; the listen "http2" parameter is deprecated since 1.25.1
 
     server_name example.com;
 
@@ -107,11 +109,13 @@ Note: `ipv6only` is a socket-level option. Only the first server block's listen 
 # Check Linux default for IPv6-only binding
 cat /proc/sys/net/ipv6/bindv6only
 
-# 0 = IPv6 sockets can accept IPv4 (IPv4-mapped)
-# 1 = IPv6 sockets only accept IPv6
+# 0 = IPv6 sockets accept IPv4 (IPv4-mapped) by default (most distros)
+# 1 = IPv6 sockets only accept IPv6 by default
 
-# If bindv6only=1, [::]:80 only accepts IPv6 regardless of ipv6only setting
-# In this case, you MUST use separate listen 0.0.0.0:80 for IPv4
+# This kernel value only sets the DEFAULT for sockets that don't set
+# IPV6_V6ONLY explicitly. When Nginx specifies ipv6only=on or ipv6only=off
+# it calls setsockopt(IPV6_V6ONLY, ...) and overrides this kernel default.
+# Either way, the recommended pattern is a separate listen 0.0.0.0:80 for IPv4.
 ```
 
 ## Verify Dual-Stack is Working
