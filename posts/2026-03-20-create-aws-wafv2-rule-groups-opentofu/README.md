@@ -29,14 +29,14 @@ resource "aws_wafv2_rule_group" "api_protection" {
     statement {
       not_statement {
         statement {
-          byte_match_statement {
+          size_constraint_statement {
             field_to_match {
               single_header {
                 name = "x-api-key"
               }
             }
-            positional_constraint = "EXISTS"
-            search_string         = ""
+            comparison_operator = "GE"
+            size                = 1
             text_transformation {
               priority = 0
               type     = "NONE"
@@ -168,7 +168,7 @@ resource "aws_wafv2_web_acl" "api" {
 }
 ```
 
-## Header Size Restriction Rule
+## Body Size Restriction Rule
 
 ```hcl
 resource "aws_wafv2_rule_group" "size_restrictions" {
