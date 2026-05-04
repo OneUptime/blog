@@ -89,11 +89,12 @@ resource "aws_sns_topic_subscription" "email" {
 # Enable Microsoft Defender for Containers (scans ACR images)
 resource "azurerm_security_center_subscription_pricing" "containers" {
   tier          = "Standard"
-  resource_type = "ContainerRegistry"
+  resource_type = "Containers"
 }
 
 # Security contact for alert notifications
 resource "azurerm_security_center_contact" "main" {
+  name                = "default"
   email               = "security@example.com"
   phone               = "+1-555-0100"
   alert_notifications = true
