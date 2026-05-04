@@ -8,7 +8,7 @@ Description: Learn how to configure the IPv6 autoconf sysctl parameter on Linux 
 
 ## What is IPv6 Autoconf?
 
-The `autoconf` parameter controls whether Linux automatically generates IPv6 addresses from Router Advertisement (RA) prefixes - the SLAAC (Stateless Address Autoconfiguration) process. When a router announces a /64 prefix via RA and `autoconf=1`, the kernel generates a full /128 address by combining the prefix with an interface identifier.
+The `autoconf` parameter controls whether Linux automatically generates IPv6 addresses from Router Advertisement (RA) prefixes - the SLAAC (Stateless Address Autoconfiguration) process. When a router announces a /64 prefix via RA and `autoconf=1`, the kernel generates a complete 128-bit address by combining the prefix with an interface identifier (the address is configured on the interface with the announced /64 prefix length).
 
 ```text
 RA prefix: 2001:db8::/64
