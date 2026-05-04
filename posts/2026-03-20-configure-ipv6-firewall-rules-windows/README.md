@@ -59,9 +59,9 @@ New-NetFirewallRule `
 # Block outbound to a specific IPv6 subnet
 New-NetFirewallRule `
     -Name "Block-Outbound-IPv6-Subnet" `
-    -DisplayName "Block Outbound to 2001:db8:blocked::/48" `
+    -DisplayName "Block Outbound to 2001:db8:bad::/48" `
     -Direction Outbound `
-    -RemoteAddress "2001:db8:blocked::/48" `
+    -RemoteAddress "2001:db8:bad::/48" `
     -Action Block `
     -Enabled True
 ```
@@ -107,7 +107,7 @@ netsh advfirewall firewall add rule ^
     action=block
 
 :: Show IPv6-related rules
-netsh advfirewall firewall show rule name=all | findstr /i "ipv6\|::"
+netsh advfirewall firewall show rule name=all | findstr /i "ipv6 ::"
 ```
 
 ## Manage Rules via GUI
