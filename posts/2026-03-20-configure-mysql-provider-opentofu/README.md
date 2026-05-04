@@ -15,10 +15,9 @@ The Mysql provider for OpenTofu enables managing Mysql resources with the same p
 ```hcl
 terraform {
   required_providers {
-    # Replace with the actual provider source
-    provider_name = {
-      source  = "provider-namespace/provider-name"
-      version = "~> 1.0"
+    mysql = {
+      source  = "petoju/mysql"
+      version = "~> 3.0"
     }
   }
   required_version = ">= 1.6.0"
@@ -30,16 +29,18 @@ terraform {
 Most providers read credentials from environment variables:
 
 ```bash
-# Set provider credentials via environment variables
+# Set MySQL credentials via environment variables
 
-export PROVIDER_API_KEY="your-api-key"
-export PROVIDER_API_SECRET="your-api-secret"
+export MYSQL_ENDPOINT="localhost:3306"
+export MYSQL_USERNAME="your-mysql-user"
+export MYSQL_PASSWORD="your-mysql-password"
 ```
 
 ```hcl
-provider "provider_name" {
-  # Credentials are read from environment variables
-  # api_key = var.api_key  # Alternative: inline (not recommended)
+provider "mysql" {
+  # endpoint, username, and password are read from
+  # MYSQL_ENDPOINT, MYSQL_USERNAME, and MYSQL_PASSWORD
+  # endpoint = var.endpoint  # Alternative: inline (not recommended)
 }
 ```
 
@@ -47,13 +48,10 @@ provider "provider_name" {
 
 ```hcl
 # Example resource demonstrating provider usage
-resource "provider_example_resource" "main" {
-  name = "${var.name}-${var.environment}"
-
-  tags = {
-    environment = var.environment
-    managed_by  = "opentofu"
-  }
+resource "mysql_database" "main" {
+  name                  = "${var.name}_${var.environment}"
+  default_character_set = "utf8mb4"
+  default_collation     = "utf8mb4_unicode_ci"
 }
 ```
 
@@ -67,12 +65,12 @@ variable "environment" { type = string }
 ## Outputs
 
 ```hcl
-output "resource_id" { value = provider_example_resource.main.id }
+output "resource_id" { value = mysql_database.main.id }
 ```
 
 ## Best Practices
 
-- Store API keys in environment variables or a secrets manager-never in .tf files
+- Store database credentials in environment variables or a secrets manager-never in .tf files
 - Pin provider versions in `required_providers` to prevent unexpected updates
 - Commit the `.terraform.lock.hcl` file to lock exact provider versions
 - Use separate provider configurations per environment using aliases or workspaces
