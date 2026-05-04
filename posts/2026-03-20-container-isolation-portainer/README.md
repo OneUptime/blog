@@ -82,8 +82,9 @@ version: "3.8"
 services:
   api:
     image: myapp/api:latest
-    pid: "private"   # Container cannot see host PID namespace
-    # This is the default - but explicit is better
+    # PID namespace is private by default - the container cannot see
+    # host processes unless you opt in. Only "host" or "container:<id>"
+    # are accepted as explicit values.
 
   # Dangerous: don't do this in production
   # debug_container:
@@ -180,7 +181,7 @@ services:
     cpu_quota: 50000        # 50% of one CPU (100000 = 1 CPU)
     pids_limit: 100         # Maximum 100 processes/threads
     ulimits:
-      nproc: 100            # Same as pids_limit
+      nproc: 100            # Per-user process limit (RLIMIT_NPROC)
       nofile:
         soft: 1024
         hard: 2048          # File descriptor limits
