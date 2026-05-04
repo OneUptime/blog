@@ -10,7 +10,7 @@ Description: Learn how to configure Receive Side Scaling (RSS) to distribute net
 
 Without RSS, all incoming packets on a network interface are processed by a single CPU core - the one handling that NIC's IRQ. On a 10G or 25G NIC, a single core can become a bottleneck at ~2-3 Gbps of traffic.
 
-RSS allows the NIC hardware to distribute incoming packets across multiple receive queues, each serviced by a different CPU core, using a hash of the 5-tuple (source IP, dest IP, source port, dest port, protocol).
+RSS allows the NIC hardware to distribute incoming packets across multiple receive queues, each serviced by a different CPU core, using a hash of the 4-tuple (source IP, dest IP, source port, dest port) for TCP/UDP flows.
 
 ## Step 1: Check If RSS Is Supported
 
@@ -29,7 +29,7 @@ ethtool -l eth0
 # Current hardware settings:
 # RX: 1        <- currently only 1 queue (RSS disabled)
 # TX: 1
-# Combined: 8
+# Combined: 1
 
 # If "Combined" is >1, the NIC supports multi-queue (RSS/XPS)
 ```
