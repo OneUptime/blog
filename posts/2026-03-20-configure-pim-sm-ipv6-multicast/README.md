@@ -21,8 +21,8 @@ The `pimd` daemon handles both PIM-SM and is available on most Linux distributio
 
 apt install frr
 
-# Enable the PIM daemon in FRR
-sed -i 's/pimd=no/pimd=yes/' /etc/frr/daemons
+# Enable the IPv6 PIM daemon (pim6d) in FRR
+sed -i 's/pim6d=no/pim6d=yes/' /etc/frr/daemons
 
 # Restart FRR
 systemctl restart frr
@@ -47,7 +47,7 @@ interface eth1
 
 # Configure the Rendezvous Point (RP)
 # All routers in the domain must agree on the RP address
-ipv6 pim rp 2001:db8::rp ff3e::/32
+ipv6 pim rp 2001:db8::1 ff3e::/32
 
 # Enable MLD on interfaces (required for PIM-SM)
 interface eth0
@@ -114,7 +114,7 @@ interface eth1
  ipv6 pim
 
 # Configure this router as the RP for ff3e::/32
-ipv6 pim rp 2001:db8::rp ff3e::/32
+ipv6 pim rp 2001:db8::1 ff3e::/32
 
 end
 write memory
@@ -151,7 +151,7 @@ import socket, struct, time
 s = socket.socket(socket.AF_INET6, socket.SOCK_DGRAM)
 s.setsockopt(socket.SOL_SOCKET, socket.SO_REUSEADDR, 1)
 s.bind(('', 5000))
-group = socket.inet_pton(socket.AF_INET6, 'ff3e::db8:test')
+group = socket.inet_pton(socket.AF_INET6, 'ff3e::db8:1234')
 ifidx = struct.pack('I', socket.if_nametoindex('eth0'))
 s.setsockopt(socket.IPPROTO_IPV6, socket.IPV6_JOIN_GROUP, group + ifidx)
 while True:
@@ -166,7 +166,7 @@ s = socket.socket(socket.AF_INET6, socket.SOCK_DGRAM)
 s.setsockopt(socket.IPPROTO_IPV6, socket.IPV6_MULTICAST_HOPS, 16)
 s.setsockopt(socket.IPPROTO_IPV6, socket.IPV6_MULTICAST_IF, socket.if_nametoindex('eth0'))
 for i in range(10):
-    s.sendto(f'packet {i}'.encode(), ('ff3e::db8:test', 5000))
+    s.sendto(f'packet {i}'.encode(), ('ff3e::db8:1234', 5000))
     print(f'Sent packet {i}')
     import time; time.sleep(1)
 "
