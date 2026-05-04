@@ -13,13 +13,15 @@ Description: Learn how to configure MongoDB to listen on IPv6 addresses by updat
 
 net:
   port: 27017
+  # Required: enable IPv6 support (default: false)
+  ipv6: true
   # Default: bindIp: 127.0.0.1 (only localhost)
 
   # Listen on all interfaces (IPv4 and IPv6)
-  bindIp: 0.0.0.0,::
+  bindIp: "0.0.0.0,::"
 
   # Listen on specific IPv6 address and localhost
-  bindIp: 127.0.0.1,::1,2001:db8::10
+  bindIp: "127.0.0.1,::1,2001:db8::10"
 
   # IPv6 and IPv4 loopback only
   bindIp: "::1,127.0.0.1"
@@ -35,6 +37,7 @@ net:
 
 net:
   port: 27017
+  ipv6: true
   bindIp: "127.0.0.1,::1,2001:db8::10"
 
   # TLS/SSL settings (recommended for remote access)
@@ -127,4 +130,4 @@ ufw allow from 2001:db8:app::/48 to any port 27017 proto tcp
 
 ## Summary
 
-Configure MongoDB to listen on IPv6 by setting `net.bindIp: "127.0.0.1,::1,2001:db8::10"` in `/etc/mongod.conf` or use `net.bindIpAll: true` for all interfaces. Restart MongoDB with `systemctl restart mongod`. Verify with `ss -6 -tlnp | grep mongod`. In MongoDB connection strings, IPv6 addresses must be in brackets: `mongodb://[2001:db8::10]:27017`. Enable authentication with `security.authorization: enabled` and TLS with `net.tls.mode: requireTLS` for secure remote access.
+Configure MongoDB to listen on IPv6 by enabling `net.ipv6: true` (required, default is `false`) and setting `net.bindIp: "127.0.0.1,::1,2001:db8::10"` in `/etc/mongod.conf` or use `net.bindIpAll: true` for all interfaces. Restart MongoDB with `systemctl restart mongod`. Verify with `ss -6 -tlnp | grep mongod`. In MongoDB connection strings, IPv6 addresses must be in brackets: `mongodb://[2001:db8::10]:27017`. Enable authentication with `security.authorization: enabled` and TLS with `net.tls.mode: requireTLS` for secure remote access.
