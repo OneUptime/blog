@@ -39,7 +39,7 @@ flow record MY_FLOW_RECORD
  match ipv4 destination address
  match transport source-port
  match transport destination-port
- match ip protocol
+ match ipv4 protocol
  !
  ! Collect these additional fields per flow
  collect counter bytes
@@ -69,7 +69,7 @@ flow exporter MY_EXPORTER
  ! Source interface (use loopback for stability)
  source Loopback0
  !
- ! Template send interval (resend templates every 60 packets)
+ ! Template resend interval (resend templates every 60 seconds)
  template data timeout 60
  options interface-table timeout 60
  options exporter-stats timeout 300
@@ -114,7 +114,7 @@ For basic bandwidth monitoring, use a simpler record:
 flow record BANDWIDTH_RECORD
  match ipv4 source address
  match ipv4 destination address
- match ip protocol
+ match ipv4 protocol
  collect counter bytes long
  collect counter packets long
  collect interface input
@@ -148,9 +148,8 @@ Router# show flow record MY_FLOW_RECORD
 Cisco provides default flow records for common scenarios:
 
 ```text
-! Use the pre-defined IPv4 original flow record (similar to v5)
-flow record netflow-original
-! This is available on most IOS versions as a shortcut
+! netflow-original is a predefined record (similar to v5) - reference it
+! directly in a flow monitor; you do not create it yourself.
 
 flow monitor SIMPLE_MONITOR
  record netflow-original
