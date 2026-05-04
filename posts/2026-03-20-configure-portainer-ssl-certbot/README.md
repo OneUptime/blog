@@ -101,8 +101,11 @@ sudo chmod +x /etc/letsencrypt/renewal-hooks/deploy/portainer.sh
 Certbot's systemd timer handles automatic renewal:
 
 ```bash
-# Check if certbot renewal timer is active
-sudo systemctl status snap.certbot.renew.timer
+# Check if certbot renewal timer is active (apt install)
+sudo systemctl status certbot.timer
+
+# If certbot was installed via snap, the timer is named differently
+# sudo systemctl status snap.certbot.renew.timer
 
 # Manually trigger a dry-run renewal test
 sudo certbot renew --dry-run
