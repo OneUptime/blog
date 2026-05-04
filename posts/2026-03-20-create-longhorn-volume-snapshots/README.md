@@ -94,6 +94,10 @@ metadata:
     snapshot.storage.kubernetes.io/is-default-class: "true"
 driver: driver.longhorn.io
 deletionPolicy: Delete   # Delete snapshot when VolumeSnapshot object is deleted
+parameters:
+  # type=snap creates a Longhorn (in-cluster) snapshot.
+  # Omitting this parameter defaults to a backup (type=bak), which requires a backup target.
+  type: snap
 ```
 
 ```bash
