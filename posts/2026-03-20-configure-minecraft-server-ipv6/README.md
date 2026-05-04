@@ -119,14 +119,14 @@ sudo ip6tables -A INPUT -p udp --dport 19132 -j ACCEPT
 # RCON (restrict to trusted IPs only)
 sudo ip6tables -A INPUT -p tcp -s ::1 --dport 25575 -j ACCEPT
 
-sudo ip6tables-save > /etc/ip6tables/rules.v6
+sudo ip6tables-save > /etc/iptables/rules.v6
 ```
 
 ## DNS Configuration for IPv6 Minecraft
 
 ```bash
 # Add AAAA record for your Minecraft server
-# minecraft.example.com. IN AAAA 2001:db8::minecraft
+# minecraft.example.com. IN AAAA 2001:db8::1
 
 # Optionally add SRV record to use non-default port
 # _minecraft._tcp.example.com. IN SRV 0 5 25565 minecraft.example.com.
@@ -138,16 +138,16 @@ dig AAAA minecraft.example.com +short
 ## Connecting to IPv6 Minecraft Server
 
 Players can connect using:
-- IPv6 address directly: `[2001:db8::minecraft]:25565`
+- IPv6 address directly: `[2001:db8::1]:25565`
 - Hostname with AAAA record: `minecraft.example.com`
 
 ```bash
 # Test server is reachable over IPv6
-nc -6 -w 3 2001:db8::minecraft 25565 && echo "Minecraft port open over IPv6"
+nc -6 -w 3 2001:db8::1 25565 && echo "Minecraft port open over IPv6"
 
 # Check server status with ping
 # mcstatus (pip install mcstatus)
-mcstatus "[2001:db8::minecraft]:25565" status
+mcstatus "[2001:db8::1]:25565" status
 ```
 
 ## Paper/Spigot Server with IPv6
