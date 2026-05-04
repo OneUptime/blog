@@ -36,10 +36,11 @@ network:
       mode: wireguard
       addresses:
         - 10.0.0.1/24
-      private-key-file: /etc/netplan/wg0-private.key
+      key: /etc/netplan/wg0-private.key
       port: 51820
       peers:
-        - public-key: <PEER_PUBLIC_KEY>
+        - keys:
+            public: <PEER_PUBLIC_KEY>
           allowed-ips:
             - 10.0.0.2/32
           endpoint: 203.0.113.2:51820
@@ -59,16 +60,17 @@ tunnels:
     mode: wireguard
     addresses:
       - 10.0.0.1/24
-    private-key: "YOUR_PRIVATE_KEY_HERE"
+    key: "YOUR_PRIVATE_KEY_HERE"
     port: 51820
     peers:
-      - public-key: "<PEER_PUBLIC_KEY>"
+      - keys:
+          public: "<PEER_PUBLIC_KEY>"
         allowed-ips:
           - 0.0.0.0/0
         endpoint: 203.0.113.2:51820
 ```
 
-Using `private-key-file` is preferred over `private-key` for security.
+Referencing the private key by file path is preferred over an inline key for security.
 
 ## Full Tunnel (Route All Traffic Through VPN)
 
@@ -78,10 +80,11 @@ tunnels:
     mode: wireguard
     addresses:
       - 10.0.0.1/24
-    private-key-file: /etc/netplan/wg0-private.key
+    key: /etc/netplan/wg0-private.key
     port: 51820
     peers:
-      - public-key: "<PEER_PUBLIC_KEY>"
+      - keys:
+          public: "<PEER_PUBLIC_KEY>"
         allowed-ips:
           - 0.0.0.0/0
         endpoint: 203.0.113.2:51820
@@ -100,10 +103,11 @@ network:
       mode: wireguard
       addresses:
         - 10.0.0.2/24
-      private-key-file: /etc/netplan/wg0-private.key
+      key: /etc/netplan/wg0-private.key
       port: 51820
       peers:
-        - public-key: "<SERVER_PUBLIC_KEY>"
+        - keys:
+            public: "<SERVER_PUBLIC_KEY>"
           allowed-ips:
             - 10.0.0.1/32
           endpoint: 203.0.113.1:51820
@@ -128,4 +132,4 @@ ping -c 3 10.0.0.2
 
 ## Conclusion
 
-WireGuard in Netplan uses the `tunnels` key with `mode: wireguard`. Store private keys in files referenced by `private-key-file`. Define peers with their public keys, allowed IPs, and endpoints. Apply with `netplan apply` and verify with `wg show wg0`.
+WireGuard in Netplan uses the `tunnels` key with `mode: wireguard`. Store private keys in files referenced by the tunnel's `key` property. Define peers with their public keys (under `keys.public`), allowed IPs, and endpoints. Apply with `netplan apply` and verify with `wg show wg0`.
