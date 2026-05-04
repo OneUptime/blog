@@ -76,12 +76,16 @@ database=/var/lib/mumble-server/mumble-server.sqlite
 ## Enabling Dual-Stack (IPv4 + IPv6)
 
 ```ini
-# For both IPv4 and IPv6, use multiple host entries
-# Some Murmur versions support comma-separated values:
-host=0.0.0.0,::
+# The host= directive accepts only a single IP/hostname.
+# Leaving host blank is the supported way to bind to all
+# available addresses (both IPv4 and IPv6) on a dual-stack host:
+host=
 
-# Or bind to a specific IPv6 address alongside IPv4
-# host=0.0.0.0,2001:db8::1
+# To bind to a single specific IPv6 address only:
+# host=2001:db8::1
+
+# To listen on more than one specific address, run multiple
+# Murmur instances each with its own ini file and host= value.
 ```
 
 ## Systemd Service Management
@@ -110,8 +114,8 @@ sudo systemctl reload mumble-server
 sudo ip6tables -A INPUT -p tcp --dport 64738 -j ACCEPT
 sudo ip6tables -A INPUT -p udp --dport 64738 -j ACCEPT
 
-# Save rules
-sudo ip6tables-save > /etc/ip6tables/rules.v6
+# Save rules (requires iptables-persistent)
+sudo ip6tables-save > /etc/iptables/rules.v6
 
 # Verify listening state
 ss -6 -tlnp | grep 64738
@@ -127,8 +131,9 @@ sudo dpkg-reconfigure mumble-server
 # Or check logs for SuperUser password
 sudo grep -i "superuser\|password" /var/log/mumble-server/mumble-server.log | head -5
 
-# Use mumble-server-cli for management
-sudo mumble-server-cli -ini /etc/mumble-server.ini
+# Use mumble-server-cli for management (requires Ice to be enabled in mumble-server.ini)
+# Default connection string: Meta:tcp -h 127.0.0.1 -p 6502
+sudo mumble-server-cli -c "Meta:tcp -h 127.0.0.1 -p 6502"
 ```
 
 ## Testing IPv6 Connectivity
@@ -138,13 +143,13 @@ sudo mumble-server-cli -ini /etc/mumble-server.ini
 ss -6 -tlnp | grep 64738
 
 # Test TCP port over IPv6
-nc -6 -w 3 2001:db8::mumble 64738 && echo "Murmur TCP accessible over IPv6"
+nc -6 -w 3 2001:db8::1 64738 && echo "Murmur TCP accessible over IPv6"
 
 # Test UDP port
-nmap -6 -sU -p 64738 2001:db8::mumble
+nmap -6 -sU -p 64738 2001:db8::1
 
 # DNS setup
-# mumble.example.com. IN AAAA 2001:db8::mumble
+# mumble.example.com. IN AAAA 2001:db8::1
 ```
 
 Murmur's IPv6 support through the `host=` configuration directive enables open-source voice communication servers to serve users on IPv6 networks, with its low-latency UDP-based audio transmission functioning seamlessly over both IPv4 and IPv6 connections.
