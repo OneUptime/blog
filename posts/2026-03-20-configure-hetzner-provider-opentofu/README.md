@@ -15,10 +15,9 @@ The Hetzner provider for OpenTofu enables managing Hetzner resources with the sa
 ```hcl
 terraform {
   required_providers {
-    # Replace with the actual provider source
-    provider_name = {
-      source  = "provider-namespace/provider-name"
-      version = "~> 1.0"
+    hcloud = {
+      source  = "hetznercloud/hcloud"
+      version = "~> 1.48"
     }
   }
   required_version = ">= 1.6.0"
@@ -27,30 +26,34 @@ terraform {
 
 ## Authentication
 
-Most providers read credentials from environment variables:
+The Hetzner Cloud provider reads credentials from an environment variable:
 
 ```bash
-# Set provider credentials via environment variables
+# Set the Hetzner Cloud API token
 
-export PROVIDER_API_KEY="your-api-key"
-export PROVIDER_API_SECRET="your-api-secret"
+export HCLOUD_TOKEN="your-api-token"
 ```
 
+Generate the token from the Hetzner Cloud Console under your project's *Security > API Tokens*.
+
 ```hcl
-provider "provider_name" {
-  # Credentials are read from environment variables
-  # api_key = var.api_key  # Alternative: inline (not recommended)
+provider "hcloud" {
+  # Token is read from the HCLOUD_TOKEN environment variable
+  # token = var.hcloud_token  # Alternative: inline (not recommended)
 }
 ```
 
 ## Example Resource
 
 ```hcl
-# Example resource demonstrating provider usage
-resource "provider_example_resource" "main" {
-  name = "${var.name}-${var.environment}"
+# Example resource: a Hetzner Cloud server
+resource "hcloud_server" "main" {
+  name        = "${var.name}-${var.environment}"
+  server_type = "cx22"
+  image       = "ubuntu-24.04"
+  location    = "nbg1"
 
-  tags = {
+  labels = {
     environment = var.environment
     managed_by  = "opentofu"
   }
@@ -67,7 +70,8 @@ variable "environment" { type = string }
 ## Outputs
 
 ```hcl
-output "resource_id" { value = provider_example_resource.main.id }
+output "resource_id"  { value = hcloud_server.main.id }
+output "ipv4_address" { value = hcloud_server.main.ipv4_address }
 ```
 
 ## Best Practices
@@ -79,4 +83,4 @@ output "resource_id" { value = provider_example_resource.main.id }
 
 ## Conclusion
 
-Managing Hetzner resources with OpenTofu brings the same consistency and auditability to SaaS tooling as you get with cloud infrastructure. Start by codifying your most critical resources and gradually expand coverage over time.
+Managing Hetzner Cloud resources with OpenTofu brings consistency and auditability to your infrastructure provisioning. Start by codifying your most critical resources and gradually expand coverage over time.
