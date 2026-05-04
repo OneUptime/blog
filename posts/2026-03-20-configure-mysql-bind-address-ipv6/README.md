@@ -17,10 +17,13 @@ Description: Learn how to configure MySQL's bind-address parameter to listen on 
 
 bind-address = 127.0.0.1
 
-# Listen on all IPv4 and IPv6 interfaces
+# Listen on all IPv4 interfaces only
 bind-address = 0.0.0.0
 
-# Listen on all interfaces including IPv6 (MySQL 8.0+)
+# Listen on all IPv4 and IPv6 interfaces (MySQL 8.0+ default)
+bind-address = *
+
+# Listen on the IPv6 wildcard (also accepts IPv4 unless IPV6_V6ONLY is set)
 bind-address = ::
 
 # Listen on specific IPv6 address
@@ -33,11 +36,13 @@ bind-address = ::1
 ## MySQL 8.0+ Multiple Bind Addresses
 
 ```ini
-# MySQL 8.0 supports multiple bind addresses
+# MySQL 8.0.13+ supports multiple bind addresses as a comma-separated list.
+# Wildcards (*, 0.0.0.0, ::) are NOT allowed inside the list - use specific IPs.
 [mysqld]
-bind-address = 0.0.0.0
-bind-address = ::
-# This is equivalent to listening on all IPv4 and IPv6
+bind-address = 198.51.100.20,2001:db8::10
+
+# To listen on all IPv4 and IPv6 interfaces, use the wildcard alone:
+# bind-address = *
 ```
 
 ## Configure MySQL for Dual-Stack
@@ -59,7 +64,7 @@ systemctl restart mysql
 
 # Verify MySQL is listening on IPv6
 ss -6 -tlnp | grep mysql
-# Expected: tcp6  LISTEN  0  80  [::]:3306  [::]:*
+# Expected: tcp  LISTEN  0  80  [::]:3306  [::]:*
 ```
 
 ## Test IPv6 MySQL Connection
@@ -74,8 +79,8 @@ mysql -h 2001:db8::10 -u appuser -p mydb
 # Test with connection string
 mysql --host=2001:db8::10 --port=3306 --user=appuser --database=mydb
 
-# Test with mysql client protocol
-mysql -h [2001:db8::10] -u root -p
+# Force TCP protocol when connecting via IPv6
+mysql -h 2001:db8::10 --protocol=TCP -u root -p
 
 # Python example
 # import mysql.connector
@@ -120,12 +125,12 @@ mysql -u root -p -e "SHOW STATUS LIKE 'Threads_connected';"
 
 ```bash
 # Allow MySQL over IPv6
-ip6tables -A INPUT -p tcp --dport 3306 -s 2001:db8:app::/48 -j ACCEPT
+ip6tables -A INPUT -p tcp --dport 3306 -s 2001:db8:abcd::/48 -j ACCEPT
 ip6tables -A INPUT -p tcp --dport 3306 -s ::1 -j ACCEPT
 ip6tables -A INPUT -p tcp --dport 3306 -j DROP
 
 # Or with ufw
-ufw allow from 2001:db8:app::/48 to any port 3306
+ufw allow from 2001:db8:abcd::/48 to any port 3306
 ```
 
 ## Summary
