@@ -47,18 +47,18 @@ ip -6 route add 5f00:3::/32 table 200 \
   dev eth0
 ```
 
-## Step 2: BGP SR-Policy (RFC 9256)
+## Step 2: BGP SR-Policy (RFC 9256 / RFC 9830)
 
-BGP distributes SRv6 TE policies from a controller or head-end to all participating routers.
+BGP distributes SRv6 TE policies from a controller or head-end to all participating routers. RFC 9256 defines the SR Policy architecture; RFC 9830 specifies the BGP SAFI (73) used to advertise SR Policy candidate paths.
 
 ```text
 ! BGP SR-Policy configuration (Cisco IOS-XR notation)
 router bgp 65000
- address-family link-state link-state
+ address-family ipv6 sr-policy
  !
  neighbor 2001:db8::controller
   remote-as 65000
-  address-family link-state link-state
+  address-family ipv6 sr-policy
    route-policy ACCEPT in
   !
  !
@@ -74,7 +74,9 @@ segment-routing traffic-eng
    !
    preference 100
     dynamic
-     metric type igp
+     metric
+      type igp
+     !
     !
    !
   !
@@ -92,15 +94,20 @@ segment-routing traffic-eng
 Traffic is steered into TE policies by BGP Color communities.
 
 ```text
+! Define the color extended community (opaque transitive ext-community per RFC 9012)
+extcommunity-set opaque COLOR-100
+  100
+end-set
+
 ! Route policy to set color community
 route-policy SET-COLOR-100
-  set extcommunity color 100
+  set extcommunity color COLOR-100
 end-policy
 
 ! Apply to BGP next-hop resolution
 router bgp 65000
  address-family vpnv6 unicast
-  nexthop resolution prefix-length minimum 32
+  nexthop resolution prefix-length minimum 128
   route-policy SET-COLOR-100 out
 ```
 
