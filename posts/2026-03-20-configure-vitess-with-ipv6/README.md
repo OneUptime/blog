@@ -27,7 +27,7 @@ vtctld is the Vitess control plane service:
 
 vtctld \
   --topo_implementation etcd2 \
-  --topo_global_server_address "[2001:db8::etcd]:2379" \
+  --topo_global_server_address "[2001:db8::3]:2379" \
   --topo_global_root /vitess/global \
   --cell global \
   --workflow_manager_init \
@@ -47,7 +47,7 @@ vtctld \
 # Start vttablet with IPv6
 vttablet \
   --topo_implementation etcd2 \
-  --topo_global_server_address "[2001:db8::etcd]:2379" \
+  --topo_global_server_address "[2001:db8::3]:2379" \
   --topo_global_root /vitess/global \
   --cell zone1 \
   --tablet-path zone1-0000000100 \
@@ -73,7 +73,7 @@ vtgate is the query router - the entry point for application connections:
 # Start vtgate with IPv6
 vtgate \
   --topo_implementation etcd2 \
-  --topo_global_server_address "[2001:db8::etcd]:2379" \
+  --topo_global_server_address "[2001:db8::3]:2379" \
   --topo_global_root /vitess/global \
   --cell zone1 \
   --cells_to_watch zone1 \
