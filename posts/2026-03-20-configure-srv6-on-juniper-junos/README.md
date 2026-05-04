@@ -8,19 +8,17 @@ Description: Configure Segment Routing over IPv6 on Juniper Junos routers by ena
 
 ## Introduction
 
-Juniper Junos supports SRv6 from Junos 19.4R1 onward. Configuration uses the hierarchical `set` command syntax and integrates with IS-IS for locator advertisement and BGP for SID distribution.
+Juniper Junos supports SRv6 from Junos 20.3R1 onward, with BGP-based Layer 3 services over SRv6 added in 20.4R1. Configuration uses the hierarchical `set` command syntax and integrates with IS-IS for locator advertisement and BGP for SID distribution.
 
 ## Step 1: Enable SRv6 and Define a Locator
 
-```javascript
+```text
 # Enable SRv6 globally and define the locator
+# The block/node/function structure is implicit in the prefix length:
+# the locator prefix occupies the high-order bits and the function
+# occupies the remainder of the 128-bit SID.
 
-set routing-options source-packet-routing srv6 locator LOC1 prefix 5f00:1:1::/48
-
-# Configure locator block, node, and function lengths
-set routing-options source-packet-routing srv6 locator LOC1 block-length 32
-set routing-options source-packet-routing srv6 locator LOC1 node-length 16
-set routing-options source-packet-routing srv6 locator LOC1 func-length 16
+set routing-options source-packet-routing srv6 locator LOC1 5f00:1:1::/48
 
 # Set source address for encapsulated packets
 set routing-options source-packet-routing srv6 source-address 5f00:1:1::1
@@ -32,7 +30,7 @@ set routing-options source-packet-routing srv6 source-address 5f00:1:1::1
 # Advertise the SRv6 locator via IS-IS
 set protocols isis interface ge-0/0/0.0 family inet6
 set protocols isis interface lo0.0 family inet6
-set protocols isis source-packet-routing srv6 locator LOC1 end-sid 5f00:1:1::1 srv6-sid-flags srv6-e-flag
+set protocols isis source-packet-routing srv6 locator LOC1 end-sid 5f00:1:1::1 flavor psp
 
 # Configure IS-IS for SRv6 at the level
 set protocols isis level 2 wide-metrics-only
@@ -48,9 +46,13 @@ set routing-instances CUSTOMER_A interface ge-0/0/1.0
 set routing-instances CUSTOMER_A route-distinguisher 65000:100
 set routing-instances CUSTOMER_A vrf-target target:65000:100
 
-# Enable SRv6 SID allocation for this VRF
-set routing-instances CUSTOMER_A protocols bgp family inet6-vpn unicast
-set routing-instances CUSTOMER_A routing-options srv6 locator LOC1
+# Enable SRv6 service advertisement on the BGP group toward the route reflector / peers
+set protocols bgp group IBGP family inet-vpn unicast extended-nexthop
+set protocols bgp group IBGP family inet-vpn unicast advertise-srv6-service
+set protocols bgp group IBGP family inet-vpn unicast accept-srv6-service
+
+# Enable SRv6 SID allocation for this VRF (End.DT4 for IPv4 customer routes)
+set routing-instances CUSTOMER_A protocols bgp source-packet-routing srv6 locator LOC1 end-dt4-sid 5f00:1:1:0:e004::
 
 # View auto-allocated SID for the VRF
 # show bgp summary instance CUSTOMER_A
