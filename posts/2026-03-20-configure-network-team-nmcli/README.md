@@ -80,11 +80,11 @@ teamdctl team0 state
 # Show active port
 teamdctl team0 state item get runner.active_port
 
-# Show ports and their link state
-teamdctl team0 ports
+# Show running config including ports
+teamdctl team0 config dump
 
 # Show full JSON state
-teamdctl team0 state view
+teamdctl team0 state dump
 ```
 
 ## Modifying Team Runner
