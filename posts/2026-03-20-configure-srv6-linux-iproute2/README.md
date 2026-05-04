@@ -8,7 +8,7 @@ Description: Configure SRv6 segment routing on Linux using iproute2 commands, in
 
 ## Introduction
 
-The Linux kernel has supported SRv6 since version 4.10 via the `seg6` and `seg6local` route types in iproute2. You can program SRv6 encapsulation at ingress nodes and SRv6 endpoint functions at transit and egress nodes without any additional software.
+The Linux kernel has supported SRv6 encapsulation since version 4.10 via the `seg6` lightweight tunnel, with `seg6local` endpoint behaviors added in version 4.14. You can program SRv6 encapsulation at ingress nodes and SRv6 endpoint functions at transit and egress nodes without any additional software.
 
 ## Enable SRv6 in the Kernel
 
@@ -18,11 +18,8 @@ The Linux kernel has supported SRv6 since version 4.10 via the `seg6` and `seg6l
 sysctl -w net.ipv6.conf.all.seg6_enabled=1
 sysctl -w net.ipv6.conf.default.seg6_enabled=1
 
-# Enable per-interface
+# Enable per-interface (required at endpoints to accept SRH packets with DA = local)
 sysctl -w net.ipv6.conf.eth0.seg6_enabled=1
-
-# Accept SRH packets (required at endpoints)
-sysctl -w net.ipv6.conf.all.accept_ra=1
 
 # Persist in /etc/sysctl.conf:
 echo "net.ipv6.conf.all.seg6_enabled=1" >> /etc/sysctl.conf
@@ -44,7 +41,7 @@ ip -6 route add fd00:99::/64 \
 # Encapsulate IPv4 traffic in SRv6 (SRv6 tunnel for IPv4)
 ip route add 192.168.99.0/24 \
   encap seg6 mode encap \
-  segs 5f00:2:0:e001::,5f00:3:0:dt4:: \
+  segs 5f00:2:0:e001::,5f00:3:0:e004:: \
   dev eth0
 
 # Inline mode (insert SRH without new IP header)
@@ -74,16 +71,16 @@ ip -6 route add 5f00:2:0:e002::/128 \
 ```bash
 # End.DT6: decapsulate and do IPv6 table lookup in main table
 ip -6 route add 5f00:3:0:e000::/128 \
-  encap seg6local action End.DT6 vrftable 254 \
+  encap seg6local action End.DT6 table 254 \
   dev lo
 
 # End.DT4: decapsulate IPv6 outer, do IPv4 table lookup
-ip route add 5f00:3:0:dt4::/128 \
+ip route add 5f00:3:0:e004::/128 \
   encap seg6local action End.DT4 vrftable 254 \
   dev lo
 
 # End.DX6: decapsulate and forward to specific IPv6 next-hop
-ip -6 route add 5f00:3:0:dx6::/128 \
+ip -6 route add 5f00:3:0:e006::/128 \
   encap seg6local action End.DX6 \
   nh6 fd00:23::3 \
   dev eth1
@@ -102,7 +99,7 @@ ip -6 route show 5f00:2:0:e001::/128
 tcpdump -i eth0 -n "ip6 proto 43" -v
 # proto 43 = Routing Header (includes SRH)
 
-# Decode SRH with ss7 filter
+# Match packets where the next-header field (offset 6) is the Routing Header (43)
 tcpdump -i eth0 -n "ip6[6]==43" -XX | head -40
 ```
 
@@ -139,7 +136,7 @@ fi
 # Node 3 (egress): End.DT6
 if [ "$NODE" = "3" ]; then
   ip -6 route add 5f00:3:0:e000::/128 \
-    encap seg6local action End.DT6 vrftable 254 dev lo
+    encap seg6local action End.DT6 table 254 dev lo
 fi
 ```
 
