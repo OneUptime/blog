@@ -97,7 +97,7 @@ builder.Services.Configure<ForwardedHeadersOptions>(options =>
 
     // Trust IPv6 NGINX proxy
     options.KnownProxies.Add(IPAddress.Parse("::1"));
-    options.KnownProxies.Add(IPAddress.Parse("2001:db8::lb"));
+    options.KnownProxies.Add(IPAddress.Parse("2001:db8::1b"));
 
     // Trust an IPv6 subnet
     options.KnownNetworks.Add(
