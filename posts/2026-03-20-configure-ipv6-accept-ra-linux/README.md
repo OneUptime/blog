@@ -22,7 +22,7 @@ cat /proc/sys/net/ipv6/conf/eth0/accept_ra
 
 # 0 = Do NOT accept RAs (ignore all router advertisements)
 # 1 = Accept RAs if forwarding is disabled (default for hosts)
-# 2 = Accept RAs even when IPv6 forwarding is enabled (for router-on-a-stick)
+# 2 = Accept RAs even when IPv6 forwarding is enabled (for routers that need to learn a default route from upstream)
 ```
 
 ## Configuring accept_ra
@@ -106,8 +106,6 @@ ip -6 route show proto ra
 
 # Manually trigger RS to solicit an RA
 rdisc6 eth0
-# or
-ndisc6 fe80::1 eth0
 ```
 
 ## Summary
