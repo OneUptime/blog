@@ -58,12 +58,12 @@ curl -X POST "https://portainer.mycompany.com/api/users" \
 ## Updating a User
 
 ```bash
-# Change a user's password
+# Change a user's password (admin only needs NewPassword)
 curl -X PUT "https://portainer.mycompany.com/api/users/5" \
   -H "Authorization: Bearer ${API_TOKEN}" \
   -H "Content-Type: application/json" \
   -d '{
-    "Password": "NewP@ssword456!",
+    "NewPassword": "NewP@ssword456!",
     "Role": 2
   }'
 
