@@ -85,8 +85,8 @@ Kind=vlan
 Id=100
 GVRP=false
 MVRP=false
-EgressQOSMaps=0:0 6:5 7:6
-IngressQOSMaps=5:6 6:7
+EgressQOSMaps=0-0 6-5 7-6
+IngressQOSMaps=5-6 6-7
 ```
 
 ## Key Takeaways
