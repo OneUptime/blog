@@ -41,7 +41,7 @@ ethtool -k eth0 | grep -E "generic|scatter|checksum|offload"
 
 ## Step 2: GRO for IPv6-Specific Flows
 
-GRO works with IPv6 TCP automatically. For UDP, GRO requires kernel 5.4+ and an application using `UDP_GRO`.
+GRO works with IPv6 TCP automatically. For UDP, GRO requires kernel 5.0+ and an application using `UDP_GRO`.
 
 ```bash
 # Verify IPv6 GRO is active during a transfer
@@ -53,13 +53,13 @@ cat /proc/net/dev | grep eth0
 # Look for large rx bytes vs rx packets ratio (high ratio = GRO working)
 ```
 
-## Step 3: Enable UDP GRO for IPv6 (Kernel 5.4+)
+## Step 3: Enable UDP GRO for IPv6 (Kernel 5.0+)
 
 ```python
 # Enable UDP GRO on a receiving IPv6 UDP socket
 import socket
 
-# UDP_GRO = 104 on Linux (kernel 5.4+)
+# UDP_GRO = 104 on Linux (kernel 5.0+)
 UDP_GRO = 104
 
 sock = socket.socket(socket.AF_INET6, socket.SOCK_DGRAM)
@@ -70,7 +70,7 @@ try:
     sock.setsockopt(socket.IPPROTO_UDP, UDP_GRO, 1)
     print("UDP GRO enabled")
 except OSError:
-    print("UDP GRO not supported (kernel < 5.4)")
+    print("UDP GRO not supported (kernel < 5.0)")
 
 sock.bind(("::", 9000, 0, 0))
 
@@ -109,8 +109,8 @@ awk '/eth0/{
     printf "eth0: %.0f bytes/packet\n", $2/$3
 }' /proc/net/dev
 
-# Use perf to measure interrupt rate (lower = GRO working)
-sudo perf stat -e irq:net_rx_action -a sleep 5
+# Use perf to measure NAPI poll rate (lower = GRO working)
+sudo perf stat -e napi:napi_poll -a sleep 5
 ```
 
 ## Step 6: Potential GRO Issues and Fixes
