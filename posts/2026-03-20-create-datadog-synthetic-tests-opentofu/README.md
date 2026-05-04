@@ -95,7 +95,7 @@ resource "datadog_synthetics_test" "ssl_check" {
 
   request_definition {
     host = "example.com"
-    port = 443
+    port = "443"
   }
 
   assertion {
@@ -168,16 +168,32 @@ resource "datadog_synthetics_test" "user_flow" {
 
 ## Alerting on Test Failures
 
+Synthetic tests automatically create an associated alert monitor. Notifications are configured by setting the `message` field on the synthetic test itself, using the same `@username` notation as Datadog events:
+
 ```hcl
-resource "datadog_monitor" "synthetic_failure" {
-  name    = "Synthetic Test Failure"
-  type    = "synthetics alert"
-  message = "Synthetic test {{test_name}} failed. @pagerduty-oncall"
+resource "datadog_synthetics_test" "api_health_with_alerts" {
+  name    = "API Health Check"
+  type    = "api"
+  subtype = "http"
+  status  = "live"
+  message = "Synthetic test failed. @pagerduty-oncall @slack-platform-alerts"
+  tags    = ["env:prod", "team:platform"]
 
-  query = "synthetics.run_results.failed{*}"
+  locations = ["aws:us-east-1"]
 
-  thresholds = {
-    critical = 1
+  request_definition {
+    method = "GET"
+    url    = "https://api.example.com/health"
+  }
+
+  assertion {
+    type     = "statusCode"
+    operator = "is"
+    target   = "200"
+  }
+
+  options_list {
+    tick_every = 60
   }
 }
 ```
