@@ -41,8 +41,8 @@ resource "alicloud_cs_managed_kubernetes" "main" {
 
 ```hcl
 resource "alicloud_cs_kubernetes_node_pool" "workers" {
-  cluster_id = alicloud_cs_managed_kubernetes.main.id
-  name       = "worker-pool"
+  cluster_id     = alicloud_cs_managed_kubernetes.main.id
+  node_pool_name = "worker-pool"
 
   vswitch_ids   = [alicloud_vswitch.private_a.id]
   instance_types = ["ecs.c6.xlarge"]
@@ -61,8 +61,8 @@ resource "alicloud_cs_kubernetes_node_pool" "workers" {
   #   max_size = 10
   # }
 
-  node_name_mode   = "nodeip"
-  key_name         = alicloud_ecs_key_pair.default.key_pair_name
+  node_name_mode = "customized,worker,ip,"
+  key_name       = alicloud_ecs_key_pair.default.key_pair_name
 
   labels {
     key   = "role"
@@ -76,7 +76,7 @@ resource "alicloud_cs_kubernetes_node_pool" "workers" {
 ```hcl
 resource "alicloud_cs_kubernetes_node_pool" "autoscale" {
   cluster_id     = alicloud_cs_managed_kubernetes.main.id
-  name           = "autoscale-pool"
+  node_pool_name = "autoscale-pool"
   vswitch_ids    = [alicloud_vswitch.private_a.id]
   instance_types = ["ecs.c6.large"]
 
