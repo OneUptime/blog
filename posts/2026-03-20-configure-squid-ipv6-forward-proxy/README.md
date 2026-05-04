@@ -30,7 +30,7 @@ dns_v4_first off
 dns_nameservers 2001:4860:4860::8888 2606:4700:4700::1111
 
 # ACL: define IPv6 internal networks that are allowed to use this proxy
-acl internal_ipv6_clients src 2001:db8:internal::/48
+acl internal_ipv6_clients src 2001:db8:1::/48
 acl internal_ipv6_clients src fd00::/8
 acl localhost src ::1/128
 
@@ -52,7 +52,7 @@ access_log /var/log/squid/access.log squid
 
 ```squid
 # Block access to certain IPv6 ranges from the proxy
-acl blocked_ipv6 dst 2001:db8:blocked::/48
+acl blocked_ipv6 dst 2001:db8:dead::/48
 acl blocked_ipv6 dst fc00::/7   # Don't proxy to ULA addresses
 
 # Block local IPv6 (prevent SSRF via proxy)
@@ -68,22 +68,22 @@ http_access deny local_ipv6
 
 ```bash
 # Configure curl to use IPv6 proxy
-curl --proxy http://[2001:db8::proxy]:3128 https://example.com
+curl --proxy http://[2001:db8::1]:3128 https://example.com
 
 # Environment variable approach
-export http_proxy="http://[2001:db8::proxy]:3128"
-export https_proxy="http://[2001:db8::proxy]:3128"
+export http_proxy="http://[2001:db8::1]:3128"
+export https_proxy="http://[2001:db8::1]:3128"
 curl https://example.com
 
 # Browser: set proxy in browser network settings
-# Proxy: [2001:db8::proxy]
+# Proxy: [2001:db8::1]
 # Port: 3128
 
 # Python requests via IPv6 proxy
 import requests
 proxies = {
-    "http": "http://[2001:db8::proxy]:3128",
-    "https": "http://[2001:db8::proxy]:3128",
+    "http": "http://[2001:db8::1]:3128",
+    "https": "http://[2001:db8::1]:3128",
 }
 response = requests.get("https://example.com", proxies=proxies)
 ```
