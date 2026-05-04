@@ -25,7 +25,7 @@ resource "aws_backup_plan" "production_tiered" {
     }
   }
 
-  # Daily backups - 30-day retention with cold storage transition
+  # Daily backups - 30-day retention (warm storage only)
   rule {
     rule_name         = "daily-backup"
     target_vault_name = aws_backup_vault.main.name
@@ -35,8 +35,7 @@ resource "aws_backup_plan" "production_tiered" {
     completion_window = 180
 
     lifecycle {
-      cold_storage_after = 14  # Move to Glacier after 14 days
-      delete_after       = 30  # Delete after 30 days
+      delete_after = 30  # Delete after 30 days
     }
 
     # Cross-region copy
@@ -44,8 +43,7 @@ resource "aws_backup_plan" "production_tiered" {
       destination_vault_arn = var.dr_vault_arn
 
       lifecycle {
-        cold_storage_after = 14
-        delete_after       = 30
+        delete_after = 30
       }
     }
   }
