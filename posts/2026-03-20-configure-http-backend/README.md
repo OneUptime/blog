@@ -68,10 +68,18 @@ terraform {
 
 ### Custom Header (API Key)
 
-```bash
-# The HTTP backend doesn't natively support custom headers,
-# but you can use a proxy or embed credentials in the URL:
-address = "https://api-key:@state-server.example.com/state/prod"
+```hcl
+terraform {
+  backend "http" {
+    address = "https://state-server.example.com/state/prod"
+
+    # Map of additional headers sent with every request to the backend
+    headers = {
+      "X-API-Key"   = "your-api-key"
+      "X-Tenant-ID" = "team-platform"
+    }
+  }
+}
 ```
 
 ## GitLab Managed Terraform State
