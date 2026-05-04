@@ -28,6 +28,7 @@ Available bonding modes:
 | 0 | balance-rr | Round-robin load balancing |
 | 1 | active-backup | One active, others standby |
 | 2 | balance-xor | XOR-based load balancing |
+| 3 | broadcast | Transmits everything on all slave interfaces |
 | 4 | 802.3ad | IEEE 802.3ad LACP |
 | 5 | balance-tlb | Adaptive transmit load balancing |
 | 6 | balance-alb | Adaptive load balancing |
