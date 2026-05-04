@@ -27,7 +27,7 @@ openssl rand -hex 20
 # Example output: a4f2e8c1d9b3f7a2e5c8d1f4
 
 # Create the chrony keys file
-sudo cat > /etc/chrony.keys << 'EOF'
+sudo tee /etc/chrony.keys > /dev/null << 'EOF'
 # Key ID  Algorithm  Key Value
 1         SHA256     a4f2e8c1d9b3f7a2e5c8d1f4a7b2e5c8
 2         SHA512     b7c3f9e2d4a6f1b8e3c7d2f9a4e1c6b2d5f8a1e4
@@ -51,7 +51,7 @@ allow 2001:db8::/32
 # Clients must use key ID 1
 
 # Trust key 1 for time from upstream servers
-server 2001:db8::upstream-ntp iburst key 1
+server 2001:db8::100 iburst key 1
 
 logdir /var/log/chrony
 ```
@@ -64,15 +64,13 @@ Configure chrony client with the same key:
 keyfile /etc/chrony.keys
 
 # Connect to IPv6 NTP server with authentication
-server 2001:db8::1 iburst key 1
-
-# Require that the server authenticates to us too
+# 'require' refuses to use the source unless it authenticates
 server 2001:db8::1 iburst key 1 require
 ```
 
 ## Method 2: NTS (Network Time Security) - Modern Approach
 
-NTS uses TLS to authenticate NTP over IPv6. chrony 4.0+ and ntpd 4.2.8+ support NTS:
+NTS uses TLS to authenticate NTP over IPv6. chrony 4.0+ and NTPsec support NTS (the reference ntp.org `ntpd` does not):
 
 ```bash
 # /etc/chrony.conf (NTS client)
@@ -80,8 +78,8 @@ NTS uses TLS to authenticate NTP over IPv6. chrony 4.0+ and ntpd 4.2.8+ support 
 # Use NTS with a public NTS-capable NTP server
 # These servers support IPv6 and NTS:
 server time.cloudflare.com iburst nts
-server nts.sth1.ntp.se iburst nts
-server nts.netnod.se iburst nts
+server sth1.nts.netnod.se iburst nts
+server gbg1.nts.netnod.se iburst nts
 
 # NTS key database location
 ntsdumpdir /var/lib/chrony/nts
@@ -112,7 +110,8 @@ To run your own NTS NTP server over IPv6:
 # /etc/chrony.conf (NTS server)
 
 # Upstream time sources
-pool ipv6.pool.ntp.org iburst maxsources 4
+# The 2.pool.ntp.org zone includes IPv6-capable servers
+pool 2.pool.ntp.org iburst maxsources 4
 
 # NTS configuration
 # Requires a valid TLS certificate for your server hostname
@@ -167,7 +166,9 @@ chronyc ntpdata
 
 # Check peer authentication with ntpq
 ntpq -p
-# Authenticated peers show 'a' flag in the tally code column
+# For per-association authentication status, use:
+ntpq -c associations
+# and inspect the 'auth' column (ok / bad / none)
 
 # Monitor authentication in logs
 sudo journalctl -u chronyd | grep -i "nts\|auth\|key"
