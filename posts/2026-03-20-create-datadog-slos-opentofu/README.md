@@ -70,9 +70,9 @@ resource "datadog_monitor" "api_latency" {
   type    = "metric alert"
   message = "API P95 latency is above threshold. @oncall-backend"
 
-  query = "percentile(last_5m):p95:trace.web.request{service:api} > 0.5"
+  query = "avg(last_5m):p95:trace.web.request{service:api} > 0.5"
 
-  thresholds = {
+  monitor_thresholds {
     critical = 0.5
     warning  = 0.4
   }
@@ -104,10 +104,10 @@ resource "datadog_monitor" "slo_burn_rate" {
   type    = "slo alert"
   message = "API SLO error budget is burning too fast. @pagerduty-oncall"
 
-  query = "burn_rate(\"${datadog_service_level_objective.api_availability.id}\").over(\"1h\") > 14.4"
+  query = "burn_rate(\"${datadog_service_level_objective.api_availability.id}\").over(\"30d\").long_window(\"1h\").short_window(\"5m\") > 14.4"
 
-  thresholds = {
-    critical = 14.4  # 1h window, 30d SLO - 2% budget burned in 1h
+  monitor_thresholds {
+    critical = 14.4  # 1h long window, 30d SLO - 2% budget burned in 1h
     warning  = 7.2
   }
 }
@@ -122,7 +122,7 @@ resource "datadog_dashboard" "slo_overview" {
   layout_type = "ordered"
 
   widget {
-    slo_widget_definition {
+    service_level_objective_definition {
       title      = "API Availability"
       view_type  = "detail"
       slo_id     = datadog_service_level_objective.api_availability.id
@@ -132,7 +132,7 @@ resource "datadog_dashboard" "slo_overview" {
   }
 
   widget {
-    slo_widget_definition {
+    service_level_objective_definition {
       title      = "API Latency"
       view_type  = "detail"
       slo_id     = datadog_service_level_objective.api_latency_slo.id
