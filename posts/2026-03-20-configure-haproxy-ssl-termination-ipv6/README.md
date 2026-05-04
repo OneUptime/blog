@@ -72,12 +72,12 @@ frontend https_ipv6_sni
     default_backend web_servers
 
 backend api_servers
-    server api1 [2001:db8::api1]:3000 check
-    server api2 [2001:db8::api2]:3000 check
+    server api1 [2001:db8::a1]:3000 check
+    server api2 [2001:db8::a2]:3000 check
 
 backend web_servers
-    server web1 [2001:db8::web1]:8080 check
-    server web2 [2001:db8::web2]:8080 check
+    server web1 [2001:db8::b1]:8080 check
+    server web2 [2001:db8::b2]:8080 check
 ```
 
 ## HTTP to HTTPS Redirect for IPv6
