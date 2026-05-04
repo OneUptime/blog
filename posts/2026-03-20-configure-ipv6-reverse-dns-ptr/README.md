@@ -23,7 +23,7 @@ This long nibble-reversed format is the PTR record name.
 
 ## Creating the ip6.arpa Zone in BIND
 
-For the prefix `2001:db8::/48`, create a reverse zone for `8.b.d.0.1.0.0.2.ip6.arpa`:
+For the prefix `2001:db8::/32`, create a reverse zone for `8.b.d.0.1.0.0.2.ip6.arpa`:
 
 ```named
 // /etc/named.conf - add the reverse zone
@@ -39,7 +39,7 @@ zone "8.b.d.0.1.0.0.2.ip6.arpa" {
 
 ```dns
 ; /var/named/2001-db8.rev
-; Reverse zone for 2001:db8::/48
+; Reverse zone for 2001:db8::/32
 
 $TTL 3600
 
@@ -97,7 +97,7 @@ ipv6_to_ptr "$1"
 # Output: 1.0.0.0.0.0.0.0.0.0.0.0.0.0.0.0.0.0.0.0.0.0.0.0.8.b.d.0.1.0.0.2.ip6.arpa.
 
 ./ipv6-ptr.sh 2001:db8:cafe::1
-# Output: 1.0.0.0.0.0.0.0.0.0.0.0.0.0.0.0.e.f.a.c.8.b.d.0.1.0.0.2.ip6.arpa.
+# Output: 1.0.0.0.0.0.0.0.0.0.0.0.0.0.0.0.0.0.0.0.e.f.a.c.8.b.d.0.1.0.0.2.ip6.arpa.
 ```
 
 ## Reloading BIND and Testing
