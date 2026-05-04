@@ -56,10 +56,7 @@ resource "aws_cloudwatch_event_archive" "application" {
   description      = "Archive for event replay during incident recovery"
   retention_days   = 30
 
-  # Archive all events (no filter)
-  event_pattern = jsonencode({
-    source = [{ prefix = "" }]
-  })
+  # Omitting event_pattern archives all events sent to the bus.
 }
 ```
 
