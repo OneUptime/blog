@@ -125,7 +125,9 @@ Computer Configuration →
 
 Or via registry:
 HKLM\SYSTEM\CurrentControlSet\Services\Tcpip6\Parameters
-  Value: DisabledComponents = 0x8 (or 0xFF to disable all IPv6 transition)
+  Value: DisabledComponents = 0x8 (Teredo only); 0x1 disables all tunnel
+         interfaces (Teredo, 6to4, ISATAP, IP-HTTPS); 0xFF disables all
+         IPv6 components except the loopback interface
 ```
 
 ```powershell
