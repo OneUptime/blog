@@ -106,10 +106,10 @@ sudo ip6tables -A INPUT -p udp --dport 28015 -j ACCEPT
 sudo ip6tables -A INPUT -p tcp --dport 28015 -j ACCEPT
 
 # RCON port (restrict to admin IPs only)
-sudo ip6tables -A INPUT -p tcp -s 2001:db8::admin --dport 28016 -j ACCEPT
+sudo ip6tables -A INPUT -p tcp -s 2001:db8::1 --dport 28016 -j ACCEPT
 
 # Save rules
-sudo ip6tables-save > /etc/ip6tables/rules.v6
+sudo ip6tables-save > /etc/iptables/rules.v6
 ```
 
 ## Verifying IPv6 Connectivity
@@ -120,15 +120,15 @@ ss -6 -ulnp | grep 28015
 ss -6 -tlnp | grep 28016
 
 # Test reachability over IPv6
-nmap -6 -sU -p 28015 2001:db8::rust
-nmap -6 -sT -p 28016 2001:db8::rust
+nmap -6 -sU -p 28015 2001:db8::1
+nmap -6 -sT -p 28016 2001:db8::1
 
 # Monitor server logs
 sudo journalctl -u rust -f
 
 # Check current player connections
 # Query via RCON
-echo "status" | nc -6 2001:db8::rust 28016
+echo "status" | nc -6 2001:db8::1 28016
 ```
 
 ## Rust Oxide/uMod Plugins with IPv6
