@@ -69,19 +69,19 @@ ipfw -q add deny all from any to any
 
 ```bash
 # Allow from a specific IPv6 address
-ipfw add allow all from 2001:db8::trusted to me6
+ipfw add allow all from 2001:db8::1 to me6
 
 # Allow from an IPv6 subnet
 ipfw add allow all from 2001:db8::/32 to me6
 
 # Block a specific IPv6 host
-ipfw add deny all from 2001:db8::bad:actor to any
+ipfw add deny all from 2001:db8::dead:beef to any
 
 # Allow outbound IPv6 only
-ipfw add allow all from me6 to any out via em0 ip6
+ipfw add allow ip6 from me6 to any out via em0
 
 # Block all IPv6 on an interface
-ipfw add deny all from any to any via em1 ip6
+ipfw add deny ip6 from any to any via em1
 ```
 
 ## View and Manage ipfw Rules
@@ -127,7 +127,7 @@ ipfw add allow udp from me6 to any keep-state
 | State tracking | keep-state | keep state |
 | IPv6 keyword | `ip6`, `ipv6-icmp` | `inet6` |
 | ICMPv6 type | `ip6icmptype <N>` | `icmp6-type <name>` |
-| Default policy | Last rule wins | block all + pass |
+| Default policy | First-match, explicit deny | block all + pass |
 
 ## Summary
 
