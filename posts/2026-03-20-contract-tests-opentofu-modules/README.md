@@ -191,13 +191,13 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
-      - uses: opentofu/setup-opentofu@v1
+      - uses: opentofu/setup-opentofu@v2
       - name: Run contract tests
         run: |
           for module in modules/*/; do
             if [ -f "$module/tests/contract.tftest.hcl" ]; then
               echo "Testing $module"
-              tofu test -test-directory="$module/tests" -verbose
+              tofu -chdir="$module" test -verbose
             fi
           done
 ```
