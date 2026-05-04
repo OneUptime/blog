@@ -54,7 +54,7 @@ resource "aws_iam_role_policy_attachment" "cloudwatch" {
 }
 ```
 
-## Custom Inline Policy
+## Custom Managed Policy
 
 ```hcl
 data "aws_iam_policy_document" "app_permissions" {
