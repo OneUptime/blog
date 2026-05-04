@@ -27,7 +27,7 @@ echo "Token: ${TOKEN}"
 ## List All Endpoints (Environments)
 
 ```bash
-curl -s   -H "Authorization: Bearer ${TOKEN}"   https://portainer.example.com/api/endpoints   | jq '[.[] | {id, name, type}]'
+curl -s   -H "Authorization: Bearer ${TOKEN}"   https://portainer.example.com/api/endpoints   | jq '[.[] | {id: .Id, name: .Name, type: .Type}]'
 ```
 
 ---
@@ -88,7 +88,7 @@ for team, cost in sorted(costs.items(), key=lambda x: -x[1]):
 ## Generate a Stacks Report
 
 ```bash
-curl -s   -H "Authorization: Bearer ${TOKEN}"   https://portainer.example.com/api/stacks   | jq '[.[] | {name, status, type, endpointId}]'
+curl -s   -H "Authorization: Bearer ${TOKEN}"   https://portainer.example.com/api/stacks   | jq '[.[] | {name: .Name, status: .Status, type: .Type, endpointId: .EndpointId}]'
 ```
 
 ---
