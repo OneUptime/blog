@@ -20,16 +20,20 @@ Static RP is the simplest approach - all routers are manually configured with th
 vtysh
 configure terminal
 
-# Define the RP address for all multicast groups (or specific ranges)
-ipv6 pim rp 2001:db8::rp ff3e::/32
+# Static RP is configured inside the router pim6 context in current FRR
+router pim6
+ # Define the RP address for a specific multicast group prefix
+ rp 2001:db8::1 ff3e::/32
 
-# Or configure RP for all multicast groups
-ipv6 pim rp 2001:db8::rp
+ # Or configure the RP for all IPv6 multicast groups (omit the prefix)
+ rp 2001:db8::1
+exit
 
-# On the RP router itself (same command, plus interface config)
+# On the RP router itself, also bind the RP address to a loopback
 interface lo
- ipv6 address 2001:db8::rp/128
+ ipv6 address 2001:db8::1/128
  ipv6 pim
+exit
 
 end
 write memory
@@ -44,14 +48,22 @@ BSR (Bootstrap Router) protocol automatically distributes RP information to all 
 vtysh
 configure terminal
 
-# Configure this router as a BSR candidate
-ipv6 pim bsr candidate-bsr 2001:db8::bsr priority 100
+# BSR commands live inside the router pim6 context in current FRR
+router pim6
+ # Configure this router as a BSR candidate (the source IPv6 must be on a
+ # local interface; use "source address ..." or "source loopback")
+ bsr candidate-bsr priority 100 source address 2001:db8::1
 
-# Configure RP candidates (routers that can serve as RP)
-ipv6 pim bsr candidate-rp 2001:db8::rp group-list ff3e::/32 priority 10
+ # Configure this router as an RP candidate; the source is set the same way
+ bsr candidate-rp priority 10 source address 2001:db8::1
+ # Group ranges this candidate-RP advertises are added with separate
+ # "bsr candidate-rp group ..." lines (one per range)
+ bsr candidate-rp group ff3e::/32
 
-# On all other routers: BSR is auto-discovered, but can specify
-ipv6 pim bsr candidate-bsr 2001:db8::bsr2 priority 50  # lower priority = backup BSR
+ # On a backup BSR router, use a higher priority to win election
+ # (BSR election picks the highest priority; lower = less preferred)
+ # bsr candidate-bsr priority 50 source address 2001:db8::2
+exit
 
 end
 write memory
@@ -61,15 +73,20 @@ write memory
 
 IPv6 has a unique feature called Embedded RP, where the RP address is embedded in the multicast group address itself. This eliminates the need for BSR or static RP configuration.
 
-An embedded RP group address looks like:
+An embedded RP group address looks like (per RFC 3956):
 ```text
-ff7<scope>:0<RP prefix length><RP prefix len>:<RP address low 32 bits>:<group ID>
+ff7<scope>:0<RIID><plen>:<RP network prefix, 64 bits>:<group ID, 32 bits>
 ```
+
+Where the second 16 bits encode a reserved nibble (0), the 4-bit RIID, and the
+8-bit prefix length, and the RP address is reconstructed by taking the first
+`plen` bits of the prefix field, zeroing the rest, and copying the RIID into
+the lowest 4 bits.
 
 Example:
 ```text
 RP address: 2001:db8:1::1
-Embedded RP group: ff7e:0240:2001:db8:1::1:beef
+Embedded RP group: ff7e:0140:2001:db8:1::1:beef
 ```
 
 ```bash
@@ -77,8 +94,10 @@ Embedded RP group: ff7e:0240:2001:db8:1::1:beef
 vtysh
 configure terminal
 
-# Enable embedded RP
-ipv6 pim rp embedded
+# Embedded RP is enabled inside the router pim6 context
+router pim6
+ embedded-rp
+exit
 
 end
 write memory
@@ -95,42 +114,45 @@ For redundancy, multiple routers can share the same RP address (Anycast RP). Whe
 # Configure the same RP address on multiple routers
 # RP Router 1
 interface lo
- ipv6 address 2001:db8::rp/128  # shared anycast address
+ ipv6 address 2001:db8::1/128  # shared anycast address
 
 # RP Router 2 (different physical router, same anycast address)
 interface lo
- ipv6 address 2001:db8::rp/128  # same anycast address
+ ipv6 address 2001:db8::1/128  # same anycast address
 
-# Advertise the RP /128 via BGP or OSPF for reachability
-# PIM will automatically use the nearest RP
+# Advertise the RP /128 via OSPFv3, IS-IS, or BGP so the IGP picks the nearest
+# instance for any given PIM router. Configure the same static RP (or BSR
+# candidate-RP) for 2001:db8::1 on every PIM router in the domain.
 
-# Configure MSDP (Multicast Source Discovery Protocol) between RP routers
-# for source synchronization between Anycast RP instances
-vtysh
-configure terminal
-router msdp
-  peer 2001:db8::rp2 source 2001:db8::rp1
-  peer 2001:db8::rp2 description "Anycast RP peer"
-end
-write memory
+# Source synchronization between Anycast-RP peers in IPv6 is done with
+# RFC 4610 "Anycast-RP using PIM" (PIM forwards Register messages to the
+# other RPs in the anycast set). MSDP (RFC 3618) is IPv4-only and is NOT
+# used for IPv6, and FRR does not provide a "router msdp" mode for v6.
+# In FRR's pim6d, basic anycast RP works via the shared loopback address
+# plus identical RP config on all routers; RFC 4610 register-set forwarding
+# is not currently exposed as a separate FRR knob.
 ```
 
 ## Verifying RP Configuration
 
 ```bash
-# Check RP information on all PIM routers
+# Check RP information on all PIM routers (static + embedded + BSR-learned)
 vtysh -c "show ipv6 pim rp-info"
 # Expected:
-# RP: 2001:db8::rp Group Prefix: ff3e::/32 Type: static
+# RP: 2001:db8::1 Group: ff3e::/32 ...
 
-# Check BSR state
+# Check BSR state on all routers
 vtysh -c "show ipv6 pim bsr"
 
-# Check which RP is being used for a specific group
-vtysh -c "show ipv6 pim rp-info ff3e::stream"
+# On a candidate-BSR / candidate-RP router, see what is being advertised
+vtysh -c "show ipv6 pim bsr candidate-bsr"
+vtysh -c "show ipv6 pim bsr candidate-rp"
 
-# Verify source registration at the RP
-vtysh -c "show ipv6 pim register-statistics"
+# Inspect BSR-learned group-to-RP mappings
+vtysh -c "show ipv6 pim bsr rp-info"
+
+# Inspect (S,G) state at the RP — source registrations show up here
+vtysh -c "show ipv6 pim upstream"
 ```
 
 ## Testing RP with a Multicast Stream
@@ -138,19 +160,19 @@ vtysh -c "show ipv6 pim register-statistics"
 ```bash
 # Source sends to a group in the RP's range
 python3 -c "
-import socket
+import socket, time
 s = socket.socket(socket.AF_INET6, socket.SOCK_DGRAM)
 s.setsockopt(socket.IPPROTO_IPV6, socket.IPV6_MULTICAST_HOPS, 64)
 for i in range(10):
-    s.sendto(f'test {i}'.encode(), ('ff3e::db8:test', 5000))
-    import time; time.sleep(1)
+    s.sendto(f'test {i}'.encode(), ('ff3e::1234', 5000))
+    time.sleep(1)
 "
 
 # Check that the RP sees the registration
 vtysh -c "show ipv6 pim upstream"
-# Look for (2001:db8::source, ff3e::db8:test) entry
+# Look for an (S,G) entry such as (2001:db8::100, ff3e::1234)
 ```
 
 ## Summary
 
-IPv6 multicast RPs can be configured statically (`ipv6 pim rp <addr>`), dynamically via BSR, or using IPv6's unique Embedded RP feature where the RP is encoded in the multicast address. For redundancy, use Anycast RP where multiple routers share the same RP address. Always verify RP configuration with `show ipv6 pim rp-info` and test with actual multicast sources and receivers.
+IPv6 multicast RPs can be configured statically (`rp <addr>` inside `router pim6`), dynamically via BSR, or using IPv6's unique Embedded RP feature where the RP is encoded in the multicast address. For redundancy, use Anycast RP where multiple routers share the same RP address — and remember that on IPv6 you use RFC 4610 (Anycast-RP using PIM), not MSDP. Always verify RP configuration with `show ipv6 pim rp-info` and test with actual multicast sources and receivers.
