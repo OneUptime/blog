@@ -123,7 +123,7 @@ systemctl restart rke2-agent.service
 | `/etc/rancher/rke2/config.yaml` | Agent configuration |
 | `/etc/rancher/rke2/registries.yaml` | Private registry config |
 | `/var/lib/rancher/rke2/agent/logs/kubelet.log` | Kubelet logs |
-| `/run/containerd/` | containerd socket |
+| `/run/k3s/containerd/containerd.sock` | containerd socket |
 
 ---
 
