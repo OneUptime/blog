@@ -37,12 +37,12 @@ interface GigabitEthernet0/0
 
 ! Configure PIM on WAN interface
 interface GigabitEthernet0/1
- ipv6 address 2001:db8:wan::1/64
+ ipv6 address 2001:db8:2::1/64
  ipv6 pim
 
 ! Configure PIM on loopback (for RP address)
 interface Loopback0
- ipv6 address 2001:db8::rp/128
+ ipv6 address 2001:db8::1/128
  ipv6 pim
 ```
 
@@ -50,14 +50,14 @@ interface Loopback0
 
 ```cisco
 ! Configure a static RP for all multicast groups
-ipv6 pim rp-address 2001:db8::rp
+ipv6 pim rp-address 2001:db8::1
 
 ! Configure RP for a specific group range
-ipv6 pim rp-address 2001:db8::rp ff3e::/32
+ipv6 pim rp-address 2001:db8::1 ff3e::/32
 
 ! Configure multiple RPs with different group ranges
-ipv6 pim rp-address 2001:db8::rp1 ff3e::/32 bidir
-ipv6 pim rp-address 2001:db8::rp2 ff0e::db8:0:0/96
+ipv6 pim rp-address 2001:db8::a ff3e::/32 bidir
+ipv6 pim rp-address 2001:db8::b ff0e::db8:0:0/96
 
 ! Verify RP configuration
 show ipv6 pim rp
@@ -67,10 +67,10 @@ show ipv6 pim rp
 
 ```cisco
 ! Configure this router as a BSR candidate
-ipv6 pim bsr candidate-bsr GigabitEthernet0/0 priority 100
+ipv6 pim bsr candidate bsr 2001:db8::1 priority 100
 
 ! Configure RP candidate for BSR
-ipv6 pim bsr candidate-rp GigabitEthernet0/0 group-list ff3e::/32 priority 10
+ipv6 pim bsr candidate rp 2001:db8::1 group-list ff3e::/32 priority 10
 
 ! Verify BSR status
 show ipv6 pim bsr election
@@ -92,13 +92,13 @@ interface GigabitEthernet0/0
 interface GigabitEthernet0/0
  ipv6 mld query-timeout 120
 
-! Configure maximum response time for MLD queries (in tenths of seconds)
+! Configure maximum response time for MLD queries (in seconds, default 10)
 interface GigabitEthernet0/0
  ipv6 mld query-max-response-time 10
 
 ! Join a multicast group on the router (for testing)
 interface GigabitEthernet0/0
- ipv6 mld join-group ff3e::db8:test
+ ipv6 mld join-group ff3e::db8:cafe
 ```
 
 ## Configuring Bidirectional PIM (BiDir)
@@ -107,10 +107,10 @@ For groups where multiple sources exist (e.g., videoconferencing), BiDir PIM is 
 
 ```cisco
 ! Enable BiDir PIM for a specific RP
-ipv6 pim rp-address 2001:db8::rp ff3e::/32 bidir
+ipv6 pim rp-address 2001:db8::1 ff3e::/32 bidir
 
-! Verify BiDir state
-show ipv6 pim bidir df
+! Verify BiDir state (Designated Forwarder info)
+show ipv6 pim df
 ```
 
 ## Verification Commands
@@ -153,27 +153,27 @@ ipv6 access-list ALLOWED_MCAST
 interface GigabitEthernet0/0
  ipv6 mld access-group ALLOWED_MCAST
 
-! Limit PIM join messages (protect RP from unauthorized groups)
-ipv6 access-list RP_GROUPS
+! Filter source registrations at the RP (protect RP from unauthorized sources)
+ipv6 access-list ALLOWED_SOURCES
  permit ipv6 any ff3e::/32
 
-ipv6 pim accept-rp 2001:db8::rp RP_GROUPS
+ipv6 pim accept-register list ALLOWED_SOURCES
 ```
 
 ## Troubleshooting IPv6 Multicast on Cisco
 
 ```cisco
 ! No traffic flowing? Check the mroute table
-show ipv6 mroute ff3e::db8:stream
+show ipv6 mroute ff3e::db8:beef
 
 ! Check if RPF (Reverse Path Forwarding) check passes
-show ipv6 mroute ff3e::db8:stream detail
+show ipv6 mroute ff3e::db8:beef detail
 
 ! Check PIM adjacency with the RP
-show ipv6 pim topology ff3e::db8:stream
+show ipv6 pim topology ff3e::db8:beef
 
 ! Verify RP is reachable
-ping ipv6 2001:db8::rp
+ping ipv6 2001:db8::1
 
 ! Check MLD on the last-hop router
 show ipv6 mld groups
