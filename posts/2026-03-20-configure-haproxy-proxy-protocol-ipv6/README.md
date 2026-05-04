@@ -61,7 +61,7 @@ backend app_servers
     server app1 [2001:db8::10]:8080 send-proxy-v2
 
     # Send SSL information in PROXY protocol v2 TLV
-    server app1 [2001:db8::10]:8080 send-proxy-v2 ssl
+    server app1 [2001:db8::10]:8080 send-proxy-v2-ssl
 ```
 
 ## Full Frontend-to-Backend PROXY Protocol Chain
@@ -90,7 +90,7 @@ backend proxy_backend
 
 ```bash
 # Send a PROXY protocol v1 header manually for testing
-echo -e "PROXY TCP6 2001:db8::test ::1 1234 80\r\nGET / HTTP/1.0\r\nHost: example.com\r\n\r\n" | \
+echo -e "PROXY TCP6 2001:db8::1 ::1 1234 80\r\nGET / HTTP/1.0\r\nHost: example.com\r\n\r\n" | \
     nc 2001:db8::10 8080
 
 # Listen on backend and verify PROXY header received
