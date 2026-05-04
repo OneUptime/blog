@@ -8,40 +8,46 @@ Description: Configure and enable Longhorn's V2 Data Engine based on SPDK for ul
 
 ## Introduction
 
-Longhorn's V2 Data Engine (introduced in Longhorn v1.6.0) is a new storage engine based on SPDK (Storage Performance Development Kit). Unlike the V1 engine which uses kernel-space block devices, the V2 engine uses user-space NVMe over Fabrics to achieve near-bare-metal NVMe performance with drastically lower CPU utilization. This guide explains how to configure and use the V2 Data Engine.
+Longhorn's V2 Data Engine (introduced as a preview feature in Longhorn v1.5.0) is a new storage engine based on SPDK (Storage Performance Development Kit). Unlike the V1 engine which uses a user-space iSCSI target (tgt) exposed via the kernel iSCSI initiator, the V2 engine uses SPDK's user-space NVMe-oF (TCP) stack to achieve near-bare-metal NVMe performance with drastically lower CPU utilization. This guide explains how to configure and use the V2 Data Engine.
 
 ## V1 vs V2 Data Engine Comparison
 
 | Feature | V1 Engine | V2 Engine |
 |---------|-----------|-----------|
-| Storage subsystem | Kernel (tgt) | User-space (SPDK) |
+| Storage subsystem | User-space tgt + kernel iSCSI initiator | User-space SPDK |
 | Protocol | iSCSI | NVMe-oF TCP |
 | Typical IOPS | 100K-500K | 1M+ |
 | CPU efficiency | Standard | Much lower CPU per IOPS |
 | Latency | ~100-500μs | ~50-100μs |
-| Stability | Production | Beta (as of v1.7) |
+| Stability | Production (GA) | Preview (as of v1.7) |
 | NVMe requirement | No | Recommended |
 
 ## Prerequisites
 
-- Longhorn v1.6.0 or later
-- Linux kernel 5.15 or later with NVMe-oF TCP support
-- At least 2 CPU cores dedicated to SPDK (hugepages required)
+- Longhorn v1.6.0 or later (V2 was first introduced as preview in v1.5.0)
+- Linux kernel 5.15 or later with NVMe-oF TCP support; v5.19 or newer is strongly recommended (Longhorn warns that 5.15 hosts can unexpectedly reboot on volume IO errors)
+- AMD64 (with SSE4.2) or ARM64 CPU; each V2 instance-manager pod consumes ~1 CPU core for the SPDK target daemon
 - NVMe SSDs recommended (though not strictly required)
 
 ### Verify Kernel Support
 
 ```bash
-# Check kernel version (need 5.15+)
+# Check kernel version (5.15+ minimum; 5.19+ recommended)
 
 uname -r
 
-# Verify NVMe-oF TCP module
+# Verify the kernel modules SPDK needs
 modprobe nvme-tcp
-lsmod | grep nvme_tcp
+modprobe vfio_pci
+modprobe uio_pci_generic
+lsmod | grep -E 'nvme_tcp|vfio_pci|uio_pci_generic'
 
-# Load module permanently
-echo "nvme-tcp" >> /etc/modules
+# Load modules permanently
+cat <<EOF >> /etc/modules
+nvme-tcp
+vfio_pci
+uio_pci_generic
+EOF
 ```
 
 ### Configure Hugepages
@@ -77,27 +83,36 @@ kubectl patch settings.longhorn.io v2-data-engine \
 kubectl get pods -n longhorn-system | grep instance-manager
 ```
 
-### Step 2: Configure Node-Level V2 Settings
+### Step 2: Configure the V2 Hugepage Limit and CPU Reservation
 
-The V2 engine requires configuring the number of hugepages and CPU cores per node:
+The V2 hugepage allocation and CPU guarantee are configured via cluster-wide Longhorn settings, not per-node spec fields:
 
 ```bash
-# Patch a Longhorn node to configure V2 engine settings
-kubectl patch nodes.longhorn.io worker-node-1 \
+# Set the hugepage limit (in MiB) used by each V2 instance manager.
+# Default is 2048 (2 GiB); raise it if you plan to run many V2 replicas per node.
+kubectl patch settings.longhorn.io v2-data-engine-hugepage-limit \
   -n longhorn-system \
   --type merge \
-  -p '{
-    "spec": {
-      "instanceManagerCPURequest": 250,
-      "instanceManagerCPULimit": 1000
-    }
-  }'
+  -p '{"value": "2048"}'
+
+# Reserve CPU (in millicpus) for each V2 instance-manager pod.
+# Default is 1250m, matching SPDK's busy-poll requirement.
+kubectl patch settings.longhorn.io guaranteed-instance-manager-cpu-for-v2-data-engine \
+  -n longhorn-system \
+  --type merge \
+  -p '{"value": "1250"}'
 ```
 
-### Step 3: Set Hugepage Configuration
+### Step 3: Add a Block-Type Disk for V2 Volumes
+
+V2 volumes must be backed by `block`-type disks (raw block devices), not the filesystem-type disks used by V1. Edit the Longhorn `Node` resource and add the device under `spec.disks`:
+
+```bash
+kubectl -n longhorn-system edit nodes.longhorn.io worker-node-1
+```
 
 ```yaml
-# longhorn-node-v2.yaml - Configure hugepages for V2 engine
+# Example snippet to add to spec.disks
 apiVersion: longhorn.io/v1beta2
 kind: Node
 metadata:
@@ -105,12 +120,13 @@ metadata:
   namespace: longhorn-system
 spec:
   allowScheduling: true
-  # Hugepages allocated for SPDK (in MiB)
-  hugepageRequestForV2DataEngine: 2048  # 2 GiB
-```
-
-```bash
-kubectl apply -f longhorn-node-v2.yaml
+  disks:
+    nvme0n1:
+      path: /dev/nvme0n1
+      diskType: block
+      allowScheduling: true
+      tags:
+        - nvme
 ```
 
 ## Create a V2 StorageClass
@@ -202,10 +218,11 @@ kubectl exec -it v2-test-pod -- \
 ## Monitoring V2 Engine Metrics
 
 ```bash
-# Check V2 instance manager pods
-kubectl get pods -n longhorn-system | grep instance-manager-e-v2
+# List instance-manager pods (V2 pods are identified by the data-engine=v2 label,
+# not by a "v2" suffix in the pod name).
+kubectl get pods -n longhorn-system -l longhorn.io/data-engine=v2
 
-# View V2 engine specific metrics
+# View V2 engine specific logs
 kubectl logs -n longhorn-system \
   $(kubectl get pods -n longhorn-system \
     -l longhorn.io/instance-manager-type=engine \
