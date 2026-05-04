@@ -50,7 +50,7 @@ kubectl describe nodes | grep -A 3 Taints
 
 ```bash
 # Set tolerations for all Longhorn system components
-# Tolerations are specified as a JSON array
+# Tolerations are specified as a semicolon-separated string in key=value:effect format
 kubectl patch settings.longhorn.io taint-toleration \
   -n longhorn-system \
   --type merge \
@@ -77,17 +77,22 @@ Longhorn will restart its components to apply the new tolerations.
 ```yaml
 # longhorn-values.yaml - Toleration configuration
 
-# Global tolerations for all Longhorn components
-tolerations:
-  # Tolerate dedicated storage nodes
-  - key: "dedicated"
-    operator: "Equal"
-    value: "storage"
-    effect: "NoSchedule"
-  # Tolerate control-plane nodes
-  - key: "node-role.kubernetes.io/control-plane"
-    operator: "Exists"
-    effect: "NoSchedule"
+# Global tolerations applied to user-deployed Longhorn components
+global:
+  tolerations:
+    # Tolerate dedicated storage nodes
+    - key: "dedicated"
+      operator: "Equal"
+      value: "storage"
+      effect: "NoSchedule"
+    # Tolerate control-plane nodes
+    - key: "node-role.kubernetes.io/control-plane"
+      operator: "Exists"
+      effect: "NoSchedule"
+
+# Tolerations for system-managed components (e.g. instance-manager)
+defaultSettings:
+  taintToleration: "dedicated=storage:NoSchedule"
 
 # Per-component tolerations (override global)
 longhornManager:
@@ -162,16 +167,17 @@ If you use spot instances for storage and they have preemption taints:
 
 ```yaml
 # Tolerate AWS spot instance interruption taint
-tolerations:
-  - key: "spot-instance"
-    operator: "Equal"
-    value: "true"
-    effect: "NoSchedule"
-# Or for GKE spot nodes:
-  - key: "cloud.google.com/gke-spot"
-    operator: "Equal"
-    value: "true"
-    effect: "NoSchedule"
+global:
+  tolerations:
+    - key: "spot-instance"
+      operator: "Equal"
+      value: "true"
+      effect: "NoSchedule"
+    # Or for GKE spot nodes:
+    - key: "cloud.google.com/gke-spot"
+      operator: "Equal"
+      value: "true"
+      effect: "NoSchedule"
 ```
 
 > **Note:** Using spot/preemptible nodes for Longhorn storage is risky since node termination can cause replica unavailability. Only do this if you have enough replicas (3+) and sufficient non-spot nodes.
