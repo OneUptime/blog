@@ -25,7 +25,8 @@ backend app_servers
 ```haproxy
 backend web_servers
     balance leastconn
-    option httpchk GET /health HTTP/1.1\r\nHost:\ example.com
+    option httpchk GET /health HTTP/1.1
+    http-check send hdr Host example.com
 
     # IPv6 servers with check parameters
     server web1 [2001:db8::10]:80 check inter 5s rise 2 fall 3
@@ -55,11 +56,10 @@ backend mixed_backend
 ```haproxy
 backend secure_backend
     balance roundrobin
-    option ssl-hello-chk
 
     # HTTPS to IPv6 backend
     server app1 [2001:db8::10]:443 check ssl verify none
-    server app2 [2001:db8::11]:443 check ssl verify required ca-file /etc/ssl/certs/ca.crt
+    server app2 [2001:db8::11]:443 check ssl verify required ca-file /etc/ssl/certs/ca.crt verifyhost app2.example.com
 ```
 
 ## Backend with Persistent Sessions
@@ -78,10 +78,10 @@ backend sticky_backend
 
 ```haproxy
 backend source_persist
-    # Source-based persistence (good for IPv6 with /64 subnets)
+    # Source-based persistence hashes the client source IP
     balance source
 
-    # With IPv6, consider using IPv6 prefix for hashing
+    # Consistent hashing reduces remapping when server availability changes
     hash-type consistent
 
     server app1 [2001:db8::10]:8080 check
@@ -105,7 +105,7 @@ echo "show servers state" | socat stdio /var/run/haproxy/admin.sock
 # Access http://haproxy:8404/stats (if configured)
 
 # Test direct connection to IPv6 backend
-curl -6 http://[2001:db8::10]:8080/health
+curl -g -6 http://[2001:db8::10]:8080/health
 
 # Check HAProxy logs
 journalctl -u haproxy -f
@@ -113,4 +113,4 @@ journalctl -u haproxy -f
 
 ## Summary
 
-Configure HAProxy backend servers with IPv6 addresses using `server name [2001:db8::10]:PORT check`. Health checks with `check inter 5s rise 2 fall 3` monitor backend availability. Use `backup` keyword for standby servers. Mix IPv4 and IPv6 servers in the same backend by using appropriate syntax for each. For HTTPS backends, add `ssl verify none` or `ssl verify required ca-file /path/to/ca.crt`. Use `balance source` with `hash-type consistent` for source-based persistence with IPv6 clients.
+Configure HAProxy backend servers with IPv6 addresses using `server name [2001:db8::10]:PORT check`. Health checks with `check inter 5s rise 2 fall 3` monitor backend availability. Use `backup` keyword for standby servers. Mix IPv4 and IPv6 servers in the same backend by using appropriate syntax for each. For HTTPS backends, add `ssl` and use `verify required ca-file /path/to/ca.crt verifyhost <hostname>` when you need certificate validation while connecting to an IP literal. Use `balance source` with `hash-type consistent` for source-based persistence with IPv6 clients while reducing remapping when servers change state.
