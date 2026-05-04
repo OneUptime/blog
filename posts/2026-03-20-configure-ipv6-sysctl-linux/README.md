@@ -67,8 +67,10 @@ net.ipv6.conf.all.use_tempaddr = 2
 net.ipv6.conf.default.use_tempaddr = 2
 
 # Stable privacy addressing (random but stable per host/prefix)
-net.ipv6.conf.all.addr_gen_mode = 1
-net.ipv6.conf.default.addr_gen_mode = 1
+# Mode 2 uses the secret from stable_secret (RFC 7217); set stable_secret first
+# or use mode 3 to have the kernel pick a random secret automatically.
+net.ipv6.conf.all.addr_gen_mode = 2
+net.ipv6.conf.default.addr_gen_mode = 2
 
 # Disable ICMPv6 redirects (recommended for servers)
 net.ipv6.conf.all.accept_redirects = 0
