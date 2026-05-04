@@ -25,54 +25,52 @@ import ipaddress
 
 def ipv4_to_mapped(ipv4_str: str) -> str:
     v4 = ipaddress.IPv4Address(ipv4_str)
-    mapped = ipaddress.IPv6Address(f"::ffff:{ipv4_str}")
-    return str(mapped)
+    return f"::ffff:{v4}"
 
 def mapped_to_ipv4(ipv6_str: str) -> str | None:
     v6 = ipaddress.IPv6Address(ipv6_str)
-    if v6.ipv4_mapped:
+    if v6.ipv4_mapped is not None:
         return str(v6.ipv4_mapped)
     return None
 
 # Examples
 
 print(ipv4_to_mapped("192.168.1.100"))           # ::ffff:192.168.1.100
-print(ipv4_to_mapped("10.0.0.1"))                # ::ffff:a00:1
+print(ipv4_to_mapped("10.0.0.1"))                # ::ffff:10.0.0.1
 print(mapped_to_ipv4("::ffff:192.168.1.100"))    # 192.168.1.100
 print(mapped_to_ipv4("2001:db8::1"))             # None (not mapped)
 ```
 
+Note: `str(ipaddress.IPv6Address("::ffff:192.168.1.100"))` returns the compressed hexadecimal form `::ffff:c0a8:164`. To preserve the familiar dotted-quad notation, build the string explicitly as shown above.
+
 ## Go
+
+Use the `net/netip` package (Go 1.18+). Note that the older `net.IP.String()` method renders IPv4-mapped IPv6 addresses as plain dotted decimal (e.g. `192.168.1.100`), so it cannot produce the `::ffff:x.x.x.x` form.
 
 ```go
 package main
 
 import (
     "fmt"
-    "net"
+    "net/netip"
 )
 
 func ipv4ToMapped(ipv4 string) string {
-    ip := net.ParseIP(ipv4).To4()
-    if ip == nil {
+    addr, err := netip.ParseAddr(ipv4)
+    if err != nil || !addr.Is4() {
         return ""
     }
-    // Construct ::ffff:x.x.x.x
-    mapped := net.IP{0,0,0,0, 0,0,0,0, 0,0,0xff,0xff,
-                     ip[0], ip[1], ip[2], ip[3]}
-    return mapped.String()
+    // AddrFrom16 of the 16-byte form yields a 4-in-6 Addr,
+    // which prints as ::ffff:x.x.x.x
+    return netip.AddrFrom16(addr.As16()).String()
 }
 
 func mappedToIPv4(ipv6 string) string {
-    ip := net.ParseIP(ipv6)
-    if ip == nil {
+    addr, err := netip.ParseAddr(ipv6)
+    if err != nil || !addr.Is4In6() {
         return ""
     }
-    v4 := ip.To4()
-    if v4 == nil {
-        return ""
-    }
-    return v4.String()
+    return addr.Unmap().String()
 }
 
 func main() {
@@ -84,19 +82,12 @@ func main() {
 
 ## JavaScript
 
-```javascript
-function ipv4ToMapped(ipv4) {
-    const parts = ipv4.split('.').map(Number);
-    const hex = parts.map(p => p.toString(16).padStart(2, '0'));
-    const group1 = hex[0] + hex[1];
-    const group2 = hex[2] + hex[3];
-    return `::ffff:${parseInt(group1, 16)}.${parseInt(group2.slice(0,2),16)}.` +
-           // simpler form:
-           `${ipv4}`.replace(/^/, '');
-}
+JavaScript has no built-in IP address library, but the dotted-quad mapped form is just a string concatenation, and parsing back out is a simple regex match.
 
-// Cleaner version using string template
-function toMapped(ipv4) { return `::ffff:${ipv4}`; }
+```javascript
+function toMapped(ipv4) {
+    return `::ffff:${ipv4}`;
+}
 
 function fromMapped(ipv6) {
     const m = ipv6.match(/^::ffff:(\d+\.\d+\.\d+\.\d+)$/i);
@@ -105,18 +96,19 @@ function fromMapped(ipv6) {
 
 console.log(toMapped("192.168.1.100"));           // ::ffff:192.168.1.100
 console.log(fromMapped("::ffff:192.168.1.100"));  // 192.168.1.100
+console.log(fromMapped("2001:db8::1"));           // null (not mapped)
 ```
 
 ## Detecting Mapped Addresses in Dual-Stack Servers
 
 ```python
-import socket, ipaddress
+import ipaddress
 
 def normalize_client_ip(addr: str) -> str:
     """Strip IPv6-mapped prefix to return the real IPv4 address."""
     try:
         v6 = ipaddress.IPv6Address(addr)
-        return str(v6.ipv4_mapped) if v6.ipv4_mapped else addr
+        return str(v6.ipv4_mapped) if v6.ipv4_mapped is not None else addr
     except ValueError:
         return addr  # already IPv4
 
@@ -126,4 +118,4 @@ print(normalize_client_ip("::ffff:10.0.0.5"))  # 10.0.0.5
 
 ## Conclusion
 
-IPv6-mapped IPv4 addresses follow the `::ffff:0:0/96` prefix. Python's `ipaddress` module exposes `ipv4_mapped` directly; Go's `net.IP.To4()` handles the conversion; in JavaScript simple string manipulation works for the common `::ffff:x.x.x.x` form. Always normalize mapped addresses when logging or performing access control checks.
+IPv6-mapped IPv4 addresses follow the `::ffff:0:0/96` prefix. Python's `ipaddress` module exposes `ipv4_mapped` directly; Go's `net/netip` package handles the conversion via `Is4In6` and `Unmap`; in JavaScript simple string manipulation works for the common `::ffff:x.x.x.x` form. Always normalize mapped addresses when logging or performing access control checks.
