@@ -86,7 +86,7 @@ jobs:
               owner: context.repo.owner,
               repo: context.repo.repo,
               title: `[DRIFT] Infrastructure drift in ${{ matrix.environment }} - ${new Date().toISOString().split('T')[0]}`,
-              body: `Drift detected in \`${{ matrix.environment }}\` environment at ${new Date().toISOString()}\n\n```\n${truncated}\n```\n\nTo investigate:\n1. Run \`tofu plan -refresh-only\` in \`environments/${{ matrix.environment }}/\`\n2. Determine if the change is intentional\n3. Either accept with \`tofu apply -refresh-only\` or revert with \`tofu apply\``,
+              body: `Drift detected in \`${{ matrix.environment }}\` environment at ${new Date().toISOString()}\n\n\`\`\`\n${truncated}\n\`\`\`\n\nTo investigate:\n1. Run \`tofu plan -refresh-only\` in \`environments/${{ matrix.environment }}/\`\n2. Determine if the change is intentional\n3. Either accept with \`tofu apply -refresh-only\` or revert with \`tofu apply\``,
               labels: ['infrastructure-drift', '${{ matrix.environment }}']
             });
 
