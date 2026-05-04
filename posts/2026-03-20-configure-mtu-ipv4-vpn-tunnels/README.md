@@ -102,8 +102,9 @@ sudo iptables -t mangle -A FORWARD -o wg0 -p tcp --tcp-flags SYN,RST SYN \
 sudo tcpdump -i wg0 'ip[6:2] & 0x1fff != 0'
 # If this shows output, packets are being fragmented
 
-# Check for IP fragmentation statistics
-cat /proc/net/snmp | grep -A 1 Ip | grep -i frag
+# Check IP fragmentation statistics (look at FragOKs, FragFails,
+# FragCreates, ReasmReqds, ReasmOKs, ReasmFails columns)
+grep "^Ip:" /proc/net/snmp
 ```
 
 Proper MTU configuration is often the difference between a functional VPN and one that mysteriously fails for large file transfers or certain applications.
