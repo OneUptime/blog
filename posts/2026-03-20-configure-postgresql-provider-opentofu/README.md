@@ -15,10 +15,9 @@ The Postgresql provider for OpenTofu enables managing Postgresql resources with 
 ```hcl
 terraform {
   required_providers {
-    # Replace with the actual provider source
-    provider_name = {
-      source  = "provider-namespace/provider-name"
-      version = "~> 1.0"
+    postgresql = {
+      source  = "cyrilgdn/postgresql"
+      version = "~> 1.22"
     }
   }
   required_version = ">= 1.6.0"
@@ -27,47 +26,64 @@ terraform {
 
 ## Authentication
 
-Most providers read credentials from environment variables:
+The PostgreSQL provider reads connection details from the standard `PG*` environment variables:
 
 ```bash
-# Set provider credentials via environment variables
+# Set PostgreSQL connection details via environment variables
 
-export PROVIDER_API_KEY="your-api-key"
-export PROVIDER_API_SECRET="your-api-secret"
+export PGHOST="postgres.example.com"
+export PGPORT="5432"
+export PGUSER="postgres"
+export PGPASSWORD="your-password"
+export PGDATABASE="postgres"
+export PGSSLMODE="require"
 ```
 
 ```hcl
-provider "provider_name" {
-  # Credentials are read from environment variables
-  # api_key = var.api_key  # Alternative: inline (not recommended)
+provider "postgresql" {
+  # host, port, username, password, database, and sslmode default to
+  # PGHOST, PGPORT, PGUSER, PGPASSWORD, PGDATABASE, and PGSSLMODE.
+  # password = var.pg_password  # Alternative: inline (not recommended)
 }
 ```
 
 ## Example Resource
 
 ```hcl
-# Example resource demonstrating provider usage
-resource "provider_example_resource" "main" {
-  name = "${var.name}-${var.environment}"
+# Create a database and a role with login that owns it
+resource "postgresql_role" "app" {
+  name     = "${var.name}_${var.environment}"
+  login    = true
+  password = var.app_role_password
+}
 
-  tags = {
-    environment = var.environment
-    managed_by  = "opentofu"
-  }
+resource "postgresql_database" "app" {
+  name              = "${var.name}_${var.environment}"
+  owner             = postgresql_role.app.name
+  encoding          = "UTF8"
+  lc_collate        = "C"
+  lc_ctype          = "C"
+  connection_limit  = -1
+  allow_connections = true
 }
 ```
 
 ## Variables
 
 ```hcl
-variable "name"        { type = string }
-variable "environment" { type = string }
+variable "name"              { type = string }
+variable "environment"       { type = string }
+variable "app_role_password" {
+  type      = string
+  sensitive = true
+}
 ```
 
 ## Outputs
 
 ```hcl
-output "resource_id" { value = provider_example_resource.main.id }
+output "database_name" { value = postgresql_database.app.name }
+output "role_name"     { value = postgresql_role.app.name }
 ```
 
 ## Best Practices
