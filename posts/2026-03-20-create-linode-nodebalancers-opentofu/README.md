@@ -73,6 +73,7 @@ resource "linode_instance" "web" {
   image           = "linode/ubuntu24.04"
   root_pass       = var.root_password
   authorized_keys = [var.ssh_public_key]
+  private_ip      = true
 }
 
 resource "linode_nodebalancer_node" "web" {
