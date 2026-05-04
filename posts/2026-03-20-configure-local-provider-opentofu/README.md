@@ -4,21 +4,20 @@ Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
 Tags: OpenTofu, Infrastructure as Code, Provider, Automation, DevOps
 
-Description: Learn how to configure and use the Local provider in OpenTofu to manage Local resources as code.
+Description: Learn how to configure and use the Local provider in OpenTofu to manage files on the local filesystem as code.
 
 ## Introduction
 
-The Local provider for OpenTofu enables managing Local resources with the same plan/apply workflow as your cloud infrastructure. This guide covers authentication, basic resource configuration, and production best practices.
+The Local provider for OpenTofu enables managing files on the local filesystem with the same plan/apply workflow as your cloud infrastructure. This guide covers provider installation, basic resource configuration, and production best practices.
 
 ## Provider Installation
 
 ```hcl
 terraform {
   required_providers {
-    # Replace with the actual provider source
-    provider_name = {
-      source  = "provider-namespace/provider-name"
-      version = "~> 1.0"
+    local = {
+      source  = "hashicorp/local"
+      version = "~> 2.8"
     }
   }
   required_version = ">= 1.6.0"
@@ -27,33 +26,24 @@ terraform {
 
 ## Authentication
 
-Most providers read credentials from environment variables:
-
-```bash
-# Set provider credentials via environment variables
-
-export PROVIDER_API_KEY="your-api-key"
-export PROVIDER_API_SECRET="your-api-secret"
-```
+The Local provider operates entirely on the local filesystem of the machine running OpenTofu, so it requires no API keys, tokens, or credentials. The provider block can be omitted or left empty:
 
 ```hcl
-provider "provider_name" {
-  # Credentials are read from environment variables
-  # api_key = var.api_key  # Alternative: inline (not recommended)
+provider "local" {
+  # No configuration required
 }
 ```
+
+File access is governed by the OS-level permissions of the user running `tofu apply`.
 
 ## Example Resource
 
 ```hcl
-# Example resource demonstrating provider usage
-resource "provider_example_resource" "main" {
-  name = "${var.name}-${var.environment}"
-
-  tags = {
-    environment = var.environment
-    managed_by  = "opentofu"
-  }
+# Generate a configuration file on the local filesystem
+resource "local_file" "main" {
+  filename        = "${path.module}/${var.name}-${var.environment}.conf"
+  content         = "environment=${var.environment}\nmanaged_by=opentofu\n"
+  file_permission = "0644"
 }
 ```
 
@@ -67,16 +57,16 @@ variable "environment" { type = string }
 ## Outputs
 
 ```hcl
-output "resource_id" { value = provider_example_resource.main.id }
+output "resource_id" { value = local_file.main.id }
 ```
 
 ## Best Practices
 
-- Store API keys in environment variables or a secrets manager-never in .tf files
+- Use `local_sensitive_file` (not `local_file`) when writing secrets so the content is omitted from plan output and state diffs
 - Pin provider versions in `required_providers` to prevent unexpected updates
 - Commit the `.terraform.lock.hcl` file to lock exact provider versions
-- Use separate provider configurations per environment using aliases or workspaces
+- Set explicit `file_permission` and `directory_permission` values rather than relying on the default `0777`
 
 ## Conclusion
 
-Managing Local resources with OpenTofu brings the same consistency and auditability to SaaS tooling as you get with cloud infrastructure. Start by codifying your most critical resources and gradually expand coverage over time.
+Managing local files with OpenTofu brings the same consistency and auditability to filesystem artifacts as you get with cloud infrastructure. Start by codifying your most critical generated configuration files and gradually expand coverage over time.
