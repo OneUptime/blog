@@ -17,29 +17,31 @@ Like resources, data sources support the `count` and `for_each` meta-arguments, 
 `count` creates multiple instances of a data source, each indexed numerically.
 
 ```hcl
-variable "region_names" {
-  type    = list(string)
-  default = ["us-east-1", "us-west-2", "eu-west-1"]
+variable "ami_name_patterns" {
+  type = list(string)
+  default = [
+    "amzn2-ami-hvm-*-x86_64-gp2",
+    "ubuntu/images/hvm-ssd/ubuntu-22.04-amd64-server-*",
+  ]
 }
 
-# Look up the current AMI in each region
+# Look up an AMI for each name pattern
 
-data "aws_ami" "amazon_linux" {
-  count    = length(var.region_names)
-  provider = aws.by_region[count.index]   # use provider aliased per region
+data "aws_ami" "instances" {
+  count = length(var.ami_name_patterns)
 
   most_recent = true
-  owners      = ["amazon"]
+  owners      = ["amazon", "099720109477"]
 
   filter {
     name   = "name"
-    values = ["amzn2-ami-hvm-*-x86_64-gp2"]
+    values = [var.ami_name_patterns[count.index]]
   }
 }
 
 # Reference by index
 output "ami_ids" {
-  value = data.aws_ami.amazon_linux[*].id   # splat expression
+  value = data.aws_ami.instances[*].id   # splat expression
 }
 ```
 
