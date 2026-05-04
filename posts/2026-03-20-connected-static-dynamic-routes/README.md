@@ -48,7 +48,7 @@ ip route add default via 192.168.10.1
 ip route show
 ```
 
-Static routes on Linux have an administrative distance of 1 by default. Use the `metric` keyword to adjust preference:
+Static routes added with `ip route` use a default metric of 0 on Linux — the kernel does not implement Cisco-style administrative distance, only per-route metrics where lower wins. Use the `metric` keyword to make a route less preferred:
 
 ```bash
 # Lower metric = higher preference
@@ -82,10 +82,10 @@ ip route show proto ospf
 
 ## Administrative Distance Comparison
 
-| Route Type | Linux Metric | Cisco AD |
+| Route Type | Linux default metric | Cisco AD |
 |---|---|---|
 | Connected | 0 | 0 |
-| Static | 1 | 1 |
+| Static | 0 | 1 |
 | OSPF | varies | 110 |
 | BGP (eBGP) | varies | 20 |
 | RIP | varies | 120 |
