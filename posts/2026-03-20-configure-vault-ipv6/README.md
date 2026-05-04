@@ -47,16 +47,12 @@ cluster_addr = "https://[2001:db8::10]:8201"
 
 ```hcl
 # Listen on all IPv6 and IPv4 interfaces
+# A single listener serves both API traffic (address) and
+# cluster server-to-server traffic (cluster_address)
 listener "tcp" {
-  address     = "[::]:8200"
-  tls_disable = 1  # Development only
-}
-
-# Cluster listener on all interfaces
-listener "tcp" {
-  address     = "[::]:8201"
-  tls_disable = 1
-  purpose     = "cluster"
+  address         = "[::]:8200"
+  cluster_address = "[::]:8201"
+  tls_disable     = 1  # Development only
 }
 ```
 
