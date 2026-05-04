@@ -35,7 +35,7 @@ How to Set Up Container Image Signing in Rancher addresses these challenges by a
 kubectl get pods --all-namespaces -o json | jq -r '
   .items[] | 
   select(
-    .spec.containers[].securityContext.runAsRoot == true or
+    .spec.containers[].securityContext.runAsUser == 0 or
     .spec.containers[].securityContext.privileged == true
   ) |
   [.metadata.namespace, .metadata.name] |
@@ -168,24 +168,21 @@ spec:
     rules:
     - alert: PrivilegedContainerDetected
       expr: |
-        kube_pod_container_info{container!=""} * on(pod, namespace)
-        kube_pod_spec_container_security_context_privileged{privileged="true"} > 0
+        increase(falcosecurity_falcosidekick_falco_events_total{rule="Launch Privileged Container"}[5m]) > 0
       for: 0m
       labels:
         severity: critical
       annotations:
-        summary: "Privileged container in {{ $labels.namespace }}/{{ $labels.pod }}"
+        summary: "Privileged container launch detected by Falco"
     
     - alert: ContainerRunningAsRoot
       expr: |
-        kube_pod_container_status_running * on(pod, namespace)
-        kube_pod_container_info{container_id!=""} and
-        kube_pod_spec_container_security_context_run_as_user{run_as_user="0"} > 0
+        increase(falcosecurity_falcosidekick_falco_events_total{rule="Run shell untrusted"}[5m]) > 0
       for: 5m
       labels:
         severity: warning
       annotations:
-        summary: "Container running as root in {{ $labels.namespace }}"
+        summary: "Suspicious shell or root execution detected by Falco"
 ```
 
 ## Step 7: Verify Security Controls
