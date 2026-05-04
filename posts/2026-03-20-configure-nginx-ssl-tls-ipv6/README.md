@@ -115,7 +115,7 @@ server {
 curl -6 -v https://example.com 2>&1 | grep -E 'Connected|TLS|SSL|subject|issuer'
 
 # Test with specific IPv6 address
-curl --connect-to example.com:443:2001:db8::10:443 https://example.com
+curl --connect-to example.com:443:[2001:db8::10]:443 https://example.com
 
 # OpenSSL test over IPv6
 openssl s_client -connect '[2001:db8::10]:443' -servername example.com
