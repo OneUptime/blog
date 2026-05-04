@@ -45,7 +45,10 @@ threads=4
 max-cache-entries=2000000
 max-packetcache-entries=500000
 
-# Prefetch expiring records
+# Refresh records before they expire (percentage of original TTL)
+refresh-on-ttl-perc=10
+
+# Serve RFC 1918 private-address reverse zones locally
 serve-rfc1918=yes
 
 # Logging
@@ -57,11 +60,12 @@ log-common-errors=yes
 
 ```ini
 # Forward internal zone to IPv6 nameserver
-forward-zones=example.internal=2001:db8:1::53
+# (IPv6 addresses are wrapped in brackets to disambiguate from a port)
+forward-zones=example.internal=[2001:db8:1::53]
 
 # Forward all queries to upstream
 # (makes it a forwarding resolver rather than full recursive)
-forward-zones-recurse=.=2606:4700:4700::1111;2606:4700:4700::1001;8.8.8.8
+forward-zones-recurse=.=[2606:4700:4700::1111];[2606:4700:4700::1001];8.8.8.8
 ```
 
 ## Step 4: DNSSEC Validation
@@ -105,8 +109,8 @@ lua-dns-script=/etc/powerdns/filter.lua
 ## Step 6: Validate and Test
 
 ```bash
-# Check configuration
-pdns_recursor --config-check
+# Check configuration (requires recursor 4.8+)
+pdns_recursor --config=check
 
 # Restart
 systemctl restart pdns-recursor
@@ -124,20 +128,27 @@ dig +dnssec AAAA cloudflare.com @::1
 rec_control get all | grep questions
 ```
 
-## Rate Limiting
+## Connection and Query Limits
 
 ```ini
 # /etc/powerdns/recursor.conf
 
-# Limit queries per second from a single source
-# (protects against abuse from IPv6 clients)
-max-qps-ip=100
-max-qps=10000
+# Cap simultaneous incoming TCP connections (default: 1024)
+max-tcp-clients=1024
 
-# Throttle sources that cause SERVFAIL
-throttle-ip-enable=yes
+# Cap concurrent TCP connections from a single client IP
+# (protects against abuse from a single IPv6 source)
+max-tcp-per-client=10
+
+# Cap queries handled per UDP processing round (default: 10000)
+max-udp-queries-per-round=10000
+
+# Cap recursive MTasker threads per worker (default: 2048)
+max-mthreads=2048
 ```
+
+For per-IP queries-per-second rate limiting, use a Lua script in `gettag` or `preresolve`, or rely on a firewall/eBPF layer in front of the recursor — the recursor itself does not expose a built-in QPS-per-IP knob.
 
 ## Conclusion
 
-PowerDNS Recursor listens on IPv6 by adding `::` or specific addresses to `local-address`. DNSSEC validation, Lua scripting, and per-IP rate limiting make it production-ready. Use OneUptime to monitor recursor availability, cache hit rates, and query response times from IPv6 endpoints.
+PowerDNS Recursor listens on IPv6 by adding `::` or specific addresses to `local-address`. DNSSEC validation, Lua scripting, and per-client connection limits make it production-ready. Use OneUptime to monitor recursor availability, cache hit rates, and query response times from IPv6 endpoints.
