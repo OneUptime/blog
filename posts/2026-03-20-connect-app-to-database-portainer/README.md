@@ -253,16 +253,20 @@ secrets:
 
 ```python
 # Read secret from file in application
+import os
+import asyncpg
+
 with open('/run/secrets/db_password', 'r') as f:
     db_password = f.read().strip()
 
-conn = await asyncpg.connect(
-    host=os.environ['DB_HOST'],
-    port=int(os.environ.get('DB_PORT', 5432)),
-    database=os.environ['DB_NAME'],
-    user=os.environ['DB_USER'],
-    password=db_password
-)
+async def connect_db():
+    return await asyncpg.connect(
+        host=os.environ['DB_HOST'],
+        port=int(os.environ.get('DB_PORT', 5432)),
+        database=os.environ['DB_NAME'],
+        user=os.environ['DB_USER'],
+        password=db_password
+    )
 ```
 
 ## Step 7: Common Troubleshooting
