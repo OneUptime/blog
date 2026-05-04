@@ -11,7 +11,7 @@ Description: Configure smart home devices and home automation platforms with IPv
 Modern smart home protocols increasingly use IPv6:
 - **Matter**: Uses IPv6 exclusively for device communication
 - **Thread**: IPv6-based mesh protocol for low-power IoT devices
-- **Zigbee over IP (ZBIP)**: Uses IPv6
+- **Zigbee IP (ZIP)**: IPv6-over-6LoWPAN profile (largely superseded by Thread)
 - **mDNS/Bonjour**: Used for device discovery, works on both IPv4 and IPv6
 
 Many older smart home devices (WiFi bulbs, older smart plugs) are IPv4-only. This is fine - they work alongside IPv6 devices on a dual-stack network.
@@ -31,10 +31,6 @@ http:
     - "0.0.0.0"    # IPv4
     - "::"         # IPv6
   server_port: 8123
-
-# IPv6-specific network options
-network:
-  ipv6: true
 ```
 
 Access Home Assistant via its IPv6 address:
@@ -50,7 +46,7 @@ Note the square brackets around IPv6 addresses in URLs.
 Matter requires IPv6 to function. When you set up a Matter device:
 
 1. The Matter device connects via Thread (if it's a Thread-enabled device) or WiFi
-2. Thread uses IPv6 exclusively - devices get addresses via Thread's own DHCP/NDP
+2. Thread uses IPv6 exclusively - devices derive their own addresses (link-local `fe80::/64` and mesh-local `fd00::/8` from the network's mesh-local prefix); globally routable prefixes are advertised by the Border Router via SLAAC/ND
 3. WiFi Matter devices use your home network's IPv6
 
 Ensure your router provides IPv6 for Matter to work correctly with Thread devices.
@@ -71,8 +67,12 @@ Thread networks need a Border Router to connect Thread IPv6 mesh to your home Wi
 **Manual Thread Border Router (ot-br-posix on Raspberry Pi):**
 
 ```bash
-# Install OpenThread Border Router
-sudo apt install ot-br-posix
+# Build and install OpenThread Border Router from source
+# (no apt/deb package — clone and run the bootstrap/setup scripts)
+git clone https://github.com/openthread/ot-br-posix.git
+cd ot-br-posix
+./script/bootstrap
+./script/setup
 
 # The border router bridges Thread IPv6 (fd prefix) to your WiFi network
 # Check Thread network info
