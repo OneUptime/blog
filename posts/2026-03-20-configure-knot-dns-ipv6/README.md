@@ -32,10 +32,8 @@ knotd --version
 server:
     # Listen on all IPv6 and IPv4 interfaces
     listen:
-        - address: ::
-          port: 53
-        - address: 0.0.0.0
-          port: 53
+        - "::@53"
+        - "0.0.0.0@53"
 
     # Or listen on specific IPv6 address
     # listen: [2001:db8::53@53]
