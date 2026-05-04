@@ -120,16 +120,17 @@ endpoints = ["[2001:db8::1]:2379", "[2001:db8::2]:2379"]
 ```toml
 # /etc/tidb/tidb.toml
 
-[server]
 # Host to listen on
 host = "::"
 # Port for MySQL connections
 port = 4000
+# Storage type and PD endpoints (comma-separated for multiple PDs)
+store = "tikv"
+path = "[2001:db8::1]:2379"
+
+[status]
 # Status port
 status-port = 10080
-
-[pd]
-endpoints = ["[2001:db8::1]:2379"]
 ```
 
 ## Connecting to TiDB over IPv6
