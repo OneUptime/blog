@@ -103,7 +103,8 @@ resource "linode_domain_record" "dkim" {
 resource "linode_domain_record" "srv" {
   domain_id   = linode_domain.main.id
   record_type = "SRV"
-  name        = "_sip._tcp"
+  service     = "sip"
+  protocol    = "tcp"
   target      = "sip.example.com"
   priority    = 10
   weight      = 20
