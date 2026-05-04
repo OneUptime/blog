@@ -84,7 +84,7 @@ Asus routers have an IPv6 firewall. By default, it blocks all inbound connection
 ```text
 IPv6 Firewall Rule:
   Source IP: ::/0 (any)
-  Destination IP: 2001:db8:home::/64 (your LAN prefix)
+  Destination IP: 2001:db8:1::/64 (your LAN prefix)
   Service: HTTPS (port 443)
   Action: Allow
 ```
