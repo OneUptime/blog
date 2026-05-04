@@ -51,7 +51,7 @@ networks:
     enable_ipv6: true
     ipam:
       config:
-        - subnet: "2001:db8:artifactory::/80"
+        - subnet: "2001:db8:a17f::/64"
         - subnet: "172.30.0.0/16"
 
 volumes:
@@ -172,7 +172,7 @@ sudo ip6tables -A INPUT -p tcp --dport 8082 -j ACCEPT  # Artifactory API
 sudo ip6tables -A INPUT -p tcp --dport 80 -j ACCEPT    # HTTP (redirect)
 sudo ip6tables -A INPUT -p tcp --dport 443 -j ACCEPT   # HTTPS
 
-sudo ip6tables-save > /etc/ip6tables/rules.v6
+sudo ip6tables-save > /etc/iptables/rules.v6
 ```
 
 JFrog Artifactory's support for IPv6 through its configurable network binding and reverse proxy integration makes it deployable in modern IPv6 infrastructure for all artifact types including Docker, Maven, npm, and PyPI.
