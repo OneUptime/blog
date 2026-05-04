@@ -33,11 +33,10 @@ gmysql-password=secret
 gmysql-dbname=pdns
 
 # Listen on all IPv6 and IPv4 addresses
-local-address=0.0.0.0
-local-ipv6=::
+local-address=0.0.0.0, ::
 
 # Or specify explicit addresses
-# local-ipv6=2001:db8::53
+# local-address=2001:db8::53, 0.0.0.0
 
 local-port=53
 
@@ -49,11 +48,11 @@ log-dns-queries=yes
 ## Step 2: Add Zone and Records via pdnsutil
 
 ```bash
-# Create the zone
+# Create the zone (this also seeds a default SOA record)
 pdnsutil create-zone example.com
 
-# Add SOA
-pdnsutil add-record example.com @ SOA \
+# Replace the default SOA with one of our own
+pdnsutil replace-rrset example.com @ SOA \
     "ns1.example.com. admin.example.com. 2026031901 3600 900 604800 300"
 
 # Add NS records
@@ -87,7 +86,7 @@ pdnsutil check-zone example.com
 # Create the reverse zone
 pdnsutil create-zone 0.0.0.0.0.0.0.0.8.b.d.0.1.0.0.2.ip6.arpa
 
-pdnsutil add-record \
+pdnsutil replace-rrset \
     0.0.0.0.0.0.0.0.8.b.d.0.1.0.0.2.ip6.arpa \
     @ SOA \
     "ns1.example.com. admin.example.com. 2026031901 3600 900 604800 300"
