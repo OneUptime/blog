@@ -33,9 +33,10 @@ CREATE USER 'webapp'@'2001:db8::20' IDENTIFIED BY 'SecurePass123!';
 -- Grant database access
 GRANT SELECT, INSERT, UPDATE, DELETE ON webapp_db.* TO 'webapp'@'2001:db8::20';
 
--- Create user accessible from any IPv6 address in a /48 subnet
--- MySQL doesn't support CIDR, so use % wildcard at prefix level
--- For 2001:db8:: prefix, the wildcard approach:
+-- Create user accessible from IPv6 addresses starting with 2001:db8::
+-- MySQL doesn't support CIDR for IPv6, so use % wildcard for string matching
+-- Note: this is a literal string match against the canonical IPv6 form,
+-- not a true /48 subnet match (e.g. 2001:db8:0:1::1 would not match):
 CREATE USER 'webapp'@'2001:db8::%' IDENTIFIED BY 'SecurePass123!';
 GRANT ALL ON webapp_db.* TO 'webapp'@'2001:db8::%';
 
