@@ -98,9 +98,9 @@ resource "aws_security_group" "web" {
 
 ```hcl
 resource "aws_db_instance" "main" {
-  identifier     = "myapp-db"
-  engine         = "postgres"
-  instance_class = "db.t3.micro"
+  identifier_prefix = "myapp-db-"  # Use prefix - identifiers must be unique during replacement
+  engine            = "postgres"
+  instance_class    = "db.t3.micro"
 
   lifecycle {
     create_before_destroy = true
@@ -124,7 +124,7 @@ resource "aws_security_group" "bad_example" {
 
 # SOLUTION: Use name_prefix for auto-generated unique names
 resource "aws_security_group" "good_example" {
-  name_prefix = "web-sg-"  # AWS generates: web-sg-20250101120000
+  name_prefix = "web-sg-"  # Provider appends a unique suffix, e.g. web-sg-20240115093045123456789a1b
   vpc_id      = aws_vpc.main.id
 
   lifecycle {
