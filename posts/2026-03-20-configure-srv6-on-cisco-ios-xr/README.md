@@ -20,10 +20,7 @@ segment-routing srv6
  !
  locators
   locator MyLocator
-   prefix 5f00:1:1::/48        ! Assign a 48-bit locator prefix
-   block-length 32              ! Block portion of the locator
-   node-length 16               ! Node portion
-   func-length 16               ! Function portion
+   prefix 5f00:1:1::/48        ! Assign a 48-bit locator prefix (default f3216 format: 32-bit block, 16-bit node, 16-bit function)
   !
  !
 !
@@ -123,7 +120,7 @@ show segment-routing srv6 forwarding
 show segment-routing srv6 stats
 
 ! Verify uSID compression (if enabled)
-show segment-routing srv6 micro-sid
+show segment-routing srv6 locator MyLocator detail
 ```
 
 ## uSID Configuration (Optional Compression)
