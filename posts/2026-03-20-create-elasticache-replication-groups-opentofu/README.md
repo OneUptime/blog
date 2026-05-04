@@ -61,7 +61,7 @@ resource "aws_elasticache_replication_group" "multi_az" {
   multi_az_enabled           = true
 
   # Spread nodes across specific AZs
-  availability_zones = ["us-east-1a", "us-east-1b", "us-east-1c"]
+  preferred_cache_cluster_azs = ["us-east-1a", "us-east-1b", "us-east-1c"]
 
   subnet_group_name  = aws_elasticache_subnet_group.main.name
   security_group_ids = [aws_security_group.redis.id]
