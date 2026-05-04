@@ -184,7 +184,7 @@ sudo ip6tables -A INPUT -p tcp --dport 9042 -j ACCEPT   # CQL
 sudo ip6tables -A INPUT -p tcp --dport 9180 -j ACCEPT   # Prometheus
 sudo ip6tables -A INPUT -p tcp --dport 10000 -j ACCEPT  # REST API
 
-sudo ip6tables-save > /etc/ip6tables/rules.v6
+sudo ip6tables-save > /etc/iptables/rules.v6
 ```
 
 ScyllaDB's Cassandra-compatible IPv6 configuration enables deploying this high-performance NoSQL database on IPv6 networks with minimal configuration changes compared to its IPv4 setup.
