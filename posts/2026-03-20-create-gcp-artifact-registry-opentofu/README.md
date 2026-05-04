@@ -76,7 +76,7 @@ resource "google_artifact_registry_repository" "maven" {
 
   maven_config {
     allow_snapshot_overwrites = false
-    version_policy            = "RELEASE"  # RELEASE, SNAPSHOT, or NONE
+    version_policy            = "RELEASE"  # RELEASE, SNAPSHOT, or VERSION_POLICY_UNSPECIFIED
   }
 }
 
