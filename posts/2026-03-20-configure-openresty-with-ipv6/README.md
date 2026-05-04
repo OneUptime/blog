@@ -13,10 +13,11 @@ OpenResty is Nginx extended with LuaJIT for dynamic web applications. Configurin
 ## Installing OpenResty
 
 ```bash
-# Ubuntu/Debian
+# Ubuntu/Debian (apt-key is deprecated; use a keyring file with signed-by)
 
-wget -qO - https://openresty.org/package/pubkey.gpg | sudo apt-key add -
-sudo add-apt-repository "deb http://openresty.org/package/ubuntu $(lsb_release -sc) main"
+wget -O - https://openresty.org/package/pubkey.gpg | sudo gpg --dearmor -o /usr/share/keyrings/openresty.gpg
+echo "deb [arch=$(dpkg --print-architecture) signed-by=/usr/share/keyrings/openresty.gpg] http://openresty.org/package/ubuntu $(lsb_release -sc) main" \
+    | sudo tee /etc/apt/sources.list.d/openresty.list
 sudo apt update && sudo apt install openresty -y
 
 # Verify installation
@@ -129,11 +130,27 @@ server {
             local client_ip = ngx.var.remote_addr
             local rate_key
 
-            -- For IPv6, rate limit by /48 prefix
+            -- For IPv6, rate limit by /48 prefix (first 3 hextets)
             if client_ip:find(":", 1, true) then
-                -- Extract /48 prefix (first 6 groups)
+                -- Expand "::" so all 8 hextets are present before indexing
+                local expanded = client_ip
+                local left, right = expanded:match("^(.-)::(.*)$")
+                if left then
+                    local function count_hextets(s)
+                        local n = 0
+                        for _ in s:gmatch("[^:]+") do n = n + 1 end
+                        return n
+                    end
+                    local missing = 8 - count_hextets(left) - count_hextets(right)
+                    local zeros = {}
+                    for i = 1, missing do zeros[i] = "0" end
+                    local middle = table.concat(zeros, ":")
+                    if left ~= "" then left = left .. ":" end
+                    if right ~= "" then right = ":" .. right end
+                    expanded = left .. middle .. right
+                end
                 local parts = {}
-                for part in client_ip:gmatch("[^:]+") do
+                for part in expanded:gmatch("[^:]+") do
                     parts[#parts + 1] = part
                 end
                 rate_key = "ratelimit:ipv6:" .. table.concat(parts, ":", 1, 3)
