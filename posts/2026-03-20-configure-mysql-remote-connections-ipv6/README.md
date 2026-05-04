@@ -38,8 +38,8 @@ ss -6 -tlnp | grep mysql
 mysql -u root -p
 
 -- Create user for remote IPv6 access
-CREATE USER 'remote_app'@'2001:db8::client' IDENTIFIED BY 'SecurePass123!';
-GRANT SELECT, INSERT, UPDATE ON production_db.* TO 'remote_app'@'2001:db8::client';
+CREATE USER 'remote_app'@'2001:db8::abcd' IDENTIFIED BY 'SecurePass123!';
+GRANT SELECT, INSERT, UPDATE ON production_db.* TO 'remote_app'@'2001:db8::abcd';
 
 -- Or allow from all clients (use with firewall control)
 CREATE USER 'remote_app'@'%' IDENTIFIED BY 'SecurePass123!';
@@ -53,7 +53,7 @@ FLUSH PRIVILEGES;
 ```bash
 # Allow MySQL from specific IPv6 subnet
 ip6tables -A INPUT -p tcp --dport 3306 \
-    -s 2001:db8:app::/48 -j ACCEPT
+    -s 2001:db8:abcd::/48 -j ACCEPT
 
 # Block MySQL from all other IPv6 addresses
 ip6tables -A INPUT -p tcp --dport 3306 -j DROP
@@ -62,7 +62,7 @@ ip6tables -A INPUT -p tcp --dport 3306 -j DROP
 ip6tables-save > /etc/iptables/rules.v6
 
 # With ufw (Ubuntu/Debian)
-ufw allow from 2001:db8:app::/48 to any port 3306 proto tcp
+ufw allow from 2001:db8:abcd::/48 to any port 3306 proto tcp
 ufw deny 3306
 ```
 
@@ -132,4 +132,4 @@ mysql -h 2001:db8::10 -u remote_app -p -v
 
 ## Summary
 
-Configure MySQL for remote IPv6 connections: (1) set `bind-address = ::` in `mysqld.cnf`, (2) create user with `CREATE USER 'user'@'2001:db8::client'`, (3) configure firewall with `ip6tables -A INPUT -p tcp --dport 3306 -s 2001:db8:app::/48 -j ACCEPT`, (4) optionally require SSL with `ALTER USER 'user'@'%' REQUIRE SSL`. Test with `mysql -h 2001:db8::10 -u user -p`. Restart MySQL after `bind-address` changes.
+Configure MySQL for remote IPv6 connections: (1) set `bind-address = ::` in `mysqld.cnf`, (2) create user with `CREATE USER 'user'@'2001:db8::abcd'`, (3) configure firewall with `ip6tables -A INPUT -p tcp --dport 3306 -s 2001:db8:abcd::/48 -j ACCEPT`, (4) optionally require SSL with `ALTER USER 'user'@'%' REQUIRE SSL`. Test with `mysql -h 2001:db8::10 -u user -p`. Restart MySQL after `bind-address` changes.
