@@ -60,7 +60,7 @@ nmcli -f NAME,DEVICE,AUTOCONNECT,AUTOCONNECT-PRIORITY connection show
 ```bash
 # Control how many times NM retries activating a connection
 nmcli connection modify eth0-static \
-  connection.autoconnect-retries 5   # 5 attempts, then give up (-1 = unlimited)
+  connection.autoconnect-retries 5   # 5 attempts, then give up (0 = forever, -1 = global default)
 ```
 
 ## Priority with Multiple Network Interfaces
@@ -75,16 +75,16 @@ nmcli connection modify wan-secondary \
   connection.autoconnect-priority 50
 ```
 
-## Boot Ordering: Requiring Another Connection First
+## Auto-Activating Slaves of Master Connections
 
 ```bash
-# Wait for another connection before autoconnecting
-nmcli connection modify vpn-tunnel \
-  connection.autoconnect-slaves -1   # Require all slaves to connect first
-
-# Slaves (for bonds/teams/bridges) autoconnect automatically
+# Slaves (for bonds/teams/bridges) autoconnect with the master
 nmcli connection modify bond0 \
-  connection.autoconnect-slaves 1   # Auto-activate slaves
+  connection.autoconnect-slaves 1   # 1 = activate slaves, 0 = leave untouched, -1 = global default
+
+# Don't auto-activate slaves of this bridge
+nmcli connection modify br0 \
+  connection.autoconnect-slaves 0
 ```
 
 ## Viewing What Connected and Why
@@ -94,7 +94,7 @@ nmcli connection modify bond0 \
 journalctl -u NetworkManager | grep "autoconnect"
 
 # See current active connection and its priority
-nmcli -f NAME,DEVICE,GENERAL.STATE,connection.autoconnect-priority \
+nmcli -f NAME,DEVICE,STATE,AUTOCONNECT-PRIORITY \
   connection show --active
 ```
 
