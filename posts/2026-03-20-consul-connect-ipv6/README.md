@@ -21,7 +21,7 @@ data_dir   = "/opt/consul"
 bind_addr = "::"
 
 # Advertise specific IPv6 address
-advertise_addr = "2001:db8::consul-node"
+advertise_addr = "2001:db8::1"
 
 # Also advertise the IPv4 address
 advertise_addr_wan = "203.0.113.10"
@@ -54,7 +54,7 @@ ports {
 service {
   name    = "web"
   id      = "web-1"
-  address = "2001:db8::web-node"   # Service listens on IPv6
+  address = "2001:db8::10"   # Service listens on IPv6
   port    = 8080
 
   connect {
@@ -73,7 +73,7 @@ service {
   }
 
   check {
-    http     = "http://[2001:db8::web-node]:8080/health"
+    http     = "http://[2001:db8::10]:8080/health"
     interval = "10s"
     timeout  = "3s"
   }
@@ -105,10 +105,10 @@ Consul provides AAAA records for services registered with IPv6 addresses:
 
 ```bash
 # Query for IPv6 address of a service
-dig AAAA web.service.consul @[::1]:8600
+dig @::1 -p 8600 AAAA web.service.consul
 
 # Query with additional SRV record
-dig SRV _web._tcp.service.consul @[::1]:8600
+dig @::1 -p 8600 SRV _web._tcp.service.consul
 
 # Using consul CLI
 consul catalog services
@@ -150,9 +150,6 @@ consul intention list
 global:
   name: consul
   datacenter: dc1
-  # Enable Connect
-  connectInject:
-    enabled: true
 
 server:
   replicas: 3
@@ -161,11 +158,10 @@ server:
 connectInject:
   enabled: true
   default: false  # Opt-in per namespace/service
-
-# Transparent proxy enables automatic traffic interception
-# including IPv6 via ip6tables rules
-transparentProxy:
-  defaultEnabled: true
+  # Transparent proxy enables automatic traffic interception
+  # including IPv6 via ip6tables rules
+  transparentProxy:
+    defaultEnabled: true
 ```
 
 ```bash
