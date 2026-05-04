@@ -67,9 +67,9 @@ iptables -t nat -A POSTROUTING -s 192.168.1.0/24 -o eth1 \
 ## SNAT with nftables
 
 ```bash
-table inet nat {
+table ip nat {
     chain postrouting {
-        type nat hook postrouting priority 100;
+        type nat hook postrouting priority srcnat;
         
         # SNAT all LAN traffic
         ip saddr 192.168.1.0/24 oifname "eth1" snat to 203.0.113.1
