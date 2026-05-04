@@ -98,8 +98,8 @@ echo -e "stats\nquit" | nc -6 2001:db8::10 11211
 # Test set and get operations
 echo -e "set testkey 0 60 5\nhello\nget testkey\nquit" | nc -6 2001:db8::10 11211
 
-# Test with memcstat (memcache-tools)
-memcstat --servers=[2001:db8::10]
+# Test with memcstat (libmemcached-tools)
+memcstat --servers=[2001:db8::10]:11211
 ```
 
 ## Python Memcached Client over IPv6
