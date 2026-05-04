@@ -89,7 +89,7 @@ def handle(event, context):
         "message": "Hello from OpenFaaS!",
         "client_ip": client_ip,
         "protocol": "IPv6" if is_ipv6 else "IPv4",
-        "function": context.function_name if context else "unknown",
+        "hostname": context.hostname if context else "unknown",
     }
 
     return {
@@ -106,7 +106,7 @@ def handle(event, context):
 version: 1.0
 provider:
   name: openfaas
-  gateway: http://[fd00:10:96::gw]:8080  # IPv6 gateway
+  gateway: http://[fd00:10:96::1]:8080  # IPv6 gateway
 
 functions:
   ipv6-info:
@@ -142,7 +142,7 @@ kubectl port-forward -n openfaas deploy/prometheus 9090:9090
 
 # Key metrics for IPv6 functions:
 # gateway_functions_seconds_bucket - function invocation latency
-# gateway_functions_total - total invocations
+# gateway_function_invocation_total - total invocations
 # gateway_function_invocation_started - in-flight invocations
 
 # Monitor with Grafana
