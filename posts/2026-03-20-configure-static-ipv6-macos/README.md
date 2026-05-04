@@ -40,7 +40,7 @@ networksetup -setv6manual Wi-Fi 2001:db8::10 64 2001:db8::1
 networksetup -setv6manual Ethernet 2001:db8::10 64 2001:db8::1
 
 # Verify
-networksetup -getv6additional Wi-Fi
+networksetup -getinfo Wi-Fi
 ```
 
 ## Configure Static IPv6 via ifconfig (Temporary)
@@ -98,7 +98,7 @@ dig AAAA google.com
 ```bash
 # macOS allows adding multiple IPv6 addresses via ifconfig
 sudo ifconfig en0 inet6 2001:db8::10 prefixlen 64
-sudo ifconfig en0 inet6 add 2001:db8::20 prefixlen 64
+sudo ifconfig en0 inet6 2001:db8::20 prefixlen 64 alias
 
 # Or add a second address via alias
 sudo ifconfig en0 inet6 alias 2001:db8::20 prefixlen 64
