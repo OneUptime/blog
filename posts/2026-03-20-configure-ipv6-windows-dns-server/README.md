@@ -11,11 +11,13 @@ Description: Learn how to configure Windows DNS Server to handle IPv6 - includin
 ```powershell
 # Windows DNS Server listens on all addresses by default including IPv6
 
-# Verify DNS is listening on IPv6
-Get-DnsServerSetting | Select-Object ListeningIPAddress
+# Verify DNS is listening on IPv6 (use -All to see advanced settings)
+Get-DnsServerSetting -All | Select-Object ListeningIPAddress
 
-# If not listening on IPv6, add the address
-Set-DnsServerSetting -ListeningIPAddress "2001:db8::10", "192.168.1.10", "127.0.0.1"
+# If not listening on IPv6, modify the ListeningIPAddress property and pipe back
+$settings = Get-DnsServerSetting -All
+$settings.ListeningIPAddress = "2001:db8::10", "192.168.1.10", "127.0.0.1"
+$settings | Set-DnsServerSetting
 
 # Test DNS is responding over IPv6
 nslookup google.com 2001:db8::10
