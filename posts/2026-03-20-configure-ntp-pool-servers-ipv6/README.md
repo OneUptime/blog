@@ -8,43 +8,42 @@ Description: Configure your systems to use the NTP Pool Project servers over IPv
 
 ---
 
-The NTP Pool Project (pool.ntp.org) is a global network of thousands of volunteer NTP servers. Many pool servers support IPv6, and the pool has dedicated IPv6 zones. Using IPv6 NTP pool servers reduces latency and enables time synchronization on IPv6-only networks.
+The NTP Pool Project (pool.ntp.org) is a global network of thousands of volunteer NTP servers. Many pool servers support IPv6, and the pool exposes IPv6 (AAAA) records on zones prefixed with `2.`. Using IPv6 NTP pool servers reduces latency and enables time synchronization on IPv6-only networks.
 
 ## NTP Pool IPv6 Zones
 
-The NTP Pool Project provides IPv6-specific zones:
+The NTP Pool Project only returns IPv6 (AAAA) addresses for zones prefixed with `2.`. There is no separate `ipv6.` subdomain — the `2.` prefix is the official way to request IPv6-capable servers across all zones (global, continental, and country):
 
 ```text
-# Global IPv6 pool
+# Global zone with IPv6 (AAAA) records
+2.pool.ntp.org
 
-2.pool.ntp.org           # AAAA records (IPv6) plus A records
-ipv6.pool.ntp.org        # IPv6-only pool
-
-# Regional IPv6 pools
-ipv6.asia.pool.ntp.org
-ipv6.europe.pool.ntp.org
-ipv6.north-america.pool.ntp.org
-ipv6.oceania.pool.ntp.org
-ipv6.south-america.pool.ntp.org
+# Continental zones with IPv6
+2.asia.pool.ntp.org
+2.europe.pool.ntp.org
+2.north-america.pool.ntp.org
+2.oceania.pool.ntp.org
+2.south-america.pool.ntp.org
 
 # Country-specific (if they have IPv6 nodes)
-ipv6.us.pool.ntp.org
-ipv6.de.pool.ntp.org
-ipv6.jp.pool.ntp.org
+2.us.pool.ntp.org
+2.de.pool.ntp.org
+2.jp.pool.ntp.org
 ```
+
+Zones without a number prefix or prefixed with `0`, `1`, or `3` return only IPv4 (A) records. Whether IPv6 addresses are actually returned for a given `2.` zone depends on the availability of IPv6-capable servers in that zone.
 
 ## Checking IPv6 Availability of Pool Servers
 
 ```bash
 # Verify the pool resolves to IPv6 addresses
-dig AAAA pool.ntp.org +short
-dig AAAA ipv6.pool.ntp.org +short
+dig AAAA 2.pool.ntp.org +short
 
 # Check specific regional pool
-dig AAAA ipv6.europe.pool.ntp.org +short
+dig AAAA 2.europe.pool.ntp.org +short
 
 # Verify connectivity to the IPv6 pool
-ping6 -c 3 ipv6.pool.ntp.org
+ping6 -c 3 2.pool.ntp.org
 ```
 
 ## Configuring chrony with IPv6 Pool Servers
@@ -52,14 +51,11 @@ ping6 -c 3 ipv6.pool.ntp.org
 ```bash
 # /etc/chrony.conf
 
-# Use the IPv6-specific pool zone
-pool ipv6.pool.ntp.org iburst maxsources 4
+# Use the dual-stack pool zone (has AAAA records)
+pool 2.pool.ntp.org iburst maxsources 4
 
-# Fallback to general pool (which also has IPv6)
-pool pool.ntp.org iburst maxsources 2
-
-# Or use regional IPv6 pool for better latency
-pool ipv6.north-america.pool.ntp.org iburst maxsources 4
+# Or use the regional dual-stack pool for better latency
+pool 2.north-america.pool.ntp.org iburst maxsources 4
 
 # Allow your subnet to use this server as NTP
 allow 2001:db8::/32
@@ -83,10 +79,10 @@ chronyc sources -v
 ```bash
 # /etc/ntp.conf
 
-# Use IPv6 NTP pool
-pool ipv6.pool.ntp.org iburst
+# Use the dual-stack pool zone (returns AAAA records)
+pool 2.pool.ntp.org iburst
 
-# Or mix with standard pool (prefer IPv6 via DNS AAAA)
+# Or mix with the standard set (only 2.pool.ntp.org returns AAAA)
 pool 0.pool.ntp.org iburst
 pool 1.pool.ntp.org iburst
 pool 2.pool.ntp.org iburst
@@ -95,11 +91,11 @@ pool 3.pool.ntp.org iburst
 # Force IPv6 for specific servers using the -6 flag (ntpd option)
 # ntpd resolves pool entries and uses AAAA if available
 
-# Access restrictions
+# Access restrictions (ntpd uses 'mask' syntax, not CIDR)
 restrict default kod limited nomodify notrap nopeer noquery
 restrict 127.0.0.1
 restrict ::1
-restrict 2001:db8::/32 nomodify notrap nopeer
+restrict 2001:db8:: mask ffff:ffff:: nomodify notrap nopeer
 
 driftfile /var/lib/ntp/drift
 ```
@@ -110,8 +106,8 @@ driftfile /var/lib/ntp/drift
 # /etc/systemd/timesyncd.conf
 
 [Time]
-# Use IPv6 NTP pool
-NTP=ipv6.pool.ntp.org pool.ntp.org
+# Use the dual-stack pool zone (returns AAAA records)
+NTP=2.pool.ntp.org pool.ntp.org
 FallbackNTP=time.google.com time.cloudflare.com
 ```
 
@@ -122,7 +118,7 @@ To contribute an IPv6 NTP server to the pool:
 ```bash
 # Step 1: Configure chrony as an accurate NTP server
 # /etc/chrony.conf
-pool ipv6.pool.ntp.org iburst maxsources 4
+pool 2.pool.ntp.org iburst maxsources 4
 allow ::/0         # Allow pool monitoring connections
 allow 0.0.0.0/0
 
@@ -164,11 +160,12 @@ sudo tcpdump -i eth0 -n ip6 and udp port 123
 cat /etc/gai.conf | grep "^precedence"
 # Default usually prefers IPv6 when available
 
-# Force IPv6 preference in gai.conf
+# Force IPv6 preference in gai.conf by lowering the precedence of
+# IPv4-mapped IPv6 addresses below the default of 10
 echo "precedence ::ffff:0:0/96 5" | sudo tee -a /etc/gai.conf
-# This setting prioritizes IPv4 for IPv4-mapped addresses
+# This deprioritizes IPv4-mapped addresses so native IPv6 is preferred
 
-# To prefer native IPv6, ensure this line is present:
+# These default lines (already higher precedence) keep native IPv6 first:
 # precedence  ::1/128       50
 # precedence  ::/0          40
 ```
