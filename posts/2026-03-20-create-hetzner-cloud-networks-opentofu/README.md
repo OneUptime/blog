@@ -87,7 +87,7 @@ resource "hcloud_network" "ha" {
   ip_range = "10.0.0.0/8"
 }
 
-# EU Central subnet (Nuremberg, Frankfurt)
+# EU Central subnet (Nuremberg, Falkenstein, Helsinki)
 resource "hcloud_network_subnet" "eu_central" {
   network_id   = hcloud_network.ha.id
   type         = "cloud"
