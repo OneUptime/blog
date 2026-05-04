@@ -94,13 +94,10 @@ resource "alicloud_db_instance" "ha_mysql" {
 ## Read-Only Replica
 
 ```hcl
-resource "alicloud_read_write_splitting_connection" "main" {
+resource "alicloud_db_read_write_splitting_connection" "main" {
   instance_id       = alicloud_db_instance.mysql.id
   connection_prefix = "prod-rws"
   distribution_type = "Standard"
-  weight = {
-    (alicloud_db_instance.mysql.id) = 100
-  }
 }
 ```
 
