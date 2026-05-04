@@ -48,7 +48,7 @@ host    all       all   2001:db8::/32       md5
 host    all       all   ::1/128             trust
 
 # Allow remote IPv6 with SCRAM authentication
-host    mydb      appuser   2001:db8:app::/48   scram-sha-256
+host    mydb      appuser   2001:db8:abcd::/48   scram-sha-256
 ```
 
 ## Full pg_hba.conf Example
@@ -68,7 +68,7 @@ host    all             all             ::1/128                 trust
 host    all             all             2001:db8::/32           scram-sha-256
 
 # IPv6 specific application connection
-host    myapp_db        myapp_user      2001:db8::app/128       scram-sha-256
+host    myapp_db        myapp_user      2001:db8::abcd/128       scram-sha-256
 ```
 
 ## Apply Configuration Changes
