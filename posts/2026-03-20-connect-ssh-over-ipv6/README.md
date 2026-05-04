@@ -83,14 +83,14 @@ ssh-keyscan -6 2001:db8::10 >> ~/.ssh/known_hosts
 ## SCP and rsync over IPv6
 
 ```bash
-# Copy file to remote via SCP over IPv6
-scp /local/file.txt user@2001:db8::10:/remote/path/
+# Copy file to remote via SCP over IPv6 (brackets required around IPv6 address)
+scp /local/file.txt user@[2001:db8::10]:/remote/path/
 
 # Copy from remote via SCP
-scp user@2001:db8::10:/remote/file.txt /local/path/
+scp user@[2001:db8::10]:/remote/file.txt /local/path/
 
 # Force IPv6 for SCP
-scp -6 /local/file.txt user@2001:db8::10:/remote/path/
+scp -6 /local/file.txt user@[2001:db8::10]:/remote/path/
 
 # rsync over SSH with IPv6
 rsync -av -e "ssh -6" /local/dir/ user@2001:db8::10:/remote/dir/
