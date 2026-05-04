@@ -38,12 +38,12 @@ docker run -d \
 
 Without `-p 9000:9000`, port 9000 is not reachable from the host network.
 
-## Method 2: Use the --ssl Flag with Custom Certificates
+## Method 2: Use --http-disabled with Custom Certificates
 
-Provide your own TLS certificate to strengthen HTTPS:
+Disable the HTTP listener entirely and provide your own TLS certificate:
 
 ```bash
-# Run Portainer with custom SSL certificate
+# Run Portainer with custom SSL certificate and HTTP disabled
 docker run -d \
   -p 8000:8000 \
   -p 9443:9443 \
@@ -53,10 +53,12 @@ docker run -d \
   -v portainer_data:/data \
   -v /path/to/certs:/certs \
   portainer/portainer-ce:latest \
-  --ssl \
+  --http-disabled \
   --sslcert /certs/portainer.crt \
   --sslkey /certs/portainer.key
 ```
+
+The `--http-disabled` flag tells Portainer to serve only on HTTPS, refusing connections on port 9000 even if it is mapped.
 
 ## Method 3: HTTPS-Only via Reverse Proxy
 
@@ -115,7 +117,7 @@ services:
       - portainer_data:/data
       - ./certs:/certs:ro
     command:
-      - --ssl
+      - --http-disabled
       - --sslcert
       - /certs/portainer.crt
       - --sslkey
