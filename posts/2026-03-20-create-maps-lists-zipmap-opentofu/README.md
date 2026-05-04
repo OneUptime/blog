@@ -69,7 +69,7 @@ locals {
     version = "1.0.0"
     env     = "production"
   }
-  string_map = { for k, v in local.raw_object : k => tostring(v) }
+  string_map = tomap({ for k, v in local.raw_object : k => tostring(v) })
 }
 ```
 
