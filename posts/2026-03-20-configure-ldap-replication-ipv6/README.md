@@ -26,7 +26,7 @@ Configure the provider to send changes to consumers:
 # Create provider configuration LDIF
 
 cat > /tmp/provider_sync.ldif << 'EOF'
-dn: cn=config
+dn: cn=module{0},cn=config
 changetype: modify
 # Enable syncprov overlay for the database
 add: olcModuleLoad
@@ -73,7 +73,6 @@ add: olcSyncRepl
 olcSyncRepl: rid=001
   provider=ldap://[2001:db8::10]:389
   type=refreshAndPersist
-  interval=00:00:05:00
   searchbase="dc=example,dc=com"
   scope=sub
   schemachecking=on
@@ -144,7 +143,8 @@ ldapsearch -H ldap://[2001:db8::11]:389 \
   "(uid=repltest)" cn uid
 
 # Check replication context CSN on both servers
-ldapsearch -H ldap://[2001:db8::10]:389 -Y EXTERNAL -H ldapi:/// \
+ldapsearch -H ldap://[2001:db8::10]:389 -x \
+  -D "cn=admin,dc=example,dc=com" -w adminpassword \
   -b "dc=example,dc=com" -s base "(objectClass=*)" contextCSN
 
 ldapsearch -H ldap://[2001:db8::11]:389 -x \
@@ -160,7 +160,7 @@ ldapsearch -H ldap://[2001:db8::11]:389 -x \
 sudo journalctl -u slapd | grep -i "repl\|sync\|error"
 
 # Monitor accesslog for replication activity
-ldapsearch -H ldap://[::1]:389 \
+sudo ldapsearch -H ldapi:/// \
   -Y EXTERNAL \
   -b "cn=accesslog" \
   "(reqType=modify)" reqDN reqResult | tail -20
