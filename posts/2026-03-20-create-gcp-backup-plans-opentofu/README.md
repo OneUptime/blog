@@ -132,7 +132,7 @@ resource "google_sql_database_instance" "main" {
 # Enable GKE Backup API
 resource "google_project_service" "backup_for_gke" {
   project = var.project_id
-  service = "backupdr.googleapis.com"
+  service = "gkebackup.googleapis.com"
 }
 
 resource "google_gke_backup_backup_plan" "main" {
