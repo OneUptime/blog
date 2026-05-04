@@ -82,9 +82,20 @@ resource "azurerm_backup_policy_vm" "standard" {
     time      = "03:00"
   }
 
-  retention_daily   { count = 30 }
-  retention_weekly  { count = 12; weekdays = ["Sunday"] }
-  retention_monthly { count = 12; weekdays = ["Sunday"]; weeks = ["First"] }
+  retention_daily {
+    count = 30
+  }
+
+  retention_weekly {
+    count    = 12
+    weekdays = ["Sunday"]
+  }
+
+  retention_monthly {
+    count    = 12
+    weekdays = ["Sunday"]
+    weeks    = ["First"]
+  }
 }
 
 # Azure Files backup policy
@@ -99,8 +110,14 @@ resource "azurerm_backup_policy_file_share" "files" {
     time      = "04:00"
   }
 
-  retention_daily { count = 14 }
-  retention_weekly { count = 4; weekdays = ["Saturday"] }
+  retention_daily {
+    count = 14
+  }
+
+  retention_weekly {
+    count    = 4
+    weekdays = ["Saturday"]
+  }
 }
 ```
 
@@ -123,7 +140,6 @@ resource "azurerm_recovery_services_vault" "envs" {
   resource_group_name = azurerm_resource_group.backup.name
   sku                 = each.value.sku
   storage_mode_type   = each.value.storage
-  soft_delete_enabled = each.key == "production" ? true : false
 
   tags = {
     Environment = each.key
@@ -147,9 +163,8 @@ resource "azurerm_monitor_diagnostic_setting" "vault" {
     category = "AzureSiteRecoveryEvents"
   }
 
-  metric {
+  enabled_metric {
     category = "Health"
-    enabled  = true
   }
 }
 ```
