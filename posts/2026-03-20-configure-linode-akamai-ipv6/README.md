@@ -37,17 +37,17 @@ curl -6 https://ipv6.icanhazip.com
 ```bash
 # Via Linode CLI (linode-cli)
 # Request a /64 range
-linode-cli linodes ipv6-range-add \
+linode-cli networking v6-range-create \
   --linode_id 12345678 \
   --prefix_length 64
 
 # Or request a /56 (for multiple instances/subnets)
-linode-cli linodes ipv6-range-add \
+linode-cli networking v6-range-create \
   --linode_id 12345678 \
   --prefix_length 56
 
 # List assigned IPv6 ranges
-linode-cli linodes ipv6-ranges-list 12345678
+linode-cli networking v6-ranges
 ```
 
 ## Terraform Configuration
@@ -82,13 +82,14 @@ output "instance_ipv6" {
 # Assign a static address from the range
 
 # Ubuntu Netplan
+# Individual addresses from a routed range use /128 (the range itself is routed to your Linode)
 cat > /etc/netplan/60-ipv6-static.yaml << 'EOF'
 network:
   version: 2
   ethernets:
     eth0:
       addresses:
-        - "2600:3c00:e000::1/56"
+        - "2600:3c00:e000::1/128"
 EOF
 netplan apply
 
