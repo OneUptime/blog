@@ -95,7 +95,7 @@ bgp_update = {
         "PREFIX_SID": {
             "srv6_l3_service_tlv": {
                 "sub_tlv_information": {
-                    "endpoint_behavior": 0x000D,  # End.DT6
+                    "endpoint_behavior": 0x0012,  # End.DT6
                     "sid": "5f00:1:0:e100::",     # VRF Red SID on Leaf1
                 }
             }
