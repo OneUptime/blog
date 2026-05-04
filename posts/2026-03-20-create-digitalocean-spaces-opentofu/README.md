@@ -38,7 +38,7 @@ variable "spaces_secret_key" { type = string; sensitive = true }
 resource "digitalocean_spaces_bucket" "assets" {
   name   = "myapp-assets"
   region = "nyc3"
-  acl    = "private"  # Options: private, public-read, public-read-write
+  acl    = "private"  # Options: private, public-read
 }
 
 output "bucket_domain_name" {
