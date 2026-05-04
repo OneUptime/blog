@@ -38,7 +38,7 @@ ip -6 route add default via 2001:db8::1 dev eth0
 ip -6 route show default
 
 # Add a more specific static route
-ip -6 route add 2001:db8:remote::/48 via 2001:db8::gateway dev eth0
+ip -6 route add 2001:db8:1234::/48 via 2001:db8::1 dev eth0
 ```
 
 ## Persistent Configuration: Ubuntu (Netplan)
@@ -55,8 +55,11 @@ network:
       addresses:
         - 192.168.1.10/24      # IPv4
         - 2001:db8::10/64      # IPv6 static
-      gateway4: 192.168.1.1
-      gateway6: 2001:db8::1
+      routes:
+        - to: default
+          via: 192.168.1.1
+        - to: "::/0"
+          via: 2001:db8::1
       nameservers:
         addresses:
           - 8.8.8.8
