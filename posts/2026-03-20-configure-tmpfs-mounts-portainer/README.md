@@ -89,15 +89,15 @@ services:
 ```bash
 # Compare tmpfs vs. disk write performance
 
-# tmpfs write speed
+# tmpfs write speed (tmpfs does not support O_DIRECT, use conv=fdatasync)
 docker run --rm -it \
   --tmpfs /test:size=1g \
-  alpine dd if=/dev/zero of=/test/testfile bs=1M count=512 oflag=direct
+  alpine dd if=/dev/zero of=/test/testfile bs=1M count=512 conv=fdatasync
 
 # Disk write speed
 docker run --rm -it \
   -v /tmp/disk-test:/test \
-  alpine dd if=/dev/zero of=/test/testfile bs=1M count=512 oflag=direct
+  alpine dd if=/dev/zero of=/test/testfile bs=1M count=512 conv=fdatasync
 
 # tmpfs is typically 3-10x faster than SSD for small file I/O
 ```
