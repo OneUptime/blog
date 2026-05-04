@@ -58,7 +58,6 @@ resource "alicloud_slb_listener" "http" {
 
   # Health check configuration
   health_check              = "on"
-  health_check_type         = "http"
   health_check_uri          = "/health"
   health_check_connect_port = 8080
   health_check_http_code    = "http_2xx,http_3xx"
@@ -89,7 +88,6 @@ resource "alicloud_slb_listener" "https" {
   tls_cipher_policy      = "tls_cipher_policy_1_2"
 
   health_check              = "on"
-  health_check_type         = "http"
   health_check_uri          = "/health"
   health_check_connect_port = 8080
   healthy_threshold         = 3
