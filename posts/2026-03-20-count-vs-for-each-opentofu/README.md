@@ -99,8 +99,8 @@ Use `count` when:
 ```hcl
 # Conditional resource - count excels here
 resource "aws_eip" "nat" {
-  count = var.enable_nat_gateway ? 1 : 0
-  vpc   = true
+  count  = var.enable_nat_gateway ? 1 : 0
+  domain = "vpc"
 }
 ```
 
