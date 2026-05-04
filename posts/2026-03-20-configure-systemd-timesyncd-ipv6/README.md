@@ -38,7 +38,7 @@ Edit the timesyncd configuration file:
 NTP=2001:db8::1 time.google.com time.cloudflare.com
 
 # Fallback NTP servers (used when primary is unreachable)
-FallbackNTP=2001:4860:4860::8888 pool.ntp.org
+FallbackNTP=2606:4700:f1::1 pool.ntp.org
 
 # RootDistanceMaxSec - maximum acceptable root distance
 RootDistanceMaxSec=5
