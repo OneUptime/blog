@@ -40,7 +40,7 @@ class TCPConnectionPool:
     def _is_alive(self, s: socket.socket) -> bool:
         """Non-destructively check if a pooled connection is still alive."""
         try:
-            # MSG_PEEK with zero bytes: returns 0 on EOF, raises on error
+            # Non-blocking peek: returns b'' on EOF, raises BlockingIOError if no data
             data = s.recv(1, socket.MSG_PEEK | socket.MSG_DONTWAIT)
             return len(data) > 0
         except BlockingIOError:
