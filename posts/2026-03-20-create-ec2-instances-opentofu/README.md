@@ -69,7 +69,7 @@ resource "aws_instance" "app" {
   }
 
   # Initialization script
-  user_data = base64encode(templatefile("${path.module}/templates/user-data.sh.tpl", {
+  user_data_base64 = base64encode(templatefile("${path.module}/templates/user-data.sh.tpl", {
     environment = var.environment
     db_host     = var.db_host
   }))
