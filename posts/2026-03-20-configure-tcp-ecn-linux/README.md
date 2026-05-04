@@ -51,31 +51,33 @@ sysctl -p
 # Capture a TCP handshake and check for ECN flags
 tcpdump -i eth0 -n -v 'tcp[tcpflags] & tcp-syn != 0' -c 5 2>/dev/null
 
-# Look for ECN flags in the SYN packet:
-# Flags [S] seq ..., urg 0, ECE
-# Flags [S.] ack ..., ECE CWR   ← both ECE and CWR in SYN-ACK = ECN negotiated
+# Look for ECN flags in the handshake:
+# Flags [S]  seq ..., ECE CWR    ← SYN with both ECE and CWR = ECN-capable
+# Flags [S.] ack ..., ECE        ← SYN-ACK with ECE only (not CWR) = ECN negotiated
 
-# ECN negotiation uses TCP control bits in SYN:
+# ECN negotiation uses TCP control bits in SYN (RFC 3168):
 # ECN-capable: SYN with ECE+CWR bits set
-# ECN-accepted: SYN-ACK with ECE bit set
+# ECN-accepted: SYN-ACK with ECE bit set and CWR bit not set
 ```
 
 ## Monitoring ECN Activity
 
 ```bash
 # Check ECN congestion signal statistics
-nstat -a | grep -i "CE\|ECN"
+nstat -a | grep -iE "ECT|CEPkts|CE"
 
-# Key counters:
-# TcpExtTCPSACKReneging: SACK blocks discarded by ECN
-# TcpExtTCPECN*: various ECN activity counters
+# Key counters (in /proc/net/netstat, IpExt: and TcpExt: sections):
+# IpExtInNoECTPkts: packets received with ECN field = 00 (Not-ECT)
+# IpExtInECT0Pkts:  packets received with ECN field = 10 (ECT(0))
+# IpExtInECT1Pkts:  packets received with ECN field = 01 (ECT(1))
+# IpExtInCEPkts:    packets received with ECN field = 11 (Congestion Experienced)
+# TcpExtTCPDeliveredCE: TCP segments delivered that were marked CE
 
 # Detailed ECN stats
-cat /proc/net/snmp | awk '/^TcpExt:/{getline; print}' | tr ' ' '\n' | \
-  grep -i "ecn\|ce" | paste - -
+cat /proc/net/netstat | grep -E "^(Ip|Tcp)Ext"
 
-# Or with nstat
-nstat -z | grep TcpExt | grep -i "Ecn\|CE"
+# Or with nstat (show zero-valued counters too)
+nstat -az | grep -iE "ECT|CEPkts|DeliveredCE"
 ```
 
 ## ECN and iptables
