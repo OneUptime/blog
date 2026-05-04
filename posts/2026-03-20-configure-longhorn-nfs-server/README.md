@@ -19,10 +19,10 @@ Pod B (Node 2) ──NFSv4.1──┘
 ```
 
 The Share Manager pod:
-- Runs on the same node as the Longhorn volume it serves
-- Uses in-kernel NFS server (or NFS-Ganesha depending on configuration)
+- Is scheduled by Kubernetes onto an eligible Longhorn node (configurable via `shareManagerNodeSelector`, `allowedTopologies`, and `shareManagerTolerations` StorageClass parameters)
+- Runs an NFS-Ganesha userspace NFS server
 - Creates a Kubernetes Service for the NFS endpoint
-- Provides NFSv4.1 access to all pods in the cluster
+- Provides NFSv4.1 access (by default) to all pods in the cluster
 
 ## Prerequisites
 
@@ -43,26 +43,22 @@ lsmod | grep nfs
 
 ## Configuring Share Manager Image
 
-The Share Manager uses a dedicated container image. Configure which image is used:
+The Share Manager image is bundled with the Longhorn release and is not exposed as a Longhorn setting. If you need to override it (for example, to pin a specific build), set the `image.longhorn.shareManager.repository` and `image.longhorn.shareManager.tag` values when installing or upgrading the Longhorn Helm chart:
 
 ```bash
-# Check the current Share Manager image setting
-kubectl get settings.longhorn.io share-manager-image \
-  -n longhorn-system -o yaml
-
-# Update the Share Manager image (usually done during upgrades)
-kubectl patch settings.longhorn.io share-manager-image \
-  -n longhorn-system \
-  --type merge \
-  -p '{"value": "longhornio/longhorn-share-manager:v1.7.0"}'
+helm upgrade longhorn longhorn/longhorn \
+  --namespace longhorn-system \
+  --reuse-values \
+  --set image.longhorn.shareManager.repository=longhornio/longhorn-share-manager \
+  --set image.longhorn.shareManager.tag=v1.7.0
 ```
 
-## Configuring Share Manager Tolerations
+## Configuring Tolerations for Longhorn Components
 
-If your nodes have taints, configure tolerations for Share Manager pods:
+The `taint-toleration` setting is a global Longhorn setting that applies tolerations to all system-managed components, including Share Manager pods. If you need to schedule Share Manager pods specifically (and not the rest of the Longhorn system), use the `shareManagerTolerations` parameter on the StorageClass instead.
 
 ```bash
-# Set tolerations for Share Manager pods (same format as Longhorn tolerations)
+# Set tolerations for ALL Longhorn system-managed components
 kubectl patch settings.longhorn.io taint-toleration \
   -n longhorn-system \
   --type merge \
@@ -91,7 +87,7 @@ spec:
 kubectl apply -f rwx-pvc-nfs.yaml
 
 # Watch the Share Manager pod being created
-kubectl get pods -n longhorn-system -l app=longhorn-share-manager -w
+kubectl get pods -n longhorn-system -l longhorn.io/component=share-manager -w
 ```
 
 ## Checking Share Manager Status
@@ -99,12 +95,12 @@ kubectl get pods -n longhorn-system -l app=longhorn-share-manager -w
 ```bash
 # List all Share Manager pods
 kubectl get pods -n longhorn-system \
-  -l app=longhorn-share-manager \
+  -l longhorn.io/component=share-manager \
   -o wide
 
 # Check Share Manager logs
 kubectl logs -n longhorn-system \
-  -l app=longhorn-share-manager \
+  -l longhorn.io/component=share-manager \
   --tail=50
 
 # Check the NFS services
@@ -131,7 +127,6 @@ mountOptions:
   - vers=4.1      # Use NFSv4.1 for better performance
   - noresvport    # Don't require reserved ports
   - hard          # Retry on failure (important for reliability)
-  - intr          # Allow interrupting hung NFS operations
   - noacl         # Disable ACL (performance improvement)
   - noatime       # Don't update access times (performance)
 ```
@@ -199,22 +194,24 @@ The Share Manager pod runs on a specific node. If that node fails, Longhorn resc
 ```bash
 # Simulate Share Manager pod failure
 kubectl delete pod -n longhorn-system \
-  $(kubectl get pods -n longhorn-system -l app=longhorn-share-manager -o name | head -1)
+  $(kubectl get pods -n longhorn-system -l longhorn.io/component=share-manager -o name | head -1)
 
 # Observe recovery - Longhorn creates a new Share Manager pod
-kubectl get pods -n longhorn-system -l app=longhorn-share-manager -w
+kubectl get pods -n longhorn-system -l longhorn.io/component=share-manager -w
 ```
 
 During the pod restart, pods accessing the volume via NFS may experience a brief interruption. NFSv4.1's state recovery mechanism typically handles this transparently.
 
 ## Setting Share Manager Priority Class
 
+The `priority-class` setting is global and applies to all Longhorn system-managed components, including Share Manager pods. The default value is `longhorn-critical`, which Longhorn installs as part of the chart. To use a different PriorityClass, make sure it already exists in the cluster before patching the setting:
+
 ```bash
-# Give Share Manager pods high priority to prevent eviction
+# Apply a custom PriorityClass to all Longhorn system-managed components
 kubectl patch settings.longhorn.io priority-class \
   -n longhorn-system \
   --type merge \
-  -p '{"value": "system-node-critical"}'
+  -p '{"value": "longhorn-critical"}'
 ```
 
 ## Monitoring Share Manager Performance
@@ -222,7 +219,7 @@ kubectl patch settings.longhorn.io priority-class \
 ```bash
 # Check NFS statistics inside the Share Manager
 kubectl exec -it -n longhorn-system \
-  $(kubectl get pods -n longhorn-system -l app=longhorn-share-manager -o name | head -1) \
+  $(kubectl get pods -n longhorn-system -l longhorn.io/component=share-manager -o name | head -1) \
   -- nfsstat -s 2>/dev/null || cat /proc/net/rpc/nfsd
 
 # Monitor Share Manager CPU/memory usage
@@ -231,4 +228,4 @@ kubectl top pods -n longhorn-system | grep share-manager
 
 ## Conclusion
 
-Longhorn's built-in NFS Share Manager provides a convenient way to implement ReadWriteMany storage without external NFS infrastructure. By understanding how to configure mount options, tolerations, and monitoring the Share Manager, you can provide reliable shared storage for web serving, content distribution, and other multi-pod read/write scenarios. For workloads requiring the highest NFS performance, tune the mount options and ensure the Share Manager pod is running on the same node as the volume for minimum latency.
+Longhorn's built-in NFS Share Manager provides a convenient way to implement ReadWriteMany storage without external NFS infrastructure. By understanding how to configure mount options, tolerations, and monitoring the Share Manager, you can provide reliable shared storage for web serving, content distribution, and other multi-pod read/write scenarios. For workloads requiring the highest NFS performance, tune the mount options and use `shareManagerNodeSelector` and `shareManagerTolerations` on the StorageClass to place Share Manager pods on nodes with sufficient CPU and network capacity.
