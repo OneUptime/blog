@@ -41,7 +41,7 @@ public class TimeoutExample {
             System.out.println("Response: " + response);
 
         } catch (SocketTimeoutException e) {
-            // Distinguishes between connect timeout and read timeout
+            // Thrown for both connect and read timeouts; same exception type for either
             System.err.println("Timed out: " + e.getMessage());
         } catch (ConnectException e) {
             System.err.println("Connection refused: " + host + ":" + port);
@@ -80,7 +80,7 @@ public static void connectWithRetry(String host, int port) {
         } catch (SocketTimeoutException e) {
             System.err.println("Timeout on attempt " + attempt);
             if (attempt == maxAttempts) throw new RuntimeException("Max retries exceeded");
-            // Exponential backoff
+            // Linear backoff
             try { Thread.sleep(1000L * attempt); } catch (InterruptedException ie) {
                 Thread.currentThread().interrupt();
                 return;
