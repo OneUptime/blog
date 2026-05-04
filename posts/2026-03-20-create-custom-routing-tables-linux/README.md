@@ -8,7 +8,7 @@ Description: Create custom routing tables on Linux using iproute2 to implement p
 
 ## Introduction
 
-Linux supports multiple routing tables (numbered 0–252, plus special tables `local`, `main`, `default`). Custom routing tables allow policy-based routing - different packets can use different routing tables based on rules. This is essential for multi-homing, VPN split tunneling, and traffic engineering.
+Linux supports multiple routing tables (numbered 1–252, plus reserved tables `local` (255), `main` (254), `default` (253), and `unspec` (0); modern kernels also support 32-bit table IDs). Custom routing tables allow policy-based routing - different packets can use different routing tables based on rules. This is essential for multi-homing, VPN split tunneling, and traffic engineering.
 
 ## Register a Custom Table Name (Optional)
 
