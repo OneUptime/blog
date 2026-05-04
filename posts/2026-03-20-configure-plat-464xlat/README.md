@@ -40,12 +40,9 @@ echo 'jool' >> /etc/modules-load.d/jool.conf
 ## Configuring the PLAT NAT64 Instance
 
 ```bash
-# Create the Jool NAT64 instance
-jool instance add --iptables
-
-# Configure the PLAT prefix (must match CLAT prefix on devices)
-# The well-known prefix is 64:ff9b::/96
-jool pool6 add 64:ff9b::/96
+# Create the Jool NAT64 instance with the PLAT prefix
+# (must match CLAT prefix on devices; well-known prefix is 64:ff9b::/96)
+jool instance add --iptables --pool6 64:ff9b::/96
 
 # Configure IPv4 address pool for outbound translations
 # These should be your public IPv4 addresses
@@ -54,7 +51,7 @@ jool pool4 add --udp 203.0.113.0/24
 jool pool4 add --icmp 203.0.113.0/24
 
 # View configuration
-jool pool6 display
+jool global display
 jool pool4 display
 ```
 
@@ -152,7 +149,7 @@ For large deployments (ISP/carrier scale), consider:
 
 ```bash
 # Increase Jool session limits
-jool global update max-stored-pkts 512
+jool global update maximum-simultaneous-opens 512
 jool global update udp-timeout 120
 jool global update tcp-est-timeout 7200
 
