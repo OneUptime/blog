@@ -25,7 +25,7 @@ ipv6 mld snooping vlan 100
 ipv6 mld snooping vlan 100 querier address 2001:db8::1
 
 ! Configure the MLD querier version
-ipv6 mld snooping vlan 100 version 2
+ipv6 mld snooping vlan 100 querier version 2
 
 ! Set MLD report suppression (reduce duplicate reports)
 ipv6 mld snooping report-suppression
@@ -71,8 +71,8 @@ bridge link set dev eth1 mcast_flood off  # Don't flood multicast on this port
 # Configure MLD querier on the bridge (if no multicast router present)
 ip link set br0 type bridge mcast_querier 1
 
-# Set MLD query interval
-ip link set br0 type bridge mcast_query_interval 125  # 125 seconds
+# Set MLD query interval (value is in centiseconds; 12500 = 125 seconds)
+ip link set br0 type bridge mcast_query_interval 12500
 
 # Check which multicast groups are tracked
 bridge mdb show
@@ -83,21 +83,18 @@ bridge mdb show
 
 ## MLD Snooping with systemd-networkd
 
-For Linux bridge configurations managed by systemd-networkd:
+For Linux bridge configurations managed by systemd-networkd. Bridge-wide multicast settings live in the `.netdev` file (the `[Bridge]` section of `.network` files only configures per-port slave settings):
 
 ```ini
-# /etc/systemd/network/10-bridge.network
+# /etc/systemd/network/10-bridge.netdev
 
-[Match]
+[NetDev]
 Name=br0
-
-[Network]
-IPv6AcceptRA=no
+Kind=bridge
 
 [Bridge]
-MulticastSnooping=true
-MulticastQuerier=true
-MulticastQuerierInterval=125
+MulticastSnooping=yes
+MulticastQuerier=yes
 ```
 
 ## Verifying MLD Snooping Operation
@@ -107,10 +104,12 @@ MulticastQuerierInterval=125
 watch -n 2 'bridge mdb show'
 
 # Capture MLD queries from the switch (Cisco or Linux bridge querier)
-tcpdump -i eth0 -n 'icmp6 and ip6[40] == 130'
+# MLD packets carry a Hop-by-Hop Options header (Router Alert) per RFC 2710/3810,
+# so the ICMPv6 type byte sits at offset 48, not 40.
+tcpdump -i eth0 -n 'icmp6 and ip6[48] == 130'
 
 # Capture host MLD reports
-tcpdump -i eth0 -n 'icmp6 and (ip6[40] == 131 or ip6[40] == 143)'
+tcpdump -i eth0 -n 'icmp6 and (ip6[48] == 131 or ip6[48] == 143)'
 
 # Check if multicast is being flooded or properly snooped
 # Join a multicast group on one host and ping from another
@@ -144,10 +143,15 @@ show ipv6 mld snooping vlan 100 querier
 - Fix: Reduce query interval or check host MLD timers
 
 ```bash
-# Linux host: check MLD report intervals
-sysctl net.ipv6.conf.eth0.mcast_max_msf
-# Increase MLD report robustness
-sysctl -w net.ipv6.conf.eth0.mc_forwarding=1
+# Linux host: check the MLD max source filter limit (global, not per-interface)
+sysctl net.ipv6.mld_max_msf
+
+# Check or tune the MLD Querier Robustness Variable
+sysctl net.ipv6.mld_qrv
+
+# Note: net.ipv6.conf.<iface>.mc_forwarding is read-only — it is set by an IPv6
+# multicast routing daemon (pim6sd, mrouted) via the MRT6_INIT socket option,
+# not via sysctl.
 ```
 
 ## Summary
