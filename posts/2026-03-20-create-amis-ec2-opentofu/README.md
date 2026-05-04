@@ -40,8 +40,8 @@ resource "aws_instance" "builder" {
     echo "ClientAliveInterval 300" >> /etc/ssh/sshd_config
     echo "ClientAliveCountMax 2" >> /etc/ssh/sshd_config
 
-    # Signal completion for AMI creation workflow
-    /opt/aws/bin/cfn-signal -e $? --stack golden-image-build
+    # Mark bootstrap as complete so we know the instance is ready to image
+    touch /var/lib/golden-image-ready
   EOF
   )
 
