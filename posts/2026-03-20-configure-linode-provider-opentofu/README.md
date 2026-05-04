@@ -15,10 +15,9 @@ The Linode provider for OpenTofu enables managing Linode resources with the same
 ```hcl
 terraform {
   required_providers {
-    # Replace with the actual provider source
-    provider_name = {
-      source  = "provider-namespace/provider-name"
-      version = "~> 1.0"
+    linode = {
+      source  = "linode/linode"
+      version = "~> 2.0"
     }
   }
   required_version = ">= 1.6.0"
@@ -27,19 +26,18 @@ terraform {
 
 ## Authentication
 
-Most providers read credentials from environment variables:
+The provider reads credentials from environment variables:
 
 ```bash
-# Set provider credentials via environment variables
+# Set Linode API token via environment variable
 
-export PROVIDER_API_KEY="your-api-key"
-export PROVIDER_API_SECRET="your-api-secret"
+export LINODE_TOKEN="your-personal-access-token"
 ```
 
 ```hcl
-provider "provider_name" {
-  # Credentials are read from environment variables
-  # api_key = var.api_key  # Alternative: inline (not recommended)
+provider "linode" {
+  # Token is read from the LINODE_TOKEN environment variable
+  # token = var.token  # Alternative: inline (not recommended)
 }
 ```
 
@@ -47,13 +45,13 @@ provider "provider_name" {
 
 ```hcl
 # Example resource demonstrating provider usage
-resource "provider_example_resource" "main" {
-  name = "${var.name}-${var.environment}"
+resource "linode_instance" "main" {
+  label  = "${var.name}-${var.environment}"
+  region = var.region
+  type   = "g6-nanode-1"
+  image  = "linode/ubuntu22.04"
 
-  tags = {
-    environment = var.environment
-    managed_by  = "opentofu"
-  }
+  tags = [var.environment, "managed-by-opentofu"]
 }
 ```
 
@@ -62,12 +60,13 @@ resource "provider_example_resource" "main" {
 ```hcl
 variable "name"        { type = string }
 variable "environment" { type = string }
+variable "region"      { type = string }
 ```
 
 ## Outputs
 
 ```hcl
-output "resource_id" { value = provider_example_resource.main.id }
+output "instance_id" { value = linode_instance.main.id }
 ```
 
 ## Best Practices
