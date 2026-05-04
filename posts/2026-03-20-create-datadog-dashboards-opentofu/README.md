@@ -95,24 +95,24 @@ resource "datadog_dashboard" "sre_overview" {
       request {
         q          = "p99:trace.web.request{env:production}"
         aggregator = "avg"
-      }
 
-      conditional_formats {
-        comparator = ">"
-        value      = 500
-        palette    = "white_on_red"
-      }
+        conditional_formats {
+          comparator = ">"
+          value      = 500
+          palette    = "white_on_red"
+        }
 
-      conditional_formats {
-        comparator = "<="
-        value      = 200
-        palette    = "white_on_green"
+        conditional_formats {
+          comparator = "<="
+          value      = 200
+          palette    = "white_on_green"
+        }
       }
     }
   }
 
   widget {
-    monitor_summary_definition {
+    manage_status_definition {
       title        = "Active Alerts"
       query        = "tag:env:production"
       summary_type = "monitors"
