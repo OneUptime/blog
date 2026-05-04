@@ -30,21 +30,25 @@ management.tcp.ip = ::
 listeners.ssl.default = :::5671
 
 # Cluster configuration
+# Use hostnames that resolve to IPv6 addresses; Erlang node names
+# do not support literal IPv6 addresses, so define entries in DNS
+# or /etc/hosts (e.g. rabbit-node1 -> 2001:db8::1).
 cluster_formation.peer_discovery_backend = rabbit_peer_discovery_classic_config
-cluster_formation.classic_config.nodes.1 = rabbit@[2001:db8::1]
-cluster_formation.classic_config.nodes.2 = rabbit@[2001:db8::2]
-cluster_formation.classic_config.nodes.3 = rabbit@[2001:db8::3]
+cluster_formation.classic_config.nodes.1 = rabbit@rabbit-node1
+cluster_formation.classic_config.nodes.2 = rabbit@rabbit-node2
+cluster_formation.classic_config.nodes.3 = rabbit@rabbit-node3
 ```
 
 ## Erlang Distribution for IPv6
 
 RabbitMQ's Erlang distribution layer also needs IPv6 configuration:
 
-```bash
-# /etc/rabbitmq/advanced.config
+```erlang
+%% /etc/rabbitmq/advanced.config
 [
   {kernel, [
-    {inet6, true},          % Enable IPv6 for Erlang distribution
+    {inet_dist_listen_options, [inet6]},   %% Erlang distribution listens on IPv6
+    {inet_dist_connect_options, [inet6]},  %% and connects to peers over IPv6
     {inet_default_connect_options, [{nodelay, true}]},
     {inet_default_listen_options, [{nodelay, true}]}
   ]},
@@ -59,15 +63,27 @@ RabbitMQ's Erlang distribution layer also needs IPv6 configuration:
 ].
 ```
 
+You also need to create an `erl_inetrc` file so Erlang's name resolver
+prefers IPv6:
+
+```erlang
+%% /etc/rabbitmq/erl_inetrc
+{inet6, true}.
+{distribution, inet6_tcp}.
+```
+
 ## Environment Variables for IPv6
 
 ```bash
 # /etc/rabbitmq/rabbitmq-env.conf
 
-# Set the ERL_INETRC to use IPv6
-export ERL_FLAGS="-kernel inet6 true"
+# Tell the Erlang VM to use IPv6 for distribution and to read the
+# erl_inetrc file we created in the previous step. The same flags
+# must be passed to rabbitmqctl so it can talk to the broker.
+RABBITMQ_SERVER_ADDITIONAL_ERL_ARGS="-proto_dist inet6_tcp -kernel inetrc '\"/etc/rabbitmq/erl_inetrc\"'"
+RABBITMQ_CTL_ERL_ARGS="-proto_dist inet6_tcp -kernel inetrc '\"/etc/rabbitmq/erl_inetrc\"'"
 
-# RabbitMQ node name with IPv6 host
+# RabbitMQ node name (use a hostname that resolves to an IPv6 address)
 NODENAME=rabbit@$(hostname -f)
 ```
 
@@ -87,16 +103,17 @@ sudo rabbitmq-plugins enable rabbitmq_management
 # Check RabbitMQ status
 sudo rabbitmqctl status
 
-# Check node is accessible over IPv6
-sudo rabbitmqctl -n rabbit@2001:db8::1 status
+# Check node is accessible over IPv6 (use the resolvable hostname,
+# not a literal IPv6 address — Erlang node names do not accept those).
+sudo rabbitmqctl -n rabbit@rabbit-node1 status
 ```
 
 ## Forming a RabbitMQ Cluster over IPv6
 
 ```bash
-# On node 2, join the cluster
+# On node 2, join the cluster (node names use hostnames that resolve to IPv6)
 sudo rabbitmqctl stop_app
-sudo rabbitmqctl join_cluster rabbit@[2001:db8::1]
+sudo rabbitmqctl join_cluster rabbit@rabbit-node1
 sudo rabbitmqctl start_app
 
 # Verify cluster status
@@ -104,7 +121,7 @@ sudo rabbitmqctl cluster_status
 
 # On node 3
 sudo rabbitmqctl stop_app
-sudo rabbitmqctl join_cluster rabbit@[2001:db8::1]
+sudo rabbitmqctl join_cluster rabbit@rabbit-node1
 sudo rabbitmqctl start_app
 ```
 
@@ -165,7 +182,7 @@ sudo ip6tables -A INPUT -p tcp --dport 15672 -j ACCEPT
 sudo ip6tables -A INPUT -p tcp --dport 25672 -j ACCEPT
 sudo ip6tables -A INPUT -p tcp --dport 4369 -j ACCEPT   # EPMD
 
-sudo ip6tables-save > /etc/ip6tables/rules.v6
+sudo ip6tables-save > /etc/iptables/rules.v6
 ```
 
 RabbitMQ's combination of Erlang distribution settings and AMQP listener configuration provides complete IPv6 support for message broker clusters, enabling event-driven architectures on IPv6 networks.
