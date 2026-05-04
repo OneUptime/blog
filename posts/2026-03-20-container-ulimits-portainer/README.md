@@ -129,7 +129,7 @@ Portainer provides several UI conveniences for this task:
 docker ps -a
 
 # Refresh Portainer's environment
-# Settings > Environments > Re-sync
+# Environments > select environment > Refresh
 ```
 
 **Issue: Permission denied errors**
