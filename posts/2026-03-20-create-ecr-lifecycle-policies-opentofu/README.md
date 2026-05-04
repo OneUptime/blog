@@ -16,7 +16,7 @@ resource "aws_ecr_lifecycle_policy" "api" {
 
   policy = jsonencode({
     rules = [
-      # Keep last 30 production images tagged with git SHAs
+      # Keep the most recent 30 images regardless of tag status
       {
         rulePriority = 1
         description  = "Keep last 30 images"
@@ -42,10 +42,10 @@ resource "aws_ecr_lifecycle_policy" "services" {
 
   policy = jsonencode({
     rules = [
-      # Rule 1: Never expire images tagged as "latest" or "stable"
+      # Rule 1: Keep the latest 10 images for pinned and version tags
       {
         rulePriority = 1
-        description  = "Protect pinned tags"
+        description  = "Keep last 10 pinned/versioned images"
         selection = {
           tagStatus      = "tagged"
           tagPatternList = ["latest", "stable", "v*.*.*"]
