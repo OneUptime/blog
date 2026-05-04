@@ -1,4 +1,4 @@
-# How to Configure SRv6 with BGP - With
+# How to Configure SRv6 with BGP
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
@@ -25,7 +25,7 @@ graph LR
 
 ## Step 1: Configure BGP with SRv6 in FRRouting
 
-FRRouting (FRR) supports SRv6 BGP from version 8.0+.
+FRRouting (FRR) introduced SRv6 BGP L3VPN support in version 8.2 (matured through 8.5+).
 
 ```bash
 ! frr.conf - PE router with SRv6 BGP
@@ -49,22 +49,30 @@ router bgp 65000
   neighbor 5f00:rr::1 remote-as 65000
   neighbor 5f00:rr::1 update-source lo
   !
+  ! Bind the SRv6 locator at the BGP global level
+  segment-routing srv6
+    locator MAIN
+  !
+  !
   address-family ipv6 vpn
     neighbor 5f00:rr::1 activate
     neighbor 5f00:rr::1 send-community extended
+  exit-address-family
+!
+
+! VRF BGP instance is a separate top-level router stanza
+router bgp 65000 vrf CUSTOMER_A
+  bgp router-id 10.1.0.1
   !
-  !
-  vrf CUSTOMER_A
-    bgp router-id 10.1.0.1
-    !
-    address-family ipv6 unicast
-      redistribute connected
-      ! Advertise with SRv6 SID
-      sid vpn export 5f00:1:1:0:e000:: locator MAIN
-      export vpn
-      import vpn
-    !
-  !
+  address-family ipv6 unicast
+    redistribute connected
+    ! Advertise with SRv6 SID — accepts auto, an index, or explicit SID
+    sid vpn export auto
+    rd vpn export 65000:100
+    rt vpn both 0:100
+    export vpn
+    import vpn
+  exit-address-family
 !
 ```
 
@@ -90,36 +98,35 @@ vtysh -c "show segment-routing srv6 locator detail"
 
 ## Step 3: BGP SR Policy (RFC 9256)
 
-Distribute SRv6 TE policies via BGP from a controller.
+RFC 9256 defines the SR Policy architecture and the BGP SR Policy SAFI is used to distribute SRv6 TE policies from a controller. FRR's bgpd does not currently expose a configurable SR Policy address-family — SR Policy programming in FRR is handled by `pathd` (PCEP/CLI), and BGP SR Policy distribution is typically used on platforms such as Cisco IOS-XR and Junos. A typical IOS-XR head-end configuration receiving SR Policies from a controller is:
 
 ```text
-! frr.conf - BGP SR-Policy configuration
+! Cisco IOS-XR — receive SR Policies via BGP from a controller
 router bgp 65000
-  bgp router-id 10.0.0.1
+ neighbor 5f00:controller::1
+  remote-as 65000
+  address-family ipv4 sr-policy
   !
-  neighbor 5f00:controller::1 remote-as 65000
+  address-family ipv6 sr-policy
   !
-  address-family ipv6 sr-te-policy
-    neighbor 5f00:controller::1 activate
-  !
+ !
 !
 ```
 
 ## Step 4: Import SRv6 Routes from BGP
 
-On the remote PE receiving SRv6 VPN routes:
+On the remote PE receiving SRv6 VPN routes (VRF BGP is a separate top-level instance):
 
 ```text
 ! Remote PE: receive VPN routes and install with SRv6 next-hop
-router bgp 65000
+router bgp 65000 vrf CUSTOMER_A
   !
-  vrf CUSTOMER_A
-    !
-    address-family ipv6 unicast
-      import vpn
-      ! FRR automatically installs received routes with SRv6 SID as encap
-    !
-  !
+  address-family ipv6 unicast
+    rd vpn export 65000:100
+    rt vpn both 0:100
+    import vpn
+    ! FRR automatically installs received routes with SRv6 SID as encap
+  exit-address-family
 !
 ```
 
@@ -139,29 +146,31 @@ vtysh -c "show ipv6 route vrf CUSTOMER_A"
 ! BGP EVPN with SRv6 for data center L2/L3 services
 router bgp 65000
   !
+  segment-routing srv6
+    locator MAIN
+  !
+  !
   address-family l2vpn evpn
     neighbor 5f00:spine::1 activate
     advertise-all-vni
-    !
-  !
-  !
-  vni 100
-    rd 65000:100
-    route-target import 65000:100
-    route-target export 65000:100
-    segment-routing srv6 locator MAIN
-  !
+    vni 100
+      rd 65000:100
+      route-target import 65000:100
+      route-target export 65000:100
+    exit-vni
+  exit-address-family
 !
 ```
 
 ## Checking BGP SRv6 on Cisco IOS-XR
 
 ```text
-! Cisco IOS-XR equivalent
+! Cisco IOS-XR equivalent — SRv6 does not require allocate-label (that is MPLS-only)
 router bgp 65000
+ segment-routing srv6
+  locator MyLocator
+ !
  address-family vpnv6 unicast
-  allocate-label all
-  !
  !
  vrf CUSTOMER_A
   rd 65000:100
