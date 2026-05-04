@@ -29,10 +29,12 @@ initLimit=10
 syncLimit=5
 
 # Cluster members (quorum) - use IPv6 addresses
-# server.ID=host:quorum_port:election_port
-server.1=2001:db8::10:2888:3888
-server.2=2001:db8::11:2888:3888
-server.3=2001:db8::12:2888:3888
+# IPv6 addresses must be enclosed in brackets so the parser
+# can distinguish address colons from port separators.
+# server.ID=[host]:quorum_port:election_port
+server.1=[2001:db8::10]:2888:3888
+server.2=[2001:db8::11]:2888:3888
+server.3=[2001:db8::12]:2888:3888
 ```
 
 ## ZooKeeper 3.5+ Multi-Address Configuration
@@ -61,8 +63,8 @@ server.3=[2001:db8::12]:2888:3888;[2001:db8::12]:2181
 
 export SERVER_JVMFLAGS="-Djava.net.preferIPv6Addresses=true $SERVER_JVMFLAGS"
 
-# Or for IPv6-only environment
-export SERVER_JVMFLAGS="-Djava.net.preferIPv6Stack=true $SERVER_JVMFLAGS"
+# Or to disable the IPv4 stack (forces IPv6 in dual-stack JVMs)
+export SERVER_JVMFLAGS="-Djava.net.preferIPv4Stack=false -Djava.net.preferIPv6Addresses=true $SERVER_JVMFLAGS"
 ```
 
 ## Verify and Test
