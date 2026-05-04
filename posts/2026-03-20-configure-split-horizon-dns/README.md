@@ -90,14 +90,18 @@ systemctl restart bind9
 ```bash
 # Simpler alternative: run two DNS servers
 # Internal DNS server (Unbound with local zones):
+# local-zone and local-data must live inside the server: clause, so
+# write a drop-in file under unbound.conf.d/ rather than appending to the main file.
 
-cat >> /etc/unbound/unbound.conf << 'EOF'
-local-zone: "example.com." static
-local-data: "example.com. IN A 10.20.0.10"
-local-data: "www.example.com. IN A 10.20.0.10"
-local-data: "api.example.com. IN A 10.20.0.11"
+cat > /etc/unbound/unbound.conf.d/split-horizon.conf << 'EOF'
+server:
+    local-zone: "example.com." static
+    local-data: "example.com. IN A 10.20.0.10"
+    local-data: "www.example.com. IN A 10.20.0.10"
+    local-data: "api.example.com. IN A 10.20.0.11"
 EOF
 
+unbound-checkconf
 unbound-control reload
 
 # Internal clients configured to use this Unbound server (via DHCP):
@@ -129,12 +133,14 @@ dig @1.2.3.4 example.com   # Using public IP of DNS server
 # Check that views are working in BIND:
 rndc status | grep "views"
 
-# Debug: enable view logging:
+# Debug: enable per-query logging to see which view matched each client:
 # In BIND named.conf.local:
 # logging {
 #     channel default_log { stderr; severity dynamic; };
-#     category resolver { default_log; };
+#     category queries { default_log; };
 # };
+# Then turn querylog on at runtime:
+# rndc querylog on
 ```
 
 ## Conclusion
