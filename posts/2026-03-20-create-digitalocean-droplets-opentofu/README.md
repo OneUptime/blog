@@ -149,7 +149,7 @@ resource "digitalocean_droplet" "production" {
   size      = "s-4vcpu-8gb"
   image     = "ubuntu-22-04-x64"
   ssh_keys  = [digitalocean_ssh_key.default.fingerprint]
-  backups   = true   # Enables weekly automated backups
+  backups   = true   # Enables automated backups (defaults to daily; use backup_policy to customize)
   monitoring = true  # Enables free Droplet monitoring
   ipv6      = true   # Enable IPv6
 }
