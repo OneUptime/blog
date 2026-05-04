@@ -86,7 +86,7 @@ curl handles IPv6 proxy addresses with bracket notation in the `--proxy` flag:
 # Use an IPv6 proxy with curl
 curl --proxy "http://[2001:db8::1]:3128" https://example.com
 
-# For HTTPS proxy using CONNECT method
+# Force CONNECT tunneling through the HTTP proxy (useful for non-HTTPS protocols)
 curl --proxytunnel --proxy "http://[2001:db8::1]:3128" https://example.com
 
 # Bypass proxy for specific addresses
