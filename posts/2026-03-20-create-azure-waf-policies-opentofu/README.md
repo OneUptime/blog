@@ -86,8 +86,9 @@ resource "azurerm_web_application_firewall_policy" "main" {
     priority  = 2
     rule_type = "RateLimitRule"
     action    = "Block"
-    rate_limit_threshold          = 1000  # Requests per minute
-    rate_limit_duration_in_minutes = 1
+    rate_limit_threshold = 1000  # Requests per duration window
+    rate_limit_duration  = "OneMin"  # OneMin or FiveMins
+    group_rate_limit_by  = "ClientAddr"
 
     match_conditions {
       match_variables {
