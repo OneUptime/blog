@@ -58,8 +58,12 @@ aws ec2 modify-vpc-attribute \
 ```bash
 # Describe the new VPC
 aws ec2 describe-vpcs --vpc-ids $VPC_ID \
-  --query 'Vpcs[0].{CIDR:CidrBlock,State:State,DNS:EnableDnsHostnames}' \
+  --query 'Vpcs[0].{CIDR:CidrBlock,State:State}' \
   --output table
+
+# DNS attributes are returned by describe-vpc-attribute, not describe-vpcs
+aws ec2 describe-vpc-attribute --vpc-id $VPC_ID --attribute enableDnsHostnames
+aws ec2 describe-vpc-attribute --vpc-id $VPC_ID --attribute enableDnsSupport
 ```
 
 ## Creating a VPC with CloudFormation
