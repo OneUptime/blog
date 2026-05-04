@@ -81,7 +81,7 @@ sudo ip6tables -A INPUT -p udp --dport 443 -j ACCEPT
 sudo ip6tables -A INPUT -p tcp --dport 443 -j ACCEPT
 
 # Save rules
-sudo ip6tables-save > /etc/ip6tables/rules.v6
+sudo ip6tables-save > /etc/iptables/rules.v6
 ```
 
 ## Testing HTTP/3 over IPv6
@@ -137,7 +137,7 @@ server {
 ```nginx
 # Log format with HTTP version
 log_format quic_log '$remote_addr [$time_local] "$request" $status '
-                    '$http2 "$http_user_agent"';
+                    '$server_protocol "$http_user_agent"';
 
 access_log /var/log/nginx/quic_access.log quic_log;
 ```
