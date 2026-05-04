@@ -89,14 +89,15 @@ provider "postgresql" {
 
 ---
 
-## Cross-Account AWS Provider
+## Cross-Account AWS Provider with Vault-Issued Credentials
 
 ```hcl
-# Assume a role and get temporary credentials
-ephemeral "aws_iam_role" "production_access" {
-  role_arn     = "arn:aws:iam::123456789012:role/OpenTofuDeployRole"
-  session_name = "opentofu-${var.run_id}"
-  duration     = "30m"
+# Get short-lived AWS credentials from Vault's AWS secrets engine
+ephemeral "vault_aws_access_credentials" "production_access" {
+  backend = "aws"
+  role    = "opentofu-deploy"
+  type    = "sts"
+  region  = "us-east-1"
 }
 
 # Configure an aliased provider for the production account
@@ -104,9 +105,9 @@ provider "aws" {
   alias  = "production"
   region = "us-east-1"
 
-  access_key = ephemeral.aws_iam_role.production_access.access_key_id
-  secret_key = ephemeral.aws_iam_role.production_access.secret_access_key
-  token      = ephemeral.aws_iam_role.production_access.session_token
+  access_key = ephemeral.vault_aws_access_credentials.production_access.access_key
+  secret_key = ephemeral.vault_aws_access_credentials.production_access.secret_key
+  token      = ephemeral.vault_aws_access_credentials.production_access.security_token
 }
 
 # Deploy into production using the temporary credentials
@@ -137,13 +138,13 @@ provider "datadog" {
 
 ---
 
-## Ephemeral Values in provider_meta
+## Ephemeral Values for Third-Party Provider Credentials
 
-Some providers accept configuration in a `provider_meta` block - these can also use ephemeral values:
+Any provider that accepts a credential argument can be configured with an ephemeral value pulled from a secrets store:
 
 ```hcl
 ephemeral "aws_ssm_parameter" "license_key" {
-  name = "/enterprise/license-key"
+  name            = "/enterprise/license-key"
   with_decryption = true
 }
 
@@ -176,4 +177,4 @@ State files are often stored in S3 or remote backends with broad access. Any val
 
 ## Summary
 
-Use ephemeral resources to supply provider credentials dynamically - API tokens, database passwords, temporary AWS credentials, and TLS certificates. The provider uses the value during the operation, but it is never written to the state file. This is the recommended approach for any sensitive provider configuration value in OpenTofu 1.10+.
+Use ephemeral resources to supply provider credentials dynamically - API tokens, database passwords, temporary AWS credentials, and TLS certificates. The provider uses the value during the operation, but it is never written to the state file. This is the recommended approach for any sensitive provider configuration value in OpenTofu 1.11+.
