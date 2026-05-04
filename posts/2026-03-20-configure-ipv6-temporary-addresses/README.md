@@ -84,11 +84,12 @@ RFC 4941 temporary addresses change over time. RFC 7217 stable privacy addresses
 ```bash
 # addr_gen_mode controls the stable address algorithm:
 # 0 = EUI-64 (MAC-derived, privacy concern)
-# 1 = Stable privacy (RFC 7217, random but stable)
-# 2 = Disable link-local generation
+# 1 = Do not generate a link-local address
+# 2 = Stable privacy (RFC 7217), uses stable_secret
+# 3 = Stable privacy with a random secret (not stable across reboots)
 
 # For best privacy: stable privacy + temporary addresses
-sysctl -w net.ipv6.conf.all.addr_gen_mode=1    # Stable privacy for persistent addresses
+sysctl -w net.ipv6.conf.all.addr_gen_mode=2    # Stable privacy for persistent addresses (requires stable_secret)
 sysctl -w net.ipv6.conf.all.use_tempaddr=2     # Temporary addresses for outgoing connections
 ```
 
@@ -107,4 +108,4 @@ ip -6 addr flush dev eth0 scope global temporary
 
 ## Summary
 
-Enable IPv6 temporary addresses with `net.ipv6.conf.all.use_tempaddr=2` to generate rotating random addresses for outgoing connections, preventing tracking based on stable IPv6 identifiers. Persist in `/etc/sysctl.d/`. Combine with `addr_gen_mode=1` (RFC 7217 stable privacy) for the best privacy posture. Temporary addresses have configurable lifetimes via `temp_valid_lft` and `temp_prefered_lft`.
+Enable IPv6 temporary addresses with `net.ipv6.conf.all.use_tempaddr=2` to generate rotating random addresses for outgoing connections, preventing tracking based on stable IPv6 identifiers. Persist in `/etc/sysctl.d/`. Combine with `addr_gen_mode=2` (RFC 7217 stable privacy) for the best privacy posture. Temporary addresses have configurable lifetimes via `temp_valid_lft` and `temp_prefered_lft`.
