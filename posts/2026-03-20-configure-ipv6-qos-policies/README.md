@@ -99,22 +99,26 @@ for classid in 10 20 30 40 50; do
     handle ${classid}: fq_codel
 done
 
-# Classify IPv6 packets by DSCP (TC byte at offset 1 in IPv6 header)
-# CS6 (48 = 0xC0 in upper 6 bits = 0xC0 in TC byte)
-tc filter add dev $IFACE parent 1: protocol ipv6 \
-  u32 match u8 0xc0 0xfc at 1 flowid 1:10
+# Classify IPv6 packets by DSCP. The IPv6 Traffic Class field straddles
+# bytes 0-1 of the header (low nibble of byte 0 + high nibble of byte 1),
+# so we match the 16-bit word at offset 0 with the DSCP bits shifted into
+# bits 11-6 (mask 0x0fc0, value = DSCP << 6).
 
-# EF (46 = 0xB8)
+# CS6 (DSCP 48 = 0x30; 0x30 << 6 = 0x0c00)
 tc filter add dev $IFACE parent 1: protocol ipv6 \
-  u32 match u8 0xb8 0xfc at 1 flowid 1:20
+  u32 match u16 0x0c00 0x0fc0 at 0 flowid 1:10
 
-# AF41 (34 = 0x88)
+# EF (DSCP 46 = 0x2e; 0x2e << 6 = 0x0b80)
 tc filter add dev $IFACE parent 1: protocol ipv6 \
-  u32 match u8 0x88 0xfc at 1 flowid 1:30
+  u32 match u16 0x0b80 0x0fc0 at 0 flowid 1:20
 
-# AF31 (26 = 0x68)
+# AF41 (DSCP 34 = 0x22; 0x22 << 6 = 0x0880)
 tc filter add dev $IFACE parent 1: protocol ipv6 \
-  u32 match u8 0x68 0xfc at 1 flowid 1:30
+  u32 match u16 0x0880 0x0fc0 at 0 flowid 1:30
+
+# AF31 (DSCP 26 = 0x1a; 0x1a << 6 = 0x0680)
+tc filter add dev $IFACE parent 1: protocol ipv6 \
+  u32 match u16 0x0680 0x0fc0 at 0 flowid 1:30
 
 echo "QoS configured on $IFACE"
 ```
