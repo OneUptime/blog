@@ -118,8 +118,9 @@ dig AAAA google.com @::1
 dig A example.com @2001:db8::53
 
 # Verify response uses IPv6
-dig A example.com @::1 +identify
-# Shows the server address used
+dig A example.com @::1 +short +identify
+# +identify only takes effect alongside +short, and reveals the
+# responding server's address and port
 ```
 
 ## Firewall Rules for IPv6 DNS
@@ -129,8 +130,8 @@ dig A example.com @::1 +identify
 ip6tables -A INPUT -p udp --dport 53 -j ACCEPT
 ip6tables -A INPUT -p tcp --dport 53 -j ACCEPT
 
-# Save rules
-ip6tables-save > /etc/ip6tables/rules.v6
+# Save rules (iptables-persistent on Debian/Ubuntu uses /etc/iptables/)
+ip6tables-save > /etc/iptables/rules.v6
 ```
 
 ## Enabling Unbound Statistics for IPv6 Monitoring
@@ -167,9 +168,12 @@ journalctl -u unbound | grep -E 'error|bind|listen'
 
 **Queries from IPv6 clients refused**:
 ```bash
-# Check access-control entries include the client's IPv6 subnet
-unbound-control dump_cache | head
-# Ensure access-control: <client-subnet> allow is present
+# Validate the active configuration syntax
+unbound-checkconf
+
+# Inspect access-control entries in the running config
+grep -E '^\s*access-control:' /etc/unbound/unbound.conf
+# Ensure an access-control: <client-subnet> allow line covers the client
 ```
 
 ## Summary
