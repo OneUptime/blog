@@ -34,7 +34,7 @@ curl -H "Authorization: Bearer $HCLOUD_TOKEN" \
 resource "hcloud_server" "web" {
   name        = "web-server"
   image       = "ubuntu-22.04"
-  server_type = "cx21"
+  server_type = "cx22"
   location    = "nbg1"
 
   # IPv6 is assigned by default
@@ -68,8 +68,8 @@ output "floating_ipv6" {
 
 # Add additional addresses from the /64
 ip -6 addr add 2a01:4f8:abc:1234::2/64 dev eth0
-ip -6 addr add 2a01:4f8:abc:1234::web/64 dev eth0
-ip -6 addr add 2a01:4f8:abc:1234::mail/64 dev eth0
+ip -6 addr add 2a01:4f8:abc:1234::beef/64 dev eth0
+ip -6 addr add 2a01:4f8:abc:1234::cafe/64 dev eth0
 
 # Persistent via Netplan (Ubuntu)
 cat > /etc/netplan/60-ipv6-additional.yaml << 'EOF'
@@ -79,8 +79,8 @@ network:
     eth0:
       addresses:
         - "2a01:4f8:abc:1234::1/64"
-        - "2a01:4f8:abc:1234::web/64"
-        - "2a01:4f8:abc:1234::mail/64"
+        - "2a01:4f8:abc:1234::beef/64"
+        - "2a01:4f8:abc:1234::cafe/64"
 EOF
 netplan apply
 ```
@@ -121,13 +121,13 @@ hcloud firewall apply-to-resource my-firewall \
 ```nginx
 # Each service on a distinct IPv6 address from the /64
 server {
-    listen [2a01:4f8:abc:1234::web]:80;
+    listen [2a01:4f8:abc:1234::beef]:80;
     server_name www.example.com;
     # Web server
 }
 
 server {
-    listen [2a01:4f8:abc:1234::mail]:80;
+    listen [2a01:4f8:abc:1234::cafe]:80;
     server_name mail.example.com;
     # Webmail
 }
