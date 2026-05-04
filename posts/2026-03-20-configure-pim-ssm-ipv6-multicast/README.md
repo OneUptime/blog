@@ -30,8 +30,8 @@ For IPv6, the SSM address range is `ff3x::/32` (where `x` is the scope nibble).
 
 apt install frr
 
-# Enable pimd daemon
-sed -i 's/pimd=no/pimd=yes/' /etc/frr/daemons
+# Enable pim6d daemon (pim6d is the IPv6 PIM daemon; pimd is IPv4-only)
+sed -i 's/pim6d=no/pim6d=yes/' /etc/frr/daemons
 systemctl restart frr
 
 # Configure PIM-SSM in FRR vtysh
@@ -46,8 +46,9 @@ interface eth0
 interface eth1
  ipv6 pim
 
-# Configure SSM prefix list (ff3e::/32 is the global SSM range)
+# Configure SSM prefix list (ff3e::/32 is the global SSM range) and apply it
 ipv6 prefix-list SSM_RANGE seq 10 permit ff3e::/32 le 128
+ipv6 pim ssm prefix-list SSM_RANGE
 
 # Enable MLD version 2 on interfaces (required for SSM)
 interface eth0
@@ -77,18 +78,20 @@ import socket, struct
 sock = socket.socket(socket.AF_INET6, socket.SOCK_DGRAM)
 
 # struct group_source_req
-# interface_index (4 bytes) + pad (4 bytes)
-# group_addr (struct sockaddr_in6 = 28 bytes)
-# source_addr (struct sockaddr_in6 = 28 bytes)
+# interface_index (4 bytes) + pad (4 bytes for 8-byte alignment)
+# group_addr  (struct sockaddr_storage = 128 bytes)
+# source_addr (struct sockaddr_storage = 128 bytes)
 ifidx = socket.if_nametoindex('eth0')
 pad = 0
 
-def make_sockaddr_in6(addr):
+def make_sockaddr_storage_in6(addr):
     addr_bytes = socket.inet_pton(socket.AF_INET6, addr)
-    return struct.pack('HHI16sI', socket.AF_INET6, 0, 0, addr_bytes, 0)
+    sin6 = struct.pack('HHI16sI', socket.AF_INET6, 0, 0, addr_bytes, 0)
+    # sockaddr_storage is 128 bytes; pad sockaddr_in6 (28 bytes) up to 128
+    return sin6 + b'\x00' * (128 - len(sin6))
 
-group_sa = make_sockaddr_in6('ff3e::db8:stream')
-source_sa = make_sockaddr_in6('2001:db8::source')
+group_sa = make_sockaddr_storage_in6('ff3e::db8:stream')
+source_sa = make_sockaddr_storage_in6('2001:db8::source')
 
 mreq = struct.pack('II', ifidx, pad) + group_sa + source_sa
 sock.setsockopt(socket.IPPROTO_IPV6, socket.MCAST_JOIN_SOURCE_GROUP, mreq)
@@ -148,11 +151,14 @@ sock = socket.socket(socket.AF_INET6, socket.SOCK_DGRAM)
 sock.bind(('', 5000))
 
 # Join SSM group - receive only from source 2001:db8::source
+# group_source_req uses sockaddr_storage (128 bytes), not sockaddr_in6 (28 bytes)
 ifidx = socket.if_nametoindex('eth0')
-group_sa = struct.pack('HHI16sI', socket.AF_INET6, 0, 0,
-    socket.inet_pton(socket.AF_INET6, 'ff3e::db8:stream'), 0)
-source_sa = struct.pack('HHI16sI', socket.AF_INET6, 0, 0,
-    socket.inet_pton(socket.AF_INET6, '2001:db8::source'), 0)
+def sa_storage_in6(addr):
+    sin6 = struct.pack('HHI16sI', socket.AF_INET6, 0, 0,
+        socket.inet_pton(socket.AF_INET6, addr), 0)
+    return sin6 + b'\x00' * (128 - len(sin6))
+group_sa = sa_storage_in6('ff3e::db8:stream')
+source_sa = sa_storage_in6('2001:db8::source')
 mreq = struct.pack('II', ifidx, 0) + group_sa + source_sa
 sock.setsockopt(socket.IPPROTO_IPV6, socket.MCAST_JOIN_SOURCE_GROUP, mreq)
 
