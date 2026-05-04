@@ -62,8 +62,7 @@ resource "digitalocean_app" "container" {
       http_port          = 3000
 
       image {
-        registry_type = "DOCR"  # DigitalOcean Container Registry
-        registry      = "myorg"
+        registry_type = "DOCR"  # DigitalOcean Container Registry (registry must be empty for DOCR)
         repository    = "myapp"
         tag           = var.image_tag
       }
@@ -91,10 +90,13 @@ resource "digitalocean_app" "full_stack" {
         branch         = "main"
       }
 
-      # Reference the managed DB component below
+      # Reference the managed DB component below using App Platform's bindable
+      # variable syntax. The `$$` escapes the `$` so Terraform passes the literal
+      # `${db.DATABASE_URL}` string through to App Platform, which resolves it
+      # at runtime to the database connection URL.
       env {
         key   = "DATABASE_URL"
-        value = "${DATABASE_URL}"  # App Platform injects this automatically
+        value = "$${db.DATABASE_URL}"
         type  = "SECRET"
       }
     }
