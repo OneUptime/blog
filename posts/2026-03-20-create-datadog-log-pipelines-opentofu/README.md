@@ -29,7 +29,7 @@ provider "datadog" {
 ## Creating a Log Pipeline
 
 ```hcl
-resource "datadog_logs_pipeline" "web_access" {
+resource "datadog_logs_custom_pipeline" "web_access" {
   name       = "Web Access Logs"
   is_enabled = true
 
@@ -88,7 +88,7 @@ resource "datadog_logs_pipeline" "web_access" {
 ## Adding a Remapper Processor
 
 ```hcl
-resource "datadog_logs_pipeline" "application" {
+resource "datadog_logs_custom_pipeline" "application" {
   name       = "Application Logs"
   is_enabled = true
 
@@ -160,11 +160,15 @@ resource "datadog_logs_custom_pipeline" "json_enrichment" {
   }
 
   processor {
-    json_parser {
+    grok_parser {
       name       = "Parse JSON body"
       is_enabled = true
       source     = "message"
-      target     = "parsed"
+
+      grok {
+        support_rules = ""
+        match_rules   = "json_rule %{data::json}"
+      }
     }
   }
 
@@ -172,7 +176,7 @@ resource "datadog_logs_custom_pipeline" "json_enrichment" {
     attribute_remapper {
       name                 = "Remap user ID"
       is_enabled           = true
-      sources              = ["parsed.userId", "parsed.user_id"]
+      sources              = ["userId", "user_id"]
       source_type          = "attribute"
       target               = "usr.id"
       target_type          = "attribute"
