@@ -31,10 +31,11 @@ global
 
 backend transparent_backend
     # Use client's source address for outgoing connections to backend
-    source 0.0.0.0 usesrc clientip
+    # Source family must match the server family (IPv6 here)
+    source ipv6@:: usesrc clientip
 
-    # For IPv6 specifically
-    # source :: usesrc clientip
+    # For IPv4 backends use:
+    # source 0.0.0.0 usesrc clientip
 
     server app1 [2001:db8::10]:8080
     server app2 [2001:db8::11]:8080
@@ -65,9 +66,6 @@ global
     log /dev/log local0
     maxconn 4096
 
-    # Required for transparent proxy capabilities
-    nbproc 1
-
 defaults
     mode tcp
     log global
@@ -82,7 +80,8 @@ frontend tproxy_http
 
 backend app_servers
     # Forward with original client source IP
-    source 0.0.0.0 usesrc clientip
+    # For IPv6 backends, source family must match destination
+    source ipv6@:: usesrc clientip
     server app1 [2001:db8::10]:8080
     server app2 [2001:db8::11]:8080
 ```
@@ -120,4 +119,4 @@ curl -6 http://[2001:db8::haproxy]/
 
 ## Summary
 
-HAProxy transparent proxy for IPv6 uses `source :: usesrc clientip` in backend sections to forward connections appearing to originate from the original client. Requires Linux TPROXY kernel support, routing rules (`ip -6 rule add fwmark 1 lookup 100`), and ip6tables TPROXY rules. For most applications, the PROXY protocol (`send-proxy-v2`) is simpler, more portable, and equally effective at preserving client IPv6 addresses to backend services.
+HAProxy transparent proxy for IPv6 uses `source ipv6@:: usesrc clientip` in backend sections to forward connections appearing to originate from the original client. Requires Linux TPROXY kernel support, routing rules (`ip -6 rule add fwmark 1 lookup 100`), and ip6tables TPROXY rules. For most applications, the PROXY protocol (`send-proxy-v2`) is simpler, more portable, and equally effective at preserving client IPv6 addresses to backend services.
