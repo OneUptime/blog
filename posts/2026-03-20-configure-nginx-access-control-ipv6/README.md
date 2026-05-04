@@ -20,7 +20,7 @@ server {
         allow 2001:db8::10;
 
         # Allow an IPv6 subnet
-        allow 2001:db8:trusted::/48;
+        allow 2001:db8:abcd::/48;
 
         # Allow IPv4 addresses too
         allow 192.168.1.0/24;
@@ -48,9 +48,9 @@ server {
     ssl_certificate_key /etc/ssl/private/internal.key;
 
     # Corporate IPv6 ranges only
-    allow 2001:db8:corporate::/48;
-    allow 2001:db8:branch::/48;
-    allow fd00:corp::/32;           # ULA range
+    allow 2001:db8:cafe::/48;
+    allow 2001:db8:beef::/48;
+    allow fd12:3456::/32;           # ULA range
 
     # IPv4 VPN clients
     allow 10.0.0.0/8;
@@ -75,7 +75,7 @@ server {
 
     # Block known bad actors
     deny 2001:db8::bad:ac70;
-    deny 2001:db8:malicious::/48;
+    deny 2001:db8:dead::/48;
 
     # Allow everyone else
     allow all;
@@ -102,7 +102,7 @@ server {
 
     # Admin area - restricted to IPv6 management subnet
     location /admin/ {
-        allow 2001:db8:mgmt::/64;
+        allow 2001:db8:1234::/64;
         allow ::1;  # localhost
         deny all;
 
@@ -111,11 +111,11 @@ server {
 
     # API area - restrict to internal subnets
     location /api/ {
-        allow 2001:db8:internal::/48;
+        allow 2001:db8:f00d::/48;
         allow 192.168.0.0/16;
         deny all;
 
-        proxy_pass http://[2001:db8::backend]:3000;
+        proxy_pass http://[2001:db8::1]:3000;
     }
 }
 ```
@@ -146,7 +146,7 @@ server {
         if ($allowed_client = 0) {
             return 403;
         }
-        proxy_pass http://[2001:db8::backend]:3000;
+        proxy_pass http://[2001:db8::1]:3000;
     }
 }
 ```
@@ -169,4 +169,4 @@ tail -f /var/log/nginx/access.log | grep -v '200'
 
 ## Summary
 
-Configure IPv6 access control in Nginx with `allow 2001:db8:trusted::/48;` and `deny all;` directives. Rules are evaluated in order - first match wins. Allow specific addresses/subnets before a final `deny all`. For more complex rules, use the `geo` module to classify clients and check with `if` conditionals. IPv6 prefixes work directly in allow/deny without brackets. Test with `curl -6 --interface <ipv6-addr>`.
+Configure IPv6 access control in Nginx with `allow 2001:db8:abcd::/48;` and `deny all;` directives. Rules are evaluated in order - first match wins. Allow specific addresses/subnets before a final `deny all`. For more complex rules, use the `geo` module to classify clients and check with `if` conditionals. IPv6 prefixes work directly in allow/deny without brackets. Test with `curl -6 --interface <ipv6-addr>`.
