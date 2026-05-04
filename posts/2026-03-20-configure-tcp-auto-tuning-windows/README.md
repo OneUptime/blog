@@ -8,7 +8,7 @@ Description: Learn how to configure and verify TCP receive window auto-tuning on
 
 ## What Is TCP Auto-Tuning on Windows?
 
-Windows implements TCP receive window auto-tuning (RFC 1323) which dynamically adjusts the TCP receive window size based on network conditions. This feature was introduced in Vista/Server 2008 and is enabled by default.
+Windows implements TCP receive window auto-tuning (RFC 7323, originally RFC 1323) which dynamically adjusts the TCP receive window size based on network conditions. This feature was introduced in Vista/Server 2008 and is enabled by default.
 
 The receive window scaling level controls how aggressively Windows expands the TCP window:
 
@@ -49,25 +49,29 @@ Set-NetTCPSetting -SettingName InternetCustom -AutoTuningLevelLocal Experimental
 netsh interface tcp set global autotuninglevel=normal
 ```
 
-## Step 3: Enable BBR-Equivalent on Windows (CUBIC)
+## Step 3: Configure Congestion Control (CUBIC)
 
-Windows uses CUBIC or CTCP (Compound TCP) congestion control. Optimize it:
+Windows supports several congestion control algorithms including CUBIC, CTCP (Compound TCP), DCTCP (Data Center TCP), NewReno, LEDBAT, and BBR2 (on newer builds). CUBIC is the default on Windows 10 1809 / Server 2019 and later. Optimize it:
 
 ```powershell
 # View available congestion providers
 Get-NetTCPSetting | Select-Object SettingName, CongestionProvider
 
-# Set CUBIC (best for most environments)
+# Set CUBIC (default on Windows 10 1809 / Server 2019 and later)
 Set-NetTCPSetting -SettingName InternetCustom -CongestionProvider CUBIC
 
 # Enable ECN (Explicit Congestion Notification)
 Set-NetTCPSetting -SettingName InternetCustom -EcnCapability Enabled
 
-# Set initial RTO
-Set-NetTCPSetting -SettingName InternetCustom -InitialCongestionWindow 10
+# Set initial congestion window (in MSS units; even values 2-64)
+Set-NetTCPSetting -SettingName InternetCustom -InitialCongestionWindowMss 10
 ```
 
-## Step 4: Configure Chimney Offload and RSS
+## Step 4: Configure RSS (and Legacy Offloads)
+
+Receive Side Scaling (RSS) distributes incoming traffic across multiple CPU cores and is the most important offload to verify on modern Windows Server.
+
+> Note: TCP Chimney Offload was deprecated starting with Windows Server 2016 and is disabled by default. NetDMA was removed in Windows 8 / Server 2012; the `netdma` netsh option is no longer effective on supported Windows Server versions. Both commands below are included only for legacy reference.
 
 ```powershell
 # Enable Receive Side Scaling (RSS)
@@ -76,29 +80,29 @@ netsh interface tcp set global rss=enabled
 # Check RSS state
 netsh interface tcp show global | findstr "RSS"
 
-# Enable TCP Chimney Offload (if NIC supports it)
+# Legacy: TCP Chimney Offload (deprecated in Server 2016+)
 netsh interface tcp set global chimney=enabled
 
-# Enable NetDMA for reduced CPU usage
+# Legacy: NetDMA (removed in Windows 8 / Server 2012)
 netsh interface tcp set global netdma=enabled
 ```
 
 ## Step 5: Tune with Group Policy (Enterprise)
 
-For domain-joined Windows servers, use Group Policy:
+There is no built-in Administrative Template for the TCP stack tuning values, so for domain-joined Windows servers these are typically deployed via Group Policy Preferences (Registry) under `HKLM\SYSTEM\CurrentControlSet\Services\Tcpip\Parameters`:
 
 ```text
 Computer Configuration
-  → Administrative Templates
-    → Network
-      → QoS Packet Scheduler
-        → Set Default DSCP Marking
-      → TCP/IP Settings
-        → Parameters
-          → EnableTCPChimney = 1
-          → EnableRSS = 1
-          → EnableTCPA = 1
+  → Preferences
+    → Windows Settings
+      → Registry
+        → HKLM\SYSTEM\CurrentControlSet\Services\Tcpip\Parameters
+          → Tcp1323Opts (DWORD) = 3      # enable window scaling + timestamps
+          → TcpMaxDataRetransmissions    # tune retransmission count
+          → DefaultTTL                   # default IP TTL
 ```
+
+QoS-related settings are configured separately under `Computer Configuration → Administrative Templates → Network → QoS Packet Scheduler`.
 
 ## Step 6: Test and Verify Throughput
 
