@@ -46,7 +46,7 @@ services:
 
 ```bash
 # Verify: api can resolve database hostname
-docker exec myapp_api_1 nslookup database
+docker exec myapp-api-1 nslookup database
 # Returns: 172.x.x.x (database container IP)
 ```
 
@@ -89,8 +89,8 @@ services:
     environment:
       # Can reach containers from Stack 1 by service name
       - REDIS_HOST=redis
-      # Or use the stack_service naming convention
-      - REDIS_HOST=infrastructure-stack_redis_1
+      # Or use the project-service-index naming convention
+      - REDIS_HOST=infrastructure-stack-redis-1
 ```
 
 ## Step 3: Service Aliases
