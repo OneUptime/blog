@@ -20,8 +20,10 @@ sudo apt install nginx libnginx-mod-http-geoip2 -y
 # Or install libmaxminddb and compile from source
 sudo apt install libmaxminddb-dev -y
 
-# RHEL/CentOS
-sudo dnf install nginx-mod-http-geoip2 -y
+# RHEL/CentOS - install build deps and compile the third-party
+# ngx_http_geoip2_module (https://github.com/leev/ngx_http_geoip2_module)
+# as a dynamic module against your nginx version
+sudo dnf install libmaxminddb-devel -y
 
 # Verify module is available
 nginx -V 2>&1 | grep geoip2
