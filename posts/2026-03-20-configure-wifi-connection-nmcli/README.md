@@ -123,4 +123,4 @@ nmcli radio wifi on
 - `nmcli device wifi connect <SSID> password <pass>` is the quickest way to connect to a WPA2 network.
 - For hidden networks, add `wifi.hidden yes` to the connection profile.
 - WPA2 Enterprise (EAP-PEAP/MSCHAPv2) requires `802-1x.*` settings in addition to `wifi-sec.key-mgmt wpa-eap`.
-- Store Wi-Fi credentials securely in NM's connection profiles; they are stored encrypted under `/etc/NetworkManager/system-connections/`.
+- Store Wi-Fi credentials securely in NM's connection profiles; they are written in plaintext under `/etc/NetworkManager/system-connections/` with `0600` permissions, so root-only access is the protection mechanism.
