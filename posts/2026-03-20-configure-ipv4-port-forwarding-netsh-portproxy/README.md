@@ -8,7 +8,7 @@ Description: Configure TCP port forwarding on Windows using netsh interface port
 
 ## Introduction
 
-`netsh interface portproxy` creates a TCP port forwarding rule at the kernel level - incoming connections on a specific IP:port are transparently redirected to a target IP:port. This is useful for service migration, exposing local containers, and building simple reverse proxies.
+`netsh interface portproxy` creates a TCP port forwarding rule via the Windows IP Helper service (`iphlpsvc`) - incoming connections on a specific IP:port are transparently redirected to a target IP:port. This is useful for service migration, exposing local containers, and building simple reverse proxies. Note that portproxy supports TCP only, and the IP Helper service must be running for rules to take effect.
 
 ## Adding a Port Forwarding Rule
 
