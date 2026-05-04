@@ -40,7 +40,7 @@ on:
     branches: [main]
 
 env:
-  TOFU_VERSION: "1.9.0"
+  TOFU_VERSION: "1.11.0"
 
 jobs:
   # Stage 1: Static analysis (runs on every commit, fast)
@@ -160,16 +160,12 @@ jobs:
 ```yaml
 # .pre-commit-config.yaml
 repos:
-  - repo: https://github.com/opentofu/opentofu
-    rev: v1.9.0
+  - repo: https://github.com/antonbabenko/pre-commit-terraform
+    rev: v1.105.0
     hooks:
-      - id: tofu_fmt
-      - id: tofu_validate
-
-  - repo: https://github.com/terraform-linters/tflint
-    rev: v0.50.0
-    hooks:
-      - id: tflint
+      - id: terraform_fmt
+      - id: terraform_validate
+      - id: terraform_tflint
 
   - repo: https://github.com/bridgecrewio/checkov
     rev: 3.2.0
@@ -177,6 +173,8 @@ repos:
       - id: checkov
         args: [--soft-fail]
 ```
+
+The `antonbabenko/pre-commit-terraform` hooks discover and use the `tofu` binary automatically when it is on `PATH` (or you can set the binary path explicitly), so they work for both Terraform and OpenTofu.
 
 ```bash
 # Install pre-commit
@@ -189,14 +187,21 @@ pre-commit run --all-files
 
 ## Test Results and Reporting
 
+`tofu test` does not emit JUnit XML directly. The supported machine-readable output is streaming JSON via the `-json` flag, which you can capture and attach to the workflow run as an artifact for later inspection (or convert to JUnit with a separate tool).
+
 ```yaml
-      - name: Publish test results
-        uses: dorny/test-reporter@v1
+      - name: Run unit tests with JSON output
+        run: |
+          mkdir -p test-results
+          cd modules/${{ matrix.module }}
+          tofu test -test-directory=tests/unit -json | tee ../../test-results/${{ matrix.module }}.json
+
+      - name: Upload test results
         if: always()
+        uses: actions/upload-artifact@v4
         with:
-          name: OpenTofu Test Results
-          path: test-results/*.xml
-          reporter: java-junit
+          name: tofu-test-results-${{ matrix.module }}
+          path: test-results/${{ matrix.module }}.json
 ```
 
 ## Conclusion
