@@ -148,7 +148,7 @@ hey -n 1000 -c 50 -host "hello-ipv6.default.example.com" \
 kubectl get pods -n default -w | grep hello-ipv6
 
 # Verify IPv6 source addresses in logs
-kubectl logs -n default -l app=hello-ipv6 | grep "RemoteAddr"
+kubectl logs -n default -l serving.knative.dev/service=hello-ipv6 -c user-container | grep "RemoteAddr"
 ```
 
 ## Conclusion
