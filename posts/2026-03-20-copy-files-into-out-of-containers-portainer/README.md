@@ -10,16 +10,16 @@ Description: Use Portainer's file browser and Docker CLI to copy files into runn
 
 Sometimes you need to get files in or out of a running container - copy a configuration file, extract a log file, or update an asset. Portainer provides a built-in file browser for some operations, while `docker cp` is the primary tool for copying files.
 
-## Method 1: Portainer's Built-in File Browser
+## Method 1: Portainer's Built-in Volume Browser
 
-For containers with accessible filesystems:
+For files stored in named Docker volumes, Portainer provides a built-in browser:
 
-1. Go to **Containers > [Container Name]**
-2. Click the **Files** tab (available when the container is running)
-3. Browse the container filesystem
-4. Use the upload/download buttons to transfer files
+1. Go to **Volumes > [Volume Name]**
+2. Click the **Browse** button
+3. Browse the volume's filesystem
+4. Use the upload, download, rename, and delete actions to manage files
 
-The Files tab provides a read-only browser with download capability. For uploads, use the container's console.
+The Volume Browser is available in both Community and Business Edition, but requires the Portainer Agent or a Docker Swarm deployment - it does not work on a local Docker endpoint without the agent. Note that this only browses the contents of named volumes, not the container's writable layer or arbitrary paths inside the container.
 
 ## Method 2: Docker cp (via Portainer Console or Host)
 
@@ -87,10 +87,10 @@ For files stored in named volumes, access them directly from the host:
 ls /var/lib/docker/volumes/webapp-data/_data/
 
 # Copy from volume (container can be stopped)
-cp /var/lib/docker/volumes/webapp-data/_data/uploads ./uploads-backup
+cp -r /var/lib/docker/volumes/webapp-data/_data/uploads ./uploads-backup
 
 # Restore to volume
-cp ./uploads-restore/* /var/lib/docker/volumes/webapp-data/_data/uploads/
+cp -r ./uploads-restore/* /var/lib/docker/volumes/webapp-data/_data/uploads/
 ```
 
 ## Use Cases
@@ -99,7 +99,7 @@ cp ./uploads-restore/* /var/lib/docker/volumes/webapp-data/_data/uploads/
 |----------|-------------------|
 | Emergency config update | `docker cp` |
 | Extract logs for debugging | `docker cp` |
-| Browse container filesystem | Portainer Files tab |
+| Browse named volume contents | Portainer Volume Browser |
 | Update multiple files | Volume access |
 | One-off script execution | Console + exec |
 
@@ -109,4 +109,4 @@ Copying files into containers bypasses the image build process and creates confi
 
 ## Summary
 
-Portainer's Files tab and `docker cp` provide practical ways to transfer files between the host and containers. For debugging and emergency fixes, these tools are invaluable. For production configuration management, prefer volume mounts or image rebuilds to maintain reproducibility.
+Portainer's Volume Browser and `docker cp` provide practical ways to transfer files between the host and containers. For debugging and emergency fixes, these tools are invaluable. For production configuration management, prefer volume mounts or image rebuilds to maintain reproducibility.
