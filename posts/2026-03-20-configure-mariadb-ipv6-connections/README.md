@@ -23,8 +23,8 @@ bind-address = ::
 # Bind to IPv6 loopback
 # bind-address = ::1
 
-# Bind to both IPv4 and IPv6 (MariaDB 10.3+)
-# Use multiple bind-address lines or :: for all
+# Bind to multiple specific addresses (MariaDB 10.11+)
+# bind-address = 2001:db8::10,192.0.2.10
 ```
 
 ## Apply Changes
@@ -34,7 +34,7 @@ bind-address = ::
 systemctl restart mariadb
 
 # Verify listening on IPv6
-ss -6 -tlnp | grep mysql
+ss -6 -tlnp | grep -E 'mariadb|mysql'
 # Expected: [2001:db8::10]:3306
 
 # Test connection
@@ -146,7 +146,7 @@ firewall-cmd --reload
 
 # Using ip6tables directly
 ip6tables -A INPUT -p tcp --dport 3306 -j ACCEPT
-ip6tables-save > /etc/ip6tables/rules.v6
+ip6tables-save > /etc/iptables/rules.v6
 ```
 
 ## Summary
