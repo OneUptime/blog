@@ -131,12 +131,6 @@ Name=eth0
 DHCP=ipv4
 IPv6AcceptRA=yes
 
-[IPv6AcceptRA]
-# Use temporary privacy addresses
-# Token = random | static | <specific-suffix>
-Token=random
-
-[Network]
 # Enable privacy extensions (RFC 4941)
 IPv6PrivacyExtensions=prefer-public  # or: yes, no, kernel
 ```
@@ -156,7 +150,7 @@ Gateway=2001:db8::1
 # Additional static routes
 [Route]
 Destination=2001:db8:remote::/48
-Gateway=2001:db8::gateway
+Gateway=2001:db8::1
 Metric=200
 ```
 
