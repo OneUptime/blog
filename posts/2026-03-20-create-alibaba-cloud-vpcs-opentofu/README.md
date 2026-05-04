@@ -106,15 +106,14 @@ resource "alicloud_eip_address" "nat" {
   payment_type = "PayAsYouGo"
 }
 
-resource "alicloud_nat_gateway_nat_ip" "main" {
-  nat_gateway_id = alicloud_nat_gateway.main.id
-  nat_ip_cidr    = "192.168.0.0/16"
-  nat_ip         = "192.168.0.100"
-  nat_ip_name    = "nat-ip"
+resource "alicloud_eip_association" "nat" {
+  allocation_id = alicloud_eip_address.nat.id
+  instance_id   = alicloud_nat_gateway.main.id
+  instance_type = "Nat"
 }
 ```
 
-## VPC Peering (VPC Sharing)
+## VPC Peering
 
 ```hcl
 resource "alicloud_vpc_peer_connection" "peer" {
